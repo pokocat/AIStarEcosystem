@@ -64,11 +64,9 @@ public class EnumColumnWideningMigration implements CommandLineRunner {
     private static final List<EnumColumn> COLUMNS = List.of(
             // AdminUser.AdminRole（C2：+FINANCE_ADMIN）
             new EnumColumn("admin_users", "role",
-                    List.of("SUPER_ADMIN", "OPERATOR", "FINANCE_ADMIN")),
-            // LedgerEntry.LedgerEntryType（C3/D17：+REFUND_CASH）
-            new EnumColumn("aep_ledger_entries", "entry_type",
-                    List.of("LICENSE_GRANT", "RECHARGE", "REFUND", "REFUND_CASH", "INCOME",
-                            "GIFT", "SPEND", "WITHDRAW", "FREEZE", "UNFREEZE", "ADJUST", "TRANSFER_IN", "TRANSFER_OUT"))
+                    List.of("SUPER_ADMIN", "OPERATOR", "FINANCE_ADMIN"))
+            // aep_ledger_entries.entry_type 不在这里：V67 已把它改成 VARCHAR，实体也标了 @JdbcTypeCode(VARCHAR)。
+            // 留在清单里会在每次启动时把 VARCHAR 改回缺 SCOPED_* 的 ENUM，第一笔模型赠款入账就报 Data truncated。
     );
 
     /** 测试用：暴露目标清单做反射对齐校验（同包可见）。 */
@@ -110,10 +108,8 @@ public class EnumColumnWideningMigration implements CommandLineRunner {
             }
             // COLUMN_TYPE 形如 enum('SUPER_ADMIN','OPERATOR')；带引号匹配确保整 token 命中
             // （'REFUND' 不会误命中 'REFUND_CASH'，因后者引号内是 REFUND_ 而非 REFUND'）。
-            boolean missingAny = c.values().stream()
-                    .anyMatch(v -> !existingType.contains("'" + v + "'"));
-            if (!missingAny) {
-                log.debug("[enum-widen] {}.{} 已含全部枚举值，跳过（幂等）", c.table(), c.column());
+            if (!shouldWiden(existingType, c.values())) {
+                log.debug("[enum-widen] {}.{} 不是缺值的 ENUM（{}），跳过", c.table(), c.column(), existingType);
                 return;
             }
             boolean nullable = readIsNullable(conn, c.table(), c.column());
@@ -133,6 +129,15 @@ public class EnumColumnWideningMigration implements CommandLineRunner {
             log.warn("[enum-widen] {}.{} 加宽失败（{}）：{}",
                     c.table(), c.column(), e.getSQLState(), e.getMessage());
         }
+    }
+
+    /**
+     * 只给「当前就是 ENUM 且缺目标值」的列加宽。已经是 VARCHAR 等非 ENUM 类型的列一律不碰：
+     * 把它改回 ENUM 只会丢掉清单之外的合法值（同包可见，供测试）。
+     */
+    static boolean shouldWiden(String columnType, List<String> values) {
+        if (columnType == null || !columnType.trim().toLowerCase().startsWith("enum(")) return false;
+        return values.stream().anyMatch(v -> !columnType.contains("'" + v + "'"));
     }
 
     private String readColumnType(Connection conn, String table, String column) throws SQLException {

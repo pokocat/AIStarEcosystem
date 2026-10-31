@@ -169,8 +169,10 @@ public class StudioSkillDraftService {
         fragments.stream().distinct().limit(200).forEach(privateFragments::add);
 
         var billingService = enterpriseBilling.getIfAvailable();
-        var account = billingService == null ? null : billingService.reserve(userId, request.billing(), IpRunService.REF_TYPE, id, endpoint.getId(), cost, "Studio 整理制作方法");
-        if (billingService == null && cost > 0) credits.hold(userId, cost, IpRunService.REF_TYPE, id, "Studio 整理制作方法");
+        var modelCharge = com.aistareco.aep.ipstudio.service.StudioTokenBilling.plan(endpoint, rate);
+        com.aistareco.aep.ipstudio.service.StudioTokenBilling.store(exec, modelCharge, endpoint);
+        var account = billingService == null ? null : billingService.reserve(userId, request.billing(), IpRunService.REF_TYPE, id, endpoint.getId(), cost, "Studio 整理制作方法", modelCharge);
+        if (billingService == null && cost > 0) credits.hold(userId, cost, IpRunService.REF_TYPE, id, "Studio 整理制作方法", modelCharge);
         Instant now = Instant.now();
         IpRun run = IpRun.builder().id(id).projectId(projectId).ownerUserId(userId).nodeId("SKD-" + execution.getId()).kind("studio-text")
                 .status(IpRun.STATUS_RUNNING).stage("queued").cost(cost).clientRequestId(request.clientRequestId()).inputFingerprint(fingerprint)

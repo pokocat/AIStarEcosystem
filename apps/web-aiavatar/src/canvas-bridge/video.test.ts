@@ -118,7 +118,12 @@ describe("native video from a node: the user's text choice and the frame questio
     expect(submitStudioMock.mock.calls[0][1].video).toEqual({mode:"t2v",resolutionTier:"768p",optimizePrompt:false});
     submitStudioMock.mockClear();
     await createVideoGenerationTask(t2v,"一只猫在窗台上打盹",[],{nodeId:"v",keepPrompt:studioVideoKeepPrompt({...node,metadata:{}} as CanvasNodeData)});
-    expect(submitStudioMock.mock.calls[0][1].video).toEqual({mode:"t2v",resolutionTier:"768p"});
+    expect(submitStudioMock.mock.calls[0][1].video).toEqual({mode:"t2v",resolutionTier:"768p",rewrite:"review"});
+    // 上次是在「用优化稿 / 用原文」里选的：请求里关了厂商改写，但智能优化仍算开着
+    submitStudioMock.mockClear();
+    const chose={...node,metadata:{studio:{...node.metadata!.studio,promptChoice:"optimized"}}} as unknown as CanvasNodeData;
+    await createVideoGenerationTask(t2v,"一只猫在窗台上打盹",[],{nodeId:"v",keepPrompt:studioVideoKeepPrompt(chose)});
+    expect(submitStudioMock.mock.calls[0][1].video).toEqual({mode:"t2v",resolutionTier:"768p",rewrite:"review"});
   });
 
   it("a model that does not rewrite never receives the switch",async()=>{

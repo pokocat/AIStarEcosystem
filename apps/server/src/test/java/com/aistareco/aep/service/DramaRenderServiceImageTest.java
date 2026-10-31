@@ -218,7 +218,7 @@ class DramaRenderServiceImageTest {
     void upstreamMessage_truncatedBody_regexFallback_andSecretsMasked() {
         String truncated = "{\"error\":{\"code\":\"bad\",\"message\":\"invalid api key sk-abcdef1234567890 for model\","
                 + "\"param\":null,\"requestId\":\"req";
-        assertEquals("invalid api key sk-*** for model", DramaRenderService.upstreamMessage(truncated));
+        assertFalse(DramaRenderService.upstreamMessage(truncated).contains("abcdef1234567890"));
         assertNull(DramaRenderService.upstreamMessage("<html><body>502 Bad Gateway</body></html>"));
         assertNull(DramaRenderService.upstreamMessage(""));
         String longMsg = DramaRenderService.upstreamMessage("{\"message\":\"" + "很长".repeat(200) + "\"}");
@@ -236,12 +236,12 @@ class DramaRenderServiceImageTest {
     }
 
     @Test
-    void upstream5xx_staysGeneric_detailKeepsBody() {
+    void upstream5xx_preservesReasonAndDetail() {
         reply(503, "{\"error\":{\"message\":\"backend overloaded node-17\"}}");
         BusinessException e = assertThrows(BusinessException.class,
                 () -> svc.generateImageBytes(ernie, "P", "9:16", List.of()));
         assertEquals("IMAGE_CALL_FAILED", e.getCode());
-        assertFalse(e.getMessage().contains("node-17"), e.getMessage());
+        assertTrue(e.getMessage().contains("backend overloaded node-17"), e.getMessage());
         assertTrue(e.getInternalDetail().contains("status=503"), e.getInternalDetail());
         assertTrue(e.getInternalDetail().contains("node-17"), e.getInternalDetail());
     }

@@ -410,8 +410,21 @@ html[data-layout="mobile"] .studio-library-use .ant-btn { grid-column:1; grid-ro
 .ip-surface .studio-video-reference-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
 /* Model-side smart optimization controls and the result used for each video take. */
 /* The form's generic `label {flex-direction:column}` also hits antd's checkbox wrapper (it is a <label>). */
-.ip-surface .studio-video-prompt-mode .ant-checkbox-wrapper { flex-direction: row; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-1); }
-.ip-surface .studio-video-prompt-mode p { margin: 4px 0 0 24px; color: var(--ink-3); font-size: 12px; line-height: 1.5; }
+/* 卡片上的「智能优化」（2026-10-27 从参数弹层挪出来）：开着是 AI 的浅紫底，关着是普通描边 + 一行提示。 */
+.ip-surface .studio-prompt-optimize { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.ip-surface .studio-prompt-optimize-chip { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); font-size: 12px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+.ip-surface .studio-prompt-optimize-chip.is-on { border-color: transparent; background: var(--ai-soft); color: var(--ai-ink); box-shadow: inset 0 0 0 1px var(--ai-ring); }
+.ip-surface .studio-prompt-optimize-chip:disabled { opacity: .5; cursor: not-allowed; }
+.ip-surface .studio-prompt-optimize-hint { min-width: 0; max-width: 168px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--ink-3); }
+/* 优化稿有提示时的选择：用优化稿生成 / 用原文生成。 */
+.ip-surface .studio-prompt-review { margin: 8px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--ai-soft); box-shadow: inset 0 0 0 1px var(--ai-ring); font-size: 12px; color: var(--ink-1); }
+.ip-surface .studio-prompt-review strong { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ai-ink); }
+.ip-surface .studio-prompt-review ul { margin: 6px 0 0; padding-left: 18px; color: var(--ink-2); line-height: 1.6; overflow-wrap: anywhere; }
+.ip-surface .studio-prompt-review p { margin: 6px 0 0; color: var(--ink-2); line-height: 1.5; overflow-wrap: anywhere; }
+.ip-surface .studio-prompt-review details { margin-top: 6px; }
+.ip-surface .studio-prompt-review summary { cursor: pointer; color: var(--ink-2); }
+.ip-surface .studio-prompt-review pre { max-height: 180px; overflow: auto; margin: 6px 0 0; padding: 8px; border-radius: 8px; background: var(--surface); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; line-height: 1.5; }
+.ip-surface .studio-prompt-review-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .ip-surface .studio-video-rewrite-detail { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .ip-surface .studio-video-rewrite-detail section { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .ip-surface .studio-video-rewrite-detail pre { margin: 0; max-height: 32vh; overflow: auto; padding: 10px 12px; border-radius: 8px;
@@ -751,13 +764,20 @@ html[data-layout="mobile"] .ip-surface .studio-assistant-starters button { paddi
 .ip-surface .studio-assistant-starter-field input::placeholder { color:var(--ink-3); opacity:1; }
 .ip-surface .studio-assistant-starter-field input:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-tint); }
 .ip-surface .studio-assistant-starter-rewrite { margin:-4px 0 0; }
+.ip-surface .studio-assistant-starter-prompt-note { min-width:0; padding:12px 14px; border-radius:10px; background:var(--surface-2); font-size:12px; line-height:1.7; overflow-wrap:anywhere; }
+.ip-surface .studio-assistant-starter-prompt-note strong { color:var(--ink); font-weight:600; }
+.ip-surface .studio-assistant-starter-prompt-note p { margin:4px 0 0; color:var(--ink-2); }
+.ip-surface .studio-assistant-starter-full-prompt { min-width:0; padding:12px 14px; border:1px solid var(--line-2); border-radius:10px; font-size:12px; line-height:1.8; }
+.ip-surface .studio-assistant-starter-full-prompt summary { cursor:pointer; color:var(--ink); font-weight:600; }
+.ip-surface .studio-assistant-starter-full-prompt>div { margin-top:10px; white-space:pre-wrap; overflow-wrap:anywhere; color:var(--ink-2); }
 @media (prefers-reduced-motion:reduce) { .ip-surface .studio-assistant-starter-option button { transition:none; } }
 html[data-layout="mobile"] .ip-surface .studio-assistant-panel.is-docked { border-radius:16px; border:1px solid var(--line-2); }
 html[data-layout="mobile"] .ip-surface .studio-assistant-panel .studio-floating-resize { display:none; }
 
 /* 画布页改版（2026-10-19）：第二排工具条取消后的三个悬浮件 */
 .studio-ai-orb { position:absolute; right:18px; top:72px; z-index:82; display:grid; place-items:center; width:44px; height:44px; border:0; border-radius:50%; background:var(--ai-gradient); color:#fff; box-shadow:0 8px 22px rgba(79, 91, 213, 0.35); cursor:pointer; pointer-events:auto; transition:transform 160ms ease-out, box-shadow 160ms ease-out; }
-.studio-ai-orb:hover { transform:translateY(-1px); box-shadow:0 12px 28px rgba(79, 91, 213, 0.42); background:var(--ai-gradient); }
+/* Beats the shell's generic `button:hover` (surface-2), which turned the orb white-on-white on hover. */
+.studio-ai-orb:hover, .studio-flow-shell .studio-ai-orb:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 12px 28px rgba(79, 91, 213, 0.42); background:var(--ai-gradient); }
 .studio-ai-orb:focus-visible { outline:2px solid var(--primary); outline-offset:3px; }
 .ip-surface .studio-tasks-launch { position:absolute; left:18px; bottom:20px; z-index:80; display:grid; place-items:center; width:50px; height:40px; padding:0; border:1px solid var(--line); border-radius:12px; background:var(--surface); color:var(--ink-2); cursor:pointer; pointer-events:auto; }
 .ip-surface .studio-tasks-launch:hover,.ip-surface .studio-tasks-launch[aria-pressed="true"] { background:var(--surface-2); color:var(--ink); }
@@ -958,6 +978,13 @@ html[data-layout="mobile"] .ip-surface .studio-dialogue-threads { width:min(340p
 .ip-surface .studio-dialogue-execution-now { display:flex; align-items:center; justify-content:space-between; gap:12px; min-width:0; }
 .ip-surface .studio-dialogue-execution-now>.studio-dialogue-note { flex:1; min-width:0; margin:0; font-size:12px; color:var(--ink-2); overflow-wrap:anywhere; }
 .ip-surface .studio-dialogue-execution-now .studio-dialogue-execution-actions { flex:none; flex-wrap:nowrap; }
+/* 停在素材上：说明一整行，按钮换到下一行、放不下就折行（三个按钮在 400 宽的面板里排不下一行）。 */
+.ip-surface .studio-dialogue-execution-now.is-stacked { flex-direction:column; align-items:stretch; gap:8px; }
+.ip-surface .studio-dialogue-execution-now.is-stacked .studio-dialogue-execution-actions { flex-wrap:wrap; }
+.ip-surface .studio-dialogue-execution-materials { margin:0; padding:0; list-style:none; display:grid; gap:6px; }
+.ip-surface .studio-dialogue-execution-materials li { display:grid; grid-template-columns:minmax(0, 1fr) auto; gap:10px; align-items:center; font-size:12px; min-width:0; }
+.ip-surface .studio-dialogue-execution-materials li>span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink); }
+.ip-surface .studio-dialogue-execution-materials li>small { color:var(--ink-3); font-size:12px; white-space:nowrap; }
 .ip-surface .studio-dialogue-execution-actions .ant-btn { height:28px; padding:0 10px; border-radius:8px; font-size:12px; }
 /* 对话里的逐步清单：打勾 / 转圈 / 空圈，右边「在画布上看」。 */
 .ip-surface .studio-dialogue-steps { margin:2px 0 0; padding:0; list-style:none; display:grid; gap:10px; }
@@ -1051,7 +1078,7 @@ html[data-layout="desktop"] .ip-surface .studio-assistant-panel .studio-dialogue
 .ip-surface .studio-assistant-panel .studio-assistant-composer>.ant-input { padding:8px 4px; }
 /* ── 画布页按钮配色统一（2026-10-19）：画布页不再用麦黄。
    AI 去做的事（发送、开始制作 / 开始分析、带 AI 记号的「生成…」、和助手开始）= AI 渐变；
-   其它主操作（发布、确认发布、完成、存为个人副本、重新加载、＋）= 深色；次要 = 白底细边；危险 = 红字浅粉边；选中 = 群青。
+   其它主操作（发布、确认发布、完成、做同款、重新加载、＋）= 深色；次要 = 白底细边；危险 = 红字浅粉边；选中 = 群青。
    要花多少积分由卡片上的大数字和按钮旁的价格说清，不再靠黄色。 */
 .ip-surface .studio-assistant .studio-assistant-primary:not(:disabled),
 .ip-surface .studio-assistant-panel .studio-assistant-primary:not(:disabled) { background:var(--ai-gradient); border-color:transparent; color:#fff; box-shadow:none; }

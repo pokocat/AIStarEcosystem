@@ -48,6 +48,12 @@
 
 ### 1.3 现行设计真源（`docs/` 根）
 
+- [模型接入点赠款与折扣](model-billing-design.md)：接入点唯一范围、沿用原价、企业折扣、文本/媒体分账及本地核验；本地完成，未发布，last-reviewed 2026-10-25。
+- [模型计费后台本地验收](releases/model-scoped-credits-admin-validation-20261025.md)：价格/折扣/活动/发放的真实页面、接口与余额证据；局部验收，未发布，last-reviewed 2026-10-25。
+- [模型赠款与折扣生产发布](releases/model-scoped-credits-production-release-20261025.md)：`20261025-model-grants`，合并处理、发布前检查、线上验收与回滚，last-reviewed 2026-10-25。
+- [通用积分转模型赠款生产发布](releases/model-grant-conversion-production-release-20261026.md)：`20261026-model-grant-conversion`，后台积分转赠款上线、线上验收与运营执行步骤，last-reviewed 2026-10-26。
+- [通用视频模型计费本地验证](releases/model-scoped-credits-video-validation-20261025.md)：精确范围/快照、资源与失败恢复的数据库和服务回归；部分接入，未发布，last-reviewed 2026-10-25。
+
 按产品线分组。每行只写「它定了什么」，状态以文档头注为准。
 
 **AI IP 工作台 · 数字资产 · 数字名片**（都在 `apps/web-aiavatar`）
@@ -90,6 +96,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 | 文档 | 主题 | 内容与状态 |
 |---|---|---|
+| [`studio-operations-dashboard.md`](studio-operations-dashboard.md) | **Studio 运营看板**（`apps/web-aiavatar/studio-admin`）：经营页（积分消耗、发出积分、消费用户与真实到账、导演台推进）与技术页（模型成功率、半小时时间轴、失败与耗时、供应商异常）的口径与只读边界；不做在线人数 | 已合入 main、未发布，last-reviewed 2026-10-30 |
 | [`docs/unified-operations-console-plan.md`](unified-operations-console-plan.md) | **统一运营后台建议** —— Platform 统一入口、复用原业务服务、模型定价/任务排查/模板运营三条首期流程，以及沿用原 admin 风格的紧凑视觉建议 | 建议留档，待确定实施范围（2026-10-10）；非已交付状态 |
 | [统一账号邀请关系方案](unified-account-referral-plan.md) | 账号中心邀请码、一张原始邀请关系表、注册时记录与直接查询；§9 复核后期本体/整体链路视图，不增加当前数据结构 | v0.5；ID/Studio 首版已发布，品牌邀请入口与完整线上验收待完成（last-reviewed 2026-10-17） |
 | [统一账号邀请 · 前端设计](unified-account-referral-frontend.md) | Studio 内邀请视图/链接管理、账号中心落地页与注册提示，含手机和失败状态 | v0.4；首版已发布，Studio 品牌邀请页先行设计（last-reviewed 2026-10-17） |
@@ -102,7 +109,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | [`docs/ip-studio-libtv-alignment.md`](ip-studio-libtv-alignment.md) | **IPStudio 对标 LibTV 的原始提案与实时差距矩阵** | 首页与统一画布、助手/剧本/图片/原生视频/模板核心动线，v0.229 补回拖线引用、v0.231 模板直接复制为普通画布；多模态助手、长视频、专属声音等差距明确（last-reviewed 2026-10-10） |
 | [`docs/ip-studio-assistant-context.md`](ip-studio-assistant-context.md) | **Studio 助手与画布引用** | @ / 感知画布、文档正文/本地媒体多选导入、同源素材库、图片/短视频四帧读取、对话恢复及文字快照分享/复制继续；v0.217 本地，未发布，音轨及完整视频未接 |
 | [`docs/ip-studio-unified-canvas-plan.md`](ip-studio-unified-canvas-plan.md) | **AI IP Studio 统一画布产品与实施方案** | M0–M4 真实 Agnes 本地验收、M6 双集与连续制作；M5 商品/配音/同音频口型短样片通过，人物固定声音版本绑定已接，专属声音未接，M7 有限图片模板、版本/采用/归档/部分资产包本地通过；逐项验收、权限计费、兼容和 Sol 指令，未发布（last-reviewed 2026-10-09） |
-| [AI 导演台完整方案](ai-director-plan.md) ★ | **v1.1 定稿；独立功能分支首版、未发布。测试响应全流程跑通；Agnes 真实出图已验，视频受厂商队列阻塞** | 三工作区、独立服务端导演作品、既有资产／声音复用、精确引用、后台连跑、分级检查、企业付款与并发边界、整集导出；§14 实现状态（last-reviewed 2026-10-22） |
+| [AI 导演台完整方案](ai-director-plan.md) ★ | **v1.1 定稿；独立功能分支首版、未发布。测试响应全流程跑通；Agnes 真实出图已验，视频受厂商队列阻塞** | 三工作区、独立服务端导演作品、既有资产／声音复用、精确引用、后台连跑、分级检查、企业付款与并发边界、整集导出；§14 实现状态；末三节：出图布光、默认让位明确意图、布光传到视频、编剧与分镜规则（2026-10-28，这两节已随 `20261028-director-delete` 上线）；第二轮 review 的布光改成一段默认指导、重写台词例外写一致、出图模板第 3 版（本地未发布）（last-reviewed 2026-10-28） |
 | [AI 导演台全能创作助手](ai-director-assistant.md) ★ | **本地实现，未发布；测试响应全流程跑通，本地接 qwen38-27b 实测通过（写分镜起始句与看图未实测）** | 写剧本前的有限创意对话（最多 3 轮、可跳过）；剧本 / 分镜 / 提示词 / 资产图的伴随式修改：对象绑定、按位置的局部建议、预览对比、采用前核对、撤销、分镜页剧本预览、围绕当前图生成新版本（last-reviewed 2026-10-28） |
 | [AI 导演台 Claude 联合评审记录](audits/ai-director-claude-review-2026-10.md) | **方案评审记录** | Claude App 首轮意见、Codex 反驳与修正、第二轮共识、最终复核及效果验证边界（last-reviewed 2026-10-22） |
 | [AI 导演台工作流详细稿](ai-director-workflow-plan.md) | **v0.2 详细附件；首版按总方案实现** | 配套总方案：后台连跑、分步写作、资产基准派生、真正首帧与宫格代表图区分、候选预算和局部恢复（last-reviewed 2026-10-22） |
@@ -114,6 +121,8 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | [`docs/ip-studio-conversational-video-recreation-plan.md`](ip-studio-conversational-video-recreation-plan.md) ★ | **全能创作对话驱动视频复刻 · 唯一方案真源（v4）** | 技能（仓内 `reference-video-recreation.md`）+ 连续线程 / 真流式 / 工作记录 / 转向 + 两阶段计划 + 服务端执行器（`ip_plan_execution`，提交前预算、租约、暂停只查）+ 原生 `check` 三态；S1/S2/S3 已本地实现（2026-10-18，未发布；S3 = 技能表 V63 / 后台技能页 / 多技能路由 / 蒸馏草稿），S0 付费实测待批预算；接入前两项产品问题已修（之后的追加发布到 2026-10-20 `20261020-h3-video-dialogue`；last-reviewed 2026-10-20） |
 | [`docs/ip-studio-dialogue-no-continue.md`](ip-studio-dialogue-no-continue.md) | **Studio 对话去掉「继续」 · 现行设计真源** | 一句话做完：只有付费生成停下确认；删掉单轮的步数 / 调用 / 工具 / 时间 / Token 分配上限；一条消息一个 run，首笔冻结普通文本那档、不够时同一 run 追加冻结，钱包没钱才停并给充值入口；对话费用不计入制作预算；死循环先纠正再结束；单轮上下文裁剪、长文分段读、子任务最多等 10 分钟、冻结回收跳过活着的对话任务；单 run 300 次 / 2 小时隐形保险。本地实现，未发布、未用真模型验证（last-reviewed 2026-10-23） |
 | [`docs/ip-studio-dialogue-intents.md`](ip-studio-dialogue-intents.md) | **Studio 对话意图直达 · 现行设计真源** | 意图 → 技能 → 一轮确认：出图 / 写剧本与文案 / 出视频三个直达技能 + 参考视频复刻；写作意图先判、路由关键词 ×2 / 素材 ×1、只有素材不选方法、平手一律不绑交给模型、按任务绑定技能；问题预算；触发评测集（§7）。已生产发布，平手句子真模型验过；2026-10-23 起不锁方法：有活跃制作时也按意图换方法，旧制作停止收尾或暂停解绑（last-reviewed 2026-10-23） |
+| [`docs/releases/studio-scene-creation-local-validation-20261029.md`](releases/studio-scene-creation-local-validation-20261029.md) | Studio 场景化创作 · 本地真模型验收 | 图片场景真出图扣费、视频场景经助手真出方案并确认执行，厂商限流 / 队列满时退款可重试；据此改的 7 处体验与遗留问题（last-reviewed 2026-10-29） |
+| [`docs/studio-scene-creation.md`](studio-scene-creation.md) | **Studio 场景化创作：首页、AI 图片、AI 视频 · 现行设计真源** | 参考茂隆掌柜 AI 的布局与产品逻辑：登录后桌面左侧导航栏（首页 / AI 视频 / AI 图片 / 画布 / 导演台 / 项目 / 资产 / 发行）；首页一句话开始 + 常用工具 + 「你想做什么？」+ 继续创作 + 灵感（模板与案例从单独一页搬到首页）；AI 图片 17 个场景一步出图（只显示场景标签和补充要求；草稿就是画布，先写请求再提交，确认原任务不重复扣费）；AI 视频 21 个场景照参考站「超级编导」：编导写分镜脚本、可改稿，选模型时长确认后出片（§8）；场景、选项组和首页卡片由 Studio 运营后台「场景模板」配置（§9）；灵感做成瀑布流图片墙；§7 场景目录与拼话统一到服务端（`GET/POST /api/v1/ip-studio/scenes`，草稿 `scene_id` V72）；`/scenes` 转 `/video`。本地未发布（last-reviewed 2026-10-29） |
 | [`docs/ip-studio-new-canvas-and-threads.md`](ip-studio-new-canvas-and-threads.md) | **Studio 新建画布、多段对话与卡片精简 · 现行设计真源** | 新建统一走 `startNewCanvas()` 直进画布并复用没动过的空白画布、空画布引导卡；助手「新对话 / 历史对话」三个接口（无迁移）；方案与确认卡合成一张、完成总结一句话、提示词 seed v20；§5 新对话的四张填空卡（制作个人 IP / 写剧本 / 做个短视频 / 复刻视频，复刻清单并入）；§6 执行结果落到助手准备的节点（`targetNodeId` + 确认时绑定）、首帧比例不同时居中裁剪不拉伸、节点按产物比例（seed v23）。取代复刻方案 §对话形态「每张画布一段对话」那一句。2026-10-21 已生产发布 `20261021-studio-new-canvas-threads`（last-reviewed 2026-10-21） |
 | [`docs/ip-studio-workflow-template-plan.md`](ip-studio-workflow-template-plan.md) | **标准画布模板与人物设定图方案** | 用户新增核心方向；含 LibTV 公开/复制画布实测、默认一次人物设定图与反推提示词，进阶独立资产/拼板；模板输入/依赖/输出/版本/套用和有限执行（last-reviewed 2026-10-08） |
 | [Studio 创作首页](ip-studio-home.md) | AI IP 工作台 | 首页主要功能、近期画布与模板、同一 Studio 落点与品牌保留（last-reviewed 2026-10-08） |
@@ -181,11 +190,14 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 | 文档 | 用途 |
 |---|---|
-| [`docs/runbooks/cost-pricing-feishu.md`](runbooks/cost-pricing-feishu.md) | 飞书供应商/模型/规格成本核算、积分自动计算、AI 维护与系统配置映射；未知报价留空，表格更新不等于生产发布（2026-10-22） |
+| [Studio JSON 的 JVM-Sandbox 临时热修复](runbooks/studio-json-jvm-sandbox.md) | 不重启的单方法异常恢复、隔离验证、冻结 / 激活 / 卸载与回退；官方 1.4.0、环回管理、无模型或账本调用（last-reviewed 2026-10-24） |
+| [`docs/runbooks/cost-pricing-feishu.md`](runbooks/cost-pricing-feishu.md) | 飞书供应商/模型/规格成本核算、积分自动计算、AI 维护与系统配置映射；「快速定价」页输入报价直接出积分价；未知报价留空，表格更新不等于生产发布（2026-10-25） |
+| [`docs/runbooks/credit-reconciliation-agent.md`](runbooks/credit-reconciliation-agent.md) | 定时 agent 盯线上积分消耗与账本对账：只读脚本 `scripts/ops/credit-reconcile.sh`、九项硬性对账口径、报告格式与红线（2026-10-26） |
 | [`infra/README.md`](../infra/README.md) ★ | 阿里云 ECS + RDS + OSS 部署**单一真值源**：拓扑、环境拉起 SOP、env / nginx / systemd 索引、§5 vhost 与证书硬规则 |
 | [`.claude/skills/aliyun-deploy/SKILL.md`](../.claude/skills/aliyun-deploy/SKILL.md) | agent 部署技能：本地 artifact / 按应用 / GitHub Actions 三条链路 + 验证排障 |
 | [`infra/rds/README.md`](../infra/rds/README.md) · [`infra/oss/README.md`](../infra/oss/README.md) | RDS 创建 / 白名单 / Flyway baseline；OSS Bucket / CDN / RAM / 生命周期 |
 | `infra/scripts/update-and-deploy.sh` · `install-host-deps.sh` · `check-runtime-env.sh` · `install-cjk-fonts.sh` | ECS 一键更新、宿主依赖、runtime env 预检、中文字体 |
+| [`docs/runbooks/studio-wechat-ai-pilot.md`](runbooks/studio-wechat-ai-pilot.md) | Studio 复用军师商户：配置映射、Native 权限/公钥实查阻塞、上线验收；last-reviewed 2026-10-30 |
 | [`docs/runbooks/alipay-sandbox.md`](runbooks/alipay-sandbox.md) | 支付宝直连沙箱本地联调：拿凭证 → 配置 → 查单兜底 / 公网回调 → 上生产换 4 项 |
 | [`docs/runbooks/impersonation.md`](runbooks/impersonation.md) | 附身登录：管理员以用户身份进五个产品的工作台 |
 | [`docs/runbooks/studio-e2e-cases.md`](runbooks/studio-e2e-cases.md) | Studio 端到端测试用例：发布前按真实路径逐步读 DOM 状态；含待随下次发布一起测的场景（last-reviewed 2026-10-19） |
@@ -193,15 +205,22 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 ## 6. 审计 / 调研（带日期的一次性报告，写完不再改）
 
+- [Studio 修复独立补验收](audits/studio-independent-acceptance-20261027.md)：真实页面补验出图中解除关联、企业冲突恢复、长摘要及一键制作反馈；明确本地供应商与既有验收边界（2026-10-27）。
+
 | 文档 | 结论一句话 |
 |---|---|
-| [导演台角色声音参考验证](audits/director-voice-reference-validation-20261029.md) | 上传只读事务 500、角色照片/声音绑定、聚算回执及过期复用；真实 MySQL 与定向回归通过，未发布（last-reviewed 2026-10-29） |
+| [CATech 图片并发实测](audits/image-concurrency-probe-20261025.md) | HTTP/1.1 与 HTTP/2 的实际成功数、耗时及逐笔计费证据；只证明至少 5 个同时完成，未测出上限（last-reviewed: 2026-10-29） |
+| [导演台角色声音参考验证](audits/director-voice-reference-validation-20261029.md) | 上传只读事务 500、角色照片/声音绑定、聚算回执及过期复用；真实 MySQL 与定向回归通过，已随 `9ad3603b0` 发布，真实声音及成片效果未验（last-reviewed 2026-10-29） |
 | [`docs/audits/drama-audit-2026-07.md`](audits/drama-audit-2026-07.md) | web-drama 产品 × 架构审计：一致性引擎五层架构 + C 序列路线图；后续全部由 [`drama-consistency-engine-design.md`](drama-consistency-engine-design.md) 落地 |
+| [导演台剧本文件导入验收](audits/director-script-file-import-validation-20261025.md) | Word/PPT/PDF/文本提取、两个入口、预览确认、保存刷新与扫描件失败；本地未发布（2026-10-25） |
 | [`docs/audits/payment-billing-audit-2026-07.md`](audits/payment-billing-audit-2026-07.md) | 支付 / 计费 / 积分账本全栈审计：33 项 Findings、决策台账 D1–D8、T1–T17 任务卡 |
 | [`docs/audits/admin-alignment-audit-2026-06.md`](audits/admin-alignment-audit-2026-06.md) | admin ↔ server ↔ 子应用三端对齐审计：10 项全部处置；文末「长期防 drift 约定」仍有效 |
 | [`docs/audits/face-beauty-research-2026-06.md`](audits/face-beauty-research-2026-06.md) | 形象精调 / 美颜方案调研：浏览器端确定性美颜（已采纳）vs 云 API vs i2i |
 | [`docs/audits/form-control-focus-audit-2026-10.md`](audits/form-control-focus-audit-2026-10.md) | 全仓输入、下拉、文本域与组合控件的重复聚焦框检查：焦点归属修复、74 项组件回归；代码已发布（2026-10-17） |
 | [`docs/audits/ip-studio-ui-audit-2026-10.md`](audits/ip-studio-ui-audit-2026-10.md) | Studio 画布界面与交互审查：区域分离、人物选择统一、三档宽度响应式（2026-10-08，v0.206） |
+| [全部内置生成流程：独立复核与整体方案](audits/studio-built-in-creation-flow-plan-2026-10-30.md) | 对两份 Codex 审查的逐条复核与补充；一份「创作状态」收口、稿件与 H3 对齐、场景目录加 `brief`、接续与验收，按 PR 切好；PR-1 已做（last-reviewed: 2026-10-31） |
+| [全部内置图片与视频生成流程审查](audits/studio-built-in-creation-flow-review-2026-10-30.md) | 全量 38 场景及模板接续的问题清单与 17 个图片场景交付定义；实施顺序以上一份为准（last-reviewed: 2026-10-30） |
+| [场景化创作提示词审查](audits/studio-scene-prompt-review-2026-10-30.md) | 21 个视频场景内容矩阵、团购示例与 H3 格式证据；实施顺序以全量方案为准（last-reviewed: 2026-10-30） |
 | [`docs/audits/studio-commerce-current-page-audit-2026-10.md`](audits/studio-commerce-current-page-audit-2026-10.md) | 线上 Studio 页面与带货分发现状核对，是导航定稿和剧情带货开发任务的依据（2026-10-16） |
 | [`docs/audits/unified-account-referral-astra-review-2026-10.md`](audits/unified-account-referral-astra-review-2026-10.md) | `gpt-6-astra` 对统一账号邀请链 v0.2 方案的独立评审与风险记录；v0.3 未复审（2026-10-17） |
 | [`docs/audits/unified-identity-sop-audit-2026-10.md`](audits/unified-identity-sop-audit-2026-10.md) | 统一认证发布与跨应用 SOP 复核：资料、后台、竞态修复与既有缺口（2026-10-10） |
@@ -212,13 +231,13 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 ### 6.1 Studio 场景创作专项（2026-10-30）
 
-实施从「独立复核与整体方案」开始，待办入口见 [TODO · Studio 当前待办](../TODO.md#studio-当前待办)。以下报告保留各自的源码、线上版本与观察时间；首轮发现及空闲窗口检查结果属于当时记录，后续修复看复测报告，后端发布状态看对应发布记录。
+实施方案与后续落地记录见下表，待办入口见 [TODO · Studio 当前待办](../TODO.md#studio-当前待办)。以下报告保留各自的源码、线上版本与观察时间；首轮发现及空闲窗口检查结果属于当时记录，后续修复看复测报告，发布状态看对应发布记录；场景流程 PR-1–PR-6 已随 `20261031-studio-scene-flow` 发布，剩余验收见 TODO。
 
 | 分组 | 文档 | 内容与状态 |
 |---|---|---|
-| 实施方案 | [全部内置生成流程：独立复核与整体方案](audits/studio-built-in-creation-flow-plan-2026-10-30.md) | 8 条判断成立、2 条更正、6 条补充；共用创作状态、稿件与 H3 对齐、场景规则、结果接续及 PR 切分；实施顺序以此为准，未实施（last-reviewed: 2026-10-30） |
+| 实施方案 | [全部内置生成流程：独立复核与整体方案](audits/studio-built-in-creation-flow-plan-2026-10-30.md) | 8 条判断成立、2 条更正、6 条补充；共用创作状态、稿件与 H3 对齐、场景规则、结果接续及 PR 切分；原始方案与 §6.6–6.8 落地差异；PR-1–PR-6 已发布，剩余验收见 TODO 与发布记录（last-reviewed: 2026-10-31） |
 | 流程审查 | [全部内置图片与视频生成流程审查](audits/studio-built-in-creation-flow-review-2026-10-30.md) | 全量 17 图片 / 21 视频场景及模板接续；草稿恢复、再做、结果继续与验收计划；后续更正见实施方案（last-reviewed: 2026-10-30） |
-| 提示词审查 | [场景化创作提示词审查与优化方案](audits/studio-scene-prompt-review-2026-10-30.md) | 提示词证据与逐场景内容策略；实施顺序、后端上线状态等更正见实施方案，未实施（last-reviewed: 2026-10-30） |
+| 提示词审查 | [场景化创作提示词审查与优化方案](audits/studio-scene-prompt-review-2026-10-30.md) | 提示词证据与逐场景内容策略；保留当时审查，后续实施差异与发布状态见实施方案及发布记录（last-reviewed: 2026-10-31） |
 | 提示词快照 | [全部内置场景提示词清单](audits/studio-scenes-all-prompts-2026-10-30.md) | 38 个场景与共用拼装规则，源码基线 `ee984dcb3`；保留当时快照，后续配置与发布可能变化（last-reviewed: 2026-10-30） |
 | UI 首轮审计 | [Studio 新版 UI 与交互复核](audits/studio-new-ui-review-20261030.md) | 当轮 14 项发现；模型语义、路由、输入保护和布局；部分后续已修，复测见下一行（last-reviewed: 2026-10-30） |
 | UI 修复后复测 | [Studio 线上复核与空闲窗口检查](audits/studio-online-ui-recheck-idle-window-20261030.md) | 核心修复独立通过，保留卡片操作、焦点、返回上下文等问题；当轮因在线使用未重启后端，不代表后续发布状态（last-reviewed: 2026-10-30） |
@@ -228,6 +247,32 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 ## 7. 发布与验收记录（`docs/releases/`）
 
 - [Studio 10 月 27–29 日更新图](releases/weekly/studio-update-20261027-29.png)：对外更新素材，区分图中已上线与仍在测试的内容；正式制品和验收以发布记录为准（last-reviewed: 2026-10-30）。
+- [导演台切换版本即采用生产发布](releases/director-version-adopt-production-release-20261030.md)：main `97ca7fc28`，server + Studio；视频与分镜图点版本即采用、去掉「采用这一版」，同批上线企业手机号加人与导演台浮动 AI 对话；线上只读核对新界面（last-reviewed 2026-10-30）。
+- [场景页创作流程（server + web-aiavatar + studio-admin 发布）](releases/studio-scene-flow-release-20261031.md)：main `fe4a654ce`，创作条件存进草稿、编导接上 H3、21 个视频场景 brief、结果接着用；无迁移（last-reviewed 2026-10-31）。
+- [创作助手四处修复（server + web-aiavatar 发布）](releases/studio-assistant-fixes-release-20261031.md)：main `f3092980c`，出视频路由认时长画幅、制作中问进度不暂停、只说不做时接着做、厂商存储满不再让用户清回收站；无迁移，提示词 v28（last-reviewed 2026-10-31）。
+- [微信扫码充值（server + admin + web-aiavatar 发布）](releases/studio-wechat-pay-release-20261030.md)：main `ad1075609`，Studio 充值收银台、微信公钥模式与订单核对；线上只有支付宝，微信待商户开通；无迁移（last-reviewed 2026-10-30）。
+- [图片尺寸不符照常交付（server 发布）](releases/studio-image-size-deliver-release-20261030.md)：server `83f817348`，尺寸与所选不一致或读不出尺寸的可用图片照常交付、只结算一次；同包带上场景模板恢复内置、事实边界、短剧导演台文案、报错处理四处既有后端改动；无迁移（last-reviewed 2026-10-30）。
+- [Studio 场景化改版上线（后端 + 新旧版开关）](releases/studio-scene-backend-production-release-20261030.md)：server `80edade0f`（V72）；web-aiavatar `beef9f87c` 正式站默认旧版、`?ui=new` 进新版可回旧版；studio-admin `0cf885c55` 补发（修看板字段不匹配，并上线场景模板页）；预览站已下线，账号中心未改（last-reviewed 2026-10-30）。
+- [导演台 AI 入口、长文与上传资产生产发布](releases/director-ai-entries-production-release-20261029.md)：main `9ad3603b0`，server + Studio；104,029 字 HTML、超量粘贴、自有资产图及参考图线上验证，含回收站与 V71 声音回执迁移（last-reviewed 2026-10-29）。
+- [导演台正文冻结生产发布与验收](releases/director-script-freeze-production-release-20261029.md)：main `d67841214`，server + Studio；正文冻结、跨页保存拒绝、真实修改建议采用/撤销，13 积分无重复结算，发布窗口短暂 502 已恢复（last-reviewed 2026-10-29）。
+- [导演台作品删除生产发布](releases/director-delete-production-release-20261028.md)：main `cb9190489`，server + web-aiavatar；146 条后端、65 条前端及一次性 MySQL 删除并发 11 条通过，线上确认/取消与不存在状态验收，未删除生产作品（last-reviewed 2026-10-28）。
+
+- [Studio JSON 的 JVM-Sandbox 无重启热修复](releases/studio-json-jvm-sandbox-release-20261025.md) — 干净 main 制品、Java 17 / Dragonwell 隔离验证、原生产 PID 内激活、44 次健康采样与卸载回退；last-reviewed: 2026-10-25。
+
+- [Studio 图片系列与分辨率路由发布](releases/studio-image-resolution-release-20261025.md)：干净 main `feb6e4e0`，server / web-aiavatar 制品与线上指纹核对；当前仅 GPT Image 2 的 1K/2K 已配置，其他系列、4K 及真实出图待验（last-reviewed 2026-10-25）。
+- [积分切换到 1 元 = 100 积分](releases/credit-ratio-switch-20261026.md)：有成本数据的售价按新比率上线（图片、视频、配音、口型、短剧分镜），停月赠送，服务端 `20261026-credit-ratio`；套餐与文本 Token 价待后台修改（last-reviewed 2026-10-26）。
+- [AI 导演台操作失败弹窗与资产解除关联](releases/director-error-dialog-unlink-validation-20261027.md)：操作失败统一弹错误弹窗（操作、原因、下一步、错误详情），删除被引用资产列出片段并能前往，片段「关联资产」加「解除关联」，台词说话人算引用；第二轮统一 Studio 其他页面的错误出口（主动操作弹窗、后台提示），慢供应商验收出视频时解除被拒，修 main 上两条红测试（last-reviewed 2026-10-27）。
+- [Studio 错误弹窗与资产解除关联发布](releases/director-error-dialog-unlink-production-release-20261027.md)：`20261027-studio-error-dialogs`（server / web-aiavatar，main `4a9b5f18`）；线上用测试数据验了真实冲突与真实 404 的弹窗（桌面 / 手机），重启窗口 API 502 约 20 秒（last-reviewed 2026-10-27）。
+- [Studio 桌面页面布局与交互审计修复发布](releases/studio-layout-audit-production-release-20261027.md)：`20261027-studio-layout-audit`（server / web-aiavatar，main `7feed0ab`）：画布浮层让位、导演台标题栏与提示浮层、首页入口去重与「制作个人 IP」直达、「敬请期待」、V69.1 本地 H2 兼容（last-reviewed 2026-10-27）。
+- [AI 导演台分镜页重写入口发布](releases/director-storyboard-rewrite-production-release-20261027.md)：`20261027-director-storyboard-rewrite`（server / web-aiavatar，main `e6e5a2ea`）+ `20261027-director-rewrite-credit-copy`（只发 web-aiavatar，`a0481b1c`，弹窗去掉文字任务积分上限）；线上只读验收，真的重写待用户首次使用（last-reviewed 2026-10-27）。
+- [AI 导演台分镜页重写入口与一键制作无反应](releases/director-storyboard-rewrite-validation-20261027.md)：分镜页整集「重写分镜脚本」（默认保留片段逐段重写）与片段「重写」，一键制作没有可做的步骤时说明原因，本集摘要改多行；测试模式真实页面 13 步、真模型重写与失败退款、摘要与窄屏验收，本地未发布（last-reviewed 2026-10-27）。
+- [AI 导演台文字积分展示修复](releases/director-text-credit-display-release-20261026.md)：文字按钮不展示不确定积分数字，按任务输出上限冻结、按真实 Token 结算；图片和视频确定报价不变（last-reviewed 2026-10-26）。
+- [Studio H3 视频提示词智能优化发布](releases/studio-h3-prompt-optimize-production-release-20261027.md)：`20261027-studio-h3-optimize`（server / web-aiavatar，main `384dfe31`），画布卡片「智能优化」按钮（H3 默认开）与创作助手出 H3 视频先按官方写法优化，检查只提示不拦人、导演台同步不拦人；Codex 两轮评审 + 两轮浏览器端到端，线上只读验收，整条付费链路待首次出片确认（last-reviewed 2026-10-27）。
+- [AI 导演台 H3 视频提示词改写发布](releases/director-h3-video-prompt-production-release-20261027.md)：`20261027-director-h3-prompt`（server / web-aiavatar，main `4c1db522`），H3 片段提交前按 MiniMax 官方 skill 改写成英文、台词由代码填；Codex 两轮评审阻塞项已修，线上只读验收，整条付费链路待用户首次出片确认（last-reviewed 2026-10-27）。
+- [AI 导演台资产关联与上传](releases/director-asset-link-production-release-20261026.md)：`20261026-director-asset-link`（server / web-aiavatar，main `27356289`），资产从剧本提取后可「关联已有资产」（`asset.link`）或「上传图片」，角色也上传即用；去掉批量导入，添加资产选集；Codex 评审 4 项 P2 已修，本地走查与线上只读验收（last-reviewed 2026-10-26）。
+- [AI 导演台文本模型选择与剧名同步](releases/director-text-model-production-release-20261026.md)：`20261026-director-text-model`（server / web-aiavatar，main `16a1b61d`），作品可选文本模型（不展示文字积分数字、按任务输出上限冻结）、新剧本采用后同步作品名、重写剧本整块加载态；线上只读验收（last-reviewed 2026-10-26）。
+- [AI 导演台图片模型比例过滤与大图缩放](releases/director-image-viewer-production-release-20261026.md)：`20261026-director-image-viewer`（server / web-aiavatar，main `faee1ac3`），只开放三种比例都能出的图片模型、旧选择照存原价，大图可缩放拖动并给 `@rc-component/image` 打补丁；本地走查 27 项与线上只读验收（last-reviewed 2026-10-26）。
+- [Studio 图片分档配置](releases/studio-image-tiers-config-20261025.md)：GPT Image 2 / 2.5（flare）的 1K/2K/4K 端点、规格与分档售价已上生产配置，前台模型接口回读一致；未做付费出图实测，界面名待下次发版（last-reviewed 2026-10-25）。
 
 - [Studio 普通文字文档编辑发布](releases/studio-text-document-release-20261022.md)：画布／故事板展开使用统一富文本文档；main `bd3a9df2`、105 项回归及线上保存／刷新验收（2026-10-22，last-reviewed）。
 
@@ -271,7 +316,8 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [统一画布封面生产发布](releases/studio-shared-covers-production-20261017.md)：a4092626 两服务上线、真实封面验收与回退；已发布（last-reviewed: 2026-10-17）。
 - [画布分组说明与复刻模板精简](releases/studio-group-description-validation-20261017.md)：Group 说明的编辑/预览/只读查看、模板与副本保留说明、官方复刻模板 v3；已发布 ccbff781（last-reviewed: 2026-10-17）。
 - [视觉显存错误受控降级验收](releases/studio-vision-memory-fallback-validation-20261017.md)：只在聚算 Qwen 返回 400 `unsupported_geometry`（HBM 预算）时，原尺寸两帧一批读取并完成原任务；2026-10-19 合入 main，排在线上缩图降档之后，未发布（last-reviewed: 2026-10-19）。
-- [Seedance 2.0 接入与生产发布](releases/studio-seedance-2026-10-14-release.md)：端点视频协议、仅对 studio 开放、H3 仍为默认（2026-10-14）。
+- [Seedance 2.0 接入与生产发布](releases/studio-seedance-2026-10-14-release.md)：初次端点视频协议、仅对 studio 开放、H3 仍为默认（2026-10-14）；旧供应商模型下架后的 [OneToken Seedance 2.0 / 2.5 生产配置](releases/onetoken-seedance-models-production-config-20261026.md) 已恢复两条可选模型，并按采购成本加价 60% 把 720p 售价设为 94 / 146 积分/秒，H3 继续默认（2026-10-26）；直连火山方舟的 [Seedance 2.0 Fast / Mini 生产配置](releases/ark-seedance-models-production-config-20261029.md) 新增两条只对 studio 开放的模型，画布与导演台可选，按成本加价 60% 定为 130 / 81 积分/秒（2026-10-29）。
+- [导演台上架 Seedance 2.0 / 2.5](releases/seedance-director-reference-production-config-20261029.md)：两条端点规格补「全能参考」模式（图片 + 音频参考，不开放参考视频），导演台可选，94 / 146 积分/秒；仅改生产配置，未付费实测（last-reviewed: 2026-10-29）。
 - [视频模型按开放范围生效](releases/studio-model-scope-2026-10-14-release.md)：录入模型并配置开放范围即可在 Studio 选择，取消二次候选（2026-10-14）。
 - [图片上传与模型 404 修复](releases/studio-upload-chat-repair-20261016.md)：相机原图自动压缩、模型 404 修复；已发布（2026-10-16）。
 - [创作输入框修复](releases/studio-prompt-ime-release-20261017.md)：中文输入法组词时占位提示重叠；已发布 dd228379（2026-10-17）。
@@ -290,6 +336,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | 文档 | 用途 |
 |---|---|
 | [`TODO.md`](../TODO.md) ★ | 已定位未修的问题 + 候选排期，**只留还有未勾项的段**；维护纪律见 AGENTS.md §9 |
+| [模型额度初始设计](archive/model-scoped-credits-initial-design.md) | 已被接入点赠款与折扣设计取代；旧分场景、第二套标准价和供应商资源方案仅供历史追溯（last-reviewed 2026-10-25） |
 | [`docs/archive/todo-closed.md`](archive/todo-closed.md) | 从 TODO.md 整段移出的已关闭段（条目原样保留） |
 | [TODO 历史记录 · 2026-10-13](archive/todo-2026-10-13.md) | 整理前完整快照、已完成记录、过时状态核对与重复条目去向；当前排期以根目录 TODO 为准（last-reviewed 2026-10-13） |
 | [`docs/archive/ip-studio-generalize-proposal.md`](archive/ip-studio-generalize-proposal.md) | IP 工作台「一个提示词框 + 模板库」提案，v0.153 已落地；留「为什么改」 |
@@ -342,11 +389,18 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 - [Studio 出图后接视频续接修复与验收](releases/studio-stage-continuation-release-20261023.md)（last-reviewed: 2026-10-23）
 - [Studio 对话去掉「继续」、不锁方法、单击弹浮层发布记录](releases/studio-dialogue-no-continue-release-20261023.md)（last-reviewed: 2026-10-24）
+- [Studio 方案素材范围跨轮发布记录](releases/studio-plan-material-scope-release-20261024.md)（last-reviewed: 2026-10-24）
+- [AI 导演台首发发布记录](releases/ai-director-release-20261024.md)（last-reviewed: 2026-10-24）
+- [模型告警北京时间与服务方响应发布](releases/model-alert-bjt-response-release-20261024.md) — 仅 server；按用户要求跳过部署后验证（last-reviewed: 2026-10-24）。
+- [Studio 同步出图读 URL 结果与告警措辞修复](releases/studio-image-url-result-alerts-20261029.md) — 仅 server；4 条飞书告警根因、改读 `data[0].url`、告警写最终结果；真实出图路径待下一次生成核对（last-reviewed: 2026-10-29）。
 
 - [Studio 聚算资源配额拒绝与结算核对](audits/studio-upstream-quota-2026-10.md)（last-reviewed: 2026-10-23）
 
 - [Studio 读取、进度、保存恢复与 Agent 运行时评估](audits/studio-agent-runtime-assessment-2026-10.md) — 本地修复，未发布；AgentScope Java / LangGraph 替换边界与验收标准（last-reviewed: 2026-10-23）。
 
+- [导演台回收站独立审查](audits/director-trash-independent-review-20261029.md) — 原项目恢复、删除／恢复并发、恢复后不付费续跑及迟到 404 草稿保护，本地审查通过，已随 `9ad3603b0` 发布；last-reviewed: 2026-10-29。
+- [模型错误不透出供应商经营信息](audits/provider-financial-error-disclosure-20261025.md) — 余额 / 配额 / 费率 / 密钥等改为通用提示、我方追查号与客户钱包提示保留；2026-10-29 补跑用例，修了石榴权益与七牛配额分类读错文案的回归；last-reviewed: 2026-10-29。
 - [AI 导演台本地验收记录](audits/ai-director-local-acceptance-20261022.md) — 独立 UI 实测真值：测试响应全流程、Agnes 真实剧本／分集／资产／分镜首帧、局部重试修复；真实视频受厂商队列阻塞；实现状态见[总方案 §14](ai-director-plan.md)；last-reviewed: 2026-10-23。
+- [导演台视频提示词对比实测（H3）](audits/director-h3-video-prompt-ab-2026-10.md) — 《敦煌飞仙》两段共 9 条对比：旧写法穿模 / 宫格上屏；台词多时中文正文吞台词、念出提示词，官方 skill 英文版完整；据此提交前按官方 skill 改写，真模型试跑 7/7 合格；2026-10-27 推到 Studio 画布与创作助手、检查改为只提示不拦人（§8）；last-reviewed: 2026-10-27。
 
 - [Studio 下午至晚间线上使用复盘](audits/studio-production-afternoon-evening-review-20261023.md) — 2026-10-23 北京时间生产查询快照；记录用户旅程、任务／账本、排队与发布窗口及待核证据，不代表本轮已修复或重测；last-reviewed: 2026-10-23。

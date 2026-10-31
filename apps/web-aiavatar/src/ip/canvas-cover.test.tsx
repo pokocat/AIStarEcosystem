@@ -10,17 +10,23 @@ vi.mock('antd',()=>({Modal:({children}:any)=><div role="dialog">{children}</div>
 const doc: IpProjectDoc={nodes:[{id:'image',type:'image',title:'人物',position:{x:0,y:0},width:200,height:200,metadata:{storageKey:'old',content:'/old.png',primaryImageId:'new',images:[{id:'new',storageKey:'new',content:'/new.png'}]}}],connections:[],viewport:{x:0,y:0,k:1}};
 afterEach(()=>{cleanup();vi.clearAllMocks();});
 describe('shared canvas covers',()=>{
- it('uses manual cover first, then the selected saved image, then the canvas thumbnail on load failures',()=>{
+ it('uses manual cover first, then the selected saved image, then says in words what the canvas holds',()=>{
   render(<ProjectCardPreview doc={doc} coverUrl="/manual.png"/>);
   expect(document.querySelector('img')?.getAttribute('src')).toBe('/manual.png');
   fireEvent.error(document.querySelector('img')!);
   expect(document.querySelector('img')?.getAttribute('src')).toBe('/new.png');
   fireEvent.error(document.querySelector('img')!);fireEvent.error(document.querySelector('img')!);
-  expect(screen.getByRole('img',{name:'工作流示意：1 个节点'})).toBeTruthy();
+  expect(document.querySelector('img')).toBeNull();
+  expect(screen.getByText('1 个步骤')).toBeTruthy();expect(screen.getByText('人物')).toBeTruthy();
  });
- it('falls back directly to the actual canvas when a text-only template has no images',()=>{
-  render(<ProjectCardPreview doc={{...doc,nodes:[{...doc.nodes[0],type:'text',metadata:{content:'剧本正文'}}]}}/>);
-  expect(screen.getByRole('img',{name:'工作流示意：1 个节点'})).toBeTruthy();expect(document.querySelector('img')).toBeNull();
+ // 2026-10-30 线上走查：没有图时画的节点示意图（灰蓝方块）看着像图没加载出来，改成用字说内容。
+ it('without pictures it shows the text itself, else the steps, else a blank canvas; never node geometry',()=>{
+  const {unmount}=render(<ProjectCardPreview doc={{...doc,nodes:[{...doc.nodes[0],type:'text',metadata:{content:'剧本正文'}}]}}/>);
+  expect(screen.getByText('剧本正文')).toBeTruthy();expect(document.querySelector('img, svg[role="img"]')).toBeNull();unmount();
+  const plan=render(<ProjectCardPreview doc={{...doc,nodes:[{...doc.nodes[0],type:'video',title:'口播视频',metadata:{}},{...doc.nodes[0],id:'t',type:'text',title:'分镜脚本',metadata:{}}]}}/>);
+  expect(screen.getByText('2 个步骤')).toBeTruthy();expect(screen.getByText('口播视频 · 分镜脚本')).toBeTruthy();plan.unmount();
+  render(<ProjectCardPreview doc={{...doc,nodes:[]}}/>);
+  expect(screen.getByText('空白画布')).toBeTruthy();
  });
  it('retains a failed upload for retry and only publishes the successful server cover',async()=>{
   api.upload.mockRejectedValueOnce(new Error('上传失败')).mockResolvedValueOnce({coverUrl:'/uploaded.png'});

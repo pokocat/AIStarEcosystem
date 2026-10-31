@@ -19,6 +19,7 @@ public enum AiModelPurpose {
     DRAMA_SCRIPT_DRAFT,     // 短剧脚本起草（drama 短剧生成；分场景 + 分镜 + 台词，见 DramaScriptService）
     IMAGE_GENERATION,       // 通用图像生成（drama 分镜首帧等；OpenAI images 兼容，见 DramaRenderService）
     DAP_PERSONA,            // Studio 对话/工具/工作流与数字资产人设/理解共用的文本用途
+    DAP_VIDEO_PROMPT,      // Studio 画布 / 助手 / 导演台 · 视频提示词优化（独立后台绑定）
     DAP_IMAGE,              // 数字人平台 · 图片生成（t2i / i2i，见 DapMultimodalClient）
     DAP_VIDEO,              // 数字人平台 · 视频生成（异步 submit+poll，见 DapMultimodalClient）
     DAP_AUDIO,              // Studio · 固定音色配音（聚算异步音频 Job）
@@ -46,6 +47,7 @@ public enum AiModelPurpose {
             case DRAMA_SCRIPT_DRAFT -> "短剧脚本起草";
             case IMAGE_GENERATION -> "图像生成";
             case DAP_PERSONA -> "Studio / 数字资产文本与理解";
+            case DAP_VIDEO_PROMPT -> "Studio · 视频提示词优化";
             case DAP_IMAGE -> "数字人 · 图片生成";
             case DAP_VIDEO -> "数字人 · 视频生成";
             case DAP_AUDIO -> "Studio · 配音";

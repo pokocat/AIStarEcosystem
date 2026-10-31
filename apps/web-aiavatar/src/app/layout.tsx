@@ -27,10 +27,13 @@ import "../styles/enterprise.css";
 import "../styles/control-focus.css";
 import "../styles/studio-select.css";
 import "../styles/director.css";
+import "../styles/studio-scenes.css";
+import "../styles/studio-home-scenes.css";
 import { StudioNotifications } from '@/ip/studio-errors';
 import { TestAccountBanner } from "@/shell/test-account-banner";
 import { AppChrome } from "@/shell/app-chrome";
 import { LAYOUT_BOOT_SCRIPT } from "@/shell/layout-mode";
+import { UI_BOOT_SCRIPT } from "@/shell/ui-version";
 
 export const metadata: Metadata = {
   title: "IP Studio · 声量引擎旗下",
@@ -47,8 +50,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  // 不锁缩放：看不清的人要能放大（2026-10-30 线上复核）。iOS 聚焦小于 16px 的输入框会自动放大，globals.css 末尾把输入框字号兜到 16px。
   viewportFit: "cover",
   themeColor: "#F7F9FB",
 };
@@ -57,8 +59,10 @@ export const viewport: Viewport = {
 // + Noto Sans SC（中文）。新增桌面展示字体 Noto Serif SC 已自托管，见 ip-brand.css。
 // 经 React 19 自动提升到 <head>；浏览器无法访问 Google
 // Fonts 时优雅回退到系统字体（globals.css 的 --font-* 已带 system 回退）。
+// Manrope 与 Noto Sans SC 只要 400 / 500 / 600 三档（2026-10-30 用户：「全站字体太粗」）：原来中文只有 400 / 500 / 700 / 900，
+// 样式里的 600 全被画成 700；现在写 700、800 的地方也落到 600，全站最粗就是半粗。
 const FONTS_HREF =
-  "https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700;900&display=swap";
+  "https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600&display=swap";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
@@ -79,6 +83,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             放 <body> 里则干净无报错 —— 我一度被**上一次改动残留在控制台里的旧报错**
             误导，以为放 body 也不行。§8.0.1 ②：先确认信号本身成立，再据它改代码。 */}
         <script dangerouslySetInnerHTML={{ __html: LAYOUT_BOOT_SCRIPT }} />
+        {/* 新版 / 旧版同理：新版的页面边距靠 <html data-ui> 定，首帧之前写好（见 shell/ui-version.ts）。 */}
+        <script dangerouslySetInnerHTML={{ __html: UI_BOOT_SCRIPT }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="stylesheet" href={FONTS_HREF} />

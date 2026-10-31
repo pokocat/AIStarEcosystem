@@ -69,12 +69,12 @@ class StudioVisionWorkflowFallbackTest {
         });
         var worker=new StudioWorkflowWorker(runs,mock(StudioFixtureProvider.class),storage,models,mock(DramaAssembleService.class),credits,json,tx,mock(com.aistareco.aep.dap.service.DapAssetService.class));
         org.springframework.test.util.ReflectionTestUtils.setField(worker,"hypitMedia",new StudioHypitMedia("node"));worker.runBlocking("r");worker.runBlocking("r");
-        if(unrelated!=null){assertEquals("failed",run.getStatus());assertEquals(0,run.getCost());assertEquals(1,calls.get());verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString());}
+        if(unrelated!=null){assertEquals("failed",run.getStatus());assertEquals(0,run.getCost());assertEquals(1,calls.get());verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString(), org.mockito.ArgumentMatchers.any());}
         else {
             assertEquals("done",run.getStatus(),run.getErrorMessage());var output=json.readTree(run.getOutputJson());
             assertEquals(successes.get()*100L,output.path("billing").path("inputTokens").asLong());assertEquals(successes.get()*50L,output.path("billing").path("outputTokens").asLong());
             long cost=rate.settle(successes.get()*100L,successes.get()*50L);assertEquals(cost,run.getCost());
-            verify(credits,times(1)).commitHold(anyString(),eq("r"),eq(cost),anyString());
+            verify(credits,times(1)).commitHold(anyString(),eq("r"),eq(cost),anyString(), org.mockito.ArgumentMatchers.any());
         }
         verify(credits,times(1)).releaseHold(anyString(),eq("r"),anyString());
     }

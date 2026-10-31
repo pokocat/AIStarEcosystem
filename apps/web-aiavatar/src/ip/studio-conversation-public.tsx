@@ -8,7 +8,7 @@ import { auth } from '@/proto/api';
 import type { StudioConversationSharePublic } from '@ai-star-eco/types/ip-studio-share';
 import { readConversationShare,copyConversationShare } from '@/canvas-bridge/studio-share-api';
 import { StudioConversationTranscript } from './studio-conversation-transcript';
-const modes={general:'全能创作',original:'原创剧本',adapt:'故事改编',director:'导演执导'};
+const modes={general:'全能创作',original:'原创剧本',adapt:'故事改编',director:'分镜讨论'};
 export function StudioConversationPublic({token}:{token:string}) {
   const router=useRouter();const [view,setView]=useState<StudioConversationSharePublic>(),[loading,setLoading]=useState(true),[error,setError]=useStudioErrorState(),[missing,setMissing]=useState(false),[copying,setCopying]=useState(false),[copyError,setCopyError]=useStudioErrorState();
   const request=useRef<{token:string;key:string}|undefined>(undefined),alive=useRef(true),lock=useRef(false);

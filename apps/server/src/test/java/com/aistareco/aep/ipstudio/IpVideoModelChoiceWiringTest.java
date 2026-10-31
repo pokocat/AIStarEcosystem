@@ -27,6 +27,7 @@ import static com.aistareco.aep.ipstudio.IpStudioFixtures.OM;
 import static com.aistareco.aep.ipstudio.IpStudioFixtures.USER;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -65,6 +66,7 @@ class IpVideoModelChoiceWiringTest {
         projects.repo.save(IpStudioFixtures.project(PID, USER, IpStudioFixtures.chainDoc(null, 0)));
 
         modelClient = mock(MaterialVideoModelClient.class);
+        when(modelClient.billingRoute(any(),any())).thenAnswer(i->new MaterialVideoModelClient.BillingRoute(i.getArgument(0)==null?"ep":i.getArgument(0),"video-test",true,"https://provider.invalid",""));
         credits = mock(CreditService.class);
         jobRepo = mock(MaterialVideoJobRepository.class);
         when(jobRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -91,7 +93,7 @@ class IpVideoModelChoiceWiringTest {
         verify(modelClient).validateRequest("ep-h3", 5, "studio");
         verify(modelClient, never()).validateRequest(isNull(), anyInt(), eq("studio"));
         // 冻结的是选中模型的价
-        verify(credits).hold(eq(USER), eq(200L), eq("material_video_job"), anyString(), anyString());
+        verify(credits).hold(eq(USER), eq(200L), eq("material_video_job"), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
 
         ArgumentCaptor<MaterialVideoJob> saved = ArgumentCaptor.forClass(MaterialVideoJob.class);
         verify(jobRepo).save(saved.capture());
@@ -105,15 +107,15 @@ class IpVideoModelChoiceWiringTest {
 
     @Test
     void withoutAChoice_theDefaultEndpointIsUsedEverywhere() {
-        when(modelClient.resolveCreditCostOverride(isNull(), eq(5), eq("studio"))).thenReturn(150L);
+        when(modelClient.resolveCreditCostOverride(eq("ep"), eq(5), eq("studio"))).thenReturn(150L);
 
         svc.generateVideo(USER, PID, new IpRunService.IpVideoRequest("让它挥手", null, 5, "9:16", null));
 
-        verify(modelClient).validateRequest(isNull(), eq(5), eq("studio"));
-        verify(credits).hold(eq(USER), eq(150L), eq("material_video_job"), anyString(), anyString());
+        verify(modelClient).validateRequest(eq("ep"), eq(5), eq("studio"));
+        verify(credits).hold(eq(USER), eq(150L), eq("material_video_job"), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         ArgumentCaptor<MaterialVideoJob> saved = ArgumentCaptor.forClass(MaterialVideoJob.class);
         verify(jobRepo).save(saved.capture());
         String vc = saved.getValue().getVariantConfigJson();
-        assertFalse(vc != null && vc.contains("endpoint_id"), "没选模型时不该落 endpoint_id：" + vc);
+        assertTrue(vc != null && vc.contains("\"endpoint_id\":\"ep\""), "默认端点也必须固定，避免排队期间换模型：" + vc);
     }
 }

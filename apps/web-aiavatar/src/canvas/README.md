@@ -31,3 +31,8 @@ react + 主题 + 类型，整个 canvas 目录里 0 处 Vite 专有写法（`imp
 
 搬进来的文件尽量少改，改了就在改动处留注释说明原因（方便日后跟上游对比）。
 新增的胶水层放在 `src/canvas-bridge/`，不要混进这个目录。
+
+## 第三方组件致谢
+
+工作台的节点画布（`src/ip/studio-flow-canvas.tsx`、模板只读预览）用的是 [React Flow](https://reactflow.dev)（`@xyflow/react`，MIT）。
+画布右下角的 React Flow 角标已关闭（`proOptions.hideAttribution`，2026-10-27）：停靠的助手会盖住它，助手一关，角标就露出来。致谢写在这里。

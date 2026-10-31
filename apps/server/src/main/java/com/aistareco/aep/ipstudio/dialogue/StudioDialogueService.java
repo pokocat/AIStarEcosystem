@@ -435,11 +435,11 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
      * The payer's available balance, to size a dialogue hold. Unknown (no wallet service in a test, an invalid payer the
      * reservation refuses anyway) → no cap: the reservation itself then answers with its real error.
      */
-    private long availableBalance(String userId, BillingSelection billing) {
+    private long availableBalance(String userId, BillingSelection billing,com.aistareco.aep.billing.service.ModelBillingTarget target) {
         try {
-            if (enterpriseBilling != null) return enterpriseBilling.availableBalance(userId, billing);
+            if (enterpriseBilling != null) return enterpriseBilling.availableModelCredits(userId, billing,target);
             var wallet = credits.getOrCreateWallet(userId);
-            return wallet == null ? Long.MAX_VALUE : wallet.getTotalBalance();
+            return wallet == null ? Long.MAX_VALUE : credits.availableModelCredits(wallet,target);
         } catch (BusinessException e) {
             log.info("[dialogue] balance unknown for sizing user={} code={}", userId, e.getCode());
             return Long.MAX_VALUE;
@@ -538,7 +538,7 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
             rate = tokenPricing == null ? null : tokenPricing.find(endpoint.getId());
             if (rate == null) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_TOKEN_PRICE_NOT_CONFIGURED", "此模型尚未配置按量积分售价");
             long increment = rate.maxCost();
-            long available = availableBalance(userId, billing);
+            long available = availableBalance(userId, billing,com.aistareco.aep.billing.service.ModelChargeContext.forCredits(endpoint,Math.max(1,increment)).target());
             // Below one minimal call the full increment is asked for and the hold answers 402 (unchanged behavior).
             cost = available >= rate.cost(1, DialogueLoop.MIN_OUTPUT_TOKENS) ? Math.min(increment, available) : increment;
             perCall = Math.min(Math.max(1024, prompt.params().maxTokensOrDefault()), rate.maxOutputTokens());
@@ -575,10 +575,13 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
             exec.putObject("prompt").put("key", PromptService.KEY_DAP_IP_STUDIO_SKILL_DIALOGUE).put("system", prompt.system()).put("user", prompt.userTemplate());
             input.put("promptKey", PromptService.KEY_DAP_IP_STUDIO_SKILL_DIALOGUE);
         }
+        var modelCharge=mock?com.aistareco.aep.billing.service.ModelChargeContext.NONE
+                :com.aistareco.aep.billing.service.ModelChargeContext.forCredits(endpoint,cost);
+        if(modelCharge.target()!=null)exec.set("modelCharge",mapper.valueToTree(modelCharge));
         // Dialogue turns are not part of a bound execution's stage budget (2026-10-23): nothing is registered there.
         var account = enterpriseBilling == null ? null : enterpriseBilling.reserve(userId, billing, IpRunService.REF_TYPE, runId,
-                endpoint == null ? null : endpoint.getId(), cost, "Studio 对话");
-        if (enterpriseBilling == null && cost > 0) credits.hold(userId, cost, IpRunService.REF_TYPE, runId, "Studio 对话");
+                endpoint == null ? null : endpoint.getId(), cost, "Studio 对话", modelCharge);
+        if (enterpriseBilling == null && cost > 0) credits.hold(userId, cost, IpRunService.REF_TYPE, runId, "Studio 对话", modelCharge);
         IpRun run = IpRun.builder().id(runId).projectId(thread.getProjectId()).ownerUserId(userId).nodeId(thread.getId())
                 .kind(StudioDialogueTurnWorker.KIND).status(IpRun.STATUS_RUNNING).stage("queued").cost(cost)
                 .clientRequestId(inputs.get(0).getId()).inputFingerprint(fingerprint(thread.getId(), inputs)).inputJson(input.toString())

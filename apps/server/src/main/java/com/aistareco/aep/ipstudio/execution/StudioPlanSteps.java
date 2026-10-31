@@ -16,7 +16,10 @@ public final class StudioPlanSteps {
     private StudioPlanSteps() {}
 
     /** What a video mode consumes, read from the selected model's contract. */
-    public record ModeSpec(boolean firstFrame,boolean lastFrame,boolean references) {}
+    /** rewrite：所选视频模型出片前会改写描述（H3），视频步骤先按官方写法改写提示词再出片（2026-10-27）。 */
+    public record ModeSpec(boolean firstFrame,boolean lastFrame,boolean references,boolean rewrite) {
+        public ModeSpec(boolean firstFrame,boolean lastFrame,boolean references){this(firstFrame,lastFrame,references,false);}
+    }
     /** Resolves a reference binding / clip / check target to a real storage key (or a quote placeholder). */
     public interface Keys {
         String binding(JsonNode binding);
@@ -127,7 +130,7 @@ public final class StudioPlanSteps {
         if(!others.isEmpty()&&!spec.references())throw BusinessException.badRequest("STUDIO_VIDEO_INPUT_INVALID","这一步的视频模式不接受其他参考素材");
         for(JsonNode b:others)references.add(new VideoStudioReferenceInput(mediaType(b.path("role").asText()),keys.binding(b)));
         Long seed=video.hasNonNull("seed")?video.path("seed").asLong():null;
-        return new VideoSettings(mode,video.path("resolutionTier").asText(),seed,first,last,references.isEmpty()?null:references);
+        return new VideoSettings(mode,video.path("resolutionTier").asText(),seed,first,last,references.isEmpty()?null:references,null,spec.rewrite()?"auto":null);
     }
     static List<JsonNode> ordered(JsonNode bindings) {
         List<JsonNode> out=new ArrayList<>();if(bindings.isArray())bindings.forEach(out::add);

@@ -218,7 +218,7 @@ public class MixcutRenderingService {
         if (perVariant > 0) {
             try {
                 creditService.commitHold("mixcut_job", jobId, perVariant,
-                        "混剪变体 " + (output.getVariantIndex() + 1) + " 渲染完成");
+                        "混剪变体 " + (output.getVariantIndex() + 1) + " 渲染完成", null);
             } catch (Exception e) {
                 log.warn("[mixcut] commit hold failed jobId={} variant={} err={}",
                         jobId, output.getVariantIndex(), e.getMessage());

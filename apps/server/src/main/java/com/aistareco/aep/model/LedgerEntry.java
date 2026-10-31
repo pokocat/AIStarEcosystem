@@ -21,7 +21,7 @@ import java.time.Instant;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name = "aep_ledger_entries")
+@Table(name = "aep_ledger_entries", indexes=@Index(name="idx_ledger_scoped_grant",columnList="grant_id,created_at"))
 // v2 §1：积分面分录永不携带现金凭证。资金面不强制非空（提现单等过渡期可空），只锁死积分面那一半。
 @Check(constraints = "plane <> 'CREDIT' OR cash_artifact_id IS NULL")
 public class LedgerEntry {
@@ -31,6 +31,9 @@ public class LedgerEntry {
 
     private String walletId;
 
+    /** Restricted allowance batch; balanceAfter is this batch balance when present. */
+    @Column(length=64) private String grantId;
+
     /** Wallet owner — denormalized for per-user queries. */
     private String userId;
     @Column(length=64) private String actorUserId;
@@ -39,6 +42,7 @@ public class LedgerEntry {
     @Column(length=128) private String billingAuthorizationId;
 
     @Enumerated(EnumType.STRING)
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.VARCHAR)
     private LedgerEntryType entryType;
 
     /**
@@ -85,7 +89,8 @@ public class LedgerEntry {
         UNFREEZE,
         ADJUST,
         TRANSFER_IN,
-        TRANSFER_OUT
+        TRANSFER_OUT,
+        SCOPED_GRANT, SCOPED_FREEZE, SCOPED_SPEND, SCOPED_RELEASE, SCOPED_EXPIRE
     }
 
     /**

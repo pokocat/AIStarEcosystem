@@ -20,7 +20,8 @@
     "./mock-registry": "./src/_mock-registry.ts",
     "./api/auth": "./src/api/auth.ts",
     "./api/account": "./src/api/account.ts",
-    "./model-task-state": "./src/model-task-state.ts"
+    "./model-task-state": "./src/model-task-state.ts",
+    "./public-model-error": "./src/public-model-error.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

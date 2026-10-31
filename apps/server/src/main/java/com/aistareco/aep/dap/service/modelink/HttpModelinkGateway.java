@@ -1,5 +1,7 @@
 package com.aistareco.aep.dap.service.modelink;
 
+import com.aistareco.aep.service.ai.ProviderErrorMessage;
+
 import com.aistareco.aep.dap.config.DapProperties;
 import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelPurpose;
@@ -180,14 +182,14 @@ public class HttpModelinkGateway implements ModelinkGateway {
                 log.warn("[dap-modelink] quota exhausted {} {} status={} body={}",
                         method, path, sc, clamp(resp.body(), 400));
                 throw BusinessException.wrapped(HttpStatus.SERVICE_UNAVAILABLE, "DAP_MODELINK_QUOTA_EXCEEDED",
-                        "素材合规服务的素材分组配额已用尽：请先清理不再需要的分组，或联系七牛为该账号提额",
+                        ProviderErrorMessage.append(resp.body(),"素材合规服务的素材分组配额已用尽：请先清理不再需要的分组，或联系七牛为该账号提额"),
                         "modelink " + method + " " + path + " status=" + sc + " body=" + clamp(resp.body(), 600));
             }
             if (sc == 409 && "DELETE".equals(method)) {
                 // 分组非终态或组内非空 → 现在删不掉（下轮回收器再试）。给可识别的错误码而不是笼统 502。
                 log.warn("[dap-modelink] group not deletable {} body={}", path, clamp(resp.body(), 300));
                 throw BusinessException.wrapped(HttpStatus.CONFLICT, "DAP_MODELINK_GROUP_NOT_DELETABLE",
-                        "该素材分组当前不可删除（未到终态或组内仍有素材）",
+                        ProviderErrorMessage.append(resp.body(),"该素材分组当前不可删除（未到终态或组内仍有素材）"),
                         "modelink DELETE " + path + " status=409 body=" + clamp(resp.body(), 600));
             }
             if (sc >= 400) {
@@ -248,19 +250,13 @@ public class HttpModelinkGateway implements ModelinkGateway {
     }
 
     private static String upstreamMessage(String body) {
-        if (body == null || body.isBlank()) return null;
-        try {
-            JsonNode n = OM.readTree(body);
-            String m = firstNonBlank(text(n.path("error"), "message"), text(n, "message"), text(n, "error"));
-            return m != null ? clamp(m, 200) : null;
-        } catch (Exception e) {
-            return null;
-        }
+        return ProviderErrorMessage.reason(body);
     }
 
     /** 配额类错误关键词（上游打满账号级 3 分组 / 30 素材上限时未必回 429）。 */
     static boolean isQuotaError(String body) {
-        String m = upstreamMessage(body);
+        // 读供应商原话分类：对外的 reason 已把 quota 这类说法换成通用句，拿它判永远判不出来（2026-10-25 起）。
+        String m = ProviderErrorMessage.diagnosticReason(body);
         String s = (m != null ? m : body == null ? "" : body).toLowerCase(java.util.Locale.ROOT);
         return s.contains("quota") || s.contains("配额") || s.contains("limit")
                 || s.contains("exceed") || s.contains("上限");

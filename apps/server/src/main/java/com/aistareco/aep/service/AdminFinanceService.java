@@ -171,6 +171,7 @@ public class AdminFinanceService {
             case SPEND, FREEZE -> "spend";
             case INCOME, GIFT, REFUND, UNFREEZE, ADJUST -> "income";
             case TRANSFER_IN, TRANSFER_OUT -> "transfer";
+            case SCOPED_GRANT, SCOPED_FREEZE, SCOPED_SPEND, SCOPED_RELEASE, SCOPED_EXPIRE -> "scoped";
         };
     }
 

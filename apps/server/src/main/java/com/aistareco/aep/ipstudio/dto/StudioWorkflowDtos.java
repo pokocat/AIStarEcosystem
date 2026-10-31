@@ -16,7 +16,16 @@ public final class StudioWorkflowDtos {
                              String aspectRatio, Integer count, ScriptSettings settings, Integer episodeNo,
                              String mode, List<String> contextNodeIds, List<Turn> history, Long maxCost, Packaging packaging, VideoSettings video, Boolean readVisuals, ScriptEdit scriptEdit, TextEdit textEdit, com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing,
                              RecreationSettings recreation, CheckSettings check, String skillKey, Integer skillVersion, String stage, String executionId, DialogueBinding dialogue,
+                             EditTimeline edit,com.aistareco.aep.billing.service.ModelBillingApproval modelBilling) {
+        public RunRequest(String clientRequestId, String nodeId, String operation, String prompt,
+                             List<Reference> references, String model, String size, Integer durationSec,
+                             String aspectRatio, Integer count, ScriptSettings settings, Integer episodeNo,
+                             String mode, List<String> contextNodeIds, List<Turn> history, Long maxCost, Packaging packaging, VideoSettings video, Boolean readVisuals, ScriptEdit scriptEdit, TextEdit textEdit, com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing,
+                             RecreationSettings recreation, CheckSettings check, String skillKey, Integer skillVersion, String stage, String executionId, DialogueBinding dialogue,
                              EditTimeline edit) {
+            this(clientRequestId,nodeId,operation,prompt,references,model,size,durationSec,aspectRatio,count,settings,episodeNo,mode,contextNodeIds,history,maxCost,packaging,video,readVisuals,scriptEdit,textEdit,billing,recreation,check,skillKey,skillVersion,stage,executionId,dialogue,edit,null);
+        }
+
         /** 29-arg shape before 成片高级编辑 (2026-10-19). */
         public RunRequest(String clientRequestId, String nodeId, String operation, String prompt,
                           List<Reference> references, String model, String size, Integer durationSec,
@@ -65,11 +74,24 @@ public final class StudioWorkflowDtos {
     public record ScriptEdit(String markdown) {}
     public record TextEdit(String content) {}
     /** optimizePrompt：false = 「按原文生成」，不让厂商在出片前改写描述；null = 模型默认（H3 默认改写）。 */
+    /**
+     * rewrite（2026-10-27，只对出片前能改写描述的模型，即 H3）：提交前先按 H3 官方写法把提示词改写成英文。
+     * auto = 改写完直接出片（创作助手）；review = 没有提示就直接出片，有提示停下来让用户选用优化稿还是原文（画布）。
+     * 带 rewrite 时厂商自己的改写一律关掉（optimizePrompt=false）。
+     */
     public record VideoSettings(String mode,String resolutionTier,Long seed,String firstFrameKey,String lastFrameKey,
-            List<com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioReferenceInput> references,Boolean optimizePrompt) {
+            List<com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioReferenceInput> references,Boolean optimizePrompt,String rewrite) {
+        public VideoSettings(String mode,String resolutionTier,Long seed,String firstFrameKey,String lastFrameKey,
+                List<com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioReferenceInput> references,Boolean optimizePrompt) {
+            this(mode,resolutionTier,seed,firstFrameKey,lastFrameKey,references,optimizePrompt,null);
+        }
         public VideoSettings(String mode,String resolutionTier,Long seed,String firstFrameKey,String lastFrameKey,
                 List<com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioReferenceInput> references) {
-            this(mode,resolutionTier,seed,firstFrameKey,lastFrameKey,references,null);
+            this(mode,resolutionTier,seed,firstFrameKey,lastFrameKey,references,null,null);
+        }
+        /** 交给视频模型时的设置：改写已做完，厂商不再改写。 */
+        public VideoSettings submitted() {
+            return rewrite==null?this:new VideoSettings(mode,resolutionTier,seed,firstFrameKey,lastFrameKey,references,Boolean.FALSE,null);
         }
     }
     public record Caption(Double start,Double end,String text) {}

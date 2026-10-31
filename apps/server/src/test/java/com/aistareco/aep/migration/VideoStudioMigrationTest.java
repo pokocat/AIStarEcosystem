@@ -10,9 +10,6 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -24,36 +21,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class VideoStudioMigrationTest {
 
-    private static final Path MIGRATIONS = Path.of("src/main/resources/db/migration");
-
-    private static String[] statements(String sql) {
-        String stripped = Arrays.stream(sql.split("\n"))
-                .filter(l -> !l.trim().startsWith("--"))
-                .reduce("", (a, b) -> a + "\n" + b);
-        return Arrays.stream(stripped.split(";")).map(String::trim).filter(s -> !s.isEmpty()).toArray(String[]::new);
-    }
-
-    private static int versionOf(Path f) {
-        var m = java.util.regex.Pattern.compile("^V(\\d+)__").matcher(f.getFileName().toString());
-        return m.find() ? Integer.parseInt(m.group(1)) : Integer.MAX_VALUE;
-    }
+    private static final Path MIGRATIONS = SqlMigrations.DIR;
 
     @Test
     @DisplayName("V37 建表 + 默认值 + (owner_user_id, client_request_id) 唯一")
     void v37TablesWork() throws Exception {
         assertTrue(Files.exists(MIGRATIONS.resolve("V37__video_studio_optimization_and_template.sql")));
-        List<Path> files;
-        try (var s = Files.list(MIGRATIONS)) {
-            files = s.filter(p -> p.toString().endsWith(".sql"))
-                    .sorted(Comparator.comparingInt(VideoStudioMigrationTest::versionOf))
-                    .toList();
-        }
         try (Connection c = DriverManager.getConnection(
                 "jdbc:h2:mem:vs37" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1");
              Statement st = c.createStatement()) {
-            for (Path f : files) {
-                for (String sql : statements(Files.readString(f))) st.execute(sql);
-            }
+            SqlMigrations.runAll(c);
 
             st.execute("INSERT INTO video_studio_prompt_optimization (id, owner_user_id, client_request_id, spec_json, "
                     + "original_prompt) VALUES ('vso_1', 'u1', 'crid-0001', '{}', '一只猫')");

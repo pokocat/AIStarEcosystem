@@ -4,8 +4,10 @@ import type { ReactNode, Ref } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { studioNavigation, studioNavigationCurrent } from '@/shell/studio-navigation';
-import { Search, X } from 'lucide-react';
+import { useUiVersion } from '@/shell/ui-version';
+import { Hourglass, Search, X } from 'lucide-react';
 import { HubTabBar } from '@/components/hub/ui';
+import { UiVersionSwitch } from '@/shell/ui-version-switch';
 
 /** The four workspace routes share one paper surface, heading and mobile navigation. */
 export function StudioPage({ title, description, actions, children, className = '', contentRef }: {
@@ -13,9 +15,10 @@ export function StudioPage({ title, description, actions, children, className = 
   className?: string; contentRef?: Ref<HTMLDivElement>;
 }) {
   const pathname = usePathname() || '';
+  const version = useUiVersion();
   return <main className={`ip-brand-surface ip-hub-surface studio-page ${className}`}>
-    <nav className="studio-mobile-navigation" aria-label="工作台导航">{studioNavigation.filter(n => n.href !== "/dashboard" && n.href !== "/assets").map(n => <Link key={n.href} href={n.href} aria-current={studioNavigationCurrent(n.href, pathname) ? "page" : undefined}>{n.label}</Link>)}</nav>
-    <header className="studio-page-heading"><div><h1>{title}</h1><p>{description}</p></div>{actions && <div className="studio-page-actions">{actions}</div>}</header>
+    <nav className="studio-mobile-navigation" aria-label="工作台导航">{studioNavigation(version).filter(n => n.href !== "/dashboard" && n.href !== "/assets").map(n => <Link key={n.href} href={n.href} aria-current={studioNavigationCurrent(n.href, pathname, version) ? "page" : undefined}>{n.label}</Link>)}</nav>
+    <header className="studio-page-heading"><div><h1>{title}</h1><p>{description}</p></div>{(actions || version === 'next') && <div className="studio-page-actions">{version === 'next' && <UiVersionSwitch inline/>}{actions}</div>}</header>
     <div ref={contentRef} className="studio-page-body" data-studio-overlay-root>{children}</div>
     <HubTabBar/>
   </main>;
@@ -35,4 +38,9 @@ export function StudioPageSearch({ value, onChange, label, placeholder, inputRef
   inputRef?: Ref<HTMLInputElement>;
 }) {
   return <label className="studio-page-search"><Search size={16} aria-hidden="true"/><input ref={inputRef} type="search" aria-label={label} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}/>{value && <button type="button" aria-label={`清除${label}`} onClick={() => onChange('')}><X size={15}/></button>}</label>;
+}
+
+/** Features that are planned but not open yet: one wording and one mark everywhere (replaces the old 【待建设】). */
+export function StudioComingSoon({ children = '敬请期待', className = '' }: { children?: ReactNode; className?: string }) {
+  return <span className={`studio-coming-soon ${className}`}><Hourglass size={13} strokeWidth={2} aria-hidden="true"/>{children}</span>;
 }

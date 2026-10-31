@@ -77,7 +77,7 @@ class IpNativeVideoReplayIntegrationTest {
         AtomicInteger submissions=new AtomicInteger();
         when(nativeVideos.submit(any(),eq(user),eq("ipstudio"),eq(selected))).thenAnswer(inv->{
             submissions.incrementAndGet();
-            billing.reserve(user,selected,"material_video_job",job,endpoint,30,"本地原生视频");
+            billing.reserve(user,selected,"material_video_job",job,endpoint,30,"本地原生视频", com.aistareco.aep.billing.service.ModelChargeContext.NONE);
             return List.of(card);
         });
         when(nativeVideos.getJob(job,user,"ipstudio")).thenReturn(card);

@@ -1,0 +1,22 @@
+509af4e22a0549f56d0d37ab20d0d6c75f615ab686a2477879668f04934c2916  /opt/ai-star-eco/server/app.jar
+509af4e22a0549f56d0d37ab20d0d6c75f615ab686a2477879668f04934c2916  /opt/ai-star-eco/releases/20261025-studio-model-selector/server/app.jar
+RELEASE_ID='20261025-studio-model-selector'
+GIT_SHA='a0dc63c3c638a812cd4c647a6c4168ee1e0809da'
+CREATED_AT='2026-10-25T17:51:54Z'
+SERVICES='server web-aiavatar'
+NEXT_PUBLIC_USE_MOCK='0'
+NEXT_PUBLIC_ENABLE_DEV_LOGIN='0'
+NEXT_PUBLIC_ENTERPRISE_ENABLED='1'
+NEXT_PUBLIC_MIXCUT_USE_REAL='1'
+NEXT_PUBLIC_API_BASE_URL='/api'
+NEXT_PUBLIC_SERVER_API_BASE='http://127.0.0.1:8080'
+NEXT_PUBLIC_AUTH_MODE='id'
+NEXT_PUBLIC_ID_ISSUER='https://id.aibuzz.cn'
+active
+active
+management scenePolicies ok
+management scenePolicySave ok
+management sceneCatalog ok
+{"scene": "script", "status": "available", "policy": {"appCode": "studio", "scene": "script", "mode": "selectable", "defaultEndpointId": "ai-1bd2eefd-d1e", "candidates": [{"endpointId": "ai-1bd2eefd-d1e", "creditCost": 2, "billingUnit": "per_call"}, {"endpointId": "ai-studio-jusuan-qwen38", "creditCost": 2, "billingUnit": "per_call"}]}}
+{"scene": "image", "status": "available", "policy": {"appCode": "studio", "scene": "image", "mode": "selectable", "defaultEndpointId": "ai-624cb6b2-379", "candidates": [{"endpointId": "ai-624cb6b2-379", "creditCost": 16, "billingUnit": "per_image"}, {"endpointId": "ai-abadd123-a06", "creditCost": 16, "billingUnit": "per_image"}, {"endpointId": "ai-7398056d-6cf", "creditCost": 55, "billingUnit": "per_image"}, {"endpointId": "ai-c120fb1f-769", "creditCost": 37, "billingUnit": "per_image"}, {"endpointId": "ai-41444f1b-60a", "creditCost": 61, "billingUnit": "per_image"}]}}
+selectorBackup=/opt/ai-star-eco/backups/studio-model-switch-20261025T175404Z

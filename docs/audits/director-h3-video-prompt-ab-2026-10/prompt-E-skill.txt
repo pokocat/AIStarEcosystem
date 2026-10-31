@@ -1,0 +1,25 @@
+subject_definitions:
+<Subject 1> is the male character Chen Mo, defined by <Picture 2>. He is a man aged 25-30 with a thin build, deep-set eyes, and messy stubble. He has short, slightly disheveled hair and wears a faded blue work uniform with worn cuffs revealing a grey, pilled sweater underneath.
+<Subject 2> is the female character Lin Xiaoya, defined by <Picture 3>. She is a young woman aged 20-25, appearing as a tourist. She wears black-rimmed glasses, has long hair tied in a ponytail, and is dressed in a hoodie and jeans while holding a camera.
+<Picture 1> is a 2x2 storyboard grid serving as the shot-planning reference for [Shot 1] through [Shot 4], defining their viewpoints, subject placements, and sequence order.
+
+summary:
+[reference generation] The target video depicts a realistic interaction between <Subject 1> and <Subject 2> within a mural restoration setting. <Picture 1> guides the composition of the four shots. <Subject 2> questions the expression of a painted figure, while <Subject 1> responds calmly with a technical explanation before she presses her inquiry further.
+
+retention_analysis:
+<Subject 1> (appears in [Shot 1], [Shot 3], [Shot 4]): fully_preserved - his appearance, hairstyle, and specific clothing details from <Picture 2> are maintained consistently across all appearances.
+<Subject 2> (appears in [Shot 1], [Shot 2], [Shot 4]): fully_preserved - her appearance, hairstyle, glasses, and clothing from <Picture 3> are maintained consistently across all appearances.
+<Picture 1> ([Shot 1]-[Shot 4] composition): fully_preserved - the framing, camera angles, and subject positions specified in the storyboard panels are strictly followed for each corresponding shot.
+
+detailed_description:
+The target video is in a live-action, realistic cinematic style with high definition and natural lighting.
+[Shot 1] A low-angle wide shot looks up through a skylight beam, capturing dust motes swirling in the air. <Subject 1>, seen from behind, stands focused on the lower part of a large mural, holding a fine brush that moves slowly. <Subject 2> stands to the side and rear, holding a camera up to take photos. The sunlight illuminates the scene, highlighting the texture of the wall and the characters' presence.
+[Shot 2] At 00:04.000, the shot cuts to an eye-level close-up of <Subject 2>. Her black-rimmed glasses reflect light as she leans forward, pointing off-screen toward the mural with an excited and curious expression. <Subject 2> (S1) says in a bright, inquisitive voice: <d>[Chinese] 小哥，你看这个飞仙的眼睛，是不是特别有神？感觉她在看我。</d>
+[Shot 3] At 00:07.000, the shot cuts to a profile close-up of <Subject 1>. His expression is stern and cold, his gaze fixed downward on the brush in his hand, which pauses briefly. He does not look up from the mural. <Subject 1> (S2) replies in a flat, calm tone without breaking his focus: <d>[Chinese] 那是光影效果。颜料氧化后会有这种视觉误差。</d>
+[Shot 4] At 00:10.000, the shot cuts to a medium over-the-shoulder view from behind <Subject 1>, looking at <Subject 2> as she leans closer to the edge of the mural. Her finger hovers near the mouth of the painted flying immortal. <Subject 2> (S1) asks skeptically, leaning in further: <d>[Chinese] 真的吗？我怎么觉得她嘴角在笑呢？</d> <Subject 1> listens silently with his lips closed. The image holds this composition until the end of the video.
+
+overall_soundscape:
+Quiet indoor ambience with subtle air circulation sounds. The soft bristle sound of a brush against a textured surface is audible during the first and third shots. Faint footsteps or fabric rustling accompany the movements of the characters.
+
+non_diegetic_music:
+N/A

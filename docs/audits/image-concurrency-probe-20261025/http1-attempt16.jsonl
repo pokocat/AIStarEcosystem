@@ -1,0 +1,18 @@
+{"event":"start","id":"image-concurrency-http1-high-20261025-01","at":"2026-10-25T15:09:24.844612400Z","inFlight":1}
+{"event":"start","id":"image-concurrency-http1-high-20261025-02","at":"2026-10-25T15:09:25.844079674Z","inFlight":2}
+{"event":"start","id":"image-concurrency-http1-high-20261025-03","at":"2026-10-25T15:09:26.845100928Z","inFlight":3}
+{"event":"start","id":"image-concurrency-http1-high-20261025-04","at":"2026-10-25T15:09:27.844805766Z","inFlight":4}
+{"event":"start","id":"image-concurrency-http1-high-20261025-05","at":"2026-10-25T15:09:32.845618388Z","inFlight":5}
+{"event":"start","id":"image-concurrency-http1-high-20261025-06","at":"2026-10-25T15:09:33.846020562Z","inFlight":6}
+{"event":"start","id":"image-concurrency-http1-high-20261025-07","at":"2026-10-25T15:09:34.846285047Z","inFlight":7}
+{"event":"start","id":"image-concurrency-http1-high-20261025-08","at":"2026-10-25T15:09:35.846487791Z","inFlight":8}
+{"event":"complete","id":"image-concurrency-http1-high-20261025-08","at":"2026-10-25T15:09:36.347637722Z","status":403,"seconds":0.50,"validImage":false,"error":"{\"error\":{\"message\":\"预扣费额度失败, 用户剩余额度: ¥0.007038, 需要预扣费额度: ¥0.069994 (request id: 202610251509362258820948268d9d66ZXr7NFt)\",\"type\":\"new_api_error\",\"param\":\"\",\"code\":\"insufficient_user_quota\"}}"}
+{"event":"complete","id":"image-concurrency-http1-high-20261025-05","at":"2026-10-25T15:09:36.396926832Z","status":403,"seconds":3.55,"validImage":false,"error":"{\"error\":{\"message\":\"预扣费额度失败, 用户剩余额度: ¥0.007038, 需要预扣费额度: ¥0.069994 (request id: 202610251509343628696098268d9d6n1U2Xcaq)\",\"type\":\"new_api_error\",\"param\":\"\",\"code\":\"insufficient_user_quota\"}}"}
+{"event":"complete","id":"image-concurrency-http1-high-20261025-07","at":"2026-10-25T15:09:36.397284714Z","status":403,"seconds":1.55,"validImage":false,"error":"{\"error\":{\"message\":\"预扣费额度失败, 用户剩余额度: ¥0.007038, 需要预扣费额度: ¥0.069994 (request id: 202610251509363148832768268d9d6f1pK8VgM)\",\"type\":\"new_api_error\",\"param\":\"\",\"code\":\"insufficient_user_quota\"}}"}
+{"event":"submissionsFinished","submitted":8,"peakHttpInFlight":8}
+{"event":"complete","id":"image-concurrency-http1-high-20261025-02","at":"2026-10-25T15:10:36.368728925Z","status":200,"seconds":70.43,"validImage":true,"width":1024,"height":1024,"bytes":773416}
+{"event":"complete","id":"image-concurrency-http1-high-20261025-04","at":"2026-10-25T15:10:43.610278085Z","status":200,"seconds":75.71,"validImage":true,"width":1024,"height":1024,"bytes":798502}
+{"event":"complete","id":"image-concurrency-http1-high-20261025-01","at":"2026-10-25T15:10:44.661004868Z","status":200,"seconds":79.77,"validImage":true,"width":1024,"height":1024,"bytes":770948}
+{"event":"complete","id":"image-concurrency-http1-high-20261025-03","at":"2026-10-25T15:10:46.681801099Z","status":200,"seconds":79.79,"validImage":true,"width":1024,"height":1024,"bytes":780901}
+{"event":"complete","id":"image-concurrency-http1-high-20261025-06","at":"2026-10-25T15:11:08.449602966Z","status":200,"seconds":94.55,"validImage":true,"width":1024,"height":1024,"bytes":806103}
+{"event":"finished","at":"2026-10-25T15:11:08.450241129Z","submitted":8,"peakHttpInFlight":8}

@@ -13,7 +13,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
-import org.springframework.web.server.ResponseStatusException;
+import com.aistareco.common.BusinessException;
 
 import java.util.List;
 import java.util.Map;
@@ -30,7 +30,7 @@ import static org.mockito.Mockito.when;
 @SpringBootTest
 @ActiveProfiles("dev")
 @TestPropertySource(properties = {
-        "spring.datasource.url=jdbc:h2:mem:mat-billing;MODE=MySQL;DB_CLOSE_DELAY=-1",
+        "spring.datasource.url=jdbc:h2:mem:mat-billing;MODE=MySQL;NON_KEYWORDS=CAST;DB_CLOSE_DELAY=-1",
         "spring.jpa.hibernate.ddl-auto=update",
         "aep.seed.dev-data.enabled=true"
 })
@@ -55,7 +55,9 @@ class MaterialDraftBillingTest {
     @BeforeEach
     void setUp() {
         when(invocation.hasEndpointFor(any(), eq("celebrity"))).thenReturn(true);
-        when(invocation.invokeChat(any(), any(), any(), eq("celebrity")))
+        when(invocation.resolveDefaultEndpoint(any(),eq("celebrity"))).thenReturn(java.util.Optional.of(
+                com.aistareco.aep.model.AiModelEndpoint.builder().id("qwen").model("qwen").enabled(true).build()));
+        when(invocation.invokeChatOnEndpoint(any(), any(), any(), any()))
                 .thenReturn(new AiModelInvocationService.AiModelResponse(VALID, "stop", 50L, "fake", "m"));
     }
 
@@ -94,9 +96,9 @@ class MaterialDraftBillingTest {
         actionPricing.replaceAll(Map.of(
                 CelebrityActionPricingService.ACTION_SCRIPT_DRAFT, new ActionPricingDto(100_000_000L, false)));
         // USER 余额（上一个测试可能留有，也远不够 1 亿 × 3）
-        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+        BusinessException ex = assertThrows(BusinessException.class,
                 () -> materialOps.draftScripts(draftBody(3), USER));
-        assertEquals(402, ex.getStatusCode().value());
+        assertEquals(402, ex.getStatus().value());
     }
 
     @Test

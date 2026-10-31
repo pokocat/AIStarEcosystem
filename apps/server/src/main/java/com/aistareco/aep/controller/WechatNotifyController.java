@@ -73,11 +73,21 @@ public class WechatNotifyController {
             return ResponseEntity.ok(OK);
         }
 
+        if (order.wayCode() == null || !order.wayCode().startsWith("WX_")) return fail("支付渠道不匹配");
         // 4) 金额校验（单位分；不符则不入账，绝不按渠道金额入账）
         if (r.amountFen() != order.priceCents()) {
             log.error("[pay][wechat-notify] 金额不符 outTradeNo={} notifyFen={} orderPriceCents={}（拒绝入账）",
                     outTradeNo, r.amountFen(), order.priceCents());
             return fail("金额不符");
+        }
+
+        if (!"pending".equals(order.status())) {
+            // A delayed duplicate can arrive after a refund; acknowledge only the original transaction.
+            if (("paid".equals(order.status()) || "refunded".equals(order.status()))
+                    && "wechat".equals(order.paidVia()) && r.transactionId() != null
+                    && r.transactionId().equals(order.channelPayNo())) return ResponseEntity.ok(OK);
+            log.error("[pay][wechat-notify] 已结束订单收到不同付款，需人工核对 orderId={} status={}", outTradeNo, order.status());
+            return fail("订单已结束，请核对到账");
         }
 
         // 5) 结算（幂等：markPaid 条件 UPDATE，重复回调 / 与查单兜底并发都只入账一次）

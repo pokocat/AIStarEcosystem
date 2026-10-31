@@ -86,7 +86,9 @@ public final class ProductRouteTable {
             "/api/me/messages-overview",
             "/api/me/password",
             "/api/me/tenants",
-            "/api/me/ledger");
+            "/api/me/ledger",
+            // Read-only scoped balances share the account, while enterprise access is checked by the query service.
+            "/api/me/model-credits");
 
     /**
      * 前缀白名单：命中 {@code path.equals(p) || path.startsWith(p + "/")} 即放行。
@@ -145,6 +147,9 @@ public final class ProductRouteTable {
      */
     public static final List<PublicGet> PUBLIC_GETS = List.of(
             new PublicGet("/api/v1/ip-studio/shared/conversations/*", "本人明确发布的可撤销对话文字快照，匿名只读；复制和管理不豁免"),
+            new PublicGet("/api/v1/ip-studio/scenes/home",
+                    "首页「你想做什么？」卡片：公开落地页对没登录的访客也展示。只有标题、说明、落点场景和封面签名地址；"
+                            + "场景目录 GET /scenes 与拼话 POST /scenes/compose 不在此列，仍要登录 + aiavatar 开通。"),
             new PublicGet("/api/store/catalog",
                     "登录前可浏览的公开商品目录：AepSecurityConfig 已 permitAll，"
                             + "StoreController#catalog 显式支持匿名（principal 可为 null）。"

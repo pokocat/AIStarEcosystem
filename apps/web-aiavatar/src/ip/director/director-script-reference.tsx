@@ -6,36 +6,42 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FileText, ListOrdered } from "lucide-react";
 import type { DirectorEpisode, DirectorWork } from "@ai-star-eco/types";
-import { useLayoutMode } from "@/shell/layout-mode";
 import { AskAI } from "./director-assistant";
 import { DirectorSheet } from "./director-shared";
 import { clipRanges, paragraphsWithOffsets } from "./director-text";
 
 const SIDE_KEY = "director-board-side";
 
-/** 分镜页左栏：剧本 / 分集 两个视图。手机上剧本在抽屉里打开，不把片段卡挤到下面去。 */
+/**
+ * 分镜页左栏：剧本 / 分集 两个视图。手机上剧本在抽屉里打开，不把片段卡挤到下面去。
+ * 两套都渲染，按 `<html data-layout>` 用 CSS 显示其一（与全站同一个形态真值，不另读视口）。
+ */
 export function StoryboardSide({ work, ep, focusClipId, episodes, sheetOpen, setSheetOpen }: {
   work: DirectorWork; ep: DirectorEpisode; focusClipId: string | null; episodes: React.ReactNode;
   sheetOpen: boolean; setSheetOpen: (open: boolean) => void;
 }) {
-  const layout = useLayoutMode();
   const [view, setView] = useState<"script" | "episodes">("script");
   useEffect(() => { try { const v = window.localStorage.getItem(SIDE_KEY); if (v === "episodes" || v === "script") setView(v); } catch { /* 默认剧本 */ } }, []);
   useEffect(() => { if (focusClipId) setView("script"); }, [focusClipId]);
   const pick = (v: "script" | "episodes") => { setView(v); try { window.localStorage.setItem(SIDE_KEY, v); } catch { /* 忽略 */ } };
-  if (layout !== "desktop") return <>
-    {episodes}
-    <button type="button" className="ip-brand-secondary director-script-ref-open" onClick={() => setSheetOpen(true)}><FileText size={15}/>对照第 {ep.no} 集剧本</button>
-    {sheetOpen && <DirectorSheet label="本集剧本" onClose={() => setSheetOpen(false)}><ScriptReference work={work} ep={ep} focusClipId={focusClipId}/></DirectorSheet>}
-  </>;
-  return <div className={`director-board-side is-${view}`}>
-    <div className="director-segmented director-board-side-tabs" role="tablist" aria-label="左栏">
-      <button type="button" role="tab" aria-selected={view === "script"} onClick={() => pick("script")}><FileText size={13}/>本集剧本</button>
-      <button type="button" role="tab" aria-selected={view === "episodes"} onClick={() => pick("episodes")}><ListOrdered size={13}/>分集</button>
+  return <>
+    <div className="director-board-side-mobile">
+      {episodes}
+      <button type="button" className="ip-brand-secondary director-script-ref-open" onClick={() => setSheetOpen(true)}><FileText size={15}/>对照第 {ep.no} 集剧本</button>
     </div>
-    {view === "script" ? <ScriptReference work={work} ep={ep} focusClipId={focusClipId}/> : episodes}
-  </div>;
+    {sheetOpen && <DirectorSheet label="本集剧本" onClose={() => setSheetOpen(false)}><ScriptReference work={work} ep={ep} focusClipId={focusClipId}/></DirectorSheet>}
+    <div className={`director-board-side is-${view}`}>
+      <div className="director-segmented director-board-side-tabs" role="tablist" aria-label="左栏">
+        <button type="button" role="tab" aria-selected={view === "script"} onClick={() => pick("script")}><FileText size={13}/>本集剧本</button>
+        <button type="button" role="tab" aria-selected={view === "episodes"} onClick={() => pick("episodes")}><ListOrdered size={13}/>分集</button>
+      </div>
+      {view === "script" ? <ScriptReference work={work} ep={ep} focusClipId={focusClipId}/> : episodes}
+    </div>
+  </>;
 }
+
+/** 剧本对照一次最多画多少段：再多就分批显示，避免长正文一次画几万个段落卡住页面。 */
+const REF_PARAGRAPHS = 600;
 
 export function ScriptReference({ work, ep, focusClipId }: { work: DirectorWork; ep: DirectorEpisode; focusClipId: string | null }) {
   const clips = useMemo(() => work.clips.filter(c => c.episodeId === ep.id), [work.clips, ep.id]);
@@ -52,11 +58,18 @@ export function ScriptReference({ work, ep, focusClipId }: { work: DirectorWork;
     : range.how === "quote" ? "按写分镜时记下的起始句定位。" : "按台词在正文里找到的大致位置。";
   let marked = false;
   let prevOwner: string | undefined;
-  const shown = onlyFocus && range ? paragraphs.filter(p => p.start < range.end && p.end > range.start) : paragraphs;
+  const all = onlyFocus && range ? paragraphs.filter(p => p.start < range.end && p.end > range.start) : paragraphs;
+  // 正文很长时只画对照片段附近的一截（几万个段落一起画会卡），上下各有「显示更多」。
+  const center = range ? Math.max(0, all.findIndex(p => p.end > range.start)) : 0;
+  const [more, setMore] = useState({ before: 0, after: 0 });
+  useEffect(() => setMore({ before: 0, after: 0 }), [ep.id, focusClipId, onlyFocus]);
+  const from = all.length <= REF_PARAGRAPHS ? 0 : Math.max(0, center - REF_PARAGRAPHS / 2 - more.before);
+  const to = all.length <= REF_PARAGRAPHS ? all.length : Math.min(all.length, Math.max(center, REF_PARAGRAPHS / 2) + REF_PARAGRAPHS / 2 + more.after);
+  const shown = all.slice(from, to);
   return <section className="director-script-ref" aria-label={`第 ${ep.no} 集剧本`}>
     <header>
       <div><b>第 {ep.no} 集 · {ep.title}</b><small>{ep.content.replace(/\s/g, "").length.toLocaleString("zh-CN")} 字{ep.planStale ? " · 写分镜后正文改过" : ""}</small></div>
-      <AskAI scope={{ kind: "script", episodeId: ep.id }} label="AI" title="和助手讨论这一集剧本"/>
+      <AskAI scope={{ kind: "script", episodeId: ep.id, focusAt: range?.start ?? 0 }} what={`第 ${ep.no} 集剧本`} hint="评价、续写、润色这一集"/>
     </header>
     {focus && <div className="director-script-ref-focus">
       <span>正在对照：片段 {focus.order}{focus.title ? ` · ${focus.title}` : ""}</span>
@@ -65,6 +78,8 @@ export function ScriptReference({ work, ep, focusClipId }: { work: DirectorWork;
     </div>}
     {!focus && clips.length > 0 && <p className="director-muted director-script-ref-hint">点片段卡上的「对照剧本」，这里会标出它对应的段落。</p>}
     <div className="director-script-ref-body">
+      {from > 0 && <button type="button" className="ip-brand-text-button director-ref-more" onClick={() => setMore(m => ({ ...m, before: m.before + REF_PARAGRAPHS }))}>
+        上面还有 {from.toLocaleString("zh-CN")} 段，显示更多</button>}
       {shown.length === 0 ? <p className="director-muted">本集还没有正文。</p> : shown.map(p => {
         const inFocus = !!range && p.start < range.end && p.end > range.start;
         const c = owner(p.start, p.end);
@@ -76,6 +91,8 @@ export function ScriptReference({ work, ep, focusClipId }: { work: DirectorWork;
           {startsClip && <i title={`片段 ${c!.order} 从这里开始`}>{c!.order}</i>}{p.text.replace(/^#+\s*/, "")}
         </p>;
       })}
+      {to < all.length && <button type="button" className="ip-brand-text-button director-ref-more" onClick={() => setMore(m => ({ ...m, after: m.after + REF_PARAGRAPHS }))}>
+        下面还有 {(all.length - to).toLocaleString("zh-CN")} 段，显示更多</button>}
     </div>
   </section>;
 }

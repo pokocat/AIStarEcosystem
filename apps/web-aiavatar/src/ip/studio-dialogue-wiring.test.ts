@@ -21,9 +21,9 @@ test('the dialogue is actually mounted and wired', () => {
   expect(assistant).toContain('window.addEventListener(STUDIO_CHECK_COMMAND');
   expect(read('ip/studio-dialogue-session.tsx')).toContain('subscribeStudioDialogue(');
   // S3: the plan badge and the operator draft action are reachable from the panel. 2026-10-21 (user feedback): no skill or
-  // model control under the composer; the method shows only in the header label, whose hover text says how it is chosen,
+  // model button in the input toolbar; the method shows only in the header label, whose hover text says how it is chosen,
   // and the 「which method」 rejection offers the skills as quick replies instead of a dropdown.
-  expect(assistant).not.toContain('<Select');
+  expect(assistant).toContain('className="studio-dialogue-model-button" aria-label="对话模型"');
   expect(assistant).not.toContain('aria-label="助手模型"');
   expect(assistant).not.toMatch(/studio-dialogue-chip(?!s)/);
   expect(assistant).toContain('title={modeLabelTitle(modeSkill?.name)}');

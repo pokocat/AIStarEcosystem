@@ -512,3 +512,7 @@ Codex 对二版（定价配置 / 智能优化 / 模板）做了一轮只读评�
     **保留 `claimQueued`，删掉本分支原来的 `updateStatus(jobId, "submitting", 5, null)`**，否则排队中取消与 worker 接手的竞态会回来。
 - 并行：服务端一个 agent（§3 定价配置、§9、§10 服务端、迁移、openapi、BUSINESS_RULES）；web-celebrity 一个 agent
   （§3 报价、§9、§10 前端、mocks、测试）；后台页签（§11）主会话自己写；模拟聚算服务补优化接口供端到端验证。
+
+### 模型赠款与最终费用确认（2026-10-25，本地开发）
+
+生成前按 `POST /me/celebrity/video-studio/quote` 展示折扣、模型专享赠款与普通积分补差，支持仅免费模式；通过 `modelBilling` 绑定普通积分上限。提交前在本人会话保存原 `clientRequestId` 和已确认请求；结果不明或刷新后沿用原请求核对，服务端返回原任务，禁止新编号重复扣费。取消报价不清表单。智能优化仍独立计价。总范围与未完成事项见 [定向额度方案](model-billing-design.md)。

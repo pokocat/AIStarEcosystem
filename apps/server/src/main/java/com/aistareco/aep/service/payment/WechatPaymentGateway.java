@@ -4,7 +4,9 @@ import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.wechat.pay.java.core.Config;
+import com.wechat.pay.java.core.exception.ServiceException;
 import com.wechat.pay.java.core.RSAAutoCertificateConfig;
+import com.wechat.pay.java.core.RSAPublicKeyConfig;
 import com.wechat.pay.java.core.notification.NotificationConfig;
 import com.wechat.pay.java.core.notification.NotificationParser;
 import com.wechat.pay.java.core.notification.RequestParam;
@@ -31,8 +33,8 @@ import java.util.Map;
  *
  * <h2>v0.94 运行时配置 + §8.0</h2>
  * 机密来自 {@link PaymentChannelConfigService}（admin 后台 DB，可热更）。{@link #ensureConfigured()} 按
- * 配置版本号惰性构建 SDK Config（{@code RSAAutoCertificateConfig} 自动下载/轮换平台证书）+ 三个产品 service。
- * 机密缺失 → 503 PAYMENT_CHANNEL_NOT_CONFIGURED（不静默回退）；调用失败 → RuntimeException（上层取消单 + 502）。
+ * 配置版本号惰性构建 SDK Config（微信支付公钥模式优先，未配公钥时兼容自动平台证书）+ 三个产品 service。
+ * 机密缺失 → 503 PAYMENT_CHANNEL_NOT_CONFIGURED（不静默回退）；调用失败 → RuntimeException（上层保留待支付单供核对 + 502）。
  */
 @Component
 public class WechatPaymentGateway implements PaymentGateway {
@@ -78,7 +80,16 @@ public class WechatPaymentGateway implements PaymentGateway {
 
         int current = channelConfig.version("wechat");
         if (current != builtVersion || config == null) {
-            Config c = new RSAAutoCertificateConfig.Builder()
+            String publicId = creds.getOrDefault("publicKeyId", "");
+            String publicKey = creds.getOrDefault("publicKey", "");
+            if (publicId.isBlank() != publicKey.isBlank()) {
+                throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PAYMENT_CHANNEL_NOT_CONFIGURED",
+                        "微信支付公钥和公钥 ID 必须同时配置");
+            }
+            Config c = !publicId.isBlank() ? new RSAPublicKeyConfig.Builder()
+                    .merchantId(mch).privateKey(privateKey).merchantSerialNumber(serial)
+                    .apiV3Key(apiV3Key).publicKey(publicKey).publicKeyId(publicId).build()
+                    : new RSAAutoCertificateConfig.Builder()
                     .merchantId(mch)
                     .privateKey(privateKey)
                     .merchantSerialNumber(serial)
@@ -200,14 +211,37 @@ public class WechatPaymentGateway implements PaymentGateway {
             q.setMchid(mchId);
             q.setOutTradeNo(mchOrderNo);
             Transaction t = nativeService.queryOrderByOutTradeNo(q);
+            if (!mchOrderNo.equals(t.getOutTradeNo())) throw new IllegalStateException("微信查单订单号不匹配");
+            validateMerchant(t);
             boolean paid = t.getTradeState() == Transaction.TradeStateEnum.SUCCESS;
             long cents = paid && t.getAmount() != null && t.getAmount().getTotal() != null
                     ? t.getAmount().getTotal() : 0L;
             return new PayQueryResult(true, paid, "wechat_" + mchOrderNo, cents, t.getTransactionId());
-        } catch (Exception e) {
-            log.debug("[pay][wechat] query 失败 mchOrderNo={}：{}", mchOrderNo, e.toString());
-            return new PayQueryResult(false, false, "wechat_" + mchOrderNo, 0L, null);
+        } catch (ServiceException e) {
+            if ("ORDER_NOT_EXIST".equals(e.getErrorCode()))
+                return new PayQueryResult(false, false, "wechat_" + mchOrderNo, 0L, null);
+            throw e; // Transport/auth/provider errors are unknown, never evidence of an unpaid order.
         }
+    }
+
+    @Override
+    public void closePayOrder(String mchOrderNo) {
+        ensureConfigured();
+        var req = new com.wechat.pay.java.service.payments.nativepay.model.CloseOrderRequest();
+        req.setMchid(mchId); req.setOutTradeNo(mchOrderNo);
+        try { nativeService.closeOrder(req); }
+        catch (ServiceException e) {
+            if (!"ORDER_NOT_EXIST".equals(e.getErrorCode()) && !"ORDERCLOSED".equals(e.getErrorCode())) throw e;
+        }
+    }
+
+    private void validateMerchant(Transaction t) {
+        if (!appId.equals(t.getAppid()) || !mchId.equals(t.getMchid()))
+            throw new IllegalStateException("微信支付商户或应用不匹配");
+        if (t.getTradeState() == Transaction.TradeStateEnum.SUCCESS &&
+                (t.getTransactionId() == null || t.getTransactionId().isBlank() || t.getAmount() == null
+                || t.getAmount().getTotal() == null || !"CNY".equals(t.getAmount().getCurrency())))
+            throw new IllegalStateException("微信支付成功结果缺少交易号或人民币金额");
     }
 
     /**
@@ -228,11 +262,12 @@ public class WechatPaymentGateway implements PaymentGateway {
                     .build();
             NotificationParser parser = new NotificationParser((NotificationConfig) config);
             Transaction t = parser.parse(param, Transaction.class);
+            validateMerchant(t);
             boolean paid = t.getTradeState() == Transaction.TradeStateEnum.SUCCESS;
             long cents = t.getAmount() != null && t.getAmount().getTotal() != null ? t.getAmount().getTotal() : 0L;
             return new NotifyResult(true, t.getOutTradeNo(), paid, cents, t.getTransactionId());
         } catch (Exception e) {
-            log.warn("[pay][wechat] 回调验签/解密失败：{}", e.toString());
+            log.warn("[pay][wechat] 回调验签/解密失败 type={}", e.getClass().getSimpleName());
             return new NotifyResult(false, null, false, 0L, null);
         }
     }

@@ -68,7 +68,7 @@ class StudioWorkflowWorkerDistillTest {
         assertFalse(output.path("skillDraft").has("bodyMd"));
         assertFalse(output.has("text"), "the asset library must not file the draft as a text asset");
         verify(h.sink()).save(eq(h.run()), argThat(d -> !d.path("bodyMd").asText("").contains("https://") ));
-        verify(h.credits()).commitHold(anyString(), eq("r"), eq(rate.settle(1000L, 1000L)), anyString());
+        verify(h.credits()).commitHold(anyString(), eq("r"), eq(rate.settle(1000L, 1000L)), anyString(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test void aDraftThatCannotBeSavedFailsTheRunAndRefundsEverything() {
@@ -77,7 +77,7 @@ class StudioWorkflowWorkerDistillTest {
         h.worker().runBlocking("r");
         assertEquals("failed", h.run().getStatus());
         assertEquals("STUDIO_SKILL_NOT_FOUND", h.run().getErrorCode());
-        verify(h.credits(), never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+        verify(h.credits(), never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
         verify(h.credits()).releaseHold(anyString(), eq("r"), anyString());
     }
 
@@ -87,6 +87,6 @@ class StudioWorkflowWorkerDistillTest {
         assertEquals("failed", h.run().getStatus());
         assertEquals("AI_BAD_OUTPUT", h.run().getErrorCode());
         verify(h.sink(), never()).save(any(), any());
-        verify(h.credits(), never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+        verify(h.credits(), never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
     }
 }

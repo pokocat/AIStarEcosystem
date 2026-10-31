@@ -46,14 +46,651 @@ components:
 
   # ── Reusable response wrappers ──────────
   schemas:
+    ModelBillingTargetOption:
+      type: object
+      required:
+      - id
+      - label
+      - channelName
+      - target
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        channelName:
+          type: string
+        target:
+          $ref: '#/components/schemas/ModelBillingTarget'
+    ModelBillingWalletOption:
+      type: object
+      required:
+      - id
+      - userId
+      - displayName
+      - accountType
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        displayName:
+          type: string
+        phone:
+          type: string
+          nullable: true
+        accountType:
+          type: string
+          enum:
+          - personal
+          - enterprise_member
+        enterpriseId:
+          type: string
+          nullable: true
+        enterpriseName:
+          type: string
+          nullable: true
+    ModelBillingUserOption:
+      type: object
+      required: [id, displayName]
+      properties:
+        id:
+          type: string
+        displayName:
+          type: string
+        phone:
+          type: string
+          nullable: true
+    ModelBillingEnterpriseOption:
+      type: object
+      required:
+      - id
+      - name
+      - status
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+    ScopedGrantRequest:
+      type: object
+      required:
+      - walletId
+      - campaignId
+      - amount
+      - expiresAt
+      - requestId
+      - reason
+      properties:
+        walletId:
+          type: string
+          maxLength: 255
+        campaignId:
+          type: string
+          maxLength: 64
+        amount:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        expiresAt:
+          type: string
+          format: date-time
+        requestId:
+          type: string
+          maxLength: 128
+          description: 同一管理员的一次发放保持同一编号；重复提交返回原审批单，内容变化返回 409
+        reason:
+          type: string
+          maxLength: 512
+    CreditAdjustmentRequest:
+      type: object
+      required:
+      - id
+      - type
+      - targetUserId
+      - amount
+      - status
+      - makerId
+      - createdAt
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum:
+          - compensate
+          - grant
+          - scoped_grant
+        targetUserId:
+          type: string
+        reason:
+          type: string
+          nullable: true
+        incidentRef:
+          type: string
+          nullable: true
+        campaignId:
+          type: string
+          nullable: true
+        walletId:
+          type: string
+          nullable: true
+        grantId:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum:
+          - pending_approval
+          - approved
+          - rejected
+        makerId:
+          type: string
+        checkerId:
+          type: string
+          nullable: true
+        ledgerEntryId:
+          type: string
+          nullable: true
+        decideNote:
+          type: string
+          nullable: true
+        amount:
+          type: integer
+          format: int64
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        decidedAt:
+          type: string
+          format: date-time
+          nullable: true
+    ModelBillingTarget:
+      type: object
+      required:
+      - appCode
+      - action
+      - endpointId
+      - providerModel
+      - specKey
+      - unit
+      properties:
+        appCode:
+          type: string
+        action:
+          type: string
+        endpointId:
+          type: string
+        providerModel:
+          type: string
+        specKey:
+          type: string
+          description: 记录实际消费规格供计价与对账；赠款和折扣资格仅按 endpointId 匹配。
+        unit:
+          type: string
+          enum:
+          - image
+          - second
+          - call
+          - ktoken
+          - credit
+    ModelUsage:
+      type: object
+      required: [quantity, outputQuantity]
+      properties:
+        quantity: {type: number, minimum: 0}
+        outputQuantity: {type: number, minimum: 0}
+    ModelBillingApproval:
+      type: object
+      description: 服务端报价返回的精确用途、用量、价格决策版本和普通积分付款上限；不允许客户端指定售价。提交时再次验证，不能跨账户或模型使用。
+      required: [walletId, target, usage, priceVersion, freeOnly, maxWalletCredits]
+      properties:
+        walletId: {type: string, minLength: 1}
+        target: {$ref: '#/components/schemas/ModelBillingTarget'}
+        usage: {$ref: '#/components/schemas/ModelUsage'}
+        priceVersion: {type: string, minLength: 1, maxLength: 256}
+        freeOnly: {type: boolean}
+        maxWalletCredits: {type: integer, minimum: 0, maximum: 9007199254740991}
+    ModelBillingAmounts:
+      type: object
+      required: [scopedCredits, walletCredits]
+      properties:
+        scopedCredits: {type: integer, minimum: 0}
+        walletCredits: {type: integer, minimum: 0}
+    ModelBillingBreakdown:
+      type: object
+      description: 原冻结与成交记录的只读汇总；解除冻结的赠款仍遵守原有效期，到期作废。
+      required: [spent, pending, released]
+      properties:
+        spent: {$ref: '#/components/schemas/ModelBillingAmounts'}
+        pending: {$ref: '#/components/schemas/ModelBillingAmounts'}
+        released: {$ref: '#/components/schemas/ModelBillingAmounts'}
+    ModelBillingQuote:
+      type: object
+      required: [target, usage, standardCredits, discountCredits, payableCredits, scopedCredits, walletCredits, priceVersion, grantAllocations, freeOnly, canAfford, approval]
+      properties:
+        target: {$ref: '#/components/schemas/ModelBillingTarget'}
+        usage: {$ref: '#/components/schemas/ModelUsage'}
+        standardCredits: {type: integer, minimum: 0}
+        discountCredits: {type: integer, minimum: 0}
+        payableCredits: {type: integer, minimum: 0}
+        scopedCredits: {type: integer, minimum: 0}
+        walletCredits: {type: integer, minimum: 0}
+        discountName: {type: string, nullable: true}
+        priceVersion: {type: string}
+        grantAllocations:
+          type: array
+          items:
+            type: object
+            required: [grantId, campaignId, credits]
+            properties:
+              grantId: {type: string}
+              campaignId: {type: string}
+              credits: {type: integer, minimum: 0}
+        freeOnly: {type: boolean}
+        canAfford: {type: boolean}
+        unavailableCode: {type: string, nullable: true}
+        unavailableReason: {type: string, nullable: true}
+        approval: {$ref: '#/components/schemas/ModelBillingApproval'}
+    ModelPriceInput:
+      type: object
+      required:
+      - name
+      - target
+      - unitPrice
+      - active
+      properties:
+        name:
+          type: string
+        target:
+          $ref: '#/components/schemas/ModelBillingTarget'
+        unitPrice:
+          type: number
+          minimum: 0
+        outputUnitPrice:
+          type: number
+          minimum: 0
+          nullable: true
+        active:
+          type: boolean
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+    ModelPrice:
+      type: object
+      required:
+      - name
+      - target
+      - unitPrice
+      - active
+      - id
+      - version
+      - updatedAt
+      properties:
+        name:
+          type: string
+        target:
+          $ref: '#/components/schemas/ModelBillingTarget'
+        unitPrice:
+          type: number
+          minimum: 0
+        outputUnitPrice:
+          type: number
+          minimum: 0
+          nullable: true
+        active:
+          type: boolean
+        id:
+          type: string
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        updatedAt:
+          type: string
+          format: date-time
+    ModelDiscountInput:
+      type: object
+      required:
+      - name
+      - target
+      - audience
+      - factor
+      - startsAt
+      - expiresAt
+      - active
+      properties:
+        name:
+          type: string
+        target:
+          $ref: '#/components/schemas/ModelBillingTarget'
+        audience:
+          type: string
+          enum:
+          - all
+          - user
+          - enterprise
+        audienceId:
+          type: string
+          nullable: true
+        factor:
+          type: number
+          exclusiveMinimum: true
+          minimum: 0
+          maximum: 1
+        allowGrants:
+          deprecated: true
+          description: Eligible endpoint grants are always applied after the best discount.
+          type: boolean
+        startsAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        active:
+          type: boolean
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+    ModelDiscount:
+      type: object
+      required:
+      - name
+      - target
+      - audience
+      - factor
+      - allowGrants
+      - startsAt
+      - expiresAt
+      - active
+      - id
+      - version
+      - updatedAt
+      properties:
+        audienceLabel: { type: string, nullable: true, description: "优惠对象的可读名称" }
+        name:
+          type: string
+        target:
+          $ref: '#/components/schemas/ModelBillingTarget'
+        audience:
+          type: string
+          enum:
+          - all
+          - user
+          - enterprise
+        audienceId:
+          type: string
+          nullable: true
+        factor:
+          type: number
+          exclusiveMinimum: true
+          minimum: 0
+          maximum: 1
+        allowGrants:
+          type: boolean
+        startsAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        active:
+          type: boolean
+        id:
+          type: string
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        updatedAt:
+          type: string
+          format: date-time
+    CreditCampaignInput:
+      type: object
+      required:
+      - name
+      - targets
+      - totalIssueLimit
+      - perWalletIssueLimit
+      - startsAt
+      - expiresAt
+      - active
+      properties:
+        name:
+          type: string
+        targets:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/ModelBillingTarget'
+        totalIssueLimit:
+          type: integer
+          format: int64
+          minimum: 0
+        perWalletIssueLimit:
+          type: integer
+          format: int64
+          minimum: 0
+        resourceLimit:
+          deprecated: true
+          type: number
+          minimum: 0
+        perWalletDailyResourceLimit:
+          deprecated: true
+          type: number
+          minimum: 0
+        maxConcurrentPerWallet:
+          deprecated: true
+          type: integer
+          minimum: 1
+          maximum: 100
+        startsAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        active:
+          type: boolean
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+    CreditCampaign:
+      type: object
+      required:
+      - name
+      - targets
+      - totalIssueLimit
+      - perWalletIssueLimit
+      - resourceLimit
+      - perWalletDailyResourceLimit
+      - maxConcurrentPerWallet
+      - startsAt
+      - expiresAt
+      - active
+      - id
+      - version
+      - updatedAt
+      - issued
+      - resourceReserved
+      - resourceUsed
+      properties:
+        name:
+          type: string
+        targets:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/ModelBillingTarget'
+        totalIssueLimit:
+          type: integer
+          format: int64
+          minimum: 0
+        perWalletIssueLimit:
+          type: integer
+          format: int64
+          minimum: 0
+        resourceLimit:
+          type: number
+          minimum: 0
+        perWalletDailyResourceLimit:
+          type: number
+          minimum: 0
+        maxConcurrentPerWallet:
+          type: integer
+          minimum: 1
+          maximum: 100
+        startsAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        active:
+          type: boolean
+        id:
+          type: string
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        updatedAt:
+          type: string
+          format: date-time
+        issued:
+          type: integer
+          format: int64
+          minimum: 0
+        resourceReserved:
+          type: number
+          minimum: 0
+        resourceUsed:
+          type: number
+          minimum: 0
+    ModelGrantConversionLine:
+      type: object
+      description: 通用积分转模型赠款的单个客户。只动赠送与激活码积分，充值积分不参与。
+      required: [userId, walletId, displayName, phone, giftBalance, licenseBalance, rechargeBalance, totalBalance, keep, amount, status, message]
+      properties:
+        userId: {type: string}
+        walletId: {type: string, nullable: true}
+        displayName: {type: string, nullable: true}
+        phone: {type: string, nullable: true}
+        giftBalance: {type: integer, format: int64}
+        licenseBalance: {type: integer, format: int64}
+        rechargeBalance: {type: integer, format: int64}
+        totalBalance: {type: integer, format: int64}
+        keep: {type: integer, format: int64, minimum: 0}
+        amount: {type: integer, format: int64, minimum: 0, description: 本次转入赠款的积分}
+        status: {type: string, enum: [ready, nothing, converted, already, failed]}
+        message: {type: string, nullable: true}
+    ModelGrantConversionRequest:
+      type: object
+      required: [requestId, campaignId, keep, validDays, userIds, reason]
+      properties:
+        requestId: {type: string, pattern: '^[A-Za-z0-9_-]{8,64}$', description: 重试用同一个编号；本批已转换的客户跳过，不重复扣}
+        campaignId: {type: string}
+        keep: {type: integer, format: int64, minimum: 0}
+        validDays: {type: integer, minimum: 1, maximum: 365}
+        userIds: {type: array, maxItems: 200, items: {type: string}}
+        reason: {type: string, maxLength: 200}
+    ScopedCreditGrant:
+      type: object
+      required:
+      - id
+      - walletId
+      - campaignId
+      - campaignName
+      - targets
+      - targetLabels
+      - campaignActive
+      - amount
+      - available
+      - frozen
+      - spent
+      - expired
+      - expiresAt
+      - createdAt
+      properties:
+        id:
+          type: string
+        walletId:
+          type: string
+        campaignId:
+          type: string
+        campaignName:
+          type: string
+        targets:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModelBillingTarget'
+        targetLabels:
+          type: array
+          items:
+            type: string
+        campaignActive:
+          type: boolean
+        amount:
+          type: integer
+          format: int64
+          minimum: 0
+        available:
+          type: integer
+          format: int64
+          minimum: 0
+        frozen:
+          type: integer
+          format: int64
+          minimum: 0
+        spent:
+          type: integer
+          format: int64
+          minimum: 0
+        expired:
+          type: integer
+          format: int64
+          minimum: 0
+        expiresAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+    DirectorScriptImportResult:
+      type: object
+      required: [text, format]
+      properties:
+        text: { type: string, description: 已提取的可编辑正文，不限字数（2026-10-29 取消 6 万字），不静默截断 }
+        format: { type: string, enum: [pdf, doc, docx, ppt, pptx, rtf, html, htm, txt, md, markdown, csv, tsv, json, xml, yaml, yml, log, srt, vtt] }
     DirectorWorkSummary:
       type: object
       description: '见 packages/types/src/director.ts DirectorWorkSummary。'
       properties: { id: { type: string }, title: { type: string }, episodeCount: { type: integer }, assetCount: { type: integer }, clipCount: { type: integer }, boardCount: { type: integer }, videoCount: { type: integer }, hasScript: { type: boolean }, running: { type: boolean }, updatedAt: { type: string, format: date-time }, coverUrl: { type: string, nullable: true } }
+    DirectorTrashedWork:
+      type: object
+      description: '回收站里的一项：DirectorWorkSummary 加删除时间；running 恒为 false。见 packages/types/src/director.ts DirectorTrashedWork。'
+      allOf: [{ $ref: '#/components/schemas/DirectorWorkSummary' }]
+      properties: { deletedAt: { type: string, format: date-time } }
     DirectorWork:
       type: object
       description: '服务端拥有的导演作品（docs/ai-director-plan.md §10.3）；完整形状见 packages/types/src/director.ts DirectorWork。媒体只存 key，url 为出 wire 时的短期签名。'
-      properties: { id: { type: string }, title: { type: string }, revision: { type: integer }, draft: { type: string }, draftRev: { type: integer }, settings: { type: object }, episodes: { type: array, items: { type: object } }, assets: { type: array, items: { type: object } }, clips: { type: array, items: { type: object } }, pipeline: { type: object, nullable: true }, tasks: { type: array, items: { type: object } }, pricing: { type: object }, textModels: { type: array, items: { type: object }, description: Studio 文本候选及各自的 Token 售价 }, textModelMode: { type: string, enum: [fixed, selectable] }, videoModels: { type: array, items: { type: object } }, videoLimits: { type: object, nullable: true } }
+      properties: { id: { type: string }, title: { type: string }, revision: { type: integer }, draft: { type: string }, draftRev: { type: integer }, settings: { type: object }, episodes: { type: array, items: { type: object } }, assets: { type: array, items: { type: object } }, clips: { type: array, items: { type: object } }, pipeline: { type: object, nullable: true }, tasks: { type: array, items: { type: object } }, pricing: { type: object }, imageModels: { type: array, description: '可以新选的图片模型：出图规格覆盖 1:1、16:9、9:16', items: { type: object, properties: { id: { type: string }, name: { type: string }, isDefault: { type: boolean }, creditCost: { type: integer } } } }, imageModelState: { type: object, description: '作品实际会用的图片模型（存着的或默认的）：available=false 为停用或不再开放；missingRatios 为出图规格缺的比例，对应画面出不了', properties: { id: { type: string, nullable: true }, name: { type: string, nullable: true }, explicit: { type: boolean }, available: { type: boolean }, creditCost: { type: integer, nullable: true }, missingRatios: { type: array, items: { type: string } } } }, textModels: { type: array, items: { type: object }, description: Studio 文本候选（不含展示用价格；文字按实际用量结算） }, textModelMode: { type: string, enum: [fixed, selectable] }, videoModels: { type: array, items: { type: object } }, videoLimits: { type: object, nullable: true }, reference: { type: string, description: '设定资料：拆分时从剧本开头分出来的内容，不拍成画面，提取资产和写分镜脚本时作为参考' }, referenceRev: { type: integer }, pendingSplit: { type: object, nullable: true, description: '待确认的分集（id、source=headings|model、preamble、episodes[{title,summary,startParagraph,endParagraph,paragraphs,chars,head,tail}]、notes、warnings）' }, canUndoSplit: { type: boolean }, restoredAt: { type: string, format: date-time, nullable: true, description: '最近一次从回收站恢复的时间，没恢复过为 null；有值时前端打开作品不自动发起付费任务（如创意对话开场）' }, draftEpisodeHeadings: { type: integer, description: '拆分前剧本里标好的「第N集」标题数，≥2 时按标题分集不扣积分' } }
 
     StudioVideoEffect:
       type: object
@@ -107,10 +744,16 @@ components:
           type: boolean
           nullable: true
           description: 'false =「按原文生成」，请厂商出片前不改写描述（聚算 H3 公开契约 optimizePrompt）；省略 = 模型默认。只有 supportsPromptOptimization 的模型可带，否则 400 STUDIO_VIDEO_OPTION_UNSUPPORTED。不改变价格。'
+        rewrite:
+          type: string
+          nullable: true
+          enum: [auto, review]
+          description: '智能优化（2026-10-27）：提交前先用后台「视频提示词优化」（DAP_VIDEO_PROMPT）绑定的模型按 MiniMax H3 官方写法把提示词改写成英文（台词保留原文），厂商自己的改写关掉。返回的这一行先是改写任务（stage prompt.optimizing，按实际 Token 结算），改写完在同一行上提交视频（之后按视频任务投影，output.videoPrompt 为发出的英文与提示）。auto = 改写完直接出片，没改成或太长按原文出片并写 output.videoPromptNotes；review = 没有提示才出片，有提示（output.needsChoice）或没改成（AI_BAD_OUTPUT，不扣费）都不出片，等用户另发一次（用优化稿：prompt 为英文、optimizePrompt=false；用原文：optimizePrompt=false）。只有 supportsPromptOptimization 的模型可带，否则 400 STUDIO_VIDEO_OPTION_UNSUPPORTED；优化绑定模型未配按量售价 503 AI_TOKEN_PRICE_NOT_CONFIGURED。视频价格（maxCost）不含改写。'
     StudioRunRequest:
       type: object
       required: [clientRequestId, nodeId, operation, prompt]
       properties:
+        modelBilling: {$ref: '#/components/schemas/ModelBillingApproval'}
         clientRequestId: {type: string, minLength: 1, maxLength: 64}
         nodeId: {type: string, minLength: 1, maxLength: 64}
         operation: {type: string, enum: [text, script, storyboard, image, video, assemble, assistant, recreation, check]}
@@ -448,6 +1091,7 @@ components:
               tradeoffs: { type: array, items: { type: string } }
               requiredCapabilities: { type: array, items: { type: string } }
         recommendedApproachId: { type: string, nullable: true }
+        materialNodeIds: { type: array, nullable: true, maxItems: 16, items: { type: string }, description: '技能计划可选：后续阶段要用、本阶段步骤没直接引用的画布素材（如分析阶段写下替换人物的设定图）。属于方案正文、计入指纹，确认后并入这次制作的素材范围。' }
         confirmedApproachId: { type: string, nullable: true, description: 服务端按用户确认绑定。 }
         budget:
           type: object
@@ -800,6 +1444,17 @@ components:
               acceptedCandidateIndex: { type: integer, nullable: true }
               nodeId: { type: string, nullable: true, description: 这一步结果所在的画布节点：确认时绑定的已有对象（§6.1），否则是它自己的输出节点 <executionId>-<a|p>-<stepId>。生成任务的 node_id 与 node.upsert 都用它。 }
               reason: { type: string, nullable: true }
+              materials:
+                type: array
+                nullable: true
+                description: '「编排制作计划」因为用了这次制作没带上的画布素材而停下时，列出这些素材（STUDIO_PLAN_MATERIAL_OUT_OF_SCOPE）。客户端据此提供「在画布上看」「加入这次制作，重新编排」「不用它，重新编排」。'
+                items:
+                  type: object
+                  required: [nodeId, title, onCanvas]
+                  properties:
+                    nodeId: { type: string }
+                    title: { type: string, description: 画布上的标题，可能为空 }
+                    onCanvas: { type: boolean, description: false 表示已从画布删除，不能加入 }
         budgets:
           type: array
           items:
@@ -841,6 +1496,7 @@ components:
       properties:
         clientRequestId: { type: string, minLength: 1, maxLength: 64 }
         expectedStatus: { type: string, enum: [running, paused, needs_user, done, partial, failed, canceled], nullable: true }
+        addMaterialNodeIds: { type: array, nullable: true, maxItems: 16, items: { type: string }, description: '只用于 resume：把停下那一步 materials 里、仍在画布上的素材加入这次制作再重新编排。不在 materials 里或已删除 → 400 STUDIO_INPUT_INVALID；加入后超过 16 个 → 400 STUDIO_CONTEXT_LIMIT；其它操作带它 → 400。同一 clientRequestId 带不同的列表 → 409 STUDIO_REQUEST_CHANGED。' }
     StudioPlanExecutionAcceptRequest:
       type: object
       required: [clientRequestId, runId]
@@ -2537,7 +3193,7 @@ components:
         不可变流水分类。所有钱包余额变更必须走 ledger，禁止直接 UPDATE 余额列。
         覆盖 server LedgerEntry.LedgerEntryType，包含资金面退款与企业内部划拨；
         freeze/unfreeze 是 hold/release 生命周期事件，spend 是 commitHold 真扣。
-      enum: [license_grant, recharge, refund, income, gift, spend, withdraw, freeze, unfreeze, adjust, refund_cash, transfer_in, transfer_out]
+      enum: [license_grant, recharge, refund, income, gift, spend, withdraw, freeze, unfreeze, adjust, refund_cash, transfer_in, transfer_out, scoped_grant, scoped_freeze, scoped_spend, scoped_release, scoped_expire]
 
     LedgerEntry:
       type: object
@@ -2552,6 +3208,10 @@ components:
       - description
       - createdAt
       properties:
+        grantId:
+          type: string
+          nullable: true
+          description: 专享批次编号；非空时 balanceAfter 为该批次可用额度，不是钱包余额。
         id:
           type: string
         walletId:
@@ -4180,6 +4840,7 @@ components:
         name: { type: string, maxLength: 128 }
         templateId: { type: string, nullable: true, description: '来源模板 id；空 = 空白画布' }
         templateVersionId: { type: string, nullable: true, description: '创建时锁定的不可变发布版本' }
+        sceneId: { type: string, nullable: true, description: '从哪个场景页建的草稿（AI 图片 / AI 视频的场景编号，见 GET /v1/ip-studio/scenes）；普通画布为空。V72。' }
         status: { type: string, enum: [draft, published] }
         coverUrl: { type: string, nullable: true, description: '主形象选中图的短期签名 URL。DB 真值是 coverKey（§4.7.4），URL 出 wire 时才派生。' }
         publishedAvatarId: { type: string, nullable: true, example: DH-51234 }
@@ -4245,6 +4906,7 @@ components:
         output:
           type: object
           properties:
+            billingBreakdown: { $ref: '#/components/schemas/ModelBillingBreakdown' }
             mock: { type: boolean, description: '本地 fixture 返回标识；生产禁用' }
             recreation: { $ref: '#/components/schemas/StudioRecreationReport' }
             filmStudy: { $ref: '#/components/schemas/StudioFilmStudy' }
@@ -4494,6 +5156,155 @@ components:
         pendingCredits: { type: integer }
         packages: { type: integer }
         archivedAssets: { type: integer }
+    StudioSceneGroup:
+      type: object
+      required: [id, title]
+      properties: { id: { type: string }, title: { type: string } }
+    StudioSceneRef:
+      type: object
+      required: [label, required]
+      properties: { label: { type: string }, required: { type: boolean }, hint: { type: string, nullable: true } }
+    StudioSceneSlot:
+      type: object
+      required: [label, required]
+      properties: { label: { type: string }, required: { type: boolean }, max: { type: integer, nullable: true } }
+    StudioSceneOptionGroup:
+      type: object
+      description: '场景选项组（照参考站）：用户点选，选中项那句话由 compose 拼进描述 / 要求。每个场景最多 4 组。'
+      required: [key, label, choices, defaultValue]
+      properties:
+        key: { type: string, example: presenter }
+        label: { type: string, example: 出镜方式 }
+        defaultValue: { type: string, example: person }
+        choices:
+          type: array
+          minItems: 2
+          maxItems: 8
+          items: { type: object, required: [value, label, prompt], properties: { value: { type: string }, label: { type: string }, prompt: { type: string, description: '选中后拼进描述的话' } } }
+    StudioSceneHomeGoal:
+      type: object
+      required: [id, title, description, sceneId]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        description: { type: string }
+        sceneId: { type: string, description: '点进去落到的场景' }
+        covers: { type: array, nullable: true, maxItems: 2, items: { type: string }, description: '两张封面取这两个场景的封面' }
+    StudioSceneHomeCard:
+      type: object
+      description: '首页卡片对外的样子（公开只读）：只有显示用的字段。'
+      required: [id, title, description, sceneId, kind, covers]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        description: { type: string }
+        sceneId: { type: string }
+        kind: { type: string, enum: [image, video] }
+        covers: { type: array, items: { type: object, required: [sceneId], properties: { sceneId: { type: string }, coverUrl: { type: string, nullable: true } } } }
+    StudioSceneMedia:
+      type: object
+      required: [url, mediaType]
+      properties: { url: { type: string, description: '由 key 签出的短期地址' }, mediaType: { type: string, enum: [image, video] } }
+    StudioImageScene:
+      type: object
+      required: [id, group, title, description, refs, prompt, hint, ratio]
+      properties:
+        enabled: { type: boolean, nullable: true, description: '后台：false = 下架（用户端不下发）' }
+        coverKey: { type: string, nullable: true, description: '后台：封面存储 key（ipstudio_scene/catalog/ 下）；用户端不下发' }
+        exampleKeys: { type: array, nullable: true, items: { type: string }, description: '后台：参考示例 key，最多 6 个；用户端不下发' }
+        coverUrl: { type: string, nullable: true, description: '封面签名地址；为空时前端用随包封面（按编号）' }
+        examples: { type: array, nullable: true, items: { $ref: '#/components/schemas/StudioSceneMedia' } }
+        options: { type: array, nullable: true, items: { $ref: '#/components/schemas/StudioSceneOptionGroup' } }
+        id: { type: string, example: face-turnaround }
+        group: { type: string }
+        title: { type: string }
+        description: { type: string }
+        refs: { type: array, items: { $ref: '#/components/schemas/StudioSceneRef' }, description: '参考图位，按顺序是图1、图2…' }
+        prompt: { type: string, description: '场景写好的描述；界面只显示场景标签，用户写补充要求' }
+        hint: { type: string }
+        ratio: { type: string, example: '3:4' }
+    StudioVideoScene:
+      type: object
+      required: [id, group, title, description, images, character, voice, placeholder, textRequired, durations, duration, ratio, structure, ideas, skill]
+      properties:
+        enabled: { type: boolean, nullable: true, description: '后台：false = 下架（用户端不下发）' }
+        coverKey: { type: string, nullable: true }
+        exampleKeys: { type: array, nullable: true, items: { type: string } }
+        coverUrl: { type: string, nullable: true }
+        examples: { type: array, nullable: true, items: { $ref: '#/components/schemas/StudioSceneMedia' } }
+        options: { type: array, nullable: true, items: { $ref: '#/components/schemas/StudioSceneOptionGroup' } }
+        id: { type: string, example: ecom-talking }
+        group: { type: string }
+        title: { type: string }
+        description: { type: string }
+        images: { $ref: '#/components/schemas/StudioSceneSlot' }
+        video: { allOf: [{ $ref: '#/components/schemas/StudioSceneSlot' }], nullable: true }
+        character: { type: boolean }
+        voice: { type: boolean }
+        placeholder: { type: string }
+        textRequired: { type: boolean }
+        durations: { type: array, items: { type: integer }, description: '交给创作助手分段做时的可选时长；编导一次出片的时长由所选视频模型决定' }
+        duration: { type: integer }
+        ratio: { type: string, enum: ['9:16', '16:9'] }
+        structure: { type: string, description: '拍法：编导写脚本和助手出方案都按它' }
+        ideas: { type: array, items: { type: string } }
+        skill: { type: string, enum: [video-generation, reference-video-recreation], description: 'reference-video-recreation（爆款复刻）要先拉片，只走创作助手' }
+        brief: { allOf: [{ $ref: '#/components/schemas/StudioSceneBrief' }], nullable: true }
+    StudioSceneBrief:
+      type: object
+      required: [goal, facts]
+      description: 这类视频要做到什么、要用户给哪些信息。编导缺必填信息时正文第一行写「还缺：……」并用【待补：……】占位，助手直接问；没有 brief 的场景照旧「只引导关注或下单」
+      properties:
+        goal: { type: string, maxLength: 60 }
+        facts:
+          type: array
+          maxItems: 6
+          items:
+            type: object
+            required: [label, required]
+            properties:
+              label: { type: string, maxLength: 16 }
+              required: { type: boolean, description: '最多 4 条必填' }
+              use: { type: string, nullable: true, maxLength: 24, description: '怎么用，如「有原价才做对比」' }
+        ending: { type: string, nullable: true, maxLength: 40 }
+        fiction: { type: string, nullable: true, enum: [none, story], description: 'none 只用用户给的、不编人物经历；story（缺省）可以编人物和情节，不能编品牌事实' }
+    StudioSceneCatalog:
+      type: object
+      required: [version, imageGroups, videoGroups, image, video]
+      properties:
+        version: { type: integer }
+        imageGroups: { type: array, items: { $ref: '#/components/schemas/StudioSceneGroup' } }
+        videoGroups: { type: array, items: { $ref: '#/components/schemas/StudioSceneGroup' } }
+        image: { type: array, items: { $ref: '#/components/schemas/StudioImageScene' } }
+        video: { type: array, items: { $ref: '#/components/schemas/StudioVideoScene' } }
+        homeGoals: { type: array, nullable: true, maxItems: 12, items: { $ref: '#/components/schemas/StudioSceneHomeGoal' }, description: '首页「你想做什么？」卡片；用户端只下发落点场景还上架的' }
+    StudioSceneComposeRequest:
+      type: object
+      required: [kind, sceneId]
+      properties:
+        kind: { type: string, enum: [image, video, video-script], description: 'image 出图描述；video 交给创作助手的话；video-script 交给编导写脚本的要求（AI 视频页）' }
+        sceneId: { type: string }
+        text: { type: string, description: 'image：补充要求；video / video-script：用户写的那句' }
+        custom: { type: string, description: 'image：用户改过的完整描述' }
+        filled: { type: array, items: { type: integer }, description: 'image：放了图的参考图位（从 0 起）' }
+        imageTitles: { type: array, items: { type: string } }
+        characterTitle: { type: string }
+        voiceTitle: { type: string }
+        videoTitle: { type: string }
+        duration: { type: integer, description: 'video：须在场景 durations 内；video-script：1–120，前端按所选视频模型给' }
+        ratio: { type: string }
+        language: { type: string, description: 'video-script：台词语言，默认中文' }
+        revision: { type: string, description: 'video-script：对上一版脚本的修改意见；有它时剧情类场景可以不写 text' }
+        options: { type: object, additionalProperties: { type: string }, description: '选项组：组 key → 选项 value；没给的组取默认；不认识的 400' }
+        seenTitles: { type: array, items: { type: string }, description: 'video-script：放了但所选视频模型用不上的场景图，只给编导看、脚本里用文字写；imageTitles 只放会交给视频模型的（编号图1、图2）。必填检查两者合计' }
+        characterSeen: { type: boolean, description: 'video-script：出镜人物这张视频模型也用不上' }
+        visual: { type: boolean, description: 'video-script：写脚本的模型能否看到图；false 时要求里不说「已附图片」「先看图」。缺省按能看到' }
+    StudioSceneComposed:
+      type: object
+      required: [text]
+      properties:
+        text: { type: string, description: 'image：出图描述；video：交给助手的话；video-script：写脚本的要求（作为 operation=text 任务的 prompt）' }
+        skillKey: { type: string, nullable: true, description: 'video：该场景的方法，第一句带上它发出' }
     IpTemplate:
       type: object
       required: [id, name, summary, lookCount, estimatedCredits, doc]
@@ -4971,6 +5782,8 @@ components:
       description: 提交一条生成任务。没有任何价格字段 —— 价格只由服务端按 VideoStudioPricing 算。
       required: [mode, prompt, resolutionTier, aspectRatio, seconds]
       properties:
+        clientRequestId: { type: string, nullable: true, minLength: 8, maxLength: 128, description: 同一次提交与结果不明的重试复用原编号，使用 modelBilling 时必填 }
+        modelBilling: { $ref: '#/components/schemas/ModelBillingApproval' }
         endpointId: { type: string, nullable: true, description: 省略 = 默认端点；selectableById=false 的模型必须省略 }
         mode: { $ref: '#/components/schemas/VideoStudioMode' }
         prompt: { type: string, description: 必填与否取自所选模式 promptRequired；上限取自所选模型 contract.promptMaxChars }
@@ -5003,6 +5816,7 @@ components:
                  progressPct, stage, inputs, videoUrl, thumbnailUrl, errorMessage, credits, originalPrompt, templateId,
                  createdAt, completedAt]
       properties:
+        billingBreakdown: { allOf: [{ $ref: '#/components/schemas/ModelBillingBreakdown' }], nullable: true }
         id: { type: string }
         mode: { $ref: '#/components/schemas/VideoStudioMode' }
         prompt: { type: string }
@@ -5511,6 +6325,7 @@ components:
       type: object
       required: [found]
       properties:
+        modelBilling: {$ref: '#/components/schemas/ModelBillingApproval'}
         found: {type: boolean}
         billing: {$ref: '#/components/schemas/EnterpriseBillingSelection', nullable: true}
     EnterpriseLifecyclePreviewRequest:
@@ -5600,6 +6415,7 @@ components:
     IpRunNodeRequest:
       type: object
       properties:
+        modelBilling: {$ref: '#/components/schemas/ModelBillingApproval'}
         doc:
           $ref: '#/components/schemas/IpProjectDoc'
         billing:
@@ -5621,6 +6437,7 @@ components:
       - nodeId
       - prompt
       properties:
+        modelBilling: {$ref: '#/components/schemas/ModelBillingApproval'}
         nodeId:
           type: string
         prompt:
@@ -5652,6 +6469,7 @@ components:
     IpVideoRequest:
       type: object
       properties:
+        modelBilling: {$ref: '#/components/schemas/ModelBillingApproval'}
         prompt:
           type: string
         refKey:
@@ -5678,6 +6496,784 @@ components:
           description: 本次确认的最高总积分；价格超出时409，先重新确认
 
 paths:
+  /admin/model-billing/targets:
+    get:
+      tags:
+      - admin-finance
+      operationId: adminModelBillingTargets
+      summary: 读取已接入计费的可配置模型规格；限后台管理员/运营/财务
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ModelBillingTargetOption'
+  /admin/model-billing/wallet-options:
+    get:
+      tags:
+      - admin-finance
+      operationId: adminModelBillingWalletOptions
+      summary: 搜索个人和企业成员消费账户（不返回企业资金账户）；限后台管理员/运营/财务
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ModelBillingWalletOption'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+      parameters:
+      - name: q
+        in: query
+        schema:
+          type: string
+          maxLength: 128
+      - name: page
+        in: query
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+      - name: size
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+      - name: accountType
+        in: query
+        schema:
+          type: string
+          enum:
+          - personal
+          - enterprise_member
+  /admin/model-billing/user-options:
+    get:
+      tags:
+      - admin-finance
+      operationId: adminModelBillingUserOptions
+      summary: 搜索未注销的个人优惠对象（不要求已创建钱包）；限后台管理员/运营/财务
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ModelBillingUserOption'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+      parameters:
+      - name: q
+        in: query
+        schema:
+          type: string
+          maxLength: 128
+      - name: page
+        in: query
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+      - name: size
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+  /admin/model-billing/enterprise-options:
+    get:
+      tags:
+      - admin-finance
+      operationId: adminModelBillingEnterpriseOptions
+      summary: 搜索企业优惠对象；限后台管理员/运营/财务
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ModelBillingEnterpriseOption'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+      parameters:
+      - name: q
+        in: query
+        schema:
+          type: string
+          maxLength: 128
+      - name: page
+        in: query
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+      - name: size
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+  /admin/model-billing/prices:
+    get:
+      operationId: listModelPrices
+      tags:
+      - model-billing
+      parameters:
+      - in: query
+        name: page
+        schema:
+          type: integer
+          default: 0
+          minimum: 0
+      - in: query
+        name: size
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+          maximum: 100
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - success
+                - data
+                - pagination
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ModelPrice'
+                  pagination:
+                    type: object
+                    required:
+                    - page
+                    - limit
+                    - total
+                    - totalPages
+                    - hasNext
+                    - hasPrev
+                    properties:
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      total:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                      totalPages:
+                        type: integer
+                      hasNext:
+                        type: boolean
+                      hasPrev:
+                        type: boolean
+        '403':
+          description: 无后台读取权限
+    post:
+      operationId: createModelPrice
+      deprecated: true
+      tags:
+      - model-billing
+      description: 仅 SUPER_ADMIN / OPERATOR；保存与审计在同一事务。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelPriceInput'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - success
+                - data
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/ModelPrice'
+        '400':
+          description: 配置无效
+        '403':
+          description: 无配置权限
+  /admin/model-billing/prices/{id}:
+    put:
+      operationId: updateModelPrice
+      deprecated: true
+      tags:
+      - model-billing
+      description: 须带 expectedVersion；冲突不覆盖。已冻结任务继续原快照。
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelPriceInput'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - success
+                - data
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/ModelPrice'
+        '400':
+          description: 配置无效
+        '403':
+          description: 无配置权限
+        '404':
+          description: 配置不存在
+        '409':
+          description: 配置版本冲突
+  /admin/model-billing/discounts:
+    get:
+      operationId: listModelDiscounts
+      tags:
+      - model-billing
+      parameters:
+      - in: query
+        name: page
+        schema:
+          type: integer
+          default: 0
+          minimum: 0
+      - in: query
+        name: size
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+          maximum: 100
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - success
+                - data
+                - pagination
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ModelDiscount'
+                  pagination:
+                    type: object
+                    required:
+                    - page
+                    - limit
+                    - total
+                    - totalPages
+                    - hasNext
+                    - hasPrev
+                    properties:
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      total:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                      totalPages:
+                        type: integer
+                      hasNext:
+                        type: boolean
+                      hasPrev:
+                        type: boolean
+        '403':
+          description: 无后台读取权限
+    post:
+      operationId: createModelDiscount
+      tags:
+      - model-billing
+      description: 仅 SUPER_ADMIN / OPERATOR；保存与审计在同一事务。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelDiscountInput'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - success
+                - data
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/ModelDiscount'
+        '400':
+          description: 配置无效
+        '403':
+          description: 无配置权限
+  /admin/model-billing/discounts/{id}:
+    put:
+      operationId: updateModelDiscount
+      tags:
+      - model-billing
+      description: 须带 expectedVersion；冲突不覆盖。已冻结任务继续原快照。
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelDiscountInput'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - success
+                - data
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/ModelDiscount'
+        '400':
+          description: 配置无效
+        '403':
+          description: 无配置权限
+        '404':
+          description: 配置不存在
+        '409':
+          description: 配置版本冲突
+  /admin/model-billing/campaigns:
+    get:
+      operationId: listCreditCampaigns
+      tags:
+      - model-billing
+      parameters:
+      - in: query
+        name: page
+        schema:
+          type: integer
+          default: 0
+          minimum: 0
+      - in: query
+        name: size
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+          maximum: 100
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - success
+                - data
+                - pagination
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CreditCampaign'
+                  pagination:
+                    type: object
+                    required:
+                    - page
+                    - limit
+                    - total
+                    - totalPages
+                    - hasNext
+                    - hasPrev
+                    properties:
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      total:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                      totalPages:
+                        type: integer
+                      hasNext:
+                        type: boolean
+                      hasPrev:
+                        type: boolean
+        '403':
+          description: 无后台读取权限
+    post:
+      operationId: createCreditCampaign
+      tags:
+      - model-billing
+      description: 仅 SUPER_ADMIN / OPERATOR；保存与审计在同一事务。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreditCampaignInput'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - success
+                - data
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/CreditCampaign'
+        '400':
+          description: 配置无效
+        '403':
+          description: 无配置权限
+  /admin/model-billing/conversions/candidates:
+    get:
+      operationId: listModelGrantConversionCandidates
+      tags: [model-billing]
+      description: 最近 N 天有已批准赠送 / 补偿单的客户，按保留额算出可转换积分。只读。
+      parameters:
+      - in: query
+        name: days
+        schema: {type: integer, default: 3, minimum: 1, maximum: 90}
+      - in: query
+        name: keep
+        schema: {type: integer, format: int64, default: 1000, minimum: 0}
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ModelGrantConversionLine'
+        '403':
+          description: 仅 SUPER_ADMIN
+  /admin/model-billing/conversions/preview:
+    post:
+      operationId: previewModelGrantConversion
+      tags: [model-billing]
+      description: 只读预览指定客户的可转换积分。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userIds, keep]
+              properties:
+                userIds: {type: array, maxItems: 200, items: {type: string}}
+                keep: {type: integer, format: int64, minimum: 0}
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ModelGrantConversionLine'
+        '403':
+          description: 仅 SUPER_ADMIN
+  /admin/model-billing/conversions:
+    post:
+      operationId: convertToModelGrant
+      tags: [model-billing]
+      description: 仅 SUPER_ADMIN。每个客户独立事务：扣赠送 / 激活码积分（ADJUST 账本）并发同额模型赠款；单个失败只回滚该客户。同 requestId 幂等。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelGrantConversionRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ModelGrantConversionLine'
+        '403':
+          description: 仅 SUPER_ADMIN
+  /admin/model-billing/campaigns/{id}:
+    put:
+      operationId: updateCreditCampaign
+      tags:
+      - model-billing
+      description: 须带 expectedVersion；冲突不覆盖。已冻结任务继续原快照。
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreditCampaignInput'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - success
+                - data
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/CreditCampaign'
+        '400':
+          description: 配置无效
+        '403':
+          description: 无配置权限
+        '404':
+          description: 配置不存在
+        '409':
+          description: 配置版本冲突
+  /admin/model-billing/grants:
+    get:
+      operationId: listScopedCreditGrants
+      tags:
+      - model-billing
+      parameters:
+      - in: query
+        name: walletId
+        required: true
+        schema:
+          type: string
+      - in: query
+        name: page
+        schema:
+          type: integer
+          default: 0
+          minimum: 0
+      - in: query
+        name: size
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+          maximum: 100
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - success
+                - data
+                - pagination
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ScopedCreditGrant'
+                  pagination:
+                    type: object
+                    required:
+                    - page
+                    - limit
+                    - total
+                    - totalPages
+                    - hasNext
+                    - hasPrev
+                    properties:
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      total:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                      totalPages:
+                        type: integer
+                      hasNext:
+                        type: boolean
+                      hasPrev:
+                        type: boolean
+        '403':
+          description: 无后台读取权限
+  /me/model-credits:
+    get:
+      operationId: getMyScopedCreditGrants
+      tags:
+      - model-billing
+      description: 仅本人个人钱包或本人当前企业成员钱包；不接受任意 walletId。专享余额不计入通用积分。campaignActive 与 expiresAt 决定新任务可否使用，已冻结按原快照结算。
+      parameters:
+      - in: query
+        name: enterpriseId
+        schema:
+          type: string
+      - in: query
+        name: page
+        schema:
+          type: integer
+          default: 0
+          minimum: 0
+      - in: query
+        name: size
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+          maximum: 100
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - success
+                - data
+                - pagination
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ScopedCreditGrant'
+                  pagination:
+                    type: object
+                    required:
+                    - page
+                    - limit
+                    - total
+                    - totalPages
+                    - hasNext
+                    - hasPrev
+                    properties:
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      total:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                      totalPages:
+                        type: integer
+                      hasNext:
+                        type: boolean
+                      hasPrev:
+                        type: boolean
+        '401':
+          description: 未登录
+        '403':
+          description: 不可访问该企业
   /service/model-management/v1/command:
     post:
       operationId: platformModelManagementCommand
@@ -9513,6 +11109,37 @@ paths:
       summary: 对账重算（v2 §11，限 FINANCE_ADMIN / SUPER_ADMIN）—— 现金勾稽（排除影子）+ 积分负债单列 + drift 告警
       responses: { '200': { description: "ReconciliationReport（grossRecharge/netCashCredits/drift/balanced/creditLiability …）" } }
 
+  /admin/studio-operations:
+    get:
+      tags: [admin-finance]
+      operationId: adminStudioOperationsDashboard
+      summary: Studio 积分与生成运营看板一期聚合（只读；后台角色）
+      parameters:
+        - { in: query, name: days, schema: { type: integer, enum: [1, 7, 30], default: 7 } }
+      responses: { '200': { description: "健康、经营消耗、发出积分摘要、消费用户与真实到账、导演台推进快照、生成与供应商技术指标（24h/7d/30d 成功率、半小时分桶、产物数、供应商异常）；未接入字段显式标记 unavailable" } }
+  /admin/studio-operations/reconciliation-details:
+    get:
+      tags: [admin-finance]
+      operationId: adminStudioOperationsReconciliationDetails
+      summary: A–I 非零对账项的脱敏分页明细（只读）
+      parameters:
+        - { in: query, name: check, required: true, schema: { type: string, enum: [A, B, C, D, E, F, G, H, I] } }
+        - { in: query, name: page, schema: { type: integer, minimum: 0, default: 0 } }
+        - { in: query, name: size, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses: { '200': { description: "脱敏后的异常账户 / 冻结 / 赠款 / 扣费定位字段" } }
+  /admin/studio-operations/credit-events:
+    get:
+      tags: [admin-finance]
+      operationId: adminStudioOperationsCreditEvents
+      summary: Studio 发出积分记录筛选与分页（只读，所有自由文本手机号打码）
+      parameters:
+        - { in: query, name: days, schema: { type: integer, enum: [1, 7, 30], default: 7 } }
+        - { in: query, name: type, schema: { type: string } }
+        - { in: query, name: query, schema: { type: string } }
+        - { in: query, name: page, schema: { type: integer, minimum: 0, default: 0 } }
+        - { in: query, name: size, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses: { '200': { description: "发放人、受益人、积分、折算、原因与时间的分页列表" } }
+
   # ── v2 §9 积分面 lane：调差 / 赠送（只发 giftBalance，不碰资金面）。CreditOpsService ──
   /admin/finance/adjustments/compensate:
     post:
@@ -9550,6 +11177,38 @@ paths:
                 campaignId: { type: string }
                 reason: { type: string }
       responses: { '200': { description: "AdjustmentResult；超管直接发放，其他角色超阈值 pending=true" } }
+  /admin/finance/adjustments/scoped-grant:
+    post:
+      tags:
+      - admin-finance
+      operationId: adminGrantScopedCredits
+      summary: 发放模型专享额度：复用审批、日限额与幂等，批准后单独入账
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScopedGrantRequest'
+      responses:
+        '200':
+          description: 原审批单或新审批单。approved 已发放；pending_approval 待复核；rejected 原请求已驳回。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/CreditAdjustmentRequest'
+        '400':
+          description: 发放参数、账户或有效期不符合活动规则
+        '403':
+          description: 需要有效后台管理员身份
+        '409':
+          description: 请求内容冲突或活动发放额度不足
+        '429':
+          description: 发起人近 24 小时额度超限（包含待审批）
   /admin/finance/adjustments/requests:
     get:
       tags: [admin-finance]
@@ -9564,7 +11223,7 @@ paths:
       tags: [admin-finance]
       operationId: adminApproveAdjustmentRequest
       summary: 批准大额审批单（限 FINANCE_ADMIN / SUPER_ADMIN；仅当前有效超管允许自批；原单锁防重复入账）
-      responses: { '200': { description: "已批准并入账（GIFT）" } }
+      responses: { '200': { description: "已批准并入账（普通赠送进 GIFT，定向赠送进专享额度批次）" } }
   /admin/finance/adjustments/requests/{id}/reject:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     post:
@@ -9997,6 +11656,34 @@ paths:
         '409': { description: PROMPT_VERSION_CONFLICT }
 
   # ── Studio 技能库（S3；ip_skill / ip_skill_version，不可变版本；SUPER_ADMIN / OPERATOR，FINANCE_ADMIN 403） ──────────
+  /admin/studio/scenes:
+    get:
+      tags: [admin]
+      operationId: adminStudioScenes
+      description: 'Studio 场景模板（SUPER_ADMIN / OPERATOR；页面在 Studio 运营后台 studio-admin 的 /scenes）：当前生效的整份目录（含下架的），封面 / 示例带签名地址预览。source=default 表示还在用随包的那份（version=0）；skills 是视频场景可选的方法。'
+      responses: { '200': { description: 'ApiResponse<{catalog: StudioSceneCatalog, source: default|custom, version: integer, skills: string[]}>' } }
+    put:
+      tags: [admin]
+      operationId: adminSaveStudioScenes
+      description: '整份保存到平台配置 studio.scene-catalog，带上读到的版本号；保存前与随包目录同一套校验（编号格式与唯一、分组存在、描述不留【…】、图N 不越界、图1 必填、视频方法只能是 video-generation / reference-video-recreation、封面与示例只能是 ipstudio_scene/catalog/ 下的 key）。签名地址不入库。'
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [catalog], properties: { catalog: { $ref: '#/components/schemas/StudioSceneCatalog' }, baseVersion: { type: integer, description: '读到的版本号；还没存过是 0' } } } } } }
+      responses:
+        '200': { description: 'ApiResponse<同 GET>' }
+        '400': { description: 'STUDIO_SCENE_CATALOG_INVALID —— message 是具体哪一条不对' }
+        '409': { description: 'STUDIO_SCENE_CATALOG_STALE —— 别人先存过，刷新后再改' }
+    delete:
+      tags: [admin]
+      operationId: adminResetStudioScenes
+      description: '恢复随包的默认目录：平台配置写成 {"builtIn": true}、版本号加一（不删行，版本号不回到 0，恢复前打开的页面再保存会 409）。已上传的文件不删。'
+      parameters: [{ in: query, name: baseVersion, schema: { type: integer } }]
+      responses: { '200': { description: 'ApiResponse<同 GET>' }, '409': { description: STUDIO_SCENE_CATALOG_STALE } }
+  /admin/studio/scenes/media:
+    post:
+      tags: [admin]
+      operationId: adminUploadStudioSceneMedia
+      description: '上传封面或参考示例：JPG / PNG / WEBP 图片（≤10MB）或 MP4 视频（≤50MB），按字节判类型。返回 key（写进目录）和预览地址。'
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } } } } }
+      responses: { '200': { description: 'ApiResponse<{key, url, mediaType: image|video}>' }, '400': { description: STUDIO_SCENE_MEDIA_INVALID } }
   /admin/studio/skills:
     get:
       tags: [admin-studio-skills]
@@ -12670,6 +14357,34 @@ paths:
       description: '校验当前视频模型与作品可见范围，更新最近使用并返回完整描述。前端在光标处插入可编辑标签，原生 IpRun 按完整提示词生成；此调用不触发供应商，不冻结积分。'
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [model], properties: { model: { type: string } } } } } }
       responses: { '200': { description: 'ApiResponse<StudioVideoEffect>' }, '400': { description: STUDIO_EFFECT_MODEL_UNSUPPORTED / STUDIO_EFFECT_MODEL_UNAVAILABLE }, '404': { description: STUDIO_EFFECT_NOT_FOUND } }
+  /v1/ip-studio/scenes:
+    get:
+      tags: [ipstudio]
+      operationId: studioSceneCatalog
+      description: '场景目录唯一真源：运营在后台「Studio 场景模板」改过就用平台配置 studio.scene-catalog，否则用随包的 resources/ipstudio/scenes.json。只下发上架的场景；封面与示例是签名地址，key 与上下架标记不下发。前端只读它，不另写一份。不扣积分。'
+      responses:
+        '200': { description: 'ApiResponse<StudioSceneCatalog>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioSceneCatalog' } } } }
+  /v1/ip-studio/scenes/home:
+    get:
+      tags: [ipstudio]
+      operationId: studioSceneHomeCards
+      security: []
+      description: '首页「你想做什么？」卡片，公开只读（公开落地页对没登录的访客也显示）。只有标题、说明、落点场景、类型和封面签名地址，不带场景描述与拍法；落点场景下架的不下发。场景目录与拼话仍要登录。'
+      responses:
+        '200': { description: 'ApiResponse<StudioSceneHomeCard[]>', content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/StudioSceneHomeCard' } } } } }
+  /v1/ip-studio/scenes/compose:
+    post:
+      tags: [ipstudio]
+      operationId: studioSceneCompose
+      description: >-
+        按场景拼话，纯计算、不扣积分、不建任务。image：场景描述（或用户改过的完整描述）+「补充要求：…」，自由出图只用用户那句；
+        video：交给创作助手的第一句（时长、横竖屏、用户那句、素材按画布标题点名、拍法、不许编价格优惠、要成片不只要脚本）并返回该场景的方法 skillKey；
+        video-script：交给编导写脚本的要求（图按交给视频模型的顺序编号图1、图2…，分镜头写画面和台词，总时长等于所选时长，不许编优惠），有 revision 时先写修改意见。
+        缺必填参考图 / 素材 / 那句话时 400，message 可直接给用户看。
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioSceneComposeRequest' } } } }
+      responses:
+        '200': { description: 'ApiResponse<StudioSceneComposed>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioSceneComposed' } } } }
+        '400': { description: 'STUDIO_SCENE_INPUT_INVALID —— 场景不存在 / 缺必填参考图或素材 / 剧情等场景没写那句话 / 时长或横竖屏不可选' }
   /v1/ip-studio/templates:
     get: { tags: [ipstudio], operationId: ipStudioTemplates, description: '内置工作流模板（resources/ipstudio/templates/*.json，随代码发布）。doc 是预排好位置的节点图，照片与参考图为空待填。', responses: { '200': { description: ok, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/IpTemplate' } } } } } } }
   /v1/ip-studio/projects/{id}/template-versions:
@@ -13279,10 +14994,10 @@ paths:
       tags: [ipstudio]
       operationId: ipStudioCreateProject
       description: '新建个人画布。templateId 可为内置、官方或本人已启用模板，直接免费复制节点图，无前置输入/模型/报价要求；版本模板重建节点与连线编号，保存只修改个人副本。不带则是空白画布。'
-      requestBody: { content: { application/json: { schema: { type: object, properties: { name: { type: string, maxLength: 128 }, templateId: { type: string } } } } } }
+      requestBody: { content: { application/json: { schema: { type: object, properties: { name: { type: string, maxLength: 128 }, templateId: { type: string }, sceneId: { type: string, description: '场景页建草稿时带上场景编号（必须在场景目录里），「最近」按它列' } } } } } }
       responses:
         '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/IpProject' } } } }
-        '400': { description: IP_TEMPLATE_NOT_FOUND }
+        '400': { description: 'IP_TEMPLATE_NOT_FOUND；STUDIO_SCENE_INPUT_INVALID —— sceneId 不在场景目录里' }
   /v1/ip-studio/projects/{id}:
     parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
     get:
@@ -13598,6 +15313,34 @@ paths:
         v0.177 之前前端轮询的是 `/me/material/videos/jobs/{jobId}` —— 那条路径服务端从来没有实现过。
       responses:
         "200": { description: 任务卡（id / status / video_url / video_key / thumbnail_url / error_message） }
+  /v1/ip-studio/director/script-import:
+    post:
+      tags: [ipstudio]
+      operationId: directorImportScript
+      summary: 从剧本文件提取文字
+      description: >
+        已登录且开通 aiavatar 的用户上传不超过 50 MiB 的文本、Word、PPT、PDF、RTF 或 HTML（.html/.htm）文件（2026-10-28 由 8 MiB 放宽）。
+        PDF/PPT 最多 100 页；Word/PPT 解包后最多 256 MiB；提取正文不限字数（2026-10-29 取消 6 万字），整份返回、不截断。
+        纯文本支持 UTF-8、带 BOM 的 UTF-16/32、GB18030；不执行宏或外部内容。
+        HTML 只取可读正文：标题、段落、列表项、表格行各占一行，pre 保留换行；script/style/noscript/template/iframe/嵌入对象/表单控件、
+        hidden 与 display:none 元素、注释和标签本身都不进正文；按 BOM / meta charset 解码，未声明且非 UTF-8 时按 GB18030；不运行脚本、不加载外部资源。
+        只返回提取文字，不存储原文件、不创建作品、不调用模型、不扣积分。
+        前端先预览，用户确认后填入正文，再经创建或带修订号的 PATCH 保存。
+        扫描 PDF、受密码保护或禁止复制的 PDF、空文件、损坏文件均明确报错。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '200': { description: 可编辑正文, content: { application/json: { schema: { $ref: '#/components/schemas/DirectorScriptImportResult' } } } }
+        '400': { description: STUDIO_STORY_INVALID，格式、大小、字数、页数或可提取文字不符合要求 }
+        '401': { description: 未登录 }
+        '403': { description: 未开通产品或未验证手机号 }
   /v1/ip-studio/director/works:
     get:
       tags: [ipstudio]
@@ -13609,9 +15352,30 @@ paths:
       tags: [ipstudio]
       operationId: directorCreateWork
       description: '新建作品：一句创意（idea）或已有剧本（script）。不调用模型、不扣积分。'
-      requestBody: { required: false, content: { application/json: { schema: { type: object, properties: { title: { type: string, maxLength: 60 }, idea: { type: string, maxLength: 2000 }, script: { type: string, maxLength: 60000 } } } } } }
+      requestBody: { required: false, content: { application/json: { schema: { type: object, properties: { title: { type: string, maxLength: 60 }, idea: { type: string, maxLength: 2000 }, script: { type: string, description: 剧本正文不限字数（2026-10-29）；一次模型调用读多少见 BUSINESS_RULES「导演台长正文」 } } } } } }
       responses:
         '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/DirectorWork' } } } }
+  /v1/ip-studio/director/works/trash:
+    get:
+      tags: [ipstudio]
+      operationId: directorListTrash
+      description: '回收站：本人已删除的作品（含功能上线前软删的历史作品），最近删除的在前。只读投影：不回投任务结果、不推进、不改内容。'
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/DirectorTrashedWork' } } } } }
+  /v1/ip-studio/director/works/{id}/restore:
+    post:
+      tags: [ipstudio]
+      operationId: directorRestoreWork
+      description: >-
+        从回收站恢复原作品（原 ID、原内容、原任务记录），不复制、不重提任务、不扣费、不退款。与删除、编辑、生成、后台推进抢同一把作品行锁，
+        只在本事务、本连接里读写。恢复后保持停止：active=false，JSON 里遗留的 running / paused / waiting 一键制作改为 stopped；
+        记 restoredAt，恢复前提交、恢复后才回投的任务只写结果，不接着付费派发（改写完提交视频、改写不合格自动重试）。
+        作品没被删除（重复恢复、超时重试）→ 200，什么都不写、不打断在跑的任务。不存在或不是本人的 → 404。
+        恢复不占新建额度：作品数上限只拦新建（POST /works 的 DIRECTOR_WORK_LIMIT 不变）。
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: ok（含作品本来就没被删除）, content: { application/json: { schema: { type: object, properties: { success: { type: boolean }, data: { type: object, properties: { id: { type: string }, restored: { type: boolean } } } } } } } }
+        '404': { description: DIRECTOR_WORK_NOT_FOUND（不存在或不是本人的） }
   /v1/ip-studio/director/works/{id}:
     get:
       tags: [ipstudio]
@@ -13624,9 +15388,9 @@ paths:
     patch:
       tags: [ipstudio]
       operationId: directorPatchWork
-      description: '改作品名、创意、拆集前的整份剧本（带 draftRev）或设置（风格 / 画幅 / 文本模型 textModel / 片段视频模型）。'
+      description: '改作品名、创意、拆集前的整份剧本（带 draftRev）或设置（风格 / 画幅 / 文本模型 / 图片模型 / 片段视频模型）。'
       parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
-      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { title: { type: string }, idea: { type: string }, draft: { type: string }, draftRev: { type: integer }, settings: { type: object } } } } } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { title: { type: string }, idea: { type: string }, draft: { type: string }, draftRev: { type: integer }, settings: { type: object, description: "style / aspectRatio / textModel / videoModel / imageModel；模型为 endpointId，null 使用后台默认" } } } } } }
       responses:
         '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/DirectorWork' } } } }
         '409': { description: DIRECTOR_EDIT_CONFLICT }
@@ -13651,28 +15415,43 @@ paths:
       description: >-
         用户修改（op 白名单：draft.asEpisode / episode.update / episode.usePendingPlan / episode.discardPendingPlan /
         asset.create / asset.update / asset.delete / asset.adopt / asset.upload / assets.confirm /
-        asset.setVoice / asset.clearVoice / asset.setRef / asset.clearRef / clip.update / clip.split / clip.delete / clip.adoptBoard / clip.confirmBoard / clip.adoptVideo / clip.confirmVideo / clip.setVoiceMode / extract.save / extract.discard / asset.import / notice.dismiss / assistant.apply / assistant.dismiss / assistant.undo / assistant.newThread / assistant.openThread）。助手建议：assistant.apply|dismiss|undo 带 data={messageId,proposalId}；采用前核对原文 / 镜头签名 / 用户改过的字段，对不上 409 DIRECTOR_PROPOSAL_STALE，不覆盖；采用后可撤销，之后对象又改过不能撤销（同码）。assistant.openThread 带 data.threadId（docs/ai-director-assistant.md）。从个人资产库导入用 asset.import（data.items=[{objectId,versionId?}]，最多 16 项，可带 episodeId；带 targetId 时只许一项，给该资产换图，资产库那项没有图 → 400 DIRECTOR_INPUT_INVALID）：名字、描述、图由服务端按本人资产库读出（版本不存在 → 404 DIRECTOR_LIBRARY_VERSION_NOT_FOUND，名称超过 40 字 → 400 不截断）；场景、道具的图作为采用的参考图（source=library），角色的图（没有图时用资产库的形象参考）只写 refImage；按 libraryObjectId 或同类同名对上已有资产时合并，不覆盖已采用的图和已有形象参考。提取资产的结果先存为 pendingExtract，用户确认（extract.save，targetId=清单 runId，data.items=[{itemId,include,name}]）后才写进资产库。角色不接受 asset.upload（400 DIRECTOR_CHARACTER_UPLOAD_NOT_ALLOWED）：上传的照片用 asset.setRef 设为形象参考（data.key），只在生成设定图时作为图1交给模型，角色参考图始终是系统生成的设定图。
+        asset.setVoice / asset.clearVoice / asset.setRef / asset.clearRef / clip.update / clip.split / clip.delete / clip.adoptBoard / clip.confirmBoard / clip.adoptVideo / clip.confirmVideo / clip.setVoiceMode / clip.usePendingShots / clip.discardPendingShots / clip.unlinkAsset / extract.save / extract.discard / split.save / split.discard / split.undo / reference.update / reference.toEpisode / asset.link / notice.dismiss / assistant.apply / assistant.dismiss / assistant.undo / assistant.newThread / assistant.openThread）。助手建议：assistant.apply|dismiss|undo 带 data={messageId,proposalId}；采用前核对原文 / 镜头签名 / 用户改过的字段，对不上 409 DIRECTOR_PROPOSAL_STALE，不覆盖；采用后可撤销，之后对象又改过不能撤销（同码）。assistant.openThread 带 data.threadId（docs/ai-director-assistant.md）。拆分结果先存为 pendingSplit，split.save（data.preamble=reference|episode）采用，split.discard 放弃；两者都必须带 targetId=pendingSplit.id，缺失或不匹配、剧本改过均 409 DIRECTOR_SPLIT_EXPIRED；split.undo 恢复拆分前原稿（已有分镜图 / 视频 409 DIRECTOR_CLIPS_HAVE_MEDIA）；reference.update / reference.toEpisode 带 rev=referenceRev。提取资产的结果先存为 pendingExtract，用户确认（extract.save，targetId=清单 runId，data.items=[{itemId,include,name}]）后才写进资产库。asset.upload 对角色、场景、道具一样，上传的图直接作为采用的资产图（adoptedBy=user，不生成、不扣积分，原采用版本留在候选历史）；asset.setRef 设的参考图（角色、场景、道具都可以，2026-10-28 起）只在生成资产图时作为图1，不改采用的资产图、不发起生成。asset.create 可带 data.image={key,use}：use=asset 直接作为采用的资产图，use=ref 只设参考图；key 须是本人上传的，use 取值之外或缺 key 一律 400 DIRECTOR_INPUT_INVALID 且不建资产。asset.create / asset.update 可带 episodeIds（只认作品里存在的集，否则 400）。关联已有资产用 asset.link（targetId 必填，data={objectId,versionId?}）：图和描述由服务端按本人资产库读出，类型必须与该资产一致、资产库那项要有图（否则 400 DIRECTOR_INPUT_INVALID），版本不存在 → 404 DIRECTOR_LIBRARY_VERSION_NOT_FOUND；记下 libraryObjectId，所选版本的图（source=library）直接采用，描述空着才补，名字不变。asset.delete 时资产还被片段用着（在关联资产里或是某句台词的说话人）409 DIRECTOR_ASSET_IN_USE，error.details={assetId,name,clips:[{clipId,episodeId,episodeNo,order,title,linked,lines}]}，资产不删。clip.unlinkAsset（targetId=片段，data={assetId}）只把这一项从该片段的关联资产里去掉，其余资产顺序不变，不删片段、资产和分镜图 / 视频（按指纹标需更新），台词说话人不改；不在关联里 409 DIRECTOR_EDIT_CONFLICT，片段在出分镜图或视频 409 DIRECTOR_TASK_RUNNING。剧本正文（draft、各集 content、设定资料）不限字数，episode.update / reference.update / 助手写回都不截断（2026-10-29）；一次模型调用读不下时：AI 拆分、写分镜脚本、重写分镜 400 DIRECTOR_TEXT_TOO_LONG_FOR_MODEL（error.details={chars,budget}，不提交、不扣费），全剧提取资产分批（pendingExtract.batch={fromNo,toNo,count,total}），助手只读光标 / 选区附近一段（scope.window、消息 range 说明），作品 pricing.textChars 给出一次能读的字数。重写分镜脚本期间改过的片段，新版本挂在 clip.pendingShots，clip.usePendingShots 换成新版本（视频生成中 409 DIRECTOR_TASK_RUNNING）、clip.discardPendingShots 保留现有。
         改内容带对象 rev，对不上 409 DIRECTOR_EDIT_CONFLICT；超长直接 400，不截断。
       parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [op], properties: { op: { type: string }, targetId: { type: string, nullable: true }, rev: { type: integer, nullable: true }, data: { type: object } } } } } }
       responses:
         '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/DirectorWork' } } } }
         '400': { description: DIRECTOR_INPUT_INVALID }
-        '409': { description: DIRECTOR_EDIT_CONFLICT / DIRECTOR_ASSET_IN_USE / DIRECTOR_CLIP_HAS_MEDIA / DIRECTOR_CLIPS_HAVE_MEDIA / DIRECTOR_PROPOSAL_STALE }
+        '409': { description: DIRECTOR_EDIT_CONFLICT / DIRECTOR_ASSET_IN_USE（details.clips 列出用到它的片段） / DIRECTOR_CLIP_HAS_MEDIA / DIRECTOR_CLIPS_HAVE_MEDIA / DIRECTOR_TASK_RUNNING / DIRECTOR_PROPOSAL_STALE / DIRECTOR_SELECTION_CHANGED }
+  /v1/ip-studio/director/works/{id}/tasks/{runId}/stop:
+    post:
+      tags: [ip-studio]
+      operationId: directorStopTextTask
+      description: 停止本人作品的同步文字后续处理；未提交模型才释放冻结，已提交的保留请求等待真实用量，按实际用量结算并只释放未使用部分。用量不明为 STUDIO_USAGE_PENDING，冻结保留待核对，不按上限扣款也不自动退款。重复停止不重复计费，不自动重试生成；已受理的图片、音频和视频不走此入口。
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+        - { in: path, name: runId, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 已停止或已结束，返回最新导演作品 }
+        '400': { description: 不是可停止的文字任务 }
+        '404': { description: 作品或任务不存在或不属于本人 }
   /v1/ip-studio/director/works/{id}/tasks:
     post:
       tags: [ipstudio]
       operationId: directorTask
       description: >-
-        发生成任务（type：script / split / extract / plan / asset-image / board / video / export / assistant / brief）。brief = 写剧本前的创意对话一轮（options.message，空串为开场；最多 3 轮问题，到上限收敛；整句「你决定 / 直接写」直接开始写剧本）；script 带 options.skip=true 表示跳过剩余问题，剧本请求会带上对话里确认过的问答与整理要求。assistant 的 selection 范围要带 start/end，按保存后的正文核对，对不上 409 DIRECTOR_SELECTION_CHANGED。assistant = 全能创作助手回复一轮（options={message≤2000,scope{kind,episodeId?,clipId?,assetId?,which?,text?},threadId?}），同一作品同时只有一条在回复；clientRequestId 作为消息编号，重发同一编号不再建任务、不重复扣费。asset-image / board 可带 options.baseOnCurrent=true：把当前采用的图追加为最后一张参考图生成新版本（候选记 baseOn），不自动替换采用中的那张。video 走原生视频任务（全能参考：图1 采用的分镜图，之后是资产参考图与说话角色的声音样本），默认关闭可选的供应商提示词改写；export 按每个片段当前采用并确认的视频顺序合成整集，不扣积分。script 带 options.regenerate=true 时重写已有剧本：旧稿进 scriptHistory（最多 3 版），集与片段清空、资产保留；已有分镜图或视频候选时 409 DIRECTOR_CLIPS_HAVE_MEDIA。任务是原生 IpRun（host_type=director），
+        发生成任务（type：script / split / extract / plan / reshoot / asset-image / board / video / export / assistant / brief）。brief = 写剧本前的创意对话一轮（options.message，空串为开场；最多 3 轮问题，到上限收敛；整句「你决定 / 直接写」直接开始写剧本）；script 带 options.skip=true 表示跳过剩余问题，剧本请求会带上对话里确认过的问答与整理要求。assistant 的 selection 范围要带 start/end，按保存后的正文核对，对不上 409 DIRECTOR_SELECTION_CHANGED。assistant = 全能创作助手回复一轮（options={message≤2000,scope{kind,episodeId?,clipId?,assetId?,which?,text?},threadId?}），同一作品同时只有一条在回复；clientRequestId 作为消息编号，重发同一编号不再建任务、不重复扣费。asset-image / board 可带 options.baseOnCurrent=true：把当前采用的图追加为最后一张参考图生成新版本（候选记 baseOn），不自动替换采用中的那张。plan 写分镜脚本（切片段，整集替换，本集已有分镜图或视频 409 DIRECTOR_CLIPS_HAVE_MEDIA）；reshoot 重写分镜脚本、保留片段划分：targetId=集，options.clipIds 为空则整集逐段重写，否则只重写这几段（任务节点 reshoot:集 / reshoot:片段）；片段 id 与位置不变，只换镜头、标题、摘要、关联资产，提示词回到随镜头自动生成，已有分镜图和视频留在历史版本里标成需更新；不出图、不生成视频。本集没有片段 400 DIRECTOR_CLIPS_MISSING；同集正在写 / 重写或该片段正在重写、出分镜图、出视频 409 DIRECTOR_TASK_RUNNING；回投时正文改过整份作废并提示，片段改过则挂到 clip.pendingShots 等用户决定。video 走原生视频任务（全能参考：图1 采用的分镜图，之后是资产参考图与说话角色的声音样本），默认关闭可选的供应商提示词改写；export 按每个片段当前采用并确认的视频顺序合成整集，不扣积分。split 只让模型给每集起点和正文起点 bodyStart，区间由程序构造，结果存为 pendingSplit 等确认；剧本里已标好「第N集」且 options.episodeCount 未指定其他集数时直接按标题分，不建任务、不扣积分；已有待确认结果 409 DIRECTOR_SPLIT_PENDING。script 带 options.regenerate=true 时重写已有剧本：旧稿进 scriptHistory（最多 3 版），集与片段清空、资产保留；已有分镜图或视频候选时 409 DIRECTOR_CLIPS_HAVE_MEDIA。任务是原生 IpRun（host_type=director），
         计价、冻结、付款（billing）、结算、幂等（clientRequestId）都在原链路；maxCost 是界面报价，价格变了 409 STUDIO_PRICE_CHANGED。
+        H3 片段视频提交前先按官方写法改写提示词（不进报价，按实际用量另扣）；改写稿有提示时手动生成停在 videoPromptRewrite=review，
+        再发 video 须带 options.promptChoice=optimized（用优化稿）或 original（用原文，不改写），未选 409 DIRECTOR_PROMPT_REVIEW；original 随时可用。
         必要参考图缺失 400 DIRECTOR_REFERENCE_MISSING，未确认 400 DIRECTOR_REFERENCE_UNCONFIRMED，片段有待改问题 400 DIRECTOR_CLIP_NEEDS_FIX；
         没有可用的全能参考或单首帧视频模型时规划 503 DIRECTOR_VIDEO_MODEL_UNAVAILABLE。首帧模式一镜一段，仅传已确认的分镜首帧，不带额外资产图或声音；绑定声音时需显式确认本次不带声音参考。
       parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [type, clientRequestId], properties: { type: { type: string }, targetId: { type: string, nullable: true }, clientRequestId: { type: string, maxLength: 48 }, options: { type: object }, billing: { type: object, nullable: true }, maxCost: { type: integer, nullable: true } } } } } }
       responses:
         '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/DirectorWork' } } } }
-        '409': { description: DIRECTOR_TASK_RUNNING / STUDIO_PRICE_CHANGED / DIRECTOR_SCRIPT_EXISTS / DIRECTOR_EPISODES_EXIST / DIRECTOR_CLIPS_HAVE_MEDIA }
+        '400': { description: DIRECTOR_CLIPS_MISSING / DIRECTOR_ASSETS_MISSING / DIRECTOR_INPUT_INVALID }
+        '409': { description: DIRECTOR_TASK_RUNNING / STUDIO_PRICE_CHANGED / DIRECTOR_SCRIPT_EXISTS / DIRECTOR_EPISODES_EXIST / DIRECTOR_CLIPS_HAVE_MEDIA / DIRECTOR_PROMPT_REVIEW }
   /v1/ip-studio/director/works/{id}/quote:
     post:
       tags: [ipstudio]
@@ -13708,13 +15487,15 @@ paths:
       operationId: directorPipeline
       description: >-
         一键制作（target：film 默认 = 一路做到每集导出成片；video；board；plan = 分集 + 资产 + 片段镜头与分镜图 / 视频提示词，不出图。
-        auto=true 为全自动：资产清单原样入库，参考图、分镜图、片段视频自动确认；否则在这几处停下等 confirm-*。
+        auto=true 为全自动：分集按默认采用（开头资料保留为设定资料，拆分失败则作为一集继续），资产清单原样入库，参考图、分镜图、片段视频自动确认；否则在这几处停下等确认（分集是 stage=confirm-split，用 edits 的 split.save 继续），其余用 confirm-*。
         action：start / pause / resume / retry / confirm-assets / confirm-boards / confirm-videos / stop / dismiss）。整部作品也可以做到视频。后台调度推进，关页继续；
         付款方在 start 时定下；预算是硬上限，同时最多 2 个在途子任务；参考图生成后停下等用户确认。
+        一键制作只补没做的步骤、不重做已有内容；start 时所选范围已经没有可做的（如分镜脚本都写好了）不建连跑，409 DIRECTOR_PIPELINE_NOTHING_TO_DO，message 说明哪些已做好、要重做去哪。
       parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [action], properties: { action: { type: string }, scope: { type: string, enum: [episode, work] }, episodeId: { type: string, nullable: true }, target: { type: string, enum: [plan, board, video, film] }, budget: { type: integer }, billing: { type: object, nullable: true }, auto: { type: boolean } } } } } }
       responses:
         '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/DirectorWork' } } } }
+        '409': { description: DIRECTOR_PIPELINE_RUNNING / DIRECTOR_PIPELINE_NOTHING_TO_DO }
   /v1/ip-studio/runs/{id}:
     get:
       tags: [ipstudio]
@@ -13801,6 +15582,20 @@ paths:
         '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/VideoStudioUpload' } } } }
         '400': { description: 'VIDEO_STUDIO_MODE_INVALID / VIDEO_STUDIO_FORMAT_UNSUPPORTED / VIDEO_STUDIO_FILE_EMPTY / VIDEO_STUDIO_FILE_TOO_LARGE / VIDEO_STUDIO_MEDIA_UNREADABLE / VIDEO_STUDIO_AUDIO_DURATION_INVALID / VIDEO_STUDIO_MEDIA_DURATION_INVALID' }
         '402': { description: STORAGE_QUOTA_EXCEEDED }
+  /me/celebrity/video-studio/quote:
+    post:
+      tags: [celebrity, video-studio]
+      operationId: videoStudioQuoteJob
+      description: 只读校验视频请求并按实际模型、折扣、赠款与普通积分返回最终报价；不创建任务或冻结。提交原样携带 approval 到 modelBilling。
+      parameters:
+        - { in: query, name: freeOnly, schema: { type: boolean, default: false } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/VideoStudioJobRequest' } } }
+      responses:
+        '200': { description: 报价与普通积分付款上限, content: { application/json: { schema: { $ref: '#/components/schemas/ModelBillingQuote' } } } }
+        '400': { description: 模型、规格、素材或输入不合法 }
+        '503': { description: 模型或价格尚未配置 }
   /me/celebrity/video-studio/jobs:
     get:
       tags: [celebrity, video-studio]
@@ -13824,6 +15619,9 @@ paths:
         该模式的素材 → 素材归属与类型（做同款时这个模板自带的同类素材也算）→ 智能优化结果（带了 optimizationId 时）→ 价格。
         价格只由服务端算（请求里没有价格字段），计价规则见 VideoStudioPricing 与 specs/BUSINESS_RULES.md §6.8。
         做同款成功建出任务后模板 useCount +1。
+        clientRequestId 按用户隔离；相同编号和原请求重复提交返回原任务，不重复扣费或派发。
+        相同编号换正文或 modelBilling 返回 409 VIDEO_STUDIO_REQUEST_CHANGED。
+        modelBilling 限定模型、规格、价格和普通积分上限；使用时必须提供 clientRequestId。
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/VideoStudioJobRequest' } } }
@@ -15637,3 +17435,119 @@ paths:
       summary: 停用测试身份并撤销其授权
       parameters: [{in: path, name: uid, required: true, schema: {type: string}}]
       responses: {'200': {description: 沿用账号中心停用语义}, '403': {description: 仅有效超级管理员}, '404': {description: 不是测试账号}}
+
+  /v1/ip-studio/projects/{id}/image-quote:
+    parameters:
+    - {in: path, name: id, required: true, schema: {type: string}}
+    - {in: query, name: freeOnly, schema: {type: boolean, default: false}}
+    post:
+      tags: [ipstudio]
+      operationId: ipStudioQuoteImage
+      description: 只读报价，编译与生成相同的服务端模型和规格，核验本人项目与付款权限。不创建任务、不冻结、不发放积分；受理时再次核对价格版本、用途、免费选择和付款上限。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/IpGenerateRequest'}
+      responses:
+        '200':
+          description: 报价和供确认使用的付款上限；canAfford=false 时不能生成
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: {$ref: '#/components/schemas/ModelBillingQuote'}
+
+  /v1/ip-studio/projects/{id}/nodes/{nodeId}/image-quote:
+    parameters:
+    - {in: path, name: id, required: true, schema: {type: string}}
+    - {in: path, name: nodeId, required: true, schema: {type: string}}
+    - {in: query, name: freeOnly, schema: {type: boolean, default: false}}
+    post:
+      tags: [ipstudio]
+      operationId: ipStudioQuoteImageNode
+      description: 只读报价，编译与生成相同的服务端模型和规格，核验本人项目与付款权限。不创建任务、不冻结、不发放积分；受理时再次核对价格版本、用途、免费选择和付款上限。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/IpRunNodeRequest'}
+      responses:
+        '200':
+          description: 报价和供确认使用的付款上限；canAfford=false 时不能生成
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: {$ref: '#/components/schemas/ModelBillingQuote'}
+
+  /v1/ip-studio/projects/{id}/studio-image-quote:
+    parameters:
+    - {in: path, name: id, required: true, schema: {type: string}}
+    - {in: query, name: freeOnly, schema: {type: boolean, default: false}}
+    post:
+      tags: [ipstudio]
+      operationId: ipStudioQuoteWorkflowImage
+      description: 只读报价，编译与生成相同的服务端模型和规格，核验本人项目与付款权限。不创建任务、不冻结、不发放积分；受理时再次核对价格版本、用途、免费选择和付款上限。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/StudioRunRequest'}
+      responses:
+        '200':
+          description: 报价和供确认使用的付款上限；canAfford=false 时不能生成
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: {$ref: '#/components/schemas/ModelBillingQuote'}
+
+  /v1/ip-studio/projects/{id}/video-quote:
+    parameters:
+    - {in: path, name: id, required: true, schema: {type: string}}
+    - {in: query, name: freeOnly, schema: {type: boolean, default: false}}
+    post:
+      tags: [ipstudio]
+      operationId: ipStudioQuoteVideo
+      description: 只读视频报价；整批显示标准价、优惠、模型赠款及普通积分补差，按每条视频取整后合计。确认绑定本次数量和用量，不创建任务、不冻结、不裁剪或保存素材；提交时复核，整批共享原确认的付款上限。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/IpVideoRequest'}
+      responses:
+        '200':
+          description: 本次视频报价；canAfford=false 时不能提交
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: {$ref: '#/components/schemas/ModelBillingQuote'}
+
+  /v1/ip-studio/projects/{id}/studio-video-quote:
+    parameters:
+    - {in: path, name: id, required: true, schema: {type: string}}
+    - {in: query, name: freeOnly, schema: {type: boolean, default: false}}
+    post:
+      tags: [ipstudio]
+      operationId: ipStudioQuoteWorkflowVideo
+      description: 只读视频报价；整批显示标准价、优惠、模型赠款及普通积分补差，按每条视频取整后合计。确认绑定本次数量和用量，不创建任务、不冻结、不裁剪或保存素材；提交时复核，整批共享原确认的付款上限。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/StudioRunRequest'}
+      responses:
+        '200':
+          description: 本次视频报价；canAfford=false 时不能提交
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: {$ref: '#/components/schemas/ModelBillingQuote'}

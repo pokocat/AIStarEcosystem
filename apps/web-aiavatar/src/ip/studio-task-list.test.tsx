@@ -56,8 +56,9 @@ test('failed assistant tasks offer reopening the conversation without a misleadi
 
 test.each(['VIDEO_RECONCILIATION_PENDING','STUDIO_SPEECH_RECOVERING','STUDIO_LIP_SYNC_RECOVERING'])('%s shows recovery without frozen percent or stop',errorCode=>{
   render(<StudioTaskList {...makeProps()} runs={[run('recover','running',{pct:5,errorCode})]}/>);
-  expect(screen.getByText('正在重新查询结果')).toBeDefined();expect(screen.queryByRole('progressbar')).toBeNull();
-  expect(screen.queryByRole('button',{name:'停止'})).toBeNull();expect(screen.getByRole('status').textContent).toContain('不会重新生成');
+  expect(screen.getByText('模型端仍在处理')).toBeDefined();expect(screen.queryByRole('progressbar')).toBeNull();
+  expect(screen.queryByRole('button',{name:'停止'})).toBeNull();expect(screen.getByRole('status').textContent).toBe('模型端仍在处理，请稍后查看状态');
+
 });
 
 test.each(['VIDEO_SUBMISSION_UNKNOWN','VIDEO_RECONCILIATION_PENDING','UNEXPECTED_MODEL_ERROR'])('%s remains inspectable before terminal failure',errorCode=>{
@@ -65,7 +66,7 @@ test.each(['VIDEO_SUBMISSION_UNKNOWN','VIDEO_RECONCILIATION_PENDING','UNEXPECTED
   render(<StudioTaskList {...props}/>);
   expect(screen.getByText(props.runs[0].errorMessage!)).toBeDefined();
   fireEvent.click(screen.getByRole('button',{name:'查看错误详情'}));
-  expect(reportStudioError).toHaveBeenCalledWith(props.runs[0].errorMessage);
+  expect(reportStudioError).toHaveBeenCalledWith(props.runs[0].errorMessage, { details: true });
   expect(screen.queryByRole('button',{name:'重新生成'})).toBeNull();
 });
 
@@ -79,4 +80,12 @@ test('refreshes the original running task once, reports completion, and never re
   expect(onRefresh).toHaveBeenCalledExactlyOnceWith(props.runs[0]);
   finish();await screen.findByText('已读取最新状态，未重新生成或扣费。');
   expect(props.onRetry).not.toHaveBeenCalled();expect(props.onCancel).not.toHaveBeenCalled();
+});
+
+test('shows actual grant and ordinary spend with the released remainder',()=>{
+ const props={...makeProps(),runs:[run('priced','done',{cost:16,output:{billingBreakdown:{spent:{scopedCredits:15,walletCredits:1},pending:{scopedCredits:0,walletCredits:0},released:{scopedCredits:0,walletCredits:8}}}})]};
+ render(<StudioTaskList {...props}/>);
+ expect(screen.getByText('已消耗 16 积分')).toBeDefined();
+ const detail=screen.getByLabelText('费用明细');expect(detail.textContent).toContain('模型赠款 15 积分 + 普通积分 1 积分');
+ expect(detail.textContent).toContain('已解除冻结：普通积分 8 积分');expect(detail.textContent).not.toContain('冻结中');
 });

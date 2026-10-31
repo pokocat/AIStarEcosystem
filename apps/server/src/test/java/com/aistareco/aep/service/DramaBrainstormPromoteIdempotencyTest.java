@@ -131,8 +131,8 @@ class DramaBrainstormPromoteIdempotencyTest {
         String firstShortId = shorts.keySet().iterator().next();
         assertEquals(firstShortId, retry.path("shortId").asText());
         assertEquals(1, shorts.size(), "不能再建第二条草稿");
-        verify(creditService, times(1)).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString());
-        verify(creditService, times(1)).commitHold(eq("DRAMA_SHORT"), anyString(), eq(10L), anyString());
+        verify(creditService, times(1)).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
+        verify(creditService, times(1)).commitHold(eq("DRAMA_SHORT"), anyString(), eq(10L), anyString(), org.mockito.ArgumentMatchers.any());
         assertEquals("promoted", brainstorms.get(id).getStatus());
         assertEquals(firstShortId, brainstorms.get(id).getPromotedId());
     }
@@ -151,7 +151,7 @@ class DramaBrainstormPromoteIdempotencyTest {
 
         assertEquals(first.path("shortId").asText(), second.path("shortId").asText());
         assertEquals(1, shorts.size());
-        verify(creditService, times(1)).hold(eq(USER), anyLong(), eq("DRAMA_SHORT"), anyString(), anyString());
+        verify(creditService, times(1)).hold(eq(USER), anyLong(), eq("DRAMA_SHORT"), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     @Test
@@ -172,7 +172,7 @@ class DramaBrainstormPromoteIdempotencyTest {
         assertEquals(shortId, again.path("shortId").asText(), "还是回到原来那条");
         assertEquals(sealed, brainstorms.get(id).getPayloadJson(), "已去制作的对话、大纲、设置不能被整份换掉");
         assertEquals(1, shorts.size());
-        verify(creditService, times(1)).hold(eq(USER), anyLong(), eq("DRAMA_SHORT"), anyString(), anyString());
+        verify(creditService, times(1)).hold(eq(USER), anyLong(), eq("DRAMA_SHORT"), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     @Test

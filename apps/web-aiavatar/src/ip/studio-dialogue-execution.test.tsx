@@ -6,6 +6,20 @@ import { StudioDialogueExecution } from './studio-dialogue-execution';
 
 afterEach(cleanup);
 
+test('insufficient balance shows amounts and waits for an explicit continue without a settling occupation', async () => {
+  const onControl = vi.fn(async () => {});
+  const reason = '「开场钩子」没有提交：积分余额不足，本次操作需 320，当前可用 16。请补足积分后点击“继续”。本步尚未提交，未扣积分。';
+  const execution = { ...failedAnalysis, stage: 'production' as const, needsUserReason: reason,
+    steps: [{ ...failedAnalysis.steps[0], stage: 'production' as const, operation: 'video' as const,
+      status: 'needs_user' as const, errorCode: 'STUDIO_PAYMENT_REQUIRED', reason, runIds: [], quotedCost: 320 }] };
+  render(<StudioDialogueExecution execution={execution} budget={{ approvedCap: 320, spent: 0, inFlight: 0 }} checks={[]} onControl={onControl}/>);
+  expect(screen.getByText(reason)).toBeDefined();
+  expect(screen.queryByText(/90 分钟|积分在结算/)).toBeNull();
+  expect(onControl).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '继续制作' }));
+  await waitFor(() => expect(onControl).toHaveBeenCalledWith('resume'));
+});
+
 // Shape of the production execution of 2026-10-18: the film study failed and the strip only offered 「停止」.
 const failedAnalysis = {
   id: 'PEX-1', projectId: 'P1', skillKey: 'reference-video-recreation', skillVersion: 1, stage: 'analysis', planRunId: 'IPR-1', planRevision: 2,
@@ -41,4 +55,26 @@ test('a run stopped for a new instruction can be continued from the strip', asyn
   render(<StudioDialogueExecution execution={steered} budget={{ approvedCap: 61, spent: 13 }} checks={[]} onControl={onControl}/>);
   fireEvent.click(screen.getByRole('button', { name: '继续制作' }));
   await waitFor(() => expect(onControl).toHaveBeenCalledWith('resume'));
+});
+
+// Production 2026-10-23 (PEX-fc87e857…): plan-compile named 「三视图」, which the run did not carry; 「继续」 failed the same
+// way twice. The strip names the object, focuses it on the canvas, and offers add-and-replan or replan-without.
+test('a plan stopped on a material outside the run names it and offers add or re-plan without it', async () => {
+  const onControl = vi.fn(async () => {});
+  const dispatched: Array<{ type?: string; nodeId?: string }> = [];
+  const listen = (e: Event) => dispatched.push((e as CustomEvent).detail);
+  window.addEventListener('studio-command', listen);
+  const stopped = { ...failedAnalysis, needsUserReason: '「编排制作计划」停下了：方案要用画布上的「三视图」，但这次制作没有带上它。可以把它加入这次制作重新编排，或者不用它重新编排。',
+    steps: [{ ...failedAnalysis.steps[0], status: 'done' as const }, { ...failedAnalysis.steps[1], status: 'failed' as const,
+      materials: [{ nodeId: 'n-sheet', title: '三视图', onCanvas: true }, { nodeId: 'n-gone', title: '', onCanvas: false }] }] };
+  render(<StudioDialogueExecution execution={stopped} budget={{ approvedCap: 63, spent: 7 }} checks={[]} onControl={onControl}/>);
+  expect(screen.queryByRole('button', { name: '重试这一步' })).toBeNull();
+  expect(screen.getByText('已不在画布上')).toBeDefined();
+  fireEvent.click(screen.getByRole('button', { name: '在画布上看' }));
+  expect(dispatched.some(d => d?.nodeId === 'n-sheet')).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: '加入这次制作，重新编排' }));
+  await waitFor(() => expect(onControl).toHaveBeenCalledWith('resume', { addMaterialNodeIds: ['n-sheet'] }));
+  fireEvent.click(screen.getByRole('button', { name: '不用它，重新编排' }));
+  await waitFor(() => expect(onControl).toHaveBeenLastCalledWith('resume'));
+  window.removeEventListener('studio-command', listen);
 });

@@ -5,6 +5,11 @@ import type { StudioCapabilities } from "./ip-studio-workflow";
 export type DirectorAssetKind = "character" | "scene" | "prop";
 export type DirectorAspectRatio = "9:16" | "16:9" | "1:1";
 
+export interface DirectorScriptImportResult {
+  text: string;
+  format: "pdf" | "doc" | "docx" | "ppt" | "pptx" | "rtf" | "txt" | "md" | "markdown" | "csv" | "tsv" | "json" | "xml" | "yaml" | "yml" | "log" | "srt" | "vtt";
+}
+
 export interface DirectorSettings {
   style: string;
   aspectRatio: DirectorAspectRatio;
@@ -13,6 +18,8 @@ export interface DirectorSettings {
   textModel?: string | null;
   /** 片段视频用的模型；null = 后台默认。 */
   videoModel: string | null;
+  /** 资产参考图和分镜图使用的模型；未设置或 null = 后台默认。 */
+  imageModel?: string | null;
 }
 
 export interface DirectorError {
@@ -42,6 +49,10 @@ export interface DirectorMedia {
   mock?: boolean;
   /** 生成时的输入指纹，用来核对是否跟当前设置一致。 */
   fingerprint?: string;
+  /** 视频提示词格式版本；没有的是 2026-10-26 改版前的旧格式，服务端按旧模板核对，不因换模板标成已修改。 */
+  promptFormat?: number;
+  /** 实际发给 H3 的英文提示词（按官方写法改写）；prompt 仍是用户看到的中文。 */
+  sentPrompt?: string;
   /** 生成期间改过设置，按旧设置生成；不会自动使用。 */
   stale?: boolean;
   /** 以哪个版本为参考改出来的（「围绕当前图修改」生成的新版本）。 */
@@ -171,6 +182,16 @@ export interface DirectorClip {
   voiced?: string[];
   /** 当前视频模型不支持声音参考时，用户明确选了「不带声音参考生成」。声音绑定本身不删。 */
   videoWithoutVoice?: boolean;
+  /**
+   * H3 提交前把中文视频提示词改写成官方英文写法：off = 不改写（非 H3）；needed = 生成时先改写（按实际用量另扣少量积分，不进报价）；
+   * ready = 英文稿已备好，与当前中文提示词和参考素材对得上；review = 英文稿有需要留意的地方（或太长），等用户选用优化稿还是原文；
+   * original = 用户选了按原文生成。
+   */
+  videoPromptRewrite?: "off" | "needed" | "ready" | "review" | "original";
+  /** 最近一次改写出的英文稿；text 只在 ready / review 时有，是填好当前台词、会发给模型的那一份。warnings 是给用户的提示。 */
+  videoPromptEn?: { text?: string; at: string; warnings?: string[]; notes?: string[]; usable?: boolean } | null;
+  /** 重写分镜脚本期间用户改过这个片段：新写的版本没有覆盖，等用户选换成新版本（clip.usePendingShots）还是保留现有（clip.discardPendingShots）。 */
+  pendingShots?: (DirectorPlannedClip & { runId: string; at: string }) | null;
   /** 写分镜脚本时记下的、本片段在本集正文开头的一句原文；旧片段和拆出来的片段没有。用来在剧本预览里定位。 */
   sourceQuote?: string | null;
   rev: number;
@@ -187,7 +208,7 @@ export interface DirectorPipeline {
   /** 全自动：资产清单、参考图、分镜图、片段视频都不停下来等确认 */
   auto?: boolean;
   status: DirectorPipelineStatus;
-  /** confirm-assets / budget / fix-clips / failed-items / blocked / 进行中的阶段 */
+  /** confirm-split / confirm-extract / confirm-assets / budget / fix-clips / failed-items / blocked / 进行中的阶段 */
   stage: string;
   message: string;
   budget: number;
@@ -200,13 +221,37 @@ export interface DirectorPipeline {
 
 export interface DirectorTask {
   id: string;
-  /** script / split / extract[:ep] / plan:ep / asset:id / board:clip / video:clip / export:ep */
+  /** Only synchronous text tasks; native media jobs retain their own submission and cancellation rules. */
+  canStop?: boolean;
+  /** script / split / extract[:ep] / plan:ep / reshoot:ep（整集重写）/ reshoot:clip（单个片段重写）/ asset:id / board:clip / video:clip / export:ep */
   target: string;
-  status: "running" | "done" | "failed";
+  status: "running" | "stopping" | "done" | "failed";
   stage: string | null;
   cost: number;
   errorMessage: string | null;
   createdAt: string | null;
+}
+
+/** 可以新选的图片模型：出图规格覆盖 1:1、16:9、9:16 三种比例。 */
+export interface DirectorImageModel {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  creditCost: number;
+}
+
+/** 作品实际会用的图片模型（设置里存的，没存就是默认）的状况。存着的旧选择可能不在可选列表里。 */
+export interface DirectorImageModelState {
+  /** 实际会用的接入点；跟默认走且默认不可用时为 null。 */
+  id: string | null;
+  name: string | null;
+  /** 作品设置里显式选过，不是跟默认走。 */
+  explicit: boolean;
+  /** false：停用了或不再开放，出图会报错，要换一个。 */
+  available: boolean;
+  creditCost: number | null;
+  /** 出图规格里缺的比例（"1:1" / "16:9" / "9:16"），对应的那类画面出不了。 */
+  missingRatios: string[];
 }
 
 export interface DirectorVideoModel {
@@ -231,7 +276,31 @@ export interface DirectorPendingExtractItem {
   matchName?: string;
 }
 
-export interface DirectorPendingExtract { runId: string; at: string; items: DirectorPendingExtractItem[] }
+export interface DirectorPendingExtract {
+  runId: string; at: string; items: DirectorPendingExtractItem[];
+  /** 全剧一次读不完时分批提取：这次读的是第 fromNo–toNo 集（count 集，共 total 集），剩下的再提取一次。 */
+  batch?: { fromNo: number; toNo: number; count: number; total: number } | null;
+}
+
+/** 待确认分集里的一段范围：篇幅和开头、结尾各一句，正文确认时才从剧本里取。 */
+export interface DirectorSplitRangeView { paragraphs: number; chars: number; head: string; tail: string }
+
+/**
+ * 拆好、还没采用的分集。headings = 剧本里标好了「第N集」，按标题分，不花积分；model = AI 拆的。
+ * preamble 是第一集之前的内容（设定资料），确认时选择保留为设定资料（默认）或并入第一集。
+ * notes 是程序补过的段落，warnings 是和要求不一致的地方（如集数）。
+ */
+export interface DirectorPendingSplit {
+  id: string;
+  runId: string | null;
+  source: "headings" | "model";
+  at: string;
+  paragraphCount: number;
+  preamble: DirectorSplitRangeView | null;
+  episodes: Array<DirectorSplitRangeView & { title: string; summary: string; startParagraph: number; endParagraph: number }>;
+  notes: string[];
+  warnings: string[];
+}
 
 /** 剧本生成时一起写的整体故事大纲；导入的剧本和旧作品没有。 */
 export interface DirectorOutline {
@@ -257,6 +326,15 @@ export interface DirectorWork {
   /** 拆集之前的整份剧本；拆集后为空，正文在各集里。 */
   draft: string;
   draftRev: number;
+  /** 剧本里标好的「第N集」标题数（拆分前）；≥2 时按标题分集，不花积分。 */
+  draftEpisodeHeadings: number;
+  /** 设定资料：拆分时从剧本开头分出来的改编说明、世界观、人物等，不拍成画面，写分镜和提取资产时作为参考。 */
+  reference: string;
+  referenceRev: number;
+  /** 拆好、等确认的分集（split.save / split.discard）。 */
+  pendingSplit: DirectorPendingSplit | null;
+  /** 还能撤销拆分：拆分前的原稿还在，而且还没有分镜图或视频。 */
+  canUndoSplit: boolean;
   settings: DirectorSettings;
   episodes: DirectorEpisode[];
   assets: DirectorAsset[];
@@ -267,14 +345,19 @@ export interface DirectorWork {
   /** 提取出来、还没保存进资产库的清单；用户勾选、改名后保存（extract.save）或不保存（extract.discard）。 */
   pendingExtract?: DirectorPendingExtract | null;
   /** 重新生成剧本前的旧稿，新的在前，最多 3 版；只读留底。 */
-  scriptHistory?: { at: string; logline: string; draft: string }[];
+  scriptHistory?: { at: string; title?: string; logline: string; draft: string }[];
   textError: DirectorError | null;
   /** 写剧本前的创意对话（有限澄清）；导入剧本的作品没有。 */
   brief?: DirectorBrief | null;
+  /** 最近一次从回收站恢复的时间（ISO），没恢复过为 null。有值时打开作品不自动发起付费任务，由用户自己点开始。 */
+  restoredAt?: string | null;
   /** 全能创作助手的对话：整部作品一份，按对话分段；每条消息绑定发送时的对象。 */
   assistant?: DirectorAssistant | null;
   tasks: DirectorTask[];
-  pricing: { textMax: number; image: number; mock: boolean };
+  /** textChars：所选文本模型一次调用最多读多少字正文（正文本身不限长；超过的任务分批、按范围读或说明怎么拆）。 */
+  pricing: { textMax: number; image: number; mock: boolean; textChars?: number };
+  imageModels?: DirectorImageModel[];
+  imageModelState?: DirectorImageModelState;
   textModels?: StudioCapabilities["textModels"];
   textModelMode?: StudioCapabilities["textModelMode"];
   videoModels: DirectorVideoModel[];
@@ -295,15 +378,30 @@ export interface DirectorWorkSummary {
   coverUrl: string | null;
 }
 
+/** 回收站里的一项：作品摘要 + 删除时间（ISO）。`running` 恒为 false。 */
+export interface DirectorTrashedWork extends DirectorWorkSummary {
+  deletedAt: string;
+}
+
+/** 从回收站恢复：原 ID 回到作品列表；作品没被删除时也回 restored=true（幂等）。 */
+export interface DirectorRestoreResult {
+  id: string;
+  restored: boolean;
+}
+
 export type DirectorEditOp =
   | "draft.asEpisode" | "episode.update" | "episode.usePendingPlan" | "episode.discardPendingPlan"
   | "asset.create" | "asset.update" | "asset.delete" | "asset.adopt" | "asset.upload" | "assets.confirm"
   | "clip.update" | "clip.split" | "clip.delete" | "clip.adoptBoard" | "clip.confirmBoard" | "notice.dismiss"
+  | "clip.usePendingShots" | "clip.discardPendingShots" | "clip.unlinkAsset"
   | "asset.setVoice" | "asset.clearVoice" | "asset.setRef" | "asset.clearRef" | "clip.adoptVideo" | "clip.confirmVideo" | "clips.confirmBoards" | "clip.setVoiceMode"
-  | "extract.save" | "extract.discard" | "asset.import"
+  | "extract.save" | "extract.discard"
+  | "split.save" | "split.discard" | "split.undo" | "reference.update" | "reference.toEpisode" | "asset.link"
   | "assistant.apply" | "assistant.dismiss" | "assistant.undo" | "assistant.newThread" | "assistant.openThread";
 
-export type DirectorTaskType = "script" | "split" | "extract" | "plan" | "asset-image" | "board" | "video" | "export" | "assistant" | "brief";
+/** plan = 写分镜脚本（切片段，整集替换）；reshoot = 重写分镜脚本、保留片段划分（targetId = 集，options.clipIds 为空则整集）。
+ *  assistant = 全能创作助手回复一轮；brief = 写剧本前的创意对话一轮。 */
+export type DirectorTaskType = "script" | "split" | "extract" | "plan" | "reshoot" | "asset-image" | "board" | "video" | "export" | "assistant" | "brief";
 export type DirectorPipelineAction = "start" | "pause" | "resume" | "retry" | "confirm-assets" | "confirm-boards" | "confirm-videos" | "stop" | "dismiss";
 
 export type DirectorPipelineTarget = "plan" | "board" | "video" | "film";
@@ -351,6 +449,10 @@ export interface DirectorAssistantScope {
   text?: string | null;
   start?: number | null;
   end?: number | null;
+  /** script：光标位置。正文很长时助手读光标附近那一段。 */
+  focusAt?: number | null;
+  /** 正文太长、只给模型看了 [from, to) 一段时由服务端写上；回复里的修改只在这一段里找位置。 */
+  window?: { from: number; to: number; total: number } | null;
   /** 服务端按对象算出的说明，如「第 1 集 · 已选正文」「片段 3 · 视频提示词」。 */
   label?: string;
 }
@@ -413,6 +515,8 @@ export interface DirectorAssistantMessage {
   proposals?: DirectorProposal[];
   /** 图片类对话：seen = 模型实际看了这张图；prompt-only = 模型不能看图，只读了提示词。 */
   visual?: "seen" | "prompt-only" | null;
+  /** 正文太长、这次只读了一段时的说明，如「正文很长，这次只读了第 1–24,000 字（全文 120,000 字）」。 */
+  range?: string | null;
   /** 回复里有建议因为对不上原文或超出范围被丢掉的数量。 */
   dropped?: number;
 }

@@ -357,7 +357,7 @@ class DirectorAssistantTest {
         var svc = new DirectorService(null, runs, null, null, textRuns, null, mock(StudioVideoService.class),
                 mock(StudioFixtureProvider.class), null, null, null, null, mock(AiAppSceneModelPolicyService.class), null, null, null,
                 om, mock(PlatformTransactionManager.class));
-        doThrow(new IllegalStateException("captured")).when(textRuns).submitDirectorText(any(), any(), any(), any(), any(), anyInt(), any(), any(), any(), any(), any(), any());
+        doThrow(new IllegalStateException("captured")).when(textRuns).submitDirectorText(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
         DirectorWork w = new DirectorWork(); w.setId("w"); w.setTitle("t");
         ObjectNode c = work();
         c.putArray("episodes"); c.remove("assistant"); c.put("draft", "").put("idea", "快递站夜班收到寄给十年后自己的包裹");
@@ -366,7 +366,7 @@ class DirectorAssistantTest {
         var req = new DirectorService.TaskRequest("brief", null, "c1", om.createObjectNode().put("message", "直接写三集"), null, 21L);
         assertThrows(IllegalStateException.class, () -> ReflectionTestUtils.invokeMethod(svc, "askBrief", "u", w, c, req, req.options()));
         var user = org.mockito.ArgumentCaptor.forClass(String.class);
-        verify(textRuns).submitDirectorText(any(), any(), eq("script"), any(), user.capture(), anyInt(), any(), any(), any(), any(), any(), any());
+        verify(textRuns).submitDirectorText(any(), any(), eq("script"), any(), user.capture(), any(), any(), any(), any(), any());
         assertTrue(user.getValue().contains("直接写三集"), user.getValue());
     }
 

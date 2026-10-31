@@ -7,6 +7,8 @@ import com.aistareco.aep.service.AiModelInvocationService;
 import com.aistareco.aep.service.ai.*;
 import com.aistareco.aep.service.storage.*;
 import com.aistareco.common.*;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.exc.StreamConstraintsException;
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.http.HttpStatus;
@@ -70,8 +72,14 @@ public class JusuanImageClient {
         return generate(endpointId,prompt,size,keys,requestId,owner,progress,null);
     }
     public byte[] generate(String endpointId,String prompt,String size,List<String> keys,String requestId,String owner,Consumer<String> progress,AiImageRequestSpec snapshot) {
-        return generate(endpointId,prompt,size,keys,requestId,owner,progress,snapshot,null,null);
+        return generate(endpointId,prompt,size,keys,requestId,owner,progress,snapshot,null,null,null);
     }
+    /**
+     * The one Studio entry: {@code providerModel} (nullable) is the family model the output resolution routed to
+     * (StudioImageModelRouting); null keeps the endpoint's own model. Callback checkpoints are committed before submission
+     * and as soon as the original job ID is known. There is no overload without providerModel on purpose (§8.0.1 ④):
+     * a mock of a second overload silently stopped matching when the worker moved to this one (IpRunWorkerTest, 2026-10-25).
+     */
     public byte[] generate(String endpointId,String prompt,String size,List<String> keys,String requestId,String owner,
                            Consumer<String> progress,AiImageRequestSpec snapshot,String providerModel,
                            JsonNode previous,Consumer<ObjectNode> checkpoint) {
@@ -88,21 +96,18 @@ public class JusuanImageClient {
     /** A provider request may have been accepted even when its HTTP reply is lost. Never re-POST that checkpoint. */
     public static final class Pending extends RuntimeException {
         private final boolean known;
-        public Pending(boolean known,Throwable cause){super(known?"正在恢复原图片任务，请勿重新生成":"图片受理结果尚未确认，请联系运营核对原请求；请勿重新生成",cause);this.known=known;}
+        public Pending(boolean known,Throwable cause){super((known?"正在恢复原图片任务，请勿重新生成":"图片受理结果尚未确认，请联系运营核对原请求；请勿重新生成")+upstreamReason(cause),cause);this.known=known;}
+        private static String upstreamReason(Throwable cause) {
+            if(cause instanceof BusinessException error && error.getDetails() instanceof Map<?,?> details
+                    && details.get("reason") instanceof String reason && !reason.isBlank())return "；上游原因："+reason;
+            return "";
+        }
         public String code(){return known?"STUDIO_IMAGE_RECOVERING":"STUDIO_IMAGE_SUBMISSION_UNKNOWN";}
     }
     public static final class ProviderRejected extends BusinessException {
         ProviderRejected(String message){super(HttpStatus.BAD_GATEWAY,"STUDIO_IMAGE_PROVIDER_FAILED",message);}
+        ProviderRejected(String message,Map<String,String> details){super(HttpStatus.BAD_GATEWAY,"STUDIO_IMAGE_PROVIDER_FAILED",message,details);}
     }
-    /** Callback checkpoints are committed before submission and as soon as the original job ID is known. */
-    public byte[] generate(String endpointId,String prompt,String size,List<String> keys,String requestId,String owner,
-                           Consumer<String> progress,AiImageRequestSpec snapshot,JsonNode previous,Consumer<ObjectNode> checkpoint) {
-        boolean attempted=previous!=null && previous.path("submitAttempted").asBoolean();
-        var configured=attempted?models.storedEndpoint(endpointId):models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,endpointId,"studio").map(r->r.endpoint());
-        return generateResolved(configured.orElseThrow(()->failure("图片模型已停用")),prompt,size,keys,requestId,
-                new Invocation(AiModelPurpose.DAP_IMAGE,"studio",owner),progress,snapshot,previous,checkpoint);
-    }
-
     /** Business callers have already resolved their own purpose/application access and keep their own credit rules. */
     public byte[] generateResolved(AiModelEndpoint endpoint,AiModelPurpose purpose,String appCode,String prompt,String size,
                                   List<String> inputs,String requestId) {
@@ -144,15 +149,22 @@ public class JusuanImageClient {
             JsonNode accepted;
             try{accepted=multipart==null?json(endpoint,wire,submitPath,body.toString(),requestId,owner,"POST",true)
                     :checkedSubmit(upstream.sendJson(multipart,context(endpoint,requestId,owner,
-                        body.deepCopy().put("transport","multipart").set("referenceKeys",mapper.valueToTree(keys.stream().map(JusuanImageClient::referenceLabel).toList())).toString(),true)));}
+                        body.deepCopy().put("transport","multipart").set("referenceKeys",mapper.valueToTree(keys.stream().map(JusuanImageClient::referenceLabel).toList())).toString(),true)),wire);}
             catch(ProviderRejected error){throw error;}
             catch(RuntimeException error){if(durable)throw new Pending(false,error);throw error;}
             if(resultMode.startsWith("sync-")) {
                 try {
-                    byte[] bytes=resultBytes(endpoint,wire,pointerText(accepted,wire.outputPointer()),resultMode);
-                    requireOutputSize(spec,size,bytes);
+                    byte[] bytes=syncResult(endpoint,wire,accepted,resultMode,requestId);
+                    noteOutputSize(spec,size,bytes,endpoint,requestId);
                     recordSuccess(endpoint,owner,requestId,null,body);return bytes;
                 } catch(ProviderRejected error){throw error;}
+                catch(BusinessException error) {
+                    // The supplier already answered with its final result and a sync call has no job to resume:
+                    // an unusable result is a known failure, not an unknown submission.
+                    var rejected=new ProviderRejected(error.getMessage());
+                    for(Throwable evidence:error.getSuppressed())rejected.addSuppressed(evidence);
+                    throw rejected;
+                }
                 catch(RuntimeException error){if(durable)throw new Pending(false,error);throw error;}
             }
             id=wire!=null && wire.submitIdPointer()!=null?pointerText(accepted,wire.submitIdPointer()):accepted.path("id").asText(accepted.path("jobId").asText());
@@ -171,12 +183,12 @@ public class JusuanImageClient {
                 }
                 JsonNode job=json(endpoint,wire,pollPath,pollBody,requestId,owner,pollMethod,false);
                 String status=wire!=null && wire.statusPointer()!=null?pointerText(job,wire.statusPointer()):job.path("status").asText();
-                if(statusIn(status,wire==null?null:wire.failed(),Set.of("failed","cancelled","canceled","expired")))throw com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attachBody(new ProviderRejected("图片任务失败，请检查提示词和参考图后重试"),job.toString());
+                if(statusIn(status,wire==null?null:wire.failed(),Set.of("failed","cancelled","canceled","expired")))throw com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attachBody(rejected(job,"图片任务失败，请检查提示词和参考图后重试"),job.toString());
                 if(statusIn(status,wire==null?null:wire.succeeded(),Set.of("succeeded","completed","done"))) {
                     byte[] bytes;
                     if("async-url".equals(resultMode))bytes=resultBytes(endpoint,wire,pointerText(job,wire.outputPointer()),resultMode);
                     else {String asset=wire!=null && wire.outputAssetIdPointer()!=null?pointerText(job,wire.outputAssetIdPointer()):assetId(job);requireId(asset);bytes=download(endpoint,wire,asset);}
-                    requireOutputSize(spec,size,bytes);
+                    noteOutputSize(spec,size,bytes,endpoint,requestId);
                     recordSuccess(endpoint,owner,requestId,id,body);return bytes;
                 }
                 progress.accept("queued".equals(status)?"image.provider.queued":"image.provider.processing");
@@ -323,8 +335,27 @@ public class JusuanImageClient {
         return source.startsWith("data:")?"[inline image]":source.startsWith("http")?"[external image]":source;
     }
 
+    /**
+     * OpenAI-style endpoints may ignore response_format: on 2026-10-28 /images/edits answered data[0].url
+     * (a presigned S3 address) to a b64_json request. Read the sibling field rather than failing a finished image.
+     */
+    private byte[] syncResult(AiModelEndpoint endpoint,AiImageRequestSpec.Wire wire,JsonNode accepted,String mode,String requestId) {
+        String pointer=wire.outputPointer(),value=pointerText(accepted,pointer);
+        if((value==null || value.isBlank()) && pointer!=null) {
+            String sibling=pointer.endsWith("/b64_json")?pointer.substring(0,pointer.length()-"b64_json".length())+"url"
+                    :pointer.endsWith("/url")?pointer.substring(0,pointer.length()-"url".length())+"b64_json":null;
+            String alternate=sibling==null?null:pointerText(accepted,sibling);
+            if(alternate!=null && !alternate.isBlank()) {
+                org.slf4j.LoggerFactory.getLogger(getClass()).info("[studio-jusuan-image] result field fallback request={} endpoint={} configured={} used={}",
+                        requestId,endpoint.getId(),pointer,sibling);
+                return sibling.endsWith("/url")?downloadUrl(endpoint,wire,alternate,true):resultBytes(endpoint,wire,alternate,"sync-base64");
+            }
+        }
+        return resultBytes(endpoint,wire,value,mode);
+    }
+
     private byte[] resultBytes(AiModelEndpoint endpoint,AiImageRequestSpec.Wire wire,String value,String mode) {
-        if(value==null || value.isBlank())throw failure("图片结果缺少端点配置的输出字段");
+        if(value==null || value.isBlank())throw failure("图片引擎返回成功，但结果里没有图片，请重试；多次出现请联系运营核对模型配置");
         if("sync-base64".equals(mode)) {
             String encoded=value;
             if(encoded.startsWith("data:image/")) {
@@ -337,31 +368,41 @@ public class JusuanImageClient {
             try{return checkedImage(Base64.getDecoder().decode(encoded),maxBytes);}
             catch(IllegalArgumentException e){throw failure("图片结果编码无效");}
         }
-        return downloadUrl(endpoint,wire,value);
+        return downloadUrl(endpoint,wire,value,false);
     }
 
-    /** A completed but wrong-size image is a known bad result, never an unknown submission to replay. */
-    private void requireOutputSize(AiImageRequestSpec spec,String size,byte[] bytes) {
+    /**
+     * A completed image of another size is still the user's image: deliver and settle it, and leave the evidence
+     * for operations. 2026-10-30: rejecting it (since 2026-10-20) failed 13 paid supplier results that users wanted;
+     * the canvas and director size the node from the real file, so nothing downstream needs the requested size.
+     */
+    private void noteOutputSize(AiImageRequestSpec spec,String size,byte[] bytes,AiModelEndpoint endpoint,String requestId) {
         if(spec.wire()==null || !Boolean.TRUE.equals(spec.wire().requireExactOutputSize()))return;
         int[] actual=IpProjectService.readDimensions(bytes);
-        if(actual==null)throw new ProviderRejected("图片引擎返回的图片尺寸无法读取，请联系运营核对模型规格");
-        String received=actual[0]+"x"+actual[1];
-        if(!received.equals(size))throw new ProviderRejected("图片引擎返回 "+received+"，与所选 "+size+" 不符，请联系运营核对模型规格");
+        String received=actual==null?"unreadable":actual[0]+"x"+actual[1];
+        if(!received.equals(size))org.slf4j.LoggerFactory.getLogger(getClass()).warn(
+                "[studio-jusuan-image] output size differs, delivered as is request={} endpoint={} model={} requested={} received={}",
+                requestId,endpoint.getId(),endpoint.getModel(),size,received);
     }
 
-    private byte[] downloadUrl(AiModelEndpoint endpoint,AiImageRequestSpec.Wire wire,String value) {
+    /** A fallback URL is not configured, so without an explicit outputHosts list any public HTTPS host is accepted. */
+    private byte[] downloadUrl(AiModelEndpoint endpoint,AiImageRequestSpec.Wire wire,String value,boolean fallback) {
         try {
             URI uri=URI.create(value);
             String host=uri.getHost();
             if(!"https".equalsIgnoreCase(uri.getScheme()) || host==null || uri.getUserInfo()!=null
                     || uri.getFragment()!=null || !(host.equalsIgnoreCase(URI.create(endpoint.getBaseUrl()).getHost())
-                    || wire.outputHosts()!=null && wire.outputHosts().stream().anyMatch(host::equalsIgnoreCase))
+                    || wire.outputHosts()!=null && wire.outputHosts().stream().anyMatch(host::equalsIgnoreCase)
+                    || fallback && wire.outputHosts()==null)
                     || !com.aistareco.aep.service.ai.PublicMediaUris.publicHost(host))throw failure("图片结果地址不在端点允许的 HTTPS 域名内");
             var response=http.send(HttpRequest.newBuilder(uri)
                     .timeout(Duration.ofMillis(setting(wire.requestTimeoutMillis(),90000))).GET().build(),
                     HttpResponse.BodyHandlers.ofInputStream());
             try(var input=response.body()) {
-                if(response.statusCode()/100!=2)throw failure("图片结果下载失败");
+                if(response.statusCode()/100!=2) {
+                    String body=new String(input.readNBytes(4096),StandardCharsets.UTF_8);
+                    throw com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attachBody(failure(ProviderErrorMessage.message(body,"图片结果下载失败（上游 "+response.statusCode()+"）")),body);
+                }
                 int maxBytes=setting(wire.maxOutputBytes(),64*1024*1024);
                 return checkedImage(input.readNBytes(maxBytes+1),maxBytes);
             }
@@ -391,12 +432,35 @@ public class JusuanImageClient {
             request.POST(body==null?HttpRequest.BodyPublishers.noBody():HttpRequest.BodyPublishers.ofString(body));
         }
         var response=upstream.sendJson(request.build(),context(endpoint,id,owner,body,submit));
-        return submit?checkedSubmit(response):checked(response);
+        return submit?checkedSubmit(response,wire):checked(response,wire);
     }
-    private JsonNode checkedSubmit(HttpResponse<String> response) {
+    private JsonNode checkedSubmit(HttpResponse<String> response,AiImageRequestSpec.Wire wire) {
         if(response.statusCode()>=400 && response.statusCode()<500)
-            throw attach(new ProviderRejected("图片请求被生成引擎拒绝（"+response.statusCode()+"）"),response);
-        return checked(response);
+            throw attach(rejected(response.body(),"图片请求被生成引擎拒绝（"+response.statusCode()+"）"),response);
+        return checked(response,wire);
+    }
+
+    // AGENTS §8.0.1: keep actionable JSON rejection messages on the public path as well as in diagnostics.
+    private ProviderRejected rejected(String body,String fallback) {
+        try { return rejected(mapper.readTree(body),fallback); }
+        catch(Exception ignored) { return new ProviderRejected(fallback); }
+    }
+    private ProviderRejected rejected(JsonNode body,String fallback) {
+        if(body==null || !body.isObject())return new ProviderRejected(fallback);
+        JsonNode error=body.path("error");
+        if(error.isMissingNode() || error.isNull()) {
+            for(String wrapper:List.of("data","result"))
+                if(body.path(wrapper).path("error").isObject()) {error=body.path(wrapper).path("error");break;}
+        }
+        String reason=ProviderErrorMessage.reason(body);
+        if(reason==null)return new ProviderRejected(fallback);
+        String code=error.path("code").asText("");
+        if(!code.matches("[A-Za-z0-9_.:-]{1,96}"))code="";
+        boolean moderation=Set.of("content_policy_violation","content_filter","safety_violation","moderation_blocked")
+                .contains(code.toLowerCase(Locale.ROOT));
+        String prefix=moderation?"图片未通过生成服务的内容审核：":"图片生成服务返回错误：";
+        return new ProviderRejected(prefix+reason,Map.of("providerCode",code,"reason",reason,
+                "category",moderation?"content_moderation":"provider_rejection"));
     }
     private HttpRequest.Builder request(AiModelEndpoint endpoint,AiImageRequestSpec.Wire wire,String path) {
         String queryName=wire==null?"model":configured(wire.modelQueryParam(),"model");
@@ -413,7 +477,10 @@ public class JusuanImageClient {
             String path=fillPath(configured(wire==null?null:wire.downloadPathTemplate(),"/assets/{id}/content"),id,endpoint.getModel());
             var response=http.send(request(endpoint,wire,path).GET().build(),HttpResponse.BodyHandlers.ofInputStream());
             try(var in=response.body()) {
-                if(response.statusCode()/100!=2)throw failure("图片结果下载失败");
+                if(response.statusCode()/100!=2) {
+                    String body=new String(in.readNBytes(4096),StandardCharsets.UTF_8);
+                    throw com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attachBody(failure(ProviderErrorMessage.message(body,"图片结果下载失败（上游 "+response.statusCode()+"）")),body);
+                }
                 int maxBytes=setting(wire==null?null:wire.maxOutputBytes(),64*1024*1024);
                 byte[] bytes=in.readNBytes(maxBytes+1);
                 if(bytes.length==0 || bytes.length>maxBytes || MediaBytes.sniff("image",bytes)==null)throw failure("图片结果不可用");
@@ -441,8 +508,43 @@ public class JusuanImageClient {
                 .appCode(owner.appCode()).client(http).requestBodyJson(body).recordFailureUsage(submit).maxAttempts(1).build();
     }
     private JsonNode checked(HttpResponse<String> response) {
-        if(response.statusCode()/100!=2)throw attach(failure("聚算图片接口暂时不可用（"+response.statusCode()+"）"),response);
-        try{return mapper.readTree(response.body());}catch(Exception e){throw attach(failure("聚算图片接口返回了无效结果"),response);}
+        return checked(response,null);
+    }
+    private JsonNode checked(HttpResponse<String> response,AiImageRequestSpec.Wire wire) {
+        if(response.statusCode()/100!=2) {
+            var error=rejected(response.body(),"图片生成服务返回错误（"+response.statusCode()+"）");
+            // Keep recoverable failures distinct from a definitive submission rejection.
+            throw attach(new BusinessException(HttpStatus.BAD_GATEWAY,error.getCode(),error.getMessage(),error.getDetails()),response);
+        }
+        try {
+            JsonNode result;
+            if(wire!=null && "sync-base64".equals(wire.resultMode())) {
+                // Jackson's default 20M-character string limit rejects valid 4K PNGs before
+                // resultBytes can apply the endpoint's byte limit. Only this response parser
+                // gets the matching Base64 allowance; never change the shared mapper/factory.
+                long encodedLimit=((long)setting(wire.maxOutputBytes(),64*1024*1024)+2)/3*4+128;
+                var factory=mapper.getFactory();
+                int stringLimit=(int)Math.min(Integer.MAX_VALUE,Math.max(
+                        factory.streamReadConstraints().getMaxStringLength(),encodedLimit));
+                var imageFactory=factory.rebuild().streamReadConstraints(factory.streamReadConstraints()
+                        .rebuild().maxStringLength(stringLimit).build()).build();
+                try(var parser=imageFactory.createParser(response.body())) {result=mapper.readTree(parser);}
+            } else result=mapper.readTree(response.body());
+            if(result==null || result.isMissingNode() || !result.isObject())
+                throw new IllegalStateException("Expected an image response object");
+            return result;
+        } catch(Exception e) {
+            var error=failure("图片生成接口返回的数据无法解析，请联系运营核查");
+            String detail="image-response parseError="+e.getClass().getSimpleName()
+                    +" responseCharacters="+(response.body()==null?0:response.body().length());
+            if(e instanceof JsonProcessingException json && json.getLocation()!=null)
+                detail+=" charOffset="+json.getLocation().getCharOffset();
+            if(e instanceof StreamConstraintsException constraint)detail+=" reason="+constraint.getOriginalMessage();
+            // Parser exceptions can quote the source or a media token; retain safe diagnostic
+            // facts in the exception chain without copying image bytes into task error logs.
+            error.addSuppressed(new IllegalStateException(detail));
+            throw attach(error,response);
+        }
     }
     static String assetId(JsonNode job) {
         for(String field:List.of("outputAssetId","output_asset_id","assetId"))if(job.hasNonNull(field))return job.path(field).asText();

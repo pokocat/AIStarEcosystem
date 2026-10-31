@@ -44,11 +44,14 @@ export type LedgerEntryType =
   | "adjust"               // 管理员手动调账
   | "transfer_in"
   | "transfer_out"
+  | "scoped_grant" | "scoped_freeze" | "scoped_spend" | "scoped_release" | "scoped_expire"
   | "refund_cash";         // v2 §4.2 资金面真实现金退款（D17 回收未消费积分）
 
 export interface LedgerEntry {
   id: ID;
   walletId: ID;
+  /** Present for model allowances; balanceAfter then denotes this batch balance. */
+  grantId?: ID;
   userId: ID | null;
   enterpriseId?: ID;
   actorUserId?: ID;

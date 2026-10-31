@@ -158,7 +158,10 @@ class StudioSkillDraftServiceTest {
         assertEquals(dto.id(), run.getId());
         assertEquals("studio-text", run.getKind());
         assertEquals("SKD-PEX-1", run.getNodeId());
-        verify(credits).hold("op", cost, "ip-run", run.getId(), "Studio 整理制作方法");
+        var charge=ArgumentCaptor.forClass(com.aistareco.aep.billing.service.ModelChargeContext.class);
+        verify(credits).hold(eq("op"), eq(cost), eq("ip-run"), eq(run.getId()), eq("Studio 整理制作方法"), charge.capture());
+        assertEquals("model",charge.getValue().target().action());assertEquals("ep-text",charge.getValue().target().endpointId());
+        assertEquals("m",charge.getValue().target().providerModel());assertEquals("credit",charge.getValue().target().unit());
         var input = parse(run.getInputJson());
         assertEquals("skill-distill", input.path("purpose").asText());
         var distill = input.path("_exec").path("skillDistill");
@@ -186,7 +189,7 @@ class StudioSkillDraftServiceTest {
         assertEquals(run.getId(), service.submit("op", "P1", request(cost), true).id());
         var changed = new DraftRequest("draft-1", "PEX-1", "换个重点", cost, null);
         assertEquals("STUDIO_REQUEST_CHANGED", assertThrows(BusinessException.class, () -> service.submit("op", "P1", changed, true)).getCode());
-        verify(credits, times(1)).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
+        verify(credits, times(1)).hold(anyString(), anyLong(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     private com.fasterxml.jackson.databind.JsonNode parse(String json) {

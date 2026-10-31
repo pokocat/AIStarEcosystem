@@ -1,6 +1,7 @@
 // Runs in node: nothing here renders; the one storage call (mocks/ip-studio.ts, the projected-node reset) is guarded.
 // The demo dialogue runs the whole flow on the same reducer and contract as the real server.
 import { beforeEach, expect, test } from 'vitest';
+import { composeStarter } from '../studio-assistant-starters';
 import type { IpProject, IpRun } from '@ai-star-eco/types';
 import type { StudioDialogueEvent, StudioNodeUpsertData } from '@ai-star-eco/types/ip-studio-workflow';
 import { approvedCaps, approvedExecutionIds, dialogueReducer, emptyDialogueStore, planForApproval, type DialogueApprovalBlock, type DialogueStore } from '@/canvas-bridge/studio-dialogue-store';
@@ -305,8 +306,9 @@ test('a message sent while a turn runs is queued and later marked applied', asyn
 test('the four opening cards: each sentence, sent with its skill, gets a fitting demo answer', async () => {
   canvasWith('cards', [{ id: 'me', type: 'image' }, { id: 'ref', type: 'video' }]);
   const plans: Record<string, { title: string; cost: number }> = {};
+  const ipPrompt = composeStarter('ip', { slots: { photos: [{ title: 'me' }] } }).text;
   for (const [key, text, pinned] of [
-    ['image-generation', '用 @me 做一个我的数字 IP 形象，保留脸型、发型和主要特征，写实风格，出一张多视角设定图（正面、侧面、背面加几个表情）。', ['me']],
+    ['image-generation', ipPrompt, ['me']],
     ['video-generation', '做一条 10 秒、16:9 的短视频：女孩在海边回头微笑。镜头环绕。', []],
   ] as const) {
     const state = await mockDialogueConversation(`cards-${key}`);
@@ -315,10 +317,14 @@ test('the four opening cards: each sentence, sent with its skill, gets a fitting
     await mockDialoguePost(`cards-${key}`, state.thread.id, { clientMessageId: 'c1', text, skillKey: key, pinnedNodeIds: [...pinned] });
     await until(events, e => e.type === 'turn.done');
     stop();
-    const plan = events.find(e => e.type === 'plan.proposed')!.data as { block: { plan: { steps: { title: string; quotedCost: number }[] } } };
+    const plan = events.find(e => e.type === 'plan.proposed')!.data as { block: { plan: { steps: { title: string; quotedCost: number; prompt: string; settings: { aspectRatio: string; count: number } }[] } } };
     plans[key] = { title: plan.block.plan.steps[0].title, cost: plan.block.plan.steps[0].quotedCost };
+    if (key === 'image-generation') {
+      expect(plan.block.plan.steps).toHaveLength(1);
+      expect(plan.block.plan.steps[0]).toMatchObject({ prompt: ipPrompt, settings: { aspectRatio: '3:4', count: 1 } });
+    }
   }
-  expect(plans['image-generation']).toEqual({ title: '一张 1:1 的多视角设定图', cost: 8 });
+  expect(plans['image-generation']).toEqual({ title: '一张 3:4 的IP 全视角图鉴', cost: 8 });
   // What the card chose is what the card quotes: 10 seconds, landscape.
   expect(plans['video-generation']).toEqual({ title: '一段 10 秒横屏视频', cost: 80 });
 

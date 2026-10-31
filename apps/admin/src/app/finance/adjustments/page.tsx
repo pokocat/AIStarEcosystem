@@ -17,6 +17,7 @@ import { useToast } from "@/components/feedback";
 import { AdjustmentsApi } from "@/api";
 import type { CreditAdjustmentRequest, AdjustmentResult } from "@/api/adjustments";
 import { useAdminIdentity, type AdminIdentity } from "@/lib/useAdminRole";
+import { formatDateTime } from "@/lib/datetime";
 
 type Toast = ReturnType<typeof useToast>;
 
@@ -47,7 +48,7 @@ export default function AdminAdjustmentsPage() {
       <PageHeader title="调差 / 赠送" description={superAdmin ? "超管发放即时到账，无需他人复核" : "给用户补发或赠送积分，大额需复核"} />
 
       <div className="rounded-lg border border-amber-300/50 bg-amber-50/60 px-4 py-3 text-sm text-amber-900 dark:border-amber-700/40 dark:bg-amber-950/30 dark:text-amber-200">
-        本操作只增加<strong>赠送积分</strong>，不改变充值余额。请填写原因，补偿还需填写工单号；操作记录可追溯。
+        普通赠送增加赠送积分，模型赠款只能用在指定模型上；两者都不改变充值余额。请填写原因，补偿还需填写工单号；操作记录可追溯。
         {superAdmin ? "你可以直接发放，也可以批准本人已提交的待审单。每日发放限额仍适用。" : "大额发放需由另一位财务或超管批准；超管本人发放可直接到账。"}
       </div>
 
@@ -234,10 +235,13 @@ function PendingApprovals({
               >
                 <div className="space-y-0.5">
                   <div className="font-medium">
-                    {r.type === "compensate" ? "客诉补偿" : "激励赠送"} · +{r.amount.toLocaleString()} 积分
+                    {r.type === "compensate" ? "客诉补偿" : r.type === "scoped_grant" ? "模型赠款" : "激励赠送"} · +{r.amount.toLocaleString()} 积分
                     {r.incidentRef ? ` · 工单 ${r.incidentRef}` : ""}
                     {r.campaignId ? ` · 活动 ${r.campaignId}` : ""}
                   </div>
+                  {r.type === "scoped_grant" && <div className="text-xs text-muted-foreground">
+                    消费账户 {r.walletId} · 有效期至 {formatDateTime(r.expiresAt)}
+                  </div>}
                   <div className="text-xs text-muted-foreground">
                     用户 {r.targetUserId} · 发起 {r.makerId} · {r.reason ?? ""}
                   </div>

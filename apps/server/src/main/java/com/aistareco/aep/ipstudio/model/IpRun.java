@@ -104,12 +104,12 @@ public class IpRun {
 
     /** IpRunInputs JSON（实际英文提示词 + 参考图生效回报 + size/count）。 */
     @Lob
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "LONGTEXT")
     private String inputJson;
 
     /** IpRunOutput JSON（identity: text/promptEn；generate: candidates[{key}]，**只存 key**）。 */
     @Lob
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "LONGTEXT")
     private String outputJson;
 
     /** 用户请求取消；worker 在阶段间检查并收尾（避免与 worker 抢终态写入）。 */

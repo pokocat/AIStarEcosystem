@@ -813,3 +813,7 @@ CI 与发布构建在 Maven 编译前执行 `infra/scripts/prepare-platform-sdk.
 ### Studio 媒体上传代理（2026-10-17）
 
 web-aiavatar 的 Next rewrite 设置 `experimental.proxyClientMaxBodySize=130mb`、`proxyTimeout=180000`，匹配媒体导入128MiB和自动编码兼容处理；后端转码超时150秒。生产 nginx `/api` 直转server仍采用现有200m/180s配置，无需更改环境变量。
+
+## Studio JSON 临时 JVM-Sandbox（2026-10-25 UTC）
+
+生产原进程已加载只处理 `ModelJson.parse` Jackson 异常的 `aep-json-recovery` 模块，未替换 app.jar 或修改 systemd / server.env。namespace `aep-json-20261024`，管理端口只在环回 `24769`，目录 `/home/ecs-user/.local/share/aistareco/hotfix/studio-json-31fc2bdf`。下次正常发布先按 [手册](../docs/runbooks/studio-json-jvm-sandbox.md) 卸载临时模块，再从包含永久修复的 main 构建应用；不要仅重启旧 JAR，否则临时修复会丢失。证据见 [发布记录](../docs/releases/studio-json-jvm-sandbox-release-20261025.md)。

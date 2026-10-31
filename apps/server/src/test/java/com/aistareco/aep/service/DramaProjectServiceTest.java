@@ -42,6 +42,8 @@ class DramaProjectServiceTest {
         store = new HashMap<>();
         DramaProjectRepository repo = mock(DramaProjectRepository.class);
         invocation = mock(AiModelInvocationService.class);
+        when(invocation.resolveDefaultEndpoint(AiModelPurpose.DRAMA_SCRIPT_DRAFT,"drama"))
+                .thenReturn(Optional.of(com.aistareco.aep.model.AiModelEndpoint.builder().id("qwen").model("qwen").enabled(true).build()));
         promptService = mock(PromptService.class);
         // 默认：prompt 已配置（origin=resource）。具体测试可对单个 key 覆盖为 code（未配置）。
         when(promptService.resolve(anyString())).thenAnswer(inv -> new PromptService.ResolvedPrompt(
@@ -168,7 +170,7 @@ class DramaProjectServiceTest {
     @Test
     void outlineParsesEpisodesFromLlmJson() {
         when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(true);
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap(), eq("drama")))
+        when(invocation.invokeChatOnEndpoint(any(),eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
                 .thenReturn(new AiModelInvocationService.AiModelResponse(
                         "{\"episodes\":[{\"no\":1,\"hook\":\"开场钩子\",\"synopsis\":\"梗概\",\"beat\":\"转折\"}]}",
                         "stop", 100L, "ep", "fake-model"));
@@ -182,7 +184,7 @@ class DramaProjectServiceTest {
     @Test
     void epscriptDraftParsesScenesAndShots() {
         when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(true);
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap(), eq("drama")))
+        when(invocation.invokeChatOnEndpoint(any(),eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
                 .thenReturn(new AiModelInvocationService.AiModelResponse(
                         "{\"scenes\":[{\"place\":\"内景 · 客厅 · 夜\",\"mood\":\"悬疑\",\"action\":\"她发现异样\","
                                 + "\"lines\":[{\"who\":\"旁白\",\"text\":\"第一晚就不对劲\"}],"
@@ -204,7 +206,7 @@ class DramaProjectServiceTest {
     @Test
     void castDraftParsesCharacters() {
         when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(true);
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap(), eq("drama")))
+        when(invocation.invokeChatOnEndpoint(any(),eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
                 .thenReturn(new AiModelInvocationService.AiModelResponse(
                         "{\"characters\":[{\"name\":\"林夏\",\"role\":\"key\",\"cast\":\"女·28\",\"desc\":\"坚韧\"},"
                                 + "{\"name\":\"陈姨\",\"role\":\"weird\",\"cast\":\"女·55\",\"desc\":\"热心\"}]}",
@@ -220,7 +222,7 @@ class DramaProjectServiceTest {
     @Test
     void outlineThrowsOnUnparseableLlmOutput() {
         when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(true);
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap(), eq("drama")))
+        when(invocation.invokeChatOnEndpoint(any(),eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
                 .thenReturn(new AiModelInvocationService.AiModelResponse(
                         "对不起我无法生成", "stop", 10L, "ep", "fake-model"));
         String id = createReturningId("{\"type\":\"X\",\"typeKey\":\"x\",\"mode\":\"guided\"}", "u1");
@@ -233,30 +235,30 @@ class DramaProjectServiceTest {
     @Test
     void aiSuccessHoldsAndCommitsCredits() {
         when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(true);
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap(), eq("drama")))
+        when(invocation.invokeChatOnEndpoint(any(),eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
                 .thenReturn(new AiModelInvocationService.AiModelResponse(
                         "{\"episodes\":[{\"no\":1,\"hook\":\"h\",\"synopsis\":\"s\",\"beat\":\"b\"}]}",
                         "stop", 100L, "ep", "fake-model"));
         String id = createReturningId("{\"type\":\"X\",\"typeKey\":\"x\",\"mode\":\"guided\",\"episodes\":3}", "u1");
         svc.outlineAiDraft(id, null, "u1");
         // 默认 count=min(3,6)=3 ≤ 6 → 试铺价 6
-        verify(creditService).hold(eq("u1"), eq(6L), eq("DRAMA_AI"), anyString(), anyString());
-        verify(creditService).commitHold(eq("DRAMA_AI"), anyString(), eq(6L), anyString());
+        verify(creditService).hold(eq("u1"), eq(6L), eq("DRAMA_AI"), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
+        verify(creditService).commitHold(eq("DRAMA_AI"), anyString(), eq(6L), anyString(), org.mockito.ArgumentMatchers.any());
         verify(creditService, never()).releaseHold(anyString(), anyString(), anyString());
     }
 
     @Test
     void aiFailureReleasesHold() {
         when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(true);
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap(), eq("drama")))
+        when(invocation.invokeChatOnEndpoint(any(),eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
                 .thenReturn(new AiModelInvocationService.AiModelResponse(
                         "不是 JSON", "stop", 10L, "ep", "fake-model"));
         String id = createReturningId("{\"type\":\"X\",\"typeKey\":\"x\",\"mode\":\"guided\"}", "u1");
         assertThrows(BusinessException.class,
                 () -> svc.epscriptAiDraft(id, node("{\"ep\":1,\"plot\":\"剧情\"}"), "u1"));
-        verify(creditService).hold(eq("u1"), eq(10L), eq("DRAMA_AI"), anyString(), anyString());
+        verify(creditService).hold(eq("u1"), eq(10L), eq("DRAMA_AI"), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         verify(creditService).releaseHold(eq("DRAMA_AI"), anyString(), anyString());
-        verify(creditService, never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+        verify(creditService, never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
     }
 
     // ── v0.71 prompt 数据化（resolve → fill → 参数 / 未配置闸） ─────────────────────
@@ -271,8 +273,8 @@ class DramaProjectServiceTest {
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> svc.epscriptAiDraft(id, node("{\"ep\":1,\"plot\":\"剧情\"}"), "u1"));
         assertEquals("PROMPT_NOT_CONFIGURED", ex.getCode());
-        verify(invocation, never()).invokeChat(any(), anyList(), anyMap(), eq("drama"));
-        verify(creditService, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
+        verify(invocation, never()).invokeChatOnEndpoint(any(),any(), anyList(), anyMap());
+        verify(creditService, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     @Test
@@ -280,7 +282,7 @@ class DramaProjectServiceTest {
         when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(true);
         when(promptService.resolve(PromptService.KEY_DRAMA_OUTLINE)).thenReturn(new PromptService.ResolvedPrompt(
                 "sys", "为《{{title}}》生成 {{count}} 集大纲", new PromptParamsDto(0.3, 1234, true), "db"));
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap(), eq("drama")))
+        when(invocation.invokeChatOnEndpoint(any(),eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
                 .thenReturn(new AiModelInvocationService.AiModelResponse(
                         "{\"episodes\":[{\"no\":1,\"hook\":\"h\",\"synopsis\":\"s\",\"beat\":\"b\"}]}",
                         "stop", 1L, "ep", "fake-model"));
@@ -289,7 +291,7 @@ class DramaProjectServiceTest {
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> opts = ArgumentCaptor.forClass(Map.class);
-        verify(invocation).invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), opts.capture(), eq("drama"));
+        verify(invocation).invokeChatOnEndpoint(any(),eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), opts.capture());
         assertEquals(0.3, opts.getValue().get("temperature"), "运营设的 temperature 应覆盖默认");
         assertEquals(1234, opts.getValue().get("max_tokens"), "运营设的 max_tokens 应生效");
     }
@@ -315,7 +317,7 @@ class DramaProjectServiceTest {
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> svc.interactiveDraft(id, node("{\"theme\":\"末日列车\"}"), "u1"));
         assertEquals("AI_NOT_CONFIGURED", ex.getCode());
-        verify(invocation, never()).invokeChat(any(), anyList(), anyMap(), eq("drama"));
+        verify(invocation, never()).invokeChatOnEndpoint(any(),any(), anyList(), anyMap());
     }
 
     @Test
@@ -331,7 +333,7 @@ class DramaProjectServiceTest {
                 + "\"isEnding\":false},"
                 + "{\"no\":2,\"hook\":\"生还\",\"synopsis\":\"活下来\",\"interactions\":[],\"isEnding\":true,\"endingLabel\":\"生还结局\"},"
                 + "{\"no\":3,\"hook\":\"沦陷\",\"synopsis\":\"失败\",\"interactions\":[],\"isEnding\":true}]}";
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap(), eq("drama")))
+        when(invocation.invokeChatOnEndpoint(any(),eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
                 .thenReturn(new AiModelInvocationService.AiModelResponse(graph, "stop", 100L, "ep", "fake-model"));
 
         String id = createReturningId("{\"type\":\"互动剧\",\"typeKey\":\"interactive\",\"mode\":\"interactive\"}", "u1");

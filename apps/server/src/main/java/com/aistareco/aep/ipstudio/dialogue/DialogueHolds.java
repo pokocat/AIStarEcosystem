@@ -38,11 +38,12 @@ public final class DialogueHolds {
      */
     public static void settle(CreditService credits, String referenceType, List<Ref> refs, long actual) {
         if (actual < 0 || actual > total(refs)) throw new IllegalStateException("Dialogue settlement exceeds reservation");
+        if(credits.settleModelCredits(referenceType,refs.stream().map(Ref::ref).toList(),actual))return;
         long left = actual;
         for (Ref r : refs) {
             long commit = Math.min(left, r.amount());
             if (commit > r.amount()) throw new IllegalStateException("Dialogue settlement exceeds a hold");
-            if (commit > 0) credits.commitHold(referenceType, r.ref(), commit, "Studio 对话实际结算");
+            if (commit > 0) credits.commitHold(referenceType, r.ref(), commit, "Studio 对话实际结算", null);
             if (commit < r.amount()) credits.releaseHold(referenceType, r.ref(), "Studio 对话实际用量结算 · 退回余量");
             left -= commit;
         }

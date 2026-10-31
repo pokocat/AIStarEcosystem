@@ -1,0 +1,26 @@
+[1;34m[verify][0m public endpoints (http://47.98.162.120)
+[1;32m  ✓[0m / -> 200
+[1;32m  ✓[0m /login -> 200
+[1;32m  ✓[0m /admin -> 302
+[1;32m  ✓[0m /api/config -> 200
+[1;34m[verify][0m public subdomains
+[1;32m  ✓[0m https://aiavatar.aibuzz.cn/ -> 200
+[1;32m  ✓[0m https://aiavatar.aibuzz.cn/projects -> 200
+[1;34m[verify][0m remote services
+  ✓ mysqld active
+  ✓ nginx active
+  ✓ docker active
+  ✓ aistareco-server active
+  ✓ aistareco-web-music active
+  ✓ aistareco-web-drama active
+  ✓ aistareco-web-celebrity active
+  ✓ aistareco-web-aiavatar active
+  ✓ aistareco-web-star active
+  ✓ aistareco-admin active
+  ✓ aistareco-sau-service active
+  ✓ server local API ok
+  ✓ CJK fonts ok (Noto Sans CJK SC,Noto Sans CJK SC Light)
+  ✓ sau-service /healthz ok
+  ✓ nginx -t ok
+
+[1;32m[verify] ALL GREEN[0m

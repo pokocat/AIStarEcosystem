@@ -98,7 +98,7 @@ class EnterprisePointsServiceTest {
     @Test void batchReclaimsAvailableOnlyAndSkipsZeroMembers() {
         var e=company();var a=join(e);var b=join(e);fund(root(e),200,LedgerEntry.LedgerEntryType.RECHARGE);
         execute(e,"allocate",new Item(a.member().id(),100L));String ref=UUID.randomUUID().toString();
-        credits.holdWallet(wallet(a).getId(),80,"e05",ref,"冻结",a.member().userId(),a.member().id(),ref);
+        credits.holdWallet(wallet(a).getId(),80,"e05",ref,"冻结",a.member().userId(),a.member().id(),ref, com.aistareco.aep.billing.service.ModelChargeContext.NONE);
         var p=preview(e,"reclaim",new Item(a.member().id(),null),new Item(b.member().id(),null));
         assertEquals(2,p.memberCount());assertEquals(20,p.totalAmount());assertEquals(120,p.rootAvailableAfter());
         var result=submit(e,"reclaim",p,UUID.randomUUID().toString(),new Item(a.member().id(),null),new Item(b.member().id(),null));
@@ -144,7 +144,7 @@ class EnterprisePointsServiceTest {
     @Test void replayAfterConsumptionStillReturnsOriginalBatch() {
         var e=company();var m=join(e);fund(root(e),100,LedgerEntry.LedgerEntryType.RECHARGE);
         var item=new Item(m.member().id(),80L);var p=preview(e,"allocate",item);String key=UUID.randomUUID().toString();var b=submit(e,"allocate",p,key,item);
-        String ref=UUID.randomUUID().toString();credits.holdWallet(wallet(m).getId(),50,"e05",ref,"生成",m.member().userId(),m.member().id(),ref);
+        String ref=UUID.randomUUID().toString();credits.holdWallet(wallet(m).getId(),50,"e05",ref,"生成",m.member().userId(),m.member().id(),ref, com.aistareco.aep.billing.service.ModelChargeContext.NONE);
         assertEquals(b.id(),submit(e,"allocate",p,key,item).id());assertEquals(30,wallet(m).getTotalBalance());assertEquals(20,root(e).getTotalBalance());
     }
 
@@ -162,7 +162,7 @@ class EnterprisePointsServiceTest {
         var e=company();var m=join(e);fund(root(e),100,LedgerEntry.LedgerEntryType.RECHARGE);execute(e,"allocate",new Item(m.member().id(),100L));
         var item=new Item(m.member().id(),80L);var p=preview(e,"reclaim",item);String ref=UUID.randomUUID().toString();
         var result=race(()->{try {submit(e,"reclaim",p,UUID.randomUUID().toString(),item);return true;}catch(BusinessException ex){assertEquals("ENTERPRISE_POINTS_PREVIEW_STALE",ex.getCode());return false;}},
-                ()->{try {credits.holdWallet(wallet(m).getId(),80,"race-e05",ref,"生成",m.member().userId(),m.member().id(),ref);return true;}catch(ResponseStatusException ex){assertEquals(402,ex.getStatusCode().value());return false;}});
+                ()->{try {credits.holdWallet(wallet(m).getId(),80,"race-e05",ref,"生成",m.member().userId(),m.member().id(),ref, com.aistareco.aep.billing.service.ModelChargeContext.NONE);return true;}catch(ResponseStatusException ex){assertEquals(402,ex.getStatusCode().value());return false;}});
         assertEquals(1,result.stream().filter(Boolean.TRUE::equals).count());assertEquals(100,total(e,m));assertEquals(20,wallet(m).getTotalBalance());
         assertTrue(root(e).getTotalBalance()>=0);assertTrue(wallet(m).getPendingBalance()>=0);
     }
@@ -222,9 +222,9 @@ class EnterprisePointsServiceTest {
         execute(e,"allocate",new Item(m.member().id(),100L));
         assertEquals(50,lotRows.findByRechargeOrderIdAndWalletId(order,root(e).getId()).orElseThrow().getAvailable());
         assertEquals(100,lotRows.findByRechargeOrderIdAndWalletId(order,wallet(m).getId()).orElseThrow().getAvailable());
-        String ref=UUID.randomUUID().toString();credits.holdWallet(wallet(m).getId(),50,"provenance",ref,"冻结",m.member().userId(),m.member().id(),ref);
+        String ref=UUID.randomUUID().toString();credits.holdWallet(wallet(m).getId(),50,"provenance",ref,"冻结",m.member().userId(),m.member().id(),ref, com.aistareco.aep.billing.service.ModelChargeContext.NONE);
         var frozen=lotRows.findByRechargeOrderIdAndWalletId(order,wallet(m).getId()).orElseThrow();assertEquals(50,frozen.getAvailable());assertEquals(50,frozen.getFrozen());
-        credits.commitHold("provenance",ref,20,"部分完成");
+        credits.commitHold("provenance",ref,20,"部分完成", null);
         execute(e,"reclaim",new Item(m.member().id(),null));
         assertEquals(100,lotRows.findByRechargeOrderIdAndWalletId(order,root(e).getId()).orElseThrow().getAvailable());
         credits.releaseHold("provenance",ref,"剩余退回");
@@ -236,8 +236,8 @@ class EnterprisePointsServiceTest {
         var e=company();var m=join(e);
         fund(root(e),1,LedgerEntry.LedgerEntryType.GIFT);fund(root(e),1,LedgerEntry.LedgerEntryType.LICENSE_GRANT);fund(root(e),1,LedgerEntry.LedgerEntryType.RECHARGE);
         String order=UUID.randomUUID().toString();sourceLots.origin(root(e),order,1);execute(e,"allocate",new Item(m.member().id(),3L));
-        String ref=UUID.randomUUID().toString();credits.holdWallet(wallet(m).getId(),3,"rounding",ref,"冻结",m.member().userId(),m.member().id(),ref);
-        credits.commitHold("rounding",ref,1,"部分完成");credits.releaseHold("rounding",ref,"退回两分");
+        String ref=UUID.randomUUID().toString();credits.holdWallet(wallet(m).getId(),3,"rounding",ref,"冻结",m.member().userId(),m.member().id(),ref, com.aistareco.aep.billing.service.ModelChargeContext.NONE);
+        credits.commitHold("rounding",ref,1,"部分完成", null);credits.releaseHold("rounding",ref,"退回两分");
         assertEquals(2,wallet(m).getTotalBalance());assertEquals(1,wallet(m).getRechargeBalance());assertEquals(1,wallet(m).getLicenseBalance());assertEquals(0,wallet(m).getGiftBalance());
         assertEquals(1,lotRows.findByRechargeOrderIdAndWalletId(order,wallet(m).getId()).orElseThrow().getAvailable());
     }
@@ -248,20 +248,20 @@ class EnterprisePointsServiceTest {
         var read=new CountDownLatch(1);var changed=new CountDownLatch(1);
         var result=race(()->new org.springframework.transaction.support.TransactionTemplate(transactionManager).execute(status->{
             wallets.findById(walletId).orElseThrow();read.countDown();await(changed);
-            try {credits.holdWallet(walletId,80,"snapshot",secondRef,"第二笔",m.member().userId(),m.member().id(),secondRef);return true;}
+            try {credits.holdWallet(walletId,80,"snapshot",secondRef,"第二笔",m.member().userId(),m.member().id(),secondRef, com.aistareco.aep.billing.service.ModelChargeContext.NONE);return true;}
             catch(ResponseStatusException ex){assertEquals(402,ex.getStatusCode().value());status.setRollbackOnly();return false;}
-        }),()->{await(read);try {credits.holdWallet(walletId,80,"snapshot",firstRef,"第一笔",m.member().userId(),m.member().id(),firstRef);return true;}finally {changed.countDown();}});
+        }),()->{await(read);try {credits.holdWallet(walletId,80,"snapshot",firstRef,"第一笔",m.member().userId(),m.member().id(),firstRef, com.aistareco.aep.billing.service.ModelChargeContext.NONE);return true;}finally {changed.countDown();}});
         assertEquals(1,result.stream().filter(Boolean.TRUE::equals).count());assertEquals(20,wallet(m).getTotalBalance());assertEquals(80,wallet(m).getPendingBalance());
     }
 
     @Test void previouslyManagedHoldMustRefreshBeforePartialSettlement() throws Exception {
         var e=company();var m=join(e);fund(root(e),100,LedgerEntry.LedgerEntryType.RECHARGE);execute(e,"allocate",new Item(m.member().id(),100L));
-        String walletId=wallet(m).getId(),ref=UUID.randomUUID().toString();credits.holdWallet(walletId,100,"settle-snapshot",ref,"冻结",m.member().userId(),m.member().id(),ref);
+        String walletId=wallet(m).getId(),ref=UUID.randomUUID().toString();credits.holdWallet(walletId,100,"settle-snapshot",ref,"冻结",m.member().userId(),m.member().id(),ref, com.aistareco.aep.billing.service.ModelChargeContext.NONE);
         var read=new CountDownLatch(1);var changed=new CountDownLatch(1);
         race(()->new org.springframework.transaction.support.TransactionTemplate(transactionManager).execute(status->{
             wallets.findById(walletId).orElseThrow();holds.findByReferenceTypeAndReferenceId("settle-snapshot",ref).orElseThrow();read.countDown();await(changed);
-            credits.commitHold("settle-snapshot",ref,40,"剩余完成");return true;
-        }),()->{await(read);try {credits.commitHold("settle-snapshot",ref,60,"先完成六十");return true;}finally {changed.countDown();}});
+            credits.commitHold("settle-snapshot",ref,40,"剩余完成", null);return true;
+        }),()->{await(read);try {credits.commitHold("settle-snapshot",ref,60,"先完成六十", null);return true;}finally {changed.countDown();}});
         var hold=holds.findByReferenceTypeAndReferenceId("settle-snapshot",ref).orElseThrow();assertEquals(CreditHold.Status.COMMITTED,hold.getStatus());assertEquals(0,hold.getRemainingAmount());
         assertEquals(0,wallet(m).getPendingBalance());assertEquals(0,wallet(m).getTotalBalance());
     }

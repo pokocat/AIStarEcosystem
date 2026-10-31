@@ -11,6 +11,8 @@ import { DirectorApi } from "../api";
 import { StudioPage } from "../studio-page";
 import { GalleryState, useStudioList } from "../studio-gallery";
 import { InlineError, errorText, useEscape, dialogFocus } from "./director-shared";
+import { DirectorScriptFile, LargePasteNotice, usePasteGuard, type ScriptFileHandle } from "./director-script-file";
+import { EDIT_MAX, LongTextCard } from "./director-long-editor";
 
 function progressText(w: DirectorWorkSummary) {
   if (!w.hasScript) return "待写剧本";
@@ -25,8 +27,11 @@ export function DirectorWorks() {
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<DirectorWorkSummary>();
   if (auth === "no-platform" || works.notEnrolled) return <PlatformGateScreen/>;
-  return <StudioPage title="AI 导演台" description="从创意到成片" className="director-page"
-    actions={<button type="button" className="ip-brand-button" onClick={() => setCreating(true)}><Plus size={16}/>新建作品</button>}>
+  return <StudioPage title="短剧导演台" description="从创意到成片" className="director-page"
+    actions={<>
+      <Link href="/director/trash" className="ip-brand-secondary director-trash-link"><Trash2 size={16}/>回收站</Link>
+      <button type="button" className="ip-brand-button" onClick={() => setCreating(true)}><Plus size={16}/>新建作品</button>
+    </>}>
     {creating && <CreateWork onClose={() => setCreating(false)}/>}
     {deleting && <DeleteWork work={deleting} onClose={() => setDeleting(undefined)}
       onDeleted={() => { works.setData(list => list.filter(x => x.id !== deleting.id)); setDeleting(undefined); }}/>}
@@ -70,7 +75,7 @@ function WorkMenu({ title, onDelete }: { title: string; onDelete: () => void }) 
   </details>;
 }
 
-/** 删除确认：说清删了之后会怎样；提交中不能关、不能重复点，失败留在弹窗里可重试。 */
+/** 删除确认：作品移入回收站、可以恢复；提交中不能关、不能重复点，失败留在弹窗里可重试。 */
 function DeleteWork({ work, onClose, onDeleted }: { work: DirectorWorkSummary; onClose: () => void; onDeleted: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -86,16 +91,16 @@ function DeleteWork({ work, onClose, onDeleted }: { work: DirectorWorkSummary; o
     <div className="director-dialog director-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="director-delete-title" aria-describedby="director-delete-desc" ref={dialogFocus} tabIndex={-1}>
       <header><h2 id="director-delete-title">删除作品</h2><button type="button" aria-label="关闭" onClick={onClose} disabled={busy}><X size={18}/></button></header>
       <div id="director-delete-desc" className="director-delete-copy">
-        <p>确认删除「<b title={work.title}>{work.title}</b>」？</p>
+        <p>把「<b title={work.title}>{work.title}</b>」移入回收站？</p>
         <ul>
-          <li>删除后无法再打开和编辑这部作品。</li>
+          <li>移入后不在作品列表里显示，可以在回收站恢复。</li>
           <li>已存入个人资产库的素材会保留。</li>
           <li>已消耗的积分不退回。</li>
         </ul>
       </div>
       <InlineError message={error}/>
       <footer><button type="button" className="ip-brand-secondary" onClick={onClose} disabled={busy}>取消</button>
-        <button type="button" className="ip-brand-button director-danger-button" disabled={busy} onClick={() => void submit()}>{busy ? <><Loader2 size={15} className="ip-loading-icon"/>删除中</> : "删除作品"}</button></footer>
+        <button type="button" className="ip-brand-button director-danger-button" disabled={busy} onClick={() => void submit()}>{busy ? <><Loader2 size={15} className="ip-loading-icon"/>移入中</> : "移入回收站"}</button></footer>
     </div>
   </div>;
 }
@@ -104,34 +109,45 @@ function CreateWork({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const [mode, setMode] = useState<"idea" | "script">("idea");
   const [title, setTitle] = useState("");
-  const [text, setText] = useState("");
+  const [idea, setIdea] = useState("");
+  const [script, setScript] = useState("");
+  const text = mode === "idea" ? idea : script;
+  const setText = mode === "idea" ? setIdea : setScript;
   const [busy, setBusy] = useState(false);
+  const [reading, setReading] = useState(false);
   const [error, setError] = useState("");
-  useEscape(() => { if (!busy) onClose(); });
+  const locked = busy || reading;
+  const file = useRef<ScriptFileHandle>(null);
+  const guard = usePasteGuard();
+  useEscape(() => { if (!locked) onClose(); });
   const submit = async () => {
-    if (busy || !text.trim()) return;
+    if (locked || !text.trim()) return;
     setBusy(true); setError("");
     try {
       const work = await DirectorApi.createWork({ title: title.trim() || undefined, ...(mode === "idea" ? { idea: text.trim() } : { script: text }) });
       router.push(`/director/${encodeURIComponent(work.id)}`);
     } catch (e) { setError(errorText(e)); setBusy(false); }
   };
-  return <div className="director-dialog-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && !busy && onClose()}>
-    <div className="director-dialog" role="dialog" aria-modal="true" aria-labelledby="director-create-title" ref={dialogFocus} tabIndex={-1}>
-      <header><h2 id="director-create-title">新建作品</h2><button type="button" aria-label="关闭" onClick={onClose} disabled={busy}><X size={18}/></button></header>
+  return <div className="director-dialog-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && !locked && onClose()}>
+    <div className="director-dialog director-create-dialog" role="dialog" aria-modal="true" aria-labelledby="director-create-title" ref={dialogFocus} tabIndex={-1}>
+      <header><h2 id="director-create-title">新建作品</h2><button type="button" aria-label="关闭" onClick={onClose} disabled={locked}><X size={18}/></button></header>
       <div className="director-segmented" role="tablist" aria-label="创建方式">
-        <button type="button" role="tab" aria-selected={mode === "idea"} onClick={() => setMode("idea")}>从创意开始</button>
-        <button type="button" role="tab" aria-selected={mode === "script"} onClick={() => setMode("script")}>导入剧本</button>
+        <button type="button" role="tab" aria-selected={mode === "idea"} disabled={locked} onClick={() => setMode("idea")}>从创意开始</button>
+        <button type="button" role="tab" aria-selected={mode === "script"} disabled={locked} onClick={() => setMode("script")}>导入剧本</button>
       </div>
       <label className="director-field"><span>作品名（选填）</span><input value={title} maxLength={60} onChange={e => setTitle(e.target.value)} placeholder="留空将根据内容命名"/></label>
-      <label className="director-field"><span>{mode === "idea" ? "创意" : "剧本正文"}</span>
-        <textarea autoFocus rows={mode === "idea" ? 5 : 12} value={text} maxLength={mode === "idea" ? 2000 : 60000} onChange={e => setText(e.target.value)}
+      {mode === "script" && <DirectorScriptFile ref={file} hasText={!!text.trim()} disabled={busy} onImport={setScript} onReadingChange={setReading}/>}
+      {mode === "script" && script.length > EDIT_MAX ? <LongTextCard text={script} onClear={() => setScript("")}/>
+        : <label className="director-field director-create-text"><span>{mode === "idea" ? "创意" : "剧本正文"}</span>
+        <textarea autoFocus rows={mode === "idea" ? 5 : 12} value={text} disabled={busy} maxLength={mode === "idea" ? 2000 : undefined} onChange={e => setText(e.target.value)}
+          onPaste={mode === "script" ? guard.onPaste : undefined}
           placeholder={mode === "idea" ? "例如：凌晨的快递分拣站，夜班分拣员周小满发现一个寄给十年后自己的包裹。" : "支持场次、动作与对白，导入后可拆分为多集"}/>
-      </label>
+      </label>}
+      {mode === "script" && guard.blocked && <LargePasteNotice chars={guard.blocked.chars} onClose={guard.clear} onUpload={() => { guard.clear(); file.current?.open(); }}/>}
       <p className="director-dialog-note">{mode === "idea" ? "下一步：AI 先问一两个关键问题把故事定下来，再写剧本；也可以跳过，直接生成。" : "下一步：选择作为一集，或由 AI 拆分为多集。"}</p>
       <InlineError message={error}/>
-      <footer><button type="button" className="ip-brand-secondary" onClick={onClose} disabled={busy}>取消</button>
-        <button type="button" className="ip-brand-button" disabled={busy || !text.trim()} onClick={() => void submit()}>{busy ? <><Loader2 size={15} className="ip-loading-icon"/>创建中</> : "创建并继续"}</button></footer>
+      <footer><button type="button" className="ip-brand-secondary" onClick={onClose} disabled={locked}>取消</button>
+        <button type="button" className="ip-brand-button" disabled={locked || !text.trim()} onClick={() => void submit()}>{busy ? <><Loader2 size={15} className="ip-loading-icon"/>创建中</> : "创建并继续"}</button></footer>
     </div>
   </div>;
 }

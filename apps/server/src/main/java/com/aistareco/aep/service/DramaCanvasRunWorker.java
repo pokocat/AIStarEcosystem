@@ -1,5 +1,7 @@
 package com.aistareco.aep.service;
 
+import com.aistareco.aep.service.ai.ProviderErrorMessage;
+
 import com.aistareco.aep.service.AiModelUsageContext;
 
 import com.aistareco.aep.config.MdcTaskDecorator;
@@ -343,7 +345,7 @@ public class DramaCanvasRunWorker {
                         OffsetDateTime.now()) != 1) {
                     return false;
                 }
-                if (unit > 0) credits.commitHold(DramaCanvasRunService.REF_TYPE, holdRef, unit, label);
+                if (unit > 0) credits.commitHold(DramaCanvasRunService.REF_TYPE, holdRef, unit, label, null);
                 return true;
             });
             if (Boolean.TRUE.equals(settled)) {
@@ -428,7 +430,15 @@ public class DramaCanvasRunWorker {
      * 一次 chat（含并发闸与临时错误的退避重试）。每次尝试之前看运行时限、刷心跳；许可只在 HTTP 调用期间持有。
      * 不是临时错误、或重试用完了 → 抛最后那次的错（非业务异常包成 {@code AI_CALL_FAILED}）。
      */
+    private com.aistareco.aep.model.AiModelEndpoint textEndpoint(DramaCanvasRun run) {
+        String id=execOf(run).path("endpointId").asText("");
+        if(id.isBlank())return null; // Runs accepted before endpoint-scoped billing.
+        return invocation.resolveAcceptedEndpoint(AiModelPurpose.DRAMA_SCRIPT_DRAFT,id,"drama")
+                .orElseThrow(()->new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","已扣费的写作模型现在不可用")).endpoint();
+    }
+
     private AiModelInvocationService.AiModelResponse chat(DramaCanvasRun run, JsonNode call, String user) {
+        var endpoint=textEndpoint(run);
         List<Map<String, String>> messages = new ArrayList<>();
         String system = call.path("system").asText("");
         if (!system.isBlank()) messages.add(Map.of("role", "system", "content", system));
@@ -445,7 +455,9 @@ public class DramaCanvasRunWorker {
             RuntimeException err;
             try {
                 AiModelInvocationService.AiModelResponse resp =
-                        invocation.invokeChat(AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options, "drama");
+                        endpoint == null
+                                ? invocation.invokeChat(AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options, "drama")
+                                : invocation.invokeChatOnEndpoint(endpoint,AiModelPurpose.DRAMA_SCRIPT_DRAFT,messages,options);
                 return resp;
             } catch (RuntimeException e) {
                 err = e;
@@ -611,7 +623,7 @@ public class DramaCanvasRunWorker {
             }
             ownership.record(run.getOwnerUserId(), stored.key(), stored.bytes(), stored.contentType());
             if (unit > 0) {
-                credits.commitHold(DramaCanvasRunService.REF_TYPE, holdRef, unit, label + " · 第 " + (index + 1) + " 张");
+                credits.commitHold(DramaCanvasRunService.REF_TYPE, holdRef, unit, label + " · 第 " + (index + 1) + " 张", null);
             }
             return true;
         });
@@ -1060,7 +1072,7 @@ public class DramaCanvasRunWorker {
     /**
      * 给用户看的失败原因：上游 4xx 把它的原话（截断、脱敏）说出来 —— 那是「我们请求哪儿不对」，用户据此改；
      * 429 例外（同时在跑的太多，不是请求写错了）：说「太忙，过一分钟再试」，不甩厂商的英文原话；
-     * 5xx / 网络问题笼统说（细节在日志）；我们自己写过文案的直出；其余给异常类型 + 追查号。
+     * 所有可读上游原因统一保留；网络层无响应时才使用通用提示。
      */
     static String friendly(Throwable e, String runId) {
         if (e instanceof BusinessException be) {
@@ -1069,7 +1081,7 @@ public class DramaCanvasRunWorker {
                 return be.getMessage();
             }
             Integer status = upstreamStatus(be.getInternalDetail());
-            if (status != null && status == 429) {
+            if (status != null && status == 429 && !hasUpstreamReason(be.getInternalDetail())) {
                 // chat 的上游非 2xx 一律是 AI_CALL_FAILED（AiModelInvocationService）；出图等其它调用另一句
                 return "AI_CALL_FAILED".equals(be.getCode()) ? TEXT_BUSY_MESSAGE : MODEL_BUSY_MESSAGE;
             }
@@ -1092,37 +1104,20 @@ public class DramaCanvasRunWorker {
         return "生成失败（" + (e == null ? "未知原因" : e.getClass().getSimpleName()) + "）· 追查号 " + runId;
     }
 
-    /** internalDetail 里带着上游 4xx 的状态码与响应体时，抽出给用户看的那句；5xx / 没有 → null。 */
+    /** 从 internalDetail 提取所有状态的上游原因；未记录上游响应时返回 null。 */
     static String upstreamRejection(String internalDetail) {
         if (internalDetail == null) return null;
         Matcher m = UPSTREAM_STATUS.matcher(internalDetail);
         if (!m.find()) return null;
         int status = Integer.parseInt(m.group(1));
-        if (status < 400 || status >= 500) return null;
-        String body = m.group(2).strip();
-        String msg = null;
-        try {
-            JsonNode root = JSON.readTree(body.endsWith("…") ? body.substring(0, body.length() - 1) : body);
-            for (JsonNode cand : new JsonNode[]{root.path("error").path("message"), root.path("message"), root.path("error")}) {
-                if (cand.isTextual() && !cand.asText().isBlank()) {
-                    msg = cand.asText().strip();
-                    break;
-                }
-            }
-        } catch (Exception ignore) {
-            // 响应体不是 JSON（网关的 HTML 错误页）或被截断：下面按字段抽；抽不到不外泄，给笼统的
-        }
-        if (msg == null) {
-            // 出图客户端会截断响应体，整体解析不了；第一个 "message" 字段往往还是完整的
-            Matcher mm = MESSAGE_FIELD.matcher(body);
-            if (mm.find()) {
-                String v = mm.group(1).replace("\\\"", "\"").replace("\\n", " ").strip();
-                if (!v.isBlank()) msg = v;
-            }
-        }
-        if (msg == null) return genericRejection(status);
-        msg = SECRET_LIKE.matcher(msg).replaceAll("$1***");
-        return "模型拒绝了这次请求：" + truncate(msg, 200) + "（积分已退回）";
+        if (status < 400) return null;
+        return ProviderErrorMessage.message(m.group(2).strip(),genericRejection(status));
+    }
+
+    private static boolean hasUpstreamReason(String detail) {
+        if(detail==null)return false;
+        Matcher match=UPSTREAM_STATUS.matcher(detail);
+        return match.find() && ProviderErrorMessage.reason(match.group(2).strip())!=null;
     }
 
     /** 上游 4xx 但抽不出它的原话时给用户的那句。 */

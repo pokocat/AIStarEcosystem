@@ -1,0 +1,21 @@
+subject_definitions:
+<Subject 1> is the character Chen Mo, defined by <Picture 1>. He is a man aged 25-30 with a lean build, deep-set eye sockets, messy stubble, and short slightly disheveled hair. He wears faded blue workwear with worn cuffs revealing a pilled grey sweater underneath.
+<Subject 2> is the character Lao Zhao, defined by <Picture 2>. He is a security guard aged 50-60 with a stocky build, weathered face, and sharp eyes.
+
+summary:
+[reference generation] The target video features <Subject 1> and <Subject 2> in a narrow, wind-swept corridor. <Subject 1> enters carrying a tin box while <Subject 2> smokes by the doorframe. A two-shot exchange follows where <Subject 2> questions <Subject 1> about his late-night activity, ending on a tense close-up of <Subject 2>'s sharp gaze.
+
+retention_analysis:
+<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved - The appearance, clothing, and physical traits of Chen Mo from <Picture 1> are retained throughout the video.
+<Subject 2> (appears in [Shot 1], [Shot 2]): fully_preserved - The appearance, clothing, and physical traits of Lao Zhao from <Picture 2> are retained throughout the video.
+
+detailed_description:
+The target video is live-action, cinematic, with a realistic style, cold lighting, and a desaturated color palette emphasizing the harsh environment.
+[Shot 1] A wide static shot frames a narrow stone corridor filled with blowing sand and grit. <Subject 1>, the lean man in faded blue workwear, emerges from a dark cave entrance on the left, holding a blue metal biscuit tin. Wind hits his face as he clutches the tin to his chest and walks toward the right side of the frame. In the background, near a flickering firelight source, <Subject 2>, the stocky older man, leans against a doorframe smoking. Smoke rises vertically into the cold air. As <Subject 1> approaches, <Subject 2> looks up at him, the firelight illuminating his weathered face in intermittent flashes.
+[Shot 2] At 00:05.000, the camera cuts to a medium over-the-shoulder shot from behind <Subject 1>, focusing on <Subject 2>. <Subject 2> exhales a ring of smoke without looking down, speaking in a rough, gravelly voice (S1): <d>[Chinese] 又熬通宵？小陈啊，你这身子骨，再这么干下去，怕是要先于壁画塌了。</d> <Subject 1> (S2), visible in the foreground blur, rubs his hands together with a bitter smile and replies in a quiet, weary tone: <d>[Chinese] 赵叔，我这人吧，就是闲不住。看见那墙上有灰，心里就难受。</d> <Subject 2> then crushes his cigarette butt between his fingers. His expression hardens, his eyes becoming sharp and piercing as he stares directly at <Subject 1>. He (S1) asks in a low, intense voice: <d>[Chinese] 难受？那你昨晚听见啥动静没？</d> The shot holds on this tense composition, with <Subject 2>'s fixed gaze and the lingering smoke, until the end of the video.
+
+overall_soundscape:
+The scene is dominated by the howling wind and the sound of sand particles hitting stone surfaces. The crackle of a small fire and the hiss of a cigarette provide localized sounds. Footsteps crunch softly on the gritty floor as <Subject 1> moves.
+
+non_diegetic_music:
+N/A

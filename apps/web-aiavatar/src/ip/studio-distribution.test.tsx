@@ -17,7 +17,7 @@ beforeEach(()=>{vi.clearAllMocks();vi.mocked(SocialAccountApi.listSocialAccounts
 test('unfinished preparation cannot enqueue jobs or claim saved drafts',()=>{
   render(<StudioDistribution/>);
   expect(screen.queryByRole('button',{name:'保存草稿'})).toBeNull();
-  expect(screen.getAllByText('【待建设】').length).toBeGreaterThan(0);
+  expect(screen.getAllByText('敬请期待').length).toBeGreaterThan(0);
   expect(PublishJobApi.createPublishJobs).not.toHaveBeenCalled();
 });
 test('accounts read the shared owner API; failures remain retryable errors, not empty successes',async()=>{

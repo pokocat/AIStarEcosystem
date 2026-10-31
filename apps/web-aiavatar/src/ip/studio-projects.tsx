@@ -3,10 +3,10 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Modal } from "antd";
-import { ArrowRight, ChevronLeft, ChevronRight, LayoutGrid, Layers, List, Loader2, MoreHorizontal, Plus, RefreshCw, Trash2, Image, GitBranch } from "lucide-react";
+import { ArrowRight, ChevronLeft, ChevronRight, LayoutGrid, Layers, List, Loader2, MoreHorizontal, Plus, RefreshCw, Trash2, Image, GitBranch, Undo2 } from "lucide-react";
 import type { IpProjectSummary } from "@ai-star-eco/types";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
-import { IpStudioApi } from "./api";
+import { DirectorApi, IpStudioApi } from "./api";
 import { CanvasCoverEditor } from "./canvas-cover-editor";
 import { ProjectCardPreview } from "./project-card-preview";
 import { projectPreview } from "./project-preview";
@@ -17,13 +17,22 @@ import { StudioSelect } from "./studio-select";
 import { StudioErrorNotice, useStudioErrorState } from "./studio-errors";
 import { useStartNewCanvas } from "./use-start-new-canvas";
 import { formatDateTime } from "@/lib/datetime";
+import { useSceneCatalog } from "./scenes/scene-catalog";
 
 const PAGE_SIZE = 24;
 
 export function StudioProjects() {
   const authState = useRequireAuth();
   const ready = authState === "ok";
+  // AI 图片 / AI 视频建的草稿记着场景编号：卡片上给一个回原场景继续编辑的入口（2026-10-30 复测：只能打开画布）。
+  const { catalog: scenes } = useSceneCatalog(ready);
+  const sceneHome = (p: IpProjectSummary) => {
+    const kind = !p.sceneId || !scenes ? undefined : scenes.video.some(s => s.id === p.sceneId) ? "video" : scenes.image.some(s => s.id === p.sceneId) ? "image" : undefined;
+    return kind && { href: `/${kind}?scene=${encodeURIComponent(p.sceneId!)}&draft=${encodeURIComponent(p.id)}`, label: kind === "video" ? "回到 AI 视频继续" : "回到 AI 图片继续" };
+  };
   const projects = useStudioList(IpStudioApi.listProjects, ready);
+  // AI 导演台 works are made on their own page; the projects page points at the latest few so nothing seems missing.
+  const works = useStudioList(DirectorApi.listWorks, ready);
   // 「新建创作」 opens a new canvas directly (docs/ip-studio-new-canvas-and-threads.md §2.2), no stop at /create.
   const newCanvas = useStartNewCanvas();
   const [query, setQuery] = useState("");
@@ -79,20 +88,26 @@ export function StudioProjects() {
         <div className={`studio-project-grid studio-project-${view}`}>{visible.map(project => {
           const preview = previews[`${project.id}:${project.updatedAt}`];
           const content = preview?.doc ? projectPreview(preview.doc) : undefined;
+          const back = sceneHome(project);
           return <article className="studio-project-card" key={project.id}>
             <Link href={`/projects/${project.id}`} className="studio-project-open" aria-label={`打开画布 ${project.name}`}><div className="studio-gallery-preview">
               <ProjectCardPreview key={`${project.id}:${project.updatedAt}:${previewRevision}`} coverUrl={project.coverUrl} preview={content} doc={preview?.doc} loading={!preview} error={preview?.error}/>
             </div><div className="project-card-copy"><h3 title={project.name}>{project.name}</h3><p className="project-card-summary">{content ? content.counts || (content.empty ? "空白画布" : `${content.steps.length} 个创作节点`) : preview?.error ? "内容摘要暂不可用" : "正在读取内容…"}</p></div></Link>
             <div className="studio-project-info"><div><span className={`studio-project-status is-${project.status}`}><i />{project.status === "published" ? "已发布" : "草稿"}</span><time title="最近编辑时间" dateTime={project.updatedAt}>{formatDateTime(project.updatedAt)}</time></div>
-              <details className="studio-project-menu"><summary aria-label={`画布 ${project.name} 的更多操作`}><MoreHorizontal size={18} /></summary><div><Link href={`/projects/${project.id}`}><ArrowRight size={15} />打开画布</Link><button type="button" onClick={e => { e.currentTarget.closest("details")?.removeAttribute("open"); openInspector(project, "cover"); }}><Image size={15}/>设置封面</button><button type="button" className="project-delete-action" onClick={e => { e.currentTarget.closest("details")?.removeAttribute("open"); setDeleteError(""); setPendingDelete(project); }}><Trash2 size={15} />删除画布</button></div></details>
+              <details className="studio-project-menu"><summary aria-label={`画布 ${project.name} 的更多操作`}><MoreHorizontal size={18} /></summary><div><Link href={`/projects/${project.id}`}><ArrowRight size={15} />打开画布</Link>{back && <Link href={back.href}><Undo2 size={15} />{back.label}</Link>}<button type="button" onClick={e => { e.currentTarget.closest("details")?.removeAttribute("open"); openInspector(project, "cover"); }}><Image size={15}/>设置封面</button><button type="button" className="project-delete-action" onClick={e => { e.currentTarget.closest("details")?.removeAttribute("open"); setDeleteError(""); setPendingDelete(project); }}><Trash2 size={15} />删除画布</button></div></details>
             </div>
-            <div className="project-card-actions"><button type="button" onClick={() => openInspector(project, "flow")}><GitBranch size={14}/>查看流程</button><button type="button" onClick={() => openInspector(project, "cover")}><Image size={14}/>设置封面</button></div>
+            <div className="project-card-actions">{back && <Link href={back.href} className="project-card-continue"><Undo2 size={14}/>{back.label}</Link>}<div className="project-card-secondary"><button type="button" onClick={() => openInspector(project, "flow")}><GitBranch size={14}/>查看流程</button><button type="button" onClick={() => openInspector(project, "cover")}><Image size={14}/>设置封面</button></div></div>
           </article>;
         })}</div>
         {(totalPages > 1 || visible.some(p => previews[`${p.id}:${p.updatedAt}`]?.error)) && <footer className="studio-gallery-pagination"><span>{filtered.length ? `共 ${filtered.length} 张画布 · 第 ${currentPage} / ${totalPages} 页` : ""}</span><div>{visible.some(p => previews[`${p.id}:${p.updatedAt}`]?.error) && <button type="button" className="studio-preview-retry" onClick={refreshPreviews}>重试预览</button>}{totalPages > 1 && <><button type="button" aria-label="上一页画布" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}><ChevronLeft size={17} /></button><span className="studio-gallery-current-page" aria-current="page">{currentPage}</span><button type="button" aria-label="下一页画布" disabled={currentPage >= totalPages} onClick={() => setPage(currentPage + 1)}><ChevronRight size={17} /></button></>}</div></footer>}
       </>}
     </section>
-
+    {works.data.length > 0 && <section className="studio-scene-recent studio-director-recent" aria-label="短剧导演台作品">
+      <div className="studio-gallery-panel-heading"><div><h2>短剧导演台作品</h2><p>短剧作品在短剧导演台里编辑。</p></div><Link className="ip-brand-text-button" href="/director">全部作品<ArrowRight size={16}/></Link></div>
+      <div className="studio-recent-list">{[...works.data].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 4).map(w => <Link key={w.id} href={`/director/${encodeURIComponent(w.id)}`}>
+        <div><strong title={w.title}>{w.title}</strong><span>{w.episodeCount ? `${w.episodeCount} 集 · ${w.clipCount} 个片段` : w.hasScript ? "剧本未拆分" : "还没有剧本"} · <time dateTime={w.updatedAt}>{formatDateTime(w.updatedAt)}</time></span></div>
+        <span>打开<ArrowRight size={16}/></span></Link>)}</div>
+    </section>}
 
     {inspecting?.mode === "cover" && <CanvasCoverEditor target="project" id={inspecting.project.id} name={inspecting.project.name} doc={inspectDoc || undefined} container={() => surface.current || document.body} error={previews[`${inspecting.project.id}:${inspecting.project.updatedAt}`]?.error} onRetry={refreshPreviews} onClose={() => setInspecting(undefined)} onSaved={cover => {
       projects.setData(items => items.map(p => p.id === inspecting.project.id ? {...p, coverUrl: cover.coverUrl || undefined} : p));

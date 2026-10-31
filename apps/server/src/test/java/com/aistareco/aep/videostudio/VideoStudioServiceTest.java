@@ -62,9 +62,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 /**
@@ -193,7 +195,7 @@ class VideoStudioServiceTest {
     static VideoStudioJobRequest jr(String endpointId, String mode, String prompt, String tier, String aspect,
                                     Integer seconds, Long seed, String first, String last,
                                     List<VideoStudioReferenceInput> refs) {
-        return new VideoStudioJobRequest(endpointId, mode, prompt, tier, aspect, seconds, seed, first, last, refs, null, null);
+        return new VideoStudioJobRequest(endpointId, mode, prompt, tier, aspect, seconds, seed, first, last, refs, null, null, null, null);
     }
 
     static VideoStudioJobRequest t2v() {
@@ -213,7 +215,9 @@ class VideoStudioServiceTest {
                 "lastFrameKey".equals(field) ? (String) value : r.lastFrameKey(),
                 "references".equals(field) ? castRefs(value) : r.references(),
                 "templateId".equals(field) ? (String) value : r.templateId(),
-                "optimizationId".equals(field) ? (String) value : r.optimizationId());
+                "optimizationId".equals(field) ? (String) value : r.optimizationId(),
+                "clientRequestId".equals(field) ? (String) value : r.clientRequestId(),
+                r.modelBilling());
     }
 
     @SuppressWarnings("unchecked")
@@ -260,6 +264,44 @@ class VideoStudioServiceTest {
                 .createdAt(Instant.now()).build();
         when(templateRepo.findById(id)).thenReturn(Optional.of(t));
         return t;
+    }
+
+    @Test
+    void quoteUsesTheSubmissionCompilerWithoutCreatingOrLockingAnything() {
+        var request = t2v();
+        svc.quote(USER, request, true);
+        var body = ArgumentCaptor.forClass(JsonNode.class);
+        verify(videoJobs).quote(body.capture(), eq(USER), eq(MaterialVideoJobService.APP_VIDEO_STUDIO), isNull(), eq(true));
+        assertEquals(200, body.getValue().path("items").get(0).path("credit_cost").asLong());
+        verify(videoJobs, never()).submit(any(), any(), any());
+        verify(jobRepo, never()).save(any());
+        verify(jobRepo, never()).lockById(any());
+    }
+
+    @Test
+    void uncertainSubmissionReturnsOriginalJobAfterPriceChangesAndRejectsChangedBody() {
+        var users = mock(com.aistareco.aep.repository.AepUserRepository.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(svc, "users", users);
+        when(users.findByIdForUpdate(USER)).thenReturn(Optional.of(new com.aistareco.aep.model.AepUser()));
+        var request = with(t2v(), "clientRequestId", "generation-0001");
+        var durable = new java.util.concurrent.atomic.AtomicReference<MaterialVideoJob>();
+        when(jobRepo.lockById(anyString())).thenAnswer(i -> Optional.ofNullable(durable.get()));
+        when(videoJobs.submit(any(), eq(USER), eq(MaterialVideoJobService.APP_VIDEO_STUDIO))).thenAnswer(i -> {
+            JsonNode body = i.getArgument(0);
+            var job = MaterialVideoJob.builder().id(body.path("_video_studio_job_id").asText()).ownerUserId(USER)
+                    .app(MaterialVideoJobService.APP_VIDEO_STUDIO).status("queued").createdAt(OffsetDateTime.now()).build();
+            durable.set(job);
+            return List.of(om.createObjectNode().put("id", job.getId()));
+        });
+        when(jobRepo.findById(anyString())).thenAnswer(i -> Optional.ofNullable(durable.get()));
+        var first = svc.submit(USER, request);
+        // Accepted jobs do not depend on the current catalog or price on replay.
+        when(invocation.listCandidates(AiModelPurpose.VIDEO_GENERATION, "celebrity")).thenThrow(new IllegalStateException("catalog changed"));
+        assertEquals(first.id(), svc.submit(USER, request).id());
+        assertEquals("VIDEO_STUDIO_REQUEST_CHANGED", assertThrows(BusinessException.class,
+                () -> svc.submit(USER, with(request, "prompt", "another prompt"))).getCode());
+        verify(videoJobs, times(1)).submit(any(), any(), any());
+        assertTrue(first.id().startsWith("mvjs_"));
     }
 
     // ── 模型列表 + 计价 ─────────────────────────────────────────────────────
@@ -1125,7 +1167,7 @@ class VideoStudioServiceTest {
             assertEquals("VIDEO_SUBMISSION_UNKNOWN",dto.errorCode());assertEquals("受理结果待核对",dto.stage());
             assertEquals("受理结果待核对",dto.errorMessage());
             pending.setStatus("generating");pending.setErrorCode("VIDEO_RECONCILIATION_PENDING");
-            assertEquals("正在查询原视频任务",svc.getJob(USER,"mvj_9").stage());
+            assertEquals("模型端仍在处理",svc.getJob(USER,"mvj_9").stage());
         }
 
         @Test

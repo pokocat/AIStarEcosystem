@@ -47,7 +47,7 @@ public class MaterialVideoJobService {
     private static final Logger log = LoggerFactory.getLogger(MaterialVideoJobService.class);
 
     static final long VIDEO_UNIT_COST_DEFAULT = 30L;
-    static final String CREDIT_REF_TYPE = "material_video_job";
+    public static final String CREDIT_REF_TYPE = "material_video_job";
 
     /**
      * 子产品分区（{@link MaterialVideoJob#getApp()}）——本表被带货线（明星带货 · 素材运营）与
@@ -208,6 +208,56 @@ public class MaterialVideoJobService {
      * @param app 子产品分区（{@link #APP_CELEBRITY} / {@link #APP_DRAMA} / {@link #APP_IPSTUDIO}）；决定这批任务归哪个
      *            应用的资产列表，调用方必须显式传（跨应用可见性靠它隔离）。
      */
+    private record PlannedItem(JsonNode item,long unit,String endpointId,com.aistareco.aep.billing.service.ModelChargeContext charge,MaterialVideoModelClient.BillingRoute route) {}
+    private List<PlannedItem> plan(List<JsonNode> items,String app,boolean billable,boolean approved) {
+        modelClient.ensureConfigured(modelAppCode(app));
+        List<PlannedItem> planned = new ArrayList<>();
+        for (JsonNode item : items) {
+            requireInputsAllowedIn(normalizeApp(app), item == null ? null : item.get("variant_config"));
+            var route=modelClient.billingRoute(endpointIdOf(item),modelAppCode(app));
+            String endpointId=route.endpointId();
+            int durationSec = item.path("duration_sec").asInt(0);
+            modelClient.validateRequest(endpointId, durationSec, modelAppCode(app));
+            modelClient.validateConfiguredLegacySubmission(endpointId, modelAppCode(app),
+                    VideoGenSpec.fromVariantConfig(item.path("variant_config")), text(item, "aspect_ratio"));
+            long unit=itemUnitCost(item, endpointId, durationSec, modelAppCode(app));
+            if(APP_IPSTUDIO.equals(normalizeApp(app)) && !approved && item.hasNonNull("max_credit_cost")) {
+                com.aistareco.aep.ipstudio.service.IpRunService.requireApprovedCost(item.path("max_credit_cost").asLong(-1),unit);
+            }
+            var spec=VideoGenSpec.fromVariantConfig(item.path("variant_config"));
+            var charge=billable?MaterialVideoBilling.plan(normalizeApp(app),route,spec,text(item,"aspect_ratio"),durationSec,unit,
+                    item.path("credit_cost").asLong(-1)>=0,item.hasNonNull("max_credit_cost")?item.path("max_credit_cost").asLong(-1):null)
+                    :com.aistareco.aep.billing.service.ModelChargeContext.NONE;
+            // Pin default routes too: price, payer, task and eventual dispatch use the same resolved channel.
+            ObjectNode pinned=item.deepCopy();
+            ObjectNode variant=pinned.path("variant_config").isObject()?(ObjectNode)pinned.path("variant_config"):om.createObjectNode();
+            variant.put("endpoint_id",endpointId);pinned.set("variant_config",variant);
+            planned.add(new PlannedItem(pinned,unit,endpointId,charge,route));
+        }
+
+        return List.copyOf(planned);
+    }
+    private com.aistareco.aep.billing.service.ModelChargeContext uniformCharge(List<PlannedItem> planned) {
+        if(planned.isEmpty()||planned.get(0).charge().target()==null)throw BusinessException.badRequest("MODEL_QUOTE_NOT_SUPPORTED","当前视频不支持模型报价");
+        var first=planned.get(0).charge();
+        if(planned.stream().anyMatch(p->!p.charge().equals(first)))
+            throw BusinessException.badRequest("MODEL_BATCH_SCOPE_INVALID","请按同一模型和规格分别确认视频费用");
+        return first;
+    }
+    private com.aistareco.aep.billing.service.ModelBillingApproval readApproval(JsonNode body) {
+        if(body==null||!body.hasNonNull("modelBilling"))return null;
+        try{return om.treeToValue(body.get("modelBilling"),com.aistareco.aep.billing.service.ModelBillingApproval.class);}
+        catch(Exception invalid){throw BusinessException.badRequest("MODEL_APPROVAL_INVALID","请重新确认视频费用");}
+    }
+    @Transactional(readOnly=true)
+    public com.aistareco.aep.billing.service.ModelChargeService.Quote quote(JsonNode body,String userId,String app,
+            com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing,boolean freeOnly) {
+        var items=new ArrayList<JsonNode>();if(body!=null&&body.path("items").isArray())body.path("items").forEach(items::add);
+        var charge=uniformCharge(plan(items,app,billable(userId),true));
+        var request=new com.aistareco.aep.billing.service.ModelChargeContext(charge.target(),charge.usage(),charge.unitPrice(),charge.outputUnitPrice(),charge.priceVersion(),freeOnly,null,null);
+        return enterpriseBilling.quoteRepeated(userId,billing,request,items.size());
+    }
+
     @Transactional
     public List<JsonNode> submit(JsonNode body, String userId, String app) {
         return submit(body,userId,app,null);
@@ -224,60 +274,59 @@ public class MaterialVideoJobService {
         if (arr != null && arr.isArray()) arr.forEach(items::add);
         if (items.isEmpty()) return List.of();
 
-        // 失败快：未配 token 直接抛明确错误（不静默兜底，对齐 MaterialAiService）。
-        modelClient.ensureConfigured(modelAppCode(app));
-
         boolean billable = billable(userId);
 
-        // 第一阶段：整批解析为不可变计划（端点白名单 / Key / 时长必填与有效区间 / 单价含
-        // PER_SECOND 展开与 VIDEO_PRICE_OVERFLOW）——任何 hold 之前完成全部校验与报价，
-        // 批内任一非法 → 整批无任务、无冻结、不提前占钱包锁（@Transactional 回滚只是最后防线）。
-        // 单价优先级：内部调用方 item.credit_cost（如短剧独立定价）> 候选模型 override > 带货线默认价。
-        record PlannedItem(JsonNode item, long unit, String endpointId) {}
-        List<PlannedItem> planned = new ArrayList<>();
-        for (JsonNode item : items) {
-            requireInputsAllowedIn(normalizeApp(app), item == null ? null : item.get("variant_config"));
-            String endpointId = endpointIdOf(item);
-            if (billing != null && "enterprise".equals(billing.mode()) && (endpointId == null || endpointId.isBlank()))
-                endpointId = modelClient.resolvedEndpointId(endpointId, modelAppCode(app));
-            int durationSec = item.path("duration_sec").asInt(0);
-            modelClient.validateRequest(endpointId, durationSec, modelAppCode(app));
-            modelClient.validateConfiguredLegacySubmission(endpointId, modelAppCode(app),
-                    VideoGenSpec.fromVariantConfig(item.path("variant_config")), text(item, "aspect_ratio"));
-            long unit=itemUnitCost(item, endpointId, durationSec, modelAppCode(app));
-            if(APP_IPSTUDIO.equals(normalizeApp(app)) && item.hasNonNull("max_credit_cost")) {
-                com.aistareco.aep.ipstudio.service.IpRunService.requireApprovedCost(item.path("max_credit_cost").asLong(-1),unit);
-            }
-            planned.add(new PlannedItem(item, unit, endpointId));
+        var planned=plan(items,app,billable,body!=null&&body.hasNonNull("modelBilling"));
+        var batchApproval=readApproval(body);
+        com.aistareco.aep.billing.service.ModelBillingApproval childApproval=null;
+        long remaining=0;
+        if(batchApproval!=null) {
+            if(!billable||(!APP_IPSTUDIO.equals(normalizeApp(app))&&!APP_VIDEO_STUDIO.equals(normalizeApp(app)))||enterpriseBilling==null)
+                throw BusinessException.badRequest("MODEL_QUOTE_NOT_SUPPORTED","此入口尚不支持视频报价确认");
+            childApproval=enterpriseBilling.approveRepeated(userId,billing,uniformCharge(planned),planned.size(),batchApproval);
+            remaining=batchApproval.maxWalletCredits();
         }
 
         // 第二阶段：逐 item 落库 + hold（金额 = 第一阶段算好的 unit，报价与冻结同源）。
         List<MaterialVideoJob> created = new ArrayList<>();
         for (PlannedItem p : planned) {
-            MaterialVideoJob job = buildJob(p.item(), userId, app);
+            var charge=p.charge();
+            if(childApproval!=null) {
+                var approval=new com.aistareco.aep.billing.service.ModelBillingApproval(childApproval.walletId(),childApproval.target(),childApproval.usage(),
+                        childApproval.priceVersion(),childApproval.freeOnly(),remaining);
+                charge=new com.aistareco.aep.billing.service.ModelChargeContext(charge.target(),charge.usage(),charge.unitPrice(),charge.outputUnitPrice(),charge.priceVersion(),approval.freeOnly(),remaining,approval);
+            }
+            String assignedId = APP_VIDEO_STUDIO.equals(normalizeApp(app)) && planned.size() == 1
+                    ? text(body, "_video_studio_job_id") : null;
+            if (assignedId != null && !assignedId.matches("mvjs_[a-f0-9]{48}"))
+                throw BusinessException.badRequest("VIDEO_STUDIO_REQUEST_ID_INVALID", "生成请求编号无效");
+            MaterialVideoJob job = buildJob(p.item(), userId, app, assignedId);
+            MaterialVideoBilling.store(job,charge);
+            job.setUpstreamBaseUrlSnapshot(p.route().baseUrl());
+            job.setVideoRequestSpecSnapshotJson(p.route().requestSpecJson());
             if (billable && APP_IPSTUDIO.equals(normalizeApp(app)) && enterpriseBilling != null) {
                 String label = orDefault(text(p.item(), PAYLOAD_CREDIT_LABEL), DEFAULT_CREDIT_LABEL);
                 var account = enterpriseBilling.reserve(userId,billing,CREDIT_REF_TYPE,job.getId(),p.endpointId(),p.unit(),
-                        label + " · " + safe(job.getName(), "视频"));
+                        label + " · " + safe(job.getName(), "视频"), charge);
                 job.setBillingWalletId(account.walletId());
                 job.setEnterpriseId(account.enterpriseId());
                 job.setMembershipId(account.membershipId());
                 job.setBillingAuthorizationId(account.billingAuthorizationId());
                 job.setCreditsHeld(p.unit());
-                // Pin the resolved endpoint with the authorization; a later default change cannot redirect it.
-                if(p.endpointId()!=null) {
-                    ObjectNode spec = p.item().path("variant_config").isObject()
-                            ? ((ObjectNode)p.item().path("variant_config")).deepCopy() : om.createObjectNode();
-                    spec.put("endpoint_id",p.endpointId());job.setVariantConfigJson(write(spec));
-                }
             } else if (billing != null && "enterprise".equals(billing.mode())) {
                 throw BusinessException.badRequest("ENTERPRISE_BILLING_UNAVAILABLE", "企业积分当前不可使用");
             } else if (billable && p.unit() > 0) {
                 // 余额不足 → CreditService 抛 402（PAYMENT_REQUIRED），整批回滚（同事务）。
                 String label = orDefault(text(p.item(), PAYLOAD_CREDIT_LABEL), DEFAULT_CREDIT_LABEL);
                 creditService.hold(userId, p.unit(), CREDIT_REF_TYPE, job.getId(),
-                        label + " · " + safe(job.getName(), "视频"));
+                        label + " · " + safe(job.getName(), "视频"), charge);
                 job.setCreditsHeld(p.unit());
+            }
+            if(childApproval!=null) {
+                var held=creditService.findHold(CREDIT_REF_TYPE,job.getId());
+                if(held==null)throw new IllegalStateException("Confirmed video is missing its credit hold");
+                long ordinary=Math.addExact(Math.addExact(held.getFromGift(),held.getFromLicense()),held.getFromRecharge());
+                remaining=Math.subtractExact(remaining,ordinary);
             }
             jobRepo.save(job);
             created.add(job);
@@ -416,7 +465,7 @@ public class MaterialVideoJobService {
         audits.record(actorId,null,"admin.video.bind_original_task","material_video_job",id,null,null,
                 com.aistareco.aep.model.AuditLog.AuditResult.SUCCESS,write(detail));
         job.setExternalTaskId(external);job.setStatus("generating");job.setErrorCode("VIDEO_RECONCILIATION_PENDING");
-        job.setErrorMessage("正在核对生成结果，请稍后查看");job.setUpdatedAt(OffsetDateTime.now());jobRepo.saveAndFlush(job);
+        job.setErrorMessage(STILL_PROCESSING);job.setUpdatedAt(OffsetDateTime.now());jobRepo.saveAndFlush(job);
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override public void afterCommit(){
                 try {worker.recoverQueuedGeneration(id);}
@@ -539,8 +588,8 @@ public class MaterialVideoJobService {
         return kind != null && kind.startsWith("drama-") ? APP_DRAMA : APP_CELEBRITY;
     }
 
-    private MaterialVideoJob buildJob(JsonNode item, String userId, String app) {
-        String id = "mvj_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+    private MaterialVideoJob buildJob(JsonNode item, String userId, String app, String assignedId) {
+        String id = assignedId != null ? assignedId : "mvj_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         String kind = orDefault(text(item, "kind"), "baseline");
         int durationSec = item.path("duration_sec").asInt(0);
         String aspect = orDefault(text(item, "aspect_ratio"), "9:16");
@@ -601,6 +650,8 @@ public class MaterialVideoJobService {
         card.remove(PAYLOAD_CREDIT_LABEL);
         card.remove(PAYLOAD_CALLER_PRICED);
         card.remove(PAYLOAD_NOT_ACCEPTED_PROOF);
+        card.remove(MaterialVideoBilling.PAYLOAD_KEY);
+        card.remove("_studio_request_digest");
         // 厂商改写后的提示词：画布经 IpRun 投影读（VideoPromptRewrite.wire），不属于 MaterialVideo 契约。
         card.remove(VideoPromptRewrite.PAYLOAD_KEY);
         card.put("id", job.getId());
@@ -656,10 +707,16 @@ public class MaterialVideoJobService {
         };
     }
 
+    /**
+     * 已交给厂商、但暂时拿不到结果时给用户看的话（{@code VIDEO_RECONCILIATION_PENDING}）。只说状态，不讲内部机制：
+     * 后台照原任务继续查询、不会重新生成或重复扣费，原因与追查号留在错误日志里（2026-10-24 用户定的文案）。
+     */
+    public static final String STILL_PROCESSING="模型端仍在处理，请稍后查看状态";
+
     /** 进度文案（已入队 / 提交生成请求 / AI 生成中 / 已完成 / 生成失败）。视频生成区的任务卡用同一套。 */
     public static String stageLabel(MaterialVideoJob job) {
         if("VIDEO_SUBMISSION_UNKNOWN".equals(job.getErrorCode()))return "受理结果待核对";
-        if("VIDEO_RECONCILIATION_PENDING".equals(job.getErrorCode()))return "正在查询原视频任务";
+        if("VIDEO_RECONCILIATION_PENDING".equals(job.getErrorCode()))return "模型端仍在处理";
         return stageLabel(job.getStatus());
     }
     public static String stageLabel(String jobStatus) {

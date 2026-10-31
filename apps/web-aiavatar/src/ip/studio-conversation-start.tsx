@@ -8,6 +8,7 @@
 import { useRef, useState, type KeyboardEvent } from "react";
 import Link from "next/link";
 import { ArrowUp, Loader2 } from "lucide-react";
+import { useUiVersion } from "@/shell/ui-version";
 
 export const conversationExamples = [
   { label: "复刻一条短视频", text: "照这条视频的拍法，把里面的商品换成我的，保留原片的节奏和反转。" },
@@ -23,6 +24,7 @@ export function StudioConversationStart({ onStart, creating, pending = false, co
   heading?: string;
 }) {
   const [brief, setBrief] = useState("");
+  const version = useUiVersion();
   const area = useRef<HTMLTextAreaElement>(null);
   // While an earlier save is pending the text is frozen, but the retry button must stay live.
   const locked = !!creating || pending;
@@ -46,7 +48,9 @@ export function StudioConversationStart({ onStart, creating, pending = false, co
           {creating ? <Loader2 size={18} className="studio-gallery-spinner" aria-hidden="true"/> : <ArrowUp size={18} aria-hidden="true"/>}<span>{pending ? "继续保存并打开" : "开始对话"}</span>
         </button>
       </div>
-      <p className="studio-conversation-start-note">助手每轮回复按实际用量扣少量积分；出图、出片先报价，你确认了才开始。还没想好？逛逛<Link href="/templates" className="studio-conversation-start-link">灵感</Link>或<Link href="/scenes" className="studio-conversation-start-link">专项创作</Link></p>
+      <p className="studio-conversation-start-note">助手每轮回复按实际用量扣少量积分；出图、出片先报价，你确认了才开始。{version === "next"
+        ? <>不想打字？直接选场景：<Link href="/video" className="studio-conversation-start-link">AI 视频</Link>或<Link href="/image" className="studio-conversation-start-link">AI 图片</Link></>
+        : <>还没想好？逛逛<Link href="/templates" className="studio-conversation-start-link">灵感</Link>或<Link href="/scenes" className="studio-conversation-start-link">专项创作</Link></>}</p>
     </div>
   </form>;
 }

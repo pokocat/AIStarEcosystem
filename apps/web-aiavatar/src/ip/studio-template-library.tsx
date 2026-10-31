@@ -23,7 +23,7 @@ export function StudioTemplateLibrary({open,scope,nodes=[],onClose}:{open:boolea
   });
   return <>
     <Modal open={open&&!selected} title={scope==='commerce'?'商品视频模板':scope==='digital'?'数字人视频模板':'画布模板'} getContainer={studioOverlayContainer} onCancel={onClose} footer={<Button onClick={onClose}>返回画布</Button>} width={820} styles={{body:{maxHeight:'70dvh',overflowY:'auto'}}}>
-      <div className="studio-template-form"><p>打开查看完整画布和成品素材。需要继续创作时，存为个人副本即可。</p>
+      <div className="studio-template-form"><p>打开查看完整画布和成品素材。需要继续创作时，点「做同款」。</p>
         <div role="group" aria-label="模板来源"><Button type={tab==='official'?'primary':'default'} onClick={()=>setTab('official')}>官方模板</Button> <Button type={tab==='personal'?'primary':'default'} onClick={()=>setTab('personal')}>我的模板</Button></div>
         {loading?<Spin aria-label="正在读取模板"/>:error?<div className="studio-error-recovery"><StudioErrorNotice error={error}/>{<Button onClick={()=>setRefresh(n=>n+1)}>重试</Button>}</div>:items.length?<div className="studio-template-gallery">{items.map(t=><button type="button" key={t.id} className="studio-template-card" onClick={()=>setSelected(t)}><span>{tab==='official'?'官方':'我的'} · {t.doc.nodes.length} 个节点</span><strong>{t.name}</strong><p>{t.summary}</p><small>查看画布 →</small></button>)}</div>:<p>{tab==='personal'?'还没有个人模板，可以在画布顶部保存。':'当前没有可用的官方模板。'}</p>}
       </div>

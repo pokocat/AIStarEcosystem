@@ -1,0 +1,22 @@
+# /etc/systemd/system/aistareco-studio-admin.service
+# Independent Studio operations dashboard (Next 16 standalone, port 3004).
+
+[Unit]
+Description=AI Star Eco — Studio Operations Dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ecs-user
+WorkingDirectory=/opt/ai-star-eco/studio-admin/apps/web-aiavatar/studio-admin
+EnvironmentFile=/etc/aistareco/studio-admin.env
+ExecStart=/usr/bin/node /opt/ai-star-eco/studio-admin/apps/web-aiavatar/studio-admin/server.js
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

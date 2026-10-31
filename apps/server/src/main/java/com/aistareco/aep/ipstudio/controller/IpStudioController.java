@@ -447,6 +447,21 @@ public class IpStudioController {
                                           @RequestBody IpRunService.IpGenerateRequest req) {
         return ApiResponse.of(runs.generate(uid(principal), id, req));
     }
+    @PostMapping("/projects/{id}/video-quote")
+    public ApiResponse<com.aistareco.aep.billing.service.ModelChargeService.Quote> quoteVideo(Principal principal,@PathVariable String id,
+            @RequestBody IpRunService.IpVideoRequest request,@RequestParam(defaultValue="false") boolean freeOnly) {
+        return ApiResponse.of(runs.quoteVideo(uid(principal),id,request,1,freeOnly));
+    }
+    @PostMapping("/projects/{id}/image-quote")
+    public ApiResponse<com.aistareco.aep.billing.service.ModelChargeService.Quote> quoteImage(Principal principal,@PathVariable String id,
+            @RequestBody IpRunService.IpGenerateRequest req,@RequestParam(defaultValue="false") boolean freeOnly) {
+        return ApiResponse.of(runs.quoteImage(uid(principal),id,req,freeOnly));
+    }
+    @PostMapping("/projects/{id}/nodes/{nodeId}/image-quote")
+    public ApiResponse<com.aistareco.aep.billing.service.ModelChargeService.Quote> quoteNode(Principal principal,@PathVariable String id,@PathVariable String nodeId,
+            @RequestBody IpRunNodeRequest req,@RequestParam(defaultValue="false") boolean freeOnly) {
+        return ApiResponse.of(runs.quoteNode(uid(principal),id,nodeId,req,freeOnly));
+    }
 
     /**
      * 画布出视频。走通用视频链（分区 ipstudio），不依赖数字人形象 ——

@@ -33,6 +33,7 @@ export type AiModelPurpose =
   | "APPEARANCE_FORGE"
   | "DRAMA_SCRIPT_DRAFT"
   | "DAP_PERSONA"
+  | "DAP_VIDEO_PROMPT"
   | "DAP_IMAGE"
   | "DAP_VIDEO"
   | "DAP_AUDIO"

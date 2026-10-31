@@ -92,6 +92,7 @@ public class StudioSpeechWorker {
                 if(enterpriseBilling!=null && attempts==0)enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,id,endpoint.getId());
                 exec.put("submitAttempts",attempts+1).put("firstSubmitAt",first);
                 update(id,e->{e.put("submitAttempts",attempts+1).put("firstSubmitAt",first);},prefix+".submitting",10,null,null);
+                credits.markModelDispatched(IpRunService.REF_TYPE,id);
                 var job=lip?lips.submit(endpoint,base,exec.path("requestBody").asText(),id,run.getOwnerUserId()):client.submit(endpoint,base,exec.path("requestBody").asText(),id,run.getOwnerUserId());
                 update(id,e->e.put("jobId",job.jobId()).put("jobUrl",job.jobUrl()).put("leaseUntil",0),prefix+".queued",15,null,null);return;
             }
@@ -99,7 +100,7 @@ public class StudioSpeechWorker {
             String state=result.path("status").asText();
             if("failed".equals(state)||"canceled".equals(state)) {
                 String code=lip?"STUDIO_LIP_SYNC_PROVIDER_FAILED":"STUDIO_SPEECH_PROVIDER_FAILED";
-                String message=label+"引擎未完成本次生成，冻结积分已释放";
+                String message=com.aistareco.aep.service.ai.ProviderErrorMessage.message(result.toString(),label+"引擎未完成本次生成，冻结积分已释放");
                 finish(id,null,code,message,com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attachBody(
                         new BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,code,message),result.toString()));return;
             }
@@ -191,7 +192,12 @@ public class StudioSpeechWorker {
             if("studio-audio".equals(run.getKind())&&!voice.path("voiceId").asText().isBlank())
                 assets.recordUsage(run.getOwnerUserId(),"voice",voice.path("voiceId").asText(),"studio-project",run.getProjectId(),
                         "Studio 配音",voice.path("name").asText()+" · v"+voice.path("version").asInt(),null);
-            if(run.getCost()>0)credits.commitHold(IpRunService.REF_TYPE,run.getId(),run.getCost(),"studio-lip-sync".equals(run.getKind())?"Studio 口型同步":"Studio 配音");
+            var target=exec.path("modelCharge").path("target");
+            long used="second".equals(target.path("unit").asText())
+                    ? ("studio-lip-sync".equals(run.getKind())?exec.path("billableSeconds").asLong():(long)Math.ceil(output.path("durationSec").asDouble())):1;
+            var actualUsage=new com.aistareco.aep.billing.service.ModelBillingMath.Usage(java.math.BigDecimal.valueOf(used),null);
+            if(exec.path("holdTotal").asLong(run.getCost())>0)credits.finishModelResources(IpRunService.REF_TYPE,run.getId(),actualUsage.total());
+            if(run.getCost()>0)credits.commitHold(IpRunService.REF_TYPE,run.getId(),run.getCost(),"studio-lip-sync".equals(run.getKind())?"Studio 口型同步":"Studio 配音",actualUsage);
             if(exec.has("pointPricing"))credits.releaseHold(IpRunService.REF_TYPE,run.getId(),"Studio 按实际时长结算 · 退回剩余冻结");
             run.setOutputJson(write(output));run.setStatus(IpRun.STATUS_DONE);run.setStage("done");run.setPct(100);run.setErrorCode(null);run.setErrorMessage(null);
         } else {

@@ -220,6 +220,36 @@ class AiModelInvocationServiceTest {
         assertEquals(2, ((List<?>) sent.get("messages")).size());
     }
 
+    @Test
+    void deepSeekThinkingToggleReachesTheProvider() throws Exception {
+        StubServer server = stub(200, CHAT_OK);
+        AiModelEndpoint ep = endpoint("deepseek", server.baseUrl(),
+                AiModelProviderType.DEEPSEEK, "deepseek-flash", "sk-secret", true);
+
+        boundSvc(AiModelPurpose.DAP_PERSONA, ep).invokeChatOnEndpoint(ep, AiModelPurpose.DAP_PERSONA,
+                List.of(Map.of("role", "user", "content", "写剧本")),
+                Map.of("max_tokens", 100_000, "thinking", Map.of("type", "disabled")));
+
+        Map<?, ?> sent = OM.readValue(server.requests.get(0).body(), Map.class);
+        assertEquals(100_000, ((Number) sent.get("max_tokens")).intValue());
+        assertEquals("disabled", ((Map<?, ?>) sent.get("thinking")).get("type"));
+    }
+
+    @Test
+    void thinkingToggleIsRejectedForOtherOpenAiCompatibleProviders() throws Exception {
+        StubServer server = stub(200, CHAT_OK);
+        AiModelEndpoint ep = endpoint("other", server.baseUrl(),
+                AiModelProviderType.OPENAI_COMPATIBLE, "other-model", "sk-secret", true);
+
+        BusinessException error = assertThrows(BusinessException.class, () -> boundSvc(AiModelPurpose.DAP_PERSONA, ep)
+                .invokeChatOnEndpoint(ep, AiModelPurpose.DAP_PERSONA,
+                        List.of(Map.of("role", "user", "content", "写剧本")),
+                        Map.of("thinking", Map.of("type", "disabled"))));
+
+        assertEquals("AI_THINKING_MODE_INVALID", error.getCode());
+        assertTrue(server.requests.isEmpty());
+    }
+
     @Test void contentPartsReachTheProviderButMediaPayloadsAreRedactedFromObservation() throws Exception {
         StubServer server=stub(200,CHAT_OK);var ep=endpoint("vision",server.baseUrl(),AiModelProviderType.OPENAI_COMPATIBLE,"vision","test-key",true);
         List<Map<String,Object>> parts=List.of(Map.of("type","text","text","read image"),Map.of("type","image_url","image_url",Map.of("url","data:image/png;base64,PRIVATE_BYTES")));
@@ -375,6 +405,7 @@ class AiModelInvocationServiceTest {
                         List.of(Map.of("role", "user", "content", "hi")), null));
         assertEquals(HttpStatus.BAD_GATEWAY, ex.getStatus());
         assertEquals("AI_CALL_FAILED", ex.getCode());
+        assertEquals("boom",ex.getMessage());
         assertEquals(1, bad.requests.size(), "单端点被尝试一次，不回退");
     }
 
@@ -385,7 +416,8 @@ class AiModelInvocationServiceTest {
         var error=assertThrows(com.aistareco.aep.service.ai.AiChatHttpException.class,()->boundSvc(AiModelPurpose.GENERAL,ep)
                 .invokeChat(AiModelPurpose.GENERAL,List.of(Map.of("role","user","content","image request")),null));
         assertTrue(error.isVisualMemoryRejection());assertEquals("AI_CALL_FAILED",error.getCode());
-        assertEquals("AI 生成失败，请稍后重试",error.getMessage());assertEquals(1,bad.requests.size());
+        // 恢复信号读的是响应体本身；对外文案归 PublicModelErrorPolicy 管，这里不钉。
+        assertEquals(1,bad.requests.size());
     }
 
     @Test
@@ -403,16 +435,24 @@ class AiModelInvocationServiceTest {
         assertEquals(1, bad.requests.size());
     }
 
+    @Test void explicitErrorInsideSuccessfulHttpResponseIsNotAnEmptySuccessfulReply() throws Exception {
+        StubServer bad=stub(200,"{\"error\":{\"message\":\"provider quota exhausted\"}}");
+        var ep=endpoint("ep1",bad.baseUrl(),AiModelProviderType.OPENAI,"m1","test-key",true);
+        var error=assertThrows(BusinessException.class,()->boundSvc(AiModelPurpose.GENERAL,ep)
+                .invokeChat(AiModelPurpose.GENERAL,List.of(Map.of("role","user","content","hi")),null));
+        // 2026-10-25 起供应商配额不进对外文案（AGENTS.md §8.0.1 ①）；要验的是它被当成错误而不是空回复。
+        assertEquals("AI_CALL_FAILED",error.getCode());assertEquals(com.aistareco.aep.service.ai.PublicModelErrorPolicy.UNAVAILABLE,error.getMessage());
+        assertEquals(1,bad.requests.size());
+    }
+
     @Test
-    void unavailableModelReportsAnActionableErrorWithoutEchoingVendorDetails() throws Exception {
+    void unavailableModelRetainsSafeProviderReason() throws Exception {
         StubServer bad = stub(404, "{\"error\":{\"message\":\"private credential content\"}}");
         var ep = endpoint("retired", bad.baseUrl(), AiModelProviderType.OPENAI, "old-model", "sk-private", true);
         var ex = assertThrows(BusinessException.class, () -> boundSvc(AiModelPurpose.GENERAL, ep)
                 .invokeChat(AiModelPurpose.GENERAL, List.of(Map.of("role", "user", "content", "hi")), null));
         assertEquals("AI_CALL_FAILED", ex.getCode());
-        assertTrue(ex.getMessage().contains("404"));
-        assertTrue(ex.getMessage().contains("更新模型配置"));
-        assertFalse(ex.getMessage().contains("private"));
+        assertEquals("private credential content",ex.getMessage());
         assertEquals(1, bad.requests.size());
     }
 
@@ -497,7 +537,7 @@ class AiModelInvocationServiceTest {
 
         assertEquals(false, result.get("ok"));
         assertEquals(404, result.get("statusCode"));
-        assertTrue(String.valueOf(result.get("error")).contains("404"));
+        assertEquals("upstream private detail",result.get("error"));
         assertFalse(result.containsKey("snippet"));
     }
 

@@ -12,6 +12,7 @@ class StudioTextRevisionTest {
     @Test void emptySourceIsAllowedButTextSnapshotIsRequiredAndOtherOperationsCannotUseIt() throws Exception {
         var body=mapper.createObjectNode().put("operation","text");body.putObject("textEdit").put("content","");
         assertDoesNotThrow(()->StudioTextRevision.validateInput(mapper.treeToValue(body,RunRequest.class)));
+        body.put("readVisuals",true);assertDoesNotThrow(()->StudioTextRevision.validateInput(mapper.treeToValue(body,RunRequest.class)));body.remove("readVisuals");
         body.put("operation","image");assertThrows(BusinessException.class,()->StudioTextRevision.validateInput(mapper.treeToValue(body,RunRequest.class)));
         body.put("operation","text");body.remove("textEdit");assertThrows(BusinessException.class,()->StudioTextRevision.validateInput(mapper.treeToValue(body,RunRequest.class)));
         body.putObject("textEdit").put("content","x".repeat(48001));assertThrows(BusinessException.class,()->StudioTextRevision.validateInput(mapper.treeToValue(body,RunRequest.class)));

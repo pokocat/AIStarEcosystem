@@ -29,6 +29,8 @@ const report: AiModelUsageReport = {
 
 beforeEach(() => { mocks.records.mockReset().mockResolvedValue([]); });
 afterEach(cleanup);
+/** SelectField keeps a hidden native select (data-select-native) that receives the same change events. */
+const trendSelect = () => document.getElementById(screen.getByRole("combobox", { name: "趋势指标" }).getAttribute("data-select-native")!) as HTMLSelectElement;
 
 test("clicking unassigned selects only null-owner records and clearing restores all users", async () => {
   render(<AiAuditPage />);
@@ -47,9 +49,9 @@ test("non-token usage stays visible and the trend can switch to seconds and cost
   const modalities = await screen.findByRole("region", { name: "多模态消耗" });
   expect(within(modalities).getByText(/0 Token · 1 计费单位 · 12 计费秒/)).toBeDefined();
   expect(screen.getAllByRole("columnheader", { name: "计费秒" }).length).toBeGreaterThan(0);
-  fireEvent.change(screen.getByRole("combobox", { name: "趋势指标" }), { target: { value: "billableSeconds" } });
+  fireEvent.change(trendSelect(), { target: { value: "billableSeconds" } });
   expect(screen.getByRole("img", { name: "计费秒用量趋势曲线" })).toBeDefined();
   expect(screen.getByText("峰值 12 计费秒")).toBeDefined();
-  fireEvent.change(screen.getByRole("combobox", { name: "趋势指标" }), { target: { value: "estimatedCostMicros" } });
+  fireEvent.change(trendSelect(), { target: { value: "estimatedCostMicros" } });
   expect(screen.getByText("峰值 ¥0.2000 估算成本")).toBeDefined();
 });

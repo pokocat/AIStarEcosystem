@@ -58,6 +58,7 @@ public class DapJobRunner {
     private final PromptService prompts;
     private final DapImageInput imageInput;
     private final DapAssetJobs assetJobs;
+    private final DapModelBilling modelBilling;
     @org.springframework.beans.factory.annotation.Autowired private DapVideoBridge videos;
 
     public DapJobRunner(DapJobRepository jobRepo,
@@ -73,7 +74,7 @@ public class DapJobRunner {
                         DapSupport support,
                         PromptService prompts,
                         DapImageInput imageInput,
-                        DapAssetJobs assetJobs) {
+                        DapAssetJobs assetJobs,DapModelBilling modelBilling) {
         this.jobRepo = jobRepo;
         this.avatarRepo = avatarRepo;
         this.derivRepo = derivRepo;
@@ -88,6 +89,7 @@ public class DapJobRunner {
         this.prompts = prompts;
         this.imageInput = imageInput;
         this.assetJobs = assetJobs;
+        this.modelBilling=modelBilling;
     }
 
     // ── prompt 解析（admin「Prompt 管理」可改；resource .md 兜底）───────────────
@@ -115,7 +117,7 @@ public class DapJobRunner {
         long startNanos = System.nanoTime();
         log.info("[dap-job] run start id={} type={} mode={} engine={} owner={} avatar={}",
                 job.getId(), job.getType(), job.getMode(), job.getEngine(), job.getOwnerUserId(), job.getAvatarId());
-        try (var attribution = AiModelUsageContext.bind(job.getOwnerUserId(), "aiavatar", jobId)) {
+        try (var attribution = AiModelUsageContext.bind(job.getOwnerUserId(), "aiavatar", jobId); var billingScope=modelBilling.open(job)) {
             switch (job.getType()) {
                 case DapJob.T_GENERATE -> runGenerate(job);
                 case DapJob.T_GENERATE_UPLOAD -> runGenerateUpload(job);
@@ -648,6 +650,7 @@ public class DapJobRunner {
                 return cleanEditPhrase(multimodal.chat(systemOf(PromptService.KEY_DAP_TRANSLATE_EDIT),
                         promptOf(PromptService.KEY_DAP_TRANSLATE_EDIT, Map.of("input", s))));
             } catch (Exception e) {
+                if(DapModelBilling.current()!=null)throw e instanceof RuntimeException runtime?runtime:new IllegalStateException(e);
                 log.warn("[dap-job] extraPrompt translate failed, use raw: {}", e.getMessage());
             }
         }
@@ -810,16 +813,18 @@ public class DapJobRunner {
     }
 
     private void commitCredits(DapJob job) {
+        if(modelBilling.finish(job,true,"已完成"))return;
         if (job.getCost() <= 0) return;
         try {
             creditService.commitHold(DapJobService.REF_TYPE, job.getId() + ":r" + job.getRetryCount(),
-                    job.getCost(), job.getKind() + " 完成");
+                    job.getCost(), job.getKind() + " 完成", null);
         } catch (Exception e) {
             log.warn("[dap] commitHold 失败 job={}: {}", job.getId(), e.getMessage());
         }
     }
 
     private void releaseCredits(DapJob job, String why) {
+        if(modelBilling.finish(job,false,why))return;
         if (job.getCost() <= 0) return;
         try {
             creditService.releaseHold(DapJobService.REF_TYPE, job.getId() + ":r" + job.getRetryCount(),

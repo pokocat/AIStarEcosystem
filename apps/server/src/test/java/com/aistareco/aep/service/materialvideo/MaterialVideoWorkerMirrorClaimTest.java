@@ -114,7 +114,7 @@ class MaterialVideoWorkerMirrorClaimTest {
         assertEquals("failed", job.getStatus());
         assertTrue(job.getErrorMessage().startsWith(MaterialVideoWorker.MIRROR_FAILED_CODE), job.getErrorMessage());
         verify(creditService).releaseHold(eq("material_video_job"), eq("mvj_m"), anyString());
-        verify(creditService, never()).commitHold(any(), any(), anyLong(), any());
+        verify(creditService, never()).commitHold(any(), any(), anyLong(), any(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -123,7 +123,7 @@ class MaterialVideoWorkerMirrorClaimTest {
 
         assertEquals("succeeded", job.getStatus());
         assertEquals(base + "/video.mp4", job.getVideoUrl());
-        verify(creditService).commitHold(eq("material_video_job"), eq("mvj_m"), eq(40L), anyString());
+        verify(creditService).commitHold(eq("material_video_job"), eq("mvj_m"), eq(40L), anyString(), org.mockito.ArgumentMatchers.any());
         verify(creditService, never()).releaseHold(any(), any(), any());
     }
 
@@ -147,7 +147,7 @@ class MaterialVideoWorkerMirrorClaimTest {
         assertTrue(job.getErrorMessage().startsWith(MaterialVideoWorker.MIRROR_FAILED_CODE), job.getErrorMessage());
         assertNull(job.getVideoUrl());
         verify(creditService).releaseHold(eq("material_video_job"), eq("mvj_m"), anyString());
-        verify(creditService, never()).commitHold(any(), any(), anyLong(), any());
+        verify(creditService, never()).commitHold(any(), any(), anyLong(), any(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test

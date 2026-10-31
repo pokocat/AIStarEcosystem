@@ -11,6 +11,7 @@ import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { studioHref } from "@/components/hub/data";
 import { Badge, Card, HubScreen, ListRow, NavBar } from "@/components/hub/ui";
 import { setLayout, useLayoutMode } from "@/shell/layout-mode";
+import { setUiVersion, useUiVersion } from "@/shell/ui-version";
 import { AccountOverview } from "@/shell/account-workspace";
 
 export default function MePage() {
@@ -21,6 +22,7 @@ export default function MePage() {
   // 「我是谁」的真源是 /api/me（hook 必须在早退之前调用）。
   const identity = useIdentity();
   const layout = useLayoutMode();
+  const version = useUiVersion();
   if (noPlatform) return <PlatformGateScreen />;
   if (!ready) return <HubScreen tabBar={false}>{null}</HubScreen>;
 
@@ -66,6 +68,15 @@ export default function MePage() {
         </Card>
       </div>
 
+      {/* 新版手机底栏换成了 AI 视频 / AI 图片，项目和资产从这里进。 */}
+      {version === "next" && <div className="hub-section" style={{ margin: "16px 16px 0" }}>
+        <Card pad={0}>
+          <ListRow href="/projects" title="项目" sub="画布和场景草稿，接着做" divider />
+          <ListRow href="/assets" title="资产" sub="人物、声音与创作素材" divider />
+          <ListRow href="/director" title="短剧导演台" sub="写剧本、拆分镜、出片" />
+        </Card>
+      </div>}
+
       <div className="hub-section" style={{ margin: "16px 16px 0" }}>
         <Card pad={0}>
           <ListRow href="/cards" title="我的名片" sub="对外发布面 · 扫码即看" divider />
@@ -91,6 +102,7 @@ export default function MePage() {
       <div style={{ margin: "12px 16px 0" }}>
         <Card pad={0}>
           <LayoutSwitchRow />
+          <UiVersionRow />
         </Card>
       </div>
 
@@ -150,6 +162,24 @@ function LayoutSwitchRow() {
       <span style={{ fontSize: 12, color: "var(--ink-3)" }}>
         {next === "desktop" ? "画布和宽表格更好用" : "回到竖排界面"}
       </span>
+    </button>
+  );
+}
+
+/** 新旧版切换（见 shell/ui-version.ts）。电脑上在右上角，手机上没有顶栏，放在这里。 */
+function UiVersionRow() {
+  const next = useUiVersion() === "next";
+  return (
+    <button
+      onClick={() => setUiVersion(next ? "classic" : "next")}
+      style={{
+        width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+        gap: 12, padding: "13px 16px", border: "none", borderTop: "1px solid var(--line)", background: "transparent",
+        cursor: "pointer", textAlign: "left", font: "inherit",
+      }}
+    >
+      <span style={{ fontSize: 14, color: "var(--ink)" }}>{next ? "回到旧版" : "体验新版"}</span>
+      <span style={{ fontSize: 12, color: "var(--ink-3)" }}>{next ? "换回原来的首页和导航" : "按场景创作的新首页"}</span>
     </button>
   );
 }

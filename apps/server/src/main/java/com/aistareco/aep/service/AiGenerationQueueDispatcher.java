@@ -55,7 +55,8 @@ public class AiGenerationQueueDispatcher {
                 if(run==null||!IpRun.STATUS_RUNNING.equals(run.getStatus())) {queue.finish(type,id);continue;}
                 // Waiting is not execution time. Reaper and hold sweeper recognize the durable ticket.
                 if(!waiting) {
-                    if(AiGenerationQueueService.IMAGE.equals(type) && "STUDIO_IMAGE_SUBMISSION_UNKNOWN".equals(run.getErrorCode())) {
+                    if(AiGenerationQueueService.IMAGE.equals(type) && ("STUDIO_IMAGE_SUBMISSION_UNKNOWN".equals(run.getErrorCode()) ||
+                            IpRunWorker.hasNativeSubmission(run) && !images.getObject().canResumeNative(run))) {
                         images.getObject().failUnconfirmedSubmission(id);continue;
                     }
                     if(AiGenerationQueueService.IMAGE.equals(type) && images.getObject().canResumeNative(run) && queue.claimDispatch(entry,true))
@@ -78,12 +79,20 @@ public class AiGenerationQueueDispatcher {
             switch(run.getKind()) {
                 case "generate" -> {type=AiGenerationQueueService.IMAGE;purpose=com.aistareco.aep.model.AiModelPurpose.DAP_IMAGE;}
                 case "identity" -> {type=AiGenerationQueueService.IMAGE;purpose=com.aistareco.aep.model.AiModelPurpose.DAP_PERSONA;}
-                case "studio-text","studio-script","studio-storyboard","studio-assistant","studio-asset-extract" -> {type=AiGenerationQueueService.WORKFLOW;purpose=com.aistareco.aep.model.AiModelPurpose.DAP_PERSONA;}
+                case "studio-director","studio-text","studio-script","studio-storyboard","studio-assistant","studio-asset-extract" -> {type=AiGenerationQueueService.WORKFLOW;purpose=com.aistareco.aep.model.AiModelPurpose.DAP_PERSONA;}
+                // 先改写提示词再出片的那一行，还在改写阶段（没有视频任务号）才是文字任务；交接后按视频任务走，不在这里。
+                case "studio-video" -> {
+                    var input=mapper.readTree(run.getInputJson());
+                    if(!input.path("_exec").has("h3")||input.path("_exec").has("nativeVideoJobIds"))continue;
+                    type=AiGenerationQueueService.WORKFLOW;purpose=com.aistareco.aep.model.AiModelPurpose.DAP_PERSONA;
+                }
                 case "studio-audio" -> {type=AiGenerationQueueService.SPEECH;purpose=com.aistareco.aep.model.AiModelPurpose.DAP_AUDIO;}
                 case "studio-lip-sync" -> {type=AiGenerationQueueService.SPEECH;purpose=com.aistareco.aep.model.AiModelPurpose.DAP_LIP_SYNC;}
                 default -> {continue;}
             }
             var exec=mapper.readTree(run.getInputJson()).path("_exec");
+            if(com.aistareco.aep.model.AiModelPurpose.DAP_VIDEO_PROMPT.wire().equals(exec.path("purpose").asText()))
+                purpose=com.aistareco.aep.model.AiModelPurpose.DAP_VIDEO_PROMPT;
             boolean executing=run.getStartedAt()!=null&&!"endpoint.queued".equals(run.getStage());
             // Older speech runs don't have startedAt, but an accepted/uncertain submission still consumes capacity.
             if(AiGenerationQueueService.SPEECH.equals(type))

@@ -23,7 +23,8 @@ function work(brief: DirectorBrief | null, over: Partial<DirectorWork> = {}): Di
     idea: "快递站夜班收到寄给十年后自己的包裹", logline: "", draft: "", draftRev: 0,
     settings: { style: "真人写实", aspectRatio: "9:16", language: "中文", videoModel: null, textModel: null },
     episodes: [], assets: [], clips: [], pipeline: null, notice: null, textError: null, tasks: [], brief,
-    pricing: { textMax: 2, image: 16, mock: false }, videoModels: [], videoLimits: null, ...over,
+    pricing: { textMax: 2, image: 16, mock: false }, videoModels: [], videoLimits: null,
+    draftEpisodeHeadings: 0, reference: "", referenceRev: 0, pendingSplit: null, canUndoSplit: false, ...over,
   };
 }
 
@@ -43,6 +44,20 @@ test("a new idea opens the creative chat once (fixed request id), never on refre
   render(<DirectorWorkbench id="w"/>);
   expect(await screen.findByText("已问 1 轮，最多还问 2 轮")).toBeTruthy();
   expect(DirectorApi.runTask).toHaveBeenCalledOnce();
+});
+
+/** 删除前还没开始的创意对话：从回收站恢复后打开，不自动发付费开场；用户点「开始聊」才发，发出后照常聊。 */
+test("a work restored from the trash waits for the user to start the creative chat", async () => {
+  vi.mocked(DirectorApi.getWork).mockResolvedValue(work({ ...asked, rounds: 0, messages: [] }, { restoredAt: "2026-10-29T03:00:00Z" }));
+  vi.mocked(DirectorApi.runTask).mockResolvedValue(work(asked, { restoredAt: "2026-10-29T03:00:00Z" }));
+  render(<DirectorWorkbench id="w"/>);
+  const start = await screen.findByRole("button", { name: "开始聊" });
+  await new Promise(r => setTimeout(r, 50));
+  expect(DirectorApi.runTask).not.toHaveBeenCalled();
+  fireEvent.click(start);
+  await waitFor(() => expect(DirectorApi.runTask).toHaveBeenCalledOnce());
+  expect(vi.mocked(DirectorApi.runTask).mock.calls[0][1]).toMatchObject({ type: "brief", clientRequestId: "open-w", options: { message: "" } });
+  expect(await screen.findByText("想让观众看完是什么感觉？")).toBeTruthy();
 });
 
 test("answers are sent with the picked options; skipping mid-way generates with skip and keeps the request across a refresh", async () => {

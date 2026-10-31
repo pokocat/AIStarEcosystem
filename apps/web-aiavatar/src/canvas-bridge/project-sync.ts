@@ -398,7 +398,7 @@ export function useProjectSync(projectId: string) {
             enterConflict();
           } else {
             // 不吞：存不上就明说，别让用户以为改动落盘了
-            reportStudioError(e, { fallback: "画布保存失败，改动仍保留在本地" });
+            reportStudioError(e, { fallback: "画布保存失败，改动仍保留在本地", background: true });
             setSaveState("failed");
           }
         }

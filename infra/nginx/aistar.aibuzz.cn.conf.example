@@ -38,6 +38,23 @@ server {
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
 
+    # Studio operations dashboard is a separate Next process with basePath=/admin.
+    # Keep the URI unchanged so /admin/_next/* is served by that process while the
+    # Studio application's root /_next/* continues to use port 3013.
+    location = /admin {
+        proxy_pass http://127.0.0.1:3004;
+        proxy_connect_timeout 10s;
+        proxy_read_timeout 60s;
+        proxy_send_timeout 60s;
+    }
+
+    location /admin/ {
+        proxy_pass http://127.0.0.1:3004;
+        proxy_connect_timeout 10s;
+        proxy_read_timeout 60s;
+        proxy_send_timeout 60s;
+    }
+
     location /api/ {
         proxy_pass http://127.0.0.1:8080/api/;
         proxy_connect_timeout 30s;

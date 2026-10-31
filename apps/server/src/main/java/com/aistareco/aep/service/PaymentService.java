@@ -87,24 +87,38 @@ public class PaymentService {
         }
         String resolvedWay = (wayCode == null || wayCode.isBlank()) ? defaultWayCode(ch) : wayCode;
 
+        if (!ch.equals(PaymentChannelCatalog.channelFromWayCode(resolvedWay)))
+            throw BusinessException.badRequest("PAYMENT_WAY_MISMATCH", "支付方式与渠道不匹配");
+
         // v2 §6 防重复支付：复用 TTL 内的同套餐 PENDING 单（双击/重试不生成重复单）。
         RechargeOrder order = rechargeService.createOrReuseCheckoutOrder(userId, packageId, resolvedWay, sourceApp);
 
+        // Persist the correlation before sending: a network timeout may hide an accepted WeChat order.
+        if ("wechat".equals(ch)) rechargeService.attachPayOrder(order.getId(), "wechat_" + order.getId());
         PayCreateResult res;
         try {
             res = gateway.createPayOrder(new PayCreateCommand(
                     order.getId(), order.getPriceCents(), resolvedWay, "AIStarEco 积分充值", openid, clientIp));
         } catch (BusinessException be) {
-            // 渠道未配置等带码错误：取消订单后原样上抛（§8.0：不入账、不建假单）
-            rechargeService.cancelForGatewayError(order.getId(), "支付下单失败：" + be.getMessage());
+            // 微信失败可能已经受理，保留同一订单供查单；其他渠道保持原行为。
+            if (!"wechat".equals(ch)) rechargeService.cancelForGatewayError(order.getId(), "支付下单失败：" + be.getMessage());
             throw be;
         } catch (RuntimeException e) {
             log.warn("[pay] gateway createPayOrder failed orderId={} channel={} err={}",
                     order.getId(), ch, e.toString());
-            rechargeService.cancelForGatewayError(order.getId(), "支付下单失败：" + e.getMessage());
+            if (!"wechat".equals(ch)) rechargeService.cancelForGatewayError(order.getId(), "支付下单失败：" + e.getMessage());
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "PAYMENT_GATEWAY_ERROR", "支付下单失败，请稍后再试");
         }
 
+        // A concurrent cancellation may have closed the local order before prepay reached WeChat.
+        // Never hand out a new QR for that terminal order; close the remote order first.
+        if ("wechat".equals(ch)) {
+            String status = rechargeService.getOrder(order.getId()).status();
+            if (!"pending".equals(status)) {
+                if (!"paid".equals(status)) gateway.closePayOrder(order.getId());
+                throw new BusinessException(HttpStatus.CONFLICT, "PAYMENT_ORDER_ENDED", "订单状态已更新，请刷新支付结果");
+            }
+        }
         rechargeService.attachPayOrder(order.getId(), res.payOrderId());
         log.info("[pay] checkout ok orderId={} channel={} way={} payOrderId={} payDataType={}",
                 order.getId(), ch, resolvedWay, res.payOrderId(), res.payDataType());
@@ -139,10 +153,14 @@ public class PaymentService {
                 try {
                     PayQueryResult q = gateway.queryPayOrder(orderId);
                     if (q.paid()) {
+                        if (q.amountCents() != dto.priceCents() || q.channelPayNo() == null || q.channelPayNo().isBlank())
+                            throw new IllegalStateException("支付查单金额或交易号不匹配");
                         return rechargeService.settlePaidOrder(orderId, channel, q.channelPayNo(), null, null);
                     }
                 } catch (RuntimeException e) {
                     log.warn("[pay] syncOrder 查单失败 orderId={}: {}", orderId, e.toString());
+                    if ("wechat".equals(channel)) throw new BusinessException(HttpStatus.BAD_GATEWAY,
+                            "PAYMENT_QUERY_FAILED", "支付结果暂未确认，请稍后刷新");
                 }
             }
         }

@@ -95,7 +95,7 @@ class PublishJobServiceTest {
         assertEquals("VIDEO_URL_NOT_ALLOWED", ex.getCode());
 
         // 未通过 SSRF 校验必须在扣费 / 派单之前短路：不 hold、不调 sau.upload。
-        verify(creditService, never()).hold(any(), anyLong(), any(), any(), any());
+        verify(creditService, never()).hold(any(), anyLong(), any(), any(), any(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         verify(sau, never()).upload(anyMap());
     }
 
@@ -119,7 +119,7 @@ class PublishJobServiceTest {
         svc.startJob(USER_ID, JOB_ID);
 
         verify(sau).upload(argThat(body -> TRUSTED_VIDEO_URL.equals(body.get("videoUrl"))));
-        verify(creditService).hold(eq(USER_ID), anyLong(), anyString(), anyString(), anyString());
+        verify(creditService).hold(eq(USER_ID), anyLong(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     @Test
@@ -149,7 +149,7 @@ class PublishJobServiceTest {
 
         org.mockito.ArgumentCaptor<String> refs = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(creditService, times(2)).hold(eq(USER_ID), anyLong(), eq("publish_job_upload"),
-                refs.capture(), anyString());
+                refs.capture(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         assertEquals(JOB_ID, refs.getAllValues().get(0));
         assertEquals(JOB_ID + ":r1", refs.getAllValues().get(1));
         assertNotEquals(refs.getAllValues().get(0), refs.getAllValues().get(1),
@@ -168,7 +168,7 @@ class PublishJobServiceTest {
             svc.applyCallback(new com.aistareco.aep.dto.PublishJobCallbackDto(
                     j.getExternalTaskId(), terminal, 100, null, null, null, null));
         }
-        verify(creditService).commitHold(eq("publish_job_upload"), eq(JOB_ID), eq(20L), anyString());
+        verify(creditService).commitHold(eq("publish_job_upload"), eq(JOB_ID), eq(20L), anyString(), org.mockito.ArgumentMatchers.any());
         verify(creditService).releaseHold(eq("publish_job_upload"), eq(JOB_ID), anyString());
         verify(creditService, never()).releaseHold(eq("publish_job_upload"), eq(JOB_ID + ":r0"), anyString());
     }

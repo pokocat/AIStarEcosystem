@@ -18,6 +18,8 @@ public final class ProviderAlertText {
     private static final Pattern ASSIGNMENT = Pattern.compile(
             "(?i)([\\\"']?(?:authorization|api[_-]?key|access[_-]?token|refresh[_-]?token|token|(?:api|app)?[_-]?secret|password|prompt|negative_prompt)[\\\"']?\\s*[:=]\\s*)(?:\\\"[^\\\"]*\\\"|'[^']*'|[^\\s,;}]+)");
     private static final Pattern URL = Pattern.compile("https?://[^\\s\\\"'<>}]+", Pattern.CASE_INSENSITIVE);
+    private static final Pattern MEDIA_VALUE = Pattern.compile(
+            "(?i)(\"(?:b64_json|base64|bytes)\"\\s*:\\s*\")[^\"]*");
     private ProviderAlertText() {}
 
     public static String sanitize(String input) {
@@ -27,7 +29,9 @@ public final class ProviderAlertText {
             JsonNode body = JSON.readTree(input);
             safe = body == null ? "" : redact(body).toString();
         } catch (Exception notJson) {
-            safe = ASSIGNMENT.matcher(input.replaceAll("(?i)Bearer\\s+[A-Za-z0-9._~+/=-]+", "Bearer [已脱敏]")).replaceAll("$1[已脱敏]");
+            // Oversized or truncated image JSON may fail before tree-based redaction runs.
+            String withoutMedia=MEDIA_VALUE.matcher(input).replaceAll("$1[媒体数据已省略]");
+            safe = ASSIGNMENT.matcher(withoutMedia.replaceAll("(?i)Bearer\\s+[A-Za-z0-9._~+/=-]+", "Bearer [已脱敏]")).replaceAll("$1[已脱敏]");
         }
         // Keys and signed asset links may also be embedded inside a supplier's free-text message.
         safe = safe.replaceAll("(?i)Bearer\\s+[A-Za-z0-9._~+/=-]+", "Bearer [已脱敏]")

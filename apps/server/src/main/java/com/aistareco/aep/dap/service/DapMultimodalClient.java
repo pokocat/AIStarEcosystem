@@ -1,5 +1,8 @@
 package com.aistareco.aep.dap.service;
 
+import com.aistareco.aep.service.ai.ProviderErrorMessage;
+import java.nio.charset.StandardCharsets;
+
 import com.aistareco.aep.dap.config.DapProperties;
 import com.aistareco.aep.model.AiModelBillingMode;
 import com.aistareco.aep.model.AiModelEndpoint;
@@ -101,14 +104,22 @@ public class DapMultimodalClient {
     }
 
     private Target resolveTarget(AiModelPurpose purpose, String endpointId, String appCode) {
+        var billing="aiavatar".equals(appCode)?DapModelBilling.current():null;
+        if(billing!=null) {
+            String accepted=billing.endpointId(purpose);
+            if(endpointId!=null&&!endpointId.isBlank()&&!accepted.equals(endpointId))
+                throw new DapModelException("MODEL_BILLING_ROUTE_CHANGED","模型接入点与已确认费用不一致");
+            endpointId=accepted;
+        }
         var resolved = (endpointId == null || endpointId.isBlank())
                 ? java.util.Optional.<com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint>empty()
-                : aiModels.resolveEndpoint(purpose, endpointId,appCode);
+                : billing==null?aiModels.resolveEndpoint(purpose, endpointId,appCode):aiModels.resolveAcceptedEndpoint(purpose,endpointId,appCode);
         AiModelEndpoint e = (endpointId == null || endpointId.isBlank())
                 ? aiModels.resolveDefaultEndpoint(purpose,appCode).orElse(null)
                 : resolved.map(r -> r.endpoint()).orElse(null);
         Integer minPixels = resolved.map(r -> r.candidate() == null ? null : r.candidate().getMinImagePixels()).orElse(null);
         if (e == null) return null;
+        if(billing!=null)billing.requireRoute(purpose,e);
         try {
             String key = AepCryptoUtil.decrypt(e.getUpstreamApiKeyEncrypted());
             if (key == null || key.isBlank()) {
@@ -137,6 +148,8 @@ public class DapMultimodalClient {
 
     /** 图片 + 文本任一通道可用即视为已配置(视频是衍生能力,运行链路按各自通道再精确判定)。 */
     public boolean isConfigured() {
+        // A paid task must resolve its accepted routes or fail; changing defaults must never select placeholders.
+        if(DapModelBilling.current()!=null)return true;
         return aiModels.hasEndpointFor(AiModelPurpose.DAP_IMAGE,"aiavatar")
                 || aiModels.hasEndpointFor(AiModelPurpose.DAP_PERSONA,"aiavatar");
     }
@@ -160,28 +173,39 @@ public class DapMultimodalClient {
 
     /** 单轮 chat;返回 assistant content。 */
     public String chat(String systemPrompt, String userPrompt) {
-        return chatResult(systemPrompt,userPrompt,false);
+        var response=chatResult(systemPrompt,userPrompt,false);
+        recordText(response);return response.content();
     }
 
-    private String chatResult(String systemPrompt,String userPrompt,boolean json) {
+    private AiModelInvocationService.AiModelResponse chatResult(String systemPrompt,String userPrompt,boolean json) {
         Target target=require(chatTarget(),"chat");
         List<java.util.Map<String,String>> messages=new java.util.ArrayList<>();
         if(systemPrompt!=null && !systemPrompt.isBlank())messages.add(java.util.Map.of("role","system","content",systemPrompt));
         messages.add(java.util.Map.of("role","user","content",userPrompt==null?"":userPrompt));
         var options=new java.util.HashMap<String,Object>();options.put("temperature",0.6);
-        options.put("max_tokens",target.endpoint().getDefaultMaxTokens()!=null?target.endpoint().getDefaultMaxTokens():4096);
+        options.put("max_tokens",textOutputLimit(target.endpoint()));
         if(json)options.put("response_format",java.util.Map.of("type","json_object"));
         var response=aiModels.invokeChatOnEndpoint(target.endpoint(),AiModelPurpose.DAP_PERSONA,messages,options);
         if(response.content()==null || response.content().isBlank())throw new DapModelException("DAP_MODEL_BAD_OUTPUT","文本模型没有返回有效内容");
-        return response.content();
+        return response;
+    }
+
+    private static int textOutputLimit(AiModelEndpoint endpoint) {
+        int configured=endpoint.getDefaultMaxTokens()!=null?endpoint.getDefaultMaxTokens():4096;
+        var billing=DapModelBilling.current();return billing==null?configured:billing.outputLimit(configured);
+    }
+    private static void recordText(AiModelInvocationService.AiModelResponse response) {
+        var billing=DapModelBilling.current();if(billing!=null)billing.record(response);
     }
 
     /** chat 并解析 JSON 产物(剥 markdown 围栏 + 截取首个 {...})。 */
     public JsonNode chatJson(String systemPrompt, String userPrompt) {
-        String raw = chatResult(systemPrompt, userPrompt, true);
+        var response=chatResult(systemPrompt,userPrompt,true);
+        String raw = response.content();
         String cleaned = extractJson(raw);
         try {
-            return OM.readTree(cleaned);
+            JsonNode parsed=OM.readTree(cleaned);
+            recordText(response);return parsed;
         } catch (IOException e) {
             throw new DapModelException("DAP_MODEL_BAD_OUTPUT", "chat 输出不是合法 JSON: " + truncate(raw, 300));
         }
@@ -210,11 +234,11 @@ public class DapMultimodalClient {
         }
         messages.add(java.util.Map.of("role","user","content",parts));
         var options=new java.util.HashMap<String,Object>();options.put("temperature",0.4);
-        options.put("max_tokens",target.endpoint().getDefaultMaxTokens()!=null?target.endpoint().getDefaultMaxTokens():4096);
+        options.put("max_tokens",textOutputLimit(target.endpoint()));
         options.put("response_format",java.util.Map.of("type","json_object"));
         var response=aiModels.invokeChatOnEndpoint(target.endpoint(),AiModelPurpose.DAP_PERSONA,messages,options);
         if(response.content()==null || response.content().isBlank())throw new DapModelException("DAP_MODEL_BAD_OUTPUT","看图模型没有返回有效内容");
-        return response.content();
+        recordText(response);return response.content();
     }
 
     /** 带图 chat 并解析 JSON 产物（剥 markdown 围栏 + 截取首个 {...}）。 */
@@ -344,7 +368,7 @@ public class DapMultimodalClient {
             if (resp.statusCode() >= 400) {
                 log.warn("[dap-ai] download http-error host={} status={} durationMs={}",
                         hostOf(url), resp.statusCode(), elapsedMs(startNanos));
-                throw new DapModelException("DAP_MODEL_DOWNLOAD_FAILED", "下载产物失败 HTTP " + resp.statusCode() + " " + url);
+                throw new DapModelException("DAP_MODEL_DOWNLOAD_FAILED", ProviderErrorMessage.message(new String(resp.body(), StandardCharsets.UTF_8),"下载产物失败（上游 " + resp.statusCode() + "）"));
             }
             byte[] body = resp.body();
             if (body.length > maxBytes) {
@@ -450,7 +474,10 @@ public class DapMultimodalClient {
                     new DapModelException("DAP_MODEL_HTTP_" + resp.statusCode(), upstreamMessage(resp)),resp);
         }
         try {
-            return OM.readTree(resp.body());
+            JsonNode body=OM.readTree(resp.body());
+            if(ProviderErrorMessage.hasError(body))throw com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attach(
+                    new DapModelException("DAP_MODEL_CALL_FAILED",ProviderErrorMessage.message(resp.body(),"模型服务返回错误")),resp);
+            return body;
         } catch (IOException e) {
             throw com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attach(
                     new DapModelException("DAP_MODEL_BAD_OUTPUT", "大模型返回不是合法 JSON(" + path + "): " + e.getMessage()),resp);
@@ -544,37 +571,9 @@ public class DapMultimodalClient {
         return r == 0 ? n : n + (8 - r);
     }
 
-    /** 上游 4xx 响应体里那句人话的最大长度 —— 够说清问题，又不至于把整段 JSON 糊到界面上。 */
-    private static final int UPSTREAM_MSG_MAX = 200;
-
-    /**
-     * 给用户看的上游失败原因。
-     *
-     * <p>此前一律返回「AI 生成失败，请稍后重试」，理由是「不把上游响应体直出给用户」。
-     * 方向对，做过头了：OpenAI 兼容的厂商对 **4xx** 回的是结构化的 {@code {code,message}}，
-     * 而且那句 message 恰恰是**我们请求哪里不对**——
-     * 比如 {@code unsupported FLUX.2 Klein 4B size "768x1024"}（换了模型之后画幅不被支持）。
-     * 把它抹成「请稍后重试」，用户既不知道该改什么，而且那句话本身还是错的
-     * （上游明确 {@code retryable:false}，重试永远不会成）。
-     *
-     * <p>分寸：**4xx 直出厂商那句 message**（是我们的请求造成的，可操作），截断到 200 字；
-     * **5xx 保持笼统 + 状态码**（厂商自己出问题，用户做不了什么，细节在 WARN 日志里）。
-     */
+    /** All structured model errors retain the safe provider reason, including server errors. */
     private static String upstreamMessage(HttpResponse<String> resp) {
-        int status = resp.statusCode();
-        if (status >= 500) return "模型服务暂时不可用（上游 " + status + "），请稍后重试";
-        String msg = null;
-        try {
-            JsonNode body = OM.readTree(resp.body());
-            for (JsonNode candidate : new JsonNode[]{body.path("error").path("message"), body.path("message")}) {
-                if (candidate.isTextual() && !candidate.asText().isBlank()) { msg = candidate.asText().trim(); break; }
-            }
-        } catch (Exception ignore) {
-            // 响应体不是 JSON：退回笼统文案，别把 HTML 错误页糊到界面上
-        }
-        if (msg == null || msg.isBlank()) return "模型拒绝了这次请求（上游 " + status + "）";
-        if (msg.length() > UPSTREAM_MSG_MAX) msg = msg.substring(0, UPSTREAM_MSG_MAX) + "…";
-        return "模型拒绝了这次请求：" + msg;
+        return ProviderErrorMessage.message(resp.body(), "模型服务返回错误（上游 " + resp.statusCode() + "）");
     }
 
     private Target require(Target t, String channel) {

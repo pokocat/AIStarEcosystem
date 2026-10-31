@@ -12,26 +12,26 @@ test('four cards, each naming what it makes, what it needs and the skill it send
     ['做个短视频', '一句描述出视频，也可以从一张图动起来', '画面描述', 'video-generation'],
     ['复刻视频', '照爆款的节奏和镜头，换成你的商品或人物', '参考视频 + 你的素材', 'reference-video-recreation'],
   ]);
-  expect(starterDefaults(studioStarter('ip'))).toEqual({ style: '写实', output: 'sheet' });
+  expect(starterDefaults(studioStarter('ip'))).toEqual({ style: 'business', output: 'sheet', sceneRatio: '9:16' });
   expect(starterDefaults(studioStarter('script'))).toEqual({ type: '短剧', length: '60 秒', tone: '有反转' });
   expect(starterDefaults(studioStarter('video'))).toEqual({ ratio: '9:16', length: '5 秒', camera: '自动' });
   expect(starterDefaults(studioStarter('recreation'))).toEqual({ keep: 'shots' });
 });
 
 test('制作个人 IP: the defaults, the photos as @ tags, options and the photo limits', () => {
-  expect(composeStarter('ip', {})).toEqual({
-    text: '用我的照片做一个我的数字 IP 形象，保留脸型、发型和主要特征，写实风格，出一张多视角设定图（正面、侧面、背面加几个表情）。',
-    missing: [{ reason: '还差照片', kind: 'slot' }],
-  });
-  expect(composeStarter('ip', { slots: { photos: nodes('自拍') } })).toEqual({
-    text: '用 @自拍 做一个我的数字 IP 形象，保留脸型、发型和主要特征，写实风格，出一张多视角设定图（正面、侧面、背面加几个表情）。', missing: [] });
-  expect(composeStarter('ip', { slots: { photos: nodes('自拍', '侧脸') }, options: { style: 'Q 版', output: 'avatar' } }).text)
-    .toBe('用 @自拍、@侧脸 做一个我的数字 IP 形象，保留脸型、发型和主要特征，Q 版风格，出一张头像。');
-  expect(composeStarter('ip', { slots: { photos: nodes('a') }, options: { style: '3D 卡通', output: 'turnaround' } }).text)
-    .toBe('用 @a 做一个我的数字 IP 形象，保留脸型、发型和主要特征，3D 卡通风格，出一张三视图（正面、侧面、背面）。');
+  expect(composeStarter('ip', {}).missing).toEqual([{ reason: '还差照片', kind: 'slot' }]);
+  const prompt = composeStarter('ip', { slots: { photos: nodes('自拍') } });
+  expect(prompt.missing).toEqual([]);
+  expect(prompt.text).toContain('用 @自拍 制作个人 IP，出一张IP 全视角图鉴。画幅比例：3:4。');
+  expect(prompt.text).toContain('严格保留参考图人物的面部五官特征');
+  expect(prompt.text).toContain('避免出现：');
+  expect(composeStarter('ip', { slots: { photos: nodes('自拍', '侧脸') }, options: { style: 'toy', output: 'avatar' } }).text)
+    .toContain('用 @自拍、@侧脸 制作个人 IP，出一张胸像头像特写。画幅比例：1:1。风格：3D潮玩Q版风。');
+  expect(composeStarter('ip', { slots: { photos: nodes('a') }, options: { style: 'toy', output: 'turnaround' } }).text)
+    .toContain('出一张标准三视图。画幅比例：16:9。');
   expect(composeStarter('ip', { slots: { photos: nodes('a', 'b', 'c', 'd') } }).missing).toEqual([{ reason: '照片最多 3 张', kind: 'slot' }]);
   // A value the card does not offer falls back to the default.
-  expect(composeStarter('ip', { slots: { photos: nodes('a') }, options: { style: '油画' } }).text).toContain('写实风格');
+  expect(composeStarter('ip', { slots: { photos: nodes('a') }, options: { style: '油画' } }).text).toContain('风格：超写实商务知性风。');
 });
 
 test('写剧本: no synopsis leaves no empty 「：」; the synopsis loses its own full stop; every option lands in the sentence', () => {

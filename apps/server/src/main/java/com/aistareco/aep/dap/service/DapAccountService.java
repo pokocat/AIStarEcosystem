@@ -102,7 +102,7 @@ public class DapAccountService {
         long monthlyGrant = props.getMonthlyGrant();
 
         var monthStart = YearMonth.now(ZONE).atDay(1).atStartOfDay(ZONE).toInstant();
-        long creditsUsed = jobRepo.sumCostSince(userId, monthStart);
+        long creditsUsed = ledgerRepo.actualCreditsSpentSince(userId,DapJobService.REF_TYPE,monthStart);
 
         long perAvatar = Math.max(1, pricing.generate()); // v0.53：admin 单价优先，env fallback
         long generatable = credits / perAvatar;

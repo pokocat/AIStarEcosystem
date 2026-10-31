@@ -8,7 +8,7 @@ import { ArrowRight, Loader2, RefreshCw } from 'lucide-react';
 import type { IpTemplate } from '@ai-star-eco/types';
 import { PlatformGateScreen, useRequireAuth } from '@/components/hub/auth';
 import { IpStudioApi } from './api';
-import { StudioPage } from './studio-page';
+import { StudioComingSoon, StudioPage } from './studio-page';
 import { GalleryState, useStudioList } from './studio-gallery';
 import { StudioTemplateUse } from './studio-template-use';
 import { StudioErrorNotice, useStudioErrorState } from './studio-errors';
@@ -34,7 +34,7 @@ export function StudioSceneWorkshop() {
   };
   if (auth === 'no-platform' || templates.notEnrolled || projects.notEnrolled) return <PlatformGateScreen/>;
   const recent = [...projects.data].filter(p => studioScenes.some(s => s.templateId && s.templateId === p.templateId)).sort((a,b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0,4);
-  return <StudioPage title="场景工坊" description="选一个方向，开启新的创作。" className="studio-scenes-page">
+  return <StudioPage title="场景·专项创作" description="选一个方向，开启新的创作。" className="studio-scenes-page">
     {preview && <StudioTemplateUse template={preview} onClose={() => setPreview(undefined)} onCreated={id => router.push(`/projects/${encodeURIComponent(id)}`)}/>}
     {auth !== 'ok' ? <GalleryState loading/> : <>
       {templates.error && <GalleryState error={templates.error} retry={templates.reload}/>}
@@ -44,9 +44,9 @@ export function StudioSceneWorkshop() {
         return <article key={scene.id} className="studio-scene-card">
           <div className="studio-scene-visual"><Image src={scene.image} alt="" width={960} height={640} sizes="(min-width: 960px) 25vw, 50vw"/></div>
           <div className="studio-scene-copy"><h2>{scene.title}</h2><p>{scene.description}</p>
-            <button className="ip-brand-button" disabled={!template || starting !== undefined || templates.loading} onClick={() => template && void start(template)}>{starting === template?.id && starting ? <><Loader2 size={16} className="studio-gallery-spinner"/>正在打开</> : template ? <>开始创作<ArrowRight size={16}/></> : templates.loading && scene.templateId ? '正在读取…' : '【待建设】'}</button>
+            <button className="ip-brand-button" disabled={!template || starting !== undefined || templates.loading} onClick={() => template && void start(template)}>{starting === template?.id && starting ? <><Loader2 size={16} className="studio-gallery-spinner"/>正在打开</> : template ? <>开始创作<ArrowRight size={16}/></> : templates.loading && scene.templateId ? '正在读取…' : <StudioComingSoon/>}</button>
             {template ? <button className="studio-scene-preview" disabled={starting !== undefined} onClick={() => setPreview(template)}>预览模板</button> : <small>{scene.templateId ? '模板上线后开放' : '创作能力后续接入'}</small>}
-            {template && scene.id === "commerce" && <small>商品选品与融合【待建设】</small>}
+            {template && scene.id === "commerce" && <small className="studio-scene-upcoming">商品选品与融合<StudioComingSoon/></small>}
           </div>
         </article>;
       })}</div>

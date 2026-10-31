@@ -164,12 +164,21 @@ export function JobCard({
       {exception && <p role="status" className="text-sm text-zinc-600">{exception.notice}</p>}
       {job.status === "failed" ? <AiErrorNotice title="生成失败" message={job.errorMessage || "生成失败"} /> : null}
 
+      {job.billingBreakdown&&<div className="space-y-1 border-t border-zinc-100 pt-2 text-xs text-zinc-500" aria-label="费用明细">
+        {([['spent','已消耗'],['pending','冻结中'],['released','已解除冻结']] as const).map(([key,label])=>{
+          const amount=job.billingBreakdown![key];return amount.scopedCredits+amount.walletCredits>0
+            ?<p key={key}>{label}：模型赠款 {formatCredits(amount.scopedCredits)} 积分 + 普通积分 {formatCredits(amount.walletCredits)} 积分</p>:null;
+        })}
+        {job.billingBreakdown.released.scopedCredits>0&&<p>解除冻结的赠款按原有效期处理，到期部分作废。</p>}
+      </div>}
       {job.credits > 0 || job.status === "succeeded" ? (
         <footer className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-zinc-100 pt-2.5 text-[11.5px] text-zinc-500">
           {job.credits > 0 ? (
             <span className="inline-flex items-center gap-1 tabular-nums">
               <Coins className="h-3 w-3 shrink-0" />
-              {jobCreditsText(job.status, formatCredits(job.credits))}
+              {job.billingBreakdown
+                ?`${job.billingBreakdown.pending.scopedCredits+job.billingBreakdown.pending.walletCredits>0?'本次':'已消耗'} ${formatCredits(job.credits)} 积分`
+                :jobCreditsText(job.status, formatCredits(job.credits))}
             </span>
           ) : null}
           {job.status === "succeeded" ? (

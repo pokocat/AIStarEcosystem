@@ -13,6 +13,7 @@ import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import java.math.BigDecimal;
@@ -23,6 +24,31 @@ import static org.mockito.Mockito.*;
 
 /** All text entry semantics share the real admission path, including immutable payer retries. */
 class StudioEnterpriseWorkflowTest {
+    @Test void directorTextHoldFollowsConfiguredOutputBudget() throws Exception {
+        var json=new ObjectMapper();var projects=mock(IpProjectService.class);var runs=mock(IpRunRepository.class);
+        var worker=mock(StudioWorkflowWorker.class);var prices=mock(DapPricingService.class);var models=mock(AiModelInvocationService.class);
+        var credits=mock(CreditService.class);var prompts=mock(PromptService.class);var fixtures=mock(StudioFixtureProvider.class);
+        var endpoint=AiModelEndpoint.builder().id("deepseek").model("deepseek").enabled(true).chatMaxOutputTokens(100000).build();
+        when(models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,null,"studio"))
+                .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
+        var tokenPrices=mock(AiChatTokenPricing.class);
+        when(tokenPrices.find("deepseek")).thenReturn(new AiChatTokenPricing.Rate(new BigDecimal("0.59"),new BigDecimal("2.36"),65536,100000));
+        var saved=new AtomicReference<IpRun>();
+        when(runs.findByProjectIdAndClientRequestId("work","request")).thenReturn(Optional.empty());
+        when(runs.save(any())).thenAnswer(i->{saved.set(i.getArgument(0));return saved.get();});
+        var service=new StudioWorkflowService(projects,runs,fixtures,worker,prices,models,null,credits,null,null,null,null,json,null,prompts);
+        ReflectionTestUtils.setField(service,"tokenPricing",tokenPrices);
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.submitDirectorText("actor","work","extract","system","user","request",json.createObjectNode(),null,null,275L);
+            assertEquals(275,saved.get().getCost());
+            var input=json.readTree(saved.get().getInputJson());
+            assertEquals(100000,input.path("_exec").path("maxTokens").asInt());
+            assertEquals(100000,input.path("_exec").path("tokenPricing").path("maxOutputTokens").asInt());
+            verify(credits).hold(eq("actor"),eq(275L),eq("ip-run"),anyString(),eq("短剧导演台"), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
+        } finally {TransactionSynchronizationManager.clearSynchronization();}
+    }
+
     @ParameterizedTest @ValueSource(strings={"text","script","storyboard","assistant","asset-extract"})
     void eachTextEntryAuthorizesItsFinalEndpointAndImmutableEnterprisePayer(String operation) throws Exception {
         var json=new ObjectMapper();var projects=mock(IpProjectService.class);var runs=mock(IpRunRepository.class);
@@ -34,7 +60,7 @@ class StudioEnterpriseWorkflowTest {
         when(runs.findByProjectIdAndClientRequestId("p","key")).thenAnswer(i->Optional.ofNullable(saved.get()));
         when(runs.save(any())).thenAnswer(i->{saved.set(i.getArgument(0));return saved.get();});
         when(prices.ipIdentity()).thenReturn(2L);
-        var endpoint=AiModelEndpoint.builder().id("final-text").enabled(true).build();
+        var endpoint=AiModelEndpoint.builder().id("final-text").model("text-v1").enabled(true).build();
         when(models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,"chosen","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));when(models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA,"chosen","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
         when(prompts.resolve(anyString())).thenReturn(new PromptService.ResolvedPrompt("创作","{{input}}",new PromptParamsDto(null,null,null),"resource"));
         var tokenPrices=mock(AiChatTokenPricing.class);var rate=new AiChatTokenPricing.Rate(new BigDecimal("0.18"),new BigDecimal("1.08"),65536,8192);
@@ -42,7 +68,7 @@ class StudioEnterpriseWorkflowTest {
         var service=new StudioWorkflowService(projects,runs,mock(StudioFixtureProvider.class),worker,prices,models,null,credits,null,null,null,null,json,null,prompts);
         ReflectionTestUtils.setField(service,"enterpriseBilling",billing);ReflectionTestUtils.setField(service,"tokenPricing",tokenPrices);
         var selected=new BillingSelection("enterprise","company");
-        when(billing.reserve(eq("actor"),eq(selected),eq("ip-run"),anyString(),eq("final-text"),eq(21L),anyString()))
+        when(billing.reserve(eq("actor"),eq(selected),eq("ip-run"),anyString(),eq("final-text"),eq(21L),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class)))
                 .thenReturn(new EnterpriseBillingService.BillingAccount("member-wallet","company","membership-v1","authorization"));
         var body=json.createObjectNode().put("clientRequestId","key").put("nodeId","n").put("operation",operation)
                 .put("prompt","创作内容").put("model","chosen").put("maxCost",21);
@@ -58,7 +84,7 @@ class StudioEnterpriseWorkflowTest {
             reset(models,tokenPrices);service.submit("actor","p",request);verifyNoInteractions(models,tokenPrices);
             body.remove("billing");
             assertEquals("STUDIO_REQUEST_CHANGED",assertThrows(BusinessException.class,()->service.submit("actor","p",json.treeToValue(body,RunRequest.class))).getCode());
-            verify(billing,times(1)).reserve(anyString(),any(),anyString(),anyString(),anyString(),anyLong(),anyString());
+            verify(billing,times(1)).reserve(anyString(),any(),anyString(),anyString(),anyString(),anyLong(),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
             TransactionSynchronizationManager.getSynchronizations().forEach(s->s.afterCommit());verify(worker).execute(saved.get().getId());
         } finally {TransactionSynchronizationManager.clearSynchronization();}
     }

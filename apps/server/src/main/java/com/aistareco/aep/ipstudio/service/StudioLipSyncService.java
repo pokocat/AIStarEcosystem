@@ -1,5 +1,6 @@
 package com.aistareco.aep.ipstudio.service;
 
+import com.aistareco.aep.billing.service.*;
 import com.aistareco.aep.ipstudio.dto.StudioLipSyncDtos.*;
 import com.aistareco.aep.ipstudio.dto.IpStudioDtos.IpRunDto;
 import com.aistareco.aep.ipstudio.model.IpRun;
@@ -86,8 +87,12 @@ public class StudioLipSyncService {
         input.putObject("_exec").put("endpointId",endpoint.getId()).put("baseUrl",endpoint.getBaseUrl().replaceAll("/$",""))
                 .put("holdTotal",price.cost()).put("billableSeconds",price.billableSeconds()).put("audioDurationSec",price.audioDurationSec()).put("creditCostPerSecond",p.rate());
         if(p.snapshot()!=null)((ObjectNode)input.path("_exec")).set("pointPricing",mapper.valueToTree(p.snapshot()));
-        var billing=enterpriseBilling==null?null:enterpriseBilling.reserve(user,request.billing(),IpRunService.REF_TYPE,id,endpoint.getId(),price.cost(),"Studio 口型同步");
-        if(enterpriseBilling==null&&price.cost()>0)credits.hold(user,price.cost(),IpRunService.REF_TYPE,id,"Studio 口型同步");
+        var charge=new ModelChargeContext(new ModelBillingTarget("aiavatar","lip-sync",endpoint.getId(),ModelBillingTarget.providerModelOf(endpoint),"standard","second"),
+                new ModelBillingMath.Usage(java.math.BigDecimal.valueOf(price.billableSeconds()),null),p.rate(),null,
+                p.snapshot()==null || p.snapshot().platformReleaseId()==null?"studio.lip-sync":p.snapshot().platformReleaseId(),false,request.maxCost(),null);
+        ((ObjectNode)input.path("_exec")).set("modelCharge",mapper.valueToTree(charge));
+        var billing=enterpriseBilling==null?null:enterpriseBilling.reserve(user,request.billing(),IpRunService.REF_TYPE,id,endpoint.getId(),price.cost(),"Studio 口型同步", charge);
+        if(enterpriseBilling==null&&price.cost()>0)credits.hold(user,price.cost(),IpRunService.REF_TYPE,id,"Studio 口型同步", charge);
         var run=IpRun.builder().id(id).projectId(projectId).ownerUserId(user).nodeId(request.nodeId()).kind("studio-lip-sync")
                 .clientRequestId(request.clientRequestId()).inputFingerprint(fingerprint).status(IpRun.STATUS_RUNNING).stage("queued").cost(price.cost()).pct(0)
                 .inputJson(write(input)).outputJson("{}").createdAt(Instant.now()).heartbeatAt(Instant.now()).build();StudioRunBilling.apply(run,billing);runs.save(run);

@@ -1,3 +1,4 @@
+import type { ModelBillingQuote } from "@ai-star-eco/types/model-billing";
 // ─────────────────────────────────────────────────────────────────────────────
 // api/video-studio.ts：「AI 创作 → 视频生成」数据层（docs/video-studio-plan.md §4）。
 //
@@ -80,6 +81,25 @@ export async function upload(file: File, mediaType: VideoStudioMediaType,
   return apiFetch<VideoStudioUpload>("/me/celebrity/video-studio/uploads", { method: "POST", body: form });
 }
 
+/** Read-only final price, discount and model allowance split. */
+export async function quoteJob(req: VideoStudioJobRequest, freeOnly: boolean, signal?: AbortSignal): Promise<ModelBillingQuote> {
+  if (USE_MOCK) {
+    const resolved = mockResolve(req);
+    const price = quote(resolved.model.pricing, req.resolutionTier, req.seconds, req.mode,
+      (req.references ?? []).filter(r => r.mediaType === "image").length,
+      !!findModeSpec(resolved.model.contract, req.mode)?.references);
+    if (!price) throw mockError("VIDEO_STUDIO_PRICE_NOT_CONFIGURED", "这个规格还没定价", 503);
+    const target: ModelBillingQuote["target"] = {appCode: "celebrity", action: "video", endpointId: resolved.model.endpointId,
+      providerModel: "demo", specKey: "demo", unit: "second"};
+    const usage = {quantity: req.seconds, outputQuantity: 0};
+    return mockDelay({target, usage, standardCredits: price.total, discountCredits: 0, payableCredits: price.total,
+      scopedCredits: 0, walletCredits: price.total, priceVersion: "demo", grantAllocations: [], freeOnly,
+      canAfford: !freeOnly, unavailableReason: freeOnly ? "演示账户没有模型赠款" : null,
+      approval: {walletId: "demo", target, usage, priceVersion: "demo", freeOnly, maxWalletCredits: freeOnly ? 0 : price.total}});
+  }
+  return apiFetch<ModelBillingQuote>(`/me/celebrity/video-studio/quote?freeOnly=${freeOnly}`, {method: "POST", body: req, signal});
+}
+
 /** 提交一条生成任务；积分按服务端报价冻结，成功扣、失败退。 */
 export async function submitJob(req: VideoStudioJobRequest): Promise<VideoStudioJob> {
   if (USE_MOCK) return mockSubmit(req);
@@ -145,6 +165,7 @@ let mockUploadSeq = 0;
 
 interface MockJobRecord {
   job: VideoStudioJob;
+  request?: VideoStudioJobRequest;
   modelName: string;
   endpointId: string;
   submittedAtMs: number;
@@ -386,6 +407,11 @@ function materialsOf(resolved: MockResolved): VideoStudioTemplateMaterial[] {
 
 async function mockSubmit(req: VideoStudioJobRequest): Promise<VideoStudioJob> {
   await mockDelay(null, 400);
+  const existing = req.clientRequestId ? mockSessionJobs.find(r => r.request?.clientRequestId === req.clientRequestId) : null;
+  if (existing) {
+    if (JSON.stringify(existing.request) !== JSON.stringify(req)) throw mockError("VIDEO_STUDIO_REQUEST_CHANGED", "同一次提交的内容已改变", 409);
+    return advanceMockJob(existing, Date.now());
+  }
   const resolved = mockResolve(req);
   const { model } = resolved;
 
@@ -452,6 +478,7 @@ async function mockSubmit(req: VideoStudioJobRequest): Promise<VideoStudioJob> {
       completedAt: null,
     },
   };
+  record.request = req;
   mockSessionJobs.unshift(record);
   // 做同款成功建了任务，模板的「已做同款」次数 +1（与服务端同一时机）
   if (req.templateId) {

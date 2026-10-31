@@ -30,3 +30,7 @@
 ![桌面批量处理](enterprise-member-add-validation-20261029/desktop-batch.jpg)
 
 ![手机批量添加](enterprise-member-add-validation-20261029/mobile-batch.jpg)
+
+## 主线整合 · 2026-10-29
+
+以 `origin/main` 的 `9d2422346` 为基线，只带入本次企业管理提交；保留主线既有模型优惠展示、错误报告、文档与测试配置。README 尾部和工作区测试 mock 的冲突已合并。整合后重新通过 31 项前端回归、23 项 Spring/JPA/H2 后端测试、全仓类型检查（包含后台与 Studio 管理端）和 API 契约检查。未操作生产发布；原 main 工作目录内其他任务的未提交改动保持原样。

@@ -1,0 +1,262 @@
+{
+  "before-image": {
+    "clips": [
+      {
+        "id": "cl7",
+        "assetIds": [
+          "as4",
+          "as5",
+          "as6"
+        ],
+        "board": {
+          "adoptedId": "m20",
+          "adoptedCheck": "outdated",
+          "candidateIds": [
+            "m20"
+          ]
+        }
+      },
+      {
+        "id": "cl22",
+        "assetIds": [
+          "as4",
+          "as5",
+          "as6"
+        ],
+        "board": {
+          "adoptedId": null,
+          "adoptedCheck": null,
+          "candidateIds": []
+        }
+      },
+      {
+        "id": "cl12",
+        "assetIds": [
+          "as4",
+          "as5",
+          "as6"
+        ],
+        "board": {
+          "adoptedId": "m21",
+          "adoptedCheck": "current",
+          "candidateIds": [
+            "m21"
+          ]
+        }
+      }
+    ]
+  },
+  "running-image": {
+    "clips": [
+      {
+        "id": "cl7",
+        "assetIds": [
+          "as4",
+          "as5",
+          "as6"
+        ],
+        "board": {
+          "adoptedId": "m20",
+          "adoptedCheck": "outdated",
+          "candidateIds": [
+            "m20"
+          ]
+        }
+      },
+      {
+        "id": "cl22",
+        "assetIds": [
+          "as4",
+          "as5",
+          "as6"
+        ],
+        "board": {
+          "adoptedId": null,
+          "adoptedCheck": null,
+          "candidateIds": []
+        }
+      },
+      {
+        "id": "cl12",
+        "assetIds": [
+          "as4",
+          "as5",
+          "as6"
+        ],
+        "board": {
+          "adoptedId": "m21",
+          "adoptedCheck": "current",
+          "candidateIds": [
+            "m21"
+          ]
+        }
+      }
+    ]
+  },
+  "refused-image": {
+    "clips": [
+      {
+        "id": "cl7",
+        "assetIds": [
+          "as4",
+          "as5",
+          "as6"
+        ],
+        "board": {
+          "adoptedId": "m20",
+          "adoptedCheck": "outdated",
+          "candidateIds": [
+            "m20"
+          ]
+        }
+      },
+      {
+        "id": "cl22",
+        "assetIds": [
+          "as4",
+          "as5",
+          "as6"
+        ],
+        "board": {
+          "adoptedId": null,
+          "adoptedCheck": null,
+          "candidateIds": []
+        }
+      },
+      {
+        "id": "cl12",
+        "assetIds": [
+          "as4",
+          "as5",
+          "as6"
+        ],
+        "board": {
+          "adoptedId": "m21",
+          "adoptedCheck": "current",
+          "candidateIds": [
+            "m21"
+          ]
+        }
+      }
+    ]
+  },
+  "image-done": {
+    "clips": [
+      {
+        "id": "cl7",
+        "assetIds": [
+          "as4",
+          "as5",
+          "as6"
+        ],
+        "board": {
+          "adoptedId": "m20",
+          "adoptedCheck": "outdated",
+          "candidateIds": [
+            "m20",
+            "m23"
+          ]
+        }
+      },
+      {
+        "id": "cl22",
+        "assetIds": [
+          "as4",
+          "as5",
+          "as6"
+        ],
+        "board": {
+          "adoptedId": null,
+          "adoptedCheck": null,
+          "candidateIds": []
+        }
+      },
+      {
+        "id": "cl12",
+        "assetIds": [
+          "as4",
+          "as5",
+          "as6"
+        ],
+        "board": {
+          "adoptedId": "m21",
+          "adoptedCheck": "current",
+          "candidateIds": [
+            "m21"
+          ]
+        }
+      }
+    ]
+  },
+  "unlinked-success": {
+    "clips": [
+      {
+        "id": "cl7",
+        "assetIds": [
+          "as5",
+          "as6"
+        ],
+        "board": {
+          "adoptedId": "m20",
+          "adoptedCheck": "outdated",
+          "candidateIds": [
+            "m20",
+            "m23"
+          ]
+        }
+      },
+      {
+        "id": "cl22",
+        "assetIds": [
+          "as4",
+          "as5",
+          "as6"
+        ],
+        "board": {
+          "adoptedId": null,
+          "adoptedCheck": null,
+          "candidateIds": []
+        }
+      },
+      {
+        "id": "cl12",
+        "assetIds": [
+          "as4",
+          "as5",
+          "as6"
+        ],
+        "board": {
+          "adoptedId": "m21",
+          "adoptedCheck": "current",
+          "candidateIds": [
+            "m21"
+          ]
+        }
+      }
+    ]
+  },
+  "policy-before": {
+    "enterpriseId": "8e11d00d-036a-4c90-af2c-87a0f6ba0f1e",
+    "allowedEndpointIds": [],
+    "maxActiveJobs": 1,
+    "version": 0
+  },
+  "policy-concurrent": {
+    "enterpriseId": "8e11d00d-036a-4c90-af2c-87a0f6ba0f1e",
+    "allowedEndpointIds": [],
+    "maxActiveJobs": 2,
+    "version": 1
+  },
+  "policy-retried": {
+    "enterpriseId": "8e11d00d-036a-4c90-af2c-87a0f6ba0f1e",
+    "allowedEndpointIds": [],
+    "maxActiveJobs": 3,
+    "version": 2
+  },
+  "policy-mobile-retried": {
+    "enterpriseId": "8e11d00d-036a-4c90-af2c-87a0f6ba0f1e",
+    "allowedEndpointIds": [],
+    "maxActiveJobs": 4,
+    "version": 4
+  }
+}

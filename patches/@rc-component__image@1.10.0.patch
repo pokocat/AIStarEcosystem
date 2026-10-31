@@ -1,0 +1,126 @@
+diff --git a/es/hooks/useMouseEvent.js b/es/hooks/useMouseEvent.js
+index deaafcff42c4c25869963eec9105a3bfe109cea9..422087510f2d5f7198a252317a2868e0cbeb275c 100644
+--- a/es/hooks/useMouseEvent.js
++++ b/es/hooks/useMouseEvent.js
+@@ -37,31 +37,43 @@ export default function useMouseEvent(imgRef, movable, open, scaleStep, transfor
+       }, 'move');
+     }
+   };
+-  const onMouseUp = () => {
++  const onMouseUp = event => {
+     if (open && isMoving) {
+       setMoving(false);
+ 
+-      /** No need to restore the position when the picture is not moved, So as not to interfere with the click */
++      // patched (AIStarEco): judge the release by this event, not the last rendered x/y or the on-screen box.
++      // The rendered values can lag a frame behind a fast drag, the box is mid-way through the 0.3s transform
++      // transition, and `x !== transformX && y !== transformY` skipped the rebound for a purely horizontal or
++      // vertical drag. Any of these left the image dragged off screen.
+       const {
++        diffX,
++        diffY,
+         transformX,
+         transformY
+       } = startPositionInfo.current;
+-      const hasChangedPosition = x !== transformX && y !== transformY;
+-      if (!hasChangedPosition) return;
++      const endX = event ? event.pageX - diffX : x;
++      const endY = event ? event.pageY - diffY : y;
++      /** No need to restore the position when the picture is not moved, So as not to interfere with the click */
++      if (endX === transformX && endY === transformY) return;
+       const width = imgRef.current.offsetWidth * scale;
+       const height = imgRef.current.offsetHeight * scale;
+-      // eslint-disable-next-line @typescript-eslint/no-shadow
+-      const {
+-        left,
+-        top
+-      } = imgRef.current.getBoundingClientRect();
++      // Untransformed layout box (unaffected by the transition) + the release translate, scaled about its centre.
++      const img = imgRef.current;
++      const parentRect = img.offsetParent ? img.offsetParent.getBoundingClientRect() : {
++        left: 0,
++        top: 0
++      };
+       const isRotate = rotate % 180 !== 0;
+-      const fixState = getFixScaleEleTransPosition(isRotate ? height : width, isRotate ? width : height, left, top);
+-      if (fixState) {
+-        updateTransform({
+-          ...fixState
+-        }, 'dragRebound');
+-      }
++      const boxWidth = isRotate ? height : width;
++      const boxHeight = isRotate ? width : height;
++      const centerX = parentRect.left + img.offsetLeft + img.offsetWidth / 2 + endX;
++      const centerY = parentRect.top + img.offsetTop + img.offsetHeight / 2 + endY;
++      const fixState = getFixScaleEleTransPosition(boxWidth, boxHeight, centerX - boxWidth / 2, centerY - boxHeight / 2);
++      updateTransform({
++        x: endX,
++        y: endY,
++        ...fixState
++      }, fixState ? 'dragRebound' : 'move');
+     }
+   };
+   const onWheel = event => {
+diff --git a/lib/hooks/useMouseEvent.js b/lib/hooks/useMouseEvent.js
+index 45b86f6e68ece842f7329045042b0f011bb378f1..4a19edb5b1356cb2b0a2e1bade255069dc845a2f 100644
+--- a/lib/hooks/useMouseEvent.js
++++ b/lib/hooks/useMouseEvent.js
+@@ -44,31 +44,43 @@ function useMouseEvent(imgRef, movable, open, scaleStep, transform, updateTransf
+       }, 'move');
+     }
+   };
+-  const onMouseUp = () => {
++  const onMouseUp = event => {
+     if (open && isMoving) {
+       setMoving(false);
+ 
+-      /** No need to restore the position when the picture is not moved, So as not to interfere with the click */
++      // patched (AIStarEco): judge the release by this event, not the last rendered x/y or the on-screen box.
++      // The rendered values can lag a frame behind a fast drag, the box is mid-way through the 0.3s transform
++      // transition, and `x !== transformX && y !== transformY` skipped the rebound for a purely horizontal or
++      // vertical drag. Any of these left the image dragged off screen.
+       const {
++        diffX,
++        diffY,
+         transformX,
+         transformY
+       } = startPositionInfo.current;
+-      const hasChangedPosition = x !== transformX && y !== transformY;
+-      if (!hasChangedPosition) return;
++      const endX = event ? event.pageX - diffX : x;
++      const endY = event ? event.pageY - diffY : y;
++      /** No need to restore the position when the picture is not moved, So as not to interfere with the click */
++      if (endX === transformX && endY === transformY) return;
+       const width = imgRef.current.offsetWidth * scale;
+       const height = imgRef.current.offsetHeight * scale;
+-      // eslint-disable-next-line @typescript-eslint/no-shadow
+-      const {
+-        left,
+-        top
+-      } = imgRef.current.getBoundingClientRect();
++      // Untransformed layout box (unaffected by the transition) + the release translate, scaled about its centre.
++      const img = imgRef.current;
++      const parentRect = img.offsetParent ? img.offsetParent.getBoundingClientRect() : {
++        left: 0,
++        top: 0
++      };
+       const isRotate = rotate % 180 !== 0;
+-      const fixState = (0, _getFixScaleEleTransPosition.default)(isRotate ? height : width, isRotate ? width : height, left, top);
+-      if (fixState) {
+-        updateTransform({
+-          ...fixState
+-        }, 'dragRebound');
+-      }
++      const boxWidth = isRotate ? height : width;
++      const boxHeight = isRotate ? width : height;
++      const centerX = parentRect.left + img.offsetLeft + img.offsetWidth / 2 + endX;
++      const centerY = parentRect.top + img.offsetTop + img.offsetHeight / 2 + endY;
++      const fixState = (0, _getFixScaleEleTransPosition.default)(boxWidth, boxHeight, centerX - boxWidth / 2, centerY - boxHeight / 2);
++      updateTransform({
++        x: endX,
++        y: endY,
++        ...fixState
++      }, fixState ? 'dragRebound' : 'move');
+     }
+   };
+   const onWheel = event => {

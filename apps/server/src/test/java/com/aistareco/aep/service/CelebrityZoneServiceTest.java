@@ -104,7 +104,7 @@ class CelebrityZoneServiceTest {
         assertFalse(saved.isCommitted());
         assertTrue(saved.getCreditCost() > 0);
         // 冻结额度
-        verify(creditService).hold(eq(USER), anyLong(), eq("celebrity_generation"), eq(dto.jobId()), anyString());
+        verify(creditService).hold(eq(USER), anyLong(), eq("celebrity_generation"), eq(dto.jobId()), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     @Test
@@ -118,7 +118,7 @@ class CelebrityZoneServiceTest {
         GenerationJobProgressDto p = svc.getJobProgress("gen-fresh");
 
         assertNotEquals("done", p.state());
-        verify(creditService, never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+        verify(creditService, never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -135,7 +135,7 @@ class CelebrityZoneServiceTest {
         assertEquals(100, p.progress());
         // done → commit 一次 hold（此前重启后会丢，留孤儿 hold）
         verify(creditService, times(1))
-                .commitHold("celebrity_generation", "gen-old", 50L, "AI 明星视频生成完成 · KeLing");
+                .commitHold("celebrity_generation", "gen-old", 50L, "AI 明星视频生成完成 · KeLing", null);
         assertTrue(db.get("gen-old").isCommitted(), "commit 后应标记 committed");
     }
 
@@ -150,7 +150,7 @@ class CelebrityZoneServiceTest {
         svc.getJobProgress("gen-old"); // 第二次轮询
 
         // committed 标记守门 → 只 commit 一次
-        verify(creditService, times(1)).commitHold(anyString(), anyString(), anyLong(), anyString());
+        verify(creditService, times(1)).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -159,6 +159,6 @@ class CelebrityZoneServiceTest {
 
         // 任务不存在 → 回退完成态避免前端轮询卡死；但没有上下文 → 不 commit
         assertEquals("done", p.state());
-        verify(creditService, never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+        verify(creditService, never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
     }
 }

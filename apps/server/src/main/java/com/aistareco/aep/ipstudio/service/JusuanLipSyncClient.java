@@ -1,5 +1,7 @@
 package com.aistareco.aep.ipstudio.service;
 
+import com.aistareco.aep.service.ai.ProviderErrorMessage;
+
 import static com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attach;
 
 import com.aistareco.aep.model.*;
@@ -54,7 +56,11 @@ public class JusuanLipSyncClient {
         var request=HttpRequest.newBuilder(scopedUri(base,contentUrl,"/assets/",null)).timeout(Duration.ofSeconds(90)).header("Authorization","Bearer "+key(endpoint)).GET().build();
         var response=http.send(request,HttpResponse.BodyHandlers.ofInputStream());byte[] bytes;
         try(var stream=response.body()) {
-            if(response.statusCode()/100!=2){org.slf4j.LoggerFactory.getLogger(getClass()).warn("[lip-sync] download failed endpoint={} request={} status={}",endpoint.getId(),id,response.statusCode());throw fail("STUDIO_LIP_SYNC_DOWNLOAD_FAILED","口型视频暂未取回，正在恢复原任务");}
+            if(response.statusCode()/100!=2){
+                String body=new String(stream.readNBytes(4096),StandardCharsets.UTF_8);
+                org.slf4j.LoggerFactory.getLogger(getClass()).warn("[lip-sync] download failed endpoint={} request={} status={} body={}",endpoint.getId(),id,response.statusCode(),body);
+                throw com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attachBody(fail("STUDIO_LIP_SYNC_DOWNLOAD_FAILED",ProviderErrorMessage.message(body,"口型视频暂未取回，正在恢复原任务")),body);
+            }
             bytes=stream.readNBytes(128*1024*1024+1);
         }
         if(bytes.length<128||bytes.length>128*1024*1024)throw fail("STUDIO_LIP_SYNC_BAD_VIDEO","口型结果大小不正确");
@@ -88,8 +94,8 @@ public class JusuanLipSyncClient {
     private JsonNode checked(HttpResponse<String> response,boolean create) {
         if(response.statusCode()/100!=2) {
             if(create&&response.statusCode()>=400&&response.statusCode()<500&&response.statusCode()!=408)
-                throw attach(new JusuanSpeechClient.Rejected("STUDIO_LIP_SYNC_REJECTED","口型请求被拒绝，请检查源视频是否有清晰的单人正脸，以及配音时长"),response);
-            throw attach(fail("STUDIO_LIP_SYNC_UNAVAILABLE","口型服务暂时不可用，正在核对原任务"),response);
+                throw attach(new JusuanSpeechClient.Rejected("STUDIO_LIP_SYNC_REJECTED",ProviderErrorMessage.message(response.body(),"口型请求被拒绝，请检查源视频是否有清晰的单人正脸，以及配音时长")),response);
+            throw attach(fail("STUDIO_LIP_SYNC_UNAVAILABLE",ProviderErrorMessage.message(response.body(),"口型服务暂时不可用，正在核对原任务")),response);
         }
         try{return mapper.readTree(response.body());}catch(Exception e){throw attach(fail("STUDIO_LIP_SYNC_BAD_OUTPUT","口型任务尚未确认，正在核对原请求"),response);}
     }

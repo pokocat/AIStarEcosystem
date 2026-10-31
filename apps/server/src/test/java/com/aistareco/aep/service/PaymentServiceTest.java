@@ -147,4 +147,35 @@ class PaymentServiceTest {
         verify(rechargeService, never()).settlePaidOrder(anyString(), anyString(), any(), any(), any());
         verify(rechargeService, never()).closeOrder(anyString(), anyString());
     }
+
+    @Test void wechatTimeoutKeepsOrderForReconciliation() {
+        PaymentGateway wx = mock(PaymentGateway.class);
+        when(registry.require("wechat")).thenReturn(wx);
+        when(wx.isConfigured()).thenReturn(true); when(channelConfig.isEnabled("wechat")).thenReturn(true);
+        when(rechargeService.createOrReuseCheckoutOrder(anyString(), anyString(), anyString(), any())).thenReturn(order("ro-network"));
+        when(wx.createPayOrder(any())).thenThrow(new RuntimeException("timeout after submission"));
+        assertThrows(BusinessException.class, () -> svc.checkout("u1", "pkg-1", "wechat", "WX_NATIVE", null, null, "aiavatar"));
+        verify(rechargeService).attachPayOrder("ro-network", "wechat_ro-network");
+        verify(rechargeService, never()).cancelForGatewayError(any(), any());
+    }
+    @Test void queryAmountMismatchNeverCredits() {
+        RechargeOrder o = order("ro-mismatch"); o.setWayCode("ALI_PC"); o.setPayOrderId("alipay_ro-mismatch");
+        when(rechargeService.getOrderForUser("u1", o.getId())).thenReturn(RechargeOrderDto.from(o));
+        when(alipay.queryPayOrder(o.getId())).thenReturn(new PayQueryResult(true, true, o.getPayOrderId(), 1, "trade"));
+        svc.syncOrder("u1", o.getId());
+        verify(rechargeService, never()).settlePaidOrder(any(), any(), any(), any(), any());
+    }
+    @Test void cancelledWhilePrepayWasInFlightNeverReturnsQr() {
+        PaymentGateway wx = mock(PaymentGateway.class);
+        when(registry.require("wechat")).thenReturn(wx);
+        when(wx.isConfigured()).thenReturn(true); when(channelConfig.isEnabled("wechat")).thenReturn(true);
+        RechargeOrder pending = order("ro-race");
+        when(rechargeService.createOrReuseCheckoutOrder(anyString(), anyString(), anyString(), any())).thenReturn(pending);
+        when(wx.createPayOrder(any())).thenReturn(new PayCreateResult("wechat_ro-race", "qr", "weixin://pay/test"));
+        RechargeOrder cancelled = order("ro-race"); cancelled.setStatus(RechargeOrder.Status.CANCELLED);
+        when(rechargeService.getOrder("ro-race")).thenReturn(RechargeOrderDto.from(cancelled));
+        assertThrows(BusinessException.class, () -> svc.checkout("u1", "pkg-1", "wechat", "WX_NATIVE", null, null, "aiavatar"));
+        verify(wx).closePayOrder("ro-race");
+    }
+
 }

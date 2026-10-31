@@ -1,5 +1,7 @@
 package com.aistareco.aep.ipstudio.service;
 
+import com.aistareco.aep.billing.service.*;
+import java.math.BigDecimal;
 import com.aistareco.aep.dap.service.DapAccountService;
 import com.aistareco.aep.dap.service.DapMultimodalClient;
 import com.aistareco.aep.dap.service.DapPricingService;
@@ -60,6 +62,7 @@ public class IpRunService {
     private static final int ANCESTOR_DEPTH = 8;
 
     private static final List<String> ALLOWED_SIZES = List.of("768x1024", "1024x1024", "768x1365", "1365x768");
+    public static List<String> legacyImageSizes() { return ALLOWED_SIZES; }
     private static final String DEFAULT_SIZE = "768x1024";
 
     private final IpRunRepository runRepo;
@@ -162,8 +165,8 @@ public class IpRunService {
 
         // 输入编译（含缺失校验 + 资产 key 归属闸）—— 全部在 hold 之前
         Compiled compiled = compileGeneration(userId, projectId, doc, node);
-        requireApprovedCost(req==null?null:req.maxCost(),compiled.unitCost()*compiled.count());
-        return execute(userId, null, projectId, nodeId, compiled, req == null ? null : req.billing(),requestId,fingerprint);
+        if(req==null||req.modelBilling()==null)requireApprovedCost(req==null?null:req.maxCost(),compiled.unitCost()*compiled.count());
+        return execute(userId, null, projectId, nodeId, compiled, req == null ? null : req.billing(),requestId,fingerprint,req==null?null:req.maxCost(),req==null?null:req.modelBilling());
     }
 
     /**
@@ -206,13 +209,14 @@ public class IpRunService {
                     "这张正在生成中，等它完成再跑");
         }
         Compiled compiled = compileExplicit(userId, req);
-        requireApprovedCost(req.maxCost(), compiled.unitCost() * compiled.count());
-        return execute(userId, hostType, projectId, nodeId, compiled, req == null ? null : req.billing(),requestId,fingerprint);
+        if(req.modelBilling()==null)requireApprovedCost(req.maxCost(), compiled.unitCost() * compiled.count());
+        return execute(userId, hostType, projectId, nodeId, compiled, req == null ? null : req.billing(),requestId,fingerprint,req==null?null:req.maxCost(),req==null?null:req.modelBilling());
     }
 
     /** 画布出视频的请求。 */
     public record IpVideoRequest(String prompt, String refKey, Integer durationSec,
-                                 String aspectRatio, String model, Long maxCost, com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings video, com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing, String clientRequestId) {
+                                 String aspectRatio, String model, Long maxCost, com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings video, com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing, String clientRequestId,com.aistareco.aep.billing.service.ModelBillingApproval modelBilling) {
+        public IpVideoRequest(String prompt,String refKey,Integer durationSec,String aspectRatio,String model,Long maxCost,com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings video,com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing,String clientRequestId) {this(prompt,refKey,durationSec,aspectRatio,model,maxCost,video,billing,clientRequestId,null);}
         public IpVideoRequest(String prompt,String refKey,Integer durationSec,String aspectRatio,String model,Long maxCost,com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings video,com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing) {this(prompt,refKey,durationSec,aspectRatio,model,maxCost,video,billing,null);}
         public IpVideoRequest(String prompt,String refKey,Integer durationSec,String aspectRatio,String model,Long maxCost,com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings video) {this(prompt,refKey,durationSec,aspectRatio,model,maxCost,video,null);}
         public IpVideoRequest(String prompt,String refKey,Integer durationSec,String aspectRatio,String model,Long maxCost) {this(prompt,refKey,durationSec,aspectRatio,model,maxCost,null);}
@@ -306,6 +310,19 @@ public class IpRunService {
     }
 
     private VideoBatch generateVideoBatch(String userId, String projectId, IpVideoRequest req, int count, boolean hostChecked) {
+        var prepared=prepareVideo(userId,projectId,req,count,hostChecked,false);
+        var body=prepared.body();
+        List<JsonNode> created = req.billing()==null
+                ? videoJobs.submit(body,userId,com.aistareco.aep.service.materialvideo.MaterialVideoJobService.APP_IPSTUDIO)
+                : videoJobs.submit(body,userId,com.aistareco.aep.service.materialvideo.MaterialVideoJobService.APP_IPSTUDIO,req.billing());
+        if (created.size() != count) {
+            throw BusinessException.badRequest("IP_VIDEO_SUBMIT_FAILED", "视频任务没建齐，请稍后再试");
+        }
+        return new VideoBatch(created, prepared.frameAdjustments());
+    }
+
+    private record VideoPreparation(ObjectNode body,ObjectNode frameAdjustments) {}
+    private VideoPreparation prepareVideo(String userId,String projectId,IpVideoRequest req,int count,boolean hostChecked,boolean quote) {
         requireNativeMode();
         List<Integer> allowedCounts=List.of(1,2,4);
         String batchEndpointId=null;
@@ -344,16 +361,16 @@ public class IpRunService {
         ObjectNode frameAdjustments = om.createObjectNode();
         if (req.video() != null) {
             if (refKey != null) throw BusinessException.badRequest("STUDIO_VIDEO_INPUT_INVALID", "请在视频模式中明确选择首帧或参考素材");
-            var prepared=studioVideo.prepare(userId,req);
+            var prepared=quote?new StudioVideoService.Prepared(studioVideo.quotePreparation(userId,req),om.createObjectNode()):studioVideo.prepare(userId,req);
             if (prepared.frameAdjustments() != null) frameAdjustments.setAll(prepared.frameAdjustments());
             seedMax = prepared.canvas().seedMax();
-            requireApprovedCost(req.maxCost(),Math.multiplyExact(prepared.canvas().credits(), count));
+            if(!quote&&req.modelBilling()==null)requireApprovedCost(req.maxCost(),Math.multiplyExact(prepared.canvas().credits(), count));
             item.put("credit_cost",prepared.canvas().credits());
             prepared.canvas().spec().writeTo(variantConfig);
         } else if (refKey != null) {
             // The single-frame protocol is cropped the same way (§6.2): the provider stretches whatever shape it gets.
             String frameKey = refKey;
-            if (studioVideo != null) {
+            if (studioVideo != null && !quote) {
                 var aligned = studioVideo.alignFrame(userId, refKey, req.aspectRatio());
                 frameKey = aligned.key();
                 if (aligned.adjusted() != null) frameAdjustments.set("firstFrameAdjusted", aligned.adjusted());
@@ -376,41 +393,70 @@ public class IpRunService {
             items.add(candidate);
         }
 
-        List<JsonNode> created = req.billing()==null
-                ? videoJobs.submit(body,userId,com.aistareco.aep.service.materialvideo.MaterialVideoJobService.APP_IPSTUDIO)
-                : videoJobs.submit(body,userId,com.aistareco.aep.service.materialvideo.MaterialVideoJobService.APP_IPSTUDIO,req.billing());
-        if (created.size() != count) {
-            throw BusinessException.badRequest("IP_VIDEO_SUBMIT_FAILED", "视频任务没建齐，请稍后再试");
-        }
-        return new VideoBatch(created, frameAdjustments);
+        if(req.modelBilling()!=null&&!quote)body.set("modelBilling",om.valueToTree(req.modelBilling()));
+        return new VideoPreparation(body,frameAdjustments);
+    }
+    @Transactional(readOnly=true)
+    public com.aistareco.aep.billing.service.ModelChargeService.Quote quoteVideo(String userId,String projectId,IpVideoRequest request,int count,boolean freeOnly) {
+        var prepared=prepareVideo(userId,projectId,request,count,false,true);
+        return videoJobs.quote(prepared.body(),userId,com.aistareco.aep.service.materialvideo.MaterialVideoJobService.APP_IPSTUDIO,request.billing(),freeOnly);
     }
 
     /** 冻结 → 落库 → 派发。两条入口共用，计费纪律只有这一处。 */
-    private IpRunDto execute(String userId, String hostType, String projectId, String nodeId, Compiled compiled, com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection selection,String clientRequestId,String fingerprint) {
-
-        // preflight（§8.0）：引擎与提示词，缺一不可，且不冻结
+    private ModelChargeContext imageCharge(Compiled compiled,com.aistareco.aep.billing.service.ModelBillingApproval approval,Long maxWalletCredits,boolean freeOnly) {
         preflight(compiled);
-
-        // Pin the resolved default before authorization so a later default change cannot change the payer's model.
         ObjectNode execution = (ObjectNode) compiled.inputs().path("_exec");
-        if (enterpriseBilling != null && !execution.hasNonNull("endpointId")) {
-            var endpoint = aiModels.resolveDefaultEndpoint(AiModelPurpose.DAP_IMAGE,"studio").orElseThrow(() ->
-                    new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","选择的出图模型不可用"));
-            execution.put("endpointId",endpoint.getId());
-        }
-        if (selection == null || !"enterprise".equals(selection.mode())) accounts.ensureMonthlyGrant(userId);
+        String requestedEndpoint=execution.path("endpointId").asText(null);
+        var endpoint=requestedEndpoint==null
+                ? aiModels.resolveDefaultEndpoint(AiModelPurpose.DAP_IMAGE,"studio").orElseThrow(() ->
+                    new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","选择的出图模型不可用"))
+                : aiModels.resolveEndpoint(AiModelPurpose.DAP_IMAGE,requestedEndpoint,"studio").orElseThrow(() ->
+                    new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","选择的出图模型不可用")).endpoint();
+        execution.put("endpointId",endpoint.getId()).put("providerModel",endpoint.getModel());
+        var charge=new ModelChargeContext(new ModelBillingTarget("aiavatar","image",endpoint.getId(),ModelBillingTarget.providerModelOf(endpoint),
+                compiled.inputs().path("size").asText(DEFAULT_SIZE),"image"),
+                new ModelBillingMath.Usage(BigDecimal.valueOf(compiled.count()),null),BigDecimal.valueOf(compiled.unitCost()),null,
+                "studio.image",freeOnly,maxWalletCredits,approval);
+        return charge;
+    }
 
-        String runId = uniqueRunId();
-        long total = compiled.unitCost() * compiled.count();
+    @Transactional(readOnly=true)
+    public com.aistareco.aep.billing.service.ModelChargeService.Quote quoteImage(String user,String projectId,IpGenerateRequest request,boolean freeOnly) {
+        requireNativeMode();projects.required(user,projectId);
+        if(request==null||request.prompt()==null||request.prompt().isBlank())requireNoMissing(List.of("prompt"));
+        var compiled=compileExplicit(user,request);
+        return enterpriseBilling.quote(user,request.billing(),imageCharge(compiled,null,null,freeOnly));
+    }
+    @Transactional(readOnly=true)
+    public com.aistareco.aep.billing.service.ModelChargeService.Quote quoteNode(String user,String projectId,String nodeId,IpRunNodeRequest request,boolean freeOnly) {
+        requireNativeMode();var project=projects.required(user,projectId);
+        var doc=request!=null&&request.doc()!=null&&!request.doc().isNull()?request.doc():projects.readDoc(project);
+        var node=IpDocs.node(doc,nodeId);
+        if(node==null||!IpDocs.T_IMAGE.equals(IpDocs.typeOf(node)))throw BusinessException.badRequest("IP_NODE_NOT_RUNNABLE","请选择图片节点");
+        var compiled=compileGeneration(user,projectId,doc,node);
+        return enterpriseBilling.quote(user,request==null?null:request.billing(),imageCharge(compiled,null,null,freeOnly));
+    }
+
+    private IpRunDto execute(String userId, String hostType, String projectId, String nodeId, Compiled compiled, com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection selection,String clientRequestId,String fingerprint,Long maxWalletCredits,com.aistareco.aep.billing.service.ModelBillingApproval approval) {
+
+        var charge=imageCharge(compiled,approval,maxWalletCredits,false);
+        ObjectNode execution=(ObjectNode)compiled.inputs().path("_exec");
+        if (selection == null || !"enterprise".equals(selection.mode())) accounts.ensureMonthlyGrant(userId);
+        String runId=uniqueRunId();
+        // Base units drive partial worker settlement; selling price always comes from ModelCharge's snapshot.
+        // Never zero: a zero list price still reaches ModelPricingService, which rejects it (free use comes only from grants).
+        long baseUnit=Math.max(1,compiled.unitCost());
+        long total=Math.multiplyExact(baseUnit,(long)compiled.count());
+        execution.set("modelCharge",om.valueToTree(charge));
         var billing = enterpriseBilling == null ? null : enterpriseBilling.reserve(userId, selection, REF_TYPE, runId,
-                execution.path("endpointId").asText(null),total,compiled.holdLabel());
-        if (enterpriseBilling == null && total > 0) credits.hold(userId,total,REF_TYPE,runId,compiled.holdLabel());
+                execution.path("endpointId").asText(null),total,compiled.holdLabel(), charge);
+        if (enterpriseBilling == null && total > 0) credits.hold(userId,total,REF_TYPE,runId,compiled.holdLabel(), charge);
         // 把「按什么价冻的」写进 _exec：worker 结算时只认这份快照，绝不回头再读一次后台单价。
         // 否则运营在 hold 与 commit 之间改了价，worker 会按新价 commit —— 少扣（用户白得图）
         // 或多扣（超过 hold 剩余，commitHold 直接 400）都是真金白银的错账。
         if(selection!=null)compiled.inputs().set("billing",om.valueToTree(selection));
         ObjectNode execSnapshot = (ObjectNode) compiled.inputs().path("_exec");
-        execSnapshot.put("unitCost", compiled.unitCost());
+        execSnapshot.put("unitCost", baseUnit);
         execSnapshot.put("holdTotal", total);
 
         IpRun run = IpRun.builder()
@@ -618,7 +664,8 @@ public class IpRunService {
 
     /** 显式生成请求 —— 画布把「画什么、参考谁、出几张」说清楚。 */
     public record IpGenerateRequest(String nodeId, String prompt, List<String> refKeys,
-                                    Integer count, String size, String model, Long maxCost, com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing,String clientRequestId) {
+                                    Integer count, String size, String model, Long maxCost, com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing,String clientRequestId,com.aistareco.aep.billing.service.ModelBillingApproval modelBilling) {
+        public IpGenerateRequest(String nodeId,String prompt,List<String> refKeys,Integer count,String size,String model,Long maxCost,com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing,String clientRequestId) {this(nodeId,prompt,refKeys,count,size,model,maxCost,billing,clientRequestId,null);}
         public IpGenerateRequest(String nodeId,String prompt,List<String> refKeys,Integer count,String size,String model,Long maxCost,com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing) {this(nodeId,prompt,refKeys,count,size,model,maxCost,billing,null);}
         public IpGenerateRequest(String nodeId,String prompt,List<String> refKeys,Integer count,String size,String model,Long maxCost) {this(nodeId,prompt,refKeys,count,size,model,maxCost,null);}
         public IpGenerateRequest(String nodeId,String prompt,List<String> refKeys,Integer count,String size,String model) {this(nodeId,prompt,refKeys,count,size,model,null);}

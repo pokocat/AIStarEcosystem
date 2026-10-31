@@ -34,6 +34,16 @@ class HttpShiliuGatewayErrorMappingTest {
     }
 
     @Test
+    @DisplayName("从响应体分类要读供应商原话：对外的 reason 已把权益说法换成通用句，拿它判会退回笼统 502")
+    void envelopeClassificationReadsSupplierWording() throws Exception {
+        var envelope = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree("{\"code\":1,\"msg\":\"账户权益不足，无法进行声音克隆\"}");
+        String diagnostic = com.aistareco.aep.service.ai.ProviderErrorMessage.diagnosticReason(envelope);
+        assertThat(HttpShiliuGateway.mappedUpstreamFailure(1, diagnostic).getCode()).isEqualTo("CLIP_ENGINE_CAPACITY_FULL");
+        assertThat(com.aistareco.aep.service.ai.ProviderErrorMessage.reason(envelope)).doesNotContain("权益");
+    }
+
+    @Test
     @DisplayName("容量类的多种说法都要认出来")
     void capacityKeywordVariants() {
         for (String msg : new String[]{"账户权益不足", "余额不足，请充值", "额度不足", "已超出配额"}) {

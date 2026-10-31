@@ -20,9 +20,17 @@ public interface StudioPlanSource {
     default java.util.Set<String> assistantNodeIds(String threadId) {return null;}
 
     /**
+     * Canvas objects the user picked or attached in this conversation's recent messages, newest first (repeats removed):
+     * materials named in an earlier message than the one the plan answered (docs/ip-studio-dialogue-intents.md
+     * 「方案素材范围跨轮」). Empty when this source does not know the conversation.
+     */
+    default List<String> conversationPicks(String threadId) {return List.of();}
+
+    /**
      * @param plan           normalized plan with skillKey / skillVersion / stage / server quotes (as fingerprinted)
      * @param skillSnapshot  the skill snapshot the plan was validated against ({@link StudioSkillRules#snapshot} shape)
-     * @param contextNodeIds canvas node ids the plan may reference
+     * @param contextNodeIds canvas node ids the plan turn's own messages picked or attached (the material scope is built from
+     *                       them by {@code StudioPlanMaterials})
      * @param revision       plan revision shown to the user (expectedRevision is checked against it)
      */
     record PlanRecord(String planRunId,JsonNode plan,JsonNode skillSnapshot,List<String> contextNodeIds,int revision,

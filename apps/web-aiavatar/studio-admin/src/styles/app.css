@@ -1,0 +1,69 @@
+@import 'tailwindcss' source(none);
+@source '../**/*.{js,ts,jsx,tsx}';
+@source '../../../../../packages/ui/src/**/*.{js,ts,jsx,tsx}';
+@import 'tw-animate-css';
+@import '@ai-star-eco/ui/styles/globals.css';
+
+:root {
+  --font-size: 14px;
+  --background: #f5f6f8;
+  --foreground: #1f2937;
+  --card: #ffffff;
+  --card-foreground: #172033;
+  --popover: #ffffff;
+  --popover-foreground: #172033;
+  --primary: #4f6692;
+  --primary-foreground: #ffffff;
+  --secondary: #edf1f6;
+  --secondary-foreground: #314866;
+  --muted: #f1f4f9;
+  --muted-foreground: #667085;
+  --accent: #edf1f6;
+  --accent-foreground: #314866;
+  --destructive: #e5484d;
+  --destructive-foreground: #ffffff;
+  --border: #e3e8f2;
+  --input: #d7deeb;
+  --input-background: #ffffff;
+  --ring: #5c77a8;
+  --chart-1: #526fa4;
+  --chart-2: #7f93b7;
+  --chart-3: #657d9f;
+  --chart-4: #95a4bc;
+  --chart-5: #465a78;
+  --radius: 0.65rem;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #344054;
+  --sidebar-primary: #4f6692;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #edf1f6;
+  --sidebar-accent-foreground: #314866;
+  --sidebar-border: #e7ebf2;
+  --sidebar-ring: #5c77a8;
+}
+
+html, body { min-height: 100%; }
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.studio-hero {
+  border: 1px solid #dde3eb;
+  border-left: 4px solid #5c77a8;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .04), 0 3px 10px rgba(15, 23, 42, .04);
+}
+.studio-grid {
+  isolation: isolate;
+}
+.studio-panel {
+  box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 2px 7px rgba(15,23,42,.035);
+}
+.timeline-cell { min-width: 8px; height: 18px; border-radius: 2px; }
+@media (max-width: 640px) { .timeline-cell { min-width: 7px; height: 16px; } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}

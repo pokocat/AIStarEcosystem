@@ -7,7 +7,7 @@ import { App, type StudioStart } from "@/proto/app";
 import { HubTabBar } from "@/components/hub/ui";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { AccountWorkspace, useStudioHash } from "@/shell/account-workspace";
-import { accountPageKey, studioEntryDestination } from "@/shell/account-navigation";
+import { accountPageKey, studioEntryDestination, studioReturnPath } from "@/shell/account-navigation";
 
 const STARTS: StudioStart[] = ["sheet", "real", "ai", "compose"];
 
@@ -17,6 +17,7 @@ function StudioInner() {
   const hash = useStudioHash();
   const raw = sp.get("start") || (sp.get("create") === "1" ? "sheet" : null);
   const start = STARTS.find(s => s === raw);
+  const from = studioReturnPath(sp.get("from"));
   const auth = useRequireAuth();
   const [ready, setReady] = React.useState(false);
   React.useEffect(() => {
@@ -27,7 +28,7 @@ function StudioInner() {
   if (auth === "no-platform") return <PlatformGateScreen />;
   if (!ready || auth !== "ok") return null;
   return <AccountWorkspace tool>
-    <App embedded start={start} tabBar={<HubTabBar />} onRootBack={accountPageKey(hash) ? () => router.push("/me") : undefined} />
+    <App embedded start={start} tabBar={<HubTabBar />} onRootBack={from ? () => router.push(from) : accountPageKey(hash) ? () => router.push("/me") : undefined} />
   </AccountWorkspace>;
 }
 

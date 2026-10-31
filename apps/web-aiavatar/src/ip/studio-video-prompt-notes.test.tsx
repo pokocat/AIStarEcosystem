@@ -5,8 +5,8 @@ import { afterEach, expect, test, vi } from "vitest";
 import type { IpRun } from "@ai-star-eco/types";
 import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
 import { StudioFrameIntentDialog, StudioVideoRewriteDetail } from "./studio-video-prompt-notes";
-import { StudioVideoControls } from "./studio-video-controls";
-import { studioVideoSettings, type StudioVideoDraft } from "@/canvas-bridge/studio-video";
+import { StudioPromptOptimizeToggle, StudioPromptReview, StudioVideoControls } from "./studio-video-controls";
+import { studioVideoPromptMode, studioVideoSettings, type StudioVideoDraft } from "@/canvas-bridge/studio-video";
 import { StudioTaskList } from "./studio-task-list";
 vi.mock("./studio-errors", () => ({ reportStudioError: vi.fn(), studioRunError: (r: IpRun) => r.errorMessage }));
 afterEach(cleanup);
@@ -24,28 +24,60 @@ const run = (candidates: NonNullable<IpRun["output"]["videoCandidates"]>): IpRun
 const done = (index: number, prompt?: string) => ({ index, jobId: `j${index}`, status: "done" as const, pct: 100, durationSec: 8,
   promptRewrite: { state: "done" as const, ...(prompt ? { prompt } : {}) } });
 
-test.each([false, true, undefined])("smart optimization reflects a saved keepPrompt=%s and toggles the submitted option", (keepPrompt) => {
+test.each([false, true, undefined])("the card's smart optimization reflects a saved keepPrompt=%s and toggles what is submitted", (keepPrompt) => {
   const submitted = vi.fn();
   function Host() {
     const [draft, setDraft] = useState<StudioVideoDraft>({ mode: "t2v", tier: "768p", keepPrompt });
-    return <><StudioVideoControls model={h3} draft={draft} onChange={setDraft} nodes={[]} referenceIds={[]} onReferences={vi.fn()} onLibrary={vi.fn()} section="settings"/>
-      <button onClick={() => submitted(studioVideoSettings(draft.mode, draft.tier, [], undefined, undefined, draft.keepPrompt))}>生成</button></>;
+    return <><StudioPromptOptimizeToggle on={!draft.keepPrompt} onChange={on => setDraft(d => ({ ...d, keepPrompt: !on }))}/>
+      <button onClick={() => submitted(studioVideoSettings(draft.mode, draft.tier, [], undefined, undefined, studioVideoPromptMode(true, draft.keepPrompt)))}>生成</button></>;
   }
-  const { container } = render(<Host/>);
-  const checkbox = screen.getByRole("checkbox", { name: "智能优化" }) as HTMLInputElement;
-  expect(checkbox.checked).toBe(!keepPrompt);
-  expect(screen.getByText("由模型端自动优化提示词，可自行选择是否开启。")).toBeDefined();
-  expect(container.textContent).not.toMatch(/按原文生成|台词|删掉|改写/);
+  render(<Host/>);
+  const chip = screen.getByRole("button", { name: /智能优化/ });
+  expect(chip.getAttribute("aria-pressed")).toBe(String(!keepPrompt));
+  // 关着时旁边一行提示，开着时不提示
+  expect(screen.queryByText("H3 建议开启，台词更完整") !== null).toBe(!!keepPrompt);
   fireEvent.click(screen.getByRole("button", { name: "生成" }));
-  expect(submitted.mock.lastCall?.[0].optimizePrompt).toBe(keepPrompt ? false : undefined);
-  fireEvent.click(checkbox);
+  expect(submitted.mock.lastCall?.[0]).toMatchObject(keepPrompt ? { optimizePrompt: false } : { rewrite: "review" });
+  fireEvent.click(chip);
   fireEvent.click(screen.getByRole("button", { name: "生成" }));
-  expect(submitted.mock.lastCall?.[0].optimizePrompt).toBe(keepPrompt ? undefined : false);
+  expect(submitted.mock.lastCall?.[0]).toMatchObject(keepPrompt ? { rewrite: "review" } : { optimizePrompt: false });
 });
 
-test("models without automatic optimization do not show the option", () => {
-  render(<StudioVideoControls model={other} draft={{ mode: "t2v", tier: "768p" }} onChange={vi.fn()} nodes={[]} referenceIds={[]} onReferences={vi.fn()} onLibrary={vi.fn()} section="settings"/>);
+test("the parameter popover no longer carries the optimization switch", () => {
+  render(<StudioVideoControls model={h3} draft={{ mode: "t2v", tier: "768p" }} onChange={vi.fn()} nodes={[]} referenceIds={[]} onReferences={vi.fn()} onLibrary={vi.fn()} section="settings"/>);
   expect(screen.queryByRole("checkbox", { name: "智能优化" })).toBeNull();
+  expect(studioVideoPromptMode(false, false)).toBeUndefined();
+});
+
+test("a draft with notes offers both ways forward; a failed one offers to retry", () => {
+  const optimized = vi.fn(), original = vi.fn(), retry = vi.fn();
+  const { rerender } = render(<StudioPromptReview review={{ runId: "r", text: "subject_definitions: ...", usable: true, warnings: ["第 3 句台词「难受？」模型漏了，已补在第 2 镜末尾"] }}
+    busy={false} onOptimized={optimized} onOriginal={original} onRetry={retry}/>);
+  expect(screen.getByText("优化稿有需要留意的地方")).toBeDefined();
+  expect(screen.getByText("第 3 句台词「难受？」模型漏了，已补在第 2 镜末尾")).toBeDefined();
+  fireEvent.click(screen.getByRole("button", { name: "用优化稿生成" }));
+  fireEvent.click(screen.getByRole("button", { name: "用原文生成" }));
+  expect(optimized).toHaveBeenCalledOnce();
+  expect(original).toHaveBeenCalledOnce();
+  rerender(<StudioPromptReview review={{ runId: "r", failed: true, message: "视频提示词优化没成功（没有返回 JSON），本次未扣积分，请重试或按原文生成" }}
+    busy={false} onOptimized={optimized} onOriginal={original} onRetry={retry}/>);
+  expect(screen.queryByRole("button", { name: "用优化稿生成" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "重新优化" }));
+  expect(retry).toHaveBeenCalledOnce();
+  rerender(<StudioPromptReview review={{ runId: "r", text: "x", usable: false, warnings: ["优化稿超过 7000 字符，H3 收不下，请缩短提示词或按原文生成"] }}
+    busy={false} onOptimized={optimized} onOriginal={original} onRetry={retry}/>);
+  expect(screen.getByText("优化稿太长，视频模型收不下")).toBeDefined();
+  expect(screen.queryByRole("button", { name: "用优化稿生成" })).toBeNull();
+});
+
+test("the run input view shows what our optimization sent, or why it was not used", () => {
+  const ours = { ...run([{ ...done(0), promptRewrite: { state: "off" as const } }]), output: { ...run([]).output,
+    videoCandidates: [{ ...done(0), promptRewrite: { state: "off" as const } }], videoPrompt: { text: "integrated_multimodal_description: [Shot 1] ...", warnings: [], usable: true } } };
+  const { rerender } = render(<StudioVideoRewriteDetail run={ours}/>);
+  expect(screen.getByText("智能优化 · 发给模型的英文")).toBeDefined();
+  expect(screen.queryByText(/已关闭/)).toBeNull();
+  rerender(<StudioVideoRewriteDetail run={{ ...ours, output: { ...ours.output, videoPrompt: undefined, videoPromptNotes: ["提示词优化没成功，已按原文生成"] } }}/>);
+  expect(screen.getByText("提示词优化没成功，已按原文生成")).toBeDefined();
 });
 
 test("the run input view shows what each take was generated from", () => {

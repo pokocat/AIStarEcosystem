@@ -253,13 +253,14 @@ public class MaterialOpsService {
         String ref = "material-draft-" + (userId == null ? "anon" : userId) + "-" + System.nanoTime();
         String desc = "AI 起稿 · " + count + " 稿 · " + orDefault(product.getName(), "商品");
 
+        var endpoint=materialAi.scriptDraftEndpoint();
         if (charge) {
             // 余额不足在此抛 402（PAYMENT_REQUIRED），明确报错，不会进入 AI 调用。
-            creditService.hold(userId, cost, "material_script_draft", ref, desc);
+            creditService.hold(userId, cost, "material_script_draft", ref, desc, com.aistareco.aep.billing.service.ModelChargeContext.forCredits(endpoint,cost));
         }
         try {
-            List<JsonNode> out = materialAi.draftScripts(product, tone, audience, durationSec, count, effMin);
-            if (charge) creditService.commitHold("material_script_draft", ref, cost, desc);
+            List<JsonNode> out = materialAi.draftScripts(product, tone, audience, durationSec, count, effMin,endpoint);
+            if (charge) creditService.commitHold("material_script_draft", ref, cost, desc, null);
             return out;
         } catch (RuntimeException e) {
             // AI 未配置 / 调用失败 / 解析失败 → 退还冻结，向上抛明确错误（不扣费）。

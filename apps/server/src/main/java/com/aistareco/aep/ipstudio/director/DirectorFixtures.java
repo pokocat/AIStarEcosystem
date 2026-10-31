@@ -25,7 +25,7 @@ public final class DirectorFixtures {
                         .put("reversals", "第 2 集：敲门的人不在门外；伏笔是第 1 集桌上那盏一直亮着的灯。")
                         .put("theme", "没说出口的道歉，晚一点说也算数。");
                 o.putArray("characters").addObject().put("name", "林夏").put("age", "28").put("identity", "书店夜班店员")
-                        .put("secret", "三年前没能参加父亲的葬礼").put("flaw", "嘴笨，一紧张就抠手指").put("arc", "从逃避到主动回信");
+                        .put("secret", "三年前没能参加父亲的葬礼").put("flaw", "怕别人提起那场葬礼，遇事先躲").put("arc", "从逃避到主动回信");
                 out.put("content", """
                             ## 第1场 旧书店 · 夜
                             林夏推开旧书店的木门走进来，店里只亮着桌上一盏灯。中央木桌上放着一个暗红色信封。
@@ -39,17 +39,12 @@ public final class DirectorFixtures {
                             """);
             }
             case "split" -> {
+                // 与真模型同一个契约：只给每集起点和正文起点，区间由程序构造。
                 int count = Math.max(1, meta.path("paragraphCount").asInt(1));
+                out.put("bodyStart", 0);
                 ArrayNode episodes = out.putArray("episodes");
-                if (count < 4) episodes.addObject().put("title", "红信封").put("summary", "林夏在旧书店发现写给自己的信。")
-                        .put("startParagraph", 0).put("endParagraph", count - 1);
-                else {
-                    int half = count / 2;
-                    episodes.addObject().put("title", "红信封").put("summary", "林夏在旧书店发现写给自己的信。")
-                            .put("startParagraph", 0).put("endParagraph", half - 1);
-                    episodes.addObject().put("title", "门外的人").put("summary", "敲门声响起，林夏回头。")
-                            .put("startParagraph", half).put("endParagraph", count - 1);
-                }
+                episodes.addObject().put("title", "红信封").put("summary", "林夏在旧书店发现写给自己的信。").put("startParagraph", 0);
+                if (count >= 4) episodes.addObject().put("title", "门外的人").put("summary", "敲门声响起，林夏回头。").put("startParagraph", count / 2);
             }
             case "extract" -> {
                 ArrayNode assets = out.putArray("assets");
@@ -86,6 +81,45 @@ public final class DirectorFixtures {
                     ObjectNode shot = shots.addObject().put("durationSec", 3).put("size", s[0]).put("camera", s[1]).put("action", s[2]).put("still", s[3]);
                     ArrayNode d = shot.putArray("dialogue");
                     if (!s[4].isEmpty()) d.addObject().put("speakerId", speaker).put("text", s[4]);
+                }
+            }
+            case "reshoot" -> {
+                // 重写片段：每个要重写的片段各换一套三镜头方案，id 原样带回，和真模型同一个契约。
+                List<String> ids = new ArrayList<>();
+                meta.path("assetIds").forEach(x -> ids.add(x.asText()));
+                String speaker = meta.path("characterIds").path(0).asText(null);
+                ArrayNode clips = out.putArray("clips");
+                String[][] shots = {
+                        {"全景", "门口高处俯拍，固定机位", "林夏推门进来，停在门边", "林夏一只手还扶着门把手", ""},
+                        {"特写", "桌面平视，镜头缓慢推近", "桌上的红信封被灯光照亮", "红信封躺在灯下，封口朝上", ""},
+                        {"近景", "越过信封拍林夏，固定机位", "林夏拿起信封，低头看背面", "林夏低头看信封的侧脸", "这么晚了，怎么还有人留东西？"},
+                        {"中景", "西南侧，门在画面右侧，固定机位", "她停住，慢慢回头看门", "她回头看门，右手仍握着信封", "谁在外面？"}};
+                for (JsonNode id : meta.path("rewriteIds")) {
+                    ObjectNode clip = clips.addObject().put("id", id.asText()).put("title", "发现信封（重写）").put("summary", "林夏进门后发现桌上的红信封，拿起来时听到敲门声。");
+                    ArrayNode clipIds = clip.putArray("assetIds");
+                    ids.forEach(clipIds::add);
+                    ArrayNode list = clip.putArray("shots");
+                    for (String[] s : shots) {
+                        ObjectNode shot = list.addObject().put("durationSec", 3).put("size", s[0]).put("camera", s[1]).put("action", s[2]).put("still", s[3]);
+                        ArrayNode d = shot.putArray("dialogue");
+                        if (!s[4].isEmpty()) d.addObject().put("speakerId", speaker).put("text", s[4]);
+                    }
+                }
+            }
+            case "videoPrompt" -> {
+                // 视频提示词改写：每镜一句画面，台词按占位原样放回，由 DirectorH3Rewrite 组装成 H3 格式。
+                out.put("subject_definitions", "<Subject 1> is the character shown in <Picture 2>.")
+                        .put("summary", "[reference generation] A short test clip that follows the storyboard in <Picture 1>.")
+                        .put("retention_analysis", "<Subject 1> (appears in [Shot 1]): fully_preserved - appearance from <Picture 2>.")
+                        .put("style", "Live-action, test footage.")
+                        .put("overall_soundscape", "Quiet room tone.").put("non_diegetic_music", "N/A");
+                int n = Math.max(1, meta.path("shots").asInt(1));
+                List<String> lines = new ArrayList<>();
+                meta.path("lines").forEach(l -> lines.add(l.path("id").asText()));
+                for (int i = 0; i < n; i++) {
+                    StringBuilder b = new StringBuilder(i == 0 ? "A medium shot of <Subject 1>." : "the camera cuts to <Subject 1>.");
+                    for (int j = i; j < lines.size(); j += n) b.append(" <Subject 1> says: {{").append(lines.get(j)).append("}}");
+                    out.put("shot_" + (i + 1), b.toString());
                 }
             }
             case "assistant" -> assistant(om, meta, out);

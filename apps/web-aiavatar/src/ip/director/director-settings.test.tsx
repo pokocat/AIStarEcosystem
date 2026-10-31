@@ -1,144 +1,94 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import type { DirectorWork } from "@ai-star-eco/types";
-import { DirectorWorkbench } from "./director-workbench";
-import { DirectorApi } from "../api";
-
-vi.mock("@/components/hub/auth", () => ({ useRequireAuth: () => "ok", PlatformGateScreen: () => null }));
-vi.mock("next/link", () => ({ default: ({ children, ...props }: React.ComponentProps<"a">) => <a {...props}>{children}</a> }));
-vi.mock("../api", () => ({ DirectorApi: { getWork: vi.fn(), patchWork: vi.fn() } }));
-vi.mock("./director-script", () => ({ DirectorScript: () => null }));
-vi.mock("./director-assets", () => ({ DirectorAssets: () => null }));
-vi.mock("./director-storyboard", () => ({ DirectorStoryboard: () => null }));
-vi.mock("./director-extract", () => ({ ExtractReview: () => null }));
-
-function work(mode: "fixed" | "selectable" = "selectable"): DirectorWork {
-  return {
-    id: "w", title: "原作品名", revision: 1, createdAt: "2026-10-26T00:00:00Z", updatedAt: "2026-10-26T00:00:00Z",
-    idea: "故事创意", logline: "", draft: "", draftRev: 0,
-    settings: { style: "真人写实", aspectRatio: "9:16", language: "中文", videoModel: null, textModel: null },
-    episodes: [], assets: [], clips: [], pipeline: null, notice: null, textError: null, tasks: [],
-    pricing: { textMax: 2, image: 16, mock: false }, videoModels: [], videoLimits: null, textModelMode: mode,
-    textModels: [
-      { endpointId: "ds", name: "DeepSeek", isDefault: true, tokenPricing: { inputCreditsPerK: 0.01, outputCreditsPerK: 0.1, maxInputTokens: 65536, maxOutputTokens: 8192, maxCost: 2 } },
-      { endpointId: "claude", name: "Claude", isDefault: false, tokenPricing: { inputCreditsPerK: 1, outputCreditsPerK: 10, maxInputTokens: 65536, maxOutputTokens: 8192, maxCost: 148 } },
-    ],
-  };
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, expect, test, vi } from 'vitest';
+import { SettingsPanel } from './director-settings';
+const api = vi.hoisted(() => ({ patchWork: vi.fn() }));
+vi.mock('../api', () => ({ DirectorApi: api }));
+afterEach(() => { cleanup(); vi.clearAllMocks(); });
+const work: any = { id:'model-work', settings:{style:'真人写实',aspectRatio:'9:16',videoModel:null,imageModel:null},
+  pricing:{mock:false,image:16}, videoModels:[], imageModels:[{id:'seedream',name:'Seedream 4.5',isDefault:true,creditCost:16},{id:'other',name:'另一模型',isDefault:false,creditCost:37}] };
+function choose(value: string) {
+  const control = screen.getByRole('combobox', { name:'图片模型' });
+  fireEvent.change(document.getElementById(control.getAttribute('data-select-native')!)!, { target:{value} });
 }
-
-beforeEach(() => { vi.resetAllMocks(); });
-afterEach(cleanup);
-
-test("settings opens from the workbench, previews each model's price and saves the chosen endpoint", async () => {
-  const current = work();
-  vi.mocked(DirectorApi.getWork).mockResolvedValue(current);
-  vi.mocked(DirectorApi.patchWork).mockResolvedValue({ ...current, title: "AI 新剧名", revision: 2, settings: { ...current.settings, textModel: "claude" }, pricing: { ...current.pricing, textMax: 148 } });
-  render(<DirectorWorkbench id="w"/>);
-  fireEvent.click(await screen.findByRole("button", { name: "真人写实 · 9:16" }));
-  const dialog = screen.getByRole("dialog", { name: "作品设置" });
-  expect(within(dialog).getByText(/输入 0.01 积分，输出 0.1 积分/)).toBeTruthy();
-  // SelectField 的原生适配层把真实 change 事件交回设置面板。
-  const select = dialog.querySelector("select")!;
-  fireEvent.change(select, { target: { value: "claude" } });
-  expect(within(dialog).getByText(/输入 1 积分，输出 10 积分。每次最多冻结 148 积分/)).toBeTruthy();
-  fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
-  await waitFor(() => expect(DirectorApi.patchWork).toHaveBeenCalledWith("w", { settings: { style: "真人写实", aspectRatio: "9:16", textModel: "claude", videoModel: null } }));
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  expect((screen.getByRole("textbox", { name: "作品名" }) as HTMLInputElement).value).toBe("AI 新剧名");
+test('the chosen image model is saved and its own price is shown before saving', async () => {
+  const apply=vi.fn(),close=vi.fn();api.patchWork.mockResolvedValue(work);
+  render(<SettingsPanel work={work} apply={apply} onClose={close} setError={vi.fn()}/>);
+  choose('other');
+  expect(screen.getByText(/用于资产图和分镜图，约 37 积分\/张。/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:'保存'}));
+  await waitFor(()=>expect(api.patchWork).toHaveBeenCalledWith('model-work',{settings:{style:'真人写实',aspectRatio:'9:16',videoModel:null,imageModel:'other'}}));
+  expect(close).toHaveBeenCalledTimes(1);
 });
-
-test("fixed model policy disables the settings selector", async () => {
-  vi.mocked(DirectorApi.getWork).mockResolvedValue(work("fixed"));
-  render(<DirectorWorkbench id="w"/>);
-  fireEvent.click(await screen.findByRole("button", { name: "真人写实 · 9:16" }));
-  const dialog = screen.getByRole("dialog", { name: "作品设置" });
-  expect(dialog.querySelector("select")!.disabled).toBe(true);
+test('a retired saved choice stays visible, other settings still save, and the retired value is not resubmitted', async () => {
+  const apply=vi.fn(),close=vi.fn();api.patchWork.mockResolvedValue(work);
+  const retired={...work,settings:{...work.settings,imageModel:'retired'},
+    imageModelState:{id:'retired',name:null,explicit:true,available:false,creditCost:null,missingRatios:[]}};
+  render(<SettingsPanel work={retired} apply={apply} onClose={close} setError={vi.fn()}/>);
+  expect(screen.getByText(/原图片模型已停用，资产图和分镜图暂时生成不了/)).toBeTruthy();
+  const save=screen.getByRole('button',{name:'保存'}) as HTMLButtonElement;
+  expect(save.disabled).toBe(false);
+  fireEvent.change(screen.getByDisplayValue('真人写实'),{target:{value:'国风水墨'}});
+  fireEvent.click(save);
+  await waitFor(()=>expect(api.patchWork).toHaveBeenCalledWith('model-work',{settings:{style:'国风水墨',aspectRatio:'9:16',videoModel:null}}));
+  expect(close).toHaveBeenCalledTimes(1);
 });
-
-// 与真实 API 层一致：作品级 404 由 scopeToWork 打上作品 id（../api 被 mock 了，这里直接用真实的 api/director）。
-async function gone(id: string) {
-  const { ApiError } = await import("@ai-star-eco/api-client");
-  const { scopeToWork } = await import("../api/director");
-  return scopeToWork(id, Promise.reject(new ApiError({ code: "DIRECTOR_WORK_NOT_FOUND", message: "作品不存在" }, 404))).catch((e: unknown) => e);
+test('replacing a retired saved choice sends the new model explicitly', async () => {
+  api.patchWork.mockResolvedValue(work);
+  render(<SettingsPanel work={{...work,settings:{...work.settings,imageModel:'retired'}}} apply={vi.fn()} onClose={vi.fn()} setError={vi.fn()}/>);
+  choose('');
+  fireEvent.click(screen.getByRole('button',{name:'保存'}));
+  await waitFor(()=>expect(api.patchWork).toHaveBeenCalledWith('model-work',{settings:{style:'真人写实',aspectRatio:'9:16',videoModel:null,imageModel:null}}));
+});
+test('a saved model that cannot make square images names the asset class it blocks and keeps its own price', async () => {
+  const apply=vi.fn(),close=vi.fn();api.patchWork.mockResolvedValue(work);
+  const limited={...work,settings:{...work.settings,imageModel:'gpt-4k'},pricing:{mock:false,image:55},
+    imageModelState:{id:'gpt-4k',name:'GPT Image 2 4K',explicit:true,available:true,creditCost:55,missingRatios:['1:1']}};
+  render(<SettingsPanel work={limited} apply={apply} onClose={close} setError={vi.fn()}/>);
+  expect(screen.getByRole('combobox',{name:'图片模型'}).textContent).toContain('GPT Image 2 4K（原选择）');
+  const note=screen.getByText(/原图片模型「GPT Image 2 4K」不能出方图，道具的图生成不了；其他画面照常，约 55 积分\/张。/);
+  expect(note.textContent).not.toMatch(/画幅/);
+  fireEvent.click(screen.getByRole('button',{name:'1:1'}));
+  expect(screen.getByText(/道具、分镜的图生成不了/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:'16:9'}));
+  fireEvent.click(screen.getByRole('button',{name:'保存'}));
+  await waitFor(()=>expect(api.patchWork).toHaveBeenCalledWith('model-work',{settings:{style:'真人写实',aspectRatio:'16:9',videoModel:null}}));
+});
+test('a default model that cannot make square images is explained instead of reporting no model at all', () => {
+  const limitedDefault={...work,imageModels:[{id:'other',name:'另一模型',isDefault:false,creditCost:37}],
+    imageModelState:{id:'gpt-4k',name:'GPT Image 2 4K',explicit:false,available:true,creditCost:55,missingRatios:['1:1']}};
+  render(<SettingsPanel work={limitedDefault} apply={vi.fn()} onClose={vi.fn()} setError={vi.fn()}/>);
+  expect(screen.getByText(/默认图片模型「GPT Image 2 4K」不能出方图，道具的图生成不了/)).toBeTruthy();
+  expect(screen.queryByText('暂无可用图片模型，请联系管理员开通。')).toBeNull();
+  choose('other');
+  expect(screen.getByText(/用于资产图和分镜图，约 37 积分\/张。/)).toBeTruthy();
+});
+const textWork: any = { ...work, textModelMode: 'selectable', textModels: [
+  { endpointId:'ds', name:'DeepSeek', isDefault:true, tokenPricing:{ inputCreditsPerK:0.01, outputCreditsPerK:0.1, maxInputTokens:65536, maxOutputTokens:8192, maxCost:2 } },
+  { endpointId:'claude', name:'Claude', isDefault:false, tokenPricing:{ inputCreditsPerK:1, outputCreditsPerK:10, maxInputTokens:65536, maxOutputTokens:8192, maxCost:148 } }] };
+function chooseText(value: string) {
+  const control = screen.getByRole('combobox', { name:'文本模型' });
+  fireEvent.change(document.getElementById(control.getAttribute('data-select-native')!)!, { target:{value} });
 }
-
-test("when any request finds this work deleted, the page stops showing editable content, drops its drafts and offers the way back", async () => {
-  const { useDraft, hasDrafts } = await import("./director-shared");
-  vi.mocked(DirectorApi.getWork).mockResolvedValue(work());
-  const error = await gone("w");
-  vi.mocked(DirectorApi.patchWork).mockRejectedValue(error);
-  function DraftProbe() { const [value, setValue] = useDraft("w:content", ""); return <input aria-label="草稿" value={value} onChange={e => setValue(e.target.value)}/>; }
-  render(<><DirectorWorkbench id="w"/><DraftProbe/></>);
-  const title = await screen.findByRole("textbox", { name: "作品名" });
-  fireEvent.change(screen.getByRole("textbox", { name: "草稿" }), { target: { value: "没保存的正文" } });
-  expect(hasDrafts("w:")).toBe(true);
-  fireEvent.change(title, { target: { value: "改个名字" } });
-  fireEvent.blur(title);
-  expect(await screen.findByText("作品已删除或不存在")).toBeTruthy();
-  expect(screen.queryByRole("textbox", { name: "作品名" })).toBeNull();
-  expect(screen.getByRole("link", { name: "返回作品列表" }).getAttribute("href")).toBe("/director");
-  expect(hasDrafts("w:")).toBe(false); // 作品没了，关页面不再提示未保存
+test('the chosen text model is saved without showing any text credit number', async () => {
+  const close=vi.fn();api.patchWork.mockResolvedValue(textWork);
+  render(<SettingsPanel work={textWork} apply={vi.fn()} onClose={close} setError={vi.fn()}/>);
+  chooseText('claude');
+  expect(screen.getByText('用于剧本、拆分集、提取资产和分镜脚本，按实际用量结算。')).toBeTruthy();
+  expect(screen.getByRole('dialog').textContent).not.toMatch(/Token|148|冻结/);
+  fireEvent.click(screen.getByRole('button',{name:'保存'}));
+  await waitFor(()=>expect(api.patchWork).toHaveBeenCalledWith('model-work',{settings:{style:'真人写实',aspectRatio:'9:16',videoModel:null,textModel:'claude'}}));
+  expect(close).toHaveBeenCalledTimes(1);
 });
-
-test("opening a deleted work shows the deleted state without a reload button", async () => {
-  vi.mocked(DirectorApi.getWork).mockRejectedValue(await gone("w"));
-  render(<DirectorWorkbench id="w"/>);
-  expect(await screen.findByText("作品已删除或不存在")).toBeTruthy();
-  expect(screen.queryByRole("button", { name: "重新加载" })).toBeNull();
+test('a retired saved text model is not resubmitted when other settings change', async () => {
+  api.patchWork.mockResolvedValue(textWork);
+  render(<SettingsPanel work={{...textWork,settings:{...textWork.settings,textModel:'retired'}}} apply={vi.fn()} onClose={vi.fn()} setError={vi.fn()}/>);
+  expect(screen.getByText(/原文本模型不在可选范围内/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:'16:9'}));
+  fireEvent.click(screen.getByRole('button',{name:'保存'}));
+  await waitFor(()=>expect(api.patchWork).toHaveBeenCalledWith('model-work',{settings:{style:'真人写实',aspectRatio:'16:9',videoModel:null}}));
 });
-
-/** 2026-10-28 独立复核：作品 A 的保存还没回来就切到作品 B，A 迟到的 404 不能把 B 标成已删除、清掉 B 的草稿。 */
-test("a late 404 for the previous work leaves the current work editable and keeps its unsaved drafts", async () => {
-  const { useDraft, hasDrafts, clearDrafts } = await import("./director-shared");
-  let rejectOld!: (e: unknown) => void;
-  vi.mocked(DirectorApi.getWork).mockResolvedValue({ ...work(), id: "old", title: "旧作品" });
-  vi.mocked(DirectorApi.patchWork).mockImplementation((id: string) => import("../api/director").then(({ scopeToWork }) =>
-    scopeToWork(id, new Promise<DirectorWork>((_resolve, reject) => { rejectOld = reject; }))));
-  const oldPage = render(<DirectorWorkbench id="old"/>);
-  const oldTitle = await screen.findByRole("textbox", { name: "作品名" });
-  fireEvent.change(oldTitle, { target: { value: "保存旧作品" } });
-  fireEvent.blur(oldTitle);
-  await waitFor(() => expect(rejectOld).toBeTypeOf("function"));
-  oldPage.unmount();
-
-  vi.mocked(DirectorApi.getWork).mockResolvedValue({ ...work(), id: "new", title: "正常作品" });
-  function DraftProbe() { const [value, setValue] = useDraft("new:content", ""); return <input aria-label="草稿" value={value} onChange={e => setValue(e.target.value)}/>; }
-  render(<><DirectorWorkbench id="new"/><DraftProbe/></>);
-  expect(((await screen.findByRole("textbox", { name: "作品名" })) as HTMLInputElement).value).toBe("正常作品");
-  fireEvent.change(screen.getByRole("textbox", { name: "草稿" }), { target: { value: "新作品未保存的正文" } });
-  const { ApiError } = await import("@ai-star-eco/api-client");
-  await act(async () => { rejectOld(new ApiError({ code: "DIRECTOR_WORK_NOT_FOUND", message: "旧作品已删除" }, 404)); await Promise.resolve(); });
-  expect(screen.queryByText("作品已删除或不存在")).toBeNull();
-  expect(screen.getByRole("textbox", { name: "作品名" })).toBeTruthy();
-  expect(hasDrafts("new:")).toBe(true);
-  clearDrafts("new:");
-});
-
-test("a 404 that cannot be attributed to a work only shows its message", async () => {
-  const { ApiError } = await import("@ai-star-eco/api-client");
-  vi.mocked(DirectorApi.getWork).mockResolvedValue(work());
-  vi.mocked(DirectorApi.patchWork).mockRejectedValue(new ApiError({ code: "DIRECTOR_WORK_NOT_FOUND", message: "作品不存在" }, 404));
-  render(<DirectorWorkbench id="w"/>);
-  const title = await screen.findByRole("textbox", { name: "作品名" });
-  fireEvent.change(title, { target: { value: "改个名字" } });
-  fireEvent.blur(title);
-  expect(await screen.findByRole("alert")).toBeTruthy();
-  expect(screen.queryByText("作品已删除或不存在")).toBeNull();
-});
-
-test("polling stops once the current work turns out deleted", async () => {
-  vi.useFakeTimers({ shouldAdvanceTime: true });
-  try {
-    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
-    const running = { ...work(), tasks: [{ id: "r", target: "script", status: "running" as const, stage: null, cost: 0, errorMessage: null, createdAt: "2026-10-26T00:00:00Z" }] };
-    vi.mocked(DirectorApi.getWork).mockResolvedValueOnce(running).mockRejectedValue(await gone("w"));
-    render(<DirectorWorkbench id="w"/>);
-    await screen.findByRole("textbox", { name: "作品名" });
-    await act(async () => { await vi.advanceTimersByTimeAsync(2600); });
-    expect(await screen.findByText("作品已删除或不存在")).toBeTruthy();
-    const calls = vi.mocked(DirectorApi.getWork).mock.calls.length;
-    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
-    expect(vi.mocked(DirectorApi.getWork).mock.calls.length).toBe(calls);
-  } finally { vi.useRealTimers(); }
+test('fixed text model policy disables the selector', () => {
+  render(<SettingsPanel work={{...textWork,textModelMode:'fixed'}} apply={vi.fn()} onClose={vi.fn()} setError={vi.fn()}/>);
+  expect(screen.getByRole('combobox',{name:'文本模型'}).getAttribute('aria-disabled') ?? (document.getElementById(screen.getByRole('combobox',{name:'文本模型'}).getAttribute('data-select-native')!) as HTMLSelectElement).disabled.toString()).toMatch(/true/);
 });

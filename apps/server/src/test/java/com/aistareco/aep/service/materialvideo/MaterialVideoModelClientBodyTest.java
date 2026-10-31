@@ -310,7 +310,7 @@ class MaterialVideoModelClientBodyTest {
     // ── 上游拒绝时给用户看的话 ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("创建被拒：4xx 直出厂商原话（截断、脱敏），5xx 只给状态码，非 JSON 不外泄")
+    @DisplayName("创建被拒：4xx 直出厂商原话（截断、脱敏），5xx 也保留原话，非 JSON 不外泄")
     void submitFailureMessages() {
         String m400 = MaterialVideoModelClient.submitFailureMessage(400,
                 "{\"error\":{\"code\":\"INVALID_ARGUMENT\",\"message\":\"orientation must be landscape or portrait\"}}");
@@ -322,8 +322,7 @@ class MaterialVideoModelClientBodyTest {
         assertFalse(html.contains("<"), html);
 
         String m503 = MaterialVideoModelClient.submitFailureMessage(503, "{\"message\":\"upstream overloaded\"}");
-        assertTrue(m503.contains("503"), m503);
-        assertFalse(m503.contains("overloaded"), m503);
+        assertEquals("upstream overloaded",m503);
 
         String longMsg = "x ".repeat(400);
         String truncated = MaterialVideoModelClient.submitFailureMessage(422, "{\"message\":\"" + longMsg + "\"}");

@@ -59,6 +59,8 @@ class DramaReferenceAssetServiceTest {
         sceneRepo = mock(DramaSceneRepository.class);
         projectRepo = mock(DramaProjectRepository.class);
         render = mock(DramaRenderService.class);
+        when(render.preflightCharacterReferenceSheet(anyString())).thenReturn(
+                com.aistareco.aep.model.AiModelEndpoint.builder().id("image").model("image").enabled(true).build());
         credit = mock(CreditService.class);
         PlatformConfigService configs = mock(PlatformConfigService.class);
         when(configs.getLong(anyString(), anyLong())).thenAnswer(inv -> inv.<Long>getArgument(1));
@@ -194,15 +196,15 @@ class DramaReferenceAssetServiceTest {
     @Test
     void referenceSheet_holdTotal_commitPerAngle() {
         seedProject("{\"projectInfo\":{\"ratio\":\"9:16\"},\"characters\":[{\"id\":\"ch_1\",\"name\":\"林萧\",\"role\":\"key\"}]}");
-        when(render.renderCharacterReferenceFrame(anyString(), anyMap(), anyString(), anyList()))
+        when(render.renderCharacterReferenceFrame(any(),anyString(), anyMap(), anyString(), anyList()))
                 .thenReturn("drama/char-refs/a.png", "drama/char-refs/b.png", "drama/char-refs/c.png");
 
         JsonNode out = svc.generateReferenceSheet(PID, "ch_1", null, USER);
 
         // frameCost 默认 2 × 3 角度 = hold 6
-        verify(credit).hold(eq(USER), eq(6L), eq("DRAMA_CHAR_SHEET"), anyString(), anyString());
+        verify(credit).hold(eq(USER), eq(6L), eq("DRAMA_CHAR_SHEET"), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         // 逐角度 commit 各 2
-        verify(credit, times(3)).commitHold(eq("DRAMA_CHAR_SHEET"), anyString(), eq(2L), anyString());
+        verify(credit, times(3)).commitHold(eq("DRAMA_CHAR_SHEET"), anyString(), eq(2L), anyString(), org.mockito.ArgumentMatchers.any());
         // 全成功不 release
         verify(credit, never()).releaseHold(anyString(), anyString(), anyString());
         assertEquals(6L, out.path("cost").asLong());
@@ -225,7 +227,7 @@ class DramaReferenceAssetServiceTest {
         ch.setRefImagesJson("[{\"cdnKey\":\"drama/char-refs/old-front.png\",\"angle\":\"front\",\"label\":\"正面\"}]");
         charStore.put("ch_1", ch);
 
-        when(render.renderCharacterReferenceFrame(anyString(), anyMap(), anyString(), anyList()))
+        when(render.renderCharacterReferenceFrame(any(),anyString(), anyMap(), anyString(), anyList()))
                 .thenReturn("drama/char-refs/new-front.png");
 
         JsonNode out = svc.generateReferenceSheet(PID, "ch_1",
@@ -241,15 +243,15 @@ class DramaReferenceAssetServiceTest {
     @Test
     void referenceSheet_partialFailure_releasesRemaining() {
         seedProject("{\"characters\":[{\"id\":\"ch_1\",\"name\":\"林萧\",\"role\":\"key\"}]}");
-        when(render.renderCharacterReferenceFrame(anyString(), anyMap(), anyString(), anyList()))
+        when(render.renderCharacterReferenceFrame(any(),anyString(), anyMap(), anyString(), anyList()))
                 .thenReturn("drama/char-refs/a.png")
                 .thenThrow(new BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,
                         "IMAGE_CALL_FAILED", "boom"));
 
         JsonNode out = svc.generateReferenceSheet(PID, "ch_1", null, USER);
 
-        verify(credit).hold(eq(USER), eq(6L), eq("DRAMA_CHAR_SHEET"), anyString(), anyString());
-        verify(credit, times(1)).commitHold(eq("DRAMA_CHAR_SHEET"), anyString(), eq(2L), anyString());
+        verify(credit).hold(eq(USER), eq(6L), eq("DRAMA_CHAR_SHEET"), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
+        verify(credit, times(1)).commitHold(eq("DRAMA_CHAR_SHEET"), anyString(), eq(2L), anyString(), org.mockito.ArgumentMatchers.any());
         verify(credit, times(1)).releaseHold(eq("DRAMA_CHAR_SHEET"), anyString(), anyString());
         assertEquals(2L, out.path("cost").asLong());
         assertEquals(1, out.path("refImages").size());
@@ -258,15 +260,15 @@ class DramaReferenceAssetServiceTest {
     @Test
     void referenceSheet_allFail_releasesFull_throws() {
         seedProject("{\"characters\":[{\"id\":\"ch_1\",\"name\":\"林萧\",\"role\":\"key\"}]}");
-        when(render.renderCharacterReferenceFrame(anyString(), anyMap(), anyString(), anyList()))
+        when(render.renderCharacterReferenceFrame(any(),anyString(), anyMap(), anyString(), anyList()))
                 .thenThrow(new BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,
                         "IMAGE_CALL_FAILED", "boom"));
 
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> svc.generateReferenceSheet(PID, "ch_1", null, USER));
         assertEquals(org.springframework.http.HttpStatus.BAD_GATEWAY, ex.getStatus());
-        verify(credit).hold(eq(USER), eq(6L), eq("DRAMA_CHAR_SHEET"), anyString(), anyString());
-        verify(credit, never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+        verify(credit).hold(eq(USER), eq(6L), eq("DRAMA_CHAR_SHEET"), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
+        verify(credit, never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
         verify(credit, times(1)).releaseHold(eq("DRAMA_CHAR_SHEET"), anyString(), anyString());
     }
 
@@ -279,20 +281,20 @@ class DramaReferenceAssetServiceTest {
         // renderCharacterReferenceFrame）抛 ResponseStatusException，验证 catch(RuntimeException)
         // 能捕住它、releaseHold 仍被调用、且异常原样向上抛出（不被吞掉/掩盖成别的错误码）。
         seedProject("{\"characters\":[{\"id\":\"ch_1\",\"name\":\"林萧\",\"role\":\"key\"}]}");
-        when(render.renderCharacterReferenceFrame(anyString(), anyMap(), anyString(), anyList()))
+        when(render.renderCharacterReferenceFrame(any(),anyString(), anyMap(), anyString(), anyList()))
                 .thenReturn("drama/char-refs/a.png", "drama/char-refs/b.png", "drama/char-refs/c.png");
         doThrow(new org.springframework.web.server.ResponseStatusException(
                         org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR, "wallet commit failed"))
-                .when(credit).commitHold(eq("DRAMA_CHAR_SHEET"), anyString(), eq(2L), anyString());
+                .when(credit).commitHold(eq("DRAMA_CHAR_SHEET"), anyString(), eq(2L), anyString(), org.mockito.ArgumentMatchers.any());
 
         org.springframework.web.server.ResponseStatusException ex = assertThrows(
                 org.springframework.web.server.ResponseStatusException.class,
                 () -> svc.generateReferenceSheet(PID, "ch_1", null, USER));
         assertEquals(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR, ex.getStatusCode());
 
-        verify(credit).hold(eq(USER), eq(6L), eq("DRAMA_CHAR_SHEET"), anyString(), anyString());
+        verify(credit).hold(eq(USER), eq(6L), eq("DRAMA_CHAR_SHEET"), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         // 首个角度 commit 即抛错，停在第一次尝试（不会继续后续角度）
-        verify(credit, times(1)).commitHold(eq("DRAMA_CHAR_SHEET"), anyString(), eq(2L), anyString());
+        verify(credit, times(1)).commitHold(eq("DRAMA_CHAR_SHEET"), anyString(), eq(2L), anyString(), org.mockito.ArgumentMatchers.any());
         // 关键断言：catch(RuntimeException) 生效，全额冻结被立刻 release，不必等 sweeper 兜底
         verify(credit, times(1)).releaseHold(eq("DRAMA_CHAR_SHEET"), anyString(), anyString());
     }
@@ -306,12 +308,12 @@ class DramaReferenceAssetServiceTest {
         // 场景：front 角度 render+commit 都成功；side 角度 render 成功但 commitHold 抛错——
         // 断言最终持久化 / 返回的 refImages 只含 front 这一张已付费的图，不含 side。
         seedProject("{\"characters\":[{\"id\":\"ch_1\",\"name\":\"林萧\",\"role\":\"key\"}]}");
-        when(render.renderCharacterReferenceFrame(anyString(), anyMap(), anyString(), anyList()))
+        when(render.renderCharacterReferenceFrame(any(),anyString(), anyMap(), anyString(), anyList()))
                 .thenReturn("drama/char-refs/front.png", "drama/char-refs/side.png", "drama/char-refs/full.png");
         com.aistareco.aep.dto.LedgerEntryDto dummyCommit = new com.aistareco.aep.dto.LedgerEntryDto(
                 "le_1", "w_1", USER, null, null, null, "spend", -2L, 0L, "front", "cs_x", "DRAMA_CHAR_SHEET",
                 java.time.Instant.now());
-        when(credit.commitHold(eq("DRAMA_CHAR_SHEET"), anyString(), eq(2L), anyString()))
+        when(credit.commitHold(eq("DRAMA_CHAR_SHEET"), anyString(), eq(2L), anyString(), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(dummyCommit)
                 .thenThrow(new org.springframework.web.server.ResponseStatusException(
                         org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR, "wallet commit failed"));
@@ -340,7 +342,7 @@ class DramaReferenceAssetServiceTest {
                 () -> svc.generateReferenceSheet(PID, "ch_1", null, USER));
         assertEquals("IMAGE_NOT_CONFIGURED", ex.getCode());
         // §8.0：未配端点 → 不 hold、不扣费、不出图
-        verify(credit, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
-        verify(render, never()).renderCharacterReferenceFrame(anyString(), anyMap(), anyString(), anyList());
+        verify(credit, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
+        verify(render, never()).renderCharacterReferenceFrame(any(),anyString(), anyMap(), anyString(), anyList());
     }
 }

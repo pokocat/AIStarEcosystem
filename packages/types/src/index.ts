@@ -35,15 +35,19 @@ export * from "./settings";
 export * from "./social-account";
 export * from "./star-workbench";
 export * from "./studio";
+export * from "./studio-operations";
 export * from "./video-studio";
 export * from "./wallet";
 export * from "./wardrobe";
 export * from "./ip-studio-workflow";
 export * from "./ip-studio-template";
 export * from "./ip-studio-effect";
+export * from "./ip-studio-scenes";
 export * from "./ai-model-concurrency";
 
 export * from "./enterprise";
 export * from "./generation-reconciliation";
 export * from "./invitation";
 export * from "./director";
+
+export * from "./model-billing";

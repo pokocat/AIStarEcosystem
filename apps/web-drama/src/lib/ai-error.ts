@@ -8,11 +8,14 @@
 //   ① 优先按 ApiError.code 给**可操作的友好文案**（超时/未配置/调用失败/积分不足…）；
 //   ② 干净的业务引导文案原样透出，但**抹掉尾部「· 追查号 XXXX」**（对用户是噪声）；
 //   ③ 只有真·技术泄漏才回落兜底文案，并**保留编号**供用户找客服复述（界面上叫「问题编号」）。
+// 2026-10-25：可操作原因保留；供应商计费、余额等经营信息先过滤，保留我方追查号。
 // v0.197：写给运营的「去管理后台配置 X」一律换成「还没开通」（FEATURE_NOT_READY）。
 // 服务端日志/错误日志后台仍有完整追查号，不影响排障。
 // ─────────────────────────────────────────────────────────────────────────────
 
 // 命中即判定为「疑似后台技术细节泄漏」，替换成友好兜底文案。
+import { publicModelErrorMessage } from '@ai-star-eco/api-client';
+
 const TECHNICAL_LEAK =
   /HTTP\s*\d{3}|upstream_error|OpenAIException|NotFoundError|\{\s*"?error"?\s*:|"type"\s*:\s*"|status[_-]?code|Traceback|\b[A-Za-z][A-Za-z.]*Exception\b/;
 
@@ -54,6 +57,10 @@ const CREDIT_RE = /INSUFFICIENT|BALANCE|NOT_ENOUGH|余额不足|积分不足|积
 // 用户打不开后台，换成「还没开通」。注意别误伤「生成仍在后台进行」这类说明。
 const ADMIN_GUIDE_RE = /管理后台|(?:去|到)\s*后台|后台\s*[「→]|模型端点|绑定.{0,12}端点/;
 
+// Model services already extract and redact upstream reasons. Do not overwrite them or mistake
+// a provider's balance/quota failure for the user's wallet balance.
+const PROVIDER_FAILURE_CODE = /^(?:AI_CALL_FAILED|AI_PROVIDER_ERROR|IMAGE_CALL_FAILED|VIDEO_(?:SUBMIT_FAILED|POLL_FAILED|SUBMISSION_UNKNOWN|PROVIDER_.+)|MUSIC_CALL_FAILED|DAP_MODEL_.+|STUDIO_(?:IMAGE|SPEECH|LIP_SYNC)_.+|CLIP_ENGINE_(?!NOT_CONFIGURED).+)$/;
+
 /** 抹掉消息尾部的「· 追查号 XXXX」（对用户是噪声；服务端日志仍有）。 */
 function stripTrace(s: string): string {
   return s.replace(/\s*[·•・|]?\s*追查号\s*[A-Za-z0-9]+\s*$/u, "").trim();
@@ -66,17 +73,23 @@ function stripTrace(s: string): string {
  */
 export function aiErrorMessage(e: unknown, fallback = "AI 生成失败，请稍后重试"): string {
   const code = e && typeof e === "object" && "code" in e ? String((e as { code?: unknown }).code ?? "") : "";
+  const raw = (e && typeof e === "object" && "message" in e && typeof e.message === "string" ? e.message : typeof e === "string" ? e : "").trim();
+  const trace = raw.match(/追查号\s*([A-Za-z0-9]+)/)?.[1];
+  const clean = stripTrace(raw);
+  const leakFallback = trace ? `${fallback}（问题编号 ${trace}）` : fallback;
+  const protectedMessage = publicModelErrorMessage(raw, code);
+  // 堆栈、异常类名这类技术细节照旧换成调用方的兜底文案（按场景写的，比通用说法具体）；
+  // 供应商余额、密钥这类经营信息才用 publicModelErrorMessage 的统一说法。两条都不透出原文。
+  if (protectedMessage !== raw) return TECHNICAL_LEAK.test(clean) ? leakFallback : protectedMessage;
+  if (PROVIDER_FAILURE_CODE.test(code) && raw && !raw.startsWith("{") && !/<\/?html\b/i.test(raw)) return raw;
   if (code && FRIENDLY_BY_CODE[code]) return FRIENDLY_BY_CODE[code];
   if (code && CREDIT_RE.test(code)) return CREDIT_HINT;
 
-  const raw = (e instanceof Error ? e.message : typeof e === "string" ? e : "").trim();
-  const trace = raw.match(/追查号\s*([A-Za-z0-9]+)/)?.[1];
-  const clean = stripTrace(raw);
   if (!clean) return fallback;
   if (CREDIT_RE.test(clean)) return CREDIT_HINT;
   if (ADMIN_GUIDE_RE.test(clean)) return FEATURE_NOT_READY;
   // 干净的业务/引导文案 → 原样透出（追查号已抹掉）。
   if (!TECHNICAL_LEAK.test(clean)) return clean;
   // 真·技术泄漏 → 兜底，保留编号供报障（界面上统一叫「问题编号」）。
-  return trace ? `${fallback}（问题编号 ${trace}）` : fallback;
+  return leakFallback;
 }

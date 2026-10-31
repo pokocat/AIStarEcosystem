@@ -49,6 +49,8 @@ class MusicGenJobServiceTest {
         when(jobRepo.save(any(MusicGenJob.class))).thenAnswer(i -> i.getArgument(0));
         when(jobRepo.findByOwnerUserIdAndClientRequestId(any(), any())).thenReturn(Optional.empty());
         when(modelClient.resolveCreditCost(any(), anyInt())).thenReturn(120L);
+        when(modelClient.ensureConfigured(any())).thenReturn(com.aistareco.aep.model.AiModelEndpoint.builder()
+                .id("music-endpoint").model("music").enabled(true).build());
     }
 
     private MusicGenJobService.CreateSpec spec(String prompt, String lyrics, boolean instrumental, int duration) {
@@ -66,7 +68,7 @@ class MusicGenJobServiceTest {
         var order = inOrder(modelClient, creditService, jobRepo);
         order.verify(modelClient).ensureConfigured(any());
         order.verify(modelClient).validateRequest(any(), eq(120), eq(false));
-        order.verify(creditService).hold(eq(OWNER), eq(120L), eq(MusicGenJobService.CREDIT_REF_TYPE), any(), any());
+        order.verify(creditService).hold(eq(OWNER), eq(120L), eq(MusicGenJobService.CREDIT_REF_TYPE), any(), any(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         order.verify(jobRepo).save(any(MusicGenJob.class));
     }
 
@@ -79,7 +81,7 @@ class MusicGenJobServiceTest {
                 () -> service.submit(spec("夜晚城市", null, false, 120), OWNER));
 
         assertEquals("MUSIC_NOT_CONFIGURED", e.getCode());
-        verify(creditService, never()).hold(any(), anyLong(), any(), any(), any());
+        verify(creditService, never()).hold(any(), anyLong(), any(), any(), any(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         verify(jobRepo, never()).save(any(MusicGenJob.class));
     }
 
@@ -90,7 +92,7 @@ class MusicGenJobServiceTest {
 
         assertThrows(BusinessException.class, () -> service.submit(spec("x", null, false, 999), OWNER));
 
-        verify(creditService, never()).hold(any(), anyLong(), any(), any(), any());
+        verify(creditService, never()).hold(any(), anyLong(), any(), any(), any(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         verify(jobRepo, never()).save(any(MusicGenJob.class));
     }
 
@@ -99,7 +101,7 @@ class MusicGenJobServiceTest {
         assertThrows(BusinessException.class, () -> service.submit(spec("  ", "  ", false, 120), OWNER));
 
         verify(modelClient, never()).ensureConfigured(any());
-        verify(creditService, never()).hold(any(), anyLong(), any(), any(), any());
+        verify(creditService, never()).hold(any(), anyLong(), any(), any(), any(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     @Test
@@ -108,7 +110,7 @@ class MusicGenJobServiceTest {
         var e = assertThrows(BusinessException.class,
                 () -> service.submit(spec(null, "[verse] 一段词", true, 60), OWNER));
         assertEquals("MUSIC_INPUT_CONFLICT", e.getCode());
-        verify(creditService, never()).hold(any(), anyLong(), any(), any(), any());
+        verify(creditService, never()).hold(any(), anyLong(), any(), any(), any(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     @Test
@@ -123,7 +125,7 @@ class MusicGenJobServiceTest {
 
         assertEquals("mgj_existing", dto.id());
         assertEquals(42, dto.progress());
-        verify(creditService, never()).hold(any(), anyLong(), any(), any(), any());
+        verify(creditService, never()).hold(any(), anyLong(), any(), any(), any(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         verify(jobRepo, never()).save(any(MusicGenJob.class));
     }
 
@@ -139,7 +141,7 @@ class MusicGenJobServiceTest {
 
         var e = assertThrows(BusinessException.class, () -> service.submit(s, OWNER));
         assertEquals("ARTIST_NOT_OWNED", e.getCode());
-        verify(creditService, never()).hold(any(), anyLong(), any(), any(), any());
+        verify(creditService, never()).hold(any(), anyLong(), any(), any(), any(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     @Test
@@ -149,7 +151,7 @@ class MusicGenJobServiceTest {
         var dto = service.submit(spec("夜晚城市", null, false, 120), OWNER);
 
         assertEquals(0L, dto.creditsHeld());
-        verify(creditService, never()).hold(any(), anyLong(), any(), any(), any());
+        verify(creditService, never()).hold(any(), anyLong(), any(), any(), any(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         verify(jobRepo).save(any(MusicGenJob.class));
     }
 }

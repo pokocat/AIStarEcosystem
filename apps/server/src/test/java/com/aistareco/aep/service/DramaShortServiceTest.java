@@ -298,8 +298,8 @@ class DramaShortServiceTest {
         when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(10L);
         svc.createShort(OM.createObjectNode().put("fmtKey", "sell"), USER);
         // 进工作台开拍 = hold → 建草稿 → commit（一次，且不释放）。
-        verify(creditService).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString());
-        verify(creditService).commitHold(eq("DRAMA_SHORT"), anyString(), eq(10L), anyString());
+        verify(creditService).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
+        verify(creditService).commitHold(eq("DRAMA_SHORT"), anyString(), eq(10L), anyString(), org.mockito.ArgumentMatchers.any());
         verify(creditService, never()).releaseHold(anyString(), anyString(), anyString());
     }
 
@@ -341,8 +341,8 @@ class DramaShortServiceTest {
         assertEquals("draft", data.path("shots").path(0).path("flow").asText());
 
         // 与「一句话生成」同一笔开拍费，不因为带 seed 多扣。
-        verify(creditService).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString());
-        verify(creditService).commitHold(eq("DRAMA_SHORT"), anyString(), eq(10L), anyString());
+        verify(creditService).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
+        verify(creditService).commitHold(eq("DRAMA_SHORT"), anyString(), eq(10L), anyString(), org.mockito.ArgumentMatchers.any());
         verify(creditService, never()).releaseHold(anyString(), anyString(), anyString());
     }
 
@@ -358,8 +358,8 @@ class DramaShortServiceTest {
 
         assertEquals(first.path("meta").path("id").asText(), retry.path("meta").path("id").asText());
         assertEquals(1, db.size(), "重试不应再建一条草稿");
-        verify(creditService, times(1)).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString());
-        verify(creditService, times(1)).commitHold(eq("DRAMA_SHORT"), anyString(), eq(10L), anyString());
+        verify(creditService, times(1)).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
+        verify(creditService, times(1)).commitHold(eq("DRAMA_SHORT"), anyString(), eq(10L), anyString(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -368,7 +368,7 @@ class DramaShortServiceTest {
         svc.createShort(OM.createObjectNode().put("fmtKey", "sell").put("clientRequestId", "req-1"), USER);
         svc.createShort(OM.createObjectNode().put("fmtKey", "sell").put("clientRequestId", "req-2"), USER);
         assertEquals(2, db.size());
-        verify(creditService, times(2)).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString());
+        verify(creditService, times(2)).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     @Test
@@ -400,8 +400,8 @@ class DramaShortServiceTest {
         assertEquals(winner.path("meta").path("id").asText(), loser.path("meta").path("id").asText(),
                 "落败的请求要返回赢家的草稿");
         assertEquals(1, db.size(), "并发同键只能有一条草稿");
-        verify(creditService, times(2)).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString());
-        verify(creditService, times(1)).commitHold(eq("DRAMA_SHORT"), anyString(), eq(10L), anyString());
+        verify(creditService, times(2)).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
+        verify(creditService, times(1)).commitHold(eq("DRAMA_SHORT"), anyString(), eq(10L), anyString(), org.mockito.ArgumentMatchers.any());
         verify(creditService, times(1)).releaseHold(eq("DRAMA_SHORT"), anyString(), anyString());
     }
 
@@ -420,7 +420,7 @@ class DramaShortServiceTest {
         assertEquals(2, db.size());
         assertNotEquals("reuse-key", db.get(again.path("meta").path("id").asText()).getClientRequestId(),
                 "新草稿必须换一把服务端键，不能占用回收站里那条的键");
-        verify(creditService, times(2)).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString());
+        verify(creditService, times(2)).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     @Test
@@ -434,7 +434,7 @@ class DramaShortServiceTest {
 
         assertEquals(first, retry);
         assertEquals(1, db.size());
-        verify(creditService, times(1)).commitHold(eq("DRAMA_SHORT"), anyString(), eq(10L), anyString());
+        verify(creditService, times(1)).commitHold(eq("DRAMA_SHORT"), anyString(), eq(10L), anyString(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -446,8 +446,8 @@ class DramaShortServiceTest {
         BusinessException e = assertThrows(BusinessException.class, () -> svc.createShort(body, USER));
         assertEquals("DRAMA_SHORT_SEED_EMPTY", e.getCode());
         // 语义校验在 hold 之前：既不冻结也不 commit，更不落草稿。
-        verify(creditService, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
-        verify(creditService, never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+        verify(creditService, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
+        verify(creditService, never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
         assertTrue(db.isEmpty());
     }
 
@@ -456,16 +456,16 @@ class DramaShortServiceTest {
         when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(8L);
         String id = svc.createFromRecipe(USER, "韦斯·安德森风格", "风格短片", "#0ea5e9", "#22c55e", "韦斯·安德森风格", "对称构图 · 复古色卡");
         assertTrue(id.startsWith("dvs_"));
-        verify(creditService).hold(eq(USER), eq(8L), eq("DRAMA_SHORT"), anyString(), anyString());
-        verify(creditService).commitHold(eq("DRAMA_SHORT"), anyString(), eq(8L), anyString());
+        verify(creditService).hold(eq(USER), eq(8L), eq("DRAMA_SHORT"), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
+        verify(creditService).commitHold(eq("DRAMA_SHORT"), anyString(), eq(8L), anyString(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test
     void zeroPriceSkipsCharge() {
         when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(0L);
         svc.createShort(OM.createObjectNode().put("fmtKey", "sell"), USER);
-        verify(creditService, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
-        verify(creditService, never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+        verify(creditService, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
+        verify(creditService, never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -476,9 +476,9 @@ class DramaShortServiceTest {
         doThrow(new RuntimeException("db down")).when(repo).save(any());
         assertThrows(RuntimeException.class,
                 () -> svc.createShort(OM.createObjectNode().put("fmtKey", "sell"), USER));
-        verify(creditService).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString());
+        verify(creditService).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         verify(creditService).releaseHold(eq("DRAMA_SHORT"), anyString(), anyString());
-        verify(creditService, never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+        verify(creditService, never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -486,7 +486,7 @@ class DramaShortServiceTest {
         // 草稿落库与扣费不在一个事务里：扣费失败时草稿已经在库里了。以前只退冻结、草稿留着，
         // 同一把键重试会在幂等查找里命中它、直接返回 —— 用户拿到一条一分钱没付的草稿。
         when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(10L);
-        when(creditService.commitHold(anyString(), anyString(), anyLong(), anyString()))
+        when(creditService.commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any()))
                 .thenThrow(new RuntimeException("ledger blip"))
                 .thenReturn(null);
         when(creditService.findHold(eq("DRAMA_SHORT"), anyString())).thenReturn(
@@ -501,15 +501,15 @@ class DramaShortServiceTest {
         JsonNode retry = svc.createShort(body.deepCopy(), USER);
         assertEquals(1, db.size());
         assertTrue(db.containsKey(retry.path("meta").path("id").asText()));
-        verify(creditService, times(2)).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString());
-        verify(creditService, times(2)).commitHold(eq("DRAMA_SHORT"), anyString(), eq(10L), anyString());
+        verify(creditService, times(2)).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
+        verify(creditService, times(2)).commitHold(eq("DRAMA_SHORT"), anyString(), eq(10L), anyString(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test
     void commitThatThrowsAfterTheLedgerRecordedItKeepsThePaidDraft() {
         // 反过来：commit 抛了，但账本里这笔冻结已经是 COMMITTED（钱确实扣了）→ 草稿是用户的，照常返回。
         when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(10L);
-        when(creditService.commitHold(anyString(), anyString(), anyLong(), anyString()))
+        when(creditService.commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any()))
                 .thenThrow(new RuntimeException("after-commit callback failed"));
         when(creditService.findHold(eq("DRAMA_SHORT"), anyString())).thenReturn(
                 com.aistareco.aep.model.CreditHold.builder().status(com.aistareco.aep.model.CreditHold.Status.COMMITTED).build());
@@ -539,7 +539,7 @@ class DramaShortServiceTest {
 
         assertEquals(winner.path("meta").path("id").asText(), loser.path("meta").path("id").asText());
         assertEquals(1, db.size());
-        verify(creditService, times(1)).commitHold(eq("DRAMA_SHORT"), anyString(), eq(10L), anyString());
+        verify(creditService, times(1)).commitHold(eq("DRAMA_SHORT"), anyString(), eq(10L), anyString(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test

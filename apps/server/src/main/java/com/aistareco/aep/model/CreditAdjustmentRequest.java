@@ -8,9 +8,10 @@ import java.time.Instant;
 /**
  * 大额调差 / 赠送审批单（v2 §9.2 maker-checker）。
  *
- * 小额（≤ 阈值）由 OPERATOR 单人直接发放（仅落 LedgerEntry，不进本表）；
+ * 小额（≤ 阈值）由 OPERATOR 单人直接发放，并在本表落已批准记录；
  * 大额（&gt; 阈值）先落一张 PENDING_APPROVAL 审批单（**不入账**），需第二个不同身份的
- * FINANCE_ADMIN / SUPER_ADMIN 复核（maker != checker 服务端硬校验）→ 批准才真正入账（GIFT）。
+ * FINANCE_ADMIN / SUPER_ADMIN 复核（有效超管以外 maker != checker）→ 批准才真正入账。
+ * 普通赠送进入 GIFT，SCOPED_GRANT 进入独立的模型赠款批次。
  * 本表只承载审批流，不直接改余额；批准后调 CreditOpsService 执行并回填 ledgerEntryId。
  */
 @Data
@@ -28,6 +29,7 @@ public class CreditAdjustmentRequest {
     private String id;
 
     @Enumerated(EnumType.STRING)
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.VARCHAR)
     @Column(nullable = false, length = 16)
     private Type type;
 
@@ -45,6 +47,13 @@ public class CreditAdjustmentRequest {
 
     /** 激励赠送的活动号（type=GRANT，可空）。 */
     private String campaignId;
+
+    /** Exact destination for restricted grants; never the enterprise treasury. */
+    @Column(length = 255)
+    private String walletId;
+    private Instant expiresAt;
+    @Column(length = 64)
+    private String grantId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 24)
@@ -69,7 +78,7 @@ public class CreditAdjustmentRequest {
 
     private Instant decidedAt;
 
-    public enum Type { COMPENSATE, GRANT }
+    public enum Type { COMPENSATE, GRANT, SCOPED_GRANT }
 
     public enum Status { PENDING_APPROVAL, APPROVED, REJECTED }
 }

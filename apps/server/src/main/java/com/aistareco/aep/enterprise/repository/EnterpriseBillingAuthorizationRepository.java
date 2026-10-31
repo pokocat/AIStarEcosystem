@@ -13,6 +13,9 @@ public interface EnterpriseBillingAuthorizationRepository extends JpaRepository<
     Optional<EnterpriseBillingAuthorization> lockByReference(@Param("type")String type,@Param("ref")String ref);
     @Lock(LockModeType.PESSIMISTIC_WRITE) @Query("select a from EnterpriseBillingAuthorization a where a.enterpriseId=:enterprise and a.terminalAt is null order by a.id")
     List<EnterpriseBillingAuthorization> activeInEnterprise(@Param("enterprise")String enterprise);
+    /** Advisory count for read-only quotes. MySQL rejects SELECT ... FOR UPDATE inside a read-only transaction. */
+    @Query("select a from EnterpriseBillingAuthorization a where a.enterpriseId=:enterprise and a.actorUserId=:actor and a.terminalAt is null order by a.id")
+    List<EnterpriseBillingAuthorization> activeForActorWithoutLock(@Param("enterprise")String enterprise,@Param("actor")String actor);
     Page<EnterpriseBillingAuthorization> findByEnterpriseIdOrderByCreatedAtDesc(String enterpriseId,Pageable page);
     Page<EnterpriseBillingAuthorization> findByEnterpriseIdAndActorUserIdOrderByCreatedAtDesc(String enterpriseId,String actorUserId,Pageable page);
 }

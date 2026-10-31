@@ -107,11 +107,12 @@ public class MusicGenJobService {
         }
 
         // ① preflight —— 全部在 hold 之前，失败不建单不冻结（§8.0）
-        modelClient.ensureConfigured(spec.endpointId());
-        modelClient.validateRequest(spec.endpointId(), spec.durationSec(), spec.instrumental());
+        var endpoint=modelClient.ensureConfigured(spec.endpointId());
+        String endpointId=endpoint.getId();
+        modelClient.validateRequest(endpointId, spec.durationSec(), spec.instrumental());
 
         // ② 定价
-        long cost = modelClient.resolveCreditCost(spec.endpointId(), spec.durationSec());
+        long cost = modelClient.resolveCreditCost(endpointId, spec.durationSec());
 
         String id = "mgj_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         OffsetDateTime now = OffsetDateTime.now();
@@ -128,7 +129,7 @@ public class MusicGenJobService {
                 .gender(blankToNull(spec.gender()))
                 .instrumental(spec.instrumental())
                 .durationSec(spec.durationSec())
-                .optionsJson(optionsJson(spec.endpointId()))
+                .optionsJson(optionsJson(endpointId))
                 .status("queued")
                 .progress(0)
                 .createdAt(now)
@@ -139,7 +140,7 @@ public class MusicGenJobService {
         // ③ hold —— 余额不足抛 402，整个事务回滚，任务不落库
         if (cost > 0) {
             creditService.hold(ownerUserId, cost, CREDIT_REF_TYPE, id,
-                    "音乐创作 · " + (spec.instrumental() ? "纯音乐" : "歌曲") + " " + spec.durationSec() + "s");
+                    "音乐创作 · " + (spec.instrumental() ? "纯音乐" : "歌曲") + " " + spec.durationSec() + "s", com.aistareco.aep.billing.service.ModelChargeContext.forCredits(endpoint,cost));
             job.setCreditsHeld(cost);
         }
 

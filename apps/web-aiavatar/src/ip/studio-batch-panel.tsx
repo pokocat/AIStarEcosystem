@@ -1,4 +1,5 @@
 "use client";
+import { isStudioBillingCancelled } from "@/canvas-bridge/studio-billing-cancel";
 import { StudioErrorNotice, useStudioApp, useStudioErrorState } from './studio-errors';
 import { StudioAiIcon } from "./studio-ai-icon";
 import { StudioFloatingPanel } from "./studio-floating-panel";
@@ -58,10 +59,14 @@ export function StudioBatchPanel({projectId,nodes,shots,setNodes,setConnections,
           setNodes(list=>list.some(n=>n.id===target!.id)?list:[...list,placeStudioNode(target!,list)]);
           setConnections(list=>[...list,{id:nanoid(),fromNodeId:source.id,toNodeId:target!.id}]);
         }
+        const beforeSubmit=target;
         patch(target.id,n=>({...n,metadata:{...n.metadata,status:"loading",studio:{...n.metadata!.studio!,request:step.request,runId:step.runId}}}));
         await persist(); // the final request and identity reach the server before any paid submission
         if(stop.current||live.current.projectId!==project)break;
-        run=run?.status==="running"?run:await submitStudioRun(project,step.request);
+        try {run=run?.status==="running"?run:await submitStudioRun(project,step.request);}
+        catch(e){if(!isStudioBillingCancelled(e))throw e;
+          patch(target.id,n=>({...n,metadata:beforeSubmit.metadata}));step.request=undefined;await persist();return;
+        }
         step.runId=run.id;await persist();
         while(mounted.current&&live.current.projectId===project) {
           setRunMap(map=>({...map,[step.id]:run!}));patch(target.id,n=>applyStudioRun(n,run!));

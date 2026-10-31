@@ -10,6 +10,7 @@ import com.aistareco.aep.enterprise.service.*;
 import com.aistareco.aep.enrollment.model.ProductEnrollment.*;
 import com.aistareco.aep.enrollment.service.EnrollmentService;
 import com.aistareco.aep.ipstudio.model.IpRun;
+import com.aistareco.aep.ipstudio.service.IpRunService;
 import com.aistareco.aep.ipstudio.repository.IpRunRepository;
 import com.aistareco.aep.model.*;
 import com.aistareco.aep.repository.*;
@@ -39,7 +40,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test") @AutoConfigureMockMvc
 class EnterpriseLifecycleScenarioTest {
     @DynamicPropertySource static void database(DynamicPropertyRegistry r) {
-        String url=System.getProperty("enterprise.lifecycle.jdbc","jdbc:h2:mem:enterprise-lifecycle;MODE=MySQL;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=20000");
+        String url=System.getProperty("enterprise.lifecycle.jdbc","jdbc:h2:mem:enterprise-lifecycle;MODE=MySQL;DB_CLOSE_DELAY=-1;NON_KEYWORDS=CAST;LOCK_TIMEOUT=20000");
         r.add("spring.datasource.url",()->url);r.add("spring.datasource.driver-class-name",()->url.startsWith("jdbc:mysql:")?"com.mysql.cj.jdbc.Driver":"org.h2.Driver");
         r.add("spring.datasource.username",()->url.startsWith("jdbc:mysql:")?"root":"sa");r.add("spring.datasource.password",()->"");
     }
@@ -58,6 +59,19 @@ class EnterpriseLifecycleScenarioTest {
     @Autowired AiModelEndpointRepository endpoints; @Autowired PlatformTransactionManager transactions;
     @Autowired MockMvc mvc; @Autowired ObjectMapper json;
     @org.springframework.boot.test.mock.mockito.MockBean com.aistareco.aep.service.AiGenerationQueueDispatcher dispatcher;
+    @Autowired com.aistareco.aep.billing.service.ScopedCreditService scoped;
+    @Autowired com.aistareco.aep.billing.repository.CreditCampaignRepository campaigns;
+    @Autowired com.aistareco.aep.billing.repository.ModelDiscountRepository discounts;
+    @Autowired AdminUserRepository staff;
+    @Autowired AiAppEndpointCandidateRepository candidates;
+    @Autowired com.aistareco.aep.service.AiAppBindingService appBindings;
+    @Autowired com.aistareco.aep.service.AiAppSceneModelPolicyService scenePolicies;
+    @Autowired com.aistareco.aep.service.PlatformConfigService platformConfig;
+    @Autowired com.aistareco.aep.ipstudio.repository.IpProjectRepository projectRows;
+    @Autowired com.aistareco.aep.billing.repository.ModelPriceRepository modelPrices;
+    @Autowired com.aistareco.aep.billing.repository.ModelChargeRepository modelCharges;
+    @org.springframework.boot.test.mock.mockito.MockBean com.aistareco.aep.ipstudio.service.IpRunWorker imageWorker;
+
     String endpoint;
     @BeforeEach void model(){endpoint="life-"+UUID.randomUUID();endpoints.save(AiModelEndpoint.builder().id(endpoint).name("验收图片模型")
             .providerType(AiModelProviderType.OPENAI_COMPATIBLE).baseUrl("http://127.0.0.1:1").upstreamApiKeyEncrypted("test").model("local").modelAlias("验收图片模型").enabled(true).build());}
@@ -74,7 +88,7 @@ class EnterpriseLifecycleScenarioTest {
         points.submit(e.member().userId(),e.enterprise().id(),"allocate",new EnterprisePointsDtos.SubmitRequest(UUID.randomUUID().toString(),p.confirmationFingerprint(),items));}
     void policy(Context e,int cap){var p=enterprises.policy(e.member().userId(),e.enterprise().id());enterprises.updatePolicy(e.member().userId(),e.enterprise().id(),new PolicyUpdate(List.of(endpoint),cap,p.version()));}
     String task(Context m,long cost,boolean dispatched){String id="IPR-"+UUID.randomUUID().toString().substring(0,24);return new TransactionTemplate(transactions).execute(s->{
-        var a=billing.reserve(m.member().userId(),new BillingSelection("enterprise",m.enterprise().id()),"ip-run",id,endpoint,cost,"验收生成");
+        var a=billing.reserve(m.member().userId(),new BillingSelection("enterprise",m.enterprise().id()),"ip-run",id,endpoint,cost,"验收生成", com.aistareco.aep.billing.service.ModelChargeContext.NONE);
         runs.saveAndFlush(IpRun.builder().id(id).projectId("local-project").nodeId("node").ownerUserId(m.member().userId()).kind("generate").status("running").stage("queued").cost(cost)
                 .billingWalletId(a.walletId()).enterpriseId(a.enterpriseId()).membershipId(a.membershipId()).billingAuthorizationId(a.billingAuthorizationId()).createdAt(Instant.now()).heartbeatAt(Instant.now()).build());
         if(dispatched)billing.requireDispatchAllowed("ip-run",id,endpoint);return id;});}
@@ -82,7 +96,290 @@ class EnterpriseLifecycleScenarioTest {
         return lifecycle.apply(actor.member().userId(),actor.enterprise().id(),new EnterpriseLifecycleDtos.Request(action,target==null?null:target.member().id(),UUID.randomUUID().toString(),p.confirmationFingerprint()));}
     void release(String id){credits.releaseHold("ip-run",id,"供应商确定失败，退回原冻结");}
     long personal(Context m){return wallets.findByUserId(m.member().userId()).map(Wallet::getTotalBalance).orElse(0L);}
-    void settle(String id,long actual){new TransactionTemplate(transactions).executeWithoutResult(s->{billing.lockForSettlement("ip-run",id);credits.commitHold("ip-run",id,actual,"供应商实际结算");release(id);var r=runs.findById(id).orElseThrow();r.setStatus("done");r.setCost(actual);runs.save(r);billing.complete("ip-run",id);});}
+    void settle(String id,long actual){new TransactionTemplate(transactions).executeWithoutResult(s->{billing.lockForSettlement("ip-run",id);credits.commitHold("ip-run",id,actual,"供应商实际结算", null);release(id);var r=runs.findById(id).orElseThrow();r.setStatus("done");r.setCost(actual);runs.save(r);billing.complete("ip-run",id);});}
+
+    @Test void scopedAndDiscountedEnterprisePartialSpendPreservesOriginalRechargeLot() throws Exception {
+        var e=company();var m=join(e);policy(e,3);fund(e,100,LedgerEntry.LedgerEntryType.RECHARGE);
+        String order="scoped-order-"+UUID.randomUUID();lots.origin(root(e),order,100);allocate(e,m,100);
+        var target=new com.aistareco.aep.billing.service.ModelBillingTarget("aiavatar","image",endpoint,"local","standard","image");
+        var now=Instant.now();var until=now.plusSeconds(86400);
+        var campaign=new com.aistareco.aep.billing.model.CreditCampaign();campaign.setId(UUID.randomUUID().toString());campaign.setName("企业图片体验");
+        campaign.setTargetsJson(json.writeValueAsString(List.of(target)));campaign.setResourceUnit("image");
+        campaign.setTotalIssueLimit(100);campaign.setPerWalletIssueLimit(100);campaign.setResourceLimit(java.math.BigDecimal.TEN);
+        campaign.setPerWalletDailyResourceLimit(java.math.BigDecimal.TEN);campaign.setMaxConcurrentPerWallet(3);campaign.setActive(true);
+        campaign.setStartsAt(now.minusSeconds(1));campaign.setExpiresAt(until);campaign.setUpdatedAt(now);campaigns.saveAndFlush(campaign);
+        var grant=scoped.grant(wallet(m).getId(),campaign.getId(),15,until,"test",UUID.randomUUID().toString(),"企业体验","staff");
+        var discount=new com.aistareco.aep.billing.model.ModelDiscount();discount.setId(UUID.randomUUID().toString());discount.setName("企业八折");
+        discount.setTargetKey(target.endpointKey());discount.setTargetJson(json.writeValueAsString(target));discount.setAudience("enterprise");discount.setAudienceId(e.enterprise().id());
+        discount.setFactor(new java.math.BigDecimal("0.8"));discount.setAllowGrants(true);discount.setActive(true);discount.setStartsAt(now.minusSeconds(1));discount.setExpiresAt(until);discount.setUpdatedAt(now);discounts.saveAndFlush(discount);
+        var context=new com.aistareco.aep.billing.service.ModelChargeContext(target,
+                new com.aistareco.aep.billing.service.ModelBillingMath.Usage(new java.math.BigDecimal("3"),null),java.math.BigDecimal.TEN,null,"test-v1",false,9L,null);
+        String id="IPR-"+UUID.randomUUID();
+        billing.reserve(m.member().userId(),new BillingSelection("enterprise",e.enterprise().id()),"ip-run",id,endpoint,30,"三张图片",context);
+        assertEquals(9,wallet(m).getPendingBalance());assertEquals(91,wallet(m).getRechargeBalance());
+        var lot=lotRows.findByRechargeOrderIdAndWalletId(order,wallet(m).getId()).orElseThrow();assertEquals(9,lot.getFrozen());
+        billing.requireDispatchAllowed("ip-run",id,endpoint);credits.markModelDispatched("ip-run",id);
+        credits.commitHold("ip-run",id,20,"两张完成",new com.aistareco.aep.billing.service.ModelBillingMath.Usage(new java.math.BigDecimal("2"),null));
+        credits.releaseHold("ip-run",id,"第三张未完成");
+        assertEquals(0,wallet(m).getPendingBalance());assertEquals(99,wallet(m).getRechargeBalance());
+        lot=lotRows.findByRechargeOrderIdAndWalletId(order,wallet(m).getId()).orElseThrow();assertEquals(0,lot.getFrozen());assertEquals(99,lot.getAvailable());
+        var settled=scoped.list(wallet(m).getId()).stream().filter(g->g.getId().equals(grant.getId())).findFirst().orElseThrow();
+        assertEquals(15,settled.getSpent());assertEquals(0,settled.getFrozen());
+        assertEquals(0,personal(m));
+    }
+
+    @Test void endpointDiscountCoversEnterpriseOwnerExistingAndFutureMembersButNotPersonalWallets() {
+        var company=company();var existing=join(company);policy(company,3);
+        var context=com.aistareco.aep.billing.service.ModelChargeContext.forCredits(endpoints.findById(endpoint).orElseThrow(),100);
+        var discount=new com.aistareco.aep.billing.model.ModelDiscount();
+        discount.setId(UUID.randomUUID().toString());discount.setName("企业统一八折");discount.setTargetKey(context.target().endpointKey());
+        discount.setTargetJson(json.valueToTree(context.target()).toString());discount.setAudience("enterprise");discount.setAudienceId(company.enterprise().id());
+        discount.setFactor(new java.math.BigDecimal("0.8"));discount.setAllowGrants(true);discount.setActive(true);
+        discount.setStartsAt(Instant.now().minusSeconds(60));discount.setExpiresAt(Instant.now().plusSeconds(3600));discount.setUpdatedAt(Instant.now());discounts.save(discount);
+        var future=join(company);
+        for(var account:List.of(company,existing,future)) {
+            var quote=billing.quote(account.member().userId(),new BillingSelection("enterprise",company.enterprise().id()),context);
+            assertEquals(80,quote.payableCredits());assertEquals("企业统一八折",quote.discountName());
+            assertEquals(100,billing.quote(account.member().userId(),new BillingSelection("personal",null),context).payableCredits());
+        }
+    }
+
+    @Test void imageQuoteHttpUsesExistingEndpointPriceAndFreezesAcceptedPrice() throws Exception {
+        String actor=person(),project="IPP-"+UUID.randomUUID().toString().substring(0,20);
+        credits.creditAccount(actor,100,LedgerEntry.LedgerEntryType.RECHARGE,"test",UUID.randomUUID().toString(),"本地充值");
+        projectRows.saveAndFlush(com.aistareco.aep.ipstudio.model.IpProject.builder().id(project).ownerUserId(actor).name("报价验收")
+                .status("draft").docJson("{\"nodes\":[],\"connections\":[],\"viewport\":{\"x\":0,\"y\":0,\"k\":1}}")
+                .createdAt(Instant.now()).updatedAt(Instant.now()).build());
+        candidates.saveAndFlush(AiAppEndpointCandidate.builder().id(UUID.randomUUID().toString()).endpointId(endpoint).purpose(AiModelPurpose.DAP_IMAGE)
+                .creditCostOverride(10L).enabled(true).createdAt(Instant.now()).updatedAt(Instant.now()).build());
+        scenePolicies.save("studio","image",new com.aistareco.aep.dto.AiAppSceneModelPolicyDto("studio","image","fixed",endpoint,
+                List.of(new com.aistareco.aep.dto.AiAppSceneModelPolicyDto.Candidate(endpoint,10L,"per_image"))),"test");
+        try {
+            var target=new com.aistareco.aep.billing.service.ModelBillingTarget("aiavatar","image",endpoint,"local","1024x1024","image");
+            var body=json.createObjectNode().put("nodeId","image-node").put("prompt","本地报价").put("count",1).put("size","1024x1024").put("model",endpoint).put("clientRequestId","quote-first");
+            String path="/api/v1/ip-studio/projects/"+project;
+            long runCount=runs.count(),holdCount=holds.count(),ledgerCount=ledger.count();
+            var response=mvc.perform(post(path+"/image-quote").with(user(actor)).header("X-App-Code","aiavatar")
+                    .contentType("application/json").content(body.toString())).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.standardCredits").value(10)).andExpect(jsonPath("$.data.walletCredits").value(10))
+                    .andExpect(jsonPath("$.data.canAfford").value(true)).andReturn();
+            assertEquals(runCount,runs.count());assertEquals(holdCount,holds.count());assertEquals(ledgerCount,ledger.count());
+            assertEquals(100,wallets.findByUserId(actor).orElseThrow().getTotalBalance());
+            var workflowBody=body.deepCopy().put("operation","image").put("aspectRatio","1:1");
+            mvc.perform(post(path+"/studio-image-quote").with(user(actor)).header("X-App-Code","aiavatar").contentType("application/json").content(workflowBody.toString()))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.standardCredits").value(10));
+            var nodeDoc=json.createObjectNode();nodeDoc.putArray("connections");var metadata=nodeDoc.putArray("nodes").addObject().put("id","image-node").put("type","image").putObject("metadata");
+            metadata.put("prompt","只读报价不应保存文档").put("count",1).put("size","1024x1024").put("model",endpoint);
+            var nodeBody=json.createObjectNode();nodeBody.set("doc",nodeDoc);
+            mvc.perform(post(path+"/nodes/image-node/image-quote").with(user(actor)).header("X-App-Code","aiavatar").contentType("application/json").content(nodeBody.toString()))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.standardCredits").value(10));
+            assertTrue(json.readTree(projectRows.findById(project).orElseThrow().getDocJson()).path("nodes").isEmpty());
+            assertEquals(runCount,runs.count());assertEquals(holdCount,holds.count());
+            var approval=json.readTree(response.getResponse().getContentAsString()).path("data").path("approval");body.set("modelBilling",approval);
+            var submitted=mvc.perform(post(path+"/generate").with(user(actor)).header("X-App-Code","aiavatar")
+                    .contentType("application/json").content(body.toString())).andExpect(status().isOk()).andReturn();
+            String runId=json.readTree(submitted.getResponse().getContentAsString()).path("data").path("id").asText();
+            var submittedData=json.readTree(submitted.getResponse().getContentAsString()).path("data");
+            assertEquals(10,submittedData.path("cost").asLong());assertEquals(10,submittedData.path("output").path("billingBreakdown").path("pending").path("walletCredits").asLong());
+            var hold=holds.findByReferenceTypeAndReferenceId("ip-run",runId).orElseThrow();
+            assertEquals(10,hold.getAmount());assertEquals(10,hold.getFromGift());assertEquals(0,hold.getFromRecharge());assertEquals(10,modelCharges.findById(hold.getId()).orElseThrow().getPayableCredits());
+            scenePolicies.save("studio","image",new com.aistareco.aep.dto.AiAppSceneModelPolicyDto("studio","image","fixed",endpoint,
+                    List.of(new com.aistareco.aep.dto.AiAppSceneModelPolicyDto.Candidate(endpoint,1L,"per_image"))),"test");
+            mvc.perform(post(path+"/generate").with(user(actor)).header("X-App-Code","aiavatar").contentType("application/json").content(body.toString()))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.id").value(runId));
+            mvc.perform(get(path+"/billing-selection").with(user(actor)).header("X-App-Code","aiavatar").param("clientRequestId","quote-first"))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.modelBilling.priceVersion").value(approval.path("priceVersion").asText()));
+            body.put("clientRequestId","quote-changed").put("nodeId","another-image-node");
+            mvc.perform(post(path+"/generate").with(user(actor)).header("X-App-Code","aiavatar").contentType("application/json").content(body.toString()))
+                    .andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("MODEL_QUOTE_CHANGED"));
+            assertEquals(runCount+1,runs.count());assertEquals(holdCount+1,holds.count());
+            mvc.perform(post(path+"/image-quote").with(user(person())).header("X-App-Code","aiavatar").contentType("application/json").content(body.toString())).andExpect(status().isNotFound());
+        } finally {platformConfig.delete("ai.scene-policy.studio.image");}
+    }
+
+    @Test void enterpriseReadOnlyQuoteAllowsMatchingGrantWithZeroOrdinaryBalanceAndEnforcesPolicy() throws Exception {
+        var e=company();var m=join(e);policy(e,2);
+        var target=new com.aistareco.aep.billing.service.ModelBillingTarget("aiavatar","image",endpoint,"local","1024x1024","image");
+        Instant until=Instant.now().plusSeconds(3600);var campaign=new com.aistareco.aep.billing.model.CreditCampaign();
+        campaign.setId(UUID.randomUUID().toString());campaign.setName("企业图片体验");campaign.setTargetsJson(json.writeValueAsString(List.of(target)));campaign.setResourceUnit("image");
+        campaign.setTotalIssueLimit(100);campaign.setPerWalletIssueLimit(100);campaign.setResourceLimit(java.math.BigDecimal.TEN);
+        campaign.setPerWalletDailyResourceLimit(java.math.BigDecimal.TEN);campaign.setMaxConcurrentPerWallet(2);campaign.setActive(true);
+        campaign.setStartsAt(Instant.now().minusSeconds(10));campaign.setExpiresAt(until);campaign.setUpdatedAt(Instant.now());campaigns.saveAndFlush(campaign);
+        scoped.grant(wallet(m).getId(),campaign.getId(),20,until,"test",UUID.randomUUID().toString(),"体验","staff");
+        var context=new com.aistareco.aep.billing.service.ModelChargeContext(target,new com.aistareco.aep.billing.service.ModelBillingMath.Usage(java.math.BigDecimal.ONE,null),java.math.BigDecimal.TEN,null,"test",true,0L,null);
+        long before=auths.count(),holdCount=holds.count();
+        var quote=billing.quote(m.member().userId(),new BillingSelection("enterprise",e.enterprise().id()),context);
+        assertTrue(quote.canAfford());assertEquals(10,quote.scopedCredits());assertEquals(0,quote.walletCredits());assertEquals(wallet(m).getId(),quote.approval().walletId());
+        assertEquals(before,auths.count());assertEquals(holdCount,holds.count());assertEquals(0,wallet(m).getPendingBalance());
+        var p=enterprises.policy(e.member().userId(),e.enterprise().id());enterprises.updatePolicy(e.member().userId(),e.enterprise().id(),new PolicyUpdate(List.of(),2,p.version()));
+        assertThrows(BusinessException.class,()->billing.quote(m.member().userId(),new BillingSelection("enterprise",e.enterprise().id()),context));
+    }
+
+    @Test void endpointGrantCampaignNeedsOnlyCreditsAndExpiryWithoutSupplierResourceSettings() throws Exception {
+        var target=new com.aistareco.aep.billing.service.ModelBillingTarget("endpoint","model",endpoint,"local","*","call");
+        var body=json.createObjectNode().put("name","接入点赠款").put("totalIssueLimit",300).put("perWalletIssueLimit",100)
+                .put("startsAt",Instant.now().minusSeconds(30).toString()).put("expiresAt",Instant.now().plusSeconds(3600).toString()).put("active",true);
+        body.putArray("targets").add(json.valueToTree(target));
+        mvc.perform(post("/api/admin/model-billing/campaigns").with(user("operator-test").roles("OPERATOR"))
+                .contentType("application/json").content(body.toString())).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalIssueLimit").value(300)).andExpect(jsonPath("$.data.perWalletIssueLimit").value(100));
+    }
+
+    @Test void modelCreditAdminDoesNotIntroduceASecondStandardPriceSource() throws Exception {
+        var target=new com.aistareco.aep.billing.service.ModelBillingTarget("endpoint","model",endpoint,"local","*","call");
+        var body=json.createObjectNode().put("name","重复价格").put("unitPrice",10).put("active",true);body.set("target",json.valueToTree(target));
+        mvc.perform(post("/api/admin/model-billing/prices").with(user("operator-test").roles("OPERATOR"))
+                .contentType("application/json").content(body.toString())).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("MODEL_PRICE_USE_ENDPOINT_CONFIG"));
+    }
+
+    @Test void scopedBalanceEndpointNeverAcceptsAnotherPersonsWallet() throws Exception {
+        var e=company();var m=join(e);var outsider=person();
+        String path="/api/me/model-credits";
+        mvc.perform(get(path).with(user(m.member().userId())).header("X-App-Code","aiavatar").param("enterpriseId",e.enterprise().id()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.pagination.total").value(0));
+        mvc.perform(get(path).with(user(outsider)).header("X-App-Code","aiavatar").param("enterpriseId",e.enterprise().id()))
+                .andExpect(status().isForbidden());
+        mvc.perform(get(path).with(user(outsider)).header("X-App-Code","aiavatar").param("walletId",wallet(m).getId()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.pagination.total").value(0));
+        mvc.perform(get(path)).andExpect(status().isUnauthorized());
+    }
+
+    @Test void scopedGrantHttpFlowEnforcesAdminRolesAndShowsApprovedMemberBalance() throws Exception {
+        var e=company();var m=join(e);
+        var target=new com.aistareco.aep.billing.service.ModelBillingTarget("aiavatar","image",endpoint,"local","standard","image");
+        // 截到毫秒：Linux 上 Instant.now() 带纳秒，存进 TIMESTAMP(6) 会四舍五入，约一半概率入库值比传入值晚一点，
+        // 下面原样回传同一个 until 就被判成「缩短有效期」（CI 上偶发红、macOS 只给到微秒所以本机总是绿）。
+        // 真实前端回传的是服务端返回、已按库精度存过的值。
+        Instant now=Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MILLIS),until=now.plusSeconds(86400);
+        var campaign=new com.aistareco.aep.billing.service.ModelBillingConfigService.CampaignInput(
+                "审批验收",List.of(target),100000,100000,java.math.BigDecimal.TEN,java.math.BigDecimal.TEN,3,now.minusSeconds(1),until,true,null);
+        var created=mvc.perform(post("/api/admin/model-billing/campaigns").with(user("config-staff").roles("OPERATOR"))
+                .contentType("application/json").content(json.writeValueAsString(campaign))).andExpect(status().isOk()).andReturn();
+        String campaignId=json.readTree(created.getResponse().getContentAsString()).path("data").path("id").asText();
+        String maker="ops-"+UUID.randomUUID(),checker="ops-"+UUID.randomUUID();
+        staff.saveAndFlush(AdminUser.builder().id(maker).username(maker).role(AdminUser.AdminRole.OPERATOR).status(AdminUser.AdminStatus.ACTIVE).build());
+        staff.saveAndFlush(AdminUser.builder().id(checker).username(checker).role(AdminUser.AdminRole.FINANCE_ADMIN).status(AdminUser.AdminStatus.ACTIVE).build());
+        String path="/api/admin/finance/adjustments";
+        var request=new com.aistareco.aep.controller.AdminCreditOpsController.ScopedGrantRequest(wallet(m).getId(),campaignId,6000,until,"http-retry","企业模型体验");
+        String body=json.writeValueAsString(request);
+        mvc.perform(post(path+"/scoped-grant").with(user(m.member().userId())).contentType("application/json").content(body)).andExpect(status().isForbidden());
+        var response=mvc.perform(post(path+"/scoped-grant").with(user(maker).roles("OPERATOR")).contentType("application/json").content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("pending_approval")).andReturn();
+        String id=json.readTree(response.getResponse().getContentAsString()).path("data").path("id").asText();
+        mvc.perform(post(path+"/requests/"+id+"/approve").with(user(maker).roles("OPERATOR"))).andExpect(status().isForbidden());
+        mvc.perform(post(path+"/requests/"+id+"/approve").with(user(checker).roles("FINANCE_ADMIN")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.type").value("scoped_grant"))
+                .andExpect(jsonPath("$.data.grantId").isString()).andExpect(jsonPath("$.data.ledgerEntryId").isString());
+        mvc.perform(post(path+"/scoped-grant").with(user(maker).roles("OPERATOR")).contentType("application/json").content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.id").value(id)).andExpect(jsonPath("$.data.status").value("approved"));
+        mvc.perform(get("/api/me/model-credits").with(user(m.member().userId())).header("X-App-Code","aiavatar").param("enterpriseId",e.enterprise().id()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].available").value(6000));
+        assertEquals(0,wallet(m).getTotalBalance());assertEquals(0,personal(m));
+        // Issued grants follow their campaign, so its endpoints are frozen; other fields stay editable.
+        String other="life-other-"+UUID.randomUUID();
+        endpoints.save(AiModelEndpoint.builder().id(other).name("另一个模型").providerType(AiModelProviderType.OPENAI_COMPATIBLE).baseUrl("http://127.0.0.1:1")
+                .upstreamApiKeyEncrypted("test").model("other").modelAlias("另一个模型").enabled(true).build());
+        var widened=new com.aistareco.aep.billing.service.ModelBillingTarget("aiavatar","image",other,"other","standard","image");
+        long version=campaigns.findById(campaignId).orElseThrow().getVersion();
+        var retarget=new com.aistareco.aep.billing.service.ModelBillingConfigService.CampaignInput(
+                "审批验收",List.of(target,widened),100000,100000,java.math.BigDecimal.TEN,java.math.BigDecimal.TEN,3,now.minusSeconds(1),until,true,version);
+        mvc.perform(put("/api/admin/model-billing/campaigns/"+campaignId).with(user("config-staff").roles("OPERATOR"))
+                .contentType("application/json").content(json.writeValueAsString(retarget)))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.code").value("SCOPED_CAMPAIGN_TARGETS_LOCKED"));
+        var renamed=new com.aistareco.aep.billing.service.ModelBillingConfigService.CampaignInput(
+                "审批验收（改名）",List.of(target),100000,100000,java.math.BigDecimal.TEN,java.math.BigDecimal.TEN,3,now.minusSeconds(1),until,true,version);
+        mvc.perform(put("/api/admin/model-billing/campaigns/"+campaignId).with(user("config-staff").roles("OPERATOR"))
+                .contentType("application/json").content(json.writeValueAsString(renamed)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.name").value("审批验收（改名）"));
+    }
+
+    @Test void modelBillingAccountChoicesSearchOwnersAndExcludeEnterpriseTreasury() throws Exception {
+        var e=company();var m=join(e);String label="额度查找_"+UUID.randomUUID();
+        var person=users.findById(m.member().userId()).orElseThrow();person.setDisplayName(label);users.saveAndFlush(person);
+        credits.creditAccount(person.getId(),10,LedgerEntry.LedgerEntryType.GIFT,"fixture",UUID.randomUUID().toString(),"本地测试");
+        String path="/api/admin/model-billing/wallet-options";
+        mvc.perform(get(path).with(user("finance-test").roles("FINANCE_ADMIN")).param("q",label).param("size","1"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.pagination.total").value(2)).andExpect(jsonPath("$.pagination.hasNext").value(true))
+                .andExpect(jsonPath("$.data[0].displayName").value(label));
+        mvc.perform(get(path).with(user("operator-test").roles("OPERATOR")).param("q",label).param("accountType","enterprise_member"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.pagination.total").value(1))
+                .andExpect(jsonPath("$.data[0].id").value(wallet(m).getId())).andExpect(jsonPath("$.data[0].enterpriseName").value(e.enterprise().name()));
+        mvc.perform(get(path).with(user("operator-test").roles("OPERATOR")).param("q","%"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.pagination.total").value(0));
+        mvc.perform(get(path).with(user("operator-test").roles("OPERATOR")).param("accountType","enterprise"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(get(path).with(user(person.getId()))).andExpect(status().isForbidden());
+        mvc.perform(get("/api/admin/model-billing/enterprise-options").with(user("operator-test").roles("OPERATOR")).param("q",e.enterprise().id()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].name").value(e.enterprise().name()));
+    }
+
+    @Test void endpointCatalogDoesNotDuplicateModelsForAppsOrSpecifications() throws Exception {
+        var video=endpoints.findById(endpoint).orElseThrow();video.setModel("minimax-h3");video.setBaseUrl("https://jusuanhub.example.test");
+        video.setBillingMode(AiModelBillingMode.PER_SECOND);video.setUpstreamApiKeyEncrypted(com.aistareco.common.AepCryptoUtil.encrypt("unused-test-key"));endpoints.saveAndFlush(video);
+        candidates.saveAndFlush(AiAppEndpointCandidate.builder().id(UUID.randomUUID().toString()).endpointId(endpoint).purpose(AiModelPurpose.VIDEO_GENERATION)
+                .creditCostOverride(40L).enabled(true).createdAt(Instant.now()).updatedAt(Instant.now()).build());
+        scenePolicies.saveStudioVideoGroup(new com.aistareco.aep.service.AiAppSceneModelPolicyService.VideoGroup(endpoint,List.of(endpoint)),"test");
+        appBindings.bind(AiModelPurpose.VIDEO_GENERATION,endpoint);
+        try {
+            var result=mvc.perform(get("/api/admin/model-billing/targets").with(user("operator-test").roles("OPERATOR")))
+                    .andExpect(status().isOk()).andReturn();
+            var rows=json.readTree(result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8)).path("data");int scopes=0;
+            for(var row:rows)if(endpoint.equals(row.path("target").path("endpointId").asText())) {
+                scopes++;assertEquals("*",row.path("target").path("specKey").asText());assertEquals("call",row.path("target").path("unit").asText());
+                assertEquals(endpoint,row.path("id").asText());
+            }
+            assertEquals(1,scopes); // One existing endpoint, regardless of product or call type.
+            assertFalse(result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8).contains("unused-test-key"));
+            String actor=person(),project="IPP-"+UUID.randomUUID().toString().substring(0,20);
+            credits.creditAccount(actor,500,LedgerEntry.LedgerEntryType.RECHARGE,"test",UUID.randomUUID().toString(),"本地余额");
+            projectRows.saveAndFlush(com.aistareco.aep.ipstudio.model.IpProject.builder().id(project).ownerUserId(actor).name("视频报价")
+                    .status("draft").docJson("{\"nodes\":[],\"connections\":[]}").createdAt(Instant.now()).updatedAt(Instant.now()).build());
+            var body=json.createObjectNode().put("clientRequestId","video-quote").put("nodeId","video").put("operation","video").put("prompt","本地视频报价")
+                    .put("durationSec",5).put("aspectRatio","16:9").put("count",2).put("model",endpoint);
+            body.putObject("video").put("mode","t2v").put("resolutionTier","768p");
+            long taskCount=runs.count(),holdCount=holds.count();
+            mvc.perform(post("/api/v1/ip-studio/projects/"+project+"/studio-video-quote").with(user(actor)).header("X-App-Code","aiavatar")
+                    .contentType("application/json").content(body.toString())).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.usage.quantity").value(10)).andExpect(jsonPath("$.data.standardCredits").value(400)).andExpect(jsonPath("$.data.canAfford").value(true));
+            mvc.perform(post("/api/v1/ip-studio/projects/"+project+"/video-quote").with(user(actor)).header("X-App-Code","aiavatar").param("freeOnly","true")
+                    .contentType("application/json").content(body.toString())).andExpect(status().isOk()).andExpect(jsonPath("$.data.canAfford").value(false));
+            enrollment.upsert(actor,"celebrity",EnrollmentStatus.ACTIVE,EnrollmentSource.ADMIN,null);
+            var standalone=json.createObjectNode().put("endpointId",endpoint).put("mode","t2v").put("prompt","本地视频报价")
+                    .put("resolutionTier","768p").put("aspectRatio","16:9").put("seconds",5);
+            mvc.perform(post("/api/me/celebrity/video-studio/quote").with(user(actor)).header("X-App-Code","celebrity")
+                    .contentType("application/json").content(standalone.toString())).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.usage.quantity").value(5)).andExpect(jsonPath("$.data.standardCredits").value(200))
+                    .andExpect(jsonPath("$.data.target.appCode").value("celebrity"));
+            assertEquals(taskCount,runs.count());assertEquals(holdCount,holds.count());assertEquals(500,wallets.findByUserId(actor).orElseThrow().getRechargeBalance());
+        } finally {platformConfig.delete("ai.app-model-group.studio.video");appBindings.unbind(AiModelPurpose.VIDEO_GENERATION);}
+    }
+
+    @Test void modelBillingTargetCatalogUsesExistingEndpointRowsAndNeverReturnsSecrets() throws Exception {
+        String path="/api/admin/model-billing/targets";
+        var response=mvc.perform(get(path).with(user("operator-test").roles("OPERATOR")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data[?(@.id == '"+endpoint+"')].target.endpointId").value(org.hamcrest.Matchers.contains(endpoint))).andReturn();
+        String content=response.getResponse().getContentAsString();assertFalse(content.contains("upstreamApiKey"));assertFalse(content.contains("baseUrl"));
+        var model=endpoints.findById(endpoint).orElseThrow();model.setEnabled(false);endpoints.saveAndFlush(model);
+        mvc.perform(get(path).with(user("operator-test").roles("OPERATOR")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data[?(@.id == '"+endpoint+"')]").isEmpty());
+    }
+
+    @Test void configuredDiscountRequiresRealAudienceAndReturnsItsReadableName() throws Exception {
+        String user=person();var target=new com.aistareco.aep.billing.service.ModelBillingTarget("aiavatar","image",endpoint,"local","1024x1024","image");
+        assertTrue(wallets.findByUserId(user).isEmpty());
+        mvc.perform(get("/api/admin/model-billing/user-options").with(user("operator-test").roles("OPERATOR")).param("q",user))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].id").value(user)).andExpect(jsonPath("$.pagination.total").value(1));
+        mvc.perform(get("/api/admin/model-billing/user-options").with(user(user)))
+                .andExpect(status().isForbidden());
+        var now=Instant.now();String path="/api/admin/model-billing/discounts";
+        var invalid=new com.aistareco.aep.billing.service.ModelBillingConfigService.DiscountInput("八折",target,"user","missing-user",new java.math.BigDecimal("0.8"),true,now,now.plusSeconds(3600),true,null);
+        mvc.perform(post(path).with(user("operator-test").roles("OPERATOR")).contentType("application/json").content(json.writeValueAsString(invalid)))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.code").value("MODEL_DISCOUNT_AUDIENCE_INVALID"));
+        var valid=new com.aistareco.aep.billing.service.ModelBillingConfigService.DiscountInput("八折",target,"user",user,new java.math.BigDecimal("0.8"),false,now,now.plusSeconds(3600),true,null);
+        mvc.perform(post(path).with(user("operator-test").roles("OPERATOR")).contentType("application/json").content(json.writeValueAsString(valid)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.audienceLabel").value("验收成员")).andExpect(jsonPath("$.data.allowGrants").value(true));
+    }
 
     @Test void suspendCancelsQueuedCollectsAvailableAndPreservesPersonal() {
         var e=company();var m=join(e);policy(e,3);fund(e,100,LedgerEntry.LedgerEntryType.GIFT);allocate(e,m,100);
@@ -141,16 +438,16 @@ class EnterpriseLifecycleScenarioTest {
     @Test void disablingNewEnterpriseBusinessStillSettlesExistingOriginalHold() {
         var e=company();var m=join(e);policy(e,2);fund(e,100,LedgerEntry.LedgerEntryType.GIFT);allocate(e,m,100);String id=task(m,30,true);
         var disabled=new EnterpriseBillingService(enterpriseRows,policyRows,auths,access,wallets,holds,credits,json,em,false);
-        var error=assertThrows(BusinessException.class,()->new TransactionTemplate(transactions).execute(st->disabled.reserve(m.member().userId(),new BillingSelection("enterprise",e.enterprise().id()),"ip-run","disabled",endpoint,1,"new")));
+        var error=assertThrows(BusinessException.class,()->new TransactionTemplate(transactions).execute(st->disabled.reserve(m.member().userId(),new BillingSelection("enterprise",e.enterprise().id()),"ip-run","disabled",endpoint,1,"new", com.aistareco.aep.billing.service.ModelChargeContext.NONE)));
         assertEquals("ENTERPRISE_BILLING_DISABLED",error.getCode());
-        new TransactionTemplate(transactions).executeWithoutResult(st->{disabled.lockForSettlement("ip-run",id);credits.commitHold("ip-run",id,20,"实耗");release(id);disabled.complete("ip-run",id);});
+        new TransactionTemplate(transactions).executeWithoutResult(st->{disabled.lockForSettlement("ip-run",id);credits.commitHold("ip-run",id,20,"实耗", null);release(id);disabled.complete("ip-run",id);});
         assertEquals(80,wallet(m).getTotalBalance());assertEquals(0,wallet(m).getPendingBalance());assertNotNull(auths.findByReferenceTypeAndReferenceId("ip-run",id).orElseThrow().getTerminalAt());
     }
     @Test void enterpriseAllowlistOnlyBlocksNewReservationsAndKeepsExistingSettlement() {
         var e=company();var m=join(e);policy(e,2);fund(e,100,LedgerEntry.LedgerEntryType.GIFT);allocate(e,m,100);String id=task(m,30,true);
         var scoped=new EnterpriseBillingService(enterpriseRows,policyRows,auths,access,wallets,holds,credits,json,em,true);
         org.springframework.test.util.ReflectionTestUtils.setField(scoped,"allowedIds","another-enterprise");
-        var error=assertThrows(BusinessException.class,()->new TransactionTemplate(transactions).execute(st->scoped.reserve(m.member().userId(),new BillingSelection("enterprise",e.enterprise().id()),"ip-run","outside-rollout",endpoint,1,"new")));
+        var error=assertThrows(BusinessException.class,()->new TransactionTemplate(transactions).execute(st->scoped.reserve(m.member().userId(),new BillingSelection("enterprise",e.enterprise().id()),"ip-run","outside-rollout",endpoint,1,"new", com.aistareco.aep.billing.service.ModelChargeContext.NONE)));
         assertEquals("ENTERPRISE_BILLING_NOT_ENABLED",error.getCode());
         new TransactionTemplate(transactions).executeWithoutResult(st->{scoped.lockForSettlement("ip-run",id);release(id);scoped.complete("ip-run",id);});assertEquals(100,wallet(m).getTotalBalance());
     }

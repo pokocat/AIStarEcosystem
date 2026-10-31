@@ -70,7 +70,7 @@ class StudioDialogueSettlementTest {
 
     @Test void completedTurnCommitsActualUsageAndReleasesTheRest() throws Exception {
         worker.finish("IPR-1", usage(DialogueLoop.Reason.COMPLETED, 1000, 500), null); // (1000×1 + 500×2) / 1000 = 2
-        verify(credits).commitHold(IpRunService.REF_TYPE, "IPR-1", 2L, "Studio 对话实际结算");
+        verify(credits).commitHold(IpRunService.REF_TYPE, "IPR-1", 2L, "Studio 对话实际结算", null);
         verify(credits).releaseHold(eq(IpRunService.REF_TYPE), eq("IPR-1"), anyString());
         assertEquals("done", run.getStatus());
         assertEquals(2L, run.getCost());
@@ -91,7 +91,7 @@ class StudioDialogueSettlementTest {
     @Test void failureReleasesTheWholeHoldAndSaysWhy() throws Exception {
         worker.finish("IPR-1", usage(DialogueLoop.Reason.COMPLETED, 1000, 500),
                 new BusinessException(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "AI 生成失败，请稍后重试"));
-        verify(credits, never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+        verify(credits, never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
         verify(credits).releaseHold(eq(IpRunService.REF_TYPE), eq("IPR-1"), anyString());
         assertEquals("failed", run.getStatus());
         assertEquals(0L, run.getCost());
@@ -107,7 +107,7 @@ class StudioDialogueSettlementTest {
 
     @Test void usageBeyondTheApprovedCeilingIsNeverCharged() {
         worker.finish("IPR-1", usage(DialogueLoop.Reason.COMPLETED, 20_000, 500), null);
-        verify(credits, never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+        verify(credits, never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
         assertEquals("failed", run.getStatus());
         assertEquals("AI_USAGE_LIMIT", run.getErrorCode());
     }
@@ -118,7 +118,7 @@ class StudioDialogueSettlementTest {
         worker.finish("IPR-1", new StudioDialogueTurnWorker.Settlement(
                 new DialogueLoop.Outcome(DialogueLoop.Reason.COMPLETED, null, 50, 30, 25), 12000, 500, rate, 50, null, List.of()), null);
         assertEquals("done", run.getStatus()); assertEquals(13, run.getCost());
-        verify(credits).commitHold(IpRunService.REF_TYPE, "IPR-1", 13, "Studio 对话实际结算");
+        verify(credits).commitHold(IpRunService.REF_TYPE, "IPR-1", 13, "Studio 对话实际结算", null);
         verify(credits).releaseHold(eq(IpRunService.REF_TYPE), eq("IPR-1"), anyString());
     }
 
@@ -126,13 +126,13 @@ class StudioDialogueSettlementTest {
         worker.finish("IPR-1", new StudioDialogueTurnWorker.Settlement(
                 new DialogueLoop.Outcome(DialogueLoop.Reason.COMPLETED, null, 50, 30, 25), 15000, 500, rate, 50, null, List.of()), null);
         assertEquals("failed", run.getStatus()); assertEquals("AI_USAGE_LIMIT", run.getErrorCode());
-        verify(credits, never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+        verify(credits, never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test void interruptedBeforeAnyCallReleasesEverything() throws Exception {
         run.setCancelRequested(true);
         worker.finish("IPR-1", null, null);
-        verify(credits, never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+        verify(credits, never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
         verify(credits).releaseHold(eq(IpRunService.REF_TYPE), eq("IPR-1"), anyString());
         assertEquals(0L, run.getCost());
         assertEquals("interrupted", assistant.getStatus());
@@ -216,7 +216,7 @@ class StudioDialogueSettlementTest {
     /** The hidden safety net ends the chain as failed, still charging the real usage, with one plain line. */
     @Test void theSafetyNetEndsAsFailedAndStillChargesRealUsage() throws Exception {
         worker.finish("IPR-1", limited("safeguard"), null);
-        verify(credits).commitHold(IpRunService.REF_TYPE, "IPR-1", 1L, "Studio 对话实际结算");
+        verify(credits).commitHold(IpRunService.REF_TYPE, "IPR-1", 1L, "Studio 对话实际结算", null);
         assertEquals("failed", turnDone().path("reason").asText());
         assertEquals("failed", assistant.getStatus());
         assertEquals("failed", systemNotes().get(0).getStatus());
@@ -251,9 +251,9 @@ class StudioDialogueSettlementTest {
     @Test void addedHoldsAreSettledInOrderAndTheRestReleased() throws Exception {
         threeHolds();
         worker.finish("IPR-1", usage(DialogueLoop.Reason.COMPLETED, 20_000, 1_000), null); // 20 + 2 = 22 credits
-        verify(credits).commitHold(IpRunService.REF_TYPE, "IPR-1", 14L, "Studio 对话实际结算");
-        verify(credits).commitHold(IpRunService.REF_TYPE, "IPR-1#1", 8L, "Studio 对话实际结算");
-        verify(credits, never()).commitHold(eq(IpRunService.REF_TYPE), eq("IPR-1#2"), anyLong(), anyString());
+        verify(credits).commitHold(IpRunService.REF_TYPE, "IPR-1", 14L, "Studio 对话实际结算", null);
+        verify(credits).commitHold(IpRunService.REF_TYPE, "IPR-1#1", 8L, "Studio 对话实际结算", null);
+        verify(credits, never()).commitHold(eq(IpRunService.REF_TYPE), eq("IPR-1#2"), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
         verify(credits, never()).releaseHold(eq(IpRunService.REF_TYPE), eq("IPR-1"), anyString());
         verify(credits).releaseHold(eq(IpRunService.REF_TYPE), eq("IPR-1#1"), anyString());
         verify(credits).releaseHold(eq(IpRunService.REF_TYPE), eq("IPR-1#2"), anyString());
@@ -266,7 +266,7 @@ class StudioDialogueSettlementTest {
     @Test void usageBeyondAllHoldsIsNeverCharged() {
         threeHolds();
         worker.finish("IPR-1", usage(DialogueLoop.Reason.COMPLETED, 40_000, 2_000), null); // 44 > 42
-        verify(credits, never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+        verify(credits, never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
         assertEquals("AI_USAGE_LIMIT", run.getErrorCode());
         for (String ref : List.of("IPR-1", "IPR-1#1", "IPR-1#2")) verify(credits).releaseHold(eq(IpRunService.REF_TYPE), eq(ref), anyString());
     }
@@ -285,13 +285,13 @@ class StudioDialogueSettlementTest {
         when(runs.findById("IPR-1")).thenReturn(Optional.of(run));
         assertTrue(worker.expireIfStale("IPR-1"));
         for (String ref : List.of("IPR-1", "IPR-1#1", "IPR-1#2")) verify(credits).releaseHold(eq(IpRunService.REF_TYPE), eq(ref), anyString());
-        verify(credits, never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+        verify(credits, never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
     }
 
     /** §2: the wallet ran out: one line, the recharge link, the work kept, every hold settled, no 「继续」. */
     @Test void outOfCreditsEndsWithOneLineAndARechargeLink() throws Exception {
         worker.finish("IPR-1", outOfCredits(new StudioDialogueTurnWorker.HoldRefusal(true, StudioDialogueTurnWorker.OUT_OF_CREDITS)), null);
-        verify(credits).commitHold(IpRunService.REF_TYPE, "IPR-1", 11L, "Studio 对话实际结算");
+        verify(credits).commitHold(IpRunService.REF_TYPE, "IPR-1", 11L, "Studio 对话实际结算", null);
         verify(credits).releaseHold(eq(IpRunService.REF_TYPE), eq("IPR-1"), anyString());
         var notes = systemNotes();
         assertEquals(1, notes.size());
@@ -319,9 +319,9 @@ class StudioDialogueSettlementTest {
                 + "\"holdIncrement\":14,\"holdRefs\":[{\"ref\":\"IPR-1\",\"amount\":14}]}}");
         when(credits.getOrCreateWallet("u1")).thenReturn(wallet(100));
         assertEquals(14L, worker.extendHold("IPR-1", 5));
-        verify(credits).hold("u1", 14L, IpRunService.REF_TYPE, "IPR-1#1", "Studio 对话 · 追加冻结");
+        verify(credits).hold("u1", 14L, IpRunService.REF_TYPE, "IPR-1#1", "Studio 对话 · 追加冻结", com.aistareco.aep.billing.service.ModelChargeContext.NONE);
         assertEquals(30L, worker.extendHold("IPR-1", 30), "the call needs more than one increment");
-        verify(credits).hold("u1", 30L, IpRunService.REF_TYPE, "IPR-1#2", "Studio 对话 · 追加冻结");
+        verify(credits).hold("u1", 30L, IpRunService.REF_TYPE, "IPR-1#2", "Studio 对话 · 追加冻结", com.aistareco.aep.billing.service.ModelChargeContext.NONE);
         var refs = mapper.readTree(run.getInputJson()).path("_exec").path("holdRefs");
         assertEquals(3, refs.size());
         assertEquals("IPR-1#2", refs.get(2).path("ref").asText());
@@ -336,13 +336,13 @@ class StudioDialogueSettlementTest {
         when(credits.getOrCreateWallet("u1")).thenReturn(wallet(3));
         var refused = assertThrows(StudioDialogueTurnWorker.HoldRefused.class, () -> worker.extendHold("IPR-1", 5));
         assertTrue(refused.refusal.balance());
-        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
+        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     /** The ledger refuses (402 under its lock): a balance refusal too, and the run is left as it was. */
     @Test void aLedgerRefusalIsABalanceRefusal() {
         when(credits.getOrCreateWallet("u1")).thenReturn(wallet(100));
-        when(credits.hold(anyString(), anyLong(), anyString(), anyString(), anyString()))
+        when(credits.hold(anyString(), anyLong(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class)))
                 .thenThrow(new org.springframework.web.server.ResponseStatusException(HttpStatus.PAYMENT_REQUIRED, "积分余额不足"));
         String before = run.getInputJson();
         var refused = assertThrows(StudioDialogueTurnWorker.HoldRefused.class, () -> worker.extendHold("IPR-1", 5));
@@ -356,7 +356,7 @@ class StudioDialogueSettlementTest {
         when(credits.getOrCreateWallet("u1")).thenReturn(wallet(100));
         run.setCancelRequested(true);
         assertEquals(0L, worker.extendHold("IPR-1", 5));
-        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
+        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     /** §7: a running dialogue task with a live heartbeat owns its hold; without one it is not live. */

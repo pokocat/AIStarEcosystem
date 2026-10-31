@@ -1,0 +1,1709 @@
+{
+  "_comment": "Studio 场景目录唯一真源（AI 图片 / AI 视频 / 首页目标卡共用）。改场景只改这里；前端经 GET /api/v1/ip-studio/scenes 读取。见 docs/studio-scene-creation.md。",
+  "version": 1,
+  "imageGroups": [
+    {
+      "id": "ip",
+      "title": "IP 形象"
+    },
+    {
+      "id": "person",
+      "title": "人物"
+    },
+    {
+      "id": "product",
+      "title": "商品"
+    },
+    {
+      "id": "scene",
+      "title": "场景"
+    },
+    {
+      "id": "enhance",
+      "title": "画质"
+    }
+  ],
+  "videoGroups": [
+    {
+      "id": "commerce",
+      "title": "电商带货"
+    },
+    {
+      "id": "local",
+      "title": "同城到店"
+    },
+    {
+      "id": "brand",
+      "title": "品牌广告"
+    },
+    {
+      "id": "drama",
+      "title": "剧情短片"
+    },
+    {
+      "id": "ip",
+      "title": "IP 内容"
+    }
+  ],
+  "image": [
+    {
+      "id": "free",
+      "group": "ip",
+      "title": "自由出图",
+      "description": "自己写描述，可以放几张参考图",
+      "refs": [
+        {
+          "label": "参考图 1",
+          "required": false,
+          "hint": null
+        },
+        {
+          "label": "参考图 2",
+          "required": false,
+          "hint": null
+        },
+        {
+          "label": "参考图 3",
+          "required": false,
+          "hint": null
+        },
+        {
+          "label": "参考图 4",
+          "required": false,
+          "hint": null
+        }
+      ],
+      "prompt": "",
+      "hint": "说说想要什么画面。放了参考图的话，可以用「图1、图2」指它们",
+      "ratio": "3:4"
+    },
+    {
+      "id": "ip-sheet",
+      "group": "ip",
+      "title": "IP 设定图",
+      "description": "一张图看全三视图、表情和服装细节",
+      "refs": [
+        {
+          "label": "人物照片",
+          "required": true,
+          "hint": "正脸清晰、光线均匀的照片效果最好"
+        }
+      ],
+      "prompt": "以图1中的人物为唯一角色，做一张完整的人物设定图，一次生成在同一张图里。沿用图1的长相、发型、服装、配饰、身材比例和画风，所有区域都是同一个人、同一套衣服。浅暖色纸面背景，细灰分隔线，排版清楚。上半部分：左边一张大幅半身像，中间是正面、90 度侧面、背面三张全身像，并排、同样高度、脚底对齐；中间部分：五张头肩表情特写（微笑、惊讶、酷、生气、温柔）；下半部分：服装细节、配饰和主要配色色块。不要多余文字，不要水印，不要混入其他人物。",
+      "hint": "可以补充人物名字、性格或画风，例如：叫小紫，元气少女，偏日系插画",
+      "ratio": "1:1"
+    },
+    {
+      "id": "ip-portrait",
+      "group": "ip",
+      "title": "IP 写真",
+      "description": "同一张脸，换一组杂志感写真",
+      "refs": [
+        {
+          "label": "人物照片",
+          "required": true,
+          "hint": "正脸清晰、光线均匀的照片效果最好"
+        }
+      ],
+      "prompt": "以图1人物为准，保持长相、脸型和发型一致，拍一张写真，风格和场景按补充要求来，没写就拍午后咖啡馆里的杂志感写真。人物半身入画，姿态放松自然，光线柔和，背景有层次但不抢人物，写实照片质感，不加文字和水印。",
+      "hint": "写想要的风格和场景，例如：海边日落、复古港风、白色极简棚拍",
+      "ratio": "3:4"
+    },
+    {
+      "id": "ip-expression",
+      "group": "ip",
+      "title": "IP 表情包",
+      "description": "一次出九种表情，聊天、封面都能用",
+      "refs": [
+        {
+          "label": "人物照片",
+          "required": true,
+          "hint": "正脸清晰、光线均匀的照片效果最好"
+        }
+      ],
+      "prompt": "以图1人物为准，生成 3×3 九宫格表情图：开心、惊讶、生气、委屈、思考、得意、害羞、无奈、大笑。九格是同一个人、同一套服装、同样的画风，头肩入画，纯色浅色背景，每格表情夸张清楚，格子之间留细白边，不加文字。",
+      "hint": "可以换成想要的表情，或指定画风，例如：Q 版、手绘",
+      "ratio": "1:1"
+    },
+    {
+      "id": "face-turnaround",
+      "group": "person",
+      "title": "脸部三视图",
+      "description": "正脸、半侧脸、侧脸，做角色参考",
+      "refs": [
+        {
+          "label": "人物照片",
+          "required": true,
+          "hint": "正脸清晰、光线均匀的照片效果最好"
+        }
+      ],
+      "prompt": "以图1人物为准，保持五官、脸型、发型、肤色和年龄感一致，在纯白背景上生成头部三视图：从左到右依次是正面、45 度半侧面、90 度正侧面。三个头像一样大、平视、肩部以上入画，柔和均匀的影棚光，写实照片质感，不加文字和水印。",
+      "hint": "可以补充气质、表情或写实程度，例如：自然微笑、偏写实",
+      "ratio": "16:9"
+    },
+    {
+      "id": "fullbody-sheet",
+      "group": "person",
+      "title": "人物四视图",
+      "description": "全身正、侧、背面，加一张脸部特写",
+      "refs": [
+        {
+          "label": "人物照片",
+          "required": true,
+          "hint": "正脸清晰、光线均匀的照片效果最好"
+        }
+      ],
+      "prompt": "以图1人物为准，保持长相、发型、身材比例和服装一致，在纯白背景上横向排列四个视图：全身正面、全身侧面、全身背面，以及一张脸部特写。站姿自然、双臂放松下垂，三个全身像一样高、脚底对齐，影棚柔光，写实照片质感，不加文字。",
+      "hint": "可以补充站姿、服装要不要换，例如：穿白色运动套装",
+      "ratio": "16:9"
+    },
+    {
+      "id": "face-swap",
+      "group": "person",
+      "title": "模特换脸",
+      "description": "保留姿势和衣服，换上指定的脸",
+      "refs": [
+        {
+          "label": "模特图",
+          "required": true,
+          "hint": "保留这张的姿势、衣服和背景"
+        },
+        {
+          "label": "新面孔",
+          "required": true,
+          "hint": "只取这张的脸和发型"
+        }
+      ],
+      "prompt": "把图1中模特的脸换成图2人物的脸，发型一起换成图2的样子。保留图1的姿势、服装、光线、背景和构图，脸部肤色和光影与身体自然衔接，看不出拼接痕迹，写实照片质感。",
+      "hint": "可以补充表情、妆容、发型细节，例如：自然微笑、淡妆、保留刘海",
+      "ratio": "3:4"
+    },
+    {
+      "id": "face-fusion",
+      "group": "person",
+      "title": "人脸融合",
+      "description": "两张脸融合出一个新的虚拟形象",
+      "refs": [
+        {
+          "label": "人物 A",
+          "required": true,
+          "hint": "要融合的第一张脸"
+        },
+        {
+          "label": "人物 B",
+          "required": true,
+          "hint": "要融合的第二张脸"
+        }
+      ],
+      "prompt": "融合图1和图2两个人的面部特征，生成一个全新的虚拟人物：五官比例取两人之间，和任何一方都不完全一样，气质自然。正面半身肖像，浅灰纯色背景，柔和影棚光，写实照片质感，不加文字。",
+      "hint": "可以补充更像谁一点、年龄和气质，例如：更像 A，二十岁出头，温柔",
+      "ratio": "3:4"
+    },
+    {
+      "id": "outfit-on-model",
+      "group": "product",
+      "title": "服装上身",
+      "description": "把衣服穿到模特身上，出模特图",
+      "refs": [
+        {
+          "label": "模特图",
+          "required": true,
+          "hint": "保留这张的长相、姿势和背景"
+        },
+        {
+          "label": "服装图",
+          "required": true,
+          "hint": "平铺图或挂拍图都行"
+        }
+      ],
+      "prompt": "让图1中的模特穿上图2的服装，服装的款式、颜色、图案、面料质感和细节与图2完全一致。保留模特的长相、发型、姿势和背景，衣服贴合身形、褶皱自然，电商模特图质感。",
+      "hint": "可以补充穿法和姿势，例如：外套敞开、侧身站立",
+      "ratio": "3:4"
+    },
+    {
+      "id": "product-in-use",
+      "group": "product",
+      "title": "商品使用",
+      "description": "真人在用你的商品，做种草配图",
+      "refs": [
+        {
+          "label": "商品图",
+          "required": true,
+          "hint": null
+        },
+        {
+          "label": "人物照片",
+          "required": false,
+          "hint": "不放就由 AI 安排人物"
+        }
+      ],
+      "prompt": "生成一张真人正在使用图1商品的生活场景照片。商品的外观、颜色、包装和标识与图1一致并且清晰可见；人物动作自然、表情放松，场景和商品本来的用途相符，不夸大效果，自然光，适合做电商种草配图，不加文字。",
+      "hint": "可以补充使用场景和人物，例如：在浴室镜前、三十岁左右的女性",
+      "ratio": "3:4"
+    },
+    {
+      "id": "white-background",
+      "group": "product",
+      "title": "商品白底图",
+      "description": "干净的白底主图，平台上架直接用",
+      "refs": [
+        {
+          "label": "商品图",
+          "required": true,
+          "hint": null
+        }
+      ],
+      "prompt": "把图1中的商品单独放到纯白背景正中，商品完整、居中，约占画面七成。保留原有外观、颜色、文字和标识，包装上的字照原样，不要重画，加上柔和的接触阴影，影棚布光，边缘干净，适合电商平台主图。",
+      "hint": "可以补充角度和摆放，例如：45 度角、平放",
+      "ratio": "1:1",
+      "options": [
+        {
+          "key": "angle",
+          "label": "拍摄角度",
+          "defaultValue": "front",
+          "choices": [
+            {
+              "value": "front",
+              "label": "正面",
+              "prompt": "商品正面朝向镜头"
+            },
+            {
+              "value": "angle",
+              "label": "斜 45 度",
+              "prompt": "商品斜 45 度摆放，看得出立体感"
+            },
+            {
+              "value": "top",
+              "label": "俯拍",
+              "prompt": "从正上方俯拍商品"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "selling-point",
+      "group": "product",
+      "title": "商品卖点图",
+      "description": "围绕一个卖点布景，做详情页配图",
+      "refs": [
+        {
+          "label": "商品图",
+          "required": true,
+          "hint": null
+        }
+      ],
+      "prompt": "以图1商品为主体，做一张竖版详情页卖点图：商品放在画面中上部，用简洁的场景和道具表现补充要求里写的卖点（没写就突出商品的质感），四周留出干净的空白方便后期加字，配色和商品协调，质感高级，画面里不要生成任何文字。",
+      "hint": "写一个最想突出的卖点，例如：防水、轻便、长续航",
+      "ratio": "3:4"
+    },
+    {
+      "id": "outfit-restyle",
+      "group": "product",
+      "title": "服装改款",
+      "description": "版型不变，换面料、印花或颜色",
+      "refs": [
+        {
+          "label": "服装图",
+          "required": true,
+          "hint": null
+        },
+        {
+          "label": "面料或印花",
+          "required": false,
+          "hint": "不放就按文字里写的改"
+        }
+      ],
+      "prompt": "保持图1服装的版型、剪裁和穿着方式不变，把面料和印花换成图2的样式；没有图2时，按补充要求里写的颜色或图案改。光影和褶皱随新面料自然变化，展示方式与原图一致。",
+      "hint": "没放面料图时，写想要的颜色或图案，例如：藏青色细条纹",
+      "ratio": "3:4"
+    },
+    {
+      "id": "scene-swap",
+      "group": "scene",
+      "title": "人物入景",
+      "description": "人不变，换一个拍摄场景",
+      "refs": [
+        {
+          "label": "人物照片",
+          "required": true,
+          "hint": null
+        },
+        {
+          "label": "场景图",
+          "required": false,
+          "hint": "不放就按文字里写的场景"
+        }
+      ],
+      "prompt": "保留图1人物的长相、服装、姿势和光线方向，把背景换成图2的场景；没有图2时，换成补充要求里写的场景。人物和新背景的透视、光影、色调统一，脚下有合理的阴影，写实照片质感。",
+      "hint": "没放场景图时，写想要的场景，例如：海边的白色露台",
+      "ratio": "3:4"
+    },
+    {
+      "id": "product-scene",
+      "group": "scene",
+      "title": "商品入景",
+      "description": "把商品摆进生活场景里",
+      "refs": [
+        {
+          "label": "商品图",
+          "required": true,
+          "hint": null
+        },
+        {
+          "label": "场景图",
+          "required": false,
+          "hint": "不放就按文字里写的场景"
+        }
+      ],
+      "prompt": "把图1的商品放进图2的场景里；没有图2时，放进补充要求里写的场景，商品外观不变，摆放符合真实使用习惯，光影和环境一致，适合做种草配图，不加文字。",
+      "hint": "没放场景图时，写想要的场景，例如：清晨洒满阳光的木质餐桌",
+      "ratio": "3:4"
+    },
+    {
+      "id": "realism",
+      "group": "enhance",
+      "title": "人物真人感",
+      "description": "去掉塑料感，像真实拍出来的照片",
+      "refs": [
+        {
+          "label": "人物图",
+          "required": true,
+          "hint": null
+        }
+      ],
+      "prompt": "让图1的人物看起来像真实拍摄的照片：加上自然的皮肤纹理、毛孔和细微瑕疵，去掉过度磨皮和塑料感，眼神和发丝细节更真实。保留原有长相、年龄感、表情、服装和构图。",
+      "hint": "可以补充想保留或去掉的地方，例如：保留妆容，去掉美颜感",
+      "ratio": "3:4"
+    },
+    {
+      "id": "retouch",
+      "group": "enhance",
+      "title": "图片精修",
+      "description": "提清晰度，修光影和颜色",
+      "refs": [
+        {
+          "label": "原图",
+          "required": true,
+          "hint": null
+        }
+      ],
+      "prompt": "精修图1：提高清晰度和细节，修正曝光和白平衡，光影更通透、颜色更自然，去掉噪点和压缩痕迹。不改变画面内容、人物长相和构图。",
+      "hint": "可以补充想修的地方，例如：提亮肤色、去掉背景杂物",
+      "ratio": "3:4"
+    }
+  ],
+  "video": [
+    {
+      "id": "ecom-talking",
+      "group": "commerce",
+      "title": "口播带货",
+      "description": "有人出镜推荐，建立购买信任",
+      "images": {
+        "label": "商品图",
+        "required": true,
+        "max": 4
+      },
+      "video": null,
+      "character": true,
+      "voice": true,
+      "placeholder": "例如：玻尿酸保湿精华，给干皮用，一抹就吸收。有优惠和购买方式也写上",
+      "textRequired": false,
+      "durations": [
+        15,
+        25,
+        30,
+        45
+      ],
+      "duration": 25,
+      "ratio": "9:16",
+      "structure": "真人对着镜头讲：开头一句话说清商品能帮谁解决什么，中间边讲边展示商品细节和用法，结尾说清怎么买。",
+      "ideas": [
+        "开头先说这东西适合谁",
+        "边讲边上手用给大家看",
+        "讲一个自己用下来的细节",
+        "结尾说清在哪买"
+      ],
+      "skill": "video-generation",
+      "options": [
+        {
+          "key": "presenter",
+          "label": "出镜方式",
+          "defaultValue": "person",
+          "choices": [
+            {
+              "value": "person",
+              "label": "真人讲解",
+              "prompt": "真人出镜对着镜头讲，边讲边拿起商品展示"
+            },
+            {
+              "value": "product",
+              "label": "只拍商品",
+              "prompt": "不出现人脸，只拍商品和手部操作，用画外音讲"
+            },
+            {
+              "value": "compare",
+              "label": "前后对比",
+              "prompt": "用使用前后的对比画面说明效果"
+            }
+          ]
+        },
+        {
+          "key": "tone",
+          "label": "语气",
+          "defaultValue": "friendly",
+          "choices": [
+            {
+              "value": "friendly",
+              "label": "像朋友推荐",
+              "prompt": "语气像朋友推荐，亲切自然"
+            },
+            {
+              "value": "expert",
+              "label": "专业讲解",
+              "prompt": "语气专业可信，讲清楚为什么好用"
+            },
+            {
+              "value": "lively",
+              "label": "热情带货",
+              "prompt": "语气热情有感染力，节奏快"
+            }
+          ]
+        }
+      ],
+      "brief": {
+        "goal": "让看的人信这个东西好用，愿意去买",
+        "facts": [
+          {
+            "label": "商品和给谁用",
+            "required": true
+          },
+          {
+            "label": "最想突出的一点",
+            "required": true
+          },
+          {
+            "label": "优惠",
+            "required": false,
+            "use": "有才讲"
+          },
+          {
+            "label": "在哪买",
+            "required": false,
+            "use": "有才讲，没有就说去哪看"
+          }
+        ],
+        "ending": "说清怎么买",
+        "fiction": "story"
+      }
+    },
+    {
+      "id": "ecom-promo",
+      "group": "commerce",
+      "title": "促销转化",
+      "description": "把优惠讲透，推动马上下单",
+      "images": {
+        "label": "商品图",
+        "required": true,
+        "max": 4
+      },
+      "video": null,
+      "character": true,
+      "voice": true,
+      "placeholder": "例如：保湿精华，原价 199，这周第二瓶半价，店铺首页下单",
+      "textRequired": false,
+      "durations": [
+        15,
+        25,
+        30,
+        45
+      ],
+      "duration": 25,
+      "ratio": "9:16",
+      "structure": "开头直接说优惠是什么，中间用两三个画面说明买到手的是什么、为什么值，结尾说清怎么下单；有截止时间才提时间。",
+      "ideas": [
+        "开头第一句就报价",
+        "把到手的东西一样样摆出来",
+        "算一笔账说明为什么划算",
+        "结尾说清在哪下单"
+      ],
+      "skill": "video-generation",
+      "brief": {
+        "goal": "让看的人觉得现在买划算，马上去下单",
+        "facts": [
+          {
+            "label": "商品",
+            "required": true
+          },
+          {
+            "label": "现在的价格或优惠",
+            "required": true
+          },
+          {
+            "label": "原价",
+            "required": false,
+            "use": "有原价才做对比"
+          },
+          {
+            "label": "活动截止",
+            "required": false,
+            "use": "有才催"
+          },
+          {
+            "label": "在哪下单",
+            "required": true
+          }
+        ],
+        "ending": "说清在哪下单",
+        "fiction": "story"
+      }
+    },
+    {
+      "id": "ecom-seeding",
+      "group": "commerce",
+      "title": "场景种草",
+      "description": "放进生活场景，让人想用",
+      "images": {
+        "label": "商品图",
+        "required": true,
+        "max": 4
+      },
+      "video": null,
+      "character": true,
+      "voice": true,
+      "placeholder": "例如：便携咖啡杯，早上通勤路上用，单手能开",
+      "textRequired": false,
+      "durations": [
+        15,
+        25,
+        30,
+        45
+      ],
+      "duration": 25,
+      "ratio": "9:16",
+      "structure": "从一个具体的生活时刻切入，商品在里面被自然用上，拍出用完之后的好状态，不喊口号不催单。",
+      "ideas": [
+        "从一个日常小麻烦开始",
+        "商品只在需要时出现",
+        "拍出用完之后的样子",
+        "最后轻轻带一句在哪买"
+      ],
+      "skill": "video-generation",
+      "options": [
+        {
+          "key": "tone",
+          "label": "语气",
+          "defaultValue": "friendly",
+          "choices": [
+            {
+              "value": "friendly",
+              "label": "像朋友分享",
+              "prompt": "像朋友分享自己在用的东西，自然不推销"
+            },
+            {
+              "value": "lively",
+              "label": "活泼",
+              "prompt": "节奏轻快，画面明亮活泼"
+            }
+          ]
+        }
+      ],
+      "brief": {
+        "goal": "让看的人想到自己的生活里也用得上",
+        "facts": [
+          {
+            "label": "商品",
+            "required": true
+          },
+          {
+            "label": "什么人在什么时候用",
+            "required": true
+          },
+          {
+            "label": "用了之后的变化",
+            "required": false
+          }
+        ],
+        "ending": "轻轻带一句在哪买，不催",
+        "fiction": "story"
+      }
+    },
+    {
+      "id": "ecom-painpoint",
+      "group": "commerce",
+      "title": "痛点解决",
+      "description": "先戳中烦恼，再给出解决效果",
+      "images": {
+        "label": "商品图",
+        "required": true,
+        "max": 4
+      },
+      "video": null,
+      "character": true,
+      "voice": true,
+      "placeholder": "例如：防雾眼镜布，冬天戴口罩眼镜起雾，擦一下就清楚",
+      "textRequired": false,
+      "durations": [
+        15,
+        25,
+        30,
+        45
+      ],
+      "duration": 25,
+      "ratio": "9:16",
+      "structure": "开头拍出一个大家熟悉的烦恼，接着商品出场解决它，拍出解决前后的变化，最后一句收住。",
+      "ideas": [
+        "开头就是那个烦人的瞬间",
+        "商品上场只用一个动作解决",
+        "前后放在一起看",
+        "收尾一句话点题"
+      ],
+      "skill": "video-generation",
+      "brief": {
+        "goal": "让有这个烦恼的人觉得这次能解决",
+        "facts": [
+          {
+            "label": "商品",
+            "required": true
+          },
+          {
+            "label": "解决什么烦恼",
+            "required": true
+          },
+          {
+            "label": "怎么用",
+            "required": false
+          },
+          {
+            "label": "用完的效果",
+            "required": false,
+            "use": "只讲我给的，不编数据"
+          }
+        ],
+        "ending": "说清在哪买",
+        "fiction": "story"
+      }
+    },
+    {
+      "id": "ecom-demo",
+      "group": "commerce",
+      "title": "功能演示",
+      "description": "把功能演示出来，证明好用",
+      "images": {
+        "label": "商品图",
+        "required": true,
+        "max": 4
+      },
+      "video": null,
+      "character": true,
+      "voice": true,
+      "placeholder": "例如：折叠收纳箱，三秒展开、能叠放、侧面开门",
+      "textRequired": false,
+      "durations": [
+        15,
+        25,
+        30,
+        45
+      ],
+      "duration": 25,
+      "ratio": "9:16",
+      "structure": "按功能一个一个演示，每个镜头只讲一个功能，拍清楚手怎么操作、结果是什么，最后一个镜头给商品全貌。",
+      "ideas": [
+        "一个镜头只讲一个功能",
+        "手部操作拍特写",
+        "每个功能配一句说明",
+        "最后给商品全貌"
+      ],
+      "skill": "video-generation",
+      "brief": {
+        "goal": "让看的人看明白怎么用、确实好用",
+        "facts": [
+          {
+            "label": "商品",
+            "required": true
+          },
+          {
+            "label": "要演示的功能",
+            "required": true,
+            "use": "最多三个"
+          },
+          {
+            "label": "用的时候要注意什么",
+            "required": false
+          }
+        ],
+        "ending": "说清在哪买",
+        "fiction": "story"
+      }
+    },
+    {
+      "id": "local-discovery",
+      "group": "local",
+      "title": "门店发现",
+      "description": "拍出特色，给人到店的理由",
+      "images": {
+        "label": "门店照片",
+        "required": true,
+        "max": 6
+      },
+      "video": null,
+      "character": true,
+      "voice": true,
+      "placeholder": "例如：巷里火锅，万达东门旁边，牛油锅底现炒",
+      "textRequired": false,
+      "durations": [
+        15,
+        25,
+        30,
+        45
+      ],
+      "duration": 25,
+      "ratio": "9:16",
+      "structure": "像路过发现一家好店一样开场，带观众看门头、环境和最有特色的东西，结尾说清在哪、怎么找到。",
+      "ideas": [
+        "从街口走进店里",
+        "先给门头一个清楚的镜头",
+        "只讲最特别的那一样",
+        "结尾说清在哪"
+      ],
+      "skill": "video-generation",
+      "options": [
+        {
+          "key": "shoot",
+          "label": "拍法",
+          "defaultValue": "walk",
+          "choices": [
+            {
+              "value": "walk",
+              "label": "边走边拍",
+              "prompt": "第一人称从门口走进店里，一路拍环境、招牌和招牌菜"
+            },
+            {
+              "value": "dish",
+              "label": "菜品特写",
+              "prompt": "以菜品和制作过程的特写为主"
+            },
+            {
+              "value": "people",
+              "label": "拍顾客反应",
+              "prompt": "多拍顾客吃到、用到时的真实反应"
+            }
+          ]
+        }
+      ],
+      "brief": {
+        "goal": "让附近的人知道有这家店，想来看看",
+        "facts": [
+          {
+            "label": "店名",
+            "required": true
+          },
+          {
+            "label": "在哪",
+            "required": true,
+            "use": "商圈或地标就行"
+          },
+          {
+            "label": "最值得来的理由",
+            "required": true
+          },
+          {
+            "label": "营业时间",
+            "required": false
+          }
+        ],
+        "ending": "说清在哪、怎么找到",
+        "fiction": "story"
+      }
+    },
+    {
+      "id": "local-visit",
+      "group": "local",
+      "title": "到店实录",
+      "description": "真实到店体验，让人放心",
+      "images": {
+        "label": "门店照片",
+        "required": true,
+        "max": 6
+      },
+      "video": null,
+      "character": true,
+      "voice": true,
+      "placeholder": "例如：巷里火锅，点了双人餐，牛肉现切，服务员会帮忙涮",
+      "textRequired": false,
+      "durations": [
+        15,
+        25,
+        30,
+        45
+      ],
+      "duration": 25,
+      "ratio": "9:16",
+      "structure": "第一视角从进门开始，点单、上菜或体验服务，拍用到时的反应和细节，结尾说一句感受和在哪。",
+      "ideas": [
+        "从推门进店开始",
+        "拍点单和上桌",
+        "拍吃到第一口的反应",
+        "结尾说在哪、值不值"
+      ],
+      "skill": "video-generation",
+      "brief": {
+        "goal": "让人看完心里有数，放心来",
+        "facts": [
+          {
+            "label": "店名",
+            "required": true
+          },
+          {
+            "label": "在哪",
+            "required": true
+          },
+          {
+            "label": "这次体验了什么",
+            "required": true
+          },
+          {
+            "label": "人均或价格",
+            "required": false,
+            "use": "有才讲"
+          }
+        ],
+        "ending": "说清在哪",
+        "fiction": "none"
+      }
+    },
+    {
+      "id": "local-signature",
+      "group": "local",
+      "title": "招牌体验",
+      "description": "围绕招牌产品，讲出门店价值",
+      "images": {
+        "label": "门店照片",
+        "required": true,
+        "max": 6
+      },
+      "video": null,
+      "character": true,
+      "voice": true,
+      "placeholder": "例如：巷里火锅，招牌是现炒牛油锅底，每天早上现炒",
+      "textRequired": false,
+      "durations": [
+        15,
+        25,
+        30,
+        45
+      ],
+      "duration": 25,
+      "ratio": "9:16",
+      "structure": "围绕一道招牌（或一项招牌服务）拍：做的过程特写、端上来或完成的那一下、第一口或体验的反应，结尾说在哪能吃到。",
+      "ideas": [
+        "拍招牌是怎么做出来的",
+        "端上桌那一下给特写",
+        "拍第一口的反应",
+        "结尾说在哪能吃到"
+      ],
+      "skill": "video-generation",
+      "brief": {
+        "goal": "让人记住这道招牌，专门为它来",
+        "facts": [
+          {
+            "label": "店名",
+            "required": true
+          },
+          {
+            "label": "招牌是什么",
+            "required": true
+          },
+          {
+            "label": "好在哪",
+            "required": true
+          },
+          {
+            "label": "在哪",
+            "required": true
+          }
+        ],
+        "ending": "说清在哪能吃到",
+        "fiction": "story"
+      }
+    },
+    {
+      "id": "local-groupbuy",
+      "group": "local",
+      "title": "同城团购",
+      "description": "讲清团购划算，推动到店核销",
+      "images": {
+        "label": "门店照片",
+        "required": true,
+        "max": 6
+      },
+      "video": null,
+      "character": true,
+      "voice": true,
+      "placeholder": "例如：巷里火锅，万达东门，双人牛肉套餐 99，原价 158，本视频团购下单，周末要预约",
+      "textRequired": false,
+      "durations": [
+        15,
+        25,
+        30,
+        45
+      ],
+      "duration": 25,
+      "ratio": "9:16",
+      "structure": "开头就说清在哪、什么套餐、团购价；有原价才做对比。中间把套餐里实际有的东西一样样拍清楚，让人知道花这笔钱得到什么。结尾说清怎么买、到哪用、用的时候要注意什么。环境只拍到能认出店就够，不拿排队和空镜凑时长。",
+      "ideas": [
+        "第一句就报位置和团购价",
+        "套餐里的东西一样样摆出来",
+        "有原价就放在一起比",
+        "结尾说清怎么买、怎么用"
+      ],
+      "skill": "video-generation",
+      "brief": {
+        "goal": "让附近的人买下套餐，到店来用",
+        "facts": [
+          {
+            "label": "店名和位置",
+            "required": true
+          },
+          {
+            "label": "套餐包含什么、几人用",
+            "required": true
+          },
+          {
+            "label": "团购价",
+            "required": true
+          },
+          {
+            "label": "怎么买",
+            "required": true,
+            "use": "照我写的说"
+          },
+          {
+            "label": "原价",
+            "required": false,
+            "use": "有原价才做对比"
+          },
+          {
+            "label": "使用限制",
+            "required": false,
+            "use": "预约、节假日、有效期，有才讲"
+          }
+        ],
+        "ending": "说清怎么买、到哪用",
+        "fiction": "story"
+      }
+    },
+    {
+      "id": "brand-proposition",
+      "group": "brand",
+      "title": "品牌主张",
+      "description": "传达理念，让人认同你",
+      "images": {
+        "label": "产品图",
+        "required": false,
+        "max": 6
+      },
+      "video": null,
+      "character": true,
+      "voice": true,
+      "placeholder": "例如：山野户外，每个周末都值得出发",
+      "textRequired": true,
+      "durations": [
+        15,
+        30,
+        45,
+        60
+      ],
+      "duration": 30,
+      "ratio": "16:9",
+      "structure": "用有画面感的场景表达品牌态度，少讲产品多讲为什么，结尾落在一句品牌主张上。",
+      "ideas": [
+        "不硬广，用画面讲态度",
+        "用一个具体的选择表现主张",
+        "画面统一一种主色调",
+        "最后落在那句话上"
+      ],
+      "skill": "video-generation",
+      "options": [
+        {
+          "key": "style",
+          "label": "画面风格",
+          "defaultValue": "cinematic",
+          "choices": [
+            {
+              "value": "cinematic",
+              "label": "电影感",
+              "prompt": "画面有电影质感，光线讲究，节奏舒缓"
+            },
+            {
+              "value": "minimal",
+              "label": "简洁干净",
+              "prompt": "画面干净简洁，留白多，字少"
+            },
+            {
+              "value": "warm",
+              "label": "温暖生活",
+              "prompt": "生活化场景，温暖的自然光"
+            }
+          ]
+        }
+      ],
+      "brief": {
+        "goal": "让人记住品牌的态度，认同它",
+        "facts": [
+          {
+            "label": "品牌名",
+            "required": true
+          },
+          {
+            "label": "想让人记住的那句话",
+            "required": true
+          },
+          {
+            "label": "给谁看",
+            "required": false
+          }
+        ],
+        "ending": "落在那句主张上，不催买",
+        "fiction": "story"
+      }
+    },
+    {
+      "id": "brand-story",
+      "group": "brand",
+      "title": "品牌故事",
+      "description": "讲品牌的来历和坚持",
+      "images": {
+        "label": "产品图",
+        "required": false,
+        "max": 6
+      },
+      "video": null,
+      "character": true,
+      "voice": true,
+      "placeholder": "品牌名，有哪些可以讲的经历；没有就说想讲一个什么样的用户故事，例如：山野户外，想讲一个第一次带孩子露营的爸爸",
+      "textRequired": true,
+      "durations": [
+        15,
+        30,
+        45,
+        60
+      ],
+      "duration": 30,
+      "ratio": "16:9",
+      "structure": "从一个人物讲起：给了创始人或品牌经历就照着讲，没给就讲一位用户的故事。拍出一个具体的坚持，最后回到品牌。",
+      "ideas": [
+        "从一个人物的一个动作开始",
+        "只讲一件具体的事",
+        "把坚持拍成画面",
+        "最后回到品牌"
+      ],
+      "skill": "video-generation",
+      "brief": {
+        "goal": "让人因为一个故事记住这个品牌",
+        "facts": [
+          {
+            "label": "品牌名",
+            "required": true
+          },
+          {
+            "label": "品牌自己的经历",
+            "required": false,
+            "use": "给了就照着讲，没给不编"
+          }
+        ],
+        "ending": "回到品牌",
+        "fiction": "story"
+      }
+    },
+    {
+      "id": "brand-lifestyle",
+      "group": "brand",
+      "title": "生活方式",
+      "description": "呈现用户向往的生活",
+      "images": {
+        "label": "产品图",
+        "required": false,
+        "max": 6
+      },
+      "video": null,
+      "character": true,
+      "voice": true,
+      "placeholder": "例如：山野户外，城市上班族，周末去郊外露营",
+      "textRequired": true,
+      "durations": [
+        15,
+        30,
+        45,
+        60
+      ],
+      "duration": 30,
+      "ratio": "16:9",
+      "structure": "用几个生活片段拼出目标人群向往的一天，产品自然出现在其中，节奏轻快，有氛围。",
+      "ideas": [
+        "一天里挑几个时刻",
+        "产品出现在手边而不是镜头中央",
+        "画面统一一种光线",
+        "结尾一句心情"
+      ],
+      "skill": "video-generation",
+      "brief": {
+        "goal": "让目标人群觉得这就是想过的日子",
+        "facts": [
+          {
+            "label": "品牌名",
+            "required": true
+          },
+          {
+            "label": "给谁",
+            "required": true
+          },
+          {
+            "label": "哪种生活",
+            "required": true
+          }
+        ],
+        "ending": "落在品牌上，不催买",
+        "fiction": "story"
+      }
+    },
+    {
+      "id": "brand-concept",
+      "group": "brand",
+      "title": "创意概念",
+      "description": "用创意画面让人记住品牌",
+      "images": {
+        "label": "产品图",
+        "required": false,
+        "max": 6
+      },
+      "video": null,
+      "character": true,
+      "voice": true,
+      "placeholder": "例如：山野户外，想表达帐篷就是移动的家",
+      "textRequired": true,
+      "durations": [
+        15,
+        30,
+        45,
+        60
+      ],
+      "duration": 30,
+      "ratio": "16:9",
+      "structure": "用一个有想象力的视觉概念贯穿全片，画面有记忆点，最后把概念和产品连起来，让人记住的是品牌而不只是特效。",
+      "ideas": [
+        "一个视觉比喻贯穿到底",
+        "前面不露产品，最后揭晓",
+        "画面少而有记忆点",
+        "结尾概念和产品连起来"
+      ],
+      "skill": "video-generation",
+      "brief": {
+        "goal": "用一个画面让人记住品牌",
+        "facts": [
+          {
+            "label": "品牌名",
+            "required": true
+          },
+          {
+            "label": "想表达的意思",
+            "required": true
+          },
+          {
+            "label": "产品",
+            "required": false
+          }
+        ],
+        "ending": "把概念落到产品上",
+        "fiction": "story"
+      }
+    },
+    {
+      "id": "drama-dialogue",
+      "group": "drama",
+      "title": "对话剧情",
+      "description": "两三个人的对话推动故事",
+      "images": {
+        "label": "参考图",
+        "required": false,
+        "max": 6
+      },
+      "video": null,
+      "character": true,
+      "voice": true,
+      "placeholder": "例如：室友俩为谁洗碗吵起来，最后发现是同一件事在较劲",
+      "textRequired": true,
+      "durations": [
+        30,
+        45,
+        60
+      ],
+      "duration": 45,
+      "ratio": "9:16",
+      "structure": "以对话为主，正反打切换，每段对话都推进一点关系或冲突，人物说话有自己的目的，不互相讲设定，结尾一句点题。",
+      "ideas": [
+        "第一句台词就进事件",
+        "每个人说话都有自己想要的",
+        "台词短，多用动作和表情",
+        "最后一句点题"
+      ],
+      "skill": "video-generation",
+      "brief": {
+        "goal": "让人看懂这两个人的关系变了",
+        "facts": [
+          {
+            "label": "谁和谁、什么关系",
+            "required": true
+          },
+          {
+            "label": "为了什么事",
+            "required": true
+          },
+          {
+            "label": "结局",
+            "required": false
+          }
+        ],
+        "fiction": "story"
+      }
+    },
+    {
+      "id": "drama-twist",
+      "group": "drama",
+      "title": "反转剧情",
+      "description": "前面铺垫，结尾一个反转",
+      "images": {
+        "label": "参考图",
+        "required": false,
+        "max": 6
+      },
+      "video": null,
+      "character": true,
+      "voice": true,
+      "placeholder": "例如：刚毕业的女主被老板刁难，最后发现老板是她失散的哥哥",
+      "textRequired": true,
+      "durations": [
+        30,
+        45,
+        60
+      ],
+      "duration": 45,
+      "ratio": "9:16",
+      "structure": "前半段按观众预期铺垫，埋一个不起眼的伏笔，结尾揭开反转，让伏笔说得通。人物和事件少而清楚。",
+      "ideas": [
+        "前三秒就进冲突",
+        "埋一个回头看才懂的细节",
+        "台词短，多用动作和表情",
+        "反转要让前面的细节说得通"
+      ],
+      "skill": "video-generation",
+      "options": [
+        {
+          "key": "twist",
+          "label": "反转方式",
+          "defaultValue": "identity",
+          "choices": [
+            {
+              "value": "identity",
+              "label": "身份反转",
+              "prompt": "结尾揭开某个人物的真实身份"
+            },
+            {
+              "value": "truth",
+              "label": "真相反转",
+              "prompt": "结尾揭开事情的真相，和前面看到的相反"
+            },
+            {
+              "value": "ending",
+              "label": "结局反转",
+              "prompt": "眼看要走向一个结局，最后一刻翻转"
+            }
+          ]
+        }
+      ],
+      "brief": {
+        "goal": "让人看到结尾回头想：原来如此",
+        "facts": [
+          {
+            "label": "谁、遇到什么事",
+            "required": true
+          },
+          {
+            "label": "真相或反转是什么",
+            "required": false
+          }
+        ],
+        "fiction": "story"
+      }
+    },
+    {
+      "id": "drama-suspense",
+      "group": "drama",
+      "title": "悬疑剧情",
+      "description": "一个谜团吊住观众",
+      "images": {
+        "label": "参考图",
+        "required": false,
+        "max": 6
+      },
+      "video": null,
+      "character": true,
+      "voice": true,
+      "placeholder": "例如：深夜外卖总是多一份，女主想弄清是谁点的，结尾揭晓",
+      "textRequired": true,
+      "durations": [
+        30,
+        45,
+        60
+      ],
+      "duration": 45,
+      "ratio": "9:16",
+      "structure": "开头抛出一个谜团，中间逐步给线索、制造紧张，结尾揭晓或留下明确的悬念，因果要交代得清。",
+      "ideas": [
+        "开头就是那个不对劲的瞬间",
+        "每段给一条新线索",
+        "声音和光线制造紧张",
+        "结尾揭晓或留一个钩子"
+      ],
+      "skill": "video-generation",
+      "brief": {
+        "goal": "让人想知道接下来发生什么",
+        "facts": [
+          {
+            "label": "谜团是什么",
+            "required": true
+          },
+          {
+            "label": "谁在查",
+            "required": false
+          },
+          {
+            "label": "这一条揭不揭晓",
+            "required": false
+          }
+        ],
+        "fiction": "story"
+      }
+    },
+    {
+      "id": "drama-emotional",
+      "group": "drama",
+      "title": "情感剧情",
+      "description": "打动人心的情感故事",
+      "images": {
+        "label": "参考图",
+        "required": false,
+        "max": 6
+      },
+      "video": null,
+      "character": true,
+      "voice": true,
+      "placeholder": "例如：外婆学用手机给我发语音，发了十几条才成功",
+      "textRequired": true,
+      "durations": [
+        30,
+        45,
+        60
+      ],
+      "duration": 45,
+      "ratio": "9:16",
+      "structure": "围绕一段关系（亲情、友情、爱情）讲一件小事，情绪慢慢推进，结尾有一个让人动容的瞬间，克制不煽情。",
+      "ideas": [
+        "从一个小动作开始",
+        "情绪靠细节不靠台词",
+        "留一个安静的停顿",
+        "结尾一个动容的瞬间"
+      ],
+      "skill": "video-generation",
+      "brief": {
+        "goal": "让人在某个瞬间被打动",
+        "facts": [
+          {
+            "label": "什么关系",
+            "required": true
+          },
+          {
+            "label": "哪件小事",
+            "required": true
+          }
+        ],
+        "fiction": "story"
+      }
+    },
+    {
+      "id": "drama-placement",
+      "group": "drama",
+      "title": "剧情植入",
+      "description": "故事里自然带出商品",
+      "images": {
+        "label": "商品图",
+        "required": false,
+        "max": 6
+      },
+      "video": null,
+      "character": true,
+      "voice": true,
+      "placeholder": "例如：闺蜜吵架后和好，随身小风扇在关键时刻帮上忙",
+      "textRequired": true,
+      "durations": [
+        30,
+        45,
+        60
+      ],
+      "duration": 45,
+      "ratio": "9:16",
+      "structure": "先讲一个完整的小故事，商品在关键情节里自然出现并真的帮上忙，不打断剧情，结尾轻轻点出商品。",
+      "ideas": [
+        "商品要在情节里有用",
+        "不让人物念广告词",
+        "故事先完整再露商品名",
+        "结尾轻轻点一下"
+      ],
+      "skill": "video-generation",
+      "brief": {
+        "goal": "让人记住故事，也记住是这个商品帮了忙",
+        "facts": [
+          {
+            "label": "故事",
+            "required": true
+          },
+          {
+            "label": "商品和它能做什么",
+            "required": true
+          },
+          {
+            "label": "在哪买",
+            "required": false,
+            "use": "有才讲"
+          }
+        ],
+        "ending": "轻轻点出商品",
+        "fiction": "story"
+      }
+    },
+    {
+      "id": "ip-talking",
+      "group": "ip",
+      "title": "数字人口播",
+      "description": "你的 IP 出镜，讲观点、讲知识",
+      "images": {
+        "label": "人物照片",
+        "required": true,
+        "max": 2
+      },
+      "video": null,
+      "character": false,
+      "voice": true,
+      "placeholder": "例如：三个让皮肤变好的小习惯，给熬夜党，像朋友聊天一样",
+      "textRequired": true,
+      "durations": [
+        15,
+        30,
+        45,
+        60
+      ],
+      "duration": 30,
+      "ratio": "9:16",
+      "structure": "人物面对镜头讲一个具体问题和答案，中间穿插和内容相关的画面，结尾一句总结和一个明确的下一步。",
+      "ideas": [
+        "开头先抛一个问题",
+        "一次只讲一个观点",
+        "每个要点配一个画面",
+        "结尾提醒关注"
+      ],
+      "skill": "video-generation",
+      "brief": {
+        "goal": "让人听完有收获，记住这个 IP",
+        "facts": [
+          {
+            "label": "讲什么",
+            "required": true
+          },
+          {
+            "label": "给谁听",
+            "required": false
+          },
+          {
+            "label": "核心观点",
+            "required": false
+          }
+        ],
+        "ending": "一句总结，提醒关注",
+        "fiction": "story"
+      }
+    },
+    {
+      "id": "ip-vlog",
+      "group": "ip",
+      "title": "IP 日常",
+      "description": "让你的 IP 过一天，拍成 vlog",
+      "images": {
+        "label": "人物照片",
+        "required": true,
+        "max": 2
+      },
+      "video": null,
+      "character": false,
+      "voice": true,
+      "placeholder": "例如：早起做早餐、去公园跑步、下午在咖啡馆工作",
+      "textRequired": true,
+      "durations": [
+        15,
+        30,
+        45,
+        60
+      ],
+      "duration": 30,
+      "ratio": "9:16",
+      "structure": "按时间顺序拍几个生活片段，人物长相和穿着保持一致，每个片段带出人物自己的习惯和小情绪，节奏轻快，像真的 vlog。",
+      "ideas": [
+        "用手持自拍的视角",
+        "每个片段配一句心情",
+        "拍出人物的一个小习惯",
+        "画面统一一种暖色调"
+      ],
+      "skill": "video-generation",
+      "brief": {
+        "goal": "让人记住这个 IP 是个什么样的人",
+        "facts": [
+          {
+            "label": "这一天做什么",
+            "required": true
+          },
+          {
+            "label": "人物的性格或习惯",
+            "required": false
+          }
+        ],
+        "fiction": "story"
+      }
+    },
+    {
+      "id": "recreation",
+      "group": "ip",
+      "title": "爆款复刻",
+      "description": "参考一条爆款，做你自己的版本",
+      "images": {
+        "label": "替换素材",
+        "required": false,
+        "max": 4
+      },
+      "video": {
+        "label": "参考视频",
+        "required": true,
+        "max": null
+      },
+      "character": false,
+      "voice": false,
+      "placeholder": "说说要换成什么，例如：把原片里的护手霜换成我的精华液，人物换成我的 IP",
+      "textRequired": true,
+      "durations": [
+        15,
+        25,
+        30,
+        45
+      ],
+      "duration": 25,
+      "ratio": "9:16",
+      "structure": "先拆解参考视频的镜头、节奏和文案结构，再按同样的结构换成我的内容重新拍。原片里的价格、优惠和评价不能照搬。",
+      "ideas": [
+        "保留原片的节奏和镜头顺序",
+        "台词换成我的卖点",
+        "人物换成我的 IP",
+        "原片的价格和说法不照搬"
+      ],
+      "skill": "reference-video-recreation",
+      "brief": {
+        "goal": "借原片的结构，讲我自己的东西",
+        "facts": [
+          {
+            "label": "要换成什么",
+            "required": true
+          },
+          {
+            "label": "我的卖点",
+            "required": false
+          },
+          {
+            "label": "我的价格和优惠",
+            "required": false,
+            "use": "有才讲，不用原片的"
+          }
+        ],
+        "fiction": "story"
+      }
+    }
+  ],
+  "homeGoals": [
+    {
+      "id": "recreation",
+      "title": "爆款复刻",
+      "description": "照着爆款的结构，做自己的版本",
+      "sceneId": "recreation",
+      "covers": [
+        "recreation",
+        "ecom-talking"
+      ]
+    },
+    {
+      "id": "product-set",
+      "title": "商品套图",
+      "description": "白底图、卖点图、模特图一起出",
+      "sceneId": "white-background",
+      "covers": [
+        "white-background",
+        "selling-point"
+      ]
+    },
+    {
+      "id": "commerce",
+      "title": "电商带货",
+      "description": "商品展示和带货短视频",
+      "sceneId": "ecom-talking",
+      "covers": [
+        "ecom-talking",
+        "ecom-seeding"
+      ]
+    },
+    {
+      "id": "local",
+      "title": "同城到店",
+      "description": "探店、团购，拍给附近的人看",
+      "sceneId": "local-discovery",
+      "covers": [
+        "local-discovery",
+        "local-signature"
+      ]
+    },
+    {
+      "id": "brand",
+      "title": "品牌广告",
+      "description": "讲理念、讲故事的品牌片",
+      "sceneId": "brand-proposition",
+      "covers": [
+        "brand-proposition",
+        "brand-lifestyle"
+      ]
+    },
+    {
+      "id": "drama",
+      "title": "剧情短片",
+      "description": "有冲突、有反转的短剧情",
+      "sceneId": "drama-twist",
+      "covers": [
+        "drama-twist",
+        "drama-emotional"
+      ]
+    },
+    {
+      "id": "ip",
+      "title": "IP 形象",
+      "description": "一张照片做出设定图和写真",
+      "sceneId": "ip-sheet",
+      "covers": [
+        "ip-sheet",
+        "ip-portrait"
+      ]
+    }
+  ]
+}

@@ -46,6 +46,71 @@ class JusuanImageClientTest {
         assertTrue(evidence.identifiers().contains("logid=body-123"));
         verify(upstream,times(1)).sendJson(any(),any());
     }
+    @Test void moderationRejectionReturnsProviderReasonWithoutRetryingDurableSubmission() throws Exception {
+        String reason="生成的图片可能违反了关于青少年与儿童形象适当描绘的防护限制";
+        var error=rejectedResponse(400,mapper.createObjectNode().set("error",mapper.createObjectNode()
+                .put("code","content_policy_violation").put("message",reason)).toString(),true);
+        assertEquals("STUDIO_IMAGE_PROVIDER_FAILED",error.getCode());
+        assertEquals(Map.of("providerCode","content_policy_violation","reason",reason,"category","content_moderation"),error.getDetails());
+        assertTrue(error.getMessage().contains(reason));
+        assertEquals(400,((ProviderResponseDiagnostics)error.getSuppressed()[0]).status());
+        verify(upstream,times(1)).sendJson(any(),any());
+    }
+    @Test void otherJsonRejectionsExposeSanitizedBoundedReason() throws Exception {
+        String reason="invalid parameter; token=private-token; https://private.example/file?signature=secret; sk-testsecret "+"字".repeat(450);
+        var error=rejectedResponse(400,mapper.createObjectNode().put("message",reason).toString(),false);
+        var details=(Map<?,?>)error.getDetails();String safe=(String)details.get("reason");
+        assertEquals("provider_rejection",details.get("category"));
+        assertTrue(safe.contains("invalid parameter"));
+        for(String secret:List.of("private-token","private.example","signature=secret","sk-testsecret"))assertFalse(error.getMessage().contains(secret));
+        assertTrue(safe.codePointCount(0,safe.length())<=301);
+        assertTrue(error.getMessage().contains(safe));
+    }
+    @Test void malformedHtmlKeepsGenericMessageAndStructuredServerErrorsExposeTheirReason() throws Exception {
+        for(String body:List.of("<html>private gateway detail</html>","not json","{\"error\":{\"message\":\"<html>private gateway detail</html>\"}}","{}")) {
+            reset(upstream);
+            var error=rejectedResponse(400,body,false);
+            assertEquals("STUDIO_IMAGE_PROVIDER_FAILED",error.getCode());assertNull(error.getDetails());
+            assertFalse(error.getMessage().contains("private gateway detail"));
+        }
+        reset(upstream);
+        var ep=endpoint("ernie-Image");
+        when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
+        var response=json("{\"error\":{\"message\":\"private server detail\"}}");when(response.statusCode()).thenReturn(503);
+        when(upstream.sendJson(any(),any())).thenReturn(response);
+        var error=assertThrows(BusinessException.class,()->client.generate("ep","image","1024x1024",List.of(),"request","owner",s->{}));
+        assertEquals("private server detail",((Map<?,?>)error.getDetails()).get("reason"));
+        assertTrue(error.getMessage().contains("private server detail"));
+    }
+    @Test void serverErrorReasonSurvivesDurableRecoveryWithoutBecomingDefinitiveRejection() {
+        var ep=endpoint("ernie-Image");
+        when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
+        var response=json("{\"error\":{\"message\":\"provider capacity exhausted\"}}");when(response.statusCode()).thenReturn(503);
+        when(upstream.sendJson(any(),any())).thenReturn(response);
+        var pending=assertThrows(JusuanImageClient.Pending.class,()->client.generate("ep","image","1024x1024",List.of(),"request","owner",s->{},null,null,null,state->{}));
+        assertEquals("STUDIO_IMAGE_SUBMISSION_UNKNOWN",pending.code());
+        assertTrue(pending.getMessage().contains("provider capacity exhausted"));
+        verify(upstream,times(1)).sendJson(any(),any());
+    }
+    @Test void asyncJobModerationFailureUsesSamePublicReason() throws Exception {
+        var ep=endpoint("ernie-Image");
+        when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
+        String reason="参考图未通过内容审核";
+        var accepted=json("{\"id\":\"job1\"}");
+        var failed=json(mapper.createObjectNode().put("status","failed").set("error",mapper.createObjectNode().put("code","content_policy_violation").put("message",reason)).toString());
+        when(upstream.sendJson(any(),any())).thenReturn(accepted,failed);
+        var error=assertThrows(JusuanImageClient.ProviderRejected.class,()->client.generate("ep","image","1024x1024",List.of(),"request","owner",s->{},null,null,null,state->{}));
+        assertEquals("content_moderation",((Map<?,?>)error.getDetails()).get("category"));
+        assertEquals(reason,((Map<?,?>)error.getDetails()).get("reason"));
+        assertTrue(error.getMessage().contains(reason));
+        verify(upstream,times(2)).sendJson(any(),any());verifyNoInteractions(http);
+    }
+    private JusuanImageClient.ProviderRejected rejectedResponse(int status,String body,boolean durable) {
+        var ep=endpoint("ernie-Image");
+        when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
+        var response=json(body);when(response.statusCode()).thenReturn(status);when(upstream.sendJson(any(),any())).thenReturn(response);
+        return assertThrows(JusuanImageClient.ProviderRejected.class,()->client.generate("ep","image","1024x1024",List.of(),"request","owner",s->{},null,null,null,durable?state->{}:null));
+    }
     @Test void configuredAsyncImageProtocolDoesNotDependOnProviderHostname(){
         var ep=endpoint("flux2-klein-4b");
         ep.setBaseUrl("https://image-proxy.example/v1");
@@ -215,6 +280,124 @@ class JusuanImageClientTest {
         verify(upstream).sendJson(any(),any());
         verifyNoInteractions(http,storage);
     }
+    private AiModelEndpoint largeImageEndpoint(int maxBytes) {
+        var ep=endpoint("gpt-image-2-4k-pic");
+        ep.setImageRequestSpecJson("""
+                {"promptMaxChars":1000,"minReferenceImages":0,"maxReferenceImages":1,"referenceField":"multiple",
+                 "outputs":[{"canvasSize":"3840x2160","aspectRatio":"16:9","providerFields":{}}],
+                 "wire":{"submitPath":"/images/generations","referenceSubmitPath":"/images/edits",
+                         "inputMode":"multipart","resultMode":"sync-base64","outputPointer":"/data/0/b64_json",
+                         "requireExactOutputSize":true,"maxOutputBytes":%d}}
+                """.formatted(maxBytes));
+        when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio"))
+                .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
+        return ep;
+    }
+    @Test void real4kPngBeyondJacksonDefaultStringLimitWorksForGenerationAndEdits() throws Exception {
+        largeImageEndpoint(64*1024*1024);
+        var image=new java.awt.image.BufferedImage(3840,2160,java.awt.image.BufferedImage.TYPE_INT_RGB);
+        int[] pixels=((java.awt.image.DataBufferInt)image.getRaster().getDataBuffer()).getData();
+        var random=new Random(42);
+        for(int i=0;i<pixels.length;i++)pixels[i]=random.nextInt();
+        var output=new java.io.ByteArrayOutputStream();
+        assertTrue(javax.imageio.ImageIO.write(image,"png",output));
+        byte[] bytes=output.toByteArray();
+        String encoded=Base64.getEncoder().encodeToString(bytes);
+        int sharedLimit=mapper.getFactory().streamReadConstraints().getMaxStringLength();
+        assertTrue(encoded.length()>sharedLimit,"fixture must reproduce the 4K Base64 parsing limit");
+        var response=json("{\"data\":[{\"b64_json\":\""+encoded+"\"}]}");
+        when(upstream.sendJson(any(),any())).thenReturn(response);
+        var checkpoints=new java.util.concurrent.atomic.AtomicReference<com.fasterxml.jackson.databind.node.ObjectNode>();
+        assertArrayEquals(bytes,client.generate("ep","landscape","3840x2160",List.of(),"4k-json","owner",s->{},null,null,null,checkpoints::set));
+        Path reference=Files.createTempFile("4k-reference-",".png");
+        try {
+            Files.write(reference,Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jS9sAAAAASUVORK5CYII="));
+            when(storage.openForRead("reference")).thenReturn(reference);
+            assertArrayEquals(bytes,client.generate("ep","landscape","3840x2160",List.of("reference"),"4k-edit","owner",s->{},null,null,null,checkpoints::set));
+        } finally {Files.deleteIfExists(reference);}
+        assertEquals(sharedLimit,mapper.getFactory().streamReadConstraints().getMaxStringLength());
+        verify(upstream,times(2)).sendJson(any(),any());
+        verifyNoInteractions(http);
+    }
+    @Test void largerParserAllowanceStillRejectsOutputAboveEndpointByteLimit() {
+        largeImageEndpoint(32);
+        String encoded=Base64.getEncoder().encodeToString(Base64.getDecoder().decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jS9sAAAAASUVORK5CYII="));
+        var response=json("{\"data\":[{\"b64_json\":\""+encoded+"\"}]}");
+        when(upstream.sendJson(any(),any())).thenReturn(response);
+        var error=assertThrows(BusinessException.class,()->client.generate("ep","x","3840x2160",List.of(),"limit","owner",s->{}));
+        assertTrue(error.getMessage().contains("超过端点配置的大小上限"));
+        verify(upstream,times(1)).sendJson(any(),any());
+    }
+    @Test void malformedImageResponseKeepsSafeParserDiagnosticsAndNeverResubmits() {
+        var ep=largeImageEndpoint(64*1024*1024);
+        when(models.storedEndpoint("ep")).thenReturn(Optional.of(ep));
+        String body="{\"data\":[{\"b64_json\":\"private-media\"}],\"bad\":}";
+        var response=json(body);
+        when(response.headers()).thenReturn(HttpHeaders.of(Map.of("x-request-id",List.of("image-parse-123")),(k,v)->true));
+        when(upstream.sendJson(any(),any())).thenReturn(response);
+        var checkpoints=new java.util.concurrent.atomic.AtomicReference<com.fasterxml.jackson.databind.node.ObjectNode>();
+        var pending=assertThrows(JusuanImageClient.Pending.class,()->client.generate("ep","x","3840x2160",List.of(),"bad-json","owner",s->{},null,null,null,checkpoints::set));
+        assertFalse(pending.getCause().getMessage().contains("聚算"));
+        String detail=pending.getCause().getSuppressed()[0].getMessage();
+        assertTrue(detail.contains("JsonParseException"));
+        assertTrue(detail.contains("responseCharacters="+body.length()));
+        assertTrue(detail.contains("charOffset="));
+        assertFalse(detail.contains("private-media"));
+        var evidence=(ProviderResponseDiagnostics)pending.getCause().getSuppressed()[1];
+        assertTrue(evidence.identifiers().contains("x-request-id=image-parse-123"));
+        assertFalse(evidence.responseBody().contains("private-media"));
+        assertThrows(JusuanImageClient.Pending.class,()->client.generate("ep","x","3840x2160",List.of(),"bad-json","owner",s->{},null,null,checkpoints.get(),checkpoints::set));
+        verify(upstream,times(1)).sendJson(any(),any());
+    }
+    private static final String PNG_1X1="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jS9sAAAAASUVORK5CYII=";
+    private void base64Endpoint(String outputHosts) {
+        var ep=endpoint("gpt-image-2-1k-pic");
+        ep.setImageRequestSpecJson("""
+                {"promptMaxChars":32000,"minReferenceImages":0,"maxReferenceImages":0,"referenceField":"none",
+                 "outputs":[{"canvasSize":"1x1","aspectRatio":"1:1","providerFields":{"size":"1x1","response_format":"b64_json"}}],
+                 "wire":{"submitPath":"/images/generations","resultMode":"sync-base64","outputPointer":"/data/0/b64_json",
+                         "requireExactOutputSize":true%s}}
+                """.formatted(outputHosts==null?"":",\"outputHosts\":"+outputHosts));
+        when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio"))
+                .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
+    }
+    /** 2026-10-28 production: /images/edits answered data[0].url (presigned S3) to a b64_json request. */
+    @Test void base64EndpointDownloadsTheUrlTheSupplierReturnedInstead() throws Exception {
+        base64Endpoint(null);
+        byte[] bytes=Base64.getDecoder().decode(PNG_1X1);
+        var reply=json("{\"data\":[{\"url\":\"https://8.8.4.4/images/result?X-Amz-Signature=abc\"}]}");
+        when(upstream.sendJson(any(),any())).thenReturn(reply);
+        var downloaded=mock(HttpResponse.class);
+        when(downloaded.statusCode()).thenReturn(200);when(downloaded.body()).thenReturn(new ByteArrayInputStream(bytes));
+        when(http.send(any(),any())).thenReturn(downloaded);
+        assertArrayEquals(bytes,client.generate("ep","x","1x1",List.of(),"url-instead","owner",s->{},null,null,null,state->{}));
+        var request=org.mockito.ArgumentCaptor.forClass(HttpRequest.class);
+        verify(http).send(request.capture(),any());
+        assertEquals("8.8.4.4",request.getValue().uri().getHost());
+        assertTrue(request.getValue().headers().firstValue("Authorization").isEmpty());
+        verify(upstream,times(1)).sendJson(any(),any());
+    }
+    @Test void configuredOutputHostsStillBindTheFallbackUrl() {
+        base64Endpoint("[\"cdn.supplier.example\"]");
+        var reply=json("{\"data\":[{\"url\":\"https://8.8.4.4/images/result\"}]}");
+        when(upstream.sendJson(any(),any())).thenReturn(reply);
+        var error=assertThrows(JusuanImageClient.ProviderRejected.class,
+                ()->client.generate("ep","x","1x1",List.of(),"host-gate","owner",s->{},null,null,null,state->{}));
+        assertTrue(error.getMessage().contains("域名"));
+        verifyNoInteractions(http);
+    }
+    @Test void finishedReplyWithoutAnyImageIsAKnownFailureNotAnUnknownSubmission() {
+        base64Endpoint(null);
+        var reply=json("{\"data\":[{\"revised_prompt\":\"x\"}]}");
+        when(upstream.sendJson(any(),any())).thenReturn(reply);
+        var state=new java.util.concurrent.atomic.AtomicReference<com.fasterxml.jackson.databind.node.ObjectNode>();
+        var error=assertThrows(JusuanImageClient.ProviderRejected.class,
+                ()->client.generate("ep","x","1x1",List.of(),"no-image","owner",s->{},null,null,null,state::set));
+        assertEquals("STUDIO_IMAGE_PROVIDER_FAILED",error.getCode());
+        assertTrue(state.get().path("submitAttempted").asBoolean());
+        verify(upstream,times(1)).sendJson(any(),any());verifyNoInteractions(http);
+    }
     @Test void nativeEditsSendOrderedSourceFilesAndExactSizeWhileTextGenerationRemainsJson() throws Exception {
         var ep=endpoint("gpt-image-2-1k-pic");
         ep.setImageRequestSpecJson("""
@@ -288,7 +471,7 @@ class JusuanImageClientTest {
         });
         return new String(subscriber.getBody().toCompletableFuture().get(),java.nio.charset.StandardCharsets.UTF_8);
     }
-    @Test void completedWrongSizeIsRejectedBeforeSettlementRatherThanParkedAsUnknown() {
+    @Test void completedWrongSizeIsDeliveredAsIsWithoutRepeatingSubmission() {
         var ep=endpoint("gpt-image-2-1k-pic");
         ep.setImageRequestSpecJson("""
                 {"promptMaxChars":32000,"minReferenceImages":0,"maxReferenceImages":0,"referenceField":"none",
@@ -301,9 +484,15 @@ class JusuanImageClientTest {
         var reply=json("{\"data\":[{\"b64_json\":\""+image+"\"}]}");
         when(upstream.sendJson(any(),any())).thenReturn(reply);
         var state=new java.util.concurrent.atomic.AtomicReference<com.fasterxml.jackson.databind.node.ObjectNode>();
-        var error=assertThrows(JusuanImageClient.ProviderRejected.class,()->client.generate("ep","draw a cat","2048x2048",List.of(),"size-gate","owner",s->{},null,null,state::set));
-        assertTrue(error.getMessage().contains("1x1"));assertTrue(error.getMessage().contains("2048x2048"));
+        assertArrayEquals(Base64.getDecoder().decode(image),client.generate("ep","draw a cat","2048x2048",List.of(),"size-gate","owner",s->{},null,null,null,state::set));
         assertTrue(state.get().path("submitAttempted").asBoolean());
+        verify(upstream,times(1)).sendJson(any(),any());
+        // A WebP has no JDK reader, so its size cannot be read; it is still a usable image and is delivered.
+        reset(upstream);
+        byte[] webp="RIFF$\0\0\0WEBPVP8 \u0018\0\0\0".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+        var webpReply=json("{\"data\":[{\"b64_json\":\""+Base64.getEncoder().encodeToString(webp)+"\"}]}");
+        when(upstream.sendJson(any(),any())).thenReturn(webpReply);
+        assertArrayEquals(webp,client.generate("ep","draw a cat","2048x2048",List.of(),"size-gate-webp","owner",s->{},null,null,null,state::set));
         verify(upstream,times(1)).sendJson(any(),any());
     }
     @Test void urlReferencesAndAsyncUrlResultFollowEndpointModes() throws Exception {
@@ -365,13 +554,13 @@ class JusuanImageClientTest {
             case 2 -> throw new UpstreamCallException(false,new java.io.IOException("poll unavailable"));
             default -> json("{\"status\":\"succeeded\",\"outputs\":[{\"assetId\":\"original-asset\"}]}");
         };});
-        var pending=assertThrows(JusuanImageClient.Pending.class,()->client.generate("ep","original prompt","1024x1024",List.of(),"original-key","owner",stage->{},null,null,state::set));
+        var pending=assertThrows(JusuanImageClient.Pending.class,()->client.generate("ep","original prompt","1024x1024",List.of(),"original-key","owner",stage->{},null,null,null,state::set));
         assertEquals("STUDIO_IMAGE_RECOVERING",pending.code());assertEquals("original-job",state.get().path("jobId").asText());
         String originalBody=state.get().path("requestBody").asText();ep.setBaseUrl("https://new-config.example/v1");ep.setModel("new-model");
         when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio")).thenReturn(Optional.empty());
         byte[] bytes=Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jS9sAAAAASUVORK5CYII=");
         var downloaded=mock(HttpResponse.class);when(downloaded.statusCode()).thenReturn(200);when(downloaded.body()).thenReturn(new ByteArrayInputStream(bytes));when(http.send(any(),any())).thenReturn(downloaded);
-        assertArrayEquals(bytes,client.generate("ep","changed caller prompt","1024x1024",List.of(),"original-key","owner",stage->{},null,state.get(),state::set));
+        assertArrayEquals(bytes,client.generate("ep","changed caller prompt","1024x1024",List.of(),"original-key","owner",stage->{},null,null,state.get(),state::set));
         assertEquals(originalBody,state.get().path("requestBody").asText());assertEquals(1,requests.stream().filter(r->r.method().equals("POST")).count());
         assertEquals("/v1/jobs/original-job",requests.get(2).uri().getPath());assertEquals("api.jusuanhub.com",requests.get(2).uri().getHost());assertEquals("model=ernie-Image",requests.get(2).uri().getQuery());
     }
@@ -380,9 +569,9 @@ class JusuanImageClientTest {
         when(models.storedEndpoint("ep")).thenReturn(Optional.of(ep));
         var state=new java.util.concurrent.atomic.AtomicReference<com.fasterxml.jackson.databind.node.ObjectNode>();
         when(upstream.sendJson(any(),any())).thenThrow(new UpstreamCallException(true,new java.io.IOException("submit reply lost")));
-        assertEquals("STUDIO_IMAGE_SUBMISSION_UNKNOWN",assertThrows(JusuanImageClient.Pending.class,()->client.generate("ep","original","1024x1024",List.of(),"key","owner",stage->{},null,null,state::set)).code());
+        assertEquals("STUDIO_IMAGE_SUBMISSION_UNKNOWN",assertThrows(JusuanImageClient.Pending.class,()->client.generate("ep","original","1024x1024",List.of(),"key","owner",stage->{},null,null,null,state::set)).code());
         assertTrue(state.get().path("submitAttempted").asBoolean());assertFalse(state.get().has("jobId"));
-        assertThrows(JusuanImageClient.Pending.class,()->client.generate("ep","original","1024x1024",List.of(),"key","owner",stage->{},null,state.get(),state::set));
+        assertThrows(JusuanImageClient.Pending.class,()->client.generate("ep","original","1024x1024",List.of(),"key","owner",stage->{},null,null,state.get(),state::set));
         verify(upstream,times(1)).sendJson(any(),any());verifyNoInteractions(http);
     }
 

@@ -12,6 +12,19 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class MusicGenUsageTest {
+    @Test void asynchronousFailureRetainsSafeProviderReasonInsteadOfGenericCreativeAdvice() {
+        var state=mock(MusicGenJobState.class);var client=mock(MusicGenModelClient.class);
+        var credits=mock(CreditService.class);var props=new MusicGenProperties();props.setPollIntervalSeconds(1);
+        var job=MusicGenJob.builder().id("rejected").ownerUserId("owner").durationSec(90).creditsHeld(10).build();
+        when(state.find("rejected")).thenReturn(Optional.of(job));
+        when(client.submit(any())).thenReturn(new MusicGenModelClient.SubmitResult("task","vendor","model","ep"));
+        when(client.poll(any(),eq("task"))).thenReturn(new MusicGenModelClient.PollResult("failed",0,null,null,null,null,"risk: provider rejected lyrics token=private-token"));
+        new MusicGenWorker(state,client,mock(MusicOutputStorage.class),credits,props,mock(AiModelUsageService.class)).generateAsync("rejected");
+        var reason=org.mockito.ArgumentCaptor.forClass(String.class);verify(state).markFailed(eq("rejected"),reason.capture());
+        assertTrue(reason.getValue().contains("provider rejected lyrics"));assertFalse(reason.getValue().contains("private-token"));
+        verify(credits,times(1)).releaseHold(eq(MusicGenJobService.CREDIT_REF_TYPE),eq("rejected"),anyString());
+        verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString(),org.mockito.ArgumentMatchers.any());
+    }
     @Test void recordsActualVendorDurationAndOwnerEvenWhenDeliveryFails() {
         var state = mock(MusicGenJobState.class);
         var client = mock(MusicGenModelClient.class);

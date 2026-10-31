@@ -80,7 +80,7 @@ public class DramaShortService {
         long price = configs.getLong(DramaConfigSeeder.KEY_SHORT_ENTRY, SHORT_ENTRY_COST_DEFAULT);
         if (price <= 0) return work.get();
         String ref = "dse_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
-        creditService.hold(userId, price, ENTRY_REF_TYPE, ref, "开始制作短视频 · AI 写口播脚本和分镜");
+        creditService.hold(userId, price, ENTRY_REF_TYPE, ref, "开始制作短视频 · AI 写口播脚本和分镜", com.aistareco.aep.billing.service.ModelChargeContext.NONE);
 
         DramaShort created;
         try {
@@ -92,7 +92,7 @@ public class DramaShortService {
         }
 
         try {
-            creditService.commitHold(ENTRY_REF_TYPE, ref, price, "开始制作短视频 · AI 写口播脚本和分镜");
+            creditService.commitHold(ENTRY_REF_TYPE, ref, price, "开始制作短视频 · AI 写口播脚本和分镜", null);
             return created;
         } catch (RuntimeException commitErr) {
             // 草稿已经落库（本服务没有外层事务），钱却没扣上。不能把它留着：

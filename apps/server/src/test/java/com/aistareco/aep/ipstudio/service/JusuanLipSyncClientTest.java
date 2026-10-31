@@ -13,6 +13,21 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 class JusuanLipSyncClientTest {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints={400,503})
+    void providerErrorReasonSurvivesSubmitAndPoll(int status) {
+        var upstream=mock(UpstreamModelHttp.class);
+        var endpoint=AiModelEndpoint.builder().id("lips").upstreamApiKeyEncrypted(AepCryptoUtil.encrypt("test-key")).build();
+        java.net.http.HttpResponse<String> response=mock(java.net.http.HttpResponse.class);
+        when(response.statusCode()).thenReturn(status);when(response.body()).thenReturn("{\"error\":{\"message\":\"face not visible token=private-token\"}}");
+        when(upstream.sendJson(any(),any())).thenReturn(response);
+        var client=new JusuanLipSyncClient(upstream,new ObjectMapper());
+        for(boolean submit:new boolean[]{true,false}) {
+            var error=assertThrows(BusinessException.class,()->{if(submit)client.submit(endpoint,"https://lip.example/v1","{}","id","owner");else client.poll(endpoint,"https://lip.example/v1","https://lip.example/v1/jobs/id?model=x-dub","id","owner");});
+            assertTrue(error.getMessage().contains("face not visible"));assertFalse(error.getMessage().contains("private-token"));
+            assertEquals(submit&&status==400?"STUDIO_LIP_SYNC_REJECTED":"STUDIO_LIP_SYNC_UNAVAILABLE",error.getCode());
+        }
+    }
     @Test void nativeMultipartThenOriginalIdempotentBodyAndScopedQuery(@TempDir Path dir) throws Exception {
         var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);String base="http://127.0.0.1:"+server.getAddress().getPort()+"/v1";
         var multipart=new AtomicReference<String>();var body=new AtomicReference<String>();var key=new AtomicReference<String>();

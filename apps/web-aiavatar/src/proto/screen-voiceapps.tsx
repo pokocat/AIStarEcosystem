@@ -43,7 +43,7 @@ function VoiceRowM({ v, playing, onPlay, chars }: any) {
   const kindTone = { clone: 'info', design: 'primary', preset: 'primary' }[v.kind];
   return hMV('div', { className: 'm-card', style: { padding: '12px 14px' } },
     hMV('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
-      hMV('button', { onClick: () => onPlay(v.id), className: 'm-tap', style: {
+      hMV('button', { onClick: () => onPlay(v.id), className: 'm-tap', 'aria-label': (playing ? '停止试听' : '试听') + '「' + v.name + '」', 'aria-pressed': !!playing, style: {
         width: 42, height: 42, flex: '0 0 42px', borderRadius: 99, border: 'none', cursor: 'pointer', display: 'grid', placeItems: 'center',
         background: playing ? 'var(--primary)' : 'var(--primary-soft)', color: playing ? '#fff' : 'var(--primary)' } },
         playing ? hMV('span', { style: { display: 'flex', gap: 2.5 } }, hMV('span', { style: { width: 3, height: 12, background: '#fff', borderRadius: 2 } }), hMV('span', { style: { width: 3, height: 12, background: '#fff', borderRadius: 2 } })) : hMV(Icons.play, { size: 17 })),
@@ -95,7 +95,8 @@ function MVoice({ ctx }) {
     const pl = playing === v.id;
     return hMV('div', { key: v.id, className: 'm-card', style: { padding: '12px 14px', marginBottom: 11 } },
       hMV('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
-        hMV('button', { onClick: () => onPlay(v.id), className: 'm-tap', style: { width: 42, height: 42, flex: '0 0 42px', borderRadius: 99, border: 'none', cursor: 'pointer', display: 'grid', placeItems: 'center', background: pl ? 'var(--primary)' : 'var(--primary-soft)', color: pl ? '#fff' : 'var(--primary)' } },
+        // 只有图标的试听按钮要有名字（2026-10-30 线上复核：读屏只念「按钮」）。
+        hMV('button', { onClick: () => onPlay(v.id), className: 'm-tap', 'aria-label': (pl ? '停止试听' : '试听') + '「' + v.name + '」', 'aria-pressed': pl, style: { width: 42, height: 42, flex: '0 0 42px', borderRadius: 99, border: 'none', cursor: 'pointer', display: 'grid', placeItems: 'center', background: pl ? 'var(--primary)' : 'var(--primary-soft)', color: pl ? '#fff' : 'var(--primary)' } },
           pl ? hMV('span', { style: { display: 'flex', gap: 2.5 } }, hMV('span', { style: { width: 3, height: 12, background: '#fff', borderRadius: 2, animation: 'vbar .7s ease-in-out infinite' } }), hMV('span', { style: { width: 3, height: 12, background: '#fff', borderRadius: 2, animation: 'vbar .7s ease-in-out infinite .25s' } })) : hMV(Icons.play, { size: 17 })),
         hMV('div', { style: { minWidth: 0, flex: 1 } },
           hMV('div', { style: { fontSize: 14.5, fontWeight: 700 } }, v.name),
@@ -116,7 +117,7 @@ function MVoice({ ctx }) {
       hMV('div', { style: { display: 'flex', gap: 8, marginBottom: 16 } },
         [['builtin', '内置音色'], ['mine', '我的声音']].map(([k, l]) => {
           const on = tab === k;
-          return hMV('button', { key: k, onClick: () => setTab(k), style: {
+          return hMV('button', { key: k, onClick: () => setTab(k), 'aria-pressed': on, style: {
             height: 34, padding: '0 16px', borderRadius: 'var(--r-pill)', border: 'none', cursor: 'pointer',
             background: on ? 'var(--primary-soft)' : 'var(--surface-3)', color: on ? 'var(--primary)' : 'var(--ink-3)',
             fontSize: 13.5, fontWeight: on ? 700 : 600 } }, l);

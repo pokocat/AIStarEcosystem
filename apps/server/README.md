@@ -430,7 +430,7 @@ src/main/java/com/aistareco/aep/
 - **`material_video_input_asset`（V71，2026-10-29）**：角色声音的聚算输入回执；按端点、地址、模型、凭据及来源 key 散列隔离，保存 `source_key` / `asset_id` / `expires_at`，不保存密钥和签名 URL。人物长期绑定仍存我方 key；保存音色和生成 worker 共用上传路径，仅在厂商有效期前复用，过期从原样本重新上传。上传使用可写事务，避免个人素材库持用户行锁时触发 MySQL 只读事务 500。
 
 - **`director_work`（V65，AI 导演台）**：作品一行，`content_json` 存剧本 / 分集 / 资产使用 / 片段与镜头 / 采用指针（只存存储 key），`revision` 作品级修订、`active` 供后台调度扫描。生成任务复用 `ip_run`，新增 `host_type`（NULL = 画布，`director` = 导演作品，`project_id` 存作品 id）。接口 `/api/v1/ip-studio/director/**`。
-  - 2026-10-26 本地未发布：`content_json.settings.textModel` 可选 Studio script 场景端点，空值默认；`textModels`/`textModelMode` 回传候选和 Token 售价。所有文字任务、估价及连跑使用所选模型，`_exec` 固化端点、Token 费率与冻结额；幂等指纹包含显式模型。剧本成功采用时同步非空剧名到 `director_work.title`，重写历史保留旧标题；失败/内容冲突不改标题。无需迁移。
+  - 2026-10-26（`20261026-director-text-model`）：`content_json.settings.textModel` 可选 Studio script 场景端点，空值默认；`textModels`/`textModelMode` 回传候选（界面不展示文字价格）。所有文字任务、估价（按各任务输出上限）及连跑使用所选模型；原选择停用时设置照存、估价按默认价、提交明确报错，`_exec` 固化端点、Token 费率与冻结额；幂等指纹包含显式模型。剧本成功采用时同步非空剧名到 `director_work.title`，重写历史保留旧标题；失败/内容冲突不改标题。无需迁移。
 
 ### 角色体系
 
@@ -508,7 +508,7 @@ src/main/java/com/aistareco/aep/
 
 | 表 | 说明 |
 |---|---|
-| `ip_project` | 画布项目（IPP- + 8 hex）。`doc_json` = `IpProjectDoc`（nodes/edges/viewport）**整存整取**：客户端拥有、服务端逐字保存、绝不改写 —— 运行与发布结果一律另存，否则前端 1.2s 防抖 PUT 与异步 worker 互相覆盖（v0.101 同一条教训）。`cover_key` 是主形象选中图的 storage key（§4.7.4，coverUrl 出 wire 派生）；`published_avatar_id` 指向发布产出的 `dap_avatar`；软删 `deleted_at` |
+| `ip_project` | 画布项目（IPP- + 8 hex）。`doc_json` = `IpProjectDoc`（nodes/edges/viewport）**整存整取**：客户端拥有、服务端逐字保存、绝不改写 —— 运行与发布结果一律另存，否则前端 1.2s 防抖 PUT 与异步 worker 互相覆盖（v0.101 同一条教训）。`cover_key` 是主形象选中图的 storage key（§4.7.4，coverUrl 出 wire 派生）；`published_avatar_id` 指向发布产出的 `dap_avatar`；`scene_id`（V72）记场景页（AI 图片 / AI 视频）草稿来自哪个场景，「最近」按它列；软删 `deleted_at` |
 | `ip_run` | 一次节点运行（IPR- + 8 hex，`kind=identity\|generate\|studio-*`，wire 三态 `running\|done\|failed`）。`input_json` 是本次实际提示词 + 参考图生效回报（`_exec` 段是含 storage key 的服务端执行参数，出 wire 时剥掉）；`output_json` 的 `candidates[{key}]` **只存 key 不存签名 URL**（签名有 TTL，落库就是埋雷）。hold `referenceType=ip-run` / `referenceId=runId`，`cost` 恒为真实账本值。同节点重跑新开一行、旧行保留（用户可能仍在用旧运行里选中的候选图）；`cancel_requested` 由用户置、终态由 worker 落；`heartbeat_at` 供 `IpRunReaper` 扫僵死 |
 | `ip_skill` | Studio 技能（S3，V63；主键列 `skill_key`，避开 MySQL 保留字 KEY）。只存技能级状态：`status`（active \| draft \| withdrawn，运行时真值，覆盖版本 YAML 头里的 status）、`current_version`（生效版本）、`name / summary`（当前版本的冗余展示）、`updated_by`（`seed` = 只被仓库种子写过，才允许文件变更时重新种子）、`seed_file` |
 | `ip_skill_version` | 技能的不可变版本（S3，V63，`UNIQUE(skill_key, version)`）。`frontmatter_json`（YAML 头的 JSON）+ `body_md` 写入后不再修改；`content_digest` 为快照摘要（种子 = 文件摘要，与 S1/S2 的快照一致）；`source` seed \| admin \| rollback \| distilled；`status` published \| draft（只有草稿的 status 会在发布时变）；草稿另带 `base_version / source_project_id / source_execution_id / source_run_id` |
@@ -1116,11 +1116,12 @@ POST/PUT/DELETE /api/v1/ip-studio/covers/{project|template}/{id} 共用 CanvasCo
 - **D09**：确认消息不存在、不属于本人本画布，或那条消息上没有这张卡（例如传了用户消息）→ 404 `STUDIO_APPROVAL_NOT_FOUND`；卡已确认、过期、被替代或不是当前修订 → 409 `STUDIO_PLAN_STALE`。
 - **授权快照（D10）**：卡片被确认时写入 `approvedBudgetCap / approvedAutoFixCap / approvedPlanRevision / approvedAt / approvedByMessageId / executionId`（按钮确认时 `approvedByMessageId` 是卡片所在消息，文字确认时是用户那条消息）；`budgetCap / autoFixCap` 保留为提议值。分支复制时这些字段一并清除。
 - **文字确认（D04）**：新工具 `confirm_approval`（`approvalId` 加用户亲口说的 `budgetCap / autoFixCap`）。权威是本轮用户自己的消息（排队未读的不算）。服务端 `StudioPlanExecutionService.confirmNatural` 核对：卡片在这条消息之前出现，且是唯一的待确认卡（否则 409 `STUDIO_APPROVAL_AMBIGUOUS`）；消息不是提问或犹豫（`StudioNaturalApprovals`，只会拒绝，不会放行；放得过去的是含确认词的句子，或整句只由短肯定词组成——「可以」「好」「行」「嗯，可以」「好吧」，确认卡上写着「直接回复「可以」也行」；「可以吗」「行不行」「可以把第 2 段换成横屏」仍拒）；上限高于卡片时，用户原话里必须有这个数，且不低于报价；付款人取卡片上的。然后走与按钮完全相同的创建 / 阶段确认，`confirmationMessageId` 记用户消息。同一次确认重放幂等。
-- **后台制作中的新消息（D03）**：线程绑定的执行处于 `running` 时（即使没有进行中的 turn），新消息存为 `ip_dialogue_steering`（`executionId` 为该执行，`queued`），返回 `queueState=queued`，提交后唤醒执行器。执行器每次推进时，在提交下一步之前读本执行还没处理的转向（`steps_json.steeringSeen` 去重）：执行停在 `needs_user`（「收到新指令，等待重新确认」，已受理的任务照原样完成），并请对话打开回复这条消息的 turn（提示词带上执行实况）。`paused / needs_user` 的执行本来就不提交，这时的消息是普通对话。用户确认新阶段、提高上限或继续时，之前的转向视为已处理。
+- **后台制作中的新消息（D03）**：线程绑定的执行处于 `running` 时（即使没有进行中的 turn），新消息存为 `ip_dialogue_steering`（`executionId` 为该执行，`queued`），返回 `queueState=queued`，提交后唤醒执行器。执行器每次推进时，在提交下一步之前读本执行还没处理的转向（`steps_json.steeringSeen` 去重）：执行停在 `needs_user`（「收到新指令，等待重新确认」，已受理的任务照原样完成），并请对话打开回复这条消息的 turn（提示词带上执行实况）。只问不改的消息（「做到哪了？」「还要多久」，`StudioSteeringQuestions`：问句、40 字内、不含任何改动或控制的词）不暂停，照样开 turn 回答，后续步骤继续提交（2026-10-30）。`paused / needs_user` 的执行本来就不提交，这时的消息是普通对话。用户确认新阶段、提高上限或继续时，之前的转向视为已处理。
 - **父对话计入阶段预算（D06）**（2026-10-23 起作废：对话费用不计入制作预算，见「Studio 对话去掉「继续」」）：turn 受理时，若线程绑定活跃执行（running / paused / needs_user），先在执行锁内按同一公式核对「已花 + 在途 + 本轮费用上限（hold）≤ 本阶段上限」，不够 → 402 `STUDIO_PLAN_BUDGET_EXCEEDED`（带 shortfall），不冻结、不建 run；够则登记到 `steps_json.dialogueRuns`：运行中按上限计在途，结算后按实际积分计已花，按 run id 去重。`budget.update` 与执行 `budgets` 新增 `dialogueSpent / dialogueInFlight`（父对话那部分，已含在 spent / inFlight 里，不能再加一次）。第一次确认之前的规划对话不属于任何阶段（那时还没有阶段预算），由它自己的 maxCost 授权；分析结束后规划制作方案的对话属于分析阶段（与方案「分析阶段授权覆盖制作方案推导」一致）。为免默认卡片一确认就没有对话余量，`request_approval` 省略上限时，默认总上限 = 报价 + 重做额度 + 一轮对话的费用上限（卡片带 `dialogueReserve`）。turn 结算后唤醒执行器刷新预算。
 - **收尾（D07）**：执行到 done / partial / failed / canceled 时（`steps_json.summaryPosted` 保证只发一次），执行器在线程上发一条助手消息（`StudioExecutionMessages.postExecutionMessage`，按 `exec-summary-<executionId>` 幂等）：各阶段实际花费（其中对话多少、还有多少在结算）、做完与没做完的步骤（已采用的标出来）、AI 判断没通过或无法判断的检查及其理由，以及按真实产物推出的 2 到 3 条建议（「重做第 N 段」「把这条成片存为模板」「换成 16:9 横屏再出一版」「把做好的片段合成一条成片」等）。事件为 message.delta（整段一次：服务端文字，不是模型输出）加 turn.done（带 `suggestions`）；建议同时存在消息上（`requestJson.suggestions` → `Message.suggestions`），刷新后仍在。付费的后续动作仍要走确认卡。
 - **执行器的卡片是真消息**：预算不够时的「提高上限」卡，以及分析编排出的制作方案（plan 块加卡片，成为线程最新修订），都以助手消息落库，按钮和文字都能确认；不再只发一个刷新就丢的事件。
 - **端点受理与 worker 同一规则（D08）**：`AiModelInvocationService.resolveAcceptedEndpoint`：不指定模型即用途默认绑定（不要求 candidate）；指定的端点是启用的 candidate，或仍是该用途当前默认绑定，才放行，否则为空。对话受理、对话 worker、Studio 创作 worker（含拉片）共用；受理时选了既不是默认也不是候选的模型 → 503 `ENDPOINT_NOT_ALLOWED`，提示去后台哪里配。
+- **方案素材范围跨轮（2026-10-24，已生产发布 `20261024-studio-plan-material-scope`）**：对话方案确认时的 `canvasContextIds` 只由 `StudioPlanMaterials.scope` 算（出方案那轮的点选 → 方案 `materialNodeIds` → 步骤点名的节点 → 同一对话里更早用户消息的点选 / 附件；只留画布上还在的，≤16），`StudioPlanSource.conversationPicks` 提供第 4 项。技能计划引用范围外的画布对象 → 400 `STUDIO_PLAN_MATERIAL_OUT_OF_SCOPE`（`details.nodeIds`），执行里的编排任务失败时 `output.outOfScopeNodeIds` 记 id，步骤出 wire 带 `materials[{nodeId,title,onCanvas}]`；`resume` 可带 `addMaterialNodeIds` 把这些素材加入后只重跑这一步，不带则记 `excludedMaterials` 让下一次编排避开。规则见 `specs/BUSINESS_RULES.md` Studio 对话第 32 条。
 - `StudioExecutionControl` 现在有实现（`StudioPlanExecutionControl`）：对话快照带上执行投影，对话的 stop 会停掉绑定的执行（执行已结束时 stop 照常成功）。
 
 ### S3 技能库、意图路由与方法草稿（2026-10-18，本地实现，未发布）
@@ -1180,10 +1181,16 @@ POST/PUT/DELETE /api/v1/ip-studio/covers/{project|template}/{id} 共用 CanvasCo
 
 ### Studio 原生 GPT 图片接入（2026-10-20）
 
-图片端点协议支持 `wire.inputMode="multipart"` 和 `referenceSubmitPath`：无参考图沿用 JSON `submitPath`，有参考图以原始文件按顺序提交到编辑路径，多图字段采用 `image[]`。尺寸、提示词、候选数、来源归属及价格继续由原端点规格和场景策略校验；提交前验证文件，未知受理仍保留原检查点，禁止自动重投。`capability.imageSizes` 仅暴露尺寸/比例，Studio 选择后把精确 `size` 保存到请求与草稿，不向客户端暴露供应商参数或密钥。GPT Image 2、Flare、Sunburst 使用稳定系列值 `studio-image:<family>`；服务端按系列和尺寸从 `DAP_IMAGE` 开放候选选择匹配的 `*-1k-pic` / `*-4k-pic` 供应商模型，并将端点、供应商模型、规格及价格快照写入执行记录，worker 使用该快照提交，避免后台候选变更使已受理任务改路由。各分辨率只在端点规格明确开放时出现在模型 capability 中。接入与实测记录见 `docs/releases/studio-gpt-image-native-20261020.md`。
+图片端点协议支持 `wire.inputMode="multipart"` 和 `referenceSubmitPath`：无参考图沿用 JSON `submitPath`，有参考图以原始文件按顺序提交到编辑路径，多图字段采用 `image[]`。尺寸、提示词、候选数、来源归属及价格继续由原端点规格和场景策略校验；提交前验证文件，未知受理仍保留原检查点，禁止自动重投。`capability.imageSizes` 仅暴露尺寸/比例，Studio 选择后把精确 `size` 保存到请求与草稿，不向客户端暴露供应商参数或密钥。GPT Image 2、Flare、Sunburst 使用稳定系列值 `studio-image:<family>`；服务端按系列和尺寸从 `DAP_IMAGE` 开放候选选择匹配的 1k / 4k 供应商型号（GPT Image 2 带 `-pic` 后缀，Flare / Sunburst 不带），并将端点、供应商模型、规格及价格快照写入执行记录，worker 使用该快照提交，避免后台候选变更使已受理任务改路由。各分辨率只在端点规格明确开放时出现在模型 capability 中。接入与实测记录见 `docs/releases/studio-gpt-image-native-20261020.md`。
 
-`wire.requireExactOutputSize=true` 按原始图片字节校验返回尺寸；不匹配作为供应商已完成但无效的结果在结算前拒绝，不重投、不伪装尺寸。
+`wire.requireExactOutputSize=true` 只用于核对：按原始图片字节读出真实宽高，与所选尺寸不一致（或读不出尺寸，如 WebP）时照常交付原图并按原价结算，服务端日志留 `[studio-jusuan-image] output size differs` WARN（请求号、端点、所选与实际尺寸）供运营核对模型规格；不拉伸、不裁剪、不重投。2026-10-20 至 10-30 曾按尺寸不符判失败，见 `specs/BUSINESS_RULES.md` 同名一条。
 
+
+2026-10-26 大图解析修复（未发布）：`sync-base64` 的响应解析器按该任务端点规格中的 `maxOutputBytes` 换算 Base64 字符数上限（缺省仍为 64MiB 图片），不再先被 Jackson 默认 2000 万字符限制拒绝；只调整本次响应的解析工厂，共享 `ObjectMapper`、异步任务 / 上传回执及其他接口的限制不变。解码后仍校验图片字节上限与实际尺寸，原任务检查点、禁止重复提交及冻结结算规则不变。解析失败使用通用图片接口文案，并在异常链记录解析异常类型、响应字符数与字符位置，不记录解析器可能引用的媒体原文；大图和截断响应的告警脱敏也会先省略 Base64。
+
+回归使用本地生成的真实 3840×2160 PNG，Base64 超过 2000 万字符，分别覆盖 JSON 文生图和 multipart 图生图；另验输出超限拒绝、坏 JSON 的诊断与原请求不重提。没有调用付费模型。线上 `IPR-a274550e` / `IPR-31b2e403` 的原响应日志只保留前 4000 字符，且原解析异常被旧代码丢弃；本次确认存在兼容性缺陷，但未能证明历史两笔的精确触发原因，历史失败状态与已解冻的 110 积分保持原样。
+
+验证：适配到 main `651bf19f` 后，保留主线已有的供应商错误分类、模型快照入口和 worker 结算修复；图片传输、兼容入口、worker 结算与告警脱敏共 72 项测试全部通过，离线 Java 编译、全 workspace / admin 类型检查与 API 契约检查通过。本次不发布、不重提付费生成。
 
 ### 正式模型与旧入口兼容（2026-10-20）
 
@@ -1231,7 +1238,7 @@ capabilities 的文本模型新增 `dialogueTokenPricing`，普通文本仍用 `
 
 设计真源 `docs/ip-studio-dialogue-no-continue.md`，规则见 `specs/BUSINESS_RULES.md` Studio 对话第 30 条。
 
-- **结束条件**（`DialogueLoop`）：模型不再给动作、用户停止、付费生成等确认卡、`ask_question` 照旧；单轮的 16 步 / 40 次调用 / 24 次工具 / 10 分钟 / Token 输入输出分配全部删除。剩下的 `limit`：`budget`（追加冻结被拒：钱包没钱或付款授权失效；工具内部调用被拒时工具返回 `end=LIMIT`）、`loop`（相同动作批次第一次给纠正，纠正后再相同才结束）、`protocol`（格式纠正两次仍错）、`safeguard`（单个 run 300 次调用或 2 小时，ERROR 日志带 threadId / runId / 调用次数）。
+- **结束条件**（`DialogueLoop`）：模型不再给动作、用户停止、付费生成等确认卡、`ask_question` 照旧；单轮的 16 步 / 40 次调用 / 24 次工具 / 10 分钟 / Token 输入输出分配全部删除。剩下的 `limit`：`budget`（追加冻结被拒：钱包没钱或付款授权失效；工具内部调用被拒时工具返回 `end=LIMIT`）、`loop`（相同动作批次第一次给纠正，纠正后再相同才结束）、`protocol`（格式纠正两次仍错）、只说要做没动手（回复末尾在预告「我来改」却没有动作：纠正一次接着跑，纠正后仍不动手就结束，一轮最多 2 次，2026-10-30）、`safeguard`（单个 run 300 次调用或 2 小时，ERROR 日志带 threadId / runId / 调用次数）。
 - **一个 run 从头到尾**：一条用户消息只有一个 run、一条助手回复、一个 `turn.done`。`TurnBudget.metered(rate, held, …, topUp)` 以已冻结总额判断每次调用，放不下先调 `topUp`（`StudioDialogueTurnWorker.extendHold`）再判断；`settleWithin(in, out, held)` 按金额结算。
 - **冻结**：受理（`StudioDialogueService.startTurn`）冻结 `min(AiChatTokenPricing.find(endpoint).maxCost(), 付款账户可用余额)`，余额不够一次最小调用时请求完整增量、由冻结返回 402；`_exec.tokenPricing`（普通文本价）、`_exec.holdIncrement`、`_exec.holdRefs=[{ref,amount}]`。`extendHold` 在独立事务里：结算锁 → run 行锁 → 读付款钱包余额 → 金额 `min(max(增量, 本次所需), 余额)`，付不起本次调用就拒绝 → 引用 `runId#n`：企业成员 `EnterpriseBillingService.reserveExtension`（复制原授权的成员 / 钱包 / 模型，校验授权仍有效、成员关系未变、模型仍允许，不计入在途任务上限；授权引用含 `#` 的不算新任务），个人 `credits.hold` → 追加进 `holdRefs`、`run.cost` 记冻结总额。被拒抛 `HoldRefused`，Turn 记下原因、本次调用不做。
 - **结算**（`finish`，`DialogueHolds`）：对每个引用加结算锁 → 按实际用量从第一笔起依次 commit（每笔不超过自身金额），其余 release；失败 / 取消 / 过期 `releaseAll`；企业授权逐笔 `complete`。`expireIfStale`、`IpRunReaper`（对话 run 交给 `expireIfStale`）、`CreditHoldSweeper`（`DialogueHolds.runOf` 找 run，`isLive` 跳过）都覆盖追加的引用。余额不够的系统提示带 `requestJson.notice=recharge|recharge-enterprise`（`Message.notice` 出 wire），`output.holdRefused=balance|other`。
@@ -1239,6 +1246,36 @@ capabilities 的文本模型新增 `dialogueTokenPricing`，普通文本仍用 `
 - **兼容**：旧 `_exec.continueUntilDone / continuationOf` 照样能读（`continuationContext`），不再写；旧数据里的「点继续接着做」系统提示照常显示；没有 `holdRefs` 的旧 run 按 `[runId, run.cost]` 结算。
 - **上下文窗口**：`DialogueContextWindow.trim`，最近 6 轮完整，更早的工具结果一行摘要、长参数换成合法占位 JSON（原生 tool_calls 与 tool 消息一一对应不变），估算超 80k 时降到 3 轮 / 1 轮；只影响发给模型的视图。
 - **其它**：`DialogueCanvasDigest.full` 写明全文字数与 `read_canvas` 分段参数，`read_canvas` 文字对象返回 `total`；`ChildRuns.follow` 最多等 10 分钟，拉片仍在进行时不再 `HANDED_OFF` 结束，交给模型告诉用户。提示词 `dap.ip_studio_skill_dialogue` 规则 14 + 分段读用法，`PromptTemplateSeeder.SEED_VERSION=v25-2026-10-23-dialogue-no-continue`。无迁移、无新表。
+
+### H3 视频提示词改写（2026-10-26 导演台首发 `20261027-director-h3-prompt`；2026-10-27 起 Studio 共用，本地未发布）
+
+2026-10-27 修正：画布、创作助手、导演台的 H3 提示词优化统一使用后台「视频提示词优化」用途 `DAP_VIDEO_PROMPT` 的绑定端点（初始绑定聚算 Qwen），不跟随用户的文字模型或 Studio 剧本默认模型。端点授权、密钥、Token 售价仍由后台管理；不可用时明确报错，不回落其他模型。报价、冻结与实际结算均按绑定模型，输出预算一致。普通文字任务仍保留用户模型选择。
+
+核心在 `ipstudio/h3/H3PromptRewrite`：系统提示词是 `resources/h3-skill` 下官方 skill 原文（提交 `b731d88`，适用 MiniMax H3 Community License；全能参考带 base + ref 两份规范，其余模式只带 base）加本服务的 JSON 输出约定（导演台那一种组合的约定原文不动）。
+`source` 认「某某说：「…」」/ 旧语音轨的台词（引号配对），认得全就换成 `{{Ln}}` 由代码填（`fill`），认不全由模型写 `<d>`、`meta.spoken` 记原文台词供核对（`spokenLines`，与前端 `studioPromptLines` 同一套认法）。
+`shotStarts` 读「第N镜（起–止 秒）」定固定镜头，否则 `shots` 由模型定（`{start,text}`，最多 8 镜，时间不像样按平均分）。`validate` 返回 `{template, warnings, usable}`：能修的就地修好并写进提示，超 7000 字符 `usable=false`，只有拼不出提示词才 `AI_BAD_OUTPUT`。
+
+- **导演台**（`DirectorService`）：文字任务 `videoPrompt:<clip>`（`StudioWorkflowService.submitDirectorText`），回投存 `clip.videoPromptEn{hash, template, warnings, usable, runId, at}`（`hash` 含镜头切换时间），`chainVideo` 用 `then` 里的请求号、视频价格上限与付款方接着提交：先比对 `then.fingerprint`，一键制作里再用 `pipelineSpent` 核对预算，拒绝时记进 `pipeline.failed`；有提示且不是一键制作就停在 `review`（`notice` 提示），等 `options.promptChoice`（`videoPromptChoice{hash,value}`）。`retryRewrite` 对 `AI_BAD_OUTPUT` 重试一次，一键制作里两次都没成 `originalInPipeline` 按原文提交。`refresh` 写 `clip.videoPromptRewrite`（off / needed / ready / review / original）与 `videoPromptEn.text`。
+- **Studio**（`StudioWorkflowService.submitVideoRewrite` + `StudioWorkflowWorker.rewriteVideo/submitVideo`）：`video.rewrite`（review / auto）时建一行 `studio-video`，先按改写冻结、按实际 Token 结算，再在同一行上提交视频（`_exec.nativeVideoJobIds`、`sentPrompt`），`IpProjectService.videoBindingDto` 把改写花费并入并带 `output.videoPrompt / videoPromptNotes`。`H3StudioPrompt.build` 按提交顺序列参考素材（名字取画布节点标题）。执行器视频步骤 `ModeSpec.rewrite → rewrite=auto`，`quote` 加 `videoRewriteHold`。
+- 无迁移、无接口路径变化（`StudioVideoSettings.rewrite` 新字段、导演台 `options.promptChoice`）。依据与真模型试跑见 `docs/audits/director-h3-video-prompt-ab-2026-10.md` §6–7。
+
+### 导演台图片模型能力过滤（2026-10-26，已生产发布 `20261026-director-image-viewer`）
+
+`DirectorService.IMAGE_RATIOS` = 1:1 / 16:9 / 9:16（道具 / 角色场景 / 分镜三种画幅）。`imageSelections()` 只把出图规格三种都有的场景候选列为可新选，`missingRatios(endpoint)` 是唯一判断（按 `AiImageRequestSpec.ratios()`，不按型号名；无规格返回空，规格读不出来当作全缺）。`patch` 只校验改动后的 `imageModel`，原值照存；`imageSelection(c)` 解析实际会用的模型（存着的或默认，不过滤），`directorPrices`、`estimate`、一键连跑 `Step` 与 `image()` 都读它，停用时以导演台文案重抛 `ENDPOINT_NOT_ALLOWED`。`sizeFor` 只在这个接入点里取同比例最大一档，出不了按资产类型抛 `STUDIO_IMAGE_SIZE_UNSUPPORTED`（在建任务、冻结前）。`view` 新增 `imageModelState`。无迁移、无配置变更；规则见 `specs/BUSINESS_RULES.md` 与导演台方案「2026-10-26」。
+
+### 导演台分集与设定资料（2026-10-25，本地未发布）
+
+`DirectorPrompts.validateSplit` 只认每集 `startParagraph` 与 `bodyStart`，按起点构造首尾相接的区间（附 `headFrom / dropped / duplicates / modelEnd` 供说明）；`headingStarts` 识别剧本里标好的「第N集」，`DirectorService.splitByHeadings` 据此免费出结果。`director_work.content_json` 新增 `pendingSplit`、`reference / referenceRev`、`splitUndo`（只在服务端，出 wire 换成 `canUndoSplit`），view 另给 `draftEpisodeHeadings`；无迁移。edit op 新增 `split.save / split.discard / split.undo / reference.update / reference.toEpisode`，一键制作新增等待阶段 `confirm-split`。规则见 `specs/BUSINESS_RULES.md`「导演台分集」与导演台方案 §14。
+
+### 导演长剧本任务容量（2026-10-24）
+
+导演剧本文件导入（2026-10-25，本地未发布）：`DirectorScriptImportController` 的 `POST /v1/ip-studio/director/script-import` 返回 `{text,format}`，可在创建作品前调用。`StudioStoryImportService.extractScript` 复用 Word/PDF 并支持 PPT/PPTX、RTF、常见文本文件；8 MiB、60000 字、PDF/PPT 100 页。现有画布 `extract` 保持 24000 字且只接受 PDF/Word。无新增依赖、表、模型调用、文件持久化或计费；格式、权限及预览保存语义见导演台方案 §3.1。
+
+`IpRun.inputJson/outputJson` 必须映射为 LONGTEXT，与 V27 建表契约一致；TEXT 的 65,535 字节上限容纳不了允许导入的 60,000 字剧本及任务 JSON。V66 只扩容 MySQL 中尚未为 LONGTEXT 的列，兼容已执行的生产应急扩容，不修改旧迁移或 Flyway 历史。生产数据库已扩容且未重启，实体和 V66 尚待发布；证据见 `docs/releases/director-json-capacity-hotfix-20261024.md`。
+
+### Studio 模型 JSON 自动恢复（2026-10-24，待发布）
+
+`ModelJson` 在本地解析时修复汉字前的非法反斜杠、字符串内裸换行/制表符、完整值后的尾逗号和末尾缺失括号；保留原文，不增加模型请求。严格拒绝重复键、多份 JSON、半截字符串、缺值、非法 ASCII 转义或括号不匹配，并保留业务结构校验。`StudioWorkflowWorker` 对 `finish_reason=length` 直接拒绝；不能恢复的格式错误返回 `AI_BAD_OUTPUT` 与明确提示，继续走现有冻结释放、零扣费及错误日志链路。
 
 ### Studio 对话不锁方法（2026-10-23，本地未发布）
 
@@ -1251,4 +1288,48 @@ capabilities 的文本模型新增 `dialogueTokenPricing`，普通文本仍用 `
 - **用户可见文案**：`StudioDialogueTurnWorker.toolFailure`（`STUDIO_SKILL_OPERATION_NOT_ALLOWED / STUDIO_SKILL_LOCKED / STUDIO_PLAN_STALE`）、`StudioPlanExecutionService` 计划校验、`StudioPlanExecutionBridge.authorizeChild`、`StudioPlanSteps`、`StudioWorkflowWorker.skillPlan` 均改为人话 + `internalDetail`；前端 `userFacingError`（`studio-errors.tsx`）兜底旧记录。
 
 
+## 模型接入点赠款与折扣（2026-10-25 已生产发布 `20261025-model-grants`）
+
+真源：[设计与当前状态](../../docs/model-billing-design.md)。适用资格只按 `ai_model_providers.id` 判断；应用、动作、规格、模型名和计量单位仅保留在任务快照，不能限制同一接入点的赠款。售价沿用现有服务端价格，命中多条折扣取最优惠一条，折后依次扣赠款与普通积分。企业折扣按 enterpriseId 覆盖全部成员的企业消费钱包，个人钱包独立。
+
+新领域 `aep.billing` 统一报价、冻结、结算、释放、到期与流水。`ModelChargeContext.forCredits` 接收已经按现有价格折算好的积分费用；原有按张、秒和 Token 的计量流程继续使用同一服务。V67 建立折扣、活动、赠款、冻结与成交快照；V68 扩展赠款审批；V69 增加 `aep_model_charges.parent_hold_id`，使追加冻结沿用原折扣且整笔只取整一次。历史 `aep_model_prices` 不参与售价查询，其写入口拒绝另造价格源；新赠款活动不预占供应商资源。原钱包 gift/license/recharge/pending 不混入赠款，企业充值来源保持不变。
+
+后台 `/admin/model-billing/{targets|user-options|wallet-options|enterprise-options|discounts|campaigns|grants}` 提供目录、分页查询与管理，发放走 `/admin/finance/adjustments/scoped-grant` 与现有审批。个人优惠不要求钱包已建立。`/me/model-credits` 只返回当前本人个人或企业成员钱包的额度。
+
+Studio 图片报价为 `POST /api/v1/ip-studio/projects/{id}/{image-quote|studio-image-quote}`、`POST .../nodes/{nodeId}/image-quote`；视频生成区为 `POST /api/me/celebrity/video-studio/quote`。报价复用既有价格；确认绑定付款账户、实际接入点、用量、费用决定和普通积分上限；额度被其他任务使用时不得静默加扣。任务按受理时快照结算，失败原路释放，过期赠款不会因释放恢复。通用视频的已释放原冻结仍不能用新优惠自动补扣，返回 `VIDEO_MODEL_RECOVERY_REQUIRES_REVIEW`。
+
+数字人组合任务按用户确认拆成文本和媒体两笔：`DapModelBilling` 使用现有 Token 价与媒体生成价，分别冻结，实际调用固定受理时接入点；文本实际用量与媒体成功各自结算。媒体失败不抹去已完成文本费用。两笔冻结和作业受理同事务，重试使用新的尝试编号，结算回调幂等。月度用量从 SPEND/SCOPED_SPEND 流水取实际消费。无需新增表或新的价格源。
+
+当前代码与定向回归证据均在设计稿中；此前分规格和供应商资源方案已归档，不作为交付要求。
+
+通用积分转赠款：`GET /admin/model-billing/conversions/candidates`、`POST .../conversions/preview`、`POST .../conversions`（仅 SUPER_ADMIN）。`ModelGrantConversionService` 每客户 REQUIRES_NEW：`CreditService.withdrawNonCashForGrant`（只扣个人钱包的 gift→license，ADJUST 流水，充值不动）+ `ScopedCreditService.grant`（`source=ops_grant_conversion`）。测试 `ModelGrantConversionIntegrationTest`（可加 `-Dmodel-scoped.jdbc` 指向 MySQL）。
+
+评审后修正：企业报价用 `EnterpriseBillingAuthorizationRepository.activeForActorWithoutLock`（只读事务不能加锁）；`ScopedCreditService.reserve` 只锁 `findSpendable` 里适用的赠款行，带资源计数的活动经 `CreditCampaignRepository.meteredIds` 先锁再读；`ModelBillingConfigService` 拒绝修改已发放活动的适用接入点（`SCOPED_CAMPAIGN_TARGETS_LOCKED`）；视频对账恢复只在 `ModelChargeService.usedPromotion` 为真时要求人工复核；赠款全额抵扣时不写零金额 FREEZE / SPEND / UNFREEZE。
+
+### Studio JSON 格式自动恢复与临时热修复（2026-10-24）
+
+`ModelJson` 先严格读取单份 JSON，再组合恢复汉字前多余反斜杠、字符串内原始换行 / 制表符、完整值后的尾逗号与缺少的末尾括号；合法转义不变，不放宽共享 ObjectMapper。缺值、半截字符串、未知 ASCII / 残缺 Unicode 转义、重复字段和多份 JSON 拒绝，恢复后仍走业务结构校验。`finish_reason=length` 不靠补括号伪造成功。工作流不能恢复时返回 `AI_BAD_OUTPUT` 和明确的格式错误 / 本次未扣积分提示，原解析异常及上游诊断保留，继续走失败退款路径，不新增模型重试。
+
+用户要求不重启时可临时使用 `infra/hotfix/studio-json-sandbox/`：官方 JVM-Sandbox 1.4.0，模块从仓库解析器生成，只观察 `ModelJson.parse` 的 Jackson 异常。正常返回保持原样，因此临时模块不是正常发布后的全部严格规则；模块只在环回管理、默认冻结、验证后激活，卸载即撤销，不改 app.jar。2026-10-25 UTC 已在原生产进程启用，应用 JAR 未变；固定探针通过，44 次健康采样均 200，模块可卸载回退。发布证据见 [热修复记录](../../docs/releases/studio-json-jvm-sandbox-release-20261025.md)。构建、验证与回退见 [操作手册](../../docs/runbooks/studio-json-jvm-sandbox.md)。
+
+
+### 导演台与视频提示词优化输出预算（2026-10-27）
+
+导演台写剧本、拆集、提取资产、分镜脚本，以及画布 / 助手 / 导演台的视频提示词优化不再使用业务代码的 8192 / 16384 / 100000 / 4096 输出上限。新任务的输出预算读取后台端点 defaultMaxTokens，受 chatMaxOutputTokens 能力上限约束；仅默认值缺失时使用端点能力上限，两者均未配置时回落后台 Token 售价配置的 maxOutputTokens。Token 单价与输入预算仍读售价配置，输出预算随端点配置形成受理快照；报价、冻结和调用使用同一快照，不能超出调用方批准的 maxCost。已有任务不改预算、不自动重试。
+
 批量补充（2026-10-29，本地未发布）：添加表单可切换「单个添加 / 批量添加」，每批最多 100 个手机号，支持换行、逗号、分号粘贴并去重。`POST /api/v1/ip-studio/enterprises/{id}/members/batch` 接收 `{phones}`，逐人独立事务执行单人规则，返回成功/失败及原因，失败项保留可重试，已成功关系幂等。
+
+
+## Studio 场景页（2026-10-29，本地实现，未发布）
+
+- **场景目录唯一真源**：`ipstudio/scene/StudioSceneCatalog`。运营在后台改过就读平台配置 `studio.scene-catalog`（按配置版本缓存；读不出来用随包那份并打 ERROR），否则用随包的 `src/main/resources/ipstudio/scenes.json`（启动时校验，写错不启动）。
+- 后台 `AdminStudioSceneController`（`/api/admin/studio/scenes`，SUPER_ADMIN / OPERATOR；页面在 Studio 运营后台 `studio-admin` 的 `/scenes`）：GET 整份（含下架、带签名预览）；PUT 整份保存带 `baseVersion`（别人先存过 409 `STUDIO_SCENE_CATALOG_STALE`，不合格 400 `STUDIO_SCENE_CATALOG_INVALID`，与随包同一套 `validate`；签名地址不入库）；DELETE 恢复随包；`POST /media` 传封面 / 示例（按字节判 JPG / PNG / WEBP ≤10MB 或 MP4 ≤50MB，存到 `ipstudio/scene` 分类，目录只认这个前缀下的 key）。`PlatformConfigService.upsert` 改这个 key 也过同一道校验。
+- `GET /api/v1/ip-studio/scenes`：只下发上架的场景，封面 / 示例签名，key 与上下架标记不下发。`POST /api/v1/ip-studio/scenes/compose`：出图描述（场景描述 + 补充要求）、交给助手的话 + `skillKey`，或 `video-script`（AI 视频页编导写脚本的要求，图按交给模型的顺序编号，可带 `revision` 改稿），纯计算不扣费，缺必填素材 400 `STUDIO_SCENE_INPUT_INVALID`。
+- 目录里每个场景可带选项组 `options`（最多 4 组、各有默认值），`compose` 收 `options` 把选中项拼成一句；首页卡片 `homeGoals` 经公开只读 `GET /api/v1/ip-studio/scenes/home` 下发（`AepSecurityConfig` 放行 + `ProductRouteTable.PUBLIC_GETS` 登记，`StudioSceneSecurityTest` 守着匿名可读、目录与后台不可读）。
+- 文字任务（`operation=text`）现在可以带 `readVisuals` 读引用的图（编导看商品图写脚本）；模型没声明看图能力 400 `STUDIO_VISION_UNAVAILABLE`。
+- 建草稿：`POST /api/v1/ip-studio/projects` 可带 `sceneId`（必须在目录里），落 `ip_project.scene_id`（V72；V70 被未合并分支占用）。
+- 生成仍走 `studio-runs` / 画布助手原链路；Studio 分区视频任务到终态发 `MaterialVideoJobEnded`，`StudioVideoJobWake` 提交后叫醒该用户仍在跟踪的制作计划，不再等 60 秒巡检。
+
+## 微信 Native 扫码充值（2026-10-30，已生产发布 `20261030-studio-wechat-pay`，微信渠道待商户开通后启用）
+
+`PaymentChannelConfigService` 接收成对的 `publicKeyId/publicKey`，`WechatPaymentGateway` 优先使用 SDK 公钥模式，未提供公钥时兼容旧平台证书模式。微信未知下单结果保留关联和原 PENDING 订单，同套餐订单不允许切换渠道；查单补金额/流水验证，微信回调补商户/AppID/渠道验证。微信取消/驳回/超时先关渠道单，失败保留本地状态，过期单仍参加查单。无新 API/迁移；军师商户权限阻塞与资料映射见 [接入手册](../../docs/runbooks/studio-wechat-ai-pilot.md)。

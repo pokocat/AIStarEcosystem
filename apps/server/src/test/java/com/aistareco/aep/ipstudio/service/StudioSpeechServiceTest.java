@@ -33,7 +33,7 @@ class StudioSpeechServiceTest {
         service.submit("owner","p",request);verifyNoInteractions(worker);
         String runId=saved.get().getId();TransactionSynchronizationManager.getSynchronizations().forEach(s->s.afterCommit());verify(worker).execute(runId);
         reset(models,client);service.submit("owner","p",request);
-        verify(credits,times(1)).hold(eq("owner"),eq(8L),anyString(),eq(runId),anyString());verifyNoInteractions(models,client);
+        verify(credits,times(1)).hold(eq("owner"),eq(8L),anyString(),eq(runId),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));verifyNoInteractions(models,client);
         assertEquals("STUDIO_REQUEST_CHANGED",assertThrows(BusinessException.class,()->service.submit("owner","p",new SpeechRequest("key","node","tts","改变台词。","Vivian",null,8L))).getCode());
     }
     @Test void priceChangesAndUnpricedModelsAreRejectedBeforeFreeze() {
@@ -56,7 +56,7 @@ class StudioSpeechServiceTest {
         assertEquals("STUDIO_VOICE_REQUEST_CHANGED",assertThrows(BusinessException.class,()->service.submit("owner","p",new SpeechRequest("key","node","tts","欢迎。","Vivian","不同",8L,"a","v1"))).getCode());verifyNoInteractions(credits);
         var exact=new SpeechRequest("key","node","tts","欢迎。","Vivian","温暖",8L,"a","v1");service.submit("owner","p",exact);
         assertTrue(saved.get().getInputJson().contains("appliedVoice"));assertTrue(saved.get().getInputJson().contains("\"version\":1"));
-        reset(profiles,models,client);service.submit("owner","p",exact);verifyNoInteractions(profiles,models,client);verify(credits,times(1)).hold(anyString(),anyLong(),anyString(),anyString(),anyString());
+        reset(profiles,models,client);service.submit("owner","p",exact);verifyNoInteractions(profiles,models,client);verify(credits,times(1)).hold(anyString(),anyLong(),anyString(),anyString(),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
     @Test void oldUnboundRequestsKeepOriginalFingerprint() throws Exception {
         service.submit("owner","p",request);
@@ -71,24 +71,24 @@ class StudioSpeechServiceTest {
         var approved=new SpeechRequest("key","node","tts","欢迎。","Vivian",null,20L);
         service.submit("owner","p",approved);assertEquals(20,saved.get().getCost());
         assertEquals(1.5,new ObjectMapper().readTree(saved.get().getInputJson()).path("_exec").path("pointPricing").path("markupMultiplier").asDouble());
-        verify(credits).hold(eq("owner"),eq(20L),anyString(),anyString(),anyString());
+        verify(credits).hold(eq("owner"),eq(20L),anyString(),anyString(),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         reset(pricing);when(pricing.speechEnabled()).thenReturn(true);
         service.submit("owner","p",approved); // replay does not consult a new price
         assertEquals("STUDIO_SPEECH_PRICE_NOT_CONFIGURED",assertThrows(BusinessException.class,()->service.submit("owner","p",new SpeechRequest("other","node","tts","欢迎。","Vivian",null,8L))).getCode());
-        verify(credits,times(1)).hold(anyString(),anyLong(),anyString(),anyString(),anyString());
+        verify(credits,times(1)).hold(anyString(),anyLong(),anyString(),anyString(),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     @Test void enterprisePayerIsDurableAndReplayCannotSwitchToPersonal() {
         var billing=mock(com.aistareco.aep.enterprise.service.EnterpriseBillingService.class);
         org.springframework.test.util.ReflectionTestUtils.setField(service,"enterpriseBilling",billing);
         var selected=new com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection("enterprise","company");
-        when(billing.reserve(eq("owner"),eq(selected),eq("ip-run"),anyString(),eq("tts"),eq(8L),anyString()))
+        when(billing.reserve(eq("owner"),eq(selected),eq("ip-run"),anyString(),eq("tts"),eq(8L),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class)))
                 .thenReturn(new com.aistareco.aep.enterprise.service.EnterpriseBillingService.BillingAccount("member-wallet","company","membership-v1","authorization"));
         var enterprise=new SpeechRequest("key","node","tts","欢迎。","Vivian",null,8L,null,null,selected);
         service.submit("owner","p",enterprise);
         assertEquals("member-wallet",saved.get().getBillingWalletId());assertEquals("membership-v1",saved.get().getMembershipId());
         reset(models,client);service.submit("owner","p",enterprise);
-        verify(billing,times(1)).reserve(anyString(),any(),anyString(),anyString(),anyString(),anyLong(),anyString());
+        verify(billing,times(1)).reserve(anyString(),any(),anyString(),anyString(),anyString(),anyLong(),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         verifyNoInteractions(credits,models,client);
         assertEquals("STUDIO_REQUEST_CHANGED",assertThrows(BusinessException.class,()->service.submit("owner","p",request)).getCode());
     }
@@ -98,7 +98,7 @@ class StudioSpeechServiceTest {
         var selected=new com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection("enterprise","company");
         var enterprise=new SpeechRequest("key","node","tts","欢迎。","Vivian",null,8L,null,null,selected);
         for(String code:List.of("INSUFFICIENT_CREDITS","ENTERPRISE_MODEL_NOT_ALLOWED")) {
-            when(billing.reserve(eq("owner"),eq(selected),eq("ip-run"),anyString(),eq("tts"),eq(8L),anyString()))
+            when(billing.reserve(eq("owner"),eq(selected),eq("ip-run"),anyString(),eq("tts"),eq(8L),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class)))
                     .thenThrow(new BusinessException(org.springframework.http.HttpStatus.FORBIDDEN,code,"rejected"));
             assertEquals(code,assertThrows(BusinessException.class,()->service.submit("owner","p",enterprise)).getCode());
         }
@@ -109,7 +109,7 @@ class StudioSpeechServiceTest {
         var billing=mock(com.aistareco.aep.enterprise.service.EnterpriseBillingService.class);
         org.springframework.test.util.ReflectionTestUtils.setField(service,"enterpriseBilling",billing);
         var selected=new com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection("enterprise","company");
-        when(billing.reserve(eq("owner"),eq(selected),eq("ip-run"),anyString(),eq("tts"),eq(0L),anyString()))
+        when(billing.reserve(eq("owner"),eq(selected),eq("ip-run"),anyString(),eq("tts"),eq(0L),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class)))
                 .thenReturn(new com.aistareco.aep.enterprise.service.EnterpriseBillingService.BillingAccount("member-wallet","company","membership","authorization"));
         service.submit("owner","p",new SpeechRequest("key","node","tts","欢迎。","Vivian",null,0L,null,null,selected));
         assertEquals("authorization",saved.get().getBillingAuthorizationId());assertEquals(0,saved.get().getCost());verifyNoInteractions(credits);

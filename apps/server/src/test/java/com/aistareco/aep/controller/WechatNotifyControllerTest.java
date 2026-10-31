@@ -29,7 +29,7 @@ class WechatNotifyControllerTest {
         return new RechargeOrderDto(ORDER, "u1", null, null, null, null, "pkg", "标准包",
                 1000, 0, priceCents, "pending", null, null, null,
                 null, null, null,                   // createdAt / updatedAt / reviewedAt
-                null, null, null, null, null, null, // 在线支付字段
+                null, null, "WX_NATIVE", null, null, null, // 在线支付字段
                 null, null, null);                  // refund 字段
     }
 
@@ -87,4 +87,17 @@ class WechatNotifyControllerTest {
         assertEquals(HttpStatus.OK, r.getStatusCode());
         verify(rechargeService, never()).settlePaidOrder(any(), any(), any(), any(), any());
     }
+    @Test
+    void duplicateAfterRefundAcknowledgesOriginalTransactionWithoutCrediting() {
+        var refunded = com.aistareco.aep.model.RechargeOrder.builder().id(ORDER).userId("u1")
+                .priceCents(9900).wayCode("WX_NATIVE").paidVia("wechat").channelPayNo("WX-ORIGINAL")
+                .status(com.aistareco.aep.model.RechargeOrder.Status.REFUNDED).build();
+        when(rechargeService.getOrder(ORDER)).thenReturn(RechargeOrderDto.from(refunded));
+        mockParse(new WechatPaymentGateway.NotifyResult(true, ORDER, true, 9900, "WX-ORIGINAL"));
+        assertEquals(HttpStatus.OK, invoke().getStatusCode());
+        mockParse(new WechatPaymentGateway.NotifyResult(true, ORDER, true, 9900, "WX-DIFFERENT"));
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, invoke().getStatusCode());
+        verify(rechargeService, never()).settlePaidOrder(any(), any(), any(), any(), any());
+    }
+
 }

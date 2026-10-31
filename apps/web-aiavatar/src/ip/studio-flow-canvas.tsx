@@ -95,7 +95,7 @@ export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
         <><SignedImage draggable={false} src={meta.content} storageKey={meta.storageKey} alt={node.title} onLoad={imageLoaded}/>{!data.readOnly&&<button type="button" className="studio-flow-replace-image nodrag nopan" disabled={imageLocked} onClick={uploadImage}><Upload size={14}/>{data.uploading?'上传中…':'替换图片'}</button>}</> : node.type === CanvasNodeType.Video && (meta?.content || meta?.storageKey) ?
         <><SignedVideo className="nodrag nopan" src={meta.content} storageKey={meta.storageKey} controls preload="metadata" onLoadedMetadata={videoLoaded}/>{!data.readOnly&&<button type="button" className="studio-flow-replace-image nodrag nopan" disabled={imageLocked} onClick={uploadVideo}><Upload size={14}/>{data.uploading?'上传处理中…':'替换视频'}</button>}</> : node.type === CanvasNodeType.Audio && (meta?.content || meta?.storageKey) ?
         <div className="studio-flow-audio"><Music2 size={28}/><SignedAudio className="nodrag nopan" src={meta.content} storageKey={meta.storageKey} controls/></div> : node.type === CanvasNodeType.Text ?
-        <div className="studio-flow-text nowheel">{meta?.content || (data.readOnly?'存为个人副本后填写':'单击编辑文字')}</div> :
+        <div className="studio-flow-text nowheel">{meta?.content || (data.readOnly?'做同款后填写':'单击编辑文字')}</div> :
         // A failed draft is not an empty one: say it failed and why, offer one way back (the prompt and references are kept).
         failed && !data.readOnly ? <div className="studio-flow-placeholder studio-flow-failure" role="group" aria-label="生成失败">
           <AlertCircle size={22}/><strong>没有生成出来</strong><span title={meta?.studio?.task?.errorMessage || meta?.errorDetails || undefined}>{studioFailureReason(node)}</span>
@@ -105,6 +105,8 @@ export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
         node.type === CanvasNodeType.Video && !data.readOnly ? <div className="studio-flow-placeholder studio-flow-image-placeholder"><Video size={28}/><span>上传视频，开始解析或拉片</span><div className="studio-flow-image-actions"><button type="button" className="nodrag nopan" disabled={imageLocked} onClick={uploadVideo}><Upload size={15}/>{data.uploading?'上传处理中…':'上传视频'}</button><button type="button" className="nodrag nopan" disabled={imageLocked} onClick={edit}><Video size={15}/>生成视频</button></div><small>MP4 · 最长 60 秒 · 最大 128 MB</small></div> :
         <div className="studio-flow-placeholder"><button type="button" className="studio-flow-media-action nodrag nopan" onClick={edit}><Icon size={28}/><span>{data.readOnly?'查看节点设置':meta?.status === 'loading' ? '任务进行中，可继续编辑画布' : `点击创作${node.type === 'video' ? '视频' : node.type==='audio'?'配音':'图片'}`}</span></button></div>}
     </div>
+    {meta?.studio?.promptReview && !meta.studio.promptReview.failed && meta.status !== 'loading' && !data.readOnly && <p className="studio-flow-prompt-review" role="status">
+      <AiMark size={10}/><span>优化稿有需要留意的地方，选好再出片</span><button type="button" className="nodrag nopan" onClick={edit}>去确认</button></p>}
     {meta?.status === 'loading' && !mediaGenerating && studioTaskQueued(meta.studio?.task) && <p className="studio-flow-queue" aria-label="队列状态">{studioQueueNotice(meta.studio?.task?.queue)}</p>}
     {meta?.status === 'error' && (meta.studio?.task?.errorCode==='IP_RUN_CANCELLED'?<p className="studio-flow-queue">已停止</p>:<div className="studio-flow-node-error"><StudioErrorNotice error={studioNodeError(node)} once={`run:${meta.studio?.runId || meta.runId || node.id}`} label={failed ? "查看错误详情" : "生成失败 · 查看错误"} autoReport={false}/></div>)}
   </article>;
@@ -521,7 +523,8 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     </header>
     <div ref={stageRef} className={`studio-flow-stage${referencePick?' is-picking-reference':''}${drawingArea?' is-drawing-area':''}`} data-studio-floating-root
       onPointerDownCapture={areaPointerDown} onPointerMove={areaPointerMove} onPointerUp={areaPointerUp} onPointerCancel={e => { if (areaPointer.current?.id === e.pointerId) resetArea(); }}>
-      <ReactFlow<StudioFlowNode> nodes={graphNodes} edges={graphEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} elevateNodesOnSelect={false}
+      {/* The corner badge sat under the docked assistant and showed up whenever it closed; React Flow (MIT) is credited in src/canvas/README.md instead. */}
+      <ReactFlow<StudioFlowNode> nodes={graphNodes} edges={graphEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} elevateNodesOnSelect={false} proOptions={{ hideAttribution: true }}
         onNodesChange={changeNodes} onEdgesChange={changeEdges}
         onNodeDragStart={(_, n) => { checkpoint(); if (n.data.document.type === 'group' && !selected.has(n.id)) { setSelected(new Set([n.id])); setSelectedEdges(new Set()); } }}
         // 拖着节点经过一块区域时，那块区域亮起来：松手就进去了；离开区域就从里面出来。

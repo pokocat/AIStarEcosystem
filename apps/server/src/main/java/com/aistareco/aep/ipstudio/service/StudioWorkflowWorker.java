@@ -5,6 +5,7 @@ import com.aistareco.aep.ipstudio.model.IpRun;
 import com.aistareco.aep.ipstudio.repository.IpRunRepository;
 import com.aistareco.aep.dap.service.DapAssetService;
 import com.aistareco.aep.model.AiModelPurpose;
+import com.aistareco.aep.model.AiModelProviderType;
 import com.aistareco.aep.service.*;
 import com.aistareco.aep.service.storage.FileStorageService;
 import com.aistareco.common.BusinessException;
@@ -35,6 +36,9 @@ public class StudioWorkflowWorker {
     @org.springframework.beans.factory.annotation.Autowired private org.springframework.beans.factory.ObjectProvider<com.aistareco.aep.ipstudio.skill.StudioSkillDraftSink> skillDrafts;
     @org.springframework.beans.factory.annotation.Autowired private org.springframework.beans.factory.ObjectProvider<com.aistareco.aep.ipstudio.dialogue.StudioDialogueEvents> dialogueEvents;
     private static final Logger log=LoggerFactory.getLogger(StudioWorkflowWorker.class);
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.billing.service.ModelChargeService modelCharges;
+    // H3 提示词改写完在同一行上提交视频（StudioWorkflowService#submitVideoRewrite）。
+    @org.springframework.beans.factory.annotation.Autowired private org.springframework.beans.factory.ObjectProvider<IpRunService> videoRuns;
     private final IpRunRepository runs;
     private final StudioFixtureProvider fixtures;
     private final FileStorageService storage;
@@ -44,6 +48,9 @@ public class StudioWorkflowWorker {
     private final ObjectMapper mapper;
     private final TransactionTemplate transactions;
     private final DapAssetService assets;
+    // Only synchronous director text calls: accepted image/video/audio jobs keep their native recovery rules.
+    private final java.util.concurrent.ConcurrentMap<String,Thread> activeDirectorCalls = new java.util.concurrent.ConcurrentHashMap<>();
+    private volatile boolean stoppingForShutdown;
     public StudioWorkflowWorker(IpRunRepository runs,StudioFixtureProvider fixtures,FileStorageService storage,
             AiModelInvocationService models,DramaAssembleService assembly,CreditService credits,ObjectMapper mapper,
             PlatformTransactionManager manager,DapAssetService assets) {
@@ -69,8 +76,13 @@ public class StudioWorkflowWorker {
         }
         var context=queue==null?null:queue.bind(AiGenerationQueueService.WORKFLOW,id);
         AiModelInvocationService.AiModelResponse lastReply=null;
+        ObjectNode directorReceipt=null;
         try (var attribution = AiModelUsageContext.bind(run.getOwnerUserId(), "aiavatar", id)) {
             if(!claim(id))return;
+            if("studio-director".equals(run.getKind())) {
+                activeDirectorCalls.put(id,Thread.currentThread());
+                if(stoppingForShutdown){interruptDirectorTask(id,true);return;}
+            }
             if(!progress(id,10,"studio.prepare")) return;
             JsonNode input=mapper.readTree(run.getInputJson());
             boolean mock=input.path("mock").asBoolean();
@@ -85,6 +97,7 @@ public class StudioWorkflowWorker {
             if("recreation".equals(operation)&&"segments".equals(input.path("mode").asText())) {
                 filmStudy(id,run,input,output);return;
             }
+            if("video".equals(operation)&&input.path("_exec").has("h3")) {rewriteVideo(id,input,output);return;}
             switch(operation) {
                 case "text","script","storyboard","assistant","asset-extract","recreation","check","director" -> {
                     JsonNode script;StudioRecreation.Study recreationStudy=null;ObjectNode recreationFallback=mapper.createObjectNode();
@@ -94,7 +107,9 @@ public class StudioWorkflowWorker {
                         String system=input.path("_exec").path("systemPrompt").asText(),user=input.path("_exec").path("userPrompt").asText();
                         if(system.isBlank() || user.isBlank()) throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"PROMPT_NOT_CONFIGURED","剧本提示词未配置");
                         String endpointId=input.path("_exec").path("endpointId").asText(null);
-                        var endpoint=models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA,endpointId,"studio").orElseThrow(()->new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","创作模型已停用或不再是默认模型，请联系管理员"));
+                        var purpose=textPurpose(input);
+                        var endpoint=models.resolveAcceptedEndpoint(purpose,endpointId,"studio").orElseThrow(()->new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","创作模型已停用或不再是默认模型，请联系管理员"));
+                        StudioTokenBilling.requireRoute(input,endpoint.endpoint());
                         JsonNode visual=input.path("_exec").path("visualContext");
                         Object userContent=user;
                         int finalTokens=input.path("_exec").path("maxTokens").asInt(8192);
@@ -144,13 +159,40 @@ public class StudioWorkflowWorker {
                                     input.path("_exec").path("temperature").asDouble(.7),List.of(source.path("frameTimes").size()-1),source,recreationFallback,output);
                         } else {
                         if(enterpriseBilling!=null)enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,id,endpoint.endpoint().getId());
-                        reply=models.invokeChatOnEndpoint(endpoint.endpoint(),AiModelPurpose.DAP_PERSONA,List.of(Map.of("role","system","content",system),
-                                Map.of("role","user","content",userContent)),Map.of("timeout_seconds",300,"response_format",Map.of("type","json_object"),"temperature",input.path("_exec").path("temperature").asDouble(0.7),"max_tokens",finalTokens));
+                        markModelDispatched(id);
+                        var chatOptions=new LinkedHashMap<String,Object>();
+                        chatOptions.put("timeout_seconds",300);
+                        chatOptions.put("response_format",Map.of("type","json_object"));
+                        chatOptions.put("temperature",input.path("_exec").path("temperature").asDouble(0.7));
+                        chatOptions.put("max_tokens",finalTokens);
+                        // DeepSeek Flash defaults to high-effort thinking. For a complete director script that hidden
+                        // reasoning shares the same output budget with the JSON body, so it can consume the whole budget
+                        // before the actual script is written. Disable it only for this bounded structured-writing task;
+                        // Studio dialogue and the other director tasks keep their existing reasoning behavior.
+                        if("director".equals(operation)&&"script".equals(input.path("_director").path("task").asText())
+                                && endpoint.endpoint().getProviderType()==AiModelProviderType.DEEPSEEK)
+                            chatOptions.put("thinking",Map.of("type","disabled"));
+                        reply=models.invokeChatOnEndpoint(endpoint.endpoint(),purpose,List.of(Map.of("role","system","content",system),
+                                Map.of("role","user","content",userContent)),chatOptions);
                         }
                         lastReply=reply;
-                        if("length".equals(reply.finishReason()))throw new BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,"AI_BAD_OUTPUT","返回内容被截断，请缩小提取范围或提高后台输出上限");
-                        script=ModelJson.parse(mapper,reply.content());
-                        if(tokenRate!=null) {
+                        if("director".equals(operation)&&tokenRate!=null) {
+                            consumed=consumeUsage(reply,consumed,tokenRate);
+                            output.putObject("billing").put("inputTokens",consumed[0]).put("outputTokens",consumed[1])
+                                    .put("credits",tokenRate.settle(consumed[0],consumed[1]))
+                                    .put("inputCreditsPerK",tokenRate.inputCreditsPerK()).put("outputCreditsPerK",tokenRate.outputCreditsPerK());
+                            directorReceipt=mapper.createObjectNode();directorReceipt.set("billing",output.path("billing").deepCopy());
+                            if(runs.findById(id).map(IpRun::isCancelRequested).orElse(false)){finish(id,output,null);return;}
+                        }
+                        if("length".equals(reply.finishReason()))throw new BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,"AI_BAD_OUTPUT","模型返回的内容被截断，无法自动恢复；本次未扣积分，请缩短要求或更换模型");
+                        try {script=ModelJson.parse(mapper,reply.content());}
+                        catch(com.fasterxml.jackson.core.JsonProcessingException malformed) {
+                            var failure=BusinessException.wrapped(org.springframework.http.HttpStatus.BAD_GATEWAY,"AI_BAD_OUTPUT",
+                                    "模型返回的内容格式有误，无法自动恢复；本次未扣积分，请重试或更换模型",
+                                    "Invalid model JSON: "+malformed.getOriginalMessage());
+                            failure.initCause(malformed);throw failure;
+                        }
+                        if(tokenRate!=null&&!"director".equals(operation)) {
                             consumed=consumeUsage(reply,consumed,tokenRate);
                             long actual=tokenRate.settle(consumed[0],consumed[1]);
                             output.putObject("billing").put("inputTokens",consumed[0]).put("outputTokens",consumed[1])
@@ -233,8 +275,8 @@ public class StudioWorkflowWorker {
                 default -> throw new IllegalArgumentException("Unknown Studio operation");
             }
             finish(id,output,null);
-        } catch(Exception e) {if(lastReply!=null)lastReply.attachDiagnostics(e);log.warn("[studio] run failed id={}",id,e);finish(id,null,e);}
-        finally {if(context!=null)context.close();if(queue!=null)queue.finish(AiGenerationQueueService.WORKFLOW,id);}
+        } catch(Exception e) {if(lastReply!=null)lastReply.attachDiagnostics(e);log.warn("[studio] run failed id={}",id,e);finish(id,directorReceipt,e);}
+        finally {activeDirectorCalls.remove(id,Thread.currentThread());if(context!=null)context.close();if(queue!=null)queue.finish(AiGenerationQueueService.WORKFLOW,id);}
     }
     private void filmStudy(String id,IpRun run,JsonNode input,ObjectNode output) throws Exception {
         var exec=input.path("_exec");
@@ -243,6 +285,7 @@ public class StudioWorkflowWorker {
         if(!progress(id,15,"recreation.frames"))return;
         var source=exec.path("recreationSource");var evidence=StudioRecreation.study(source,storage,hypitMedia);
         if(!checkpointRecreation(id,source))return;
+        StudioTokenBilling.requireRoute(input,endpoint.endpoint());
         var rate=mapper.treeToValue(exec.path("tokenPricing"),AiChatTokenPricing.Rate.class);long[][] used={new long[]{0,0}};
         var capNode=exec.path("segmentCap");
         var cap=capNode.isObject()?new StudioFilmStudy.SegmentCap(capNode.path("maxSegmentSec").asDouble(),capNode.path("maxSegments").asInt(8)):null;
@@ -280,6 +323,7 @@ public class StudioWorkflowWorker {
                 AiModelInvocationService.AiModelResponse reply;
                 for(int next=budgetRung+1;;next++) {
                     try {
+                        markModelDispatched(id);
                         reply=models.invokeChatOnEndpoint(endpoint,AiModelPurpose.DAP_PERSONA,List.of(
                                 Map.of("role","system","content",system+(requestFocus.isBlank()?"":"\n用户补充分析重点："+requestFocus)),
                                 Map.of("role","user","content",content)),params);
@@ -323,6 +367,115 @@ public class StudioWorkflowWorker {
         return new AiModelInvocationService.AiModelResponse(content,last[0].finishReason(),input+completion,
                 last[0].endpointUsed(),last[0].modelUsed(),input,completion);
     }
+    /** 旧任务继续用受理时的原用途；新优化任务保存独立用途和端点快照。 */
+    private static AiModelPurpose textPurpose(JsonNode input) {
+        return AiModelPurpose.DAP_VIDEO_PROMPT.wire().equals(input.path("_exec").path("purpose").asText())
+                ? AiModelPurpose.DAP_VIDEO_PROMPT : AiModelPurpose.DAP_PERSONA;
+    }
+
+
+    /**
+     * H3 出视频前的提示词改写：按官方写法改写、核对，然后在这一行上提交视频（之后这一行按视频任务投影）。
+     * review（画布）有提示或没改成时停下，等用户选用优化稿还是原文；auto（创作助手）不停：优化稿能用就用，用不了按原文，
+     * 原因写进 {@code videoPromptNotes}。改写按实际 Token 结算。
+     */
+    private void rewriteVideo(String id,JsonNode input,ObjectNode output) {
+        boolean review="review".equals(input.path("_exec").path("rewrite").asText());
+        JsonNode meta=input.path("_exec").path("h3");
+        ObjectNode result=null;Exception failure=null;
+        AiModelInvocationService.AiModelResponse reply=null;
+        try {
+            if(!progress(id,20,"prompt.optimizing"))return;
+            String endpointId=input.path("_exec").path("endpointId").asText(null);
+            var purpose=textPurpose(input);
+            var endpoint=models.resolveAcceptedEndpoint(purpose,endpointId,"studio").orElseThrow(()->new BusinessException(
+                    org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","提示词优化用的文本模型已停用，可以关闭智能优化按原文生成"));
+            StudioTokenBilling.requireRoute(input,endpoint.endpoint());
+            var rate=mapper.treeToValue(input.path("_exec").path("tokenPricing"),AiChatTokenPricing.Rate.class);
+            if(enterpriseBilling!=null)enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,id,endpoint.endpoint().getId());
+            markModelDispatched(id);
+            var options=new LinkedHashMap<String,Object>();
+            options.put("timeout_seconds",300);
+            options.put("response_format",Map.of("type","json_object"));
+            options.put("temperature",input.path("_exec").path("temperature").asDouble(0.6));
+            options.put("max_tokens",input.path("_exec").path("maxTokens").asInt(rate.maxOutputTokens()));
+            reply=models.invokeChatOnEndpoint(endpoint.endpoint(),purpose,List.of(
+                    Map.of("role","system","content",input.path("_exec").path("systemPrompt").asText()),
+                    Map.of("role","user","content",input.path("_exec").path("userPrompt").asText())),options);
+            long[] used=consumeUsage(reply,new long[]{0,0},rate);
+            output.putObject("billing").put("inputTokens",used[0]).put("outputTokens",used[1]).put("credits",rate.settle(used[0],used[1]))
+                    .put("inputCreditsPerK",rate.inputCreditsPerK()).put("outputCreditsPerK",rate.outputCreditsPerK());
+            if("length".equals(reply.finishReason()))throw com.aistareco.aep.ipstudio.h3.H3PromptRewrite.bad("输出被截断");
+            JsonNode script;
+            try {script=ModelJson.parse(mapper,reply.content());}
+            catch(com.fasterxml.jackson.core.JsonProcessingException malformed){throw com.aistareco.aep.ipstudio.h3.H3PromptRewrite.bad("没有返回 JSON");}
+            result=com.aistareco.aep.ipstudio.h3.H3PromptRewrite.validate(mapper,meta,script);
+        } catch(Exception e) {
+            failure=e;
+            if(reply!=null)reply.attachDiagnostics(e);
+            log.warn("[studio] video prompt rewrite failed id={} reason={}",id,e.toString());
+        }
+        String language=meta.path("language").asText("Chinese");
+        boolean usable=result!=null&&result.path("usable").asBoolean(true);
+        if(result!=null) {
+            ObjectNode view=output.putObject("videoPrompt");
+            view.put("text",com.aistareco.aep.ipstudio.h3.H3PromptRewrite.fill(result.path("template").asText(),
+                    com.aistareco.aep.ipstudio.h3.H3PromptRewrite.lines(meta),language)).put("usable",usable);
+            view.set("warnings",result.path("warnings").deepCopy());
+            view.set("notes",result.path("notes").deepCopy());
+        }
+        if(review&&(failure!=null||!usable||!result.path("warnings").isEmpty())) {
+            // 停下等用户选：没改成就按失败结束（不扣费），改成了有提示就按完成结束（改写按实际用量结算），都不出片。
+            if(failure==null)output.put("needsChoice",true);
+            finish(id,output,failure);
+            return;
+        }
+        String prompt=usable?output.path("videoPrompt").path("text").asText():input.path("prompt").asText("");
+        if(!usable) {
+            output.withArray("videoPromptNotes").add(failure!=null?"提示词优化没成功，已按原文生成":"优化稿超过 "
+                    +com.aistareco.aep.ipstudio.h3.H3PromptRewrite.MAX_PROMPT_CHARS+" 字符，已按原文生成");
+            // 没改成不收这一步的费用；模型确实回了内容但不能用的，按实际用量结算（视频照常出）。
+            if(!output.has("billing"))output.putObject("billing").put("inputTokens",0).put("outputTokens",0).put("credits",0);
+        }
+        try {handOver(id,input,prompt,output);}
+        catch(Exception e) {log.warn("[studio] video submit after prompt rewrite failed id={}",id,e);finish(id,output,e);return;}
+        afterTerminal(id);
+    }
+
+    /**
+     * 交接：同一个事务里先结算改写（提交实际用量、结束改写的企业授权）、再提交视频、把任务号写进这一行。
+     * 先结算是因为企业的在途上限把改写也算一项，不结束它视频就提交不上（Codex 评审 2026-10-27）；放在同一个事务里，
+     * 中途崩溃或视频提交失败就整体回滚，再按失败结束（改写不扣费），不会出现「视频提交了、改写没结算」的一行。
+     * 制作计划里的步骤，批准的上限包含改写：视频只能用剩下的部分。
+     */
+    private void handOver(String id,JsonNode input,String prompt,ObjectNode output) {
+        transactions.executeWithoutResult(tx->{
+            IpRun run=billingLockedRun(id).orElseThrow();
+            if(!IpRun.STATUS_RUNNING.equals(run.getStatus())||run.isCancelRequested())
+                throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"IP_RUN_CANCELLED","已停止创作");
+            ObjectNode accepted=input.deepCopy();
+            accepted.remove(List.of("_exec","mock","appliedCharacterContext","appliedCanvasContext"));
+            com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.RunRequest request;
+            try {request=mapper.treeToValue(accepted,com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.RunRequest.class);}
+            catch(Exception invalid){throw new IllegalStateException(invalid);}
+            // 传副本：terminal 会把 billing.credits 改成明细的显示金额；这里回滚后 finish 还要按原始用量结算（Codex 复核 2026-10-27）。
+            terminal(run,output.deepCopy(),null);
+            Long ceiling=request.maxCost()==null?null:input.path("_exec").path("planBudget").asBoolean(false)?request.maxCost()-run.getCost():request.maxCost();
+            var video=new IpRunService.IpVideoRequest(prompt,null,request.durationSec(),request.aspectRatio(),request.model(),ceiling,
+                    request.video().submitted(),request.billing(),request.clientRequestId(),request.modelBilling());
+            var batch=videoRuns.getObject().generateVideoBatch(run.getOwnerUserId(),run.getProjectId(),video,request.count()==null?1:request.count());
+            ObjectNode inputs;
+            try {inputs=(ObjectNode)mapper.readTree(run.getInputJson());}catch(Exception invalid){throw new IllegalStateException(invalid);}
+            ObjectNode exec=inputs.withObject("/_exec");
+            var ids=exec.putArray("nativeVideoJobIds");
+            batch.jobs().forEach(job->ids.add(job.path("id").asText()));
+            if(batch.frameAdjustments()!=null)exec.setAll(batch.frameAdjustments());
+            exec.put("sentPrompt",prompt);
+            try {run.setInputJson(mapper.writeValueAsString(inputs));}catch(Exception invalid){throw new IllegalStateException(invalid);}
+            run.setStage("video.bound");runs.save(run);
+        });
+    }
+
     private boolean checkpointSourceAudio(String id,ObjectNode audio) {
         return Boolean.TRUE.equals(transactions.execute(tx->{
             var run=billingLockedRun(id).orElse(null);if(run==null||!IpRun.STATUS_RUNNING.equals(run.getStatus()))return false;
@@ -385,6 +538,10 @@ public class StudioWorkflowWorker {
             IpRun run=billingLockedRun(id).orElse(null);
             if(run==null || !IpRun.STATUS_RUNNING.equals(run.getStatus()) || run.getStartedAt()!=null)return false;
             if(run.isCancelRequested()){terminal(run,null,new IllegalStateException("cancelled"));return false;}
+            if("studio-director".equals(run.getKind()))try {
+                ObjectNode input=(ObjectNode)mapper.readTree(run.getInputJson());input.withObject("/_exec").put("modelDispatchTracked",true);
+                run.setInputJson(mapper.writeValueAsString(input));
+            }catch(Exception invalid){throw new IllegalStateException(invalid);}
             run.setStartedAt(Instant.now());run.setHeartbeatAt(Instant.now());runs.save(run);return true;
         }));
     }
@@ -395,6 +552,37 @@ public class StudioWorkflowWorker {
             terminal(run,null,new BusinessException(org.springframework.http.HttpStatus.REQUEST_TIMEOUT,"IP_RUN_TIMEOUT","创作超时，冻结积分已释放，可重新生成"));
             return true;
         }));
+    }
+    /** Stop downstream work; an already submitted request keeps its hold until measured usage arrives. */
+    public boolean stopDirectorTask(String id) { return interruptDirectorTask(id,false); }
+
+    private boolean interruptDirectorTask(String id,boolean shutdown) {
+        boolean stopped=Boolean.TRUE.equals(transactions.execute(tx->{
+            IpRun run=billingLockedRun(id).orElse(null);
+            if(run==null||!"studio-director".equals(run.getKind()))
+                throw BusinessException.badRequest("DIRECTOR_TASK_NOT_STOPPABLE","这项任务不能在这里停止");
+            if(!IpRun.STATUS_RUNNING.equals(run.getStatus()))return false;
+            if(run.isCancelRequested()&&!shutdown)return false;
+            run.setCancelRequested(true);
+            if(directorDispatched(run)) {
+                if(shutdown||!activeDirectorCalls.containsKey(id))pendingDirectorUsage(run);
+                else {run.setStage("studio.stopping");run.setHeartbeatAt(Instant.now());runs.save(run);}
+            } else terminal(run,null,new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"IP_RUN_CANCELLED","已停止创作"));
+            return true;
+        }));
+        if(stopped) {
+            // Do not abort an accepted non-streaming call: that would throw away its usage receipt.
+            if(!activeDirectorCalls.containsKey(id)&&queue!=null)queue.finish(AiGenerationQueueService.WORKFLOW,id);
+        }
+        return stopped;
+    }
+
+    @org.springframework.context.event.EventListener(org.springframework.context.event.ContextClosedEvent.class)
+    @org.springframework.core.annotation.Order(org.springframework.core.Ordered.HIGHEST_PRECEDENCE)
+    public void interruptDirectorsBeforeShutdown() {
+        stoppingForShutdown=true;
+        for(String id:List.copyOf(activeDirectorCalls.keySet()))try {interruptDirectorTask(id,true);}
+        catch(Exception error){log.warn("[studio] director shutdown settlement failed id={} reason={}",id,error.getClass().getSimpleName());}
     }
     private boolean progress(String id,int pct,String stage) {
         return Boolean.TRUE.equals(transactions.execute(tx->{
@@ -407,7 +595,8 @@ public class StudioWorkflowWorker {
     private void finish(String id,ObjectNode output,Exception error) {
         transactions.executeWithoutResult(tx->{
             IpRun run=billingLockedRun(id).orElse(null);
-            if(run==null||!IpRun.STATUS_RUNNING.equals(run.getStatus())) return;
+            if(run==null||!IpRun.STATUS_RUNNING.equals(run.getStatus())
+                    &&!("STUDIO_USAGE_PENDING".equals(run.getErrorCode())&&output!=null&&output.has("billing"))) return;
             // A distill run commits its credits only together with its saved draft; if saving fails this transaction rolls
             // back and the caller's catch fails the run with a full refund.
             if(error==null&&output!=null&&output.path("skillDraft").isObject()&&!run.isCancelRequested())saveSkillDraft(run,(ObjectNode)output.path("skillDraft"));
@@ -432,7 +621,9 @@ public class StudioWorkflowWorker {
         // reason itself in the internal detail and the log (不锁方法 2026-10-23).
         try {plan=StudioPlanValidator.validateSkillPlan(answer,rules,stage,allowed);}
         catch(BusinessException e) {
-            log.info("[studio-run] skill plan rejected run={} code={} reason={}",run.getId(),e.getCode(),e.getMessage());
+            log.info("[studio-run] skill plan rejected run={} code={} reason={} details={}",run.getId(),e.getCode(),e.getMessage(),e.getDetails());
+            // Named, deterministic: the execution tells the user which canvas object, and asking the model again cannot fix it.
+            if(StudioPlanValidator.MATERIAL_OUT_OF_SCOPE.equals(e.getCode()))throw e;
             throw BusinessException.wrapped(org.springframework.http.HttpStatus.BAD_REQUEST,com.aistareco.aep.ipstudio.dialogue.tools.ProposePlanTool.PLAN_NOT_READY,com.aistareco.aep.ipstudio.dialogue.tools.ProposePlanTool.PLAN_NOT_READY_TEXT,e.getCode()+": "+e.getMessage());
         }
         plan.put("skillKey",rules.key()).put("skillVersion",rules.version()).put("stage",stage).put("revision",exec.path("planRevision").asInt(1));
@@ -478,15 +669,70 @@ public class StudioWorkflowWorker {
             if(executor!=null&&executionId!=null)executor.wake(executionId);
         } catch(Exception e) {log.warn("[studio] post-terminal notify failed id={} reason={}",id,e.toString());}
     }
+    private void markModelDispatched(String id) {
+        var allowed=transactions.execute(tx->{
+            var run=billingLockedRun(id).orElseThrow();
+            if(!"studio-director".equals(run.getKind()))return true;
+            if(!IpRun.STATUS_RUNNING.equals(run.getStatus())||run.isCancelRequested())return false;
+            try {
+                ObjectNode input=(ObjectNode)mapper.readTree(run.getInputJson());
+                input.withObject("/_exec").put("modelDispatchedAt",Instant.now().toString());
+                run.setInputJson(mapper.writeValueAsString(input));runs.save(run);return true;
+            }catch(Exception invalid){throw new IllegalStateException(invalid);}
+        });
+        if(!Boolean.TRUE.equals(allowed))throw BusinessException.badRequest("IP_RUN_CANCELLED","已停止创作");
+        var run=runs.findById(id).orElseThrow();
+        try {
+            if(StudioTokenBilling.applies(mapper.readTree(run.getInputJson())))credits.markModelDispatched(IpRunService.REF_TYPE,id);
+        } catch(com.fasterxml.jackson.core.JsonProcessingException invalid) {throw new IllegalStateException(invalid);}
+    }
+    private boolean directorDispatched(IpRun run) {
+        if(!"studio-director".equals(run.getKind()))return false;
+        try {
+            JsonNode exec=mapper.readTree(run.getInputJson()).path("_exec");
+            return exec.hasNonNull("modelDispatchedAt")||run.getStartedAt()!=null&&!exec.path("modelDispatchTracked").asBoolean(false);
+        }catch(Exception invalid){return run.getStartedAt()!=null;}
+    }
+    private void pendingDirectorUsage(IpRun run) {
+        long reserved=run.getCost();
+        run.setCancelRequested(true);
+        run.setStatus(IpRun.STATUS_FAILED);run.setStage("settlement.pending");
+        run.setErrorCode("STUDIO_USAGE_PENDING");run.setErrorMessage("创作已停止，模型费用待核对，冻结积分暂未释放");
+        run.setCost(0);run.setFinishedAt(Instant.now());run.setHeartbeatAt(Instant.now());
+        ObjectNode output=mapper.createObjectNode();output.putObject("billing").put("state","pending").put("reservedCredits",reserved);
+        try {run.setOutputJson(mapper.writeValueAsString(output));}catch(Exception invalid){throw new IllegalStateException(invalid);}
+        if(errorLog!=null)errorLog.attach(run,new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"STUDIO_USAGE_PENDING",run.getErrorMessage()));
+        runs.save(run);
+    }
     private void terminal(IpRun run,ObjectNode output,Exception error) {
         boolean cancelled=run.isCancelRequested();
         long cost=run.getCost();
-        if(error==null&&!cancelled) {
+        if("STUDIO_USAGE_PENDING".equals(run.getErrorCode()))try {
+            cost=mapper.readTree(run.getOutputJson()).path("billing").path("reservedCredits").asLong(cost);
+        }catch(Exception invalid){throw new IllegalStateException(invalid);}
+        if(error==null&&!cancelled||cancelled&&output!=null&&output.has("billing")) {
+            if(cancelled) {ObjectNode billingOnly=mapper.createObjectNode();billingOnly.set("billing",output.path("billing").deepCopy());output=billingOnly;}
             long actual=output.has("billing")?output.path("billing").path("credits").longValue():cost;
             if(actual<0||actual>cost)throw new IllegalStateException("Token settlement exceeds reservation");
-            if(actual>0) credits.commitHold(IpRunService.REF_TYPE,run.getId(),actual,"Studio 创作实际结算");
+            JsonNode accepted;
+            try {accepted=mapper.readTree(run.getInputJson());}catch(Exception invalid){throw new IllegalStateException(invalid);}
+            boolean modelBilling=StudioTokenBilling.applies(accepted);
+            var usage=modelBilling&&!"credit".equals(accepted.path("_exec").path("modelCharge").path("target").path("unit").asText())?StudioTokenBilling.measured(output):null;
+            if(usage!=null) {
+                credits.finishModelResources(IpRunService.REF_TYPE,run.getId(),usage.total());
+                // A zero cost component can still have a published selling price; keep a positive internal settlement marker.
+                actual=Math.max(1,actual);
+            }
+            if(actual>0) credits.commitHold(IpRunService.REF_TYPE,run.getId(),actual,"Studio 创作实际结算", usage);
             if(actual<cost) credits.releaseHold(IpRunService.REF_TYPE,run.getId(),"Studio 实际用量结算 · 退回余量");
             run.setCost(actual);
+            if(modelBilling&&modelCharges!=null) {
+                var paid=modelCharges.breakdown(IpRunService.REF_TYPE,List.of(run.getId()));
+                if(paid!=null) {
+                    output.set("billingBreakdown",mapper.valueToTree(paid));
+                    output.withObject("/billing").put("credits",paid.displayedCost());
+                }
+            }
             try {run.setOutputJson(mapper.writeValueAsString(output));}catch(Exception e){throw new IllegalStateException(e);}
             if("studio-assemble".equals(run.getKind())) {
                 try {
@@ -497,12 +743,21 @@ public class StudioWorkflowWorker {
                     }
                 } catch(com.fasterxml.jackson.core.JsonProcessingException e) {throw new IllegalStateException(e);}
             }
-            run.setStatus(IpRun.STATUS_DONE);run.setStage("done");run.setPct(100);
+            run.setStatus(cancelled?IpRun.STATUS_FAILED:IpRun.STATUS_DONE);run.setStage(cancelled?"failed":"done");run.setPct(100);
+            if(cancelled){run.setErrorCode("IP_RUN_CANCELLED");run.setErrorMessage("已停止创作，已按模型实际用量结算");}
         } else {
+            if(directorDispatched(run)&&(cancelled||error instanceof BusinessException b&&"IP_RUN_TIMEOUT".equals(b.getCode()))) {
+                pendingDirectorUsage(run);return;
+            }
             credits.releaseHold(IpRunService.REF_TYPE,run.getId(),"Studio 失败或取消 · 释放冻结");
             run.setCost(0);run.setStatus(IpRun.STATUS_FAILED);run.setStage("failed");
             run.setErrorCode(cancelled?"IP_RUN_CANCELLED":error instanceof BusinessException b?b.getCode():"STUDIO_RUN_FAILED");
             run.setErrorMessage(cancelled?"已停止创作":error instanceof BusinessException?error.getMessage():"这次创作没有完成，请重试");
+            // The canvas objects a rejected plan named outside its material scope: the plan execution names them to the user.
+            if(!cancelled&&error instanceof BusinessException b&&StudioPlanValidator.MATERIAL_OUT_OF_SCOPE.equals(b.getCode())&&b.getDetails() instanceof JsonNode d) {
+                ObjectNode failed=mapper.createObjectNode();failed.set("outOfScopeNodeIds",d.path("nodeIds"));
+                try {run.setOutputJson(mapper.writeValueAsString(failed));}catch(Exception e){throw new IllegalStateException(e);}
+            }
         }
         if (error != null && errorLog != null) errorLog.attach(run, error);
         run.setFinishedAt(Instant.now());run.setHeartbeatAt(Instant.now());runs.save(run);

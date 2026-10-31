@@ -15,6 +15,7 @@ function work(over: Partial<DirectorWork>): DirectorWork {
     settings: { style: "真人写实", aspectRatio: "9:16", language: "中文", videoModel: null, textModel: null },
     episodes: [], assets: [], clips: [], pipeline: null, notice: null, textError: null, tasks: [],
     pricing: { textMax: 2, image: 16, mock: false }, videoModels: [], videoLimits: null,
+    draftEpisodeHeadings: 0, reference: "", referenceRev: 0, pendingSplit: null, canUndoSplit: false,
     ...over,
   };
 }

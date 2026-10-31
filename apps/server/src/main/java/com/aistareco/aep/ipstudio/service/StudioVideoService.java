@@ -31,6 +31,11 @@ public class StudioVideoService {
                         m.selectableById(),m.supportsPromptOptimization(),m.contract(),m.pricing(),m.batchCounts())).toList();
     }
     private String model(String requested) {return scenePolicies.resolveStudioVideo(requested).endpoint().getId();}
+    /** 所选模型出片前会不会改写描述（H3）：只有这种模型才走 H3 官方写法的提示词优化。 */
+    public boolean rewritable(String requested) {
+        String endpointId=model(requested);
+        return models().stream().anyMatch(m->endpointId.equals(m.endpointId())&&m.supportsPromptOptimization());
+    }
     /**
      * A prepared native submission plus what was done to its frames on the way ({@code firstFrameAdjusted} /
      * {@code lastFrameAdjusted}, empty when nothing): the caller records it in the run's {@code _exec}.
@@ -47,7 +52,7 @@ public class StudioVideoService {
         if(first.adjusted()!=null)adjustments.set("firstFrameAdjusted",first.adjusted());
         if(last.adjusted()!=null)adjustments.set("lastFrameAdjusted",last.adjusted());
         var nativeRequest=new VideoStudioJobRequest(endpointId,v.mode(),request.prompt(),v.resolutionTier(),
-                request.aspectRatio(),request.durationSec(),v.seed(),first.key(),last.key(),v.references(),null,null);
+                request.aspectRatio(),request.durationSec(),v.seed(),first.key(),last.key(),v.references(),null,null,null,null);
         VideoStudioModel model=models().stream().filter(m->endpointId.equals(m.endpointId())).findFirst()
                 .orElseThrow(()->invalid("所选模型不支持该视频模式"));
         VideoStudioModeSpec modeSpec=model.contract().modes().stream().filter(m->m.mode().equals(v.mode()))
@@ -113,11 +118,12 @@ public class StudioVideoService {
     public long estimate(String model,String mode,String tier,int seconds,int referenceImages) {
         return videos.estimateCanvas(model(model),mode,tier,seconds,referenceImages,"studio");
     }
-    public long quote(String userId,IpRunService.IpVideoRequest request) {
+    public long quote(String userId,IpRunService.IpVideoRequest request) {return quotePreparation(userId,request).credits();}
+    public VideoStudioService.CanvasPreparation quotePreparation(String userId,IpRunService.IpVideoRequest request) {
         var v=request.video();
         var nativeRequest=new VideoStudioJobRequest(model(request.model()),v.mode(),request.prompt(),v.resolutionTier(),
-                request.aspectRatio(),request.durationSec(),v.seed(),v.firstFrameKey(),v.lastFrameKey(),v.references(),null,null);
-        return videos.prepareCanvas(userId,nativeRequest,(type,key,frame)->{},"studio").credits();
+                request.aspectRatio(),request.durationSec(),v.seed(),v.firstFrameKey(),v.lastFrameKey(),v.references(),null,null,null,null);
+        return videos.prepareCanvas(userId,nativeRequest,(type,key,frame)->projects.requireOwnedAssetKey(userId,key),"studio");
     }
     void requireMedia(String userId,String type,String key,boolean frame,VideoStudioModeSpec mode) {
         projects.requireOwnedAssetKey(userId,key);

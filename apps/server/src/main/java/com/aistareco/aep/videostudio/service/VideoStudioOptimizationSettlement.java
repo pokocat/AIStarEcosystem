@@ -51,7 +51,7 @@ public class VideoStudioOptimizationSettlement {
         }
         if (row.getCreditsHeld() > 0) {
             credits.commitHold(VideoStudioOptimizationService.CREDIT_REF_TYPE, row.getId(), row.getCreditsHeld(),
-                    ledgerLabel);
+                    ledgerLabel, null);
         }
         return true;
     }

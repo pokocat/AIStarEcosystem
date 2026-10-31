@@ -95,3 +95,9 @@ html[data-layout="mobile"] .enterprise-add-member-fields > .ant-input { flex-bas
 .enterprise-selection-hint { color: var(--ip-muted); font-size: 12px; line-height: 1.7; }
 .enterprise-workspace .ant-table-cell { overflow-wrap: anywhere; max-width: 360px; }
 .enterprise-workspace .studio-page-heading p { overflow-wrap: anywhere; }
+
+.studio-model-quote-lines { display: grid; gap: 12px; margin: 0; font-size: 14px; font-variant-numeric: tabular-nums; }
+.studio-model-quote-lines > div { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+.studio-model-quote-lines dt { min-width: 0; overflow-wrap: anywhere; }
+.studio-model-quote-lines dd { margin: 0; flex-shrink: 0; }
+.studio-model-quote-lines > div:last-child { padding-top: 12px; border-top: 1px solid var(--ip-line,#e8eaec); }

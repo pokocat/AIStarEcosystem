@@ -19,6 +19,11 @@ public interface PaymentGateway {
     /** 查单（对账 / 兜底）：按商户订单号查支付网关侧订单态。 */
     PayQueryResult queryPayOrder(String mchOrderNo);
 
+    /** Only return after the provider confirms closure. Unsupported channels must not claim closure. */
+    default void closePayOrder(String mchOrderNo) {
+        throw new UnsupportedOperationException("渠道尚不支持自动关单");
+    }
+
     /** 当前 driver 名（shadow / alipay / wechat）= 渠道代码。 */
     String driverName();
 

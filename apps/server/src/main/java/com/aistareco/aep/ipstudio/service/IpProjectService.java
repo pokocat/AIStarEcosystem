@@ -69,7 +69,12 @@ public class IpProjectService {
     private final ObjectMapper om;
     private final com.aistareco.aep.ipstudio.repository.IpProjectRevisionRepository revisions;
     private final StudioIpAssetService studioAssets;
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.billing.service.ModelChargeService modelCharges;
     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AiGenerationQueueService generationQueue;
+
+    /** 场景页建草稿时核对场景编号；单测里构造的服务没有它，照常建画布。 */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.aistareco.aep.ipstudio.scene.StudioSceneCatalog scenes;
 
     public IpProjectService(IpProjectRepository projectRepo,
                            IpRunRepository runRepo,
@@ -135,6 +140,9 @@ public class IpProjectService {
                 : templates.resolve(templateId, userId).orElseThrow(() ->
                         BusinessException.badRequest("IP_TEMPLATE_NOT_FOUND", "工作流不存在或已下线：" + templateId));
 
+        String sceneId = req == null ? null : trimToNull(req.sceneId());
+        if (sceneId != null && scenes != null && scenes.image(sceneId).isEmpty() && scenes.video(sceneId).isEmpty())
+            throw BusinessException.badRequest("STUDIO_SCENE_INPUT_INVALID", "这个场景不存在，请刷新后重选");
         String name = req == null ? null : trimToNull(req.name());
         if (name == null) name = tpl != null ? tpl.name() : "未命名画布";
         if (name.length() > 128) name = name.substring(0, 128);
@@ -148,6 +156,7 @@ public class IpProjectService {
                 .ownerUserId(userId)
                 .name(name)
                 .templateId(tpl != null ? tpl.id() : null)
+                .sceneId(sceneId)
                 .status(IpProject.STATUS_DRAFT)
                 .docJson(writeDoc(doc))
                 .createdAt(Instant.now())
@@ -527,7 +536,7 @@ public class IpProjectService {
     IpProjectSummaryDto toSummary(IpProject p) {
         return new IpProjectSummaryDto(p.getId(), p.getName(), p.getTemplateId(), p.getStatus(),
                 coverUrl(p),
-                p.getPublishedAvatarId(), iso(p.getCreatedAt()), iso(p.getUpdatedAt()));
+                p.getPublishedAvatarId(), iso(p.getCreatedAt()), iso(p.getUpdatedAt()), p.getSceneId());
     }
 
     IpProjectDto toDetail(IpProject p) {
@@ -537,7 +546,7 @@ public class IpProjectService {
                 coverUrl(p),
                 p.getPublishedAvatarId(), iso(p.getCreatedAt()), iso(p.getUpdatedAt()),
                 docVersion(p.getDocJson()),
-                doc, runs.runs(), runs.runsById(), p.getTemplateVersionId());
+                doc, runs.runs(), runs.runsById(), p.getTemplateVersionId(), p.getSceneId());
     }
 
     /** runs 投影结果：{@code runs} 按 nodeId、{@code runsById} 按 runId。 */
@@ -585,6 +594,11 @@ public class IpProjectService {
      * run → wire。候选图的 key 是真值，出 wire 时逐条派生签名 URL（§4.7.7）；
      * {@code inputs._exec} 是服务端执行参数（含 storage key），不出 wire。
      */
+    private java.util.List<String> billingReferences(IpRun run) {
+        var refs=new java.util.ArrayList<String>();
+        parseOrEmptyObject(run.getInputJson()).path("_exec").path("holdRefs").forEach(r->{if(r.path("ref").isTextual())refs.add(r.path("ref").asText());});
+        return refs.isEmpty()?java.util.List.of(run.getId()):refs;
+    }
     public IpRunDto toRunDto(IpRun r) {
         JsonNode inputs = parseOrEmptyObject(r.getInputJson());
         if(r.getClientRequestId()!=null && inputs instanceof ObjectNode on) on.put("clientRequestId",r.getClientRequestId());
@@ -592,9 +606,11 @@ public class IpProjectService {
         if (inputs instanceof com.fasterxml.jackson.databind.node.ObjectNode on) on.remove("_exec");
         if(!videoJobIds.isEmpty()) return videoBindingDto(r,inputs,videoJobIds);
         JsonNode output = signCandidates(parseOrEmptyObject(r.getOutputJson()));
+        var billing=modelCharges==null?null:modelCharges.breakdown("ip-run",billingReferences(r));
+        if(billing!=null)((ObjectNode)output).set("billingBreakdown",om.valueToTree(billing));
         var queue=runQueuePosition(r);
         return new IpRunDto(r.getId(), r.getProjectId(), r.getNodeId(), r.getKind(),
-                r.getStatus(), queue==null?r.getStage():"endpoint.queued", queue==null?r.getPct():0, r.getCost(),
+                r.getStatus(), queue==null?r.getStage():"endpoint.queued", queue==null?r.getPct():0, billing==null?r.getCost():billing.displayedCost(),
                 r.getErrorCode(), r.getErrorMessage(), inputs, output,
                 iso(r.getCreatedAt()), iso(r.getFinishedAt()),queue);
     }
@@ -603,7 +619,8 @@ public class IpProjectService {
         String type=switch(run.getKind()) {
             case "generate","identity","studio-image" -> com.aistareco.aep.service.AiGenerationQueueService.IMAGE;
             case "studio-audio","studio-lip-sync" -> com.aistareco.aep.service.AiGenerationQueueService.SPEECH;
-            case "studio-text","studio-script","studio-storyboard","studio-assistant","studio-recreation" -> com.aistareco.aep.service.AiGenerationQueueService.WORKFLOW;
+            // studio-video 走到这里只会是还在改写提示词的那一段（提交视频后按视频任务投影，不经过这里）。
+            case "studio-text","studio-script","studio-storyboard","studio-assistant","studio-recreation","studio-video" -> com.aistareco.aep.service.AiGenerationQueueService.WORKFLOW;
             default -> null;
         };
         return type==null?null:generationQueue.position(type,run.getId());
@@ -633,8 +650,13 @@ public class IpProjectService {
             boolean review=!done&&!failed&&"VIDEO_SUBMISSION_UNKNOWN".equals(job.getErrorCode());
             boolean recovering=!done&&!failed&&"VIDEO_RECONCILIATION_PENDING".equals(job.getErrorCode());
             String pending=review?"生成服务响应异常，受理结果待核对。请联系运营核对原任务，请勿重复生成；冻结积分待核实后结算。"
-                    :recovering?"生成服务暂时无法返回结果，正在查询原视频任务；请勿重复生成，冻结积分待结果确认后结算。":null;
-            if(pending!=null && job.getErrorMessage()!=null && !job.getErrorMessage().isBlank())pending=job.getErrorMessage();
+                    :recovering?MaterialVideoJobService.STILL_PROCESSING:null;
+            if(review && job.getErrorMessage()!=null && !job.getErrorMessage().isBlank())pending=job.getErrorMessage();
+            // Older pending jobs stored longer wording; the user sees the one sentence, the 追查号 is kept for error details.
+            if(recovering && job.getErrorMessage()!=null) {
+                int at=job.getErrorMessage().indexOf(" · 追查号 ");
+                if(at>=0)pending+=job.getErrorMessage().substring(at);
+            }
             String error=failed?(job.getErrorMessage()==null?"视频未交付，请查看任务状态":job.getErrorMessage()):null;
             var candidate=candidates.addObject().put("index",index).put("jobId",id)
                     .put("status",done?"done":failed?"failed":"running").put("pct",done||failed?100:job.getProgress())
@@ -677,6 +699,16 @@ public class IpProjectService {
         String stage=active?(allQueued?"endpoint.queued":"视频生成中")
                 :allFailed?"视频生成失败":successes<ids.size()?"部分视频生成失败":"视频生成完成";
         if(pendingCode!=null)stage="VIDEO_SUBMISSION_UNKNOWN".equals(pendingCode)?"video.submission_unknown":"video.recovering";
+        var billing=modelCharges==null?null:modelCharges.breakdown(MaterialVideoJobService.CREDIT_REF_TYPE,ids);
+        if(billing!=null){output.set("billingBreakdown",om.valueToTree(billing));cost=billing.displayedCost();}
+        // 先改写提示词再出片的那一行（StudioWorkflowService#submitVideoRewrite）：改写按实际用量的花费算在一起（有模型明细时用明细的显示金额），
+        // 改写结果照常给界面。
+        if(r.getCost()>0) {
+            var rewrite=modelCharges==null?null:modelCharges.breakdown("ip-run",billingReferences(r));
+            cost+=rewrite==null?r.getCost():rewrite.displayedCost();
+        }
+        JsonNode own=parseOrEmptyObject(r.getOutputJson());
+        for(String field:List.of("videoPrompt","videoPromptNotes"))if(own.has(field))output.set(field,own.path(field).deepCopy());
         return new IpRunDto(r.getId(),r.getProjectId(),r.getNodeId(),r.getKind(),active?"running":allFailed?"failed":"done",
                 stage,pct/ids.size(),cost,pendingCode!=null?pendingCode:allFailed?(firstErrorCode==null?"STUDIO_VIDEO_FAILED":firstErrorCode):null,
                 pendingMessage!=null?pendingMessage:allFailed?firstError:null,inputs,output,

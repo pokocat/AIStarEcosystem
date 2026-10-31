@@ -47,13 +47,16 @@ describe("video modes preserve every chosen reference",()=>{
   });
 });
 
-describe("「按原文生成」asks the vendor not to rewrite the description",()=>{
-  it("adds optimizePrompt=false only when chosen; the inputs and price are unchanged",()=>{
+describe("智能优化：开着先按 H3 官方写法优化，关着按原文发",()=>{
+  it("rewrite asks for our optimization, original turns the vendor's off; the inputs and price are unchanged",()=>{
     const plain=studioVideoSettings("i2v","768p",[{mediaType:"image",storageKey:"first"}],7);
-    const kept=studioVideoSettings("i2v","768p",[{mediaType:"image",storageKey:"first"}],7,undefined,true);
+    const original=studioVideoSettings("i2v","768p",[{mediaType:"image",storageKey:"first"}],7,undefined,"original");
+    const rewrite=studioVideoSettings("i2v","768p",[{mediaType:"image",storageKey:"first"}],7,undefined,"rewrite");
     expect(plain).not.toHaveProperty("optimizePrompt");
-    expect(kept).toEqual({...plain,optimizePrompt:false});
-    expect(studioVideoQuote(model,kept,8)).toBe(studioVideoQuote(model,plain,8));
+    expect(original).toEqual({...plain,optimizePrompt:false});
+    expect(rewrite).toEqual({...plain,rewrite:"review"});
+    expect(studioVideoQuote(model,original,8)).toBe(studioVideoQuote(model,plain,8));
+    expect(studioVideoQuote(model,rewrite,8)).toBe(studioVideoQuote(model,plain,8));
   });
   it("a reopened node restores the choice from its accepted request, not from a template preset",()=>{
     const accepted={type:CanvasNodeType.Video,metadata:{videoMode:"t2v",studio:{request:{video:{mode:"t2v",resolutionTier:"768p",optimizePrompt:false}}}}} as CanvasNodeData;

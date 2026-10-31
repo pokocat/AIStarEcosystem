@@ -85,4 +85,18 @@ class PaymentReconcileServiceTest {
         assertEquals(0, svc.reconcilePending());
         verify(registry, never()).get(eq("alipay"));
     }
+    @Test
+    void expiredWechatOrderIsQueriedBeforeClosureAndWrongAmountNeverCredits() {
+        var wx = mock(PaymentGateway.class);
+        when(registry.get("wechat")).thenReturn(wx);
+        when(orderRepo.findByStatusOrderByCreatedAtDesc(RechargeOrder.Status.PENDING))
+                .thenReturn(List.of(order("ro-old", "WX_NATIVE", "wechat_ro-old", 3600)));
+        when(wx.queryPayOrder("ro-old")).thenReturn(new PayQueryResult(true, true, "wechat_ro-old", 1, "wx-trade"));
+        assertEquals(0, svc.reconcilePending());
+        var sequence = inOrder(wx, rechargeService);
+        sequence.verify(wx).queryPayOrder("ro-old");
+        sequence.verify(rechargeService).closeStalePendingOrders(30);
+        verify(rechargeService, never()).settlePaidOrder(any(), any(), any(), any(), any());
+    }
+
 }

@@ -122,4 +122,18 @@ class PaymentChannelConfigServiceTest {
     void unknownChannelRejected() {
         assertThrows(BusinessException.class, () -> svc.upsert("paypal", upsert(false, Map.of()), "tester"));
     }
+    @Test
+    void wechatPublicKeyMustBePairedAndRemainsMasked() {
+        Map<String, String> creds = new HashMap<>();
+        for (String key : PaymentChannelCatalog.of("wechat").requiredCreds()) creds.put(key, "test-" + key);
+        svc.upsert("wechat", upsert(false, creds), "tester");
+        assertTrue(svc.isConfigured("wechat")); // Legacy certificate mode remains supported.
+        svc.upsert("wechat", upsert(false, Map.of("publicKeyId", "PUB_KEY_ID_TEST")), "tester");
+        assertFalse(svc.isConfigured("wechat"));
+        assertThrows(BusinessException.class, () -> svc.upsert("wechat", upsert(true, Map.of()), "tester"));
+        var dto = svc.upsert("wechat", upsert(true, Map.of("publicKey", "TEST_PLATFORM_PUBLIC_KEY")), "tester");
+        assertTrue(dto.configured());
+        assertNotEquals("TEST_PLATFORM_PUBLIC_KEY", dto.creds().get("publicKey"));
+    }
+
 }

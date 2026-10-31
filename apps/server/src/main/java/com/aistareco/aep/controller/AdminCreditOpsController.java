@@ -48,6 +48,15 @@ public class AdminCreditOpsController {
                 req.userId(), req.amount(), req.campaignId(), req.reason(), operator(principal)));
     }
 
+    @PostMapping("/scoped-grant")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','OPERATOR','FINANCE_ADMIN')")
+    public ApiResponse<CreditAdjustmentRequestDto> scopedGrant(Principal principal,
+            @RequestBody(required=false) ScopedGrantRequest req) {
+        requireBody(req);
+        return ApiResponse.of(creditOpsService.grantScoped(req.walletId(),req.campaignId(),req.amount(),
+                req.expiresAt(),req.requestId(),req.reason(),operator(principal)));
+    }
+
     /** 审批队列（status: pending_approval / approved / rejected / all）。 */
     @GetMapping("/requests")
     public ApiResponse<List<CreditAdjustmentRequestDto>> listRequests(@RequestParam(required = false) String status) {
@@ -81,5 +90,7 @@ public class AdminCreditOpsController {
 
     public record CompensateRequest(String userId, long amount, String incidentRef, String reason) {}
     public record GrantRequest(String userId, long amount, String campaignId, String reason) {}
+    public record ScopedGrantRequest(String walletId,String campaignId,long amount,java.time.Instant expiresAt,
+                                     String requestId,String reason) {}
     public record RejectRequest(String note) {}
 }

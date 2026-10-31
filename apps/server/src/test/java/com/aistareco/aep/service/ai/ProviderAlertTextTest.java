@@ -25,4 +25,13 @@ class ProviderAlertTextTest {
         var evidence=(ProviderResponseDiagnostics)error.getSuppressed()[0];
         assertNull(evidence.status());assertTrue(evidence.responseBody().contains("内容审核未通过"));
     }
+    @Test void oversizedAndTruncatedBase64NeverLeaksIntoDiagnostics() {
+        String body="{\"data\":[{\"b64_json\":\""+"private-media".repeat(1_600_000)
+                +"\"}],\"request_id\":\"image-request-123\"}";
+        String safe=ProviderAlertText.sanitize(body);
+        assertTrue(safe.contains("媒体数据已省略"));
+        assertTrue(safe.contains("image-request-123"));
+        assertFalse(safe.contains("private-media"));
+        assertFalse(ProviderAlertText.sanitize("{\"data\":[{\"b64_json\":\"private-media").contains("private-media"));
+    }
 }

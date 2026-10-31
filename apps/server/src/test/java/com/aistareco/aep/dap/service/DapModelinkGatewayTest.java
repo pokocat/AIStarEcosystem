@@ -91,7 +91,9 @@ class DapModelinkGatewayTest {
                 () -> gateway.createGroup("liveness_face", "n", "m", "https://x/cb"));
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, ex.getStatus());
         assertEquals("DAP_MODELINK_QUOTA_EXCEEDED", ex.getCode());
-        assertTrue(ex.getMessage().contains("配额"), "文案要能指引运维：" + ex.getMessage());
+        // 2026-10-25 起供应商配额不进对外文案（AGENTS.md §8.0.1 ①）；运维靠错误码和日志里的原始响应定位。
+        assertFalse(ex.getMessage().contains("quota"), ex.getMessage());
+        assertTrue(ex.getInternalDetail().contains("asset group quota exceeded"), ex.getInternalDetail());
     }
 
     @Test

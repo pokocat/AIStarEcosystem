@@ -176,6 +176,8 @@ pnpm check:api-contract                          # 扫五个子应用 + api-clie
 
 用户要求：改完先合入 `main`，再发布。功能分支完成后合入主线，保留 `main` 已有功能，解决冲突并通过检查；仅从干净的 `main` 构建正式制品。不得从落后于主线的功能分支直接覆盖生产。发布记录须写明构建所用的 `main` 提交、服务范围和线上验收结果。
 
+**只发一部分服务时，先查 main 上的契约改动**（2026-10-30 事故）：从 main 只发 server，会把线上那版之后 main 上所有后端改动一起带上。当天 main 上一次看板提交把 `/api/admin/studio-operations` 的 `hourlyOutcomes` 换成了两个新字段、前后端一起改，而发布只发了 server，线上 Studio 后台（10-26 版）读 `hourlyOutcomes.map` 出错，技术看板约一小时打不开，补发 studio-admin 后恢复。发布前跑 `git diff <线上 GIT_SHA> origin/main -- 'apps/server/**/dto/**' specs/openapi.yaml`，有删除或改名的字段，就把读它的前端（五个 web、admin、studio-admin、小程序）一起发，或者先不发。
+
 ## 3. 三端架构
 
 ### 数据流转
@@ -509,11 +511,11 @@ pnpm check:api-contract
 
 | 版本 | 日期 | 一句话 |
 |---|---|---|
+| **场景化首页与 AI 图片 / AI 视频** | 2026-10-29；后端 2026-10-30 上线，前端正式站默认旧版，右上角「体验新版」/「回到旧版」切换（`shell/ui-version.ts`） | 参考茂隆掌柜 AI：登录后桌面改左侧导航栏；首页一句话开始 + 常用工具 + 「你想做什么？」+ 灵感搬到首页；`/image` 按场景一步出图（只显示场景标签 + 补充要求，草稿即画布），`/video` 照参考站「超级编导」：编导看素材写分镜脚本、可改稿，「用这个脚本生成」选模型时长确认后出片；两页场景、选项组和首页卡片由 Studio 运营后台（`studio-admin` 的「运营配置 · 场景模板」）配置（`studio.scene-catalog`）；见 `docs/studio-scene-creation.md` §8–§9 |
 | **新建画布与多段对话** | 2026-10-20，2026-10-21 已生产发布 `20261021-studio-new-canvas-threads` | 新建统一走 `startNewCanvas()` 直进画布、空画布中间给五个入口；助手加「新对话 / 历史对话」（三个接口，无迁移）；方案与确认卡合成一张、只说做什么花多少，完成总结一句话；见 `docs/ip-studio-new-canvas-and-threads.md` |
 | **对话意图直达** | 2026-10-20（已生产发布 `20261020-studio-dialogue-intents`） | Studio 助手按意图落到出图 / 写剧本与文案 / 出视频 / 复刻四个技能，直达技能一轮一张确认卡、平手不再 400、按任务换技能，见 `docs/ip-studio-dialogue-intents.md` |
 | **v0.207** | ✅ 本地，未发布 | Studio创作首页：主要功能直达、近期画布/模板、想法保存与原项目恢复；品牌保留，见 `docs/ip-studio-home.md` |
 | **v0.206** | 2026-10-08 | Studio 界面区域分离、响应式工具/生成面板；人物库/添加/引用/商品/模板选择统一，精确版本回填与取消恢复；本地未发布，见 docs/audits/ip-studio-ui-audit-2026-10.md |
-| **v0.205** | 2026-10-08 | Studio IP 人物库按人物汇总，素材详情/筛选/默认声音与精确版本引用；V45 素材分类与免费整理，浏览器恢复/账本验收通过。设定图系统提示词冲突已修，两次实图均未通过质量，未发布 |
 
 
 > **这张表刻意只留 5 行。** 它曾经堆到 110 行、占掉 AGENTS.md 的 **64%** —— 而本文件每个
@@ -590,9 +592,8 @@ sau-service…），当依赖**未配置**或**调用失败**时，在生产 pro
 - `BusinessException.internalDetail` **不算**留下 —— 它只在走 `GlobalExceptionHandler` 的
   请求路径上才落进 `ErrorLog`；`@Async` worker / `@Scheduled` 里抛的异常到不了那儿，
   等于什么都没记（v0.184 就是这么丢的）。
-- 4xx 的 message **直出给用户**（截断，脱敏）：它说的是「我们请求哪儿不对」，
-  是用户唯一据以行动的信息，而对一个永远不会自己好的 400 说「请稍后重试」本身就是错的。
-  5xx 才笼统 + 状态码（厂商自己的问题，细节留日志）。响应体不是 JSON 时不外泄
+- **模型错误区分用户可操作原因与平台内部诊断**（2026-10-25 用户修正边界）：素材、尺寸、审核等可操作原因继续明确展示；供应商余额、预扣费、配额、费率/成本、密钥、签名链接与技术堆栈不得透传到客户端（包括错误详情、历史任务、导演作品和事件流）。`ProviderErrorMessage` 在源头过滤，`PublicModelErrorPolicy` / 公共 JSON 出口及前端兜底保护历史错误；原始证据仅留在有权限的后台日志/诊断中。客户真实的积分钱包不足提示和我方追查号保留，不把供应商额度不足引导成客户充值。不得以“脱敏后仍可读”为由保留内部经营信息；也不把全部可操作原因一律覆盖成通用提示。
+  上游 HTTP 状态、明确拒绝 / 受理未知的分类、计费和重试策略仍按既有协议判断，不能因展示了上游消息就改判失败或重复付费提交。**按供应商原话分类（额度 / 配额 / 权益 / 鉴权…）一律读 `ProviderErrorMessage.diagnosticReason` / `diagnostic`，不读 `reason` / `message` / `sanitize`**：对外那份已经把这些词换成通用句，拿它判永远判不中（2026-10-25 起石榴「克隆权益不足」和七牛分组配额的分类就这样失效了四天，单测直接传原话所以没测到，10-29 修复）。响应体不是 JSON 时不外泄
   （别把网关的 HTML 错误页糊到界面上）。范式：`DapMultimodalClient#upstreamMessage`、
   `MaterialVideoModelClient#uploadFailureMessage`。
 - 发出去的**请求体**也要记（`ModelCallCtx.requestBodyJson` → `[upstream-io] REQUEST`）。
@@ -670,6 +671,10 @@ v0.163：前端手抄了一份 `IpRun`，把 `output` 写成 `outputs`，于是�
   2026-10-21 第五种：动作本身完全对，但数组后面又写了一遍 `<<<studio-actions>>>` 当结束标记，严格解析连判三次格式错误、什么都没做还扣了积分；每次失败的回复正文都显示了出来（同一句三遍）；而用户点的「用这张图做一段视频」是我们自己给的完成后建议，出视频却没有这个说法的关键词，和出图平手就留在了出图。判据补充：只在动作块末尾容忍明显的收尾、其它多余内容仍判错；格式错误重试时被判错那次的正文不追加、正文只出现一次；我们自己给的每一条建议都要有测试证明它路由到对的技能或明确不切换（`StudioSuggestionRoutingTest`）。
 
   2026-10-24 第六种（AI 导演台编剧，聚算 Qwen3.8 27B）：剧本 JSON 写完了、字符串也闭合了，finish=stop，只漏了最外层的 `}`，严格解析判失败、整单退款，用户只看到「这次创作没有完成」。`ModelJson` 现在只在「文本停在一个完整的值上、只缺结尾括号」时补括号，截在字符串中间或逗号、冒号后面照样失败（`ModelJsonTest`）。
+
+  2026-10-31 第七种（场景页编导，本地 Agnes 2.5 Flash）：要求写「第N镜（起–止 秒）」，模型把「起–止」原样抄进括号、第一镜从 0.5 秒开始，H3 解析器一镜都认不出；要求「第一行写还缺」，它写在了最后一行；「怎么买」的说明里列了几个选项，它挑一个当事实填了。判据补充：格式要给一个照抄就对的例子，不要给带占位词的模板；解析时位置放宽（哪一行都认），内容不放宽；说明文字里不要列可选值，模型会当成答案。真模型输出钉成回归用例（`H3PromptRewriteTest#aRealDirectorScriptFromAgnesIsParsed`）。
+  同类补充（2026-10-24，永久修复已合 main、普通 JAR 未发布；厂商响应 UTC 2026-10-25）：`finish=stop` 的剧本同时出现非法 `\远处` 和缺末尾 `}`。`ModelJson` 可组合恢复汉字前的多余反斜杠、字符串内原始换行 / 制表符、完整值后的尾逗号和末尾括号；合法转义保持原样。未知 ASCII 转义、残缺 Unicode 转义、半截字符串、缺值 / 缺分隔逗号、重复字段和多份 JSON 一律拒绝，不能从残缺数组里截一个对象冒充整份结果。恢复后仍走业务校验；`finish=length` 不进入修复。`StudioWorkflowWorker` 对不能修复的 JSON 保留原异常及上游诊断，以 `AI_BAD_OUTPUT` 明确提示「格式有误，无法自动恢复；本次未扣积分」，释放冻结、不自动重调模型。回归：`ModelJsonTest` / `StudioWorkflowWorkerJsonTest`。
+  2026-10-25 UTC 已按用户要求无重启启用官方 JVM-Sandbox 1.4.0 临时模块（namespace `aep-json-20261024`，仅环回 `24769`）：只处理原 `ModelJson.parse` 的 Jackson 异常，正常返回不变，不能恢复则交原工作流按 `AI_BAD_OUTPUT` 退款。固定生产探针通过，PID / 启动时间 / JAR 均未变。临时模块不等同于永久严格解析规则；下次正常发布先卸载模块，再发布含永久修复的 main。见 `docs/runbooks/studio-json-jvm-sandbox.md` 和 `docs/releases/studio-json-jvm-sandbox-release-20261025.md`。
 
 **⑧ 用脚本改代码时，锚点必须包住"不能被拆开的那一对"。**
 2026-09-09 生产事故：用 python 往 `IpDemoTemplate` 里插两个常量，锚点选的是
@@ -1017,6 +1022,10 @@ Studio 支持模型开放首尾帧、全能参考、清晰度、六种画幅及�
 用户确定按端点而非 vendor 分组。`concurrencyLimit` 在原后台配置，V48 增列与持久票据；`AiGenerationQueueService` 的端点行锁、FIFO 和派发租约为准入唯一真值。Studio 和通用视频 worker 超限即退出线程并排队，旧同步 chat/images 调用共用同一额度；ThreadLocal Scope 防内部重复占名额，结束必须清理。视频和配音/口型持有到上游终态，未知受理不可释放容量后重提；排队时长不当运行超时/孤儿 hold，停止退回原冻结。原业务任务/账本仍各自真值，票据不能保存密钥、素材或提示词。其他协议及人工容量核对边界见 `docs/ai-endpoint-generation-queue.md`。
 
 
+### 图片尺寸不符照常交付（2026-10-30 已生产发布 `20261030-studio-image-size-deliver`）
+
+供应商返回的图只要是可用图片，就交给用户并按原价结算，尺寸与所选不一致或读不出尺寸只记 WARN（`[studio-jusuan-image] output size differs`），画布、导演台、制作计划共用 `JusuanImageClient` 这一处。不拉伸、不裁剪、不重投。2026-10-20 起按尺寸不符判失败过（10 天 13 次，冻结均已退回），10-25 写过的「改为警告」版本留在 codex `image-size-warning` 工作区从未提交，界面警告那部分仍未做。
+
 ### 图片受理未知不占执行名额（2026-10-22）
 
 图片 `generate/running/image.provider.recovering/STUDIO_IMAGE_SUBMISSION_UNKNOWN` 保留原任务、供应商请求和冻结/付款授权，但不计入端点执行名额。准入、派发、`queue.running` 共用 `AiGenerationQueueRepository.countOccupyingSlots`，无迁移，旧记录读取即生效。不能据此重提或自动退款；视频/音频及已知图片任务的恢复规则保留。画布、任务列表和历史明确“受理结果待核对”，图片阶段不展示虚假百分比。
@@ -1071,14 +1080,18 @@ Studio 支持模型开放首尾帧、全能参考、清晰度、六种画幅及�
 
 ### 企业主子账号 · 2026-10-15（已生产发布）
 
-`aep/enterprise` 为独立企业关系/RBAC，复用 OIDC 与现有 aiavatar 开通，不复用旧 Tenant/Studio、不新增企业席位。V56 建立企业/成员/当前归属/邀请/策略/移交/审计/划拨结构；current 的 userId 唯一，owner 由 Enterprise 单字段决定。钱包 accountKey 区分 personal/enterprise/enterprise_member，企业账户 userId 为空，成员用户另存 memberUserId；历史个人余额与账本不动。CreditService 按钱包 ID 共用核心，终态按 hold.walletId，企业资金锁 enterprise→按ID排序的全部企业wallet→hold→任务（个人仍wallet→hold）；划拨枚举为积分面且不计作发行/收入。`AEP_ENTERPRISE_ENABLED` 默认 false，控制新企业关系/积分操作；已有订单的平台财务处理不随开关关闭。E05 为预览指纹+正文幂等的原子划拨，E06 为固定企业根钱包的人工充值/退款；V57 保留原充值来源（移动/冻结/FIFO消费/释放），不得用后续充值顶替原单退款。退款待原单冻结结清后一次处理，记录人民币与凭据，不自动打款。Studio `/enterprise` 需构建期 `NEXT_PUBLIC_ENTERPRISE_ENABLED=1`，后台沿用充值订单页；E07/E08 用 V58 持久化每个收费引用的付款授权和生命周期操作回执。全部 Studio 生成入口显式接受 billing，旧请求默认个人；授权固定 actor/enterprise/membership/wallet/endpoint/价格，不混扣。排队、受理未知、零价均计入在途。停用/退出撤销原授权并取消未派发任务，已受理继续原任务结算；晚释放按原桶和充值来源回原企业，恢复/重入不改变原退款。关闭须无在途、冻结、余额或待核准充值。前台完整管理/消费流水与后台企业对账沿用原组件。图片/视频受理必须预先保存原路由和请求、随后保存供应商ID；轮询故障保留冻结并查原任务。无ID由SUPER_ADMIN/OPERATOR保存证据补原ID再查询；供应商明确证明未受理时，才允许显式确认释放原剩余冻结，FINANCE_ADMIN不能操作任务恢复。严禁重新生成或单凭查询故障退款。2026-10-15 已生产发布 `f068b51d`，前后端开关已开启、V56–V58成功，实际服务与资金基线见 `docs/releases/ip-studio-enterprise-production-release.md`。实施/验收见 `docs/archive/ip-studio-enterprise-development-tasks.md`、`docs/releases/ip-studio-enterprise-complete-validation.md`（早期批次记录另保留）；前端规划见 `docs/ip-studio-enterprise-ui-plan.md`。
+`aep/enterprise` 为独立企业关系/RBAC，复用 OIDC 与现有 aiavatar 开通，不复用旧 Tenant/Studio、不新增企业席位。V56 建立企业/成员/当前归属/邀请/策略/移交/审计/划拨结构；current 的 userId 唯一，owner 由 Enterprise 单字段决定。钱包 accountKey 区分 personal/enterprise/enterprise_member，企业账户 userId 为空，成员用户另存 memberUserId；历史个人余额与账本不动。CreditService 按钱包 ID 共用核心，终态按 hold.walletId，企业资金锁 enterprise→按ID排序的全部企业wallet→hold→任务（个人仍wallet→hold）；划拨枚举为积分面且不计作发行/收入。`AEP_ENTERPRISE_ENABLED` 默认 false，控制新企业关系/积分操作；已有订单的平台财务处理不随开关关闭。E05 为预览指纹+正文幂等的原子划拨，E06 为固定企业根钱包的人工充值/退款；V57 保留原充值来源（移动/冻结/FIFO消费/释放），不得用后续充值顶替原单退款。退款待原单冻结结清后一次处理，记录人民币与凭据，不自动打款。Studio `/enterprise` 需构建期 `NEXT_PUBLIC_ENTERPRISE_ENABLED=1`，后台沿用充值订单页；E07/E08 用 V58 持久化每个收费引用的付款授权和生命周期操作回执。全部 Studio 生成入口显式接受 billing，旧请求默认个人；授权固定 actor/enterprise/membership/wallet/endpoint/价格，不混扣。排队、受理未知均计入在途（零价模型接入点自模型赠款起一律报错，见文末「模型接入点赠款与折扣」）。停用/退出撤销原授权并取消未派发任务，已受理继续原任务结算；晚释放按原桶和充值来源回原企业，恢复/重入不改变原退款。关闭须无在途、冻结、余额或待核准充值。前台完整管理/消费流水与后台企业对账沿用原组件。图片/视频受理必须预先保存原路由和请求、随后保存供应商ID；轮询故障保留冻结并查原任务。无ID由SUPER_ADMIN/OPERATOR保存证据补原ID再查询；供应商明确证明未受理时，才允许显式确认释放原剩余冻结，FINANCE_ADMIN不能操作任务恢复。严禁重新生成或单凭查询故障退款。2026-10-15 已生产发布 `f068b51d`，前后端开关已开启、V56–V58成功，实际服务与资金基线见 `docs/releases/ip-studio-enterprise-production-release.md`。实施/验收见 `docs/archive/ip-studio-enterprise-development-tasks.md`、`docs/releases/ip-studio-enterprise-complete-validation.md`（早期批次记录另保留）；前端规划见 `docs/ip-studio-enterprise-ui-plan.md`。
 
+
+### Studio 场景化首页与 AI 图片 / AI 视频（2026-10-29，本地未发布）
+
+本节替代下面「七项导航」里的导航顺序：登录后桌面导航改为左侧一列「首页 / AI 视频 / AI 图片 / 画布 / 导演台 / 项目 / 资产 / 发行」（`DesktopTopBar` 非公开分支，`--desktop-bar-h` 在 body 上是 12px、左侧让出 `--desktop-rail-w`），公开落地页仍是顶栏；「灵感」搬到首页，`/templates` 归「首页」高亮；`/scenes` 转 `/video`。场景目录只在服务端一处：Studio 运营后台（`apps/web-aiavatar/studio-admin` 的 `/scenes`，**不放 `apps/admin`**；接口 `/api/admin/studio/scenes`，SUPER_ADMIN / OPERATOR，整份保存带版本号、同一套 `StudioSceneCatalog.validate`）改过就是平台配置 `studio.scene-catalog`，目录里还有每个场景的选项组（`options`，选中项由 `compose` 拼进描述 / 要求）和首页卡片（`homeGoals`，公开只读 `GET /api/v1/ip-studio/scenes/home`，只带显示字段），否则随包 `ipstudio/scenes.json`（`GET /api/v1/ip-studio/scenes` 只下发上架的，封面 / 示例只认 `ipstudio_scene/catalog/` 下后台上传的 key、出 wire 签名），出图描述和交给助手的话由 `POST /api/v1/ip-studio/scenes/compose` 拼（含每个视频场景的方法 `skillKey`），**前端不得另写场景数据或拼话**；草稿用 `ip_project.scene_id`（V72）认。图片场景的草稿就是一张画布，**先保存带 `clientRequestId` 的请求节点再提交 `studio-runs`**，之后只读运行记录，不确定时「确认原任务」用原请求编号重交；AI 视频照参考站「超级编导」：编导每一版脚本是草稿画布上的文字节点 + 普通文字任务（`compose` 的 `video-script`，`textEdit` 是上一版，能看图带 `readVisuals`——文字任务允许读图，规则在 `StudioTextRevision` 与提交校验同口径），「用这个脚本生成」后素材怎么交给模型只在 `scene-video-plan.ts` 判（全能参考 / 首帧 / 只按脚本，H3 带 `rewrite: auto`），视频节点同样先存请求再提交；爆款复刻和超出模型时长的片子才把拼好的话交给画布里的创作助手（`?start=assistant&send=1`，开始节点带 `studioSkill`），拼话固定禁止编价格 / 优惠、要成片不只要脚本，除「爆款复刻」外不得出现复刻类字眼（`StudioSceneCatalogTest` 守着）。Studio 视频任务到终态发 `MaterialVideoJobEnded`，即时推进制作计划。真源 `docs/studio-scene-creation.md`。
 
 ### Studio 七项导航与存量发行界面（2026-10-17，已生产发布）
 
 主导航：`首页 / 项目 / 画布·自由创作 / 场景·专项创作 / 灵感 / 资产 / 发行`。项目为独立大预览画廊，创作页平铺十项能力入口。`/scenes` 前两项引用 `StudioScenePresets` 补缺的普通模板，不新建场景项目；旧 `/ips` 参数兼容到资产默认我的 IP。发行仅共享本人账号域和发布任务 GET；任务写权限不扩大，草稿、画布直发与未接通能力标【待建设】。页面/功能边界及本地验收见 `docs/releases/studio-workspace-refactor-validation.md`；代码 `81778bef` 已部署 server/web-aiavatar，实际版本与验收限制见 `docs/releases/studio-workspace-production-release-20261017.md`。
 
-- **Studio 统一画布封面（2026-10-17，已发布 a4092626）**：项目/灵感共用 ProjectCardPreview 与 CanvasCoverEditor，人工封面 → 自动图片 → 画布缩略图。POST|PUT|DELETE /api/v1/ip-studio/covers/{project|template}/{id} 共用鉴权与存储生命周期；个人属主/官方 SUPER_ADMIN，封面不改 doc 或不可变模板版本，不触发生成或积分。
+- **Studio 统一画布封面（2026-10-17，已发布 a4092626）**：项目/灵感共用 ProjectCardPreview 与 CanvasCoverEditor，人工封面 → 自动图片 → 画布内容的文字（正文摘录 / 步骤 / 空白画布；2026-10-30 起不再画节点示意图）。POST|PUT|DELETE /api/v1/ip-studio/covers/{project|template}/{id} 共用鉴权与存储生命周期；个人属主/官方 SUPER_ADMIN，封面不改 doc 或不可变模板版本，不触发生成或积分。
 
 内置官方模板的人工封面使用 studio.builtin-cover.{id} 平台配置，仅 SUPER_ADMIN 可修改；目录和按 id 解析共用覆盖，不复制 classpath doc。
 
@@ -1174,26 +1187,36 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 2026-10-24 改版（`20261024-ai-director`）：
 - **资产提取：** 结果先存为 `pendingExtract`。用户在「确认资产」弹窗里勾选、改名后，`extract.save` 才入库；改名时原名记成别名。`extract.discard` 丢弃清单，一键制作在 `confirm-extract` 停下等，丢弃时停止。注意：清单项编号叫 `itemId`，不能叫 `key`，出参时名叫 `key` 的字段会被当成素材地址签名。
-- **视频提示词：** 按分镜图写。每镜写「画面参考宫格图第 N 格」，后面是【语音轨】和【参考图说明】，参考图 2 起是资产标准照。
-- **角色音色：** `asset.voiceDesc` 文字描述写进语音轨，参考音频可选。
+- **视频提示词：** 2026-10-26 起改成中文 H3 结构：【人物】【分镜参考】【画面】【声音】【配乐】无。每镜写画面里有谁，台词原文写进说话的那一句，说话人不在画面里写画外、听的人闭嘴；不写「禁止」清单和画幅时长。用户看、改的是这份中文；**提交 H3 前用文本模型 + MiniMax 官方 skill（`resources/h3-skill`，原文未改）改写成英文**（`H3PromptRewrite`，2026-10-27 起 Studio 画布与创作助手共用，见下「H3 视频提示词优化」）：台词认得全时模型只写画面、台词位置留 `{{Ln}}`，六段标题、`[Shot N] At` 切镜时间和 `(Sx) <d>[Chinese] 原文</d>` 由代码拼；认不全就由模型照官方写法写台词、代码逐句核对。检查只给提示不拦人（漏了的台词补回、放错镜头提示、零星中文删掉等），只有输出拼不出提示词才判失败退回并自动重试一次。英文存成带占位的模板（`clip.videoPromptEn`，含 `warnings / usable`，按画面结构的指纹复用），只改台词不重新改写。手动生成：没有提示就接着提交；有提示停在 `videoPromptRewrite=review`，片段上选「用优化稿生成 / 用原文生成」（`options.promptChoice`），「按原文生成」随时可用；一键制作不停，太长或两次没改成按原文。改写不报价、按实际用量另扣，完成后用用户确认过的视频价格与付款方接着提交（`chainVideo`）；改写期间付费输入（视频指纹，含素材 key）变了就不提交，一键制作的预算从发改写起就占着视频报价，续提被拒记为失败项、不换请求号重发。只对 H3（`supportsPromptOptimization`）生效，首帧出片模型照旧。依据见 `docs/audits/director-h3-video-prompt-ab-2026-10.md` §6–7。厂商智能优化关着。旧模板留作 `legacyVideoPrompt`，只核对旧格式生成的视频；新候选记 `promptFormat` 与实际发出的 `sentPrompt`。
+- **角色音色：** `asset.voiceDesc` 文字描述写进视频提示词的【声音】段，参考音频可选。
+- **分镜脚本写法（2026-10-26）：** 每镜台词不超过「秒数 × 4」字、一镜一人说话；机位写一种运镜（类型 + 幅度 + 速度），不写二选一和拍摄目的；不写外貌和抽象情绪词；光源声源写具体；小动作最多一个。`shotWarnings` 对台词超每秒 4 字、同镜两人说话给提示（不拦截）。
 - **角色出图：** 改为横版 16:9 设定集，含全身三视图、头部正左右侧、喜怒哀乐四宫格、面部特征特写和半身展示。
-- **角色图只能由系统生成：** 角色不接受 `asset.upload`，也不能采用历史里的上传图，返回 400 `DIRECTOR_CHARACTER_UPLOAD_NOT_ALLOWED`。上传的照片用 `asset.setRef` 设为形象参考 `refImage`，生成或重新生成设定图时作为图1交给模型，只取长相，版式照旧。形象参考计入资产指纹，改了参考，已采用的图就标「需更新」。分镜和视频引用的始终是生成的设定图。上传图不经过版式约束，前后对不上。场景和道具仍可直接上传。
-- **从资产库导入（2026-10-25，本地未发布）：** 资产页「从资产库导入」和资产详情里的「从资产库选」都走 `asset.import`，只传资产库对象 id 和版本，名字、描述、图由服务端按本人资产库读（`IpLibraryService.object`），不信客户端带的文字。场景、道具的图直接作为采用的参考图（候选 `source=library`，与上传同样视为不过期）；角色的图只写 `refImage`，仍要生成设定图。按 `libraryObjectId` 或同类同名对上已有资产就合并（补上本次的集），不覆盖已采用的图和已有形象参考；给别的资产借图（带 targetId）不改它的 `libraryObjectId`；名称超过 40 字直接报错不截断。选择器复用 `LibraryReferencePicker`（`objectsOnly` / `max=1`）。
+- **资产的图（2026-10-26 改判）：** 资产只从剧本提取，每项资产可以「关联已有资产」或「上传图片」，角色、场景、道具一样，图直接作为采用的参考图（候选 `source=upload|library`，不会因设置改动过期）。此前「角色图只能由系统生成」的规则作废，`DIRECTOR_CHARACTER_UPLOAD_NOT_ALLOWED` 已删除；代价是普通照片不像设定集那样有多视角，人物一致性可能变差，由用户自己取舍。形象参考 `refImage`（`asset.setRef`）保留，只在生成设定图时作为图1、只取长相，改了参考已采用的生成图标「需更新」。
+- **关联已有资产（2026-10-26，替代 10-25 的「从资产库导入」）：** 资产详情「关联已有资产」走 `asset.link`（targetId = 作品里的资产，data = `{objectId, versionId?}`），图和描述由服务端按本人资产库读（`IpLibraryService.object`），不信客户端带的文字。类型必须一致，资产库那项没有图就报错；记下 `libraryObjectId`，所选版本的图直接采用，描述空着才补，名字保留剧本里的叫法。批量「从资产库导入」（凭空新建资产）已去掉。「添加资产」保留作提取漏项的兜底，必须选出现在哪几集（`episodeIds`，默认全剧，服务端只认作品里真有的集）；编辑资产也能改出现的集。
+- **自有图的两种用法（2026-10-29，已生产发布 `9ad3603b0`）：** 资产页把一张自己的图分成「直接上传作为资产图」（`asset.upload` / `asset.create` 带 `image.use=asset`：成为采用的资产图，`source=upload`、`adoptedBy=user`，不生成不扣积分，分镜图和视频按它出图，原版本留在历史）和「上传作为参考图」（`asset.setRef` / `image.use=ref`：角色、场景、道具都可以，只在生成资产图时作为图1，不替换资产图、不自动生成）。界面用语随之改为：分镜图和视频引用的叫「资产图」，生成时参照的叫「参考图」（原「形象参考」）。设了参考图后已采用的生成图标「需更新」，原因写「设置了参考图 / 参考图已更换 / 参考图已移除」。剧本文件同日放宽到 50 MB 并支持 HTML（jsoup 只解析不执行），见 `docs/ai-director-plan.md`。
+- **长正文（2026-10-29，已生产发布 `9ad3603b0`）：** 剧本正文不限字数（新建、保存、集正文、设定资料、导入、助手写回都不截断）。一次模型调用读多少另算：`DirectorService.textBudget` = 文本模型输入 Token 上限 − 8000（没配按 32000），出 wire `pricing.textChars`；读不下时 AI 拆集 / 写分镜 / 重写分镜 400 `DIRECTOR_TEXT_TOO_LONG_FOR_MODEL`，全剧提取按集分批（`pendingExtract.batch`），助手只读光标 / 选区附近一段并在消息 `range` 里说明（`scope.window` 内定位修改）。分镜图讨论也带本集剧本。助手正文快照按哈希只存一份。页面：一次粘贴超过 3 万字在进编辑框前拦下、提示存 TXT 再上传（本机实测原生粘贴 10 万字约 10 秒）；超过 6 万字按段编辑（框里 6 万字打字约 0.1 秒，100 万字 10 秒以上）。新代码别把长正文整段放进一个 textarea、别在每次按键时对正文做 JSON 序列化。
 - **剧本重新生成：** 剧本任务带 `regenerate:true` 可以重写。旧稿进 `scriptHistory`（最多 3 版），集、片段和待确认清单清空；资产保留，但要解绑集数。已有分镜图或视频候选的片段会让请求被拒（`DIRECTOR_CLIPS_HAVE_MEDIA`），不会悄悄丢掉已付费的产物。
 - **编剧提示词：** 策划与写法按用户给的竖屏短剧编剧提示词（去 AI 味铁则、多集规则、创意发散、前 3 集功能、人物 / 场景 / 道具要具体到能画），输出格式仍是 `{title, logline, content}`。剧本页可选题材（6 个）和调性（5 个），存为作品的 `genre / tone`，各追加一组规则（`DirectorPrompts.GENRES / TONES`）；没写篇幅默认 3 集、每集 60–90 秒。
 - **故事大纲：** 编剧同一次生成写 `outline`（世界观、人物的身份 / 秘密 / 毛病 / 变化、起承转合主线、反转与伏笔、主题），存在作品上，剧本页最上面显示；缺了不判失败。分集、规划的输入带上它，提取资产带上大纲里的人物。重新生成时旧大纲随旧剧本进 `scriptHistory`。
 - **写分镜脚本（plan）提示词：** 多镜头模型照用户给的竖屏短剧分镜师规则（2026-10-25）：片段贴近模型时长上限（上限前 3 秒到上限，h3 即 12–15 秒）、每段 3–4 个镜头、常规镜头 2–4 秒、对话正反打、关键信息给特写、相邻镜头换景别、输出前自检；只按首帧出片的模型仍一段一个镜头；brief 写明镜头数 / 时长时照 brief。2026-10-25 晚又换成豆包建议的去 AI 味版本（动作不用模板套话、情绪用微动作、机位随情绪变、人物和环境互动、切镜要有动机、still 选中间态，输出前强制校验 5 项）；与原建议的差异：不放宽镜头数、不加 `relax_reason` 字段（长镜头理由写进 action）、「极致表情」改「关键表情变化」。共用段 `COMMON` 同时改为编号的 5 条基础规则。已写好的分镜要「重写分镜脚本」才按新规则。镜头数是硬规则（每段至少 3 镜，2026-10-25 用户确认不放宽）。程序检查 `shotWarnings`（镜头数、单镜 >4 秒、相邻同景别、非末段短于上限前 3 秒）写进片段的 `warnings`，只在卡片上提示，不进 `issues`、不拦截出图、不自动重写。
+- **出图布光与肤色（2026-10-28，第一轮已随 `20261028-director-delete` 上线，第二轮本地未发布）：** 角色设定集、场景参考图、分镜图的提示词默认给演员打光、中性白平衡、按设定还原肤色（用户反馈 H3 成片脸黑发黄；要好看有气色，不是变白磨皮）。**布光是一段默认指导，不从描述里推断**（第二轮 review 后用户定，`DirectorPrompts.boardLighting`）：默认影视人像布光、适度补光、肤色自然有气色；风格写明的布光调色照风格，描述里明确写的剪影、暗面、特殊光色优先、只作用于写到的人物或区域。各格描述原样交给出图模型。**别再按关键词推断布光、追加「不补光」**：第一版把「自然色调」「不要逆光剪影」「低调地」都读反了，补正则也补不完；效果靠代表场景出图验证。改在 `DirectorPrompts`：原生图片协议只发导演台自己编的 `userPrompt`，改通用模板 `dap.ip_canvas_image` 不生效。视频提示词第 3 版让分镜图交代人物受光、肤色和色调，场景图只交代空间和光源位置，H3 改写的参考说明同改。**改出图或视频模板要升版本号（`IMAGE_PROMPT_FORMAT` 现为 3 / `VIDEO_PROMPT_FORMAT` 现为 3）并保留上线过的每一版**（出图 `legacyAssetPrompt` / `legacyBoardPrompt` 第 1 版、`assetPromptV2` / `boardPromptV2` 第 2 版；视频 `legacyVideoPrompt` / `videoPromptV2`），按候选记下的版本核对；改之前先查线上发布记录确认上一版有没有上线（第 2 版就是改到一半被另一个发布带上线的）：`refresh` 每次读作品都重编没手改的提示词，不这样做，所有已采用的图和视频都会被标成「需更新」。编剧和分镜规则同日改为服从题材（情绪幅度、爽剧打脸、治愈的亲密时刻）、人物顾虑服务主线、对白给正例、开场与制作可行性只作默认参考；台词放不下的处理按任务各写一次（写分镜脚本可顺延、重写不挪出本片段）；重写任务里【台词量】的上限、处理办法和输出前自检三处写同一个例外（用满时长和镜头数仍超出就保留原文），否则模型要在「全部保留」和「不达标请调整」之间二选一。**javac 会把 `static final String` 拼接常量内联进测试类**：改了 `SCRIPT` 等常量后测试比的还是旧值，先删 `target/test-classes` 下对应目录再跑。效果未实测，见 `docs/ai-director-plan.md` 末两节与 TODO。
 - **反转线只给反转烧脑调性和悬疑题材**（都市悬疑、民国谍战）：三层反转和「3 集一小高潮、6 集一中反转、结局大反转」在 `DirectorPrompts.REVERSAL`，其他题材只保留「反转必须有可回溯伏笔」。
 - **剧本页布局固定：** 标题行（保存 / 重新生成）→ 故事大纲 → 「下一步」→ 正文或分集列表，拆分前后同一个顺序。「下一步」里逐步做（推荐）和一键制作（快捷）并排，一键制作弹窗开头写明它是快捷方式。
 - **分镜片段卡（2026-10-25）：** 两栏，左边成片画面（有视频看视频、没有看分镜图，宽度随画幅：9:16 188px / 1:1 220px / 16:9 300px）+ 视频版本号 + 「关联资产」「分镜图」两个入口；右边说明、问题 / 节奏建议、视频提示词，最后一行是生成设置 + 按钮 + 价格（`ClipVideo`）。分镜图没好时按钮旁给「去生成分镜图」，不再单独占一行。
 - **资产页：** 工具栏有「生成全部参考图」（缺参考图、不是仅声音出场、没在生成的资产，确认后逐个提交，与分镜批量出分镜图同一套）；资产卡底部一行固定高度（状态 + 音色图标 + 主按钮，不换行）；详情抽屉分「头部（编辑 / 删除）→ 描述 → 参考图（形象参考、生成与费用、出图提示词）→ 角色音色」。切换工作区会清掉上一处的报错。
-- **一键制作默认做到成片**（`target=film`，2026-10-25 起；另有 `board` / `plan`，`video` 只供旧调用）：写剧本 → 拆分 → 提取资产 → 写分镜脚本 → 参考图 → 分镜图 → 片段视频 → 每集导出。`auto=true`（默认）全自动：资产清单原样入库，参考图 / 分镜图 / 片段视频自动确认；不勾全自动就在这四处停下等 `confirm-*`。整部作品也能做到视频。预算由 `POST pipeline/estimate` 推荐（与真提交同一套单价，视频在没分镜图时按模型价表和时长估，`StudioVideoService.estimate`），用户确认或调整。片段卡片只显示视频提示词，分镜图提示词在分镜图弹窗里。导演台出图尺寸按当前图片模型规格里该比例的尺寸选（同比例有几档取最大的），不写死。
+- **分集（2026-10-25，本地未发布）：** 模型只给每集起点和正文起点 `bodyStart`，区间由程序构造，不会漏段或重叠（线上《食神》漏最后一段、《谁让这个睁眼瞎修仙的》前 252 段是设定资料，都曾被判 `AI_BAD_OUTPUT`）。剧本里标好「第N集」时程序直接按标题分、不扣积分（`DirectorPrompts.headingStarts`，服务端唯一一处）。结果先存 `pendingSplit` 预览确认；开头资料默认存为设定资料 `reference`，可改、可并入第 1 集，作为创作材料交给提取和规划，不进输入指纹。全自动一键制作按默认直接采用并在 notice 里说明，拆分失败作为一集继续；不全自动停在 `confirm-split`。`split.undo` 在出图 / 视频前可撤销拆分。原则是先让用户跑完流程：原文不丢、做了什么说清楚、能一键改回。
+- **一键制作默认做到成片**（`target=film`，2026-10-25 起；另有 `board` / `plan`，`video` 只供旧调用）：写剧本 → 拆分 → 提取资产 → 写分镜脚本 → 参考图 → 分镜图 → 片段视频 → 每集导出。`auto=true`（默认）全自动：资产清单原样入库，参考图 / 分镜图 / 片段视频自动确认；不勾全自动就在这四处（以及分集）停下等确认。整部作品也能做到视频。预算由 `POST pipeline/estimate` 推荐（与真提交同一套单价，视频在没分镜图时按模型价表和时长估，`StudioVideoService.estimate`），用户确认或调整。片段卡片只显示视频提示词，分镜图提示词在分镜图弹窗里。导演台出图尺寸按当前图片模型规格里该比例的尺寸选（同比例有几档取最大的），不写死。
 - **出 wire 的任务列表在新事务里读**（`view()`）：任务在独立事务里建，MySQL 可重复读下外层事务看不到它，页面以为没在生成、不轮询（2026-10-24 线上「点生成剧本没反应、再点报该项生成中」）。本地 H2 复现不了。
-- **作品删除（2026-10-28，本地未发布）：** 软删除，复用 `DELETE /works/{id}`；在作品行锁内判在途，在途以 `ip_run` 和原生视频任务为准（`done / video.bound` 的绑定记录要查它指向的 `material_video_job`，未结案的受理待核对 / 重新查询中、查不到都算没结束；已按全局规则 failed 结案的 `VIDEO_SUBMISSION_UNKNOWN` 算结束），不信作品 JSON 的 `running`。在途检查与删除同一事务、同一条连接（入口读已提交），持行锁时不许再开 `REQUIRES_NEW`，否则并发删除耗尽连接池（`DirectorDeletePoolTest`）。前端「已删除」通知带作品 id，只作用于当前打开的那部作品。一键制作 running → 409 `DIRECTOR_WORK_BUSY` 先停止；paused / waiting 同事务标 stopped。本人重复删除成功，他人 404。规则见 `specs/BUSINESS_RULES.md`「AI 导演台作品删除」。
+- **作品删除（2026-10-28，已生产发布 `20261028-director-delete`）：** 软删除，复用 `DELETE /works/{id}`；在作品行锁内判在途，在途以 `ip_run` 和原生视频任务为准（`done / video.bound` 的绑定记录要查它指向的 `material_video_job`，未结案的受理待核对 / 重新查询中、查不到都算没结束；已按全局规则 failed 结案的 `VIDEO_SUBMISSION_UNKNOWN` 算结束），不信作品 JSON 的 `running`。在途检查与删除同一事务、同一条连接（入口读已提交），持行锁时不许再开 `REQUIRES_NEW`，否则并发删除耗尽连接池（`DirectorDeletePoolTest`）。前端「已删除」通知带作品 id，只作用于当前打开的那部作品。一键制作 running → 409 `DIRECTOR_WORK_BUSY` 先停止；paused / waiting 同事务标 stopped。本人重复删除成功，他人 404。规则见 `specs/BUSINESS_RULES.md`「AI 导演台作品删除」。
+- **回收站与恢复（2026-10-29，已生产发布 `9ad3603b0`）：** `GET /works/trash`（只读投影，不回投不改内容）+ `POST /works/{id}/restore`（同一把作品行锁，本事务本连接，不走 `view()`）。恢复原 ID 原内容，`active=false`，遗留的 running / paused / waiting 一键制作改 stopped；写 `restoredAt`，恢复前提交的任务回投时只写结果、不接着付费派发（`DirectorService.beforeRestore`：改写完不自动提交视频、不自动重试改写），前端有 `restoredAt` 时不自动发创意对话开场。正常作品重复恢复 no-op。恢复不占新建额度（上限只拦新建）。规则见 `specs/BUSINESS_RULES.md`「AI 导演台回收站与恢复」。
 - **页面外壳：** 导演台页面必须包 antd `App`（`director-antd.tsx`）。弹窗和抽屉的根元素挂 `dialogFocus`（`director-shared.tsx`）：打开时焦点移进去，Tab 在里面循环，关闭后还给触发按钮。
-### AI 导演台全能创作助手（2026-10-28，本地未发布）
+- **图片模型要出得了三种比例（2026-10-26，已生产发布 `20261026-director-image-viewer`）：** 一部作品只用一个接入点出图（道具 1:1、角色场景 16:9、分镜跟作品画幅），所以新选择只开放出图规格同时有这三种的接入点（`DirectorService.missingRatios`，按规格不按型号名）。作品里存着的旧选择原值照存、照原价出能出的画面，出不了的那类在冻结前报 `STUDIO_IMAGE_SIZE_UNSUPPORTED`，文案按资产类型说换模型还是换画幅。尺寸只在一个接入点里挑，**不要跨到同系列的 4K 接入点取「最大像素」**：4K 是另一个接入点、另一个价，那等于悄悄涨价。设置页读 `imageModelState`。
+- **大图查看（2026-10-26，已生产发布 `20261026-director-image-viewer`）：** 导演台的大图用 antd 图片预览（`ZoomableImage`），与画布共用，不要再写一套查看器。`@rc-component/image` 有补丁（`patches/@rc-component__image@1.10.0.patch`，修复只沿一个方向拖或一帧内松手时不弹回、图被拖出屏幕的问题）。升级 antd 时先确认上游是否已修复，再决定删除还是重做补丁。预览层上下留白要相等，否则弹回会偏。
+- **重写分镜脚本与一键制作无事可做（2026-10-27，已生产发布 `20261027-director-storyboard-rewrite` + `20261027-director-rewrite-credit-copy`，main `a0481b1c`）：** 分镜图提示词和视频提示词由镜头编出来，「重新生成提示词」就是重写分镜脚本。分镜页工具栏「重写分镜脚本」（整集）默认「保留现有片段，逐段重写」（task `reshoot`），「重新切分片段」（task `plan`）在本集已有分镜图或视频时不可选；片段上的「重写」只重写这一段。`reshoot` 片段 id 和位置不变、只换镜头 / 标题 / 摘要 / 关联资产，提示词回到自动生成，已有分镜图和视频留作历史标「需更新」，不出图、不碰别的片段和集；重写期间改过的片段，结果挂 `clip.pendingShots` 让用户选。**不要把旧镜头交给模型**：给了就照抄（2026-10-27 真模型实测，整集重写回来几乎一字不改），只给摘要、时长和台词。不能操作时按钮照样能点，点了说原因，不做点了没反应的灰按钮。一键制作 start 时什么都不用做（分镜脚本都写好了再选「分镜脚本」）409 `DIRECTOR_PIPELINE_NOTHING_TO_DO`，不再建一条「已完成」的空连跑（用户反馈「点了没反应」的根因）。本集摘要是随内容长高的多行框（`GrowTextarea`），不是单行输入框。新加的文字任务入口也只写「按实际用量结算」，不显示 `pricing.textMax` 这类冻结上限（首发时重写弹窗写了「最多 275 积分」，上线只读验收才发现，同日改掉；`git grep -n 'pricing.textMax.toLocaleString' -- apps/web-aiavatar/src` 应 0 命中）。规则见 `specs/BUSINESS_RULES.md` 同名条，验收见 `docs/releases/director-storyboard-rewrite-validation-20261027.md`。
+- **操作失败用错误弹窗、资产解除关联（2026-10-27，已生产发布 `20261027-studio-error-dialogs`，main `4a9b5f18`）：** 用户点了某个操作、它没做成（业务规则挡下、冲突、前置条件不够、请求失败），要弹错误弹窗：标题「X 没有完成」，写原因、下一步，可展开「错误详情」（错误码、logId、可复制），同一个错误开着时不重复弹。**不要再加只挂在页面上方的横幅**：手机上资产详情是全屏抽屉，横幅被整个挡住，用户点了删除什么都看不到（2026-10-27 用户反馈）。做法：全站报错都经 `reportStudioError`（`src/ip/studio-errors.tsx`），它记下用户最近一次按下的按钮 / 菜单项，之后报上来的第一个错误弹窗、标题用控件上的字（确认框的「确定」「确认删除」用弹窗标题），知道更准操作名的地方传 `action`；后台失败（自动保存、轮询、媒体加载、旧任务恢复）传 `background` 或 `once`，只右上角提示，轮询不会反复弹窗；打开着的弹窗已经就地写出这条错误就不叠弹窗。导演台用 `useStudioFailure`（`failed(setError, "操作名")`），冲突类先把作品刷新到最新再说「已经刷新」。新代码别绕开这个出口去用 antd `message.error` 或底部 toast。资产「被用着」包括台词说话人；片段「关联资产」抽屉里每项都有「解除关联」（`clip.unlinkAsset`，片段出分镜图或视频时 409 拒绝），资产详情列出「用在哪些片段」并能「前往」。共享整理错误的 `publicModelErrorMessage` 从子路径 `@ai-star-eco/api-client/public-model-error` 引入（包根常被测试整个 mock 掉）。验收见 `docs/releases/director-error-dialog-unlink-validation-20261027.md`。
+### AI 导演台全能创作助手（2026-10-28；后端 2026-10-29 随 server `20261029-image-url-result-alerts` 上线，前端未发布）
 
-真源 `docs/ai-director-assistant.md`。工作台右侧可收起的助手（手机全屏），一部作品一份连续对话，剧本 / 资产 / 分镜共用；每条消息绑定一个对象（作品 / 某集 / 选中正文 / 本集分镜 / 片段镜头 / 分镜图或视频提示词 / 资产 / 参考图或分镜图），服务端核对并命名。一轮回复是导演台文字任务（节点 `assistant`，提示词与校验在 `DirectorAssistant`），计费、幂等、测试响应都走 `submitDirectorText`；不新增表、迁移和路径。建议只是建议：`assistant.apply` 写入前核对（剧本按逐字原文局部替换，定位规则前后端同一份；镜头比签名；用户改过的不覆盖，409 `DIRECTOR_PROPOSAL_STALE`），写入效果与手动修改相同、不触发生成，可撤销。图片的「生成新版本」是独立的 `asset-image` / `board` 任务，`baseOnCurrent` 把当前图追加为最后一张参考，不承诺局部精确修改、不自动替换采用版本。只有声明 `supportsVision` 的文字模型才交图。还没有剧本时剧本页默认是写剧本前的创意对话（节点 `brief`，最多 3 轮、每轮 ≤2 问，整句「你决定」直接写，「跳过」随时可用，剧本请求带上问答与整理要求）。剧本建议按锚点改具体一处（选区带位置、没选区要唯一），撤销找回那一处；发送前先保存眼前未保存的修改，请求记在浏览器、不确定时按原请求恢复（`director-pending.ts`）。分镜页左栏可看本集剧本，片段位置只用 `sourceQuote`（写分镜时模型摘抄的起始句，找得到才记）或台词逐字匹配，找不到就说明，不伪造。2026-10-28 本地接聚算 qwen38-27b 实测通过（记录见真源 §6）；写分镜脚本的起始句命中率与看图路径未实测（见 TODO）。
+真源 `docs/ai-director-assistant.md`。工作台右侧可收起的助手（手机全屏），一部作品一份连续对话，剧本 / 资产 / 分镜共用；每条消息绑定一个对象（作品 / 某集 / 选中正文 / 本集分镜 / 片段镜头 / 分镜图或视频提示词 / 资产 / 参考图或分镜图），服务端核对并命名。一轮回复是导演台文字任务（节点 `assistant`，提示词与校验在 `DirectorAssistant`），计费、幂等、测试响应都走 `submitDirectorText`；不新增表、迁移和路径。建议只是建议：`assistant.apply` 写入前核对（剧本按逐字原文局部替换，定位规则前后端同一份；镜头比签名；用户改过的不覆盖，409 `DIRECTOR_PROPOSAL_STALE`），写入效果与手动修改相同、不触发生成，可撤销。图片的「生成新版本」是独立的 `asset-image` / `board` 任务，`baseOnCurrent` 把当前图追加为最后一张参考，不承诺局部精确修改、不自动替换采用版本。只有声明 `supportsVision` 的文字模型才交图。还没有剧本时剧本页默认是写剧本前的创意对话（节点 `brief`，最多 3 轮、每轮 ≤2 问，整句「你决定」直接写，「跳过」随时可用，剧本请求带上问答与整理要求）。剧本建议按锚点改具体一处（选区带位置、没选区要唯一），撤销找回那一处；发送前先保存眼前未保存的修改，请求记在浏览器、不确定时按原请求恢复（`director-pending.ts`）。分镜页左栏可看本集剧本，片段位置只用 `sourceQuote`（写分镜时模型摘抄的起始句，找得到才记）或台词逐字匹配，找不到就说明，不伪造。2026-10-28 本地接聚算 qwen38-27b 实测通过（记录见真源 §6）；写分镜脚本的起始句命中率与看图路径未实测（见 TODO）。内容旁的紫色入口和选中正文的「问 AI」弹出只针对这处内容的浮层对话（不展开侧边栏、不显示之前的对话，消息仍进同一份连续对话），顶栏「创作助手」才开侧边栏（2026-10-29）。
 
 ### Studio 对话独立额度（2026-10-23 已生产发布）
 
@@ -1221,6 +1244,8 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 当前单实例 `systemctl restart` 会使用户读取/保存短暂 502；保护在途生成不等于 HTTP 无中断。发布必须同时记录重启窗口的公网 5xx 与恢复结果，不能把发布后 `verify ALL GREEN` 描述为发布期间无中断。无停机切流尚未实施，见 TODO 与 `docs/releases/studio-stage-continuation-release-20261023.md` 末节。
 
+2026-10-26 导演台补充：发布前必须检查 `ip_run` 的在途 `studio-director`，不能只查原生视频任务。同步文字调用没有可查询的外部任务号，重启后不得自动重新提交付费请求。本人作品可通过 `/director/works/{id}/tasks/{runId}/stop` 停止后续创作。**用户纠正：已提交模型有真实消耗，不能因停止全额退款。** 未提交才释放冻结；已提交则保留调用直到真实用量回执，按实际用量结算、仅退余量，停止后的内容不回投；用量不明必须 `STUDIO_USAGE_PENDING` 保留冻结待核对，不猜费用、不自动退款，hold sweeper 不得误释放。进程关闭中断同样按提交与用量处理。原生图片/视频/音频仍按各自受理和恢复规则处理。此前 `20261026-director-stop` 的全额释放行为已被用户否定；修正已发布为 `20261025-director-stop-usage`（main `6ff1835d`）。见 `docs/audits/director-script-stale-and-latency-20261026.md`。
+
 
 ### Studio 读取、进度与保存恢复（2026-10-23，本地修复，未发布）
 
@@ -1240,9 +1265,46 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 - **单轮上下文裁剪**（`DialogueContextWindow`）、长文分段读（素材概要写全文字数与 `read_canvas` offset，返回 `total / nextOffset`）、子任务最多等 10 分钟（`ChildRuns.MAX_FOLLOW`）。
 - 提示词 `SEED_VERSION=v25-2026-10-23-dialogue-no-continue`。无迁移。**未用真模型验证**（§8.0.1 ⑦：上线前至少用线上同款聚算 Qwen 真调一次长任务）。
 
+### H3 视频提示词优化 · 2026-10-27（已生产发布 `20261027-studio-h3-optimize`，main `384dfe31`；server + web-aiavatar）
+
+导演台的 H3 改写抽成全站共用的 `ipstudio/h3/H3PromptRewrite`（官方 skill 资源移到 `resources/h3-skill`），Studio 画布与创作助手出 H3 视频也先优化。**2026-10-27 修正：三处优化统一用后台独立用途 `DAP_VIDEO_PROMPT` 的绑定端点（初始绑定聚算 Qwen），不跟随用户文字模型或剧本默认模型；不可用时报错，不回落其它模型。估价、冻结、结算均按同一绑定端点与输出预算。**
+- **画布卡片上的「智能优化」**（`StudioPromptOptimizeToggle`，从参数弹层挪出来）：只对 H3 显示，默认开，开着是 AI 浅紫，关着旁边写「H3 建议开启，台词更完整」；价格后面写「优化另需少量积分」。
+  开着发 `video.rewrite="review"`，关着发 `optimizePrompt=false`（原文直发）。**厂商自己的改写不再用**。
+- **一行任务两段**：`StudioWorkflowService.submitVideoRewrite` 先预检视频并核对视频报价（制作计划按视频 + 改写上限合计），再冻结改写上限、建 `studio-video` 行；`StudioWorkflowWorker.rewriteVideo` 改写后 `handOver` 在同一个事务里先结算改写（企业在途上限）、再 `generateVideoBatch`，失败整体回滚、改写不扣费；只用模型赠款也照常改写（用户定：以效果为准，积分不够就取消）；
+  任务号写进 `_exec.nativeVideoJobIds`，之后按视频任务投影（`videoBindingDto` 加上改写花费并带 `output.videoPrompt`）。改写中 stage `prompt.optimizing`（「正在优化提示词」）。
+- **不拦人**：画布（review）有提示时不出片，节点上「优化稿有需要留意的地方，选好再出片」，卡片上 `StudioPromptReview` 给「用优化稿生成 / 用原文生成」（没改成给「重新优化 / 用原文生成」）；
+  选择发一次普通视频请求（`optimizePrompt=false`，用优化稿时 prompt 是英文、节点上仍显示中文），记 `studio.promptChoice`，开关仍算开着。创作助手（auto）不停：能用就用，用不了按原文并写 `videoPromptNotes`。
+- **创作助手**：出视频 / 原创 / 复刻技能要求按导演台格式写中文（「第N镜（起–止 秒）：」「名字说：「原文」」），这样镜头固定、台词由代码填；制作计划的视频步骤 `ModeSpec.rewrite`，报价加改写冻结上限（`videoRewriteHold`）。
+- 规则见 `specs/BUSINESS_RULES.md`「H3 视频提示词改写」；测试 `H3PromptRewriteTest`、`StudioVideoRewriteWorkerTest`、`DirectorH3VideoFlowTest`、`studio-video-prompt-notes.test.tsx`。
+
 ### Studio 对话不锁方法（2026-10-23，本地未发布）
 
 真源 `docs/ip-studio-dialogue-intents.md`「2026-10-23：不锁方法」。每条用户消息、每次 `read_skill` / `propose_plan` 都按意图选方法，有活跃制作时也一样（`requireSkillSwitchAllowed`、`ReadSkillTool` 的拒绝、`planningSkill` 的执行锁、受理处「有活跃执行时方法不变 / 显式换技能 400」全部删除）。切换只走 `StudioDialogueService.switchMethod`：同方法不动；换方法时作废待确认卡，旧制作没有在生成的就按停止收尾，有在生成的就暂停并解绑（不取消，完成的结果仍发到原线程的画布，不发消息，不占画布，生成完自行结束）。方案里有当前方法不允许的操作时先换到能覆盖的方法再校验。`STUDIO_SKILL_OPERATION_NOT_ALLOWED`、「第 N 步…不在当前阶段允许的范围内」这类内部原因不进用户界面，统一说「这份方案还没准备好，我会按你要做的内容重新整理。」（`STUDIO_PLAN_NOT_READY`）。提示词 `SEED_VERSION=v26-2026-10-23-dialogue-unlocked-methods`。未用真模型验证。
+
+### Studio 方案素材范围跨轮（2026-10-24，已生产发布 `20261024-studio-plan-material-scope`）
+
+线上 `PEX-fc87e857…`：首轮点选的「三视图」隔两轮才出方案，确认后执行的素材名单里没有它，「编排制作计划」三次被拒、用户点「继续」撞同一个错。现在对话方案的素材范围只由 `StudioPlanMaterials.scope` 算（出方案那轮点选 → 方案 `materialNodeIds` → 步骤点名 → 同一对话更早用户消息的点选 / 附件；只留画布上还在的，≤16），两条加载路径共用，不放开校验、不加整张画布。越界报 `STUDIO_PLAN_MATERIAL_OUT_OF_SCOPE`（列出全部 id），执行停下时用画布标题说清是哪个素材，进度条给「在画布上看 / 加入这次制作，重新编排（`resume.addMaterialNodeIds`）/ 不用它，重新编排」，都只重跑编排、不重跑拉片。提示词要求分析方案写 `materialNodeIds`、替换人物时外观按设定图写、不沿用原片外观。`SEED_VERSION=v27-2026-10-24-plan-material-scope`。真源 `docs/ip-studio-dialogue-intents.md` 末节，规则 `specs/BUSINESS_RULES.md` Studio 对话第 32 条。未用真模型验证。
+
+### 模型接入点赠款与折扣（2026-10-25，已生产发布 `20261025-model-grants`）
+
+真源 `docs/model-billing-design.md`。唯一适用标识为现有 `ai_model_providers.id`；后台每个接入点行可进入「赠款与折扣」。价格沿用既有配置，折扣取适用的最优惠一条、不叠加；折后优先扣该接入点未过期赠款，再扣普通积分。企业折扣自动覆盖其主账号、现有和新成员的企业消费钱包；个人钱包独立。赠款批次、冻结、流水分开记账，不改变原钱包余额。
+
+`ModelChargeContext.forCredits` 接收实际接入点和现有服务端已算好的积分费用；统一计费层处理优惠与资金来源，不分对话、脚本、画布或工作流。追加冻结沿用原价格决定，整笔结算一次取整。V67/V68 建立账务与审批，V69 关联追加冻结；历史资源字段和价格表不作为新配置入口。后台无第二套标准售价和供应商资源配置。用户已确认数字人组合任务按文本与媒体分两笔费用；`DapModelBilling` 编排独立接入点冻结、Token 用量结算和释放，优惠仍归统一计费层。文本完成后媒体失败保留文本实际费用，月用量读真实消费流水。当前验证状态见真源；未上线。
+
+通用积分转赠款（2026-10-25）：后台「积分转赠款」仅 SUPER_ADMIN，把客户的赠送 / 激活码积分（充值永不动）按 ADJUST 流水扣出、同事务发成所选活动的模型赠款，每人默认保留 1000 通用积分；每客户独立事务，`ops_grant_conversion:<requestId>:<userId>` 幂等。见 `specs/BUSINESS_RULES.md` 同节。
+
+评审后修正（2026-10-25）：企业成员报价是只读事务，在途任务数改用不加锁的查询（MySQL 只读事务里 `SELECT … FOR UPDATE` 报 ERROR 1792，`EnterpriseModelQuoteReadOnlyTest` 可指向 MySQL 复现）；视频对账恢复只拦当初用过赠款或折扣的任务；冻结只锁本钱包可用且适用的赠款行，只有带资源计数的活动才锁活动行，且用只取 ID 的查询先锁再读（先读再锁会被 Hibernate 按旧版本号校验）；活动发出赠款后适用接入点锁定（`SCOPED_CAMPAIGN_TARGETS_LOCKED`）；赠款全额抵扣不写零金额普通流水；Studio / 后台 / 短剧 / 服务端报错统一叫「模型赠款」，celebrity 按用户要求不改。另修了一个上线即坏的问题：启动时的 `EnumColumnWideningMigration` 会把 V67 改成 VARCHAR 的流水类型列改回不含 SCOPED_* 的 ENUM，第一笔赠款就报 `Data truncated`；现在流水类型不在加宽清单里，加宽也只处理当前是 ENUM 的列。**往 Hibernate 原生 ENUM 列加值时，要么同步加宽清单，要么像这里一样改成 VARCHAR 并移出清单，两头都不做就会在 MySQL 上坏，H2 测不出来。** 零价接入点一律报 503 `MODEL_PRICE_NOT_CONFIGURED`，免费只能发模型赠款（用户 2026-10-25 拍板）；接入点没填 `model` 时计费记录用 `endpoint:<ID>`（`ModelBillingTarget.providerModelOf`），不拒绝扣费。
+
+
+### Studio 模型选择（2026-10-25）
+
+用户明确要求恢复模型入口：创作助手输入框底部的 @ / 附件之后是紧凑胶囊按钮，点击切换「对话模型」，不要单独在输入框上方排表单。仅场景 `selectable` 且至少两候选时展示；当前回复期间不可切，按画布记住选择，仅影响后续对话，不替用户改出图 / 视频模型。单价放悬停说明，必须保留小数。此前「不显示模型按钮」的约束被本条取代，技能仍只在头部。
+导演台「作品设置 → 图片模型」保存 `settings.imageModel`（null 跟随默认），候选 `imageModels` 只来自 Studio image 场景白名单；资产图 / 分镜图、参考图上限、画幅尺寸、估价、实际生成都用该选择。原模型下架时需重新选择，不悄悄换模型。Seedream 4.5 的真实 ID 是 `doubao-seedream-4-5-251128`，不能把名称含 4.5、实际 model 为 4.0 的旧端点当成它。供应商配置与验收见 `docs/releases/studio-model-switch-20261025.md`。
+
+
+### 导演台与视频提示词优化输出预算（2026-10-27）
+
+导演台写剧本、拆集、提取资产、分镜脚本，以及画布 / 助手 / 导演台的视频提示词优化不再使用业务代码的 8192 / 16384 / 100000 / 4096 输出上限。新任务的输出预算读取后台端点 defaultMaxTokens，受 chatMaxOutputTokens 能力上限约束；仅默认值缺失时使用端点能力上限，两者均未配置时回落后台 Token 售价配置的 maxOutputTokens。Token 单价与输入预算仍读售价配置，输出预算随端点配置形成受理快照；报价、冻结和调用使用同一快照，不能超出调用方批准的 maxCost。已有任务不改预算、不自动重试。
 
 ### 导演台角色声音参考（2026-10-29，本地实现，未发布）
 
@@ -1253,3 +1315,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 `POST /api/v1/ip-studio/enterprises/{id}/members` 接收 `{phone}`，主账号和管理员可直接添加已有、手机号已验证且已开通 aiavatar 的有效产品账号。默认普通成员、无附加授权、零余额；重复添加同企业有效成员幂等返回，其他企业/停用成员拒绝，手机号不入审计。邀请与直接添加共用用户→企业锁顺序。`/enterprise` 成员页新增手机号表单，失败保留输入；刷新按钮沿用品牌次按钮，刷新不卸载管理表单，刷新失败显示旧数据提示。未注册或尚未登录本产品的同事仍可通过分享链接加入。
 
 批量补充（2026-10-29，本地未发布）：添加表单可切换「单个添加 / 批量添加」，每批最多 100 个手机号，支持换行、逗号、分号粘贴并去重。`POST /api/v1/ip-studio/enterprises/{id}/members/batch` 接收 `{phones}`，逐人独立事务执行单人规则，返回成功/失败及原因，失败项保留可重试，已成功关系幂等。
+
+### Studio 对话与制作的四处修复（2026-10-30，本地未发布）
+
+带时长、画幅、横竖屏的出视频请求（「生成一段16:9、5秒视频」）不再被留在出图。制作中只问不改的消息（`StudioSteeringQuestions`：问句、40 字内、不含改动或控制的词）不暂停制作，只开一轮回答。模型回复末尾预告要做却没给动作（「好的，我来改」）不算做完，纠正一次接着跑，纠正后仍不动手就结束，一轮最多 2 次（`DialogueLoop.announcesWork`）。读画布文字读用户采用的那一版（`StudioWritingContent`）。厂商「资源空间不足，请清理回收站」类原话在 `PublicModelErrorPolicy` 换成平台侧说明，不再让用户删自己的作品。提示词 `SEED_VERSION=v28-2026-10-30-say-it-do-it`。都没有用真模型跑过整轮对话。

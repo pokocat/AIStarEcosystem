@@ -1,0 +1,239 @@
+{
+  "model": "gpt-image-2-1k-pic",
+  "billing_records": 25,
+  "quota_total": 126800,
+  "quota_per_unit": 500000,
+  "usd_exchange_rate": 6.9,
+  "quota_cost_cny": 1.74984,
+  "model_price_usd": 0.010144927536,
+  "group_ratio": 1,
+  "provider_use_time_min_s": 16,
+  "provider_use_time_max_s": 40,
+  "records": [
+    {
+      "id": 1,
+      "created_at": 1792940992,
+      "type": 2,
+      "quota": 5072,
+      "use_time": 18,
+      "model_name": "gpt-image-2-1k-pic",
+      "request_id": "202610251509342607768388268d9d6EngrVaqg"
+    },
+    {
+      "id": 2,
+      "created_at": 1792940990,
+      "type": 2,
+      "quota": 5072,
+      "use_time": 22,
+      "model_name": "gpt-image-2-1k-pic",
+      "request_id": "202610251509282967951678268d9d6ID4rqR3l"
+    },
+    {
+      "id": 3,
+      "created_at": 1792940987,
+      "type": 2,
+      "quota": 5072,
+      "use_time": 20,
+      "model_name": "gpt-image-2-1k-pic",
+      "request_id": "202610251509278638624878268d9d6Lmu32LvJ"
+    },
+    {
+      "id": 4,
+      "created_at": 1792940984,
+      "type": 2,
+      "quota": 5072,
+      "use_time": 18,
+      "model_name": "gpt-image-2-1k-pic",
+      "request_id": "202610251509262479624808268d9d6VisJX2bB"
+    },
+    {
+      "id": 5,
+      "created_at": 1792940981,
+      "type": 2,
+      "quota": 5072,
+      "use_time": 16,
+      "model_name": "gpt-image-2-1k-pic",
+      "request_id": "202610251509257317554058268d9d6Ws9sVm72"
+    },
+    {
+      "id": 6,
+      "created_at": 1792940848,
+      "type": 2,
+      "quota": 5072,
+      "use_time": 35,
+      "model_name": "gpt-image-2-1k-pic",
+      "request_id": "202610251506537699038468268d9d6fLhvcuNM"
+    },
+    {
+      "id": 7,
+      "created_at": 1792940841,
+      "type": 2,
+      "quota": 5072,
+      "use_time": 27,
+      "model_name": "gpt-image-2-1k-pic",
+      "request_id": "202610251506543402871418268d9d6eO3BclGi"
+    },
+    {
+      "id": 8,
+      "created_at": 1792940835,
+      "type": 2,
+      "quota": 5072,
+      "use_time": 20,
+      "model_name": "gpt-image-2-1k-pic",
+      "request_id": "202610251506552690208788268d9d6rUA5BvZc"
+    },
+    {
+      "id": 9,
+      "created_at": 1792940830,
+      "type": 2,
+      "quota": 5072,
+      "use_time": 18,
+      "model_name": "gpt-image-2-1k-pic",
+      "request_id": "202610251506527427287908268d9d68ErnWKOE"
+    },
+    {
+      "id": 10,
+      "created_at": 1792940361,
+      "type": 2,
+      "quota": 5072,
+      "use_time": 38,
+      "model_name": "gpt-image-2-1k-pic",
+      "request_id": "202610251458434501810148268d9d6S2yZCKZ6"
+    },
+    {
+      "id": 11,
+      "created_at": 1792940356,
+      "type": 2,
+      "quota": 5072,
+      "use_time": 29,
+      "model_name": "gpt-image-2-1k-pic",
+      "request_id": "202610251458474509916958268d9d6lExtlbkj"
+    },
+    {
+      "id": 12,
+      "created_at": 1792940354,
+      "type": 2,
+      "quota": 5072,
+      "use_time": 30,
+      "model_name": "gpt-image-2-1k-pic",
+      "request_id": "202610251458444504961108268d9d6vNf4gLsy"
+    },
+    {
+      "id": 13,
+      "created_at": 1792940353,
+      "type": 2,
+      "quota": 5072,
+      "use_time": 28,
+      "model_name": "gpt-image-2-1k-pic",
+      "request_id": "202610251458454505844358268d9d6558azTyF"
+    },
+    {
+      "id": 14,
+      "created_at": 1792940349,
+      "type": 2,
+      "quota": 5072,
+      "use_time": 21,
+      "model_name": "gpt-image-2-1k-pic",
+      "request_id": "202610251458484520561698268d9d6sbXjL9vR"
+    },
+    {
+      "id": 15,
+      "created_at": 1792940348,
+      "type": 2,
+      "quota": 5072,
+      "use_time": 22,
+      "model_name": "gpt-image-2-1k-pic",
+      "request_id": "202610251458464514952688268d9d6pqpAlVTG"
+    },
+    {
+      "id": 16,
+      "created_at": 1792940346,
+      "type": 2,
+      "quota": 5072,
+      "use_time": 40,
+      "model_name": "gpt-image-2-1k-pic",
+      "request_id": "202610251458264449714238268d9d6X0p1kaa2"
+    },
+    {
+      "id": 17,
+      "created_at": 1792940345,
+      "type": 2,
+      "quota": 5072,
+      "use_time": 29,
+      "model_name": "gpt-image-2-1k-pic",
+      "request_id": "202610251458364493761208268d9d68nOQlyUg"
+    },
+    {
+      "id": 18,
+      "created_at": 1792940344,
+      "type": 2,
+      "quota": 5072,
+      "use_time": 23,
+      "model_name": "gpt-image-2-1k-pic",
+      "request_id": "202610251458414504258458268d9d6pQ4IAw7G"
+    },
+    {
+      "id": 19,
+      "created_at": 1792940343,
+      "type": 2,
+      "quota": 5072,
+      "use_time": 29,
+      "model_name": "gpt-image-2-1k-pic",
+      "request_id": "202610251458344457599868268d9d6qKPzTrY6"
+    },
+    {
+      "id": 20,
+      "created_at": 1792940341,
+      "type": 2,
+      "quota": 5072,
+      "use_time": 19,
+      "model_name": "gpt-image-2-1k-pic",
+      "request_id": "202610251458424501115718268d9d6MSvTXK76"
+    },
+    {
+      "id": 21,
+      "created_at": 1792940335,
+      "type": 2,
+      "quota": 5072,
+      "use_time": 22,
+      "model_name": "gpt-image-2-1k-pic",
+      "request_id": "202610251458334460837758268d9d6BOqCvYZy"
+    },
+    {
+      "id": 22,
+      "created_at": 1792940334,
+      "type": 2,
+      "quota": 5072,
+      "use_time": 26,
+      "model_name": "gpt-image-2-1k-pic",
+      "request_id": "202610251458284451257368268d9d6qDli0nxo"
+    },
+    {
+      "id": 23,
+      "created_at": 1792940332,
+      "type": 2,
+      "quota": 5072,
+      "use_time": 17,
+      "model_name": "gpt-image-2-1k-pic",
+      "request_id": "202610251458354483767478268d9d6Ky6Pg9lL"
+    },
+    {
+      "id": 24,
+      "created_at": 1792940329,
+      "type": 2,
+      "quota": 5072,
+      "use_time": 24,
+      "model_name": "gpt-image-2-1k-pic",
+      "request_id": "202610251458259315253458268d9d6h17KqRsK"
+    },
+    {
+      "id": 25,
+      "created_at": 1792940328,
+      "type": 2,
+      "quota": 5072,
+      "use_time": 21,
+      "model_name": "gpt-image-2-1k-pic",
+      "request_id": "202610251458274468216278268d9d6snK3aljv"
+    }
+  ]
+}

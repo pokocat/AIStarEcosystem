@@ -119,6 +119,8 @@ class VideoStudioOptimizationServiceTest {
         when(invocation.listCandidates(AiModelPurpose.VIDEO_GENERATION, "celebrity"))
                 .thenReturn(List.of(new AiModelInvocationService.ResolvedEndpoint(h3, candidate, true)));
         when(modelClient.isEndpointReady(h3)).thenReturn(true);
+        when(modelClient.billingRoute(any(),eq("celebrity"))).thenReturn(
+                new MaterialVideoModelClient.BillingRoute("ep-h3","minimax-h3",true,h3.getBaseUrl(),""));
         when(modelClient.isJusuanMedia(h3)).thenReturn(true);
         when(modelClient.protocolDurationBounds(h3)).thenReturn(new MaterialVideoModelClient.DurationBounds(5, 15));
         priceOptimization(0L);
@@ -145,7 +147,7 @@ class VideoStudioOptimizationServiceTest {
     private String code(VideoStudioOptimizationRequest r) {
         BusinessException e = assertThrows(BusinessException.class, () -> svc.create(USER, r));
         verify(repo, never()).saveAndFlush(any());
-        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
+        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         verify(worker, never()).runAsync(anyString());
         return e.getCode();
     }
@@ -227,7 +229,7 @@ class VideoStudioOptimizationServiceTest {
         assertEquals(AUD, spec.path("reference_inputs").get(1).path("key").asText());
         assertEquals("[\"图1\",\"音频1\"]", spec.path("labels").toString());
         assertTrue(!spec.has("seed"), "优化不带种子");
-        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
+        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         verify(worker).runAsync(row.getId());
 
         assertEquals("queued", dto.status());
@@ -244,7 +246,7 @@ class VideoStudioOptimizationServiceTest {
         StudioPromptOptimization row = saved();
         InOrder order = inOrder(repo, credits);
         order.verify(repo).saveAndFlush(row);
-        order.verify(credits).hold(eq(USER), eq(5L), eq("video_studio_prompt_optimization"), eq(row.getId()), anyString());
+        order.verify(credits).hold(eq(USER), eq(5L), eq("video_studio_prompt_optimization"), eq(row.getId()), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         assertEquals(5L, row.getCreditsHeld());
         assertEquals(5L, dto.credits());
     }
@@ -253,7 +255,7 @@ class VideoStudioOptimizationServiceTest {
     @DisplayName("余额不足（402）：冻结在插行之后抛，同一事务回滚（真库里的效果见 VideoStudioOptimizationTransactionTest），不派发")
     void insufficientBalance() {
         priceOptimization(5L);
-        when(credits.hold(anyString(), anyLong(), anyString(), anyString(), anyString()))
+        when(credits.hold(anyString(), anyLong(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class)))
                 .thenThrow(new BusinessException(HttpStatus.PAYMENT_REQUIRED, "PAYMENT_REQUIRED", "余额不足"));
         assertEquals("PAYMENT_REQUIRED", assertThrows(BusinessException.class, () -> svc.create(USER, t2v())).getCode());
         verify(txManager).rollback(any());
@@ -274,7 +276,7 @@ class VideoStudioOptimizationServiceTest {
         assertEquals("vso_existing", dto.id());
         assertEquals("running", dto.status());
         verify(repo, never()).saveAndFlush(any());
-        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
+        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         verify(worker, never()).runAsync(anyString());
     }
 
@@ -291,7 +293,7 @@ class VideoStudioOptimizationServiceTest {
         when(repo.saveAndFlush(any())).thenThrow(new DataIntegrityViolationException("uk_vs_opt_owner_request"));
 
         assertEquals("vso_winner", svc.create(USER, t2v()).id());
-        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
+        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         verify(worker, never()).runAsync(anyString());
         verify(txManager).rollback(any());
     }

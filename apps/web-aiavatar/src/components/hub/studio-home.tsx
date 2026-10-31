@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, BookOpen, Clapperboard, Film, ImagePlus, Layers, Loader2, Mic, Plus, ShoppingBag, UserRound, Video } from 'lucide-react';
@@ -11,8 +11,12 @@ import { StudioConversationStart } from '@/ip/studio-conversation-start';
 import { StudioTemplateUse } from '@/ip/studio-template-use';
 import { CanvasThumb } from '@/ip/canvas-thumb';
 import { useStartNewCanvas } from '@/ip/use-start-new-canvas';
+import { useStudioFailure } from '@/ip/studio-errors';
 import { formatDateTime } from '@/lib/datetime';
 import { useHubData } from './data';
+import { sceneHref, useSceneHomeCards } from '@/ip/scenes/scene-catalog';
+import { SceneThumb } from '@/ip/scenes/scene-layout';
+import { useUiVersion } from '@/shell/ui-version';
 
 const quickEntries = [
   ['image', ImagePlus], ['video', Video], ['script', BookOpen], ['director', Clapperboard], ['work', Film],
@@ -21,9 +25,11 @@ const quickEntries = [
 
 
 export function StudioHome({ ready }: { ready: boolean }) {
+  // 场景卡片只在新版首页出现（见 shell/ui-version.ts）。
+  const homeCards = useSceneHomeCards();
+  const showGoals = useUiVersion() === 'next' && homeCards.length > 0;
   const router = useRouter();
   const [creating, setCreating] = useState<string>();
-  const [error, setError] = useState('');
   const [refresh, setRefresh] = useState(0);
   const [gallery, setGallery] = useState<'official' | 'personal' | 'examples'>('official');
   const [usingTemplate, setUsingTemplate] = useState<IpTemplate>();
@@ -34,29 +40,36 @@ export function StudioHome({ ready }: { ready: boolean }) {
   // 「新建空白画布」 and the 「空白画布」 tool are the shared 「新建」 (docs/ip-studio-new-canvas-and-threads.md §2.1).
   const newCanvas = useStartNewCanvas();
   const busy = creating !== undefined || newCanvas.creating;
-  const startBlank = () => { if (inFlight.current) return; setError(''); void newCanvas.start(); };
+  // 新建画布没成功：弹错误弹窗说清楚（原来只在页面中部挂一行字，用户在页面上方点按钮时看不到）。
+  const showFailure = useStudioFailure();
+  useEffect(() => {
+    if (newCanvas.error === undefined) return;
+    showFailure({ action: '新建画布', error: newCanvas.error, next: '可以再点一次「新建」；反复失败的话展开「错误详情」复制后发给我们。' });
+    newCanvas.clearError();
+  }, [newCanvas.error]); // eslint-disable-line react-hooks/exhaustive-deps
+  const startBlank = () => { if (inFlight.current) return; void newCanvas.start(); };
 
   const start = async (entry: StudioEntry) => {
     if (inFlight.current || newCanvas.creating) return;
     inFlight.current = true;
-    setError(''); setCreating(entry);
+    setCreating(entry);
     try {
       const project = await createStudioEntry(entry);
       router.push(studioEntryHref(project.id, entry));
     } catch (e) {
-      setError(e instanceof Error ? e.message : '画布没有创建成功，请稍后重试');
+      showFailure({ action: '新建画布', error: e, next: '可以再点一次；反复失败的话展开「错误详情」复制后发给我们。' });
       setCreating(undefined); inFlight.current = false;
     }
   };
   const startConversation = async (brief: string) => {
     if (inFlight.current || newCanvas.creating) return;
     inFlight.current = true;
-    setError(''); setCreating('assistant');
+    setCreating('assistant');
     try {
       const project = await createStudioEntry('assistant', brief);
       router.push(studioEntryHref(project.id, 'assistant', { send: !!brief.trim() && !studioBriefNeedsReference(brief) }));
     } catch (e) {
-      setError(e instanceof Error ? e.message : '画布没有创建成功，请稍后重试');
+      showFailure({ action: '用这句话新建画布', error: e, next: '输入的内容还在框里，可以再点一次「开始对话」。' });
       setCreating(undefined); inFlight.current = false;
     }
   };
@@ -76,7 +89,12 @@ export function StudioHome({ ready }: { ready: boolean }) {
 
     <StudioConversationStart compact heading="今天想做点什么？" creating={creating === 'assistant'} onStart={brief => void startConversation(brief)}/>
     <p className="studio-home-more"><Link href="/create">更多创作方式 <ArrowRight size={15}/></Link></p>
-    {(error || newCanvas.errorMessage) && <div className="studio-home-error" role="alert"><p>{error || newCanvas.errorMessage}</p></div>}
+
+    {showGoals && <section className="studio-home-section" aria-labelledby="home-goals-heading"><div className="studio-home-section-heading"><h2 id="home-goals-heading">你想做什么？</h2><Link href="/video">全部场景 <ArrowRight size={15}/></Link></div>
+      <div className="home-goal-track studio-home-goals">{homeCards.map(g => <Link key={g.id} href={sceneHref(g)} className="home-goal">
+        <span className="home-goal-art" aria-hidden="true">{g.covers.slice(0, 2).map(c => <SceneThumb key={c.sceneId} id={c.sceneId} cover={c.coverUrl} title={g.title} size={120}/>)}</span>
+        <span className="home-goal-copy"><strong>{g.title}</strong><small>{g.description}</small></span></Link>)}</div>
+    </section>}
 
     <nav className="studio-home-tools" aria-label="主要创作功能">{quickEntries.map(([entry, Icon]) => <button key={entry} type="button" disabled={busy} aria-busy={entry === 'blank' ? newCanvas.creating : creating === entry} onClick={() => entry === 'blank' ? startBlank() : void start(entry)}>
       <Icon size={22}/><span>{studioEntries[entry].title}</span><small>{studioEntries[entry].description}</small></button>)}</nav>
@@ -94,7 +112,7 @@ export function StudioHome({ ready }: { ready: boolean }) {
       {catalogue.error ? <LoadError message={catalogue.error} retry={() => setRefresh(n => n + 1)}/> : catalogue.loading ? <div className="studio-home-loading" role="status">正在加载模板与画布…</div> : items.length ?
         <div className="studio-home-templates">{items.map(t => <button type="button" className="studio-home-template" key={t.id} disabled={busy} onClick={() => void useTemplate(t)}>
           {t.coverUrl ? <img src={t.coverUrl} alt="" loading="lazy"/> : <CanvasThumb doc={t.doc} height={132}/>}
-          <div><h3>{t.name}</h3><p>{t.summary}</p><span>只读预览 · 存为个人副本后编辑 <ArrowRight size={14}/></span></div></button>)}</div> :
+          <div><h3>{t.name}</h3><p>{t.summary}</p><span>点开预览 · 做同款后编辑 <ArrowRight size={14}/></span></div></button>)}</div> :
         <div className="studio-home-empty"><p>{gallery === 'personal' ? '还没有个人模板。在画布里选择“发布为模板”，以后可以换一个 IP 继续使用。' : gallery === 'examples' ? '精选画布发布后会展示在这里，你可以复制一份继续创作。' : '暂时没有可用的官方模板，可以从空白画布开始。'}</p><Link href="/projects">打开项目 <ArrowRight size={15}/></Link></div>}
     </section>
   </div>;

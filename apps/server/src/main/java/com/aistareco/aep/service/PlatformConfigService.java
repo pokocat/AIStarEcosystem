@@ -77,6 +77,8 @@ public class PlatformConfigService {
         }
         if(AiChatTokenPricing.KEY.equals(key))AiChatTokenPricing.validate(value);
         if(AiChatTokenPricing.DIALOGUE_BUDGET_KEY.equals(key))AiChatTokenPricing.validateDialogueBudget(value);
+        // 场景目录不管从哪儿改（后台场景页、通用配置页），都过同一道校验。
+        if(com.aistareco.aep.ipstudio.scene.StudioSceneCatalog.CONFIG_KEY.equals(key))com.aistareco.aep.ipstudio.scene.StudioSceneCatalog.validateJson(value);
         PlatformConfig existing = repo.findByConfigKey(key).orElse(null);
         String json = serialize(value);
         Instant now = Instant.now();

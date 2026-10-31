@@ -38,7 +38,9 @@ import { useThemeStore } from "@/canvas/stores/use-theme-store";
 import { cropDataUrl, splitDataUrl, upscaleDataUrl } from "@/canvas/lib/canvas/canvas-image-data";
 import { fitNodeSize, nodeSizeFromRatio } from "@/canvas/lib/canvas/canvas-node-size";
 import { captureVideoFrame, type VideoFramePosition } from "@/canvas/lib/canvas/canvas-video-frame";
-import { App, Button, Modal } from "antd";
+// 本仓改动（2026-10-27）：错误不走 antd 顶部 message，统一到 Studio 错误出口（用户刚做的操作没做成就弹错误弹窗），成功提示照旧。
+import { Button, Modal } from "antd";
+import { useStudioApp } from "@/ip/studio-errors";
 import { NODE_DEFAULT_SIZE, getNodeSpec } from "@/canvas/constant/canvas";
 import { ActiveConnectionPath, ConnectionPath } from "@/canvas/components/canvas/canvas-connections";
 import { CanvasConfigComposer } from "@/canvas/components/canvas/canvas-config-composer";
@@ -218,7 +220,7 @@ export default function CanvasPage() {
 }
 
 function InfiniteCanvasPage() {
-    const { message, modal } = App.useApp();
+    const { message, modal } = useStudioApp();
     const { t } = useTranslation();
     // Subscribe to the registry version so plugin registration changes rerender the canvas.
     const nodeRegistryVersion = useNodeRegistryVersion((state) => state.version);

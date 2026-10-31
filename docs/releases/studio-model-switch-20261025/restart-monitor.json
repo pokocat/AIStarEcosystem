@@ -1,0 +1,41 @@
+[
+  {
+    "path": "/api/config",
+    "statusCounts": {
+      "200": 29,
+      "502": 7
+    },
+    "firstBad": {
+      "time": "2026-10-25T17:53:30.303497+00:00",
+      "path": "/api/config",
+      "status": 502,
+      "ms": 94
+    },
+    "lastBad": {
+      "time": "2026-10-25T17:53:43.577384+00:00",
+      "path": "/api/config",
+      "status": 502,
+      "ms": 95
+    },
+    "last": {
+      "time": "2026-10-25T17:54:12.608259+00:00",
+      "path": "/api/config",
+      "status": 200,
+      "ms": 109
+    }
+  },
+  {
+    "path": "/projects",
+    "statusCounts": {
+      "200": 36
+    },
+    "firstBad": null,
+    "lastBad": null,
+    "last": {
+      "time": "2026-10-25T17:54:12.715369+00:00",
+      "path": "/projects",
+      "status": 200,
+      "ms": 107
+    }
+  }
+]

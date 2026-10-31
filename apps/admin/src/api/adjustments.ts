@@ -19,24 +19,13 @@ export interface AdjustmentResult {
   message: string;
 }
 
-export type AdjustmentType = "compensate" | "grant";
-export type AdjustmentRequestStatus = "pending_approval" | "approved" | "rejected";
+export type { CreditAdjustmentRequest } from '@ai-star-eco/types';
+import type { CreditAdjustmentRequest, ScopedGrantRequest } from '@ai-star-eco/types';
+export type AdjustmentType = CreditAdjustmentRequest['type'];
+export type AdjustmentRequestStatus = CreditAdjustmentRequest['status'];
 
-export interface CreditAdjustmentRequest {
-  id: string;
-  type: AdjustmentType;
-  targetUserId: string;
-  amount: number;
-  reason?: string;
-  incidentRef?: string;
-  campaignId?: string;
-  status: AdjustmentRequestStatus;
-  makerId: string;
-  checkerId?: string;
-  ledgerEntryId?: string;
-  decideNote?: string;
-  createdAt: string;
-  decidedAt?: string;
+export async function grantScoped(payload: ScopedGrantRequest): Promise<CreditAdjustmentRequest> {
+  return apiFetch<CreditAdjustmentRequest>(`${BASE}/scoped-grant`, { method: 'POST', body: payload });
 }
 
 export interface GrantPayload {

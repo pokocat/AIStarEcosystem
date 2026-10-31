@@ -41,6 +41,11 @@ html[data-layout="desktop"] .ip-top-account { gap: 10px; }
 .studio-pending-feature > div { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
 .studio-pending-feature h3 { font-size: 16px; font-weight: 600; }
 .studio-pending-feature span { font-size: 12px; color: var(--ip-muted); }
+.studio-coming-soon { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px 2px 7px; border-radius: 999px; background: var(--ip-soft); color: var(--ip-muted); font-size: 12px; font-weight: 500; line-height: 1.6; white-space: nowrap; }
+.studio-coming-soon svg { flex: none; }
+.studio-coming-soon.is-inline { margin-left: 6px; vertical-align: 1px; }
+.studio-scene-copy .ip-brand-button .studio-coming-soon { padding: 0; background: none; font-size: 13px; }
+.studio-scene-upcoming { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .studio-pending-feature p { font-size: 13px; line-height: 1.8; color: var(--ip-muted); margin-top: 9px; overflow-wrap: anywhere; }
 .studio-workspace-hint { font-size: 12px; line-height: 1.9; color: var(--ip-muted); margin: 20px 0; overflow-wrap: anywhere; }
 .studio-workspace-callout { display: flex; align-items: center; gap: 16px; padding: 20px; margin-top: 28px; border-radius: 9px; background: var(--ip-soft); }

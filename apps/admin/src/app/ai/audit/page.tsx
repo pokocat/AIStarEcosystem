@@ -31,6 +31,7 @@ import type {
 } from "@/api/ai-models";
 import { formatDateTimeCN } from "@/lib/utils";
 import { AiNotice, BreakdownList, EmptyPanel, TrendBars, type UsageTrendMetric } from "../_components";
+import { SelectField } from '@ai-star-eco/ui/ui/select-field';
 import {
   PURPOSE_LABEL,
   PURPOSE_PRODUCT_LABEL,
@@ -307,9 +308,9 @@ export default function AiAuditPage() {
           <CardHeader className="pb-3">
             <CardTitle>用量趋势</CardTitle>
             <CardDescription>按自然日聚合成功调用，可切换计费用量与成本。</CardDescription>
-            <select aria-label="趋势指标" className="h-9 rounded-md border border-border bg-surface px-2 text-sm" value={trendMetric} onChange={(event) => setTrendMetric(event.target.value as UsageTrendMetric)}>
+            <SelectField aria-label="趋势指标" className="h-9 rounded-md border border-border bg-surface px-2 text-sm" value={trendMetric} onChange={(event) => setTrendMetric(event.target.value as UsageTrendMetric)}>
               <option value="totalTokens">Token</option><option value="calls">调用次数</option><option value="billableUnits">计费单位</option><option value="billableSeconds">计费秒数</option><option value="estimatedCostMicros">估算成本</option>
-            </select>
+            </SelectField>
           </CardHeader>
           <CardContent>
             {usage ? <TrendBars data={usage.byDay} metric={trendMetric} emptyText="当前窗口暂无调用趋势。" /> : <EmptyPanel text="暂无趋势数据。" />}

@@ -1,0 +1,29 @@
+{
+  "scope": "admin configuration and scoped grant increment only",
+  "ui": {
+    "files": [
+      "finance/model-billing/page.test.tsx",
+      "finance/adjustments/page.test.tsx"
+    ],
+    "passed": 13
+  },
+  "http": {
+    "suite": "com.aistareco.aep.enterprise.EnterpriseLifecycleScenarioTest",
+    "passed": 5,
+    "cases": [
+      "modelBillingTargetCatalogUsesEnabledRoutesAndNeverReturnsProviderSecrets",
+      "configuredDiscountRequiresRealAudienceAndReturnsItsReadableName",
+      "modelPriceConfigurationUsesRolesVersionsAndAtomicAudit",
+      "scopedGrantHttpFlowEnforcesAdminRolesAndShowsApprovedMemberBalance",
+      "modelBillingAccountChoicesSearchOwnersAndExcludeEnterpriseTreasury"
+    ]
+  },
+  "gates": {
+    "pnpm typecheck:all": "passed",
+    "pnpm typecheck:admin": "passed",
+    "apps/server ./mvnw compile -q -o": "passed",
+    "pnpm check:api-contract": "passed with pre-existing endpoint warnings"
+  },
+  "git diff --check": "passed",
+  "productionDeployed": false
+}

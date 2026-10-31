@@ -224,7 +224,7 @@ public class IpRunWorker {
         // 先扣款，再落产物（顺序见类注释）；单价只认 hold 时的快照
         atomic(()->{
             if(enterpriseBilling!=null)enterpriseBilling.lockForSettlement(IpRunService.REF_TYPE,run.getId());
-            if (unit > 0) credits.commitHold(IpRunService.REF_TYPE,run.getId(),unit,"IP 人物特征卡抽取");
+            if (unit > 0) credits.commitHold(IpRunService.REF_TYPE,run.getId(),unit,"IP 人物特征卡抽取", null);
             ObjectNode out=om.createObjectNode();
             if(text!=null)out.put("text",text);if(promptEn!=null)out.put("promptEn",promptEn);
             run.setOutputJson(write(out));run.setCost(unit);finishAtomically(run);
@@ -297,6 +297,7 @@ public class IpRunWorker {
                             checkpoint,state->nativeCheckpoint(run,current,state));
                 } else {
                     if(enterpriseBilling!=null)enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,run.getId(),endpointId);
+                    credits.markModelDispatched(IpRunService.REF_TYPE,run.getId());
                     bytes=multimodal.generateImage(prompt,size,refs.isEmpty()?null:refs,endpointId,"studio");
                 }
                 requireDecodableImage(bytes);
@@ -315,7 +316,8 @@ public class IpRunWorker {
                 final int candidateNo=i+1;
                 atomic(()->{
                 if(enterpriseBilling!=null)enterpriseBilling.lockForSettlement(IpRunService.REF_TYPE,run.getId());
-                if(unit>0)credits.commitHold(IpRunService.REF_TYPE,run.getId(),unit,"IP 形象出图 · 第 "+candidateNo+" 张");
+                if(unit>0)credits.commitHold(IpRunService.REF_TYPE,run.getId(),unit,"IP 形象出图 · 第 "+candidateNo+" 张",
+                        new com.aistareco.aep.billing.service.ModelBillingMath.Usage(java.math.BigDecimal.valueOf(candidateNo),null));
                 // commit 成功之后才承认这张图。
                 // 带上宽高：画布拿它算节点尺寸 —— 不给的话只能按上限铺成正方形，
                 // 竖图会被撑成方框（「框很大图很小」）。文件头里就有，不用整图解码。
@@ -380,6 +382,8 @@ public class IpRunWorker {
                 if(state.path("submitAttempted").asBoolean()&&!before.path("imageJobs").path(index).path("submitAttempted").asBoolean())
                     enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,run.getId(),before.path("endpointId").asText(null));
             }
+            // Acquire wallet/hold before the job row, matching settlement and enterprise cancellation.
+            if(state.path("submitAttempted").asBoolean())credits.markModelDispatched(IpRunService.REF_TYPE,run.getId());
             var fresh=runRepo.lockById(run.getId()).orElseThrow();
             if(!IpRun.STATUS_RUNNING.equals(fresh.getStatus()))throw new IllegalStateException("Image run is terminal");
             if(fresh.isCancelRequested()&&!hasNativeSubmission(fresh))throw com.aistareco.common.BusinessException.badRequest("IP_RUN_CANCELLED","已停止生成");
@@ -391,19 +395,34 @@ public class IpRunWorker {
             run.setInputJson(fresh.getInputJson());
         });
     }
-    /** Close legacy unknown receipts only after their worker lease expires. Retain already delivered images. */
+    /** Close missing receipts, including a crash before pending() could persist its error code. */
     public void failUnconfirmedSubmission(String runId) {
         atomic(() -> {
             if(enterpriseBilling!=null)enterpriseBilling.lockForSettlement(IpRunService.REF_TYPE,runId);
             var run=runRepo.lockById(runId).orElse(null);
-            if(run==null || !IpRun.STATUS_RUNNING.equals(run.getStatus()) || !"STUDIO_IMAGE_SUBMISSION_UNKNOWN".equals(run.getErrorCode()))return;
+            if(run==null || !IpRun.KIND_GENERATE.equals(run.getKind()) || !IpRun.STATUS_RUNNING.equals(run.getStatus()))return;
             var exec=projects.parseOrEmptyObject(run.getInputJson()).path("_exec");
             int completed=projects.parseOrEmptyObject(run.getOutputJson()).path("candidates").size();
             var item=exec.path("imageJobs").path(completed);
             if(exec.path("nativeLeaseUntil").asLong()>System.currentTimeMillis() || !item.path("jobId").asText().isBlank() || !item.path("storageKey").asText().isBlank())return;
+            if(!"STUDIO_IMAGE_SUBMISSION_UNKNOWN".equals(run.getErrorCode())) {
+                if(!item.path("submitAttempted").asBoolean())return;
+                // The old checkpoint lease is only 3 minutes; synchronous images can wait much longer.
+                // A missing error code does not prove the original HTTP worker has stopped. Respect its
+                // saved request timeout plus a minute for response processing before closing an orphan.
+                long timeoutMillis;
+                try {
+                    var spec=om.readTree(item.path("imageRequestSpec").asText("{}"));
+                    timeoutMillis=spec.path("wire").path("requestTimeoutMillis").asLong(900_000L);
+                } catch(Exception invalidSnapshot) {return;}
+                var lastProgress=run.getHeartbeatAt()!=null?run.getHeartbeatAt():run.getStartedAt()!=null?run.getStartedAt():run.getCreatedAt();
+                if(lastProgress==null || !lastProgress.plusMillis(Math.max(180_000L,timeoutMillis+60_000L)).isBefore(Instant.now()))return;
+            }
             run.setCost(unitCostOf(exec,pricing.ipImage())*completed);
             failAtomically(run,"STUDIO_IMAGE_SUBMISSION_UNKNOWN",com.aistareco.aep.service.GenerationSubmissionFailure.MESSAGE,
-                    new IllegalStateException("Historical unknown submission: "+run.getErrorMessage()));
+                    com.aistareco.aep.service.GenerationSubmissionFailure.settled(!"STUDIO_IMAGE_SUBMISSION_UNKNOWN".equals(run.getErrorCode())
+                            ?"图片请求已发出，但等结果的过程被中断（通常是服务重启），没有拿到图片或任务号"
+                            :"图片请求没有拿到受理结果",run.getErrorMessage(),null));
         });
     }
     private void pending(IpRun run,JusuanImageClient.Pending pending) {
@@ -411,7 +430,9 @@ public class IpRunWorker {
             var exec=projects.parseOrEmptyObject(run.getInputJson()).path("_exec");
             int completed=projects.parseOrEmptyObject(run.getOutputJson()).path("candidates").size();
             run.setCost(unitCostOf(exec,pricing.ipImage())*completed);
-            fail(run,pending.code(),com.aistareco.aep.service.GenerationSubmissionFailure.message(pending.getCause()),pending);
+            // The alert describes this failed-and-refunded task, not the in-flight Pending wording.
+            fail(run,pending.code(),com.aistareco.aep.service.GenerationSubmissionFailure.message(pending.getCause()),
+                    com.aistareco.aep.service.GenerationSubmissionFailure.settled("图片请求没有拿到受理结果",null,pending.getCause()));
             return;
         }
         atomic(()->{

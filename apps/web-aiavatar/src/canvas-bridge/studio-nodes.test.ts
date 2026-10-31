@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { IpRun } from "@ai-star-eco/types";
 import { applyStudioRun, makeStudioNode, selectStudioTake } from "./studio-nodes";
 import { resetInterruptedGeneration } from "@/canvas/lib/canvas/canvas-generation-helpers";
-import { CanvasNodeType } from "@/canvas/types/canvas";
+import { CanvasNodeType, type CanvasNodeData } from "@/canvas/types/canvas";
+import { studioVideoInputKey } from "./studio-video";
 
 const run = (id: string, key: string): IpRun => ({ id,projectId:"p",nodeId:"n",kind:"studio-image",status:"done",stage:"done",pct:100,cost:0,
   inputs:{},output:{mock:true,candidates:[{key,url:`/cdn/${key}`}]},createdAt:"2026-10-08T00:00:00Z" });
@@ -159,4 +160,26 @@ it('text revisions update once and preserve later manual edits across task refre
  const concurrent=applyStudioRun({...n,metadata:{...n.metadata,content:'生成期间手动修改'}},result);
  expect(concurrent.metadata?.content).toBe('生成期间手动修改');expect(concurrent.metadata?.studio?.textEditor?.proposal).toMatchObject({content:'新标题\n原文',runId:'text-run'});
  const failed=applyStudioRun(n,{...result,status:'failed',output:{},errorMessage:'模型服务暂不可用'});expect(failed.metadata?.content).toBe('原文');expect(failed.metadata?.status).toBe('error');
+});
+
+describe("智能优化停在「用优化稿 / 用原文」上", () => {
+  const video = { mode: "t2v" as const, resolutionTier: "768p", rewrite: "review" as const };
+  const node = { id: "v", type: CanvasNodeType.Video, title: "视频", position: { x: 0, y: 0 }, width: 320, height: 180, metadata: { studio: { kind: "shot" as const } } } as unknown as CanvasNodeData;
+  const run = (id: string, status: IpRun["status"], output: IpRun["output"]): IpRun => ({ id, projectId: "p", nodeId: "v", kind: "studio-video", status, stage: status, pct: 0, cost: 0,
+    createdAt: "2026-10-27T00:00:00Z", inputs: { prompt: "女孩：“你来了。”", video, durationSec: 5, aspectRatio: "9:16", model: "h3" } as unknown as IpRun["inputs"], output });
+
+  it("keeps the draft and its input key, and a newer video task clears it", () => {
+    const reviewed = applyStudioRun(node, run("r1", "done", { needsChoice: true, videoPrompt: { text: "integrated_multimodal_description: ...", warnings: ["x"], usable: true } }));
+    const review = reviewed.metadata!.studio!.promptReview!;
+    expect(review.runId).toBe("r1");
+    expect(review.inputKey).toBe(studioVideoInputKey({ prompt: "女孩：“你来了。”", video: { ...video, rewrite: undefined, optimizePrompt: false }, durationSec: 5, aspectRatio: "9:16", model: "h3" }));
+    expect(review.inputKey).not.toBe(studioVideoInputKey({ prompt: "女孩：“你来了。”", video, durationSec: 8, aspectRatio: "9:16", model: "h3" }), "改了时长，旧稿不能再用");
+    const next = applyStudioRun(reviewed, { ...run("r2", "running", {}), inputs: { prompt: "x", video: { mode: "t2v", resolutionTier: "768p", optimizePrompt: false } } as unknown as IpRun["inputs"] });
+    expect(next.metadata!.studio!.promptReview).toBeUndefined();
+  });
+
+  it("a rewrite that failed on the canvas offers the original too", () => {
+    const failed = applyStudioRun(node, { ...run("r1", "failed", {}), errorCode: "AI_BAD_OUTPUT", errorMessage: "视频提示词优化没成功（没有返回 JSON），本次未扣积分，请重试或按原文生成" });
+    expect(failed.metadata!.studio!.promptReview).toMatchObject({ runId: "r1", failed: true });
+  });
 });

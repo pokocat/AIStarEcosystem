@@ -92,6 +92,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "AI 中台",
     items: [
       { href: "/ai/overview", label: "AI 总览", icon: Sparkles, description: "LLM 接入、Token、用途绑定、用量与审计的统一入口" },
+      { href: "/studio/operations", label: "Studio 运营看板", icon: BarChart3, roles: ["SUPER_ADMIN", "OPERATOR", "FINANCE_ADMIN"], description: "积分健康、经营消耗与生成技术指标（只读）" },
       { href: "/platform/ai-models", label: "LLM API 与用量", icon: KeySquare, description: "模型端点、上游密钥、外部 API Token、用途绑定与端点用量" },
       { href: "/ai/usage", label: "租户 / 用户用量", icon: BarChart3, description: "按租户、用户、子产品查看 AI 调用归属与明细接入状态" },
       { href: "/ai/audit", label: "子应用审计", icon: FileSearch, description: "按 web 子应用 / 小程序 / 后台拆分审计与登录事件" },
@@ -166,6 +167,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "积分运营",
     items: [
+      { href: "/finance/model-billing", label: "模型赠款与折扣", icon: Coins, roles: ["OPERATOR", "FINANCE_ADMIN"], description: "客户折扣、赠款活动和模型赠款发放" },
       { href: "/finance/adjustments",       label: "调差 / 赠送", icon: Gift,          roles: ["OPERATOR", "FINANCE_ADMIN"], description: "v2：给用户补发 / 赠送积分（积分面，不碰真实资金）" },
     ],
   },

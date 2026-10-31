@@ -96,9 +96,11 @@ class IpRunServiceTest {
         // 默认：任何端点 id 都在白名单里（不关心端点的用例不必逐个 stub）。
         // ResolvedEndpoint 是 record，mock 不了，给个真实例。
         when(aiModels.resolveEndpoint(org.mockito.ArgumentMatchers.any(), anyString(), eq("studio")))
-                .thenReturn(java.util.Optional.of(
+                .thenAnswer(inv -> java.util.Optional.of(
                         new com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint(
-                                null, null, true)));
+                                com.aistareco.aep.model.AiModelEndpoint.builder().id(inv.getArgument(1)).model("image-model").build(),null,true)));
+        when(aiModels.resolveDefaultEndpoint(com.aistareco.aep.model.AiModelPurpose.DAP_IMAGE,"studio"))
+                .thenReturn(java.util.Optional.of(com.aistareco.aep.model.AiModelEndpoint.builder().id("default-image").model("image-model").build()));
         svc = new IpRunService(runs.repo, projectService, catalog, IpStudioFixtures.props(),
                 prompts, multimodal, pricing, accounts, credits, worker, OM, videoJobs, aiModels);
     }
@@ -133,7 +135,7 @@ class IpRunServiceTest {
         List<String> missing = (List<String>) ((java.util.Map<String, Object>) e.getDetails()).get("missing");
         assertTrue(missing.contains("prompt"), "应报缺提示词：" + missing);
         // 缺输入的时候一分钱都不能冻
-        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
+        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     @Test
@@ -233,7 +235,7 @@ class IpRunServiceTest {
         var settings=new com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings("t2v","768p",null,null,null,List.of());
         assertThrows(BusinessException.class,()->svc.generateVideo(USER,PID,new IpRunService.IpVideoRequest("x",null,5,"9:16","ep-h3",200L,settings)));
         verify(videoJobs,never()).submit(org.mockito.ArgumentMatchers.any(),anyString(),anyString());
-        verify(credits,never()).hold(anyString(),anyLong(),anyString(),anyString(),anyString());
+        verify(credits,never()).hold(anyString(),anyLong(),anyString(),anyString(),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     @Test void batchPreflightsOnceAndSubmitsAllCandidatesUnderTheTotalCeiling() {
@@ -251,7 +253,7 @@ class IpRunServiceTest {
         assertEquals(2_147_483_647L,items.get(0).path("variant_config").path("seed").asLong());
         assertEquals(0,items.get(1).path("variant_config").path("seed").asLong());
         verify(nativeVideo,org.mockito.Mockito.times(1)).prepare(eq(USER),org.mockito.ArgumentMatchers.any());
-        verify(credits,never()).hold(anyString(),anyLong(),anyString(),anyString(),anyString());
+        verify(credits,never()).hold(anyString(),anyLong(),anyString(),anyString(),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
     @Test void batchSeedWrapsAtTheConfiguredModelLimit() {
         seedProject(IpStudioFixtures.chainDoc(null,0));
@@ -414,7 +416,7 @@ class IpRunServiceTest {
         BusinessException e = assertThrows(BusinessException.class, () -> svc.run(USER, PID, "n-gen", null));
         assertEquals(HttpStatus.BAD_REQUEST, e.getStatus());
         assertEquals("IP_ASSET_KEY_INVALID", e.getCode());
-        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
+        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         assertTrue(runs.rows.isEmpty(), "越权 key 不该留下运行记录");
     }
 
@@ -428,7 +430,7 @@ class IpRunServiceTest {
 
         assertEquals("IP_ASSET_KEY_INVALID",
                 assertThrows(BusinessException.class, () -> svc.run(USER, PID, "n-gen", null)).getCode());
-        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
+        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     @Test
@@ -449,7 +451,7 @@ class IpRunServiceTest {
 
         assertEquals("IP_ASSET_KEY_INVALID",
                 assertThrows(BusinessException.class, () -> svc.run(USER, PID, "n-gen", null)).getCode());
-        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
+        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     @Test
@@ -460,7 +462,7 @@ class IpRunServiceTest {
         BusinessException e = assertThrows(BusinessException.class, () -> svc.run(USER, PID, "n-gen", null));
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, e.getStatus());
         assertEquals("DAP_ENGINE_NOT_CONFIGURED", e.getCode());
-        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
+        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         verify(worker, never()).execute(anyString());
         assertTrue(runs.rows.isEmpty(), "503 时不该留下运行记录");
     }
@@ -474,7 +476,7 @@ class IpRunServiceTest {
         BusinessException e = assertThrows(BusinessException.class, () -> svc.run(USER, PID, "n-gen", null));
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, e.getStatus());
         assertEquals("PROMPT_NOT_CONFIGURED", e.getCode());
-        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
+        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     @Test
@@ -500,7 +502,11 @@ class IpRunServiceTest {
         IpRunDto dto = svc.run(USER, PID, "n-gen", null);
 
         // 2 张 × 8 = 16 一次性冻结，referenceId 就是 runId
-        verify(credits).hold(USER, 16L, IpRunService.REF_TYPE, dto.id(), "画布出图 ×2");
+        var context=org.mockito.ArgumentCaptor.forClass(com.aistareco.aep.billing.service.ModelChargeContext.class);
+        verify(credits).hold(eq(USER),eq(16L),eq(IpRunService.REF_TYPE),eq(dto.id()),eq("画布出图 ×2"),context.capture());
+        assertEquals("default-image",context.getValue().target().endpointId());
+        assertEquals("768x1024",context.getValue().target().specKey());
+        assertEquals(2,context.getValue().usage().quantity().intValueExact());
         verify(worker).execute(dto.id());
         assertEquals(IpRun.STATUS_RUNNING, dto.status());
         assertEquals(16L, dto.cost());
@@ -537,7 +543,7 @@ class IpRunServiceTest {
         assertEquals(13L,execution.path("unitCost").asLong());
         assertEquals(26L,execution.path("holdTotal").asLong());
         assertEquals("allowed",execution.path("endpointId").asText());
-        verify(credits).hold(eq(USER),eq(26L),eq(IpRunService.REF_TYPE),eq(dto.id()),anyString());
+        verify(credits).hold(eq(USER),eq(26L),eq(IpRunService.REF_TYPE),eq(dto.id()),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     @Test void configuredImagePresetRejectsUnsupportedCanvasBeforeHoldAndSnapshotsAcceptedPreset() throws Exception {
@@ -553,12 +559,12 @@ class IpRunServiceTest {
         org.springframework.test.util.ReflectionTestUtils.setField(svc,"scenePolicies",policy);
         var unsupported=new IpRunService.IpGenerateRequest("adhoc","character",List.of(),1,"768x1024","ernie",30L);
         assertEquals("STUDIO_IMAGE_SIZE_UNSUPPORTED",assertThrows(BusinessException.class,()->svc.generate(USER,PID,unsupported)).getCode());
-        verify(credits,never()).hold(anyString(),anyLong(),anyString(),anyString(),anyString());
+        verify(credits,never()).hold(anyString(),anyLong(),anyString(),anyString(),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         var accepted=new IpRunService.IpGenerateRequest("adhoc","character",List.of(),1,"1024x1024","ernie",30L);
         var result=svc.generate(USER,PID,accepted);
         var execution=OM.readTree(runs.rows.get(result.id()).getInputJson()).path("_exec");
         assertEquals("hd",execution.path("imageRequestSpec").path("outputs").path(0).path("providerFields").path("resolutionTier").asText());
-        verify(credits).hold(eq(USER),eq(30L),eq(IpRunService.REF_TYPE),eq(result.id()),anyString());
+        verify(credits).hold(eq(USER),eq(30L),eq(IpRunService.REF_TYPE),eq(result.id()),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     @Test void productImageFamilyRoutesResolutionAndPersistsTheResolvedProviderModel() throws Exception {
@@ -581,6 +587,8 @@ class IpRunServiceTest {
         var fourKSelection=new com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection(
                 new com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint(fourK,null,false),45L,"per_image");
         when(policy.available("studio","image",8L)).thenReturn(List.of(oneKSelection,fourKSelection));
+        when(aiModels.resolveEndpoint(com.aistareco.aep.model.AiModelPurpose.DAP_IMAGE,"gpt-1k","studio")).thenReturn(java.util.Optional.of(oneKSelection.resolved()));
+        when(aiModels.resolveEndpoint(com.aistareco.aep.model.AiModelPurpose.DAP_IMAGE,"gpt-4k","studio")).thenReturn(java.util.Optional.of(fourKSelection.resolved()));
         org.springframework.test.util.ReflectionTestUtils.setField(svc,"scenePolicies",policy);
 
         var twoK=svc.generate(USER,PID,new IpRunService.IpGenerateRequest("adhoc","cat",List.of(),1,"2048x2048",
@@ -606,7 +614,7 @@ class IpRunServiceTest {
         var invalid=assertThrows(BusinessException.class,()->svc.generate(USER,PID,new IpRunService.IpGenerateRequest(
                 "adhoc","cat",List.of(),1,"768x768","studio-image:gpt-image-2",30L)));
         assertEquals("STUDIO_IMAGE_RESOLUTION_INVALID",invalid.getCode());
-        verify(credits,org.mockito.Mockito.times(3)).hold(eq(USER),anyLong(),eq(IpRunService.REF_TYPE),anyString(),anyString());
+        verify(credits,org.mockito.Mockito.times(3)).hold(eq(USER),anyLong(),eq(IpRunService.REF_TYPE),anyString(),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     @Test void configuredImageKeepsReferencesBeyondLegacyCanvasLimit() throws Exception {
@@ -640,10 +648,10 @@ class IpRunServiceTest {
         org.springframework.test.util.ReflectionTestUtils.setField(svc,"scenePolicies",policy);
         assertEquals("STUDIO_IMAGE_COUNT_INVALID",assertThrows(BusinessException.class,()->svc.generate(USER,PID,
                 new IpRunService.IpGenerateRequest("adhoc","portrait",List.of(),4,"1024x1024","image",120L))).getCode());
-        verify(credits,never()).hold(anyString(),anyLong(),anyString(),anyString(),anyString());
+        verify(credits,never()).hold(anyString(),anyLong(),anyString(),anyString(),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         var result=svc.generate(USER,PID,new IpRunService.IpGenerateRequest("adhoc","portrait",List.of(),5,"1024x1024","image",150L));
         assertEquals(5,OM.readTree(runs.rows.get(result.id()).getInputJson()).path("count").asInt());
-        verify(credits).hold(eq(USER),eq(150L),eq(IpRunService.REF_TYPE),eq(result.id()),anyString());
+        verify(credits).hold(eq(USER),eq(150L),eq(IpRunService.REF_TYPE),eq(result.id()),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
     @Test void configuredImageCanvasKeepsReferencesBeyondLegacyCanvasLimit() throws Exception {
         var document=IpStudioFixtures.chainDoc(null,5);
@@ -727,7 +735,7 @@ class IpRunServiceTest {
         when(policy.resolveStudioVideo("other")).thenThrow(new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","not allowed"));
         assertEquals("ENDPOINT_NOT_ALLOWED",assertThrows(BusinessException.class,()->svc.generateVideo(USER,PID,new IpRunService.IpVideoRequest("wave",null,5,"9:16","other"))).getCode());
         verify(videoJobs,never()).submit(org.mockito.ArgumentMatchers.any(),anyString(),anyString());
-        verify(credits,never()).hold(anyString(),anyLong(),anyString(),anyString(),anyString());
+        verify(credits,never()).hold(anyString(),anyLong(),anyString(),anyString(),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
     @Test void studioVideoDefaultIsSnapshottedInsteadOfFallingBackToGlobalWorkerBinding() {
         seedProject(new IpStudioFixtures.Doc());
@@ -744,10 +752,10 @@ class IpRunServiceTest {
         seedProject(IpStudioFixtures.chainDoc(null,0));
         var billing=mock(com.aistareco.aep.enterprise.service.EnterpriseBillingService.class);
         org.springframework.test.util.ReflectionTestUtils.setField(svc,"enterpriseBilling",billing);
-        var endpoint=com.aistareco.aep.model.AiModelEndpoint.builder().id("actual-default").enabled(true).build();
+        var endpoint=com.aistareco.aep.model.AiModelEndpoint.builder().id("actual-default").model("actual-image").enabled(true).build();
         when(aiModels.resolveDefaultEndpoint(com.aistareco.aep.model.AiModelPurpose.DAP_IMAGE,"studio")).thenReturn(java.util.Optional.of(endpoint));
         var selected=new com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection("enterprise","company");
-        when(billing.reserve(eq(USER),eq(selected),eq("ip-run"),anyString(),eq("actual-default"),eq(8L),anyString()))
+        when(billing.reserve(eq(USER),eq(selected),eq("ip-run"),anyString(),eq("actual-default"),eq(8L),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class)))
                 .thenThrow(new BusinessException(HttpStatus.FORBIDDEN,"ENTERPRISE_MODEL_NOT_ALLOWED","blocked"));
         var req=new IpRunService.IpGenerateRequest("adhoc","test",List.of(),1,"768x1024",null,8L,selected,"native-key");
         assertEquals("ENTERPRISE_MODEL_NOT_ALLOWED",assertThrows(BusinessException.class,()->svc.generate(USER,PID,req)).getCode());

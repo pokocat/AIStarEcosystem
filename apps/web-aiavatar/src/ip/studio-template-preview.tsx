@@ -27,7 +27,7 @@ function Preview({ doc }: { doc: IpProjectDoc }) {
   const edges = useMemo(() => flowEdges(doc.connections), [doc]);
   return <StudioFloatingContext.Provider value={viewport}>
     <div ref={setRoot} className="studio-flow-shell studio-template-preview-canvas" aria-label="只读模板画布">
-      <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} nodesDraggable={false} nodesConnectable={false} elevateNodesOnSelect={false}
+      <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} nodesDraggable={false} nodesConnectable={false} elevateNodesOnSelect={false} proOptions={{ hideAttribution: true }}
         edgesReconnectable={false} deleteKeyCode={null} selectionKeyCode={null} multiSelectionKeyCode={null}
         onNodeClick={(_, node) => setInspecting(node.data.document)} onNodeDoubleClick={(_, node) => setInspecting(node.data.document)}
         onPaneClick={() => setInspecting(undefined)} onPaneContextMenu={e => e.preventDefault()}
@@ -41,7 +41,7 @@ function Preview({ doc }: { doc: IpProjectDoc }) {
         <hr/><button type="button" aria-label="适应全部节点" onClick={() => void flow.fitView({ padding: .2, maxZoom: 1 })}><Maximize size={18}/></button>
       </nav>
       <StudioFloatingPanel open={!!inspecting} container={root} anchorId={inspecting?.id} title="节点设置 · 只读" width={420}
-        onClose={() => setInspecting(undefined)} footer={<span>存为个人副本后，可替换素材、编辑和生成。</span>}>
+        onClose={() => setInspecting(undefined)} footer={<span>做同款后，可替换素材、编辑和生成。</span>}>
         <strong>{inspecting?.title}</strong>
         <p className="studio-template-preview-prompt">{inspecting?.metadata?.groupDescription || inspecting?.metadata?.prompt || inspecting?.metadata?.content || (inspecting?.type === 'group' ? '此分组尚未添加说明。' : '此节点等待填写内容或添加参考素材。')}</p>
         {inspecting?.metadata?.size && <p>画幅 / 尺寸：{inspecting.metadata.size}{inspecting.metadata.seconds ? ` · ${inspecting.metadata.seconds} 秒` : ''}</p>}

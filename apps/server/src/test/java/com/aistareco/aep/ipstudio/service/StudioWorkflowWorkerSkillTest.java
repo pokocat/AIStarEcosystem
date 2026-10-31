@@ -64,7 +64,7 @@ class StudioWorkflowWorkerSkillTest {
         assertSame(evidence,failure.getValue().getSuppressed()[0]);
         assertTrue(evidence.responseBody().contains("invalid JSON"));
         verify(h.credits()).releaseHold(anyString(),eq("r"),anyString());
-        verify(h.credits(),never()).commitHold(anyString(),anyString(),anyLong(),anyString());
+        verify(h.credits(),never()).commitHold(anyString(),anyString(),anyLong(),anyString(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test void checkRunSamplesTheRecordedTimesKeepsUnknownAndSettlesRealTokens() throws Exception {
@@ -91,7 +91,7 @@ class StudioWorkflowWorkerSkillTest {
         String sent=messages.getValue().toString();
         assertTrue(sent.contains("时间 3.00 秒")&&sent.contains("时间 7.00 秒"),"the model sees exactly the recorded sample times");
         long expected=rate.settle(1000L,1000L);
-        verify(h.credits()).commitHold(anyString(),eq("r"),eq(expected),anyString());
+        verify(h.credits()).commitHold(anyString(),eq("r"),eq(expected),anyString(), org.mockito.ArgumentMatchers.any());
         assertEquals(List.of("check.result@t/m"),events);
     }
 
@@ -118,5 +118,21 @@ class StudioWorkflowWorkerSkillTest {
         assertEquals("reference-video-recreation",plan.path("skillKey").asText());assertEquals("analysis",plan.path("stage").asText());assertEquals(4,plan.path("revision").asInt());
         assertEquals(StudioPlanValidator.fingerprint(plan),plan.path("fingerprint").asText());
         verify(executor).wake("PEX-1");
+    }
+
+    // Production 2026-10-23: the refusal reached the execution as 「方案还没准备好」 with no object named.
+    @Test void aPlanNamingObjectsOutsideTheRunFailsFreeWithTheirIds() throws Exception {
+        String file;try(var in=getClass().getResourceAsStream("/studio/skills/reference-video-recreation.md")){file=new String(in.readAllBytes(),StandardCharsets.UTF_8);}
+        var rules=StudioSkillRules.rules(StudioSkillCatalog.parse(file));
+        var input=json.createObjectNode().put("operation","text");
+        var exec=input.putObject("_exec").put("skillPlan",true).put("planStage","production").put("planRevision",2);
+        exec.set("skill",StudioSkillRules.snapshot(rules));exec.putArray("allowedNodeIds").add("src");
+        var h=harness(input,"studio-text","{\"summary\":\"出片\",\"recommendedApproachId\":\"a\",\"approaches\":[{\"id\":\"a\",\"title\":\"换人\",\"summary\":\"换主舞\",\"rationale\":\"r\"}],"
+                +"\"steps\":[{\"id\":\"img\",\"operation\":\"image\",\"title\":\"主舞\",\"prompt\":\"按三视图\",\"settings\":{\"count\":1,\"referenceBindings\":[{\"nodeId\":\"sheet\",\"role\":\"character\",\"order\":0}]}}],\"questions\":[]}",
+                mock(FileStorageService.class));
+        h.worker().runBlocking("r");
+        assertEquals("failed",h.run().getStatus());assertEquals(StudioPlanValidator.MATERIAL_OUT_OF_SCOPE,h.run().getErrorCode());
+        assertEquals(0,h.run().getCost());
+        assertEquals("[\"sheet\"]",json.readTree(h.run().getOutputJson()).path("outOfScopeNodeIds").toString());
     }
 }

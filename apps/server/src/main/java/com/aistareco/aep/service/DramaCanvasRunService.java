@@ -11,6 +11,7 @@ import com.aistareco.aep.dto.DramaCanvasRunDto.CanvasScriptRunBody;
 import com.aistareco.aep.dto.DramaCanvasRunDto.CanvasStoryboardRunBody;
 import com.aistareco.aep.dto.DramaCanvasRunDto.CanvasVideoRunBody;
 import com.aistareco.aep.model.AiModelPurpose;
+import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.DramaCanvas;
 import com.aistareco.aep.model.DramaCanvasRun;
 import com.aistareco.aep.repository.DramaCanvasRunRepository;
@@ -212,6 +213,7 @@ public class DramaCanvasRunService {
     }
 
     private DramaCanvasRun textRun(Ctx c, String cri, String kind, DramaCanvasPromptBuilder.TextPlan plan, long price) {
+        var endpoint = requireLlm();
         String runId = newRunId();
         ObjectNode input = om.createObjectNode();
         input.put("target", plan.target());
@@ -221,6 +223,7 @@ public class DramaCanvasRunService {
         exec.put("holdRef", runId);
         exec.put("label", plan.label());
         exec.put("promptKey", plan.promptKey());
+        exec.put("endpointId", endpoint.getId());
         ArrayNode calls = exec.putArray("calls");
         for (DramaCanvasPromptBuilder.TextCall tc : plan.calls()) {
             calls.addObject()
@@ -234,7 +237,7 @@ public class DramaCanvasRunService {
 
         if (price > 0) {
             // 余额不足在这里抛 402，事务回滚、记录不落库
-            credits.hold(c.userId(), price, REF_TYPE, runId, plan.label());
+            credits.hold(c.userId(), price, REF_TYPE, runId, plan.label(), com.aistareco.aep.billing.service.ModelChargeContext.forCredits(endpoint,price));
         }
         DramaCanvasRun run = newRun(runId, c, cri, kind, plan.target(), price, input, null);
         runs.saveAndFlush(run);
@@ -262,7 +265,7 @@ public class DramaCanvasRunService {
             long total = multiply(plan.cost(), count);
             String runId = newRunId();
             if (total > 0) {
-                credits.hold(userId, total, REF_TYPE, runId, ic.label() + " ×" + count);
+                credits.hold(userId, total, REF_TYPE, runId, ic.label() + " ×" + count, com.aistareco.aep.billing.service.ModelChargeContext.forCredits(plan.endpoint(),total));
             }
             DramaCanvasRun run = imageRun(runId, c, cri, ic, plan, body.endpointId(), count, runId, total, null);
             runs.saveAndFlush(run);
@@ -324,7 +327,7 @@ public class DramaCanvasRunService {
                 String holdRef = batchHoldRefOf(runIds.get(0));
                 if (total > 0) {
                     credits.hold(userId, total, REF_TYPE, holdRef,
-                            "画布 · 批量出图（" + items.size() + " 项 · " + images + " 张）");
+                            "画布 · 批量出图（" + items.size() + " 项 · " + images + " 张）", com.aistareco.aep.billing.service.ModelChargeContext.forCredits(plan.endpoint(),total));
                 }
                 List<DramaCanvasRun> out = new ArrayList<>();
                 for (int i = 0; i < items.size(); i++) {
@@ -360,7 +363,7 @@ public class DramaCanvasRunService {
         exec.put("holdTotal", holdTotal);
         exec.put("holdRef", holdRef);
         exec.put("label", ic.label());
-        if (endpointId != null && !endpointId.isBlank()) exec.put("endpointId", endpointId.trim());
+        exec.put("endpointId", plan.endpoint().getId());
         exec.put("promptKey", ic.promptKey());
         exec.put("prompt", ic.prompt());
         exec.put("ratio", ic.ratio());
@@ -810,11 +813,10 @@ public class DramaCanvasRunService {
         return new Ctx(userId, canvas, canvases.readDoc(canvas));
     }
 
-    private void requireLlm() {
-        if (!invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")) {
-            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
-                    "AI 写作还没接入大模型：请在管理后台为「短剧脚本起草」用途绑定一个模型端点后再试。");
-        }
+    private AiModelEndpoint requireLlm() {
+        return invocation.resolveDefaultEndpoint(AiModelPurpose.DRAMA_SCRIPT_DRAFT,"drama")
+                .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_NOT_CONFIGURED",
+                        "AI 写作还没接入大模型：请在管理后台为「短剧脚本起草」用途绑定一个模型端点后再试。"));
     }
 
     /** 这个 key 派生出的地址，外部图像模型取不取得到（本地开发环境的 /cdn 相对地址取不到）。 */

@@ -27,7 +27,7 @@ class StudioTextWorkflowTest {
         var project=IpProject.builder().id("p").build();when(projects.requiredForUpdate("u","p")).thenReturn(project);
         when(projects.readDoc(project)).thenReturn(json.readTree("{\"nodes\":[{\"id\":\"text\",\"type\":\"text\",\"metadata\":{\"content\":\"原文\"}}]}"));
         when(runs.findByProjectIdAndClientRequestId(anyString(),anyString())).thenReturn(Optional.empty());when(pricing.ipIdentity()).thenReturn(2L);
-        var endpoint=AiModelEndpoint.builder().id("agnes-text").enabled(true).build();
+        var endpoint=AiModelEndpoint.builder().id("agnes-text").model("text-v1").enabled(true).build();
         when(models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,"agnes-text","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));when(models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA,"agnes-text","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
         when(prompts.resolve(anyString())).thenReturn(new PromptService.ResolvedPrompt("assistant","{{input}}",new PromptParamsDto(null,null,null),"resource"));
         var service=new StudioWorkflowService(projects,runs,mock(StudioFixtureProvider.class),worker,pricing,models,null,credits,null,null,null,null,json,null,prompts);
@@ -42,8 +42,40 @@ class StudioTextWorkflowTest {
             assertEquals("text",run.getNodeId());assertEquals("studio-text",run.getKind());assertEquals("原文",input.path("textEdit").path("content").asText());
             assertEquals("agnes-text",input.path("_exec").path("endpointId").asText());assertTrue(input.path("_exec").path("userPrompt").asText().contains("起一个标题"));
             assertTrue(input.path("_exec").path("userPrompt").asText().contains("原文"));assertTrue(input.path("_exec").path("systemPrompt").asText().contains(StudioTextRevision.CONTRACT));
-            verify(credits).hold(eq("u"),eq(21L),eq(IpRunService.REF_TYPE),eq(run.getId()),anyString());
+            var charge=ArgumentCaptor.forClass(com.aistareco.aep.billing.service.ModelChargeContext.class);
+            verify(credits).hold(eq("u"),eq(21L),eq(IpRunService.REF_TYPE),eq(run.getId()),anyString(), charge.capture());
+            assertEquals("model",charge.getValue().target().action());assertEquals("text-v1",charge.getValue().target().providerModel());
             TransactionSynchronizationManager.getSynchronizations().forEach(s->s.afterCommit());verify(worker).execute(run.getId());
+        } finally {TransactionSynchronizationManager.clearSynchronization();}
+    }
+    /** AI 视频页的编导看商品图写脚本：普通文字任务也能带 readVisuals；模型看不了图就按能力拒绝，不按操作类型拒绝。 */
+    @Test void aTextRunMayReadTheReferencedPicturesWhenTheModelCanSee() throws Exception {
+        var projects=mock(IpProjectService.class);var runs=mock(IpRunRepository.class);var models=mock(AiModelInvocationService.class);
+        var credits=mock(CreditService.class);var pricing=mock(DapPricingService.class);var prompts=mock(PromptService.class);var worker=mock(StudioWorkflowWorker.class);
+        var project=IpProject.builder().id("p").build();when(projects.requiredForUpdate("u","p")).thenReturn(project);
+        when(projects.readDoc(project)).thenReturn(json.readTree("{\"nodes\":[{\"id\":\"text\",\"type\":\"text\",\"metadata\":{\"content\":\"\"}},"
+                +"{\"id\":\"img\",\"type\":\"image\",\"title\":\"商品图 1\",\"metadata\":{\"storageKey\":\"ipstudio_media/u/p.png\"}}]}"));
+        when(runs.findByProjectIdAndClientRequestId(anyString(),anyString())).thenReturn(Optional.empty());when(pricing.ipIdentity()).thenReturn(2L);
+        var blind=AiModelEndpoint.builder().id("agnes-text").model("text-v1").enabled(true).build();
+        var seeing=AiModelEndpoint.builder().id("agnes-text").model("text-v1").enabled(true).modelsJson("[{\"id\":\"text-v1\",\"supportsVision\":true}]").build();
+        when(prompts.resolve(anyString())).thenReturn(new PromptService.ResolvedPrompt("assistant","{{input}}",new PromptParamsDto(null,null,null),"resource"));
+        var service=new StudioWorkflowService(projects,runs,mock(StudioFixtureProvider.class),worker,pricing,models,null,credits,null,null,null,null,json,null,prompts);
+        var prices=mock(AiChatTokenPricing.class);
+        when(prices.find("agnes-text")).thenReturn(new AiChatTokenPricing.Rate(new java.math.BigDecimal("0.18"),new java.math.BigDecimal("1.08"),65536,8192));
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"tokenPricing",prices);
+        var request=json.readValue("{\"clientRequestId\":\"key\",\"nodeId\":\"text\",\"operation\":\"text\",\"prompt\":\"写脚本\",\"model\":\"agnes-text\",\"maxCost\":21,"
+                +"\"textEdit\":{\"content\":\"\"},\"contextNodeIds\":[\"img\"],\"readVisuals\":true}",RunRequest.class);
+        when(models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,"agnes-text","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(blind,null,true)));
+        assertEquals("STUDIO_VISION_UNAVAILABLE",assertThrows(com.aistareco.common.BusinessException.class,()->service.submit("u","p",request)).getCode());
+        verifyNoInteractions(credits);
+        when(models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,"agnes-text","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(seeing,null,true)));
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.submit("u","p",request);
+            var capture=ArgumentCaptor.forClass(IpRun.class);verify(runs).save(capture.capture());
+            var exec=json.readTree(capture.getValue().getInputJson()).path("_exec");
+            assertEquals("ipstudio_media/u/p.png",exec.path("visualContext").get(0).path("storageKey").asText());
+            verify(projects).requireOwnedAssetKey("u","ipstudio_media/u/p.png");
         } finally {TransactionSynchronizationManager.clearSynchronization();}
     }
     @ParameterizedTest @ValueSource(strings={"text","script","storyboard","assistant","asset-extract"})
@@ -53,7 +85,7 @@ class StudioTextWorkflowTest {
         var project=IpProject.builder().id("p").build();when(projects.requiredForUpdate("u","p")).thenReturn(project);
         when(projects.readDoc(project)).thenReturn(json.readTree("{\"nodes\":[{\"id\":\"text\",\"type\":\"text\",\"metadata\":{\"content\":\"原文\"}}]}"));
         when(runs.findByProjectIdAndClientRequestId(anyString(),anyString())).thenReturn(Optional.empty());when(pricing.ipIdentity()).thenReturn(2L);
-        var endpoint=AiModelEndpoint.builder().id("agnes-text").enabled(true).build();
+        var endpoint=AiModelEndpoint.builder().id("agnes-text").model("text-v1").enabled(true).build();
         when(models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,"agnes-text","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));when(models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA,"agnes-text","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
         when(prompts.resolve(anyString())).thenReturn(new PromptService.ResolvedPrompt("assistant","{{input}}",new PromptParamsDto(null,null,null),"resource"));
         var service=new StudioWorkflowService(projects,runs,mock(StudioFixtureProvider.class),worker,pricing,models,null,credits,null,null,null,null,json,null,prompts);
@@ -83,11 +115,14 @@ class StudioTextWorkflowTest {
             assertEquals("per_token",input.path("_exec").path("billingUnit").asText());
             assertEquals(21,input.path("_exec").path("tokenPricing").path("maxCost").asInt());
             assertTrue(input.path("_exec").path("maxTokens").asInt()<=8192);
-            verify(credits).hold(eq("u"),eq(21L),eq(IpRunService.REF_TYPE),eq(run.getId()),anyString());
+            assertEquals("model",input.path("_exec").path("modelCharge").path("target").path("action").asText());
+            assertEquals("text-v1",input.path("_exec").path("modelCharge").path("target").path("providerModel").asText());
+            assertEquals("credit",input.path("_exec").path("modelCharge").path("target").path("unit").asText());
+            verify(credits).hold(eq("u"),eq(21L),eq(IpRunService.REF_TYPE),eq(run.getId()),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
             when(runs.findByProjectIdAndClientRequestId("p","key")).thenReturn(Optional.of(run));
             when(tokenPricing.find("agnes-text")).thenReturn(null);
             service.submit("u","p",request);
-            verify(credits,times(1)).hold(eq("u"),eq(21L),eq(IpRunService.REF_TYPE),eq(run.getId()),anyString());
+            verify(credits,times(1)).hold(eq("u"),eq(21L),eq(IpRunService.REF_TYPE),eq(run.getId()),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
             TransactionSynchronizationManager.getSynchronizations().forEach(s->s.afterCommit());verify(worker).execute(run.getId());
         } finally {TransactionSynchronizationManager.clearSynchronization();}
     }
@@ -101,8 +136,8 @@ class StudioTextWorkflowTest {
             when(models.invokeChatOnEndpoint(eq(endpoint),eq(AiModelPurpose.DAP_PERSONA),anyList(),anyMap())).thenReturn(new AiModelInvocationService.AiModelResponse(invalid?"{}":"{\"summary\":\"添加标题\",\"content\":\"雨夜\\n原文\"}","stop",12L,"text","text"));
             var worker=new StudioWorkflowWorker(runs,mock(StudioFixtureProvider.class),mock(FileStorageService.class),models,mock(DramaAssembleService.class),credits,json,tx,mock(DapAssetService.class));
             worker.runBlocking("r");worker.runBlocking("r");verify(models,times(1)).invokeChatOnEndpoint(eq(endpoint),eq(AiModelPurpose.DAP_PERSONA),anyList(),anyMap());
-            if(invalid){assertEquals("failed",run.getStatus());assertEquals("AI_BAD_OUTPUT",run.getErrorCode());assertEquals(0,run.getCost());verify(credits).releaseHold(anyString(),eq("r"),anyString());verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString());}
-            else {assertEquals("done",run.getStatus());assertEquals("雨夜\n原文",json.readTree(run.getOutputJson()).path("textRevision").path("content").asText());verify(credits,times(1)).commitHold(anyString(),eq("r"),eq(2L),anyString());}
+            if(invalid){assertEquals("failed",run.getStatus());assertEquals("AI_BAD_OUTPUT",run.getErrorCode());assertEquals(0,run.getCost());verify(credits).releaseHold(anyString(),eq("r"),anyString());verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString(), org.mockito.ArgumentMatchers.any());}
+            else {assertEquals("done",run.getStatus());assertEquals("雨夜\n原文",json.readTree(run.getOutputJson()).path("textRevision").path("content").asText());verify(credits,times(1)).commitHold(anyString(),eq("r"),eq(2L),anyString(), org.mockito.ArgumentMatchers.any());}
         }
     }
     @Test void tokenUsageSettlesAcceptedSnapshotOnceAndRefundsTheRemainder() throws Exception {
@@ -120,8 +155,8 @@ class StudioTextWorkflowTest {
             worker.runBlocking("r");worker.runBlocking("r");
             verify(models,times(1)).invokeChatOnEndpoint(eq(endpoint),eq(AiModelPurpose.DAP_PERSONA),anyList(),anyMap());
             verify(credits,times(1)).releaseHold(anyString(),eq("r"),anyString());
-            if(missingUsage){assertEquals("failed",run.getStatus());assertEquals("AI_USAGE_MISSING",run.getErrorCode());assertEquals(0,run.getCost());verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString());}
-            else {assertEquals("done",run.getStatus());assertEquals(2,run.getCost());assertEquals(1000,json.readTree(run.getOutputJson()).path("billing").path("inputTokens").asInt());verify(credits,times(1)).commitHold(anyString(),eq("r"),eq(2L),anyString());}
+            if(missingUsage){assertEquals("failed",run.getStatus());assertEquals("AI_USAGE_MISSING",run.getErrorCode());assertEquals(0,run.getCost());verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString(), org.mockito.ArgumentMatchers.any());}
+            else {assertEquals("done",run.getStatus());assertEquals(2,run.getCost());assertEquals(1000,json.readTree(run.getOutputJson()).path("billing").path("inputTokens").asInt());verify(credits,times(1)).commitHold(anyString(),eq("r"),eq(2L),anyString(), org.mockito.ArgumentMatchers.any());}
         }
     }
 

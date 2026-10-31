@@ -1,5 +1,5 @@
 "use client";
-import { Button, Checkbox, InputNumber, Select } from "antd";
+import { Button, InputNumber, Select } from "antd";
 import { StudioChoiceGroup } from "./studio-generation-controls";
 import { ArrowLeftRight } from "lucide-react";
 import { useId, type Ref } from "react";
@@ -8,13 +8,14 @@ import { CanvasNodeType, type CanvasNodeData } from "@/canvas/types/canvas";
 import { SignedImage } from "@/canvas-bridge/signed-image";
 import { studioVideoModeName,type StudioVideoDraft } from "@/canvas-bridge/studio-video";
 import { studioVideoPromptReferences } from '@/canvas-bridge/studio-video-references';
+import type { StudioNodeMetadata } from "@ai-star-eco/types/ip-studio-workflow";
+import { AiMark } from "./studio-ai-icon";
 
 export type { StudioVideoDraft } from "@/canvas-bridge/studio-video";
 export function StudioVideoControls({model,draft,onChange,nodes,referenceIds,onReferences,onLibrary,libraryButtonRef,section="all"}: {
   model:VideoStudioModel;draft:StudioVideoDraft;onChange:(next:StudioVideoDraft)=>void;nodes:CanvasNodeData[];
   referenceIds:string[];onReferences:(ids:string[])=>void;onLibrary:()=>void;libraryButtonRef?:Ref<HTMLButtonElement>;section?:"all"|"references"|"settings";
 }) {
-  const optimizationHintId=useId();
   const images=nodes.filter(n=>n.type===CanvasNodeType.Image&&n.metadata?.storageKey);
   const usable=nodes.filter(n=>[CanvasNodeType.Image,CanvasNodeType.Video,CanvasNodeType.Audio].some(type=>type===n.type)&&n.metadata?.storageKey);
   const spec=model.contract.modes.find(m=>m.mode===draft.mode);
@@ -39,11 +40,6 @@ export function StudioVideoControls({model,draft,onChange,nodes,referenceIds,onR
     </>}
     {section!=="references"&&<>
     <StudioChoiceGroup<string> label="清晰度" ariaLabel="视频清晰度" value={draft.tier} onChange={tier=>onChange({...draft,tier})} options={model.contract.tiers.map(t=>({value:t.tier,label:t.tier}))}/>
-    {/* 只有出片前会改写描述的模型（聚算 H3，厂商契约 optimizePrompt）才有这个选择；价格不变。 */}
-    {model.supportsPromptOptimization&&<div className="studio-video-prompt-mode">
-      <Checkbox aria-describedby={optimizationHintId} checked={!draft.keepPrompt} onChange={e=>onChange({...draft,keepPrompt:!e.target.checked})}>智能优化</Checkbox>
-      <p id={optimizationHintId}>由模型端自动优化提示词，可自行选择是否开启。</p>
-    </div>}
     {section==="all"&&<StudioVideoSeedControl seed={draft.seed} max={model.contract.seedMax} onChange={seed=>onChange({...draft,seed})}/>}
     </>}
   </>;
@@ -62,4 +58,37 @@ export function StudioVideoSeedControl({seed,max,onChange,count=1}:{seed?:number
       {count>1&&seed!=null&&<p>第一条使用此种子，后续结果依次递增；超过上限从 0 继续。</p>}
     </div>
   </details>;
+}
+
+/**
+ * 卡片上的「智能优化」（2026-10-27 从参数弹层挪出来）：只对 H3 显示，默认开。开着时提交前先按 H3 官方写法优化提示词
+ * （台词保留原文，会额外消耗少量积分）；关掉就按原文发给视频模型，旁边提示 H3 建议开启。
+ */
+export function StudioPromptOptimizeToggle({on,onChange,disabled}:{on:boolean;onChange:(on:boolean)=>void;disabled?:boolean}) {
+  return <span className="studio-prompt-optimize">
+    <button type="button" className={`studio-prompt-optimize-chip${on?" is-on":""}`} aria-pressed={on} disabled={disabled} onClick={()=>onChange(!on)}
+      title={on?"生成前先按 H3 官方写法优化提示词，台词保留原文，会额外消耗少量积分。点一下关闭":"已关闭：按原文发给视频模型。点一下开启"}>
+      <AiMark size={11}/>智能优化{on?"":" · 关"}
+    </button>
+    {!on&&<span className="studio-prompt-optimize-hint">H3 建议开启，台词更完整</span>}
+  </span>;
+}
+
+/** 优化稿有提示、太长或没优化成时，在卡片上让用户选：用优化稿生成 / 用原文生成（不拦人，2026-10-26 用户定）。 */
+export function StudioPromptReview({review,busy,onOptimized,onOriginal,onRetry}:{
+  review:NonNullable<StudioNodeMetadata["promptReview"]>;busy:boolean;onOptimized:()=>void;onOriginal:()=>void;onRetry:()=>void;
+}) {
+  const usable=!review.failed&&review.usable!==false&&!!review.text;
+  const title=review.failed?"提示词优化没成功":review.usable===false?"优化稿太长，视频模型收不下":"优化稿有需要留意的地方";
+  return <section className="studio-prompt-review" aria-label={title}>
+    <strong><AiMark size={12}/>{title}</strong>
+    {review.failed&&review.message&&<p>{review.message}</p>}
+    {!!review.warnings?.length&&<ul>{review.warnings.map(warning=><li key={warning}>{warning}</li>)}</ul>}
+    {review.text&&<details><summary>查看优化稿（发给模型的英文）</summary><pre>{review.text}</pre></details>}
+    <div className="studio-prompt-review-actions">
+      {usable&&<Button type="primary" loading={busy} onClick={onOptimized}>用优化稿生成</Button>}
+      {review.failed&&<Button loading={busy} onClick={onRetry}>重新优化</Button>}
+      <Button loading={busy} onClick={onOriginal}>用原文生成</Button>
+    </div>
+  </section>;
 }

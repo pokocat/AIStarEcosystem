@@ -78,6 +78,8 @@ public class CreditHoldSweeper {
                         (generationQueue.isWaiting(AiGenerationQueueService.IMAGE,h.getReferenceId()) || generationQueue.isWaiting(AiGenerationQueueService.WORKFLOW,h.getReferenceId()))) ||
                         ("material_video_job".equals(h.getReferenceType()) && generationQueue.isWaiting(AiGenerationQueueService.VIDEO,h.getReferenceId())))) continue;
                 // An accepted audio Job remains recoverable after a long provider outage.
+                if(ipRuns!=null && "ip-run".equals(h.getReferenceType())&&ipRuns.findById(h.getReferenceId())
+                        .filter(r->"STUDIO_USAGE_PENDING".equals(r.getErrorCode())).isPresent())continue;
                 // Its hold is owned by the durable speech worker, not an orphan.
                 if(ipRuns!=null && com.aistareco.aep.ipstudio.service.IpRunService.REF_TYPE.equals(h.getReferenceType()) &&
                         ipRuns.findById(h.getReferenceId()).filter(r->"running".equals(r.getStatus()) && (com.aistareco.aep.ipstudio.service.StudioSpeechWorker.manages(r.getKind()) || com.aistareco.aep.ipstudio.service.IpRunWorker.hasNativeSubmission(r))).isPresent()) continue;

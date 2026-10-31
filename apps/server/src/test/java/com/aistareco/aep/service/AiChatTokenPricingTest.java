@@ -26,6 +26,16 @@ class AiChatTokenPricingTest {
             assertThrows(BusinessException.class,()->rate.settle(usage[0],usage[1]));
     }
 
+    @Test void operationOutputLimitReducesReservationWithoutChangingInputAllowance() {
+        var deepseek=new AiChatTokenPricing.Rate(new BigDecimal("0.59"),new BigDecimal("2.36"),65536,100000);
+        var extract=deepseek.limitOutputTokens(16384);
+        assertEquals(65536,extract.maxInputTokens());
+        assertEquals(16384,extract.maxOutputTokens());
+        assertEquals(78,extract.maxCost());
+        assertEquals(deepseek,deepseek.limitOutputTokens(120000));
+        assertThrows(BusinessException.class,()->deepseek.limitOutputTokens(0));
+    }
+
     @Test void dialogueHasRoomForMultipleCallsWithoutChangingTextPricesOrCeilings() throws Exception {
         var mapper=new ObjectMapper();
         var configs=mock(PlatformConfigService.class);

@@ -128,8 +128,22 @@ public final class StudioPlanValidator {
         if(rules==null||!StudioSkillRules.STAGES.contains(stage))throw new IllegalArgumentException("skill stage");
         if(raw==null||!raw.isObject())fail();
         Set<String> allowed=new HashSet<>(contextIds==null?List.of():contextIds);
+        // Canvas objects outside the material scope are one deterministic, named error (docs/ip-studio-dialogue-intents.md
+        // 「方案素材范围跨轮」): the caller tells the user which object, instead of the model being asked again and again.
+        Set<String> outside=new LinkedHashSet<>(canvasRefs(raw));
+        outside.removeAll(allowed);
+        if(!outside.isEmpty())throw materialOutOfScope(outside);
         ObjectNode plan=OM.createObjectNode();
         plan.put("summary",text(raw.path("summary"),4000,true,"计划说明"));
+        // Canvas materials a later stage will use that this stage's steps do not name (the replacement character sheet of an
+        // analysis plan). Part of the approved plan, so part of its fingerprint and of the confirmed material scope.
+        if(raw.hasNonNull("materialNodeIds")) {
+            JsonNode materials=raw.path("materialNodeIds");
+            if(!materials.isArray()||materials.size()>MAX_MATERIALS)invalid("后续要用的素材最多 "+MAX_MATERIALS+" 个");
+            Set<String> seen=new LinkedHashSet<>();
+            for(JsonNode id:materials)if(id.isTextual()&&!id.asText().isBlank())seen.add(id.asText());
+            if(!seen.isEmpty()){var out=plan.putArray("materialNodeIds");seen.forEach(out::add);}
+        }
         // approaches: dynamic, not an enum; production plans must say what they keep and change.
         Set<String> approachIds=new LinkedHashSet<>();
         if(raw.hasNonNull("approaches")) {
@@ -500,6 +514,40 @@ public final class StudioPlanValidator {
         return out;
     }
     private static void invalid(String message) {throw BusinessException.badRequest("AI_BAD_OUTPUT","制作计划不能执行："+message);}
+
+    /** Error code of a skill plan naming canvas objects outside its material scope; details carry {@code nodeIds}. */
+    public static final String MATERIAL_OUT_OF_SCOPE="STUDIO_PLAN_MATERIAL_OUT_OF_SCOPE";
+    /** Canvas materials a plan may name: the same cap as a request's canvas context (StudioWorkflowService). */
+    public static final int MAX_MATERIALS=16;
+    public static BusinessException materialOutOfScope(Collection<String> nodeIds) {
+        var details=OM.createObjectNode();var ids=details.putArray("nodeIds");nodeIds.forEach(ids::add);
+        return new BusinessException(org.springframework.http.HttpStatus.BAD_REQUEST,MATERIAL_OUT_OF_SCOPE,"制作计划用到了这次制作没有带上的画布素材",details);
+    }
+    /**
+     * Every canvas object a raw skill plan names: step references, reference bindings, the film-study source, edit targets
+     * and the plan's {@code materialNodeIds}. A canvas id written under a binding's stepId (a known planner slip that
+     * {@link #bindings} accepts) counts when it is not a step id of this plan. {@code targetNodeId} is not here: an
+     * unusable one is dropped, never a reason to reject.
+     */
+    static Set<String> canvasRefs(JsonNode raw) {
+        Set<String> out=new LinkedHashSet<>(),stepIds=new HashSet<>();
+        for(JsonNode step:raw.path("steps"))if(step.path("id").isTextual())stepIds.add(step.path("id").asText());
+        for(JsonNode step:raw.path("steps")) {
+            for(JsonNode ref:step.path("referenceNodeIds"))add(out,ref);
+            add(out,step.path("editTarget").path("nodeId"));
+            JsonNode settings=step.path("settings");
+            add(out,settings.path("sourceNodeId"));
+            add(out,settings.path("editTarget").path("nodeId"));
+            for(JsonNode binding:settings.path("referenceBindings")) {
+                add(out,binding.path("nodeId"));
+                String stepId=binding.path("stepId").asText("");
+                if(binding.path("nodeId").asText("").isEmpty()&&!stepId.isEmpty()&&!stepIds.contains(stepId))out.add(stepId);
+            }
+        }
+        for(JsonNode id:raw.path("materialNodeIds"))add(out,id);
+        return out;
+    }
+    private static void add(Set<String> out,JsonNode id) {if(id.isTextual()&&!id.asText().isBlank())out.add(id.asText());}
 
     /**
      * Fingerprint of everything the user approves: steps, settings, server quotes and the budget estimate. Excludes the

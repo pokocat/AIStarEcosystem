@@ -29,7 +29,7 @@ public class PaymentReconcileService {
 
     /** 给 notify 留的窗口：太新的订单先不查（等回调）。 */
     private static final long MIN_AGE_SECONDS = 10;
-    /** 放弃阈值：太老的待支付订单视为用户已弃单,不再查。 */
+    /** 关单阈值：过期单仍先查支付结果，再尝试关单。 */
     private static final long MAX_AGE_MINUTES = 30;
 
     private final RechargeOrderRepository orderRepo;
@@ -54,7 +54,7 @@ public class PaymentReconcileService {
     }
 
     /**
-     * 扫 PENDING 在线订单（有 payOrderId、年龄在 [10s, 30min]）,逐单查网关,已支付则结算。
+     * 扫 PENDING 在线订单（有 payOrderId、年龄不少于 10s）,逐单查网关,已支付则结算。
      * @return 本轮新结算的订单数
      */
     public int reconcilePending() {
@@ -74,12 +74,14 @@ public class PaymentReconcileService {
                 continue; // 该渠道网关未注册（如已下线）→ 跳过
             }
             Duration age = Duration.between(o.getCreatedAt(), now);
-            if (age.getSeconds() < MIN_AGE_SECONDS || age.toMinutes() > MAX_AGE_MINUTES) {
-                continue; // 给 notify 留窗口 + 放弃过老
+            if (age.getSeconds() < MIN_AGE_SECONDS) {
+                continue; // 给 notify 留窗口
             }
             try {
                 PayQueryResult q = gateway.queryPayOrder(o.getId());
                 if (q.paid()) {
+                    if (q.amountCents() != o.getPriceCents() || q.channelPayNo() == null || q.channelPayNo().isBlank())
+                        throw new IllegalStateException("支付查单金额或交易号不匹配");
                     rechargeService.settlePaidOrder(o.getId(), channel, q.channelPayNo(), null, null);
                     settled++;
                     log.info("[pay][reconcile] 查单兜底结算 orderId={} channel={} channelPayNo={}", o.getId(), channel, q.channelPayNo());

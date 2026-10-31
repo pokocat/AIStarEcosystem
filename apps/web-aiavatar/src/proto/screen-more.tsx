@@ -6,6 +6,8 @@ import { DATA, LicenseApi, AccountApi, WalletApi, AvatarApi, VoiceApi, AuthApi, 
 import { Portrait } from "./portrait";
 import { MShell, MKit } from "./shell";
 import { toast } from "./toast";
+import { ScopedCreditsPanel } from "@/ip/scoped-credits-panel";
+import { StudioRechargeDialog } from "@/ip/studio-recharge-dialog";
 import { StudioBillingSettings } from "@/ip/studio-billing-settings";
 import { useHubData } from "@/components/hub/data";
 
@@ -41,10 +43,6 @@ function Row({ icon, label, sub, value, badge, toggle, on, onClick, last, danger
 // 设置
 // ============================================================
 function MSettings({ ctx }) {
-  const [push, setPush] = useStateMM(true);
-  const [taskNotify, setTaskNotify] = useStateMM(true);
-  const [watermark, setWatermark] = useStateMM(true);
-  const [autoArchive, setAutoArchive] = useStateMM(false);
   const [confirmOut, setConfirmOut] = useStateMM(false);
   const licenses = useApi(() => LicenseApi.list(), seed.licenses());
   const acct: any = useApi(() => AccountApi.get(), seed.account()) || {};
@@ -52,16 +50,8 @@ function MSettings({ ctx }) {
   return hMM('div', { className: 'm-overlay', 'data-screen-label': '设置' },
     hMM(WxNavMM, { title: '设置', onBack: ctx.back }),
     hMM('div', { className: 'm-body', style: { padding: '6px 18px 30px' } },
-      hMM(GroupTitle, null, '通知'),
-      hMM('div', { className: 'm-card', style: { marginBottom: 18 } },
-        hMM(Row, { icon: Icons.bell, label: '推送通知', sub: '接收平台消息与活动', toggle: true, on: push, onClick: () => setPush(v => !v) }),
-        hMM(Row, { icon: Icons.bolt, label: '任务完成提醒', sub: '生成完成后通知我', toggle: true, on: taskNotify, onClick: () => setTaskNotify(v => !v), last: true })),
-
-      hMM(GroupTitle, null, '创作偏好'),
-      hMM('div', { className: 'm-card', style: { marginBottom: 18 } },
-        hMM(Row, { icon: Icons.scan, label: '生成默认加水印', sub: '导出成片带平台标识', toggle: true, on: watermark, onClick: () => setWatermark(v => !v) }),
-        hMM(Row, { icon: Icons.archive, label: '定稿后自动归档', sub: '完成创建即存入名录', toggle: true, on: autoArchive, onClick: () => setAutoArchive(v => !v), last: true })),
-
+      // 推送通知、任务完成提醒、默认加水印、定稿后自动归档四个开关只改页面状态，服务端没有对应的设置，刷新就复原（2026-10-30 线上复核）。
+      // 接通之前不显示；要做时先加服务端的偏好与它们真正影响的行为，再放回来。
       process.env.NEXT_PUBLIC_ENTERPRISE_ENABLED === '1' && hMM(StudioBillingSettings),
 
       hMM(GroupTitle, null, '隐私与合规'),
@@ -99,6 +89,12 @@ const PLANS = [
 function MMembership({ ctx }) {
   const [pack, setPack] = useStateMM(0);
   const [paying, setPaying] = useStateMM(false);
+  const [cashier, setCashier] = useStateMM(false);
+  const [resumeOrder, setResumeOrder] = useStateMM<string>();
+  useEffectMM(() => {
+    const id = new URL(window.location.href).searchParams.get('rechargeOrder');
+    if (id) { setResumeOrder(id); setCashier(true); }
+  }, []);
   const [refresh, setRefresh] = useStateMM(0);
   const accountState = useHubData(() => AccountApi.get(), seed.account(), [refresh]);
   const packageState = useHubData(() => WalletApi.packages(), [], [refresh]);
@@ -107,6 +103,10 @@ function MMembership({ ctx }) {
   const sel: any = packages[pack] || packages[0];
   async function payPack() {
     if (!sel || paying) return;
+    if (!USE_MOCK) {
+      setResumeOrder(new URL(window.location.href).searchParams.get('rechargeOrder') || undefined);
+      setCashier(true); return;
+    }
     setPaying(true);
     try {
       const res = await WalletApi.checkout(sel.id);
@@ -132,6 +132,7 @@ function MMembership({ ctx }) {
   }
   return hMM('div', { className: 'm-overlay', 'data-screen-label': '会员与积分' },
     hMM(WxNavMM, { title: '会员与积分', onBack: ctx.back }),
+    cashier && hMM(StudioRechargeDialog, { pack: sel, initialOrderId: resumeOrder, onClose: () => setCashier(false), onPaid: () => { setRefresh(v => v + 1); ctx.reload && ctx.reload(); } }),
     hMM('div', { className: 'm-body', style: { padding: '4px 18px 30px' } },
       accountState.error && hMM('div', { role: 'alert', style: { marginBottom: 16, color: 'var(--err)' } }, '积分信息加载失败。', hMM(UI.Button, { variant: 'soft', size: 'sm', onClick: () => setRefresh(v => v + 1) }, '重新加载')),
       hMM('div', { style: { position: 'relative', overflow: 'hidden', borderRadius: 'var(--r-md)', padding: '18px 20px', background: 'var(--primary)', color: '#fff', boxShadow: 'var(--sh-2)', marginBottom: 22 } },
@@ -147,6 +148,7 @@ function MMembership({ ctx }) {
             hMM('span', { style: { fontSize: 11.5, opacity: .8 } }, '本月赠送 ' + (acct.monthlyGrant || 0).toLocaleString() + ' · 已用 ' + (acct.creditsUsed || 0) + ' · ' + (acct.refreshDate || '') + '刷新'),
             hMM('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 700 } }, '约可生成 ' + (acct.generatableEstimate || 0) + ' 个', hMM(Icons.user, { size: 13 }))))),
 
+      hMM(ScopedCreditsPanel),
       hMM(GroupTitle, null, '充值积分'),
       (packageState.loading || packageState.error || !packages.length) && hMM('div', { role: packageState.error ? 'alert' : 'status', style: { padding: '18px 0', color: 'var(--ink-2)', fontSize: 14 } },
         packageState.loading ? '正在加载充值套餐…' : (packageState.error ? '充值套餐加载失败，请重试。' : '暂无可用充值套餐，请稍后再试。'),

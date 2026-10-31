@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { aiErrorMessage, FEATURE_NOT_READY } from "./ai-error";
+import { MODEL_SERVICE_UNAVAILABLE } from '@ai-star-eco/api-client';
 
 // §8.0.1 ⑩：断契约（技术细节不外泄、编号保留、按码映射、引导去哪），不断具体措辞。
 describe("aiErrorMessage", () => {
@@ -28,8 +29,6 @@ describe("aiErrorMessage", () => {
       "IMAGE_NOT_CONFIGURED",
       "VIDEO_NOT_CONFIGURED",
       "DRAMA_SHORT_TTS_NOT_CONFIGURED",
-      "AI_CALL_FAILED",
-      "VIDEO_SUBMIT_FAILED",
       "AI_BAD_OUTPUT",
     ]) {
       const out = aiErrorMessage({ code, message: "raw-upstream-text" }, fallback);
@@ -37,6 +36,21 @@ describe("aiErrorMessage", () => {
       expect(out, code).not.toContain("raw-upstream-text");
       expect(out, code).not.toContain(code);
     }
+  });
+
+  it("hides supplier finances without turning them into customer wallet instructions", () => {
+    const reason = "供应商账户余额不足，请联系服务方 · 追查号 ABCDEF234567";
+    for (const code of ["AI_CALL_FAILED", "IMAGE_CALL_FAILED", "VIDEO_SUBMIT_FAILED", "VIDEO_POLL_FAILED", "MUSIC_CALL_FAILED", "STUDIO_SPEECH_REJECTED", "CLIP_ENGINE_BALANCE_INSUFFICIENT"]) {
+      expect(aiErrorMessage({ code, message: reason })).toBe(MODEL_SERVICE_UNAVAILABLE + ' · 追查号 ABCDEF234567');
+    }
+  });
+
+  it("堆栈里夹着供应商信息 → 仍走调用方兜底，不透出原文，保留编号", () => {
+    const leaked = "java.lang.IllegalStateException: 供应商账户余额不足 · 追查号 ABCDEF234567";
+    const out = aiErrorMessage(new Error(leaked), "脚本生成失败，请稍后重试");
+    expect(out.startsWith("脚本生成失败，请稍后重试")).toBe(true);
+    expect(out).toContain("ABCDEF234567");
+    expect(out).not.toMatch(/余额|供应商|Exception/);
   });
 
   // v0.197：用户打不开管理后台，「未配置」类提示不许让用户去后台 / 提端点

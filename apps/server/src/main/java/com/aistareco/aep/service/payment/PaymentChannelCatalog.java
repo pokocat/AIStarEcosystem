@@ -47,7 +47,7 @@ public final class PaymentChannelCatalog {
     public static final ChannelMeta WECHAT = new ChannelMeta(
             "wechat", "微信支付", "WX_NATIVE",
             List.of("mchId", "appId", "apiV3Key", "merchantPrivateKey", "merchantSerialNumber", "notifyUrl"),
-            List.of("mchId", "appId", "apiV3Key", "merchantPrivateKey", "merchantSerialNumber", "notifyUrl"),
+            List.of("mchId", "appId", "apiV3Key", "merchantPrivateKey", "merchantSerialNumber", "notifyUrl", "publicKeyId", "publicKey"),
             List.of(
                     new PaymentChannelDto.Way("WX_NATIVE", "扫码支付", "qr"),
                     new PaymentChannelDto.Way("WX_JSAPI", "微信小程序", "jsapi"),

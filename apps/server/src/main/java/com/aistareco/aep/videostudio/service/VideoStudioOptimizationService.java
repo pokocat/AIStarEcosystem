@@ -108,13 +108,14 @@ public class VideoStudioOptimizationService {
             throw BusinessException.badRequest("VIDEO_MODE_UNSUPPORTED", "所选视频模型不支持智能优化，请直接生成");
         }
         long price = Math.max(0L, v.model().pricing().promptOptimizationPerCall());
+        var charge=price>0?studio.optimizationCharge(v,price):com.aistareco.aep.billing.service.ModelChargeContext.NONE;
         String id = "vso_" + UUID.randomUUID().toString().replace("-", "").substring(0, 24);
         Instant now = Instant.now();
         StudioPromptOptimization row = StudioPromptOptimization.builder()
                 .id(id)
                 .ownerUserId(userId)
                 .clientRequestId(clientRequestId)
-                .endpointId(v.model().selectableById() ? v.model().endpointId() : null)
+                .endpointId(charge.target()!=null?charge.target().endpointId():v.model().selectableById()?v.model().endpointId():null)
                 .status(StudioPromptOptimization.STATUS_QUEUED)
                 .specJson(specJson(v))
                 .originalPrompt(v.prompt())
@@ -127,7 +128,7 @@ public class VideoStudioOptimizationService {
         repo.saveAndFlush(row);
         if (price > 0) {
             // 余额不足在这里抛 402：同一事务回滚，刚插的行和冻结都不留，唯一键也随之放开（同一个串充值后还能再用）。
-            credits.hold(userId, price, CREDIT_REF_TYPE, id, CREDIT_LABEL + " · " + VideoStudioService.modeName(v.mode()));
+            credits.hold(userId, price, CREDIT_REF_TYPE, id, CREDIT_LABEL + " · " + VideoStudioService.modeName(v.mode()), charge);
         }
         dispatchAfterCommit(row);
         log.info("[video-studio] 智能优化受理 id={} user={} mode={} tier={} refs={} credits={} template={}",

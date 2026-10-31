@@ -93,12 +93,20 @@ describe("用户能点的东西真的接到了接口", () => {
     assert.match(studio, /useVideoStudioJobs\(\)/);
   });
 
-  test("底部主按钮：没勾智能优化就提交生成，请求体交给 buildJobRequest 组", () => {
+  test("底部主按钮先确认最终报价，再提交原请求与付款上限", () => {
     assert.match(form, /onClick=\{handlePrimary\}/);
     assert.match(form, /else void submitGeneration\(prompt, null, "footer"\);/);
-    assert.ok(form.includes("VideoStudioApi.submitJob(request)"));
+    assert.ok(form.includes("VideoStudioApi.submitJob(submission.request)"));
+    assert.ok(form.includes("<ModelQuoteDialog request={quoteRequest.request}"));
+    assert.ok(form.includes("modelBilling: approval"));
     assert.ok(form.includes("buildJobRequest(model, draftWith("));
-    assert.ok(form.indexOf("buildJobRequest(model, draftWith(") < form.indexOf("VideoStudioApi.submitJob(request)"));
+    const dialog = read("components/video-studio/ModelQuoteDialog.tsx");
+    assert.ok(dialog.includes("VideoStudioApi.quoteJob(request, freeOnly, controller.signal)"));
+    assert.ok(dialog.includes("quote?.canAfford"));
+    assert.ok(dialog.includes("onConfirm(quote.approval)"));
+    assert.ok(dialog.includes("controller.abort()"));
+    assert.ok(form.indexOf("sessionStorage.setItem(pendingKey(ownerId)") < form.indexOf("VideoStudioApi.submitJob(submission.request)"));
+    assert.ok(form.includes("sendGeneration(pendingSubmission)"));
     assert.ok(form.includes("onSubmitted(job)"));
   });
 

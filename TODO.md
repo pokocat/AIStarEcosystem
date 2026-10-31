@@ -1,6 +1,36 @@
 # 待办与已知问题
 
+- [x] ~~图片返回尺寸与所选不符就判失败~~ **2026-10-30 已生产发布（server `20261030-studio-image-size-deliver`，main `83f817348`）**：`JusuanImageClient` 不再因尺寸不符或读不出尺寸拒绝可用图片，照常交付、结算一次、只记 WARN；画布与导演台共用。线上 10-20 至 10-30 共 13 次此类失败，账本核对均为冻结后原数退回、未实扣。10-25 codex `image-size-warning` 工作区的未提交版本（含界面黄色警告）由此取代，未合入。
+- [ ] 图片尺寸与所选不一致时界面是否提示：目前只记服务端日志，画布按真实宽高显示；要提示可参考 codex `image-size-warning` 工作区的 `image-output-warnings.tsx`（未提交）。
+
 - [x] ~~项目列表画布卡片只有小地图，无法识别内容~~ **已生产发布（4ed3ecf9），2026-10-17**：真实内容预览、正文摘要、去重数量、固定／自动封面、二级流程预览；封面归属与失败重试测试、桌面／手机布局验证见 `docs/releases/studio-workspace-refactor-validation.md`。
+
+## Studio 场景化创作（2026-10-29）
+
+- [x] ~~场景页用真模型走一遍链路~~ **2026-10-29 本地真模型验收**：图片场景真出图、扣费、草稿封面正确；视频场景 → 画布 → 真 Qwen 看图出方案 → 确认 → 执行 → 厂商失败退款并可重试，全程走通，并据此改了 7 处体验（见 `docs/releases/studio-scene-creation-local-validation-20261029.md`）。按用户要求只看链路不评画面。
+- [ ] 场景默认描述在线上默认图片模型上各真跑一个：本地只真跑成了「脸部三视图」，其余被 Agnes 限流挡住；线上模型不同，描述是否要按模型调还没看（§8.0.1 ⑦）。
+- [ ] 本地 Agnes 账号每分钟约一次调用（429「请登录platform进行实名认证以获取更高rpm」），免费视频队列常满（503 `video_queue_full`）：本地验收要给账号做实名认证，或改用聚算端点。
+- [ ] 创作助手回复漏内部说法：真跑中出现「keyframe-first」「临时 key」「真实 id」「本阶段只允许 text 和 image 操作」，写出的脚本里带了节点编号 `[xeFx-…]`。在 `dap.ip_studio_skill_dialogue` / 规划提示词里补「不出现节点编号和英文模式名」并加解析侧过滤。
+- [x] ~~视频子任务被厂商拒绝后，助手进度约 90 秒才从「生成中」变成失败~~ **2026-10-29 已修（本地未发布）**：`MaterialVideoWorker` 到终态发 `MaterialVideoJobEnded`，`StudioVideoJobWake` 提交后叫醒该用户仍在跟踪的计划（`StudioVideoJobWakeTest`）。
+- [x] ~~场景数据和拼话写在前端、草稿靠名字后缀认~~ **2026-10-29 已统一（本地未发布）**：目录 `ipstudio/scenes.json` + `GET /scenes`、`POST /scenes/compose`、`ip_project.scene_id`（V72），见 `docs/studio-scene-creation.md` §7。
+- [ ] 合入前核对迁移编号：V70 被未合并的 `reel`（爆款复刻 reel 域）和用户在线分支占用，本分支用 V72；谁先合谁定号，后合的要改号。`reel` 分支也在做「爆款复刻」场景，和本分支的视频场景「爆款复刻」要合并成一个入口。
+- [ ] 手机底部 tab 没有「AI 视频 / AI 图片」：现在只能从手机首页的「你想做什么？」进入；要不要换掉某个 tab 待定。
+- [ ] 场景封面（`public/studio/scene-covers/*.webp`）是 AI 生成的示意图，运营有真实作品后按同名文件替换。
+- [x] ~~AI 视频改成参考站「超级编导」的出片方式~~ **2026-10-29 本地实现（未发布）**：本页编导写分镜脚本（普通文字任务，能看图）、可改稿，「用这个脚本生成」选模型时长确认后出片，结果在右侧；复刻和长片仍交给创作助手。真 Qwen 看图写稿、改稿已验，见 `docs/studio-scene-creation.md` §8。
+- [x] ~~两个 AI 入口的场景做成后台可配置~~ **2026-10-29 本地实现（未发布）**：平台配置 `studio.scene-catalog` + Studio 运营后台「运营配置 · 场景模板」（`studio-admin` 的 `/scenes`；按用户要求不放 `apps/admin`；增删改、分组、排序、上下架、封面与示例上传），整份保存带版本号；本地改封面和说明后用户端即时生效已验，见 §9。
+- [x] ~~**后端待发（用户 2026-10-30 选择先不发，等通知）**~~ **2026-10-30 19:35 随 `20261030-studio-image-size-deliver` 上线**（main `83f817348`，见 `docs/releases/studio-image-size-deliver-release-20261030.md`）：main 上 server 比线上 `20261030-studio-scene-backend`（`80edade0f`）多四处：场景模板「恢复内置」写带版本记录 + 缓存按内容认（`StudioSceneCatalog` / `StudioSceneAdminService`，`StudioSceneResetTest`）、「短剧导演台」积分流水说明与一条报错文字（`StudioWorkflowService` / `DirectorService`）、#134 报错处理（`ProviderErrorMessage` / `HttpModelinkGateway`）、编导与助手的事实边界（`StudioSceneCatalog.FACT_RULE`，不编品牌年份、检测次数、销量等；随包场景文字同步改，`docs/studio-scene-creation.md` §12）。在这之前 Studio 后台点「恢复内置」再保存仍可能读到旧目录。发布前按 AGENTS「生产发布顺序」核对契约改动。
+- [ ] **设置页的通知 / 水印 / 自动归档偏好**（2026-10-30 线上复核后撤下假开关，`src/proto/screen-more.tsx`）：服务端没有用户偏好表，也没有它们要影响的行为（推送、任务完成提醒、导出加水印、定稿自动归档）。要做先定每个开关真正改什么，再加服务端偏好与接口，最后放回界面。
+- [ ] **场景页「优化描述」显示具体上限**：改写那一步按改写模型的上限另外冻结，前端拿不到这个数（`StudioWorkflowService.videoRewriteHold` 只在服务端），界面只能写「按实际用量另扣」。要写出「最多 N 积分」需在视频模型列表或报价接口里带上改写上限。
+- [ ] **项目 / 灵感卡片要缩略图**（2026-10-30 线上走查）：`ProjectCardPreview` 直接加载原图，一张 1728×2304 的出图在 266px 卡片上加载了 18 秒。OSS 签名地址不能在前端追加 `x-oss-process`，要在服务端给图片资产派生缩略图 key（或签名时带处理参数），DTO 另给 `thumbnailUrl`。
+- [ ] **打开画布就会存一版**（2026-10-30 线上走查）：什么都没改，顶栏先显示「未保存」，随即自动保存一次。多半是加载后的文档规整被当成了修改；会让多标签页更容易撞版本，也让用户以为自己改了什么。要查画布加载后哪一步改了文档。
+- [ ] **全部切到新版后删掉旧版界面**（2026-10-30 起正式站默认旧版，`?ui=new` 进新版，见 `docs/studio-scene-creation.md` §10）：删 `components/landing/ip-home-classic.tsx`、`studio-navigation.ts` 的旧版列表、`desktop-top-bar.tsx` 的旧版顶栏分支、`studio-conversation-start.tsx` 旧提示，`ui-version.ts` 改成默认新版或整个去掉。
+- [x] ~~**按新出片方式在 H3 上真出一条带参考图的视频**~~ **已验证**，2026-10-29：本地接聚算 H3，新视频页全能参考带 1 张商品图、544p 9:16 5 秒、200 积分，成片里是参考图的商品，从草稿重开显示已完成。见 `docs/releases/studio-scene-creation-local-validation-20261029.md` 末节。
+- [x] ~~场景的「选项组」~~ **2026-10-29 本地实现（未发布）**：目录每个场景可配最多 4 组选项（默认值），场景页点选，`compose` 拼进描述 / 要求；随包给 6 个场景配了；真 Qwen 按「只拍商品」写出无露脸脚本已验，见 §9。
+- [x] ~~首页「你想做什么？」七张卡仍写在前端~~ **2026-10-29 本地实现（未发布）**：卡片进目录 `homeGoals`，Studio 后台「首页卡片」标签编辑，公开只读 `GET /api/v1/ip-studio/scenes/home` 给未登录访客；落点场景下架的卡片不下发。
+- [ ] **后台存过的场景目录不会自动合进随包目录的新内容**：存的是整份快照，以后随版本新增的场景 / 选项组 / 首页卡片要运营手动加或「恢复内置」。线上第一次保存前没有这个问题；要不要做「对比随包目录、提示有新内容」待定。
+- [ ] **画布执行器生成期间目标节点是空占位**（`StudioPlanExecutor` 只在出结果时 `node.upsert`）：真跑 H3 的 10 分钟里节点一直显示「上传视频 / 生成视频」，只有助手面板写生成中。应在步骤开始时把节点标成生成中。
+- [ ] **改写模型没配置时助手卡死**：本地没绑 `DAP_VIDEO_PROMPT` 时方案报不出价，助手提议「关掉智能优化」但方案里关不掉，白花对话费。线上已绑，不影响线上；方案应能带 `optimizePrompt:false` 或在报价失败时直接说明。
+
 
 ## Studio 工作台重构与发行（2026-10-16）
 
@@ -9,6 +39,7 @@
 - [x] ~~全仓输入与选择控件重复聚焦框检查~~ **2026-10-17 已生产发布（81778bef）**：检查所有前端应用与共享表单；修复 AiAvatar 各外壳下的 Ant/Radix 内层轮廓、原生字段与画布组合字段焦点归属，74 项组件聚焦回归与真实页面验证见 `docs/form-control-focus-audit.md`。
 - [x] ~~项目、IP 与发行筛选的原生菜单风格割裂~~ **2026-10-17 已生产发布（81778bef）**：八处共用 `StudioSelect`，菜单在字段下方展开；21 项测试、类型检查及桌面/375px 手机浏览器验证见同一检查记录。
 - [ ] **后台模型审计页原生选择框回归**（2026-10-22 发现）：`apps/admin/src/app/ai/audit/page.tsx` 使用原生 `<select>`，使 `apps/web-aiavatar/src/ip/select-field-wiring.test.ts` 的全仓控件守门失败；未修改 main `57be2582` 已复现。需改用共享选择控件并验证后台筛选。本次图片受理未知修复不修改或部署 admin。
+- [x] ~~**web-aiavatar 两条前端测试在 main 上就红**~~ **2026-10-27 修复**：根因是两个测试把 `@ai-star-eco/api-client` 包根整个 mock 掉，而 `studio-errors.tsx` 从包根引入 `publicModelErrorMessage`，测试里一报错整理错误就再抛一次。改为从子路径 `@ai-star-eco/api-client/public-model-error` 引入（新增 package 导出），测试未改动，全量 1348 项通过。见 `docs/releases/director-error-dialog-unlink-validation-20261027.md`「第二轮」。原记录：（2026-10-26 发现，`651bf19f` 干净工作区复现，与导演台图片模型修复无关）：`src/ip/studio-template-source.test.tsx`「an uncertain submit retains its request id for a recovery click」找不到「网络暂不可用」；`src/ip/personal-asset-library.test.tsx`「successful list loading does not clear a folder failure or mislabel a known folder id」找不到 role=alert。本机 Node 25.9，加 `--no-experimental-webstorage` 或 `TZ=UTC` 仍红，不是 localStorage 空壳那一类。`docs/releases/director-text-credit-display-release-20261026.md` 记的原因是这两个文件各自的 `@ai-star-eco/api-client` mock 缺 `publicModelErrorMessage`，补上 mock 即可。
 
 - [x] ~~七项导航、独立项目、场景工坊、IP 并入资产与灵感整理~~ **2026-10-17 已生产发布（81778bef）**：原画布路径保留，剧情带货/爆款复刻引用普通模板，IP完整详情、旧入口参数兼容；验收见 `docs/releases/studio-workspace-refactor-validation.md`。
 - [x] ~~发行复用存量账号与发布记录~~ **2026-10-17 已生产发布（81778bef）**：`StudioDistribution` 读本人账号/批次/任务，接原扫码绑定、验证与解绑；仅精确共享账号域和发布 GET 路由，未进行真实平台扫码发布。
@@ -28,9 +59,54 @@
 - [已定位问题与后续限制](#已定位问题与后续限制)
 - [早期候选计划](#早期候选计划)
 
+## 一次性运维入口待删除
+
+- [ ] **删除 `InternalGrantConversionController`**（`/api/internal/ops/grant-conversion/{preview,run}`，2026-10-26 用户让 Claude 直接在服务器上把客户积分转成 H3 赠款时加的）。只能在服务器本机带 `X-Internal-Secret` 调用，带 nginx 代理头一律 403；转换做完后随下一次 server 发布删掉，连同 `InternalGrantConversionControllerTest`。
+
+## 模型赠款发布前待定（2026-10-25 评审）
+
+评审里的逻辑问题已修（见 `docs/model-billing-design.md`「评审后修正」）。下面是没改、发布前要拍板或处理的：
+
+- [ ] **与 main 的三处冲突**：`specs/openapi.yaml`、`apps/server/README.md`、`apps/server/src/test/java/com/aistareco/aep/ipstudio/IpRunWorkerTest.java`（main 已改成单一 `JusuanImageClient.generate` 入口）。合并前解决。
+- [ ] **V67 会建出用不到的表和列**：`aep_model_prices` 与 `/admin/model-billing/prices` 读写（写入一律 `MODEL_PRICE_USE_ENDPOINT_CONFIG`），`aep_credit_resource_reservations` 与活动的 `resource_*` 列（后台只建积分型活动）。上线后再删要另写迁移，发布前决定是否从 `db/schema/model-scoped-credits.sql` 拿掉。
+- [ ] **V67 校验和按 `db/schema/model-scoped-credits.sql` 的内容计算**：上线后这个文件一个字都不能改，否则 Flyway 启动校验失败。在文件头写明已冻结。
+- [ ] **MySQL 上 V67 把 `aep_ledger_entries.entry_type` 改成 VARCHAR**：整表重写，锁表时间随账本行数增长，发布前查线上行数估窗口。
+- [x] ~~零价接入点怎么处理~~ **2026-10-25 用户拍板**：零价接入点一律报 503 `MODEL_PRICE_NOT_CONFIGURED`，想免费送用户体验只能发模型赠款。出图每张至少按 1 积分冻结、由计费层拒绝零价；视频在规划时就拒绝。企业零价用例改为断言「报错、不建授权、不冻结、不调供应商、不占在途名额」（`EnterpriseStudioBillingIntegrationTest.zeroPriceIsRejectedBeforeAuthorizationHoldOrSupplierCall`、`EnterpriseVideoBillingIntegrationTest.zeroCostVideoIsRejected*`），删掉已不存在的「零价任务受理不明后核对」用例。上线前要确认线上没有零价接入点，有的话先配售价，否则这些模型会直接报错。
+- [x] ~~**main 上 10 项旧测试红着**~~ **2026-10-29 修复**（main `b985992d7` 起的修复分支）：企业视频 / Studio 图片计费用例按现行策略改写——无回执的提交断言失败、退回原企业成员钱包、释放在途名额、不重提，另补一条图片「已出的图照扣照留、剩余退回」的用例；运营补录 / 核实释放接口只对 54e161e97 之前的旧记录开放，用例改为照旧版 worker 留下的样子造旧记录再测（视频直接写路由快照，图片让模拟供应商抛「原任务恢复中」再改成受理未知），并断言新策略下已结束的任务不能再补录或释放。原记录：**main 上 10 项旧测试红着**（判定：与本分支无关，2026-10-25）：`EnterpriseStudioBillingIntegrationTest` 3 项、`EnterpriseVideoBillingIntegrationTest` 7 项仍断言「受理结果不明时保留冻结」，而 `GenerationSubmissionFailure` 已改为「没有有效受理回执即判失败并退款」。在本分支基线 `7b012061` 上同样失败，应在 main 上按现行政策改测试。
+- [x] ~~**main 上另有 4 项视频测试红着**~~ **2026-10-29 审计确认 + 修复**：`MaterialVideoModelClientTest`（38/38）与 `MaterialVideoModelClientWireTest`（28/28）在 main `b985992d7` 上已全绿（`54fdcb768` 一并改正）；`VideoStudioMigrationTest` / `MigrationSyntaxTest` 红是因为 V69 SQL 给 Java 迁移 V67 建的 `aep_model_charges` 加列，而用例只按顺序跑 SQL 文件。迁移本身没错（已执行的不改），用例改走共用的 `SqlMigrations`：在 Java 迁移的版本号位置补跑它无条件执行的建表脚本，新增这类 Java 迁移时在那里登记。原记录：**main 上另有 4 项视频测试红着**（2026-10-29 修图片结果字段时对照 main `e4f886ec` 发现，与该修复无关）：`MaterialVideoModelClientTest.extractFailReason_picks_common_vendor_fields` 等 2 项、`MaterialVideoModelClientWireTest.configuredResponsePathsReadNestedTaskStatusAndOutput` 断言厂商原话（如 `quota exceeded`），实际已换成「生成服务暂时不可用…」通用文案；`VideoStudioMigrationTest.v37TablesWork` 报 H2 语法错误。需按现行错误文案规则和迁移现状核对后改测试或改代码。
+- [ ] **`PublicModelErrorPolicy` 的 `budget` 误伤显存类错误**（2026-10-29 修 CI 时发现，未改）：`ACCOUNT` 里的 `\bbudgets?\b`（Java `PublicModelErrorPolicy` 与 `packages/api-client/src/public-model-error.ts` 同一条）会命中 `visual activation/HBM headroom budget` 这类 GPU 显存上限，用户看到的是「生成服务暂时不可用」而不是「图太大 / 图太多」。看图对话有 `StudioVisionFallback` 自动减图重试，影响有限；要改两端一起改，并补一条显存类原话不被过滤的用例。
+- [x] ~~**`EnterpriseLifecycleScenarioTest.scopedGrantHttpFlow…` 在 CI 上偶发红**~~ **2026-10-29 修复**：CI 报 `SCOPED_CAMPAIGN_IMMUTABLE`，本机总是绿。原因是 Linux 上 `Instant.now()` 带纳秒，存进 `TIMESTAMP(6)` 四舍五入，约一半概率入库的活动截止时间比内存里的晚一点，测试原样回传同一个 `until` 就被判成「缩短有效期」；macOS 只给到微秒。把纳秒尾数强制设成会进位的值能在本机 100% 复现。测试把 `now` 截到毫秒（真实前端回传的是服务端已存的值，不受影响）；同文件另外两处强制「舍」也不红，未改。
+- [ ] **web-drama `board-view.test.tsx` 首条用例在高负载下会超时**（2026-10-29，后端全量与 `pnpm -r test` 同时跑时出现一次，单跑 6/6 通过）：`waitFor` 用默认 1 秒等首屏画出 4 张造型卡。CI 目前没红过；若 CI 上出现，给这条 `waitFor` 放宽 timeout，不要当成偶发重跑。
+- [ ] **小清理**：折扣 `allowGrants` 服务端恒为 true（字段可删）；`ModelBillingConfigService` 注入了没用到的 `MaterialVideoModelClient`。
+- [ ] **celebrity 不处理**（判定：用户 2026-10-25 明确「celebrity 子应用不用管，主要用 Studio」）：素材运营视频弹窗仍按普通余额拦截（`apps/web-celebrity/src/components/material-ops/VideoGenDialog.tsx` `insufficient`），celebrity 看不到赠款余额、流水仍叫「专享额度」。
+
 ## Studio 当前待办
 
-- [ ] **全部内置图片/视频生成流程顺畅与内容质量**（2026-10-30 审查，未实施）：用户明确同城仅为举例，范围为全部 17 图片/21 视频场景及内置模板接续。先完善共用草稿恢复、再做不重复拼词、结果直接继续、模型/素材/稿件一致和 H3 台词格式；再逐项完善全部场景规则与完整验收。**实施顺序与 PR 切分以 [独立复核与整体方案](docs/audits/studio-built-in-creation-flow-plan-2026-10-30.md) 为准**（2026-10-30 晚复核：事实边界已随 21:34 的 server 上线；线上目录未被后台覆盖；场景页草稿仅 5 份；另补视频选项不进草稿、比例 / 时长静默钳制、图片结果到不了下一步等 6 条）；证据见 [全量流程审查](docs/audits/studio-built-in-creation-flow-review-2026-10-30.md) 与 [提示词证据](docs/audits/studio-scene-prompt-review-2026-10-30.md)。未新增付费生成，未部署。
+- [x] ~~4K 同步图片响应与 JSON 字符串上限不一致~~ **2026-10-26 已修复，未发布**：`sync-base64` 响应按原端点 `maxOutputBytes` 换算解析上限，不修改共享 JSON 解析器，实际图片大小与尺寸校验保留；解析失败记录异常类型、响应字符数和位置，诊断在大图 / 截断 JSON 下仍省略 Base64。真实 3840×2160 PNG 的 Base64 超过 2000 万字符，本地 JSON 生成与 multipart 编辑路径均通过。线上 17:09 / 17:17 两笔失败各 55 积分已确认解冻；历史响应与底层解析异常未完整保留，因此不能认定已证明这两笔的具体触发原因，也未恢复或重提历史任务。
+
+- [ ] **Studio Turbopack 预览被 Twick 样式阻断**（2026-10-24 发现）：`apps/web-aiavatar/src/styles/twick-scoped.css:1739` 在普通规则后包含字体 `@import`，`next dev --turbopack` 报 `@import rules must precede all rules`，影响 `/create` 及引用成片编辑器的画布页面。本轮个人 IP 提示词修改未改该样式；需同步核对 `scripts/scope-twick-css.mjs` 的生成规则并独立验证。
+
+- [ ] **全模型错误原因展示发布前验收**（2026-10-25 本地扩大范围，未部署）：文字 / 视觉 / 图片 / 视频 / 配音 / 口型 / 音乐 / 数字人共用 `ProviderErrorMessage`；发布前后检查真实页面、供应商配额提示与追查号，不重复客户付费任务，见 [接入与验证](docs/audits/model-error-propagation-validation-20261025.md)。
+
+### 2026-10-26 · 积分切换到 1 元 = 100 积分
+
+- [x] **后台改充值套餐与文本 Token 价**（2026-10-25 完成，America/Los_Angeles）：99/299/799/2399 元 → 10,000/30,000/80,000/240,000 积分、不赠送；`ai.chat-token-pricing` qwen38 0.59/2.36、qwen3.6 0.27/1.59 积分/千 Token。数值、原值与回读证据见 `docs/releases/credit-ratio-switch-20261026.md`。
+- [ ] **没有成本数据的功能售价重定**：短剧文本、数字资产形象与衍生、带货脚本/素材视频、混剪、分发、旧数字人引擎、视频 720p、`studio.script` 仍是旧积分数字，按新比率折合人民币偏低，部分可能低于成本；需先补成本（飞书成本表）再定价。
+- [ ] **账户页「本月赠送 0」**：`AEP_DAP_MONTHLY_GRANT=0` 后账户页仍显示「本月赠送 0 · 已用 …」（`apps/web-aiavatar/src/proto/screen-more.tsx`），可改为不显示。
+
+### 2026-10-25 · 图片系列与分辨率路由（代码已生产发布）
+
+- [ ] **补齐三个系列的正式配置和真实出图验收**（2026-10-25 进展：GPT Image 2 与 GPT Image 2.5〔flare〕的 1K/2K/4K 已配置上线，售价 30/30/40、35/35/45 旧积分，见 `docs/releases/studio-image-tiers-config-20261025.md`；仍缺 sunburst 报价与配置、4K 方图等其他画幅、各档真实出图尺寸验收，界面名「GPT Image 2 / 2.5」在 main `384fb9bb` 待发版）：代码已支持 GPT Image 2 / Flare / Sunburst 按 1K、2K、4K 路由与冻结报价；生产目前只有 GPT Image 2 的 1K/2K、30 积分/张。需核实并配置其余供应商型号、合法输出规格、场景开放及运营确认售价，再逐系列/档位核对前端选择、报价、供应商原图尺寸和唯一积分结算；禁止把代码发布当作真实出图已验收。证据见 `docs/releases/studio-image-resolution-release-20261025.md`。
+
+- [ ] **全部内置图片/视频生成流程顺畅与内容质量**（2026-10-30 审查；2026-10-31 六批已生产发布，见 `docs/releases/studio-scene-flow-release-20261031.md`，剩下成片付费验收与线上配方模板走查）：用户明确同城仅为举例，范围为全部 17 图片/21 视频场景及内置模板接续。**实施顺序与 PR 切分以 [独立复核与整体方案](docs/audits/studio-built-in-creation-flow-plan-2026-10-30.md) 为准**；证据见 [全量流程审查](docs/audits/studio-built-in-creation-flow-review-2026-10-30.md) 与 [提示词证据](docs/audits/studio-scene-prompt-review-2026-10-30.md)。
+  - [x] ~~PR-1 创作条件存进草稿~~ **2026-10-31 已生产发布 `20261031-studio-scene-flow`**：`doc.sceneImageState` / `sceneVideoState` + 出图条件快照 + 编导选项 + 成功视频再做 + 换场景同名带素材 + 比例 / 张数 / 时长不悄悄换；`scene-draft-state.test.tsx` 11 条（10 条在旧代码上红）。见 `docs/studio-scene-creation.md` §15。
+  - [x] ~~PR-3 编导按有效素材写、换规格后复核、场景稿接上 H3 镜头与台词格式~~ **2026-10-31 已生产发布 `20261031-studio-scene-flow`**：`seenTitles` / `characterSeen` / `visual`，「第N镜（0–2 秒）……旁白说：「……」」，真 Agnes 输出钉成 H3 回归用例。见 `docs/studio-scene-creation.md` §16。
+  - [x] ~~PR-4/5 场景目录 `brief` 与 38 场景内容~~ **2026-10-31 已生产发布 `20261031-studio-scene-flow`**：21 个视频场景 brief 与各自的输入示例 / 拍法 / 常用开头，图片场景补多图分工；还缺 / 【待补】/ 数字核对；后台可编辑。见 §17。
+  - [x] ~~PR-2 结果直接继续（用这张做参考 / 做视频）+ 结果地址过期换签~~ **2026-10-31 已生产发布 `20261031-studio-scene-flow`**：见 `docs/studio-scene-creation.md` §18。
+  - [x] ~~PR-6 助手接续与配方模板验收~~ **2026-10-31 已生产发布 `20261031-studio-scene-flow`**：结果区显示交给助手后的进度；本地 6 个官方模板「做同款」复制检查通过、一个图片步骤用 Agnes 真出图。见 `docs/studio-scene-creation.md` §18 末两条。
+  - [ ] 生产库里运营发布的 3 个配方模板（工厂首播反转、原声视频复刻·换人、末日英雄 IP）本地没有，没走查；要在线上账号上走一遍「做同款 → 填输入 → 生成第一步」。
+  - [ ] 成片层付费验收（团购、品牌故事、数字人口播、换脸各一条，需批预算）；本地 Agnes 视频那几天一直「队列已满」，没出过成片。
+  - [ ] 还没有草稿时（第一次生成 / 上传之前）刷新会丢输入；要不要用浏览器本地暂存，等用户决定。
 
 - [ ] **发布模板时区域颜色丢失**（2026-10-25 发现，圈选分组）：画布分组新增 `metadata.groupTone`（`apps/web-aiavatar/src/canvas-bridge/studio-areas.ts`），但服务端 `IpDemoTemplateService` 剥素材时对 group 节点只白名单了 `groupDescription`（约 121 行），存为模板 / 官方内容后区域回到默认色。名字、说明、成员不受影响；要保留颜色需在同处加 `groupTone`（只接受 `slate|blue|teal|green|amber|rose`）。
 
@@ -38,19 +114,63 @@
 
 统一 Studio 的后续事项。旧画布适配层的历史限制另按原主题保留，不能据此推断当前 Studio 也缺少同一功能。
 
-### 2026-10-23 · AI 导演台（独立功能分支，未发布）
+### 2026-10-25 · 图片按分辨率选模型后测试没跟上（`eab29339`，未发布）
+
+- [x] ~~**`IpRunWorkerTest` 4 条在 main 上红**~~ **已修，2026-10-25**：删掉 `JusuanImageClient.generate` 不带 providerModel 的 10 参数重载，7/8 参数的简便入口委托唯一的 11 参数入口；`IpRunWorkerTest`、`JusuanImageClientTest`、`EnterpriseStudioBillingIntegrationTest` 改到新签名（模拟多一位 providerModel，取 previous / checkpoint 的下标后移一位）。`IpRunWorkerTest` 26/26 通过；企业计费那两条老失败（见下文 070334d0 那条）不变。原记录：（2026-10-25 合并视频文案时发现，在 `eab29339^` 上全绿、`eab29339` 起红）：`nativeAcceptedSecondImageRecovers…`、`acceptedImageCheckpointWriteFailure…`、`jusuanUsesOriginalPrompt…`、`unknownNativeAcceptanceKeepsHold…`。原因：`IpRunWorker` 改调 `JusuanImageClient.generate(…, providerModel, previous, checkpoint)` 新重载，测试仍模拟旧的 10 参数重载，模拟没命中返回 null，被判 `DAP_MODEL_BAD_OUTPUT`。生产路径本身看起来没坏，但同一件事留了两个调法（§8.0.1 ④），建议删掉旧重载或让它委托新重载，再把测试改到新签名；发布 `eab29339` 前要修。
+
+### 2026-10-24 · 方案素材范围跨轮（已生产发布 `20261024-studio-plan-material-scope`；真源 `docs/ip-studio-dialogue-intents.md` 末节）
+
+- [ ] **新开一次制作会对同一条参考视频重新拉片、再次计费**：同一次制作里补素材重新编排已不重跑拉片；但用户结束这次制作、回对话重新确认分析方案时，`StudioPlanExecutionService#create` 新建执行，拉片步骤照样提交新任务。可考虑：同画布、同 `sourceNodeId` 且源文件 key 与拉片设置相同、已成功的 `studio-recreation` 结果直接复用（零费用），复用前核对归属与源文件未变。
+- [ ] **真模型未验证 `materialNodeIds`**：提示词 v27 要求分析方案写下后续素材、「编排制作计划」写全替换边界，尚未用线上同款聚算 Qwen 真调（§8.0.1 ⑦）。跨轮点选的兜底不依赖模型；用户只用文字点名、从没点选的素材仍依赖模型写进 `materialNodeIds`。
+- [ ] **制作计划的替换边界只在提示词里**：线上失败草稿里视频步骤仍写原片主舞的「白西装」。目前靠提示词规则约束，服务端没有检查（例如替换人物的步骤必须绑定设定图）；确认卡仍需用户看过才执行。
+
+### 2026-10-23 · AI 导演台（2026-10-24 生产发布 `20261024-ai-director`）
 
 总方案：[AI 导演台完整方案](docs/ai-director-plan.md)；实测边界见[本地验收](docs/audits/ai-director-local-acceptance-20261022.md)。
 
+- [x] ~~**片段重写确认框挡住付款账户选择框**~~ **2026-10-29 已合入 main，未发布**：片段重写、全部参考图与批量分镜图／视频先关闭范围确认框，再进入付款；取消付款不提交、不报操作失败。真实 antd 生命周期回归及本地 Chrome 固定账户／模拟提交验证覆盖取消、重新打开、所选付款方与单次提交，未调用付费模型。
+
 - [x] ~~**实现导演作品及生成宿主适配**~~ **2026-10-23 完成**：V65 独立作品、原生任务宿主、个人／企业付款接入、采用版本与修订保护。
 - [x] ~~**接通剧本到分镜及后台连跑**~~ **2026-10-23 完成**：剧本／资产／分镜三工作区、一键推进、人工确认、暂停与局部续跑；Agnes 真实剧本、资产图和单镜头首帧已验。
-- [x] ~~**导演台文本模型选择与剧名同步**~~ **2026-10-26 本地完成，未发布**：设置展示各模型 Token 售价，报价/冻结/全部文字任务和一键制作使用同一模型；新剧本采用后更新作品名，失败或冲突保留原名。
+- [x] ~~**剧本 JSON 格式错误导致整单失败且提示不清**~~ **永久修复已合 main；2026-10-25 UTC 已无重启启用 JVM-Sandbox 临时模块**：`ModelJson` 有界组合恢复、`AI_BAD_OUTPUT` 明确错误；模块只处理原解析方法抛出的 JSON 异常，不调模型 / 账本。正常发布与临时热修复边界见 `docs/runbooks/studio-json-jvm-sandbox.md`。
+- [x] **长剧本任务存储容量修复**（2026-10-24）：生产 `ip_run.input_json/output_json` 已在线恢复为 LONGTEXT，无重启；实体映射及幂等 V66 迁移已补齐，待低峰发布。见 `docs/releases/director-json-capacity-hotfix-20261024.md`。
+- [x] **模型 JSON 格式自动恢复与明确失败提示**（2026-10-24）：只修复可确定的语法错误，不重复调用模型；不可恢复或截断时明确提示并释放冻结。代码待低峰发布，见 server README「Studio 模型 JSON 自动恢复」。
+- [x] **导演台剧本文件导入**（2026-10-25，本地未发布）：两个粘贴入口支持文本、Word、PPT、PDF、RTF，全文预览后明确采用，保存继续走修订保护；真实浏览器导入、扫描件失败、保存刷新已验，见 `docs/audits/director-script-file-import-validation-20261025.md`。
+- [x] ~~**AI 拆分集两类 AI_BAD_OUTPUT**~~ **2026-10-25 修复，本地未发布**（分支 `fix/director-split-boundaries`）：线上《食神》（模型最后一集少写一段）与《谁让这个睁眼瞎修仙的》（前 252 段是设定资料）都被「必须从第 0 段首尾相接」的校验判失败。改为模型只给每集起点和正文起点、程序构造区间；剧本里标好「第N集」时程序直接按标题分（免费）；开头资料存为设定资料 `reference`（可编辑、可并入第 1 集，作为参考交给提取和规划）；结果先存 `pendingSplit` 预览确认，全自动一键制作按默认直接采用并说明，拆分失败时作为一集继续；新增撤销拆分（未出图 / 视频前）。两单线上数据未改动。测试：`DirectorPromptsTest`、`DirectorSplitTest`、`director-split.test.tsx`。
+- [x] ~~**导演台拆分新输出格式未用真模型验证**~~ **2026-10-25 本地真调通过**：本地后端（库副本）接聚算 qwen38-27b 各跑一次，回复都是新格式（`finish=stop`，只有 `bodyStart` + `startParagraph`，没写结尾）。① 开头 12 段设定资料、无分集标题：`bodyStart=12`，3 集分在场景切换处；② 4 个「第N集」标题、要求 2 集：`bodyStart=0`，第 2 集从「第3集」标题所在段开始。每次 1 积分。注意聚算 Qwen 端点要声明不支持 response_format（`chat_supports_response_format=false`），否则上游 400「response_format requires json_schema」。
+- [x] ~~**导演台资产：关联已有资产、上传图片、添加资产选集**~~ **2026-10-26 完成，`20261026-director-asset-link` 发布**：按用户流程「资产从剧本提取，每项再关联已有资产或上传图片」，去掉批量「从资产库导入」，新 `asset.link`（类型一致、图直接采用、记 libraryObjectId）；角色也上传即用（废除角色只能生成设定图）；添加 / 编辑资产选出现在哪几集（默认全剧，此前悄悄挂到分镜页当前集）。测试：`DirectorLibraryLinkTest`、`DirectorAssetEditTest`、`director-assets-link.test.tsx`。
+- [x] ~~**导演台文本模型选择与剧名同步**~~ **2026-10-26 完成，`20261026-director-text-model` 发布**：设置可选文本模型（不展示文字积分数字），报价/冻结/全部文字任务和一键制作使用同一模型；新剧本采用后更新作品名，失败或冲突保留原名。
 - [ ] **真实视频与整集导出验收**：Agnes 多次明确队列满拒绝，无真实视频产物；用户已要求停止重试，自动跟进已删除。测试响应模式下已走通播放、采用和导出，不代表真实出片通过。
 - [x] ~~**导演台角色声音上传异常与聚算输入回执绑定**~~ **2026-10-29 本地完成，未发布**：上传改可写事务，真实 MySQL 重现旧错并验证修复；保存角色音色先校验本人样本并上传聚算，V71 回执按模型/凭据/来源隔离及有效期复用，失败保留原资料与重试样本。真实音色效果仍归下一项实测，不标为完成。见 `docs/audits/director-voice-reference-validation-20261029.md`。
 - [ ] **视觉与声音连续性效果验收**：全能参考的宫格、关键动作及跨片段声音仍待实测；首帧路径不支持声音参考。自动视觉验收、有限自动修复和长剧本分块后续处理。
-- [x] ~~**导演台作品删除**~~ **2026-10-28 本地完成，未发布**：作品卡「更多 → 删除作品」+ 确认弹窗；`DirectorService.delete` 行锁内软删除，在途以 `ip_run` 与原生视频任务为准（409 `DIRECTOR_WORK_BUSY`），暂停 / 等待确认的一键制作同事务停止，本人重复删除成功、他人 404；其他已打开页面识别 404 后整页换成已删除状态。测试 `DirectorDeleteTest`、`DirectorDeletePoolTest` 与 `director-works.test.tsx`、`director-settings.test.tsx`。2026-10-28 独立复核两项 P2 已修：持行锁时 REQUIRES_NEW 查询耗尽连接池（改同事务读已提交）；删除通知未按作品 id 隔离（改按 id 通知、路由按 id 重建）。
+- [ ] **导演台分镜脚本补视频提示词要的信息**（2026-10-26 对比实测后定，部分完成）（2026-10-28 复核：显式出镜人 `shot.onScreen` 仍值得做，但要数据、生成、编辑、引用校验、画外音判定和旧数据一起改，不能只让模型多输出一个没人用的字段）：台词上限（秒数 × 4、一镜一人说话）与具体写法（运镜、不写外貌和抽象词、光源声源具体、小动作最多一个）已写进分镜提示词，`shotWarnings` 给台词量提示；提交 H3 前已按官方 skill 改写成英文（`DirectorH3Rewrite`）。还没做的是新字段：每镜出镜人（id）、站位 / 朝向 / 视线、台词语气、片段环境声 —— 现在「画面里有谁」仍按镜头描述里的角色名猜（`DirectorPrompts.castOf`）。改完 `castOf` 改读字段。
+- [ ] **导演台 H3 改写上线验收**（2026-10-26；2026-10-27 已发布 `20261027-director-h3-prompt`，页面只读验收过，整条付费链路未走）：挑一段台词多的片段，在页面上点「生成片段视频」走完「改写 → 出片」，核对发出的英文（展开「发给模型的英文」）、台词逐字、积分流水里改写那一笔按实际用量。另：聚算账号同步请求每秒最多 5 个（2026-10-26 试跑撞到 `account_request_rate_limited`），一键制作同时改写多段时可能被限流失败，需观察。
+- [ ] **导演台出图布光效果实测**（2026-10-28；第一轮已随 `20261028-director-delete` 上线，第二轮误判修正本地未发布）：参考图、分镜图、视频提示词和 H3 改写说明都改了（演员布光、中性白平衡、肤色还原，明确意图优先；视频按分镜图的受光和色调），编剧和分镜规则也改了。没有拿投诉样片和线上实际提示词核对根因，也没有出图出片对比。上线后挑一部脸黑发黄的作品，同一片段旧版和新版分镜图各出一张，再各出一条 H3 视频，比较脸部曝光、肤色、夜景氛围和人物辨识度；再试一格写了逆光剪影的镜头，看分镜图和视频是否保留剪影；动画类风格也看一张。第二轮（一段默认指导，不再按关键词推断）上线后，按四种代表场景各出一张分镜图看画面：普通室内、暖光夜戏、明确剪影、同一镜里人物受光不同（一人在光里一人在暗处）。第一轮上线到第二轮上线之间，风格写了「自然色调」「胶片质感」的作品出的分镜图是关键词误判、不补光的那一版，也顺带看一张。新编剧规则也要真调一次（聚算 Qwen），看爽剧、治愈两类剧本的情绪是否到位、开场是否更抓人、对白是否还像套话。
+- [ ] **导演台集级配乐**（2026-10-28 记，未做）：片段视频现在一律「配乐：无」，整集拼起来不会每段一首曲子；整集要有背景音乐，得有真实的配乐素材或生成、进出时机、对白处压低（ducking）和整集混音。只让模型输出一个情绪标签不等于有配乐，做之前先定素材来源和混音位置（导出时合成）。
+- [ ] **Studio 画布 / 创作助手 H3 智能优化验收**（2026-10-27 已生产发布 `20261027-studio-h3-optimize`，浏览器端到端在本地模拟 H3 上通过，线上整条付费链路待首次真实出片确认）：改写本身已用线上 Qwen 真调 10 次（5 种写法各 2 次，全部可用，见审计 §8）；还没出过片对比原文，创作助手按导演台格式写提示词的遵从度也要看几轮真实对话。
+- [ ] **智能优化的费用明细合并**（2026-10-27，Codex 评审 P2）：先改写再出片的那一行，总费用已含改写，但展开的 `billingBreakdown` 只有视频部分（`IpProjectService.videoBindingDto`），明细合计和总额会差改写那一笔。另：交接事务（企业在途上限 1、中途失败回滚、回滚后取消竞争）只有 mock 事务的单测，缺真实数据库的回归。
+- [ ] **导演台自动分镜偶尔超出视频模型的时长 / 镜头上限**（2026-10-27 本地浏览器验收发现）：真 Qwen 写分镜脚本时出过一个 34 秒、8 镜的片段（H3 限 5–15 秒、最多 4 镜），现有检查把它标成「需修改」拦下了、没有静默放过，但用户得手动拆。可考虑在 `DirectorPrompts.validate` 的 plan 校验里自动按上限拆段，或把超限当格式错误重写一次。2026-10-27 起用户可以在那个片段上点「重写」单独重写，不必整集重来。
+- [x] ~~**导演台分镜页没有单独重写提示词的入口；一键制作 → 分镜脚本点了没反应；本集摘要长了看不全**~~ **2026-10-27 修复，已生产发布 `20261027-director-storyboard-rewrite`（main `e6e5a2ea`）与 `20261027-director-rewrite-credit-copy`（`a0481b1c`），线上只读验收通过，真的重写待用户首次使用后核对**：分镜页加整集「重写分镜脚本」（默认保留片段逐段重写，task `reshoot`）和片段上的「重写」；一键制作在没有可做的步骤时说明原因（409 `DIRECTOR_PIPELINE_NOTHING_TO_DO`），不再建一条「已完成」的空连跑；本集摘要改成随内容长高的多行框。测试：`DirectorReshootTest`、`director-rewrite.test.tsx`、`director-oneclick.test.tsx`；真实页面与真模型验收见 `docs/releases/director-storyboard-rewrite-validation-20261027.md`。
+- [x] ~~**导演台操作失败只在页面横幅、找不到解除资产关联的地方**~~ **2026-10-27 修复，已生产发布 `20261027-studio-error-dialogs`**：导演台用户操作失败统一弹错误弹窗（操作、原因、下一步、错误详情），首页新建画布失败同样改成弹窗；删除被片段用着的资产列出片段并能前往，片段「关联资产」里加「解除关联」（`clip.unlinkAsset`），台词说话人也算引用。测试：`DirectorAssetUnlinkTest`、`director-errors.test.tsx`；验收见 `docs/releases/director-error-dialog-unlink-validation-20261027.md`。
+- [x] ~~**Studio 其他页面的操作失败仍是右上角提示框**~~ **2026-10-27 第二轮完成**：统一错误出口按「用户刚点的操作」分流，主动操作失败弹错误弹窗，后台失败照旧右上角提示；画布 / 项目 / 创作页 / 资产库 / IP 管理 / 手机账号页逐页真实页面验收，见 `docs/releases/director-error-dialog-unlink-validation-20261027.md`「第二轮」。原记录（2026-10-27 排查）：画布、项目、创作页、资产库、IP 管理等经 `reportStudioError` / `StudioErrorNotice` 弹右上角「操作未完成」提示框（带错误详情，10 秒自动消失），不是页面横幅，这次没改。若要统一成可确认的弹窗，按页面逐个把用户主动操作的失败换成 `useStudioFailure`，后台轮询的失败保持提示框。
+- [ ] **导演台重写分镜脚本的出片质量**（2026-10-27 真模型验收看到）：聚算 Qwen 重写后台词逐字保留、片段划分不变，但会出现 5–6 秒的长镜头、一镜 21 字台词（超每秒 4 字）和「压抑感」这类抽象词，`shotWarnings` 只提示不拦。另一次单段重写等了约 290 秒上游无响应（本地经中转），按失败结束、冻结全额退回。可考虑：给重写加「想怎么改」的一句话要求；超台词量时把它当格式错误重写一次。
+- [ ] **V69.1 迁移在 Hibernate 建的本地 H2 开发库上失败**（2026-10-27 本地验收发现，线上 MySQL 不受影响）：`V69_1__video_prompt_binding` 只在 MySQL 上扩 `ai_app_binding` / `ai_app_endpoint_candidate` 的 `purpose` 枚举，旧的本地 H2 库这两列是 ENUM 类型，插 `DAP_VIDEO_PROMPT` 报「Value not permitted」，服务起不来。本次验收在库副本上手工扩了枚举、删掉失败记录后才起来。修法：H2 上同样按 `INFORMATION_SCHEMA.COLUMNS` 判断 ENUM 后 `ALTER COLUMN`；改迁移前先确认线上没有执行记录依赖其校验和（已执行的迁移不能改，只能新加一条补救迁移）。
+- [ ] **导演台台词问题复测**（2026-10-26）：「飞仙之眼」五条台词都完整、落在对的镜头，没复现用户说的「台词不对」。挑台词多、说话人不在画面里的片段，新旧写法各出一条再验。
+
+- [x] ~~**导演台作品删除**~~ **2026-10-28 已生产发布 `20261028-director-delete`**：作品卡「更多 → 删除作品」+ 确认弹窗；`DirectorService.delete` 行锁内软删除，在途以 `ip_run` 与原生视频任务为准（409 `DIRECTOR_WORK_BUSY`），暂停 / 等待确认的一键制作同事务停止，本人重复删除成功、他人 404；其他已打开页面识别 404 后整页换成已删除状态。测试 `DirectorDeleteTest`、`DirectorDeletePoolTest` 与 `director-works.test.tsx`、`director-settings.test.tsx`。2026-10-28 独立复核两项 P2 已修：持行锁时 REQUIRES_NEW 查询耗尽连接池（改同事务读已提交）；删除通知未按作品 id 隔离（改按 id 通知、路由按 id 重建）。
+- [x] ~~**导演台回收站与恢复**~~ **2026-10-29 本地完成，未发布**：`GET /works/trash` + `POST /works/{id}/restore`，恢复原作品、保持停止、恢复前的任务不付费续跑（`restoredAt` / `beforeRestore`），前端 `/director/trash`。测试 `DirectorTrashTest`、`DirectorDeletePoolTest`、`DirectorH3VideoFlowTest` 的恢复用例与 `director-trash / works / deletion-state / brief` 前端用例；H2 与一次性 MySQL 8.0.46 均通过。
+- [ ] **导演台新建作品的数量上限不是并发严格的**（既有行为，2026-10-29 回收站评审时确认）：`DirectorService.create` 先数再插，两个并发新建都可能读到 199 后成功。要严格就得锁同一用户行，而 create 持锁时还会经 `view()` 另开连接（连接池饥饿形态），需先把 view 的任务列表读取改成不另开连接再做。恢复不占新建额度，见 BUSINESS_RULES「AI 导演台回收站与恢复」第 6 条。
+- [x] ~~**导演台已删除页：其它操作迟到的 404**~~ **2026-10-29 本地修复，未发布**：`api/director.ts` 给每部作品记「恢复代次」，作品级请求发出时记下代次、404 带上它；本页恢复成功或响应带回没见过的 `restoredAt` 时代次前进。只有当前代次的 404 算已删除，恢复前发出的旧请求 404 不标已删除、不清草稿，只提示「删除期间发出的操作没有生效」；恢复之后发出的请求真 404 照常标已删除。不比较时钟。测试 `director-gone-epoch.test.ts` 与 `director-deletion-state.test.tsx` 末两条。
 - [ ] **导演台删除未在预发 / 线上同配置 MySQL 上验证**：2026-10-28 已在本机一次性 MySQL 8.0.46（Homebrew，独立数据目录，默认可重复读）上跑通 `DirectorDelete*Test` 11 条，通用查询日志确认同一连接 `SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED` → `… FOR UPDATE` → 标量查 `ip_run` → 更新 → 恢复可重复读。预发库的连接池规模、代理层（如有）和真实并发未测；上线前在预发验一次「提交任务的同时删除」。运行方式见 `DirectorDeleteTest` 类注释（`DIRECTOR_DELETE_TEST_DB_URL`，只能指向一次性库）。
+- [ ] **Seedance 全能参考首次实际出片验收**（2026-10-29 生产配置上架，见 `docs/releases/seedance-director-reference-production-config-20261029.md`）：两条 OneToken Seedance 端点规格补了 `universal_reference_video`（图片 ≤9、音频 ≤3 / 合计 15 秒、参考视频 0），导演台可选；未付费实测。第一次有人用 Seedance 出导演台片段后，查 `material_video_job` 的请求体与供应商响应（参考图 / 声音是否生效、是否拒绝某类参考）、成片时长与 94 / 146 积分/秒结算；不行就按备份回滚该模式。1:1 画幅与 M4A 声音目前会被提交前拦下，需要时再按供应商实测补规格。
 - [ ] **导演台选择控件统一**：`director-workbench.tsx`、`director-storyboard.tsx` 的原生选择框仍待与 Studio 控件统一，不影响本次功能归档提交。
+- [x] **导演台图片模型出不了方图，道具整批失败**（2026-10-26 线上，已生产发布 `20261026-director-image-viewer`，main `faee1ac3`）：作品存了只有 16:9 / 9:16 的 4K 接入点，三个道具在冻结前被拒，报错让用户改道具不读的作品画幅。现在只开放出图规格有 1:1、16:9、9:16 的接入点；存着的旧选择照存、照原价出能出的画面；报错按资产类型说该换模型还是画幅；设置页按 `imageModelState` 说明。测试：`DirectorImageModelTest`、`director-settings.test.tsx`、`director-assets-batch.test.tsx`。生产当时已按用户要求把该作品改回标准接入点，现无作品存 4K。
+- [ ] **导演台开放 4K（系列 + 清晰度）**（2026-10-26 评审定为下一阶段，未做）：作品存「系列 + 标准 / 4K」，按资产类型定比例、接入点与价格，价格按类型下发；自动档不升 4K。待用户决定：4K 作品里出不了 4K 的道具方图是拒绝还是明示改用标准档。竖屏 4K 尚无生产成功样本，4K 方图没有渠道规格。
+- [x] **导演台大图不能缩放和拖动**（2026-10-26 用户反馈，已生产发布 `20261026-director-image-viewer`，main `faee1ac3`）：改用 antd 图片预览，与画布共用，并给 `@rc-component/image` 1.10.0 打了不弹回的补丁；无头 Chrome 桌面与触屏走查 27 项通过。测试：`director-zoomable-image.test.tsx`。
+- [ ] **iOS Safari / 安卓真机的手势未验**（2026-10-26）：双指缩放和单指拖动只用 CDP 合成的多点触摸验证过；上线前用真机各走一次「打开大图→双指放大→拖到边角→捏回→关闭」。
+- [ ] **大图点「缩小」后可能留空边**（2026-10-26，antd 行为）：缩小不做边界弹回，图仍在视野里，下次拖动就收回。如果用户在意，再补「缩小后弹回」。
+- [ ] **一键制作预算估算对缺比例的旧选择多估**（2026-10-26 发现）：`DirectorService.estimate` 按张数 × 单价，作品存着出不了方图的旧选择时，道具也算进去，实际提交会在冻结前被拒。只多估不少估，当前无存量作品受影响；开放 4K 时随按类型定价一起改。
+- [ ] **GPT Image 2 4K 两条受理未知**（2026-10-26 生产只读核对发现，与方图故障无关）：两条 `STUDIO_IMAGE_SUBMISSION_UNKNOWN`、cost=0，按现有规则保留待核对、不占执行名额、不自动重发；本轮未重试。需单独按原任务查供应商回执；来源是画布还是导演台未核实。
 
 ### 2026-10-28 · AI 导演台全能创作助手（本地实现，未发布；真源 `docs/ai-director-assistant.md`）
 
@@ -268,6 +388,7 @@
 
 ## 已定位问题与后续限制
 
+- [ ] **视频规格的模型目录路径与提交路径口径不一致**（2026-10-29 配火山方舟 Seedance 时发现）：`AiModelInvocationService.modelCatalogUri` 用 `URI.resolve`，`/models` 会丢掉基础地址里的 `/api/v3`，后台连接检测报 404；而 `MaterialVideoModelClient.joinUrl` 把提交、查询路径接在基础地址后面。现在方舟两条端点把目录路径写成 `/api/v3/models` 绕过。只影响连接检测与拉取模型目录，不影响出片。改成同一种拼接前要核对已存端点（OneToken 的目录路径是 `/v1/models?include_video=true`，基础地址不带路径）。
 - [ ] **存量 clip DTO/TS 镜像漂移**（2026-10-15 附加检查发现）：`ClipDtos.java` 的 TemplateDto.sourceProjectId/createdBy、JobDto.segments、AvatarDto.demoVideoUrl/demoAudioUrl、VoiceDto.demoAudioUrl 未在 `packages/types/src/clip.ts` 对应接口声明，导致全局 `pnpm check:wire-mirror` 报4组字段不一致。此项与企业开发分开处理；新增 enterprise 的15组镜像检查已通过。
 - [ ] **存量 OpenAPI 重复键**（2026-10-15 严格语法检查发现）：`AsyncJobStarted` schema 与 `/me/wallet/withdraw` path 在原 HEAD 中均重复声明；普通解析和现有API检查通过，但重复键检查失败。与本批企业实现分开整理，新增企业契约无重复键。
 - [ ] **素材视频客户端不带应用码的重载默认按 `celebrity` 解析端点**（2026-10-18 修 PR #131 的 CI 时发现）：`MaterialVideoModelClient` 的 `effectiveDurationBounds` / `resolveCreditCostOverride` / `validateRequest` / `firstFrameNeedsStorageKey` / `resumeExistingTask` / `pickEndpoint` / `requireEndpoint` 少传 appCode 时一律按 `celebrity` 的开放范围找端点。短剧出片（`DramaRenderService` 时长校验与模型下拉）、短剧画布（`DramaCanvasRunService` 片段时长上限）、Studio 模型下拉（`IpStudioController.capabilityWithDuration`）已改为显式传应用码；`MaterialVideoWorker:192` 结算时的 `resolveCreditCostOverride(endpointId, durationSec)` 仍按 `celebrity`，只对 Studio / 短剧开放的端点取不到候选价，会退回按冻结价结算。建议删掉不带 appCode 的重载（AGENTS.md §8.0.1 ④），让编译器把剩余调用方都找出来。
@@ -964,7 +1085,8 @@
 
 ### 2026-07-27 · AiAvatar 数字资产平台扩展（v0.104）新发现待办 / 本地开发环境（不是代码缺陷，但会让新同事误判）
 
-- [ ] **全新 H2 库启动的 schema 初始化顺序**（2026-10-10 核实）：`db/migration/V48__endpoint_generation_queue.java` 在 Hibernate 首次建模前访问 `ai_model_providers`，全新库会因表不存在拒启；隔离身份链路验收用显式关闭 Flyway 的临时 H2/create-drop，已有产品库和生产本次不改变迁移。另有 `DramaCharacter.cast` 在 H2 建表时命中保留字。需独立补首次建库验收和兼容处理，不修改已经执行的迁移。**2026-10-10 测试补充**：test-only ContextCustomizer 已在 Flyway 前设置 H2 的 MySQL 模式并建立旧表骨架，真实迁移继续执行；不进入生产 JAR。正常 dev 首次启动及 `cast` 保留字兼容仍待处理。
+- [ ] **全新 H2 库启动的 schema 初始化顺序**（2026-10-10 核实）：`db/migration/V48__endpoint_generation_queue.java` 在 Hibernate 首次建模前访问 `ai_model_providers`，全新库会因表不存在拒启；隔离身份链路验收用显式关闭 Flyway 的临时 H2/create-drop，已有产品库和生产本次不改变迁移。另有 `DramaCharacter.cast` 在 H2 建表时命中保留字。需独立补首次建库验收和兼容处理，不修改已经执行的迁移。**2026-10-10 测试补充**：test-only ContextCustomizer 已在 Flyway 前设置 H2 的 MySQL 模式并建立旧表骨架，真实迁移继续执行；不进入生产 JAR。正常 dev 首次启动及 `cast` 保留字兼容仍待处理。**2026-10-27 复核**：只给 V48 加「表不存在就跳过」不够，紧接着 V49 `ALTER TABLE ai_model_providers` 照样失败；V49–V69.1 之间还有二十个左右 Java 迁移默认表已存在。逐个打补丁不是办法，建议做法：空库时先让 Hibernate 建表，再把 Flyway baseline 到当前最新版本（只影响空库，已有库与生产不变）。本次未改 V48。
+- [x] ~~**旧的本地 H2 文件库启动在 V69.1 失败**~~ **2026-10-27 修复（本地，未发布）**：长期使用的 `./data/aistareco` 里 `ai_app_binding.purpose` 等列是当年 Hibernate 建的 ENUM，V69.1 只在 MySQL 上扩枚举，H2 上插 `DAP_VIDEO_PROMPT` 报 `Value not permitted`，服务起不来。V69.1 的 H2 分支先把这两列改成 VARCHAR(64) 再插（Java 迁移没有校验和，已执行过的库不受影响；生产 MySQL 路径不变）。回归：`VideoPromptBindingMigrationTest#widensAnOldH2EnumColumnBeforeInsertingTheNewPurpose`；10-15 的本地库副本实测启动通过。
 
 - [ ] **本机 `apps/server/.env` 里的 `AEP_CDN_DRIVER=oss` 会让 30 个 `@SpringBootTest` 上下文加载失败**
   （`java.lang.IllegalStateException: aep.cdn.driver=oss 但未配置 aep.cdn.oss.endpoint`）。
@@ -1135,7 +1257,7 @@
 
 ### v0.6 候选（2026-05-09 收集） / 持久化与基础设施
 
-- [ ] **微信支付真实商户配置与业务验收**（历史候选，当前配置需复核）：v0.93/v0.94 已接支付驱动、网关、幂等回调和对账轮询，微信 V3 与支付宝/人工核准并存，渠道及凭据由 admin 后台管理。原“只能手动核准”的描述过时；后续先核对真实渠道启用状态与商户配置，再验收支付、回调和对账，不能把已有支付驱动重复当成待开发。
+- [x] ~~**微信支付真实商户配置与业务验收**~~ **2026-10-30 线上验收**：启用微信扫码，真实付款 ¥99 查单入账、后台退款回收积分、商户平台原路退款、回调验签解密与已退款单的重复通知均通过，见 `docs/runbooks/studio-wechat-ai-pilot.md`「线上验收」。仍待观察：回调先于查单直接入账、微信侧超时关单、军师小程序在设置 APIv3 密钥后的回调。原记录：（2026-10-30 实查）：用户选择 ai-pilot 商户。Native 接口返回 `403 NO_AUTH`（未开通产品），平台证书接口 `404 RESOURCE_NOT_EXISTS`，现有军师配置未找到微信支付公钥/ID。需商户后台开通 Native 并补公钥资料。Studio 二维码收银台、公钥模式、金额/商户校验与微信关单保护已于 2026-10-30 生产发布（`20261030-studio-wechat-pay`），线上只有支付宝渠道，微信待商户开通并配置后启用，未真实付款验收。字段映射和验收步骤见 `docs/runbooks/studio-wechat-ai-pilot.md`；H5/JSAPI、自动退款与支付宝真实验收仍独立待办。
 
 ### v0.6 候选（2026-05-09 收集） / LLM provider 拓展
 
@@ -1445,7 +1567,7 @@
 
 ### 2026-10-23 · 聚算个人资源配额阻断视频/配音
 
-- [ ] **供应商账号 `personal_asset_quota_exceeded`**：聚算 HTTP 409 明确拒绝 MiniMax H3 视频与 Qwen3 TTS 配音。已查 5 笔视频、4 笔配音均释放全部冻结、无 SPEND，视频无供应商任务 ID。**2026-10-23 用户确认已清理聚算配额**；本轮未发付费请求复验，尚待真实新任务确认恢复。未删除供应商资产、未购买扩容、未自动重提。用户侧不应被引导清理本平台回收站。证据见 `docs/audits/studio-upstream-quota-2026-10.md`。
+- [ ] **供应商账号 `personal_asset_quota_exceeded`**：聚算 HTTP 409 明确拒绝 MiniMax H3 视频与 Qwen3 TTS 配音。已查 5 笔视频、4 笔配音均释放全部冻结、无 SPEND，视频无供应商任务 ID。**2026-10-23 用户确认已清理聚算配额**；本轮未发付费请求复验，尚待真实新任务确认恢复。未删除供应商资产、未购买扩容、未自动重提。用户侧不应被引导清理本平台回收站（**2026-10-30 已改，未发布**：`PublicModelErrorPolicy` 把厂商「资源空间 / 清理资源 / 回收站 / 扩容」类原话换成「生成服务的存储空间满了…删作品或清空回收站都没有用…请联系客服」，视频 / 配音 / 口型 / 出图与库里已存的旧报错读出时都生效）。证据见 `docs/audits/studio-upstream-quota-2026-10.md`。
 
 
 ### 2026-10-23 · Studio 当日下午到晚间行为复盘后的修复

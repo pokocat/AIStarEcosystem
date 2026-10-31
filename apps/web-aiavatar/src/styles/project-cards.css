@@ -13,15 +13,27 @@
 .project-content-document p { margin: 0; color: var(--ip-ink); font-size: 14px; line-height: 1.8; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .project-content-steps { display: flex; flex-wrap: wrap; gap: 6px; max-height: 90px; overflow: hidden; }
 .project-content-steps span { border: 1px solid var(--ip-line); padding: 5px 8px; border-radius: 5px; font-size: 12px; max-width: 100%; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+.project-content-document>svg { color: var(--ip-muted); flex-shrink: 0; }
+.project-content-placeholder.is-plan { gap: 10px; }
+.project-content-placeholder.is-plan strong { font-size: 14px; }
+.project-content-step-list { margin: 0; max-width: 100%; color: var(--ip-muted); font-size: 12.5px; line-height: 1.7; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.project-content-document { text-align: left; }
+/* 卡片封面只有 166px 高：正文从顶部排、最多三行，第四行会被底边切掉一半。 */
+.studio-projects-page .project-content-document { justify-content: flex-start; padding: 18px 20px; gap: 10px; }
+.studio-projects-page .project-content-document p { -webkit-line-clamp: 3; }
 .studio-projects-page .project-card-copy { min-width: 0; padding: 14px 16px 8px; }
 .studio-projects-page .studio-project-open h3 { padding: 0; margin: 0 0 6px; min-height: 26px; }
 .project-card-summary { color: var(--ip-muted); font-size: 12px; line-height: 1.6; margin: 0; overflow-wrap: anywhere; }
 .studio-projects-page .studio-project-info { padding: 4px 16px 12px; }
 .studio-projects-page .studio-project-info>div { flex-wrap: wrap; gap: 6px 10px; }
 .studio-projects-page .studio-project-info time { font-size: 11px; color: var(--ip-muted); }
-.project-card-actions { display: flex; gap: 16px; padding: 0 16px 14px; }
-.project-card-actions button { display: inline-flex; align-items: center; gap: 5px; background: none; border: 0; padding: 4px 0; color: var(--ip-muted); font-size: 12px; cursor: pointer; min-height: 32px; }
-.project-card-actions button:hover { color: var(--ip-ink); text-decoration: underline; text-underline-offset: 4px; }
+/* 场景草稿的「回到 AI 视频继续」是主操作，单独一行；查看流程、设置封面是次操作，另起一行且不断行（2026-10-30 线上复核：三个挤一行把次操作挤断了）。 */
+.project-card-actions { display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 0 16px 14px; }
+.project-card-secondary { display: flex; flex-wrap: wrap; gap: 0 16px; }
+.project-card-actions :is(button, a) { display: inline-flex; align-items: center; gap: 5px; background: none; border: 0; padding: 4px 0; color: var(--ip-muted); font-size: 12px; cursor: pointer; min-height: 32px; white-space: nowrap; }
+.project-card-actions a.project-card-continue { justify-content: center; min-height: 36px; padding: 0 12px; border-radius: 8px; background: var(--ip-ink); color: var(--ip-paper); font-weight: 600; text-decoration: none; }
+.project-card-actions a.project-card-continue:hover { color: var(--ip-paper); text-decoration: none; opacity: .9; }
+.project-card-secondary :is(button, a):hover { color: var(--ip-ink); text-decoration: underline; text-underline-offset: 4px; }
 .studio-projects-page .studio-project-menu>div button { color: var(--ip-ink); }
 .studio-projects-page .studio-project-menu>div .project-delete-action { color: var(--ip-error); }
 .project-preview-name { color: var(--ip-ink); font-size: 16px; overflow-wrap: anywhere; }
@@ -35,7 +47,7 @@
 .project-cover-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 20px; }
 .project-cover-footer span { color: var(--ip-muted); font-size: 12px; }
 .project-preview-dialog button:disabled { opacity: .55; cursor: wait; }
-.project-preview-dialog :is(button,a):focus-visible,.project-card-actions button:focus-visible { outline: 2px solid var(--ip-ink); outline-offset: 3px; }
+.project-preview-dialog :is(button,a):focus-visible,.project-card-actions :is(button, a):focus-visible { outline: 2px solid var(--ip-ink); outline-offset: 3px; }
 .studio-projects-page .studio-project-list .studio-project-card { flex-wrap: wrap; }
 .studio-projects-page .studio-project-list .studio-gallery-preview { width: 152px; height: 112px; }
 .studio-projects-page .studio-project-list .studio-gallery-preview div { height: auto !important; }
@@ -53,8 +65,9 @@ html[data-layout="mobile"] .studio-projects-page .project-content-document p { f
 html[data-layout="mobile"] .studio-projects-page .project-content-placeholder { padding: 10px; gap: 7px; }
 html[data-layout="mobile"] .studio-projects-page .project-content-placeholder strong { font-size: 13px; }
 html[data-layout="mobile"] .studio-projects-page .project-content-placeholder span { font-size: 11px; }
-html[data-layout="mobile"] .studio-projects-page .project-card-actions { padding: 0 10px 8px; gap: 9px; flex-wrap: wrap; }
-html[data-layout="mobile"] .studio-projects-page .project-card-actions button { font-size: 11px; min-height: 38px; }
+html[data-layout="mobile"] .studio-projects-page .project-card-actions { padding: 0 10px 8px; gap: 2px; }
+html[data-layout="mobile"] .studio-projects-page .project-card-secondary { gap: 0 12px; }
+html[data-layout="mobile"] .studio-projects-page .project-card-actions :is(button, a) { font-size: 11px; min-height: 38px; }
 html[data-layout="mobile"] .studio-projects-page .studio-project-list .studio-project-open { flex-basis: 100%; }
 html[data-layout="mobile"] .studio-projects-page .studio-project-list .studio-gallery-preview { width: 110px; height: 92px; }
 html[data-layout="mobile"] .project-cover-choices { grid-template-columns: repeat(2,minmax(0,1fr)); }

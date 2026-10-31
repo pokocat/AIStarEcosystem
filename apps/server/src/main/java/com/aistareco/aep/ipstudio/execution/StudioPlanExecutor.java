@@ -8,6 +8,7 @@ import com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.RunRequest;
 import com.aistareco.aep.ipstudio.repository.IpRunRepository;
 import com.aistareco.aep.ipstudio.service.IpProjectService;
 import com.aistareco.aep.ipstudio.service.IpRunService;
+import com.aistareco.aep.ipstudio.service.StudioPlanValidator;
 import com.aistareco.aep.ipstudio.service.StudioWorkflowService;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -20,6 +21,8 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -43,7 +46,7 @@ public class StudioPlanExecutor {
     static final Duration WINDOW=Duration.ofMinutes(90);
     static final Duration CHILD_GRACE=Duration.ofMinutes(15);
     private static final int MAX_ROUNDS=40;
-    private static final List<String> TRACKED=List.of(IpPlanExecution.RUNNING,IpPlanExecution.PAUSED,IpPlanExecution.NEEDS_USER,IpPlanExecution.PARTIAL,IpPlanExecution.CANCELED);
+    static final List<String> TRACKED=List.of(IpPlanExecution.RUNNING,IpPlanExecution.PAUSED,IpPlanExecution.NEEDS_USER,IpPlanExecution.PARTIAL,IpPlanExecution.CANCELED);
 
     private final IpPlanExecutionRepository executions;
     private final IpRunRepository runRepository;
@@ -174,20 +177,24 @@ public class StudioPlanExecutor {
      * D03: steering bound to this execution that nothing has handled yet. A running execution stops before its next
      * submission (needs_user: 「收到新指令，等待重新确认」; accepted tasks keep their snapshot), and the dialogue opens the
      * turn that reads the message, so a change request is answered with a revised plan / new approval instead of the
-     * old steps continuing. Idempotent: each steering row is handled once.
+     * old steps continuing. A message that only asks ({@link StudioSteeringQuestions}) is answered without stopping.
+     * Idempotent: each steering row is handled once.
      */
     private void steer(IpPlanExecution e,ObjectNode state,List<Runnable> after) {
         var source=steering==null?null:steering.getIfAvailable();
         if(source==null||e.getThreadId()==null||!IpPlanExecution.active(e.getStatus()))return;
-        String latest=null;
+        String latest=null,change=null;
         for(var note:source.notes(e.getThreadId(),e.getId())) {
             if("rejected".equals(note.status())||PlanState.steeringSeen(state,note.id()))continue;
             PlanState.markSteeringSeen(state,note.id());
             latest=note.text();
+            if(!StudioSteeringQuestions.onlyAsks(note.text()))change=note.text();
         }
         if(latest==null)return;
-        if(IpPlanExecution.RUNNING.equals(e.getStatus()))
-            needsUser(e,state,"收到新指令，等待重新确认：「"+excerpt(latest,60)+"」。已经提交的任务会照原样完成，后面的步骤先不提交。");
+        // 2026-10-30: 「做到哪了？」 only asks; it is answered while the plan keeps going instead of stopping it.
+        if(change!=null&&IpPlanExecution.RUNNING.equals(e.getStatus()))
+            needsUser(e,state,"收到新指令，等待重新确认：「"+excerpt(change,60)+"」。已经提交的任务会照原样完成，后面的步骤先不提交。");
+        else if(change==null)log.info("[plan-exec] steering only asks, execution keeps going execution={}",e.getId());
         String thread=e.getThreadId();
         after.add(()->source.openTurn(thread));
     }
@@ -252,6 +259,11 @@ public class StudioPlanExecutor {
                     if(!"failed".equals(before)&&!"needs_user".equals(before)&&!"pending".equals(before)) {
                         step.put("status","failed").put("reason",latest.errorMessage()==null?"这一步没有完成":latest.errorMessage());
                         if(latest.errorCode()!=null)step.put("errorCode",latest.errorCode());
+                        if(StudioPlanValidator.MATERIAL_OUT_OF_SCOPE.equals(latest.errorCode())&&latest.output()!=null) {
+                            JsonNode doc=projects.readDoc(projects.required(e.getOwnerUserId(),e.getProjectId()));
+                            ArrayNode materials=StudioPlanMaterials.describe(doc,latest.output().path("outOfScopeNodeIds"));
+                            if(!materials.isEmpty()){step.set("materials",materials);step.put("reason",StudioPlanMaterials.reason(materials));}
+                        }
                     }
                 }
                 default -> {}
@@ -309,6 +321,10 @@ public class StudioPlanExecutor {
         String stage=e.getStage();
         for(JsonNode step:PlanState.stageSteps(state,stage)) {
             if("failed".equals(step.path("status").asText())) {
+                // Out of scope is deterministic: say what to do with the named objects, not 「重试」 (production 2026-10-23).
+                if(step.path("materials").isArray()&&!step.path("materials").isEmpty())
+                    return needsUser(e,state,"「"+step.path("title").asText()+"」停下了："+step.path("reason").asText()
+                            +(StudioPlanMaterials.anyOnCanvas(step.path("materials"))?"。可以把它加入这次制作重新编排，或者不用它重新编排。":"。可以不用它重新编排，或结束本次制作。"));
                 return needsUser(e,state,"「"+step.path("title").asText()+"」没有完成："+step.path("reason").asText("原因未知")+"。可以继续重试这一步，或结束本次制作。");
             }
             if(PlanState.unresolvedCheck(state,step)) {
@@ -422,9 +438,16 @@ public class StudioPlanExecutor {
         } catch(BusinessException error) {
             rejected=error;
         } catch(RuntimeException unknown) {
-            // Outcome unknown: keep the persisted request and its budget occupation; the next wake looks it up first.
-            log.warn("[plan-exec] submit outcome unknown execution={} step={} request={}",id,submission.stepId(),submission.clientRequestId(),unknown);
-            return false;
+            if(unknown instanceof ResponseStatusException refusal && refusal.getStatusCode().value()==402) {
+                // CreditService rejects before creating a native job. It is not an uncertain accepted submission.
+                rejected=new BusinessException(HttpStatus.PAYMENT_REQUIRED,StudioPaymentMessage.CODE,
+                        StudioPaymentMessage.message(refusal.getReason()));
+                rejected.initCause(unknown);
+            } else {
+                // Outcome unknown: keep the persisted request and its budget occupation; the next wake looks it up first.
+                log.warn("[plan-exec] submit outcome unknown execution={} step={} request={}",id,submission.stepId(),submission.clientRequestId(),unknown);
+                return false;
+            }
         }
         final String accepted=runId;final BusinessException failure=rejected;
         List<Event> pending=new ArrayList<>();
@@ -442,7 +465,10 @@ public class StudioPlanExecutor {
                 e.setStatus(IpPlanExecution.NEEDS_USER);
                 state.put("needsUserReason","「"+step.path("title").asText()+"」没有提交："+failure.getMessage());
             }
-            save(e,state,PlanState.parse(mapper,e.getBudgetJson()));
+            ObjectNode budget=PlanState.parse(mapper,e.getBudgetJson());
+            // A rejected request has no hold. Recompute immediately, retaining every other accepted task's occupation.
+            if(failure!=null)refresh(e,state,budget,pending);
+            save(e,state,budget);
             return accepted!=null;
         });
         publish(id,pending);
@@ -500,6 +526,16 @@ public class StudioPlanExecutor {
             ObjectNode withTarget=definition.deepCopy();
             withTarget.put("prompt",StudioPlanSteps.checkTarget(plan,approach,target==null?null:target.path("definition"),definition.path("prompt").asText("")));
             compiled=withTarget;
+        }
+        // 「不用它，重新编排」 after a scope refusal: the planner is told which objects to leave out, so the retry is not the
+        // same request that failed (StudioPlanExecutionService#control, resume).
+        if(definition.path("settings").path("purpose").asText("").equals("plan-compile")&&step.path("excludedMaterials").isArray()&&!step.path("excludedMaterials").isEmpty()) {
+            List<String> names=new ArrayList<>();
+            for(JsonNode m:step.path("excludedMaterials"))names.add(m.path("title").asText("").isBlank()?"（未命名对象 "+m.path("nodeId").asText()+"）":"「"+m.path("title").asText()+"」（"+m.path("nodeId").asText()+"）");
+            ObjectNode withExclusion=compiled.deepCopy();
+            withExclusion.put("prompt",compiled.path("prompt").asText("")+"\n\n上一版计划用到了不在素材清单里的 "+String.join("、",names)
+                    +"，用户选择不用它：这次只用素材清单里的素材和本次制作的产物，不要再引用它。");
+            compiled=withExclusion;
         }
         List<String> canvas=PlanState.canvasContext(state);
         BillingSelection billing=billing(e);

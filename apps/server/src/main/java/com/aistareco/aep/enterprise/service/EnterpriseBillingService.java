@@ -32,6 +32,7 @@ public class EnterpriseBillingService {
     private final EntityManager em;
     private final boolean enabled;
     @Value("${aep.enterprise.allowed-ids:}") private String allowedIds="";
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.billing.service.ModelChargeService modelCharges;
     public EnterpriseBillingService(EnterpriseRepository enterprises,EnterprisePolicyRepository policies,
             EnterpriseBillingAuthorizationRepository authorizations,EnterpriseAccessService access,WalletRepository wallets,
             CreditHoldRepository holds,CreditService credits,ObjectMapper mapper,EntityManager em,
@@ -49,13 +50,16 @@ public class EnterpriseBillingService {
     }
     @Transactional
     public BillingAccount reserve(String actor,BillingSelection selection,String referenceType,String referenceId,
-            String endpointId,long amount,String description) {
+            String endpointId,long amount,String description,com.aistareco.aep.billing.service.ModelChargeContext context) {
+        Objects.requireNonNull(context,"Billing context is required");
+        if(context.target()!=null && !Objects.equals(endpointId,context.target().endpointId()))
+            throw conflict("MODEL_BILLING_TARGET_CHANGED","付款授权的模型与计费用途不一致");
         var payer=normalize(selection);
         if(amount<0||amount>9_007_199_254_740_991L)throw BusinessException.badRequest("BILLING_AMOUNT_INVALID","积分金额无效");
         var existing=authorizations.findByReferenceTypeAndReferenceId(referenceType,referenceId);
         if("personal".equals(payer.mode())) {
             if(existing.isPresent())throw conflict("BILLING_SELECTION_CONFLICT","此任务已固定使用企业积分，不能切换付款账户");
-            if(amount>0)credits.hold(actor,amount,referenceType,referenceId,description);
+            if(amount>0)credits.hold(actor,amount,referenceType,referenceId,description, context);
             return new BillingAccount(credits.getOrCreateWallet(actor).getId(),null,null,null);
         }
         if(!enabled)throw denied("ENTERPRISE_BILLING_DISABLED","企业积分付款尚未开放");
@@ -71,6 +75,8 @@ public class EnterpriseBillingService {
                     ||!member.getId().equals(authorization.getMembershipId())||amount!=authorization.getAmount()
                     ||!Objects.equals(endpointId,authorization.getEndpointId()))
                 throw conflict("BILLING_SELECTION_CONFLICT","任务付款账户、模型或价格已固定，不能更改");
+            if(amount>0)credits.holdWallet(authorization.getWalletId(),amount,referenceType,referenceId,description,
+                    actor,member.getId(),authorization.getId(),context);
             return account(authorization);
         }
         var policy=currentPolicy(enterprise.getId());
@@ -85,7 +91,7 @@ public class EnterpriseBillingService {
         authorization.setWalletId(wallet.getId());authorization.setReferenceType(referenceType);authorization.setReferenceId(referenceId);
         authorization.setEndpointId(endpointId);authorization.setAmount(amount);authorization.setStatus("reserved");
         authorization.setCreatedAt(Instant.now());authorization.setUpdatedAt(authorization.getCreatedAt());authorizations.saveAndFlush(authorization);
-        if(amount>0)credits.holdWallet(wallet.getId(),amount,referenceType,referenceId,description,actor,member.getId(),authorization.getId());
+        if(amount>0)credits.holdWallet(wallet.getId(),amount,referenceType,referenceId,description,actor,member.getId(),authorization.getId(), context);
         return account(authorization);
     }
     /**
@@ -97,10 +103,13 @@ public class EnterpriseBillingService {
      * Idempotent on {@code referenceId}.
      */
     @Transactional
-    public BillingAccount reserveExtension(String referenceType,String parentReferenceId,String referenceId,long amount,String description) {
+    public BillingAccount reserveExtension(String referenceType,String parentReferenceId,String referenceId,long amount,String description,com.aistareco.aep.billing.service.ModelChargeContext context) {
         if(amount<=0||amount>9_007_199_254_740_991L)throw BusinessException.badRequest("BILLING_AMOUNT_INVALID","积分金额无效");
         var snapshot=authorizations.findByReferenceTypeAndReferenceId(referenceType,parentReferenceId).orElse(null);
         if(snapshot==null)return null;
+        Objects.requireNonNull(context,"Billing context is required");
+        if(context.target()!=null && !Objects.equals(snapshot.getEndpointId(),context.target().endpointId()))
+            throw conflict("MODEL_BILLING_TARGET_CHANGED","追加冻结不能切换原任务模型");
         lockEnterprise(snapshot.getEnterpriseId());
         var parent=authorizations.lockByReference(referenceType,parentReferenceId).orElseThrow();em.refresh(parent,LockModeType.PESSIMISTIC_WRITE);
         if(parent.getTerminalAt()!=null||parent.getRevokedAt()!=null)throw denied("ENTERPRISE_BILLING_REVOKED","企业积分付款已停止，这一轮先停在这里");
@@ -110,14 +119,23 @@ public class EnterpriseBillingService {
         if(!member.getId().equals(parent.getMembershipId()))throw denied("ENTERPRISE_BILLING_REVOKED","企业成员关系已结束，不能继续使用企业积分");
         requireAllowed(currentPolicy(parent.getEnterpriseId()),parent.getEndpointId(),amount);
         var prior=authorizations.lockByReference(referenceType,referenceId);
-        if(prior.isPresent())return account(prior.get());
+        if(prior.isPresent()) {
+            var previous=prior.get();em.refresh(previous,LockModeType.PESSIMISTIC_WRITE);
+            if(!Objects.equals(previous.getWalletId(),parent.getWalletId()) || !Objects.equals(previous.getMembershipId(),parent.getMembershipId())
+                    || !Objects.equals(previous.getEndpointId(),parent.getEndpointId()) || previous.getAmount()!=amount)
+                throw conflict("BILLING_SELECTION_CONFLICT","追加冻结的账户、模型或金额不一致");
+            if(context.target()!=null&&"credit".equals(context.target().unit()))credits.holdExtension(referenceType,parentReferenceId,referenceId,amount,description,previous.getId());
+            else credits.holdWallet(parent.getWalletId(),amount,referenceType,referenceId,description,parent.getActorUserId(),parent.getMembershipId(),previous.getId(),context);
+            return account(previous);
+        }
         var authorization=new EnterpriseBillingAuthorization();authorization.setId(UUID.randomUUID().toString());
         authorization.setEnterpriseId(parent.getEnterpriseId());authorization.setActorUserId(parent.getActorUserId());authorization.setMembershipId(parent.getMembershipId());
         authorization.setWalletId(parent.getWalletId());authorization.setReferenceType(referenceType);authorization.setReferenceId(referenceId);
         authorization.setEndpointId(parent.getEndpointId());authorization.setAmount(amount);authorization.setStatus("dispatching");
         authorization.setCreatedAt(Instant.now());authorization.setUpdatedAt(authorization.getCreatedAt());authorization.setDispatchedAt(authorization.getCreatedAt());
         authorizations.saveAndFlush(authorization);
-        credits.holdWallet(parent.getWalletId(),amount,referenceType,referenceId,description,parent.getActorUserId(),parent.getMembershipId(),authorization.getId());
+        if(context.target()!=null&&"credit".equals(context.target().unit()))credits.holdExtension(referenceType,parentReferenceId,referenceId,amount,description,authorization.getId());
+        else credits.holdWallet(parent.getWalletId(),amount,referenceType,referenceId,description,parent.getActorUserId(),parent.getMembershipId(),authorization.getId(), context);
         return account(authorization);
     }
     private static boolean isExtension(EnterpriseBillingAuthorization a){return a.getReferenceId()!=null&&a.getReferenceId().indexOf('#')>0;}
@@ -129,6 +147,48 @@ public class EnterpriseBillingService {
         var payer=normalize(selection);
         if("personal".equals(payer.mode()))return credits.getOrCreateWallet(actor).getTotalBalance();
         return wallets.findByAccountKey("enterprise_member:"+payer.enterpriseId()+":"+actor).map(Wallet::getTotalBalance).orElse(0L);
+    }
+    public long availableModelCredits(String actor,BillingSelection selection,com.aistareco.aep.billing.service.ModelBillingTarget target) {
+        var payer=normalize(selection);
+        var wallet="personal".equals(payer.mode())?credits.getOrCreateWallet(actor):wallets.findByAccountKey("enterprise_member:"+payer.enterpriseId()+":"+actor).orElse(null);
+        return wallet==null?0:credits.availableModelCredits(wallet,target);
+    }
+    /** Advisory quote: no wallet creation, authorization, grant issuance or SELECT FOR UPDATE in a read-only call. */
+    @Transactional(readOnly=true)
+    public com.aistareco.aep.billing.service.ModelChargeService.Quote quote(String actor,BillingSelection selection,
+            com.aistareco.aep.billing.service.ModelChargeContext charge) {
+        return modelCharges.quote(quoteWallet(actor,selection,charge,1),charge);
+    }
+    @Transactional(readOnly=true)
+    public com.aistareco.aep.billing.service.ModelChargeService.Quote quoteRepeated(String actor,BillingSelection selection,
+            com.aistareco.aep.billing.service.ModelChargeContext charge,int count) {
+        return modelCharges.quoteRepeated(quoteWallet(actor,selection,charge,count),charge,count);
+    }
+    @Transactional(readOnly=true)
+    public com.aistareco.aep.billing.service.ModelBillingApproval approveRepeated(String actor,BillingSelection selection,
+            com.aistareco.aep.billing.service.ModelChargeContext charge,int count,com.aistareco.aep.billing.service.ModelBillingApproval approval) {
+        return modelCharges.approveRepeated(quoteWallet(actor,selection,charge,count),charge,count,approval);
+    }
+    private Wallet quoteWallet(String actor,BillingSelection selection,com.aistareco.aep.billing.service.ModelChargeContext charge,int count) {
+        var payer=normalize(selection);
+        Wallet wallet;
+        if("personal".equals(payer.mode())) {
+            access.requireUser(actor);
+            wallet=wallets.findByUserId(actor).orElseGet(()->Wallet.builder().id("unopened:"+actor).userId(actor).accountType("personal").build());
+        } else {
+            if(!enabled)throw denied("ENTERPRISE_BILLING_DISABLED","企业积分付款尚未开放");
+            if(!allowedIds.isBlank()&&Arrays.stream(allowedIds.split(",")).map(String::trim).noneMatch(payer.enterpriseId()::equals))
+                throw denied("ENTERPRISE_BILLING_NOT_ENABLED","此企业尚未开放企业积分付款");
+            access.member(actor,payer.enterpriseId());
+            var policy=policies.findById(payer.enterpriseId()).orElseThrow();
+            requireAllowed(policy,charge.target().endpointId(),0);
+            // Quotes run read-only: a locking read here fails on MySQL (ERROR 1792). reserve() repeats this check under lock.
+            long active=authorizations.activeForActorWithoutLock(payer.enterpriseId(),actor).stream().filter(a->!isExtension(a)).count();
+            if(active+count>policy.getMaxActiveJobs())throw conflict("ENTERPRISE_ACTIVE_JOB_LIMIT","已达到企业设定的在途任务上限，请等待已有任务完成");
+            wallet=wallets.findByAccountKey("enterprise_member:"+payer.enterpriseId()+":"+actor)
+                    .orElseThrow(()->conflict("ENTERPRISE_WALLET_MISSING","成员企业账户不存在"));
+        }
+        return wallet;
     }
     @Transactional
     public void requireDispatchAllowed(String referenceType,String referenceId){requireDispatchAllowed(referenceType,referenceId,null);}

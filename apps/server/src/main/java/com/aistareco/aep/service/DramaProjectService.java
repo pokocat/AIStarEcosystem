@@ -67,13 +67,15 @@ public class DramaProjectService {
     }
 
     /** 扣费包裹（v0.66）：hold → 生成 → commit；失败 release 不扣。价格 0 = 免费跳过。 */
-    private <T> T withCharge(String userId, long price, String desc, java.util.function.Supplier<T> work) {
-        if (price <= 0) return work.get();
+    private <T> T withCharge(String userId, long price, String desc, java.util.function.Function<com.aistareco.aep.model.AiModelEndpoint,T> work) {
+        var endpoint = invocation.resolveDefaultEndpoint(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")
+                .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_NOT_CONFIGURED","短剧写作模型尚未配置"));
+        if (price <= 0) return work.apply(endpoint);
         String ref = "da_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
-        creditService.hold(userId, price, "DRAMA_AI", ref, desc);
+        creditService.hold(userId, price, "DRAMA_AI", ref, desc, com.aistareco.aep.billing.service.ModelChargeContext.forCredits(endpoint,price));
         try {
-            T out = work.get();
-            creditService.commitHold("DRAMA_AI", ref, price, desc);
+            T out = work.apply(endpoint);
+            creditService.commitHold("DRAMA_AI", ref, price, desc, null);
             return out;
         } catch (RuntimeException e) {
             try {
@@ -284,8 +286,8 @@ public class DramaProjectService {
         long price = count <= 6
                 ? configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_OUTLINE_TRIAL, 6)
                 : configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_OUTLINE_FULL, 18);
-        return withCharge(userId, price, "AI 生成分集剧情（" + count + " 集）", () -> {
-            AiModelInvocationService.AiModelResponse resp = invoke(pc);
+        return withCharge(userId, price, "AI 生成分集剧情（" + count + " 集）", endpoint -> {
+            AiModelInvocationService.AiModelResponse resp = invoke(pc,endpoint);
             ArrayNode episodes = parseEpisodes(resp.content());
             if (episodes.isEmpty()) {
                 throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT",
@@ -337,8 +339,8 @@ public class DramaProjectService {
 
         return withCharge(userId,
                 configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_EPSCRIPT, 10),
-                "按剧情重写第 " + ep + " 集分镜", () -> {
-        JsonNode root = callJson(pc);
+                "按剧情重写第 " + ep + " 集分镜", endpoint -> {
+        JsonNode root = callJson(pc,endpoint);
         JsonNode scenesIn = root.path("scenes");
         if (!scenesIn.isArray() || scenesIn.isEmpty()) {
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT",
@@ -411,8 +413,8 @@ public class DramaProjectService {
 
         return withCharge(userId,
                 configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_SPLIT_SCENE, 6),
-                "AI 拆分镜（单场）", () -> {
-            JsonNode root = callJson(pc);
+                "AI 拆分镜（单场）", endpoint -> {
+            JsonNode root = callJson(pc,endpoint);
             JsonNode shotsIn = root.path("shots");
             if (!shotsIn.isArray() || shotsIn.isEmpty()) {
                 throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "这次拆出来的分镜用不了，再试一次。");
@@ -464,8 +466,8 @@ public class DramaProjectService {
 
         return withCharge(userId,
                 configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_DECOMPOSE, 3),
-                "AI 补尾帧", () -> {
-            JsonNode root = callJson(pc);
+                "AI 补尾帧", endpoint -> {
+            JsonNode root = callJson(pc,endpoint);
             String ffDesc = text(root, "ff_desc");
             String motionDesc = text(root, "motion_desc");
             if ((ffDesc == null || ffDesc.isBlank()) && (motionDesc == null || motionDesc.isBlank())) {
@@ -522,8 +524,8 @@ public class DramaProjectService {
 
         return withCharge(userId,
                 configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_SHOT_REWRITE, 2),
-                "AI 改写这一镜", () -> {
-            JsonNode root = callJson(pc);
+                "AI 改写这一镜", endpoint -> {
+            JsonNode root = callJson(pc,endpoint);
             String desc = text(root, "desc");
             if (desc == null || desc.isBlank()) {
                 throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "这次改写的内容用不了，再试一次。");
@@ -579,8 +581,8 @@ public class DramaProjectService {
 
         return withCharge(userId,
                 configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_CAST, 5),
-                "按大纲重新抽取角色", () -> {
-        JsonNode root = callJson(pc);
+                "按大纲重新抽取角色", endpoint -> {
+        JsonNode root = callJson(pc,endpoint);
         JsonNode charsIn = root.path("characters");
         if (!charsIn.isArray() || charsIn.isEmpty()) {
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "这次抽取的角色用不了，再试一次。");
@@ -630,8 +632,8 @@ public class DramaProjectService {
 
         long price = configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_INTERACTIVE_DRAFT,
                 com.aistareco.aep.config.DramaConfigSeeder.DEFAULT_INTERACTIVE_DRAFT);
-        return withCharge(userId, price, "AI 起草互动剧分支图", () -> {
-            ObjectNode out = buildInteractiveDraft(callJson(pc));
+        return withCharge(userId, price, "AI 起草互动剧分支图", endpoint -> {
+            ObjectNode out = buildInteractiveDraft(callJson(pc,endpoint));
             if (out.path("episodes").size() == 0) {
                 throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT",
                         "这次起草的分支图用不了，换个说法或再试一次。");
@@ -822,7 +824,7 @@ public class DramaProjectService {
     }
 
     /** 低层 chat 调用（统一错误码）。 */
-    private AiModelInvocationService.AiModelResponse invoke(PromptCall pc) {
+    private AiModelInvocationService.AiModelResponse invoke(PromptCall pc,com.aistareco.aep.model.AiModelEndpoint endpoint) {
         List<Map<String, String>> messages = new ArrayList<>();
         if (pc.system() != null && !pc.system().isBlank()) {
             messages.add(Map.of("role", "system", "content", pc.system()));
@@ -833,7 +835,7 @@ public class DramaProjectService {
         options.put("max_tokens", pc.maxTokens());
         if (pc.jsonMode()) options.put("response_format", Map.of("type", "json_object"));
         try {
-            return invocation.invokeChat(AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options, "drama");
+            return invocation.invokeChatOnEndpoint(endpoint,AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options);
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
@@ -842,8 +844,8 @@ public class DramaProjectService {
     }
 
     /** chat 调用 + JSON 容错解析。 */
-    private JsonNode callJson(PromptCall pc) {
-        JsonNode root = tryReadJson(invoke(pc).content());
+    private JsonNode callJson(PromptCall pc,com.aistareco.aep.model.AiModelEndpoint endpoint) {
+        JsonNode root = tryReadJson(invoke(pc,endpoint).content());
         if (root == null) {
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "这次生成的内容用不了，再试一次。");
         }

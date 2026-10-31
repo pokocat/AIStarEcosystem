@@ -9,10 +9,13 @@ vi.mock("@/proto/api", () => ({ USE_MOCK: false, auth: { isAuthed: () => true, l
 vi.mock("./account-workspace", () => ({ useStudioHash: () => state.hash }));
 vi.mock("./layout-mode", () => ({ setLayout: vi.fn() }));
 vi.mock("./wallet-badge", () => ({ WalletBadge: () => null }));
+const ui = vi.hoisted(() => ({ set: vi.fn() }));
+vi.mock("./ui-version", async original => ({ ...await original<typeof import("./ui-version")>(), setUiVersion: ui.set }));
 import { DesktopTopBar } from "./desktop-top-bar";
 
 beforeEach(() => { state.pathname = "/me"; state.hash = ""; });
-afterEach(cleanup);
+afterEach(() => { cleanup(); ui.set.mockClear(); document.documentElement.removeAttribute("data-ui"); });
+const useNext = () => document.documentElement.setAttribute("data-ui", "next");
 function openMenu() {
   const details = screen.getByLabelText("测试账号，打开账号菜单").closest("details")!;
   details.open = true;
@@ -51,16 +54,27 @@ test.each(["pathname", "hash"] as const)("navigation via %s closes an open menu"
   expect(menu.open).toBe(false);
 });
 
-test("Projects follows Home and owns its active navigation state", () => {
+test("new version: 回到旧版 in the top-right corner switches back", () => {
+  useNext();
+  render(<DesktopTopBar/>);
+  fireEvent.click(screen.getByRole("button", {name:"回到旧版"}));
+  expect(ui.set).toHaveBeenCalledWith("classic");
+});
+
+test("new version: the rail leads with the scene pages; 灵感 lives on Home and Projects owns its own state", () => {
+  useNext();
   state.pathname = "/projects";
   const view = render(<DesktopTopBar/>);
   const nav = within(screen.getByRole("navigation", {name:"主导航"}));
   const links = nav.getAllByRole("link");
-  expect(links.map(link => link.getAttribute("href")).slice(0,4)).toEqual(["/dashboard","/projects","/create","/director"]);
+  expect(links.map(link => link.getAttribute("href"))).toEqual(["/dashboard","/video","/image","/create","/director","/projects","/assets","/distribution"]);
   expect(nav.getByRole("link", {name:"项目",exact:true}).getAttribute("aria-current")).toBe("page");
-  expect(nav.getByRole("link", {name:"画布·自由创作"}).hasAttribute("aria-current")).toBe(false);
+  expect(nav.getByRole("link", {name:"画布"}).hasAttribute("aria-current")).toBe(false);
   state.pathname = "/projects/demos";
   view.rerender(<DesktopTopBar/>);
-  expect(nav.getByRole("link", {name:"灵感"}).getAttribute("aria-current")).toBe("page");
+  expect(nav.getByRole("link", {name:"首页"}).getAttribute("aria-current")).toBe("page");
   expect(nav.getByRole("link", {name:"项目",exact:true}).hasAttribute("aria-current")).toBe(false);
+  state.pathname = "/image";
+  view.rerender(<DesktopTopBar/>);
+  expect(nav.getByRole("link", {name:"AI 图片"}).getAttribute("aria-current")).toBe("page");
 });

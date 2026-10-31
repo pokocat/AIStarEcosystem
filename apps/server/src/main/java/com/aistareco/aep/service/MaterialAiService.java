@@ -88,8 +88,13 @@ public class MaterialAiService {
      * 不超朗读密度上限；首轮全不合法 → 一次受控重试（追加压缩指令），仍不合法 → AI_BAD_OUTPUT。
      * 禁止服务端只改 dur 数字不改台词（那会产出"1 秒镜头塞 20 秒台词"的不可执行脚本）。
      */
+    public com.aistareco.aep.model.AiModelEndpoint scriptDraftEndpoint() {
+        return invocation.resolveDefaultEndpoint(AiModelPurpose.SCRIPT_DRAFT,"celebrity")
+                .orElseThrow(()->new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_NOT_CONFIGURED","脚本起草模型尚未配置，请在后台「AI 模型」绑定可用接入点"));
+    }
+
     public List<JsonNode> draftScripts(Product product, String tone, List<String> audience,
-                                       int durationSec, int count, Integer minDurationSec) {
+                                       int durationSec, int count, Integer minDurationSec,com.aistareco.aep.model.AiModelEndpoint endpoint) {
         int n = Math.max(1, Math.min(count, 5));
         int target = durationSec > 0 ? durationSec : 15;
         ResolvedPrompt p = promptService.resolve(AiModelPurpose.SCRIPT_DRAFT);
@@ -106,13 +111,13 @@ public class MaterialAiService {
         vars.put("banned_words", String.join("、", BANNED_WORDS));
         String user = PromptService.fill(p.userTemplate(), vars);
 
-        List<JsonNode> out = draftScriptsOnce(p, user, product, audience, target, minDurationSec, n);
+        List<JsonNode> out = draftScriptsOnce(p, user, product, audience, target, minDurationSec, n,endpoint);
         if (out.isEmpty()) {
             // 一次受控重试：显式要求压缩台词与时长（重试产物走同一套完整校验，不放水）。
             String retryUser = user + "\n\n注意：上一轮产出不符合时长约束。必须把每个脚本的镜头 dur 之和压到 "
                     + target + " 秒以内" + (minDurationSec != null ? "、不少于 " + minDurationSec + " 秒" : "")
                     + "，且每个镜头 text 不超过 dur×" + MAX_SPEECH_CHARS_PER_SEC + " 个汉字（压台词而不是只改数字）。";
-            out = draftScriptsOnce(p, retryUser, product, audience, target, minDurationSec, n);
+            out = draftScriptsOnce(p, retryUser, product, audience, target, minDurationSec, n,endpoint);
         }
         if (out.isEmpty()) {
             throw badOutput(AiModelPurpose.SCRIPT_DRAFT,
@@ -123,8 +128,8 @@ public class MaterialAiService {
 
     private List<JsonNode> draftScriptsOnce(ResolvedPrompt p, String user, Product product,
                                             List<String> audience, int targetDurationSec,
-                                            Integer minDurationSec, int n) {
-        JsonNode root = callJsonObject(AiModelPurpose.SCRIPT_DRAFT, p, user);
+                                            Integer minDurationSec, int n,com.aistareco.aep.model.AiModelEndpoint endpoint) {
+        JsonNode root = callJsonObject(AiModelPurpose.SCRIPT_DRAFT, p, user,null,endpoint);
         List<JsonNode> out = new ArrayList<>();
         JsonNode arr = root.get("scripts");
         int seen = 0;
@@ -236,6 +241,10 @@ public class MaterialAiService {
         return callJsonObject(purpose,p,user,null);
     }
     private JsonNode callJsonObject(AiModelPurpose purpose, ResolvedPrompt p, String user,List<Map<String,Object>> visuals) {
+        return callJsonObject(purpose,p,user,visuals,null);
+    }
+    private JsonNode callJsonObject(AiModelPurpose purpose,ResolvedPrompt p,String user,List<Map<String,Object>> visuals,
+                                    com.aistareco.aep.model.AiModelEndpoint acceptedEndpoint) {
         String key = PromptService.promptKeyFor(purpose);
         List<Map<String, String>> messages = new ArrayList<>();
         messages.add(Map.of("role", "system", "content", p.system()));
@@ -253,7 +262,9 @@ public class MaterialAiService {
         for (int attempt = 0; attempt < 2; attempt++) {
             AiModelInvocationService.AiModelResponse resp;
             try {
-                if(visuals==null)resp = invocation.invokeChat(purpose, messages, options, "celebrity");
+                if(visuals==null)resp = acceptedEndpoint==null
+                        ? invocation.invokeChat(purpose, messages, options, "celebrity")
+                        : invocation.invokeChatOnEndpoint(acceptedEndpoint,purpose,messages,options);
                 else {
                     var endpoint=invocation.resolveDefaultEndpoint(purpose,"celebrity").orElseThrow(()->new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_NOT_CONFIGURED","视频分析模型尚未配置"));
                     List<Map<String,Object>> wireMessages=new ArrayList<>();

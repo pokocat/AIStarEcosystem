@@ -337,7 +337,7 @@ public class PublishJobService {
         // v0.35+: cost 来源走 CelebrityActionPricingService（action="publish.upload"），fallback 旧 default。
         // 402 PAYMENT_REQUIRED 时事务回滚，任务保持 queued。
         creditService.hold(userId, cost, "publish_job_upload", holdRef(job),
-                "发布任务上传 - " + account.getPlatform().wire() + " - " + job.getTitle());
+                "发布任务上传 - " + account.getPlatform().wire() + " - " + job.getTitle(), com.aistareco.aep.billing.service.ModelChargeContext.NONE);
         job.setCreditsSpent(cost);
 
         // 翻 UPLOADING 先落库 (拿 externalTaskId 后再保存一次)
@@ -543,7 +543,7 @@ public class PublishJobService {
             if (spent != null && spent > 0) {
                 try {
                     creditService.commitHold("publish_job_upload", holdRef(job), spent,
-                            "发布上线 · " + job.getPlatform().wire() + " · " + safeTitle(job.getTitle()));
+                            "发布上线 · " + job.getPlatform().wire() + " · " + safeTitle(job.getTitle()), null);
                 } catch (Exception e) {
                     log.warn("publish commit hold failed jobId={} err={}", job.getId(), e.getMessage());
                 }

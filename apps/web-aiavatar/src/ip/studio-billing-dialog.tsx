@@ -45,17 +45,17 @@ export function StudioBillingDialog({ details, account, onConfirm, onCancel }: {
   useEffect(() => { void load(); return () => { revision.current++; }; }, []); // Dialog reads fresh funds at each explicit payment choice.
   const isText = details.textUsage || ["text", "script", "storyboard", "assistant", "asset-extract"].includes(details.operation || "");
   const expected = typeof details.expectedCost === "number" && Number.isFinite(details.expectedCost) ? details.expectedCost : undefined;
-  const enterpriseUnavailable = enterpriseDisabled ? "企业功能暂未开放，可明确选择个人积分" : !context ? "你目前没有加入企业" : context.enterprise.status !== "active" ? "企业已关闭或正在关闭" : context.member.status !== "active" ? "企业成员已停用，仍可选择个人积分" : details.model && policy && !policy.allowedEndpointIds.includes(details.model) ? "此模型未获企业授权，可更换模型或明确选择个人积分" : !balance || !policy ? "企业余额或生成设置尚未读取" : !policy.allowedEndpointIds.length ? "企业尚未授权生成模型" : undefined;
+  const enterpriseUnavailable = enterpriseDisabled ? "企业功能暂未开放，可明确选择个人积分" : !context ? "你目前没有加入企业" : context.enterprise.status !== "active" ? "企业已关闭或正在关闭" : context.member.status !== "active" ? "企业成员已停用，仍可选择个人积分" : !details.modelQuote && details.model && policy && !policy.allowedEndpointIds.includes(details.model) ? "此模型未获企业授权，可更换模型或明确选择个人积分" : !balance || !policy ? "企业余额或生成设置尚未读取" : !policy.allowedEndpointIds.length ? "企业尚未授权生成模型" : undefined;
   const available = selection === "personal" ? personal : balance?.totalBalance;
-  const insufficient = available !== undefined && (expected !== undefined ? available < expected : available <= 0);
+  const insufficient = !details.modelQuote && available !== undefined && (expected !== undefined ? available < expected : available <= 0);
   const blocked = loading || !!error || available === undefined || insufficient || selection === "enterprise" && !!enterpriseUnavailable;
-  return <ConfigProvider theme={{ token: { colorPrimary: "#192229", fontFamily: "var(--ip-ui, sans-serif)", borderRadius: 8 } }}><Modal open title="确认本次付款账户" okText="确认账户并生成" cancelText="取消生成" onCancel={onCancel} onOk={() => { if (blocked || confirmed.current) return; if (remember && account) {
+  return <ConfigProvider theme={{ token: { colorPrimary: "#192229", fontFamily: "var(--ip-ui, sans-serif)", borderRadius: 8 } }}><Modal open title="确认本次付款账户" okText={details.modelQuote?"确认账户并核对报价":"确认账户并生成"} cancelText="取消生成" onCancel={onCancel} onOk={() => { if (blocked || confirmed.current) return; if (remember && account) {
       try { saveStudioBillingPreference(account, selection); }
       catch (caught) { setPreferenceError(normalizeStudioError(caught).message); return; }
     }
     confirmed.current = true; onConfirm(selection === "enterprise" && context ? { mode: "enterprise", enterpriseId: context.enterprise.id } : { mode: "personal" }); }} okButtonProps={{ disabled: blocked }} getContainer={false}>
     <div className="studio-billing-form">
-      <p>{operationNames[details.operation || ""] || "Studio 生成"} · {isText ? expected === undefined ? "按实际用量结算，完成后显示实际消耗积分。" : `本次最多冻结 ${n(expected)} 积分，按实际用量结算，未用部分退回。` : expected === undefined ? "按当前模型与生成参数结算。" : `本次预计 ${n(expected)} 积分。`}</p>
+      <p>{operationNames[details.operation || ""] || "Studio 生成"} · {details.modelQuote ? "下一步确认折扣、模型赠款抵扣和要付的积分。" : isText ? expected === undefined ? "按实际用量结算，完成后显示实际消耗积分。" : `本次最多冻结 ${n(expected)} 积分，按实际用量结算，未用部分退回。` : expected === undefined ? "按当前模型与生成参数结算。" : `本次预计 ${n(expected)} 积分。`}</p>
       {loading ? <Skeleton active paragraph={{ rows: 4 }} /> : <Radio.Group value={selection} onChange={event => setSelection(event.target.value)} className="studio-billing-options" aria-label="本次付款账户"><Radio value="personal"><span><strong>个人积分</strong><small>可用 {personal === undefined ? "暂未读取" : n(personal)} 积分</small></span></Radio><Radio value="enterprise" disabled={!!enterpriseUnavailable}><span><strong>{context ? `${context.enterprise.name} · 企业积分` : "企业积分"}</strong><small>{enterpriseUnavailable || `本人可用 ${n(balance?.totalBalance || 0)} 积分 · 冻结 ${n(balance?.pendingBalance || 0)} 积分`}</small></span></Radio></Radio.Group>}
       {context && <p>企业积分仍归企业，受企业允许模型与每人 {policy?.maxActiveJobs ?? "待读取"} 项在途任务限制。作品仍归个人。</p>}
       {insufficient && <Alert type="warning" showIcon title={`${selection === "enterprise" ? "企业" : "个人"}积分不足`} description="请先充值或联系企业分配积分，也可以明确选择另一付款账户。系统不会自动切换或混合扣款。" />}

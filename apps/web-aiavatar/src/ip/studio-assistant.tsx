@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { ApiError, formatCredits } from "@ai-star-eco/api-client";
 import { Button } from "antd";
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 import { ChevronRight, FileText, Image, PenLine, Video, Workflow } from "lucide-react";
 import { AiMark } from "./studio-ai-icon";
 import { nanoid } from "nanoid";
@@ -48,7 +49,7 @@ import { StudioDialogueLegacy, type LegacyGroup } from "./studio-dialogue-legacy
 import type { DialogueMessageHandlers } from "./studio-dialogue-message";
 import { StudioDialogueSkillDraft } from "./studio-dialogue-skill-draft";
 import { StudioAssistantStarterCards, StudioAssistantStarterForm, composeStarter, isMentionResidue, starterDefaults, starterSlotNodes, starterSlots, studioStarter, type StarterKey } from "./studio-assistant-starters";
-import { clearAssistantDraft, readAssistantDraft, readAssistantModel, writeAssistantDraft } from "@/canvas-bridge/studio-assistant-memory";
+import { clearAssistantDraft, readAssistantDraft, readAssistantModel, writeAssistantModel, writeAssistantDraft } from "@/canvas-bridge/studio-assistant-memory";
 import { studioBriefNeedsReference, studioCanvasHasDefaultTitle, studioTitleFromBrief } from "./studio-entry";
 import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
 import { splitReplyActions } from "@/canvas-bridge/studio-reply-actions";
@@ -63,6 +64,8 @@ type Props = {
   capabilities?: StudioCapabilities; open: boolean; initialNodeId?: string; initialPrompt?: string;
   /** Kept for callers; the dialogue routes intent itself and has no modes. */
   initialMode?: StudioAssistantMode;
+  /** Open this fill-in card once when the canvas was started from it (the home page's 「数字人形象」). */
+  initialStarter?: StarterKey;
   /** The canvas lacks output of an execution (it finished while the canvas was closed): read the thread now, panel open or not. */
   restorePending?: boolean;
   onClose: () => void; selectedIds: string[]; onUseStep: (step: StudioPlan["steps"][number]) => string | void;
@@ -104,17 +107,20 @@ function budgetExceededError(error: unknown) {
   return Object.assign(new Error(text), { code: error.code, logId: error.logId });
 }
 
-export function StudioAssistant({ projectId, conversations, setConversations, nodes, setNodes, setConnections, connections, docVersion, capabilities, open, initialNodeId, initialPrompt, restorePending, onClose, selectedIds, onUseStep, autoSend = false, onAutoSent }: Props) {
+export function StudioAssistant({ projectId, conversations, setConversations, nodes, setNodes, setConnections, connections, docVersion, capabilities, open, initialNodeId, initialPrompt, initialStarter, restorePending, onClose, selectedIds, onUseStep, autoSend = false, onAutoSent }: Props) {
   const { message } = useStudioApp();
   const session = useStudioDialogueSession({ projectId, open, autoload: !!restorePending });
   const { store } = session;
   // The composer starts from this canvas's saved draft (a refresh keeps what was typed, runbook 2.7).
   const [initialDraft] = useState(() => readAssistantDraft(projectId, new Set(assistantContextNodes(nodes).map(n => n.id))));
   const [text, setText] = useState(initialDraft?.text ?? ""), [pinnedIds, setPinnedIds] = useState<string[]>(initialDraft?.pinnedIds ?? []), [attachmentIds, setAttachmentIds] = useState<string[]>(initialDraft?.attachmentIds ?? []);
-  // The reply model has no control under the composer (2026-10-21, user feedback): there is one dialogue model online, the
-  // disabled pill could not be changed, and its name read as if videos were made with it too. A choice this browser saved
-  // for the canvas earlier (when the picker existed) still applies where the scene offers that model.
-  const model = useMemo(() => readAssistantModel(projectId), [projectId]);
+  // 2026-10-25: users can choose the reply model when multiple models are offered. It never selects image/video models.
+  const [modelChoice, setModelChoice] = useState(() => ({ projectId, endpointId: readAssistantModel(projectId) }));
+  const model = modelChoice.projectId === projectId ? modelChoice.endpointId : readAssistantModel(projectId);
+  const chooseModel = (endpointId: string) => {
+    writeAssistantModel(projectId, endpointId);
+    setModelChoice({ projectId, endpointId });
+  };
   const [guideOpen, setGuideOpen] = useState(false), [legacyOpen, setLegacyOpen] = useState(false), [starter, setStarter] = useState<Starter>();
   // References added while a fill-in card is open belong to that card and leave the message with it (「换一个」).
   // `starterWritten` is the sentence the card last put in the composer; text that is still that sentence (or it plus a
@@ -470,13 +476,22 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     // A brief saved as a canvas node (older home page) is a visible, removable pin; one kept with the conversation is not on the canvas.
     if (entry && assistantContextNodes(live.current.nodes).some(n => n.id === entry.id)) setPinnedIds(ids => ids.includes(entry.id) ? ids : [...ids, entry.id].slice(0, MAX_REFERENCES));
   }, [open, session.status, projectId, initialNodeId, initialPrompt, talked, store.outbox.length]);
+  // Started from a fill-in card (the home page's 「数字人形象」 → 「制作个人 IP」): open it once, on an empty thread only.
+  const starterOpened = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!open || !initialStarter || session.status !== "ready" || starterOpened.current === projectId) return;
+    starterOpened.current = projectId;
+    if (!talked && !store.outbox.length) openStarter(initialStarter);
+  }, [open, initialStarter, session.status, projectId, talked, store.outbox.length]);
   // Dialogue-first start: the brief typed on the home page goes out by itself, exactly once, into an empty thread.
   useEffect(() => {
     if (!open || !autoSend || autoSent.current === projectId || session.status !== "ready" || sending) return;
     if (talked || store.outbox.length || !text.trim()) { if (talked) onAutoSent?.(); return; }
     autoSent.current = projectId;
     onAutoSent?.();
-    void send();
+    // A scene page names its method on the start node; the first message goes out with it instead of keyword routing.
+    const entry = [...live.current.nodes, ...live.current.conversations].find(n => n.id === initialNodeId);
+    void send(undefined, entry?.metadata?.studioSkill);
   }, [open, autoSend, session.status, text, talked, store.outbox.length, sending]);
 
   // ── Work an execution finished while this canvas was closed ─────────────
@@ -772,7 +787,12 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
         {!!skillReplies.length && <div className="studio-dialogue-suggestions">{skillReplies.map(s => <button key={s.key} type="button" title={s.summary || undefined}
           disabled={sending || !!sendDisabledReason} onClick={() => { chooseSkill(s.key); void send(undefined, s.key); }}><span>{s.name}</span></button>)}</div>}
       </div>}
-      <StudioDialogueComposer ref={composer} projectId={projectId} text={text} onText={setText} contextNodes={contextNodes} pinnedIds={pinnedIds} attachmentIds={attachmentIds}
+      <StudioDialogueComposer modelControl={selectable && selectedModel ? <SelectField className="studio-dialogue-model-button" aria-label="对话模型" value={selectedModel.endpointId}
+        disabled={sending || !!store.activeTurnId || !!session.switching || !!session.verifying}
+        title={`${selectedModel.name} · 仅影响后续对话${selectedModel.tokenPricing ? ` · 每千 Token：输入 ${selectedModel.tokenPricing.inputCreditsPerK.toLocaleString("zh-CN", { maximumFractionDigits: 6 })} 积分 · 输出 ${selectedModel.tokenPricing.outputCreditsPerK.toLocaleString("zh-CN", { maximumFractionDigits: 6 })} 积分` : ""}${store.activeTurnId ? " · 本轮回复结束后可切换" : ""}`}
+        onChange={event => chooseModel(event.target.value)}>
+        {textModels.map(option => <option key={option.endpointId} value={option.endpointId}>{option.name}{option.isDefault ? " · 默认" : ""}</option>)}
+      </SelectField> : undefined} ref={composer} projectId={projectId} text={text} onText={setText} contextNodes={contextNodes} pinnedIds={pinnedIds} attachmentIds={attachmentIds}
         onPin={pin} onUnpin={id => setPinnedIds(ids => ids.filter(value => value !== id))} onRemoveAttachment={id => setAttachmentIds(ids => ids.filter(value => value !== id))}
         onFiles={files => void addAttachments(files).catch(() => {})} onAssets={addAttachments} reading={reading} attachmentsUnsaved={attachmentsUnsaved} onRetrySave={() => void retryAttachmentSave()}
         sendDisabledReason={sendDisabledReason} sending={sending} onSend={() => void send()} canStop={!!store.activeTurnId} stopping={stopping} onStop={() => void stop()} demo={demo}
@@ -796,7 +816,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
           <ChevronRight size={16} aria-hidden="true"/></button>)}</div> : <StudioAssistantStarterCards onPick={openStarter}/>}
       </div>}
       {starter && starterConfig && <StudioAssistantStarterForm config={starterConfig} slots={starterNodes} options={starter.options} fields={starter.fields}
-        edited={starterEdited && !sending && !store.outbox.length} onBack={leaveStarter} onRewrite={rewriteStarter}
+        prompt={text} edited={starterEdited && !sending && !store.outbox.length} onBack={leaveStarter} onRewrite={rewriteStarter}
         onOption={(id, value) => setStarter(current => current && { ...current, options: { ...current.options, [id]: value } })}
         onField={(id, value) => setStarter(current => current && { ...current, fields: { ...current.fields, [id]: value } })}
         onPick={() => composer.current?.mention()} onUpload={() => composer.current?.attach()} onRemove={unreference} onSubmit={() => void send()}/>}

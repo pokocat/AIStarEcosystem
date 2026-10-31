@@ -10,7 +10,14 @@ export interface StudioVideoSettings {
   references?: VideoStudioReferenceInput[];
   /** false =「按原文生成」：请厂商出片前不改写描述；不填 = 模型默认（H3 默认会改写）。只对 supportsPromptOptimization 的模型开放。 */
   optimizePrompt?: boolean;
+  /**
+   * 智能优化（2026-10-27）：提交前先按 H3 官方写法把提示词改写成英文（台词保留原文）。auto = 改写完直接出片（创作助手）；
+   * review = 没有提示就直接出片，有提示停下来让用户选用优化稿还是原文（画布）。带它时服务端关掉厂商自己的改写。
+   */
+  rewrite?: "auto" | "review";
 }
+/** 智能优化的结果：发给模型的英文（台词已填好）、要用户判断的提示、已经自动处理好的小事、能不能直接用（超长不能用）。 */
+export interface StudioVideoPromptOptimization { text: string; warnings: string[]; notes?: string[]; usable: boolean }
 export type StudioOperation = "text" | "script" | "storyboard" | "image" | "video" | "assemble" | "assistant" | "recreation" | "check";
 export interface StudioScriptSettings { genre?: string; fusionGenres?: string[]; characterBrief?: string; structure?: string; audience?: string; era?: string; core?: string; style?: string; episodeCount?: number; episodeDurationSec?: number }
 export type StudioAssistantMode = "general" | "original" | "adapt" | "director";
@@ -86,6 +93,7 @@ export interface StudioReference {
   role: "character" | "scene" | "product" | "frame" | "clip";
 }
 export interface StudioRunRequest {
+  modelBilling?: import('./model-billing').ModelBillingApproval;
   billing?: EnterpriseBillingSelection;
   clientRequestId: string;
   nodeId: string;
@@ -255,6 +263,17 @@ export interface StudioNodeMetadata {
     scriptMode?: "original" | "adapt"; scriptSourceNodeId?: string;
     video: { mode: VideoStudioMode; tier: string; seed?: number; firstId?: string; lastId?: string } };
   sourceRange?: {startSec:number;endSec:number;storageKey:string};
+  /**
+   * AI 视频页「编导」的一轮（docs/studio-scene-creation.md §8）：用户这句话（没写就是空串）、是不是在改上一版，
+   * 以及写这版脚本时的时长 / 画面 / 语言。脚本正文就是节点 content，任务和计费是这个节点上普通的文字任务。
+   */
+  sceneDirector?: { ask: string; revision: boolean; duration: number; ratio: string; language: string; at: string;
+    /** 写这一版时选的场景选项（出镜方式、语气…）：改稿沿用它，不回到默认值。2026-10-30 之前写的版本没有。 */
+    options?: Record<string, string>;
+    /** 写这一版时按哪个视频模型、交给它哪几张图（文件 key，按图1、图2 的顺序）写的：出片时换了就提示让编导按新的改一版。 */
+    videoModel?: string; refs?: string[] };
+  /** AI 图片页这一次出图用的条件（场景、补充要求、改过的描述、选项、模型和规格；参考图看请求里的 references）。「用这次的设置再做」按它放回，不把拼好的整段话当描述。 */
+  sceneImage?: { sceneId: string; supplement: string; custom?: string; options: Record<string, string>; model?: string; ratio: string; size?: string; count: number };
   recreation?: { mode?:"segments"; document?:boolean; materializedSegmentNos?:number[]; materializedAudioSourceKey?:string; resumeRunId?:string; study?:StudioFilmStudy; materializedRunId?:string; sourceNodeId: string; sourceStorageKey: string; sourceTitle: string; report?: StudioRecreationReport };
   kind: "recreation" | "text" | "script" | "shot" | "ip" | "work" | "assistant" | "batch" | "audio" | "check";
   /** Stable binding to a plan execution step; status and cost always come from IpRun / ip_plan_execution. */
@@ -270,6 +289,10 @@ export interface StudioNodeMetadata {
   voiceProfile?: StudioVoiceProfile;
   lipSyncRequest?: StudioLipSyncRequest;
   lipSyncNormalized?: boolean;
+  /** 智能优化的结果有提示（或没优化成），等用户选用优化稿还是原文生成；再次生成后清掉。 */
+  promptReview?: { runId: string; failed?: boolean; message?: string; /** 当时的生成输入（studioVideoInputKey）：卡片上的文字、素材、时长、画幅、模型变了就不再显示这次的选择 */ inputKey?: string } & Partial<StudioVideoPromptOptimization>;
+  /** 上次是在「用优化稿 / 用原文」里选的（请求里没有 rewrite）：智能优化开关仍算开着。 */
+  promptChoice?: "optimized" | "original";
   settings?: StudioScriptSettings;
   scriptMode?: "original" | "adapt";
   scriptSourceNodeId?: string;
@@ -500,7 +523,11 @@ export type StudioPlanExecutionStepStatus = "pending" | "submitted" | "running" 
 export interface StudioPlanExecutionStep { id: string; title: string; operation: StudioPlanOperation; stage: StudioPlanStage; dependsOn: string[]; status: StudioPlanExecutionStepStatus;
   runIds: string[]; attempt: number; quotedCost: number; maxCost?: number; acceptedRunId?: string; acceptedCandidateIndex?: number;
   /** The canvas node this step's result goes to: the prepared object it was bound to at confirmation, else its own output node. */
-  nodeId?: string; reason?: string }
+  nodeId?: string; reason?: string;
+  /** A stopped plan-compile step: canvas objects its plan used that this execution does not carry (the user adds them or re-plans without). */
+  materials?: StudioPlanExecutionMaterial[] }
+/** A canvas object a stopped step named outside the execution's materials; `onCanvas: false` once it was deleted. */
+export interface StudioPlanExecutionMaterial { nodeId: string; title: string; onCanvas: boolean }
 export interface StudioPlanExecutionBudget { stage: StudioPlanStage; approvedCap: number; autoFixCap: number; spent: number; inFlight: number; remaining: number; shortfall?: number }
 export interface StudioPlanExecution {
   id: string; projectId: string; threadId?: string; skillKey: string; skillVersion: number; stage: StudioPlanStage; planRunId: string; planRevision: number; planFingerprint: string;
@@ -510,7 +537,9 @@ export interface StudioPlanExecution {
 /** Create an analysis execution, or confirm a new stage on the same execution (executionId + approachId + expectedRevision). */
 export interface StudioPlanExecutionCreateRequest { clientRequestId: string; stage: StudioPlanStage; planRunId: string; planFingerprint: string; approachId?: string; budgetCap: number; autoFixCap: number;
   billing?: EnterpriseBillingSelection; executionId?: string; expectedRevision?: number; approvalId?: string; confirmationMessageId?: string }
-export interface StudioPlanExecutionControlRequest { clientRequestId: string; expectedStatus?: StudioPlanExecutionStatus }
+export interface StudioPlanExecutionControlRequest { clientRequestId: string; expectedStatus?: StudioPlanExecutionStatus;
+  /** Resume only: add these objects (from the stopped step's `materials`, still on the canvas) before re-planning. */
+  addMaterialNodeIds?: string[] }
 export interface StudioPlanExecutionAcceptRequest { clientRequestId: string; runId: string; candidateIndex?: number }
 
 // ─── S3: skill registry with immutable versions, admin editing / dry-run, intent routing, distilled drafts ───

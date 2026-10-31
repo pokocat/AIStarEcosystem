@@ -62,10 +62,10 @@ class MaterialVideoModelClientTest {
 
     @Test
     void extractFailReason_picks_common_vendor_fields() {
-        // 上游 fail 时把原因放在各种字段，统一抽出来给用户/运营看，不再只剩「status=failed」
+        // 不同字段保留可行动的失败原因；供应商账号配额遵循主线的公开错误策略。
         assertEquals("敏感内容拦截",
                 MaterialVideoModelClient.extractFailReason(json("{\"task_status\":\"failed\",\"fail_reason\":\"敏感内容拦截\"}")));
-        assertEquals("quota exceeded",
+        assertEquals("生成服务暂时不可用，请稍后再试或联系平台处理。",
                 MaterialVideoModelClient.extractFailReason(json("{\"status\":\"error\",\"message\":\"quota exceeded\"}")));
         assertEquals("bad prompt",
                 MaterialVideoModelClient.extractFailReason(json("{\"data\":{\"error\":\"bad prompt\"}}")));
@@ -185,7 +185,7 @@ class MaterialVideoModelClientTest {
         AiModelInvocationService invocation = mock(AiModelInvocationService.class);
         AiModelEndpoint endpoint = AiModelEndpoint.builder().id("h3").billingMode(AiModelBillingMode.PER_SECOND).build();
         AiAppEndpointCandidate candidate = AiAppEndpointCandidate.builder().creditCostOverride(40L).build();
-        when(invocation.resolveEndpoint(eq(AiModelPurpose.VIDEO_GENERATION), eq("h3"), eq("celebrity")))
+        when(invocation.resolveAcceptedEndpoint(eq(AiModelPurpose.VIDEO_GENERATION), eq("h3"), eq("celebrity")))
                 .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint, candidate, true)));
         MaterialVideoModelClient client = new MaterialVideoModelClient(invocation, new MaterialVideoProperties(), null, null, null);
 
@@ -201,6 +201,9 @@ class MaterialVideoModelClientTest {
         when(invocation.resolveEndpoint(eq(AiModelPurpose.VIDEO_GENERATION), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint, candidate, true)));
         when(invocation.resolveEndpoint(eq(AiModelPurpose.VIDEO_GENERATION),
+                org.mockito.ArgumentMatchers.<String>nullable(String.class), eq("celebrity")))
+                .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint, candidate, true)));
+        when(invocation.resolveAcceptedEndpoint(eq(AiModelPurpose.VIDEO_GENERATION),
                 org.mockito.ArgumentMatchers.<String>nullable(String.class), eq("celebrity")))
                 .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint, candidate, true)));
         when(invocation.resolveDefaultEndpoint(eq(AiModelPurpose.VIDEO_GENERATION), eq("celebrity")))
@@ -533,19 +536,19 @@ class MaterialVideoModelClientTest {
     }
 
     @Test
-    @DisplayName("参考图被上游拒收：4xx 直出厂商原话，5xx 笼统，非 JSON 不外泄")
+    @DisplayName("参考图被上游拒收：4xx 直出厂商原话，5xx 也展示原因，非 JSON 不外泄")
     void surfacesUploadRejectionReason() {
         // 4xx 说的是「我们请求哪儿不对」—— 抹掉它用户就只剩一句「请稍后重试」，而重试永远不会好
-        assertEquals("参考图被上游拒收：model does not accept input assets",
+        assertEquals("参考图上传失败（上游 400）；model does not accept input assets",
                 MaterialVideoModelClient.uploadFailureMessage(
                         "参考图", 400, "{\"error\":{\"message\":\"model does not accept input assets\"}}"));
-        assertEquals("参考图被上游拒收：unsupported image format",
+        assertEquals("参考图上传失败（上游 415）；unsupported image format",
                 MaterialVideoModelClient.uploadFailureMessage("参考图", 415, "{\"message\":\"unsupported image format\"}"));
         // 5xx 是厂商自己的问题，用户做不了什么，细节留日志
-        assertEquals("参考图上传失败（上游 502），请稍后重试",
+        assertEquals("参考图上传失败（上游 502）；bad gateway",
                 MaterialVideoModelClient.uploadFailureMessage("参考图", 502, "{\"message\":\"bad gateway\"}"));
         // 网关的 HTML 错误页不要糊到界面上
-        assertEquals("参考图被上游拒收（404）",
+        assertEquals("参考图上传失败（上游 404）",
                 MaterialVideoModelClient.uploadFailureMessage("参考图", 404, "<html><body>404 Not Found</body></html>"));
     }
 

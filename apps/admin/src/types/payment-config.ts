@@ -44,6 +44,8 @@ export const PAYMENT_CRED_FIELDS: Record<string, { key: string; label: string; r
     { key: "merchantPrivateKey", label: "商户私钥（PEM）", required: true, multiline: true },
     { key: "merchantSerialNumber", label: "商户证书序列号", required: true },
     { key: "notifyUrl", label: "异步回调地址（…/api/pay/notify/wechat）", required: true },
+    { key: "publicKeyId", label: "微信支付公钥 ID（PUB_KEY_ID_；与公钥成对填写）", required: false },
+    { key: "publicKey", label: "微信支付公钥（PEM；与公钥 ID 成对填写）", required: false, multiline: true },
   ],
 };
 

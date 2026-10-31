@@ -73,6 +73,10 @@ class StudioNativeVideoProjectionTest {
         assertFalse(dto.output().path("videoCandidates").get(1).has("errorCode"));
         a.setStatus("generating");a.setExternalTaskId("original");a.setErrorCode("VIDEO_RECONCILIATION_PENDING");
         assertEquals("video.recovering",service.toRunDto(binding).stage());
+        // A job stored with the older, longer wording reads as the one sentence, keeping its 追查号 for error details.
+        a.setErrorMessage("等待生成结果超时，正在查询原视频任务，请勿重复生成 · 追查号 25P9PL3PJ273");
+        assertEquals(com.aistareco.aep.service.materialvideo.MaterialVideoJobService.STILL_PROCESSING+" · 追查号 25P9PL3PJ273",
+                service.toRunDto(binding).output().path("videoCandidates").get(0).path("errorMessage").asText());
         a.setErrorCode(null);assertNull(service.toRunDto(binding).errorCode());
         verify(repository,never()).save(any());assertEquals("done",binding.getStatus());
     }

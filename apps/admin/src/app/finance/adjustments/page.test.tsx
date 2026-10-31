@@ -36,3 +36,13 @@ test('finance cannot approve their own request, and an operator cannot approve',
   fireEvent.click(approve);expect(mocks.approve).not.toHaveBeenCalled();view.unmount();
  }
 });
+test('restricted approval identifies the destination and expiry before approving',async()=>{
+ mocks.list.mockResolvedValue([{id:'restricted',type:'scoped_grant',targetUserId:'member-user',walletId:'member-wallet',
+  campaignId:'image-trial',expiresAt:'2030-01-01T00:00:00Z',amount:6000,makerId:'operator',reason:'模型试用'}]);
+ render(<AdminAdjustmentsPage/>);
+ expect(await screen.findByText(/模型赠款 · \+6,000/)).toBeDefined();
+ expect(screen.getByText(/消费账户 member-wallet · 有效期至/)).toBeDefined();
+ expect(screen.getByText(/活动 image-trial/)).toBeDefined();
+ fireEvent.click(screen.getByRole('button',{name:'批准入账'}));
+ await waitFor(()=>expect(mocks.approve).toHaveBeenCalledWith('restricted'));
+});

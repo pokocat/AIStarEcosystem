@@ -1,0 +1,10 @@
+{"event":"start","id":"image-concurrency-http1-20261025-01","at":"2026-10-25T15:06:51.873079642Z","inFlight":1}
+{"event":"start","id":"image-concurrency-http1-20261025-02","at":"2026-10-25T15:06:52.872514702Z","inFlight":2}
+{"event":"start","id":"image-concurrency-http1-20261025-03","at":"2026-10-25T15:06:53.872743161Z","inFlight":3}
+{"event":"start","id":"image-concurrency-http1-20261025-04","at":"2026-10-25T15:06:54.873112858Z","inFlight":4}
+{"event":"submissionsFinished","submitted":4,"peakHttpInFlight":4}
+{"event":"complete","id":"image-concurrency-http1-20261025-04","at":"2026-10-25T15:08:10.159825054Z","status":200,"seconds":75.17,"validImage":true,"width":1024,"height":1024,"bytes":758012}
+{"event":"complete","id":"image-concurrency-http1-20261025-01","at":"2026-10-25T15:08:15.052003175Z","status":200,"seconds":83.11,"validImage":true,"width":1024,"height":1024,"bytes":777340}
+{"event":"complete","id":"image-concurrency-http1-20261025-03","at":"2026-10-25T15:08:19.746589457Z","status":200,"seconds":85.83,"validImage":true,"width":1024,"height":1024,"bytes":738672}
+{"event":"complete","id":"image-concurrency-http1-20261025-02","at":"2026-10-25T15:08:26.156507979Z","status":200,"seconds":93.23,"validImage":true,"width":1024,"height":1024,"bytes":779638}
+{"event":"finished","at":"2026-10-25T15:08:26.157447021Z","submitted":4,"peakHttpInFlight":4}

@@ -218,6 +218,11 @@ export const LEDGER_ENTRY_TYPE: Record<string, StatusMeta> = {
   transfer_in:   { label: "积分转入", tone: "success" },
   transfer_out:  { label: "积分转出", tone: "neutral" },
   refund_cash:   { label: "现金退款",     tone: "warning" },
+  scoped_grant: { label: "模型赠款到账", tone: "info" },
+  scoped_freeze: { label: "模型赠款冻结", tone: "neutral" },
+  scoped_spend: { label: "模型赠款扣除", tone: "neutral" },
+  scoped_release: { label: "模型赠款退回", tone: "info" },
+  scoped_expire: { label: "模型赠款到期", tone: "warning" },
 };
 
 // ── 积分包 ───────────────────────────────────────────────────────────────────

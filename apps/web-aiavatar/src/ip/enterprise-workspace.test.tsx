@@ -7,10 +7,11 @@ import { EnterpriseWorkspace } from "./enterprise-workspace";
 const api = vi.hoisted(() => ({ mine: vi.fn(), wallet: vi.fn(), memberBalances: vi.fn(), myBalance: vi.fn(), recharges: vi.fn(), previewPoints: vi.fn(), transferPoints: vi.fn(), requestRecharge: vi.fn(), create: vi.fn(), accept: vi.fn() }));
 vi.mock("@/canvas-bridge/enterprise-api", () => ({ EnterpriseApi: api }));
 vi.mock("@/components/hub/auth", () => ({ useRequireAuth: () => "ok", PlatformGateScreen: () => <div>需要开通</div> }));
-vi.mock("@/proto/api", () => ({ WalletApi: { balance: vi.fn().mockResolvedValue({ totalBalance: 200 }) } }));
+vi.mock("@/proto/api", () => ({ useIdentity: () => null, WalletApi: { balance: vi.fn().mockResolvedValue({ totalBalance: 200 }) } }));
 vi.mock("next/link", () => ({ default: (props: any) => <a {...props}/> }));
 vi.mock("./studio-page", () => ({ StudioPage: ({ title, description, actions, children }: any) => <main><h1>{title}</h1><p>{description}</p>{actions}{children}</main>, StudioPageFilters: ({ items, onChange }: any) => <nav>{items.map((item: any) => <button key={item.value} onClick={() => onChange(item.value)}>{item.label}</button>)}</nav> }));
-vi.mock("./studio-errors", () => ({ normalizeStudioError: (error: any) => ({ code: error.code || "ERROR", message: error.message || String(error) }) }));
+const reported = vi.hoisted(() => vi.fn());
+vi.mock("./studio-errors", () => ({ normalizeStudioError: (error: any) => ({ code: error.code || "ERROR", message: error.message || String(error) }), reportStudioError: reported }));
 vi.mock("antd", () => ({
   ConfigProvider: ({ children }: any) => children,
   Alert: ({ title, description }: any) => <div role="alert">{title}{description}</div>,
@@ -63,6 +64,8 @@ test("an uncertain submission retry keeps its idempotency key", async () => {
   render(<EnterpriseWorkspace/>);
   fireEvent.click(await openAllocation());
   await screen.findByText("网络中断");
+  // 交给统一错误出口：弹窗里已经就地写了，出口不会再叠一个；页面上的操作则会弹错误弹窗
+  expect(reported).toHaveBeenCalledWith(expect.objectContaining({ message: "网络中断" }));
   fireEvent.click(screen.getByRole("button", { name: "确认分配 100 积分" }));
   await screen.findByText("分配完成，共 100 积分。");
   expect(api.transferPoints.mock.calls[0][2].clientRequestId).toBe(api.transferPoints.mock.calls[1][2].clientRequestId);

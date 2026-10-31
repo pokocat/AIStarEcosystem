@@ -24,6 +24,12 @@
   </properties>
 
   <dependencies>
+    <!-- 导演台剧本导入：HTML 只取可读文字，不执行脚本（StudioStoryImportService）。 -->
+    <dependency>
+      <groupId>org.jsoup</groupId>
+      <artifactId>jsoup</artifactId>
+      <version>1.17.2</version>
+    </dependency>
     <!-- Versioned platform HTTP SDK; contains no runtime or business wallet code. -->
     <dependency><groupId>cn.aibuzz</groupId><artifactId>platform-sdk</artifactId><version>0.1.0</version></dependency>
     <!-- Web -->

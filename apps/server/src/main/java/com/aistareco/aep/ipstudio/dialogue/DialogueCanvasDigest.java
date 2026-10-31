@@ -149,8 +149,8 @@ public final class DialogueCanvasDigest {
     public static String excerpt(JsonNode n) {
         JsonNode md = n.path("metadata");
         JsonNode studio = md.path("studio");
-        if (studio.path("scriptMarkdown").isTextual()) return studio.path("scriptMarkdown").asText();
-        if ("text".equals(n.path("type").asText())) return md.path("content").asText("");
+        String writing = StudioWritingContent.read(n).text();
+        if (!writing.isBlank() || "text".equals(n.path("type").asText())) return writing;
         if (studio.path("composerDraft").path("prompt").isTextual() && !studio.path("composerDraft").path("prompt").asText().isBlank())
             return "提示词：" + studio.path("composerDraft").path("prompt").asText();
         if (md.path("prompt").isTextual() && !md.path("prompt").asText().isBlank()) return "提示词：" + md.path("prompt").asText();

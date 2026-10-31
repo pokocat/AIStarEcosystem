@@ -18,10 +18,12 @@ import Link from "next/link";
 import { CheckCircle2, ChevronDown, Clapperboard, Copy, Loader2, RefreshCw, Sparkles, Wand2 } from "lucide-react";
 import type {
   VideoStudioJob,
+  VideoStudioJobRequest,
   VideoStudioMediaType,
   VideoStudioModel,
   VideoStudioTemplate,
 } from "@ai-star-eco/types/video-studio";
+import { ApiError, useAuth } from "@ai-star-eco/api-client";
 import { formatCredits } from "@ai-star-eco/api-client/format";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@ai-star-eco/ui/ui/select";
 import { cn } from "@ai-star-eco/ui/ui/utils";
@@ -66,6 +68,7 @@ import {
   type VideoStudioSelection,
 } from "@/lib/video-studio";
 import { EMPTY_FRAME_SLOT, FrameSlot, type FrameSlotState } from "./FrameSlot";
+import { ModelQuoteDialog } from "./ModelQuoteDialog";
 import { OptimizePanel } from "./OptimizePanel";
 import {
   EMPTY_REFERENCE_LISTS,
@@ -252,6 +255,12 @@ interface SubmitErrorState {
   source: "footer" | "panel";
 }
 
+interface GenerationSubmission {
+  request: VideoStudioJobRequest;
+  source: SubmitErrorState["source"];
+}
+const pendingKey = (userId: string) => `video-studio:pending-generation:${userId}`;
+
 interface TemplateState {
   id: string;
   title: string;
@@ -276,7 +285,8 @@ function StudioForm({
   onShowJobs?: () => void;
   pendingTemplate: PendingTemplate | null;
 }) {
-  const { wallet, refreshWallet } = useCelebrityShell();
+  const { refreshWallet } = useCelebrityShell();
+  const { user } = useAuth();
   const seedInputId = React.useId();
   const formTopRef = React.useRef<HTMLDivElement>(null);
 
@@ -332,6 +342,21 @@ function StudioForm({
   const [submitError, setSubmitError] = React.useState<SubmitErrorState | null>(null);
   const [submitNote, setSubmitNote] = React.useState<string | null>(null);
   const [attempted, setAttempted] = React.useState(false);
+  const [quoteRequest, setQuoteRequest] = React.useState<GenerationSubmission | null>(null);
+  const [pendingSubmission, setPendingSubmission] = React.useState<GenerationSubmission | null>(null);
+  const [pendingOwner, setPendingOwner] = React.useState<string>();
+  React.useEffect(() => {
+    setPendingSubmission(null);
+    if (!user?.id) { setPendingOwner(undefined); return; }
+    try {
+      const saved = sessionStorage.getItem(pendingKey(user.id));
+      if (saved) setPendingSubmission(JSON.parse(saved));
+    } catch {
+      setSubmitError({message: "上次提交记录无法读取，请先在生成记录中核对结果", topUp: false, source: "footer"});
+      return;
+    }
+    setPendingOwner(user.id);
+  }, [user?.id]);
 
   const creditsChanged = React.useCallback(() => void refreshWallet(), [refreshWallet]);
   const optimization = usePromptOptimization(creditsChanged);
@@ -375,7 +400,11 @@ function StudioForm({
     refRules ? refLists.image.length : 0, refRules !== null);
   const optPrice = optimizationPrice(model.pricing);
   // 生成本身能不能提交（不管是从底部按钮还是从优化那一块点的）
-  const generationBlocked = modelsError
+  const generationBlocked = !user?.id || pendingOwner !== user.id
+    ? "正在读取上次提交记录"
+    : pendingSubmission
+      ? "请先核对上次提交结果"
+      : modelsError
     ? "模型信息没有加载成功，暂时不能提交"
     : !price
       ? "这个规格还没定价，暂时不能提交"
@@ -659,31 +688,48 @@ function StudioForm({
     optimization.start(request);
   };
 
-  const submitGeneration = async (promptText: string, optimizationId: string | null, source: SubmitErrorState["source"]) => {
-    if (submittingRef.current || generationBlocked) return;
+  const sendGeneration = async (submission: GenerationSubmission) => {
+    if (submittingRef.current || !user?.id) return;
+    submittingRef.current = true;
+    setSubmitting(true); setSubmitError(null); setSubmitNote(null);
+    const ownerId = user.id;
+    let recorded = false;
+    try {
+      // Persist the exact approved request before sending; refresh and uncertain retries keep its original id and ceiling.
+      sessionStorage.setItem(pendingKey(ownerId), JSON.stringify(submission));
+      recorded = true;
+      setPendingSubmission(submission);
+      const job = await VideoStudioApi.submitJob(submission.request);
+      sessionStorage.removeItem(pendingKey(ownerId));
+      setPendingSubmission(null);
+      onSubmitted(job);
+      setAttempted(false);
+      if (submission.source === "panel") optimization.dismiss();
+      setSubmitNote("已提交，进度会显示在生成记录里");
+      void refreshWallet();
+    } catch (e) {
+      const rolledBack = e instanceof ApiError && e.status !== undefined && e.status >= 400 && e.status < 500
+        && ![401, 403, 408, 429].includes(e.status) && e.code !== "VIDEO_STUDIO_REQUEST_CHANGED";
+      if (recorded && rolledBack) {
+        sessionStorage.removeItem(pendingKey(ownerId));
+        setPendingSubmission(null);
+      }
+      setSubmitError({message: recorded ? errorMessage(e, "提交结果还不确定，请核对上次提交")
+        : "无法保存提交记录，请允许浏览器会话存储后重试，任务尚未提交", topUp: isPaymentRequired(e), source: submission.source});
+    } finally {
+      submittingRef.current = false; setSubmitting(false);
+    }
+  };
+
+  const submitGeneration = (promptText: string, optimizationId: string | null, source: SubmitErrorState["source"]) => {
+    if (submittingRef.current || generationBlocked || quoteRequest) return;
     if (preflightFor(promptText).length > 0) {
       setAttempted(true);
       if (seedInvalid) setAdvancedOpen(true);
       return;
     }
-    submittingRef.current = true;
-    setSubmitting(true);
-    setSubmitError(null);
-    setSubmitNote(null);
-    try {
-      const request = buildJobRequest(model, draftWith(promptText, optimizationId));
-      const job = await VideoStudioApi.submitJob(request);
-      onSubmitted(job);
-      setAttempted(false);
-      if (source === "panel") optimization.dismiss();
-      setSubmitNote("已提交，进度会显示在生成记录里");
-      void refreshWallet();
-    } catch (e) {
-      setSubmitError({ message: errorMessage(e, "提交失败，请稍后重试"), topUp: isPaymentRequired(e), source });
-    } finally {
-      submittingRef.current = false;
-      setSubmitting(false);
-    }
+    const request = {...buildJobRequest(model, draftWith(promptText, optimizationId)), clientRequestId: newClientRequestId()};
+    setQuoteRequest({request, source});
   };
 
   /** 底部的主按钮：勾了智能优化就先优化（「优化并继续」），没勾直接生成。 */
@@ -709,13 +755,23 @@ function StudioForm({
   };
 
   const needsFrames = !!modeSpec && (modeSpec.needsFirstFrame || modeSpec.needsLastFrame);
-  const walletNeed = (price?.total ?? 0) + (effectiveOptimizeOn && optPrice ? optPrice : 0);
   const panelSubmitError = submitError?.source === "panel" ? submitError : null;
   const footerSubmitError = submitError?.source === "footer" ? submitError : null;
 
   return (
     <FormCard>
       <div ref={formTopRef} className="scroll-mt-4" />
+      {quoteRequest && <ModelQuoteDialog request={quoteRequest.request} onCancel={() => setQuoteRequest(null)}
+        onConfirm={approval => {
+          const submission = {...quoteRequest, request: {...quoteRequest.request, modelBilling: approval}};
+          setQuoteRequest(null); void sendGeneration(submission);
+        }} />}
+      {pendingSubmission && <div role="status" className="m-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+        <p>上次提交结果还未确认。核对会沿用原请求，避免重复扣费。</p>
+        <button type="button" disabled={submitting} onClick={() => void sendGeneration(pendingSubmission)} className="mt-2 font-medium underline">
+          {submitting ? "正在核对…" : "核对上次提交"}
+        </button>
+      </div>}
       {/* 做同款 */}
       {templateState ? (
         <div className="flex min-w-0 flex-col gap-1 rounded-t-[15px] bg-violet-50 px-4 py-2.5">
@@ -1064,14 +1120,7 @@ function StudioForm({
       {/* 报价 + 按钮 */}
       <div className="flex flex-col gap-2.5 rounded-b-[15px] border-t border-zinc-200 bg-zinc-50 px-4 py-4">
         <QuoteLine price={price} unavailable={!!modelsError} optimizeOn={effectiveOptimizeOn} optPrice={optPrice} />
-        {price && wallet && walletNeed > wallet.totalBalance ? (
-          <p className="text-[11.5px] leading-relaxed text-amber-700">
-            当前可用 {formatCredits(wallet.totalBalance)} 积分，不够这一条。
-            <Link href="/wallet" className="ml-1 font-medium underline underline-offset-2">
-              去充值
-            </Link>
-          </p>
-        ) : null}
+        <p className="text-[11.5px] text-zinc-500">生成前会确认折扣、模型赠款抵扣和普通积分补差。</p>
 
         {shownProblems.length > 0 && !panelOpen ? (
           <ul

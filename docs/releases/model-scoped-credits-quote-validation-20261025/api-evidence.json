@@ -1,0 +1,214 @@
+{
+  "walletBefore": {
+    "id": "3387ef8e-e882-4402-8e19-e8419758fc0e",
+    "userId": "7991322b-10de-4388-ae32-8c5fd11f62d9",
+    "accountType": "personal",
+    "totalBalance": 3000,
+    "licenseBalance": 3000,
+    "rechargeBalance": 0,
+    "giftBalance": 0,
+    "pendingBalance": 0,
+    "createdAt": "2026-09-25T08:37:09.273310Z",
+    "updatedAt": "2026-09-25T08:37:09.273310Z"
+  },
+  "walletAfter": {
+    "id": "3387ef8e-e882-4402-8e19-e8419758fc0e",
+    "userId": "7991322b-10de-4388-ae32-8c5fd11f62d9",
+    "accountType": "personal",
+    "totalBalance": 3000,
+    "licenseBalance": 3000,
+    "rechargeBalance": 0,
+    "giftBalance": 0,
+    "pendingBalance": 0,
+    "createdAt": "2026-09-25T08:37:09.273310Z",
+    "updatedAt": "2026-09-25T08:37:09.273310Z"
+  },
+  "quoteAfterTopup": {
+    "target": {
+      "appCode": "aiavatar",
+      "action": "image",
+      "endpointId": "ai-ed3a4356-475",
+      "providerModel": "gpt-image-2-1k-pic",
+      "specKey": "1024x1024",
+      "unit": "image"
+    },
+    "usage": {
+      "quantity": 1,
+      "outputQuantity": 0
+    },
+    "standardCredits": 10,
+    "discountCredits": 2,
+    "payableCredits": 8,
+    "scopedCredits": 8,
+    "walletCredits": 0,
+    "discountName": "本地八折",
+    "priceVersion": "b5670fedb2aa6ac767cb86234d5a4a4f212b780a472094cc9da1a0f3214cb986",
+    "grantAllocations": [
+      {
+        "grantId": "c5c78813-f160-4e64-abef-f5fdaa676dc0",
+        "campaignId": "d277988c-d601-4dfd-816e-db5220fe4390",
+        "credits": 8
+      }
+    ],
+    "freeOnly": true,
+    "canAfford": true,
+    "approval": {
+      "walletId": "3387ef8e-e882-4402-8e19-e8419758fc0e",
+      "target": {
+        "appCode": "aiavatar",
+        "action": "image",
+        "endpointId": "ai-ed3a4356-475",
+        "providerModel": "gpt-image-2-1k-pic",
+        "specKey": "1024x1024",
+        "unit": "image"
+      },
+      "usage": {
+        "quantity": 1,
+        "outputQuantity": 0
+      },
+      "priceVersion": "b5670fedb2aa6ac767cb86234d5a4a4f212b780a472094cc9da1a0f3214cb986",
+      "freeOnly": true,
+      "maxWalletCredits": 0
+    }
+  },
+  "runsAfterCancel": {
+    "success": true,
+    "data": [],
+    "pagination": {
+      "page": 0,
+      "limit": 30,
+      "total": 0,
+      "totalPages": 0,
+      "hasNext": false,
+      "hasPrev": false
+    }
+  },
+  "grantsAfterQuotes": {
+    "success": true,
+    "data": [
+      {
+        "id": "c5c78813-f160-4e64-abef-f5fdaa676dc0",
+        "walletId": "3387ef8e-e882-4402-8e19-e8419758fc0e",
+        "campaignId": "d277988c-d601-4dfd-816e-db5220fe4390",
+        "campaignName": "本地图片限时赠款",
+        "targets": [
+          {
+            "appCode": "aiavatar",
+            "action": "image",
+            "endpointId": "ai-ed3a4356-475",
+            "providerModel": "gpt-image-2-1k-pic",
+            "specKey": "1024x1024",
+            "unit": "image"
+          }
+        ],
+        "targetLabels": [
+          "本地图片报价模型 · 1024x1024"
+        ],
+        "campaignActive": true,
+        "amount": 10,
+        "available": 10,
+        "frozen": 0,
+        "spent": 0,
+        "expired": 0,
+        "expiresAt": "2026-10-25T09:39:37.077286Z",
+        "createdAt": "2026-10-25T08:41:13.335734Z"
+      },
+      {
+        "id": "eaca5b54-7776-472e-88a0-3f24fb0d39e7",
+        "walletId": "3387ef8e-e882-4402-8e19-e8419758fc0e",
+        "campaignId": "d277988c-d601-4dfd-816e-db5220fe4390",
+        "campaignName": "本地图片限时赠款",
+        "targets": [
+          {
+            "appCode": "aiavatar",
+            "action": "image",
+            "endpointId": "ai-ed3a4356-475",
+            "providerModel": "gpt-image-2-1k-pic",
+            "specKey": "1024x1024",
+            "unit": "image"
+          }
+        ],
+        "targetLabels": [
+          "本地图片报价模型 · 1024x1024"
+        ],
+        "campaignActive": true,
+        "amount": 5,
+        "available": 5,
+        "frozen": 0,
+        "spent": 0,
+        "expired": 0,
+        "expiresAt": "2026-10-25T09:39:37.077286Z",
+        "createdAt": "2026-10-25T08:39:58.278455Z"
+      }
+    ],
+    "pagination": {
+      "page": 0,
+      "limit": 20,
+      "total": 2,
+      "totalPages": 1,
+      "hasNext": false,
+      "hasPrev": false
+    }
+  },
+  "projectAfterCancel": {
+    "id": "IPP-867c8e03",
+    "name": "取消报价验收",
+    "status": "draft",
+    "createdAt": "2026-10-25T08:45:15.497797Z",
+    "updatedAt": "2026-10-25T08:46:32.164647Z",
+    "docVersion": "da0c0ed104941732",
+    "doc": {
+      "nodes": [
+        {
+          "id": "531MP4Z7t-1fuJIywyxZc",
+          "type": "image",
+          "title": "形象图片",
+          "width": 320,
+          "height": 400,
+          "position": {
+            "x": 100,
+            "y": 120
+          },
+          "metadata": {
+            "status": "idle",
+            "studio": {
+              "kind": "shot",
+              "includeInWork": false,
+              "composerDraft": {
+                "operation": "image",
+                "prompt": "报价取消后保留这段草稿",
+                "referenceNodeIds": [],
+                "connectedReferenceNodeIds": [],
+                "aspectRatio": "1:1",
+                "size": "1024x1024",
+                "count": 1,
+                "durationSec": 8,
+                "settings": {
+                  "genre": "都市治愈",
+                  "episodeCount": 1,
+                  "episodeDurationSec": 30
+                },
+                "video": {
+                  "mode": "t2v",
+                  "tier": "768p"
+                },
+                "pasteScript": false,
+                "scriptMode": "original"
+              }
+            },
+            "prompt": "报价取消后保留这段草稿"
+          }
+        }
+      ],
+      "assistantConversations": [],
+      "connections": [],
+      "viewport": {
+        "x": 329.2,
+        "y": 32.39999999999998,
+        "k": 0.93
+      }
+    },
+    "runs": {},
+    "runsById": {}
+  }
+}

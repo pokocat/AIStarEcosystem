@@ -9,7 +9,9 @@ public final class IpStudioRequests {
 
     private IpStudioRequests() {}
 
-    public record IpCreateProjectRequest(String name, String templateId) {}
+    public record IpCreateProjectRequest(String name, String templateId, String sceneId) {
+        public IpCreateProjectRequest(String name, String templateId) { this(name, templateId, null); }
+    }
 
     /**
      * @param baseDocVersion 客户端加载这份文档时的指纹（IpProjectDto.docVersion）。
@@ -27,7 +29,8 @@ public final class IpStudioRequests {
      * @param doc 可选：运行前顺手保存最新文档，避免「先 PUT 再 POST」的竞态
      *            （客户端刚拖完线就点运行，防抖 PUT 还没落地）
      */
-    public record IpRunNodeRequest(JsonNode doc, com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing, String clientRequestId, Long maxCost) {
+    public record IpRunNodeRequest(JsonNode doc, com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing, String clientRequestId, Long maxCost,com.aistareco.aep.billing.service.ModelBillingApproval modelBilling) {
+        public IpRunNodeRequest(JsonNode doc,com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing,String clientRequestId,Long maxCost) {this(doc,billing,clientRequestId,maxCost,null);}
         public IpRunNodeRequest(JsonNode doc,com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing,String clientRequestId) {this(doc,billing,clientRequestId,null);}
         public IpRunNodeRequest(JsonNode doc,com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing) {this(doc,billing,null,null);}
         public IpRunNodeRequest(JsonNode doc) {this(doc,null,null,null);}

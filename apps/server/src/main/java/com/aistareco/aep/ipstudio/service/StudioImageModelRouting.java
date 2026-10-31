@@ -12,8 +12,8 @@ public final class StudioImageModelRouting {
     public record Family(String id, String label, Map<String, String> providerModels) {}
 
     public static final List<Family> FAMILIES = List.of(
-            new Family("gpt-image-2", "gpt-image-2", Map.of("1K", "gpt-image-2-1k-pic", "2K", "gpt-image-2-1k-pic", "4K", "gpt-image-2-4k-pic")),
-            new Family("gpt-image-2.5-flare", "gpt-image-2.5-flare", Map.of("1K", "gpt-image-2.5-flare-1k", "2K", "gpt-image-2.5-flare-1k", "4K", "gpt-image-2.5-flare-4k")),
+            new Family("gpt-image-2", "GPT Image 2", Map.of("1K", "gpt-image-2-1k-pic", "2K", "gpt-image-2-1k-pic", "4K", "gpt-image-2-4k-pic")),
+            new Family("gpt-image-2.5-flare", "GPT Image 2.5", Map.of("1K", "gpt-image-2.5-flare-1k", "2K", "gpt-image-2.5-flare-1k", "4K", "gpt-image-2.5-flare-4k")),
             new Family("gpt-image-2.5-sunburst", "gpt-image-2.5-sunburst", Map.of("1K", "gpt-image-2.5-sunburst-1k", "2K", "gpt-image-2.5-sunburst-1k", "4K", "gpt-image-2.5-sunburst-4k"))
     );
 

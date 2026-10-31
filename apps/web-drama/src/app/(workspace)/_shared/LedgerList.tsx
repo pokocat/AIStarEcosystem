@@ -36,6 +36,7 @@ export const LEDGER_TYPE_LABEL: Record<LedgerEntryType, string> = {
   refund_cash: "退款回收",
   transfer_in: "积分转入",
   transfer_out: "积分转出",
+  scoped_grant: "模型赠款到账", scoped_freeze: "模型赠款冻结", scoped_spend: "模型赠款扣除", scoped_release: "模型赠款退回", scoped_expire: "模型赠款到期",
 };
 
 /** 冻结结算那条「扣除」在类型列的叫法（见文件头：不绑定成败）。 */
@@ -83,8 +84,9 @@ export function LedgerList({ entries, showBalance = true }: { entries: LedgerEnt
                 </>
               )}
             </span>
-            <span className="acct-ledger-after num" role="cell">
-              <span className="acct-ledger-after-label">余额 </span>
+            <span className="acct-ledger-after num" role="cell" title={e.type.startsWith("scoped_") ? "这笔模型赠款还剩多少，不是积分余额" : undefined}>
+              {/* 赠款行的 balanceAfter 是这一笔赠款的余额，和积分余额不是一回事，单独标出来。 */}
+              <span className="acct-ledger-after-label">{e.type.startsWith("scoped_") ? "赠款余额 " : "余额 "}</span>
               {formatCredits(e.balanceAfter)}
             </span>
           </div>

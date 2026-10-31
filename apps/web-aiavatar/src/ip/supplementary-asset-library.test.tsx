@@ -7,6 +7,8 @@ import { AvatarLibrary, VoiceLibrary } from './supplementary-asset-library';
 import type { Avatar, License, StarGrant, VoiceAsset } from '@/proto/data';
 
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
+const nav = vi.hoisted(() => ({ replace: vi.fn() }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ replace: nav.replace, push: vi.fn() }), usePathname: () => '/assets', useSearchParams: () => new URLSearchParams(window.location.search) }));
 vi.mock('./library-grid-motion', () => ({ LibraryGridMotion: ({ children }: any) => <div>{children}</div> }));
 vi.mock('antd', () => ({
   Button: ({ icon, type, size, ...p }: any) => <button {...p}>{icon}{p.children}</button>,
@@ -17,7 +19,7 @@ const ready = <T,>(data: T) => ({ data, loading: false, error: null });
 const avatar = (id: string, name: string, path: 'ai' | 'real') => ({ id, name, path, archetype: '画家', status: 'finalized', versions: 2, updated: '2026-10-12' } as Avatar);
 const grant = (status: 'authorized' | 'expired') => ({ id: `g-${status}`, starName: '授权人物', starId: 's-1', scenes: ['带货'], status } as StarGrant);
 const voice = (id: string, kind: VoiceAsset['kind'] = 'clone', lang = '中文') => ({ id, name: `声音${id}`, kind, lang, gender: '女声', tone: '温暖', dur: '00:10', wave: [] } as VoiceAsset);
-afterEach(cleanup);
+afterEach(() => { cleanup(); nav.replace.mockClear(); window.history.replaceState(null, '', '/'); });
 
 test('avatar categories and search preserve each real asset destination and hide expired grants', () => {
   render(<AvatarLibrary avatars={ready([avatar('a', 'AI画家', 'ai'), avatar('b', '真人画家', 'real')])} licenses={ready([])} grants={ready([grant('authorized'), grant('expired')])} refresh={vi.fn()}/>);
@@ -76,3 +78,16 @@ test('voice load failure is a single retryable error rather than an empty asset 
 });
 
 beforeEach(() => { mountStudioErrorNotifications(); });
+
+// 2026-10-30 线上复核：资产 → 声音 → 声音工作室 → 返回，跳到了首页。分类记在地址里，去工作室的链接带上来源。
+test('voice links carry the current category so the studio can return to it', () => {
+  window.history.replaceState(null, '', '/assets?tab=voices&category=preset');
+  render(<VoiceLibrary voices={ready([voice('a', 'clone'), voice('b', 'preset')])} refresh={vi.fn()}/>);
+  expect(screen.getAllByRole('article')).toHaveLength(1);
+  const from = encodeURIComponent('/assets?tab=voices&category=preset');
+  expect(screen.getByRole('link', { name: '管理声音 声音b' }).getAttribute('href')).toBe(`/studio?from=${from}#/voice`);
+  expect(screen.getByRole('link', { name: /声音工作室/ }).getAttribute('href')).toBe(`/studio?from=${from}#/voice`);
+  fireEvent.click(screen.getByRole('button', { name: /全部/ }));
+  expect(nav.replace).toHaveBeenLastCalledWith('/assets?tab=voices', { scroll: false });
+  expect(screen.getByRole('link', { name: '管理声音 声音a' }).getAttribute('href')).toBe(`/studio?from=${encodeURIComponent('/assets?tab=voices')}#/voice`);
+});

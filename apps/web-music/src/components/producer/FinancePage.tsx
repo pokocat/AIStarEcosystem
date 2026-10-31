@@ -38,6 +38,7 @@ const LEDGER_TO_TX_TYPE: Record<LedgerEntryType, TransactionType> = {
   refund_cash: "withdrawal",
   transfer_in: "transfer",
   transfer_out: "transfer",
+  scoped_grant: "scoped", scoped_freeze: "scoped", scoped_spend: "scoped", scoped_release: "scoped", scoped_expire: "scoped",
 };
 
 function ledgerToTransaction(entry: LedgerEntry): Transaction {

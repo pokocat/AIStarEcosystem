@@ -124,3 +124,6 @@ export type { CheckoutPayload, CheckoutResponse, PaymentChannel } from "./api/ac
 export * as EnterpriseApi from "./api/enterprise";
 
 export { modelTaskException } from "./model-task-state";
+export { publicModelErrorMessage, sanitizeModelErrorFields, MODEL_SERVICE_UNAVAILABLE } from "./public-model-error";
+
+export * as ModelBillingApi from './api/model-billing';
