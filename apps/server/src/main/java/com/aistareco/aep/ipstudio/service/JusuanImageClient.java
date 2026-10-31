@@ -152,6 +152,16 @@ public class JusuanImageClient {
                         body.deepCopy().put("transport","multipart").set("referenceKeys",mapper.valueToTree(keys.stream().map(JusuanImageClient::referenceLabel).toList())).toString(),true)),wire);}
             catch(ProviderRejected error){throw error;}
             catch(RuntimeException error){if(durable)throw new Pending(false,error);throw error;}
+            if(ProviderErrorMessage.hasError(accepted)) {
+                var error=com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attachBody(
+                        rejected(accepted,"图片生成服务返回错误，未提供具体原因"),accepted.toString());
+                // Keep sync final failures and async missing-receipt failures on their existing settlement paths.
+                if(resultMode.startsWith("sync-"))throw error;
+                var unconfirmed=new BusinessException(HttpStatus.BAD_GATEWAY,error.getCode(),error.getMessage(),error.getDetails());
+                for(Throwable evidence:error.getSuppressed())unconfirmed.addSuppressed(evidence);
+                if(durable)throw new Pending(false,unconfirmed);
+                throw unconfirmed;
+            }
             if(resultMode.startsWith("sync-")) {
                 try {
                     byte[] bytes=syncResult(endpoint,wire,accepted,resultMode,requestId);
@@ -456,11 +466,11 @@ public class JusuanImageClient {
         if(reason==null)return new ProviderRejected(fallback);
         String code=error.path("code").asText("");
         if(!code.matches("[A-Za-z0-9_.:-]{1,96}"))code="";
-        boolean moderation=Set.of("content_policy_violation","content_filter","safety_violation","moderation_blocked")
-                .contains(code.toLowerCase(Locale.ROOT));
-        String prefix=moderation?"图片未通过生成服务的内容审核：":"图片生成服务返回错误：";
-        return new ProviderRejected(prefix+reason,Map.of("providerCode",code,"reason",reason,
-                "category",moderation?"content_moderation":"provider_rejection"));
+        var moderation=com.aistareco.aep.service.ai.ProviderContentModeration.find(body);
+        if(moderation!=null)return new ProviderRejected(reason,Map.of("providerCode",moderation.providerCode(),
+                "reason",reason,"category","content_moderation","target",moderation.target()));
+        return new ProviderRejected("图片生成服务返回错误："+reason,Map.of("providerCode",code,"reason",reason,
+                "category","provider_rejection"));
     }
     private HttpRequest.Builder request(AiModelEndpoint endpoint,AiImageRequestSpec.Wire wire,String path) {
         String queryName=wire==null?"model":configured(wire.modelQueryParam(),"model");

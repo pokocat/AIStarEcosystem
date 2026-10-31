@@ -15,6 +15,34 @@ import static org.mockito.Mockito.*;
 
 class JusuanSpeechClientTest {
     private final ObjectMapper mapper=new ObjectMapper();
+    @Test void anErrorInsideHttp200KeepsItsCauseAndExistingUnconfirmedCode() {
+        var upstream=mock(UpstreamModelHttp.class);
+        var endpoint=AiModelEndpoint.builder().id("tts").upstreamApiKeyEncrypted(AepCryptoUtil.encrypt("test-key")).build();
+        java.net.http.HttpResponse<String> response=mock(java.net.http.HttpResponse.class);
+        when(response.statusCode()).thenReturn(200);
+        when(response.body()).thenReturn("{\"error\":{\"code\":\"InputTextSensitiveContentDetected\"}}");
+        when(upstream.sendJson(any(),any())).thenReturn(response);
+        var client=new JusuanSpeechClient(upstream,mapper);
+        for(boolean submit:new boolean[]{true,false}) {
+            var error=assertThrows(BusinessException.class,()->{if(submit)client.submit(endpoint,"https://speech.example/v1","{}","id","owner");else client.poll(endpoint,"https://speech.example/v1","https://speech.example/v1/jobs/id?model=qwen3-tts","id","owner");});
+            assertEquals("STUDIO_SPEECH_BAD_OUTPUT",error.getCode());
+            assertFalse(error instanceof JusuanSpeechClient.Rejected);
+            assertTrue(error.getMessage().contains("输入文本未通过内容审核"));
+            assertEquals(200,((com.aistareco.aep.service.ai.ProviderResponseDiagnostics)error.getSuppressed()[0]).status());
+        }
+    }
+    @Test void unclassifiedRejectionDoesNotInventAWrongVoiceOrScript() {
+        var upstream=mock(UpstreamModelHttp.class);
+        var endpoint=AiModelEndpoint.builder().id("tts").upstreamApiKeyEncrypted(AepCryptoUtil.encrypt("test-key")).build();
+        java.net.http.HttpResponse<String> response=mock(java.net.http.HttpResponse.class);
+        when(response.statusCode()).thenReturn(400);when(response.body()).thenReturn("{}");
+        when(upstream.sendJson(any(),any())).thenReturn(response);
+        var client=new JusuanSpeechClient(upstream,mapper);
+        var error=assertThrows(BusinessException.class,()->client.submit(endpoint,"https://speech.example/v1","{}","id","owner"));
+        assertEquals("STUDIO_SPEECH_REJECTED",error.getCode());
+        assertTrue(error.getMessage().contains("未提供具体原因"));
+        assertFalse(error.getMessage().contains("检查文案"));
+    }
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(ints={400,503})
     void providerErrorReasonSurvivesSubmitAndPoll(int status) {

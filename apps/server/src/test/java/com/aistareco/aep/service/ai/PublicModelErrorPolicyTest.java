@@ -7,6 +7,29 @@ import org.junit.jupiter.params.provider.ValueSource;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PublicModelErrorPolicyTest {
+    @Test void historicalModerationErrorsAreCorrectedOnReadWithoutChangingTheSourceOrTrace() throws Exception {
+        String old="图片未通过生成服务的内容审核：非常抱歉，该提示可能违反了关于暴力内容的防护限制。如果你认为此判断有误，请重试或修改提示语。 · 追查号 ABCDEF234567";
+        var original=mapper.createObjectNode().put("draft",old).put("errorCode","STUDIO_IMAGE_PROVIDER_FAILED").put("errorMessage",old);
+        var safe=PublicModelErrorPolicy.response(original);
+        assertEquals(old,safe.path("draft").asText());
+        assertEquals(old,original.path("errorMessage").asText());
+        String visible=safe.path("errorMessage").asText();
+        assertTrue(visible.contains("未说明触发对象"));
+        assertTrue(visible.contains("暴力内容"));
+        assertTrue(visible.endsWith("追查号 ABCDEF234567"));
+        assertFalse(visible.contains("该提示"));
+        assertEquals(visible,PublicModelErrorPolicy.stored(visible,"STUDIO_IMAGE_PROVIDER_FAILED"));
+    }
+    @Test void historicalReasonInsideErrorDetailsIsProtectedAsWell() throws Exception {
+        var source=mapper.readTree("{\"error\":{\"code\":\"STUDIO_IMAGE_PROVIDER_FAILED\",\"message\":\"old error\",\"details\":{\"providerCode\":\"content_policy_violation\",\"category\":\"content_moderation\",\"reason\":\"该提示可能违反暴力内容的防护限制 · 追查号 ABCDEF234567\"}}}");
+        var details=PublicModelErrorPolicy.response(source).path("error").path("details");
+        assertTrue(details.path("reason").asText().contains("未说明触发对象"));
+        assertTrue(details.path("reason").asText().endsWith("追查号 ABCDEF234567"));
+        assertEquals("unknown",details.path("target").asText());
+        assertTrue(source.path("error").path("details").path("reason").asText().contains("该提示"));
+        var current=mapper.readTree("{\"error\":{\"code\":\"STUDIO_IMAGE_PROVIDER_FAILED\",\"details\":{\"providerCode\":\"moderation_blocked\",\"category\":\"content_moderation\",\"target\":\"input\",\"reason\":\"输入内容未通过内容审核。请检查生成描述和参考素材。\"}}}");
+        assertEquals("input",PublicModelErrorPolicy.response(current).path("error").path("details").path("target").asText());
+    }
     private final ObjectMapper mapper = new ObjectMapper();
     @ParameterizedTest
     @ValueSource(strings={"预扣费额度失败, 用户剩余额度: ¥0.0123, 需要预扣费额度: ¥0.4567 (request id: [已脱敏])",

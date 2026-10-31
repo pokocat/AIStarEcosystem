@@ -25,28 +25,41 @@ public final class ProviderErrorMessage {
         return PublicModelErrorPolicy.stored(combined, "AI_PROVIDER_ERROR");
     }
 
-    public static boolean hasError(JsonNode body) {
-        if(body == null || !body.isObject()) return false;
-        JsonNode error=body.path("error");
-        return error.isTextual() && !error.asText().isBlank() || error.isObject() && !error.isEmpty();
+    public static boolean hasError(JsonNode body) { return hasError(body, 0); }
+
+    private static boolean hasError(JsonNode body, int depth) {
+        if(body == null || !body.isObject() || depth > 5) return false;
+        for(String field:List.of("error", "Error", "errors")) {
+            JsonNode error=body.path(field);
+            if(error.isTextual() && !error.asText().isBlank() || (error.isObject() || error.isArray()) && !error.isEmpty()) return true;
+        }
+        for(String field:List.of("data", "result", "ResponseMetadata", "responseMetadata", "response", "metadata"))
+            if(hasError(body.path(field), depth + 1)) return true;
+        return false;
     }
 
-    public static String reason(String body) { return reason(body, ProviderErrorMessage::sanitize); }
+    public static String reason(String body) { return reason(body, ProviderErrorMessage::sanitize, true); }
 
-    public static String reason(JsonNode body) { return read(body, 0, ProviderErrorMessage::sanitize); }
+    public static String reason(JsonNode body) {
+        var moderation = ProviderContentModeration.find(body);
+        return moderation == null ? read(body, 0, ProviderErrorMessage::sanitize) : moderation.message();
+    }
 
     /**
      * Same lookup as {@link #reason}, but keeps the supplier's own wording (quota, balance…) for classification.
      * Classify on this, never on {@link #reason}: the public text has those words replaced by a generic sentence.
      * Do not return this value through a customer DTO or exception message.
      */
-    public static String diagnosticReason(String body) { return reason(body, ProviderErrorMessage::diagnostic); }
+    public static String diagnosticReason(String body) { return reason(body, ProviderErrorMessage::diagnostic, false); }
 
     public static String diagnosticReason(JsonNode body) { return read(body, 0, ProviderErrorMessage::diagnostic); }
 
-    private static String reason(String body, UnaryOperator<String> clean) {
+    private static String reason(String body, UnaryOperator<String> clean, boolean publicOutput) {
         if (body == null || body.isBlank()) return null;
-        try { return read(JSON.readTree(body), 0, clean); }
+        try {
+            JsonNode parsed = JSON.readTree(body);
+            return publicOutput ? reason(parsed) : read(parsed, 0, clean);
+        }
         catch (Exception invalid) {
             // Preserve the legacy truncated-JSON diagnostic path; never parse text/HTML gateway pages.
             if (!body.stripLeading().startsWith("{") || HTML.matcher(body).find()) return null;
@@ -58,12 +71,18 @@ public final class ProviderErrorMessage {
     }
 
     private static String read(JsonNode node, int depth, UnaryOperator<String> clean) {
-        if (node == null || !node.isObject() || depth > 4) return null;
-        for (String key : List.of("error", "Error", "ResponseMetadata", "responseMetadata")) {
-            JsonNode error = node.path(key);
-            String reason = error.isTextual() ? clean.apply(error.asText()) : read(error, depth + 1, clean);
-            if (reason != null) return reason;
+        if (node == null || depth > 5) return null;
+        if (node.isArray()) {
+            for (JsonNode item : node) {
+                String reason = read(item, depth + 1, clean);
+                if (reason != null) return reason;
+            }
+            return null;
         }
+        if (!node.isObject()) return null;
+        // A gateway's top-level "message: success/error" must not hide the concrete nested failure.
+        String explicit = readError(node, depth, clean);
+        if (explicit != null) return explicit;
         for (String key : List.of("message", "Message", "msg", "Msg", "error_message", "errorMessage",
                 "fail_reason", "failReason", "reason", "detail", "error_description")) {
             JsonNode value = node.path(key);
@@ -72,8 +91,22 @@ public final class ProviderErrorMessage {
                 if (reason != null) return reason;
             }
         }
-        for (String key : List.of("data", "result", "ResponseMetadata", "responseMetadata", "response", "metadata")) {
+        for (String key : List.of("data", "result", "response", "metadata")) {
             String reason = read(node.path(key), depth + 1, clean);
+            if (reason != null) return reason;
+        }
+        return null;
+    }
+
+    private static String readError(JsonNode node, int depth, UnaryOperator<String> clean) {
+        if (node == null || !node.isObject() || depth > 5) return null;
+        for (String key : List.of("error", "errors", "Error", "ResponseMetadata", "responseMetadata", "FailureReason")) {
+            JsonNode error = node.path(key);
+            String reason = error.isTextual() ? clean.apply(error.asText()) : read(error, depth + 1, clean);
+            if (reason != null) return reason;
+        }
+        for (String key : List.of("data", "result", "response", "metadata")) {
+            String reason = readError(node.path(key), depth + 1, clean);
             if (reason != null) return reason;
         }
         return null;

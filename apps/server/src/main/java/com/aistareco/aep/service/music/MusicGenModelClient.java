@@ -253,7 +253,7 @@ public class MusicGenModelClient {
         String failReason = null;
         JsonNode fr = result.path("FailureReason");
         if (!fr.isMissingNode() && !fr.isNull()) {
-            failReason = ProviderErrorMessage.sanitize(fr.path("Msg").asText(null));
+            failReason = ProviderErrorMessage.reason(fr);
         }
         return new PollResult(status, progress, audioUrl, duration, lyrics, captions, failReason);
     }

@@ -14,7 +14,7 @@ test("asset grid exposes the persisted provider reason without opening asset det
     assets: [{ id: "as9", kind: "character", name: "如花", description: "成年角色", aliases: [], episodeIds: ["ep1"], image: slot }] };
   const props: any = { work, episodeId: "ep1", apply: vi.fn(), setError: vi.fn() };
   const { rerender } = render(<DirectorAssets {...props}/>);
-  expect(screen.getByRole("alert").textContent).toBe(reason);
+  expect(screen.getByRole("alert").textContent).toBe('参考图片未通过内容审核。服务方提示可能涉及未成年人相关内容。请检查或更换参考图片后再生成。');
   rerender(<DirectorAssets {...props} work={{ ...work, assets: [{ ...work.assets[0], image: { ...slot, error: null } }] }}/>);
   expect(screen.queryByRole("alert")).toBeNull();
 });

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-10T12:15:47.764108+00:00",
-  "title": "Design System: AI IP 画布",
+  "generatedAt": "2026-10-31T10:28:34.060150+00:00",
+  "title": "Design System: IP Studio · 声量引擎旗下",
   "extensions": {
     "colorMeta": {
       "bg": {
@@ -331,7 +331,7 @@
   ],
   "narrative": {
     "northStar": "角色与世界的创作空间",
-    "overview": "人物与内容是视觉中心。暖灰承托白色工作面，深墨明确操作，中文衬线给标题和人物名称留出创作的温度；搜索、筛选与设置使用清晰的无衬线字。界面既能容纳完整人物图，也能安静地承载版本、设定和状态，不以装饰代替内容。\n\n本文件记录已实现的首页、IP 管理和共享浅色顶栏系统。适用代码为 `src/styles/ip-brand.css`，令牌限定在 `.ip-brand-surface` 与 `.ip-management-editor`。页面组成和业务行为见 [DESIGN-desktop.md](DESIGN-desktop.md)；首页及管理页的具体设计意图分别见 [.impeccable/ip-home.md](.impeccable/ip-home.md) 与 [.impeccable/ip-management.md](.impeccable/ip-management.md)。\n\n旧青色移动 H5 仍按 [DESIGN-mobile.md](DESIGN-mobile.md) 及 [.impeccable/design-mobile.json](.impeccable/design-mobile.json)；画布内部仍按 `.ip-surface` 的群青与麦黄系统，见 [DESIGN-desktop.md](DESIGN-desktop.md)。这些入口按页面作用域使用，不能把本文件的令牌全局写到 `:root`。",
+    "overview": "人物与内容是视觉中心。暖灰承托白色工作面，深墨明确操作，中文衬线给标题和人物名称留出创作的温度；搜索、筛选与设置使用清晰的无衬线字。界面既能容纳完整人物图，也能安静地承载版本、设定和状态，不以装饰代替内容。\n\n本文件记录已实现的首页、创作、IP 管理、模板管理、资产库和共享浅色顶栏系统。适用代码为 `src/styles/ip-brand.css`，令牌限定在 `.ip-brand-surface` 与 `.ip-management-editor`。页面组成和业务行为见 [DESIGN-desktop.md](DESIGN-desktop.md)；首页及管理页的具体设计意图分别见 [.impeccable/ip-home.md](.impeccable/ip-home.md) 与 [.impeccable/ip-management.md](.impeccable/ip-management.md)。\n\n旧青色移动 H5 仍按 [DESIGN-mobile.md](DESIGN-mobile.md) 及 [.impeccable/design-mobile.json](.impeccable/design-mobile.json)；画布内部仍按 `.ip-surface` 的群青与麦黄系统，见 [DESIGN-desktop.md](DESIGN-desktop.md)。这些入口按页面作用域使用，不能把本文件的令牌全局写到 `:root`。",
     "keyCharacteristics": [
       "暖灰底、白色表面与细边线，内容平稳地留在工作面上。",
       "深墨主按钮与选中标记，状态色只表达状态。",
@@ -357,7 +357,7 @@
       }
     ],
     "dos": [
-      "Do 在首页、IP 管理和共享顶栏使用本系统；旧移动 H5 与画布分别使用明确的设计入口。",
+      "Do 在首页、IP 管理、桌面素材库、账号工具和共享顶栏使用本系统；旧移动 H5 与画布分别使用明确的设计入口。",
       "Do 让人物与内容成为视觉中心，保持白面、暖灰间隔和细边线。",
       "Do 按职责使用衬线与无衬线，并保留系统字体回退。",
       "Do 同时展示状态名称与状态色，让焦点和选中状态清楚可见。",

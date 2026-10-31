@@ -472,7 +472,7 @@ public class HttpShiliuGateway implements ShiliuGateway {
      */
     private static BusinessException byMessage(int code, String message, String suffix) {
         String text = message == null ? "" : message;
-        if (text.contains("权益不足") || text.contains("额度不足") || text.contains("余额不足") || text.contains("配额")) {
+        if (text.contains("权益不足")) {
             // ⚠️ 这句「账户权益不足」的真实含义，2026-08-13 用两步实测厘清过，别再重新解读：
             //   1) 账户有 3 avatar / 2 speaker 时 availableAvatar、availableSpeaker 均为 0，
             //      而 validPoint 尚有 3418 —— 一度据此判断是"可保存数量占满"；
@@ -483,10 +483,16 @@ public class HttpShiliuGateway implements ShiliuGateway {
             return BusinessException.wrapped(HttpStatus.CONFLICT, "CLIP_ENGINE_CAPACITY_FULL",
                     "数字人克隆权益不足，请联系运营开通后再试", "code=" + code + " msg=" + text);
         }
-        if (text.contains("鉴权") || text.contains("认证失败") || text.contains("token") || text.contains("密钥")) {
+        if (text.contains("余额不足")) {
+            return BusinessException.wrapped(HttpStatus.SERVICE_UNAVAILABLE, "CLIP_ENGINE_BALANCE_INSUFFICIENT",
+                    "数字人服务暂时不可用，请联系平台处理", "code=" + code + " msg=" + text);
+        }
+        // A token count/length limit is an input constraint, not proof that an authentication token is invalid.
+        boolean tokenAuth = text.matches("(?is).*(?:\\b(?:invalid|expired|missing)\\s+(?:access[_ -]?)?token\\b|(?:access[_ -]?)?token\\s*(?:无效|已?过期|缺失|校验失败|验证失败|invalid\\b|expired\\b)).*");
+        if (text.contains("鉴权") || text.contains("认证失败") || tokenAuth || text.contains("密钥")) {
             return BusinessException.wrapped(HttpStatus.SERVICE_UNAVAILABLE, "CLIP_ENGINE_CREDENTIAL_INVALID",
                     "数字人服务鉴权失效，请联系运营处理", "code=" + code + " msg=" + text);
         }
-        return upstreamFailure("石榴 AI 未受理任务" + suffix, "code=" + code);
+        return upstreamFailure("石榴 AI 未受理任务" + suffix, "code=" + code + " msg=" + text);
     }
 }

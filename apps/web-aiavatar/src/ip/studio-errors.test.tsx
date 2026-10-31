@@ -2,7 +2,7 @@
 import { render, fireEvent, screen, cleanup, waitFor } from '@testing-library/react';
 import { beforeEach, afterEach, it, expect, vi } from 'vitest';
 import { ApiError } from '@ai-star-eco/api-client/client';
-import { StudioNotifications, StudioErrorNotice, messageDeliveryError, normalizeStudioError, studioErrorText, reportStudioError, reportStudioRunFailures, studioRunError, forgetStudioActivation } from './studio-errors';
+import { StudioNotifications, StudioErrorNotice, messageDeliveryError, normalizeStudioError, studioErrorText, reportStudioError, reportStudioRunFailures, studioRunError, forgetStudioActivation, failureNext } from './studio-errors';
 const api = vi.hoisted(() => ({ error: vi.fn() }));
 // 错误弹窗：记下每次打开的配置；destroy 时照 antd 调 afterClose（释放「同一个错误不弹第二个」）。
 const modal = vi.hoisted(() => {
@@ -13,6 +13,24 @@ vi.mock('antd', () => ({ notification: { useNotification: () => [api, null] }, M
 beforeEach(() => { api.error.mockReset(); modal.error.mockClear(); forgetStudioActivation(); });
 afterEach(() => { cleanup(); for (const config of modal.open.splice(0)) config.afterClose?.(); });
 const titles = () => modal.error.mock.calls.map(([config]) => (config as { title: string }).title);
+it('does not send customers to recharge or delete work for supplier errors', () => {
+  expect(failureNext('CLIP_ENGINE_BALANCE_INSUFFICIENT')).not.toContain('充值');
+  expect(failureNext('CLIP_ENGINE_SPEAKER_NOT_FOUND')).not.toContain('删掉');
+  expect(failureNext('STUDIO_USAGE_PENDING')).toContain('原任务状态');
+  expect(failureNext('STUDIO_PAYMENT_REQUIRED')).toContain('积分钱包');
+  expect(failureNext('VIDEO_MODEL_RETIRED')).toContain('换一个');
+});
+it('shows corrected cause and input guidance together for the original moderation alert', async () => {
+  render(<StudioNotifications/>);
+  reportStudioError({ code: 'STUDIO_IMAGE_PROVIDER_FAILED', message: '图片未通过生成服务的内容审核：非常抱歉，该提示可能违反了关于暴力内容的防护限制。', logId: 'ABCDEF234567' }, { action: '生成分镜图' });
+  await waitFor(() => expect(modal.error).toHaveBeenCalledTimes(1));
+  const content = (modal.error.mock.lastCall![0] as { content: import('react').ReactNode }).content;
+  render(content);
+  expect(screen.getAllByText(/服务方未说明触发对象/).length).toBeGreaterThan(0);
+  expect(screen.getByText(/调整后再生成/)).toBeTruthy();
+  expect(screen.queryByText(/该提示可能违反/)).toBeNull();
+  expect(screen.getAllByText(/ABCDEF234567/).length).toBeGreaterThan(0);
+});
 it('keeps structured code, safe message and the real lookup ID while supporting old server suffixes', () => {
   const error = normalizeStudioError(new ApiError({code: 'PROVIDER_REJECTED', message: '图片不可用 · 追查号 ABCDEF234567', logId: 'ABCDEF234567'}, 400));
   expect(error).toEqual({code: 'PROVIDER_REJECTED', message: '图片不可用', logId: 'ABCDEF234567', taskId: undefined});

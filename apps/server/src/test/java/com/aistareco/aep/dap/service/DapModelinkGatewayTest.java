@@ -97,12 +97,24 @@ class DapModelinkGatewayTest {
     }
 
     @Test
-    void rateLimitAlsoMapsToQuotaExceeded() {
+    void ordinaryRateLimitDoesNotClaimThatAssetGroupsAreFull() {
         status = 429;
         body = "{\"error\":{\"message\":\"too many requests\"}}";
         BusinessException ex = assertThrows(BusinessException.class, () -> gateway.getGroup("qgroup-1"));
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, ex.getStatus());
-        assertEquals("DAP_MODELINK_QUOTA_EXCEEDED", ex.getCode());
+        assertEquals("DAP_MODELINK_CALL_FAILED", ex.getCode());
+        assertTrue(ex.getMessage().contains("请求过于频繁"));
+        assertFalse(ex.getMessage().contains("分组配额"));
+        assertFalse(ex.getMessage().contains("清理"));
+    }
+
+    @Test void requestSizeAndRateLimitsAreNotResourceQuotaEvidence() {
+        status=400;
+        for(String reason:new String[]{"rate limit exceeded","image size limit exceeded","too many requests","请求速率超过上限"}) {
+            body="{\"message\":\""+reason+"\"}";
+            var error=assertThrows(BusinessException.class,()->gateway.getAsset("asset"));
+            assertEquals("DAP_MODELINK_CALL_FAILED",error.getCode(),reason);
+        }
     }
 
     @Test

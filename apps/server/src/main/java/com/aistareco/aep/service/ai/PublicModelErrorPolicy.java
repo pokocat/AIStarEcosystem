@@ -45,7 +45,12 @@ public final class PublicModelErrorPolicy {
             var trace = TRACE.matcher(text);
             return trace.find() ? SUPPLIER_STORAGE_FULL + " · 追查号 " + trace.group(1) : SUPPLIER_STORAGE_FULL;
         }
-        if (!PRIVATE.matcher(text).find() && !(!wallet && (COST.matcher(text).find() || provider && ACCOUNT.matcher(text).find()))) return text;
+        if (!PRIVATE.matcher(text).find() && !(!wallet && (COST.matcher(text).find() || provider && ACCOUNT.matcher(text).find()))) {
+            String normalized = ProviderContentModeration.historical(text);
+            if (normalized.equals(text)) return text;
+            var trace = TRACE.matcher(text);
+            return trace.find() ? normalized + " · 追查号 " + trace.group(1) : normalized;
+        }
         var trace = TRACE.matcher(text);
         return trace.find() ? UNAVAILABLE + " · 追查号 " + trace.group(1) : UNAVAILABLE;
     }
@@ -68,6 +73,17 @@ public final class PublicModelErrorPolicy {
         }
         if (!(node instanceof ObjectNode object)) return;
         if (inError) object.remove(List.of("upstreamBody", "upstreamMessage", "providerMessage", "responseBody", "rawResponse", "internalDetail", "apiKey", "credentials"));
+        if (inError && "content_moderation".equals(object.path("category").asText()) && object.hasNonNull("providerCode") && !object.hasNonNull("target")) {
+            var moderation = ProviderContentModeration.find(object);
+            if (moderation != null) {
+                for (String field : List.of("reason", "message"))
+                    if (object.path(field).isTextual()) {
+                        var trace = TRACE.matcher(object.path(field).asText());
+                        object.put(field, moderation.message() + (trace.find() ? " · 追查号 " + trace.group(1) : ""));
+                    }
+                object.put("target", moderation.target());
+            }
+        }
         String code = object.path("errorCode").asText(object.path("error_code").asText(inheritedCode));
         if (inError) code = object.path("code").asText(code);
         if (inError && code != null && CODE.matcher(code).matches())

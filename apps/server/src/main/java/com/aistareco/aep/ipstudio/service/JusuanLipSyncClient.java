@@ -94,10 +94,16 @@ public class JusuanLipSyncClient {
     private JsonNode checked(HttpResponse<String> response,boolean create) {
         if(response.statusCode()/100!=2) {
             if(create&&response.statusCode()>=400&&response.statusCode()<500&&response.statusCode()!=408)
-                throw attach(new JusuanSpeechClient.Rejected("STUDIO_LIP_SYNC_REJECTED",ProviderErrorMessage.message(response.body(),"口型请求被拒绝，请检查源视频是否有清晰的单人正脸，以及配音时长")),response);
+                throw attach(new JusuanSpeechClient.Rejected("STUDIO_LIP_SYNC_REJECTED",ProviderErrorMessage.message(response.body(),"口型请求被服务方拒绝，未提供具体原因，请联系平台处理")),response);
             throw attach(fail("STUDIO_LIP_SYNC_UNAVAILABLE",ProviderErrorMessage.message(response.body(),"口型服务暂时不可用，正在核对原任务")),response);
         }
-        try{return mapper.readTree(response.body());}catch(Exception e){throw attach(fail("STUDIO_LIP_SYNC_BAD_OUTPUT","口型任务尚未确认，正在核对原请求"),response);}
+        try{
+            JsonNode result=mapper.readTree(response.body());
+            if(ProviderErrorMessage.hasError(result))throw attach(fail("STUDIO_LIP_SYNC_BAD_OUTPUT",
+                    ProviderErrorMessage.append(response.body(),"口型服务返回错误，正在核对原任务")),response);
+            return result;
+        }catch(BusinessException error){throw error;}
+        catch(Exception e){throw attach(fail("STUDIO_LIP_SYNC_BAD_OUTPUT","口型任务尚未确认，正在核对原请求"),response);}
     }
     private static String key(AiModelEndpoint e){return AepCryptoUtil.decrypt(e.getUpstreamApiKeyEncrypted());}
     private static BusinessException fail(String code,String message){return new BusinessException(HttpStatus.BAD_GATEWAY,code,message);}

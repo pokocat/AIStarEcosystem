@@ -337,14 +337,16 @@ class MaterialVideoModelClientBodyTest {
     @Test
     @DisplayName("轮询到 failed：读聚算的 error.message（对象）/ errorMessage，都没有才退到 errorCode")
     void failReasonReadsJusuanShapes() throws Exception {
-        assertEquals("prompt rejected by safety", MaterialVideoModelClient.extractFailReason(om.readTree(
-                "{\"status\":\"failed\",\"error\":{\"code\":\"CONTENT_POLICY\",\"message\":\"prompt rejected by safety\"}}")));
+        assertTrue(MaterialVideoModelClient.extractFailReason(om.readTree(
+                "{\"status\":\"failed\",\"error\":{\"code\":\"CONTENT_POLICY\",\"message\":\"prompt rejected by safety\"}}"))
+                .contains("未说明触发对象"));
         assertEquals("asset expired", MaterialVideoModelClient.extractFailReason(om.readTree(
                 "{\"status\":\"failed\",\"errorCode\":\"ASSET_EXPIRED\",\"errorMessage\":\"asset expired\"}")));
         assertEquals("ASSET_EXPIRED", MaterialVideoModelClient.extractFailReason(om.readTree(
                 "{\"status\":\"failed\",\"errorCode\":\"ASSET_EXPIRED\"}")));
-        assertEquals("CONTENT_POLICY", MaterialVideoModelClient.extractFailReason(om.readTree(
-                "{\"status\":\"failed\",\"error\":{\"code\":\"CONTENT_POLICY\"}}")));
+        assertTrue(MaterialVideoModelClient.extractFailReason(om.readTree(
+                "{\"status\":\"failed\",\"error\":{\"code\":\"CONTENT_POLICY\"}}"))
+                .contains("未说明触发对象"));
         // data 里的说人话原因优先于顶层的错误码
         assertEquals("bad frame", MaterialVideoModelClient.extractFailReason(om.readTree(
                 "{\"errorCode\":\"E1\",\"data\":{\"error\":{\"message\":\"bad frame\"}}}")));
