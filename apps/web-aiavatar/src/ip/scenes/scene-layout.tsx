@@ -1,5 +1,6 @@
 "use client";
 
+import { SignedImage } from "@/canvas-bridge/signed-image";
 import { type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, Download, FileImage, Loader2, PanelLeftClose, PanelLeftOpen, Pencil, X } from "lucide-react";
@@ -195,15 +196,20 @@ export function sceneOptionValues(groups: StudioSceneOptionGroup[] | null | unde
  * 看大图（2026-10-30 复测：Esc 关不掉，Tab 会跑到后面的页面上）。
  * 打开时焦点进来、Tab 在里面循环、关掉还给原来的按钮（dialogFocus，和导演台同一份）；Esc 和点暗处都关。
  */
-export function SceneViewer({ url, name, onDownload, onClose }: { url: string; name: string; onDownload: () => void; onClose: () => void }) {
+export function SceneViewer({ url, storageKey, name, onDownload, onClose, actions }: {
+  url: string; storageKey?: string; name: string; onDownload: () => void; onClose: () => void;
+  /** 这张图接着做什么（当参考图、做成视频）：放在下载前面。 */
+  actions?: ReactNode;
+}) {
   useEffect(() => {
     const escape = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); onClose(); } };
     document.addEventListener("keydown", escape);
     return () => document.removeEventListener("keydown", escape);
   }, [onClose]);
   return <div className="scene-viewer" role="dialog" aria-modal="true" aria-label="查看大图" ref={dialogFocus} tabIndex={-1} onClick={onClose}>
-    <img src={url} alt={name} onClick={e => e.stopPropagation()}/>
+    <SignedImage src={url} storageKey={storageKey} alt={name} onClick={e => e.stopPropagation()}/>
     <div onClick={e => e.stopPropagation()}>
+      {actions}
       <button type="button" onClick={onDownload}><Download size={16}/>下载</button>
       <button type="button" onClick={onClose}><X size={16}/>关闭</button>
     </div>

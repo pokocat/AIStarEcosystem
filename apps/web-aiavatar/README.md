@@ -172,6 +172,10 @@ src/
 
 ## 版本日志
 
+### 场景页结果接着用（2026-10-31）
+
+交给创作助手的草稿在结果区显示制作进度（读 `getStudioPlanExecution`）。出的图可以「当参考图」「做成视频」（视频页读地址里的 `ref`，`scene-query.ts`）；结果、参考图、素材和成片换成 `SignedImage` / `SignedVideo`，过期自动换签。见 `docs/studio-scene-creation.md` §18。
+
 ### 场景页编导与场景要求（2026-10-31）
 
 编导只给会交给视频模型的图编号、看不到图就照实说；脚本写成 H3 认的「第N镜（0–2 秒）……旁白说：「……」」；换规格提示重写。场景目录加 `brief`（要做到什么、要用户给的信息、结尾、能不能编），缺必填信息写「还缺」和【待补】，有【待补】不让出片；输入框上方「写清楚」小标签；用户写的数字没进脚本就提醒（`src/ip/scenes/scene-script-check.ts`）。后台场景模板可编辑 brief。见 `docs/studio-scene-creation.md` §16–17。

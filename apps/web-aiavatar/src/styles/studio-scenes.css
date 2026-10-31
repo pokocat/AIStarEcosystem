@@ -159,6 +159,9 @@ html:not([data-layout="desktop"]) :is(.scene-hint, .scene-video-hint, .scene-gen
 .scene-row-prompt { margin-top: 6px !important; color: var(--ip-muted); font-size: 12.5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .scene-row-images { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 12px; }
 .scene-row-images:empty { display: none; }
+/* 原图排在结果前面，角上一个「原图」，和结果一样大，方便并排看。 */
+.scene-row-images .scene-row-original { position: relative; }
+.scene-row-original>span { position: absolute; top: 6px; left: 6px; padding: 0 7px; border-radius: 6px; background: rgba(25,34,41,.72); color: #fff; font-size: 11.5px; line-height: 20px; }
 .scene-row-images button { padding: 0; border: 0; border-radius: 10px; overflow: hidden; background: var(--ip-soft); }
 .scene-row-images img { display: block; width: 100%; height: 220px; object-fit: contain; }
 .scene-row-placeholder { height: 220px; border-radius: 10px; background: linear-gradient(110deg, var(--ip-soft) 30%, #fbfbfa 50%, var(--ip-soft) 70%); background-size: 220% 100%; animation: scene-shimmer 1.6s linear infinite; }
@@ -377,6 +380,10 @@ html:not([data-layout="desktop"]) .scene-fact-chips>span { line-height: 36px; }
 html:not([data-layout="desktop"]) .scene-fact-chips>div { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
 html:not([data-layout="desktop"]) .scene-fact-chips>div::-webkit-scrollbar { display: none; }
 html:not([data-layout="desktop"]) .scene-fact-chips button { flex: 0 0 auto; min-height: 36px; }
+/* 交给创作助手之后的进度：结果区顶上一行，等你处理时金色。 */
+.scene-handoff { margin: 0 0 10px !important; padding: 8px 12px; border-radius: 9px; background: var(--ip-soft); color: var(--ip-muted); font-size: 12.5px; line-height: 1.6; }
+.scene-handoff.is-waiting { background: var(--ip-gold-soft); color: var(--ip-gold); }
+.scene-handoff a { margin-left: 8px; color: var(--ip-ink); font-weight: 500; text-decoration: underline; text-underline-offset: 2px; }
 /* 编导说还缺什么：金色，是要用户补的；数字没进脚本：灰字，只是提醒。外边距压过页面对 p 的重置。 */
 .scene-script-missing { margin: 8px 0 0 !important; padding: 7px 10px; border-radius: 8px; background: var(--ip-gold-soft); color: var(--ip-gold); font-size: 12.5px; line-height: 1.6; }
 .scene-script-text mark.scene-script-blank { padding: 0 2px; border-radius: 3px; background: var(--ip-gold-soft); color: var(--ip-gold); }

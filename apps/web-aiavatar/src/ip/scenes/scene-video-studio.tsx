@@ -10,7 +10,11 @@ import type { StudioCapabilities } from "@ai-star-eco/types/ip-studio-workflow";
 import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { HubTabBar } from "@/components/hub/ui";
-import { cancelRun, fetchStudioVideoModels, readRun } from "@/canvas-bridge/api";
+import { cancelRun, fetchStudioVideoModels, readRun, signKeys } from "@/canvas-bridge/api";
+import { SignedImage } from "@/canvas-bridge/signed-image";
+import { SignedVideo } from "@/canvas-bridge/signed-video";
+import { getStudioPlanExecution } from "@/canvas-bridge/studio-plan-execution";
+import type { StudioPlanExecution } from "@ai-star-eco/types/ip-studio-workflow";
 import { importStudioMedia, studioCapabilities, submitStudioRun } from "@/canvas-bridge/studio-api";
 import { attachmentNode } from "@/canvas-bridge/studio-attachments";
 import { isStudioBillingCancelled } from "@/canvas-bridge/studio-billing-cancel";
@@ -225,6 +229,17 @@ export function SceneVideoStudio() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalog, ready, query.scene, query.draft, openDraft, pickScene]);
 
+  // 地址里带着 ref（AI 图片「做成视频」）：场景定下来以后放进素材，并从地址里去掉，刷新不会再放一次。
+  const broughtRef = useRef<string>(undefined);
+  useEffect(() => {
+    if (!ready || !catalog || !scene || !query.ref || query.draft || broughtRef.current === query.ref) return;
+    if (query.scene && query.scene !== scene.id) return;
+    broughtRef.current = query.ref;
+    writeQuery(scene.id, draftRef.current?.id);
+    void bringImage(query.ref);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, catalog, scene?.id, query.ref, query.draft, query.scene]);
+
   /** 这一次操作用哪份草稿：页面上开着的那份，没有就新建一份（ticket 之后换过草稿，新建的不摆到页面上）。 */
   const ensureDraft = async (ticket: number) => {
     if (!scene) throw new Error("场景还没读出来，请稍等");
@@ -268,6 +283,26 @@ export function SceneVideoStudio() {
   }, [draftId, persist]);
 
   const doc = draft?.doc ?? EMPTY_DOC;
+  // 交给画布里创作助手的那份（爆款复刻、比模型长的片子）：回到这页也看得到做到哪了（2026-10-30 审查 G05 / C2）。
+  // 执行就是画布那一套（ip_plan_execution），这里只读它，不另记一份进度。
+  const handedOff = !!draft?.doc.assistantConversations?.some(n => n.metadata?.studioStart === "assistant");
+  const executionId = [...(doc.nodes as CanvasNodeData[])].reverse().find(n => n.metadata?.studio?.execution?.executionId)?.metadata?.studio?.execution?.executionId;
+  const [execution, setExecution] = useState<StudioPlanExecution>();
+  useEffect(() => {
+    setExecution(undefined);
+    if (!draftId || !executionId) return;
+    let alive = true, timer: ReturnType<typeof setTimeout> | undefined;
+    const read = async () => {
+      try {
+        const next = await getStudioPlanExecution(draftId, executionId);
+        if (!alive) return;
+        setExecution(next);
+        if (next.status === "running") timer = setTimeout(() => void read(), 5000);
+      } catch { if (alive) timer = setTimeout(() => void read(), 15000); }
+    };
+    void read();
+    return () => { alive = false; if (timer) clearTimeout(timer); };
+  }, [draftId, executionId]);
   const scripts = scriptNodes(doc);
   const rows = videoRows(doc);
   const latestScript = [...scripts].reverse().find(s => s.metadata?.status === "success" && s.metadata.content);
@@ -312,6 +347,34 @@ export function SceneVideoStudio() {
     } catch (e) { showFailure({ action: "上传素材", error: e, next: "检查一下文件格式和大小，再试一次。" }); }
     finally { setUploading(undefined); }
   };
+  /**
+   * 从 AI 图片「做成视频」带过来的那张图（地址里的 ref，是本人的文件 key）：当一张场景图放进来，和上传的一样记进草稿。
+   * key 是不是本人的由服务端在出片时照常把关（requireOwnedAssetKey）。
+   */
+  const bringImage = async (key: string) => {
+    if (!scene) return;
+    const ticket = session.current;
+    setUploading("image");
+    try {
+      const url = (await signKeys([key]))[key];
+      if (!url) throw new Error("这张图读不出来了，回 AI 图片重新点一次「做成视频」");
+      const projectId = await ensureDraft(ticket);
+      const max = scene.images.max ?? 6;
+      const media: Media = { key, url, title: `${scene.images.label} ${images.length + 1}`, mediaType: "image", mimeType: "", bytes: 0, fileName: "" };
+      if (onPage(ticket, projectId)) {
+        setImages(old => old.some(m => m.key === key) ? old : [...old, media].slice(0, max));
+        setNote({ text: `图带过来了，放在「${scene.images.label}」。说说想拍成什么样，编导会照着写。` });
+      }
+      await persist(doc => {
+        const nodes = doc.nodes as CanvasNodeData[];
+        const made = placeMedia(nodes, media, "image", nodes.filter(n => n.metadata?.origin === "upload").length);
+        const placed = nodes.some(n => n.id === made.id) ? doc : { ...doc, nodes: [...nodes, made] };
+        return withSceneInput(placed, "image", key, "add", max);
+      }, projectId).catch(() => undefined);
+    } catch (e) { showFailure({ action: "带入图片", error: e }); }
+    finally { setUploading(undefined); }
+  };
+
   /** 页面上现在选中的素材（记进草稿的那份，见 IpProjectDoc.sceneInputs）。 */
   const selection = (): StudioSceneInputs => ({ images: images.map(m => m.key), character: character?.key ?? null, voice: voice?.key ?? null, video: video?.key ?? null });
   /**
@@ -613,7 +676,7 @@ export function SceneVideoStudio() {
   const tile = (kind: Exclude<Slot, "image">, media: Media | undefined, label: string, Icon: typeof Video, optional: boolean, clear: () => void) =>
     <div className={`scene-media${media ? " is-filled" : ""}`}>
       <button type="button" disabled={uploading !== undefined} onClick={() => choose(kind)} aria-label={media ? `更换${label}` : `添加${label}`} title={media?.fileName}>
-        {uploading === kind ? <Loader2 size={20} className="studio-gallery-spinner"/> : media && kind === "character" ? <img src={media.url} alt=""/>
+        {uploading === kind ? <Loader2 size={20} className="studio-gallery-spinner"/> : media && kind === "character" ? <SignedImage src={media.url} storageKey={media.key} alt=""/>
           : <><Icon size={26} strokeWidth={1.3}/>{!media && <span className="scene-ref-upload"><Upload size={11}/></span>}</>}
       </button>
       <span>{media ? label : `添加${label}`}{!media && optional && <small>（可选）</small>}</span>
@@ -649,7 +712,7 @@ export function SceneVideoStudio() {
       {mode === "talk" ? <div className="scene-video-input">
         <div className="scene-media-row" role="group" aria-label="素材">
           {scene.video && tile("video", video, scene.video.label, Video, !scene.video.required, () => { if (video) drop("video", video.key); setVideo(undefined); })}
-          {images.map((m, i) => <div key={m.key} className="scene-media is-filled"><span className="scene-media-preview"><img src={m.url} alt={m.title}/></span><span>图{i + 1} {m.title}</span>
+          {images.map((m, i) => <div key={m.key} className="scene-media is-filled"><span className="scene-media-preview"><SignedImage src={m.url} storageKey={m.key} alt={m.title}/></span><span>图{i + 1} {m.title}</span>
             <button type="button" className="scene-ref-remove" aria-label={`移除${m.title}`} onClick={() => { drop("image", m.key); setImages(old => old.filter((_, j) => j !== i).map((o, j) => ({ ...o, title: `${scene.images.label} ${j + 1}` }))); }}><X size={13}/></button></div>)}
           {images.length < (scene.images.max ?? 6) && <div className="scene-media"><button type="button" disabled={uploading !== undefined} onClick={() => choose("image")} aria-label={`添加${scene.images.label}`}>
             {uploading === "image" ? <Loader2 size={20} className="studio-gallery-spinner"/> : <><ImagePlus size={26} strokeWidth={1.3}/><span className="scene-ref-upload"><Upload size={11}/></span></>}</button>
@@ -706,6 +769,7 @@ export function SceneVideoStudio() {
     <section className="scene-results" aria-label="生成结果">
       <header><SceneResultTabs tab={tab} onTab={setTab} count={rows.length} idBase="scene-video"/>
         <span className="scene-results-actions">{draft && <Link className="scene-link" href={`/projects/${encodeURIComponent(draft.id)}`}><FolderOpen size={15}/>在画布中继续</Link>}<UiVersionSwitch inline/></span></header>
+      {draft && handedOff && <HandoffStatus projectId={draft.id} execution={execution} waiting={!!executionId && !execution}/>}
       <div id="scene-video-panel" className="scene-results-panel" role="tabpanel" aria-labelledby={`scene-video-tab-${tab}`}>
       {tab === "example" ? <SceneExample id={scene.id} title={`${scene.title}怎么做`} note={scene.structure} cover={scene.coverUrl} examples={scene.examples}>
           <ol className="scene-steps">
@@ -846,7 +910,7 @@ function VideoRow({ row, run, busy, submitting, onRetry, onConfirm, onReuse, onS
     <div className="scene-row-meta"><strong>{row.title}</strong><span>{[request?.aspectRatio === "16:9" ? "横屏" : "竖屏", request?.video?.resolutionTier?.toUpperCase()].filter(Boolean).join(" · ")}</span>
       <span className="scene-row-state" role={loading ? "status" : undefined} title={failure && meta?.errorDetails !== failure ? `${meta?.errorDetails || ""}${meta?.errorLogId ? `（记录号 ${meta.errorLogId}）` : ""}` : undefined}>
         {loading && <Loader2 size={14} className="studio-gallery-spinner"/>}{state}</span></div>
-    {url ? <video className="scene-video-player" src={url} controls playsInline preload="metadata" aria-label={row.title}/>
+    {url ? <SignedVideo className="scene-video-player" src={url} storageKey={meta?.storageKey} controls playsInline preload="metadata" aria-label={row.title}/>
       : loading ? <span className={`scene-video-placeholder is-${request?.aspectRatio === "16:9" ? "wide" : "tall"}`}/> : null}
     {request?.prompt && <p className="scene-row-prompt" title={request.prompt}>{request.prompt}</p>}
     <div className="scene-row-actions">
@@ -876,4 +940,19 @@ function VideoSettingsPanel({ durations, duration, onDuration, ratios, ratio, on
     <h3>台词语言</h3>
     <div className="scene-choice-row">{LANGUAGES.map(l => <button key={l} type="button" aria-pressed={l === language} onClick={() => onLanguage(l)}>{l}</button>)}</div>
   </div>;
+}
+
+/** 交给创作助手之后做到哪了：一句话加「去画布看」。没有确认方案之前还没开始做，也照实说。 */
+function HandoffStatus({ projectId, execution, waiting }: { projectId: string; execution?: StudioPlanExecution; waiting: boolean }) {
+  const steps = execution?.steps ?? [];
+  const done = steps.filter(s => s.status === "done" || s.status === "skipped").length;
+  const text = waiting ? "在画布里交给创作助手做了，正在读进度…"
+    : !execution ? "交给画布里的创作助手了，去那边确认方案和费用后才开始做。"
+    : execution.status === "running" ? `创作助手在做，第 ${Math.min(done + 1, steps.length)} 步，共 ${steps.length} 步。`
+    : execution.status === "done" ? "创作助手做完了，成片在画布里。"
+    : execution.status === "paused" || execution.status === "needs_user" ? `创作助手停下来等你${execution.needsUserReason ? `：${execution.needsUserReason}` : "，去画布里看一眼"}。`
+    : execution.status === "canceled" ? "这次制作停掉了，做好的部分还在画布里。"
+    : `没全部做完，做好了 ${done} 步，剩下的去画布里看看。`;
+  return <p className={`scene-handoff${execution?.status === "paused" || execution?.status === "needs_user" ? " is-waiting" : ""}`} role="status">{text}
+    <Link href={`/projects/${encodeURIComponent(projectId)}?start=assistant`}>去画布看</Link></p>;
 }

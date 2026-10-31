@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, Download, FolderOpen, ImagePlus, Loader2, Mountain, Package, PencilLine, Plus, RotateCcw, Shirt, SlidersHorizontal, Sparkles, Square, Undo2, Upload, UserRound, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { SignedImage } from "@/canvas-bridge/signed-image";
+import { ChevronDown, Clapperboard, Download, FolderOpen, ImageUp, ImagePlus, Loader2, Mountain, Package, PencilLine, Plus, RotateCcw, Shirt, SlidersHorizontal, Sparkles, Square, Undo2, Upload, UserRound, X } from "lucide-react";
 import type { IpImageAsset, IpProject, IpRun, StudioSceneImageState } from "@ai-star-eco/types";
 import type { StudioCapabilities } from "@ai-star-eco/types/ip-studio-workflow";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
@@ -33,6 +35,7 @@ const writeQuery = (scene: string, draft?: string) => writeSceneQuery("/image", 
 
 /** 「AI 图片」：选场景 → 放参考图 → 描述已写好 → 生成。草稿是一张普通画布，可以随时去画布里继续。 */
 export function SceneImageStudio() {
+  const router = useRouter();
   const auth = useRequireAuth();
   const ready = auth === "ok";
   const showFailure = useStudioFailure();
@@ -351,6 +354,37 @@ export function SceneImageStudio() {
     }, 0);
   };
 
+  /**
+   * 出的这张图接着用（2026-10-30 审查 G04：只能下载，想拿它当参考得下载再上传）。
+   * 当参考图：放进当前场景第一个空着的参考图位，都放满了就换掉第一张。做成视频：带着这张图去 AI 视频。
+   */
+  const putAsReference = (image: { url: string; key?: string; name: string }) => {
+    if (!scene || !image.key) return;
+    const empty = scene.refs.findIndex((_, i) => !slots[i]);
+    const at = empty >= 0 ? empty : 0;
+    setSlots(old => { const next = scene.refs.map((_, i) => old[i]); next[at] = { key: image.key!, url: image.url, name: image.name }; return next; });
+    setViewing(undefined); setHint("");
+    setNote({ text: `放进「${scene.refs[at].label}」了${empty < 0 ? "，换掉了原来那张" : ""}。` });
+    setTimeout(() => document.querySelector(".scene-image-studio .scene-composer")?.scrollIntoView?.({ block: "start", behavior: "smooth" }), 0);
+  };
+  const toVideo = (image: { key?: string }) => {
+    if (!image.key) return;
+    router.push(`/video?scene=${videoSceneFor(scene?.id, scene?.group)}&ref=${encodeURIComponent(image.key)}`);
+  };
+  /**
+   * 改图类场景（换脸、精修、真人感、白底、入景、换装）把原图放在结果前面，一眼对比改了什么（方案 §4.3）。
+   * 原图就是那一次的图1；自由出图、设定图这类生成新图的不放。
+   */
+  const originalOf = (row: CanvasNodeData) => {
+    const sceneId = row.metadata?.studio?.sceneImage?.sceneId ?? scene?.id;
+    if (!sceneId || !COMPARE_SCENES.has(sceneId) || !draftRef.current) return undefined;
+    const first = rowUploads(draftRef.current.doc, row)[0];
+    return first ? { url: first.url, key: first.key, name: `${row.title}-原图` } : undefined;
+  };
+  const followUps = (image: { url: string; key?: string; name: string }) => image.key ? <>
+    <button type="button" onClick={() => putAsReference(image)}><ImageUp size={16}/>当参考图</button>
+    <button type="button" onClick={() => toVideo(image)}><Clapperboard size={16}/>做成视频</button></> : null;
+
   if (auth === "no-platform" || drafts.notEnrolled) return <PlatformGateScreen/>;
   const rows = draft ? imageRows(draft.doc) : [];
   if (catalogError && !catalog) return <main className="ip-brand-surface scene-studio scene-image-studio"><div className="scene-loading">场景目录没读出来<button type="button" className="ip-brand-secondary" onClick={retryCatalog}>重新加载</button></div></main>;
@@ -377,7 +411,7 @@ export function SceneImageStudio() {
             const Icon = refIcon(ref.label);
             return <div key={`${scene.id}-${i}`} className={`scene-ref${slot ? " is-filled" : ""}`}>
               {slot ? <>
-                <img src={slot.url} alt={ref.label}/><span className="scene-ref-index">图{i + 1}</span>
+                <SignedImage src={slot.url} storageKey={slot.key} alt={ref.label}/><span className="scene-ref-index">图{i + 1}</span>
                 <button type="button" className="scene-ref-remove" aria-label={`移除${ref.label}`} onClick={() => setSlots(old => { const next = [...old]; next[i] = undefined; return next; })}><X size={13}/></button>
               </> : <button type="button" className="scene-ref-add" disabled={uploading !== undefined} aria-label={`上传${ref.label}`} title={ref.hint}
                 onClick={() => { uploadTarget.current = i; fileInput.current?.click(); }}
@@ -437,8 +471,8 @@ export function SceneImageStudio() {
           ? <SceneEmpty title="图片创作" note={<>放参考图，说说想要的画面；不知道怎么写，就从左边选一个场景。</>} covers={sampleCovers}/>
           : <SceneExample id={scene.id} title={`${scene.title}效果示例`} note={scene.description} cover={scene.coverUrl} examples={scene.examples}/>)
         : opening ? <div className="scene-loading"><Loader2 size={20} className="studio-gallery-spinner"/>正在打开草稿</div>
-        : rows.length ? <ol className="scene-row-list">{rows.map(row => <ImageRow key={row.id} row={row} run={live[row.id]} busy={busy} submitting={submitting === row.id}
-          onView={setViewing} onReuse={() => reuse(row)} onRetry={() => retry(row)} onConfirm={() => void confirmOriginal(row)}
+        : rows.length ? <ol className="scene-row-list">{rows.map(row => <ImageRow key={row.id} row={row} original={originalOf(row)} run={live[row.id]} busy={busy} submitting={submitting === row.id}
+          onView={setViewing} onUse={putAsReference} onVideo={toVideo} onReuse={() => reuse(row)} onRetry={() => retry(row)} onConfirm={() => void confirmOriginal(row)}
           onStop={() => { const id = row.metadata?.studio?.runId; if (id) void cancelRun(id).catch(e => showFailure({ action: "停止生成", error: e })); }}/>)}</ol>
         : <SceneEmpty title="还没有生成" note={<>放好参考图，点「立即生成图片」，结果会出现在这里。</>} covers={[]}/>}
       </div>
@@ -453,13 +487,16 @@ export function SceneImageStudio() {
         const index = picking;
         setSlots(old => { const next = [...old]; next[index] = { key: image.data.storageKey!, url: image.data.dataUrl, name: image.title }; return next; });
       }}/></div>}
-    {viewing && <SceneViewer url={viewing.url} name={viewing.name} onClose={closeViewer} onDownload={() => void downloadMedia(viewing.url, viewing.name, undefined, viewing.key)}/>}
+    {viewing && <SceneViewer url={viewing.url} storageKey={viewing.key} name={viewing.name} onClose={closeViewer} actions={followUps(viewing)}
+      onDownload={() => void downloadMedia(viewing.url, viewing.name, undefined, viewing.key)}/>}
     <HubTabBar/>
   </main>;
 }
 
-function ImageRow({ row, run, busy, submitting, onView, onReuse, onRetry, onConfirm, onStop }: {
+function ImageRow({ row, original, run, busy, submitting, onView, onUse, onVideo, onReuse, onRetry, onConfirm, onStop }: {
+  original?: { url: string; key?: string; name: string };
   row: CanvasNodeData; run?: IpRun; busy: boolean; submitting: boolean; onView: (image: { url: string; key?: string; name: string }) => void;
+  onUse: (image: { url: string; key?: string; name: string }) => void; onVideo: (image: { key?: string }) => void;
   onReuse: () => void; onRetry: () => void; onConfirm: () => void; onStop: () => void;
 }) {
   const meta = row.metadata;
@@ -477,8 +514,10 @@ function ImageRow({ row, run, busy, submitting, onView, onReuse, onRetry, onConf
       <span className="scene-row-state" role={loading ? "status" : undefined} title={failure && meta?.errorDetails !== failure ? `${meta?.errorDetails || ""}${meta?.errorLogId ? `（记录号 ${meta.errorLogId}）` : ""}` : undefined}>{loading && <Loader2 size={14} className="studio-gallery-spinner"/>}{state}</span></div>
     {request?.prompt && <p className="scene-row-prompt" title={request.prompt}>{request.prompt}</p>}
     <div className="scene-row-images">
+      {original && images.length > 0 && <button type="button" className="scene-row-original" onClick={() => onView(original)} aria-label="查看原图">
+        <SignedImage src={original.url} storageKey={original.key} alt="原图" loading="lazy"/><span>原图</span></button>}
       {images.map((image, i) => <button type="button" key={image.id} onClick={() => onView({ url: image.content!, key: image.storageKey, name: `${row.title}-${i + 1}` })} aria-label={`查看第 ${i + 1} 张`}>
-        <img src={image.content} alt={`${row.title}第 ${i + 1} 张`} loading="lazy"/></button>)}
+        <SignedImage src={image.content} storageKey={image.storageKey} alt={`${row.title}第 ${i + 1} 张`} loading="lazy"/></button>)}
       {loading && Array.from({ length: Math.max(0, (request?.count || 1) - images.length) }, (_, i) => <span key={`wait-${i}`} className="scene-row-placeholder"/>)}
     </div>
     <div className="scene-row-actions">
@@ -486,6 +525,10 @@ function ImageRow({ row, run, busy, submitting, onView, onReuse, onRetry, onConf
       {loading && !accepted && !submitting && <button type="button" disabled={busy} onClick={onConfirm}><RotateCcw size={13}/>确认原任务</button>}
       {meta?.status === "error" && request && <button type="button" className="is-primary" disabled={busy} onClick={onRetry}><RotateCcw size={13}/>重新生成</button>}
       {images[0] && <button type="button" onClick={() => void downloadMedia(images[0].content!, row.title, undefined, images[0].storageKey)}><Download size={13}/>下载</button>}
+      {/* 只有一张时直接在这一行接着做；几张的点开大图选一张。 */}
+      {images.length === 1 && images[0].storageKey && <>
+        <button type="button" onClick={() => onUse({ url: images[0].content!, key: images[0].storageKey, name: row.title })}><ImageUp size={13}/>当参考图</button>
+        <button type="button" onClick={() => onVideo({ key: images[0].storageKey })}><Clapperboard size={13}/>做成视频</button></>}
       {request && <button type="button" onClick={onReuse}><PencilLine size={13}/>重新编辑</button>}
     </div>
   </li>;
@@ -516,4 +559,15 @@ function ImageSettingsPanel({ ratios, ratio, onRatio, sizes, size, onSize, count
     <h3>生成张数</h3>
     <div className="scene-choice-row">{counts.map(c => <button key={c} type="button" aria-pressed={c === count} onClick={() => onCount(c)}>{c} 张</button>)}</div>
   </div>;
+}
+
+/**
+ * 「做成视频」去哪个视频场景：人物类的图去数字人口播（人物照片），其余当商品图去口播带货。
+ * 到了视频页可以再换场景，同名的素材位会跟着走。
+ */
+const COMPARE_SCENES = new Set(["face-swap", "retouch", "realism", "white-background", "scene-swap", "product-scene", "outfit-on-model", "outfit-restyle"]);
+
+function videoSceneFor(sceneId?: string, group?: string): string {
+  if (group === "ip" || group === "person" || sceneId === "realism" || sceneId === "scene-swap") return "ip-talking";
+  return "ecom-talking";
 }
