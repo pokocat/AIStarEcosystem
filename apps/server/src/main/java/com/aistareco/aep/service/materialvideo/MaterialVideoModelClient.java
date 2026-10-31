@@ -445,7 +445,7 @@ public class MaterialVideoModelClient {
                 markRetired(p,model);
             throw attach(BusinessException.wrapped(HttpStatus.BAD_GATEWAY,
                     mappedError.map(VideoProviderErrorMapper.MappedError::code).orElse("VIDEO_SUBMIT_FAILED"),
-                    mappedError.map(m->ProviderErrorMessage.append(resp.body(),m.message()))
+                    mappedError.map(m->m.publicMessage(resp.body()))
                             .orElseGet(() -> submitFailureMessage(resp.statusCode(), resp.body())),
                     "endpoint=" + p.getName() + " model=" + model + " status=" + resp.statusCode()
                             + " body=" + snippet(resp.body())),resp);
@@ -1072,7 +1072,9 @@ public class MaterialVideoModelClient {
             body.put("content", content);
             if (aspectRatio != null && !aspectRatio.isBlank()) body.put("ratio", aspectRatio);
             if (durationSec > 0) body.put("duration", durationSec);
-            if (configured == null || !configured.requestFields().containsKey("return_last_frame"))
+            // 2026-10-31: Seedance-compatible gateways need not support this optional output.
+            // Configured endpoints opt in via requestFields; retain the legacy native adapter default.
+            if (configured == null)
                 body.put("return_last_frame", true);
             return body;
         }
