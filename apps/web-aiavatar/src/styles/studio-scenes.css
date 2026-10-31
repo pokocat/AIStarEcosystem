@@ -365,6 +365,22 @@ html:not([data-layout="desktop"]) .scene-video-stage { padding: 16px; }
 .scene-example-dots { display: flex; gap: 6px; }
 .scene-example-dots button { width: 7px; height: 7px; padding: 0; border: 0; border-radius: 999px; background: #ccd1d5; transition: width 160ms var(--ip-ease); }
 .scene-example-dots button[aria-current="true"] { width: 20px; background: var(--ip-ink); }
+/* 要写清楚的信息：一排小标签，点了往输入框里起一行。 */
+/* 标签单独一列，按钮另起一个容器：第二行和第一个按钮对齐（2026-10-30 界面评审）。手机上只占一行、左右滑，不把输入框挤出首屏。 */
+.scene-fact-chips { display: flex; align-items: flex-start; gap: 6px; margin: 2px 0 6px; }
+.scene-fact-chips>span { flex: 0 0 auto; min-width: 56px; line-height: 28px; color: var(--ip-muted); font-size: 12.5px; }
+.scene-fact-chips>div { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.scene-fact-chips button { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; padding: 3px 10px; border: 1px dashed color-mix(in srgb, var(--ip-ink) 30%, transparent); border-radius: 999px; background: transparent; color: var(--ip-ink); font-size: 12px; white-space: nowrap; cursor: pointer; }
+.scene-fact-chips button:hover { border-style: solid; }
+.scene-fact-chips button small { color: var(--ip-muted); font-size: 11px; }
+html:not([data-layout="desktop"]) .scene-fact-chips>span { line-height: 36px; }
+html:not([data-layout="desktop"]) .scene-fact-chips>div { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+html:not([data-layout="desktop"]) .scene-fact-chips>div::-webkit-scrollbar { display: none; }
+html:not([data-layout="desktop"]) .scene-fact-chips button { flex: 0 0 auto; min-height: 36px; }
+/* 编导说还缺什么：金色，是要用户补的；数字没进脚本：灰字，只是提醒。外边距压过页面对 p 的重置。 */
+.scene-script-missing { margin: 8px 0 0 !important; padding: 7px 10px; border-radius: 8px; background: var(--ip-gold-soft); color: var(--ip-gold); font-size: 12.5px; line-height: 1.6; }
+.scene-script-text mark.scene-script-blank { padding: 0 2px; border-radius: 3px; background: var(--ip-gold-soft); color: var(--ip-gold); }
+.scene-script-check { margin: 8px 0 0 !important; color: var(--ip-muted); font-size: 12px; line-height: 1.6; }
 .scene-generate-note { margin: 0; color: var(--ip-gold); font-size: 12.5px; line-height: 1.6; }
 .scene-generate-note.is-note { color: var(--ip-muted); }
 .scene-generate-help { margin: 0; color: var(--ip-muted); font-size: 12.5px; line-height: 1.6; }

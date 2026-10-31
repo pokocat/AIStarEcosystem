@@ -100,7 +100,10 @@
 
 - [ ] **全部内置图片/视频生成流程顺畅与内容质量**（2026-10-30 审查，未实施）：用户明确同城仅为举例，范围为全部 17 图片/21 视频场景及内置模板接续。**实施顺序与 PR 切分以 [独立复核与整体方案](docs/audits/studio-built-in-creation-flow-plan-2026-10-30.md) 为准**；证据见 [全量流程审查](docs/audits/studio-built-in-creation-flow-review-2026-10-30.md) 与 [提示词证据](docs/audits/studio-scene-prompt-review-2026-10-30.md)。
   - [x] ~~PR-1 创作条件存进草稿~~ **2026-10-31 本地完成，未发布**：`doc.sceneImageState` / `sceneVideoState` + 出图条件快照 + 编导选项 + 成功视频再做 + 换场景同名带素材 + 比例 / 张数 / 时长不悄悄换；`scene-draft-state.test.tsx` 11 条（10 条在旧代码上红）。见 `docs/studio-scene-creation.md` §15。
-  - [ ] PR-2 结果直接继续（用这张做参考 / 做视频）+ 结果地址过期换签；PR-3 编导按有效素材写、换规格后复核、场景稿接上 H3 镜头与台词格式；PR-4/5 场景目录 `brief` 与 38 场景内容；PR-6 助手接续与配方模板验收。
+  - [x] ~~PR-3 编导按有效素材写、换规格后复核、场景稿接上 H3 镜头与台词格式~~ **2026-10-31 本地完成，未发布**：`seenTitles` / `characterSeen` / `visual`，「第N镜（0–2 秒）……旁白说：「……」」，真 Agnes 输出钉成 H3 回归用例。见 `docs/studio-scene-creation.md` §16。
+  - [x] ~~PR-4/5 场景目录 `brief` 与 38 场景内容~~ **2026-10-31 本地完成，未发布**：21 个视频场景 brief 与各自的输入示例 / 拍法 / 常用开头，图片场景补多图分工；还缺 / 【待补】/ 数字核对；后台可编辑。见 §17。
+  - [ ] PR-2 结果直接继续（用这张做参考 / 做视频）+ 结果地址过期换签；PR-6 助手接续与配方模板验收。
+  - [ ] 成片层付费验收（团购、品牌故事、数字人口播、换脸各一条，需批预算）；本地 Agnes 视频那几天一直「队列已满」，没出过成片。
   - [ ] 还没有草稿时（第一次生成 / 上传之前）刷新会丢输入；要不要用浏览器本地暂存，等用户决定。
 
 - [ ] **发布模板时区域颜色丢失**（2026-10-25 发现，圈选分组）：画布分组新增 `metadata.groupTone`（`apps/web-aiavatar/src/canvas-bridge/studio-areas.ts`），但服务端 `IpDemoTemplateService` 剥素材时对 group 节点只白名单了 `groupDescription`（约 121 行），存为模板 / 官方内容后区域回到默认色。名字、说明、成员不受影响；要保留颜色需在同处加 `groupTone`（只接受 `slate|blue|teal|green|amber|rose`）。

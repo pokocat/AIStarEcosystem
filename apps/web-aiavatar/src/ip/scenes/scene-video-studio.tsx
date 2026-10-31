@@ -30,6 +30,7 @@ import { useSceneQuery, writeSceneQuery } from "./scene-query";
 import { UiVersionSwitch } from "@/shell/ui-version-switch";
 import { SceneExample, SceneList, SceneNoModel, SceneOptions, SceneRecent, SceneResultTabs, SceneThumb, sceneFailureText, sceneHintText, sceneOptionValues, useScenePopover } from "./scene-layout";
 import { clampSceneDuration, sceneVideoDurations, sceneVideoInputs, sceneVideoSettings, type SceneVideoMaterial } from "./scene-video-plan";
+import { classifyBlanks, missingFigures, scriptMissing, scriptPlaceholders, splitBlanks } from "./scene-script-check";
 
 type Media = StudioMediaImportResult & { title: string };
 type Slot = "image" | "character" | "voice" | "video";
@@ -364,18 +365,27 @@ export function SceneVideoStudio() {
     : !recreation && !caps ? "正在读取模型…"
     : !recreation && !caps?.mock && !textModel?.tokenPricing ? "编导暂时不可用（文字模型没配置价格）" : "";
 
-  const send = async () => {
+  /** 让编导写或改一版。revisionAsk 是代码替用户说的修改意见（出片时换了规格，「让编导按现在的设置改一版」）。 */
+  const send = async (revisionAsk?: string) => {
     if (busy || uploading || writing) return;
-    if (blocker) { setHint(blocker); return; }
+    // 代码替用户说的修改意见（换了规格重写）只跳过「说说想改哪里」，模型没读到、没配价这类照样拦。
+    if (blocker && !(revisionAsk && blocker === "说说想改哪里")) { setHint(blocker); return; }
     if (recreation) { await handoff(); return; }
     setBusy(true); setHint(""); setNote(undefined);
     const ticket = session.current;
     let nodeId: string | undefined, posted = false, projectId: string | undefined;
     try {
-      const ask = text.trim();
+      const ask = (revisionAsk ?? text).trim();
       const first = scripts[0]?.metadata?.studio?.sceneDirector;
+      // 只给会交给视频模型的图编号（按所选模型算，和出片时同一个函数）：只认首帧的模型只拿第一张、纯文字模型一张都不拿。
+      // 用不上的图编导照样可以看，脚本里用文字写；写脚本的模型看不到图就照实说（2026-10-30 审查 F07）。
+      const handed = new Set((plan?.used ?? []).map(m => m.key));
+      const visual = !!(caps?.mock || textModel?.supportsVision);
       const composed = await IpStudioApi.composeScene({ kind: "video-script", sceneId: scene!.id, text: revising ? first?.ask ?? "" : ask,
-        ...(revising ? { revision: ask } : {}), imageTitles: images.map(i => i.title), characterTitle: character?.title, voiceTitle: voice?.title,
+        ...(revising ? { revision: ask } : {}),
+        imageTitles: images.filter(i => handed.has(i.key)).map(i => i.title), seenTitles: images.filter(i => !handed.has(i.key)).map(i => i.title),
+        characterTitle: character?.title, ...(character && !handed.has(character.key) ? { characterSeen: true } : {}),
+        voiceTitle: voice && handed.has(voice.key) ? voice.title : undefined, visual,
         duration: usedDuration, ratio, language, ...(sceneOptionValues(scene!.options, picked) ? { options: sceneOptionValues(scene!.options, picked) } : {}) });
       projectId = await ensureDraft(ticket);
       const chosen = selection();
@@ -386,12 +396,13 @@ export function SceneVideoStudio() {
         const imageIds = placed.filter(p => p.media.mediaType === "image").map(p => p.node.id);
         const made = addScriptNode({ ...doc, nodes }, {
           ask, revision: revising, prompt: composed.text, materialIds: placed.map(p => p.node.id), imageIds: vision ? imageIds : [],
-          duration: usedDuration, ratio, language, model: caps?.mock ? undefined : textModel?.endpointId, maxCost: scriptCost, options: sceneOptionValues(scene!.options, picked) });
+          duration: usedDuration, ratio, language, model: caps?.mock ? undefined : textModel?.endpointId, maxCost: scriptCost, options: sceneOptionValues(scene!.options, picked),
+          ...(chosenVideo ? { videoModel: chosenVideo.endpointId } : {}), refs: (plan?.used ?? []).filter(m => m.mediaType === "image").map(m => m.key) });
         request = made.request; nodeId = made.nodeId;
         // 用了哪些素材记进草稿：重开时原样放回（不看图的模型不记读图列表，不能靠它推断）。
         return { ...made.doc, sceneInputs: chosen };
       }, projectId);
-      if (onPage(ticket, projectId)) { setText(""); setSubmitting(nodeId); }
+      if (onPage(ticket, projectId)) { if (!revisionAsk) setText(""); setSubmitting(nodeId); }
       posted = true;
       const run = await submitStudioRun(projectId, request!);
       await persist(doc => applyRun(doc, nodeId!, run), projectId);
@@ -462,7 +473,19 @@ export function SceneVideoStudio() {
   };
 
   // ── 按脚本出片 ────────────────────────────────────────────────────────
-  const useScript = (row: CanvasNodeData) => { setScriptId(row.id); setPrompt(row.metadata?.content || ""); setMode("generate"); setHint(""); };
+  // 「还缺：……」那一行是编导写给你看的，不是脚本：拿去出片时去掉。
+  // 「写清楚」小标签：还没写脚本时给全部；写过之后只给最新一版里还空着的那几条。
+  const latestBlanks = latestScript ? scriptPlaceholders(scriptMissing(latestScript.metadata?.content || "").body) : [];
+  const chipFacts = (scene?.brief?.facts ?? []).filter(f => !latestScript || latestBlanks.some(b => b.includes(f.label) || f.label.includes(b)));
+  const addFact = (label: string) => {
+    const line = `${label}：`;
+    const next = text.includes(line) ? text : text.trim() ? `${text.replace(/\s+$/, "")}\n${line}` : line;
+    setText(next); setHint("");
+    // 已经有这一行就把光标放到这一行末尾，没有就放到最后。
+    const at = next.indexOf(line), end = at >= 0 ? (next.indexOf("\n", at) < 0 ? next.length : next.indexOf("\n", at)) : next.length;
+    setTimeout(() => { const el = input.current; if (el) { el.focus(); el.setSelectionRange(end, end); } }, 0);
+  };
+  const useScript = (row: CanvasNodeData) => { setScriptId(row.id); setPrompt(scriptMissing(row.metadata?.content || "").body); setMode("generate"); setHint(""); };
   /**
    * 重新编辑（成功的视频）：成功了但不满意时用。把这条用的脚本（含出片前改过的字）、时长、画面、清晰度、模型和要不要先优化放回「生成视频」，
    * 改一处再出；旧的这条留着。素材用现在放着的（编辑器里列着会用上哪几份）。
@@ -517,7 +540,27 @@ export function SceneVideoStudio() {
         : `写脚本按实际用量扣积分，这一版最多扣 ${scriptCost}（只是上限，短脚本用不了这么多）`) : "",
        chosenVideo ? (videoQuote != null ? `用 ${chosenVideo.name} 出片预计 ${videoQuote} 积分` : planError || "") : "",
        !textModel?.supportsVision && (images.length || character) ? "编导这次不看图，只按文字写" : ""].filter(Boolean).join("；");
+  // 正在出片的这版脚本是按什么写的：时长、横竖屏、交给视频模型的图。现在的设置跟它对不上（换了模型、改了时长或素材），
+  // 就照实说哪里变了，并给一键「让编导按现在的设置改一版」；不拦出片，用户也可能就是想这么出（2026-10-30 审查 F07）。
+  const writtenFor = scripts.find(s => s.id === scriptId)?.metadata?.studio?.sceneDirector;
+  const handedNow = (plan?.used ?? []).filter(m => m.mediaType === "image").map(m => m.key);
+  const staleScript = mode === "generate" && writtenFor ? [
+    writtenFor.duration !== usedDuration ? `这版脚本是照 ${writtenFor.duration} 秒写的，现在要出 ${usedDuration} 秒` : "",
+    writtenFor.ratio !== ratio ? `脚本是照${writtenFor.ratio === "16:9" ? "横屏" : "竖屏"}写的，现在是${ratio === "16:9" ? "横屏" : "竖屏"}` : "",
+    writtenFor.refs && writtenFor.refs.join() !== handedNow.join()
+      ? writtenFor.refs.length && !handedNow.length ? `脚本里用了参考图，这个模型不看图`
+        : `脚本里用了 ${writtenFor.refs.length || "0"} 张参考图，这次只用得上 ${handedNow.length} 张` : "",
+  ].filter(Boolean).join("，") : "";
+  const reviseForNow = () => {
+    if (!staleScript) return;
+    setMode("talk");
+    void send(`${staleScript}。按现在的时长、画面和参考图重新排镜头和台词，内容和卖点不变。`);
+  };
+
+  // 编导留了【待补】的地方没填，出出来就是一句「待补」或者模型自己编一个价：先拦下。
+  const blanks = scriptPlaceholders(prompt);
   const videoBlocker = !videoModels ? "正在读取视频模型…" : !chosenVideo ? "还没有可用的视频模型" : planError
+    || (blanks.length ? `还有没填的：${[...new Set(blanks)].join("、")}。在上面换成实际内容，用不上的直接删掉。` : "")
     || (settings ? studioVideoError(chosenVideo, settings, prompt, ratio, usedDuration) : "请重新选择清晰度") || "";
 
   const generate = async () => {
@@ -596,7 +639,8 @@ export function SceneVideoStudio() {
             <div className="scene-idea-grid" role="group" aria-label="常用开头">{scene.ideas.map(idea => <button type="button" key={idea}
               onClick={() => setText(old => old.includes(idea) ? old : old.trim() ? `${old.trim()}；${idea}` : idea)}>{idea}</button>)}</div>
           </div>
-          : scripts.map(row => <ScriptTurn key={row.id} row={row} run={live[row.id]} busy={busy} submitting={submitting === row.id} latest={row.id === latestScript?.id}
+          : scripts.map((row, i) => <ScriptTurn key={row.id} row={row} run={live[row.id]} busy={busy} submitting={submitting === row.id} latest={row.id === latestScript?.id}
+              given={scripts.slice(0, i + 1).map(s => s.metadata?.studio?.sceneDirector?.ask ?? "")} facts={scene.brief?.facts}
               copied={copied === row.id} onUse={() => useScript(row)} onRevise={() => { setMode("talk"); input.current?.focus(); }} onCopy={() => void copy(row)}
               onRetry={() => void retry(row)} onConfirm={() => void confirmOriginal(row)}
               onStop={() => { const id = row.metadata?.studio?.runId; if (id) void cancelRun(id).catch(e => showFailure({ action: "停止", error: e })); }}/>)}
@@ -617,6 +661,11 @@ export function SceneVideoStudio() {
           <input ref={fileInput} type="file" hidden onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) void upload(target.current, file); }}/>
         </div>
         <SceneOptions groups={scene.options} value={picked} onPick={(key, choice) => setPicked(old => ({ ...old, [key]: choice }))}/>
+        {/* 这类视频要写清的信息（场景的 brief）：点一下在输入框里起一行「店名和位置：」，接着写就行，不用填表。 */}
+        {/* 写过一版之后只给脚本里还空着的那几条，没有空着的就不显示（2026-10-30 界面评审：改稿时三行标签挤在中间）。 */}
+        {!recreation && chipFacts.length > 0 && <div className="scene-fact-chips" role="group" aria-label="要写清楚的信息"><span>{revising ? "还空着" : "写清楚"}</span>
+          <div>{chipFacts.map(f => <button key={f.label} type="button" onClick={() => addFact(f.label)}>
+            {f.label}{!f.required && <small>有就写</small>}</button>)}</div></div>}
         <textarea ref={input} aria-label={revising ? "想改哪里" : "想做的视频"} rows={3} value={text}
           placeholder={revising ? "想改哪里，直接说。例如：开头再抓人一点，台词口语一点" : scene.placeholder} onChange={e => { setText(e.target.value); setHint(""); }}
           onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }}/>
@@ -649,7 +698,7 @@ export function SceneVideoStudio() {
       : <GenerateEditor prompt={prompt} onPrompt={p => { setPrompt(p); setHint(""); }} onBack={() => setMode("talk")}
           models={videoModels ?? []} model={chosenVideo} onModel={chooseVideoModel} tiers={tiers.map(t => t.tier)} tier={usedTier} onTier={setTier}
           durations={durations} duration={usedDuration} onDuration={setDuration} ratio={ratio} onRatio={setRatio}
-          used={plan?.used ?? []} restored={note} note={[plan?.note, durationNote].filter(Boolean).join("；") || undefined} quote={videoQuote} mock={!!caps?.mock} blocker={hint || videoBlocker} busy={busy}
+          used={plan?.used ?? []} restored={note} stale={staleScript} onReviseForNow={reviseForNow} reviseCost={caps?.mock ? undefined : scriptCost} note={[plan?.note, durationNote].filter(Boolean).join("；") || undefined} quote={videoQuote} mock={!!caps?.mock} blocker={hint || videoBlocker} busy={busy}
           optimize={optimize} onOptimize={setOptimize} maxChars={contract?.promptMaxChars} onGenerate={() => void generate()}/>}
       {videoModels && !videoModels.length && !caps?.mock && mode === "generate" && <SceneNoModel kind="视频"/>}
     </section>
@@ -687,11 +736,18 @@ function placeMedia(nodes: CanvasNodeData[], media: Media, kind: "image" | "vide
 }
 
 /** 编导的一轮：你说的话 + 编导写的脚本（写作中 / 失败 / 写好了）。 */
-function ScriptTurn({ row, run, busy, submitting, latest, copied, onUse, onRevise, onCopy, onRetry, onConfirm, onStop }: {
+function ScriptTurn({ row, run, busy, submitting, latest, copied, onUse, onRevise, onCopy, onRetry, onConfirm, onStop, given, facts }: {
   row: CanvasNodeData; run?: IpRun; busy: boolean; submitting: boolean; latest: boolean; copied: boolean;
   onUse: () => void; onRevise: () => void; onCopy: () => void; onRetry: () => void; onConfirm: () => void; onStop: () => void;
+  /** 到这一版为止用户说过的话（第一句和每次修改意见）：核对里面的数字有没有进脚本。 */
+  given: string[];
+  /** 场景要的信息：分清哪些空着的必须补、哪些「有就写」。 */
+  facts?: { label: string; required: boolean }[];
 }) {
   const meta = row.metadata, turn = meta?.studio?.sceneDirector;
+  const { missing, body } = scriptMissing(meta?.content || "");
+  const absent = meta?.status === "success" ? missingFigures(given, body) : [];
+  const { required: mustFill, optional: mayFill } = classifyBlanks(scriptPlaceholders(body), facts);
   const loading = meta?.status === "loading", accepted = !!meta?.studio?.runId;
   const position = run?.queue?.position;
   const spent = meta?.studio?.textEditor?.turns?.at(-1)?.billing?.credits;
@@ -705,7 +761,13 @@ function ScriptTurn({ row, run, busy, submitting, latest, copied, onUse, onRevis
       {loading ? <p className="scene-script-state" role="status"><Loader2 size={14} className="studio-gallery-spinner"/>
           {submitting && !accepted ? "正在交给编导" : !accepted ? "提交结果没有确认" : position && position > 0 ? `排队中，前面还有 ${position - 1} 个` : turn?.revision ? "正在改脚本" : "正在看素材、写脚本"}</p>
         : failed ? <p className="scene-script-state is-failed" title={meta?.errorLogId ? `记录号 ${meta.errorLogId}` : undefined}>{sceneFailureText(meta?.errorCode, meta?.errorDetails, "脚本")}</p>
-        : <>{summary && <p className="scene-script-summary">{summary}</p>}<pre className="scene-script-text">{meta?.content}</pre></>}
+        : <>{summary && <p className="scene-script-summary">{summary}</p>}
+          <pre className="scene-script-text">{splitBlanks(body).map((p, i) => p.blank ? <mark key={i} className="scene-script-blank">{p.text}</mark> : p.text)}</pre>
+          {/* 放在脚本下面、按钮上面：脚本区会滚到底，放上面一打开就看不见（2026-10-30 界面评审）。用场景里的信息名说，不照抄模型那句。 */}
+          {mustFill.length > 0 ? <p className="scene-script-missing" role="status">还缺{mustFill.join("、")}。在下面写上发给编导，会补进脚本。{mayFill.length ? `${mayFill.join("、")}没有就不用写。` : ""}</p>
+            : mayFill.length > 0 ? <p className="scene-script-check">{mayFill.join("、")}没有就不用写，出片前把脚本里标着的那几处删掉就行。</p>
+            : missing ? <p className="scene-script-check">编导觉得可能还缺{missing}，写过了就不用管。</p> : null}
+          {absent.length > 0 && <p className="scene-script-check">你写的 {absent.join("、")} 脚本里没用上，要加的话跟编导说一声。</p>}</>}
       <footer>
         {loading && accepted && <button type="button" onClick={onStop}><Square size={13}/>停止</button>}
         {loading && !accepted && !submitting && <button type="button" disabled={busy} onClick={onConfirm}><RotateCcw size={13}/>确认原任务</button>}
@@ -723,11 +785,11 @@ function ScriptTurn({ row, run, busy, submitting, latest, copied, onUse, onRevis
 
 /** 生成模式（照参考站「应用脚本」之后）：脚本可以再改，选模型、清晰度、时长、画面，看清价格再生成。 */
 function GenerateEditor({ prompt, onPrompt, onBack, models, model, onModel, tiers, tier, onTier, durations, duration, onDuration, ratio, onRatio,
-  used, restored, note, quote, mock, blocker, busy, optimize, onOptimize, maxChars, onGenerate }: {
+  used, restored, stale, onReviseForNow, reviseCost, note, quote, mock, blocker, busy, optimize, onOptimize, maxChars, onGenerate }: {
   prompt: string; onPrompt: (v: string) => void; onBack: () => void;
   models: VideoStudioModel[]; model?: VideoStudioModel; onModel: (id: string) => void;
   tiers: string[]; tier?: string; onTier: (t: string) => void; durations: number[]; duration: number; onDuration: (n: number) => void;
-  ratio: string; onRatio: (r: string) => void; used: SceneVideoMaterial[]; restored?: { text: string; undo?: () => void }; note?: string; quote: number | null; mock: boolean;
+  ratio: string; onRatio: (r: string) => void; used: SceneVideoMaterial[]; restored?: { text: string; undo?: () => void }; stale?: string; onReviseForNow: () => void; reviseCost?: number; note?: string; quote: number | null; mock: boolean;
   blocker: string; busy: boolean; optimize: boolean; onOptimize: (on: boolean) => void; maxChars?: number; onGenerate: () => void;
 }) {
   const optimizable = !!model?.supportsPromptOptimization;
@@ -742,6 +804,8 @@ function GenerateEditor({ prompt, onPrompt, onBack, models, model, onModel, tier
     </div>
     {restored && <p className="scene-generate-note is-note" role="status">{restored.text}{restored.undo && <button type="button" onClick={restored.undo}>撤销</button>}</p>}
     {note && <p className="scene-generate-note" role="status">{note}</p>}
+    {stale && <p className="scene-generate-note is-note" role="status">{stale}。
+      <button type="button" disabled={busy} onClick={onReviseForNow}>让编导照现在的改一版{reviseCost !== undefined ? `（最多 ${reviseCost} 积分）` : ""}</button></p>}
     <div className="scene-generate-settings">
       {models.length > 1 && <div className="scene-gen-row"><span>模型</span>
         <StudioSelect label="视频模型" compact value={model?.endpointId || ""} onChange={onModel} options={models.map(m => ({ value: m.endpointId, label: m.name }))}/></div>}

@@ -63,14 +63,37 @@ public class StudioSceneCatalog {
         }
     }
     public record Slot(String label, boolean required, Integer max) {}
+
+    /**
+     * 这类视频要做到什么（2026-10-30 审查：只有名称和一句拍法，同城团购拍成了泛泛的探店）。
+     *
+     * @param goal    这条视频要让看的人做什么，一句话（「让附近的人买下套餐、到店来用」）
+     * @param facts   要用户给的信息；必填的没给，编导先写「还缺：……」并用【待补：……】占位，不拿别的说法糊过去
+     * @param ending  结尾要观众做什么（有就写）
+     * @param fiction 能编到哪一步：none = 只用用户给的，人物也不能写成真实顾客；story = 可以编人物和情节，不能编品牌事实（缺省）
+     */
+    public record Brief(String goal, List<Fact> facts, String ending, String fiction) {
+        public List<Fact> factList() { return facts == null ? List.of() : facts; }
+        public boolean noFiction() { return "none".equals(fiction); }
+    }
+    /** @param use 这条信息怎么用（「有原价才做对比」）；没有就不写 */
+    public record Fact(String label, boolean required, String use) {}
+
     public record VideoScene(String id, String group, String title, String description, Slot images, Slot video, boolean character, boolean voice,
                              String placeholder, boolean textRequired, List<Integer> durations, int duration, String ratio, String structure,
-                             List<String> ideas, String skill, List<OptionGroup> options, Boolean enabled, String coverKey, List<String> exampleKeys, String coverUrl, List<Media> examples) {
+                             List<String> ideas, String skill, List<OptionGroup> options, Boolean enabled, String coverKey, List<String> exampleKeys, String coverUrl, List<Media> examples,
+                             Brief brief) {
+        public VideoScene(String id, String group, String title, String description, Slot images, Slot video, boolean character, boolean voice,
+                          String placeholder, boolean textRequired, List<Integer> durations, int duration, String ratio, String structure,
+                          List<String> ideas, String skill, List<OptionGroup> options, Boolean enabled, String coverKey, List<String> exampleKeys, String coverUrl, List<Media> examples) {
+            this(id, group, title, description, images, video, character, voice, placeholder, textRequired, durations, duration, ratio, structure, ideas, skill, options,
+                    enabled, coverKey, exampleKeys, coverUrl, examples, null);
+        }
         public boolean on() { return enabled == null || enabled; }
         public List<OptionGroup> optionGroups() { return options == null ? List.of() : options; }
         public VideoScene withMedia(Boolean on, String cover, List<String> exampleKeys, String coverUrl, List<Media> examples) {
             return new VideoScene(id, group, title, description, images, video, character, voice, placeholder, textRequired, durations, duration, ratio,
-                    structure, ideas, skill, options, on, cover, exampleKeys, coverUrl, examples);
+                    structure, ideas, skill, options, on, cover, exampleKeys, coverUrl, examples, brief);
         }
     }
     public record Catalog(int version, List<Group> imageGroups, List<Group> videoGroups, List<ImageScene> image, List<VideoScene> video, List<HomeGoal> homeGoals) {
@@ -191,18 +214,27 @@ public class StudioSceneCatalog {
      * @param custom   图片：用户改过的完整描述（没改为 null）
      * @param revision 编导：对上一版脚本的修改意见（第一次写为 null）
      * @param options  场景选项组：选项组 key → 选中项 value；没给的组用默认值
+     * @param seenTitles 编导：放了、但所选视频模型用不上的场景图（商品图、门店照片…），脚本里要用文字写清楚，不能写成图几
+     * @param characterSeen 编导：出镜人物这张视频模型也用不上（同上，只给编导看）
+     * @param visual   编导：写脚本的模型这次能不能看到图（false = 看不到，只能按名称写）；null 按能看到算（老前端）
      */
     public record ComposeRequest(String kind, String sceneId, String text, String custom, List<Integer> filled,
                                  List<String> imageTitles, String characterTitle, String voiceTitle, String videoTitle,
-                                 Integer duration, String ratio, String language, String revision, java.util.Map<String, String> options) {
+                                 Integer duration, String ratio, String language, String revision, java.util.Map<String, String> options,
+                                 List<String> seenTitles, Boolean characterSeen, Boolean visual) {
         public ComposeRequest(String kind, String sceneId, String text, String custom, List<Integer> filled,
                               List<String> imageTitles, String characterTitle, String voiceTitle, String videoTitle, Integer duration, String ratio) {
-            this(kind, sceneId, text, custom, filled, imageTitles, characterTitle, voiceTitle, videoTitle, duration, ratio, null, null, null);
+            this(kind, sceneId, text, custom, filled, imageTitles, characterTitle, voiceTitle, videoTitle, duration, ratio, null, null, null, null, null, null);
         }
         public ComposeRequest(String kind, String sceneId, String text, String custom, List<Integer> filled,
                               List<String> imageTitles, String characterTitle, String voiceTitle, String videoTitle, Integer duration, String ratio,
                               String language, String revision) {
-            this(kind, sceneId, text, custom, filled, imageTitles, characterTitle, voiceTitle, videoTitle, duration, ratio, language, revision, null);
+            this(kind, sceneId, text, custom, filled, imageTitles, characterTitle, voiceTitle, videoTitle, duration, ratio, language, revision, null, null, null, null);
+        }
+        public ComposeRequest(String kind, String sceneId, String text, String custom, List<Integer> filled,
+                              List<String> imageTitles, String characterTitle, String voiceTitle, String videoTitle, Integer duration, String ratio,
+                              String language, String revision, java.util.Map<String, String> options) {
+            this(kind, sceneId, text, custom, filled, imageTitles, characterTitle, voiceTitle, videoTitle, duration, ratio, language, revision, options, null, null, null);
         }
     }
 
@@ -252,9 +284,36 @@ public class StudioSceneCatalog {
      * 2026-10-29 本地真 Qwen 在「结尾讲优惠」的拍法下写了「现在下单有优惠」；2026-10-30 线上验收，品牌故事首稿编了品牌年限、
      * 耐用测试次数和测试画面。所以把不许编的东西一类类列出来；故事可以编，但不能冒充品牌的真实经历。
      */
-    static final String FACT_RULE = "下面这些我没写就不要出现：价格、优惠、地址；品牌创立年份、有多少年历史；检测、测试、实验的次数和画面；"
-            + "销量、排名、获奖、认证、门店数、用户数；功效和其他数据。也不要写「有优惠」「限时」「十年老店」「经过上千次测试」这类话，"
-            + "拍法里要讲但我没给的，就只引导关注或下单。可以虚构人物和情节来讲故事，但不要写成品牌的真实经历，也不要给编出来的内容配上年份、次数、数量。";
+    static final String FACT_RULE = "下面这些我没写就不要出现：价格、优惠、地址；有效期和使用限制（要不要预约、节假日能不能用、是否通用）；"
+            + "品牌创立年份、有多少年历史；检测、测试、实验的次数和画面；"
+            + "销量、排名、获奖、认证、门店数、用户数；功效和其他数据。也不要写「有优惠」「限时」「十年老店」「经过上千次测试」这类话。"
+            + "可以虚构人物和情节来讲故事，但不要写成品牌的真实经历，也不要给编出来的内容配上年份、次数、数量。";
+    /** 场景没写要用户给哪些信息时（运营自己加的老场景）：拍法里要讲、我又没给的，照原来的做法带过。 */
+    static final String MISSING_DEFAULT = "拍法里要讲但我没给的，就只引导关注或下单。";
+    /** fiction=none（门店实录、到店探店这类）：多一句，别把演的写成真的。 */
+    static final String NO_FICTION = "这条不编故事：不要编人物经历，不要把出镜的人写成真实顾客、店员的亲身评价。";
+
+    /**
+     * 场景要做到什么、要用到哪些信息、怎么收尾（{@link Brief}）。编导和助手共用；缺必填信息时两边做法不同：
+     * 编导先写「还缺：……」再用【待补：……】占位写一版（页面看到【待补】就不让出片），助手直接问。
+     */
+    private static List<String> briefLines(VideoScene scene, boolean director) {
+        Brief b = scene.brief();
+        if (b == null) return List.of(MISSING_DEFAULT);
+        List<String> lines = new ArrayList<>();
+        if (!blank(b.goal())) lines.add("这一条要做到：" + b.goal().trim() + "。"); // 不写「这条视频」：它是「要等参考视频」的判定词（studioBriefNeedsReference）
+        List<String> facts = b.factList().stream().filter(f -> f != null && !blank(f.label()))
+                .map(f -> f.label().trim() + (blank(f.use()) ? "" : "（" + f.use().trim() + "）")).toList();
+        if (!facts.isEmpty()) lines.add("要用到这些信息，只用我给的原话：" + String.join("；", facts) + "。");
+        List<String> required = b.factList().stream().filter(f -> f != null && f.required() && !blank(f.label())).map(f -> f.label().trim()).toList();
+        if (!required.isEmpty()) lines.add(director
+                ? "其中" + String.join("、", required) + "是必须有的：我没给的，正文最前面单独一行写「还缺：……」，后面照样写一版，缺的地方写成【待补：……】，不要换别的说法糊过去，也不要自己挑一个说法填上。不是必须的没给就不提，不要为它们写【待补】。"
+                : "其中" + String.join("、", required) + "是必须有的：我没给的先问我，不要编，也不要换别的说法糊过去。");
+        else lines.add(MISSING_DEFAULT);
+        if (!blank(b.ending())) lines.add("结尾：" + b.ending().trim() + "。");
+        if (b.noFiction()) lines.add(NO_FICTION);
+        return lines;
+    }
 
     /** 视频两种用法共用的输入检查：素材够不够、时长和画面对不对。 */
     private record VideoInput(VideoScene scene, List<String> images, String text, int duration, String ratio) {}
@@ -263,8 +322,10 @@ public class StudioSceneCatalog {
         List<String> images = r.imageTitles() == null ? List.of() : r.imageTitles().stream().filter(t -> t != null && !t.isBlank()).toList();
         String text = trim(r.text());
         if (scene.video() != null && scene.video().required() && blank(r.videoTitle())) throw bad("先放" + scene.video().label());
-        if (scene.images().required() && images.isEmpty()) throw bad("先放" + scene.images().label());
-        if (scene.images().max() != null && images.size() > scene.images().max()) throw bad(scene.images().label() + "最多放 " + scene.images().max() + " 张");
+        // 放了几张图看页面上放的全部：所选视频模型用不上的那几张（seenTitles）用户也放了，只是不编号。
+        long placed = images.size() + (r.seenTitles() == null ? 0 : r.seenTitles().stream().filter(t -> !blank(t)).count());
+        if (scene.images().required() && placed == 0) throw bad("先放" + scene.images().label());
+        if (scene.images().max() != null && placed > scene.images().max()) throw bad(scene.images().label() + "最多放 " + scene.images().max() + " 张");
         if (scene.textRequired() && text.isEmpty() && blank(r.revision())) throw bad("先写一句要求");
         int duration = r.duration() == null ? scene.duration() : r.duration();
         // 交给助手时按场景的可选时长；编导一次出片时长由所选视频模型决定，这里只挡明显不对的数。
@@ -288,6 +349,7 @@ public class StudioSceneCatalog {
         if (!blank(r.voiceTitle())) materials.add("「" + r.voiceTitle().trim() + "」是配音要用的声音");
         if (!materials.isEmpty()) lines.add("画布上的素材：" + String.join("；", materials) + "。");
         if (in.text().isEmpty() && !materials.isEmpty()) lines.add("我没写具体要求，先看素材，再按下面的拍法出方案。");
+        lines.addAll(briefLines(scene, false));
         lines.add("拍法：" + scene.structure());
         lines.add(FACT_RULE);
         // 只说「先给我分镜方案」时，真模型（2026-10-29 本地聚算 Qwen）只排了一步写脚本，做完也不提出视频。
@@ -298,6 +360,14 @@ public class StudioSceneCatalog {
     /**
      * 编导写脚本（AI 视频页，照参考站「超级编导」）：看素材、按场景拍法写一版能直接交给视频模型一次生成的脚本。
      * 参考图按这里的顺序交给视频模型，脚本里用「图1」「图2」指代；出片前我们的改写会换成模型认的写法。
+     *
+     * <p>只给会交给视频模型的图编号（2026-10-30 审查 F07）：只认首帧的模型只拿第一张、纯文字的模型一张都不拿，
+     * 剩下的图（{@code seenTitles}）编导可以看，但要用文字写进画面，写成「图2」视频模型是看不到的。
+     * 写脚本的模型看不到图时（{@code visual=false}）不说「已附图片」「先看图」，否则它会编图里的内容。
+     *
+     * <p>镜头和台词的写法跟 H3 改写认的一样（{@code H3PromptRewrite.SHOT_HEAD} / {@code LINE}）：「第N镜（起–止 秒）」「某某说：「…」」。
+     * 原来要的是「镜头N（…）；台词：…」，改写一行都认不出，只能交给模型重新分镜、重写台词（审查 F04，零调用探针：三镜 0/3）。
+     * 照这个写，出片前镜头时间固定、台词由代码原样填回，和画布、导演台同一条路。
      */
     private String scriptBrief(ComposeRequest r) {
         VideoInput in = videoInput(r, false);
@@ -308,21 +378,32 @@ public class StudioSceneCatalog {
         lines.add("写一条 " + in.duration() + " 秒的" + orientation(in.ratio()) + "「" + scene.title() + "」短视频脚本，交给视频模型一次生成，台词用" + language + "。");
         if (!in.text().isEmpty()) lines.add("我的要求：" + in.text());
         lines.addAll(optionLines(scene.optionGroups(), r.options()));
+        boolean visual = !Boolean.FALSE.equals(r.visual());
         List<String> refs = new ArrayList<>();
         int n = 0;
         for (String title : in.images()) refs.add("图" + (++n) + "「" + title.trim() + "」是" + scene.images().label());
-        if (!blank(r.characterTitle())) refs.add("图" + (++n) + "「" + r.characterTitle().trim() + "」是出镜人物，长相和穿着要和图里一致");
-        if (!blank(r.voiceTitle())) refs.add("「" + r.voiceTitle().trim() + "」是说话要用的声音");
-        if (!refs.isEmpty()) lines.add("参考素材（已附图片，按这个编号写）：" + String.join("；", refs) + "。");
-        if (in.text().isEmpty() && !refs.isEmpty()) lines.add("我没写具体要求：先看图，说清楚是什么、卖点在哪，再按下面的拍法写。");
+        boolean characterSeen = Boolean.TRUE.equals(r.characterSeen());
+        if (!blank(r.characterTitle()) && !characterSeen) refs.add("图" + (++n) + "「" + r.characterTitle().trim() + "」是出镜人物，长相和穿着要和图里一致");
+        List<String> seen = new ArrayList<>(r.seenTitles() == null ? List.of() : r.seenTitles().stream().filter(t -> !blank(t)).map(String::trim).toList());
+        if (!blank(r.characterTitle()) && characterSeen) seen.add(r.characterTitle().trim());
+        if (!refs.isEmpty()) lines.add("交给视频模型的参考图（" + (visual ? "已附图片，" : "") + "按这个编号写）：" + String.join("；", refs) + "。");
+        if (!seen.isEmpty()) lines.add(String.join("", seen.stream().map(t -> "「" + t + "」").toList())
+                + "这个视频模型用不上，" + (visual ? "只给你看：" : "") + "画面里要用文字把它写清楚，不要写成图几。");
+        if (!refs.isEmpty() || !seen.isEmpty()) lines.add(visual ? "" : "这次你看不到这些图，只知道名称：按名称和我的要求写，不要编图里有什么。");
+        if (in.text().isEmpty() && (!refs.isEmpty() || !seen.isEmpty()))
+            lines.add(visual ? "我没写具体要求：先看图，说清楚是什么、卖点在哪，再按下面的拍法写。" : "我没写具体要求：按素材名称和下面的拍法写，不要编看不到的细节。");
+        if (!blank(r.voiceTitle())) lines.add("「" + r.voiceTitle().trim() + "」是说话要用的声音。");
+        lines.addAll(briefLines(scene, true));
         lines.add("拍法：" + scene.structure());
-        lines.add("写法：按时间顺序分镜头，每个镜头单独一行，格式是「镜头N（起–止秒）：画面……；台词：……」，没有台词就不写台词。"
-                + "单个镜头 2 到 5 秒，所有镜头加起来正好 " + in.duration() + " 秒。台词说人话，按每秒 4 个字左右算长度。"
-                + "只写镜头里看得见、听得见的东西，不写拍摄建议、不写给人看的解释。");
+        // 2026-10-31 本地真 Agnes：照「第N镜（起–止 秒）」写成了「第1镜（起–止 0.5–2.0 秒）」，H3 解析器认不出；给一个照抄就对的例子。
+        lines.add("写法：按时间顺序分镜头，每个镜头单独一段，像这样：\n第1镜（0–2 秒）：画面……。旁白说：「……」\n第2镜（2–" + Math.min(4, in.duration()) + " 秒）：画面……。\n"
+                + "括号里只写起止秒数。有人说话就写「旁白说：「……」」，画面里的人开口就把「旁白」换成这个人的称呼（如「店员说：「……」」），没有台词就不写。"
+                + "一句台词一个「」，台词里面不要再用「」。第1镜从 0 秒开始，单个镜头 2 到 5 秒，所有镜头加起来正好 " + in.duration() + " 秒。"
+                + "台词说人话，按每秒 4 个字左右算长度。只写镜头里看得见、听得见的东西，不写拍摄建议、不写给人看的解释。");
         lines.add(FACT_RULE);
         // 2026-10-30 线上验收：首稿编了耐用测试次数，summary 却写「没写功效」。它只能说脚本里有什么，不能替脚本作保证。
-        lines.add("正文只放脚本本身；summary 用一句话说这一版的思路，只说脚本里实际写了什么，用了虚构的人物或情节就直说，不要写「没写功效」「信息都属实」这类保证。");
-        return limit(String.join("\n", lines));
+        lines.add("正文只放脚本本身；summary 用一句话说这一版的思路，只说脚本里实际写了什么，用了虚构的人物或情节就直说，不要写「没写功效」「信息都属实」这类保证，也不要讲「还缺」「待补」这些标注。");
+        return limit(String.join("\n", lines.stream().filter(l -> !l.isEmpty()).toList()));
     }
 
     private static String orientation(String ratio) { return "16:9".equals(ratio) ? "横屏" : "竖屏"; }
@@ -383,6 +464,7 @@ public class StudioSceneCatalog {
             if (s.durations() == null || s.durations().isEmpty() || !s.durations().contains(s.duration())) throw new IllegalStateException("默认时长不在可选时长里：" + name);
             if (!List.of("9:16", "16:9").contains(s.ratio())) throw new IllegalStateException("默认画面只能是竖屏或横屏：" + name);
             if (s.ideas() == null || s.ideas().size() > 8) throw new IllegalStateException("常用开头最多 8 个：" + name);
+            brief(s.brief(), name);
             media(s.coverKey(), s.exampleKeys(), name);
             options(s.optionGroups(), name);
         }
@@ -396,6 +478,17 @@ public class StudioSceneCatalog {
         }
         return c;
     }
+    private static void brief(Brief b, String name) {
+        if (b == null) return;
+        if (b.goal() != null && b.goal().length() > 60) throw new IllegalStateException("「要做到」一句话，最多 60 字：" + name);
+        if (b.ending() != null && b.ending().length() > 40) throw new IllegalStateException("结尾一句话，最多 40 字：" + name);
+        if (b.fiction() != null && !List.of("none", "story").contains(b.fiction())) throw new IllegalStateException("能不能编只能选「只用给的」或「可以编故事」：" + name);
+        if (b.factList().size() > 6) throw new IllegalStateException("要用户给的信息最多 6 条：" + name);
+        if (b.factList().stream().filter(Fact::required).count() > 4) throw new IllegalStateException("必须给的信息最多 4 条：" + name);
+        for (Fact f : b.factList()) if (f == null || blank(f.label()) || f.label().length() > 16 || f.use() != null && f.use().length() > 24)
+            throw new IllegalStateException("信息要有名称（最多 16 字），用法最多 24 字：" + name);
+    }
+
     private static void options(List<OptionGroup> groups, String name) {
         if (groups.size() > 4) throw new IllegalStateException("选项组最多 4 组：" + name);
         Set<String> keys = new HashSet<>();

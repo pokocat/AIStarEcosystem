@@ -172,6 +172,10 @@ src/
 
 ## 版本日志
 
+### 场景页编导与场景要求（2026-10-31）
+
+编导只给会交给视频模型的图编号、看不到图就照实说；脚本写成 H3 认的「第N镜（0–2 秒）……旁白说：「……」」；换规格提示重写。场景目录加 `brief`（要做到什么、要用户给的信息、结尾、能不能编），缺必填信息写「还缺」和【待补】，有【待补】不让出片；输入框上方「写清楚」小标签；用户写的数字没进脚本就提醒（`src/ip/scenes/scene-script-check.ts`）。后台场景模板可编辑 brief。见 `docs/studio-scene-creation.md` §16–17。
+
 ### 场景页创作条件存进草稿（2026-10-31）
 
 AI 图片 / AI 视频的当前条件存进草稿（`doc.sceneImageState` / `doc.sceneVideoState`，`useSceneStateSave`），打开草稿原样放回；每次出图记条件快照（`metadata.studio.sceneImage`），「重新编辑」按快照放回（两页同名、可撤销、滚到输入区）；编导每版记选项；成功视频也能重新编辑；换场景离开草稿、只带同名素材位；模型不支持的比例 / 张数 / 时长写明按什么出。见 `docs/studio-scene-creation.md` §15。

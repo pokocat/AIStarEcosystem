@@ -269,7 +269,9 @@ export interface StudioNodeMetadata {
    */
   sceneDirector?: { ask: string; revision: boolean; duration: number; ratio: string; language: string; at: string;
     /** 写这一版时选的场景选项（出镜方式、语气…）：改稿沿用它，不回到默认值。2026-10-30 之前写的版本没有。 */
-    options?: Record<string, string> };
+    options?: Record<string, string>;
+    /** 写这一版时按哪个视频模型、交给它哪几张图（文件 key，按图1、图2 的顺序）写的：出片时换了就提示让编导按新的改一版。 */
+    videoModel?: string; refs?: string[] };
   /** AI 图片页这一次出图用的条件（场景、补充要求、改过的描述、选项、模型和规格；参考图看请求里的 references）。「用这次的设置再做」按它放回，不把拼好的整段话当描述。 */
   sceneImage?: { sceneId: string; supplement: string; custom?: string; options: Record<string, string>; model?: string; ratio: string; size?: string; count: number };
   recreation?: { mode?:"segments"; document?:boolean; materializedSegmentNos?:number[]; materializedAudioSourceKey?:string; resumeRunId?:string; study?:StudioFilmStudy; materializedRunId?:string; sourceNodeId: string; sourceStorageKey: string; sourceTitle: string; report?: StudioRecreationReport };
