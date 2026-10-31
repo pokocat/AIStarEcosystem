@@ -27,4 +27,6 @@
 
 本地 110 项相关测试通过（Wire 34、Body 16、Client 38、ErrorMapper 5、Worker 17）；`pnpm typecheck:all`、`pnpm typecheck:admin`、`./mvnw compile -q -o`、`pnpm check:api-contract` 全部通过。首次前端检查发现依赖未链接，按锁文件安装后重跑通过。
 
+首次发布包 `20261031-seedance-submit-fix` 因本地 `target/classes` 留有旧分支的 `V66__material_video_input_asset.sql`，与现行 Java `V66__ip_run_json_capacity` 重号，Flyway 在执行迁移前拒绝启动。已立即恢复上一版 `20261031-studio-assistant-fixes` JAR；未关闭 Flyway 校验、未改迁移历史。构建脚本改为 `clean package`，重新从干净 main 构建。
+
 正式构建提交、制品校验、配置备份、重启与线上验收结果在发布完成后追加。

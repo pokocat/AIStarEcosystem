@@ -134,7 +134,9 @@ export_auth_env() {
 build_server() {
   "$REPO_ROOT/infra/scripts/prepare-platform-sdk.sh"
   log "building server jar"
-  (cd apps/server && ./mvnw -DskipTests package)
+  # A clean checkout can still have target/ resources from a previously checked-out branch.
+  # 2026-10-31: an orphan V66 SQL file collided with the current Java migration at startup.
+  (cd apps/server && ./mvnw -DskipTests clean package)
   local jar="apps/server/target/ai-star-eco-server-1.0.0.jar"
   [[ -f "$jar" ]] || fail "missing server jar: $jar"
   mkdir -p "$OUT_DIR/server"
