@@ -48,3 +48,39 @@ test("the original Chinese is always one click away and the choice is sent with 
   await vi.waitFor(() => expect(DirectorApi.runTask).toHaveBeenCalled());
   expect(vi.mocked(DirectorApi.runTask).mock.calls[0][1]).toMatchObject({ type: "video", targetId: "cl1", options: { promptChoice: "original" } });
 });
+
+// 2026-10-31：优化稿超长时能重新优化（只出稿、不出视频），每条视频写清用的是哪份稿。
+test("a draft that is too long can be re-optimised, which only writes a new draft", async () => {
+  vi.mocked(DirectorApi.runTask).mockClear().mockResolvedValue({} as never);
+  const tooLong = { ...clip, videoPromptRewrite: "review", videoPromptEn: { at: "2026-10-31T05:03:03Z", text: "subject_definitions: ...", usable: false,
+    warnings: ["优化稿超过 7000 字符，H3 收不下，请重新优化或按原文生成"] } };
+  render(<ClipVideo work={work()} clip={tooLong} quote={{ credits: 480, error: null }} apply={vi.fn()} setError={vi.fn()}/>);
+  expect(screen.getByText("优化稿太长，视频模型收不下")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "用优化稿生成" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "重新优化" }));
+  await vi.waitFor(() => expect(DirectorApi.runTask).toHaveBeenCalled());
+  const body = vi.mocked(DirectorApi.runTask).mock.calls[0][1];
+  expect(body).toMatchObject({ type: "video-prompt", targetId: "cl1" });
+  expect(body).not.toHaveProperty("maxCost");
+});
+
+test("after choosing the original, a too-long draft offers re-optimising instead of switching back to it", () => {
+  const chose = { ...clip, videoPromptRewrite: "original", videoPromptEn: { at: "2026-10-31T05:03:03Z", usable: false } };
+  render(<ClipVideo work={work()} clip={chose} quote={{ credits: 480, error: null }} apply={vi.fn()} setError={vi.fn()}/>);
+  expect(screen.getByRole("button", { name: "重新优化" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "改回智能优化" })).toBeNull();
+});
+
+test("a draft-only rewrite does not promise to start the video", () => {
+  render(<ClipVideo work={work([{ id: "IPR-2", target: "videoPrompt:cl1", status: "running", draftOnly: true }])} clip={clip} quote={{ credits: 480, error: null }} apply={vi.fn()} setError={vi.fn()}/>);
+  expect(screen.getByText(/正在重新优化提示词，好了之后由你决定用哪一份/)).toBeTruthy();
+  expect(screen.queryByText(/完成后自动开始生成视频/)).toBeNull();
+});
+
+test("the adopted video says which prompt it was made from and what that draft cost", () => {
+  const made = { ...clip, videoPromptRewrite: "review", video: { ...slot, adoptedId: "v1", adoptedBy: "user",
+    candidates: [{ id: "v1", key: "k/v.mp4", runId: null, source: "generated", createdAt: "2026-10-31T05:04:31Z",
+      promptUsed: "original", promptReason: "too_long", draftState: "too_long", rewriteCost: 12 }] } };
+  render(<ClipVideo work={work()} clip={made} quote={{ credits: 480, error: null }} apply={vi.fn()} setError={vi.fn()}/>);
+  expect(screen.getByText("这条视频用的是中文原文（优化稿太长，没用上），这份优化稿花了 12 积分")).toBeTruthy();
+});

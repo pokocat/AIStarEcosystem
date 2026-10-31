@@ -215,6 +215,15 @@ class H3PromptRewriteTest {
         r = check(out().put("retention_analysis", "x".repeat(7_000)));
         assertFalse(r.path("usable").asBoolean());
         assertTrue(String.join("；", warnings(r)).contains("H3 收不下"));
+        // 略超长、超出的是 fully_preserved 后面重复列的外貌：精简后收得下，照常可用，只记一笔
+        r = check(out().put("retention_analysis", "<Subject 1> (appears in [Shot 1]): fully_preserved - " + "face, ".repeat(1_200) + "retained."));
+        assertTrue(r.path("usable").asBoolean(), warnings(r).toString());
+        assertTrue(r.path("template").asText().contains("<Subject 1> (appears in [Shot 1]): fully_preserved.\n"), r.path("template").asText());
+        assertTrue(notes(r).contains("优化稿略超长，已删掉保留说明里重复列出的外貌特征"), notes(r).toString());
+        // 超出的是部分保留后面「改了什么」的说明：不动，仍标不可用
+        r = check(out().put("retention_analysis", "<Subject 1> (appears in [Shot 1]): partially_preserved - " + "coat changed, ".repeat(600) + "face kept."));
+        assertFalse(r.path("usable").asBoolean());
+        assertTrue(r.path("template").asText().contains("partially_preserved - coat changed"), "不能确认是重复的说明不删");
     }
 
     @Test
@@ -263,7 +272,9 @@ class H3PromptRewriteTest {
         assertTrue(system.startsWith("---\nname: h3-prompt-writing"), "官方 SKILL.md 原文在最前");
         assertTrue(system.contains("# Full-Reference Mode Rewrite Output Format Guide"), "ref-en.txt");
         assertTrue(system.contains("# Video Prompt Writing Guide (T2VA / I2VA / FL2VA / L2VA)"), "base-en.txt");
-        assertTrue(system.endsWith("- non_diegetic_music: \"N/A\" unless the request asks for music.\n"));
+        // 首发约定原文不动，2026-10-31 只在后面追加篇幅预算（cl45 优化稿 8198 字符）
+        assertTrue(system.contains("- non_diegetic_music: \"N/A\" unless the request asks for music.\n- Length: the video model accepts at most 7,000 characters"), system.substring(system.length() - 1500));
+        assertTrue(system.endsWith("then refer to it by its label.\n"));
         assertTrue(system.contains("Do not write the words of a line, quotation marks around it, <d> tags, or speaker IDs such as (S1); the system inserts them."));
     }
 
@@ -398,5 +409,29 @@ class H3PromptRewriteTest {
         assertTrue(built.request().codeLines());
         assertEquals(3, built.request().source().lines().size());
         assertEquals("点本视频团购，到店用。", built.request().source().lines().get(2).text());
+    }
+
+    /** 超长时只精简 fully_preserved 行后面的重复说明；部分保留、属性迁移、音频复制后面写的是改了什么，一律不动。 */
+    @Test
+    void onlyFullyPreservedRetentionLinesAreShortened() {
+        String retention = String.join("\n",
+                "<Subject 1> (appears in [Shot 2], [Shot 3]): fully_preserved - Jing'er's oval face, high ponytail and dark blue apron are retained.",
+                "<Subject 2> (appears in [Shot 3]): partially_preserved - his face is kept but the jacket is replaced by a white chef coat.",
+                "<Picture 1> ([Shot 1]–[Shot 4] storyboard): fully_preserved - composition and lighting of each panel are followed.",
+                "<Audio 1>: partially_copy - only the first two seconds of the street noise are copied.");
+        String out = H3PromptRewrite.trimFullyPreserved(retention);
+        assertEquals(String.join("\n",
+                "<Subject 1> (appears in [Shot 2], [Shot 3]): fully_preserved.",
+                "<Subject 2> (appears in [Shot 3]): partially_preserved - his face is kept but the jacket is replaced by a white chef coat.",
+                "<Picture 1> ([Shot 1]–[Shot 4] storyboard): fully_preserved.",
+                "<Audio 1>: partially_copy - only the first two seconds of the street noise are copied."), out);
+    }
+
+    @Test
+    void rulesRevisionIsRecordedButNotHashed() {
+        var src = new H3PromptRewrite.Source("第1镜（0–5 秒）：空镜。", List.of());
+        var req = new H3PromptRewrite.Request(H3PromptRewrite.Mode.T2V, 5, List.of(), src, false, 1, List.of(0.0), "中文", false);
+        assertEquals(H3PromptRewrite.RULES, H3PromptRewrite.meta(new com.fasterxml.jackson.databind.ObjectMapper(), req, 0, 0, 0).path("rules").asText());
+        assertFalse(H3PromptRewrite.user(req).contains(H3PromptRewrite.RULES), "规则修订号不进改写输入，已能用的英文稿不因它失效");
     }
 }

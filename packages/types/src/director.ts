@@ -53,6 +53,15 @@ export interface DirectorMedia {
   promptFormat?: number;
   /** 实际发给 H3 的英文提示词（按官方写法改写）；prompt 仍是用户看到的中文。 */
   sentPrompt?: string;
+  /** H3 视频提交时固定下来的用稿记录（2026-10-31 起）：用了优化稿还是原文。 */
+  promptUsed?: "optimized" | "original";
+  /** 用原文的原因：user = 用户选的；too_long = 一键制作遇到优化稿超长；rewrite_failed = 一键制作里优化两次没成功。 */
+  promptReason?: "user" | "too_long" | "rewrite_failed";
+  /** 提交时优化稿的状态：usable 可用 / warnings 有提示 / too_long 超长 / none 没有优化稿。 */
+  draftState?: "usable" | "warnings" | "too_long" | "none";
+  /** 那份优化稿的改写任务与花费（同一份稿出多条视频时只扣过一次）。 */
+  rewriteRunId?: string;
+  rewriteCost?: number;
   /** 生成期间改过设置，按旧设置生成；不会自动使用。 */
   stale?: boolean;
   /** 以哪个版本为参考改出来的（「围绕当前图修改」生成的新版本）。 */
@@ -189,7 +198,7 @@ export interface DirectorClip {
    */
   videoPromptRewrite?: "off" | "needed" | "ready" | "review" | "original";
   /** 最近一次改写出的英文稿；text 只在 ready / review 时有，是填好当前台词、会发给模型的那一份。warnings 是给用户的提示。 */
-  videoPromptEn?: { text?: string; at: string; warnings?: string[]; notes?: string[]; usable?: boolean } | null;
+  videoPromptEn?: { text?: string; at: string; warnings?: string[]; notes?: string[]; usable?: boolean; runId?: string; cost?: number } | null;
   /** 重写分镜脚本期间用户改过这个片段：新写的版本没有覆盖，等用户选换成新版本（clip.usePendingShots）还是保留现有（clip.discardPendingShots）。 */
   pendingShots?: (DirectorPlannedClip & { runId: string; at: string }) | null;
   /** 写分镜脚本时记下的、本片段在本集正文开头的一句原文；旧片段和拆出来的片段没有。用来在剧本预览里定位。 */
@@ -223,6 +232,8 @@ export interface DirectorTask {
   id: string;
   /** Only synchronous text tasks; native media jobs retain their own submission and cancellation rules. */
   canStop?: boolean;
+  /** 「重新优化」提示词：只出新稿，完成后不接着生成视频。 */
+  draftOnly?: boolean;
   /** script / split / extract[:ep] / plan:ep / reshoot:ep（整集重写）/ reshoot:clip（单个片段重写）/ asset:id / board:clip / video:clip / export:ep */
   target: string;
   status: "running" | "stopping" | "done" | "failed";
@@ -401,7 +412,7 @@ export type DirectorEditOp =
 
 /** plan = 写分镜脚本（切片段，整集替换）；reshoot = 重写分镜脚本、保留片段划分（targetId = 集，options.clipIds 为空则整集）。
  *  assistant = 全能创作助手回复一轮；brief = 写剧本前的创意对话一轮。 */
-export type DirectorTaskType = "script" | "split" | "extract" | "plan" | "reshoot" | "asset-image" | "board" | "video" | "export" | "assistant" | "brief";
+export type DirectorTaskType = "script" | "split" | "extract" | "plan" | "reshoot" | "asset-image" | "board" | "video" | "video-prompt" | "export" | "assistant" | "brief";
 export type DirectorPipelineAction = "start" | "pause" | "resume" | "retry" | "confirm-assets" | "confirm-boards" | "confirm-videos" | "stop" | "dismiss";
 
 export type DirectorPipelineTarget = "plan" | "board" | "video" | "film";

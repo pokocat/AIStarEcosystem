@@ -117,17 +117,24 @@ class DirectorH3VideoFlowTest {
 
     private void finishRewrite(JsonNode meta, long cost) throws Exception { finishRewrite(meta, cost, modelOutput()); }
 
-    private void finishRewrite(JsonNode meta, long cost, ObjectNode modelOutput) throws Exception {
+    private void finishRewrite(JsonNode meta, long cost, ObjectNode modelOutput) throws Exception { finishRewrite("IPR-rw", meta, cost, modelOutput); }
+
+    private void finishRewrite(String id, JsonNode meta, long cost, ObjectNode modelOutput) throws Exception {
         ObjectNode input = om.createObjectNode();
         input.set("_director", meta);
         ObjectNode output = om.createObjectNode();
         output.set("director", DirectorPrompts.validate(om, meta, modelOutput));
-        IpRun run = IpRun.builder().id("IPR-rw").projectId("DW-1").hostType(IpRun.HOST_DIRECTOR).ownerUserId("u1").nodeId("videoPrompt:cl1")
+        IpRun run = IpRun.builder().id(id).projectId("DW-1").hostType(IpRun.HOST_DIRECTOR).ownerUserId("u1").nodeId("videoPrompt:cl1")
                 .kind("studio-director").status(IpRun.STATUS_DONE).stage("done").cost(cost).inputJson(om.writeValueAsString(input))
                 .outputJson(om.writeValueAsString(output)).createdAt(Instant.now()).build();
         when(runs.findByProjectIdOrderByCreatedAtDesc("DW-1")).thenReturn(List.of(run));
-        when(runs.findById("IPR-rw")).thenReturn(java.util.Optional.of(run));
+        when(runs.findById(id)).thenReturn(java.util.Optional.of(run));
         service.reconcile(w, c);
+    }
+
+    /** 模型写得太长：保留说明里是部分保留的说明（不能确认是重复，不精简），全文超过 7000 字符。 */
+    private ObjectNode tooLongOutput() {
+        return modelOutput().put("retention_analysis", "<Subject 1> (appears in [Shot 1], [Shot 2]): partially_preserved - " + "coat changed, ".repeat(600) + "face kept.");
     }
 
     /** 一键制作进行中，改写由它发出。 */
@@ -474,5 +481,82 @@ class DirectorH3VideoFlowTest {
         String warnings = clip().path("warnings").toString();
         assertTrue(warnings.contains("第 2 镜 7 秒 62 字"), warnings);
         assertTrue(warnings.contains("第 2 镜有两个人说话"), warnings);
+    }
+
+    // ── 2026-10-31：用稿记录在提交时固定、超长回退要说、「重新优化」只出稿 ─────────────────────
+
+    @Test
+    void theCandidateRecordsWhichDraftWasSentAndWhatTheDraftCost() throws Exception {
+        ObjectNode meta = dispatchRewrite();
+        finishRewrite(meta, 7);
+        JsonNode m = clip().path("video").path("pending").get(0).path("meta");
+        assertEquals("optimized", m.path("promptUsed").asText());
+        assertEquals("usable", m.path("draftState").asText());
+        assertEquals("IPR-rw", m.path("rewriteRunId").asText());
+        assertEquals(7, m.path("rewriteCost").asLong(), "这份优化稿花的钱；同一份稿再出一条视频不会再扣");
+        assertFalse(m.has("promptReason"));
+    }
+
+    @Test
+    void choosingTheOriginalIsRecordedAsTheUsersChoice() {
+        service.dispatch("u1", w, c, "video", "cl1", "u-r4", om.createObjectNode().put("promptChoice", "original"), null, null, 600L);
+        JsonNode m = clip().path("video").path("pending").get(0).path("meta");
+        assertEquals("original", m.path("promptUsed").asText());
+        assertEquals("user", m.path("promptReason").asText());
+        assertEquals("none", m.path("draftState").asText());
+    }
+
+    @Test
+    void inAPipelineATooLongDraftFallsBackToTheOriginalAndSaysSo() throws Exception {
+        ObjectNode p = pipeline(10_000);
+        ObjectNode meta = dispatchRewriteIn(p);
+        finishRewrite(meta, 4, tooLongOutput());
+        assertFalse(clip().path("videoPromptEn").path("usable").asBoolean(true));
+        ArgumentCaptor<IpRunService.IpVideoRequest> req = ArgumentCaptor.forClass(IpRunService.IpVideoRequest.class);
+        verify(imageRuns).generateVideoForDirector(eq("u1"), eq("DW-1"), eq("video:cl1"), req.capture());
+        assertTrue(req.getValue().prompt().contains("【画面】"), req.getValue().prompt());
+        JsonNode m = clip().path("video").path("pending").get(0).path("meta");
+        assertEquals("original", m.path("promptUsed").asText());
+        assertEquals("too_long", m.path("promptReason").asText());
+        assertEquals("too_long", m.path("draftState").asText());
+        assertEquals(4, m.path("rewriteCost").asLong());
+        assertTrue(c.path("notice").toString().contains("超过 7000 字符，已按原文生成"), c.path("notice").toString());
+    }
+
+    @Test
+    void reoptimizingOnlyWritesANewDraftAndNeverSpendsOnVideo() throws Exception {
+        ObjectNode first = dispatchRewrite();
+        finishRewrite(first, 4, tooLongOutput());
+        assertEquals("review", clip().path("videoPromptRewrite").asText());
+        // 用户先选过按原文，后来又点了重新优化
+        service.dispatch("u1", w, c, "video", "cl1", "u-r5", om.createObjectNode().put("promptChoice", "original"), null, null, 600L);
+        clip().with("video").putArray("pending");
+        verify(imageRuns, times(1)).generateVideoForDirector(any(), any(), any(), any());
+
+        assertEquals("IPR-rw2", service.dispatch("u1", w, c, "video-prompt", "cl1", "u-r6", om.createObjectNode(), null, null, null));
+        ArgumentCaptor<ObjectNode> meta = ArgumentCaptor.forClass(ObjectNode.class);
+        verify(textRuns, times(2)).submitDirectorText(anyString(), anyString(), eq("videoPrompt:cl1"), anyString(), anyString(), anyString(), meta.capture(), any(), any(), any());
+        ObjectNode again = meta.getAllValues().get(1);
+        assertTrue(again.path("reoptimize").asBoolean());
+        assertFalse(again.has("then"), "重新优化不带「接着出视频」");
+
+        finishRewrite("IPR-rw2", again, 3, modelOutput());
+        verify(imageRuns, times(1)).generateVideoForDirector(any(), any(), any(), any());
+        assertTrue(clip().path("videoPromptEn").path("usable").asBoolean());
+        assertEquals("IPR-rw2", clip().path("videoPromptEn").path("runId").asText());
+        assertEquals("ready", clip().path("videoPromptRewrite").asText(), "之前选的按原文不再算数，停在新稿上");
+    }
+
+    @Test
+    void aFailedReoptimizationKeepsTheOldDraft() throws Exception {
+        ObjectNode first = dispatchRewrite();
+        finishRewrite(first, 4, tooLongOutput());
+        String old = clip().path("videoPromptEn").path("template").asText();
+        service.dispatch("u1", w, c, "video-prompt", "cl1", "u-r6", om.createObjectNode(), null, null, null);
+        ArgumentCaptor<ObjectNode> meta = ArgumentCaptor.forClass(ObjectNode.class);
+        verify(textRuns, times(2)).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), meta.capture(), any(), any(), any());
+        failRewrite(meta.getAllValues().get(1), "IPR-rw2");
+        assertEquals(old, clip().path("videoPromptEn").path("template").asText());
+        verify(imageRuns, never()).generateVideoForDirector(any(), any(), any(), any());
     }
 }

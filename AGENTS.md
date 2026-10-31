@@ -1278,6 +1278,10 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 - **创作助手**：出视频 / 原创 / 复刻技能要求按导演台格式写中文（「第N镜（起–止 秒）：」「名字说：「原文」」），这样镜头固定、台词由代码填；制作计划的视频步骤 `ModeSpec.rewrite`，报价加改写冻结上限（`videoRewriteHold`）。
 - 规则见 `specs/BUSINESS_RULES.md`「H3 视频提示词改写」；测试 `H3PromptRewriteTest`、`StudioVideoRewriteWorkerTest`、`DirectorH3VideoFlowTest`、`studio-video-prompt-notes.test.tsx`。
 
+### 导演台 H3 提示词：不写给系统的话（2026-10-31，本地未发布）
+
+《扣钱》cl45 优化稿 8198 字符超长，按 758 字中文原文出片，成片末尾在只有一双手的镜头里多出约 4 秒人声，两个转写模型都听出「没有声音」，对上的是「餐馆老板 没有声音参考，按人物身份自然配音。」。**中文视频提示词可能整段交给 H3，H3 会把分不清的中文念出来**：中文稿只写画面里有什么、谁说什么、谁照哪张图 / 哪段音频，参考图「是什么」「怎么用」、配音规则、「只说引号里的台词」这类写给系统的话不写（`DirectorPrompts.videoPrompt` 第 4 版，`DirectorVideoPromptTest#noNotesAddressedToTheSystem` 守着；改写需要的说明另由 `DirectorService#rewrite` 用英文交给改写模型）。同一段第三镜资产叫「餐馆老板」、分镜写「老板」，旧判断认不出他在画面里，写成「画面里只有静儿」「老板在画外说」：出镜要按名字和别名认，分不清时不写强约束（`castOfShot`）。改写约定有篇幅预算，超长只精简 fully_preserved 行的重复说明；「重新优化」（`video-prompt`）只出稿不出片；视频候选在提交时固定记用了哪份稿。改中文模板照旧升 `VIDEO_PROMPT_FORMAT` 并冻结上一版和它用到的判断函数。取证见 `docs/audits/director-h3-cl45-prompt-review-2026-10.md`。新成片复验与篇幅预算的真模型试跑未做。
+
 ### Studio 对话不锁方法（2026-10-23，本地未发布）
 
 真源 `docs/ip-studio-dialogue-intents.md`「2026-10-23：不锁方法」。每条用户消息、每次 `read_skill` / `propose_plan` 都按意图选方法，有活跃制作时也一样（`requireSkillSwitchAllowed`、`ReadSkillTool` 的拒绝、`planningSkill` 的执行锁、受理处「有活跃执行时方法不变 / 显式换技能 400」全部删除）。切换只走 `StudioDialogueService.switchMethod`：同方法不动；换方法时作废待确认卡，旧制作没有在生成的就按停止收尾，有在生成的就暂停并解绑（不取消，完成的结果仍发到原线程的画布，不发消息，不占画布，生成完自行结束）。方案里有当前方法不允许的操作时先换到能覆盖的方法再校验。`STUDIO_SKILL_OPERATION_NOT_ALLOWED`、「第 N 步…不在当前阶段允许的范围内」这类内部原因不进用户界面，统一说「这份方案还没准备好，我会按你要做的内容重新整理。」（`STUDIO_PLAN_NOT_READY`）。提示词 `SEED_VERSION=v26-2026-10-23-dialogue-unlocked-methods`。未用真模型验证。

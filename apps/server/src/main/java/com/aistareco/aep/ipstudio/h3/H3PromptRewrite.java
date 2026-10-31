@@ -49,6 +49,11 @@ public final class H3PromptRewrite {
     /** 三个入口共用后台独立用途绑定；端点、密钥、售价均由后台管理。 */
     public static final com.aistareco.aep.model.AiModelPurpose PURPOSE = com.aistareco.aep.model.AiModelPurpose.DAP_VIDEO_PROMPT;
     public static final int MAX_PROMPT_CHARS = 7_000;
+    /**
+     * 输出约定的修订号，写进任务输入方便追查是哪套规则出的稿；不进指纹，已经能用的英文稿不因它失效。
+     * 2026-10-31：加篇幅预算。《扣钱》cl45 的优化稿 8198 字符，主体说明 2403、保留说明 1551，五个资产的中文描述被逐条翻译又列了一遍。
+     */
+    public static final String RULES = "2026-10-31-length";
     /** 镜头由模型定时（画布上的提示词没分镜头）最多这么多镜。 */
     public static final int MAX_FREE_SHOTS = 8;
 
@@ -98,7 +103,10 @@ public final class H3PromptRewrite {
 
     // ── 系统提示词 ─────────────────────────────────────────────────────────
 
-    /** 导演台首发时的输出约定，原文不动（线上 74 次真实改写按它验过）：全能参考 + 镜头固定 + 台词代码填。 */
+    /**
+     * 导演台的输出约定：全能参考 + 镜头固定 + 台词代码填。首发原文线上 74 次真实改写验过；
+     * 2026-10-31 只追加了篇幅预算（{@link #LENGTH_REF}），其余不动。
+     */
     private static final String CONTRACT_DIRECTOR = """
 
             # Output contract for this service
@@ -117,6 +125,24 @@ public final class H3PromptRewrite {
             - Apart from visible on-screen text, write no Chinese characters: write character names in pinyin. Visible on-screen text (a sign, a screen, a document) is the only exception: it goes in English double quotation marks in its original language, exactly as the guide says.
             - Output the JSON object directly. Do not write your reasoning, notes or any text before or after it.
             - non_diegetic_music: "N/A" unless the request asks for music.
+            """ + H3PromptRewrite.LENGTH_REF; // 限定名：常量在下面声明，简单名会报前向引用
+
+    /**
+     * 全能参考的篇幅预算。官方只给了 detailed_description 350–500 词，主体说明和保留说明没有上限，
+     * 而资产描述越写越细，模型就逐条翻译、在三处各写一遍，超过视频模型 7000 字符的上限（cl45：8198）。
+     * 只是给模型的目标，是否收得下仍以填完台词后的全文为准（{@link #validate}）。
+     */
+    private static final String LENGTH_REF = """
+            - Length: the video model accepts at most 7,000 characters for the whole prompt, every section and the spoken lines included. Keep the whole result to about 850 English words.
+            - "subject_definitions": one line per item, at most two sentences: the label, its source picture, and only the few features that identify it in the images (for example age and gender, hair, main clothing colors, one signature item). Do not translate the written notes item by item.
+            - "retention_analysis": one short line per label: the label, where it appears, the relationship marker, and at most one short phrase. Do not list the features from subject_definitions again.
+            - "summary": two or three sentences.
+            - detailed_description: 350–500 English words for the style line and all shots together, as the guide says; a dialogue-dense request may go somewhat longer. Describe a subject's identifying features at its first clear appearance only, then refer to it by its label.
+            """;
+
+    /** 其余模式：官方没给篇幅，只说总长上限。 */
+    private static final String LENGTH_BASE = """
+            - Length: the video model accepts at most 7,000 characters for the whole prompt, every section and the spoken lines included. Keep the result well within it; do not repeat the same appearance details in several places.
             """;
 
     private static String skillRef, skillBase;
@@ -171,6 +197,7 @@ public final class H3PromptRewrite {
                 - Output the JSON object directly. Do not write your reasoning, notes or any text before or after it.
                 - non_diegetic_music: "N/A" unless the request asks for music.
                 """);
+        c.append(mode == Mode.REF ? LENGTH_REF : LENGTH_BASE);
         return c.toString();
     }
 
@@ -388,7 +415,7 @@ public final class H3PromptRewrite {
     /** 写进任务输入的核对信息：模式、镜头、每镜开始时间、参考素材数量、台词（带所在镜头）。 */
     public static ObjectNode meta(ObjectMapper om, Request r, int pictures, int videos, int audios) {
         boolean fixed = r.shots() != null;
-        ObjectNode meta = om.createObjectNode().put("task", "videoPrompt").put("mode", r.mode().name()).put("codeLines", r.codeLines())
+        ObjectNode meta = om.createObjectNode().put("task", "videoPrompt").put("rules", RULES).put("mode", r.mode().name()).put("codeLines", r.codeLines())
                 .put("shots", fixed ? r.shots() : 0).put("seconds", r.seconds())
                 .put("pictures", pictures).put("videos", videos).put("audios", audios).put("language", languageTag(r.language()));
         ArrayNode cuts = meta.putArray("starts");
@@ -509,10 +536,21 @@ public final class H3PromptRewrite {
         else if (strayHan[0] > 0) notes.add("删掉了优化稿里零星没翻译的中文");
 
         String template = assemble(mode, bodies, starts, seconds, defs, summary, retention, style, sound, music);
+        String language = meta.path("language").asText("Chinese");
+        if (fill(template, lines(meta), language).length() > MAX_PROMPT_CHARS && mode == Mode.REF) {
+            // 超长时只精简能确定是重复的部分：fully_preserved 行后面的说明就是把主体说明里的特征再列一遍。
+            // 其余关系（部分保留、属性迁移、音频复制）后面写的是改了什么、保留什么，一律不动（Codex 评审 2026-10-31）。
+            String shorter = trimFullyPreserved(retention);
+            String again = assemble(mode, bodies, starts, seconds, defs, summary, shorter, style, sound, music);
+            if (!shorter.equals(retention) && fill(again, lines(meta), language).length() <= MAX_PROMPT_CHARS) {
+                template = again;
+                notes.add("优化稿略超长，已删掉保留说明里重复列出的外貌特征");
+            }
+        }
         boolean usable = true;
-        if (fill(template, lines(meta), meta.path("language").asText("Chinese")).length() > MAX_PROMPT_CHARS) {
+        if (fill(template, lines(meta), language).length() > MAX_PROMPT_CHARS) {
             usable = false;
-            warnings.add("优化稿超过 " + MAX_PROMPT_CHARS + " 字符，H3 收不下，请缩短提示词或按原文生成");
+            warnings.add("优化稿超过 " + MAX_PROMPT_CHARS + " 字符，H3 收不下，请重新优化或按原文生成");
         }
         ObjectNode result = om.createObjectNode().put("template", template).put("usable", usable);
         ArrayNode w = result.putArray("warnings");
@@ -520,6 +558,18 @@ public final class H3PromptRewrite {
         ArrayNode n = result.putArray("notes");
         notes.forEach(n::add);
         return result;
+    }
+
+    private static final Pattern FULLY_PRESERVED = Pattern.compile("^(<(?:Subject|Picture|Video) \\d+>[^\n]*?:\\s*fully_preserved)\\s*-.*$");
+
+    /** 保留说明里关系是 fully_preserved 的行只留到关系标记为止；别的行原样。 */
+    static String trimFullyPreserved(String retention) {
+        StringBuilder out = new StringBuilder();
+        for (String line : retention.split("\n", -1)) {
+            Matcher m = FULLY_PRESERVED.matcher(line.strip());
+            out.append(out.length() > 0 ? "\n" : "").append(m.matches() ? m.group(1) + "." : line);
+        }
+        return out.toString();
     }
 
     private static String assemble(Mode mode, List<String> bodies, List<Double> starts, int seconds,

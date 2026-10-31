@@ -522,8 +522,9 @@ function SentPrompt({ clip }: { clip: DirectorClip }) {
     return <p className="director-sent-prompt-note">这一段选了按原文生成，中文提示词直接发给视频模型。</p>;
   if (clip.videoPromptRewrite === "needed" || !clip.videoPromptEn?.text)
     return <p className="director-sent-prompt-note">生成视频时，会先把这段提示词改写成 H3 官方要求的英文格式（台词保留中文原文），改写会额外消耗少量积分。</p>;
+  const cost = clip.videoPromptEn.cost ? `，花了 ${clip.videoPromptEn.cost.toLocaleString()} 积分` : "";
   return <details className="director-sent-prompt">
-    <summary>发给模型的英文（{formatDateTime(clip.videoPromptEn.at)} 改写）</summary>
+    <summary>{clip.videoPromptRewrite === "review" ? "优化稿（还没发送）" : "发给模型的英文"}（{formatDateTime(clip.videoPromptEn.at)} 改写{cost}）</summary>
     <pre>{clip.videoPromptEn.text}</pre>
   </details>;
 }

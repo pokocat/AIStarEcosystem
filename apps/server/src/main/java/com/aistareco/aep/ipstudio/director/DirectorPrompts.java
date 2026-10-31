@@ -323,6 +323,7 @@ public final class DirectorPrompts {
             - 静态帧（still）：分镜图要画的那一刻，优先选动作中间态、情绪过渡态，不要选人物正对镜头、表情完美的摆拍时刻，
               比如「话说到一半的侧脸」「手抬到半空的瞬间」「低头眨眼的间隙」
             - 字数：camera 不超过 25 字，action 不超过 80 字，still 不超过 40 字，summary 不超过 50 字。写实靠选对一两个细节，不靠堆形容词和长句。
+            - 人物称呼：camera、action、still 里提到人物，用资产清单里的名字或别名，不另起称呼；说话的人不在画面里时，在 action 里写清声音从哪来（如「门外传来老板的声音」）。
 
             """;
 
@@ -798,8 +799,14 @@ public final class DirectorPrompts {
      * 2：2026-10-26 改成中文 H3 结构（{@link #videoPromptV2}）。
      * 3：2026-10-28 分镜图同时交代人物受光、肤色和整体色调，场景图只交代空间和光源位置：分镜图按新布光规则改好之后，
      *    视频不能再从场景图重新取光线（review 发现第 2 版写着「分镜只参考构图」「场景光线照参考图」）。
+     * 4：2026-10-31 去掉写给系统看的说明，只留画面里有什么、谁说什么、谁照哪张图（第 3 版见 {@link #videoPromptV3}）；
+     *    出镜按名字和别名认，分不清画内画外时不写强约束（{@link #castOfShot}）。
+     *    起因：《扣钱》cl45 优化稿超长、按中文原文出片，成片末尾在只有一双手的镜头里多出约 4 秒人声，两个转写模型都听出「没有声音」，
+     *    对上的是「餐馆老板 没有声音参考，按人物身份自然配音。」；A/B 实测里 F3 也把「陈默的设定图」念了出来
+     *    （docs/audits/director-h3-video-prompt-ab-2026-10.md §6）。同一段第三镜，资产叫「餐馆老板」、分镜写「老板」，
+     *    旧判断认不出他在画面里，写成「画面里只有静儿」「老板在画外说」，与分镜图上老板出镜正好相反。
      */
-    public static final int VIDEO_PROMPT_FORMAT = 3;
+    public static final int VIDEO_PROMPT_FORMAT = 4;
 
     private static final String[] CELL_ORDER = {"左上格", "右上格", "左下格", "右下格"};
 
@@ -814,11 +821,142 @@ public final class DirectorPrompts {
      *       说话人不在画面里就写画外，听的人嘴闭着；最后一镜写收尾；</li>
      *   <li>【声音】【配乐】：配乐写无，整集拼起来不会每段一首曲子。</li>
      * </ul>
-     * 画幅、时长走请求参数，不写进提示词。以「声音参考：」开头和「没有声音参考，按人物身份自然配音。」结尾的行
-     * 是指纹比对时要忽略的声音行（见 DirectorService#withoutVoiceLines），措辞别改。
+     * 画幅、时长走请求参数，不写进提示词。以「声音参考：」开头的行是指纹比对时要忽略的声音行（见 DirectorService#withoutVoiceLines），措辞别改。
+     *
+     * <p>中文原文会整段交给 H3（优化稿超长、改写失败或用户选了按原文生成时），H3 分不清哪些中文是要念的，
+     * 所以这里只写画面里有什么、谁说什么、谁照哪张图、谁的声音照哪段音频；参考图「是什么」「怎么用」的解释、
+     * 「没有声音参考」「只说引号里的台词」这类写给系统看的规则一律不写。改写需要的参考说明另由 {@code DirectorService#rewrite} 用英文交给改写模型。
+     *
+     * @param aliases 角色名 → 资产别名（如「餐馆老板」→「老板」），用来认这一镜谁在画面里
      */
     public static String videoPrompt(JsonNode settings, JsonNode clip, List<Ref> refs, java.util.Map<String, String> speakerNames,
-                                     List<VoiceRef> voices, List<String> unvoiced, java.util.Map<String, String> voiceDescs) {
+                                     List<VoiceRef> voices, List<String> unvoiced, java.util.Map<String, String> voiceDescs,
+                                     java.util.Map<String, List<String>> aliases) {
+        String style = settings.path("style").asText("真人写实");
+        JsonNode shots = clip.path("shots");
+        int n = Math.min(shots.size(), MAX_SHOTS);
+        boolean grid = boardLayout(shots.size())[0] == 2;
+        List<String> characters = new ArrayList<>();
+        StringBuilder people = new StringBuilder();
+        for (Ref r : refs) {
+            switch (r.kind()) {
+                case "scene" -> people.append("场景「").append(r.name()).append("」：空间布局和光源位置照参考").append(r.label()).append("。\n");
+                case "prop" -> people.append("道具「").append(r.name()).append("」：外观照参考").append(r.label()).append("。\n");
+                default -> {
+                    characters.add(r.name());
+                    people.append(r.name()).append("：长相、发型和衣服照参考").append(r.label()).append("。\n");
+                }
+            }
+        }
+        if (!characters.isEmpty())
+            people.append(String.join("和", characters)).append(characters.size() > 1 ? "在画面里各只出现一个" : "在画面里只出现一个")
+                    .append("，长相和衣服从头到尾保持一致。\n");
+        StringBuilder b = new StringBuilder();
+        if (!people.isEmpty()) b.append("【人物】\n").append(people).append('\n');
+        b.append("【分镜参考】\n");
+        if (grid) {
+            b.append("参考图1 是 2×2 分镜：");
+            for (int i = 0; i < n; i++) b.append(i > 0 ? "，" : "").append(CELL_ORDER[i]).append("对应第").append(i + 1).append("镜");
+            if (n < 4) b.append("，其余格子是空的");
+            b.append("。每格参考构图、机位和人物位置，人物的受光、肤色和画面整体色调也照对应的格子，每一镜都是一个完整的全屏画面。\n\n");
+        } else {
+            b.append("参考图1 是这一段的分镜画面，参考它的构图、机位和人物位置，人物的受光、肤色和画面整体色调也照它，视频是一个完整的全屏画面。\n\n");
+        }
+        b.append("【画面】\n").append(style).append("风格，画面里没有字幕。\n");
+        boolean anyLine = false;
+        double t = 0;
+        for (int i = 0; i < n; i++) {
+            JsonNode s = shots.get(i);
+            double end = t + s.path("durationSec").asDouble();
+            b.append("第").append(i + 1).append("镜（").append(i == 0 ? "0–" + fmt(end) + " 秒" : fmt(t) + " 秒切").append("）：");
+            b.append(sentence(s.path("size").asText() + (s.path("camera").asText().isBlank() ? "" : "，" + s.path("camera").asText())));
+            b.append(sentence(s.path("still").asText())).append(sentence(s.path("action").asText()));
+            Cast cast = castOfShot(s, castPool(characters, s, speakerNames), aliases);
+            if (cast.on().size() == 1 && cast.unsure().isEmpty()) b.append("画面里只有").append(cast.on().get(0)).append("。");
+            Set<String> speaking = new HashSet<>();
+            for (JsonNode line : s.path("dialogue")) {
+                anyLine = true;
+                String who = line.path("speakerId").isTextual() ? speakerNames.get(line.path("speakerId").asText()) : null;
+                // 画外只在「画面里认出了别人、说话人一个称呼都没出现」时写；分不清的不写画内画外，也不要求谁闭嘴。
+                boolean offscreen = who == null || !cast.on().contains(who) && !cast.unsure().contains(who) && !cast.on().isEmpty();
+                if (who != null && cast.on().contains(who)) speaking.add(who);
+                b.append(who == null ? "旁白" : who).append(offscreen ? "在画外说：「" : "说：「").append(line.path("text").asText()).append("」");
+                b.append(offscreen && !cast.on().isEmpty() ? "画面里的人嘴闭着。" : "");
+            }
+            List<String> listeners = cast.on().stream().filter(who -> !speaking.contains(who)).toList();
+            if (!speaking.isEmpty() && !listeners.isEmpty()) b.append(String.join("、", listeners)).append("听着，嘴闭着。");
+            if (i == n - 1) b.append("最后保持这个画面到结束。");
+            b.append('\n');
+            t = end;
+        }
+        b.append("\n【声音】\n");
+        if (!anyLine) b.append("这一段没有对白。\n");
+        for (VoiceRef v : voices) b.append("声音参考：").append(v.name()).append("的音色、口音照").append(v.label()).append("。\n");
+        voiceDescs.forEach((name, desc) -> b.append(name).append("的音色：").append(desc).append("\n"));
+        b.append("\n【配乐】\n无");
+        return b.toString();
+    }
+
+    /** 一镜里的出镜判断：{@code on} 明确在画面里，{@code unsure} 点了名但分不清画内画外（带画外线索词，或一个称呼对上几个人）。 */
+    public record Cast(List<String> on, List<String> unsure) {}
+
+    /** 名字出现在这些词的同一小句里，不能算出镜：「门外传来老板的声音」「静儿想起老板说过的话」。 */
+    private static final Pattern OFFSCREEN_CUE = Pattern.compile("画外|门外|窗外|屏幕外|镜头外|画面外|电话|听筒|广播|喇叭|声音|喊声|传来|听见|听到|回想|想起|回忆|记得|梦里|脑海");
+
+    /** 认人的范围：这一段关联了参考图的角色 + 这一镜开口的角色（说话人不一定有参考图）。 */
+    static List<String> castPool(List<String> characters, JsonNode shot, java.util.Map<String, String> speakerNames) {
+        List<String> pool = new ArrayList<>(characters);
+        for (JsonNode line : shot.path("dialogue")) {
+            String who = line.path("speakerId").isTextual() ? speakerNames.get(line.path("speakerId").asText()) : null;
+            if (who != null && !pool.contains(who)) pool.add(who);
+        }
+        return pool;
+    }
+
+    /**
+     * 这一镜谁在画面里：景别机位、画面、动作里按名字和别名认（长的先认，「林小雅」不会再被认成「小雅」，认过的字不再参与匹配）。
+     * 一个称呼同时是几个人的名字或别名（如两人共用「面筋夫妻」）时不归给任何人，记作分不清；
+     * 称呼所在的小句里有画外线索词时也记作分不清。按原有顺序返回。
+     */
+    static Cast castOfShot(JsonNode shot, List<String> pool, java.util.Map<String, List<String>> aliases) {
+        String text = shot.path("camera").asText() + "\n" + shot.path("still").asText() + "\n" + shot.path("action").asText();
+        java.util.Map<String, Set<String>> owners = new java.util.HashMap<>();
+        for (String name : pool) {
+            if (name.isBlank()) continue;
+            owners.computeIfAbsent(name, k -> new java.util.LinkedHashSet<>()).add(name);
+            for (String alias : aliases.getOrDefault(name, List.of()))
+                if (alias != null && !alias.isBlank()) owners.computeIfAbsent(alias.strip(), k -> new java.util.LinkedHashSet<>()).add(name);
+        }
+        List<String> terms = new ArrayList<>(owners.keySet());
+        terms.sort((a, c) -> c.length() - a.length());
+        Set<String> on = new HashSet<>(), unsure = new HashSet<>();
+        for (String term : terms) {
+            int at = text.indexOf(term);
+            if (at < 0) continue;
+            Set<String> who = owners.get(term);
+            boolean cue = false;
+            for (; at >= 0; at = text.indexOf(term, at + term.length())) cue |= OFFSCREEN_CUE.matcher(clause(text, at, term.length())).find();
+            if (who.size() > 1 || cue) unsure.addAll(who); else on.addAll(who);
+            text = text.replace(term, "\u0000");
+        }
+        on.removeAll(unsure);
+        return new Cast(pool.stream().filter(on::contains).toList(), pool.stream().filter(unsure::contains).toList());
+    }
+
+    /** 称呼所在的那一小句（按逗号、句号等断开）。 */
+    private static String clause(String text, int at, int len) {
+        int from = at, to = at + len;
+        while (from > 0 && "，。；！？、,.;!?\n".indexOf(text.charAt(from - 1)) < 0) from--;
+        while (to < text.length() && "，。；！？、,.;!?\n".indexOf(text.charAt(to)) < 0) to++;
+        return text.substring(from, to);
+    }
+
+    /**
+     * 第 3 版视频提示词（2026-10-28 至 2026-10-31），只用来核对第 3 版生成的视频，不要拿它生成新视频。
+     * 它带着「参考图N 是X的设定图」「没有声音参考，按人物身份自然配音」「人物只说引号里的台词」这几句写给系统的话，出镜也只按全名认（{@link #castOf}）。
+     */
+    static String videoPromptV3(JsonNode settings, JsonNode clip, List<Ref> refs, java.util.Map<String, String> speakerNames,
+                                List<VoiceRef> voices, List<String> unvoiced, java.util.Map<String, String> voiceDescs) {
         String style = settings.path("style").asText("真人写实");
         JsonNode shots = clip.path("shots");
         int n = Math.min(shots.size(), MAX_SHOTS);
@@ -895,8 +1033,8 @@ public final class DirectorPrompts {
     }
 
     /**
-     * 这一镜画面里有哪些角色：景别机位、画面、动作里点了名的（长名字先认，「林小雅」不会再被认成「小雅」）。
-     * 分镜脚本还没有逐镜的出镜人字段，先按名字认；一个都没认出来就返回空，提示词里不写「画面里只有」。
+     * 第 2、3 版用的出镜判断，冻结不改（改了会让旧模板重建出来的提示词变样，已有视频被误标「需更新」）：
+     * 景别机位、画面、动作里点了全名的（长名字先认）。新模板用 {@link #castOfShot}。
      */
     static List<String> castOf(JsonNode shot, List<String> characters) {
         String text = shot.path("camera").asText() + "\n" + shot.path("still").asText() + "\n" + shot.path("action").asText();
