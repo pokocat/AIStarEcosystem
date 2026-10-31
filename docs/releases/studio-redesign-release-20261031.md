@@ -62,3 +62,25 @@ DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem 
 ## 没有做的
 
 新建人物时一起加声音、真人自填授权、「AI 生成」按在哪做的筛、资产库封面和分类数量、新的人物详情页；画布 / 导演台 / 创作助手的选择框没改。见 `TODO.md`。
+
+## 追加：左侧导航修复（web-aiavatar `20261031-studio-rail-fixes`）
+
+同日线上反馈后，用户要求「先推上去、远端跑，直接发布，有问题再修」：#146 在 CI 还没跑完时快进合入 main（`3adff8c59`），只发 web-aiavatar：
+
+- 鼠标停在「AI 视频 / AI 图片」上，导航栏右边弹出全部场景，点一个直接进那个场景（`shell/rail-scene-flyout.tsx`）。
+- 左下角头像里的字居中；头像菜单里本来就有「企业积分」等入口（线上 layout 包已核对含 `/enterprise`）。
+- 导航栏层级 60 → 80，高过场景页没固定的「全部场景」（70）。
+- 资产选择框上传新文件后自动选中时不再超过能选的上限（原来上限 2、已选 2，传一个变成 3；两个选择框都改了）。这一条是同工作区里别的进程临时加的一条回归测试抓到的。
+
+| 项目 | 结果 |
+| --- | --- |
+| 正式构建 | main `3adff8c59b5940c16fceff2ef4b89d7db9c5a18c`，同一仓外工作区构建；在 #146 末提交上构建，main 快进到同一提交 |
+| CI | 第一个提交 8 项全过；加了选择上限修复后的提交，发布时 8 项里 6 项已过、后端测试和前端测试还在跑（按用户要求不等） |
+| 发布包 | `20261031-studio-rail-fixes`（只有 web-aiavatar），tar SHA256 `964cb432d8db7336f963cdcdd02e0b349af659ff745da240d8acf3f72fc325a0`，BUILD_ID `zABjyUEoWedcJPkGXz3dY`（线上一致） |
+| 构建参数 | 同上一版（`NEXT_PUBLIC_AUTH_MODE=id`、`NEXT_PUBLIC_ENTERPRISE_ENABLED=1`，mock 与开发登录关闭） |
+| server | 未重启，仍是 `20261031-studio-redesign` |
+| 服务启动 | web-aiavatar 23:31:04 重启，NRestarts=0；env-check / verify ALL GREEN |
+| 线上核对 | `/video`、`/image`、`/assets`、`/projects`、`/` 200；线上样式含 `.rail-flyout` 和导航栏 `z-index:80`，脚本含 `rail-flyout-host`，头像菜单含「企业积分」 |
+| 重启窗口 | 23:30–23:32 nginx：200 共 67 个，没有 502；404 都是外部扫描（`/.env`、`/wp-config.php.save` 等）和 favicon |
+
+回滚：web-aiavatar → `20261031-studio-redesign`（生产机 `/opt/ai-star-eco/releases/` 下，命令同上）。
