@@ -117,7 +117,7 @@ function IpHomeNext({ header = true }: { header?: boolean }) {
     .map((t, i) => ({ t, i, pictured: hasPicture(t) })).sort((a, b) => Number(b.pictured) - Number(a.pictured) || a.i - b.i).map(x => x.t), [templates, tab]);
   const scrollGoals = (direction: number) => goals.current?.scrollBy({ left: direction * goals.current.clientWidth * .8, behavior: "smooth" });
 
-  return <div className="ip-brand-surface ip-home studio-scene-home">
+  return <div className="ip-brand-surface ip-home studio-scene-home studio-next-page">
     {/* 登录后电脑上的导航由外壳给（新版是左侧一列，见 shell/app-chrome.tsx），这里只给没登录的访客画公开顶栏。 */}
     {header && <>{!authed && <DesktopTopBar publicMode />}<header className="ip-home-mobile-header"><Link href="/" aria-label="IP Studio · 声量引擎旗下首页"><img src="/brand/ip-studio-logo.png" width={34} height={34} alt="" /><strong>IP Studio <small>· 声量引擎旗下</small></strong></Link><Link href={authed ? "/dashboard" : "/login"}>{authed ? "工作台" : "登录"}</Link></header></>}
     {using && <StudioTemplateUse key={using.versionId || using.id} template={using} onClose={() => setUsing(undefined)} onCreated={id => router.push(`/projects/${encodeURIComponent(id)}`)}/>}
@@ -125,7 +125,6 @@ function IpHomeNext({ header = true }: { header?: boolean }) {
       <section className="home-hero">
         {authed && <UiVersionSwitch inline/>}
         <h1><span>声量引擎</span>，让灵感成形，让 IP 出圈</h1>
-        <p>商品图、带货视频、IP 形象，选个场景就能做；也可以直接说想做什么。</p>
         <StudioConversationStart creating={creating === "assistant"} onStart={brief => void startConversation(brief)}/>
       </section>
 

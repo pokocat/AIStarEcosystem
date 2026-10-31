@@ -58,3 +58,10 @@ html[data-layout="desktop"] .ip-surface .studio-storyboard-column>header [data-s
 
 .ip-surface .canvas-config-field:has(> .canvas-config-editor:focus-visible) { outline:2px solid var(--primary); outline-offset:-2px; }
 .ip-surface .canvas-config-editor:focus-visible { outline:none; }
+
+/* 场景页的编辑框（2026-10-31 改版）：框里的输入不再画自己的描边，焦点由外面整个框的边线和一圈浅影表示。 */
+:is(.scene-box, .scene-director-input) :is(textarea, input):focus-visible { outline: none; }
+.scene-box:has(:is(textarea, input):focus-visible), .scene-director-input:has(input:focus-visible) {
+  border-color: #9aa3ab;
+  box-shadow: 0 0 0 3px rgba(23, 32, 42, .06);
+}

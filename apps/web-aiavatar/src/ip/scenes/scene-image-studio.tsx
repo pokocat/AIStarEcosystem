@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { SignedImage } from "@/canvas-bridge/signed-image";
-import { ChevronDown, Clapperboard, Download, FolderOpen, ImageUp, ImagePlus, Loader2, Mountain, Package, PencilLine, Plus, RotateCcw, Shirt, SlidersHorizontal, Sparkles, Square, Undo2, Upload, UserRound, X } from "lucide-react";
-import type { IpImageAsset, IpProject, IpRun, StudioSceneImageState } from "@ai-star-eco/types";
+import { ChevronDown, Clapperboard, Cpu, Download, FolderOpen, ImageUp, ImagePlus, Loader2, Mountain, Package, PencilLine, Plus, RotateCcw, Shirt, SlidersHorizontal, Square, Undo2, Upload, UserRound, X } from "lucide-react";
+import type { IpImageAsset, IpProject, IpRun, StudioSceneImageState, StudioSceneOptionGroup } from "@ai-star-eco/types";
 import type { StudioCapabilities } from "@ai-star-eco/types/ip-studio-workflow";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { cancelRun, fetchModels, readRun, signKeys, type IpModelOption } from "@/canvas-bridge/api";
@@ -26,7 +26,8 @@ import { useSceneDraftStore, useSceneStateSave } from "./scene-draft-store";
 import { useSceneQuery, writeSceneQuery } from "./scene-query";
 import { UiVersionSwitch } from "@/shell/ui-version-switch";
 import { addImageRow, applyRun, createSceneDraft, imageRows, listSceneDrafts, openedImageState, patchNode, resubmitRow, rowUploads, slotUploads, submissionRejected, type SceneUpload } from "./scene-drafts";
-import { SceneEmpty, SceneExample, SceneList, SceneNoModel, SceneOptions, SceneRecent, SceneResultTabs, SceneThumb, SceneViewer, sceneFailureText, sceneHintText, sceneOptionValues, useScenePopover } from "./scene-layout";
+import { SceneDrawer, SceneEmpty, SceneExample, SceneNoModel, SceneRecent, SceneResultTabs, SceneSwitch, SceneViewer, sceneFailureText, sceneHintText, sceneOptionValues, useSceneDrawerPin, useScenePopover, RatioGlyph } from "./scene-layout";
+import { AiMark } from "../studio-ai-icon";
 
 const FALLBACK_RATIOS = ["1:1", "3:4", "4:3", "9:16", "16:9"];
 const POLL_MS = 1500;
@@ -50,6 +51,8 @@ export function SceneImageStudio() {
   const [custom, setCustom] = useState<string>();
   const [picked, setPicked] = useState<Record<string, string>>({});
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [pinned, pin] = useSceneDrawerPin("image");
   const [tab, setTab] = useState<"results" | "example">("example");
   const [uploading, setUploading] = useState<number>();
   const [picking, setPicking] = useState<number>();
@@ -391,94 +394,89 @@ export function SceneImageStudio() {
   if (!catalog || !scene) return <main className="ip-brand-surface scene-studio scene-image-studio"><div className="scene-loading"><Loader2 size={20} className="studio-gallery-spinner"/>正在读取场景</div></main>;
   const free = findImageScene(catalog, FREE_SCENE_ID);
   const listGroups = catalog.imageGroups.map(g => ({ id: g.id, title: g.title, items: catalog.image.filter(s => s.group === g.id && s.id !== FREE_SCENE_ID) }));
-  const sampleCovers = ["face-turnaround", "ip-sheet", "scene-swap"].flatMap(id => findImageScene(catalog, id) ?? []);
+  const groupTitle = catalog.imageGroups.find(g => g.id === scene.group)?.title;
+  const onPick = (id: string) => { const next = findImageScene(catalog, id); if (next && (next.id !== scene.id || draft)) goToScene(next); };
 
-  return <main className="ip-brand-surface scene-studio scene-image-studio" data-studio-overlay-root>
-    <SceneList heading="AI 图片" current={scene.id} onPick={id => { const next = findImageScene(catalog, id); if (next && (next.id !== scene.id || draft)) goToScene(next); }} top={free} groups={listGroups}/>
+  return <main className={`ip-brand-surface scene-studio scene-image-studio${pinned ? " has-drawer" : ""}`} data-studio-overlay-root>
+    {(pinned || drawerOpen) && <SceneDrawer heading="AI 图片" groups={listGroups} top={free} current={scene.id} onPick={onPick} pinned={pinned} onPin={pin} onClose={() => setDrawerOpen(false)}/>}
 
-    <section className="scene-composer" aria-label="图片设置">
+    <section className="scene-card scene-composer" aria-label="出图设置">
       <header className="scene-composer-head">
-        <SceneThumb id={scene.id} title={scene.title} cover={scene.coverUrl} size={52}/>
-        <div><strong>{scene.title}</strong><small>{scene.description}</small></div>
-        <button type="button" className="scene-new" onClick={() => { showDraft(undefined, begin()); pickScene(scene); writeQuery(scene.id); }}><Plus size={16}/>新建</button>
+        <SceneSwitch scene={scene} groups={listGroups} top={free && free.id !== scene.id ? free : undefined} onPick={onPick} onAll={() => { if (!pinned) setDrawerOpen(true); }}/>
+        <SceneRecent icon drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>
+        <button type="button" className="scene-new" onClick={() => { showDraft(undefined, begin()); pickScene(scene); writeQuery(scene.id); }}><Plus size={13} strokeWidth={1.6}/>新建</button>
       </header>
 
-      <div className="scene-composer-body">
-        <div className="scene-ref-count">{slots.filter(Boolean).length} / {scene.refs.length}</div>
-        <div className="scene-ref-row" role="group" aria-label="参考图">
+      <div className="scene-compose">
+        <div className={`scene-media-row${scene.refs.length <= 3 ? " is-large" : ""}`} role="group" aria-label="参考图">
           {scene.refs.map((ref, i) => {
             const slot = slots[i];
             const Icon = refIcon(ref.label);
-            return <div key={`${scene.id}-${i}`} className={`scene-ref${slot ? " is-filled" : ""}`}>
-              {slot ? <>
-                <SignedImage src={slot.url} storageKey={slot.key} alt={ref.label}/><span className="scene-ref-index">图{i + 1}</span>
-                <button type="button" className="scene-ref-remove" aria-label={`移除${ref.label}`} onClick={() => setSlots(old => { const next = [...old]; next[i] = undefined; return next; })}><X size={13}/></button>
-              </> : <button type="button" className="scene-ref-add" disabled={uploading !== undefined} aria-label={`上传${ref.label}`} title={ref.hint}
-                onClick={() => { uploadTarget.current = i; fileInput.current?.click(); }}
-                onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); const file = e.dataTransfer.files[0]; if (file) void upload(i, file); }}>
-                {uploading === i ? <Loader2 size={20} className="studio-gallery-spinner"/> : <><Icon size={30} strokeWidth={1.2}/><span className="scene-ref-upload"><Upload size={11}/></span></>}
-              </button>}
-              <span className="scene-ref-label" title={ref.hint}>{slot ? ref.label : `添加${ref.label}`}{!ref.required && <small>（可选）</small>}</span>
-              {!slot && <button type="button" className="scene-ref-library" onClick={() => setPicking(i)}>从资产库选</button>}
+            return <div key={`${scene.id}-${i}`} className={`scene-media${slot ? " is-filled" : ""}`}>
+              {slot ? <span className="scene-media-preview"><SignedImage src={slot.url} storageKey={slot.key} alt={ref.label}/><i className="scene-ref-index">图{i + 1}</i></span>
+                : <ImageSlotAdd uploading={uploading === i} disabled={uploading !== undefined} label={ref.label} hint={ref.hint} Icon={Icon}
+                    onUpload={() => { uploadTarget.current = i; fileInput.current?.click(); }} onLibrary={() => setPicking(i)}
+                    onDrop={file => void upload(i, file)}/>}
+              <span title={ref.hint}>{ref.label}{!slot && !ref.required && <small>可选</small>}</span>
+              {slot && <button type="button" className="scene-ref-remove" aria-label={`移除${ref.label}`} onClick={() => setSlots(old => { const next = [...old]; next[i] = undefined; return next; })}><X size={11} strokeWidth={1.8}/></button>}
             </div>;
           })}
           <input ref={fileInput} type="file" accept=".jpg,.jpeg,.png" hidden onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) void upload(uploadTarget.current, file); }}/>
         </div>
 
-        <SceneOptions groups={scene.options} value={picked} onPick={(key, choice) => setPicked(old => ({ ...old, [key]: choice }))}/>
-        <div className="scene-ask">
-          {!isFree && custom === undefined && <span className="scene-skill-chip" title={scene.prompt}><Sparkles size={14}/>{scene.title}</span>}
+        <div className="scene-box">
           {custom !== undefined
             ? <textarea aria-label="完整描述" value={custom} onChange={e => setCustom(e.target.value)} className="is-full"/>
             : <textarea aria-label={isFree ? "想要的画面" : "补充要求"} value={supplement} placeholder={scene.hint} onChange={e => setSupplement(e.target.value)}/>}
           {custom !== undefined && <textarea aria-label="补充要求" className="is-extra" value={supplement} placeholder="还有要补充的，写在这里" onChange={e => setSupplement(e.target.value)}/>}
           <footer>
-            {!isFree && (custom === undefined
-              ? <button type="button" onClick={() => setCustom(scene.prompt)}><PencilLine size={13}/>改完整描述</button>
-              : <button type="button" onClick={() => setCustom(undefined)}><Undo2 size={13}/>用回场景描述</button>)}
             <small className={ownText.length > ownLimit ? "is-over" : undefined}>{ownText.length} / {ownLimit}</small>
+            {!isFree && (custom === undefined
+              ? <button type="button" className="scene-text-button" title={scene.prompt} onClick={() => setCustom(scene.prompt)}><PencilLine size={13} strokeWidth={1.5}/>改完整描述</button>
+              : <button type="button" className="scene-text-button" onClick={() => setCustom(undefined)}><Undo2 size={13} strokeWidth={1.5}/>用回场景描述</button>)}
           </footer>
         </div>
-      </div>
 
-      <div className="scene-settings">
-        {caps?.imageModelMode !== "fixed" && candidates.length > 1 && <label className="scene-setting"><span>模型</span>
-          <StudioSelect label="图片模型" compact value={chosen?.endpointId || ""} onChange={setModelId} options={candidates.map(m => ({ value: m.endpointId, label: m.name }))}/></label>}
-        <div className="scene-setting scene-setting-panel-host">
-          <button type="button" className="scene-setting-toggle" aria-expanded={settingsOpen} aria-controls="scene-image-settings" onClick={() => setSettingsOpen(v => !v)}>
-            <span>图片设置</span><strong><SlidersHorizontal size={13}/>{[usedRatio, studioImageSizeLabel(usedSize), `${usedCount} 张`].filter(Boolean).join(" · ")}</strong><ChevronDown size={14}/>
+        <div className="scene-go-group">
+          <div className="scene-pills">
+            {caps?.imageModelMode !== "fixed" && candidates.length > 1 ? <div className="scene-pill is-select"><Cpu size={14} strokeWidth={1.5}/>
+                <StudioSelect label="图片模型" compact value={chosen?.endpointId || ""} onChange={setModelId} options={candidates.map(m => ({ value: m.endpointId, label: m.name }))}/></div>
+              : <span className="scene-pill"><Cpu size={14} strokeWidth={1.5}/><span>{chosen?.name ?? (caps?.mock ? "测试模型" : "图片模型")}</span></span>}
+            <div className="scene-setting-panel-host">
+              <button type="button" className="scene-pill" aria-expanded={settingsOpen} aria-controls="scene-image-settings" aria-label={`图片设置：${[usedRatio, studioImageSizeLabel(usedSize), `${usedCount} 张`].filter(Boolean).join("，")}`} onClick={() => setSettingsOpen(v => !v)}>
+                <SlidersHorizontal size={14} strokeWidth={1.5}/><span><RatioGlyph ratio={usedRatio}/>{[usedRatio, studioImageSizeLabel(usedSize), `${usedCount} 张`].filter(Boolean).join(" · ")}</span><ChevronDown size={13} strokeWidth={1.6}/></button>
+              {settingsOpen && <ImageSettingsPanel ratios={ratios} ratio={usedRatio} onRatio={setRatio} sizes={sizes} size={usedSize} onSize={setSize}
+                counts={counts} count={usedCount} onCount={setCount} options={scene.options} picked={picked} onPick={(key, choice) => setPicked(old => ({ ...old, [key]: choice }))} onClose={() => setSettingsOpen(false)}/>}
+            </div>
+          </div>
+          <button type="button" className="scene-go" aria-label="生成图片" title={blocker || undefined} disabled={busy || !!blocker} onClick={() => void generate()}>
+            {busy ? <Loader2 size={16} className="studio-gallery-spinner"/> : null}<span>生成图片</span>
+            {!blocker && <small>{caps?.mock ? "免费" : `${quote} 积分`}</small>}
           </button>
-          {settingsOpen && <ImageSettingsPanel ratios={ratios} ratio={usedRatio} onRatio={setRatio} sizes={sizes} size={usedSize} onSize={setSize}
-            counts={counts} count={usedCount} onCount={setCount} onClose={() => setSettingsOpen(false)}/>}
+          {hint || blocker ? <p className={`scene-hint${hint ? "" : " is-note"}`} role="status">{hint || blocker}</p>
+            : note || specNote ? <p className="scene-hint is-note" role="status">{[note?.text, specNote].filter(Boolean).join(" ")}
+              {note?.undo && <button type="button" onClick={note.undo}>撤销</button>}</p> : null}
+          {models && !candidates.length && !caps?.mock && <SceneNoModel kind="图片"/>}
         </div>
       </div>
-      {models && !candidates.length && !caps?.mock && <SceneNoModel kind="图片"/>}
-      {hint ? <p className="scene-hint" role="status">{hint}</p>
-        : note || specNote ? <p className="scene-hint is-note" role="status">{[note?.text, specNote].filter(Boolean).join(" ")}
-          {note?.undo && <button type="button" onClick={note.undo}>撤销</button>}</p> : null}
-      {/* 不能生成时按钮就地写原因（先放什么、先写什么），不让人对着一个灰按钮猜。 */}
-      <button type="button" className="scene-go" aria-label="立即生成图片" title={blocker || (caps?.mock ? "测试响应，不扣积分" : `预计 ${quote} 积分`)} disabled={busy || !!blocker} onClick={() => void generate()}>
-        {busy ? <Loader2 size={18} className="studio-gallery-spinner"/> : null}<span>立即生成图片</span>
-        <small>{blocker || (caps?.mock ? "测试响应 · 免费" : `预计 ${quote} 积分`)}</small>
-      </button>
     </section>
 
-    <section className="scene-results" aria-label="生成结果">
+    <section className="scene-card scene-results" aria-label="作品与示例">
       <header><SceneResultTabs tab={tab} onTab={setTab} count={rows.length} idBase="scene-image"/>
-        <span className="scene-results-actions">{draft && <Link className="scene-link" href={`/projects/${encodeURIComponent(draft.id)}`}><FolderOpen size={15}/>在画布中继续</Link>}<UiVersionSwitch inline/></span></header>
+        <span className="scene-results-actions">{draft && <Link className="scene-text-button" href={`/projects/${encodeURIComponent(draft.id)}`}><FolderOpen size={14} strokeWidth={1.4}/>在画布中继续</Link>}
+          <SceneRecent drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>
+          <UiVersionSwitch inline/></span></header>
       <div id="scene-image-panel" className="scene-results-panel" role="tabpanel" aria-labelledby={`scene-image-tab-${tab}`}>
       {tab === "example" ? (isFree
-          ? <SceneEmpty title="图片创作" note={<>放参考图，说说想要的画面；不知道怎么写，就从左边选一个场景。</>} covers={sampleCovers}/>
-          : <SceneExample id={scene.id} title={`${scene.title}效果示例`} note={scene.description} cover={scene.coverUrl} examples={scene.examples}/>)
+          ? <SceneEmpty title="图片创作" note="放参考图，说说想要的画面；不知道怎么写，点上面的场景名换一个场景。"/>
+          : <SceneExample id={scene.id} title={scene.title} group={groupTitle} note={scene.description} cover={scene.coverUrl} examples={scene.examples} ratio={scene.ratio}/>)
         : opening ? <div className="scene-loading"><Loader2 size={20} className="studio-gallery-spinner"/>正在打开草稿</div>
         : rows.length ? <ol className="scene-row-list">{rows.map(row => <ImageRow key={row.id} row={row} original={originalOf(row)} run={live[row.id]} busy={busy} submitting={submitting === row.id}
           onView={setViewing} onUse={putAsReference} onVideo={toVideo} onReuse={() => reuse(row)} onRetry={() => retry(row)} onConfirm={() => void confirmOriginal(row)}
           onStop={() => { const id = row.metadata?.studio?.runId; if (id) void cancelRun(id).catch(e => showFailure({ action: "停止生成", error: e })); }}/>)}</ol>
-        : <SceneEmpty title="还没有生成" note={<>放好参考图，点「立即生成图片」，结果会出现在这里。</>} covers={[]}/>}
+        : <SceneEmpty title="还没有作品" note="放好参考图，点「生成图片」，做好的图会出现在这里。"/>}
       </div>
     </section>
-
-    <SceneRecent drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>
 
     {picking !== undefined && <div className="scene-picker-host"><LibraryReferencePicker open max={1} title="从资产库选一张图" intro="选一张图片做参考，原文件不会被改动。" confirmLabel="用这张"
       onClose={() => setPicking(undefined)} onAssets={async assets => {
@@ -491,6 +489,30 @@ export function SceneImageStudio() {
       onDownload={() => void downloadMedia(viewing.url, viewing.name, undefined, viewing.key)}/>}
     <HubTabBar/>
   </main>;
+}
+
+/** 空着的参考图位：点一下选「上传」还是「从资产库选」，也可以直接把图拖进来。 */
+function ImageSlotAdd({ uploading, disabled, label, hint, Icon, onUpload, onLibrary, onDrop }: {
+  uploading: boolean; disabled: boolean; label: string; hint?: string | null; Icon: typeof UserRound;
+  onUpload: () => void; onLibrary: () => void; onDrop: (file: File) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return <div className="scene-slot-host">
+    <button type="button" className="scene-slot-add" disabled={disabled} aria-label={`添加${label}`} aria-haspopup="menu" aria-expanded={open} title={hint ?? undefined}
+      onClick={() => setOpen(v => !v)} onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); const file = e.dataTransfer.files[0]; if (file) onDrop(file); }}>
+      {uploading ? <Loader2 size={18} className="studio-gallery-spinner"/> : <><Icon size={20} strokeWidth={1.3}/><small>上传或从资产库选</small></>}
+    </button>
+    {open && <SlotMenu onClose={() => setOpen(false)}>
+      <button type="button" role="menuitem" onClick={() => { setOpen(false); onUpload(); }}><Upload size={14} strokeWidth={1.5}/>上传{label}</button>
+      <button type="button" role="menuitem" onClick={() => { setOpen(false); onLibrary(); }}><FolderOpen size={14} strokeWidth={1.5}/>从资产库选</button>
+    </SlotMenu>}
+  </div>;
+}
+function SlotMenu({ children, onClose }: { children: ReactNode; onClose: () => void }) {
+  const panel = useRef<HTMLDivElement>(null);
+  useScenePopover(panel, onClose);
+  useEffect(() => { panel.current?.querySelector<HTMLElement>("button")?.focus(); }, []);
+  return <div ref={panel} className="scene-slot-menu" role="menu">{children}</div>;
 }
 
 function ImageRow({ row, original, run, busy, submitting, onView, onUse, onVideo, onReuse, onRetry, onConfirm, onStop }: {
@@ -507,29 +529,36 @@ function ImageRow({ row, original, run, busy, submitting, onView, onUse, onVideo
   const position = run?.queue?.position;
   // 图片阶段不显示百分比（不是真进度），只说在排队还是在生成。
   const failure = meta?.status === "error" ? sceneFailureText(meta.errorCode, meta.errorDetails) : undefined;
-  const state = loading ? (submitting && !accepted ? "正在提交" : !accepted ? "提交结果没有确认" : position && position > 0 ? `排队中，前面还有 ${position - 1} 个` : "正在生成")
-    : failure ? failure : `${images.length} 张`;
+  const state = loading ? (submitting && !accepted ? "正在提交" : !accepted ? "提交结果没有确认" : position && position > 0 ? `排队中，前面还有 ${position - 1} 个` : "生成中") : failure;
+  const spec = [request?.aspectRatio, request?.count ? `${request.count} 张` : undefined].filter(Boolean).join(" · ");
+  const ratio = (request?.aspectRatio ?? "1:1").replace(":", " / ");
   return <li className={`scene-row is-${meta?.status || "idle"}`}>
-    <div className="scene-row-meta"><strong>{row.title}</strong><span>{[request?.aspectRatio, request?.count ? `${request.count} 张` : undefined].filter(Boolean).join(" · ")}</span>
-      <span className="scene-row-state" role={loading ? "status" : undefined} title={failure && meta?.errorDetails !== failure ? `${meta?.errorDetails || ""}${meta?.errorLogId ? `（记录号 ${meta.errorLogId}）` : ""}` : undefined}>{loading && <Loader2 size={14} className="studio-gallery-spinner"/>}{state}</span></div>
-    {request?.prompt && <p className="scene-row-prompt" title={request.prompt}>{request.prompt}</p>}
-    <div className="scene-row-images">
+    <header className="scene-row-meta">
+      {loading && <AiMark size={13}/>}
+      <span className="scene-row-title"><strong title={request?.prompt || row.title}>{state && loading ? state : request?.prompt || row.title}</strong>
+        <small>{[loading ? request?.prompt : undefined, spec].filter(Boolean).join(" · ")}</small></span>
+      <span className="scene-row-actions">
+        {loading && accepted && <button type="button" onClick={onStop}><Square size={12}/>停止</button>}
+        {loading && !accepted && !submitting && <button type="button" disabled={busy} onClick={onConfirm}><RotateCcw size={12}/>确认原任务</button>}
+        {meta?.status === "error" && request && <button type="button" className="is-primary" disabled={busy} onClick={onRetry}><RotateCcw size={12}/>重新生成</button>}
+        {!loading && request && <button type="button" onClick={onReuse}><PencilLine size={12} strokeWidth={1.5}/>重新编辑</button>}
+      </span>
+    </header>
+    {failure && <p className="scene-row-error" title={meta?.errorDetails !== failure ? `${meta?.errorDetails || ""}${meta?.errorLogId ? `（记录号 ${meta.errorLogId}）` : ""}` : undefined}>{failure}</p>}
+    <div className="scene-row-images" style={{ "--tile-ratio": ratio } as CSSProperties}>
       {original && images.length > 0 && <button type="button" className="scene-row-original" onClick={() => onView(original)} aria-label="查看原图">
         <SignedImage src={original.url} storageKey={original.key} alt="原图" loading="lazy"/><span>原图</span></button>}
-      {images.map((image, i) => <button type="button" key={image.id} onClick={() => onView({ url: image.content!, key: image.storageKey, name: `${row.title}-${i + 1}` })} aria-label={`查看第 ${i + 1} 张`}>
-        <SignedImage src={image.content} storageKey={image.storageKey} alt={`${row.title}第 ${i + 1} 张`} loading="lazy"/></button>)}
-      {loading && Array.from({ length: Math.max(0, (request?.count || 1) - images.length) }, (_, i) => <span key={`wait-${i}`} className="scene-row-placeholder"/>)}
-    </div>
-    <div className="scene-row-actions">
-      {loading && accepted && <button type="button" onClick={onStop}><Square size={13}/>停止</button>}
-      {loading && !accepted && !submitting && <button type="button" disabled={busy} onClick={onConfirm}><RotateCcw size={13}/>确认原任务</button>}
-      {meta?.status === "error" && request && <button type="button" className="is-primary" disabled={busy} onClick={onRetry}><RotateCcw size={13}/>重新生成</button>}
-      {images[0] && <button type="button" onClick={() => void downloadMedia(images[0].content!, row.title, undefined, images[0].storageKey)}><Download size={13}/>下载</button>}
-      {/* 只有一张时直接在这一行接着做；几张的点开大图选一张。 */}
-      {images.length === 1 && images[0].storageKey && <>
-        <button type="button" onClick={() => onUse({ url: images[0].content!, key: images[0].storageKey, name: row.title })}><ImageUp size={13}/>当参考图</button>
-        <button type="button" onClick={() => onVideo({ key: images[0].storageKey })}><Clapperboard size={13}/>做成视频</button></>}
-      {request && <button type="button" onClick={onReuse}><PencilLine size={13}/>重新编辑</button>}
+      {images.map((image, i) => { const item = { url: image.content!, key: image.storageKey, name: `${row.title}-${i + 1}` };
+        return <div key={image.id} className="scene-row-tile">
+          <button type="button" className="scene-row-image" onClick={() => onView(item)} aria-label={`查看第 ${i + 1} 张`}>
+            <SignedImage src={image.content} storageKey={image.storageKey} alt={`${row.title}第 ${i + 1} 张`} loading="lazy"/></button>
+          {/* 每张图上就能接着做：做成视频、当参考图、下载（悬停或聚焦时出现，手机上一直在）。 */}
+          <span className="scene-row-tools">
+            {image.storageKey && <button type="button" aria-label="做成视频" title="做成视频" onClick={() => onVideo({ key: image.storageKey })}><Clapperboard size={14} strokeWidth={1.5}/></button>}
+            {image.storageKey && <button type="button" aria-label="当参考图" title="当参考图" onClick={() => onUse(item)}><ImageUp size={14} strokeWidth={1.5}/></button>}
+            <button type="button" aria-label="下载" title="下载" onClick={() => void downloadMedia(item.url, row.title, undefined, item.key)}><Download size={14} strokeWidth={1.5}/></button>
+          </span></div>; })}
+      {loading && Array.from({ length: Math.max(0, (request?.count || 1) - images.length) }, (_, i) => <span key={`wait-${i}`} className="scene-row-placeholder"><AiMark size={18}/></span>)}
     </div>
   </li>;
 }
@@ -543,21 +572,24 @@ function refIcon(label: string) {
   return ImagePlus;
 }
 
-const ratioLabel = (r: string) => r === "1:1" ? "方图" : r;
-/** 图片设置：比例画成小方块，清晰度和张数是几个按钮，就地展开在设置栏上方。 */
-function ImageSettingsPanel({ ratios, ratio, onRatio, sizes, size, onSize, counts, count, onCount, onClose }: {
+/** 图片设置：画面比例、清晰度、张数，以及场景的几组选项。就地展开在按钮上方。 */
+function ImageSettingsPanel({ ratios, ratio, onRatio, sizes, size, onSize, counts, count, onCount, options, picked, onPick, onClose }: {
   ratios: string[]; ratio: string; onRatio: (r: string) => void; sizes: { size: string; aspectRatio: string }[]; size?: string; onSize: (s: string) => void;
-  counts: number[]; count: number; onCount: (n: number) => void; onClose: () => void;
+  counts: number[]; count: number; onCount: (n: number) => void;
+  options?: StudioSceneOptionGroup[] | null; picked: Record<string, string>; onPick: (key: string, choice: string) => void; onClose: () => void;
 }) {
   const panel = useRef<HTMLDivElement>(null);
   useScenePopover(panel, onClose);
   return <div ref={panel} id="scene-image-settings" className="scene-settings-panel" role="group" aria-label="图片设置">
-    <h3>图片比例</h3>
-    <div className="scene-ratio-grid">{ratios.map(r => { const [w, h] = r.split(":").map(Number), k = 26 / Math.max(w, h);
-      return <button key={r} type="button" aria-pressed={r === ratio} onClick={() => onRatio(r)}><i style={{ width: Math.round(w * k), height: Math.round(h * k) }}/>{ratioLabel(r)}</button>; })}</div>
-    {sizes.length > 1 && <><h3>清晰度</h3><div className="scene-choice-row">{sizes.map(s => <button key={s.size} type="button" aria-pressed={s.size === size} onClick={() => onSize(s.size)} title={s.size.replace("x", " × ")}>{studioImageSizeLabel(s.size)}</button>)}</div></>}
-    <h3>生成张数</h3>
-    <div className="scene-choice-row">{counts.map(c => <button key={c} type="button" aria-pressed={c === count} onClick={() => onCount(c)}>{c} 张</button>)}</div>
+    <div className="scene-setting-row"><span>画面比例</span>
+      <div className="scene-choice-row">{ratios.map(r => <button key={r} type="button" aria-pressed={r === ratio} onClick={() => onRatio(r)}><RatioGlyph ratio={r}/>{r}</button>)}</div></div>
+    {sizes.length > 1 && <div className="scene-setting-row"><span>清晰度</span>
+      <div className="scene-choice-row">{sizes.map(s => <button key={s.size} type="button" aria-pressed={s.size === size} onClick={() => onSize(s.size)} title={s.size.replace("x", " × ")}>{studioImageSizeLabel(s.size)}</button>)}</div></div>}
+    <div className="scene-setting-row"><span>张数</span>
+      <div className="scene-choice-row">{counts.map(c => <button key={c} type="button" aria-pressed={c === count} onClick={() => onCount(c)}>{c} 张</button>)}</div></div>
+    {options?.map(g => <div key={g.key} className="scene-setting-row" role="group" aria-label={g.label}><span>{g.label}</span>
+      <div className="scene-choice-row">{g.choices.map(c => <button key={c.value} type="button" aria-pressed={(picked[g.key] ?? g.defaultValue) === c.value} title={c.prompt}
+        onClick={() => onPick(g.key, c.value)}>{c.label}</button>)}</div></div>)}
   </div>;
 }
 

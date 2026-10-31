@@ -317,6 +317,9 @@ public class StudioSceneCatalog {
 
     /** 视频两种用法共用的输入检查：素材够不够、时长和画面对不对。 */
     private record VideoInput(VideoScene scene, List<String> images, String text, int duration, String ratio) {}
+    /** 交给创作助手的视频最长多少秒（AI 视频页的时长滑块上限）。 */
+    static final int MAX_HANDOFF_SECONDS = 60;
+
     private VideoInput videoInput(ComposeRequest r, boolean sceneDurations) {
         VideoScene scene = video(r.sceneId()).orElseThrow(() -> bad("这个场景不存在，请刷新后重选"));
         List<String> images = r.imageTitles() == null ? List.of() : r.imageTitles().stream().filter(t -> t != null && !t.isBlank()).toList();
@@ -328,8 +331,9 @@ public class StudioSceneCatalog {
         if (scene.images().max() != null && placed > scene.images().max()) throw bad(scene.images().label() + "最多放 " + scene.images().max() + " 张");
         if (scene.textRequired() && text.isEmpty() && blank(r.revision())) throw bad("先写一句要求");
         int duration = r.duration() == null ? scene.duration() : r.duration();
-        // 交给助手时按场景的可选时长；编导一次出片时长由所选视频模型决定，这里只挡明显不对的数。
-        if (sceneDurations ? !scene.durations().contains(duration) : duration < 1 || duration > 120) throw bad("请选择可用的时长");
+        // 交给助手时最长 60 秒（页面上拖动选，超过模型单段上限由助手分段做再拼起来，2026-10-31 改版）；
+        // 编导一次出片时长由所选视频模型决定，这里只挡明显不对的数。
+        if (duration < 1 || duration > (sceneDurations ? MAX_HANDOFF_SECONDS : 120)) throw bad("请选择可用的时长");
         String ratio = r.ratio() == null ? scene.ratio() : r.ratio();
         if (!List.of("9:16", "16:9").contains(ratio)) throw bad("请选择竖屏或横屏");
         return new VideoInput(scene, images, text, duration, ratio);

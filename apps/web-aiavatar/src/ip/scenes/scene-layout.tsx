@@ -3,7 +3,7 @@
 import { SignedImage } from "@/canvas-bridge/signed-image";
 import { type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, Download, FileImage, Loader2, PanelLeftClose, PanelLeftOpen, Pencil, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Download, FileImage, History, Loader2, PanelLeft, Pencil, Pin, PinOff, X } from "lucide-react";
 import { dialogFocus } from "../dialog-focus";
 import { StudioErrorNotice } from "../studio-errors";
 import type { IpProjectSummary, StudioSceneMedia, StudioSceneOptionGroup } from "@ai-star-eco/types";
@@ -25,35 +25,92 @@ export function SceneThumb({ id, title, cover, size = 44 }: { id: string; title:
 }
 
 export type SceneListItem = { id: string; title: string; description: string; coverUrl?: string | null };
+export type SceneGroup = { id: string; title: string; items: SceneListItem[] };
 
-/** 左栏：按分组列出场景，点一下换场景。 */
-export function SceneList({ heading, groups, current, onPick, top }: {
-  heading: string; current: string; onPick: (id: string) => void; top?: SceneListItem;
-  groups: { id: string; title: string; items: SceneListItem[] }[];
+const PIN_KEY = (kind: string) => `aiavatar_scene_drawer_pinned:${kind}`;
+/** 全部场景边栏固定在侧边：每个浏览器记一份（只是界面偏好，读写失败当没固定）。 */
+export function useSceneDrawerPin(kind: "image" | "video") {
+  const [pinned, setPinned] = useState(false);
+  useEffect(() => { try { setPinned(window.localStorage.getItem(PIN_KEY(kind)) === "1"); } catch { /* 隐私模式读不到就不固定 */ } }, [kind]);
+  const pin = useCallback((on: boolean) => {
+    setPinned(on);
+    try { if (on) window.localStorage.setItem(PIN_KEY(kind), "1"); else window.localStorage.removeItem(PIN_KEY(kind)); } catch { /* 存不下只影响这一页 */ }
+  }, [kind]);
+  return [pinned, pin] as const;
+}
+
+/**
+ * 场景名就是切换按钮（设计稿「点场景名快速切换」）：点开就地换同一组里的场景，分组胶囊换组；
+ * 「全部场景」打开边栏。焦点进当前组，Esc 关闭并还给场景名。
+ */
+export function SceneSwitch({ scene, groups, top, onPick, onAll }: {
+  scene: SceneListItem; groups: SceneGroup[]; top?: SceneListItem; onPick: (id: string) => void; onAll: () => void;
 }) {
-  const [collapsed, setCollapsed] = useState(false);
-  const body = useRef<HTMLDivElement>(null);
-  /** 把当前场景滚到看得见的地方（只滚列表自己，不动整页）。 */
-  const reveal = useCallback(() => {
-    const list = body.current, picked = list?.querySelector<HTMLElement>('button[aria-current="true"]');
-    if (!list || !picked) return;
-    const box = list.getBoundingClientRect(), at = picked.getBoundingClientRect();
-    if (at.top < box.top || at.bottom > box.bottom) list.scrollTop += at.top - box.top - 48;
-    if (at.left < box.left || at.right > box.right) list.scrollLeft += at.left - box.left - 24;
-  }, []);
-  // 从首页卡片直达某个场景、或换了场景时滚过去。
-  useEffect(reveal, [current, collapsed, reveal]);
-  // 手机上列表是横着一排，划走之后靠标题旁的「当前」按钮找回来（2026-10-30 复测）。
-  const currentTitle = [top, ...groups.flatMap(g => g.items)].find(s => s?.id === current)?.title;
-  const item = (s: SceneListItem) => <li key={s.id}><button type="button" aria-current={s.id === current ? "true" : undefined} onClick={() => onPick(s.id)} aria-label={s.title} title={s.description}>
-    <SceneThumb id={s.id} title={s.title} cover={s.coverUrl}/><span><strong>{s.title}</strong><small>{s.description}</small></span>
-  </button></li>;
-  return <aside className={`scene-list${collapsed ? " is-collapsed" : ""}`} aria-label={`${heading}场景`}>
-    <header><h1>{heading}</h1>{currentTitle && <button type="button" className="scene-list-current" onClick={reveal} aria-label={`回到当前场景：${currentTitle}`}>当前：{currentTitle}</button>}<button type="button" className="scene-icon-button" aria-label={collapsed ? "展开场景列表" : "收起场景列表"} onClick={() => setCollapsed(v => !v)}>{collapsed ? <PanelLeftOpen size={18}/> : <PanelLeftClose size={18}/>}</button></header>
-    {!collapsed && <div className="scene-list-body" ref={body}>
-      {top && <ul className="scene-list-top">{item(top)}</ul>}
-      {groups.map(g => <section key={g.id}><h2>{g.title}</h2><ul>{g.items.map(item)}</ul></section>)}
-    </div>}
+  const [open, setOpen] = useState(false);
+  const own = groups.find(g => g.items.some(s => s.id === scene.id))?.id ?? groups[0]?.id;
+  const [group, setGroup] = useState(own);
+  useEffect(() => { if (!open) setGroup(own); }, [open, own]);
+  const items = groups.find(g => g.id === group)?.items ?? [];
+  return <div className="scene-switch">
+    <button type="button" className="scene-switch-button" aria-haspopup="dialog" aria-expanded={open} aria-label={`换场景，当前：${scene.title}`} title="换场景" onClick={() => setOpen(v => !v)}>
+      <SceneThumb id={scene.id} title={scene.title} cover={scene.coverUrl} size={40}/>
+      <span><strong>{scene.title}<ChevronDown size={14} strokeWidth={1.6}/></strong><small>{scene.description}</small></span>
+    </button>
+    {open && <SwitchPanel onClose={() => setOpen(false)}>
+      <div className="scene-switch-groups" role="group" aria-label="场景分组">
+        {top && <button type="button" aria-pressed={false} onClick={() => { setOpen(false); onPick(top.id); }}>{top.title}</button>}
+        {groups.map(g => <button key={g.id} type="button" aria-pressed={g.id === group} onClick={() => setGroup(g.id)}>{g.title}</button>)}
+      </div>
+      <ul className="scene-switch-grid">{items.map(s => <li key={s.id}><button type="button" aria-current={s.id === scene.id ? "true" : undefined} title={s.description}
+        onClick={() => { setOpen(false); onPick(s.id); }}>
+        <SceneThumb id={s.id} title={s.title} cover={s.coverUrl} size={88}/><span>{s.title}{s.id === scene.id && <Check size={11} strokeWidth={2}/>}</span></button></li>)}</ul>
+      <footer><button type="button" onClick={() => { setOpen(false); onAll(); }}><PanelLeft size={14} strokeWidth={1.4}/>全部场景</button></footer>
+    </SwitchPanel>}
+  </div>;
+}
+function SwitchPanel({ children, onClose }: { children: ReactNode; onClose: () => void }) {
+  const panel = useRef<HTMLDivElement>(null);
+  useScenePopover(panel, onClose);
+  return <div ref={panel} className="scene-switch-panel" role="dialog" aria-label="换场景">{children}</div>;
+}
+
+/**
+ * 全部场景（设计稿「全部场景边栏」）：悬浮在导航旁边，可以固定成页面的第一列。按分组列出场景，点一下换。
+ * 悬浮时点外面、按 Esc 关；固定后一直在，取消固定回到悬浮。
+ */
+export function SceneDrawer({ heading, groups, top, current, onPick, pinned, onPin, onClose }: {
+  heading: string; groups: SceneGroup[]; top?: SceneListItem; current: string; onPick: (id: string) => void;
+  pinned: boolean; onPin: (on: boolean) => void; onClose: () => void;
+}) {
+  const box = useRef<HTMLElement>(null);
+  const close = useRef(onClose);
+  useEffect(() => { close.current = onClose; });
+  useEffect(() => {
+    if (pinned) return;
+    const away = (e: PointerEvent) => {
+      const t = e.target;
+      if (t instanceof Element && (box.current?.contains(t) || t.closest(".scene-switch"))) return;
+      close.current();
+    };
+    const escape = (e: KeyboardEvent) => { if (e.key === "Escape") close.current(); };
+    document.addEventListener("pointerdown", away); document.addEventListener("keydown", escape);
+    box.current?.querySelector<HTMLElement>('button[aria-current="true"]')?.focus({ preventScroll: true });
+    box.current?.querySelector<HTMLElement>('button[aria-current="true"]')?.scrollIntoView?.({ block: "center" });
+    return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", escape); };
+  }, [pinned]);
+  const item = (s: SceneListItem) => <li key={s.id}><button type="button" aria-current={s.id === current ? "true" : undefined} title={s.description}
+    onClick={() => { onPick(s.id); if (!pinned) onClose(); }}>
+    <SceneThumb id={s.id} title={s.title} cover={s.coverUrl} size={36}/><strong>{s.title}</strong></button></li>;
+  return <aside ref={box} className={`scene-drawer${pinned ? " is-pinned" : ""}`} aria-label={`${heading}场景`} role={pinned ? undefined : "dialog"}>
+    <header><h2>全部场景</h2>
+      <button type="button" className="scene-icon-button is-pin" aria-pressed={pinned} aria-label={pinned ? "取消固定" : "固定在侧边"} title={pinned ? "取消固定" : "固定在侧边"} onClick={() => onPin(!pinned)}>
+        {pinned ? <PinOff size={16} strokeWidth={1.4}/> : <Pin size={16} strokeWidth={1.4}/>}</button>
+      {!pinned && <button type="button" className="scene-icon-button" aria-label="关闭" onClick={onClose}><X size={16} strokeWidth={1.4}/></button>}
+    </header>
+    <div className="scene-drawer-body">
+      {top && <ul>{item(top)}</ul>}
+      {groups.map(g => <section key={g.id}><h3>{g.title}</h3><ul>{g.items.map(item)}</ul></section>)}
+    </div>
   </aside>;
 }
 
@@ -83,9 +140,9 @@ export function useScenePopover(panel: RefObject<HTMLElement | null>, onClose: (
 }
 
 export type SceneTab = "results" | "example";
-/** 结果区的「生成结果 / 参考示例」：方向键、Home、End 在两个标签间移动并切换，只有当前标签在 Tab 顺序里。 */
+/** 结果区的「作品 / 示例」：方向键、Home、End 在两个标签间移动并切换，只有当前标签在 Tab 顺序里。 */
 export function SceneResultTabs({ tab, onTab, count, idBase }: { tab: SceneTab; onTab: (tab: SceneTab) => void; count: number; idBase: string }) {
-  const tabs: [SceneTab, ReactNode][] = [["results", <>生成结果{count ? <small>{count}</small> : null}</>], ["example", "参考示例"]];
+  const tabs: [SceneTab, ReactNode][] = [["results", <>作品{count ? <small>{count}</small> : null}</>], ["example", "示例"]];
   const move = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     const at = tabs.findIndex(([t]) => t === tab);
     const next = e.key === "ArrowRight" || e.key === "ArrowDown" ? (at + 1) % tabs.length : e.key === "ArrowLeft" || e.key === "ArrowUp" ? (at + tabs.length - 1) % tabs.length
@@ -95,60 +152,79 @@ export function SceneResultTabs({ tab, onTab, count, idBase }: { tab: SceneTab; 
     onTab(tabs[next][0]);
     e.currentTarget.querySelector<HTMLElement>(`#${idBase}-tab-${tabs[next][0]}`)?.focus();
   };
-  return <div className="scene-tabs" role="tablist" aria-label="结果与示例" onKeyDown={move}>
+  return <div className="scene-tabs" role="tablist" aria-label="作品与示例" onKeyDown={move}>
     {tabs.map(([t, label]) => <button key={t} id={`${idBase}-tab-${t}`} type="button" role="tab" aria-selected={tab === t} aria-controls={`${idBase}-panel`}
       tabIndex={tab === t ? 0 : -1} onClick={() => onTab(t)}>{label}</button>)}
   </div>;
 }
 
-/** 右栏「最近」：本页建过的草稿（就是普通画布），点开接着做。 */
-export function SceneRecent({ drafts, loading, error, onRetry, current, onOpen, allHref = "/projects" }: {
+/** 「最近」：本页建过的草稿（就是普通画布），点开接着做。按钮在结果区右上角，列表就地弹出。 */
+export function SceneRecent({ drafts, loading, error, onRetry, current, onOpen, allHref = "/projects", icon = false }: {
   drafts: IpProjectSummary[]; loading: boolean; error?: string; onRetry?: () => void; current?: string; onOpen: (id: string) => void; allHref?: string;
+  /** 手机标题栏上只放图标。 */
+  icon?: boolean;
 }) {
+  const [open, setOpen] = useState(false);
   // 读失败不能显示成「做过的会出现在这里」：用户会以为草稿没了（2026-10-30 线上复核）。
   const failed = !loading && !!error;
-  return <aside className="scene-recent" aria-label="最近的草稿">
-    <header><Link href={allHref}>最近<ChevronRight size={15}/></Link></header>
-    {failed && <div className="scene-recent-empty is-error" role="alert"><span>{drafts.length ? "没读到最新的草稿" : "最近的草稿没读到"}</span>
-      {onRetry && <button type="button" onClick={onRetry}>重试</button>}<StudioErrorNotice error={error} label="详情"/></div>}
-    {loading && !drafts.length ? <p className="scene-recent-empty"><Loader2 size={15} className="studio-gallery-spinner"/>正在读取</p>
-      : failed && !drafts.length ? null
-      : drafts.length ? <ul>{drafts.slice(0, 12).map(d => <li key={d.id}><button type="button" aria-current={d.id === current ? "true" : undefined} onClick={() => onOpen(d.id)} title={d.name}>
-        <span className="scene-recent-cover">{d.coverUrl ? <img src={d.coverUrl} alt="" loading="lazy"/> : <Pencil size={20} aria-hidden="true"/>}</span>
-        <span><strong>{d.name.replace(/ · AI (图片|视频)$/, "")}</strong><small>{formatDateTime(d.updatedAt)}</small></span>
-      </button></li>)}</ul>
-      : <p className="scene-recent-empty">做过的会出现在这里</p>}
-  </aside>;
-}
-
-/** 结果区空着的时候：讲清这一页能做什么，配几张场景图。 */
-export function SceneEmpty({ title, note, covers }: { title: string; note: ReactNode; covers: { id: string; title: string; coverUrl?: string | null }[] }) {
-  return <div className="scene-empty">
-    <h2>{title}</h2><p>{note}</p>
-    <div className="scene-empty-collage" aria-hidden="true">{covers.slice(0, 3).map((c, i) => <span key={c.id} className={`is-${i}`}><SceneThumb id={c.id} title={c.title} cover={c.coverUrl} size={i === 1 ? 220 : 168}/></span>)}</div>
+  return <div className="scene-recent-host">
+    <button type="button" className={icon ? "scene-icon-button is-large" : "scene-text-button"} aria-haspopup="dialog" aria-expanded={open} aria-label={icon ? "最近" : undefined}
+      onClick={() => setOpen(v => !v)}><History size={icon ? 19 : 14} strokeWidth={1.4}/>{!icon && "最近"}</button>
+    {open && <RecentPanel onClose={() => setOpen(false)}>
+      <header><strong>最近</strong><Link href={allHref}>全部<ChevronRight size={13}/></Link></header>
+      {failed && <div className="scene-recent-empty is-error" role="alert"><span>{drafts.length ? "没读到最新的草稿" : "最近的草稿没读到"}</span>
+        {onRetry && <button type="button" onClick={onRetry}>重试</button>}<StudioErrorNotice error={error} label="详情"/></div>}
+      {loading && !drafts.length ? <p className="scene-recent-empty"><Loader2 size={15} className="studio-gallery-spinner"/>正在读取</p>
+        : failed && !drafts.length ? null
+        : drafts.length ? <ul>{drafts.slice(0, 12).map(d => <li key={d.id}><button type="button" aria-current={d.id === current ? "true" : undefined} onClick={() => { setOpen(false); onOpen(d.id); }} title={d.name}>
+          <span className="scene-recent-cover">{d.coverUrl ? <img src={d.coverUrl} alt="" loading="lazy"/> : <Pencil size={16} strokeWidth={1.4} aria-hidden="true"/>}</span>
+          <span><strong>{d.name.replace(/ · AI (图片|视频)$/, "")}</strong><small>{formatDateTime(d.updatedAt)}</small></span>
+        </button></li>)}</ul>
+        : <p className="scene-recent-empty">做过的会出现在这里</p>}
+    </RecentPanel>}
   </div>;
 }
+function RecentPanel({ children, onClose }: { children: ReactNode; onClose: () => void }) {
+  const panel = useRef<HTMLDivElement>(null);
+  useScenePopover(panel, onClose);
+  return <div ref={panel} className="scene-recent" role="dialog" aria-label="最近的草稿">{children}</div>;
+}
+
+/** 作品还空着的时候：一句话说清楚，不放装饰。 */
+export function SceneEmpty({ title, note }: { title: string; note: ReactNode }) {
+  return <div className="scene-empty"><h2>{title}</h2><p>{note}</p></div>;
+}
+
+/** 场景的做法拆成几条（「开头…，中间…，结尾…」按逗号分号断开），只有一句时不拆。 */
+export const sceneSteps = (structure?: string | null) => (structure ?? "").split(/[，；。]/).map(s => s.trim()).filter(Boolean);
 
 /**
- * 选了场景时结果区先给看「这个场景做出来大概什么样」：运营传了参考示例就轮播示例（图或视频），没传就放封面。
- * 都是示意，不是用户的作品。
+ * 示例：左边一张大图（运营传了参考示例就轮播示例，没传放封面），右边场景名、一句说明、做法几条。都是示意，不是用户的作品。
  */
-export function SceneExample({ id, title, note, cover, examples, children }: {
-  id: string; title: string; note: ReactNode; cover?: string | null; examples?: StudioSceneMedia[] | null; children?: ReactNode;
+export function SceneExample({ id, title, group, note, steps = [], cover, examples, ratio = "9:16" }: {
+  id: string; title: string; group?: string; note: ReactNode; steps?: string[]; cover?: string | null; examples?: StudioSceneMedia[] | null; ratio?: string;
 }) {
   const list = examples ?? [];
   const [index, setIndex] = useState(0);
   const shown = list[Math.min(index, list.length - 1)];
-  return <div className="scene-empty scene-example">
-    <h2>{title}</h2><p>{note}</p>
-    {shown ? <span className="scene-example-media">{shown.mediaType === "video"
-        ? <video key={shown.url} src={shown.url} muted loop autoPlay playsInline controls aria-label={`${title}示例`}/>
-        : <img key={shown.url} src={shown.url} alt={`${title}示例`}/>}</span>
-      : <span className="scene-example-image"><SceneThumb id={id} title={title} cover={cover} size={320}/></span>}
-    {list.length > 1 && <div className="scene-example-dots" role="group" aria-label="切换示例">{list.map((m, i) =>
-      <button key={m.url} type="button" aria-label={`查看示例 ${i + 1}`} aria-current={i === index ? "true" : undefined} onClick={() => setIndex(i)}/>)}</div>}
-    <small>示意，不是你的作品</small>
-    {children}
+  const [w, h] = ratio.split(":").map(Number);
+  const shape = !w || !h ? "is-tall" : w > h ? "is-wide" : w === h ? "is-square" : h / w > 1.5 ? "is-tall" : "is-portrait";
+  return <div className={`scene-example ${shape}`}>
+    <div className="scene-example-media" style={w && h ? { aspectRatio: `${w} / ${h}` } : undefined}>
+      {shown ? shown.mediaType === "video"
+          ? <video key={shown.url} src={shown.url} muted loop autoPlay playsInline controls aria-label={`${title}示例`}/>
+          : <img key={shown.url} src={shown.url} alt={`${title}示例`}/>
+        : <SceneThumb id={id} title={title} cover={cover} size={320}/>}
+      <span className="scene-example-tag">示例</span>
+      {list.length > 1 && <div className="scene-example-dots" role="group" aria-label="切换示例">{list.map((m, i) =>
+        <button key={m.url} type="button" aria-label={`查看示例 ${i + 1}`} aria-current={i === index ? "true" : undefined} onClick={() => setIndex(i)}/>)}</div>}
+    </div>
+    <div className="scene-example-copy">
+      {group && <span className="scene-example-group">{group}</span>}
+      <h2>{title}</h2>
+      <p>{note}</p>
+      {steps.length > 1 && <ol>{steps.map((step, i) => <li key={i}><span>{String(i + 1).padStart(2, "0")}</span>{step}</li>)}</ol>}
+    </div>
   </div>;
 }
 
@@ -214,4 +290,11 @@ export function SceneViewer({ url, storageKey, name, onDownload, onClose, action
       <button type="button" onClick={onClose}><X size={16}/>关闭</button>
     </div>
   </div>;
+}
+
+/** 画面比例的小方块（竖屏窄、横屏宽）。 */
+export function RatioGlyph({ ratio }: { ratio: string }) {
+  const [w, h] = ratio.split(":").map(Number);
+  const k = 11 / Math.max(w || 1, h || 1);
+  return <i className="scene-ratio-glyph" aria-hidden="true" style={{ width: Math.max(5, Math.round((w || 1) * k)), height: Math.max(5, Math.round((h || 1) * k)) }}/>;
 }

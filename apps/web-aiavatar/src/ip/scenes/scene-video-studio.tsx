@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowUp, Check, ChevronDown, Clapperboard, Copy, Download, FolderOpen, ImagePlus, Languages, Loader2, Mic, PencilLine, Plus,
-  RotateCcw, Sparkles, Square, Upload, UserRound, Video, Wand2, X } from "lucide-react";
-import type { IpProject, IpRun, StudioMediaImportResult, StudioSceneInputs, StudioSceneVideoState } from "@ai-star-eco/types";
+import { ArrowUp, Check, ChevronDown, Copy, Cpu, Download, FolderOpen, Loader2, Mic, PencilLine, Plus,
+  RotateCcw, SlidersHorizontal, Square, UserRound, Video, X } from "lucide-react";
+import type { IpProject, IpRun, StudioMediaImportResult, StudioSceneInputs, StudioSceneOptionGroup, StudioSceneVideoState } from "@ai-star-eco/types";
 import type { StudioCapabilities } from "@ai-star-eco/types/ip-studio-workflow";
 import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
@@ -32,7 +32,8 @@ import { addScriptNode, addVideoRow, applyRun, createSceneDraft, draftSubject, l
 import { useSceneDraftStore, useSceneStateSave } from "./scene-draft-store";
 import { useSceneQuery, writeSceneQuery } from "./scene-query";
 import { UiVersionSwitch } from "@/shell/ui-version-switch";
-import { SceneExample, SceneList, SceneNoModel, SceneOptions, SceneRecent, SceneResultTabs, SceneThumb, sceneFailureText, sceneHintText, sceneOptionValues, useScenePopover } from "./scene-layout";
+import { SceneDrawer, SceneEmpty, SceneExample, SceneNoModel, SceneRecent, SceneResultTabs, SceneSwitch, sceneFailureText, sceneHintText, sceneOptionValues, sceneSteps, useSceneDrawerPin, useScenePopover, RatioGlyph } from "./scene-layout";
+import { AiMark } from "../studio-ai-icon";
 import { clampSceneDuration, sceneVideoDurations, sceneVideoInputs, sceneVideoSettings, type SceneVideoMaterial } from "./scene-video-plan";
 import { classifyBlanks, missingFigures, scriptMissing, scriptPlaceholders, splitBlanks } from "./scene-script-check";
 
@@ -41,6 +42,14 @@ type Slot = "image" | "character" | "voice" | "video";
 const DEFAULT_SCENE = "ecom-talking";
 const POLL_MS = 1500;
 const LANGUAGES = ["中文", "英文"];
+/** 一条视频最长多少秒（超过单段上限的分段做、再拼成一条）。 */
+const MAX_SECONDS = 60;
+/** 按单段上限切段：40 秒、单段 15 秒 → 15 + 15 + 10。 */
+const splitSegments = (total: number, max: number) => {
+  const out: number[] = [];
+  for (let left = total; left > 0; left -= max) out.push(Math.min(max, left));
+  return out;
+};
 const RECREATION = "reference-video-recreation";
 const EMPTY_DOC = { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
 
@@ -79,9 +88,12 @@ export function SceneVideoStudio() {
   const [busy, setBusy] = useState(false);
   const [submitting, setSubmitting] = useState<string>();
   const [tab, setTab] = useState<"example" | "results">("example");
-  const [mode, setMode] = useState<"talk" | "generate">("talk");
+  // 一个编辑框：放想法，或放「采用」进来的脚本，按框里的内容生成。AI 编导写脚本时整张卡换成编导那一页。
+  const [view, setView] = useState<"compose" | "director">("compose");
   const [scriptId, setScriptId] = useState<string>();
-  const [prompt, setPrompt] = useState("");
+  const [revise, setRevise] = useState("");
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [pinned, pin] = useSceneDrawerPin("video");
   const [caps, setCaps] = useState<StudioCapabilities>();
   const [videoModels, setVideoModels] = useState<VideoStudioModel[]>();
   const [modelId, setModelId] = useState<string>();
@@ -115,12 +127,15 @@ export function SceneVideoStudio() {
   const usedDuration = contract ? clampSceneDuration(duration, contract) : duration;
   const tiers = contract?.tiers.filter(t => t.canvases.some(c => c.aspectRatio === ratio)) ?? [];
   const usedTier = tiers.find(t => t.tier === tier)?.tier ?? tiers[0]?.tier;
+  useEffect(() => { if (contract && !durationTouched.current && duration > contract.maxSeconds) setDuration(contract.maxSeconds); }, [contract, duration]);
 
   // ── 场景与草稿 ────────────────────────────────────────────────────────
   const sceneNow = useRef<string>(undefined);
   /** 只管场景本身的默认值（时长、画面）；输入和素材怎么跟着走见 goToScene。 */
+  // 场景默认时长比模型单段上限长时，先按单段出（拖到上限以外才分段交给创作助手）；用户自己拖过、或草稿里记着的不动。
+  const durationTouched = useRef(false);
   const pickScene = useCallback((next: VideoScene) => {
-    sceneNow.current = next.id;
+    sceneNow.current = next.id; durationTouched.current = false;
     setSceneId(next.id); setDuration(next.duration); setRatio(next.ratio); setPicked({});
     writeQuery(next.id, draftRef.current?.id);
   }, []);
@@ -140,7 +155,7 @@ export function SceneVideoStudio() {
 
   const reset = (next = scene) => {
     showDraft(undefined, begin()); setText(""); setImages([]); setCharacter(undefined); setVoice(undefined); setVideo(undefined);
-    setMode("talk"); setScriptId(undefined); setPrompt(""); setHint(""); setTab("example");
+    setView("compose"); setScriptId(undefined); setRevise(""); setHint(""); setTab("example");
     if (next) writeQuery(next.id);
   };
 
@@ -206,9 +221,9 @@ export function SceneVideoStudio() {
       // 离开时的条件放回来：没发的那句话、选项、台词语言、清晰度、时长、画面、要不要先优化，停在「生成视频」时连改了一半的脚本一起
       // （存在草稿里，见 sceneVideoState；老草稿按最近一版脚本记的推断）。改稿因此沿用写那一版时的选项，不会悄悄回到默认值。
       const state = openedVideoState(project.doc, videoDefaults(from));
-      setText(state.text); setPicked(state.options); setLanguage(state.language!); setTier(state.tier); setOptimize(state.optimize!);
-      setDuration(state.duration!); setRatio(state.ratio!);
-      setMode(state.edit ? "generate" : "talk"); setScriptId(state.edit?.scriptId); setPrompt(state.edit?.prompt ?? ""); setNote(undefined);
+      setText(state.edit ? state.edit.prompt ?? "" : state.text); setPicked(state.options); setLanguage(state.language!); setTier(state.tier); setOptimize(state.optimize!);
+      setDuration(state.duration!); setRatio(state.ratio!); durationTouched.current = true;
+      setView("compose"); setScriptId(state.edit?.scriptId); setRevise(""); setNote(undefined);
       setHint(""); setTab(videoRows(project.doc).length ? "results" : "example");
       writeQuery(from?.id ?? DEFAULT_SCENE, project.id);
     } catch (e) { if (onPage(ticket)) showFailure({ action: "打开草稿", error: e }); }
@@ -306,7 +321,6 @@ export function SceneVideoStudio() {
   const scripts = scriptNodes(doc);
   const rows = videoRows(doc);
   const latestScript = [...scripts].reverse().find(s => s.metadata?.status === "success" && s.metadata.content);
-  const lastScriptSpent = latestScript?.metadata?.studio?.textEditor?.turns?.at(-1)?.billing?.credits;
   const writing = scripts.some(s => s.metadata?.status === "loading");
   // 新的一轮出来时滚到底（只滚对话区自己）。
   // 等这一帧排好版再滚：打开草稿时脚本和图片是后到的，立刻滚会停在半路，最新一版的按钮被输入框挡住一半。
@@ -420,25 +434,31 @@ export function SceneVideoStudio() {
   // ── 编导写脚本 ────────────────────────────────────────────────────────
   const revising = !!latestScript;
   const recreation = scene?.skill === RECREATION;
-  const blocker = !scene ? "正在读取场景…" : recreation && scene.video?.required && !video ? `先放${scene.video.label}`
+  /** 让编导写（或改）这一版之前卡在哪：ask 是要交给编导的那句话。 */
+  const scriptBlocker = (ask: string) => !scene ? "正在读取场景…"
     : scene.images.required && !images.length ? `先放${scene.images.label}`
-    : recreation && scene.textRequired && !text.trim() ? "先写一句要求"
-    : !recreation && !revising && scene.textRequired && !text.trim() ? "先写一句要求"
-    : !recreation && revising && !text.trim() ? "说说想改哪里"
-    : !recreation && !caps ? "正在读取模型…"
-    : !recreation && !caps?.mock && !textModel?.tokenPricing ? "编导暂时不可用（文字模型没配置价格）" : "";
+    : !revising && scene.textRequired && !ask.trim() ? "先写一句要求"
+    : revising && !ask.trim() ? "说说想改哪里"
+    : !caps ? "正在读取模型…"
+    : !caps.mock && !textModel?.tokenPricing ? "AI 编导暂时用不了（文字模型没配置价格）" : "";
+  /** 爆款复刻交给创作助手之前卡在哪。 */
+  const handoffBlocker = !scene ? "正在读取场景…" : scene.video?.required && !video ? `先放${scene.video.label}`
+    : scene.images.required && !images.length ? `先放${scene.images.label}`
+    : scene.textRequired && !text.trim() ? "先写一句要求" : "";
 
-  /** 让编导写或改一版。revisionAsk 是代码替用户说的修改意见（出片时换了规格，「让编导按现在的设置改一版」）。 */
-  const send = async (revisionAsk?: string) => {
+  /**
+   * 让编导写第一版（ask 是编辑框里的想法）或改一版（ask 是「想改哪里」）。
+   * auto 是代码替用户说的修改意见（换了规格，「让编导照现在的改一版」），不清空用户正在写的那句。
+   */
+  const send = async (raw: string, opts?: { auto?: boolean }) => {
     if (busy || uploading || writing) return;
-    // 代码替用户说的修改意见（换了规格重写）只跳过「说说想改哪里」，模型没读到、没配价这类照样拦。
-    if (blocker && !(revisionAsk && blocker === "说说想改哪里")) { setHint(blocker); return; }
-    if (recreation) { await handoff(); return; }
+    const blocked = scriptBlocker(raw);
+    if (blocked) { setHint(blocked); return; }
     setBusy(true); setHint(""); setNote(undefined);
     const ticket = session.current;
     let nodeId: string | undefined, posted = false, projectId: string | undefined;
     try {
-      const ask = (revisionAsk ?? text).trim();
+      const ask = raw.trim();
       const first = scripts[0]?.metadata?.studio?.sceneDirector;
       // 只给会交给视频模型的图编号（按所选模型算，和出片时同一个函数）：只认首帧的模型只拿第一张、纯文字模型一张都不拿。
       // 用不上的图编导照样可以看，脚本里用文字写；写脚本的模型看不到图就照实说（2026-10-30 审查 F07）。
@@ -465,7 +485,7 @@ export function SceneVideoStudio() {
         // 用了哪些素材记进草稿：重开时原样放回（不看图的模型不记读图列表，不能靠它推断）。
         return { ...made.doc, sceneInputs: chosen };
       }, projectId);
-      if (onPage(ticket, projectId)) { if (!revisionAsk) setText(""); setSubmitting(nodeId); }
+      if (onPage(ticket, projectId)) { if (revising && !opts?.auto) setRevise(""); setSubmitting(nodeId); setView("director"); }
       posted = true;
       const run = await submitStudioRun(projectId, request!);
       await persist(doc => applyRun(doc, nodeId!, run), projectId);
@@ -515,7 +535,7 @@ export function SceneVideoStudio() {
     setBusy(true);
     const ticket = session.current;
     try {
-      const longest = scene.durations.includes(duration) ? duration : scene.duration;
+      const longest = Math.min(MAX_SECONDS, Math.max(1, duration));
       const composed = await IpStudioApi.composeScene({ kind: "video", sceneId: scene.id, text: text.trim() || scripts[0]?.metadata?.studio?.sceneDirector?.ask || "", duration: longest, ratio,
         imageTitles: images.map(i => i.title), characterTitle: character?.title, voiceTitle: voice?.title, videoTitle: video?.title,
         ...(sceneOptionValues(scene.options, picked) ? { options: sceneOptionValues(scene.options, picked) } : {}) });
@@ -548,7 +568,19 @@ export function SceneVideoStudio() {
     const at = next.indexOf(line), end = at >= 0 ? (next.indexOf("\n", at) < 0 ? next.length : next.indexOf("\n", at)) : next.length;
     setTimeout(() => { const el = input.current; if (el) { el.focus(); el.setSelectionRange(end, end); } }, 0);
   };
-  const useScript = (row: CanvasNodeData) => { setScriptId(row.id); setPrompt(scriptMissing(row.metadata?.content || "").body); setMode("generate"); setHint(""); };
+  /** 采用脚本：放进编辑框（替换框里原来的内容，换掉了用户自己写的就给一个撤销），回到编辑。 */
+  const useScript = (row: CanvasNodeData) => {
+    const body = scriptMissing(row.metadata?.content || "").body, before = { text, scriptId };
+    setText(body); setScriptId(row.id); setView("compose"); setHint("");
+    setNote(before.text.trim() && before.text.trim() !== body.trim() && before.scriptId !== row.id
+      ? { text: "脚本放进编辑框了，原来写的那段换掉了", undo: () => { setText(before.text); setScriptId(before.scriptId); setNote(undefined); } } : undefined);
+    setTimeout(() => input.current?.focus({ preventScroll: true }), 0);
+  };
+  /** AI 编导：还没写过就把编辑框里的想法交给编导写第一版；写过了回到编导那一页接着改（不另花一次）。 */
+  const openDirector = () => {
+    if (scripts.length) { setView("director"); setHint(""); setTimeout(() => document.querySelector<HTMLInputElement>('.scene-video-studio input[aria-label="想改哪里"]')?.focus(), 0); return; }
+    void send(text);
+  };
   /**
    * 重新编辑（成功的视频）：成功了但不满意时用。把这条用的脚本（含出片前改过的字）、时长、画面、清晰度、模型和要不要先优化放回「生成视频」，
    * 改一处再出；旧的这条留着。素材用现在放着的（编辑器里列着会用上哪几份）。
@@ -557,12 +589,12 @@ export function SceneVideoStudio() {
     const request = row.metadata?.studio?.request, doc = draftRef.current?.doc;
     if (!request) return;
     // 点之前的样子：「撤销」回到这里（放回会覆盖正在改的脚本）。
-    const before = { mode, scriptId, prompt, duration, ratio, tier, optimize, model: chosenVideo?.endpointId };
+    const before = { text, scriptId, duration, ratio, tier, optimize, model: chosenVideo?.endpointId };
     const put = (v: typeof before) => {
-      setMode(v.mode); setScriptId(v.scriptId); setPrompt(v.prompt); setDuration(v.duration); setRatio(v.ratio); setTier(v.tier); setOptimize(v.optimize);
+      setView("compose"); setScriptId(v.scriptId); setText(v.text); setDuration(v.duration); setRatio(v.ratio); setTier(v.tier); setOptimize(v.optimize);
       if (v.model && v.model !== chosenVideo?.endpointId && videoModels?.some(m => m.endpointId === v.model)) chooseVideoModel(v.model);
     };
-    put({ mode: "generate", scriptId: doc ? scriptOfRow(doc, row.id) : undefined, prompt: request.prompt || "", duration: request.durationSec ?? duration,
+    put({ scriptId: doc ? scriptOfRow(doc, row.id) : undefined, text: request.prompt || "", duration: request.durationSec ?? duration,
       ratio: request.aspectRatio ?? ratio, tier: request.video?.resolutionTier ?? tier, optimize: request.video?.optimizePrompt !== false, model: request.model ?? undefined });
     const gone = request.model && videoModels && !videoModels.some(m => m.endpointId === request.model) && chosenVideo
       ? `当时用的模型现在用不了，这次用「${chosenVideo.name}」。` : "";
@@ -571,12 +603,13 @@ export function SceneVideoStudio() {
     // 编辑器在页面上方（手机上离结果很远）：滚过去、光标放进脚本，不然点了像没反应（2026-10-30 界面评审）。
     setTimeout(() => {
       document.querySelector(".scene-video-studio .scene-video-composer")?.scrollIntoView?.({ block: "start", behavior: "smooth" });
-      document.querySelector<HTMLTextAreaElement>('.scene-video-studio textarea[aria-label="视频脚本"]')?.focus({ preventScroll: true });
+      input.current?.focus({ preventScroll: true });
     }, 0);
   };
   // 页面上的条件写进草稿（有草稿时）：刷新、从「最近」再打开都从离开的地方接着来。素材另记在 sceneInputs、视频模型在 sceneVideoModel。
-  const videoState = useMemo<StudioSceneVideoState>(() => ({ text, options: picked, language, ...(tier ? { tier } : {}), duration, ratio, optimize,
-    ...(mode === "generate" ? { edit: { ...(scriptId ? { scriptId } : {}), prompt } } : {}) }), [text, picked, language, tier, duration, ratio, optimize, mode, scriptId, prompt]);
+  // 采用过脚本时，编辑框里的就是（可能改过的）脚本，记成 edit；没采用时记成那句想法。
+  const videoState = useMemo<StudioSceneVideoState>(() => ({ text: scriptId ? "" : text, options: picked, language, ...(tier ? { tier } : {}), duration, ratio, optimize,
+    ...(scriptId ? { edit: { scriptId, prompt: text } } : {}) }), [text, picked, language, tier, duration, ratio, optimize, scriptId]);
   useSceneStateSave("sceneVideoState", draft, videoState, persist, doc => openedVideoState(doc, videoDefaults(findVideoScene(catalogRef.current, draft?.sceneId))));
   const materials: SceneVideoMaterial[] = useMemo(() => {
     const nodes = doc.nodes as CanvasNodeData[];
@@ -590,24 +623,18 @@ export function SceneVideoStudio() {
   try { settings = chosenVideo && usedTier && plan ? sceneVideoSettings(chosenVideo, usedTier, plan, optimize) : undefined; }
   catch (e) { planError = e instanceof Error ? e.message : "素材和模型对不上"; }
   const videoQuote = chosenVideo && settings ? studioVideoQuote(chosenVideo, settings, usedDuration) : null;
-  // 输入栏上的规格和费用：跟着选的视频模型走（画面比例、清晰度都按这个模型实际支持的给）。
-  const talkRatios = contract?.tiers.find(t => t.tier === usedTier)?.canvases.map(c => c.aspectRatio).filter(r => r === "9:16" || r === "16:9") ?? ["9:16", "16:9"];
-  const shownDuration = recreation ? (scene?.durations.includes(duration) ? duration : scene?.duration ?? duration) : usedDuration;
-  const specLabel = [language, !recreation && usedTier ? usedTier.toUpperCase() : "", `${shownDuration} 秒`, ratio === "16:9" ? "横屏" : "竖屏"].filter(Boolean).join(" · ");
-  const talkCost = recreation ? "交给创作助手：先出方案和报价，确认后才扣积分"
-    : caps?.mock ? "测试响应 · 免费"
-    // maxCost 是这一次最多能冻结的数，不是价格（2026-10-30 验收：只写「最多 N 积分」，读起来像一版短脚本就要这么多）。
-    // 写过的给出上一版实际扣了多少，没写过的直说短脚本用不满。授权和结算不变：仍按 maxCost 冻结、按实际用量结算。
-    : [scriptCost !== undefined ? (lastScriptSpent !== undefined
-        ? `写脚本按实际用量扣积分，上一版扣了 ${lastScriptSpent}，这一版最多扣 ${scriptCost}（只是上限）`
-        : `写脚本按实际用量扣积分，这一版最多扣 ${scriptCost}（只是上限，短脚本用不了这么多）`) : "",
-       chosenVideo ? (videoQuote != null ? `用 ${chosenVideo.name} 出片预计 ${videoQuote} 积分` : planError || "") : "",
-       !textModel?.supportsVision && (images.length || character) ? "编导这次不看图，只按文字写" : ""].filter(Boolean).join("；");
+  // 规格跟着选的视频模型走（画面比例、清晰度都按这个模型实际支持的给）。
+  const ratios = contract?.tiers.find(t => t.tier === usedTier)?.canvases.map(c => c.aspectRatio).filter(r => r === "9:16" || r === "16:9") ?? ["9:16", "16:9"];
+  // 比单段上限长的片子（拖到上限以外）交给画布里的创作助手分段做再拼起来；爆款复刻也交给它。
+  const long = !recreation && !!contract && duration > contract.maxSeconds;
+  const toAssistant = recreation || long;
+  const shownDuration = toAssistant ? duration : usedDuration;
+  const segments = long ? splitSegments(duration, contract!.maxSeconds) : [];
   // 正在出片的这版脚本是按什么写的：时长、横竖屏、交给视频模型的图。现在的设置跟它对不上（换了模型、改了时长或素材），
   // 就照实说哪里变了，并给一键「让编导按现在的设置改一版」；不拦出片，用户也可能就是想这么出（2026-10-30 审查 F07）。
   const writtenFor = scripts.find(s => s.id === scriptId)?.metadata?.studio?.sceneDirector;
   const handedNow = (plan?.used ?? []).filter(m => m.mediaType === "image").map(m => m.key);
-  const staleScript = mode === "generate" && writtenFor ? [
+  const staleScript = scriptId && writtenFor ? [
     writtenFor.duration !== usedDuration ? `这版脚本是照 ${writtenFor.duration} 秒写的，现在要出 ${usedDuration} 秒` : "",
     writtenFor.ratio !== ratio ? `脚本是照${writtenFor.ratio === "16:9" ? "横屏" : "竖屏"}写的，现在是${ratio === "16:9" ? "横屏" : "竖屏"}` : "",
     writtenFor.refs && writtenFor.refs.join() !== handedNow.join()
@@ -616,15 +643,14 @@ export function SceneVideoStudio() {
   ].filter(Boolean).join("，") : "";
   const reviseForNow = () => {
     if (!staleScript) return;
-    setMode("talk");
-    void send(`${staleScript}。按现在的时长、画面和参考图重新排镜头和台词，内容和卖点不变。`);
+    void send(`${staleScript}。按现在的时长、画面和参考图重新排镜头和台词，内容和卖点不变。`, { auto: true });
   };
 
   // 编导留了【待补】的地方没填，出出来就是一句「待补」或者模型自己编一个价：先拦下。
-  const blanks = scriptPlaceholders(prompt);
-  const videoBlocker = !videoModels ? "正在读取视频模型…" : !chosenVideo ? "还没有可用的视频模型" : planError
+  const blanks = scriptPlaceholders(text);
+  const videoBlocker = !videoModels ? "正在读取视频模型…" : !chosenVideo ? "还没有可用的视频模型" : !text.trim() ? "先写提示词，或点「AI 编导」写一版脚本" : planError
     || (blanks.length ? `还有没填的：${[...new Set(blanks)].join("、")}。在上面换成实际内容，用不上的直接删掉。` : "")
-    || (settings ? studioVideoError(chosenVideo, settings, prompt, ratio, usedDuration) : "请重新选择清晰度") || "";
+    || (settings ? studioVideoError(chosenVideo, settings, text, ratio, usedDuration) : "请重新选择清晰度") || "";
 
   const generate = async () => {
     if (busy || !scene || !chosenVideo || !settings) return;
@@ -640,7 +666,7 @@ export function SceneVideoStudio() {
         const { nodes, placed } = placeMaterials(doc.nodes as CanvasNodeData[]);
         const refIds = plan!.used.map(m => placed.find(p => p.media.key === m.key)?.node.id).filter((id): id is string => !!id);
         const made = addVideoRow({ ...doc, nodes }, {
-          title: `${scene.title} · ${usedDuration} 秒`, prompt: prompt.trim(), scriptId, refIds, video: settings!, durationSec: usedDuration, aspectRatio: ratio,
+          title: `${scene.title} · ${usedDuration} 秒`, prompt: text.trim(), scriptId, refIds, video: settings!, durationSec: usedDuration, aspectRatio: ratio,
           model: chosenVideo.selectableById && !caps?.mock ? chosenVideo.endpointId : undefined, maxCost: videoQuote ?? undefined });
         request = made.request; nodeId = made.nodeId;
         return { ...made.doc, sceneInputs: chosen, sceneVideoModel: chosenVideo.endpointId };
@@ -668,124 +694,133 @@ export function SceneVideoStudio() {
   if (catalogError && !catalog) return <main className="ip-brand-surface scene-studio scene-video-studio"><div className="scene-loading">场景目录没读出来<button type="button" className="ip-brand-secondary" onClick={retryCatalog}>重新加载</button></div></main>;
   if (!catalog || !scene) return <main className="ip-brand-surface scene-studio scene-video-studio"><div className="scene-loading"><Loader2 size={20} className="studio-gallery-spinner"/>正在读取场景</div></main>;
   const groups = catalog.videoGroups.map(g => ({ id: g.id, title: g.title, items: catalog.video.filter(s => s.group === g.id) }));
-  const tooLong = !!contract && scene.duration > contract.maxSeconds;
-  // 选的时长这个模型出不了（换了模型之后常见）：照实说按几秒出，不悄悄换。场景默认时长超上限另有下面那句「交给创作助手分段做」。
-  const durationNote = !recreation && contract && usedDuration !== duration && !(tooLong && duration === scene.duration)
-    ? contract.minSeconds === contract.maxSeconds ? `这个模型只做 ${usedDuration} 秒的片子`
-      : `这个模型只能做 ${contract.minSeconds}–${contract.maxSeconds} 秒，会按 ${usedDuration} 秒出` : "";
+  const groupTitle = catalog.videoGroups.find(g => g.id === scene.group)?.title;
+  // 选的时长这个模型出不了（比下限短）：照实说按几秒出，不悄悄换。比上限长的是分段交给创作助手，不在这里说。
+  const durationNote = !toAssistant && contract && usedDuration !== duration
+    ? contract.minSeconds === contract.maxSeconds ? `这个模型只做 ${usedDuration} 秒的片子` : `这个模型最短 ${contract.minSeconds} 秒，会按 ${usedDuration} 秒出` : "";
+  const pickDuration = (n: number) => { durationTouched.current = true; setDuration(n); setHint(""); };
+  const goBlocker = toAssistant ? handoffBlocker : videoBlocker;
+  const onPick = (id: string) => { const next = findVideoScene(catalog, id); if (next && (next.id !== scene.id || draftRef.current)) goToScene(next); };
   const tile = (kind: Exclude<Slot, "image">, media: Media | undefined, label: string, Icon: typeof Video, optional: boolean, clear: () => void) =>
     <div className={`scene-media${media ? " is-filled" : ""}`}>
       <button type="button" disabled={uploading !== undefined} onClick={() => choose(kind)} aria-label={media ? `更换${label}` : `添加${label}`} title={media?.fileName}>
-        {uploading === kind ? <Loader2 size={20} className="studio-gallery-spinner"/> : media && kind === "character" ? <SignedImage src={media.url} storageKey={media.key} alt=""/>
-          : <><Icon size={26} strokeWidth={1.3}/>{!media && <span className="scene-ref-upload"><Upload size={11}/></span>}</>}
+        {uploading === kind ? <Loader2 size={18} className="studio-gallery-spinner"/> : media && kind === "character" ? <SignedImage src={media.url} storageKey={media.key} alt=""/>
+          : <Icon size={18} strokeWidth={1.3}/>}
       </button>
-      <span>{media ? label : `添加${label}`}{!media && optional && <small>（可选）</small>}</span>
-      {media && <button type="button" className="scene-ref-remove" aria-label={`移除${label}`} onClick={clear}><X size={13}/></button>}
+      <span>{label}{!media && optional && <small>可选</small>}</span>
+      {media && <button type="button" className="scene-ref-remove" aria-label={`移除${label}`} onClick={clear}><X size={11} strokeWidth={1.8}/></button>}
     </div>;
+  const imageIndex = (key: string) => (plan?.used ?? []).filter(m => m.mediaType === "image").findIndex(m => m.key === key);
 
-  return <main className="ip-brand-surface scene-studio scene-video-studio" data-studio-overlay-root>
-    <SceneList heading="AI 视频" current={scene.id} onPick={id => { const next = findVideoScene(catalog, id); if (next && (next.id !== scene.id || draftRef.current)) goToScene(next); }} groups={groups}/>
+  return <main className={`ip-brand-surface scene-studio scene-video-studio${pinned ? " has-drawer" : ""}`} data-studio-overlay-root>
+    {(pinned || drawerOpen) && <SceneDrawer heading="AI 视频" groups={groups} current={scene.id} onPick={onPick} pinned={pinned} onPin={pin} onClose={() => setDrawerOpen(false)}/>}
 
-    <section className="scene-composer scene-video-composer" aria-label="编导">
+    <section className="scene-card scene-video-composer" aria-label={view === "director" ? "AI 编导" : "写一条视频"}>
       <header className="scene-composer-head">
-        <SceneThumb id={scene.id} title={scene.title} cover={scene.coverUrl} size={52}/>
-        <div><strong>{scene.title}</strong><small>{scene.description}</small></div>
-        <button type="button" className="scene-new" onClick={() => reset()}><Plus size={16}/>新建</button>
+        <SceneSwitch scene={scene} groups={groups} onPick={onPick} onAll={() => { if (!pinned) setDrawerOpen(true); }}/>
+        <SceneRecent icon drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>
+        <button type="button" className="scene-new" onClick={() => reset()}><Plus size={13} strokeWidth={1.6}/>新建</button>
       </header>
 
-      {/* 生成模式（照参考站「应用脚本」之后）整列换成编辑器，脚本就在编辑框里；回到编导再看对话。 */}
-      <div className="scene-director-thread" ref={thread} aria-live="polite" hidden={mode === "generate"}>
-        {!scripts.length ? <div className="scene-video-stage">
-            <span className="scene-video-mark" aria-hidden="true"><Clapperboard size={30} strokeWidth={1.4}/></span>
-            <h2>你想做一条什么视频？</h2>
-            <p className="scene-director-intro">{recreation ? "放上要复刻的视频，说说换成什么；会交给画布里的创作助手先拉片再做。" : "放素材、说一句，编导先写一版分镜脚本给你看，满意了再出片。"}</p>
-            <div className="scene-idea-grid" role="group" aria-label="常用开头">{scene.ideas.map(idea => <button type="button" key={idea}
-              onClick={() => setText(old => old.includes(idea) ? old : old.trim() ? `${old.trim()}；${idea}` : idea)}>{idea}</button>)}</div>
-          </div>
-          : scripts.map((row, i) => <ScriptTurn key={row.id} row={row} run={live[row.id]} busy={busy} submitting={submitting === row.id} latest={row.id === latestScript?.id}
-              given={scripts.slice(0, i + 1).map(s => s.metadata?.studio?.sceneDirector?.ask ?? "")} facts={scene.brief?.facts}
-              copied={copied === row.id} onUse={() => useScript(row)} onRevise={() => { setMode("talk"); input.current?.focus(); }} onCopy={() => void copy(row)}
-              onRetry={() => void retry(row)} onConfirm={() => void confirmOriginal(row)}
-              onStop={() => { const id = row.metadata?.studio?.runId; if (id) void cancelRun(id).catch(e => showFailure({ action: "停止", error: e })); }}/>)}
+      {view === "director" ? <div className="scene-director">
+        <div className="scene-director-title"><AiMark size={13}/><strong>AI 编导</strong>
+          <button type="button" className="scene-text-button" onClick={() => setView("compose")}>回到编辑</button></div>
+        <div className="scene-director-thread" ref={thread} aria-live="polite">
+          {scripts.map((row, i) => <ScriptTurn key={row.id} row={row} run={live[row.id]} busy={busy} submitting={submitting === row.id} latest={row.id === latestScript?.id}
+            given={scripts.slice(0, i + 1).map(s => s.metadata?.studio?.sceneDirector?.ask ?? "")} facts={scene.brief?.facts}
+            copied={copied === row.id} onUse={() => useScript(row)} onBack={() => setView("compose")} onCopy={() => void copy(row)}
+            onAgain={() => void send("换个写法重新写一版，要求和素材都不变。", { auto: true })}
+            onRetry={() => void retry(row)} onConfirm={() => void confirmOriginal(row)}
+            onStop={() => { const id = row.metadata?.studio?.runId; if (id) void cancelRun(id).catch(e => showFailure({ action: "停止", error: e })); }}/>)}
+        </div>
+        <form className="scene-director-input" onSubmit={e => { e.preventDefault(); void send(revise); }}>
+          <input aria-label="想改哪里" placeholder="想改哪里，直接说" value={revise} onChange={e => { setRevise(e.target.value); setHint(""); }}/>
+          <button type="submit" className="scene-send" aria-label="让编导改" title={scriptBlocker(revise) || "发送（Enter）"} disabled={busy || writing || !revise.trim()}>
+            {busy || writing ? <Loader2 size={15} className="studio-gallery-spinner"/> : <ArrowUp size={15} strokeWidth={1.8}/>}</button>
+        </form>
+        {hint && <p className="scene-hint" role="status">{hint}</p>}
       </div>
 
-      {mode === "talk" ? <div className="scene-video-input">
+      : <div className="scene-compose">
         <div className="scene-media-row" role="group" aria-label="素材">
           {scene.video && tile("video", video, scene.video.label, Video, !scene.video.required, () => { if (video) drop("video", video.key); setVideo(undefined); })}
-          {images.map((m, i) => <div key={m.key} className="scene-media is-filled"><span className="scene-media-preview"><SignedImage src={m.url} storageKey={m.key} alt={m.title}/></span><span>图{i + 1} {m.title}</span>
-            <button type="button" className="scene-ref-remove" aria-label={`移除${m.title}`} onClick={() => { drop("image", m.key); setImages(old => old.filter((_, j) => j !== i).map((o, j) => ({ ...o, title: `${scene.images.label} ${j + 1}` }))); }}><X size={13}/></button></div>)}
+          {images.map((m, i) => { const at = imageIndex(m.key); return <div key={m.key} className="scene-media is-filled">
+            <span className="scene-media-preview"><SignedImage src={m.url} storageKey={m.key} alt={m.title}/>{at >= 0 && <i className="scene-ref-index">图{at + 1}</i>}</span>
+            <span>{scene.images.label}</span>
+            <button type="button" className="scene-ref-remove" aria-label={`移除${m.title}`} onClick={() => { drop("image", m.key); setImages(old => old.filter((_, j) => j !== i).map((o, j) => ({ ...o, title: `${scene.images.label} ${j + 1}` }))); }}><X size={11} strokeWidth={1.8}/></button></div>; })}
           {images.length < (scene.images.max ?? 6) && <div className="scene-media"><button type="button" disabled={uploading !== undefined} onClick={() => choose("image")} aria-label={`添加${scene.images.label}`}>
-            {uploading === "image" ? <Loader2 size={20} className="studio-gallery-spinner"/> : <><ImagePlus size={26} strokeWidth={1.3}/><span className="scene-ref-upload"><Upload size={11}/></span></>}</button>
-            <span>添加{scene.images.label}{!scene.images.required && <small>（可选）</small>}</span></div>}
-          {scene.character && <i className="scene-media-divider" aria-hidden="true"/>}
+            {uploading === "image" ? <Loader2 size={18} className="studio-gallery-spinner"/> : <Plus size={18} strokeWidth={1.3}/>}</button>
+            <span>{images.length ? "再加一张" : scene.images.label}{!images.length && !scene.images.required && <small>可选</small>}</span></div>}
+          {(scene.character || scene.voice) && <i className="scene-media-divider" aria-hidden="true"/>}
           {scene.character && tile("character", character, "角色", UserRound, true, () => { if (character) drop("character", character.key); setCharacter(undefined); })}
-          {scene.voice && <i className="scene-media-divider" aria-hidden="true"/>}
           {scene.voice && tile("voice", voice, "声音", Mic, true, () => { if (voice) drop("voice", voice.key); setVoice(undefined); })}
           <input ref={fileInput} type="file" hidden onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) void upload(target.current, file); }}/>
         </div>
-        <SceneOptions groups={scene.options} value={picked} onPick={(key, choice) => setPicked(old => ({ ...old, [key]: choice }))}/>
-        {/* 这类视频要写清的信息（场景的 brief）：点一下在输入框里起一行「店名和位置：」，接着写就行，不用填表。 */}
-        {/* 写过一版之后只给脚本里还空着的那几条，没有空着的就不显示（2026-10-30 界面评审：改稿时三行标签挤在中间）。 */}
-        {!recreation && chipFacts.length > 0 && <div className="scene-fact-chips" role="group" aria-label="要写清楚的信息"><span>{revising ? "还空着" : "写清楚"}</span>
-          <div>{chipFacts.map(f => <button key={f.label} type="button" onClick={() => addFact(f.label)}>
-            {f.label}{!f.required && <small>有就写</small>}</button>)}</div></div>}
-        <textarea ref={input} aria-label={revising ? "想改哪里" : "想做的视频"} rows={3} value={text}
-          placeholder={revising ? "想改哪里，直接说。例如：开头再抓人一点，台词口语一点" : scene.placeholder} onChange={e => { setText(e.target.value); setHint(""); }}
-          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }}/>
-        {/* 分两层（2026-10-30 复测：挤在一行时提示缩成「先…」、手机上模型名只剩几个字）：
-            上层是视频模型、规格和发送，下层整行写提示：卡在哪、写脚本和按这个模型出片各要多少积分、这个模型能用哪些素材。 */}
-        <footer>
-          <div className="scene-video-controls">
-            {!recreation && !!videoModels?.length && <StudioSelect compact label="视频模型" value={chosenVideo?.endpointId ?? ""} onChange={chooseVideoModel}
-              options={videoModels.map(m => ({ value: m.endpointId, label: m.name }))}/>}
+
+        <div className="scene-box">
+          <textarea ref={input} aria-label={scriptId ? "视频脚本" : "想做的视频"} value={text}
+            placeholder={recreation ? scene.placeholder : "贴上写好的提示词直接生成；只有想法的话，写几句让 AI 编导帮你写成脚本"}
+            onChange={e => { setText(e.target.value); setHint(""); }}/>
+          {/* 这类视频要写清的信息：点一下在框里起一行「店名和位置：」，接着写就行。写过脚本之后只给脚本里还空着的。 */}
+          {!recreation && chipFacts.length > 0 && <div className="scene-fact-chips" role="group" aria-label="要写清楚的信息">{chipFacts.map(f =>
+            <button key={f.label} type="button" onClick={() => addFact(f.label)} title={f.required ? undefined : "有就写"}><Plus size={11} strokeWidth={1.6}/>{f.label}</button>)}</div>}
+          <footer>
+            <small className={contract && Array.from(text).length > contract.promptMaxChars ? "is-over" : undefined}>{Array.from(text).length}{contract && !recreation ? ` / ${contract.promptMaxChars}` : ""}</small>
+            {!recreation && <button type="button" className="scene-ai-button" disabled={busy || writing || uploading !== undefined}
+              title={scriptBlocker(text) || (scripts.length ? "回到 AI 编导接着改" : "按框里的想法写一版分镜脚本，按实际用量扣积分")} onClick={openDirector}>
+              {busy || writing ? <Loader2 size={13} className="studio-gallery-spinner"/> : <AiMark size={12}/>}{scriptId ? "AI 改写" : "AI 编导"}</button>}
+          </footer>
+        </div>
+
+        <div className="scene-go-group">
+          <div className="scene-pills">
+            {recreation ? <span className="scene-pill"><Cpu size={14} strokeWidth={1.5}/><span>创作助手</span></span>
+              : (videoModels?.length ?? 0) > 1 ? <div className="scene-pill is-select"><Cpu size={14} strokeWidth={1.5}/>
+                <StudioSelect compact label="视频模型" value={chosenVideo?.endpointId ?? ""} onChange={chooseVideoModel} options={(videoModels ?? []).map(m => ({ value: m.endpointId, label: m.name }))}/></div>
+              : <span className="scene-pill"><Cpu size={14} strokeWidth={1.5}/><span>{chosenVideo?.name ?? "视频模型"}</span></span>}
             <div className="scene-setting-panel-host">
-              <button type="button" className="scene-video-settings" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(v => !v)}>
-                <Languages size={14}/>{specLabel}<ChevronDown size={13}/></button>
-              {settingsOpen && <VideoSettingsPanel durations={recreation ? scene.durations : durations} duration={recreation ? (scene.durations.includes(duration) ? duration : scene.duration) : usedDuration}
-                onDuration={setDuration} ratios={recreation ? ["9:16", "16:9"] : talkRatios} ratio={ratio} onRatio={setRatio}
-                tiers={recreation ? [] : tiers.map(t => t.tier)} tier={usedTier} onTier={setTier}
-                language={language} onLanguage={setLanguage} onClose={() => setSettingsOpen(false)}/>}
+              <button type="button" className="scene-pill" aria-expanded={settingsOpen} aria-label={`视频规格：${language}，${shownDuration} 秒，${ratio}${!toAssistant && usedTier ? `，${usedTier.toUpperCase()}` : ""}`} onClick={() => setSettingsOpen(v => !v)}>
+                <SlidersHorizontal size={14} strokeWidth={1.5}/><span>{language} · {shownDuration} 秒 · <RatioGlyph ratio={ratio}/>{ratio}{!toAssistant && usedTier ? ` · ${usedTier.toUpperCase()}` : ""}</span><ChevronDown size={13} strokeWidth={1.6}/></button>
+              {settingsOpen && <VideoSettingsPanel min={recreation ? Math.min(...scene.durations) : contract?.minSeconds ?? Math.min(...scene.durations)}
+                max={MAX_SECONDS} single={recreation ? undefined : contract?.maxSeconds} duration={duration} onDuration={pickDuration} segments={segments}
+                ratios={recreation ? ["9:16", "16:9"] : ratios} ratio={ratio} onRatio={setRatio}
+                tiers={toAssistant ? [] : tiers.map(t => t.tier)} tier={usedTier} onTier={setTier}
+                language={language} onLanguage={setLanguage} optimizable={!toAssistant && !!chosenVideo?.supportsPromptOptimization} optimize={optimize} onOptimize={setOptimize}
+                options={scene.options} picked={picked} onPick={(key, choice) => setPicked(old => ({ ...old, [key]: choice }))} onClose={() => setSettingsOpen(false)}/>}
             </div>
           </div>
-          <button type="button" className="scene-send" aria-label={recreation ? "交给创作助手" : revising ? "让编导改" : "让编导写脚本"} title={blocker || "发送（Enter）"}
-            disabled={busy || !!blocker || uploading !== undefined || writing} onClick={() => void send()}>
-            {busy || writing ? <Loader2 size={18} className="studio-gallery-spinner"/> : <ArrowUp size={19}/>}</button>
-          <p className={`scene-video-hint${hint || blocker ? " is-blocked" : ""}`} role="status">{hint || blocker || talkCost}</p>
-          {!hint && !blocker && !recreation && plan?.note && <p className="scene-video-hint is-note">{plan.note}</p>}
-          {!hint && !blocker && durationNote && <p className="scene-video-hint is-note">{durationNote}</p>}
-          {note && <p className="scene-video-hint is-note" role="status">{note.text}{note.undo && <button type="button" onClick={note.undo}>撤销</button>}</p>}
-        </footer>
-        {!recreation && tooLong && <p className="scene-director-long">当前模型一条最长 {contract!.maxSeconds} 秒。想做 {scene.duration} 秒这样更长的片子？
-          <button type="button" disabled={busy} onClick={() => void handoff()}>交给创作助手分段做</button></p>}
-      </div>
-      : <GenerateEditor prompt={prompt} onPrompt={p => { setPrompt(p); setHint(""); }} onBack={() => setMode("talk")}
-          models={videoModels ?? []} model={chosenVideo} onModel={chooseVideoModel} tiers={tiers.map(t => t.tier)} tier={usedTier} onTier={setTier}
-          durations={durations} duration={usedDuration} onDuration={setDuration} ratio={ratio} onRatio={setRatio}
-          used={plan?.used ?? []} restored={note} stale={staleScript} onReviseForNow={reviseForNow} reviseCost={caps?.mock ? undefined : scriptCost} note={[plan?.note, durationNote].filter(Boolean).join("；") || undefined} quote={videoQuote} mock={!!caps?.mock} blocker={hint || videoBlocker} busy={busy}
-          optimize={optimize} onOptimize={setOptimize} maxChars={contract?.promptMaxChars} onGenerate={() => void generate()}/>}
-      {videoModels && !videoModels.length && !caps?.mock && mode === "generate" && <SceneNoModel kind="视频"/>}
+          <button type="button" className="scene-go" aria-label={recreation ? "交给创作助手" : "生成视频"} title={goBlocker || (toAssistant ? "交给画布里的创作助手：先出方案和报价，确认后才扣积分" : undefined)}
+            disabled={busy || !!goBlocker || uploading !== undefined} onClick={() => void (toAssistant ? handoff() : generate())}>
+            {busy && !writing ? <Loader2 size={16} className="studio-gallery-spinner"/> : null}
+            <span>{recreation ? "交给创作助手" : "生成视频"}</span>
+            {!goBlocker && <small>{long ? `分 ${segments.length} 段` : recreation ? "先出方案" : caps?.mock ? "免费" : videoQuote != null ? `${videoQuote} 积分` : ""}</small>}
+          </button>
+          {/* 点了没做成的原因用提醒色；还没动手时只是灰字说一句还差什么。 */}
+          {(hint || goBlocker) ? <p className={`scene-hint${hint ? "" : " is-note"}`} role="status">{hint || goBlocker}</p>
+            : <>{!toAssistant && plan?.note && <p className="scene-hint is-note">{plan.note}</p>}
+              {durationNote && <p className="scene-hint is-note">{durationNote}</p>}
+              {staleScript && <p className="scene-hint is-note" role="status">{staleScript}。<button type="button" disabled={busy} onClick={reviseForNow}>让编导照现在的改一版</button></p>}</>}
+          {note && <p className="scene-hint is-note" role="status">{note.text}{note.undo && <button type="button" onClick={note.undo}>撤销</button>}</p>}
+          {videoModels && !videoModels.length && !caps?.mock && !recreation && <SceneNoModel kind="视频"/>}
+        </div>
+      </div>}
     </section>
 
-    <section className="scene-results" aria-label="生成结果">
+    <section className="scene-card scene-results" aria-label="作品与示例">
       <header><SceneResultTabs tab={tab} onTab={setTab} count={rows.length} idBase="scene-video"/>
-        <span className="scene-results-actions">{draft && <Link className="scene-link" href={`/projects/${encodeURIComponent(draft.id)}`}><FolderOpen size={15}/>在画布中继续</Link>}<UiVersionSwitch inline/></span></header>
+        <span className="scene-results-actions">{draft && <Link className="scene-text-button" href={`/projects/${encodeURIComponent(draft.id)}`}><FolderOpen size={14} strokeWidth={1.4}/>在画布中继续</Link>}
+          <SceneRecent drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>
+          <UiVersionSwitch inline/></span></header>
       {draft && handedOff && <HandoffStatus projectId={draft.id} execution={execution} waiting={!!executionId && !execution}/>}
       <div id="scene-video-panel" className="scene-results-panel" role="tabpanel" aria-labelledby={`scene-video-tab-${tab}`}>
-      {tab === "example" ? <SceneExample id={scene.id} title={`${scene.title}怎么做`} note={scene.structure} cover={scene.coverUrl} examples={scene.examples}>
-          <ol className="scene-steps">
-            <li><b>1</b><div><strong>放素材、说一句</strong><p>商品图、门店照片或故事，用平时说话的方式写，不写也行。</p></div></li>
-            <li><b>2</b><div><strong>编导写脚本</strong><p>{recreation ? "画布里的创作助手先拉片，再按原片结构出方案。" : "看完素材写一版分镜和台词，哪里不满意直接说。"}</p></div></li>
-            <li><b>3</b><div><strong>确认后出片</strong><p>选好模型和时长，看清要花多少积分再生成。</p></div></li>
-          </ol>
-        </SceneExample>
+      {tab === "example" ? <SceneExample id={scene.id} title={scene.title} group={groupTitle} note={scene.description} steps={sceneSteps(scene.structure)}
+          cover={scene.coverUrl} examples={scene.examples} ratio={scene.ratio}/>
         : rows.length ? <ol className="scene-row-list">{rows.map(row => <VideoRow key={row.id} row={row} run={live[row.id]} busy={busy} submitting={submitting === row.id}
             onRetry={() => void retry(row)} onConfirm={() => void confirmOriginal(row)} onReuse={() => reuseVideo(row)}
             onStop={() => { const id = row.metadata?.studio?.runId; if (id) void cancelRun(id).catch(e => showFailure({ action: "停止生成", error: e })); }}/>)}</ol>
-        : <div className="scene-empty"><h2>还没有生成</h2><p>编导写好脚本后，点「用这个脚本生成」，视频会出现在这里。</p></div>}
+        : <SceneEmpty title="还没有作品" note="写好提示词点「生成视频」，做好的视频会出现在这里。"/>}
       </div>
     </section>
-
-    <SceneRecent drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>
     <HubTabBar/>
   </main>;
 }
@@ -800,9 +835,9 @@ function placeMedia(nodes: CanvasNodeData[], media: Media, kind: "image" | "vide
 }
 
 /** 编导的一轮：你说的话 + 编导写的脚本（写作中 / 失败 / 写好了）。 */
-function ScriptTurn({ row, run, busy, submitting, latest, copied, onUse, onRevise, onCopy, onRetry, onConfirm, onStop, given, facts }: {
+function ScriptTurn({ row, run, busy, submitting, latest, copied, onUse, onBack, onCopy, onAgain, onRetry, onConfirm, onStop, given, facts }: {
   row: CanvasNodeData; run?: IpRun; busy: boolean; submitting: boolean; latest: boolean; copied: boolean;
-  onUse: () => void; onRevise: () => void; onCopy: () => void; onRetry: () => void; onConfirm: () => void; onStop: () => void;
+  onUse: () => void; onBack: () => void; onCopy: () => void; onAgain: () => void; onRetry: () => void; onConfirm: () => void; onStop: () => void;
   /** 到这一版为止用户说过的话（第一句和每次修改意见）：核对里面的数字有没有进脚本。 */
   given: string[];
   /** 场景要的信息：分清哪些空着的必须补、哪些「有就写」。 */
@@ -814,85 +849,35 @@ function ScriptTurn({ row, run, busy, submitting, latest, copied, onUse, onRevis
   const { required: mustFill, optional: mayFill } = classifyBlanks(scriptPlaceholders(body), facts);
   const loading = meta?.status === "loading", accepted = !!meta?.studio?.runId;
   const position = run?.queue?.position;
-  const spent = meta?.studio?.textEditor?.turns?.at(-1)?.billing?.credits;
   const summary = meta?.studio?.textEditor?.turns?.at(-1)?.content;
   const failed = meta?.status === "error";
   return <article className="scene-director-turn">
     <p className={`scene-director-ask${turn?.ask ? "" : " is-empty"}`}>{turn?.ask || (turn?.revision ? "再改一版" : "看素材写一版脚本")}</p>
     <div className={`scene-script-card is-${meta?.status || "idle"}`}>
-      <header><Sparkles size={14} aria-hidden="true"/><strong>编导</strong>
-        <span>{turn ? `${turn.duration} 秒 · ${turn.ratio === "16:9" ? "横屏" : "竖屏"} · ${turn.language}` : ""}</span></header>
-      {loading ? <p className="scene-script-state" role="status"><Loader2 size={14} className="studio-gallery-spinner"/>
-          {submitting && !accepted ? "正在交给编导" : !accepted ? "提交结果没有确认" : position && position > 0 ? `排队中，前面还有 ${position - 1} 个` : turn?.revision ? "正在改脚本" : "正在看素材、写脚本"}</p>
+      {loading ? <div className="scene-script-writing" role="status">
+          <span className="scene-script-lines" aria-hidden="true"><i/><i/><i/></span>
+          <span><AiMark size={12}/>{submitting && !accepted ? "正在交给编导" : !accepted ? "提交结果没有确认" : position && position > 0 ? `排队中，前面还有 ${position - 1} 个` : turn?.revision ? "正在改脚本" : "正在看素材、写脚本"}</span></div>
         : failed ? <p className="scene-script-state is-failed" title={meta?.errorLogId ? `记录号 ${meta.errorLogId}` : undefined}>{sceneFailureText(meta?.errorCode, meta?.errorDetails, "脚本")}</p>
         : <>{summary && <p className="scene-script-summary">{summary}</p>}
           <pre className="scene-script-text">{splitBlanks(body).map((p, i) => p.blank ? <mark key={i} className="scene-script-blank">{p.text}</mark> : p.text)}</pre>
-          {/* 放在脚本下面、按钮上面：脚本区会滚到底，放上面一打开就看不见（2026-10-30 界面评审）。用场景里的信息名说，不照抄模型那句。 */}
-          {mustFill.length > 0 ? <p className="scene-script-missing" role="status">还缺{mustFill.join("、")}。在下面写上发给编导，会补进脚本。{mayFill.length ? `${mayFill.join("、")}没有就不用写。` : ""}</p>
-            : mayFill.length > 0 ? <p className="scene-script-check">{mayFill.join("、")}没有就不用写，出片前把脚本里标着的那几处删掉就行。</p>
+          {mustFill.length > 0 ? <p className="scene-script-missing" role="status">还缺{mustFill.join("、")}，在下面说一声，编导会补进脚本。{mayFill.length ? `${mayFill.join("、")}没有就不用写。` : ""}</p>
+            : mayFill.length > 0 ? <p className="scene-script-check">{mayFill.join("、")}没有就不用写，采用后把标着的那几处删掉就行。</p>
             : missing ? <p className="scene-script-check">编导觉得可能还缺{missing}，写过了就不用管。</p> : null}
           {absent.length > 0 && <p className="scene-script-check">你写的 {absent.join("、")} 脚本里没用上，要加的话跟编导说一声。</p>}</>}
       <footer>
-        {loading && accepted && <button type="button" onClick={onStop}><Square size={13}/>停止</button>}
-        {loading && !accepted && !submitting && <button type="button" disabled={busy} onClick={onConfirm}><RotateCcw size={13}/>确认原任务</button>}
-        {failed && meta?.studio?.request && <button type="button" className="is-primary" disabled={busy} onClick={onRetry}><RotateCcw size={13}/>重新写</button>}
+        {loading && accepted && <button type="button" onClick={onStop}><Square size={12}/>停止</button>}
+        {loading && !accepted && !submitting && <button type="button" disabled={busy} onClick={onConfirm}><RotateCcw size={12}/>确认原任务</button>}
+        {failed && meta?.studio?.request && <button type="button" className="is-primary" disabled={busy} onClick={onRetry}><RotateCcw size={12}/>重新写</button>}
         {meta?.status === "success" && meta.content && <>
-          <button type="button" className="is-primary" onClick={onUse}><Wand2 size={13}/>用这个脚本生成</button>
-          {latest && <button type="button" onClick={onRevise}><PencilLine size={13}/>改一改</button>}
-          <button type="button" onClick={onCopy}>{copied ? <Check size={13}/> : <Copy size={13}/>}{copied ? "已复制" : "复制"}</button>
+          {latest && <button type="button" className="is-icon" aria-label="重新回答" title="重新回答" disabled={busy} onClick={onAgain}><RotateCcw size={14} strokeWidth={1.5}/></button>}
+          <button type="button" className="is-icon" aria-label={copied ? "已复制" : "复制"} title={copied ? "已复制" : "复制"} onClick={onCopy}>{copied ? <Check size={14} strokeWidth={1.6}/> : <Copy size={14} strokeWidth={1.5}/>}</button>
+          <span className="scene-spacer"/>
+          {latest && <button type="button" onClick={onBack}>回到编辑</button>}
+          <button type="button" className="is-primary" onClick={onUse}><Check size={13} strokeWidth={1.8}/>采用脚本</button>
         </>}
-        {spent !== undefined && <small>花了 {spent} 积分</small>}
       </footer>
     </div>
   </article>;
-}
-
-/** 生成模式（照参考站「应用脚本」之后）：脚本可以再改，选模型、清晰度、时长、画面，看清价格再生成。 */
-function GenerateEditor({ prompt, onPrompt, onBack, models, model, onModel, tiers, tier, onTier, durations, duration, onDuration, ratio, onRatio,
-  used, restored, stale, onReviseForNow, reviseCost, note, quote, mock, blocker, busy, optimize, onOptimize, maxChars, onGenerate }: {
-  prompt: string; onPrompt: (v: string) => void; onBack: () => void;
-  models: VideoStudioModel[]; model?: VideoStudioModel; onModel: (id: string) => void;
-  tiers: string[]; tier?: string; onTier: (t: string) => void; durations: number[]; duration: number; onDuration: (n: number) => void;
-  ratio: string; onRatio: (r: string) => void; used: SceneVideoMaterial[]; restored?: { text: string; undo?: () => void }; stale?: string; onReviseForNow: () => void; reviseCost?: number; note?: string; quote: number | null; mock: boolean;
-  blocker: string; busy: boolean; optimize: boolean; onOptimize: (on: boolean) => void; maxChars?: number; onGenerate: () => void;
-}) {
-  const optimizable = !!model?.supportsPromptOptimization;
-  const ratios = model?.contract.tiers.find(t => t.tier === tier)?.canvases.map(c => c.aspectRatio).filter(r => r === "9:16" || r === "16:9") ?? ["9:16", "16:9"];
-  let image = 0;
-  return <div className="scene-generate">
-    <header><button type="button" className="scene-generate-back" onClick={onBack}><ArrowLeft size={15}/>回到编导</button><strong>生成视频</strong></header>
-    <textarea aria-label="视频脚本" value={prompt} onChange={e => onPrompt(e.target.value)} rows={8}/>
-    <div className="scene-generate-meta">
-      {used.length ? <span className="scene-generate-refs">{used.map(m => <i key={m.key}>{m.mediaType === "image" ? `图${++image}` : "声音"} {m.title}</i>)}</span> : <span>只按脚本生成</span>}
-      {maxChars ? <small className={Array.from(prompt).length > maxChars ? "is-over" : undefined}>{Array.from(prompt).length} / {maxChars}</small> : null}
-    </div>
-    {restored && <p className="scene-generate-note is-note" role="status">{restored.text}{restored.undo && <button type="button" onClick={restored.undo}>撤销</button>}</p>}
-    {note && <p className="scene-generate-note" role="status">{note}</p>}
-    {stale && <p className="scene-generate-note is-note" role="status">{stale}。
-      <button type="button" disabled={busy} onClick={onReviseForNow}>让编导照现在的改一版{reviseCost !== undefined ? `（最多 ${reviseCost} 积分）` : ""}</button></p>}
-    <div className="scene-generate-settings">
-      {models.length > 1 && <div className="scene-gen-row"><span>模型</span>
-        <StudioSelect label="视频模型" compact value={model?.endpointId || ""} onChange={onModel} options={models.map(m => ({ value: m.endpointId, label: m.name }))}/></div>}
-      {tiers.length > 1 && <ChoiceRow label="清晰度" options={tiers.map(t => [t, t.toUpperCase()])} value={tier} onChange={onTier}/>}
-      <ChoiceRow label="时长" options={durations.map(d => [String(d), `${d} 秒`])} value={String(duration)} onChange={v => onDuration(Number(v))}/>
-      <ChoiceRow label="画面" options={ratios.map(r => [r, r === "16:9" ? "横屏" : "竖屏"])} value={ratio} onChange={onRatio}/>
-      {optimizable && <ChoiceRow label="描述" options={[["on", "先优化再出片"], ["off", "按原文出片"]]} value={optimize ? "on" : "off"} onChange={v => onOptimize(v === "on")}/>}
-    </div>
-    {/* 2026-10-30 线上复核：「优化描述另需少量积分」说不清扣多少、能不能不要。服务端是另起一笔文字任务，按改写模型的上限冻结、按实际用量结算。 */}
-    {optimizable && !mock && <p className="scene-generate-help">{optimize
-      ? "出片前先把脚本改写成这个模型更认的写法。这一步单独按实际用量扣积分，不含在下面的视频价里；不想要可以选「按原文出片」。"
-      : "按你写的原文直接出片，只扣视频价。"}</p>}
-    <button type="button" className="scene-go" aria-label="立即生成视频" title={blocker || undefined} disabled={busy || !!blocker} onClick={onGenerate}>
-      {busy ? <Loader2 size={18} className="studio-gallery-spinner"/> : null}<span>立即生成视频</span>
-      <small>{blocker || (mock ? "测试响应 · 免费" : quote != null ? `视频预计 ${quote} 积分${optimizable && optimize ? "，优化描述按用量另扣" : ""}` : "")}</small>
-    </button>
-  </div>;
-}
-
-function ChoiceRow({ label, options, value, onChange }: { label: string; options: string[][]; value?: string; onChange: (v: string) => void }) {
-  return <div className="scene-gen-row"><span>{label}</span>
-    <div className="scene-choice-row" role="group" aria-label={label}>{options.map(([v, text]) => <button key={v} type="button" aria-pressed={v === value} onClick={() => onChange(v)}>{text}</button>)}</div>
-  </div>;
 }
 
 /** 一条视频：排队 / 生成中 / 失败（说人话）/ 播放器 + 下载。不显示假的百分比。 */
@@ -923,22 +908,39 @@ function VideoRow({ row, run, busy, submitting, onRetry, onConfirm, onReuse, onS
   </li>;
 }
 
-/** 时长、横竖屏和台词语言：就地展开在输入框上方。 */
-function VideoSettingsPanel({ durations, duration, onDuration, ratios, ratio, onRatio, tiers, tier, onTier, language, onLanguage, onClose }: {
-  durations: number[]; duration: number; onDuration: (n: number) => void; ratios: string[]; ratio: string; onRatio: (r: string) => void;
-  tiers: string[]; tier?: string; onTier: (t: string) => void; language: string; onLanguage: (l: string) => void; onClose: () => void;
+/** 视频规格：台词语言、时长（拖动，超过单段上限分段）、画面比例、清晰度，以及场景的几组选项。就地展开在按钮上方。 */
+function VideoSettingsPanel({ min, max, single, duration, onDuration, segments, ratios, ratio, onRatio, tiers, tier, onTier, language, onLanguage,
+  optimizable, optimize, onOptimize, options, picked, onPick, onClose }: {
+  min: number; max: number; single?: number; duration: number; onDuration: (n: number) => void; segments: number[];
+  ratios: string[]; ratio: string; onRatio: (r: string) => void; tiers: string[]; tier?: string; onTier: (t: string) => void;
+  language: string; onLanguage: (l: string) => void; optimizable: boolean; optimize: boolean; onOptimize: (on: boolean) => void;
+  options?: StudioSceneOptionGroup[] | null; picked: Record<string, string>; onPick: (key: string, choice: string) => void; onClose: () => void;
 }) {
   const panel = useRef<HTMLDivElement>(null);
   useScenePopover(panel, onClose);
-  return <div ref={panel} className="scene-settings-panel is-left" role="group" aria-label="视频设置">
-    {tiers.length > 1 && <><h3>清晰度</h3>
-      <div className="scene-choice-row">{tiers.map(t => <button key={t} type="button" aria-pressed={t === tier} onClick={() => onTier(t)}>{t.toUpperCase()}</button>)}</div></>}
-    <h3>时长</h3>
-    <div className="scene-choice-row">{durations.map(d => <button key={d} type="button" aria-pressed={d === duration} onClick={() => onDuration(d)}>{d} 秒</button>)}</div>
-    <h3>画面</h3>
-    <div className="scene-choice-row">{ratios.map(value => <button key={value} type="button" aria-pressed={value === ratio} onClick={() => onRatio(value)}>{value === "16:9" ? "横屏 16:9" : "竖屏 9:16"}</button>)}</div>
-    <h3>台词语言</h3>
-    <div className="scene-choice-row">{LANGUAGES.map(l => <button key={l} type="button" aria-pressed={l === language} onClick={() => onLanguage(l)}>{l}</button>)}</div>
+  const fill = max > min ? ((duration - min) / (max - min)) * 100 : 100;
+  const singleAt = single && max > min ? ((single - min) / (max - min)) * 100 : undefined;
+  return <div ref={panel} className="scene-settings-panel" role="group" aria-label="视频规格">
+    <div className="scene-setting-row"><span>台词语言</span>
+      <div className="scene-choice-row">{LANGUAGES.map(l => <button key={l} type="button" aria-pressed={l === language} onClick={() => onLanguage(l)}>{l}</button>)}</div></div>
+    <div className="scene-setting-row is-stack">
+      <label htmlFor="scene-video-duration">时长<b>{duration} 秒</b></label>
+      <input id="scene-video-duration" className="scene-range" type="range" min={min} max={max} step={1} value={duration} style={{ "--p": `${fill}%` } as CSSProperties}
+        aria-valuetext={segments.length > 1 ? `${duration} 秒，分 ${segments.length} 段` : `${duration} 秒`} onChange={e => onDuration(Number(e.target.value))}/>
+      <div className="scene-range-scale"><span>{min} 秒</span>{singleAt !== undefined && single! < max && <span style={{ left: `${singleAt}%` }}>单段 {single} 秒</span>}<span>{max} 秒</span></div>
+      {segments.length > 1 && <p>超过单段上限，分 {segments.length} 段生成后拼成一条：{segments.join(" + ")} 秒。交给创作助手做，先出方案和报价。</p>}
+    </div>
+    <div className="scene-setting-row"><span>画面比例</span>
+      <div className="scene-choice-row">{ratios.map(value => <button key={value} type="button" aria-pressed={value === ratio} onClick={() => onRatio(value)}><RatioGlyph ratio={value}/>{value}</button>)}</div></div>
+    {tiers.length > 1 && <div className="scene-setting-row"><span>清晰度</span>
+      <div className="scene-choice-row">{tiers.map(t => <button key={t} type="button" aria-pressed={t === tier} onClick={() => onTier(t)}>{t.toUpperCase()}</button>)}</div></div>}
+    {optimizable && <div className="scene-setting-row"><span>提示词</span>
+      <div className="scene-choice-row" title="先优化是另一笔文字任务，按实际用量扣积分，不含在视频价里">
+        <button type="button" aria-pressed={optimize} onClick={() => onOptimize(true)}>先优化再生成</button>
+        <button type="button" aria-pressed={!optimize} onClick={() => onOptimize(false)}>按原文生成</button></div></div>}
+    {options?.map(g => <div key={g.key} className="scene-setting-row" role="group" aria-label={g.label}><span>{g.label}</span>
+      <div className="scene-choice-row">{g.choices.map(c => <button key={c.value} type="button" aria-pressed={(picked[g.key] ?? g.defaultValue) === c.value} title={c.prompt}
+        onClick={() => onPick(g.key, c.value)}>{c.label}</button>)}</div></div>)}
   </div>;
 }
 

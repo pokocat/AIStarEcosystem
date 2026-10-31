@@ -57,11 +57,11 @@ export function DesktopTopBar({ publicMode = false }: { publicMode?: boolean }) 
   const uiSwitch = <UiVersionSwitch/>;
   // 新版登录后的工作台：左侧一列图标 + 文字（参考 docs/studio-scene-creation.md §2）。旧版和公开落地页仍是顶栏。
   if (!publicMode && version === "next") return <><header className="desktop-top-bar desktop-rail ip-surface ip-brand-surface">
-    <Link href={authed ? "/dashboard" : "/"} className="desktop-rail-logo" aria-label="IP Studio · 声量引擎旗下首页" title="IP Studio · 声量引擎旗下"><img src="/brand/ip-studio-logo.png" width={36} height={36} alt="" /></Link>
+    <Link href={authed ? "/dashboard" : "/"} className="desktop-rail-logo" aria-label="IP Studio · 声量引擎旗下首页" title="IP Studio · 声量引擎旗下"><img src="/brand/ip-studio-logo.png" width={32} height={32} alt="" /></Link>
     <nav className="desktop-rail-navigation" aria-label="主导航">{navigation.map(n => {
       const current = studioNavigationCurrent(n.href, pathname, version);
       const Icon = studioNavigationIcon(n.href);
-      return <Link key={n.href} href={n.href} aria-current={current ? "page" : undefined}><span><Icon size={20} aria-hidden="true" /></span>{n.label}</Link>;
+      return <Link key={n.href} href={n.href} aria-current={current ? "page" : undefined}><span><Icon size={17} strokeWidth={1.4} aria-hidden="true" /></span>{n.label}</Link>;
     })}</nav>
     <div className="desktop-rail-account">
       {authed ? <><WalletBadge account={identity?.uid ?? null} location={pathname + hash} />{accountMenu}</> : <Link className="ip-brand-button" href="/login?next=%2Fdashboard">登录</Link>}
