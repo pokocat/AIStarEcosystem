@@ -14,6 +14,18 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class MusicGenModelClientErrorTest {
+    @org.junit.jupiter.api.Test void asynchronousMusicFailureKeepsItsStructuredPolicySubject() throws Exception {
+        var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/",exchange->{
+            byte[] body="{\"Result\":{\"Status\":3,\"FailureReason\":{\"Code\":\"InputTextSensitiveContentDetected\",\"Msg\":\"blocked by safety\"}}}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200,body.length);exchange.getResponseBody().write(body);exchange.close();
+        });server.start();
+        try {
+            var result=client(server).poll("music","task1");
+            assertTrue(result.failed());
+            assertTrue(result.failReason().startsWith("输入文本未通过内容审核"));
+        } finally {server.stop(0);}
+    }
     @ParameterizedTest
     @ValueSource(ints={200,400,503})
     void httpAndBusinessErrorsRetainSafeProviderReason(int status) throws Exception {

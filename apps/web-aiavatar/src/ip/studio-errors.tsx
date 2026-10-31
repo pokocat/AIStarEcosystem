@@ -8,7 +8,7 @@ import copy from 'copy-to-clipboard';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
 import type { IpRun } from '@ai-star-eco/types/ip-studio';
 // 子路径引入：错误整理是纯函数，不跟着包根走（测试常把包根整个 mock 掉，少了这个导出就会在报错时再抛一次，错误永远显示不出来）。
-import { publicModelErrorMessage } from '@ai-star-eco/api-client/public-model-error';
+import { publicModelErrorMessage, isProviderModelError, isCustomerWalletError } from '@ai-star-eco/api-client/public-model-error';
 
 export type StudioError = { code: string; message: string; logId?: string; taskId?: string; clientMessageId?: string };
 type ErrorInput = unknown;
@@ -237,13 +237,18 @@ const isConflict = (code: string) => /_CONFLICT$|_STALE$|_EXPIRED$/.test(code);
 const conflictNext = (refreshed: boolean) => refreshed ? '这项内容刚在别处改过，页面已经刷新到最新内容，不用再手动刷新。' : '这项内容刚在别处改过，刷新页面看一下最新内容。';
 
 /** 按错误码给的通用下一步。调用方知道得更具体时自己写 next。 */
-export function failureNext(code: string, refreshed = false): string {
+export function failureNext(code: string, refreshed = false, reason = ''): string {
   if (isConflict(code)) return `${conflictNext(refreshed)}需要的话重新修改后再试。`;
   if (code === 'STUDIO_PRICE_CHANGED') return '价格有变化，刷新页面后重新确认。';
+  if (code === 'STUDIO_USAGE_PENDING') return '本次用量还在核对，请先查看原任务状态，需要协助时把错误详情发给我们。';
+  if (code === 'VIDEO_MODEL_RETIRED') return '换一个仍可用的视频模型后再生成。';
+  if (code === 'VIDEO_REFERENCE_PERSON_RESTRICTED' || /未通过内容审核/.test(reason)) return '按上面的原因检查生成描述和参考素材，调整后再生成；没有指出具体内容时，把错误详情发给我们核查。';
+  // Provider codes can contain BALANCE/INSUFFICIENT/NOT_FOUND; none proves the customer's wallet or work is at fault.
+  if (isProviderModelError(code)) return '按上面的原因处理；原因不明确或反复出现时，展开「错误详情」复制后发给我们。';
   if (/_NOT_FOUND$/.test(code)) return '这项内容已经不在了，可能在别处删掉了。刷新页面看一下最新内容，不用再重试。';
   if (/_RUNNING$/.test(code)) return '等正在进行的那一项完成后再试。';
   if (code === 'NETWORK_ERROR') return '检查网络后刷新页面，看一下这次操作有没有生效，再决定要不要重试。';
-  if (/CREDIT|BALANCE|INSUFFICIENT/.test(code)) return '积分不够，充值后再试。';
+  if (isCustomerWalletError(code)) return '按上面的积分钱包提示处理后再试。';
   return '可以稍后再试一次；反复出现的话，展开「错误详情」复制后发给我们。';
 }
 
@@ -272,7 +277,7 @@ export function openStudioFailure(modal: ModalApi, failure: StudioFailure) {
     content: <div className="studio-failure">
       <section><h4>原因</h4><p>{error.code === 'NETWORK_ERROR' ? '网络连接中断，没收到服务器的回应。' : error.message}</p></section>
       {extra}
-      <section><h4>下一步</h4><div>{failure.next === undefined ? failureNext(error.code, failure.refreshed) : isConflict(error.code) ? <><p>{conflictNext(!!failure.refreshed)}</p>{failure.next}</> : failure.next}</div></section>
+      <section><h4>下一步</h4><div>{failure.next === undefined ? failureNext(error.code, failure.refreshed, error.message) : isConflict(error.code) ? <><p>{conflictNext(!!failure.refreshed)}</p>{failure.next}</> : failure.next}</div></section>
       <details className="studio-failure-details" open={!!failure.title}><summary>错误详情</summary><ErrorDetails error={error}/></details>
     </div>,
     // 高于画布浮层、抽屉和下拉（最高 1300），不被挡住。

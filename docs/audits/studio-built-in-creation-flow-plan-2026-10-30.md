@@ -1,6 +1,8 @@
 # 全部内置图片与视频生成流程：独立复核与整体方案
 
-日期：2026-10-30 晚（北京时间）。状态：**复核与方案，未改业务代码，未部署，未新增付费生成。**
+日期：2026-10-30 晚（北京时间）。当轮状态：**复核与方案，未改业务代码，未部署，未新增付费生成。**
+
+后续实施差异见 §6.6–6.8；PR-1–PR-6 已于 2026-10-31 随 `20261031-studio-scene-flow` 发布，见[发布记录](../releases/studio-scene-flow-release-20261031.md)。本文保留审查时的基线与方案，当前待办见 [TODO](../../TODO.md#studio-当前待办)，现行设计见 [studio-scene-creation.md](../studio-scene-creation.md) §15–18。
 
 这份文档是对 Codex 两份审查（[提示词证据](studio-scene-prompt-review-2026-10-30.md)、[全量流程审查](studio-built-in-creation-flow-review-2026-10-30.md)）的独立复核，并给出一份可以直接拆成 PR 的整体方案。前两份里的 21 个视频场景内容矩阵、17 个图片场景交付定义继续有效，这里不重抄；**实施顺序和范围以本文为准。**
 
@@ -58,7 +60,7 @@ Codex 的十条判断有八条成立、两条要更正（后端已上线、模�
 ```
 草稿文档（客户端拥有，服务端整存整取）
 └ sceneState                      ← 唯一的「这次要做什么」
-    sceneId, options{}, 
+    sceneId, options{},
     image: { supplement, custom?, model, ratio, size, count }
     video: { text, language, model, tier, duration, ratio, optimize,
              activeScriptId, promptEdit?: { baseScriptId, content } }

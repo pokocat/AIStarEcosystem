@@ -24,6 +24,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -486,6 +488,78 @@ class MaterialVideoModelClientWireTest {
     }
 
     // ── seedance / agnes / 通用协议：画布首帧不再被丢掉 ─────────────────────────
+
+    @ParameterizedTest
+    @ValueSource(strings = {"seedance-2.0", "seedance-2.5"})
+    void configuredSeedanceGatewayOmitsUnrequestedLastFrameOutput(String model) throws Exception {
+        useConfiguredSeedance(model, Map.of());
+        when(storage.upstreamFetchUrl("ipstudio_gen/u1/a.png")).thenReturn("https://cdn.test/a.png");
+
+        client.submit("蓝色陶瓷杯", 5, "9:16", "u1", "celebrity", null,
+                VideoGenSpec.firstFrameOnly("ipstudio_gen/u1/a.png"));
+
+        JsonNode body = om.readTree(create().body());
+        assertFalse(body.has("return_last_frame"), "unsupported optional fields must be absent, not false");
+        assertEquals(model, body.path("model").asText());
+        assertEquals(5, body.path("duration").asInt());
+        assertEquals("9:16", body.path("ratio").asText());
+        assertEquals("first_frame", body.path("content").get(1).path("role").asText());
+        assertEquals("https://cdn.test/a.png", body.path("content").get(1).path("image_url").path("url").asText());
+    }
+
+    @Test
+    void configuredNativeSeedanceKeepsExplicitLastFrameOutput() throws Exception {
+        useConfiguredSeedance("doubao-seedance-2-0-fast-260128", Map.of("return_last_frame", true));
+        client.submit("蓝色陶瓷杯", 5, "9:16", "u1", "celebrity", null, VideoGenSpec.EMPTY);
+        assertTrue(om.readTree(create().body()).path("return_last_frame").asBoolean());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"seedance-2.0", "seedance-2.5"})
+    void directorReferencesRemainIntactWithoutOptionalLastFrameOutput(String model) throws Exception {
+        useConfiguredSeedance(model, Map.of());
+        var references = new java.util.ArrayList<VideoGenSpec.Reference>();
+        for (int i = 1; i <= 9; i++) {
+            String key = "ipstudio_gen/u1/ref" + i + ".png";
+            references.add(new VideoGenSpec.Reference("image", key));
+            when(storage.upstreamFetchUrl(key)).thenReturn("https://cdn.test/ref" + i + ".png");
+        }
+        client.submit("商品宣传片", 9, "9:16", "u1", "celebrity", null,
+                new VideoGenSpec("universal_reference_video", "768p", null, null, null, references));
+        var body = om.readTree(create().body());
+        assertFalse(body.has("return_last_frame"));
+        assertEquals(10, body.path("content").size());
+        for (int i = 1; i <= 9; i++) {
+            assertEquals("reference_image", body.path("content").get(i).path("role").asText());
+            assertEquals("https://cdn.test/ref" + i + ".png",
+                    body.path("content").get(i).path("image_url").path("url").asText());
+        }
+    }
+
+    @Test
+    void referencePersonRejectionIsDefinitiveAndReadable() {
+        useConfiguredSeedance("doubao-seedance-2-0-fast-260128", Map.of("return_last_frame", true));
+        createStatus = 400;
+        createBody = "{\"error\":{\"code\":\"InputImageSensitiveContentDetected.PrivacyInformation\","
+                + "\"message\":\"The input image 'content[1]' may contain real person. Request id: private-trace\"}}";
+
+        var error = assertThrows(BusinessException.class, () -> client.submit("蓝色陶瓷杯", 5, "9:16", "u1",
+                "celebrity", null, VideoGenSpec.EMPTY));
+        assertEquals("VIDEO_REFERENCE_PERSON_RESTRICTED", error.getCode());
+        assertTrue(error.getMessage().contains("更换参考图片"));
+        assertFalse(error.getMessage().contains("private-trace"));
+        assertEquals(1, requests.size(), "a privacy rejection must not resubmit or drop reference images");
+    }
+
+    private void useConfiguredSeedance(String model, Map<String, Object> fields) {
+        var spec = new AiVideoRequestSpec("seedance", VideoStudioService.contract(5, 15),
+                "/api/v3/contents/generations/tasks", "/api/v3/contents/generations/tasks/{id}", fields);
+        var endpoint = AiModelEndpoint.builder().id("ep-test").name("Seedance")
+                .baseUrl(base("/seedance")).model(model).videoRequestSpecJson(spec.json())
+                .upstreamApiKeyEncrypted(AepCryptoUtil.encrypt("sk-test")).enabled(true).build();
+        when(invocation.resolveDefaultEndpoint(AiModelPurpose.VIDEO_GENERATION, "celebrity"))
+                .thenReturn(Optional.of(endpoint));
+    }
 
     @Test
     @DisplayName("seedance：首帧 key 换成厂商能抓的 URL 放进 content[first_frame]，不走聚算那套上传")

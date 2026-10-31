@@ -420,6 +420,17 @@ class AiModelInvocationServiceTest {
         assertEquals(1,bad.requests.size());
     }
 
+    @Test void visionPolicyRejectionNamesTheImageFromStructuredEvidenceWithoutRetry() throws Exception {
+        StubServer bad=stub(400,"{\"error\":{\"code\":\"content_policy_violation\",\"param\":\"image\",\"message\":\"please change your prompt\"}}");
+        var ep=endpoint("vision",bad.baseUrl(),AiModelProviderType.OPENAI,"vision","test-key",true);
+        var error=assertThrows(BusinessException.class,()->boundSvc(AiModelPurpose.GENERAL,ep)
+                .invokeChat(AiModelPurpose.GENERAL,List.of(Map.of("role","user","content","describe this image")),null));
+        assertEquals("AI_CALL_FAILED",error.getCode());
+        assertTrue(error.getMessage().startsWith("参考图片未通过内容审核"));
+        assertFalse(error.getMessage().contains("change your prompt"));
+        assertEquals(1,bad.requests.size());
+    }
+
     @Test
     void throwsDirectlyOn4xx() throws Exception {
         StubServer bad = stub(400, "{\"error\":\"bad request\"}");

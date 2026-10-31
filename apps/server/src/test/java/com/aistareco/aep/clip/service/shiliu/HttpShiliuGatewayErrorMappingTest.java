@@ -44,12 +44,17 @@ class HttpShiliuGatewayErrorMappingTest {
     }
 
     @Test
-    @DisplayName("容量类的多种说法都要认出来")
-    void capacityKeywordVariants() {
-        for (String msg : new String[]{"账户权益不足", "余额不足，请充值", "额度不足", "已超出配额"}) {
-            assertThat(HttpShiliuGateway.mappedUpstreamFailure(1, msg).getCode())
-                    .as("文案「%s」应判为可保存数量占满", msg)
-                    .isEqualTo("CLIP_ENGINE_CAPACITY_FULL");
+    @DisplayName("余额、未知配额和克隆权益不能互相替代")
+    void balanceAndUnspecifiedQuotaAreNotCloneEntitlements() {
+        assertThat(HttpShiliuGateway.mappedUpstreamFailure(1,"账户权益不足").getCode()).isEqualTo("CLIP_ENGINE_CAPACITY_FULL");
+        var balance=HttpShiliuGateway.mappedUpstreamFailure(1,"余额不足，请充值，剩余 ¥0.0123");
+        assertThat(balance.getCode()).isEqualTo("CLIP_ENGINE_BALANCE_INSUFFICIENT");
+        assertThat(balance.getMessage()).doesNotContain("余额").doesNotContain("充值").doesNotContain("0.0123");
+        for (String msg : new String[]{"额度不足", "已超出配额"}) {
+            var error=HttpShiliuGateway.mappedUpstreamFailure(1,msg);
+            assertThat(error.getCode()).isEqualTo("CLIP_ENGINE_CALL_FAILED");
+            assertThat(error.getMessage()).doesNotContain("克隆权益").doesNotContain("充值");
+            assertThat(error.getInternalDetail()).contains(msg);
         }
     }
 
@@ -59,6 +64,12 @@ class HttpShiliuGatewayErrorMappingTest {
         BusinessException e = HttpShiliuGateway.mappedUpstreamFailure(1, "鉴权失败，密钥无效");
         assertThat(e.getCode()).isEqualTo("CLIP_ENGINE_CREDENTIAL_INVALID");
         assertThat(e.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+    }
+
+    @Test void theWordTokenAloneDoesNotProveACredentialFailure() {
+        assertThat(HttpShiliuGateway.mappedUpstreamFailure(1,"输入超过最大 token 数量").getCode()).isEqualTo("CLIP_ENGINE_CALL_FAILED");
+        assertThat(HttpShiliuGateway.mappedUpstreamFailure(1,"invalid token").getCode()).isEqualTo("CLIP_ENGINE_CREDENTIAL_INVALID");
+        assertThat(HttpShiliuGateway.mappedUpstreamFailure(1,"token 已过期").getCode()).isEqualTo("CLIP_ENGINE_CREDENTIAL_INVALID");
     }
 
     @Test
@@ -81,6 +92,8 @@ class HttpShiliuGatewayErrorMappingTest {
         // 2002 是石榴的数字错误码，语义明确为额度不足，与上面按文案兜底的容量判定互不影响
         assertThat(HttpShiliuGateway.mappedUpstreamFailure(2002, "whatever").getCode())
                 .isEqualTo("CLIP_ENGINE_BALANCE_INSUFFICIENT");
+        var privateBalance=HttpShiliuGateway.mappedUpstreamFailure(2002,"预扣费额度失败，用户剩余额度 ¥0.0123，需要 ¥0.4567");
+        assertThat(privateBalance.getMessage()).isEqualTo(com.aistareco.aep.service.ai.PublicModelErrorPolicy.UNAVAILABLE);
         assertThat(HttpShiliuGateway.mappedUpstreamFailure(3004, "whatever").getCode())
                 .isEqualTo("CLIP_ENGINE_AUDIO_TOO_SHORT");
         assertThat(HttpShiliuGateway.mappedUpstreamFailure(3003, "whatever").getStatus())

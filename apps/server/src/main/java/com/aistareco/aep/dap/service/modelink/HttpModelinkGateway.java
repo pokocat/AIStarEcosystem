@@ -33,8 +33,8 @@ import java.time.Duration;
  * <p>错误映射（§8.0：绝不静默降级）：
  * <ul>
  *   <li>未配置端点 → {@link #isConfigured()} = false，由 {@link ModelinkService} 抛 503；</li>
- *   <li>429 或响应 message 命中配额关键词 → 503 {@code DAP_MODELINK_QUOTA_EXCEEDED}
- *       （账号级上限：3 分组 / 30 素材；文案给运维「清理或提额」的指引，不产假数据、不降级）；</li>
+ *   <li>响应明确说明资源配额耗尽 → 503 {@code DAP_MODELINK_QUOTA_EXCEEDED}；普通 429 不推断分组已满
+ *       （账号级上限：3 分组 / 30 素材；原话保留内部诊断，用户不承担清理供应商资源的操作）；</li>
  *   <li>删分组 409（非终态或组内非空） → 409 {@code DAP_MODELINK_GROUP_NOT_DELETABLE}（可识别，调用方 best-effort 吞）；</li>
  *   <li>其它非 2xx / 网络失败 / 响应不是 JSON → 502 {@code DAP_MODELINK_CALL_FAILED}。</li>
  * </ul>
@@ -176,13 +176,19 @@ public class HttpModelinkGateway implements ModelinkGateway {
             }
             HttpResponse<String> resp = http.send(b.build(), HttpResponse.BodyHandlers.ofString());
             int sc = resp.statusCode();
-            if (sc == 429 || (sc >= 400 && isQuotaError(resp.body()))) {
+            if (sc >= 400 && isQuotaError(resp.body())) {
                 // 账号级上限（3 分组 / 30 素材）打满时上游未必回 429，会用普通错误体带 quota/limit 文案，
                 // 之前一律被包成 502「调用失败」→ 运维看不出真因。这里识别出来给明确的处置指引。
                 log.warn("[dap-modelink] quota exhausted {} {} status={} body={}",
                         method, path, sc, clamp(resp.body(), 400));
                 throw BusinessException.wrapped(HttpStatus.SERVICE_UNAVAILABLE, "DAP_MODELINK_QUOTA_EXCEEDED",
-                        ProviderErrorMessage.append(resp.body(),"素材合规服务的素材分组配额已用尽：请先清理不再需要的分组，或联系七牛为该账号提额"),
+                        ProviderErrorMessage.message(resp.body(),"素材合规服务暂时不可用，请联系平台处理"),
+                        "modelink " + method + " " + path + " status=" + sc + " body=" + clamp(resp.body(), 600));
+            }
+            if (sc == 429) {
+                log.warn("[dap-modelink] rate limited {} {} status={} body={}", method, path, sc, clamp(resp.body(), 400));
+                throw BusinessException.wrapped(HttpStatus.SERVICE_UNAVAILABLE, "DAP_MODELINK_CALL_FAILED",
+                        ProviderErrorMessage.append(resp.body(),"素材合规服务请求过于频繁，请稍后再试"),
                         "modelink " + method + " " + path + " status=" + sc + " body=" + clamp(resp.body(), 600));
             }
             if (sc == 409 && "DELETE".equals(method)) {
@@ -258,8 +264,11 @@ public class HttpModelinkGateway implements ModelinkGateway {
         // 读供应商原话分类：对外的 reason 已把 quota 这类说法换成通用句，拿它判永远判不出来（2026-10-25 起）。
         String m = ProviderErrorMessage.diagnosticReason(body);
         String s = (m != null ? m : body == null ? "" : body).toLowerCase(java.util.Locale.ROOT);
-        return s.contains("quota") || s.contains("配额") || s.contains("limit")
-                || s.contains("exceed") || s.contains("上限");
+        if (s.contains("rate_limit") || s.contains("rate limit") || s.contains("too many requests")
+                || s.contains("请求频繁") || s.contains("请求速率") || s.contains("rpm") || s.contains("tpm")) return false;
+        return s.contains("quota") || s.contains("配额")
+                || s.matches("(?s).*(?:group|asset|resource)[_ -]?(?:count[_ -]?)?limit.*")
+                || s.matches("(?s).*(?:分组|素材|资源).{0,16}(?:上限|超限).*");
     }
 
     private static String text(JsonNode n, String field) {

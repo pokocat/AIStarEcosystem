@@ -129,11 +129,17 @@ public class JusuanSpeechClient {
                 throw attach(new Rejected("STUDIO_SPEECH_REJECTED",safeMessage(response.body())),response);
             throw attach(fail("STUDIO_SPEECH_UNAVAILABLE",ProviderErrorMessage.message(response.body(),"配音服务暂时不可用，正在核对原任务")),response);
         }
-        try {return mapper.readTree(response.body());}
+        try {
+            JsonNode result=mapper.readTree(response.body());
+            if(ProviderErrorMessage.hasError(result))throw attach(fail("STUDIO_SPEECH_BAD_OUTPUT",
+                    ProviderErrorMessage.append(response.body(),"配音服务返回错误，正在核对原任务")),response);
+            return result;
+        }
+        catch(BusinessException error){throw error;}
         catch(Exception e){upstream.recordBadOutput(ctx,response.body(),"STUDIO_SPEECH_BAD_OUTPUT");throw attach(fail("STUDIO_SPEECH_BAD_OUTPUT","配音任务尚未确认，正在核对原请求"),response);}
     }
     private String safeMessage(String body) {
-        return ProviderErrorMessage.message(body,"配音请求被拒绝，请检查文案与音色");
+        return ProviderErrorMessage.message(body,"配音请求被服务方拒绝，未提供具体原因，请联系平台处理");
     }
     public static class Rejected extends BusinessException {
         public Rejected(String code,String message){super(HttpStatus.BAD_REQUEST,code,message);}

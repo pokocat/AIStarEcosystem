@@ -6,6 +6,19 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class VideoProviderErrorMapperTest {
     @Test
+    void realPersonRestrictionExplainsTheRequiredInputChangeWithoutLeakingWireDetails() {
+        String response = "{\"error\":{\"code\":\"InputImageSensitiveContentDetected.PrivacyInformation\","
+                + "\"message\":\"The input image 'content[1]' 'content[2]' 'content[3]' may contain real person. Request id: private-trace\"}}";
+        var mapped = VideoProviderErrorMapper.submit(400, response).orElseThrow();
+        assertEquals("VIDEO_REFERENCE_PERSON_RESTRICTED", mapped.code());
+        assertTrue(mapped.publicMessage(response).contains("真人"));
+        assertTrue(mapped.publicMessage(response).contains("更换参考图片"));
+        assertFalse(mapped.publicMessage(response).contains("content["));
+        assertFalse(mapped.publicMessage(response).contains("private-trace"));
+        assertTrue(VideoProviderErrorMapper.submit(503, response).isEmpty(), "do not reclassify uncertain server failures");
+    }
+
+    @Test
     void mapsKnownProviderCodeToStablePlatformCode() {
         var mapped = VideoProviderErrorMapper.submit(503,
                 "{\"code\":\"video_queue_full\",\"message\":\"video queue is full\"}").orElseThrow();

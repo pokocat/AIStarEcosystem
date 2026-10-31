@@ -908,11 +908,22 @@ class DramaCanvasRunWorkerTest {
         assertTrue(DramaCanvasRunWorker.upstreamRejection(
                 "endpoint=e status=422 body={\"message\":\"size must be one of 1024x1024\"}").contains("size must be"));
         assertEquals("overloaded",DramaCanvasRunWorker.upstreamRejection("endpoint=e status=503 body={\"message\":\"overloaded\"}"));
-        assertEquals("模型拒绝了这次请求（上游 400），积分已退回。",
+        assertEquals("生成服务返回错误（HTTP 400），未提供具体原因。",
                 DramaCanvasRunWorker.upstreamRejection("status=400 body=<html>bad</html>"));
         String masked = DramaCanvasRunWorker.upstreamRejection(
                 "status=401 body={\"error\":{\"message\":\"invalid key sk-abcdef1234567890\"}}");
         assertFalse(masked.contains("abcdef1234567890"), masked);
+    }
+
+    @Test void genericErrorsDoNotInventASettlementFailureOrPromiseARefund() {
+        String error=DramaCanvasRunWorker.friendly(new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_GATEWAY),"dcr_test");
+        assertTrue(error.contains("刷新任务状态"));
+        assertTrue(error.contains("任务号 dcr_test"));
+        assertFalse(error.contains("没扣费"));
+        assertFalse(error.contains("积分已退回"));
+        String unknown=DramaCanvasRunWorker.friendly(new IllegalStateException("private detail"),"dcr_test");
+        assertFalse(unknown.contains("IllegalStateException"));
+        assertFalse(unknown.contains("private detail"));
     }
 
     @Test

@@ -51,8 +51,13 @@ class JusuanImageClientTest {
         var error=rejectedResponse(400,mapper.createObjectNode().set("error",mapper.createObjectNode()
                 .put("code","content_policy_violation").put("message",reason)).toString(),true);
         assertEquals("STUDIO_IMAGE_PROVIDER_FAILED",error.getCode());
-        assertEquals(Map.of("providerCode","content_policy_violation","reason",reason,"category","content_moderation"),error.getDetails());
-        assertTrue(error.getMessage().contains(reason));
+        var details=(Map<?,?>)error.getDetails();
+        assertEquals("content_policy_violation",details.get("providerCode"));
+        assertEquals("content_moderation",details.get("category"));
+        assertEquals("output",details.get("target"));
+        assertEquals(error.getMessage(),details.get("reason"));
+        assertTrue(error.getMessage().startsWith("生成结果未通过内容审核"));
+        assertTrue(error.getMessage().contains("未成年人"));
         assertEquals(400,((ProviderResponseDiagnostics)error.getSuppressed()[0]).status());
         verify(upstream,times(1)).sendJson(any(),any());
     }
@@ -101,8 +106,9 @@ class JusuanImageClientTest {
         when(upstream.sendJson(any(),any())).thenReturn(accepted,failed);
         var error=assertThrows(JusuanImageClient.ProviderRejected.class,()->client.generate("ep","image","1024x1024",List.of(),"request","owner",s->{},null,null,null,state->{}));
         assertEquals("content_moderation",((Map<?,?>)error.getDetails()).get("category"));
-        assertEquals(reason,((Map<?,?>)error.getDetails()).get("reason"));
-        assertTrue(error.getMessage().contains(reason));
+        assertEquals("reference_image",((Map<?,?>)error.getDetails()).get("target"));
+        assertEquals(error.getMessage(),((Map<?,?>)error.getDetails()).get("reason"));
+        assertTrue(error.getMessage().startsWith("参考图片未通过内容审核"));
         verify(upstream,times(2)).sendJson(any(),any());verifyNoInteractions(http);
     }
     private JusuanImageClient.ProviderRejected rejectedResponse(int status,String body,boolean durable) {
@@ -110,6 +116,37 @@ class JusuanImageClientTest {
         when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
         var response=json(body);when(response.statusCode()).thenReturn(status);when(upstream.sendJson(any(),any())).thenReturn(response);
         return assertThrows(JusuanImageClient.ProviderRejected.class,()->client.generate("ep","image","1024x1024",List.of(),"request","owner",s->{},null,null,null,durable?state->{}:null));
+    }
+    @Test void originalAlertDoesNotBlameThePromptAndKeepsTheRawProviderReply() throws Exception {
+        String body="{\"error\":{\"message\":\"非常抱歉，该提示可能违反了关于暴力内容的防护限制。如果你认为此判断有误，请重试或修改提示语。\",\"type\":\"invalid_request_error\",\"param\":\"\",\"code\":\"content_policy_violation\"}}";
+        var error=rejectedResponse(400,body,true);
+        assertEquals("unknown",((Map<?,?>)error.getDetails()).get("target"));
+        assertTrue(error.getMessage().contains("未说明触发对象"));
+        assertFalse(error.getMessage().contains("该提示"));
+        assertTrue(((ProviderResponseDiagnostics)error.getSuppressed()[0]).responseBody().contains("该提示可能违反"));
+        verify(upstream,times(1)).sendJson(any(),any());
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans={true,false})
+    void errorsInsideSuccessfulHttpResponsesRetainTheirReasonAndExistingSettlementClassification(boolean synchronous) {
+        var ep=endpoint("ernie-Image");
+        if(synchronous)ep.setImageRequestSpecJson(AiImageRequestSpec.read("""
+                {"promptMaxChars":2048,"minReferenceImages":0,"maxReferenceImages":0,"referenceField":"none",
+                 "outputs":[{"canvasSize":"1024x1024","aspectRatio":"1:1","providerFields":{}}],
+                 "wire":{"submitPath":"/images/generations","resultMode":"sync-base64","outputPointer":"/data/0/b64_json"}}
+                """).json());
+        when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
+        var response=json("{\"error\":{\"code\":\"content_policy_violation\",\"param\":\"image\"}}");
+        when(upstream.sendJson(any(),any())).thenReturn(response);
+        if(synchronous) {
+            var error=assertThrows(JusuanImageClient.ProviderRejected.class,()->client.generate("ep","image","1024x1024",List.of(),"request","owner",s->{},null,null,null,state->{}));
+            assertTrue(error.getMessage().startsWith("参考图片未通过内容审核"));
+        } else {
+            var pending=assertThrows(JusuanImageClient.Pending.class,()->client.generate("ep","image","1024x1024",List.of(),"request","owner",s->{},null,null,null,state->{}));
+            assertEquals("STUDIO_IMAGE_SUBMISSION_UNKNOWN",pending.code());
+            assertTrue(pending.getMessage().contains("参考图片未通过内容审核"));
+        }
+        verify(upstream,times(1)).sendJson(any(),any());
     }
     @Test void configuredAsyncImageProtocolDoesNotDependOnProviderHostname(){
         var ep=endpoint("flux2-klein-4b");

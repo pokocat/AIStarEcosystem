@@ -565,7 +565,8 @@ class IpRunWorkerTest {
         worker.runBlocking(RID);
         assertEquals(IpRun.STATUS_FAILED,reload().getStatus());
         assertEquals(status==400?"STUDIO_IMAGE_PROVIDER_FAILED":"STUDIO_IMAGE_SUBMISSION_UNKNOWN",reload().getErrorCode());
-        assertTrue(reload().getErrorMessage().contains(reason));assertEquals(0,reload().getCost());
+        assertTrue(reload().getErrorMessage().contains("生成结果未通过内容审核"));
+        assertTrue(reload().getErrorMessage().contains("未成年人"));assertEquals(0,reload().getCost());
         verify(upstream,times(1)).sendJson(any(),any());
         verify(credits,times(1)).releaseHold(eq("ip-run"),eq(RID),anyString());
         verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString(),org.mockito.ArgumentMatchers.any());

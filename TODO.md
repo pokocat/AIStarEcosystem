@@ -94,6 +94,7 @@
 
 - [ ] **Studio Turbopack 预览被 Twick 样式阻断**（2026-10-24 发现）：`apps/web-aiavatar/src/styles/twick-scoped.css:1739` 在普通规则后包含字体 `@import`，`next dev --turbopack` 报 `@import rules must precede all rules`，影响 `/create` 及引用成片编辑器的画布页面。本轮个人 IP 提示词修改未改该样式；需同步核对 `scripts/scope-twick-css.mjs` 的生成规则并独立验证。
 
+- [x] ~~**模型错误包装误导审核对象与处理方向**~~ **2026-10-31 本地完成，未发布**：通用审核码不推断参考图或提示词，明确字段与审核阶段才定位；修正嵌套/HTTP 200 错误原因丢失、供应商限流/配额/余额/克隆权益误归类和错误充值/退款引导，历史错误同步规范。供应商余额与预扣费原话仍只留后台，客户钱包提示保留；后端 429 项、前端 42 项与编译门通过，见 [复核报告](docs/audits/model-error-wrapping-review-20261031.md)。
 - [ ] **全模型错误原因展示发布前验收**（2026-10-25 本地扩大范围，未部署）：文字 / 视觉 / 图片 / 视频 / 配音 / 口型 / 音乐 / 数字人共用 `ProviderErrorMessage`；发布前后检查真实页面、供应商配额提示与追查号，不重复客户付费任务，见 [接入与验证](docs/audits/model-error-propagation-validation-20261025.md)。
 
 ### 2026-10-26 · 积分切换到 1 元 = 100 积分

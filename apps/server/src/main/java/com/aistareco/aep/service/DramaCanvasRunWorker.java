@@ -1099,9 +1099,9 @@ public class DramaCanvasRunWorker {
             if (be.getMessage() != null && !be.getMessage().isBlank()) return be.getMessage();
         }
         if (e instanceof ResponseStatusException) {
-            return "积分结算没成功，这次没扣费；再试一次（追查号 " + runId + "）。";
+            return "这次操作未完成，请刷新任务状态；如需协助，请提供任务号 " + runId + "。";
         }
-        return "生成失败（" + (e == null ? "未知原因" : e.getClass().getSimpleName()) + "）· 追查号 " + runId;
+        return "生成未完成，请刷新任务状态；如需协助，请提供任务号 " + runId + "。";
     }
 
     /** 从 internalDetail 提取所有状态的上游原因；未记录上游响应时返回 null。 */
@@ -1122,7 +1122,7 @@ public class DramaCanvasRunWorker {
 
     /** 上游 4xx 但抽不出它的原话时给用户的那句。 */
     private static String genericRejection(Integer status) {
-        return "模型拒绝了这次请求（上游 " + status + "），积分已退回。";
+        return "生成服务返回错误（HTTP " + status + "），未提供具体原因。";
     }
 
     /** internalDetail 里的上游 HTTP 状态码；没有 → null。 */

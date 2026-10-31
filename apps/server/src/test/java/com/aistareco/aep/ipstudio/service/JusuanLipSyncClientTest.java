@@ -13,6 +13,34 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 class JusuanLipSyncClientTest {
+    @Test void anErrorInsideHttp200KeepsItsCauseWithoutBecomingDefinitiveSubmissionRejection() {
+        var upstream=mock(UpstreamModelHttp.class);
+        var endpoint=AiModelEndpoint.builder().id("lips").upstreamApiKeyEncrypted(AepCryptoUtil.encrypt("test-key")).build();
+        java.net.http.HttpResponse<String> response=mock(java.net.http.HttpResponse.class);
+        when(response.statusCode()).thenReturn(200);
+        when(response.body()).thenReturn("{\"error\":{\"code\":\"InputVideoSensitiveContentDetected\"}}");
+        when(upstream.sendJson(any(),any())).thenReturn(response);
+        var client=new JusuanLipSyncClient(upstream,new ObjectMapper());
+        for(boolean submit:new boolean[]{true,false}) {
+            var error=assertThrows(BusinessException.class,()->{if(submit)client.submit(endpoint,"https://lip.example/v1","{}","id","owner");else client.poll(endpoint,"https://lip.example/v1","https://lip.example/v1/jobs/id?model=x-dub","id","owner");});
+            assertEquals("STUDIO_LIP_SYNC_BAD_OUTPUT",error.getCode());
+            assertFalse(error instanceof JusuanSpeechClient.Rejected);
+            assertTrue(error.getMessage().contains("参考视频未通过内容审核"));
+        }
+    }
+    @Test void unclassifiedRejectionDoesNotBlameTheFaceOrAudioDuration() {
+        var upstream=mock(UpstreamModelHttp.class);
+        var endpoint=AiModelEndpoint.builder().id("lips").upstreamApiKeyEncrypted(AepCryptoUtil.encrypt("test-key")).build();
+        java.net.http.HttpResponse<String> response=mock(java.net.http.HttpResponse.class);
+        when(response.statusCode()).thenReturn(400);when(response.body()).thenReturn("{}");
+        when(upstream.sendJson(any(),any())).thenReturn(response);
+        var error=assertThrows(BusinessException.class,()->new JusuanLipSyncClient(upstream,new ObjectMapper())
+                .submit(endpoint,"https://lip.example/v1","{}","id","owner"));
+        assertEquals("STUDIO_LIP_SYNC_REJECTED",error.getCode());
+        assertTrue(error.getMessage().contains("未提供具体原因"));
+        assertFalse(error.getMessage().contains("正脸"));
+        assertFalse(error.getMessage().contains("时长"));
+    }
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(ints={400,503})
     void providerErrorReasonSurvivesSubmitAndPoll(int status) {
