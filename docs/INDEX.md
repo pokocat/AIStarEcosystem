@@ -96,7 +96,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | [Studio 品牌邀请页设计](prototypes/studio-invitation-design.md) | 品牌、创作能力、朋友邀请、认证后返回 Studio；独立交互原型及桌面/手机截图 | 设计审阅稿，尚未替换线上（2026-10-17） |
 | [Studio 企业主子账号与积分管理方案](ip-studio-team-accounts-plan.md) | **v0.4 已生产发布** | 单企业归属、固定 RBAC、人工充值和积分批量分配/回收；分配积分归企业，开通沿用现有逻辑、不做企业席位（last-reviewed 2026-10-15） |
 | [后台测试账号](test-accounts-plan.md) | **已生产发布** | 超管创建独立测试身份、两分钟一次性正常 OIDC 登录、停用及业务边界（last-reviewed 2026-10-17） |
-| [企业积分第一批验收](ip-studio-enterprise-foundation-validation.md) | **E01–E04 测试与边界** | 企业权限、V56、钱包兼容的 H2/MySQL 验收、编译契约门及后续边界（last-reviewed 2026-10-15） |
+| [企业积分第一批验收](releases/ip-studio-enterprise-foundation-validation.md) | **E01–E04 测试与边界** | 企业权限、V56、钱包兼容的 H2/MySQL 验收、编译契约门及后续边界（last-reviewed 2026-10-15） |
 | [企业积分前端规划](ip-studio-enterprise-ui-plan.md) | **完整管理/付款/财务界面** | Studio及财务页沿用平台组件；单个/批量手机号添加、预览确认与权限动线（last-reviewed 2026-10-29） |
 | [企业手机号添加与界面验收](releases/enterprise-member-add-validation-20261029.md) | **本地完成，未发布** | 单个/批量（100 人）添加、独立事务、逐项失败重试及桌面/手机验收（last-reviewed 2026-10-29） |
 | [`docs/ip-studio-libtv-alignment.md`](ip-studio-libtv-alignment.md) | **IPStudio 对标 LibTV 的原始提案与实时差距矩阵** | 首页与统一画布、助手/剧本/图片/原生视频/模板核心动线，v0.229 补回拖线引用、v0.231 模板直接复制为普通画布；多模态助手、长视频、专属声音等差距明确（last-reviewed 2026-10-10） |
@@ -210,7 +210,24 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | [`docs/audits/studio-user-journey-acceptance-20261019.md`](audits/studio-user-journey-acceptance-20261019.md) | 线上只读的用户视角验收：文字落画布、复刻检查口径、成片默认片段等待办（2026-10-19，后续见 TODO） |
 | [`docs/audits/web-aiavatar-test-suite-audit-2026-10.md`](audits/web-aiavatar-test-suite-audit-2026-10.md) | web-aiavatar vitest 审计：耗时来自 jsdom 并发争用而非条数；限并发 + 假计时器 + 1056→963 条（2026-10-20，已实施） |
 
+### 6.1 Studio 场景创作专项（2026-10-30）
+
+实施从「独立复核与整体方案」开始，待办入口见 [TODO · Studio 当前待办](../TODO.md#studio-当前待办)。以下报告保留各自的源码、线上版本与观察时间；首轮发现及空闲窗口检查结果属于当时记录，后续修复看复测报告，后端发布状态看对应发布记录。
+
+| 分组 | 文档 | 内容与状态 |
+|---|---|---|
+| 实施方案 | [全部内置生成流程：独立复核与整体方案](audits/studio-built-in-creation-flow-plan-2026-10-30.md) | 8 条判断成立、2 条更正、6 条补充；共用创作状态、稿件与 H3 对齐、场景规则、结果接续及 PR 切分；实施顺序以此为准，未实施（last-reviewed: 2026-10-30） |
+| 流程审查 | [全部内置图片与视频生成流程审查](audits/studio-built-in-creation-flow-review-2026-10-30.md) | 全量 17 图片 / 21 视频场景及模板接续；草稿恢复、再做、结果继续与验收计划；后续更正见实施方案（last-reviewed: 2026-10-30） |
+| 提示词审查 | [场景化创作提示词审查与优化方案](audits/studio-scene-prompt-review-2026-10-30.md) | 提示词证据与逐场景内容策略；实施顺序、后端上线状态等更正见实施方案，未实施（last-reviewed: 2026-10-30） |
+| 提示词快照 | [全部内置场景提示词清单](audits/studio-scenes-all-prompts-2026-10-30.md) | 38 个场景与共用拼装规则，源码基线 `ee984dcb3`；保留当时快照，后续配置与发布可能变化（last-reviewed: 2026-10-30） |
+| UI 首轮审计 | [Studio 新版 UI 与交互复核](audits/studio-new-ui-review-20261030.md) | 当轮 14 项发现；模型语义、路由、输入保护和布局；部分后续已修，复测见下一行（last-reviewed: 2026-10-30） |
+| UI 修复后复测 | [Studio 线上复核与空闲窗口检查](audits/studio-online-ui-recheck-idle-window-20261030.md) | 核心修复独立通过，保留卡片操作、焦点、返回上下文等问题；当轮因在线使用未重启后端，不代表后续发布状态（last-reviewed: 2026-10-30） |
+
+原始 UI 证据：[1032px 首轮截图](audits/studio-new-ui-review-20261030/video-1032.png)、[1032px 复测截图](audits/studio-new-ui-review-20261030/video-1032-recheck.png)、[393px 复测截图](audits/studio-new-ui-review-20261030/video-393-recheck.png)。CLI detector 的空数组结果已记入首轮报告，不另存重复 JSON；该结果仅代表该次扫描无发现，不能替代交互验收。
+
 ## 7. 发布与验收记录（`docs/releases/`）
+
+- [Studio 10 月 27–29 日更新图](releases/weekly/studio-update-20261027-29.png)：对外更新素材，区分图中已上线与仍在测试的内容；正式制品和验收以发布记录为准（last-reviewed: 2026-10-30）。
 
 - [Studio 普通文字文档编辑发布](releases/studio-text-document-release-20261022.md)：画布／故事板展开使用统一富文本文档；main `bd3a9df2`、105 项回归及线上保存／刷新验收（2026-10-22，last-reviewed）。
 

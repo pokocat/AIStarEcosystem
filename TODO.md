@@ -30,6 +30,8 @@
 
 ## Studio 当前待办
 
+- [ ] **全部内置图片/视频生成流程顺畅与内容质量**（2026-10-30 审查，未实施）：用户明确同城仅为举例，范围为全部 17 图片/21 视频场景及内置模板接续。先完善共用草稿恢复、再做不重复拼词、结果直接继续、模型/素材/稿件一致和 H3 台词格式；再逐项完善全部场景规则与完整验收。**实施顺序与 PR 切分以 [独立复核与整体方案](docs/audits/studio-built-in-creation-flow-plan-2026-10-30.md) 为准**（2026-10-30 晚复核：事实边界已随 21:34 的 server 上线；线上目录未被后台覆盖；场景页草稿仅 5 份；另补视频选项不进草稿、比例 / 时长静默钳制、图片结果到不了下一步等 6 条）；证据见 [全量流程审查](docs/audits/studio-built-in-creation-flow-review-2026-10-30.md) 与 [提示词证据](docs/audits/studio-scene-prompt-review-2026-10-30.md)。未新增付费生成，未部署。
+
 - [ ] **发布模板时区域颜色丢失**（2026-10-25 发现，圈选分组）：画布分组新增 `metadata.groupTone`（`apps/web-aiavatar/src/canvas-bridge/studio-areas.ts`），但服务端 `IpDemoTemplateService` 剥素材时对 group 节点只白名单了 `groupDescription`（约 121 行），存为模板 / 官方内容后区域回到默认色。名字、说明、成员不受影响；要保留颜色需在同处加 `groupTone`（只接受 `slate|blue|teal|green|amber|rose`）。
 
 - [x] ~~视频优化提示文案与控件简化~~ **2026-10-23 完成**：统一「智能优化」开关，沿用已存请求选项与提交映射，输入详情保留结果与缺失状态；定向交互测试随提交记录。
