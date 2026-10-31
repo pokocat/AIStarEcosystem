@@ -1,10 +1,10 @@
 # AiAvatar · 数字资产平台（web-aiavatar）
 
-### 2026-10-31 · 注册账号默认头像与修改入口（本地实现，未发布）
+### 2026-10-31 · 注册账号默认头像与修改入口（已发布）
 
 `AccountAvatar` 使用 `react-notion-avatar` 1.1.12：完整随机 UID 固定生成配置，各设备/重新登录一致；自定义 `/api/me.avatarUrl` 优先，加载失败回退同一默认头像。桌面账号菜单、手机底栏与「我的账号」统一使用。修改入口复用 ID `/account/profile` 的上传保存，返回后刷新 OIDC 与共享身份缓存，切号丢弃旧结果。MIT 运行时原样保留在 `src/vendor/react-notion-avatar`，来源与校验值见该目录 README；不安装上游 demo/React 17 依赖。真源：[账号界面统一](../../docs/aiavatar-account-unification.md)。
 
-同日外观修正（本地未发布）：默认头像改为统一浅灰底，人物不重新随机。导航头像按按钮内容区缩放，单层细边框与头像同心，修正侧栏头像向右下溢出；键盘焦点保持可见。
+同日外观修正已随 `20261031-studio-avatar-polish` 发布：默认头像改为统一浅灰底，人物不重新随机。导航头像按按钮内容区缩放，单层细边框与头像同心，修正侧栏头像向右下溢出；键盘焦点保持可见。轮播圆点保留选中胶囊，只过渡底色。线上桌面新旧版与手机验收通过，见[发布记录](../../docs/releases/studio-avatar-polish-release-20261031.md)。
 
 画布封面统一（2026-10-17，已发布 a4092626）：项目页与灵感页共用 ProjectCardPreview、projectPreview、CanvasCoverEditor，优先级为人工封面 → 已保存图片（优先采用图）→ 实际画布缩略图。支持独立 JPG/PNG 上传、选图、恢复自动、失败重试；共用 /v1/ip-studio/covers/{project|template}/{id} 的 POST/PUT/DELETE，不改 doc 或模板版本，列表刷新重新签名。个人模板本人可管理，官方模板仅 SUPER_ADMIN；内置官方模板也支持 SUPER_ADMIN 上传，覆盖信息保存在平台配置，不复制模板文档。原项目 PUT 的 coverStorageKey 继续兼容。
 
