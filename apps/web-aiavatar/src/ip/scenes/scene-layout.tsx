@@ -3,7 +3,7 @@
 import { SignedImage } from "@/canvas-bridge/signed-image";
 import { type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { Check, ChevronDown, ChevronRight, Download, FileImage, History, Loader2, PanelLeft, Pencil, Pin, PinOff, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Download, FileImage, History, Loader2, PanelLeft, Pencil, Pin, PinOff, Plus, X } from "lucide-react";
 import { dialogFocus } from "../dialog-focus";
 import { StudioErrorNotice } from "../studio-errors";
 import type { IpProjectSummary, StudioSceneMedia, StudioSceneOptionGroup } from "@ai-star-eco/types";
@@ -22,6 +22,11 @@ export function SceneThumb({ id, title, cover, size = 44 }: { id: string; title:
   return <span className="scene-thumb" style={{ width: size, height: size }} aria-hidden="true">
     {empty ? <b>{title.slice(0, 1)}</b> : <img key={src} src={src} alt="" loading="lazy" onError={() => setFailed(src)}/>}
   </span>;
+}
+
+/** 空素材位的样子：类型图标居中，右下角一个「＋」角标（不写字，点了打开资产库）。 */
+export function SlotEmpty({ Icon, size = 24 }: { Icon: typeof X; size?: number }) {
+  return <><Icon size={size} strokeWidth={1.3} aria-hidden="true"/><i className="scene-slot-badge" aria-hidden="true"><Plus size={11} strokeWidth={2.4}/></i></>;
 }
 
 /** 是不是手机形态：读 `<html data-layout>`（CSS 和 JS 用同一个真值，见 shell/layout-mode.ts）。 */

@@ -20,7 +20,7 @@ beforeEach(()=>{vi.clearAllMocks();api.folders.mockResolvedValue([]);api.objects
 const assets=Array.from({length:25},(_,i)=>({id:`asset-${i}`,kind:i===0?'audio':'text',title:i===0?'声音 A':`章节 ${i}`,data:i===0?{storageKey:'own/voice',url:'/voice'}:{content:`章节正文 ${i}`}}));
 const openMaterials=async()=>{
   fireEvent.click(screen.getByRole('button',{name:'资产库添加'}));
-  fireEvent.click(screen.getByRole('button',{name:'生成与上传素材'}));
+  fireEvent.click(screen.getByRole('button',{name:'生成与上传'}));
   await waitFor(()=>expect(screen.getByText('声音 A')).toBeDefined());
 };
 test('canvas exposes direct upload and sends the selected files without an extra menu',()=>{
@@ -36,7 +36,7 @@ test('canvas library opens outside the toolbar and adds the selected asset to th
   const insert=vi.fn().mockResolvedValue(undefined);
   render(<nav aria-label="画布工具栏"><StudioAttachmentPicker variant="canvas" locked={false} reading={false} onFiles={()=>{}} onAssets={insert}/></nav>);
   const trigger=screen.getByRole('button',{name:'从资产库添加'});
-  fireEvent.click(trigger);fireEvent.click(screen.getByRole('button',{name:'生成与上传素材'}));
+  fireEvent.click(trigger);fireEvent.click(screen.getByRole('button',{name:'生成与上传'}));
   await waitFor(()=>expect(screen.getByText('声音 A')).toBeDefined());
   const dialog=screen.getByRole('dialog',{name:'引用个人资产'});
   expect(screen.getByRole('navigation',{name:'画布工具栏'}).contains(dialog)).toBe(false);
@@ -64,7 +64,7 @@ test('load and insertion failures preserve selection for an explicit retry',asyn
   api.materials.mockRejectedValueOnce(new Error('资产库暂时不可用')).mockResolvedValue({items:assets,total:assets.length});
   const insert=vi.fn().mockRejectedValueOnce(new Error('画布保存失败')).mockResolvedValueOnce(undefined);
   render(<StudioAttachmentPicker locked={false} reading={false} onFiles={()=>{}} onAssets={insert}/>);
-  fireEvent.click(screen.getByRole('button',{name:'资产库添加'}));fireEvent.click(screen.getByRole('button',{name:'生成与上传素材'}));
+  fireEvent.click(screen.getByRole('button',{name:'资产库添加'}));fireEvent.click(screen.getByRole('button',{name:'生成与上传'}));
   await waitFor(()=>expect(screen.getAllByRole('alert').map(element=>element.textContent).join(' ')).toContain('暂时不可用'));
   fireEvent.click(screen.getByRole('button',{name:'重试'}));await waitFor(()=>expect(screen.getByText('声音 A')).toBeDefined());
   fireEvent.click(screen.getByRole('checkbox',{name:'引用资产 声音 A'}));fireEvent.click(screen.getByRole('button',{name:'添加并引用 1'}));

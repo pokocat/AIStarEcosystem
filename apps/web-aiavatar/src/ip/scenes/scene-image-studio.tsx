@@ -25,7 +25,7 @@ import { useSceneDraftStore, useSceneStateSave } from "./scene-draft-store";
 import { useSceneQuery, writeSceneQuery } from "./scene-query";
 import { UiVersionSwitch } from "@/shell/ui-version-switch";
 import { addImageRow, applyRun, createSceneDraft, imageRows, listSceneDrafts, openedImageState, patchNode, resubmitRow, rowUploads, slotUploads, submissionRejected, type SceneUpload } from "./scene-drafts";
-import { SceneDrawer, SceneEmpty, SceneExample, SceneNoModel, SceneRecent, SceneResultTabs, SceneSwitch, SceneViewer, sceneFailureText, sceneHintText, sceneOptionValues, useSceneDrawerPin, useScenePopover, RatioGlyph, useSceneMobile } from "./scene-layout";
+import { SceneDrawer, SceneEmpty, SceneExample, SceneNoModel, SceneRecent, SceneResultTabs, SceneSwitch, SceneViewer, sceneFailureText, sceneHintText, sceneOptionValues, useSceneDrawerPin, useScenePopover, RatioGlyph, useSceneMobile, SlotEmpty } from "./scene-layout";
 import { AiMark } from "../studio-ai-icon";
 
 const FALLBACK_RATIOS = ["1:1", "3:4", "4:3", "9:16", "16:9"];
@@ -405,7 +405,7 @@ export function SceneImageStudio() {
             return <div key={`${scene.id}-${i}`} className={`scene-media${slot ? " is-filled" : ""}`}>
               {slot ? <span className="scene-media-preview"><SignedImage src={slot.url} storageKey={slot.key} alt={ref.label}/><i className="scene-ref-index">图{i + 1}</i></span>
                 : <button type="button" className="scene-slot-add" aria-label={`从资产库选${ref.label}`} title={ref.hint ?? undefined} onClick={() => openPicker(i)}>
-                    <Icon size={20} strokeWidth={1.3}/><small>从资产库选</small></button>}
+                    <SlotEmpty Icon={Icon} size={28}/></button>}
               <span title={ref.hint}>{ref.label}{!slot && !ref.required && <small>可选</small>}</span>
               {slot && <button type="button" className="scene-ref-remove" aria-label={`移除${ref.label}`} onClick={() => setSlots(old => { const next = [...old]; next[i] = undefined; return next; })}><X size={11} strokeWidth={1.8}/></button>}
             </div>;

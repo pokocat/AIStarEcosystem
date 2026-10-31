@@ -146,8 +146,13 @@ html[data-layout="desktop"] .scene-composer-head .scene-recent-host { display: n
 .scene-media-row.is-large .scene-media>button:first-child, .scene-media-row.is-large .scene-media-preview, .scene-media-row.is-large .scene-slot-add { width: 96px; height: 96px; border-radius: 14px; }
 .scene-media-row.is-large .scene-media>span:not(.scene-media-preview) { font-size: 12px; text-align: left; align-self: flex-start; }
 .scene-slot-host { position: relative; }
-.scene-slot-add { display: flex; flex-direction: column; justify-content: center; gap: 6px; }
-.scene-slot-add small { padding: 0 6px; color: var(--ip-muted); font-size: 11px; line-height: 1.35; text-align: center; word-break: keep-all; }
+/* 空素材位：类型图标居中，右下角一个墨色「＋」角标；不写字（2026-10-31 用户：字和图标没对齐、图标不居中）。 */
+.scene-slot-add { display: grid; place-items: center; }
+.scene-media>button:first-child>svg, .scene-slot-add>svg { color: #8a929c; transition: color 140ms var(--ip-ease); }
+.scene-media>button:first-child:hover:not(:disabled)>svg, .scene-slot-add:hover:not(:disabled)>svg { color: var(--ip-ink); }
+.scene-slot-badge { position: absolute; right: 6px; bottom: 6px; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--ip-ink); color: #fff; font-style: normal; box-shadow: 0 1px 3px rgba(23,32,42,.2); transition: transform 140ms var(--ip-ease); }
+.scene-media>button:first-child:hover:not(:disabled) .scene-slot-badge, .scene-slot-add:hover:not(:disabled) .scene-slot-badge { transform: scale(1.08); }
+.scene-media-row:not(.is-large) .scene-slot-badge { right: 5px; bottom: 5px; width: 18px; height: 18px; }
 .scene-slot-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; display: flex; flex-direction: column; min-width: 150px; padding: 4px; border: 1px solid var(--ip-line); border-radius: 12px; background: var(--ip-paper); box-shadow: 0 12px 32px rgba(23,32,42,.12); }
 .scene-slot-menu button { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--ip-ink); font: inherit; font-size: 12.5px; text-align: left; white-space: nowrap; cursor: pointer; }
 .scene-slot-menu button:hover, .scene-slot-menu button:focus-visible { background: var(--ip-soft); }

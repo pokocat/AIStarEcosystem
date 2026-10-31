@@ -3,7 +3,7 @@
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowUp, Check, ChevronDown, Copy, Cpu, Download, FolderOpen, Loader2, Mic, PencilLine, Plus,
+import { ArrowUp, Check, ChevronDown, Copy, Cpu, Download, FolderOpen, Image as ImageIcon, Loader2, Mic, PencilLine, Plus,
   RotateCcw, SlidersHorizontal, Square, UserRound, Video, X } from "lucide-react";
 import type { IpProject, IpRun, IpSavedAsset, StudioMediaImportResult, StudioSceneInputs, StudioSceneOptionGroup, StudioSceneVideoState } from "@ai-star-eco/types";
 import type { StudioCapabilities } from "@ai-star-eco/types/ip-studio-workflow";
@@ -33,7 +33,7 @@ import { addScriptNode, addVideoRow, applyRun, createSceneDraft, draftSubject, l
 import { useSceneDraftStore, useSceneStateSave } from "./scene-draft-store";
 import { useSceneQuery, writeSceneQuery } from "./scene-query";
 import { UiVersionSwitch } from "@/shell/ui-version-switch";
-import { SceneDrawer, SceneEmpty, SceneExample, SceneNoModel, SceneRecent, SceneResultTabs, SceneSwitch, sceneFailureText, sceneHintText, sceneOptionValues, sceneSteps, useSceneDrawerPin, useScenePopover, RatioGlyph, useSceneMobile } from "./scene-layout";
+import { SceneDrawer, SceneEmpty, SceneExample, SceneNoModel, SceneRecent, SceneResultTabs, SceneSwitch, sceneFailureText, sceneHintText, sceneOptionValues, sceneSteps, useSceneDrawerPin, useScenePopover, RatioGlyph, useSceneMobile, SlotEmpty } from "./scene-layout";
 import { AiMark } from "../studio-ai-icon";
 import { clampSceneDuration, sceneVideoDurations, sceneVideoInputs, sceneVideoSettings, type SceneVideoMaterial } from "./scene-video-plan";
 import { classifyBlanks, missingFigures, scriptMissing, scriptPlaceholders, splitBlanks } from "./scene-script-check";
@@ -713,7 +713,7 @@ export function SceneVideoStudio() {
     <div className={`scene-media${media ? " is-filled" : ""}`}>
       <button type="button" disabled={uploading !== undefined} onClick={() => choose(kind)} aria-label={media ? `更换${label}` : `从资产库选${label}`} title={media?.fileName}>
         {uploading === kind ? <Loader2 size={18} className="studio-gallery-spinner"/> : media && kind === "character" ? <SignedImage src={media.url} storageKey={media.key} alt=""/>
-          : <Icon size={18} strokeWidth={1.3}/>}
+          : <SlotEmpty Icon={Icon} size={22}/>}
       </button>
       <span>{label}{!media && optional && <small>可选</small>}</span>
       {media && <button type="button" className="scene-ref-remove" aria-label={`移除${label}`} onClick={clear}><X size={11} strokeWidth={1.8}/></button>}
@@ -757,7 +757,7 @@ export function SceneVideoStudio() {
             <span>{scene.images.label}</span>
             <button type="button" className="scene-ref-remove" aria-label={`移除${m.title}`} onClick={() => { drop("image", m.key); setImages(old => old.filter((_, j) => j !== i).map((o, j) => ({ ...o, title: `${scene.images.label} ${j + 1}` }))); }}><X size={11} strokeWidth={1.8}/></button></div>; })}
           {images.length < (scene.images.max ?? 6) && <div className="scene-media"><button type="button" disabled={uploading !== undefined} onClick={() => choose("image")} aria-label={`从资产库选${scene.images.label}`}>
-            {uploading === "image" ? <Loader2 size={18} className="studio-gallery-spinner"/> : <Plus size={18} strokeWidth={1.3}/>}</button>
+            {uploading === "image" ? <Loader2 size={18} className="studio-gallery-spinner"/> : <SlotEmpty Icon={ImageIcon} size={22}/>}</button>
             <span>{images.length ? "再加一张" : scene.images.label}{!images.length && !scene.images.required && <small>可选</small>}</span></div>}
           {(scene.character || scene.voice) && <i className="scene-media-divider" aria-hidden="true"/>}
           {scene.character && tile("character", character, "角色", UserRound, true, () => { if (character) drop("character", character.key); setCharacter(undefined); })}
