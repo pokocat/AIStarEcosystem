@@ -11,7 +11,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mocks.push }), use
 vi.mock("next/link", () => ({ default: ({ children, replace, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock("antd", () => ({ Modal: ({ open, children, title }: any) => open ? <div role="dialog" aria-label={title}>{children}</div> : null }));
 vi.mock("@/components/hub/auth", () => ({ useRequireAuth: () => "ok", PlatformGateScreen: () => null }));
-vi.mock("@/proto/api", () => ({ USE_MOCK: false, AvatarApi: { list: mocks.list, patch: mocks.patch } }));
+vi.mock("@/proto/api", () => ({ USE_MOCK: false, useIdentity: () => null, AvatarApi: { list: mocks.list, patch: mocks.patch } }));
 vi.mock("@/canvas-bridge/studio-api", () => ({ listStudioIpAssets: mocks.assets, studioVoiceProfiles: mocks.voices, classifyStudioIpAsset: vi.fn() }));
 vi.mock("@/canvas-bridge/signed-image", () => ({ SignedImage: ({ storageKey, src, ...props }: any) => <img src={src} {...props} /> }));
 vi.mock("@/canvas-bridge/signed-audio", () => ({ SignedAudio: () => null }));

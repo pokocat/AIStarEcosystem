@@ -6,6 +6,8 @@ import { isIdMode } from "@ai-star-eco/api-client";
 import { ArrowLeft, ArrowRight, ClipboardList, Coins, HardDrive, Image, Settings, Trash2, UserRound, UserPlus } from "lucide-react";
 import { ACCOUNT_PAGES, accountPageKey, STUDIO_NAVIGATION_EVENT } from "./account-navigation";
 import { useLayoutMode } from "./layout-mode";
+import type { MeIdentity } from "@/proto/api";
+import { EditableAccountAvatar } from "./account-avatar";
 
 const icons = { user: UserRound, invitation: UserPlus, tasks: ClipboardList, credits: Coins, storage: HardDrive, materials: Image, trash: Trash2, settings: Settings };
 
@@ -37,11 +39,11 @@ export function AccountWorkspace({ children, tool = false, activePage }: { child
   </div>;
 }
 
-export function AccountOverview({ name, phone, demo }: { name: string; phone?: string; demo?: boolean }) {
+export function AccountOverview({ name, phone, demo, identity }: { name: string; phone?: string; demo?: boolean; identity?: MeIdentity | null }) {
   return <AccountWorkspace>
     <header className="account-overview-header"><div><h1>我的账号</h1><p>管理账号、积分和创作资源</p></div><Link href="/projects" className="account-create-link">回到项目<ArrowRight size={16}/></Link></header>
     <section className="account-profile" aria-label="账号信息">
-      <span className="account-avatar" aria-hidden="true">{Array.from(name.trim())[0] || "我"}</span>
+      <EditableAccountAvatar identity={identity} size={52} />
       <div><h2 title={name}>{name}</h2><p>{phone || "手机号与登录方式可在账号与安全中管理"}{demo && <span className="account-demo">演示数据</span>}</p></div>
       <Link href="/studio#/security">账号与安全</Link>
     </section>

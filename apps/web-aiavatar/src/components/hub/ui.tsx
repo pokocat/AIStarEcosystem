@@ -9,6 +9,8 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useUiVersion } from "@/shell/ui-version";
+import { AccountAvatar } from "@/shell/account-avatar";
+import { useIdentity } from "@/proto/api";
 
 type CSS = React.CSSProperties;
 
@@ -131,6 +133,7 @@ const NEXT_TABS = [
 
 export function HubTabBar() {
   const pathname = usePathname() || "/";
+  const identity = useIdentity();
   const tabs = useUiVersion() === "next" ? NEXT_TABS : TABS;
   const createOn = pathname.startsWith("/create") || pathname.startsWith("/studio");
   return (
@@ -153,7 +156,7 @@ export function HubTabBar() {
           </div>
         ) : (
           <Link key={t.href} href={t.href} replace className={"wx-tab" + (t.match(pathname) ? " on" : "")}>
-            {t.icon({ strong: t.match(pathname) })}
+            {t.href === "/me" ? <AccountAvatar identity={identity} size={24} /> : t.icon({ strong: t.match(pathname) })}
             <span className="lbl">{t.label}</span>
           </Link>
         ),

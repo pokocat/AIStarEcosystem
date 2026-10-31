@@ -82,6 +82,8 @@
 
 ## Studio 当前待办
 
+- [x] ~~Studio 默认头像与修改入口~~ **2026-10-31 本地完成，未发布**：注册及已有无头像账号按完整随机 UID 固定分配 `react-notion-avatar` 默认头像，桌面/手机与底栏一致；用户通过既有 ID 资料页上传修改，返回后刷新资料。自定义图片优先，裂图回退固定默认；切号不回写旧会话。规则见 [账号界面统一](docs/aiavatar-account-unification.md)。
+
 - [x] ~~4K 同步图片响应与 JSON 字符串上限不一致~~ **2026-10-26 已修复，未发布**：`sync-base64` 响应按原端点 `maxOutputBytes` 换算解析上限，不修改共享 JSON 解析器，实际图片大小与尺寸校验保留；解析失败记录异常类型、响应字符数和位置，诊断在大图 / 截断 JSON 下仍省略 Base64。真实 3840×2160 PNG 的 Base64 超过 2000 万字符，本地 JSON 生成与 multipart 编辑路径均通过。线上 17:09 / 17:17 两笔失败各 55 积分已确认解冻；历史响应与底层解析异常未完整保留，因此不能认定已证明这两笔的具体触发原因，也未恢复或重提历史任务。
 
 - [ ] **Studio Turbopack 预览被 Twick 样式阻断**（2026-10-24 发现）：`apps/web-aiavatar/src/styles/twick-scoped.css:1739` 在普通规则后包含字体 `@import`，`next dev --turbopack` 报 `@import rules must precede all rules`，影响 `/create` 及引用成片编辑器的画布页面。本轮个人 IP 提示词修改未改该样式；需同步核对 `scripts/scope-twick-css.mjs` 的生成规则并独立验证。
