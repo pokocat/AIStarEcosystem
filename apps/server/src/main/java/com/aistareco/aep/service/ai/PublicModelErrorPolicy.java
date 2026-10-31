@@ -9,6 +9,13 @@ import java.util.regex.Pattern;
 /** Customer error presentation only. Never changes stored evidence, recovery classification or wallet errors. */
 public final class PublicModelErrorPolicy {
     public static final String UNAVAILABLE = "生成服务暂时不可用，请稍后再试或联系平台处理。";
+    /**
+     * The supplier's own storage on our account is full (聚算 personal_asset_quota_exceeded: 「个人资源空间不足，请清理资源
+     * (含回收站)或扩容后重试」). Passed through, that told customers to delete their own work, which cannot help.
+     */
+    public static final String SUPPLIER_STORAGE_FULL =
+            "生成服务的存储空间满了，这次没有生成成功。问题出在平台这边，删作品或清空回收站都没有用。已经做好的内容都还在，请联系客服，恢复后重试这一步就行。";
+    private static final Pattern SUPPLIER_STORAGE = Pattern.compile("(?i)资源空间|存储空间|空间不足|清理资源|回收站|扩容|asset[_ ]?quota|storage[_ ]?quota");
     private static final Pattern ACCOUNT = Pattern.compile(
             "(?i)余额|额度|配额|预扣|扣费|计费|费率|定价|成本|充值|单价|收费|账户权益|账户欠费|balance|quota|billing|credits?|pricing|payment|\\b(?:costs?|budgets?|fees?|funds?)\\b|insufficient[_ -]?funds|(?:USD|CNY|RMB|[¥￥$])\\s*[0-9]");
     private static final Pattern PRIVATE = Pattern.compile(
@@ -24,6 +31,7 @@ public final class PublicModelErrorPolicy {
     /** Used only on actual supplier messages: their balances/quotas are never the customer's wallet. */
     public static String upstream(String text) {
         if (text == null) return null;
+        if (SUPPLIER_STORAGE.matcher(text).find()) return SUPPLIER_STORAGE_FULL;
         if (PRIVATE.matcher(text).find() || ACCOUNT.matcher(text).find()) return UNAVAILABLE;
         return EXTERNAL_ID.matcher(text).replaceAll("").strip();
     }
@@ -33,6 +41,10 @@ public final class PublicModelErrorPolicy {
         if (text == null || text.isBlank()) return text;
         boolean provider = code != null && CODE.matcher(code).matches() || CONTEXT.matcher(text).find();
         boolean wallet = code != null && WALLET.matcher(code).matches();
+        if (provider && !wallet && SUPPLIER_STORAGE.matcher(text).find()) {
+            var trace = TRACE.matcher(text);
+            return trace.find() ? SUPPLIER_STORAGE_FULL + " · 追查号 " + trace.group(1) : SUPPLIER_STORAGE_FULL;
+        }
         if (!PRIVATE.matcher(text).find() && !(!wallet && (COST.matcher(text).find() || provider && ACCOUNT.matcher(text).find()))) return text;
         var trace = TRACE.matcher(text);
         return trace.find() ? UNAVAILABLE + " · 追查号 " + trace.group(1) : UNAVAILABLE;

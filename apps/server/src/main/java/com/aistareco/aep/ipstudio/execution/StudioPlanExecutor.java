@@ -177,20 +177,24 @@ public class StudioPlanExecutor {
      * D03: steering bound to this execution that nothing has handled yet. A running execution stops before its next
      * submission (needs_user: 「收到新指令，等待重新确认」; accepted tasks keep their snapshot), and the dialogue opens the
      * turn that reads the message, so a change request is answered with a revised plan / new approval instead of the
-     * old steps continuing. Idempotent: each steering row is handled once.
+     * old steps continuing. A message that only asks ({@link StudioSteeringQuestions}) is answered without stopping.
+     * Idempotent: each steering row is handled once.
      */
     private void steer(IpPlanExecution e,ObjectNode state,List<Runnable> after) {
         var source=steering==null?null:steering.getIfAvailable();
         if(source==null||e.getThreadId()==null||!IpPlanExecution.active(e.getStatus()))return;
-        String latest=null;
+        String latest=null,change=null;
         for(var note:source.notes(e.getThreadId(),e.getId())) {
             if("rejected".equals(note.status())||PlanState.steeringSeen(state,note.id()))continue;
             PlanState.markSteeringSeen(state,note.id());
             latest=note.text();
+            if(!StudioSteeringQuestions.onlyAsks(note.text()))change=note.text();
         }
         if(latest==null)return;
-        if(IpPlanExecution.RUNNING.equals(e.getStatus()))
-            needsUser(e,state,"收到新指令，等待重新确认：「"+excerpt(latest,60)+"」。已经提交的任务会照原样完成，后面的步骤先不提交。");
+        // 2026-10-30: 「做到哪了？」 only asks; it is answered while the plan keeps going instead of stopping it.
+        if(change!=null&&IpPlanExecution.RUNNING.equals(e.getStatus()))
+            needsUser(e,state,"收到新指令，等待重新确认：「"+excerpt(change,60)+"」。已经提交的任务会照原样完成，后面的步骤先不提交。");
+        else if(change==null)log.info("[plan-exec] steering only asks, execution keeps going execution={}",e.getId());
         String thread=e.getThreadId();
         after.add(()->source.openTurn(thread));
     }

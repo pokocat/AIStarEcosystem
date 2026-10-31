@@ -438,6 +438,31 @@ class StudioPlanExecutorTest {
         assertEquals(2,submitted.size(),"an explicit continue resumes the plan");
     }
 
+    /** 2026-10-30: asking how far it got used to stop the plan until the user confirmed again. */
+    @Test void aQuestionSentWhileRunningIsAnsweredAndThePlanKeepsGoing() throws Exception {
+        execution("running",1000,videoStep("v1",40),videoStep("v2",40,"v1"));
+        executor.advance("PEX-1");
+        notes.add(new com.aistareco.aep.ipstudio.dialogue.StudioExecutionSteering.Note("IDS-1","IDM-1","做到哪了？还要多久","queued",Instant.now()));
+        dtos.put("IPR-PEX-1-p-v1",dto("IPR-PEX-1-p-v1","done",40,videoOutput("v1.mp4")));
+        executor.advance("PEX-1");
+        assertEquals("running",row.getStatus());
+        assertEquals(2,submitted.size(),"the next step is submitted as planned");
+        assertEquals(List.of("t"),openedTurns,"the dialogue still answers the question");
+        assertEquals("[\"IDS-1\"]",state().path("steeringSeen").toString());
+    }
+
+    @Test void aQuestionTogetherWithAChangeStillStops() throws Exception {
+        execution("running",1000,videoStep("v1",40),videoStep("v2",40,"v1"));
+        executor.advance("PEX-1");
+        notes.add(new com.aistareco.aep.ipstudio.dialogue.StudioExecutionSteering.Note("IDS-1","IDM-1","做到哪了？","queued",Instant.now()));
+        notes.add(new com.aistareco.aep.ipstudio.dialogue.StudioExecutionSteering.Note("IDS-2","IDM-2","第二段换成夜景","queued",Instant.now()));
+        dtos.put("IPR-PEX-1-p-v1",dto("IPR-PEX-1-p-v1","done",40,videoOutput("v1.mp4")));
+        executor.advance("PEX-1");
+        assertEquals("needs_user",row.getStatus());
+        assertEquals(1,submitted.size());
+        assertTrue(state().path("needsUserReason").asText().contains("第二段换成夜景"),"the reason quotes the change, not the question");
+    }
+
     @Test void rejectedSteeringIsIgnored() throws Exception {
         execution("running",1000,videoStep("v1",40));
         notes.add(new com.aistareco.aep.ipstudio.dialogue.StudioExecutionSteering.Note("IDS-9","IDM-9","算了","rejected",Instant.now()));

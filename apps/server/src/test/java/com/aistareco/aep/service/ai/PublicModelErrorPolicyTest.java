@@ -29,6 +29,25 @@ class PublicModelErrorPolicyTest {
         assertEquals("ABCDEF234567",error.path("logId").asText());
         assertTrue(original.path("assets").get(0).path("image").path("error").path("message").asText().contains("0.0123"));
     }
+    /** 2026-10-30: the supplier's 「清理资源(含回收站)」 sent customers to delete their own work. */
+    @Test void aFullSupplierStorageIsNotTheCustomersToClean() throws Exception {
+        String body = "{\"error\":{\"code\":\"personal_asset_quota_exceeded\",\"message\":\"个人资源空间不足，请清理资源(含回收站)或扩容后重试\",\"retryable\":false}}";
+        assertEquals(PublicModelErrorPolicy.SUPPLIER_STORAGE_FULL, ProviderErrorMessage.reason(body));
+        assertEquals(PublicModelErrorPolicy.SUPPLIER_STORAGE_FULL, ProviderErrorMessage.sanitize("Personal asset quota exceeded"));
+        assertEquals(PublicModelErrorPolicy.SUPPLIER_STORAGE_FULL,
+                ProviderErrorMessage.append(body, "视频生成失败"), "the supplier's words are not appended to ours");
+        // Already stored before this fix: replaced when read back, the trace number kept.
+        assertEquals(PublicModelErrorPolicy.SUPPLIER_STORAGE_FULL + " · 追查号 ABCDEF234567", PublicModelErrorPolicy.stored(
+                "视频生成失败；个人资源空间不足，请清理资源(含回收站)或扩容后重试 · 追查号 ABCDEF234567", "VIDEO_SUBMIT_FAILED"));
+        var safe = PublicModelErrorPolicy.response(mapper.readTree(
+                "{\"status\":\"failed\",\"errorCode\":\"STUDIO_SPEECH_PROVIDER_FAILED\",\"errorMessage\":\"个人资源空间不足，请清理资源(含回收站)或扩容后重试\"}"));
+        assertEquals(PublicModelErrorPolicy.SUPPLIER_STORAGE_FULL, safe.path("errorMessage").asText());
+        assertEquals(PublicModelErrorPolicy.SUPPLIER_STORAGE_FULL, PublicModelErrorPolicy.stored(PublicModelErrorPolicy.SUPPLIER_STORAGE_FULL, "VIDEO_SUBMIT_FAILED"));
+    }
+    @Test void ourOwnStorageMessagesAreLeftAlone() {
+        String own = "空间不够了，删掉一些不用的素材或成片，也可以去扩容";
+        assertEquals(own, PublicModelErrorPolicy.stored(own, "CLIP_ASSET_QUOTA_EXCEEDED"));
+    }
     @Test void diagnosticEvidenceStillContainsTheSupplierReason() {
         assertTrue(ProviderErrorMessage.diagnostic("余额不足 ¥0.0123").contains("0.0123"));
         var failure=ProviderResponseDiagnostics.attachBody(new IllegalStateException("public"),"{\"error\":{\"message\":\"余额不足 ¥0.0123\"}}");
