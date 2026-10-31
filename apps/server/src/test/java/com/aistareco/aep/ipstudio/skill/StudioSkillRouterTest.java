@@ -146,6 +146,14 @@ class StudioSkillRouterTest {
             c("按第1集剧本出第一段视频（用刚出的场景图+陈彬彬设定图做首帧）", "image", VIDEO),
             c("第1集场次2出第一段视频：环形发布厅做首帧，人物设定图定长相", "", VIDEO),
             c("用海报和商品图生成两段视频", "image", VIDEO),
+            // 2026-10-30: the format between the verb and 视频 (时长 / 画幅 / 横竖屏) kept a thread that had just made
+            // pictures on 出图.
+            c("生成一段5秒视频", "", VIDEO), c("生成一段5秒视频", "image", VIDEO),
+            c("生成一段16:9、5秒视频", "", VIDEO), c("生成一段16:9、5秒视频", "image", VIDEO),
+            c("做一段竖屏视频", "", VIDEO), c("做一段竖屏视频", "image", VIDEO),
+            c("用这张图生成一段 10 秒的横屏视频", "image", VIDEO), c("出一条9:16、15s的短片", "", VIDEO),
+            // The format words alone do not make a picture into a video.
+            c("生成一张16:9的封面图", "", IMAGE), c("出一张竖屏海报", "image", IMAGE),
             // Production 2026-10-21, with and without the picture / video attached.
             c("用这张图做一段视频", "", VIDEO), c("用这张图做一段视频", "image", VIDEO), c("用这张图做一段视频", "video", VIDEO),
             // 出图's bare 「几张图 / 一张图」 tied these with 出视频 and the tie kept 出图 on the thread that had just made the

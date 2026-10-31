@@ -121,8 +121,13 @@ public final class StudioSkillRouter {
      * 视频里的主角…」 must not read 剧本 as part of a video); the ASCII one is left alone for 「9:16」.
      */
     private static final String CLAUSE = "[^，。！？；：,.!?;\\n]";
+    /**
+     * Making a video: the verb, then only counts and the format of that video — 时长 / 画幅 / 横竖屏 (「生成一段16:9、5秒视频」
+     * 「做一段竖屏视频」, 2026-10-30) — then the video word. No 张 / 图 in between, so 「生成一张16:9的封面图」 stays a picture.
+     */
     private static final Pattern VIDEO_OUTPUT = Pattern.compile(
-            "(?:做|出|生成|拍|制作)(?![的了过好完])(?:成|第|一|二|三|四|五|六|七|八|九|十|两|几|[0-9]|个|段|条|集|部){0,8}(?:视频|短片|动画|成片)"
+            "(?:做|出|生成|拍|制作)(?![的了过好完])(?:成|第|一|二|三|四|五|六|七|八|九|十|两|几|[0-9]|个|段|条|集|部"
+                    + "|秒|分钟|左右|以内|[:：x×.、 s]|竖屏|横屏|竖版|横版|竖|横|高清|超清|[0-9]+p|[0-9]+k|的){0,16}(?:视频|短片|动画|成片)"
                     + "(?!脚本|剧本|文案|的脚本|的剧本|的文案)");
     /** A piece of text someone writes (口播 covers 口播稿; no bare 稿, which is also 线稿 / 草稿 in a drawing). */
     private static final String TEXT = "(?:文案|卖点|标题|口播|脚本|台词|剧本|简介|广告语|旁白|分镜|小传|人设|标语|话术|大纲|故事|文字|文稿|稿子|讲稿)";
