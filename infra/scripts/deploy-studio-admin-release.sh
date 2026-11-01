@@ -78,10 +78,13 @@ $SUDO mv "$NEXT" "$TARGET"
 ROLLBACK_NEEDED=1
 $SUDO systemctl restart aistareco-studio-admin
 
-for path in /admin /admin/login; do
+for path in /admin /admin/login /admin/business /admin/technology /admin/suppliers; do
   status="000"
   for _attempt in $(seq 1 20); do
-    status="$(curl -sS --max-time 2 -o /dev/null -w '%{http_code}' "http://127.0.0.1:3004$path" 2>/dev/null || true)"
+    # The dashboard root intentionally redirects to /admin/business. Follow a
+    # bounded number of redirects so the probe verifies the destination page,
+    # while still failing closed on a loop or missing route.
+    status="$(curl -sS -L --max-redirs 5 --max-time 2 -o /dev/null -w '%{http_code}' "http://127.0.0.1:3004$path" 2>/dev/null || true)"
     [[ "$status" == "200" ]] && break
     sleep 0.5
   done
