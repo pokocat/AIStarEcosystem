@@ -20,6 +20,20 @@ class StudioOperationsDashboardIntegrationTest {
     @Autowired JdbcTemplate jdbc;
 
     @Test
+    void scopedDashboardSkipsTheUnrequestedModule() {
+        var service = new StudioOperationsDashboardService(jdbc, new ObjectMapper());
+        var business = service.dashboard(7, "business");
+        assertThat(business.business().dailySpend()).hasSize(7);
+        assertThat(business.technology().models()).isEmpty();
+        assertThat(business.integrations().release().status()).isEqualTo("unavailable");
+
+        var technology = service.dashboard(7, "technology");
+        assertThat(technology.business().dailySpend()).isEmpty();
+        assertThat(technology.business().directorFunnel().status()).isEqualTo("unavailable");
+        assertThat(technology.technology().queue().concurrencyStatus()).isEqualTo("unavailable");
+    }
+
+    @Test
     void emptyDatabaseReturnsPartialRatherThanFakeGreenAndKeepsSevenBeijingBuckets() {
         var dashboard = new StudioOperationsDashboardService(jdbc, new ObjectMapper()).dashboard(7);
         assertThat(dashboard.health().checks()).hasSize(9);

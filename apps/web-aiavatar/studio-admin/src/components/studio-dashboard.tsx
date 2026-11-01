@@ -59,8 +59,8 @@ import { Skeleton } from "@ai-star-eco/ui/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@ai-star-eco/ui/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@ai-star-eco/ui/ui/tooltip";
 import { ApiError, StudioOperationsApi } from "@/lib/api";
-
 type View = "business" | "technology";
+type DashboardTab = "overview" | "spend" | "issuance" | "models" | "quality" | "release";
 type Days = 1 | 7 | 30;
 
 const int = (value: number) => value.toLocaleString("zh-CN");
@@ -147,11 +147,15 @@ function demoDashboard(): DashboardData {
   });
 }
 
-export function StudioDashboard() {
+export function StudioDashboard({ module }: { module: View }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const demoMode = process.env.NODE_ENV !== "production" && searchParams.get("demo") === "1";
-  const view: View = searchParams.get("view") === "technology" ? "technology" : "business";
+  const view = module;
+  const requestedTab = searchParams.get("tab");
+  const tab: DashboardTab = view === "business"
+    ? requestedTab === "spend" || requestedTab === "issuance" ? requestedTab : "overview"
+    : requestedTab === "quality" || requestedTab === "release" ? requestedTab : "models";
   const days: Days = searchParams.get("days") === "1" ? 1 : searchParams.get("days") === "30" ? 30 : 7;
   const [data, setData] = React.useState<DashboardData>();
   const [loading, setLoading] = React.useState(true);
@@ -162,9 +166,8 @@ export function StudioDashboard() {
 
   const syncWindow = React.useCallback((nextDays: Days) => {
     const params = new URLSearchParams(searchParams.toString());
-    params.set("view", view);
     params.set("days", String(nextDays));
-    router.replace(`/?${params.toString()}${window.location.hash}`, { scroll: false });
+    router.replace(`/${view}?${params.toString()}`, { scroll: false });
   }, [router, searchParams, view]);
 
   const load = React.useCallback(async () => {
@@ -172,7 +175,7 @@ export function StudioDashboard() {
     setError("");
     setForbidden(false);
     try {
-      const next = await StudioOperationsApi.dashboard(days);
+      const next = await StudioOperationsApi.dashboard(days, view);
       setData(demoMode ? withDemoTechnology(next) : next);
     } catch (cause) {
       if (demoMode) {
@@ -184,7 +187,7 @@ export function StudioDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [days, demoMode]);
+  }, [days, demoMode, view]);
 
   React.useEffect(() => { void load(); }, [load]);
   const stale = data ? Date.now() - new Date(data.generatedAt).getTime() > 10 * 60_000 : false;
@@ -195,7 +198,7 @@ export function StudioDashboard() {
   };
 
   return (
-    <div className="mx-auto max-w-[1760px] space-y-4 px-3 py-4 sm:px-5 md:space-y-5 md:px-7 md:py-6 xl:px-8">
+    <div className="mx-auto max-w-[1760px] space-y-3 px-3 py-3 sm:px-4 md:space-y-4 md:px-5 md:py-4 xl:px-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-h-9 items-center gap-2">
           <span className="text-xs text-slate-500">统计窗口按北京时间计算</span>
@@ -217,11 +220,9 @@ export function StudioDashboard() {
       {data && (
         <>
           <HealthOverview data={data} stale={stale} onDetail={setHealthCheck} />
-          <OverviewHero data={data} view={view} stale={stale} />
-          <KpiGrid data={data} view={view} />
           {view === "business"
-            ? <BusinessView data={data} onEvents={() => setEventsOpen(true)} />
-            : <TechnologyView data={data} />}
+            ? <BusinessView data={data} tab={tab} stale={stale} onEvents={() => setEventsOpen(true)} />
+            : <TechnologyView data={data} tab={tab} stale={stale} />}
         </>
       )}
 
@@ -262,26 +263,26 @@ function OverviewHero({ data, view, stale }: { data: DashboardData; view: View; 
     + (data.health.abnormalModels > 0 ? 1 : 0);
   const taskCount = data.technology.models.reduce((sum, item) => sum + item.jobs, 0);
   return (
-    <section className="studio-hero studio-grid relative overflow-hidden rounded-xl p-5 text-slate-900 sm:p-7 md:min-h-44 md:p-8">
-      <div className="relative z-10 flex h-full flex-col justify-between gap-7 lg:flex-row lg:items-center">
+    <section className="studio-hero studio-grid relative overflow-hidden rounded-xl p-4 text-slate-900 sm:p-5">
+      <div className="relative z-10 flex h-full flex-col justify-between gap-4 lg:flex-row lg:items-center">
         <div>
-          <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600">
+          <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600">
             <DatabaseZap className="size-3.5" /> 北京时间口径 · {data.window.label}
           </div>
-          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">{view === "business" ? "经营数据，一屏掌握" : "生成链路，持续可见"}</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+          <h2 className="text-xl font-bold tracking-tight sm:text-2xl">{view === "business" ? "经营数据，一屏掌握" : "生成链路，持续可见"}</h2>
+          <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-600">
             {view === "business"
               ? "普通积分与模型赠款分桶统计；人民币换算只用于运营观察，不代表收入或毛利。"
               : "运行中不计入失败率，账务退回率不冒充技术失败率；缺失采集明确标注为未接入。"}
           </p>
-          <p className="mt-4 flex items-center gap-2 text-xs text-slate-500">
+          <p className="mt-2 flex items-center gap-2 text-[11px] text-slate-500">
             <Clock3 className="size-3.5" />数据时点 {dateTime(data.generatedAt)}
             {stale && <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">数据已陈旧</Badge>}
           </p>
         </div>
-        <div className="grid min-w-0 grid-cols-2 gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 sm:min-w-[360px]">
-          <div className="bg-slate-50 p-4 sm:p-5"><p className="text-xs text-slate-500">{view === "business" ? "窗口消耗" : "生成任务"}</p><p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">{view === "business" ? int(data.business.totals.totalCredits) : int(taskCount)}</p><p className="mt-1 text-[11px] text-slate-400">{view === "business" ? "积分" : "当前窗口"}</p></div>
-          <div className="bg-slate-50 p-4 sm:p-5"><p className="text-xs text-slate-500">需关注</p><p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">{int(issueCount)}</p><p className="mt-1 text-[11px] text-slate-400">{issueCount ? "健康项异常" : "当前无异常计数"}</p></div>
+        <div className="grid min-w-0 grid-cols-2 gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 sm:min-w-[320px]">
+          <div className="bg-slate-50 p-3 sm:px-4"><p className="text-[11px] text-slate-500">{view === "business" ? "窗口消耗" : "生成任务"}</p><p className="mt-0.5 text-xl font-semibold tabular-nums text-slate-900">{view === "business" ? int(data.business.totals.totalCredits) : int(taskCount)}</p><p className="text-[10px] text-slate-400">{view === "business" ? "积分" : "当前窗口"}</p></div>
+          <div className="bg-slate-50 p-3 sm:px-4"><p className="text-[11px] text-slate-500">需关注</p><p className="mt-0.5 text-xl font-semibold tabular-nums text-slate-900">{int(issueCount)}</p><p className="text-[10px] text-slate-400">{issueCount ? "健康项异常" : "当前无异常计数"}</p></div>
         </div>
       </div>
     </section>
@@ -312,7 +313,7 @@ function KpiGrid({ data, view }: { data: DashboardData; view: View }) {
         { label: "并发余量", value: data.technology.queue.concurrencyRemaining == null ? "未接入" : int(data.technology.queue.concurrencyRemaining), detail: "无统一采集时不显示 0", icon: ServerCog, tone: "violet" },
       ];
   return (
-    <section aria-label="关键指标" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+    <section aria-label="关键指标" className="grid grid-cols-2 gap-2 lg:grid-cols-3 xl:grid-cols-6">
       {items.map((item) => <KpiCard key={item.label} {...item} />)}
     </section>
   );
@@ -329,10 +330,10 @@ const KPI_TONES: Record<string, string> = {
 
 function KpiCard({ label, value, detail, icon: Icon, tone }: { label: string; value: string; detail: string; icon: React.ElementType; tone: string }) {
   return (
-    <Card className="studio-panel relative min-h-32 gap-0 overflow-hidden border-slate-200 bg-white">
-      <CardContent className="relative flex h-full items-center justify-between gap-3 p-5">
-        <div className="min-w-0"><p className="text-xs text-slate-500">{label}</p><p className="mt-2 truncate text-xl font-bold tabular-nums text-slate-950">{value}</p><p className="mt-1 truncate text-[11px] text-slate-400">{detail}</p></div>
-        <span className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${KPI_TONES[tone]}`}><Icon className="size-5" /></span>
+    <Card className="studio-panel relative min-h-24 gap-0 overflow-hidden border-slate-200 bg-white">
+      <CardContent className="relative flex h-full items-center justify-between gap-2 p-3.5">
+        <div className="min-w-0"><p className="text-[11px] text-slate-500">{label}</p><p className="mt-1 truncate text-lg font-bold tabular-nums text-slate-950">{value}</p><p className="mt-0.5 truncate text-[10px] text-slate-400">{detail}</p></div>
+        <span className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${KPI_TONES[tone]}`}><Icon className="size-4.5" /></span>
       </CardContent>
     </Card>
   );
@@ -342,55 +343,59 @@ function HealthOverview({ data, stale, onDetail }: { data: DashboardData; stale:
   const issues = data.health.checks.filter((item) => item.count > 0).length;
   const partial = data.health.reconciliationAgent.status !== "linked" || stale;
   return (
-    <Card id="health" className="studio-panel scroll-mt-36 gap-0 overflow-hidden border-slate-200 sm:scroll-mt-24">
-      <CardHeader className="flex-row items-start justify-between gap-4 border-b bg-white px-5 py-4">
+    <Card id="health" className="studio-panel gap-0 overflow-hidden border-slate-200">
+      <CardHeader className="flex-row items-start justify-between gap-3 border-b bg-white px-4 py-3">
         <div><CardTitle className="flex items-center gap-2 text-sm font-semibold"><span className={`size-2 rounded-full ${issues ? "bg-red-500" : partial ? "bg-amber-500" : "bg-emerald-500"}`} />共用健康状态</CardTitle><CardDescription className="mt-1 text-xs">A–I 即时只读重算；加载失败、陈旧和未接入不会显示健康绿色。</CardDescription></div>
         <Badge variant="outline" className={issues ? "border-red-200 bg-red-50 text-red-700" : partial ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}>
           {issues ? `${issues} 项异常` : partial ? "部分数据未接入" : "全部正常"}
         </Badge>
       </CardHeader>
-      <CardContent className="grid gap-2 p-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+      <CardContent className="grid grid-cols-2 gap-1.5 p-3 md:grid-cols-3 xl:grid-cols-6">
         {data.health.checks.map((item) => (
           <button key={item.id} type="button" disabled={!item.detailAvailable} onClick={() => onDetail(item.id)}
-            className="flex min-h-11 items-center justify-between gap-2 rounded-lg border bg-slate-50 px-3 py-2 text-left text-xs outline-none transition hover:border-blue-200 hover:bg-blue-50/40 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:hover:border-border disabled:hover:bg-slate-50">
+            className="flex min-h-10 items-center justify-between gap-1.5 rounded-md border bg-slate-50 px-2.5 py-1.5 text-left text-[11px] outline-none transition hover:border-blue-200 hover:bg-blue-50/40 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:hover:border-border disabled:hover:bg-slate-50">
             <span className="min-w-0 truncate"><b className="mr-1 text-slate-800">{item.id}</b>{item.label}</span>
             <span className={`shrink-0 rounded-full px-2 py-0.5 font-semibold ${item.count ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>{int(item.count)}</span>
           </button>
         ))}
         <HealthFact label="冻结超过 6 小时" value={data.health.stuckHoldsOverSixHours} />
         <HealthFact label="异常退回模型" value={data.health.abnormalModels} />
-        <div className="flex min-h-11 items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"><span>对账 Agent</span><span className="font-semibold">未接入</span></div>
+        <div className="flex min-h-10 items-center justify-between gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800"><span>对账 Agent</span><span className="font-semibold">未接入</span></div>
       </CardContent>
     </Card>
   );
 }
 
 function HealthFact({ label, value }: { label: string; value: number }) {
-  return <div className="flex min-h-11 items-center justify-between gap-2 rounded-lg border bg-slate-50 px-3 py-2 text-xs"><span>{label}</span><span className={value ? "font-semibold text-red-600" : "font-semibold text-emerald-600"}>{int(value)}</span></div>;
+  return <div className="flex min-h-10 items-center justify-between gap-1.5 rounded-md border bg-slate-50 px-2.5 py-1.5 text-[11px]"><span className="truncate">{label}</span><span className={value ? "font-semibold text-red-600" : "font-semibold text-emerald-600"}>{int(value)}</span></div>;
 }
 
-function BusinessView({ data, onEvents }: { data: DashboardData; onEvents: () => void }) {
+function BusinessView({ data, tab, stale, onEvents }: { data: DashboardData; tab: DashboardTab; stale: boolean; onEvents: () => void }) {
+  if (tab === "overview") {
+    return <div className="space-y-3"><OverviewHero data={data} view="business" stale={stale} /><KpiGrid data={data} view="business" />
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,.9fr)_minmax(0,1.35fr)]"><ConsumersAndCashPanel data={data} /><DirectorFunnelPanel data={data} /></div><PhaseTwoNote /></div>;
+  }
+  if (tab === "issuance") {
+    return <Card className="studio-panel gap-0 border-slate-200"><CardHeader className="border-b px-5 py-4"><CardTitle className="flex items-center gap-2 text-sm font-semibold"><CircleDollarSign className="size-4 text-[#4f6692]" />发出积分核对</CardTitle><CardDescription className="text-xs">普通余额与模型赠款是两套分桶，不合并冒充总收入。</CardDescription></CardHeader>
+      <CardContent className="space-y-4 p-5"><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><MiniMetric label="窗口内发出" value={`${int(data.business.issuance.issuedCredits)} 积分`} /><MiniMetric label="折算观察值" value={yuan(data.business.issuance.yuanEquivalent)} /><MiniMetric label="普通钱包余额" value={int(data.business.issuance.walletBalance)} /><MiniMetric label="赠款可用 + 冻结" value={int(data.business.issuance.grantAvailable)} /></div>
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900"><b>赠送实际使用比例：未具备数据</b><br />{data.business.issuance.note}</div><Button variant="outline" onClick={onEvents}><ListFilter />查看只读发放明细</Button></CardContent></Card>;
+  }
   return (
-    <div id="spend" className="scroll-mt-36 space-y-5 sm:scroll-mt-24">
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(340px,.8fr)]">
+    <div className="space-y-3">
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.7fr)_minmax(340px,.8fr)]">
         <Card className="studio-panel gap-0 border-slate-200">
-          <CardHeader className="border-b px-5 py-4">
+          <CardHeader className="border-b px-4 py-3">
             <CardTitle className="text-sm font-semibold">每日积分消耗</CardTitle>
             <CardDescription className="text-xs">北京时间自然日；普通积分与模型赠款分开统计，不重复计数。</CardDescription>
           </CardHeader>
-          <CardContent className="p-4 sm:p-5">
+          <CardContent className="p-3 sm:p-4">
             {data.business.dailySpend.length ? <SpendChart data={data.business.dailySpend} /> : <EmptyState icon={Coins} title="当前窗口没有消费流水" />}
           </CardContent>
         </Card>
         <FeatureOverview data={data} />
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,.9fr)_minmax(0,1.35fr)]">
-        <ConsumersAndCashPanel data={data} />
-        <DirectorFunnelPanel data={data} />
-      </div>
-
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,.85fr)]">
+      <div>
         <Card className="studio-panel gap-0 overflow-hidden border-slate-200">
           <CardHeader className="border-b px-5 py-4">
             <CardTitle className="text-sm font-semibold">模型消耗概览</CardTitle>
@@ -401,26 +406,7 @@ function BusinessView({ data, onEvents }: { data: DashboardData; onEvents: () =>
           </CardContent>
         </Card>
 
-        <Card id="issuance" className="studio-panel scroll-mt-36 gap-0 border-slate-200 sm:scroll-mt-24">
-          <CardHeader className="border-b px-5 py-4">
-            <CardTitle className="flex items-center gap-2 text-sm font-semibold"><CircleDollarSign className="size-4 text-[#4f6692]" />发出积分核对</CardTitle>
-            <CardDescription className="text-xs">普通余额与模型赠款是两套分桶，不合并冒充总收入。</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4 p-5">
-            <div className="grid grid-cols-2 gap-3">
-              <MiniMetric label="窗口内发出" value={`${int(data.business.issuance.issuedCredits)} 积分`} />
-              <MiniMetric label="折算观察值" value={yuan(data.business.issuance.yuanEquivalent)} />
-              <MiniMetric label="普通钱包余额" value={int(data.business.issuance.walletBalance)} />
-              <MiniMetric label="赠款可用 + 冻结" value={int(data.business.issuance.grantAvailable)} />
-            </div>
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-              <b>赠送实际使用比例：未具备数据</b><br />{data.business.issuance.note}
-            </div>
-            <Button variant="outline" className="w-full" onClick={onEvents}><ListFilter />查看只读发放明细</Button>
-          </CardContent>
-        </Card>
       </div>
-      <PhaseTwoNote />
     </div>
   );
 }
@@ -429,11 +415,11 @@ function ConsumersAndCashPanel({ data }: { data: DashboardData }) {
   const { consumerActivity, cashFlow } = data.business;
   return (
     <Card className="studio-panel gap-0 border-slate-200">
-      <CardHeader className="border-b px-5 py-4">
+      <CardHeader className="border-b px-4 py-3">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold"><Activity className="size-4 text-[#5f7d84]" />消费用户与真实到账</CardTitle>
         <CardDescription className="text-xs">消费和现金流各用自己的口径，不互相代替。</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4 p-5">
+      <CardContent className="space-y-3 p-4">
         <div className="grid grid-cols-2 gap-3">
           <MiniMetric label="窗口消费用户" value={int(consumerActivity.activeConsumers)} />
           <MiniMetric label="首次 / 回访消费" value={`${int(consumerActivity.firstTimeConsumers)} / ${int(consumerActivity.returningConsumers)}`} />
@@ -459,11 +445,11 @@ function DirectorFunnelPanel({ data }: { data: DashboardData }) {
   ];
   return (
     <Card className="studio-panel gap-0 border-slate-200">
-      <CardHeader className="border-b px-5 py-4">
+      <CardHeader className="border-b px-4 py-3">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold"><Layers3 className="size-4 text-[#796c84]" />导演台创作推进</CardTitle>
         <CardDescription className="text-xs">当前快照；推进率按同一批项目去重，实体数量只作为创作规模展示。</CardDescription>
       </CardHeader>
-      <CardContent className="p-5">
+      <CardContent className="p-4">
         {funnel.status !== "available" ? <EmptyState icon={Layers3} title="导演台聚合源暂不可用" /> : <>
           <div className="grid gap-2 sm:grid-cols-4">
             {steps.map((step, index) => {
@@ -484,7 +470,7 @@ function DirectorFunnelPanel({ data }: { data: DashboardData }) {
 
 function SpendChart({ data }: { data: DashboardData["business"]["dailySpend"] }) {
   return (
-    <div className="h-[300px] w-full" role="img" aria-label="普通积分和模型赠款每日消耗折线图">
+    <div className="h-[240px] w-full" role="img" aria-label="普通积分和模型赠款每日消耗折线图">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ top: 16, right: 12, left: 0, bottom: 0 }}>
           <defs>
@@ -510,11 +496,11 @@ function FeatureOverview({ data }: { data: DashboardData }) {
   const colors = ["bg-[#5d76a1]", "bg-[#6f8980]", "bg-[#9b825f]", "bg-[#81748d]", "bg-[#8b9bab]", "bg-slate-400"];
   return (
     <Card className="studio-panel gap-0 border-slate-200">
-      <CardHeader className="border-b px-5 py-4">
+      <CardHeader className="border-b px-4 py-3">
         <CardTitle className="text-sm font-semibold">功能消耗构成</CardTitle>
         <CardDescription className="text-xs">条形仅表示当前窗口积分消耗占比，不是业务转化率。</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4 p-5">
+      <CardContent className="space-y-3 p-4">
         {features.map((item, index) => {
           const share = total ? item.credits / total * 100 : 0;
           return (
@@ -547,23 +533,24 @@ function MiniMetric({ label, value }: { label: string; value: string }) {
   return <div className="rounded-xl border bg-slate-50 p-3"><p className="text-[11px] text-slate-500">{label}</p><p className="mt-1 font-semibold tabular-nums text-slate-900">{value}</p></div>;
 }
 
-function TechnologyView({ data }: { data: DashboardData }) {
+function TechnologyView({ data, tab, stale }: { data: DashboardData; tab: DashboardTab; stale: boolean }) {
+  if (tab === "models") {
+    return <div className="space-y-3"><OverviewHero data={data} view="technology" stale={stale} /><KpiGrid data={data} view="technology" /><ModelMonitor data={data} /></div>;
+  }
+  if (tab === "release") {
+    return <div className="space-y-3"><IntegrationsPanel integrations={data.integrations} /><PhaseTwoNote technical /></div>;
+  }
   return (
-    <div className="space-y-5">
-      <ModelMonitor data={data} />
-      <section id="failure-analysis" aria-label="失败与耗时" className="scroll-mt-36 space-y-5 sm:scroll-mt-24">
-        <div className="grid gap-5 xl:grid-cols-2">
+      <section aria-label="失败与耗时" className="space-y-3">
+        <div className="grid gap-3 xl:grid-cols-2">
           <LatencyPanel latency={data.technology.imageLatency} />
           <LatencyPanel latency={data.technology.videoLatency} />
         </div>
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <FailurePanel data={data} />
           <SupplierPanel data={data} />
         </div>
       </section>
-      <IntegrationsPanel integrations={data.integrations} />
-      <PhaseTwoNote technical />
-    </div>
   );
 }
 
@@ -580,15 +567,15 @@ function ModelMonitor({ data }: { data: DashboardData }) {
   const active = visible.reduce((sum, item) => sum + item.inFlight, 0);
 
   return (
-    <Card id="models" className="studio-panel scroll-mt-36 gap-0 overflow-hidden border-slate-200 sm:scroll-mt-24">
-      <CardHeader className="border-b px-5 py-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+    <Card id="models" className="studio-panel gap-0 overflow-hidden border-slate-200">
+      <CardHeader className="border-b px-4 py-3">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
           <div><CardTitle className="flex items-center gap-2 text-sm font-semibold"><Activity className="size-4 text-[#4f6692]" />供应商与模型运行情况</CardTitle><CardDescription className="mt-1 text-xs">成功率只含终态；近 24 小时色块表示任务结果，不表示服务在线率。</CardDescription></div>
           <div className="relative w-full lg:w-64"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" /><Input value={query} onChange={(event) => setQuery(event.target.value)} className="bg-white pl-9" placeholder="搜索供应商或模型" aria-label="搜索供应商或模型" /></div>
         </div>
       </CardHeader>
       <CardContent className="p-0">
-        <div className="overflow-x-auto border-b bg-slate-50/80 px-4 py-3">
+        <div className="overflow-x-auto border-b bg-slate-50/80 px-3 py-2">
           <div className="flex min-w-max gap-2">
             {["全部", ...suppliers].map((name) => {
               const group = name === "全部" ? models : models.filter((item) => item.supplier === name);
@@ -597,16 +584,16 @@ function ModelMonitor({ data }: { data: DashboardData }) {
             })}
           </div>
         </div>
-        <div className="space-y-2.5 p-4">
-          <div className={`flex flex-col gap-2 rounded-xl border px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between ${failed ? "border-red-200 bg-red-50 text-red-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>
+        <div className="space-y-2 p-3">
+          <div className={`flex flex-col gap-1.5 rounded-lg border px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between ${failed ? "border-red-200 bg-red-50 text-red-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>
             <span className="flex items-center gap-2 font-semibold">{failed ? <AlertCircle className="size-4" /> : <CheckCircle2 className="size-4" />}{failed ? "当前筛选存在终态失败" : "当前筛选暂无终态失败"}</span>
             <span>{int(visible.length)} 个模型 · {int(failed)} 个失败任务 · {int(active)} 个进行中</span>
           </div>
-          <div className="flex flex-col gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 sm:flex-row sm:items-center sm:justify-between">
             <span className="flex items-center gap-2 font-semibold"><Activity className="size-4" />任务队列</span>
             <span>排队 {int(data.technology.queue.queued)} · 平均等待 {data.technology.queue.averageWaitSeconds == null ? "样本不足" : `${int(data.technology.queue.averageWaitSeconds)} 秒`} · 并发余量 {data.technology.queue.concurrencyRemaining == null ? "未接入" : int(data.technology.queue.concurrencyRemaining)}</span>
           </div>
-          <div className="grid gap-2 rounded-xl border bg-slate-50 p-3 text-xs sm:grid-cols-5">
+          <div className="grid grid-cols-2 gap-1.5 rounded-lg border bg-slate-50 p-2 text-xs sm:grid-cols-5">
             <RuntimeMetric label="提交任务" value={int(data.technology.outputs.submittedTasks)} />
             <RuntimeMetric label="终态成功" value={int(data.technology.outputs.terminalSuccesses)} />
             <RuntimeMetric label="终态失败" value={int(data.technology.outputs.terminalFailures)} tone={data.technology.outputs.terminalFailures ? "bad" : "normal"} />
@@ -623,9 +610,9 @@ function ModelMonitor({ data }: { data: DashboardData }) {
 function ModelRuntimeCard({ model }: { model: DashboardData["technology"]["models"][number] }) {
   const status = model.failed > 0 ? "异常" : model.inFlight > 0 ? "运行中" : model.jobs > 0 ? "正常" : "暂无任务";
   return (
-    <div className="rounded-lg border bg-white p-3.5 transition hover:border-blue-200 hover:shadow-sm sm:p-4">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
-        <div className="min-w-0 xl:w-[280px] xl:shrink-0">
+    <div className="rounded-lg border bg-white p-3 transition hover:border-blue-200 hover:shadow-sm">
+      <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
+        <div className="min-w-0 xl:w-[240px] xl:shrink-0">
           <div className="flex flex-wrap items-center gap-2"><span className={`size-2 rounded-full ${model.failed ? "bg-red-500" : model.inFlight ? "bg-blue-500" : model.jobs ? "bg-emerald-500" : "bg-slate-300"}`} /><strong className="truncate text-sm">{model.key}</strong><Badge variant="outline" className="text-[10px]">{model.mediaType}</Badge><Badge variant="outline" className={model.failed ? "border-red-200 bg-red-50 text-red-700" : model.inFlight ? "border-blue-200 bg-blue-50 text-blue-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}>{status}</Badge></div>
           <p className="mt-1 truncate pl-4 text-[11px] text-slate-400">{model.supplier} · {model.ownership}</p>
         </div>
@@ -641,7 +628,7 @@ function ModelRuntimeCard({ model }: { model: DashboardData["technology"]["model
 }
 
 function RuntimeMetric({ label, value, tone = "normal" }: { label: string; value: string; tone?: "normal" | "bad" }) {
-  return <div className="rounded-lg bg-slate-50 px-3 py-2"><p className="text-[10px] text-slate-400">{label}</p><p className={`mt-0.5 text-xs font-semibold tabular-nums ${tone === "bad" ? "text-red-600" : "text-slate-800"}`}>{value}</p></div>;
+  return <div className="rounded-md bg-slate-50 px-2.5 py-1.5"><p className="text-[10px] text-slate-400">{label}</p><p className={`mt-0.5 text-xs font-semibold tabular-nums ${tone === "bad" ? "text-red-600" : "text-slate-800"}`}>{value}</p></div>;
 }
 
 function OutcomeTimeline({ outcomes }: { outcomes: DashboardData["technology"]["models"][number]["outcomeBuckets"] }) {
@@ -655,7 +642,7 @@ function OutcomeTimeline({ outcomes }: { outcomes: DashboardData["technology"]["
   const labels: Record<string, string> = { ok: "有成功且无失败", issue: "存在失败", active: "仅有进行中任务", no_calls: "无调用", missing: "缺少覆盖" };
   return (
     <TooltipProvider delayDuration={100}>
-      <div className="mt-3 flex items-center gap-3">
+      <div className="mt-2 flex items-center gap-2">
         <span className="shrink-0 text-[10px] text-slate-400">24h · 每格30分钟</span>
         <div className="flex min-w-0 flex-1 gap-1 overflow-hidden">
           {outcomes.map((item) => (
@@ -678,18 +665,18 @@ function LatencyPanel({ latency }: { latency: StudioLatency }) {
   ];
   return (
     <Card className="studio-panel gap-0 border-slate-200">
-      <CardHeader className="border-b px-5 py-4">
+      <CardHeader className="border-b px-4 py-3">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">{latency.mediaType === "视频" ? <Video className="size-4 text-[#796c84]" /> : <ImageIcon className="size-4 text-[#58709b]" />}{latency.mediaType}耗时</CardTitle>
         <CardDescription className="text-xs">{latency.note}</CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-4 p-5 sm:grid-cols-[1fr_1.2fr]">
+      <CardContent className="grid gap-3 p-4 sm:grid-cols-[1fr_1.2fr]">
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-1">
           <MiniMetric label="P50" value={latency.p50Seconds == null ? "—" : `${int(latency.p50Seconds)} 秒`} />
           <MiniMetric label="P95" value={latency.p95Seconds == null ? "—" : `${int(latency.p95Seconds)} 秒`} />
           <MiniMetric label="有效样本" value={int(latency.samples)} />
         </div>
         {latency.samples ? (
-          <div className="h-40">
+          <div className="h-32">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={rows} margin={{ top: 10, right: 12, left: -16, bottom: 0 }}>
                 <CartesianGrid stroke="#edf0f6" strokeDasharray="4 4" vertical={false} />
@@ -700,7 +687,7 @@ function LatencyPanel({ latency }: { latency: StudioLatency }) {
               </LineChart>
             </ResponsiveContainer>
           </div>
-        ) : <div className="grid h-40 place-items-center rounded-xl border border-dashed text-xs text-slate-400">暂无完整耗时样本</div>}
+        ) : <div className="grid h-32 place-items-center rounded-xl border border-dashed text-xs text-slate-400">暂无完整耗时样本</div>}
       </CardContent>
     </Card>
   );

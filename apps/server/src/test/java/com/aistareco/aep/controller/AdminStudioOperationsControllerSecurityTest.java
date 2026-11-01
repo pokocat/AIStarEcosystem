@@ -30,6 +30,7 @@ class AdminStudioOperationsControllerSecurityTest {
         mvc.perform(get("/api/admin/studio-operations")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/admin/studio-operations/reconciliation-details?check=A")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/admin/studio-operations/credit-events")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/admin/studio-operations/supplier-performance")).andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -38,11 +39,13 @@ class AdminStudioOperationsControllerSecurityTest {
         mvc.perform(get("/api/admin/studio-operations")).andExpect(status().isForbidden());
         mvc.perform(get("/api/admin/studio-operations/reconciliation-details?check=A")).andExpect(status().isForbidden());
         mvc.perform(get("/api/admin/studio-operations/credit-events")).andExpect(status().isForbidden());
+        mvc.perform(get("/api/admin/studio-operations/supplier-performance")).andExpect(status().isForbidden());
     }
 
     @Test
     @WithMockUser(roles = "SUPER_ADMIN")
     void superAdminCanReadDashboard() throws Exception {
         mvc.perform(get("/api/admin/studio-operations?days=7")).andExpect(status().isOk());
+        mvc.perform(get("/api/admin/studio-operations/supplier-performance")).andExpect(status().isOk());
     }
 }
