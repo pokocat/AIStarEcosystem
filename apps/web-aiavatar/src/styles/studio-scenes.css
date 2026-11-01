@@ -183,6 +183,17 @@ html[data-layout="desktop"] .scene-composer-head .scene-recent-host { display: n
 .scene-box textarea::placeholder { color: #7a838d; }
 .scene-box textarea.is-full { font-size: 13px; }
 .scene-box textarea.is-extra { flex: 0 0 auto; min-height: 52px; padding-top: 10px; border-top: 1px solid var(--sn-line-2); }
+/* AI 视频的编辑框换成 Tiptap（scene-prompt-editor.tsx，2026-11-01）：字号、行高、滚动和原来的 textarea 一样；
+   提示词里的「图N」是行内的「缩略图 + 图N」标签，点一下看大图。编导的脚本卡片里同一个标签。 */
+.scene-prompt-field { position: relative; display: flex; flex: 1 1 0; flex-direction: column; min-height: 120px; overflow-y: auto; }
+.scene-prompt-field>div { display: flex; flex: 1 0 auto; flex-direction: column; }
+.scene-prompt-editor { flex: 1 0 auto; color: var(--ip-ink); font-size: 14px; line-height: 1.75; outline: none; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; }
+.scene-prompt-editor p { margin: 0; }
+.scene-prompt-placeholder { position: absolute; top: 0; right: 0; left: 0; color: #7a838d; font-size: 14px; line-height: 1.75; pointer-events: none; }
+.scene-prompt-ref { display: inline-flex; align-items: center; gap: 5px; height: 24px; margin: 0 2px; padding: 0 8px 0 2px; border: 1px solid var(--sn-field); border-radius: 7px; background: #f6f7f9; color: var(--ip-ink); font: inherit; font-size: 12.5px; font-weight: 600; line-height: 1; vertical-align: -6px; white-space: nowrap; cursor: zoom-in; transition: background-color 120ms var(--ip-ease), border-color 120ms var(--ip-ease); }
+.scene-prompt-ref:not(:has(img)) { padding-left: 8px; cursor: default; }
+.scene-prompt-ref img { display: block; width: 20px; height: 20px; border-radius: 5px; object-fit: cover; }
+.scene-prompt-ref:hover { border-color: #d3d8de; background: #eef0f3; }
 .scene-box>footer { display: flex; align-items: center; gap: 10px; }
 .scene-box>footer small { flex: 1; color: var(--ip-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .scene-box>footer small.is-over { color: var(--ip-error); }
@@ -399,6 +410,7 @@ html:not([data-layout="desktop"]) .scene-composer-head .scene-new { display: non
 html:not([data-layout="desktop"]) .scene-compose { padding: 10px 12px 0; overflow: visible; }
 html:not([data-layout="desktop"]) .scene-box { min-height: 220px; }
 html:not([data-layout="desktop"]) .scene-box textarea { font-size: 16px; }
+html:not([data-layout="desktop"]) :is(.scene-prompt-editor, .scene-prompt-placeholder) { font-size: 16px; }
 html:not([data-layout="desktop"]) .scene-fact-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
 html:not([data-layout="desktop"]) .scene-fact-chips::-webkit-scrollbar { display: none; }
 html:not([data-layout="desktop"]) .scene-fact-chips button { flex: 0 0 auto; height: 32px; }

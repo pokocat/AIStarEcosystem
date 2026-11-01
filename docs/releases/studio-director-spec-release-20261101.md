@@ -16,7 +16,7 @@
 | 项目 | 结果 |
 | --- | --- |
 | 正式构建 | main `6927fc59b60cd441f206007788968671a7ee1b02`，仓外干净工作区 `../AIStarEcosystem-release-studio-redesign`（detached 在该提交）构建 |
-| CI | #147 合入时 8 项都还在跑（按用户要求不等），结果见文末 |
+| CI | #147 合入时 8 项都还在跑（按用户要求不等）；之后 8 项全过 |
 | 本地门禁 | `tsc --noEmit`；定向 vitest（场景页、选择框、资产页、shell、canvas-bridge）通过；本地真后端 + 无头 Chrome 走过 1440 和 375 |
 | 发布包 | `20261101-studio-director-spec`（只有 web-aiavatar），tar SHA256 `f30d86628d3e4cbf65a4a8d7013db943b3a4cb77b256b937960c315ec772879d`（线上一致），BUILD_ID `eNERTzSCQiT5y0FG0YtAV`（线上一致） |
 | 构建参数 | `NEXT_PUBLIC_AUTH_MODE=id`、`NEXT_PUBLIC_ID_ISSUER=https://id.aibuzz.cn`、`NEXT_PUBLIC_ENTERPRISE_ENABLED=1`，mock 与开发登录关闭（`manifest.env` 已核对） |
@@ -46,4 +46,4 @@ DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem 
 
 ## CI
 
-（待 #147 的检查跑完后补）
+#147 的 8 项检查（backend、frontend-tests、6 个 build-and-browser）发布后全部通过，没有要补修的。

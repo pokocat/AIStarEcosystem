@@ -32,7 +32,7 @@ vi.mock("../studio-select", () => ({ StudioSelect: ({ label, value, onChange, op
 import { SceneImageStudio } from "./scene-image-studio";
 import { SceneVideoStudio } from "./scene-video-studio";
 import { addScriptNode, addVideoRow, patchNode } from "./scene-drafts";
-import { confirmLibrary, openLibrary, openRecent, openSpec, optionGroup, pickFromLibrary, pickScene, setDuration } from "./scene-test-helpers";
+import { confirmLibrary, openLibrary, openRecent, openSpec, optionGroup, pickFromLibrary, pickScene, setDuration, fieldText, fillField } from "./scene-test-helpers";
 import { setLibrarySource } from "./scene-test-picker";
 // 素材从资产库选：选中的那份按各测试原来设定的上传结果来（视频页设了 importMedia 就用它，否则用 uploadImage）。
 beforeEach(() => { setLibrarySource(async () => (await api.importMedia()) ?? (await api.uploadImage())); });
@@ -70,7 +70,7 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); window.history.replaceState(nul
 const continueLink = () => screen.queryByRole("link", { name: "在画布中继续" })?.getAttribute("href");
 const heading = () => document.querySelector(".scene-composer-head strong")?.textContent;
 const pressed = (group: string, name: string) => within(screen.getByRole("group", { name: group })).getByRole("button", { name }).getAttribute("aria-pressed");
-const text = (name: string) => (screen.getByRole("textbox", { name }) as HTMLTextAreaElement).value;
+const text = fieldText;
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
 async function open(Page: typeof SceneImageStudio, url: string) {
   window.history.replaceState(null, "", url);
@@ -108,7 +108,7 @@ test("video: with a text-only video model the director gets no numbered pictures
   api.composeScene.mockResolvedValue({ text: "写脚本" });
   put({ id: "IPP-V", name: "v", sceneId: "ecom-talking", doc: { ...EMPTY, nodes: [productNode] as never } });
   await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
-  fireEvent.change(await screen.findByRole("textbox", { name: "想做的视频" }), { target: { value: "保湿面霜" } });
+  fillField(await screen.findByRole("textbox", { name: "想做的视频" }), "保湿面霜");
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "AI 编导" })); });
   await waitFor(() => expect(api.composeScene).toHaveBeenCalled());
   expect(api.composeScene.mock.calls[0][0]).toMatchObject({ imageTitles: [], seenTitles: ["商品图 1"], visual: false });
@@ -133,6 +133,21 @@ test("video: when the settings no longer match what the script was written for, 
   expect(api.composeScene.mock.calls[0][0]).toMatchObject({ kind: "video-script", duration: 10, revision: expect.stringContaining("这版脚本是照 15 秒写的，现在要出 10 秒") });
   // 回到编导那一列，看得到新的一版在写。
   expect(screen.queryByRole("textbox", { name: "视频脚本" })).toBeNull();
+});
+
+// 2026-11-01：脚本里的「图1」在编导的卡片上、采用后的编辑框里都显示成「缩略图 + 图1」，交出去的仍是原字。
+test("video: 图1 in a script shows as the picture's chip on the card and in the box after adopting it", async () => {
+  const made = addScriptNode({ ...EMPTY, nodes: [productNode] as never }, { ask: "保湿精华", revision: false, prompt: "写脚本", materialIds: ["product"], imageIds: ["product"],
+    duration: 15, ratio: "9:16", language: "中文", refs: ["product.jpg"] });
+  const doc = patchNode(made.doc, made.nodeId, n => ({ ...n, metadata: { ...n.metadata, status: "success", content: "第1镜（0–5 秒）：手拿图1转一圈" } }));
+  put({ id: "IPP-V", name: "v", sceneId: "ecom-talking", doc });
+  await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
+  const chip = await screen.findByRole("button", { name: "图1：商品图 1，看大图" });
+  expect(chip.closest(".scene-script-card")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "采用脚本" }));
+  const box = await screen.findByRole("textbox", { name: "视频脚本" });
+  await waitFor(() => expect(within(box).getByRole("button", { name: "图1：商品图 1，看大图" })).toBeTruthy());
+  expect(text("视频脚本")).toBe("第1镜（0–5 秒）：手拿图1转一圈");
 });
 
 // 2026-10-31 用户反馈：编导页看不到已选素材、没地方加素材；时长在编辑页才改得了，编导不知道要按几秒写。
@@ -184,7 +199,7 @@ test("video: the scene's facts are chips that start a line in the input", async 
   await open(SceneVideoStudio, "/video?scene=local-groupbuy");
   const chips = within(await screen.findByRole("group", { name: "要写清楚的信息" }));
   fireEvent.click(chips.getByRole("button", { name: "店名和位置" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "想做的视频" }), { target: { value: "店名和位置：巷里火锅，万达东门" } });
+  fillField(screen.getByRole("textbox", { name: "想做的视频" }), "店名和位置：巷里火锅，万达东门");
   fireEvent.click(chips.getByRole("button", { name: "团购价" }));
   expect(text("想做的视频")).toBe("店名和位置：巷里火锅，万达东门\n团购价：");
   // 选填的标着「有就写」。
@@ -204,7 +219,7 @@ test("video: a script that says what is still missing shows it, drops that line 
   const go = screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement;
   await waitFor(() => expect(screen.getByText("还有没填的：购买入口。在上面换成实际内容，用不上的直接删掉。")).toBeTruthy());
   expect(go.disabled).toBe(true);
-  fireEvent.change(screen.getByRole("textbox", { name: "视频脚本" }), { target: { value: text("视频脚本").replace("【待补：购买入口】", "本视频团购") } });
+  fillField(screen.getByRole("textbox", { name: "视频脚本" }), text("视频脚本").replace("【待补：购买入口】", "本视频团购"));
   await waitFor(() => expect(go.disabled).toBe(false));
 });
 

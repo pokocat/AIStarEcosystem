@@ -34,7 +34,7 @@ vi.mock("../studio-select", () => ({ StudioSelect: ({ label, value, onChange, op
 import { SceneImageStudio } from "./scene-image-studio";
 import { SceneVideoStudio } from "./scene-video-studio";
 import { addScriptNode, addVideoRow, patchNode } from "./scene-drafts";
-import { confirmLibrary, openLibrary, openRecent, openSpec, optionGroup, pickFromLibrary, pickScene, setDuration } from "./scene-test-helpers";
+import { confirmLibrary, openLibrary, openRecent, openSpec, optionGroup, pickFromLibrary, pickScene, setDuration, fieldText, fillField } from "./scene-test-helpers";
 import { setLibrarySource } from "./scene-test-picker";
 // 素材从资产库选：选中的那份按各测试原来设定的上传结果来（视频页设了 importMedia 就用它，否则用 uploadImage）。
 beforeEach(() => { setLibrarySource(async () => (await api.importMedia()) ?? (await api.uploadImage())); });
@@ -73,7 +73,7 @@ const continueLink = () => screen.queryByRole("link", { name: "在画布中继�
 const heading = () => document.querySelector(".scene-composer-head strong")?.textContent;
 const pressed = (group: string, name: string) => within(optionGroup(group)).getByRole("button", { name }).getAttribute("aria-pressed");
 const videoSpec = () => screen.getByRole("button", { name: /^视频规格：/ }).textContent;
-const text = (name: string) => (screen.getByRole("textbox", { name }) as HTMLTextAreaElement).value;
+const text = fieldText;
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
 async function open(Page: typeof SceneImageStudio, url: string) {
   window.history.replaceState(null, "", url);
@@ -215,7 +215,7 @@ test("video: the unsent line and the options are kept in the draft and come back
   put({ id: "IPP-V", name: "v", sceneId: "ecom-talking", doc: { ...EMPTY, nodes: [productNode] as never } });
   await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
   fireEvent.click(within(optionGroup("出镜方式")).getByRole("button", { name: "只拍商品" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "想做的视频" }), { target: { value: "保湿精华，不黏腻" } });
+  fillField(screen.getByRole("textbox", { name: "想做的视频" }), "保湿精华，不黏腻");
   await waitFor(() => expect(store.get("IPP-V")!.doc.sceneVideoState).toMatchObject({ text: "保湿精华，不黏腻", options: { presenter: "product" } }), { timeout: 3000 });
 
   cleanup();
@@ -279,7 +279,7 @@ test("video: a finished video can be made again from its own script and settings
   expect(text("视频脚本")).toBe("出片前改过的脚本");
   expect(videoSpec()).toContain("10 秒");
 
-  fireEvent.change(screen.getByRole("textbox", { name: "视频脚本" }), { target: { value: "再改一处" } });
+  fillField(screen.getByRole("textbox", { name: "视频脚本" }), "再改一处");
   await waitFor(() => expect(store.get("IPP-V")!.doc.sceneVideoState?.edit).toEqual({ scriptId: script.id, prompt: "再改一处" }), { timeout: 3000 });
   cleanup();
   await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");

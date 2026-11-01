@@ -50,3 +50,22 @@ export async function openRecent() {
   fireEvent.click(await screen.findByRole("button", { name: "最近" }));
   return within(await screen.findByRole("dialog", { name: "最近的草稿" }));
 }
+
+/**
+ * 编辑框里的字。场景页的输入有两种：普通的 textarea / input 读 value；
+ * AI 视频的编辑框是 Tiptap（scene-prompt-editor.tsx，「图N」显示成标签），读编辑器里的纯文本。
+ */
+export function fieldText(name: string): string {
+  const el = screen.getByRole("textbox", { name });
+  if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) return el.value;
+  return (el as unknown as { editor: { getText: (o: { blockSeparator: string }) => string } }).editor.getText({ blockSeparator: "\n" });
+}
+
+/** 把编辑框整段换成 value（和用户删光重打一样，会触发保存草稿等后续）。 */
+export function fillField(el: HTMLElement, value: string) {
+  if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) { fireEvent.change(el, { target: { value } }); return; }
+  const editor = (el as unknown as { editor: { commands: { setContent: (c: unknown, o: { emitUpdate: boolean }) => void } } }).editor;
+  const doc = { type: "doc", content: value.split("\n").map(line => line ? { type: "paragraph", content: [{ type: "text", text: line }] } : { type: "paragraph" }) };
+  act(() => editor.commands.setContent(doc, { emitUpdate: true }));
+}
+

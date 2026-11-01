@@ -28,7 +28,7 @@ vi.mock("../studio-select", () => ({ StudioSelect: ({ label, value, onChange, op
   <select aria-label={label} value={value} onChange={e => onChange(e.target.value)}>{options.map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}</select> }));
 import { SceneImageStudio } from "./scene-image-studio";
 import { SceneVideoStudio } from "./scene-video-studio";
-import { confirmLibrary, openLibrary, openRecent, openSpec, optionGroup, pickFromLibrary, pickScene, setDuration } from "./scene-test-helpers";
+import { confirmLibrary, openLibrary, openRecent, openSpec, optionGroup, pickFromLibrary, pickScene, setDuration, fieldText, fillField } from "./scene-test-helpers";
 import { setLibrarySource } from "./scene-test-picker";
 // 素材从资产库选：选中的那份按各测试原来设定的上传结果来（视频页设了 importMedia 就用它，否则用 uploadImage）。
 beforeEach(() => { setLibrarySource(async () => (await api.importMedia()) ?? (await api.uploadImage())); });
@@ -110,7 +110,7 @@ test("视频：编导看商品图写脚本（请求先存进画布、带图）�
   const send = () => screen.getByRole("button", { name: "AI 编导" }) as HTMLButtonElement;
   await waitFor(() => expect(screen.getByText("先放商品图")).toBeTruthy());
   expect(send().disabled).toBe(true);
-  fireEvent.change(screen.getByRole("textbox", { name: "想做的视频" }), { target: { value: "保湿精华，不黏腻" } });
+  fillField(screen.getByRole("textbox", { name: "想做的视频" }), "保湿精华，不黏腻");
   // 连着点两组选项：后一次不能把前一次盖掉。
   optionGroup("出镜方式");
   act(() => {
@@ -141,7 +141,7 @@ test("视频：编导看商品图写脚本（请求先存进画布、带图）�
   const use = await screen.findByRole("button", { name: "采用脚本" }, { timeout: 4000 });
   expect(screen.getByText(/干皮看过来/)).toBeTruthy();
   await act(async () => { fireEvent.click(use); });
-  expect((screen.getByRole("textbox", { name: "视频脚本" }) as HTMLTextAreaElement).value).toBe(script);
+  expect(fieldText("视频脚本")).toBe(script);
   setDuration(10);
   const go = screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement;
   await waitFor(() => expect(go.textContent).toContain("400 积分"));
@@ -167,7 +167,7 @@ test("视频：爆款复刻要先拉片，仍交给画布里的创作助手（�
   const send = () => screen.getByRole("button", { name: "交给创作助手" }) as HTMLButtonElement;
   await waitFor(() => expect(screen.getByText("先放参考视频")).toBeTruthy());
   await pickFromLibrary("参考视频");
-  fireEvent.change(screen.getByRole("textbox", { name: "想做的视频" }), { target: { value: "换成我的面霜" } });
+  fillField(screen.getByRole("textbox", { name: "想做的视频" }), "换成我的面霜");
   await waitFor(() => expect(send().disabled).toBe(false));
   await act(async () => { fireEvent.click(send()); });
   expect(api.composeScene).toHaveBeenCalledWith(expect.objectContaining({ kind: "video", sceneId: "recreation", text: "换成我的面霜", videoTitle: "参考视频" }));

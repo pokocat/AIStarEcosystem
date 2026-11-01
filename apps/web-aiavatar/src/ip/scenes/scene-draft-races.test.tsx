@@ -33,7 +33,7 @@ vi.mock("../studio-select", () => ({ StudioSelect: ({ label, value, onChange, op
 import { SceneImageStudio } from "./scene-image-studio";
 import { SceneVideoStudio } from "./scene-video-studio";
 import { addVideoRow } from "./scene-drafts";
-import { confirmLibrary, openLibrary, openRecent, openSpec, optionGroup, pickFromLibrary, pickScene, setDuration } from "./scene-test-helpers";
+import { confirmLibrary, openLibrary, openRecent, openSpec, optionGroup, pickFromLibrary, pickScene, setDuration, fillField } from "./scene-test-helpers";
 import { setLibrarySource } from "./scene-test-picker";
 // 素材从资产库选：选中的那份按各测试原来设定的上传结果来（视频页设了 importMedia 就用它，否则用 uploadImage）。
 beforeEach(() => { setLibrarySource(async () => (await api.importMedia()) ?? (await api.uploadImage())); });
@@ -176,7 +176,7 @@ test("video: after replacing the voice, opening the draft again picks the replac
   expect(screen.getByRole("button", { name: "更换声音" }).getAttribute("title")).toBeTruthy();
   // 再写一版脚本时交出去的声音就是换后的那份。
   api.composeScene.mockResolvedValue({ text: "write script" });
-  fireEvent.change(screen.getByRole("textbox", { name: "想做的视频" }), { target: { value: "保湿精华" } });
+  fillField(screen.getByRole("textbox", { name: "想做的视频" }), "保湿精华");
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "AI 编导" })); });
   await waitFor(() => expect(api.submit).toHaveBeenCalled());
   const saved = store.get("IPP-V")!.doc;

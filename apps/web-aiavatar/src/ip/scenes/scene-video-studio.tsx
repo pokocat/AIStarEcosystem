@@ -34,6 +34,7 @@ import { useSceneDraftStore, useSceneStateSave } from "./scene-draft-store";
 import { useSceneQuery, writeSceneQuery } from "./scene-query";
 import { UiVersionSwitch } from "@/shell/ui-version-switch";
 import { SceneDrawer, SceneEmpty, SceneExample, SceneNoModel, SceneRecent, SceneResultTabs, SceneSwitch, sceneFailureText, sceneHintText, sceneOptionValues, sceneSteps, useSceneDrawerPin, useScenePopover, RatioGlyph, useSceneMobile, SlotEmpty } from "./scene-layout";
+import { PromptText, ScenePromptEditor, type ScenePromptEditorHandle, type ScenePromptRef } from "./scene-prompt-editor";
 import { AiMark } from "../studio-ai-icon";
 import { clampSceneDuration, sceneVideoDurations, sceneVideoInputs, sceneVideoSettings, type SceneVideoMaterial } from "./scene-video-plan";
 import { classifyBlanks, missingFigures, scriptMissing, scriptPlaceholders, splitBlanks } from "./scene-script-check";
@@ -109,7 +110,7 @@ export function SceneVideoStudio() {
   // 草稿与保存队列（换草稿时旧回包不改这一页，见 scene-draft-store.ts）。
   const { draft, current: draftRef, session, begin, remember, show, onPage, persist, settled } = useSceneDraftStore();
   const [picking, setPicking] = useState<Slot>();
-  const input = useRef<HTMLTextAreaElement>(null);
+  const input = useRef<ScenePromptEditorHandle>(null);
   const thread = useRef<HTMLDivElement>(null);
 
   // ── 模型 ──────────────────────────────────────────────────────────────
@@ -574,7 +575,7 @@ export function SceneVideoStudio() {
     setText(next); setHint("");
     // 已经有这一行就把光标放到这一行末尾，没有就放到最后。
     const at = next.indexOf(line), end = at >= 0 ? (next.indexOf("\n", at) < 0 ? next.length : next.indexOf("\n", at)) : next.length;
-    setTimeout(() => { const el = input.current; if (el) { el.focus(); el.setSelectionRange(end, end); } }, 0);
+    setTimeout(() => input.current?.focus({ line: next.slice(0, end).split("\n").length - 1 }), 0);
   };
   /** 采用脚本：放进编辑框（替换框里原来的内容，换掉了用户自己写的就给一个撤销），回到编辑。 */
   const useScript = (row: CanvasNodeData) => {
@@ -582,7 +583,7 @@ export function SceneVideoStudio() {
     setText(body); setScriptId(row.id); setView("compose"); setHint("");
     setNote(before.text.trim() && before.text.trim() !== body.trim() && before.scriptId !== row.id
       ? { text: "脚本放进编辑框了，原来写的那段换掉了", undo: () => { setText(before.text); setScriptId(before.scriptId); setNote(undefined); } } : undefined);
-    setTimeout(() => input.current?.focus({ preventScroll: true }), 0);
+    setTimeout(() => input.current?.focus("end", { preventScroll: true }), 0);
   };
   /** AI 编导：还没写过就把编辑框里的想法交给编导写第一版；写过了回到编导那一页接着改（不另花一次）。 */
   const openDirector = () => {
@@ -611,7 +612,7 @@ export function SceneVideoStudio() {
     // 编辑器在页面上方（手机上离结果很远）：滚过去、光标放进脚本，不然点了像没反应（2026-10-30 界面评审）。
     setTimeout(() => {
       document.querySelector(".scene-video-studio .scene-video-composer")?.scrollIntoView?.({ block: "start", behavior: "smooth" });
-      input.current?.focus({ preventScroll: true });
+      input.current?.focus("end", { preventScroll: true });
     }, 0);
   };
   // 页面上的条件写进草稿（有草稿时）：刷新、从「最近」再打开都从离开的地方接着来。素材另记在 sceneInputs、视频模型在 sceneVideoModel。
@@ -731,6 +732,18 @@ export function SceneVideoStudio() {
       <span>{label}{!media && optional && <small>可选</small>}</span>
       {media && <button type="button" className="scene-ref-remove" aria-label={`移除${label}`} onClick={clear}><X size={11} strokeWidth={1.8}/></button>}
     </div>;
+  // 编辑框里的「图N」标签：这次交给视频模型的图，按图1、图2 的顺序（和素材格上的角标同一套）。
+  const placedMedia = (key: string) => {
+    const m = [...images, ...(character ? [character] : [])].find(x => x.key === key);
+    if (m) return { title: m.title, url: m.url };
+    const n = (doc.nodes as CanvasNodeData[]).find(x => x.metadata?.storageKey === key);
+    return n ? { title: n.title, url: n.metadata?.content } : undefined;
+  };
+  const promptRefs: ScenePromptRef[] = (plan?.used ?? []).filter(m => m.mediaType === "image")
+    .map((m, i) => ({ index: i + 1, title: placedMedia(m.key)?.title || m.title, url: placedMedia(m.key)?.url, storageKey: m.key }));
+  // 编导的每一版按它当时交给视频模型的图编号（sceneDirector.refs）；更早的版本没记，就不显示标签。
+  const scriptRefs = (row: CanvasNodeData): ScenePromptRef[] => (row.metadata?.studio?.sceneDirector?.refs ?? [])
+    .map((key, i) => ({ index: i + 1, title: placedMedia(key)?.title || `图${i + 1}`, url: placedMedia(key)?.url, storageKey: key }));
   const imageIndex = (key: string) => (plan?.used ?? []).filter(m => m.mediaType === "image").findIndex(m => m.key === key);
 
   // 素材和规格在编辑页和编导页是同一份：编导页的输入框里也看得到、改得了，编导按这里的时长和素材写（2026-10-31 用户反馈）。
@@ -774,7 +787,7 @@ export function SceneVideoStudio() {
         <div className="scene-director-title"><AiMark size={13}/><strong>AI 编导</strong>
           <button type="button" className="scene-text-button" onClick={() => setView("compose")}>回到编辑</button></div>
         <div className="scene-director-thread" ref={thread} aria-live="polite">
-          {scripts.map((row, i) => <ScriptTurn key={row.id} row={row} run={live[row.id]} busy={busy} submitting={submitting === row.id} latest={row.id === latestScript?.id}
+          {scripts.map((row, i) => <ScriptTurn key={row.id} row={row} refs={scriptRefs(row)} run={live[row.id]} busy={busy} submitting={submitting === row.id} latest={row.id === latestScript?.id}
             given={scripts.slice(0, i + 1).map(s => s.metadata?.studio?.sceneDirector?.ask ?? "")} facts={scene.brief?.facts}
             copied={copied === row.id} onUse={() => useScript(row)} onBack={() => setView("compose")} onCopy={() => void copy(row)}
             onAgain={() => void send("换个写法重新写一版，要求和素材都不变。", { auto: true })}
@@ -799,9 +812,9 @@ export function SceneVideoStudio() {
         {mediaRow()}
 
         <div className="scene-box">
-          <textarea ref={input} aria-label={scriptId ? "视频脚本" : "想做的视频"} value={text}
+          <ScenePromptEditor ref={input} ariaLabel={scriptId ? "视频脚本" : "想做的视频"} value={text} refs={promptRefs}
             placeholder={recreation ? scene.placeholder : "贴上写好的提示词直接生成；只有想法的话，写几句让 AI 编导帮你写成脚本"}
-            onChange={e => { setText(e.target.value); setHint(""); }}/>
+            onChange={v => { setText(v); setHint(""); }}/>
           {/* 这类视频要写清的信息：点一下在框里起一行「店名和位置：」，接着写就行。写过脚本之后只给脚本里还空着的。 */}
           {!recreation && chipFacts.length > 0 && <div className="scene-fact-chips" role="group" aria-label="要写清楚的信息">{chipFacts.map(f =>
             <button key={f.label} type="button" onClick={() => addFact(f.label)}><Plus size={11} strokeWidth={1.6}/>{f.label}{!f.required && <small>有就写</small>}</button>)}</div>}
@@ -874,8 +887,8 @@ function placeMedia(nodes: CanvasNodeData[], media: Media, kind: "image" | "vide
 }
 
 /** 编导的一轮：你说的话 + 编导写的脚本（写作中 / 失败 / 写好了）。 */
-function ScriptTurn({ row, run, busy, submitting, latest, copied, onUse, onBack, onCopy, onAgain, onRetry, onConfirm, onStop, given, facts }: {
-  row: CanvasNodeData; run?: IpRun; busy: boolean; submitting: boolean; latest: boolean; copied: boolean;
+function ScriptTurn({ row, refs, run, busy, submitting, latest, copied, onUse, onBack, onCopy, onAgain, onRetry, onConfirm, onStop, given, facts }: {
+  row: CanvasNodeData; refs: ScenePromptRef[]; run?: IpRun; busy: boolean; submitting: boolean; latest: boolean; copied: boolean;
   onUse: () => void; onBack: () => void; onCopy: () => void; onAgain: () => void; onRetry: () => void; onConfirm: () => void; onStop: () => void;
   /** 到这一版为止用户说过的话（第一句和每次修改意见）：核对里面的数字有没有进脚本。 */
   given: string[];
@@ -898,7 +911,7 @@ function ScriptTurn({ row, run, busy, submitting, latest, copied, onUse, onBack,
           <span><AiMark size={12}/>{submitting && !accepted ? "正在交给编导" : !accepted ? "提交结果没有确认" : position && position > 0 ? `排队中，前面还有 ${position - 1} 个` : turn?.revision ? "正在改脚本" : "正在看素材、写脚本"}</span></div>
         : failed ? <p className="scene-script-state is-failed" title={meta?.errorLogId ? `记录号 ${meta.errorLogId}` : undefined}>{sceneFailureText(meta?.errorCode, meta?.errorDetails, "脚本")}</p>
         : <>{summary && <p className="scene-script-summary">{summary}</p>}
-          <pre className="scene-script-text">{splitBlanks(body).map((p, i) => p.blank ? <mark key={i} className="scene-script-blank">{p.text}</mark> : p.text)}</pre>
+          <pre className="scene-script-text">{splitBlanks(body).map((p, i) => p.blank ? <mark key={i} className="scene-script-blank">{p.text}</mark> : <PromptText key={i} text={p.text} refs={refs}/>)}</pre>
           {mustFill.length > 0 ? <p className="scene-script-missing" role="status">还缺{mustFill.join("、")}。在下面写上发给编导，会补进脚本。{mayFill.length ? `${mayFill.join("、")}没有就不用写。` : ""}</p>
             : mayFill.length > 0 ? <p className="scene-script-check">{mayFill.join("、")}没有就不用写，出片前把脚本里标着的那几处删掉就行。</p>
             : missing ? <p className="scene-script-check">编导觉得可能还缺{missing}，写过了就不用管。</p> : null}

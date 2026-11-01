@@ -33,7 +33,7 @@ vi.mock("../studio-select", () => ({ StudioSelect: ({ label, value, onChange, op
 import { SceneImageStudio } from "./scene-image-studio";
 import { SceneVideoStudio } from "./scene-video-studio";
 import { addScriptNode, addVideoRow, patchNode } from "./scene-drafts";
-import { confirmLibrary, openLibrary, openRecent, openSpec, optionGroup, pickFromLibrary, pickScene, setDuration } from "./scene-test-helpers";
+import { confirmLibrary, openLibrary, openRecent, openSpec, optionGroup, pickFromLibrary, pickScene, setDuration, fieldText } from "./scene-test-helpers";
 import { setLibrarySource } from "./scene-test-picker";
 // 素材从资产库选：选中的那份按各测试原来设定的上传结果来（视频页设了 importMedia 就用它，否则用 uploadImage）。
 beforeEach(() => { setLibrarySource(async () => (await api.importMedia()) ?? (await api.uploadImage())); });
@@ -71,7 +71,7 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); window.history.replaceState(nul
 const continueLink = () => screen.queryByRole("link", { name: "在画布中继续" })?.getAttribute("href");
 const heading = () => document.querySelector(".scene-composer-head strong")?.textContent;
 const pressed = (group: string, name: string) => within(screen.getByRole("group", { name: group })).getByRole("button", { name }).getAttribute("aria-pressed");
-const text = (name: string) => (screen.getByRole("textbox", { name }) as HTMLTextAreaElement).value;
+const text = fieldText;
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
 async function open(Page: typeof SceneImageStudio, url: string) {
   window.history.replaceState(null, "", url);
