@@ -119,7 +119,7 @@ class DirectorImagePromptFormatTest {
 
     @Test
     void shotRulesNoLongerAskForUnevenLightingOnFaces() {
-        String plan = DirectorPrompts.plan(12, 15, 4);
+        String plan = DirectorPrompts.plan(com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.classpath(), 12, 15, 4, "{}").system();
         assertFalse(plan.contains("光线明暗不均"), "这条曾经诱导欠曝");
         assertTrue(plan.contains("默认把人物的脸照清楚") && plan.contains("直接写进 still"), "默认照清楚，特殊布光写进 still 交给分镜图");
     }

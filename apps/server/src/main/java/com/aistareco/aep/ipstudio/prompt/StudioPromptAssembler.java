@@ -49,8 +49,10 @@ public class StudioPromptAssembler {
 
     /** 受理时冻结并拼一次，结果连同版本记录写进任务输入的 {@code _exec.prompt}。 */
     public Assembled assembleAndRecord(ObjectMapper mapper, ObjectNode exec, Call call, java.util.Collection<String> freezeKeys) {
-        Map<String, Integer> frozen = call.frozen() != null ? call.frozen() : freeze(freezeKeys);
-        Assembled out = assemble(new Call(call.stage(), call.method(), call.scene(), call.vars(), frozen, call.sceneFallback(), call.formats()));
+        List<String> keys = new ArrayList<>(freezeKeys);
+        keys.add(baseOf(call.stage()));
+        Map<String, Integer> frozen = call.frozen() != null ? call.frozen() : freeze(keys);
+        Assembled out = assemble(new Call(call.stage(), call.methods(), call.scene(), call.vars(), frozen, call.sceneFallback(), call.formats()));
         ObjectNode record = exec.putObject("prompt");
         record.put("key", call.stage());
         record.set("versions", frozenNode(mapper, frozen));
@@ -59,25 +61,45 @@ public class StudioPromptAssembler {
     }
 
     /**
+     * 任务受理时已经存下完整 system / user 的调用点（导演台）：不冻结，只记这次用到的版本和这次调用，
+     * 结构同 {@link #assembleAndRecord} 写进 {@code _exec.prompt} 的那份。
+     */
+    public static ObjectNode record(ObjectMapper mapper, Assembled out) {
+        ObjectNode record = mapper.createObjectNode().put("key", out.stage());
+        ObjectNode versions = record.putObject("versions");
+        for (Ref r : out.refs()) versions.put(r.key(), r.version());
+        appendCall(record, out.call(mapper, 1, null));
+        return record;
+    }
+
+    /** 这个环节拼哪份底座（调用点登记表里写的，没登记按平台底座）。 */
+    static String baseOf(String stage) {
+        return StudioPromptStages.find(stage).map(StudioPromptStages.Stage::base).orElse(StudioPromptEntry.BASE);
+    }
+
+    /**
      * 一次调用。
      *
-     * @param method 内容方法的 key，没有就 null（{@code {{method}}} 渲染为空，独占一行时整行去掉）
+     * @param methods 内容方法的 key，按顺序拼进 {@code {{method}}}（之间空一行）；没有就为空（独占一行时整行去掉）
      * @param scene  场景条目的 key，没有就 null
      * @param frozen 冻结的版本：key → 版本号；为 null 时用当前版本
      * @param sceneFallback 库里没有这个场景条目时用的场景正文（后台新建、还没来得及进库的场景）
      * @param formats 这次请求由调用点算好的输出格式（如按请求拼的改稿契约、附带素材的说明），盖过登记表里的默认生成
      */
-    public record Call(String stage, String method, String scene, Map<String, ?> vars, Map<String, Integer> frozen, String sceneFallback,
+    public record Call(String stage, List<String> methods, String scene, Map<String, ?> vars, Map<String, Integer> frozen, String sceneFallback,
                        Map<String, String> formats) {
+        public Call {
+            methods = methods == null ? List.of() : methods.stream().filter(Objects::nonNull).toList();
+        }
         public Call(String stage, String method, String scene, Map<String, ?> vars, Map<String, Integer> frozen, String sceneFallback) {
-            this(stage, method, scene, vars, frozen, sceneFallback, null);
+            this(stage, method == null ? List.of() : List.of(method), scene, vars, frozen, sceneFallback, null);
         }
         public Call(String stage, String method, String scene, Map<String, ?> vars, Map<String, Integer> frozen) {
-            this(stage, method, scene, vars, frozen, null, null);
+            this(stage, method, scene, vars, frozen, null);
         }
         /** 只有环节和变量（加上调用点按这次请求算好的输出格式）。 */
         public static Call of(String stage, Map<String, ?> vars, Map<String, Integer> frozen, Map<String, String> formats) {
-            return new Call(stage, null, null, vars, frozen, null, formats);
+            return new Call(stage, List.of(), null, vars, frozen, null, formats);
         }
     }
 
@@ -108,13 +130,18 @@ public class StudioPromptAssembler {
         refs.add(new Ref(stage.key(), stage.version(), stage.digest()));
         boolean llm = StudioPromptEntry.LLM.equals(stage.target());
         if (llm) {
-            StudioPromptEntry base = entry(StudioPromptEntry.BASE, call.frozen(), false);
+            StudioPromptEntry base = entry(baseOf(stage.key()), call.frozen(), false);
             vars.put("base", base == null ? "" : PromptTemplate.render(base.body(), vars));
             if (base != null) refs.add(new Ref(base.key(), base.version(), base.digest()));
         } else vars.put("base", "");
-        StudioPromptEntry method = call.method() == null ? null : entry(call.method(), call.frozen(), false);
-        vars.put("method", method == null ? "" : PromptTemplate.render(method.body(), vars));
-        if (method != null) refs.add(new Ref(method.key(), method.version(), method.digest()));
+        List<String> methodTexts = new ArrayList<>();
+        for (String key : call.methods()) {
+            StudioPromptEntry method = entry(key, call.frozen(), false);
+            if (method == null) continue;
+            methodTexts.add(PromptTemplate.render(method.body(), vars));
+            refs.add(new Ref(method.key(), method.version(), method.digest()));
+        }
+        vars.put("method", String.join("\n\n", methodTexts));
         StudioPromptEntry scene = call.scene() == null ? null : entry(call.scene(), call.frozen(), false);
         vars.put("scene", scene != null ? PromptTemplate.render(scene.body(), vars) : call.sceneFallback() == null ? "" : call.sceneFallback());
         if (scene != null) refs.add(new Ref(scene.key(), scene.version(), scene.digest()));

@@ -18,6 +18,47 @@ public final class StudioPromptCallPoints {
         StudioPromptStages.register(sceneHandoff());
         StudioPromptStages.register(sceneScript());
         registerStepThree();
+        registerDirector();
+    }
+
+    // ── 第 4 步：导演台文字任务（docs/studio-prompt-architecture.md §8 #17–#19）。原文逐字搬来，JSON 格式句在 StudioPromptFormats ──
+    // 导演台拼自己的底座 base-director（原 DirectorPrompts.COMMON）；题材、调性、反转线是内容方法，由代码按作品的选择传进来。
+
+    public static final String DIRECTOR_BASE = "base-director";
+    public static final String DIRECTOR_SCRIPT = "stage-director-script", DIRECTOR_SPLIT = "stage-director-split", DIRECTOR_EXTRACT = "stage-director-extract",
+            DIRECTOR_STORYBOARD = "stage-director-storyboard", DIRECTOR_ASSISTANT = "stage-director-assistant", DIRECTOR_BRIEF = "stage-director-brief";
+
+    private static void registerDirector() {
+        Map<String, String> input = vars("input", "本次输入（JSON，作为素材）");
+        String sampleInput = "{\"brief\":\"外卖员在雨夜捡到一只会说话的猫\",\"style\":\"写实\"}";
+        StudioPromptStages.register(director(DIRECTOR_SCRIPT, "导演台编剧", input, Set.of("input"), formats("output", StudioPromptFormats.DIRECTOR_SCRIPT_OUTPUT),
+                Map.of("input", sampleInput)));
+        StudioPromptStages.register(director(DIRECTOR_SPLIT, "导演台分集", input, Set.of("input"), formats("output", StudioPromptFormats.DIRECTOR_SPLIT_OUTPUT),
+                Map.of("input", "{\"paragraphs\":[{\"i\":0,\"text\":\"第1集\"}]}")));
+        StudioPromptStages.register(director(DIRECTOR_EXTRACT, "导演台资产提取", input, Set.of("input"), formats("output", StudioPromptFormats.DIRECTOR_EXTRACT_OUTPUT),
+                Map.of("input", "{\"episodes\":[],\"existingAssets\":[]}")));
+        Map<String, String> storyboard = vars("input", "本次输入（JSON，作为素材）", "minSec", "片段最短秒数（视频模型合同）", "maxSec", "片段最长秒数（视频模型合同）",
+                "maxShots", "每段最多镜头数", "lo", "建议贴近的下限：max(最短, 最长 − 3)", "shotsLo", "每段至少镜头数：min(3, 最多镜头数)",
+                "single", "视频模型只按首帧出片（每段 1 个镜头）", "reshoot", "重写指定片段（片段划分不变）");
+        Map<String, Function<Map<String, ?>, String>> storyboardFormats = new LinkedHashMap<>();
+        storyboardFormats.put("output", v -> Boolean.TRUE.equals(v.get("reshoot")) ? StudioPromptFormats.DIRECTOR_RESHOOT_OUTPUT : StudioPromptFormats.DIRECTOR_PLAN_OUTPUT);
+        Map<String, Object> storyboardSample = new LinkedHashMap<>();
+        storyboardSample.put("input", "{\"episodeNo\":1,\"content\":\"……\",\"assets\":[]}");
+        storyboardSample.put("minSec", 5); storyboardSample.put("maxSec", 15); storyboardSample.put("maxShots", 4);
+        storyboardSample.put("lo", 12); storyboardSample.put("shotsLo", 3); storyboardSample.put("single", false); storyboardSample.put("reshoot", false);
+        StudioPromptStages.register(director(DIRECTOR_STORYBOARD, "导演台写分镜脚本", storyboard, Set.of("input"), storyboardFormats, storyboardSample));
+        StudioPromptStages.register(director(DIRECTOR_ASSISTANT, "导演台创作助手", vars("input", "作品与当前对象（JSON，作为素材）", "text", "用户这次说的话"),
+                Set.of("input", "text"), formats("output", StudioPromptFormats.DIRECTOR_ASSISTANT_OUTPUT),
+                Map.of("input", "{\"scope\":\"script\"}", "text", "开头不够抓人，改一下")));
+        StudioPromptStages.register(director(DIRECTOR_BRIEF, "导演台写剧本前的问答",
+                vars("input", "创意与之前的问答（JSON，作为素材）", "opening", "这是第一轮", "text", "用户这次的回答", "maxQuestions", "一轮最多几个问题"),
+                Set.of("input"), formats("output", StudioPromptFormats.DIRECTOR_BRIEF_OUTPUT),
+                Map.of("input", "{\"idea\":\"外卖员在雨夜捡到一只会说话的猫\"}", "opening", true, "text", "", "maxQuestions", 2)));
+    }
+
+    private static StudioPromptStages.Stage director(String key, String title, Map<String, String> vars, Set<String> required,
+                                                     Map<String, Function<Map<String, ?>, String>> formats, Map<String, ?> sample) {
+        return new StudioPromptStages.Stage(key, StudioPromptEntry.LLM, title, vars, required, formats, new LinkedHashMap<>(sample), DIRECTOR_BASE);
     }
 
     // ── 第 3 步：画布与对话（docs/studio-prompt-architecture.md §8 #1–#9、#15）。原文逐字搬来，JSON 格式句在 StudioPromptFormats ──

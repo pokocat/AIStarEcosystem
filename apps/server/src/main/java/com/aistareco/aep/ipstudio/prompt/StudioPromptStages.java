@@ -24,9 +24,16 @@ public final class StudioPromptStages {
      * @param required 必须出现在模板里的变量
      * @param formats  输出格式：名字（模板里写 {@code {{format.<名>}}}）→ 按变量生成格式文字
      * @param sample   后台预览用的示例变量
+     * @param base     拼哪份底座：默认平台底座 {@code base}；导演台用自己的 {@code base-director}（短剧是虚构创作，
+     *                 平台底座里面向商品宣传的事实规则不适用，见 docs/studio-prompt-architecture.md §14.2）
      */
     public record Stage(String key, String target, String title, Map<String, String> vars, Set<String> required,
-                        Map<String, Function<Map<String, ?>, String>> formats, Map<String, Object> sample) {
+                        Map<String, Function<Map<String, ?>, String>> formats, Map<String, Object> sample, String base) {
+        public Stage(String key, String target, String title, Map<String, String> vars, Set<String> required,
+                     Map<String, Function<Map<String, ?>, String>> formats, Map<String, Object> sample) {
+            this(key, target, title, vars, required, formats, sample, StudioPromptEntry.BASE);
+        }
+
         public Map<String, String> renderFormats(Map<String, ?> vars) {
             Map<String, String> out = new LinkedHashMap<>();
             formats.forEach((name, f) -> out.put(name, f.apply(vars == null ? Map.of() : vars)));

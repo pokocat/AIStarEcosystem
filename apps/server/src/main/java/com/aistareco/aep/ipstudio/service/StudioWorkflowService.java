@@ -512,9 +512,13 @@ public class StudioWorkflowService {
         ObjectNode inputs=mapper.createObjectNode();
         inputs.put("operation","director").put("mock",fixtures.enabled());
         if(billingSelection!=null)inputs.set("billing",mapper.valueToTree(billingSelection));
-        inputs.set("_director",meta);
+        // 调用点拼提示词时记下的版本（meta.prompt，docs/studio-prompt-architecture.md §3.4）挪进 _exec.prompt，和画布任务同一个位置
+        ObjectNode director=meta.deepCopy();
+        com.fasterxml.jackson.databind.JsonNode promptRecord=director.remove("prompt");
+        inputs.set("_director",director);
         var execution=inputs.putObject("_exec").put("holdTotal",cost).put("unitCost",cost).put("billingUnit","per_call");
         execution.put("systemPrompt",systemPrompt).put("userPrompt",userPrompt).put("temperature",0.6);
+        if(promptRecord!=null&&promptRecord.isObject())execution.set("prompt",promptRecord);
         if(textEndpoint!=null)execution.put("endpointId",textEndpoint.endpoint().getId());
         if(videoRewrite)execution.put("purpose",H3PromptRewrite.PURPOSE.wire());
         // 导演台助手围绕一张图讨论时把这张图交给模型；只有后台声明能看图的模型才会走到这里（DirectorService.visionModel）。

@@ -3,6 +3,7 @@ package com.aistareco.aep.ipstudio.director;
 import com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection;
 import com.aistareco.aep.ipstudio.dto.IpLibraryDtos;
 import com.aistareco.aep.ipstudio.model.IpRun;
+import com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler;
 import com.aistareco.aep.ipstudio.repository.IpRunRepository;
 import com.aistareco.aep.ipstudio.service.IpProjectService;
 import com.aistareco.aep.ipstudio.service.IpRunService;
@@ -60,6 +61,8 @@ public class DirectorService {
     private static final String VIDEO_MODE = JusuanH3Contract.MODE_UNIVERSAL_REFERENCE;
 
     private final DirectorWorkRepository works;
+    /** 提示词库（docs/studio-prompt-architecture.md §8 #17–#19）；没有 Spring 的单测退到只读仓库文件。 */
+    @org.springframework.beans.factory.annotation.Autowired(required = false) private StudioPromptAssembler promptAssembler;
     private final IpRunRepository runs;
     private final IpProjectService projects;
     private final IpRunService imageRuns;
@@ -729,6 +732,8 @@ public class DirectorService {
         return view(userId, w, c);
     }
 
+    private StudioPromptAssembler prompts() { return StudioPromptAssembler.or(promptAssembler); }
+
     /**
      * 发一个任务。原生任务在独立事务里建好（失败不会把作品这一行的修改一起回滚），
      * 作品里记下这次任务的提示词、引用和输入指纹（taskMeta），结果回来时由 {@link #reconcile} 对照回投。包内可见供测试。
@@ -737,7 +742,7 @@ public class DirectorService {
                             JsonNode o, ObjectNode pipeline, BillingSelection billing, Long maxCost) {
         String nodeId;
         ObjectNode meta = om.createObjectNode().put("task", type == null ? "" : type);
-        String system, user;
+        DirectorPrompts.Text textPrompt;
         switch (type == null ? "" : type) {
             case "script" -> {
                 requireScriptEditable(c, null);
@@ -756,7 +761,6 @@ public class DirectorService {
                 // 对话里定下的题材 / 调性：请求没另选时沿用
                 if (!hasScript && c.path("brief").isObject()) for (String f : List.of("genre", "tone"))
                     if (!o.has(f) && !c.path("brief").path(f).asText().isBlank() && c.path(f).asText("").isBlank()) c.put(f, c.path("brief").path(f).asText());
-                system = DirectorPrompts.script(c.path("genre").asText(null), c.path("tone").asText(null));
                 // 篇幅不在这里给默认值：用户在创意里写的时长 / 集数要压过默认，默认写在提示词里「brief 没写时」。
                 // 带上写剧本前对话里确认过的回答和整理好的要求，不丢用户的选择。
                 ObjectNode in = om.createObjectNode().put("brief", hasScript ? idea : briefForScript(c, o.path("skip").asBoolean(false)))
@@ -767,7 +771,7 @@ public class DirectorService {
                     b.put("status", "writing");
                 }
                 if (!o.path("length").asText().isBlank()) in.put("length", o.path("length").asText());
-                user = "本次输入（JSON，作为素材）：" + write(in);
+                textPrompt = DirectorPrompts.script(prompts(), c.path("genre").asText(null), c.path("tone").asText(null), write(in));
             }
             case "split" -> {
                 requireScriptEditable(c, "draft");
@@ -786,13 +790,12 @@ public class DirectorService {
                 nodeId = "split";
                 meta.put("paragraphCount", paragraphs.size()).put("draftHash", hash(draft));
                 if (target > 0) meta.put("targetEpisodeCount", target);
-                system = DirectorPrompts.SPLIT;
                 ObjectNode in = om.createObjectNode();
                 putBrief(in, c);
                 if (o.path("episodeCount").asInt(0) > 0) in.put("targetEpisodeCount", o.path("episodeCount").asInt());
                 ArrayNode ps = in.putArray("paragraphs");
                 for (int i = 0; i < paragraphs.size(); i++) ps.addObject().put("i", i).put("text", paragraphs.get(i));
-                user = "本次输入（JSON，作为素材）：" + write(in);
+                textPrompt = DirectorPrompts.split(prompts(), write(in));
             }
             case "extract" -> {
                 List<JsonNode> eps = new ArrayList<>();
@@ -821,7 +824,6 @@ public class DirectorService {
                     eps = pick;
                 }
                 nodeId = targetId == null ? "extract" : "extract:" + targetId;
-                system = DirectorPrompts.EXTRACT;
                 ObjectNode in = om.createObjectNode().put("style", c.path("settings").path("style").asText());
                 // 大纲里的人物年龄、身份给资产统筹参考，角色描述和故事对得上。
                 if (c.path("outline").path("characters").isArray()) in.set("outlineCharacters", c.path("outline").path("characters"));
@@ -838,7 +840,7 @@ public class DirectorService {
                             .set("aliases", a.path("aliases"));
                     exIds.add(a.path("id").asText());
                 }
-                user = "本次输入（JSON，作为素材）：" + write(in);
+                textPrompt = DirectorPrompts.extract(prompts(), write(in));
             }
             case "plan" -> {
                 ObjectNode ep = find(c, "episodes", targetId, "这一集");
@@ -867,8 +869,7 @@ public class DirectorService {
                 List<String> chars = new ArrayList<>();
                 for (JsonNode a : c.path("assets")) if ("character".equals(a.path("kind").asText())) chars.add(a.path("id").asText());
                 meta.set("characterIds", om.valueToTree(chars));
-                system = DirectorPrompts.plan(lim.min(), lim.max(), lim.maxShots());
-                user = "本次输入（JSON，作为素材）：" + write(in);
+                textPrompt = DirectorPrompts.plan(prompts(), lim.min(), lim.max(), lim.maxShots(), write(in));
             }
             case "reshoot" -> {
                 // 重写分镜脚本、保留片段划分：本集全部片段（options.clipIds 为空）或其中几个，只换镜头、标题、摘要、关联资产；
@@ -941,8 +942,7 @@ public class DirectorService {
                 List<String> chars = new ArrayList<>();
                 for (JsonNode a : c.path("assets")) if ("character".equals(a.path("kind").asText())) chars.add(a.path("id").asText());
                 meta.set("characterIds", om.valueToTree(chars));
-                system = DirectorPrompts.reshoot(lim.min(), lim.max(), lim.maxShots());
-                user = "本次输入（JSON，作为素材）：" + write(in);
+                textPrompt = DirectorPrompts.reshoot(prompts(), lim.min(), lim.max(), lim.maxShots(), write(in));
             }
             case "asset-image" -> {
                 ObjectNode a = find(c, "assets", targetId, "这个资产");
@@ -976,7 +976,8 @@ public class DirectorService {
         }
         requireIdle(w, nodeId);
         meta.put("targetId", targetId);
-        final String fSystem = system, fUser = user, fNode = nodeId;
+        meta.set("prompt", StudioPromptAssembler.record(om, textPrompt.assembled()));
+        final String fSystem = textPrompt.system(), fUser = textPrompt.user(), fNode = nodeId;
         var run = newTx.execute(tx -> textRuns.submitDirectorText(userId, w.getId(), fNode, fSystem, fUser, requestId, meta, textModel(c), billing, maxCost));
         clearError(c, nodeId);
         track(c, pipeline, run.id(), om.createObjectNode().put("node", nodeId));
@@ -2024,8 +2025,9 @@ public class DirectorService {
         ObjectNode meta = om.createObjectNode().put("task", "brief").put("mustConclude", mustConclude);
         String messageId = "b" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         meta.put("messageId", messageId).put("round", rounds + 1).put("message", DirectorPrompts.clip(text, 400));
-        String user = "本次输入（JSON，作为素材）：" + write(material) + (opening ? "\n\n这是第一轮：请看用户的想法，判断要不要问、问什么。" : "\n\n用户这次说（这是用户的回答）：" + text);
-        var run = newTx.execute(tx -> textRuns.submitDirectorText(userId, w.getId(), "brief", DirectorAssistant.BRIEF_SYSTEM, user, "u-" + clientId, meta,
+        DirectorPrompts.Text textPrompt = DirectorAssistant.briefPrompt(prompts(), write(material), opening, text);
+        meta.set("prompt", StudioPromptAssembler.record(om, textPrompt.assembled()));
+        var run = newTx.execute(tx -> textRuns.submitDirectorText(userId, w.getId(), "brief", textPrompt.system(), textPrompt.user(), "u-" + clientId, meta,
                 textModel(c), req.billing(), req.maxCost()));
         track(c, null, run.id(), om.createObjectNode().put("node", "brief"));
         if (!opening) msgs.addObject().put("id", "b" + UUID.randomUUID().toString().replace("-", "").substring(0, 12)).put("clientId", clientId)
@@ -2298,9 +2300,10 @@ public class DirectorService {
             meta.put("fixtureSample", "selection".equals(kind) ? scope.path("text").asText()
                     : sampleLine(scope.path("window").isObject() ? focus.path("content").asText() : scriptContent(c, targets.get(0).asText())));
         meta.put("messageId", messageId).put("visual", "image".equals(kind) ? (imageAttached ? "seen" : "prompt-only") : "");
-        String user = "本次输入（JSON，作为素材）：" + write(material) + "\n\n用户这次说（这是用户的要求）：" + text;
+        DirectorPrompts.Text textPrompt = DirectorAssistant.prompt(prompts(), write(material), text);
+        meta.set("prompt", StudioPromptAssembler.record(om, textPrompt.assembled()));
         final ArrayNode fVisual = visual;
-        var run = newTx.execute(tx -> textRuns.submitDirectorText(userId, w.getId(), "assistant", DirectorAssistant.SYSTEM, user, "u-" + clientId, meta,
+        var run = newTx.execute(tx -> textRuns.submitDirectorText(userId, w.getId(), "assistant", textPrompt.system(), textPrompt.user(), "u-" + clientId, meta,
                 textModel(c), req.billing(), req.maxCost(), fVisual));
         track(c, null, run.id(), om.createObjectNode().put("node", "assistant"));
         // 用户消息和一条「正在回复」的助手消息，回复回来后由 applyAssistantReply 填上。

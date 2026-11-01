@@ -1,0 +1,89 @@
+package com.aistareco.aep.ipstudio.director;
+
+import com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler;
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * 第 4 步搬家逐字一致（docs/studio-prompt-architecture.md §10）：导演台的编剧、分集、资产提取、写分镜 / 重写、助手、写剧本前问答
+ * 改由提示词库拼之后，system 和 user 和搬家前（{@link LegacyDirectorPrompts}，原样保留的旧代码）逐字相同，不计末尾空白。
+ * 导演台拼自己的底座 base-director（原 COMMON），所以这里不用把底座按空核对。
+ */
+class DirectorPromptStageParityTest {
+    private static final StudioPromptAssembler A = StudioPromptAssembler.classpath();
+    private static final String INPUT = "{\"brief\":\"外卖员在雨夜捡到一只会说话的猫\",\"style\":\"写实\"}";
+    private static final String LEAD = "本次输入（JSON，作为素材）：";
+
+    @Test
+    void scriptIsUnchangedForEveryGenreAndTone() {
+        List<String> genres = new ArrayList<>(DirectorPrompts.GENRES.keySet());
+        genres.add(null);
+        genres.add("不存在的题材");
+        List<String> tones = new ArrayList<>(DirectorPrompts.TONES.keySet());
+        tones.add(null);
+        tones.add("");
+        int checked = 0;
+        for (String g : genres) for (String t : tones) {
+            var now = DirectorPrompts.script(A, g, t, INPUT);
+            assertThat(now.system()).as(g + " / " + t).isEqualTo(LegacyDirectorPrompts.script(g, t).stripTrailing());
+            assertThat(now.user()).isEqualTo(LEAD + INPUT);
+            checked++;
+        }
+        assertThat(checked).isEqualTo(8 * 7);
+    }
+
+    @Test
+    void splitAndExtractAreUnchanged() {
+        assertThat(DirectorPrompts.split(A, INPUT).system()).isEqualTo(LegacyDirectorPrompts.SPLIT.stripTrailing());
+        assertThat(DirectorPrompts.split(A, INPUT).user()).isEqualTo(LEAD + INPUT);
+        assertThat(DirectorPrompts.extract(A, INPUT).system()).isEqualTo(LegacyDirectorPrompts.EXTRACT.stripTrailing());
+        assertThat(DirectorPrompts.extract(A, INPUT).user()).isEqualTo(LEAD + INPUT);
+    }
+
+    @Test
+    void storyboardAndReshootAreUnchangedForEveryModelLimit() {
+        int[][] limits = {{5, 15, 4}, {4, 10, 4}, {12, 15, 4}, {3, 6, 4}, {12, 15, 3}, {12, 15, 2}, {5, 10, 1}, {4, 4, 1}, {12, 15, 1}};
+        for (int[] l : limits) {
+            String label = l[0] + "-" + l[1] + "/" + l[2];
+            var plan = DirectorPrompts.plan(A, l[0], l[1], l[2], INPUT);
+            assertThat(plan.system()).as("plan " + label).isEqualTo(LegacyDirectorPrompts.plan(l[0], l[1], l[2]).stripTrailing());
+            assertThat(plan.user()).isEqualTo(LEAD + INPUT);
+            var reshoot = DirectorPrompts.reshoot(A, l[0], l[1], l[2], INPUT);
+            assertThat(reshoot.system()).as("reshoot " + label).isEqualTo(LegacyDirectorPrompts.reshoot(l[0], l[1], l[2]).stripTrailing());
+            assertThat(reshoot.user()).isEqualTo(LEAD + INPUT);
+        }
+    }
+
+    @Test
+    void assistantAndBriefAreUnchanged() {
+        String material = "{\"scope\":\"script\",\"history\":[]}";
+        var assistant = DirectorAssistant.prompt(A, material, "开头不够抓人，改一下");
+        assertThat(assistant.system()).isEqualTo(LegacyDirectorPrompts.ASSISTANT_SYSTEM.stripTrailing());
+        assertThat(assistant.user()).isEqualTo(LEAD + material + "\n\n用户这次说（这是用户的要求）：开头不够抓人，改一下");
+
+        String brief = LegacyDirectorPrompts.BRIEF_SYSTEM.stripTrailing();
+        var opening = DirectorAssistant.briefPrompt(A, material, true, null);
+        assertThat(opening.system()).isEqualTo(brief);
+        assertThat(opening.user()).isEqualTo(LEAD + material + "\n\n这是第一轮：请看用户的想法，判断要不要问、问什么。");
+        var answer = DirectorAssistant.briefPrompt(A, material, false, "悬疑一点，三集");
+        assertThat(answer.system()).isEqualTo(brief);
+        assertThat(answer.user()).isEqualTo(LEAD + material + "\n\n用户这次说（这是用户的回答）：悬疑一点，三集");
+    }
+
+    /** 导演台拼的是自己的底座，平台底座里面向商品宣传的事实规则不进短剧编剧（docs/studio-prompt-architecture.md §14.2）。 */
+    @Test
+    void directorStagesUseTheirOwnBaseAndRecordTheVersions() {
+        var script = DirectorPrompts.script(A, "都市悬疑", "反转烧脑", INPUT);
+        assertThat(script.system()).doesNotContain("事实规则");
+        var keys = script.assembled().refs().stream().map(StudioPromptAssembler.Ref::key).toList();
+        assertThat(keys).containsExactly("stage-director-script", "base-director", "director-reversal", "director-genre-urban-suspense", "director-tone-twist");
+        var record = StudioPromptAssembler.record(new com.fasterxml.jackson.databind.ObjectMapper(), script.assembled());
+        assertThat(record.path("key").asText()).isEqualTo("stage-director-script");
+        assertThat(record.path("versions").path("base-director").asInt()).isEqualTo(1);
+        assertThat(record.path("calls").get(0).path("systemDigest").asText()).hasSize(64);
+    }
+}

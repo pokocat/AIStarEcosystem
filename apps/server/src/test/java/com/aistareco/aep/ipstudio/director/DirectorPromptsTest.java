@@ -2,6 +2,7 @@ package com.aistareco.aep.ipstudio.director;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler;
 import com.aistareco.common.BusinessException;
 import org.junit.jupiter.api.Test;
 
@@ -11,28 +12,37 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class DirectorPromptsTest {
+    // 文字任务的提示词在提示词库里（docs/studio-prompt-architecture.md §8 #17–#19），这里按仓库文件拼出来再查内容
+    private static final StudioPromptAssembler A = StudioPromptAssembler.classpath();
+    private static final String SCRIPT = scriptPrompt(null, null), SPLIT = DirectorPrompts.split(A, "{}").system();
+
+    private static String scriptPrompt(String genre, String tone) { return DirectorPrompts.script(A, genre, tone, "{}").system(); }
+    private static String plan(int minSec, int maxSec, int maxShots) { return DirectorPrompts.plan(A, minSec, maxSec, maxShots, "{}").system(); }
+    private static String reshoot(int minSec, int maxSec, int maxShots) { return DirectorPrompts.reshoot(A, minSec, maxSec, maxShots, "{}").system(); }
+    /** 题材 / 调性追加规则的正文（内容方法）。 */
+    private static String rules(String key) { return A.library().find(key).orElseThrow().body(); }
 
     @Test
     void scriptPromptAppendsChosenGenreAndToneRules() {
-        String p = DirectorPrompts.script("奇幻脑洞", "治愈温情");
-        assertTrue(p.startsWith(DirectorPrompts.SCRIPT));
-        assertTrue(p.contains(DirectorPrompts.GENRES.get("奇幻脑洞")));
-        assertTrue(p.contains(DirectorPrompts.TONES.get("治愈温情")));
+        String p = scriptPrompt("奇幻脑洞", "治愈温情");
+        assertTrue(p.startsWith(SCRIPT));
+        assertTrue(p.contains(rules(DirectorPrompts.GENRES.get("奇幻脑洞"))));
+        assertTrue(p.contains(rules(DirectorPrompts.TONES.get("治愈温情"))));
         assertTrue(p.indexOf("【题材：奇幻脑洞】") < p.indexOf("【调性：治愈温情】"));
     }
 
     @Test
     void scriptPromptWithoutTagsIsTheBasePrompt() {
-        assertEquals(DirectorPrompts.SCRIPT, DirectorPrompts.script(null, null));
-        assertFalse(DirectorPrompts.SCRIPT.contains("三层反转"), "the reversal line is not a default for every genre");
-        assertEquals(DirectorPrompts.SCRIPT, DirectorPrompts.script("不存在的题材", ""));
+        assertEquals(SCRIPT, scriptPrompt(null, null));
+        assertFalse(SCRIPT.contains("三层反转"), "the reversal line is not a default for every genre");
+        assertEquals(SCRIPT, scriptPrompt("不存在的题材", ""));
     }
 
     @Test
     void basePromptKeepsTheOutputContract() {
         // 编剧提示词换了写法，输出仍是导演台的 {title, logline, content}，后面的拆分 / 提取都读 content。
-        assertTrue(DirectorPrompts.SCRIPT.contains("\"outline\":{\"world\""));
-        assertTrue(DirectorPrompts.SCRIPT.contains("\"content\":\"完整剧本正文\"}"));
+        assertTrue(SCRIPT.contains("\"outline\":{\"world\""));
+        assertTrue(SCRIPT.contains("\"content\":\"完整剧本正文\"}"));
         assertEquals(6, DirectorPrompts.GENRES.size());
         assertEquals(5, DirectorPrompts.TONES.size());
     }
@@ -52,15 +62,15 @@ class DirectorPromptsTest {
 
     @Test
     void planPromptFollowsTheModelLimits() {
-        String multi = DirectorPrompts.plan(5, 15, 4);
+        String multi = plan(5, 15, 4);
         assertTrue(multi.contains("12–15 秒"), "range ends at the model maximum");
         assertTrue(multi.contains("3–4 个镜头"));
         assertTrue(multi.contains("正反打") && multi.contains("输出前强制校验") && multi.contains("去 AI 味镜头写实规则"));
         assertFalse(multi.contains("极致"), "no wording that pushes exaggerated expressions");
         assertFalse(multi.contains("放宽至 2 个镜头"), "shot count is not relaxed");
         assertTrue(multi.contains("action 不超过 80 字"), "length caps keep one episode inside the request time limit");
-        assertTrue(DirectorPrompts.plan(4, 10, 4).contains("7–10 秒"), "a shorter model moves the range with it");
-        String frame = DirectorPrompts.plan(5, 10, 1);
+        assertTrue(plan(4, 10, 4).contains("7–10 秒"), "a shorter model moves the range with it");
+        String frame = plan(5, 10, 1);
         assertTrue(frame.contains("只能有 1 个镜头"));
         assertFalse(frame.contains("禁止少于"), "first-frame models keep one shot per clip");
         assertTrue(frame.contains("去 AI 味镜头写实规则"), "realism rules apply to first-frame models too");
@@ -68,10 +78,10 @@ class DirectorPromptsTest {
 
     @Test
     void reversalLineOnlyForTwistToneAndSuspenseGenres() {
-        assertTrue(DirectorPrompts.script(null, "反转烧脑").contains("【反转线】"));
-        assertTrue(DirectorPrompts.script("都市悬疑", null).contains("【反转线】"));
-        assertFalse(DirectorPrompts.script("市井情感", "治愈温情").contains("【反转线】"));
-        assertTrue(DirectorPrompts.SCRIPT.contains("所有反转必须在前序剧情埋下可回溯的伏笔"), "foreshadowing rule stays for everyone");
+        assertTrue(scriptPrompt(null, "反转烧脑").contains("【反转线】"));
+        assertTrue(scriptPrompt("都市悬疑", null).contains("【反转线】"));
+        assertFalse(scriptPrompt("市井情感", "治愈温情").contains("【反转线】"));
+        assertTrue(SCRIPT.contains("所有反转必须在前序剧情埋下可回溯的伏笔"), "foreshadowing rule stays for everyone");
     }
 
     // ── 分集：只认起点，区间由程序构造（2026-10-25 线上两单 AI_BAD_OUTPUT）──────────────
@@ -139,8 +149,8 @@ class DirectorPromptsTest {
 
     @Test
     void splitPromptAsksForStartsOnly() {
-        assertTrue(DirectorPrompts.SPLIT.contains("\"bodyStart\":0,\"episodes\":[{\"title\":\"集名\",\"summary\":\"本集剧情摘要\",\"startParagraph\":0}]"));
-        assertFalse(DirectorPrompts.SPLIT.contains("endParagraph"), "the model no longer writes where an episode ends");
+        assertTrue(SPLIT.contains("\"bodyStart\":0,\"episodes\":[{\"title\":\"集名\",\"summary\":\"本集剧情摘要\",\"startParagraph\":0}]"));
+        assertFalse(SPLIT.contains("endParagraph"), "the model no longer writes where an episode ends");
     }
 
     private static List<String> script(int preamble, String... headings) {
@@ -196,7 +206,7 @@ class DirectorPromptsTest {
 
     @Test
     void splitAndReshootEachSayOnceWhatHappensToLinesThatDoNotFit() {
-        String plan = DirectorPrompts.plan(12, 15, 4), reshoot = DirectorPrompts.reshoot(12, 15, 4);
+        String plan = plan(12, 15, 4), reshoot = reshoot(12, 15, 4);
         assertTrue(plan.contains("还放不下就把后面的台词顺延到下一片段"), "写分镜脚本：放不下顺延到下一片段");
         assertFalse(plan.contains("也不挪到别的片段"));
         assertTrue(reshoot.contains("也不挪到别的片段") && reshoot.contains("照原文全部保留"), "重写：不挪、不删，照原文保留并提示");
@@ -213,7 +223,7 @@ class DirectorPromptsTest {
     @Test
     void reshootKeepsOverlongLinesEverywhereTheFourCharacterCapIsMentioned() {
         for (int maxShots : List.of(4, 1)) {
-            String reshoot = DirectorPrompts.reshoot(12, 15, maxShots), plan = DirectorPrompts.plan(12, 15, maxShots);
+            String reshoot = reshoot(12, 15, maxShots), plan = plan(12, 15, maxShots);
             List<String> caps = reshoot.lines().filter(l -> l.contains("× 4")).toList();
             assertEquals(2, caps.size(), "上限一处、自检一处：" + caps);
             for (String l : caps) assertTrue(l.contains("原文"), "提到上限的这一行没交代超出时保留原文：" + l);
@@ -227,18 +237,18 @@ class DirectorPromptsTest {
 
     @Test
     void emotionAndToneFollowTheGenreInsteadOfOneRestraintForAll() {
-        String hype = DirectorPrompts.TONES.get("爽感打脸"), warm = DirectorPrompts.TONES.get("治愈温情");
+        String hype = rules(DirectorPrompts.TONES.get("爽感打脸")), warm = rules(DirectorPrompts.TONES.get("治愈温情"));
         assertFalse(hype.contains("闷声做") || hype.contains("不嚣张"), "爽剧不再规定只能闷声反击");
         assertTrue(hype.contains("当面揭穿") && hype.contains("看得痛快"), hype);
         assertFalse(warm.contains("没有告白、拥抱、接吻") || warm.contains("情绪克制"), "治愈不再一律禁止亲密时刻");
         assertTrue(warm.contains("要有前面的铺垫"), warm);
-        String shots = DirectorPrompts.plan(12, 15, 4);
+        String shots = plan(12, 15, 4);
         assertTrue(shots.contains("情绪的幅度跟着剧情和题材走") && shots.contains("爆发、大哭大笑"), "分镜的情绪幅度也跟题材");
     }
 
     @Test
     void theScriptRulesAreGuidanceNotNewDogma() {
-        String p = DirectorPrompts.SCRIPT;
+        String p = SCRIPT;
         assertFalse(p.contains("主角必须有生活化缺点") || p.contains("嘴笨、路痴、爱攒塑料袋"), "不再要求硬加装饰性小毛病");
         assertTrue(p.contains("会影响他在关键处的选择"), "人物的顾虑和局限要服务主线");
         assertFalse(p.contains("允许停顿、打断、口误"), "不为口语化硬塞口误");

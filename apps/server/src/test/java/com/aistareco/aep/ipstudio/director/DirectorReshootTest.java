@@ -304,13 +304,17 @@ class DirectorReshootTest {
         verify(textRuns).submitDirectorText(any(), any(), eq("plan:ep2"), any(), any(), any(), any(), any(), any(), any());
     }
 
+    private static String reshootPrompt(int minSec, int maxSec, int maxShots) {
+        return DirectorPrompts.reshoot(com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.classpath(), minSec, maxSec, maxShots, "{}").system();
+    }
+
     @Test
     void theReshootPromptKeepsTheSplitAndTheFrameVariantDoesNotAskToSplit() {
-        String multi = DirectorPrompts.reshoot(5, 15, 4);
+        String multi = reshootPrompt(5, 15, 4);
         assertTrue(multi.contains("rewriteIds") && multi.contains("不合并、不拆分") && multi.contains("\"id\":\"片段 id\""));
         assertTrue(multi.contains("单片段镜头数"), "same hard limits as writing a storyboard");
-        String frame = DirectorPrompts.reshoot(4, 4, 1);
+        String frame = reshootPrompt(4, 4, 1);
         assertFalse(frame.contains("复杂动作拆成多个片段"));
-        assertTrue(DirectorPrompts.plan(4, 4, 1).contains("复杂动作拆成多个片段"));
+        assertTrue(DirectorPrompts.plan(com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.classpath(), 4, 4, 1, "{}").system().contains("复杂动作拆成多个片段"));
     }
 }
