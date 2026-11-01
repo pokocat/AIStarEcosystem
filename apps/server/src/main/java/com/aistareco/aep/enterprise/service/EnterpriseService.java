@@ -250,7 +250,7 @@ public class EnterpriseService {
     private EnterpriseDtos.Member dto(Enterprise e,EnterpriseMember m,com.aistareco.aep.model.AepUser user){
         String name=user==null?"企业成员":user.getDisplayName();
         if(name==null||name.isBlank())name=user==null?"企业成员":user.getUsername();
-        return new EnterpriseDtos.Member(m.getId(),m.getEnterpriseId(),m.getUserId(),name,e.getOwnerUserId().equals(m.getUserId())?"owner":m.getRole(),m.getStatus(),new EnterpriseDtos.Capabilities(m.isPointsManage(),m.isBillingRead(),m.isRechargeRequest()),m.getVersion(),m.getJoinedAt());
+        return new EnterpriseDtos.Member(m.getId(),m.getEnterpriseId(),m.getUserId(),name,user==null?null:user.getPhone(),e.getOwnerUserId().equals(m.getUserId())?"owner":m.getRole(),m.getStatus(),new EnterpriseDtos.Capabilities(m.isPointsManage(),m.isBillingRead(),m.isRechargeRequest()),m.getVersion(),m.getJoinedAt());
     }
     private EnterpriseDtos.Invitation dto(EnterpriseInvitation i){return new EnterpriseDtos.Invitation(i.getId(),i.getEnterpriseId(),"pending".equals(i.getStatus())&&!i.getExpiresAt().isAfter(Instant.now())?"expired":i.getStatus(),i.getExpiresAt());}
     private EnterpriseDtos.OwnershipTransfer dto(EnterpriseOwnershipTransfer t){return new EnterpriseDtos.OwnershipTransfer(t.getId(),t.getEnterpriseId(),t.getFromUserId(),t.getToUserId(),t.getStatus(),t.getExpiresAt());}

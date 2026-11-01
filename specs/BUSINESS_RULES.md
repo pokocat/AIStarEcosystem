@@ -1376,7 +1376,7 @@ operation=text/script/storyboard/assistant/asset-extract 的新任务全部使�
 - 2026-10-29 手机号直接加人：`POST /api/v1/ip-studio/enterprises/{id}/members` 仅主账号/管理员（member.invite）可用，精确匹配本产品已验证手机号档案，目标须有效且已开通 aiavatar。先锁用户、再锁企业，与邀请接受串行；同企业有效关系幂等返回、其他企业和停用关系拒绝。新成员为 member、附加授权全 false、企业钱包零余额；不注册身份、不赠额、不改变开通或个人钱包。审计 `member.add` 不含手机号。
 - 2026-10-29 批量加人：`POST /api/v1/ip-studio/enterprises/{id}/members/batch` 接收 `phones[1..100]`，规范化去重，每项复用单人校验并在独立事务提交。返回逐项 status/member 或 errorCode/message 与成功/失败数；失败不撤销其他成功关系，重试有效关系幂等。界面支持「单个添加/批量添加」，换行、中文/英文逗号或分号粘贴；失败项保留重试，批次结果仅在当前表单内存展示。
 - V59 清空旧企业邀请记录并删除 accepted_by 单次接受字段，直接切换群发模型；不修改企业成员、账号、钱包、账本和产品开通。无旧单次邀请兼容分支。
-- 角色修改仅 owner，禁止修改自己；manager 只能管理普通成员，积分管理和财务读取须另获授权。成员查询、审计列表按企业后端分页，不返回完整手机号或个人资源。
+- 角色修改仅 owner，禁止修改自己；manager 只能管理普通成员，积分管理和财务读取须另获授权。成员查询、审计列表按企业后端分页；成员列表返回产品档案中的手机号供识别，不新增权限项，审计仍不记录手机号或个人资源。
 - 主账号移交需当前 owner 发起、指定有效成员在24小时内接受；锁企业行复核旧 owner，只能成功一次，原 owner 降为 manager，钱包主体不变。模型策略默认空允许集、在途上限1，修改需 owner 且携带版本。
 - 钱包类型为 personal / enterprise / enterprise_member。个人 userId 唯一；企业账户的 userId 为空，memberUserId 单独存储，accountKey 唯一。企业成员积分仍归企业，不进入个人 gift/recharge 余额。
 - CreditService 为唯一余额写入入口；原 userId 方法仍解析个人钱包，新内部方法按 walletId。企业主账户不可直接消费；成员企业冻结须有操作者、成员关系和付款授权。企业付款只开放 Studio 指定用途，最终模型和成员在途上限均由服务端控制。
@@ -1389,6 +1389,7 @@ operation=text/script/storyboard/assistant/asset-extract 的新任务全部使�
 
 ### 企业积分划拨与人工财务（E05–E06）
 
+- 2026-10-31 主账号个人积分转入：`POST /api/v1/ip-studio/enterprises/{id}/points/deposit[/preview]` 复用积分预览和确认契约，items 只有 owner 本人的 memberId 与正整数 amount。个人可用 gift/license/recharge 均可转入，按既有顺序扣桶并原桶进入企业根账户；不新增权限项、不经财务审批、不重记充值或发行。与分配共用 batch 的 clientRequestId+正文幂等、确认指纹、关联 TRANSFER_OUT/IN 与审计；企业及全部企业钱包在前，个人钱包在后，同事务完成。充值桶在企业内以 `owner-deposit:<transferId>` 记录来源并随分配/冻结/释放流转，不冒充新的现金订单，不混入其他企业充值订单的退款来源。
 - 分配/回收最多100位不重复成员，企业根账户与成员企业账户等额划拨，gift/license/recharge 桶及充值原单来源随积分移动；不转入个人、不跨企业、不触碰冻结。manager 不得操作自己、owner 或其他 manager。
 - 先预览逐项、总额及前后余额，提交带确认指纹；锁企业再按钱包ID排序锁行，复核成员权限和余额。变化返回409，必须重新预览确认；同请求键+规范化正文只执行一次，批量整批回滚。`finance:` 请求键留给退款归集。
 - 企业充值申请不入账；财务独立登记人民币分、积分、收款凭据。使用明确标记的内部人工订单类型，不创建或修改公共套餐；目标企业、企业名、申请人和根钱包在申请时快照。核准经 RechargeService 原子入账，仅 RECHARGE，不借 GIFT 发放。个人充值列表/收银台/旧核准退款入口不能处理企业单，支付回调及影子支付不能核准企业人工单；人工单不按在线支付TTL关闭。

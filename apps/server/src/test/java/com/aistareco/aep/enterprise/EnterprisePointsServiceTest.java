@@ -43,6 +43,7 @@ class EnterprisePointsServiceTest {
     }
     @Autowired EnterpriseService enterprises;
     @Autowired EnterprisePointsService service;
+    @Autowired EnterpriseRechargeService recharges;
     @Autowired EnterprisePointsBatchRepository batches;
     @Autowired EnterprisePointsTransferRepository transfers;
     @Autowired EnterpriseCreditLotService sourceLots;
@@ -79,6 +80,76 @@ class EnterprisePointsServiceTest {
         return service.submit(actor.member().userId(),actor.enterprise().id(),direction,new SubmitRequest(key,preview.confirmationFingerprint(),List.of(items)));
     }
     private long total(Context e,Context...members){long total=root(e).getTotalBalance()+root(e).getPendingBalance();for(var m:members)total+=wallet(m).getTotalBalance()+wallet(m).getPendingBalance();return total;}
+
+    @Test void ownerCanDepositAllPersonalCreditSourcesThenAllocateToMember() {
+        var e=company();var member=join(e);String owner=e.member().userId();
+        credits.creditAccount(owner,20,LedgerEntry.LedgerEntryType.GIFT,"test",UUID.randomUUID().toString(),"赠送");
+        credits.creditAccount(owner,30,LedgerEntry.LedgerEntryType.LICENSE_GRANT,"test",UUID.randomUUID().toString(),"激活码");
+        credits.creditAccount(owner,100,LedgerEntry.LedgerEntryType.RECHARGE,"test",UUID.randomUUID().toString(),"充值");
+        long issued=ledger.sumTotalCreditsIssued();
+        var batch=execute(e,"deposit",new Item(e.member().id(),150L));var transfer=batch.transfers().get(0);
+        assertEquals("deposit",batch.direction());assertEquals(0,wallets.findByUserId(owner).orElseThrow().getTotalBalance());
+        assertEquals(150,root(e).getTotalBalance());assertEquals(20,transfer.fromGift());assertEquals(30,transfer.fromLicense());assertEquals(100,transfer.fromRecharge());
+        var out=ledger.findById(transfer.outLedgerId()).orElseThrow();var in=ledger.findById(transfer.inLedgerId()).orElseThrow();
+        assertEquals(owner,out.getUserId());assertEquals(0,out.getAmount()+in.getAmount());assertEquals(out.getReferenceId(),in.getReferenceId());
+        assertEquals(LedgerEntry.Plane.CREDIT,in.getPlane());assertNull(in.getCashArtifactId());assertEquals(issued,ledger.sumTotalCreditsIssued());
+        execute(e,"allocate",new Item(member.member().id(),150L));
+        assertEquals(150,wallet(member).getTotalBalance());assertEquals(100,wallet(member).getRechargeBalance());
+        assertEquals(100,lotRows.findByRechargeOrderIdAndWalletId("owner-deposit:"+transfer.id(),wallet(member).getId()).orElseThrow().getAvailable());
+        assertEquals(0,root(e).getTotalBalance());
+    }
+
+    @Test void depositReplaysWithoutDoubleDebitAndRejectsChangedBody() throws Exception {
+        var e=company();String owner=e.member().userId();credits.creditAccount(owner,100,LedgerEntry.LedgerEntryType.RECHARGE,"test",UUID.randomUUID().toString(),"充值");
+        var item=new Item(e.member().id(),80L);var p=preview(e,"deposit",item);String key=UUID.randomUUID().toString();
+        var results=race(()->submit(e,"deposit",p,key,item),()->submit(e,"deposit",p,key,item));
+        assertEquals(((Batch)results.get(0)).id(),((Batch)results.get(1)).id());
+        assertEquals(20,wallets.findByUserId(owner).orElseThrow().getTotalBalance());assertEquals(80,root(e).getTotalBalance());
+        var error=assertThrows(BusinessException.class,()->submit(e,"deposit",p,key,new Item(e.member().id(),81L)));
+        assertEquals("ENTERPRISE_REQUEST_CONFLICT",error.getCode());
+    }
+
+    @Test void depositCannotSpendPendingBalanceAndStalePreviewDoesNotMoveCredits() {
+        var e=company();String owner=e.member().userId();credits.creditAccount(owner,100,LedgerEntry.LedgerEntryType.RECHARGE,"test",UUID.randomUUID().toString(),"充值");
+        var item=new Item(e.member().id(),80L);var p=preview(e,"deposit",item);
+        String ref=UUID.randomUUID().toString();credits.hold(owner,70,"deposit-test",ref,"冻结",com.aistareco.aep.billing.service.ModelChargeContext.NONE);
+        assertEquals("ENTERPRISE_POINTS_PREVIEW_STALE",assertThrows(BusinessException.class,()->submit(e,"deposit",p,UUID.randomUUID().toString(),item)).getCode());
+        assertEquals("ENTERPRISE_POINTS_INSUFFICIENT",assertThrows(BusinessException.class,()->preview(e,"deposit",item)).getCode());
+        execute(e,"deposit",new Item(e.member().id(),30L));
+        assertEquals(70,wallets.findByUserId(owner).orElseThrow().getPendingBalance());assertEquals(30,root(e).getTotalBalance());
+    }
+
+    @Test void onlyOwnerCanDepositAndOnlyFromOwnPersonalWallet() {
+        var e=company();var manager=join(e);var foreign=company();
+        enterprises.updateMember(e.member().userId(),e.enterprise().id(),manager.member().id(),new MemberUpdate("manager",new Capabilities(true,true,true),manager.member().version()));
+        assertEquals("ENTERPRISE_PERMISSION_DENIED",assertThrows(BusinessException.class,()->preview(manager,"deposit",new Item(manager.member().id(),1L))).getCode());
+        assertThrows(BusinessException.class,()->preview(e,"deposit",new Item(manager.member().id(),1L)));
+        assertThrows(BusinessException.class,()->preview(foreign,"deposit",new Item(e.member().id(),1L)));
+        assertThrows(BusinessException.class,()->preview(e,"deposit",new Item(e.member().id(),null)));
+        assertThrows(BusinessException.class,()->preview(e,"deposit",new Item(e.member().id(),1L),new Item(manager.member().id(),1L)));
+    }
+
+    @Test void depositFailureRollsBackWalletsBatchAndSourceLots() {
+        var e=company();String owner=e.member().userId();credits.creditAccount(owner,100,LedgerEntry.LedgerEntryType.RECHARGE,"test",UUID.randomUUID().toString(),"充值");
+        var item=new Item(e.member().id(),80L);var p=preview(e,"deposit",item);
+        CreditService creditSpy=org.springframework.test.util.AopTestUtils.getUltimateTargetObject(credits);
+        doAnswer(invocation->{invocation.callRealMethod();throw new IllegalStateException("injected deposit failure");})
+                .when(creditSpy).transferOwnerCreditsToEnterprise(anyString(),anyString(),anyString(),anyLong(),anyString(),anyString(),anyString());
+        assertThrows(IllegalStateException.class,()->submit(e,"deposit",p,UUID.randomUUID().toString(),item));
+        assertEquals(100,wallets.findByUserId(owner).orElseThrow().getTotalBalance());assertEquals(0,root(e).getTotalBalance());
+        assertTrue(batches.findAll().stream().noneMatch(b->e.enterprise().id().equals(b.getEnterpriseId())));
+        assertTrue(lotRows.findByWalletIdOrderByCreatedAtAscIdAsc(root(e).getId()).isEmpty());
+        assertTrue(ledger.findByWalletId(root(e).getId(),org.springframework.data.domain.PageRequest.of(0,20)).isEmpty());
+    }
+
+    @Test void memberListsExposeCurrentPhoneWithoutChangingExistingListAccess() {
+        var e=company();var m=join(e);String phone="13800138000";
+        var user=users.findById(m.member().userId()).orElseThrow();user.setPhone(phone);users.saveAndFlush(user);
+        assertEquals(phone,enterprises.members(e.member().userId(),e.enterprise().id(),0,20).stream().filter(row->row.id().equals(m.member().id())).findFirst().orElseThrow().phone());
+        assertEquals(phone,recharges.memberBalances(e.member().userId(),e.enterprise().id(),0,20).stream().filter(row->row.memberId().equals(m.member().id())).findFirst().orElseThrow().phone());
+        user.setPhone(null);users.saveAndFlush(user);
+        assertNull(enterprises.members(e.member().userId(),e.enterprise().id(),0,20).stream().filter(row->row.id().equals(m.member().id())).findFirst().orElseThrow().phone());
+    }
 
     @Test void singleAllocationAndReclaimPreserveBucketsAndLinkedLedger() {
         var e=company();var m=join(e);fund(root(e),60,LedgerEntry.LedgerEntryType.GIFT);fund(root(e),40,LedgerEntry.LedgerEntryType.LICENSE_GRANT);fund(root(e),200,LedgerEntry.LedgerEntryType.RECHARGE);
@@ -277,6 +348,24 @@ class EnterprisePointsServiceTest {
                 .contentType("application/json").content("{\"items\":[{\"memberId\":\""+m.member().id()+"\",\"amount\":10}]}")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.memberCount").value(1)).andExpect(jsonPath("$.data.totalAmount").value(10)).andExpect(jsonPath("$.data.confirmationFingerprint").isString());
         assertEquals(0,wallet(m).getTotalBalance());
+    }
+
+    @Test void httpDepositUsesPersonalBalanceAndAcceptsConfirmedTransfer() throws Exception {
+        var e=company();String owner=e.member().userId();
+        credits.creditAccount(owner,100,LedgerEntry.LedgerEntryType.RECHARGE,"test",UUID.randomUUID().toString(),"充值");
+        String path="/api/v1/ip-studio/enterprises/"+e.enterprise().id()+"/points/deposit";
+        String items="\"items\":[{\"memberId\":\""+e.member().id()+"\",\"amount\":80}]";
+        mvc.perform(post(path+"/preview").contentType("application/json").content("{"+items+"}")).andExpect(status().isUnauthorized());
+        mvc.perform(post(path+"/preview").with(user(owner).roles("PERSONAL")).header("X-App-Code","aiavatar")
+                .contentType("application/json").content("{"+items+"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.direction").value("deposit"))
+                .andExpect(jsonPath("$.data.items[0].availableBefore").value(100)).andExpect(jsonPath("$.data.rootAvailableAfter").value(80));
+        var p=preview(e,"deposit",new Item(e.member().id(),80L));
+        mvc.perform(post(path).with(user(owner).roles("PERSONAL")).header("X-App-Code","aiavatar")
+                .contentType("application/json").content("{\"clientRequestId\":\""+UUID.randomUUID()+"\",\"confirmationFingerprint\":\""+p.confirmationFingerprint()+"\","+items+"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.direction").value("deposit"))
+                .andExpect(jsonPath("$.data.transfers[0].fromRecharge").value(80));
+        assertEquals(20,wallets.findByUserId(owner).orElseThrow().getTotalBalance());assertEquals(80,root(e).getTotalBalance());
     }
 
     private List<Object> race(Callable<?> first,Callable<?> second)throws Exception {

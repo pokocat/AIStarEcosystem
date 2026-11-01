@@ -45,7 +45,7 @@ public class EnterprisePointsService {
 
     @Transactional
     public Preview preview(String actor,String enterpriseId,String direction,PreviewRequest request) {
-        Enterprise enterprise=lock(enterpriseId);access.require(actor,enterpriseId,"points.manage");
+        Enterprise enterprise=lock(enterpriseId);requireActor(actor,enterprise,direction);
         var items=normalize(direction,request==null?null:request.items());
         Snapshot snapshot=snapshot(actor,enterprise,direction,items);
         requireFunds(snapshot,direction);
@@ -54,7 +54,7 @@ public class EnterprisePointsService {
 
     @Transactional
     public Batch submit(String actor,String enterpriseId,String direction,SubmitRequest request) {
-        Enterprise enterprise=lock(enterpriseId);access.require(actor,enterpriseId,"points.manage");
+        Enterprise enterprise=lock(enterpriseId);requireActor(actor,enterprise,direction);
         if(request==null)throw invalid("请先预览积分变动");
         String key=EnterpriseService.text(request.clientRequestId(),64);
         if(key.startsWith("finance:")||key.startsWith("system:"))throw invalid("请求编号使用了系统保留前缀");
@@ -83,8 +83,10 @@ public class EnterprisePointsService {
             String transferId=id();boolean allocate="allocate".equals(direction);
             String from=allocate?snapshot.root().getId():target.wallet().getId();
             String to=allocate?target.wallet().getId():snapshot.root().getId();
-            var moved=credits.transferEnterpriseCredits(enterpriseId,from,to,amount,actor,target.member().getId(),transferId,
-                    allocate?"企业积分分配":"企业积分回收");
+            var moved="deposit".equals(direction)
+                    ?credits.transferOwnerCreditsToEnterprise(enterpriseId,from,to,amount,actor,target.member().getId(),transferId)
+                    :credits.transferEnterpriseCredits(enterpriseId,from,to,amount,actor,target.member().getId(),transferId,
+                            allocate?"企业积分分配":"企业积分回收");
             var transfer=new EnterprisePointsTransfer();transfer.setId(transferId);transfer.setBatchId(batch.getId());
             transfer.setMemberId(target.member().getId());transfer.setFromWalletId(from);transfer.setToWalletId(to);transfer.setAmount(amount);
             transfer.setFromGift(moved.fromGift());transfer.setFromLicense(moved.fromLicense());transfer.setFromRecharge(moved.fromRecharge());
@@ -92,7 +94,8 @@ public class EnterprisePointsService {
         }
         var audit=new EnterpriseAudit();audit.setId(id());audit.setEnterpriseId(enterpriseId);audit.setActorUserId(actor);
         audit.setAction("points."+direction);audit.setTargetId(batch.getId());audit.setCreatedAt(batch.getCreatedAt());
-        audit.setSummary(("allocate".equals(direction)?"分配":"回收")+"企业积分 "+batch.getTotalAmount()+"，成员 "+items.size()+" 人");audits.save(audit);
+        audit.setSummary("deposit".equals(direction)?"个人积分转入企业 "+batch.getTotalAmount()
+                :("allocate".equals(direction)?"分配":"回收")+"企业积分 "+batch.getTotalAmount()+"，成员 "+items.size()+" 人");audits.save(audit);
         return dto(batch);
     }
 
@@ -120,7 +123,7 @@ public class EnterprisePointsService {
     }
 
     private Snapshot snapshot(String actor,Enterprise e,String direction,List<Item> items) {
-        boolean owner=e.getOwnerUserId().equals(actor),allocate="allocate".equals(direction);
+        boolean owner=e.getOwnerUserId().equals(actor),allocate="allocate".equals(direction),deposit="deposit".equals(direction);
         List<EnterpriseMember> targets=new ArrayList<>();
         List<String> walletIds=new ArrayList<>();
         Wallet root=wallets.findByAccountKey("enterprise:"+e.getId()).orElseThrow(()->invalid("企业账户不存在"));
@@ -132,14 +135,19 @@ public class EnterprisePointsService {
                     .orElseThrow(()->BusinessException.notFound("ENTERPRISE_MEMBER_NOT_FOUND","请选择当前企业的有效成员"));
             if(current.findById(member.getUserId()).filter(c->member.getId().equals(c.getMemberId())&&e.getId().equals(c.getEnterpriseId())).isEmpty())
                 throw invalid("成员已退出企业");
+            if(deposit&&!actor.equals(member.getUserId()))throw invalid("只能将本人的个人积分转入企业");
             if(!owner&&(actor.equals(member.getUserId())||e.getOwnerUserId().equals(member.getUserId())||!"member".equals(member.getRole())))
                 throw EnterpriseAccessService.denied("ENTERPRISE_PERMISSION_DENIED","管理员不能给自己、主账号或其他管理员分配或回收积分");
-            Wallet wallet=wallets.findByAccountKey("enterprise_member:"+e.getId()+":"+member.getUserId())
-                    .orElseThrow(()->invalid("成员企业账户不存在"));
+            Wallet wallet=wallets.findByAccountKey(deposit?"personal:"+actor:"enterprise_member:"+e.getId()+":"+member.getUserId())
+                    .orElseThrow(()->invalid(deposit?"个人积分账户不存在":"成员企业账户不存在"));
             targets.add(member);memberWallets.put(member.getId(),wallet);walletIds.add(wallet.getId());
         }
-        // Refresh managed snapshots after acquiring the row lock, including any concurrent hold/settlement.
-        for(String walletId:walletIds.stream().distinct().sorted().toList()) {
+        // Enterprise settlement locks every enterprise wallet first. Personal wallets come last for deposits.
+        // Keep that order here too; never hold a personal wallet while waiting for enterprise settlement.
+        List<String> ordered=deposit?new ArrayList<>(em.createQuery("select w.id from Wallet w where w.enterpriseId=:id order by w.id",String.class)
+                .setParameter("id",e.getId()).getResultList()):new ArrayList<>(walletIds.stream().distinct().sorted().toList());
+        if(deposit)ordered.add(memberWallets.values().iterator().next().getId());
+        for(String walletId:ordered) {
             Wallet wallet=wallets.findByIdForUpdate(walletId).orElseThrow();em.refresh(wallet,LockModeType.PESSIMISTIC_WRITE);
         }
         List<Target> resolved=new ArrayList<>();List<PreviewItem> previewItems=new ArrayList<>();
@@ -165,26 +173,36 @@ public class EnterprisePointsService {
         if(snapshot.preview().totalAmount()>9_007_199_254_740_991L)throw invalid("单批积分总额超过上限");
         if(("allocate".equals(direction)&&snapshot.preview().rootAvailableAfter()<0)
                 || snapshot.preview().items().stream().anyMatch(i->i.availableAfter()<0))
-            throw new BusinessException(HttpStatus.PAYMENT_REQUIRED,"ENTERPRISE_POINTS_INSUFFICIENT","可用企业积分不足，冻结积分不可分配或回收");
+            throw new BusinessException(HttpStatus.PAYMENT_REQUIRED,"ENTERPRISE_POINTS_INSUFFICIENT",
+                    "deposit".equals(direction)?"个人可用积分不足":"可用企业积分不足，冻结积分不可分配或回收");
     }
 
     private List<Item> normalize(String direction,List<Item> items) {
-        if(!Set.of("allocate","reclaim").contains(direction)||items==null||items.isEmpty()||items.size()>100)
+        if(!Set.of("allocate","reclaim","deposit").contains(direction)||items==null||items.isEmpty()||items.size()>100)
             throw invalid("请选择 1–100 位成员");
+        if("deposit".equals(direction)&&items.size()!=1)throw invalid("每次只能转入本人的个人积分");
         Set<String> seen=new HashSet<>();List<Item> out=new ArrayList<>();
         for(var item:items) {
             if(item==null)throw invalid("积分条目无效");
             String member=EnterpriseService.text(item.memberId(),64);
             if(!seen.add(member))throw invalid("成员不能重复");
-            if((item.amount()==null&&"allocate".equals(direction)) || (item.amount()!=null&&(item.amount()<=0||item.amount()>9_007_199_254_740_991L)))
+            if((item.amount()==null&&!"reclaim".equals(direction)) || (item.amount()!=null&&(item.amount()<=0||item.amount()>9_007_199_254_740_991L)))
                 throw invalid("积分必须为正整数，回收全部可用积分时可不填金额");
             out.add(new Item(member,item.amount()));
         }
         return out.stream().sorted(Comparator.comparing(Item::memberId)).toList();
     }
     private Enterprise lock(String enterpriseId) {
-        return enterprises.lockById(enterpriseId).filter(e->"active".equals(e.getStatus()))
+        var e=enterprises.lockById(enterpriseId)
                 .orElseThrow(()->EnterpriseAccessService.denied("ENTERPRISE_ACCESS_DENIED","企业不可使用"));
+        em.refresh(e,LockModeType.PESSIMISTIC_WRITE);
+        if(!"active".equals(e.getStatus()))throw EnterpriseAccessService.denied("ENTERPRISE_ACCESS_DENIED","企业不可使用");
+        return e;
+    }
+    private void requireActor(String actor,Enterprise enterprise,String direction) {
+        access.require(actor,enterprise.getId(),"points.manage");
+        if("deposit".equals(direction)&&!actor.equals(enterprise.getOwnerUserId()))
+            throw EnterpriseAccessService.denied("ENTERPRISE_PERMISSION_DENIED","只有企业主账号可以转入个人积分");
     }
     private List<Object> walletState(Wallet w) {return List.of(w.getId(),w.getTotalBalance(),w.getGiftBalance(),w.getLicenseBalance(),w.getRechargeBalance(),w.getPendingBalance());}
     private Batch dto(EnterprisePointsBatch batch) {

@@ -35,10 +35,12 @@ export function revoke(id: string, invitationId: string): Promise<EnterpriseInvi
 export function wallet(id: string): Promise<EnterpriseWalletSummary> { return apiFetch(`${BASE}/${encodeURIComponent(id)}/wallet`); }
 export function memberBalances(id: string, page = 0, limit = 20): Promise<PaginatedResponse<EnterpriseMemberBalance>> { return apiFetchPaginated(`${BASE}/${encodeURIComponent(id)}/member-balances?page=${page}&limit=${limit}`); }
 export function previewPoints(id: string, direction: EnterprisePointsDirection, body: EnterprisePointsPreviewRequest): Promise<EnterprisePointsPreview> {
+  if (direction === "deposit") return apiFetch(`${BASE}/${encodeURIComponent(id)}/points/deposit/preview`, { method: "POST", body });
   if (direction === "allocate") return apiFetch(`${BASE}/${encodeURIComponent(id)}/points/allocate/preview`, { method: "POST", body });
   return apiFetch(`${BASE}/${encodeURIComponent(id)}/points/reclaim/preview`, { method: "POST", body });
 }
 export function transferPoints(id: string, direction: EnterprisePointsDirection, body: EnterprisePointsRequest): Promise<EnterprisePointsBatch> {
+  if (direction === "deposit") return apiFetch(`${BASE}/${encodeURIComponent(id)}/points/deposit`, { method: "POST", body });
   if (direction === "allocate") return apiFetch(`${BASE}/${encodeURIComponent(id)}/points/allocate`, { method: "POST", body });
   return apiFetch(`${BASE}/${encodeURIComponent(id)}/points/reclaim`, { method: "POST", body });
 }

@@ -849,23 +849,46 @@ public class CreditService {
                 actor,source.getMembershipId(),transferId,description,false,null,new long[]{gift,license,recharge},source);
     }
 
+    /** Owner deposits join the batch transaction; all available buckets retain their original type. */
+    @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public EnterpriseCreditTransfer transferOwnerCreditsToEnterprise(String enterpriseId,String fromWalletId,
+            String toWalletId,long amount,String actor,String membershipId,String transferId) {
+        return transferEnterpriseCreditsLocked(enterpriseId,fromWalletId,toWalletId,amount,actor,membershipId,transferId,
+                "个人积分转入企业",false,null,null,null,true);
+    }
+
     private EnterpriseCreditTransfer transferEnterpriseCreditsLocked(String enterpriseId, String fromWalletId,
             String toWalletId, long amount, String actorUserId, String membershipId, String transferId,
             String description, boolean rechargeOnly,String sourceOrderId,long[] exactBuckets,CreditHold sourceHold) {
+        return transferEnterpriseCreditsLocked(enterpriseId,fromWalletId,toWalletId,amount,actorUserId,membershipId,transferId,
+                description,rechargeOnly,sourceOrderId,exactBuckets,sourceHold,false);
+    }
+
+    private EnterpriseCreditTransfer transferEnterpriseCreditsLocked(String enterpriseId, String fromWalletId,
+            String toWalletId, long amount, String actorUserId, String membershipId, String transferId,
+            String description, boolean rechargeOnly,String sourceOrderId,long[] exactBuckets,CreditHold sourceHold,boolean ownerDeposit) {
         if (enterpriseId==null || enterpriseId.isBlank() || amount<=0 || fromWalletId==null || toWalletId==null
                 || fromWalletId.equals(toWalletId) || transferId==null || transferId.isBlank())
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"企业积分划拨参数无效");
         lockEnterpriseMoney(enterpriseId);
         // Match hold/settlement locks. Batch callers first lock the complete sorted set, never root-first.
         var locked=new java.util.HashMap<String,Wallet>();
-        for(String walletId:java.util.stream.Stream.of(fromWalletId,toWalletId).sorted().toList()) {
+        for(String walletId:ownerDeposit?java.util.List.of(toWalletId,fromWalletId):java.util.stream.Stream.of(fromWalletId,toWalletId).sorted().toList()) {
             Wallet wallet=requiredWalletForUpdate(walletId);
             locked.put(walletId,wallet);
         }
         Wallet from=locked.get(fromWalletId),to=locked.get(toWalletId);
         boolean outward="enterprise".equals(from.getAccountType()) && "enterprise_member".equals(to.getAccountType());
         boolean inward="enterprise_member".equals(from.getAccountType()) && "enterprise".equals(to.getAccountType());
-        if (!enterpriseId.equals(from.getEnterpriseId()) || !enterpriseId.equals(to.getEnterpriseId())
+        if(ownerDeposit) {
+            var enterprise=enterpriseEntityManager.find(com.aistareco.aep.enterprise.model.Enterprise.class,enterpriseId);
+            var member=enterpriseEntityManager.find(com.aistareco.aep.enterprise.model.EnterpriseMember.class,membershipId);
+            if(!"active".equals(enterprise.getStatus())||!actorUserId.equals(enterprise.getOwnerUserId())
+                    ||!"personal".equals(from.getAccountType())||!actorUserId.equals(from.getUserId())
+                    ||!"enterprise".equals(to.getAccountType())||!enterpriseId.equals(to.getEnterpriseId())
+                    ||member==null||!"active".equals(member.getStatus())||!actorUserId.equals(member.getUserId())||!enterpriseId.equals(member.getEnterpriseId()))
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,"只能由企业主账号将本人个人积分转入企业主账户");
+        } else if (!enterpriseId.equals(from.getEnterpriseId()) || !enterpriseId.equals(to.getEnterpriseId())
                 || (!outward&&!inward) || (rechargeOnly&&!inward))
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,"只允许同企业主账户与成员企业账户间划拨");
         if (ledgerRepo.existsByReferenceTypeAndReferenceId("enterprise_transfer",transferId))
@@ -886,7 +909,11 @@ public class CreditService {
         to.setGiftBalance(toGift);to.setLicenseBalance(toLicense);to.setRechargeBalance(toRecharge);to.setTotalBalance(toTotal);
         Instant now=Instant.now();from.setUpdatedAt(now);to.setUpdatedAt(now);
         walletRepo.saveAndFlush(from);walletRepo.saveAndFlush(to);
-        if(fromRecharge>0) {if(sourceHold!=null)enterpriseCreditLots.moveReleased(from,to,sourceHold);else enterpriseCreditLots.move(from,to,fromRecharge,sourceOrderId);}
+        if(fromRecharge>0) {
+            if(ownerDeposit)enterpriseCreditLots.origin(to,"owner-deposit:"+transferId,fromRecharge);
+            else if(sourceHold!=null)enterpriseCreditLots.moveReleased(from,to,sourceHold);
+            else enterpriseCreditLots.move(from,to,fromRecharge,sourceOrderId);
+        }
         LedgerEntry out=enterpriseTransferLedger(from,-amount,LedgerEntry.LedgerEntryType.TRANSFER_OUT,
                 actorUserId,membershipId,transferId,description,now);
         LedgerEntry in=enterpriseTransferLedger(to,amount,LedgerEntry.LedgerEntryType.TRANSFER_IN,
@@ -897,7 +924,7 @@ public class CreditService {
     private LedgerEntry enterpriseTransferLedger(Wallet wallet,long amount,LedgerEntry.LedgerEntryType type,
             String actor,String membershipId,String transferId,String description,Instant now) {
         return ledgerRepo.saveAndFlush(LedgerEntry.builder().id(UUID.randomUUID().toString()).walletId(wallet.getId())
-                .userId(null).enterpriseId(wallet.getEnterpriseId()).actorUserId(actor).membershipId(membershipId)
+                .userId(wallet.getUserId()).enterpriseId(wallet.getEnterpriseId()).actorUserId(actor).membershipId(membershipId)
                 .entryType(type).amount(amount).balanceAfter(wallet.getTotalBalance()).description(description)
                 .referenceType("enterprise_transfer").referenceId(transferId).createdAt(now).build());
     }

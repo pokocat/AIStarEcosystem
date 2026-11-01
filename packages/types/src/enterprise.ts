@@ -9,7 +9,7 @@ export interface Enterprise {
   version: number; createdAt: string; updatedAt: string;
 }
 export interface EnterpriseMember {
-  id: string; enterpriseId: string; userId: string; displayName: string; role: EnterpriseRole;
+  id: string; enterpriseId: string; userId: string; displayName: string; phone?: string | null; role: EnterpriseRole;
   status: EnterpriseMemberStatus; capabilities: EnterpriseCapabilities;
   version: number; joinedAt: string;
 }
@@ -39,16 +39,16 @@ export interface EnterpriseWallet {
   totalBalance: number; licenseBalance: number; rechargeBalance: number; giftBalance: number; pendingBalance: number;
 }
 /** Allocated credits remain enterprise property. Null amount means reclaim all available. */
-export type EnterprisePointsDirection = "allocate" | "reclaim";
+export type EnterprisePointsDirection = "allocate" | "reclaim" | "deposit";
 export interface EnterprisePointsItem { memberId: string; amount: number | null; }
 export interface EnterprisePointsPreviewRequest { items: EnterprisePointsItem[]; }
 export interface EnterprisePointsRequest { clientRequestId: string; confirmationFingerprint: string; items: EnterprisePointsItem[]; }
 export interface EnterprisePointsPreviewItem { memberId: string; amount: number; availableBefore: number; availableAfter: number; pendingBalance: number; }
 export interface EnterprisePointsPreview { enterpriseId: string; direction: EnterprisePointsDirection; memberCount: number; totalAmount: number; rootAvailableBefore: number; rootAvailableAfter: number; confirmationFingerprint: string; items: EnterprisePointsPreviewItem[]; }
 export interface EnterprisePointsTransfer { id: string; batchId: string; enterpriseId: string; memberId: string; memberName?: string; direction: EnterprisePointsDirection; amount: number; status: "done"; createdAt: string; fromWalletId: string; toWalletId: string; fromGift: number; fromLicense: number; fromRecharge: number; outLedgerId: string; inLedgerId: string; }
-export interface EnterprisePointsBatch { id: string; enterpriseId: string; direction: "allocate" | "reclaim"; totalAmount: number; transfers: EnterprisePointsTransfer[]; createdAt: string; }
+export interface EnterprisePointsBatch { id: string; enterpriseId: string; direction: EnterprisePointsDirection; totalAmount: number; transfers: EnterprisePointsTransfer[]; createdAt: string; }
 export interface EnterpriseWalletSummary { enterpriseId: string; enterpriseName: string; unallocated: number; allocated: number; pending: number; spent: number; totalBalance: number; }
-export interface EnterpriseMemberBalance { memberId: string; userId: string; displayName: string; role: EnterpriseRole; status: EnterpriseMemberStatus; walletId: string; totalBalance: number; pendingBalance: number; rechargeBalance: number; giftBalance: number; licenseBalance: number; }
+export interface EnterpriseMemberBalance { memberId: string; userId: string; displayName: string; phone?: string | null; role: EnterpriseRole; status: EnterpriseMemberStatus; walletId: string; totalBalance: number; pendingBalance: number; rechargeBalance: number; giftBalance: number; licenseBalance: number; }
 export interface EnterpriseRechargeRequest { clientRequestId: string; requestedPriceCents?: number; note: string; }
 export interface EnterpriseRechargeConfirmRequest { clientRequestId: string; priceCents: number; credits: number; receiptReference: string; note: string; }
 export interface EnterpriseRefundPreview { orderId: string; enterpriseId: string; originalCredits: number; originalPriceCents: number; reclaimableCredits: number; refundPriceCents: number; memberRecallCredits: number; pendingCredits: number; spentCredits: number; previewToken: string; }

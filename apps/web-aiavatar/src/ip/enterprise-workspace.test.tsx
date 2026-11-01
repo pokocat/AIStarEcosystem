@@ -27,8 +27,8 @@ vi.mock("antd", () => ({
   Table: ({ dataSource, rowSelection, columns }: any) => <table><tbody>{dataSource.map((row: any) => <tr key={row.memberId || row.id}>{rowSelection && <td><input type="checkbox" {...rowSelection.getCheckboxProps(row)} checked={rowSelection.selectedRowKeys.includes(row.memberId)} onChange={event => rowSelection.onChange(event.target.checked ? [...rowSelection.selectedRowKeys, row.memberId] : rowSelection.selectedRowKeys.filter((id: string) => id !== row.memberId))}/></td>}{columns.map((column: any, index: number) => <td key={index}>{column.render ? column.render(row[column.dataIndex], row) : row[column.dataIndex]}</td>)}</tr>)}</tbody></table>,
 }));
 
-const ownerContext = { enterprise: { id: "enterprise", name: "创作企业" }, member: { userId: "owner", role: "owner" }, permissions: ["points.manage", "billing.read", "billing.request"] };
-const balances = [{ memberId: "m1", userId: "user", displayName: "张三", role: "member", status: "active", totalBalance: 50, pendingBalance: 10 }];
+const ownerContext = { enterprise: { id: "enterprise", name: "创作企业" }, member: { id: "owner-member", userId: "owner", role: "owner" }, permissions: ["points.manage", "billing.read", "billing.request"] };
+const balances = [{ memberId: "m1", userId: "user", displayName: "张三", phone: "13800138000", role: "member", status: "active", totalBalance: 50, pendingBalance: 10 }];
 const preview = { enterpriseId: "enterprise", direction: "allocate", memberCount: 1, totalAmount: 100, rootAvailableBefore: 1000, rootAvailableAfter: 900, confirmationFingerprint: "fingerprint", items: [{ memberId: "m1", amount: 100, availableBefore: 50, availableAfter: 150, pendingBalance: 10 }] };
 const page = (data: unknown[]) => ({ data, pagination: { total: data.length, totalPages: 1 } });
 beforeEach(() => {
@@ -152,4 +152,44 @@ test("refresh preserves the complete old snapshot on failure and never mixes ent
   expect(screen.getByText("创作企业 · 主账号")).toBeDefined();
   expect(screen.queryByText("另一家企业 · 主账号")).toBeNull();
   expect(screen.getByText("张三")).toBeDefined();
+});
+
+
+test("owner can deposit personal credits then sees refreshed balances and member phone", async () => {
+  api.previewPoints.mockResolvedValue({ ...preview, direction: "deposit", rootAvailableAfter: 1100, items: [{ memberId: "owner-member", amount: 100, availableBefore: 200, availableAfter: 100, pendingBalance: 0 }] });
+  render(<EnterpriseWorkspace/>);
+  expect(await screen.findByText("13800138000")).toBeDefined();
+  fireEvent.click(screen.getByRole("button", { name: "转入企业" }));
+  fireEvent.change(screen.getByLabelText("转入积分"), { target: { value: "100" } });
+  fireEvent.click(screen.getByRole("button", { name: "预览本次操作" }));
+  const confirm = await screen.findByRole("button", { name: "确认转入 100 积分" });
+  expect(api.previewPoints).toHaveBeenCalledWith("enterprise", "deposit", { items: [{ memberId: "owner-member", amount: 100 }] });
+  expect(api.transferPoints).not.toHaveBeenCalled();
+  expect(screen.getByText("我的个人账户")).toBeDefined();
+  fireEvent.click(confirm);
+  await screen.findByText("转入完成，共 100 积分。可继续分配给企业成员。");
+  expect(api.transferPoints).toHaveBeenCalledWith("enterprise", "deposit", expect.objectContaining({ confirmationFingerprint: "fingerprint", items: [{ memberId: "owner-member", amount: 100 }] }));
+  expect(api.memberBalances).toHaveBeenCalledTimes(2);
+});
+
+test("manager keeps existing point controls without an owner deposit button", async () => {
+  api.mine.mockResolvedValue([{ ...ownerContext, member: { id: "manager-member", userId: "manager", role: "manager" } }]);
+  render(<EnterpriseWorkspace/>);
+  await screen.findByText("13800138000");
+  expect(screen.queryByRole("button", { name: "转入企业" })).toBeNull();
+  expect(screen.getByRole("button", { name: "分配积分" })).toBeDefined();
+});
+
+test("deposit retry preserves original request after uncertain network failure", async () => {
+  api.previewPoints.mockResolvedValue({ ...preview, direction: "deposit", items: [{ memberId: "owner-member", amount: 100, availableBefore: 200, availableAfter: 100, pendingBalance: 0 }] });
+  api.transferPoints.mockRejectedValueOnce(new TypeError("网络中断")).mockResolvedValueOnce({ id: "batch" });
+  render(<EnterpriseWorkspace/>);
+  fireEvent.click(await screen.findByRole("button", { name: "转入企业" }));
+  fireEvent.change(screen.getByLabelText("转入积分"), { target: { value: "100" } });
+  fireEvent.click(screen.getByRole("button", { name: "预览本次操作" }));
+  fireEvent.click(await screen.findByRole("button", { name: "确认转入 100 积分" }));
+  await screen.findByText("网络中断");
+  fireEvent.click(screen.getByRole("button", { name: "确认转入 100 积分" }));
+  await screen.findByText("转入完成，共 100 积分。可继续分配给企业成员。");
+  expect(api.transferPoints.mock.calls[0][2]).toEqual(api.transferPoints.mock.calls[1][2]);
 });

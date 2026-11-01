@@ -1325,6 +1325,10 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 带时长、画幅、横竖屏的出视频请求（「生成一段16:9、5秒视频」）不再被留在出图。制作中只问不改的消息（`StudioSteeringQuestions`：问句、40 字内、不含改动或控制的词）不暂停制作，只开一轮回答。模型回复末尾预告要做却没给动作（「好的，我来改」）不算做完，纠正一次接着跑，纠正后仍不动手就结束，一轮最多 2 次（`DialogueLoop.announcesWork`）。读画布文字读用户采用的那一版（`StudioWritingContent`）。厂商「资源空间不足，请清理回收站」类原话在 `PublicModelErrorPolicy` 换成平台侧说明，不再让用户删自己的作品。提示词 `SEED_VERSION=v28-2026-10-30-say-it-do-it`。都没有用真模型跑过整轮对话。
 
+### 企业 owner 转入个人积分与成员手机号 · 2026-11-01（已生产发布 `20261101-enterprise-owner-deposit`）
+
+`points/deposit[/preview]` 复用现有划拨预览、批次幂等和关联账本；owner 本人的所有可用普通积分均可转入企业根账户，保留 gift/license/recharge，再按原流程分配。无新增权限项、审批或迁移。企业及全部企业钱包先锁，个人钱包后锁；充值来源 `owner-deposit:<transferId>` 随企业内分配/冻结/释放流转，不冒充现金充值订单。成员与成员余额 DTO 返回产品档案手机号，两张列表直接显示，沿用既有列表权限，审计不记录手机号。规则见 `specs/BUSINESS_RULES.md` 企业节及企业产品/UI方案。
+
 ### Studio 提示词库（2026-11-01，本地未发布）
 
 真源 `docs/studio-prompt-architecture.md`。生成类提示词（身份、规则、红线、做法、行业经验、场景拍法、出图描述）放提示词库，和技能同表，四层：底座 / 环节 / 方法 / 场景；代码只留输出格式、工具与动作协议、H3 改写、拼装与校验。种子在 `resources/studio/prompts/**`，生效规则同技能（不再有 `SEED_VERSION`），受理时冻结版本。调用点要进库：在 `StudioPromptCallPoints` 登记变量和输出格式，写环节种子文件，再加一条逐字一致测试（范式 `StudioScenePromptParityTest`）。**新代码不许在 Java 里写新的生成类提示词文字**（输出格式除外）；对话、画布、导演台已进库，只有交代素材编号和时间的标签留在代码（拼装）；旧 Prompt 管理里已迁走的键后台标「已迁走」、不能保存，新搬一个调用点要同时加进 `PromptService.MOVED_TO_STUDIO_LIBRARY`（测试核对）。环节的变量不能叫 `base` / `method` / `scene`（拼装器填分层正文用，同名会被盖掉，登记时直接报错）。导演台拼自己的底座 `base-director`，平台底座的事实规则面向商品宣传、不进短剧编剧；只看画面的环节（看图、复刻逐页观察、拉片、分批读图）不拼底座（登记时 `withoutBase()`）。导演台资产图、分镜图的候选记 `promptVersions`，「需更新」按候选那一版核对，后台改模板不会把已采用的图标成需更新。AI 视频编导请求是文字任务带 `scene`，服务端按 `stage-scene-script` 拼；场景创作文字以库为准，叠在场景目录上。
