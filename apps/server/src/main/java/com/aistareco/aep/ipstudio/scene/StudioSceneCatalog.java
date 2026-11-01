@@ -20,6 +20,10 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler;
+import com.aistareco.aep.ipstudio.prompt.StudioPromptEntry;
+import com.aistareco.aep.ipstudio.prompt.StudioPromptLibrary;
+import org.springframework.beans.factory.ObjectProvider;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -61,6 +65,10 @@ public class StudioSceneCatalog {
         public ImageScene withMedia(Boolean on, String cover, List<String> exampleKeys, String coverUrl, List<Media> examples) {
             return new ImageScene(id, group, title, description, refs, prompt, hint, ratio, options, on, cover, exampleKeys, coverUrl, examples);
         }
+        /** 出图描述换成提示词库里的（{@link #overlay}）。 */
+        public ImageScene withPrompt(String text) {
+            return new ImageScene(id, group, title, description, refs, text, hint, ratio, options, enabled, coverKey, exampleKeys, coverUrl, examples);
+        }
     }
     public record Slot(String label, boolean required, Integer max) {}
 
@@ -76,8 +84,14 @@ public class StudioSceneCatalog {
         public List<Fact> factList() { return facts == null ? List.of() : facts; }
         public boolean noFiction() { return "none".equals(fiction); }
     }
-    /** @param use 这条信息怎么用（「有原价才做对比」）；没有就不写 */
-    public record Fact(String label, boolean required, String use) {}
+    /**
+     * @param use       这条信息怎么用（「有原价才做对比」）；没有就不写
+     * @param inferable 痛点、卖点、使用场景这类能从素材合理推断的：没给也不算还缺（docs/studio-prompt-architecture.md §9.6）
+     */
+    public record Fact(String label, boolean required, String use, Boolean inferable) {
+        public Fact(String label, boolean required, String use) { this(label, required, use, null); }
+        public boolean canInfer() { return Boolean.TRUE.equals(inferable); }
+    }
 
     public record VideoScene(String id, String group, String title, String description, Slot images, Slot video, boolean character, boolean voice,
                              String placeholder, boolean textRequired, List<Integer> durations, int duration, String ratio, String structure,
@@ -94,6 +108,11 @@ public class StudioSceneCatalog {
         public VideoScene withMedia(Boolean on, String cover, List<String> exampleKeys, String coverUrl, List<Media> examples) {
             return new VideoScene(id, group, title, description, images, video, character, voice, placeholder, textRequired, durations, duration, ratio,
                     structure, ideas, skill, options, on, cover, exampleKeys, coverUrl, examples, brief);
+        }
+        /** 拍法和要用到的信息换成提示词库里的（{@link #overlay}）。 */
+        public VideoScene withCreative(String text, Brief newBrief) {
+            return new VideoScene(id, group, title, description, images, video, character, voice, placeholder, textRequired, durations, duration, ratio,
+                    text, ideas, skill, options, enabled, coverKey, exampleKeys, coverUrl, examples, newBrief);
         }
     }
     public record Catalog(int version, List<Group> imageGroups, List<Group> videoGroups, List<ImageScene> image, List<VideoScene> video, List<HomeGoal> homeGoals) {
@@ -134,11 +153,72 @@ public class StudioSceneCatalog {
 
     StudioSceneCatalog(Catalog catalog) { this.builtIn = validate(catalog); }
 
+    /** 测试用：指定提示词库（比如按旧场景内容建的库，核对拼话逐字不变）。 */
+    StudioSceneCatalog(Catalog catalog, StudioPromptLibrary library) { this(catalog); this.libraryOverride = library; }
+
     @Autowired(required = false)
     void setConfig(PlatformConfigService config) { this.config = config; }
 
-    /** 当前生效的整份目录（含下架的场景）：后台改过用后台的，否则随包那份。 */
-    public Catalog catalog() {
+    private ObjectProvider<StudioPromptLibrary> libraryProvider;
+    private ObjectProvider<StudioPromptAssembler> assemblerProvider;
+    private StudioPromptLibrary libraryOverride;
+    private volatile StudioPromptAssembler classpathAssembler;
+
+    @Autowired(required = false)
+    void setPrompts(ObjectProvider<StudioPromptLibrary> library, ObjectProvider<StudioPromptAssembler> assembler) {
+        this.libraryProvider = library; this.assemblerProvider = assembler;
+    }
+
+    /** 应用里是数据库里的提示词库；没有 Spring 的构造（单测、工具）读仓库文件。 */
+    StudioPromptLibrary library() {
+        if (libraryOverride != null) return libraryOverride;
+        StudioPromptLibrary lib = libraryProvider == null ? null : libraryProvider.getIfAvailable();
+        return lib != null ? lib : classpath().library();
+    }
+
+    private StudioPromptAssembler assembler() {
+        if (libraryOverride != null) return new StudioPromptAssembler(libraryOverride);
+        StudioPromptAssembler a = assemblerProvider == null ? null : assemblerProvider.getIfAvailable();
+        return a != null ? a : classpath();
+    }
+
+    private StudioPromptAssembler classpath() {
+        StudioPromptAssembler a = classpathAssembler;
+        if (a == null) synchronized (this) { if ((a = classpathAssembler) == null) classpathAssembler = a = new StudioPromptAssembler(new StudioPromptLibrary()); }
+        return a;
+    }
+
+    /**
+     * 场景的创作文字以提示词库为准（docs/studio-prompt-architecture.md §5）：视频场景的拍法和要用到的信息、图片场景的出图描述，
+     * 库里有这个场景的条目就用条目的。场景存储里那份只在库里没有条目时用（后台刚新建的场景）。
+     */
+    Catalog overlay(Catalog c) {
+        StudioPromptLibrary lib = library();
+        if (lib == null) return c;
+        var image = c.image().stream().map(s -> lib.find(sceneKey(s.id())).filter(e -> !e.withdrawn()).map(e -> s.withPrompt(e.body())).orElse(s)).toList();
+        var video = c.video().stream().map(s -> lib.find(sceneKey(s.id())).filter(e -> !e.withdrawn())
+                .map(e -> s.withCreative(e.body(), briefOf(e, s.brief()))).orElse(s)).toList();
+        return c.with(image, video, c.homeGoals());
+    }
+
+    /** 场景条目文件头里的 {@code scene}（facts / goal / ending / fiction）→ Brief；没写就沿用场景存储里的。 */
+    static Brief briefOf(StudioPromptEntry entry, Brief fallback) {
+        var scene = entry.scene();
+        if (scene.isEmpty() || !(scene.get("facts") instanceof List<?>)) return fallback;
+        try { return JSON.convertValue(scene, Brief.class); }
+        catch (IllegalArgumentException e) { log.warn("[studio-scene] {} 的要用到的信息读不出来，沿用场景存储里的：{}", entry.key(), e.getMessage()); return fallback; }
+    }
+
+    /**
+     * 当前生效的整份目录（含下架的场景）：后台改过用后台的，否则随包那份；场景的创作文字（视频的拍法和要用到的信息、
+     * 图片的出图描述）以提示词库的场景条目为准（docs/studio-prompt-architecture.md §5）。
+     */
+    public Catalog catalog() { return overlay(fromStorage()); }
+
+    /** 场景存储里的目录（不叠提示词库）：后台保存时拿它比对、恢复默认时看随包那份。 */
+    public Catalog storedCatalog() { return fromStorage(); }
+
+    private Catalog fromStorage() {
         var saved = stored();
         if (saved.isEmpty() || marksBuiltIn(saved.get().value())) return builtIn;
         JsonNode raw = saved.get().value();
@@ -217,11 +297,19 @@ public class StudioSceneCatalog {
      * @param seenTitles 编导：放了、但所选视频模型用不上的场景图（商品图、门店照片…），脚本里要用文字写清楚，不能写成图几
      * @param characterSeen 编导：出镜人物这张视频模型也用不上（同上，只给编导看）
      * @param visual   编导：写脚本的模型这次能不能看到图（false = 看不到，只能按名称写）；null 按能看到算（老前端）
+     * @param settingsChanged 编导：改稿时设置变了什么（时长、画面、参考图），由环节模板说成一句话；页面不再自己拼话
      */
     public record ComposeRequest(String kind, String sceneId, String text, String custom, List<Integer> filled,
                                  List<String> imageTitles, String characterTitle, String voiceTitle, String videoTitle,
                                  Integer duration, String ratio, String language, String revision, java.util.Map<String, String> options,
-                                 List<String> seenTitles, Boolean characterSeen, Boolean visual) {
+                                 List<String> seenTitles, Boolean characterSeen, Boolean visual, String settingsChanged) {
+        public ComposeRequest(String kind, String sceneId, String text, String custom, List<Integer> filled,
+                              List<String> imageTitles, String characterTitle, String voiceTitle, String videoTitle,
+                              Integer duration, String ratio, String language, String revision, java.util.Map<String, String> options,
+                              List<String> seenTitles, Boolean characterSeen, Boolean visual) {
+            this(kind, sceneId, text, custom, filled, imageTitles, characterTitle, voiceTitle, videoTitle, duration, ratio, language, revision, options,
+                    seenTitles, characterSeen, visual, null);
+        }
         public ComposeRequest(String kind, String sceneId, String text, String custom, List<Integer> filled,
                               List<String> imageTitles, String characterTitle, String voiceTitle, String videoTitle, Integer duration, String ratio) {
             this(kind, sceneId, text, custom, filled, imageTitles, characterTitle, voiceTitle, videoTitle, duration, ratio, null, null, null, null, null, null);
@@ -238,29 +326,23 @@ public class StudioSceneCatalog {
         }
     }
 
-    /** 选中的选项变成几句话（「拍法：……」），没给的组用默认值；后台下架的选项 400，让页面刷新后重选。 */
-    static List<String> optionLines(List<OptionGroup> groups, java.util.Map<String, String> picked) {
-        java.util.Map<String, String> chosen = picked == null ? java.util.Map.of() : picked;
-        for (String key : chosen.keySet()) if (groups.stream().noneMatch(g -> g.key().equals(key))) throw bad("这个选项已经下架，请刷新后重选");
-        List<String> lines = new ArrayList<>();
-        for (OptionGroup g : groups) {
-            String value = chosen.getOrDefault(g.key(), g.defaultValue());
-            OptionChoice choice = g.choices().stream().filter(c -> c.value().equals(value)).findFirst().orElseThrow(() -> bad("这个选项已经下架，请刷新后重选"));
-            lines.add(g.label() + "：" + choice.prompt());
-        }
-        return lines;
-    }
     public record Composed(String text, String skillKey) {}
 
     public Composed compose(ComposeRequest request) {
         if (request == null || request.kind() == null) throw bad("请选择场景");
         return switch (request.kind()) {
-            case "image" -> new Composed(imagePrompt(request), null);
+            case "image" -> new Composed(limit(imagePrompt(request)), null);
             case "video" -> videoBrief(request);
-            case "video-script" -> new Composed(scriptBrief(request), null);
+            // 老页面还在用：它把这段话当普通文字任务提交。新页面直接带场景输入提交，由服务端拼（§5.1）。
+            case "video-script" -> new Composed(limit(sceneScript(request, null, false, null).user()), null);
             default -> throw bad("请选择场景");
         };
     }
+
+    // ── 按提示词库的环节拼（docs/studio-prompt-architecture.md §8 #12–#14；句子都在 resources/studio/prompts 里） ──────
+
+    static final String STAGE_IMAGE = "stage-scene-image", STAGE_HANDOFF = "stage-scene-handoff", STAGE_SCRIPT = "stage-scene-script";
+    public static String sceneKey(String sceneId) { return "scene-" + sceneId; }
 
     private String imagePrompt(ComposeRequest r) {
         ImageScene scene = image(r.sceneId()).orElseThrow(() -> bad("这个场景不存在，请刷新后重选"));
@@ -268,51 +350,137 @@ public class StudioSceneCatalog {
         for (int i = 0; i < scene.refs().size(); i++)
             if (scene.refs().get(i).required() && !filled.contains(i)) throw bad("先放" + scene.refs().get(i).label());
         String extra = trim(r.text());
-        if (FREE.equals(scene.id())) {
-            if (extra.isEmpty()) throw bad("写一句想要的画面");
-            List<String> options = optionLines(scene.optionGroups(), r.options());
-            return limit(options.isEmpty() ? extra : extra + "\n" + String.join("\n", options));
+        boolean free = FREE.equals(scene.id());
+        if (free && extra.isEmpty()) throw bad("写一句想要的画面");
+        java.util.Map<String, Object> vars = new java.util.LinkedHashMap<>();
+        vars.put("free", free);
+        vars.put("extra", extra);
+        vars.put("custom", r.custom() != null && !r.custom().isBlank() ? r.custom().trim() : "");
+        vars.put("options", optionItems(scene.optionGroups(), r.options()));
+        return assembler().assemble(new StudioPromptAssembler.Call(STAGE_IMAGE, null, free ? null : sceneKey(scene.id()), vars, null,
+                free ? null : trim(scene.prompt()))).user();
+    }
+
+    /** 选中的选项（{label, prompt}），没给的组用默认值；后台下架的选项 400，让页面刷新后重选。 */
+    static List<java.util.Map<String, Object>> optionItems(List<OptionGroup> groups, java.util.Map<String, String> picked) {
+        java.util.Map<String, String> chosen = picked == null ? java.util.Map.of() : picked;
+        for (String key : chosen.keySet()) if (groups.stream().noneMatch(g -> g.key().equals(key))) throw bad("这个选项已经下架，请刷新后重选");
+        List<java.util.Map<String, Object>> out = new ArrayList<>();
+        for (OptionGroup g : groups) {
+            String value = chosen.getOrDefault(g.key(), g.defaultValue());
+            OptionChoice choice = g.choices().stream().filter(c -> c.value().equals(value)).findFirst().orElseThrow(() -> bad("这个选项已经下架，请刷新后重选"));
+            out.add(java.util.Map.of("label", g.label(), "prompt", choice.prompt()));
         }
-        String base = r.custom() != null && !r.custom().isBlank() ? r.custom().trim() : scene.prompt().trim();
-        List<String> options = optionLines(scene.optionGroups(), r.options());
-        if (!options.isEmpty()) base = base + "\n" + String.join("\n", options);
-        return limit(extra.isEmpty() ? base : base + "\n补充要求：" + extra);
+        return out;
+    }
+
+    /** 两个视频环节共用的变量：时长、画面、场景名、用户的话、选项、要用到的信息。 */
+    private java.util.Map<String, Object> videoVars(VideoInput in, ComposeRequest r) {
+        VideoScene scene = in.scene();
+        java.util.Map<String, Object> vars = new java.util.LinkedHashMap<>();
+        vars.put("duration", in.duration());
+        vars.put("orientation", orientation(in.ratio()));
+        vars.put("sceneTitle", scene.title());
+        vars.put("ask", in.text());
+        vars.put("options", optionItems(scene.optionGroups(), r.options()));
+        Brief b = scene.brief();
+        List<Fact> facts = b == null ? List.of() : b.factList().stream().filter(f -> f != null && !blank(f.label())).toList();
+        vars.put("hasBrief", b != null);
+        vars.put("goal", b == null || blank(b.goal()) ? "" : b.goal().trim());
+        vars.put("ending", b == null || blank(b.ending()) ? "" : b.ending().trim());
+        vars.put("hasFacts", !facts.isEmpty());
+        vars.put("facts", facts.stream().map(f -> java.util.Map.<String, Object>of("label", f.label().trim(), "use", blank(f.use()) ? "" : f.use().trim())).toList());
+        List<String> required = facts.stream().filter(f -> f.required() && !f.canInfer()).map(f -> f.label().trim()).toList();
+        List<String> inferable = facts.stream().filter(Fact::canInfer).map(f -> f.label().trim()).toList();
+        vars.put("hasRequired", !required.isEmpty());
+        vars.put("required", required);
+        vars.put("hasInferable", !inferable.isEmpty());
+        vars.put("inferable", inferable);
+        vars.put("noFiction", b != null && b.noFiction());
+        return vars;
+    }
+
+    private Composed videoBrief(ComposeRequest r) {
+        VideoInput in = videoInput(r, true);
+        VideoScene scene = in.scene();
+        java.util.Map<String, Object> vars = videoVars(in, r);
+        List<java.util.Map<String, Object>> materials = new ArrayList<>();
+        if (!blank(r.videoTitle())) materials.add(material("isVideo", r.videoTitle().trim(), List.of(), ""));
+        if (!in.images().isEmpty()) materials.add(material("isImages", "", in.images().stream().map(String::trim).toList(), scene.images().label()));
+        if (!blank(r.characterTitle())) materials.add(material("isCharacter", r.characterTitle().trim(), List.of(), ""));
+        if (!blank(r.voiceTitle())) materials.add(material("isVoice", r.voiceTitle().trim(), List.of(), ""));
+        vars.put("hasMaterials", !materials.isEmpty());
+        vars.put("materials", materials);
+        vars.put("noAsk", in.text().isEmpty() && !materials.isEmpty());
+        String text = assembler().assemble(new StudioPromptAssembler.Call(STAGE_HANDOFF, null, sceneKey(scene.id()), vars, null, scene.structure())).user();
+        return new Composed(limit(text), scene.skill());
+    }
+
+    private static java.util.Map<String, Object> material(String kind, String title, List<String> titles, String label) {
+        java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+        for (String k : List.of("isVideo", "isImages", "isCharacter", "isVoice")) m.put(k, k.equals(kind));
+        m.put("title", title); m.put("titles", titles); m.put("label", label);
+        return m;
     }
 
     /**
-     * 视频两种用法（交给助手、编导写脚本）共用的事实边界。模型最容易顺手编的是能当卖点的「事实」，写进成片就是虚假宣传：
-     * 2026-10-29 本地真 Qwen 在「结尾讲优惠」的拍法下写了「现在下单有优惠」；2026-10-30 线上验收，品牌故事首稿编了品牌年限、
-     * 耐用测试次数和测试画面。所以把不许编的东西一类类列出来；故事可以编，但不能冒充品牌的真实经历。
+     * 编导写脚本（AI 视频页，照参考站「超级编导」）：看素材、按场景拍法写一版能直接交给视频模型一次生成的五段式方案
+     * （docs/studio-prompt-architecture.md §9.3）。参考图按这里的顺序交给视频模型，脚本里用「图1」「图2」指代；
+     * 只给会交给视频模型的图编号（2026-10-30 审查 F07），剩下的图（{@code seenTitles}）只给编导看、要用文字写进画面。
+     * 写脚本的模型看不到图时（{@code visual=false}）不说「已附图片」「先看图」，否则它会编图里的内容。
+     *
+     * @param current     当前脚本（改稿时），第一次写为 null
+     * @param readVisuals 这次真的附了图（附图说明由代码给）
+     * @param frozen      受理时冻结的版本；为 null 时用当前版本
      */
-    static final String FACT_RULE = "下面这些我没写就不要出现：价格、优惠、地址；有效期和使用限制（要不要预约、节假日能不能用、是否通用）；"
-            + "品牌创立年份、有多少年历史；检测、测试、实验的次数和画面；"
-            + "销量、排名、获奖、认证、门店数、用户数；功效和其他数据。也不要写「有优惠」「限时」「十年老店」「经过上千次测试」这类话。"
-            + "可以虚构人物和情节来讲故事，但不要写成品牌的真实经历，也不要给编出来的内容配上年份、次数、数量。";
-    /** 场景没写要用户给哪些信息时（运营自己加的老场景）：拍法里要讲、我又没给的，照原来的做法带过。 */
-    static final String MISSING_DEFAULT = "拍法里要讲但我没给的，就只引导关注或下单。";
-    /** fiction=none（门店实录、到店探店这类）：多一句，别把演的写成真的。 */
-    static final String NO_FICTION = "这条不编故事：不要编人物经历，不要把出镜的人写成真实顾客、店员的亲身评价。";
+    public StudioPromptAssembler.Assembled sceneScript(ComposeRequest r, String current, boolean readVisuals, java.util.Map<String, Integer> frozen) {
+        VideoInput in = videoInput(r, false);
+        VideoScene scene = in.scene();
+        java.util.Map<String, Object> vars = videoVars(in, r);
+        vars.put("language", blank(r.language()) ? "中文" : r.language().trim());
+        String revision = trim(r.revision()), changed = trim(r.settingsChanged());
+        vars.put("revision", revision);
+        vars.put("settingsChanged", changed);
+        vars.put("revising", !revision.isEmpty() || !changed.isEmpty());
+        boolean visual = !Boolean.FALSE.equals(r.visual());
+        vars.put("visual", visual);
+        List<java.util.Map<String, Object>> refs = new ArrayList<>();
+        int n = 0;
+        for (String title : in.images()) refs.add(java.util.Map.of("n", ++n, "title", title.trim(), "label", scene.images().label(), "person", false));
+        boolean characterSeen = Boolean.TRUE.equals(r.characterSeen());
+        if (!blank(r.characterTitle()) && !characterSeen) refs.add(java.util.Map.of("n", ++n, "title", r.characterTitle().trim(), "label", "出镜人物", "person", true));
+        List<String> seen = new ArrayList<>(r.seenTitles() == null ? List.of() : r.seenTitles().stream().filter(t -> !blank(t)).map(String::trim).toList());
+        if (!blank(r.characterTitle()) && characterSeen) seen.add(r.characterTitle().trim());
+        String voice = blank(r.voiceTitle()) ? "" : r.voiceTitle().trim();
+        vars.put("hasRefs", !refs.isEmpty());
+        vars.put("refs", refs);
+        vars.put("voice", voice);
+        vars.put("voiceOnly", refs.isEmpty() && !voice.isEmpty());
+        vars.put("hasSeen", !seen.isEmpty());
+        vars.put("seen", seen);
+        vars.put("blind", !visual && (!refs.isEmpty() || !seen.isEmpty()));
+        vars.put("noAsk", in.text().isEmpty() && (!refs.isEmpty() || !seen.isEmpty()));
+        vars.put("current", current == null || current.isBlank() ? "" : JSON.valueToTree(current).toString());
+        vars.put("readVisuals", readVisuals);
+        String method = groupMethod(scene.group());
+        return assembler().assemble(new StudioPromptAssembler.Call(STAGE_SCRIPT, method, sceneKey(scene.id()), vars, frozen, scene.structure()));
+    }
 
-    /**
-     * 场景要做到什么、要用到哪些信息、怎么收尾（{@link Brief}）。编导和助手共用；缺必填信息时两边做法不同：
-     * 编导先写「还缺：……」再用【待补：……】占位写一版（页面看到【待补】就不让出片），助手直接问。
-     */
-    private static List<String> briefLines(VideoScene scene, boolean director) {
-        Brief b = scene.brief();
-        if (b == null) return List.of(MISSING_DEFAULT);
-        List<String> lines = new ArrayList<>();
-        if (!blank(b.goal())) lines.add("这一条要做到：" + b.goal().trim() + "。"); // 不写「这条视频」：它是「要等参考视频」的判定词（studioBriefNeedsReference）
-        List<String> facts = b.factList().stream().filter(f -> f != null && !blank(f.label()))
-                .map(f -> f.label().trim() + (blank(f.use()) ? "" : "（" + f.use().trim() + "）")).toList();
-        if (!facts.isEmpty()) lines.add("要用到这些信息，只用我给的原话：" + String.join("；", facts) + "。");
-        List<String> required = b.factList().stream().filter(f -> f != null && f.required() && !blank(f.label())).map(f -> f.label().trim()).toList();
-        if (!required.isEmpty()) lines.add(director
-                ? "其中" + String.join("、", required) + "是必须有的：我没给的，正文最前面单独一行写「还缺：……」，后面照样写一版，缺的地方写成【待补：……】，不要换别的说法糊过去，也不要自己挑一个说法填上。不是必须的没给就不提，不要为它们写【待补】。"
-                : "其中" + String.join("、", required) + "是必须有的：我没给的先问我，不要编，也不要换别的说法糊过去。");
-        else lines.add(MISSING_DEFAULT);
-        if (!blank(b.ending())) lines.add("结尾：" + b.ending().trim() + "。");
-        if (b.noFiction()) lines.add(NO_FICTION);
-        return lines;
+    /** 编导受理时冻结的条目：环节、底座、场景、所属分组的内容方法（有的话）。 */
+    public java.util.Map<String, Integer> freezeSceneScript(String sceneId) {
+        VideoScene scene = video(sceneId).orElseThrow(() -> bad("这个场景不存在，请刷新后重选"));
+        List<String> keys = new ArrayList<>(List.of(STAGE_SCRIPT, sceneKey(scene.id())));
+        String method = groupMethod(scene.group());
+        if (method != null) keys.add(method);
+        return assembler().freeze(keys);
+    }
+
+    /** 场景分组对应的内容方法（{@code method-<分组>}，§9.8：第一版为空，库里有了就用）。 */
+    private String groupMethod(String group) {
+        if (blank(group)) return null;
+        String key = "method-" + group;
+        var lib = library();
+        return lib != null && lib.find(key).filter(e -> !e.withdrawn()).isPresent() ? key : null;
     }
 
     /** 视频两种用法共用的输入检查：素材够不够、时长和画面对不对。 */
@@ -339,82 +507,11 @@ public class StudioSceneCatalog {
         return new VideoInput(scene, images, text, duration, ratio);
     }
 
-    private Composed videoBrief(ComposeRequest r) {
-        VideoInput in = videoInput(r, true);
-        VideoScene scene = in.scene();
-        List<String> lines = new ArrayList<>();
-        lines.add("帮我做一条 " + in.duration() + " 秒的" + orientation(in.ratio()) + "短视频，类型是「" + scene.title() + "」。");
-        if (!in.text().isEmpty()) lines.add("我的要求：" + in.text());
-        lines.addAll(optionLines(scene.optionGroups(), r.options()));
-        List<String> materials = new ArrayList<>();
-        if (!blank(r.videoTitle())) materials.add("「" + r.videoTitle().trim() + "」是要复刻的参考视频");
-        if (!in.images().isEmpty()) materials.add(String.join("", in.images().stream().map(t -> "「" + t.trim() + "」").toList()) + "是上传的" + scene.images().label() + "，画面里出现时要和它一致");
-        if (!blank(r.characterTitle())) materials.add("「" + r.characterTitle().trim() + "」是出镜人物，长相和穿着保持一致");
-        if (!blank(r.voiceTitle())) materials.add("「" + r.voiceTitle().trim() + "」是配音要用的声音");
-        if (!materials.isEmpty()) lines.add("画布上的素材：" + String.join("；", materials) + "。");
-        if (in.text().isEmpty() && !materials.isEmpty()) lines.add("我没写具体要求，先看素材，再按下面的拍法出方案。");
-        lines.addAll(briefLines(scene, false));
-        lines.add("拍法：" + scene.structure());
-        lines.add(FACT_RULE);
-        // 只说「先给我分镜方案」时，真模型（2026-10-29 本地聚算 Qwen）只排了一步写脚本，做完也不提出视频。
-        lines.add("要的是做好的视频，不只是脚本：把文案、分镜和每段视频一起排进方案，报总共要花的积分，我确认后一次生成。");
-        return new Composed(limit(String.join("\n", lines)), scene.skill());
-    }
-
-    /**
-     * 编导写脚本（AI 视频页，照参考站「超级编导」）：看素材、按场景拍法写一版能直接交给视频模型一次生成的脚本。
-     * 参考图按这里的顺序交给视频模型，脚本里用「图1」「图2」指代；出片前我们的改写会换成模型认的写法。
-     *
-     * <p>只给会交给视频模型的图编号（2026-10-30 审查 F07）：只认首帧的模型只拿第一张、纯文字的模型一张都不拿，
-     * 剩下的图（{@code seenTitles}）编导可以看，但要用文字写进画面，写成「图2」视频模型是看不到的。
-     * 写脚本的模型看不到图时（{@code visual=false}）不说「已附图片」「先看图」，否则它会编图里的内容。
-     *
-     * <p>镜头和台词的写法跟 H3 改写认的一样（{@code H3PromptRewrite.SHOT_HEAD} / {@code LINE}）：「第N镜（起–止 秒）」「某某说：「…」」。
-     * 原来要的是「镜头N（…）；台词：…」，改写一行都认不出，只能交给模型重新分镜、重写台词（审查 F04，零调用探针：三镜 0/3）。
-     * 照这个写，出片前镜头时间固定、台词由代码原样填回，和画布、导演台同一条路。
-     */
-    private String scriptBrief(ComposeRequest r) {
-        VideoInput in = videoInput(r, false);
-        VideoScene scene = in.scene();
-        String language = blank(r.language()) ? "中文" : r.language().trim();
-        List<String> lines = new ArrayList<>();
-        if (!blank(r.revision())) lines.add("按这条修改意见改当前脚本，没提到的地方保持不变：" + r.revision().trim() + "\n\n这条视频原来的要求（仍然有效）：");
-        lines.add("写一条 " + in.duration() + " 秒的" + orientation(in.ratio()) + "「" + scene.title() + "」短视频脚本，交给视频模型一次生成，台词用" + language + "。");
-        if (!in.text().isEmpty()) lines.add("我的要求：" + in.text());
-        lines.addAll(optionLines(scene.optionGroups(), r.options()));
-        boolean visual = !Boolean.FALSE.equals(r.visual());
-        List<String> refs = new ArrayList<>();
-        int n = 0;
-        for (String title : in.images()) refs.add("图" + (++n) + "「" + title.trim() + "」是" + scene.images().label());
-        boolean characterSeen = Boolean.TRUE.equals(r.characterSeen());
-        if (!blank(r.characterTitle()) && !characterSeen) refs.add("图" + (++n) + "「" + r.characterTitle().trim() + "」是出镜人物，长相和穿着要和图里一致");
-        List<String> seen = new ArrayList<>(r.seenTitles() == null ? List.of() : r.seenTitles().stream().filter(t -> !blank(t)).map(String::trim).toList());
-        if (!blank(r.characterTitle()) && characterSeen) seen.add(r.characterTitle().trim());
-        if (!refs.isEmpty()) lines.add("交给视频模型的参考图（" + (visual ? "已附图片，" : "") + "按这个编号写）：" + String.join("；", refs) + "。");
-        if (!seen.isEmpty()) lines.add(String.join("", seen.stream().map(t -> "「" + t + "」").toList())
-                + "这个视频模型用不上，" + (visual ? "只给你看：" : "") + "画面里要用文字把它写清楚，不要写成图几。");
-        if (!refs.isEmpty() || !seen.isEmpty()) lines.add(visual ? "" : "这次你看不到这些图，只知道名称：按名称和我的要求写，不要编图里有什么。");
-        if (in.text().isEmpty() && (!refs.isEmpty() || !seen.isEmpty()))
-            lines.add(visual ? "我没写具体要求：先看图，说清楚是什么、卖点在哪，再按下面的拍法写。" : "我没写具体要求：按素材名称和下面的拍法写，不要编看不到的细节。");
-        if (!blank(r.voiceTitle())) lines.add("「" + r.voiceTitle().trim() + "」是说话要用的声音。");
-        lines.addAll(briefLines(scene, true));
-        lines.add("拍法：" + scene.structure());
-        // 2026-10-31 本地真 Agnes：照「第N镜（起–止 秒）」写成了「第1镜（起–止 0.5–2.0 秒）」，H3 解析器认不出；给一个照抄就对的例子。
-        lines.add("写法：按时间顺序分镜头，每个镜头单独一段，像这样：\n第1镜（0–2 秒）：画面……。旁白说：「……」\n第2镜（2–" + Math.min(4, in.duration()) + " 秒）：画面……。\n"
-                + "括号里只写起止秒数。有人说话就写「旁白说：「……」」，画面里的人开口就把「旁白」换成这个人的称呼（如「店员说：「……」」），没有台词就不写。"
-                + "一句台词一个「」，台词里面不要再用「」。第1镜从 0 秒开始，单个镜头 2 到 5 秒，所有镜头加起来正好 " + in.duration() + " 秒。"
-                + "台词说人话，按每秒 4 个字左右算长度。只写镜头里看得见、听得见的东西，不写拍摄建议、不写给人看的解释。");
-        lines.add(FACT_RULE);
-        // 2026-10-30 线上验收：首稿编了耐用测试次数，summary 却写「没写功效」。它只能说脚本里有什么，不能替脚本作保证。
-        lines.add("正文只放脚本本身；summary 用一句话说这一版的思路，只说脚本里实际写了什么，用了虚构的人物或情节就直说，不要写「没写功效」「信息都属实」这类保证，也不要讲「还缺」「待补」这些标注。");
-        return limit(String.join("\n", lines.stream().filter(l -> !l.isEmpty()).toList()));
-    }
-
     private static String orientation(String ratio) { return "16:9".equals(ratio) ? "横屏" : "竖屏"; }
 
     // ── 加载与校验 ─────────────────────────────────────────────────────────
 
-    static Catalog load(String path) {
+    public static Catalog load(String path) {
         try (InputStream in = new ClassPathResource(path).getInputStream()) {
             return JSON.readValue(in, Catalog.class);
         } catch (IOException e) {

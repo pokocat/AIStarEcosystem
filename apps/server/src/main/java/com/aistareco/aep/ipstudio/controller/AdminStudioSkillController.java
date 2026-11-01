@@ -29,6 +29,9 @@ public class AdminStudioSkillController {
         return ApiResponse.of(service.create(body, by(principal)));
     }
 
+    @PostMapping("/preview")
+    public ApiResponse<PromptPreviewResult> preview(@RequestBody PromptPreviewRequest body) { return ApiResponse.of(service.preview(body)); }
+
     @GetMapping("/{key}")
     public ApiResponse<SkillAdminDetail> detail(@PathVariable String key) { return ApiResponse.of(service.detail(key)); }
 

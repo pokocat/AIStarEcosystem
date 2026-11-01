@@ -76,6 +76,10 @@ function seed() {
       ] },
     { key: "talking-head-seeding", status: "draft", currentVersion: 1, createdAt: "2026-10-18T04:00:00Z", updatedAt: "2026-10-18T04:00:00Z", updatedBy: "admin",
       versions: [version("talking-head-seeding", 1, SEEDING_V1, SEEDING_BODY, { note: "新建", createdAt: "2026-10-18T04:00:00Z", publishedAt: "2026-10-18T04:00:00Z" })] },
+    // 提示词库的一个环节（docs/studio-prompt-architecture.md §2）：没有做法的表单，改正文发布。
+    { key: "stage-scene-script", status: "active", currentVersion: 1, createdAt: "2026-11-01T02:00:00Z", updatedAt: "2026-11-01T02:00:00Z", updatedBy: "seed", seedFile: "stage-scene-script.md",
+      versions: [version("stage-scene-script", 1, { key: "stage-scene-script", name: "AI 视频编导写脚本", status: "active", layer: "stage", target: "llm", summary: "资深短视频编导按场景写一版五段式方案" },
+        "{{base}}\n你是资深短视频编导。\n{{format.output}}\n---\n写一条 {{duration}} 秒的「{{sceneTitle}}」短视频脚本。", { source: "seed", author: "seed", note: "仓库文件 stage-scene-script.md" })] },
   ];
 }
 seed();
@@ -102,12 +106,18 @@ function summaryOf(skill: MockSkill, fm: Frontmatter): StudioSkillSummary {
 }
 const find = (key: string) => skills.find(s => s.key === key) ?? fail(404, "STUDIO_SKILL_NOT_FOUND", "技能不存在");
 const currentOf = (s: MockSkill) => s.versions.find(v => v.version === s.currentVersion)!;
+/** 提示词库条目（不是制作做法）：头部有 layer，且不是 method + workflow。 */
+const isEntry = (fm: Frontmatter) => !!fm.layer && !(fm.layer === "method" && (fm.kind ?? "workflow") === "workflow");
 function item(s: MockSkill): StudioSkillAdminItem {
   const current = currentOf(s);
+  const fm = current.frontmatter;
+  const layer = isEntry(fm)
+    ? { layer: fm.layer as StudioSkillAdminItem["layer"], ...(fm.kind ? { kind: fm.kind as "content" } : {}), ...(fm.target ? { target: fm.target as "llm" } : {}) }
+    : { layer: "method" as const, kind: "workflow" as const };
   return { key: s.key, name: String(current.frontmatter.name || s.key), status: s.status, currentVersion: s.currentVersion, summary: String(current.frontmatter.summary || ""),
     updatedBy: s.updatedBy, createdAt: s.createdAt, updatedAt: s.updatedAt,
     pendingDrafts: s.versions.filter(v => v.status === "draft" && v.version > s.currentVersion).length,
-    skill: summaryOf(s, current.frontmatter), ...(s.seedFile ? { seedFile: s.seedFile } : {}) };
+    ...(isEntry(fm) ? {} : { skill: summaryOf(s, fm) }), ...layer, ...(s.seedFile ? { seedFile: s.seedFile } : {}) };
 }
 function detail(s: MockSkill): StudioSkillAdminDetail {
   return clone({ ...item(s), current: { ...currentOf(s), current: true } });
@@ -118,6 +128,7 @@ function validate(key: string, fm: Frontmatter): string[] {
   const errors: string[] = [];
   if (fm.key !== undefined && fm.key !== key) errors.push(`头部的 key 是「${String(fm.key)}」，和这个技能的标识「${key}」不一致`);
   if (!String(fm.name || "").trim()) errors.push("缺少名称（name）");
+  if (isEntry(fm)) return errors;
   if (!String(fm.summary || "").trim()) errors.push("缺少用途说明（summary）");
   const checks = strings(fm.checks);
   for (const id of strings(fm.autoFixChecks)) if (!checks.includes(id)) errors.push(`自动修正项「${id}」不在检查项里`);
@@ -221,7 +232,8 @@ export function mockPublishStudioSkillVersion(key: string, body: StudioSkillPubl
 
 export function mockSetStudioSkillStatus(key: string, body: StudioSkillStatusRequest): StudioSkillAdminDetail {
   const s = find(key);
-  if (s.status === "active" && body.status !== "active" && skills.filter(x => x.status === "active").length <= 1)
+  if (s.status === "active" && body.status !== "active" && !isEntry(currentOf(s).frontmatter)
+    && skills.filter(x => x.status === "active" && !isEntry(currentOf(x).frontmatter)).length <= 1)
     fail(409, "STUDIO_SKILL_LAST_ACTIVE", "这是唯一启用的技能，不能停用");
   if (body.status === "active") requireNoOtherDefault(key, currentOf(s).frontmatter);
   s.status = body.status; s.updatedAt = now(); s.updatedBy = "admin";

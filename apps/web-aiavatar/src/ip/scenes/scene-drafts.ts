@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-import type { IpProject, IpProjectDoc, IpProjectSummary, IpRun, StudioSceneCatalog, StudioSceneImageState, StudioSceneInputs, StudioSceneUpload, StudioSceneVideoState } from "@ai-star-eco/types";
+import type { IpProject, IpProjectDoc, IpProjectSummary, IpRun, StudioSceneCatalog, StudioSceneComposeRequest, StudioSceneImageState, StudioSceneInputs, StudioSceneUpload, StudioSceneVideoState } from "@ai-star-eco/types";
 import type { StudioReference, StudioRunRequest, StudioVideoSettings, StudioNodeMetadata } from "@ai-star-eco/types/ip-studio-workflow";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "@/canvas/types/canvas";
 import { applyStudioRunToDocument, makeStudioNode } from "@/canvas-bridge/studio-nodes";
@@ -120,6 +120,8 @@ export function rowUploads(doc: IpProjectDoc, row: CanvasNodeData): (SceneUpload
  */
 export function addScriptNode(doc: IpProjectDoc, input: {
   ask: string; revision: boolean; prompt: string; materialIds: string[]; imageIds: string[];
+  /** 场景输入：服务端按提示词库的编导环节拼话（docs/studio-prompt-architecture.md §5.1）；prompt 只是显示用的一句话。 */
+  scene?: StudioSceneComposeRequest;
   duration: number; ratio: string; language: string; model?: string; maxCost?: number; options?: Record<string, string>;
   /** 按哪个视频模型、交给它哪几张图写的（见 sceneDirector.videoModel / refs）。 */
   videoModel?: string; refs?: string[];
@@ -129,6 +131,7 @@ export function addScriptNode(doc: IpProjectDoc, input: {
   const content = previous?.metadata?.content || "";
   const target = makeStudioNode("text");
   const request: StudioRunRequest = { clientRequestId: nanoid(), nodeId: target.id, operation: "text", prompt: input.prompt, textEdit: { content },
+    ...(input.scene ? { scene: input.scene } : {}),
     contextNodeIds: input.imageIds, ...(input.imageIds.length ? { readVisuals: true } : {}),
     ...(input.model ? { model: input.model } : {}), ...(input.maxCost !== undefined ? { maxCost: input.maxCost } : {}) };
   const at = previous ? { x: previous.position.x, y: previous.position.y + previous.height + 80 } : { x: 520, y: 120 };

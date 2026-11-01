@@ -359,6 +359,7 @@ function BriefEditor({ brief, onChange }: { brief: StudioSceneBrief | null; onCh
         <Input aria-label={`信息 ${i + 1} 名称`} className="w-44" placeholder="如：团购价" value={f.label} maxLength={16} onChange={e => setFact(i, { label: e.target.value })}/>
         <Input aria-label={`信息 ${i + 1} 给编导的说明`} className="min-w-[160px] flex-1" placeholder="给编导的说明（可选，用户看不到），如：有原价才做对比" value={f.use ?? ""} maxLength={24} onChange={e => setFact(i, { use: e.target.value || null })}/>
         <label className="flex items-center gap-1.5 text-sm"><Switch checked={f.required} disabled={!f.required && required >= 4} onCheckedChange={v => setFact(i, { required: v })} aria-label={`信息 ${i + 1} 必填`}/>必填</label>
+        <label className="flex items-center gap-1.5 text-sm" title="痛点、卖点、使用场景这类能从素材合理推断的：用户没写，编导推断着写，不算还缺"><Switch checked={!!f.inferable} onCheckedChange={v => setFact(i, { inferable: v || null })} aria-label={`信息 ${i + 1} 能从素材推断`}/>能推断</label>
         <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={`删除信息 ${i + 1}`} onClick={() => set({ facts: b.facts.filter((_, j) => j !== i) })}><X className="h-4 w-4"/></Button>
       </div>)}
         {b.facts.length < 6 && <Button size="sm" variant="outline" onClick={() => set({ facts: [...b.facts, { label: "", required: false }] })}><Plus className="mr-1 h-3.5 w-3.5"/>加一条</Button>}

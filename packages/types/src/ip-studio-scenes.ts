@@ -48,7 +48,8 @@ export interface StudioSceneBrief {
   /** 这一条要让看的人做什么，一句话。 */
   goal: string;
   /** 要用户给的信息；required 的没给，编导先写「还缺：……」并用【待补：……】占位。use 是怎么用（「有原价才做对比」）。 */
-  facts: { label: string; required: boolean; use?: string | null }[];
+  /** inferable：痛点、卖点、使用场景这类能从素材合理推断的，没给也不算还缺（docs/studio-prompt-architecture.md §9.6）。 */
+  facts: { label: string; required: boolean; use?: string | null; inferable?: boolean | null }[];
   /** 结尾要观众做什么。 */
   ending?: string | null;
   /** none = 只用用户给的，不编人物经历；story = 可以编人物和情节，不能编品牌事实（缺省）。 */
@@ -102,6 +103,8 @@ export interface StudioSceneComposeRequest {
   characterSeen?: boolean;
   /** 编导：写脚本的模型这次能不能看到图；false 时要求里不说「已附图片」「先看图」。 */
   visual?: boolean;
+  /** 编导改稿：设置变了什么（如「时长改成 30 秒」），服务端的编导模板把它说成一句话；页面不自己拼话。 */
+  settingsChanged?: string;
 }
 /** 图片：`text` 是出图描述；视频：`text` 是交给助手的话，`skillKey` 是该场景的方法；编导：`text` 是写脚本的要求。 */
 export interface StudioSceneComposed { text: string; skillKey?: string | null }

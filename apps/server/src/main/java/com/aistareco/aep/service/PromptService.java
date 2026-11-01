@@ -268,6 +268,21 @@ public class PromptService {
         return new ResolvedPrompt(system, user, params, origin);
     }
 
+    /**
+     * 仓库里的默认文件（[system, user]），没有返回 null。Studio 提示词库切换时拿它和线上生效内容比，判断运营有没有改过
+     * （docs/studio-prompt-architecture.md §4.6）。
+     */
+    public static String[] resourceDefault(String promptKey) {
+        try {
+            ClassPathResource res = new ClassPathResource(RESOURCE_DIR + promptKey + ".md");
+            if (!res.exists()) return null;
+            try (var in = res.getInputStream()) { return splitSystemUser(new String(in.readAllBytes(), StandardCharsets.UTF_8)); }
+        } catch (Exception e) {
+            log.warn("[prompt] load resource failed for {}: {}", promptKey, e.getMessage());
+            return null;
+        }
+    }
+
     /** 读 classpath resources/prompts/material/&lt;key&gt;.md；按首个独占 "---" 行分隔。 */
     private String[] loadResource(String promptKey) {
         try {

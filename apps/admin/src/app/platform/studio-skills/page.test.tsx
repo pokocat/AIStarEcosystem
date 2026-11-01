@@ -121,3 +121,18 @@ test('a skill is created from a pasted file and selected', async () => {
   await waitFor(() => expect(screen.getByRole('option', { name: /新技能/, selected: true })).toBeDefined());
   expect(within(screen.getByRole('option', { name: /新技能/ })).getByText('草稿')).toBeDefined();
 });
+
+// 提示词库条目（docs/studio-prompt-architecture.md §7）：列表按层说明，点进去是正文编辑和预览，没有做法的表单和试跑。
+test('a prompt library entry shows its layer and opens a plain body editor that publishes a new version', async () => {
+  await open();
+  const entry = screen.getByRole('option', { name: /AI 视频编导写脚本/ });
+  expect(within(entry).getByText('环节 · 大模型')).toBeDefined();
+  fireEvent.click(entry);
+  const body = await screen.findByRole('textbox', { name: '正文' });
+  expect(screen.queryByRole('textbox', { name: '技能正文' })).toBeNull();
+  expect(screen.getByRole('button', { name: /拼一次看看/ })).toBeDefined();
+  fireEvent.change(body, { target: { value: '{{base}}\n你是资深短视频编导，写得具体一点。\n{{format.output}}\n---\n写一条 {{duration}} 秒的脚本。' } });
+  fireEvent.click(screen.getByRole('button', { name: /发布新版本/ }));
+  await waitFor(() => expect(within(versionRow(2)).getByText('当前')).toBeDefined());
+  expect(screen.queryByRole('button', { name: '试跑这一版' })).toBeNull();
+});

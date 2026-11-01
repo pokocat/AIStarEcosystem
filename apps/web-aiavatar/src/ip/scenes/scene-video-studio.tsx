@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowUp, Check, ChevronDown, Copy, Cpu, Download, FolderOpen, Image as ImageIcon, Loader2, Mic, PencilLine, Plus,
   RotateCcw, SlidersHorizontal, Square, UserRound, Video, X } from "lucide-react";
-import type { IpProject, IpRun, IpSavedAsset, StudioMediaImportResult, StudioSceneInputs, StudioNodeMetadata, StudioSceneOptionGroup, StudioSceneVideoState } from "@ai-star-eco/types";
+import type { IpProject, IpRun, IpSavedAsset, StudioMediaImportResult, StudioSceneComposeRequest, StudioSceneInputs, StudioNodeMetadata, StudioSceneOptionGroup, StudioSceneVideoState } from "@ai-star-eco/types";
 import type { StudioCapabilities } from "@ai-star-eco/types/ip-studio-workflow";
 import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
@@ -440,10 +440,10 @@ export function SceneVideoStudio() {
   const revising = !!latestScript;
   const recreation = scene?.skill === RECREATION;
   /** 让编导写（或改）这一版之前卡在哪：ask 是要交给编导的那句话。 */
-  const scriptBlocker = (ask: string) => !scene ? "正在读取场景…"
+  const scriptBlocker = (ask: string, settingsChanged = false) => !scene ? "正在读取场景…"
     : scene.images.required && !images.length ? `先放${scene.images.label}`
     : !revising && scene.textRequired && !ask.trim() ? "先写一句要求"
-    : revising && !ask.trim() ? "说说想改哪里"
+    : revising && !ask.trim() && !settingsChanged ? "说说想改哪里"
     : !caps ? "正在读取模型…"
     : !caps.mock && !textModel?.tokenPricing ? "AI 编导暂时用不了（文字模型没配置价格）" : "";
   /** 爆款复刻交给创作助手之前卡在哪。 */
@@ -453,13 +453,14 @@ export function SceneVideoStudio() {
 
   /**
    * 让编导写第一版（ask 是编辑框里的想法）或改一版（ask 是「想改哪里」）。
-   * auto 是代码替用户说的修改意见（换了规格，「让编导照现在的改一版」），不清空用户正在写的那句。
+   * auto 是代码替用户发的（换了规格，「让编导照现在的改一版」），不清空用户正在写的那句；changes 是设置变了什么，
+   * 交给服务端的编导模板说成一句话（docs/studio-prompt-architecture.md §5.1），页面不自己拼给模型的话。
    */
-  const send = async (raw: string, opts?: { auto?: boolean }) => {
+  const send = async (raw: string, opts?: { auto?: boolean; changes?: string }) => {
     if (busy || uploading || writing) return;
     // 编导页的输入框没写字、但设置改过（时长、画面、素材）：发出去就是照现在的设置改一版。
-    if (revising && !raw.trim() && latestChanges && !opts?.auto) return send(`${latestChanges}。按现在的设置重新排镜头和台词，内容和卖点不变。`, { auto: true });
-    const blocked = scriptBlocker(raw);
+    if (revising && !raw.trim() && latestChanges && !opts?.auto) return send("", { auto: true, changes: latestChanges });
+    const blocked = scriptBlocker(raw, !!opts?.changes);
     if (blocked) { setHint(blocked); return; }
     setBusy(true); setHint(""); setNote(undefined);
     const ticket = session.current;
@@ -472,13 +473,15 @@ export function SceneVideoStudio() {
       const handed = new Set((plan?.used ?? []).map(m => m.key));
       const visual = !!(caps?.mock || textModel?.supportsVision);
       // 用户写了改法、设置也变了：两件事一起交给编导（气泡里只显示用户写的那句）。
-      const changed = revising && !opts?.auto ? latestChanges : "";
-      const composed = await IpStudioApi.composeScene({ kind: "video-script", sceneId: scene!.id, text: revising ? first?.ask ?? "" : ask,
-        ...(revising ? { revision: changed ? `${ask}\n另外，${changed}，按现在的设置重新排镜头和台词。` : ask } : {}),
+      const changed = opts?.changes ?? (revising && !opts?.auto ? latestChanges : "");
+      // 场景输入随请求提交，服务端按提示词库的编导环节拼话并记下版本；页面不再先拼一段话再当普通文字提交。
+      const sceneInput: StudioSceneComposeRequest = { kind: "video-script", sceneId: scene!.id, text: revising ? first?.ask ?? "" : ask,
+        ...(revising && ask ? { revision: ask } : {}), ...(changed ? { settingsChanged: changed } : {}),
         imageTitles: images.filter(i => handed.has(i.key)).map(i => i.title), seenTitles: images.filter(i => !handed.has(i.key)).map(i => i.title),
         characterTitle: character?.title, ...(character && !handed.has(character.key) ? { characterSeen: true } : {}),
         voiceTitle: voice && handed.has(voice.key) ? voice.title : undefined, visual,
-        duration: shownDuration, ratio, language, ...(sceneOptionValues(scene!.options, picked) ? { options: sceneOptionValues(scene!.options, picked) } : {}) });
+        duration: shownDuration, ratio, language, ...(sceneOptionValues(scene!.options, picked) ? { options: sceneOptionValues(scene!.options, picked) } : {}) };
+      const said = ask || (changed ? `照现在的设置改一版（${changed}）` : "");
       projectId = await ensureDraft(ticket);
       const chosen = selection();
       const vision = caps?.mock || textModel?.supportsVision;
@@ -487,7 +490,7 @@ export function SceneVideoStudio() {
         const { nodes, placed } = placeMaterials(doc.nodes as CanvasNodeData[]);
         const imageIds = placed.filter(p => p.media.mediaType === "image").map(p => p.node.id);
         const made = addScriptNode({ ...doc, nodes }, {
-          ask, revision: revising, prompt: composed.text, materialIds: placed.map(p => p.node.id), imageIds: vision ? imageIds : [],
+          ask: said, revision: revising, prompt: said || scene!.title, scene: sceneInput, materialIds: placed.map(p => p.node.id), imageIds: vision ? imageIds : [],
           duration: shownDuration, ratio, language, model: caps?.mock ? undefined : textModel?.endpointId, maxCost: scriptCost, options: sceneOptionValues(scene!.options, picked),
           ...(chosenVideo ? { videoModel: chosenVideo.endpointId } : {}), refs: (plan?.used ?? []).filter(m => m.mediaType === "image").map(m => m.key) });
         request = made.request; nodeId = made.nodeId;
@@ -661,7 +664,7 @@ export function SceneVideoStudio() {
   const staleScript = scriptId ? specChanges(writtenFor) : "";
   const reviseForNow = () => {
     if (!staleScript) return;
-    void send(`${staleScript}。按现在的时长、画面和参考图重新排镜头和台词，内容和卖点不变。`, { auto: true });
+    void send("", { auto: true, changes: staleScript });
   };
 
   // 编导留了【待补】的地方没填，出出来就是一句「待补」或者模型自己编一个价：先拦下。

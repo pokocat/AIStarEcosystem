@@ -226,7 +226,9 @@ export function DryRunCard({ versions, currentVersion, dirty, running, result, e
 
 export function VersionsCard({ versions, loading, currentVersion, busyVersion, onRollback, onReview, onLoad, onTry }: {
   versions: StudioSkillVersion[]; loading: boolean; currentVersion: number; busyVersion?: number;
-  onRollback: (v: StudioSkillVersion) => void; onReview: (v: StudioSkillVersion) => void; onLoad: (v: StudioSkillVersion) => void; onTry: (v: StudioSkillVersion) => void;
+  onRollback: (v: StudioSkillVersion) => void; onReview: (v: StudioSkillVersion) => void;
+  /** 提示词库条目没有做法的表单和试跑，这两个按钮不显示。 */
+  onLoad?: (v: StudioSkillVersion) => void; onTry?: (v: StudioSkillVersion) => void;
 }) {
   return (
     <Card>
@@ -255,8 +257,8 @@ export function VersionsCard({ versions, loading, currentVersion, busyVersion, o
                     <div className="truncate text-xs text-muted-foreground" title={v.author}>{v.author}{draft && v.baseVersion ? ` · 基于 v${v.baseVersion}` : ""}</div>
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-1.5">
-                    <Button size="sm" variant="ghost" onClick={() => onLoad(v)}>载入编辑器</Button>
-                    <Button size="sm" variant="ghost" onClick={() => onTry(v)}>试跑这一版</Button>
+                    {onLoad && <Button size="sm" variant="ghost" onClick={() => onLoad(v)}>载入编辑器</Button>}
+                    {onTry && <Button size="sm" variant="ghost" onClick={() => onTry(v)}>试跑这一版</Button>}
                     {draft ? <Button size="sm" variant="outline" onClick={() => onReview(v)}>审阅后发布</Button>
                       : !current && <Button size="sm" variant="outline" disabled={busyVersion === v.version} onClick={() => onRollback(v)}>{busyVersion === v.version ? "回滚中…" : "回滚到此版本"}</Button>}
                   </div>

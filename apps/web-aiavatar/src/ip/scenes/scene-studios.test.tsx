@@ -124,10 +124,12 @@ test("视频：编导看商品图写脚本（请求先存进画布、带图）�
   await waitFor(() => expect(send().disabled).toBe(false));
   await act(async () => { fireEvent.click(send()); });
 
-  expect(api.composeScene).toHaveBeenCalledWith(expect.objectContaining({ kind: "video-script", sceneId: "ecom-talking", text: "保湿精华，不黏腻",
-    imageTitles: ["商品图 1"], duration: 15, ratio: "9:16", language: "中文", options: { presenter: "product", tone: "expert" } }));
+  // 编导的话由服务端按提示词库拼：请求带场景输入，prompt 只是显示用的那句（docs/studio-prompt-architecture.md §5.1）。
+  expect(api.composeScene).not.toHaveBeenCalledWith(expect.objectContaining({ kind: "video-script" }));
   const textRequest = api.submit.mock.calls[0][1];
-  expect(textRequest).toMatchObject({ operation: "text", prompt: "服务端拼好的写脚本要求", textEdit: { content: "" }, readVisuals: true, model: "ep-qwen", maxCost: 21 });
+  expect(textRequest).toMatchObject({ operation: "text", prompt: "保湿精华，不黏腻", textEdit: { content: "" }, readVisuals: true, model: "ep-qwen", maxCost: 21,
+    scene: { kind: "video-script", sceneId: "ecom-talking", text: "保湿精华，不黏腻", imageTitles: ["商品图 1"], duration: 15, ratio: "9:16", language: "中文",
+      options: { presenter: "product", tone: "expert" } } });
   // 上传完就存进草稿（刷新后素材还在）；写脚本那次保存里请求已经在节点上，之后才提交。
   expect(api.updateProject.mock.calls[0][1].doc.nodes.map((n: any) => n.title)).toEqual(["商品图 1"]);
   const scriptSave = api.updateProject.mock.calls.findIndex((c: any) => c[1].doc.nodes.some((n: any) => n.id === textRequest.nodeId));

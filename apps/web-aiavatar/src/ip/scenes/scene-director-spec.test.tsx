@@ -110,8 +110,10 @@ test("video: with a text-only video model the director gets no numbered pictures
   await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
   fillField(await screen.findByRole("textbox", { name: "想做的视频" }), "保湿面霜");
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "AI 编导" })); });
-  await waitFor(() => expect(api.composeScene).toHaveBeenCalled());
-  expect(api.composeScene.mock.calls[0][0]).toMatchObject({ imageTitles: [], seenTitles: ["商品图 1"], visual: false });
+  // 场景输入随请求提交，服务端按提示词库拼话（docs/studio-prompt-architecture.md §5.1）。
+  await waitFor(() => expect(api.submit).toHaveBeenCalled());
+  expect(api.composeScene).not.toHaveBeenCalled();
+  expect(api.submit.mock.calls[0][1].scene).toMatchObject({ kind: "video-script", imageTitles: [], seenTitles: ["商品图 1"], visual: false });
   // 这一版记下按哪个模型、交给它几张图写的。
   await waitFor(() => expect(api.submit).toHaveBeenCalled());
   const script = store.get("IPP-V")!.doc.nodes.find(n => n.metadata?.studio?.sceneDirector)!;
@@ -129,8 +131,10 @@ test("video: when the settings no longer match what the script was written for, 
   setDuration(10);
   expect(screen.getByText(/这版脚本是照 15 秒写的，现在要出 10 秒/)).toBeTruthy();
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: /让编导照现在的改一版/ })); });
-  await waitFor(() => expect(api.composeScene).toHaveBeenCalled());
-  expect(api.composeScene.mock.calls[0][0]).toMatchObject({ kind: "video-script", duration: 10, revision: expect.stringContaining("这版脚本是照 15 秒写的，现在要出 10 秒") });
+  await waitFor(() => expect(api.submit).toHaveBeenCalled());
+  // 设置变了什么交给服务端的编导模板说成一句话，页面不再自己拼「按现在的设置重新排镜头」。
+  expect(api.submit.mock.calls[0][1].scene).toMatchObject({ kind: "video-script", duration: 10, settingsChanged: expect.stringContaining("这版脚本是照 15 秒写的，现在要出 10 秒") });
+  expect(api.submit.mock.calls[0][1].scene.revision).toBeUndefined();
   // 回到编导那一列，看得到新的一版在写。
   expect(screen.queryByRole("textbox", { name: "视频脚本" })).toBeNull();
 });
@@ -167,8 +171,10 @@ test("video: the director page shows the chosen materials and the spec; after ch
   expect(within(box).getByRole("button", { name: /^视频规格：英文，10 秒/ })).toBeTruthy();
   expect(sendButton.disabled).toBe(false);
   await act(async () => { fireEvent.click(sendButton); });
-  await waitFor(() => expect(api.composeScene).toHaveBeenCalled());
-  expect(api.composeScene.mock.calls[0][0]).toMatchObject({ kind: "video-script", duration: 10, revision: expect.stringContaining("这版脚本是照 15 秒写的，现在要出 10 秒") });
+  await waitFor(() => expect(api.submit).toHaveBeenCalled());
+  // 设置变了什么交给服务端的编导模板说成一句话，页面不再自己拼「按现在的设置重新排镜头」。
+  expect(api.submit.mock.calls[0][1].scene).toMatchObject({ kind: "video-script", duration: 10, settingsChanged: expect.stringContaining("这版脚本是照 15 秒写的，现在要出 10 秒") });
+  expect(api.submit.mock.calls[0][1].scene.revision).toBeUndefined();
 });
 
 test("video: a typed change on the director page also hands over the new length", async () => {
@@ -180,9 +186,9 @@ test("video: a typed change on the director page also hands over the new length"
   setDuration(10);
   fireEvent.change(input, { target: { value: "开头更抓人" } });
   await act(async () => { fireEvent.submit(input.closest("form")!); });
-  await waitFor(() => expect(api.composeScene).toHaveBeenCalled());
-  const sent = api.composeScene.mock.calls[0][0];
-  expect(sent).toMatchObject({ duration: 10, revision: expect.stringMatching(/^开头更抓人\n另外，这版脚本是照 15 秒写的，现在要出 10 秒/) });
+  await waitFor(() => expect(api.submit).toHaveBeenCalled());
+  const sent = api.submit.mock.calls[0][1].scene;
+  expect(sent).toMatchObject({ duration: 10, revision: "开头更抓人", settingsChanged: expect.stringContaining("这版脚本是照 15 秒写的，现在要出 10 秒") });
   // 气泡里只显示用户写的那句。
   await waitFor(() => expect(screen.getAllByText("开头更抓人").length).toBeGreaterThan(0));
 });

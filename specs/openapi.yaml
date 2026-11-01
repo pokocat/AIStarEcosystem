@@ -779,6 +779,7 @@ components:
         skillVersion: {type: integer, nullable: true}
         stage: {type: string, enum: [analysis, production], nullable: true}
         executionId: {type: string, nullable: true}
+        scene: { $ref: '#/components/schemas/StudioSceneComposeRequest', description: 'AI 视频页的编导（operation=text + textEdit）：场景输入，服务端按提示词库的编导环节拼 system / user 并记下版本（docs/studio-prompt-architecture.md §5.1）；有它时 prompt 只是显示用的一句话' }
         dialogue:
           type: object
           nullable: true
@@ -1181,8 +1182,11 @@ components:
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
         pendingDrafts: { type: integer, description: 比当前版本新、待审核的草稿数 }
-        skill: { $ref: '#/components/schemas/StudioSkillSummary' }
-        seedFile: { type: string, nullable: true, description: 来自仓库 resources/studio/skills 时的文件名 }
+        skill: { $ref: '#/components/schemas/StudioSkillSummary', description: 制作做法才有；提示词库条目没有 }
+        seedFile: { type: string, nullable: true, description: 来自仓库 resources/studio/skills 或 resources/studio/prompts 时的文件名 }
+        layer: { type: string, enum: [base, stage, method, scene], description: '提示词库分层（docs/studio-prompt-architecture.md §2）' }
+        kind: { type: string, enum: [workflow, content], description: 'method 下：workflow 制作做法 / content 内容方法' }
+        target: { type: string, enum: [llm, image-model, video-model, message], description: '环节才有：交给谁' }
     StudioSkillAdminDetail:
       allOf:
         - $ref: '#/components/schemas/StudioSkillAdminItem'
@@ -5299,6 +5303,7 @@ components:
         seenTitles: { type: array, items: { type: string }, description: 'video-script：放了但所选视频模型用不上的场景图，只给编导看、脚本里用文字写；imageTitles 只放会交给视频模型的（编号图1、图2）。必填检查两者合计' }
         characterSeen: { type: boolean, description: 'video-script：出镜人物这张视频模型也用不上' }
         visual: { type: boolean, description: 'video-script：写脚本的模型能否看到图；false 时要求里不说「已附图片」「先看图」。缺省按能看到' }
+        settingsChanged: { type: string, description: 'video-script 改稿：设置变了什么（时长、画面、参考图），由服务端的编导模板说成一句话' }
     StudioSceneComposed:
       type: object
       required: [text]
@@ -11698,6 +11703,26 @@ paths:
         '200': { description: 'ApiResponse<StudioSkillAdminDetail>' }
         '400': { description: 'STUDIO_SKILL_INVALID（error.details.reason 为具体原因）/ STUDIO_INPUT_INVALID' }
         '409': { description: 'STUDIO_SKILL_EXISTS / STUDIO_SKILL_DEFAULT_CONFLICT' }
+  /admin/studio/skills/preview:
+    post:
+      tags: [admin-studio-skills]
+      operationId: adminPreviewStudioPrompt
+      description: 按调用点的方式拼一次环节（底座、内容方法、场景、代码生成的输出格式），不调模型、不存东西；vars 缺省用调用点登记的示例（docs/studio-prompt-architecture.md §7）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [stage]
+              properties:
+                stage: { type: string }
+                method: { type: string }
+                scene: { type: string }
+                vars: { type: object, additionalProperties: true }
+      responses:
+        '200': { description: 'ApiResponse<StudioPromptPreviewResult>：system、user、params、refs、formats、variables、vars' }
+        '400': { description: STUDIO_INPUT_INVALID（环节没有调用点 / 拼不出来） }
   /admin/studio/skills/{key}:
     parameters: [{ name: key, in: path, required: true, schema: { type: string } }]
     get:

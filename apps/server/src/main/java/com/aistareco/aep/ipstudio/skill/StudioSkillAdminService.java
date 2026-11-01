@@ -55,14 +55,27 @@ public class StudioSkillAdminService {
     private final ObjectProvider<StudioWorkflowService> workflow;
     private final ObjectMapper mapper;
     private final TransactionTemplate tx;
+    /** Prompt library entries share these tables (docs/studio-prompt-architecture.md §4); null in unit tests that only cover methods. */
+    private final com.aistareco.aep.ipstudio.prompt.StudioPromptLibrary library;
+    private final com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler assembler;
 
     public StudioSkillAdminService(StudioSkillCatalog catalog, StudioSkillStore store, PromptService prompts, AiModelInvocationService models,
                                    AiModelEndpointRepository endpoints, DapPricingService pricing,
                                    ObjectProvider<AiAppSceneModelPolicyService> scenePolicies, ObjectProvider<StudioWorkflowService> workflow,
                                    ObjectMapper mapper, PlatformTransactionManager manager) {
+        this(catalog, store, prompts, models, endpoints, pricing, scenePolicies, workflow, mapper, manager, null, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public StudioSkillAdminService(StudioSkillCatalog catalog, StudioSkillStore store, PromptService prompts, AiModelInvocationService models,
+                                   AiModelEndpointRepository endpoints, DapPricingService pricing,
+                                   ObjectProvider<AiAppSceneModelPolicyService> scenePolicies, ObjectProvider<StudioWorkflowService> workflow,
+                                   ObjectMapper mapper, PlatformTransactionManager manager,
+                                   com.aistareco.aep.ipstudio.prompt.StudioPromptLibrary library, com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler assembler) {
         this.catalog = catalog; this.store = store; this.prompts = prompts; this.models = models; this.endpoints = endpoints;
         this.pricing = pricing; this.scenePolicies = scenePolicies; this.workflow = workflow; this.mapper = mapper;
         this.tx = new TransactionTemplate(manager);
+        this.library = library; this.assembler = assembler;
     }
 
     // ── Reads ───────────────────────────────────────────────────────────────────────────────────────────────────
@@ -78,7 +91,7 @@ public class StudioSkillAdminService {
         var item = item(row);
         var current = store.versions().findBySkillKeyAndVersion(row.getSkillKey(), row.getCurrentVersion()).map(v -> versionDto(v, row)).orElse(null);
         return new SkillAdminDetail(item.key(), item.name(), item.status(), item.currentVersion(), item.summary(), item.updatedBy(),
-                item.createdAt(), item.updatedAt(), item.pendingDrafts(), item.skill(), item.seedFile(), current);
+                item.createdAt(), item.updatedAt(), item.pendingDrafts(), item.skill(), item.seedFile(), current, item.layer(), item.kind(), item.target());
     }
 
     /** All versions newest first, drafts included (with their source, base version and origin ids). */
@@ -98,8 +111,14 @@ public class StudioSkillAdminService {
             catch (IllegalArgumentException e) { return null; } // shown without a summary; loadCurrent logs it as an error
         }).orElse(null);
         int drafts = (int) store.versions().countPendingDrafts(row.getSkillKey(), row.getCurrentVersion());
+        Map<String, Object> head = store.versions().findBySkillKeyAndVersion(row.getSkillKey(), row.getCurrentVersion()).map(v -> {
+            try { return store.header(v.getFrontmatterJson()); } catch (IllegalArgumentException e) { return Map.<String, Object>of(); }
+        }).orElse(Map.of());
+        boolean workflow = StudioSkillCatalog.isWorkflowHeader(head);
         return new SkillAdminItem(row.getSkillKey(), row.getName(), row.getStatus(), row.getCurrentVersion(), row.getSummary() == null ? "" : row.getSummary(),
-                row.getUpdatedBy(), iso(row.getCreatedAt()), iso(row.getUpdatedAt()), drafts, summary, row.getSeedFile());
+                row.getUpdatedBy(), iso(row.getCreatedAt()), iso(row.getUpdatedAt()), drafts, summary, row.getSeedFile(),
+                workflow ? "method" : String.valueOf(head.get("layer")), workflow ? "workflow" : head.get("kind") instanceof String k ? k : null,
+                head.get("layer") != null && "stage".equals(head.get("layer")) ? (head.get("target") instanceof String t ? t : "llm") : null);
     }
 
     SkillVersion versionDto(IpSkillVersion v, IpSkill row) {
@@ -118,24 +137,25 @@ public class StudioSkillAdminService {
             throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "请粘贴完整的制作方法文件（YAML 头 + 正文）");
         if (request.markdown().length() > 80000) throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "制作方法文件最多 80000 字");
         String note = note(request.note());
-        StudioSkillCatalog.ParsedFile parsed;
-        try { parsed = StudioSkillCatalog.parseFile(request.markdown()); }
+        StudioSkillCatalog.SplitFile parsed;
+        try { parsed = StudioSkillCatalog.splitFile(request.markdown()); }
         catch (IllegalArgumentException e) { throw invalid(e); }
-        String key = parsed.skill().key();
+        String key = parsed.header().get("key") instanceof String k ? k.strip() : "";
+        validate(store.normalize(parsed.header()), parsed.body(), "pre-check"); // a bad header is a 400 before any lookup
         try {
             tx.executeWithoutResult(s -> {
                 if (store.skills().findById(key).isPresent()) throw exists(key);
                 Map<String, Object> header = store.normalize(parsed.header());
                 header.put("version", 1);
-                StudioSkill skill = validate(header, parsed.body(), store.digest(header, parsed.body()));
-                if (skill.active()) requireNoOtherDefault(skill, null);
+                Validated skill = validate(header, parsed.body(), store.digest(header, parsed.body()));
+                if (skill.workflow() && skill.active()) requireNoOtherDefault(skill.skill(), null);
                 Instant now = Instant.now();
                 store.skills().saveAndFlush(IpSkill.builder().skillKey(key).name(skill.name()).status(skill.status()).currentVersion(1)
                         .summary(skill.summary()).updatedBy(actor(by)).createdAt(now).updatedAt(now).build());
                 store.versions().saveAndFlush(IpSkillVersion.builder().id(StudioSkillStore.versionId()).skillKey(key).version(1)
                         .frontmatterJson(store.json(header)).bodyMd(skill.body()).contentDigest(skill.digest()).source(IpSkillVersion.SOURCE_ADMIN)
                         .status(IpSkillVersion.PUBLISHED).author(actor(by)).note(note).createdAt(now).publishedAt(now).build());
-                catalog.invalidateAfterCommit();
+                invalidateAfterCommit();
             });
         } catch (DataIntegrityViolationException race) { throw exists(key); }
         log.info("[studio-skill] admin {} created {} v1", actor(by), key);
@@ -158,8 +178,9 @@ public class StudioSkillAdminService {
             int next = store.versions().maxVersion(key) + 1;
             header.put("version", next);
             header.put("status", row.getStatus());
-            StudioSkill skill = validate(header, request.bodyMd(), store.digest(header, request.bodyMd()));
-            if (skill.active()) requireNoOtherDefault(skill, key);
+            Validated skill = validate(header, request.bodyMd(), store.digest(header, request.bodyMd()));
+            requireSameLayer(row, header);
+            if (skill.workflow() && skill.active()) requireNoOtherDefault(skill.skill(), key);
             Instant now = Instant.now();
             store.versions().saveAndFlush(IpSkillVersion.builder().id(StudioSkillStore.versionId()).skillKey(key).version(next)
                     .frontmatterJson(store.json(header)).bodyMd(skill.body()).contentDigest(skill.digest()).source(IpSkillVersion.SOURCE_ADMIN)
@@ -182,19 +203,18 @@ public class StudioSkillAdminService {
             List<IpSkill> all = store.skills().lockAll();
             IpSkill row = all.stream().filter(r -> r.getSkillKey().equals(key)).findFirst().orElseThrow(StudioSkillCatalog::notFound);
             if (status.equals(row.getStatus())) return;
-            boolean leavesActive = IpSkill.ACTIVE.equals(row.getStatus()) && !IpSkill.ACTIVE.equals(status);
-            if (leavesActive && all.stream().noneMatch(r -> !r.getSkillKey().equals(key) && IpSkill.ACTIVE.equals(r.getStatus())))
+            boolean leavesActive = IpSkill.ACTIVE.equals(row.getStatus()) && !IpSkill.ACTIVE.equals(status) && workflowRow(row);
+            if (leavesActive && all.stream().noneMatch(r -> !r.getSkillKey().equals(key) && IpSkill.ACTIVE.equals(r.getStatus()) && workflowRow(r)))
                 throw new BusinessException(HttpStatus.CONFLICT, "STUDIO_SKILL_LAST_ACTIVE",
                         "这是唯一在用的制作方法，停用后用户就没有方法可用了；请先启用另一个方法");
             if (IpSkill.ACTIVE.equals(status)) {
                 var current = store.versions().findBySkillKeyAndVersion(key, row.getCurrentVersion()).orElseThrow(StudioSkillCatalog::notFound);
-                StudioSkill skill;
-                try { skill = store.toSkill(current, IpSkill.ACTIVE); } catch (IllegalArgumentException e) { throw invalid(e); }
-                requireNoOtherDefault(skill, key);
+                Validated skill = stored(current, IpSkill.ACTIVE);
+                if (skill.workflow()) requireNoOtherDefault(skill.skill(), key);
             }
             row.setStatus(status); row.setUpdatedBy(actor(by)); row.setUpdatedAt(Instant.now());
             store.skills().save(row);
-            catalog.invalidateAfterCommit();
+            invalidateAfterCommit();
         });
         log.info("[studio-skill] admin {} set {} status={}", actor(by), key, status);
         return detail(key);
@@ -215,8 +235,9 @@ public class StudioSkillAdminService {
             int next = store.versions().maxVersion(key) + 1;
             header.put("version", next);
             header.put("status", row.getStatus());
-            StudioSkill skill = validate(header, target.getBodyMd(), store.digest(header, target.getBodyMd()));
-            if (skill.active()) requireNoOtherDefault(skill, key);
+            Validated skill = validate(header, target.getBodyMd(), store.digest(header, target.getBodyMd()));
+            requireSameLayer(row, header);
+            if (skill.workflow() && skill.active()) requireNoOtherDefault(skill.skill(), key);
             Instant now = Instant.now();
             store.versions().saveAndFlush(IpSkillVersion.builder().id(StudioSkillStore.versionId()).skillKey(key).version(next)
                     .frontmatterJson(store.json(header)).bodyMd(target.getBodyMd()).contentDigest(skill.digest()).source(IpSkillVersion.SOURCE_ROLLBACK)
@@ -244,9 +265,8 @@ public class StudioSkillAdminService {
                 throw new BusinessException(HttpStatus.CONFLICT, "STUDIO_SKILL_DRAFT_STALE",
                         "这份草稿是在 v" + draft.getBaseVersion() + " 的基础上整理的，之后已经换成了 v" + row.getCurrentVersion()
                                 + "；请对照当前版本手动合并后再发布", Map.of("baseVersion", String.valueOf(draft.getBaseVersion()), "currentVersion", row.getCurrentVersion()));
-            StudioSkill skill;
-            try { skill = store.toSkill(draft, row.getStatus()); } catch (IllegalArgumentException e) { throw invalid(e); }
-            if (skill.active()) requireNoOtherDefault(skill, key);
+            Validated skill = stored(draft, row.getStatus());
+            if (skill.workflow() && skill.active()) requireNoOtherDefault(skill.skill(), key);
             Instant now = Instant.now();
             draft.setStatus(IpSkillVersion.PUBLISHED); draft.setPublishedAt(now);
             if (note != null) draft.setNote((draft.getNote() == null ? "" : draft.getNote() + "\n") + "发布说明：" + note);
@@ -257,11 +277,54 @@ public class StudioSkillAdminService {
         return detail(key);
     }
 
-    private void moveCurrent(IpSkill row, StudioSkill skill, int version, String by, Instant now) {
+    private void moveCurrent(IpSkill row, Validated skill, int version, String by, Instant now) {
         row.setCurrentVersion(version); row.setName(skill.name()); row.setSummary(skill.summary());
         row.setUpdatedBy(actor(by)); row.setUpdatedAt(now);
         store.skills().save(row);
+        invalidateAfterCommit();
+    }
+
+    private void invalidateAfterCommit() {
         catalog.invalidateAfterCommit();
+        if (library != null) library.invalidateAfterCommit();
+    }
+
+    /**
+     * A validated version of either kind (docs/studio-prompt-architecture.md §2.3): a workflow method ({@code skill}) or a
+     * prompt library entry ({@code entry}). Exactly one is set.
+     */
+    record Validated(StudioSkill skill, com.aistareco.aep.ipstudio.prompt.StudioPromptEntry entry) {
+        boolean workflow() { return skill != null; }
+        String name() { return skill != null ? skill.name() : entry.name(); }
+        String summary() { return skill != null ? skill.summary() : entry.summary(); }
+        String status() { return skill != null ? skill.status() : entry.status(); }
+        String body() { return skill != null ? skill.body() : entry.body(); }
+        String digest() { return skill != null ? skill.digest() : entry.digest(); }
+        boolean active() { return skill != null ? skill.active() : entry.active(); }
+    }
+
+    /** A stored version under the given runtime status, validated by the parser of its kind. */
+    private Validated stored(IpSkillVersion version, String status) {
+        Map<String, Object> header = store.header(version.getFrontmatterJson());
+        header.put("version", version.getVersion());
+        header.put("status", status);
+        return validate(header, version.getBodyMd(), version.getContentDigest());
+    }
+
+    private boolean workflowRow(IpSkill row) {
+        return store.versions().findBySkillKeyAndVersion(row.getSkillKey(), row.getCurrentVersion()).map(store::isWorkflow).orElse(true);
+    }
+
+    /** A key keeps its layer: a method never becomes a stage, a scene never becomes the base. */
+    private void requireSameLayer(IpSkill row, Map<String, Object> header) {
+        var current = store.versions().findBySkillKeyAndVersion(row.getSkillKey(), row.getCurrentVersion()).orElse(null);
+        if (current == null) return;
+        Map<String, Object> was = store.header(current.getFrontmatterJson());
+        boolean sameKind = StudioSkillCatalog.isWorkflowHeader(was) == StudioSkillCatalog.isWorkflowHeader(header);
+        boolean sameLayer = java.util.Objects.equals(was.get("layer"), header.get("layer")) || StudioSkillCatalog.isWorkflowHeader(was) && StudioSkillCatalog.isWorkflowHeader(header);
+        if (!sameKind || !sameLayer)
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "STUDIO_SKILL_INVALID", "格式不对：已有的条目不能换层（layer / kind 要和当前版本一致）",
+                    Map.of("reason", "layer must not change"));
     }
 
     // ── Dry-run (试跑) ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -347,6 +410,7 @@ public class StudioSkillAdminService {
     /** Stored version (drafts included), an unsaved edit (validated like a publish), or the current version. */
     private StudioSkill dryRunSkill(String key, DryRunRequest request) {
         IpSkill row = requireRow(key);
+        if (!workflowRow(row)) throw notDryRunnable();
         boolean inline = request.frontmatter() != null || request.bodyMd() != null;
         if (inline && request.version() != null) throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "试跑只能选一个版本或一份未保存的修改");
         if (inline) {
@@ -358,7 +422,9 @@ public class StudioSkillAdminService {
                         Map.of("reason", "key must equal the path key"));
             header.put("version", row.getCurrentVersion() + 1);
             header.put("status", row.getStatus());
-            return validate(header, request.bodyMd(), store.digest(header, request.bodyMd()));
+            Validated inlineSkill = validate(header, request.bodyMd(), store.digest(header, request.bodyMd()));
+            if (!inlineSkill.workflow()) throw notDryRunnable();
+            return inlineSkill.skill();
         }
         if (request.version() != null) return catalog.snapshotFor(key, request.version()).orElseThrow(StudioSkillAdminService::versionNotFound);
         var current = store.versions().findBySkillKeyAndVersion(key, row.getCurrentVersion()).orElseThrow(StudioSkillCatalog::notFound);
@@ -379,6 +445,73 @@ public class StudioSkillAdminService {
         }
         return models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA, null, "studio").map(AiModelInvocationService.ResolvedEndpoint::endpoint)
                 .orElseThrow(StudioSkillAdminService::notConfigured);
+    }
+
+    // ── 场景后台写提示词库 ───────────────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * 场景后台保存时，把场景的创作文字写进提示词库（docs/studio-prompt-architecture.md §5）：条目已有就出一个新版本，没有就新建。
+     * 跑在调用方的事务里（场景目录和提示词库一起提交或一起回滚）；version / status 由服务端定。
+     */
+    public void publishEntryContent(String key, Map<String, Object> header, String body, String note, String by) {
+        tx.executeWithoutResult(s -> {
+            Instant now = Instant.now();
+            IpSkill row = store.skills().lockByKey(key).orElse(null);
+            Map<String, Object> h = store.normalize(header);
+            if (row == null) {
+                h.put("version", 1);
+                Validated v = validate(h, body, store.digest(h, body));
+                if (v.workflow()) throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "场景条目不能是制作做法");
+                store.skills().saveAndFlush(IpSkill.builder().skillKey(key).name(v.name()).status(v.status()).currentVersion(1)
+                        .summary(v.summary()).updatedBy(actor(by)).createdAt(now).updatedAt(now).build());
+                store.versions().saveAndFlush(IpSkillVersion.builder().id(StudioSkillStore.versionId()).skillKey(key).version(1)
+                        .frontmatterJson(store.json(h)).bodyMd(v.body()).contentDigest(v.digest()).source(IpSkillVersion.SOURCE_ADMIN)
+                        .status(IpSkillVersion.PUBLISHED).author(actor(by)).note(note(note)).createdAt(now).publishedAt(now).build());
+                invalidateAfterCommit();
+                return;
+            }
+            int next = store.versions().maxVersion(key) + 1;
+            h.put("version", next);
+            h.put("status", row.getStatus());
+            Validated v = validate(h, body, store.digest(h, body));
+            requireSameLayer(row, h);
+            store.versions().saveAndFlush(IpSkillVersion.builder().id(StudioSkillStore.versionId()).skillKey(key).version(next)
+                    .frontmatterJson(store.json(h)).bodyMd(v.body()).contentDigest(v.digest()).source(IpSkillVersion.SOURCE_ADMIN)
+                    .status(IpSkillVersion.PUBLISHED).author(actor(by)).note(note(note)).createdAt(now).publishedAt(now).build());
+            moveCurrent(row, v, next, by, now);
+        });
+    }
+
+    // ── 预览（提示词库） ─────────────────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * 按调用点的方式拼一次，看完整的 system 和 user（docs/studio-prompt-architecture.md §7）。不调模型、不存东西；
+     * 输出格式那几段由代码生成，原样放在结果里（{@code formats}），后台标成只读。
+     */
+    public PromptPreviewResult preview(PromptPreviewRequest request) {
+        if (library == null || assembler == null) throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "提示词库未启用");
+        if (request == null || request.stage() == null || request.stage().isBlank()) throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "请选择要预览的环节");
+        var stage = com.aistareco.aep.ipstudio.prompt.StudioPromptStages.find(request.stage().strip())
+                .orElseThrow(() -> BusinessException.badRequest("STUDIO_INPUT_INVALID", "这个环节没有对应的调用点"));
+        Map<String, Object> vars = request.vars() != null && request.vars().isObject()
+                ? mapper.convertValue(request.vars(), new com.fasterxml.jackson.core.type.TypeReference<LinkedHashMap<String, Object>>() {})
+                : new LinkedHashMap<>(stage.sample());
+        com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.Assembled out;
+        try { out = assembler.assemble(new com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.Call(stage.key(), blankToNull(request.method()), blankToNull(request.scene()), vars, null)); }
+        catch (IllegalStateException | IllegalArgumentException e) { throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "拼不出来：" + e.getMessage()); }
+        Map<String, Object> params = new LinkedHashMap<>();
+        if (out.params().temperature() != null) params.put("temperature", out.params().temperature());
+        if (out.params().maxTokens() != null) params.put("maxTokens", out.params().maxTokens());
+        if (out.params().jsonMode() != null) params.put("jsonMode", out.params().jsonMode());
+        return new PromptPreviewResult(stage.key(), stage.title(), stage.target(), out.system(), out.user(), params,
+                out.refs().stream().map(r -> new PromptPreviewRef(r.key(), r.version())).toList(), stage.renderFormats(vars), stage.vars(),
+                mapper.valueToTree(vars));
+    }
+
+    private static String blankToNull(String v) { return v == null || v.isBlank() ? null : v.strip(); }
+
+    private static BusinessException notDryRunnable() {
+        return BusinessException.badRequest("STUDIO_INPUT_INVALID", "提示词库条目不能试跑，请用预览看拼出来的完整提示词");
     }
 
     private static BusinessException notConfigured() {
@@ -402,9 +535,11 @@ public class StudioSkillAdminService {
         throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "YAML 头需为文本或 JSON 对象");
     }
 
-    private StudioSkill validate(Map<String, Object> header, String body, String digest) {
-        try { return StudioSkillCatalog.fromHeader(header, body, digest); }
-        catch (IllegalArgumentException e) { throw invalid(e); }
+    private Validated validate(Map<String, Object> header, String body, String digest) {
+        try {
+            return StudioSkillCatalog.isWorkflowHeader(header) ? new Validated(StudioSkillCatalog.fromHeader(header, body, digest), null)
+                    : new Validated(null, com.aistareco.aep.ipstudio.prompt.StudioPromptEntry.fromHeader(header, body, digest));
+        } catch (IllegalArgumentException e) { throw invalid(e); }
     }
 
     /** At most one active default skill, so routing never has to guess between two fallbacks. */

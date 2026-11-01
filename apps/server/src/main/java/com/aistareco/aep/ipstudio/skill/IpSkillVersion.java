@@ -10,7 +10,8 @@ import java.time.Instant;
  * {@code publishedAt} set, the admin's publish note appended to {@code note}.
  *
  * <p>{@code source}: seed (repository file) | admin (published in admin) | rollback (copy of an older version) |
- * distilled (drafted from a finished canvas execution; never in effect until an admin publishes it).
+ * distilled (drafted from a finished canvas execution; never in effect until an admin publishes it) | import (the first version of a
+ * prompt library entry, carrying what production really used at switch-over; docs/studio-prompt-architecture.md §4.6).
  */
 @Entity
 @Table(name = "ip_skill_version",
@@ -19,7 +20,7 @@ import java.time.Instant;
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class IpSkillVersion {
     public static final String PUBLISHED = "published", DRAFT = "draft";
-    public static final String SOURCE_SEED = "seed", SOURCE_ADMIN = "admin", SOURCE_ROLLBACK = "rollback", SOURCE_DISTILLED = "distilled";
+    public static final String SOURCE_SEED = "seed", SOURCE_ADMIN = "admin", SOURCE_ROLLBACK = "rollback", SOURCE_DISTILLED = "distilled", SOURCE_IMPORT = "import";
 
     @Id @Column(length = 32) private String id;
     @Column(name = "skill_key", nullable = false, length = 64) private String skillKey;

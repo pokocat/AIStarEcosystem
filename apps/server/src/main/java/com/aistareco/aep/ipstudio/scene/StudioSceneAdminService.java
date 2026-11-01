@@ -12,7 +12,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -38,6 +40,11 @@ public class StudioSceneAdminService {
         this.scenes = scenes; this.config = config; this.storage = storage; this.mapper = mapper;
     }
 
+    /** 场景的创作文字写进提示词库（docs/studio-prompt-architecture.md §5）；单测里没有时只存场景目录。 */
+    private com.aistareco.aep.ipstudio.skill.StudioSkillAdminService prompts;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setPrompts(com.aistareco.aep.ipstudio.skill.StudioSkillAdminService prompts) { this.prompts = prompts; }
+
     public View view() {
         return new View(StudioSceneCatalog.withMedia(scenes.catalog(), storage::signedUrl), scenes.usingBuiltIn() ? "default" : "custom", scenes.savedVersion(),
                 StudioSceneCatalog.VIDEO_SKILLS.stream().sorted().toList());
@@ -51,6 +58,7 @@ public class StudioSceneAdminService {
         Catalog clean = strip(request.catalog());
         try { StudioSceneCatalog.validate(clean); }
         catch (IllegalStateException e) { throw BusinessException.badRequest("STUDIO_SCENE_CATALOG_INVALID", e.getMessage()); }
+        if (prompts != null) publishCreative(clean, actor);
         config.upsert(StudioSceneCatalog.CONFIG_KEY, mapper.valueToTree(clean), "Studio 场景模板（AI 图片 / AI 视频）", actor);
         return view();
     }
@@ -81,6 +89,53 @@ public class StudioSceneAdminService {
         var stored = storage.store(bytes, StudioSceneCatalog.MEDIA_CATEGORY, StudioSceneCatalog.MEDIA_OWNER, format.ext(), format.mime());
         return new Uploaded(stored.key(), storage.signedUrl(stored.key()), StudioSceneCatalog.mediaType(stored.key()));
     }
+
+    /**
+     * 拍法、要用到的信息、出图描述改了的场景，在提示词库里出一个新版本（没有条目就新建）；没改的不动，不会凭空多出版本。
+     * 比的是现在生效的内容（{@link StudioSceneCatalog#catalog} 已叠上提示词库）。
+     */
+    private void publishCreative(Catalog clean, String actor) {
+        Catalog now = scenes.catalog();
+        var library = scenes.library();
+        for (var s : clean.video()) {
+            var was = now.video().stream().filter(v -> v.id().equals(s.id())).findFirst().orElse(null);
+            if (was != null && Objects.equals(trim(s.structure()), trim(was.structure())) && Objects.equals(s.brief(), was.brief())) continue;
+            String key = StudioSceneCatalog.sceneKey(s.id());
+            Map<String, Object> header = header(library, key, s.id(), s.title(), "video", "视频场景「" + s.title() + "」的拍法与要用到的信息");
+            Map<String, Object> scene = new LinkedHashMap<>(header.get("scene") instanceof Map<?, ?> m ? castMap(m) : Map.of());
+            scene.remove("goal"); scene.remove("facts"); scene.remove("ending"); scene.remove("fiction");
+            if (s.brief() != null) scene.putAll(mapper.convertValue(s.brief(), new com.fasterxml.jackson.core.type.TypeReference<LinkedHashMap<String, Object>>() {}));
+            scene.values().removeIf(Objects::isNull);
+            header.put("scene", scene);
+            prompts.publishEntryContent(key, header, trim(s.structure()), "场景后台保存", actor);
+        }
+        for (var s : clean.image()) {
+            if (StudioSceneCatalog.FREE.equals(s.id())) continue;
+            var was = now.image().stream().filter(v -> v.id().equals(s.id())).findFirst().orElse(null);
+            if (was != null && Objects.equals(trim(s.prompt()), trim(was.prompt()))) continue;
+            String key = StudioSceneCatalog.sceneKey(s.id());
+            prompts.publishEntryContent(key, header(library, key, s.id(), s.title(), "image", "图片场景「" + s.title() + "」的出图描述"), trim(s.prompt()), "场景后台保存", actor);
+        }
+    }
+
+    /** 现有条目的文件头（保留摘要、避免清单等），没有就按场景新写一份。 */
+    private static Map<String, Object> header(com.aistareco.aep.ipstudio.prompt.StudioPromptLibrary library, String key, String id, String title, String kind, String summary) {
+        var current = library == null ? java.util.Optional.<com.aistareco.aep.ipstudio.prompt.StudioPromptEntry>empty() : library.find(key);
+        Map<String, Object> header = new LinkedHashMap<>();
+        if (current.isPresent()) header.putAll(current.get().header());
+        else {
+            header.put("key", key); header.put("version", 1); header.put("status", "active"); header.put("layer", "scene");
+            header.put("summary", summary); header.put("sceneId", id); header.put("sceneKind", kind);
+        }
+        header.put("name", title.length() > 64 ? title.substring(0, 64) : title);
+        header.remove("importFrom");
+        return header;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> castMap(Map<?, ?> m) { return (Map<String, Object>) m; }
+
+    private static String trim(String v) { return v == null ? "" : v.strip(); }
 
     private void requireBase(Integer baseVersion) {
         int current = scenes.savedVersion();

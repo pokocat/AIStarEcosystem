@@ -1324,3 +1324,8 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 ### Studio 对话与制作的四处修复（2026-10-30，本地未发布）
 
 带时长、画幅、横竖屏的出视频请求（「生成一段16:9、5秒视频」）不再被留在出图。制作中只问不改的消息（`StudioSteeringQuestions`：问句、40 字内、不含改动或控制的词）不暂停制作，只开一轮回答。模型回复末尾预告要做却没给动作（「好的，我来改」）不算做完，纠正一次接着跑，纠正后仍不动手就结束，一轮最多 2 次（`DialogueLoop.announcesWork`）。读画布文字读用户采用的那一版（`StudioWritingContent`）。厂商「资源空间不足，请清理回收站」类原话在 `PublicModelErrorPolicy` 换成平台侧说明，不再让用户删自己的作品。提示词 `SEED_VERSION=v28-2026-10-30-say-it-do-it`。都没有用真模型跑过整轮对话。
+
+### Studio 提示词库（2026-11-01，本地未发布）
+
+真源 `docs/studio-prompt-architecture.md`。生成类提示词（身份、规则、红线、做法、行业经验、场景拍法、出图描述）放提示词库，和技能同表，四层：底座 / 环节 / 方法 / 场景；代码只留输出格式、工具与动作协议、H3 改写、拼装与校验。种子在 `resources/studio/prompts/**`，生效规则同技能（不再有 `SEED_VERSION`），受理时冻结版本。调用点要进库：在 `StudioPromptCallPoints` 登记变量和输出格式，写环节种子文件，再加一条逐字一致测试（范式 `StudioScenePromptParityTest`）。**新代码不许在 Java 里写新的生成类提示词文字**（输出格式除外）；现存的对话、画布、导演台提示词按设计文档 §14.3 分步搬。AI 视频编导请求是文字任务带 `scene`，服务端按 `stage-scene-script` 拼；场景创作文字以库为准，叠在场景目录上。
+

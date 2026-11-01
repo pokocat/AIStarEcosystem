@@ -17,6 +17,8 @@ import java.time.Instant;
 public class IpSkill {
     public static final String ACTIVE = "active", DRAFT = "draft", WITHDRAWN = "withdrawn";
     public static final String SEED_AUTHOR = "seed";
+    /** The row was created by the switch-over import of what production really used; repository files never overwrite it. */
+    public static final String IMPORT_AUTHOR = "import";
 
     @Id @Column(name = "skill_key", length = 64) private String skillKey;
     @Column(nullable = false, length = 64) private String name;

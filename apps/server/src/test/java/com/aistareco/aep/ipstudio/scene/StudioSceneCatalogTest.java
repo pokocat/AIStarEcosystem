@@ -54,7 +54,7 @@ class StudioSceneCatalogTest {
         var composed = catalog.compose(video("ecom-talking", "保湿精华，不黏腻", List.of("商品图 1"), null, 25, "9:16"));
         assertThat(composed.skillKey()).isEqualTo("video-generation");
         assertThat(composed.text()).contains("25 秒的竖屏", "我的要求：保湿精华，不黏腻", "「商品图 1」", "「出镜人物」")
-                .contains(StudioSceneCatalog.FACT_RULE, "要的是做好的视频");
+                .contains("下面这些我没写就不要出现", "要的是做好的视频");
         var silent = catalog.compose(video("ecom-talking", "", List.of("商品图 1"), null, 25, "9:16")).text();
         assertThat(silent).doesNotContain("我的要求").contains("先看素材");
     }
@@ -90,12 +90,17 @@ class StudioSceneCatalogTest {
     @Test
     void theDirectorBriefNumbersThePicturesInTheOrderTheVideoModelGetsThem() {
         String brief = catalog.compose(script("ecom-talking", "", List.of("商品图 1", "商品图 2"), 10, null)).text();
-        assertThat(brief).contains("10 秒", "图1「商品图 1」", "图2「商品图 2」", "图3「出镜人物」", "第1镜（0–2 秒）：画面……。旁白说：「……」", "括号里只写起止秒数", "正好 10 秒", "先看图", "已附图片", StudioSceneCatalog.FACT_RULE);
+        assertThat(brief).contains("10 秒", "图1「商品图 1」", "图2「商品图 2」", "图3「出镜人物」", "第1镜（0–3 秒）：画面：", "第2镜（3–6 秒）",
+                "括号里只写起止秒数", "正好 10 秒", "补到 10 秒整", "先看图", "已附图片", "一、剧情概述", "五、保持与禁止");
+        // 事实规则在底座里（system），不在 user 里重复（docs/studio-prompt-architecture.md §9.5）。
+        var assembled = catalog.sceneScript(script("ecom-talking", "", List.of("商品图 1", "商品图 2"), 10, null), null, false, null);
+        assertThat(assembled.system()).contains("你是资深短视频编导", "客户没写到的价格", "只输出一个 JSON 对象");
+        assertThat(assembled.user()).isEqualTo(brief).doesNotContain("{{", "}}");
         // 一次出片的时长由所选模型决定，不受场景给助手用的可选时长限制；明显不对的数照样挡。
         assertThatThrownBy(() -> catalog.compose(script("ecom-talking", "", List.of("商品图 1"), 0, null))).hasMessage("请选择可用的时长");
         assertThatThrownBy(() -> catalog.compose(script("ecom-talking", "", List.of(), 10, null))).hasMessage("先放商品图");
         assertThat(catalog.compose(script("ecom-talking", "", List.of("商品图 1"), 10, "口语一点")).text())
-                .startsWith("按这条修改意见改当前脚本，没提到的地方保持不变：口语一点").contains("原来的要求");
+                .startsWith("按这条修改意见改当前脚本，只改我指定的部分；素材与职责、保持与禁止、人物关系照上一版，没提到的地方保持不变：口语一点").contains("原来的要求");
         // 剧情类必须写一句，但改稿时有修改意见就够了。
         assertThatThrownBy(() -> catalog.compose(script("drama-twist", " ", List.of(), 15, null))).hasMessage("先写一句要求");
         assertThat(catalog.compose(script("drama-twist", " ", List.of(), 15, "结尾再反转一次")).text()).contains("结尾再反转一次");
@@ -113,7 +118,7 @@ class StudioSceneCatalogTest {
         // 什么图都不交给视频模型（纯文字模型），也不出现编号。
         var none = new StudioSceneCatalog.ComposeRequest("video-script", "ecom-talking", "保湿面霜", null, null, List.of(), null, null, null, 4, "9:16",
                 null, null, null, List.of("商品图 1"), null, true);
-        assertThat(catalog.compose(none).text()).contains("「商品图 1」这个视频模型用不上，只给你看").doesNotContain("图1", "交给视频模型的参考图");
+        assertThat(catalog.compose(none).text()).contains("「商品图 1」这个视频模型用不上，只给你看").doesNotContain("图1", "参考素材（");
         // 只放了出镜人物、没放商品图：人物照片不能顶替必填的商品图。
         var onlyPerson = new StudioSceneCatalog.ComposeRequest("video-script", "ecom-talking", "x", null, null, List.of(), "出镜人物", null, null, 4, "9:16",
                 null, null, null, List.of(), true, true);
@@ -125,13 +130,14 @@ class StudioSceneCatalogTest {
     void aSceneBriefSaysWhatTheVideoIsForAndWhatToDoWhenRequiredFactsAreMissing() {
         assertThat(catalog.catalog().video()).allSatisfy(s -> assertThat(s.brief()).as(s.id()).isNotNull());
         String director = catalog.compose(script("local-groupbuy", "巷里火锅，双人套餐", List.of("门店照片 1"), 15, null)).text();
-        assertThat(director).contains("这一条要做到：让附近的人买下套餐，到店来用", "店名和位置", "团购价", "原价（有原价才做对比）",
-                "正文最前面单独一行写「还缺：……」", "【待补：……】", "结尾：说清怎么买、到哪用").doesNotContain(StudioSceneCatalog.MISSING_DEFAULT);
+        // §9.6 的新范式：目标、节拍、收尾已合进拍法，不再单列「这一条要做到」「结尾」两行。
+        assertThat(director).contains("拍法：开头亮出团购价格", "先讲领券入口", "位置", "套餐内容与团购价", "原价（客户写了才比较）", "排队/人气（客户写了才必须出现）",
+                "正文最前面单独一行写「还缺：……」", "【待补：……】").doesNotContain("这一条要做到", "结尾：", "拍法里要讲但我没给的");
         String assistant = catalog.compose(video("local-groupbuy", "巷里火锅", List.of("门店照片 1"), null, 25, "9:16")).text();
         assertThat(assistant).contains("我没给的先问我").doesNotContain("【待补");
         // 到店实录不编故事：出镜的人不能写成真实顾客。
-        assertThat(catalog.compose(script("local-visit", "巷里火锅", List.of("门店照片 1"), 15, null)).text()).contains(StudioSceneCatalog.NO_FICTION);
-        assertThat(director).doesNotContain(StudioSceneCatalog.NO_FICTION);
+        assertThat(catalog.compose(script("local-visit", "巷里火锅", List.of("门店照片 1"), 15, null)).text()).contains("这条不编故事");
+        assertThat(director).doesNotContain("这条不编故事");
     }
 
     @Test
@@ -150,18 +156,21 @@ class StudioSceneCatalogTest {
     @Test
     void bothVideoBriefsForbidInventedBrandYearsTestCountsAndSalesButKeepWhatTheUserGave() {
         String given = "山野户外，2009 年创立，帐篷做过 3000 次抗风测试，累计卖出 10 万顶";
-        String script = catalog.compose(script("brand-story", given, List.of(), 30, null)).text();
+        var assembled = catalog.sceneScript(script("brand-story", given, List.of(), 30, null), null, false, null);
+        String script = assembled.user();
         String assistant = catalog.compose(video("brand-story", given, List.of(), null, 30, "16:9")).text();
-        for (String brief : List.of(script, assistant)) {
-            assertThat(brief).contains(StudioSceneCatalog.FACT_RULE, "我的要求：" + given);
-        }
-        assertThat(StudioSceneCatalog.FACT_RULE).contains("价格", "优惠", "品牌创立年份", "多少年历史", "检测、测试、实验的次数和画面",
-                "销量", "排名", "获奖", "认证", "门店数", "用户数", "功效", "不要写成品牌的真实经历", "不要给编出来的内容配上年份、次数、数量");
+        assertThat(script).contains("我的要求：" + given);
+        assertThat(assistant).contains("我的要求：" + given, "下面这些我没写就不要出现", "品牌创立年份", "检测、测试、实验的次数和画面");
+        // 编导的事实规则在底座（system）：写到的必须用上，没写的不编（§9.5）。
+        assertThat(assembled.system()).contains("必须原样出现在脚本里", "品牌年限", "检测测试次数", "销量排名获奖", "门店数用户数", "功效数据",
+                "不要写成品牌的真实经历", "不要给编出来的内容配上年份、次数、数量");
         assertThat(script).contains("只说脚本里实际写了什么", "虚构的人物或情节就直说", "不要写「没写功效」");
     }
 
     // 场景自己的拍法、思路、选项会原样交给模型，它们本身不能带数字或「真实经历」一类的说法，否则等于在请模型编。
-    private static final Pattern INVITES_FACTS = Pattern.compile("\\d|年|销量|检测|测试|认证|获奖|排名|老店|老字号|历史|真实(人物|评价|经历)");
+    // 2026-11-01 §9.6 的新范式会用「不给招牌编历史、年限」「客户写的排队 / 老字号…必须出现」这类说法点名要守的事实，
+    // 词表因此只留数字和「真实经历」类的说法（这两样不论正说反说都不该出现在场景文字里）。
+    private static final Pattern INVITES_FACTS = Pattern.compile("\\d|真实(人物|评价|经历)");
 
     @Test
     void sceneTextsSentToTheModelNameNoNumbersOrBrandClaims() {

@@ -43,51 +43,69 @@ public class StudioSkillStore {
 
     // ── Seeding ─────────────────────────────────────────────────────────────────────────────────────────────────
 
+    /** One repository file to seed: a workflow method or a prompt library entry, already validated by its parser. */
+    public record SeedFile(String file, Map<String, Object> header, String body, String key, String name, String status, String summary,
+                           String digest, String source) {}
+
     /** One transaction per file; a concurrent node that seeded the same key first wins (unique key), we just re-read. */
     void seed(List<StudioSkillCatalog.Seed> seeds) {
+        seedFiles(seeds.stream().map(seed -> new SeedFile(seed.file(), seed.header(), seed.body(), seed.skill().key(), seed.skill().name(),
+                seed.skill().status(), seed.skill().summary(), seed.skill().digest(), IpSkillVersion.SOURCE_SEED)).toList());
+    }
+
+    public void seedFiles(List<SeedFile> seeds) {
         for (var seed : seeds) {
             try { tx.executeWithoutResult(s -> seedOne(seed)); }
             catch (DataIntegrityViolationException race) {
-                log.info("[studio-skill] seed of {} raced with another node; keeping the stored rows", seed.skill().key());
+                log.info("[studio-skill] seed of {} raced with another node; keeping the stored rows", seed.key());
             }
         }
     }
 
-    private void seedOne(StudioSkillCatalog.Seed seed) {
-        StudioSkill file = seed.skill();
+    /**
+     * {@code source = import} (docs/studio-prompt-architecture.md §4.6): the first version carries what production really used
+     * (an operator's edit in the old prompt table or scene catalog) and the row is written by {@link IpSkill#IMPORT_AUTHOR}, so
+     * a later repository file never overwrites it. Only applies when the key does not exist yet.
+     */
+    private void seedOne(SeedFile seed) {
         Instant now = Instant.now();
-        IpSkill row = skills.lockByKey(file.key()).orElse(null);
+        IpSkill row = skills.lockByKey(seed.key()).orElse(null);
+        boolean imported = IpSkillVersion.SOURCE_IMPORT.equals(seed.source());
         if (row == null) {
-            skills.saveAndFlush(IpSkill.builder().skillKey(file.key()).name(file.name()).status(file.status()).currentVersion(1)
-                    .summary(file.summary()).updatedBy(IpSkill.SEED_AUTHOR).seedFile(seed.file()).createdAt(now).updatedAt(now).build());
+            skills.saveAndFlush(IpSkill.builder().skillKey(seed.key()).name(seed.name()).status(seed.status()).currentVersion(1)
+                    .summary(seed.summary()).updatedBy(imported ? IpSkill.IMPORT_AUTHOR : IpSkill.SEED_AUTHOR).seedFile(seed.file())
+                    .createdAt(now).updatedAt(now).build());
             versions.saveAndFlush(seedVersion(seed, 1, now));
-            log.info("[studio-skill] seeded {} v1 from {} (digest {})", file.key(), seed.file(), file.digest().substring(0, 12));
+            log.info("[studio-skill] {} {} v1 from {} (digest {})", imported ? "imported" : "seeded", seed.key(), seed.file(), seed.digest().substring(0, 12));
             return;
         }
-        var latestSeed = versions.findBySkillKeyAndSourceOrderByVersionDesc(file.key(), IpSkillVersion.SOURCE_SEED).stream().findFirst().orElse(null);
-        boolean changed = latestSeed == null || !file.digest().equals(latestSeed.getContentDigest());
+        if (imported) return; // the key exists: whatever is stored wins, the import was only for the first version
+        var latestSeed = versions.findBySkillKeyAndSourceOrderByVersionDesc(seed.key(), IpSkillVersion.SOURCE_SEED).stream().findFirst().orElse(null);
+        boolean changed = latestSeed == null || !seed.digest().equals(latestSeed.getContentDigest());
         if (!changed) return;
-        boolean untouched = IpSkill.SEED_AUTHOR.equals(row.getUpdatedBy()) && versions.countPublishedNonSeed(file.key()) == 0
+        boolean untouched = IpSkill.SEED_AUTHOR.equals(row.getUpdatedBy()) && versions.countPublishedNonSeed(seed.key()) == 0
                 && latestSeed != null && latestSeed.getVersion() == row.getCurrentVersion();
         if (!untouched) {
             log.info("[studio-skill] repository file {} changed but {} has admin changes; the stored versions win (current v{})",
-                    seed.file(), file.key(), row.getCurrentVersion());
+                    seed.file(), seed.key(), row.getCurrentVersion());
             return;
         }
-        int next = versions.maxVersion(file.key()) + 1;
+        int next = versions.maxVersion(seed.key()) + 1;
         versions.saveAndFlush(seedVersion(seed, next, now));
-        row.setCurrentVersion(next); row.setStatus(file.status()); row.setName(file.name()); row.setSummary(file.summary());
+        row.setCurrentVersion(next); row.setStatus(seed.status()); row.setName(seed.name()); row.setSummary(seed.summary());
         row.setSeedFile(seed.file()); row.setUpdatedBy(IpSkill.SEED_AUTHOR); row.setUpdatedAt(now);
         skills.saveAndFlush(row);
-        log.info("[studio-skill] re-seeded {} as v{} from changed file {} (digest {})", file.key(), next, seed.file(), file.digest().substring(0, 12));
+        log.info("[studio-skill] re-seeded {} as v{} from changed file {} (digest {})", seed.key(), next, seed.file(), seed.digest().substring(0, 12));
     }
 
-    private IpSkillVersion seedVersion(StudioSkillCatalog.Seed seed, int version, Instant now) {
+    private IpSkillVersion seedVersion(SeedFile seed, int version, Instant now) {
         Map<String, Object> header = new LinkedHashMap<>(seed.header());
         header.put("version", version);
-        return IpSkillVersion.builder().id(versionId()).skillKey(seed.skill().key()).version(version).frontmatterJson(json(header))
-                .bodyMd(seed.body()).contentDigest(seed.skill().digest()).source(IpSkillVersion.SOURCE_SEED).status(IpSkillVersion.PUBLISHED)
-                .author(IpSkill.SEED_AUTHOR).note("仓库文件 " + seed.file()).createdAt(now).publishedAt(now).build();
+        boolean imported = IpSkillVersion.SOURCE_IMPORT.equals(seed.source());
+        return IpSkillVersion.builder().id(versionId()).skillKey(seed.key()).version(version).frontmatterJson(json(header))
+                .bodyMd(seed.body()).contentDigest(seed.digest()).source(seed.source()).status(IpSkillVersion.PUBLISHED)
+                .author(imported ? IpSkill.IMPORT_AUTHOR : IpSkill.SEED_AUTHOR)
+                .note(imported ? "切换时导入线上生效内容（" + seed.file() + "）" : "仓库文件 " + seed.file()).createdAt(now).publishedAt(now).build();
     }
 
     // ── Reads ───────────────────────────────────────────────────────────────────────────────────────────────────
@@ -98,6 +116,7 @@ public class StudioSkillStore {
         for (IpSkill row : skills.findAllByOrderBySkillKeyAsc()) {
             var version = versions.findBySkillKeyAndVersion(row.getSkillKey(), row.getCurrentVersion()).orElse(null);
             if (version == null) { log.error("[studio-skill] {} points at missing v{}; skill unavailable", row.getSkillKey(), row.getCurrentVersion()); continue; }
+            if (!isWorkflow(version)) continue; // a prompt library entry (StudioPromptLibrary), not a method the dialogue can bind
             try { out.put(row.getSkillKey(), toSkill(version, row.getStatus())); }
             catch (IllegalArgumentException e) {
                 log.error("[studio-skill] {} v{} no longer validates ({}); skill unavailable until an admin publishes a valid version",
@@ -115,6 +134,24 @@ public class StudioSkillStore {
         String status = IpSkillVersion.DRAFT.equals(row.getStatus()) ? IpSkill.DRAFT : skill == null ? IpSkill.DRAFT : skill.getStatus();
         try { return Optional.of(toSkill(row, status)); }
         catch (IllegalArgumentException e) { log.warn("[studio-skill] {} v{} does not validate: {}", key, version, e.getMessage()); return Optional.empty(); }
+    }
+
+    /** The stored row and its current version, every layer (the prompt library parses the non-workflow ones). */
+    public record CurrentRow(IpSkill row, IpSkillVersion version) {}
+
+    public List<CurrentRow> currentRows() {
+        List<CurrentRow> out = new java.util.ArrayList<>();
+        for (IpSkill row : skills.findAllByOrderBySkillKeyAsc()) {
+            var version = versions.findBySkillKeyAndVersion(row.getSkillKey(), row.getCurrentVersion()).orElse(null);
+            if (version != null) out.add(new CurrentRow(row, version));
+        }
+        return out;
+    }
+
+    /** Whether a stored version is a workflow method (no layer / kind, or method + workflow). */
+    public boolean isWorkflow(IpSkillVersion version) {
+        try { return StudioSkillCatalog.isWorkflowHeader(header(version.getFrontmatterJson())); }
+        catch (IllegalArgumentException e) { return true; } // unreadable header: let toSkill report it as before
     }
 
     /** Version row → skill under the given runtime status; the row's version number and digest are the truth. */

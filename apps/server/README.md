@@ -1337,6 +1337,17 @@ Studio 图片报价为 `POST /api/v1/ip-studio/projects/{id}/{image-quote|studio
 - 建草稿：`POST /api/v1/ip-studio/projects` 可带 `sceneId`（必须在目录里），落 `ip_project.scene_id`（V72；V70 被未合并分支占用）。
 - 生成仍走 `studio-runs` / 画布助手原链路；Studio 分区视频任务到终态发 `MaterialVideoJobEnded`，`StudioVideoJobWake` 提交后叫醒该用户仍在跟踪的制作计划，不再等 60 秒巡检。
 
+## Studio 提示词库（2026-11-01，本地实现，未发布）
+
+真源 `docs/studio-prompt-architecture.md`（§14 实施状态）。生成类提示词按四层放进提示词库，和制作做法同存 `ip_skill` / `ip_skill_version`，靠文件头 `layer`（base / stage / method / scene）和 `kind`（workflow / content）区分，不加表结构迁移：
+
+- 种子在 `resources/studio/prompts/{base,stages,scenes}/*.md`，生效规则同技能：库里没有就灌，后台没动过的条目文件一变自动出新版本，后台发布 / 回滚 / 改状态之后以库为准，不再有 `SEED_VERSION`。`StudioSkillCatalog` 只认制作做法，提示词条目不会被路由、`read_skill` 或执行器看到。
+- 拼装（`ipstudio/prompt`）：环节模板用 `{{base}}` `{{method}}` `{{scene}}` 和代码提供的 `{{format.<名>}}` 指定各层位置；模板写法是 Mustache 子集（变量、区段、列表）。调用点在 `StudioPromptCallPoints` 登记变量、必填项和输出格式，发布环节时按它核对（用了没登记的变量、缺 `{{base}}` 或某段格式都 400 `STUDIO_SKILL_INVALID`）。受理时冻结版本、每次调用记一条（`_exec.prompt.versions` / `calls`），后台发布新版本不影响在途任务。
+- 已进库：底座（事实规则）、`stage-scene-image`、`stage-scene-handoff`、`stage-scene-script`、37 个场景条目。场景的创作文字以库为准，叠在 `studio.scene-catalog` 上（`StudioSceneCatalog.overlay`）；场景后台保存时改过的创作文字发布成场景条目的新版本。AI 视频编导的请求是文字任务带 `scene`（`StudioSceneCatalog.ComposeRequest`），服务端受理时按 `stage-scene-script` 拼 system / user。
+- 切换导入：库里没有某条目时，声明了 `importFrom` 的种子先和线上生效内容比（旧 Prompt 管理按 `PromptService.resolve`，场景按后台保存过的目录），线上改过就以线上内容作为第一个版本（来源 `import`），之后仓库文件不覆盖它。
+- 后台：`/api/admin/studio/skills` 同时管两类条目，新增 `POST /api/admin/studio/skills/preview`（按调用点拼一次，不调模型）。
+- 其它调用点（创作助手对话、方案、检查、画布文字、剧本、复刻、拉片、出图包装、导演台等）还在旧 Prompt 管理和 Java 常量里，见设计文档 §14.3。
+
 ## 微信 Native 扫码充值（2026-10-30，已生产发布 `20261030-studio-wechat-pay`，微信渠道待商户开通后启用）
 
 `PaymentChannelConfigService` 接收成对的 `publicKeyId/publicKey`，`WechatPaymentGateway` 优先使用 SDK 公钥模式，未提供公钥时兼容旧平台证书模式。微信未知下单结果保留关联和原 PENDING 订单，同套餐订单不允许切换渠道；查单补金额/流水验证，微信回调补商户/AppID/渠道验证。微信取消/驳回/超时先关渠道单，失败保留本地状态，过期单仍参加查单。无新 API/迁移；军师商户权限阻塞与资料映射见 [接入手册](../../docs/runbooks/studio-wechat-ai-pilot.md)。

@@ -237,8 +237,9 @@ test("video: revising a script after reopening the draft keeps the options and t
   fireEvent.change(screen.getByRole("textbox", { name: "想改哪里" }), { target: { value: "口语一点" } });
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "让编导改" })); });
   // 以前重开草稿后选项回到默认值（真人讲解、像朋友推荐），改出来的那版拍法就变了。
-  expect(api.composeScene).toHaveBeenCalledWith(expect.objectContaining({ kind: "video-script", revision: "口语一点", language: "英文",
-    options: { presenter: "product", tone: "expert" } }));
+  await waitFor(() => expect(api.submit).toHaveBeenCalled());
+  expect(api.submit.mock.calls.at(-1)![1].scene).toMatchObject({ kind: "video-script", revision: "口语一点", language: "英文",
+    options: { presenter: "product", tone: "expert" } });
 });
 
 test("video: leaving a draft for another scene and coming back reopens that draft; matching photos go along, others are left out with a note", async () => {

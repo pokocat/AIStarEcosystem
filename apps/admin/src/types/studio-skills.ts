@@ -23,7 +23,7 @@ export interface StudioSkillSummary {
 }
 
 export type StudioSkillStatus = "active" | "draft" | "withdrawn";
-export type StudioSkillVersionSource = "seed" | "admin" | "rollback" | "distilled";
+export type StudioSkillVersionSource = "seed" | "admin" | "rollback" | "distilled" | "import";
 /** published = in effect now or earlier; draft = distilled from a canvas, waiting for an admin to publish (never in effect by itself). */
 export type StudioSkillVersionStatus = "published" | "draft";
 
@@ -49,10 +49,25 @@ export interface StudioSkillAdminItem {
   updatedBy?: string; createdAt: string; updatedAt: string;
   /** Drafts newer than the current version, waiting for review. */
   pendingDrafts: number;
-  /** The current version as the runtime sees it (status = ip_skill.status, limits evaluated, triggers parsed). */
-  skill: StudioSkillSummary;
-  /** Repository seed file name when this skill is seeded from resources/studio/skills/*.md. */
+  /** The current version as the runtime sees it (status = ip_skill.status, limits evaluated, triggers parsed); absent for prompt library entries. */
+  skill?: StudioSkillSummary;
+  /** Repository seed file name when this skill is seeded from resources/studio/skills/*.md or resources/studio/prompts/**. */
   seedFile?: string;
+  /** 提示词库分层（docs/studio-prompt-architecture.md §2）：method 下 kind = workflow（制作做法）| content（内容方法）；target 只有环节有。 */
+  layer?: StudioPromptLayer; kind?: "workflow" | "content"; target?: "llm" | "image-model" | "video-model" | "message";
+}
+export type StudioPromptLayer = "base" | "stage" | "method" | "scene";
+/** POST /admin/studio/skills/preview：按调用点的方式拼一次，不调模型、不存东西。vars 缺省用调用点的示例。 */
+export interface StudioPromptPreviewRequest { stage: string; method?: string; scene?: string; vars?: Record<string, unknown> }
+export interface StudioPromptPreviewResult {
+  stage: string; title: string; target: string; system: string; user: string;
+  params: { temperature?: number; maxTokens?: number; jsonMode?: boolean };
+  refs: { key: string; version: number }[];
+  /** 代码生成的输出格式（只读）。 */
+  formats: Record<string, string>;
+  /** 调用点登记的变量和说明。 */
+  variables: Record<string, string>;
+  vars: Record<string, unknown>;
 }
 /** GET /admin/studio/skills/{key}: the item plus the current version's full content. */
 export interface StudioSkillAdminDetail extends StudioSkillAdminItem { current: StudioSkillVersion }

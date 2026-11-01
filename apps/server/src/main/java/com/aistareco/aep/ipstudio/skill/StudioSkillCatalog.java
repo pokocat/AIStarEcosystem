@@ -48,12 +48,12 @@ public class StudioSkillCatalog {
     static final long CACHE_TTL_MS = 60_000L;
     private static final Pattern KEY = Pattern.compile("[a-z0-9][a-z0-9-]{0,63}");
     private static final Pattern CHECK_ID = Pattern.compile("[a-z0-9][a-z0-9-]{0,63}");
-    static final Set<String> STATUSES = Set.of("active", "draft", "withdrawn");
+    public static final Set<String> STATUSES = Set.of("active", "draft", "withdrawn");
     private static final Map<String, Set<String>> STAGE_OPERATIONS = Map.of(
             StudioSkill.ANALYSIS, Set.of("recreation", "text"),
             StudioSkill.PRODUCTION, Set.of("text", "image", "video", "check", "assemble"));
     private static final Set<String> HEADER_FIELDS = Set.of("key", "name", "version", "status", "planning", "summary",
-            "methodExamples", "operations", "limits", "checks", "autoFixChecks", "requiredCapabilities", "triggers");
+            "methodExamples", "operations", "limits", "checks", "autoFixChecks", "requiredCapabilities", "triggers", "layer", "kind");
     private static final Set<String> LIMIT_FIELDS = Set.of("maxSourceSec", "maxSegments", "maxSegmentSec", "maxSteps", "maxAutoFixPerSegment");
     static final Set<String> TRIGGER_MEDIA = Set.of("video", "image", "audio", "text");
 
@@ -167,6 +167,9 @@ public class StudioSkillCatalog {
         return new BusinessException(HttpStatus.NOT_FOUND, "STUDIO_SKILL_NOT_FOUND", "这个制作方法不存在或已停用，请换一种做法");
     }
 
+    /** Keys of the repository workflow method files (the prompt library refuses an entry with the same key). */
+    public static List<String> loadSeedFiles() { return loadSeeds().stream().map(seed -> seed.skill().key()).toList(); }
+
     private static Map<String, StudioSkill> loadClasspathSkills() {
         Map<String, StudioSkill> out = new LinkedHashMap<>();
         for (Seed seed : loadSeeds()) out.put(seed.skill().key(), seed.skill());
@@ -204,6 +207,15 @@ public class StudioSkillCatalog {
 
     /** Parse one skill file and keep its header map and body (for seeding and admin create). */
     public static ParsedFile parseFile(String text) {
+        SplitFile split = splitFile(text);
+        return new ParsedFile(split.header(), split.body(), fromHeader(split.header(), split.body(), split.digest()));
+    }
+
+    /** A front-matter file split into its YAML header, Markdown body and the digest of the whole normalized text. */
+    public record SplitFile(Map<String, Object> header, String body, String digest) {}
+
+    /** Split a {@code ---} fenced YAML header from its body; shared by skills and prompt library entries. */
+    public static SplitFile splitFile(String text) {
         if (text == null) throw new IllegalArgumentException("empty file");
         String normalized = text.replace("\r\n", "\n");
         if (!normalized.startsWith("---\n")) throw new IllegalArgumentException("missing YAML front matter");
@@ -212,8 +224,16 @@ public class StudioSkillCatalog {
         int bodyStart = normalized.indexOf('\n', end + 1);
         String header = normalized.substring(4, end + 1);
         String body = bodyStart < 0 ? "" : normalized.substring(bodyStart + 1).strip();
-        Map<String, Object> map = loadYamlHeader(header);
-        return new ParsedFile(map, body, fromHeader(map, body, digest(normalized)));
+        return new SplitFile(loadYamlHeader(header), body, digest(normalized));
+    }
+
+    /**
+     * A header that describes a workflow method (制作做法): no {@code layer}, or {@code layer: method} with no {@code kind} or
+     * {@code kind: workflow}. Everything else in the shared tables is a prompt library entry (docs/studio-prompt-architecture.md §2.3).
+     */
+    public static boolean isWorkflowHeader(Map<String, ?> header) {
+        Object layer = header == null ? null : header.get("layer"), kind = header == null ? null : header.get("kind");
+        return (layer == null || "method".equals(layer)) && (kind == null || "workflow".equals(kind));
     }
 
     /** YAML front matter text (without the {@code ---} fences) as a mapping; SafeConstructor, no custom types. */
@@ -237,6 +257,7 @@ public class StudioSkillCatalog {
         if (body.length() > 64000) throw new IllegalArgumentException("method body too long (max 64000 characters)");
         for (Object field : map.keySet())
             if (!HEADER_FIELDS.contains(String.valueOf(field))) throw new IllegalArgumentException("unknown header field " + field);
+        if (!isWorkflowHeader(map)) throw new IllegalArgumentException("not a workflow method (layer/kind belong to a prompt library entry)");
 
         String key = string(map.get("key"), "key", 64);
         if (!KEY.matcher(key).matches()) throw new IllegalArgumentException("invalid key");

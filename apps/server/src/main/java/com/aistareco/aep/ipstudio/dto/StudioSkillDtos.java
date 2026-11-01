@@ -23,12 +23,21 @@ public final class StudioSkillDtos {
                                String createdAt, Map<String, Object> frontmatter, String bodyMd, Boolean current, Integer baseVersion,
                                String sourceProjectId, String sourceExecutionId, String sourceRunId, String publishedAt) {}
     @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    /** {@code layer}: method | base | stage | scene; {@code kind}: workflow | content (methods); {@code target}: stages only (docs/studio-prompt-architecture.md §4.3). */
     public record SkillAdminItem(String key, String name, String status, int currentVersion, String summary, String updatedBy,
-                                 String createdAt, String updatedAt, int pendingDrafts, SkillSummary skill, String seedFile) {}
+                                 String createdAt, String updatedAt, int pendingDrafts, SkillSummary skill, String seedFile,
+                                 String layer, String kind, String target) {}
     @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
     public record SkillAdminDetail(String key, String name, String status, int currentVersion, String summary, String updatedBy,
                                    String createdAt, String updatedAt, int pendingDrafts, SkillSummary skill, String seedFile,
-                                   SkillVersion current) {}
+                                   SkillVersion current, String layer, String kind, String target) {}
+    /** Preview of a stage as the call point would assemble it (docs/studio-prompt-architecture.md §7); {@code vars} defaults to the call point's sample. */
+    public record PromptPreviewRequest(String stage, String method, String scene, com.fasterxml.jackson.databind.JsonNode vars) {}
+    public record PromptPreviewRef(String key, int version) {}
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public record PromptPreviewResult(String stage, String title, String target, String system, String user, Map<String, Object> params,
+                                      List<PromptPreviewRef> refs, Map<String, String> formats, Map<String, String> variables,
+                                      com.fasterxml.jackson.databind.JsonNode vars) {}
     public record CreateRequest(String markdown, String note) {}
     /** {@code frontmatter}: YAML text or a JSON object. */
     public record PublishRequest(com.fasterxml.jackson.databind.JsonNode frontmatter, String bodyMd, String note, Integer expectedVersion) {}

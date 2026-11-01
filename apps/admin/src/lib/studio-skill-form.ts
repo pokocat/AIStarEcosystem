@@ -58,7 +58,7 @@ export const STATUS_META: Record<StudioSkillStatus, { label: string; tone: "succ
   withdrawn: { label: "已停用", tone: "neutral", hint: "不再接新的对话；进行中的制作照常完成" },
 };
 export const SOURCE_LABEL: Record<StudioSkillVersionSource, string> = {
-  seed: "仓内文件", admin: "后台发布", rollback: "回滚", distilled: "对话整理",
+  seed: "仓内文件", admin: "后台发布", rollback: "回滚", distilled: "对话整理", import: "切换导入",
 };
 
 const CHECK_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;

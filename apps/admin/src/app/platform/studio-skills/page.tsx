@@ -22,6 +22,7 @@ import {
 } from "@/lib/studio-skill-form";
 import type { StudioSkillAdminDetail, StudioSkillAdminItem, StudioSkillDryRunRequest, StudioSkillDryRunResult, StudioSkillStatus, StudioSkillVersion } from "@/types/studio-skills";
 import { ChipToggles, ChipsInput, CreateSkillDialog, DraftReviewDialog, DryRunCard, ErrorList, VersionsCard, errorLines, type DryRunSource } from "./parts";
+import { PromptEntryPanel, entryLine, isPromptEntry } from "./prompt-entry";
 
 const LAST_ACTIVE_TEXT = "最后一个启用的技能不能停用。对话至少要有一个可用的技能，先启用另一个，再停用它。";
 const checkId = (raw: string) => raw.trim().toLowerCase().replace(/\s+/g, "-");
@@ -86,7 +87,7 @@ export default function StudioSkillsPage() {
       if (ticket !== request.current) return;
       setDetail(next);
       setVersions([...history].sort((a, b) => b.version - a.version));
-      if (resetEditor) loadEditor(next.current, next);
+      if (resetEditor && !isPromptEntry(next)) loadEditor(next.current, next);
     } catch (e) {
       if (ticket === request.current) setDetailError(errorLines(e));
     } finally {
@@ -101,7 +102,7 @@ export default function StudioSkillsPage() {
 
   const built = React.useMemo(() => form && base ? frontmatterFromForm(base.frontmatter, form) : null, [form, base]);
   const dirty = !!detail && !!built && !!form && (stableJson(built) !== stableJson(detail.current.frontmatter) || form.bodyMd !== detail.current.bodyMd);
-  const otherDefault = detail ? list.find((s) => s.key !== detail.key && s.status === "active" && s.skill.triggers?.default) : undefined;
+  const otherDefault = detail ? list.find((s) => s.key !== detail.key && s.status === "active" && s.skill?.triggers?.default) : undefined;
   const formErrors = React.useMemo(() => {
     if (!form) return [];
     const errors = validateSkillForm(form);
@@ -245,8 +246,8 @@ export default function StudioSkillsPage() {
   return (
     <div className="admin-page space-y-6">
       <PageHeader
-        title="Studio 技能"
-        description="全能创作对话按技能来规划制作：头部定执行边界（各阶段能用哪些操作、上限、检查项），正文是写给规划模型的方法。每次发布都生成一个不能修改的新版本。"
+        title="提示词与技能"
+        description="Studio 生成用到的提示词都在这里：底座、环节、方法（制作做法和内容方法）、场景。制作做法的头部定执行边界，正文是写给规划模型的方法；其它条目改正文发布。每次发布都生成一个不能修改的新版本。"
         actions={<Button onClick={() => { setCreateError([]); setCreateOpen(true); }}><Plus className="h-4 w-4" />新建技能</Button>}
       />
 
@@ -254,7 +255,7 @@ export default function StudioSkillsPage() {
         <Card className="h-fit overflow-hidden">
           <CardHeader className="border-b border-border px-3 py-3">
             <div className="flex items-center justify-between gap-3">
-              <CardTitle className="text-sm">全部技能</CardTitle>
+              <CardTitle className="text-sm">全部条目</CardTitle>
               <span className="text-xs tabular-nums text-muted-foreground">{list.length} 个</span>
             </div>
           </CardHeader>
@@ -274,7 +275,7 @@ export default function StudioSkillsPage() {
                         <Badge tone={meta.tone} className="shrink-0 text-[10px]">{meta.label}</Badge>
                         {s.pendingDrafts > 0 && <Badge tone="primary" className="shrink-0 text-[10px]">{s.pendingDrafts} 份待审阅</Badge>}
                       </span>
-                      <span className="block truncate text-xs text-muted-foreground" title={triggersSummary(s.skill.triggers)}>{triggersSummary(s.skill.triggers)}</span>
+                      <span className="block truncate text-xs text-muted-foreground" title={isPromptEntry(s) ? s.summary : triggersSummary(s.skill?.triggers)}>{isPromptEntry(s) ? entryLine(s) : triggersSummary(s.skill?.triggers)}</span>
                       <span className="flex min-w-0 items-center gap-2 font-mono text-[10px] text-muted-foreground">
                         <span className="truncate" title={s.key}>{s.key}</span>
                         <span className="shrink-0">v{s.currentVersion}</span>
@@ -292,7 +293,14 @@ export default function StudioSkillsPage() {
         <div className="min-w-0 space-y-4">
           <ErrorList lines={detailError} />
           {!detail && activeKey && !detailError.length && <div className="text-sm text-muted-foreground">加载中…</div>}
-          {detail && form && base && (
+          {detail && isPromptEntry(detail) && (
+            <>
+              <PromptEntryPanel detail={detail} onPublished={() => { void loadDetail(detail.key, true); void loadList(detail.key); }} />
+              <VersionsCard versions={versions} loading={versionsLoading} currentVersion={detail.currentVersion} busyVersion={busyVersion}
+                onRollback={(v) => void rollback(v)} onReview={(v) => { setReviewError([]); setReview(v); }} />
+            </>
+          )}
+          {detail && !isPromptEntry(detail) && form && base && (
             <>
               <Card ref={editorRef}>
                 <CardHeader className="flex-col items-start gap-4 space-y-0 xl:flex-row xl:items-start xl:justify-between">
@@ -366,7 +374,7 @@ export default function StudioSkillsPage() {
                       <label className="min-w-0 space-y-1.5"><span className="text-sm font-medium">每段自动修正最多几次</span>
                         <Input inputMode="numeric" value={form.maxAutoFixPerSegment} onChange={(e) => patch({ maxAutoFixPerSegment: e.target.value })} /></label>
                     </div>
-                    <p className="text-xs text-muted-foreground">计划最多 {maxStepsText(base.frontmatter, form, detail.skill.limits.maxSteps)}。</p>
+                    <p className="text-xs text-muted-foreground">计划最多 {maxStepsText(base.frontmatter, form, detail.skill?.limits.maxSteps)}。</p>
                   </section>
 
                   <section className="grid gap-4 md:grid-cols-2">

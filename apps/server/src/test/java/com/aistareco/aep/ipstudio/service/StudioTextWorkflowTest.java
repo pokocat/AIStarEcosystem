@@ -48,6 +48,48 @@ class StudioTextWorkflowTest {
             TransactionSynchronizationManager.getSynchronizations().forEach(s->s.afterCommit());verify(worker).execute(run.getId());
         } finally {TransactionSynchronizationManager.clearSynchronization();}
     }
+    /**
+     * AI 视频页的编导（docs/studio-prompt-architecture.md §5.1）：文字任务带场景输入，system / user 由提示词库的编导环节拼，
+     * 不再是通用助手模板加改稿句；受理时记下用到的各层版本和这次调用的摘要。
+     */
+    @Test void aSceneScriptRunIsAssembledFromThePromptLibraryAndRecordsTheVersions() throws Exception {
+        var projects=mock(IpProjectService.class);var runs=mock(IpRunRepository.class);var models=mock(AiModelInvocationService.class);
+        var credits=mock(CreditService.class);var pricing=mock(DapPricingService.class);var prompts=mock(PromptService.class);var worker=mock(StudioWorkflowWorker.class);
+        var project=IpProject.builder().id("p").build();when(projects.requiredForUpdate("u","p")).thenReturn(project);
+        when(projects.readDoc(project)).thenReturn(json.readTree("{\"nodes\":[{\"id\":\"text\",\"type\":\"text\",\"metadata\":{\"content\":\"\"}}]}"));
+        when(runs.findByProjectIdAndClientRequestId(anyString(),anyString())).thenReturn(Optional.empty());when(pricing.ipIdentity()).thenReturn(2L);
+        var endpoint=AiModelEndpoint.builder().id("agnes-text").model("text-v1").enabled(true).build();
+        when(models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,"agnes-text","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));when(models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA,"agnes-text","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
+        when(prompts.resolve(anyString())).thenReturn(new PromptService.ResolvedPrompt("assistant","{{input}}",new PromptParamsDto(null,null,null),"resource"));
+        var service=new StudioWorkflowService(projects,runs,mock(StudioFixtureProvider.class),worker,pricing,models,null,credits,null,null,null,null,json,null,prompts);
+        var prices=mock(AiChatTokenPricing.class);
+        when(prices.find("agnes-text")).thenReturn(new AiChatTokenPricing.Rate(new java.math.BigDecimal("0.18"),new java.math.BigDecimal("1.08"),65536,8192));
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"tokenPricing",prices);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"sceneCatalog",new com.aistareco.aep.ipstudio.scene.StudioSceneCatalog());
+        var request=json.readValue("{\"clientRequestId\":\"key\",\"nodeId\":\"text\",\"operation\":\"text\",\"prompt\":\"同城团购\",\"model\":\"agnes-text\",\"maxCost\":21,"
+                +"\"textEdit\":{\"content\":\"\"},\"scene\":{\"kind\":\"video-script\",\"sceneId\":\"local-groupbuy\",\"text\":\"萧山公安路188号，锅盔原价19现价9.9\","
+                +"\"imageTitles\":[\"门店门头.jpg\"],\"duration\":25,\"ratio\":\"9:16\",\"language\":\"中文\"}}",RunRequest.class);
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.submit("u","p",request);
+            var capture=ArgumentCaptor.forClass(IpRun.class);verify(runs).save(capture.capture());
+            var exec=json.readTree(capture.getValue().getInputJson()).path("_exec");
+            assertTrue(exec.path("systemPrompt").asText().contains("你是资深短视频编导"));
+            assertTrue(exec.path("systemPrompt").asText().contains("客户没写到的价格"));
+            assertFalse(exec.path("systemPrompt").asText().contains(StudioTextRevision.CONTRACT));
+            String user=exec.path("userPrompt").asText();
+            assertTrue(user.startsWith("写一条 25 秒的竖屏「同城团购」短视频脚本"));
+            assertTrue(user.contains("我的要求：萧山公安路188号，锅盔原价19现价9.9"));
+            assertTrue(user.contains("图1「门店门头.jpg」是门店照片"));
+            assertFalse(user.contains("当前完整节点正文"));
+            assertTrue(exec.path("prompt").path("versions").has("stage-scene-script"));
+            assertTrue(exec.path("prompt").path("versions").has("scene-local-groupbuy"));
+            assertEquals("stage-scene-script",exec.path("prompt").path("calls").get(0).path("stage").asText());
+        } finally {TransactionSynchronizationManager.clearSynchronization();}
+        // a scene input only rides on a plain text revision
+        var wrong=(com.fasterxml.jackson.databind.node.ObjectNode)json.valueToTree(request);wrong.put("clientRequestId","k2");wrong.put("operation","assistant");wrong.remove("textEdit");
+        assertEquals("STUDIO_INPUT_INVALID",assertThrows(com.aistareco.common.BusinessException.class,()->service.submit("u","p",json.treeToValue(wrong,RunRequest.class))).getCode());
+    }
     /** AI 视频页的编导看商品图写脚本：普通文字任务也能带 readVisuals；模型看不了图就按能力拒绝，不按操作类型拒绝。 */
     @Test void aTextRunMayReadTheReferencedPicturesWhenTheModelCanSee() throws Exception {
         var projects=mock(IpProjectService.class);var runs=mock(IpRunRepository.class);var models=mock(AiModelInvocationService.class);

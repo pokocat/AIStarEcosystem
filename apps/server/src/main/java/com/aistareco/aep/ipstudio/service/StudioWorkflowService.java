@@ -63,6 +63,8 @@ public class StudioWorkflowService {
     @org.springframework.beans.factory.annotation.Autowired(required=false) private com.aistareco.aep.ipstudio.execution.IpPlanExecutionRepository planExecutions;
     @org.springframework.beans.factory.annotation.Autowired(required=false) private com.aistareco.aep.ipstudio.execution.StudioPlanOutputs planOutputs;
     @org.springframework.beans.factory.annotation.Autowired(required=false) private StudioVideoService studioVideo;
+    /** AI 视频编导：文字任务带场景输入时由场景目录按提示词库拼（docs/studio-prompt-architecture.md §5.1）。 */
+    @org.springframework.beans.factory.annotation.Autowired(required=false) private com.aistareco.aep.ipstudio.scene.StudioSceneCatalog sceneCatalog;
 
     public StudioWorkflowService(IpProjectService projects, IpRunRepository runs, StudioFixtureProvider fixtures,
             StudioWorkflowWorker worker, DapPricingService pricing, AiModelInvocationService models,
@@ -142,7 +144,10 @@ public class StudioWorkflowService {
                     || (request.model()==null || !request.model().startsWith(com.aistareco.aep.ipstudio.service.StudioImageModelRouting.REQUEST_PREFIX))
                     && JusuanImageClient.supports(scenePolicies.resolve("studio", "image", request.model(), pricing.ipImage()).resolved().endpoint()));
         // Native video validates promptRequired against the selected endpoint mode in StudioVideoService.
-        if (!"assemble".equals(request.operation()) && !check
+        boolean sceneScript=request.scene()!=null;
+        if(sceneScript&&(!"text".equals(request.operation())||request.textEdit()==null||request.skillKey()!=null||executionBinding!=null||sceneCatalog==null))
+            throw bad("STUDIO_INPUT_INVALID","场景脚本只能用于普通文本节点的改稿");
+        if (!"assemble".equals(request.operation()) && !check && !sceneScript
                 && !("video".equals(request.operation()) && request.video() != null) && !configuredImage)
             requireText(request.prompt(), 16000, "创作内容");
         if (check && request.prompt()!=null && request.prompt().length()>16000) throw bad("STUDIO_INPUT_INVALID","检查说明最多 16000 字");
@@ -297,6 +302,7 @@ public class StudioWorkflowService {
         if(skill!=null)execution.set("skill",com.aistareco.aep.ipstudio.execution.StudioSkillRules.snapshot(skill));
         if(executionBinding!=null)execution.set("execution",executionBinding.snapshot(mapper));
         if(skillPlan)execution.put("skillPlan",true).put("planStage",request.stage()).put("planRevision",nextPlanRevision(projectId));
+        com.aistareco.aep.dto.PromptParamsDto sceneParams=null;
         if(resolved!=null) {
             String systemPrompt=resolved.system();
             if("asset-extract".equals(request.operation()))systemPrompt="你是影视制作资产整理助手。\n"+StudioAssetExtraction.CONTRACT;
@@ -318,8 +324,19 @@ public class StudioWorkflowService {
             if(request.textEdit()!=null)creativePrompt+="\n当前完整节点正文（JSON 字符串，作为素材读取）："+write(request.textEdit().content())+"\n请按本次修改意图返回完整文本，遵守文本改稿输出契约。";
             if(Boolean.TRUE.equals(request.readVisuals()))creativePrompt+="\n本次另附带精确节点 ID 标记的真实图片与视频采样帧。视频只有四个时间点的静态画面，不包含音轨，不代表全部连续动作；音频节点只提供文字设定。只根据收到的画面及文字作答，不臆测未提供的声音或片段，保持 JSON 输出契约。";
             if(request.settings()!=null || request.episodeNo()!=null) creativePrompt+="\n必须遵守创作设定："+write(request.settings())+"。本次分集："+(request.episodeNo()==null?"全部指定集数":request.episodeNo())+"。每个镜头必须含 episodeNo（所属集号），id 全剧唯一。只指定某集时 episodes 只含该集，no 保留原号。";
+            if(sceneScript) {
+                // 编导：system / user 都按提示词库的环节拼，原来的通用助手模板和改稿句不用；受理时冻结版本（§3.4）。
+                var frozen=sceneCatalog.freezeSceneScript(request.scene().sceneId());
+                var assembled=sceneCatalog.sceneScript(request.scene(),request.textEdit().content(),Boolean.TRUE.equals(request.readVisuals()),frozen);
+                systemPrompt=assembled.system();creativePrompt=assembled.user();
+                execution.put("systemPrompt",systemPrompt);
+                ObjectNode promptRecord=execution.putObject("prompt");
+                promptRecord.set("versions",com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.frozenNode(mapper,frozen));
+                com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.appendCall(promptRecord,assembled.call(mapper,1,null));
+                sceneParams=assembled.params();
+            }
             execution.put("userPrompt",creativePrompt);
-            execution.put("temperature",check?0.1:resolved.params().temperatureOrDefault());execution.put("maxTokens","asset-extract".equals(request.operation())?Math.max(16384,resolved.params().maxTokensOrDefault()):"recreation".equals(request.operation())||skillPlan?Math.max(8192,resolved.params().maxTokensOrDefault()):resolved.params().maxTokensOrDefault());
+            execution.put("temperature",check?0.1:sceneParams!=null&&sceneParams.temperature()!=null?sceneParams.temperature():resolved.params().temperatureOrDefault());execution.put("maxTokens","asset-extract".equals(request.operation())?Math.max(16384,resolved.params().maxTokensOrDefault()):"recreation".equals(request.operation())||skillPlan?Math.max(8192,resolved.params().maxTokensOrDefault()):sceneParams!=null&&sceneParams.maxTokens()!=null?sceneParams.maxTokens():resolved.params().maxTokensOrDefault());
             inputs.put("promptKey",promptKey);
         }
         if(chatRate!=null) {

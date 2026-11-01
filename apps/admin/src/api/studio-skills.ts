@@ -7,6 +7,7 @@
 import type {
   StudioSkillAdminDetail, StudioSkillAdminItem, StudioSkillCreateRequest, StudioSkillDryRunRequest, StudioSkillDryRunResult,
   StudioSkillPublishRequest, StudioSkillStatusRequest, StudioSkillVersion, StudioSkillVersionActionRequest,
+  StudioPromptPreviewRequest, StudioPromptPreviewResult,
 } from "@/types/studio-skills";
 import { USE_MOCK, apiFetch, mockDelay } from "./_client";
 import {
@@ -68,4 +69,10 @@ export async function publishStudioSkillDraft(key: string, version: number, body
 export async function dryRunStudioSkill(key: string, body: StudioSkillDryRunRequest): Promise<StudioSkillDryRunResult> {
   if (USE_MOCK) return mockDelay(mockDryRunStudioSkill(key, body), 400);
   return apiFetch<StudioSkillDryRunResult>(`${path(key)}/dry-run`, { method: "POST", body });
+}
+
+/** POST /admin/studio/skills/preview —— 按调用点的方式拼出完整提示词（不调模型、不存东西）。 */
+export async function previewStudioPrompt(body: StudioPromptPreviewRequest): Promise<StudioPromptPreviewResult> {
+  if (USE_MOCK) return mockDelay({ stage: body.stage, title: body.stage, target: "llm", system: "（演示数据）system", user: "（演示数据）user", params: {}, refs: [], formats: {}, variables: {}, vars: body.vars ?? {} });
+  return apiFetch<StudioPromptPreviewResult>("/admin/studio/skills/preview", { method: "POST", body });
 }
