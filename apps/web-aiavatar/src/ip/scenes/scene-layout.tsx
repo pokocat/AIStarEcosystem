@@ -42,13 +42,26 @@ export type SceneListItem = { id: string; title: string; description: string; co
 export type SceneGroup = { id: string; title: string; items: SceneListItem[] };
 
 const PIN_KEY = (kind: string) => `aiavatar_scene_drawer_pinned:${kind}`;
-/** 全部场景边栏固定在侧边：每个浏览器记一份（只是界面偏好，读写失败当没固定）。 */
+const PIN_EVENT = "aiavatar:scene-drawer-pin";
+/**
+ * 全部场景边栏固定在侧边：每个浏览器记一份（只是界面偏好，读写失败当没固定）。
+ * 场景页的边栏和导航栏弹出的列表都能点「固定」，两处各用一次这个 hook，改了就发事件让另一处同步。
+ */
 export function useSceneDrawerPin(kind: "image" | "video") {
   const [pinned, setPinned] = useState(false);
-  useEffect(() => { try { setPinned(window.localStorage.getItem(PIN_KEY(kind)) === "1"); } catch { /* 隐私模式读不到就不固定 */ } }, [kind]);
+  useEffect(() => {
+    const read = () => { try { setPinned(window.localStorage.getItem(PIN_KEY(kind)) === "1"); } catch { /* 隐私模式读不到就不固定 */ } };
+    read();
+    const changed = (e: Event) => { const d = (e as CustomEvent<{ kind: string; on: boolean }>).detail; if (d?.kind === kind) setPinned(d.on); };
+    const stored = (e: StorageEvent) => { if (e.key === PIN_KEY(kind)) read(); };
+    window.addEventListener(PIN_EVENT, changed);
+    window.addEventListener("storage", stored);
+    return () => { window.removeEventListener(PIN_EVENT, changed); window.removeEventListener("storage", stored); };
+  }, [kind]);
   const pin = useCallback((on: boolean) => {
     setPinned(on);
     try { if (on) window.localStorage.setItem(PIN_KEY(kind), "1"); else window.localStorage.removeItem(PIN_KEY(kind)); } catch { /* 存不下只影响这一页 */ }
+    window.dispatchEvent(new CustomEvent(PIN_EVENT, { detail: { kind, on } }));
   }, [kind]);
   return [pinned, pin] as const;
 }
@@ -91,16 +104,22 @@ function SwitchPanel({ children, onClose }: { children: ReactNode; onClose: () =
 /**
  * 全部场景（设计稿「全部场景边栏」）：悬浮在导航旁边，可以固定成页面的第一列。按分组列出场景，点一下换。
  * 悬浮时点外面、按 Esc 关；固定后一直在，取消固定回到悬浮。
+ *
+ * 导航栏「AI 视频 / AI 图片」悬停弹出的列表也是它（{@code flyout}，shell/rail-scene-flyout.tsx），不要另写一份：
+ * 弹出列表永远是悬浮的（固定后的那一列在场景页里），场景是链接（{@code hrefFor}），打开时不抢焦点（鼠标经过就会打开）。
  */
-export function SceneDrawer({ heading, groups, top, current, onPick, pinned, onPin, onClose }: {
-  heading: string; groups: SceneGroup[]; top?: SceneListItem; current: string; onPick: (id: string) => void;
-  pinned: boolean; onPin: (on: boolean) => void; onClose: () => void;
+export function SceneDrawer({ heading, title = "全部场景", groups, top, current, onPick, hrefFor, pinned, onPin, onClose, flyout = false, status }: {
+  heading: string; title?: string; groups: SceneGroup[]; top?: SceneListItem; current?: string;
+  onPick?: (id: string) => void; hrefFor?: (id: string) => string;
+  pinned: boolean; onPin: (on: boolean) => void; onClose: () => void; flyout?: boolean; status?: ReactNode;
 }) {
   const box = useRef<HTMLElement>(null);
   const close = useRef(onClose);
   useEffect(() => { close.current = onClose; });
+  // 固定成一列只发生在场景页；导航弹出的列表即使已经固定过，也按悬浮显示。
+  const docked = pinned && !flyout;
   useEffect(() => {
-    if (pinned) return;
+    if (docked) return;
     const away = (e: PointerEvent) => {
       const t = e.target;
       if (t instanceof Element && (box.current?.contains(t) || t.closest(".scene-switch"))) return;
@@ -108,22 +127,30 @@ export function SceneDrawer({ heading, groups, top, current, onPick, pinned, onP
     };
     const escape = (e: KeyboardEvent) => { if (e.key === "Escape") close.current(); };
     document.addEventListener("pointerdown", away); document.addEventListener("keydown", escape);
-    box.current?.querySelector<HTMLElement>('button[aria-current="true"]')?.focus({ preventScroll: true });
-    box.current?.querySelector<HTMLElement>('button[aria-current="true"]')?.scrollIntoView?.({ block: "center" });
+    if (!flyout) {
+      box.current?.querySelector<HTMLElement>('[aria-current="true"]')?.focus({ preventScroll: true });
+      box.current?.querySelector<HTMLElement>('[aria-current="true"]')?.scrollIntoView?.({ block: "center" });
+    }
     return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", escape); };
-  }, [pinned]);
-  const item = (s: SceneListItem) => <li key={s.id}><button type="button" aria-current={s.id === current ? "true" : undefined} title={s.description}
-    onClick={() => { onPick(s.id); if (!pinned) onClose(); }}>
-    <SceneThumb id={s.id} title={s.title} cover={s.coverUrl} size={36}/><span><strong>{s.title}</strong><small>{s.description}</small></span></button></li>;
-  return <aside ref={box} className={`scene-drawer${pinned ? " is-pinned" : ""}`} aria-label={`${heading}场景`} role={pinned ? undefined : "dialog"}>
-    <header><h2>全部场景</h2>
+  }, [docked, flyout]);
+  const item = (s: SceneListItem) => {
+    const body = <><SceneThumb id={s.id} title={s.title} cover={s.coverUrl} size={36}/><span><strong>{s.title}</strong><small>{s.description}</small></span></>;
+    const mark = s.id === current ? "true" : undefined;
+    return <li key={s.id}>{hrefFor
+      ? <Link href={hrefFor(s.id)} aria-current={mark} title={s.description} onClick={onClose}>{body}</Link>
+      : <button type="button" aria-current={mark} title={s.description} onClick={() => { onPick?.(s.id); if (!docked) onClose(); }}>{body}</button>}</li>;
+  };
+  return <aside ref={box} className={`scene-drawer${docked ? " is-pinned" : ""}${flyout ? " is-flyout" : ""}`} aria-label={`${heading}场景`} role={docked || flyout ? undefined : "dialog"}>
+    <header><h2>{title}</h2>
       <button type="button" className="scene-icon-button is-pin" aria-pressed={pinned} aria-label={pinned ? "取消固定" : "固定在侧边"} title={pinned ? "取消固定" : "固定在侧边"} onClick={() => onPin(!pinned)}>
         {pinned ? <PinOff size={16} strokeWidth={1.4}/> : <Pin size={16} strokeWidth={1.4}/>}</button>
-      {!pinned && <button type="button" className="scene-icon-button" aria-label="关闭" onClick={onClose}><X size={16} strokeWidth={1.4}/></button>}
+      {!docked && <button type="button" className="scene-icon-button" aria-label="关闭" onClick={onClose}><X size={16} strokeWidth={1.4}/></button>}
     </header>
     <div className="scene-drawer-body">
-      {top && <ul>{item(top)}</ul>}
-      {groups.map(g => <section key={g.id}><h3>{g.title}</h3><ul>{g.items.map(item)}</ul></section>)}
+      {status && !groups.length && !top ? <p className="scene-drawer-state" role="status">{status}</p> : <>
+        {top && <ul>{item(top)}</ul>}
+        {groups.map(g => <section key={g.id}><h3>{g.title}</h3><ul>{g.items.map(item)}</ul></section>)}
+      </>}
     </div>
   </aside>;
 }

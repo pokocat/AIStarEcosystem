@@ -43,23 +43,15 @@ html[data-layout="desktop"] .desktop-rail .desktop-credit-link svg { display: no
 .desktop-rail .ip-account-menu>summary { width: 34px; height: 34px; }
 /* 鼠标停在「AI 视频 / AI 图片」上弹出的全部场景（shell/rail-scene-flyout.tsx）。导航那一列会滚动，所以用 fixed 贴着导航栏右边。 */
 .rail-flyout-host { display: flex; justify-content: center; width: 100%; }
-.rail-flyout { position: fixed; top: 12px; bottom: 12px; left: calc(var(--desktop-rail-w, 76px) + 18px); z-index: 70; display: flex; flex-direction: column; width: 360px; padding: 18px 8px 8px; border-radius: 16px; background: #fff; box-shadow: 0 18px 48px rgba(23, 32, 42, .16), 0 0 0 1px rgba(23, 32, 42, .06); color: var(--ip-ink, #17202a); text-align: left; animation: rail-flyout-in 140ms var(--ip-ease, ease-out); }
+/* 弹出的列表就是场景页的「全部场景」（SceneDrawer flyout，样式见下面 .scene-drawer），这里只补弹出动画和它挂在导航那一列里要改回来的东西。 */
+.scene-drawer.is-flyout { color: var(--ip-ink, #17202a); font-size: 13px; line-height: 1.6; text-align: left; animation: rail-flyout-in 140ms var(--ip-ease, ease-out); }
 @keyframes rail-flyout-in { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .rail-flyout { animation: none; } }
-.rail-flyout h2 { margin: 0; padding: 0 14px 10px; font-size: 15px; font-weight: 500; line-height: 1.4; }
-.rail-flyout-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-.rail-flyout h3 { margin: 12px 14px 4px; font-size: 12px; font-weight: 400; color: var(--ip-muted, #5b6572); }
-.rail-flyout ul { margin: 0; padding: 0; list-style: none; }
-/* 弹层挂在导航那一列里面，导航项的样式（竖排、64px 宽、小字）会带进来，这里逐条改回来。 */
-.desktop-rail-navigation .rail-flyout li a { flex-direction: row; align-items: center; gap: 12px; width: 100%; padding: 7px 10px; border-radius: 12px; color: var(--ip-ink, #17202a); font-size: 13px; font-weight: 400; line-height: 1.4; text-align: left; text-decoration: none; }
-.desktop-rail-navigation .rail-flyout li a:hover { background: #f6f7f9; }
-.desktop-rail-navigation .rail-flyout li a[aria-current="true"] { background: var(--ip-selected, #f1f2f4); }
-.desktop-rail-navigation .rail-flyout li a:focus-visible { outline: 2px solid var(--ip-ink, #17202a); outline-offset: -2px; }
-.desktop-rail-navigation .rail-flyout li a>.scene-thumb, .desktop-rail-navigation .rail-flyout li a:hover>.scene-thumb { border-radius: 10px; background: #eef0f2; }
-.desktop-rail-navigation .rail-flyout li a>span:not(.scene-thumb), .desktop-rail-navigation .rail-flyout li a:hover>span:not(.scene-thumb) { display: flex; flex: 1; flex-direction: column; align-items: flex-start; width: auto; height: auto; min-width: 0; border-radius: 0; background: none; }
-.rail-flyout li strong { font-size: 13.5px; font-weight: 500; line-height: 1.4; }
-.rail-flyout li small { overflow: hidden; font-size: 12px; line-height: 1.5; color: var(--ip-muted, #5b6572); white-space: nowrap; text-overflow: ellipsis; }
-.rail-flyout-state { margin: 0; padding: 16px 14px; font-size: 12.5px; color: var(--ip-muted, #5b6572); }
+@media (prefers-reduced-motion: reduce) { .scene-drawer.is-flyout { animation: none; } }
+/* 导航项的样式（竖排、64px 宽、小字、图标底色）会带进链接里，这里逐条改回场景列表的样子。 */
+.desktop-rail-navigation .scene-drawer li a { flex-direction: row; width: 100%; font-size: 13px; text-align: left; text-decoration: none; }
+.desktop-rail-navigation .scene-drawer li a:focus-visible { outline: 2px solid var(--ip-ink, #17202a); outline-offset: -2px; }
+.desktop-rail-navigation .scene-drawer li a>.scene-thumb, .desktop-rail-navigation .scene-drawer li a:hover>.scene-thumb { border-radius: 10px; background: #eef0f2; }
+.desktop-rail-navigation .scene-drawer li a>span:not(.scene-thumb), .desktop-rail-navigation .scene-drawer li a:hover>span:not(.scene-thumb) { display: flex; flex: 1; flex-direction: column; align-items: flex-start; width: auto; height: auto; min-width: 0; border-radius: 0; background: none; }
 .desktop-rail .ip-account-menu>div { top: auto; right: auto; bottom: 0; left: 52px; }
 .desktop-rail .desktop-rail-account .ip-brand-button { min-height: 32px; padding: 6px 10px; font-size: 12px; }
 
@@ -138,16 +130,17 @@ html[data-layout="desktop"] .scene-composer-head .scene-recent-host { display: n
 .scene-drawer h2 { flex: 1; margin: 0; font-size: 15px; font-weight: 500; }
 .scene-drawer .is-pin[aria-pressed="true"] { color: var(--sn-select-ink); }
 .scene-drawer-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 10px 16px; scrollbar-width: thin; }
+.scene-drawer-state { margin: 0; padding: 16px 12px; color: var(--ip-muted); font-size: 12.5px; }
 .scene-drawer h3 { margin: 16px 12px 4px; font-size: 12px; font-weight: 400; color: var(--ip-muted); }
 .scene-drawer section:first-child h3 { margin-top: 10px; }
 .scene-drawer ul { display: flex; flex-direction: column; gap: 1px; margin: 0; padding: 0; list-style: none; }
-.scene-drawer li button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 7px 12px; border: 0; border-radius: 12px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.scene-drawer li button:hover { background: var(--ip-soft); }
-.scene-drawer li button[aria-current="true"] { background: var(--ip-soft); }
-.scene-drawer li button>span { display: flex; flex-direction: column; min-width: 0; }
+.scene-drawer li :is(a, button) { display: flex; align-items: center; gap: 12px; width: 100%; padding: 7px 12px; border: 0; border-radius: 12px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.scene-drawer li :is(a, button):hover { background: var(--ip-soft); }
+.scene-drawer li :is(a, button)[aria-current="true"] { background: var(--ip-soft); }
+.scene-drawer li :is(a, button)>span { display: flex; flex-direction: column; min-width: 0; }
 .scene-drawer li strong { min-width: 0; overflow: hidden; font-size: 13px; font-weight: 400; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
 .scene-drawer li small { overflow: hidden; color: var(--ip-muted); font-size: 11.5px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
-.scene-drawer li button[aria-current="true"] strong { font-weight: 500; }
+.scene-drawer li :is(a, button)[aria-current="true"] strong { font-weight: 500; }
 
 /* 编辑区：素材一排、编辑框、模型和规格、生成 */
 .scene-compose { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; padding: 14px 18px 18px; }
