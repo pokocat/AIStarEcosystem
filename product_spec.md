@@ -1450,7 +1450,7 @@ AiAvatar 新增 `/director` 作品列表和「剧本 / 资产 / 分镜」制作�
 
 批量补充（2026-10-29，本地未发布）：添加表单可切换「单个添加 / 批量添加」，每批最多 100 个手机号，支持换行、逗号、分号粘贴并去重。`POST /api/v1/ip-studio/enterprises/{id}/members/batch` 接收 `{phones}`，逐人独立事务执行单人规则，返回成功/失败及原因，失败项保留可重试，已成功关系幂等。
 
-## 企业主账号个人积分转入与成员手机号（2026-10-31，本地未发布）
+## 企业主账号个人积分转入与成员手机号（2026-11-01，已生产发布）
 
 owner 可在企业管理页将本人的个人可用普通积分转入企业根账户，再分配给企业成员。`POST /api/v1/ip-studio/enterprises/{id}/points/deposit/preview` 与 `/points/deposit` 复用 points 的 items、确认指纹与 clientRequestId。gift/license/recharge 原桶等额转移，冻结积分不动；写关联 TRANSFER_OUT/IN、现有批次和审计，不重复计算现金充值或积分发行。转入不增加新权限项、不增加财务审批。
 

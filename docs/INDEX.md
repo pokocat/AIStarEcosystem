@@ -246,7 +246,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 ## 7. 发布与验收记录（`docs/releases/`）
 
-- [企业主账号积分转入与成员手机号](releases/enterprise-owner-deposit-validation-20261031.md)：本地实现与检查，未发布（last-reviewed 2026-10-31）。
+- [企业主账号积分转入与成员手机号生产发布](releases/enterprise-owner-deposit-production-release-20261101.md)：main `1e3e3f795`，server / Studio / admin；126 项回归、真实手机号与转入预览验收，未移动真实积分（last-reviewed 2026-11-01）。
 
 - [Studio 头像居中、浅灰底与轮播圆点优化](releases/studio-avatar-polish-release-20261031.md)：main `0921222f6`，仅 web-aiavatar；线上新旧桌面与手机头像偏差 0px、底色统一，圆点只过渡底色，制品与服务核对通过（last-reviewed 2026-10-31）。
 - [Seedance 视频提交故障修复](releases/seedance-video-submit-fix-20261031.md)：OneToken 2.0 / 2.5 移除不支持的末帧输出字段、真人参考图拒绝改为明确中文说明；4 笔冻结全退，两模型独立测试均已出片并通过下载、完整解码及抽帧核验，仅 server（last-reviewed 2026-10-31）。

@@ -1325,6 +1325,6 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 带时长、画幅、横竖屏的出视频请求（「生成一段16:9、5秒视频」）不再被留在出图。制作中只问不改的消息（`StudioSteeringQuestions`：问句、40 字内、不含改动或控制的词）不暂停制作，只开一轮回答。模型回复末尾预告要做却没给动作（「好的，我来改」）不算做完，纠正一次接着跑，纠正后仍不动手就结束，一轮最多 2 次（`DialogueLoop.announcesWork`）。读画布文字读用户采用的那一版（`StudioWritingContent`）。厂商「资源空间不足，请清理回收站」类原话在 `PublicModelErrorPolicy` 换成平台侧说明，不再让用户删自己的作品。提示词 `SEED_VERSION=v28-2026-10-30-say-it-do-it`。都没有用真模型跑过整轮对话。
 
-### 企业 owner 转入个人积分与成员手机号 · 2026-10-31（本地未发布）
+### 企业 owner 转入个人积分与成员手机号 · 2026-11-01（已生产发布 `20261101-enterprise-owner-deposit`）
 
 `points/deposit[/preview]` 复用现有划拨预览、批次幂等和关联账本；owner 本人的所有可用普通积分均可转入企业根账户，保留 gift/license/recharge，再按原流程分配。无新增权限项、审批或迁移。企业及全部企业钱包先锁，个人钱包后锁；充值来源 `owner-deposit:<transferId>` 随企业内分配/冻结/释放流转，不冒充现金充值订单。成员与成员余额 DTO 返回产品档案手机号，两张列表直接显示，沿用既有列表权限，审计不记录手机号。规则见 `specs/BUSINESS_RULES.md` 企业节及企业产品/UI方案。
