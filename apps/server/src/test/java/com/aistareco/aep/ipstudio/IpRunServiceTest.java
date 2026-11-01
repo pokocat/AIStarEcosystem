@@ -361,7 +361,10 @@ class IpRunServiceTest {
         org.mockito.ArgumentCaptor<JsonNode> body = org.mockito.ArgumentCaptor.forClass(JsonNode.class);
         verify(videoJobs).submit(body.capture(), eq(USER), anyString());
         JsonNode item = body.getValue().path("items").get(0);
-        assertFalse(item.has("variant_config"), "没选模型也没首帧图时不该带 variant_config：" + item);
+        // require_mirror 每条都带（成片必须存进我方存储）；除此之外不该有模型或首帧
+        JsonNode vc = item.path("variant_config");
+        assertTrue(vc.path("require_mirror").asBoolean());
+        assertEquals(1, vc.size(), "没选模型也没首帧图时 variant_config 只该有 require_mirror：" + item);
         assertFalse(item.has("endpoint_id"));
     }
 
