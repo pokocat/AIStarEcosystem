@@ -419,6 +419,8 @@ public final class H3PromptRewrite {
         ObjectNode meta = om.createObjectNode().put("task", "videoPrompt").put("rules", RULES).put("mode", r.mode().name()).put("codeLines", r.codeLines())
                 .put("shots", fixed ? r.shots() : 0).put("seconds", r.seconds())
                 .put("pictures", pictures).put("videos", videos).put("audios", audios).put("language", languageTag(r.language()));
+        // 导演台全能参考的图1 一定是分镜图（DirectorService#rewrite 固定这么排）；画布上的图1 是用户随便连的，不标。
+        if (r.storyboard() && r.mode() == Mode.REF) meta.put("storyboardPicture", "<Picture 1>");
         // 参考素材清单原样记下：模型漏写某一份时，校验按它补回（见 validate）。
         ArrayNode refs = meta.putArray("references");
         r.references().forEach(refs::add);
@@ -532,6 +534,16 @@ public final class H3PromptRewrite {
                             + " - used as described in subject_definitions.").strip();
                     notes.add("优化稿漏了" + kind.getValue() + " " + i + " 的说明，已按素材清单补上");
                 }
+            // 分镜图管构图、机位、人物位置和受光，导演台要 H3 照着拍：模型标成「部分保留」「只取大致相似」就改回完全保留
+            //（2026-10-31 cl45 真调第 1 次标了 weak_reference）。只改关系标记，后面的说明不动；画布没有这个标记，不受影响。
+            String board = meta.path("storyboardPicture").asText("");
+            if (!board.isEmpty()) {
+                Matcher m = Pattern.compile("(?m)^(" + Pattern.quote(board) + "[^\\n]*?:\\s*)(partially_preserved|attribute_transfer|weak_reference)\\b").matcher(retention);
+                if (m.find()) {
+                    retention = m.replaceAll("$1fully_preserved");
+                    notes.add("分镜图的保留关系已改为完全保留");
+                }
+            }
         }
         boolean anyShot = false;
         for (int i = 0; i < bodies.size(); i++) {

@@ -452,4 +452,18 @@ class H3PromptRewriteTest {
         assertTrue(warnings(H3PromptRewrite.validate(OM, old, missing)).contains("优化稿没有提到参考图 1，这份素材可能不起作用"));
         assertTrue(warnings(check(out())).isEmpty(), "三张图都提到了就不提示");
     }
+
+    /** 导演台的图1 是分镜图，要 H3 照着拍：模型标成只取大致相似就改回完全保留（cl45 真调第 1 次标了 weak_reference）。 */
+    @Test
+    void theDirectorStoryboardIsAlwaysFullyPreserved() {
+        String weak = "<Subject 1> (appears in [Shot 1]): fully_preserved - face.\n<Picture 1> (storyboard reference): weak_reference - used for shot planning and lighting cues only.\n<Picture 3> (Lao Zhao): fully_preserved - face.";
+        JsonNode r = check(out().put("retention_analysis", weak));
+        assertTrue(r.path("template").asText().contains("<Picture 1> (storyboard reference): fully_preserved - used for shot planning and lighting cues only."), r.path("template").asText());
+        assertEquals(List.of("分镜图的保留关系已改为完全保留"), notes(r));
+        assertTrue(warnings(r).isEmpty(), "只记一笔，不打扰用户");
+        assertTrue(notes(check(out())).isEmpty(), "本来就是完全保留的不动");
+        // 画布：图1 是用户连的图，模型怎么标就怎么留
+        ObjectNode canvas = meta(); canvas.remove("storyboardPicture");
+        assertTrue(H3PromptRewrite.validate(OM, canvas, out().put("retention_analysis", weak)).path("template").asText().contains("<Picture 1> (storyboard reference): weak_reference"));
+    }
 }
