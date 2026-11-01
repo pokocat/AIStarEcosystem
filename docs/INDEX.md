@@ -252,6 +252,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [导演台切换版本即采用生产发布](releases/director-version-adopt-production-release-20261030.md)：main `97ca7fc28`，server + Studio；视频与分镜图点版本即采用、去掉「采用这一版」，同批上线企业手机号加人与导演台浮动 AI 对话；线上只读核对新界面（last-reviewed 2026-10-30）。
 - [提示词里的参考图标签 + 导演台 H3 修复（server + web-aiavatar 发布）](releases/studio-prompt-chips-release-20261101.md)：main `1e0ae2b72`，AI 视频编辑框「图N」缩略图标签，同包带另一会话的导演台 H3 修复（新任务 video-prompt）；无迁移（last-reviewed 2026-11-01）。
 - [导演台 H3 分镜图固定为完全保留（server 发布）](releases/director-h3-storyboard-release-20261101.md)：main `8af7ec7bf`，只改 `H3PromptRewrite`，无契约与迁移改动；重启窗口 13 次 502（last-reviewed 2026-11-01）。
+- [导航场景列表带「固定」（web-aiavatar 发布）](releases/scene-flyout-pin-release-20261101.md)：main `c5ebee57d`，导航悬停列表与场景页「全部场景」共用 `SceneDrawer`；重启 1 次 502（last-reviewed 2026-11-01）。
 - [AI 编导带上素材和时长、选择框收尾（web-aiavatar 发布）](releases/studio-director-spec-release-20261101.md)：main `6927fc59b`，编导页素材与规格、声音选择框、全站 antd 主题，同包带账号默认头像；只发前端（last-reviewed 2026-11-01）。
 - [Studio 改版与新版资产页（server + web-aiavatar 发布）](releases/studio-redesign-release-20261031.md)：main `9902d4f63`，AI 视频 / AI 图片改版、新版页面统一设计、新版资产页（按文件类型 + 资产库）；无迁移（last-reviewed 2026-10-31）。
 - [场景页创作流程（server + web-aiavatar + studio-admin 发布）](releases/studio-scene-flow-release-20261031.md)：main `fe4a654ce`，创作条件存进草稿、编导接上 H3、21 个视频场景 brief、结果接着用；无迁移（last-reviewed 2026-10-31）。
