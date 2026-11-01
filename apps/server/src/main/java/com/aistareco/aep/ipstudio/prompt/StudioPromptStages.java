@@ -25,7 +25,8 @@ public final class StudioPromptStages {
      * @param formats  输出格式：名字（模板里写 {@code {{format.<名>}}}）→ 按变量生成格式文字
      * @param sample   后台预览用的示例变量
      * @param base     拼哪份底座：默认平台底座 {@code base}；导演台用自己的 {@code base-director}（短剧是虚构创作，
-     *                 平台底座里面向商品宣传的事实规则不适用，见 docs/studio-prompt-architecture.md §14.2）
+     *                 平台底座里面向商品宣传的事实规则不适用）；只看画面、不写文案的环节（看图、复刻逐页观察、拉片、分批读图）
+     *                 为 null，不拼底座（docs/studio-prompt-architecture.md §14.2）
      */
     public record Stage(String key, String target, String title, Map<String, String> vars, Set<String> required,
                         Map<String, Function<Map<String, ?>, String>> formats, Map<String, Object> sample, String base) {
@@ -33,6 +34,9 @@ public final class StudioPromptStages {
                      Map<String, Function<Map<String, ?>, String>> formats, Map<String, Object> sample) {
             this(key, target, title, vars, required, formats, sample, StudioPromptEntry.BASE);
         }
+
+        /** 不拼底座的调用点（只看画面、不写文案）。 */
+        public Stage withoutBase() { return new Stage(key, target, title, vars, required, formats, sample, null); }
 
         public Map<String, String> renderFormats(Map<String, ?> vars) {
             Map<String, String> out = new LinkedHashMap<>();
@@ -60,7 +64,7 @@ public final class StudioPromptStages {
 
     public static Collection<Stage> all() { return Collections.unmodifiableCollection(STAGES.values()); }
 
-    /** 环节条目和它的调用点对得上：target 一致、变量都登记过、必填变量和每段格式都在、调大模型的放了 {{base}}。 */
+    /** 环节条目和它的调用点对得上：target 一致、变量都登记过、必填变量和每段格式都在、要拼底座的放了 {{base}}。 */
     static void check(StudioPromptEntry entry) {
         Stage stage = STAGES.get(entry.key());
         if (stage == null) throw new IllegalArgumentException("环节「" + entry.key() + "」没有对应的调用点（代码里没有登记）");
@@ -77,7 +81,7 @@ public final class StudioPromptStages {
             }
             if (!stage.vars().containsKey(n)) throw new IllegalArgumentException("{{" + n + "}} 不是这个调用点登记的变量");
         }
-        if (StudioPromptEntry.LLM.equals(stage.target()) && !names.contains("base"))
+        if (StudioPromptEntry.LLM.equals(stage.target()) && stage.base() != null && !names.contains("base"))
             throw new IllegalArgumentException("调用大模型的环节必须放 {{base}}");
         for (String f : stage.formats().keySet())
             if (!names.contains(PromptTemplate.FORMAT_PREFIX + f)) throw new IllegalArgumentException("缺少输出格式 {{format." + f + "}}");

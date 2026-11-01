@@ -59,7 +59,7 @@ class StudioVisionWorkflowFallbackTest {
             List<Map<String,Object>> messages=call.getArgument(2);String system=messages.get(0).get("content").toString();
             @SuppressWarnings("unchecked") var parts=(List<Map<String,Object>>)messages.get(1).get("content");
             int images=(int)parts.stream().filter(p->"image_url".equals(p.get("type"))).count();String content;
-            if(system.contains("按输入图片的顺序逐张记录可见事实")) { // 分批读图（stage-vision-batch，前面拼了底座）
+            if(system.startsWith("按输入图片")) { // 分批读图（stage-vision-batch，不拼底座）
                 assertTrue(images>0&&images<=2);content="{\"frames\":["+String.join(",",Collections.nCopies(images,"{\"visible\":\"原片事实\",\"uncertainty\":\"无\"}"))+"]}";
             } else if(system.contains("将原片按叙事或动作阶段划分")) {assertEquals(0,images);content="{\"segments\":[{\"endSec\":2}]}";}
             else if(system.contains("你是视频创作分析助手")) {assertTrue(images>0,"subsequent successful segment still uses original images");content="## 本段正文";}

@@ -125,7 +125,7 @@ public final class StudioPromptCallPoints {
         StudioPromptStages.register(stage(DIALOGUE_SUMMARY, StudioPromptEntry.LLM, "对话历史摘要", vars("material", "已有要点和新增对话"), Set.of("material"),
                 Map.of(), Map.of("material", "用户：做一张海报")));
         StudioPromptStages.register(stage(VIEW_IMAGES, StudioPromptEntry.LLM, "对话里看图", vars("question", "助手想重点确认的事，可以为空"), Set.of(),
-                Map.of(), Map.of("question", "哪张是正面")));
+                Map.of(), Map.of("question", "哪张是正面")).withoutBase());
         StudioPromptStages.register(stage(IMAGE, StudioPromptEntry.IMAGE_MODEL, "画布出图包装",
                 vars("prompt", "用户的出图指令", "identity", "只有一张参考图、用户也没自己点名参考图（加「保持同一个人」那句）",
                         "ordered", "有两张以上参考图（写参考图编号）", "refs", "参考图：[{n, note}]，note 没有有效说明时为空"),
@@ -135,12 +135,12 @@ public final class StudioPromptCallPoints {
         StudioPromptStages.register(stage(RECREATION, StudioPromptEntry.LLM, "复刻全片拆解", vars("input", "用户补充关注点"), Set.of("input"),
                 formats("output", StudioPromptFormats.RECREATION_OUTPUT, "contracts", "", "appendix", ""), Map.of("input", "开头怎么抓人")));
         StudioPromptStages.register(stage(RECREATION_OBSERVE, StudioPromptEntry.LLM, "复刻逐页观察", vars("first", "本页第一帧的全局编号", "last", "本页最后一帧的全局编号"),
-                Set.of(), formats("output", StudioPromptFormats.OBSERVE_OUTPUT, "evidence", ""), Map.of("first", 1, "last", 8)));
+                Set.of(), formats("output", StudioPromptFormats.OBSERVE_OUTPUT, "evidence", ""), Map.of("first", 1, "last", 8)).withoutBase());
         registerStepThreeRest();
         StudioPromptStages.register(stage(FILM_PLAN, StudioPromptEntry.LLM, "拉片分段", vars("material", "预览用的示例素材说明"), Set.of(),
-                formats("output", StudioPromptFormats.FILM_PLAN_OUTPUT, "cap", ""), Map.of("material", "（全片文档与采样画面）")));
+                formats("output", StudioPromptFormats.FILM_PLAN_OUTPUT, "cap", ""), Map.of("material", "（全片文档与采样画面）")).withoutBase());
         StudioPromptStages.register(stage(FILM_SEGMENT, StudioPromptEntry.LLM, "拉片逐段分析", vars("material", "预览用的示例素材说明"), Set.of(),
-                formats("output", StudioPromptFormats.FILM_SEGMENT_OUTPUT), Map.of("material", "（本段采样画面）")));
+                formats("output", StudioPromptFormats.FILM_SEGMENT_OUTPUT), Map.of("material", "（本段采样画面）")).withoutBase());
     }
 
     static final String RECREATION = "stage-recreation", RECREATION_OBSERVE = "stage-recreation-observe",
@@ -182,7 +182,7 @@ public final class StudioPromptCallPoints {
         StudioPromptStages.register(stage(ANALYSIS_FOCUS, StudioPromptEntry.MESSAGE, "拉片 / 复刻的用户关注点", vars("focus", "用户写的分析重点"),
                 Set.of("focus"), Map.of(), Map.of("focus", "开头怎么抓人")));
         StudioPromptStages.register(stage(VISION_BATCH, StudioPromptEntry.LLM, "读图降级：分批读取", vars("merge", "汇总时（否则是每批读图）"), Set.of(),
-                formats("output", StudioPromptFormats.VISION_BATCH_OUTPUT), Map.of("merge", false)));
+                formats("output", StudioPromptFormats.VISION_BATCH_OUTPUT), Map.of("merge", false)).withoutBase());
         StudioPromptStages.register(stage(RECREATION_MERGE, StudioPromptEntry.MESSAGE, "复刻汇总时的事实整合与尾帧复核",
                 vars("frameTimes", "全部采样帧的时间（JSON）", "observations", "逐页读到的事实（JSON）", "lastFrame", "最后一帧的全局编号"),
                 Set.of("observations"), Map.of(), Map.of("frameTimes", "[0.0, 1.2]", "observations", "[]", "lastFrame", 2)));

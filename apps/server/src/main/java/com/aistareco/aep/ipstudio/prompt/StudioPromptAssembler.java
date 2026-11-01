@@ -50,7 +50,7 @@ public class StudioPromptAssembler {
     /** 受理时冻结并拼一次，结果连同版本记录写进任务输入的 {@code _exec.prompt}。 */
     public Assembled assembleAndRecord(ObjectMapper mapper, ObjectNode exec, Call call, java.util.Collection<String> freezeKeys) {
         List<String> keys = new ArrayList<>(freezeKeys);
-        keys.add(baseOf(call.stage()));
+        if (baseOf(call.stage()) != null) keys.add(baseOf(call.stage()));
         Map<String, Integer> frozen = call.frozen() != null ? call.frozen() : freeze(keys);
         Assembled out = assemble(new Call(call.stage(), call.methods(), call.scene(), call.vars(), frozen, call.sceneFallback(), call.formats()));
         ObjectNode record = exec.putObject("prompt");
@@ -72,9 +72,10 @@ public class StudioPromptAssembler {
         return record;
     }
 
-    /** 这个环节拼哪份底座（调用点登记表里写的，没登记按平台底座）。 */
+    /** 这个环节拼哪份底座（调用点登记表里写的，没登记按平台底座）；null 表示不拼。 */
     static String baseOf(String stage) {
-        return StudioPromptStages.find(stage).map(StudioPromptStages.Stage::base).orElse(StudioPromptEntry.BASE);
+        var registered = StudioPromptStages.find(stage);
+        return registered.isPresent() ? registered.get().base() : StudioPromptEntry.BASE;
     }
 
     /**
@@ -130,7 +131,8 @@ public class StudioPromptAssembler {
         refs.add(new Ref(stage.key(), stage.version(), stage.digest()));
         boolean llm = StudioPromptEntry.LLM.equals(stage.target());
         if (llm) {
-            StudioPromptEntry base = entry(baseOf(stage.key()), call.frozen(), false);
+            String baseKey = baseOf(stage.key());
+            StudioPromptEntry base = baseKey == null ? null : entry(baseKey, call.frozen(), false);
             vars.put("base", base == null ? "" : PromptTemplate.render(base.body(), vars));
             if (base != null) refs.add(new Ref(base.key(), base.version(), base.digest()));
         } else vars.put("base", "");

@@ -64,9 +64,9 @@ class StudioFilmStudyCapTest {
             assertTrue(segment.path("durationSec").asDouble()<=1.2+.3,"real cut length is re-verified");
         }
         assertEquals(3,start,1e-9);
-        // 分段提示词按提示词库拼（docs/studio-prompt-architecture.md §8 #11），前面是底座；原文逐字保留，上限句接在最后
-        assertTrue(planners.get(0).contains(LEGACY_PLANNER+"每段不超过1.2秒"));
+        // 分段提示词按提示词库拼（docs/studio-prompt-architecture.md §8 #11），只看画面的环节不拼底座；原文逐字保留，上限句接在最后
+        assertTrue(planners.get(0).startsWith(LEGACY_PLANNER+"每段不超过1.2秒"));
         StudioFilmStudy.run(source,"",om.createObjectNode(),evidence,storage,"owner",8192,3,chat,(a,b,c)->true);
-        assertTrue(planners.get(1).endsWith("\n"+LEGACY_PLANNER),"callers without a cap send the previous planner text after the base");
+        assertEquals(LEGACY_PLANNER,planners.get(1),"callers without a cap send the previous planner text byte for byte");
     }
 }
