@@ -19,6 +19,7 @@ public final class StudioPromptCallPoints {
         StudioPromptStages.register(sceneScript());
         registerStepThree();
         registerDirector();
+        registerDirectorImages();
     }
 
     // ── 第 4 步：导演台文字任务（docs/studio-prompt-architecture.md §8 #17–#19）。原文逐字搬来，JSON 格式句在 StudioPromptFormats ──
@@ -26,7 +27,8 @@ public final class StudioPromptCallPoints {
 
     public static final String DIRECTOR_BASE = "base-director";
     public static final String DIRECTOR_SCRIPT = "stage-director-script", DIRECTOR_SPLIT = "stage-director-split", DIRECTOR_EXTRACT = "stage-director-extract",
-            DIRECTOR_STORYBOARD = "stage-director-storyboard", DIRECTOR_ASSISTANT = "stage-director-assistant", DIRECTOR_BRIEF = "stage-director-brief";
+            DIRECTOR_STORYBOARD = "stage-director-storyboard", DIRECTOR_ASSISTANT = "stage-director-assistant", DIRECTOR_BRIEF = "stage-director-brief",
+            DIRECTOR_ASSET_IMAGE = "stage-director-asset-image", DIRECTOR_BOARD = "stage-director-board", DIRECTOR_IMAGE_NOTES = "stage-director-image-notes";
 
     private static void registerDirector() {
         Map<String, String> input = vars("input", "本次输入（JSON，作为素材）");
@@ -54,6 +56,30 @@ public final class StudioPromptCallPoints {
                 vars("input", "创意与之前的问答（JSON，作为素材）", "opening", "这是第一轮", "text", "用户这次的回答", "maxQuestions", "一轮最多几个问题"),
                 Set.of("input"), formats("output", StudioPromptFormats.DIRECTOR_BRIEF_OUTPUT),
                 Map.of("input", "{\"idea\":\"外卖员在雨夜捡到一只会说话的猫\"}", "opening", true, "text", "", "maxQuestions", 2)));
+    }
+
+    /** 导演台交给画图模型的两份描述（§8 #20）和出图附加说明：不拼底座；生成时记下版本，核对旧图按那一版编。 */
+    private static void registerDirectorImages() {
+        Map<String, Object> asset = new LinkedHashMap<>();
+        asset.put("style", "真人写实"); asset.put("name", "周桂芬"); asset.put("description", "五十岁上下，短卷发，深蓝色工装外套。");
+        asset.put("live", true); asset.put("isScene", false); asset.put("isProp", false); asset.put("isCharacter", true);
+        StudioPromptStages.register(new StudioPromptStages.Stage(DIRECTOR_ASSET_IMAGE, StudioPromptEntry.IMAGE_MODEL, "导演台资产参考图",
+                vars("style", "画面风格", "name", "资产名称", "description", "外观与设定", "live", "真人实拍类风格（按风格文字判断）",
+                        "isScene", "这是场景", "isProp", "这是道具", "isCharacter", "这是角色（不是场景也不是道具）"), Set.of(), Map.of(), asset));
+        Map<String, Object> board = new LinkedHashMap<>();
+        board.put("style", "真人写实"); board.put("aspect", "9:16"); board.put("single", false); board.put("live", true); board.put("blanks", true);
+        board.put("hasRefs", true);
+        board.put("refs", List.of(Map.of("label", "图1", "name", "周桂芬", "isScene", false, "isProp", false, "isCharacter", true)));
+        board.put("cells", List.of(Map.of("position", "左上", "size", "近景", "camera", "平视，固定机位", "still", "周桂芬抬头看向门口"),
+                Map.of("position", "右上", "size", "中景", "camera", "越过肩膀拍门口，镜头缓慢推近", "still", "门被推开一条缝")));
+        StudioPromptStages.register(new StudioPromptStages.Stage(DIRECTOR_BOARD, StudioPromptEntry.IMAGE_MODEL, "导演台分镜图",
+                vars("style", "画面风格", "aspect", "画幅", "single", "只有一个镜头（单张画面，不是 2×2）", "refs", "参考图：[{label, name, isScene, isProp, isCharacter}]",
+                        "hasRefs", "有参考图", "cells", "每格：[{position（左上 / 右上 / 左下 / 右下）, size, camera, still}]", "blanks", "2×2 板有空着的格子",
+                        "live", "真人实拍类风格"), Set.of(), Map.of(), board));
+        StudioPromptStages.register(new StudioPromptStages.Stage(DIRECTOR_IMAGE_NOTES, StudioPromptEntry.MESSAGE, "导演台出图附加说明",
+                vars("refScene", "带了用户的场景参考图", "refProp", "带了用户的道具参考图", "refCharacter", "带了用户的形象参考照片",
+                        "baseOn", "在当前图上修改时，当前图的编号（如「图2」）"), Set.of(), Map.of(),
+                new LinkedHashMap<>(Map.of("refScene", false, "refProp", false, "refCharacter", true, "baseOn", "图2"))));
     }
 
     private static StudioPromptStages.Stage director(String key, String title, Map<String, String> vars, Set<String> required,

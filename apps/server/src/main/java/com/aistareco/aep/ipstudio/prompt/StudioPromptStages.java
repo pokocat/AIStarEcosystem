@@ -45,6 +45,10 @@ public final class StudioPromptStages {
 
     static synchronized void register(Stage stage) {
         if (STAGES.containsKey(stage.key())) throw new IllegalStateException("duplicate prompt stage " + stage.key());
+        // base / method / scene 是拼装器填的分层正文，同名的运行时变量会被盖掉（导演台资产图的 scene 开关就这样失效过）
+        for (String name : stage.vars().keySet())
+            if (PromptTemplate.LAYER_VARS.contains(name) || name.startsWith(PromptTemplate.FORMAT_PREFIX))
+                throw new IllegalStateException(stage.key() + " 的变量 " + name + " 和分层变量或输出格式重名");
         STAGES.put(stage.key(), stage);
     }
 

@@ -1343,10 +1343,10 @@ Studio 图片报价为 `POST /api/v1/ip-studio/projects/{id}/{image-quote|studio
 
 - 种子在 `resources/studio/prompts/{base,stages,scenes}/*.md`，生效规则同技能：库里没有就灌，后台没动过的条目文件一变自动出新版本，后台发布 / 回滚 / 改状态之后以库为准，不再有 `SEED_VERSION`。`StudioSkillCatalog` 只认制作做法，提示词条目不会被路由、`read_skill` 或执行器看到。
 - 拼装（`ipstudio/prompt`）：环节模板用 `{{base}}` `{{method}}` `{{scene}}` 和代码提供的 `{{format.<名>}}` 指定各层位置；模板写法是 Mustache 子集（变量、区段、列表）。调用点在 `StudioPromptCallPoints` 登记变量、必填项和输出格式，发布环节时按它核对（用了没登记的变量、缺 `{{base}}` 或某段格式都 400 `STUDIO_SKILL_INVALID`）。受理时冻结版本、每次调用记一条（`_exec.prompt.versions` / `calls`），后台发布新版本不影响在途任务。
-- 已进库：底座（事实规则）、场景三个环节（`stage-scene-image` / `-handoff` / `-script`）、37 个场景条目，以及第 3 步的十四个环节（对话、摘要、看图、方案规划、成片检查、技能整理、画布文字、剧本、资产提取、复刻拆解与逐页观察、拉片分段与逐段分析、画布出图包装）。JSON 格式句在 `StudioPromptFormats`；对话回合受理时冻结对话 / 摘要 / 看图 / 方案四个环节的版本，复刻受理时冻结复刻的四个环节。场景的创作文字以库为准，叠在 `studio.scene-catalog` 上（`StudioSceneCatalog.overlay`）；场景后台保存时改过的创作文字发布成场景条目的新版本。AI 视频编导的请求是文字任务带 `scene`（`StudioSceneCatalog.ComposeRequest`），服务端受理时按 `stage-scene-script` 拼 system / user。
+- 已进库：底座（事实规则）、场景三个环节（`stage-scene-image` / `-handoff` / `-script`）、37 个场景条目，以及第 3 步的十四个环节（对话、摘要、看图、方案规划、成片检查、技能整理、画布文字、剧本、资产提取、复刻拆解与逐页观察、拉片分段与逐段分析、画布出图包装）。JSON 格式句在 `StudioPromptFormats`；对话回合受理时冻结对话 / 摘要 / 看图 / 方案四个环节的版本，复刻受理时冻结复刻的四个环节。导演台（第 4 步）：文字任务六个环节 `stage-director-*` 拼自己的底座 `base-director`，题材 / 调性 / 反转线是内容方法（`methods/director-*`）；资产图、分镜图模板 `stage-director-asset-image` / `-board` 进库，候选记 `promptVersions`，「需更新」按候选那一版核对。场景的创作文字以库为准，叠在 `studio.scene-catalog` 上（`StudioSceneCatalog.overlay`）；场景后台保存时改过的创作文字发布成场景条目的新版本。AI 视频编导的请求是文字任务带 `scene`（`StudioSceneCatalog.ComposeRequest`），服务端受理时按 `stage-scene-script` 拼 system / user。
 - 切换导入：库里没有某条目时，声明了 `importFrom` 的种子先和线上生效内容比（旧 Prompt 管理按 `PromptService.resolve`，场景按后台保存过的目录），线上改过就以线上内容作为第一个版本（来源 `import`），之后仓库文件不覆盖它。
 - 后台：`/api/admin/studio/skills` 同时管两类条目，新增 `POST /api/admin/studio/skills/preview`（按调用点拼一次，不调模型）。
-- 还没进库：导演台（第 4 步）、IP 形象 / 造型（dap 域），以及几段由代码算的变量文字，见设计文档 §14.3。
+- 还没进库：导演台视频提示词与首帧模板（镜头行是 H3 改写解析的格式，留在代码）、IP 形象 / 造型（dap 域），以及几段由代码算的变量文字，见设计文档 §14.2、§14.3。
 
 ## 微信 Native 扫码充值（2026-10-30，已生产发布 `20261030-studio-wechat-pay`，微信渠道待商户开通后启用）
 

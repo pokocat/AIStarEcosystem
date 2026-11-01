@@ -113,7 +113,7 @@ class DirectorOwnImageTest {
 
         service.task(USER, work.getId(), new DirectorService.TaskRequest("asset-image", a.path("id").asText(), "req-scene", null, null, 16L));
         assertEquals("u/house.jpg", submitted().refKeys().get(0));
-        assertTrue(submitted().prompt().contains(DirectorPrompts.SCENE_REF_NOTE));
+        assertTrue(submitted().prompt().contains(DirectorPrompts.imageNotes(com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.classpath(), "scene", null)));
 
         // 已经有采用的资产图时再设参考图：资产图不变，也不发起生成。
         String id = a.path("id").asText();
@@ -127,7 +127,7 @@ class DirectorOwnImageTest {
         JsonNode prop = last(edit("asset.create", null, "{\"kind\":\"prop\",\"name\":\"灯笼\",\"description\":\"红灯笼\"}"));
         edit("asset.setRef", prop.path("id").asText(), "{\"key\":\"u/lantern.jpg\"}");
         service.task(USER, work.getId(), new DirectorService.TaskRequest("asset-image", prop.path("id").asText(), "req-prop", null, null, 16L));
-        assertTrue(submitted().prompt().contains(DirectorPrompts.PROP_REF_NOTE));
+        assertTrue(submitted().prompt().contains(DirectorPrompts.imageNotes(com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.classpath(), "prop", null)));
     }
 
     @Test void replacingTheAssetImageKeepsEarlierVersionsToSwitchBack() throws Exception {

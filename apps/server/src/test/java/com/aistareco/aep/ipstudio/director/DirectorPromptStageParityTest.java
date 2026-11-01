@@ -74,6 +74,56 @@ class DirectorPromptStageParityTest {
         assertThat(answer.user()).isEqualTo(LEAD + material + "\n\n用户这次说（这是用户的回答）：悬疑一点，三集");
     }
 
+    // ── 出图模板（§8 #20）：资产参考图、分镜图、附加说明 ──
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper OM = new com.fasterxml.jackson.databind.ObjectMapper();
+
+    private static com.fasterxml.jackson.databind.JsonNode json(String text) {
+        try { return OM.readTree(text); } catch (Exception e) { throw new IllegalStateException(e); }
+    }
+
+    @Test
+    void assetAndBoardTemplatesAreUnchanged() {
+        List<String> styles = List.of("{}", "{\"style\":\"真人写实\",\"aspectRatio\":\"9:16\"}", "{\"style\":\"日系动画\",\"aspectRatio\":\"16:9\"}",
+                "{\"style\":\"\",\"aspectRatio\":\"1:1\"}");
+        List<String> assets = List.of("{\"kind\":\"character\",\"name\":\"陈默\",\"description\":\"三十岁，短发，藏青夹克\"}",
+                "{\"kind\":\"scene\",\"name\":\"旧书店\",\"description\":\"窄长的店面\\n靠窗一张木桌\"}",
+                "{\"kind\":\"prop\",\"name\":\"铁皮盒\",\"description\":\"掉漆的蓝色铁皮饼干盒\"}",
+                "{\"kind\":\"other\",\"name\":\"\",\"description\":\"\"}");
+        String shot = "{\"size\":\"近景\",\"camera\":\"平视，固定机位\",\"still\":\"陈默低头看信\"}";
+        List<List<DirectorPrompts.Ref>> refSets = List.of(List.of(),
+                List.of(new DirectorPrompts.Ref("图1", "character", "陈默")),
+                List.of(new DirectorPrompts.Ref("图1", "character", "陈默"), new DirectorPrompts.Ref("图2", "scene", "旧书店"), new DirectorPrompts.Ref("图3", "prop", "铁皮盒")));
+        int checked = 0;
+        for (String st : styles) {
+            var settings = json(st);
+            for (String a : assets) {
+                assertThat(DirectorPrompts.assetPrompt(A, settings, json(a), null)).as(st + a).isEqualTo(LegacyDirectorPrompts.assetPrompt(settings, json(a)));
+                checked++;
+            }
+            for (int n = 0; n <= 5; n++) {
+                String clip = "{\"shots\":[" + String.join(",", java.util.Collections.nCopies(n, shot)) + "]}";
+                for (var refs : refSets) {
+                    assertThat(DirectorPrompts.boardPrompt(A, settings, json(clip), refs, null)).as(st + " shots=" + n + " refs=" + refs.size())
+                            .isEqualTo(LegacyDirectorPrompts.boardPrompt(settings, json(clip), refs, java.util.Map.of()));
+                    checked++;
+                }
+            }
+        }
+        assertThat(checked).isEqualTo(4 * 4 + 4 * 6 * 3);
+        assertThat(DirectorPrompts.assetPrompt(A, json("{}"), json(assets.get(0)), 1)).isEqualTo(LegacyDirectorPrompts.assetPrompt(json("{}"), json(assets.get(0))));
+    }
+
+    @Test
+    void imageNotesAreUnchanged() {
+        for (String kind : new String[]{null, "scene", "prop", "character", "other"}) for (String baseOn : new String[]{null, "图2"}) {
+            StringBuilder was = new StringBuilder();
+            if (kind != null) was.append(LegacyDirectorPrompts.refNote(kind));
+            if (baseOn != null) was.append(was.isEmpty() ? "" : "\n").append(LegacyDirectorPrompts.baseOnNote(baseOn));
+            assertThat(DirectorPrompts.imageNotes(A, kind, baseOn)).as(kind + " / " + baseOn).isEqualTo(was.toString());
+        }
+    }
+
     /** 导演台拼的是自己的底座，平台底座里面向商品宣传的事实规则不进短剧编剧（docs/studio-prompt-architecture.md §14.2）。 */
     @Test
     void directorStagesUseTheirOwnBaseAndRecordTheVersions() {

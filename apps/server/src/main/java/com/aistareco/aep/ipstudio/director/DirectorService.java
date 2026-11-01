@@ -4,6 +4,7 @@ import com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection;
 import com.aistareco.aep.ipstudio.dto.IpLibraryDtos;
 import com.aistareco.aep.ipstudio.model.IpRun;
 import com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler;
+import com.aistareco.aep.ipstudio.prompt.StudioPromptCallPoints;
 import com.aistareco.aep.ipstudio.repository.IpRunRepository;
 import com.aistareco.aep.ipstudio.service.IpProjectService;
 import com.aistareco.aep.ipstudio.service.IpRunService;
@@ -952,9 +953,10 @@ public class DirectorService {
                 String kind = a.path("kind").asText();
                 List<Bound> refs = new ArrayList<>();
                 if (refKey != null) refs.add(new Bound(targetId, a.path("name").asText() + ("character".equals(kind) ? "的形象参考" : "的参考图"), kind, refKey, "图1"));
-                if (refKey != null) prompt = prompt + "\n" + DirectorPrompts.refNote(kind);
+                if (!a.path("promptCustom").asBoolean(false)) prompts().requireStage(StudioPromptCallPoints.DIRECTOR_ASSET_IMAGE);
                 String baseOn = o.path("baseOnCurrent").asBoolean(false) ? baseOnCurrent(a, "image", a.path("name").asText(), refs) : null;
-                if (baseOn != null) prompt = prompt + "\n" + DirectorPrompts.baseOnNote(refs.get(refs.size() - 1).label());
+                String notes = DirectorPrompts.imageNotes(prompts(), refKey != null ? kind : null, baseOn != null ? refs.get(refs.size() - 1).label() : null);
+                if (!notes.isEmpty()) prompt = prompt + "\n" + notes;
                 return image(userId, w, c, "asset:" + targetId, requestId, prompt, refs, sizeFor(c, a.path("kind").asText()),
                         assetFingerprint(a), pipeline, billing, maxCost, baseOn);
             }
@@ -964,8 +966,10 @@ public class DirectorService {
                         "该片段需先修改：" + clip.path("issues").get(0).asText());
                 List<Bound> refs = new ArrayList<>(boundRefs(c, clip, true));
                 String prompt = clip.path("boardPrompt").asText();
+                if (!clip.path("boardPromptCustom").asBoolean(false)) prompts().requireStage(StudioPromptCallPoints.DIRECTOR_BOARD);
                 String baseOn = o.path("baseOnCurrent").asBoolean(false) ? baseOnCurrent(clip, "board", "片段 " + clip.path("order").asInt() + " 的分镜图", refs) : null;
-                if (baseOn != null) prompt = prompt + "\n" + DirectorPrompts.baseOnNote(refs.get(refs.size() - 1).label());
+                String notes = DirectorPrompts.imageNotes(prompts(), null, baseOn != null ? refs.get(refs.size() - 1).label() : null);
+                if (!notes.isEmpty()) prompt = prompt + "\n" + notes;
                 return image(userId, w, c, "board:" + targetId, requestId, prompt, refs, sizeFor(c, "board"),
                         boardCurrent(c, clip).fingerprint(), pipeline, billing, maxCost, baseOn);
             }
@@ -1084,6 +1088,9 @@ public class DirectorService {
                 new IpRunService.IpGenerateRequest(nodeId, prompt, keys, 1, size, imageSelection(c).resolved().endpoint().getId(), maxCost, billing, requestId)).id());
         ObjectNode m = om.createObjectNode().put("node", nodeId).put("prompt", prompt).put("fingerprint", fingerprint)
                 .put("promptFormat", DirectorPrompts.IMAGE_PROMPT_FORMAT);
+        // 记下这次按出图模板哪一版编的：后台发了新版本，这张图仍按这一版核对，换模板本身不算「描述已修改」
+        String templateStage = nodeId.startsWith("asset:") ? StudioPromptCallPoints.DIRECTOR_ASSET_IMAGE : StudioPromptCallPoints.DIRECTOR_BOARD;
+        m.putObject("promptVersions").put(templateStage, DirectorPrompts.templateVersion(prompts(), templateStage));
         if (baseOn != null) m.put("baseOn", baseOn);
         ArrayNode rs = m.putArray("refs");
         refs.forEach(r -> rs.addObject().put("assetId", r.assetId()).put("name", r.name()).put("label", r.label()).put("key", r.key()));
@@ -1772,8 +1779,7 @@ public class DirectorService {
             // 输入指纹：生成期间改了提示词、换了参考图，旧结果只进历史，不自动采用。
             // 换模板之前提交、之后才完成的任务按它提交时的版本核对（没记版本的是第 1 版），免得被当成「生成期间设置有变动」。
             String now = asset ? assetFingerprint(target) : boardFingerprintOrNull(c, target);
-            int format = promptFormat(meta);
-            String before = asset ? legacyAssetFingerprint(c, target, format) : fingerprintOrNull(legacyBoardCurrent(c, target, format));
+            String before = asset ? legacyAssetFingerprint(c, target, meta) : fingerprintOrNull(legacyBoardCurrent(c, target, meta));
             boolean stale = !meta.hasNonNull("fingerprint")
                     || !meta.path("fingerprint").asText().equals(now) && !meta.path("fingerprint").asText().equals(before);
             ObjectNode slot = (ObjectNode) target.path(asset ? "image" : "board");
@@ -1783,6 +1789,7 @@ public class DirectorService {
                 ObjectNode m = addCandidate(c, slot, key, run.getId(), "generated");
                 if (meta.hasNonNull("fingerprint")) m.put("fingerprint", meta.path("fingerprint").asText());
                 if (meta.has("promptFormat")) m.put("promptFormat", meta.path("promptFormat").asInt());
+                if (meta.path("promptVersions").isObject()) m.set("promptVersions", meta.path("promptVersions").deepCopy());
                 if (meta.has("prompt")) m.put("prompt", meta.path("prompt").asText());
                 if (meta.has("refs")) m.set("refs", meta.path("refs").deepCopy());
                 if (meta.hasNonNull("baseOn")) m.put("baseOn", meta.path("baseOn").asText());
@@ -3720,7 +3727,10 @@ public class DirectorService {
         Set<String> characters = new HashSet<>();
         Map<String, List<String>> aliases = characterAliases(c);
         for (JsonNode a : c.path("assets")) {
-            if (!a.path("promptCustom").asBoolean(false)) ((ObjectNode) a).put("prompt", DirectorPrompts.assetPrompt(c.path("settings"), a));
+            if (!a.path("promptCustom").asBoolean(false)) {
+                String compiled = DirectorPrompts.assetPrompt(prompts(), c.path("settings"), a, null);
+                if (compiled != null) ((ObjectNode) a).put("prompt", compiled); // 模板被停用时保留原来的描述
+            }
             checkAsset(c, (ObjectNode) a);
             names.put(a.path("id").asText(), a.path("name").asText());
             if ("character".equals(a.path("kind").asText())) characters.add(a.path("id").asText());
@@ -3732,8 +3742,10 @@ public class DirectorService {
             List<DirectorPrompts.Ref> refs = new ArrayList<>();
             for (JsonNode a : visualAssets(c, clip))
                 refs.add(new DirectorPrompts.Ref("图" + (refs.size() + 1), a.path("kind").asText(), a.path("name").asText()));
-            if (!clip.path("boardPromptCustom").asBoolean(false))
-                clip.put("boardPrompt", DirectorPrompts.boardPrompt(c.path("settings"), clip, refs, names));
+            if (!clip.path("boardPromptCustom").asBoolean(false)) {
+                String compiled = DirectorPrompts.boardPrompt(prompts(), c.path("settings"), clip, refs, null);
+                if (compiled != null) clip.put("boardPrompt", compiled);
+            }
             VideoParts parts = videoParts(c, clip, refs, names);
             ArrayNode unvoicedNode = clip.putArray("unvoiced");
             parts.unvoiced().forEach(unvoicedNode::add);
@@ -3766,11 +3778,9 @@ public class DirectorService {
             if (lim != null && !lim.frame() && !clip.path("videoPromptCustom").asBoolean(false)) castWarnings(clip, parts.videoRefs(), names, aliases).forEach(warnings::add);
             clip.set("warnings", warnings);
             clip.put("videoPromptRewrite", rewriteState(c, clip, lim));
-            check((ObjectNode) clip.path("board"), boardCurrent(c, clip), legacyBoardCurrent(c, clip, promptFormat(adoptedCandidate(clip.path("board")))),
-                    DirectorPrompts.IMAGE_PROMPT_FORMAT, false);
+            check((ObjectNode) clip.path("board"), boardCurrent(c, clip), legacyBoardCurrent(c, clip, adoptedCandidate(clip.path("board"))), false);
             String legacy = legacyVideoPrompt(c, clip, lim, parts, names, promptFormat(adoptedCandidate(clip.path("video"))));
-            check((ObjectNode) clip.path("video"), videoCurrent(c, clip, lim), legacy == null ? null : videoCurrent(c, clip, lim, legacy),
-                    DirectorPrompts.VIDEO_PROMPT_FORMAT, true);
+            check((ObjectNode) clip.path("video"), videoCurrent(c, clip, lim), legacy == null ? null : videoCurrent(c, clip, lim, legacy), true);
         }
     }
 
@@ -3895,13 +3905,29 @@ public class DirectorService {
      * 按 format 那一版出图模板算的资产指纹，只用来核对那一版生成的参考图；
      * 用户手改过提示词（模板没参与）或 format 就是当前版本时返回 null。
      */
-    private String legacyAssetFingerprint(ObjectNode c, JsonNode a, int format) {
-        String prompt = legacyAssetPrompt(c, a, format);
+    private String legacyAssetFingerprint(ObjectNode c, JsonNode a, JsonNode m) {
+        String prompt = legacyAssetPrompt(c, a, m);
         return prompt == null ? null : assetFingerprint(a, prompt);
     }
 
-    private static String legacyAssetPrompt(ObjectNode c, JsonNode a, int format) {
-        return a.path("promptCustom").asBoolean(false) ? null : DirectorPrompts.legacyAssetPrompt(c.path("settings"), a, format);
+    /** 按候选（或任务记录）m 生成时那一版出图模板编的资产描述；用户手改过、或那一版就是当前版本时返回 null。 */
+    private String legacyAssetPrompt(ObjectNode c, JsonNode a, JsonNode m) {
+        if (a.path("promptCustom").asBoolean(false)) return null;
+        int format = promptFormat(m);
+        if (format < DirectorPrompts.IMAGE_PROMPT_FORMAT) return DirectorPrompts.legacyAssetPrompt(c.path("settings"), a, format);
+        Integer v = imageTemplateVersion(m, StudioPromptCallPoints.DIRECTOR_ASSET_IMAGE);
+        if (v == null || v == DirectorPrompts.templateVersion(prompts(), StudioPromptCallPoints.DIRECTOR_ASSET_IMAGE)) return null;
+        return DirectorPrompts.assetPrompt(prompts(), c.path("settings"), a, v);
+    }
+
+    /**
+     * 候选（或任务记录）是按出图模板哪一版编的：记了 promptVersions 按它；记了第 3 版、没记版本的是模板进库之前生成的，
+     * 和库里的 v1 一字不差；更早的版本由 {@link DirectorPrompts#legacyAssetPrompt} / {@link DirectorPrompts#legacyBoardPrompt} 处理，这里返回 null。
+     */
+    private static Integer imageTemplateVersion(JsonNode m, String stage) {
+        JsonNode v = m == null ? null : m.path("promptVersions").path(stage);
+        if (v != null && v.isInt()) return v.asInt();
+        return promptFormat(m) >= DirectorPrompts.IMAGE_PROMPT_FORMAT ? 1 : null;
     }
 
     /** 用户给这项资产设的参考图（角色叫形象参考）：只在生成资产图时作为图1。 */
@@ -3947,14 +3973,19 @@ public class DirectorService {
      * 按 format 那一版出图模板编的分镜图提示词算出的「当前」，只用来核对那一版生成的分镜图：换模板本身不算「镜头、台词或提示词已修改」。
      * 用户手改过分镜图提示词（模板没参与）或 format 就是当前版本时返回 null。
      */
-    private Current legacyBoardCurrent(ObjectNode c, JsonNode clip, int format) {
-        if (clip.path("boardPromptCustom").asBoolean(false) || format >= DirectorPrompts.IMAGE_PROMPT_FORMAT) return null;
+    private Current legacyBoardCurrent(ObjectNode c, JsonNode clip, JsonNode m) {
+        if (clip.path("boardPromptCustom").asBoolean(false)) return null;
+        int format = promptFormat(m);
+        Integer v = format < DirectorPrompts.IMAGE_PROMPT_FORMAT ? null : imageTemplateVersion(m, StudioPromptCallPoints.DIRECTOR_BOARD);
+        if (format >= DirectorPrompts.IMAGE_PROMPT_FORMAT && (v == null || v == DirectorPrompts.templateVersion(prompts(), StudioPromptCallPoints.DIRECTOR_BOARD))) return null;
         Map<String, String> names = new HashMap<>();
         for (JsonNode a : c.path("assets")) names.put(a.path("id").asText(), a.path("name").asText());
         List<DirectorPrompts.Ref> refs = new ArrayList<>();
         for (JsonNode a : visualAssets(c, clip))
             refs.add(new DirectorPrompts.Ref("图" + (refs.size() + 1), a.path("kind").asText(), a.path("name").asText()));
-        return boardCurrent(c, clip, DirectorPrompts.legacyBoardPrompt(c.path("settings"), clip, refs, names, format));
+        String prompt = v == null ? DirectorPrompts.legacyBoardPrompt(c.path("settings"), clip, refs, names, format)
+                : DirectorPrompts.boardPrompt(prompts(), c.path("settings"), clip, refs, v);
+        return prompt == null ? null : boardCurrent(c, clip, prompt);
     }
 
     private static String fingerprintOrNull(Current current) {
@@ -4000,14 +4031,14 @@ public class DirectorService {
         return null;
     }
 
-    private void check(ObjectNode slot, Current current, Current legacy, int format, boolean video) {
+    private void check(ObjectNode slot, Current current, Current legacy, boolean video) {
         ArrayNode reasons = slot.putArray("staleReasons");
         JsonNode m = null;
         String id = slot.path("adoptedId").asText(null);
         for (JsonNode x : slot.path("candidates")) if (x.path("id").asText().equals(id)) m = x;
         if (m == null) { slot.putNull("adoptedCheck"); return; }
-        // 旧版模板生成的（候选记的版本低于当前）按那一版核对，换模板本身不算修改（legacy 为 null 表示两版一样）。
-        Current now = legacy != null && promptFormat(m) < format ? legacy : current;
+        // 旧版模板生成的（候选记的版本不是当前版本）按那一版核对，换模板本身不算修改（legacy 为 null 表示两版一样）。
+        Current now = legacy != null ? legacy : current;
         if (Set.of("upload", "library").contains(m.path("source").asText())) { slot.put("adoptedCheck", "current"); return; }
         boolean hasRefs = m.has("refs") && m.has("prompt");
         if (!m.hasNonNull("fingerprint") && !hasRefs) { slot.put("adoptedCheck", "unknown"); return; }
@@ -4041,7 +4072,7 @@ public class DirectorService {
         if (m == null) { slot.putNull("adoptedCheck"); return; }
         if (Set.of("upload", "library").contains(m.path("source").asText())) { slot.put("adoptedCheck", "current"); return; }
         // 旧版模板生成的图按它那一版核对（没记 promptFormat 的是第 1 版）：只换了模板不算用户改了描述。
-        String legacy = legacyAssetPrompt(c, a, promptFormat(m));
+        String legacy = legacyAssetPrompt(c, a, m);
         if (m.hasNonNull("fingerprint")) {
             String fp = m.path("fingerprint").asText();
             boolean same = fp.equals(assetFingerprint(a)) || legacy != null && fp.equals(assetFingerprint(a, legacy));

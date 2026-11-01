@@ -364,8 +364,10 @@ public final class DirectorPrompts {
      * 按 {@link #legacyAssetPrompt} / {@link #legacyBoardPrompt} 核对，换模板本身不算「提示词已修改」（同 {@link #VIDEO_PROMPT_FORMAT}）。
      * 2：2026-10-28 加入演员布光、中性白平衡与肤色还原。用户反馈 H3 成片人物普遍脸黑、发黄；视频照着分镜图和参考图生成，
      * 判断偏色主要从这几张图带进去，所以从源头改起；视频再照已确认分镜图的受光和色调（{@link #VIDEO_PROMPT_FORMAT} 3）。这是按反馈定的方向，没有拿样片核对过根因，效果也还没有用真实出图对比过。
-     * 3：同日第二轮 review 后改成一段默认布光指导（{@link #boardLighting}），不再按关键词推断特殊布光、追加「不补光」；
+     * 3：同日第二轮 review 后改成一段默认布光指导，不再按关键词推断特殊布光、追加「不补光」；
      *    宫格一致性改成「明暗和光色只随画面描述变化」。第 2 版已上线出过图，按 {@link #assetPromptV2} / {@link #boardPromptV2} 核对。
+     * 第 3 版之后模板进了提示词库（stage-director-asset-image / stage-director-board，第 3 版即库里的 v1）：
+     * 候选记 promptVersions，后台发了新版本也按候选记的那一版核对，不再在这里加版本号和手写旧版。
      */
     public static final int IMAGE_PROMPT_FORMAT = 3;
 
@@ -375,76 +377,26 @@ public final class DirectorPrompts {
                 && !style.matches(".*(动画|动漫|二次元|卡通|漫画|插画|水墨|手绘|像素|黏土|3D|三维|Q版|绘本).*");
     }
 
-    /**
-     * 分镜图的布光与调色：一段默认指导，各格原样保留镜头描述，由出图模型结合上下文理解哪里要剪影、暗面或特殊光色。
-     * 不从描述里按关键词推断再追加「这一格不补光」之类的强指令：2026-10-28 第二轮 review 证明那样会把「自然色调」「不要逆光剪影」
-     * 「低调地放下」都读反（用户随后定下这个做法）。默认方向是用户定的：像影视拍摄一样给演员适当打光，自然有气色，同时尊重剧情需要。
-     */
-    private static String boardLighting(String style) {
-        return "布光与调色：" + (liveAction(style)
-                ? "默认按影视人像布光，主光塑造五官，适度补光，让肤色自然、有气色，保留皮肤质感和场景氛围。"
-                : "默认让人物面部受光清楚、五官可辨，配色干净，保留场景氛围。")
-                + "画面风格写明的布光和调色照风格来；画面描述里明确写的剪影、暗面或特殊光色优先，只作用于写到的人物或区域，其他部分沿用默认布光。\n";
-    }
-
     static String kindLabel(String kind) {
         return switch (kind) { case "scene" -> "场景"; case "prop" -> "道具"; default -> "角色"; };
     }
 
-    /** 角色带形象参考照片时追加在出图提示词后：只取长相，版式、服装和背景仍按设定集来。 */
-    /** 「围绕当前图修改」时追加在出图提示词末尾：当前版本作为最后一张参考图，只是参考，不承诺局部精确编辑。 */
-    public static String baseOnNote(String label) {
-        return label + " 是这张图现在的版本：在它的基础上按上面的描述修改；描述里没有要求改变的人物长相、服装、场景、构图和排布尽量保持一致。";
-    }
-
-    /** 资产带用户参考图时追加在出图提示词后：角色只取长相；场景、道具参照外观，版式仍按上面的要求重画。 */
-    public static String refNote(String kind) {
-        return switch (kind) {
-            case "scene" -> SCENE_REF_NOTE;
-            case "prop" -> PROP_REF_NOTE;
-            default -> CHARACTER_REF_NOTE;
-        };
-    }
-
-    public static final String SCENE_REF_NOTE = "图1 是用户提供的场景参考图：空间布局、建筑与陈设、材质和主色调照着它画。"
-            + "不要照搬它的画质、水印、文字或里面的人物；按上面的描述和画面风格重新绘制这个场景。";
-
-    public static final String PROP_REF_NOTE = "图1 是用户提供的道具参考图：外形、比例、材质、颜色和标志性细节照着它画。"
-            + "不要照搬它的背景、光线、画质、水印或文字；按上面的描述和画面风格重新绘制这件道具。";
-
-    public static final String CHARACTER_REF_NOTE = "图1 是用户提供的形象参考照片，只用来确定这个人的长相：脸型、五官、发型、肤色和体型照着它画。"
-            + "肤色指这个人在中性白光下本来的肤色，照片拍摄时的偏黄、偏暗和脸上的阴影不算。"
-            + "不要照搬它的构图、角度、背景、光线或画质；服装和配饰以上面的角色设定为准，设定没写的才参考照片。"
-            + "按上面的设定集版式重新绘制完整的多视角设定图。";
-
-    public static String assetPrompt(JsonNode settings, JsonNode asset) {
+    /**
+     * 资产参考图（角色设定集 / 场景空间图 / 道具单件图）的出图描述，正文在提示词库 stage-director-asset-image。
+     * version 为 null 用当前版本，否则按那一版编（核对那一版生成的图）；库里没有这个环节（被停用）时返回 null，调用方保留原来的描述。
+     */
+    public static String assetPrompt(StudioPromptAssembler prompts, JsonNode settings, JsonNode asset, Integer version) {
         String style = settings.path("style").asText("真人写实");
-        String name = asset.path("name").asText();
-        String desc = asset.path("description").asText();
-        return switch (asset.path("kind").asText()) {
-            case "scene" -> style + "风格的「" + name + "」空间参考图。" + desc
-                    + "\n用平视广角清楚展示空间的固定布局：入口、窗、主要家具及它们的相对位置，自然透视。"
-                    + "\n光线按场景设定的时段和光源来：主光源方向明确，暗部和墙角的细节看得清；"
-                    + "设定或画面风格写明的昏暗、夜色、有色灯光和调色照写，没写的不把整个画面染成一层黄、绿或褐色。"
-                    + "\n画面里不出现人物和临时剧情道具，不添加多余的门窗或第二套家具，不出现文字。";
-            case "prop" -> style + "风格的道具「" + name + "」单件参考图。" + desc
-                    + "\n用能看清关键特征的角度和景别，光照均匀、白平衡中性，颜色和材质准确，背景简洁。"
-                    + "\n不出现人物或手，不表现使用动作，不生成重复物件、文字或商标。";
-            // 角色设定集：一张横版图拼五个区，后面的分镜图和视频都拿它锁定长相、服装和表情。
-            default -> style + "风格的角色设定集「" + name + "」，一张横版 16:9 设定板，浅灰纯色背景，统一柔和的棚拍光，各分区之间用细白边分隔，按以下排版：\n"
-                    + "1. 左侧约三分之一：全身三视图，从左到右依次为正面、正侧面、背面，同一自然站姿，双臂下垂，从头顶到鞋完整入画。\n"
-                    + "2. 中间上部：颈部以上的头部细节，正面、左侧面、右侧面各一张。\n"
-                    + "3. 中间中部：表情四宫格，同一角度的胸像，依次为喜、怒、哀、乐。\n"
-                    + "4. 右侧一列：面部特征特写 2–3 张，按设定挑最能辨认的部位（眼睛、鼻子、嘴唇，或痣、疤痕、随身配饰等身体特征）。\n"
-                    + "5. 中间下部：正面半身展示图，自然姿态，看清上身服装与气质。\n"
-                    + (liveAction(style)
-                        ? "布光与色彩：主光从斜前方照亮面部，柔和补光让眼睛和眼窝、鼻翼两侧的暗部看得清；白平衡中性，浅灰背景和白色衣物不偏黄、绿或橙褐，"
-                          + "画面风格写明了调色的按风格来。肤色按角色设定还原，气色自然健康，保留真实的皮肤纹理，不磨皮、不刻意美白。\n"
-                        : "布光与色彩：面部受光充分、五官清楚，配色按设定准确还原，不发灰发脏，画面风格写明了调色的按风格来。\n")
-                    + "角色设定：" + desc + "\n"
-                    + "所有分区都是同一个人：脸型、五官、发型、肤色、体型、服装和配饰完全一致；画面里不出现其他人物、剧情场景或未设定的道具。\n"
-                    + "图中不写任何文字、标注、编号、色板或水印。";
-        };
+        String kind = asset.path("kind").asText();
+        java.util.Map<String, Object> vars = new java.util.LinkedHashMap<>();
+        vars.put("style", style);
+        vars.put("name", asset.path("name").asText());
+        vars.put("description", asset.path("description").asText());
+        vars.put("live", liveAction(style));
+        vars.put("isScene", "scene".equals(kind));
+        vars.put("isProp", "prop".equals(kind));
+        vars.put("isCharacter", !"scene".equals(kind) && !"prop".equals(kind));
+        return media(prompts, StudioPromptCallPoints.DIRECTOR_ASSET_IMAGE, vars, version);
     }
 
     /** 布局：1 个镜头出单张，2–4 个镜头出 2×2（格子与整板同比例）。 */
@@ -454,28 +406,58 @@ public final class DirectorPrompts {
 
     private static final String[] CELL_NAMES = {"左上", "右上", "左下", "右下"};
 
-    public static String boardPrompt(JsonNode settings, JsonNode clip, List<Ref> refs, java.util.Map<String, String> speakerNames) {
+    /** 分镜图的出图描述（1 个镜头出单张，2–4 个镜头出 2×2），正文在提示词库 stage-director-board；version 同 {@link #assetPrompt}。 */
+    public static String boardPrompt(StudioPromptAssembler prompts, JsonNode settings, JsonNode clip, List<Ref> refs, Integer version) {
         String style = settings.path("style").asText("真人写实");
-        String aspect = settings.path("aspectRatio").asText("9:16");
         JsonNode shots = clip.path("shots");
-        int[] layout = boardLayout(shots.size());
-        StringBuilder b = new StringBuilder();
-        if (layout[0] == 1) b.append(style).append("风格的剧情分镜画面，画幅 ").append(aspect).append("。\n");
-        else b.append(style).append("风格，生成 2×2 分镜板：四个等大无间隙的格子，整板 ").append(aspect)
-                .append("，每格 ").append(aspect).append("，按左上、右上、左下、右下的顺序阅读。\n");
-        appendRefs(b, refs);
-        if (!refs.isEmpty()) b.append("参考图里的多视角或资料排版代表同一个资产，不要复制资料排版、背景，也不要把同一个角色画成多个人。")
-                .append("参考图只确定人物身份、造型、道具外观和空间，画面里按镜头重新给人物布光，参考图本身偏暗或偏色的地方不照搬。\n");
+        boolean single = boardLayout(shots.size())[0] == 1;
+        java.util.Map<String, Object> vars = new java.util.LinkedHashMap<>();
+        vars.put("style", style);
+        vars.put("aspect", settings.path("aspectRatio").asText("9:16"));
+        vars.put("single", single);
+        vars.put("live", liveAction(style));
+        List<java.util.Map<String, Object>> rs = new ArrayList<>();
+        for (Ref r : refs) rs.add(java.util.Map.of("label", r.label(), "name", r.name(), "isScene", "scene".equals(r.kind()), "isProp", "prop".equals(r.kind()),
+                "isCharacter", !"scene".equals(r.kind()) && !"prop".equals(r.kind())));
+        vars.put("refs", rs);
+        vars.put("hasRefs", !refs.isEmpty());
+        List<java.util.Map<String, Object>> cells = new ArrayList<>();
         for (int i = 0; i < shots.size() && i < MAX_SHOTS; i++) {
-            JsonNode s = shots.get(i);
-            b.append(layout[0] == 1 ? "画面：" : CELL_NAMES[i] + "格：").append(s.path("size").asText()).append("，")
-                    .append(s.path("camera").asText()).append("。").append(s.path("still").asText()).append("\n");
+            JsonNode sh = shots.get(i);
+            cells.add(java.util.Map.of("position", CELL_NAMES[i], "size", sh.path("size").asText(), "camera", sh.path("camera").asText(), "still", sh.path("still").asText()));
         }
-        if (layout[0] == 2 && shots.size() < 4) b.append("没有用到的格子保持纯灰色留白。\n");
-        b.append(boardLighting(style));
-        b.append(layout[0] == 1 ? "只描绘这一个静态时刻，" : "各格沿用同一身份、造型、空间和光源，人物的肤色和整体色调保持一致，明暗和光色只随画面描述的布光变化；机位变化可以让人物在画面左右位置合理变化。每格只画一个静态时刻，")
-                .append("不画动作残影。图内不画文字、字幕、镜号或水印。");
-        return b.toString();
+        vars.put("cells", cells);
+        vars.put("blanks", !single && shots.size() < 4);
+        return media(prompts, StudioPromptCallPoints.DIRECTOR_BOARD, vars, version);
+    }
+
+    /**
+     * 追加在出图描述后面的说明（stage-director-image-notes）：refKind 是用户参考图所属资产的类型（没有就 null），
+     * baseOnLabel 是「在当前图上修改」时当前图的编号（没有就 null）。用户手改过的描述也照样追加；两样都没有返回空串。
+     */
+    public static String imageNotes(StudioPromptAssembler prompts, String refKind, String baseOnLabel) {
+        java.util.Map<String, Object> vars = new java.util.LinkedHashMap<>();
+        vars.put("refScene", "scene".equals(refKind));
+        vars.put("refProp", "prop".equals(refKind));
+        vars.put("refCharacter", refKind != null && !"scene".equals(refKind) && !"prop".equals(refKind));
+        vars.put("baseOn", baseOnLabel == null ? "" : baseOnLabel);
+        if (refKind == null && baseOnLabel == null) return "";
+        prompts.requireStage(StudioPromptCallPoints.DIRECTOR_IMAGE_NOTES);
+        return media(prompts, StudioPromptCallPoints.DIRECTOR_IMAGE_NOTES, vars, null);
+    }
+
+    /** 这个环节现在的版本（生成时记进候选，之后按它核对）；库里没有返回 0。 */
+    public static int templateVersion(StudioPromptAssembler prompts, String stage) {
+        return prompts.library().find(stage).map(com.aistareco.aep.ipstudio.prompt.StudioPromptEntry::version).orElse(0);
+    }
+
+    private static String media(StudioPromptAssembler prompts, String stage, java.util.Map<String, Object> vars, Integer version) {
+        if (version == null && prompts.library().find(stage).filter(e -> !e.withdrawn()).isEmpty()) return null;
+        try {
+            return prompts.assemble(StudioPromptAssembler.Call.of(stage, vars, version == null ? null : java.util.Map.of(stage, version), null)).user();
+        } catch (IllegalStateException missingVersion) {
+            return null; // 库里找不到候选记的那一版：没法按那一版核对，按当前版本比
+        }
     }
 
     /** 声音参考：audio 是本次请求里的编号（音频1、音频2…），只绑定在说话的角色上。 */
@@ -915,7 +897,7 @@ public final class DirectorPrompts {
 
     // ── 旧版出图模板（IMAGE_PROMPT_FORMAT 2，2026-10-28 发布的那一版）────────────────────────────
     // 已随 20261028-director-delete 上线并出过图，只用来核对那一版生成的参考图 / 分镜图，不要拿它出新图。
-    // 它按关键词推断特殊布光、命中就关补光，「自然色调」「胶片质感」「不要逆光剪影」都会读反；第 3 版改成一段默认指导（见 {@link #boardLighting}）。
+    // 它按关键词推断特殊布光、命中就关补光，「自然色调」「胶片质感」「不要逆光剪影」都会读反；第 3 版改成一段默认指导（现在在提示词库 stage-director-board）。
 
     private static final Pattern LIGHTING_INTENT_V2 = Pattern.compile(
             "逆光|剪影|背光|轮廓光|只见轮廓|看不清(脸|面|五官)|(脸|面部|五官|人)[^，。；]{0,4}(阴影|暗处|暗影)|(隐入|藏在|站在|坐在|躲在)?阴影(里|中)"

@@ -1,6 +1,6 @@
 # Studio 提示词分层架构
 
-> 状态：**部分实施，本地未发布**（2026-10-31 初稿；2026-11-01 整合内容优化 §9；同日实施第 1、2、3 步和第 5 步里的编导部分，见 §14）。
+> 状态：**部分实施，本地未发布**（2026-10-31 初稿；2026-11-01 整合内容优化 §9；同日实施第 1–4 步和第 5 步里的编导部分，见 §14）。
 > 范围：Studio（`apps/web-aiavatar`：创作助手、AI 视频、AI 图片、画布、导演台）。短剧、带货、音乐、素材运营等产品线在后台「Prompt 管理」里的提示词不在本文范围。
 > 相关真源：技能库 [`ip-studio-conversational-video-recreation-plan.md`](ip-studio-conversational-video-recreation-plan.md)（S3，V63）、对话路由 [`ip-studio-dialogue-intents.md`](ip-studio-dialogue-intents.md)、场景 [`studio-scene-creation.md`](studio-scene-creation.md)、导演台 [`ai-director-plan.md`](ai-director-plan.md)。
 > 内容优化（§9）整合自 [`prompts/studio-video-scene-prompts.md`](prompts/studio-video-scene-prompts.md)（2026-11-01 版）的提示词正文：五段式方案卡、事实规则、21 个视频场景范式，以及它 §9 新增的四条写法。提示词原文尽量不动，只按层拆开，改动处逐条注明原因。该文件 §8 的参考站接口实测仍在原处，作对照参考。
@@ -548,6 +548,7 @@ Studio 的 10 个键迁完后，`PromptService` 不再为 Studio 解析它们；
 - **库结构（第 1 步）**：`ipstudio/prompt` 包。`PromptTemplate`（Mustache 子集，和旧 `fill` 兼容；区段标签、空的分层变量和输出格式独占一行时整行去掉）、`StudioPromptEntry`（四层文件头校验）、`StudioPromptStages` + `StudioPromptCallPoints`（调用点登记：变量、必填项、输出格式、预览示例）、`StudioPromptLibrary`（灌种子、文件变了自动出版本、后台发布后以库为准、60 秒缓存、按版本读）、`StudioPromptAssembler`（按层拼、冻结版本、逐次调用记录）、`PromptImports` / `SceneImports`（切换导入，§4.6）。技能目录只认制作做法（`isWorkflowHeader`），提示词条目不会被对话路由、`read_skill` 或执行器看到。后台 `/api/admin/studio/skills` 同时管两类：发布、回滚、停用按类型校验，同一个 key 不能换层，「最后一个启用」只算做法；新增 `POST /api/admin/studio/skills/preview`。apps/admin 的页面改名「提示词与技能」，提示词条目用正文编辑和预览面板，没有做法的表单和试跑。
 - **场景与编导（第 2 步）**：37 个场景条目（16 个图片场景照搬出图描述，21 个视频场景是 §9.6 的新内容）；三个环节 `stage-scene-image`、`stage-scene-handoff`、`stage-scene-script`。`StudioSceneCatalog` 里写死的句子全部删掉，改为按环节拼；场景的创作文字以提示词库为准，叠在场景目录上（`overlay`），`GET /scenes` 形状不变；场景后台保存时把改过的拍法、要用到的信息、出图描述发布成场景条目的新版本（`publishEntryContent`），场景后台加了「能推断」开关。编导请求改为文字任务带 `scene` 场景输入，服务端受理时拼并冻结版本（`_exec.prompt`）；AI 视频页不再先拼话再提交，改稿时的设置变化传 `settingsChanged`，页面上写死的改稿句删掉。
 - **画布与对话（第 3 步）**：十四个环节进库并通过逐字一致测试（`StudioPromptStageParityTest`，底座按空核对）：`stage-dialogue`（对话回合；受理时冻结对话、摘要、看图、方案四个环节的版本，工具按冻结版本拼）、`stage-dialogue-summary`、`stage-view-images`、`stage-skill-plan`（对话的 propose_plan、文字任务、后台试跑三处共用）、`stage-skill-check`、`stage-skill-distill`、`stage-canvas-text`、`stage-canvas-script`、`stage-asset-extract`、`stage-recreation`（复刻受理时连同下面三个一起冻结）、`stage-recreation-observe`、`stage-film-study-plan`、`stage-film-study`、`stage-image`（画布出图包装）。每份提示词里的 JSON 格式句挪进代码（`StudioPromptFormats`）；按请求追加的改稿契约和附带素材说明，作为调用点传入的格式（`contracts` / `appendix`）。Studio 不再读旧 Prompt 管理里的这十个键（`promptKey` 只在任务输入里留作旧标识）。受理时间早于这次改动的对话回合，照旧用当时存下的模板。
+- **导演台（第 4 步）**：文字任务六个环节 `stage-director-script`（编剧）、`-split`（分集）、`-extract`（资产提取）、`-storyboard`（写分镜脚本与重写，按 `reshoot` / `single` 分段）、`-assistant`（创作助手）、`-brief`（写剧本前问答）；题材 6 种、调性 5 种、反转线是 12 个内容方法（`methods/director-*`），由代码按作品的选择传进编剧环节（拼装器支持一次拼多份方法）。导演台拼自己的底座 `base-director`（原 `COMMON`），调用点登记表新增「拼哪份底座」（§14.2）。出图两份描述 `stage-director-asset-image`、`stage-director-board`（`image-model`）和附加说明 `stage-director-image-notes`（`message`）进库；新候选记 `promptVersions`，「需更新」按候选记的那一版核对，后台发新版本不会把已采用的图标成需更新；模板进库前生成的（记第 3 版、没有版本号）就是库里的 v1。逐字一致测试 `DirectorPromptStageParityTest`（旧代码原样留在 `LegacyDirectorPrompts`），版本核对 `DirectorImageTemplateVersionTest`。
 - **编导内容（第 5 步的一部分）**：底座写入事实规则（§9.5）；编导环节换成 §9.3 的专门提示词（五段式、可推断、改稿继承）；镜头行写法、JSON 外壳、附图说明在代码里（§9.4）。
 - **验证**：后端 `PromptTemplateTest`、`StudioPromptEntryTest`（含仓库文件全量解析、镜头行例子能被 `H3PromptRewrite` 认出）、`StudioPromptLibraryStoreTest`（H2：同表隔离、后台发布优先、冻结版本照旧渲染、两种导入、预览）、`StudioScenePromptParityTest`（场景出图、交给助手在全部场景几百种输入下和搬家前的代码逐字一致）、`StudioSceneCatalogTest`、`StudioTextWorkflowTest`（编导请求按库拼并记版本）、`StudioSkillRegistryTest` 回归；前端 AI 视频 / AI 图片页 80 条、后台技能页与场景后台测试；全仓 typecheck、后台 tsc、`check:api-contract`、后端离线编译。
 
@@ -561,12 +562,15 @@ Studio 的 10 个键迁完后，`PromptService` 不再为 Studio 解析它们；
 | §10 第 1–4 步底座为空 | 底座已写入事实规则 | 第 5 步的编导内容一起做了；目前只有编导一个大模型环节进了库，其它调用点搬进来时按「底座为空」核对逐字一致 |
 | §9.6 剧情类的冲突点、结局、反转点、谜团、小事 / 情绪点，以及剧情植入的「商品怎么帮上忙」为必填 | 必填但标「可推断」 | 剧情类本来就能虚构，这几项缺了就挡着不让出片，体验太差；可推断的项没写时编导自己写，并在 summary 里说明 |
 | §3.4 每次调用追加一条记录 | 文字任务、编导、复刻受理时记版本和这次调用；对话回合只在受理时冻结版本 | 对话一轮几十次调用，逐次写回任务输入要反复写库；冻结版本已经保证在途任务不受改版影响 |
+| §2「底座 1 份、固定」 | 导演台的调用点拼自己的底座 `base-director`（原 `DirectorPrompts.COMMON`），其它调用点拼平台底座 | 平台底座里的事实规则面向商品宣传（「不给编出来的内容配上年份、次数、数量」「不写十年老店」），套到短剧虚构创作上会让剧本变干；导演台原本就有自己的一套基础规则（优先级、防注入、不篡改设定），搬进来正好是一份底座 |
+| §8 #20 导演台视频提示词、首帧模板进库 | 留在代码（`DirectorPrompts.videoPrompt` / `framePrompt`） | 视频提示词的镜头行「第N镜（…）」「名字说：「…」」是 H3 改写解析的格式，以「声音参考：」开头的行是「需更新」核对时要忽略的行，属于 §6 第 1 类；镜头里谁在画面、谁在画外也是代码判断的。真正的文字只有几句，单独搬进库得不偿失 |
+| §10 第 4 步删掉手写旧版出图函数 | 出图第 1、2 版（`legacyAssetPrompt` / `assetPromptV2` 等）留在代码 | 它们只用来核对模板进库之前生成的旧图，以后不会再改；搬进库要往版本历史里补两版，种子机制不支持 |
 | §12.4 模板库选 jmustache | 自己实现三种写法（约 150 行） | 本机 Maven 仓库没有这个包，离线编译不了；三种写法自己实现更可控 |
 
 ### 14.3 还没做
 
 - **第 3 步剩下的**：① IP 形象 / 造型（§8 #16）走数字人的 `DapJobRunner`，和 dap 域共用，没动；② 代码里还在算的几段变量文字：对话的技能说明与阶段说明（`StudioDialogueTurnWorker.skillText` / `stageText` / `executionText`）、方案规划的预算说明（`ProposePlanTool`）、出图的参考图说明（`IpRunService.identityLead` / `refOrderHint` / `refNotes`）、复刻综合时的「用户补充分析重点」、读图降级时的分批提示（`StudioVisionFallback`）；③ 对话回合只冻结版本、不逐次记录调用（完整文本看上游调用日志）；④ 旧 Prompt 管理里这十个键的行还在，种子程序照旧灌，后台页面要标「已迁到提示词与技能」（§4.8）。
-- **第 4 步**：导演台（§8 #17–#20）。
+- **第 4 步剩下的**：导演台视频提示词和首帧模板仍在代码（§14.2 说明了原因）；资产图、分镜图停用模板时，页面保留原来的描述，重新出图报「提示词未配置」。
 - **转交给助手和「出视频」做法的五段式**、**五组内容方法**（§9.8）。
 - **后台页放 studio-admin**（§12.2）：这次先在 apps/admin 原页面上做。
 - **真模型验收**（§11）还差一半。2026-11-01 已在本地（库副本 + 独立后端）用 Agnes 2.5 Flash 跑过一次同城团购（15 秒竖屏，原文 §4 的客户输入，扣 2 积分）：五段式齐全；5 个镜头 0/3/6/9/12 秒，H3 改写的镜头和台词规则都认得出（5 句台词全部认出）；地址、原价现价、老字号、排队原样出现，领券和到店核销分两段；没编堂食、打包、单人份；缺「怎么用」时写了「还缺」行并在台词里留【待补】。看到的小问题：「还缺」行把非必填的「活动截止时间」也列上了；第 5 镜写了「出现简单的文字指引箭头」，和「不生成悬浮文字」有出入。**没验的**：交给 H3 改写后的英文长度、「始终禁止」那段会不会让画面冒字、真出片效果（本地没有 H3 改写端点和可用的视频队列），上线前要用线上同款模型补。
