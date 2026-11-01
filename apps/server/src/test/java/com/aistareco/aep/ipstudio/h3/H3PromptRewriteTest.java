@@ -82,7 +82,7 @@ class H3PromptRewriteTest {
 
     private static ObjectNode out() {
         ObjectNode o = OM.createObjectNode().put("subject_definitions", "<Subject 1> is Chen Mo in <Picture 2>.")
-                .put("summary", "[reference generation] A night scene.").put("retention_analysis", "<Subject 1> (appears in [Shot 1]): fully_preserved - face.")
+                .put("summary", "[reference generation] A night scene.").put("retention_analysis", "<Subject 1> (appears in [Shot 1]): fully_preserved - face.\n<Picture 1> ([Shot 1]–[Shot 3] storyboard): fully_preserved - layout.\n<Picture 3> (Lao Zhao): fully_preserved - face.")
                 .put("style", "Live-action, cinematic, cold blue night.").put("overall_soundscape", "Wind and sand.").put("non_diegetic_music", "N/A");
         ArrayNode shots = o.putArray("shots");
         shots.add("A static wide shot as <Subject 1> walks out of the cave.");
@@ -433,5 +433,23 @@ class H3PromptRewriteTest {
         var req = new H3PromptRewrite.Request(H3PromptRewrite.Mode.T2V, 5, List.of(), src, false, 1, List.of(0.0), "中文", false);
         assertEquals(H3PromptRewrite.RULES, H3PromptRewrite.meta(new com.fasterxml.jackson.databind.ObjectMapper(), req, 0, 0, 0).path("rules").asText());
         assertFalse(H3PromptRewrite.user(req).contains(H3PromptRewrite.RULES), "规则修订号不进改写输入，已能用的英文稿不因它失效");
+    }
+
+    /** 2026-10-31 cl45 加篇幅预算后真调第 2 次：整份稿没提分镜图 <Picture 1>。漏了的参考素材要提示，让手动生成停下来选。 */
+    @Test
+    void aDraftThatLeavesOutAnAttachedReferenceIsFlagged() {
+        ObjectNode missing = out().put("retention_analysis", "<Subject 1> (appears in [Shot 1]): fully_preserved - face.");
+        // 素材清单里有英文说明的（分镜图）按清单补回，只记一笔；清单里没有的（这份 fixture 没给图 3）才提示
+        JsonNode r = check(missing);
+        assertTrue(r.path("usable").asBoolean());
+        assertEquals(List.of("优化稿没有提到参考图 3，这份素材可能不起作用"), warnings(r));
+        assertEquals(List.of("优化稿漏了参考图 1 的说明，已按素材清单补上"), notes(r));
+        String t = r.path("template").asText();
+        assertTrue(t.contains("<Picture 1> is the attached reference: storyboard."), t);
+        assertTrue(t.contains("<Picture 1>: fully_preserved - used as described in subject_definitions."), t);
+        // 旧任务没记素材清单：照旧提示
+        ObjectNode old = meta(); old.remove("references");
+        assertTrue(warnings(H3PromptRewrite.validate(OM, old, missing)).contains("优化稿没有提到参考图 1，这份素材可能不起作用"));
+        assertTrue(warnings(check(out())).isEmpty(), "三张图都提到了就不提示");
     }
 }

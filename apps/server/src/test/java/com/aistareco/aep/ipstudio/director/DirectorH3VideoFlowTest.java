@@ -104,7 +104,7 @@ class DirectorH3VideoFlowTest {
     /** 模型按约定写回的 JSON：每句台词只留占位。 */
     private ObjectNode modelOutput() {
         ObjectNode o = om.createObjectNode().put("subject_definitions", "<Subject 1> is Chen Mo in <Picture 2>. <Subject 2> is Lao Zhao in <Picture 3>.")
-                .put("summary", "[reference generation] Two men talk in a sandy corridor.").put("retention_analysis", "<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved - face.")
+                .put("summary", "[reference generation] Two men talk in a sandy corridor.").put("retention_analysis", "<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved - face.\n<Picture 1> ([Shot 1]–[Shot 2] storyboard): fully_preserved - layout.")
                 .put("style", "Live-action, cinematic.").put("overall_soundscape", "Wind blows sand along the corridor.").put("non_diegetic_music", "N/A");
         ArrayNode shots = o.putArray("shots");
         shots.add("A static wide shot as <Subject 1> walks out of the cave carrying a tin box.");

@@ -119,6 +119,7 @@ class DirectorVideoPromptTest {
         assertTrue(s1.contains("餐馆老板说：「这个月迟到三回，扣了啊。」"), s1);
         assertTrue(s1.contains("静儿听着，嘴闭着。"), s1);
         assertFalse(s1.contains("画面里只有") || s1.contains("画外"), s1);
+        assertFalse(p.contains("【声音】"), "有台词、没有声音参考也没有音色描述时，不留一个空的【声音】标题：" + p);
         // 改写时认得出这句台词、说话人和所在镜头，仍走「代码填台词」
         var src = com.aistareco.aep.ipstudio.h3.H3PromptRewrite.source(p, List.of("旁白", "静儿", "餐馆老板"));
         assertEquals(1, src.lines().size());

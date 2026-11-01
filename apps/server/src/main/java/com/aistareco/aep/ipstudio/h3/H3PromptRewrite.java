@@ -133,11 +133,12 @@ public final class H3PromptRewrite {
      * 只是给模型的目标，是否收得下仍以填完台词后的全文为准（{@link #validate}）。
      */
     private static final String LENGTH_REF = """
-            - Length: the video model accepts at most 7,000 characters for the whole prompt, every section and the spoken lines included. Keep the whole result to about 850 English words.
+            - Length: the video model accepts at most 7,000 characters for the whole prompt, every section and the spoken lines included. Keep the whole result under about 1,000 English words.
+            - Every attached reference (each <Picture N>, <Video N> and <Audio N>, the storyboard or frame picture included) keeps its own line in subject_definitions and in retention_analysis. Keeping it short never means leaving a reference out.
             - "subject_definitions": one line per item, at most two sentences: the label, its source picture, and only the few features that identify it in the images (for example age and gender, hair, main clothing colors, one signature item). Do not translate the written notes item by item.
             - "retention_analysis": one short line per label: the label, where it appears, the relationship marker, and at most one short phrase. Do not list the features from subject_definitions again.
             - "summary": two or three sentences.
-            - detailed_description: 350–500 English words for the style line and all shots together, as the guide says; a dialogue-dense request may go somewhat longer. Describe a subject's identifying features at its first clear appearance only, then refer to it by its label.
+            - detailed_description: 350–500 English words for the style line and all shots together, as the guide says, and not shorter than 350; a dialogue-dense request may go somewhat longer. Describe a subject's identifying features at its first clear appearance only, then refer to it by its label.
             """;
 
     /** 其余模式：官方没给篇幅，只说总长上限。 */
@@ -418,6 +419,9 @@ public final class H3PromptRewrite {
         ObjectNode meta = om.createObjectNode().put("task", "videoPrompt").put("rules", RULES).put("mode", r.mode().name()).put("codeLines", r.codeLines())
                 .put("shots", fixed ? r.shots() : 0).put("seconds", r.seconds())
                 .put("pictures", pictures).put("videos", videos).put("audios", audios).put("language", languageTag(r.language()));
+        // 参考素材清单原样记下：模型漏写某一份时，校验按它补回（见 validate）。
+        ArrayNode refs = meta.putArray("references");
+        r.references().forEach(refs::add);
         ArrayNode cuts = meta.putArray("starts");
         if (fixed) r.starts().forEach(cuts::add);
         Map<String, Integer> shotOf = new HashMap<>();
@@ -513,6 +517,21 @@ public final class H3PromptRewrite {
             if (defs.isEmpty()) warnings.add("优化稿缺少主体说明（subject_definitions），人物可能对不上参考图");
             if (summary.isEmpty()) warnings.add("优化稿缺少概述（summary）");
             if (retention.isEmpty()) warnings.add("优化稿缺少保留说明（retention_analysis），人物外观可能不一致");
+            // 每张参考图、每段参考音频都要在稿里出现：没提到的那份素材 H3 不知道拿它做什么。
+            // 2026-10-31 cl45 加篇幅预算后真调第 2 次，整份稿一次都没提分镜图 <Picture 1>。
+            // 漏掉的按交给模型的素材清单补一行定义和一行保留说明（只取英文说明，中文资产描述不带进去）；清单里也查不到才提示。
+            String all = defs + "\n" + summary + "\n" + retention + "\n" + String.join("\n", bodies);
+            for (var kind : List.of(Map.entry("Picture", "参考图"), Map.entry("Video", "参考视频"), Map.entry("Audio", "参考音频")))
+                for (int i = 1; i <= limits.get(kind.getKey()); i++) {
+                    String label = "<" + kind.getKey() + " " + i + ">";
+                    if (all.contains(label)) continue;
+                    String desc = referenceNote(meta, label);
+                    if (desc == null) { warnings.add("优化稿没有提到" + kind.getValue() + " " + i + "，这份素材可能不起作用"); continue; }
+                    defs = (defs + "\n" + label + " is the attached reference: " + desc).strip();
+                    retention = (retention + "\n" + label + ": " + ("Audio".equals(kind.getKey()) ? "reference" : "fully_preserved")
+                            + " - used as described in subject_definitions.").strip();
+                    notes.add("优化稿漏了" + kind.getValue() + " " + i + " 的说明，已按素材清单补上");
+                }
         }
         boolean anyShot = false;
         for (int i = 0; i < bodies.size(); i++) {
@@ -558,6 +577,20 @@ public final class H3PromptRewrite {
         ArrayNode n = result.putArray("notes");
         notes.forEach(n::add);
         return result;
+    }
+
+    /** 素材清单里这一份的英文说明（去掉「Written notes」后面的中文资产描述）；旧任务没记清单或找不到时返回 null。 */
+    private static String referenceNote(JsonNode meta, String label) {
+        for (JsonNode ref : meta.path("references")) {
+            String s = ref.asText("");
+            if (!s.startsWith(label + ":")) continue;
+            String desc = s.substring(label.length() + 1);
+            int notes = desc.indexOf(" Written notes:");
+            if (notes >= 0) desc = desc.substring(0, notes);
+            desc = desc.strip();
+            return desc.isEmpty() || HAN_RUN.matcher(desc).find() ? null : desc;
+        }
+        return null;
     }
 
     private static final Pattern FULLY_PRESERVED = Pattern.compile("^(<(?:Subject|Picture|Video) \\d+>[^\n]*?:\\s*fully_preserved)\\s*-.*$");

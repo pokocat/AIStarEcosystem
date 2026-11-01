@@ -889,10 +889,12 @@ public final class DirectorPrompts {
             b.append('\n');
             t = end;
         }
-        b.append("\n【声音】\n");
-        if (!anyLine) b.append("这一段没有对白。\n");
-        for (VoiceRef v : voices) b.append("声音参考：").append(v.name()).append("的音色、口音照").append(v.label()).append("。\n");
-        voiceDescs.forEach((name, desc) -> b.append(name).append("的音色：").append(desc).append("\n"));
+        StringBuilder sound = new StringBuilder();
+        if (!anyLine) sound.append("这一段没有对白。\n");
+        for (VoiceRef v : voices) sound.append("声音参考：").append(v.name()).append("的音色、口音照").append(v.label()).append("。\n");
+        voiceDescs.forEach((name, desc) -> sound.append(name).append("的音色：").append(desc).append("\n"));
+        // 没内容就不写这一段：空标题也是一句可能被 H3 念出来的中文（cl45 第 4 版试跑时发现）。
+        if (!sound.isEmpty()) b.append("\n【声音】\n").append(sound);
         b.append("\n【配乐】\n无");
         return b.toString();
     }
