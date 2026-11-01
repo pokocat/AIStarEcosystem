@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
-import { studioAdminPath } from "@/lib/app-path";
 
 export default function HomePage() {
-  redirect(studioAdminPath("/business"));
+  // Next applies the configured basePath to server redirects. Passing an
+  // already-prefixed path here would produce /admin/admin/business.
+  redirect("/business");
 }
