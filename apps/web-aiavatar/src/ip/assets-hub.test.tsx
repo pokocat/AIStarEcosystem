@@ -9,6 +9,7 @@ vi.mock('next/navigation', () => ({ useSearchParams: () => route.query, useRoute
 vi.mock('next/link', () => ({ default: ({ children, ...p }: any) => <a {...p}>{children}</a> }));
 vi.mock('./studio-page', () => ({ StudioPage: ({ children }: any) => <main>{children}</main> }));
 vi.mock('./assets-people', () => ({ AssetsPeople: ({ library }: any) => <p>人物 {library}</p> }));
+vi.mock('./audio-recorder-dialog', () => ({ AudioRecorderDialog: ({ open, onSave, onClose }: any) => open ? <button onClick={async () => { await onSave(new File(['wav'], '旁白.wav', { type: 'audio/wav' })); onClose(); }}>保存测试录音</button> : null }));
 vi.mock('./studio-errors', async () => {
   const { useCallback, useState } = await import('react');
   return {
@@ -100,4 +101,13 @@ test('the 人物 tab hands the chosen library to the people view', async () => {
   render(<AssetsHub/>);
   expect(await screen.findByText('人物 f1')).toBeDefined();
   expect(api.materials).not.toHaveBeenCalled();
+});
+
+test('audio recordings use the audio import path and preserve the current library', async () => {
+  route.query = new URLSearchParams('tab=audio&lib=f2');
+  render(<AssetsHub/>);
+  fireEvent.click(await screen.findByRole('button', { name: '录音' }));
+  fireEvent.click(screen.getByRole('button', { name: '保存测试录音' }));
+  await waitFor(() => expect(api.upload).toHaveBeenCalledWith(expect.objectContaining({ name: '旁白.wav', type: 'audio/wav' }), 'audio', 'f2'));
+  await waitFor(() => expect(screen.queryByRole('button', { name: '保存测试录音' })).toBeNull());
 });

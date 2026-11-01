@@ -21,6 +21,7 @@ import { VoiceApi } from '@/proto/api';
 import type { VoiceAsset } from '@/proto/data';
 import { masonry, mediaRatio, useMasonryColumns } from './asset-masonry';
 import { AssetThumb } from './asset-thumb';
+import { AudioRecorderDialog } from './audio-recorder-dialog';
 import { AI_LIBRARY, libraryQuery, sourceLabel } from './assets-hub-shared';
 import { AssetsPeople } from './assets-people';
 import { AiMark } from './studio-ai-icon';
@@ -165,6 +166,7 @@ function MediaWall({ tab, library, folders, onFoldersChanged }: {
   const [selected, setSelected] = useState<string[]>([]);
   const [preview, setPreview] = useState<LibraryMaterial>();
   const [uploading, setUploading] = useState(false);
+  const [recording, setRecording] = useState(false);
   const [newFolderFor, setNewFolderFor] = useState<string[]>();
   const epoch = useRef(0);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -245,7 +247,9 @@ function MediaWall({ tab, library, folders, onFoldersChanged }: {
     ...voiceItems.map(voice => ({ type: 'voice' as const, voice })),
     ...items.map(item => ({ type: 'material' as const, item })),
   ];
-  const ratioOf = (w: WallItem) => w.type === 'upload' ? 4 / 3 : w.type === 'voice' ? 1 : w.item.kind === 'image' || w.item.kind === 'video' ? mediaRatio(w.item.data.width, w.item.data.height, w.item.kind === 'video' ? 16 / 9 : 1) : w.item.kind === 'text' ? 0.75 : 1;
+  // The upload tile includes its action row: its complete outline aligns with the adjacent audio cover.
+  const uploadRatio = tab === 'audio' || tab === 'all' ? 1 : 4 / 3;
+  const ratioOf = (w: WallItem) => w.type === 'upload' ? uploadRatio : w.type === 'voice' ? 1 : w.item.kind === 'image' || w.item.kind === 'video' ? mediaRatio(w.item.data.width, w.item.data.height, w.item.kind === 'video' ? 16 / 9 : 1) : w.item.kind === 'text' ? 0.75 : 1;
   const columnsOfItems = masonry(wallItems, columns, ratioOf);
   const toggle = (id: string) => setSelected(old => old.includes(id) ? old.filter(x => x !== id) : [...old, id]);
   const count = total + voiceItems.length;
@@ -274,15 +278,22 @@ function MediaWall({ tab, library, folders, onFoldersChanged }: {
           : <><h3>没有找到</h3><p>换个名称或来源试试。</p><Button onClick={() => { setKeyword(''); setSource('all'); }}>清除筛选</Button></>}
       </div>
       : <div className="assets-wall">{columnsOfItems.map((col, i) => <div key={i} className="assets-wall-col">{col.map(w =>
-        w.type === 'upload' ? <button key="upload" type="button" className="assets-upload" disabled={uploading} onClick={() => fileInput.current?.click()}>
+        w.type === 'upload' ? <div key="upload" className="assets-upload-tile" style={{ aspectRatio: `1 / ${uploadRatio}` }}><button type="button" className="assets-upload" disabled={uploading} onClick={() => fileInput.current?.click()}>
           <span className="assets-upload-plus"><Plus size={18}/></span>{uploading ? '正在上传…' : '上传'}<small>{tab === 'all' ? '图片、视频、音频' : TYPE_LABEL[tab]}</small>
         </button>
+          {(tab === 'audio' || tab === 'all') && <div className="assets-upload-actions"><button type="button" disabled={uploading} onClick={() => fileInput.current?.click()}>上传文件</button><button type="button" disabled={uploading} onClick={() => setRecording(true)}><Mic size={14}/>录音</button></div>}
+        </div>
         : w.type === 'voice' ? <VoiceTile key={`voice:${w.voice.id}`} voice={w.voice}/>
         : <MaterialTile key={w.item.id} item={w.item} subline={[sourceLabel(w.item.source), folderIdOf(w.item) && folderIdOf(w.item) !== library ? folderName(folderIdOf(w.item)) : ''].filter(Boolean).join(' · ')}
           selecting={selecting} selected={selected.includes(w.item.id)} onToggle={() => toggle(w.item.id)} onOpen={() => setPreview(w.item)} menu={moveMenu([w.item.id], folderIdOf(w.item) || undefined)}/>)}
       </div>)}</div>}
     {hasMore && !error && <div className="assets-more"><Button loading={loading} onClick={() => void loadMore()}>加载更多</Button></div>}
+
     <input ref={fileInput} hidden multiple type="file" accept={ACCEPT[tab]} aria-label="选择要上传的文件" onChange={e => { const files = [...(e.target.files || [])]; e.target.value = ''; if (files.length) void upload(files); }}/>
+    <AudioRecorderDialog open={recording} onClose={() => setRecording(false)} onSave={async file => {
+      await uploadLibraryMedia(file, 'audio', library !== 'all' && !isAi ? library : undefined);
+      setKeyword(''); setSource('all'); setRevision(n => n + 1); message.success('录音已保存到资产库');
+    }}/>
     <FolderDialog value={newFolderFor ? { name: '' } : undefined} onClose={() => setNewFolderFor(undefined)} onSaved={f => { const ids = newFolderFor || []; setNewFolderFor(undefined); onFoldersChanged(); void move(ids, f.id); }}/>
     <Modal open={!!preview} title={preview?.title} footer={null} width={960} getContainer={studioOverlayContainer} className="library-preview-modal" onCancel={() => setPreview(undefined)} destroyOnHidden>
       {preview && <div className="library-full-preview">{preview.kind === 'image' ? <SignedImage storageKey={preview.data.storageKey} src={preview.data.dataUrl} alt={preview.title}/> : preview.kind === 'video' ? <SignedVideo storageKey={preview.data.storageKey} src={preview.data.url} controls preload="metadata"/> : preview.kind === 'audio' ? <SignedAudio storageKey={preview.data.storageKey} src={preview.data.url} controls/> : <pre>{preview.data.content}</pre>}{typeof preview.metadata?.prompt === 'string' && <details><summary>生成时的描述</summary><p>{preview.metadata.prompt}</p></details>}</div>}

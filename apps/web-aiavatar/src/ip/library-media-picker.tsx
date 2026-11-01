@@ -4,12 +4,13 @@
 // 新文件在框里「上传到这个库」，传完自动选中。画布、导演台、创作助手的选择框不走这里（library-reference-picker.tsx 原样）。
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button, ConfigProvider, Input, Modal, Skeleton } from 'antd';
-import { AudioLines, Check, Folder, LayoutGrid, Search, Upload } from 'lucide-react';
+import { AudioLines, Check, Folder, LayoutGrid, Mic, Search, Upload } from 'lucide-react';
 import type { IpSavedAsset, LibraryFolder, LibraryObject } from '@ai-star-eco/types';
 import { canvasLibraryFolder, libraryFolders, libraryMaterials, libraryObjects, uploadLibraryMedia } from '@/canvas-bridge/asset-library';
 import { libraryObjectAsset } from '@/canvas-bridge/library-reference';
 import { SignedAudio } from '@/canvas-bridge/signed-audio';
 import { AssetThumb } from './asset-thumb';
+import { AudioRecorderDialog } from './audio-recorder-dialog';
 import { AI_LIBRARY, lastLibrary, libraryQuery, rememberLibrary, sourceLabel } from './assets-hub-shared';
 import { AiMark } from './studio-ai-icon';
 import { StudioErrorNotice, useStudioErrorState } from './studio-errors';
@@ -38,6 +39,7 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [recording, setRecording] = useState(false);
   const [selected, setSelected] = useState<Record<string, IpSavedAsset>>({});
   const [error, setError] = useStudioErrorState();
   const [revision, setRevision] = useState(0);
@@ -45,7 +47,7 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
   const withPeople = people && mediaType === 'image';
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) { setRecording(false); return; }
     setSelected({}); setKeyword(''); setTab('files'); setError(''); setLibrary(undefined);
     const remembered = lastLibrary();
     setLast(remembered);
@@ -105,7 +107,7 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
       // 「AI 生成」里看不到上传的文件，传完切回「全部」再选中。
       if (library === AI_LIBRARY) setLibrary('all');
       setTab('files'); setKeyword(''); setRevision(n => n + 1);
-    } catch (e) { setError(e); }
+    } catch (e) { setError(e); throw e; }
     finally { setUploading(false); }
   };
   const confirm = async () => {
@@ -139,8 +141,9 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
           </div>}
           <Input className="lmp-search" prefix={<Search size={14}/>} allowClear aria-label="搜索资产" placeholder="搜索名称" value={keyword} disabled={busy} onChange={e => setKeyword(e.target.value)}/>
           <span className="lmp-gap"/>
-          {upload && <><Button icon={<Upload size={14}/>} loading={uploading} disabled={busy} onClick={() => fileInput.current?.click()}>{library && library !== 'all' && library !== AI_LIBRARY ? '上传到这个库' : '上传'}</Button>
-            <input ref={fileInput} type="file" hidden aria-label="选择要上传到资产库的文件" accept={ACCEPT[mediaType]} onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; if (file) void putInLibrary(file); }}/></>}
+          {upload && <><Button icon={<Upload size={14}/>} loading={uploading} disabled={busy || !library} onClick={() => fileInput.current?.click()}>{library && library !== 'all' && library !== AI_LIBRARY ? '上传到这个库' : '上传'}</Button>
+            {mediaType === 'audio' && <Button icon={<Mic size={14}/>} disabled={busy || uploading || !library} onClick={() => setRecording(true)}>录音</Button>}
+            <input ref={fileInput} type="file" hidden aria-label="选择要上传到资产库的文件" accept={ACCEPT[mediaType]} onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; if (file) void putInLibrary(file).catch(() => {}); }}/></>}
         </div>
         {error && <p className="lmp-error"><StudioErrorNotice error={error}/><Button size="small" onClick={() => setRevision(n => n + 1)}>重试</Button></p>}
         {loading && !items.length ? <Skeleton active/> : !items.length
@@ -167,5 +170,5 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
       <Button disabled={busy} onClick={onClose}>取消</Button>
       <Button type="primary" className="lmp-use" loading={busy} disabled={!picked.length || uploading} onClick={() => void confirm()}>{confirmLabel}</Button>
     </footer>
-  </Modal></ConfigProvider>;
+  </Modal><AudioRecorderDialog open={open && recording} onClose={() => setRecording(false)} onSave={putInLibrary}/></ConfigProvider>;
 }

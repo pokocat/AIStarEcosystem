@@ -91,6 +91,45 @@ html[data-layout="desktop"] .assets-tile:is(:hover, :focus-within) .assets-tile-
 .assets-upload:hover { border-color: #b9bfc8; background: #f6f7f9; }
 .assets-upload small { font-size: 11.5px; color: #8a929c; }
 .assets-upload-plus { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--ip-ink, #17202a); color: #fff; }
+.assets-upload-tile { box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; border: 1px dashed #d5d9df; border-radius: 14px; background: #fafbfc; }
+.assets-upload-tile .assets-upload { flex: 1; min-height: 0; aspect-ratio: auto; border: 0; border-radius: 0; }
+.assets-upload-actions { display: flex; flex-shrink: 0; border-top: 1px solid var(--sn-field, #e3e6ea); }
+.assets-upload-actions button { display: flex; flex: 1; align-items: center; justify-content: center; gap: 6px; min-width: 0; min-height: 42px; padding: 8px 4px; border: 0; background: transparent; font: inherit; font-size: 12.5px; color: var(--ip-ink, #17202a); cursor: pointer; }
+.assets-upload-actions button + button { border-left: 1px solid var(--sn-field, #e3e6ea); }
+.assets-upload-actions button:hover { background: var(--ip-soft, #f3f4f6); }
+.assets-upload-tile button:disabled { opacity: .5; cursor: default; }
+.assets-upload-tile button:focus-visible { outline: 2px solid var(--ip-ink, #17202a); outline-offset: -3px; }
+
+/* 录音沿用新版的白面、深墨按钮与小圆角；不显示模拟波形。 */
+.asset-recorder { color: var(--ip-ink, #17202a); font-family: var(--ip-ui, sans-serif); }
+.asset-recorder-intro { margin: 0 0 20px; font-size: 13px; line-height: 1.7; color: var(--ip-muted, #5b6572); }
+.asset-recorder-reading-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.asset-recorder-reading-heading > strong { font-size: 13px; font-weight: 500; }
+.asset-recorder-pace { display: flex; flex-shrink: 0; gap: 2px; padding: 3px; border-radius: 8px; background: var(--ip-soft, #f3f4f6); }
+.asset-recorder-pace button { min-height: 30px; padding: 0 10px; border: 0; border-radius: 6px; background: none; font: inherit; font-size: 12px; color: var(--ip-muted, #5b6572); cursor: pointer; }
+.asset-recorder-pace button[aria-pressed="true"] { background: var(--ip-paper, #fff); color: var(--ip-ink, #17202a); }
+.asset-recorder-pace button:disabled { cursor: default; }
+.asset-recorder-pace button:focus-visible { outline: 2px solid var(--ip-ink, #17202a); outline-offset: 1px; }
+.asset-recorder-script { position: relative; padding: 18px; border-radius: 12px; background: var(--ip-soft, #f3f4f6); }
+.asset-recorder-script p { margin: 0; font-size: 18px; line-height: 2; overflow-wrap: anywhere; }
+.asset-recorder-script p + p { margin-top: 8px; }
+.asset-recorder-script.is-reading p { color: var(--ip-muted, #5b6572); }
+.asset-recorder-script .is-read { color: var(--sn-ai-ink, #3a42b4); }
+.asset-recorder-script .is-current { border-radius: 3px; background: var(--sn-ai-line, #d9ddfa); color: var(--sn-ai-ink, #3a42b4); text-decoration: underline; text-underline-offset: 4px; }
+.asset-recorder-countdown { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; border-radius: inherit; background: var(--ip-soft, #f3f4f6); }
+.asset-recorder-countdown strong { font-size: 40px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.asset-recorder-countdown span { font-size: 13px; color: var(--ip-muted, #5b6572); }
+.asset-recorder-pace-note { margin: 10px 0 18px; color: var(--ip-muted, #5b6572); font-size: 12px; line-height: 1.6; }
+.asset-recorder-state { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.asset-recorder-time { flex-shrink: 0; font-size: 18px; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.4; }
+.asset-recorder-time small { font-size: 12px; font-weight: 400; color: var(--ip-muted, #5b6572); }
+.asset-recorder-state p { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 13px; color: var(--ip-muted, #5b6572); }
+.asset-recorder-state i { width: 7px; height: 7px; border-radius: 50%; background: var(--ip-error, #ad3449); }
+.asset-recorder-preview { display: grid; gap: 8px; margin-top: 20px; }
+.asset-recorder-preview audio { display: block; width: 100%; min-width: 0; margin-bottom: 8px; }
+.asset-recorder-preview label { font-size: 12px; color: var(--ip-muted, #5b6572); }
+.asset-recorder-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 24px; }
+.asset-recorder-modal .ant-modal-container { border-radius: 14px; }
 .assets-skeleton { display: block; width: 100%; border-radius: 14px; background: linear-gradient(90deg, #f3f4f6, #f8f9fa, #f3f4f6); background-size: 200% 100%; animation: assets-shimmer 1.4s ease-in-out infinite; }
 @keyframes assets-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 @media (prefers-reduced-motion: reduce) { .assets-skeleton { animation: none; } }
