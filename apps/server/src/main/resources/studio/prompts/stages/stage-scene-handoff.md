@@ -6,8 +6,8 @@ status: active
 layer: stage
 target: message
 callPoints:
-- AI 视频页把场景交给画布创作助手（StudioSceneCatalog.compose，kind=video）：爆款复刻、超过模型单段上限的长视频
-summary: 拼成一段话作为助手对话的第一条用户消息；它本身不调模型，助手那一轮会拼上底座（docs/studio-prompt-architecture.md §8 #13）。
+- "AI 视频页把场景交给画布创作助手（StudioSceneCatalog.compose，kind=video）：爆款复刻、超过模型单段上限的长视频"
+summary: "拼成一段话作为助手对话的第一条用户消息；它本身不调模型，助手那一轮会拼上底座（docs/studio-prompt-architecture.md §8 #13）。"
 ---
 帮我做一条 {{duration}} 秒的{{orientation}}短视频，类型是「{{sceneTitle}}」。
 {{#ask}}

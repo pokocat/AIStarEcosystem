@@ -28,6 +28,36 @@ public class StudioPromptAssembler {
 
     public StudioPromptLibrary library() { return library; }
 
+    private static volatile StudioPromptAssembler classpathInstance;
+
+    /** 没有 Spring 的构造（单测、工具）用：只读仓库文件。 */
+    public static StudioPromptAssembler classpath() {
+        StudioPromptAssembler a = classpathInstance;
+        if (a == null) synchronized (StudioPromptAssembler.class) { if ((a = classpathInstance) == null) classpathInstance = a = new StudioPromptAssembler(new StudioPromptLibrary()); }
+        return a;
+    }
+
+    /** 注入的拼装器，没有就退到只读仓库文件的那个。 */
+    public static StudioPromptAssembler or(StudioPromptAssembler injected) { return injected != null ? injected : classpath(); }
+
+    /** 新的生成要用的环节在不在：不在（或停用）按「提示词未配置」报 503，不产假内容。 */
+    public void requireStage(String key) {
+        if (library.find(key).filter(e -> !e.withdrawn()).isEmpty())
+            throw new com.aistareco.common.BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED",
+                    "提示词库缺少「" + key + "」：请在后台「提示词与技能」里启用或补齐后重试");
+    }
+
+    /** 受理时冻结并拼一次，结果连同版本记录写进任务输入的 {@code _exec.prompt}。 */
+    public Assembled assembleAndRecord(ObjectMapper mapper, ObjectNode exec, Call call, java.util.Collection<String> freezeKeys) {
+        Map<String, Integer> frozen = call.frozen() != null ? call.frozen() : freeze(freezeKeys);
+        Assembled out = assemble(new Call(call.stage(), call.method(), call.scene(), call.vars(), frozen, call.sceneFallback(), call.formats()));
+        ObjectNode record = exec.putObject("prompt");
+        record.put("key", call.stage());
+        record.set("versions", frozenNode(mapper, frozen));
+        appendCall(record, out.call(mapper, 1, null));
+        return out;
+    }
+
     /**
      * 一次调用。
      *
@@ -35,10 +65,19 @@ public class StudioPromptAssembler {
      * @param scene  场景条目的 key，没有就 null
      * @param frozen 冻结的版本：key → 版本号；为 null 时用当前版本
      * @param sceneFallback 库里没有这个场景条目时用的场景正文（后台新建、还没来得及进库的场景）
+     * @param formats 这次请求由调用点算好的输出格式（如按请求拼的改稿契约、附带素材的说明），盖过登记表里的默认生成
      */
-    public record Call(String stage, String method, String scene, Map<String, ?> vars, Map<String, Integer> frozen, String sceneFallback) {
+    public record Call(String stage, String method, String scene, Map<String, ?> vars, Map<String, Integer> frozen, String sceneFallback,
+                       Map<String, String> formats) {
+        public Call(String stage, String method, String scene, Map<String, ?> vars, Map<String, Integer> frozen, String sceneFallback) {
+            this(stage, method, scene, vars, frozen, sceneFallback, null);
+        }
         public Call(String stage, String method, String scene, Map<String, ?> vars, Map<String, Integer> frozen) {
-            this(stage, method, scene, vars, frozen, null);
+            this(stage, method, scene, vars, frozen, null, null);
+        }
+        /** 只有环节和变量（加上调用点按这次请求算好的输出格式）。 */
+        public static Call of(String stage, Map<String, ?> vars, Map<String, Integer> frozen, Map<String, String> formats) {
+            return new Call(stage, null, null, vars, frozen, null, formats);
         }
     }
 
@@ -80,7 +119,10 @@ public class StudioPromptAssembler {
         vars.put("scene", scene != null ? PromptTemplate.render(scene.body(), vars) : call.sceneFallback() == null ? "" : call.sceneFallback());
         if (scene != null) refs.add(new Ref(scene.key(), scene.version(), scene.digest()));
         StudioPromptStages.find(stage.key()).ifPresent(s -> s.renderFormats(vars).forEach((name, text) -> vars.put(PromptTemplate.FORMAT_PREFIX + name, text)));
-        return new Assembled(stage.key(), PromptTemplate.render(stage.system(), vars), PromptTemplate.render(stage.user(), vars), stage.params(), List.copyOf(refs));
+        if (call.formats() != null) call.formats().forEach((name, text) -> vars.put(PromptTemplate.FORMAT_PREFIX + name, text == null ? "" : text));
+        // 末尾空白不算内容：最后一行的格式为空被去掉时会留下一个换行，搬家前的文本有的又以换行结尾
+        return new Assembled(stage.key(), PromptTemplate.render(stage.system(), vars).stripTrailing(),
+                PromptTemplate.render(stage.user(), vars).stripTrailing(), stage.params(), List.copyOf(refs));
     }
 
     /** 受理时冻结：这些条目（加上底座）的当前版本；不存在的 key 不记（拼装时按「没有」处理）。 */

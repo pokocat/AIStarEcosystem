@@ -469,8 +469,9 @@ class IpRunServiceTest {
 
     @Test
     void promptNotConfigured_is503AndHoldsNothing() {
-        when(prompts.resolve(anyString())).thenReturn(new PromptService.ResolvedPrompt(
-                "sys", "{{input}}", new PromptParamsDto(null, null, null), "code"));
+        // 出图包装在提示词库里（docs/studio-prompt-architecture.md §8 #15）：库里没有这个环节就 503，不冻结积分
+        var empty = com.aistareco.aep.ipstudio.prompt.StudioPromptLibrary.of(java.util.List.of());
+        org.springframework.test.util.ReflectionTestUtils.setField(svc, "promptAssembler", new com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler(empty));
         seedProject(IpStudioFixtures.chainDoc(null, 0));
 
         BusinessException e = assertThrows(BusinessException.class, () -> svc.run(USER, PID, "n-gen", null));

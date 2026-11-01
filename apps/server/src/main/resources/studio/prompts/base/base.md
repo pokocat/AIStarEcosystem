@@ -4,7 +4,7 @@ name: 平台底座
 version: 1
 status: active
 layer: base
-summary: 所有大模型调用共用的红线（docs/studio-prompt-architecture.md §2、§9.5）。调用点搬进提示词库时都会拼上它，所以只放各处都适用的规则。
+summary: "所有大模型调用共用的红线（docs/studio-prompt-architecture.md §2、§9.5）。调用点搬进提示词库时都会拼上它，所以只放各处都适用的规则。"
 ---
 事实规则：
 客户写到的位置、价格、招牌、活动、排队、老字号、使用场景等，必须原样出现在脚本里，作为画面和台词的真实依据。

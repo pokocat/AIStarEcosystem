@@ -360,8 +360,8 @@ public class StudioSkillAdminService {
         StudioSkill skill = dryRunSkill(key, request);
         StudioSkillRules.Rules rules = StudioSkillRules.rules(skill);
 
-        PromptService.ResolvedPrompt prompt = prompts.resolve(PromptService.KEY_DAP_IP_STUDIO_SKILL_PLAN);
-        if ("code".equals(prompt.origin())) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED", "尚未配置制作规划提示词");
+        var planner0 = com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.or(assembler);
+        planner0.requireStage("stage-skill-plan");
         AiModelEndpoint endpoint = dryRunEndpoint(request.endpointId());
         Map<String, String> variables = new LinkedHashMap<>();
         String body = skill.body();
@@ -375,11 +375,11 @@ public class StudioSkillAdminService {
         variables.put("capabilities", planner == null ? "{}" : planner.planCapabilities());
         variables.put("budget", "试跑：不涉及真实预算，也不报价。");
         variables.put("feedback", "无。");
-        String user = PromptService.fill(prompt.userTemplate(), variables);
+        var prompt = planner0.assemble(com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.Call.of("stage-skill-plan", variables, null, null));
         int maxTokens = Math.max(8192, prompt.params().maxTokensOrDefault());
         if (endpoint.getChatMaxOutputTokens() != null) maxTokens = Math.min(maxTokens, endpoint.getChatMaxOutputTokens());
         var response = models.invokeChatOnEndpoint(endpoint, AiModelPurpose.DAP_PERSONA,
-                List.of(Map.of("role", "system", "content", prompt.system()), Map.of("role", "user", "content", user)),
+                List.of(Map.of("role", "system", "content", prompt.system()), Map.of("role", "user", "content", prompt.user())),
                 Map.of("timeout_seconds", 300, "response_format", Map.of("type", "json_object"),
                         "temperature", prompt.params().temperatureOrDefault(), "max_tokens", maxTokens));
 

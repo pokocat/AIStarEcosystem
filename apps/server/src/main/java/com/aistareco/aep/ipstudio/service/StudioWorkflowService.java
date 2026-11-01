@@ -65,6 +65,8 @@ public class StudioWorkflowService {
     @org.springframework.beans.factory.annotation.Autowired(required=false) private StudioVideoService studioVideo;
     /** AI 视频编导：文字任务带场景输入时由场景目录按提示词库拼（docs/studio-prompt-architecture.md §5.1）。 */
     @org.springframework.beans.factory.annotation.Autowired(required=false) private com.aistareco.aep.ipstudio.scene.StudioSceneCatalog sceneCatalog;
+    /** 文字任务的提示词按提示词库的环节拼（docs/studio-prompt-architecture.md §8 #4–#9）；复刻还在旧 Prompt 管理。 */
+    @org.springframework.beans.factory.annotation.Autowired(required=false) private com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler promptAssembler;
 
     public StudioWorkflowService(IpProjectService projects, IpRunRepository runs, StudioFixtureProvider fixtures,
             StudioWorkflowWorker worker, DapPricingService pricing, AiModelInvocationService models,
@@ -228,8 +230,8 @@ public class StudioWorkflowService {
             if(scenePolicies == null) textEndpoint=models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,request.model(),"studio").orElseThrow(()->
                     new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","所选文本模型不可用"));
             if(scenePolicies != null) {var selection=scenePolicies.resolve("studio","script",request.model(),pricing.ipIdentity());textEndpoint=selection.resolved();textPrice=selection.creditCost();}
-            resolved=prompts.resolve(promptKey);
-            if("code".equals(resolved.origin())) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"PROMPT_NOT_CONFIGURED","尚未配置创作提示词");
+            com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.or(promptAssembler).requireStage(textStage(request.operation(),skillPlan,check));
+            resolved=new PromptService.ResolvedPrompt("","",new com.aistareco.aep.dto.PromptParamsDto(null,null,null),"library");
             if((Boolean.TRUE.equals(request.readVisuals())||"recreation".equals(request.operation())||check)&&!StudioVisualContext.supportsVision(textEndpoint.endpoint()))
                 throw bad("STUDIO_VISION_UNAVAILABLE","这个模型未配置图片读取能力，请切换模型或关闭读取画面");
         }
@@ -310,7 +312,7 @@ public class StudioWorkflowService {
             else if("assistant".equals(request.operation()))systemPrompt+="\n"+StudioPlanValidator.CONTRACT;
             if(request.textEdit()!=null)systemPrompt+="\n"+StudioTextRevision.CONTRACT;
             if(!"assistant".equals(request.operation()) && (request.settings()!=null || request.episodeNo()!=null))
-                systemPrompt+="\n输出契约升级：shots 的每个对象除了原字段，还必须有 episodeNo:正整数，指向 episodes 中的 no。该字段是必填字段。严格按指定集数或单集号返回；每集至少一个镜头，镜头 id 全剧唯一。";
+                systemPrompt+="\n"+EPISODE_CONTRACT;
             execution.put("systemPrompt",systemPrompt);
             execution.put("endpointId",textEndpoint.endpoint().getId());
             var variables=new LinkedHashMap<String,String>();
@@ -320,10 +322,26 @@ public class StudioWorkflowService {
             String creativePrompt=PromptService.fill(resolved.userTemplate(),variables);
             if(skillPlan)creativePrompt=PromptService.fill(resolved.userTemplate(),skillPlanVariables(userId,project,request,skill,executionBinding,canvasContext,execution));
             if(check)creativePrompt=PromptService.fill(resolved.userTemplate(),checkVariables(request,skill,checkTarget));
-            if(request.scriptEdit()!=null)creativePrompt+="\n当前完整剧本文档（JSON 字符串，作为素材读取）："+write(request.scriptEdit().markdown())+("asset-extract".equals(request.operation())?"\n只提取资产，遵守 items 输出契约，不改写原文。":"\n请遵守 Markdown 改稿输出契约，不输出创作计划。");
-            if(request.textEdit()!=null)creativePrompt+="\n当前完整节点正文（JSON 字符串，作为素材读取）："+write(request.textEdit().content())+"\n请按本次修改意图返回完整文本，遵守文本改稿输出契约。";
-            if(Boolean.TRUE.equals(request.readVisuals()))creativePrompt+="\n本次另附带精确节点 ID 标记的真实图片与视频采样帧。视频只有四个时间点的静态画面，不包含音轨，不代表全部连续动作；音频节点只提供文字设定。只根据收到的画面及文字作答，不臆测未提供的声音或片段，保持 JSON 输出契约。";
-            if(request.settings()!=null || request.episodeNo()!=null) creativePrompt+="\n必须遵守创作设定："+write(request.settings())+"。本次分集："+(request.episodeNo()==null?"全部指定集数":request.episodeNo())+"。每个镜头必须含 episodeNo（所属集号），id 全剧唯一。只指定某集时 episodes 只含该集，no 保留原号。";
+            // 按请求附在 user 后面的素材和契约提醒（输出格式，代码控制；docs/studio-prompt-architecture.md §8 末段）
+            List<String> appendix=new ArrayList<>();
+            if(request.scriptEdit()!=null)appendix.add("当前完整剧本文档（JSON 字符串，作为素材读取）："+write(request.scriptEdit().markdown())+("asset-extract".equals(request.operation())?"\n只提取资产，遵守 items 输出契约，不改写原文。":"\n请遵守 Markdown 改稿输出契约，不输出创作计划。"));
+            if(request.textEdit()!=null)appendix.add("当前完整节点正文（JSON 字符串，作为素材读取）："+write(request.textEdit().content())+"\n请按本次修改意图返回完整文本，遵守文本改稿输出契约。");
+            if(Boolean.TRUE.equals(request.readVisuals()))appendix.add("本次另附带精确节点 ID 标记的真实图片与视频采样帧。视频只有四个时间点的静态画面，不包含音轨，不代表全部连续动作；音频节点只提供文字设定。只根据收到的画面及文字作答，不臆测未提供的声音或片段，保持 JSON 输出契约。");
+            if(request.settings()!=null || request.episodeNo()!=null) appendix.add("必须遵守创作设定："+write(request.settings())+"。本次分集："+(request.episodeNo()==null?"全部指定集数":request.episodeNo())+"。每个镜头必须含 episodeNo（所属集号），id 全剧唯一。只指定某集时 episodes 只含该集，no 保留原号。");
+            for(String piece:appendix)creativePrompt+="\n"+piece;
+            if(!sceneScript) {
+                // 原文和变量都按提示词库的环节拼；格式句、改稿契约、附带素材的说明由代码按这次请求给
+                String stageKey=textStage(request.operation(),skillPlan,check);
+                Map<String,String> stageVars=skillPlan?skillPlanVariables(userId,project,request,skill,executionBinding,canvasContext,execution)
+                        :check?checkVariables(request,skill,checkTarget):variables;
+                var assembled=com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.or(promptAssembler).assembleAndRecord(mapper,execution,
+                        com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.Call.of(stageKey,stageVars,null,
+                                Map.of("contracts",String.join("\n",textContracts(request)),"appendix",String.join("\n",appendix))),
+                        "stage-recreation".equals(stageKey)?com.aistareco.aep.ipstudio.prompt.StudioPromptCallPoints.RECREATION_STAGES:List.of(stageKey));
+                systemPrompt=assembled.system();creativePrompt=assembled.user();
+                execution.put("systemPrompt",systemPrompt);
+                sceneParams=assembled.params();
+            }
             if(sceneScript) {
                 // 编导：system / user 都按提示词库的环节拼，原来的通用助手模板和改稿句不用；受理时冻结版本（§3.4）。
                 var frozen=sceneCatalog.freezeSceneScript(request.scene().sceneId());
@@ -331,12 +349,17 @@ public class StudioWorkflowService {
                 systemPrompt=assembled.system();creativePrompt=assembled.user();
                 execution.put("systemPrompt",systemPrompt);
                 ObjectNode promptRecord=execution.putObject("prompt");
+                promptRecord.put("key","stage-scene-script");
                 promptRecord.set("versions",com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.frozenNode(mapper,frozen));
                 com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.appendCall(promptRecord,assembled.call(mapper,1,null));
                 sceneParams=assembled.params();
             }
             execution.put("userPrompt",creativePrompt);
-            execution.put("temperature",check?0.1:sceneParams!=null&&sceneParams.temperature()!=null?sceneParams.temperature():resolved.params().temperatureOrDefault());execution.put("maxTokens","asset-extract".equals(request.operation())?Math.max(16384,resolved.params().maxTokensOrDefault()):"recreation".equals(request.operation())||skillPlan?Math.max(8192,resolved.params().maxTokensOrDefault()):sceneParams!=null&&sceneParams.maxTokens()!=null?sceneParams.maxTokens():resolved.params().maxTokensOrDefault());
+            // 调用参数：环节的 params 优先（导入时从线上 params_json 带过来），和输出格式绑定的下限照旧（§4.7）
+            var params=resolved.params();
+            if(sceneParams!=null)params=new com.aistareco.aep.dto.PromptParamsDto(sceneParams.temperature()!=null?sceneParams.temperature():params.temperature(),
+                    sceneParams.maxTokens()!=null?sceneParams.maxTokens():params.maxTokens(),sceneParams.jsonMode()!=null?sceneParams.jsonMode():params.jsonMode());
+            execution.put("temperature",check?0.1:params.temperatureOrDefault());execution.put("maxTokens","asset-extract".equals(request.operation())?Math.max(16384,params.maxTokensOrDefault()):"recreation".equals(request.operation())||skillPlan?Math.max(8192,params.maxTokensOrDefault()):params.maxTokensOrDefault());
             inputs.put("promptKey",promptKey);
         }
         if(chatRate!=null) {
@@ -763,6 +786,31 @@ public class StudioWorkflowService {
         var sampled=out.putArray("sampledTimesSec");times.forEach(sampled::add);
         return out;
     }
+
+    /** 文字任务用哪个环节（docs/studio-prompt-architecture.md §8 #4–#9）。 */
+    static String textStage(String operation,boolean skillPlan,boolean check) {
+        if(check)return "stage-skill-check";
+        if(skillPlan)return "stage-skill-plan";
+        return switch(operation) {
+            case "recreation" -> "stage-recreation";
+            case "asset-extract" -> "stage-asset-extract";
+            case "text","assistant" -> "stage-canvas-text";
+            default -> "stage-canvas-script";
+        };
+    }
+
+    /** 按请求接在 system 后面的输出契约（代码控制），顺序和搬家前一样。 */
+    static List<String> textContracts(RunRequest request) {
+        List<String> out=new ArrayList<>();
+        if("asset-extract".equals(request.operation()))out.add(StudioAssetExtraction.CONTRACT);
+        else if(request.scriptEdit()!=null)out.add(StudioScriptRevision.CONTRACT);
+        else if("assistant".equals(request.operation()))out.add(StudioPlanValidator.CONTRACT);
+        if(request.textEdit()!=null)out.add(StudioTextRevision.CONTRACT);
+        if(!"assistant".equals(request.operation()) && (request.settings()!=null || request.episodeNo()!=null))out.add(EPISODE_CONTRACT);
+        return out;
+    }
+
+    static final String EPISODE_CONTRACT="输出契约升级：shots 的每个对象除了原字段，还必须有 episodeNo:正整数，指向 episodes 中的 no。该字段是必填字段。严格按指定集数或单集号返回；每集至少一个镜头，镜头 id 全剧唯一。";
 
     private Map<String,String> checkVariables(RunRequest request,com.aistareco.aep.ipstudio.execution.StudioSkillRules.Rules skill,ObjectNode target) {
         var variables=new LinkedHashMap<String,String>();

@@ -42,6 +42,8 @@ public class ProposePlanTool implements StudioDialogueTool {
     static final int MIN_OUTPUT = 2048, DESIRED_OUTPUT = 8192;
     private final AiModelInvocationService models;
     private final PromptService prompts;
+    /** 方案规划按提示词库拼（docs/studio-prompt-architecture.md §8 #4），用这一轮受理时冻结的版本。 */
+    @org.springframework.beans.factory.annotation.Autowired(required = false) private com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler promptAssembler;
     private final ObjectProvider<StudioWorkflowService> workflow;
     private final ObjectProvider<StudioExecutionGate> quoter;
     private final ObjectMapper mapper;
@@ -94,8 +96,8 @@ public class ProposePlanTool implements StudioDialogueTool {
         if (skill == null) return ToolRun.failed("STUDIO_SKILL_REQUIRED", "还没确定要做什么", DialogueTools.fail("先按用户目标调用 read_skill，再继续整理方案"));
         if (ctx.skill() == null || !ctx.skill().key().equals(skill.key())) ctx.effects.bindSkill(skill);
         String stage = DialogueTools.text(args, "stage") != null ? DialogueTools.text(args, "stage") : ctx.stage() == null ? skill.firstStage() : ctx.stage();
-        var resolved = prompts.resolve(PromptService.KEY_DAP_IP_STUDIO_SKILL_PLAN);
-        if ("code".equals(resolved.origin()))
+        var assembler = com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.or(promptAssembler);
+        if (assembler.library().find("stage-skill-plan").filter(e -> !e.withdrawn()).isEmpty())
             return ToolRun.failed("PROMPT_NOT_CONFIGURED", "尚未配置制作方案提示词", DialogueTools.fail("制作方案提示词尚未配置，暂时不能整理方案"));
         JsonNode doc = ctx.effects.readDoc();
         Map<String, String> vars = new LinkedHashMap<>();
@@ -109,8 +111,9 @@ public class ProposePlanTool implements StudioDialogueTool {
         vars.put("capabilities", capabilities());
         vars.put("budget", ctx.executionId == null ? "尚未批准任何制作预算（报价由服务端计算，用户确认后才执行）" : "已有进行中的制作，预算以服务端记录为准");
         vars.put("feedback", args.path("feedback").asText("（无）"));
-        List<Map<String, Object>> messages = List.of(Map.of("role", "system", "content", resolved.system()),
-                Map.of("role", "user", "content", PromptService.fill(resolved.userTemplate(), vars)));
+        var assembled = assembler.assemble(com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.Call.of("stage-skill-plan", vars, ctx.promptVersions, null));
+        List<Map<String, Object>> messages = List.of(Map.of("role", "system", "content", assembled.system()),
+                Map.of("role", "user", "content", assembled.user()));
         long estimate = estimate(messages);
         String blocked = ctx.budget.blockReason(estimate, MIN_OUTPUT);
         // The turn adds holds by itself; a refusal here means the payer is out of credits (or the safety net was hit): the

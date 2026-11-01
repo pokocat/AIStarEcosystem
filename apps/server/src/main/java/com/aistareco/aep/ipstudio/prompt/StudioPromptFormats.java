@@ -1,0 +1,20 @@
+package com.aistareco.aep.ipstudio.prompt;
+
+/**
+ * 代码控制的输出格式（docs/studio-prompt-architecture.md §6）：它们和解析代码是一对，改了要一起改。
+ * 从搬家前的提示词原文里原样抽出来，逐字一致测试拿旧文件核对（{@code StudioPromptStageParityTest}）。
+ */
+public final class StudioPromptFormats {
+    private StudioPromptFormats() {}
+
+    public static final String CHECK_OUTPUT = "只输出 JSON 对象：{status, items:[{id,status,evidence:[{kind:\"frame\",timeSec,observation}],reason,suggestion}]}。";
+    public static final String DISTILL_OUTPUT = "只输出 JSON 对象：{\"bodyMd\": \"修订后的完整 Markdown 正文（不含 YAML 头）\", \"changeNote\": \"不超过 300 字：改了哪几处、各自依据这次记录里的哪类事实\"}。";
+    public static final String PLAN_OUTPUT = "只输出 JSON 对象：{summary, approaches:[{id,title,summary,rationale,preserve[],change[],tradeoffs[],requiredCapabilities[]}], recommendedApproachId, steps:[{id,operation,title,prompt,strategy:{approachId,method,reason},execution:\"auto\"|\"confirm\",settings:{...按操作类型...},referenceNodeIds[],dependsOn[],targetNodeId?}], questions:string[], notes:string[], materialNodeIds?:string[]}。没有真实取舍时 approaches 只写一个推荐方案（或省略），recommendedApproachId 与之一致。";
+    public static final String ASSISTANT_OUTPUT = "只返回 JSON：{summary:string,steps:[{id:string,operation:\"script\"|\"storyboard\"|\"image\"|\"video\",title:string,prompt:string,referenceNodeIds:string[]}],questions:string[]}";
+    public static final String SCRIPT_OUTPUT = "只返回 JSON，不要代码围栏。结构严格为：title:string,outline:string,characters:[{name:string,description:string}],scenes:[{name:string,description:string}],props:[{name:string,description:string}],episodes:[{no:正整数,title:string,content:string}],shots:[{id:string,title:string,description:string,dialogue:string,durationSec:正数,characters:string[],episodeNo:所属分集的正整数}]";
+    public static final String DIALOGUE_ACTIONS = "动作输出方式：若本端点支持原生工具调用，直接调用工具。否则先写给用户的正文，正文结束后另起一行写 `<<<studio-actions>>>`（就是这三个尖括号的写法，不要写成别的标签），再给一个 JSON 数组，每项 {\"tool\":\"工具名\",\"args\":{...}}；没有动作就不写这一段。分隔行 `<<<studio-actions>>>` 只写一次，数组后面不要再写。正文里不要出现 JSON。\n完整示例（一句正文，然后是动作；对象 id 填素材清单方括号里的那个）：\n先看一下画布上的设定图。\n<<<studio-actions>>>\n[{\"tool\":\"view_images\",\"args\":{\"nodeIds\":[\"对象 id\"],\"question\":\"人物的正面、侧面、背面长什么样\"}}]";
+    public static final String RECREATION_OUTPUT = "只输出 JSON 对象，字段如下：\n{\n \"title\":\"具体片名 · 全片创作拆解\",\n \"creativePremise\":\"一到两句话概括可见事件；主题解读需显式标注\",\n \"visualGenes\":[{\"dimension\":\"媒介与美术风格|色彩体系|光线体系|材质与后期|构图体系|摄影机体系\",\"observed\":\"全片特征\",\"rule\":\"复刻建议\",\"evidenceFrames\":[1]}],\n \"motifs\":[\"反复出现的画面元素\"],\n \"retain\":[\"复刻时建议保留的要点\"],\n \"skeleton\":[{\"dimension\":\"镜头语言与时空关系|影像与声音|叙事与动作\",\"observed\":\"片中构造\",\"rule\":\"可复用规律\",\"evidenceFrames\":[1]}],\n \"techniques\":[{\"name\":\"具体创作手法\",\"observed\":\"片中实例\",\"effect\":\"创作作用与观众感受（解读）\",\"rule\":\"可迁移做法\",\"evidenceFrames\":[1]}],\n \"uncertainties\":[\"画面、连续动作、身份或声音方面的证据边界\"],\n \"recreationPrompt\":\"一段可编辑的复刻创作建议词，涵盖主体关系、环境、风格、光线、动作推进和结尾；不包含未经核实的声音/身份\"\n}\nvisualGenes 必须各含六个维度且不重复。skeleton 必须各含三个维度。techniques 2到8条，motifs/retain各1到12条，uncertainties 1到12条。不要输出 source，由服务器附加真实来源。";
+    public static final String OBSERVE_OUTPUT = "只输出JSON（evidenceFrames须填写实际全局编号）：{\"observations\":[{\"evidenceFrames\":[],\"visible\":\"简洁的画面事实\"}],\"look\":\"本页可见色彩、光线、材质、构图\",\"uncertainties\":\"不确定之处，无则写无\"}。observations最多3项，每项不超过40字，look不超过60字，uncertainties不超过40字。";
+    public static final String FILM_PLAN_OUTPUT = "仅输出JSON：{\"segments\":[{\"endSec\":3.8,\"title\":\"环境铺垫\"}]}。只给每段在原片中的结束秒数，最后一段结束于原片结尾。";
+    public static final String FILM_SEGMENT_OUTPUT = "只输出Markdown正文，章节为：## 镜头构造（表格：原片时间、画面骨架、摄影机、调度构图与焦点）；## 段落表达（叙事要素、视觉变化、剪辑节奏、声音）；## 视频生成 Prompt（成片规格、主体一致性、场景美术、镜头序列、摄影机、光色材质、节奏、生成约束）。";
+}

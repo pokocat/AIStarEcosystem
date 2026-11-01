@@ -124,7 +124,10 @@ class StudioWorkflowSkillRequestTest {
         assertEquals("made.mp4",exec.path("check").path("targetStorageKey").asText(),"defaults to the run's primary output");
         assertEquals("[1.0,3.0,5.0,7.0]",exec.path("check").path("sampledTimesSec").toString());
         assertEquals(8.0,exec.path("check").path("mediaFacts").path("durationSec").asDouble(),0.05);
-        assertEquals("system:"+PromptService.KEY_DAP_IP_STUDIO_SKILL_CHECK,exec.path("systemPrompt").asText());
+        // 检查的提示词按提示词库的 stage-skill-check 拼（docs/studio-prompt-architecture.md §8 #5），JSON 结构由代码给
+        assertTrue(exec.path("systemPrompt").asText().contains("你是 AI IP Studio 的成片检查员"));
+        assertTrue(exec.path("systemPrompt").asText().contains(com.aistareco.aep.ipstudio.prompt.StudioPromptFormats.CHECK_OUTPUT));
+        assertEquals("stage-skill-check",exec.path("prompt").path("key").asText());
         assertTrue(exec.path("userPrompt").asText().contains("subject-replaced")&&exec.path("userPrompt").asText().contains("[1.0,3.0,5.0,7.0]"));
         assertEquals("reference-video-recreation",exec.path("skill").path("key").asText());
         verify(credits).hold(eq("u"),eq(21L),anyString(),eq(run.getId()),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));

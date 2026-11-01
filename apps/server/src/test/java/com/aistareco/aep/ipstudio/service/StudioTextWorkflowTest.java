@@ -41,7 +41,8 @@ class StudioTextWorkflowTest {
             var capture=ArgumentCaptor.forClass(IpRun.class);verify(runs).save(capture.capture());var run=capture.getValue();var input=json.readTree(run.getInputJson());
             assertEquals("text",run.getNodeId());assertEquals("studio-text",run.getKind());assertEquals("原文",input.path("textEdit").path("content").asText());
             assertEquals("agnes-text",input.path("_exec").path("endpointId").asText());assertTrue(input.path("_exec").path("userPrompt").asText().contains("起一个标题"));
-            assertTrue(input.path("_exec").path("userPrompt").asText().contains("原文"));assertTrue(input.path("_exec").path("systemPrompt").asText().contains(StudioTextRevision.CONTRACT));
+            assertTrue(input.path("_exec").path("userPrompt").asText().contains("原文"));assertTrue(input.path("_exec").path("systemPrompt").asText().contains(StudioTextRevision.CONTRACT.strip()));
+            assertEquals("stage-canvas-text",input.path("_exec").path("prompt").path("key").asText());
             var charge=ArgumentCaptor.forClass(com.aistareco.aep.billing.service.ModelChargeContext.class);
             verify(credits).hold(eq("u"),eq(21L),eq(IpRunService.REF_TYPE),eq(run.getId()),anyString(), charge.capture());
             assertEquals("model",charge.getValue().target().action());assertEquals("text-v1",charge.getValue().target().providerModel());

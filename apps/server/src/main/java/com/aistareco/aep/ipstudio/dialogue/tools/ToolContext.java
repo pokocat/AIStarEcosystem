@@ -46,6 +46,8 @@ public final class ToolContext {
     public final BooleanSupplier stopRequested;
     public final Effects effects;
     public final Set<String> createdNodeIds = new LinkedHashSet<>();
+    /** 这一轮受理时冻结的提示词版本（docs/studio-prompt-architecture.md §3.4）；老任务没有，按当前版本拼。 */
+    public volatile java.util.Map<String, Integer> promptVersions;
     /**
      * One catalog line per object created in this turn ({@code [id] 视频 · 标题·待生成}). The canvas saves them a moment later,
      * so a plan in the same turn would not see them in the saved document; the planner is shown these lines instead and

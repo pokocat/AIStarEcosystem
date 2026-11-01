@@ -61,8 +61,8 @@ class StudioVisionWorkflowFallbackTest {
             int images=(int)parts.stream().filter(p->"image_url".equals(p.get("type"))).count();String content;
             if(system.startsWith("按输入图片")) {
                 assertTrue(images>0&&images<=2);content="{\"frames\":["+String.join(",",Collections.nCopies(images,"{\"visible\":\"原片事实\",\"uncertainty\":\"无\"}"))+"]}";
-            } else if(system.startsWith("将原片")) {assertEquals(0,images);content="{\"segments\":[{\"endSec\":2}]}";}
-            else if(system.startsWith("你是视频创作")) {assertTrue(images>0,"subsequent successful segment still uses original images");content="## 本段正文";}
+            } else if(system.contains("将原片按叙事或动作阶段划分")) {assertEquals(0,images);content="{\"segments\":[{\"endSec\":2}]}";}
+            else if(system.contains("你是视频创作分析助手")) {assertTrue(images>0,"subsequent successful segment still uses original images");content="## 本段正文";}
             else if(system.equals("report")) {content=new StudioRecreationTest().report().toString();}
             else {assertEquals(0,images);content="{\"observations\":[{\"evidenceFrames\":[1],\"visible\":\"原片事实\"}],\"look\":\"色彩\",\"uncertainties\":\"无\"}";}
             successes.incrementAndGet();return new AiModelInvocationService.AiModelResponse(content,"stop",150L,"vision","v",100L,50L);

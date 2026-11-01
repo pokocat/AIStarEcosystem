@@ -70,6 +70,7 @@ public class IpRunService {
     private final IpCatalogService catalog;
     private final IpStudioProperties props;
     private final PromptService prompts;
+    @org.springframework.beans.factory.annotation.Autowired(required = false) private com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler promptAssembler;
     private final DapMultimodalClient multimodal;
     private final DapPricingService pricing;
     private final DapAccountService accounts;
@@ -612,13 +613,12 @@ public class IpRunService {
         String size = normalizeSize(md);
 
         // ── 提示词模板（服务端唯一漏斗；用户能在 inputs.prompt 看到原文）────
-        PromptService.ResolvedPrompt p = prompts.resolve(PromptService.KEY_DAP_IP_CANVAS_IMAGE);
         Map<String, String> vars = new LinkedHashMap<>();
         vars.put("prompt", prompt);
         vars.put("refLead", identityLead(refs, prompt));
         vars.put("refOrder", refOrderHint(refs));
         vars.put("refNotes", refs.isEmpty() ? "" : refNotes(refs));
-        String finalPrompt = squeeze(PromptService.fill(p.userTemplate(), vars));
+        String finalPrompt = squeeze(canvasImagePrompt(vars));
 
         ArrayNode refsOut = om.createArrayNode();
         ArrayNode refKeys = om.createArrayNode();
@@ -660,7 +660,7 @@ public class IpRunService {
         }
         return new Compiled(IpRun.KIND_GENERATE, selected == null ? pricing.ipImage() : selected.creditCost(), count,
                 "画布出图 ×" + count, inputs, false, true,
-                PromptService.KEY_DAP_IP_CANVAS_IMAGE);
+                "stage-image");
     }
 
     /** 显式生成请求 —— 画布把「画什么、参考谁、出几张」说清楚。 */
@@ -721,13 +721,12 @@ public class IpRunService {
                 : req.count() == null ? 1 : Math.max(1, Math.min(4, req.count()));
         if (!StudioImageModelRouting.isProductRequest(requestedEndpoint) && !ALLOWED_SIZES.contains(size)) size = DEFAULT_SIZE;
 
-        PromptService.ResolvedPrompt p = prompts.resolve(PromptService.KEY_DAP_IP_CANVAS_IMAGE);
         Map<String, String> vars = new LinkedHashMap<>();
         vars.put("prompt", req.prompt().trim());
         vars.put("refLead", identityLead(refs, req.prompt()));
         vars.put("refOrder", refOrderHint(refs));
         vars.put("refNotes", refs.isEmpty() ? "" : refNotes(refs));
-        String finalPrompt = squeeze(PromptService.fill(p.userTemplate(), vars));
+        String finalPrompt = squeeze(canvasImagePrompt(vars));
 
         ArrayNode refsOut = om.createArrayNode();
         ArrayNode refKeys = om.createArrayNode();
@@ -761,7 +760,7 @@ public class IpRunService {
         }
         return new Compiled(IpRun.KIND_GENERATE, selected == null ? pricing.ipImage() : selected.creditCost(), count,
                 "画布出图 ×" + count, inputs, false, true,
-                PromptService.KEY_DAP_IP_CANVAS_IMAGE);
+                "stage-image");
     }
 
     /** Resolve product family + requested output size through the server-owned provider mapping. */
@@ -870,11 +869,15 @@ public class IpRunService {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "ENDPOINT_NOT_ALLOWED",
                     "选择的出图模型不可用，请在下拉里重新选一个");
         }
-        PromptService.ResolvedPrompt p = prompts.resolve(c.promptKey());
-        if (p == null || "code".equals(p.origin())) {
-            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED",
-                    "提示词模板未配置（" + c.promptKey() + "）：请在管理后台「Prompt 管理」补齐后重试");
-        }
+        // 出图包装在提示词库里（docs/studio-prompt-architecture.md §8 #15）；库里没有就 503，不产假图
+        com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.or(promptAssembler).requireStage(c.promptKey());
+    }
+
+    /** 画布出图交给画图模型的包装，按提示词库的 {@code stage-image} 拼（docs/studio-prompt-architecture.md §8 #15）。 */
+    private String canvasImagePrompt(Map<String, String> vars) {
+        var assembler = com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.or(promptAssembler);
+        assembler.requireStage("stage-image");
+        return assembler.assemble(com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.Call.of("stage-image", vars, null, null)).user();
     }
 
     // ── doc 取值小工具 ────────────────────────────────────────

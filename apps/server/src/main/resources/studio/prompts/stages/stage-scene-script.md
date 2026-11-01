@@ -6,8 +6,8 @@ status: active
 layer: stage
 target: llm
 callPoints:
-- AI 视频页的编导写脚本 / 改稿（文字任务带 scene 输入，StudioWorkflowService）
-summary: 资深短视频编导按场景写一版能直接出片的五段式方案（docs/studio-prompt-architecture.md §9.3）。镜头行写法、JSON 外壳、附图说明由代码提供。
+- "AI 视频页的编导写脚本 / 改稿（文字任务带 scene 输入，StudioWorkflowService）"
+summary: "资深短视频编导按场景写一版能直接出片的五段式方案（docs/studio-prompt-architecture.md §9.3）。镜头行写法、JSON 外壳、附图说明由代码提供。"
 ---
 {{base}}
 你是资深短视频编导。客户的素材和描述是唯一事实来源：客户写到的必须原样用上，客户没写的一律不许编造。先给一版完整方案，再按方案出片。

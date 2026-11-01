@@ -65,6 +65,8 @@ public class StudioSkillDraftService {
     private final IpPlanExecutionRepository executions;
     private final StudioSkillStore store;
     private final PromptService prompts;
+    /** 整理草稿按提示词库拼（docs/studio-prompt-architecture.md §8 #6）。 */
+    @org.springframework.beans.factory.annotation.Autowired(required = false) private com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler promptAssembler;
     private final AiModelInvocationService models;
     private final DapPricingService pricing;
     private final CreditService credits;
@@ -128,8 +130,8 @@ public class StudioSkillDraftService {
 
         // Price, prompt and endpoint before anything is frozen (§8.0: no endpoint / price / prompt → refuse, nothing held).
         AiModelEndpoint endpoint = endpoint();
-        PromptService.ResolvedPrompt prompt = prompts.resolve(PromptService.KEY_DAP_IP_STUDIO_SKILL_DISTILL);
-        if ("code".equals(prompt.origin())) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED", "尚未配置整理制作方法的提示词");
+        var assembler = com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.or(promptAssembler);
+        assembler.requireStage("stage-skill-distill");
         var pricingService = tokenPricing.getIfAvailable();
         AiChatTokenPricing.Rate rate = pricingService == null ? null : pricingService.find(endpoint.getId());
         if (rate == null) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_TOKEN_PRICE_NOT_CONFIGURED", "此模型尚未配置按量积分售价");
@@ -147,6 +149,7 @@ public class StudioSkillDraftService {
         String materialText = material.toString();
         vars.put("execution", materialText.length() > MATERIAL_MAX ? materialText.substring(0, MATERIAL_MAX) : materialText);
         vars.put("note", note.isEmpty() ? "无。" : note);
+        var prompt = assembler.assemble(com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.Call.of("stage-skill-distill", vars, null, null));
         int maxTokens = Math.min(Math.max(8192, prompt.params().maxTokensOrDefault()), rate.maxOutputTokens());
         if (endpoint.getChatMaxOutputTokens() != null) maxTokens = Math.min(maxTokens, endpoint.getChatMaxOutputTokens());
 
@@ -157,7 +160,7 @@ public class StudioSkillDraftService {
         if (!note.isEmpty()) input.put("note", note);
         if (request.billing() != null) input.set("billing", mapper.valueToTree(request.billing()));
         ObjectNode exec = input.putObject("_exec").put("holdTotal", cost).put("unitCost", cost).put("billingUnit", "per_token")
-                .put("endpointId", endpoint.getId()).put("systemPrompt", prompt.system()).put("userPrompt", PromptService.fill(prompt.userTemplate(), vars))
+                .put("endpointId", endpoint.getId()).put("systemPrompt", prompt.system()).put("userPrompt", prompt.user())
                 .put("temperature", 0.3).put("maxTokens", maxTokens);
         exec.set("tokenPricing", mapper.valueToTree(rate));
         ObjectNode distill = exec.putObject("skillDistill").put("skillKey", skillRow.getSkillKey()).put("baseVersion", base.getVersion())

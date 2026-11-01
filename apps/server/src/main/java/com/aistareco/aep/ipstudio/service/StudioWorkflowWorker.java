@@ -39,6 +39,7 @@ public class StudioWorkflowWorker {
     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.billing.service.ModelChargeService modelCharges;
     // H3 提示词改写完在同一行上提交视频（StudioWorkflowService#submitVideoRewrite）。
     @org.springframework.beans.factory.annotation.Autowired private org.springframework.beans.factory.ObjectProvider<IpRunService> videoRuns;
+    @org.springframework.beans.factory.annotation.Autowired(required=false) private com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler promptAssembler;
     private final IpRunRepository runs;
     private final StudioFixtureProvider fixtures;
     private final FileStorageService storage;
@@ -128,7 +129,7 @@ public class StudioWorkflowWorker {
                                 if(!progress(id,25+page*55/study.pages().size(),"recreation.read"))return;
                                 int first=page*8+1,last=Math.min(first+7,input.path("_exec").path("recreationSource").path("frameTimes").size());
                                 var observed=recreationChat(id,endpoint.endpoint(),tokenRate,consumed,
-                                        StudioRecreation.OBSERVATION_PROMPT+"本次evidenceFrames只允许使用"+java.util.stream.IntStream.rangeClosed(first,last).boxed().toList()+"，不允许填写本页格子序号。",
+                                        recreationPrompt(input,"stage-recreation-observe",Map.of("evidence","本次evidenceFrames只允许使用"+java.util.stream.IntStream.rangeClosed(first,last).boxed().toList()+"，不允许填写本页格子序号。")),
                                         study.pages().get(page),pageBudget,.1,java.util.stream.IntStream.range(first-1,last).boxed().toList(),
                                         input.path("_exec").path("recreationSource"),recreationFallback,output);
                                 if("length".equals(observed.finishReason()))throw new BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,"AI_BAD_OUTPUT","片段读取结果被截断，请调整模型输出配置");
@@ -278,6 +279,11 @@ public class StudioWorkflowWorker {
         } catch(Exception e) {if(lastReply!=null)lastReply.attachDiagnostics(e);log.warn("[studio] run failed id={}",id,e);finish(id,directorReceipt,e);}
         finally {activeDirectorCalls.remove(id,Thread.currentThread());if(context!=null)context.close();if(queue!=null)queue.finish(AiGenerationQueueService.WORKFLOW,id);}
     }
+    /** 复刻逐页观察的 system，按受理时冻结的提示词版本拼（docs/studio-prompt-architecture.md §8 #10）；本页能用的帧编号由代码接在后面。 */
+    private String recreationPrompt(JsonNode input,String stage,Map<String,String> formats) {
+        return com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.or(promptAssembler).assemble(com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.Call.of(stage,Map.of(),com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.frozen(input.path("_exec").path("prompt")),formats)).system();
+    }
+
     private void filmStudy(String id,IpRun run,JsonNode input,ObjectNode output) throws Exception {
         var exec=input.path("_exec");
         var endpoint=models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA,exec.path("endpointId").asText(null),"studio").orElseThrow(()->new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","创作模型已停用或不再是默认模型，请联系管理员"));
@@ -291,7 +297,7 @@ public class StudioWorkflowWorker {
         var cap=capNode.isObject()?new StudioFilmStudy.SegmentCap(capNode.path("maxSegmentSec").asDouble(),capNode.path("maxSegments").asInt(8)):null;
         StudioFilmStudy.Chat chat=studioChat(id,endpoint.endpoint(),rate,used,input.path("prompt").asText("").strip(),.3,null);
         var study=StudioFilmStudy.run(source,exec.path("fullFilmContext").asText(),exec.path("resumeFilmStudy"),evidence,storage,run.getOwnerUserId(),exec.path("maxTokens").asInt(8192),endpoint.candidate().getMaxRefImages()==null?6:endpoint.candidate().getMaxRefImages(),
-            chat,(pct,stage,partial)->checkpointFilmStudy(id,pct,stage,partial,output.path("sourceAudio")),cap);
+            chat,(pct,stage,partial)->checkpointFilmStudy(id,pct,stage,partial,output.path("sourceAudio")),cap,StudioFilmStudy.Prompts.of(com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.or(promptAssembler),com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.frozen(input.path("_exec").path("prompt"))));
         if(study==null)return;
         output.set("filmStudy",study);output.put("text",StudioFilmStudy.summary(study));
         output.putObject("billing").put("inputTokens",used[0][0]).put("outputTokens",used[0][1]).put("credits",rate.settle(used[0][0],used[0][1])).put("inputCreditsPerK",rate.inputCreditsPerK()).put("outputCreditsPerK",rate.outputCreditsPerK());

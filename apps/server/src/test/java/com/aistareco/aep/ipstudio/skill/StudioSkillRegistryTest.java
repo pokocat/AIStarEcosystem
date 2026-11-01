@@ -349,7 +349,10 @@ class StudioSkillRegistryTest {
         assertEquals("AI_NOT_CONFIGURED", e.getCode());
         assertEquals(503, e.getStatus().value());
         verify(models, never()).invokeChatOnEndpoint(any(), any(), anyList(), anyMap());
-        stubPrompt("code");
-        assertEquals("PROMPT_NOT_CONFIGURED", assertThrows(BusinessException.class, () -> admin.dryRun(KEY, sample(null))).getCode());
+        // 规划提示词在提示词库里（docs/studio-prompt-architecture.md §8 #4）：库里没有这个环节时 503，不调模型
+        var empty = com.aistareco.aep.ipstudio.prompt.StudioPromptLibrary.of(List.of());
+        var noPrompt = new StudioSkillAdminService(catalog, store, prompts, models, endpoints, mock(DapPricingService.class), none(), none(), om, manager,
+                empty, new com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler(empty));
+        assertEquals("PROMPT_NOT_CONFIGURED", assertThrows(BusinessException.class, () -> noPrompt.dryRun(KEY, sample(null))).getCode());
     }
 }

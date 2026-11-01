@@ -10,13 +10,94 @@ import java.util.function.Function;
  * 每个调用点在这里登记它的环节（{@link StudioPromptStages.Stage}）：变量、必填项、输出格式和后台预览用的示例。
  * 调用点搬进提示词库时在这里加一项（docs/studio-prompt-architecture.md §8、§10）。
  */
-final class StudioPromptCallPoints {
+public final class StudioPromptCallPoints {
     private StudioPromptCallPoints() {}
 
     static void registerAll() {
         StudioPromptStages.register(sceneImage());
         StudioPromptStages.register(sceneHandoff());
         StudioPromptStages.register(sceneScript());
+        registerStepThree();
+    }
+
+    // ── 第 3 步：画布与对话（docs/studio-prompt-architecture.md §8 #1–#9、#15）。原文逐字搬来，JSON 格式句在 StudioPromptFormats ──
+
+    static final String SKILL_CHECK = "stage-skill-check", SKILL_DISTILL = "stage-skill-distill", SKILL_PLAN = "stage-skill-plan",
+            CANVAS_TEXT = "stage-canvas-text", CANVAS_SCRIPT = "stage-canvas-script", ASSET_EXTRACT = "stage-asset-extract",
+            DIALOGUE = "stage-dialogue", DIALOGUE_SUMMARY = "stage-dialogue-summary", VIEW_IMAGES = "stage-view-images", IMAGE = "stage-image";
+
+    private static void registerStepThree() {
+        StudioPromptStages.register(stage(SKILL_CHECK, StudioPromptEntry.LLM, "成片检查",
+                vars("checklist", "检查清单（id 与判法）", "target", "目标说明", "frames", "采样画面（带原片时间）"),
+                Set.of("checklist", "frames"), formats("output", StudioPromptFormats.CHECK_OUTPUT, "contracts", "", "appendix", ""),
+                Map.of("checklist", "- subject-consistency：主体一致", "target", "（无）", "frames", "第 1 帧（0.0 秒）")));
+        StudioPromptStages.register(stage(SKILL_DISTILL, StudioPromptEntry.LLM, "技能整理草稿",
+                vars("skillName", "方法名称", "baseVersion", "现行版本号", "executionVersion", "这次制作用的版本号", "skill", "现行正文",
+                        "execution", "制作记录（JSON）", "note", "运营补充的整理重点"),
+                Set.of("skill", "execution"), formats("output", StudioPromptFormats.DISTILL_OUTPUT),
+                Map.of("skillName", "出视频", "baseVersion", 1, "executionVersion", 1, "skill", "# 出视频", "execution", "{}", "note", "无。")));
+        StudioPromptStages.register(stage(SKILL_PLAN, StudioPromptEntry.LLM, "制作方案规划",
+                vars("skill", "制作做法正文", "stage", "阶段说明", "constraints", "本阶段允许的操作与上限", "brief", "用户目标与补充",
+                        "analysis", "原片分析", "assets", "素材清单", "capabilities", "可用模型与合同", "budget", "已批准的预算", "feedback", "用户对上一版方案的反馈"),
+                Set.of("skill", "brief"), formats("output", StudioPromptFormats.PLAN_OUTPUT, "contracts", "", "appendix", ""),
+                Map.of("skill", "# 出视频", "stage", "制作阶段", "constraints", "{}", "brief", "做一条 10 秒的商品展示", "analysis", "（无）",
+                        "assets", "（无）", "capabilities", "[]", "budget", "尚未批准", "feedback", "（无）")));
+        StudioPromptStages.register(stage(CANVAS_TEXT, StudioPromptEntry.LLM, "画布文字创作与改稿",
+                vars("mode", "模式：general / original / adapt / director", "input", "用户的话或修改意图", "canvasContext", "所选画布内容",
+                        "characterContext", "人物设定", "history", "近期对话（JSON）"),
+                Set.of("input"), formats("output", StudioPromptFormats.ASSISTANT_OUTPUT, "contracts", "", "appendix", ""),
+                Map.of("mode", "general", "input", "起一个标题", "canvasContext", "[]", "characterContext", "[]", "history", "[]")));
+        Map<String, String> scriptVars = vars("operation", "创作方式：script / storyboard", "input", "创作要求及当前编辑内容", "characterContext", "已选人物设定",
+                "settings", "结构化创作设定（JSON）", "episodeNo", "本次创作分集");
+        Map<String, Object> scriptSample = Map.of("operation", "script", "input", "写一集都市悬疑", "characterContext", "[]", "settings", "null", "episodeNo", "全部");
+        StudioPromptStages.register(stage(CANVAS_SCRIPT, StudioPromptEntry.LLM, "剧本与分镜", scriptVars, Set.of("input"),
+                formats("output", StudioPromptFormats.SCRIPT_OUTPUT, "contracts", "", "appendix", ""), scriptSample));
+        StudioPromptStages.register(stage(ASSET_EXTRACT, StudioPromptEntry.LLM, "剧本资产提取", scriptVars, Set.of("input"),
+                formats("contracts", "", "appendix", ""), scriptSample));
+        StudioPromptStages.register(stage(DIALOGUE, StudioPromptEntry.LLM, "创作助手对话",
+                vars("skill", "技能（方法）与其它方法的说明", "stage", "当前阶段", "tools", "可用工具", "context", "画布与素材概要", "history", "近期对话",
+                        "steering", "接续信息与待应用的用户调整", "input", "用户最新消息"),
+                Set.of("input", "tools"), formats("actions", StudioPromptFormats.DIALOGUE_ACTIONS),
+                Map.of("skill", "还没有选定方法。", "stage", "未开始", "tools", "- read_skill", "context", "（空画布）", "history", "（无）", "steering", "（无）", "input", "做一张海报")));
+        StudioPromptStages.register(stage(DIALOGUE_SUMMARY, StudioPromptEntry.LLM, "对话历史摘要", vars("material", "已有要点和新增对话"), Set.of("material"),
+                Map.of(), Map.of("material", "用户：做一张海报")));
+        StudioPromptStages.register(stage(VIEW_IMAGES, StudioPromptEntry.LLM, "对话里看图", vars("question", "助手想重点确认的事，可以为空"), Set.of(),
+                Map.of(), Map.of("question", "哪张是正面")));
+        StudioPromptStages.register(stage(IMAGE, StudioPromptEntry.IMAGE_MODEL, "画布出图包装",
+                vars("prompt", "用户的出图指令", "refLead", "参考图开场说明（代码生成）", "refOrder", "参考图顺序说明（代码生成）", "refNotes", "参考图备注（代码生成）"),
+                Set.of("prompt"), Map.of(), Map.of("prompt", "a red apple on a desk", "refLead", "", "refOrder", "", "refNotes", "")));
+        // 复刻与拉片（§8 #10–#11）：画面素材是代码拼的多模态内容，这几个环节只放 system；material 只在后台预览里用
+        StudioPromptStages.register(stage(RECREATION, StudioPromptEntry.LLM, "复刻全片拆解", vars("input", "用户补充关注点"), Set.of("input"),
+                formats("output", StudioPromptFormats.RECREATION_OUTPUT, "contracts", "", "appendix", ""), Map.of("input", "开头怎么抓人")));
+        StudioPromptStages.register(stage(RECREATION_OBSERVE, StudioPromptEntry.LLM, "复刻逐页观察", vars("material", "预览用的示例素材说明"), Set.of(),
+                formats("output", StudioPromptFormats.OBSERVE_OUTPUT, "evidence", ""), Map.of("material", "（采样画面）")));
+        StudioPromptStages.register(stage(FILM_PLAN, StudioPromptEntry.LLM, "拉片分段", vars("material", "预览用的示例素材说明"), Set.of(),
+                formats("output", StudioPromptFormats.FILM_PLAN_OUTPUT, "cap", ""), Map.of("material", "（全片文档与采样画面）")));
+        StudioPromptStages.register(stage(FILM_SEGMENT, StudioPromptEntry.LLM, "拉片逐段分析", vars("material", "预览用的示例素材说明"), Set.of(),
+                formats("output", StudioPromptFormats.FILM_SEGMENT_OUTPUT), Map.of("material", "（本段采样画面）")));
+    }
+
+    static final String RECREATION = "stage-recreation", RECREATION_OBSERVE = "stage-recreation-observe",
+            FILM_PLAN = "stage-film-study-plan", FILM_SEGMENT = "stage-film-study";
+    /** 复刻任务受理时一起冻结的环节：拆解、逐页观察、拉片分段、逐段分析。 */
+    public static final java.util.List<String> RECREATION_STAGES = java.util.List.of(RECREATION, RECREATION_OBSERVE, FILM_PLAN, FILM_SEGMENT);
+
+    private static StudioPromptStages.Stage stage(String key, String target, String title, Map<String, String> vars, Set<String> required,
+                                                  Map<String, Function<Map<String, ?>, String>> formats, Map<String, ?> sample) {
+        return new StudioPromptStages.Stage(key, target, title, vars, required, formats, new LinkedHashMap<>(sample));
+    }
+
+    private static Map<String, String> vars(String... pairs) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (int i = 0; i + 1 < pairs.length; i += 2) out.put(pairs[i], pairs[i + 1]);
+        return out;
+    }
+
+    /** 名字 → 固定文字（「这次请求才算得出来」的格式由调用点传入，这里只给预览用的默认值）。 */
+    private static Map<String, Function<Map<String, ?>, String>> formats(String... pairs) {
+        Map<String, Function<Map<String, ?>, String>> out = new LinkedHashMap<>();
+        for (int i = 0; i + 1 < pairs.length; i += 2) { String text = pairs[i + 1]; out.put(pairs[i], v -> text); }
+        return out;
     }
 
     // ── AI 图片 / AI 视频（docs/studio-prompt-architecture.md §8 #12–#14） ───────────────────────────────────────

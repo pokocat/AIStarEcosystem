@@ -67,6 +67,9 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
     @Autowired(required = false) private com.aistareco.aep.service.AiAppSceneModelPolicyService scenePolicies;
     @Autowired(required = false) private AiChatTokenPricing tokenPricing;
     @Autowired(required = false) private StudioExecutionControl executionControl;
+    @Autowired(required = false) private com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler promptAssembler;
+    /** 一轮对话可能用到的环节，受理时一起冻结（docs/studio-prompt-architecture.md §3.4）。 */
+    static final List<String> DIALOGUE_STAGES = List.of("stage-dialogue", "stage-dialogue-summary", "stage-view-images", "stage-skill-plan");
     /** D10: a turn on a thread bound to an active execution is paid by that execution's fixed payer (not counted in its stage budget). */
     @Autowired(required = false) private org.springframework.beans.factory.ObjectProvider<StudioExecutionGate> gates;
 
@@ -532,8 +535,10 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
                                 chosen ? "所选文本模型不可用：它不是对话用途的默认模型，也没有在后台「AI 模型」里启用为对话用途的候选模型"
                                         : "还没有配置可用的对话模型：请在后台「AI 模型」里为对话用途绑定默认模型")).endpoint();
             }
-            prompt = prompts.resolve(PromptService.KEY_DAP_IP_STUDIO_SKILL_DIALOGUE);
-            if ("code".equals(prompt.origin())) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED", "尚未配置对话提示词");
+            var assembler = com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.or(promptAssembler);
+            assembler.requireStage("stage-dialogue");
+            var stageParams = assembler.library().require("stage-dialogue").params();
+            prompt = new PromptService.ResolvedPrompt("", "", stageParams, "library");
             // The ordinary text rate: its unit prices bill every call, its ceiling is the hold increment.
             rate = tokenPricing == null ? null : tokenPricing.find(endpoint.getId());
             if (rate == null) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_TOKEN_PRICE_NOT_CONFIGURED", "此模型尚未配置按量积分售价");
@@ -572,8 +577,9 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
             exec.put("holdIncrement", rate.maxCost());
             // Every hold of this run, in order; the worker appends runId#1, #2 … and settles them in this order.
             exec.putArray("holdRefs").addObject().put("ref", runId).put("amount", cost);
-            exec.putObject("prompt").put("key", PromptService.KEY_DAP_IP_STUDIO_SKILL_DIALOGUE).put("system", prompt.system()).put("user", prompt.userTemplate());
-            input.put("promptKey", PromptService.KEY_DAP_IP_STUDIO_SKILL_DIALOGUE);
+            exec.putObject("prompt").put("key", "stage-dialogue")
+                    .set("versions", com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.frozenNode(mapper, com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.or(promptAssembler).freeze(DIALOGUE_STAGES)));
+            input.put("promptKey", "stage-dialogue");
         }
         var modelCharge=mock?com.aistareco.aep.billing.service.ModelChargeContext.NONE
                 :com.aistareco.aep.billing.service.ModelChargeContext.forCredits(endpoint,cost);
