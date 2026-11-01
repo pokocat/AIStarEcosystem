@@ -54,8 +54,6 @@ class StudioPromptStageParityTest {
         cases.put("stage-canvas-script|dap.ip_studio_script", Map.of("operation", "storyboard", "input", "写一集都市悬疑", "characterContext", "[{\"name\":\"林\"}]",
                 "settings", "{\"genres\":[\"悬疑\"]}", "episodeNo", "2"));
         cases.put("stage-skill-check|dap.ip_studio_skill_check", Map.of("checklist", "- subject-consistency：主体一致", "target", "新主体：商品甲", "frames", "第 1 帧（0.0 秒）"));
-        cases.put("stage-skill-plan|dap.ip_studio_skill_plan", Map.of("skill", "# 出视频\n正文", "stage", "制作阶段", "constraints", "{\"operations\":[\"video\"]}",
-                "brief", "做一条 10 秒展示", "analysis", "尚未分析。", "assets", "[]", "capabilities", "[]", "budget", "尚未批准", "feedback", "（无）"));
         int checked = 0;
         for (var c : cases.entrySet()) {
             String stage = c.getKey().split("\\|")[0];
@@ -67,7 +65,7 @@ class StudioPromptStageParityTest {
                 checked++;
             }
         }
-        assertThat(checked).isEqualTo(4 * CONTRACTS.size() * APPENDIX.size());
+        assertThat(checked).isEqualTo(3 * CONTRACTS.size() * APPENDIX.size());
     }
 
     @Test
@@ -81,7 +79,7 @@ class StudioPromptStageParityTest {
     }
 
     @Test
-    void distillDialogueAndCanvasImageAreUnchanged() {
+    void distillAndDialogueAreUnchanged() {
         Map<String, String> distill = Map.of("skillName", "出视频", "baseVersion", "3", "executionVersion", "2", "skill", "# 出视频", "execution", "{}", "note", "无。");
         var d = assembler.assemble(StudioPromptAssembler.Call.of("stage-skill-distill", distill, null, null));
         assertThat(d.system()).isEqualTo(old("dap.ip_studio_skill_distill")[0]);
@@ -93,10 +91,95 @@ class StudioPromptStageParityTest {
         assertThat(t.system()).isEqualTo(old("dap.ip_studio_skill_dialogue")[0]);
         assertThat(t.user()).isEqualTo(PromptService.fill(old("dap.ip_studio_skill_dialogue")[1], dialogue));
 
-        Map<String, String> image = Map.of("prompt", "a red apple", "refLead", "Use Image 1 as the identity. ", "refOrder", "Image 1 is the person. ", "refNotes", "");
-        var i = assembler.assemble(StudioPromptAssembler.Call.of("stage-image", image, null, null));
-        assertThat(i.system()).isEmpty();
-        assertThat(i.user()).isEqualTo(PromptService.fill(old("dap.ip_canvas_image")[1], image).stripTrailing());
+    }
+
+    // ── 第 3 步零碎：原来在代码里拼的几段话，旧句子在 LegacyStepThreeTexts ──
+
+    /** 方案规划：阶段和预算那两句由代码给开关、环节正文给说法。文字任务「尚未批准」的说法统一成对话里那句（有意的小改动）。 */
+    @Test
+    void skillPlanStageAndBudgetSentencesAreUnchanged() {
+        String[] was = old("dap.ip_studio_skill_plan");
+        record Budget(Map<String, Object> flags, String text) {}
+        List<Budget> budgets = List.of(new Budget(Map.of(), LegacyStepThreeTexts.BUDGET_DIALOGUE_NONE),
+                new Budget(Map.of("running", true), LegacyStepThreeTexts.BUDGET_RUNNING),
+                new Budget(Map.of("approvedCap", 1200L), LegacyStepThreeTexts.BUDGET_APPROVED_PRE + 1200 + LegacyStepThreeTexts.BUDGET_APPROVED_SUF),
+                new Budget(Map.of("approvedCap", 0L), LegacyStepThreeTexts.BUDGET_APPROVED_PRE + 0 + LegacyStepThreeTexts.BUDGET_APPROVED_SUF),
+                new Budget(Map.of("dryRun", true), LegacyStepThreeTexts.BUDGET_DRY_RUN));
+        for (boolean analysis : new boolean[]{true, false}) for (Budget b : budgets) for (var contracts : CONTRACTS) {
+            Map<String, Object> vars = new LinkedHashMap<>(Map.of("skill", "# 出视频\n正文", "constraints", "{\"operations\":[\"video\"]}", "brief", "做一条 10 秒展示",
+                    "analysis", "尚未分析。", "assets", "[]", "capabilities", "[]", "feedback", "（无）", "analysisStage", analysis));
+            vars.putAll(b.flags());
+            Map<String, String> oldVars = new LinkedHashMap<>();
+            vars.forEach((k, v) -> oldVars.put(k, String.valueOf(v)));
+            oldVars.put("stage", analysis ? LegacyStepThreeTexts.PLAN_ANALYSIS : LegacyStepThreeTexts.PLAN_PRODUCTION);
+            oldVars.put("budget", b.text());
+            var now = assembler.assemble(StudioPromptAssembler.Call.of("stage-skill-plan", vars, null,
+                    Map.of("contracts", String.join("\n", contracts), "appendix", "")));
+            assertThat(now.system()).isEqualTo(join(was[0], contracts));
+            assertThat(now.user()).as(b.text()).isEqualTo(PromptService.fill(was[1], oldVars).stripTrailing());
+        }
+    }
+
+    private String render(String stage, Map<String, ?> vars) {
+        return assembler.assemble(StudioPromptAssembler.Call.of(stage, vars, null, null)).user();
+    }
+
+    private record Skill(String key, String name, boolean direct, String summary) {}
+
+    private static String legacySkillText(Skill bound, int version, String body, List<Skill> others) {
+        StringBuilder out = new StringBuilder();
+        if (bound != null) out.append("已选定「").append(bound.name()).append("」v").append(version).append('\n').append(body).append('\n').append(LegacyStepThreeTexts.SKILL_SWITCH);
+        else out.append(LegacyStepThreeTexts.SKILL_UNBOUND);
+        for (Skill s : others) out.append("- ").append(s.key()).append("：").append(s.name())
+                .append(s.direct() ? LegacyStepThreeTexts.HINT_DIRECT : LegacyStepThreeTexts.HINT_TWO).append(" — ").append(s.summary()).append('\n');
+        return out.toString();
+    }
+
+    @Test
+    void dialogueSkillAndPhaseSentencesAreUnchanged() {
+        Skill video = new Skill("video-generation", "出视频", true, "按描述出视频"), recreation = new Skill("reference-video-recreation", "复刻", false, "照着参考视频做");
+        for (List<Skill> others : List.of(List.<Skill>of(), List.of(recreation), List.of(recreation, video))) {
+            for (Skill bound : java.util.Arrays.asList(null, video)) {
+                Map<String, Object> vars = new LinkedHashMap<>();
+                vars.put("bound", bound != null);
+                if (bound != null) { vars.put("name", bound.name()); vars.put("version", 3); vars.put("body", "# 出视频\n第二行"); }
+                List<Map<String, Object>> list = new ArrayList<>();
+                for (Skill s : others) list.add(Map.of("key", s.key(), "name", s.name(), "direct", s.direct(), "summary", s.summary()));
+                vars.put("skills", list);
+                assertThat(render("stage-dialogue-skill", vars) + "\n").isEqualTo(legacySkillText(bound, 3, "# 出视频\n第二行", others));
+            }
+        }
+        for (String execution : new String[]{"", "第 2 步出视频，排队第 1 位"}) {
+            String tail = execution.isEmpty() ? "" : LegacyStepThreeTexts.EXECUTION + execution;
+            assertThat(render("stage-dialogue-phase", Map.of("started", false, "execution", execution))).isEqualTo(LegacyStepThreeTexts.STAGE_NONE + tail);
+            for (boolean production : new boolean[]{true, false}) for (boolean direct : new boolean[]{true, false}) {
+                String label = production ? (direct ? LegacyStepThreeTexts.STAGE_DIRECT : LegacyStepThreeTexts.STAGE_PRODUCTION) : LegacyStepThreeTexts.STAGE_ANALYSIS;
+                assertThat(render("stage-dialogue-phase", Map.of("started", true, "production", production, "direct", direct, "operations", "image、video", "execution", execution)))
+                        .isEqualTo(label + LegacyStepThreeTexts.STAGE_OPS + "image、video" + LegacyStepThreeTexts.STAGE_TAIL + tail);
+            }
+        }
+    }
+
+    @Test
+    void recreationFocusPageNoteMergeAndVisionBatchAreUnchanged() {
+        assertThat("\n" + render("stage-analysis-focus", Map.of("focus", "开头怎么抓人"))).isEqualTo(LegacyStepThreeTexts.FOCUS + "开头怎么抓人");
+        assertThat(render("stage-recreation-observe", Map.of("first", 9, "last", 16)))
+                .isEqualTo(LegacyStepThreeTexts.PAGE_PRE + 9 + LegacyStepThreeTexts.PAGE_MID + 16 + LegacyStepThreeTexts.PAGE_TAIL);
+        String frames = "[0.0,1.25,2.5]", records = "[{\"firstFrame\":1,\"lastFrame\":3,\"facts\":[]}]";
+        assertThat("\n" + render("stage-recreation-merge", Map.of("frameTimes", frames, "observations", records, "lastFrame", 3)))
+                .isEqualTo(LegacyStepThreeTexts.MERGE_HEAD + frames + LegacyStepThreeTexts.MERGE_RECORDS + records + LegacyStepThreeTexts.MERGE_LAST + 3 + LegacyStepThreeTexts.MERGE_TAIL);
+        var reading = assembler.assemble(StudioPromptAssembler.Call.of("stage-vision-batch", Map.of("merge", false), null, null));
+        assertThat(reading.system()).isEqualTo(LegacyStepThreeTexts.VISION_OBSERVE);
+        assertThat(reading.user()).isEqualTo(LegacyStepThreeTexts.VISION_BATCH);
+        assertThat(render("stage-vision-batch", Map.of("merge", true)) + "\n").isEqualTo(LegacyStepThreeTexts.VISION_MERGE);
+    }
+
+    /** 后台 Prompt 管理标「已迁走」的键，和环节文件头的 importFrom 是同一组：少标一个，运营就会在那边白改。 */
+    @Test
+    void promptKeysMarkedAsMovedAreExactlyTheImportSources() {
+        assertThat(new HashSet<>(PromptImports.promptKeys(StudioPromptLibrary.loadSeeds()))).isEqualTo(PromptService.MOVED_TO_STUDIO_LIBRARY.keySet());
+        for (String stages : PromptService.MOVED_TO_STUDIO_LIBRARY.values())
+            for (String stage : stages.split(" / ")) assertThat(StudioPromptStages.find(stage)).as(stage).isPresent();
     }
 
     /** 原来写死在 Java 里的两段（对话摘要、看图），原文抄在这里核对。 */

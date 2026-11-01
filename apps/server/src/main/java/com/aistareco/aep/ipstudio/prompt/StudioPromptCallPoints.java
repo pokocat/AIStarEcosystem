@@ -104,11 +104,7 @@ public final class StudioPromptCallPoints {
                 Set.of("skill", "execution"), formats("output", StudioPromptFormats.DISTILL_OUTPUT),
                 Map.of("skillName", "出视频", "baseVersion", 1, "executionVersion", 1, "skill", "# 出视频", "execution", "{}", "note", "无。")));
         StudioPromptStages.register(stage(SKILL_PLAN, StudioPromptEntry.LLM, "制作方案规划",
-                vars("skill", "制作做法正文", "stage", "阶段说明", "constraints", "本阶段允许的操作与上限", "brief", "用户目标与补充",
-                        "analysis", "原片分析", "assets", "素材清单", "capabilities", "可用模型与合同", "budget", "已批准的预算", "feedback", "用户对上一版方案的反馈"),
-                Set.of("skill", "brief"), formats("output", StudioPromptFormats.PLAN_OUTPUT, "contracts", "", "appendix", ""),
-                Map.of("skill", "# 出视频", "stage", "制作阶段", "constraints", "{}", "brief", "做一条 10 秒的商品展示", "analysis", "（无）",
-                        "assets", "（无）", "capabilities", "[]", "budget", "尚未批准", "feedback", "（无）")));
+                planVars(), Set.of("skill", "brief"), formats("output", StudioPromptFormats.PLAN_OUTPUT, "contracts", "", "appendix", ""), planSample()));
         StudioPromptStages.register(stage(CANVAS_TEXT, StudioPromptEntry.LLM, "画布文字创作与改稿",
                 vars("mode", "模式：general / original / adapt / director", "input", "用户的话或修改意图", "canvasContext", "所选画布内容",
                         "characterContext", "人物设定", "history", "近期对话（JSON）"),
@@ -131,13 +127,16 @@ public final class StudioPromptCallPoints {
         StudioPromptStages.register(stage(VIEW_IMAGES, StudioPromptEntry.LLM, "对话里看图", vars("question", "助手想重点确认的事，可以为空"), Set.of(),
                 Map.of(), Map.of("question", "哪张是正面")));
         StudioPromptStages.register(stage(IMAGE, StudioPromptEntry.IMAGE_MODEL, "画布出图包装",
-                vars("prompt", "用户的出图指令", "refLead", "参考图开场说明（代码生成）", "refOrder", "参考图顺序说明（代码生成）", "refNotes", "参考图备注（代码生成）"),
-                Set.of("prompt"), Map.of(), Map.of("prompt", "a red apple on a desk", "refLead", "", "refOrder", "", "refNotes", "")));
+                vars("prompt", "用户的出图指令", "identity", "只有一张参考图、用户也没自己点名参考图（加「保持同一个人」那句）",
+                        "ordered", "有两张以上参考图（写参考图编号）", "refs", "参考图：[{n, note}]，note 没有有效说明时为空"),
+                Set.of("prompt"), Map.of(), Map.of("prompt", "a red apple on a desk", "identity", true, "ordered", false,
+                        "refs", List.of(Map.of("n", 1, "note", "人物设定图")))));
         // 复刻与拉片（§8 #10–#11）：画面素材是代码拼的多模态内容，这几个环节只放 system；material 只在后台预览里用
         StudioPromptStages.register(stage(RECREATION, StudioPromptEntry.LLM, "复刻全片拆解", vars("input", "用户补充关注点"), Set.of("input"),
                 formats("output", StudioPromptFormats.RECREATION_OUTPUT, "contracts", "", "appendix", ""), Map.of("input", "开头怎么抓人")));
-        StudioPromptStages.register(stage(RECREATION_OBSERVE, StudioPromptEntry.LLM, "复刻逐页观察", vars("material", "预览用的示例素材说明"), Set.of(),
-                formats("output", StudioPromptFormats.OBSERVE_OUTPUT, "evidence", ""), Map.of("material", "（采样画面）")));
+        StudioPromptStages.register(stage(RECREATION_OBSERVE, StudioPromptEntry.LLM, "复刻逐页观察", vars("first", "本页第一帧的全局编号", "last", "本页最后一帧的全局编号"),
+                Set.of(), formats("output", StudioPromptFormats.OBSERVE_OUTPUT, "evidence", ""), Map.of("first", 1, "last", 8)));
+        registerStepThreeRest();
         StudioPromptStages.register(stage(FILM_PLAN, StudioPromptEntry.LLM, "拉片分段", vars("material", "预览用的示例素材说明"), Set.of(),
                 formats("output", StudioPromptFormats.FILM_PLAN_OUTPUT, "cap", ""), Map.of("material", "（全片文档与采样画面）")));
         StudioPromptStages.register(stage(FILM_SEGMENT, StudioPromptEntry.LLM, "拉片逐段分析", vars("material", "预览用的示例素材说明"), Set.of(),
@@ -146,8 +145,48 @@ public final class StudioPromptCallPoints {
 
     static final String RECREATION = "stage-recreation", RECREATION_OBSERVE = "stage-recreation-observe",
             FILM_PLAN = "stage-film-study-plan", FILM_SEGMENT = "stage-film-study";
-    /** 复刻任务受理时一起冻结的环节：拆解、逐页观察、拉片分段、逐段分析。 */
-    public static final java.util.List<String> RECREATION_STAGES = java.util.List.of(RECREATION, RECREATION_OBSERVE, FILM_PLAN, FILM_SEGMENT);
+    public static final String DIALOGUE_SKILL = "stage-dialogue-skill", DIALOGUE_PHASE = "stage-dialogue-phase", ANALYSIS_FOCUS = "stage-analysis-focus",
+            VISION_BATCH = "stage-vision-batch", RECREATION_MERGE = "stage-recreation-merge";
+    /** 复刻任务受理时一起冻结的环节：拆解、逐页观察、汇总、拉片分段、逐段分析、用户关注点、分批读图。 */
+    public static final java.util.List<String> RECREATION_STAGES = java.util.List.of(RECREATION, RECREATION_OBSERVE, RECREATION_MERGE, FILM_PLAN, FILM_SEGMENT,
+            ANALYSIS_FOCUS, VISION_BATCH);
+
+    /** 方案规划的变量（对话的 propose_plan、文字任务、后台试跑三处共用）。阶段和预算那两句的说法在环节正文里，代码只给开关。 */
+    private static Map<String, String> planVars() {
+        return vars("skill", "制作做法正文", "analysisStage", "分析阶段（否则是制作阶段）", "constraints", "本阶段允许的操作与上限", "brief", "用户目标与补充",
+                "analysis", "原片分析", "assets", "素材清单", "capabilities", "可用模型与合同", "dryRun", "后台试跑", "running", "已有进行中的制作",
+                "approvedCap", "本阶段已批准的积分（没有批准就不给）", "feedback", "用户对上一版方案的反馈");
+    }
+
+    private static Map<String, Object> planSample() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("skill", "# 出视频"); out.put("analysisStage", false); out.put("constraints", "{}"); out.put("brief", "做一条 10 秒的商品展示");
+        out.put("analysis", "（无）"); out.put("assets", "（无）"); out.put("capabilities", "[]"); out.put("dryRun", false); out.put("running", false);
+        out.put("feedback", "（无）");
+        return out;
+    }
+
+    /** 第 3 步零碎：原来在代码里拼的几段话（对话的方法 / 阶段说明、拉片复刻的关注点、分批读图、复刻汇总）。 */
+    private static void registerStepThreeRest() {
+        Map<String, Object> skill = new LinkedHashMap<>();
+        skill.put("bound", true); skill.put("name", "出视频"); skill.put("version", 3); skill.put("body", "# 出视频\n……");
+        skill.put("skills", List.of(Map.of("key", "image-generation", "name", "出图", "direct", true, "summary", "按描述出图")));
+        StudioPromptStages.register(stage(DIALOGUE_SKILL, StudioPromptEntry.MESSAGE, "对话里的方法说明",
+                vars("bound", "已经选定方法", "name", "选定方法的名称", "version", "选定方法的版本", "body", "选定方法的正文",
+                        "skills", "其它可换的方法：[{key, name, direct（没有分析阶段）, summary}]"), Set.of(), Map.of(), skill));
+        Map<String, Object> phase = new LinkedHashMap<>();
+        phase.put("started", true); phase.put("production", true); phase.put("direct", true); phase.put("operations", "image、video"); phase.put("execution", "");
+        StudioPromptStages.register(stage(DIALOGUE_PHASE, StudioPromptEntry.MESSAGE, "对话里的阶段说明",
+                vars("started", "已经选定方法、进入了某个阶段", "production", "是制作阶段", "direct", "方法没有分析阶段", "operations", "本阶段可用的收费操作（已用顿号连好）",
+                        "execution", "后台制作的一句话进度（服务端记录），没有为空"), Set.of(), Map.of(), phase));
+        StudioPromptStages.register(stage(ANALYSIS_FOCUS, StudioPromptEntry.MESSAGE, "拉片 / 复刻的用户关注点", vars("focus", "用户写的分析重点"),
+                Set.of("focus"), Map.of(), Map.of("focus", "开头怎么抓人")));
+        StudioPromptStages.register(stage(VISION_BATCH, StudioPromptEntry.LLM, "读图降级：分批读取", vars("merge", "汇总时（否则是每批读图）"), Set.of(),
+                formats("output", StudioPromptFormats.VISION_BATCH_OUTPUT), Map.of("merge", false)));
+        StudioPromptStages.register(stage(RECREATION_MERGE, StudioPromptEntry.MESSAGE, "复刻汇总时的事实整合与尾帧复核",
+                vars("frameTimes", "全部采样帧的时间（JSON）", "observations", "逐页读到的事实（JSON）", "lastFrame", "最后一帧的全局编号"),
+                Set.of("observations"), Map.of(), Map.of("frameTimes", "[0.0, 1.2]", "observations", "[]", "lastFrame", 2)));
+    }
 
     private static StudioPromptStages.Stage stage(String key, String target, String title, Map<String, String> vars, Set<String> required,
                                                   Map<String, Function<Map<String, ?>, String>> formats, Map<String, ?> sample) {

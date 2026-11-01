@@ -23,6 +23,10 @@ export interface PromptTemplate {
   enabled: boolean;
   updatedAt: string | null;
   updatedBy: string | null;
+  /** 已经搬进「提示词与技能」：库里对应的环节。Studio 不再读这里，改了不生效。 */
+  movedTo?: string | null;
+  /** 已经没有调用点，改了不生效。 */
+  retired?: boolean;
 }
 
 export interface PromptUpsert {

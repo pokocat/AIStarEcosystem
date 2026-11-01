@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
@@ -178,6 +179,22 @@ public class PromptService {
                     KEY_DAP_IP_IDENTITY, KEY_DAP_IP_LOOK_IMAGE, KEY_DAP_IP_CANVAS_IMAGE, KEY_DAP_IP_STUDIO_SCRIPT, KEY_DAP_IP_STUDIO_ASSISTANT, KEY_DAP_IP_STUDIO_RECREATION,
                     KEY_DAP_IP_STUDIO_SKILL_DIALOGUE, KEY_DAP_IP_STUDIO_SKILL_PLAN, KEY_DAP_IP_STUDIO_SKILL_CHECK,
                     KEY_DAP_IP_STUDIO_SKILL_DISTILL);
+
+    /**
+     * 已经搬进 Studio 提示词库的键 → 库里对应的环节（docs/studio-prompt-architecture.md §4.8）。Studio 不再读这几行，后台改了不生效；
+     * 只在提示词库第一次灌种子时导入一次线上内容（PromptImports）。和环节文件头的 importFrom 一一对应（StudioPromptEntryTest 核对）。
+     */
+    public static final Map<String, String> MOVED_TO_STUDIO_LIBRARY = Map.of(
+            KEY_DAP_IP_STUDIO_SKILL_DIALOGUE, "stage-dialogue", KEY_DAP_IP_STUDIO_SKILL_PLAN, "stage-skill-plan",
+            KEY_DAP_IP_STUDIO_SKILL_CHECK, "stage-skill-check", KEY_DAP_IP_STUDIO_SKILL_DISTILL, "stage-skill-distill",
+            KEY_DAP_IP_STUDIO_ASSISTANT, "stage-canvas-text", KEY_DAP_IP_STUDIO_SCRIPT, "stage-canvas-script / stage-asset-extract",
+            KEY_DAP_IP_STUDIO_RECREATION, "stage-recreation", KEY_DAP_IP_CANVAS_IMAGE, "stage-image");
+    /** 没有调用点了（v0.157 起画布节点通用化，人物特征卡和形象卡的编译一起删了），行还在。 */
+    public static final Set<String> RETIRED_KEYS = Set.of(KEY_DAP_IP_IDENTITY, KEY_DAP_IP_LOOK_IMAGE);
+
+    private static PromptTemplateDto studioNotes(PromptTemplateDto dto) {
+        return dto == null ? null : dto.withStudioNotes(MOVED_TO_STUDIO_LIBRARY.get(dto.promptKey()), RETIRED_KEYS.contains(dto.promptKey()));
+    }
 
     /** 代码内最终兜底（resource 也缺失时）。故意通用，仅保证非空可降级。 */
     private static final String CODE_FALLBACK_SYSTEM =
@@ -543,15 +560,15 @@ public class PromptService {
         String[] def = loadResource(promptKey);
         if (def == null) return null;
         List<String> variables = extractVariables(def[0], def[1]);
-        return new PromptTemplateDto(
+        return studioNotes(new PromptTemplateDto(
                 null, promptKey, def[0], def[1],
                 new PromptParamsDto(null, null, null),
                 variables,
-                0, true, null, "default");
+                0, true, null, "default"));
     }
 
     private PromptTemplateDto toDto(PromptTemplate row) {
-        return PromptTemplateDto.from(row, om, extractVariables(row.getSystemPrompt(), row.getUserTemplate()));
+        return studioNotes(PromptTemplateDto.from(row, om, extractVariables(row.getSystemPrompt(), row.getUserTemplate())));
     }
 
     private void saveVersion(PromptTemplate row, String by, String note) {

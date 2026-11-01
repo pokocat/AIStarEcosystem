@@ -613,12 +613,7 @@ public class IpRunService {
         String size = normalizeSize(md);
 
         // ── 提示词模板（服务端唯一漏斗；用户能在 inputs.prompt 看到原文）────
-        Map<String, String> vars = new LinkedHashMap<>();
-        vars.put("prompt", prompt);
-        vars.put("refLead", identityLead(refs, prompt));
-        vars.put("refOrder", refOrderHint(refs));
-        vars.put("refNotes", refs.isEmpty() ? "" : refNotes(refs));
-        String finalPrompt = squeeze(canvasImagePrompt(vars));
+        String finalPrompt = squeeze(canvasImagePrompt(imageVars(prompt, refs.stream().map(Ref::note).toList())));
 
         ArrayNode refsOut = om.createArrayNode();
         ArrayNode refKeys = om.createArrayNode();
@@ -721,12 +716,7 @@ public class IpRunService {
                 : req.count() == null ? 1 : Math.max(1, Math.min(4, req.count()));
         if (!StudioImageModelRouting.isProductRequest(requestedEndpoint) && !ALLOWED_SIZES.contains(size)) size = DEFAULT_SIZE;
 
-        Map<String, String> vars = new LinkedHashMap<>();
-        vars.put("prompt", req.prompt().trim());
-        vars.put("refLead", identityLead(refs, req.prompt()));
-        vars.put("refOrder", refOrderHint(refs));
-        vars.put("refNotes", refs.isEmpty() ? "" : refNotes(refs));
-        String finalPrompt = squeeze(canvasImagePrompt(vars));
+        String finalPrompt = squeeze(canvasImagePrompt(imageVars(req.prompt().trim(), refs.stream().map(Ref::note).toList())));
 
         ArrayNode refsOut = om.createArrayNode();
         ArrayNode refKeys = om.createArrayNode();
@@ -810,41 +800,27 @@ public class IpRunService {
         return prompt.matches("(?s).*(图\\s*[0-9１-９]|参考图|reference image|first image|second image).*");
     }
 
-    /** 多张参考图时告诉模型编号，用户提示词里的「图1 / 图2」才有确定的指代。 */
-    private static String refOrderHint(List<Ref> refs) {
-        if (refs.size() < 2) return "";
-        StringBuilder sb = new StringBuilder("The reference images are given in order: ");
-        for (int i = 0; i < refs.size(); i++) {
-            if (i > 0) sb.append(", ");
-            sb.append("image ").append(i + 1).append(" = 图").append(i + 1);
-        }
-        return sb.append(". ").toString();
-    }
-
     /**
-     * 「保持同一个人」这句加不加。
+     * 出图包装 stage-image 的变量（句子在提示词库里，docs/studio-prompt-architecture.md §8 #15）。
      *
-     * <p>只在**一张参考图、而且用户没有自己指挥参考图**时加。多张参考图意味着他在做合成
-     * （「用人物图1的脸 + 图2 的形态」），此时替他加一句「所有参考图里的人都保持不变」
+     * <p>{@code identity}：「保持同一个人」那句加不加 —— 只在**一张参考图、而且用户没有自己指挥参考图**时加。
+     * 多张参考图意味着他在做合成（「用人物图1的脸 + 图2 的形态」），此时替他加一句「所有参考图里的人都保持不变」
      * 就是在跟他的意图打架 —— 而且我们的话还排在他前面，权重更高。
+     * {@code ordered}：多张参考图时告诉模型编号，用户提示词里的「图1 / 图2」才有确定的指代。
+     * {@code refs[].note}：参考图各自是什么；没有有效说明就留空不写 —— 「Reference image 1: 参考图」这种占位只占注意力。
      */
-    private static String identityLead(List<Ref> refs, String userPrompt) {
-        if (refs.size() != 1 || promptDirectsReferences(userPrompt)) return "";
-        return "Use the provided reference image as the identity source. Keep the same person: "
-                + "same face, same facial proportions, same hairstyle and hair color, same skin tone, "
-                + "same signature features (marks, freckles, glasses, accessories). "
-                + "Change only what the following instruction asks for. ";
-    }
-
-    /** 参考图各自是什么。没有有效说明就不写 —— 「Reference image 1: 参考图」这种占位只占注意力。 */
-    private static String refNotes(List<Ref> refs) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < refs.size(); i++) {
-            String note = refs.get(i).note();
-            if (note == null || note.isBlank() || "参考图".equals(note.trim())) continue;
-            sb.append("Reference image ").append(i + 1).append(": ").append(note).append(". ");
+    static Map<String, Object> imageVars(String prompt, List<String> notes) {
+        Map<String, Object> vars = new LinkedHashMap<>();
+        vars.put("prompt", prompt);
+        vars.put("identity", notes.size() == 1 && !promptDirectsReferences(prompt));
+        vars.put("ordered", notes.size() >= 2);
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (int i = 0; i < notes.size(); i++) {
+            String note = notes.get(i);
+            items.add(Map.of("n", i + 1, "note", note == null || note.isBlank() || "参考图".equals(note.trim()) ? "" : note));
         }
-        return sb.toString();
+        vars.put("refs", items);
+        return vars;
     }
 
     private record Ref(String role, String key, String note) {}
@@ -874,7 +850,7 @@ public class IpRunService {
     }
 
     /** 画布出图交给画图模型的包装，按提示词库的 {@code stage-image} 拼（docs/studio-prompt-architecture.md §8 #15）。 */
-    private String canvasImagePrompt(Map<String, String> vars) {
+    private String canvasImagePrompt(Map<String, Object> vars) {
         var assembler = com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.or(promptAssembler);
         assembler.requireStage("stage-image");
         return assembler.assemble(com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.Call.of("stage-image", vars, null, null)).user();
@@ -882,57 +858,6 @@ public class IpRunService {
 
     // ── doc 取值小工具 ────────────────────────────────────────
 
-
-    /** 老画布的五字段，按这个顺序拼接（顺序即历史行为，不要改）。 */
-    private static final List<String> LOOK_LEGACY_FIELDS =
-            List.of("outfit", "pose", "expression", "details", "props");
-
-    /**
-     * 形象卡文本。
-     *
-     * <p><b>通用化（v0.153）</b>：新节点只写一个 {@code prompt} 字段 ——
-     * 原来的 {@code outfit/pose/expression/details/props} 五个字段在这里做的事
-     * 一直只是「按顺序拼成一串文本」，服务端从不区分它们的语义，拆分对出图零增益，
-     * 只留下填写负担和边界犹豫（见 docs/archive/ip-studio-generalize-proposal.md）。
-     *
-     * <p>老画布的 doc 里仍是五字段，所以这里保留回落拼接 —— <b>零迁移</b>：
-     * 历史项目不用改数据、不用停机，读的时候按老顺序拼起来即可。
-     */
-    /**
-     * 形象卡 → 提示词模板的五个占位符。
-     *
-     * <p>模板（{@code dap.ip_look_image}）里这五个占位符只是被顺序拼进同一句话，
-     * 服务端从不区分它们的语义。新画布只写一个自由 {@code prompt}，就整段塞进第一个占位符 ——
-     * <b>不改模板</b>：运营在后台存过自定义模板的实例，占位符名一旦变了他们那份就渲染不出内容。
-     *
-     * <p>老画布（只有五字段）逐字保持原行为。
-     */
-    private static Map<String, String> lookClauses(JsonNode lookData) {
-        Map<String, String> vars = new LinkedHashMap<>();
-        for (String f : LOOK_LEGACY_FIELDS) vars.put(f, "");
-        String prompt = IpDocs.text(lookData, "prompt");
-        if (prompt != null) {
-            vars.put("outfit", clause("Look", prompt));
-            return vars;
-        }
-        vars.put("outfit", clause("Outfit", IpDocs.text(lookData, "outfit")));
-        vars.put("pose", clause("Pose", IpDocs.text(lookData, "pose")));
-        vars.put("expression", clause("Expression", IpDocs.text(lookData, "expression")));
-        vars.put("details", clause("Details", IpDocs.text(lookData, "details")));
-        vars.put("props", clause("Props", IpDocs.text(lookData, "props")));
-        return vars;
-    }
-
-    private static List<String> lookText(JsonNode lookData) {
-        String prompt = IpDocs.text(lookData, "prompt");
-        if (prompt != null) return List.of(prompt);
-        List<String> out = new ArrayList<>();
-        for (String f : LOOK_LEGACY_FIELDS) {
-            String v = IpDocs.text(lookData, f);
-            if (v != null) out.add(v);
-        }
-        return out;
-    }
 
     private static int normalizeCount(JsonNode gd) {
         int raw = gd == null ? 1 : gd.path("count").asInt(1);
@@ -969,10 +894,6 @@ public class IpRunService {
             case "look" -> "形象卡内容";
             default -> key;
         };
-    }
-
-    private static String clause(String label, String value) {
-        return value == null ? "" : label + ": " + value + ".";
     }
 
     private static String nz(String s) { return s == null ? "" : s; }

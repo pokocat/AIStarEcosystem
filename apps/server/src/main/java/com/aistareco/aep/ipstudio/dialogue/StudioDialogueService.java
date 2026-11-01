@@ -69,7 +69,8 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
     @Autowired(required = false) private StudioExecutionControl executionControl;
     @Autowired(required = false) private com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler promptAssembler;
     /** 一轮对话可能用到的环节，受理时一起冻结（docs/studio-prompt-architecture.md §3.4）。 */
-    static final List<String> DIALOGUE_STAGES = List.of("stage-dialogue", "stage-dialogue-summary", "stage-view-images", "stage-skill-plan");
+    static final List<String> DIALOGUE_STAGES = List.of("stage-dialogue", "stage-dialogue-skill", "stage-dialogue-phase", "stage-dialogue-summary",
+            "stage-view-images", "stage-skill-plan");
     /** D10: a turn on a thread bound to an active execution is paid by that execution's fixed payer (not counted in its stage budget). */
     @Autowired(required = false) private org.springframework.beans.factory.ObjectProvider<StudioExecutionGate> gates;
 

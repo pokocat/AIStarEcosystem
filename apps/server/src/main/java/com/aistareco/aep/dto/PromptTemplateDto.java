@@ -20,8 +20,21 @@ public record PromptTemplateDto(
         int version,
         boolean enabled,
         Instant updatedAt,
-        String updatedBy
+        String updatedBy,
+        /** 已经搬进 Studio「提示词与技能」的键：库里对应的环节（Studio 不再读这里，后台改了不生效）；没搬为 null。 */
+        String movedTo,
+        /** 已经没有调用点的键（行还在，改了不生效）。 */
+        boolean retired
 ) {
+    public PromptTemplateDto(String id, String promptKey, String systemPrompt, String userTemplate, PromptParamsDto params, List<String> variables,
+                             int version, boolean enabled, Instant updatedAt, String updatedBy) {
+        this(id, promptKey, systemPrompt, userTemplate, params, variables, version, enabled, updatedAt, updatedBy, null, false);
+    }
+
+    public PromptTemplateDto withStudioNotes(String movedTo, boolean retired) {
+        return new PromptTemplateDto(id, promptKey, systemPrompt, userTemplate, params, variables, version, enabled, updatedAt, updatedBy, movedTo, retired);
+    }
+
     public static PromptTemplateDto from(PromptTemplate t, ObjectMapper om) {
         return from(t, om, List.of());
     }

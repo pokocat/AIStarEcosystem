@@ -137,9 +137,12 @@ class StudioDialoguePromptWiringTest {
      * model, not user copy (§8.0.1 ⑩).
      */
     @Test void anUnboundTurnIsToldToBindFirstAndOnlyMethodsOnTheShelfAreNamed() throws Exception {
+        // 方法说明在提示词库 stage-dialogue-skill（docs/studio-prompt-architecture.md §14），对话回合按它拼
+        String skillStage = Files.readString(Path.of("src/main/resources/studio/prompts/stages/stage-dialogue-skill.md"));
+        assertTrue(skillStage.contains("read_skill 选定对应的方法") && skillStage.contains("可以和看图放在同一批动作里")
+                && skillStage.contains("选定方法之前不要向用户提问"), "the unbound skill text");
         String worker = Files.readString(Path.of("src/main/java/com/aistareco/aep/ipstudio/dialogue/StudioDialogueTurnWorker.java"));
-        assertTrue(worker.contains("read_skill 选定对应的方法") && worker.contains("可以和看图放在同一批动作里")
-                && worker.contains("选定方法之前不要向用户提问"), "the unbound skill text");
+        assertTrue(worker.contains("\"stage-dialogue-skill\""), "the turn renders the skill text from the library");
         String propose = Files.readString(TOOLS.resolve("ProposePlanTool.java"));
         for (StudioSkill s : skills()) {
             if (s.withdrawn()) assertFalse(propose.contains("「" + s.name() + "」"), "propose_plan names the withdrawn method " + s.name());

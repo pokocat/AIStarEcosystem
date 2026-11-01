@@ -23,7 +23,7 @@ class StudioFilmStudyTest {
   when(storage.store(any(byte[].class),anyString(),anyString(),anyString(),anyString())).thenAnswer(call->{String key="asset-"+saved.size()+"."+call.getArgument(3);byte[] bytes=call.getArgument(0);saved.put(key,bytes);return new FileStorageService.StoredFile(key,"","","",bytes.length,call.getArgument(4));});
   ObjectNode source=om.createObjectNode().put("nodeId","video").put("title","测试").put("storageKey","source").put("durationSec",3).put("audioAnalyzed",false);var times=source.putArray("frameTimes");for(double t:new double[]{0,.5,1,1.5,2,2.5,2.9667})times.add(t);
   var image=Map.<String,Object>of("type","image_url","image_url",Map.of("url","data:image/jpeg;base64,test"));
-  var evidence=new StudioRecreation.Study(Collections.nCopies(7,List.of(Map.of("type","text","text","素材"),image)),image,List.of(),Collections.nCopies(7,image));
+  var evidence=new StudioRecreation.Study(Collections.nCopies(7,image),image,List.of(),Collections.nCopies(7,image));
   int[] calls={0};var checkpoint=new ArrayList<ObjectNode>();
   var result=StudioFilmStudy.run(source,"已编辑的全片文档",om.createObjectNode(),evidence,storage,"owner",8192,3,(system,parts,tokens,json)->{calls[0]++;assertTrue(parts.stream().filter(p->"image_url".equals(p.get("type"))).count()<=3,"planner and segment evidence must fit the configured image limit");return json?"{\"segments\":[{\"endSec\":1.2},{\"endSec\":3}]}":"## 任意模型正文\n\n内容仅用于串流程，不验证叙事。";},(pct,stage,partial)->{checkpoint.add(partial.deepCopy());return true;});
   assertEquals(3,calls[0]);assertEquals(2,result.path("segments").size());

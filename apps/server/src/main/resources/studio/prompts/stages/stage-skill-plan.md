@@ -30,7 +30,7 @@ summary: "按制作做法、原片分析和素材给出本阶段可执行的计�
 ---
 技能（方法）：
 {{skill}}
-阶段：{{stage}}
+阶段：{{#analysisStage}}分析阶段（解析、拉片、制作方案推导与计划编译）{{/analysisStage}}{{^analysisStage}}制作阶段（生成、检查与合成）{{/analysisStage}}
 本阶段允许的操作与上限：{{constraints}}
 用户目标与补充：
 {{brief}}
@@ -40,7 +40,7 @@ summary: "按制作做法、原片分析和素材给出本阶段可执行的计�
 {{assets}}
 可用模型与合同（模式、最短/最长秒、参考数量、单价）：
 {{capabilities}}
-已批准的预算：{{budget}}
+已批准的预算：{{#dryRun}}试跑：不涉及真实预算，也不报价。{{/dryRun}}{{^dryRun}}{{#approvedCap}}本阶段已批准 {{approvedCap}} 积分；制作阶段需用户另行确认。{{/approvedCap}}{{^approvedCap}}{{#running}}已有进行中的制作，预算以服务端记录为准{{/running}}{{^running}}尚未批准任何制作预算（报价由服务端计算，用户确认后才执行）{{/running}}{{/approvedCap}}{{/dryRun}}
 用户对上一版方案的反馈：
 {{feedback}}
 {{format.appendix}}

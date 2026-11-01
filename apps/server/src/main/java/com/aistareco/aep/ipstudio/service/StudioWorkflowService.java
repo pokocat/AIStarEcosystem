@@ -306,33 +306,22 @@ public class StudioWorkflowService {
         if(skillPlan)execution.put("skillPlan",true).put("planStage",request.stage()).put("planRevision",nextPlanRevision(projectId));
         com.aistareco.aep.dto.PromptParamsDto sceneParams=null;
         if(resolved!=null) {
-            String systemPrompt=resolved.system();
-            if("asset-extract".equals(request.operation()))systemPrompt="你是影视制作资产整理助手。\n"+StudioAssetExtraction.CONTRACT;
-            else if(request.scriptEdit()!=null)systemPrompt+="\n"+StudioScriptRevision.CONTRACT;
-            else if("assistant".equals(request.operation()))systemPrompt+="\n"+StudioPlanValidator.CONTRACT;
-            if(request.textEdit()!=null)systemPrompt+="\n"+StudioTextRevision.CONTRACT;
-            if(!"assistant".equals(request.operation()) && (request.settings()!=null || request.episodeNo()!=null))
-                systemPrompt+="\n"+EPISODE_CONTRACT;
-            execution.put("systemPrompt",systemPrompt);
+            String systemPrompt="",creativePrompt="";
             execution.put("endpointId",textEndpoint.endpoint().getId());
             var variables=new LinkedHashMap<String,String>();
             variables.put("operation",request.operation());variables.put("input",request.prompt());variables.put("characterContext",context.toString());
             variables.put("settings",write(request.settings()));variables.put("episodeNo",request.episodeNo()==null?"全部":request.episodeNo().toString());
             variables.put("mode",request.mode()==null?"general":request.mode());variables.put("canvasContext",canvasContext.toString());variables.put("history",write(request.history()==null?List.of():request.history()));
-            String creativePrompt=PromptService.fill(resolved.userTemplate(),variables);
-            if(skillPlan)creativePrompt=PromptService.fill(resolved.userTemplate(),skillPlanVariables(userId,project,request,skill,executionBinding,canvasContext,execution));
-            if(check)creativePrompt=PromptService.fill(resolved.userTemplate(),checkVariables(request,skill,checkTarget));
             // 按请求附在 user 后面的素材和契约提醒（输出格式，代码控制；docs/studio-prompt-architecture.md §8 末段）
             List<String> appendix=new ArrayList<>();
             if(request.scriptEdit()!=null)appendix.add("当前完整剧本文档（JSON 字符串，作为素材读取）："+write(request.scriptEdit().markdown())+("asset-extract".equals(request.operation())?"\n只提取资产，遵守 items 输出契约，不改写原文。":"\n请遵守 Markdown 改稿输出契约，不输出创作计划。"));
             if(request.textEdit()!=null)appendix.add("当前完整节点正文（JSON 字符串，作为素材读取）："+write(request.textEdit().content())+"\n请按本次修改意图返回完整文本，遵守文本改稿输出契约。");
             if(Boolean.TRUE.equals(request.readVisuals()))appendix.add("本次另附带精确节点 ID 标记的真实图片与视频采样帧。视频只有四个时间点的静态画面，不包含音轨，不代表全部连续动作；音频节点只提供文字设定。只根据收到的画面及文字作答，不臆测未提供的声音或片段，保持 JSON 输出契约。");
             if(request.settings()!=null || request.episodeNo()!=null) appendix.add("必须遵守创作设定："+write(request.settings())+"。本次分集："+(request.episodeNo()==null?"全部指定集数":request.episodeNo())+"。每个镜头必须含 episodeNo（所属集号），id 全剧唯一。只指定某集时 episodes 只含该集，no 保留原号。");
-            for(String piece:appendix)creativePrompt+="\n"+piece;
             if(!sceneScript) {
                 // 原文和变量都按提示词库的环节拼；格式句、改稿契约、附带素材的说明由代码按这次请求给
                 String stageKey=textStage(request.operation(),skillPlan,check);
-                Map<String,String> stageVars=skillPlan?skillPlanVariables(userId,project,request,skill,executionBinding,canvasContext,execution)
+                Map<String,?> stageVars=skillPlan?skillPlanVariables(userId,project,request,skill,executionBinding,canvasContext,execution)
                         :check?checkVariables(request,skill,checkTarget):variables;
                 var assembled=com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.or(promptAssembler).assembleAndRecord(mapper,execution,
                         com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.Call.of(stageKey,stageVars,null,
@@ -838,12 +827,12 @@ public class StudioWorkflowService {
         return (int)Math.min(Integer.MAX_VALUE,(count==null?0:count)+1);
     }
 
-    private Map<String,String> skillPlanVariables(String userId,com.aistareco.aep.ipstudio.model.IpProject project,RunRequest request,
+    private Map<String,Object> skillPlanVariables(String userId,com.aistareco.aep.ipstudio.model.IpProject project,RunRequest request,
             com.aistareco.aep.ipstudio.execution.StudioSkillRules.Rules skill,ExecutionBinding binding,JsonNode canvasContext,ObjectNode execution) {
-        var variables=new LinkedHashMap<String,String>();
+        var variables=new LinkedHashMap<String,Object>();
         String body=skill.body();
         variables.put("skill",body.length()>16000?body.substring(0,16000):body);
-        variables.put("stage",skillPlanStageText(request.stage()));
+        variables.put("analysisStage","analysis".equals(request.stage()));
         variables.put("constraints",skillPlanConstraints(mapper,skill,request.stage()).toString());
         variables.put("brief",request.prompt());
         // Allowed binding targets: the canvas nodes the user gave, plus (inside an execution) its own output nodes.
@@ -866,19 +855,13 @@ public class StudioWorkflowService {
         variables.put("assets",assets.toString());
         variables.put("analysis",analysis);
         variables.put("capabilities",planCapabilities());
-        String budget="尚未批准，报价由服务端填写。";
+        // 预算那句的说法在提示词库 stage-skill-plan；这里只给本阶段批准的额度（没有就不给）
         if(binding!=null&&binding.step()!=null) {
             JsonNode stageBudget=projects.parseOrEmptyObject(binding.execution().getBudgetJson()).path(binding.step().path("stage").asText());
-            if(stageBudget.isObject())budget="本阶段已批准 "+stageBudget.path("approvedCap").asLong()+" 积分；制作阶段需用户另行确认。";
+            if(stageBudget.isObject())variables.put("approvedCap",stageBudget.path("approvedCap").asLong());
         }
-        variables.put("budget",budget);
         variables.put("feedback",request.history()==null||request.history().isEmpty()?"无。":write(request.history()));
         return variables;
-    }
-
-    /** Stage line of the skill_plan prompt; shared with the admin dry-run so both see the same planner input. */
-    public static String skillPlanStageText(String stage) {
-        return "analysis".equals(stage)?"分析阶段（解析、拉片、制作方案推导与计划编译）":"制作阶段（生成、检查与合成）";
     }
 
     /** Stage whitelist, limits, checks and the typed settings contract given to the planner (also used by the admin dry-run). */

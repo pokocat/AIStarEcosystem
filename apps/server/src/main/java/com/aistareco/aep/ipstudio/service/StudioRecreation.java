@@ -43,7 +43,8 @@ public final class StudioRecreation {
         catch(Exception e){throw bad("STUDIO_RECREATION_MEDIA_INVALID","参考视频无法读取，请重新上传可播放的 MP4 视频");}
     }
     public record Preview(int frame,double timeSec,byte[] bytes,int width,int height) {}
-    public record Study(List<List<Map<String,Object>>> pages,Map<String,Object> ending,List<Preview> previews,List<Map<String,Object>> frames) {}
+    /** pages：每页一张拼格图（8 帧一页）。 */
+    public record Study(List<Map<String,Object>> pages,Map<String,Object> ending,List<Preview> previews,List<Map<String,Object>> frames) {}
     public static Study study(JsonNode source,FileStorageService storage) {return study(source,storage,new StudioHypitMedia("node"));}
     public static Study study(JsonNode source,FileStorageService storage,StudioHypitMedia hypit) {
         Path directory=null;
@@ -56,12 +57,9 @@ public final class StudioRecreation {
             actual.put("samplingStrategy","hypit-media-v1").put("mediaEngineRevision",StudioHypitMedia.REVISION);var changes=actual.putArray("visualChanges");
             for(var change:selection.changes())changes.addObject().put("timeSec",scan.times().get(change.frame())).put("kind",change.lighting()?"lighting":"visual");
             for(int i=0;i<selection.frames().size();i++)Files.copy(scan.paths().get(selection.frames().get(i)),directory.resolve(String.format(Locale.ROOT,"%03d.jpg",i+1)));
-            List<List<Map<String,Object>>> pages=new ArrayList<>();
-            for(int start=0;start<times.size();start+=8) {
-                int end=Math.min(start+8,times.size());List<Map<String,Object>> parts=new ArrayList<>();
-                parts.add(Map.of("type","text","text","本页按左到右、上到下排列，F编号是原片的全局证据编号。只读取本页 F"+(start+1)+" 至 F"+end+" 的实际画面。时间来自原始帧时间戳。格线/编号不是原片字幕或构图。本页不含音轨。逐一核对主体相对大小、位置、姿态、接触或倒地状态、环境、光线和构图，尤其说明最后一格实际可见什么；不要补全未见动作或推断身份/年龄。用最多3条简洁事实覆盖本页变化，再补充可见风格。"));
-                parts.add(page(directory,source,start,end));pages.add(List.copyOf(parts));
-            }
+            // 每页一张拼格图；告诉模型这一页怎么读的那句话在提示词库 stage-recreation-observe（docs/studio-prompt-architecture.md §8 #10）
+            List<Map<String,Object>> pages=new ArrayList<>();
+            for(int start=0;start<times.size();start+=8)pages.add(page(directory,source,start,Math.min(start+8,times.size())));
             // Re-read the ungridded last frame during synthesis; page summaries can misread small dark subjects.
             List<Preview> previews=new ArrayList<>();Set<Integer> retained=new HashSet<>();
             // Four reusable style images are a presentation subset, separate from the full analysis evidence.

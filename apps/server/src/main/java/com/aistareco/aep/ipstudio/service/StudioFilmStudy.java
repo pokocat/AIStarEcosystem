@@ -34,11 +34,12 @@ public final class StudioFilmStudy {
      * 分段和逐段分析的 system（docs/studio-prompt-architecture.md §8 #11），按提示词库的环节拼；分段上限那句仍由这里按模型合同接在后面。
      * {@code frozen} 是任务受理时冻结的版本，为 null 时用当前版本。
      */
-    public record Prompts(String planner,String segment) {
+    public record Prompts(String planner,String segment,StudioVisionFallback.Texts vision) {
         public static Prompts current(java.util.Map<String,Integer> frozen) { return of(com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.classpath(),frozen); }
         public static Prompts of(com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler assembler,java.util.Map<String,Integer> frozen) {
             return new Prompts(assembler.assemble(com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.Call.of("stage-film-study-plan",java.util.Map.of(),frozen,null)).system(),
-                    assembler.assemble(com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.Call.of("stage-film-study",java.util.Map.of(),frozen,null)).system());
+                    assembler.assemble(com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.Call.of("stage-film-study",java.util.Map.of(),frozen,null)).system(),
+                    StudioVisionFallback.Texts.of(assembler,frozen));
         }
     }
     public static ObjectNode run(JsonNode source,String fullFilm,JsonNode resume,StudioRecreation.Study evidence,
@@ -55,14 +56,14 @@ public final class StudioFilmStudy {
             int pages=Math.min(imageLimit,evidence.pages().size());
             for(int page=0;page<pages;page++) {
                 int at=pages==1?0:(int)Math.round(page*(evidence.pages().size()-1.0)/(pages-1));
-                parts.add(evidence.pages().get(at).get(1));
+                parts.add(evidence.pages().get(at));
             }
             String planner=prompts.planner();
             // Old callers keep the exact planner text; the cap only adds a sentence when a video model contract applies.
             if(cap!=null)planner+="每段不超过"+seconds(cap.maxSegmentSec())+"秒、最多"+cap.maxSegments()+"段；超过时按叙事或动作边界再细分，不要截断丢掉后半段。";
             // Visual-memory rejection of this call falls back to native-size frame batches (StudioVisionFallback); the worker's
             // chat first retries the same frames smaller (StudioVisualContext.BUDGET_EDGES), so this runs only if that fails too.
-            String response=StudioVisionFallback.invoke(chat,planner,parts,768,true,java.util.stream.IntStream.range(0,evidence.frames().size()).boxed().toList(),source,
+            String response=StudioVisionFallback.invoke(chat,planner,parts,768,true,prompts.vision(),java.util.stream.IntStream.range(0,evidence.frames().size()).boxed().toList(),source,
                     index->StudioVisionFallback.nativeFrame(storage,source,index),result,checkpoint);
             JsonNode plan;try{plan=OM.readTree(stripFence(response));}catch(Exception ignored){plan=OM.createObjectNode();}
             List<Double> ends=boundaries(plan,source);result.put("strategy",plan.path("segments").isArray()&&!plan.path("segments").isEmpty()?"model":"visual-changes");
@@ -94,7 +95,7 @@ public final class StudioFilmStudy {
                     // Bound the image request while retaining both ends of this segment's evidence.
                     int count=Math.min(imageLimit,indices.size());var selected=new ArrayList<Integer>();
                     for(int f=0;f<count;f++){int at=indices.get(count==1?0:(int)Math.round(f*(indices.size()-1.0)/(count-1)));selected.add(at);parts.add(Map.of("type","text","text","原片时间 "+time(times.get(at).asDouble())));parts.add(evidence.frames().get(at));}
-                    String markdown=stripFence(StudioVisionFallback.invoke(chat,prompts.segment(),parts,perSegment,false,selected,source,
+                    String markdown=stripFence(StudioVisionFallback.invoke(chat,prompts.segment(),parts,perSegment,false,prompts.vision(),selected,source,
                             index->StudioVisionFallback.nativeFrame(storage,source,index),result,checkpoint));
                     if(markdown.isBlank())throw new IllegalStateException("Empty analysis response");
                     segment.put("markdown","# 片段 "+(i+1)+" · 镜头拆解\n\n> 原片时间："+time(start)+" → "+time(end)+"（"+String.format(Locale.ROOT,"%.2f",end-start)+" 秒）\n\n"+markdown).put("status","done");

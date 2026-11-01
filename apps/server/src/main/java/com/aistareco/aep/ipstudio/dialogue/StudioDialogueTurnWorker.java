@@ -512,16 +512,16 @@ public class StudioDialogueTurnWorker {
             Set<String> pinned = new LinkedHashSet<>(), attachments = new LinkedHashSet<>();
             for (var m : inputs) { pinned.addAll(ids(m.getPinnedNodeIdsJson())); attachments.addAll(ids(m.getAttachmentNodeIdsJson())); }
             long firstSeq = inputs.stream().mapToLong(IpDialogueMessage::getSeq).min().orElse(Long.MAX_VALUE);
+            Map<String, Integer> frozen = com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.frozen(exec.path("prompt"));
+            context.promptVersions = frozen;
             Map<String, String> vars = new LinkedHashMap<>();
-            vars.put("skill", skillText(skill));
-            vars.put("stage", stageText(skill, stage) + executionText());
+            vars.put("skill", skillText(skill, frozen));
+            vars.put("stage", stageText(skill, stage, frozen));
             vars.put("tools", tools.describe(mapper));
             vars.put("context", DialogueCanvasDigest.build(doc(), pinned, attachments));
             vars.put("history", history(thread, firstSeq));
             vars.put("steering", continuationContext());
             vars.put("input", inputText);
-            Map<String, Integer> frozen = com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.frozen(exec.path("prompt"));
-            context.promptVersions = frozen;
             String system, user;
             if (frozen != null) {
                 var assembled = com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.or(promptAssembler).assemble(com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.Call.of("stage-dialogue", vars, frozen, null));
@@ -577,42 +577,47 @@ public class StudioDialogueTurnWorker {
             return out.isBlank() ? null : out;
         }
 
-        String skillText(StudioSkill skill) {
-            StringBuilder out = new StringBuilder();
+        /**
+         * 选定了哪个方法、还能换哪些方法（提示词库 stage-dialogue-skill，docs/studio-prompt-architecture.md §8 #1）。
+         * 2026-10-21 平手时由模型选方法，「先 read_skill 再问」那句的写法在 qwen38-27b 上实测过，改写法要重新实测。
+         * 对话环节的模板里这一段原本以换行结尾，这里补上。
+         */
+        String skillText(StudioSkill skill, Map<String, Integer> frozen) {
+            Map<String, Object> vars = new LinkedHashMap<>();
+            vars.put("bound", skill != null);
             if (skill != null) {
-                out.append("已选定「").append(skill.name()).append("」v").append(skill.version()).append('\n').append(skill.body()).append('\n');
-                // 不锁方法 (2026-10-23): the other methods are listed also during a production; switching is the server's job.
-                out.append("\n用户这条消息要做的若是别的事，先用 read_skill 换成对应的方法（有进行中的制作时也可以换，原来的制作由服务端收尾；换方法对用户无感，不要问他）。其它方法：\n");
-                for (var s : catalog.available()) if (!s.key().equals(skill.key())) out.append(skillLine(s));
-                return out.toString();
+                vars.put("name", skill.name());
+                vars.put("version", skill.version());
+                vars.put("body", skill.body());
             }
-            // A routing tie lands here too (2026-10-21): the model binds the method. On qwen38-27b the old wording never bound
-            // in the first step of 9 tie turns (it looked at the pictures first) and 3 then asked about motion or the first
-            // frame instead — questions the method's 「必填与可选」 answers with defaults. Binding alongside looking: 9 of 9.
-            out.append("还没有选定方法。只是讨论、提问、闲聊就直接回答；要做出东西（图、文字、视频、复刻）就先用 read_skill 选定对应的方法（免费，对用户无感，不要问用户选哪种），可以和看图放在同一批动作里。"
-                    + "选定方法之前不要向用户提问：要不要问、问什么，按选定方法里的「必填与可选」来定。\n");
-            for (var s : catalog.available()) out.append(skillLine(s));
-            return out.toString();
+            // 不锁方法 (2026-10-23): the other methods are listed also during a production; switching is the server's job.
+            List<Map<String, Object>> others = new ArrayList<>();
+            for (var s : catalog.available()) if (skill == null || !s.key().equals(skill.key()))
+                others.add(Map.of("key", s.key(), "name", s.name(), "direct", s.direct(), "summary", s.summary() == null ? "" : s.summary()));
+            vars.put("skills", others);
+            return com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.or(promptAssembler).assemble(com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.Call.of("stage-dialogue-skill", vars, frozen, null)).user() + "\n";
         }
 
-        private String skillLine(StudioSkill s) {
-            String hint = s.direct() ? "（没有分析阶段：方案与确认卡同一轮发出）" : "（先分析再制作：两次确认）";
-            return "- " + s.key() + "：" + s.name() + hint + " — " + s.summary() + '\n';
-        }
-
-        String stageText(StudioSkill skill, String stage) {
-            if (skill == null || stage == null) return "未开始（还没有选定制作方法）";
-            String label = "production".equals(stage) ? (skill.direct() ? "制作阶段（本方法没有分析阶段，propose_plan 的 stage 填 production，方案和确认卡同一轮发出）" : "制作阶段") : "分析阶段";
-            return label + "；本阶段可用的收费操作：" + String.join("、", skill.stageOperations(stage))
-                    + "（收费步骤需要用户确认方案和预算后才执行）";
+        /** 当前阶段、本阶段能做的收费操作、后台制作进度（提示词库 stage-dialogue-phase）。 */
+        String stageText(StudioSkill skill, String stage, Map<String, Integer> frozen) {
+            Map<String, Object> vars = new LinkedHashMap<>();
+            boolean started = skill != null && stage != null;
+            vars.put("started", started);
+            if (started) {
+                vars.put("production", "production".equals(stage));
+                vars.put("direct", skill.direct());
+                vars.put("operations", String.join("、", skill.stageOperations(stage)));
+            }
+            vars.put("execution", executionSummary());
+            return com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.or(promptAssembler).assemble(com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.Call.of("stage-dialogue-phase", vars, frozen, null)).user();
         }
 
         /** The bound execution as recorded (status, why it waits, budget), so the model never guesses background progress. */
-        String executionText() {
+        String executionSummary() {
             if (executionId == null || executionControl == null) return "";
             try {
                 String line = executionControl.promptSummary(userId, projectId, executionId);
-                return line == null || line.isBlank() ? "" : "\n后台制作：" + line;
+                return line == null || line.isBlank() ? "" : line;
             } catch (RuntimeException e) {
                 log.info("[dialogue] execution summary unavailable run={} execution={} reason={}", runId, executionId, e.toString());
                 return "";

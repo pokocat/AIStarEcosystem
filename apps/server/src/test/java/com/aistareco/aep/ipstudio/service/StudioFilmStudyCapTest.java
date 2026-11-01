@@ -53,7 +53,7 @@ class StudioFilmStudyCapTest {
         ObjectNode source=om.createObjectNode().put("nodeId","video").put("title","测试").put("storageKey","source").put("durationSec",3).put("audioAnalyzed",false);
         var times=source.putArray("frameTimes");for(double t:new double[]{0,.5,1,1.5,2,2.5,2.9667})times.add(t);
         var image=Map.<String,Object>of("type","image_url","image_url",Map.of("url","data:image/jpeg;base64,test"));
-        var evidence=new StudioRecreation.Study(Collections.nCopies(7,List.of(Map.of("type","text","text","素材"),image)),image,List.of(),Collections.nCopies(7,image));
+        var evidence=new StudioRecreation.Study(Collections.nCopies(7,image),image,List.of(),Collections.nCopies(7,image));
         List<String> planners=new ArrayList<>();
         StudioFilmStudy.Chat chat=(system,parts,tokens,json)->{if(json){planners.add(system);return "{\"segments\":[{\"endSec\":3}]}";}return "## 本段";};
         var capped=StudioFilmStudy.run(source,"",om.createObjectNode(),evidence,storage,"owner",8192,3,chat,(a,b,c)->true,new StudioFilmStudy.SegmentCap(1.2,8));

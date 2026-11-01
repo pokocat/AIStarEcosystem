@@ -100,16 +100,16 @@ public class ProposePlanTool implements StudioDialogueTool {
         if (assembler.library().find("stage-skill-plan").filter(e -> !e.withdrawn()).isEmpty())
             return ToolRun.failed("PROMPT_NOT_CONFIGURED", "尚未配置制作方案提示词", DialogueTools.fail("制作方案提示词尚未配置，暂时不能整理方案"));
         JsonNode doc = ctx.effects.readDoc();
-        Map<String, String> vars = new LinkedHashMap<>();
+        Map<String, Object> vars = new LinkedHashMap<>();
         vars.put("skill", skill.body());
         StudioSkillRules.Rules rules = StudioSkillRules.fromSnapshot(skill.snapshot(mapper));
-        vars.put("stage", StudioWorkflowService.skillPlanStageText(stage));
+        vars.put("analysisStage", "analysis".equals(stage));
         vars.put("constraints", StudioWorkflowService.skillPlanConstraints(mapper, rules, stage).toString());
         vars.put("brief", DialogueTools.text(args, "brief"));
         vars.put("analysis", analysis(doc));
         vars.put("assets", assets(doc, ctx));
         vars.put("capabilities", capabilities());
-        vars.put("budget", ctx.executionId == null ? "尚未批准任何制作预算（报价由服务端计算，用户确认后才执行）" : "已有进行中的制作，预算以服务端记录为准");
+        vars.put("running", ctx.executionId != null); // 预算那句的说法在提示词库 stage-skill-plan
         vars.put("feedback", args.path("feedback").asText("（无）"));
         var assembled = assembler.assemble(com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.Call.of("stage-skill-plan", vars, ctx.promptVersions, null));
         List<Map<String, Object>> messages = List.of(Map.of("role", "system", "content", assembled.system()),

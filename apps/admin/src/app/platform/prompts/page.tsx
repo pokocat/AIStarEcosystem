@@ -416,8 +416,10 @@ export default function PromptsPage() {
                       <span className="min-w-0 flex-1">
                         <span className="flex min-w-0 items-center gap-2">
                           <span className="truncate text-sm font-medium">{promptLabel(p.promptKey)}</span>
-                          {!p.enabled && <Badge tone="neutral" className="shrink-0 text-[10px]">已停用</Badge>}
-                          {p.version > 1 && <Badge tone="warning" className="shrink-0 text-[10px]">运营已改</Badge>}
+                          {p.movedTo ? <Badge tone="neutral" className="shrink-0 text-[10px]">已迁走</Badge>
+                            : p.retired ? <Badge tone="neutral" className="shrink-0 text-[10px]">不再使用</Badge>
+                            : !p.enabled && <Badge tone="neutral" className="shrink-0 text-[10px]">已停用</Badge>}
+                          {p.version > 1 && !p.movedTo && !p.retired && <Badge tone="warning" className="shrink-0 text-[10px]">运营已改</Badge>}
                         </span>
                         <span className="mt-1 block text-xs leading-5 text-muted-foreground">{promptDescription(p.promptKey)}</span>
                         <span className="mt-1 flex min-w-0 items-center gap-2 font-mono text-[10px] text-muted-foreground">
@@ -479,13 +481,24 @@ export default function PromptsPage() {
                     <Switch checked={enabled} onCheckedChange={setEnabled} />
                     启用
                   </label>
-                  <Button onClick={save} disabled={saving}>
+                  <Button onClick={save} disabled={saving || !!active.movedTo || !!active.retired}>
                     <Save className="mr-1.5 h-4 w-4" />
                     {saving ? "保存中…" : "保存"}
                   </Button>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
+                {active.movedTo && (
+                  <div className="rounded-md border border-border bg-surface-muted px-3 py-2 text-sm leading-6">
+                    这份提示词已经搬到「提示词与技能」（<span className="font-mono text-xs">{active.movedTo}</span>），Studio 不再读这里，在这里改不会生效。
+                    要改请到「平台 → 提示词与技能」。
+                  </div>
+                )}
+                {active.retired && (
+                  <div className="rounded-md border border-border bg-surface-muted px-3 py-2 text-sm leading-6">
+                    这份提示词已经没有地方在用（画布出图改成通用节点后，人物特征卡和形象卡不再单独生成），在这里改不会生效。
+                  </div>
+                )}
                 <div>
                   <div className="mb-1.5 text-sm font-medium">System Prompt</div>
                   <Textarea
