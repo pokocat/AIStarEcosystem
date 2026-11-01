@@ -1,6 +1,6 @@
 # Studio 提示词分层架构
 
-> 状态：**部分实施，本地未发布**（2026-10-31 初稿；2026-11-01 整合内容优化 §9；同日实施第 1–4 步和第 5 步里的编导部分，见 §14）。
+> 状态：**部分实施，第 1–4 步和编导部分已于 2026-11-01 生产发布**（`20261101-studio-prompt-library`，见 [`releases/studio-prompt-library-release-20261101.md`](releases/studio-prompt-library-release-20261101.md)；2026-10-31 初稿；2026-11-01 整合内容优化 §9；没做的见 §14.3）。
 > 范围：Studio（`apps/web-aiavatar`：创作助手、AI 视频、AI 图片、画布、导演台）。短剧、带货、音乐、素材运营等产品线在后台「Prompt 管理」里的提示词不在本文范围。
 > 相关真源：技能库 [`ip-studio-conversational-video-recreation-plan.md`](ip-studio-conversational-video-recreation-plan.md)（S3，V63）、对话路由 [`ip-studio-dialogue-intents.md`](ip-studio-dialogue-intents.md)、场景 [`studio-scene-creation.md`](studio-scene-creation.md)、导演台 [`ai-director-plan.md`](ai-director-plan.md)。
 > 内容优化（§9）整合自 [`prompts/studio-video-scene-prompts.md`](prompts/studio-video-scene-prompts.md)（2026-11-01 版）的提示词正文：五段式方案卡、事实规则、21 个视频场景范式，以及它 §9 新增的四条写法。提示词原文尽量不动，只按层拆开，改动处逐条注明原因。该文件 §8 的参考站接口实测仍在原处，作对照参考。
@@ -541,7 +541,7 @@ Studio 的 10 个键迁完后，`PromptService` 不再为 Studio 解析它们；
 | P2 调用参数归属遗漏 | §4.7：参数进环节文件头，优先级和现在一致；验收比较完整参数 | 和输出格式绑定的下限仍留在代码 |
 | P2 一个任务多次调用，单份快照不够 | §3.4：受理时冻结版本集合，每次调用追加一条记录 | 每次调用只记摘要和参数，完整文本靠上游调用日志，不进任务输入 |
 
-## 14. 实施状态（2026-11-01，分支 `feat/studio-prompt-layers`，本地未发布）
+## 14. 实施状态（2026-11-01，已生产发布 `20261101-studio-prompt-library`，main `0ffdde365`）
 
 ### 14.1 已完成
 
@@ -580,4 +580,5 @@ Studio 的 10 个键迁完后，`PromptService` 不再为 Studio 解析它们；
 - **转交给助手和「出视频」做法的五段式**、**五组内容方法**（§9.8）。
 - **后台页放 studio-admin**（§12.2）：这次先在 apps/admin 原页面上做。
 - **真模型验收**：2026-11-01 用线上同款聚算 qwen38-27b 在本地跑了 5 个场景、出了 2 条 H3 成片，结果和据此对编导环节做的三处修改见 [`docs/releases/studio-prompt-library-validation-20261101.md`](releases/studio-prompt-library-validation-20261101.md)。还剩：Qwen 不照「必填信息没给就写还缺 / 待补」做（同城团购每次都自己编一个领券办法），要么接受，要么改成在输出 JSON 里单列缺的项、由代码补「还缺」行。
-- **发布前**：2026-11-01 已在线上库只读核对（同上记录 §1）：7 份搬走的提示词和仓库一字不差；场景目录线上没保存过；`dap.ip_canvas_image` 线上是 v0.173 的旧版，`stage-image` 因此不从线上导入，发布后画布和导演台出图换成仓库里的新包装（线上行为变化，发布记录要写明）。发布当天再看一眼这几行有没有新改动。
+- ~~**发布前**~~ **2026-11-01 已发布**：发布当天再核对线上库，7 份搬走的提示词仍和仓库一字不差、场景目录没保存过；`dap.ip_canvas_image` 线上是 v0.173 的旧版，`stage-image` 没从线上导入，画布和导演台出图换成仓库里的新包装（线上行为变化，见 [`releases/studio-prompt-library-release-20261101.md`](releases/studio-prompt-library-release-20261101.md)）。
+- **编导「还缺」**：Qwen 不照做这一条，用户 2026-11-01 选择先接受、直接发布；要改的做法记在 TODO「Studio 提示词库后续」。

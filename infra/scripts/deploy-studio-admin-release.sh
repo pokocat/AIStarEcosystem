@@ -67,6 +67,9 @@ $SUDO systemctl cat aistareco-studio-admin.service >/dev/null
 $SUDO rm -rf "$NEXT"
 $SUDO mkdir -p "$NEXT"
 $SUDO tar -xzf "$REMOTE_STAGE/studio-admin.tar.gz" -C "$NEXT"
+# 构建机 umask 077 时（统一队列里构建就是这样）包里目录是 700，服务用户进不去工作目录、起不来（2026-11-01）。
+# 包里不含 .env，统一改成别人可读。
+$SUDO chmod -R u+rwX,go+rX "$NEXT"
 $SUDO rm -rf "$PREV"
 if [[ -e "$TARGET" ]]; then
   $SUDO mv "$TARGET" "$PREV"

@@ -10,7 +10,7 @@
 - [x] ~~场景页用真模型走一遍链路~~ **2026-10-29 本地真模型验收**：图片场景真出图、扣费、草稿封面正确；视频场景 → 画布 → 真 Qwen 看图出方案 → 确认 → 执行 → 厂商失败退款并可重试，全程走通，并据此改了 7 处体验（见 `docs/releases/studio-scene-creation-local-validation-20261029.md`）。按用户要求只看链路不评画面。
 - [ ] 场景默认描述在线上默认图片模型上各真跑一个：本地只真跑成了「脸部三视图」，其余被 Agnes 限流挡住；线上模型不同，描述是否要按模型调还没看（§8.0.1 ⑦）。
 - [ ] 本地 Agnes 账号每分钟约一次调用（429「请登录platform进行实名认证以获取更高rpm」），免费视频队列常满（503 `video_queue_full`）：本地验收要给账号做实名认证，或改用聚算端点。
-- [ ] 创作助手回复漏内部说法：真跑中出现「keyframe-first」「临时 key」「真实 id」「本阶段只允许 text 和 image 操作」，写出的脚本里带了节点编号 `[xeFx-…]`。在 `dap.ip_studio_skill_dialogue` / 规划提示词里补「不出现节点编号和英文模式名」并加解析侧过滤。
+- [ ] 创作助手回复漏内部说法：真跑中出现「keyframe-first」「临时 key」「真实 id」「本阶段只允许 text 和 image 操作」，写出的脚本里带了节点编号 `[xeFx-…]`。在对话 / 规划提示词里补「不出现节点编号和英文模式名」并加解析侧过滤（2026-11-01 起这两份在提示词库 `stages/stage-dialogue.md` / `stages/stage-skill-plan.md`，改了不用再升 `SEED_VERSION`）。
 - [x] ~~视频子任务被厂商拒绝后，助手进度约 90 秒才从「生成中」变成失败~~ **2026-10-29 已修（本地未发布）**：`MaterialVideoWorker` 到终态发 `MaterialVideoJobEnded`，`StudioVideoJobWake` 提交后叫醒该用户仍在跟踪的计划（`StudioVideoJobWakeTest`）。
 - [x] ~~场景数据和拼话写在前端、草稿靠名字后缀认~~ **2026-10-29 已统一（本地未发布）**：目录 `ipstudio/scenes.json` + `GET /scenes`、`POST /scenes/compose`、`ip_project.scene_id`（V72），见 `docs/studio-scene-creation.md` §7。
 - [ ] 合入前核对迁移编号：V70 被未合并的 `reel`（爆款复刻 reel 域）和用户在线分支占用，本分支用 V72；谁先合谁定号，后合的要改号。`reel` 分支也在做「爆款复刻」场景，和本分支的视频场景「爆款复刻」要合并成一个入口。
@@ -88,10 +88,23 @@
 - [ ] **小清理**：折扣 `allowGrants` 服务端恒为 true（字段可删）；`ModelBillingConfigService` 注入了没用到的 `MaterialVideoModelClient`。
 - [ ] **celebrity 不处理**（判定：用户 2026-10-25 明确「celebrity 子应用不用管，主要用 Studio」）：素材运营视频弹窗仍按普通余额拦截（`apps/web-celebrity/src/components/material-ops/VideoGenDialog.tsx` `insufficient`），celebrity 看不到赠款余额、流水仍叫「专享额度」。
 
+## Studio 提示词库后续（2026-11-01）
+
+真源 `docs/studio-prompt-architecture.md` §14.3；提示词在 `apps/server/src/main/resources/studio/prompts/**`，线上改内容走后台「平台 › 提示词与技能」。
+
+- [ ] **编导在 Qwen 上不写「还缺」、自己编「怎么买」**（判定：先接受，2026-11-01 用户确认直接发布）：同城团购没给「怎么买、怎么用」时，线上同款聚算 qwen38-27b 5 次都编了领券 / 到店核销的办法（Agnes 照规则写了「还缺」）。编的是团购通用流程、不涉及价格。要改：编导输出里单列缺的项（如 `missing: []`），由代码在脚本前补「还缺：」行、对应台词写【待补】（`stages/stage-scene-script.md` + 编导结果解析），再用 Qwen 复测。证据见验收记录 §2.4。
+- [ ] **编导出片还没验的两件**：成片台词有没有完整念出来（2026-11-01 只看了画面不冒字）；口播带货、剧情植入、数字人口播、同城团购 4 个场景没出片。
+- [ ] **上线后看出图包装换新的效果**：线上 `dap.ip_canvas_image` 的 v0.173 旧版（「只画一个人，不要多视图、不要设定图」）不再生效，画布出图和导演台出图改用 `stages/stage-image.md`（按指令决定人数和排版）。看几张线上新出的导演台角色设定集和画布多人画面是否按要求排版、普通单图有没有多出人物或拼图。
+- [ ] **「出视频」做法与转交给助手的五段式、五组行业内容方法**（设计文档 §9.8）：五段式是结构改动，可以先做；行业内容方法要用户给各行业的拍法素材再写，不要凭空编。
+- [ ] **提示词库后台页挪到 studio-admin**（§12.2）：这次先在 apps/admin「平台 › 提示词与技能」（原「Studio 技能」页）上做（分层筛选、按调用点预览）。
+- [ ] **旧 Prompt 管理里已迁走的 8 行、不再使用的 2 行**（`PromptService.MOVED_TO_STUDIO_LIBRARY` / `RETIRED_KEYS`）：线上稳定一两周后再从后台列表隐藏或删除；回滚到本版之前的 server 时这些行仍是旧路径的真值，不要早删。
+- [ ] **后端全量测试在本机跑不完**（2026-11-01）：`./mvnw test` 全量在 Maven 预算堆下 GC 打满、长时间不结束，本次只能按 `**/ipstudio/**/*Test`、`**/enterprise/**/*Test`、`Prompt*Test` 子集验证。要查是哪组测试攒内存，或按测试类分批串行跑（`-DforkCount=1 -DreuseForks=false`）。
+- [ ] **导演台视频提示词和首帧模板仍在代码**（设计文档 §14.2 说明了为什么）：资产图、分镜图模板在库里停用时，页面保留原描述、重新出图报「提示词未配置」，要不要给个更明白的说法待定。
+
 ## Studio 当前待办
 
-- [ ] **主线 `IpRunServiceTest.videoWithoutChosenModel_leavesTheEndpointToTheDefault` 红着**（2026-11-01 定位）：`fa72c50e2` 给视频请求的 `variant_config` 加了 `require_mirror`，测试仍断言没选模型时不带 `variant_config`。和提示词库无关，按新行为改断言即可。
-- [ ] **Studio 提示词库第 3、4 步与上线前验收**（2026-11-01 定位；真源 `docs/studio-prompt-architecture.md` §14.3）：第 1、2 步和编导新内容已在 `feat/studio-prompt-layers` 本地实现并通过测试。还要：① 第 3 步已收尾（2026-11-01：对话方法 / 阶段说明、方案阶段与预算、出图参考图说明、拉片复刻关注点、分批读图、复刻逐页读图与汇总进库；IP 形象 / 造型无调用点、删死代码；后台 Prompt 管理标已迁走 / 不再使用）。只看画面的环节（看图、复刻逐页观察、拉片、分批读图）不拼平台底座（2026-11-01 用户确认）；② 第 4 步导演台已进库（文字六个环节、12 个题材 / 调性 / 反转线内容方法、底座 base-director、资产图与分镜图模板按库版本核对，2026-11-01）；视频提示词和首帧模板按设计文档 §14.2 留在代码；③ 编导真模型验收已做（2026-11-01 聚算 qwen38-27b，5 个场景 + 2 条 H3 成片）：英文提示词 1.9–2.2k 字符；改模板后不再让画面出字、不抄尖括号；剩下 Qwen 不写「还缺」、自己编领券办法（同城团购），待定是否改成 JSON 单列缺项；④ 线上只读核对已做（2026-11-01，`docs/releases/studio-prompt-library-validation-20261101.md` §1）：只有 `dap.ip_canvas_image` 是 v0.173 旧版，已决定不导入；发布当天再看一眼有没有新改动，列出后台改过、因此不会换成新内容的场景；⑤ 转交给助手、「出视频」做法的五段式与五组内容方法（§9.8）；⑥ 后台页挪到 studio-admin（§12.2）。
+- [x] ~~主线 `IpRunServiceTest.videoWithoutChosenModel_leavesTheEndpointToTheDefault` 红着~~ **2026-11-01 已修**（随 `20261101-studio-prompt-library`）：`fa72c50e2` 起视频请求每条都带 `require_mirror`，断言改为 `variant_config` 只有这一项。
+- [x] ~~Studio 提示词库第 1–4 步与上线前验收~~ **2026-11-01 已生产发布 `20261101-studio-prompt-library`**（main `0ffdde365`）：生成类提示词进提示词库（底座 / 环节 / 方法 / 场景，82 条，和技能同表），对话、画布、导演台、AI 视频编导都按库拼；旧 Prompt 管理已迁走的键标「已迁走」不能保存。发布当天线上库复核与真模型验收见 `docs/releases/studio-prompt-library-validation-20261101.md`，发布记录 `docs/releases/studio-prompt-library-release-20261101.md`。剩下的事见下「Studio 提示词库后续」。
 - [ ] **企业页首次加载 React #418 日志需独立复核**（2026-11-01）：生产新标签在 08:08:50 UTC 捕获一次，页面恢复后手机号列表及转入预览成功；尚无发布前同条件对照，不能判定引入版本。入口 `apps/web-aiavatar/src/app/layout.tsx` 与 `/enterprise` 的 SSR/客户端初始化，来源未定位；见企业积分转入生产发布记录。
 
 - [x] ~~企业 owner 个人积分转入及成员手机号展示~~ **2026-11-01 已生产发布 `20261101-enterprise-owner-deposit`**：个人普通可用积分原桶转入企业待分配账户，再分配成员；两张成员列表显示手机号，沿用现有权限。检查结果见 `docs/releases/enterprise-owner-deposit-validation-20261031.md`。
@@ -245,7 +258,7 @@
 - [x] ~~**两个标签页各开一段对话时，断线补拉会改掉「最近打开」**~~ **审计确认**，2026-10-20：`6a836dc0` 已把读和切换分开（`GET …/conversations/{threadId}` 只读、不 `markOpened`，主动切换才走 `POST …/open`），事件流补拉 `getSnapshot` 改走只读接口，Codex 复审确认已修。原描述：`apps/web-aiavatar/src/ip/studio-dialogue-session.tsx` 事件流订阅的 `getSnapshot` 先读 `GET …/conversation`，发现最近打开的不是本标签页那段，就按 id 调 `GET …/conversations/{threadId}`，而这个接口会 `markOpened`，等于本标签页一断线重连就把「当前对话」抢回来，另一个标签页刷新后会落到这段。时间线本身不会错（`onSnapshot` 只收本线程）。彻底避免需要服务端加一个不改 `last_opened_at` 的只读快照接口，补拉改走它。
 - [ ] **切到别的对话后，上一段里没发出去的失败消息不再显示**：`apps/web-aiavatar/src/canvas-bridge/studio-dialogue-store.ts` 快照换线程时 outbox 置空（`sameThread ? store.outbox : []`），失败消息的文字和重试入口随之消失，切回去也找不回来。前端在有发送中的消息时已拦住切换（`dialogueThreadBusy`），但「失败」状态不拦。待定：有失败消息时是否也拦住新建 / 切换，或者把 outbox 按 threadId 分开保存。
 - [ ] **复用空线程的请求编号边界**：`StudioDialogueService.createThread` 复用空闲空对话时不改它原来的 `client_request_id`，重放按「同人同键 → 否则复用最新空闲空对话」再判一次。若被复用的那段在两次请求之间有了消息，同一个 `clientRequestId` 重放会复用到另一段空对话或新建一段，而不是回到第一次那段。前端正常流程每次点「新对话」都换新键、成功后不重放，不会触发；要严格幂等需把复用关系记下来（例如单独的请求键表）。
-- [ ] **真模型验证卡片文案**：`dap.ip_studio_skill_plan.md` / `dap.ip_studio_skill_dialogue.md` 与 `RequestApprovalTool` 的 `scope` 说明改成「只写要做出什么」（`SEED_VERSION` → `v20-2026-10-20-concise-cards`）后，只有确定性测试和演示 mock。需用线上同款对话端点至少真调一次出图 / 出视频 / 复刻，看 `plan.summary`、`step.title`、`approval.scope` 是否还带判断过程（「用户需求完整且无真实取舍…」）、积分或流程说明，正文是否在发卡时只有一句（§8.0.1 ⑦）。
+- [ ] **真模型验证卡片文案**：`dap.ip_studio_skill_plan.md` / `dap.ip_studio_skill_dialogue.md`（2026-11-01 起在提示词库 `stages/stage-skill-plan.md` / `stages/stage-dialogue.md`）与 `RequestApprovalTool` 的 `scope` 说明改成「只写要做出什么」（`SEED_VERSION` → `v20-2026-10-20-concise-cards`）后，只有确定性测试和演示 mock。需用线上同款对话端点至少真调一次出图 / 出视频 / 复刻，看 `plan.summary`、`step.title`、`approval.scope` 是否还带判断过程（「用户需求完整且无真实取舍…」）、积分或流程说明，正文是否在发卡时只有一句（§8.0.1 ⑦）。
 - [ ] **刷新或切回某段对话后，回复正文排到工作记录前面**：`apps/web-aiavatar/src/ip/studio-dialogue-message.tsx` 的 `messageBody` 只有在 `layout`（`studio-dialogue-store.ts` 的 `layouts[messageId]`，只在实时收到事件时生成）存在时才按到达顺序交错排正文与工作记录；快照来的消息没有 `layout`，走 `!layout` 分支先整段放 `message.text`、再放全部 `blocks`，于是「我先看一下画布」→ 工作记录 → 「画布上有…」在刷新后变成两段正文挤在一起、工作记录全在后面。需要服务端在消息上留下正文分段与块的先后（或事件序号），快照也能还原顺序。
 - [ ] **手机画布顶栏标题截断没有省略号，保存状态显示成「已…」**：`apps/web-aiavatar/src/ip/studio-flow-canvas.tsx` 顶栏 `<Input aria-label="画布名称" variant="borderless">` 在 375 宽被挤窄时直接截断、没有 `text-overflow: ellipsis`；`.studio-host-save`（`src/styles/studio-flow.css`「画布页改版 · 第二遍」那段，`max-width:240px` + ellipsis）在手机上被压到只剩一个字加省略号。待定：手机上保存状态改成图标 / 只留错误态，标题输入框给出省略号与 `title`。
 - [ ] **确认结果核对没有上限**（判定：先观察，2026-10-20）：`apps/web-aiavatar/src/ip/studio-dialogue-session.tsx` 的 `settle` 在「开始制作」结果不明时用同一个 `clientRequestId` 重发（2s、4s… 封顶 30s），直到服务端给出执行或明确拒绝；服务端若持续 500 / 502 / 504，这段对话会一直显示「正在核对确认结果，请稍等」、不能新建或切换，只能刷新页面（刷新后由快照与执行恢复）。卡上有「现在再查一次」；是否在若干次后改说法（如「暂时查不到结果，可以刷新页面」），等线上出现再定；不能改成「查不到就放行」（Codex 复审 P1）。

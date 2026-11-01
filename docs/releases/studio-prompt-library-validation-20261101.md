@@ -1,6 +1,6 @@
 # Studio 提示词库：线上核对与真模型验收（2026-11-01）
 
-分支 `feat/studio-prompt-layers`，本地未发布。设计与实施状态见 [`docs/studio-prompt-architecture.md`](../studio-prompt-architecture.md) §14。
+分支 `feat/studio-prompt-layers` 上做的发布前验收；2026-11-01 已生产发布，见 [`studio-prompt-library-release-20261101.md`](studio-prompt-library-release-20261101.md)。设计与实施状态见 [`docs/studio-prompt-architecture.md`](../studio-prompt-architecture.md) §14。
 
 ## 1. 线上库只读核对（发布前必须做的那一步，提前做了）
 
