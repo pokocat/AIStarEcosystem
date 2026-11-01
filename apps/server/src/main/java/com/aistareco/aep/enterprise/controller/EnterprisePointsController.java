@@ -14,11 +14,11 @@ import java.security.Principal;
 public class EnterprisePointsController {
     private final EnterprisePointsService service;
     public EnterprisePointsController(EnterprisePointsService service) { this.service=service; }
-    @PostMapping("/{direction:allocate|reclaim}/preview")
+    @PostMapping("/{direction:allocate|reclaim|deposit}/preview")
     public ApiResponse<Preview> preview(Principal p,@PathVariable String id,@PathVariable String direction,@RequestBody PreviewRequest r) {
         return ApiResponse.of(service.preview(p.getName(),id,direction,r));
     }
-    @PostMapping("/{direction:allocate|reclaim}")
+    @PostMapping("/{direction:allocate|reclaim|deposit}")
     public ApiResponse<Batch> submit(Principal p,@PathVariable String id,@PathVariable String direction,@RequestBody SubmitRequest r) {
         return ApiResponse.of(service.submit(p.getName(),id,direction,r));
     }

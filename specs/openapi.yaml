@@ -5948,6 +5948,7 @@ components:
         enterpriseId: {type: string, minLength: 1, maxLength: 64}
         userId: {type: string, minLength: 1, maxLength: 64}
         displayName: {type: string}
+        phone: {type: string, nullable: true, description: 产品账号当前手机号；未绑定时为空}
         role: {type: string, enum: [owner, manager, member]}
         status: {type: string, enum: [active, suspended, removed]}
         capabilities: {$ref: '#/components/schemas/EnterpriseCapabilities'}
@@ -6123,7 +6124,7 @@ components:
         batchId: {type: string, minLength: 1, maxLength: 64}
         enterpriseId: {type: string, minLength: 1, maxLength: 64}
         memberId: {type: string, minLength: 1, maxLength: 64}
-        direction: {type: string, enum: [allocate, reclaim]}
+        direction: {type: string, enum: [allocate, reclaim, deposit]}
         amount: {type: integer, minimum: 1}
         status: {type: string, enum: [done]}
         createdAt: {type: string, format: date-time}
@@ -6141,7 +6142,7 @@ components:
       properties:
         id: {type: string, minLength: 1, maxLength: 64}
         enterpriseId: {type: string, minLength: 1, maxLength: 64}
-        direction: {type: string, enum: [allocate, reclaim]}
+        direction: {type: string, enum: [allocate, reclaim, deposit]}
         totalAmount: {type: integer, minimum: 1}
         transfers:
           type: array
@@ -6271,7 +6272,7 @@ components:
       required: [enterpriseId, direction, memberCount, totalAmount, rootAvailableBefore, rootAvailableAfter, confirmationFingerprint, items]
       properties:
         enterpriseId: {type: string, minLength: 1, maxLength: 64}
-        direction: {type: string, enum: [allocate, reclaim]}
+        direction: {type: string, enum: [allocate, reclaim, deposit]}
         memberCount: {type: integer, minimum: 0, maximum: 100}
         totalAmount: {type: integer, minimum: 0, maximum: 9007199254740991}
         rootAvailableBefore: {type: integer, minimum: 0, maximum: 9007199254740991}
@@ -6298,6 +6299,7 @@ components:
         memberId: {type: string, minLength: 1, maxLength: 64}
         userId: {type: string, minLength: 1, maxLength: 64}
         displayName: {type: string}
+        phone: {type: string, nullable: true, description: 产品账号当前手机号；未绑定时为空}
         role: {type: string, enum: [owner, manager, member]}
         status: {type: string, enum: [active, suspended, removed]}
         walletId: {type: string, minLength: 1, maxLength: 64}
@@ -16530,6 +16532,39 @@ paths:
         '403': {description: 无产品开通/手机号未绑定/无企业权限}
         '404': {description: 资源不在当前企业或功能未开放}
         '409': {description: 幂等正文冲突、重复收款凭据或预览已失效；须重新预览并确认，不能自动重试提交}
+  /v1/ip-studio/enterprises/{id}/points/deposit:
+    post:
+      tags: [Enterprise]
+      summary: 主账号个人积分转入企业
+      x-implementation-status: implemented
+      description: 仅当前企业 owner。items 只有本人 memberId 和正整数 amount；先预览后确认。同事务等额出入账，保留积分来源，不新增现金充值。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnterprisePointsRequest'}
+      responses:
+        '200':
+          description: 成功，分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterprisePointsBatch'}
+        '400': {description: 输入/角色/策略无效}
+        '401': {description: 未登录}
+        '402': {description: 个人可用积分不足}
+        '403': {description: 无产品开通/手机号未绑定/无企业权限}
+        '404': {description: 资源不在当前企业或功能未开放}
+        '409': {description: 幂等正文冲突、重复收款凭据或预览已失效；须重新预览并确认，不能自动重试提交}
   /v1/ip-studio/enterprises/{id}/points/reclaim:
     post:
       tags: [Enterprise]
@@ -16953,6 +16988,39 @@ paths:
                   data: {$ref: '#/components/schemas/EnterprisePointsPreview'}
         '400': {description: 输入无效}
         '401': {description: 未登录}
+        '403': {description: 权限不足}
+        '404': {description: 对象不存在或功能未开放}
+        '409': {description: 幂等正文冲突、凭据重复或预览已变化}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnterprisePointsPreviewRequest'}
+  /v1/ip-studio/enterprises/{id}/points/deposit/preview:
+    post:
+      tags: [Enterprise]
+      summary: 预览主账号个人积分转入企业
+      x-implementation-status: implemented
+      description: 仅当前企业 owner。items 只有本人 memberId 和正整数 amount；items 可用余额为本人个人账户，root 为企业待分配账户。返回确认指纹，预览不划拨积分。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterprisePointsPreview'}
+        '400': {description: 输入无效}
+        '401': {description: 未登录}
+        '402': {description: 个人可用积分不足}
         '403': {description: 权限不足}
         '404': {description: 对象不存在或功能未开放}
         '409': {description: 幂等正文冲突、凭据重复或预览已变化}

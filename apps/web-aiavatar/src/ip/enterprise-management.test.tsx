@@ -24,7 +24,7 @@ vi.mock("antd", () => ({
   Table: ({ dataSource, columns }: any) => <table><tbody>{dataSource.map((row: any) => <tr key={row.id}>{columns.map((column: any, index: number) => <td key={index}>{column.render ? column.render(row[column.dataIndex], row) : row[column.dataIndex]}</td>)}</tr>)}</tbody></table>,
 }));
 const owner = { enterprise: { id: "team", name: "创作公司", status: "active" }, member: { id: "self", userId: "owner", role: "owner", status: "active" }, permissions: ["enterprise.read", "member.invite", "member.manage", "policy.manage"] } as EnterpriseContext;
-const member = { id: "member", userId: "user", displayName: "张三", role: "member", status: "active", capabilities: { pointsManage: false, billingRead: false, rechargeRequest: false }, version: 3 };
+const member = { id: "member", userId: "user", displayName: "张三", phone: "13800138000", role: "member", status: "active", capabilities: { pointsManage: false, billingRead: false, rechargeRequest: false }, version: 3 };
 const page = (data: unknown[]) => ({ data, pagination: { total: data.length } });
 beforeEach(() => { vi.clearAllMocks(); clipboard.command.mockReset(); clipboard.command.mockImplementation(() => {
   const event=new Event("copy",{bubbles:true,cancelable:true});
@@ -200,4 +200,11 @@ test("batch mode caps each request at 100 phones and preserves drafts across mod
   fireEvent.click(screen.getByRole("button", { name: "单个添加" }));
   expect((screen.getByLabelText("手机号") as HTMLInputElement).value).toBe("13800138000");
   expect(api.addMembers).not.toHaveBeenCalled();
+});
+
+
+test("member management displays the phone beside the member name", async () => {
+  render(<EnterpriseManagement context={owner} section="team" onChanged={vi.fn()}/>);
+  expect(await screen.findByText("13800138000")).toBeDefined();
+  expect(screen.getByText("张三")).toBeDefined();
 });

@@ -61,7 +61,7 @@ html[data-layout="mobile"] .enterprise-workspace .studio-page-heading { flex-wra
 html[data-layout="mobile"] .enterprise-workspace .studio-page-actions { max-width: none; }
 @media (prefers-reduced-motion: reduce) { .enterprise-workspace * { transition-duration: .01ms !important; animation-duration: .01ms !important; } }
 .enterprise-own-balances { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 30px; padding-bottom: 24px; margin-bottom: 24px; border-bottom: 1px solid var(--ip-line); }
-.enterprise-own-balances span,.enterprise-own-balances small { display: block; color: var(--ip-muted); font-size: 12px; line-height: 1.7; }
+.enterprise-own-balances > div > span,.enterprise-own-balances > div > small { display: block; color: var(--ip-muted); font-size: 12px; line-height: 1.7; }
 .enterprise-own-balances strong { display: block; color: var(--ip-ink); font-size: 24px; font-weight: 600; line-height: 1.8; font-variant-numeric: tabular-nums; }
 .enterprise-policy-form { display: grid; gap: 14px; max-width: 760px; }
 .enterprise-policy-form > .ant-btn { justify-self: start; }
@@ -101,3 +101,6 @@ html[data-layout="mobile"] .enterprise-add-member-fields > .ant-input { flex-bas
 .studio-model-quote-lines dt { min-width: 0; overflow-wrap: anywhere; }
 .studio-model-quote-lines dd { margin: 0; flex-shrink: 0; }
 .studio-model-quote-lines > div:last-child { padding-top: 12px; border-top: 1px solid var(--ip-line,#e8eaec); }
+
+.enterprise-own-balances .enterprise-deposit-button { margin-top: 12px; align-self: flex-start; }
+html[data-layout="mobile"] .enterprise-deposit-button { min-height: 44px; }

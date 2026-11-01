@@ -82,7 +82,7 @@ class EnterpriseFoundationTest {
         mvc.perform(post("/api/v1/ip-studio/enterprises/"+e.enterprise().id()+"/members").with(user(owner).roles("PERSONAL"))
                 .contentType("application/json").content("{\"phone\":\""+phone+"\"}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.id").value(added.id()))
-                .andExpect(jsonPath("$.data.phone").doesNotExist());
+                .andExpect(jsonPath("$.data.phone").value(phone));
         var audit=service.auditPage(owner,e.enterprise().id(),0,20);
         assertEquals(1,audit.stream().filter(a->"member.add".equals(a.action())).count());
         assertFalse(audit.stream().anyMatch(a->a.summary().contains(phone)));

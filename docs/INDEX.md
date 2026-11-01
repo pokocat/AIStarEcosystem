@@ -104,7 +104,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | [Studio 企业主子账号与积分管理方案](ip-studio-team-accounts-plan.md) | **v0.4 已生产发布** | 单企业归属、固定 RBAC、人工充值和积分批量分配/回收；分配积分归企业，开通沿用现有逻辑、不做企业席位（last-reviewed 2026-10-15） |
 | [后台测试账号](test-accounts-plan.md) | **已生产发布** | 超管创建独立测试身份、两分钟一次性正常 OIDC 登录、停用及业务边界（last-reviewed 2026-10-17） |
 | [企业积分第一批验收](releases/ip-studio-enterprise-foundation-validation.md) | **E01–E04 测试与边界** | 企业权限、V56、钱包兼容的 H2/MySQL 验收、编译契约门及后续边界（last-reviewed 2026-10-15） |
-| [企业积分前端规划](ip-studio-enterprise-ui-plan.md) | **完整管理/付款/财务界面** | Studio及财务页沿用平台组件；单个/批量手机号添加、预览确认与权限动线（last-reviewed 2026-10-29） |
+| [企业积分前端规划](ip-studio-enterprise-ui-plan.md) | **完整管理/付款/财务界面** | Studio及财务页沿用平台组件；单个/批量手机号添加、主账号个人积分转入、成员手机号与原有权限动线（last-reviewed 2026-10-31） |
 | [企业手机号添加与界面验收](releases/enterprise-member-add-validation-20261029.md) | **本地完成，未发布** | 单个/批量（100 人）添加、独立事务、逐项失败重试及桌面/手机验收（last-reviewed 2026-10-29） |
 | [`docs/ip-studio-libtv-alignment.md`](ip-studio-libtv-alignment.md) | **IPStudio 对标 LibTV 的原始提案与实时差距矩阵** | 首页与统一画布、助手/剧本/图片/原生视频/模板核心动线，v0.229 补回拖线引用、v0.231 模板直接复制为普通画布；多模态助手、长视频、专属声音等差距明确（last-reviewed 2026-10-10） |
 | [`docs/ip-studio-assistant-context.md`](ip-studio-assistant-context.md) | **Studio 助手与画布引用** | @ / 感知画布、文档正文/本地媒体多选导入、同源素材库、图片/短视频四帧读取、对话恢复及文字快照分享/复制继续；v0.217 本地，未发布，音轨及完整视频未接 |
@@ -245,6 +245,8 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 原始 UI 证据：[1032px 首轮截图](audits/studio-new-ui-review-20261030/video-1032.png)、[1032px 复测截图](audits/studio-new-ui-review-20261030/video-1032-recheck.png)、[393px 复测截图](audits/studio-new-ui-review-20261030/video-393-recheck.png)。CLI detector 的空数组结果已记入首轮报告，不另存重复 JSON；该结果仅代表该次扫描无发现，不能替代交互验收。
 
 ## 7. 发布与验收记录（`docs/releases/`）
+
+- [企业主账号积分转入与成员手机号](releases/enterprise-owner-deposit-validation-20261031.md)：本地实现与检查，未发布（last-reviewed 2026-10-31）。
 
 - [Studio 头像居中、浅灰底与轮播圆点优化](releases/studio-avatar-polish-release-20261031.md)：main `0921222f6`，仅 web-aiavatar；线上新旧桌面与手机头像偏差 0px、底色统一，圆点只过渡底色，制品与服务核对通过（last-reviewed 2026-10-31）。
 - [Seedance 视频提交故障修复](releases/seedance-video-submit-fix-20261031.md)：OneToken 2.0 / 2.5 移除不支持的末帧输出字段、真人参考图拒绝改为明确中文说明；4 笔冻结全退，两模型独立测试均已出片并通过下载、完整解码及抽帧核验，仅 server（last-reviewed 2026-10-31）。

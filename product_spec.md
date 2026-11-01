@@ -1449,3 +1449,9 @@ AiAvatar 新增 `/director` 作品列表和「剧本 / 资产 / 分镜」制作�
 `POST /api/v1/ip-studio/enterprises/{id}/members` 接收 `{phone}`，主账号和管理员可直接添加已有、手机号已验证且已开通 aiavatar 的有效产品账号。默认普通成员、无附加授权、零余额；重复添加同企业有效成员幂等返回，其他企业/停用成员拒绝，手机号不入审计。邀请与直接添加共用用户→企业锁顺序。`/enterprise` 成员页新增手机号表单，失败保留输入；刷新按钮沿用品牌次按钮，刷新不卸载管理表单，刷新失败显示旧数据提示。未注册或尚未登录本产品的同事仍可通过分享链接加入。
 
 批量补充（2026-10-29，本地未发布）：添加表单可切换「单个添加 / 批量添加」，每批最多 100 个手机号，支持换行、逗号、分号粘贴并去重。`POST /api/v1/ip-studio/enterprises/{id}/members/batch` 接收 `{phones}`，逐人独立事务执行单人规则，返回成功/失败及原因，失败项保留可重试，已成功关系幂等。
+
+## 企业主账号个人积分转入与成员手机号（2026-10-31，本地未发布）
+
+owner 可在企业管理页将本人的个人可用普通积分转入企业根账户，再分配给企业成员。`POST /api/v1/ip-studio/enterprises/{id}/points/deposit/preview` 与 `/points/deposit` 复用 points 的 items、确认指纹与 clientRequestId。gift/license/recharge 原桶等额转移，冻结积分不动；写关联 TRANSFER_OUT/IN、现有批次和审计，不重复计算现金充值或积分发行。转入不增加新权限项、不增加财务审批。
+
+`EnterpriseMember` 与 `EnterpriseMemberBalance` 增加可空 phone，读取产品档案的当前手机号；企业“成员积分 / 成员与邀请”列表直接展示，访问范围沿用原接口。无数据库迁移。

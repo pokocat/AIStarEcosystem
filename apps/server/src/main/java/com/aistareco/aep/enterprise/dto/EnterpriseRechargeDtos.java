@@ -14,7 +14,7 @@ public final class EnterpriseRechargeDtos {
     public record RefundRequest(String clientRequestId,String previewToken,String reason,String receiptReference) {}
     public record RejectRequest(String reason) {}
     public record WalletSummary(String enterpriseId,String enterpriseName,long unallocated,long allocated,long pending,long spent,long totalBalance) {}
-    public record MemberBalance(String memberId,String userId,String displayName,String role,String status,String walletId,
+    public record MemberBalance(String memberId,String userId,String displayName,String phone,String role,String status,String walletId,
             long totalBalance,long pendingBalance,long rechargeBalance,long giftBalance,long licenseBalance) {}
     public record RefundPreview(String orderId,String enterpriseId,long originalCredits,long originalPriceCents,long reclaimableCredits,
             long refundPriceCents,long memberRecallCredits,long pendingCredits,long spentCredits,String previewToken) {}
