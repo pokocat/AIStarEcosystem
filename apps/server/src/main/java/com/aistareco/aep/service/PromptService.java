@@ -182,7 +182,8 @@ public class PromptService {
 
     /**
      * 已经搬进 Studio 提示词库的键 → 库里对应的环节（docs/studio-prompt-architecture.md §4.8）。Studio 不再读这几行，后台改了不生效；
-     * 只在提示词库第一次灌种子时导入一次线上内容（PromptImports）。和环节文件头的 importFrom 一一对应（StudioPromptEntryTest 核对）。
+     * 只在提示词库第一次灌种子时导入一次线上内容（PromptImports）。和环节文件头的 importFrom 一一对应（StudioPromptStageParityTest 核对），
+     * 只有 dap.ip_canvas_image 例外：线上那行是 2026-09-08 ops:v0.173 的旧版（不要多视图、不要设定图），仓库早已改掉，切换时不导入。
      */
     public static final Map<String, String> MOVED_TO_STUDIO_LIBRARY = Map.of(
             KEY_DAP_IP_STUDIO_SKILL_DIALOGUE, "stage-dialogue", KEY_DAP_IP_STUDIO_SKILL_PLAN, "stage-skill-plan",

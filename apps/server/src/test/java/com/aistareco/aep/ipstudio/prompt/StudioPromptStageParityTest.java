@@ -174,10 +174,16 @@ class StudioPromptStageParityTest {
         assertThat(render("stage-vision-batch", Map.of("merge", true)) + "\n").isEqualTo(LegacyStepThreeTexts.VISION_MERGE);
     }
 
-    /** 后台 Prompt 管理标「已迁走」的键，和环节文件头的 importFrom 是同一组：少标一个，运营就会在那边白改。 */
+    /**
+     * 后台 Prompt 管理标「已迁走」的键，和环节文件头的 importFrom 是同一组：少标一个，运营就会在那边白改。
+     * 例外 dap.ip_canvas_image：线上那行是 2026-09-08 ops:v0.173 写的旧版（不要多视图、不要设定图），仓库后来已经改掉、生产一直没跟上，
+     * 切换时不能把它导进来（2026-11-01 线上只读核对），所以 stage-image 不写 importFrom，但这一行照样标已迁走。
+     */
     @Test
     void promptKeysMarkedAsMovedAreExactlyTheImportSources() {
-        assertThat(new HashSet<>(PromptImports.promptKeys(StudioPromptLibrary.loadSeeds()))).isEqualTo(PromptService.MOVED_TO_STUDIO_LIBRARY.keySet());
+        Set<String> imported = new HashSet<>(PromptImports.promptKeys(StudioPromptLibrary.loadSeeds()));
+        imported.add(PromptService.KEY_DAP_IP_CANVAS_IMAGE);
+        assertThat(imported).isEqualTo(PromptService.MOVED_TO_STUDIO_LIBRARY.keySet());
         for (String stages : PromptService.MOVED_TO_STUDIO_LIBRARY.values())
             for (String stage : stages.split(" / ")) assertThat(StudioPromptStages.find(stage)).as(stage).isPresent();
     }
