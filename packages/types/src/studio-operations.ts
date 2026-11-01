@@ -57,3 +57,33 @@ export interface StudioCreditEventPage {
   items: Array<{ id: string; type: string; actor: string; beneficiary: string; credits: number; yuanEquivalent: number; reason: string; createdAt: string }>;
   page: number; size: number; total: number; hasMore: boolean;
 }
+
+export interface StudioSupplierPerformance {
+  generatedAt: string;
+  timezone: string;
+  window: { startInclusive: string; endExclusive: string; bucket: "hour" | "day"; maxRangeDays: number };
+  filters: { supplier: string; model: string; mediaType: string; status: string; excludedFailureCategories: string[]; query: string };
+  summary: {
+    tasks: number; succeeded: number; failed: number; inFlight: number; cancelled: number; unknown: number;
+    terminalSamples: number; deliverySuccessRate: number | null; p50Seconds: number | null; p95Seconds: number | null;
+    maxSeconds: number | null; latencySamples: number; excludedTasks: number; latencyDefinition: string; smallSample: boolean;
+  };
+  trend: Array<{ start: string; succeeded: number; failed: number; inFlight: number; cancelled: number; unknown: number; deliverySuccessRate: number | null }>;
+  latencyDistribution: Array<{ key: string; label: string; count: number; percentage: number }>;
+  errors: Array<{ category: string; label: string; ownership: string; count: number; percentage: number }>;
+  suppliers: string[];
+  models: string[];
+  details: {
+    items: Array<{
+      id: string; source: string; supplier: string; model: string; mediaType: string; status: string;
+      failureCategory: string; failureLabel: string; ownership: string; errorCode: string; createdAt: string;
+      completedAt: string | null; durationSeconds: number | null;
+    }>;
+    page: number; size: number; total: number; hasMore: boolean;
+  };
+}
+
+export interface StudioSupplierPerformanceQuery {
+  from?: string; to?: string; timezone?: string; supplier?: string; model?: string; mediaType?: string;
+  status?: string; exclude?: string; query?: string; page?: number; size?: number;
+}

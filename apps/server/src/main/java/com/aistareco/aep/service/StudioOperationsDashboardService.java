@@ -50,7 +50,15 @@ public class StudioOperationsDashboardService {
     }
 
     public StudioOperationsDashboardDto dashboard(int requestedDays) {
+        return dashboard(requestedDays, "all");
+    }
+
+    public StudioOperationsDashboardDto dashboard(int requestedDays, String requestedScope) {
         int days = allowedDays(requestedDays);
+        String scope = Optional.ofNullable(requestedScope).orElse("all").toLowerCase(Locale.ROOT);
+        if (!Set.of("all", "business", "technology").contains(scope)) {
+            throw new IllegalArgumentException("未知看板范围");
+        }
         Instant generatedAt = Instant.now();
         ZonedDateTime endBj = generatedAt.atZone(BEIJING);
         Instant end = endBj.toInstant();
@@ -58,12 +66,36 @@ public class StudioOperationsDashboardService {
 
         List<ModelSpend> modelSpend = modelSpend(start);
         Health health = health(generatedAt, modelSpend);
-        Business business = business(start, end, days, modelSpend);
-        Technology technology = technology(start, end, days);
-        Integrations integrations = integrations();
+        Business business = "technology".equals(scope) ? emptyBusiness() : business(start, end, days, modelSpend);
+        Technology technology = "business".equals(scope) ? emptyTechnology() : technology(start, end, days);
+        Integrations integrations = "business".equals(scope) ? emptyIntegrations() : integrations();
         return new StudioOperationsDashboardDto(generatedAt, "Asia/Shanghai",
                 new Window(days, start, end, days == 1 ? "今天" : "近 " + days + " 天"),
                 health, business, technology, integrations);
+    }
+
+    private Business emptyBusiness() {
+        return new Business(new SpendTotals(0, 0, 0, 0), List.of(), List.of(), List.of(),
+                new IssuanceSummary(0, 0, 0, 0, "unavailable", "当前请求未加载经营数据。"),
+                new ConsumerActivity(0, 0, 0, "unavailable", "当前请求未加载经营数据。"),
+                new CashFlow(0, 0, 0, 0, 0, 0, "当前请求未加载经营数据。"),
+                new DirectorFunnel("unavailable", null, null, null, null, null, null, null, null,
+                        "当前请求未加载经营数据。"));
+    }
+
+    private Technology emptyTechnology() {
+        return new Technology(List.of(), List.of(),
+                new Latency("图片", null, null, 0, "当前请求未加载技术数据。"),
+                new Latency("视频", null, null, 0, "当前请求未加载技术数据。"),
+                new QueueState(0, null, null, "unavailable", 0, "当前请求未加载技术数据。"),
+                new SupplierState(0, 0, 0, null, null, null, "unavailable", List.of(), List.of()),
+                new OutputSummary(0, 0, 0, 0, 0, "当前请求未加载技术数据。"));
+    }
+
+    private Integrations emptyIntegrations() {
+        IntegrationState unavailable = new IntegrationState("unavailable", null, null,
+                "当前请求未加载技术集成数据。", null);
+        return new Integrations(unavailable, unavailable, unavailable);
     }
 
     private Health health(Instant now, List<ModelSpend> models) {

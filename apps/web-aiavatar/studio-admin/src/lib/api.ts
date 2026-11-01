@@ -2,6 +2,8 @@ import type {
   StudioCreditEventPage,
   StudioOperationsDashboard,
   StudioReconciliationDetailPage,
+  StudioSupplierPerformance,
+  StudioSupplierPerformanceQuery,
 } from "@ai-star-eco/types/studio-operations";
 import type { StudioSceneAdminView, StudioSceneCatalog, StudioSceneUploaded } from "@ai-star-eco/types/ip-studio-scenes";
 import { studioAdminPath } from "@/lib/app-path";
@@ -32,7 +34,7 @@ export function setAuthToken(token: string | null) {
 
 async function request<T>(
   path: string,
-  options: { method?: "GET" | "POST" | "PUT" | "DELETE"; body?: unknown; query?: Record<string, string | number | undefined> } = {},
+  options: { method?: "GET" | "POST" | "PUT" | "DELETE"; body?: unknown; query?: Record<string, string | number | undefined>; signal?: AbortSignal } = {},
 ): Promise<T> {
   const params = new URLSearchParams();
   Object.entries(options.query || {}).forEach(([key, value]) => {
@@ -50,6 +52,7 @@ async function request<T>(
     },
     body: options.body === undefined ? undefined : form ? options.body as FormData : JSON.stringify(options.body),
     credentials: "include",
+    signal: options.signal,
   });
   const payload = await response.json().catch(() => undefined) as
     | { success?: boolean; data?: T; error?: { code?: string; message?: string } }
@@ -92,8 +95,8 @@ export const AuthApi = {
 };
 
 export const StudioOperationsApi = {
-  dashboard: (days: 1 | 7 | 30) =>
-    request<StudioOperationsDashboard>("/admin/studio-operations", { query: { days } }),
+  dashboard: (days: 1 | 7 | 30, scope: "business" | "technology" = "business") =>
+    request<StudioOperationsDashboard>("/admin/studio-operations", { query: { days, scope } }),
   reconciliationDetails: (check: string, page = 0, size = 20) =>
     request<StudioReconciliationDetailPage>("/admin/studio-operations/reconciliation-details", {
       query: { check, page, size },
@@ -101,6 +104,11 @@ export const StudioOperationsApi = {
   creditEvents: (days: 1 | 7 | 30, page = 0, type?: string, query?: string) =>
     request<StudioCreditEventPage>("/admin/studio-operations/credit-events", {
       query: { days, page, size: 20, type, query },
+    }),
+  supplierPerformance: (query: StudioSupplierPerformanceQuery, signal?: AbortSignal) =>
+    request<StudioSupplierPerformance>("/admin/studio-operations/supplier-performance", {
+      query: { ...query },
+      signal,
     }),
 };
 

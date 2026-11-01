@@ -1,13 +1,6 @@
-import { Suspense } from "react";
-import { StudioShell } from "@/components/studio-shell";
-import { StudioDashboard } from "@/components/studio-dashboard";
+import { redirect } from "next/navigation";
+import { studioAdminPath } from "@/lib/app-path";
 
 export default function HomePage() {
-  return (
-    <Suspense fallback={<div className="min-h-svh bg-[#f4f6fb]" />}>
-      <StudioShell>
-        <StudioDashboard />
-      </StudioShell>
-    </Suspense>
-  );
+  redirect(studioAdminPath("/business"));
 }

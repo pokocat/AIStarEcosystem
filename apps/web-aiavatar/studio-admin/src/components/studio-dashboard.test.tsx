@@ -75,49 +75,49 @@ const dashboard: StudioOperationsDashboard = {
 describe("StudioDashboard", () => {
   beforeEach(() => {
     vi.spyOn(StudioOperationsApi, "dashboard").mockResolvedValue(dashboard);
-    window.history.replaceState(null, "", "/?view=business&days=7");
+    window.history.replaceState(null, "", "/business?tab=overview&days=7");
   });
   afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
-  it("renders the standalone business overview and switches to the technical monitor", async () => {
-    render(<StudioDashboard />);
+  it("renders only the selected business or technology tab and requests its scope", async () => {
+    render(<StudioDashboard module="business" />);
     expect(await screen.findByText("经营数据，一屏掌握")).toBeTruthy();
-    expect(screen.getByText("赠送实际使用比例：未具备数据")).toBeTruthy();
     expect(screen.getByText("导演台创作推进")).toBeTruthy();
     expect(screen.getByText("窗口消费用户")).toBeTruthy();
+    expect(screen.queryByText("每日积分消耗")).toBeNull();
+    expect(StudioOperationsApi.dashboard).toHaveBeenCalledWith(7, "business");
     expect(screen.queryByText("当前在线 · 2分钟")).toBeNull();
     cleanup();
-    window.history.replaceState(null, "", "/?view=technology&days=7");
-    render(<StudioDashboard />);
+    window.history.replaceState(null, "", "/technology?tab=models&days=7");
+    render(<StudioDashboard module="technology" />);
     expect(await screen.findByText("供应商与模型运行情况")).toBeTruthy();
     expect(screen.getAllByText("supplier-a").length).toBeGreaterThan(0);
     expect(screen.getByText(/24h · 每格30分钟/)).toBeTruthy();
     expect(screen.getByText("实际图片产物")).toBeTruthy();
+    expect(screen.queryByText("图片耗时")).toBeNull();
+    expect(StudioOperationsApi.dashboard).toHaveBeenLastCalledWith(7, "technology");
   });
 
-  it("follows the URL after browser navigation and keeps health before page-specific metrics", async () => {
-    const rendered = render(<StudioDashboard />);
-    const health = await screen.findByText("共用健康状态");
-    const hero = screen.getByText("经营数据，一屏掌握");
-    expect(health.compareDocumentPosition(hero) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-
-    window.history.pushState(null, "", "/?view=technology&days=7");
-    rendered.rerender(<StudioDashboard />);
-    expect(await screen.findByText("供应商与模型运行情况")).toBeTruthy();
-    expect(screen.queryByText("经营数据，一屏掌握")).toBeNull();
+  it("follows the tab URL and keeps the common health bar", async () => {
+    window.history.replaceState(null, "", "/business?tab=spend&days=7");
+    render(<StudioDashboard module="business" />);
+    expect(await screen.findByText("共用健康状态")).toBeTruthy();
+    expect(screen.getByText("每日积分消耗")).toBeTruthy();
+    expect(screen.getByText("模型消耗概览")).toBeTruthy();
+    expect(screen.queryByText("导演台创作推进")).toBeNull();
   });
 
   it("shows a permission-specific failure state for forbidden users", async () => {
     vi.spyOn(StudioOperationsApi, "dashboard").mockRejectedValue(new ApiError("无权访问", "FORBIDDEN", 403));
-    render(<StudioDashboard />);
+    render(<StudioDashboard module="business" />);
     expect(await screen.findByText("没有查看权限")).toBeTruthy();
     expect(screen.queryByText("经营数据，一屏掌握")).toBeNull();
   });
 
   it("uses an explicitly labelled local fixture only in development demo mode", async () => {
-    window.history.replaceState(null, "", "/?view=business&days=7&demo=1");
+    window.history.replaceState(null, "", "/business?tab=overview&days=7&demo=1");
     vi.spyOn(StudioOperationsApi, "dashboard").mockRejectedValue(new TypeError("backend unavailable"));
-    render(<StudioDashboard />);
+    render(<StudioDashboard module="business" />);
     expect(await screen.findByText("本地演示数据")).toBeTruthy();
     expect(screen.getByText("导演台创作推进")).toBeTruthy();
     expect(screen.queryByText("数据加载失败")).toBeNull();

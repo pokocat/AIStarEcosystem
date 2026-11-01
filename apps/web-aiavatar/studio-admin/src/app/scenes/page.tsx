@@ -6,7 +6,7 @@ import { StudioScenes } from "@/components/studio-scenes";
 export default function ScenesPage() {
   return (
     <Suspense fallback={<div className="min-h-svh bg-[#f4f6fb]" />}>
-      <StudioShell page="scenes">
+      <StudioShell module="scenes">
         <StudioScenes />
       </StudioShell>
     </Suspense>
