@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { LibraryMediaPicker } from './library-media-picker';
 
 const api = vi.hoisted(() => ({ folders: vi.fn(), canvasFolder: vi.fn(), materials: vi.fn(), objects: vi.fn(), upload: vi.fn() }));
+vi.mock('./audio-recorder-dialog', () => ({ AudioRecorderDialog: ({ open, onSave, onClose }: any) => open ? <button onClick={async () => { await onSave(new File(['wav'], '旁白.wav', { type: 'audio/wav' })); onClose(); }}>保存测试录音</button> : null }));
 vi.mock('./studio-errors', async () => {
   const { useCallback, useState } = await import('react');
   return {
@@ -107,4 +108,18 @@ test('an upload never pushes the selection past max', async () => {
   await waitFor(() => expect(screen.getByRole('button', { name: '选 新图' })).toBeDefined());
   expect(screen.getByRole('button', { name: '选 新图' }).getAttribute('aria-pressed')).toBe('false');
   expect(screen.getByText('已选 2 个')).toBeDefined();
+});
+
+test('recording in an audio slot is stored in the current library and selected for use', async () => {
+  window.localStorage.setItem('aiavatar_library_last', 'f2');
+  const audio = { ...image('旁白', 'f2'), kind: 'audio', data: { storageKey: 'k/旁白', url: '', durationSec: 4, mimeType: 'audio/wav', bytes: 128044 } };
+  api.upload.mockResolvedValue({ key: 'k/旁白' });
+  api.materials.mockResolvedValueOnce(page([])).mockResolvedValue(page([audio]));
+  render(<LibraryMediaPicker open mediaType="audio" upload onClose={vi.fn()} onAssets={vi.fn()}/>);
+  await waitFor(() => expect(api.materials).toHaveBeenCalled());
+  fireEvent.click(screen.getByRole('button', { name: '录音' }));
+  fireEvent.click(screen.getByRole('button', { name: '保存测试录音' }));
+  await waitFor(() => expect(api.upload).toHaveBeenCalledWith(expect.objectContaining({ name: '旁白.wav' }), 'audio', 'f2'));
+  await waitFor(() => expect(screen.getByRole('button', { name: '选 旁白' }).getAttribute('aria-pressed')).toBe('true'));
+  expect(screen.getByText('已选：旁白')).toBeDefined();
 });
