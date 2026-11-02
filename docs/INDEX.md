@@ -32,7 +32,7 @@
 | [`product_spec_ai_celebrity.md`](../product_spec_ai_celebrity.md) | **AI 明星带货主线**：明星市场、授权、模板 / 脚本、AI 模型、生成器、积分钱包、消息、社交账号绑定 | v0.5.x 滚动 |
 | [`docs/ADMIN_PRODUCT_SPEC.md`](ADMIN_PRODUCT_SPEC.md) | **运营后台规划**（全配置化终态）；当前 admin 是其 P0 子集。正文里的 `apps/web/...` 路径是遗留前端，按头注换算 | v1.0 大目标稿（2026-05-07） |
 
-- [客户端图片上传处理](client-image-upload.md)：HEIC 端上转换、大原图自动压缩、共用入口与本地验收（2026-11-01，本地未发布）。
+- [客户端图片上传处理](client-image-upload.md)：HEIC 端上转换、大原图自动压缩、共用入口；已生产发布，资产库 / 画布 / 带货首尾帧真实上传通过（last-reviewed 2026-11-02）。
 
 ### 1.2 子应用产品 + 设计约束（每 app 一份，★ = 必读）
 
@@ -298,6 +298,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 | 文档 | 主题 | 内容与状态 |
 |---|---|---|
+| [客户端图片上传生产发布](releases/client-image-upload-production-release-20261102.md) | main `76b353939`、server / Studio / 带货、制品与回滚 | HEIC、大图、限额内 JPG、不透明 PNG、画布刷新与首尾帧真实上传通过；iPhone 真机待验（last-reviewed 2026-11-02） |
 | [`docs/releases/studio-recreation-release-20261018.md`](releases/studio-recreation-release-20261018.md) | 全能创作复刻 S1/S2/S3 生产发布记录 | 发布 `20261018-studio-recreation-s1s3`（c6f40808）：基线核对与合并、V60–V63 迁移、技能 seed、verify 全绿、上线后配置项与未验证范围；之后每次追加发布记在同一份，最近一次是 2026-10-20 第一次从 main 发的 `20261020-studio-main-h3-conflict`（last-reviewed 2026-10-20） |
 | [`docs/releases/studio-gpt-image-native-20261020.md`](releases/studio-gpt-image-native-20261020.md) | Studio GPT Image 2 原生接入与验收 | 2K、参考图 multipart、尺寸选择与 30 积分定价；尺寸不符在扣费前拒绝（last-reviewed 2026-10-20） |
 | [`docs/releases/studio-node-settings-20261020.md`](releases/studio-node-settings-20261020.md) | Studio 节点配置交互统一 | 底栏摘要、分组浮层、可视比例与各创作节点统一；已发布 web-aiavatar（last-reviewed 2026-10-20） |

@@ -1,6 +1,6 @@
 # 客户端图片上传处理
 
-2026-11-01，本地开发，评审修正后；未发布。
+2026-11-02，已生产发布。制品与真实上传验收见[生产发布记录](releases/client-image-upload-production-release-20261102.md)。
 
 ## 用户行为与阈值
 
@@ -82,7 +82,9 @@ Worker 成功、失败或超时后都会释放。没有新增服务端解码依�
 
 浏览器记录见 `docs/releases/client-image-upload-review-20261101/turbopack-results.json`。新增回归包含入口阈值、PNG 透明度、方向参数、Worker 分配前保护、失败分类和原图绕过慢队列；最终检查结果见同目录验证记录。
 
-仍未完成：iPhone Safari 真机，特别是 iOS 16 / 17 的选图 accept 行为和 WASM 路径；不同厂商真实 HDR/高像素 HEIC 全覆盖。未发布生产。
+2026-11-02 已从 main `76b353939` 发布，Studio 资产库、自由画布及带货首尾帧的 HEIC / 大图上传通过真实线上验收，画布保存刷新后两张图片正常。完整记录见[生产发布记录](releases/client-image-upload-production-release-20261102.md)。
+
+仍未完成：iPhone Safari 真机，特别是 iOS 16 / 17 的选图 accept 行为和 WASM 路径；不同厂商真实 HDR/高像素 HEIC 全覆盖。
 
 ## 依赖
 
