@@ -1,4 +1,5 @@
 "use client";
+import { IMAGE_UPLOAD_ACCEPT } from '@ai-star-eco/api-client/image-upload-policy';
 import { StudioErrorNotice, useStudioErrorState } from './studio-errors';
 import { useEffect, useRef, useState } from 'react';
 import { Button, Checkbox, Input, Modal, Select, Skeleton, Tabs } from 'antd';
@@ -36,7 +37,7 @@ setObjects(list);setItems(list.map(a=>libraryObjectAsset(a,folders.find(f=>f.id=
   const content = <div className="studio-library-assets">
     <p>{intro}</p>
     <div className="personal-library-filters"><Input disabled={busy} aria-label="搜索可引用资产" placeholder="搜索名称、描述或剧本来源" value={keyword} allowClear onChange={e=>{setKeyword(e.target.value);setPage(0);}}/><Select disabled={busy} aria-label="引用资产文件夹" value={folder} options={[{value:'all',label:'全部个人资产'},{value:'unfiled',label:'未分类'},...folders.map(f=>({value:f.id,label:f.name}))]} onChange={v=>{setFolder(v);setPage(0);}}/>{upload&&<><Button disabled={busy} loading={uploading} onClick={()=>fileInput.current?.click()}>上传到资产库</Button>
-      <input ref={fileInput} type="file" hidden aria-label="选择要上传到资产库的文件" accept={mediaType==='video'?'.mp4':mediaType==='audio'?'.mp3,.wav,.m4a':'.jpg,.jpeg,.png'} onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file)void putInLibrary(file);}}/></>}</div>
+      <input ref={fileInput} type="file" hidden aria-label="选择要上传到资产库的文件" accept={mediaType==='video'?'.mp4':mediaType==='audio'?'.mp3,.wav,.m4a':IMAGE_UPLOAD_ACCEPT} onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file)void putInLibrary(file);}}/></>}</div>
     {!objectsOnly&&!materialsOnly&&<Tabs activeKey={tab} onChange={v=>{setTab(v);setPage(0);}} items={(()=>{
       // 两栏的叫法和「资产」页一样（创作素材 = 角色、场景和道具；生成与上传 = 生成和上传的文件）。素材位来的「生成与上传」排前面、默认打开。
       const objectsTab={key:'objects',label:'创作素材',disabled:busy},materialsTab={key:'materials',label:'生成与上传',disabled:busy};

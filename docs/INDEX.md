@@ -32,6 +32,8 @@
 | [`product_spec_ai_celebrity.md`](../product_spec_ai_celebrity.md) | **AI 明星带货主线**：明星市场、授权、模板 / 脚本、AI 模型、生成器、积分钱包、消息、社交账号绑定 | v0.5.x 滚动 |
 | [`docs/ADMIN_PRODUCT_SPEC.md`](ADMIN_PRODUCT_SPEC.md) | **运营后台规划**（全配置化终态）；当前 admin 是其 P0 子集。正文里的 `apps/web/...` 路径是遗留前端，按头注换算 | v1.0 大目标稿（2026-05-07） |
 
+- [客户端图片上传处理](client-image-upload.md)：HEIC 端上转换、大原图自动压缩、共用入口与本地验收（2026-11-01，本地未发布）。
+
 ### 1.2 子应用产品 + 设计约束（每 app 一份，★ = 必读）
 
 | 子产品 | 产品 / 路由 / 模块 | 启动 / 版本日志 | 视觉与决策 |

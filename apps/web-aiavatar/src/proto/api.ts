@@ -13,6 +13,7 @@
 // 登录：/api/auth/sms/*（正式账号）+ /api/auth/dev-login（授权内部体验入口）。
 // ============================================================
 import React from "react";
+import { prepareImageFormData } from "@ai-star-eco/api-client/image-upload";
 import {
   beginLogin as idBeginLogin,
   clearAuthTokens as idClearTokens,
@@ -265,11 +266,12 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 
 /** multipart 上传（不设 Content-Type，浏览器自带 boundary）。 */
 export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
+  const prepared = await prepareImageFormData(form);
   const res = await sendWithIdRetry(() =>
     fetch(`${API_PREFIX}${path}`, {
       method: "POST",
       headers: { ...authHeaders() },
-      body: form,
+      body: prepared,
     }),
   );
   return parseResponse<T>(res);

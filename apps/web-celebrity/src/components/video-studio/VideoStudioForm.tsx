@@ -444,13 +444,6 @@ function StudioForm({
       setFrame(side, (s) => ({ ...s, error: "这个文件是空的，换一个再试" }));
       return;
     }
-    if (frameLimit && file.size > frameLimit.maxBytes) {
-      setFrame(side, (s) => ({
-        ...s,
-        error: `${label}图不能超过 ${formatSizeLimit(frameLimit.maxBytes)}（这张 ${formatSizeCeil(file.size)}），换一张小一点的`,
-      }));
-      return;
-    }
     frameSeq.current[side] += 1;
     const mine = frameSeq.current[side];
     setFrame(side, (s) => ({ ...s, uploading: true, uploadingName: file.name, error: null }));
@@ -459,6 +452,7 @@ function StudioForm({
         endpointId: model.selectableById ? model.endpointId : null,
         mode: sel.mode,
         frame: true,
+        maxImageBytes: frameLimit?.maxBytes,
       });
       if (frameSeq.current[side] !== mine) return;
       setFrame(side, () => ({ material: materialFromUpload(upload), uploading: false, uploadingName: null, error: null }));
@@ -498,7 +492,7 @@ function StudioForm({
     for (const f of files) {
       if (f.size === 0) {
         notes.push(`「${shortName(f.name)}」是空文件，没有加进来`);
-      } else if (f.size > limit.maxBytes) {
+      } else if (mediaType !== "image" && f.size > limit.maxBytes) {
         notes.push(`「${shortName(f.name)}」超过 ${formatSizeLimit(limit.maxBytes)}，没有加进来`);
       } else if (accepted.length >= capacity.remaining) {
         skipped += 1;
@@ -523,6 +517,7 @@ function StudioForm({
         endpointId: model.selectableById ? model.endpointId : null,
         mode: sel.mode,
         frame: false,
+        maxImageBytes: mediaType === "image" ? limit.maxBytes : undefined,
       })
         .then((upload) => setRefMaterial(mediaType, item.id, materialFromUpload(upload)))
         .catch((e) => {
@@ -541,7 +536,7 @@ function StudioForm({
       pushNotices([`「${shortName(file.name)}」是空文件，没有换上`]);
       return;
     }
-    if (file.size > limit.maxBytes) {
+    if (mediaType !== "image" && file.size > limit.maxBytes) {
       pushNotices([`「${shortName(file.name)}」超过 ${formatSizeLimit(limit.maxBytes)}，没有换上`]);
       return;
     }
@@ -552,6 +547,7 @@ function StudioForm({
       endpointId: model.selectableById ? model.endpointId : null,
       mode: sel.mode,
       frame: false,
+        maxImageBytes: mediaType === "image" ? limit.maxBytes : undefined,
     })
       .then((upload) => {
         if (removedRefIds.current.has(id)) return;
@@ -760,6 +756,7 @@ function StudioForm({
 
   return (
     <FormCard>
+
       <div ref={formTopRef} className="scroll-mt-4" />
       {quoteRequest && <ModelQuoteDialog request={quoteRequest.request} onCancel={() => setQuoteRequest(null)}
         onConfirm={approval => {

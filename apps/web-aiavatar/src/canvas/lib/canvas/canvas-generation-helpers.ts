@@ -1,3 +1,5 @@
+// Local integration: camera originals are normalized by the shared upload pipeline.
+import { isUploadImage, IMAGE_UPLOAD_ACCEPT } from '@ai-star-eco/api-client/image-upload';
 import { defaultConfig, resolveModelForCapability, type AiConfig } from "@/canvas-bridge/config-store";
 import i18n from "@/canvas-bridge/i18n";
 import { resolveImageUrl, uploadImage } from "@/canvas-bridge/image-storage";
@@ -247,20 +249,13 @@ export function sourceNodeReferenceImages(node: CanvasNodeData | null) {
     ];
 }
 
-/**
- * 画布能上传的素材：**只有 JPG / PNG**（本仓，v0.179）。
- *
- * 服务端 `POST /v1/ip-studio/uploads` 只收这两种（`IpProjectService.UPLOAD_EXTS`）。
- * 此前入口是 `accept="image/*,video/*,audio/…"` + 没有 catch 的 `void create…FileNode(...)`：
- * 拖进去一个 mp4 / webp / 超大图，界面上什么都不发生。上游那三个 `isAudioFile` 分支
- * （音频、视频导入）随之退役 —— 它们在本仓从来没成功过一次。
- */
+/** Local integration: all selected images enter client preparation; audio/video use their own upload paths. */
 export function isSupportedUploadImage(file: File) {
-    return /^image\/(jpeg|png)$/i.test(file.type) || /\.(jpe?g|png)$/i.test(file.name);
+    return isUploadImage(file);
 }
 
-/** 上传入口的 accept —— 与服务端 UPLOAD_MIMES 一致，别放行一定会被拒的格式。 */
-export const UPLOAD_ACCEPT = "image/jpeg,image/png,.jpg,.jpeg,.png";
+/** Local integration: selected camera formats are converted before reaching the JPG/PNG server API. */
+export const UPLOAD_ACCEPT = IMAGE_UPLOAD_ACCEPT;
 
 export function buildAngleLabel(params: CanvasImageAngleParams) {
     const horizontal = params.horizontalAngle === 0 ? i18n.t("canvas.generation.front") : params.horizontalAngle > 0 ? i18n.t("canvas.generation.rotateRight", { angle: params.horizontalAngle }) : i18n.t("canvas.generation.rotateLeft", { angle: Math.abs(params.horizontalAngle) });

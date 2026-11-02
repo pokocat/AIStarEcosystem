@@ -1,3 +1,4 @@
+import { prepareImageForUpload } from '@ai-star-eco/api-client/image-upload';
 import { legacyImageBillingDetails, withStudioBilling, invalidateStudioModelQuote } from "./studio-billing";
 import type { EnterpriseBillingSelection } from "@ai-star-eco/types/enterprise";
 // 画布 → 本仓服务端的调用层（薄封装）。
@@ -65,9 +66,9 @@ export type IpRun = SharedIpRun;
 export const fetchModels = () => apiFetch<IpModels>("/v1/ip-studio/models");
 
 /** 上传一张图，落 OSS。返回的 key 是真值，url 是当次派生的签名地址。 */
-export function uploadImage(file: File | Blob, fileName = "image.png") {
+export async function uploadImage(file: File | Blob, fileName = "image.png") {
   const form = new FormData();
-  form.append("file", file instanceof File ? file : new File([file], fileName));
+  form.append("file", await prepareImageForUpload(file instanceof File ? file : new File([file], fileName)));
   // apiFetch 认得 FormData：不设 Content-Type，让浏览器自己加 boundary
   return apiFetch<IpUploadResult>("/v1/ip-studio/uploads", { method: "POST", body: form });
 }

@@ -1,3 +1,4 @@
+import { prepareImageForUpload } from '@ai-star-eco/api-client/image-upload';
 import { apiFetch } from '@ai-star-eco/api-client';
 import type { IpCanvasCover, IpCanvasCoverTarget } from '@ai-star-eco/types';
 import { USE_MOCK, mockDelay } from './api/_client';
@@ -16,7 +17,7 @@ export async function uploadCanvasCover(target: IpCanvasCoverTarget, id: string,
     item.coverUrl = URL.createObjectURL(file);
     return mockDelay({ coverUrl: item.coverUrl });
   }
-  const body = new FormData(); body.append('file', file);
+  const body = new FormData(); body.append('file', await prepareImageForUpload(file));
   return apiFetch<IpCanvasCover>(`/v1/ip-studio/covers/${target}/${encodeURIComponent(id)}`, { method: "POST", body });
 }
 export async function selectCanvasCover(target: IpCanvasCoverTarget, id: string, storageKey: string) {
