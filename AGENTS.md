@@ -1084,9 +1084,9 @@ Studio 支持模型开放首尾帧、全能参考、清晰度、六种画幅及�
 `aep/enterprise` 为独立企业关系/RBAC，复用 OIDC 与现有 aiavatar 开通，不复用旧 Tenant/Studio、不新增企业席位。V56 建立企业/成员/当前归属/邀请/策略/移交/审计/划拨结构；current 的 userId 唯一，owner 由 Enterprise 单字段决定。钱包 accountKey 区分 personal/enterprise/enterprise_member，企业账户 userId 为空，成员用户另存 memberUserId；历史个人余额与账本不动。CreditService 按钱包 ID 共用核心，终态按 hold.walletId，企业资金锁 enterprise→按ID排序的全部企业wallet→hold→任务（个人仍wallet→hold）；划拨枚举为积分面且不计作发行/收入。`AEP_ENTERPRISE_ENABLED` 默认 false，控制新企业关系/积分操作；已有订单的平台财务处理不随开关关闭。E05 为预览指纹+正文幂等的原子划拨，E06 为固定企业根钱包的人工充值/退款；V57 保留原充值来源（移动/冻结/FIFO消费/释放），不得用后续充值顶替原单退款。退款待原单冻结结清后一次处理，记录人民币与凭据，不自动打款。Studio `/enterprise` 需构建期 `NEXT_PUBLIC_ENTERPRISE_ENABLED=1`，后台沿用充值订单页；E07/E08 用 V58 持久化每个收费引用的付款授权和生命周期操作回执。全部 Studio 生成入口显式接受 billing，旧请求默认个人；授权固定 actor/enterprise/membership/wallet/endpoint/价格，不混扣。排队、受理未知均计入在途（零价模型接入点自模型赠款起一律报错，见文末「模型接入点赠款与折扣」）。停用/退出撤销原授权并取消未派发任务，已受理继续原任务结算；晚释放按原桶和充值来源回原企业，恢复/重入不改变原退款。关闭须无在途、冻结、余额或待核准充值。前台完整管理/消费流水与后台企业对账沿用原组件。图片/视频受理必须预先保存原路由和请求、随后保存供应商ID；轮询故障保留冻结并查原任务。无ID由SUPER_ADMIN/OPERATOR保存证据补原ID再查询；供应商明确证明未受理时，才允许显式确认释放原剩余冻结，FINANCE_ADMIN不能操作任务恢复。严禁重新生成或单凭查询故障退款。2026-10-15 已生产发布 `f068b51d`，前后端开关已开启、V56–V58成功，实际服务与资金基线见 `docs/releases/ip-studio-enterprise-production-release.md`。实施/验收见 `docs/archive/ip-studio-enterprise-development-tasks.md`、`docs/releases/ip-studio-enterprise-complete-validation.md`（早期批次记录另保留）；前端规划见 `docs/ip-studio-enterprise-ui-plan.md`。
 
 
-### 画布用企业积分 · 2026-11-02（本地，未发布；server + web-aiavatar）
+### 画布用企业积分 · 2026-11-02（已生产发布 `20261102-enterprise-canvas-credits`，main `cbfdf1625`；server + web-aiavatar）
 
-线上 4 家企业的模型策略都还是创建值（空名单、每人在途 1），企业付款记录 0 条：空名单按旧规则等于全部禁用，付款弹窗里企业积分一直是灰的。现在**空名单 = 全部模型**（包括以后新上的），非空才按名单拦；新企业在途上限 10，V73 只调整从没改过的策略。企业设置页是「全部模型 / 只允许选定的模型」二选一，后者没选模型不能保存；画布右上角在个人积分旁显示本人可用的企业积分（`WalletBadge enterprise`，只在画布开）。付款仍是每次生成选一次或存默认，规则不变。
+线上 4 家企业的模型策略都还是创建值（空名单、每人在途 1），企业付款记录 0 条：空名单按旧规则等于全部禁用，付款弹窗里企业积分一直是灰的。现在**空名单 = 全部模型**（包括以后新上的），非空才按名单拦；新企业在途上限 10，V73 只调整从没改过的策略。企业设置页是「全部模型 / 只允许选定的模型」二选一，后者没选模型不能保存；画布右上角在个人积分旁显示本人可用的企业积分（`WalletBadge enterprise`，只在画布开）。付款仍是每次生成选一次或存默认，规则不变。发布记录 `docs/releases/enterprise-canvas-credits-release-20261102.md`。
 
 ### Studio 场景化首页与 AI 图片 / AI 视频（2026-10-29，本地未发布）
 
