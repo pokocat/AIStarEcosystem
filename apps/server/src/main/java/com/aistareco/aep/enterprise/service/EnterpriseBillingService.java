@@ -253,7 +253,8 @@ public class EnterpriseBillingService {
         if(endpointId==null) {if(amount>0)throw denied("ENTERPRISE_MODEL_NOT_ALLOWED","计费模型未确定，不能冻结企业积分");return;}
         try {
             List<String> allowed=mapper.readValue(policy.getAllowedEndpointIdsJson(),new TypeReference<List<String>>(){});
-            if(!allowed.contains(endpointId))throw denied("ENTERPRISE_MODEL_NOT_ALLOWED","企业未允许使用此模型，请联系主账号设置");
+            // An empty list is "all models" (2026-11-02): no enterprise ever filled one in, so enterprise credits were unusable.
+            if(!allowed.isEmpty()&&!allowed.contains(endpointId))throw denied("ENTERPRISE_MODEL_NOT_ALLOWED","企业未允许使用此模型，请联系主账号设置");
         }catch(BusinessException e){throw e;}catch(Exception e){throw new IllegalStateException("企业模型策略损坏",e);}
     }
     private static BusinessException denied(String code,String message){return new BusinessException(HttpStatus.FORBIDDEN,code,message);}

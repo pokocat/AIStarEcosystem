@@ -278,6 +278,11 @@ class EnterpriseFoundationTest {
                 .amount(100).balanceAfter(100).referenceType("enterprise_transfer").referenceId(UUID.randomUUID().toString()).createdAt(Instant.now()).build();
         entry=ledger.saveAndFlush(entry);assertEquals(before,ledger.sumTotalCreditsIssued());assertEquals(LedgerEntry.Plane.CREDIT,entry.getPlane());assertNull(entry.getCashArtifactId());
     }
+    /** 2026-11-02: the created policy (no model chosen, one task) left enterprise credits unusable in the canvas. */
+    @Test void newEnterpriseAllowsEveryModelAndTenTasksInFlight() {
+        String owner=person(true);var e=company(owner);var policy=service.policy(owner,e.enterprise().id());
+        assertTrue(policy.allowedEndpointIds().isEmpty());assertEquals(10,policy.maxActiveJobs());
+    }
     @Test void policyPermissionsAndVersionsAreChecked() {
         String owner=person(true),member=person(true);var e=company(owner);join(owner,e,member);String id=e.enterprise().id();
         var before=service.policy(owner,id);var after=service.updatePolicy(owner,id,new PolicyUpdate(List.of(),2,before.version()));

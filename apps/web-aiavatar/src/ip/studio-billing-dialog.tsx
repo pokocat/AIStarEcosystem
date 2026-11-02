@@ -45,7 +45,7 @@ export function StudioBillingDialog({ details, account, onConfirm, onCancel }: {
   useEffect(() => { void load(); return () => { revision.current++; }; }, []); // Dialog reads fresh funds at each explicit payment choice.
   const isText = details.textUsage || ["text", "script", "storyboard", "assistant", "asset-extract"].includes(details.operation || "");
   const expected = typeof details.expectedCost === "number" && Number.isFinite(details.expectedCost) ? details.expectedCost : undefined;
-  const enterpriseUnavailable = enterpriseDisabled ? "企业功能暂未开放，可明确选择个人积分" : !context ? "你目前没有加入企业" : context.enterprise.status !== "active" ? "企业已关闭或正在关闭" : context.member.status !== "active" ? "企业成员已停用，仍可选择个人积分" : !details.modelQuote && details.model && policy && !policy.allowedEndpointIds.includes(details.model) ? "此模型未获企业授权，可更换模型或明确选择个人积分" : !balance || !policy ? "企业余额或生成设置尚未读取" : !policy.allowedEndpointIds.length ? "企业尚未授权生成模型" : undefined;
+  const enterpriseUnavailable = enterpriseDisabled ? "企业功能暂未开放，可明确选择个人积分" : !context ? "你目前没有加入企业" : context.enterprise.status !== "active" ? "企业已关闭或正在关闭" : context.member.status !== "active" ? "企业成员已停用，仍可选择个人积分" : !details.modelQuote && details.model && policy && policy.allowedEndpointIds.length > 0 && !policy.allowedEndpointIds.includes(details.model) ? "此模型未获企业授权，可更换模型或明确选择个人积分" : !balance || !policy ? "企业余额或生成设置尚未读取" : undefined;
   const available = selection === "personal" ? personal : balance?.totalBalance;
   const insufficient = !details.modelQuote && available !== undefined && (expected !== undefined ? available < expected : available <= 0);
   const blocked = loading || !!error || available === undefined || insufficient || selection === "enterprise" && !!enterpriseUnavailable;

@@ -20,6 +20,7 @@ vi.mock("antd", () => ({
   InputNumber: ({ onChange, precision, ...props }: any) => <input {...props} type="number" value={props.value ?? ""} onChange={event => onChange(Number(event.target.value))}/>,
   Select: ({ options, onChange, value, mode, optionFilterProp, ...props }: any) => <select {...props} value={value} multiple={mode === "multiple"} onChange={event => onChange(mode === "multiple" ? [...event.target.selectedOptions].map(option => option.value) : event.target.value)}>{options.map((option: any) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>,
   Modal: ({ open, title, children, footer, onOk, onCancel, okText, okButtonProps, confirmLoading }: any) => open ? <section role="dialog" aria-label={title}><h2>{title}</h2>{children}{footer || <><button onClick={onCancel}>取消</button><button disabled={confirmLoading || okButtonProps?.disabled} onClick={onOk}>{okText}</button></>}</section> : null,
+  Radio: { Group: ({ options, value, onChange, disabled, ...props }: any) => <div role="radiogroup" {...props}>{options.map((option: any) => <label key={option.value}><input type="radio" disabled={disabled} checked={value === option.value} onChange={() => onChange({ target: { value: option.value } })}/>{option.label}</label>)}</div> },
   Pagination: () => null, Skeleton: () => <p>读取中</p>, Tag: ({ children }: any) => <span>{children}</span>,
   Table: ({ dataSource, columns }: any) => <table><tbody>{dataSource.map((row: any) => <tr key={row.id}>{columns.map((column: any, index: number) => <td key={index}>{column.render ? column.render(row[column.dataIndex], row) : row[column.dataIndex]}</td>)}</tr>)}</tbody></table>,
 }));
@@ -67,6 +68,23 @@ test("model policy selects human model names and sends endpoint ids with version
   expect(await screen.findByRole("option", { name: "图片 · 人像图片" })).toBeDefined(); expect(screen.getByRole("option", { name: "文本 · 创作文本" })).toBeDefined();
   fireEvent.change(screen.getByLabelText("每位成员最多在途任务数"), { target: { value: "5" } }); fireEvent.click(screen.getByRole("button", { name: "保存生成设置" }));
   await waitFor(() => expect(api.updatePolicy).toHaveBeenCalledWith("team", { allowedEndpointIds: ["image-id"], maxActiveJobs: 5, version: 2 }));
+});
+
+test("a policy without chosen models means every model and saves as an empty list", async () => {
+  api.policy.mockResolvedValue({ allowedEndpointIds: [], maxActiveJobs: 10, version: 1 });
+  render(<EnterpriseManagement context={owner} section="policy" onChanged={vi.fn().mockResolvedValue(undefined)}/>);
+  expect((await screen.findByRole("radio", { name: "全部模型" }) as HTMLInputElement).checked).toBe(true);
+  expect(screen.queryByLabelText("允许使用的模型")).toBeNull();
+  fireEvent.click(screen.getByRole("radio", { name: "只允许选定的模型" }));
+  expect((screen.getByRole("button", { name: "保存生成设置" }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole("radio", { name: "全部模型" })); fireEvent.click(screen.getByRole("button", { name: "保存生成设置" }));
+  await waitFor(() => expect(api.updatePolicy).toHaveBeenCalledWith("team", { allowedEndpointIds: [], maxActiveJobs: 10, version: 1 }));
+});
+
+test("switching a restricted policy back to every model drops the chosen list", async () => {
+  render(<EnterpriseManagement context={owner} section="policy" onChanged={vi.fn().mockResolvedValue(undefined)}/>);
+  fireEvent.click(await screen.findByRole("radio", { name: "全部模型" })); fireEvent.click(screen.getByRole("button", { name: "保存生成设置" }));
+  await waitFor(() => expect(api.updatePolicy).toHaveBeenCalledWith("team", { allowedEndpointIds: [], maxActiveJobs: 3, version: 2 }));
 });
 
 test("close with unresolved funds shows blockers and cannot submit", async () => {

@@ -1064,6 +1064,7 @@ V51 为 `material_video_job` 增加可空 `error_code VARCHAR(64)`，和原 `err
 
 - V58：`aep_enterprise_billing_authorizations` 固定每笔实际任务的付款、成员版本、最终模型/冻结金额、撤销与终态；`aep_enterprise_lifecycle_operations` 保存正文幂等回执。`credit_lot_holds.released_amount` 标出本次释放的原充值来源，避免误回收重入后的新分配。
 - 生成：所有 Studio 入口支持可选 `billing`，个人省略兼容；企业在 `reserve` 同事务保存授权/冻结/任务，派发前重验策略，afterCommit 派发。视频上层不二次冻结。原生run/generate/generate-video企业付款必须带clientRequestId；项目锁+持久绑定使重试读取同一任务，不二次冻结。worker 成功/失败与原账户结算同事务。
+- 模型策略（2026-11-02）：`allowedEndpointIds` 空数组 = 全部模型，非空才按名单拦（`EnterpriseBillingService.requireAllowed`）；新企业每位成员在途上限 10（`EnterpriseService.DEFAULT_MAX_ACTIVE_JOBS`）。V73（Java）只把仍是创建值（version 0、上限 1）的策略改成 10 并 version+1。此前空名单等于全部禁用，线上企业从没设过，企业积分在画布付款弹窗里一直是灰的。
 - 生命周期：`POST /enterprises/{id}/lifecycle/preview` → `POST /lifecycle`，action 为 suspend/resume/remove/leave/close。确认指纹覆盖关系、余额与在途；停用/退出回收可用，已受理任务的晚退款回原企业。停用成员仍可查询本人余额、退出，不能发新企业任务。
 - 报表：用户 `GET /enterprises/{id}/my-balance|usage`；管理者查询全企业，普通/停用成员仅本人。平台 `/api/admin/finance/enterprises` 服务端分页检索，并有 `/{id}/wallet|member-balances|points/transfers|usage`。不返回私有文档/提示词。
 - 受理恢复：图片/视频保存原供应商路由/请求与任务号，轮询故障保留冻结；仅 SUPER_ADMIN/OPERATOR（不含纯 FINANCE_ADMIN）GET `/api/admin/material-video-jobs/{id}` 或 `/api/admin/ip-studio/runs/{id}` 核对，reconcile 可带原任务号和证据，只查询原任务。不提供无证据强制退积分或重新提交。

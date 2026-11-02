@@ -184,9 +184,18 @@ class EnterpriseStudioBillingIntegrationTest {
         assertTrue(authorizations.findAll().stream().noneMatch(a->c.enterprise().equals(a.getEnterpriseId())));
         assertEquals(0,memberWallet(c).getPendingBalance());assertEquals(100,memberWallet(c).getTotalBalance());assertEquals(0,imageCalls.get());
     }
-    @Test void finalModelWhitelistRejectsBeforeAnyWalletFreezeOrSupplierCall() throws Exception {
+    /** An empty model list is "all models" (2026-11-02): no enterprise had ever chosen one, so nothing could be paid. */
+    @Test void emptyModelListLetsMembersPayWithEnterpriseCredits() throws Exception {
         var c=funded(100,2);var policy=enterprises.policy(c.company().member().userId(),c.enterprise());
         enterprises.updatePolicy(c.company().member().userId(),c.enterprise(),new PolicyUpdate(List.of(),2,policy.version()));
+        String id=submit(c,image(c,1,true),200).path("data").path("id").asText();
+        var authorization=authorizations.findByReferenceTypeAndReferenceId("ip-run",id).orElseThrow();
+        assertEquals(imageEndpoint,authorization.getEndpointId());assertEquals(memberWallet(c).getId(),authorization.getWalletId());
+        assertEquals(8,memberWallet(c).getPendingBalance());
+    }
+    @Test void finalModelWhitelistRejectsBeforeAnyWalletFreezeOrSupplierCall() throws Exception {
+        var c=funded(100,2);var policy=enterprises.policy(c.company().member().userId(),c.enterprise());
+        enterprises.updatePolicy(c.company().member().userId(),c.enterprise(),new PolicyUpdate(List.of(textEndpoint),2,policy.version()));
         assertEquals("ENTERPRISE_MODEL_NOT_ALLOWED",submit(c,image(c,1,true),403).path("error").path("code").asText());
         assertEquals(100,memberWallet(c).getTotalBalance());assertEquals(0,memberWallet(c).getPendingBalance());assertEquals(0,imageCalls.get());
     }
@@ -207,7 +216,7 @@ class EnterpriseStudioBillingIntegrationTest {
         String id=submit(c,image(c,1,true),200).path("data").path("id").asText();imageWorker.runBlocking(id);
         assertEquals("running",runs.findById(id).orElseThrow().getStatus());assertEquals(CreditHold.Status.ACTIVE,holds.findByReferenceTypeAndReferenceId("ip-run",id).orElseThrow().getStatus());
         assertEquals(8,memberWallet(c).getPendingBalance());assertNull(authorizations.findByReferenceTypeAndReferenceId("ip-run",id).orElseThrow().getTerminalAt());
-        var policy=enterprises.policy(c.company().member().userId(),c.enterprise());enterprises.updatePolicy(c.company().member().userId(),c.enterprise(),new PolicyUpdate(List.of(),1,policy.version()));
+        var policy=enterprises.policy(c.company().member().userId(),c.enterprise());enterprises.updatePolicy(c.company().member().userId(),c.enterprise(),new PolicyUpdate(List.of(textEndpoint),1,policy.version()));
         org.mockito.Mockito.when(nativeClient.supportsEndpoint(imageEndpoint)).thenReturn(false);imageWorker.recoverNative(id);
         assertEquals("done",runs.findById(id).orElseThrow().getStatus());assertEquals(1,submissions.get());assertEquals(92,memberWallet(c).getTotalBalance());settled(c,id,8);
     }

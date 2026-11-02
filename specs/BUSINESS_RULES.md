@@ -1377,7 +1377,7 @@ operation=text/script/storyboard/assistant/asset-extract 的新任务全部使�
 - 2026-10-29 批量加人：`POST /api/v1/ip-studio/enterprises/{id}/members/batch` 接收 `phones[1..100]`，规范化去重，每项复用单人校验并在独立事务提交。返回逐项 status/member 或 errorCode/message 与成功/失败数；失败不撤销其他成功关系，重试有效关系幂等。界面支持「单个添加/批量添加」，换行、中文/英文逗号或分号粘贴；失败项保留重试，批次结果仅在当前表单内存展示。
 - V59 清空旧企业邀请记录并删除 accepted_by 单次接受字段，直接切换群发模型；不修改企业成员、账号、钱包、账本和产品开通。无旧单次邀请兼容分支。
 - 角色修改仅 owner，禁止修改自己；manager 只能管理普通成员，积分管理和财务读取须另获授权。成员查询、审计列表按企业后端分页；成员列表返回产品档案中的手机号供识别，不新增权限项，审计仍不记录手机号或个人资源。
-- 主账号移交需当前 owner 发起、指定有效成员在24小时内接受；锁企业行复核旧 owner，只能成功一次，原 owner 降为 manager，钱包主体不变。模型策略默认空允许集、在途上限1，修改需 owner 且携带版本。
+- 主账号移交需当前 owner 发起、指定有效成员在24小时内接受；锁企业行复核旧 owner，只能成功一次，原 owner 降为 manager，钱包主体不变。模型策略默认空允许集、每位成员在途上限 10，修改需 owner 且携带版本。**空允许集表示全部模型**（2026-11-02 起；此前空集等于全部禁用，线上企业从没人设过，企业积分在画布里一直选不了）；非空时只允许名单内模型，`ENTERPRISE_MODEL_NOT_ALLOWED`。V73 只把仍是创建值（version 0、上限 1）的策略改为上限 10、版本 +1，主账号改过的不动。
 - 钱包类型为 personal / enterprise / enterprise_member。个人 userId 唯一；企业账户的 userId 为空，memberUserId 单独存储，accountKey 唯一。企业成员积分仍归企业，不进入个人 gift/recharge 余额。
 - CreditService 为唯一余额写入入口；原 userId 方法仍解析个人钱包，新内部方法按 walletId。企业主账户不可直接消费；成员企业冻结须有操作者、成员关系和付款授权。企业付款只开放 Studio 指定用途，最终模型和成员在途上限均由服务端控制。
 - hold 引用重复时必须匹配原钱包、金额、操作者、成员关系和付款授权；不匹配409。企业资金固定锁企业→按ID排序的企业钱包→hold→任务；个人仍钱包→hold。结算按 hold.walletId，不再依赖 hold.userId；冻结金额不一致时失败关闭。

@@ -41,6 +41,13 @@ test("a disallowed enterprise model still permits explicit personal payment", as
   render(<StudioBillingDialog details={{ operation: "image", expectedCost: 8, model: "not-allowed" }} onConfirm={vi.fn()} onCancel={vi.fn()}/>);
   await screen.findByText(/此模型未获企业授权/); expect(screen.getByRole("radio", { name: /创作公司/ }).hasAttribute("disabled")).toBe(true);
 });
+test("an enterprise that never chose models lets members pay with enterprise credits on any model", async () => {
+  api.policy.mockResolvedValue({ allowedEndpointIds: [], maxActiveJobs: 10 });
+  const confirm = vi.fn(); render(<StudioBillingDialog details={{ operation: "image", expectedCost: 8, model: "new-model" }} onConfirm={confirm} onCancel={vi.fn()}/>);
+  const enterprise = await screen.findByRole("radio", { name: /创作公司/ }); await waitFor(() => expect(enterprise.hasAttribute("disabled")).toBe(false));
+  fireEvent.click(enterprise); fireEvent.click(screen.getByRole("button", { name: "确认账户并生成" }));
+  expect(confirm).toHaveBeenCalledWith({ mode: "enterprise", enterpriseId: "team" });
+});
 test("text billing discloses the freeze ceiling and actual settlement", async () => {
   render(<StudioBillingDialog details={{ operation: "assistant", expectedCost: 300, model: "model" }} onConfirm={vi.fn()} onCancel={vi.fn()}/>); await screen.findByText(/按实际用量结算/); expect(screen.getByText(/本次最多冻结 300 积分/)).toBeTruthy(); expect(screen.getByText(/未用部分退回/)).toBeTruthy();
 });

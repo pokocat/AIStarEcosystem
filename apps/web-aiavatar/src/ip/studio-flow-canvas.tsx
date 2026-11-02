@@ -519,7 +519,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     <header className="studio-flow-header"><a href="/projects" aria-label="返回项目"><ArrowLeft size={18}/></a>
       <Input aria-label="画布名称" variant="borderless" value={project.title} maxLength={80} onChange={e => useCanvasStore.getState().renameProject(projectId, e.target.value)}/>
       <HostActionsSlot/>
-      <div className="studio-canvas-credit"><WalletBadge account={identity?.uid ?? null} location={`/projects/${projectId}`}/></div>
+      <div className="studio-canvas-credit"><WalletBadge account={identity?.uid ?? null} location={`/projects/${projectId}`} enterprise/></div>
     </header>
     <div ref={stageRef} className={`studio-flow-stage${referencePick?' is-picking-reference':''}${drawingArea?' is-drawing-area':''}`} data-studio-floating-root
       onPointerDownCapture={areaPointerDown} onPointerMove={areaPointerMove} onPointerUp={areaPointerUp} onPointerCancel={e => { if (areaPointer.current?.id === e.pointerId) resetArea(); }}>

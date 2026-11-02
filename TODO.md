@@ -1658,3 +1658,10 @@
 ### 2026-10-29 · 企业管理手机号加人
 
 - [x] ~~企业管理按钮与手机号直接加人~~ **2026-10-29 本地完成，未发布**：品牌刷新按钮与保留表单的刷新；成员页单个/批量手机号添加（每批最多 100 人、逐项反馈及失败重试），后端权限、实名手机号/开通、单企业归属、零余额和不提权校验。回归结果见 [本地验收](docs/releases/enterprise-member-add-validation-20261029.md)。
+
+### 2026-11-02 · 画布用企业积分
+
+- [x] ~~画布里选不了企业积分~~ **2026-11-02 本地完成，未发布**：根因是企业模型策略默认空名单（旧规则下 = 全部禁用）、在途 1，线上 4 家企业都没改过，企业付款授权 0 条。空名单改为全部模型，新企业在途 10，V73 调整从没改过的策略；企业设置改为全部 / 指定二选一；画布右上角显示企业积分。测试：`EnterpriseStudioBillingIntegrationTest.emptyModelListLetsMembersPayWithEnterpriseCredits`、`EnterpriseFoundationTest.newEnterpriseAllowsEveryModelAndTenTasksInFlight`、`V73EnterprisePolicyDefaultsTest`、前端 `wallet-balance` / `studio-billing-dialog` / `enterprise-management`。
+- [ ] **制作计划撞企业在途上限时直接停下**：`StudioPlanExecutor.submit` 把 `ENTERPRISE_ACTIVE_JOB_LIMIT` 当普通拒绝，步骤转 `needs_user`。默认上限改到 10 后很少撞上，但主账号设得小时，应该等前面的任务结束再提交，而不是停下要用户处理。
+- [ ] **企业成员每次生成都弹付款选择**：没存默认时，画布上每次出图、每条助手消息都弹一次「确认本次付款账户」。可以考虑按画布记住本次选择，或第一次弹窗默认勾上「保存为默认」；需要产品定。
+

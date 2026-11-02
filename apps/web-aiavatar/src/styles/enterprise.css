@@ -65,7 +65,8 @@ html[data-layout="mobile"] .enterprise-workspace .studio-page-actions { max-widt
 .enterprise-own-balances strong { display: block; color: var(--ip-ink); font-size: 24px; font-weight: 600; line-height: 1.8; font-variant-numeric: tabular-nums; }
 .enterprise-policy-form { display: grid; gap: 14px; max-width: 760px; }
 .enterprise-policy-form > .ant-btn { justify-self: start; }
-.enterprise-policy-form label { color: var(--ip-ink); font-size: 13px; font-weight: 600; }
+.enterprise-policy-form label,.enterprise-policy-form .enterprise-policy-label { color: var(--ip-ink); font-size: 13px; font-weight: 600; }
+.enterprise-policy-form .ant-radio-wrapper { font-weight: 400; }
 .enterprise-policy-form p,.enterprise-invitations p,.enterprise-lifecycle p { color: var(--ip-muted); font-size: 13px; line-height: 1.8; margin: 0 0 12px; max-width: 72ch; }
 .enterprise-policy-form .ant-select { width: 100%; }
 .enterprise-management h2 { font-size: 18px; font-weight: 600; margin: 0 0 12px; }

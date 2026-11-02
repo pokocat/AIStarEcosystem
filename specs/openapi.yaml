@@ -6052,6 +6052,7 @@ components:
         enterpriseId: {type: string, minLength: 1, maxLength: 64}
         allowedEndpointIds:
           type: array
+          description: 空数组表示全部模型（包括以后新上的）；非空时成员用企业积分只能用名单内的模型。
           items: {type: string, minLength: 1, maxLength: 64}
           maxItems: 100
           uniqueItems: true
@@ -6063,6 +6064,7 @@ components:
       properties:
         allowedEndpointIds:
           type: array
+          description: 空数组表示全部模型（包括以后新上的）；非空时成员用企业积分只能用名单内的模型。
           items: {type: string, minLength: 1, maxLength: 64}
           maxItems: 100
           uniqueItems: true

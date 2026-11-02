@@ -20,6 +20,8 @@ import java.util.*;
 
 @Service
 public class EnterpriseService {
+    /** One left a canvas plan stuck at its second step (2026-11-02); V73 raised never-edited policies to the same value. */
+    static final int DEFAULT_MAX_ACTIVE_JOBS=10;
     private final EnterpriseRepository enterprises;
     private final EnterpriseMemberRepository members;
     private final EnterpriseCurrentMembershipRepository current;
@@ -58,7 +60,7 @@ public class EnterpriseService {
         var e=new Enterprise();e.setId(id());e.setName(name);e.setOwnerUserId(actor);e.setStatus("active");e.setCreateRequestId(key);e.setCreatedBy(actor);
         e.setCreatedAt(Instant.now());e.setUpdatedAt(e.getCreatedAt());enterprises.saveAndFlush(e);
         join(e,actor);
-        var p=new EnterprisePolicy();p.setEnterpriseId(e.getId());p.setAllowedEndpointIdsJson("[]");p.setMaxActiveJobs(1);policies.save(p);
+        var p=new EnterprisePolicy();p.setEnterpriseId(e.getId());p.setAllowedEndpointIdsJson("[]");p.setMaxActiveJobs(DEFAULT_MAX_ACTIVE_JOBS);policies.save(p);
         credits.openEnterpriseWallet(e.getId(),null);
         audit(actor,e.getId(),"enterprise.create",e.getId(),"创建企业");
         return context(actor,e.getId());
