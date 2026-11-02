@@ -851,7 +851,7 @@ describe("小工具", () => {
   });
 
   test("文件选择框的 accept：认识的格式拼 MIME + 后缀，不认识的放宽", () => {
-    assert.equal(mediaAccept(frameImage), "image/png,.png,image/jpeg,.jpg,.jpeg,image/webp,.webp");
+    assert.equal(mediaAccept(frameImage), "image/*,.heic,.heif");
     assert.equal(
       mediaAccept({ ...frameImage, mediaType: "video", formats: ["MP4", "新格式"] }),
       "video/mp4,.mp4,video/*",

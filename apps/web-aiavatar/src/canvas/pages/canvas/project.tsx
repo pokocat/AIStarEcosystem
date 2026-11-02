@@ -1664,7 +1664,7 @@ function InfiniteCanvasPage() {
      *      连带图片的合法失败（webp / heic / 超过 15MB / 边长超限，服务端都给了中文原因）
      *      一起被吞掉，界面上什么都不发生，只有控制台一条 unhandled rejection。
      *
-     * 现在：能收的只有 JPG / PNG，收不了的当场说清楚；上传失败把服务端的原话给用户。
+     * 本仓接入：图片先在端上转换 / 压缩成通用格式，上传失败把原因给用户。
      */
     const importImageFiles = useCallback(
         (files: File[], positionOf: (index: number) => Position) => {

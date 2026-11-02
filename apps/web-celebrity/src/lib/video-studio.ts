@@ -1,3 +1,4 @@
+import { IMAGE_UPLOAD_ACCEPT } from '@ai-star-eco/api-client/image-upload-policy';
 // ─────────────────────────────────────────────────────────────────────────────
 // lib/video-studio.ts：「AI 创作 → 视频生成」的纯逻辑。
 //
@@ -344,6 +345,7 @@ const FORMAT_ACCEPT: Record<string, readonly string[]> = {
 
 /** 文件选择框的 accept：按合同里的格式名拼；遇到不认识的格式名就放宽到 `<类型>/*`（服务端按字节判）。 */
 export function mediaAccept(limit: VideoStudioMediaLimit): string {
+  if (limit.mediaType === "image") return IMAGE_UPLOAD_ACCEPT;
   const parts = new Set<string>();
   let unknown = false;
   for (const f of limit.formats) {

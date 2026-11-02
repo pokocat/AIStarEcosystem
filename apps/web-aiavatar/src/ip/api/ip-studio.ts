@@ -1,3 +1,4 @@
+import { prepareImageForUpload } from '@ai-star-eco/api-client/image-upload';
 import { legacyImageBillingDetails, withStudioBilling, invalidateStudioModelQuote } from "@/canvas-bridge/studio-billing";
 // ─────────────────────────────────────────────────────────────────────────────
 // api/ip-studio.ts — AI IP 工作台 API 调用层。
@@ -46,7 +47,7 @@ export async function getPricing(): Promise<IpPricing> {
 
 // ── 素材上传 ─────────────────────────────────────────────────────────────────
 
-/** 照片 / 参考图上传（multipart）。只收 jpg / png ≤ 15MB（服务端同样把关）。 */
+/** 照片 / 参考图上传（multipart）。端上统一准备为通用图片，服务端继续按真实字节把关。 */
 export async function uploadImage(file: File): Promise<IpUploadResult> {
   if (USE_MOCK) {
     return mockDelay({
@@ -56,7 +57,7 @@ export async function uploadImage(file: File): Promise<IpUploadResult> {
     });
   }
   const form = new FormData();
-  form.append("file", file);
+  form.append("file", await prepareImageForUpload(file));
   return apiFetch<IpUploadResult>("/v1/ip-studio/uploads", { method: "POST", body: form });
 }
 

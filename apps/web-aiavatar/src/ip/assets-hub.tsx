@@ -1,4 +1,5 @@
 "use client";
+import { IMAGE_UPLOAD_ACCEPT } from '@ai-star-eco/api-client/image-upload-policy';
 // 新版「资产」页（2026-10-31 改版，设计稿「资产（新）」一排）：
 // 按文件类型分（全部 / 图片 / 视频 / 音频 / 人物），场景、商品这类按内容的分组交给左边的「资产库」（就是原来的文件夹）。
 // 「AI 生成」是自带的库：各处做出来、还没放进别的库的东西都在这里，移到别的库就从这里走掉。
@@ -47,7 +48,7 @@ const SOURCES = [
 ];
 const TYPE_LABEL = { image: '图片', video: '视频', audio: '音频', text: '文字' } as const;
 const ACCEPT: Record<Exclude<HubTab, 'people'>, string> = {
-  all: '.jpg,.jpeg,.png,.mp4,.mp3,.wav,.m4a,.md,.txt', image: '.jpg,.jpeg,.png', video: '.mp4', audio: '.mp3,.wav,.m4a',
+  all: `${IMAGE_UPLOAD_ACCEPT},.mp4,.mp3,.wav,.m4a,.md,.txt`, image: IMAGE_UPLOAD_ACCEPT, video: '.mp4', audio: '.mp3,.wav,.m4a',
 };
 const folderIdOf = (item: LibraryMaterial) => typeof item.metadata?.folderId === 'string' ? item.metadata.folderId : '';
 

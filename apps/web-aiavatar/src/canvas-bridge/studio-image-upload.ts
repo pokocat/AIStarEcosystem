@@ -4,7 +4,7 @@ import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from '@/ca
 import { studioGenerationPending } from './studio-nodes';
 import { markStudioDescendants } from './studio-script';
 
-export const STUDIO_IMAGE_UPLOAD_ACCEPT = '.jpg,.jpeg,.png';
+export { IMAGE_UPLOAD_ACCEPT as STUDIO_IMAGE_UPLOAD_ACCEPT } from '@ai-star-eco/api-client/image-upload';
 
 export { validateStudioImageUpload } from './studio-image-file';
 

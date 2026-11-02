@@ -1,4 +1,5 @@
 "use client";
+import { IMAGE_UPLOAD_ACCEPT } from '@ai-star-eco/api-client/image-upload-policy';
 // AI 图片 / AI 视频素材位的资产选择框（2026-10-31，设计稿「选择框 · 商品图 / 声音」）：
 // 左边是资产库，默认打开这张画布绑定的库，没有就打开上次用的；图片位上面能切「图片 / 人物」，视频和声音位只列这一类文件。
 // 新文件在框里「上传到这个库」，传完自动选中。画布、导演台、创作助手的选择框不走这里（library-reference-picker.tsx 原样）。
@@ -24,7 +25,7 @@ export type LibraryMediaPickerProps = {
   /** 先打开哪个资产库（比如在某个库里新建人物）。画布绑定的库仍然优先。 */
   library?: string;
 };
-const ACCEPT = { image: '.jpg,.jpeg,.png', video: '.mp4', audio: '.mp3,.wav,.m4a' };
+const ACCEPT = { image: IMAGE_UPLOAD_ACCEPT, video: '.mp4', audio: '.mp3,.wav,.m4a' };
 const NOUN = { image: '图片', video: '视频', audio: '音频' };
 
 export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title = '从资产库选', confirmLabel = '使用', max = 1, mediaType, upload, people = true, library: preferred }: LibraryMediaPickerProps) {

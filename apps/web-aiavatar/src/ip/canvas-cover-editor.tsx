@@ -1,4 +1,5 @@
 'use client';
+import { IMAGE_UPLOAD_ACCEPT } from '@ai-star-eco/api-client/image-upload-policy';
 import { useRef, useState } from 'react';
 import { Modal } from 'antd';
 import { Upload } from 'lucide-react';
@@ -27,9 +28,9 @@ export function CanvasCoverEditor({target, id, name, doc, onClose, onSaved, cont
   return <Modal open title="设置封面" footer={null} onCancel={() => {if(!busy)onClose();}} closable={!busy} keyboard={!busy} mask={{closable:!busy}} getContainer={container} className="ip-management-editor project-preview-dialog" centered width={640}>
     <p className="project-preview-name">{name}</p>
     <p className="project-preview-caption">上传一张封面，或从画布中选择图片。恢复自动后，优先显示已有图片，没有图片则显示画布缩略图。</p>
-    <input ref={input} type="file" accept="image/jpeg,image/png,.jpg,.jpeg,.png" hidden aria-label="上传封面图片" onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file)void save(()=>uploadCanvasCover(target,id,file),file);}}/>
+    <input ref={input} type="file" accept={IMAGE_UPLOAD_ACCEPT} hidden aria-label="上传封面图片" onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file)void save(()=>uploadCanvasCover(target,id,file),file);}}/>
     <button type="button" className="ip-brand-secondary" disabled={busy} onClick={()=>input.current?.click()}><Upload size={15}/>上传封面</button>
-    <p className="project-preview-caption">支持 JPG、PNG；上传封面不会向画布添加节点。</p>
+    <p className="project-preview-caption">支持手机照片。上传封面不会向画布添加节点。</p>
     {images.length>0 && <div className="project-cover-choices">{images.map((image,index)=><button key={image.key} type="button" disabled={busy} onClick={()=>void save(()=>selectCanvasCover(target,id,image.key))} aria-label={`设为封面：${image.title} ${index+1}`}><img src={image.url} alt={image.title} loading="lazy"/><span>{image.title}</span></button>)}</div>}
     {!doc && !error && <p role="status">正在读取画布图片…</p>}
     {error && <p className="project-preview-caption">{error} {onRetry && <button type="button" disabled={busy} onClick={onRetry}>重试读取</button>}</p>}

@@ -50,7 +50,7 @@ describe("图片存储：已在 OSS 上的图不重复上传", () => {
   it("没登记过的地址仍然照常上传", async () => {
     uploadMock.mockResolvedValue({ key: "ipstudio_gen/u1/new.png", url: "https://cdn.test/new.png", fileName: "new.png" });
     globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true, blob: async () => new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" }),
+      ok: true, blob: async () => new Blob([new Uint8Array([137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,10,0,0,0,10])], { type: "image/png" }),
     }) as unknown as typeof fetch;
 
     const got = await uploadImage("https://example.com/somewhere-else.png");

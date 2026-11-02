@@ -1,0 +1,11 @@
+{
+  "before": {
+    "width": 200,
+    "height": 320
+  },
+  "after": {
+    "width": 125,
+    "height": 200
+  },
+  "mime": "image/jpeg"
+}

@@ -1,0 +1,68 @@
+{
+  "results": [
+    {
+      "test": "7MB-24MP-original-unchanged",
+      "same": true,
+      "bytes": 6432839
+    },
+    {
+      "test": "12MB-entry-aware",
+      "canvasUnchanged": true,
+      "mediaBytes": 72200,
+      "width": 4032,
+      "height": 3024
+    },
+    {
+      "test": "actual-Turbopack-HEIC-worker",
+      "name": "airdrop.jpg",
+      "type": "image/jpeg",
+      "bytes": 427729,
+      "width": 1280,
+      "height": 854
+    },
+    {
+      "test": "48MP-adaptive-output",
+      "width": 4618,
+      "height": 3464,
+      "bytes": 94827
+    },
+    {
+      "test": "opaque-PNG-to-JPEG",
+      "type": "image/jpeg",
+      "width": 4032,
+      "height": 3024,
+      "bytes": 72204
+    },
+    {
+      "test": "transparent-PNG-preserved",
+      "type": "image/png",
+      "alpha": 0
+    },
+    {
+      "test": "P3-color",
+      "actual": [
+        188,
+        124,
+        27,
+        255
+      ],
+      "expected": [
+        187,
+        124,
+        25,
+        255
+      ],
+      "maxDelta": 2
+    },
+    {
+      "test": "invalid-content",
+      "code": "IMAGE_NOT_RECOGNIZED",
+      "message": "这个文件不是能识别的图片"
+    }
+  ],
+  "workers": [
+    "http://127.0.0.1:3092/_next/static/chunks/turbopack-worker-0sjn--fhq~1cg.js#params=%5B%5B%22%2F_next%2Fstatic%2Fchunks%2Fturbopack-0~5.49d4g52rm.js%22%2C%22%2F_next%2Fstatic%2Fchunks%2F03s0e90lk5iin.js%22%2C%22%2F_next%2Fstatic%2Fchunks%2F14.l6vs32~di0.js%22%5D%2C%22%22%2Cnull%2Cnull%5D",
+    "http://127.0.0.1:3092/_next/static/chunks/turbopack-worker-0sjn--fhq~1cg.js#params=%5B%5B%22%2F_next%2Fstatic%2Fchunks%2Fturbopack-0~5.49d4g52rm.js%22%2C%22%2F_next%2Fstatic%2Fchunks%2F03s0e90lk5iin.js%22%2C%22%2F_next%2Fstatic%2Fchunks%2F14.l6vs32~di0.js%22%5D%2C%22%22%2Cnull%2Cnull%5D"
+  ],
+  "errors": []
+}
