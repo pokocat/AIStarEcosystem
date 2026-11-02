@@ -40,6 +40,7 @@ public class EnterpriseLifecycleService {
     private final AiGenerationQueueService queue;
     private final EntityManager em;
     private final ObjectMapper mapper;
+    @org.springframework.beans.factory.annotation.Autowired(required=false) private com.aistareco.aep.dap.repository.DapJobRepository dapJobs;
     public EnterpriseLifecycleService(EnterpriseRepository enterprises,EnterpriseMemberRepository members,
             EnterpriseCurrentMembershipRepository current,EnterpriseBillingAuthorizationRepository authorizations,
             EnterpriseLifecycleOperationRepository operations,EnterpriseAuditRepository audits,EnterpriseAccessService access,
@@ -143,6 +144,18 @@ public class EnterpriseLifecycleService {
         if(authorization.getTerminalAt()!=null||!"reserved".equals(authorization.getStatus()))return false;
         boolean cancelled;
         if("material_video_job".equals(type))cancelled=videos.cancelBeforeDispatch(ref);
+        else if(EnterpriseBillingService.DAP_JOB.equals(type)) {
+            // Its runner has not started (starting flips the authorization out of "reserved" first): end the job, then
+            // return this stage's hold; a text stage comes through here as its own authorization.
+            var job=dapJobs==null?null:em.find(com.aistareco.aep.dap.model.DapJob.class,ref.substring(0,ref.indexOf(':')),LockModeType.PESSIMISTIC_WRITE);
+            if(job!=null&&"running".equals(job.getStatus())) {
+                job.setCancelRequested(true);job.setStatus("failed");job.setStage("failed");job.setEta("已取消");
+                job.setErrorMessage("成员已停用或退出，未开始的企业任务已取消");job.setFinishedAt(Instant.now());job.setStageUpdatedAt(job.getFinishedAt());
+                dapJobs.saveAndFlush(job);
+            }
+            credits.releaseHold(type,ref,"成员关系变更，取消未开始的任务");
+            billing.complete(type,ref);cancelled=true;
+        }
         else {
             var run=runs.lockById(ref).orElse(null);if(run!=null)em.refresh(run,LockModeType.PESSIMISTIC_WRITE);
             if(run!=null&&"running".equals(run.getStatus())) {

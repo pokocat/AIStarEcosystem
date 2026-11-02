@@ -141,6 +141,17 @@ it('a generic confirm button takes the dialog title; antd spacing inside two-cha
   return waitFor(() => expect(titles().sort()).toEqual(['「删除」没有完成', '删除这个画布没有完成'].sort()));
 });
 
+it('confirming who pays is part of the generation: its failure keeps the button the user pressed', async () => {
+  render(<StudioNotifications/>);
+  fireEvent.click(button('生成 2 个变体'));
+  const host = document.body.appendChild(Object.assign(document.createElement('div'), {className: 'ip-brand-surface studio-billing-host'}));
+  const dialog = host.appendChild(document.createElement('div')); dialog.setAttribute('role', 'dialog'); dialog.setAttribute('aria-label', '确认本次付款账户');
+  fireEvent.click(button('确认账户并生成', {}, dialog));
+  host.remove();
+  reportStudioError({code: 'DAP_MODEL_HTTP_429', message: '模型繁忙'});
+  await waitFor(() => expect(titles()).toEqual(['「生成 2 个变体」没有完成']));
+});
+
 it('one click accounts for one error; later errors, background reports and other pages go to notifications', async () => {
   render(<StudioNotifications/>);
   fireEvent.click(button('保存'));

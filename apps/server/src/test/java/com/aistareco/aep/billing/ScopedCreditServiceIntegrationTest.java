@@ -504,7 +504,7 @@ class ScopedCreditServiceIntegrationTest {
         var jobs=org.mockito.Mockito.mock(com.aistareco.aep.dap.repository.DapJobRepository.class);
         var billing=new com.aistareco.aep.dap.service.DapModelBilling(models,tokenPrice,credits,jobs,
                 org.mockito.Mockito.mock(com.aistareco.aep.dap.repository.DapLookRepository.class),
-                org.mockito.Mockito.mock(com.aistareco.aep.dap.service.DapCatalogService.class),mapper);
+                org.mockito.Mockito.mock(com.aistareco.aep.dap.service.DapCatalogService.class),mapper,enterpriseBilling);
         var image=AiModelEndpoint.builder().id(target.endpointId()).model(target.providerModel()).baseUrl("https://image.invalid").build();
         var text=AiModelEndpoint.builder().id("qwen").model("qwen").baseUrl("https://text.invalid")
                 .upstreamApiKeyEncrypted(com.aistareco.common.AepCryptoUtil.encrypt("test-key")).build();
@@ -556,7 +556,7 @@ class ScopedCreditServiceIntegrationTest {
         var billing=new com.aistareco.aep.dap.service.DapModelBilling(models,rate,credits,
                 org.mockito.Mockito.mock(com.aistareco.aep.dap.repository.DapJobRepository.class),
                 org.mockito.Mockito.mock(com.aistareco.aep.dap.repository.DapLookRepository.class),
-                org.mockito.Mockito.mock(com.aistareco.aep.dap.service.DapCatalogService.class),mapper);
+                org.mockito.Mockito.mock(com.aistareco.aep.dap.service.DapCatalogService.class),mapper,enterpriseBilling);
         var image=AiModelEndpoint.builder().id("image").model("image").build();var text=AiModelEndpoint.builder().id("qwen").model("qwen").build();
         org.mockito.Mockito.when(models.resolveDefaultEndpoint(AiModelPurpose.DAP_IMAGE,"aiavatar")).thenReturn(Optional.of(image));
         org.mockito.Mockito.when(models.resolveDefaultEndpoint(AiModelPurpose.DAP_PERSONA,"aiavatar")).thenReturn(Optional.of(text));

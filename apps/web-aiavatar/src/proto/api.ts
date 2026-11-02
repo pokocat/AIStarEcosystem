@@ -265,16 +265,27 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 }
 
 /** multipart 上传（不设 Content-Type，浏览器自带 boundary）。 */
-export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
+export async function apiUpload<T>(path: string, form: FormData, headers?: Record<string, string>): Promise<T> {
   const prepared = await prepareImageFormData(form);
   const res = await sendWithIdRetry(() =>
     fetch(`${API_PREFIX}${path}`, {
       method: "POST",
-      headers: { ...authHeaders() },
+      headers: { ...authHeaders(), ...(headers || {}) },
       body: prepared,
     }),
   );
   return parseResponse<T>(res);
+}
+
+/**
+ * 付费生成的付款账户：与画布、导演台等所有生成同一个付款选择（企业成员没设默认时弹窗，设了默认就不弹），
+ * 经 X-Aep-Billing 交给服务端；取消选择 = 不提交。没开企业功能时不带，服务端按个人积分付款。
+ */
+async function payer(operation: string): Promise<Record<string, string>> {
+  if (process.env.NEXT_PUBLIC_ENTERPRISE_ENABLED !== "1") return {};
+  const { chooseStudioBilling } = await import("@/ip/studio-billing-dialog");
+  const billing = await chooseStudioBilling({ operation });
+  return { "X-Aep-Billing": billing.mode === "enterprise" ? `enterprise:${billing.enterpriseId}` : "personal" };
 }
 
 /** 认证端点（/api/auth 前缀，permitAll）。 */
@@ -958,7 +969,7 @@ export const AvatarApi = {
       const job = newMockJob({ kind: "造型设计", char: id });
       return mock({ id: `LK-${mockSeq++}`, avatarId: id, ...body, status: "running", jobId: job.id });
     }
-    return apiFetch(`/avatars/${id}/looks`, { method: "POST", body: JSON.stringify(body) });
+    return payer("look").then(headers => apiFetch(`/avatars/${id}/looks`, { method: "POST", body: JSON.stringify(body), headers }));
   },
   derivatives: (id: string): Promise<any[]> => {
     // mock：给出与 counts 大致对应的样例条目，让设定卡的切换器在演示模式下可用。
@@ -995,7 +1006,9 @@ export const AvatarApi = {
       if (c) c.deriv = { ...c.deriv, [body.type]: "running" };
       return mock({ ...job });
     }
-    return apiFetch(`/avatars/${id}/derivatives`, { method: "POST", body: JSON.stringify(body) });
+    // 免费的衍生（如待机循环）不问付款账户，与服务端 DapPricingService.derive 的收费种类一致。
+    const paid = ["atlas", "expr", "scene", "ward", "d3", "video"].includes(body.type);
+    return (paid ? payer("derivative") : Promise.resolve({})).then(headers => apiFetch(`/avatars/${id}/derivatives`, { method: "POST", body: JSON.stringify(body), headers }));
   },
   finalize: (id: string, body: { templateId?: string; confirmedShots?: string[]; archive?: boolean }): Promise<any> => {
     if (USE_MOCK) {
@@ -1025,7 +1038,7 @@ export const AvatarApi = {
       }, 700);
       return mock({ ...job });
     }
-    return apiFetch(`/avatars/${id}/generate`, { method: "POST", body: JSON.stringify(body) });
+    return payer("avatar").then(headers => apiFetch(`/avatars/${id}/generate`, { method: "POST", body: JSON.stringify(body), headers }));
   },
   pick: (id: string, variantIndex: number): Promise<any> => {
     if (USE_MOCK) {
@@ -1041,7 +1054,7 @@ export const AvatarApi = {
       const job = newMockJob({ kind: "形象迭代", char: id, charName: c?.name });
       return mock({ ...job });
     }
-    return apiFetch(`/avatars/${id}/iterate`, { method: "POST", body: JSON.stringify({ instruction }) });
+    return payer("avatar").then(headers => apiFetch(`/avatars/${id}/iterate`, { method: "POST", body: JSON.stringify({ instruction }), headers }));
   },
   warp: (id: string, params: Record<string, number>): Promise<any> => {
     if (USE_MOCK) {
@@ -1049,7 +1062,7 @@ export const AvatarApi = {
       const job = newMockJob({ kind: "几何精调", char: id, charName: c?.name });
       return mock({ ...job });
     }
-    return apiFetch(`/avatars/${id}/warp`, { method: "POST", body: JSON.stringify(params) });
+    return payer("avatar").then(headers => apiFetch(`/avatars/${id}/warp`, { method: "POST", body: JSON.stringify(params), headers }));
   },
   // —— 端上精调（v0.52：美颜在浏览器实时处理，这里只取图 / 存成品）——
   /** 取当前定妆图字节（同源流式输出，规避 CDN 跨域 canvas 污染）。无图返回 null。 */
@@ -1528,7 +1541,7 @@ export const VoiceApi = {
   },
   clone: (files: FormData): Promise<any> => {
     if (USE_MOCK) return mock({ id: `VC-${mockSeq++}`, name: "我的声音 01", kind: "clone", dur: "00:10", fav: false, wave: [6, 12, 8, 17, 10, 21, 9, 14, 7, 19, 11, 16, 6, 13, 20, 8, 15, 10, 18, 7] });
-    return apiUpload(`/voices/clone`, files);
+    return payer("voice-clone").then(headers => apiUpload(`/voices/clone`, files, headers));
   },
 };
 
@@ -1808,7 +1821,7 @@ export const AssetApi = {
       s.jobId = job.id;
       return mock({ scene: s, job: { ...job } });
     }
-    return apiFetch(`/assets/scenes`, { method: "POST", body: JSON.stringify(body) });
+    return payer("scene").then(headers => apiFetch(`/assets/scenes`, { method: "POST", body: JSON.stringify(body), headers }));
   },
   /** 实拍上传入库（multipart；轻资产不扣费）。 */
   uploadScene: (file: File, meta: { name?: string; description?: string; space?: string; light?: string; ipId?: string } = {}): Promise<Mock.SceneAsset> => {
@@ -1860,7 +1873,7 @@ export const AssetApi = {
       });
       return mock({ job: { ...job } });
     }
-    return apiFetch(`/assets/scenes/${id}/variants`, { method: "POST", body: JSON.stringify({ labels: labels || [] }) });
+    return payer("scene").then(headers => apiFetch(`/assets/scenes/${id}/variants`, { method: "POST", body: JSON.stringify({ labels: labels || [] }), headers }));
   },
 
   // ── 产品 ─────────────────────────────────────────────────
@@ -1899,7 +1912,7 @@ export const AssetApi = {
       p.jobId = job.id;
       return mock({ product: p, job: { ...job } });
     }
-    return apiFetch(`/assets/products`, { method: "POST", body: JSON.stringify(body) });
+    return payer("product").then(headers => apiFetch(`/assets/products`, { method: "POST", body: JSON.stringify(body), headers }));
   },
   uploadProduct: (file: File, meta: { name?: string; category?: string; description?: string; ipId?: string; brandAuthorized?: boolean; brandLicenseUntil?: string } = {}): Promise<Mock.ProductAsset> => {
     if (USE_MOCK) {
@@ -1952,7 +1965,7 @@ export const AssetApi = {
       });
       return mock({ job: { ...job } });
     }
-    return apiFetch(`/assets/products/${id}/angles`, { method: "POST", body: JSON.stringify({ labels: labels || [] }) });
+    return payer("product").then(headers => apiFetch(`/assets/products/${id}/angles`, { method: "POST", body: JSON.stringify({ labels: labels || [] }), headers }));
   },
 
   // ── 风格模板 ──────────────────────────────────────────────
@@ -2124,6 +2137,6 @@ export const ComposeApi = {
       comp.jobId = job.id;
       return mock({ composition: comp, job: { ...job } });
     }
-    return apiFetch(`/compositions`, { method: "POST", body: JSON.stringify(body) });
+    return payer("compose").then(headers => apiFetch(`/compositions`, { method: "POST", body: JSON.stringify(body), headers }));
   },
 };

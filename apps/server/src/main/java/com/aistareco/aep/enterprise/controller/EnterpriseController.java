@@ -32,6 +32,7 @@ public class EnterpriseController {
                 .body(ApiResponse.of(service.previewInvitation(r)));
     }
     @PatchMapping("/enterprises/{id}/members/{memberId}") public ApiResponse<Member> update(Principal p,@PathVariable String id,@PathVariable String memberId,@RequestBody MemberUpdate r){return ApiResponse.of(service.updateMember(p.getName(),id,memberId,r));}
+    @PutMapping("/enterprises/{id}/billing-default") public ApiResponse<Context> billingDefault(Principal p,@PathVariable String id,@RequestBody BillingDefaultUpdate r){return ApiResponse.of(service.setBillingDefault(p.getName(),id,r));}
     @GetMapping("/enterprises/{id}/policy") public ApiResponse<Policy> policy(Principal p,@PathVariable String id){return ApiResponse.of(service.policy(p.getName(),id));}
     @PutMapping("/enterprises/{id}/policy") public ApiResponse<Policy> policy(Principal p,@PathVariable String id,@RequestBody PolicyUpdate r){return ApiResponse.of(service.updatePolicy(p.getName(),id,r));}
     @PostMapping("/enterprises/{id}/ownership-transfers") public ApiResponse<OwnershipTransfer> transfer(Principal p,@PathVariable String id,@RequestBody OwnershipRequest r){return ApiResponse.of(service.requestTransfer(p.getName(),id,r));}

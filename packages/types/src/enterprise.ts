@@ -13,7 +13,10 @@ export interface EnterpriseMember {
   status: EnterpriseMemberStatus; capabilities: EnterpriseCapabilities;
   version: number; joinedAt: string;
 }
-export interface EnterpriseContext { enterprise: Enterprise; member: EnterpriseMember; permissions: EnterprisePermission[]; }
+/** The member's own default payer for every paid feature; null (or absent on older servers) asks each time. */
+export type EnterpriseBillingDefault = "personal" | "enterprise" | null;
+export interface EnterpriseContext { enterprise: Enterprise; member: EnterpriseMember; permissions: EnterprisePermission[]; billingDefault?: EnterpriseBillingDefault; }
+export interface EnterpriseBillingDefaultUpdate { mode: EnterpriseBillingDefault; }
 export interface EnterpriseCreateRequest { name: string; clientRequestId: string; }
 /** Adds an existing, phone-verified product account as an ordinary member. */
 export interface EnterpriseMemberAddRequest { phone: string; }

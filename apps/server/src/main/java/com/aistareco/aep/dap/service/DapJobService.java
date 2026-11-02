@@ -106,7 +106,11 @@ public class DapJobService {
                 .stageUpdatedAt(Instant.now())
                 .build();
         if(cost>0) {
+            var payer=DapPayer.requested();
+            DapPayer.remember(job,payer);
             if(multimodal.isConfigured())modelBilling.reserve(job,cost);
+            else if(com.aistareco.aep.enterprise.service.EnterpriseBillingService.enterprise(payer))
+                throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"DAP_ENGINE_NOT_CONFIGURED","占位生成不能使用企业积分，请改用个人积分");
             else creditService.hold(userId,cost,REF_TYPE,id+":r0",kind+"（"+subject+"）",com.aistareco.aep.billing.service.ModelChargeContext.NONE);
         }
         jobRepo.save(job);

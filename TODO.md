@@ -1665,5 +1665,7 @@
 
 - [x] ~~画布里选不了企业积分~~ **2026-11-02 已生产发布 `20261102-enterprise-canvas-credits`**（main `cbfdf1625`，见 [发布记录](docs/releases/enterprise-canvas-credits-release-20261102.md)）：根因是企业模型策略默认空名单（旧规则下 = 全部禁用）、在途 1，线上 4 家企业都没改过，企业付款授权 0 条。空名单改为全部模型，新企业在途 10，V73 调整从没改过的策略；企业设置改为全部 / 指定二选一；画布右上角显示企业积分。测试：`EnterpriseStudioBillingIntegrationTest.emptyModelListLetsMembersPayWithEnterpriseCredits`、`EnterpriseFoundationTest.newEnterpriseAllowsEveryModelAndTenTasksInFlight`、`V73EnterprisePolicyDefaultsTest`、前端 `wallet-balance` / `studio-billing-dialog` / `enterprise-management`。
 - [ ] **制作计划撞企业在途上限时直接停下**：`StudioPlanExecutor.submit` 把 `ENTERPRISE_ACTIVE_JOB_LIMIT` 当普通拒绝，步骤转 `needs_user`。默认上限改到 10 后很少撞上，但主账号设得小时，应该等前面的任务结束再提交，而不是停下要用户处理。
-- [ ] **企业成员每次生成都弹付款选择**：没存默认时，画布上每次出图、每条助手消息都弹一次「确认本次付款账户」。可以考虑按画布记住本次选择，或第一次弹窗默认勾上「保存为默认」；需要产品定。
+- [x] ~~**企业成员每次生成都弹付款选择**~~ **2026-11-02 用户定**：弹窗里给「设为默认，以后不再询问」，选了就不再弹。默认改存在成员关系上（V74），所有付费功能、所有设备共用；设置里可以改回每次询问。本地已实现，未发布。测试：`EnterpriseFoundationTest.memberDefaultPayerIsSavedOnTheMembershipWithoutTouchingItsVersion`、`V74EnterpriseMemberBillingDefaultTest`、前端 `studio-billing-dialog` / `studio-billing-preference`。
+- [x] ~~**数字资产生成和声音克隆只能扣个人积分**~~ **2026-11-02 本地已实现，未发布**：形象、造型、衍生、场景、商品、合成图、声音克隆走同一个付款选择与企业规则（`X-Aep-Billing` → `DapPayer`）。测试：`EnterpriseStudioBillingIntegrationTest` 数字资产 6 项、前端 `proto/api-payer.test.ts`。
+- [ ] **企业模型名单里选不到数字资产用的模型**：企业设置页「只允许选定的模型」的候选来自 Studio 的图片 / 视频 / 文字模型；数字资产用的是后台「数字人」用途绑定的模型，若不在候选里，限定了名单的企业就不能用企业积分做数字资产（报 `ENTERPRISE_MODEL_NOT_ALLOWED`）。线上 4 家都是「全部模型」，暂不受影响。
 

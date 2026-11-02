@@ -111,6 +111,8 @@ export function noteStudioActivation(target: EventTarget | null) {
   if (!(target instanceof Element)) return;
   // 选完文件才开始上传：把点「上传」那次操作的时间顺延，选文件选得久也不超出时间窗。
   if (target instanceof HTMLInputElement && target.type === 'file') { if (lastActivation) lastActivation.at = Date.now(); return; }
+  // 付款账户 / 费用确认是那次生成的一步，不是新操作：生成失败时标题仍写用户点的那个按钮（「生成 2 个变体」），不写「确认本次付款账户」。
+  if (target.closest('.studio-billing-host')) { if (lastActivation) lastActivation.at = Date.now(); return; }
   const control = target.closest(ACTIONABLE);
   if (!control || control.closest(IGNORED) || (control as HTMLButtonElement).disabled) return;
   const dialog = control.closest('[role="dialog"]');

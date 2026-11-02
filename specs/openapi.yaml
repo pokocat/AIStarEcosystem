@@ -44,6 +44,14 @@ components:
       name: X-External-Owner-Id
       description: 军师 userId；所有 clip 资源的强属主隔离真源。
 
+  parameters:
+    AepBilling:
+      name: X-Aep-Billing
+      in: header
+      required: false
+      description: '付费数字资产生成的付款账户：personal 或 enterprise:<企业ID>，由与画布、导演台相同的付款选择给出（企业成员设了默认就不再询问）。缺省按个人积分。企业付款沿用同一套规则：允许的模型、每人在途上限、成员停用时取消未开始的任务、按原账户结算与退回；重试沿用任务原付款账户，不读这个头。'
+      schema: {type: string, maxLength: 80, pattern: '^(personal|enterprise:.{1,64})$'}
+
   # ── Reusable response wrappers ──────────
   schemas:
     ModelBillingTargetOption:
@@ -5968,6 +5976,12 @@ components:
         permissions:
           type: array
           items: {type: string}
+        billingDefault: {type: string, nullable: true, enum: [personal, enterprise], description: '本人默认付款账户，所有付费生成共用；为空表示每次询问。默认企业积分但成员或企业当前不能付款时，前端重新询问，不自动换成个人积分'}
+    EnterpriseBillingDefaultUpdate:
+      type: object
+      required: [mode]
+      properties:
+        mode: {type: string, nullable: true, enum: [personal, enterprise], description: 为空改回每次询问}
     EnterpriseCreateRequest:
       type: object
       required: [name, clientRequestId]
@@ -13634,22 +13648,22 @@ paths:
     post: { tags: [dap], operationId: dapAdminUploadImage, summary: '数字人广场 · 运营上传形象图(multipart) → { key, url }', responses: { '200': { description: ok } } }
   /v1/avatars/{id}/looks:
     get:  { tags: [dap], operationId: dapAvatarLooks, responses: { '200': { description: ok } } }
-    post: { tags: [dap], operationId: dapCreateLook, description: 描述造型或 sceneId 场景替换 → 异步任务, responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapCreateLook, parameters: [{$ref: '#/components/parameters/AepBilling'}], description: 描述造型或 sceneId 场景替换 → 异步任务, responses: { '200': { description: ok } } }
   /v1/avatars/{id}/derivatives:
     get:  { tags: [dap], operationId: dapAvatarDerivatives, responses: { '200': { description: ok } } }
-    post: { tags: [dap], operationId: dapCreateDerivative, description: 'type=atlas|expr|scene|ward|d3|video → 异步任务；options{items[{label,prompt}]≤6 / extraPrompt / motion} + templateId(atlas) 自定义配方（v0.52）', responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapCreateDerivative, parameters: [{$ref: '#/components/parameters/AepBilling'}], description: 'type=atlas|expr|scene|ward|d3|video → 异步任务；options{items[{label,prompt}]≤6 / extraPrompt / motion} + templateId(atlas) 自定义配方（v0.52）', responses: { '200': { description: ok } } }
   /v1/avatars/{id}/describe:
     post: { tags: [dap], operationId: dapDescribeAvatar, description: 落人设描述与表单（同步）, responses: { '200': { description: ok } } }
   /v1/avatars/{id}/photos:
     post: { tags: [dap], operationId: dapUploadPhotos, description: 'multipart files[] 照片素材', responses: { '200': { description: ok } } }
   /v1/avatars/{id}/generate:
-    post: { tags: [dap], operationId: dapGenerateAvatar, description: 'mode=describe(4 变体)|upload(高保真复刻) → 异步任务；真人路径必须选择或自动解析一条 approved 素材，任务 payload 使用 qasset:// 引用', responses: { '200': { description: ok }, '403': { description: DAP_MATERIAL_APPROVAL_REQUIRED } } }
+    post: { tags: [dap], operationId: dapGenerateAvatar, parameters: [{$ref: '#/components/parameters/AepBilling'}], description: 'mode=describe(4 变体)|upload(高保真复刻) → 异步任务；真人路径必须选择或自动解析一条 approved 素材，任务 payload 使用 qasset:// 引用', responses: { '200': { description: ok }, '403': { description: DAP_MATERIAL_APPROVAL_REQUIRED } } }
   /v1/avatars/{id}/pick:
     post: { tags: [dap], operationId: dapPickVariant, responses: { '200': { description: ok } } }
   /v1/avatars/{id}/iterate:
-    post: { tags: [dap], operationId: dapIterateAvatar, description: 自然语言迭代 → 异步任务, responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapIterateAvatar, parameters: [{$ref: '#/components/parameters/AepBilling'}], description: 自然语言迭代 → 异步任务, responses: { '200': { description: ok } } }
   /v1/avatars/{id}/warp:
-    post: { tags: [dap], operationId: dapWarpAvatar, description: 几何精调参数 → 异步任务（AI 重绘路径，legacy；v0.52 起精确滑杆走端上 refine-apply）, responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapWarpAvatar, parameters: [{$ref: '#/components/parameters/AepBilling'}], description: 几何精调参数 → 异步任务（AI 重绘路径，legacy；v0.52 起精确滑杆走端上 refine-apply）, responses: { '200': { description: ok } } }
   /v1/avatars/{id}/image:
     get: { tags: [dap], operationId: dapAvatarImage, description: 当前定妆图同源流式输出（owner 校验；供端上精调画布取图，规避 CDN 跨域 canvas 污染）, responses: { '200': { description: image bytes } } }
   /v1/avatars/{id}/refine-apply:
@@ -13853,7 +13867,7 @@ paths:
   /v1/voices/preview:
     post: { tags: [dap], operationId: dapPreviewVoice, description: 克隆声线返回采样 URL；内置音色返回说明, responses: { '200': { description: ok } } }
   /v1/voices/clone:
-    post: { tags: [dap], operationId: dapCloneVoice, description: multipart file 声音采样 + name/avatarId/gender, responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapCloneVoice, parameters: [{$ref: '#/components/parameters/AepBilling'}], description: multipart file 声音采样 + name/avatarId/gender, responses: { '200': { description: ok } } }
   /v1/jobs:
     get: { tags: [dap], operationId: dapListJobs, responses: { '200': { description: ok } } }
   /v1/jobs/{id}:
@@ -13895,7 +13909,7 @@ paths:
     post: { tags: [dap], operationId: dapIpLicense, summary: '登记 / 续签 IP 授权 → LIC 凭证（已存在则续签一年）', responses: { '200': { description: ok } } }
   /v1/assets/scenes:
     get:  { tags: [dap], operationId: dapListScenes, description: 'source=shot|ai / space / ipId / q 过滤', responses: { '200': { description: ok } } }
-    post: { tags: [dap], operationId: dapCreateScene, summary: 'AI 生成场景（异步任务 + 扣费）→ { scene, job }', responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapCreateScene, parameters: [{$ref: '#/components/parameters/AepBilling'}], summary: 'AI 生成场景（异步任务 + 扣费）→ { scene, job }', responses: { '200': { description: ok } } }
   /v1/assets/scenes/upload:
     post: { tags: [dap], operationId: dapUploadScene, summary: '实拍场景入库（multipart；轻资产不扣费）', responses: { '200': { description: ok } } }
   /v1/assets/scenes/{id}:
@@ -13903,10 +13917,10 @@ paths:
     patch:  { tags: [dap], operationId: dapPatchScene, responses: { '200': { description: ok } } }
     delete: { tags: [dap], operationId: dapDeleteScene, responses: { '200': { description: ok } } }
   /v1/assets/scenes/{id}/variants:
-    post: { tags: [dap], operationId: dapSceneVariants, summary: '生成光线变体（labels[]，按张扣费）→ { job }', responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapSceneVariants, parameters: [{$ref: '#/components/parameters/AepBilling'}], summary: '生成光线变体（labels[]，按张扣费）→ { job }', responses: { '200': { description: ok } } }
   /v1/assets/products:
     get:  { tags: [dap], operationId: dapListProducts, description: 'category / ipId / q 过滤', responses: { '200': { description: ok } } }
-    post: { tags: [dap], operationId: dapCreateProduct, summary: 'AI 生成产品主图（异步任务 + 扣费）→ { product, job }', responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapCreateProduct, parameters: [{$ref: '#/components/parameters/AepBilling'}], summary: 'AI 生成产品主图（异步任务 + 扣费）→ { product, job }', responses: { '200': { description: ok } } }
   /v1/assets/products/upload:
     post: { tags: [dap], operationId: dapUploadProduct, summary: '实拍产品入库（multipart；自动记为正面角度，不扣费）', responses: { '200': { description: ok } } }
   /v1/assets/products/{id}:
@@ -13914,7 +13928,7 @@ paths:
     patch:  { tags: [dap], operationId: dapPatchProduct, responses: { '200': { description: ok } } }
     delete: { tags: [dap], operationId: dapDeleteProduct, responses: { '200': { description: ok } } }
   /v1/assets/products/{id}/angles:
-    post: { tags: [dap], operationId: dapProductAngles, summary: '补充角度（labels[]，按张扣费）→ { job }', responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapProductAngles, parameters: [{$ref: '#/components/parameters/AepBilling'}], summary: '补充角度（labels[]，按张扣费）→ { job }', responses: { '200': { description: ok } } }
   /v1/assets/styles:
     get:  { tags: [dap], operationId: dapListStyles, description: 按被引用次数倒序, responses: { '200': { description: ok } } }
     post: { tags: [dap], operationId: dapCreateStyle, summary: '新建风格模板（纯登记，免费）', responses: { '200': { description: ok } } }
@@ -13928,7 +13942,7 @@ paths:
     get: { tags: [dap], operationId: dapStarGrants, summary: '资产中枢 P2 · 授权给我的明星形象（celebrity 域 CelebrityStarAuthorization 只读投影：authorized/pending/expired；申请审批仍走 /me/celebrity 与 /star/cooperations 既有链路）', responses: { '200': { description: ok } } }
   /v1/compositions:
     get:  { tags: [dap], operationId: dapListCompositions, description: 'ipId 可选（查某 IP 名下的作品）', responses: { '200': { description: ok } } }
-    post: { tags: [dap], operationId: dapCreateComposition, summary: '人物 × 场景 × 产品 → 成片（授权核对 → 建单 → 异步出片）→ { composition, job }；真人复刻缺生效 LIC 时 403 DAP_LICENSE_REQUIRED，不建单不扣费', responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapCreateComposition, parameters: [{$ref: '#/components/parameters/AepBilling'}], summary: '人物 × 场景 × 产品 → 成片（授权核对 → 建单 → 异步出片）→ { composition, job }；真人复刻缺生效 LIC 时 403 DAP_LICENSE_REQUIRED，不建单不扣费', responses: { '200': { description: ok } } }
   /v1/compositions/options:
     get: { tags: [dap], operationId: dapComposeOptions, summary: '出片设置选项与单价（画幅 / 出图数量区间 / 每张单价 / 可用风格模板）', responses: { '200': { description: ok } } }
   /v1/compositions/{id}:
@@ -16308,6 +16322,35 @@ paths:
         '403': {description: 无产品开通/手机号未绑定/无企业权限}
         '404': {description: 资源不在当前企业或功能未开放}
         '409': {description: 已加入其他企业、幂等正文冲突、版本或邀请/移交状态冲突}
+  /v1/ip-studio/enterprises/{id}/billing-default:
+    put:
+      tags: [Enterprise]
+      summary: 设置本人默认付款账户
+      x-implementation-status: foundation
+      description: 本人在当前企业的默认付款账户，画布、导演台、场景页、创作助手、数字资产等所有付费生成共用；设了就不再弹付款选择，换设备也一样。设为企业积分要求成员与企业当前都可付款；个人积分或改回每次询问随时可以。不改成员版本号，不写企业审计。受 aep.enterprise.enabled 开关控制。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnterpriseBillingDefaultUpdate'}
+      responses:
+        '200':
+          description: 成功，返回更新后的企业上下文
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterpriseContext'}
+        '400': {description: BILLING_SELECTION_INVALID}
+        '403': {description: 成员已停用或企业已关闭时不能设为企业积分}
   /v1/ip-studio/enterprises/{id}/policy:
     get:
       tags: [Enterprise]
