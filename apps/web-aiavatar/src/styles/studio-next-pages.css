@@ -87,6 +87,31 @@ html[data-layout="desktop"] .studio-tabbar { display: none; }
 .studio-tab:focus-visible { outline: 2px solid #17202a; outline-offset: -2px; border-radius: 10px; }
 .studio-tab-create { display: grid; place-items: center; width: 38px; height: 30px; border-radius: 11px; background: #17202a; color: #ffffff; transition: transform 120ms ease; }
 .studio-tab.is-create:active .studio-tab-create { transform: scale(.94); }
+/* 「创作」是按钮不是链接：先弹出三项再进去（2026-11-02）。按钮放在 .ip-brand-surface 里时会被 color: inherit 盖掉，所以带上 .studio-tabbar。 */
+.studio-tabbar button.studio-tab { margin: 0; padding: 0; border: 0; background: none; font: inherit; font-size: 11px; line-height: 1.4; color: #5b6572; cursor: pointer; }
+.studio-tabbar .studio-tab.is-on, .studio-tabbar button.studio-tab[aria-expanded="true"] { color: #17202a; font-weight: 500; }
+
+/* 「创作」弹出的三项：AI 视频 / AI 图片 / 画布。挂在 body 上，所以颜色写死，不读 .ip-surface 的令牌。 */
+.studio-create-backdrop { position: fixed; inset: 0; z-index: 80; display: flex; align-items: flex-end; justify-content: center; background: rgba(23, 32, 42, .32); overscroll-behavior: contain; animation: studio-create-fade 160ms ease-out; }
+html[data-layout="desktop"] .studio-create-backdrop { display: none; }
+.studio-create-sheet { width: 100%; max-width: 480px; box-sizing: border-box; padding: 4px 12px calc(env(safe-area-inset-bottom, 0px) + 12px); border-radius: 20px 20px 0 0; background: #ffffff; color: #17202a; box-shadow: 0 -8px 32px rgba(23, 32, 42, .12); outline: none; animation: studio-create-up 220ms cubic-bezier(.2, .8, .2, 1); }
+.studio-create-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 0 4px 8px; }
+.studio-create-head h2 { margin: 0; font-size: 15px; font-weight: 500; line-height: 1.4; }
+.studio-create-head button { display: grid; place-items: center; width: 44px; height: 44px; margin: 0; padding: 0; border: 0; border-radius: 12px; background: none; color: #5b6572; cursor: pointer; }
+.studio-create-head button:focus-visible { outline: 2px solid #17202a; outline-offset: -2px; }
+.studio-create-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.studio-create-choice { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 8px; border-radius: 14px; color: inherit; text-decoration: none; -webkit-tap-highlight-color: transparent; }
+.studio-create-choice:hover, .studio-create-choice:active { background: #f5f6f8; }
+.studio-create-choice:focus-visible { outline: 2px solid #17202a; outline-offset: -2px; }
+.studio-create-icon { display: grid; place-items: center; flex: none; width: 42px; height: 42px; border-radius: 12px; background: #f3f4f6; color: #17202a; }
+.studio-create-choice[aria-current="page"] .studio-create-icon { background: #17202a; color: #ffffff; }
+.studio-create-copy { display: grid; flex: 1; gap: 2px; min-width: 0; }
+.studio-create-copy strong { font-size: 15px; font-weight: 500; line-height: 1.4; }
+.studio-create-copy small { font-size: 13px; line-height: 1.45; color: #5b6572; }
+.studio-create-arrow { flex: none; color: #9aa3ad; }
+@keyframes studio-create-fade { from { opacity: 0; } }
+@keyframes studio-create-up { from { opacity: 0; transform: translateY(24px); } }
+@media (prefers-reduced-motion: reduce) { .studio-create-backdrop, .studio-create-sheet { animation: none; } }
 
 /* ── 新版手机「我的」（2026-11-02）：白底，三组细边列表，图标细、字不加粗；个人卡右边是可用积分（手机上原来哪儿都看不到余额） ── */
 .studio-me { display: flex; flex-direction: column; gap: 14px; min-height: 100dvh; box-sizing: border-box; padding: calc(env(safe-area-inset-top, 0px) + 16px) 16px calc(var(--tabbar-h, 60px) + env(safe-area-inset-bottom, 0px) + 20px); background: #ffffff; }
