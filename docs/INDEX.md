@@ -299,6 +299,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | 文档 | 主题 | 内容与状态 |
 |---|---|---|
 | [画布用企业积分生产发布](releases/enterprise-canvas-credits-release-20261102.md) | main `cbfdf1625`、server / web-aiavatar、V73、制品与回滚 | 空模型名单改为全部模型、默认每人在途 10（线上 4 家企业由 V73 调整）、画布右上角显示企业积分；等导演台 15 张出图跑完再重启，502 只有部署探测（last-reviewed 2026-11-02） |
+| [新版手机端照设计稿收齐](releases/studio-mobile-design-release-20261102.md) | main `5dbb7d79a`（#149）、只发 web-aiavatar、制品与回滚 | 新版手机底栏换成设计稿扁平样式、「我的」重写并显示可用积分、首页手机排版、去掉重复顶部导航；正式站 390 宽验收，发布窗口 0 个 5xx（last-reviewed 2026-11-02） |
 | [客户端图片上传生产发布](releases/client-image-upload-production-release-20261102.md) | main `76b353939`、server / Studio / 带货、制品与回滚 | HEIC、大图、限额内 JPG、不透明 PNG、画布刷新与首尾帧真实上传通过；iPhone 真机待验（last-reviewed 2026-11-02） |
 | [`docs/releases/studio-recreation-release-20261018.md`](releases/studio-recreation-release-20261018.md) | 全能创作复刻 S1/S2/S3 生产发布记录 | 发布 `20261018-studio-recreation-s1s3`（c6f40808）：基线核对与合并、V60–V63 迁移、技能 seed、verify 全绿、上线后配置项与未验证范围；之后每次追加发布记在同一份，最近一次是 2026-10-20 第一次从 main 发的 `20261020-studio-main-h3-conflict`（last-reviewed 2026-10-20） |
 | [`docs/releases/studio-gpt-image-native-20261020.md`](releases/studio-gpt-image-native-20261020.md) | Studio GPT Image 2 原生接入与验收 | 2K、参考图 multipart、尺寸选择与 30 积分定价；尺寸不符在扣费前拒绝（last-reviewed 2026-10-20） |
