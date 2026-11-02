@@ -5,10 +5,12 @@
 // 衬线资产名（--font-serif）+ 等宽登记号（--font-mono）。
 // 与 proto/ui.tsx 的区别：JSX 写法、明确 props 类型、无手机壳/微信 chrome。
 // ============================================================
-import React from "react";
+import React, { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { House, Image as ImageIcon, Plus, UserRound, Video } from "lucide-react";
+import { ChevronRight, House, Image as ImageIcon, Plus, SquareDashedMousePointer, UserRound, Video, X } from "lucide-react";
+import { dialogFocus } from "@/ip/dialog-focus";
 import { useUiVersion } from "@/shell/ui-version";
 import { AccountAvatar } from "@/shell/account-avatar";
 import { useIdentity } from "@/proto/api";
@@ -129,21 +131,70 @@ const TABS = [
 const NEXT_TABS = [
   { href: "/dashboard", label: "首页", icon: House, match: (p: string) => p === "/dashboard" },
   { href: "/video", label: "AI 视频", icon: Video, match: (p: string) => p.startsWith("/video") },
-  { fab: true as const, href: "/create", label: "创作" },
+  { create: true as const, href: "/create", label: "创作" },
   { href: "/image", label: "AI 图片", icon: ImageIcon, match: (p: string) => p.startsWith("/image") },
   { href: "/me", label: "我的", icon: UserRound, match: (p: string) => p.startsWith("/me") || p.startsWith("/licenses") || p.startsWith("/projects") || p.startsWith("/assets") || p.startsWith("/director") },
 ];
 
+/**
+ * 「创作」先选做什么，再进去（2026-11-02 用户定）：原来直接进画布，而手机上最常用的是 AI 视频和 AI 图片，画布在手机上最难用。
+ */
+const CREATE_CHOICES = [
+  { href: "/video", label: "AI 视频", sub: "选个场景，编导先写分镜再出片", icon: Video, match: (p: string) => p.startsWith("/video") },
+  { href: "/image", label: "AI 图片", sub: "选个场景，补一句要求就出图", icon: ImageIcon, match: (p: string) => p.startsWith("/image") },
+  { href: "/create", label: "画布", sub: "素材和结果摆在一起，自由组合", icon: SquareDashedMousePointer, match: (p: string) => p === "/create" },
+];
+
+function CreateSheet({ pathname, onClose }: { pathname: string; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = overflow; };
+  }, [onClose]);
+  // 挂到 body：底栏所在的页面层可能带 transform，fixed 会跟着走样。
+  return createPortal(
+    <div className="studio-create-backdrop" role="presentation" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="studio-create-sheet" role="dialog" aria-modal="true" aria-labelledby="studio-create-title" ref={dialogFocus} tabIndex={-1}>
+        <header className="studio-create-head">
+          <h2 id="studio-create-title">想做点什么？</h2>
+          <button type="button" aria-label="关闭" onClick={onClose}><X size={18} strokeWidth={1.6} aria-hidden /></button>
+        </header>
+        <ul className="studio-create-list">
+          {CREATE_CHOICES.map((c) => (
+            <li key={c.href}>
+              <Link href={c.href} replace className="studio-create-choice" aria-current={c.match(pathname) ? "page" : undefined} onClick={onClose}>
+                <span className="studio-create-icon" aria-hidden><c.icon size={20} strokeWidth={1.4} /></span>
+                <span className="studio-create-copy"><strong>{c.label}</strong><small>{c.sub}</small></span>
+                <ChevronRight size={16} strokeWidth={1.5} aria-hidden className="studio-create-arrow" />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function NextTabBar({ pathname, createOn }: { pathname: string; createOn: boolean }) {
+  const [creating, setCreating] = useState(false);
+  const close = useCallback(() => setCreating(false), []);
   return (
     <nav className="hub-tabbar studio-tabbar" aria-label="底部导航">
       {NEXT_TABS.map((t) => {
-        const on = "fab" in t ? createOn : t.match(pathname);
-        return <Link key={t.href} href={t.href} replace className={"studio-tab" + ("fab" in t ? " is-create" : "")} aria-current={on ? "page" : undefined}>
-          {"fab" in t ? <span className="studio-tab-create" aria-hidden><Plus size={16} strokeWidth={1.8} /></span> : <t.icon size={20} strokeWidth={on ? 1.6 : 1.4} aria-hidden />}
+        if ("create" in t) return <button key={t.href} type="button" className={"studio-tab is-create" + (createOn ? " is-on" : "")} aria-haspopup="dialog" aria-expanded={creating} onClick={() => setCreating(true)}>
+          <span className="studio-tab-create" aria-hidden><Plus size={16} strokeWidth={1.8} /></span>
+          <span className="lbl">{t.label}</span>
+        </button>;
+        const on = t.match(pathname);
+        return <Link key={t.href} href={t.href} replace className="studio-tab" aria-current={on ? "page" : undefined}>
+          <t.icon size={20} strokeWidth={on ? 1.6 : 1.4} aria-hidden />
           <span className="lbl">{t.label}</span>
         </Link>;
       })}
+      {creating && <CreateSheet pathname={pathname} onClose={close} />}
     </nav>
   );
 }
