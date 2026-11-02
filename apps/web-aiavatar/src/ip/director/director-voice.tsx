@@ -7,6 +7,7 @@ import type { StudioVoiceProfile } from "@ai-star-eco/types/ip-studio-workflow";
 import { studioVoiceProfiles } from "@/canvas-bridge/studio-api";
 import { DirectorApi } from "../api";
 import { InlineError, errorText, useBusy, useEscape, dialogFocus } from "./director-shared";
+import { AUDIO_REFERENCE_NOTICE } from '@/canvas-bridge/recording-audio';
 
 /** 资产卡里的音色摘要：说清现在是参考音频、文字描述还是都没有，点「设置音色」打开单独的配置弹窗。 */
 export function VoicePanel({ work, asset, apply }: { work: DirectorWork; asset: DirectorAsset; apply: (w: DirectorWork) => void }) {
@@ -73,13 +74,14 @@ export function VoiceDialog({ work, asset, apply, onClose }: { work: DirectorWor
             {current.url && <audio controls preload="none" src={current.url} aria-label={`${asset.name}的声音样本`}/>}
             <button type="button" className="ip-brand-text-button director-danger" onClick={() => setPending({ kind: "remove" })}><Trash2 size={13}/>移除</button></div>
           : <button type="button" className="director-voice-drop" onClick={() => file.current?.click()}>
-            <Upload size={18}/><b>上传音频</b><span>MP3、WAV 或 M4A，2–15 秒、最多 15 MB；建议单人说话、没有背景音乐</span></button>}
+            <Upload size={18}/><b>上传音频</b><span>MP3、WAV 或 M4A，至少 2 秒、最多 25 MB；建议单人说话、没有背景音乐</span></button>}
         {pending?.kind === "remove" && <small className="director-danger">保存后移除参考音频。<button type="button" className="ip-brand-text-button" onClick={() => setPending(null)}>撤销</button></small>}
         <div className="director-card-actions">
           {(current || pending) && pending?.kind !== "remove" && <button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={() => file.current?.click()}><Upload size={14}/>换一段</button>}
           <button type="button" className="ip-brand-text-button" disabled={!!busy} onClick={() => setPicking(true)}>从声音库选择</button>
         </div>
         <small>保存后，支持声音参考的视频模型会自动引用该角色的声音样本。</small>
+        <small role="status">{AUDIO_REFERENCE_NOTICE}</small>
         <input ref={file} type="file" disabled={!!busy} accept="audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a,.mp3,.wav,.m4a" hidden onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; if (f) setPending({ kind: "file", file: f }); }}/>
       </div>
       <InlineError message={error}/>

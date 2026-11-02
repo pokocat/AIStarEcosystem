@@ -39,6 +39,8 @@ class DirectorVoiceUploadTest {
     @Autowired AepUserRepository users;
     @Autowired IpSavedAssetRepository saved;
     @Autowired StudioMediaImportService imports;
+    @Autowired com.aistareco.aep.service.storage.FileStorageService storage;
+    @Autowired com.aistareco.aep.service.mixcut.FfmpegRunner ffmpeg;
     @Autowired ObjectMapper om;
     @Autowired PlatformTransactionManager tx;
     @Autowired MaterialVideoInputAssets receipts;
@@ -93,11 +95,35 @@ class DirectorVoiceUploadTest {
             assertThrows(RuntimeException.class, () -> readonly.execute(s -> imports.uploadReferenceAudio(u, audio(5))));
         assertNotNull(director.uploadAudio(u, id, audio(5)).key());
     }
+    @Test void longUploadsAndLibraryBindingsUseShortSamplesAndPreserveTheLibraryOriginal() throws Exception {
+        String u=owner(),id=work(u);
+        var uploaded=director.uploadAudio(u,id,audio(30));
+        assertEquals(30,uploaded.durationSec(),.001);
+        var original=imports.upload(u,audio(30),"audio");
+        assertEquals(30,original.durationSec(),.001);
+        var contract=new VideoStudioContract(List.of(new VideoStudioModeSpec("universal_reference_video",false,false,null,null)),List.of(),5,15,7000,100);
+        when(models.models()).thenReturn(List.of(new VideoStudioModel("h3","H3",true,true,false,contract,null)));
+        var uploadedBinding=director.edit(u,id,new DirectorService.EditRequest("asset.setVoice","a1",null,
+                om.createObjectNode().put("key",uploaded.key()).put("name","上传原音频")));
+        String uploadedSent=uploadedBinding.path("assets").get(0).path("voice").path("key").asText();
+        assertNotEquals(uploaded.key(),uploadedSent);
+        assertEquals(14.9,ffmpeg.probeMedia(storage.openForRead(uploadedSent).toFile()).durationSec(),.000001);
+        assertEquals(30,ffmpeg.probeMedia(storage.openForRead(uploaded.key()).toFile()).durationSec(),.001);
+        verify(client).prepareAudioReference("h3",uploadedSent,"studio");
+        var bound=director.edit(u,id,new DirectorService.EditRequest("asset.setVoice","a1",null,
+                om.createObjectNode().put("key",original.key()).put("name","长音频")));
+        String sent=bound.path("assets").get(0).path("voice").path("key").asText();
+        assertNotEquals(original.key(),sent);
+        assertEquals(14.9,ffmpeg.probeMedia(storage.openForRead(sent).toFile()).durationSec(),.000001);
+        assertEquals(30,ffmpeg.probeMedia(storage.openForRead(original.key()).toFile()).durationSec(),.001);
+        assertTrue(saved.findByOwnerUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(u).stream().anyMatch(a->a.getPayloadJson().contains(original.key())));
+        verify(client).prepareAudioReference("h3",sent,"studio");
+    }
     @Test void rejectsForeignWorkAndInvalidDurationBeforePersisting() throws Exception {
         String u = owner(), id = work(u);
         assertEquals("DIRECTOR_WORK_NOT_FOUND", assertThrows(BusinessException.class,
                 () -> director.uploadAudio("someone-else", id, audio(5))).getCode());
-        for (int seconds : List.of(1, 16)) assertEquals("STUDIO_MEDIA_INVALID", assertThrows(BusinessException.class,
+        for (int seconds : List.of(1)) assertEquals("STUDIO_MEDIA_INVALID", assertThrows(BusinessException.class,
                 () -> director.uploadAudio(u, id, audio(seconds))).getCode());
         assertTrue(saved.findByOwnerUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(u).isEmpty());
         verifyNoInteractions(client);

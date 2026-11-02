@@ -20,8 +20,10 @@ public class StudioVideoService {
     private final IpProjectService projects;
     private final FileStorageService storage;
     private final FfmpegRunner ffmpeg;
+    private final StudioAudioReference audioReferences;
     public StudioVideoService(com.aistareco.aep.service.AiAppSceneModelPolicyService scenePolicies,VideoStudioService videos,IpProjectService projects,FileStorageService storage,FfmpegRunner ffmpeg) {
         this.scenePolicies=scenePolicies;this.videos=videos;this.projects=projects;this.storage=storage;this.ffmpeg=ffmpeg;
+        this.audioReferences=new StudioAudioReference(storage,ffmpeg);
     }
     public List<VideoStudioModel> models() {
         var allowed=scenePolicies.studioVideoCandidates().stream()
@@ -51,8 +53,6 @@ public class StudioVideoService {
         var last=alignFrame(userId,v.lastFrameKey(),request.aspectRatio());
         if(first.adjusted()!=null)adjustments.set("firstFrameAdjusted",first.adjusted());
         if(last.adjusted()!=null)adjustments.set("lastFrameAdjusted",last.adjusted());
-        var nativeRequest=new VideoStudioJobRequest(endpointId,v.mode(),request.prompt(),v.resolutionTier(),
-                request.aspectRatio(),request.durationSec(),v.seed(),first.key(),last.key(),v.references(),null,null,null,null);
         VideoStudioModel model=models().stream().filter(m->endpointId.equals(m.endpointId())).findFirst()
                 .orElseThrow(()->invalid("所选模型不支持该视频模式"));
         VideoStudioModeSpec modeSpec=model.contract().modes().stream().filter(m->m.mode().equals(v.mode()))
@@ -60,6 +60,9 @@ public class StudioVideoService {
         // 「按原文生成」只对出片前会改写描述的模型有意义（同视频生成区的「智能优化」能力判定）；别的模型带着它就明确拒绝。
         if(v.optimizePrompt()!=null && !model.supportsPromptOptimization())
             throw BusinessException.badRequest("STUDIO_VIDEO_OPTION_UNSUPPORTED","所选视频模型不会改写描述，不需要选择「按原文生成」");
+        var references=prepareAudioReferences(userId,v.references());
+        var nativeRequest=new VideoStudioJobRequest(endpointId,v.mode(),request.prompt(),v.resolutionTier(),
+                request.aspectRatio(),request.durationSec(),v.seed(),first.key(),last.key(),references,null,null,null,null);
         var prepared=videos.prepareCanvas(userId,nativeRequest,
                 (type,key,frame)->requireMedia(userId,type,key,frame,modeSpec),"studio");
         return new Prepared(v.optimizePrompt()==null?prepared
@@ -122,8 +125,19 @@ public class StudioVideoService {
     public VideoStudioService.CanvasPreparation quotePreparation(String userId,IpRunService.IpVideoRequest request) {
         var v=request.video();
         var nativeRequest=new VideoStudioJobRequest(model(request.model()),v.mode(),request.prompt(),v.resolutionTier(),
-                request.aspectRatio(),request.durationSec(),v.seed(),v.firstFrameKey(),v.lastFrameKey(),v.references(),null,null,null,null);
+                request.aspectRatio(),request.durationSec(),v.seed(),v.firstFrameKey(),v.lastFrameKey(),prepareAudioReferences(userId,v.references()),null,null,null,null);
         return videos.prepareCanvas(userId,nativeRequest,(type,key,frame)->projects.requireOwnedAssetKey(userId,key),"studio");
+    }
+    /** Quotes and submits share derived keys, so total-duration checks see the samples actually sent. */
+    List<VideoStudioReferenceInput> prepareAudioReferences(String userId,List<VideoStudioReferenceInput> inputs) {
+        if(inputs==null)return null;
+        var samples=new java.util.HashMap<String,String>();
+        return inputs.stream().map(ref->{
+            if(ref==null || !"audio".equals(ref.mediaType()))return ref;
+            String owned=projects.requireOwnedAssetKey(userId,ref.key());
+            String key=samples.computeIfAbsent(owned,k->audioReferences.prepare(userId,k).key());
+            return new VideoStudioReferenceInput("audio",key);
+        }).toList();
     }
     void requireMedia(String userId,String type,String key,boolean frame,VideoStudioModeSpec mode) {
         projects.requireOwnedAssetKey(userId,key);

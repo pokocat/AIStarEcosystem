@@ -123,3 +123,10 @@ test('recording in an audio slot is stored in the current library and selected f
   await waitFor(() => expect(screen.getByRole('button', { name: '选 旁白' }).getAttribute('aria-pressed')).toBe('true'));
   expect(screen.getByText('已选：旁白')).toBeDefined();
 });
+
+test('the existing file-upload button remains available while library data is loading', async () => {
+  api.folders.mockImplementation(() => new Promise(() => {}));
+  render(<LibraryMediaPicker open mediaType="audio" upload onClose={vi.fn()} onAssets={vi.fn()}/>);
+  expect((screen.getByRole('button', { name: '上传', exact: true }) as HTMLButtonElement).disabled).toBe(false);
+  expect((screen.getByRole('button', { name: '录音', exact: true }) as HTMLButtonElement).disabled).toBe(true);
+});

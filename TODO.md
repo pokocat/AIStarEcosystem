@@ -103,6 +103,8 @@
 
 ## Studio 当前待办
 
+- [ ] **资产录音真机兼容验收**（2026-11-01）：`audio-recorder-dialog.tsx` / `recording-audio.ts` 的倒数、10.5 秒结束门槛、14.9 秒自动结束、试听、重录保留名称及保存，仍需 iPhone Safari、安卓浏览器、微信内置浏览器分别实测。桌面模拟 WebM／MP4 与采样率回退验证不能代替真机。
+
 - [x] ~~主线 `IpRunServiceTest.videoWithoutChosenModel_leavesTheEndpointToTheDefault` 红着~~ **2026-11-01 已修**（随 `20261101-studio-prompt-library`）：`fa72c50e2` 起视频请求每条都带 `require_mirror`，断言改为 `variant_config` 只有这一项。
 - [x] ~~Studio 提示词库第 1–4 步与上线前验收~~ **2026-11-01 已生产发布 `20261101-studio-prompt-library`**（main `0ffdde365`）：生成类提示词进提示词库（底座 / 环节 / 方法 / 场景，82 条，和技能同表），对话、画布、导演台、AI 视频编导都按库拼；旧 Prompt 管理已迁走的键标「已迁走」不能保存。发布当天线上库复核与真模型验收见 `docs/releases/studio-prompt-library-validation-20261101.md`，发布记录 `docs/releases/studio-prompt-library-release-20261101.md`。剩下的事见下「Studio 提示词库后续」。
 - [ ] **企业页首次加载 React #418 日志需独立复核**（2026-11-01）：生产新标签在 08:08:50 UTC 捕获一次，页面恢复后手机号列表及转入预览成功；尚无发布前同条件对照，不能判定引入版本。入口 `apps/web-aiavatar/src/app/layout.tsx` 与 `/enterprise` 的 SSR/客户端初始化，来源未定位；见企业积分转入生产发布记录。

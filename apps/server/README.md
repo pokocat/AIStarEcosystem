@@ -1090,6 +1090,8 @@ V51 为 `material_video_job` 增加可空 `error_code VARCHAR(64)`，和原 `err
 
 `StudioMediaImportService` 不再因 MP4 内部编码直接拒收：可读的非H.264/非AAC素材用 ffmpeg 自动规范为H.264/AAC；仅音轨不兼容时保留画面码流。最多2编码线程、150秒超时，重新校验音轨和时长后才存储、计配额，异常清理输入/输出临时文件。免费导入，无模型调用。`StudioMediaImportServiceTest` 覆盖原逻辑/转码/失败，`StudioVideoCompatibilityTest` 可通过 `-Dstudio.video.demo=本地视频路径` 验真实HEVC+MP3、MPEG4+MP3、H264+MP3三类素材。
 
+2026-11-01 本地调整：声音参考超过 14.9 秒时，由 `StudioAudioReference` 用 ffmpeg 提取开头 14.9 秒、24 kHz 单声道 PCM WAV，验证后交给模型，不再因单段超长直接退出。`StudioVideoService` 的报价和提交共用短样本 key，导演台上传保留完整原音频，绑定上传或资产库声音时同样生成短样本；调用前先验 key 归属，已有素材不原地改写，临时文件在成功和失败时均删除。派生 key 按本人不可变源 key 有界复用，不跨用户复用、不保存签名 URL、不新增模型调用或积分扣费。模型的数量、音频总时长、格式等规则不变。界面在使用声音前提示截取规则，录音入口本身 14.9 秒自动停止。
+
 ### Studio 统一画布封面（2026-10-17，已发布 a4092626）
 
 POST/PUT/DELETE /api/v1/ip-studio/covers/{project|template}/{id} 共用 CanvasCoverService：个人项目和模板属主、官方模板 SUPER_ADMIN，可上传 JPG/PNG、选择目标画布图片、恢复自动。只改 coverKey，不改 doc 或版本；独立封面提交后清理旧文件，回滚清理新文件，不删除画布素材。见 docs/releases/studio-shared-covers-validation-20261017.md。

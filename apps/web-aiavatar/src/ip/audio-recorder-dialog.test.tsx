@@ -95,14 +95,43 @@ test('re-recording releases the old preview; unmount releases the new microphone
   ui.unmount(); expect(stopTrack).toHaveBeenCalledTimes(2);
 });
 
-test('recording stops at fifteen seconds excluding the countdown, without automatically uploading', async () => {
+test('capture stops at 14.9 seconds, excluding countdown, without uploading automatically', async () => {
   const save = vi.fn(); render(<AudioRecorderDialog open onSave={save} onClose={vi.fn()}/>);
   await beginRecording();
-  await act(async () => { vi.advanceTimersByTime(14900); });
+  await act(async () => { vi.advanceTimersByTime(14800); });
   expect(rec.state).toBe('recording');
   await act(async () => { vi.advanceTimersByTime(100); });
+  expect(screen.getByRole('button', { name: '保存到资产库' })).toBeDefined();
   expect(rec.state).toBe('inactive'); expect(stopTrack).toHaveBeenCalled();
   expect(screen.getByRole('button', { name: '保存到资产库' })).toBeDefined(); expect(save).not.toHaveBeenCalled();
+});
+
+test('finishing is disabled until 10.5 seconds and shows the remaining time', async () => {
+  render(<AudioRecorderDialog open onSave={vi.fn()} onClose={vi.fn()}/>);
+  await beginRecording();
+  await act(async () => { vi.advanceTimersByTime(8000); });
+  const stop = screen.getByRole('button', { name: '结束录音' }) as HTMLButtonElement;
+  expect(stop.disabled).toBe(true); expect(screen.getByText('再读 3 秒')).toBeDefined();
+  fireEvent.click(stop); expect(rec.state).toBe('recording'); expect(api.convert).not.toHaveBeenCalled();
+  await act(async () => { vi.advanceTimersByTime(2400); }); expect(stop.disabled).toBe(true);
+  await act(async () => { vi.advanceTimersByTime(100); }); expect(stop.disabled).toBe(false);
+  fireEvent.click(stop); await screen.findByRole('button', { name: '保存到资产库' });
+});
+
+test('a custom name survives re-recording while an untouched default is refreshed', async () => {
+  api.convert.mockResolvedValueOnce(new File(['wav'], '录音-第一遍.wav')).mockResolvedValueOnce(new File(['wav'], '录音-第二遍.wav')).mockResolvedValue(new File(['wav'], '录音-第三遍.wav'));
+  render(<AudioRecorderDialog open onSave={vi.fn()} onClose={vi.fn()}/>);
+  await record();
+  expect((screen.getByLabelText('录音名称') as HTMLInputElement).value).toBe('录音-第一遍');
+  const retake = async () => {
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '重录' })); });
+    await act(async () => { vi.advanceTimersByTime(15000); });
+    fireEvent.click(screen.getByRole('button', { name: '结束录音' }));
+    await screen.findByRole('button', { name: '保存到资产库' });
+  };
+  await retake(); expect((screen.getByLabelText('录音名称') as HTMLInputElement).value).toBe('录音-第二遍');
+  fireEvent.change(screen.getByLabelText('录音名称'), { target: { value: '我的专属旁白' } });
+  await retake(); expect((screen.getByLabelText('录音名称') as HTMLInputElement).value).toBe('我的专属旁白');
 });
 
 test('the guide advances character by character and the pace stays fixed during capture', async () => {

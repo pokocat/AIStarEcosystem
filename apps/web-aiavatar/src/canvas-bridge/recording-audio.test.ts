@@ -34,8 +34,42 @@ test('short samples cannot be passed off as voice-cloning recordings', async () 
   finally { vi.unstubAllGlobals(); }
 });
 
-test('WAV is capped at fifteen seconds even if the final browser chunk arrives late', async () => {
+test('late recording chunks are cropped to exactly 14.9 seconds in PCM WAV', async () => {
   const sampleRate = 24000;
   const buffer = { length: sampleRate * 16, sampleRate, numberOfChannels: 1, getChannelData: () => new Float32Array(sampleRate * 16) } as AudioBuffer;
-  expect(recordingWav(buffer).size).toBe(44 + 15 * sampleRate * 2);
+  expect(recordingWav(buffer).size).toBe(44 + 14.9 * sampleRate * 2);
+});
+
+test('unsupported real-time sample rates fall back to the device rate and are resampled for WAV', async () => {
+  const native = { length: 48000 * 11, sampleRate: 48000, numberOfChannels: 1 };
+  const normalized = { length: 24000 * 11, sampleRate: 24000, numberOfChannels: 1, getChannelData: () => new Float32Array(24000 * 11) };
+  const close = vi.fn().mockResolvedValue(undefined), connect = vi.fn(), start = vi.fn();
+  const source = { buffer: null, connect, start };
+  const construct = vi.fn();
+  vi.stubGlobal('AudioContext', class {
+    constructor(options?: AudioContextOptions) { construct(options); if (options) throw new DOMException('', 'NotSupportedError'); }
+    close = close; decodeAudioData = vi.fn().mockResolvedValue(native);
+  });
+  const offline = vi.fn();
+  vi.stubGlobal('OfflineAudioContext', class {
+    constructor(...args: unknown[]) { offline(...args); }
+    destination = {}; createBufferSource = () => source; startRendering = vi.fn().mockResolvedValue(normalized);
+  });
+  try {
+    const file = await recordingFile(new Blob(['audio']));
+    expect(construct.mock.calls).toEqual([[{ sampleRate: 24000 }], [undefined]]);
+    expect(offline).toHaveBeenCalledWith(1, 24000 * 11, 24000);
+    expect(source.buffer).toBe(native); expect(connect).toHaveBeenCalledOnce(); expect(start).toHaveBeenCalledOnce();
+    const bytes = await file.arrayBuffer();
+    expect(new DataView(bytes).getUint32(24, true)).toBe(24000); expect(file.size).toBe(44 + 24000 * 11 * 2);
+    expect(close).toHaveBeenCalledOnce();
+  } finally { vi.unstubAllGlobals(); }
+});
+
+test('failure during fallback resampling still closes the real-time audio context', async () => {
+  const close = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal('AudioContext', class { close = close; decodeAudioData = vi.fn().mockResolvedValue({ length: 48000 * 11, sampleRate: 48000, numberOfChannels: 1 }); });
+  vi.stubGlobal('OfflineAudioContext', class { constructor() { throw new Error('resampling failed'); } });
+  try { await expect(recordingFile(new Blob(['audio']))).rejects.toThrow('resampling failed'); expect(close).toHaveBeenCalledOnce(); }
+  finally { vi.unstubAllGlobals(); }
 });

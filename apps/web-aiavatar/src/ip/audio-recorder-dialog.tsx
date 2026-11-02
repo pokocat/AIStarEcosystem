@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button, Input, Modal } from 'antd';
 import { Mic, RotateCcw, Square } from 'lucide-react';
-import { microphoneError, recordingFile, RECORDING_MAX_SECONDS } from '@/canvas-bridge/recording-audio';
+import { microphoneError, recordingAudioSupported, recordingFile, RECORDING_MAX_SECONDS, RECORDING_STOP_AFTER_SECONDS, RECORDING_SUGGESTED_SECONDS } from '@/canvas-bridge/recording-audio';
 import { readingCue, RECORDING_LINES, type ReadingPace } from '@/canvas-bridge/recording-guide';
 import { StudioErrorNotice, useStudioErrorState } from './studio-errors';
 import { studioOverlayContainer } from './studio-overlay';
@@ -31,6 +31,7 @@ function RecordingSession({ onClose, onSave }: Omit<Props, 'open'>) {
   const recorder = useRef<MediaRecorder | undefined>(undefined);
   const timer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const preview = useRef('');
+  const customName = useRef(false), defaultName = useRef('');
   const audio = useRef<HTMLAudioElement>(null);
 
   const release = () => {
@@ -51,7 +52,7 @@ function RecordingSession({ onClose, onSave }: Omit<Props, 'open'>) {
 
   const start = async () => {
     if (pending.current) return;
-    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined' || typeof AudioContext === 'undefined') {
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined' || !recordingAudioSupported()) {
       setError('当前浏览器无法录音，请使用 HTTPS 网站和支持录音的浏览器，也可以上传音频文件。');
       return;
     }
@@ -80,7 +81,9 @@ function RecordingSession({ onClose, onSave }: Omit<Props, 'open'>) {
           const result = await recordingFile(new Blob(chunks, { type: rec.mimeType || chunks[0].type }));
           if (!live.current || id !== attempt.current) return;
           preview.current = URL.createObjectURL(result);
-          setFile(result); setName(result.name.replace(/\.wav$/i, '')); setUrl(preview.current); setStage('ready');
+          defaultName.current = result.name.replace(/\.wav$/i, '');
+          setFile(result); if (!customName.current) setName(defaultName.current);
+          setUrl(preview.current); setStage('ready');
         } catch (e) { if (live.current && id === attempt.current) { setStage('idle'); setError(e); } }
         finally { pending.current = false; }
       };
@@ -117,13 +120,13 @@ function RecordingSession({ onClose, onSave }: Omit<Props, 'open'>) {
   const working = stage === 'requesting' || stage === 'processing' || stage === 'saving' || stage === 'countdown';
   const recorded = stage === 'ready' || stage === 'saving';
   const cue = readingCue(stage === 'recording' ? elapsed : 0, pace);
-  const status = stage === 'recording' ? cue.current < 0 && elapsed >= 12 ? '读完后可以结束录音' : '跟着高亮，轻松往下读' : stage === 'countdown' ? '准备开口' : stage === 'requesting' ? '请允许浏览器使用麦克风' : stage === 'processing' ? '正在整理录音…' : recorded ? '录好了，先听一听' : '准备好后，开始录音';
+  const status = stage === 'recording' ? cue.current < 0 && elapsed >= 12 ? '读完后可以结束录音' : '跟着高亮往下读' : stage === 'countdown' ? '准备开口' : stage === 'requesting' ? '请允许浏览器使用麦克风' : stage === 'processing' ? '正在整理录音…' : recorded ? '录好了，先听一听' : '准备好后，开始录音';
   let character = 0;
 
   return <Modal open title="录制声音" footer={null} width={480} getContainer={studioOverlayContainer} className="asset-recorder-modal"
     onCancel={() => stage !== 'saving' && onClose()} closable={stage !== 'saving'} mask={{ closable: false }} keyboard={stage !== 'saving'}>
     <div className="asset-recorder">
-      <p className="asset-recorder-intro">找个安静的地方，用平时说话的声音读一遍。只录自己的人声，不放背景音乐。</p>
+      <p className="asset-recorder-intro">找个安静的地方，用平时说话的声音读一遍。只录你自己或已获授权的声音，不放背景音乐。</p>
       {!recorded && <>
         <div className="asset-recorder-reading-heading"><strong>跟着读，约 15 秒</strong><div className="asset-recorder-pace" role="group" aria-label="朗读节奏">
           {([{ value: 'natural', label: '自然' }, { value: 'relaxed', label: '稍慢' }] as const).map(p => <button key={p.value} type="button" aria-pressed={pace === p.value} disabled={stage !== 'idle'} onClick={() => setPace(p.value)}>{p.label}</button>)}
@@ -135,23 +138,23 @@ function RecordingSession({ onClose, onSave }: Omit<Props, 'open'>) {
           })}</p>)}
           {stage === 'countdown' && <div className="asset-recorder-countdown" role="status" aria-label={`倒数 ${countdown}`}><strong>{countdown}</strong><span>准备开口</span></div>}
         </div>
-        <p className="asset-recorder-pace-note">高亮提示朗读节奏，逗号处稍停，句号处换气。</p>
+        <p className="asset-recorder-pace-note">高亮提示朗读节奏，逗号处稍停，句号处换气。14.9 秒自动结束。</p>
       </>}
       <div className={`asset-recorder-state${stage === 'recording' ? ' is-recording' : ''}`}>
         <p role="status">{stage === 'recording' && <i aria-hidden="true"/>}{status}</p>
-        <span className="asset-recorder-time" aria-label={`录音时长 ${clock(seconds)}`}>{clock(seconds)}<small> / 00:15</small></span>
+        <span className="asset-recorder-time" aria-label={`录音时长 ${clock(seconds)}`}>{clock(seconds)}{!recorded && <small> · 建议 {RECORDING_SUGGESTED_SECONDS} 秒</small>}</span>
       </div>
       {recorded && <div className="asset-recorder-preview">
         <audio ref={audio} src={url} controls preload="metadata" aria-label="试听录音"/>
         <label htmlFor="asset-recording-name">录音名称</label>
-        <Input id="asset-recording-name" value={name} maxLength={80} disabled={stage === 'saving'} onChange={e => setName(e.target.value)}/>
+        <Input id="asset-recording-name" value={name} maxLength={80} disabled={stage === 'saving'} onChange={e => { customName.current = e.target.value !== defaultName.current; setName(e.target.value); }}/>
       </div>}
       {error && <p className="assets-form-error"><StudioErrorNotice error={error}/></p>}
       <div className="asset-recorder-actions">
         <Button disabled={stage === 'saving'} onClick={onClose}>取消</Button>
         {recorded ? <><Button icon={<RotateCcw size={15}/>} disabled={working} onClick={() => void start()}>重录</Button>
           <Button type="primary" loading={stage === 'saving'} disabled={!name.trim()} onClick={() => void save()}>保存到资产库</Button></>
-          : stage === 'recording' ? <Button type="primary" icon={<Square size={14}/>} onClick={() => { if (recorder.current?.state === 'recording') recorder.current.stop(); }}>结束录音</Button>
+          : stage === 'recording' ? <>{elapsed < RECORDING_STOP_AFTER_SECONDS && <span className="asset-recorder-stop-hint" role="status">再读 {Math.ceil(RECORDING_STOP_AFTER_SECONDS - elapsed)} 秒</span>}<Button type="primary" icon={<Square size={14}/>} disabled={elapsed < RECORDING_STOP_AFTER_SECONDS} onClick={() => { if (elapsed >= RECORDING_STOP_AFTER_SECONDS && recorder.current?.state === 'recording') recorder.current.stop(); }}>结束录音</Button></>
           : <Button type="primary" icon={<Mic size={15}/>} loading={working} onClick={() => void start()}>{stage === 'processing' ? '正在整理' : stage === 'countdown' ? '准备录音' : '开始录音'}</Button>}
       </div>
     </div>

@@ -129,6 +129,7 @@ html[data-layout="desktop"] .assets-tile:is(:hover, :focus-within) .assets-tile-
 .asset-recorder-preview audio { display: block; width: 100%; min-width: 0; margin-bottom: 8px; }
 .asset-recorder-preview label { font-size: 12px; color: var(--ip-muted, #5b6572); }
 .asset-recorder-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 24px; }
+.asset-recorder-stop-hint { align-self: center; font-size: 12px; color: var(--ip-muted, #5b6572); }
 .asset-recorder-modal .ant-modal-container { border-radius: 14px; }
 .assets-skeleton { display: block; width: 100%; border-radius: 14px; background: linear-gradient(90deg, #f3f4f6, #f8f9fa, #f3f4f6); background-size: 200% 100%; animation: assets-shimmer 1.4s ease-in-out infinite; }
 @keyframes assets-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }

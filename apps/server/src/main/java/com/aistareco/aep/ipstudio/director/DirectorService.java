@@ -624,7 +624,9 @@ public class DirectorService {
                 if (!"character".equals(a.path("kind").asText())) throw invalid("只有角色可以绑定声音");
                 String key = projects.requireOwnedAssetKey(userId, d.path("key").asText(null));
                 if (key == null) throw invalid("请上传声音或从声音库选择");
-                double duration = mediaImport.validateReferenceAudio(key);
+                var sample = mediaImport.prepareReferenceAudio(userId, key);
+                key = sample.key();
+                double duration = sample.durationSec();
                 // Persist the supplier receipt before binding. No generation, credit hold or voice-training call.
                 // Keep the owned source key as the character's identity: receipts expire or change with model/Key.
                 if (!fixtures.enabled()) {
