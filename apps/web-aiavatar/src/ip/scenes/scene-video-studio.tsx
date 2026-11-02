@@ -838,7 +838,7 @@ export function SceneVideoStudio() {
               : <span className="scene-pill"><Cpu size={14} strokeWidth={1.5}/><span>{chosenVideo?.name ?? "视频模型"}</span></span>}
             {specPill}
           </div>
-          <button type="button" className="scene-go" aria-label={toAssistant ? "交给创作助手" : "生成视频"} title={goBlocker || (toAssistant ? "交给画布里的创作助手：先出方案和报价，确认后才扣积分" : undefined)}
+          <button type="button" className="scene-go" aria-label={toAssistant ? "交给创作助手" : "生成视频"} aria-describedby={hint || goBlocker ? "scene-video-go-note" : undefined} title={goBlocker || (toAssistant ? "交给画布里的创作助手：先出方案和报价，确认后才扣积分" : undefined)}
             disabled={busy || !!goBlocker || uploading !== undefined} onClick={() => void (toAssistant ? handoff() : generate())}>
             {busy && !writing ? <Loader2 size={16} className="studio-gallery-spinner"/> : null}
             <span>{toAssistant ? "交给创作助手" : "生成视频"}</span>
@@ -846,7 +846,7 @@ export function SceneVideoStudio() {
             {(long || recreation || caps?.mock || videoQuote != null) && <small>{long ? `分 ${segments.length} 段 · 先报价` : recreation ? "先出方案" : caps?.mock ? "免费" : `${videoQuote} 积分`}</small>}
           </button>
           {/* 点了没做成的原因用提醒色；还没动手时只是灰字说一句还差什么。 */}
-          {(hint || goBlocker) && <p className={`scene-hint${hint ? "" : " is-note"}`} role="status">{hint || goBlocker}</p>}
+          {(hint || goBlocker) && <p id="scene-video-go-note" className={`scene-hint${hint ? "" : " is-note"}`} role="status">{hint || goBlocker}</p>}
           {!toAssistant && plan?.note && <p className="scene-hint is-note">{plan.note}</p>}
           {!toAssistant && plan?.used.some(m => m.mediaType === 'audio') && <p className="scene-hint is-note" role="status">{AUDIO_REFERENCE_NOTICE}</p>}
           {durationNote && <p className="scene-hint is-note">{durationNote}</p>}

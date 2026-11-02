@@ -196,6 +196,8 @@ html[data-layout="desktop"] .scene-composer-head .scene-recent-host { display: n
 .scene-fact-chips small { margin-left: 3px; color: var(--ip-muted); font-size: 11px; }
 .scene-ai-button { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; height: 30px; padding: 0 12px; border: 1px solid var(--sn-ai-line); border-radius: 999px; background: var(--sn-ai-bg); color: var(--sn-ai-ink); font: inherit; font-size: 12.5px; cursor: pointer; transition: background 140ms var(--ip-ease), border-color 140ms var(--ip-ease); }
 .scene-ai-button svg { color: var(--sn-ai-star); }
+/* ip-brand.css 的 .ip-brand-surface button { color: inherit }（0,1,1）压过上面单个类名，AI 编导一直是墨色字；多带一层 .scene-studio 才是设计稿的紫色。 */
+.scene-studio .scene-ai-button { color: var(--sn-ai-ink); }
 .scene-ai-button:hover:not(:disabled) { background: #e9ebfc; border-color: #c9cef7; }
 .scene-ai-button:disabled { opacity: .55; cursor: not-allowed; }
 
@@ -410,6 +412,7 @@ html:not([data-layout="desktop"]) .scene-fact-chips button { flex: 0 0 auto; hei
 html:not([data-layout="desktop"]) .scene-pill { height: 36px; }
 html:not([data-layout="desktop"]) .scene-pill.is-select .studio-select-trigger { height: 36px; }
 html:not([data-layout="desktop"]) .scene-ai-button { height: 34px; }
+html:not([data-layout="desktop"]) .scene-icon-button.is-large { width: 44px; height: 44px; }
 html:not([data-layout="desktop"]) .scene-ref-remove { width: 24px; height: 24px; }
 html:not([data-layout="desktop"]) .scene-ref-remove::before { content: ""; position: absolute; inset: -9px; }
 html:not([data-layout="desktop"]) .scene-results { margin: 0 12px; min-height: 320px; }

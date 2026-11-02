@@ -386,6 +386,7 @@ export function SceneImageStudio() {
   const listGroups = catalog.imageGroups.map(g => ({ id: g.id, title: g.title, items: catalog.image.filter(s => s.group === g.id && s.id !== FREE_SCENE_ID) }));
   const groupTitle = catalog.imageGroups.find(g => g.id === scene.group)?.title;
   const onPick = (id: string) => { const next = findImageScene(catalog, id); if (next && (next.id !== scene.id || draft)) goToScene(next); };
+  const someRequired = scene.refs.some(r => r.required);
 
   return <main className={`ip-brand-surface scene-studio scene-image-studio${pinned ? " has-drawer" : ""}`} data-studio-overlay-root>
     {(pinned || drawerOpen) && <SceneDrawer heading="AI 图片" groups={listGroups} top={free} current={scene.id} onPick={onPick} pinned={pinned} onPin={pin} onClose={() => setDrawerOpen(false)}/>}
@@ -399,6 +400,7 @@ export function SceneImageStudio() {
 
       <div className="scene-compose">
         <div className={`scene-media-row${scene.refs.length <= 3 ? " is-large" : ""}`} role="group" aria-label="参考图">
+          {/* 「可选」只在有必填的一排里标：自由出图四格全是可选，每格都写一遍在手机上把名字挤成「参考图 2 可…」（2026-11-02）。 */}
           {scene.refs.map((ref, i) => {
             const slot = slots[i];
             const Icon = refIcon(ref.label);
@@ -406,7 +408,7 @@ export function SceneImageStudio() {
               {slot ? <span className="scene-media-preview"><SignedImage src={slot.url} storageKey={slot.key} alt={ref.label}/><i className="scene-ref-index">图{i + 1}</i></span>
                 : <button type="button" className="scene-slot-add" aria-label={`从资产库选${ref.label}`} title={ref.hint ?? undefined} onClick={() => openPicker(i)}>
                     <SlotEmpty Icon={Icon} size={28}/></button>}
-              <span title={ref.hint}>{ref.label}{!slot && !ref.required && <small>可选</small>}</span>
+              <span title={ref.hint}>{ref.label}{!slot && !ref.required && someRequired && <small>可选</small>}</span>
               {slot && <button type="button" className="scene-ref-remove" aria-label={`移除${ref.label}`} onClick={() => setSlots(old => { const next = [...old]; next[i] = undefined; return next; })}><X size={11} strokeWidth={1.8}/></button>}
             </div>;
           })}
@@ -437,11 +439,11 @@ export function SceneImageStudio() {
                 counts={counts} count={usedCount} onCount={setCount} options={scene.options} picked={picked} onPick={(key, choice) => setPicked(old => ({ ...old, [key]: choice }))} onClose={() => setSettingsOpen(false)}/>}
             </div>
           </div>
-          <button type="button" className="scene-go" aria-label="生成图片" title={blocker || undefined} disabled={busy || !!blocker} onClick={() => void generate()}>
+          <button type="button" className="scene-go" aria-label="生成图片" aria-describedby={hint || blocker ? "scene-image-go-note" : undefined} title={blocker || undefined} disabled={busy || !!blocker} onClick={() => void generate()}>
             {busy ? <Loader2 size={16} className="studio-gallery-spinner"/> : null}<span>生成图片</span>
             {(caps?.mock || (chosen && quote > 0)) && <small>{caps?.mock ? "免费" : `${quote} 积分`}</small>}
           </button>
-          {(hint || blocker) && <p className={`scene-hint${hint ? "" : " is-note"}`} role="status">{hint || blocker}</p>}
+          {(hint || blocker) && <p id="scene-image-go-note" className={`scene-hint${hint ? "" : " is-note"}`} role="status">{hint || blocker}</p>}
           {(note || specNote) && <p className="scene-hint is-note" role="status">{[note?.text, specNote].filter(Boolean).join(" ")}
             {note?.undo && <button type="button" onClick={note.undo}>撤销</button>}</p>}
           {models && !candidates.length && !caps?.mock && <SceneNoModel kind="图片"/>}

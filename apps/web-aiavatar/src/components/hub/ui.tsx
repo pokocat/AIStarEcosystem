@@ -8,6 +8,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { House, Image as ImageIcon, Plus, UserRound, Video } from "lucide-react";
 import { useUiVersion } from "@/shell/ui-version";
 import { AccountAvatar } from "@/shell/account-avatar";
 import { useIdentity } from "@/proto/api";
@@ -122,23 +123,40 @@ const TABS = [
 /**
  * 新版手机底栏：场景创作（AI 视频 / AI 图片）放到底栏上，和电脑左栏同一批入口；项目、资产在「我的」里。
  * 2026-10-30 线上走查：新版手机底栏还是旧的那一排，AI 视频、AI 图片从底栏到不了。
+ * 样子照设计稿「AI 视频与图片页重设计」的两张手机稿（2026-11-02）：白底细线、细图标，「创作」是栏里的墨色小方块，
+ * 不再是凸出栏外的大圆钮。原来新版各页各自把旧底栏染成墨色，首页和「我的」没染到，同一个底栏有两种样子。
  */
 const NEXT_TABS = [
-  TABS[0],
-  { href: "/video", label: "AI 视频", icon: VideoTabIcon, match: (p: string) => p.startsWith("/video") },
-  TABS[2],
-  { href: "/image", label: "AI 图片", icon: ImageTabIcon, match: (p: string) => p.startsWith("/image") },
-  { ...TABS[4], match: (p: string) => p.startsWith("/me") || p.startsWith("/licenses") || p.startsWith("/projects") || p.startsWith("/assets") },
+  { href: "/dashboard", label: "首页", icon: House, match: (p: string) => p === "/dashboard" },
+  { href: "/video", label: "AI 视频", icon: Video, match: (p: string) => p.startsWith("/video") },
+  { fab: true as const, href: "/create", label: "创作" },
+  { href: "/image", label: "AI 图片", icon: ImageIcon, match: (p: string) => p.startsWith("/image") },
+  { href: "/me", label: "我的", icon: UserRound, match: (p: string) => p.startsWith("/me") || p.startsWith("/licenses") || p.startsWith("/projects") || p.startsWith("/assets") || p.startsWith("/director") },
 ];
+
+function NextTabBar({ pathname, createOn }: { pathname: string; createOn: boolean }) {
+  return (
+    <nav className="hub-tabbar studio-tabbar" aria-label="底部导航">
+      {NEXT_TABS.map((t) => {
+        const on = "fab" in t ? createOn : t.match(pathname);
+        return <Link key={t.href} href={t.href} replace className={"studio-tab" + ("fab" in t ? " is-create" : "")} aria-current={on ? "page" : undefined}>
+          {"fab" in t ? <span className="studio-tab-create" aria-hidden><Plus size={16} strokeWidth={1.8} /></span> : <t.icon size={20} strokeWidth={on ? 1.6 : 1.4} aria-hidden />}
+          <span className="lbl">{t.label}</span>
+        </Link>;
+      })}
+    </nav>
+  );
+}
 
 export function HubTabBar() {
   const pathname = usePathname() || "/";
   const identity = useIdentity();
-  const tabs = useUiVersion() === "next" ? NEXT_TABS : TABS;
+  const next = useUiVersion() === "next";
   const createOn = pathname.startsWith("/create") || pathname.startsWith("/studio");
+  if (next) return <NextTabBar pathname={pathname} createOn={createOn} />;
   return (
     <nav className="wx-tabbar hub-tabbar">
-      {tabs.map((t) =>
+      {TABS.map((t) =>
         "fab" in t ? (
           <div key="create" className="wx-fab-slot">
             <Link className={"wx-fab" + (createOn ? " on" : "")} href={t.href} replace aria-label="创作">
@@ -505,25 +523,6 @@ function LayersIcon({ strong }: { strong?: boolean }) {
     <svg {...svgProps(strong)}>
       <polygon points="12 2 22 8 12 14 2 8 12 2" />
       <polyline points="2 13 12 19 22 13" />
-    </svg>
-  );
-}
-
-function VideoTabIcon({ strong }: { strong?: boolean }) {
-  return (
-    <svg {...svgProps(strong)}>
-      <rect x="2.5" y="6" width="13.5" height="12" rx="2.5" />
-      <path d="m16 10.5 5.5-3v9l-5.5-3" />
-    </svg>
-  );
-}
-
-function ImageTabIcon({ strong }: { strong?: boolean }) {
-  return (
-    <svg {...svgProps(strong)}>
-      <rect x="3" y="3" width="18" height="18" rx="3" />
-      <circle cx="9" cy="9" r="2" />
-      <path d="m21 15-4.5-4.5L6 21" />
     </svg>
   );
 }
