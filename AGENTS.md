@@ -1088,9 +1088,9 @@ Studio 支持模型开放首尾帧、全能参考、清晰度、六种画幅及�
 
 线上 4 家企业的模型策略都还是创建值（空名单、每人在途 1），企业付款记录 0 条：空名单按旧规则等于全部禁用，付款弹窗里企业积分一直是灰的。现在**空名单 = 全部模型**（包括以后新上的），非空才按名单拦；新企业在途上限 10，V73 只调整从没改过的策略。企业设置页是「全部模型 / 只允许选定的模型」二选一，后者没选模型不能保存；画布右上角在个人积分旁显示本人可用的企业积分（`WalletBadge enterprise`，只在画布开）。付款仍是每次生成选一次或存默认，规则不变。发布记录 `docs/releases/enterprise-canvas-credits-release-20261102.md`。
 
-### 所有付费功能同一套企业付款 · 2026-11-02（本地，未发布；server + web-aiavatar）
+### 所有付费功能同一套企业付款 · 2026-11-02（已生产发布 `20261102-enterprise-billing-everywhere`，main `856ce19cf`；server + web-aiavatar）
 
-用户要求「全部功能都走一样的逻辑」，并且选过默认后不再弹窗。**默认付款账户存在企业成员关系上**（V74 `billing_default`，`PUT /enterprises/{id}/billing-default`，上下文带 `billingDefault`），不再只存浏览器；所有付费入口都调 `chooseStudioBilling`，设了默认就不弹，换设备也一样；默认企业但成员已停用时重新询问，不换个人。**数字资产与声音克隆接入企业付款**：前端 `proto/api.ts` 的 `payer()` 走同一个选择，经 `X-Aep-Billing` 头交给服务端（`DapPayer`）；企业规则（模型名单、在途上限、成员停用取消未开始任务、按原账户结算退回）与画布相同。新增付费入口：前端必须经 `chooseStudioBilling`（Studio 请求体 `billing`，数字资产走 `payer()`），服务端冻结必须经 `EnterpriseBillingService.reserve`，并把引用类型加进它的 `SCOPES`；不许只扣个人积分。
+用户要求「全部功能都走一样的逻辑」，并且选过默认后不再弹窗。**默认付款账户存在企业成员关系上**（V74 `billing_default`，`PUT /enterprises/{id}/billing-default`，上下文带 `billingDefault`），不再只存浏览器；所有付费入口都调 `chooseStudioBilling`，设了默认就不弹，换设备也一样；默认企业但成员已停用时重新询问，不换个人。**数字资产与声音克隆接入企业付款**：前端 `proto/api.ts` 的 `payer()` 走同一个选择，经 `X-Aep-Billing` 头交给服务端（`DapPayer`）；企业规则（模型名单、在途上限、成员停用取消未开始任务、按原账户结算退回）与画布相同。新增付费入口：前端必须经 `chooseStudioBilling`（Studio 请求体 `billing`，数字资产走 `payer()`），服务端冻结必须经 `EnterpriseBillingService.reserve`，并把引用类型加进它的 `SCOPES`；不许只扣个人积分。回滚时 server 不能单独回（旧 server 不认 `X-Aep-Billing`，选了企业积分的数字资产会改扣个人积分），见发布记录 `docs/releases/enterprise-billing-everywhere-release-20261102.md`。
 
 ### Studio 场景化首页与 AI 图片 / AI 视频（2026-10-29，本地未发布）
 
