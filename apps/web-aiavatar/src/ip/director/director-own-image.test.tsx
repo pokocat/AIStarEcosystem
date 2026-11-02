@@ -50,12 +50,9 @@ test("default use adopts the image directly; a failed upload shows why and adds 
   await waitFor(() => expect(within(panel).getByRole("alert").textContent).toContain("图片没有上传成功：图片超过 10MB 上限"));
   expect(within(panel).queryByAltText("已上传的图片")).toBeNull();
   expect(within(panel).queryByRole("radiogroup")).toBeNull();
-  pick("选择资产图片", "说明.gif", "image/gif");
-  expect(within(panel).getByRole("alert").textContent).toContain("只支持 PNG 或 JPG");
-  expect(api.uploadImage).toHaveBeenCalledTimes(1);
 
   api.uploadImage.mockResolvedValueOnce({ key: "u/linxia.jpg", url: "/cdn/linxia.jpg", fileName: "林夏.jpg" });
-  pick("选择资产图片", "林夏.jpg", "image/jpeg");
+  pick("选择资产图片", "林夏.heic", "");
   await within(panel).findByAltText("已上传的图片");
   fireEvent.click(within(panel).getByRole("button", { name: "添加" }));
   await waitFor(() => expect(api.edit).toHaveBeenCalledTimes(1));

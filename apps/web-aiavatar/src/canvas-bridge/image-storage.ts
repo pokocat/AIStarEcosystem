@@ -1,3 +1,4 @@
+import { prepareImageForUpload } from '@ai-star-eco/api-client/image-upload';
 // ─────────────────────────────────────────────────────────────────────────────
 // 图片存储 —— 顶替上游的 `services/image-storage.ts`。
 //
@@ -72,7 +73,8 @@ export async function uploadImage(input: string | Blob, _options?: ImageReadOpti
     const known = alreadyUploaded.get(input);
     if (known) return known;   // 服务端刚生成的图，别再传一遍
   }
-  const blob = await toBlob(input);
+  const original = await toBlob(input);
+  const blob = await prepareImageForUpload(original instanceof File ? original : new File([original], `canvas.${original.type.split("/")[1] || "png"}`, { type: original.type }));
   const { width, height } = await measure(blob);
   const ext = (blob.type.split("/")[1] || "png").replace("jpeg", "jpg");
   const res = await uploadToOss(blob, `canvas-${Date.now()}.${ext}`);

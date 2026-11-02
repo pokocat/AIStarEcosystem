@@ -1,3 +1,4 @@
+import { prepareImageForUpload } from '@ai-star-eco/api-client/image-upload';
 import type { ModelBillingQuote } from "@ai-star-eco/types/model-billing";
 // ─────────────────────────────────────────────────────────────────────────────
 // api/video-studio.ts：「AI 创作 → 视频生成」数据层（docs/video-studio-plan.md §4）。
@@ -70,7 +71,8 @@ export async function listModels(): Promise<VideoStudioModel[]> {
 
 /** 上传一个素材（图片 / 视频 / 音频），返回提交任务时要带回的 key 与预览地址。 */
 export async function upload(file: File, mediaType: VideoStudioMediaType,
-  selection: { endpointId: string | null; mode: VideoStudioMode; frame: boolean }): Promise<VideoStudioUpload> {
+  selection: { endpointId: string | null; mode: VideoStudioMode; frame: boolean; maxImageBytes?: number }): Promise<VideoStudioUpload> {
+  if (mediaType === "image") file = await prepareImageForUpload(file, { maxBytes: selection.maxImageBytes });
   if (USE_MOCK) return mockUpload(file, mediaType);
   const form = new FormData();
   form.append("file", file);

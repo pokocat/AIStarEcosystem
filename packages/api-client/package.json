@@ -21,7 +21,9 @@
     "./api/auth": "./src/api/auth.ts",
     "./api/account": "./src/api/account.ts",
     "./model-task-state": "./src/model-task-state.ts",
-    "./public-model-error": "./src/public-model-error.ts"
+    "./public-model-error": "./src/public-model-error.ts",
+    "./image-upload": "./src/image-upload.ts",
+    "./image-upload-policy": "./src/image-upload-policy.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -34,7 +36,8 @@
     "next": "^16.0.0"
   },
   "dependencies": {
-    "@ai-star-eco/types": "workspace:*"
+    "@ai-star-eco/types": "workspace:*",
+    "libheif-js": "1.23.5"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

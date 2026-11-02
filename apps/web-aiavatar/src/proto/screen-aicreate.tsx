@@ -1,4 +1,6 @@
 "use client";
+import { prepareImageForUpload } from '@ai-star-eco/api-client/image-upload';
+import { IMAGE_UPLOAD_ACCEPT } from '@ai-star-eco/api-client/image-upload-policy';
 import React from "react";
 import { Icons } from "./icons";
 import * as UI from "./ui";
@@ -101,16 +103,21 @@ function AIUpload({ char, onUploaded, onClose }) {
   const [files, setFiles] = useStateAC([] as File[]);
   const [previews, setPreviews] = useStateAC([] as string[]);
   const inputRef = useRefAC(null as any);
+  const [preparing, setPreparing] = useStateAC(false);
   useEffectAC(() => () => previews.forEach((u) => URL.revokeObjectURL(u)), [previews]);
 
-  const onPickFiles = (e) => {
+  const onPickFiles = async (e) => {
     const list: File[] = Array.from(e.target.files || []).slice(0, 6) as File[];
     if (!list.length) return;
-    const over = list.find((f: File) => f.size > 200 * 1024 * 1024);
-    if (over) { toast('单张照片不能超过 200MB', { tone: 'warn' }); return; }
-    previews.forEach((u) => URL.revokeObjectURL(u));
-    setFiles(list);
-    setPreviews(list.map((f) => URL.createObjectURL(f)));
+    setPreparing(true);
+    try {
+      const ready: File[] = [];
+      for (const file of list) ready.push(await prepareImageForUpload(file));
+      previews.forEach((u) => URL.revokeObjectURL(u));
+      setFiles(ready);
+      setPreviews(ready.map((f) => URL.createObjectURL(f)));
+    } catch (error) { toast(error instanceof Error ? error.message : '图片处理未完成，请重试', { tone: 'warn' }); }
+    finally { setPreparing(false); e.target.value = ''; }
   };
 
   const goods = [
@@ -130,7 +137,7 @@ function AIUpload({ char, onUploaded, onClose }) {
   const picked = files.length > 0;
 
   return hAC('div', { style: { position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } },
-    hAC('input', { ref: inputRef, type: 'file', accept: 'image/png,image/jpeg,image/webp,image/heic', multiple: true, style: { display: 'none' }, onChange: onPickFiles }),
+    hAC('input', { ref: inputRef, type: 'file', accept: IMAGE_UPLOAD_ACCEPT, disabled: preparing, multiple: true, style: { display: 'none' }, onChange: onPickFiles }),
     hAC('div', { className: 'wx-nav', style: { paddingLeft: 8 } },
       hAC('span', { className: 'nav-spacer' }),
       hAC('span', { className: 'nav-title' }, '上传照片'),
@@ -152,7 +159,6 @@ function AIUpload({ char, onUploaded, onClose }) {
           : hAC('div', null,
               hAC('div', { style: { width: 60, height: 60, margin: '0 auto 16px', borderRadius: 16, background: 'var(--surface)', border: '1.5px dashed var(--primary-soft)', display: 'grid', placeItems: 'center', color: 'var(--primary)' } }, hAC(Icons.upload, { size: 26, stroke: 1.8 })),
               hAC('div', { style: { fontSize: 14.5, fontWeight: 700, color: 'var(--ink)', marginBottom: 6 } }, '选择照片以上传'),
-              hAC('div', { style: { fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.5, marginBottom: 16 } }, '支持 PNG、JPG、HEIC、WebP，单张不超过 200MB'),
               hAC('button', { onClick: () => inputRef.current && inputRef.current.click(), className: 'm-tap', style: { height: 38, padding: '0 20px', borderRadius: 'var(--r-pill)', border: '1px solid var(--line-2)', background: 'var(--surface)', cursor: 'pointer', fontSize: 13.5, fontWeight: 700, color: 'var(--ink)' } }, '选择照片'))),
 
       // 照片要求
@@ -173,7 +179,7 @@ function AIUpload({ char, onUploaded, onClose }) {
 
     hAC('div', { style: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 20, padding: '12px 18px calc(12px + var(--home-ind))', background: 'rgba(255,255,255,.94)', backdropFilter: 'blur(10px)', borderTop: '1px solid var(--line)', display: 'flex', gap: 11 } },
       hAC(UI.Button, { variant: 'line', onClick: onClose, style: { flex: '0 0 88px', padding: '0 12px' } }, '取消'),
-      hAC(UI.Button, { variant: 'dark', full: true, size: 'lg', disabled: !picked, icon: Icons.upload, onClick: () => onUploaded(files), style: { flex: '1 1 0', width: 'auto', padding: '0 14px' } }, '上传并生成')));
+      hAC(UI.Button, { variant: 'dark', full: true, size: 'lg', disabled: !picked || preparing, icon: Icons.upload, onClick: () => onUploaded(files), style: { flex: '1 1 0', width: 'auto', padding: '0 14px' } }, preparing ? '正在处理图片…' : '上传并生成')));
 }
 
 // ============================================================

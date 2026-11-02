@@ -121,14 +121,14 @@ describe("刷新之后怎么处理还在跑的节点", () => {
 describe("能上传什么", () => {
   const file = (name: string, type: string) => new File([new Uint8Array([1])], name, { type });
 
-  it("只收 JPG / PNG —— 服务端 /uploads 就只收这两种", () => {
+  it("图片先在端上处理；音视频仍走各自入口", () => {
     expect(isSupportedUploadImage(file("a.jpg", "image/jpeg"))).toBe(true);
     expect(isSupportedUploadImage(file("a.png", "image/png"))).toBe(true);
     // 拖进来必然 400 的那些：此前调用点没有 catch，界面上什么都不发生
     expect(isSupportedUploadImage(file("a.mp4", "video/mp4"))).toBe(false);
     expect(isSupportedUploadImage(file("a.mp3", "audio/mpeg"))).toBe(false);
-    expect(isSupportedUploadImage(file("a.webp", "image/webp"))).toBe(false);
-    expect(isSupportedUploadImage(file("a.heic", "image/heic"))).toBe(false);
+    expect(isSupportedUploadImage(file("a.webp", "image/webp"))).toBe(true);
+    expect(isSupportedUploadImage(file("a.heic", "image/heic"))).toBe(true);
     // 浏览器没给 type 时按扩展名认（拖拽有时就是空 type）
     expect(isSupportedUploadImage(file("photo.JPEG", ""))).toBe(true);
     expect(isSupportedUploadImage(file("clip.mov", ""))).toBe(false);

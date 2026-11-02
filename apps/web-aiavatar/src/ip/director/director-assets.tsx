@@ -1,4 +1,5 @@
 "use client";
+import { IMAGE_UPLOAD_ACCEPT } from '@ai-star-eco/api-client/image-upload-policy';
 
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { Check, ChevronRight, ImageIcon, Library, Mic, Plus, RefreshCw, Trash2, Upload, Wand2, X } from "lucide-react";
@@ -149,10 +150,10 @@ function EpisodePicker({ episodes, value, onChange }: { episodes: DirectorEpisod
   </div>;
 }
 
-const IMAGE_ACCEPT = "image/png,image/jpeg";
-/** 上传前先在本地挡住格式不对的文件；大小由服务端按配置判，超过直接报错，不压缩、不截断。 */
+const IMAGE_ACCEPT = IMAGE_UPLOAD_ACCEPT;
+/** Camera originals are prepared by IpStudioApi.uploadImage; do not reject before conversion. */
 function imageProblem(f: File) {
-  return /^image\/(png|jpe?g)$/.test(f.type) || /\.(png|jpe?g)$/i.test(f.name) ? "" : "只支持 PNG 或 JPG 图片，请换一张";
+  return f.size ? "" : "图片是空的，请重新选择";
 }
 
 /** 隐藏的文件选择框：选好后交给 onFile，清空 value 让同一张图能再选一次。 */
@@ -202,7 +203,7 @@ function AddAsset({ work, apply, setError, onClose }: WorkbenchProps & { onClose
         {image ? <img src={image.url} alt="已上传的图片"/> : <span className="director-ref-empty"><ImageIcon size={18}/></span>}
         <div className="director-own-image-text">
           <strong title={image?.name}>{busy === "image" ? "正在上传图片…" : image ? image.name : "用自己的图"}</strong>
-          <small>PNG / JPG。上传后选这张图怎么用。</small>
+          <small>支持手机照片。上传后选这张图怎么用。</small>
         </div>
         <div className="director-ref-actions">
           <button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={() => pick.current?.click()}><Upload size={14}/>{image ? "换一张" : "上传图片"}</button>

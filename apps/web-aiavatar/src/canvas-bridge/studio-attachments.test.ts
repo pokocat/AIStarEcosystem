@@ -11,12 +11,12 @@ test('imports are positioned after earlier attachments instead of stacking',()=>
   const a=attachmentNode({kind:'text',title:'第一章',content:'A'},[]),b=attachmentNode({kind:'text',title:'第二章',content:'B'},[a]);
   expect(b.position.x).toBeGreaterThan(a.position.x+a.width);
 });
-test('oversized media and unsupported files never call upload',async()=>{
-  const media=vi.fn(),story=vi.fn();
-  const huge={name:'大图.png',size:51*1024*1024} as File;
-  await expect(readAssistantAttachment(huge,[],story,media)).rejects.toThrow('50 MB');
-  await expect(readAssistantAttachment({name:'文件.exe',size:1} as File,[],story,media)).rejects.toThrow('不支持');
-  expect(media).not.toHaveBeenCalled();expect(story).not.toHaveBeenCalled();
+test('large camera originals reach the image preparation entry instead of being rejected',async()=>{
+  const media=vi.fn().mockResolvedValue({mediaType:'image',key:'own/p.jpg',url:'/p.jpg',fileName:'p.jpg',mimeType:'image/jpeg',bytes:100,width:100,height:100}),story=vi.fn();
+  const huge={name:'大图.heic',type:'',size:51*1024*1024} as File;
+  const node=await readAssistantAttachment(huge,[],story,media);
+  expect(media).toHaveBeenCalledWith(huge,'image');expect(node.metadata?.storageKey).toBe('own/p.jpg');
+  expect(story).not.toHaveBeenCalled();
 });
 test('视频节点铺满: an imported video with a known size lands in its clip shape, without one in the default box',async()=>{
   const portrait=attachmentNode({kind:'video',url:'/v.mp4',storageKey:'own/v.mp4',title:'竖屏',width:720,height:1280},[]);
