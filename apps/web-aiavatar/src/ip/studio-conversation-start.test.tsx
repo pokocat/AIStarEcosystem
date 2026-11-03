@@ -30,7 +30,7 @@ test('example openers fill the box without sending; in the new version they sit 
     // 新版：常用开头在框外面一排，框里只有输入和发送；花钱的地方会先报价，这里不写扣费说明。
     expect(document.querySelector('.studio-conversation-start-box .studio-conversation-start-examples')).toBeNull();
     expect(document.querySelector('.studio-conversation-start > .studio-conversation-start-examples')).not.toBeNull();
-    expect(screen.queryByText(/按实际用量扣少量积分/)).toBeNull();
+    expect(document.querySelector('.studio-conversation-start-note')).toBeNull();
     expect(screen.queryByRole('button', { name: '先进画布看看' })).toBeNull();
   } finally { document.documentElement.removeAttribute('data-ui'); }
 });

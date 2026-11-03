@@ -44,7 +44,7 @@ export function StudioHome({ ready }: { ready: boolean }) {
   const showFailure = useStudioFailure();
   useEffect(() => {
     if (newCanvas.error === undefined) return;
-    showFailure({ action: '新建画布', error: newCanvas.error, next: '可以再点一次「新建」；反复失败的话展开「错误详情」复制后发给我们。' });
+    showFailure({ action: '新建画布', error: newCanvas.error, next: '请重试。多次失败时，可复制「错误详情」反馈给我们。' });
     newCanvas.clearError();
   }, [newCanvas.error]); // eslint-disable-line react-hooks/exhaustive-deps
   const startBlank = () => { if (inFlight.current) return; void newCanvas.start(); };
@@ -57,7 +57,7 @@ export function StudioHome({ ready }: { ready: boolean }) {
       const project = await createStudioEntry(entry);
       router.push(studioEntryHref(project.id, entry));
     } catch (e) {
-      showFailure({ action: '新建画布', error: e, next: '可以再点一次；反复失败的话展开「错误详情」复制后发给我们。' });
+      showFailure({ action: '新建画布', error: e, next: '请重试。多次失败时，可复制「错误详情」反馈给我们。' });
       setCreating(undefined); inFlight.current = false;
     }
   };
@@ -69,7 +69,7 @@ export function StudioHome({ ready }: { ready: boolean }) {
       const project = await createStudioEntry('assistant', brief);
       router.push(studioEntryHref(project.id, 'assistant', { send: !!brief.trim() && !studioBriefNeedsReference(brief) }));
     } catch (e) {
-      showFailure({ action: '用这句话新建画布', error: e, next: '输入的内容还在框里，可以再点一次「开始对话」。' });
+      showFailure({ action: '开始对话', error: e, next: '输入的内容已保留，请再次点击「开始对话」。' });
       setCreating(undefined); inFlight.current = false;
     }
   };
