@@ -185,11 +185,26 @@ class DirectorPromptsTest {
     }
 
     @Test
+    void episodeCodesCountAsHeadings() {
+        // 2026-11-03 线上《我的十年》的写法：幕、段落标题里的「E01-E24」是编号范围，「**E01 开机**」才是一集。
+        List<String> ps = new ArrayList<>(List.of("# 《我的十年》分集表 v2", "- 重场集120秒（E21/E22/E23）", "## 第一幕 幼师篇（E01-E24）",
+                "### S1 选择与融入（E01-E04）｜情绪：暖"));
+        ps.addAll(script(0, "**E01 开机**〔120秒·全剧倒叙框架〕", "**E02 十分钟的路**", "E03-E04 回顾", "### EP03：报到", "Ep.4 深夜名字卡", "Episode 5"));
+        assertEquals(List.of(4, 7, 13, 16, 19), DirectorPrompts.headingStarts(ps));
+        assertTrue(DirectorPrompts.isEpisodeHeading("**第1集**"));
+        assertFalse(DirectorPrompts.isEpisodeHeading("E01-E24"));
+        assertFalse(DirectorPrompts.isEpisodeHeading("E21/E22 是重场集"));
+        assertFalse(DirectorPrompts.isEpisodeHeading("Ending 1"));
+    }
+
+    @Test
     void headingTitleDropsTheEpisodeNumber() {
         assertEquals("下山", DirectorPrompts.headingTitle("# 第1集 下山"));
         assertEquals("进城", DirectorPrompts.headingTitle("## 第二集：进城"));
         assertEquals("回山", DirectorPrompts.headingTitle("【第3集】回山"));
         assertEquals("", DirectorPrompts.headingTitle("第4集"));
+        assertEquals("开机〔120秒·全剧倒叙框架〕", DirectorPrompts.headingTitle("**E01 开机**〔120秒·全剧倒叙框架〕"));
+        assertEquals("报到", DirectorPrompts.headingTitle("### EP03：报到"));
     }
 
     @Test

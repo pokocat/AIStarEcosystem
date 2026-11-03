@@ -789,7 +789,7 @@ public class DirectorService {
                 if (splitByHeadings(c, target)) { clearError(c, "split"); return null; }
                 int budget = textBudget(c);
                 if (draft.length() > budget) throw tooLongForModel("剧本", draft.length(), budget,
-                        "在正文里写上「第1集」「第2集」这样的分集标题后再拆分，会按标题免费拆分，不限长度；或者先把整份作为一集。");
+                        "在正文里写上「第1集」「第2集」或「E01」「E02」这样的分集标题后再拆分，会按标题免费拆分，不限长度；或者先把整份作为一集。");
                 nodeId = "split";
                 meta.put("paragraphCount", paragraphs.size()).put("draftHash", hash(draft));
                 if (target > 0) meta.put("targetEpisodeCount", target);
