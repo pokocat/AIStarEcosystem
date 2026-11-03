@@ -26,9 +26,9 @@ export function SplitPreview({ work, apply, setError }: Pick<WorkbenchProps, "wo
   return <section className="director-split-preview" aria-label="确认分集">
     <header>
       <h4><Scissors size={15}/>分成 {pending.episodes.length} 集，确认后生效</h4>
-      <p>{pending.source === "headings" ? "按剧本里标好的分集标题分，没有花积分。"
-        : pending.source === "marker" ? `按「${pending.marker ?? ""}」这种写法的标题分，没有花积分。分得不对可以放弃，换个写法再试。`
-        : "AI 只划定每集范围，正文一个字都没改。"}</p>
+      <p>{pending.source === "headings" ? "已按剧本中的分集标题拆分，未消耗积分。"
+        : pending.source === "marker" ? `已按分集标题「${pending.marker ?? ""}」的格式拆分，未消耗积分。结果有误可放弃后重新填写。`
+        : "AI 已划定每集范围，正文未做修改。"}</p>
     </header>
     {pre && <div className="director-split-preamble">
       <p><b>剧本开头 {pre.paragraphs} 段（{pre.chars.toLocaleString("zh-CN")} 字）不在任何一集里</b>
@@ -83,31 +83,31 @@ export function SplitChoiceDialog({ work, count, apply, onClose }: { work: Direc
   }, setLocalError);
   return <div className="director-dialog-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && !busy && onClose()}>
     <div className="director-dialog director-split-choice" role="dialog" aria-modal="true" aria-labelledby="director-split-choice-title" ref={dialogFocus} tabIndex={-1}>
-      <header><h2 id="director-split-choice-title">剧本里没有认出分集标题</h2><button type="button" aria-label="关闭" onClick={onClose} disabled={!!busy}><X size={18}/></button></header>
-      <p className="director-dialog-note">能直接认出的标题写法：「第1集」「第一集」「E01」「EP01」「Episode 1」，每集标题单独占一行。你的剧本如果已经分好集、用的是别的写法，选第一项。</p>
-      <div className="director-field" role="radiogroup" aria-label="怎么拆分">
-        <span>怎么拆分</span>
+      <header><h2 id="director-split-choice-title">选择拆分方式</h2><button type="button" aria-label="关闭" onClick={onClose} disabled={!!busy}><X size={18}/></button></header>
+      <p className="director-dialog-note">未在剧本中识别到分集标题。系统可自动识别「第1集」「第一集」「E01」「EP01」「Episode 1」格式（每集标题独占一行），其他格式请按下方方式拆分。拆分结果确认后生效。</p>
+      <div className="director-field" role="radiogroup" aria-label="拆分方式">
+        <span>拆分方式</span>
         <label className="director-check">
           <input type="radio" name="director-split-mode" checked={mode === "marker"} onChange={() => setMode("marker")}/>
-          <span><b>已经分好集，按我写的标题分</b>
-            <small>照抄第一集标题行的开头，带上编号，比如「1 不想打工了」「Chapter 1」「第1章」，程序按同样的写法找第 2、3… 集。免费，分好后先给你看。</small></span>
+          <span><b>按分集标题拆分</b>
+            <small>适用于已分好集的剧本。填写第 1 集的标题行，系统按相同格式依次查找后续各集。不消耗积分。</small></span>
         </label>
         {mode === "marker" && <label className="director-field director-split-marker">
-          <span>第一集标题行的开头</span>
-          <input autoFocus value={marker} maxLength={MARKER_MAX} disabled={!!busy} placeholder="例如：Chapter 1"
+          <span>第 1 集标题行<em>需包含编号</em></span>
+          <input autoFocus value={marker} maxLength={MARKER_MAX} disabled={!!busy} placeholder="例如：1 不想打工了、Chapter 1、第1章"
             onChange={e => { setMarker(e.target.value); setLocalError(""); }} onKeyDown={e => { if (e.key === "Enter" && ready) go(); }}/>
         </label>}
         <label className="director-check">
           <input type="radio" name="director-split-mode" checked={mode === "model"} onChange={() => setMode("model")}/>
-          <span><b>还没分集，交给 AI 拆分</b>
-            <small>AI 按剧情划定每集范围，不改正文{count ? `，按 ${count} 集拆` : ""}。{work.pricing.mock ? "" : "按实际用量结算。"}集数很多（几十集）时可能拆不完，建议先在剧本里写好分集标题。</small></span>
+          <span><b>AI 按剧情拆分</b>
+            <small>适用于尚未分集的剧本。AI 根据剧情划定每集范围{count ? `，目标 ${count} 集` : ""}，不修改正文。{work.pricing.mock ? "" : "按实际用量结算。"}集数较多（如几十集）时可能无法完成，此类剧本建议按分集标题拆分。</small></span>
         </label>
       </div>
       <InlineError message={error}/>
       <footer>
         <button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={onClose}>取消</button>
         <button type="button" className="ip-brand-button" disabled={!!busy || !ready} onClick={go}><Scissors size={14}/>
-          {busy ? "提交中" : mode === "model" ? "AI 拆分" : "按标题分集"}</button>
+          {busy ? "提交中" : mode === "model" ? "AI 拆分" : "按标题拆分"}</button>
       </footer>
     </div>
   </div>;

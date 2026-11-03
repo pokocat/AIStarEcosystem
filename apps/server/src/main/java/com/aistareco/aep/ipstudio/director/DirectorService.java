@@ -1877,7 +1877,7 @@ public class DirectorService {
                 if (d.path("dropped").asInt() > 0) notes.add("有 " + d.path("dropped").asInt() + " 个分集位置超出了剧本范围，已忽略");
                 if (d.path("duplicates").asInt() > 0) notes.add("有 " + d.path("duplicates").asInt() + " 个重复的分集位置，已合并");
                 int target = in.path("targetEpisodeCount").asInt(0);
-                if (target > 0 && target != ranges.size()) warnings.add("你要求分成 " + target + " 集，这次分成了 " + ranges.size() + " 集。不合适可以放弃后重新拆分");
+                if (target > 0 && target != ranges.size()) warnings.add("设定拆分为 " + target + " 集，实际拆分为 " + ranges.size() + " 集。结果不合适可放弃后重新拆分");
                 c.set("pendingSplit", pendingSplit(c, run.getId(), "model", ps, ranges, notes, warnings));
             }
             case "extract" -> {
@@ -4242,22 +4242,22 @@ public class DirectorService {
     private void splitByMarker(ObjectNode c, String marker, int target) {
         if (marker.length() > DirectorPrompts.MARKER_MAX_CHARS)
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_SPLIT_MARKER_INVALID",
-                    "最多填 " + DirectorPrompts.MARKER_MAX_CHARS + " 个字，照抄第一集标题行的开头几个字（带上编号）就行");
+                    "第 1 集标题行最多 " + DirectorPrompts.MARKER_MAX_CHARS + " 个字，请填写标题行的开头部分（含编号）");
         List<String> ps = paragraphs(c.path("draft").asText());
         List<Integer> heads = DirectorPrompts.markerStarts(ps, marker);
         if (heads.size() < 2) {
             String shown = snippet(marker);
-            String found = heads.isEmpty() ? "剧本里没有找到和「" + shown + "」写法一样的标题行"
-                    : "剧本里只找到 1 行和「" + shown + "」写法一样的标题（「" + snippet(ps.get(heads.get(0))) + "」），至少要 2 集才能按标题分";
+            String found = heads.isEmpty() ? "未找到与「" + shown + "」格式相同的分集标题"
+                    : "只找到 1 行与「" + shown + "」格式相同的分集标题（「" + snippet(ps.get(heads.get(0))) + "」），至少需要 2 集才能拆分";
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_SPLIT_MARKER_NOT_FOUND",
-                    found + "。请照抄第一集标题行的开头，带编号的话后面几集的编号要逐个加一，每集标题单独占一行", Map.of("found", heads.size()));
+                    found + "。请确认填写的是第 1 集的标题行、各集编号依次递增、每集标题独占一行", Map.of("found", heads.size()));
         }
         List<SplitRange> ranges = new ArrayList<>();
         for (int i = 0; i < heads.size(); i++)
             ranges.add(new SplitRange(DirectorPrompts.markerTitle(ps.get(heads.get(i))), "",
                     heads.get(i), i + 1 < heads.size() ? heads.get(i + 1) - 1 : ps.size() - 1));
         List<String> warnings = target > 0 && target != heads.size()
-                ? List.of("你要求分成 " + target + " 集，按「" + snippet(marker) + "」的写法找到 " + heads.size() + " 集") : List.of();
+                ? List.of("设定拆分为 " + target + " 集，按「" + snippet(marker) + "」的格式找到 " + heads.size() + " 集") : List.of();
         ObjectNode pending = pendingSplit(c, null, "marker", ps, ranges, List.of(), warnings);
         pending.put("marker", marker);
         c.set("pendingSplit", pending);

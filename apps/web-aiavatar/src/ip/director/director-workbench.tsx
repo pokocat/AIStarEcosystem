@@ -48,7 +48,7 @@ function nextStep(work: DirectorWork, episodeId: string | null): NextStep | null
   // AI 正在做的文字任务优先说出来：不然生成中还写着「下一步：生成剧本」，像是没开始。
   const running = work.tasks.filter(t => t.status === "running").map(t => t.target);
   if (running.includes("script")) return { text: "AI 正在写剧本，完成后自动显示", tab: "script", running: true };
-  if (running.includes("split")) return { text: "AI 正在拆分集", tab: "script", running: true };
+  if (running.includes("split")) return { text: "AI 拆分中", tab: "script", running: true };
   if (running.some(t => t.startsWith("extract"))) return { text: "AI 正在提取全剧资产", tab: "script", running: true };
   const planning = running.find(t => t.startsWith("plan:"));
   if (planning) { const ep = work.episodes.find(e => `plan:${e.id}` === planning); return { text: `AI 正在写${ep ? `第 ${ep.no} 集` : ""}分镜脚本`, tab: "storyboard", running: true }; }
@@ -61,7 +61,7 @@ function nextStep(work: DirectorWork, episodeId: string | null): NextStep | null
   if (!work.draft.trim() && work.episodes.length === 0) return { text: !work.idea.trim() ? "第一步：说说你的想法，或粘贴剧本"
     : work.brief?.status === "ready" ? "下一步：信息够了，生成剧本" : "下一步：回答 AI 的一两个问题，或直接生成剧本", tab: "script" };
   if (work.pendingSplit) return { text: `分成 ${work.pendingSplit.episodes.length} 集，确认后生效`, tab: "script" };
-  if (work.episodes.length === 0) return { text: "下一步：拆分集，或直接作为一集", tab: "script" };
+  if (work.episodes.length === 0) return { text: "下一步：拆分剧本，或作为一集", tab: "script" };
   const ep = work.episodes.find(e => e.id === episodeId) ?? work.episodes[0];
   if (!ep.extracted && !work.assets.some(a => a.episodeIds.includes(ep.id))) return { text: "下一步：提取全剧资产", tab: "script", alsoOn: ["assets"] };
   const clips = work.clips.filter(c => c.episodeId === ep.id);

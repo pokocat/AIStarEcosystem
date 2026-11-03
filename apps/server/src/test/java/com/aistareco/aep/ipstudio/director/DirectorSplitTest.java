@@ -213,7 +213,7 @@ class DirectorSplitTest {
         assertEquals("model", pending.path("source").asText());
         assertEquals(4, pending.path("episodes").get(1).path("endParagraph").asInt());
         assertTrue(pending.path("notes").get(0).asText().contains("第 2 集结尾补入 1 段（从「一箭穿心 剧终」开始）"));
-        assertTrue(pending.path("warnings").get(0).asText().contains("你要求分成 3 集，这次分成了 2 集"));
+        assertTrue(pending.path("warnings").get(0).asText().contains("设定拆分为 3 集，实际拆分为 2 集"));
 
         v = edit("split.save", pending.path("id").asText(), null, "{}");
         assertTrue(v.path("episodes").get(1).path("content").asText().endsWith("一箭穿心 剧终"), "no paragraph is lost");

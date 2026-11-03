@@ -73,7 +73,7 @@ function StartScript({ work, apply, setError, openSettings }: WorkbenchProps & {
     <h3><PenLine size={16}/>粘贴或上传剧本</h3>
     <DirectorScriptFile ref={file} hasText={!!paste.trim()} disabled={!!busy} onImport={setPaste} onReadingChange={setReading}/>
     {paste.length > EDIT_MAX ? <LongTextCard text={paste} onClear={() => setPaste("")} what="保存后按段编辑"/>
-      : <Field label="剧本正文" hint="免费。保存后可直接作为一集，或由 AI 拆分为多集。">
+      : <Field label="剧本正文" hint="免费。保存后可作为一集，或拆分为多集。">
         <textarea rows={10} className="director-script-text" disabled={!!busy} value={paste} onChange={e => setPaste(e.target.value)} onPaste={guard.onPaste} placeholder="场次、动作与对白" autoFocus/>
       </Field>}
     {guard.blocked && <LargePasteNotice chars={guard.blocked.chars} onClose={guard.clear} onUpload={() => { guard.clear(); file.current?.open(); }}/>}
@@ -169,14 +169,14 @@ function DraftEditor({ work, apply, setError, splitting, startPipeline }: Workbe
       {rewriting ? <AiWorking title="AI 正在重新写剧本" task={rewriting} detail="完成后自动显示新剧本，当前版本保留在历史中。"/> : <>
       <StoryOutline work={work}/>
       <ReferenceNotes work={work} apply={apply} setError={setError}/>
-      {splitting ? <AiWorking compact title="AI 正在拆分集" task={runningTask(work, "split")} detail="只划定每集范围，正文保持不变。"/> :
+      {splitting ? <AiWorking compact title="AI 拆分中" task={runningTask(work, "split")} detail="仅划定每集范围，不修改正文。"/> :
         work.pendingSplit ? <SplitPreview key={work.pendingSplit.id} work={work} apply={apply} setError={setError}/> :
-        <NextChoices work={work} shortcutDesc="从拆分集一路自动做到成片，也可以只做到分镜脚本或分镜图。系统先算好推荐预算，你确认后开始。" title="下一步：拆分集"
-          desc={byHeadings ? `剧本里已经标好了 ${work.draftEpisodeHeadings} 集，按标题直接分，不花积分。开头不属于任何一集的内容会单独放进设定资料，确认后生效。`
-            : "已经分好集的剧本按标题直接分，不花积分，集数不限：每集开头单独一行写「第1集」或「E01」「EP01」，用别的写法就在拆分时照抄第一集标题的开头。还没分集的交给 AI 按剧情拆，只划定每集范围、不改正文。分好后先给你看，确认后生效。"}
+        <NextChoices work={work} shortcutDesc="从拆分剧本开始自动完成至成片，也可只完成至分镜脚本或分镜图。开始前显示推荐预算，确认后执行。" title="下一步：拆分剧本"
+          desc={byHeadings ? `已识别到 ${work.draftEpisodeHeadings} 集分集标题，将按标题拆分，不消耗积分。第 1 集之前的内容保存为设定资料。拆分结果确认后生效。`
+            : "支持两种拆分方式：已分好集的剧本按分集标题拆分，不消耗积分，不限集数；尚未分集的剧本由 AI 按剧情拆分，按实际用量结算。两种方式均不修改正文，拆分结果确认后生效。"}
           onShortcut={startPipeline} shortcutDisabled={locked || !!busy || !text.trim() || dirty} shortcutNote={dirty ? "先保存剧本" : undefined}>
           <label className="director-inline-field">分为<input inputMode="numeric" value={count} placeholder="自动" onChange={e => setCount(e.target.value.replace(/\D/g, "").slice(0, 2))}/>集</label>
-          <button type="button" className="ip-brand-button" disabled={locked || !!busy || !text.trim()} onClick={split}><Scissors size={15}/>{byHeadings ? "按标题分集" : "拆分集"}</button>
+          <button type="button" className="ip-brand-button" disabled={locked || !!busy || !text.trim()} onClick={split}><Scissors size={15}/>{byHeadings ? "按标题拆分" : "拆分剧本"}</button>
           <button type="button" className="ip-brand-secondary" disabled={locked || !!busy || !text.trim()} onClick={asEpisode}>作为一集</button>
           {byHeadings && <span className="director-cost">免费</span>}
         </NextChoices>}

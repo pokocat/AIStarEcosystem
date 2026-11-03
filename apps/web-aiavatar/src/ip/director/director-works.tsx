@@ -144,7 +144,7 @@ function CreateWork({ onClose }: { onClose: () => void }) {
           placeholder={mode === "idea" ? "例如：凌晨的快递分拣站，夜班分拣员周小满发现一个寄给十年后自己的包裹。" : "支持场次、动作与对白，导入后可拆分为多集"}/>
       </label>}
       {mode === "script" && guard.blocked && <LargePasteNotice chars={guard.blocked.chars} onClose={guard.clear} onUpload={() => { guard.clear(); file.current?.open(); }}/>}
-      <p className="director-dialog-note">{mode === "idea" ? "下一步：AI 先问一两个关键问题把故事定下来，再写剧本；也可以跳过，直接生成。" : "下一步：选择作为一集，或拆分为多集。已经分好集的剧本，每集开头写上「第1集」或「E01」「EP01」这样的标题，会按标题直接分，不花积分，集数不限。"}</p>
+      <p className="director-dialog-note">{mode === "idea" ? "下一步：AI 先问一两个关键问题把故事定下来，再写剧本；也可以跳过，直接生成。" : "下一步：作为一集，或拆分为多集。已分好集的剧本，建议每集开头单独一行写明「第1集」「E01」或「EP01」，可按标题拆分，不消耗积分。"}</p>
       <InlineError message={error}/>
       <footer><button type="button" className="ip-brand-secondary" onClick={onClose} disabled={locked}>取消</button>
         <button type="button" className="ip-brand-button" disabled={locked || !text.trim()} onClick={() => void submit()}>{busy ? <><Loader2 size={15} className="ip-loading-icon"/>创建中</> : "创建并继续"}</button></footer>
