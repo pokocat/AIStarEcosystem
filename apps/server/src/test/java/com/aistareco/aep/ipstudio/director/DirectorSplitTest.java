@@ -108,6 +108,45 @@ class DirectorSplitTest {
     }
 
     @Test
+    void aMarkerTheUserTypesSplitsForFreeWhenHeadingsAreNotRecognised() throws Exception {
+        JsonNode v = create("改编说明：按原著顺序。\n## Chapter 1 下山\n师父：去吧。\nchapter 2 进城\n掌柜：客官里边请。\n");
+        assertEquals(0, v.path("draftEpisodeHeadings").asInt(), "Chapter is not a heading the program recognises on its own");
+        v = splitTask("{\"marker\":\"Chapter\",\"episodeCount\":3}");
+        verify(textRuns, never()).submitDirectorText(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+        JsonNode pending = v.path("pendingSplit");
+        assertEquals("marker", pending.path("source").asText());
+        assertEquals("Chapter", pending.path("marker").asText());
+        assertEquals(1, pending.path("preamble").path("paragraphs").asInt());
+        assertEquals("Chapter 1 下山", pending.path("episodes").get(0).path("title").asText());
+        assertEquals(2, pending.path("episodes").size());
+        assertTrue(pending.path("warnings").get(0).asText().contains("找到 2 集"), "the requested count that differs is pointed out");
+    }
+
+    @Test
+    void aCopiedFirstHeadingWithANumberFindsTheFollowingEpisodesInOrder() throws Exception {
+        // 线上样本的写法：标题是「编号 空格 集名」，没有共同的开头；设定资料里「20集数」「2014-2016时间」不算。
+        create("志丹姑娘\n20集数\n2014-2016时间\n1个感官锚点\n1 不想打工了 约100秒\n开场\n2 五五分账 约90秒\n开场\n3 开业第一天 约90秒\n开场\n");
+        JsonNode pending = splitTask("{\"marker\":\"1 不想打工了 约100秒\"}").path("pendingSplit");
+        assertEquals(3, pending.path("episodes").size());
+        assertEquals(4, pending.path("preamble").path("paragraphs").asInt());
+        assertEquals("2 五五分账 约90秒", pending.path("episodes").get(1).path("title").asText());
+    }
+
+    @Test
+    void aMarkerThatMatchesFewerThanTwoLinesIsRefusedWithoutCallingTheModel() throws Exception {
+        create("第一幕\n甲：走吧。\n乙：好。\n");
+        BusinessException none = assertThrows(BusinessException.class, () -> splitTask("{\"marker\":\"Chapter\"}"));
+        assertEquals("DIRECTOR_SPLIT_MARKER_NOT_FOUND", none.getCode());
+        BusinessException one = assertThrows(BusinessException.class, () -> splitTask("{\"marker\":\"第一幕\"}"));
+        assertEquals("DIRECTOR_SPLIT_MARKER_NOT_FOUND", one.getCode());
+        assertTrue(one.getMessage().contains("只找到 1 行"));
+        BusinessException tooLong = assertThrows(BusinessException.class, () -> splitTask("{\"marker\":\"" + "长".repeat(61) + "\"}"));
+        assertEquals("DIRECTOR_SPLIT_MARKER_INVALID", tooLong.getCode());
+        verify(textRuns, never()).submitDirectorText(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+        assertTrue(service.get(USER, work.getId()).path("pendingSplit").isNull());
+    }
+
+    @Test
     void preambleCanGoIntoTheFirstEpisodeInstead() throws Exception {
         create(headed(2));
         JsonNode pending = splitTask("{}").path("pendingSplit");

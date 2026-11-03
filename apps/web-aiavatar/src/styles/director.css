@@ -620,6 +620,7 @@ html:not([data-layout="desktop"]) .director-next-choices { grid-template-columns
 .director-regen-notes .is-warn { color: var(--ip-gold); }
 .director-check > span { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; font-size: 13px; }
 .director-check small { color: var(--ip-muted); font-size: 12px; line-height: 1.6; }
+.director-split-marker { margin: -2px 0 2px 38px; }
 .director-budget-card { display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 12px; background: var(--ip-soft); }
 .director-budget-card > header { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .director-budget-card > header span { color: var(--ip-muted); font-size: 13px; font-weight: 600; }
