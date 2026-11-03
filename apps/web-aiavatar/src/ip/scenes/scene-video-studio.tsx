@@ -856,8 +856,8 @@ export function SceneVideoStudio() {
             {/* 价格一直摆着（还没写字时也看得到要花多少）；算不出就不显示，不编。 */}
             {long || recreation || caps?.mock ? <small>{long ? `分 ${segments.length} 段 · 先报价` : recreation ? "先出方案" : "免费"}</small>
               : price && <small className={price.pending ? "is-pending" : undefined} aria-busy={price.pending || undefined}>
-                {price.shown !== price.standard && <s><span className="scene-sr-only">原价 </span>{price.standard}</s>}
-                {price.shown !== price.standard && <span className="scene-sr-only">，折后 </span>}{price.shown} 积分{price.from ? "起" : ""}</small>}
+                {price.shown !== price.standard && <s><span className="scene-sr-only">原价 </span>{price.standard.toLocaleString("zh-CN")}</s>}
+                {price.shown !== price.standard && <span className="scene-sr-only">，折后 </span>}{price.shown.toLocaleString("zh-CN")} 积分{price.from ? "起" : ""}</small>}
           </button>
           {/* 点了没做成的原因用提醒色；还没动手时只是灰字说一句还差什么。 */}
           {(hint || goBlocker) && <p id="scene-video-go-note" className={`scene-hint${hint ? "" : " is-note"}`} role="status">{hint || goBlocker}</p>}

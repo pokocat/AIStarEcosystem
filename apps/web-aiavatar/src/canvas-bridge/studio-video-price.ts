@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { EnterpriseBillingSelection } from "@ai-star-eco/types/enterprise";
 import type { ModelBillingQuote } from "@ai-star-eco/types/model-billing";
 import type { StudioVideoSettings } from "@ai-star-eco/types/ip-studio-workflow";
@@ -48,13 +48,13 @@ async function loadPrice(query: StudioVideoPriceQuery, payer: StudioPreviewPayer
 
 /**
  * query 为空 = 不用报价（演示模式、交给创作助手、算不出标准价）。参数一变就作废上一份：只返回与当前参数对得上的那份，
- * 慢回来的旧报价不会盖住新选择。revision 变了（生成完、可能刚设了默认账户、赠款也用掉了）或页面切回前台都重新报。
+ * 慢回来的旧报价不会盖住新选择。不缓存：切回之前用过的参数也重新报，后台刚改的折扣不会被旧结果挡住。
+ * revision 变了（生成完、可能刚设了默认账户、赠款也用掉了）或页面切回前台也重新报。
  */
 export function useStudioVideoPrice(query: StudioVideoPriceQuery | undefined, revision = 0): StudioVideoPrice {
   const [payer, setPayer] = useState<StudioPreviewPayer>();
   const [shown, setShown] = useState(0);
   const [result, setResult] = useState<{ key: string; price: StudioVideoPrice }>();
-  const cache = useRef(new Map<string, StudioVideoPrice>());
   useEffect(() => {
     const back = () => { if (document.visibilityState === "visible") setShown(n => n + 1); };
     document.addEventListener("visibilitychange", back);
@@ -71,14 +71,10 @@ export function useStudioVideoPrice(query: StudioVideoPriceQuery | undefined, re
   const key = query && payer ? JSON.stringify([query, payer, revision, shown]) : "";
   useEffect(() => {
     if (!key || !query || !payer) return;
-    const hit = cache.current.get(key);
-    if (hit) { setResult({ key, price: hit }); return; }
     const abort = new AbortController();
     const timer = setTimeout(() => {
       loadPrice(query, payer, abort.signal).then(price => {
         if (abort.signal.aborted) return;
-        if (cache.current.size > 40) cache.current.clear();
-        cache.current.set(key, price);
         setResult({ key, price });
       }, () => { if (!abort.signal.aborted) setResult({ key, price: { status: "failed" } }); });
     }, 250);

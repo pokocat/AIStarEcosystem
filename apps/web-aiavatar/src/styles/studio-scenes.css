@@ -236,9 +236,10 @@ button.scene-pill:hover, .scene-pill[aria-expanded="true"], .scene-pill.is-selec
 .scene-studio .scene-go:hover:not(:disabled) { filter: brightness(1.05); box-shadow: 0 6px 18px rgba(79,91,213,.3); }
 .scene-studio .scene-go:disabled { opacity: .45; box-shadow: none; cursor: not-allowed; }
 .scene-studio .scene-go>span { white-space: nowrap; }
-.scene-studio .scene-go small { padding: 1px 8px; border-radius: 999px; background: rgba(255,255,255,.16); font-size: 11.5px; font-weight: 400; white-space: nowrap; }
+/* 价格药丸用压暗一档的同色底：原来叠白色只有 3.96:1，白字小号看不清（2026-11-03 评审）。 */
+.scene-studio .scene-go small { padding: 1px 8px; border-radius: 999px; background: rgba(24,16,80,.16); font-size: 11.5px; font-weight: 400; white-space: nowrap; }
 /* 有折扣时原价划掉、后面是折后价；报价还没回来时先显示价表价，淡一点（2026-11-03）。 */
-.scene-studio .scene-go small s { margin-right: 4px; opacity: .62; text-decoration-thickness: 1px; }
+.scene-studio .scene-go small s { margin-right: 4px; opacity: .8; text-decoration-thickness: 1px; }
 .scene-studio .scene-go small.is-pending { opacity: .7; }
 .scene-studio .scene-sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .scene-hint { margin: -4px 2px 0 !important; color: var(--ip-gold); font-size: 12px; line-height: 1.6; }

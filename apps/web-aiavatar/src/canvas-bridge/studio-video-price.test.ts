@@ -97,6 +97,20 @@ test("换了参数，慢回来的旧报价不会盖住新的；付款账户没�
   expect(api.quote).toHaveBeenCalledWith(expect.anything(), { mode: "enterprise", enterpriseId: "team" }, expect.any(AbortSignal));
 });
 
+test("切回之前用过的参数也重新报：后台刚停掉的折扣不会因为旧结果还挂在页面上", async () => {
+  vi.stubEnv("NEXT_PUBLIC_ENTERPRISE_ENABLED", "0");
+  api.quote.mockResolvedValue(half());
+  const base = { model: "ep-h3", mode: "t2v", tier: "768p", aspectRatio: "9:16", imageRefs: 0, videoRefs: 0, audioRefs: 0 };
+  const { result, rerender } = renderHook(({ q }) => useStudioVideoPrice(q), { initialProps: { q: { ...base, durationSec: 15 } } });
+  await waitFor(() => expect(result.current).toMatchObject({ status: "ready", quote: { payableCredits: 465 } }));
+  rerender({ q: { ...base, durationSec: 10 } });
+  await waitFor(() => expect(api.quote).toHaveBeenCalledTimes(2));
+  api.quote.mockResolvedValue(quote()); // 运营停掉了折扣
+  rerender({ q: { ...base, durationSec: 15 } });
+  await waitFor(() => expect(result.current).toMatchObject({ status: "ready", quote: { payableCredits: 930, discountCredits: 0 } }));
+  expect(api.quote).toHaveBeenCalledTimes(3);
+});
+
 test("不用报价时不发请求", () => {
   const { result } = renderHook(() => useStudioVideoPrice(undefined));
   expect(result.current.status).toBe("idle");
