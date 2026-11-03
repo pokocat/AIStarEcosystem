@@ -1913,6 +1913,23 @@ public class MaterialVideoModelClient {
                     .POST(multipartFile(boundary, mediaType, filename, fmt.mime(), local))
                     .build();
             HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+            if (InputAssetCopy.isBindingConflict(resp.statusCode(), resp.body())) {
+                // 聚算按内容认素材：同一份字节之前传过、那份已过期或被删（例如用户清了资源空间回收站）时，
+                // 再传同样的字节一律 409 input_asset_binding_conflict，永远传不上去（2026-11-03 线上，图1 分镜图）。
+                // 加一段不影响画面 / 声音的标记换一份新内容，只重传这一次；做不到或仍被拒就照常报错。
+                byte[] copy = InputAssetCopy.distinct(fmt, Files.readAllBytes(local));
+                log.warn("[material-video] 素材内容已被厂商作废，换一份新内容重传 endpoint={} model={} field={} bytes={} retry={} body={}",
+                        p.getName(), model, mediaType, size, copy != null && copy.length <= maxBytes, snippet(resp.body()));
+                if (copy != null && copy.length <= maxBytes) {
+                    HttpRequest retry = HttpRequest.newBuilder(uri)
+                            .timeout(Duration.ofSeconds(Math.max(props.getHttpTimeoutSeconds(), props.getDownloadTimeoutSeconds())))
+                            .header("Authorization", "Bearer " + apiKey)
+                            .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                            .POST(multipart(boundary, mediaType, filename, fmt.mime(), HttpRequest.BodyPublishers.ofByteArray(copy)))
+                            .build();
+                    resp = http.send(retry, HttpResponse.BodyHandlers.ofString());
+                }
+            }
             if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
                 // 上游拒绝时**必须**把它的原话留在日志里。只写一句「上传失败」的话，对着它分不出
                 // 是 Key 没这个权限、路径不对、还是这个素材本身不合规 —— v0.166 已经在出图那条链上
@@ -1970,13 +1987,18 @@ public class MaterialVideoModelClient {
     /** 手写 multipart：只有一个文件字段，不值得为它引一个 HTTP 客户端库。文件体直接从磁盘流出去。 */
     private static HttpRequest.BodyPublisher multipartFile(String boundary, String field, String filename,
                                                            String contentType, Path file) throws FileNotFoundException {
+        return multipart(boundary, field, filename, contentType, HttpRequest.BodyPublishers.ofFile(file));
+    }
+
+    private static HttpRequest.BodyPublisher multipart(String boundary, String field, String filename,
+                                                       String contentType, HttpRequest.BodyPublisher content) {
         String head = "--" + boundary + "\r\n"
                 + "Content-Disposition: form-data; name=\"" + field + "\"; filename=\"" + filename + "\"\r\n"
                 + "Content-Type: " + contentType + "\r\n\r\n";
         String tail = "\r\n--" + boundary + "--\r\n";
         return HttpRequest.BodyPublishers.concat(
                 HttpRequest.BodyPublishers.ofByteArray(head.getBytes(StandardCharsets.UTF_8)),
-                HttpRequest.BodyPublishers.ofFile(file),
+                content,
                 HttpRequest.BodyPublishers.ofByteArray(tail.getBytes(StandardCharsets.UTF_8)));
     }
 
