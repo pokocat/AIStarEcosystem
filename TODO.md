@@ -113,6 +113,8 @@
 
 ## Studio 当前待办
 
+- [ ] **AI 图片页和画布的生成按钮也只显示标准价**（2026-11-03 排查 AI 视频页折扣不显示时发现）：`scene-image-studio.tsx` 的 `quote = unit * usedCount` 和画布创作面板 `studio-workspace.tsx` 的 `quote`（图片 `imageUnitCost*imageCount`、视频 `studioVideoQuote(...)*videoCount`）都按本地价表算标准价，模型折扣和模型赠款要点了生成、在确认弹窗里才看得到。AI 视频页已改为按 `GET /api/v1/ip-studio/studio/video-price` 显示（`canvas-bridge/studio-video-price.ts`）；画布出视频可以直接复用这个接口，图片还没有不需要草稿、也不受「未绑手机号只读」拦截的报价接口（现有 `image-quote` 是 POST），要另加一个同口径的 GET。导演台、创作助手方案卡上的价未逐一核对。
+
 - [ ] **导演台轮询任务为空时出现 NPE**（2026-11-02 线上观察，07:56:42 UTC，追查号 `tAVCAMEupHdAp9R5`）：`DirectorService.pollVideos:1578` 对 `videoJobs.getJob(...)` 的 null 结果直接调 `job.path`，导致读取接口 500；该方法与本次发布前一致，不是图片上传验收请求。需独立定位读空原因、加回归并处理轮询状态，不得重提已受理的视频任务；见图片上传生产发布记录。
 
 - [ ] **资产录音真机兼容验收**（2026-11-01）：`audio-recorder-dialog.tsx` / `recording-audio.ts` 的倒数、10.5 秒结束门槛、14.9 秒自动结束、试听、重录保留名称及保存，仍需 iPhone Safari、安卓浏览器、微信内置浏览器分别实测。桌面模拟 WebM／MP4 与采样率回退验证不能代替真机。

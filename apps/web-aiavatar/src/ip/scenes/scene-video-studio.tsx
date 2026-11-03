@@ -20,6 +20,7 @@ import { attachmentNode } from "@/canvas-bridge/studio-attachments";
 import { isStudioBillingCancelled } from "@/canvas-bridge/studio-billing-cancel";
 import { studioChosenTextModel } from "@/canvas-bridge/studio-text-model";
 import { studioVideoError, studioVideoQuote } from "@/canvas-bridge/studio-video";
+import { describeStudioVideoPrice, studioVideoPriceQuery, useStudioVideoPrice } from "@/canvas-bridge/studio-video-price";
 import { downloadMedia } from "@/canvas-bridge/download-media";
 import { CanvasNodeType, type CanvasNodeData } from "@/canvas/types/canvas";
 import { studioErrorMetadata, useStudioFailure } from "../studio-errors";
@@ -103,6 +104,8 @@ export function SceneVideoStudio() {
   const [modelId, setModelId] = useState<string>();
   const [tier, setTier] = useState<string>();
   const [optimize, setOptimize] = useState(true);
+  // 生成过一次就重新报价：可能刚设了默认付款账户，模型赠款也用掉了一些。
+  const [priceRevision, setPriceRevision] = useState(0);
   const [hint, setHint] = useState("");
   // 说明（不是报错，灰字一行）：换场景时没带过来的素材、「重新编辑」放回了什么。undo 是点「撤销」要回到的样子。
   const [note, setNote] = useState<{ text: string; undo?: () => void }>();
@@ -642,6 +645,14 @@ export function SceneVideoStudio() {
   const long = !recreation && !!contract && duration > contract.maxSeconds;
   const toAssistant = recreation || long;
   const shownDuration = toAssistant ? duration : usedDuration;
+  // 按钮旁的价按服务端报价显示（折扣、模型赠款、付款账户），本地价表只在报价回来之前垫着，也作为提交时的上限。
+  const priceQuery = useMemo(() => chosenVideo && settings && videoQuote != null && !toAssistant && caps && !caps.mock
+    ? studioVideoPriceQuery(chosenVideo.selectableById ? chosenVideo.endpointId : undefined, settings, usedDuration, ratio) : undefined,
+  // settings 每次渲染都是新对象：按它的内容判断变没变
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [chosenVideo?.endpointId, chosenVideo?.selectableById, settings && JSON.stringify(settings), videoQuote, toAssistant, caps, usedDuration, ratio]);
+  const price = describeStudioVideoPrice(useStudioVideoPrice(priceQuery, priceRevision), videoQuote,
+    { optimizing: !!chosenVideo?.supportsPromptOptimization && optimize });
   /** 一版脚本是照什么写的，跟现在的设置差在哪（时长、横竖屏、语言、交给视频模型的图）；都一样返回空串。 */
   function specChanges(spec?: StudioNodeMetadata["sceneDirector"]) {
     if (!spec) return "";
@@ -706,7 +717,7 @@ export function SceneVideoStudio() {
       await persist(doc => patchNode(doc, nodeId!, n => ({ ...n, metadata: { ...n.metadata, ...studioErrorMetadata(e),
         status: rejected ? "error" : "loading", ...(rejected ? {} : { errorDetails: "提交结果没有确认，点「确认原任务」查一下，不会重复扣费" }) } })), projectId).catch(() => undefined);
       showFailure({ action: "生成视频", error: e, next: rejected ? "改一下再试；积分没有扣。" : "这次可能已经被受理，点「确认原任务」查一下，不要直接重新生成。" });
-    } finally { setBusy(false); setSubmitting(undefined); }
+    } finally { setBusy(false); setSubmitting(undefined); setPriceRevision(r => r + 1); }
   };
 
   const copy = async (row: CanvasNodeData) => {
@@ -843,10 +854,14 @@ export function SceneVideoStudio() {
             {busy && !writing ? <Loader2 size={16} className="studio-gallery-spinner"/> : null}
             <span>{toAssistant ? "交给创作助手" : "生成视频"}</span>
             {/* 价格一直摆着（还没写字时也看得到要花多少）；算不出就不显示，不编。 */}
-            {(long || recreation || caps?.mock || videoQuote != null) && <small>{long ? `分 ${segments.length} 段 · 先报价` : recreation ? "先出方案" : caps?.mock ? "免费" : `${videoQuote} 积分`}</small>}
+            {long || recreation || caps?.mock ? <small>{long ? `分 ${segments.length} 段 · 先报价` : recreation ? "先出方案" : "免费"}</small>
+              : price && <small className={price.pending ? "is-pending" : undefined} aria-busy={price.pending || undefined}>
+                {price.shown !== price.standard && <s><span className="scene-sr-only">原价 </span>{price.standard}</s>}
+                {price.shown !== price.standard && <span className="scene-sr-only">，折后 </span>}{price.shown} 积分{price.from ? "起" : ""}</small>}
           </button>
           {/* 点了没做成的原因用提醒色；还没动手时只是灰字说一句还差什么。 */}
           {(hint || goBlocker) && <p id="scene-video-go-note" className={`scene-hint${hint ? "" : " is-note"}`} role="status">{hint || goBlocker}</p>}
+          {!toAssistant && !caps?.mock && price?.note && <p className="scene-hint is-note scene-price-note">{price.note}</p>}
           {!toAssistant && plan?.note && <p className="scene-hint is-note">{plan.note}</p>}
           {!toAssistant && plan?.used.some(m => m.mediaType === 'audio') && <p className="scene-hint is-note" role="status">{AUDIO_REFERENCE_NOTICE}</p>}
           {durationNote && <p className="scene-hint is-note">{durationNote}</p>}

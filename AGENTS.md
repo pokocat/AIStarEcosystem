@@ -1308,6 +1308,8 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 评审后修正（2026-10-25）：企业成员报价是只读事务，在途任务数改用不加锁的查询（MySQL 只读事务里 `SELECT … FOR UPDATE` 报 ERROR 1792，`EnterpriseModelQuoteReadOnlyTest` 可指向 MySQL 复现）；视频对账恢复只拦当初用过赠款或折扣的任务；冻结只锁本钱包可用且适用的赠款行，只有带资源计数的活动才锁活动行，且用只取 ID 的查询先锁再读（先读再锁会被 Hibernate 按旧版本号校验）；活动发出赠款后适用接入点锁定（`SCOPED_CAMPAIGN_TARGETS_LOCKED`）；赠款全额抵扣不写零金额普通流水；Studio / 后台 / 短剧 / 服务端报错统一叫「模型赠款」，celebrity 按用户要求不改。另修了一个上线即坏的问题：启动时的 `EnumColumnWideningMigration` 会把 V67 改成 VARCHAR 的流水类型列改回不含 SCOPED_* 的 ENUM，第一笔赠款就报 `Data truncated`；现在流水类型不在加宽清单里，加宽也只处理当前是 ENUM 的列。**往 Hibernate 原生 ENUM 列加值时，要么同步加宽清单，要么像这里一样改成 VARCHAR 并移出清单，两头都不做就会在 MySQL 上坏，H2 测不出来。** 零价接入点一律报 503 `MODEL_PRICE_NOT_CONFIGURED`，免费只能发模型赠款（用户 2026-10-25 拍板）；接入点没填 `model` 时计费记录用 `endpoint:<ID>`（`ModelBillingTarget.providerModelOf`），不拒绝扣费。
 
+**生成前就显示折扣（2026-11-03，本地未发布）**：AI 视频页按钮旁的价由 `GET /api/v1/ip-studio/studio/video-price` 给（只带模型、模式、清晰度、画面、时长、参考素材张数和付款账户；标准价 `VideoStudioService.priceCanvas`，折扣 / 赠款 / 付款账户走提交同一个 `MaterialVideoJobService.quote`），前端 `canvas-bridge/studio-video-price.ts`，不在前端乘折扣。页面价要用 GET：POST 报价会被「未绑手机号只读」拦下、整页跳去绑手机。付款账户「不用问」的规则只在 `knownStudioBilling` 一处。AI 图片页与画布仍只显示标准价，见 TODO。
+
 
 ### Studio 模型选择（2026-10-25）
 

@@ -121,6 +121,10 @@ public class StudioVideoService {
     public long estimate(String model,String mode,String tier,int seconds,int referenceImages) {
         return videos.estimateCanvas(model(model),mode,tier,seconds,referenceImages,"studio");
     }
+    /** AI 视频页按钮旁的价：和 {@link #quote} 同一张价表与合同校验，素材只给各类型的张数（见 {@link VideoStudioService#priceCanvas}）。 */
+    public VideoStudioService.CanvasPreparation price(String endpointId,String mode,String tier,String aspectRatio,Integer seconds,int imageRefs,int videoRefs,int audioRefs) {
+        return videos.priceCanvas(endpointId,mode,tier,aspectRatio,seconds,imageRefs,videoRefs,audioRefs,"studio");
+    }
     public long quote(String userId,IpRunService.IpVideoRequest request) {return quotePreparation(userId,request).credits();}
     public VideoStudioService.CanvasPreparation quotePreparation(String userId,IpRunService.IpVideoRequest request) {
         var v=request.video();

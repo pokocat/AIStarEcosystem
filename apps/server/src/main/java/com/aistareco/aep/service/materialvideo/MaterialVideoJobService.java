@@ -257,6 +257,18 @@ public class MaterialVideoJobService {
         var request=new com.aistareco.aep.billing.service.ModelChargeContext(charge.target(),charge.usage(),charge.unitPrice(),charge.outputUnitPrice(),charge.priceVersion(),freeOnly,null,null);
         return enterpriseBilling.quoteRepeated(userId,billing,request,items.size());
     }
+    /**
+     * 页面上的视频价：把已经算好的标准价拼成一条与 Studio 提交同形的视频项，走上面同一个 plan → 报价，
+     * 所以折扣、模型赠款和付款账户的规则跟确认弹窗一模一样。规格里没有素材 key；不建任务、不冻结。
+     */
+    @Transactional(readOnly=true)
+    public com.aistareco.aep.billing.service.ModelChargeService.Quote quoteSpec(String userId,String app,String endpointId,VideoGenSpec spec,
+            String aspectRatio,int durationSec,long credits,com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing) {
+        ObjectNode item=om.createObjectNode().put("name","视频价").put("duration_sec",durationSec).put("aspect_ratio",aspectRatio).put("credit_cost",credits);
+        ObjectNode variant=item.putObject("variant_config");variant.put("endpoint_id",endpointId);spec.writeTo(variant);
+        ObjectNode body=om.createObjectNode();body.putArray("items").add(item);
+        return quote(body,userId,app,billing,false);
+    }
 
     @Transactional
     public List<JsonNode> submit(JsonNode body, String userId, String app) {

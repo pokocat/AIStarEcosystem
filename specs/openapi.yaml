@@ -17681,6 +17681,34 @@ paths:
                 properties:
                   data: {$ref: '#/components/schemas/ModelBillingQuote'}
 
+  /v1/ip-studio/studio/video-price:
+    get:
+      tags: [ipstudio]
+      operationId: ipStudioVideoPrice
+      description: >-
+        AI 视频页「生成视频」按钮旁的价（2026-11-03）。只带影响价格的参数：模型、模式、清晰度、画面比例、时长、各类参考素材的张数和付款账户；
+        不带素材 key 和提示词，不需要草稿。标准价与 studio-video-quote 同一张价表和合同校验，折扣、模型赠款、付款账户走提交用的同一个报价，
+        所以与点生成后的确认弹窗一致。只读：不创建任务、不冻结、不读素材、不调模型。付款前确认弹窗仍按完整请求再报一次价。
+      parameters:
+      - {in: query, name: model, schema: {type: string}, description: 视频模型接入点；不传用默认}
+      - {in: query, name: mode, required: true, schema: {type: string}}
+      - {in: query, name: tier, required: true, schema: {type: string}}
+      - {in: query, name: aspectRatio, required: true, schema: {type: string}}
+      - {in: query, name: durationSec, required: true, schema: {type: integer}}
+      - {in: query, name: imageRefs, schema: {type: integer, default: 0}}
+      - {in: query, name: videoRefs, schema: {type: integer, default: 0}}
+      - {in: query, name: audioRefs, schema: {type: integer, default: 0}}
+      - {in: query, name: payer, schema: {type: string, enum: [personal, enterprise], default: personal}}
+      - {in: query, name: enterpriseId, schema: {type: string}, description: payer=enterprise 时必填}
+      responses:
+        '200':
+          description: 这条视频的报价（标准价、优惠、折后费用、模型赠款抵扣、需付普通积分）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: {$ref: '#/components/schemas/ModelBillingQuote'}
   /v1/ip-studio/projects/{id}/studio-video-quote:
     parameters:
     - {in: path, name: id, required: true, schema: {type: string}}

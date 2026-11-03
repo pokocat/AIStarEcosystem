@@ -10,7 +10,7 @@ import { WalletApi } from "@/proto/api";
 import { normalizeStudioError } from "./studio-errors";
 import type { StudioBillingDetails } from "@/canvas-bridge/studio-billing";
 
-import { loadStudioBillingAccount, readStudioBillingPreference, saveStudioBillingPreference, type StudioBillingAccount } from "@/canvas-bridge/studio-billing-preference";
+import { knownStudioBilling, loadStudioBillingAccount, saveStudioBillingPreference, type StudioBillingAccount } from "@/canvas-bridge/studio-billing-preference";
 
 type Details = StudioBillingDetails & { model?: string };
 const n = (value: number) => value.toLocaleString("zh-CN");
@@ -77,9 +77,8 @@ export function StudioBillingDialog({ details, account, onConfirm, onCancel }: {
 /** Personal-only accounts skip the chooser; explicit defaults keep the same payer on insufficient funds. */
 export async function chooseStudioBilling(details: Details): Promise<EnterpriseBillingSelection> {
   const account = await loadStudioBillingAccount();
-  if (!account.context) return { mode: "personal" };
-  const preference = readStudioBillingPreference(account);
-  if (preference) return preference;
+  const known = knownStudioBilling(account);
+  if (known) return known;
   return new Promise((resolve, reject) => {
     const host = document.createElement("div"); host.className = "ip-brand-surface studio-billing-host"; document.body.appendChild(host);
     const root = createRoot(host); const origin = document.activeElement instanceof HTMLElement ? document.activeElement : null;

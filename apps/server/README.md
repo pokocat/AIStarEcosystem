@@ -1308,6 +1308,7 @@ capabilities 的文本模型新增 `dialogueTokenPricing`，普通文本仍用 `
 
 后台 `/admin/model-billing/{targets|user-options|wallet-options|enterprise-options|discounts|campaigns|grants}` 提供目录、分页查询与管理，发放走 `/admin/finance/adjustments/scoped-grant` 与现有审批。个人优惠不要求钱包已建立。`/me/model-credits` 只返回当前本人个人或企业成员钱包的额度。
 
+AI 视频页按钮旁的价是 `GET /api/v1/ip-studio/studio/video-price`（2026-11-03）：只带模型、模式、清晰度、画面比例、时长、各类参考素材张数和付款账户，不带素材 key 和提示词、不需要草稿；标准价由 `VideoStudioService.priceCanvas`（与提交同一张价表和清晰度 / 画面 / 时长校验 `requireGeometry`）算，折扣、模型赠款和付款账户走 `MaterialVideoJobService.quoteSpec` → 提交用的同一个 `quote`。只读，不建任务、不冻结、不读素材；GET 所以不受「未绑手机号只读」拦截。
 Studio 图片报价为 `POST /api/v1/ip-studio/projects/{id}/{image-quote|studio-image-quote}`、`POST .../nodes/{nodeId}/image-quote`；视频生成区为 `POST /api/me/celebrity/video-studio/quote`。报价复用既有价格；确认绑定付款账户、实际接入点、用量、费用决定和普通积分上限；额度被其他任务使用时不得静默加扣。任务按受理时快照结算，失败原路释放，过期赠款不会因释放恢复。通用视频的已释放原冻结仍不能用新优惠自动补扣，返回 `VIDEO_MODEL_RECOVERY_REQUIRES_REVIEW`。
 
 数字人组合任务按用户确认拆成文本和媒体两笔：`DapModelBilling` 使用现有 Token 价与媒体生成价，分别冻结，实际调用固定受理时接入点；文本实际用量与媒体成功各自结算。媒体失败不抹去已完成文本费用。两笔冻结和作业受理同事务，重试使用新的尝试编号，结算回调幂等。月度用量从 SPEND/SCOPED_SPEND 流水取实际消费。无需新增表或新的价格源。

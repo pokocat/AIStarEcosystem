@@ -47,6 +47,14 @@ export function readStudioBillingPreference(account: StudioBillingAccount): Ente
     return { mode: "enterprise", enterpriseId: context.enterprise.id };
 }
 
+/**
+ * The payer a paid action will use without asking: personal when there is no enterprise, else the saved default.
+ * Undefined means the chooser will ask. The chooser and the AI video page's price both go by this one rule.
+ */
+export function knownStudioBilling(account: StudioBillingAccount): EnterpriseBillingSelection | undefined {
+  return account.context ? readStudioBillingPreference(account) : { mode: "personal" };
+}
+
 /** Saved on the membership: one choice holds on every device and in every paid feature. */
 export async function saveStudioBillingPreference(account: StudioBillingAccount, mode?: EnterpriseBillingSelection["mode"]): Promise<StudioBillingAccount> {
   if (!account.context) return account;

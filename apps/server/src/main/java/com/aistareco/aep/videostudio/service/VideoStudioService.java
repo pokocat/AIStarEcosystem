@@ -348,6 +348,56 @@ public class VideoStudioService {
         return VideoStudioPricing.total(model.pricing(), mode, tier, seconds, referenceImages, modeSpec.references() != null);
     }
 
+    /**
+     * 页面上的视频价（AI 视频页「生成视频」按钮旁，2026-11-03）：同一张价表、同一个计价函数，清晰度 / 画面 / 时长按端点合同核对，
+     * 和提交一样；素材只按类型数张数（价格只看张数，见 {@code MaterialVideoBilling}），不读文件、不看提示词、不建任务。
+     * 返回的规格不带任何素材 key，只能拿去报价，不能拿去出片。
+     */
+    public CanvasPreparation priceCanvas(String endpointId, String mode, String tier, String aspectRatio, Integer seconds,
+            int imageRefs, int videoRefs, int audioRefs, String appCode) {
+        VideoStudioModel model = pickResolvedModel(resolvedModels(appCode), endpointId).model();
+        VideoStudioModeSpec modeSpec = model.contract().modes().stream().filter(m -> m.mode().equals(mode)).findFirst().orElse(null);
+        if (mode == null || modeSpec == null) throw BusinessException.badRequest("VIDEO_STUDIO_MODE_INVALID", "所选模型不支持这个生成模式，请重新选择");
+        Geometry geometry = requireGeometry(model.contract(), tier, aspectRatio, seconds);
+        if (imageRefs < 0 || videoRefs < 0 || audioRefs < 0 || imageRefs + videoRefs + audioRefs > 32)
+            throw BusinessException.badRequest("VIDEO_STUDIO_SPEC_INVALID", "参考素材的张数不对");
+        boolean referenceRules = modeSpec.references() != null;
+        List<VideoGenSpec.Reference> references = new ArrayList<>();
+        if (referenceRules) {
+            for (int i = 0; i < imageRefs; i++) references.add(new VideoGenSpec.Reference(JusuanH3Contract.MEDIA_IMAGE, null));
+            for (int i = 0; i < videoRefs; i++) references.add(new VideoGenSpec.Reference(JusuanH3Contract.MEDIA_VIDEO, null));
+            for (int i = 0; i < audioRefs; i++) references.add(new VideoGenSpec.Reference(JusuanH3Contract.MEDIA_AUDIO, null));
+        }
+        long credits = VideoStudioPricing.total(model.pricing(), modeSpec.mode(), geometry.tier().tier(), geometry.seconds(),
+                referenceRules ? imageRefs : 0, referenceRules);
+        return new CanvasPreparation(new VideoGenSpec(modeSpec.mode(), geometry.tier().tier(), null, null, null, references),
+                credits, model.contract().seedMax());
+    }
+
+    private record Geometry(VideoStudioTier tier, VideoStudioCanvas canvas, int seconds) {}
+
+    /** 清晰度 / 画面比例 / 时长：提交和页面价共用这一处。 */
+    private static Geometry requireGeometry(VideoStudioContract contract, String tierName, String aspectRatio, Integer seconds) {
+        VideoStudioTier tier = contract.tiers().stream()
+                .filter(t -> t.tier().equals(tierName)).findFirst().orElse(null);
+        if (tier == null) {
+            throw BusinessException.badRequest("VIDEO_STUDIO_SPEC_INVALID",
+                    "清晰度只能选 " + String.join(" 或 ", contract.tiers().stream().map(VideoStudioTier::tier).toList()));
+        }
+        VideoStudioCanvas canvas = tier.canvases().stream()
+                .filter(c -> c.aspectRatio().equals(aspectRatio)).findFirst().orElse(null);
+        if (canvas == null) {
+            throw BusinessException.badRequest("VIDEO_STUDIO_SPEC_INVALID",
+                    "画面比例只能选 " + String.join("、", tier.canvases().stream().map(VideoStudioCanvas::aspectRatio).toList()));
+        }
+        if (seconds == null) throw BusinessException.badRequest("VIDEO_STUDIO_SPEC_INVALID", "请选择视频时长");
+        if (seconds < contract.minSeconds() || seconds > contract.maxSeconds()) {
+            throw BusinessException.badRequest("VIDEO_STUDIO_SPEC_INVALID",
+                    "视频时长要在 " + contract.minSeconds() + " 到 " + contract.maxSeconds() + " 秒之间，现在是 " + seconds + " 秒");
+        }
+        return new Geometry(tier, canvas, seconds);
+    }
+
     private Validated validate(String userId, Draft d,
             java.util.function.BiConsumer<String, String> requireCanvasAsset) {
         return validate(userId, d,
@@ -381,24 +431,10 @@ public class VideoStudioService {
         }
 
         // 4) 清晰度 / 比例 / 时长
-        VideoStudioTier tier = contract.tiers().stream()
-                .filter(t -> t.tier().equals(d.resolutionTier())).findFirst().orElse(null);
-        if (tier == null) {
-            throw BusinessException.badRequest("VIDEO_STUDIO_SPEC_INVALID",
-                    "清晰度只能选 " + String.join(" 或 ", contract.tiers().stream().map(VideoStudioTier::tier).toList()));
-        }
-        VideoStudioCanvas canvas = tier.canvases().stream()
-                .filter(c -> c.aspectRatio().equals(d.aspectRatio())).findFirst().orElse(null);
-        if (canvas == null) {
-            throw BusinessException.badRequest("VIDEO_STUDIO_SPEC_INVALID",
-                    "画面比例只能选 " + String.join("、", tier.canvases().stream().map(VideoStudioCanvas::aspectRatio).toList()));
-        }
-        Integer seconds = d.seconds();
-        if (seconds == null) throw BusinessException.badRequest("VIDEO_STUDIO_SPEC_INVALID", "请选择视频时长");
-        if (seconds < contract.minSeconds() || seconds > contract.maxSeconds()) {
-            throw BusinessException.badRequest("VIDEO_STUDIO_SPEC_INVALID",
-                    "视频时长要在 " + contract.minSeconds() + " 到 " + contract.maxSeconds() + " 秒之间，现在是 " + seconds + " 秒");
-        }
+        Geometry geometry = requireGeometry(contract, d.resolutionTier(), d.aspectRatio(), d.seconds());
+        VideoStudioTier tier = geometry.tier();
+        VideoStudioCanvas canvas = geometry.canvas();
+        int seconds = geometry.seconds();
 
         // 5) 随机种子（不传 = 随机；智能优化不带种子）
         Long seed = d.seed();
