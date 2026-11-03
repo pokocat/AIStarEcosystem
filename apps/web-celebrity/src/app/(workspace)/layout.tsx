@@ -25,6 +25,7 @@ import {
   Settings,
   ShoppingBag,
   Sparkles,
+  Sprout,
   Star,
   Video,
   Workflow,
@@ -114,6 +115,18 @@ function buildGroups(pathname: string, activeJobs: number, inflightPublishJobs: 
       ],
     },
     {
+      // AI 艺人孵化（路演演示版，纯前端 + mocks/incubation）：形象 → 人设 → 内容 → 矩阵账号 → 商单。
+      title: "AI 艺人",
+      items: [
+        {
+          icon: Sprout,
+          label: "AI 艺人孵化",
+          href: "/incubation",
+          selected: pathname === "/incubation" || pathname.startsWith("/incubation/"),
+        },
+      ],
+    },
+    {
       // v0.199：视频模型原生能力直接开放（四种生成模式），不绑模板 / 脚本 / 商品。docs/video-studio-plan.md
       title: "AI 创作",
       items: [
@@ -187,6 +200,8 @@ function CrumbsFromPathname(pathname: string): string[] {
       ? ["工作台", "混剪专区", TAB_LABEL[pathname]]
       : ["工作台", "明星带货", TAB_LABEL[pathname]];
   }
+  if (pathname === "/incubation") return ["AI 艺人", "AI 艺人孵化"];
+  if (pathname.startsWith("/incubation/")) return ["AI 艺人", "AI 艺人孵化", "艺人详情"];
   if (pathname.startsWith("/star")) return ["工作台", "明星市场", "明星详情"];
   if (pathname.startsWith("/projects/")) return ["工作台", "我的项目", "项目详情"];
   if (pathname.startsWith("/products/")) return ["工作台", "明星带货", "商品库", "商品详情"];

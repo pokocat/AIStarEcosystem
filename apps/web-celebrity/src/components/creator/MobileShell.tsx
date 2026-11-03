@@ -63,6 +63,7 @@ const TABS: {
 ];
 
 const MORE_CONTEXT: Array<{ label: string; icon: LucideIcon; match: (p: string) => boolean }> = [
+  { label: "艺人", icon: Star, match: (p) => p.startsWith("/incubation") },
   { label: "视频", icon: Video, match: (p) => p.startsWith("/library") },
   { label: "商品", icon: Package, match: (p) => p.startsWith("/products") },
   { label: "素材", icon: Package, match: (p) => p.startsWith("/material") },
