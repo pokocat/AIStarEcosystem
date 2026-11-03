@@ -90,10 +90,10 @@ test("the shared failure dialog names the action, the reason and the next step, 
   act(() => { openStudioFailure(Modal, failure); openStudioFailure(Modal, failure); });
   expect((await screen.findAllByText("删除片段 2 没有完成")).length).toBeGreaterThan(0);
   expect(screen.getAllByText("该项已在其他页面修改").length).toBeGreaterThan(0);
-  expect(screen.getByText(/页面已经刷新到最新内容/)).toBeTruthy();
+  expect(screen.getByText(/页面已更新为最新内容/)).toBeTruthy();
   expect(document.querySelectorAll(".studio-failure-dialog").length).toBe(1);
   // 没刷新过的页面（Studio 其他页面）不能这么说，请用户自己刷新
   act(() => { openStudioFailure(Modal, { action: "保存模板", error: new ApiError({ code: "IP_TEMPLATE_CONFLICT", message: "模板刚被改过" }, 409) }); });
   expect((await screen.findAllByText("保存模板没有完成")).length).toBeGreaterThan(0);
-  expect(screen.getByText(/刷新页面看一下最新内容/)).toBeTruthy();
+  expect(screen.getByText(/请刷新页面查看最新内容/)).toBeTruthy();
 });
