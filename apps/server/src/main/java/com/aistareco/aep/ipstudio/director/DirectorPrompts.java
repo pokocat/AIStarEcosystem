@@ -203,9 +203,14 @@ public final class DirectorPrompts {
         return fallback;
     }
 
-    /** 分集标题：段首的「第N集」（可带 # 或【】），N 是阿拉伯或中文数字；太长的段落是正文，不算标题。 */
-    private static final Pattern EPISODE_HEADING =
-            Pattern.compile("^#{0,6}\\s*[【\\[（(]?\\s*第\\s*([0-9０-９]+|[零〇一二两三四五六七八九十百]+)\\s*集");
+    /**
+     * 分集标题：段首的「第N集」或「E01 / EP1 / Ep.1 / Episode 1」（可带 #、** 加粗或【】），N 是阿拉伯或中文数字；太长的段落是正文，不算标题。
+     * 2026-11-03 线上《我的十年》：外面写好的 70 集剧本用「**E01 开机**」标集，只认「第N集」时整份交给模型，按幕拆成了 7 集。
+     * 「E01-E24」「E21/E22」这类编号范围不是标题。
+     */
+    private static final Pattern EPISODE_HEADING = Pattern.compile(
+            "^[#*\\s]*[【\\[（(]?\\s*(?:第\\s*([0-9０-９]+|[零〇一二两三四五六七八九十百]+)\\s*集"
+                    + "|(?:Episode|EPISODE|episode|EP|Ep|ep|E)\\s*\\.?\\s*([0-9０-９]+)(?![0-9０-９A-Za-z\\-–—~～/／、,，至到]))");
     private static final int HEADING_MAX_CHARS = 40;
 
     /**
@@ -219,7 +224,7 @@ public final class DirectorPrompts {
             if (p.length() > HEADING_MAX_CHARS) continue;
             Matcher m = EPISODE_HEADING.matcher(p);
             if (!m.find()) continue;
-            int no = number(m.group(1));
+            int no = number(m.group(1) != null ? m.group(1) : m.group(2));
             if (no > 0) found.add(new int[]{i, no});
         }
         int from = -1;
@@ -239,11 +244,11 @@ public final class DirectorPrompts {
         return !t.isEmpty() && t.length() <= HEADING_MAX_CHARS && EPISODE_HEADING.matcher(t).find();
     }
 
-    /** 标题里「第N集」后面的集名（「# 第1集：下山」→「下山」）；只有编号时返回空串，界面按「第 N 集」显示。 */
+    /** 标题里「第N集」「E01」后面的集名（「# 第1集：下山」「**E01 开机**」→「下山」「开机」）；只有编号时返回空串，界面按「第 N 集」显示。 */
     public static String headingTitle(String paragraph) {
         Matcher m = EPISODE_HEADING.matcher(paragraph);
         String rest = m.find() ? paragraph.substring(m.end()) : paragraph;
-        return clip(rest.replaceAll("^[\\s:：】\\]）)·、\\-—]+", "").strip(), 60);
+        return clip(rest.replace("**", "").replaceAll("^[\\s:：】\\]）)·、\\-—]+", "").strip(), 60);
     }
 
     /** 「12」「１２」「十二」「一百零三」→ 数字；认不出返回 0。 */

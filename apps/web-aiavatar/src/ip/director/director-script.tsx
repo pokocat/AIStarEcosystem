@@ -174,7 +174,7 @@ function DraftEditor({ work, apply, setError, splitting, startPipeline }: Workbe
         work.pendingSplit ? <SplitPreview key={work.pendingSplit.id} work={work} apply={apply} setError={setError}/> :
         <NextChoices work={work} shortcutDesc="从拆分集一路自动做到成片，也可以只做到分镜脚本或分镜图。系统先算好推荐预算，你确认后开始。" title="下一步：拆分集"
           desc={byHeadings ? `剧本里已经标好了 ${work.draftEpisodeHeadings} 集，按标题直接分，不花积分。开头不属于任何一集的内容会单独放进设定资料，确认后生效。`
-            : "AI 按剧情把剧本拆成分集，只划定每集范围、不改正文。剧本开头的设定资料会单独保留。分好后先给你看，确认后生效。"}
+            : "AI 按剧情把剧本拆成分集，只划定每集范围、不改正文。剧本开头的设定资料会单独保留。分好后先给你看，确认后生效。已经分好集的剧本，在每集开头写上「第1集」或「E01」「EP01」这样的标题（单独一行），就会按标题直接分，不花积分，集数不限。"}
           onShortcut={startPipeline} shortcutDisabled={locked || !!busy || !text.trim() || dirty} shortcutNote={dirty ? "先保存剧本" : undefined}>
           <label className="director-inline-field">分为<input inputMode="numeric" value={count} placeholder="自动" onChange={e => setCount(e.target.value.replace(/\D/g, "").slice(0, 2))}/>集</label>
           <button type="button" className="ip-brand-button" disabled={locked || !!busy || !text.trim()} onClick={split}><Scissors size={15}/>{byHeadings ? "按标题分集" : "AI 拆分"}</button>
@@ -389,7 +389,7 @@ export function LongTextNote({ length, budget }: { length: number; budget: numbe
   if (!budget || length <= budget) return null;
   return <p className="director-long-note" role="note">
     正文 {length.toLocaleString("zh-CN")} 字，超过 AI 一次能读的约 {budget.toLocaleString("zh-CN")} 字。正文照常保存；助手读光标或选中处附近的一段，
-    提取资产按集分批读，写分镜脚本要求每集在 {budget.toLocaleString("zh-CN")} 字以内（用「第1集」这样的标题分集可免费拆分）。
+    提取资产按集分批读，写分镜脚本要求每集在 {budget.toLocaleString("zh-CN")} 字以内（用「第1集」或「E01」这样的标题分集可免费拆分）。
   </p>;
 }
 

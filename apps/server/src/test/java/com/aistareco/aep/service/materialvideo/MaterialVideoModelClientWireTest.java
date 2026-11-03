@@ -75,6 +75,10 @@ class MaterialVideoModelClientWireTest {
     private volatile String createBody = "{\"jobId\":\"job_1\",\"jobUrl\":\"https://example/jobs/job_1\"}";
     private volatile int uploadStatus = 201;
     private volatile String uploadErrorBody = "";
+    /** 前几次上传按聚算「内容已作废」回 409。 */
+    private final AtomicInteger uploadConflicts = new AtomicInteger();
+    private static final String CONFLICT_BODY = "{\"code\":\"input_asset_binding_conflict\",\"error\":{\"code\":\"input_asset_binding_conflict\","
+            + "\"message\":\"input asset is unavailable; reupload does not restore expired or deleted assets\",\"retryable\":false}}";
     private String uploadExpiresAt;
 
     private AiModelInvocationService invocation;
@@ -96,7 +100,10 @@ class MaterialVideoModelClientWireTest {
             requests.add(r);
             int status;
             String resp;
-            if (r.path().endsWith("/assets/input")) {
+            if (r.path().endsWith("/assets/input") && uploadConflicts.getAndUpdate(n -> Math.max(0, n - 1)) > 0) {
+                status = 409;
+                resp = CONFLICT_BODY;
+            } else if (r.path().endsWith("/assets/input")) {
                 status = uploadStatus;
                 resp = status < 300
                         ? "{\"asset\":{\"assetId\":\"asset_" + assetSeq.incrementAndGet() + "\",\"status\":\"available\""
@@ -485,6 +492,46 @@ class MaterialVideoModelClientWireTest {
         assertEquals("VIDEO_REF_UPLOAD_FAILED", e.getCode());
         assertTrue(e.getMessage().contains("image resolution too small"), e.getMessage());
         assertTrue(e.getMessage().startsWith("图1"), e.getMessage());
+    }
+
+    @Test
+    void expiredAssetConflictIsRetriedOnceWithDistinctBytes() throws Exception {
+        useJusuan();
+        byte[] original = stored("ipstudio_gen/u1/board.png", realPng());
+        uploadConflicts.set(1);
+
+        client.submit("跳舞", 5, "9:16", "u1", "ipstudio", null, new VideoGenSpec("universal_reference_video", "768p",
+                null, null, null, List.of(new VideoGenSpec.Reference("image", "ipstudio_gen/u1/board.png"))));
+
+        List<Recorded> ups = uploads();
+        assertEquals(2, ups.size());
+        assertArrayEquals(original, part(ups.get(0)).content());
+        byte[] retried = part(ups.get(1)).content();
+        assertFalse(Arrays.equals(original, retried));
+        assertEquals(javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(original)).getRGB(1, 1),
+                javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(retried)).getRGB(1, 1));
+        assertEquals("asset_1", createJson().path("referenceInputs").get(0).path("assetId").asText());
+    }
+
+    @Test
+    void conflictThatPersistsStillFailsWithVendorReason() throws Exception {
+        useJusuan();
+        stored("ipstudio_gen/u1/board.png", realPng());
+        uploadConflicts.set(5);
+
+        BusinessException e = assertThrows(BusinessException.class, () -> client.submit("跳舞", 5, "9:16", "u1",
+                "ipstudio", null, new VideoGenSpec("universal_reference_video", "768p", null, null, null,
+                        List.of(new VideoGenSpec.Reference("image", "ipstudio_gen/u1/board.png")))));
+        assertEquals("VIDEO_REF_UPLOAD_FAILED", e.getCode());
+        assertEquals(2, uploads().size(), "只多重传一次");
+    }
+
+    private static byte[] realPng() throws IOException {
+        var img = new java.awt.image.BufferedImage(4, 4, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        img.setRGB(1, 1, 0x336699);
+        var out = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(img, "png", out);
+        return out.toByteArray();
     }
 
     // ── seedance / agnes / 通用协议：画布首帧不再被丢掉 ─────────────────────────

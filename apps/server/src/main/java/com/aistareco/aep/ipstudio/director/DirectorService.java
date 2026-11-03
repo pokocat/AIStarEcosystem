@@ -789,7 +789,7 @@ public class DirectorService {
                 if (splitByHeadings(c, target)) { clearError(c, "split"); return null; }
                 int budget = textBudget(c);
                 if (draft.length() > budget) throw tooLongForModel("剧本", draft.length(), budget,
-                        "在正文里写上「第1集」「第2集」这样的分集标题后再拆分，会按标题免费拆分，不限长度；或者先把整份作为一集。");
+                        "在正文里写上「第1集」「第2集」或「E01」「E02」这样的分集标题后再拆分，会按标题免费拆分，不限长度；或者先把整份作为一集。");
                 nodeId = "split";
                 meta.put("paragraphCount", paragraphs.size()).put("draftHash", hash(draft));
                 if (target > 0) meta.put("targetEpisodeCount", target);
@@ -1575,6 +1575,8 @@ public class DirectorService {
                 JsonNode job;
                 try { job = videoJobs.getJob(entry.path("jobId").asText(), w.getOwnerUserId(), MaterialVideoJobService.APP_IPSTUDIO); }
                 catch (BusinessException e) { log.warn("[director] 读取视频任务失败 job={} reason={}", entry.path("jobId").asText(), e.getMessage()); running[0] = true; continue; }
+                // 任务刚在独立事务里建好时，外层事务的快照还看不到它（§8.0.1 ⑯）：当作还在跑，下次再查。
+                if (job == null) { running[0] = true; continue; }
                 String status = job.path("status").asText();
                 if ("ready".equals(status)) {
                     // OSS 下任务卡带 video_key；本地存储只有地址，按画布同一个办法（keyOfStoredUrl）还原 key。
