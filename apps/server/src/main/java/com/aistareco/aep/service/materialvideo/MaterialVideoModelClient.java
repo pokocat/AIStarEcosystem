@@ -79,6 +79,9 @@ public class MaterialVideoModelClient {
     private final HttpClient http;
     @org.springframework.beans.factory.annotation.Autowired
     private MaterialVideoInputAssets inputAssets;
+    /** 重传兜底（{@link InputAssetCopy#viaFfmpeg}）；直接 new 出来的协议单测没有它。 */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.aistareco.aep.service.mixcut.FfmpegRunner ffmpeg;
 
     public MaterialVideoModelClient(AiModelInvocationService invocation,
                                     MaterialVideoProperties props,
@@ -1917,17 +1920,19 @@ public class MaterialVideoModelClient {
                 // 聚算按内容认素材：同一份字节之前传过、那份已过期或被删（例如用户清了资源空间回收站）时，
                 // 再传同样的字节一律 409 input_asset_binding_conflict，永远传不上去（2026-11-03 线上，图1 分镜图）。
                 // 加一段不影响画面 / 声音的标记换一份新内容，只重传这一次；做不到或仍被拒就照常报错。
-                byte[] copy = InputAssetCopy.distinct(fmt, Files.readAllBytes(local));
-                log.warn("[material-video] 素材内容已被厂商作废，换一份新内容重传 endpoint={} model={} field={} bytes={} retry={} body={}",
-                        p.getName(), model, mediaType, size, copy != null && copy.length <= maxBytes, snippet(resp.body()));
-                if (copy != null && copy.length <= maxBytes) {
-                    HttpRequest retry = HttpRequest.newBuilder(uri)
+                InputAssetCopy.Fresh copy = freshCopy(mediaType, fmt, local, allowedFormats);
+                boolean retry = copy != null && copy.bytes().length <= maxBytes;
+                log.warn("[material-video] 素材内容已被厂商作废，换一份新内容重传 endpoint={} model={} field={} bytes={} retry={} as={} body={}",
+                        p.getName(), model, mediaType, size, retry, copy == null ? null : copy.fmt().ext(), snippet(resp.body()));
+                if (retry) {
+                    HttpRequest again = HttpRequest.newBuilder(uri)
                             .timeout(Duration.ofSeconds(Math.max(props.getHttpTimeoutSeconds(), props.getDownloadTimeoutSeconds())))
                             .header("Authorization", "Bearer " + apiKey)
                             .header("Content-Type", "multipart/form-data; boundary=" + boundary)
-                            .POST(multipart(boundary, mediaType, filename, fmt.mime(), HttpRequest.BodyPublishers.ofByteArray(copy)))
+                            .POST(multipart(boundary, mediaType, withExtension(filename, copy.fmt().ext()), copy.fmt().mime(),
+                                    HttpRequest.BodyPublishers.ofByteArray(copy.bytes())))
                             .build();
-                    resp = http.send(retry, HttpResponse.BodyHandlers.ofString());
+                    resp = http.send(again, HttpResponse.BodyHandlers.ofString());
                 }
             }
             if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
@@ -1982,6 +1987,18 @@ public class MaterialVideoModelClient {
     private static long ceilMb(long bytes) {
         long mib = 1024L * 1024L;
         return (bytes + mib - 1) / mib;
+    }
+
+    /** 先在字节里打标记，打不了再交给 ffmpeg；两条都不行返回 null。 */
+    private InputAssetCopy.Fresh freshCopy(String mediaType, MediaBytes.Format fmt, Path local, List<String> allowedFormats) {
+        try {
+            byte[] tagged = InputAssetCopy.distinct(fmt, Files.readAllBytes(local));
+            if (tagged != null) return new InputAssetCopy.Fresh(tagged, fmt);
+            return InputAssetCopy.viaFfmpeg(ffmpeg, mediaType, fmt, local, allowedFormats);
+        } catch (Exception e) {
+            log.warn("[material-video] 换一份素材内容失败 field={} format={} err={}", mediaType, fmt == null ? null : fmt.ext(), e.toString());
+            return null;
+        }
     }
 
     /** 手写 multipart：只有一个文件字段，不值得为它引一个 HTTP 客户端库。文件体直接从磁盘流出去。 */

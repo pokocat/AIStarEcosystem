@@ -1,10 +1,19 @@
 package com.aistareco.aep.service.materialvideo;
 
+import com.aistareco.aep.service.mixcut.FfmpegRunner;
 import com.aistareco.aep.service.storage.MediaBytes;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 import java.util.zip.CRC32;
 
 /**
@@ -13,7 +22,10 @@ import java.util.zip.CRC32;
  * <p>聚算 {@code /assets/input} 按内容认素材（响应里的 {@code reused}）：一份字节传过、那份素材过期或被删之后，
  * 再传同样的字节一律 409 {@code input_asset_binding_conflict}「reupload does not restore expired or deleted assets」，
  * 永远传不上去。这里只在容器规范允许的位置加一段标记：PNG 的 tEXt 块、JPEG 的注释段、
- * MP4 / MOV / M4A 末尾的 free 盒子、WAV 末尾的自定义块。其它格式返回 null，由调用方照常报错，不猜。
+ * MP4 / MOV / M4A 末尾的 free 盒子、WAV 末尾的自定义块、GIF 的注释扩展、BMP 像素后的尾巴。
+ * 这些都做不到的（WebP、MP3、FLAC、OGG、AAC、WebM），{@link #viaFfmpeg} 兜底：
+ * 音视频原样重封装（{@code -c copy}）并写一条注释元数据（AAC 装进 M4A）；图片解码后转成 PNG 再打标记。
+ * 两条路都走不通才返回 null，由调用方照常报错。
  */
 final class InputAssetCopy {
 
@@ -33,8 +45,78 @@ final class InputAssetCopy {
             case "jpg", "jpeg" -> jpeg(original, mark);
             case "mp4", "mov", "m4a" -> isoBmff(original, mark);
             case "wav" -> wav(original, mark);
+            case "gif" -> gif(original, mark);
+            case "bmp" -> bmp(original, mark);
             default -> null;
         };
+    }
+
+    /** 换出来的新内容；格式可能变了（WebP → PNG），文件名后缀与 Content-Type 要跟着它走。 */
+    record Fresh(byte[] bytes, MediaBytes.Format fmt) {}
+
+    private static final MediaBytes.Format PNG = new MediaBytes.Format("png", "image/png");
+    private static final long FFMPEG_TIMEOUT_MS = 120_000L;
+
+    /**
+     * 字节级打不了标记的格式用 ffmpeg 换一份：音视频不重新编码只重封装，图片转 PNG（像素不变）。
+     * 结果必须仍被认成允许的格式、且与原文件不同，否则返回 null。
+     */
+    static Fresh viaFfmpeg(FfmpegRunner ffmpeg, String mediaType, MediaBytes.Format fmt, Path src,
+                           List<String> allowedFormats) throws IOException {
+        if (ffmpeg == null || fmt == null) return null;
+        // 图片解码后转 PNG；ADTS 的 AAC 没有放元数据的地方（加 ID3 头又会被认成 MP3），不改编码装进 M4A。
+        MediaBytes.Format target = "image".equals(mediaType) ? PNG : "aac".equals(fmt.ext()) ? MediaBytes.M4A : fmt;
+        if (target != fmt && !MediaBytes.allowed(target, allowedFormats)) return null;
+        Path dir = Files.createTempDirectory("aistareco-asset-copy-");
+        try {
+            Path out = dir.resolve("copy." + target.ext());
+            List<String> args = new ArrayList<>(List.of("-v", "error", "-y", "-i", src.toString()));
+            if (target == PNG) {
+                args.addAll(List.of("-frames:v", "1"));
+            } else {
+                args.addAll(List.of("-map", "0", "-c", "copy", "-map_metadata", "0",
+                        "-metadata", "comment=aistareco:" + UUID.randomUUID()));
+                if (target != fmt) args.addAll(List.of("-bsf:a", "aac_adtstoasc"));
+            }
+            args.add(out.toString());
+            ffmpeg.runFfmpeg(args, FFMPEG_TIMEOUT_MS);
+            byte[] bytes = Files.readAllBytes(out);
+            if (target != fmt) {
+                bytes = distinct(target, bytes);
+                return bytes == null ? null : new Fresh(bytes, target);
+            }
+            MediaBytes.Format again = MediaBytes.sniffConfigured(mediaType, Arrays.copyOf(bytes, Math.min(bytes.length, 4096)));
+            if (again == null || !again.equals(fmt) || Arrays.equals(bytes, Files.readAllBytes(src))) return null;
+            return new Fresh(bytes, fmt);
+        } finally {
+            try (Stream<Path> walk = Files.walk(dir)) {
+                walk.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
+            }
+        }
+    }
+
+    /** 注释扩展（0x21 0xFE）插在结尾符 0x3B 前面。 */
+    private static byte[] gif(byte[] b, byte[] mark) {
+        if (b.length < 14 || (b[b.length - 1] & 0xFF) != 0x3B || mark.length > 255) return null;
+        ByteArrayOutputStream out = new ByteArrayOutputStream(b.length + mark.length + 4);
+        out.write(b, 0, b.length - 1);
+        out.write(0x21);
+        out.write(0xFE);
+        out.write(mark.length);
+        out.writeBytes(mark);
+        out.write(0x00);
+        out.write(0x3B);
+        return out.toByteArray();
+    }
+
+    /** 像素按头里的偏移读，尾巴不影响；文件总长（第 2..5 字节，小端）跟着改。 */
+    private static byte[] bmp(byte[] b, byte[] mark) {
+        if (b.length < 26 || b[0] != 'B' || b[1] != 'M') return null;
+        byte[] r = Arrays.copyOf(b, b.length + mark.length);
+        System.arraycopy(mark, 0, r, b.length, mark.length);
+        int size = r.length;
+        r[2] = (byte) size; r[3] = (byte) (size >>> 8); r[4] = (byte) (size >>> 16); r[5] = (byte) (size >>> 24);
+        return r;
     }
 
     /** tEXt 块插在 IEND 前面。 */

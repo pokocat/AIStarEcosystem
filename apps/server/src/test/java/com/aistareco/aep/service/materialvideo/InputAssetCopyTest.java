@@ -1,5 +1,7 @@
 package com.aistareco.aep.service.materialvideo;
 
+import com.aistareco.aep.config.MixcutProperties;
+import com.aistareco.aep.service.mixcut.FfmpegRunner;
 import com.aistareco.aep.service.storage.ImageBytes;
 import com.aistareco.aep.service.storage.MediaBytes;
 import org.junit.jupiter.api.Test;
@@ -8,9 +10,15 @@ import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.List;
+
+import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class InputAssetCopyTest {
 
@@ -19,20 +27,20 @@ class InputAssetCopyTest {
 
     @Test
     void imagesStayDecodableWithSamePixels() throws Exception {
-        for (String type : new String[]{"png", "jpg"}) {
+        for (String type : new String[]{"png", "jpg", "gif", "bmp"}) {
             BufferedImage img = new BufferedImage(8, 6, BufferedImage.TYPE_INT_RGB);
             img.setRGB(2, 3, 0x123456);
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             ImageIO.write(img, type, out);
             byte[] original = out.toByteArray();
-            byte[] copy = InputAssetCopy.distinct("png".equals(type) ? PNG : JPEG, original);
+            byte[] copy = InputAssetCopy.distinct(format(type), original);
             assertNotNull(copy, type);
             assertFalse(Arrays.equals(original, copy), type);
             BufferedImage a = ImageIO.read(new ByteArrayInputStream(original));
             BufferedImage b = ImageIO.read(new ByteArrayInputStream(copy));
             assertEquals(a.getWidth(), b.getWidth());
             assertEquals(a.getRGB(2, 3), b.getRGB(2, 3), type);
-            assertFalse(Arrays.equals(copy, InputAssetCopy.distinct("png".equals(type) ? PNG : JPEG, original)), "每次都不同");
+            assertFalse(Arrays.equals(copy, InputAssetCopy.distinct(format(type), original)), "每次都不同");
         }
     }
 
@@ -58,5 +66,50 @@ class InputAssetCopyTest {
         int size = (copy[8] & 0xFF) << 24 | (copy[9] & 0xFF) << 16 | (copy[10] & 0xFF) << 8 | (copy[11] & 0xFF);
         assertEquals(copy.length - 8, size);
         assertEquals("free", new String(copy, 12, 4));
+    }
+
+    @TempDir
+    Path tmp;
+
+    @Test
+    void ffmpegFallbackRemuxesAudioAndTurnsWebpIntoPng() throws Exception {
+        FfmpegRunner ffmpeg = new FfmpegRunner(new MixcutProperties());
+        assumeTrue(ffmpegWorks(ffmpeg), "本机没有 ffmpeg");
+        for (String ext : new String[]{"mp3", "aac", "flac", "ogg"}) {
+            Path src = tmp.resolve("tone." + ext);
+            ffmpeg.runFfmpeg(List.of("-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=1", src.toString()), 60_000);
+            byte[] original = Files.readAllBytes(src);
+            MediaBytes.Format fmt = MediaBytes.sniffConfigured("audio", original);
+            assertNotNull(fmt, ext);
+            assertNull(InputAssetCopy.distinct(fmt, original), ext + " 字节级打不了标记，才轮到 ffmpeg");
+            InputAssetCopy.Fresh fresh = InputAssetCopy.viaFfmpeg(ffmpeg, "audio", fmt, src, List.of("MP3", "AAC", "FLAC", "OGG", "M4A"));
+            assertNotNull(fresh, ext);
+            assertEquals("aac".equals(ext) ? MediaBytes.M4A : fmt, fresh.fmt(), ext);
+            assertEquals(fresh.fmt(), MediaBytes.sniffConfigured("audio", fresh.bytes()), ext);
+            assertFalse(Arrays.equals(original, fresh.bytes()), ext);
+        }
+        // 1×1 无损 WebP（不少 ffmpeg 只带 WebP 解码器、不能编码，所以样本写死）。
+        Path webp = Files.write(tmp.resolve("a.webp"),
+                java.util.Base64.getDecoder().decode("UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA=="));
+        MediaBytes.Format fmt = new MediaBytes.Format("webp", "image/webp");
+        assertNull(InputAssetCopy.viaFfmpeg(ffmpeg, "image", fmt, webp, List.of("WEBP")), "端点不收 PNG 就不转");
+        InputAssetCopy.Fresh png = InputAssetCopy.viaFfmpeg(ffmpeg, "image", fmt, webp, List.of("PNG", "WEBP"));
+        assertNotNull(png);
+        assertEquals("png", png.fmt().ext());
+        BufferedImage img = ImageIO.read(new ByteArrayInputStream(png.bytes()));
+        assertEquals(1, img.getWidth());
+    }
+
+    private static boolean ffmpegWorks(FfmpegRunner ffmpeg) {
+        try { ffmpeg.runFfmpeg(List.of("-version"), 10_000); return true; } catch (RuntimeException e) { return false; }
+    }
+
+    private static MediaBytes.Format format(String type) {
+        return switch (type) {
+            case "png" -> PNG;
+            case "jpg" -> JPEG;
+            case "gif" -> new MediaBytes.Format("gif", "image/gif");
+            default -> new MediaBytes.Format("bmp", "image/bmp");
+        };
     }
 }
