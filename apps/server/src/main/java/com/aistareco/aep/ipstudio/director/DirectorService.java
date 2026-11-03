@@ -786,6 +786,8 @@ public class DirectorService {
                 requireIdle(w, "split");
                 List<String> paragraphs = paragraphs(draft);
                 int target = o.path("episodeCount").asInt(0);
+                String marker = o.path("marker").asText("").strip();
+                if (!marker.isEmpty()) { splitByMarker(c, marker, target); clearError(c, "split"); return null; }
                 if (splitByHeadings(c, target)) { clearError(c, "split"); return null; }
                 int budget = textBudget(c);
                 if (draft.length() > budget) throw tooLongForModel("剧本", draft.length(), budget,
@@ -4231,6 +4233,34 @@ public class DirectorService {
                     heads.get(i), i + 1 < heads.size() ? heads.get(i + 1) - 1 : ps.size() - 1));
         c.set("pendingSplit", pendingSplit(c, null, "headings", ps, ranges, List.of(), List.of()));
         return true;
+    }
+
+    /**
+     * 按用户填的标题开头分集（程序认不出分集写法时由用户指定）：不调模型、不扣积分，结果同样先给用户确认。
+     * 找到不足 2 行就报错，并说清找到几行，用户改了再试，不悄悄交给模型。
+     */
+    private void splitByMarker(ObjectNode c, String marker, int target) {
+        if (marker.length() > DirectorPrompts.MARKER_MAX_CHARS)
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_SPLIT_MARKER_INVALID",
+                    "最多填 " + DirectorPrompts.MARKER_MAX_CHARS + " 个字，照抄第一集标题行的开头几个字（带上编号）就行");
+        List<String> ps = paragraphs(c.path("draft").asText());
+        List<Integer> heads = DirectorPrompts.markerStarts(ps, marker);
+        if (heads.size() < 2) {
+            String shown = snippet(marker);
+            String found = heads.isEmpty() ? "剧本里没有找到和「" + shown + "」写法一样的标题行"
+                    : "剧本里只找到 1 行和「" + shown + "」写法一样的标题（「" + snippet(ps.get(heads.get(0))) + "」），至少要 2 集才能按标题分";
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_SPLIT_MARKER_NOT_FOUND",
+                    found + "。请照抄第一集标题行的开头，带编号的话后面几集的编号要逐个加一，每集标题单独占一行", Map.of("found", heads.size()));
+        }
+        List<SplitRange> ranges = new ArrayList<>();
+        for (int i = 0; i < heads.size(); i++)
+            ranges.add(new SplitRange(DirectorPrompts.markerTitle(ps.get(heads.get(i))), "",
+                    heads.get(i), i + 1 < heads.size() ? heads.get(i + 1) - 1 : ps.size() - 1));
+        List<String> warnings = target > 0 && target != heads.size()
+                ? List.of("你要求分成 " + target + " 集，按「" + snippet(marker) + "」的写法找到 " + heads.size() + " 集") : List.of();
+        ObjectNode pending = pendingSplit(c, null, "marker", ps, ranges, List.of(), warnings);
+        pending.put("marker", marker);
+        c.set("pendingSplit", pending);
     }
 
     /** 全自动采用分集时的说明：分了几集、开头资料放哪了、程序补了什么，用户据此决定要不要改回。 */

@@ -35,6 +35,44 @@ test("marked episodes split for free without asking who pays", async () => {
   await waitFor(() => expect(api.runTask).toHaveBeenCalledWith("split-test", expect.objectContaining({ type: "split", maxCost: 0, billing: undefined })));
 });
 
+test("unrecognised headings ask first, and a typed heading start splits for free", async () => {
+  const apply = vi.fn(); api.runTask.mockResolvedValue(base);
+  render(<DirectorScript work={base} apply={apply} setError={vi.fn()} {...({} as any)}/>);
+  fireEvent.click(screen.getByRole("button", { name: /拆分集/ }));
+  const dialog = await screen.findByRole("dialog", { name: "剧本里没有认出分集标题" });
+  expect(api.runTask).not.toHaveBeenCalled();
+  const submit = screen.getByRole("button", { name: /按标题分集/ });
+  expect((submit as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole("radio", { name: /已经分好集/ }));
+  fireEvent.change(screen.getByLabelText("第一集标题行的开头"), { target: { value: " Chapter " } });
+  fireEvent.click(screen.getByRole("button", { name: /按标题分集/ }));
+  await waitFor(() => expect(api.runTask).toHaveBeenCalledWith("split-test", expect.objectContaining({ type: "split", options: { marker: "Chapter" }, maxCost: 0 })));
+  expect(api.runTask.mock.calls[0][1].billing).toBeUndefined();
+  await waitFor(() => expect(dialog.isConnected).toBe(false));
+  expect(apply).toHaveBeenCalledTimes(1);
+});
+
+test("a heading start that is not found keeps the dialog open with the reason", async () => {
+  api.runTask.mockRejectedValue(new Error("剧本里没有找到以「Chapter」开头的标题行"));
+  render(<DirectorScript work={base} apply={vi.fn()} setError={vi.fn()} {...({} as any)}/>);
+  fireEvent.click(screen.getByRole("button", { name: /拆分集/ }));
+  fireEvent.click(await screen.findByRole("radio", { name: /已经分好集/ }));
+  fireEvent.change(screen.getByLabelText("第一集标题行的开头"), { target: { value: "Chapter" } });
+  fireEvent.click(screen.getByRole("button", { name: /按标题分集/ }));
+  expect(await screen.findByText(/没有找到以「Chapter」开头/)).toBeTruthy();
+  expect(screen.getByRole("dialog", { name: "剧本里没有认出分集标题" })).toBeTruthy();
+});
+
+test("choosing AI splitting sends the episode count and the price cap", async () => {
+  api.runTask.mockResolvedValue(base);
+  render(<DirectorScript work={base} apply={vi.fn()} setError={vi.fn()} {...({} as any)}/>);
+  fireEvent.change(screen.getByPlaceholderText("自动"), { target: { value: "12" } });
+  fireEvent.click(screen.getByRole("button", { name: /拆分集/ }));
+  fireEvent.click(await screen.findByRole("radio", { name: /交给 AI 拆分/ }));
+  fireEvent.click(screen.getByRole("button", { name: /AI 拆分/ }));
+  await waitFor(() => expect(api.runTask).toHaveBeenCalledWith("split-test", expect.objectContaining({ type: "split", options: { episodeCount: 12 }, maxCost: 21 })));
+});
+
 test("the preview shows what was fixed and saves the chosen place for the opening notes", async () => {
   const apply = vi.fn(); api.edit.mockResolvedValue(base);
   render(<DirectorScript work={{ ...base, pendingSplit: pending }} apply={apply} setError={vi.fn()} {...({} as any)}/>);

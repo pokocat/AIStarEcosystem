@@ -297,14 +297,17 @@ export interface DirectorPendingExtract {
 export interface DirectorSplitRangeView { paragraphs: number; chars: number; head: string; tail: string }
 
 /**
- * 拆好、还没采用的分集。headings = 剧本里标好了「第N集」，按标题分，不花积分；model = AI 拆的。
+ * 拆好、还没采用的分集。headings = 剧本里标好了「第N集」「E01」，按标题分，不花积分；
+ * marker = 程序认不出写法时，按用户填的标题开头（marker）分，不花积分；model = AI 拆的。
  * preamble 是第一集之前的内容（设定资料），确认时选择保留为设定资料（默认）或并入第一集。
  * notes 是程序补过的段落，warnings 是和要求不一致的地方（如集数）。
  */
 export interface DirectorPendingSplit {
   id: string;
   runId: string | null;
-  source: "headings" | "model";
+  source: "headings" | "marker" | "model";
+  /** source = marker 时用户填的标题开头。 */
+  marker?: string;
   at: string;
   paragraphCount: number;
   preamble: DirectorSplitRangeView | null;

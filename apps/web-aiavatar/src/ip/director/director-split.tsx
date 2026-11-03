@@ -5,7 +5,7 @@ import { BookMarked, ChevronRight, Scissors, Undo2, X } from "lucide-react";
 import type { DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi } from "../api";
 import type { WorkbenchProps } from "./director-workbench";
-import { InlineError, clearDrafts, dialogFocus, failed, useBusy, useDraft, useEscape } from "./director-shared";
+import { InlineError, chooseDirectorBilling, clearDrafts, dialogFocus, failed, newRequestId, useBusy, useDraft, useEscape } from "./director-shared";
 import { LargePasteNotice, usePasteGuard } from "./director-script-file";
 import { EDIT_MAX, SectionedScript } from "./director-long-editor";
 
@@ -26,7 +26,9 @@ export function SplitPreview({ work, apply, setError }: Pick<WorkbenchProps, "wo
   return <section className="director-split-preview" aria-label="确认分集">
     <header>
       <h4><Scissors size={15}/>分成 {pending.episodes.length} 集，确认后生效</h4>
-      <p>{pending.source === "headings" ? "按剧本里标好的分集标题分，没有花积分。" : "AI 只划定每集范围，正文一个字都没改。"}</p>
+      <p>{pending.source === "headings" ? "按剧本里标好的分集标题分，没有花积分。"
+        : pending.source === "marker" ? `按「${pending.marker ?? ""}」这种写法的标题分，没有花积分。分得不对可以放弃，换个写法再试。`
+        : "AI 只划定每集范围，正文一个字都没改。"}</p>
     </header>
     {pre && <div className="director-split-preamble">
       <p><b>剧本开头 {pre.paragraphs} 段（{pre.chars.toLocaleString("zh-CN")} 字）不在任何一集里</b>
@@ -53,6 +55,62 @@ export function SplitPreview({ work, apply, setError }: Pick<WorkbenchProps, "wo
       <button type="button" className="ip-brand-text-button" disabled={!!busy} onClick={discard}>不用这个结果</button>
     </div>
   </section>;
+}
+
+/** 和服务端 DirectorPrompts.MARKER_MAX_CHARS 一致。 */
+const MARKER_MAX = 60;
+
+/**
+ * 程序没认出分集标题时，拆分前先问一句：剧本已经分好集就填每集标题的开头，按标题免费分；
+ * 还没分集才交给 AI。不先问的话，分好集的长剧本整份交给模型，集数多了会被截断（2026-11-03《我的十年》）。
+ */
+export function SplitChoiceDialog({ work, count, apply, onClose }: { work: DirectorWork; count: string; apply: (w: DirectorWork) => void; onClose: () => void }) {
+  const [mode, setMode] = useState<"marker" | "model">();
+  const [marker, setMarker] = useState("");
+  const [error, setLocalError] = useState("");
+  const { busy, run } = useBusy();
+  useEscape(() => { if (!busy) onClose(); });
+  const episodeCount = count ? { episodeCount: Number(count) } : {};
+  const ready = mode === "model" || (mode === "marker" && !!marker.trim());
+  const go = () => void run("split", async () => {
+    setLocalError("");
+    const next = mode === "marker"
+      ? await DirectorApi.runTask(work.id, { type: "split", clientRequestId: newRequestId(), options: { ...episodeCount, marker: marker.trim() }, maxCost: 0 })
+      : await DirectorApi.runTask(work.id, { type: "split", clientRequestId: newRequestId(), options: episodeCount,
+        billing: await chooseDirectorBilling("script"), maxCost: work.pricing.textMax });
+    apply(next);
+    onClose();
+  }, setLocalError);
+  return <div className="director-dialog-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && !busy && onClose()}>
+    <div className="director-dialog director-split-choice" role="dialog" aria-modal="true" aria-labelledby="director-split-choice-title" ref={dialogFocus} tabIndex={-1}>
+      <header><h2 id="director-split-choice-title">剧本里没有认出分集标题</h2><button type="button" aria-label="关闭" onClick={onClose} disabled={!!busy}><X size={18}/></button></header>
+      <p className="director-dialog-note">能直接认出的标题写法：「第1集」「第一集」「E01」「EP01」「Episode 1」，每集标题单独占一行。你的剧本如果已经分好集、用的是别的写法，选第一项。</p>
+      <div className="director-field" role="radiogroup" aria-label="怎么拆分">
+        <span>怎么拆分</span>
+        <label className="director-check">
+          <input type="radio" name="director-split-mode" checked={mode === "marker"} onChange={() => setMode("marker")}/>
+          <span><b>已经分好集，按我写的标题分</b>
+            <small>照抄第一集标题行的开头，带上编号，比如「1 不想打工了」「Chapter 1」「第1章」，程序按同样的写法找第 2、3… 集。免费，分好后先给你看。</small></span>
+        </label>
+        {mode === "marker" && <label className="director-field director-split-marker">
+          <span>第一集标题行的开头</span>
+          <input autoFocus value={marker} maxLength={MARKER_MAX} disabled={!!busy} placeholder="例如：Chapter 1"
+            onChange={e => { setMarker(e.target.value); setLocalError(""); }} onKeyDown={e => { if (e.key === "Enter" && ready) go(); }}/>
+        </label>}
+        <label className="director-check">
+          <input type="radio" name="director-split-mode" checked={mode === "model"} onChange={() => setMode("model")}/>
+          <span><b>还没分集，交给 AI 拆分</b>
+            <small>AI 按剧情划定每集范围，不改正文{count ? `，按 ${count} 集拆` : ""}。{work.pricing.mock ? "" : "按实际用量结算。"}集数很多（几十集）时可能拆不完，建议先在剧本里写好分集标题。</small></span>
+        </label>
+      </div>
+      <InlineError message={error}/>
+      <footer>
+        <button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={onClose}>取消</button>
+        <button type="button" className="ip-brand-button" disabled={!!busy || !ready} onClick={go}><Scissors size={14}/>
+          {busy ? "提交中" : mode === "model" ? "AI 拆分" : "按标题分集"}</button>
+      </footer>
+    </div>
+  </div>;
 }
 
 /** 设定资料：拆分时从剧本开头分出来的内容。可以改，也可以整段并入第 1 集。 */
