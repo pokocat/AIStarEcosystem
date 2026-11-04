@@ -14,7 +14,7 @@ COPY entrypoint.sh /usr/local/bin/aistar-entrypoint
 ARG APP_SHA256
 RUN test -n "$APP_SHA256" && echo "$APP_SHA256  /app/app.jar" | sha256sum --check \
  && chmod 0755 /usr/local/bin/aistar-entrypoint
-ENV LANG=C.UTF-8 TZ=UTC
+ENV LANG=C.UTF-8 TZ=Asia/Shanghai
 EXPOSE 8080
 USER 10001:10001
 ENTRYPOINT ["/usr/local/bin/aistar-entrypoint"]
