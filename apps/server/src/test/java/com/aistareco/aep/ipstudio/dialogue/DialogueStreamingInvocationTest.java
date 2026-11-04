@@ -89,6 +89,65 @@ class DialogueStreamingInvocationTest {
         assertEquals("read_canvas", sent.path("tools").get(0).path("function").path("name").asText());
     }
 
+    /** 2026-11-04：OneToken 网关约 105 秒断开不出字节的连接，声明支持流式的端点普通文字调用也要流式接收，返回形状不变，推理内容不进正文。 */
+    @Test void aPlainChatCallOnAStreamingEndpointCollectsTheStream() throws Exception {
+        AtomicReference<String> body = new AtomicReference<>();
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            body.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
+            exchange.sendResponseHeaders(200, 0);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"内部推理\"}}]}\n\n".getBytes(StandardCharsets.UTF_8));
+                out.write("data: {\"choices\":[{\"delta\":{\"content\":\"完整\"}}]}\n\n".getBytes(StandardCharsets.UTF_8));
+                out.write("data: {\"choices\":[{\"delta\":{\"content\":\"剧本\"},\"finish_reason\":\"stop\"}]}\n\n".getBytes(StandardCharsets.UTF_8));
+                out.write("data: {\"choices\":[],\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":22}}\n\ndata: [DONE]\n\n".getBytes(StandardCharsets.UTF_8));
+            }
+        });
+        server.start();
+        var result = service().invokeChatOnEndpoint(endpoint(true, null), AiModelPurpose.DAP_PERSONA, List.of(Map.of("role", "user", "content", "写剧本")), Map.of());
+        assertTrue(body.get().contains("\"stream\":true"));
+        assertEquals("完整剧本", result.content());
+        assertEquals("stop", result.finishReason());
+        assertEquals(11L, result.promptTokens());
+        assertEquals(22L, result.completionTokens());
+    }
+
+    @Test void aPlainChatCallRetriesWhenTheGatewayInterruptsTheStream() throws Exception {
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            int n = calls.incrementAndGet();
+            exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
+            exchange.sendResponseHeaders(200, 0);
+            try (OutputStream out = exchange.getResponseBody()) {
+                String reply = n == 1
+                        ? "data: {\"choices\":[{\"delta\":{\"content\":\"半截\"}}]}\n\ndata: {\"error\":{\"code\":\"stream_interrupted\",\"message\":\"interrupted\"}}\n\n"
+                        : "data: {\"choices\":[{\"delta\":{\"content\":\"完整\"},\"finish_reason\":\"stop\"}]}\n\ndata: {\"choices\":[],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}\n\ndata: [DONE]\n\n";
+                out.write(reply.getBytes(StandardCharsets.UTF_8));
+            }
+        });
+        server.start();
+        var result = service().invokeChatOnEndpoint(endpoint(true, null), AiModelPurpose.DAP_PERSONA, List.of(Map.of("role", "user", "content", "写剧本")), Map.of());
+        assertEquals(2, calls.get());
+        assertEquals("完整", result.content());
+    }
+
+    @Test void aPlainChatCallReportsAStreamThatStopsMidway() throws Exception {
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
+            exchange.sendResponseHeaders(200, 0);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write("data: {\"choices\":[{\"delta\":{\"content\":\"半截\"}}]}\n\n".getBytes(StandardCharsets.UTF_8));
+            }
+        });
+        server.start();
+        var error = assertThrows(BusinessException.class, () -> service().invokeChatOnEndpoint(endpoint(true, null), AiModelPurpose.DAP_PERSONA,
+                List.of(Map.of("role", "user", "content", "写剧本")), Map.of()));
+        assertEquals("AI_STREAM_INCOMPLETE", error.getCode());
+    }
+
     @Test void endpointWithoutDeclaredStreamingIsCalledOnceNonStreaming() throws Exception {
         AtomicReference<String> body = new AtomicReference<>();
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -132,7 +191,6 @@ class DialogueStreamingInvocationTest {
         assertEquals("AI_CALL_FAILED", e.getCode());
         assertTrue(e.getInternalDetail().contains("status=400"));
         assertTrue(e.getInternalDetail().contains("stream_options not supported"));
-        assertEquals("stream_options not supported",e.getMessage());
     }
 
     @Test void streamThatEndsWithoutAFinishSignalIsAFailureNotAReply() throws Exception {
@@ -158,6 +216,6 @@ class DialogueStreamingInvocationTest {
         });server.start();
         var error=assertThrows(BusinessException.class,()->service().invokeChatTurnOnEndpoint(endpoint(true,null),AiModelPurpose.DAP_PERSONA,
                 List.of(Map.of("role","user","content","hi")),Map.of(),null,delta->fail("error must not become content")));
-        assertEquals("AI_CALL_FAILED",error.getCode());assertEquals("provider safety check rejected input",error.getMessage());
+        assertEquals("AI_CALL_FAILED",error.getCode());assertTrue(error.getInternalDetail().contains("provider safety check rejected input"));
     }
 }

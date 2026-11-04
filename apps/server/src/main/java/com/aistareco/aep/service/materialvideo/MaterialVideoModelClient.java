@@ -79,6 +79,9 @@ public class MaterialVideoModelClient {
     private final HttpClient http;
     @org.springframework.beans.factory.annotation.Autowired
     private MaterialVideoInputAssets inputAssets;
+    /** 重传兜底（{@link InputAssetCopy#viaFfmpeg}）；直接 new 出来的协议单测没有它。 */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.aistareco.aep.service.mixcut.FfmpegRunner ffmpeg;
 
     public MaterialVideoModelClient(AiModelInvocationService invocation,
                                     MaterialVideoProperties props,
@@ -440,7 +443,7 @@ public class MaterialVideoModelClient {
             // A generic gateway/server failure cannot prove the supplier rejected a non-idempotent create.
             // Documented queue rejection is definitive; all other 5xx keep the original hold for evidence/recovery.
             if(resp.statusCode()>=500 && mappedError.isEmpty())
-                throw attach(new SubmissionUnknown("endpoint="+p.getName()+" status="+resp.statusCode()+" body="+snippet(resp.body()),resp.statusCode(),ProviderErrorMessage.reason(resp.body())),resp);
+                throw attach(new SubmissionUnknown("endpoint="+p.getName()+" body="+snippet(resp.body()),resp.statusCode(),ProviderErrorMessage.reason(resp.body())),resp);
             if(mappedError.filter(m->VideoProviderErrorMapper.VIDEO_MODEL_RETIRED.equals(m.code())).isPresent())
                 markRetired(p,model);
             throw attach(BusinessException.wrapped(HttpStatus.BAD_GATEWAY,
@@ -498,8 +501,8 @@ public class MaterialVideoModelClient {
         }
         public SubmissionUnknown(String detail,Integer status) { this(detail,status,null); }
         public SubmissionUnknown(String detail,Integer status,String reason) {
-            super(HttpStatus.BAD_GATEWAY,"VIDEO_SUBMISSION_UNKNOWN",com.aistareco.aep.service.GenerationSubmissionFailure.MESSAGE
-                    +(status==null?"":" 错误原因：HTTP "+status)+(reason==null?"":"；"+reason),null,detail);
+            super(HttpStatus.BAD_GATEWAY,"VIDEO_SUBMISSION_UNKNOWN",com.aistareco.aep.service.GenerationSubmissionFailure.withReason(reason),null,
+                    status==null?detail:detail+" status="+status);
         }
     }
 
@@ -596,7 +599,7 @@ public class MaterialVideoModelClient {
         }
         if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
             throw attach(BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_POLL_FAILED",
-                    ProviderErrorMessage.message(resp.body(), "视频生成服务返回错误（上游 " + resp.statusCode() + "）"),
+                    ProviderErrorMessage.message(resp.body(), "视频生成服务返回错误，请稍后再试"),
                     "poll; endpoint=" + p.getName() + " taskId=" + idForLog + " status=" + resp.statusCode()
                             + " body=" + snippet(resp.body())),resp);
         }
@@ -1913,6 +1916,25 @@ public class MaterialVideoModelClient {
                     .POST(multipartFile(boundary, mediaType, filename, fmt.mime(), local))
                     .build();
             HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+            if (InputAssetCopy.isBindingConflict(resp.statusCode(), resp.body())) {
+                // 聚算按内容认素材：同一份字节之前传过、那份已过期或被删（例如用户清了资源空间回收站）时，
+                // 再传同样的字节一律 409 input_asset_binding_conflict，永远传不上去（2026-11-03 线上，图1 分镜图）。
+                // 加一段不影响画面 / 声音的标记换一份新内容，只重传这一次；做不到或仍被拒就照常报错。
+                InputAssetCopy.Fresh copy = freshCopy(mediaType, fmt, local, allowedFormats);
+                boolean retry = copy != null && copy.bytes().length <= maxBytes;
+                log.warn("[material-video] 素材内容已被厂商作废，换一份新内容重传 endpoint={} model={} field={} bytes={} retry={} as={} body={}",
+                        p.getName(), model, mediaType, size, retry, copy == null ? null : copy.fmt().ext(), snippet(resp.body()));
+                if (retry) {
+                    HttpRequest again = HttpRequest.newBuilder(uri)
+                            .timeout(Duration.ofSeconds(Math.max(props.getHttpTimeoutSeconds(), props.getDownloadTimeoutSeconds())))
+                            .header("Authorization", "Bearer " + apiKey)
+                            .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                            .POST(multipart(boundary, mediaType, withExtension(filename, copy.fmt().ext()), copy.fmt().mime(),
+                                    HttpRequest.BodyPublishers.ofByteArray(copy.bytes())))
+                            .build();
+                    resp = http.send(again, HttpResponse.BodyHandlers.ofString());
+                }
+            }
             if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
                 // 上游拒绝时**必须**把它的原话留在日志里。只写一句「上传失败」的话，对着它分不出
                 // 是 Key 没这个权限、路径不对、还是这个素材本身不合规 —— v0.166 已经在出图那条链上
@@ -1967,16 +1989,33 @@ public class MaterialVideoModelClient {
         return (bytes + mib - 1) / mib;
     }
 
+    /** 先在字节里打标记，打不了再交给 ffmpeg；两条都不行返回 null。 */
+    private InputAssetCopy.Fresh freshCopy(String mediaType, MediaBytes.Format fmt, Path local, List<String> allowedFormats) {
+        try {
+            byte[] tagged = InputAssetCopy.distinct(fmt, Files.readAllBytes(local));
+            if (tagged != null) return new InputAssetCopy.Fresh(tagged, fmt);
+            return InputAssetCopy.viaFfmpeg(ffmpeg, mediaType, fmt, local, allowedFormats);
+        } catch (Exception e) {
+            log.warn("[material-video] 换一份素材内容失败 field={} format={} err={}", mediaType, fmt == null ? null : fmt.ext(), e.toString());
+            return null;
+        }
+    }
+
     /** 手写 multipart：只有一个文件字段，不值得为它引一个 HTTP 客户端库。文件体直接从磁盘流出去。 */
     private static HttpRequest.BodyPublisher multipartFile(String boundary, String field, String filename,
                                                            String contentType, Path file) throws FileNotFoundException {
+        return multipart(boundary, field, filename, contentType, HttpRequest.BodyPublishers.ofFile(file));
+    }
+
+    private static HttpRequest.BodyPublisher multipart(String boundary, String field, String filename,
+                                                       String contentType, HttpRequest.BodyPublisher content) {
         String head = "--" + boundary + "\r\n"
                 + "Content-Disposition: form-data; name=\"" + field + "\"; filename=\"" + filename + "\"\r\n"
                 + "Content-Type: " + contentType + "\r\n\r\n";
         String tail = "\r\n--" + boundary + "--\r\n";
         return HttpRequest.BodyPublishers.concat(
                 HttpRequest.BodyPublishers.ofByteArray(head.getBytes(StandardCharsets.UTF_8)),
-                HttpRequest.BodyPublishers.ofFile(file),
+                content,
                 HttpRequest.BodyPublishers.ofByteArray(tail.getBytes(StandardCharsets.UTF_8)));
     }
 
@@ -2097,7 +2136,7 @@ public class MaterialVideoModelClient {
                     log.warn("[material-video] 智能优化重试预算用完 endpoint={} key={} attempts={} last={}",
                             p.getName(), idempotencyKey, attempt - 1, lastProblem);
                     throw BusinessException.wrapped(HttpStatus.GATEWAY_TIMEOUT, "VIDEO_STUDIO_OPTIMIZATION_TIMEOUT",
-                            lastProviderReason == null ? "智能优化超时" : "智能优化超时；上游原因：" + lastProviderReason, "key=" + idempotencyKey + " last=" + lastProblem);
+                            lastProviderReason == null ? "智能优化超时" : "智能优化超时；原因：" + lastProviderReason, "key=" + idempotencyKey + " last=" + lastProblem);
                 }
                 Duration timeout = Duration.ofMillis(Math.min(OPTIMIZE_ATTEMPT_TIMEOUT.toMillis(), remainingMs));
                 HttpRequest req = HttpRequest.newBuilder(uri)
@@ -2313,17 +2352,18 @@ public class MaterialVideoModelClient {
 
     /** 素材上传被拒。 */
     static String uploadFailureMessage(String label, int status, String rawBody) {
-        return ProviderErrorMessage.append(rawBody, label + "上传失败（上游 " + status + "）");
+        return ProviderErrorMessage.append(rawBody, label + "上传失败，请检查素材后再试");
     }
 
     /** 创建生成任务被拒（POST /media/generations 等）。 */
     static String submitFailureMessage(int status, String rawBody) {
-        return ProviderErrorMessage.message(rawBody, "视频生成服务返回错误（上游 " + status + "）");
+        return ProviderErrorMessage.message(rawBody, status >= 400 && status < 500
+                ? "视频生成服务拒绝了这次请求，请调整素材或描述后再试" : "视频生成服务返回错误，请稍后再试");
     }
 
     /** 智能优化被拒（POST /media/prompt-optimizations 的 4xx；409 / 429 / 5xx 会重发，到不了这里）。 */
     static String optimizationFailureMessage(int status, String rawBody) {
-        return ProviderErrorMessage.message(rawBody, "智能优化失败（上游 " + status + "）");
+        return ProviderErrorMessage.message(rawBody, "智能优化失败，请稍后再试");
     }
 
     /** 从上游错误体里取出厂商那句原话；不是 JSON、或没有可读的字段 → null。 */

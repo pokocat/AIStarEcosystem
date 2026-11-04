@@ -1122,7 +1122,7 @@ public class DramaCanvasRunWorker {
 
     /** 上游 4xx 但抽不出它的原话时给用户的那句。 */
     private static String genericRejection(Integer status) {
-        return "生成服务返回错误（HTTP " + status + "），未提供具体原因。";
+        return "生成服务返回错误，未提供具体原因。";
     }
 
     /** internalDetail 里的上游 HTTP 状态码；没有 → null。 */

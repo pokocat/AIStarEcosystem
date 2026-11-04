@@ -70,7 +70,7 @@ function IpHomeNext({ header = true }: { header?: boolean }) {
   const showFailure = useStudioFailure();
   useEffect(() => {
     if (newCanvas.error === undefined) return;
-    showFailure({ action: "新建画布", error: newCanvas.error, next: "可以再点一次；反复失败的话展开「错误详情」复制后发给我们。" });
+    showFailure({ action: "新建画布", error: newCanvas.error, next: "请重试。多次失败时，可复制「错误详情」反馈给我们。" });
     newCanvas.clearError();
   }, [newCanvas.error]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setAuthed(USE_MOCK || auth.isAuthed()); }, []);
@@ -95,7 +95,7 @@ function IpHomeNext({ header = true }: { header?: boolean }) {
     createLock.current = true;
     setCreating("assistant");
     try { const project = await createStudioEntry("assistant", brief); router.push(studioEntryHref(project.id, "assistant", { send: !!brief.trim() })); }
-    catch (e) { showFailure({ action: "用这句话新建画布", error: e, next: "输入的内容还在框里，可以再点一次「开始对话」。" }); setCreating(undefined); createLock.current = false; }
+    catch (e) { showFailure({ action: "开始对话", error: e, next: "输入的内容已保留，请再次点击「开始对话」。" }); setCreating(undefined); createLock.current = false; }
   };
   const startBlank = () => {
     if (createLock.current) return;
@@ -110,7 +110,7 @@ function IpHomeNext({ header = true }: { header?: boolean }) {
     createLock.current = true;
     setCreating(target.entry);
     try { const project = await createStudioEntry(target.entry); router.push(studioEntryHref(project.id, target.entry)); }
-    catch (e) { showFailure({ action: "新建画布", error: e, next: "可以再点一次；反复失败的话展开「错误详情」复制后发给我们。" }); setCreating(undefined); createLock.current = false; }
+    catch (e) { showFailure({ action: "新建画布", error: e, next: "请重试。多次失败时，可复制「错误详情」反馈给我们。" }); setCreating(undefined); createLock.current = false; }
   };
   // 有成图的排前面：灵感墙先让人看到做出来的东西，只有步骤的模板跟在后面（2026-10-30 线上走查：前几屏大半是没有图的卡）。
   const feed = useMemo(() => (templates ?? []).filter(t => tab === "all" || (tab === "canvas" ? true : templateKind(t) === tab))
@@ -124,7 +124,7 @@ function IpHomeNext({ header = true }: { header?: boolean }) {
     <main>
       <section className="home-hero">
         {authed && <UiVersionSwitch inline/>}
-        <h1><span>声量引擎</span>，让灵感成形，让 IP 出圈</h1>
+        <h1>一个 IP，无限可能</h1>
         <StudioConversationStart creating={creating === "assistant"} onStart={brief => void startConversation(brief)}/>
       </section>
 
@@ -137,8 +137,8 @@ function IpHomeNext({ header = true }: { header?: boolean }) {
       })}</nav>
 
       {homeCards.length > 0 && <section className="home-goals" aria-labelledby="home-goals-title">
-        <div className="home-section-heading"><h2 id="home-goals-title">你想做什么？</h2><p>按目标选一个场景，直接开始</p>
-          <span className="home-goals-arrows"><button type="button" aria-label="向左看更多场景" onClick={() => scrollGoals(-1)}><ChevronLeft size={18}/></button><button type="button" aria-label="向右看更多场景" onClick={() => scrollGoals(1)}><ChevronRight size={18}/></button></span></div>
+        <div className="home-section-heading"><h2 id="home-goals-title">你想做什么？</h2><p>按目标选择场景</p>
+          <span className="home-goals-arrows"><button type="button" aria-label="上一组场景" onClick={() => scrollGoals(-1)}><ChevronLeft size={18}/></button><button type="button" aria-label="下一组场景" onClick={() => scrollGoals(1)}><ChevronRight size={18}/></button></span></div>
         <div className="home-goal-track" ref={goals}>{homeCards.map(g => <Link key={g.id} href={authed ? sceneHref(g) : `/login?next=${encodeURIComponent(sceneHref(g))}`} className="home-goal">
           <span className="home-goal-art" aria-hidden="true">{g.covers.slice(0, 2).map(c => <SceneThumb key={c.sceneId} id={c.sceneId} cover={c.coverUrl} title={g.title} size={180}/>)}</span>
           <span className="home-goal-copy">{g.kind === "video" ? <Video size={16} aria-hidden="true"/> : <ImageIcon size={16} aria-hidden="true"/>}<strong>{g.title}</strong><small>{g.description}</small></span>
@@ -146,15 +146,15 @@ function IpHomeNext({ header = true }: { header?: boolean }) {
       </section>}
 
       {authed && <section className="home-feed" aria-labelledby="home-feed-title">
-        <div className="home-section-heading"><h2 id="home-feed-title">灵感</h2><p>点开先看画布，喜欢就做同款</p><Link href="/templates">更多灵感<ArrowRight size={16}/></Link></div>
+        <div className="home-section-heading"><h2 id="home-feed-title">灵感</h2><p>预览画布后可做同款</p><Link href="/templates">更多灵感<ArrowRight size={16}/></Link></div>
         <div className="home-feed-tabs" role="group" aria-label="灵感分类">{feedTabs.map(t => <button key={t.value} type="button" aria-pressed={tab === t.value} onClick={() => setTab(t.value)}>{t.label}</button>)}</div>
-        {templates === undefined ? <div className="ip-brand-state" role="status">正在读取灵感…</div>
-          : feedError ? <div className="ip-brand-error" role="alert">灵感暂时没读出来，稍后刷新再看。</div>
+        {templates === undefined ? <div className="ip-brand-state" role="status">正在加载灵感…</div>
+          : feedError ? <div className="ip-brand-error" role="alert">灵感加载失败，请稍后刷新重试。</div>
           : feed.length ? <FeedWall>{feed.slice(0, 15).map((t, i) => <FeedCard key={t.id} template={t} shape={i} onOpen={setUsing}/>)}</FeedWall>
-          : <div className="ip-brand-state">这一类还没有内容，先看看别的分类。</div>}
+          : <div className="ip-brand-state">此分类暂无内容。</div>}
       </section>}
     </main>
-    <footer className="ip-home-footer"><span>IP Studio · 声量引擎旗下</span><p>让灵感成形，让 IP 出圈。</p><Link href="/assets?tab=ips">管理我的 IP<ArrowRight size={15} /></Link></footer>
+    <footer className="ip-home-footer"><span>IP Studio · 声量引擎旗下</span><p>一个 IP，无限可能。</p><Link href="/assets?tab=ips">管理我的 IP<ArrowRight size={15} /></Link></footer>
   </div>;
 }
 
@@ -186,13 +186,13 @@ export function IpHome(props: { header?: boolean }) {
   return useUiVersion() === "next" ? <IpHomeNext {...props}/> : <IpHomeClassic {...props}/>;
 }
 
-const hasPicture = (t: IpTemplate) => !!t.coverUrl || projectPreview(t.doc).images.length > 0;
+const hasPicture = (t: IpTemplate) => !!t.coverUrl || !!t.previewVideoUrl || projectPreview(t.doc).images.length > 0;
 
 function FeedCard({ template, shape, onOpen }: { template: IpTemplate; shape: number; onOpen: (t: IpTemplate) => void }) {
   const kind = templateKind(template);
   const Icon = kind === "video" ? Video : kind === "image" ? ImageIcon : LayoutTemplate;
   return <button type="button" className="home-feed-card" style={{ aspectRatio: FEED_SHAPES[shape % FEED_SHAPES.length] }} aria-label={`预览模板 ${template.name}`} title={template.summary || template.name} onClick={() => onOpen(template)}>
-    <span className="home-feed-media"><ProjectCardPreview key={template.coverUrl || template.versionId || template.id} doc={template.doc} coverUrl={template.coverUrl} stepsFirst/></span>
+    <span className="home-feed-media"><ProjectCardPreview key={template.coverUrl || template.versionId || template.id} doc={template.doc} coverUrl={template.coverUrl} videoUrl={template.previewVideoUrl} stepsFirst/></span>
     <span className="home-feed-caption"><Icon size={15} aria-hidden="true"/><strong>{template.name}</strong></span>
   </button>;
 }

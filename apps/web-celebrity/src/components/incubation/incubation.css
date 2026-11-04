@@ -1,0 +1,18 @@
+/* AI 艺人孵化 · 演示页的悬停反馈 */
+.incubation-card,
+.incubation-tool {
+  transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+}
+.incubation-card:hover,
+.incubation-tool:hover {
+  border-color: var(--line-2);
+  box-shadow: var(--shadow-lift);
+}
+.incubation-card:hover {
+  transform: translateY(-2px);
+}
+.incubation-card:focus-visible,
+.incubation-tool:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

@@ -20,6 +20,7 @@ import { attachmentNode } from "@/canvas-bridge/studio-attachments";
 import { isStudioBillingCancelled } from "@/canvas-bridge/studio-billing-cancel";
 import { studioChosenTextModel } from "@/canvas-bridge/studio-text-model";
 import { studioVideoError, studioVideoQuote } from "@/canvas-bridge/studio-video";
+import { describeStudioVideoPrice, studioVideoPriceQuery, useStudioVideoPrice } from "@/canvas-bridge/studio-video-price";
 import { downloadMedia } from "@/canvas-bridge/download-media";
 import { CanvasNodeType, type CanvasNodeData } from "@/canvas/types/canvas";
 import { studioErrorMetadata, useStudioFailure } from "../studio-errors";
@@ -27,9 +28,10 @@ import { useStudioList } from "../studio-gallery";
 import { studioEntryHref } from "../studio-entry";
 import { StudioSelect } from "../studio-select";
 import { LibraryReferencePicker } from "../library-reference-picker";
+import { AUDIO_REFERENCE_NOTICE } from '@/canvas-bridge/recording-audio';
 import { IpStudioApi } from "../api";
 import { findVideoScene, useSceneCatalog, type VideoScene } from "./scene-catalog";
-import { addScriptNode, addVideoRow, applyRun, createSceneDraft, draftSubject, listSceneDrafts, openedVideoState, patchNode, resubmitRow, sceneInputsOf, scriptNodes, scriptOfRow, submissionRejected, videoRows, withSceneInput, type SceneInputKind } from "./scene-drafts";
+import { addScriptNode, addVideoRow, applyRun, createSceneDraft, draftSubject, listSceneDrafts, openedVideoState, patchNode, resubmitRow, sceneInputsOf, scriptNodes, scriptOfRow, rejectedNextStep, submissionRejected, videoRows, withSceneInput, type SceneInputKind } from "./scene-drafts";
 import { useSceneDraftStore, useSceneStateSave } from "./scene-draft-store";
 import { useSceneQuery, writeSceneQuery } from "./scene-query";
 import { UiVersionSwitch } from "@/shell/ui-version-switch";
@@ -37,7 +39,7 @@ import { SceneDrawer, SceneEmpty, SceneExample, SceneNoModel, SceneRecent, Scene
 import { PromptText, ScenePromptEditor, type ScenePromptEditorHandle, type ScenePromptRef } from "./scene-prompt-editor";
 import { AiMark } from "../studio-ai-icon";
 import { clampSceneDuration, sceneVideoDurations, sceneVideoInputs, sceneVideoSettings, type SceneVideoMaterial } from "./scene-video-plan";
-import { classifyBlanks, missingFigures, scriptMissing, scriptPlaceholders, splitBlanks } from "./scene-script-check";
+import { classifyBlanks, missingFigures, overlongShots, scriptMissing, scriptPlaceholders, splitBlanks } from "./scene-script-check";
 
 type Media = StudioMediaImportResult & { title: string };
 type Slot = "image" | "character" | "voice" | "video";
@@ -102,6 +104,8 @@ export function SceneVideoStudio() {
   const [modelId, setModelId] = useState<string>();
   const [tier, setTier] = useState<string>();
   const [optimize, setOptimize] = useState(true);
+  // 生成过一次就重新报价：可能刚设了默认付款账户，模型赠款也用掉了一些。
+  const [priceRevision, setPriceRevision] = useState(0);
   const [hint, setHint] = useState("");
   // 说明（不是报错，灰字一行）：换场景时没带过来的素材、「重新编辑」放回了什么。undo 是点「撤销」要回到的样子。
   const [note, setNote] = useState<{ text: string; undo?: () => void }>();
@@ -506,7 +510,7 @@ export function SceneVideoStudio() {
       const rejected = submissionRejected(e, posted);
       await persist(doc => patchNode(doc, nodeId!, n => ({ ...n, metadata: { ...n.metadata, ...studioErrorMetadata(e),
         status: rejected ? "error" : "loading", ...(rejected ? {} : { errorDetails: "提交结果没有确认，点「确认原任务」查一下，不会重复扣费" }) } })), projectId).catch(() => undefined);
-      showFailure({ action: "让编导写脚本", error: e, next: rejected ? "改一下再试；积分没有扣。" : "这次可能已经被受理，点「确认原任务」查一下，不要直接重写。" });
+      showFailure({ action: "让编导写脚本", error: e, next: rejected ? rejectedNextStep(e) : "这次可能已经被受理，点「确认原任务」查一下，不要直接重写。" });
     } finally { setBusy(false); setSubmitting(undefined); }
   };
 
@@ -641,6 +645,14 @@ export function SceneVideoStudio() {
   const long = !recreation && !!contract && duration > contract.maxSeconds;
   const toAssistant = recreation || long;
   const shownDuration = toAssistant ? duration : usedDuration;
+  // 按钮旁的价按服务端报价显示（折扣、模型赠款、付款账户），本地价表只在报价回来之前垫着，也作为提交时的上限。
+  const priceQuery = useMemo(() => chosenVideo && settings && videoQuote != null && !toAssistant && caps && !caps.mock
+    ? studioVideoPriceQuery(chosenVideo.selectableById ? chosenVideo.endpointId : undefined, settings, usedDuration, ratio) : undefined,
+  // settings 每次渲染都是新对象：按它的内容判断变没变
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [chosenVideo?.endpointId, chosenVideo?.selectableById, settings && JSON.stringify(settings), videoQuote, toAssistant, caps, usedDuration, ratio]);
+  const price = describeStudioVideoPrice(useStudioVideoPrice(priceQuery, priceRevision), videoQuote,
+    { optimizing: !!chosenVideo?.supportsPromptOptimization && optimize });
   /** 一版脚本是照什么写的，跟现在的设置差在哪（时长、横竖屏、语言、交给视频模型的图）；都一样返回空串。 */
   function specChanges(spec?: StudioNodeMetadata["sceneDirector"]) {
     if (!spec) return "";
@@ -704,8 +716,8 @@ export function SceneVideoStudio() {
       const rejected = submissionRejected(e, posted);
       await persist(doc => patchNode(doc, nodeId!, n => ({ ...n, metadata: { ...n.metadata, ...studioErrorMetadata(e),
         status: rejected ? "error" : "loading", ...(rejected ? {} : { errorDetails: "提交结果没有确认，点「确认原任务」查一下，不会重复扣费" }) } })), projectId).catch(() => undefined);
-      showFailure({ action: "生成视频", error: e, next: rejected ? "改一下再试；积分没有扣。" : "这次可能已经被受理，点「确认原任务」查一下，不要直接重新生成。" });
-    } finally { setBusy(false); setSubmitting(undefined); }
+      showFailure({ action: "生成视频", error: e, next: rejected ? rejectedNextStep(e) : "这次可能已经被受理，点「确认原任务」查一下，不要直接重新生成。" });
+    } finally { setBusy(false); setSubmitting(undefined); setPriceRevision(r => r + 1); }
   };
 
   const copy = async (row: CanvasNodeData) => {
@@ -837,16 +849,21 @@ export function SceneVideoStudio() {
               : <span className="scene-pill"><Cpu size={14} strokeWidth={1.5}/><span>{chosenVideo?.name ?? "视频模型"}</span></span>}
             {specPill}
           </div>
-          <button type="button" className="scene-go" aria-label={toAssistant ? "交给创作助手" : "生成视频"} title={goBlocker || (toAssistant ? "交给画布里的创作助手：先出方案和报价，确认后才扣积分" : undefined)}
+          <button type="button" className="scene-go" aria-label={toAssistant ? "交给创作助手" : "生成视频"} aria-describedby={hint || goBlocker ? "scene-video-go-note" : undefined} title={goBlocker || (toAssistant ? "交给画布里的创作助手：先出方案和报价，确认后才扣积分" : undefined)}
             disabled={busy || !!goBlocker || uploading !== undefined} onClick={() => void (toAssistant ? handoff() : generate())}>
             {busy && !writing ? <Loader2 size={16} className="studio-gallery-spinner"/> : null}
             <span>{toAssistant ? "交给创作助手" : "生成视频"}</span>
             {/* 价格一直摆着（还没写字时也看得到要花多少）；算不出就不显示，不编。 */}
-            {(long || recreation || caps?.mock || videoQuote != null) && <small>{long ? `分 ${segments.length} 段 · 先报价` : recreation ? "先出方案" : caps?.mock ? "免费" : `${videoQuote} 积分`}</small>}
+            {long || recreation || caps?.mock ? <small>{long ? `分 ${segments.length} 段 · 先报价` : recreation ? "先出方案" : "免费"}</small>
+              : price && <small className={price.pending ? "is-pending" : undefined} aria-busy={price.pending || undefined}>
+                {price.shown !== price.standard && <s><span className="scene-sr-only">原价 </span>{price.standard.toLocaleString("zh-CN")}</s>}
+                {price.shown !== price.standard && <span className="scene-sr-only">，折后 </span>}{price.shown.toLocaleString("zh-CN")} 积分{price.from ? "起" : ""}</small>}
           </button>
           {/* 点了没做成的原因用提醒色；还没动手时只是灰字说一句还差什么。 */}
-          {(hint || goBlocker) && <p className={`scene-hint${hint ? "" : " is-note"}`} role="status">{hint || goBlocker}</p>}
+          {(hint || goBlocker) && <p id="scene-video-go-note" className={`scene-hint${hint ? "" : " is-note"}`} role="status">{hint || goBlocker}</p>}
+          {!toAssistant && !caps?.mock && price?.note && <p className="scene-hint is-note scene-price-note">{price.note}</p>}
           {!toAssistant && plan?.note && <p className="scene-hint is-note">{plan.note}</p>}
+          {!toAssistant && plan?.used.some(m => m.mediaType === 'audio') && <p className="scene-hint is-note" role="status">{AUDIO_REFERENCE_NOTICE}</p>}
           {durationNote && <p className="scene-hint is-note">{durationNote}</p>}
           {staleScript && <p className="scene-hint is-note" role="status">{staleScript}。<button type="button" disabled={busy} onClick={reviseForNow}>让编导照现在的改一版</button></p>}
           {note && <p className="scene-hint is-note" role="status">{note.text}{note.undo && <button type="button" onClick={note.undo}>撤销</button>}</p>}
@@ -901,6 +918,7 @@ function ScriptTurn({ row, refs, run, busy, submitting, latest, copied, onUse, o
   const meta = row.metadata, turn = meta?.studio?.sceneDirector;
   const { missing, body } = scriptMissing(meta?.content || "");
   const absent = meta?.status === "success" ? missingFigures(given, body) : [];
+  const overlong = meta?.status === "success" ? overlongShots(body) : [];
   const { required: mustFill, optional: mayFill } = classifyBlanks(scriptPlaceholders(body), facts);
   const loading = meta?.status === "loading", accepted = !!meta?.studio?.runId;
   const position = run?.queue?.position;
@@ -918,7 +936,8 @@ function ScriptTurn({ row, refs, run, busy, submitting, latest, copied, onUse, o
           {mustFill.length > 0 ? <p className="scene-script-missing" role="status">还缺{mustFill.join("、")}。在下面写上发给编导，会补进脚本。{mayFill.length ? `${mayFill.join("、")}没有就不用写。` : ""}</p>
             : mayFill.length > 0 ? <p className="scene-script-check">{mayFill.join("、")}没有就不用写，出片前把脚本里标着的那几处删掉就行。</p>
             : missing ? <p className="scene-script-check">编导觉得可能还缺{missing}，写过了就不用管。</p> : null}
-          {absent.length > 0 && <p className="scene-script-check">你写的 {absent.join("、")} 脚本里没用上，要加的话跟编导说一声。</p>}</>}
+          {absent.length > 0 && <p className="scene-script-check">你写的 {absent.join("、")} 脚本里没用上，要加的话跟编导说一声。</p>}
+          {overlong.length > 0 && <p className="scene-script-check">{overlong.map(o => `第 ${o.no} 镜 ${o.seconds} 秒有 ${o.chars} 个字`).join("，")}，可能念不完。可以让编导精简台词，或把时长调长一些。</p>}</>}
       <footer>
         {loading && accepted && <button type="button" onClick={onStop}><Square size={12}/>停止</button>}
         {loading && !accepted && !submitting && <button type="button" disabled={busy} onClick={onConfirm}><RotateCcw size={12}/>确认原任务</button>}

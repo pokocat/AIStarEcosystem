@@ -152,6 +152,55 @@ class MaterialVideoScopedBillingIntegrationTest {
     CreditHold hold(String id){return credits.findHold(MaterialVideoJobService.CREDIT_REF_TYPE,id);}
     String write(Object value){try{return json.writeValueAsString(value);}catch(Exception e){throw new IllegalStateException(e);}}
 
+    // ── AI 视频页按钮旁的价（quoteSpec，2026-11-03）：和确认弹窗同一个报价，只读 ────────────────────
+    ModelChargeService.Quote pagePrice(Wallet payer) {
+        when(enterprise.quoteRepeated(eq("customer"),any(),any(),anyInt())).thenAnswer(i->charging.quoteRepeated(payer,i.getArgument(2),i.getArgument(3)));
+        return service.quoteSpec("customer",MaterialVideoJobService.APP_IPSTUDIO,"ep",spec,"16:9",5,930,null);
+    }
+    void discount(Consumer<ModelDiscount> change){var d=discounts.findById("discount").orElseThrow();change.accept(d);discounts.saveAndFlush(d);}
+
+    @Test void pagePriceIsTheSubmissionQuoteAndReservesNothing() {
+        quotedBatch(); // 五折、模型赠款都挂在 Studio 的视频目标上
+        long entries=ledger.count();
+        var page=pagePrice(wallet());
+        var body=json.createObjectNode();var item=body.putArray("items").addObject().put("name","画布视频").put("duration_sec",5).put("aspect_ratio","16:9").put("credit_cost",930);
+        var vc=item.putObject("variant_config");vc.put("endpoint_id","ep");spec.writeTo(vc);
+        var submitted=service.quote(body,"customer",MaterialVideoJobService.APP_IPSTUDIO,null,false);
+        assertEquals(930,page.standardCredits());assertEquals(465,page.discountCredits());assertEquals(465,page.payableCredits());assertEquals("视频八折",page.discountName());
+        assertEquals(50,page.scopedCredits());assertEquals(415,page.walletCredits());
+        assertEquals(submitted.target(),page.target());assertEquals(submitted.standardCredits(),page.standardCredits());
+        assertEquals(submitted.payableCredits(),page.payableCredits());assertEquals(submitted.scopedCredits(),page.scopedCredits());
+        assertEquals(submitted.walletCredits(),page.walletCredits());assertEquals(submitted.priceVersion(),page.priceVersion());
+        assertFalse(page.canAfford()); // 普通积分只有 100：页面照实说不够，不冒充能付
+        assertEquals(0,jobs.count());assertEquals(0,holds.count());assertEquals(0,charges.count());assertEquals(entries,ledger.count());
+        assertEquals(100,wallet().getRechargeBalance());assertEquals(0,wallet().getPendingBalance());assertEquals(0,grant().getFrozen());
+    }
+    @Test void pagePriceDropsDiscountsThatAreMissingExpiredOrStopped() {
+        quotedBatch(); // 五折、模型赠款都挂在 Studio 的视频目标上
+        discount(d->d.setExpiresAt(Instant.now().minusSeconds(1)));
+        assertEquals(0,pagePrice(wallet()).discountCredits());
+        discount(d->{d.setExpiresAt(Instant.parse("2030-01-01T00:00:00Z"));d.setStartsAt(Instant.now().plusSeconds(3600));});
+        assertEquals(0,pagePrice(wallet()).discountCredits());
+        discount(d->{d.setStartsAt(Instant.now().minusSeconds(60));d.setActive(false);});
+        var stopped=pagePrice(wallet());assertEquals(0,stopped.discountCredits());assertEquals(930,stopped.payableCredits());assertNull(stopped.discountName());
+        discounts.deleteAll();
+        assertEquals(930,pagePrice(wallet()).payableCredits());
+    }
+    @Test void pagePriceAppliesUserAndEnterpriseDiscountsOnlyToThatPayer() {
+        quotedBatch(); // 五折、模型赠款都挂在 Studio 的视频目标上
+        discount(d->{d.setAudience("user");d.setAudienceId("customer");});
+        assertEquals(465,pagePrice(wallet()).payableCredits());
+        discount(d->d.setAudienceId("someone-else"));
+        assertEquals(930,pagePrice(wallet()).payableCredits());
+        var member=wallets.saveAndFlush(Wallet.builder().id("member").accountKey("enterprise_member:ent:customer").accountType("enterprise_member")
+                .enterpriseId("ent").memberUserId("customer").totalBalance(1000).rechargeBalance(1000).build());
+        discount(d->{d.setAudience("enterprise");d.setAudienceId("ent");});
+        assertEquals(930,pagePrice(wallet()).payableCredits()); // 企业优惠不打到个人钱包
+        var corporate=pagePrice(member);assertEquals(465,corporate.payableCredits());assertEquals(0,corporate.scopedCredits());assertEquals(465,corporate.walletCredits());
+        assertTrue(corporate.canAfford());
+        assertEquals(0,holds.count());assertEquals(1000,wallets.findById("member").orElseThrow().getRechargeBalance());
+    }
+
     @Test void priceAndDiscountChangesAfterReservationDoNotRepriceTheOriginalVideo() {
         String id=create();assertEquals(70,wallet().getTotalBalance());assertEquals(30,wallet().getPendingBalance());assertEquals(50,grant().getFrozen());
         var current=discounts.findById("discount").orElseThrow();current.setFactor(new BigDecimal("0.5"));discounts.saveAndFlush(current);

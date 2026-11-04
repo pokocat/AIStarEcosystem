@@ -33,6 +33,8 @@ public class DapVoiceService {
     private final DapAccountService accountService;
     private final DapPricingService pricing;
     private final DapSupport support;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.aistareco.aep.enterprise.service.EnterpriseBillingService enterpriseBilling;
 
     public DapVoiceService(DapVoiceRepository voiceRepo,
                            FileStorageService storage,
@@ -92,7 +94,16 @@ public class DapVoiceService {
         voiceRepo.save(v);
 
         if (price > 0) {
-            creditService.debit(userId, price, "dap-voice", v.getId(), "声音克隆 · " + voiceName);
+            var payer = DapPayer.requested();
+            if (com.aistareco.aep.enterprise.service.EnterpriseBillingService.enterprise(payer)) {
+                if (enterpriseBilling == null) throw new BusinessException(org.springframework.http.HttpStatus.FORBIDDEN, "ENTERPRISE_BILLING_DISABLED", "企业积分付款尚未开放");
+                // Same payer rules as every paid feature; a flat fee is held and settled at once, in this transaction.
+                enterpriseBilling.reserve(userId, payer, "dap-voice", v.getId(), null, price, "声音克隆 · " + voiceName,
+                        com.aistareco.aep.billing.service.ModelChargeContext.NONE);
+                creditService.commitHold("dap-voice", v.getId(), price, "声音克隆 · " + voiceName, null);
+            } else {
+                creditService.debit(userId, price, "dap-voice", v.getId(), "声音克隆 · " + voiceName);
+            }
         }
         return VoiceDto.from(v, storage::signedUrl).toWire();
     }

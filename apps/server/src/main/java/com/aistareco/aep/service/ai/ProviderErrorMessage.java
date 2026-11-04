@@ -15,14 +15,15 @@ public final class ProviderErrorMessage {
     private ProviderErrorMessage() {}
 
     public static String message(String body, String fallback) {
-        String reason = reason(body);
-        return reason == null ? PublicModelErrorPolicy.stored(fallback, "AI_PROVIDER_ERROR") : reason;
+        return PublicModelErrorPolicy.withHint(PublicModelErrorPolicy.own(fallback), reason(body));
     }
 
     public static String append(String body, String context) {
         String reason = reason(body);
-        String combined = reason == null || context.contains(reason) ? context : context + "；" + reason;
-        return PublicModelErrorPolicy.stored(combined, "AI_PROVIDER_ERROR");
+        if (reason == null || context.contains(reason)) return PublicModelErrorPolicy.own(context);
+        // The context names what failed ("图1上传失败"), so it stays in front of a Chinese reason too.
+        return PublicModelErrorPolicy.own(java.util.regex.Pattern.compile("\\p{IsHan}").matcher(reason).find()
+                ? context + "；" + reason : PublicModelErrorPolicy.withHint(context, reason));
     }
 
     public static boolean hasError(JsonNode body) { return hasError(body, 0); }

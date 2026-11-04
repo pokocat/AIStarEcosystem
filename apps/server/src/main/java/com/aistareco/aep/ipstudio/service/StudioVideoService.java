@@ -20,8 +20,10 @@ public class StudioVideoService {
     private final IpProjectService projects;
     private final FileStorageService storage;
     private final FfmpegRunner ffmpeg;
+    private final StudioAudioReference audioReferences;
     public StudioVideoService(com.aistareco.aep.service.AiAppSceneModelPolicyService scenePolicies,VideoStudioService videos,IpProjectService projects,FileStorageService storage,FfmpegRunner ffmpeg) {
         this.scenePolicies=scenePolicies;this.videos=videos;this.projects=projects;this.storage=storage;this.ffmpeg=ffmpeg;
+        this.audioReferences=new StudioAudioReference(storage,ffmpeg);
     }
     public List<VideoStudioModel> models() {
         var allowed=scenePolicies.studioVideoCandidates().stream()
@@ -51,8 +53,6 @@ public class StudioVideoService {
         var last=alignFrame(userId,v.lastFrameKey(),request.aspectRatio());
         if(first.adjusted()!=null)adjustments.set("firstFrameAdjusted",first.adjusted());
         if(last.adjusted()!=null)adjustments.set("lastFrameAdjusted",last.adjusted());
-        var nativeRequest=new VideoStudioJobRequest(endpointId,v.mode(),request.prompt(),v.resolutionTier(),
-                request.aspectRatio(),request.durationSec(),v.seed(),first.key(),last.key(),v.references(),null,null,null,null);
         VideoStudioModel model=models().stream().filter(m->endpointId.equals(m.endpointId())).findFirst()
                 .orElseThrow(()->invalid("所选模型不支持该视频模式"));
         VideoStudioModeSpec modeSpec=model.contract().modes().stream().filter(m->m.mode().equals(v.mode()))
@@ -60,6 +60,9 @@ public class StudioVideoService {
         // 「按原文生成」只对出片前会改写描述的模型有意义（同视频生成区的「智能优化」能力判定）；别的模型带着它就明确拒绝。
         if(v.optimizePrompt()!=null && !model.supportsPromptOptimization())
             throw BusinessException.badRequest("STUDIO_VIDEO_OPTION_UNSUPPORTED","所选视频模型不会改写描述，不需要选择「按原文生成」");
+        var references=prepareAudioReferences(userId,v.references());
+        var nativeRequest=new VideoStudioJobRequest(endpointId,v.mode(),request.prompt(),v.resolutionTier(),
+                request.aspectRatio(),request.durationSec(),v.seed(),first.key(),last.key(),references,null,null,null,null);
         var prepared=videos.prepareCanvas(userId,nativeRequest,
                 (type,key,frame)->requireMedia(userId,type,key,frame,modeSpec),"studio");
         return new Prepared(v.optimizePrompt()==null?prepared
@@ -118,12 +121,27 @@ public class StudioVideoService {
     public long estimate(String model,String mode,String tier,int seconds,int referenceImages) {
         return videos.estimateCanvas(model(model),mode,tier,seconds,referenceImages,"studio");
     }
+    /** AI 视频页按钮旁的价：和 {@link #quote} 同一张价表与合同校验，素材只给各类型的张数（见 {@link VideoStudioService#priceCanvas}）。 */
+    public VideoStudioService.CanvasPreparation price(String endpointId,String mode,String tier,String aspectRatio,Integer seconds,int imageRefs,int videoRefs,int audioRefs) {
+        return videos.priceCanvas(endpointId,mode,tier,aspectRatio,seconds,imageRefs,videoRefs,audioRefs,"studio");
+    }
     public long quote(String userId,IpRunService.IpVideoRequest request) {return quotePreparation(userId,request).credits();}
     public VideoStudioService.CanvasPreparation quotePreparation(String userId,IpRunService.IpVideoRequest request) {
         var v=request.video();
         var nativeRequest=new VideoStudioJobRequest(model(request.model()),v.mode(),request.prompt(),v.resolutionTier(),
-                request.aspectRatio(),request.durationSec(),v.seed(),v.firstFrameKey(),v.lastFrameKey(),v.references(),null,null,null,null);
+                request.aspectRatio(),request.durationSec(),v.seed(),v.firstFrameKey(),v.lastFrameKey(),prepareAudioReferences(userId,v.references()),null,null,null,null);
         return videos.prepareCanvas(userId,nativeRequest,(type,key,frame)->projects.requireOwnedAssetKey(userId,key),"studio");
+    }
+    /** Quotes and submits share derived keys, so total-duration checks see the samples actually sent. */
+    List<VideoStudioReferenceInput> prepareAudioReferences(String userId,List<VideoStudioReferenceInput> inputs) {
+        if(inputs==null)return null;
+        var samples=new java.util.HashMap<String,String>();
+        return inputs.stream().map(ref->{
+            if(ref==null || !"audio".equals(ref.mediaType()))return ref;
+            String owned=projects.requireOwnedAssetKey(userId,ref.key());
+            String key=samples.computeIfAbsent(owned,k->audioReferences.prepare(userId,k).key());
+            return new VideoStudioReferenceInput("audio",key);
+        }).toList();
     }
     void requireMedia(String userId,String type,String key,boolean frame,VideoStudioModeSpec mode) {
         projects.requireOwnedAssetKey(userId,key);
@@ -135,23 +153,25 @@ public class StudioVideoService {
                 case "audio" -> mode.references().audio();
                 default -> null;
             };
-            if(media==null || !type.equals(media.mediaType()))throw invalid("所选模式不支持该素材类型");
+            String label=com.aistareco.aep.videostudio.service.VideoMediaMessages.kind(type);
+            if(media==null || !type.equals(media.mediaType()))throw invalid("当前模型的这种生成方式不能使用"+label+"，请移除后再试");
             long bytes=Files.size(path);
-            if(bytes<=0 || bytes>media.maxBytes())throw invalid("参考素材为空或超过该模式的文件大小限制");
+            if(bytes<=0)throw invalid(com.aistareco.aep.videostudio.service.VideoMediaMessages.empty(label));
+            if(bytes>media.maxBytes())throw invalid(com.aistareco.aep.videostudio.service.VideoMediaMessages.tooLarge(label,media.maxBytes()));
             byte[] header;
             try(var in=Files.newInputStream(path)){header=in.readNBytes(4096);}
             var format=MediaBytes.sniffConfigured(type,header);
             if(!MediaBytes.allowed(format,media.formats()))
-                throw invalid("参考素材的实际格式不符合所选用途，请选择正确的图片、视频或音频");
+                throw invalid(com.aistareco.aep.videostudio.service.VideoMediaMessages.format(label,media.formats()));
             if(!"image".equals(type)) {
                 var probe=ffmpeg.probeMedia(path.toFile());
                 if(!probe.readable() || "video".equals(type)&&!probe.hasVideo() || "audio".equals(type)&&!probe.hasAudio())
-                    throw invalid("有一份参考素材读不出来，请重新选择");
+                    throw invalid(label+"读不出来，请重新选择");
                 if((media.minDurationSec()!=null || media.maxDurationSec()!=null)
                         && (probe.durationSec()<=0
                         || media.minDurationSec()!=null && probe.durationSec()<media.minDurationSec()
                         || media.maxDurationSec()!=null && probe.durationSec()>media.maxDurationSec()))
-                    throw invalid("参考"+("video".equals(type)?"视频":"音频")+"时长不符合所选模型要求");
+                    throw invalid(com.aistareco.aep.videostudio.service.VideoMediaMessages.duration(label,probe.durationSec(),media.minDurationSec(),media.maxDurationSec()));
             }
         } catch(BusinessException e){throw e;} catch(Exception e){throw invalid("参考素材已不可用，请重新上传或选择");}
     }

@@ -190,6 +190,29 @@ class VideoStudioServiceTest {
         verify(videoJobs,never()).submit(any(),anyString(),anyString());
     }
 
+    /** AI 视频页按钮旁的价：和提交同一张价表、同一套合同校验，只是素材换成张数（2026-11-03）。 */
+    @Test void pagePriceMatchesTheCanvasPriceAndSpecWithoutAnyAssetKey() {
+        var real=svc.prepareCanvas(USER,jr("ep-h3","universal_reference_video","参考图","768p","9:16",5,null,null,null,
+                List.of(r("image","ipstudio/u1/a.png"),r("image","ipstudio/u1/b.png"),r("image","ipstudio/u1/c.png"))),(type,key,frame)->{});
+        var page=svc.priceCanvas("ep-h3","universal_reference_video","768p","9:16",5,3,0,0,"celebrity");
+        assertEquals(real.credits(),page.credits());
+        assertEquals(com.aistareco.aep.service.materialvideo.MaterialVideoBilling.specification(real.spec(),"9:16",5,"second"),
+                com.aistareco.aep.service.materialvideo.MaterialVideoBilling.specification(page.spec(),"9:16",5,"second"));
+        assertTrue(page.spec().references().stream().allMatch(ref->ref.key()==null));
+        assertNull(page.spec().firstFrameKey());
+        // 首尾帧不是参考素材：价与上面「过渡」那条画布视频相同。
+        assertEquals(280,svc.priceCanvas("ep-h3","first_last_frame_video","544p","3:4",7,0,0,0,"celebrity").credits());
+        assertEquals("VIDEO_STUDIO_SPEC_INVALID",assertThrows(BusinessException.class,
+                ()->svc.priceCanvas("ep-h3","t2v","4k","9:16",5,0,0,0,"celebrity")).getCode());
+        assertEquals("VIDEO_STUDIO_SPEC_INVALID",assertThrows(BusinessException.class,
+                ()->svc.priceCanvas("ep-h3","t2v","768p","5:4",5,0,0,0,"celebrity")).getCode());
+        assertEquals("VIDEO_STUDIO_SPEC_INVALID",assertThrows(BusinessException.class,
+                ()->svc.priceCanvas("ep-h3","t2v","768p","9:16",99,0,0,0,"celebrity")).getCode());
+        assertEquals("VIDEO_STUDIO_MODE_INVALID",assertThrows(BusinessException.class,
+                ()->svc.priceCanvas("ep-h3","nope","768p","9:16",5,0,0,0,"celebrity")).getCode());
+        verify(videoJobs,never()).submit(any(),anyString(),anyString());
+    }
+
     // ── 请求构造 ──────────────────────────────────────────────────────────
 
     static VideoStudioJobRequest jr(String endpointId, String mode, String prompt, String tier, String aspect,

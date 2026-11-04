@@ -12,19 +12,19 @@ const KINDS: DirectorAssetKind[] = ["character", "scene", "prop"];
 export function ExtractReview({ work, apply, onClose }: { work: DirectorWork; apply: (w: DirectorWork) => void; onClose: () => void }) {
   const pending = work.pendingExtract!;
   // 每份清单单独记勾选和改名（父组件按 runId 换 key）；取不到时按默认值，不沿用上一份。
-  const [stored, setPicks] = useState(() => Object.fromEntries(pending.items.map(i => [i.itemId, { include: true, name: i.name }])));
-  const picks: Record<string, { include: boolean; name: string }> = Object.fromEntries(pending.items.map(i => [i.itemId, stored[i.itemId] ?? { include: true, name: i.name }]));
+  const [stored, setPicks] = useState(() => Object.fromEntries(pending.items.map(i => [i.itemId, { include: true, name: i.name, droppedForms: [] as string[] }])));
+  const picks: Record<string, { include: boolean; name: string; droppedForms: string[] }> = Object.fromEntries(pending.items.map(i => [i.itemId, stored[i.itemId] ?? { include: true, name: i.name, droppedForms: [] }]));
   const [error, setError] = useState("");
   const { busy, run } = useBusy();
   useEscape(() => { if (!busy) onClose(); });
   const chosen = pending.items.filter(i => picks[i.itemId]?.include);
   const fresh = chosen.filter(i => !i.matchId).length;
   const save = () => void run("save", async () => {
-    apply(await DirectorApi.edit(work.id, "extract.save", pending.runId, null, { items: pending.items.map(i => ({ itemId: i.itemId, include: !!picks[i.itemId]?.include, name: picks[i.itemId]?.name.trim() ?? i.name })) }));
+    apply(await DirectorApi.edit(work.id, "extract.save", pending.runId, null, { items: pending.items.map(i => ({ itemId: i.itemId, include: !!picks[i.itemId]?.include, name: picks[i.itemId]?.name.trim() ?? i.name, droppedForms: picks[i.itemId]?.droppedForms ?? [] })) }));
     onClose();
   }, setError);
   const discard = () => void run("discard", async () => { apply(await DirectorApi.edit(work.id, "extract.discard", pending.runId, null)); onClose(); }, setError);
-  const set = (key: string, patch: Partial<{ include: boolean; name: string }>) => setPicks(p => ({ ...p, [key]: { ...picks[key], ...patch } }));
+  const set = (key: string, patch: Partial<{ include: boolean; name: string; droppedForms: string[] }>) => setPicks(p => ({ ...p, [key]: { ...picks[key], ...patch } }));
   return <div className="director-dialog-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && !busy && onClose()}>
     <div className="director-dialog director-extract" role="dialog" aria-modal="true" aria-labelledby="director-extract-title" ref={dialogFocus} tabIndex={-1}>
       <header><h2 id="director-extract-title">确认资产</h2><button type="button" aria-label="稍后再看" onClick={onClose} disabled={!!busy}><X size={18}/></button></header>
@@ -46,6 +46,12 @@ export function ExtractReview({ work, apply, onClose }: { work: DirectorWork; ap
                   {nos && <small>{nos}</small>}
                 </div>
                 <p title={i.description}>{i.description || "暂无描述"}</p>
+                {!!i.forms?.length && <div className="director-chips director-extract-forms" role="group" aria-label={`${pick.name}的形态`}>
+                  <small>剧情里的其他形态</small>
+                  {i.forms.map(f => { const on = !pick.droppedForms.includes(f.name);
+                    return <button key={f.name} type="button" aria-pressed={on} disabled={!pick.include} title={f.description}
+                      onClick={() => set(i.itemId, { droppedForms: on ? [...pick.droppedForms, f.name] : pick.droppedForms.filter(x => x !== f.name) })}>{f.name}</button>; })}
+                </div>}
               </div>
             </li>;
           })}</ul></section>;

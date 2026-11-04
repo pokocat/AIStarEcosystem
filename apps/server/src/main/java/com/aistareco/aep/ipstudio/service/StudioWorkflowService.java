@@ -961,6 +961,12 @@ public class StudioWorkflowService {
         return imageRuns.quoteVideo(user,projectId,videoRequest(request),request.count()==null?1:request.count(),freeOnly);
     }
 
+    public com.aistareco.aep.billing.service.ModelChargeService.Quote quoteVideoPrice(String user,String model,String mode,String tier,String aspectRatio,
+            Integer durationSec,int imageRefs,int videoRefs,int audioRefs,com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing) {
+        if(fixtures.enabled())throw bad("MODEL_QUOTE_NOT_SUPPORTED","测试响应无需扣费报价");
+        return imageRuns.quoteVideoPrice(user,model,mode,tier,aspectRatio,durationSec,imageRefs,videoRefs,audioRefs,billing);
+    }
+
     private IpRunService.IpGenerateRequest imageRequest(RunRequest request) {
         return new IpRunService.IpGenerateRequest(request.nodeId(),request.prompt(),
                 request.references()==null?List.of():request.references().stream().map(Reference::storageKey).toList(),

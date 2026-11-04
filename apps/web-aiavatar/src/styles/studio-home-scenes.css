@@ -6,7 +6,6 @@
 .home-hero { position: relative; }
 .home-hero>.ip-ui-switch-inline { position: absolute; top: 16px; right: 20px; }
 .home-hero h1 { font-family: var(--ip-display); font-size: clamp(28px, 2.9vw, 42px); font-weight: 600; line-height: 1.35; letter-spacing: -.01em; text-wrap: balance; }
-.home-hero h1 span { color: var(--ip-gold); }
 .home-hero>p { margin-top: 10px !important; color: var(--ip-muted); font-size: 15px; }
 .home-hero .studio-conversation-start { max-width: 1000px; margin-top: 30px; text-align: left; }
 .home-hero .studio-conversation-start-box { padding: 18px 18px 14px; border-radius: 20px; box-shadow: 0 24px 60px rgba(25,34,41,.08); }
@@ -121,7 +120,6 @@ html[data-layout="desktop"] .studio-next-page.studio-scene-home { background: #f
 .studio-next-page .home-hero { gap: 22px; padding: 0; background: none; border: 0; box-shadow: none; }
 .studio-next-page .home-hero::before, .studio-next-page .home-hero::after { display: none; }
 .studio-next-page .home-hero h1 { font-family: var(--ip-display); font-size: 34px; font-weight: 500; line-height: 1.3; letter-spacing: .02em; color: var(--ip-ink); }
-.studio-next-page .home-hero h1 span { color: #4650cf; background: none; -webkit-text-fill-color: currentColor; }
 .studio-next-page .home-hero .studio-conversation-start { width: 100%; max-width: 720px; gap: 14px; }
 .studio-next-page .home-hero .studio-conversation-start-box { gap: 10px; padding: 16px 16px 12px; border: 1px solid var(--sn-field); border-radius: 18px; background: #ffffff; box-shadow: 0 10px 30px rgba(23, 32, 42, .06); }
 .studio-next-page .home-hero .studio-conversation-start-box:focus-within { border-color: #c5cad1; }

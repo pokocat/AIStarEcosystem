@@ -142,7 +142,7 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
           </div>}
           <Input className="lmp-search" prefix={<Search size={14}/>} allowClear aria-label="搜索资产" placeholder="搜索名称" value={keyword} disabled={busy} onChange={e => setKeyword(e.target.value)}/>
           <span className="lmp-gap"/>
-          {upload && <><Button icon={<Upload size={14}/>} loading={uploading} disabled={busy || !library} onClick={() => fileInput.current?.click()}>{library && library !== 'all' && library !== AI_LIBRARY ? '上传到这个库' : '上传'}</Button>
+          {upload && <><Button icon={<Upload size={14}/>} loading={uploading} disabled={busy} onClick={() => fileInput.current?.click()}>{library && library !== 'all' && library !== AI_LIBRARY ? '上传到这个库' : '上传'}</Button>
             {mediaType === 'audio' && <Button icon={<Mic size={14}/>} disabled={busy || uploading || !library} onClick={() => setRecording(true)}>录音</Button>}
             <input ref={fileInput} type="file" hidden aria-label="选择要上传到资产库的文件" accept={ACCEPT[mediaType]} onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; if (file) void putInLibrary(file).catch(() => {}); }}/></>}
         </div>

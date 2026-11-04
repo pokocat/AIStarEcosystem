@@ -68,7 +68,7 @@ export async function listWorks(): Promise<DirectorWorkSummary[]> {
   return apiFetch<DirectorWorkSummary[]>("/v1/ip-studio/director/works");
 }
 
-export async function createWork(body: { title?: string; idea?: string; script?: string }): Promise<DirectorWork> {
+export async function createWork(body: { title?: string; idea?: string; script?: string; style?: string }): Promise<DirectorWork> {
   if (USE_MOCK) demoUnavailable();
   return apiFetch<DirectorWork>("/v1/ip-studio/director/works", { method: "POST", body: JSON.stringify(body) });
 }

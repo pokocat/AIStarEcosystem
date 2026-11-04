@@ -6,6 +6,7 @@ import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 import type { DirectorImageModelState, DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi } from "../api";
 import { InlineError, costText, secRange, useBusy, dialogFocus, type DirectorFail } from "./director-shared";
+import { StyleField } from "./director-styles";
 
 export function SettingsPanel({ work, onClose, apply, setError }: { work: DirectorWork; onClose: () => void; apply: (w: DirectorWork) => void; setError: DirectorFail }) {
   const [style, setStyle] = useState(work.settings.style);
@@ -35,7 +36,7 @@ export function SettingsPanel({ work, onClose, apply, setError }: { work: Direct
   }, message => setLocalError(`设置没有保存：${message}。改动还在，调整后再点「保存」。`));
   return <div className="director-popover" role="dialog" aria-label="作品设置" ref={dialogFocus} tabIndex={-1}>
     <header><h3>作品设置</h3><button type="button" aria-label="关闭" onClick={onClose}><X size={16}/></button></header>
-    <label className="director-field"><span>画面风格</span><input value={style} maxLength={30} onChange={e => setStyle(e.target.value)}/></label>
+    <StyleField value={style} onChange={setStyle} note={style.trim() !== work.settings.style && (work.assets.some(a => a.image.candidates.length) || work.clips.some(c => c.board.candidates.length)) ? "已生成的资产图和分镜图不会自动重做，会标为「需更新」。" : undefined}/>
     <div className="director-field"><span>画幅</span><div className="director-segmented">{(["9:16", "16:9", "1:1"] as const).map(a =>
       <button key={a} type="button" aria-pressed={aspect === a} onClick={() => setAspect(a)}>{a}</button>)}</div></div>
     <label className="director-field"><span>文本模型</span>

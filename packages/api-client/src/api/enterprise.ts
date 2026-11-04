@@ -3,6 +3,7 @@ import type { EnterpriseInvitationPreview, EnterpriseMemberAddRequest, Enterpris
 import type { EnterpriseContext, EnterpriseCreateRequest, EnterpriseInvitationCreated, EnterpriseInvitationRequest, EnterpriseInvitationAcceptRequest, EnterpriseMember, EnterpriseMemberUpdateRequest, EnterprisePolicy, EnterprisePolicyUpdateRequest, EnterpriseOwnershipRequest, EnterpriseOwnershipTransfer, EnterpriseAudit, EnterpriseInvitation } from "@ai-star-eco/types/enterprise";
 import type { PaginatedResponse } from "@ai-star-eco/types/_shared";
 import type { EnterpriseWalletSummary, EnterpriseMemberBalance, EnterprisePointsDirection, EnterprisePointsPreviewRequest, EnterprisePointsRequest, EnterprisePointsPreview, EnterprisePointsBatch, EnterprisePointsTransfer, EnterpriseRechargeOrder, EnterpriseRechargeRequest } from "@ai-star-eco/types/enterprise";
+import type { EnterpriseBillingDefault, EnterpriseBillingDefaultUpdate } from "@ai-star-eco/types/enterprise";
 import type { EnterpriseUsage, EnterpriseLifecyclePreviewRequest, EnterpriseLifecyclePreview, EnterpriseLifecycleRequest, EnterpriseLifecycleResult } from "@ai-star-eco/types/enterprise";
 const BASE = "/v1/ip-studio/enterprises";
 export function mine(): Promise<EnterpriseContext[]> { return apiFetch(`${BASE}`); }
@@ -23,6 +24,7 @@ export async function previewInvitation(token: string, signal?: AbortSignal): Pr
   return result.data;
 }
 export function updateMember(id: string, memberId: string, body: EnterpriseMemberUpdateRequest): Promise<EnterpriseMember> { return apiFetch(`${BASE}/${encodeURIComponent(id)}/members/${encodeURIComponent(memberId)}`, { method: "PATCH", body }); }
+export function setBillingDefault(id: string, mode: EnterpriseBillingDefault): Promise<EnterpriseContext> { return apiFetch(`${BASE}/${encodeURIComponent(id)}/billing-default`, { method: "PUT", body: { mode } satisfies EnterpriseBillingDefaultUpdate }); }
 export function policy(id: string): Promise<EnterprisePolicy> { return apiFetch(`${BASE}/${encodeURIComponent(id)}/policy`); }
 export function updatePolicy(id: string, body: EnterprisePolicyUpdateRequest): Promise<EnterprisePolicy> { return apiFetch(`${BASE}/${encodeURIComponent(id)}/policy`, { method: "PUT", body }); }
 export function requestOwnership(id: string, body: EnterpriseOwnershipRequest): Promise<EnterpriseOwnershipTransfer> { return apiFetch(`${BASE}/${encodeURIComponent(id)}/ownership-transfers`, { method: "POST", body }); }

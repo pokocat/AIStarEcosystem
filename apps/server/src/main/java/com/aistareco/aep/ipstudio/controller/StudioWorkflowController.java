@@ -64,6 +64,15 @@ public class StudioWorkflowController {
             @RequestBody RunRequest request,@RequestParam(defaultValue="false") boolean freeOnly) {
         return ApiResponse.of(workflow.quoteVideo(principal.getName(),id,request,freeOnly));
     }
+    /** AI 视频页按钮旁的价：GET、只带影响价格的参数（不带素材和提示词），没草稿、没绑手机号也能看。 */
+    @GetMapping("/studio/video-price")
+    public ApiResponse<com.aistareco.aep.billing.service.ModelChargeService.Quote> videoPrice(Principal principal,
+            @RequestParam(required=false) String model,@RequestParam String mode,@RequestParam String tier,@RequestParam String aspectRatio,
+            @RequestParam Integer durationSec,@RequestParam(defaultValue="0") int imageRefs,@RequestParam(defaultValue="0") int videoRefs,
+            @RequestParam(defaultValue="0") int audioRefs,@RequestParam(defaultValue="personal") String payer,@RequestParam(required=false) String enterpriseId) {
+        return ApiResponse.of(workflow.quoteVideoPrice(principal.getName(),model,mode,tier,aspectRatio,durationSec,imageRefs,videoRefs,audioRefs,
+                new com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection(payer,enterpriseId)));
+    }
     @PostMapping("/projects/{id}/studio-image-quote")
     public ApiResponse<com.aistareco.aep.billing.service.ModelChargeService.Quote> quoteImage(Principal principal,@PathVariable String id,
             @RequestBody RunRequest request,@RequestParam(defaultValue="false") boolean freeOnly) {

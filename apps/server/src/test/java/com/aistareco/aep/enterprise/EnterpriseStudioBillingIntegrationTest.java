@@ -58,6 +58,7 @@ class EnterpriseStudioBillingIntegrationTest {
     @Autowired AiModelEndpointRepository endpoints; @Autowired AiAppBindingRepository bindings;
     @Autowired AiAppEndpointCandidateRepository candidates; @Autowired AiAppSceneModelPolicyService scenePolicies;
     @Autowired PlatformConfigService configs; @Autowired ObjectMapper json; @Autowired MockMvc mvc; @Autowired StudioFixtureProvider fixtures;
+    @Autowired com.aistareco.aep.dap.repository.DapJobRepository dapJobs; @Autowired DapJobRunner dapRunner;
     @MockBean IpRunWorker asyncImages; @MockBean StudioWorkflowWorker asyncText;
     HttpServer http; String base,imageEndpoint,textEndpoint; IpRunWorker imageWorker; StudioWorkflowWorker textWorker;
     final AtomicInteger imageCalls=new AtomicInteger(),textCalls=new AtomicInteger(); volatile int imageFailureAfter;
@@ -184,9 +185,18 @@ class EnterpriseStudioBillingIntegrationTest {
         assertTrue(authorizations.findAll().stream().noneMatch(a->c.enterprise().equals(a.getEnterpriseId())));
         assertEquals(0,memberWallet(c).getPendingBalance());assertEquals(100,memberWallet(c).getTotalBalance());assertEquals(0,imageCalls.get());
     }
-    @Test void finalModelWhitelistRejectsBeforeAnyWalletFreezeOrSupplierCall() throws Exception {
+    /** An empty model list is "all models" (2026-11-02): no enterprise had ever chosen one, so nothing could be paid. */
+    @Test void emptyModelListLetsMembersPayWithEnterpriseCredits() throws Exception {
         var c=funded(100,2);var policy=enterprises.policy(c.company().member().userId(),c.enterprise());
         enterprises.updatePolicy(c.company().member().userId(),c.enterprise(),new PolicyUpdate(List.of(),2,policy.version()));
+        String id=submit(c,image(c,1,true),200).path("data").path("id").asText();
+        var authorization=authorizations.findByReferenceTypeAndReferenceId("ip-run",id).orElseThrow();
+        assertEquals(imageEndpoint,authorization.getEndpointId());assertEquals(memberWallet(c).getId(),authorization.getWalletId());
+        assertEquals(8,memberWallet(c).getPendingBalance());
+    }
+    @Test void finalModelWhitelistRejectsBeforeAnyWalletFreezeOrSupplierCall() throws Exception {
+        var c=funded(100,2);var policy=enterprises.policy(c.company().member().userId(),c.enterprise());
+        enterprises.updatePolicy(c.company().member().userId(),c.enterprise(),new PolicyUpdate(List.of(textEndpoint),2,policy.version()));
         assertEquals("ENTERPRISE_MODEL_NOT_ALLOWED",submit(c,image(c,1,true),403).path("error").path("code").asText());
         assertEquals(100,memberWallet(c).getTotalBalance());assertEquals(0,memberWallet(c).getPendingBalance());assertEquals(0,imageCalls.get());
     }
@@ -207,7 +217,7 @@ class EnterpriseStudioBillingIntegrationTest {
         String id=submit(c,image(c,1,true),200).path("data").path("id").asText();imageWorker.runBlocking(id);
         assertEquals("running",runs.findById(id).orElseThrow().getStatus());assertEquals(CreditHold.Status.ACTIVE,holds.findByReferenceTypeAndReferenceId("ip-run",id).orElseThrow().getStatus());
         assertEquals(8,memberWallet(c).getPendingBalance());assertNull(authorizations.findByReferenceTypeAndReferenceId("ip-run",id).orElseThrow().getTerminalAt());
-        var policy=enterprises.policy(c.company().member().userId(),c.enterprise());enterprises.updatePolicy(c.company().member().userId(),c.enterprise(),new PolicyUpdate(List.of(),1,policy.version()));
+        var policy=enterprises.policy(c.company().member().userId(),c.enterprise());enterprises.updatePolicy(c.company().member().userId(),c.enterprise(),new PolicyUpdate(List.of(textEndpoint),1,policy.version()));
         org.mockito.Mockito.when(nativeClient.supportsEndpoint(imageEndpoint)).thenReturn(false);imageWorker.recoverNative(id);
         assertEquals("done",runs.findById(id).orElseThrow().getStatus());assertEquals(1,submissions.get());assertEquals(92,memberWallet(c).getTotalBalance());settled(c,id,8);
     }
@@ -279,4 +289,79 @@ class EnterpriseStudioBillingIntegrationTest {
         assertEquals(92,memberWallet(c).getTotalBalance());assertEquals(1,ledger.findAll().stream().filter(l->id.equals(l.getReferenceId())&&l.getEntryType()==LedgerEntry.LedgerEntryType.SPEND).count());
     }
 
+
+    // ── 数字资产生成与声音克隆：与画布同一套企业付款（2026-11-02）──────────
+    String finished(String jobId) throws Exception {
+        for(int i=0;i<200;i++){var job=dapJobs.findById(jobId).orElseThrow();if(!"running".equals(job.getStatus()))return job.getStatus();Thread.sleep(50);}
+        return fail("数字资产任务没有结束");
+    }
+    String scene(Case c,String payer,int expected) throws Exception {
+        var request=post("/api/v1/assets/scenes").with(user(c.actor())).header("X-App-Code","aiavatar").contentType("application/json").content("{\"prompt\":\"清晨咖啡馆\"}");
+        if(payer!=null)request.header(com.aistareco.aep.dap.service.DapPayer.HEADER,payer);
+        var body=json.readTree(mvc.perform(request).andExpect(status().is(expected)).andReturn().getResponse().getContentAsString());
+        return expected==200?body.path("data").path("job").path("id").asText():body.path("error").path("code").asText();
+    }
+    @Test void digitalAssetGenerationPaysWithEnterpriseCreditsAndSettlesToTheMember() throws Exception {
+        var c=funded(100,2);long price=pricing.sceneGenerate();String job=scene(c,"enterprise:"+c.enterprise(),200);
+        var authorization=authorizations.findByReferenceTypeAndReferenceId("dap-job",job+":r0:media").orElseThrow();
+        assertEquals(memberWallet(c).getId(),authorization.getWalletId());assertEquals(imageEndpoint,authorization.getEndpointId());
+        assertEquals("done",finished(job));
+        assertEquals(100-price,memberWallet(c).getTotalBalance());assertEquals(0,memberWallet(c).getPendingBalance());
+        assertNotNull(authorizations.findByReferenceTypeAndReferenceId("dap-job",job+":r0:media").orElseThrow().getTerminalAt());
+        assertEquals(999,wallets.findByUserId(c.actor()).orElseThrow().getTotalBalance());
+    }
+    @Test void digitalAssetGenerationWithoutAPayerStaysPersonal() throws Exception {
+        var c=funded(100,2);long price=pricing.sceneGenerate();String job=scene(c,null,200);
+        assertEquals("done",finished(job));
+        assertEquals(999-price,wallets.findByUserId(c.actor()).orElseThrow().getTotalBalance());assertEquals(100,memberWallet(c).getTotalBalance());
+        assertTrue(authorizations.findByReferenceTypeAndReferenceId("dap-job",job+":r0:media").isEmpty());
+    }
+    @Test void digitalAssetGenerationFollowsTheEnterpriseModelList() throws Exception {
+        var c=funded(100,2);var policy=enterprises.policy(c.company().member().userId(),c.enterprise());
+        enterprises.updatePolicy(c.company().member().userId(),c.enterprise(),new PolicyUpdate(List.of(textEndpoint),2,policy.version()));
+        assertEquals("ENTERPRISE_MODEL_NOT_ALLOWED",scene(c,"enterprise:"+c.enterprise(),403));
+        assertEquals(0,memberWallet(c).getPendingBalance());assertEquals(999,wallets.findByUserId(c.actor()).orElseThrow().getTotalBalance());assertEquals(0,imageCalls.get());
+        assertEquals("BILLING_SELECTION_INVALID",scene(c,"company-card",400));
+    }
+    @Test void aDigitalAssetJobsTextStageRidesOnItsJobForTheInFlightLimit() throws Exception {
+        var c=funded(100,1);var payer=new com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection("enterprise",c.enterprise());
+        var image=com.aistareco.aep.billing.service.ModelChargeContext.forCredits(endpoints.findById(imageEndpoint).orElseThrow(),8);
+        var text=com.aistareco.aep.billing.service.ModelChargeContext.forCredits(endpoints.findById(textEndpoint).orElseThrow(),2);
+        billing.reserve(c.actor(),payer,"dap-job","JOB-A:r0:media",imageEndpoint,8,"测试 · 媒体",image);
+        billing.reserveCompanion("dap-job","JOB-A:r0:media","JOB-A:r0:text",textEndpoint,2,"测试 · 文本",text);
+        assertEquals(10,memberWallet(c).getPendingBalance());
+        assertEquals(memberWallet(c).getId(),authorizations.findByReferenceTypeAndReferenceId("dap-job","JOB-A:r0:text").orElseThrow().getWalletId());
+        // One job in flight with a cap of one: the text stage did not take a second slot, the next job is refused.
+        assertEquals("ENTERPRISE_ACTIVE_JOB_LIMIT",assertThrows(com.aistareco.common.BusinessException.class,
+                ()->billing.reserve(c.actor(),payer,"dap-job","JOB-B:r0:media",imageEndpoint,8,"测试 · 媒体",image)).getCode());
+        credits.releaseHold("dap-job","JOB-A:r0:media","测试");credits.releaseHold("dap-job","JOB-A:r0:text","测试");
+        assertEquals(100,memberWallet(c).getTotalBalance());assertEquals(0,memberWallet(c).getPendingBalance());
+        assertTrue(authorizations.findAll().stream().filter(a->c.enterprise().equals(a.getEnterpriseId())).allMatch(a->a.getTerminalAt()!=null));
+    }
+    @Test void stoppingAMemberCancelsTheirDigitalAssetJobThatHasNotStarted() throws Exception {
+        var c=funded(100,2);String id="JOB-"+UUID.randomUUID().toString().substring(0,8);
+        dapJobs.saveAndFlush(com.aistareco.aep.dap.model.DapJob.builder().id(id).ownerUserId(c.actor()).kind("场景生成").type(com.aistareco.aep.dap.model.DapJob.T_SCENE_GEN)
+                .engine("测试").mode("backend").status("running").stage("queued").pct(2).cost(8)
+                .payload(new LinkedHashMap<>(Map.of("_billing",Map.of("mode","enterprise","enterpriseId",c.enterprise()))))
+                .createdAt(Instant.now()).heartbeatAt(Instant.now()).stageUpdatedAt(Instant.now()).build());
+        billing.reserve(c.actor(),new com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection("enterprise",c.enterprise()),"dap-job",id+":r0:media",imageEndpoint,8,"测试",
+                com.aistareco.aep.billing.service.ModelChargeContext.forCredits(endpoints.findById(imageEndpoint).orElseThrow(),8));
+        assertEquals(8,memberWallet(c).getPendingBalance());
+        String owner=c.company().member().userId(),member=c.member().member().id();
+        var preview=lifecycle.preview(owner,c.enterprise(),new com.aistareco.aep.enterprise.dto.EnterpriseLifecycleDtos.PreviewRequest("suspend",member));
+        lifecycle.apply(owner,c.enterprise(),new com.aistareco.aep.enterprise.dto.EnterpriseLifecycleDtos.Request("suspend",member,UUID.randomUUID().toString(),preview.confirmationFingerprint()));
+        assertEquals("failed",dapJobs.findById(id).orElseThrow().getStatus());assertEquals(0,memberWallet(c).getPendingBalance());
+        assertEquals("cancelled",authorizations.findByReferenceTypeAndReferenceId("dap-job",id+":r0:media").orElseThrow().getStatus());
+        dapRunner.run(id);Thread.sleep(300); // a late runner start finds the job already ended and calls no model
+        assertEquals("failed",dapJobs.findById(id).orElseThrow().getStatus());assertEquals(0,imageCalls.get());
+    }
+    @Test void voiceCloningPaysWithTheChosenEnterpriseAndSettlesAtOnce() throws Exception {
+        var c=funded(100,2);long price=pricing.voiceClone();
+        var file=new org.springframework.mock.web.MockMultipartFile("file","sample.wav","audio/wav",new byte[64_000]);
+        mvc.perform(multipart("/api/v1/voices/clone").file(file).param("name","我的声音").with(user(c.actor())).header("X-App-Code","aiavatar")
+                .header(com.aistareco.aep.dap.service.DapPayer.HEADER,"enterprise:"+c.enterprise())).andExpect(status().isOk());
+        assertEquals(100-price,memberWallet(c).getTotalBalance());assertEquals(0,memberWallet(c).getPendingBalance());
+        assertEquals(999,wallets.findByUserId(c.actor()).orElseThrow().getTotalBalance());
+        assertTrue(authorizations.findAll().stream().filter(a->"dap-voice".equals(a.getReferenceType())&&c.enterprise().equals(a.getEnterpriseId())).allMatch(a->a.getTerminalAt()!=null));
+    }
 }

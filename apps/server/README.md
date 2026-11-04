@@ -436,6 +436,7 @@ src/main/java/com/aistareco/aep/
 - **`material_video_input_asset`（V71，2026-10-29）**：角色声音的聚算输入回执；按端点、地址、模型、凭据及来源 key 散列隔离，保存 `source_key` / `asset_id` / `expires_at`，不保存密钥和签名 URL。人物长期绑定仍存我方 key；保存音色和生成 worker 共用上传路径，仅在厂商有效期前复用，过期从原样本重新上传。上传使用可写事务，避免个人素材库持用户行锁时触发 MySQL 只读事务 500。
 
 - **`director_work`（V65，AI 导演台）**：作品一行，`content_json` 存剧本 / 分集 / 资产使用 / 片段与镜头 / 采用指针（只存存储 key），`revision` 作品级修订、`active` 供后台调度扫描。生成任务复用 `ip_run`，新增 `host_type`（NULL = 画布，`director` = 导演作品，`project_id` 存作品 id）。接口 `/api/v1/ip-studio/director/**`。
+  2026-11-04（无迁移）：`content_json` 的资产加 `forms[]`、`views`，片段加 `assetForms`，镜头加 `sceneView`；任务节点 `form:<形态id>`、`views:<场景id>`。
   - 2026-10-26（`20261026-director-text-model`）：`content_json.settings.textModel` 可选 Studio script 场景端点，空值默认；`textModels`/`textModelMode` 回传候选（界面不展示文字价格）。所有文字任务、估价（按各任务输出上限）及连跑使用所选模型；原选择停用时设置照存、估价按默认价、提交明确报错，`_exec` 固化端点、Token 费率与冻结额；幂等指纹包含显式模型。剧本成功采用时同步非空剧名到 `director_work.title`，重写历史保留旧标题；失败/内容冲突不改标题。无需迁移。
 
 ### 角色体系
@@ -1064,6 +1065,9 @@ V51 为 `material_video_job` 增加可空 `error_code VARCHAR(64)`，和原 `err
 
 - V58：`aep_enterprise_billing_authorizations` 固定每笔实际任务的付款、成员版本、最终模型/冻结金额、撤销与终态；`aep_enterprise_lifecycle_operations` 保存正文幂等回执。`credit_lot_holds.released_amount` 标出本次释放的原充值来源，避免误回收重入后的新分配。
 - 生成：所有 Studio 入口支持可选 `billing`，个人省略兼容；企业在 `reserve` 同事务保存授权/冻结/任务，派发前重验策略，afterCommit 派发。视频上层不二次冻结。原生run/generate/generate-video企业付款必须带clientRequestId；项目锁+持久绑定使重试读取同一任务，不二次冻结。worker 成功/失败与原账户结算同事务。
+- 模型策略（2026-11-02）：`allowedEndpointIds` 空数组 = 全部模型，非空才按名单拦（`EnterpriseBillingService.requireAllowed`）；新企业每位成员在途上限 10（`EnterpriseService.DEFAULT_MAX_ACTIVE_JOBS`）。V73（Java）只把仍是创建值（version 0、上限 1）的策略改成 10 并 version+1。此前空名单等于全部禁用，线上企业从没设过，企业积分在画布付款弹窗里一直是灰的。
+- 数字资产与声音克隆（2026-11-02）：付款方经请求头 `X-Aep-Billing` 进来（`DapPayer`，记进任务 payload `_billing`，重试沿用）。企业付款时 `DapModelBilling.reserve` 走 `EnterpriseBillingService.reserve`（引用 `dap-job` / `<任务>:rN:media`），有文字阶段时再 `reserveCompanion`（`<任务>:rN:text`，同成员同钱包、自己的文字模型、不另占在途名额）；个人付款照旧 `credits.hold`。runner 开始前 `requireDispatch` 重验成员与模型，任务已被生命周期取消（status 不是 running）就直接返回。生命周期取消 `dap-job` 授权时把未开始的任务标失败并退冻结。声音克隆（`dap-voice`）企业付款为同事务 reserve + commit，固定单价不查模型名单。结算仍由 `CreditService` 按 hold 钱包处理并自动完成授权。
+- 默认付款账户（2026-11-02，V74）：`EnterpriseMember.billingDefault`（`@OptimisticLock(excluded=true)`，不动成员版本），`PUT /enterprises/{id}/billing-default`，`Context.billingDefault`。
 - 生命周期：`POST /enterprises/{id}/lifecycle/preview` → `POST /lifecycle`，action 为 suspend/resume/remove/leave/close。确认指纹覆盖关系、余额与在途；停用/退出回收可用，已受理任务的晚退款回原企业。停用成员仍可查询本人余额、退出，不能发新企业任务。
 - 报表：用户 `GET /enterprises/{id}/my-balance|usage`；管理者查询全企业，普通/停用成员仅本人。平台 `/api/admin/finance/enterprises` 服务端分页检索，并有 `/{id}/wallet|member-balances|points/transfers|usage`。不返回私有文档/提示词。
 - 受理恢复：图片/视频保存原供应商路由/请求与任务号，轮询故障保留冻结；仅 SUPER_ADMIN/OPERATOR（不含纯 FINANCE_ADMIN）GET `/api/admin/material-video-jobs/{id}` 或 `/api/admin/ip-studio/runs/{id}` 核对，reconcile 可带原任务号和证据，只查询原任务。不提供无证据强制退积分或重新提交。
@@ -1089,6 +1093,12 @@ V51 为 `material_video_job` 增加可空 `error_code VARCHAR(64)`，和原 `err
 ## Studio 视频上传兼容修复（2026-10-17）
 
 `StudioMediaImportService` 不再因 MP4 内部编码直接拒收：可读的非H.264/非AAC素材用 ffmpeg 自动规范为H.264/AAC；仅音轨不兼容时保留画面码流。最多2编码线程、150秒超时，重新校验音轨和时长后才存储、计配额，异常清理输入/输出临时文件。免费导入，无模型调用。`StudioMediaImportServiceTest` 覆盖原逻辑/转码/失败，`StudioVideoCompatibilityTest` 可通过 `-Dstudio.video.demo=本地视频路径` 验真实HEVC+MP3、MPEG4+MP3、H264+MP3三类素材。
+
+2026-11-01 本地调整：声音参考超过 14.9 秒时，由 `StudioAudioReference` 用 ffmpeg 提取开头 14.9 秒、24 kHz 单声道 PCM WAV，验证后交给模型，不再因单段超长直接退出。`StudioVideoService` 的报价和提交共用短样本 key，导演台上传保留完整原音频，绑定上传或资产库声音时同样生成短样本；调用前先验 key 归属，已有素材不原地改写，临时文件在成功和失败时均删除。派生 key 按本人不可变源 key 有界复用，不跨用户复用、不保存签名 URL、不新增模型调用或积分扣费。模型的数量、音频总时长、格式等规则不变。界面在使用声音前提示截取规则，录音入口本身 14.9 秒自动停止。
+
+2026-11-04 补充：不足 14.9 秒的声音也可能要处理。资产库收的格式比视频模型多（Seedance 只收 WAV / MP3），短 M4A 此前原样送去校验、报「格式不符合」。现在凡不是 WAV / MP3 的声音，`StudioAudioReference` 都转成同规格 WAV，原文件不动；转换失败明确报错，不退回原文件。已是 WAV / MP3 且不超长的照旧用原 key。
+
+2026-11-04 补充：H3 参考视频提交前按 2–15 秒校验（厂商的限制，此前等上传被拒才报英文）；`VideoMediaMessages` 统一素材报错，写明类型、上限和实际值。「没拿到受理回执」的报错改为一句话，只有审核、真人、模型下架这类会改变下一步的原因才附在后面；其余原因走日志。
 
 ### Studio 统一画布封面（2026-10-17，已发布 a4092626）
 
@@ -1303,6 +1313,7 @@ capabilities 的文本模型新增 `dialogueTokenPricing`，普通文本仍用 `
 
 后台 `/admin/model-billing/{targets|user-options|wallet-options|enterprise-options|discounts|campaigns|grants}` 提供目录、分页查询与管理，发放走 `/admin/finance/adjustments/scoped-grant` 与现有审批。个人优惠不要求钱包已建立。`/me/model-credits` 只返回当前本人个人或企业成员钱包的额度。
 
+AI 视频页按钮旁的价是 `GET /api/v1/ip-studio/studio/video-price`（2026-11-03）：只带模型、模式、清晰度、画面比例、时长、各类参考素材张数和付款账户，不带素材 key 和提示词、不需要草稿；标准价由 `VideoStudioService.priceCanvas`（与提交同一张价表和清晰度 / 画面 / 时长校验 `requireGeometry`）算，折扣、模型赠款和付款账户走 `MaterialVideoJobService.quoteSpec` → 提交用的同一个 `quote`。只读，不建任务、不冻结、不读素材；GET 所以不受「未绑手机号只读」拦截。
 Studio 图片报价为 `POST /api/v1/ip-studio/projects/{id}/{image-quote|studio-image-quote}`、`POST .../nodes/{nodeId}/image-quote`；视频生成区为 `POST /api/me/celebrity/video-studio/quote`。报价复用既有价格；确认绑定付款账户、实际接入点、用量、费用决定和普通积分上限；额度被其他任务使用时不得静默加扣。任务按受理时快照结算，失败原路释放，过期赠款不会因释放恢复。通用视频的已释放原冻结仍不能用新优惠自动补扣，返回 `VIDEO_MODEL_RECOVERY_REQUIRES_REVIEW`。
 
 数字人组合任务按用户确认拆成文本和媒体两笔：`DapModelBilling` 使用现有 Token 价与媒体生成价，分别冻结，实际调用固定受理时接入点；文本实际用量与媒体成功各自结算。媒体失败不抹去已完成文本费用。两笔冻结和作业受理同事务，重试使用新的尝试编号，结算回调幂等。月度用量从 SPEND/SCOPED_SPEND 流水取实际消费。无需新增表或新的价格源。

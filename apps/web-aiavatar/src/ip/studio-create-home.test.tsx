@@ -10,9 +10,9 @@ import { setupRadixSelectDom } from './testing/radix-select-dom';
 
 setupRadixSelectDom();
 
-const mocks = vi.hoisted(() => ({ scenes: vi.fn(), works: vi.fn(), projects: vi.fn(), templates: vi.fn(), examples: vi.fn(), get: vi.fn(), create: vi.fn(), remove: vi.fn(), push: vi.fn(), replace: vi.fn(), update: vi.fn(), availability: vi.fn(), selectCover: vi.fn(), resetCover: vi.fn(), identityRole: "none", layout: "mobile" as "mobile" | "desktop" | null }));
+const mocks = vi.hoisted(() => ({ search: "", scenes: vi.fn(), works: vi.fn(), projects: vi.fn(), templates: vi.fn(), examples: vi.fn(), get: vi.fn(), create: vi.fn(), remove: vi.fn(), push: vi.fn(), replace: vi.fn(), update: vi.fn(), availability: vi.fn(), selectCover: vi.fn(), resetCover: vi.fn(), identityRole: "none", layout: "mobile" as "mobile" | "desktop" | null }));
 const router = vi.hoisted(() => ({ push: (href: string) => mocks.push(href), replace: (href: string) => mocks.replace(href) }));
-vi.mock("next/navigation", () => ({ useRouter: () => router, usePathname: () => "/create" }));
+vi.mock("next/navigation", () => ({ useRouter: () => router, usePathname: () => "/create", useSearchParams: () => new URLSearchParams(mocks.search ?? "") }));
 vi.mock("@/shell/layout-mode", () => ({ useLayoutMode: () => mocks.layout }));
 vi.mock("next/link", () => ({ default: ({ children, replace, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock("@/components/hub/auth", () => ({ useRequireAuth: () => "ok", PlatformGateScreen: () => <p>开通产品</p> }));
@@ -41,6 +41,37 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Creation catalogue", () => {
+  it("puts a small new-canvas tile and the recent canvases in one sliding row, without creating anything", async () => {
+    render(<StudioCreateHome />);
+    const heading = await screen.findByRole("heading", { name: "最近的画布" });
+    const section = heading.closest(".studio-create-recent") as HTMLElement;
+    const links = await within(section).findAllByRole("link", { name: /打开画布/ });
+    expect(links).toHaveLength(12);
+    const newest = [...projects].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+    expect(links[0].getAttribute("href")).toBe(`/projects/${newest.id}`);
+    const row = section.querySelector(".studio-create-recent-list") as HTMLElement;
+    expect(within(row).getByRole("button", { name: "新建画布" })).toBeTruthy();
+    expect(row.querySelector("li")?.textContent).toContain("新建画布");
+    expect(within(section).getByRole("link", { name: /全部画布/ }).getAttribute("href")).toBe("/projects?type=canvas");
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+  it("still offers a new canvas when there are no canvases yet", async () => {
+    mocks.projects.mockResolvedValue([]);
+    render(<StudioCreateHome />);
+    await screen.findByRole("heading", { name: "从一项功能开始" });
+    await waitFor(() => expect(screen.queryByRole("link", { name: /打开画布/ })).toBeNull());
+    expect(screen.getByRole("button", { name: "新建画布" })).toBeTruthy();
+  });
+  it("the projects page opens filtered by type from the link and can show only canvases", async () => {
+    mocks.search = "type=canvas";
+    mocks.projects.mockResolvedValue([{ ...projects[0], id: "plain", name: "普通画布" }, { ...projects[1], id: "draft", name: "场景草稿", sceneId: "ecom-talking" }]);
+    mocks.works.mockResolvedValue([{ id: "w", title: "短剧", episodeCount: 1, clipCount: 1, hasScript: true, updatedAt: "2026-11-01T00:00:00Z" }]);
+    render(<StudioProjects />);
+    expect(await screen.findByRole("link", { name: "打开画布 普通画布" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "打开画布 场景草稿" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "短剧导演台作品" })).toBeNull();
+    mocks.search = "";
+  });
   it("loads content only for the visible page, searches, filters and pages real canvases", async () => {
     render(<StudioProjects />);
     await screen.findByRole("link", { name: "打开画布 测试画布 0" });
@@ -102,7 +133,6 @@ describe("Creation catalogue", () => {
     expect(screen.getByRole("button", { name: "新建画布" })).toBeTruthy();
     expect(screen.queryByRole("searchbox", { name: "搜索我的画布" })).toBeNull();
     expect(within(screen.getByRole("navigation", { name: "工作台导航" })).getByRole("link", { name: "项目", exact: true }).getAttribute("href")).toBe("/projects");
-    expect(mocks.projects).not.toHaveBeenCalled();
     fireEvent.click(await screen.findByRole("button", { name: "预览模板 IP 商品视频" }));
     expect(screen.getByRole("dialog").textContent).toContain("只读预览");
     fireEvent.click(screen.getByRole("button", { name: "返回" }));
@@ -236,7 +266,6 @@ describe("Creation page", () => {
     // The card comes first, above the tools.
     const card = screen.getByRole('button', { name:'新建画布' });
     expect(card.compareDocumentPosition(tools) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(card.getAttribute('aria-describedby') && document.getElementById(card.getAttribute('aria-describedby')!)?.textContent).toBe('一张空白画布，打开就有助手，直接开始。');
     await screen.findByRole("button", { name: "预览模板 IP 商品视频" });
     expect(mocks.create).not.toHaveBeenCalled();
   });
@@ -336,6 +365,5 @@ describe("New canvas entries", () => {
       cleanup();
     }
     expect(mocks.create).not.toHaveBeenCalled();
-    expect(mocks.projects).not.toHaveBeenCalled();
   });
 });

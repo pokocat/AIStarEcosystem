@@ -44,6 +44,14 @@ components:
       name: X-External-Owner-Id
       description: 军师 userId；所有 clip 资源的强属主隔离真源。
 
+  parameters:
+    AepBilling:
+      name: X-Aep-Billing
+      in: header
+      required: false
+      description: '付费数字资产生成的付款账户：personal 或 enterprise:<企业ID>，由与画布、导演台相同的付款选择给出（企业成员设了默认就不再询问）。缺省按个人积分。企业付款沿用同一套规则：允许的模型、每人在途上限、成员停用时取消未开始的任务、按原账户结算与退回；重试沿用任务原付款账户，不读这个头。'
+      schema: {type: string, maxLength: 80, pattern: '^(personal|enterprise:.{1,64})$'}
+
   # ── Reusable response wrappers ──────────
   schemas:
     ModelBillingTargetOption:
@@ -5323,6 +5331,7 @@ components:
         name: { type: string }
         summary: { type: string }
         coverUrl: { type: string, nullable: true }
+        previewVideoUrl: { type: string, nullable: true, description: '官方示例第一段成片的签名地址（灵感卡悬停静音播放）；模板与没有成片的示例不给' }
         stylePresetId: { type: string, nullable: true }
         lookCount: { type: integer }
         estimatedCredits: { type: integer, description: '按部署默认单价预估（特征卡 2 + 出图 8 每张）' }
@@ -5968,6 +5977,12 @@ components:
         permissions:
           type: array
           items: {type: string}
+        billingDefault: {type: string, nullable: true, enum: [personal, enterprise], description: '本人默认付款账户，所有付费生成共用；为空表示每次询问。默认企业积分但成员或企业当前不能付款时，前端重新询问，不自动换成个人积分'}
+    EnterpriseBillingDefaultUpdate:
+      type: object
+      required: [mode]
+      properties:
+        mode: {type: string, nullable: true, enum: [personal, enterprise], description: 为空改回每次询问}
     EnterpriseCreateRequest:
       type: object
       required: [name, clientRequestId]
@@ -6052,6 +6067,7 @@ components:
         enterpriseId: {type: string, minLength: 1, maxLength: 64}
         allowedEndpointIds:
           type: array
+          description: 空数组表示全部模型（包括以后新上的）；非空时成员用企业积分只能用名单内的模型。
           items: {type: string, minLength: 1, maxLength: 64}
           maxItems: 100
           uniqueItems: true
@@ -6063,6 +6079,7 @@ components:
       properties:
         allowedEndpointIds:
           type: array
+          description: 空数组表示全部模型（包括以后新上的）；非空时成员用企业积分只能用名单内的模型。
           items: {type: string, minLength: 1, maxLength: 64}
           maxItems: 100
           uniqueItems: true
@@ -13632,22 +13649,22 @@ paths:
     post: { tags: [dap], operationId: dapAdminUploadImage, summary: '数字人广场 · 运营上传形象图(multipart) → { key, url }', responses: { '200': { description: ok } } }
   /v1/avatars/{id}/looks:
     get:  { tags: [dap], operationId: dapAvatarLooks, responses: { '200': { description: ok } } }
-    post: { tags: [dap], operationId: dapCreateLook, description: 描述造型或 sceneId 场景替换 → 异步任务, responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapCreateLook, parameters: [{$ref: '#/components/parameters/AepBilling'}], description: 描述造型或 sceneId 场景替换 → 异步任务, responses: { '200': { description: ok } } }
   /v1/avatars/{id}/derivatives:
     get:  { tags: [dap], operationId: dapAvatarDerivatives, responses: { '200': { description: ok } } }
-    post: { tags: [dap], operationId: dapCreateDerivative, description: 'type=atlas|expr|scene|ward|d3|video → 异步任务；options{items[{label,prompt}]≤6 / extraPrompt / motion} + templateId(atlas) 自定义配方（v0.52）', responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapCreateDerivative, parameters: [{$ref: '#/components/parameters/AepBilling'}], description: 'type=atlas|expr|scene|ward|d3|video → 异步任务；options{items[{label,prompt}]≤6 / extraPrompt / motion} + templateId(atlas) 自定义配方（v0.52）', responses: { '200': { description: ok } } }
   /v1/avatars/{id}/describe:
     post: { tags: [dap], operationId: dapDescribeAvatar, description: 落人设描述与表单（同步）, responses: { '200': { description: ok } } }
   /v1/avatars/{id}/photos:
     post: { tags: [dap], operationId: dapUploadPhotos, description: 'multipart files[] 照片素材', responses: { '200': { description: ok } } }
   /v1/avatars/{id}/generate:
-    post: { tags: [dap], operationId: dapGenerateAvatar, description: 'mode=describe(4 变体)|upload(高保真复刻) → 异步任务；真人路径必须选择或自动解析一条 approved 素材，任务 payload 使用 qasset:// 引用', responses: { '200': { description: ok }, '403': { description: DAP_MATERIAL_APPROVAL_REQUIRED } } }
+    post: { tags: [dap], operationId: dapGenerateAvatar, parameters: [{$ref: '#/components/parameters/AepBilling'}], description: 'mode=describe(4 变体)|upload(高保真复刻) → 异步任务；真人路径必须选择或自动解析一条 approved 素材，任务 payload 使用 qasset:// 引用', responses: { '200': { description: ok }, '403': { description: DAP_MATERIAL_APPROVAL_REQUIRED } } }
   /v1/avatars/{id}/pick:
     post: { tags: [dap], operationId: dapPickVariant, responses: { '200': { description: ok } } }
   /v1/avatars/{id}/iterate:
-    post: { tags: [dap], operationId: dapIterateAvatar, description: 自然语言迭代 → 异步任务, responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapIterateAvatar, parameters: [{$ref: '#/components/parameters/AepBilling'}], description: 自然语言迭代 → 异步任务, responses: { '200': { description: ok } } }
   /v1/avatars/{id}/warp:
-    post: { tags: [dap], operationId: dapWarpAvatar, description: 几何精调参数 → 异步任务（AI 重绘路径，legacy；v0.52 起精确滑杆走端上 refine-apply）, responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapWarpAvatar, parameters: [{$ref: '#/components/parameters/AepBilling'}], description: 几何精调参数 → 异步任务（AI 重绘路径，legacy；v0.52 起精确滑杆走端上 refine-apply）, responses: { '200': { description: ok } } }
   /v1/avatars/{id}/image:
     get: { tags: [dap], operationId: dapAvatarImage, description: 当前定妆图同源流式输出（owner 校验；供端上精调画布取图，规避 CDN 跨域 canvas 污染）, responses: { '200': { description: image bytes } } }
   /v1/avatars/{id}/refine-apply:
@@ -13851,7 +13868,7 @@ paths:
   /v1/voices/preview:
     post: { tags: [dap], operationId: dapPreviewVoice, description: 克隆声线返回采样 URL；内置音色返回说明, responses: { '200': { description: ok } } }
   /v1/voices/clone:
-    post: { tags: [dap], operationId: dapCloneVoice, description: multipart file 声音采样 + name/avatarId/gender, responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapCloneVoice, parameters: [{$ref: '#/components/parameters/AepBilling'}], description: multipart file 声音采样 + name/avatarId/gender, responses: { '200': { description: ok } } }
   /v1/jobs:
     get: { tags: [dap], operationId: dapListJobs, responses: { '200': { description: ok } } }
   /v1/jobs/{id}:
@@ -13893,7 +13910,7 @@ paths:
     post: { tags: [dap], operationId: dapIpLicense, summary: '登记 / 续签 IP 授权 → LIC 凭证（已存在则续签一年）', responses: { '200': { description: ok } } }
   /v1/assets/scenes:
     get:  { tags: [dap], operationId: dapListScenes, description: 'source=shot|ai / space / ipId / q 过滤', responses: { '200': { description: ok } } }
-    post: { tags: [dap], operationId: dapCreateScene, summary: 'AI 生成场景（异步任务 + 扣费）→ { scene, job }', responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapCreateScene, parameters: [{$ref: '#/components/parameters/AepBilling'}], summary: 'AI 生成场景（异步任务 + 扣费）→ { scene, job }', responses: { '200': { description: ok } } }
   /v1/assets/scenes/upload:
     post: { tags: [dap], operationId: dapUploadScene, summary: '实拍场景入库（multipart；轻资产不扣费）', responses: { '200': { description: ok } } }
   /v1/assets/scenes/{id}:
@@ -13901,10 +13918,10 @@ paths:
     patch:  { tags: [dap], operationId: dapPatchScene, responses: { '200': { description: ok } } }
     delete: { tags: [dap], operationId: dapDeleteScene, responses: { '200': { description: ok } } }
   /v1/assets/scenes/{id}/variants:
-    post: { tags: [dap], operationId: dapSceneVariants, summary: '生成光线变体（labels[]，按张扣费）→ { job }', responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapSceneVariants, parameters: [{$ref: '#/components/parameters/AepBilling'}], summary: '生成光线变体（labels[]，按张扣费）→ { job }', responses: { '200': { description: ok } } }
   /v1/assets/products:
     get:  { tags: [dap], operationId: dapListProducts, description: 'category / ipId / q 过滤', responses: { '200': { description: ok } } }
-    post: { tags: [dap], operationId: dapCreateProduct, summary: 'AI 生成产品主图（异步任务 + 扣费）→ { product, job }', responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapCreateProduct, parameters: [{$ref: '#/components/parameters/AepBilling'}], summary: 'AI 生成产品主图（异步任务 + 扣费）→ { product, job }', responses: { '200': { description: ok } } }
   /v1/assets/products/upload:
     post: { tags: [dap], operationId: dapUploadProduct, summary: '实拍产品入库（multipart；自动记为正面角度，不扣费）', responses: { '200': { description: ok } } }
   /v1/assets/products/{id}:
@@ -13912,7 +13929,7 @@ paths:
     patch:  { tags: [dap], operationId: dapPatchProduct, responses: { '200': { description: ok } } }
     delete: { tags: [dap], operationId: dapDeleteProduct, responses: { '200': { description: ok } } }
   /v1/assets/products/{id}/angles:
-    post: { tags: [dap], operationId: dapProductAngles, summary: '补充角度（labels[]，按张扣费）→ { job }', responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapProductAngles, parameters: [{$ref: '#/components/parameters/AepBilling'}], summary: '补充角度（labels[]，按张扣费）→ { job }', responses: { '200': { description: ok } } }
   /v1/assets/styles:
     get:  { tags: [dap], operationId: dapListStyles, description: 按被引用次数倒序, responses: { '200': { description: ok } } }
     post: { tags: [dap], operationId: dapCreateStyle, summary: '新建风格模板（纯登记，免费）', responses: { '200': { description: ok } } }
@@ -13926,7 +13943,7 @@ paths:
     get: { tags: [dap], operationId: dapStarGrants, summary: '资产中枢 P2 · 授权给我的明星形象（celebrity 域 CelebrityStarAuthorization 只读投影：authorized/pending/expired；申请审批仍走 /me/celebrity 与 /star/cooperations 既有链路）', responses: { '200': { description: ok } } }
   /v1/compositions:
     get:  { tags: [dap], operationId: dapListCompositions, description: 'ipId 可选（查某 IP 名下的作品）', responses: { '200': { description: ok } } }
-    post: { tags: [dap], operationId: dapCreateComposition, summary: '人物 × 场景 × 产品 → 成片（授权核对 → 建单 → 异步出片）→ { composition, job }；真人复刻缺生效 LIC 时 403 DAP_LICENSE_REQUIRED，不建单不扣费', responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapCreateComposition, parameters: [{$ref: '#/components/parameters/AepBilling'}], summary: '人物 × 场景 × 产品 → 成片（授权核对 → 建单 → 异步出片）→ { composition, job }；真人复刻缺生效 LIC 时 403 DAP_LICENSE_REQUIRED，不建单不扣费', responses: { '200': { description: ok } } }
   /v1/compositions/options:
     get: { tags: [dap], operationId: dapComposeOptions, summary: '出片设置选项与单价（画幅 / 出图数量区间 / 每张单价 / 可用风格模板）', responses: { '200': { description: ok } } }
   /v1/compositions/{id}:
@@ -14419,12 +14436,12 @@ paths:
     post:
       tags: [ipstudio]
       operationId: studioPublishTemplateVersion
-      description: '从本人画布发布不可变配方；personal 仅本人可用，official 仅超级管理员。只保留声明的输入/图片步骤，剥除全部作者媒体/运行/批准/身份；已发布版本不可覆盖。'
+      description: '从本人画布发布不可变模板；personal 仅本人可用，official 允许在职运营或超级管理员发布。未提供 recipe 时保存完整画布并复制本人媒体，剥除运行/批准/身份等私有信息；提供 recipe 时仅保留声明的输入/步骤。已发布版本不可覆盖。'
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioTemplatePublishRequest' } } } }
       responses:
         '200': { description: ApiResponse<StudioTemplateVersion>, content: { application/json: { schema: { $ref: '#/components/schemas/StudioTemplateVersion' } } } }
         '400': { description: STUDIO_TEMPLATE_INVALID }
-        '403': { description: SUPER_ADMIN_ONLY }
+        '403': { description: OPERATOR_ONLY }
   /v1/ip-studio/template-versions/{versionId}:
     parameters: [{ in: path, name: versionId, required: true, schema: { type: string } }]
     get:
@@ -15442,6 +15459,7 @@ paths:
       description: >-
         用户修改（op 白名单：draft.asEpisode / episode.update / episode.usePendingPlan / episode.discardPendingPlan /
         asset.create / asset.update / asset.delete / asset.adopt / asset.upload / assets.confirm /
+        form.create / form.update / form.delete / form.adopt / form.upload / view.adopt / view.upload / clip.setForm /
         asset.setVoice / asset.clearVoice / asset.setRef / asset.clearRef / clip.update / clip.split / clip.delete / clip.adoptBoard / clip.confirmBoard / clip.adoptVideo / clip.confirmVideo / clip.setVoiceMode / clip.usePendingShots / clip.discardPendingShots / clip.unlinkAsset / extract.save / extract.discard / split.save / split.discard / split.undo / reference.update / reference.toEpisode / asset.link / notice.dismiss / assistant.apply / assistant.dismiss / assistant.undo / assistant.newThread / assistant.openThread）。助手建议：assistant.apply|dismiss|undo 带 data={messageId,proposalId}；采用前核对原文 / 镜头签名 / 用户改过的字段，对不上 409 DIRECTOR_PROPOSAL_STALE，不覆盖；采用后可撤销，之后对象又改过不能撤销（同码）。assistant.openThread 带 data.threadId（docs/ai-director-assistant.md）。拆分结果先存为 pendingSplit，split.save（data.preamble=reference|episode）采用，split.discard 放弃；两者都必须带 targetId=pendingSplit.id，缺失或不匹配、剧本改过均 409 DIRECTOR_SPLIT_EXPIRED；split.undo 恢复拆分前原稿（已有分镜图 / 视频 409 DIRECTOR_CLIPS_HAVE_MEDIA）；reference.update / reference.toEpisode 带 rev=referenceRev。提取资产的结果先存为 pendingExtract，用户确认（extract.save，targetId=清单 runId，data.items=[{itemId,include,name}]）后才写进资产库。asset.upload 对角色、场景、道具一样，上传的图直接作为采用的资产图（adoptedBy=user，不生成、不扣积分，原采用版本留在候选历史）；asset.setRef 设的参考图（角色、场景、道具都可以，2026-10-28 起）只在生成资产图时作为图1，不改采用的资产图、不发起生成。asset.create 可带 data.image={key,use}：use=asset 直接作为采用的资产图，use=ref 只设参考图；key 须是本人上传的，use 取值之外或缺 key 一律 400 DIRECTOR_INPUT_INVALID 且不建资产。asset.create / asset.update 可带 episodeIds（只认作品里存在的集，否则 400）。关联已有资产用 asset.link（targetId 必填，data={objectId,versionId?}）：图和描述由服务端按本人资产库读出，类型必须与该资产一致、资产库那项要有图（否则 400 DIRECTOR_INPUT_INVALID），版本不存在 → 404 DIRECTOR_LIBRARY_VERSION_NOT_FOUND；记下 libraryObjectId，所选版本的图（source=library）直接采用，描述空着才补，名字不变。asset.delete 时资产还被片段用着（在关联资产里或是某句台词的说话人）409 DIRECTOR_ASSET_IN_USE，error.details={assetId,name,clips:[{clipId,episodeId,episodeNo,order,title,linked,lines}]}，资产不删。clip.unlinkAsset（targetId=片段，data={assetId}）只把这一项从该片段的关联资产里去掉，其余资产顺序不变，不删片段、资产和分镜图 / 视频（按指纹标需更新），台词说话人不改；不在关联里 409 DIRECTOR_EDIT_CONFLICT，片段在出分镜图或视频 409 DIRECTOR_TASK_RUNNING。剧本正文（draft、各集 content、设定资料）不限字数，episode.update / reference.update / 助手写回都不截断（2026-10-29）；一次模型调用读不下时：AI 拆分、写分镜脚本、重写分镜 400 DIRECTOR_TEXT_TOO_LONG_FOR_MODEL（error.details={chars,budget}，不提交、不扣费），全剧提取资产分批（pendingExtract.batch={fromNo,toNo,count,total}），助手只读光标 / 选区附近一段（scope.window、消息 range 说明），作品 pricing.textChars 给出一次能读的字数。重写分镜脚本期间改过的片段，新版本挂在 clip.pendingShots，clip.usePendingShots 换成新版本（视频生成中 409 DIRECTOR_TASK_RUNNING）、clip.discardPendingShots 保留现有。
         改内容带对象 rev，对不上 409 DIRECTOR_EDIT_CONFLICT；超长直接 400，不截断。
       parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
@@ -15467,7 +15485,7 @@ paths:
       tags: [ipstudio]
       operationId: directorTask
       description: >-
-        发生成任务（type：script / split / extract / plan / reshoot / asset-image / board / video / video-prompt / export / assistant / brief）。video-prompt = H3 片段「重新优化」提示词：只重新改写、不接着生成视频（targetId=片段，按文本模型实际用量另扣，不带 maxCost），完成后清掉之前的用稿选择，失败时旧稿保留；非 H3 模型 400。brief = 写剧本前的创意对话一轮（options.message，空串为开场；最多 3 轮问题，到上限收敛；整句「你决定 / 直接写」直接开始写剧本）；script 带 options.skip=true 表示跳过剩余问题，剧本请求会带上对话里确认过的问答与整理要求。assistant 的 selection 范围要带 start/end，按保存后的正文核对，对不上 409 DIRECTOR_SELECTION_CHANGED。assistant = 全能创作助手回复一轮（options={message≤2000,scope{kind,episodeId?,clipId?,assetId?,which?,text?},threadId?}），同一作品同时只有一条在回复；clientRequestId 作为消息编号，重发同一编号不再建任务、不重复扣费。asset-image / board 可带 options.baseOnCurrent=true：把当前采用的图追加为最后一张参考图生成新版本（候选记 baseOn），不自动替换采用中的那张。plan 写分镜脚本（切片段，整集替换，本集已有分镜图或视频 409 DIRECTOR_CLIPS_HAVE_MEDIA）；reshoot 重写分镜脚本、保留片段划分：targetId=集，options.clipIds 为空则整集逐段重写，否则只重写这几段（任务节点 reshoot:集 / reshoot:片段）；片段 id 与位置不变，只换镜头、标题、摘要、关联资产，提示词回到随镜头自动生成，已有分镜图和视频留在历史版本里标成需更新；不出图、不生成视频。本集没有片段 400 DIRECTOR_CLIPS_MISSING；同集正在写 / 重写或该片段正在重写、出分镜图、出视频 409 DIRECTOR_TASK_RUNNING；回投时正文改过整份作废并提示，片段改过则挂到 clip.pendingShots 等用户决定。video 走原生视频任务（全能参考：图1 采用的分镜图，之后是资产参考图与说话角色的声音样本），默认关闭可选的供应商提示词改写；export 按每个片段当前采用并确认的视频顺序合成整集，不扣积分。split 只让模型给每集起点和正文起点 bodyStart，区间由程序构造，结果存为 pendingSplit 等确认；剧本里已标好「第N集」且 options.episodeCount 未指定其他集数时直接按标题分，不建任务、不扣积分；已有待确认结果 409 DIRECTOR_SPLIT_PENDING。script 带 options.regenerate=true 时重写已有剧本：旧稿进 scriptHistory（最多 3 版），集与片段清空、资产保留；已有分镜图或视频候选时 409 DIRECTOR_CLIPS_HAVE_MEDIA。任务是原生 IpRun（host_type=director），
+        发生成任务（type：script / split / extract / plan / reshoot / asset-image / form-image / scene-views / board / video / video-prompt / export / assistant / brief）。video-prompt = H3 片段「重新优化」提示词：只重新改写、不接着生成视频（targetId=片段，按文本模型实际用量另扣，不带 maxCost），完成后清掉之前的用稿选择，失败时旧稿保留；非 H3 模型 400。brief = 写剧本前的创意对话一轮（options.message，空串为开场；最多 3 轮问题，到上限收敛；整句「你决定 / 直接写」直接开始写剧本）；script 带 options.skip=true 表示跳过剩余问题，剧本请求会带上对话里确认过的问答与整理要求。assistant 的 selection 范围要带 start/end，按保存后的正文核对，对不上 409 DIRECTOR_SELECTION_CHANGED。assistant = 全能创作助手回复一轮（options={message≤2000,scope{kind,episodeId?,clipId?,assetId?,which?,text?},threadId?}），同一作品同时只有一条在回复；clientRequestId 作为消息编号，重发同一编号不再建任务、不重复扣费。asset-image / board 可带 options.baseOnCurrent=true：把当前采用的图追加为最后一张参考图生成新版本（候选记 baseOn），不自动替换采用中的那张。plan 写分镜脚本（切片段，整集替换，本集已有分镜图或视频 409 DIRECTOR_CLIPS_HAVE_MEDIA）；reshoot 重写分镜脚本、保留片段划分：targetId=集，options.clipIds 为空则整集逐段重写，否则只重写这几段（任务节点 reshoot:集 / reshoot:片段）；片段 id 与位置不变，只换镜头、标题、摘要、关联资产，提示词回到随镜头自动生成，已有分镜图和视频留在历史版本里标成需更新；不出图、不生成视频。本集没有片段 400 DIRECTOR_CLIPS_MISSING；同集正在写 / 重写或该片段正在重写、出分镜图、出视频 409 DIRECTOR_TASK_RUNNING；回投时正文改过整份作废并提示，片段改过则挂到 clip.pendingShots 等用户决定。video 走原生视频任务（全能参考：图1 采用的分镜图，之后是资产参考图与说话角色的声音样本），默认关闭可选的供应商提示词改写；export 按每个片段当前采用并确认的视频顺序合成整集，不扣积分。split 只让模型给每集起点和正文起点 bodyStart，区间由程序构造，结果存为 pendingSplit 等确认；剧本里已标好「第N集」或「E01 / EP01 / Episode 1」且 options.episodeCount 未指定其他集数时直接按标题分，不建任务、不扣积分；options.marker（≤60 字）= 用户照抄的第一集标题行开头：带编号时编号前的字原样比对、编号换成任意数字、编号后一个字也要一样，从该编号起逐个加一取最长一组；不带编号时以它开头的行都算（都先去掉 #、**、【，英文不分大小写），同样不建任务、不扣积分，找到不足 2 行 400 DIRECTOR_SPLIT_MARKER_NOT_FOUND（details.found），过长 400 DIRECTOR_SPLIT_MARKER_INVALID，结果 pendingSplit.source=marker 并带 marker；已有待确认结果 409 DIRECTOR_SPLIT_PENDING。script 带 options.regenerate=true 时重写已有剧本：旧稿进 scriptHistory（最多 3 版），集与片段清空、资产保留；已有分镜图或视频候选时 409 DIRECTOR_CLIPS_HAVE_MEDIA。任务是原生 IpRun（host_type=director），
         计价、冻结、付款（billing）、结算、幂等（clientRequestId）都在原链路；maxCost 是界面报价，价格变了 409 STUDIO_PRICE_CHANGED。
         H3 片段视频提交前先按官方写法改写提示词（不进报价，按实际用量另扣）；改写稿有提示时手动生成停在 videoPromptRewrite=review，
         再发 video 须带 options.promptChoice=optimized（用优化稿）或 original（用原文，不改写），未选 409 DIRECTOR_PROMPT_REVIEW；original 随时可用。
@@ -15492,7 +15510,7 @@ paths:
     post:
       tags: [ipstudio]
       operationId: directorUploadAudio
-      description: '角色声音样本上传（mp3 / wav / m4a，2–15 秒、最多 15 MiB），字节嗅探与 ffprobe 校验后写入本人素材库和存储额度；使用可写事务，返回 key 与实测时长。再用 asset.setVoice 绑定：服务端重验归属和真实音频，当前为聚算全能参考模型时先上传取得 assetId，成功后才替换角色声音；不信客户端时长或厂商 assetId。不调用生成、不扣积分。'
+      description: '角色声音样本上传（mp3 / wav / m4a，至少 2 秒、最多 25 MiB、10 分钟）。界面提前提示：超过 14.9 秒会截取前 14.9 秒作为模型样本。服务端核验实际音轨后将完整原音频写入本人素材库和存储额度；使用可写事务，返回原音频 key 与实测时长。asset.setVoice 绑定时截取长音频作为模型样本，原文件保持不变；服务端核验归属、格式和真实音频，当前为聚算全能参考模型时先上传取得 assetId，成功后才替换角色声音。不信客户端时长或厂商 assetId，不调用生成、不扣积分。'
       parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
       requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } } } } }
       responses:
@@ -16306,6 +16324,35 @@ paths:
         '403': {description: 无产品开通/手机号未绑定/无企业权限}
         '404': {description: 资源不在当前企业或功能未开放}
         '409': {description: 已加入其他企业、幂等正文冲突、版本或邀请/移交状态冲突}
+  /v1/ip-studio/enterprises/{id}/billing-default:
+    put:
+      tags: [Enterprise]
+      summary: 设置本人默认付款账户
+      x-implementation-status: foundation
+      description: 本人在当前企业的默认付款账户，画布、导演台、场景页、创作助手、数字资产等所有付费生成共用；设了就不再弹付款选择，换设备也一样。设为企业积分要求成员与企业当前都可付款；个人积分或改回每次询问随时可以。不改成员版本号，不写企业审计。受 aep.enterprise.enabled 开关控制。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnterpriseBillingDefaultUpdate'}
+      responses:
+        '200':
+          description: 成功，返回更新后的企业上下文
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterpriseContext'}
+        '400': {description: BILLING_SELECTION_INVALID}
+        '403': {description: 成员已停用或企业已关闭时不能设为企业积分}
   /v1/ip-studio/enterprises/{id}/policy:
     get:
       tags: [Enterprise]
@@ -17636,6 +17683,34 @@ paths:
                 properties:
                   data: {$ref: '#/components/schemas/ModelBillingQuote'}
 
+  /v1/ip-studio/studio/video-price:
+    get:
+      tags: [ipstudio]
+      operationId: ipStudioVideoPrice
+      description: >-
+        AI 视频页「生成视频」按钮旁的价（2026-11-03）。只带影响价格的参数：模型、模式、清晰度、画面比例、时长、各类参考素材的张数和付款账户；
+        不带素材 key 和提示词，不需要草稿。标准价与 studio-video-quote 同一张价表和合同校验，折扣、模型赠款、付款账户走提交用的同一个报价，
+        所以与点生成后的确认弹窗一致。只读：不创建任务、不冻结、不读素材、不调模型。付款前确认弹窗仍按完整请求再报一次价。
+      parameters:
+      - {in: query, name: model, schema: {type: string}, description: 视频模型接入点；不传用默认}
+      - {in: query, name: mode, required: true, schema: {type: string}}
+      - {in: query, name: tier, required: true, schema: {type: string}}
+      - {in: query, name: aspectRatio, required: true, schema: {type: string}}
+      - {in: query, name: durationSec, required: true, schema: {type: integer}}
+      - {in: query, name: imageRefs, schema: {type: integer, default: 0}}
+      - {in: query, name: videoRefs, schema: {type: integer, default: 0}}
+      - {in: query, name: audioRefs, schema: {type: integer, default: 0}}
+      - {in: query, name: payer, schema: {type: string, enum: [personal, enterprise], default: personal}}
+      - {in: query, name: enterpriseId, schema: {type: string}, description: payer=enterprise 时必填}
+      responses:
+        '200':
+          description: 这条视频的报价（标准价、优惠、折后费用、模型赠款抵扣、需付普通积分）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: {$ref: '#/components/schemas/ModelBillingQuote'}
   /v1/ip-studio/projects/{id}/studio-video-quote:
     parameters:
     - {in: path, name: id, required: true, schema: {type: string}}

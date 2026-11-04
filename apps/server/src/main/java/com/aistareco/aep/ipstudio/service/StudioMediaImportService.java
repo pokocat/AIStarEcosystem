@@ -23,24 +23,25 @@ public class StudioMediaImportService {
     private final FileStorageService storage;
     private final StorageQuotaService quota;
     private final FfmpegRunner ffmpeg;
+    private final StudioAudioReference audioReferences;
     @org.springframework.beans.factory.annotation.Autowired(required=false) private IpSavedAssetService savedAssets;
     @org.springframework.beans.factory.annotation.Autowired private com.fasterxml.jackson.databind.ObjectMapper mapper;
     public record MediaImportResult(String key, String url, String mediaType, String mimeType,
                                     long bytes, String fileName, Integer width, Integer height, Double durationSec) {}
     public StudioMediaImportService(FileStorageService storage, StorageQuotaService quota, FfmpegRunner ffmpeg) {
         this.storage = storage; this.quota = quota; this.ffmpeg = ffmpeg;
+        this.audioReferences = new StudioAudioReference(storage, ffmpeg);
     }
     public MediaImportResult upload(String user, MultipartFile file, String type) {
         return upload(user, file, type, false);
     }
-    /** A character sample is a short H3 reference, not a ten-minute canvas attachment. */
+    /** Preserve uploaded originals; prepare the model's short sample when binding the voice. */
     public MediaImportResult uploadReferenceAudio(String user, MultipartFile file) {
         return upload(user, file, "audio", true);
     }
     private MediaImportResult upload(String user, MultipartFile file, String type, boolean voiceReference) {
         if (!Set.of("image", "video", "audio").contains(type == null ? "" : type)) throw invalid("请选择图片、视频或音频");
         long max = ("image".equals(type) ? 8 : "video".equals(type) ? 128 : 25) * MIB;
-        if (voiceReference) max = com.aistareco.aep.service.materialvideo.JusuanH3Contract.REFERENCE_AUDIO_MAX_BYTES;
         if (file == null || file.isEmpty()) throw invalid("文件是空的，请重新选择");
         if (file.getSize() > max) throw invalid("文件超过 " + max / MIB + " MB，请压缩后重试");
         byte[] bytes;
@@ -49,7 +50,7 @@ public class StudioMediaImportService {
         var format = MediaBytes.sniff(type, bytes);
         if (format == null || "image".equals(type) && !Set.of("jpg", "jpeg", "png").contains(format.ext())
                 || "audio".equals(type) && !Set.of("mp3", "wav", "m4a").contains(format.ext()))
-            throw invalid("支持 JPG / PNG 图片、MP4 视频和 MP3 / WAV / M4A 音频，请检查文件内容");
+            throw invalid(unsupportedFile(type, bytes));
         Integer width = null, height = null; Double duration = null;
         if ("image".equals(type)) {
             try (ImageInputStream input = ImageIO.createImageInputStream(new ByteArrayInputStream(bytes))) {
@@ -104,7 +105,8 @@ public class StudioMediaImportService {
                     }
                 }
                 duration = probe.durationSec();
-                if (voiceReference) requireReferenceDuration(duration);
+                if (voiceReference && duration < com.aistareco.aep.service.materialvideo.JusuanH3Contract.AUDIO_MIN_SECONDS)
+                    throw invalid("角色声音需要至少 2 秒，请换一段音频");
             } catch (BusinessException e) { throw e; } catch (Exception e) { throw invalid("音视频无法读取，请重新选择"); }
             finally {
                 if (tmp != null) try { Files.deleteIfExists(tmp); } catch (Exception ignored) {}
@@ -122,29 +124,19 @@ public class StudioMediaImportService {
         if(savedAssets!=null){var asset=mapper.createObjectNode().put("kind",type).put("title",name).put("source","用户上传");asset.putObject("data").put("storageKey",stored.key()).put("mimeType",format.mime()).put("bytes",stored.bytes());savedAssets.saveAutomatic(user,asset);}
         return new MediaImportResult(stored.key(), storage.signedUrl(stored.key()), type, format.mime(), stored.bytes(), name, width, height, duration);
     }
-    /** Recheck saved/library samples on binding; never trust a client-supplied duration or a file extension. */
-    public double validateReferenceAudio(String key) {
-        try {
-            var path = storage.openForRead(key);
-            long bytes = Files.size(path);
-            if (bytes <= 0 || bytes > com.aistareco.aep.service.materialvideo.JusuanH3Contract.REFERENCE_AUDIO_MAX_BYTES)
-                throw invalid("角色声音不能超过 15 MB，请剪短后重新上传");
-            byte[] head;
-            try (var in = Files.newInputStream(path)) { head = in.readNBytes(4096); }
-            if (!MediaBytes.allowed(MediaBytes.sniffConfigured("audio", head),
-                    com.aistareco.aep.service.materialvideo.JusuanH3Contract.AUDIO_FORMATS))
-                throw invalid("请选择可读取的音频文件作为角色声音");
-            var probe = ffmpeg.probeMedia(path.toFile());
-            if (!probe.readable() || !probe.hasAudio()) throw invalid("声音样本无法读取，请重新上传");
-            requireReferenceDuration(probe.durationSec());
-            return probe.durationSec();
-        } catch (BusinessException e) { throw e; }
-        catch (Exception e) { throw invalid("声音样本无法读取，请重新上传"); }
+    public record ReferenceAudio(String key, double durationSec, double sourceDurationSec) {}
+    /** Caller verifies key ownership first. Preserve the library original; bind a derived short sample if needed. */
+    public ReferenceAudio prepareReferenceAudio(String user, String ownedKey) {
+        var sample = audioReferences.prepare(user, ownedKey);
+        return new ReferenceAudio(sample.key(), sample.durationSec(), sample.sourceDurationSec());
     }
-    private void requireReferenceDuration(double seconds) {
-        if (!Double.isFinite(seconds) || seconds < com.aistareco.aep.service.materialvideo.JusuanH3Contract.AUDIO_MIN_SECONDS
-                || seconds > com.aistareco.aep.service.materialvideo.JusuanH3Contract.AUDIO_MAX_SECONDS)
-            throw invalid("角色声音需要 2–15 秒，请剪短或换一段音频");
+    /** Says what the file actually is when its bytes tell us; a video dropped on an image slot reads as "not an image". */
+    static String unsupportedFile(String type, byte[] bytes) {
+        String kind = "image".equals(type) ? "图片" : "video".equals(type) ? "视频" : "音频";
+        String supported = "image".equals(type) ? "JPG、PNG" : "video".equals(type) ? "MP4" : "MP3、WAV、M4A";
+        var actual = MediaBytes.sniffConfigured(type, bytes);
+        return actual == null ? "这个文件不是可用的" + kind + "，请选择 " + supported + " 格式的文件"
+                : "暂不支持 " + actual.ext().toUpperCase(java.util.Locale.ROOT) + " 格式的" + kind + "，请换成 " + supported + " 格式";
     }
     private BusinessException invalid(String message) { return BusinessException.badRequest("STUDIO_MEDIA_INVALID", message); }
 }

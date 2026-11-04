@@ -95,7 +95,7 @@ export function InvitationRegistration({ invitationCode }: { invitationCode: str
   return <div className="studio-invite">
     <header className="header"><a className="brand" href="/" aria-label="IP Studio · 声量引擎旗下"><img src="/brand/ip-studio-logo.png" width={42} height={42} alt=""/><span><strong>IP Studio</strong><small>声量引擎旗下</small></span></a><a className="quiet-link" href="#possibilities">认识 Studio <ArrowUpRight/></a></header>
     <main><section className="hero" aria-labelledby="hero-title"><div className="hero-copy">
-      <h1 id="hero-title">让灵感成形<br/>让 IP 出圈<span className="period">。</span></h1>
+      <h1 id="hero-title">一个 IP，无限可能<span className="period">。</span></h1>
       <p className="intro">创造你的角色、影像与故事。</p>
       <section className="invitation" aria-label="朋友的邀请">
         {preview === "valid" && <div className="inviter"><span className="avatar" aria-hidden="true">{Array.from(inviter)[0]}</span><p><strong>{inviter}</strong><span>邀请你加入 Studio</span></p></div>}
@@ -119,6 +119,6 @@ export function InvitationRegistration({ invitationCode }: { invitationCode: str
     </section>
     <section className="possibilities" id="possibilities" aria-labelledby="possibilities-title"><div className="section-heading"><h2 id="possibilities-title">一个灵感，<br/>不止一种可能。</h2><p>让角色成为可延展的 IP，<br/>让每次创作都成为下一次的起点。</p></div><div className="capabilities"><article><h3>创造你的角色</h3><p>塑造形象、延展造型与场景，<br/>积累自己的角色与素材。</p></article><article><h3>让画面开口说话</h3><p>图片、视频、配音与口型，<br/>在同一处继续你的创作。</p></article><article><h3>把想法写成故事</h3><p>从故事设定、剧本到分镜，<br/>让角色拥有自己的世界。</p></article></div></section>
     <section className="questions" aria-label="关于这次邀请"><h2>关于这次邀请</h2><div><details><summary>注册后，会发生什么？<svg className="summary-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"/><path className="vertical" d="M12 6v12"/></svg></summary><p>验证手机号后直接进入 IP Studio。新账号会记录这次邀请；各项创作能力仍按账号开通情况和具体使用规则提供。</p></details><details><summary>已有账号可以登录吗？<svg className="summary-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"/><path className="vertical" d="M12 6v12"/></svg></summary><p>使用同一表单验证手机号即可登录，原有邀请关系保持不变。</p></details></div></section>
-    </main><footer className="footer"><span>IP Studio <small>· 声量引擎旗下</small></span><p>让灵感成形，让 IP 出圈。</p></footer>
+    </main><footer className="footer"><span>IP Studio <small>· 声量引擎旗下</small></span><p>一个 IP，无限可能。</p></footer>
   </div>;
 }

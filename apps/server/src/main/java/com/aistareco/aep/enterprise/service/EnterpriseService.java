@@ -20,6 +20,8 @@ import java.util.*;
 
 @Service
 public class EnterpriseService {
+    /** One left a canvas plan stuck at its second step (2026-11-02); V73 raised never-edited policies to the same value. */
+    static final int DEFAULT_MAX_ACTIVE_JOBS=10;
     private final EnterpriseRepository enterprises;
     private final EnterpriseMemberRepository members;
     private final EnterpriseCurrentMembershipRepository current;
@@ -58,7 +60,7 @@ public class EnterpriseService {
         var e=new Enterprise();e.setId(id());e.setName(name);e.setOwnerUserId(actor);e.setStatus("active");e.setCreateRequestId(key);e.setCreatedBy(actor);
         e.setCreatedAt(Instant.now());e.setUpdatedAt(e.getCreatedAt());enterprises.saveAndFlush(e);
         join(e,actor);
-        var p=new EnterprisePolicy();p.setEnterpriseId(e.getId());p.setAllowedEndpointIdsJson("[]");p.setMaxActiveJobs(1);policies.save(p);
+        var p=new EnterprisePolicy();p.setEnterpriseId(e.getId());p.setAllowedEndpointIdsJson("[]");p.setMaxActiveJobs(DEFAULT_MAX_ACTIVE_JOBS);policies.save(p);
         credits.openEnterpriseWallet(e.getId(),null);
         audit(actor,e.getId(),"enterprise.create",e.getId(),"创建企业");
         return context(actor,e.getId());
@@ -71,7 +73,16 @@ public class EnterpriseService {
     @Transactional(readOnly=true)
     public EnterpriseDtos.Context context(String actor,String enterpriseId) {
         var m=access.readMember(actor,enterpriseId);var e=enterprises.findById(enterpriseId).orElseThrow();
-        return new EnterpriseDtos.Context(dto(e),dto(e,m),access.permissions(e,m));
+        return new EnterpriseDtos.Context(dto(e),dto(e,m),access.permissions(e,m),m.getBillingDefault());
+    }
+    /** Every paid feature reads this one default; "enterprise" needs a member who can spend now, "personal" or asking again is always allowed. */
+    @Transactional
+    public EnterpriseDtos.Context setBillingDefault(String actor,String enterpriseId,EnterpriseDtos.BillingDefaultUpdate request) {
+        String mode=request==null?null:request.mode();
+        if(mode!=null&&!"personal".equals(mode)&&!"enterprise".equals(mode))throw BusinessException.badRequest("BILLING_SELECTION_INVALID","请选择个人积分、企业积分或每次询问");
+        var m="enterprise".equals(mode)?access.member(actor,enterpriseId):access.readMember(actor,enterpriseId);
+        m.setBillingDefault(mode);members.save(m);
+        return context(actor,enterpriseId);
     }
     @Transactional(readOnly=true)
     public Page<EnterpriseDtos.Member> members(String actor,String enterpriseId,int page,int limit) {

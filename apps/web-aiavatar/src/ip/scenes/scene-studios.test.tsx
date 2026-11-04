@@ -10,7 +10,7 @@ const SCENES = JSON.parse(readFileSync(join(__dirname, "../../../../server/src/m
 const api = vi.hoisted(() => ({
   push: vi.fn(), failure: vi.fn(),
   uploadImage: vi.fn(), listProjects: vi.fn(), createProject: vi.fn(), updateProject: vi.fn(), getProject: vi.fn(), listScenes: vi.fn(), composeScene: vi.fn(),
-  fetchModels: vi.fn(), readRun: vi.fn(), cancelRun: vi.fn(), capabilities: vi.fn(), submit: vi.fn(), importMedia: vi.fn(), videoModels: vi.fn(),
+  fetchModels: vi.fn(), readRun: vi.fn(), cancelRun: vi.fn(), capabilities: vi.fn(), submit: vi.fn(), importMedia: vi.fn(), videoModels: vi.fn(), videoPrice: vi.fn(),
 }));
 // 和 Next 一样：地址参数从 useSearchParams 读（页面改地址用 history.replaceState，下次渲染读到新的）。
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: api.push, replace: vi.fn() }), useSearchParams: () => new URLSearchParams(window.location.search) }));
@@ -22,6 +22,7 @@ vi.mock("../api", () => ({ IpStudioApi: { uploadImage: api.uploadImage, listProj
 vi.mock("@/canvas-bridge/api", () => ({ fetchModels: api.fetchModels, readRun: api.readRun, cancelRun: api.cancelRun, fetchStudioVideoModels: api.videoModels, signKeys: api.signKeys }));
 vi.mock("@/canvas-bridge/studio-api", () => ({ studioCapabilities: api.capabilities, submitStudioRun: api.submit, importStudioMedia: api.importMedia }));
 vi.mock("@/canvas-bridge/studio-image-file", () => ({ prepareStudioImageUpload: async (f: File) => f }));
+vi.mock("@/canvas-bridge/studio-model-quote", () => ({ quoteVideoPrice: api.videoPrice }));
 vi.mock("../studio-errors", async importOriginal => ({ ...(await importOriginal<typeof import("../studio-errors")>()), useStudioFailure: () => api.failure, studioErrorMetadata: () => ({}) }));
 vi.mock("../library-reference-picker", () => import("./scene-test-picker"));
 vi.mock("../studio-select", () => ({ StudioSelect: ({ label, value, onChange, options }: any) =>
@@ -45,6 +46,8 @@ beforeEach(() => {
   api.fetchModels.mockResolvedValue({ image: [{ endpointId: "ep-img", name: "图片模型", isDefault: true, creditCost: 8, billingUnit: "per_call", capability: null }], video: [] });
   api.capabilities.mockResolvedValue({ mock: false, operations: [], imageCost: 8, textCost: 1, videoCost: null });
   api.submit.mockResolvedValue({ id: "IPR-1", status: "running", output: {} });
+  // 按钮旁的服务端报价默认报不出来：页面用本地价表价（其它测试照旧按价表核对）。
+  api.videoPrice.mockRejectedValue(new Error("offline"));
   api.readRun.mockResolvedValue({ id: "IPR-1", status: "done", output: { candidates: [{ key: "ipstudio_gen/out.jpg", url: "https://cdn/out.jpg" }] } });
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); window.history.replaceState(null, "", "/"); });
@@ -158,6 +161,37 @@ test("视频：编导看商品图写脚本（请求先存进画布、带图）�
   expect(videoRequest).toMatchObject({ operation: "video", prompt: script, durationSec: 10, aspectRatio: "9:16", count: 1, model: "ep-h3", maxCost: 400,
     video: { mode: "universal_reference_video", resolutionTier: "768p", rewrite: "auto", references: [{ mediaType: "image", key: "ipstudio/media/u/p.jpg" }] } });
   expect(await screen.findByText(/正在生成，一般要几分钟/)).toBeTruthy();
+});
+
+test("视频：按钮旁的价按服务端报价显示折扣（原价划掉）；报价不带素材 key 和提示词；换时长后慢回来的旧报价不会盖住新选择", async () => {
+  window.history.replaceState(null, "", "/video?scene=ecom-talking");
+  api.capabilities.mockResolvedValue({ mock: false, operations: [], imageCost: 8, textCost: 1, videoCost: null });
+  api.videoModels.mockResolvedValue([H3]);
+  const priced = (seconds: number) => ({ standardCredits: 40 * seconds, discountCredits: 20 * seconds, payableCredits: 20 * seconds, scopedCredits: 0,
+    walletCredits: 20 * seconds, discountName: "H3限时折扣", canAfford: true });
+  let late: (() => void) | undefined;
+  api.videoPrice.mockImplementation((q: { durationSec: number }) => q.durationSec === 10
+    ? new Promise(resolve => { late = () => resolve(priced(10)); }) : Promise.resolve(priced(q.durationSec)));
+  await act(async () => { render(<SceneVideoStudio/>); });
+  const go = () => screen.getByRole("button", { name: "生成视频" });
+  // 还没写字、没放图也看得到折后价。
+  await waitFor(() => expect(go().querySelector("s")?.textContent).toContain("600"));
+  expect(go().textContent).toContain("300 积分");
+  expect(screen.getByText("H3限时折扣，省 300 积分。先优化另按实际用量扣少量积分。")).toBeTruthy();
+  const [query, billing] = api.videoPrice.mock.calls.at(-1)!;
+  expect(query).toMatchObject({ model: "ep-h3", tier: "768p", aspectRatio: "9:16", durationSec: 15 });
+  expect(billing).toEqual({ mode: "personal" });
+  expect(JSON.stringify(query)).not.toMatch(/prompt|ipstudio\//);
+  expect(api.submit).not.toHaveBeenCalled();
+
+  setDuration(10); // 10 秒那份很慢：先显示价表价，不沿用 15 秒的折扣
+  await waitFor(() => expect(go().textContent).toContain("400 积分"));
+  expect(go().querySelector("s")).toBeNull();
+  setDuration(12);
+  await waitFor(() => expect(go().textContent).toContain("240 积分"));
+  await act(async () => { late?.(); });
+  expect(go().textContent).toContain("240 积分");
+  expect(go().querySelector("s")?.textContent).toContain("480");
 });
 
 test("视频：爆款复刻要先拉片，仍交给画布里的创作助手（带场景的方法、自动发出）", async () => {

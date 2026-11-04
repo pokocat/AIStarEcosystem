@@ -406,13 +406,13 @@ public class AiModelInvocationService {
 
     private static BusinessException networkFailure(UpstreamCallException ex, String internal) {
         String code = ex.isTimeout() ? "AI_PROVIDER_TIMEOUT" : "AI_PROVIDER_ERROR";
-        String message = ex.isTimeout() ? "AI 生成超时，请稍后重试或换一个模型端点" : "AI 生成失败，请稍后重试";
+        String message = ex.isTimeout() ? "生成超时，请稍后再试或换一个模型" : "AI 生成失败，请稍后重试";
         return BusinessException.wrapped(HttpStatus.BAD_GATEWAY, code, message, internal + " err=" + ex.getCause());
     }
 
     private static BusinessException callFailed(int status, String body, String internal) {
         return BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED",
-                ProviderErrorMessage.message(body, status == 404 ? "当前模型服务不可用（HTTP 404），请联系管理员更新模型配置" : "AI 生成失败，请稍后重试"),
+                ProviderErrorMessage.message(body, status == 404 ? "当前模型暂时不可用，请换一个模型或稍后再试" : "AI 生成失败，请稍后重试"),
                 internal + " status=" + status + " body=" + snippet(body));
     }
 
@@ -650,6 +650,12 @@ public class AiModelInvocationService {
         String apiKey = AepCryptoUtil.decrypt(e.getUpstreamApiKeyEncrypted());
         String model = chatModel(e, options);
         Map<String, Object> body = chatBody(e, model, messages, options);
+        // 2026-11-04：OneToken 网关约 105 秒断开不出字节的连接，Sonnet 写长剧本要好几分钟。端点声明支持流式时一律流式接收、收齐再返回，调用方无感。
+        boolean stream = Boolean.TRUE.equals(e.getChatSupportsStreaming());
+        if (stream) {
+            body.put("stream", true);
+            body.put("stream_options", Map.of("include_usage", true));
+        }
         URI uri = URI.create(rstrip(e.getBaseUrl(), "/") + "/chat/completions");
         long startNanos = System.nanoTime();
         String requestId = "aic-" + UUID.randomUUID().toString().substring(0, 16);
@@ -684,10 +690,12 @@ public class AiModelInvocationService {
                         requestId, purpose == null ? null : purpose.wire(), e.getName(), model, OM.writeValueAsString(observedMessages));
             } catch (Exception ignore) { /* 序列化失败不阻塞主链路 */ }
         }
+        Duration timeout = chatTimeout(options);
         HttpRequest req = HttpRequest.newBuilder(uri)
-                .timeout(chatTimeout(options))
+                .timeout(timeout)
                 .header("Authorization", "Bearer " + apiKey)
                 .header("Content-Type", "application/json")
+                .header("Accept", stream ? "text/event-stream" : "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(requestJson))
                 .build();
         // v0.85：发送 + 原始日志 + 非 2xx WARN + 失败用量统一走共享原语；token 解析仍留在本方法（见下）。
@@ -699,6 +707,7 @@ public class AiModelInvocationService {
                 .replayOfRecordId(replayOfRecordId)
                 .client(HTTP)
                 .build();
+        if (stream) return collectStream(e, purpose, model, req, ctx, timeout, requestId, observedJson, replayOfRecordId, startNanos);
         HttpResponse<String> resp;
         try {
             resp = upstreamHttp.sendJson(req, ctx);
@@ -706,7 +715,7 @@ public class AiModelInvocationService {
             // 网络层异常：失败流水已由原语 best-effort 落库，这里只转成稳定业务错误码。
             String code = ex.isTimeout() ? "AI_PROVIDER_TIMEOUT" : "AI_PROVIDER_ERROR";
             String message = ex.isTimeout()
-                    ? "AI 生成超时，请稍后重试或换一个模型端点"
+                    ? "生成超时，请稍后再试或换一个模型"
                     : "AI 生成失败，请稍后重试";
             throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, code, message,
                     "endpoint=" + e.getName() + " purpose=" + (purpose == null ? null : purpose.wire())
@@ -716,7 +725,7 @@ public class AiModelInvocationService {
             // Keep the safe provider message public, and the raw response in ErrorLog diagnostics.
             throw attach(new com.aistareco.aep.service.ai.AiChatHttpException(resp.statusCode(), resp.body(),
                     resp.statusCode() == 404
-                            ? "当前模型服务不可用（HTTP 404），请联系管理员更新模型配置"
+                            ? "当前模型暂时不可用，请换一个模型或稍后再试"
                             : "AI 生成失败，请稍后重试",
                     "endpoint=" + e.getName() + " purpose=" + (purpose == null ? null : purpose.wire())
                             + " model=" + model + " status=" + resp.statusCode() + " body=" + snippet(resp.body())),resp);
@@ -783,6 +792,61 @@ public class AiModelInvocationService {
                 elapsedMs(startNanos));
         return new AiModelResponse(content, finishReason, tokensUsed, e.getName(), model, promptTokens, completionTokens,
                 com.aistareco.aep.service.ai.ProviderResponseDiagnostics.capture(resp.statusCode(),resp.headers(),resp.body()));
+    }
+
+    private static final Duration STREAM_COLLECT_LIMIT = Duration.ofMinutes(10);
+    private static final int STREAM_ATTEMPTS = 3;
+
+    /** 流式接收、收齐后按非流式的形状返回。思考过程的增量也算有字节，连接不会因等待被网关断开；只有正文进结果。 */
+    private AiModelResponse collectStream(AiModelEndpoint e, AiModelPurpose purpose, String model, HttpRequest req, ModelCallCtx ctx, Duration timeout,
+                                          String requestId, String observedJson, String replayOfRecordId, long startNanos) throws Exception {
+        String internal = "endpoint=" + e.getName() + " purpose=" + (purpose == null ? null : purpose.wire()) + " model=" + model;
+        StreamAccumulator acc = null;
+        UpstreamModelHttp.StreamResult outcome = null;
+        // OneToken 的流会中途断（stream_interrupted，2026-11-04 实测 27 秒到 2 分钟都出现过），此时还没有可用结果：同一请求最多重发 2 次。
+        for (int attempt = 1; attempt <= STREAM_ATTEMPTS; attempt++) {
+            acc = new StreamAccumulator(new ChatStreamListener() {
+                @Override public void onTextDelta(String text) { }
+                @Override public boolean cancelled() { return false; }
+            });
+            try {
+                // 只要还在出字节就接着收：长剧本要好几分钟，默认的 90 秒是给「等响应」用的，不是给「收全文」用的。
+                outcome = upstreamHttp.sendStream(req, ctx, acc::line, () -> false, Duration.ofSeconds(90), STREAM_COLLECT_LIMIT);
+            } catch (UpstreamCallException ex) {
+                if (ex.isTimeout() || attempt == STREAM_ATTEMPTS) throw networkFailure(ex, internal);
+                log.warn("[ai-chat] stream broken, retrying requestId={} attempt={} err={}", requestId, attempt, ex.getCause() == null ? null : ex.getCause().toString());
+                continue;
+            }
+            boolean interrupted = acc.error != null && acc.error.contains("stream_interrupted");
+            if (!interrupted || attempt == STREAM_ATTEMPTS) break;
+            log.warn("[ai-chat] stream interrupted, retrying requestId={} attempt={} durationMs={} received={}", requestId, attempt, elapsedMs(startNanos), acc.content.length());
+        }
+        if (outcome.status() < 200 || outcome.status() >= 300)
+            throw attach(new com.aistareco.aep.service.ai.AiChatHttpException(outcome.status(), outcome.errorBody(),
+                    outcome.status() == 404 ? "当前模型服务不可用（HTTP 404），请联系管理员更新模型配置" : "AI 生成失败，请稍后重试",
+                    internal + " status=" + outcome.status() + " body=" + snippet(outcome.errorBody())), outcome.status(), outcome.headers(), outcome.errorBody());
+        if (acc.error != null) {
+            upstreamHttp.recordBadOutput(ctx, acc.error, "AI_CALL_FAILED", elapsedMs(startNanos));
+            throw attach(BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", ProviderErrorMessage.message(acc.error, "AI 生成失败，请稍后重试"),
+                    internal + " streamError=" + snippet(acc.error)), outcome.status(), outcome.headers(), acc.error);
+        }
+        if (!acc.done && acc.finishReason == null) {
+            upstreamHttp.recordBadOutput(ctx, acc.content.toString(), "AI_STREAM_INCOMPLETE", elapsedMs(startNanos));
+            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_STREAM_INCOMPLETE", "模型回复中途断开，本次未扣积分", internal + " received=" + acc.content.length());
+        }
+        ChatTurnResult result = acc.result(model, false);
+        Long total = result.promptTokens() != null && result.completionTokens() != null ? result.promptTokens() + result.completionTokens() : null;
+        if (ioLog.isInfoEnabled()) {
+            ioLog.info("[ai-chat-io] RESPONSE requestId={} purpose={} model={} finish={} stream=true content={}",
+                    requestId, purpose == null ? null : purpose.wire(), model, result.finishReason(), result.content());
+        }
+        usage.recordObserved(e.getId(), e.getName(), model, purpose != null ? purpose.wire() : null, result.promptTokens(), result.completionTokens(), total, true,
+                requestId, null, elapsedMs(startNanos), null, null, observedJson, null, replayOfRecordId);
+        log.info("[ai-chat] invoke ok requestId={} purpose={} endpointId={} endpoint={} model={} finish={} stream=true tokens={} promptTokens={} completionTokens={} contentLength={} durationMs={}",
+                requestId, purpose == null ? null : purpose.wire(), e.getId(), e.getName(), model, result.finishReason(), total, result.promptTokens(), result.completionTokens(),
+                result.content().length(), elapsedMs(startNanos));
+        return new AiModelResponse(result.content(), result.finishReason(), total, e.getName(), model, result.promptTokens(), result.completionTokens(),
+                com.aistareco.aep.service.ai.ProviderResponseDiagnostics.capture(outcome.status(), outcome.headers(), result.content()));
     }
 
     /** Model for a chat call on this endpoint; explicit wire capabilities apply only to the configured fixed model. */

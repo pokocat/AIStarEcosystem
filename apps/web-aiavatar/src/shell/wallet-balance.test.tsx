@@ -1,17 +1,19 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { useWalletBalance } from "./wallet-balance";
+import { ApiError } from "@ai-star-eco/api-client";
+import { useEnterpriseCredits, useWalletBalance } from "./wallet-balance";
 
-const api = vi.hoisted(() => ({ balance: vi.fn(), token: vi.fn() }));
+const api = vi.hoisted(() => ({ balance: vi.fn(), token: vi.fn(), mine: vi.fn(), myBalance: vi.fn() }));
 vi.mock("@/proto/api", () => ({ WalletApi: { balance: api.balance }, auth: { token: api.token }, USE_MOCK: false }));
+vi.mock("@ai-star-eco/api-client", async original => ({ ...await original<object>(), EnterpriseApi: { mine: api.mine, myBalance: api.myBalance } }));
 beforeEach(() => {
   vi.useFakeTimers();
   vi.resetAllMocks();
   api.token.mockReturnValue("current-session");
   Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
 });
-afterEach(() => { cleanup(); vi.useRealTimers(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllEnvs(); });
 const settle = () => act(async () => {});
 
 test("polling updates available credits and pauses while the window is hidden", async () => {
@@ -65,4 +67,26 @@ test("route changes refresh without duplicate in-flight requests or hidden deskt
   await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
   expect(api.balance).toHaveBeenCalledTimes(2);
   expect(result.current.balance).toBeUndefined();
+});
+
+const company = (member = "active") => [{ enterprise: { id: "team", name: "创作公司", status: "active" }, member: { status: member } }];
+
+test("an active member sees the enterprise credits assigned to them", async () => {
+  vi.stubEnv("NEXT_PUBLIC_ENTERPRISE_ENABLED", "1");
+  api.mine.mockResolvedValue(company()); api.myBalance.mockResolvedValue({ totalBalance: 5000, pendingBalance: 8 });
+  const { result } = renderHook(() => useEnterpriseCredits("account", true, "/projects/p"));
+  await settle();
+  expect(result.current).toEqual({ name: "创作公司", balance: 5000 }); expect(api.myBalance).toHaveBeenCalledWith("team");
+});
+
+test("no enterprise credits are shown without an active membership or with the feature off", async () => {
+  vi.stubEnv("NEXT_PUBLIC_ENTERPRISE_ENABLED", "1");
+  api.mine.mockResolvedValueOnce(company("suspended")).mockRejectedValueOnce(new ApiError({ code: "NOT_FOUND", message: "Not found" }, 404));
+  const suspended = renderHook(() => useEnterpriseCredits("account", true, "/projects/p")); await settle();
+  expect(suspended.result.current).toBeUndefined(); expect(api.myBalance).not.toHaveBeenCalled();
+  const disabled = renderHook(() => useEnterpriseCredits("account", true, "/projects/p")); await settle();
+  expect(disabled.result.current).toBeUndefined();
+  vi.stubEnv("NEXT_PUBLIC_ENTERPRISE_ENABLED", "0"); api.mine.mockClear();
+  renderHook(() => useEnterpriseCredits("account", true, "/projects/p")); await settle();
+  expect(api.mine).not.toHaveBeenCalled();
 });

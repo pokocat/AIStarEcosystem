@@ -278,6 +278,28 @@ class EnterpriseFoundationTest {
                 .amount(100).balanceAfter(100).referenceType("enterprise_transfer").referenceId(UUID.randomUUID().toString()).createdAt(Instant.now()).build();
         entry=ledger.saveAndFlush(entry);assertEquals(before,ledger.sumTotalCreditsIssued());assertEquals(LedgerEntry.Plane.CREDIT,entry.getPlane());assertNull(entry.getCashArtifactId());
     }
+    /** 2026-11-02: the created policy (no model chosen, one task) left enterprise credits unusable in the canvas. */
+    @Test void newEnterpriseAllowsEveryModelAndTenTasksInFlight() {
+        String owner=person(true);var e=company(owner);var policy=service.policy(owner,e.enterprise().id());
+        assertTrue(policy.allowedEndpointIds().isEmpty());assertEquals(10,policy.maxActiveJobs());
+    }
+    /** One default on the membership serves every paid feature and device (2026-11-02); it is not a managed member field. */
+    @Test void memberDefaultPayerIsSavedOnTheMembershipWithoutTouchingItsVersion() {
+        String owner=person(true),member=person(true);var e=company(owner);String id=e.enterprise().id();
+        var joined=join(owner,e,member);long version=members.findById(joined.member().id()).orElseThrow().getVersion();
+        assertNull(joined.billingDefault());
+        assertEquals("enterprise",service.setBillingDefault(member,id,new BillingDefaultUpdate("enterprise")).billingDefault());
+        assertEquals("enterprise",service.mine(member).get(0).billingDefault());
+        assertEquals(version,members.findById(joined.member().id()).orElseThrow().getVersion());
+        assertEquals("BILLING_SELECTION_INVALID",assertThrows(BusinessException.class,()->service.setBillingDefault(member,id,new BillingDefaultUpdate("wallet"))).getCode());
+        // A suspended member cannot pick enterprise credits, but can always pay personally or ask again.
+        var row=members.findById(joined.member().id()).orElseThrow();row.setStatus("suspended");members.saveAndFlush(row);
+        assertThrows(BusinessException.class,()->service.setBillingDefault(member,id,new BillingDefaultUpdate("enterprise")));
+        assertEquals("personal",service.setBillingDefault(member,id,new BillingDefaultUpdate("personal")).billingDefault());
+        assertNull(service.setBillingDefault(member,id,new BillingDefaultUpdate(null)).billingDefault());
+        // Another person's default is theirs: the owner's context stays untouched.
+        assertNull(service.context(owner,id).billingDefault());
+    }
     @Test void policyPermissionsAndVersionsAreChecked() {
         String owner=person(true),member=person(true);var e=company(owner);join(owner,e,member);String id=e.enterprise().id();
         var before=service.policy(owner,id);var after=service.updatePolicy(owner,id,new PolicyUpdate(List.of(),2,before.version()));

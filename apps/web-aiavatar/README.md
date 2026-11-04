@@ -1,5 +1,9 @@
 # AiAvatar · 数字资产平台（web-aiavatar）
 
+### 2026-11-04 · 运营发布官方画布模板（已发布）
+
+ACTIVE 的运营与超级管理员都可从画布「更多 → 存为官方内容」发布本人画布。发布弹窗允许选择官方可见范围，更新仍限定本人创建的模板；普通用户只保存个人模板。服务端 `template-versions` 同步按运营权限校验，模板封面、上下架、删除沿用原权限。AI 图片场景的补充要求同步放宽至 3000 字。已配套发布 server / web-aiavatar，详见[发布与验收](../../docs/releases/studio-operator-template-validation-20261104.md)。
+
 ### 2026-10-31 · 注册账号默认头像与修改入口（已发布）
 
 `AccountAvatar` 使用 `react-notion-avatar` 1.1.12：完整随机 UID 固定生成配置，各设备/重新登录一致；自定义 `/api/me.avatarUrl` 优先，加载失败回退同一默认头像。桌面账号菜单、手机底栏与「我的账号」统一使用。修改入口复用 ID `/account/profile` 的上传保存，返回后刷新 OIDC 与共享身份缓存，切号丢弃旧结果。MIT 运行时原样保留在 `src/vendor/react-notion-avatar`，来源与校验值见该目录 README；不安装上游 demo/React 17 依赖。真源：[账号界面统一](../../docs/aiavatar-account-unification.md)。
@@ -27,6 +31,10 @@
 - **字体**：Manrope（UI/标题）/ Newsreader（资产身份衬线）/ JetBrains Mono（登记号）/ Noto Sans SC（中文）
 
 ---
+
+### 静态版导出（2026-11-04）
+
+要把 Studio 发给产品或设计在本地看，运行 `pnpm export:studio-static`（经 devq，一层即可）。产物是一个不连后端、不用登录、全部示例数据的压缩包，导出后会自动解压逐页验收。用法和维护见 [scripts/static-export/README.md](scripts/static-export/README.md)。
 
 ## 快速开始
 
@@ -205,6 +213,10 @@ src/
 ---
 
 ## 版本日志
+
+### AI 视频页生成前显示模型折扣（2026-11-03，本地未发布）
+
+「生成视频」按钮旁的价改由服务端给（`canvas-bridge/studio-video-price.ts` → `GET /api/v1/ip-studio/studio/video-price`）：有折扣时原价划掉、后面是折后视频费，下面一行写优惠名、省了多少；付款账户定了才写模型赠款抵多少、还要付多少，没定时只写视频费，个人与企业价不同就都写；先优化的文字费用另计。报价只带模型、模式、清晰度、画面、时长、参考素材张数和付款账户，参数一变旧报价作废。本地价表价只在报价回来前垫着，仍作为提交的 `maxCost`；点生成后的确认弹窗照旧按完整请求再报价。付款账户的「不用问」规则抽成 `knownStudioBilling`，确认弹窗和页面价共用。报价不缓存：切回用过的参数也重新报，后台刚改的折扣不会被旧结果挡住。按钮里的价格药丸改成压暗一档的同色底（白字从 3.96:1 提到约 6.4:1，划线原价约 4.8:1），AI 图片页共用同一颗药丸。本地浏览器验收：换模型、拖时长、停用折扣后切回原参数、确认弹窗数字一致、取消后钱包不变，桌面与 390 宽都看过。AI 图片页与画布的同类问题见 `TODO.md`。
 
 ### 场景页结果接着用（2026-10-31）
 

@@ -54,7 +54,7 @@ class StudioSceneCatalogTest {
         var composed = catalog.compose(video("ecom-talking", "保湿精华，不黏腻", List.of("商品图 1"), null, 25, "9:16"));
         assertThat(composed.skillKey()).isEqualTo("video-generation");
         assertThat(composed.text()).contains("25 秒的竖屏", "我的要求：保湿精华，不黏腻", "「商品图 1」", "「出镜人物」")
-                .contains("下面这些我没写就不要出现", "要的是做好的视频");
+                .contains("只有这几样我没写就不要出现", "要的是做好的视频");
         var silent = catalog.compose(video("ecom-talking", "", List.of("商品图 1"), null, 25, "9:16")).text();
         assertThat(silent).doesNotContain("我的要求").contains("先看素材");
     }
@@ -90,17 +90,17 @@ class StudioSceneCatalogTest {
     @Test
     void theDirectorBriefNumbersThePicturesInTheOrderTheVideoModelGetsThem() {
         String brief = catalog.compose(script("ecom-talking", "", List.of("商品图 1", "商品图 2"), 10, null)).text();
-        assertThat(brief).contains("10 秒", "图1「商品图 1」", "图2「商品图 2」", "图3「出镜人物」", "第1镜（0–3 秒）：画面：", "第2镜（3–6 秒）",
-                "括号里只写起止秒数", "正好 10 秒", "补到 10 秒整", "先看图", "已附图片", "一、剧情概述", "五、保持与禁止");
+        assertThat(brief).contains("10 秒", "图1「商品图 1」", "图2「商品图 2」", "图3「出镜人物」", "第1镜（0–3 秒）这一镜的作用", "第2镜（3–6 秒）",
+                "括号里只写起止秒数", "正好 10 秒", "补到 10 秒整", "先看图", "已附图片", "一、剧情概述", "四、场景与视觉设定", "六、全片保持与禁止");
         // 事实规则在底座里（system），不在 user 里重复（docs/studio-prompt-architecture.md §9.5）。
         var assembled = catalog.sceneScript(script("ecom-talking", "", List.of("商品图 1", "商品图 2"), 10, null), null, false, null);
-        assertThat(assembled.system()).contains("你是资深短视频编导", "客户没写到的价格", "只输出一个 JSON 对象");
+        assertThat(assembled.system()).contains("你是资深短视频编导", "大胆创作", "只输出一个 JSON 对象");
         assertThat(assembled.user()).isEqualTo(brief).doesNotContain("{{", "}}");
         // 一次出片的时长由所选模型决定，不受场景给助手用的可选时长限制；明显不对的数照样挡。
         assertThatThrownBy(() -> catalog.compose(script("ecom-talking", "", List.of("商品图 1"), 0, null))).hasMessage("请选择可用的时长");
         assertThatThrownBy(() -> catalog.compose(script("ecom-talking", "", List.of(), 10, null))).hasMessage("先放商品图");
         assertThat(catalog.compose(script("ecom-talking", "", List.of("商品图 1"), 10, "口语一点")).text())
-                .startsWith("按这条修改意见改当前脚本，只改我指定的部分；素材与职责、保持与禁止、人物关系照上一版，没提到的地方保持不变：口语一点").contains("原来的要求");
+                .startsWith("按这条修改意见改当前脚本：口语一点").contains("重排镜头和台词", "原来的要求");
         // 剧情类必须写一句，但改稿时有修改意见就够了。
         assertThatThrownBy(() -> catalog.compose(script("drama-twist", " ", List.of(), 15, null))).hasMessage("先写一句要求");
         assertThat(catalog.compose(script("drama-twist", " ", List.of(), 15, "结尾再反转一次")).text()).contains("结尾再反转一次");
@@ -132,9 +132,9 @@ class StudioSceneCatalogTest {
         String director = catalog.compose(script("local-groupbuy", "巷里火锅，双人套餐", List.of("门店照片 1"), 15, null)).text();
         // §9.6 的新范式：目标、节拍、收尾已合进拍法，不再单列「这一条要做到」「结尾」两行。
         assertThat(director).contains("拍法：开头亮出团购价格", "先讲领券入口", "位置", "套餐内容与团购价", "原价（客户写了才比较）", "排队/人气（客户写了才必须出现）",
-                "正文最前面单独一行写「还缺：……」", "【待补：……】").doesNotContain("这一条要做到", "结尾：", "拍法里要讲但我没给的");
+                "不留任何空白", "不写「还缺」「待补」").doesNotContain("这一条要做到", "结尾：", "拍法里要讲但我没给的", "【待补：");
         String assistant = catalog.compose(video("local-groupbuy", "巷里火锅", List.of("门店照片 1"), null, 25, "9:16")).text();
-        assertThat(assistant).contains("我没给的先问我").doesNotContain("【待补");
+        assertThat(assistant).contains("不用问我").doesNotContain("【待补");
         // 到店实录不编故事：出镜的人不能写成真实顾客。
         assertThat(catalog.compose(script("local-visit", "巷里火锅", List.of("门店照片 1"), 15, null)).text()).contains("这条不编故事");
         assertThat(director).doesNotContain("这条不编故事");
@@ -160,10 +160,9 @@ class StudioSceneCatalogTest {
         String script = assembled.user();
         String assistant = catalog.compose(video("brand-story", given, List.of(), null, 30, "16:9")).text();
         assertThat(script).contains("我的要求：" + given);
-        assertThat(assistant).contains("我的要求：" + given, "下面这些我没写就不要出现", "品牌创立年份", "检测、测试、实验的次数和画面");
-        // 编导的事实规则在底座（system）：写到的必须用上，没写的不编（§9.5）。
-        assertThat(assembled.system()).contains("必须原样出现在脚本里", "品牌年限", "检测测试次数", "销量排名获奖", "门店数用户数", "功效数据",
-                "不要写成品牌的真实经历", "不要给编出来的内容配上年份、次数、数量");
+        assertThat(assistant).contains("我的要求：" + given, "只有这几样我没写就不要出现", "销量排名", "检测数据");
+        // 编导的内容规则在底座（system）：写到的写准，没写的大胆创作，只有几样硬信息不凭空写（§9.5，2026-11-04 放宽）。
+        assertThat(assembled.system()).contains("数字和名字不改", "大胆创作", "价格和优惠金额", "销量排名", "获奖认证", "检测数据");
         assertThat(script).contains("只说脚本里实际写了什么", "虚构的人物或情节就直说", "不要写「没写功效」");
     }
 

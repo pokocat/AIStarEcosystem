@@ -9,7 +9,8 @@ public final class EnterpriseDtos {
     public record Capabilities(boolean pointsManage, boolean billingRead, boolean rechargeRequest) {}
     public record Enterprise(String id,String name,String ownerUserId,String status,long version,Instant createdAt,Instant updatedAt) {}
     public record Member(String id,String enterpriseId,String userId,String displayName,String phone,String role,String status,Capabilities capabilities,long version,Instant joinedAt) {}
-    public record Context(Enterprise enterprise,Member member,List<String> permissions) {}
+    public record Context(Enterprise enterprise,Member member,List<String> permissions,String billingDefault) {}
+    public record BillingDefaultUpdate(String mode) {}
     public record CreateRequest(String name,String clientRequestId) {}
     public record MemberAddRequest(String phone) {}
     public record MemberBatchAddRequest(List<String> phones) {}

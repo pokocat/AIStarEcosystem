@@ -23,6 +23,9 @@ public class EnterpriseMember {
     private boolean billingRead;
 
     private boolean rechargeRequest;
+    /** The member's own default payer for generation: "personal", "enterprise", or null to ask each time. Not a managed field, so it does not bump the version an admin edit or lifecycle preview relies on. */
+    @Column(length=16) @org.hibernate.annotations.OptimisticLock(excluded=true)
+    private String billingDefault;
     @Version
     private long version;
     @Column(nullable=false)

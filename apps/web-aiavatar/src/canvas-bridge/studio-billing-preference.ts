@@ -1,9 +1,10 @@
-import { AccountApi, ApiError, EnterpriseApi } from "@ai-star-eco/api-client";
-import type { EnterpriseBillingSelection, EnterpriseContext } from "@ai-star-eco/types/enterprise";
+import { AccountApi, ApiError } from "@ai-star-eco/api-client";
+import { EnterpriseApi } from "./enterprise-api";
+import type { EnterpriseBillingDefault, EnterpriseBillingSelection, EnterpriseContext } from "@ai-star-eco/types/enterprise";
 
 export type StudioBillingAccount = { userId: string; context?: EnterpriseContext };
 
-/** Refresh membership before applying a browser preference; an old enterprise is never reused. */
+/** Refresh membership before applying a default; an old enterprise is never reused. */
 export async function loadStudioBillingAccount(): Promise<StudioBillingAccount> {
   const [user, contexts] = await Promise.all([
     AccountApi.getMe(),
@@ -12,27 +13,52 @@ export async function loadStudioBillingAccount(): Promise<StudioBillingAccount> 
       throw error;
     }),
   ]);
-  return { userId: user.id, context: contexts[0] };
+  const account = { userId: user.id, context: contexts[0] };
+  return { ...account, context: await adoptBrowserDefault(account) };
 }
 
-const key = (userId: string, enterpriseId: string) => `ipstudio:billing-default:${encodeURIComponent(userId)}:${encodeURIComponent(enterpriseId)}`;
+// Before 2026-11-02 the default lived in one browser. It moves to the membership the first time it is read there.
+const legacyKey = (userId: string, enterpriseId: string) => `ipstudio:billing-default:${encodeURIComponent(userId)}:${encodeURIComponent(enterpriseId)}`;
 
-export function readStudioBillingPreference(account: StudioBillingAccount): EnterpriseBillingSelection | undefined {
-  if (!account.context) return;
+async function adoptBrowserDefault(account: StudioBillingAccount): Promise<EnterpriseContext | undefined> {
+  const context = account.context;
+  if (!context || context.billingDefault) return context;
+  let mode: string | null = null;
+  try { mode = localStorage.getItem(legacyKey(account.userId, context.enterprise.id)); } catch { return context; }
+  if (mode !== "personal" && mode !== "enterprise") return context;
   try {
-    const mode = localStorage.getItem(key(account.userId, account.context.enterprise.id));
-    if (mode === "personal") return { mode };
-    if (mode === "enterprise") return { mode, enterpriseId: account.context.enterprise.id };
-  } catch { /* An unavailable browser store means asking again, never guessing a payer. */ }
-}
-
-export function saveStudioBillingPreference(account: StudioBillingAccount, mode?: EnterpriseBillingSelection["mode"]): void {
-  if (!account.context) return;
-  try {
-    const storageKey = key(account.userId, account.context.enterprise.id);
-    if (mode) localStorage.setItem(storageKey, mode);
-    else localStorage.removeItem(storageKey);
+    const updated = await EnterpriseApi.setBillingDefault(context.enterprise.id, mode);
+    try { localStorage.removeItem(legacyKey(account.userId, context.enterprise.id)); } catch { /* Harmless: the server now answers first. */ }
+    return updated;
   } catch {
-    throw new Error("浏览器暂时无法保存付款偏好，请允许本站存储后重试。");
+    return context; // Ask again rather than guess; the next read retries the move.
   }
+}
+
+/**
+ * The saved default, when it can pay right now. A default naming an enterprise the member can no longer spend from
+ * asks again (the chooser explains why); it never quietly switches to personal credits.
+ */
+export function readStudioBillingPreference(account: StudioBillingAccount): EnterpriseBillingSelection | undefined {
+  const context = account.context;
+  if (!context) return;
+  if (context.billingDefault === "personal") return { mode: "personal" };
+  if (context.billingDefault === "enterprise" && context.enterprise.status === "active" && context.member.status === "active")
+    return { mode: "enterprise", enterpriseId: context.enterprise.id };
+}
+
+/**
+ * The payer a paid action will use without asking: personal when there is no enterprise, else the saved default.
+ * Undefined means the chooser will ask. The chooser and the AI video page's price both go by this one rule.
+ */
+export function knownStudioBilling(account: StudioBillingAccount): EnterpriseBillingSelection | undefined {
+  return account.context ? readStudioBillingPreference(account) : { mode: "personal" };
+}
+
+/** Saved on the membership: one choice holds on every device and in every paid feature. */
+export async function saveStudioBillingPreference(account: StudioBillingAccount, mode?: EnterpriseBillingSelection["mode"]): Promise<StudioBillingAccount> {
+  if (!account.context) return account;
+  const next: EnterpriseBillingDefault = mode ?? null;
+  const context = await EnterpriseApi.setBillingDefault(account.context.enterprise.id, next);
+  return { ...account, context };
 }

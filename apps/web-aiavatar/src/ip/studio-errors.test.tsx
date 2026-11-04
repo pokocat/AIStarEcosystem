@@ -17,8 +17,8 @@ it('does not send customers to recharge or delete work for supplier errors', () 
   expect(failureNext('CLIP_ENGINE_BALANCE_INSUFFICIENT')).not.toContain('充值');
   expect(failureNext('CLIP_ENGINE_SPEAKER_NOT_FOUND')).not.toContain('删掉');
   expect(failureNext('STUDIO_USAGE_PENDING')).toContain('原任务状态');
-  expect(failureNext('STUDIO_PAYMENT_REQUIRED')).toContain('积分钱包');
-  expect(failureNext('VIDEO_MODEL_RETIRED')).toContain('换一个');
+  expect(failureNext('STUDIO_PAYMENT_REQUIRED')).toContain('积分提示');
+  expect(failureNext('VIDEO_MODEL_RETIRED')).toContain('更换');
 });
 it('shows corrected cause and input guidance together for the original moderation alert', async () => {
   render(<StudioNotifications/>);
@@ -27,7 +27,7 @@ it('shows corrected cause and input guidance together for the original moderatio
   const content = (modal.error.mock.lastCall![0] as { content: import('react').ReactNode }).content;
   render(content);
   expect(screen.getAllByText(/服务方未说明触发对象/).length).toBeGreaterThan(0);
-  expect(screen.getByText(/调整后再生成/)).toBeTruthy();
+  expect(screen.getByText(/调整后重新生成/)).toBeTruthy();
   expect(screen.queryByText(/该提示可能违反/)).toBeNull();
   expect(screen.getAllByText(/ABCDEF234567/).length).toBeGreaterThan(0);
 });
@@ -139,6 +139,17 @@ it('a generic confirm button takes the dialog title; antd spacing inside two-cha
   fireEvent.click(button('删 除'));
   reportStudioError({code: 'X_FAILED', message: '另一个失败'});
   return waitFor(() => expect(titles().sort()).toEqual(['「删除」没有完成', '删除这个画布没有完成'].sort()));
+});
+
+it('confirming who pays is part of the generation: its failure keeps the button the user pressed', async () => {
+  render(<StudioNotifications/>);
+  fireEvent.click(button('生成 2 个变体'));
+  const host = document.body.appendChild(Object.assign(document.createElement('div'), {className: 'ip-brand-surface studio-billing-host'}));
+  const dialog = host.appendChild(document.createElement('div')); dialog.setAttribute('role', 'dialog'); dialog.setAttribute('aria-label', '确认本次付款账户');
+  fireEvent.click(button('确认账户并生成', {}, dialog));
+  host.remove();
+  reportStudioError({code: 'DAP_MODEL_HTTP_429', message: '模型繁忙'});
+  await waitFor(() => expect(titles()).toEqual(['「生成 2 个变体」没有完成']));
 });
 
 it('one click accounts for one error; later errors, background reports and other pages go to notifications', async () => {

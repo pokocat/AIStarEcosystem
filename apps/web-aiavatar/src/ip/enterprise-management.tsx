@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Button, Checkbox, Empty, Input, InputNumber, Modal, Pagination, Select, Skeleton, Table, Tag } from "antd";
+import { Alert, Button, Checkbox, Empty, Input, InputNumber, Modal, Pagination, Radio, Select, Skeleton, Table, Tag } from "antd";
 import type { EnterpriseCapabilities, EnterpriseContext, EnterpriseInvitation, EnterpriseMember, EnterpriseOwnershipTransfer, EnterprisePolicy, EnterpriseLifecyclePreview, EnterpriseLifecycleAction, EnterpriseMemberBatchAddResult } from "@ai-star-eco/types/enterprise";
 import { EnterpriseApi } from "@/canvas-bridge/enterprise-api";
 import { fetchModels } from "@/canvas-bridge/api";
@@ -37,6 +37,8 @@ export function EnterpriseManagement({ context, section, onChanged, refreshKey =
   const [policy, setPolicy] = useState<EnterprisePolicy>();
   const [modelOptions, setModelOptions] = useState<{ value: string; label: string }[]>([]);
   const [allowed, setAllowed] = useState<string[]>([]), [maxActive, setMaxActive] = useState<number | null>(null);
+  // An empty list is "all models" on the server; "only these" with nothing chosen cannot be saved.
+  const [restricted, setRestricted] = useState(false);
   const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false);
   const [error, setError] = useState(""), [success, setSuccess] = useState("");
   const [token, setToken] = useState("");
@@ -75,7 +77,7 @@ export function EnterpriseManagement({ context, section, onChanged, refreshKey =
           options.push(...entries.map(m => ({ value: m.endpointId, label: `音视频 · ${m.name}` })));
         }
         setModelOptions([...new Map(options.map(option => [option.value, option])).values()]);
-        setPolicy(setting); setAllowed(setting.allowedEndpointIds); setMaxActive(setting.maxActiveJobs);
+        setPolicy(setting); setAllowed(setting.allowedEndpointIds); setRestricted(setting.allowedEndpointIds.length > 0); setMaxActive(setting.maxActiveJobs);
       } else {
         const [memberResult, invitationResult, ownershipResult] = await Promise.all([
           canManage || owner ? EnterpriseApi.members(id, page, 20) : undefined,
@@ -161,13 +163,16 @@ export function EnterpriseManagement({ context, section, onChanged, refreshKey =
     {incomingTransfers.map(transfer => <Alert key={transfer.id} type="warning" showIcon title="有一项主账号移交等待你接受" description={`接受后你将负责企业成员、资金分配和设置。有效至 ${time(transfer.expiresAt)}。`} action={<Button loading={busy} onClick={() => void mutate(async () => { await EnterpriseApi.acceptOwnership(id, transfer.id); await refresh("已接受主账号移交。"); })}>接受主账号移交</Button>} />)}
     {loading ? <Skeleton active paragraph={{ rows: 6 }} /> : section === "policy" ? <div className="enterprise-policy-form">
       <div className="enterprise-section-heading"><div><h2>企业生成设置</h2><p>仅约束使用企业积分的 Studio 任务。个人积分仍按个人规则使用。</p></div></div>
-      <label htmlFor="enterprise-policy-models">允许使用的模型</label>
-      <Select id="enterprise-policy-models" aria-label="允许使用的模型" mode="multiple" value={allowed} options={[...modelOptions, ...allowed.filter(value => !modelOptions.some(model => model.value === value)).map(value => ({ value, label: "已下线模型（可移除）" }))]} onChange={setAllowed} disabled={!canPolicy || busy} optionFilterProp="label" placeholder="选择允许的模型" />
-      <p>未选择模型时，所有企业积分生成均不可提交。已排队或受理的原任务保留原计费记录。</p>
+      <span className="enterprise-policy-label" id="enterprise-policy-scope">成员用企业积分时可以用哪些模型</span>
+      <Radio.Group aria-labelledby="enterprise-policy-scope" value={restricted ? "some" : "all"} onChange={event => setRestricted(event.target.value === "some")} disabled={!canPolicy || busy} options={[{ value: "all", label: "全部模型" }, { value: "some", label: "只允许选定的模型" }]} />
+      {restricted ? <>
+        <Select id="enterprise-policy-models" aria-label="允许使用的模型" mode="multiple" value={allowed} options={[...modelOptions, ...allowed.filter(value => !modelOptions.some(model => model.value === value)).map(value => ({ value, label: "已下线模型（可移除）" }))]} onChange={setAllowed} disabled={!canPolicy || busy} optionFilterProp="label" placeholder="选择允许的模型" />
+        <p>{allowed.length ? "成员用企业积分时只能选这些模型，以后新上的模型要再加进来。已排队或已提交的任务按原来的模型和价格结算。" : "至少选一个模型才能保存。"}</p>
+      </> : <p>Studio 里能用的模型都可以用企业积分付，包括以后新上的。</p>}
       <label htmlFor="enterprise-policy-max">每位成员最多在途任务数</label>
       <InputNumber<number> id="enterprise-policy-max" value={maxActive} min={1} max={100} precision={0} disabled={!canPolicy || busy} onChange={setMaxActive} />
-      <p>在途包括排队、运行，以及厂商已受理但结果待核对的任务。</p>
-      {canPolicy && <Button type="primary" loading={busy} disabled={!policy || !maxActive} onClick={() => void mutate(async () => { if (!policy || !maxActive) return; const updated = await EnterpriseApi.updatePolicy(id, { allowedEndpointIds: allowed, maxActiveJobs: maxActive, version: policy.version }); setPolicy(updated); setSuccess("企业生成设置已保存。"); })}>保存生成设置</Button>}
+      <p>在途包括排队、运行，以及厂商已受理但结果待核对的任务。画布一次制作常会同时跑好几项，设得太小，后面的步骤会停下来等。</p>
+      {canPolicy && <Button type="primary" loading={busy} disabled={!policy || !maxActive || restricted && !allowed.length} onClick={() => void mutate(async () => { if (!policy || !maxActive || restricted && !allowed.length) return; const updated = await EnterpriseApi.updatePolicy(id, { allowedEndpointIds: restricted ? allowed : [], maxActiveJobs: maxActive, version: policy.version }); setPolicy(updated); setSuccess("企业生成设置已保存。"); })}>保存生成设置</Button>}
     </div> : section === "lifecycle" ? <div className="enterprise-lifecycle">
       <h2>企业关系</h2><p>企业积分由企业管理。退出后，你的个人账号、个人积分、画布和作品仍保留；企业积分不会转入个人账户。</p>
       {owner ? <><p>主账号须先将管理责任移交给另一位正常成员，才能退出。关闭企业前需要处理完在途任务、充值申请与剩余积分。</p><Button danger disabled={busy} onClick={() => openLifecycle("close")}>核对关闭企业条件</Button></> : <Button danger disabled={busy} onClick={() => openLifecycle("leave")}>核对并退出企业</Button>}

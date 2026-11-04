@@ -14,7 +14,7 @@ class ProviderErrorMessageTest {
             "{\"error\":\"reason\"}", "{\"data\":{\"error\":{\"msg\":\"reason\"}}}",
             "{\"ResponseMetadata\":{\"Error\":{\"Message\":\"reason\"}}}",
             "{\"result\":{\"failReason\":\"reason\"}}", "{\"error_description\":\"reason\"}"})
-    void readsProviderEnvelopes(String body) { assertEquals("reason",ProviderErrorMessage.message(body,"fallback")); }
+    void readsProviderEnvelopes(String body) { assertEquals("reason",ProviderErrorMessage.reason(body)); }
 
     @Test void policyCodeDoesNotIdentifyAReferenceOrPromptAndDiagnosticsKeepTheOriginal() throws Exception {
         String original="非常抱歉，该提示可能违反了关于暴力内容的防护限制。如果你认为此判断有误，请重试或修改提示语。";

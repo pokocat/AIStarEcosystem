@@ -185,11 +185,52 @@ class DirectorPromptsTest {
     }
 
     @Test
+    void episodeCodesCountAsHeadings() {
+        // 2026-11-03 线上《我的十年》的写法：幕、段落标题里的「E01-E24」是编号范围，「**E01 开机**」才是一集。
+        List<String> ps = new ArrayList<>(List.of("# 《我的十年》分集表 v2", "- 重场集120秒（E21/E22/E23）", "## 第一幕 幼师篇（E01-E24）",
+                "### S1 选择与融入（E01-E04）｜情绪：暖"));
+        ps.addAll(script(0, "**E01 开机**〔120秒·全剧倒叙框架〕", "**E02 十分钟的路**", "E03-E04 回顾", "### EP03：报到", "Ep.4 深夜名字卡", "Episode 5"));
+        assertEquals(List.of(4, 7, 13, 16, 19), DirectorPrompts.headingStarts(ps));
+        assertTrue(DirectorPrompts.isEpisodeHeading("**第1集**"));
+        assertFalse(DirectorPrompts.isEpisodeHeading("E01-E24"));
+        assertFalse(DirectorPrompts.isEpisodeHeading("E21/E22 是重场集"));
+        assertFalse(DirectorPrompts.isEpisodeHeading("Ending 1"));
+    }
+
+    @Test
+    void markerStartsIgnoreMarkdownCaseAndLongProse() {
+        List<String> ps = List.of("改编说明", "### **Chapter 1** 下山", "师父：去吧。", "【chapter 2】进城",
+                "Chapter 3 里他一句话都没说，直到最后才回头看了一眼，这一眼让在场的所有人都明白了他这些年藏在心里的那些心思，谁也没有开口。");
+        assertEquals(List.of(1, 3), DirectorPrompts.markerStarts(ps, "## Chapter"));
+        assertEquals(List.of(), DirectorPrompts.markerStarts(ps, "  "));
+        assertEquals("Chapter 1 下山", DirectorPrompts.markerTitle("### **Chapter 1** 下山"));
+    }
+
+    @Test
+    void aNumberedMarkerFollowsTheNumberingAndTheCharacterAfterIt() {
+        List<String> ps = List.of("第1章 序", "第一卷", "第1章 下山", "第2章里他一句话都没说，直到最后才回头看了一眼，这一眼让在场的所有人都明白了他这些年藏在心里的那些心思，谁也没有开口，只是低头。", "第2章 进城", "第3场 夜", "第三章：回山");
+        assertEquals(List.of(2, 4, 6), DirectorPrompts.markerStarts(ps, "第1章 下山"), "the last run counting up from 1, Chinese numbers too");
+        assertEquals(List.of(), DirectorPrompts.markerStarts(List.of("Chapter 2", "Chapter 3"), "Chapter 1"), "the numbering starts where the user's copy starts");
+        assertEquals(List.of(0, 1), DirectorPrompts.markerStarts(List.of("Chapter 21 归来", "chapter 22"), "Chapter 21"));
+    }
+
+    @Test
+    void longBilingualHeadingsStillCountWhenASeparatorFollows() {
+        List<String> ps = new ArrayList<>(List.of("第一集《金丝雀》 / Episode 1 — The Canary", "Evelyn：……"));
+        ps.add("第十集《钱快没了，兄弟自然也快没了》 / Episode 2 — When the Money Runs Out, So Do the Brothers");
+        ps.set(2, ps.get(2).replace("第十集", "第二集"));
+        ps.add("第三集里他一句话都没说，直到最后才回头看了一眼，这一眼让在场的所有人都明白了他这些年藏在心里的那些心思，谁也没有开口。");
+        assertEquals(List.of(0, 2), DirectorPrompts.headingStarts(ps));
+    }
+
+    @Test
     void headingTitleDropsTheEpisodeNumber() {
         assertEquals("下山", DirectorPrompts.headingTitle("# 第1集 下山"));
         assertEquals("进城", DirectorPrompts.headingTitle("## 第二集：进城"));
         assertEquals("回山", DirectorPrompts.headingTitle("【第3集】回山"));
         assertEquals("", DirectorPrompts.headingTitle("第4集"));
+        assertEquals("开机〔120秒·全剧倒叙框架〕", DirectorPrompts.headingTitle("**E01 开机**〔120秒·全剧倒叙框架〕"));
+        assertEquals("报到", DirectorPrompts.headingTitle("### EP03：报到"));
     }
 
     @Test

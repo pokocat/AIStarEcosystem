@@ -75,6 +75,9 @@ class EnterpriseLifecycleScenarioTest {
     String endpoint;
     @BeforeEach void model(){endpoint="life-"+UUID.randomUUID();endpoints.save(AiModelEndpoint.builder().id(endpoint).name("验收图片模型")
             .providerType(AiModelProviderType.OPENAI_COMPATIBLE).baseUrl("http://127.0.0.1:1").upstreamApiKeyEncrypted("test").model("local").modelAlias("验收图片模型").enabled(true).build());}
+    /** Another real endpoint: an allowed list without the job's model blocks it (an empty list means all models). */
+    String otherModel(){String id="life-other-"+UUID.randomUUID();endpoints.save(AiModelEndpoint.builder().id(id).name("其他模型")
+            .providerType(AiModelProviderType.OPENAI_COMPATIBLE).baseUrl("http://127.0.0.1:1").upstreamApiKeyEncrypted("test").model("other").modelAlias("其他模型").enabled(true).build());return id;}
     String person(){String id=UUID.randomUUID().toString();users.save(AepUser.builder().id(id).username(id).displayName("验收成员")
             .status(AepUser.UserStatus.ACTIVE).kind(AepUser.AccountKind.PERSONAL).phoneVerified(true).createdAt(Instant.now()).build());
         enrollment.upsert(id,"aiavatar",EnrollmentStatus.ACTIVE,EnrollmentSource.ADMIN,null);return id;}
@@ -211,7 +214,7 @@ class EnterpriseLifecycleScenarioTest {
         var quote=billing.quote(m.member().userId(),new BillingSelection("enterprise",e.enterprise().id()),context);
         assertTrue(quote.canAfford());assertEquals(10,quote.scopedCredits());assertEquals(0,quote.walletCredits());assertEquals(wallet(m).getId(),quote.approval().walletId());
         assertEquals(before,auths.count());assertEquals(holdCount,holds.count());assertEquals(0,wallet(m).getPendingBalance());
-        var p=enterprises.policy(e.member().userId(),e.enterprise().id());enterprises.updatePolicy(e.member().userId(),e.enterprise().id(),new PolicyUpdate(List.of(),2,p.version()));
+        var p=enterprises.policy(e.member().userId(),e.enterprise().id());enterprises.updatePolicy(e.member().userId(),e.enterprise().id(),new PolicyUpdate(List.of(otherModel()),2,p.version()));
         assertThrows(BusinessException.class,()->billing.quote(m.member().userId(),new BillingSelection("enterprise",e.enterprise().id()),context));
     }
 

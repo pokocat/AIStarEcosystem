@@ -403,6 +403,23 @@ public class IpRunService {
         var prepared=prepareVideo(userId,projectId,request,count,false,true);
         return videoJobs.quote(prepared.body(),userId,com.aistareco.aep.service.materialvideo.MaterialVideoJobService.APP_IPSTUDIO,request.billing(),freeOnly);
     }
+    /**
+     * AI 视频页「生成视频」按钮旁的价（2026-11-03）：页面还没有草稿、也还没写提示词时就要看得到折扣。
+     * 端点解析与 {@link #prepareVideo} 相同，标准价与合同校验见 {@link StudioVideoService#price}，折扣 / 模型赠款 / 付款账户
+     * 走提交用的同一个报价（{@code MaterialVideoJobService#quoteSpec}）。只读：不建任务、不冻结、不读素材、不调模型。
+     */
+    @Transactional(readOnly=true)
+    public com.aistareco.aep.billing.service.ModelChargeService.Quote quoteVideoPrice(String userId,String model,String mode,String tier,
+            String aspectRatio,Integer durationSec,int imageRefs,int videoRefs,int audioRefs,
+            com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing) {
+        requireNativeMode();
+        if(scenePolicies==null||studioVideo==null)
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"MODEL_QUOTE_NOT_SUPPORTED","视频报价暂时不可用");
+        String endpointId=scenePolicies.resolveStudioVideo(model).endpoint().getId();
+        var canvas=studioVideo.price(endpointId,mode,tier,aspectRatio,durationSec,imageRefs,videoRefs,audioRefs);
+        return videoJobs.quoteSpec(userId,com.aistareco.aep.service.materialvideo.MaterialVideoJobService.APP_IPSTUDIO,endpointId,
+                canvas.spec(),aspectRatio,durationSec,canvas.credits(),billing);
+    }
 
     /** 冻结 → 落库 → 派发。两条入口共用，计费纪律只有这一处。 */
     private ModelChargeContext imageCharge(Compiled compiled,com.aistareco.aep.billing.service.ModelBillingApproval approval,Long maxWalletCredits,boolean freeOnly) {

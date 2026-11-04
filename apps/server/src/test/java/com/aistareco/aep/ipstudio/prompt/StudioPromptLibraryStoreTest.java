@@ -113,7 +113,7 @@ class StudioPromptLibraryStoreTest {
         Map<String, Object> header = new LinkedHashMap<>(seed.header());
         header.put("importFrom", "dap.ip_studio_assistant");
         String[] repo = PromptService.resourceDefault("dap.ip_studio_assistant");
-        String body = seed.entry().body().replace("你是资深短视频编导。", repo[0]);
+        String body = seed.entry().body().replace("你是资深短视频编导", repo[0]);
         var withOld = new StudioPromptLibrary.Seed("stage-scene-script.md", StudioPromptEntry.fromHeader(header, body, "x"), header);
         when(prompts.resolve("dap.ip_studio_assistant")).thenReturn(new PromptService.ResolvedPrompt("运营改过的助手身份", repo[1], new PromptParamsDto(0.3, null, null), "db"));
         var imported = new PromptImports(prompts, store, provider(null)).live(withOld).orElseThrow();
@@ -148,7 +148,7 @@ class StudioPromptLibraryStoreTest {
         seedAll();
         var preview = admin.preview(new PromptPreviewRequest("stage-scene-script", null, "scene-local-groupbuy", null));
         assertTrue(preview.system().contains("你是资深短视频编导"));
-        assertTrue(preview.system().contains("客户没写到的价格"));
+        assertTrue(preview.system().contains("大胆创作"));
         assertTrue(preview.user().contains("写一条 25 秒的竖屏「同城团购」短视频脚本"));
         assertTrue(preview.user().contains("第1镜（0–3 秒）"));
         assertFalse(preview.user().contains("{{"));

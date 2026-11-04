@@ -72,5 +72,89 @@ html[data-layout="desktop"] .studio-page.studio-next-page { background: #ffffff;
 .studio-next-page .studio-coming-soon { gap: 4px; padding: 0 7px; border: 0; border-radius: 999px; background: var(--ip-soft); color: var(--ip-muted); font-size: 11px; line-height: 20px; }
 .studio-next-page .studio-coming-soon svg { width: 11px; height: 11px; stroke-width: 1.6; }
 
-/* 手机：页面本身贴边，标题小一号 */
+/* 手机：页面本身贴边，标题小一号；说明按句子换行，别折出一行只剩几个字 */
 html:not([data-layout="desktop"]) .studio-page.studio-next-page .studio-page-heading h1 { font-size: 22px; }
+html:not([data-layout="desktop"]) .studio-page.studio-next-page .studio-page-heading p { text-wrap: pretty; }
+
+/* ── 新版手机底栏（2026-11-02，照设计稿的两张手机稿）：白底细线、细图标，「创作」是栏里的墨色小方块。
+   高度与旧底栏一样是 --tabbar-h（6 + 46 + 8），各页留给底栏的空白不用改。 ── */
+.studio-tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 60; max-width: 480px; margin-inline: auto; box-sizing: border-box;
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: end;
+  padding: 6px 4px calc(env(safe-area-inset-bottom, 0px) + 8px); border-top: 1px solid #eef0f2; background: #ffffff; }
+html[data-layout="desktop"] .studio-tabbar { display: none; }
+.studio-tab { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 2px; min-height: 46px; color: #5b6572; font-size: 11px; line-height: 1.4; text-decoration: none; -webkit-tap-highlight-color: transparent; }
+.studio-tab[aria-current="page"] { color: #17202a; font-weight: 500; }
+.studio-tab:focus-visible { outline: 2px solid #17202a; outline-offset: -2px; border-radius: 10px; }
+.studio-tab-create { display: grid; place-items: center; width: 38px; height: 30px; border-radius: 11px; background: #17202a; color: #ffffff; transition: transform 120ms ease; }
+.studio-tab.is-create:active .studio-tab-create { transform: scale(.94); }
+/* 「创作」是按钮不是链接：先弹出三项再进去（2026-11-02）。按钮放在 .ip-brand-surface 里时会被 color: inherit 盖掉，所以带上 .studio-tabbar。 */
+.studio-tabbar button.studio-tab { margin: 0; padding: 0; border: 0; background: none; font: inherit; font-size: 11px; line-height: 1.4; color: #5b6572; cursor: pointer; }
+.studio-tabbar .studio-tab.is-on, .studio-tabbar button.studio-tab[aria-expanded="true"] { color: #17202a; font-weight: 500; }
+
+/* 「创作」弹出的三项：AI 视频 / AI 图片 / 画布。挂在 body 上，所以颜色写死，不读 .ip-surface 的令牌。 */
+.studio-create-backdrop { position: fixed; inset: 0; z-index: 80; display: flex; align-items: flex-end; justify-content: center; background: rgba(23, 32, 42, .32); overscroll-behavior: contain; animation: studio-create-fade 160ms ease-out; }
+html[data-layout="desktop"] .studio-create-backdrop { display: none; }
+.studio-create-sheet { width: 100%; max-width: 480px; box-sizing: border-box; padding: 4px 12px calc(env(safe-area-inset-bottom, 0px) + 12px); border-radius: 20px 20px 0 0; background: #ffffff; color: #17202a; box-shadow: 0 -8px 32px rgba(23, 32, 42, .12); outline: none; animation: studio-create-up 220ms cubic-bezier(.2, .8, .2, 1); }
+.studio-create-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 0 4px 8px; }
+.studio-create-head h2 { margin: 0; font-size: 15px; font-weight: 500; line-height: 1.4; }
+.studio-create-head button { display: grid; place-items: center; width: 44px; height: 44px; margin: 0; padding: 0; border: 0; border-radius: 12px; background: none; color: #5b6572; cursor: pointer; }
+.studio-create-head button:focus-visible { outline: 2px solid #17202a; outline-offset: -2px; }
+.studio-create-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.studio-create-choice { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 8px; border-radius: 14px; color: inherit; text-decoration: none; -webkit-tap-highlight-color: transparent; }
+.studio-create-choice:hover, .studio-create-choice:active { background: #f5f6f8; }
+.studio-create-choice:focus-visible { outline: 2px solid #17202a; outline-offset: -2px; }
+.studio-create-icon { display: grid; place-items: center; flex: none; width: 42px; height: 42px; border-radius: 12px; background: #f3f4f6; color: #17202a; }
+.studio-create-choice[aria-current="page"] .studio-create-icon { background: #17202a; color: #ffffff; }
+.studio-create-copy { display: grid; flex: 1; gap: 2px; min-width: 0; }
+.studio-create-copy strong { font-size: 15px; font-weight: 500; line-height: 1.4; }
+.studio-create-copy small { font-size: 13px; line-height: 1.45; color: #5b6572; }
+.studio-create-arrow { flex: none; color: #9aa3ad; }
+@keyframes studio-create-fade { from { opacity: 0; } }
+@keyframes studio-create-up { from { opacity: 0; transform: translateY(24px); } }
+@media (prefers-reduced-motion: reduce) { .studio-create-backdrop, .studio-create-sheet { animation: none; } }
+
+/* ── 新版手机「我的」（2026-11-02）：白底，三组细边列表，图标细、字不加粗；个人卡右边是可用积分（手机上原来哪儿都看不到余额） ── */
+.studio-me { display: flex; flex-direction: column; gap: 14px; min-height: 100dvh; box-sizing: border-box; padding: calc(env(safe-area-inset-top, 0px) + 16px) 16px calc(var(--tabbar-h, 60px) + env(safe-area-inset-bottom, 0px) + 20px); background: #ffffff; }
+.studio-me>h1 { margin: 0 4px; font-family: var(--ip-display); font-size: 22px; font-weight: 500; line-height: 1.35; }
+.studio-me-profile { display: flex; align-items: center; gap: 14px; padding: 16px; border: 1px solid var(--ip-line); border-radius: 18px; }
+.studio-me-profile>div { display: flex; flex: 1; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+.studio-me-profile strong { max-width: 100%; overflow: hidden; font-size: 16px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.studio-me-profile span { color: var(--ip-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.studio-me-profile small { margin-top: 2px; padding: 0 7px; border-radius: 999px; background: var(--ip-soft); color: var(--ip-muted); font-size: 11px; line-height: 20px; }
+.studio-me-credit { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; gap: 0; min-height: 44px; justify-content: center; padding-left: 12px; border-left: 1px solid var(--ip-line); color: var(--ip-ink); text-decoration: none; }
+.studio-me-credit strong { font-size: 17px; font-weight: 500; line-height: 1.3; font-variant-numeric: tabular-nums; }
+.studio-me-credit span { color: var(--ip-muted); font-size: 11.5px; }
+.studio-me-group { display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--ip-line); border-radius: 16px; }
+.studio-me-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; box-sizing: border-box; padding: 9px 12px 9px 14px; border: 0; background: #ffffff; color: var(--ip-ink); font: inherit; text-align: left; text-decoration: none; cursor: pointer; }
+.studio-me-row+.studio-me-row { box-shadow: inset 0 1px 0 var(--sn-line-2); }
+.studio-me-row:active { background: var(--ip-soft); }
+.studio-me-row:focus-visible { outline: 2px solid var(--ip-ink); outline-offset: -2px; border-radius: 12px; }
+.studio-me-row>svg:first-child { flex-shrink: 0; color: var(--sn-text-2); }
+.studio-me-row>svg:last-child { flex-shrink: 0; color: #a3abb4; }
+.studio-me-row>span { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.studio-me-row strong { font-size: 14px; font-weight: 400; line-height: 1.5; }
+.studio-me-row small { overflow: hidden; color: var(--ip-muted); font-size: 12px; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
+/* ip-brand.css 给 .ip-brand-surface 里的按钮写了 color: inherit（权重 0,1,1），单个类名压不过它，退出登录就成了墨色：这里多带一层 .studio-me。 */
+.studio-me .studio-me-logout { height: 46px; margin-top: 4px; border: 1px solid var(--ip-line); border-radius: 14px; background: #ffffff; color: var(--ip-error); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; }
+.studio-me .studio-me-logout:active { background: var(--ip-error-soft); }
+
+/* ── 新版手机首页（2026-11-02）：电脑版首页稿的样子搬到手机上，标题和留白按手机缩小。
+   原来电脑版的 56/48 内边距在手机上照样生效，对话框两边各空出近 50px，大标题折成三行。 ── */
+/* 首页的 main 原来不是 flex，电脑版写的 gap 在手机上不起作用，快捷词、工具、场景几块贴在一起。 */
+html:not([data-layout="desktop"]) .studio-next-page.studio-scene-home>main { display: flex; flex-direction: column; gap: 28px; padding: calc(env(safe-area-inset-top, 0px) + 28px) 16px 28px; }
+html:not([data-layout="desktop"]) .studio-next-page .home-hero { gap: 16px; padding: 0; }
+/* 只在逗号处换行：按字均分会折成「让灵感 / 成形」。 */
+html:not([data-layout="desktop"]) .studio-next-page .home-hero h1 { font-size: 24px; line-height: 1.4; letter-spacing: .01em; word-break: keep-all; }
+html:not([data-layout="desktop"]) .studio-next-page :is(.home-goals, .home-recent, .home-feed) { padding: 0; }
+/* main 改成 flex 列以后，电脑版的 margin: 0 auto 会把工具格缩到内容宽，这里撑满。 */
+html:not([data-layout="desktop"]) .studio-next-page :is(.home-tools, .home-goals, .home-recent, .home-feed) { width: 100%; margin: 0; box-sizing: border-box; }
+html:not([data-layout="desktop"]) .studio-next-page .home-tools { gap: 8px; padding: 0; }
+html:not([data-layout="desktop"]) .studio-next-page .home-tools button { padding: 12px 2px 10px; font-size: 12px; }
+html:not([data-layout="desktop"]) .studio-next-page .home-section-heading { margin-bottom: 12px; }
+/* 四个常用开头两两一排：按字数换行会折成 3 + 1，最后一个单独一行。 */
+html:not([data-layout="desktop"]) .studio-next-page .home-hero .studio-conversation-start>.studio-conversation-start-examples { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+html:not([data-layout="desktop"]) .studio-next-page .home-hero .studio-conversation-start>.studio-conversation-start-examples button { justify-content: center; height: 34px; overflow: hidden; text-overflow: ellipsis; }
+html:not([data-layout="desktop"]) .studio-next-page .home-feed-tabs button { height: 32px; }
+
+/* 资产库一行横滑：右边淡出，看得出后面还有（原来最后一个被截成「池边的界」，像排版坏了）。末尾留出淡出的宽度，滑到底时最后一个不被盖住。 */
+html:not([data-layout="desktop"]) .studio-next-page .assets-libs { padding-right: 28px; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }

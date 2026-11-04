@@ -24,7 +24,7 @@ import { FREE_SCENE_ID, findImageScene, useSceneCatalog, type ImageScene } from 
 import { useSceneDraftStore, useSceneStateSave } from "./scene-draft-store";
 import { useSceneQuery, writeSceneQuery } from "./scene-query";
 import { UiVersionSwitch } from "@/shell/ui-version-switch";
-import { addImageRow, applyRun, createSceneDraft, imageRows, listSceneDrafts, openedImageState, patchNode, resubmitRow, rowUploads, slotUploads, submissionRejected, type SceneUpload } from "./scene-drafts";
+import { addImageRow, applyRun, createSceneDraft, imageRows, listSceneDrafts, openedImageState, patchNode, resubmitRow, rowUploads, slotUploads, rejectedNextStep, submissionRejected, type SceneUpload } from "./scene-drafts";
 import { SceneDrawer, SceneEmpty, SceneExample, SceneNoModel, SceneRecent, SceneResultTabs, SceneSwitch, SceneViewer, sceneFailureText, sceneHintText, sceneOptionValues, useSceneDrawerPin, useScenePopover, RatioGlyph, useSceneMobile, SlotEmpty } from "./scene-layout";
 import { AiMark } from "../studio-ai-icon";
 
@@ -220,9 +220,9 @@ export function SceneImageStudio() {
   const quote = caps?.mock ? 0 : unit * usedCount;
   const maxChars = chosen?.capability?.imagePromptMaxChars || 2000;
   const isFree = scene?.id === FREE_SCENE_ID;
-  // 用户自己写的那部分有多长：完整描述按模型上限，补充要求另有个短上限，真正发出去的整段由服务端拼并把关。
+  // 用户自己写的那部分有多长：完整描述按模型上限，补充要求最多 3000 字，真正发出去的整段由服务端拼并把关。
   const ownText = custom ?? supplement;
-  const ownLimit = custom !== undefined || isFree ? maxChars : 500;
+  const ownLimit = custom !== undefined || isFree ? maxChars : 3000;
   const missing = scene ? scene.refs.findIndex((r, i) => r.required && !slots[i]) : -1;
   const blocker = !scene ? "正在读取场景…" : !models ? "正在读取模型…" : !caps?.mock && !chosen ? "还没有可用的图片模型"
     : missing >= 0 ? `先放${scene.refs[missing].label}` : isFree && !supplement.trim() ? "写一句想要的画面"
@@ -298,7 +298,7 @@ export function SceneImageStudio() {
       const rejected = submissionRejected(e, posted);
       if (nodeId) await persist(doc => patchNode(doc, nodeId!, n => ({ ...n, metadata: { ...n.metadata, ...studioErrorMetadata(e),
         status: rejected ? "error" : "loading", ...(rejected ? {} : { errorDetails: "提交结果没有确认，点「确认原任务」查一下，不会重复扣费" }) } })), projectId).catch(() => undefined);
-      showFailure({ action: "生成图片", error: e, next: rejected ? "改一下再试；积分没有扣。" : "这次提交可能已经被受理，点「确认原任务」查一下，不要直接重新生成。" });
+      showFailure({ action: "生成图片", error: e, next: rejected ? rejectedNextStep(e) : "这次提交可能已经被受理，点「确认原任务」查一下，不要直接重新生成。" });
     } finally { setBusy(false); setSubmitting(undefined); }
   };
 
@@ -386,6 +386,7 @@ export function SceneImageStudio() {
   const listGroups = catalog.imageGroups.map(g => ({ id: g.id, title: g.title, items: catalog.image.filter(s => s.group === g.id && s.id !== FREE_SCENE_ID) }));
   const groupTitle = catalog.imageGroups.find(g => g.id === scene.group)?.title;
   const onPick = (id: string) => { const next = findImageScene(catalog, id); if (next && (next.id !== scene.id || draft)) goToScene(next); };
+  const someRequired = scene.refs.some(r => r.required);
 
   return <main className={`ip-brand-surface scene-studio scene-image-studio${pinned ? " has-drawer" : ""}`} data-studio-overlay-root>
     {(pinned || drawerOpen) && <SceneDrawer heading="AI 图片" groups={listGroups} top={free} current={scene.id} onPick={onPick} pinned={pinned} onPin={pin} onClose={() => setDrawerOpen(false)}/>}
@@ -399,6 +400,7 @@ export function SceneImageStudio() {
 
       <div className="scene-compose">
         <div className={`scene-media-row${scene.refs.length <= 3 ? " is-large" : ""}`} role="group" aria-label="参考图">
+          {/* 「可选」只在有必填的一排里标：自由出图四格全是可选，每格都写一遍在手机上把名字挤成「参考图 2 可…」（2026-11-02）。 */}
           {scene.refs.map((ref, i) => {
             const slot = slots[i];
             const Icon = refIcon(ref.label);
@@ -406,7 +408,7 @@ export function SceneImageStudio() {
               {slot ? <span className="scene-media-preview"><SignedImage src={slot.url} storageKey={slot.key} alt={ref.label}/><i className="scene-ref-index">图{i + 1}</i></span>
                 : <button type="button" className="scene-slot-add" aria-label={`从资产库选${ref.label}`} title={ref.hint ?? undefined} onClick={() => openPicker(i)}>
                     <SlotEmpty Icon={Icon} size={28}/></button>}
-              <span title={ref.hint}>{ref.label}{!slot && !ref.required && <small>可选</small>}</span>
+              <span title={ref.hint}>{ref.label}{!slot && !ref.required && someRequired && <small>可选</small>}</span>
               {slot && <button type="button" className="scene-ref-remove" aria-label={`移除${ref.label}`} onClick={() => setSlots(old => { const next = [...old]; next[i] = undefined; return next; })}><X size={11} strokeWidth={1.8}/></button>}
             </div>;
           })}
@@ -437,11 +439,11 @@ export function SceneImageStudio() {
                 counts={counts} count={usedCount} onCount={setCount} options={scene.options} picked={picked} onPick={(key, choice) => setPicked(old => ({ ...old, [key]: choice }))} onClose={() => setSettingsOpen(false)}/>}
             </div>
           </div>
-          <button type="button" className="scene-go" aria-label="生成图片" title={blocker || undefined} disabled={busy || !!blocker} onClick={() => void generate()}>
+          <button type="button" className="scene-go" aria-label="生成图片" aria-describedby={hint || blocker ? "scene-image-go-note" : undefined} title={blocker || undefined} disabled={busy || !!blocker} onClick={() => void generate()}>
             {busy ? <Loader2 size={16} className="studio-gallery-spinner"/> : null}<span>生成图片</span>
             {(caps?.mock || (chosen && quote > 0)) && <small>{caps?.mock ? "免费" : `${quote} 积分`}</small>}
           </button>
-          {(hint || blocker) && <p className={`scene-hint${hint ? "" : " is-note"}`} role="status">{hint || blocker}</p>}
+          {(hint || blocker) && <p id="scene-image-go-note" className={`scene-hint${hint ? "" : " is-note"}`} role="status">{hint || blocker}</p>}
           {(note || specNote) && <p className="scene-hint is-note" role="status">{[note?.text, specNote].filter(Boolean).join(" ")}
             {note?.undo && <button type="button" onClick={note.undo}>撤销</button>}</p>}
           {models && !candidates.length && !caps?.mock && <SceneNoModel kind="图片"/>}

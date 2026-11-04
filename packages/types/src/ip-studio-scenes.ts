@@ -47,7 +47,7 @@ export interface StudioSceneSlot { label: string; required: boolean; max?: numbe
 export interface StudioSceneBrief {
   /** 这一条要让看的人做什么，一句话。 */
   goal: string;
-  /** 要用户给的信息；required 的没给，编导先写「还缺：……」并用【待补：……】占位。use 是怎么用（「有原价才做对比」）。 */
+  /** 要用户给的信息；required 是这条要讲的重点，没给时编导直接写好，价格、金额、地址不写具体数字（2026-11-04 起不再留【待补】）。use 是怎么用（「有原价才做对比」）。 */
   /** inferable：痛点、卖点、使用场景这类能从素材合理推断的，没给也不算还缺（docs/studio-prompt-architecture.md §9.6）。 */
   facts: { label: string; required: boolean; use?: string | null; inferable?: boolean | null }[];
   /** 结尾要观众做什么。 */

@@ -108,7 +108,8 @@ public class DapJobRunner {
     @Async("dapJobExecutor")
     public void run(String jobId) {
         DapJob job = jobRepo.findById(jobId).orElse(null);
-        if (job == null) return;
+        // Already ended before it started: an enterprise stopped the member and cancelled it with its holds.
+        if (job == null || !"running".equals(job.getStatus())) return;
         job.setStartedAt(Instant.now());
         job.setStatus("running");
         job.setStage("runner.start");
@@ -118,6 +119,7 @@ public class DapJobRunner {
         log.info("[dap-job] run start id={} type={} mode={} engine={} owner={} avatar={}",
                 job.getId(), job.getType(), job.getMode(), job.getEngine(), job.getOwnerUserId(), job.getAvatarId());
         try (var attribution = AiModelUsageContext.bind(job.getOwnerUserId(), "aiavatar", jobId); var billingScope=modelBilling.open(job)) {
+            modelBilling.requireDispatch(job);
             switch (job.getType()) {
                 case DapJob.T_GENERATE -> runGenerate(job);
                 case DapJob.T_GENERATE_UPLOAD -> runGenerateUpload(job);

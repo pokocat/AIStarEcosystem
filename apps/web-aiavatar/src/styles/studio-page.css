@@ -102,26 +102,6 @@ html[data-layout="mobile"] .studio-page .hub-tabbar .wx-fab { color: white; box-
 .studio-create-page .studio-gallery-panel-heading h2 { font-family: var(--ip-ui); font-size: 16px; }
 .studio-create-page .studio-gallery-empty,.studio-create-page .studio-gallery-state { min-height: 110px; padding: 16px; gap: 6px; }
 .studio-create-page .studio-gallery-panel.studio-creation-section { margin-top: 0; padding-top: 0; }
-/* 「新建画布」: one wide card on top, the whole card is the button. The picture is a canvas with the assistant beside it. */
-.studio-create-new { display: grid; grid-template-columns: minmax(0,320px) minmax(0,1fr) auto; align-items: center; gap: 24px; width: 100%; min-width: 0; margin: 0 0 28px; padding: 14px 24px 14px 14px; text-align: left; color: var(--ip-ink); background: var(--ip-paper); border: 1px solid var(--ip-line); border-radius: 12px; cursor: pointer; transition: border-color 180ms ease, box-shadow 180ms ease; }
-.studio-create-new:not(:disabled):hover { border-color: var(--ip-ink); box-shadow: 0 12px 30px rgb(25 34 41 / 8%); }
-.studio-create-new:focus-visible { outline: 2px solid var(--ip-ink); outline-offset: 3px; }
-.studio-create-new:disabled { cursor: default; }
-.studio-create-new:disabled:not([aria-busy="true"]) { opacity: .6; }
-.studio-create-new[aria-busy="true"] { cursor: progress; }
-.studio-create-new-visual { position: relative; display: grid; grid-template-columns: minmax(0,1fr) 30%; min-width: 0; aspect-ratio: 16/7; overflow: hidden; border: 1px solid var(--ip-line); border-radius: 8px; background: var(--ip-soft); }
-.studio-create-new-board { position: relative; display: flex; align-items: center; justify-content: center; gap: 0; min-width: 0; padding: 10px; background: radial-gradient(circle,#c8ced0 1px,transparent 1px) 0 0/12px 12px,var(--ip-soft); }
-.studio-create-new-board > span { display: flex; align-items: center; gap: 5px; flex-shrink: 0; padding: 7px 9px; color: #66757d; background: var(--ip-paper); border: 1px solid #cfd6d9; border-radius: 6px; font-size: 11px; line-height: 1; white-space: nowrap; }
-.studio-create-new-board > i { flex: 0 1 34px; min-width: 10px; border-top: 1px dashed #aab4ba; }
-.studio-create-new-assistant { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 10px 9px; background: var(--ip-paper); border-left: 1px solid var(--ip-line); }
-.studio-create-new-assistant > b { display: grid; place-items: center; width: 20px; height: 20px; margin-bottom: 2px; border-radius: 50%; color: #fff; background: var(--ai-gradient, linear-gradient(135deg,#4f5bd5,#8b6cf0)); }
-.studio-create-new-assistant > em { display: block; height: 7px; border-radius: 4px; background: #eceef0; }
-.studio-create-new-assistant > em:nth-of-type(2) { width: 70%; margin-left: auto; background: var(--ai-soft, #ebe7fb); }
-.studio-create-new-assistant > em:nth-of-type(3) { width: 85%; }
-.studio-create-new-copy { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.studio-create-new-copy strong { font-family: var(--ip-display); font-size: 24px; font-weight: 600; line-height: 1.35; letter-spacing: -.01em; }
-.studio-create-new-copy > span { color: var(--ip-muted); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
-.studio-create-new-go { display: grid; place-items: center; flex-shrink: 0; width: 46px; height: 46px; border-radius: 50%; color: var(--ip-paper); background: var(--ip-ink); }
 .studio-create-tools-heading { margin-top: 0; }
 .studio-create-tools { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 14px; }
 .studio-create-tool { display: block; min-width: 0; overflow: hidden; padding: 0; text-align: left; color: var(--ip-ink); background: var(--ip-paper); border: 1px solid var(--ip-line); border-radius: 9px; transition: border-color 180ms ease; }
@@ -149,10 +129,29 @@ html[data-layout="mobile"] .studio-create-tools { grid-template-columns: repeat(
 html[data-layout="mobile"] .studio-create-tool-copy { padding: 10px; }
 html[data-layout="mobile"] .studio-create-tool-copy strong { font-size: 13px; }
 html[data-layout="mobile"] .studio-create-tool-copy p { min-height: 34px; font-size: 11px; }
-html[data-layout="mobile"] .studio-create-new { grid-template-columns: minmax(0,1fr) auto; gap: 12px 14px; margin-bottom: 24px; padding: 12px 14px 14px 12px; }
-html[data-layout="mobile"] .studio-create-new-visual { grid-column: 1/-1; aspect-ratio: 16/6; }
-html[data-layout="mobile"] .studio-create-new-copy strong { font-size: 20px; }
-html[data-layout="mobile"] .studio-create-new-copy > span { font-size: 12px; }
-html[data-layout="mobile"] .studio-create-new-go { width: 40px; height: 40px; }
 html[data-layout="mobile"] .studio-create-page .studio-template-grid { grid-template-columns: repeat(4,minmax(210px,1fr)); overflow-x: auto; padding-bottom: 6px; gap: 10px; }
 @media (prefers-reduced-motion: reduce) { .studio-create-new,.studio-create-tool,.studio-create-tool-visual > img { transition: none; } }
+
+/* 「画布·自由创作」第一行（2026-11-04）：小的「新建画布」加最近的画布，一行横向滑动。
+   卡片定宽，右边总露出半张，一看就知道还能滑；全部画布在项目页。 */
+.studio-create-recent { margin-bottom: 28px; }
+.studio-create-recent .studio-gallery-more { display: inline-flex; align-items: center; gap: 4px; }
+.studio-create-recent-list { display: grid; grid-auto-flow: column; grid-auto-columns: 214px; gap: 12px; margin: 0; padding: 2px 2px 8px; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: thin; list-style: none; }
+.studio-create-recent-list li { min-width: 0; scroll-snap-align: start; }
+.studio-create-recent-list a { display: flex; flex-direction: column; height: 100%; overflow: hidden; border: 1px solid var(--ip-line); border-radius: 12px; background: var(--ip-paper); color: var(--ip-ink); text-decoration: none; transition: border-color 160ms var(--ip-ease), box-shadow 160ms var(--ip-ease); }
+.studio-create-recent-list a:hover { border-color: var(--ip-ink); box-shadow: 0 8px 22px rgb(25 34 41 / 8%); }
+.studio-create-recent-list a:focus-visible { outline: 2px solid var(--ip-ink); outline-offset: 2px; }
+.studio-create-recent-list .studio-gallery-preview { aspect-ratio: 16 / 10; overflow: hidden; }
+.studio-create-recent-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 9px 12px 11px; }
+.studio-create-recent-copy strong { overflow: hidden; font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.studio-create-recent-copy time { color: var(--ip-muted); font-size: 11px; }
+.studio-create-recent-skeleton { min-height: 186px; border-radius: 12px; background: var(--ip-soft); }
+.studio-create-new { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; width: 100%; height: 100%; min-height: 186px; padding: 12px; color: var(--ip-ink); background: var(--ip-soft); border: 1px dashed #c4cbd0; border-radius: 12px; cursor: pointer; transition: border-color 160ms var(--ip-ease), background 160ms var(--ip-ease); }
+.studio-create-new:not(:disabled):hover { border-color: var(--ip-ink); background: var(--ip-paper); }
+.studio-create-new:focus-visible { outline: 2px solid var(--ip-ink); outline-offset: 2px; }
+.studio-create-new:disabled { cursor: default; opacity: .6; }
+.studio-create-new[aria-busy="true"] { cursor: progress; opacity: 1; }
+.studio-create-new strong { font-size: 14px; font-weight: 600; }
+.studio-create-new-go { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; color: var(--ip-paper); background: var(--ip-ink); }
+html[data-layout="mobile"] .studio-create-recent-list { grid-auto-columns: 168px; }
+html[data-layout="mobile"] .studio-create-new, html[data-layout="mobile"] .studio-create-recent-skeleton { min-height: 156px; }

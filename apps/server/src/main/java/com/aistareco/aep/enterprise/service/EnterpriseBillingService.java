@@ -20,6 +20,11 @@ import java.util.*;
 /** A job owns its original payer for its entire lifetime, independently of later membership changes. */
 @Service
 public class EnterpriseBillingService {
+    /** Every paid creation: Studio runs and videos, digital-asset jobs and voice cloning. */
+    static final String DAP_JOB="dap-job";
+    private static final Set<String> SCOPES=Set.of("ip-run","material_video_job",DAP_JOB,"dap-voice");
+    /** A flat platform fee with no model behind it: the allowed-model list has nothing to check. */
+    private static final Set<String> FLAT_FEES=Set.of("dap-voice");
     public record BillingAccount(String walletId,String enterpriseId,String membershipId,String billingAuthorizationId) {}
     private final EnterpriseRepository enterprises;
     private final EnterprisePolicyRepository policies;
@@ -63,7 +68,7 @@ public class EnterpriseBillingService {
             return new BillingAccount(credits.getOrCreateWallet(actor).getId(),null,null,null);
         }
         if(!enabled)throw denied("ENTERPRISE_BILLING_DISABLED","企业积分付款尚未开放");
-        if(!Set.of("ip-run","material_video_job").contains(referenceType))throw BusinessException.badRequest("ENTERPRISE_BILLING_SCOPE_INVALID","企业积分只用于工作台创作");
+        if(!SCOPES.contains(referenceType))throw BusinessException.badRequest("ENTERPRISE_BILLING_SCOPE_INVALID","企业积分只用于工作台创作");
         if(!allowedIds.isBlank()&&Arrays.stream(allowedIds.split(",")).map(String::trim).noneMatch(payer.enterpriseId()::equals))
             throw denied("ENTERPRISE_BILLING_NOT_ENABLED","此企业尚未开放企业积分付款，请联系平台管理员");
         var enterprise=lockEnterprise(payer.enterpriseId());
@@ -80,9 +85,9 @@ public class EnterpriseBillingService {
             return account(authorization);
         }
         var policy=currentPolicy(enterprise.getId());
-        requireAllowed(policy,endpointId,amount);
+        if(!FLAT_FEES.contains(referenceType))requireAllowed(policy,endpointId,amount);
         // A job's added holds (reference "<job>#n", reserveExtension) belong to that job, not to new jobs.
-        long active=authorizations.activeInEnterprise(enterprise.getId()).stream().filter(a->actor.equals(a.getActorUserId())&&!isExtension(a)).count();
+        long active=authorizations.activeInEnterprise(enterprise.getId()).stream().filter(a->actor.equals(a.getActorUserId())&&countsAsJob(a)).count();
         if(active>=policy.getMaxActiveJobs())throw conflict("ENTERPRISE_ACTIVE_JOB_LIMIT","已达到企业设定的在途任务上限，请等待已有任务完成");
         var wallet=wallets.findByAccountKey("enterprise_member:"+enterprise.getId()+":"+actor)
                 .orElseThrow(()->conflict("ENTERPRISE_WALLET_MISSING","成员企业账户不存在，请联系管理员"));
@@ -138,7 +143,41 @@ public class EnterpriseBillingService {
         else credits.holdWallet(parent.getWalletId(),amount,referenceType,referenceId,description,parent.getActorUserId(),parent.getMembershipId(),authorization.getId(), context);
         return account(authorization);
     }
+    /**
+     * The text stage of a digital-asset job (reference "<job>:rN:text") paid like its media stage
+     * ("<job>:rN:media", already reserved in this transaction): same actor, enterprise, membership and wallet, its own
+     * text model, which the policy must allow. Reserved, so a lifecycle change cancels both before dispatch, and not a
+     * new job for the active-job limit. Null when the media stage is not enterprise-paid.
+     */
+    @Transactional
+    public BillingAccount reserveCompanion(String referenceType,String primaryReferenceId,String referenceId,String endpointId,
+            long amount,String description,com.aistareco.aep.billing.service.ModelChargeContext context) {
+        if(amount<=0||amount>9_007_199_254_740_991L)throw BusinessException.badRequest("BILLING_AMOUNT_INVALID","积分金额无效");
+        var snapshot=authorizations.findByReferenceTypeAndReferenceId(referenceType,primaryReferenceId).orElse(null);
+        if(snapshot==null)return null;
+        Objects.requireNonNull(context,"Billing context is required");
+        if(context.target()!=null && !Objects.equals(endpointId,context.target().endpointId()))
+            throw conflict("MODEL_BILLING_TARGET_CHANGED","付款授权的模型与计费用途不一致");
+        lockEnterprise(snapshot.getEnterpriseId());
+        var primary=authorizations.lockByReference(referenceType,primaryReferenceId).orElseThrow();em.refresh(primary,LockModeType.PESSIMISTIC_WRITE);
+        if(primary.getTerminalAt()!=null||primary.getRevokedAt()!=null)throw denied("ENTERPRISE_BILLING_REVOKED","企业积分付款已停止");
+        var member=access.memberForUpdate(primary.getActorUserId(),primary.getEnterpriseId());
+        if(!member.getId().equals(primary.getMembershipId()))throw denied("ENTERPRISE_BILLING_REVOKED","企业成员关系已结束，不能继续使用企业积分");
+        requireAllowed(currentPolicy(primary.getEnterpriseId()),endpointId,amount);
+        if(authorizations.lockByReference(referenceType,referenceId).isPresent())throw conflict("BILLING_SELECTION_CONFLICT","此任务的付款授权已存在");
+        var authorization=new EnterpriseBillingAuthorization();authorization.setId(UUID.randomUUID().toString());
+        authorization.setEnterpriseId(primary.getEnterpriseId());authorization.setActorUserId(primary.getActorUserId());authorization.setMembershipId(primary.getMembershipId());
+        authorization.setWalletId(primary.getWalletId());authorization.setReferenceType(referenceType);authorization.setReferenceId(referenceId);
+        authorization.setEndpointId(endpointId);authorization.setAmount(amount);authorization.setStatus("reserved");
+        authorization.setCreatedAt(Instant.now());authorization.setUpdatedAt(authorization.getCreatedAt());authorizations.saveAndFlush(authorization);
+        credits.holdWallet(primary.getWalletId(),amount,referenceType,referenceId,description,primary.getActorUserId(),primary.getMembershipId(),authorization.getId(),context);
+        return account(authorization);
+    }
     private static boolean isExtension(EnterpriseBillingAuthorization a){return a.getReferenceId()!=null&&a.getReferenceId().indexOf('#')>0;}
+    /** One generation is one job however many holds it has: added holds and a digital-asset job's text stage ride on it. */
+    private static boolean countsAsJob(EnterpriseBillingAuthorization a) {
+        return !isExtension(a)&&!(DAP_JOB.equals(a.getReferenceType())&&a.getReferenceId()!=null&&a.getReferenceId().endsWith(":text"));
+    }
     /**
      * Available credits of the account this payer would freeze on, read without locks. Only a sizing hint (a Studio
      * dialogue holds min(its ceiling, this)); {@link #reserve} under its locks stays the decision.
@@ -183,7 +222,7 @@ public class EnterpriseBillingService {
             var policy=policies.findById(payer.enterpriseId()).orElseThrow();
             requireAllowed(policy,charge.target().endpointId(),0);
             // Quotes run read-only: a locking read here fails on MySQL (ERROR 1792). reserve() repeats this check under lock.
-            long active=authorizations.activeForActorWithoutLock(payer.enterpriseId(),actor).stream().filter(a->!isExtension(a)).count();
+            long active=authorizations.activeForActorWithoutLock(payer.enterpriseId(),actor).stream().filter(EnterpriseBillingService::countsAsJob).count();
             if(active+count>policy.getMaxActiveJobs())throw conflict("ENTERPRISE_ACTIVE_JOB_LIMIT","已达到企业设定的在途任务上限，请等待已有任务完成");
             wallet=wallets.findByAccountKey("enterprise_member:"+payer.enterpriseId()+":"+actor)
                     .orElseThrow(()->conflict("ENTERPRISE_WALLET_MISSING","成员企业账户不存在"));
@@ -253,7 +292,8 @@ public class EnterpriseBillingService {
         if(endpointId==null) {if(amount>0)throw denied("ENTERPRISE_MODEL_NOT_ALLOWED","计费模型未确定，不能冻结企业积分");return;}
         try {
             List<String> allowed=mapper.readValue(policy.getAllowedEndpointIdsJson(),new TypeReference<List<String>>(){});
-            if(!allowed.contains(endpointId))throw denied("ENTERPRISE_MODEL_NOT_ALLOWED","企业未允许使用此模型，请联系主账号设置");
+            // An empty list is "all models" (2026-11-02): no enterprise ever filled one in, so enterprise credits were unusable.
+            if(!allowed.isEmpty()&&!allowed.contains(endpointId))throw denied("ENTERPRISE_MODEL_NOT_ALLOWED","企业未允许使用此模型，请联系主账号设置");
         }catch(BusinessException e){throw e;}catch(Exception e){throw new IllegalStateException("企业模型策略损坏",e);}
     }
     private static BusinessException denied(String code,String message){return new BusinessException(HttpStatus.FORBIDDEN,code,message);}

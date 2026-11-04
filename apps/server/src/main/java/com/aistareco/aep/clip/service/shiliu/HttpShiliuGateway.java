@@ -199,7 +199,7 @@ public class HttpShiliuGateway implements ShiliuGateway {
         JsonNode data = firstObject(post("/" + kind + "/status", body));
         String status = normalizedStatus(text(data, "status"));
         String output = "video".equals(kind) && "succeeded".equals(status) ? text(data, "videoUrl") : id;
-        String error = "failed".equals(status) ? ProviderErrorMessage.message(data.toString(), "上游任务失败") : null;
+        String error = "failed".equals(status) ? ProviderErrorMessage.message(data.toString(), "数字人服务未完成这次任务，请稍后再试") : null;
         return new Task(kind + ":" + id, status, durationFrom(data), output, error, progress(data, status));
     }
 
@@ -270,7 +270,7 @@ public class HttpShiliuGateway implements ShiliuGateway {
             HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 log.warn("[clip-shiliu] http failure path={} status={} body={}", path, response.statusCode(), clamp(response.body(),500));
-                throw com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attach(upstreamFailure(ProviderErrorMessage.message(response.body(),"数字人服务返回错误（上游 " + response.statusCode() + "）"), "status=" + response.statusCode()),response);
+                throw com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attach(upstreamFailure(ProviderErrorMessage.message(response.body(),"数字人服务返回错误，请稍后再试"), "status=" + response.statusCode()),response);
             }
             JsonNode envelope = OM.readTree(response.body());
             int code = envelope.path("code").asInt(Integer.MIN_VALUE);

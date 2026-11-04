@@ -40,7 +40,7 @@ import { UI_BOOT_SCRIPT } from "@/shell/ui-version";
 
 export const metadata: Metadata = {
   title: "IP Studio · 声量引擎旗下",
-  description: "让灵感成形，让 IP 出圈。从一个灵感开始，创造数字人、图片、视频与故事。",
+  description: "一个 IP，无限可能。制作形象、图片、视频和短剧。",
   icons: {
     icon: "/brand/ip-studio-logo.png",
     shortcut: "/brand/ip-studio-logo.png",

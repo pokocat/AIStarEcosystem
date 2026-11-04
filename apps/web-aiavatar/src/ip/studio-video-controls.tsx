@@ -10,6 +10,7 @@ import { studioVideoModeName,type StudioVideoDraft } from "@/canvas-bridge/studi
 import { studioVideoPromptReferences } from '@/canvas-bridge/studio-video-references';
 import type { StudioNodeMetadata } from "@ai-star-eco/types/ip-studio-workflow";
 import { AiMark } from "./studio-ai-icon";
+import { AUDIO_REFERENCE_NOTICE } from '@/canvas-bridge/recording-audio';
 
 export type { StudioVideoDraft } from "@/canvas-bridge/studio-video";
 export function StudioVideoControls({model,draft,onChange,nodes,referenceIds,onReferences,onLibrary,libraryButtonRef,section="all"}: {
@@ -35,7 +36,8 @@ export function StudioVideoControls({model,draft,onChange,nodes,referenceIds,onR
     {spec?.references&&<><label>参考素材<Select mode="multiple" aria-label="视频参考素材" value={referenceOnlyIds} onChange={ids=>onReferences([...frameIds,...ids])}
       options={usable.filter(n=>!frameIds.includes(n.id)).map(n=>({value:n.id,label:`${{[CanvasNodeType.Image]:"图片",[CanvasNodeType.Video]:"视频",[CanvasNodeType.Audio]:"音频"}[n.type]} · ${n.title}`}))} placeholder="选择图片、视频或音频"/></label>
       <ol className="studio-video-reference-list">{studioVideoPromptReferences(nodes,referenceOnlyIds).map(ref=><li key={ref.nodeId}><span>{ref.label} · {ref.title}</span><Button type="text" aria-label={`移除${ref.title}`} onClick={()=>onReferences(referenceIds.filter(id=>id!==ref.nodeId))}>移除</Button></li>)}</ol>
-      <p>在创作要求中输入 @ 选择参考用途。音频合计不超过 {spec.references.maxAudioTotalSec} 秒。</p></>}
+      <p>在创作要求中输入 @ 选择参考用途。音频合计不超过 {spec.references.maxAudioTotalSec} 秒。</p>
+      {usable.some(n=>referenceOnlyIds.includes(n.id)&&n.type===CanvasNodeType.Audio)&&<p role="status">{AUDIO_REFERENCE_NOTICE}</p>}</>}
     {(spec?.needsFirstFrame||spec?.needsLastFrame||Boolean(spec?.references?.image.maxCount))&&<Button ref={libraryButtonRef} onClick={onLibrary}>从 IP 人物库选择图片</Button>}
     </>}
     {section!=="references"&&<>

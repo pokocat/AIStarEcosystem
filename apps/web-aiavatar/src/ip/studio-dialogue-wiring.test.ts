@@ -54,7 +54,7 @@ test('the dialogue is actually mounted and wired', () => {
   expect(read('components/landing/ip-home.tsx')).toContain('<StudioConversationStart ');
   expect(read('components/hub/studio-home.tsx')).toContain('<StudioConversationStart ');
   expect(read('ip/studio-create-home.tsx')).not.toContain('StudioConversationStart');
-  expect(read('ip/studio-create-home.tsx')).toContain('className="studio-create-new" aria-label="新建画布"');
+  expect(read('ip/studio-create-home.tsx')).toContain('className="studio-create-new"');
   expect(read('ip/studio-create-home.tsx')).not.toContain('router.replace');
   expect(read('ip/studio-workspace.tsx')).toContain('autoSend={entryAutoSend}');
   expect(read('ip/studio-workspace.tsx')).toContain('>问助手</button>');

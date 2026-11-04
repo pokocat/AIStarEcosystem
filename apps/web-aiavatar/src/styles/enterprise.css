@@ -65,7 +65,8 @@ html[data-layout="mobile"] .enterprise-workspace .studio-page-actions { max-widt
 .enterprise-own-balances strong { display: block; color: var(--ip-ink); font-size: 24px; font-weight: 600; line-height: 1.8; font-variant-numeric: tabular-nums; }
 .enterprise-policy-form { display: grid; gap: 14px; max-width: 760px; }
 .enterprise-policy-form > .ant-btn { justify-self: start; }
-.enterprise-policy-form label { color: var(--ip-ink); font-size: 13px; font-weight: 600; }
+.enterprise-policy-form label,.enterprise-policy-form .enterprise-policy-label { color: var(--ip-ink); font-size: 13px; font-weight: 600; }
+.enterprise-policy-form .ant-radio-wrapper { font-weight: 400; }
 .enterprise-policy-form p,.enterprise-invitations p,.enterprise-lifecycle p { color: var(--ip-muted); font-size: 13px; line-height: 1.8; margin: 0 0 12px; max-width: 72ch; }
 .enterprise-policy-form .ant-select { width: 100%; }
 .enterprise-management h2 { font-size: 18px; font-weight: 600; margin: 0 0 12px; }
@@ -89,6 +90,9 @@ html[data-layout="mobile"] .enterprise-add-member-fields > .ant-input { flex-bas
 .studio-billing-options .ant-radio-wrapper { display: flex; align-items: flex-start; padding: 16px; border: 1px solid var(--ip-line,#e8eaec); border-radius: 8px; margin: 0; min-height: 68px; }
 .studio-billing-options .ant-radio-wrapper-checked { border-color: var(--ip-ink,#192229); background: var(--ip-soft,#f6f6f5); }
 .studio-billing-options strong,.studio-billing-options small { display: block; overflow-wrap: anywhere; }
+.studio-billing-default { display: grid; gap: 4px; }
+.studio-billing-default .ant-checkbox-wrapper { color: var(--ip-ink,#192229); font-size: 14px; font-weight: 500; }
+.studio-billing-default p { padding-left: 24px; font-size: 12px; line-height: 1.7; }
 .studio-billing-options strong { color: var(--ip-ink,#192229); font-size: 14px; font-weight: 600; }
 .studio-billing-options small { color: var(--ip-muted,#65707e); font-size: 12px; line-height: 1.7; margin-top: 4px; }
 .studio-billing-host .ant-btn-primary:not(:disabled) { color: #fff; }

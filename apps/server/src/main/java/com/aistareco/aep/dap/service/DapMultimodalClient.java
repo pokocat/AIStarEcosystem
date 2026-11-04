@@ -368,7 +368,7 @@ public class DapMultimodalClient {
             if (resp.statusCode() >= 400) {
                 log.warn("[dap-ai] download http-error host={} status={} durationMs={}",
                         hostOf(url), resp.statusCode(), elapsedMs(startNanos));
-                throw new DapModelException("DAP_MODEL_DOWNLOAD_FAILED", ProviderErrorMessage.message(new String(resp.body(), StandardCharsets.UTF_8),"下载产物失败（上游 " + resp.statusCode() + "）"));
+                throw new DapModelException("DAP_MODEL_DOWNLOAD_FAILED", ProviderErrorMessage.message(new String(resp.body(), StandardCharsets.UTF_8),"下载产物失败，请稍后再试"));
             }
             byte[] body = resp.body();
             if (body.length > maxBytes) {
@@ -573,7 +573,7 @@ public class DapMultimodalClient {
 
     /** All structured model errors retain the safe provider reason, including server errors. */
     private static String upstreamMessage(HttpResponse<String> resp) {
-        return ProviderErrorMessage.message(resp.body(), "模型服务返回错误（上游 " + resp.statusCode() + "）");
+        return ProviderErrorMessage.message(resp.body(), "模型服务返回错误，请稍后再试");
     }
 
     private Target require(Target t, String channel) {

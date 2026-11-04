@@ -296,10 +296,18 @@ class EnterpriseVideoBillingIntegrationTest {
         assertNotNull(submit(context,30)); // The rolled-back first authorization did not consume the only slot.
     }
 
+    /** Another real endpoint: an allowed list without the job's model blocks it (an empty list means all models). */
+    private String otherModel() {
+        String id="enterprise-other-"+UUID.randomUUID();
+        endpoints.save(AiModelEndpoint.builder().id(id).name("Other model").providerType(AiModelProviderType.OPENAI_COMPATIBLE)
+                .baseUrl(base).model("other").upstreamApiKeyEncrypted(AepCryptoUtil.encrypt("local-test-key")).enabled(true).build());
+        return id;
+    }
+
     @Test void changedEnterpriseModelPolicyBlocksQueuedDispatchBeforeSupplierSubmission() {
         var context=funded(1,100);String id=submit(context,30);
         var policy=enterprises.policy(context.company().member().userId(),context.company().enterprise().id());
-        enterprises.updatePolicy(context.company().member().userId(),context.company().enterprise().id(),new PolicyUpdate(List.of(),1,policy.version()));
+        enterprises.updatePolicy(context.company().member().userId(),context.company().enterprise().id(),new PolicyUpdate(List.of(otherModel()),1,policy.version()));
         worker.generateAsync(id);assertEquals(0,submitted.get());assertEquals("failed",rows.findById(id).orElseThrow().getStatus());
         assertEquals(CreditHold.Status.RELEASED,hold(id).getStatus());assertEquals(100,memberWallet(context).getTotalBalance());
     }

@@ -22,7 +22,7 @@ test("prompt, script and asset fields carry the corner entry", () => {
   expect(read("director-storyboard.tsx")).toMatch(/<AiField scope=\{\{ kind: "prompt", clipId: clip\.id, which \}\}/);
   // 正文入口点下去时才取光标位置（长正文时助手读光标附近那一段）。
   expect(read("director-script.tsx")).toMatch(/<AiField scope=\{\(\) => \(\{ kind: "script", episodeId: target, focusAt: offset\.current \+ \(area\.current\?\.selectionStart \?\? 0\) \}\)\}/);
-  expect(read("director-assets.tsx")).toContain("<AiField scope={current && !audioOnly");
+  expect(read("director-asset-studio.tsx")).toContain("<AiField scope={adopted(asset.image) && !audioOnly");
   // 一键制作、重写、生成这些实际操作不是 AI 入口，不能变成同一种图标。
   expect(read("director-workbench.tsx")).toContain("一键制作");
   expect(read("director-workbench.tsx")).not.toMatch(/director-oneclick[^"]*director-ask-ai/);

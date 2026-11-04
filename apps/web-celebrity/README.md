@@ -72,6 +72,18 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
+### 2026-11-02 · AI 艺人孵化（路演演示版，本地未发布）
+
+- 侧栏新增「AI 艺人 → AI 艺人孵化」（`/incubation`），手机端在「更多」里。给业务方路演看产品逻辑：
+  孵化五步、在孵艺人、孵化工具箱（把数字资产、短剧创作、视频生产、运营变现的能力放到一起）。
+- 点艺人卡片进 `/incubation/[artistId]`，默认页签是**矩阵账号**；另有数字资产、短剧与视频（含短剧知识库）、商业合作。
+- **纯前端，没有后端接口**：数据在 `src/mocks/incubation.ts`（只在本 demo 内用，不进 `@ai-star-eco/types`），
+  配置在 `src/constants/incubation-ui.ts`，组件在 `src/components/incubation/`。所有能力按钮走 `useComingSoon()`，
+  弹「XX 正在完善中」，不调接口、不扣积分。艺人全是虚拟角色，前三位复用落地页的 `/ai-stars/*.jpg`。
+- 真正要做时：类型先进 `packages/types`，再按 AGENTS.md §5 走后端与契约。
+- 角色形象图换代：`public/ai-stars/` 原来三张发光科幻风的图（落地页与孵化页共用）用 Codex 重出成写实时尚大片风，
+  并补了陈屿、苏枝、阿糯三张，统一 800×1200 JPG。明星市场演示数据里的真人照片（`public/celebrities/`、外链）没动。
+
 ### v0.199.1 · 2026-10-04 · 视频生成：英文优化结果加一句说明、模板卡片有封面了
 
 - 真厂商（聚算 H3）的智能优化一律回英文的分镜描述。`OptimizePanel` 在结果以英文为主时（`lib/video-studio.ts` 的 `isMostlyEnglish`：

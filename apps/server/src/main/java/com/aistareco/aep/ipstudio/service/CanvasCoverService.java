@@ -118,6 +118,15 @@ public class CanvasCoverService {
         }
         return null;
     }
+    /** 第一段视频节点当前采用的成片 key（灵感卡悬停播放用）；只认节点上的 storageKey，也就是用户采用的那一条。 */
+    public static String firstVideoKey(JsonNode doc) {
+        for(JsonNode node:IpDocs.nodes(doc)) {
+            if(!"video".equals(node.path("type").asText()))continue;
+            String key=IpDocs.text(IpDocs.metadataOf(node),"storageKey");
+            if(key!=null)return key;
+        }
+        return null;
+    }
     public static boolean isUploadedCover(String key,String id) {
         return key!=null && key.startsWith("ipstudio_cover/"+id.replaceAll("[^A-Za-z0-9_-]","_")+"/");
     }

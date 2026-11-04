@@ -67,6 +67,6 @@ export function RailSceneFlyout({ kind, label, enabled, children }: { kind: Kind
     <div className="rail-flyout-trigger">{children}</div>
     {open && <SceneDrawer flyout heading={label} title={label} groups={lists?.groups ?? []} top={lists?.free} current={current}
       hrefFor={id => `/${kind}?scene=${encodeURIComponent(id)}`} pinned={pinned} onPin={onPin} onClose={() => setOpen(false)}
-      status={lists ? undefined : failed ? "场景暂时读不到，点「" + label + "」进页面看" : "正在读取场景…"}/>}
+      status={lists ? undefined : failed ? "场景加载失败，可点击「" + label + "」进入页面查看" : "正在加载场景…"}/>}
   </div>;
 }

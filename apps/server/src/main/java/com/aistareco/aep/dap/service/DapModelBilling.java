@@ -4,6 +4,7 @@ import com.aistareco.aep.billing.service.*;
 import com.aistareco.aep.dap.model.DapJob;
 import com.aistareco.aep.dap.repository.DapJobRepository;
 import com.aistareco.aep.dap.repository.DapLookRepository;
+import com.aistareco.aep.enterprise.service.EnterpriseBillingService;
 import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.service.AiChatTokenPricing;
@@ -29,11 +30,13 @@ public class DapModelBilling {
     private final DapLookRepository looks;
     private final DapCatalogService catalog;
     private final ObjectMapper json;
+    private final EnterpriseBillingService enterpriseBilling;
 
     public DapModelBilling(AiModelInvocationService models,AiChatTokenPricing tokenPricing,CreditService credits,
-                           DapJobRepository jobs,DapLookRepository looks,DapCatalogService catalog,ObjectMapper json) {
+                           DapJobRepository jobs,DapLookRepository looks,DapCatalogService catalog,ObjectMapper json,
+                           EnterpriseBillingService enterpriseBilling) {
         this.models=models;this.tokenPricing=tokenPricing;this.credits=credits;this.jobs=jobs;
-        this.looks=looks;this.catalog=catalog;this.json=json;
+        this.looks=looks;this.catalog=catalog;this.json=json;this.enterpriseBilling=enterpriseBilling;
     }
 
     public record Route(ModelChargeContext charge,String baseUrl) {}
@@ -64,9 +67,30 @@ public class DapModelBilling {
         var plan=new Plan(primary,text,rate,primaryCredits);
         var payload=new LinkedHashMap<>(payload(job));payload.put(PLAN,json.convertValue(plan,Map.class));payload.remove(USAGE);payload.remove("_modelBillingFinished");job.setPayload(payload);
         String root=reference(job);
-        credits.hold(job.getOwnerUserId(),primaryCredits,DapJobService.REF_TYPE,root+":media",job.getKind()+" · 媒体生成",primary.charge());
-        if(text!=null)credits.hold(job.getOwnerUserId(),rate.maxCost(),DapJobService.REF_TYPE,root+":text",job.getKind()+" · 文本处理",text.charge());
+        // The payer chosen at submission (kept on the job, so a retry pays the same way) holds both stages.
+        if(EnterpriseBillingService.enterprise(DapPayer.of(job))) {
+            enterpriseBilling.reserve(job.getOwnerUserId(),DapPayer.of(job),DapJobService.REF_TYPE,root+":media",primary.charge().target().endpointId(),
+                    primaryCredits,job.getKind()+" · 媒体生成",primary.charge());
+            if(text!=null)enterpriseBilling.reserveCompanion(DapJobService.REF_TYPE,root+":media",root+":text",
+                    text.charge().target().endpointId(),rate.maxCost(),job.getKind()+" · 文本处理",text.charge());
+        } else {
+            credits.hold(job.getOwnerUserId(),primaryCredits,DapJobService.REF_TYPE,root+":media",job.getKind()+" · 媒体生成",primary.charge());
+            if(text!=null)credits.hold(job.getOwnerUserId(),rate.maxCost(),DapJobService.REF_TYPE,root+":text",job.getKind()+" · 文本处理",text.charge());
+        }
         job.setCost(Math.addExact(primaryCredits,rate==null?0:rate.maxCost()));
+    }
+
+    /**
+     * Before the runner calls any model: an enterprise-paid job still has a member who may spend and models the
+     * enterprise allows. Throws ENTERPRISE_BILLING_REVOKED / ENTERPRISE_MODEL_NOT_ALLOWED otherwise; the runner then
+     * fails the job and releases its holds. Personal jobs pass.
+     */
+    public void requireDispatch(DapJob job) {
+        var plan=plan(job);
+        if(plan==null||!EnterpriseBillingService.enterprise(DapPayer.of(job)))return;
+        String root=reference(job);
+        enterpriseBilling.requireDispatchAllowed(DapJobService.REF_TYPE,root+":media");
+        if(plan.text()!=null)enterpriseBilling.requireDispatchAllowed(DapJobService.REF_TYPE,root+":text");
     }
 
     public Plan plan(DapJob job) {

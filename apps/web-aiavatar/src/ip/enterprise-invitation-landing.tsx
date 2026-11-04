@@ -179,6 +179,6 @@ export function EnterpriseInvitationLanding() {
         </>}
       </section>
     </main>
-    <footer className="ei-footer"><span>让灵感成形，让 IP 出圈。</span><span>企业邀请 · IP Studio</span></footer>
+    <footer className="ei-footer"><span>一个 IP，无限可能。</span><span>企业邀请 · IP Studio</span></footer>
   </div>;
 }

@@ -7,7 +7,6 @@ import type { DirectorClip, DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi } from "../api";
 import { useRewriteClip } from "./director-rewrite";
 import { DirectorAntd } from "./director-antd";
-import { saveStudioBillingPreference } from "@/canvas-bridge/studio-billing-preference";
 
 const api = vi.hoisted(() => ({ account: vi.fn(), balance: vi.fn(), myBalance: vi.fn(), policy: vi.fn() }));
 vi.mock("../api", () => ({ DirectorApi: { runTask: vi.fn() } }));
@@ -85,7 +84,7 @@ test("cancelling the scope confirmation never opens payment or submits a task", 
 });
 
 test("saved payment preferences still skip the chooser after closing the scope confirmation", async () => {
-  saveStudioBillingPreference(account as Parameters<typeof saveStudioBillingPreference>[0], "personal");
+  api.account.mockResolvedValue({ ...account, context: { ...account.context, billingDefault: "personal" } });
   show(); await confirmRewrite();
   await waitFor(() => expect(DirectorApi.runTask).toHaveBeenCalledTimes(1));
   expect(vi.mocked(DirectorApi.runTask).mock.calls[0][1].billing).toEqual({ mode: "personal" });
