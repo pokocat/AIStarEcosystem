@@ -3,7 +3,7 @@
 import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 import { useEffect, useState } from "react";
 import { AlertTriangle, Check, FileText, Lightbulb, Clapperboard, Film, ImageIcon, LayoutGrid, Loader2, Play, Plus, RefreshCw, Scissors, Trash2, Wand2, X } from "lucide-react";
-import type { DirectorClip, DirectorShot, DirectorTask, DirectorWork } from "@ai-star-eco/types";
+import type { DirectorClip, DirectorSceneView, DirectorShot, DirectorTask, DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi } from "../api";
 import { useStudioApp } from "../studio-errors";
 import type { WorkbenchProps } from "./director-workbench";
@@ -14,6 +14,7 @@ import { formatDateTime } from "@/lib/datetime";
 import { AiField, AskAI, useAssistant } from "./director-assistant";
 import { StoryboardSide } from "./director-script-reference";
 import { confirmDirectorAction } from "./director-antd";
+import { SCENE_VIEWS } from "./director-asset-studio";
 
 export function DirectorStoryboard(props: WorkbenchProps) {
   const { work, episodeId, apply, setError, goTab, pickEpisode, focus } = props;
@@ -206,11 +207,16 @@ function clipStatus(work: DirectorWork, clip: DirectorClip) {
   return "视频已确认";
 }
 
+/** 这一段里这项资产实际用的图：选了形态用形态的，其余用主图。和服务端 visualAssets 同一个判断。 */
+function chosenImage(a: DirectorWork["assets"][number], clip: DirectorClip) {
+  return a.forms?.find(f => f.id === clip.assetForms?.[a.id])?.image ?? a.image;
+}
+
 /** 这个片段现在能不能生成分镜图：有问题、缺资产图、资产图没确认都不能。卡片、弹窗、批量共用这一条。 */
 function boardBlockReason(work: DirectorWork, clip: DirectorClip) {
   const visual = (clip.assetIds.map(id => work.assets.find(a => a.id === id)).filter(Boolean) as DirectorWork["assets"]).filter(a => !a.description.includes("只出声音"));
-  const missing = visual.filter(a => !a.image.adoptedId);
-  const unconfirmed = visual.filter(a => a.image.adoptedBy === "auto");
+  const missing = visual.filter(a => !chosenImage(a, clip).adoptedId);
+  const unconfirmed = visual.filter(a => chosenImage(a, clip).adoptedBy === "auto");
   if (clip.issues.length) return "片段有待处理的问题";
   if (missing.length) return `缺少资产图：${missing.map(a => a.name).join("、")}`;
   if (unconfirmed.length) return `资产图待确认：${unconfirmed.map(a => a.name).join("、")}`;
@@ -453,14 +459,24 @@ function ClipPreview({ work, clip, preview, apply, setError, goTab, onPickVideo,
           <button type="button" onClick={() => { onClose(); goTab("assets"); }}>回到资产页</button></div>}
         {linked.length === 0 ? <p className="director-muted">这个片段还没有关联资产，可在卡片上点「编辑镜头」调整。</p> :
           <ul className="director-preview-assets">{linked.map(a => {
-            const img = adopted(a.image);
+            const slot = chosenImage(a, clip);
+            const img = adopted(slot);
             const audioOnly = a.description.includes("只出声音");
-            const status = audioOnly ? "仅声音出场" : !a.image.adoptedId ? "缺少资产图" : a.image.adoptedBy === "auto" ? "待确认" : a.image.adoptedCheck === "outdated" ? "需更新" : "已确认";
+            const status = audioOnly ? "仅声音出场" : !slot.adoptedId ? "缺少资产图" : slot.adoptedBy === "auto" ? "待确认" : slot.adoptedCheck === "outdated" ? "需更新" : "已确认";
+            const chosenForm = clip.assetForms?.[a.id] ?? "";
+            const pickForm = (formId: string) => formId !== chosenForm && void run(`form:${a.id}`, async () => apply(await DirectorApi.edit(work.id, "clip.setForm", clip.id, null, { assetId: a.id, formId: formId || null })),
+              failed(setError, `换「${a.name}」在片段 ${clip.order} 的形态`));
+            const views = a.kind === "scene" ? SCENE_VIEWS.filter(v => clip.shots.some(s => s.sceneView === v.key)) : [];
             return <li key={a.id} className={a.id === preview.assetId ? "is-focused" : undefined}>
               <span className="director-preview-asset-img">{img?.url ? <img src={img.url} alt={a.name}/> : <ImageIcon size={18}/>}</span>
               <div><b>{a.name}<small>{kindLabel[a.kind]}</small></b>
                 <small className={status === "已确认" ? "is-done" : status === "缺少资产图" ? "is-error" : "is-warn"}>{status}{a.voice ? " · 已绑定声音" : ""}</small>
                 <p title={a.description}>{a.description || "暂无描述"}</p>
+                {!!a.forms?.length && <div className="director-chips director-clip-forms" role="group" aria-label={`${a.name}在这一段的形态`}>
+                  <button type="button" aria-pressed={!chosenForm} disabled={!!busy} onClick={() => pickForm("")}>主形象</button>
+                  {a.forms.map(f => <button key={f.id} type="button" aria-pressed={chosenForm === f.id} disabled={!!busy} onClick={() => pickForm(f.id)}>{f.name}</button>)}
+                </div>}
+                {views.length > 0 && <small className="director-muted">这一段还用到 {views.map(v => `${v.label}${a.views?.[v.key]?.adoptedId ? "" : "（还没有图，先按主视图）"}`).join("、")}</small>}
                 <button type="button" className="ip-brand-text-button director-danger director-unlink" disabled={!!busy} onClick={() => unlink(a)}
                   aria-label={`从片段 ${clip.order} 解除${a.name}的关联`}>{busy === `unlink:${a.id}` ? "正在解除…" : "解除关联"}</button></div>
             </li>;
@@ -576,6 +592,11 @@ function ClipEditor({ work, clip, apply, setError, onDone }: { work: DirectorWor
         <button type="button" className="ip-brand-text-button director-danger" aria-label={`删除镜头 ${i + 1}`} onClick={() => setShots(shots.filter((_, j) => j !== i))}><X size={14}/></button>
       </div>
       <label className="director-field"><span>分镜画面</span><textarea rows={2} maxLength={1000} value={s.still} onChange={e => update(i, { still: e.target.value })}/></label>
+      {assetIds.some(id => work.assets.find(a => a.id === id)?.kind === "scene") && <label className="director-field"><span>背景朝向</span>
+        <SelectField aria-label={`镜头 ${i + 1} 的背景朝向`} value={s.sceneView ?? ""} onChange={e => update(i, { sceneView: (e.target.value || undefined) as DirectorSceneView | undefined })}>
+          <option value="">主视</option>
+          {SCENE_VIEWS.map(v => <option key={v.key} value={v.key}>{v.label}</option>)}
+        </SelectField></label>}
       <label className="director-field"><span>动作（起始 → 过程 → 结束）</span><textarea rows={2} maxLength={1000} value={s.action} onChange={e => update(i, { action: e.target.value })}/></label>
       <label className="director-field"><span>机位与构图</span><input value={s.camera} maxLength={1000} onChange={e => update(i, { camera: e.target.value })}/></label>
       {s.dialogue.map((l, j) => <div key={j} className="director-line-editor">

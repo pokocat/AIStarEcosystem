@@ -220,7 +220,9 @@ final class LegacyDirectorPrompts {
             6. 原文没有给名字的（如「男人」「那家店」「一个盒子」），按剧情给一个贴切、具体的名字：角色按年代、地域、身份和年龄起，
                场景用具体地点名，道具用具体名称；原文里的称呼放进 aliases，方便和正文对上。
             7. episodeNos 填该资产出现的集号（来自输入）。
-            输出 JSON：{"assets":[{"existingId":null,"kind":"character|scene|prop","name":"名称","aliases":[],"description":"外观与设定","episodeNos":[1]}]}
+            8. 同一个角色在剧情里有明显不同的样子（换装、受伤、变身、前后年龄不同），在 forms 里各写一项：name 用简短的叫法（如「半妖态」「婚礼礼服」），
+               description 只写和平时不一样的地方。上面第 3 条的 description 只写第一次出场的样子，不写后面的变化；第一次出场的样子不进 forms。没有变化的角色 forms 给空数组；场景和道具不写 forms。
+            输出 JSON：{"assets":[{"existingId":null,"kind":"character|scene|prop","name":"名称","aliases":[],"description":"外观与设定","episodeNos":[1],"forms":[{"name":"形态名称","description":"这个形态和平时不一样的地方"}]}]}
             """;
 
     /**
@@ -247,14 +249,14 @@ final class LegacyDirectorPrompts {
 
             【输出结构】
             严格按以下 JSON 结构输出，不得增减字段：
-            {"clips":[{"title":"片段短标题","summary":"本段剧情摘要","sourceQuote":"本片段对应正文的第一句原文，从正文逐字摘抄，不超过 30 字","assetIds":["资产 id"],"shots":[{"durationSec":3,"size":"景别","camera":"机位与构图","action":"动作过程：开始→过程→结束","still":"分镜静态帧描述","dialogue":[{"speakerId":"角色 id","text":"台词内容"}]}]}]}
+            {"clips":[{"title":"片段短标题","summary":"本段剧情摘要","sourceQuote":"本片段对应正文的第一句原文，从正文逐字摘抄，不超过 30 字","assetIds":["资产 id"],"assetForms":{"角色 id":"形态 id"},"shots":[{"durationSec":3,"size":"景别","sceneView":"main","camera":"机位与构图","action":"动作过程：开始→过程→结束","still":"分镜静态帧描述","dialogue":[{"speakerId":"角色 id","text":"台词内容"}]}]}]}
             """;
 
     private static final String RESHOOT_OUTPUT = """
 
             【输出结构】
             严格按以下 JSON 结构输出，不得增减字段；clips 里只放 rewriteIds 中的片段，每个一项，id 原样照抄：
-            {"clips":[{"id":"片段 id","title":"片段短标题","summary":"本段剧情摘要","assetIds":["资产 id"],"shots":[{"durationSec":3,"size":"景别","camera":"机位与构图","action":"动作过程：开始→过程→结束","still":"分镜静态帧描述","dialogue":[{"speakerId":"角色 id","text":"台词内容"}]}]}]}
+            {"clips":[{"id":"片段 id","title":"片段短标题","summary":"本段剧情摘要","assetIds":["资产 id"],"assetForms":{"角色 id":"形态 id"},"shots":[{"durationSec":3,"size":"景别","sceneView":"main","camera":"机位与构图","action":"动作过程：开始→过程→结束","still":"分镜静态帧描述","dialogue":[{"speakerId":"角色 id","text":"台词内容"}]}]}]}
             """;
 
     /** 写镜头的规则（写实、画面写法、台词量、镜头内容），写分镜脚本和重写片段共用。 */
@@ -315,6 +317,8 @@ final class LegacyDirectorPrompts {
             2. 同一片段尽量保持在同一场景内；镜头拆分必须保证动作连贯、时空逻辑统一：人物站位、道具位置、光线方向前后一致。镜头时长相加等于片段时长。
             3. assetIds 仅可使用输入 assets 中提供的 id，列出本片段所有出镜 / 发声角色、对应场景、关键道具；
                对白的 speakerId 仅可使用角色 id，旁白 / 画外音填 null。
+               assets 里带 forms 的角色，这一段是其中哪种样子，就在 assetForms 里写「角色 id: 形态 id」；平时的样子不写，没有就给空对象。
+               sceneView 写这一镜的背景看向哪边：main 是主视（默认）；reverse 是从对面拍回来，对话的反打、人物回头看到的那一面；left、right 是朝空间的左侧、右侧。和机位写的要一致。
             4. 仅输出分镜计划，不得宣称已生成图片或视频；不得新增正文与 brief 中均未提及的情节、对白。
             5. 若 brief 中明确规定了片段数、镜头数或时长，在 %d–%d 秒的边界内优先按 brief 执行。
             """;
@@ -334,6 +338,8 @@ final class LegacyDirectorPrompts {
             5. 同一片段尽量保持在同一场景内；镜头拆分必须保证动作连贯、时空逻辑统一：人物站位、道具位置、光线方向前后一致。镜头时长相加等于片段时长。
             6. assetIds 仅可使用输入 assets 中提供的 id，列出本片段所有出镜 / 发声角色、对应场景、关键道具；
                对白的 speakerId 仅可使用角色 id，旁白 / 画外音填 null。
+               assets 里带 forms 的角色，这一段是其中哪种样子，就在 assetForms 里写「角色 id: 形态 id」；平时的样子不写，没有就给空对象。
+               sceneView 写这一镜的背景看向哪边：main 是主视（默认）；reverse 是从对面拍回来，对话的反打、人物回头看到的那一面；left、right 是朝空间的左侧、右侧。和机位写的要一致。
             7. 仅输出分镜脚本，不得宣称已生成图片或视频；不得新增正文与 brief 中均未提及的情节、对白。
             8. 若 brief 中明确规定了镜头数或时长，在 %d–%d 秒的边界内优先按 brief 执行。
             """;

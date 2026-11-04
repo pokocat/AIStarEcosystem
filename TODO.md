@@ -109,6 +109,7 @@
 - [ ] **提示词库后台页挪到 studio-admin**（§12.2）：这次先在 apps/admin「平台 › 提示词与技能」（原「Studio 技能」页）上做（分层筛选、按调用点预览）。
 - [ ] **旧 Prompt 管理里已迁走的 8 行、不再使用的 2 行**（`PromptService.MOVED_TO_STUDIO_LIBRARY` / `RETIRED_KEYS`）：线上稳定一两周后再从后台列表隐藏或删除；回滚到本版之前的 server 时这些行仍是旧路径的真值，不要早删。
 - [ ] **后端全量测试在本机跑不完**（2026-11-01）：`./mvnw test` 全量在 Maven 预算堆下 GC 打满、长时间不结束，本次只能按 `**/ipstudio/**/*Test`、`**/enterprise/**/*Test`、`Prompt*Test` 子集验证。要查是哪组测试攒内存，或按测试类分批串行跑（`-DforkCount=1 -DreuseForks=false`）。
+- [ ] **导演台形态与四视图上线前再验一遍**（2026-11-04 本地只用 Agnes 验过）：① 用线上聚算 Qwen 真调提取和写分镜，确认 `forms`、`assetForms`、`sceneView`（`stage-director-extract`、`stage-director-storyboard` v2）；Agnes 会把后面的变化也写进主设定描述，主形象可能带上。② 真模型出一组四视图，看 2×2 切开后是不是同一个空间（`DirectorSceneViews`）。③ 全能参考模型下带视角图的成片。④ 切图失败时那张图的费用不退（`applySceneViews`），看线上是否出现。
 - [ ] **导演台视频提示词和首帧模板仍在代码**（设计文档 §14.2 说明了为什么）：资产图、分镜图模板在库里停用时，页面保留原描述、重新出图报「提示词未配置」，要不要给个更明白的说法待定。
 
 ## Studio 当前待办

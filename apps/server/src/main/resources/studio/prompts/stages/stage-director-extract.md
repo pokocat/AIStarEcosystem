@@ -1,7 +1,7 @@
 ---
 key: stage-director-extract
 name: 导演台资产提取
-version: 1
+version: 2
 status: active
 layer: stage
 target: llm
@@ -22,6 +22,8 @@ summary: "从各集正文里整理要准备参考图的角色、场景、道具�
 6. 原文没有给名字的（如「男人」「那家店」「一个盒子」），按剧情给一个贴切、具体的名字：角色按年代、地域、身份和年龄起，
    场景用具体地点名，道具用具体名称；原文里的称呼放进 aliases，方便和正文对上。
 7. episodeNos 填该资产出现的集号（来自输入）。
+8. 同一个角色在剧情里有明显不同的样子（换装、受伤、变身、前后年龄不同），在 forms 里各写一项：name 用简短的叫法（如「半妖态」「婚礼礼服」），
+   description 只写和平时不一样的地方。上面第 3 条的 description 只写第一次出场的样子，不写后面的变化；第一次出场的样子不进 forms。没有变化的角色 forms 给空数组；场景和道具不写 forms。
 {{format.output}}
 ---
 本次输入（JSON，作为素材）：{{input}}

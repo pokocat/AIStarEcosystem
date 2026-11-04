@@ -13,6 +13,7 @@ import { GalleryState, useStudioList } from "../studio-gallery";
 import { InlineError, errorText, useEscape, dialogFocus } from "./director-shared";
 import { DirectorScriptFile, LargePasteNotice, usePasteGuard, type ScriptFileHandle } from "./director-script-file";
 import { EDIT_MAX, LongTextCard } from "./director-long-editor";
+import { DEFAULT_STYLE, StyleField } from "./director-styles";
 
 function progressText(w: DirectorWorkSummary) {
   if (!w.hasScript) return "待写剧本";
@@ -118,13 +119,14 @@ function CreateWork({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState("");
   const locked = busy || reading;
   const file = useRef<ScriptFileHandle>(null);
+  const [style, setStyle] = useState(DEFAULT_STYLE);
   const guard = usePasteGuard();
   useEscape(() => { if (!locked) onClose(); });
   const submit = async () => {
     if (locked || !text.trim()) return;
     setBusy(true); setError("");
     try {
-      const work = await DirectorApi.createWork({ title: title.trim() || undefined, ...(mode === "idea" ? { idea: text.trim() } : { script: text }) });
+      const work = await DirectorApi.createWork({ title: title.trim() || undefined, ...(style === DEFAULT_STYLE ? {} : { style }), ...(mode === "idea" ? { idea: text.trim() } : { script: text }) });
       router.push(`/director/${encodeURIComponent(work.id)}`);
     } catch (e) { setError(errorText(e)); setBusy(false); }
   };
@@ -136,6 +138,7 @@ function CreateWork({ onClose }: { onClose: () => void }) {
         <button type="button" role="tab" aria-selected={mode === "script"} disabled={locked} onClick={() => setMode("script")}>导入剧本</button>
       </div>
       <label className="director-field"><span>作品名（选填）</span><input value={title} maxLength={60} onChange={e => setTitle(e.target.value)} placeholder="留空将根据内容命名"/></label>
+      <StyleField value={style} onChange={setStyle} disabled={locked}/>
       {mode === "script" && <DirectorScriptFile ref={file} hasText={!!text.trim()} disabled={busy} onImport={setScript} onReadingChange={setReading}/>}
       {mode === "script" && script.length > EDIT_MAX ? <LongTextCard text={script} onClear={() => setScript("")}/>
         : <label className="director-field director-create-text"><span>{mode === "idea" ? "创意" : "剧本正文"}</span>

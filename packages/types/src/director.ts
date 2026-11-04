@@ -129,6 +129,18 @@ export interface DirectorEpisode {
   rev: number;
 }
 
+/** 角色的另一种样子（换装、受伤、变身）：挂在角色下面，片段按形态选用，不用另建一个角色。 */
+export interface DirectorAssetForm {
+  id: string;
+  name: string;
+  /** 只写和平时不一样的地方。 */
+  description: string;
+  image: DirectorMediaSlot;
+}
+
+/** 场景除主视（资产图本身）以外的三个视角。 */
+export type DirectorSceneView = "reverse" | "left" | "right";
+
 export interface DirectorAsset {
   id: string;
   kind: DirectorAssetKind;
@@ -146,6 +158,11 @@ export interface DirectorAsset {
   refImage?: { key: string; url?: string | null } | null;
   /** 从个人资产库导入时记下的资产库对象 id；再导入同一项时据此对上，不重复建。 */
   libraryObjectId?: string;
+  /** 只有角色有。 */
+  forms?: DirectorAssetForm[];
+  /** 只有场景有：反打、左立面、右立面，一次生成三张。 */
+  views?: Partial<Record<DirectorSceneView, DirectorMediaSlot>>;
+  viewsError?: DirectorError | null;
   rev: number;
 }
 
@@ -163,6 +180,8 @@ export interface DirectorShot {
   camera: string;
   action: string;
   still: string;
+  /** 这一镜的背景看向哪边；没有就是主视。 */
+  sceneView?: DirectorSceneView;
   dialogue: DirectorLine[];
 }
 
@@ -174,6 +193,8 @@ export interface DirectorClip {
   summary: string;
   durationSec: number;
   assetIds: string[];
+  /** 这一段里角色用哪个形态（角色 id → 形态 id）；没写的用主形象。 */
+  assetForms?: Record<string, string>;
   shots: DirectorShot[];
   boardPrompt: string;
   boardPromptCustom: boolean;
@@ -282,6 +303,8 @@ export interface DirectorPendingExtractItem {
   description: string;
   aliases: string[];
   episodeNos: number[];
+  /** 模型从剧情里认出的其他形态，只有角色有。 */
+  forms?: Array<{ name: string; description: string }>;
   /** 对上的已有资产；保存时合并进它，不新建。 */
   matchId: string | null;
   matchName?: string;
@@ -411,11 +434,12 @@ export type DirectorEditOp =
   | "asset.setVoice" | "asset.clearVoice" | "asset.setRef" | "asset.clearRef" | "clip.adoptVideo" | "clip.confirmVideo" | "clips.confirmBoards" | "clip.setVoiceMode"
   | "extract.save" | "extract.discard"
   | "split.save" | "split.discard" | "split.undo" | "reference.update" | "reference.toEpisode" | "asset.link"
+  | "form.create" | "form.update" | "form.delete" | "form.adopt" | "form.upload" | "view.adopt" | "view.upload" | "clip.setForm"
   | "assistant.apply" | "assistant.dismiss" | "assistant.undo" | "assistant.newThread" | "assistant.openThread";
 
 /** plan = 写分镜脚本（切片段，整集替换）；reshoot = 重写分镜脚本、保留片段划分（targetId = 集，options.clipIds 为空则整集）。
  *  assistant = 全能创作助手回复一轮；brief = 写剧本前的创意对话一轮。 */
-export type DirectorTaskType = "script" | "split" | "extract" | "plan" | "reshoot" | "asset-image" | "board" | "video" | "video-prompt" | "export" | "assistant" | "brief";
+export type DirectorTaskType = "script" | "split" | "extract" | "plan" | "reshoot" | "asset-image" | "form-image" | "scene-views" | "board" | "video" | "video-prompt" | "export" | "assistant" | "brief";
 export type DirectorPipelineAction = "start" | "pause" | "resume" | "retry" | "confirm-assets" | "confirm-boards" | "confirm-videos" | "stop" | "dismiss";
 
 export type DirectorPipelineTarget = "plan" | "board" | "video" | "film";

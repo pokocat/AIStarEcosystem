@@ -5,7 +5,7 @@ import { SettingsPanel } from './director-settings';
 const api = vi.hoisted(() => ({ patchWork: vi.fn() }));
 vi.mock('../api', () => ({ DirectorApi: api }));
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
-const work: any = { id:'model-work', settings:{style:'真人写实',aspectRatio:'9:16',videoModel:null,imageModel:null},
+const work: any = {assets:[],clips:[], id:'model-work', settings:{style:'真人写实',aspectRatio:'9:16',videoModel:null,imageModel:null},
   pricing:{mock:false,image:16}, videoModels:[], imageModels:[{id:'seedream',name:'Seedream 4.5',isDefault:true,creditCost:16},{id:'other',name:'另一模型',isDefault:false,creditCost:37}] };
 function choose(value: string) {
   const control = screen.getByRole('combobox', { name:'图片模型' });
@@ -28,7 +28,9 @@ test('a retired saved choice stays visible, other settings still save, and the r
   expect(screen.getByText(/原图片模型已停用，资产图和分镜图暂时生成不了/)).toBeTruthy();
   const save=screen.getByRole('button',{name:'保存'}) as HTMLButtonElement;
   expect(save.disabled).toBe(false);
-  fireEvent.change(screen.getByDisplayValue('真人写实'),{target:{value:'国风水墨'}});
+  fireEvent.click(screen.getByRole('button',{name:/真人写实/}));
+  fireEvent.change(screen.getByLabelText('自定义风格'),{target:{value:'国风水墨'}});
+  fireEvent.click(screen.getByRole('button',{name:'使用'}));
   fireEvent.click(save);
   await waitFor(()=>expect(api.patchWork).toHaveBeenCalledWith('model-work',{settings:{style:'国风水墨',aspectRatio:'9:16',videoModel:null}}));
   expect(close).toHaveBeenCalledTimes(1);

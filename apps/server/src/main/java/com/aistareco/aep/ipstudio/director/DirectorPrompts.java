@@ -370,6 +370,16 @@ public final class DirectorPrompts {
             a.path("aliases").forEach(x -> { if (!x.asText().isBlank() && aliases.size() < 6) aliases.add(clip(x.asText(), 40)); });
             ArrayNode nos = item.putArray("episodeNos");
             a.path("episodeNos").forEach(x -> { if (episodeNos.contains(x.asText())) nos.add(x.asInt()); });
+            if ("character".equals(kind) && a.path("forms").isArray()) {
+                ArrayNode forms = item.putArray("forms");
+                Set<String> seenForms = new HashSet<>();
+                for (JsonNode f : a.path("forms")) {
+                    String form = clip(text(f, "name"), 20);
+                    if (form.isEmpty() || !seenForms.add(form) || forms.size() >= 6) continue;
+                    forms.addObject().put("name", form).put("description", clip(text(f, "description"), 1000));
+                }
+                if (forms.isEmpty()) item.remove("forms");
+            }
         }
         if (result.isEmpty()) throw bad("未提取到可用的角色、场景或道具");
         ObjectNode r = om.createObjectNode();
@@ -423,6 +433,7 @@ public final class DirectorPrompts {
         ArrayNode ids = clip.putArray("assetIds");
         Set<String> seen = new HashSet<>();
         for (JsonNode id : c.path("assetIds")) if (!id.asText().isBlank() && seen.add(id.asText())) ids.add(clip(id.asText(), 40));
+        if (c.path("assetForms").isObject() && !c.path("assetForms").isEmpty()) clip.set("assetForms", c.path("assetForms").deepCopy());
         ArrayNode outShots = clip.putArray("shots");
         for (JsonNode s : shots) {
             double d = s.path("durationSec").asDouble(0);
@@ -430,6 +441,8 @@ public final class DirectorPrompts {
             ObjectNode shot = outShots.addObject();
             shot.put("durationSec", d).put("size", clip(text(s, "size"), 20)).put("camera", clip(text(s, "camera"), 200))
                     .put("action", clip(text(s, "action"), 400)).put("still", clip(text(s, "still"), 300));
+            // 写错或写 main 都按主视图，不判失败：视角只是选哪张参考图。
+            if (DirectorSceneViews.LABELS.containsKey(text(s, "sceneView"))) shot.put("sceneView", text(s, "sceneView"));
             ArrayNode dialogue = shot.putArray("dialogue");
             for (JsonNode line : s.path("dialogue")) {
                 String t = text(line, "text");
@@ -511,11 +524,38 @@ public final class DirectorPrompts {
         List<java.util.Map<String, Object>> cells = new ArrayList<>();
         for (int i = 0; i < shots.size() && i < MAX_SHOTS; i++) {
             JsonNode sh = shots.get(i);
-            cells.add(java.util.Map.of("position", CELL_NAMES[i], "size", sh.path("size").asText(), "camera", sh.path("camera").asText(), "still", sh.path("still").asText()));
+            cells.add(java.util.Map.of("position", CELL_NAMES[i], "size", sh.path("size").asText(), "camera", sh.path("camera").asText(), "still", sh.path("still").asText() + viewHint(sh, refs)));
         }
         vars.put("cells", cells);
         vars.put("blanks", !single && shots.size() < 4);
         return media(prompts, StudioPromptCallPoints.DIRECTOR_BOARD, vars, version);
+    }
+
+    /** 这一镜要用场景的哪张视角图：只交代素材编号，没用视角的镜头一个字都不多（旧片段的提示词不变、不会被标「需更新」）。 */
+    private static String viewHint(JsonNode shot, List<Ref> refs) {
+        String label = DirectorSceneViews.LABELS.get(shot.path("sceneView").asText(""));
+        if (label == null) return "";
+        for (Ref r : refs) if ("scene".equals(r.kind()) && r.name().endsWith("·" + label)) return "（背景照" + r.label() + "）";
+        return "";
+    }
+
+    /** 场景其他视角的 2×2 整图（stage-director-scene-views）；version 同 {@link #assetPrompt}。库里没有返回 null。 */
+    public static String sceneViewsPrompt(StudioPromptAssembler prompts, JsonNode settings, JsonNode asset, Integer version) {
+        java.util.Map<String, Object> vars = new java.util.LinkedHashMap<>();
+        vars.put("style", settings.path("style").asText("真人写实"));
+        vars.put("name", asset.path("name").asText());
+        vars.put("description", asset.path("description").asText());
+        return media(prompts, StudioPromptCallPoints.DIRECTOR_SCENE_VIEWS, vars, version);
+    }
+
+    /** 画角色另一形态时追加的说明：图1 是主形象。 */
+    public static String formNotes(StudioPromptAssembler prompts, String formName, String baseOnLabel) {
+        java.util.Map<String, Object> vars = new java.util.LinkedHashMap<>();
+        vars.put("refScene", false); vars.put("refProp", false); vars.put("refCharacter", false);
+        vars.put("form", formName);
+        vars.put("baseOn", baseOnLabel == null ? "" : baseOnLabel);
+        prompts.requireStage(StudioPromptCallPoints.DIRECTOR_IMAGE_NOTES);
+        return media(prompts, StudioPromptCallPoints.DIRECTOR_IMAGE_NOTES, vars, null);
     }
 
     /**

@@ -21,6 +21,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.io.IOException;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -102,7 +104,9 @@ public class DirectorService {
 
     // ── 作品 ────────────────────────────────────────────────────────────────
 
-    public record CreateRequest(String title, String idea, String script) {}
+    public record CreateRequest(String title, String idea, String script, String style) {
+        public CreateRequest(String title, String idea, String script) { this(title, idea, script, null); }
+    }
 
     @Transactional
     public JsonNode create(String userId, CreateRequest req) {
@@ -116,7 +120,9 @@ public class DirectorService {
         if (title.isEmpty()) title = idea.isEmpty() ? (script.isEmpty() ? "未命名作品" : defaultTitle(script)) : shortTitle(idea);
         ObjectNode c = om.createObjectNode();
         c.put("idea", idea).put("logline", "").put("draft", script).put("draftRev", 0).put("seq", 0);
-        c.putObject("settings").put("style", "真人写实").put("aspectRatio", "9:16").put("language", "中文").putNull("videoModel").putNull("imageModel").putNull("textModel");
+        String style = req == null || req.style() == null ? "" : req.style().trim();
+        if (style.length() > 30) throw invalid("风格为 1–30 字");
+        c.putObject("settings").put("style", style.isEmpty() ? "真人写实" : style).put("aspectRatio", "9:16").put("language", "中文").putNull("videoModel").putNull("imageModel").putNull("textModel");
         c.putArray("episodes"); c.putArray("assets"); c.putArray("clips"); c.putArray("applied");
         c.putObject("taskMeta"); c.putNull("pipeline"); c.putNull("notice"); c.putNull("textError");
         if (!idea.isEmpty() && script.isEmpty()) briefStore(c);
@@ -378,7 +384,8 @@ public class DirectorService {
         if (node.equals("split")) return "拆分集";
         if (node.startsWith("extract")) return "资产提取";
         if (node.startsWith("plan:")) return "分镜脚本生成";
-        if (node.startsWith("asset:")) return "资产图生成";
+        if (node.startsWith("asset:") || node.startsWith("form:")) return "资产图生成";
+        if (node.startsWith("views:")) return "四视图生成";
         if (node.startsWith("board:")) return "分镜图生成";
         if (node.startsWith("video:")) return "片段视频生成";
         if (node.startsWith("export:")) return "整集导出";
@@ -535,6 +542,74 @@ public class DirectorService {
                 ObjectNode target = find(c, "assets", req.targetId(), "这个资产");
                 linkLibrary(userId, c, target, library.object(userId, d.path("objectId").asText()), d.path("versionId").asText(null));
             }
+            case "form.create" -> {
+                // 角色的另一种形态（换装、受伤、变身）：挂在这个角色下面，片段按形态选用，不用另建一个角色。
+                ObjectNode a = find(c, "assets", req.targetId(), "这个资产");
+                if (!"character".equals(a.path("kind").asText())) throw invalid("只有角色可以添加形态");
+                String name = limited(d.path("name").asText(), 20, "形态名称");
+                if (name.isEmpty()) throw invalid("请填写形态名称");
+                addForm(c, a, name, limited(d.path("description").asText(), 1000, "形态描述"));
+                bump(a);
+            }
+            case "form.update" -> {
+                ObjectNode form = findForm(c, req.targetId());
+                if (d.has("name")) {
+                    String name = limited(d.path("name").asText(), 20, "形态名称");
+                    if (name.isEmpty()) throw invalid("请填写形态名称");
+                    form.put("name", name);
+                }
+                if (d.has("description")) form.put("description", limited(d.path("description").asText(), 1000, "形态描述"));
+            }
+            case "form.delete" -> {
+                findForm(c, req.targetId());
+                for (JsonNode a : c.path("assets")) {
+                    ArrayNode forms = a.path("forms").isArray() ? (ArrayNode) a.path("forms") : null;
+                    if (forms == null) continue;
+                    for (int i = forms.size() - 1; i >= 0; i--) if (req.targetId().equals(forms.get(i).path("id").asText())) forms.remove(i);
+                }
+                // 用着这个形态的片段回到主形象，已有的分镜图和视频会标为「需更新」。
+                for (JsonNode clip : c.path("clips")) {
+                    if (!clip.path("assetForms").isObject()) continue;
+                    ObjectNode chosen = (ObjectNode) clip.path("assetForms");
+                    List<String> drop = new ArrayList<>();
+                    chosen.fields().forEachRemaining(e -> { if (req.targetId().equals(e.getValue().asText())) drop.add(e.getKey()); });
+                    drop.forEach(chosen::remove);
+                }
+            }
+            case "form.adopt" -> adopt(findForm(c, req.targetId()), "image", d.path("candidateId").asText());
+            case "form.upload" -> {
+                ObjectNode form = findForm(c, req.targetId());
+                String key = projects.requireOwnedAssetKey(userId, d.path("key").asText(null));
+                if (key == null) throw invalid("请先上传图片");
+                adopt(form, "image", addCandidate(c, (ObjectNode) form.path("image"), key, null, "upload").path("id").asText());
+            }
+            case "view.adopt" -> {
+                ObjectNode a = find(c, "assets", req.targetId(), "这个资产");
+                ObjectNode holder = viewHolder(a, d.path("view").asText());
+                adopt(holder, d.path("view").asText(), d.path("candidateId").asText());
+            }
+            case "view.upload" -> {
+                ObjectNode a = find(c, "assets", req.targetId(), "这个资产");
+                String view = d.path("view").asText();
+                ObjectNode holder = viewHolder(a, view);
+                String key = projects.requireOwnedAssetKey(userId, d.path("key").asText(null));
+                if (key == null) throw invalid("请先上传图片");
+                adopt(holder, view, addCandidate(c, (ObjectNode) holder.path(view), key, null, "upload").path("id").asText());
+            }
+            case "clip.setForm" -> {
+                ObjectNode clip = find(c, "clips", req.targetId(), "这个片段");
+                String assetId = d.path("assetId").asText();
+                JsonNode a = find(c, "assets", assetId, "这个资产");
+                if (!contains(clip.path("assetIds"), assetId)) throw invalid("这个片段没有关联「" + a.path("name").asText() + "」");
+                String formId = d.path("formId").asText("");
+                ObjectNode chosen = clip.path("assetForms").isObject() ? (ObjectNode) clip.path("assetForms") : clip.putObject("assetForms");
+                if (formId.isBlank()) chosen.remove(assetId);
+                else {
+                    if (formOf(a, formId) == null) throw invalid("这个形态已不存在，请重新选择");
+                    chosen.put(assetId, formId);
+                }
+                bump(clip);
+            }
             case "assets.confirm" -> {
                 Set<String> only = new HashSet<>();
                 d.path("assetIds").forEach(x -> only.add(x.asText()));
@@ -573,6 +648,7 @@ public class DirectorService {
                 setShots(c, clip, shots.deepCopy(), false);
                 ObjectNode next = newClip(c, clip.path("episodeId").asText(), clip.path("title").asText() + "（续）", clip.path("summary").asText());
                 next.set("assetIds", clip.path("assetIds").deepCopy());
+                if (clip.path("assetForms").isObject()) next.set("assetForms", clip.path("assetForms").deepCopy());
                 setShots(c, next, tail, false);
                 ArrayNode clips = (ArrayNode) c.path("clips");
                 int index = 0;
@@ -867,8 +943,12 @@ public class DirectorService {
                 putBrief(in, c);
                 ArrayNode as = in.putArray("assets");
                 for (JsonNode a : c.path("assets")) {
-                    as.addObject().put("id", a.path("id").asText()).put("kind", a.path("kind").asText()).put("name", a.path("name").asText())
+                    ObjectNode item = as.addObject().put("id", a.path("id").asText()).put("kind", a.path("kind").asText()).put("name", a.path("name").asText())
                             .put("description", a.path("description").asText());
+                    if (a.path("forms").size() > 0) {
+                        ArrayNode forms = item.putArray("forms");
+                        a.path("forms").forEach(f -> forms.addObject().put("id", f.path("id").asText()).put("name", f.path("name").asText()).put("description", f.path("description").asText()));
+                    }
                 }
                 meta.set("assetIds", om.valueToTree(ids(c.path("assets"))));
                 List<String> chars = new ArrayList<>();
@@ -919,8 +999,12 @@ public class DirectorService {
                 putBrief(in, c);
                 ArrayNode as = in.putArray("assets");
                 for (JsonNode a : c.path("assets")) {
-                    as.addObject().put("id", a.path("id").asText()).put("kind", a.path("kind").asText()).put("name", a.path("name").asText())
+                    ObjectNode item = as.addObject().put("id", a.path("id").asText()).put("kind", a.path("kind").asText()).put("name", a.path("name").asText())
                             .put("description", a.path("description").asText());
+                    if (a.path("forms").size() > 0) {
+                        ArrayNode forms = item.putArray("forms");
+                        a.path("forms").forEach(f -> forms.addObject().put("id", f.path("id").asText()).put("name", f.path("name").asText()).put("description", f.path("description").asText()));
+                    }
                 }
                 // 要重写的片段只给剧情范围（摘要、时长、台词），不给旧镜头：给了模型就照抄（2026-10-27 真模型实测，整集重写回来的镜头和原来几乎一样）。
                 // 不重写的片段把镜头也给上，只用来对齐前后衔接。
@@ -963,6 +1047,33 @@ public class DirectorService {
                 if (!notes.isEmpty()) prompt = prompt + "\n" + notes;
                 return image(userId, w, c, "asset:" + targetId, requestId, prompt, refs, sizeFor(c, a.path("kind").asText()),
                         assetFingerprint(a), pipeline, billing, maxCost, baseOn);
+            }
+            case "form-image" -> {
+                ObjectNode form = findForm(c, targetId);
+                JsonNode a = formOwner(c, targetId);
+                String main = adoptedKey(a.path("image"));
+                if (main == null) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_MAIN_IMAGE_REQUIRED",
+                        "请先生成或上传「" + a.path("name").asText() + "」的主形象，形态照着它画");
+                prompts().requireStage(StudioPromptCallPoints.DIRECTOR_ASSET_IMAGE);
+                ObjectNode sheet = formSheet(a, form);
+                String prompt = DirectorPrompts.assetPrompt(prompts(), c.path("settings"), sheet, null);
+                List<Bound> refs = new ArrayList<>(List.of(new Bound(a.path("id").asText(), a.path("name").asText() + "的主形象", "character", main, "图1")));
+                String baseOn = o.path("baseOnCurrent").asBoolean(false) ? baseOnCurrent(form, "image", a.path("name").asText() + "·" + form.path("name").asText(), refs) : null;
+                prompt = prompt + "\n" + DirectorPrompts.formNotes(prompts(), form.path("name").asText(), baseOn != null ? refs.get(refs.size() - 1).label() : null);
+                return image(userId, w, c, "form:" + targetId, requestId, prompt, refs, sizeFor(c, "character"),
+                        formFingerprint(c, a, form), pipeline, billing, maxCost, baseOn);
+            }
+            case "scene-views" -> {
+                ObjectNode a = find(c, "assets", targetId, "这个资产");
+                if (!"scene".equals(a.path("kind").asText())) throw invalid("只有场景可以生成四视图");
+                String main = adoptedKey(a.path("image"));
+                if (main == null) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_MAIN_IMAGE_REQUIRED",
+                        "请先生成或上传「" + a.path("name").asText() + "」的主视图，其他视角照着它画");
+                prompts().requireStage(StudioPromptCallPoints.DIRECTOR_SCENE_VIEWS);
+                String prompt = DirectorPrompts.sceneViewsPrompt(prompts(), c.path("settings"), a, null);
+                List<Bound> refs = List.of(new Bound(targetId, a.path("name").asText() + "的主视图", "scene", main, "图1"));
+                return image(userId, w, c, "views:" + targetId, requestId, prompt, refs, sizeFor(c, "scene"),
+                        viewsFingerprint(prompt, main), pipeline, billing, maxCost, null);
             }
             case "board" -> {
                 ObjectNode clip = find(c, "clips", targetId, "这个片段");
@@ -1050,8 +1161,53 @@ public class DirectorService {
         for (String kind : List.of("character", "scene", "prop"))
             for (JsonNode idNode : clip.path("assetIds")) {
                 JsonNode a = findOrNull(c, "assets", idNode.asText());
-                if (a != null && kind.equals(a.path("kind").asText()) && !audioOnly(a)) out.add(a);
+                if (a == null || !kind.equals(a.path("kind").asText()) || audioOnly(a)) continue;
+                JsonNode form = chosenForm(a, clip);
+                out.add(form == null ? a : formRef(a, form));
+                if ("scene".equals(kind)) for (String view : usedViews(clip)) {
+                    JsonNode slot = a.path("views").path(view);
+                    if (adoptedKey(slot) != null) out.add(viewRef(a, view, slot));
+                }
             }
+        return out;
+    }
+
+    /** 片段给这个角色选的形态；没选、或形态已删除就是主形象。 */
+    private static JsonNode chosenForm(JsonNode a, JsonNode clip) {
+        String formId = clip.path("assetForms").path(a.path("id").asText()).asText("");
+        return formId.isEmpty() ? null : formOf(a, formId);
+    }
+
+    private static JsonNode formOf(JsonNode a, String formId) {
+        for (JsonNode f : a.path("forms")) if (formId.equals(f.path("id").asText())) return f;
+        return null;
+    }
+
+    /**
+     * 形态在提示词里仍叫角色本名（「图2 提供角色「白素贞」的身份与造型」）：这段就是长这样，
+     * 而且说话人、画内画外都按角色名认，换名字会对不上。只有报错和版本记录里写全称（displayName）。
+     */
+    private ObjectNode formRef(JsonNode a, JsonNode form) {
+        ObjectNode n = om.createObjectNode().put("id", a.path("id").asText()).put("kind", "character").put("name", a.path("name").asText())
+                .put("displayName", a.path("name").asText() + "·" + form.path("name").asText());
+        n.set("image", form.path("image"));
+        return n;
+    }
+
+    /** 场景的其他视角：提示词里按「东吴大帐·反打」写，分镜图每格再标用哪张（DirectorPrompts.boardPrompt）。 */
+    private ObjectNode viewRef(JsonNode a, String view, JsonNode slot) {
+        String name = a.path("name").asText() + "·" + DirectorSceneViews.LABELS.get(view);
+        ObjectNode n = om.createObjectNode().put("id", a.path("id").asText()).put("kind", "scene").put("name", name);
+        n.set("image", slot);
+        return n;
+    }
+
+    /** 片段镜头用到的场景视角（不含主视），按 反打、左立面、右立面 的固定顺序，图N 编号因此稳定。 */
+    private static List<String> usedViews(JsonNode clip) {
+        Set<String> used = new HashSet<>();
+        for (JsonNode s : clip.path("shots")) used.add(s.path("sceneView").asText(""));
+        List<String> out = new ArrayList<>();
+        for (String view : DirectorSceneViews.LABELS.keySet()) if (used.contains(view)) out.add(view);
         return out;
     }
 
@@ -1060,9 +1216,10 @@ public class DirectorService {
         List<String> missing = new ArrayList<>(), unconfirmed = new ArrayList<>();
         for (JsonNode a : visualAssets(c, clip)) {
             String key = adoptedKey(a.path("image"));
-            if (key == null) { missing.add(a.path("name").asText()); continue; }
-            if (requireConfirmed && "auto".equals(a.path("image").path("adoptedBy").asText())) unconfirmed.add(a.path("name").asText());
-            out.add(new Bound(a.path("id").asText(), a.path("name").asText(), a.path("kind").asText(), key, "图" + (out.size() + 1)));
+            String shown = a.path("displayName").asText(a.path("name").asText());
+            if (key == null) { missing.add(shown); continue; }
+            if (requireConfirmed && "auto".equals(a.path("image").path("adoptedBy").asText())) unconfirmed.add(shown);
+            out.add(new Bound(a.path("id").asText(), shown, a.path("kind").asText(), key, "图" + (out.size() + 1)));
         }
         if (!missing.isEmpty()) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_REFERENCE_MISSING",
                 "缺少资产图：" + String.join("、", missing) + "。请在「资产」中生成或上传", Map.of("names", missing));
@@ -1093,7 +1250,8 @@ public class DirectorService {
         ObjectNode m = om.createObjectNode().put("node", nodeId).put("prompt", prompt).put("fingerprint", fingerprint)
                 .put("promptFormat", DirectorPrompts.IMAGE_PROMPT_FORMAT);
         // 记下这次按出图模板哪一版编的：后台发了新版本，这张图仍按这一版核对，换模板本身不算「描述已修改」
-        String templateStage = nodeId.startsWith("asset:") ? StudioPromptCallPoints.DIRECTOR_ASSET_IMAGE : StudioPromptCallPoints.DIRECTOR_BOARD;
+        String templateStage = nodeId.startsWith("asset:") || nodeId.startsWith("form:") ? StudioPromptCallPoints.DIRECTOR_ASSET_IMAGE
+                : nodeId.startsWith("views:") ? StudioPromptCallPoints.DIRECTOR_SCENE_VIEWS : StudioPromptCallPoints.DIRECTOR_BOARD;
         m.putObject("promptVersions").put(templateStage, DirectorPrompts.templateVersion(prompts(), templateStage));
         if (baseOn != null) m.put("baseOn", baseOn);
         ArrayNode rs = m.putArray("refs");
@@ -1777,6 +1935,8 @@ public class DirectorService {
                 addVideoCandidate(c, (ObjectNode) clip, output.path("storageKey").asText(), run.getId(), meta, output.path("mock").asBoolean(false));
             return;
         }
+        if (node.startsWith("views:")) { applySceneViews(w, c, node.substring(6), output, meta, run); return; }
+        if (node.startsWith("form:")) { applyFormImage(c, node.substring(5), output, meta, run); return; }
         if (node.startsWith("asset:") || node.startsWith("board:")) {
             boolean asset = node.startsWith("asset:");
             ObjectNode target = (ObjectNode) findOrNull(c, asset ? "assets" : "clips", node.substring(node.indexOf(':') + 1));
@@ -1889,6 +2049,7 @@ public class DirectorService {
                             .put("name", a.path("name").asText()).put("description", a.path("description").asText());
                     it.set("aliases", a.path("aliases").isArray() ? a.path("aliases").deepCopy() : om.createArrayNode());
                     it.set("episodeNos", a.path("episodeNos").isArray() ? a.path("episodeNos").deepCopy() : om.createArrayNode());
+                    if (a.path("forms").size() > 0) it.set("forms", a.path("forms").deepCopy());
                     JsonNode match = matchAsset(c, a.path("existingId").asText(null), a.path("kind").asText(), a.path("name").asText());
                     if (match == null) it.putNull("matchId"); else it.put("matchId", match.path("id").asText()).put("matchName", match.path("name").asText());
                 }
@@ -1961,10 +2122,21 @@ public class DirectorService {
         clip.put("title", limited(planned.path("title").asText(), 40, "片段标题"))
                 .put("summary", limited(planned.path("summary").asText(), 1000, "片段摘要"));
         clip.set("assetIds", planned.path("assetIds").deepCopy());
+        applyPlannedForms(c, clip, planned);
         setShots(c, clip, planned.path("shots"), false);
         clip.put("boardPromptCustom", false).put("videoPromptCustom", false);
         clip.putNull("pendingShots");
         bump(clip);
+    }
+
+    /** 模型写的形态选择：只收这个片段关联的角色、真实存在的形态，其余丢掉（等于用主形象），不因此判整份计划失败。 */
+    private void applyPlannedForms(ObjectNode c, ObjectNode clip, JsonNode planned) {
+        ObjectNode chosen = om.createObjectNode();
+        planned.path("assetForms").fields().forEachRemaining(e -> {
+            JsonNode a = findOrNull(c, "assets", e.getKey());
+            if (a != null && contains(clip.path("assetIds"), e.getKey()) && formOf(a, e.getValue().asText("")) != null) chosen.put(e.getKey(), e.getValue().asText());
+        });
+        if (chosen.isEmpty()) clip.remove("assetForms"); else clip.set("assetForms", chosen);
     }
 
     private void replaceClips(ObjectNode c, ObjectNode ep, JsonNode planned) {
@@ -1976,6 +2148,7 @@ public class DirectorService {
         for (JsonNode p : planned) {
             ObjectNode clip = newClip(c, epId, p.path("title").asText(), p.path("summary").asText());
             clip.set("assetIds", p.path("assetIds").deepCopy());
+            applyPlannedForms(c, clip, p);
             // 片段在正文里从哪句开始：剧本预览据此定位；找不到就不记，不伪造位置。
             String quote = p.path("sourceQuote").asText("");
             if (!quote.isBlank() && DirectorAssistant.locate(ep.path("content").asText(), quote) != null) clip.put("sourceQuote", quote);
@@ -3020,6 +3193,7 @@ public class DirectorService {
         for (JsonNode ep : c.path("episodes")) if (work || req.episodeId() == null || req.episodeId().equals(ep.path("id").asText())) eps.add(ep);
         if (!work && req.episodeId() == null && eps.size() > 1) eps = List.of(eps.get(0));
         int text = 0, images = 0, clipsTotal = 0, seconds = 0, plannedVideos = 0;
+        Set<String> variantsCounted = new HashSet<>();
         long textCredits = 0, videoCredits = 0;
         boolean rough = false;
         String videoError = null;
@@ -3053,6 +3227,7 @@ public class DirectorService {
                 if (clips.isEmpty()) { rough = true; text++; textCredits += directorTextPrice(c, prices[0]); clipsTotal += estClipsPerEp; images += estClipsPerEp; continue; }
                 for (JsonNode clip : clips) {
                     if (clip.path("board").path("candidates").isEmpty()) images++;
+                    for (String need : neededVariants(c, clip)) if (variantsCounted.add(need)) images++;
                     if (!toVideo || clip.path("video").path("candidates").size() > 0) continue;
                     int sec = (int) Math.round(clip.path("durationSec").asDouble());
                     seconds += sec;
@@ -3231,6 +3406,15 @@ public class DirectorService {
                         .put("message", "资产图已生成（" + toConfirm.size() + " 张），请在「资产」中确认后继续");
                 return;
             }
+            // 4b. 片段用到的角色形态和场景视角：只出用得上的；已失败的不重试，缺形态的片段在下一步写清楚原因
+            boolean variants = false;
+            for (JsonNode clip : clipsOf(c, eps)) for (String need : neededVariants(c, clip)) {
+                if (failed.contains(need)) continue;
+                variants = true;
+                boolean form = need.startsWith("form:");
+                if (!step.send(form ? "form-image" : "scene-views", need.substring(need.indexOf(':') + 1), form ? "角色形态图生成中" : "场景四视图生成中")) return;
+            }
+            if (variants) return;
             // 5. 分镜图
             boolean boarding = false;
             List<String> blocked = new ArrayList<>();
@@ -3367,13 +3551,14 @@ public class DirectorService {
         }
         boolean send(String type, String target, String stage) {
             String node = switch (type) {
-                case "asset-image" -> "asset:" + target; case "board" -> "board:" + target; case "video" -> "video:" + target;
+                case "asset-image" -> "asset:" + target; case "form-image" -> "form:" + target; case "scene-views" -> "views:" + target;
+                case "board" -> "board:" + target; case "video" -> "video:" + target;
                 case "plan" -> "plan:" + target; case "extract" -> target == null ? "extract" : "extract:" + target;
                 case "export" -> "export:" + target; default -> type;
             };
             if (busy.contains(node)) { p.put("stage", stage).put("message", stage); return true; }
             long estimate = "video".equals(type) ? videoQuote(userId, c, findOrNull(c, "clips", target))
-                    : "export".equals(type) ? 0 : Set.of("asset-image", "board").contains(type) ? prices[1] : directorTextPrice(c, prices[0]);
+                    : "export".equals(type) ? 0 : Set.of("asset-image", "form-image", "scene-views", "board").contains(type) ? prices[1] : directorTextPrice(c, prices[0]);
             // H3 视频先改写提示词：改写不进视频报价，但要占一键制作的预算。
             long reserve = "video".equals(type) ? rewriteReserve(c, findOrNull(c, "clips", target)) : 0;
             p.put("stage", stage).put("message", stage);
@@ -3462,6 +3647,24 @@ public class DirectorService {
         eps.forEach(e -> epIds.add(e.path("id").asText()));
         List<JsonNode> out = new ArrayList<>();
         for (JsonNode clip : c.path("clips")) if (epIds.contains(clip.path("episodeId").asText())) out.add(clip);
+        return out;
+    }
+
+    /**
+     * 这个片段还差哪些变体图（任务节点 form:形态id / views:场景id）：选用了还没有图的形态、镜头用到但没有图的视角。
+     * 视角按场景一次出三张，所以同一场景只算一个；主图没有时不算（主图那一步会先出）。
+     */
+    private Set<String> neededVariants(ObjectNode c, JsonNode clip) {
+        Set<String> out = new LinkedHashSet<>();
+        List<String> views = usedViews(clip);
+        for (JsonNode idNode : clip.path("assetIds")) {
+            JsonNode a = findOrNull(c, "assets", idNode.asText());
+            if (a == null || audioOnly(a)) continue;
+            JsonNode form = chosenForm(a, clip);
+            if (form != null && form.path("image").path("candidates").isEmpty()) out.add("form:" + form.path("id").asText());
+            if ("scene".equals(a.path("kind").asText()) && views.stream().anyMatch(v -> a.path("views").path(v).path("candidates").isEmpty()))
+                out.add("views:" + a.path("id").asText());
+        }
         return out;
     }
 
@@ -3738,6 +3941,7 @@ public class DirectorService {
                 if (compiled != null) ((ObjectNode) a).put("prompt", compiled); // 模板被停用时保留原来的描述
             }
             checkAsset(c, (ObjectNode) a);
+            checkVariants(c, a);
             names.put(a.path("id").asText(), a.path("name").asText());
             if ("character".equals(a.path("kind").asText())) characters.add(a.path("id").asText());
         }
@@ -3782,12 +3986,24 @@ public class DirectorService {
             for (String sp : badSpeakers) issues.add("台词说话人「" + sp + "」不是角色，请重新选择说话人");
             ArrayNode warnings = shotWarnings(clip, lim, total, lastOrder.getOrDefault(clip.path("episodeId").asText(), 0));
             if (lim != null && !lim.frame() && !clip.path("videoPromptCustom").asBoolean(false)) castWarnings(clip, parts.videoRefs(), names, aliases).forEach(warnings::add);
+            viewWarnings(c, clip).forEach(warnings::add);
             clip.set("warnings", warnings);
             clip.put("videoPromptRewrite", rewriteState(c, clip, lim));
             check((ObjectNode) clip.path("board"), boardCurrent(c, clip), legacyBoardCurrent(c, clip, adoptedCandidate(clip.path("board"))), false);
             String legacy = legacyVideoPrompt(c, clip, lim, parts, names, promptFormat(adoptedCandidate(clip.path("video"))));
             check((ObjectNode) clip.path("video"), videoCurrent(c, clip, lim), legacy == null ? null : videoCurrent(c, clip, lim, legacy), true);
         }
+    }
+
+    /** 镜头要反打，场景却还没有这张图：不拦，按主视图参考，只提醒一句。 */
+    private List<String> viewWarnings(ObjectNode c, JsonNode clip) {
+        List<String> out = new ArrayList<>();
+        for (String view : usedViews(clip)) for (JsonNode idNode : clip.path("assetIds")) {
+            JsonNode a = findOrNull(c, "assets", idNode.asText());
+            if (a != null && "scene".equals(a.path("kind").asText()) && adoptedKey(a.path("views").path(view)) == null)
+                out.add("有镜头用「" + DirectorSceneViews.LABELS.get(view) + "」视角，「" + a.path("name").asText() + "」还没有这张图，先按主视图参考。可在「资产」里生成四视图");
+        }
+        return out;
     }
 
     /** 编视频提示词要用的东西：参考图编号（图1 是分镜图，资产从图2 起）、绑了声音的说话人、没绑的、音色描述。 */
@@ -4069,6 +4285,27 @@ public class DirectorService {
         return b.toString();
     }
 
+    /** 形态和视角照着主图画：主图或描述换过，已采用的这些就标「需更新」；上传的不受影响。 */
+    private void checkVariants(ObjectNode c, JsonNode a) {
+        for (JsonNode f : a.path("forms")) checkVariant((ObjectNode) f.path("image"), formFingerprint(c, a, f), "主形象或这个形态的描述改了");
+        if (!"scene".equals(a.path("kind").asText()) || !a.path("views").isObject()) return;
+        String main = adoptedKey(a.path("image"));
+        String prompt = DirectorPrompts.sceneViewsPrompt(prompts(), c.path("settings"), a, null);
+        for (String view : DirectorSceneViews.LABELS.keySet()) {
+            JsonNode slot = a.path("views").path(view);
+            if (slot.isObject()) checkVariant((ObjectNode) slot, viewsFingerprint(prompt, main), "主视图或场景描述改了");
+        }
+    }
+
+    private void checkVariant(ObjectNode slot, String now, String reason) {
+        ArrayNode reasons = slot.putArray("staleReasons");
+        JsonNode m = adoptedCandidate(slot);
+        if (m == null) { slot.putNull("adoptedCheck"); return; }
+        boolean same = !"generated".equals(m.path("source").asText()) || now.equals(m.path("fingerprint").asText());
+        if (!same) reasons.add(reason);
+        slot.put("adoptedCheck", same ? "current" : "outdated");
+    }
+
     private void checkAsset(ObjectNode c, ObjectNode a) {
         ObjectNode slot = (ObjectNode) a.path("image");
         ArrayNode reasons = slot.putArray("staleReasons");
@@ -4292,6 +4529,110 @@ public class DirectorService {
         return ep;
     }
 
+    private ObjectNode addForm(ObjectNode c, ObjectNode a, String name, String description) {
+        for (JsonNode f : a.path("forms")) if (name.equals(f.path("name").asText())) return (ObjectNode) f;
+        ArrayNode forms = a.path("forms").isArray() ? (ArrayNode) a.path("forms") : a.putArray("forms");
+        ObjectNode form = forms.addObject().put("id", nextId(c, "fm")).put("name", name).put("description", description == null ? "" : description);
+        form.set("image", emptySlot());
+        return form;
+    }
+
+    private ObjectNode findForm(ObjectNode c, String formId) {
+        JsonNode a = formOwner(c, formId);
+        return (ObjectNode) formOf(a, formId);
+    }
+
+    private JsonNode formOwner(ObjectNode c, String formId) {
+        for (JsonNode a : c.path("assets")) if (formOf(a, formId == null ? "" : formId) != null) return a;
+        throw BusinessException.notFound("DIRECTOR_TARGET_NOT_FOUND", "这个形态不存在或已删除");
+    }
+
+    /** 拿到存这个视角版本的对象（asset.views），没有就建；不是场景或视角写错直接拒绝。 */
+    private ObjectNode viewHolder(ObjectNode a, String view) {
+        if (!"scene".equals(a.path("kind").asText())) throw invalid("只有场景有四视图");
+        if (!DirectorSceneViews.LABELS.containsKey(view)) throw invalid("没有这个视角");
+        ObjectNode views = a.path("views").isObject() ? (ObjectNode) a.path("views") : a.putObject("views");
+        if (!views.path(view).isObject()) views.set(view, emptySlot());
+        return views;
+    }
+
+    /** 形态按角色设定图的同一个模板出图：描述是主设定加这个形态的样子，图1 是主形象。 */
+    private ObjectNode formSheet(JsonNode a, JsonNode form) {
+        String extra = form.path("description").asText();
+        return om.createObjectNode().put("kind", "character").put("name", a.path("name").asText() + "·" + form.path("name").asText())
+                .put("description", extra.isBlank() ? a.path("description").asText() : a.path("description").asText() + "\n" + extra);
+    }
+
+    private String formFingerprint(ObjectNode c, JsonNode a, JsonNode form) {
+        String prompt = DirectorPrompts.assetPrompt(prompts(), c.path("settings"), formSheet(a, form), null);
+        return hash((prompt == null ? "" : prompt) + "|ref:" + adoptedKey(a.path("image")));
+    }
+
+    private static String viewsFingerprint(String prompt, String main) {
+        return hash((prompt == null ? "" : prompt) + "|ref:" + main);
+    }
+
+    private void applyFormImage(ObjectNode c, String formId, JsonNode output, JsonNode meta, IpRun run) {
+        JsonNode a = null;
+        for (JsonNode x : c.path("assets")) if (formOf(x, formId) != null) a = x;
+        if (a == null) return; // 生成期间形态被删了：结果不回投
+        ObjectNode form = (ObjectNode) formOf(a, formId);
+        ObjectNode slot = (ObjectNode) form.path("image");
+        boolean stale = !meta.hasNonNull("fingerprint") || !meta.path("fingerprint").asText().equals(formFingerprint(c, a, form));
+        for (JsonNode cand : output.path("candidates")) {
+            String key = cand.path("key").asText(null);
+            if (key == null) continue;
+            ObjectNode m = addCandidate(c, slot, key, run.getId(), "generated");
+            copyMeta(m, meta, output);
+            if (stale) m.put("stale", true);
+            // 生成形态是用户点的、或一键制作里片段要用的，生成完直接用；不满意换版本或重新生成（不多一道确认）。
+            else slot.put("adoptedId", m.path("id").asText()).put("adoptedBy", "user");
+        }
+        if (stale) notice(c, "「" + a.path("name").asText() + "·" + form.path("name").asText() + "」生成期间设置有变动，新图已存入历史版本，未自动采用");
+    }
+
+    /** 切开 2×2 整图，三格各进对应视角的版本。读不出图就判这次失败：冻结已结算，用户看到原因后可以重新生成。 */
+    private void applySceneViews(DirectorWork w, ObjectNode c, String assetId, JsonNode output, JsonNode meta, IpRun run) {
+        JsonNode node = findOrNull(c, "assets", assetId);
+        if (node == null) return;
+        ObjectNode a = (ObjectNode) node;
+        String key = null;
+        for (JsonNode cand : output.path("candidates")) if (key == null) key = cand.path("key").asText(null);
+        if (key == null) return;
+        List<byte[]> cells;
+        try (var in = java.nio.file.Files.newInputStream(storage.openForRead(key))) {
+            cells = DirectorSceneViews.split(in.readAllBytes());
+        } catch (IOException | BusinessException e) {
+            log.warn("[director] 四视图切图失败 work={} run={} key={}", w.getId(), run.getId(), key, e);
+            setError(c, "views:" + assetId, "四视图没有切分成功，请重新生成");
+            return;
+        }
+        String main = adoptedKey(a.path("image"));
+        String prompt = DirectorPrompts.sceneViewsPrompt(prompts(), c.path("settings"), a, null);
+        boolean stale = !meta.hasNonNull("fingerprint") || main == null || !meta.path("fingerprint").asText().equals(viewsFingerprint(prompt, main));
+        int i = 0;
+        for (String view : DirectorSceneViews.LABELS.keySet()) {
+            ObjectNode holder = viewHolder(a, view);
+            var stored = storage.store(cells.get(i++), com.aistareco.aep.ipstudio.service.IpProjectService.CATEGORY_GEN, w.getOwnerUserId(), "png", "image/png");
+            ObjectNode slot = (ObjectNode) holder.path(view);
+            ObjectNode m = addCandidate(c, slot, stored.key(), run.getId(), "generated");
+            copyMeta(m, meta, output);
+            if (stale) m.put("stale", true);
+            else slot.put("adoptedId", m.path("id").asText()).put("adoptedBy", "user");
+        }
+        if (stale) notice(c, "「" + a.path("name").asText() + "」生成期间设置有变动，新的四视图已存入历史版本，未自动采用");
+    }
+
+    private static void copyMeta(ObjectNode m, JsonNode meta, JsonNode output) {
+        if (meta.hasNonNull("fingerprint")) m.put("fingerprint", meta.path("fingerprint").asText());
+        if (meta.has("promptFormat")) m.put("promptFormat", meta.path("promptFormat").asInt());
+        if (meta.path("promptVersions").isObject()) m.set("promptVersions", meta.path("promptVersions").deepCopy());
+        if (meta.has("prompt")) m.put("prompt", meta.path("prompt").asText());
+        if (meta.has("refs")) m.set("refs", meta.path("refs").deepCopy());
+        if (meta.hasNonNull("baseOn")) m.put("baseOn", meta.path("baseOn").asText());
+        if (output.path("mock").asBoolean(false)) m.put("mock", true);
+    }
+
     private ObjectNode newAsset(ObjectNode c, String kind, String name, String description) {
         ObjectNode a = om.createObjectNode().put("id", nextId(c, "as")).put("kind", kind).put("name", name)
                 .put("description", description == null ? "" : description).put("prompt", "").put("promptCustom", false).put("rev", 1);
@@ -4337,6 +4678,7 @@ public class DirectorService {
                     .put("camera", limited(s.path("camera").asText(), SHOT_TEXT_MAX, "机位与构图"))
                     .put("action", limited(s.path("action").asText(), SHOT_TEXT_MAX, "动作"))
                     .put("still", limited(s.path("still").asText(), SHOT_TEXT_MAX, "分镜画面"));
+            if (DirectorSceneViews.LABELS.containsKey(s.path("sceneView").asText(""))) shot.put("sceneView", s.path("sceneView").asText());
             ArrayNode dialogue = shot.putArray("dialogue");
             for (JsonNode line : s.path("dialogue")) {
                 String text = line.path("text").asText("");
@@ -4385,6 +4727,8 @@ public class DirectorService {
     private void setError(ObjectNode c, String node, String message) {
         ObjectNode err = om.createObjectNode().put("message", message).put("at", Instant.now().toString());
         if (node.startsWith("asset:")) { JsonNode a = findOrNull(c, "assets", node.substring(6)); if (a != null) ((ObjectNode) a.path("image")).set("error", err); }
+        else if (node.startsWith("form:")) { for (JsonNode a : c.path("assets")) { JsonNode f = formOf(a, node.substring(5)); if (f != null) ((ObjectNode) f.path("image")).set("error", err); } }
+        else if (node.startsWith("views:")) { JsonNode a = findOrNull(c, "assets", node.substring(6)); if (a != null) ((ObjectNode) a).set("viewsError", err); }
         else if (node.startsWith("board:")) { JsonNode cl = findOrNull(c, "clips", node.substring(6)); if (cl != null) ((ObjectNode) cl.path("board")).set("error", err); }
         else if (node.startsWith("video:")) { JsonNode cl = findOrNull(c, "clips", node.substring(6)); if (cl != null) ((ObjectNode) cl.path("video")).set("error", err); }
         else if (node.startsWith(REWRITE_NODE)) { JsonNode cl = findOrNull(c, "clips", node.substring(REWRITE_NODE.length())); if (cl != null) ((ObjectNode) cl.path("video")).set("error", err); }
@@ -4400,6 +4744,8 @@ public class DirectorService {
 
     private void clearError(ObjectNode c, String node) {
         if (node.startsWith("asset:")) { JsonNode a = findOrNull(c, "assets", node.substring(6)); if (a != null) ((ObjectNode) a.path("image")).putNull("error"); }
+        else if (node.startsWith("form:")) { for (JsonNode a : c.path("assets")) { JsonNode f = formOf(a, node.substring(5)); if (f != null) ((ObjectNode) f.path("image")).putNull("error"); } }
+        else if (node.startsWith("views:")) { JsonNode a = findOrNull(c, "assets", node.substring(6)); if (a != null) ((ObjectNode) a).remove("viewsError"); }
         else if (node.startsWith("board:")) { JsonNode cl = findOrNull(c, "clips", node.substring(6)); if (cl != null) ((ObjectNode) cl.path("board")).putNull("error"); }
         else if (node.startsWith("video:")) { JsonNode cl = findOrNull(c, "clips", node.substring(6)); if (cl != null) ((ObjectNode) cl.path("video")).putNull("error"); }
         else if (node.startsWith(REWRITE_NODE)) { JsonNode cl = findOrNull(c, "clips", node.substring(REWRITE_NODE.length())); if (cl != null) ((ObjectNode) cl.path("video")).putNull("error"); }
@@ -4541,6 +4887,10 @@ public class DirectorService {
                     target.put("name", name);
                 }
             }
+            // 模型从剧情里认出的形态（换装、受伤、变身）一起建上，图等用得上再出；用户在弹窗里去掉的不建。
+            Set<String> droppedForms = ids(pick.path("droppedForms"));
+            if ("character".equals(target.path("kind").asText())) for (JsonNode f : a.path("forms"))
+                if (!droppedForms.contains(f.path("name").asText())) addForm(c, target, f.path("name").asText(), f.path("description").asText());
             Set<String> aliases = ids(target.path("aliases"));
             for (JsonNode al : a.path("aliases")) if (aliases.add(al.asText())) ((ArrayNode) target.path("aliases")).add(al.asText());
             // 用户在弹窗里改了名：剧本里的原名记成别名，下次提取还能认出是同一个。
