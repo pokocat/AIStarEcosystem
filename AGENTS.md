@@ -1383,3 +1383,8 @@ V74基线不回改，V75结构补齐、V76业务标识比较、V77重试引用�
 ALB就绪入口为 `GET /internal/ready`：应用启动完成且真实数据库连接有效才200，启动中、关闭或数据库故障返回503，响应仅含ready布尔值。它不承诺生成供应商、支付或发布能力均已可用；这些仍须业务验收。
 
 生产postgres配置由 `PostgresEnvironmentGuard` 在EnvironmentPostProcessor阶段检查，早于DataSource/Hibernate创建；拒绝旧环境遗留的ddl-auto=update或MySQL Flyway目录等覆盖。源env复制后必须显式替换数据库/driver/dialect、schema、Flyway目录/开关、UTC、日志目录与后台角色，不能只改DB_URL。实际数据库版本/角色/时区仍在连接后另行验证。
+
+
+### 充值确认与旧轮询响应（2026-11-04，迁移回归修复，未部署）
+
+同一订单已经由服务端确认终态后，较早请求返回的pending不能覆盖确认状态；后续服务端退款等终态仍可更新。到账回调仍只触发一次，不以客户端扫码或打开支付页判断成功。并发回执回归固定同一React批次，原生付款与真实充值未执行。

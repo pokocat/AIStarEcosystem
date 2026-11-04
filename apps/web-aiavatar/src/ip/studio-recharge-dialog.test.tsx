@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { StudioRechargeDialog } from "./studio-recharge-dialog";
 const api = vi.hoisted(() => ({ channels: vi.fn(), order: vi.fn(), syncOrder: vi.fn(), checkout: vi.fn() }));
@@ -9,7 +9,7 @@ vi.mock("antd", () => ({
   Button: ({children, onClick, disabled}: any) => <button disabled={disabled} onClick={onClick}>{children}</button>,
   Radio: Object.assign(({children}: any) => <span>{children}</span>, {Group: ({children}: any) => <div>{children}</div>}),
   Space: ({children}: any) => <div>{children}</div>, Spin: () => <span>loading</span>,
-  Alert: ({title}: any) => <div role="alert">{title}</div>, QRCode: ({value}: any) => <div data-testid="qr">{value}</div>,
+  Alert: ({title, type}: any) => <div role="alert" data-status={type}>{title}</div>, QRCode: ({value}: any) => <div data-testid="qr">{value}</div>,
 }));
 const pack = {id:"pkg",tag:"标准包",credits:10000,priceCents:9900};
 const order = {id:"ro-test",packageId:"pkg",credits:10000,priceCents:9900,status:"pending",wayCode:"WX_NATIVE"};
@@ -39,4 +39,21 @@ test("query failure remains pending without declaring success", async () => {
   render(<StudioRechargeDialog initialOrderId="ro-test" onClose={vi.fn()} onPaid={paid}/>);
   fireEvent.click(await screen.findByRole("button",{name:"我已支付，刷新结果"}));
   await screen.findByText("支付结果暂未确认"); expect(paid).not.toHaveBeenCalled();
+});
+
+test("a stale pending poll cannot overwrite the server-confirmed paid state", async () => {
+  let finishPoll!: (value: typeof order) => void;
+  let finishSync!: (value: typeof order) => void;
+  api.order.mockImplementation(() => new Promise(resolve => { finishPoll = resolve; }));
+  api.syncOrder.mockImplementation(() => new Promise(resolve => { finishSync = resolve; }));
+  api.checkout.mockResolvedValue({orderId:"ro-test",payDataType:"qr",payData:"weixin://wxpay/test"});
+  const paid=vi.fn();render(<StudioRechargeDialog pack={pack} onClose={vi.fn()} onPaid={paid}/>);
+  fireEvent.click(await screen.findByRole("button",{name:"确认支付"}));
+  await screen.findByTestId("qr");await waitFor(()=>expect(api.order).toHaveBeenCalled());
+  fireEvent.click(screen.getByRole("button",{name:"我已支付，刷新结果"}));
+  await waitFor(()=>expect(api.syncOrder).toHaveBeenCalled());
+  await act(async()=>{ finishSync({...order,status:"paid"});finishPoll(order); });
+  expect(paid).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole("alert").getAttribute("data-status")).toBe("success");
+  expect(api.checkout).toHaveBeenCalledTimes(1);
 });

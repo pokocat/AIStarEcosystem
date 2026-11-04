@@ -832,3 +832,5 @@ V74基线不回改，V75结构补齐、V76业务标识比较、V77重试引用�
 ALB就绪入口为 `GET /internal/ready`：应用启动完成且真实数据库连接有效才200，启动中、关闭或数据库故障返回503，响应仅含ready布尔值。它不承诺生成供应商、支付或发布能力均已可用；这些仍须业务验收。
 
 生产postgres配置由 `PostgresEnvironmentGuard` 在EnvironmentPostProcessor阶段检查，早于DataSource/Hibernate创建；拒绝旧环境遗留的ddl-auto=update或MySQL Flyway目录等覆盖。源env复制后必须显式替换数据库/driver/dialect、schema、Flyway目录/开关、UTC、日志目录与后台角色，不能只改DB_URL。实际数据库版本/角色/时区仍在连接后另行验证。
+
+AIStar PG 不可变运行镜像见 [images/server/README.md](images/server/README.md)，使用已验收 JAR 和固定基础镜像 digest；两机官方 Podman/离线媒体与受保护 ALB 演练独立验收，不代表正式激活。

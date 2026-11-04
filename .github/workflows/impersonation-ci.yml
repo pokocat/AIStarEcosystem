@@ -88,6 +88,9 @@ jobs:
         run: |
           npm install --prefix "$RUNNER_TEMP/browser-test" --no-package-lock --no-save playwright@1.55.1
           "$RUNNER_TEMP/browser-test/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Verify stale payment poll preserves server confirmation
+        if: matrix.product == 'web-aiavatar'
+        run: NODE_PATH="$RUNNER_TEMP/browser-test/node_modules" node scripts/migration/payment-race-browser.cjs
       - name: Verify handoff and exit in production pages
         env:
           PRODUCT: ${{ matrix.product }}

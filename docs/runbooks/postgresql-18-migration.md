@@ -1,12 +1,12 @@
 # PostgreSQL 18 适配与迁移边界
 
-本阶段只做隔离代码与本地真实数据库验收，尚未迁移生产、切流或创建云端账号。新 RDS 为 PostgreSQL 18.0，测试固定使用上游 `postgres:18.0-alpine`；上游镜像无法代替阿里云具体内核验收。
+本阶段完成隔离代码、本地 PostgreSQL18.0 门禁和真实阿里云 RDS18.6 恢复/双机 API/受保护 ALB 演练。AIStar 生产仍为旧 MySQL，没有切流或停服；云端只使用独立演练库与角色。测试镜像固定 `postgres:18.0-alpine`，云端验收另有独立证据。
 
 ## 代码与配置
 
 - 新增 `apps/server/src/main/resources/application-postgres.yml`：生产 profile，独立 Flyway `classpath:db/postgresql`、禁止自动 baseline、Hibernate validate、UTC 连接和时间映射；数据库地址、账号、口令均无本地默认。
 - 空库基线 `db/postgresql/V74__postgresql_baseline.sql` 包含当前 190 个模型表、JDBC 专用的 `model_alert_delivery` 、历史软删/已读列和固定参数索引。旧 MySQL/H2 的 V1–V74 SQL/Java 文件不变，也不被 PG 扫描。
-- **该基线是当前应用结构的可执行基线，不等于已完成源生产结构全量对账。** 之前源库快照有 193 张表（含 Flyway）；该基线建成 192 张表（含 Flyway）。上线导入前必须查清这 1 张遗留表以及全部源库独有列、动态创建索引、外键、默认值和手工修表；不能直接丢弃或假定无用。对账完成后用新 PG 迁移补齐，不能伪造旧 Flyway 历史。当前基线不能作为“所有历史数据已可无损迁移”的证明。
+- V74 单独基线曾比源库少1张历史表；已由 V75 补齐并保留旧版本不可变。当前 V74–V77 恢复192张业务表（各自加Flyway共193张），逐表全字段摘要一致。后续主线/源库漂移必须重新对账，不能把本次非冻结快照作为最终切流数据。
 - 88 个实体文件的大文本映射移除 MySQL `LONGTEXT` 硬编码及 JDBC `@Lob` 字符定位器，改为标准 LONGVARCHAR/VARCHAR 字符绑定和 LONG32 列长度：MySQL 保持 longtext 容量，PG 使用 text。原 TEXT 列容量约定保留，Map/List 转换器序列化格式不改，不擅自转 jsonb。
 - `MaterialVideoInputAssetWriterImpl` 按真实数据库元数据选择原子 upsert：PG 的冲突目标仅 id，更新回执/有效期，不替换首次 source_key。`FeishuModelAlerts` 在 PG 用 `ON CONFLICT(id) DO NOTHING`，保持持久去重；测试不发飞书消息。
 - `MixcutJobSchemaMigration` / `SellingChannelMigrationSeeder` 对 PG 不再执行启动 DDL；`PlatformsAiavatarMigrationSeeder` 不再重写导入授权字段，渠道 Seeder 不再回填导入批次的历史归属，仅保留缺失的当前默认渠道初始化。旧引擎路径保留。`PostgresRuntimeGuard` 检查生产 profile、真实 PG18、UTC、Flyway/validate 以及禁用开发认证、假 CDN/短信/模型/支付等配置。现有人工生产判断已纳入 postgres。
@@ -40,9 +40,9 @@ Flyway PG18 支持依据：[11.14.1 官方源码](https://github.com/flyway/flyw
 
 适配中已复现并修复：PG保留字 `drama_character.cast`（PG配置启用auto_quote_keyword并在基线引用标识符）；Hibernate6.5把LONG32VARCHAR JDBC类型排除在LIKE/length字符串语义之外（改标准LONGVARCHAR绑定、保留LONG32容量）；旧H2测试动态地址覆盖PG（PG Maven profile显式门控原H2配置，各PG类独立schema）。每项均须由最终门禁证明，不能引用失败的首轮结果。
 
-上线前的源库对账还包括排序规则及业务唯一键的比较语义（登录名、短链、代码等），不能把身份 uid 的严格大小写规则机械套到全部业务字段；以现网契约及脱敏数据回归确认。当前未使用云端数据库口令、未导入真实业务数据。
+上线前的源库对账还包括排序规则及业务唯一键的比较语义（登录名、短链、代码等），不能把身份 uid 的严格大小写规则机械套到全部业务字段；以现网契约及脱敏数据回归确认。当前已在专用演练库恢复真实只读快照，未向正式目标或源生产写入数据。
 
-最终本地结果（源码冻结后）：devq `78394c656d0b` 默认后端回归3481项，0失败/错误、12既有条件跳过，并通过离线compile及部署脚本bash-n；devq `f21254d899e6` 真实PG18.0五类57项零失败/错误/跳过，报告检查通过。Flyway三模块11.14.1。未部署、未提交、未触发GitHub CI。
+早期适配结果（已被后面的最终门禁取代）：devq `78394c656d0b` 默认后端回归3481项，0失败/错误、12既有条件跳过，并通过离线compile及部署脚本bash-n；devq `f21254d899e6` 真实PG18.0五类57项零失败/错误/跳过，报告检查通过。Flyway三模块11.14.1。该早期记录当时未提交；当前提交、CI和云端证据以本节之后的结果为准。
 
 ## 2026-11-04 主线对齐后的准备
 
@@ -84,3 +84,13 @@ Flyway PG18 支持依据：[11.14.1 官方源码](https://github.com/flyway/flyw
 后续新schema变更同时维护MySQL与PG迁移，版本编号在各目录分别检查；严禁改已执行V74–V77来修复漂移。最终验收以对应提交的CI、本地devq退出码及真实RDS回执为准。
 
 生产postgres配置由 `PostgresEnvironmentGuard` 在EnvironmentPostProcessor阶段检查，早于DataSource/Hibernate创建；拒绝旧环境遗留的ddl-auto=update或MySQL Flyway目录等覆盖。源env复制后必须显式替换数据库/driver/dialect、schema、Flyway目录/开关、UTC、日志目录与后台角色，不能只改DB_URL。实际数据库版本/角色/时区仍在连接后另行验证。
+
+### 最终白天验收与运行镜像
+
+当前后端最终门禁3527项，0失败/错误、12项既有外部条件跳过；PG专项64项零失败/错误/跳过，额外基线/调度4项通过。两机真实RDS分别完成190实体validate及合成管理员跨节点认证。受保护ALB主备演练262次带登录态请求全部200，包含180秒排空、重启及错误备用配置拦截；没有修改正常域名/DNS。
+
+`infra/images/server/` 提供不可变Java17/FFmpeg/Noto镜像构建，基础镜像必须固定digest，并固定已验收JAR SHA。两机Podman通过Cloud Assistant从官方alinux3-updates安装；已有服务PID保持。SLS独立aistar-app保留14天，采集/var/log/aistar/*.log，复用现有机器组；正式日志必须挂载此目录。镜像离线媒体、日志入库、最终提交CI的验收回执见此次准备报告，不能把包已安装或任务已受理当作通过。
+
+前端回归同时修复旧轮询pending覆盖人工同步paid的竞态：acceptedOrder引用先接受终态，再忽略旧pending；退款等后续终态允许更新。单测覆盖同一React批次乱序回复，Chromium实际点击验收只用合成订单，不发真实付款请求。
+
+仍留正式窗口的动作：最终源版本/结构复核、停写排空、正式库最小权限角色及首次导入、真实生产配置与外部依赖验收、后台主备交接、默认发布脚本切换新集群、ALB/旧DNS缓存桥/DNS切流和观察。AIStar未获窗口，不沿用账号中心窗口。
