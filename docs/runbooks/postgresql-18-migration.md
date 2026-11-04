@@ -43,3 +43,44 @@ Flyway PG18 支持依据：[11.14.1 官方源码](https://github.com/flyway/flyw
 上线前的源库对账还包括排序规则及业务唯一键的比较语义（登录名、短链、代码等），不能把身份 uid 的严格大小写规则机械套到全部业务字段；以现网契约及脱敏数据回归确认。当前未使用云端数据库口令、未导入真实业务数据。
 
 最终本地结果（源码冻结后）：devq `78394c656d0b` 默认后端回归3481项，0失败/错误、12既有条件跳过，并通过离线compile及部署脚本bash-n；devq `f21254d899e6` 真实PG18.0五类57项零失败/错误/跳过，报告检查通过。Flyway三模块11.14.1。未部署、未提交、未触发GitHub CI。
+
+## 2026-11-04 主线对齐后的准备
+
+迁移准备在隔离 `codex/postgres18` 中与 GitHub main `35c24240a372de037c9c33fdaccdca2c9ebc2ac1` 合并；不能拿早期分支覆盖持续开发的新功能。原开发目录的未提交工作不属于本次补丁。
+
+数据库版本链为 V74 → V75 → V76 → V77。V74 已执行基线保持不变；V75 保留历史 `llm_api_keys`、provider 历史字段、16 个非空约束、103 个默认值、10 个索引和3个外键。`ModelPrice/ModelDiscount` 创建时补齐 `updatedAt`，不覆盖显式提供的历史时间。源 192 张业务表全部保留，不能根据是否有 JPA 实体或产品是否公开筛表。
+
+### 比较规则与重试保护
+
+`db/postgresql/key-comparison-policy.json` 明确登记源259组文本唯一键：
+
+- 用户名、邮件、slug、渠道、批次、配置、模型价格、提示词及技能键采用限定列的 ICU `und-u-ks-level1`，不改数据库全局排序规则。查询和表达式唯一索引都使用 `rtrim`，兼容大小写、重音及尾部空格，同时保留原存储字节。
+- `client_request_id/client_message_id/source_reference/reference_id` 等重试引用保留上述比较语义。业务查询、悲观锁查询和唯一约束同时适配；并发变体重试必须返回同一个 hold，仅冻结一次。
+- owner UID、任务主键、上游任务号、token/hash/密文保持精确比较，不能将凭据或不同身份转小写。枚举继续按固定合法值处理。不得把“数据库默认C”描述成完整兼容。
+- ICU 与 MySQL 使用不同 Unicode 实现，必须在全量恢复副本上实际建索引；发生历史碰撞应中止并报告，不能去重、改主键或覆盖业务记录。
+
+### 时间字段实证
+
+`SourceTemporalPostgresIT` 在真实 MySQL8、Asia/Shanghai JVM/JDBC 下验证当前 Hibernate 6.5 的绑定：`Instant` 和 `OffsetDateTime` 的 DATETIME 存储为 UTC；JDBC-only DATETIME 按 Asia/Shanghai 解释。源 TIMESTAMP 用 UTC session 导出，DATE 保持 DATE。逐列计划覆盖336个时间列；历史表及 `model_alert_delivery` 的8个未映射 DATETIME 单独登记，不把所有列统一减8小时。时区配置变化必须重做此契约，不沿用身份中心的转换规则。
+
+### 真实 RDS 恢复与账务核对
+
+隔离库 `aistar_schema_rehearsal` 使用独立非超级角色 `aistar_rehearsal`。`infra/migration/export_source_readonly.py` 通过一笔只读一致性事务生成192业务表快照，明确标记 `source_frozen=false`，不能作为切流数据。`AistarRehearsalRestore.java` 仅允许该演练库，严格证书/域名校验、空目标、完整元数据及末尾标记；按外键顺序 COPY，校准序列，逐表SHA256 sum/xor全字段校验后才提交。非空目标拒绝覆盖，不支持正式库模式。
+
+首次实跑192表、28,280行全部指纹一致。`AistarFinancialAudit.java` 以只读事务复查V77之后的数据指纹及钱包桶守恒、冻结余额范围、终态剩余、赠款/分配守恒、模型结算拆分、企业批次和账本孤儿。源快照的10类异常计数均为0；目标结果和最终运行证据记录在本次验收报告中。不运行真实模型、支付、短信或通知，也不重放历史任务。
+
+### 后台任务与后续双机部署
+
+`AEP_BACKGROUND_ENABLED` 控制所有 `@Scheduled` 注册，以及发布服务启动时的恢复；新 postgres profile 默认 false，原 MySQL/dev 默认行为保持。新备用节点及导入验证进程必须关闭；主节点仅在正式迁移数据对账和外部依赖就绪后显式打开。该开关提供单活控制，不等于全部worker已经支持双活或整机自动接管。HTTP触发的异步执行仍存在，不能将这个开关当成完整“停写/停任务”。
+
+首次部署清单：A/B各一份同SHA后端与前端；HTTP A100/B0，备用常驻；仅A后台调度。发布组件 sau-service 的浏览器登录态、任务回执和本地文件保持单活，OSS key及JWT/AES/机器认证契约保持。切流前必须把所有在途任务列入排空检查，尤其无外部任务号的同步文字调用；用量未知不能重提或自动退款。
+
+日常滚动入口需要固定新ECS、不可变产物、备用先验收、ALB切权重、连接/任务排空、更新原主及A100/B0恢复。此时尚未迁AIStar生产，旧脚本的地址不是迁移完成标志；不得在本轮运行旧机或新机生产部署命令。将默认入口切到新集群必须与首次激活一起完成，并拒绝旧机覆盖参数。
+
+### 正式窗口另行安排
+
+本轮没有AIStar停写/切流授权窗口，不自动沿用账号中心的11月5日04:00–06:00。先确认最终main/CI及源版本未漂移，再另排维护窗口：停止接收写入和新付费提交→等待/逐类处理在途任务→只停AIStar自有服务及worker→生成全新的同次冻结快照→恢复与全量/账务对账→受保护双节点验证→ALB/旧DNS缓存桥→DNS→日志与客户端验收。新PG接收真实写入后为唯一真源，不能只切DNS回旧MySQL。
+
+后续新schema变更同时维护MySQL与PG迁移，版本编号在各目录分别检查；严禁改已执行V74–V77来修复漂移。最终验收以对应提交的CI、本地devq退出码及真实RDS回执为准。
+
+生产postgres配置由 `PostgresEnvironmentGuard` 在EnvironmentPostProcessor阶段检查，早于DataSource/Hibernate创建；拒绝旧环境遗留的ddl-auto=update或MySQL Flyway目录等覆盖。源env复制后必须显式替换数据库/driver/dialect、schema、Flyway目录/开关、UTC、日志目录与后台角色，不能只改DB_URL。实际数据库版本/角色/时区仍在连接后另行验证。

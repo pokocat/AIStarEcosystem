@@ -6520,6 +6520,17 @@ components:
           description: 本次确认的最高总积分；价格超出时409，先重新确认
 
 paths:
+  /internal/ready:
+    get:
+      operationId: getInternalReadiness
+      summary: 应用及数据库就绪检查
+      description: 启动完成且数据库连接有效才返回200；关闭或数据库不可用返回503，不返回连接信息。
+      responses:
+        '200':
+          description: 已就绪
+        '503':
+          description: 未就绪
+
   /admin/model-billing/targets:
     get:
       tags:

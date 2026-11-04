@@ -13,6 +13,7 @@ import java.util.Optional;
 public interface LicenseBatchRepository extends JpaRepository<LicenseBatch, String>,
         PagingAndSortingRepository<LicenseBatch, String> {
 
+    @org.springframework.data.jpa.repository.Query("select x from LicenseBatch x where trim(trailing from x.batchNo)=trim(trailing from :batchNo)")
     Optional<LicenseBatch> findByBatchNo(String batchNo);
 
     Page<LicenseBatch> findByIssuerTenantId(String issuerTenantId, Pageable pageable);

@@ -1372,3 +1372,14 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 ## PostgreSQL 18 兼容路径（本地准备，未生产迁移）
 
 后端新增 `postgres` 生产 profile、独立 `db/postgresql/V74__postgresql_baseline.sql`，只用 Flyway+validate，不执行旧 Java 迁移或运行期 DDL。旧 H2/MySQL 路径保留。细则与源库遗留结构差异见 `docs/runbooks/postgresql-18-migration.md`。新增 schema 变更同步两引擎新版本，不改已发布历史；真实 PG `-Ppostgres-test` 不得跳过。
+
+
+## PostgreSQL 18 准备增量（2026-11-04，未生产发布）
+
+V74基线不回改，V75结构补齐、V76业务标识比较、V77重试引用比较。用户名/slug与幂等请求使用限定列ICU+rtrim；身份UID、任务主键和凭据精确比较。ModelPrice/ModelDiscount新建记录补updatedAt。postgres备用/导入验证进程默认 `AEP_BACKGROUND_ENABLED=false`；仅主节点显式开启定时任务，启动发布恢复也遵守该开关，HTTP异步入口仍须另行排空。
+
+真实RDS独立演练已恢复192表/28,280行并核对全字段指纹；工具只允许演练库，不支持生产恢复。源时间按真实Hibernate/JDBC类型逐列转换，不统一减8小时。AIStar生产窗口尚未安排，不执行部署、停写、ALB/DNS切换，不借用账号中心的窗口。完整规则与验收入口见 `docs/runbooks/postgresql-18-migration.md`。
+
+ALB就绪入口为 `GET /internal/ready`：应用启动完成且真实数据库连接有效才200，启动中、关闭或数据库故障返回503，响应仅含ready布尔值。它不承诺生成供应商、支付或发布能力均已可用；这些仍须业务验收。
+
+生产postgres配置由 `PostgresEnvironmentGuard` 在EnvironmentPostProcessor阶段检查，早于DataSource/Hibernate创建；拒绝旧环境遗留的ddl-auto=update或MySQL Flyway目录等覆盖。源env复制后必须显式替换数据库/driver/dialect、schema、Flyway目录/开关、UTC、日志目录与后台角色，不能只改DB_URL。实际数据库版本/角色/时区仍在连接后另行验证。

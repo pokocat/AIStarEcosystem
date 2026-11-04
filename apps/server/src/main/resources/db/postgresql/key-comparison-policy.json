@@ -1,0 +1,3660 @@
+{
+  "version": 1,
+  "business_columns": {
+    "admin_users": [
+      "username",
+      "email"
+    ],
+    "aep_users": [
+      "username",
+      "email"
+    ],
+    "aep_selling_channels": [
+      "code"
+    ],
+    "aep_social_accounts": [
+      "account_name"
+    ],
+    "aep_license_batches": [
+      "batch_no"
+    ],
+    "aep_model_prices": [
+      "target_key"
+    ],
+    "aep_model_discounts": [
+      "target_key"
+    ],
+    "aep_platform_configs": [
+      "config_key"
+    ],
+    "agent_bot_providers": [
+      "scene_key"
+    ],
+    "card_profile": [
+      "slug"
+    ],
+    "prompt_template": [
+      "prompt_key"
+    ],
+    "ip_skill_version": [
+      "skill_key"
+    ],
+    "ip_skill": [
+      "skill_key"
+    ]
+  },
+  "unique_keys": [
+    {
+      "table": "admin_users",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "admin_users",
+      "index": "UK3fgxk4ewgaxgtgvqwb1jjudj6",
+      "columns": [
+        "username"
+      ],
+      "source_collations": {
+        "username": "utf8mb4_unicode_ci"
+      },
+      "policy": "business_identifier_ci_ai_rtrim",
+      "normalized_columns": [
+        "username"
+      ],
+      "reason": "Human/business lookup preserves case/accent/trailing-space equality"
+    },
+    {
+      "table": "aep_advertisements",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_albums",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_audit_logs",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_community_events",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_community_posts",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_concerts",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_copyrights",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_credit_campaigns",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_credit_grant_holds",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_credit_grant_holds",
+      "index": "uk_scoped_grant_hold",
+      "columns": [
+        "hold_id",
+        "grant_id"
+      ],
+      "source_collations": {
+        "hold_id": "utf8mb4_unicode_ci",
+        "grant_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_credit_grants",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_credit_grants",
+      "index": "uk_scoped_grant_source",
+      "columns": [
+        "source",
+        "source_reference"
+      ],
+      "source_collations": {
+        "source": "utf8mb4_unicode_ci",
+        "source_reference": "utf8mb4_unicode_ci"
+      },
+      "policy": "idempotency_ci_ai_rtrim",
+      "normalized_columns": [
+        "source_reference"
+      ],
+      "reason": "Preserve source retry deduplication; owner IDs and credentials remain exact"
+    },
+    {
+      "table": "aep_credit_holds",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_credit_holds",
+      "index": "uk_credit_hold_ref",
+      "columns": [
+        "reference_type",
+        "reference_id"
+      ],
+      "source_collations": {
+        "reference_type": "utf8mb4_unicode_ci",
+        "reference_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "idempotency_ci_ai_rtrim",
+      "normalized_columns": [
+        "reference_type",
+        "reference_id"
+      ],
+      "reason": "Preserve source retry deduplication; owner IDs and credentials remain exact"
+    },
+    {
+      "table": "aep_credit_packs",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_credit_purchases",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_credit_resource_reservations",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_credit_resource_reservations",
+      "index": "uk_scoped_resource_hold",
+      "columns": [
+        "hold_id",
+        "campaign_id"
+      ],
+      "source_collations": {
+        "hold_id": "utf8mb4_unicode_ci",
+        "campaign_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_distribution_contents",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_distribution_queue",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_dramas",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_enterprise_audit",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_enterprise_billing_authorizations",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_enterprise_billing_authorizations",
+      "index": "uk_enterprise_billing_ref",
+      "columns": [
+        "reference_type",
+        "reference_id"
+      ],
+      "source_collations": {
+        "reference_type": "utf8mb4_unicode_ci",
+        "reference_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "idempotency_ci_ai_rtrim",
+      "normalized_columns": [
+        "reference_type",
+        "reference_id"
+      ],
+      "reason": "Preserve source retry deduplication; owner IDs and credentials remain exact"
+    },
+    {
+      "table": "aep_enterprise_cash_receipts",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_enterprise_credit_lot_holds",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_enterprise_credit_lot_holds",
+      "index": "uk_enterprise_lot_hold",
+      "columns": [
+        "hold_id",
+        "lot_id"
+      ],
+      "source_collations": {
+        "hold_id": "utf8mb4_unicode_ci",
+        "lot_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_enterprise_credit_lots",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_enterprise_credit_lots",
+      "index": "uk_enterprise_credit_lot",
+      "columns": [
+        "recharge_order_id",
+        "wallet_id"
+      ],
+      "source_collations": {
+        "recharge_order_id": "utf8mb4_unicode_ci",
+        "wallet_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_enterprise_current",
+      "index": "PRIMARY",
+      "columns": [
+        "user_id"
+      ],
+      "source_collations": {
+        "user_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_enterprise_current",
+      "index": "member_id",
+      "columns": [
+        "member_id"
+      ],
+      "source_collations": {
+        "member_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_enterprise_invitations",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_enterprise_invitations",
+      "index": "token_hash",
+      "columns": [
+        "token_hash"
+      ],
+      "source_collations": {
+        "token_hash": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_enterprise_invitations",
+      "index": "uk_enterprise_invite_request",
+      "columns": [
+        "enterprise_id",
+        "created_by",
+        "client_request_id"
+      ],
+      "source_collations": {
+        "enterprise_id": "utf8mb4_unicode_ci",
+        "created_by": "utf8mb4_unicode_ci",
+        "client_request_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "idempotency_ci_ai_rtrim",
+      "normalized_columns": [
+        "client_request_id"
+      ],
+      "reason": "Preserve source retry deduplication; owner IDs and credentials remain exact"
+    },
+    {
+      "table": "aep_enterprise_lifecycle_operations",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_enterprise_lifecycle_operations",
+      "index": "uk_enterprise_lifecycle_request",
+      "columns": [
+        "enterprise_id",
+        "client_request_id"
+      ],
+      "source_collations": {
+        "enterprise_id": "utf8mb4_unicode_ci",
+        "client_request_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "idempotency_ci_ai_rtrim",
+      "normalized_columns": [
+        "client_request_id"
+      ],
+      "reason": "Preserve source retry deduplication; owner IDs and credentials remain exact"
+    },
+    {
+      "table": "aep_enterprise_members",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_enterprise_ownership_transfers",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_enterprise_ownership_transfers",
+      "index": "uk_enterprise_transfer_request",
+      "columns": [
+        "enterprise_id",
+        "from_user_id",
+        "client_request_id"
+      ],
+      "source_collations": {
+        "enterprise_id": "utf8mb4_unicode_ci",
+        "from_user_id": "utf8mb4_unicode_ci",
+        "client_request_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "idempotency_ci_ai_rtrim",
+      "normalized_columns": [
+        "client_request_id"
+      ],
+      "reason": "Preserve source retry deduplication; owner IDs and credentials remain exact"
+    },
+    {
+      "table": "aep_enterprise_points_batches",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_enterprise_points_batches",
+      "index": "uk_enterprise_batch_request",
+      "columns": [
+        "enterprise_id",
+        "client_request_id"
+      ],
+      "source_collations": {
+        "enterprise_id": "utf8mb4_unicode_ci",
+        "client_request_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "idempotency_ci_ai_rtrim",
+      "normalized_columns": [
+        "client_request_id"
+      ],
+      "reason": "Preserve source retry deduplication; owner IDs and credentials remain exact"
+    },
+    {
+      "table": "aep_enterprise_points_transfers",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_enterprise_policies",
+      "index": "PRIMARY",
+      "columns": [
+        "enterprise_id"
+      ],
+      "source_collations": {
+        "enterprise_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_enterprises",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_enterprises",
+      "index": "uk_enterprise_create",
+      "columns": [
+        "created_by",
+        "create_request_id"
+      ],
+      "source_collations": {
+        "created_by": "utf8mb4_unicode_ci",
+        "create_request_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "idempotency_ci_ai_rtrim",
+      "normalized_columns": [
+        "create_request_id"
+      ],
+      "reason": "Preserve source retry deduplication; owner IDs and credentials remain exact"
+    },
+    {
+      "table": "aep_error_logs",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_error_logs",
+      "index": "UKglyr1f79w7kq78f3sqeff0sl1",
+      "columns": [
+        "log_id"
+      ],
+      "source_collations": {
+        "log_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_event_rsvps",
+      "index": "PRIMARY",
+      "columns": [
+        "event_id",
+        "user_id"
+      ],
+      "source_collations": {
+        "event_id": "utf8mb4_unicode_ci",
+        "user_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_fan_activities",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_fan_growth",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_fan_tiers",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_forge_blueprints",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_forge_results",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_forge_templates",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_ledger_entries",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_license_batches",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_license_batches",
+      "index": "UKjerhg7cndr5nc17ujgbjyc8ko",
+      "columns": [
+        "batch_no"
+      ],
+      "source_collations": {
+        "batch_no": "utf8mb4_unicode_ci"
+      },
+      "policy": "business_identifier_ci_ai_rtrim",
+      "normalized_columns": [
+        "batch_no"
+      ],
+      "reason": "Human/business lookup preserves case/accent/trailing-space equality"
+    },
+    {
+      "table": "aep_license_keys",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_license_keys",
+      "index": "UKc9fxo93aotgdxpb76ykuqm3j1",
+      "columns": [
+        "code_hash"
+      ],
+      "source_collations": {
+        "code_hash": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_memberships",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_model_charges",
+      "index": "PRIMARY",
+      "columns": [
+        "hold_id"
+      ],
+      "source_collations": {
+        "hold_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_model_discounts",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_model_prices",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_model_prices",
+      "index": "uk_model_price_target",
+      "columns": [
+        "target_key"
+      ],
+      "source_collations": {
+        "target_key": "utf8mb4_unicode_ci"
+      },
+      "policy": "business_identifier_ci_ai_rtrim",
+      "normalized_columns": [
+        "target_key"
+      ],
+      "reason": "Human/business lookup preserves case/accent/trailing-space equality"
+    },
+    {
+      "table": "aep_movies",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_music_genres",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_notifications",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_payment_channels",
+      "index": "PRIMARY",
+      "columns": [
+        "code"
+      ],
+      "source_collations": {
+        "code": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_platform_configs",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_platform_configs",
+      "index": "UK4u38kdw69xcpgobh8ycbofuwu",
+      "columns": [
+        "config_key"
+      ],
+      "source_collations": {
+        "config_key": "utf8mb4_unicode_ci"
+      },
+      "policy": "business_identifier_ci_ai_rtrim",
+      "normalized_columns": [
+        "config_key"
+      ],
+      "reason": "Human/business lookup preserves case/accent/trailing-space equality"
+    },
+    {
+      "table": "aep_platform_connections",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_platforms",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_publish_job_events",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_publish_jobs",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_publish_jobs",
+      "index": "idx_publish_external_task",
+      "columns": [
+        "external_task_id"
+      ],
+      "source_collations": {
+        "external_task_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_recharge_records",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_saved_outfits",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_selling_channels",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_selling_channels",
+      "index": "idx_selling_channel_code",
+      "columns": [
+        "code"
+      ],
+      "source_collations": {
+        "code": "utf8mb4_unicode_ci"
+      },
+      "policy": "business_identifier_ci_ai_rtrim",
+      "normalized_columns": [
+        "code"
+      ],
+      "reason": "Human/business lookup preserves case/accent/trailing-space equality"
+    },
+    {
+      "table": "aep_signed_artists",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_social_accounts",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_social_accounts",
+      "index": "uk_social_user_platform_name",
+      "columns": [
+        "user_id",
+        "platform",
+        "account_name"
+      ],
+      "source_collations": {
+        "user_id": "utf8mb4_unicode_ci",
+        "platform": "utf8mb4_unicode_ci",
+        "account_name": "utf8mb4_unicode_ci"
+      },
+      "policy": "business_identifier_ci_ai_rtrim",
+      "normalized_columns": [
+        "account_name"
+      ],
+      "reason": "Human/business lookup preserves case/accent/trailing-space equality"
+    },
+    {
+      "table": "aep_songs",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_studios",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_studios",
+      "index": "UKhvd7mon3wci08vyoymll2767v",
+      "columns": [
+        "owner_user_id"
+      ],
+      "source_collations": {
+        "owner_user_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_tenants",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_user_inventory",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_user_inventory",
+      "index": "ux_inv_user_item",
+      "columns": [
+        "user_id",
+        "item_type",
+        "item_id"
+      ],
+      "source_collations": {
+        "user_id": "utf8mb4_unicode_ci",
+        "item_type": "utf8mb4_unicode_ci",
+        "item_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_users",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_users",
+      "index": "UK4m9y9lwk6wodeu3fehp7ays95",
+      "columns": [
+        "username"
+      ],
+      "source_collations": {
+        "username": "utf8mb4_unicode_ci"
+      },
+      "policy": "business_identifier_ci_ai_rtrim",
+      "normalized_columns": [
+        "username"
+      ],
+      "reason": "Human/business lookup preserves case/accent/trailing-space equality"
+    },
+    {
+      "table": "aep_users",
+      "index": "uk_aep_users_identity_uid",
+      "columns": [
+        "identity_uid"
+      ],
+      "source_collations": {
+        "identity_uid": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_voice_works",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_wallets",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_wallets",
+      "index": "UK52a2k3s19bvctsgdyklu9mp10",
+      "columns": [
+        "user_id"
+      ],
+      "source_collations": {
+        "user_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "aep_wallets",
+      "index": "uk_wallet_account_key",
+      "columns": [
+        "account_key"
+      ],
+      "source_collations": {
+        "account_key": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "agent_bot_providers",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "agent_bot_providers",
+      "index": "uk_agent_bot_scene",
+      "columns": [
+        "scene_key"
+      ],
+      "source_collations": {
+        "scene_key": "utf8mb4_unicode_ci"
+      },
+      "policy": "business_identifier_ci_ai_rtrim",
+      "normalized_columns": [
+        "scene_key"
+      ],
+      "reason": "Human/business lookup preserves case/accent/trailing-space equality"
+    },
+    {
+      "table": "ai_app_binding",
+      "index": "PRIMARY",
+      "columns": [
+        "purpose"
+      ],
+      "source_collations": {
+        "purpose": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "ai_app_endpoint_candidate",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "ai_app_endpoint_candidate",
+      "index": "UKfui1w791x0tjuxau22k7wts6p",
+      "columns": [
+        "purpose",
+        "endpoint_id"
+      ],
+      "source_collations": {
+        "purpose": "utf8mb4_unicode_ci",
+        "endpoint_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "ai_generation_queue",
+      "index": "uk_ai_generation_task",
+      "columns": [
+        "task_type",
+        "task_id"
+      ],
+      "source_collations": {
+        "task_type": "utf8mb4_unicode_ci",
+        "task_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "ai_model_providers",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "ai_model_usage_record",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "card_profile",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "card_profile",
+      "index": "uk_card_profile_slug",
+      "columns": [
+        "slug"
+      ],
+      "source_collations": {
+        "slug": "utf8mb4_unicode_ci"
+      },
+      "policy": "business_identifier_ci_ai_rtrim",
+      "normalized_columns": [
+        "slug"
+      ],
+      "reason": "Human/business lookup preserves case/accent/trailing-space equality"
+    },
+    {
+      "table": "celebrity_project_videos",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "celebrity_projects",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "celebrity_showcases",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "celebrity_star_authorizations",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "celebrity_star_authorizations",
+      "index": "UK9hfyu3gxtvgkiepvksito11x2",
+      "columns": [
+        "user_id",
+        "star_id"
+      ],
+      "source_collations": {
+        "user_id": "utf8mb4_unicode_ci",
+        "star_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "celebrity_stars",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "celebrity_templates",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "clip_asset",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "clip_pricing",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "clip_project",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "clip_render_job",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "clip_render_job",
+      "index": "idx_clip_job_request",
+      "columns": [
+        "external_owner_id",
+        "client_request_id"
+      ],
+      "source_collations": {
+        "external_owner_id": "utf8mb4_unicode_ci",
+        "client_request_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "idempotency_ci_ai_rtrim",
+      "normalized_columns": [
+        "client_request_id"
+      ],
+      "reason": "Preserve source retry deduplication; owner IDs and credentials remain exact"
+    },
+    {
+      "table": "clip_shot_job",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "clip_shot_job",
+      "index": "uk_clip_shot_job_request",
+      "columns": [
+        "external_owner_id",
+        "client_request_id"
+      ],
+      "source_collations": {
+        "external_owner_id": "utf8mb4_unicode_ci",
+        "client_request_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "idempotency_ci_ai_rtrim",
+      "normalized_columns": [
+        "client_request_id"
+      ],
+      "reason": "Preserve source retry deduplication; owner IDs and credentials remain exact"
+    },
+    {
+      "table": "clip_template",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "clip_tts_preview",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "clip_tts_preview",
+      "index": "uk_clip_tts_preview_project",
+      "columns": [
+        "external_owner_id",
+        "project_id"
+      ],
+      "source_collations": {
+        "external_owner_id": "utf8mb4_unicode_ci",
+        "project_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "clip_upload_session",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "clip_upload_session",
+      "index": "idx_clip_upload_owner_request",
+      "columns": [
+        "external_owner_id",
+        "client_request_id"
+      ],
+      "source_collations": {
+        "external_owner_id": "utf8mb4_unicode_ci",
+        "client_request_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "idempotency_ci_ai_rtrim",
+      "normalized_columns": [
+        "client_request_id"
+      ],
+      "reason": "Preserve source retry deduplication; owner IDs and credentials remain exact"
+    },
+    {
+      "table": "clip_upload_session",
+      "index": "uk_clip_upload_owner_request",
+      "columns": [
+        "external_owner_id",
+        "client_request_id"
+      ],
+      "source_collations": {
+        "external_owner_id": "utf8mb4_unicode_ci",
+        "client_request_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "idempotency_ci_ai_rtrim",
+      "normalized_columns": [
+        "client_request_id"
+      ],
+      "reason": "Preserve source retry deduplication; owner IDs and credentials remain exact"
+    },
+    {
+      "table": "credit_adjustment_request",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "dap_asset_ip",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "dap_asset_usage",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "dap_avatar",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "dap_avatar_version",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "dap_capture",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "dap_composition",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "dap_composition_output",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "dap_consent",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "dap_derivative",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "dap_job",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "dap_license",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "dap_look",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "dap_material",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "dap_material_group",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "dap_material_group",
+      "index": "UK4j5elxroxh4xj1x4b5hbxjs84",
+      "columns": [
+        "callback_token"
+      ],
+      "source_collations": {
+        "callback_token": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "dap_photo",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "dap_product",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "dap_public_avatar",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "dap_scene",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "dap_style",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "dap_voice",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "dap_voice",
+      "index": "uk_dap_voice_source",
+      "columns": [
+        "avatar_id",
+        "source_run_id"
+      ],
+      "source_collations": {
+        "avatar_id": "utf8mb4_unicode_ci",
+        "source_run_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "digital_ips",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "director_work",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "drama_assets",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "drama_brainstorms",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "drama_canvas",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "drama_canvas_run",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "drama_canvas_run",
+      "index": "uk_drama_canvas_run_owner_req",
+      "columns": [
+        "owner_user_id",
+        "client_request_id"
+      ],
+      "source_collations": {
+        "owner_user_id": "utf8mb4_unicode_ci",
+        "client_request_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "idempotency_ci_ai_rtrim",
+      "normalized_columns": [
+        "client_request_id"
+      ],
+      "reason": "Preserve source retry deduplication; owner IDs and credentials remain exact"
+    },
+    {
+      "table": "drama_character",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "drama_frame_job",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "drama_platform_connections",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "drama_platform_connections",
+      "index": "UKlw9seluxclv6qx0ob44c61jab",
+      "columns": [
+        "owner_user_id",
+        "platform_id"
+      ],
+      "source_collations": {
+        "owner_user_id": "utf8mb4_unicode_ci",
+        "platform_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "drama_projects",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "drama_publish_jobs",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "drama_recipes",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "drama_scene",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "drama_scripts",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "drama_shorts",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "drama_shorts",
+      "index": "uk_drama_short_owner_client_req",
+      "columns": [
+        "owner_user_id",
+        "client_request_id"
+      ],
+      "source_collations": {
+        "owner_user_id": "utf8mb4_unicode_ci",
+        "client_request_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "idempotency_ci_ai_rtrim",
+      "normalized_columns": [
+        "client_request_id"
+      ],
+      "reason": "Preserve source retry deduplication; owner IDs and credentials remain exact"
+    },
+    {
+      "table": "entitlement_grant",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "entitlement_grant",
+      "index": "uk_entitlement_grant_source_ref",
+      "columns": [
+        "source",
+        "source_reference",
+        "product"
+      ],
+      "source_collations": {
+        "source": "utf8mb4_unicode_ci",
+        "source_reference": "utf8mb4_unicode_ci",
+        "product": "utf8mb4_unicode_ci"
+      },
+      "policy": "idempotency_ci_ai_rtrim",
+      "normalized_columns": [
+        "source_reference"
+      ],
+      "reason": "Preserve source retry deduplication; owner IDs and credentials remain exact"
+    },
+    {
+      "table": "expressions",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "generation_jobs",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "gestures",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "ip_conversation_copy",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "ip_conversation_copy",
+      "index": "uk_ip_conversation_copy",
+      "columns": [
+        "owner_user_id",
+        "client_request_id"
+      ],
+      "source_collations": {
+        "owner_user_id": "utf8mb4_unicode_ci",
+        "client_request_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "idempotency_ci_ai_rtrim",
+      "normalized_columns": [
+        "client_request_id"
+      ],
+      "reason": "Preserve source retry deduplication; owner IDs and credentials remain exact"
+    },
+    {
+      "table": "ip_conversation_share",
+      "index": "PRIMARY",
+      "columns": [
+        "token"
+      ],
+      "source_collations": {
+        "token": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "ip_demo_template",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "ip_dialogue_event",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "ip_dialogue_event",
+      "index": "uk_ip_dialogue_event_seq",
+      "columns": [
+        "thread_id",
+        "seq"
+      ],
+      "source_collations": {
+        "thread_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "ip_dialogue_message",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "ip_dialogue_message",
+      "index": "uk_ip_dialogue_message_client",
+      "columns": [
+        "thread_id",
+        "client_message_id"
+      ],
+      "source_collations": {
+        "thread_id": "utf8mb4_unicode_ci",
+        "client_message_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "idempotency_ci_ai_rtrim",
+      "normalized_columns": [
+        "client_message_id"
+      ],
+      "reason": "Preserve source retry deduplication; owner IDs and credentials remain exact"
+    },
+    {
+      "table": "ip_dialogue_message",
+      "index": "uk_ip_dialogue_message_seq",
+      "columns": [
+        "thread_id",
+        "seq"
+      ],
+      "source_collations": {
+        "thread_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "ip_dialogue_steering",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "ip_dialogue_steering",
+      "index": "uk_ip_dialogue_steering_message",
+      "columns": [
+        "message_id"
+      ],
+      "source_collations": {
+        "message_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "ip_dialogue_thread",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "ip_dialogue_thread",
+      "index": "uk_ip_dialogue_thread_branch",
+      "columns": [
+        "owner_user_id",
+        "client_request_id"
+      ],
+      "source_collations": {
+        "owner_user_id": "utf8mb4_unicode_ci",
+        "client_request_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "idempotency_ci_ai_rtrim",
+      "normalized_columns": [
+        "client_request_id"
+      ],
+      "reason": "Preserve source retry deduplication; owner IDs and credentials remain exact"
+    },
+    {
+      "table": "ip_dialogue_thread",
+      "index": "uk_ip_dialogue_thread_project",
+      "columns": [
+        "project_id",
+        "id"
+      ],
+      "source_collations": {
+        "project_id": "utf8mb4_unicode_ci",
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "ip_library_record",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "ip_plan_execution",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "ip_plan_execution",
+      "index": "uk_ip_plan_execution_request",
+      "columns": [
+        "owner_user_id",
+        "client_request_id"
+      ],
+      "source_collations": {
+        "owner_user_id": "utf8mb4_unicode_ci",
+        "client_request_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "idempotency_ci_ai_rtrim",
+      "normalized_columns": [
+        "client_request_id"
+      ],
+      "reason": "Preserve source retry deduplication; owner IDs and credentials remain exact"
+    },
+    {
+      "table": "ip_project",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "ip_project_revision",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "ip_run",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "ip_run",
+      "index": "uk_ip_run_project_request",
+      "columns": [
+        "project_id",
+        "client_request_id"
+      ],
+      "source_collations": {
+        "project_id": "utf8mb4_unicode_ci",
+        "client_request_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "idempotency_ci_ai_rtrim",
+      "normalized_columns": [
+        "client_request_id"
+      ],
+      "reason": "Preserve source retry deduplication; owner IDs and credentials remain exact"
+    },
+    {
+      "table": "ip_saved_asset",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "ip_skill",
+      "index": "PRIMARY",
+      "columns": [
+        "skill_key"
+      ],
+      "source_collations": {
+        "skill_key": "utf8mb4_unicode_ci"
+      },
+      "policy": "business_identifier_ci_ai_rtrim",
+      "normalized_columns": [
+        "skill_key"
+      ],
+      "reason": "Skill catalog key is a business identifier, not an opaque ID"
+    },
+    {
+      "table": "ip_skill_version",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "ip_skill_version",
+      "index": "uk_ip_skill_version",
+      "columns": [
+        "skill_key",
+        "version"
+      ],
+      "source_collations": {
+        "skill_key": "utf8mb4_unicode_ci"
+      },
+      "policy": "business_identifier_ci_ai_rtrim",
+      "normalized_columns": [
+        "skill_key"
+      ],
+      "reason": "Human/business lookup preserves case/accent/trailing-space equality"
+    },
+    {
+      "table": "ip_template_version",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "ip_template_version",
+      "index": "uk_ip_template_version",
+      "columns": [
+        "template_id",
+        "version_no"
+      ],
+      "source_collations": {
+        "template_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "ip_video_effect",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "ip_video_effect_activity",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "ip_video_effect_activity",
+      "index": "uk_ip_effect_activity",
+      "columns": [
+        "owner_user_id",
+        "effect_id"
+      ],
+      "source_collations": {
+        "owner_user_id": "utf8mb4_unicode_ci",
+        "effect_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "llm_api_keys",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "marketplace_listings",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "material_scripts",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "material_video_input_asset",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "material_video_job",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "material_videos",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "material_viral_hits",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "mixcut_asset",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "mixcut_draft",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "mixcut_render_job",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "mixcut_render_output",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "mixcut_template",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "mixcut_template",
+      "index": "uq_mixcut_template_id_owner",
+      "columns": [
+        "template_id",
+        "owner_scope"
+      ],
+      "source_collations": {
+        "template_id": "utf8mb4_unicode_ci",
+        "owner_scope": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "model_alert_delivery",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "music_gen_job",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "music_gen_job",
+      "index": "uk_mgj_owner_request",
+      "columns": [
+        "owner_user_id",
+        "client_request_id"
+      ],
+      "source_collations": {
+        "owner_user_id": "utf8mb4_unicode_ci",
+        "client_request_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "idempotency_ci_ai_rtrim",
+      "normalized_columns": [
+        "client_request_id"
+      ],
+      "reason": "Preserve source retry deduplication; owner IDs and credentials remain exact"
+    },
+    {
+      "table": "nft_collections",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "official_ips",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "persona_presets",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "poses",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "product_enrollment",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "product_enrollment",
+      "index": "uk_product_enrollment_user_product",
+      "columns": [
+        "user_id",
+        "product"
+      ],
+      "source_collations": {
+        "user_id": "utf8mb4_unicode_ci",
+        "product": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "products",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "prompt_template",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "prompt_template",
+      "index": "UKr1vb4kqj19y9cm4r3dkptvwm8",
+      "columns": [
+        "prompt_key"
+      ],
+      "source_collations": {
+        "prompt_key": "utf8mb4_unicode_ci"
+      },
+      "policy": "business_identifier_ci_ai_rtrim",
+      "normalized_columns": [
+        "prompt_key"
+      ],
+      "reason": "Human/business lookup preserves case/accent/trailing-space equality"
+    },
+    {
+      "table": "prompt_template_version",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "recharge_order",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "recharge_order",
+      "index": "UKsnge0kt8y75ok7kj0ftxwnvs6",
+      "columns": [
+        "pay_order_id"
+      ],
+      "source_collations": {
+        "pay_order_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "recharge_order",
+      "index": "uk_enterprise_recharge_request",
+      "columns": [
+        "enterprise_id",
+        "enterprise_request_id"
+      ],
+      "source_collations": {
+        "enterprise_id": "utf8mb4_unicode_ci",
+        "enterprise_request_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "idempotency_ci_ai_rtrim",
+      "normalized_columns": [
+        "enterprise_request_id"
+      ],
+      "reason": "Preserve source retry deduplication; owner IDs and credentials remain exact"
+    },
+    {
+      "table": "recharge_packages",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "singers",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "star_accounts",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "star_accounts",
+      "index": "UKjad9w8fd1ux3hqhoy9wn0x6ef",
+      "columns": [
+        "user_id"
+      ],
+      "source_collations": {
+        "user_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "star_ai_likeness_requests",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "star_brand_auth_requests",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "star_content_reviews",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "star_content_rules",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "star_contracts",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "star_digital_human_requests",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "star_infringement_cases",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "star_ip_assets",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "star_ip_assets",
+      "index": "UK9sftsmp0utelf2hjcpyrt6ukg",
+      "columns": [
+        "star_id",
+        "type"
+      ],
+      "source_collations": {
+        "star_id": "utf8mb4_unicode_ci",
+        "type": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "star_product_onboards",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "star_revenue_months",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "star_revenue_months",
+      "index": "UK41wmup0ho0dbfnykyo0eq2gi3",
+      "columns": [
+        "star_id",
+        "rev_month"
+      ],
+      "source_collations": {
+        "star_id": "utf8mb4_unicode_ci",
+        "rev_month": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "star_whitelist_requests",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "storage_assets",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "storage_grants",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "template_scripts",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "template_scripts",
+      "index": "UKiyx0lcbti7hhw79avdahyrgcs",
+      "columns": [
+        "template_id",
+        "version"
+      ],
+      "source_collations": {
+        "template_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "tracks",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "user_bot_read_state",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "video_studio_prompt_optimization",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "video_studio_prompt_optimization",
+      "index": "uk_vs_opt_owner_request",
+      "columns": [
+        "owner_user_id",
+        "client_request_id"
+      ],
+      "source_collations": {
+        "owner_user_id": "utf8mb4_unicode_ci",
+        "client_request_id": "utf8mb4_unicode_ci"
+      },
+      "policy": "idempotency_ci_ai_rtrim",
+      "normalized_columns": [
+        "client_request_id"
+      ],
+      "reason": "Preserve source retry deduplication; owner IDs and credentials remain exact"
+    },
+    {
+      "table": "video_studio_template",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    },
+    {
+      "table": "wardrobe_items",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
+    }
+  ],
+  "idempotency_columns": {
+    "aep_credit_grants": [
+      "source_reference"
+    ],
+    "aep_credit_holds": [
+      "reference_id",
+      "reference_type"
+    ],
+    "aep_enterprise_billing_authorizations": [
+      "reference_type",
+      "reference_id"
+    ],
+    "aep_enterprise_invitations": [
+      "client_request_id"
+    ],
+    "aep_enterprise_lifecycle_operations": [
+      "client_request_id"
+    ],
+    "aep_enterprise_ownership_transfers": [
+      "client_request_id"
+    ],
+    "aep_enterprise_points_batches": [
+      "client_request_id"
+    ],
+    "aep_enterprises": [
+      "create_request_id"
+    ],
+    "aep_ledger_entries": [
+      "reference_id",
+      "reference_type"
+    ],
+    "clip_render_job": [
+      "client_request_id"
+    ],
+    "clip_shot_job": [
+      "client_request_id"
+    ],
+    "clip_upload_session": [
+      "client_request_id"
+    ],
+    "drama_canvas_run": [
+      "client_request_id"
+    ],
+    "drama_shorts": [
+      "client_request_id"
+    ],
+    "entitlement_grant": [
+      "source_reference"
+    ],
+    "ip_conversation_copy": [
+      "client_request_id"
+    ],
+    "ip_dialogue_message": [
+      "client_message_id"
+    ],
+    "ip_dialogue_thread": [
+      "client_request_id"
+    ],
+    "ip_plan_execution": [
+      "client_request_id"
+    ],
+    "ip_run": [
+      "client_request_id"
+    ],
+    "music_gen_job": [
+      "client_request_id"
+    ],
+    "recharge_order": [
+      "enterprise_request_id"
+    ],
+    "video_studio_prompt_optimization": [
+      "client_request_id"
+    ]
+  }
+}

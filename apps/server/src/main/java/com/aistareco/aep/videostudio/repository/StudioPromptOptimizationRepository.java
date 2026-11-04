@@ -20,6 +20,7 @@ import java.util.Optional;
 @Repository
 public interface StudioPromptOptimizationRepository extends JpaRepository<StudioPromptOptimization, String> {
 
+    @org.springframework.data.jpa.repository.Query("select x from StudioPromptOptimization x where x.ownerUserId = ?1 and trim(trailing from x.clientRequestId) = trim(trailing from ?2)")
     Optional<StudioPromptOptimization> findByOwnerUserIdAndClientRequestId(String ownerUserId, String clientRequestId);
 
     List<StudioPromptOptimization> findByStatusInAndUpdatedAtBefore(Collection<String> statuses, Instant cutoff);

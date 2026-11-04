@@ -46,5 +46,6 @@ public interface DramaShortRepository extends JpaRepository<DramaShort, String> 
      * **不过滤软删**：唯一索引覆盖全部行，回收站里的行也必须能被查到，
      * 否则会撞索引却查不到对手。
      */
+    @org.springframework.data.jpa.repository.Query("select x from DramaShort x where x.ownerUserId = ?1 and trim(trailing from x.clientRequestId) = trim(trailing from ?2)")
     Optional<DramaShort> findFirstByOwnerUserIdAndClientRequestId(String ownerUserId, String clientRequestId);
 }

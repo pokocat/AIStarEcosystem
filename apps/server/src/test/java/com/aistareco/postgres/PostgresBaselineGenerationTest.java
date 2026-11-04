@@ -41,7 +41,20 @@ class PostgresBaselineGenerationTest {
             scanner.addIncludeFilter(new AnnotationTypeFilter(Entity.class));
             scanner.addIncludeFilter(new AnnotationTypeFilter(Converter.class));
             for(var bean:scanner.findCandidateComponents("com.aistareco"))source.addAnnotatedClass(Class.forName(bean.getBeanClassName()));
-            try(var factory=source.buildMetadata().buildSessionFactory()) { assertThat(factory.getMetamodel().getEntities().size()).isGreaterThan(150); }
+            var metadata=source.buildMetadata();
+            try(var factory=metadata.buildSessionFactory()) {
+                assertThat(factory.getMetamodel().getEntities().size()).isGreaterThan(150);
+                if(dialect.endsWith("MySQLDialect")) {
+                    var temporal=new java.util.TreeMap<String,String>();
+                    for(var entity:metadata.getEntityBindings())for(var property:entity.getPropertyClosure()) {
+                        String type=property.getType().getReturnedClass().getName();
+                        if(type.equals("java.time.Instant")||type.equals("java.time.OffsetDateTime"))for(var selectable:property.getValue().getSelectables()) {
+                            if(selectable instanceof org.hibernate.mapping.Column column)temporal.put(entity.getTable().getName()+"."+column.getName(),type);
+                        }
+                    }
+                    new com.fasterxml.jackson.databind.ObjectMapper().writerWithDefaultPrettyPrinter().writeValue(Path.of("target/source-temporal-columns.json").toFile(),temporal);
+                }
+            }
             return Files.readString(target);
         } finally {StandardServiceRegistryBuilder.destroy(registry);}
     }

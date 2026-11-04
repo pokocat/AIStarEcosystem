@@ -266,3 +266,14 @@ templates, OSS credentials, or PEM contents into the repo; runtime app credentia
 Keep `AEP_ENTERPRISE_ENABLED=false` unless enterprise foundation access is explicitly included in a release. E01–E12 provide relations/RBAC, corporate-owned recoverable credits, manual enterprise cash records, all Studio payer selection/admission/settlement, lifecycle recovery, and finance reports. Product enrollment stays explicit; no enterprise seats. This feature is enabled only when explicitly included in an authorized release. NEXT_PUBLIC_ENTERPRISE_ENABLED defaults0 and is a build-time flag for Studio navigation; rebuild with1 only when included in an authorized release. Platform finance handlers remain available for existing enterprise orders when new product entry is disabled. V57 records original recharge provenance and unique cash receipts; refunds wait for original frozen credits to settle and never use later recharge lots. V56 introduces corporate wallets with nullable user_id; once corporate data exists, rollback must retain corporate-aware wallet/ledger readers and hold settlement by wallet_id. Disabling new access must never disable in-flight financial settlement or reconciliation. Environment changes require the existing recreation/restart procedure appropriate to the actual service host.
 
 企业付款灰度：`AEP_ENTERPRISE_ALLOWED_IDS` 可填逗号分隔的企业ID；留空表示全局开关开启后全部企业。只限制新企业付款，不影响原任务结算与恢复。
+
+
+## PostgreSQL preparation — no production cutover（2026-11-04，未生产发布）
+
+V74基线不回改，V75结构补齐、V76业务标识比较、V77重试引用比较。用户名/slug与幂等请求使用限定列ICU+rtrim；身份UID、任务主键和凭据精确比较。ModelPrice/ModelDiscount新建记录补updatedAt。postgres备用/导入验证进程默认 `AEP_BACKGROUND_ENABLED=false`；仅主节点显式开启定时任务，启动发布恢复也遵守该开关，HTTP异步入口仍须另行排空。
+
+真实RDS独立演练已恢复192表/28,280行并核对全字段指纹；工具只允许演练库，不支持生产恢复。源时间按真实Hibernate/JDBC类型逐列转换，不统一减8小时。AIStar生产窗口尚未安排，不执行部署、停写、ALB/DNS切换，不借用账号中心的窗口。完整规则与验收入口见 `../../../docs/runbooks/postgresql-18-migration.md`。
+
+ALB就绪入口为 `GET /internal/ready`：应用启动完成且真实数据库连接有效才200，启动中、关闭或数据库故障返回503，响应仅含ready布尔值。它不承诺生成供应商、支付或发布能力均已可用；这些仍须业务验收。
+
+生产postgres配置由 `PostgresEnvironmentGuard` 在EnvironmentPostProcessor阶段检查，早于DataSource/Hibernate创建；拒绝旧环境遗留的ddl-auto=update或MySQL Flyway目录等覆盖。源env复制后必须显式替换数据库/driver/dialect、schema、Flyway目录/开关、UTC、日志目录与后台角色，不能只改DB_URL。实际数据库版本/角色/时区仍在连接后另行验证。

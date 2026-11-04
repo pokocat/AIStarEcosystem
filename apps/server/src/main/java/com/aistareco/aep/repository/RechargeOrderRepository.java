@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Optional;
 
 public interface RechargeOrderRepository extends JpaRepository<RechargeOrder, String> {
+    @org.springframework.data.jpa.repository.Query("select x from RechargeOrder x where x.enterpriseId = ?1 and trim(trailing from x.enterpriseRequestId) = trim(trailing from ?2)")
     Optional<RechargeOrder> findByEnterpriseIdAndEnterpriseRequestId(String enterpriseId,String enterpriseRequestId);
     Page<RechargeOrder> findByEnterpriseIdOrderByCreatedAtDesc(String enterpriseId,Pageable pageable);
     Page<RechargeOrder> findByEnterpriseIdAndUserIdOrderByCreatedAtDesc(String enterpriseId,String userId,Pageable pageable);

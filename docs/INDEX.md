@@ -436,3 +436,5 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [Studio 下午至晚间线上使用复盘](audits/studio-production-afternoon-evening-review-20261023.md) — 2026-10-23 北京时间生产查询快照；记录用户旅程、任务／账本、排队与发布窗口及待核证据，不代表本轮已修复或重测；last-reviewed: 2026-10-23。
 
 - [PostgreSQL 18 适配与迁移边界](runbooks/postgresql-18-migration.md)：独立基线、映射、真实门禁、源结构差异与切流前置条件。
+
+- [AIStar PostgreSQL18迁移准备](runbooks/postgresql-18-migration.md)：V75–V77结构/比较/幂等、336列时间计划、192表RDS恢复与后台单活；未切生产。last-reviewed: 2026-11-04。

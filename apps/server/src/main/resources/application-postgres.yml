@@ -7,6 +7,8 @@ spring:
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: ${SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE:15}
+      connection-timeout: 2000
+      validation-timeout: 1000
       minimum-idle: ${SPRING_DATASOURCE_HIKARI_MINIMUMIDLE:2}
       connection-init-sql: SET TIME ZONE 'UTC'
   jpa:
@@ -22,6 +24,8 @@ spring:
     baseline-on-migrate: false
     locations: classpath:db/postgresql
 aep:
+  background:
+    enabled: ${AEP_BACKGROUND_ENABLED:false}
   dev-auth:
     enabled: false
   # 生产默认关演示数据 seeder。新空库需要 admin 账号请按 infra/env/server.env.example

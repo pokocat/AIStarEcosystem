@@ -166,7 +166,9 @@ class MaterialAiE2ETest {
         mvc.perform(post("/api/material/scripts/ai-draft").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isBadGateway())
                 .andExpect(jsonPath("$.error.code").value("AI_CALL_FAILED"))
-                .andExpect(jsonPath("$.error.message", org.hamcrest.Matchers.containsString("API Key")));
+                .andExpect(jsonPath("$.error.logId", org.hamcrest.Matchers.not(org.hamcrest.Matchers.isEmptyOrNullString())))
+                .andExpect(jsonPath("$.error.message", org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("API Key"))))
+                .andExpect(jsonPath("$.error.message", org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("HTTP 401"))));
     }
 
     // ── 卖点提取（直接打 MaterialAiService） ──────────────────────────────────────
