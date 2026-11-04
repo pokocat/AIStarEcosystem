@@ -58,6 +58,70 @@ class StudioAudioReferenceTest {
         assertEquals(sample,service.prepare("u","original"));
         verify(ffmpeg,times(1)).runFfmpeg(anyList(),eq(60_000L));
     }
+    /** 2026-11-04 线上：不足 14.9 秒的 M4A 过了资产库，到 Seedance（只收 WAV / MP3）才被拒。 */
+    @Test void aShortM4aBecomesAWavTheSeedanceRulesAccept() throws Exception {
+        var wavSource=dir.resolve("source.wav");Files.write(wavSource,wav(6));
+        var source=dir.resolve("original.m4a");
+        var ffmpeg=spy(new FfmpegRunner(new MixcutProperties()));
+        ffmpeg.runFfmpeg(List.of("-v","error","-nostdin","-y","-i",wavSource.toString(),"-c:a","aac",source.toString()),60_000);
+        var original=Files.readAllBytes(source);
+        assertEquals("M4A ",new String(original,8,4));
+        clearInvocations(ffmpeg);
+        var storage=storage(source);
+        var projects=mock(IpProjectService.class);when(projects.requireOwnedAssetKey(anyString(),anyString())).thenAnswer(i->i.getArgument(1));
+        var service=new StudioVideoService(mock(AiAppSceneModelPolicyService.class),mock(VideoStudioService.class),projects,storage,ffmpeg);
+        var seedance=seedanceMode();
+        var rejected=assertThrows(BusinessException.class,()->service.requireMedia("u","audio","original",false,seedance));
+        assertEquals("STUDIO_VIDEO_ASSET_INVALID",rejected.getCode());
+
+        var references=service.prepareAudioReferences("u",List.of(new VideoStudioReferenceInput("audio","original")));
+
+        assertEquals("derived",references.get(0).key());
+        service.requireMedia("u","audio","derived",false,seedance);
+        assertEquals("WAVE",new String(Files.readAllBytes(dir.resolve("derived.wav")),8,4));
+        assertArrayEquals(original,Files.readAllBytes(source));
+        var reference=new StudioAudioReference(storage,ffmpeg).prepare("u","original");
+        assertEquals(6,reference.durationSec(),.1);assertFalse(reference.trimmed());
+    }
+    @Test void aShortWavAndMp3GoThroughUntouched() throws Exception {
+        var wav=dir.resolve("original.wav");Files.write(wav,wav(6));
+        var mp3=dir.resolve("original.mp3");Files.write(mp3,"ID3\u0004\0\0\0\0\0\0\0\0".getBytes());
+        var ffmpeg=mock(FfmpegRunner.class);
+        when(ffmpeg.probeMedia(any())).thenReturn(new FfmpegRunner.MediaProbe(6,"x",null,"x",0,0,24000,1,true));
+        for(var source:List.of(wav,mp3)){
+            var storage=storage(source);
+            var sample=new StudioAudioReference(storage,ffmpeg).prepare("u","original");
+            assertEquals("original",sample.key());
+            verify(storage,never()).store(any(byte[].class),anyString(),anyString(),anyString(),anyString());
+        }
+        verify(ffmpeg,never()).runFfmpeg(anyList(),anyLong());
+    }
+    @Test void aFailedConversionNeverFallsBackToTheOriginal() throws Exception {
+        var source=dir.resolve("original.m4a");
+        Files.write(source,new byte[]{0,0,0,28,'f','t','y','p','M','4','A',' ',0,0,0,0});
+        var storage=storage(source);var ffmpeg=mock(FfmpegRunner.class);
+        when(ffmpeg.probeMedia(source.toFile())).thenReturn(new FfmpegRunner.MediaProbe(6,"m4a",null,"aac",0,0,44100,2,true));
+        when(ffmpeg.runFfmpeg(anyList(),anyLong())).thenThrow(new RuntimeException("decoder failed"));
+        assertThrows(BusinessException.class,()->new StudioAudioReference(storage,ffmpeg).prepare("u","original"));
+        verify(storage,never()).store(any(byte[].class),anyString(),anyString(),anyString(),anyString());
+    }
+    /** 这条报错就是给用户看的说明，要断内容：哪类素材、要什么格式。 */
+    @Test void aRejectedFormatSaysWhichKindAndWhatTheModelTakes() throws Exception {
+        var source=dir.resolve("original.m4a");
+        Files.write(source,new byte[]{0,0,0,28,'f','t','y','p','M','4','A',' ',0,0,0,0});
+        var projects=mock(IpProjectService.class);when(projects.requireOwnedAssetKey(anyString(),anyString())).thenAnswer(i->i.getArgument(1));
+        var service=new StudioVideoService(mock(AiAppSceneModelPolicyService.class),mock(VideoStudioService.class),projects,storage(source),mock(FfmpegRunner.class));
+        var e=assertThrows(BusinessException.class,()->service.requireMedia("u","audio","original",false,seedanceMode()));
+        assertEquals("STUDIO_VIDEO_ASSET_INVALID",e.getCode());
+        assertTrue(e.getMessage().contains("声音"),e.getMessage());
+        assertTrue(e.getMessage().contains("WAV、MP3"),e.getMessage());
+    }
+    /** 线上 Seedance 端点的声音规则（video_request_spec_json）。 */
+    private static VideoStudioModeSpec seedanceMode() {
+        var audio=new VideoStudioMediaLimit("audio",3,15L*1024*1024,List.of("WAV","MP3"),2,15);
+        return new VideoStudioModeSpec("universal_reference_video",false,false,null,
+                new VideoStudioReferenceRules(null,null,audio,9,12,1,15));
+    }
     @Test void quotesAndSubmitsUseTheSameShortReferenceAndNeverReadForeignAssets() throws Exception {
         var source=dir.resolve("original.wav");Files.write(source,wav(30));var storage=storage(source);
         var projects=mock(IpProjectService.class);when(projects.requireOwnedAssetKey(anyString(),anyString())).thenAnswer(i->i.getArgument(1));
