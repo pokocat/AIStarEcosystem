@@ -79,16 +79,37 @@ test("a view can't be generated before the scene has a main image", () => {
   expect(screen.getByText("先生成主视图，其他视角照着它画")).toBeTruthy();
 });
 
-test("the style field picks a card or a custom style", () => {
+test("the style field is one line that opens small text chips: hovering enlarges, clicking previews, and only confirming changes the style", () => {
   const onChange = vi.fn();
   render(<StyleField value="真人写实" onChange={onChange}/>);
+  expect(screen.queryByRole("button", { name: "黏土定格" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: /真人写实/ }));
-  const dialog = screen.getByRole("dialog", { name: "选择画面风格" });
-  fireEvent.click(within(dialog).getByRole("button", { name: /黏土定格/ }));
+  const chip = screen.getByRole("button", { name: "黏土定格" });
+  fireEvent.mouseEnter(chip);
+  expect(document.querySelector(".director-style-hover img")?.getAttribute("src")).toBe("/studio/director-styles/clay-large.webp");
+  fireEvent.mouseLeave(chip);
+  expect(document.querySelector(".director-style-hover")).toBeNull();
+  fireEvent.click(chip);
+  const preview = screen.getByRole("dialog", { name: "黏土定格" });
+  expect(onChange).not.toHaveBeenCalled();
+  fireEvent.click(within(preview).getByRole("button", { name: "使用这个风格" }));
   expect(onChange).toHaveBeenCalledWith("黏土定格动画");
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+test("escape closes one layer at a time and never reaches the dialog behind, and a custom style can be typed", () => {
+  const onChange = vi.fn(), behind = vi.fn();
+  window.addEventListener("keydown", behind);
+  render(<StyleField value="真人写实" onChange={onChange}/>);
   fireEvent.click(screen.getByRole("button", { name: /真人写实/ }));
-  const again = screen.getByRole("dialog", { name: "选择画面风格" });
-  fireEvent.change(within(again).getByLabelText("自定义风格"), { target: { value: "九十年代文艺片写实" } });
-  fireEvent.click(within(again).getByRole("button", { name: "使用" }));
+  fireEvent.click(screen.getByRole("button", { name: "水墨国风" }));
+  fireEvent.keyDown(screen.getByRole("dialog", { name: "水墨国风" }), { key: "Escape" });
+  expect(screen.queryByRole("dialog", { name: "水墨国风" })).toBeNull();
+  const menu = screen.getByRole("dialog", { name: "选择画面风格" });
+  fireEvent.change(within(menu).getByLabelText("自定义风格"), { target: { value: "九十年代文艺片写实" } });
   expect(onChange).toHaveBeenLastCalledWith("九十年代文艺片写实");
+  fireEvent.keyDown(menu, { key: "Escape" });
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(behind).not.toHaveBeenCalled();
+  window.removeEventListener("keydown", behind);
 });

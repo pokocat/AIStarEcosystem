@@ -30,7 +30,6 @@ test('a retired saved choice stays visible, other settings still save, and the r
   expect(save.disabled).toBe(false);
   fireEvent.click(screen.getByRole('button',{name:/真人写实/}));
   fireEvent.change(screen.getByLabelText('自定义风格'),{target:{value:'国风水墨'}});
-  fireEvent.click(screen.getByRole('button',{name:'使用'}));
   fireEvent.click(save);
   await waitFor(()=>expect(api.patchWork).toHaveBeenCalledWith('model-work',{settings:{style:'国风水墨',aspectRatio:'9:16',videoModel:null}}));
   expect(close).toHaveBeenCalledTimes(1);
