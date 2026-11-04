@@ -456,7 +456,7 @@ export default function ShortsStudioPage() {
               </span>
             </>
           }
-          meta="短视频、宣传片、个人自传这类单条作品都在这里。做完的点开能播，没做完的点开接着做。"
+          meta="短视频、宣传片、个人自传这类单条作品都在这里。已完成的点开可播放，未完成的点开可继续制作。"
           action={
             <button
               type="button"

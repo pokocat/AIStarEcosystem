@@ -1116,7 +1116,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     const shown=contextItems.filter(a=>!excluded.includes(a.key)),inlineKeys=["download","download-audio"];
     const contextInline=shown.filter(a=>inlineKeys.includes(a.key)),contextMore=shown.filter(a=>!inlineKeys.includes(a.key));
     return <div className="studio-node-editor-actions" aria-label="节点编辑操作">
-      <button type="button" className="studio-ask-assistant" title="把这个节点带进对话，让助手改它或接着做" onClick={()=>dispatchStudioCommand('assistant',selected.id)}><AiMark size={13}/>问助手</button>
+      <button type="button" className="studio-ask-assistant" title="把这个节点带进对话，让助手修改或继续制作" onClick={()=>dispatchStudioCommand('assistant',selected.id)}><AiMark size={13}/>问助手</button>
       {contextInline.map(a=><Fragment key={a.key}>{a.node}</Fragment>)}
       {!!contextMore.length&&<Popover trigger="click" placement="bottomLeft" arrow={false} open={contextMoreOpen===selected.id} onOpenChange={open=>setContextMoreOpen(open?selected.id:undefined)} getPopupContainer={containers}
         content={<div className="studio-context-more" role="group" aria-label="更多操作" onClick={e=>{if((e.target as HTMLElement).closest('button'))setContextMoreOpen(undefined);}}>{contextMore.map(a=><Fragment key={a.key}>{a.node}</Fragment>)}</div>}>

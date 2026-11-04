@@ -54,7 +54,7 @@ export default function MePage() {
       {/* 新版手机底栏换成了 AI 视频 / AI 图片，项目和资产从这里进。 */}
       {version === "next" && <div className="hub-section" style={{ margin: "16px 16px 0" }}>
         <Card pad={0}>
-          <ListRow href="/projects" title="项目" sub="画布和场景草稿，接着做" divider />
+          <ListRow href="/projects" title="项目" sub="画布与场景草稿，可继续编辑" divider />
           <ListRow href="/assets" title="资产" sub="人物、声音与创作素材" divider />
           <ListRow href="/director" title="短剧导演台" sub="写剧本、拆分镜、出片" />
         </Card>

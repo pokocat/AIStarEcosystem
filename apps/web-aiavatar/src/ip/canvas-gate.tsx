@@ -130,7 +130,7 @@ function MobileNotice({ projectId, onProceed }: { projectId: string; onProceed: 
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "20px 0 14px" }}>
         <span style={{ flex: 1, height: 1, background: "var(--line)" }} />
-        <span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>或者发到电脑上接着做</span>
+        <span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>或发送到电脑上继续编辑</span>
         <span style={{ flex: 1, height: 1, background: "var(--line)" }} />
       </div>
 
