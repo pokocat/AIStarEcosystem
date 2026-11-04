@@ -24,7 +24,21 @@ jobs:
       - name: Prepare pinned platform SDK
         run: ./infra/scripts/prepare-platform-sdk.sh
       - name: Media test dependencies
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-cjk fontconfig
+        timeout-minutes: 10
+        run: |
+          packages=()
+          command -v ffmpeg >/dev/null || packages+=(ffmpeg)
+          command -v fc-list >/dev/null || packages+=(fontconfig)
+          if ! command -v fc-list >/dev/null || [[ -z "$(fc-list ':lang=zh' file)" ]]; then
+            packages+=(fonts-noto-cjk)
+          fi
+          if (( ${#packages[@]} )); then
+            sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
+            sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y --no-install-recommends "${packages[@]}"
+          fi
+          ffmpeg -version > /tmp/aistar-ci-ffmpeg-version.txt
+          head -n 1 /tmp/aistar-ci-ffmpeg-version.txt
+          test -n "$(fc-list ':lang=zh' file)"
       - name: Full server tests and package
         working-directory: apps/server
         run: ./mvnw -B -DargLine=-Xmx3g -Dspring.test.context.cache.maxSize=2 verify

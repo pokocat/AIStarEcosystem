@@ -26,7 +26,7 @@ public final class AistarHypitRuntimeVerification {
                 throw new IllegalStateException("Synthetic source timed out");
             }
             if (source.exitValue() != 0) throw new IllegalStateException("Synthetic source failed");
-            var adapter = new StudioHypitMedia("node");
+            var adapter = new StudioHypitMedia(System.getenv().getOrDefault("AEP_STUDIO_HYPIT_NODE", "node"));
             adapter.requireReady();
             var evidence = adapter.read(video, directory.resolve("evidence"), 2.0);
             var frames = evidence.path("frames");

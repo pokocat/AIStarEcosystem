@@ -1398,3 +1398,7 @@ PG18低权限元数据兼容：固定pgJDBC42.7.14（旧42.7.4的hideUnprivilege
 管理端提示生命周期回归：ToastProvider跟踪并清理自动关闭计时器，手动关闭或卸载时释放，卸载后的异步回调忽略；防止离开/热更新后继续更新已销毁界面。验证自动关闭、手动关闭、卸载/晚到回调及真实Chromium交互，不跳过CI未处理异常。
 
 AIStar运行镜像必须同时固定官方Java与Node镜像digest；Studio仿片分析使用JAR内置Hypit适配器，单有Java/FFmpeg会返回STUDIO_HYPIT_UNAVAILABLE。仅从官方node镜像复制Node22+二进制，不安装npm依赖或替换宿主Node。AistarHypitRuntimeVerification离线调用真实StudioHypitMedia的requireReady/read，合成红蓝视频并验证24帧原始时间戳；两机在禁网/只读根目录下运行，不调用模型/支付/短信或发布平台。
+
+容器路径与本地文件：源环境已有AEP_STUDIO_RECREATION_MEDIA_BIN=/opt/ai-star-eco/hypit-runtime/bin，不能原样继承到镜像；新模板明确使用/usr/bin，并固定Node=/usr/local/bin/node。FileStorageService实际配置键是AEP_STORAGE_LOCAL_DIR，挂载/app/work为UID10001可写；AEP_FILE_STORAGE_ROOT不是有效替代。源file-storage约4GB，保留完整预同步副本并校验，正式停写后补增量；不能仅因已接OSS而假定本地目录可删除。预同步不是冻结数据，禁止据此清理旧服务文件。
+
+迁移文件中转只能使用独立私有Bucket，先以无敏感信息的canary验证匿名Range GET为403；仅设置object private ACL不足以证明Bucket策略未放行。禁止把数据库导出、文件归档或含业务信息的中转包放入现有公开素材Bucket。分发OCI归档时校验归档SHA256、配置摘要和RootFS摘要；Podman导出重新压缩可能改变引擎显示的manifest digest，不能据此跳过内容校验。
