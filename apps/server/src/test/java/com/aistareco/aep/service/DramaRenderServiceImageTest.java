@@ -232,7 +232,6 @@ class DramaRenderServiceImageTest {
                 () -> svc.generateImageBytes(ernie, "P", "9:16", List.of()));
         assertEquals("IMAGE_CALL_FAILED", e.getCode());
         assertFalse(e.getMessage().contains("html"), e.getMessage());
-        assertTrue(e.getMessage().contains("403"), e.getMessage());
     }
 
     @Test
@@ -241,7 +240,6 @@ class DramaRenderServiceImageTest {
         BusinessException e = assertThrows(BusinessException.class,
                 () -> svc.generateImageBytes(ernie, "P", "9:16", List.of()));
         assertEquals("IMAGE_CALL_FAILED", e.getCode());
-        assertTrue(e.getMessage().contains("backend overloaded node-17"), e.getMessage());
         assertTrue(e.getInternalDetail().contains("status=503"), e.getInternalDetail());
         assertTrue(e.getInternalDetail().contains("node-17"), e.getInternalDetail());
     }

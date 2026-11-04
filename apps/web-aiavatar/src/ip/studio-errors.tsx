@@ -59,7 +59,7 @@ export function normalizeStudioError(input: ErrorInput, fallback = '操作未完
 export function messageDeliveryError(input: unknown, clientMessageId: string): StudioError {
   const original = normalizeStudioError(input);
   return { ...original, code: original.code === 'CLIENT_ERROR' ? 'MESSAGE_DELIVERY_UNCONFIRMED' : original.code,
-    message: `暂时无法确认消息是否送达，原消息已保留。点「重新发送」可继续核对。原因：${original.message}`, clientMessageId };
+    message: `暂时无法确认消息是否送达，原消息已保留。点击「重新发送」继续核对。原因：${original.message}`, clientMessageId };
 }
 
 export function subscribeStudioErrors(handler: (error: StudioError, meta: StudioErrorMeta) => void) {
@@ -210,7 +210,7 @@ function ErrorDetails({ error }: { error: StudioError }) {
   return <div className="studio-error-details">
     <dl><dt>错误码</dt><dd>{error.code}</dd><dt>错误信息</dt><dd>{error.message}</dd>{(error.logId || !error.clientMessageId) && <><dt>logId</dt><dd>{error.logId || '未记录'}{!error.logId && <small>此错误未提供追查号</small>}</dd></>}{error.clientMessageId && <><dt>消息编号</dt><dd>{error.clientMessageId}</dd></>}{error.taskId && <><dt>任务 ID</dt><dd>{error.taskId}</dd></>}</dl>
     <Button icon={copied ? <Check size={15}/> : <Copy size={15}/>} onClick={() => void copyDetails()}>{copied ? '已复制' : '复制错误详情'}</Button>
-    {copyFailed && <p role="status">复制未完成，请选中上方文字复制。</p>}
+    {copyFailed && <p role="status">复制失败，请选中上方文字手动复制。</p>}
   </div>;
 }
 
@@ -236,22 +236,22 @@ export type StudioFailure = {
 
 /** 冲突类错误：这句总排在下一步的最前面。调用方刷新过页面才说「已经刷新」，否则请用户刷新。 */
 const isConflict = (code: string) => /_CONFLICT$|_STALE$|_EXPIRED$/.test(code);
-const conflictNext = (refreshed: boolean) => refreshed ? '这项内容刚在别处改过，页面已经刷新到最新内容，不用再手动刷新。' : '这项内容刚在别处改过，刷新页面看一下最新内容。';
+const conflictNext = (refreshed: boolean) => refreshed ? '此内容已在其他地方修改，页面已更新为最新内容。' : '此内容已在其他地方修改，请刷新页面查看最新内容。';
 
 /** 按错误码给的通用下一步。调用方知道得更具体时自己写 next。 */
 export function failureNext(code: string, refreshed = false, reason = ''): string {
-  if (isConflict(code)) return `${conflictNext(refreshed)}需要的话重新修改后再试。`;
-  if (code === 'STUDIO_PRICE_CHANGED') return '价格有变化，刷新页面后重新确认。';
-  if (code === 'STUDIO_USAGE_PENDING') return '本次用量还在核对，请先查看原任务状态，需要协助时把错误详情发给我们。';
-  if (code === 'VIDEO_MODEL_RETIRED') return '换一个仍可用的视频模型后再生成。';
-  if (code === 'VIDEO_REFERENCE_PERSON_RESTRICTED' || /未通过内容审核/.test(reason)) return '按上面的原因检查生成描述和参考素材，调整后再生成；没有指出具体内容时，把错误详情发给我们核查。';
+  if (isConflict(code)) return `${conflictNext(refreshed)}如有需要，请修改后重试。`;
+  if (code === 'STUDIO_PRICE_CHANGED') return '价格已更新，请刷新页面后重新确认。';
+  if (code === 'STUDIO_USAGE_PENDING') return '本次用量正在核对，请先查看原任务状态。如需协助，可复制「错误详情」反馈给我们。';
+  if (code === 'VIDEO_MODEL_RETIRED') return '请更换可用的视频模型后重新生成。';
+  if (code === 'VIDEO_REFERENCE_PERSON_RESTRICTED' || /未通过内容审核/.test(reason)) return '请根据上述原因检查描述和参考素材，调整后重新生成。原因不明确时，可复制「错误详情」反馈给我们。';
   // Provider codes can contain BALANCE/INSUFFICIENT/NOT_FOUND; none proves the customer's wallet or work is at fault.
-  if (isProviderModelError(code)) return '按上面的原因处理；原因不明确或反复出现时，展开「错误详情」复制后发给我们。';
-  if (/_NOT_FOUND$/.test(code)) return '这项内容已经不在了，可能在别处删掉了。刷新页面看一下最新内容，不用再重试。';
-  if (/_RUNNING$/.test(code)) return '等正在进行的那一项完成后再试。';
-  if (code === 'NETWORK_ERROR') return '检查网络后刷新页面，看一下这次操作有没有生效，再决定要不要重试。';
-  if (isCustomerWalletError(code)) return '按上面的积分钱包提示处理后再试。';
-  return '可以稍后再试一次；反复出现的话，展开「错误详情」复制后发给我们。';
+  if (isProviderModelError(code)) return '请根据上述原因处理。原因不明确或多次出现时，可复制「错误详情」反馈给我们。';
+  if (/_NOT_FOUND$/.test(code)) return '此内容已不存在，可能已在其他地方删除。请刷新页面查看最新内容。';
+  if (/_RUNNING$/.test(code)) return '请等待进行中的操作完成后重试。';
+  if (code === 'NETWORK_ERROR') return '请检查网络并刷新页面，确认操作是否已生效后再决定是否重试。';
+  if (isCustomerWalletError(code)) return '请按上述积分提示处理后重试。';
+  return '请稍后重试。多次失败时，可复制「错误详情」反馈给我们。';
 }
 
 type ModalApi = Pick<typeof Modal, 'error'>;
@@ -277,7 +277,7 @@ export function openStudioFailure(modal: ModalApi, failure: StudioFailure) {
   instance = modal.error({
     title: failure.title ?? `${failure.action}${/[0-9A-Za-z]$/.test(failure.action) ? ' ' : ''}没有完成`,
     content: <div className="studio-failure">
-      <section><h4>原因</h4><p>{error.code === 'NETWORK_ERROR' ? '网络连接中断，没收到服务器的回应。' : error.message}</p></section>
+      <section><h4>原因</h4><p>{error.code === 'NETWORK_ERROR' ? '网络连接中断，未收到服务器响应。' : error.message}</p></section>
       {extra}
       <section><h4>下一步</h4><div>{failure.next === undefined ? failureNext(error.code, failure.refreshed, error.message) : isConflict(error.code) ? <><p>{conflictNext(!!failure.refreshed)}</p>{failure.next}</> : failure.next}</div></section>
       <details className="studio-failure-details" open={!!failure.title}><summary>错误详情</summary><ErrorDetails error={error}/></details>

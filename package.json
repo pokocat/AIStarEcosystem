@@ -26,6 +26,7 @@
     "typecheck:admin": "pnpm --filter @ai-star-eco/admin-new run typecheck",
     "typecheck:studio-admin": "pnpm --filter @ai-star-eco/studio-admin run typecheck",
     "check:api-contract": "node scripts/check-api-contract.mjs",
+    "export:studio-static": "node apps/web-aiavatar/scripts/static-export/export.mjs",
     "check:wire-mirror": "node scripts/check-wire-mirror.mjs",
     "drama:recipe:prep": "node scripts/drama-recipe/prep.mjs",
     "drama:recipe:build": "node scripts/drama-recipe/build-seed.mjs",

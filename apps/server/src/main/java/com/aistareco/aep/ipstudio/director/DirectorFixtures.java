@@ -60,6 +60,7 @@ public final class DirectorFixtures {
                     a.putArray("aliases");
                     ArrayNode e = a.putArray("episodeNos");
                     nos.forEach(e::add);
+                    if ("character".equals(s[0])) a.putArray("forms").addObject().put("name", "雨夜淋湿").put("description", "短外套湿透，头发贴在脸侧，手里多了一把折断的伞。");
                 }
             }
             case "plan" -> {
@@ -79,6 +80,7 @@ public final class DirectorFixtures {
                 ArrayNode shots = clip.putArray("shots");
                 for (String[] s : first) {
                     ObjectNode shot = shots.addObject().put("durationSec", 3).put("size", s[0]).put("camera", s[1]).put("action", s[2]).put("still", s[3]);
+                    if (s[3].contains("回头")) shot.put("sceneView", "reverse");
                     ArrayNode d = shot.putArray("dialogue");
                     if (!s[4].isEmpty()) d.addObject().put("speakerId", speaker).put("text", s[4]);
                 }

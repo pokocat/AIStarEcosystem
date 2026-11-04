@@ -100,13 +100,13 @@ test('灵感 lists templates and examples on Home, filters by content and opens 
   expect(screen.getByRole('link', { name: /更多灵感/ }).getAttribute('href')).toBe('/templates');
 });
 
-// 新版登录后 / 和 /dashboard 同一个首页：导航由外壳给（左侧一列），首页自己不再画公开顶栏；标题是「声量引擎」。
-test('signed in, the home draws no public top bar of its own; signed out it does; the title says 声量引擎', async () => {
+// 新版登录后 / 和 /dashboard 同一个首页：导航由外壳给（左侧一列），首页自己不再画公开顶栏；首屏只有一个一级标题（标语，2026-11-03 起不断言具体文字）。
+test('signed in, the home draws no public top bar of its own; signed out it does; the hero has a single page title', async () => {
   api.authed = true;
   const view = render(<IpHome/>);
   await act(async () => {});
   expect(screen.queryByRole('banner', { name: '公开顶栏' })).toBeNull();
-  expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('声量引擎');
+  expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
   view.unmount();
   api.authed = false;
   render(<IpHome/>);

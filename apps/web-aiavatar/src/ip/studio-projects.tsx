@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Modal } from "antd";
 import { ArrowRight, ChevronLeft, ChevronRight, LayoutGrid, Layers, List, Loader2, MoreHorizontal, Plus, RefreshCw, Trash2, Image, GitBranch, Undo2 } from "lucide-react";
 import type { IpProjectSummary } from "@ai-star-eco/types";
@@ -21,7 +22,12 @@ import { useSceneCatalog } from "./scenes/scene-catalog";
 
 const PAGE_SIZE = 24;
 
+/** 项目按从哪里做的分：普通画布没有场景编号，AI 图片 / AI 视频的草稿记着场景（`/projects?type=canvas` 是画布页「全部画布」进来的）。 */
+const PROJECT_TYPES = [{ value: "all", label: "全部类型" }, { value: "canvas", label: "画布" }, { value: "image", label: "AI 图片" }, { value: "video", label: "AI 视频" }];
+
 export function StudioProjects() {
+  const router = useRouter();
+  const search = useSearchParams();
   const authState = useRequireAuth();
   const ready = authState === "ok";
   // AI 图片 / AI 视频建的草稿记着场景编号：卡片上给一个回原场景继续编辑的入口（2026-10-30 复测：只能打开画布）。
@@ -37,6 +43,10 @@ export function StudioProjects() {
   const newCanvas = useStartNewCanvas();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<"all" | "draft" | "published">("all");
+  const rawType = search.get("type") ?? "all";
+  const type = PROJECT_TYPES.some(t => t.value === rawType) ? rawType : "all";
+  const changeType = (next: string) => { setPage(1); router.replace(next === "all" ? "/projects" : `/projects?type=${next}`); };
+  const typeOf = (p: IpProjectSummary) => !p.sceneId ? "canvas" : scenes?.video.some(s => s.id === p.sceneId) ? "video" : scenes?.image.some(s => s.id === p.sceneId) ? "image" : "";
   const [sort, setSort] = useState("updated");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [page, setPage] = useState(1);
@@ -48,8 +58,8 @@ export function StudioProjects() {
   const [deleteError, setDeleteError] = useStudioErrorState();
   const surface = useRef<HTMLDivElement>(null);
   const filtered = useMemo(() => projects.data.filter(p =>
-    (status === "all" || p.status === status) && p.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
-  ).sort((a, b) => sort === "name" ? a.name.localeCompare(b.name, "zh-CN") : sort === "created" ? b.createdAt.localeCompare(a.createdAt) : b.updatedAt.localeCompare(a.updatedAt)), [projects.data, status, query, sort]);
+    (type === "all" || typeOf(p) === type) && (status === "all" || p.status === status) && p.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
+  ).sort((a, b) => sort === "name" ? a.name.localeCompare(b.name, "zh-CN") : sort === "created" ? b.createdAt.localeCompare(a.createdAt) : b.updatedAt.localeCompare(a.updatedAt)), [projects.data, status, query, sort, type, scenes]); // eslint-disable-line react-hooks/exhaustive-deps
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const visible = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
@@ -70,19 +80,20 @@ export function StudioProjects() {
 
   if (authState === "no-platform" || projects.notEnrolled || newCanvas.notEnrolled) return <PlatformGateScreen/>;
   const newCanvasButton = (className: string, label: ReactNode) => <button type="button" className={className} aria-busy={newCanvas.creating} disabled={newCanvas.creating} onClick={() => void newCanvas.start()}>{label}</button>;
-  if (!ready) return <StudioPage title="项目" description="管理画布，接续每一次创作。" nextDescription="每张画布都在这里，点开接着做"><GalleryState loading/></StudioPage>;
+  if (!ready) return <StudioPage title="项目" description="管理画布，接续每一次创作。" nextDescription="每张画布都在这里，点开可继续编辑"><GalleryState loading/></StudioPage>;
 
-  return <StudioPage title="项目" description="管理画布，接续每一次创作。" nextDescription="每张画布都在这里，点开接着做" contentRef={surface} className="studio-gallery-page studio-projects-page" actions={newCanvasButton("ip-brand-button", <>{newCanvas.creating ? <Loader2 size={16} className="studio-gallery-spinner" aria-hidden="true"/> : <Plus size={16} aria-hidden="true"/>}新建创作</>)}>
+  return <StudioPage title="项目" description="管理画布，接续每一次创作。" nextDescription="每张画布都在这里，点开可继续编辑" contentRef={surface} className="studio-gallery-page studio-projects-page" actions={newCanvasButton("ip-brand-button", <>{newCanvas.creating ? <Loader2 size={16} className="studio-gallery-spinner" aria-hidden="true"/> : <Plus size={16} aria-hidden="true"/>}新建创作</>)}>
     {newCanvas.error !== undefined && <div className="studio-gallery-action-error"><StudioErrorNotice error={newCanvas.error}/><span> · 新画布没有创建成功，可以再点一次「新建创作」。</span></div>}
     <section className="studio-gallery-panel studio-canvas-catalogue" aria-label="我的画布">
       <div className="studio-page-toolbar studio-gallery-controls">
         <GallerySearch label="搜索我的画布" placeholder="搜索画布名称…" value={query} onChange={v => { setQuery(v); setPage(1); }} />
+        <StudioSelect label="项目类型" value={type} onChange={changeType} options={PROJECT_TYPES}/>
         <StudioSelect label="画布状态" value={status} onChange={value => { setStatus(value as typeof status); setPage(1); }} options={[{value:"all",label:"全部状态"},{value:"draft",label:"草稿"},{value:"published",label:"已发布"}]}/>
         <StudioSelect label="画布排序" value={sort} onChange={value => { setSort(value); setPage(1); }} options={[{value:"updated",label:"最近编辑"},{value:"created",label:"最近创建"},{value:"name",label:"名称排序"}]}/>
         <div className="studio-gallery-view" role="group" aria-label="画布显示方式"><button type="button" aria-label="网格视图" aria-pressed={view === "grid"} onClick={() => setView("grid")}><LayoutGrid size={18} /></button><button type="button" aria-label="列表视图" aria-pressed={view === "list"} onClick={() => setView("list")}><List size={19} /></button></div>
         <button type="button" className="studio-page-refresh" aria-label="刷新画布" disabled={projects.loading} onClick={() => { projects.reload(); refreshPreviews(); }}><RefreshCw size={16}/></button>
       </div>
-      <div className="studio-page-result" aria-live="polite">{projects.loading ? '正在读取画布…' : projects.error ? '暂时无法读取画布' : `${filtered.length} 张${query.trim() || status !== 'all' ? '匹配' : ''}画布`}</div>
+      <div className="studio-page-result" aria-live="polite">{projects.loading ? '正在读取画布…' : projects.error ? '暂时无法读取画布' : `${filtered.length} 张${query.trim() || status !== 'all' || type !== 'all' ? '匹配' : ''}画布`}</div>
       {projects.error ? <GalleryState error={projects.error} retry={projects.reload} /> : projects.loading ? <GalleryState loading /> : <>
         {!filtered.length && <div className="studio-gallery-empty"><Layers size={24} /><h3>{projects.data.length ? "没有找到符合条件的画布" : "从第一张画布开始"}</h3><p>{projects.data.length ? "换个关键词，或清除当前筛选。" : "开始一次创作，画布会保存在这里。"}</p>{projects.data.length > 0 ? <button type="button" className="ip-brand-text-button" onClick={() => { setQuery(""); setStatus("all"); setPage(1); }}>清除筛选</button> : newCanvasButton("ip-brand-text-button", <>开始创作 {newCanvas.creating ? <Loader2 size={15} className="studio-gallery-spinner" aria-hidden="true"/> : <ArrowRight size={15} aria-hidden="true"/>}</>)}</div>}
         <div className={`studio-project-grid studio-project-${view}`}>{visible.map(project => {
@@ -102,7 +113,7 @@ export function StudioProjects() {
         {(totalPages > 1 || visible.some(p => previews[`${p.id}:${p.updatedAt}`]?.error)) && <footer className="studio-gallery-pagination"><span>{filtered.length ? `共 ${filtered.length} 张画布 · 第 ${currentPage} / ${totalPages} 页` : ""}</span><div>{visible.some(p => previews[`${p.id}:${p.updatedAt}`]?.error) && <button type="button" className="studio-preview-retry" onClick={refreshPreviews}>重试预览</button>}{totalPages > 1 && <><button type="button" aria-label="上一页画布" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}><ChevronLeft size={17} /></button><span className="studio-gallery-current-page" aria-current="page">{currentPage}</span><button type="button" aria-label="下一页画布" disabled={currentPage >= totalPages} onClick={() => setPage(currentPage + 1)}><ChevronRight size={17} /></button></>}</div></footer>}
       </>}
     </section>
-    {works.data.length > 0 && <section className="studio-scene-recent studio-director-recent" aria-label="短剧导演台作品">
+    {type === "all" && works.data.length > 0 && <section className="studio-scene-recent studio-director-recent" aria-label="短剧导演台作品">
       <div className="studio-gallery-panel-heading"><div><h2>短剧导演台作品</h2><p>短剧作品在短剧导演台里编辑。</p></div><Link className="ip-brand-text-button" href="/director">全部作品<ArrowRight size={16}/></Link></div>
       <div className="studio-recent-list">{[...works.data].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 4).map(w => <Link key={w.id} href={`/director/${encodeURIComponent(w.id)}`}>
         <div><strong title={w.title}>{w.title}</strong><span>{w.episodeCount ? `${w.episodeCount} 集 · ${w.clipCount} 个片段` : w.hasScript ? "剧本未拆分" : "还没有剧本"} · <time dateTime={w.updatedAt}>{formatDateTime(w.updatedAt)}</time></span></div>

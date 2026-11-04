@@ -208,7 +208,7 @@ class MaterialVideoWorkerTest {
         org.springframework.test.util.ReflectionTestUtils.setField(worker,"errorLogs",errors);
         worker.generateAsync("mvj_test");
         assertEquals("failed",job.getStatus());assertEquals("VIDEO_SUBMISSION_UNKNOWN",job.getErrorCode());
-        assertTrue(job.getErrorMessage().contains("HTTP 503"));assertTrue(job.getErrorMessage().contains("ABCDEF234567"));
+        assertTrue(job.getErrorMessage().contains("ABCDEF234567"));
         assertFalse(job.getErrorMessage().contains("private provider response"));
         verify(errors).recordTask(error,"VIDEO_SUBMISSION_UNKNOWN","u1","mvj_test");
         verify(creditService).releaseHold(eq(MaterialVideoJobService.CREDIT_REF_TYPE),eq("mvj_test"),anyString());

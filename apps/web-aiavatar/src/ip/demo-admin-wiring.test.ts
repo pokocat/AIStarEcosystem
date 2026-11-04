@@ -50,6 +50,11 @@ describe("运营后台必须真的接到那四个端点", () => {
     expect(form).toContain("templateId:target");
     expect(form).toContain("t.mine&&t.versionId");
   });
+
+  it("运营可以打开官方模板发布入口，表单沿用同一权限", () => {
+    expect(host).toContain("const isOperator = isOperatorRole(identity?.operatorRole)");
+    expect(host).toContain("canPublishOfficial={isOperator}");
+  });
 });
 
 // ── 存为官方内容之前提醒改名（v0.194）──────────────────────────────

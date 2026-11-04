@@ -212,6 +212,17 @@ public final class DirectorPrompts {
             "^[#*\\s]*[【\\[（(]?\\s*(?:第\\s*([0-9０-９]+|[零〇一二两三四五六七八九十百]+)\\s*集"
                     + "|(?:Episode|EPISODE|episode|EP|Ep|ep|E)\\s*\\.?\\s*([0-9０-９]+)(?![0-9０-９A-Za-z\\-–—~～/／、,，至到]))");
     private static final int HEADING_MAX_CHARS = 40;
+    /**
+     * 标题后面紧跟分隔符（空格、书名号、冒号、斜杠…）时，标题行放宽到这么长：双语剧本写成
+     * 「第十集《钱快没了，兄弟自然也快没了》 / Episode 10 — When the Money…」，超过 40 字，一行认不出整组编号就断了（2026-11-03 线上样本）。
+     * 正文「第1集里他……」后面跟的是字，不放宽。
+     */
+    private static final int LONG_HEADING_MAX_CHARS = 120;
+    private static final Pattern AFTER_HEADING = Pattern.compile("^(?:$|[\\s《【「『〔（(\\[：:·、—–\\-/／|｜*~～,，.。])");
+
+    private static boolean headingLength(String paragraph, String rest) {
+        return paragraph.length() <= HEADING_MAX_CHARS || paragraph.length() <= LONG_HEADING_MAX_CHARS && AFTER_HEADING.matcher(rest).find();
+    }
 
     /**
      * 剧本里已经标好的分集：最后一组从「第1集」开始、编号逐个加一的标题，返回每个标题所在的段落（就是每集的起点）。
@@ -221,9 +232,9 @@ public final class DirectorPrompts {
         List<int[]> found = new ArrayList<>();
         for (int i = 0; i < paragraphs.size(); i++) {
             String p = paragraphs.get(i);
-            if (p.length() > HEADING_MAX_CHARS) continue;
+            if (p.length() > LONG_HEADING_MAX_CHARS) continue;
             Matcher m = EPISODE_HEADING.matcher(p);
-            if (!m.find()) continue;
+            if (!m.find() || !headingLength(p, p.substring(m.end()))) continue;
             int no = number(m.group(1) != null ? m.group(1) : m.group(2));
             if (no > 0) found.add(new int[]{i, no});
         }
@@ -236,6 +247,77 @@ public final class DirectorPrompts {
             out.add(found.get(j)[0]);
         }
         return out.size() >= 2 ? out : List.of();
+    }
+
+    /** 用户照抄的第一集标题开头最多这么多字（只用到编号和它后面一个字，整行粘进来也行）。 */
+    public static final int MARKER_MAX_CHARS = 60;
+    private static final int MARKER_HEADING_MAX_CHARS = 60;
+    /** 段首的 Markdown 标记（#、** 加粗、列表的空格）和左括号，比对标题开头前先去掉。 */
+    private static final Pattern HEADING_DECOR = Pattern.compile("^[#*\\s【\\[（(]+");
+    private static final String NUMBER = "[0-9０-９]+|[零〇一二两三四五六七八九十百]+";
+    private static final Pattern MARKER_NUMBER = Pattern.compile(NUMBER);
+
+    /**
+     * 按用户照抄的第一集标题开头分集（程序认不出写法时，拆分前先问「按标题分还是交给 AI」，2026-11-03 起）。
+     * <ul>
+     *   <li>带编号（「1 不想打工了」「Chapter 1」「第1章」）：编号前的字原样比对，编号换成任意数字，编号后面那个字（空格算一类）也要一样；
+     *       从用户写的那个编号起逐个加一，取最长的一组。线上样本「1 不想打工了 约100秒」「2 五五分账」没有共同的开头，只能这样认；
+     *       「20集数」「2014-2016时间」这类设定资料因为编号后面的字不同、或编号接不上而不算。</li>
+     *   <li>不带编号（「场次」「Chapter」）：以它开头的行都算一集的起点，不要求编号。</li>
+     * </ul>
+     * 都先去掉段首的 Markdown 标记，英文不分大小写；标题行超过 60 字时，编号后面要紧跟分隔符才算（正文不算）。结果照样先给用户确认。
+     */
+    public static List<Integer> markerStarts(List<String> paragraphs, String marker) {
+        String m = HEADING_DECOR.matcher(marker == null ? "" : marker.strip()).replaceFirst("");
+        if (m.isEmpty()) return List.of();
+        Matcher nm = MARKER_NUMBER.matcher(m);
+        if (!nm.find()) {
+            List<Integer> out = new ArrayList<>();
+            for (int i = 0; i < paragraphs.size(); i++) {
+                String p = paragraphs.get(i);
+                if (p.length() > MARKER_HEADING_MAX_CHARS) continue;
+                String t = HEADING_DECOR.matcher(p).replaceFirst("");
+                if (t.regionMatches(true, 0, m, 0, m.length())) out.add(i);
+            }
+            return out;
+        }
+        int first = number(nm.group());
+        String after = m.substring(nm.end());
+        String sep = after.isEmpty() ? "" : after.substring(0, after.offsetByCodePoints(0, 1));
+        Pattern head = Pattern.compile("^" + Pattern.quote(m.substring(0, nm.start())) + "\\s*(" + NUMBER + ")",
+                Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+        List<int[]> found = new ArrayList<>();
+        for (int i = 0; i < paragraphs.size(); i++) {
+            String p = paragraphs.get(i);
+            if (p.length() > LONG_HEADING_MAX_CHARS) continue;
+            String t = HEADING_DECOR.matcher(p).replaceFirst("");
+            Matcher hm = head.matcher(t);
+            if (!hm.find()) continue;
+            String rest = t.substring(hm.end()), tail;
+            if (sep.isEmpty()) tail = rest;
+            else if (sep.isBlank()) { if (!rest.isEmpty() && !Character.isWhitespace(rest.charAt(0))) continue; tail = rest.stripLeading(); }
+            else { if (!rest.regionMatches(true, 0, sep, 0, sep.length())) continue; tail = rest.substring(sep.length()); }
+            if (p.length() > MARKER_HEADING_MAX_CHARS && !AFTER_HEADING.matcher(tail).find()) continue;
+            int no = number(hm.group(1));
+            if (no > 0) found.add(new int[]{i, no});
+        }
+        // 从用户写的编号起逐个加一；中间夹着编号对不上的行（大纲里提到的集号之类）跳过，碰到又一个起始编号就是新的一组。取最长的，一样长取后面那组。
+        List<Integer> best = List.of();
+        for (int s = 0; s < found.size(); s++) {
+            if (found.get(s)[1] != first) continue;
+            List<Integer> run = new ArrayList<>(List.of(found.get(s)[0]));
+            for (int j = s + 1, want = first + 1; j < found.size(); j++) {
+                if (found.get(j)[1] == first) break;
+                if (found.get(j)[1] == want) { run.add(found.get(j)[0]); want++; }
+            }
+            if (run.size() >= best.size()) best = run;
+        }
+        return best;
+    }
+
+    /** 用户自定标题那一行作集名：去掉 Markdown 标记，整行保留（标题开头往往就是集名的一部分，如「Chapter 3 回家」）。 */
+    public static String markerTitle(String paragraph) {
+        return clip(HEADING_DECOR.matcher(paragraph).replaceFirst("").replace("**", "").strip(), 60);
     }
 
     /** 一行是不是分集标题（「第1集 夜班」「# 第二集」）：给作品起名时要跳过它，它是集名不是剧名。 */
@@ -288,6 +370,16 @@ public final class DirectorPrompts {
             a.path("aliases").forEach(x -> { if (!x.asText().isBlank() && aliases.size() < 6) aliases.add(clip(x.asText(), 40)); });
             ArrayNode nos = item.putArray("episodeNos");
             a.path("episodeNos").forEach(x -> { if (episodeNos.contains(x.asText())) nos.add(x.asInt()); });
+            if ("character".equals(kind) && a.path("forms").isArray()) {
+                ArrayNode forms = item.putArray("forms");
+                Set<String> seenForms = new HashSet<>();
+                for (JsonNode f : a.path("forms")) {
+                    String form = clip(text(f, "name"), 20);
+                    if (form.isEmpty() || !seenForms.add(form) || forms.size() >= 6) continue;
+                    forms.addObject().put("name", form).put("description", clip(text(f, "description"), 1000));
+                }
+                if (forms.isEmpty()) item.remove("forms");
+            }
         }
         if (result.isEmpty()) throw bad("未提取到可用的角色、场景或道具");
         ObjectNode r = om.createObjectNode();
@@ -341,6 +433,7 @@ public final class DirectorPrompts {
         ArrayNode ids = clip.putArray("assetIds");
         Set<String> seen = new HashSet<>();
         for (JsonNode id : c.path("assetIds")) if (!id.asText().isBlank() && seen.add(id.asText())) ids.add(clip(id.asText(), 40));
+        if (c.path("assetForms").isObject() && !c.path("assetForms").isEmpty()) clip.set("assetForms", c.path("assetForms").deepCopy());
         ArrayNode outShots = clip.putArray("shots");
         for (JsonNode s : shots) {
             double d = s.path("durationSec").asDouble(0);
@@ -348,6 +441,8 @@ public final class DirectorPrompts {
             ObjectNode shot = outShots.addObject();
             shot.put("durationSec", d).put("size", clip(text(s, "size"), 20)).put("camera", clip(text(s, "camera"), 200))
                     .put("action", clip(text(s, "action"), 400)).put("still", clip(text(s, "still"), 300));
+            // 写错或写 main 都按主视图，不判失败：视角只是选哪张参考图。
+            if (DirectorSceneViews.LABELS.containsKey(text(s, "sceneView"))) shot.put("sceneView", text(s, "sceneView"));
             ArrayNode dialogue = shot.putArray("dialogue");
             for (JsonNode line : s.path("dialogue")) {
                 String t = text(line, "text");
@@ -429,11 +524,38 @@ public final class DirectorPrompts {
         List<java.util.Map<String, Object>> cells = new ArrayList<>();
         for (int i = 0; i < shots.size() && i < MAX_SHOTS; i++) {
             JsonNode sh = shots.get(i);
-            cells.add(java.util.Map.of("position", CELL_NAMES[i], "size", sh.path("size").asText(), "camera", sh.path("camera").asText(), "still", sh.path("still").asText()));
+            cells.add(java.util.Map.of("position", CELL_NAMES[i], "size", sh.path("size").asText(), "camera", sh.path("camera").asText(), "still", sh.path("still").asText() + viewHint(sh, refs)));
         }
         vars.put("cells", cells);
         vars.put("blanks", !single && shots.size() < 4);
         return media(prompts, StudioPromptCallPoints.DIRECTOR_BOARD, vars, version);
+    }
+
+    /** 这一镜要用场景的哪张视角图：只交代素材编号，没用视角的镜头一个字都不多（旧片段的提示词不变、不会被标「需更新」）。 */
+    private static String viewHint(JsonNode shot, List<Ref> refs) {
+        String label = DirectorSceneViews.LABELS.get(shot.path("sceneView").asText(""));
+        if (label == null) return "";
+        for (Ref r : refs) if ("scene".equals(r.kind()) && r.name().endsWith("·" + label)) return "（背景照" + r.label() + "）";
+        return "";
+    }
+
+    /** 场景其他视角的 2×2 整图（stage-director-scene-views）；version 同 {@link #assetPrompt}。库里没有返回 null。 */
+    public static String sceneViewsPrompt(StudioPromptAssembler prompts, JsonNode settings, JsonNode asset, Integer version) {
+        java.util.Map<String, Object> vars = new java.util.LinkedHashMap<>();
+        vars.put("style", settings.path("style").asText("真人写实"));
+        vars.put("name", asset.path("name").asText());
+        vars.put("description", asset.path("description").asText());
+        return media(prompts, StudioPromptCallPoints.DIRECTOR_SCENE_VIEWS, vars, version);
+    }
+
+    /** 画角色另一形态时追加的说明：图1 是主形象。 */
+    public static String formNotes(StudioPromptAssembler prompts, String formName, String baseOnLabel) {
+        java.util.Map<String, Object> vars = new java.util.LinkedHashMap<>();
+        vars.put("refScene", false); vars.put("refProp", false); vars.put("refCharacter", false);
+        vars.put("form", formName);
+        vars.put("baseOn", baseOnLabel == null ? "" : baseOnLabel);
+        prompts.requireStage(StudioPromptCallPoints.DIRECTOR_IMAGE_NOTES);
+        return media(prompts, StudioPromptCallPoints.DIRECTOR_IMAGE_NOTES, vars, null);
     }
 
     /**

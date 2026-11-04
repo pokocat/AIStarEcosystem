@@ -297,7 +297,7 @@ public class MusicGenModelClient {
             log.warn("[music-gen] {} http {} endpoint={} body={}", action, resp.statusCode(),
                     ep.getId(), truncate(resp.body(), 500));
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "MUSIC_CALL_FAILED",
-                    ProviderErrorMessage.message(resp.body(), "音乐生成服务返回异常（上游 " + resp.statusCode() + "）"));
+                    ProviderErrorMessage.message(resp.body(), "音乐生成服务返回异常，请稍后再试"));
         }
         JsonNode root;
         try {
@@ -312,7 +312,7 @@ public class MusicGenModelClient {
             String upstream = err.path("Message").asText(root.path("Message").asText(""));
             log.warn("[music-gen] {} biz error endpoint={} code={} msg={}", action, ep.getId(), code, upstream);
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "MUSIC_CALL_FAILED",
-                    ProviderErrorMessage.message(root.toString(), "音乐生成失败，上游未提供具体原因"));
+                    ProviderErrorMessage.message(root.toString(), "音乐生成失败，请稍后再试"));
         }
         return root;
     }

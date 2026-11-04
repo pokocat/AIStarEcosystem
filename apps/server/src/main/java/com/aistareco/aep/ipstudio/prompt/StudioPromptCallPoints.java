@@ -28,7 +28,8 @@ public final class StudioPromptCallPoints {
     public static final String DIRECTOR_BASE = "base-director";
     public static final String DIRECTOR_SCRIPT = "stage-director-script", DIRECTOR_SPLIT = "stage-director-split", DIRECTOR_EXTRACT = "stage-director-extract",
             DIRECTOR_STORYBOARD = "stage-director-storyboard", DIRECTOR_ASSISTANT = "stage-director-assistant", DIRECTOR_BRIEF = "stage-director-brief",
-            DIRECTOR_ASSET_IMAGE = "stage-director-asset-image", DIRECTOR_BOARD = "stage-director-board", DIRECTOR_IMAGE_NOTES = "stage-director-image-notes";
+            DIRECTOR_ASSET_IMAGE = "stage-director-asset-image", DIRECTOR_BOARD = "stage-director-board", DIRECTOR_IMAGE_NOTES = "stage-director-image-notes",
+            DIRECTOR_SCENE_VIEWS = "stage-director-scene-views";
 
     private static void registerDirector() {
         Map<String, String> input = vars("input", "本次输入（JSON，作为素材）");
@@ -78,8 +79,11 @@ public final class StudioPromptCallPoints {
                         "live", "真人实拍类风格"), Set.of(), Map.of(), board));
         StudioPromptStages.register(new StudioPromptStages.Stage(DIRECTOR_IMAGE_NOTES, StudioPromptEntry.MESSAGE, "导演台出图附加说明",
                 vars("refScene", "带了用户的场景参考图", "refProp", "带了用户的道具参考图", "refCharacter", "带了用户的形象参考照片",
-                        "baseOn", "在当前图上修改时，当前图的编号（如「图2」）"), Set.of(), Map.of(),
-                new LinkedHashMap<>(Map.of("refScene", false, "refProp", false, "refCharacter", true, "baseOn", "图2"))));
+                        "form", "正在画角色的这个形态（图1 是主形象）", "baseOn", "在当前图上修改时，当前图的编号（如「图2」）"), Set.of(), Map.of(),
+                new LinkedHashMap<>(Map.of("refScene", false, "refProp", false, "refCharacter", true, "form", "", "baseOn", "图2"))));
+        StudioPromptStages.register(new StudioPromptStages.Stage(DIRECTOR_SCENE_VIEWS, StudioPromptEntry.IMAGE_MODEL, "导演台场景四视图",
+                vars("style", "画面风格", "name", "场景名称", "description", "场景设定"), Set.of(), Map.of(),
+                new LinkedHashMap<>(Map.of("style", "真人写实", "name", "周桂芬的小面馆", "description", "老街转角的小面馆，门在左侧，靠里是收银台。"))));
     }
 
     private static StudioPromptStages.Stage director(String key, String title, Map<String, String> vars, Set<String> required,

@@ -405,7 +405,6 @@ class AiModelInvocationServiceTest {
                         List.of(Map.of("role", "user", "content", "hi")), null));
         assertEquals(HttpStatus.BAD_GATEWAY, ex.getStatus());
         assertEquals("AI_CALL_FAILED", ex.getCode());
-        assertEquals("boom",ex.getMessage());
         assertEquals(1, bad.requests.size(), "单端点被尝试一次，不回退");
     }
 
@@ -463,7 +462,6 @@ class AiModelInvocationServiceTest {
         var ex = assertThrows(BusinessException.class, () -> boundSvc(AiModelPurpose.GENERAL, ep)
                 .invokeChat(AiModelPurpose.GENERAL, List.of(Map.of("role", "user", "content", "hi")), null));
         assertEquals("AI_CALL_FAILED", ex.getCode());
-        assertEquals("private credential content",ex.getMessage());
         assertEquals(1, bad.requests.size());
     }
 
@@ -548,7 +546,6 @@ class AiModelInvocationServiceTest {
 
         assertEquals(false, result.get("ok"));
         assertEquals(404, result.get("statusCode"));
-        assertEquals("upstream private detail",result.get("error"));
         assertFalse(result.containsKey("snippet"));
     }
 

@@ -436,6 +436,7 @@ src/main/java/com/aistareco/aep/
 - **`material_video_input_asset`（V71，2026-10-29）**：角色声音的聚算输入回执；按端点、地址、模型、凭据及来源 key 散列隔离，保存 `source_key` / `asset_id` / `expires_at`，不保存密钥和签名 URL。人物长期绑定仍存我方 key；保存音色和生成 worker 共用上传路径，仅在厂商有效期前复用，过期从原样本重新上传。上传使用可写事务，避免个人素材库持用户行锁时触发 MySQL 只读事务 500。
 
 - **`director_work`（V65，AI 导演台）**：作品一行，`content_json` 存剧本 / 分集 / 资产使用 / 片段与镜头 / 采用指针（只存存储 key），`revision` 作品级修订、`active` 供后台调度扫描。生成任务复用 `ip_run`，新增 `host_type`（NULL = 画布，`director` = 导演作品，`project_id` 存作品 id）。接口 `/api/v1/ip-studio/director/**`。
+  2026-11-04（无迁移）：`content_json` 的资产加 `forms[]`、`views`，片段加 `assetForms`，镜头加 `sceneView`；任务节点 `form:<形态id>`、`views:<场景id>`。
   - 2026-10-26（`20261026-director-text-model`）：`content_json.settings.textModel` 可选 Studio script 场景端点，空值默认；`textModels`/`textModelMode` 回传候选（界面不展示文字价格）。所有文字任务、估价（按各任务输出上限）及连跑使用所选模型；原选择停用时设置照存、估价按默认价、提交明确报错，`_exec` 固化端点、Token 费率与冻结额；幂等指纹包含显式模型。剧本成功采用时同步非空剧名到 `director_work.title`，重写历史保留旧标题；失败/内容冲突不改标题。无需迁移。
 
 ### 角色体系
@@ -1094,6 +1095,10 @@ V51 为 `material_video_job` 增加可空 `error_code VARCHAR(64)`，和原 `err
 `StudioMediaImportService` 不再因 MP4 内部编码直接拒收：可读的非H.264/非AAC素材用 ffmpeg 自动规范为H.264/AAC；仅音轨不兼容时保留画面码流。最多2编码线程、150秒超时，重新校验音轨和时长后才存储、计配额，异常清理输入/输出临时文件。免费导入，无模型调用。`StudioMediaImportServiceTest` 覆盖原逻辑/转码/失败，`StudioVideoCompatibilityTest` 可通过 `-Dstudio.video.demo=本地视频路径` 验真实HEVC+MP3、MPEG4+MP3、H264+MP3三类素材。
 
 2026-11-01 本地调整：声音参考超过 14.9 秒时，由 `StudioAudioReference` 用 ffmpeg 提取开头 14.9 秒、24 kHz 单声道 PCM WAV，验证后交给模型，不再因单段超长直接退出。`StudioVideoService` 的报价和提交共用短样本 key，导演台上传保留完整原音频，绑定上传或资产库声音时同样生成短样本；调用前先验 key 归属，已有素材不原地改写，临时文件在成功和失败时均删除。派生 key 按本人不可变源 key 有界复用，不跨用户复用、不保存签名 URL、不新增模型调用或积分扣费。模型的数量、音频总时长、格式等规则不变。界面在使用声音前提示截取规则，录音入口本身 14.9 秒自动停止。
+
+2026-11-04 补充：不足 14.9 秒的声音也可能要处理。资产库收的格式比视频模型多（Seedance 只收 WAV / MP3），短 M4A 此前原样送去校验、报「格式不符合」。现在凡不是 WAV / MP3 的声音，`StudioAudioReference` 都转成同规格 WAV，原文件不动；转换失败明确报错，不退回原文件。已是 WAV / MP3 且不超长的照旧用原 key。
+
+2026-11-04 补充：H3 参考视频提交前按 2–15 秒校验（厂商的限制，此前等上传被拒才报英文）；`VideoMediaMessages` 统一素材报错，写明类型、上限和实际值。「没拿到受理回执」的报错改为一句话，只有审核、真人、模型下架这类会改变下一步的原因才附在后面；其余原因走日志。
 
 ### Studio 统一画布封面（2026-10-17，已发布 a4092626）
 

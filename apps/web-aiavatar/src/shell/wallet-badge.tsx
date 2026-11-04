@@ -15,11 +15,11 @@ export function WalletBadge({ account, location, enterprise = false }: { account
   const amount = balance === undefined ? "—" : format(balance);
   const label = company ? "个人积分" : "积分";
   return <div className="desktop-credit">
-    <Link href="/studio#/membership" className="desktop-credit-link" aria-label={error ? "积分暂不可用，查看积分" : `可用${label}：${amount}，查看积分`} title={error ? "余额加载失败，可重试或进入积分页面" : `可用${label}，不含冻结积分；点击查看积分`}>
+    <Link href="/studio#/membership" className="desktop-credit-link" aria-label={error ? "积分暂不可用，查看积分" : `可用${label}：${amount}，查看积分`} title={error ? "余额加载失败，可重试或进入积分页面" : `可用${label}（不含冻结积分），点击查看明细`}>
       <Coins size={15} aria-hidden="true" />{error ? <span>积分暂不可用</span> : <><strong>{amount}</strong><span>{label}</span></>}
     </Link>
     {error && <button type="button" onClick={refresh} className="desktop-credit-retry" aria-label="重试加载积分" title="重试加载积分"><RefreshCw size={14} aria-hidden="true" /></button>}
-    {company && <Link href="/enterprise" className="desktop-credit-link" aria-label={`${company.name}分给你的企业积分：${format(company.balance)}，查看企业`} title={`${company.name}分给你的企业积分，不含冻结积分。生成时可以选用；点击查看企业`}>
+    {company && <Link href="/enterprise" className="desktop-credit-link" aria-label={`${company.name} 分配给你的企业积分：${format(company.balance)}，查看企业`} title={`${company.name} 分配给你的企业积分（不含冻结积分），生成时可选用。点击查看企业`}>
       <Building2 size={15} aria-hidden="true" /><strong>{format(company.balance)}</strong><span>企业积分</span>
     </Link>}
   </div>;

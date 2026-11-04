@@ -814,7 +814,7 @@ function PromotedBar({
     target.state === "ok"
       ? `这段对话已经建成${noun}《${target.title}》。要改故事就复制一份，改完再新建，建好的这${KIND_MEASURE[promoted.kind]}不受影响。`
       : gone
-        ? `用这段对话建的那${KIND_MEASURE[promoted.kind]}${noun}已经删了，可能在回收站里。要接着做，复制一份再新建。`
+        ? `用这段对话建的那${KIND_MEASURE[promoted.kind]}${noun}已经删了，可能在回收站里。要继续制作，复制一份再新建。`
         : `这段对话已经建成${noun}了。要改故事就复制一份，改完再新建。`;
   const copyBtn = (primary: boolean) => (
     <button

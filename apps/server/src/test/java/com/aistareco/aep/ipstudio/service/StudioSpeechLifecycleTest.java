@@ -75,7 +75,6 @@ class StudioSpeechLifecycleTest {
         when(client.submit(any(),anyString(),anyString(),anyString(),anyString())).thenThrow(
             new com.aistareco.common.BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,"STUDIO_SPEECH_UNAVAILABLE","unavailable"));
         worker.step("r");assertEquals("failed",run.getStage());assertEquals("STUDIO_SPEECH_SUBMISSION_UNKNOWN",run.getErrorCode());
-        assertTrue(run.getErrorMessage().contains("unavailable"));
         verify(diagnostics).attach(eq(run),isA(com.aistareco.common.BusinessException.class));
         worker.step("r");worker.step("r");String receipt=run.getInputJson();worker.step("r");
         assertEquals("failed",run.getStage());assertEquals("STUDIO_SPEECH_SUBMISSION_UNKNOWN",run.getErrorCode());

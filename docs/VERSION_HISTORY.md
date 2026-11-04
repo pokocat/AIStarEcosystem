@@ -4,6 +4,10 @@
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
 
+### 导演台角色形态、场景四视图、风格库与资产弹窗 · 2026-11-04（本地未发布）
+
+资产详情从抽屉改成大弹窗；`asset.forms` + `clip.assetForms`、`asset.views` + `shot.sceneView`（无迁移，存在 `content_json`）；新任务 `form-image` / `scene-views`，新环节 `stage-director-scene-views`；风格卡片；`/create` 加最近画布。见 `docs/ai-director-plan.md` 末节。
+
 ### Studio 场景页界面复测修复 · 2026-10-30
 
 AI 视频输入栏改选视频生成模型（撤掉写脚本模型选择），时长 / 清晰度 / 素材 / 报价跟着它，记进 `sceneVideoModel`；输入栏分两层不再挤；首页卡片站内跳转进对的场景（`useSearchParams`）；1032 右栏、设置页开关、图片场景未提交输入、看大图 Esc 与焦点、项目卡片回场景继续、手机场景列表当前项与点击区。见 `docs/studio-scene-creation.md` §11。

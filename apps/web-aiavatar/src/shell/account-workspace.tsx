@@ -41,7 +41,7 @@ export function AccountWorkspace({ children, tool = false, activePage }: { child
 
 export function AccountOverview({ name, phone, demo, identity }: { name: string; phone?: string; demo?: boolean; identity?: MeIdentity | null }) {
   return <AccountWorkspace>
-    <header className="account-overview-header"><div><h1>我的账号</h1><p>管理账号、积分和创作资源</p></div><Link href="/projects" className="account-create-link">回到项目<ArrowRight size={16}/></Link></header>
+    <header className="account-overview-header"><div><h1>我的账号</h1><p>管理账号、积分和创作资源</p></div><Link href="/projects" className="account-create-link">返回项目<ArrowRight size={16}/></Link></header>
     <section className="account-profile" aria-label="账号信息">
       <EditableAccountAvatar identity={identity} size={52} />
       <div><h2 title={name}>{name}</h2><p>{phone || "手机号与登录方式可在账号与安全中管理"}{demo && <span className="account-demo">演示数据</span>}</p></div>

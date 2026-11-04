@@ -42,15 +42,15 @@ export function StudioConversationStart({ onStart, creating, pending = false, co
     <div className="studio-conversation-start-box">
       <label htmlFor="studio-conversation-brief" className="studio-conversation-start-label">想做什么</label>
       <textarea id="studio-conversation-brief" ref={area} value={brief} rows={compact ? 2 : 3} maxLength={4000} disabled={locked} onChange={e => setBrief(e.target.value)} onKeyDown={keydown}
-        placeholder="说说你的想法，比如：照这条视频的拍法，把商品换成我的保温杯"/>
+        placeholder="描述你想做的内容，例如：参照这条视频的拍法，把商品换成我的保温杯"/>
       <div className="studio-conversation-start-row">
         {/* 新版（设计稿）：常用开头放在框下面一排，框里只留发送；不写扣费说明，花钱的地方会先报价。 */}
         {version !== "next" && examples}
-        <button type="submit" className="studio-conversation-start-send" disabled={!canSubmit} title={pending ? "继续保存刚才的想法并打开画布" : brief.trim() ? "开始对话（Enter）" : "先写一句想做什么"}>
+        <button type="submit" className="studio-conversation-start-send" disabled={!canSubmit} title={pending ? "继续保存并打开画布" : brief.trim() ? "开始对话（Enter）" : "请先输入想做的内容"}>
           {creating ? <Loader2 size={18} className="studio-gallery-spinner" aria-hidden="true"/> : <ArrowUp size={18} aria-hidden="true"/>}<span>{pending ? "继续保存并打开" : "开始对话"}</span>
         </button>
       </div>
-      {version !== "next" && <p className="studio-conversation-start-note">助手每轮回复按实际用量扣少量积分；出图、出片先报价，你确认了才开始。还没想好？逛逛<Link href="/templates" className="studio-conversation-start-link">灵感</Link>或<Link href="/scenes" className="studio-conversation-start-link">专项创作</Link></p>}
+      {version !== "next" && <p className="studio-conversation-start-note">助手回复按实际用量扣除积分；生成图片和视频前会先报价，确认后开始。也可浏览<Link href="/templates" className="studio-conversation-start-link">灵感</Link>或<Link href="/scenes" className="studio-conversation-start-link">专项创作</Link>。</p>}
     </div>
     {version === "next" && examples}
   </form>;

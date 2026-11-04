@@ -189,7 +189,7 @@ function MeNext({ name, phone, demo, identity, onLogout }: { name: string; phone
       </Link>
     </section>
     <nav className="studio-me-group" aria-label="创作">
-      <MeRow href="/projects" icon={FolderOpen} title="项目" sub="画布和场景草稿，接着做" />
+      <MeRow href="/projects" icon={FolderOpen} title="项目" sub="画布与场景草稿，可继续编辑" />
       <MeRow href="/assets" icon={Layers} title="资产" sub="人物、声音与创作素材" />
       <MeRow href="/director" icon={Clapperboard} title="短剧导演台" sub="写剧本、拆分镜、出片" />
     </nav>

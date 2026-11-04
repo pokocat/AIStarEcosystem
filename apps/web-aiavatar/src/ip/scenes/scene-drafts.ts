@@ -96,6 +96,17 @@ export function imageRows(doc: IpProjectDoc): CanvasNodeData[] {
     .sort((a, b) => b.position.y - a.position.y);
 }
 
+/** 提交被明确拒绝后写给用户的下一步：要按拒绝的原因说，积分不足时不能写「调整后重试」就算完。 */
+export function rejectedNextStep(error: unknown): string {
+  const e = error as { status?: unknown; code?: unknown };
+  const code = String(e?.code ?? "");
+  const action = e?.status === 402 || /INSUFFICIENT/.test(code) ? "请充值或调整生成设置后重试。"
+    : code === "STUDIO_PRICE_CHANGED" ? "价格已更新，请确认新价格后重试。"
+    : ["AI_NOT_CONFIGURED", "PROMPT_NOT_CONFIGURED", "ENDPOINT_NOT_ALLOWED"].includes(code) ? "请换一个模型或稍后重试。"
+    : "请按上述原因调整后重试。";
+  return `${action}本次未扣积分。`;
+}
+
 /** 服务端明确拒绝（没受理）才算失败；其余情况保留原请求，等用户「确认原任务」。 */
 export function submissionRejected(error: unknown, posted: boolean): boolean {
   if (!posted) return true;

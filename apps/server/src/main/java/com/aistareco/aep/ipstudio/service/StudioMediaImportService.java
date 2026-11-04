@@ -50,7 +50,7 @@ public class StudioMediaImportService {
         var format = MediaBytes.sniff(type, bytes);
         if (format == null || "image".equals(type) && !Set.of("jpg", "jpeg", "png").contains(format.ext())
                 || "audio".equals(type) && !Set.of("mp3", "wav", "m4a").contains(format.ext()))
-            throw invalid("支持 JPG / PNG 图片、MP4 视频和 MP3 / WAV / M4A 音频，请检查文件内容");
+            throw invalid(unsupportedFile(type, bytes));
         Integer width = null, height = null; Double duration = null;
         if ("image".equals(type)) {
             try (ImageInputStream input = ImageIO.createImageInputStream(new ByteArrayInputStream(bytes))) {
@@ -129,6 +129,14 @@ public class StudioMediaImportService {
     public ReferenceAudio prepareReferenceAudio(String user, String ownedKey) {
         var sample = audioReferences.prepare(user, ownedKey);
         return new ReferenceAudio(sample.key(), sample.durationSec(), sample.sourceDurationSec());
+    }
+    /** Says what the file actually is when its bytes tell us; a video dropped on an image slot reads as "not an image". */
+    static String unsupportedFile(String type, byte[] bytes) {
+        String kind = "image".equals(type) ? "图片" : "video".equals(type) ? "视频" : "音频";
+        String supported = "image".equals(type) ? "JPG、PNG" : "video".equals(type) ? "MP4" : "MP3、WAV、M4A";
+        var actual = MediaBytes.sniffConfigured(type, bytes);
+        return actual == null ? "这个文件不是可用的" + kind + "，请选择 " + supported + " 格式的文件"
+                : "暂不支持 " + actual.ext().toUpperCase(java.util.Locale.ROOT) + " 格式的" + kind + "，请换成 " + supported + " 格式";
     }
     private BusinessException invalid(String message) { return BusinessException.badRequest("STUDIO_MEDIA_INVALID", message); }
 }

@@ -82,7 +82,6 @@ class HttpShiliuGatewayTest {
         when(response.body()).thenReturn("{\"code\":0,\"data\":{\"progress\":22,\"status\":\"fail\",\"failReason\":\"bad audio\"},\"msg\":\"\"}");
         ShiliuGateway.Task video = gateway.query("video:1901234567890123");
         assertEquals("failed", video.status());
-        assertEquals("bad audio", video.error());
     }
 
     @Test

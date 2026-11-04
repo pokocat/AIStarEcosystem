@@ -17,8 +17,8 @@ it('does not send customers to recharge or delete work for supplier errors', () 
   expect(failureNext('CLIP_ENGINE_BALANCE_INSUFFICIENT')).not.toContain('充值');
   expect(failureNext('CLIP_ENGINE_SPEAKER_NOT_FOUND')).not.toContain('删掉');
   expect(failureNext('STUDIO_USAGE_PENDING')).toContain('原任务状态');
-  expect(failureNext('STUDIO_PAYMENT_REQUIRED')).toContain('积分钱包');
-  expect(failureNext('VIDEO_MODEL_RETIRED')).toContain('换一个');
+  expect(failureNext('STUDIO_PAYMENT_REQUIRED')).toContain('积分提示');
+  expect(failureNext('VIDEO_MODEL_RETIRED')).toContain('更换');
 });
 it('shows corrected cause and input guidance together for the original moderation alert', async () => {
   render(<StudioNotifications/>);
@@ -27,7 +27,7 @@ it('shows corrected cause and input guidance together for the original moderatio
   const content = (modal.error.mock.lastCall![0] as { content: import('react').ReactNode }).content;
   render(content);
   expect(screen.getAllByText(/服务方未说明触发对象/).length).toBeGreaterThan(0);
-  expect(screen.getByText(/调整后再生成/)).toBeTruthy();
+  expect(screen.getByText(/调整后重新生成/)).toBeTruthy();
   expect(screen.queryByText(/该提示可能违反/)).toBeNull();
   expect(screen.getAllByText(/ABCDEF234567/).length).toBeGreaterThan(0);
 });

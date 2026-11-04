@@ -32,10 +32,42 @@ function historicalModeration(message: string): string {
   return message.slice(0, index) + text + (trace ? ` · 追查号 ${trace}` : '');
 }
 
+// Companion to PublicModelErrorPolicy.reworded: old records and canvas documents still hold these. Keep the two in step.
+const UNREADABLE = '生成服务未能完成这次请求，请稍后再试或换一个模型。';
+const SUBMISSION_FAILED = '生成服务没有返回结果，这次生成失败。未完成部分的积分已退回，可以重新生成。';
+const TECHNICAL = /map\[|[{}]|幂等|idempot|\bapi\b|token plan|exception\b|\b(?:http|status)\s*[:=]?\s*\d{3}\b|\b[a-z]+_[a-z_]+\b/i;
+// 存下来的句子可能是我们自己写的中文（提到「API Key」「HTTP 404」都正常），只认绝不会是我们写的结构。
+const DUMP = /map\[|[{}]|幂等|idempot|exception\b|\b[a-z]+_[a-z_]+\b/i;
+const NO_INFORMATION = /^\s*(?:(?:(?:resource|model|task) )?not found|bad request|invalid request|request failed|(?:internal )?(?:server )?error|unknown error|(?:service )?unavailable|forbidden|unauthorized|failed)\s*\.?\s*$/i;
+function translated(text: string): string | undefined {
+  const duration = text.match(/reference video duration must be within (\d+)\.\.(\d+) seconds/i);
+  if (duration) return `参考视频要 ${duration[1]}–${duration[2]} 秒，请调整后再试`;
+  if (/may contain real person/i.test(text)) return '参考图片被模型识别为包含真人，当前模型不接受这类素材。请更换参考图片后再试，使用相同素材重试仍会失败';
+  if (/has been retired|model_delisted/i.test(text)) return '这个视频模型已被提供方下架，不能再用它生成，请换一个模型';
+  if (/rate.?limit|too many requests|overloaded|速率限制/i.test(text)) return '生成服务当前请求过多，请稍后再试';
+  if (/cannot be decoded|invalid image|unsupported (?:image|format|media)/i.test(text)) return '参考素材无法读取，请更换后再试';
+  return undefined;
+}
+function reworded(message: string): string {
+  const trace = message.match(TRACE);
+  const body = trace ? message.slice(0, trace.index).trim() : message;
+  const suffix = trace ? ` · 追查号 ${trace[1]}` : '';
+  if (body.startsWith('生成服务没有返回有效的任务信息')) return SUBMISSION_FAILED + suffix;
+  const known = translated(body);
+  if (known) return known + suffix;
+  const cleaned = body.replace(/[（(](?:上游 ?|HTTP )\d{3}[)）]/g, '').replace('被上游拒收', '被生成服务拒绝').replace('上游原因', '原因');
+  if (!/\p{Script=Han}/u.test(cleaned)) return TECHNICAL.test(cleaned) || NO_INFORMATION.test(cleaned) ? UNREADABLE + suffix : `${UNREADABLE.replace(/。$/, '')}（服务方提示：${cleaned}）${suffix}`;
+  if (DUMP.test(cleaned)) return UNREADABLE + suffix;
+  return cleaned === body ? message : cleaned + suffix;
+}
+
 export function publicModelErrorMessage(message: string, code?: string): string {
   if (!message) return message;
   const privateAccount = !WALLET.test(code || '') && (COST.test(message) || (CODE.test(code || '') || CONTEXT.test(message)) && ACCOUNT.test(message));
-  if (!PRIVATE.test(message) && !privateAccount) return historicalModeration(message);
+  if (!PRIVATE.test(message) && !privateAccount) {
+    const moderated = historicalModeration(message);
+    return !WALLET.test(code || '') && (CODE.test(code || '') || CONTEXT.test(moderated)) ? reworded(moderated) : moderated;
+  }
   const trace = message.match(TRACE)?.[1];
   return MODEL_SERVICE_UNAVAILABLE + (trace ? ` · 追查号 ${trace}` : '');
 }
