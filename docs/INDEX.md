@@ -414,6 +414,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [AI 导演台首发发布记录](releases/ai-director-release-20261024.md)（last-reviewed: 2026-10-24）
 - [模型告警北京时间与服务方响应发布](releases/model-alert-bjt-response-release-20261024.md) — 仅 server；按用户要求跳过部署后验证（last-reviewed: 2026-10-24）。
 - [Studio 同步出图读 URL 结果与告警措辞修复](releases/studio-image-url-result-alerts-20261029.md) — 仅 server；4 条飞书告警根因、改读 `data[0].url`、告警写最终结果；真实出图路径待下一次生成核对（last-reviewed: 2026-10-29）。
+- [灵感库扩充：12 个官方示例](releases/studio-inspiration-cases-20261103.md) — 参考四个竞品站的案例类型，自己出图出片后发布为官方示例；首页与「灵感」页视频卡悬停静音播放（`previewVideoUrl`）（last-reviewed: 2026-11-03）。
 - [聚算素材内容作废后重传修复](releases/jusuan-asset-reupload-20261103.md) — 仅 server；409 `input_asset_binding_conflict` 换标记重传一次，导演台轮询空指针（last-reviewed: 2026-11-03）。
 - [导演台按「E01」标题免费分集](releases/director-episode-codes-release-20261103.md) — server + web-aiavatar；`E01` / `EP01` 写法的分集标题由程序识别、不调模型，助手遇到拆集请求时指路（last-reviewed: 2026-11-03）。
 

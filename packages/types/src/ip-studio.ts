@@ -227,6 +227,8 @@ export interface IpTemplate {
   mine?: boolean;
   enabled?: boolean;
   id: string; name: string; summary: string; coverUrl?: string;
+  /** 官方示例里第一段成片的签名地址（灵感卡悬停播放用）；没有成片时不给。 */
+  previewVideoUrl?: string;
   stylePresetId?: string; lookCount: number; estimatedCredits: number;
   doc: IpProjectDoc;              // 预排好的节点图（照片 / 参考图为空待填）
 }

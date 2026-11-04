@@ -73,9 +73,15 @@ public final class IpStudioDtos {
     /** 内置工作流模板（resources/ipstudio/templates/*.json）。 */
     public record IpTemplateDto(String id, String name, String summary, String coverUrl,
                                 String stylePresetId, int lookCount, long estimatedCredits,
-                                JsonNode doc, String versionId, Integer version, String visibility, Boolean mine, Boolean enabled) {
+                                JsonNode doc, String versionId, Integer version, String visibility, Boolean mine, Boolean enabled,
+                                /** 官方示例第一段成片的签名地址，灵感卡悬停播放；doc 里只存 key，不签名。 */
+                                String previewVideoUrl) {
         public IpTemplateDto(String id,String name,String summary,String coverUrl,String stylePresetId,int lookCount,long estimatedCredits,JsonNode doc) {
-            this(id,name,summary,coverUrl,stylePresetId,lookCount,estimatedCredits,doc,null,null,null,null,null);
+            this(id,name,summary,coverUrl,stylePresetId,lookCount,estimatedCredits,doc,null,null,null,null,null,null);
+        }
+        public IpTemplateDto(String id,String name,String summary,String coverUrl,String stylePresetId,int lookCount,long estimatedCredits,
+                             JsonNode doc,String versionId,Integer version,String visibility,Boolean mine,Boolean enabled) {
+            this(id,name,summary,coverUrl,stylePresetId,lookCount,estimatedCredits,doc,versionId,version,visibility,mine,enabled,null);
         }
     }
 

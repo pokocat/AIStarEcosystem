@@ -133,9 +133,18 @@ public class IpTemplateResolver {
                 d.getSummary() == null ? "" : d.getSummary(),
                 signOrEmpty(d.getCoverKey() == null ? CanvasCoverService.firstImageKey(docOf(d), key -> true) : d.getCoverKey()),
                 null, 0, 0,
-                docOf(d),d.getCurrentVersionId(),versionNumber(d),d.getVisibility(),userId!=null && userId.equals(d.getCreatedBy()),d.isEnabled());
+                docOf(d),d.getCurrentVersionId(),versionNumber(d),d.getVisibility(),userId!=null && userId.equals(d.getCreatedBy()),d.isEnabled(),
+                previewVideoUrl(d));
     }
 
+    /** 只有带素材的官方示例才有成片；模板的素材在发布时已剥掉。签不出来就不给，卡片退回静态封面。 */
+    private String previewVideoUrl(IpDemoTemplate d) {
+        if(!IpDemoTemplate.KIND_EXAMPLE.equals(d.getKind()))return null;
+        String key=CanvasCoverService.firstVideoKey(docOf(d));
+        if(key==null)return null;
+        String url=signOrEmpty(key);
+        return url.isBlank()?null:url;
+    }
     private boolean visible(IpDemoTemplate d,String userId) {
         return !"personal".equals(d.getVisibility()) || userId != null && userId.equals(d.getCreatedBy());
     }

@@ -90,4 +90,11 @@ class CanvasCoverServiceTest {
         assertThrows(BusinessException.class,()->service.upload("operator","template","unknown",true,file));
         verifyNoInteractions(configs);verify(projects,never()).uploadImage(any(),anyString(),anyString());
     }
+    @Test void firstVideoKeyIsTheAdoptedTakeOfTheFirstVideoNode()throws Exception{
+        var doc=om.readTree("{\"nodes\":[{\"type\":\"image\",\"metadata\":{\"storageKey\":\"img\"}},"
+                +"{\"type\":\"video\",\"metadata\":{\"videos\":[{\"storageKey\":\"old\"}]}},"
+                +"{\"type\":\"video\",\"metadata\":{\"storageKey\":\"adopted\",\"videos\":[{\"storageKey\":\"other\"}]}}]}");
+        assertEquals("adopted",CanvasCoverService.firstVideoKey(doc));
+        assertNull(CanvasCoverService.firstVideoKey(om.readTree("{\"nodes\":[{\"type\":\"image\",\"metadata\":{\"storageKey\":\"img\"}}]}")));
+    }
 }

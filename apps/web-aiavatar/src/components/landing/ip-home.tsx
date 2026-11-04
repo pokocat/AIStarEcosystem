@@ -186,13 +186,13 @@ export function IpHome(props: { header?: boolean }) {
   return useUiVersion() === "next" ? <IpHomeNext {...props}/> : <IpHomeClassic {...props}/>;
 }
 
-const hasPicture = (t: IpTemplate) => !!t.coverUrl || projectPreview(t.doc).images.length > 0;
+const hasPicture = (t: IpTemplate) => !!t.coverUrl || !!t.previewVideoUrl || projectPreview(t.doc).images.length > 0;
 
 function FeedCard({ template, shape, onOpen }: { template: IpTemplate; shape: number; onOpen: (t: IpTemplate) => void }) {
   const kind = templateKind(template);
   const Icon = kind === "video" ? Video : kind === "image" ? ImageIcon : LayoutTemplate;
   return <button type="button" className="home-feed-card" style={{ aspectRatio: FEED_SHAPES[shape % FEED_SHAPES.length] }} aria-label={`预览模板 ${template.name}`} title={template.summary || template.name} onClick={() => onOpen(template)}>
-    <span className="home-feed-media"><ProjectCardPreview key={template.coverUrl || template.versionId || template.id} doc={template.doc} coverUrl={template.coverUrl} stepsFirst/></span>
+    <span className="home-feed-media"><ProjectCardPreview key={template.coverUrl || template.versionId || template.id} doc={template.doc} coverUrl={template.coverUrl} videoUrl={template.previewVideoUrl} stepsFirst/></span>
     <span className="home-feed-caption"><Icon size={15} aria-hidden="true"/><strong>{template.name}</strong></span>
   </button>;
 }
