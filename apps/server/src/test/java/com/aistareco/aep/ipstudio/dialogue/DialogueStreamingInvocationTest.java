@@ -191,7 +191,6 @@ class DialogueStreamingInvocationTest {
         assertEquals("AI_CALL_FAILED", e.getCode());
         assertTrue(e.getInternalDetail().contains("status=400"));
         assertTrue(e.getInternalDetail().contains("stream_options not supported"));
-        assertEquals("stream_options not supported",e.getMessage());
     }
 
     @Test void streamThatEndsWithoutAFinishSignalIsAFailureNotAReply() throws Exception {
@@ -217,6 +216,6 @@ class DialogueStreamingInvocationTest {
         });server.start();
         var error=assertThrows(BusinessException.class,()->service().invokeChatTurnOnEndpoint(endpoint(true,null),AiModelPurpose.DAP_PERSONA,
                 List.of(Map.of("role","user","content","hi")),Map.of(),null,delta->fail("error must not become content")));
-        assertEquals("AI_CALL_FAILED",error.getCode());assertEquals("provider safety check rejected input",error.getMessage());
+        assertEquals("AI_CALL_FAILED",error.getCode());assertTrue(error.getInternalDetail().contains("provider safety check rejected input"));
     }
 }

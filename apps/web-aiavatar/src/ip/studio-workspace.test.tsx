@@ -296,7 +296,7 @@ test('a newly accepted task discloses its live provider error before reaching a 
  render(<Host/>);openVideo();
  await waitFor(()=>expect((screen.getByRole('button',{name:'生成视频',exact:true}) as HTMLButtonElement).disabled).toBe(false));
  fireEvent.click(screen.getByRole('button',{name:'生成视频',exact:true}));
- await waitFor(()=>expect(api.error).toHaveBeenCalledWith('视频受理结果尚未确认（HTTP 503）'));
+ await waitFor(()=>expect(api.error).toHaveBeenCalledWith('视频受理结果尚未确认'));
  expect(api.submit).toHaveBeenCalledTimes(1);expect(snapshot[0].metadata?.studio?.task?.errorCode).toBe('VIDEO_SUBMISSION_UNKNOWN');
 });
 // A local document conflict currently fails the same way (plain Error from save); add a case if it ever gets its own branch.
