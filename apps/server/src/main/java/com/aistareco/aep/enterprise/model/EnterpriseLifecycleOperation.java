@@ -12,6 +12,6 @@ public class EnterpriseLifecycleOperation {
     @Column(nullable=false,length=64) private String actorUserId;
     @Column(nullable=false,length=64) private String clientRequestId;
     @Column(nullable=false,length=64) private String fingerprint;
-    @Column(nullable=false,columnDefinition="LONGTEXT") private String resultJson;
+    @Column(nullable=false,length = org.hibernate.Length.LONG32) private String resultJson;
     @Column(nullable=false) private Instant createdAt;
 }

@@ -29,7 +29,7 @@ public class ForgeResult {
      */
     private String videoUrl;
 
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(length = org.hibernate.Length.LONG32)
     private String prompt;
 
     @Enumerated(EnumType.STRING)
@@ -38,7 +38,7 @@ public class ForgeResult {
 
     private Instant createdAt;
 
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(length = org.hibernate.Length.LONG32)
     @Convert(converter = StringListConverter.class)
     private List<String> locked;
 

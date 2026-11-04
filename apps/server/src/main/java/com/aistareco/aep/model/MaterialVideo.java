@@ -47,7 +47,7 @@ public class MaterialVideo {
     @Column(name = "owner_user_id")
     private String ownerUserId;
 
-    @Lob
-    @Column(name = "payload_json", columnDefinition = "LONGTEXT", nullable = false)
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "payload_json", length = org.hibernate.Length.LONG32, nullable = false)
     private String payloadJson;
 }

@@ -3,7 +3,6 @@ package com.aistareco.aep.ipstudio.director;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -36,8 +35,8 @@ public class DirectorWork {
     /** 作品级修订号：任何内容变化都 +1，前端据此判断要不要刷新。 */
     private long revision;
 
-    @Lob
-    @Column(nullable = false, columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(nullable = false, length = org.hibernate.Length.LONG32)
     private String contentJson;
 
     /** 有在跑的任务或连跑时为 true，后台调度只扫这些作品。 */

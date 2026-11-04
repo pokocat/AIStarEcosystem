@@ -31,11 +31,11 @@ public class IpPlanExecution {
     private int planRevision;
     @Column(nullable=false,length=64) private String planFingerprint;
     @Column(nullable=false,length=16) private String status;
-    @Lob @Column(nullable=false,columnDefinition="LONGTEXT") private String stepsJson;
-    @Lob @Column(nullable=false,columnDefinition="LONGTEXT") private String budgetJson;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR) @Column(nullable=false,length = org.hibernate.Length.LONG32) private String stepsJson;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR) @Column(nullable=false,length = org.hibernate.Length.LONG32) private String budgetJson;
     @Builder.Default private long spent=0;
     @Builder.Default private long inFlight=0;
-    @Lob @Column(nullable=false,columnDefinition="TEXT") private String billingJson;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR) @Column(nullable=false,columnDefinition="TEXT") private String billingJson;
     @Column(length=64) private String leaseOwner;
     private Instant leaseUntil;
     @Builder.Default private long leaseVersion=0;

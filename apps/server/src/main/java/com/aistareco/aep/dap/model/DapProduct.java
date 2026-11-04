@@ -6,7 +6,6 @@ import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -52,7 +51,7 @@ public class DapProduct {
     @Column(length = 64)
     private String category;
 
-    @Lob
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
     @Column(columnDefinition = "TEXT")
     private String description;
 
@@ -91,7 +90,7 @@ public class DapProduct {
     private String jobId;
 
     /** AI 生成 / 补角度用的英文 prompt 基底。 */
-    @Lob
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
     @Column(columnDefinition = "TEXT")
     private String promptEn;
 

@@ -31,7 +31,7 @@ public class ForgeBlueprint {
 
     private Instant createdAt;
 
-    @Column(name = "snapshot_json", columnDefinition = "LONGTEXT")
+    @Column(name = "snapshot_json", length = org.hibernate.Length.LONG32)
     @Convert(converter = JsonMapConverter.class)
     private Map<String, Object> snapshotJson;
 }

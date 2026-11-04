@@ -82,13 +82,13 @@ public class AiModelUsageRecord {
     private String errorMessage;
 
     /** 发给模型的最终请求体 JSON。仅保存脱敏/截断后的文本，供 admin 排障/重放。 */
-    @Lob
-    @Column(name = "request_body_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "request_body_json", length = org.hibernate.Length.LONG32)
     private String requestBodyJson;
 
     /** 上游原始响应体 JSON 或 SSE 摘要。仅保存截断后的文本，供 admin 排障/质量评估。 */
-    @Lob
-    @Column(name = "response_body_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "response_body_json", length = org.hibernate.Length.LONG32)
     private String responseBodyJson;
 
     /** 本次调用估算成本，单位：人民币微元。保存快照，避免单价变化影响历史统计。 */

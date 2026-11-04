@@ -1357,3 +1357,7 @@ Studio 图片报价为 `POST /api/v1/ip-studio/projects/{id}/{image-quote|studio
 ## 微信 Native 扫码充值（2026-10-30，已生产发布 `20261030-studio-wechat-pay`，微信渠道待商户开通后启用）
 
 `PaymentChannelConfigService` 接收成对的 `publicKeyId/publicKey`，`WechatPaymentGateway` 优先使用 SDK 公钥模式，未提供公钥时兼容旧平台证书模式。微信未知下单结果保留关联和原 PENDING 订单，同套餐订单不允许切换渠道；查单补金额/流水验证，微信回调补商户/AppID/渠道验证。微信取消/驳回/超时先关渠道单，失败保留本地状态，过期单仍参加查单。无新 API/迁移；军师商户权限阻塞与资料映射见 [接入手册](../../docs/runbooks/studio-wechat-ai-pilot.md)。
+
+## PostgreSQL18 本地适配
+
+新 `postgres` 为生产 profile，数据库必配；迁移目录为 `classpath:db/postgresql`，Flyway建表、Hibernate只validate。大文本使用LONG32字符映射，保留原序列化格式；MySQL/H2路径不变。真实门禁用 `-Ppostgres-test`（缺Docker失败），与原 `./mvnw test` 分开执行。详见 `../../docs/runbooks/postgresql-18-migration.md`，包含当前源库结构对账阻断，尚不能据此生产切流。

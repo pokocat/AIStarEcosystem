@@ -24,7 +24,7 @@ public class JwtUtil {
     private static final String DEV_DEFAULT_SECRET = "aep-dev-secret-key-change-in-prod-32chars";
 
     /** 任一 profile 命中即视为生产 → 强制校验密钥非 dev default。 */
-    private static final List<String> PROD_PROFILES = List.of("mysql", "prod", "production");
+    private static final List<String> PROD_PROFILES = List.of("mysql", "postgres", "prod", "production");
 
     private final SecretKey key;
     private final long expirationMs;

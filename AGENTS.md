@@ -19,7 +19,7 @@
 
 **核心信息（避免新 agent 反复翻仓）**：
 
-- 后端 server: Spring Boot 3.3.5 + Java 17，port **8080**，H2 (dev) / MySQL (prod)
+- 后端 server: Spring Boot 3.3.5 + Java 17，port **8080**，H2 (dev) / MySQL (迁移前 prod) / PostgreSQL18 (迁移适配目标)
 - 五个新 web app: **web-music**（3010）/ **web-drama**（3011）/ **web-celebrity**（3012）/ **web-aiavatar**（3013，数字资产平台 · 六类资产 **+ AI IP 工作台**）/ **web-star**（3014，明星商务工作台）
   - **web-aiavatar 一个应用两套形态（v0.190，v0.193 改判定）**：手机端 H5（480px 列 + 底部 tab 栏）与桌面面（52px 深群青顶栏 + 1120px 内容 + 无限画布）。**只有一套路由**（`(mobile)/x` 与 `(desktop)/x` 会解析到同一个 URL，Next 不允许）。
     **形态的真值是 `<html data-layout>`，CSS 与 JS 读同一个**（`src/shell/layout-mode.ts`）：用户显式选过（「我的 → 切换到电脑版」）以他为准，没选过按 `matchMedia(min-width: 960px)`。**新增桌面样式写 `html[data-layout="desktop"] xxx`，不要写 `@media`** —— 媒体查询绕过用户的选择。断点是 960 不是 1024：手机浏览器的「请求桌面版网站」会忽略 viewport meta、改用约 980px 的布局视口，卡 1024 就等于那个开关不生效（真实反馈）。
@@ -1343,3 +1343,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 真源 `docs/studio-prompt-architecture.md`。生成类提示词（身份、规则、红线、做法、行业经验、场景拍法、出图描述）放提示词库，和技能同表，四层：底座 / 环节 / 方法 / 场景；代码只留输出格式、工具与动作协议、H3 改写、拼装与校验。种子在 `resources/studio/prompts/**`，生效规则同技能（不再有 `SEED_VERSION`），受理时冻结版本。调用点要进库：在 `StudioPromptCallPoints` 登记变量和输出格式，写环节种子文件，再加一条逐字一致测试（范式 `StudioScenePromptParityTest`）。**新代码不许在 Java 里写新的生成类提示词文字**（输出格式除外）；对话、画布、导演台已进库，只有交代素材编号和时间的标签留在代码（拼装）；旧 Prompt 管理里已迁走的键后台标「已迁走」、不能保存，新搬一个调用点要同时加进 `PromptService.MOVED_TO_STUDIO_LIBRARY`（测试核对）。环节的变量不能叫 `base` / `method` / `scene`（拼装器填分层正文用，同名会被盖掉，登记时直接报错）。导演台拼自己的底座 `base-director`，平台底座的事实规则面向商品宣传、不进短剧编剧；只看画面的环节（看图、复刻逐页观察、拉片、分批读图）不拼底座（登记时 `withoutBase()`）。导演台资产图、分镜图的候选记 `promptVersions`，「需更新」按候选那一版核对，后台改模板不会把已采用的图标成需更新。AI 视频编导请求是文字任务带 `scene`，服务端按 `stage-scene-script` 拼；场景创作文字以库为准，叠在场景目录上。 发布后画布出图和导演台出图不再读 `prompt_template.dap.ip_canvas_image`（线上那行是 v0.173 的「只画一个人、不要设定图」旧版，没有导入），改用 `stage-image`；见 `docs/releases/studio-prompt-library-release-20261101.md`。
 
+
+## PostgreSQL 18 兼容路径（本地准备，未生产迁移）
+
+后端新增 `postgres` 生产 profile、独立 `db/postgresql/V74__postgresql_baseline.sql`，只用 Flyway+validate，不执行旧 Java 迁移或运行期 DDL。旧 H2/MySQL 路径保留。细则与源库遗留结构差异见 `docs/runbooks/postgresql-18-migration.md`。新增 schema 变更同步两引擎新版本，不改已发布历史；真实 PG `-Ppostgres-test` 不得跳过。

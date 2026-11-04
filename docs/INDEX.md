@@ -429,3 +429,5 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [导演台 H3 优化稿超长与中文提示词被念出（cl45）](audits/director-h3-cl45-prompt-review-2026-10.md) — 优化稿 8198 字符按段拆分、成片频谱与转写（末尾多出的人声对上「没有声音参考」）、第三镜别名没认出；据此改中文模板第 4 版、出镜认别名、篇幅预算、重新优化与用稿记录；last-reviewed: 2026-10-31。
 
 - [Studio 下午至晚间线上使用复盘](audits/studio-production-afternoon-evening-review-20261023.md) — 2026-10-23 北京时间生产查询快照；记录用户旅程、任务／账本、排队与发布窗口及待核证据，不代表本轮已修复或重测；last-reviewed: 2026-10-23。
+
+- [PostgreSQL 18 适配与迁移边界](runbooks/postgresql-18-migration.md)：独立基线、映射、真实门禁、源结构差异与切流前置条件。

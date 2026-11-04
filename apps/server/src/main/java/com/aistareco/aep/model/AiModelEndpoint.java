@@ -97,11 +97,11 @@ public class AiModelEndpoint {
     private Boolean chatSupportsStreaming;
 
     /** Legal image request limits and canvas-to-wire presets for this fixed supplier model. */
-    @Column(name = "image_request_spec_json", columnDefinition = "LONGTEXT")
+    @Column(name = "image_request_spec_json", length = org.hibernate.Length.LONG32)
     private String imageRequestSpecJson;
 
     /** Editable video modes, dimensions and wire adapter for this fixed supplier model. */
-    @Column(name = "video_request_spec_json", columnDefinition = "LONGTEXT")
+    @Column(name = "video_request_spec_json", length = org.hibernate.Length.LONG32)
     private String videoRequestSpecJson;
 
     /** 每分钟请求数限制；为空表示不限制。 */
@@ -129,7 +129,7 @@ public class AiModelEndpoint {
     private Integer alertFailureRatePct;
 
     /** 可选模型列表 JSON：[{ id, label, contextWindow, supportsVision }]，仅做发现挑选用。 */
-    @Column(name = "models_json", columnDefinition = "LONGTEXT")
+    @Column(name = "models_json", length = org.hibernate.Length.LONG32)
     private String modelsJson;
 
     /** 计费归属用户（钱包）。**可空 = 平台级端点，usage 仅累计不扣钱包**。 */

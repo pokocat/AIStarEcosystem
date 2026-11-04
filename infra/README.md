@@ -817,3 +817,7 @@ web-aiavatar 的 Next rewrite 设置 `experimental.proxyClientMaxBodySize=130mb`
 ## Studio JSON 临时 JVM-Sandbox（2026-10-25 UTC）
 
 生产原进程已加载只处理 `ModelJson.parse` Jackson 异常的 `aep-json-recovery` 模块，未替换 app.jar 或修改 systemd / server.env。namespace `aep-json-20261024`，管理端口只在环回 `24769`，目录 `/home/ecs-user/.local/share/aistareco/hotfix/studio-json-31fc2bdf`。下次正常发布先按 [手册](../docs/runbooks/studio-json-jvm-sandbox.md) 卸载临时模块，再从包含永久修复的 main 构建应用；不要仅重启旧 JAR，否则临时修复会丢失。证据见 [发布记录](../docs/releases/studio-json-jvm-sandbox-release-20261025.md)。
+
+## PostgreSQL 18 准备
+
+新增 `env/server-postgres.env.example`，生产 profile 使用 postgres；预检同时识别原 mysql 与 postgres 的 JDBC 引擎。新PG只跑独立V74基线和Hibernate validate，不能把旧MySQL迁移历史拷入PG。当前不修改现有生产主机、RDS、ALB或DNS。源结构差异与演练/回滚步骤见 `../docs/runbooks/postgresql-18-migration.md`；双机worker角色与分布式认领仍须独立验收。

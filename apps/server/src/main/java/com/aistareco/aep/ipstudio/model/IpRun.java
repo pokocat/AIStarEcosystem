@@ -4,7 +4,6 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -98,18 +97,18 @@ public class IpRun {
     @Column(length = 64)
     private String errorCode;
 
-    @Lob
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
     @Column(columnDefinition = "TEXT")
     private String errorMessage;
 
     /** IpRunInputs JSON（实际英文提示词 + 参考图生效回报 + size/count）。 */
-    @Lob
-    @Column(columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(length = org.hibernate.Length.LONG32)
     private String inputJson;
 
     /** IpRunOutput JSON（identity: text/promptEn；generate: candidates[{key}]，**只存 key**）。 */
-    @Lob
-    @Column(columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(length = org.hibernate.Length.LONG32)
     private String outputJson;
 
     /** 用户请求取消；worker 在阶段间检查并收尾（避免与 worker 抢终态写入）。 */

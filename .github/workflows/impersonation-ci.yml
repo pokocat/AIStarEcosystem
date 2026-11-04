@@ -28,6 +28,9 @@ jobs:
       - name: Full server tests and package
         working-directory: apps/server
         run: ./mvnw -B -DargLine=-Xmx3g -Dspring.test.context.cache.maxSize=2 verify
+      - name: PostgreSQL 18.0 real database gate
+        working-directory: apps/server
+        run: ./mvnw -B -Ppostgres-test -Dspring.test.context.cache.maxSize=2 -Dapi.version=1.44 -DforkCount=1 -DreuseForks=true test && python3 scripts/check-postgres-reports.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:

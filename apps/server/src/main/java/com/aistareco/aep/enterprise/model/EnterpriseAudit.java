@@ -17,7 +17,7 @@ public class EnterpriseAudit {
     private String action;
     @Column(nullable=false,length=64)
     private String targetId;
-    @Column(nullable=false,columnDefinition="LONGTEXT")
+    @Column(nullable=false,length = org.hibernate.Length.LONG32)
     private String summary;
     @Column(nullable=false)
     private Instant createdAt;

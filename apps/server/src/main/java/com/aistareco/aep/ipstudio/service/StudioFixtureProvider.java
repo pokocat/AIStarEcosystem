@@ -34,7 +34,7 @@ public class StudioFixtureProvider {
     public void validate() {
         if (!enabled) return;
         if (Arrays.stream(environment.getActiveProfiles()).anyMatch(p ->
-                p.equalsIgnoreCase("prod") || p.equalsIgnoreCase("production") || p.equalsIgnoreCase("mysql"))) {
+                p.equalsIgnoreCase("prod") || p.equalsIgnoreCase("production") || (p.equalsIgnoreCase("mysql") || p.equalsIgnoreCase("postgres")))) {
             throw new IllegalStateException("Studio fixtures are forbidden in production/mysql profiles");
         }
         if (!Files.isRegularFile(directory.resolve("manifest.json"))) {

@@ -1671,3 +1671,9 @@
 - [x] ~~**数字资产生成和声音克隆只能扣个人积分**~~ **2026-11-02 已生产发布 `20261102-enterprise-billing-everywhere`**：形象、造型、衍生、场景、商品、合成图、声音克隆走同一个付款选择与企业规则（`X-Aep-Billing` → `DapPayer`）。测试：`EnterpriseStudioBillingIntegrationTest` 数字资产 6 项、前端 `proto/api-payer.test.ts`。
 - [ ] **企业模型名单里选不到数字资产用的模型**：企业设置页「只允许选定的模型」的候选来自 Studio 的图片 / 视频 / 文字模型；数字资产用的是后台「数字人」用途绑定的模型，若不在候选里，限定了名单的企业就不能用企业积分做数字资产（报 `ENTERPRISE_MODEL_NOT_ALLOWED`）。线上 4 家都是「全部模型」，暂不受影响。
 
+
+## PostgreSQL 18 迁移准备
+
+- 隔离分支已完成基础 PG18.0 适配；最终后端回归3481项（12既有条件跳过），真实PG57项零跳过通过，尚未部署。
+- **上线阻断**：源快照193表与应用PG基线192表（均含Flyway）差异、源独有列/动态索引/默认值完整对账；脱敏快照导入及金额/回执/时间校验；云RDS内核演练；ALB/Redis/worker扩容验收。
+- 规则与当前实现见 `docs/runbooks/postgresql-18-migration.md`。

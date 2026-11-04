@@ -47,7 +47,7 @@ public class PaymentChannelConfig {
     private String defaultWayCode;
 
     /** 渠道机密：AES-GCM 加密后的 JSON 对象（字段随渠道而异）。绝不出 wire。 */
-    @Column(name = "creds_encrypted", columnDefinition = "LONGTEXT")
+    @Column(name = "creds_encrypted", length = org.hibernate.Length.LONG32)
     private String credsEncrypted;
 
     /** 每次更新自增；网关据此判断是否需要重新 init SDK（避免每次下单都重配）。 */

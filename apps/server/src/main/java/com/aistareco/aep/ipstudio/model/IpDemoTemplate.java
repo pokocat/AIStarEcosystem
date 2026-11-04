@@ -3,7 +3,6 @@ package com.aistareco.aep.ipstudio.model;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -51,8 +50,8 @@ public class IpDemoTemplate {
 
     // columnDefinition 必须写死：不写的话 Hibernate 6 按 @Column 默认长度 255 挑到
     // tinytext，一份画布文档瞬间超（v0.179 线上事故，LobColumnDefinitionTest 会拦）。
-    @Lob
-    @Column(name = "doc_json", nullable = false, columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "doc_json", nullable = false, length = org.hibernate.Length.LONG32)
     private String docJson;
 
     @Column(name = "cover_key", length = 512)
