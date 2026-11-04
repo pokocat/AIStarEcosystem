@@ -96,3 +96,20 @@ export function missingFigures(given: string[], script: string): string[] {
   const inScript = numbersInScript(script);
   return [...new Set(given.flatMap(figuresIn))].filter(n => !inScript.has(n));
 }
+
+/**
+ * 台词念不完的镜头：按每秒 5 个字算（要求写的是 4，留一点余量）。只提示，不拦出片。
+ * 2026-11-04 线上手表脚本第 4 镜 3 秒写了 31 个字，视频模型要么念得飞快要么念不完，而这一点在出片前完全可以数出来。
+ */
+export function overlongShots(script: string): { no: number; seconds: number; chars: number }[] {
+  const heads = [...script.matchAll(/第\s*(\d+)\s*镜\s*[（(]\s*([\d.]+)\s*[–\-~～至到]\s*([\d.]+)\s*秒/g)];
+  const out: { no: number; seconds: number; chars: number }[] = [];
+  heads.forEach((h, i) => {
+    const seconds = Number(h[3]) - Number(h[2]);
+    const rest = script.slice(h.index! + h[0].length, i + 1 < heads.length ? heads[i + 1].index : script.length);
+    const lines = [...rest.matchAll(/说[:：]\s*(?:「([^」]*)」|“([^”]*)”)/g)].map(m => m[1] ?? m[2] ?? "");
+    const chars = lines.join("").replace(/[\s，。！？、；：,.!?;:「」“”…—-]/g, "").length;
+    if (seconds > 0 && chars > seconds * 5) out.push({ no: Number(h[1]), seconds, chars });
+  });
+  return out;
+}

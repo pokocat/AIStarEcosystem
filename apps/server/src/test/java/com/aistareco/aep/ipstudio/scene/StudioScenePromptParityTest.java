@@ -91,12 +91,9 @@ class StudioScenePromptParityTest {
         return out;
     }
 
-    /** 搬家前的拼话，原样抄自 2026-11-01 之前的 StudioSceneCatalog（imagePrompt / videoBrief / briefLines / FACT_RULE）。 */
+    /** 搬家前的拼话，抄自 2026-11-01 之前的 StudioSceneCatalog（imagePrompt / videoBrief / briefLines / FACT_RULE）；2026-11-04 放宽限制时内容规则跟着改。 */
     static final class Old {
-        static final String FACT_RULE = "下面这些我没写就不要出现：价格、优惠、地址；有效期和使用限制（要不要预约、节假日能不能用、是否通用）；"
-                + "品牌创立年份、有多少年历史；检测、测试、实验的次数和画面；"
-                + "销量、排名、获奖、认证、门店数、用户数；功效和其他数据。也不要写「有优惠」「限时」「十年老店」「经过上千次测试」这类话。"
-                + "可以虚构人物和情节来讲故事，但不要写成品牌的真实经历，也不要给编出来的内容配上年份、次数、数量。";
+        static final String FACT_RULE = "痛点、使用场景、使用感受、人物和情节可以大胆写，开头要抓人。只有这几样我没写就不要出现：具体的价格和优惠金额、地址、销量排名、获奖认证、检测数据、治病或绝对化的功效。";
         static final String MISSING_DEFAULT = "拍法里要讲但我没给的，就只引导关注或下单。";
         static final String NO_FICTION = "这条不编故事：不要编人物经历，不要把出镜的人写成真实顾客、店员的亲身评价。";
 
@@ -130,9 +127,9 @@ class StudioScenePromptParityTest {
             if (!blank(b.goal())) lines.add("这一条要做到：" + b.goal().trim() + "。");
             List<String> facts = b.factList().stream().filter(f -> f != null && !blank(f.label()))
                     .map(f -> f.label().trim() + (blank(f.use()) ? "" : "（" + f.use().trim() + "）")).toList();
-            if (!facts.isEmpty()) lines.add("要用到这些信息，只用我给的原话：" + String.join("；", facts) + "。");
+            if (!facts.isEmpty()) lines.add("要讲到这些：" + String.join("；", facts) + "。我写了的按我的意思讲，价格、数字、地址一个字不改，其它的翻成说得出口的话。");
             List<String> required = b.factList().stream().filter(f -> f != null && f.required() && !blank(f.label())).map(f -> f.label().trim()).toList();
-            if (!required.isEmpty()) lines.add("其中" + String.join("、", required) + "是必须有的：我没给的先问我，不要编，也不要换别的说法糊过去。");
+            if (!required.isEmpty()) lines.add("其中" + String.join("、", required) + "是这条要讲的重点：我没给的，图里看得出、常识说得通的就直接写好，不用问我；价格、优惠金额、地址没给就不提具体数字，换一种说法讲。");
             else lines.add(MISSING_DEFAULT);
             if (!blank(b.ending())) lines.add("结尾：" + b.ending().trim() + "。");
             if (b.noFiction()) lines.add(NO_FICTION);

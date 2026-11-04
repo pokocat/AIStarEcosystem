@@ -308,17 +308,25 @@ public final class StudioPromptCallPoints {
             + "音频节点只提供文字设定。只根据收到的画面及文字作答，不臆测未提供的声音或片段，保持 JSON 输出契约。";
 
     /**
-     * 镜头行写法（docs/studio-prompt-architecture.md §9.4）：H3 改写认「第N镜（起 秒」和「名字说：「」」；给一个照抄就对的例子
+     * 镜头写法（docs/studio-prompt-architecture.md §9.4）：H3 改写认「第N镜（起 秒」和「名字说：「」」；给一个照抄就对的例子
      * （2026-10-31 本地 Agnes 照「起–止」模板把这几个字抄进了括号），例子里的秒数按时长算、不超过总时长。
+     * 2026-11-04 从一行字段改成一块：线上手表脚本里模型照「画面：……；景别：……；音效：……」填短语，一镜只有几十个字；
+     * 说话人不带编号（「博主（图2）说：「」认不出，「图2的博主」和「博主」会算成两个人）。
      */
     static String shots(Map<String, ?> vars) {
         int d = vars.get("duration") instanceof Number n ? Math.max(1, n.intValue()) : 15;
         int a = Math.min(3, d), b = Math.min(6, d);
-        StringBuilder out = new StringBuilder("每个镜头单独一行，像这样：\n");
-        out.append("第1镜（0–").append(a).append(" 秒）：画面：……；景别/机位/焦点：……；音效：……；店员说：「……」；BGM：……\n");
-        if (b > a) out.append("第2镜（").append(a).append("–").append(b).append(" 秒）：画面：……；景别/机位/焦点：……；音效：……；BGM：……\n");
+        StringBuilder out = new StringBuilder("每个镜头按下面这样写一块，「第N镜」顶格开头：\n");
+        out.append("第1镜（0–").append(a).append(" 秒）这一镜的作用：痛点截停\n");
+        out.append("摄影：景别、机位、运镜、构图和焦点。\n");
+        out.append("表演：博主……动作写到手和物件，物件随之怎么变。\n");
+        out.append("博主说：「……」\n");
+        out.append("声音：音效，配乐怎么衬这句话。\n");
+        out.append("转场：怎么接下一镜。\n");
+        if (b > a) out.append("第2镜（").append(a).append("–").append(b).append(" 秒）这一镜的作用：……\n（同上）\n");
         out.append("括号里只写起止秒数，第1镜从 0 秒开始，每一镜接着上一镜；所有镜头加起来正好 ").append(d).append(" 秒，最后一个镜头补到 ").append(d).append(" 秒整。\n");
-        out.append("有人说话写「名字说：「台词」」，画面外的人说写「名字在画外说：「……」」，旁白写「旁白说：「……」」；没有台词就不写这一项。一句台词一个「」，台词里面不要再用「」。");
+        out.append("全片台词加起来不超过 ").append(d * 4).append(" 个字，每镜不超过「这一镜秒数 × 4」个字，先定台词再定秒数；放不下就删句子，不要压缩时长。\n");
+        out.append("台词单独一行，只写名字，全片同一个人用同一个名字：有人说话写「名字说：「台词」」，画面外的人说写「名字在画外说：「……」」，旁白写「旁白说：「……」」；没有台词就不写这一行。台词只用「」这种引号，一句一个「」，里面不再套引号。");
         return out.toString();
     }
 }

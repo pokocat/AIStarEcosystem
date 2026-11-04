@@ -39,7 +39,7 @@ import { SceneDrawer, SceneEmpty, SceneExample, SceneNoModel, SceneRecent, Scene
 import { PromptText, ScenePromptEditor, type ScenePromptEditorHandle, type ScenePromptRef } from "./scene-prompt-editor";
 import { AiMark } from "../studio-ai-icon";
 import { clampSceneDuration, sceneVideoDurations, sceneVideoInputs, sceneVideoSettings, type SceneVideoMaterial } from "./scene-video-plan";
-import { classifyBlanks, missingFigures, scriptMissing, scriptPlaceholders, splitBlanks } from "./scene-script-check";
+import { classifyBlanks, missingFigures, overlongShots, scriptMissing, scriptPlaceholders, splitBlanks } from "./scene-script-check";
 
 type Media = StudioMediaImportResult & { title: string };
 type Slot = "image" | "character" | "voice" | "video";
@@ -918,6 +918,7 @@ function ScriptTurn({ row, refs, run, busy, submitting, latest, copied, onUse, o
   const meta = row.metadata, turn = meta?.studio?.sceneDirector;
   const { missing, body } = scriptMissing(meta?.content || "");
   const absent = meta?.status === "success" ? missingFigures(given, body) : [];
+  const overlong = meta?.status === "success" ? overlongShots(body) : [];
   const { required: mustFill, optional: mayFill } = classifyBlanks(scriptPlaceholders(body), facts);
   const loading = meta?.status === "loading", accepted = !!meta?.studio?.runId;
   const position = run?.queue?.position;
@@ -935,7 +936,8 @@ function ScriptTurn({ row, refs, run, busy, submitting, latest, copied, onUse, o
           {mustFill.length > 0 ? <p className="scene-script-missing" role="status">还缺{mustFill.join("、")}。在下面写上发给编导，会补进脚本。{mayFill.length ? `${mayFill.join("、")}没有就不用写。` : ""}</p>
             : mayFill.length > 0 ? <p className="scene-script-check">{mayFill.join("、")}没有就不用写，出片前把脚本里标着的那几处删掉就行。</p>
             : missing ? <p className="scene-script-check">编导觉得可能还缺{missing}，写过了就不用管。</p> : null}
-          {absent.length > 0 && <p className="scene-script-check">你写的 {absent.join("、")} 脚本里没用上，要加的话跟编导说一声。</p>}</>}
+          {absent.length > 0 && <p className="scene-script-check">你写的 {absent.join("、")} 脚本里没用上，要加的话跟编导说一声。</p>}
+          {overlong.length > 0 && <p className="scene-script-check">{overlong.map(o => `第 ${o.no} 镜 ${o.seconds} 秒有 ${o.chars} 个字`).join("，")}，可能念不完。可以让编导精简台词，或把时长调长一些。</p>}</>}
       <footer>
         {loading && accepted && <button type="button" onClick={onStop}><Square size={12}/>停止</button>}
         {loading && !accepted && !submitting && <button type="button" disabled={busy} onClick={onConfirm}><RotateCcw size={12}/>确认原任务</button>}

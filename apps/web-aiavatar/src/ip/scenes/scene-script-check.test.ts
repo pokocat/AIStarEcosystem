@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { chineseNumber, classifyBlanks, missingFigures, scriptMissing, scriptPlaceholders, splitBlanks } from "./scene-script-check";
+import { chineseNumber, classifyBlanks, missingFigures, scriptMissing, scriptPlaceholders, splitBlanks, overlongShots } from "./scene-script-check";
 
 test("the director's 还缺 line is split off from the script", () => {
   expect(scriptMissing("还缺：团购价、怎么买。\n第1镜（0–5 秒）：门头。")).toEqual({ missing: "团购价、怎么买", body: "第1镜（0–5 秒）：门头。" });
@@ -40,4 +40,20 @@ test("blanks are split out for highlighting", () => {
 test("shot numbers and timecodes do not count as the user's figures", () => {
   expect(missingFigures(["2 人用"], "第2镜（2–4 秒）：牛肉一份")).toEqual(["2"]);
   expect(missingFigures(["2 人用"], "第1镜（0–2 秒）：两人吃")).toEqual([]);
+});
+
+describe("overlongShots", () => {
+  it("counts what is spoken in each shot against its length, whichever quotes the model used", () => {
+    const script = [
+      "第3镜（8–12 秒）：画面：调整表带；博主说：“甚至睡觉也可以佩戴，平时出门戴它特别顺手。”",
+      "第4镜（12–15 秒）这一镜的作用：下单",
+      "博主说：「官方定价1999元，现在双十一只需要999元，点下面链接直接拍，冲！」",
+      "六、全片保持与禁止：",
+    ].join("\n");
+    expect(overlongShots(script)).toEqual([{ no: 4, seconds: 3, chars: 30 }]);
+  });
+  it("leaves shots without lines and scripts without shots alone", () => {
+    expect(overlongShots("第1镜（0–3 秒）：画面：只有商品。")).toEqual([]);
+    expect(overlongShots("随便写的一段提示词")).toEqual([]);
+  });
 });

@@ -76,7 +76,7 @@ class StudioTextWorkflowTest {
             var capture=ArgumentCaptor.forClass(IpRun.class);verify(runs).save(capture.capture());
             var exec=json.readTree(capture.getValue().getInputJson()).path("_exec");
             assertTrue(exec.path("systemPrompt").asText().contains("你是资深短视频编导"));
-            assertTrue(exec.path("systemPrompt").asText().contains("客户没写到的价格"));
+            assertTrue(exec.path("systemPrompt").asText().contains("大胆创作"));
             assertFalse(exec.path("systemPrompt").asText().contains(StudioTextRevision.CONTRACT));
             String user=exec.path("userPrompt").asText();
             assertTrue(user.startsWith("写一条 25 秒的竖屏「同城团购」短视频脚本"));
