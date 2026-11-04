@@ -14436,12 +14436,12 @@ paths:
     post:
       tags: [ipstudio]
       operationId: studioPublishTemplateVersion
-      description: '从本人画布发布不可变配方；personal 仅本人可用，official 仅超级管理员。只保留声明的输入/图片步骤，剥除全部作者媒体/运行/批准/身份；已发布版本不可覆盖。'
+      description: '从本人画布发布不可变模板；personal 仅本人可用，official 允许在职运营或超级管理员发布。未提供 recipe 时保存完整画布并复制本人媒体，剥除运行/批准/身份等私有信息；提供 recipe 时仅保留声明的输入/步骤。已发布版本不可覆盖。'
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioTemplatePublishRequest' } } } }
       responses:
         '200': { description: ApiResponse<StudioTemplateVersion>, content: { application/json: { schema: { $ref: '#/components/schemas/StudioTemplateVersion' } } } }
         '400': { description: STUDIO_TEMPLATE_INVALID }
-        '403': { description: SUPER_ADMIN_ONLY }
+        '403': { description: OPERATOR_ONLY }
   /v1/ip-studio/template-versions/{versionId}:
     parameters: [{ in: path, name: versionId, required: true, schema: { type: string } }]
     get:

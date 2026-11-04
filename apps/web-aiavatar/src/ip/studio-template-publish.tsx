@@ -11,10 +11,10 @@ import { StudioErrorNotice, useStudioErrorState } from './studio-errors';
 import { studioOverlayContainer } from './studio-overlay';
 
 /** Save the complete canvas without an input/step recipe editor. */
-export function StudioTemplatePublish({projectId,superAdmin,saveNow,onClose,initialVisibility='personal'}:{projectId:string;superAdmin:boolean;saveNow:()=>Promise<SaveOutcome>;onClose:()=>void;initialVisibility?:'personal'|'official'}) {
+export function StudioTemplatePublish({projectId,canPublishOfficial,saveNow,onClose,initialVisibility='personal'}:{projectId:string;canPublishOfficial:boolean;saveNow:()=>Promise<SaveOutcome>;onClose:()=>void;initialVisibility?:'personal'|'official'}) {
   const [doc,setDoc]=useState<IpProjectDoc>(),[name,setName]=useState(''),[summary,setSummary]=useState('');
   const [templates,setTemplates]=useState<IpTemplate[]>([]),[target,setTarget]=useState<string>();
-  const [visibility,setVisibility]=useState<'personal'|'official'>(superAdmin?initialVisibility:'personal');
+  const [visibility,setVisibility]=useState<'personal'|'official'>(canPublishOfficial?initialVisibility:'personal');
   const [busy,setBusy]=useState(false),[error,setError]=useStudioErrorState(),[done,setDone]=useState('');
   const inFlight=useRef(false);
   useEffect(()=>{let active=true;publishWithLatestDoc(saveNow,()=>Promise.all([readStudioProject(projectId),IpStudioApi.listTemplates()])).then(([p,t])=>{
@@ -39,7 +39,7 @@ export function StudioTemplatePublish({projectId,superAdmin,saveNow,onClose,init
       {doc&&<p className="studio-template-snapshot-summary">{nodes.length} 个节点 · {nodes.filter(n=>n.type==='image'&&n.metadata?.storageKey).length} 张图片 · {nodes.filter(n=>n.type==='video'&&n.metadata?.storageKey).length} 个视频</p>}
       <label>模板名称<Input disabled={busy} value={name} onChange={e=>{setName(e.target.value);setDone('');}} maxLength={128}/></label>
       <label>说明（选填）<Input.TextArea disabled={busy} value={summary} onChange={e=>{setSummary(e.target.value);setDone('');}} maxLength={1024} rows={2}/></label>
-      {superAdmin&&<label>谁可以看到<Select disabled={busy||!!target} value={visibility} options={[{value:'personal',label:'仅自己'},{value:'official',label:'所有用户（官方模板）'}]} onChange={v=>{setVisibility(v);setDone('');}}/></label>}
+      {canPublishOfficial&&<label>谁可以看到<Select disabled={busy||!!target} value={visibility} options={[{value:'personal',label:'仅自己'},{value:'official',label:'所有用户（官方模板）'}]} onChange={v=>{setVisibility(v);setDone('');}}/></label>}
       <label>保存位置<Select disabled={busy} allowClear placeholder="新建模板" value={target} options={templates.filter(t=>t.visibility===visibility).map(t=>({value:t.id,label:`更新「${t.name}」`}))} onChange={v=>{setTarget(v);setDone('');}}/></label>
       {error&&<StudioErrorNotice error={error}/>} {done&&<Alert type="success" title={done} showIcon/>}
     </div>

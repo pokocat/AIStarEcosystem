@@ -23,7 +23,7 @@ beforeEach(()=>{
 });
 afterEach(cleanup);
 test('saving a full canvas requires no input or step configuration and sends no recipe',async()=>{
- render(<StudioTemplatePublish projectId="project" superAdmin saveNow={vi.fn().mockResolvedValue({})} onClose={vi.fn()}/>);
+ render(<StudioTemplatePublish projectId="project" canPublishOfficial saveNow={vi.fn().mockResolvedValue({})} onClose={vi.fn()}/>);
  await screen.findByDisplayValue('完整角色画布');
  expect(screen.queryByRole('combobox',{name:'添加模板输入'})).toBeNull();
  expect(screen.queryByRole('combobox',{name:'添加模板步骤'})).toBeNull();
@@ -33,15 +33,22 @@ test('saving a full canvas requires no input or step configuration and sends no 
  await screen.findByText(/已保存完整画布：4 个节点/);
 });
 test('official saving opens directly with all-user visibility',async()=>{
- render(<StudioTemplatePublish projectId="project" superAdmin initialVisibility="official" saveNow={vi.fn().mockResolvedValue({})} onClose={vi.fn()}/>);
+ render(<StudioTemplatePublish projectId="project" canPublishOfficial initialVisibility="official" saveNow={vi.fn().mockResolvedValue({})} onClose={vi.fn()}/>);
  await screen.findByDisplayValue('完整角色画布');expect((screen.getByRole('combobox',{name:/谁可以看到/}) as HTMLSelectElement).value).toBe('official');
  fireEvent.click(screen.getByRole('button',{name:'保存完整画布'}));
  await waitFor(()=>expect(api.publish).toHaveBeenCalledWith('project',expect.objectContaining({visibility:'official'})));
 });
+test('ordinary users can only save personal templates even when official visibility is requested',async()=>{
+ render(<StudioTemplatePublish projectId="project" canPublishOfficial={false} initialVisibility="official" saveNow={vi.fn().mockResolvedValue({})} onClose={vi.fn()}/>);
+ await screen.findByDisplayValue('完整角色画布');
+ expect(screen.queryByRole('combobox',{name:/谁可以看到/})).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'保存完整画布'}));
+ await waitFor(()=>expect(api.publish).toHaveBeenCalledWith('project',expect.objectContaining({visibility:'personal'})));
+});
 test('saving a selected template creates a new full-canvas version and prevents duplicate submissions',async()=>{
  api.list.mockResolvedValue([{id:'existing',versionId:'v1',mine:true,visibility:'personal',name:'原模板'}]);
  let resolve:(v:any)=>void=()=>{};api.publish.mockImplementation(()=>new Promise(r=>{resolve=r;}));
- render(<StudioTemplatePublish projectId="project" superAdmin saveNow={vi.fn().mockResolvedValue({})} onClose={vi.fn()}/>);
+ render(<StudioTemplatePublish projectId="project" canPublishOfficial saveNow={vi.fn().mockResolvedValue({})} onClose={vi.fn()}/>);
  await screen.findByDisplayValue('完整角色画布');
  fireEvent.change(screen.getByRole('combobox',{name:/保存位置/}),{target:{value:'existing'}});
  const save=screen.getByRole('button',{name:'保存完整画布'});fireEvent.click(save);fireEvent.click(save);
