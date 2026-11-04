@@ -406,13 +406,13 @@ public class AiModelInvocationService {
 
     private static BusinessException networkFailure(UpstreamCallException ex, String internal) {
         String code = ex.isTimeout() ? "AI_PROVIDER_TIMEOUT" : "AI_PROVIDER_ERROR";
-        String message = ex.isTimeout() ? "AI 生成超时，请稍后重试或换一个模型端点" : "AI 生成失败，请稍后重试";
+        String message = ex.isTimeout() ? "生成超时，请稍后再试或换一个模型" : "AI 生成失败，请稍后重试";
         return BusinessException.wrapped(HttpStatus.BAD_GATEWAY, code, message, internal + " err=" + ex.getCause());
     }
 
     private static BusinessException callFailed(int status, String body, String internal) {
         return BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED",
-                ProviderErrorMessage.message(body, status == 404 ? "当前模型服务不可用（HTTP 404），请联系管理员更新模型配置" : "AI 生成失败，请稍后重试"),
+                ProviderErrorMessage.message(body, status == 404 ? "当前模型暂时不可用，请换一个模型或稍后再试" : "AI 生成失败，请稍后重试"),
                 internal + " status=" + status + " body=" + snippet(body));
     }
 
@@ -715,7 +715,7 @@ public class AiModelInvocationService {
             // 网络层异常：失败流水已由原语 best-effort 落库，这里只转成稳定业务错误码。
             String code = ex.isTimeout() ? "AI_PROVIDER_TIMEOUT" : "AI_PROVIDER_ERROR";
             String message = ex.isTimeout()
-                    ? "AI 生成超时，请稍后重试或换一个模型端点"
+                    ? "生成超时，请稍后再试或换一个模型"
                     : "AI 生成失败，请稍后重试";
             throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, code, message,
                     "endpoint=" + e.getName() + " purpose=" + (purpose == null ? null : purpose.wire())
@@ -725,7 +725,7 @@ public class AiModelInvocationService {
             // Keep the safe provider message public, and the raw response in ErrorLog diagnostics.
             throw attach(new com.aistareco.aep.service.ai.AiChatHttpException(resp.statusCode(), resp.body(),
                     resp.statusCode() == 404
-                            ? "当前模型服务不可用（HTTP 404），请联系管理员更新模型配置"
+                            ? "当前模型暂时不可用，请换一个模型或稍后再试"
                             : "AI 生成失败，请稍后重试",
                     "endpoint=" + e.getName() + " purpose=" + (purpose == null ? null : purpose.wire())
                             + " model=" + model + " status=" + resp.statusCode() + " body=" + snippet(resp.body())),resp);

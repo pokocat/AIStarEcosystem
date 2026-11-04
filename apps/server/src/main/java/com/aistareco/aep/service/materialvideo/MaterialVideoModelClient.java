@@ -443,7 +443,7 @@ public class MaterialVideoModelClient {
             // A generic gateway/server failure cannot prove the supplier rejected a non-idempotent create.
             // Documented queue rejection is definitive; all other 5xx keep the original hold for evidence/recovery.
             if(resp.statusCode()>=500 && mappedError.isEmpty())
-                throw attach(new SubmissionUnknown("endpoint="+p.getName()+" status="+resp.statusCode()+" body="+snippet(resp.body()),resp.statusCode(),ProviderErrorMessage.reason(resp.body())),resp);
+                throw attach(new SubmissionUnknown("endpoint="+p.getName()+" body="+snippet(resp.body()),resp.statusCode(),ProviderErrorMessage.reason(resp.body())),resp);
             if(mappedError.filter(m->VideoProviderErrorMapper.VIDEO_MODEL_RETIRED.equals(m.code())).isPresent())
                 markRetired(p,model);
             throw attach(BusinessException.wrapped(HttpStatus.BAD_GATEWAY,
@@ -501,8 +501,8 @@ public class MaterialVideoModelClient {
         }
         public SubmissionUnknown(String detail,Integer status) { this(detail,status,null); }
         public SubmissionUnknown(String detail,Integer status,String reason) {
-            super(HttpStatus.BAD_GATEWAY,"VIDEO_SUBMISSION_UNKNOWN",com.aistareco.aep.service.GenerationSubmissionFailure.MESSAGE
-                    +(status==null?"":" 错误原因：HTTP "+status)+(reason==null?"":"；"+reason),null,detail);
+            super(HttpStatus.BAD_GATEWAY,"VIDEO_SUBMISSION_UNKNOWN",com.aistareco.aep.service.GenerationSubmissionFailure.withReason(reason),null,
+                    status==null?detail:detail+" status="+status);
         }
     }
 
@@ -599,7 +599,7 @@ public class MaterialVideoModelClient {
         }
         if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
             throw attach(BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_POLL_FAILED",
-                    ProviderErrorMessage.message(resp.body(), "视频生成服务返回错误（上游 " + resp.statusCode() + "）"),
+                    ProviderErrorMessage.message(resp.body(), "视频生成服务返回错误，请稍后再试"),
                     "poll; endpoint=" + p.getName() + " taskId=" + idForLog + " status=" + resp.statusCode()
                             + " body=" + snippet(resp.body())),resp);
         }
@@ -2136,7 +2136,7 @@ public class MaterialVideoModelClient {
                     log.warn("[material-video] 智能优化重试预算用完 endpoint={} key={} attempts={} last={}",
                             p.getName(), idempotencyKey, attempt - 1, lastProblem);
                     throw BusinessException.wrapped(HttpStatus.GATEWAY_TIMEOUT, "VIDEO_STUDIO_OPTIMIZATION_TIMEOUT",
-                            lastProviderReason == null ? "智能优化超时" : "智能优化超时；上游原因：" + lastProviderReason, "key=" + idempotencyKey + " last=" + lastProblem);
+                            lastProviderReason == null ? "智能优化超时" : "智能优化超时；原因：" + lastProviderReason, "key=" + idempotencyKey + " last=" + lastProblem);
                 }
                 Duration timeout = Duration.ofMillis(Math.min(OPTIMIZE_ATTEMPT_TIMEOUT.toMillis(), remainingMs));
                 HttpRequest req = HttpRequest.newBuilder(uri)
@@ -2352,17 +2352,18 @@ public class MaterialVideoModelClient {
 
     /** 素材上传被拒。 */
     static String uploadFailureMessage(String label, int status, String rawBody) {
-        return ProviderErrorMessage.append(rawBody, label + "上传失败（上游 " + status + "）");
+        return ProviderErrorMessage.append(rawBody, label + "上传失败，请检查素材后再试");
     }
 
     /** 创建生成任务被拒（POST /media/generations 等）。 */
     static String submitFailureMessage(int status, String rawBody) {
-        return ProviderErrorMessage.message(rawBody, "视频生成服务返回错误（上游 " + status + "）");
+        return ProviderErrorMessage.message(rawBody, status >= 400 && status < 500
+                ? "视频生成服务拒绝了这次请求，请调整素材或描述后再试" : "视频生成服务返回错误，请稍后再试");
     }
 
     /** 智能优化被拒（POST /media/prompt-optimizations 的 4xx；409 / 429 / 5xx 会重发，到不了这里）。 */
     static String optimizationFailureMessage(int status, String rawBody) {
-        return ProviderErrorMessage.message(rawBody, "智能优化失败（上游 " + status + "）");
+        return ProviderErrorMessage.message(rawBody, "智能优化失败，请稍后再试");
     }
 
     /** 从上游错误体里取出厂商那句原话；不是 JSON、或没有可读的字段 → null。 */

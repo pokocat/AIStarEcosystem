@@ -32,6 +32,10 @@ ACTIVE 的运营与超级管理员都可从画布「更多 → 存为官方内�
 
 ---
 
+### 静态版导出（2026-11-04）
+
+要把 Studio 发给产品或设计在本地看，运行 `pnpm export:studio-static`（经 devq，一层即可）。产物是一个不连后端、不用登录、全部示例数据的压缩包，导出后会自动解压逐页验收。用法和维护见 [scripts/static-export/README.md](scripts/static-export/README.md)。
+
 ## 快速开始
 
 ```bash

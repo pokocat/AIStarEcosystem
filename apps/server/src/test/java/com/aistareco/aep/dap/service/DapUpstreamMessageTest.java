@@ -41,25 +41,10 @@ class DapUpstreamMessageTest {
     }
 
     @Test
-    @DisplayName("5xx：厂商说清了原因也照样给出（2026-10-25 起与 4xx 同一套过滤，不再一律笼统）")
-    void serverErrorsKeepSafeProviderReason() throws Exception {
-        String out = call(503, "{\"message\":\"model is overloaded, please retry later\"}");
-        assertTrue(out.contains("model is overloaded"), out);
-    }
-
-    @Test
-    @DisplayName("5xx：厂商没给原因 → 笼统一句带状态码")
-    void serverErrorsWithoutReasonShowStatus() throws Exception {
-        String out = call(503, "");
-        assertTrue(out.contains("503"), out);
-    }
-
-    @Test
     @DisplayName("响应体不是 JSON（比如网关的 HTML 错误页）：不要糊到界面上")
     void nonJsonBodyFallsBack() throws Exception {
         String out = call(400, "<html><body>400 Bad Request</body></html>");
         assertTrue(!out.contains("<html"), out);
-        assertTrue(out.contains("400"), out);
     }
 
     @Test

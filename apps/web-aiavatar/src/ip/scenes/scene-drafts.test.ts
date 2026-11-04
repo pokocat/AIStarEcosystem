@@ -2,7 +2,7 @@ import { describe, expect, it, test, vi } from "vitest";
 const api = vi.hoisted(() => ({ listProjects: vi.fn() }));
 vi.mock("../api", () => ({ IpStudioApi: { listProjects: api.listProjects } }));
 import type { IpProjectDoc } from "@ai-star-eco/types";
-import { addImageRow, addScriptNode, addVideoRow, draftSubject, imageRows, listSceneDrafts, patchNode, resubmitRow, rowUploads, scriptNodes, submissionRejected, videoRows, sceneInputsOf, withSceneInput } from "./scene-drafts";
+import { rejectedNextStep, addImageRow, addScriptNode, addVideoRow, draftSubject, imageRows, listSceneDrafts, patchNode, resubmitRow, rowUploads, scriptNodes, submissionRejected, videoRows, sceneInputsOf, withSceneInput } from "./scene-drafts";
 
 const empty: IpProjectDoc = { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
 const photo = { key: "ipstudio/source/u1/a.jpg", url: "https://cdn/a.jpg", name: "a.jpg" };
@@ -150,3 +150,12 @@ describe("draftSubject", () => {
   });
 });
 
+
+describe("rejectedNextStep", () => {
+  it("names a next step that fits the refusal", () => {
+    expect(rejectedNextStep({ status: 402, code: "MODEL_CREDITS_INSUFFICIENT" })).toBe("请充值或调整生成设置后重试。本次未扣积分。");
+    expect(rejectedNextStep({ status: 409, code: "STUDIO_PRICE_CHANGED" })).toBe("价格已更新，请确认新价格后重试。本次未扣积分。");
+    expect(rejectedNextStep({ status: 503, code: "ENDPOINT_NOT_ALLOWED" })).toBe("请换一个模型或稍后重试。本次未扣积分。");
+    expect(rejectedNextStep({ status: 400, code: "STUDIO_VIDEO_ASSET_INVALID" })).toBe("请按上述原因调整后重试。本次未扣积分。");
+  });
+});

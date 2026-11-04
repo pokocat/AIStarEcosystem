@@ -49,3 +49,18 @@ test('historical details.reason is corrected without changing the saved source',
   expect(safe.error.details.reason).toContain('追查号 ABCDEF234567');
   expect(source.error.details.reason).toContain('该提示');
 });
+
+test('old records in supplier or technical wording read as our own sentence and keep the lookup number', () => {
+  expect(publicModelErrorMessage('视频1被上游拒收：reference video duration must be within 2..15 seconds · 追查号 JVNLY9US3XJT', 'VIDEO_REF_UPLOAD_FAILED'))
+    .toBe('参考视频要 2–15 秒，请调整后再试 · 追查号 JVNLY9US3XJT');
+  expect(publicModelErrorMessage('生成服务没有返回有效的任务信息，本次生成失败。未完成部分的冻结积分已退回，你可以重新生成。 错误原因：UpstreamCallException', 'STUDIO_IMAGE_SUBMISSION_UNKNOWN'))
+    .toBe('生成服务没有返回结果，这次生成失败。未完成部分的积分已退回，可以重新生成。');
+  expect(publicModelErrorMessage('resource not found', 'AI_CALL_FAILED')).toBe('生成服务未能完成这次请求，请稍后再试或换一个模型。');
+  expect(publicModelErrorMessage('图片结果下载失败（上游 500）', 'STUDIO_IMAGE_PROVIDER_FAILED')).toBe('图片结果下载失败');
+  expect(publicModelErrorMessage('这张画布不存在，或者已经删了', 'IP_PROJECT_NOT_FOUND')).toBe('这张画布不存在，或者已经删了');
+});
+
+test('our own Chinese sentence that mentions an API Key is left alone', () => {
+  const own = '未为「视频生成」绑定 AI 模型端点。请到管理后台绑定一个端点（端点需含 baseUrl 与有效 API Key）。';
+  expect(publicModelErrorMessage(own, 'VIDEO_NOT_CONFIGURED')).toBe(own);
+});

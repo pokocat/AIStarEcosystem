@@ -245,7 +245,7 @@ public class MusicGenWorker {
     /** 上游失败原因转成用户看得懂的话（不暴露内部枚举）。 */
     private static String mapFailReason(String raw) {
         String reason=com.aistareco.aep.service.ai.ProviderErrorMessage.sanitize(raw);
-        return reason==null?"音乐生成失败，上游未提供具体原因":reason;
+        return com.aistareco.aep.service.ai.PublicModelErrorPolicy.withHint("音乐生成失败，请稍后再试",reason);
     }
 
     private static String userFacing(Exception e) {

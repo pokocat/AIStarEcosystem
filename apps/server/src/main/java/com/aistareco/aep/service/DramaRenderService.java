@@ -564,7 +564,7 @@ public class DramaRenderService {
     static BusinessException upstreamRejected(String endpointName, String model, int status, String body) {
         String detail = "endpoint=" + endpointName + " model=" + model + " status=" + status
                 + " body=" + truncate(body, INTERNAL_BODY_LIMIT);
-        String message = ProviderErrorMessage.message(body, "图片生成服务返回错误（上游 " + status + "）");
+        String message = ProviderErrorMessage.message(body, "图片生成服务返回错误，请稍后再试");
         return BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "IMAGE_CALL_FAILED", message, detail);
     }
 

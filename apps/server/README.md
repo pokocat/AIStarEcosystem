@@ -1098,6 +1098,8 @@ V51 为 `material_video_job` 增加可空 `error_code VARCHAR(64)`，和原 `err
 
 2026-11-04 补充：不足 14.9 秒的声音也可能要处理。资产库收的格式比视频模型多（Seedance 只收 WAV / MP3），短 M4A 此前原样送去校验、报「格式不符合」。现在凡不是 WAV / MP3 的声音，`StudioAudioReference` 都转成同规格 WAV，原文件不动；转换失败明确报错，不退回原文件。已是 WAV / MP3 且不超长的照旧用原 key。
 
+2026-11-04 补充：H3 参考视频提交前按 2–15 秒校验（厂商的限制，此前等上传被拒才报英文）；`VideoMediaMessages` 统一素材报错，写明类型、上限和实际值。「没拿到受理回执」的报错改为一句话，只有审核、真人、模型下架这类会改变下一步的原因才附在后面；其余原因走日志。
+
 ### Studio 统一画布封面（2026-10-17，已发布 a4092626）
 
 POST/PUT/DELETE /api/v1/ip-studio/covers/{project|template}/{id} 共用 CanvasCoverService：个人项目和模板属主、官方模板 SUPER_ADMIN，可上传 JPG/PNG、选择目标画布图片、恢复自动。只改 coverKey，不改 doc 或版本；独立封面提交后清理旧文件，回滚清理新文件，不删除画布素材。见 docs/releases/studio-shared-covers-validation-20261017.md。

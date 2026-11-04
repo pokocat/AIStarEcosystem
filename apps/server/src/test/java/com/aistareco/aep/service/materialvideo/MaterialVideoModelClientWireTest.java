@@ -459,8 +459,6 @@ class MaterialVideoModelClientWireTest {
         BusinessException unavailable = assertThrows(BusinessException.class, () -> client.submit("一只猫", 5, "9:16", "u1",
                 "celebrity", null, VideoGenSpec.EMPTY));
         assertEquals("VIDEO_SUBMISSION_UNKNOWN",unavailable.getCode());
-        assertTrue(unavailable.getMessage().contains("503"), unavailable.getMessage());
-        assertTrue(unavailable.getMessage().contains("overloaded"));
     }
 
     @Test

@@ -349,7 +349,7 @@ public class StudioWorkflowWorker {
                     }
                 }
                 used[0]=consumeUsage(reply,used[0],rate);if(last!=null)last[0]=reply;
-                if("length".equals(reply.finishReason()))throw BusinessException.badRequest("AI_BAD_OUTPUT","模型输出被截断，请调整后台输出预算");
+                if("length".equals(reply.finishReason()))throw BusinessException.badRequest("AI_BAD_OUTPUT","模型返回的内容被截断，这次没有完成。请缩短要求或换一个模型后再试");
                 return reply.content();
             }
         };

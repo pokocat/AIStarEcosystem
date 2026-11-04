@@ -31,7 +31,7 @@ import { LibraryReferencePicker } from "../library-reference-picker";
 import { AUDIO_REFERENCE_NOTICE } from '@/canvas-bridge/recording-audio';
 import { IpStudioApi } from "../api";
 import { findVideoScene, useSceneCatalog, type VideoScene } from "./scene-catalog";
-import { addScriptNode, addVideoRow, applyRun, createSceneDraft, draftSubject, listSceneDrafts, openedVideoState, patchNode, resubmitRow, sceneInputsOf, scriptNodes, scriptOfRow, submissionRejected, videoRows, withSceneInput, type SceneInputKind } from "./scene-drafts";
+import { addScriptNode, addVideoRow, applyRun, createSceneDraft, draftSubject, listSceneDrafts, openedVideoState, patchNode, resubmitRow, sceneInputsOf, scriptNodes, scriptOfRow, rejectedNextStep, submissionRejected, videoRows, withSceneInput, type SceneInputKind } from "./scene-drafts";
 import { useSceneDraftStore, useSceneStateSave } from "./scene-draft-store";
 import { useSceneQuery, writeSceneQuery } from "./scene-query";
 import { UiVersionSwitch } from "@/shell/ui-version-switch";
@@ -510,7 +510,7 @@ export function SceneVideoStudio() {
       const rejected = submissionRejected(e, posted);
       await persist(doc => patchNode(doc, nodeId!, n => ({ ...n, metadata: { ...n.metadata, ...studioErrorMetadata(e),
         status: rejected ? "error" : "loading", ...(rejected ? {} : { errorDetails: "提交结果没有确认，点「确认原任务」查一下，不会重复扣费" }) } })), projectId).catch(() => undefined);
-      showFailure({ action: "让编导写脚本", error: e, next: rejected ? "改一下再试；积分没有扣。" : "这次可能已经被受理，点「确认原任务」查一下，不要直接重写。" });
+      showFailure({ action: "让编导写脚本", error: e, next: rejected ? rejectedNextStep(e) : "这次可能已经被受理，点「确认原任务」查一下，不要直接重写。" });
     } finally { setBusy(false); setSubmitting(undefined); }
   };
 
@@ -716,7 +716,7 @@ export function SceneVideoStudio() {
       const rejected = submissionRejected(e, posted);
       await persist(doc => patchNode(doc, nodeId!, n => ({ ...n, metadata: { ...n.metadata, ...studioErrorMetadata(e),
         status: rejected ? "error" : "loading", ...(rejected ? {} : { errorDetails: "提交结果没有确认，点「确认原任务」查一下，不会重复扣费" }) } })), projectId).catch(() => undefined);
-      showFailure({ action: "生成视频", error: e, next: rejected ? "改一下再试；积分没有扣。" : "这次可能已经被受理，点「确认原任务」查一下，不要直接重新生成。" });
+      showFailure({ action: "生成视频", error: e, next: rejected ? rejectedNextStep(e) : "这次可能已经被受理，点「确认原任务」查一下，不要直接重新生成。" });
     } finally { setBusy(false); setSubmitting(undefined); setPriceRevision(r => r + 1); }
   };
 

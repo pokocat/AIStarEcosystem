@@ -99,7 +99,7 @@ public class JusuanImageClient {
         public Pending(boolean known,Throwable cause){super((known?"正在恢复原图片任务，请勿重新生成":"图片受理结果尚未确认，请联系运营核对原请求；请勿重新生成")+upstreamReason(cause),cause);this.known=known;}
         private static String upstreamReason(Throwable cause) {
             if(cause instanceof BusinessException error && error.getDetails() instanceof Map<?,?> details
-                    && details.get("reason") instanceof String reason && !reason.isBlank())return "；上游原因："+reason;
+                    && details.get("reason") instanceof String reason && !reason.isBlank())return "；原因："+reason;
             return "";
         }
         public String code(){return known?"STUDIO_IMAGE_RECOVERING":"STUDIO_IMAGE_SUBMISSION_UNKNOWN";}
@@ -411,7 +411,7 @@ public class JusuanImageClient {
             try(var input=response.body()) {
                 if(response.statusCode()/100!=2) {
                     String body=new String(input.readNBytes(4096),StandardCharsets.UTF_8);
-                    throw com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attachBody(failure(ProviderErrorMessage.message(body,"图片结果下载失败（上游 "+response.statusCode()+"）")),body);
+                    throw com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attachBody(failure(ProviderErrorMessage.message(body,"图片结果下载失败，请稍后再试")),body);
                 }
                 int maxBytes=setting(wire.maxOutputBytes(),64*1024*1024);
                 return checkedImage(input.readNBytes(maxBytes+1),maxBytes);
@@ -446,7 +446,7 @@ public class JusuanImageClient {
     }
     private JsonNode checkedSubmit(HttpResponse<String> response,AiImageRequestSpec.Wire wire) {
         if(response.statusCode()>=400 && response.statusCode()<500)
-            throw attach(rejected(response.body(),"图片请求被生成引擎拒绝（"+response.statusCode()+"）"),response);
+            throw attach(rejected(response.body(),"图片生成服务拒绝了这次请求，请调整描述或参考图后再试"),response);
         return checked(response,wire);
     }
 
@@ -489,7 +489,7 @@ public class JusuanImageClient {
             try(var in=response.body()) {
                 if(response.statusCode()/100!=2) {
                     String body=new String(in.readNBytes(4096),StandardCharsets.UTF_8);
-                    throw com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attachBody(failure(ProviderErrorMessage.message(body,"图片结果下载失败（上游 "+response.statusCode()+"）")),body);
+                    throw com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attachBody(failure(ProviderErrorMessage.message(body,"图片结果下载失败，请稍后再试")),body);
                 }
                 int maxBytes=setting(wire==null?null:wire.maxOutputBytes(),64*1024*1024);
                 byte[] bytes=in.readNBytes(maxBytes+1);
