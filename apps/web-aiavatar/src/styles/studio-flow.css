@@ -340,6 +340,10 @@ html[data-layout="desktop"] .ip-surface .studio-overlay:has(> .studio-focused-vi
 .studio-reference-pick-note,.studio-composer-validation { margin:8px 0; color:var(--ink-2); font-size:12px; line-height:1.5; }
 /* Why send is disabled, next to the button instead of inside the collapsed parameter popover. */
 .studio-composer-validation.studio-composer-blocker { color:var(--err); overflow-wrap:anywhere; }
+.studio-composer-validation.studio-prompt-limit { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; color:var(--err); }
+.studio-prompt-limit>span { min-width:0; overflow-wrap:anywhere; }
+.studio-prompt-limit>.ant-btn { max-width:100%; }
+.studio-prompt-limit>.ant-btn>span { overflow:hidden; text-overflow:ellipsis; }
 .studio-composer-blocker .ant-btn-link { height:auto; padding:0 0 0 6px; font-size:12px; }
 
 .studio-flow-stage.is-picking-reference .react-flow__node { cursor:crosshair; }

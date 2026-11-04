@@ -29,7 +29,7 @@ import { readRun, cancelRun, fetchModels, fetchStudioVideoModels, type IpModels 
 import { studioQueueNotice, studioTaskLabel, studioTaskQueued } from '@/canvas-bridge/studio-task-status';
 import { executionOutputMissing, readProjectedNodes } from '@/canvas-bridge/studio-plan-execution';
 import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
-import { studioVideoSettings,studioVideoError,studioVideoQuote,studioVideoReferenceIds,studioVideoDraftFromReferences,changeStudioVideoDraft,studioVideoNodeSelection,studioVideoPromptMode,studioVideoInputKey } from "@/canvas-bridge/studio-video";
+import { studioVideoSettings,studioVideoError,studioVideoQuote,studioVideoReferenceIds,studioVideoDraftFromReferences,changeStudioVideoDraft,studioVideoNodeSelection,studioVideoPromptMode,studioVideoInputKey,studioPromptLimitMessage,studioLongerPromptModel } from "@/canvas-bridge/studio-video";
 import { StudioVideoControls,StudioVideoSeedControl,StudioPromptOptimizeToggle,StudioPromptReview,type StudioVideoDraft } from "./studio-video-controls";
 import { StudioChoiceGroup, StudioModelPicker, StudioSettingsPopover, studioImageResolution, studioImageSizeLabel } from "./studio-generation-controls";
 import { adaptStudioVideoReferences, studioVideoAcceptsReferences, studioVideoSelectionIds } from "@/canvas-bridge/studio-video-selection";
@@ -898,7 +898,12 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const nativeVideo=operation==="video"&&!capabilities?.mock?nativeVideoModels.find(m=>m.endpointId===chosenModel?.endpointId):undefined;
   const videoBatchCounts=nativeVideo?.batchCounts?.length?nativeVideo.batchCounts:legacyBatchCounts;
   const promptMaxChars=nativeVideo?nativeVideo.contract.promptMaxChars:imagePromptMaxChars??16000;
-  const promptTooLong=(nativeVideo||imagePromptMaxChars!=null?Array.from(prompt).length:prompt.length)>promptMaxChars;
+  // Same text and same counting as submit: linked text goes to the model too, so it counts before the button is pressed.
+  const limitedPrompt=operation==="image"||operation==="video"?withStudioLinkedText(prompt,originId,nodes,connections):prompt;
+  const promptChars=nativeVideo||imagePromptMaxChars!=null?Array.from(limitedPrompt).length:limitedPrompt.length;
+  const promptTooLong=promptChars>promptMaxChars;
+  const longerPromptModel=promptTooLong?studioLongerPromptModel(candidates.filter(m=>m.endpointId!==chosenModel?.endpointId).map(m=>({endpointId:m.endpointId,name:m.name,
+    promptMaxChars:operation==="video"?nativeVideoModels.find(v=>v.endpointId===m.endpointId)?.contract.promptMaxChars:operation==="image"&&capabilities?.imageModelMode!=="fixed"?m.capability?.imagePromptMaxChars:undefined})),promptChars):undefined;
   const nativeModeSpec=nativeVideo?.contract.modes.find(item=>item.mode===videoDraft.mode);
   useEffect(()=>{
     if(!nativeVideo||!director)return;
@@ -1148,7 +1153,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         {operation==="video"&&<StudioChoiceGroup<number> compact label="生成数量" ariaLabel="视频候选数量" value={videoCount} onChange={setVideoCount} options={videoBatchCounts.map(value=>({value,label:`${value} 条`}))}/>}
         {operation==="video"&&<StudioDurationControl value={duration} onChange={setDuration} min={nativeVideo?.contract.minSeconds} max={nativeVideo?.contract.maxSeconds} options={durationOptions}/>}
         {nativeVideo&&<StudioVideoSeedControl seed={videoDraft.seed} max={nativeVideo.contract.seedMax} count={videoCount} onChange={seed=>changeVideoDraft({...videoDraft,seed})}/>}
-        {nativeVideo&&videoValidationError&&<p role="status">{videoValidationError}</p>}
+        {nativeVideo&&videoValidationError&&!promptTooLong&&<p role="status">{videoValidationError}</p>}
         {legacyVideoError&&<p role="status">{legacyVideoError}</p>}
         {operation==="script" && <Checkbox checked={pasteScript} onChange={e=>setPasteScript(e.target.checked)}>直接保存已有剧本</Checkbox>}
         {operation==="script"&&rewriteScope&&<p>此次只改写{rewriteScope.field==="outline"?"大纲":`第 ${rewriteScope.episodeNo} 集正文`}，结果生成新剧本，其他内容保留。</p>}
@@ -1209,7 +1214,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         {/* 放在正文、提示词下面：放进底栏会和模型、参数、开关挤在一行把它们盖住（2026-10-27 浏览器验收） */}
         {promptReviewPanel}
       {imageRatioUnsupported&&<p className="studio-composer-validation" role="status">当前模型不支持 {ratio}，请打开创作参数选择可用比例。</p>}
-      {promptTooLong&&<StudioErrorNotice error={`提示词最多 ${promptMaxChars} 字，请缩短内容。`} background/>}
+      {promptTooLong&&<div className="studio-composer-validation studio-prompt-limit" role="status"><span>{studioPromptLimitMessage(promptChars,promptMaxChars,limitedPrompt!==prompt)}</span>{longerPromptModel&&<Button size="small" disabled={busy||directorSaving||!!directorPending} onClick={()=>changeGenerationModel(longerPromptModel.endpointId)}>改用 {longerPromptModel.name}（最多 {longerPromptModel.promptMaxChars} 字）</Button>}</div>}
       {removedVideoMention&&<StudioErrorNotice error="提示词中有已移除的参考，请删除该标记或重新引用素材。" background/>}
       <div className="studio-composer-inputs">
 
@@ -1220,7 +1225,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
 
         {(operation==="image"||operation==="video")&&!capabilities?.mock&&model&&!chosenModel&&<p role="status">所选模型已不可用，请重新选择模型。</p>}
 </div>
-      {nativeVideo&&videoValidationError&&<p className="studio-composer-validation" role="status">{videoValidationError}</p>}{legacyVideoError&&<p className="studio-composer-validation" role="status">{legacyVideoError}</p>}
+      {nativeVideo&&videoValidationError&&!promptTooLong&&<p className="studio-composer-validation" role="status">{videoValidationError}</p>}{legacyVideoError&&<p className="studio-composer-validation" role="status">{legacyVideoError}</p>}
     </StudioFloatingPanel>;
   const activeRunCount=runs.filter(run=>run.status==="running").length;
   return <div className="studio-overlay">

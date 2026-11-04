@@ -127,7 +127,7 @@ test('image composer offers only the ratios, batch sizes and prompt limit of the
  expect(within(panel).getByRole('button',{name:'生成图片'}).disabled).toBe(false);
  fireEvent.change(prompt,{target:{value:'a'.repeat(20001)}});
  expect(within(panel).getByRole('button',{name:'生成图片'}).disabled).toBe(true);
- expect(within(panel).getByRole('button',{name:'查看错误详情'})).toBeDefined();
+ expect(panel.querySelector('.studio-prompt-limit')?.textContent).toContain('最多 20000 字，需删减 1 字');
  expect(api.submit).not.toHaveBeenCalled();
 });
 test('image composer submits the exact chosen resolution and retains it in the saved draft',async()=>{
@@ -963,6 +963,35 @@ test('image model switching submits the selected endpoint and its price',async()
  fireEvent.click(within(panel).getByRole('button',{name:'生成图片'}));
  await waitFor(()=>expect(api.submit).toHaveBeenCalledOnce());
  expect(api.submit.mock.calls[0][1]).toMatchObject({model:'image-two',maxCost:12});
+});
+
+test('a prompt over the chosen video model limit says how much to cut and offers a model that takes it',async()=>{
+ const contract={modes:[{mode:'t2v',label:'文生视频'}],tiers:[{tier:'768p',canvases:[{aspectRatio:'9:16',width:768,height:1365}]}],minSeconds:5,maxSeconds:15,seedMax:100};
+ const pricing={perSecond:{t2v:{'768p':40}},freeRefImages:0,extraRefImagePerSecond:0};
+ api.videoModels.mockResolvedValue([{endpointId:'short',batchCounts:[1],contract:{...contract,promptMaxChars:10},pricing},{endpointId:'long',batchCounts:[1],contract:{...contract,promptMaxChars:7000},pricing}]);
+ api.models.mockResolvedValue({image:[],video:[{endpointId:'short',name:'短模型',isDefault:true,creditCost:40},{endpointId:'long',name:'长模型',creditCost:40}]});
+ render(<Host initialNodes={[{...node,metadata:{prompt:'十二个字的提示词写满了哦',status:'idle',videoCount:'1'}}]}/>);
+ await waitFor(()=>expect(api.videoModels).toHaveBeenCalled());openVideo();
+ const notice=await waitFor(()=>{const el=document.querySelector('.studio-prompt-limit');expect(el).toBeTruthy();return el as HTMLElement;});
+ expect(notice.textContent).toContain('提示词 12 字，这个模型最多 10 字，需删减 2 字。');
+ // One notice: the generic validation line and the error toast would only repeat it.
+ expect(document.querySelectorAll('[role="status"]').length).toBe(new Set(Array.from(document.querySelectorAll('[role="status"]')).map(e=>e.textContent)).size);
+ expect(api.error).not.toHaveBeenCalled();
+ fireEvent.click(within(notice).getByRole('button',{name:'改用 长模型（最多 7000 字）'}));
+ await waitFor(()=>expect(document.querySelector('.studio-prompt-limit')).toBeNull());
+ expect(api.submit).not.toHaveBeenCalled();
+});
+
+test('text linked into a video prompt counts toward the limit before the button is pressed',async()=>{
+ const contract={modes:[{mode:'t2v',label:'文生视频'}],tiers:[{tier:'768p',canvases:[{aspectRatio:'9:16',width:768,height:1365}]}],minSeconds:5,maxSeconds:15,seedMax:100,promptMaxChars:20};
+ api.videoModels.mockResolvedValue([{endpointId:'model',batchCounts:[1],contract,pricing:{perSecond:{t2v:{'768p':40}},freeRefImages:0,extraRefImagePerSecond:0}}]);
+ const text={...node,id:'note',type:'text' as never,title:'卖点',metadata:{content:'这段引用文本也会一起交给模型所以要算进字数里'}};
+ render(<Host initialNodes={[{...node,metadata:{prompt:'推进镜头',status:'idle',videoCount:'1'}},text]} initialConnections={[{id:'e',fromNodeId:'note',toNodeId:'v'}]}/>);
+ await waitFor(()=>expect(api.videoModels).toHaveBeenCalled());openVideo();
+ await waitFor(()=>expect(document.querySelector('.studio-prompt-limit')?.textContent).toContain('创作要求和引用文本合计'));
+ expect(document.querySelector('.studio-prompt-limit button')).toBeNull();
+ const send=within(screen.getByRole('dialog',{name:'生成视频'})).getAllByRole('button',{name:'生成视频',exact:true}).at(-1)!;
+ expect(send).toHaveProperty('disabled',true);
 });
 
 test('native video adds and removes references without losing graph inputs, keeps an explicit compatible mode, then sends exact frames and price',async()=>{
