@@ -220,9 +220,9 @@ export function SceneImageStudio() {
   const quote = caps?.mock ? 0 : unit * usedCount;
   const maxChars = chosen?.capability?.imagePromptMaxChars || 2000;
   const isFree = scene?.id === FREE_SCENE_ID;
-  // 用户自己写的那部分有多长：完整描述按模型上限，补充要求另有个短上限，真正发出去的整段由服务端拼并把关。
+  // 用户自己写的那部分有多长：完整描述按模型上限，补充要求最多 3000 字，真正发出去的整段由服务端拼并把关。
   const ownText = custom ?? supplement;
-  const ownLimit = custom !== undefined || isFree ? maxChars : 500;
+  const ownLimit = custom !== undefined || isFree ? maxChars : 3000;
   const missing = scene ? scene.refs.findIndex((r, i) => r.required && !slots[i]) : -1;
   const blocker = !scene ? "正在读取场景…" : !models ? "正在读取模型…" : !caps?.mock && !chosen ? "还没有可用的图片模型"
     : missing >= 0 ? `先放${scene.refs[missing].label}` : isFree && !supplement.trim() ? "写一句想要的画面"
