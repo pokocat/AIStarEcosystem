@@ -96,3 +96,5 @@ Flyway PG18 支持依据：[11.14.1 官方源码](https://github.com/flyway/flyw
 仍留正式窗口的动作：最终源版本/结构复核、停写排空、正式库最小权限角色及首次导入、真实生产配置与外部依赖验收、后台主备交接、默认发布脚本切换新集群、ALB/旧DNS缓存桥/DNS切流和观察。AIStar未获窗口，不沿用账号中心窗口。
 
 AIStar PG 主备滚动补充：旧 `/api/auth/sms/*` 的验证码、用途、单次消费、60秒限流、5次失败锁定改用 Tair 单键 Lua 原子状态。`TairSmsCodeStore` 只存 HMAC 手机号键和验证码摘要；短信发送先占位，显式失败释放自己的占位，未知供应商受理状态保留限流；Tair故障返回503且readiness撤下，不回退单机内存。旧MySQL/dev保留原行为。postgres默认tair并强制TLS，正式专用DB15/prefix `aistar:prod:sms:v1:`，演练DB14/prefix `aistar:rehearsal:sms:v1:`；逻辑库与命名空间隔离不等于账号ACL限制。迁移首次停写要处理旧进程内存验证码（TTL默认5分钟）、失败锁定（默认30分钟）和进行中的扫码；无法导出旧锁定时，旧短信接口按最长状态时长保守维护，不能只等待验证码TTL；不能声称可迁出旧进程内存。源码、真实Redis契约及双机真实Tair验证以最终回执为准。
+
+Tair TLS使用阿里云实例`DescribeInstanceSSL`返回的官方CA链；为AIStar复制独立Java truststore（仅trustedCertEntry，保留默认公共根），不修改系统或账号中心信任库。原始JRE默认cacerts不包含此托管私有CA，不能关闭证书或主机名校验绕过。正式镜像入口要求挂载`AISTAR_JAVA_TRUSTSTORE=/etc/aistar/java-truststore`只读；完整API验收必须在相同truststore与不可变镜像上通过。

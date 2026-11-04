@@ -279,3 +279,5 @@ ALB就绪入口为 `GET /internal/ready`：应用启动完成且真实数据库�
 生产postgres配置由 `PostgresEnvironmentGuard` 在EnvironmentPostProcessor阶段检查，早于DataSource/Hibernate创建；拒绝旧环境遗留的ddl-auto=update或MySQL Flyway目录等覆盖。源env复制后必须显式替换数据库/driver/dialect、schema、Flyway目录/开关、UTC、日志目录与后台角色，不能只改DB_URL。实际数据库版本/角色/时区仍在连接后另行验证。
 
 PG正式主备滚动必须使用Tair共享旧短信状态：独立账号/TLS，正式DB15与`aistar:prod:sms:v1:`，演练DB14与独立prefix；`AEP_SMS_TAIR_URL`/`AEP_SMS_TAIR_PREFIX`必填，保留原AES密钥。原子预留、确认、失败锁定及一次消费失败时不回落内存，Tair不可用readiness返回503。首次迁移不能导出旧进程内存：验证码默认5分钟、失败锁定默认30分钟，按实际最长状态时长保守维护旧短信接口。默认运行库`aistar_prod`、DML角色`aistar_app`，DDL由单独`aistar_migrator`先执行，日志写`/var/log/aistar/*.log`并挂SLS采集目录。镜像固定已验收JAR和基础镜像digest；官方Podman通过Cloud Assistant安装，禁止为了运行镜像替换宿主系统Java/Python。
+
+Tair TLS使用阿里云实例`DescribeInstanceSSL`返回的官方CA链；为AIStar复制独立Java truststore（仅trustedCertEntry，保留默认公共根），不修改系统或账号中心信任库。原始JRE默认cacerts不包含此托管私有CA，不能关闭证书或主机名校验绕过。正式镜像入口要求挂载`AISTAR_JAVA_TRUSTSTORE=/etc/aistar/java-truststore`只读；完整API验收必须在相同truststore与不可变镜像上通过。
