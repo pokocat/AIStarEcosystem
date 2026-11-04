@@ -160,7 +160,8 @@ public class StudioVideoService {
             try(var in=Files.newInputStream(path)){header=in.readNBytes(4096);}
             var format=MediaBytes.sniffConfigured(type,header);
             if(!MediaBytes.allowed(format,media.formats()))
-                throw invalid("参考素材的实际格式不符合所选用途，请选择正确的图片、视频或音频");
+                throw invalid(switch(type){case "image"->"图片";case "video"->"视频";default->"声音";}
+                        +"素材的格式当前模型不支持，请换成 "+String.join("、",media.formats())+" 格式");
             if(!"image".equals(type)) {
                 var probe=ffmpeg.probeMedia(path.toFile());
                 if(!probe.readable() || "video".equals(type)&&!probe.hasVideo() || "audio".equals(type)&&!probe.hasAudio())
