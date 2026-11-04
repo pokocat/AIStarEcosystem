@@ -433,7 +433,10 @@ test('saving an existing script is free and retries the same draft after a cloud
  const id=snapshot[0].id;fireEvent.click(screen.getByRole('button',{name:'保存并编辑剧本'}));
  await waitFor(()=>expect(api.error).toHaveBeenCalledWith('import save failed'));
  expect(snapshot).toHaveLength(1);expect(snapshot[0].metadata?.studio?.script?.episodes[0].content).toBe('My script\nA complete scene.');
- fireEvent.click(screen.getByRole('button',{name:'保存并编辑剧本'}));
+ const retrySave=screen.getByRole('button',{name:'保存并编辑剧本'});
+ await waitFor(()=>expect(retrySave.hasAttribute('disabled')).toBe(false));
+ fireEvent.click(retrySave);
+ await waitFor(()=>expect(api.save).toHaveBeenCalledTimes(2));
  await screen.findByRole('dialog',{name:'剧本编辑器'});expect(snapshot).toHaveLength(1);expect(snapshot[0].id).toBe(id);
  expect(snapshot[0].metadata?.studio?.parentNodeId).toBeUndefined();expect(api.submit).not.toHaveBeenCalled();
 });
