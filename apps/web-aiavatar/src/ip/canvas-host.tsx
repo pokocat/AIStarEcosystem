@@ -32,7 +32,7 @@ import { USE_MOCK } from "@ai-star-eco/api-client";
 import { useAssetStore } from "@/canvas/stores/use-asset-store";
 import { LastRunPanel } from "@/ip/last-run-panel";
 import { IpStudioApi } from "@/ip/api";
-import { useIdentity, isSuperAdminRole } from "@/proto/api";
+import { useIdentity, isOperatorRole } from "@/proto/api";
 import "@/canvas-bridge/i18n";
 
 const SAVE_LABEL: Record<string, string> = {
@@ -57,19 +57,16 @@ function Host({ projectId }: { projectId: string }) {
   // 别的标签页存了新版、这里没改过东西 → 已经悄悄换成最新内容了，轻轻说一声就够
   React.useEffect(() => { if (remoteRefreshes > 0) message.info("这张画布在别的窗口改过了，已经换成最新内容"); }, [remoteRefreshes, message]);
 
-  // 「存为官方内容」只给超级管理员看 —— 普通用户/运营看到一个点了必然 403 的按钮更糟。
+  // 2026-11-04：运营与超级管理员都能把本人画布发布为官方模板。
   // operatorRole 是账号上的内嵌运营角色（InAppOperatorGuard 判的也是它）。
   // 本 app 不挂共享 AuthProvider（它自带一套鉴权栈），所以这里读 aiavatar 自己的
   // identity。搬过来的画布**只有这一处**用到登录态，也是整个 vendored canvas 目录
   // 里唯一与鉴权有关的地方 —— 为它再挂一套 AuthProvider 得不偿失（两套状态机、
   // mock 模式还会失效）。判定逻辑复用 proto/api 的 isOperatorRole，与内嵌运营后台同源。
   const identity = useIdentity();
-  // v0.192 收敛到超管：存为官方内容会出现在**所有人**的「新建画布」那一排里，
-  // 一键生效、无复核、素材还复制进平台自有存储。与服务端
-  // InAppOperatorGuard.requireSuperAdmin 对齐 —— 两边不一致的话，
-  // 运营会看到一个点了必然 403 的按钮。
+  // 与 StudioTemplateController 的 InAppOperatorGuard.require 同源，普通用户只存个人模板。
   React.useEffect(() => { const store = useAssetStore.getState(); store.reset(); void store.loadAssets(); return () => store.reset(); }, [identity?.uid]);
-  const isOperator = isSuperAdminRole(identity?.operatorRole);
+  const isOperator = isOperatorRole(identity?.operatorRole);
   React.useEffect(() => {
     if (state !== "ready") return;
     let leaving = false;
@@ -252,7 +249,7 @@ function Host({ projectId }: { projectId: string }) {
         resolve={resolveConflict}
         onCopySaved={(copyId) => message.success({ content: <span>这里的改动已另存为新画布，<a href={`/projects/${copyId}`} target="_blank" rel="noreferrer">打开看看</a></span>, duration: 8 })}
       />
-      {templateOpen && <StudioTemplatePublish projectId={projectId} superAdmin={isOperator} initialVisibility={templateVisibility} saveNow={saveNow} onClose={()=>setTemplateOpen(false)}/>}
+      {templateOpen && <StudioTemplatePublish projectId={projectId} canPublishOfficial={isOperator} initialVisibility={templateVisibility} saveNow={saveNow} onClose={()=>setTemplateOpen(false)}/>}
 
       <PublishDialog
         open={publishOpen}

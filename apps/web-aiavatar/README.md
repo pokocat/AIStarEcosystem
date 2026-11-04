@@ -1,5 +1,9 @@
 # AiAvatar · 数字资产平台（web-aiavatar）
 
+### 2026-11-04 · 运营发布官方画布模板（待发布）
+
+ACTIVE 的运营与超级管理员都可从画布「更多 → 存为官方内容」发布本人画布。发布弹窗允许选择官方可见范围，更新仍限定本人创建的模板；普通用户只保存个人模板。服务端 `template-versions` 同步按运营权限校验，模板封面、上下架、删除沿用原权限。详见[权限调整与验收](../../docs/releases/studio-operator-template-validation-20261104.md)。
+
 ### 2026-10-31 · 注册账号默认头像与修改入口（已发布）
 
 `AccountAvatar` 使用 `react-notion-avatar` 1.1.12：完整随机 UID 固定生成配置，各设备/重新登录一致；自定义 `/api/me.avatarUrl` 优先，加载失败回退同一默认头像。桌面账号菜单、手机底栏与「我的账号」统一使用。修改入口复用 ID `/account/profile` 的上传保存，返回后刷新 OIDC 与共享身份缓存，切号丢弃旧结果。MIT 运行时原样保留在 `src/vendor/react-notion-avatar`，来源与校验值见该目录 README；不安装上游 demo/React 17 依赖。真源：[账号界面统一](../../docs/aiavatar-account-unification.md)。

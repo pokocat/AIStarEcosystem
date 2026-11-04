@@ -1241,7 +1241,7 @@ scripts/check-api-contract.mjs ← CI 漂移校验（apiFetch URLs ↔ openapi.y
 
 ### Studio 模板版本（v0.203，未发布）
 
-- IpDemoTemplate 可见范围 personal 仅作者可读/发布/上下架；official 发布必须 SUPER_ADMIN。旧目录/官方内容管理不得泄露个人模板。启用中的官方与自己的个人模板共享 IpTemplateResolver；停用的个人模板仅作者可管理，不可新套用。
+- IpDemoTemplate 可见范围 personal 仅作者可读/发布/上下架；official 的版本化画布模板发布允许 ACTIVE 的 OPERATOR 或 SUPER_ADMIN（2026-11-04 用户调整），仍只能从本人画布发布并更新本人创建的模板。普通用户和停用运营不得发布官方模板。模板封面、上下架及删除沿用各自原有权限。旧目录/官方内容管理不得泄露个人模板。启用中的官方与自己的个人模板共享 IpTemplateResolver；停用的个人模板仅作者可管理，不可新套用。
 - IpTemplateVersion 为 append-only（唯一 template_id + version_no），发布新版本锁模板行；版本标题/配方/doc 不覆盖。Project.templateVersionId 与服务器创建输入/node map/plan 快照独立于客户端 doc。旧项目读取不依赖当前目录启用状态或当前模型配置。
 - 配方首期仅图片步骤：最多 12 输入、20 步骤；input/step 稳定编号唯一、声明先后依赖无环、图片引用最多 4 个，未绑定外部图片依赖拒绝；文字变量只引用声明的文本/选项输入。图片/IP 输入需本人真实图片，avatar/IP/look/version/key 必须匹配。发布按白名单重建节点与连线，不共享作者 Key、素材、运行、批准、对话或采用身份。
 - 计划复用 IpRunService 的 compileExplicit/preflight 与真实平台图片单价，不持有厂商 Key，不冻结或调用供应商。套用仅创建独立项目，重建节点/连线标识、锁当前版本；目录新发布会使旧新建请求返回 STUDIO_TEMPLATE_VERSION_CHANGED，停用返回 STUDIO_TEMPLATE_NOT_FOUND；已有实例仍读取原版本与创建时计划。
