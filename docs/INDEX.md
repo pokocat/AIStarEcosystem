@@ -417,6 +417,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [灵感库扩充：12 个官方示例](releases/studio-inspiration-cases-20261103.md) — 参考四个竞品站的案例类型，自己出图出片后发布为官方示例；首页与「灵感」页视频卡悬停静音播放（`previewVideoUrl`），2026-11-04 已生产发布 `20261104-inspiration-hover-video`（last-reviewed: 2026-11-04）。
 - [聚算素材内容作废后重传修复](releases/jusuan-asset-reupload-20261103.md) — 仅 server；409 `input_asset_binding_conflict` 换标记重传一次，导演台轮询空指针（last-reviewed: 2026-11-03）。
 - [导演台按「E01」标题免费分集](releases/director-episode-codes-release-20261103.md) — server + web-aiavatar；`E01` / `EP01` 写法的分集标题由程序识别、不调模型，助手遇到拆集请求时指路（last-reviewed: 2026-11-03）。
+- [导演台拆分弹窗增加剧本预览](releases/director-split-preview-release-20261104.md) — 仅 web-aiavatar；认不出分集标题时，弹窗旁显示剧本预览，便于复制第 1 集标题行（last-reviewed: 2026-11-04）。
 
 - [Studio 聚算资源配额拒绝与结算核对](audits/studio-upstream-quota-2026-10.md)（last-reviewed: 2026-10-23）
 
