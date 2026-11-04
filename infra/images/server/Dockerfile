@@ -1,4 +1,6 @@
 ARG JAVA_BASE=eclipse-temurin:17-jre-noble
+ARG NODE_BASE
+FROM ${NODE_BASE} AS node_runtime
 FROM ${JAVA_BASE}
 USER root
 RUN apt-get update \
@@ -8,6 +10,8 @@ RUN apt-get update \
  && useradd --uid 10001 --gid 10001 --create-home --home-dir /app aistar \
  && mkdir -p /app/work /var/log/aistar \
  && chown -R 10001:10001 /app /var/log/aistar
+COPY --from=node_runtime /usr/local/bin/node /usr/local/bin/node
+RUN node -e "if (Number(process.versions.node.split('.')[0]) < 22) process.exit(1)"
 WORKDIR /app/work
 COPY --chown=10001:10001 app.jar /app/app.jar
 COPY entrypoint.sh /usr/local/bin/aistar-entrypoint
