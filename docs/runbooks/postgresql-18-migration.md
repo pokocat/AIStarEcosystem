@@ -87,7 +87,7 @@ Flyway PG18 支持依据：[11.14.1 官方源码](https://github.com/flyway/flyw
 
 ### 最终白天验收与运行镜像
 
-加入Tair共享短信后的后端最终门禁3537项，0失败/错误、12项既有外部条件跳过；PG专项64项零失败/错误/跳过，额外基线/调度4项及共享短信9项通过。两机真实RDS分别完成190实体validate及合成管理员跨节点认证（最终Tair/容器回执另附）。受保护ALB主备演练262次带登录态请求全部200，包含180秒排空、重启及错误备用配置拦截；没有修改正常域名/DNS。
+加入Tair共享短信后的后端最终门禁3537项，0失败/错误、12项既有外部条件跳过；PG专项67项零失败/错误/跳过，额外基线/调度4项及共享短信9项通过。两机真实RDS分别完成190实体validate及合成管理员跨节点认证（最终Tair/容器回执另附）。受保护ALB主备演练267次带登录态请求全部200，包含180秒排空、重启及错误备用配置拦截；没有修改正常域名/DNS。
 
 `infra/images/server/` 提供不可变Java17/FFmpeg/Noto镜像构建，基础镜像必须固定digest，并固定已验收JAR SHA。两机Podman通过Cloud Assistant从官方alinux3-updates安装；已有服务PID保持。SLS独立aistar-app保留14天，采集/var/log/aistar/*.log，复用现有机器组；正式日志必须挂载此目录。镜像离线媒体、日志入库、最终提交CI的验收回执见此次准备报告，不能把包已安装或任务已受理当作通过。
 
@@ -101,6 +101,6 @@ Tair TLS使用阿里云实例`DescribeInstanceSSL`返回的官方CA链；为AISt
 
 迁移保持源JVM业务时区`Asia/Shanghai`，JDBC/Hibernate和PG连接仍UTC。源码4个未显式zone的凌晨03:30/40/45/50清理cron及若干LocalDate.now依赖JVM，不能随数据库迁移改成UTC导致业务日/调度晚8小时；用实际镜像的离线时钟/cron边界验收，后台依旧关闭。
 
-正式运行账号与DDL账号分离的验收要在隔离副本先跑：app仅目标schema的DML/序列权限、历史表SELECT，无superuser/createdb/createrole/schema CREATE。JDBC开启hideUnprivilegedObjects，避免演练同库多schema的旧metadata索引检查混合重名索引。最终容器启动/合成登录必须使用同类权限的运行账号，不能以演练owner启动代替。
+正式运行账号与DDL账号分离的验收要在隔离副本先跑：app仅目标schema的DML/序列权限、历史表SELECT，无superuser/createdb/createrole/schema CREATE。JDBC开启hideUnprivilegedObjects，仅向Hibernate暴露有权限的表。旧IdentityUidIndexCheck/V24.uniqueIndexOn使用未限定schema的getIndexInfo并按索引名分组；演练库同时保留public快照与API副本时仍会产生重名索引告警。已直接验证API副本的唯一索引存在且有效；正式库仅使用public，窗口前仍须复核真实约束，不能用隐藏metadata当作修复索引。最终容器启动/合成登录必须使用同类权限的运行账号，不能以演练owner启动代替。
 
 PG18低权限元数据兼容：固定pgJDBC42.7.14（旧42.7.4的hideUnprivilegedObjects会引用已移除RULE权限）；生产postgres运行期Flyway仅validate，DDL由迁移角色先执行，待执行迁移使运行期失败且不建表/不写历史。MySQL/dev及postgresit建库门禁保留原迁移行为。COPY使用UTF8字节流，避免Reader分块拆开emoji代理对；真实PG测试覆盖隐藏无权schema、只读历史验证/拒绝待执行DDL、超64KiB中文/emoji/引号/换行COPY。官方说明：https://jdbc.postgresql.org/changelogs/2025-01-14-42/ ，当前固定发行：https://jdbc.postgresql.org/changelogs/2026-10-07-42.7.14-release/ 。
