@@ -9,7 +9,7 @@ export const DEFAULT_STYLE = "真人写实";
 /**
  * 画面风格卡（2026-11-04）。style 是进提示词的那段字（{{style}}风格的…），最多 30 字；
  * 真人类要带「写实 / 电影 / 影视」这些词，服务端按它决定要不要写皮肤质感（DirectorPrompts.liveAction）。
- * 样图是用同一段字真实出的图（public/studio/director-styles/），不是效果图。
+ * 样图（public/studio/director-styles/）由 Codex 生图按同一主体生成，方便比较风格；用户实际出图用作品选的图片模型，效果会有差别。
  */
 export const DIRECTOR_STYLES: { id: string; label: string; style: string; group: "真人" | "动画" }[] = [
   { id: "realistic", label: "真人写实", style: "真人写实", group: "真人" },
