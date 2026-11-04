@@ -26,7 +26,7 @@
 - 花费：超管个人账户 5,736 → 4,049，共 1,687 积分（16 张图 + 9 条视频，含被替换的第一版耳机）。
 - 每个示例的节点已改名（首帧 / 成片；白底主图 / 场景图 / 细节图 / 卖点图），sortOrder 1–12 让图片和视频交替出现在灵感墙前几行；原「潮玩个人 IP」保持 0。
 
-## 首页悬停播放（本地实现，未发布）
+## 首页悬停播放（2026-11-04 已生产发布）
 
 用户要求：灵感墙上图片静态显示，视频卡平时显示静帧，鼠标移上去自动静音播放。
 
@@ -37,6 +37,10 @@
 - 验证：server 编译 + `CanvasCoverServiceTest`（10 个，含新增 `firstVideoKey`）、web-aiavatar typecheck + 首页 / 手机首页 / 预览测试 18 个、`pnpm check:api-contract` 全部通过。浏览器里的悬停效果没有实测（本次会话浏览器面板未显示，无法截图）。
 - 正式站默认旧版首页，旧版的「灵感故事」是固定的四张示意卡，不读灵感库；这批示例在新版首页和 `/templates`「精选案例」里看得到。
 
-## 未完成
+## 生产发布（2026-11-04）
 
-- `previewVideoUrl` 与悬停播放需要从 main 发布 server + web-aiavatar 后才在线上生效。在那之前，视频示例在线上显示静态封面（首帧图）。
+- 制品 `20261104-inspiration-hover-video`，main `c3dc6750b`，服务 server + web-aiavatar；构建参数 `NEXT_PUBLIC_AUTH_MODE=id`、`NEXT_PUBLIC_ID_ISSUER=https://id.aibuzz.cn`、`NEXT_PUBLIC_ENTERPRISE_ENABLED=1`（已核对 `manifest.env`）。无迁移。
+- 同包带上线：线上上一版 `e060a7f36` 之后 main 上的导演台「按用户给的标题行分集」（`options.marker`，只新增字段）与 PC 站第一批文案。发布前核对 DTO 与 openapi：只增不删。
+- 重启前核对：没有进行中的画布任务和视频任务。`deploy-release.sh` 自带的 verify 全绿。
+- 线上验收（超管账号，`/templates`「精选案例」）：接口 13 个示例中 9 个带视频的返回 OSS 签名地址，4 个图片示例不返回；卡片 `<video>` 静音、`preload=none`、有封面；鼠标移上去开始播放（3 秒后 `currentTime` 2.4、`is-playing`），移开后暂停并回到 0。新版首页的灵感墙用同一个组件，没有单独点验。
+- 回滚：重新部署 `20261103-director-episode-codes` 的 server + web-aiavatar。
