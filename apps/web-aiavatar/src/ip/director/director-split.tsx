@@ -59,6 +59,8 @@ export function SplitPreview({ work, apply, setError }: Pick<WorkbenchProps, "wo
 
 /** 和服务端 DirectorPrompts.MARKER_MAX_CHARS 一致。 */
 const MARKER_MAX = 60;
+/** 弹窗里的剧本预览只用来找第 1 集的标题行，只放开头这么多字：剧本正文不限长，整份放进弹窗打开会卡。 */
+const SOURCE_PREVIEW_MAX = 30000;
 
 /**
  * 程序没认出分集标题时，拆分前先问一句：剧本已经分好集就填每集标题的开头，按标题免费分；
@@ -85,26 +87,39 @@ export function SplitChoiceDialog({ work, count, apply, onClose }: { work: Direc
     <div className="director-dialog director-split-choice" role="dialog" aria-modal="true" aria-labelledby="director-split-choice-title" ref={dialogFocus} tabIndex={-1}>
       <header><h2 id="director-split-choice-title">选择拆分方式</h2><button type="button" aria-label="关闭" onClick={onClose} disabled={!!busy}><X size={18}/></button></header>
       <p className="director-dialog-note">未在剧本中识别到分集标题。系统可自动识别「第1集」「第一集」「E01」「EP01」「Episode 1」格式（每集标题独占一行），其他格式请按下方方式拆分。拆分结果确认后生效。</p>
-      <div className="director-field" role="radiogroup" aria-label="拆分方式">
-        <span>拆分方式</span>
-        <label className="director-check">
-          <input type="radio" name="director-split-mode" checked={mode === "marker"} onChange={() => setMode("marker")}/>
-          <span><b>按分集标题拆分</b>
-            <small>适用于已分好集的剧本。填写第 1 集的标题行，系统按相同格式依次查找后续各集。不消耗积分。</small></span>
-        </label>
-        {mode === "marker" && <label className="director-field director-split-marker">
-          <span>第 1 集标题行<em>需包含编号</em></span>
-          <input autoFocus value={marker} maxLength={MARKER_MAX} disabled={!!busy} placeholder="例如：1 不想打工了、Chapter 1、第1章"
-            onChange={e => { setMarker(e.target.value); setLocalError(""); }} onKeyDown={e => { if (e.key === "Enter" && ready) go(); }}/>
-        </label>}
-        <label className="director-check">
-          <input type="radio" name="director-split-mode" checked={mode === "model"} onChange={() => setMode("model")}/>
-          <span><b>AI 按剧情拆分</b>
-            <small>适用于尚未分集的剧本。AI 根据剧情划定每集范围{count ? `，目标 ${count} 集` : ""}，不修改正文。{work.pricing.mock ? "" : "按实际用量结算。"}集数较多（如几十集）时可能无法完成，此类剧本建议按分集标题拆分。</small></span>
-        </label>
+      <div className="director-split-choice-body">
+        <div className="director-split-choice-form">
+          <div className="director-field" role="radiogroup" aria-label="拆分方式">
+            <span>拆分方式</span>
+            <label className="director-check">
+              <input type="radio" name="director-split-mode" checked={mode === "marker"} onChange={() => setMode("marker")}/>
+              <span><b>按分集标题拆分</b>
+                <small>适用于已分好集的剧本。填写第 1 集的标题行，系统按相同格式依次查找后续各集。不消耗积分。</small></span>
+            </label>
+            {mode === "marker" && <label className="director-field director-split-marker">
+              <span>第 1 集标题行<em>需包含编号</em></span>
+              <input autoFocus value={marker} maxLength={MARKER_MAX} disabled={!!busy} placeholder="例如：1 不想打工了、Chapter 1、第1章"
+                onChange={e => { setMarker(e.target.value); setLocalError(""); }} onKeyDown={e => { if (e.key === "Enter" && ready) go(); }}/>
+            </label>}
+            <label className="director-check">
+              <input type="radio" name="director-split-mode" checked={mode === "model"} onChange={() => setMode("model")}/>
+              <span><b>AI 按剧情拆分</b>
+                <small>适用于尚未分集的剧本。AI 根据剧情划定每集范围{count ? `，目标 ${count} 集` : ""}，不修改正文。{work.pricing.mock ? "" : "按实际用量结算。"}集数较多（如几十集）时可能无法完成，此类剧本建议按分集标题拆分。</small></span>
+            </label>
+          </div>
+          <InlineError message={error}/>
+        </div>
+        <section className="director-split-source" aria-label="剧本预览">
+          <div className="director-split-source-head">
+            <b>剧本预览</b>
+            <small>共 {work.draft.length.toLocaleString("zh-CN")} 字{work.draft.length > SOURCE_PREVIEW_MAX ? `，显示前 ${SOURCE_PREVIEW_MAX.toLocaleString("zh-CN")} 字` : ""}</small>
+          </div>
+          {mode === "marker" && <small>选中第 1 集的标题行，复制后粘贴到输入框。</small>}
+          <div className="director-split-source-text" tabIndex={0}>{work.draft.slice(0, SOURCE_PREVIEW_MAX)}</div>
+        </section>
       </div>
-      <InlineError message={error}/>
       <footer>
+        {!busy && !ready && <small className="director-split-choice-hint">{mode === "marker" ? "请填写第 1 集标题行" : "请选择拆分方式"}</small>}
         <button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={onClose}>取消</button>
         <button type="button" className="ip-brand-button" disabled={!!busy || !ready} onClick={go}><Scissors size={14}/>
           {busy ? "提交中" : mode === "model" ? "AI 拆分" : "按标题拆分"}</button>

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { DirectorScript } from "./director-script";
 import { clearDrafts } from "./director-shared";
@@ -33,6 +33,25 @@ test("marked episodes split for free without asking who pays", async () => {
   render(<DirectorScript work={{ ...base, draftEpisodeHeadings: 2 }} apply={vi.fn()} setError={vi.fn()} {...({} as any)}/>);
   fireEvent.click(screen.getByRole("button", { name: /按标题拆分/ }));
   await waitFor(() => expect(api.runTask).toHaveBeenCalledWith("split-test", expect.objectContaining({ type: "split", maxCost: 0, billing: undefined })));
+});
+
+test("the choice dialog previews the script so a heading line can be copied from it", async () => {
+  render(<DirectorScript work={base} apply={vi.fn()} setError={vi.fn()} {...({} as any)}/>);
+  fireEvent.click(screen.getByRole("button", { name: /拆分剧本/ }));
+  const dialog = await screen.findByRole("dialog", { name: "选择拆分方式" });
+  const preview = within(dialog).getByRole("region", { name: "剧本预览" });
+  expect(preview.querySelector(".director-split-source-text")?.textContent).toBe(base.draft);
+  expect(preview.textContent).not.toContain("显示前");
+});
+
+test("a very long script previews only its beginning and says so", async () => {
+  const draft = "第一行\n".repeat(10000); // 4 万字
+  render(<DirectorScript work={{ ...base, draft }} apply={vi.fn()} setError={vi.fn()} {...({} as any)}/>);
+  fireEvent.click(screen.getByRole("button", { name: /拆分剧本/ }));
+  const dialog = await screen.findByRole("dialog", { name: "选择拆分方式" });
+  const preview = within(dialog).getByRole("region", { name: "剧本预览" });
+  expect(preview.querySelector(".director-split-source-text")?.textContent?.length).toBe(30000);
+  expect(preview.textContent).toContain("共 40,000 字，显示前 30,000 字");
 });
 
 test("unrecognised headings ask first, and a typed heading start splits for free", async () => {

@@ -621,6 +621,18 @@ html:not([data-layout="desktop"]) .director-next-choices { grid-template-columns
 .director-check > span { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; font-size: 13px; }
 .director-check small { color: var(--ip-muted); font-size: 12px; line-height: 1.6; }
 .director-split-marker { margin: -2px 0 2px 38px; }
+.director-split-choice-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; }
+.director-split-choice-form { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.director-split-choice-hint { align-self: center; margin-right: auto; color: var(--ip-muted); font-size: 12px; }
+.director-split-source { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.director-split-source small { color: var(--ip-muted); font-size: 12px; line-height: 1.6; }
+.director-split-source-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 12px; }
+.director-split-source-text { height: 200px; overflow: auto; padding: 10px 12px; border: 1px solid var(--ip-line); border-radius: 8px; background: var(--ip-soft); font-size: 13px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
+.director-split-source-text:focus-visible { outline: 2px solid var(--ip-ink); outline-offset: -2px; }
+html[data-layout="desktop"] .director-split-choice { width: min(960px, 100%); }
+html[data-layout="desktop"] .director-split-choice-body { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+/* 高度跟左栏走、预览自己滚：height:0 让正文不撑高这一行。 */
+html[data-layout="desktop"] .director-split-source-text { flex: 1 1 auto; height: 0; min-height: min(52dvh, 420px); }
 .director-budget-card { display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 12px; background: var(--ip-soft); }
 .director-budget-card > header { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .director-budget-card > header span { color: var(--ip-muted); font-size: 13px; font-weight: 600; }
