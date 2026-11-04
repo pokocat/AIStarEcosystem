@@ -134,6 +134,9 @@ public final class JusuanH3Contract {
     public static final int REFERENCE_MAX_TOTAL = 12;
     /** 视觉素材（图 + 视频）至少几个。 */
     public static final int REFERENCE_MIN_VISUAL = 1;
+    /** 单段参考视频时长（秒，含两端）。超出时厂商拒收（reference video duration must be within 2..15 seconds）。 */
+    public static final int REFERENCE_VIDEO_MIN_SECONDS = 2;
+    public static final int REFERENCE_VIDEO_MAX_SECONDS = 15;
     /** 单段音频时长（秒，含两端）。 */
     public static final int AUDIO_MIN_SECONDS = 2;
     public static final int AUDIO_MAX_SECONDS = 15;

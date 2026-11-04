@@ -225,7 +225,8 @@ public class VideoStudioService {
                 new VideoStudioMediaLimit(JusuanH3Contract.MEDIA_IMAGE, JusuanH3Contract.REFERENCE_IMAGE_MAX_COUNT,
                         JusuanH3Contract.REFERENCE_IMAGE_MAX_BYTES, JusuanH3Contract.IMAGE_FORMATS, null, null),
                 new VideoStudioMediaLimit(JusuanH3Contract.MEDIA_VIDEO, JusuanH3Contract.REFERENCE_VIDEO_MAX_COUNT,
-                        JusuanH3Contract.REFERENCE_VIDEO_MAX_BYTES, JusuanH3Contract.VIDEO_FORMATS, null, null),
+                        JusuanH3Contract.REFERENCE_VIDEO_MAX_BYTES, JusuanH3Contract.VIDEO_FORMATS,
+                        JusuanH3Contract.REFERENCE_VIDEO_MIN_SECONDS, JusuanH3Contract.REFERENCE_VIDEO_MAX_SECONDS),
                 new VideoStudioMediaLimit(JusuanH3Contract.MEDIA_AUDIO, JusuanH3Contract.REFERENCE_AUDIO_MAX_COUNT,
                         JusuanH3Contract.REFERENCE_AUDIO_MAX_BYTES, JusuanH3Contract.AUDIO_FORMATS,
                         JusuanH3Contract.AUDIO_MIN_SECONDS, JusuanH3Contract.AUDIO_MAX_SECONDS),
@@ -771,7 +772,7 @@ public class VideoStudioService {
     private void requireConfiguredMedia(String key, String type, VideoStudioMediaLimit rule, String label,
                                         Map<String, Double> audioDurations) {
         if (rule == null || !type.equals(rule.mediaType()))
-            throw inputInvalid(label + "不符合当前模型的素材规则");
+            throw inputInvalid("当前模型不能使用" + label + "，请移除后再试");
         Path path;
         long bytes;
         byte[] header;
@@ -786,9 +787,9 @@ public class VideoStudioService {
             throw BusinessException.badRequest("VIDEO_STUDIO_ASSET_INVALID", label + "已不可用，请重新上传");
         }
         if (bytes < 1 || bytes > rule.maxBytes())
-            throw inputInvalid(label + "超过当前模型的文件大小上限，请重新选择");
+            throw inputInvalid(bytes < 1 ? VideoMediaMessages.empty(label) : VideoMediaMessages.tooLarge(label, rule.maxBytes()));
         if (!MediaBytes.allowed(MediaBytes.sniffConfigured(type, header), rule.formats()))
-            throw inputInvalid(label + "的实际格式不符合当前模型要求，请重新选择");
+            throw inputInvalid(VideoMediaMessages.format(label, rule.formats()));
         if ("image".equals(type)) return;
         FfmpegRunner.MediaProbe probe = ffmpeg.probeMedia(path.toFile());
         if (probe == null || !probe.readable() || "video".equals(type) && !probe.hasVideo()
@@ -801,7 +802,7 @@ public class VideoStudioService {
                 && (!Double.isFinite(duration) || duration <= 0
                     || rule.minDurationSec() != null && duration < rule.minDurationSec()
                     || rule.maxDurationSec() != null && duration > rule.maxDurationSec()))
-            throw inputInvalid(label + "的时长不符合当前模型要求");
+            throw inputInvalid(VideoMediaMessages.duration(label, duration, rule.minDurationSec(), rule.maxDurationSec()));
         if ("audio".equals(type)) audioDurations.put(key, duration);
     }
 

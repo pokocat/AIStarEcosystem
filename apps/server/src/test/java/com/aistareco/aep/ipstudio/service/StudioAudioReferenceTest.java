@@ -116,6 +116,33 @@ class StudioAudioReferenceTest {
         assertTrue(e.getMessage().contains("声音"),e.getMessage());
         assertTrue(e.getMessage().contains("WAV、MP3"),e.getMessage());
     }
+    /** H3 的参考视频厂商只收 2–15 秒；这条提前拦下，报错要写规则和实际时长。 */
+    @Test void aReferenceVideoOutOfRangeSaysTheRuleAndItsLength() throws Exception {
+        var source=dir.resolve("original.mp4");
+        Files.write(source,new byte[]{0,0,0,24,'f','t','y','p','i','s','o','m',0,0,0,0});
+        var ffmpeg=mock(FfmpegRunner.class);
+        when(ffmpeg.probeMedia(source.toFile())).thenReturn(new FfmpegRunner.MediaProbe(30.2,"mp4","h264","aac",720,1280,44100,2,true));
+        var projects=mock(IpProjectService.class);when(projects.requireOwnedAssetKey(anyString(),anyString())).thenAnswer(i->i.getArgument(1));
+        var service=new StudioVideoService(mock(AiAppSceneModelPolicyService.class),mock(VideoStudioService.class),projects,storage(source),ffmpeg);
+        var h3=VideoStudioService.contract(5,15).modes().stream().filter(m->m.references()!=null).findFirst().orElseThrow();
+        var e=assertThrows(BusinessException.class,()->service.requireMedia("u","video","original",false,h3));
+        assertEquals("STUDIO_VIDEO_ASSET_INVALID",e.getCode());
+        assertEquals("视频素材要 2–15 秒，现在是 30.2 秒，请调整后再试",e.getMessage());
+    }
+    @Test void anOversizedMaterialSaysTheLimit() throws Exception {
+        var source=dir.resolve("original.wav");Files.write(source,wav(3));
+        var projects=mock(IpProjectService.class);when(projects.requireOwnedAssetKey(anyString(),anyString())).thenAnswer(i->i.getArgument(1));
+        var service=new StudioVideoService(mock(AiAppSceneModelPolicyService.class),mock(VideoStudioService.class),projects,storage(source),mock(FfmpegRunner.class));
+        var tiny=new VideoStudioModeSpec("universal_reference_video",false,false,null,new VideoStudioReferenceRules(null,null,new VideoStudioMediaLimit("audio",3,1024,List.of("WAV"),2,15),9,12,1,15));
+        var e=assertThrows(BusinessException.class,()->service.requireMedia("u","audio","original",false,tiny));
+        assertTrue(e.getMessage().startsWith("声音素材超过当前模型"),e.getMessage());
+    }
+    /** 上传报错要说清传上来的是什么：字节认得出就报格式，认不出就说不是这类文件。 */
+    @Test void anUnsupportedUploadSaysWhatItIs() {
+        byte[] flac={'f','L','a','C',0,0,0,0,0,0,0,0};
+        assertEquals("暂不支持 FLAC 格式的音频，请换成 MP3、WAV、M4A 格式",StudioMediaImportService.unsupportedFile("audio",flac));
+        assertEquals("这个文件不是可用的图片，请选择 JPG、PNG 格式的文件",StudioMediaImportService.unsupportedFile("image",new byte[]{1,2,3,4,5,6,7,8,9,10,11,12}));
+    }
     /** 线上 Seedance 端点的声音规则（video_request_spec_json）。 */
     private static VideoStudioModeSpec seedanceMode() {
         var audio=new VideoStudioMediaLimit("audio",3,15L*1024*1024,List.of("WAV","MP3"),2,15);

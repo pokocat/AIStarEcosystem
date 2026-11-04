@@ -26,18 +26,79 @@ public final class PublicModelErrorPolicy {
     private static final Pattern WALLET = Pattern.compile("^(?:PAYMENT_REQUIRED|STUDIO_PAYMENT_REQUIRED|STUDIO_USAGE_PENDING|INSUFFICIENT_CREDITS|INSUFFICIENT_BALANCE|BALANCE_INSUFFICIENT|(?:CREDITS?|WALLET|RECHARGE|WITHDRAW|ENTERPRISE_(?:POINTS|CREDITS?))_.*)$");
     private static final Pattern TRACE = Pattern.compile("(?:[·。]\\s*)?追查号[：:\\s]+([A-HJ-NP-Z2-9]{12})(?:\\s*[—-].*)?$");
     private static final Pattern EXTERNAL_ID = Pattern.compile("(?i)\\s*\\(?\\b(?:request|trace|log)[ _-]?id\\s*[:=]\\s*(?:\\[已脱敏\\]|[A-Za-z0-9_.:-]+)\\)?");
+    /** Shown when a supplier refused in words that tell a customer nothing; the original stays in the logs. */
+    public static final String UNREADABLE = "生成服务未能完成这次请求，请稍后再试或换一个模型。";
+    private static final String OLD_SUBMISSION_PREFIX = "生成服务没有返回有效的任务信息";
+    private static final Pattern HAN = Pattern.compile("\\p{IsHan}");
+    /** Supplier internals, even inside a Chinese sentence: Go/JSON dumps, 幂等键, plan names, status codes, field names. */
+    private static final Pattern TECHNICAL = Pattern.compile(
+            "(?i)map\\[|[{}]|幂等|idempot|\\bapi\\b|token plan|exception\\b|\\b(?:http|status)\\s*[:=]?\\s*\\d{3}\\b|\\b[a-z]+_[a-z_]+\\b");
+    /** For saved messages, which may be our own Chinese sentences that fairly mention "API Key" or "HTTP 404": only what can never be ours. */
+    private static final Pattern DUMP = Pattern.compile("(?i)map\\[|[{}]|幂等|idempot|exception\\b|\\b[a-z]+_[a-z_]+\\b");
+    /** True but empty: says nothing about what to change. */
+    private static final Pattern NO_INFORMATION = Pattern.compile(
+            "(?i)\\s*(?:(?:(?:resource|model|task) )?not found|bad request|invalid request|request failed|(?:internal )?(?:server )?error|unknown error|(?:service )?unavailable|forbidden|unauthorized|failed)\\s*\\.?\\s*");
+    private static final Pattern DURATION = Pattern.compile("(?i)reference video duration must be within (\\d+)\\.\\.(\\d+) seconds");
+    private static final Pattern PERSON = Pattern.compile("(?i)may contain real person");
+    private static final Pattern RETIRED = Pattern.compile("(?i)has been retired|model_delisted");
+    private static final Pattern BUSY = Pattern.compile("(?i)rate.?limit|too many requests|overloaded|速率限制");
+    private static final Pattern UNREADABLE_MEDIA = Pattern.compile("(?i)cannot be decoded|invalid image|unsupported (?:image|format|media)");
     private PublicModelErrorPolicy() {}
+
+    /** The supplier reasons we can state exactly, in our own words. Plain English we cannot state stays as a hint, see {@link #withHint}. */
+    private static String translate(String text) {
+        var duration = DURATION.matcher(text);
+        if (duration.find()) return "参考视频要 " + duration.group(1) + "–" + duration.group(2) + " 秒，请调整后再试";
+        if (PERSON.matcher(text).find()) return "参考图片被模型识别为包含真人，当前模型不接受这类素材。请更换参考图片后再试，使用相同素材重试仍会失败";
+        if (RETIRED.matcher(text).find()) return "这个视频模型已被提供方下架，不能再用它生成，请换一个模型";
+        if (BUSY.matcher(text).find()) return "生成服务当前请求过多，请稍后再试";
+        if (UNREADABLE_MEDIA.matcher(text).find()) return "参考素材无法读取，请更换后再试";
+        return null;
+    }
+    private static boolean usable(String text) {
+        return !TECHNICAL.matcher(text).find() && !NO_INFORMATION.matcher(text).matches();
+    }
+    /**
+     * A plain English reason can be what lets someone fix the request ("size must be one of 1024x1024"), so it stays, but
+     * never as the whole message: our sentence comes first. A Chinese reason already reads as the message.
+     */
+    public static String withHint(String lead, String reason) {
+        if (reason == null || lead != null && lead.contains(reason)) return lead;
+        if (HAN.matcher(reason).find()) return reason;
+        return (lead == null ? "" : lead.replaceAll("[。；]$", "")) + "（服务方提示：" + reason + "）";
+    }
+    /** Read-time form of an old provider error; returns the input unchanged when nothing needs rewording. */
+    private static String reworded(String text) {
+        var trace = TRACE.matcher(text);
+        String body = trace.find() ? text.substring(0, trace.start()).strip() : text;
+        if (body.startsWith(OLD_SUBMISSION_PREFIX)) return com.aistareco.aep.service.GenerationSubmissionFailure.MESSAGE;
+        String translated = translate(body);
+        if (translated != null) return translated;
+        String cleaned = body.replaceAll("[（(](?:上游 ?|HTTP )\\d{3}[)）]", "").replace("被上游拒收", "被生成服务拒绝").replace("上游原因", "原因");
+        if (!HAN.matcher(cleaned).find()) return usable(cleaned) ? withHint(UNREADABLE, cleaned) : UNREADABLE;
+        if (DUMP.matcher(cleaned).find()) return UNREADABLE;
+        return cleaned.equals(body) ? text : cleaned;
+    }
 
     /** Used only on actual supplier messages: their balances/quotas are never the customer's wallet. */
     public static String upstream(String text) {
         if (text == null) return null;
         if (SUPPLIER_STORAGE.matcher(text).find()) return SUPPLIER_STORAGE_FULL;
         if (PRIVATE.matcher(text).find() || ACCOUNT.matcher(text).find()) return UNAVAILABLE;
-        return EXTERNAL_ID.matcher(text).replaceAll("").strip();
+        String cleaned = EXTERNAL_ID.matcher(text).replaceAll("").strip();
+        String translated = translate(cleaned);
+        if (translated != null) return translated;
+        // Null lets the caller use its own sentence. The supplier's words stay in the logs (ProviderResponseDiagnostics).
+        return usable(cleaned) ? cleaned : null;
     }
 
     /** Read-time guard for already persisted errors; preserve our own logId and real customer credit messages. */
-    public static String stored(String text, String code) {
+    public static String stored(String text, String code) { return guard(text, code, true); }
+
+    /** Our own sentence about a supplier failure: only the privacy guard, it is already in the right words. */
+    public static String own(String text) { return guard(text, "AI_PROVIDER_ERROR", false); }
+
+    private static String guard(String text, String code, boolean reword) {
         if (text == null || text.isBlank()) return text;
         boolean provider = code != null && CODE.matcher(code).matches() || CONTEXT.matcher(text).find();
         boolean wallet = code != null && WALLET.matcher(code).matches();
@@ -47,6 +108,7 @@ public final class PublicModelErrorPolicy {
         }
         if (!PRIVATE.matcher(text).find() && !(!wallet && (COST.matcher(text).find() || provider && ACCOUNT.matcher(text).find()))) {
             String normalized = ProviderContentModeration.historical(text);
+            if (reword && provider && !wallet) normalized = reworded(normalized);
             if (normalized.equals(text)) return text;
             var trace = TRACE.matcher(text);
             return trace.find() ? normalized + " · 追查号 " + trace.group(1) : normalized;

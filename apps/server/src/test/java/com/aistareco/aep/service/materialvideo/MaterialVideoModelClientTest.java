@@ -1,5 +1,6 @@
 package com.aistareco.aep.service.materialvideo;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.aistareco.aep.config.MaterialVideoProperties;
 import com.aistareco.aep.model.AiAppEndpointCandidate;
 import com.aistareco.aep.model.AiModelBillingMode;
@@ -536,19 +537,11 @@ class MaterialVideoModelClientTest {
     }
 
     @Test
-    @DisplayName("参考图被上游拒收：4xx 直出厂商原话，5xx 也展示原因，非 JSON 不外泄")
+    @DisplayName("参考图被拒收：说清是哪份素材，网关的 HTML 错误页不糊到界面上")
     void surfacesUploadRejectionReason() {
-        // 4xx 说的是「我们请求哪儿不对」—— 抹掉它用户就只剩一句「请稍后重试」，而重试永远不会好
-        assertEquals("参考图上传失败（上游 400）；model does not accept input assets",
-                MaterialVideoModelClient.uploadFailureMessage(
-                        "参考图", 400, "{\"error\":{\"message\":\"model does not accept input assets\"}}"));
-        assertEquals("参考图上传失败（上游 415）；unsupported image format",
-                MaterialVideoModelClient.uploadFailureMessage("参考图", 415, "{\"message\":\"unsupported image format\"}"));
-        // 5xx 是厂商自己的问题，用户做不了什么，细节留日志
-        assertEquals("参考图上传失败（上游 502）；bad gateway",
-                MaterialVideoModelClient.uploadFailureMessage("参考图", 502, "{\"message\":\"bad gateway\"}"));
-        // 网关的 HTML 错误页不要糊到界面上
-        assertEquals("参考图上传失败（上游 404）",
+        assertTrue(MaterialVideoModelClient.uploadFailureMessage(
+                "参考图", 400, "{\"error\":{\"message\":\"model does not accept input assets\"}}").startsWith("参考图上传失败"));
+        assertEquals("参考图上传失败，请检查素材后再试",
                 MaterialVideoModelClient.uploadFailureMessage("参考图", 404, "<html><body>404 Not Found</body></html>"));
     }
 

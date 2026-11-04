@@ -153,24 +153,25 @@ public class StudioVideoService {
                 case "audio" -> mode.references().audio();
                 default -> null;
             };
-            if(media==null || !type.equals(media.mediaType()))throw invalid("所选模式不支持该素材类型");
+            String label=com.aistareco.aep.videostudio.service.VideoMediaMessages.kind(type);
+            if(media==null || !type.equals(media.mediaType()))throw invalid("当前模型的这种生成方式不能使用"+label+"，请移除后再试");
             long bytes=Files.size(path);
-            if(bytes<=0 || bytes>media.maxBytes())throw invalid("参考素材为空或超过该模式的文件大小限制");
+            if(bytes<=0)throw invalid(com.aistareco.aep.videostudio.service.VideoMediaMessages.empty(label));
+            if(bytes>media.maxBytes())throw invalid(com.aistareco.aep.videostudio.service.VideoMediaMessages.tooLarge(label,media.maxBytes()));
             byte[] header;
             try(var in=Files.newInputStream(path)){header=in.readNBytes(4096);}
             var format=MediaBytes.sniffConfigured(type,header);
             if(!MediaBytes.allowed(format,media.formats()))
-                throw invalid(switch(type){case "image"->"图片";case "video"->"视频";default->"声音";}
-                        +"素材的格式当前模型不支持，请换成 "+String.join("、",media.formats())+" 格式");
+                throw invalid(com.aistareco.aep.videostudio.service.VideoMediaMessages.format(label,media.formats()));
             if(!"image".equals(type)) {
                 var probe=ffmpeg.probeMedia(path.toFile());
                 if(!probe.readable() || "video".equals(type)&&!probe.hasVideo() || "audio".equals(type)&&!probe.hasAudio())
-                    throw invalid("有一份参考素材读不出来，请重新选择");
+                    throw invalid(label+"读不出来，请重新选择");
                 if((media.minDurationSec()!=null || media.maxDurationSec()!=null)
                         && (probe.durationSec()<=0
                         || media.minDurationSec()!=null && probe.durationSec()<media.minDurationSec()
                         || media.maxDurationSec()!=null && probe.durationSec()>media.maxDurationSec()))
-                    throw invalid("参考"+("video".equals(type)?"视频":"音频")+"时长不符合所选模型要求");
+                    throw invalid(com.aistareco.aep.videostudio.service.VideoMediaMessages.duration(label,probe.durationSec(),media.minDurationSec(),media.maxDurationSec()));
             }
         } catch(BusinessException e){throw e;} catch(Exception e){throw invalid("参考素材已不可用，请重新上传或选择");}
     }

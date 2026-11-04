@@ -523,7 +523,7 @@ public class IpRunWorker {
      */
     static void requireDecodableImage(byte[] bytes) {
         if (!looksLikeImage(bytes)) {
-            throw new DapModelException("DAP_MODEL_BAD_OUTPUT", "上游返回的内容不是可用图片");
+            throw new DapModelException("DAP_MODEL_BAD_OUTPUT", "生成服务返回的内容不是可用图片");
         }
     }
 

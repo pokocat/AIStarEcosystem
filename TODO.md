@@ -118,6 +118,8 @@
 
 - [ ] **导演台轮询任务为空时出现 NPE**（2026-11-02 线上观察，07:56:42 UTC，追查号 `tAVCAMEupHdAp9R5`）：`DirectorService.pollVideos:1578` 对 `videoJobs.getJob(...)` 的 null 结果直接调 `job.path`，导致读取接口 500；该方法与本次发布前一致，不是图片上传验收请求。需独立定位读空原因、加回归并处理轮询状态，不得重提已受理的视频任务；见图片上传生产发布记录。
 
+- [ ] **配音提交了厂商不认的音色**（2026-11-04 发现）：`IPR` 2026-11-01 有一条 `STUDIO_SPEECH_PROVIDER_FAILED`，厂商原话 `voice must be one of: Aiden, Dylan, Eric…`，`StudioSpeechWorker` 提交的音色不在 qwen3-tts 列表内。报错文案已改，音色从哪来的还没查。
+- [ ] **图片受理结果未确认只能找运营**（2026-11-04 发现）：`JusuanImageClient.Pending` 的「图片受理结果尚未确认，请联系运营核对原请求」30 天 28 次、10 人，今天仍有。文案清楚但用户只能等，考虑自动核对。
 - [ ] **资产录音真机兼容验收**（2026-11-01）：`audio-recorder-dialog.tsx` / `recording-audio.ts` 的倒数、10.5 秒结束门槛、14.9 秒自动结束、试听、重录保留名称及保存，仍需 iPhone Safari、安卓浏览器、微信内置浏览器分别实测。桌面模拟 WebM／MP4 与采样率回退验证不能代替真机。
 
 - [x] ~~主线 `IpRunServiceTest.videoWithoutChosenModel_leavesTheEndpointToTheDefault` 红着~~ **2026-11-01 已修**（随 `20261101-studio-prompt-library`）：`fa72c50e2` 起视频请求每条都带 `require_mirror`，断言改为 `variant_config` 只有这一项。
