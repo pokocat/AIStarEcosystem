@@ -246,8 +246,8 @@ public class AistarRehearsalRestore {
             try{
                 for(String t:order(c)){
                     String names=columns.get(t).stream().map(AistarRehearsalRestore::q).collect(java.util.stream.Collectors.joining(","));
-                    try(var reader=Files.newBufferedReader(files.get(t),java.nio.charset.StandardCharsets.UTF_8)){
-                        long copied=c.unwrap(PGConnection.class).getCopyAPI().copyIn("COPY "+q(t)+" ("+names+") FROM STDIN",reader);
+                    try(var inputBytes=Files.newInputStream(files.get(t))){
+                        long copied=c.unwrap(PGConnection.class).getCopyAPI().copyIn("COPY "+q(t)+" ("+names+") FROM STDIN",inputBytes);
                         if(copied!=expected.get(t).rows)throw new IllegalStateException("COPY count mismatch");
                     }
                 }

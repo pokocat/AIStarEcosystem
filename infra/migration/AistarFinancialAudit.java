@@ -26,6 +26,7 @@ public class AistarFinancialAudit {
         var original=json.readTree(Files.readString(ROOT.resolve(args[0])));var order=json.readTree(Files.readString(ROOT.resolve("source-column-order.json")));
         var proof=new TreeMap<String,Object>();
         try(var c=DriverManager.getConnection(url,role,config.get("rds_roles").get(role).asText())) {
+            proof.put("driver_version",c.getMetaData().getDriverVersion());
             c.setReadOnly(true);c.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);c.setAutoCommit(false);
             try(var st=c.createStatement()) {st.execute("set time zone 'UTC'");try(var rs=st.executeQuery("select current_database(),current_user,(select version from flyway_schema_history where success order by installed_rank desc limit 1)")){rs.next();if(!db.equals(rs.getString(1))||!role.equals(rs.getString(2))||!"77".equals(rs.getString(3)))throw new IllegalStateException("Database/role/version mismatch");}}
             var counts=new TreeMap<String,Long>();for(var entry:queries.entrySet())try(var st=c.createStatement();var rs=st.executeQuery(entry.getValue())){rs.next();counts.put(entry.getKey(),rs.getLong(1));}

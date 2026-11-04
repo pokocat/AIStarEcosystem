@@ -101,4 +101,51 @@ class StoragePostgresIT {
         });
         verifyNoInteractions(client);
     }
+    @Test void lowPrivilegeMetadataWorksOnPostgres18WithoutRemovedRulePrivilege() throws Exception {
+        try(var owner=java.sql.DriverManager.getConnection(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());var st=owner.createStatement()) {
+            st.execute("CREATE ROLE metadata_runtime LOGIN PASSWORD 'local-test-only'");
+            st.execute("CREATE SCHEMA metadata_visible");st.execute("CREATE SCHEMA metadata_hidden");
+            st.execute("CREATE TABLE metadata_visible.scope_probe(id integer primary key,identity_uid text unique)");
+            st.execute("CREATE TABLE metadata_hidden.scope_probe(id integer primary key,identity_uid text unique)");
+            st.execute("GRANT USAGE ON SCHEMA metadata_visible TO metadata_runtime");st.execute("GRANT SELECT ON metadata_visible.scope_probe TO metadata_runtime");
+            try(var connection=java.sql.DriverManager.getConnection(PG.getJdbcUrl()+"?currentSchema=metadata_visible&hideUnprivilegedObjects=true","metadata_runtime","local-test-only")) {
+                var schemas=new java.util.ArrayList<String>();
+                try(var rs=connection.getMetaData().getTables(null,null,"scope_probe",new String[]{"TABLE"})) {while(rs.next())schemas.add(rs.getString("TABLE_SCHEM"));}
+                assertThat(schemas).containsExactly("metadata_visible");
+                try(var rs=connection.getMetaData().getColumns(null,"metadata_visible","scope_probe","identity_uid")){assertThat(rs.next()).isTrue();}
+            } finally {st.execute("DROP SCHEMA metadata_visible CASCADE");st.execute("DROP SCHEMA metadata_hidden CASCADE");st.execute("DROP ROLE metadata_runtime");}
+        }
+    }
+    @Test void copyBytesPreservesLongUnicodeAndEmbeddedDelimitersWithCurrentDriver() throws Exception {
+        String value="中文😀".repeat(20000)+"\tquoted \" value\nnext line";
+        try(var connection=java.sql.DriverManager.getConnection(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());var st=connection.createStatement()) {
+            connection.setAutoCommit(false);
+            try {
+                st.execute("CREATE TEMP TABLE driver_copy_probe(payload text)");
+                String csv="\""+value.replace("\"","\"\"")+"\"\n";
+                long rows=connection.unwrap(org.postgresql.PGConnection.class).getCopyAPI().copyIn("COPY driver_copy_probe(payload) FROM STDIN WITH (FORMAT CSV)",new java.io.ByteArrayInputStream(csv.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+                assertThat(rows).isEqualTo(1);
+                try(var rs=st.executeQuery("SELECT payload FROM driver_copy_probe")){assertThat(rs.next()).isTrue();assertThat(rs.getString(1).equals(value)).as("UTF-8 COPY preserves the complete value and delimiters").isTrue();assertThat(rs.next()).isFalse();}
+            } finally {connection.rollback();}
+        }
+    }
+    @Test void runtimeValidatesWithReadOnlyHistoryAndRejectsPendingDdl() throws Exception {
+        var directory=java.nio.file.Files.createTempDirectory("pg-runtime-validation-");
+        java.nio.file.Files.writeString(directory.resolve("V1__initial.sql"),"CREATE TABLE schema_probe(id integer primary key)");
+        String schema="runtime_validation";
+        try(var owner=java.sql.DriverManager.getConnection(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());var st=owner.createStatement()) {
+            st.execute("CREATE ROLE schema_runtime LOGIN PASSWORD 'local-test-only'");
+            var migration=org.flywaydb.core.Flyway.configure().dataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword()).defaultSchema(schema).schemas(schema).locations("filesystem:"+directory).load();migration.migrate();
+            st.execute("GRANT USAGE ON SCHEMA runtime_validation TO schema_runtime");st.execute("GRANT SELECT ON runtime_validation.flyway_schema_history TO schema_runtime");
+            try {
+                var runtime=org.flywaydb.core.Flyway.configure().dataSource(PG.getJdbcUrl()+"?currentSchema="+schema+"&hideUnprivilegedObjects=true","schema_runtime","local-test-only").defaultSchema(schema).schemas(schema).locations("filesystem:"+directory).load();
+                var strategy=new PostgresFlywayValidationConfiguration().postgresSchemaValidation();strategy.migrate(runtime);
+                java.nio.file.Files.writeString(directory.resolve("V2__requires_migrator.sql"),"CREATE TABLE must_not_exist(id integer primary key)");
+                org.assertj.core.api.Assertions.assertThatThrownBy(()->strategy.migrate(runtime)).isInstanceOf(org.flywaydb.core.api.FlywayException.class).hasMessageContaining("not applied");
+                try(var rs=st.executeQuery("SELECT count(*) FROM information_schema.tables WHERE table_schema='runtime_validation' AND table_name='must_not_exist'")){rs.next();assertThat(rs.getInt(1)).isZero();}
+                try(var rs=st.executeQuery("SELECT count(*) FROM runtime_validation.flyway_schema_history WHERE version IS NOT NULL")){rs.next();assertThat(rs.getInt(1)).isEqualTo(1);}
+            } finally {st.execute("DROP SCHEMA runtime_validation CASCADE");st.execute("DROP ROLE schema_runtime");}
+        } finally {try(var files=java.nio.file.Files.list(directory)){for(var f:files.toList())java.nio.file.Files.deleteIfExists(f);}java.nio.file.Files.deleteIfExists(directory);}
+    }
+
 }
