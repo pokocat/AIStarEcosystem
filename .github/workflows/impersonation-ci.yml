@@ -91,6 +91,9 @@ jobs:
       - name: Verify stale payment poll preserves server confirmation
         if: matrix.product == 'web-aiavatar'
         run: NODE_PATH="$RUNNER_TEMP/browser-test/node_modules" node scripts/migration/payment-race-browser.cjs
+      - name: Verify toast deadlines are released on navigation
+        if: matrix.product == 'admin-new'
+        run: NODE_PATH="$RUNNER_TEMP/browser-test/node_modules" node scripts/migration/toast-lifecycle-browser.cjs
       - name: Verify handoff and exit in production pages
         env:
           PRODUCT: ${{ matrix.product }}
