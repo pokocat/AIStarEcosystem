@@ -834,3 +834,5 @@ ALB就绪入口为 `GET /internal/ready`：应用启动完成且真实数据库�
 生产postgres配置由 `PostgresEnvironmentGuard` 在EnvironmentPostProcessor阶段检查，早于DataSource/Hibernate创建；拒绝旧环境遗留的ddl-auto=update或MySQL Flyway目录等覆盖。源env复制后必须显式替换数据库/driver/dialect、schema、Flyway目录/开关、UTC、日志目录与后台角色，不能只改DB_URL。实际数据库版本/角色/时区仍在连接后另行验证。
 
 AIStar PG 不可变运行镜像见 [images/server/README.md](images/server/README.md)，使用已验收 JAR 和固定基础镜像 digest；两机官方 Podman/离线媒体与受保护 ALB 演练独立验收，不代表正式激活。
+
+AIStar PG 主备滚动补充：旧 `/api/auth/sms/*` 的验证码、用途、单次消费、60秒限流、5次失败锁定改用 Tair 单键 Lua 原子状态。`TairSmsCodeStore` 只存 HMAC 手机号键和验证码摘要；短信发送先占位，显式失败释放自己的占位，未知供应商受理状态保留限流；Tair故障返回503且readiness撤下，不回退单机内存。旧MySQL/dev保留原行为。postgres默认tair并强制TLS，正式专用DB15/prefix `aistar:prod:sms:v1:`，演练DB14/prefix `aistar:rehearsal:sms:v1:`；逻辑库与命名空间隔离不等于账号ACL限制。迁移首次停写要处理旧进程内存验证码（TTL默认5分钟）、失败锁定（默认30分钟）和进行中的扫码；无法导出旧锁定时，旧短信接口按最长状态时长保守维护，不能只等待验证码TTL；不能声称可迁出旧进程内存。源码、真实Redis契约及双机真实Tair验证以最终回执为准。

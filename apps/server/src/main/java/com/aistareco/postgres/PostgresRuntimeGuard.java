@@ -29,6 +29,10 @@ public class PostgresRuntimeGuard {
         require(env,problems,"spring.flyway.enabled","true");
         require(env,problems,"spring.flyway.locations","classpath:db/postgresql");
         require(env,problems,"spring.flyway.baseline-on-migrate","false");
+        require(env,problems,"aep.sms.code.store","tair");
+        try { var uri=java.net.URI.create(env.getProperty("aep.sms.tair.url",""));
+            if(!"rediss".equals(uri.getScheme())||uri.getHost()==null||uri.getRawUserInfo()==null)problems.add("aep.sms.tair.url 必须使用独立账号与TLS");
+        } catch(IllegalArgumentException e) { problems.add("aep.sms.tair.url 配置无效"); }
         require(env,problems,"aep.cdn.driver","oss");require(env,problems,"aep.sms.driver","aliyun");
         for(String flag:List.of("aep.seed.dev-data.enabled","aep.dev-auth.enabled","aep.dap.allow-placeholder",
                 "aep.dap.modelink.allow-mock","aep.payment.shadow.enabled","aep.clip.allow-mock","aep.clip.force-mock")) {

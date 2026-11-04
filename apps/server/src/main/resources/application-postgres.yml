@@ -75,8 +75,12 @@ aep:
   # PostgreSQL profile 同时服务 dev 联调和生产；默认 log，避免本地 dev mysql 误访问阿里云短信。
   # 生产真发必须显式设置 AEP_SMS_DRIVER=aliyun。
   sms:
+    tair:
+      url: ${AEP_SMS_TAIR_URL:}
+      prefix: ${AEP_SMS_TAIR_PREFIX:aistar:prod:sms:v1:}
     driver: ${AEP_SMS_DRIVER:aliyun}
     code:
+      store: tair
       length: 6
       ttl-seconds: 300            # 验证码有效期 5 分钟
       rate-limit-seconds: 60      # 同一手机号 60s 内不能重发

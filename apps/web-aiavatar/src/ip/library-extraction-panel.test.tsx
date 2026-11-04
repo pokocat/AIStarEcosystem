@@ -44,8 +44,11 @@ test('a rejected price clears the unaccepted request so the next click can use c
  await waitFor(()=>expect(analyze.disabled).toBe(false));fireEvent.click(analyze);
  await screen.findByRole('alert');expect(api.task).toHaveBeenLastCalledWith(undefined);
  const first=api.extract.mock.calls.find((c:any)=>c[1].analyze)?.[1];
- api.extract.mockImplementation(async(_:string,r:any)=>r.analyze?done:seed);fireEvent.click(analyze);
- await screen.findByText('已消耗 4 积分');
+ api.extract.mockImplementation(async(_:string,r:any)=>r.analyze?done:seed);
+ await waitFor(()=>expect(analyze.disabled).toBe(false));fireEvent.click(analyze);
+ await waitFor(()=>expect(api.extract.mock.calls.filter((c:any)=>c[1].analyze)).toHaveLength(2));
+ // Async source hashing can wait behind other suites on a busy CI runner.
+ await screen.findByText('已消耗 4 积分',{}, {timeout:5000});
  expect(api.extract.mock.calls.at(-1)?.[1].clientRequestId).not.toBe(first.clientRequestId);
 });
 

@@ -10,7 +10,9 @@ with tempfile.TemporaryDirectory(prefix='migration-tool-',dir=server/'target') a
   for entry in jar.infolist():
    if entry.filename.startswith('BOOT-INF/lib/') and entry.filename.endswith('.jar'):
     (folder/Path(entry.filename).name).write_bytes(jar.read(entry))
+   elif entry.filename.startswith('BOOT-INF/classes/') and entry.filename.endswith('.class'):
+    target=folder/'classes'/entry.filename.removeprefix('BOOT-INF/classes/');target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(jar.read(entry))
  dest=server/'target/migration-tools';dest.mkdir(exist_ok=True)
  javac=str(Path(os.environ['JAVA_HOME'])/'bin/javac') if os.environ.get('JAVA_HOME') else 'javac'
- subprocess.run([javac,'-cp',str(folder/'*'),'-d',str(dest),*[str(p) for p in sources]],check=True)
+ subprocess.run([javac,'-cp',str(folder/'classes')+os.pathsep+str(folder/'*'),'-d',str(dest),*[str(p) for p in sources]],check=True)
  print('Compiled',len(sources),'rehearsal helpers; no production restore mode')

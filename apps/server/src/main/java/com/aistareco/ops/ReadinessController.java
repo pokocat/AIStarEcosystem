@@ -14,6 +14,9 @@ import java.util.Map;
 @RestController
 public class ReadinessController {
     private final DataSource dataSource;
+    private com.aistareco.aep.service.sms.TairSmsCodeStore sms;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    public void setSmsStore(com.aistareco.aep.service.sms.TairSmsCodeStore sms){this.sms=sms;}
     private volatile boolean started;
     public ReadinessController(DataSource dataSource) { this.dataSource=dataSource; }
     @EventListener(ApplicationReadyEvent.class) public void markReady() { started=true; }
@@ -23,6 +26,7 @@ public class ReadinessController {
         boolean valid=false;
         if(started)try(var connection=dataSource.getConnection()) { valid=connection.isValid(1); }
         catch(java.sql.SQLException ignored) { /* No connection details or credentials in the health response. */ }
+        if(valid && sms!=null)valid=sms.ready();
         return ResponseEntity.status(valid?200:503).cacheControl(CacheControl.noStore()).body(Map.of("ready",valid));
     }
 }

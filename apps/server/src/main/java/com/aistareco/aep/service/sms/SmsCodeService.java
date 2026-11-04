@@ -16,10 +16,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 /**
- * v0.31+ SMS 验证码生成 / 校验 / 速率限制 / 失败锁定 —— 全部 in-memory。
+ * v0.31+ SMS 验证码生成 / 校验 / 速率限制 / 失败锁定；postgres生产使用Tair共享原子状态。
  *
  * <p>不引入 Redis 的原因：单实例 dev/MVP 够用；重启丢失少数用户的码可接受（用户重发即可）。
- * 多实例 prod 部署前需要换成 Redis（共享状态）。
+ * Tair路径不回落内存；原MySQL/dev与直接构造测试保持既有行为。
  *
  * <p>状态条目按手机号 key，并记录当前验证码用途：
  * <ul>
@@ -47,6 +47,10 @@ public class SmsCodeService {
     private final String devFixedCode;
     /** v0.31+: 启动时缓存「真生效中」的固定码（双门禁通过 + 已 trim）；非空表示启用。 */
     private final String effectiveFixedCode;
+
+    private TairSmsCodeStore shared;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    public void setSharedStore(TairSmsCodeStore shared) { this.shared=shared; }
 
     private final Map<String, CodeEntry> store = new ConcurrentHashMap<>();
 
@@ -107,6 +111,7 @@ public class SmsCodeService {
     public SmsSendResult requestCode(String phone, SmsCodePurpose purpose) {
         SmsCodePurpose resolvedPurpose = purpose == null ? SmsCodePurpose.LOGIN : purpose;
         validatePhone(phone);
+        if(shared!=null) return requestShared(phone.trim(),resolvedPurpose);
         Instant now = Instant.now();
         CodeEntry existing = store.get(phone);
         if (existing != null) {
@@ -173,6 +178,7 @@ public class SmsCodeService {
         if (code == null || code.isBlank()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "SMS_CODE_REQUIRED", "请输入验证码");
         }
+        if(shared!=null) { shared.verify(phone.trim(),code.trim(),resolvedPurpose,ttlSeconds,maxFailures,lockSeconds);return; }
         Instant now = Instant.now();
         CodeEntry entry = store.get(phone);
         if (entry == null) {
@@ -222,6 +228,24 @@ public class SmsCodeService {
         store.remove(phone);
         log.info("[sms-code] verification code verified purpose={} phone={}",
                 resolvedPurpose.wire(), phone);
+    }
+
+    private SmsSendResult requestShared(String phone,SmsCodePurpose purpose) {
+        String code=generateCode();var reservation=shared.reserve(phone,purpose,code,ttlSeconds,rateLimitSeconds);
+        SmsSendResult result;
+        try {
+            result=sender.sendVerificationCode(phone,code,purpose);
+        } catch(SmsSender.SmsSendException e) {
+            if(e.getResult()!=null && e.getResult().deliveryStatus()==SmsSendResult.DeliveryStatus.FAILED) shared.cancel(reservation);
+            throw new BusinessException(HttpStatus.BAD_GATEWAY,"SMS_SEND_FAILED","短信发送失败，请稍后再试",
+                e.getResult()==null?null:e.getResult().toDetailsMap());
+        }
+        if(result!=null && result.deliveryStatus()==SmsSendResult.DeliveryStatus.FAILED) {
+            shared.cancel(reservation);
+            throw new BusinessException(HttpStatus.BAD_GATEWAY,"SMS_SEND_FAILED","短信发送失败：供应商回执状态为发送失败",result.toDetailsMap());
+        }
+        // Unknown transport exceptions keep the reservation; an automatic resend could duplicate an accepted SMS.
+        shared.complete(reservation);return result;
     }
 
     /** 每分钟清理过期 / 已锁定到期的 entry，避免内存累积。 */
