@@ -30,13 +30,16 @@ class Cluster:
    if all(int(rows[n]['Weight'])==w[n] and rows[n]['Status']=='Available' for n in w):self.record('weights',weights=w);return
    time.sleep(1)
   raise RuntimeError('ALB权重未收敛')
- def probe(self,node=None):
+ def probe(self,node=None,authenticated=True):
   # Strict TLS on both ALB VIPs, exact host and private probe header. Never trust HTTP 200 alone.
-  secret=json.loads(pathlib.Path(self.probe_file).read_text());require(secret['host']==self.expected['host'],'探针Host与模式不匹配')
+  path=pathlib.Path(self.probe_file);require(path.stat().st_mode&0o777==0o600,'探针配置必须0600');secret=json.loads(path.read_text());require(secret['host']==self.expected['host'],'探针Host与模式不匹配')
+  if authenticated:require(secret.get('token') and secret.get('subject_id'),'缺少跨节点鉴权验收token和目标身份')
   for ip in self.config['verify_ips']:
    host=self.expected['host'];c=http.client.HTTPSConnection(host,timeout=12,context=ssl.create_default_context())
    c.sock=c._context.wrap_socket(socket.create_connection((ip,443),timeout=12),server_hostname=host)
    c.request('GET','/internal/ready',headers={secret['header']:secret['key']});r=c.getresponse();data=json.loads(r.read());c.close();require(r.status==200 and data.get('ready') is True,'ALB严格TLS就绪验收失败')
+   if authenticated:
+    c=http.client.HTTPSConnection(host,timeout=12,context=ssl.create_default_context());c.sock=c._context.wrap_socket(socket.create_connection((ip,443),timeout=12),server_hostname=host);c.request('GET','/api/admin/auth/me',headers={secret['header']:secret['key'],'Authorization':'Bearer '+secret['token']});r=c.getresponse();d=json.loads(r.read());c.close();require(r.status==200 and d.get('data',{}).get('id')==secret['subject_id'],'ALB跨机鉴权身份验收失败')
   if node:self.record('alb_ready',node=node)
  def install(self,bundle,release):
   # Only our new cluster namespace. Never extract arbitrary archive entries.
@@ -47,20 +50,29 @@ class Cluster:
    self.ssh(n,'install -d -m 700 '+remote+'/control '+remote+'/incoming '+remote+'/releases')
    for local,dest in [(bundle,remote+'/incoming/'+release+'.tar.gz'),(ROOT/'infra/cluster/production.json',remote+'/control/config.json'),(pathlib.Path(__file__).with_name('node.py'),remote+'/control/node.py'),(pathlib.Path(__file__).with_name('policy.py'),remote+'/control/policy.py')]:
     p=subprocess.run(['scp','-q','-i',self.config['ssh_key'],'-o','BatchMode=yes',str(local),'root@'+self.config['nodes'][n]['host']+':'+dest],capture_output=True,text=True,timeout=180);require(p.returncode==0,'私有SSH传输失败')
-   code="import pathlib,hashlib,tarfile,os;os.umask(0o022);p=pathlib.Path("+repr(remote+'/incoming/'+release+'.tar.gz')+");assert hashlib.sha256(p.read_bytes()).hexdigest()=="+repr(digest)+";d=pathlib.Path("+repr(remote+'/releases/'+release)+");assert not d.exists(),'不可覆盖不可变发布';d.mkdir(mode=0o755);t=tarfile.open(p);assert all(x.isfile() and not x.name.startswith('/') and '..' not in pathlib.PurePosixPath(x.name).parts for x in t.getmembers());t.extractall(d);[(x.chmod(0o755 if x.is_dir() else 0o444)) for x in [d,*d.rglob('*')]]"
+   code="import pathlib,hashlib,tarfile,os;os.umask(0o022);p=pathlib.Path("+repr(remote+'/incoming/'+release+'.tar.gz')+");assert hashlib.sha256(p.read_bytes()).hexdigest()=="+repr(digest)+";d=pathlib.Path("+repr(remote+'/releases/'+release)+");t=tarfile.open(p);members=t.getmembers();assert all(x.isfile() and not x.name.startswith('/') and '..' not in pathlib.PurePosixPath(x.name).parts for x in members);existing=d.exists();assert not existing or all((d/x.name).is_file() and hashlib.sha256((d/x.name).read_bytes()).digest()==hashlib.sha256(t.extractfile(x).read()).digest() for x in members),'不可变发布内容变化';d.mkdir(mode=0o755,exist_ok=True);t.extractall(d) if not existing else None;[(x.chmod(0o755 if x.is_dir() else 0o444)) for x in [d,*d.rglob('*')]]"
    self.ssh(n,shlex.join([self.config['operation_python'],'-s','-c',code]));self.action(n,'prepare',release)
  def rolling(self,release):
   rows=self.members();require(int(rows['a']['Weight'])==100 and int(rows['b']['Weight'])==0,'必须从A100/B0开始；异常状态先核对，禁止盲目重试')
   primary=self.action('a','inspect');standby=self.action('b','inspect');require(not primary['quiescing'],'主节点已在排空')
   # Verify candidate on BOTH nodes before stopping anything.
   for n in ['a','b']:self.action(n,'prepare',release)
-  self.action('b','drain-stop');self.action('b','start',release)
-  # Check real per-node process/config before moving the group. Private TLS acceptance then gates old-primary restart.
-  self.weights({'a':0,'b':100});time.sleep(16)
-  self.probe('b');self.action('b','inspect')
-  self.action('a','drain-stop');self.action('a','start',release)
-  self.weights({'a':100,'b':0});time.sleep(16);self.probe('a')
-  final={n:self.action(n,'inspect') for n in ['a','b']};require(all(x['release']==release for x in final.values()),'双机发布不一致');self.record('rolling_complete');return final
+  old_primary_safe=True
+  try:
+   self.action('b','drain-stop');self.action('b','start',release)
+   # Check real per-node process/config before moving the group. Private TLS acceptance then gates old-primary restart.
+   self.weights({'a':0,'b':100});time.sleep(16)
+   self.probe('b');self.action('b','inspect')
+   old_primary_safe=False
+   self.action('a','drain-stop');self.action('a','start',release)
+   self.weights({'a':100,'b':0});time.sleep(16);self.probe('a')
+   final={n:self.action(n,'inspect') for n in ['a','b']};require(all(x['release']==release for x in final.values()),'双机发布不一致');self.record('rolling_complete');return final
+  except Exception:
+   survivor='a' if old_primary_safe else 'b'
+   current=self.action(survivor,'inspect');require(not current['quiescing'],'没有可自动恢复权重的已知健康节点，保留现场')
+   self.weights({'a':100 if survivor=='a' else 0,'b':100 if survivor=='b' else 0});self.probe(survivor);self.record('failure_preserved_serving_node',node=survivor)
+   raise
+
 
 def main():
  p=argparse.ArgumentParser();p.add_argument('--stage',action='store_true');p.add_argument('--bundle');p.add_argument('--release');p.add_argument('--probe-file');p.add_argument('--receipt');p.add_argument('--plan',action='store_true');p.add_argument('--prepare-only',action='store_true');p.add_argument('--bootstrap-stage',action='store_true');a=p.parse_args();os.umask(0o077)
@@ -81,7 +93,7 @@ def main():
   cluster.install(pathlib.Path(a.bundle).resolve(),a.release)
   if a.prepare_only:result={'prepared':True}
   elif a.bootstrap_stage:
-   result={n:cluster.action(n,'start',a.release) for n in ['a','b']};cluster.weights({'a':100,'b':0});time.sleep(16);cluster.probe();cluster.record('bootstrap_complete')
+   result={n:cluster.action(n,'start',a.release) for n in ['a','b']};cluster.weights({'a':100,'b':0});time.sleep(16);cluster.probe(authenticated=False);cluster.record('bootstrap_complete')
   else:require(a.probe_file,'缺少受保护TLS探针配置');result=cluster.rolling(a.release)
   receipt={'completed_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'mode':mode,'events':cluster.events,'result':result,'database_changed':False,'dns_changed':False};pathlib.Path(a.receipt).write_text(json.dumps(receipt,indent=2))
  finally:lock.stdin.close();lock.wait(timeout=15)

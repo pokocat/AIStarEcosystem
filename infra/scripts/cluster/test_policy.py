@@ -18,4 +18,23 @@ class PolicyTests(unittest.TestCase):
  def test_drill_cannot_use_production(self):
   p={'format':'aistar-import-permit-v1','rds_host':RDS,'database':'aistar_prod','role':'aistar_rehearsal','table_count':192,'flyway_version':'77','purpose':'aistar-cutover-drill'}
   with self.assertRaises(Refused):import_plan_guard(p,'drill')
+class RollingFailureTests(unittest.TestCase):
+ def test_standby_start_failure_restores_primary(self):self.check_failure('b','start','a')
+ def test_primary_start_failure_keeps_standby(self):self.check_failure('a','start','b')
+ def test_primary_drain_failure_keeps_standby(self):self.check_failure('a','drain-stop','b')
+ def check_failure(self,failed_node,failed_action,survivor):
+  import release
+  from unittest.mock import patch
+  cluster=release.Cluster({},'stage') if False else object.__new__(release.Cluster)
+  cluster.events=[];calls=[];weights=[]
+  cluster.members=lambda:{'a':{'Weight':100},'b':{'Weight':0}}
+  def action(n,a,r=None):
+   calls.append((n,a))
+   if (n,a)==(failed_node,failed_action):raise RuntimeError('synthetic failure')
+   return {'quiescing':False,'release':'candidate'}
+  cluster.action=action;cluster.weights=lambda w:weights.append(w);cluster.probe=lambda n:None;cluster.record=lambda *a,**kw:None
+  with patch('release.time.sleep'),self.assertRaises(RuntimeError):cluster.rolling('candidate')
+  self.assertEqual(weights[-1],{'a':100 if survivor=='a' else 0,'b':100 if survivor=='b' else 0})
+  if failed_node=='b':self.assertNotIn(('a','drain-stop'),calls)
 if __name__=='__main__':unittest.main()
+
