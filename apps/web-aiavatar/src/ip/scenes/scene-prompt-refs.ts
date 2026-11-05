@@ -7,6 +7,19 @@ export type PromptPiece = { text: string } | { ref: number; raw: string };
 
 const REF = /@?图(\d{1,2})(?!\d)/g;
 
+/**
+ * 素材增减之后，文字里的「图N」跟着改：还在的改成新编号，移除的连字一起去掉。
+ * before / after 是增减前后交给模型的图（按顺序，同一张图是同一个对象）。
+ */
+export function remapPromptRefs<T>(text: string, before: readonly T[], after: readonly T[]): string {
+  return text.replace(REF, (raw, n: string) => {
+    const old = Number(n) - 1;
+    if (old < 0 || old >= before.length) return raw;
+    const at = after.indexOf(before[old]);
+    return at < 0 ? "" : raw.replace(n, String(at + 1));
+  });
+}
+
 /** 按「图N」切开；N 不在 1..count 之间的（这次没交给模型的图）原样当文字。 */
 export function splitPromptRefs(text: string, count: number): PromptPiece[] {
   const pieces: PromptPiece[] = [];

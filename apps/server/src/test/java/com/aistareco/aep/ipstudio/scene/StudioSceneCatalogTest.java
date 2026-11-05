@@ -33,16 +33,17 @@ class StudioSceneCatalogTest {
     @Test
     void anImagePromptIsTheSceneDescriptionPlusWhatTheUserAdded() {
         String base = catalog.image("face-turnaround").orElseThrow().prompt();
-        assertThat(catalog.compose(image("face-turnaround", "", null, 0)).text()).isEqualTo(base);
-        assertThat(catalog.compose(image("face-turnaround", " 自然微笑 ", null, 0)).text()).isEqualTo(base + "\n补充要求：自然微笑");
-        assertThat(catalog.compose(image("face-turnaround", "", "我自己写的", 0)).text()).isEqualTo("我自己写的");
+        String role = "图1是要参照的人脸。\n";
+        assertThat(catalog.compose(image("face-turnaround", "", null, 0)).text()).isEqualTo(role + base);
+        assertThat(catalog.compose(image("face-turnaround", " 自然微笑 ", null, 0)).text()).isEqualTo(role + base + "\n补充要求：自然微笑");
+        assertThat(catalog.compose(image("face-turnaround", "", "我自己写的", 0)).text()).isEqualTo(role + "我自己写的");
         assertThat(catalog.compose(image("free", "一只猫", null)).text()).isEqualTo("一只猫");
     }
 
     @Test
     void aMissingRequiredPhotoOrAnEmptyFreeDrawingIsRefusedWithAPlainReason() {
         assertThatThrownBy(() -> catalog.compose(image("face-swap", "", null, 0)))
-                .isInstanceOf(BusinessException.class).hasMessage("先放新面孔");
+                .isInstanceOf(BusinessException.class).hasMessage("先放人脸");
         assertThatThrownBy(() -> catalog.compose(image("free", " ", null)))
                 .isInstanceOf(BusinessException.class).hasMessage("写一句想要的画面");
         assertThatThrownBy(() -> catalog.compose(image("no-such-scene", "", null)))
@@ -223,7 +224,7 @@ class StudioSceneCatalogTest {
         assertThat(brief).contains("出镜方式：不出现人脸，只拍商品和手部操作", "语气：语气像朋友推荐");
         String image = catalog.compose(new StudioSceneCatalog.ComposeRequest("image", "white-background", "", null, List.of(0), null, null, null, null, null, null,
                 null, null, java.util.Map.of("angle", "top"))).text();
-        assertThat(image).startsWith(catalog.image("white-background").orElseThrow().prompt()).contains("拍摄角度：从正上方俯拍商品");
+        assertThat(image).startsWith("图1是要做白底图的商品。\n" + catalog.image("white-background").orElseThrow().prompt()).contains("拍摄角度：从正上方俯拍商品");
         assertThatThrownBy(() -> catalog.compose(new StudioSceneCatalog.ComposeRequest("image", "white-background", "", null, List.of(0), null, null, null, null, null, null,
                 null, null, java.util.Map.of("angle", "gone")))).hasMessage("这个选项已经下架，请刷新后重选");
         assertThatThrownBy(() -> catalog.compose(new StudioSceneCatalog.ComposeRequest("image", "white-background", "", null, List.of(0), null, null, null, null, null, null,
@@ -251,40 +252,58 @@ class StudioSceneCatalogTest {
         assertThatThrownBy(() -> StudioSceneCatalog.validate(badDefault)).hasMessageContaining("默认选项不在选项里");
     }
 
-    @Test
-    void extraPhotosOfThePersonAreNamedByTheirRealPositionAndTheOtherWordsStayPut() {
-        String base = catalog.image("face-turnaround").orElseThrow().prompt();
-        assertThat(catalog.compose(image("face-turnaround", "", null, 0)).text()).isEqualTo(base);
-        // 三张都放：图2、图3 是图1 这个人。
-        assertThat(catalog.compose(image("face-turnaround", "自然微笑", null, 0, 1, 2)).text())
-                .startsWith(base + "\n图2、图3和图1是同一个人的其他照片").endsWith("\n补充要求：自然微笑");
-        // 空着第二格：实际交给模型的第二张是第三格那张，它就是图2。
-        assertThat(catalog.compose(image("face-turnaround", "", null, 0, 2)).text()).startsWith(base + "\n图2和图1是同一个人");
-        // 模特换脸：图1 是模特，多放的是图2 这张新面孔的人，不能说成模特。
-        assertThat(catalog.compose(image("face-swap", "", null, 0, 1, 3)).text()).contains("图3和图2是同一个人");
-        assertThat(catalog.compose(image("face-swap", "", null, 0, 1)).text()).doesNotContain("同一个人的其他照片");
+    private static StudioSceneCatalog.ComposeRequest counted(String id, Integer... counts) {
+        return new StudioSceneCatalog.ComposeRequest("image", id, "", null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, List.of(counts));
     }
 
     @Test
-    void theSixPersonScenesTakeUpToThreePhotosAndOnlyThose() {
-        var withExtras = catalog.catalog().image().stream().filter(s -> s.refs().stream().anyMatch(r -> r.sameAs() != null)).toList();
-        assertThat(withExtras).extracting(StudioSceneCatalog.ImageScene::id)
-                .containsExactlyInAnyOrder("ip-sheet", "ip-portrait", "ip-expression", "face-turnaround", "fullbody-sheet", "face-swap");
-        for (var s : withExtras) assertThat(s.refs().stream().filter(r -> r.sameAs() != null)).hasSize(2);
+    void picturesAreNumberedByWhatIsActuallySentAndTheDescriptionUsesNames() {
+        String base = catalog.image("outfit-on-model").orElseThrow().prompt();
+        assertThat(catalog.compose(counted("outfit-on-model", 1, 2, 1)).text()).isEqualTo(
+                "图1是要穿衣服的模特。\n图2、图3是要穿上的上身或全身服装，可能是同一件的不同角度，也可能是要一起穿的几件。\n图4是要穿上的下装。\n" + base);
+        // 上装空着：下装就是图2。
+        assertThat(catalog.compose(counted("outfit-on-model", 1, 0, 1)).text()).startsWith("图1是要穿衣服的模特。\n图2是要穿上的下装。\n" + base);
+        // 模特换脸：放了三张的是图2 到图4 这个人，图1 还是模特。
+        assertThat(catalog.compose(counted("face-swap", 1, 3)).text()).startsWith("图1是要换脸的模特图。\n图2、图3、图4是同一个人的不同照片");
     }
 
     @Test
-    void extraPhotosThatWouldShiftTheNumbersInTheDescriptionAreRejected() {
+    void theSceneSaysHowManyPicturesEachSlotTakes() {
+        assertThatThrownBy(() -> catalog.compose(counted("outfit-on-model", 1, 0, 0))).hasMessageContaining("先放上身/全身装或下装");
+        assertThatThrownBy(() -> catalog.compose(counted("outfit-on-model", 1, 0, 2))).hasMessageContaining("下装最多放 1 张");
+        assertThatThrownBy(() -> catalog.compose(counted("outfit-on-model", 0, 1, 0))).hasMessageContaining("先放模特");
+        assertThatThrownBy(() -> catalog.compose(counted("face-turnaround", 4))).hasMessageContaining("人脸最多放 3 张");
+        // 还没发版的旧页面只带 filled：每个位算一张。
+        assertThat(catalog.compose(image("face-swap", "", null, 0, 1)).text()).startsWith("图1是要换脸的模特图。\n图2是要换上的人脸。\n");
+    }
+
+    @Test
+    void theSlotsFollowTheReferenceSkillsOneByOne() {
+        var expected = java.util.Map.ofEntries(
+                java.util.Map.entry("free", "图片:9"), java.util.Map.entry("ip-sheet", "人物照片*:3"), java.util.Map.entry("ip-portrait", "人物照片*:3"), java.util.Map.entry("ip-expression", "人物照片*:3"),
+                java.util.Map.entry("face-turnaround", "人脸*:3"), java.util.Map.entry("fullbody-sheet", "模特*:5"), java.util.Map.entry("face-swap", "模特*:1 人脸*:3"), java.util.Map.entry("face-fusion", "人脸1*:1 人脸2*:1"),
+                java.util.Map.entry("outfit-on-model", "模特*:1 上身/全身装:3 下装:1"), java.util.Map.entry("product-in-use", "商品*:5 模特*:1"), java.util.Map.entry("white-background", "商品*:9"),
+                java.util.Map.entry("selling-point", "商品*:5 版式参考:1"), java.util.Map.entry("outfit-restyle", "服装*:1 面料:1 印花:1"), java.util.Map.entry("scene-swap", "模特*:1 背景*:1"),
+                java.util.Map.entry("product-scene", "商品*:5 场景:1"), java.util.Map.entry("realism", "人物图*:1 本人照片:3"), java.util.Map.entry("retouch", "原图*:1"));
+        var actual = new java.util.HashMap<String, String>();
+        for (var s : catalog.catalog().image()) actual.put(s.id(), String.join(" ", s.refs().stream().map(r -> r.label() + (r.required() ? "*" : "") + ":" + r.limit()).toList()));
+        assertThat(actual).isEqualTo(expected);
+    }
+
+    @Test
+    void theShippedDescriptionsNameTheMaterialsInsteadOfNumberingThem() {
+        for (var s : catalog.catalog().image()) assertThat(s.prompt()).as(s.id()).doesNotContainPattern("图\\d");
         var c = catalog.catalog();
-        var ok = new StudioSceneCatalog.SceneRef("人物照片", true, null);
-        var extra = new StudioSceneCatalog.SceneRef("人物照片 2", false, null, 0);
-        java.util.function.Function<List<StudioSceneCatalog.SceneRef>, StudioSceneCatalog.Catalog> with = refs ->
-                new StudioSceneCatalog.Catalog(1, c.imageGroups(), c.videoGroups(), List.of(new StudioSceneCatalog.ImageScene("x", c.image().get(1).group(), "x", "x", refs, "以图1为准", "x", "1:1")), List.of());
-        StudioSceneCatalog.validate(with.apply(List.of(ok, extra)));
-        assertThatThrownBy(() -> StudioSceneCatalog.validate(with.apply(List.of(ok, extra, new StudioSceneCatalog.SceneRef("场景图", true, null))))).hasMessageContaining("排在最后");
-        assertThatThrownBy(() -> StudioSceneCatalog.validate(with.apply(List.of(ok, new StudioSceneCatalog.SceneRef("场景图", false, null), extra)))).hasMessageContaining("都要必填");
-        assertThatThrownBy(() -> StudioSceneCatalog.validate(with.apply(List.of(ok, new StudioSceneCatalog.SceneRef("x", true, null, 0))))).hasMessageContaining("只能选填");
-        assertThatThrownBy(() -> StudioSceneCatalog.validate(with.apply(List.of(ok, new StudioSceneCatalog.SceneRef("x", false, null, 5))))).hasMessageContaining("指向前面");
+        java.util.function.Function<StudioSceneCatalog.ImageScene, StudioSceneCatalog.Catalog> with = s ->
+                new StudioSceneCatalog.Catalog(1, c.imageGroups(), c.videoGroups(), List.of(s), List.of());
+        var person = new StudioSceneCatalog.SceneRef("模特", true, null);
+        assertThatThrownBy(() -> StudioSceneCatalog.validate(with.apply(new StudioSceneCatalog.ImageScene("x", c.image().get(1).group(), "x", "x", List.of(person), "以图1为准", "x", "1:1"))))
+                .hasMessageContaining("不要写图1");
+        assertThatThrownBy(() -> StudioSceneCatalog.validate(with.apply(new StudioSceneCatalog.ImageScene("x", c.image().get(1).group(), "x", "x",
+                List.of(new StudioSceneCatalog.SceneRef("模特", true, null, 10, null, null)), "以模特为准", "x", "1:1")))).hasMessageContaining("1 到 9 张");
+        assertThatThrownBy(() -> StudioSceneCatalog.validate(with.apply(new StudioSceneCatalog.ImageScene("x", c.image().get(1).group(), "x", "x", List.of(person), "以模特为准", "x", "1:1",
+                null, null, null, null, null, null, List.of(0))))).hasMessageContaining("选填素材位");
     }
 
     @Test

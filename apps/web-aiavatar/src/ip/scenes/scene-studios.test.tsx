@@ -57,11 +57,11 @@ test("图片：没放必填参考图时按钮直接写缺什么；放好后先�
   window.history.replaceState(null, "", "/image?scene=white-background");
   await act(async () => { render(<SceneImageStudio/>); });
   const go = () => screen.getByRole("button", { name: "生成图片" }) as HTMLButtonElement;
-  await waitFor(() => expect(screen.getByText("先放商品图")).toBeTruthy());
+  await waitFor(() => expect(screen.getByText("先放商品")).toBeTruthy());
   expect(go().disabled).toBe(true);
   // 一大段场景描述不摆出来：只有场景标签和补充要求输入框。
   expect(screen.queryByRole("textbox", { name: "完整描述" })).toBeNull();
-  fireEvent.change(screen.getByRole("textbox", { name: "补充要求" }), { target: { value: "45 度角" } });
+  fillField(screen.getByRole("textbox", { name: "补充要求" }), "45 度角");
   // 选项组照参考站：点选，不用写字；默认是「正面」。
   const angle = within(optionGroup("拍摄角度"));
   expect(angle.getByRole("button", { name: "正面" }).getAttribute("aria-pressed")).toBe("true");
@@ -72,7 +72,7 @@ test("图片：没放必填参考图时按钮直接写缺什么；放好后先�
   await waitFor(() => expect(go().textContent).toContain("8 积分"));
   await act(async () => { fireEvent.click(go()); });
   // 描述由服务端按场景拼：只交场景编号、补充要求和放了图的位置。
-  expect(api.composeScene).toHaveBeenCalledWith({ kind: "image", sceneId: "white-background", text: "45 度角", filled: [0], options: { angle: "top" } });
+  expect(api.composeScene).toHaveBeenCalledWith({ kind: "image", sceneId: "white-background", text: "45 度角", refCounts: [1], options: { angle: "top" } });
   expect(api.createProject).toHaveBeenCalledWith({ name: "商品白底图", sceneId: "white-background" });
   const request = api.submit.mock.calls[0][1];
   expect(request).toMatchObject({ operation: "image", aspectRatio: "1:1", count: 1, model: "ep-img", maxCost: 8,

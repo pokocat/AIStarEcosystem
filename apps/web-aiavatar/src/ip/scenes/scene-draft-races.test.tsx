@@ -33,7 +33,7 @@ vi.mock("../studio-select", () => ({ StudioSelect: ({ label, value, onChange, op
 import { SceneImageStudio } from "./scene-image-studio";
 import { SceneVideoStudio } from "./scene-video-studio";
 import { addVideoRow } from "./scene-drafts";
-import { confirmLibrary, openLibrary, openRecent, openSpec, optionGroup, pickFromLibrary, pickScene, setDuration, fillField } from "./scene-test-helpers";
+import { confirmLibrary, openLibrary, openRecent, openSpec, optionGroup, pickFromLibrary, pickScene, setDuration, fillField, fieldText } from "./scene-test-helpers";
 import { setLibrarySource } from "./scene-test-picker";
 // 素材从资产库选：选中的那份按各测试原来设定的上传结果来（视频页设了 importMedia 就用它，否则用 uploadImage）。
 beforeEach(() => { setLibrarySource(async () => (await api.importMedia()) ?? (await api.uploadImage())); });
@@ -75,7 +75,7 @@ async function startImageInA() {
   put({ id: "IPP-B", name: "draft B", sceneId: "free" });
   window.history.replaceState(null, "", "/image?scene=free");
   await act(async () => { render(<SceneImageStudio/>); });
-  fireEvent.change(screen.getByRole("textbox", { name: "想要的画面" }), { target: { value: "test image" } });
+  fillField(screen.getByRole("textbox", { name: "想要的画面" }), "test image");
 }
 const openB = async () => { const recent = await openRecent(); await act(async () => { fireEvent.click(recent.getByRole("button", { name: /draft B/ })); }); };
 const continueLink = () => screen.getByRole("link", { name: "在画布中继续" }).getAttribute("href");
@@ -280,11 +280,11 @@ test("image: a scene in the address that arrives after mounting is followed; lea
 test("image: unsent inputs come back when returning to a scene; a scene never filled starts empty", async () => {
   window.history.replaceState(null, "", "/image?scene=free");
   await act(async () => { render(<SceneImageStudio/>); });
-  fireEvent.change(await screen.findByRole("textbox", { name: "想要的画面" }), { target: { value: "一只橘猫坐在窗台上看雨" } });
+  fillField(await screen.findByRole("textbox", { name: "想要的画面" }), "一只橘猫坐在窗台上看雨");
   pickScene("商品白底图");
   await waitFor(() => expect(document.querySelector(".scene-composer-head strong")?.textContent).toBe("商品白底图"));
-  expect((screen.getByRole("textbox", { name: "补充要求" }) as HTMLTextAreaElement).value).toBe("");
+  expect(fieldText("补充要求")).toBe("");
   pickScene("自由出图");
   await waitFor(() => expect(document.querySelector(".scene-composer-head strong")?.textContent).toBe("自由出图"));
-  expect((screen.getByRole("textbox", { name: "想要的画面" }) as HTMLTextAreaElement).value).toBe("一只橘猫坐在窗台上看雨");
+  expect(fieldText("想要的画面")).toBe("一只橘猫坐在窗台上看雨");
 });

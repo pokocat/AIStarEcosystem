@@ -85,7 +85,7 @@ async function generateWhiteBackground() {
   await open(SceneImageStudio, "/image?scene=white-background");
   await pickFromLibrary();
   fireEvent.click(within(optionGroup("拍摄角度")).getByRole("button", { name: "俯拍" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "补充要求" }), { target: { value: "平放" } });
+  fillField(screen.getByRole("textbox", { name: "补充要求" }), "平放");
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "生成图片" })); });
   await waitFor(() => expect(api.submit).toHaveBeenCalled());
 }
@@ -93,38 +93,38 @@ async function generateWhiteBackground() {
 test("image: what is on the page is kept in the draft; reopening it brings back the supplement, the option, the count and the photo", async () => {
   await generateWhiteBackground();
   // 生成之后接着改、还没再生成的，也记进草稿。
-  fireEvent.change(screen.getByRole("textbox", { name: "补充要求" }), { target: { value: "平放，阴影淡一点" } });
+  fillField(screen.getByRole("textbox", { name: "补充要求" }), "平放，阴影淡一点");
   openSpec();
   fireEvent.click(within(screen.getByRole("group", { name: "图片设置" })).getByRole("button", { name: "2 张" }));
   await waitFor(() => expect(store.get("IPP-A")!.doc.sceneImageState?.supplement).toBe("平放，阴影淡一点"), { timeout: 3000 });
   expect(store.get("IPP-A")!.doc.sceneImageState).toMatchObject({ sceneId: "white-background", options: { angle: "top" }, count: 2,
-    slots: [{ key: "ipstudio/source/u/p.jpg" }] });
+    slots: [[{ key: "ipstudio/source/u/p.jpg" }]] });
 
   cleanup();
   await open(SceneImageStudio, "/image?scene=white-background&draft=IPP-A");
   await waitFor(() => expect(text("补充要求")).toBe("平放，阴影淡一点"));
   expect(pressed("拍摄角度", "俯拍")).toBe("true");
   expect(screen.getByRole("button", { name: /图片设置/ }).textContent).toContain("2 张");
-  expect(screen.getByRole("img", { name: "商品图" })).toBeTruthy();
+  expect(screen.getByRole("img", { name: "商品" })).toBeTruthy();
 });
 
 test("image: 「重新编辑」 puts back that time's conditions, and the description is assembled once, not with the options twice", async () => {
   await generateWhiteBackground();
   fireEvent.click(within(optionGroup("拍摄角度")).getByRole("button", { name: "正面" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "补充要求" }), { target: { value: "换个说法" } });
+  fillField(screen.getByRole("textbox", { name: "补充要求" }), "换个说法");
   fireEvent.click(await screen.findByRole("button", { name: "重新编辑" }));
   expect(text("补充要求")).toBe("平放");
   expect(pressed("拍摄角度", "俯拍")).toBe("true");
   // 以前把拼好的整段话塞进「完整描述」，再生成时选项和补充要求又拼一遍。
   expect(screen.queryByRole("textbox", { name: "完整描述" })).toBeNull();
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "生成图片" })); });
-  expect(api.composeScene).toHaveBeenLastCalledWith({ kind: "image", sceneId: "white-background", text: "平放", filled: [0], options: { angle: "top" } });
+  expect(api.composeScene).toHaveBeenLastCalledWith({ kind: "image", sceneId: "white-background", text: "平放", refCounts: [1], options: { angle: "top" } });
 });
 
 test("image: 「重新编辑」 says what it put back, moves the cursor to the input, and 撤销 brings back what was being edited", async () => {
   await generateWhiteBackground();
   fireEvent.click(within(optionGroup("拍摄角度")).getByRole("button", { name: "正面" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "补充要求" }), { target: { value: "换个说法" } });
+  fillField(screen.getByRole("textbox", { name: "补充要求" }), "换个说法");
   fireEvent.click(await screen.findByRole("button", { name: "重新编辑" }));
   expect(screen.getByText(/这次的设置放回来了，改好再生成/)).toBeTruthy();
   await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "补充要求" })));
@@ -139,9 +139,9 @@ test("image: switching scenes from the list leaves the open draft, and coming ba
   await waitFor(() => expect(continueLink()).toBe("/projects/IPP-A"));
   pickScene("商品使用");
   await waitFor(() => expect(heading()).toBe("商品使用"));
-  // 草稿属于白底图：离开它，新场景的条件不会写进它。商品图同名，跟着走。
+  // 草稿属于白底图：离开它，新场景的条件不会写进它。商品同名，跟着走。
   expect(continueLink()).toBeUndefined();
-  expect(screen.getByRole("img", { name: "商品图" })).toBeTruthy();
+  expect(screen.getByRole("img", { name: "商品" })).toBeTruthy();
   pickScene("商品白底图");
   await waitFor(() => expect(continueLink()).toBe("/projects/IPP-A"));
   expect(store.get("IPP-A")!.doc.sceneImageState?.sceneId).toBe("white-background");
@@ -151,14 +151,14 @@ test("image: switching scenes carries a photo only into a slot with the same nam
   api.uploadImage.mockResolvedValueOnce({ key: "model.jpg", url: "blob:model", fileName: "model.jpg" })
     .mockResolvedValueOnce({ key: "face.jpg", url: "blob:face", fileName: "face.jpg" });
   await open(SceneImageStudio, "/image?scene=face-swap");
-  await pickFromLibrary("模特图");
-  await pickFromLibrary("新面孔");
-  expect(screen.getByRole("img", { name: "新面孔" })).toBeTruthy();
+  await pickFromLibrary("模特");
+  await pickFromLibrary("人脸");
+  expect(screen.getByRole("img", { name: "人脸" })).toBeTruthy();
   pickScene("服装上身");
   await waitFor(() => expect(heading()).toBe("服装上身"));
-  // 模特图还是模特图；新面孔不会被当成服装图（以前按位置带）。
-  expect((screen.getByRole("img", { name: "模特图" }) as HTMLImageElement).src).toContain("blob:model");
-  expect(screen.getByRole("button", { name: "从资产库选服装图" })).toBeTruthy();
+  // 模特还是模特；人脸不会被当成服装（以前按位置带）。
+  expect((screen.getByRole("img", { name: "模特" }) as HTMLImageElement).src).toContain("blob:model");
+  expect(screen.getByRole("button", { name: "从资产库选上身/全身装" })).toBeTruthy();
 });
 
 test("image: just opening an old draft saves nothing, so it does not jump to the top of 最近", async () => {
@@ -170,7 +170,7 @@ test("image: just opening an old draft saves nothing, so it does not jump to the
         references: [{ storageKey: "ref.jpg", role: "character" }] } } } };
   put({ id: "IPP-L", name: "old", sceneId: "face-turnaround", doc: { ...EMPTY, nodes: [row, ref] as never } });
   await open(SceneImageStudio, "/image?scene=face-turnaround&draft=IPP-L");
-  expect(await screen.findByRole("img", { name: "人物照片" })).toBeTruthy();
+  expect(await screen.findByRole("img", { name: "人脸" })).toBeTruthy();
   await act(async () => { await wait(900); });
   expect(saves("IPP-L")).toBe(0);
   expect(api.signKeys).not.toHaveBeenCalled();
@@ -181,7 +181,7 @@ test("image: a photo kept in the draft but not on the canvas gets a fresh addres
   put({ id: "IPP-S", name: "s", sceneId: "white-background", doc: { ...EMPTY,
     sceneImageState: { sceneId: "white-background", supplement: "", options: {}, slots: [{ key: "lib.jpg", name: "资产库的图" }], count: 1 } } });
   await open(SceneImageStudio, "/image?scene=white-background&draft=IPP-S");
-  expect(((await screen.findByRole("img", { name: "商品图" })) as HTMLImageElement).src).toBe("https://cdn/lib-fresh.jpg");
+  expect(((await screen.findByRole("img", { name: "商品" })) as HTMLImageElement).src).toBe("https://cdn/lib-fresh.jpg");
   expect(api.signKeys).toHaveBeenCalledWith(["lib.jpg"]);
 });
 
@@ -192,18 +192,42 @@ test("image: when the model cannot make the scene's ratio the page says what it 
   expect(await screen.findByText("这个模型出不了 16:9，会按 1:1 出")).toBeTruthy();
 });
 
-test("image: a person scene takes three photos, numbers them as the model sees them, and sends them all", async () => {
+test("image: an old draft's three one-photo slots open as one slot of two photos, numbered as the model sees them", async () => {
   api.signKeys.mockResolvedValue({ "a.jpg": "https://cdn/a.jpg", "c.jpg": "https://cdn/c.jpg" });
   put({ id: "IPP-3", name: "s", sceneId: "face-turnaround", doc: { ...EMPTY,
     sceneImageState: { sceneId: "face-turnaround", supplement: "", options: {}, slots: [{ key: "a.jpg", name: "正脸" }, null, { key: "c.jpg", name: "侧脸" }], count: 1 } } });
   await open(SceneImageStudio, "/image?scene=face-turnaround&draft=IPP-3");
-  await screen.findByRole("img", { name: "人物照片 3" });
-  expect(screen.getByText("「人物照片」最多可放 3 张，都放同一个人的不同角度或表情，结果更接近本人。")).toBeTruthy();
-  // 第二格空着：第三格那张实际是交给模型的第二张，所以标图2，不标图3。
+  await screen.findAllByRole("img", { name: "人脸" });
+  expect(screen.getByText("「人脸」最多可放 3 张，放同一个人的不同角度或表情，结果更接近本人。")).toBeTruthy();
   expect([...document.querySelectorAll(".scene-ref-index")].map(n => n.textContent)).toEqual(["图1", "图2"]);
   api.composeScene.mockResolvedValue({ text: "描述", skill: null });
   fireEvent.click(screen.getByRole("button", { name: "生成图片" }));
-  await waitFor(() => expect(api.composeScene).toHaveBeenCalledWith(expect.objectContaining({ sceneId: "face-turnaround", filled: [0, 2] })));
+  await waitFor(() => expect(api.composeScene).toHaveBeenCalledWith(expect.objectContaining({ sceneId: "face-turnaround", refCounts: [2] })));
+});
+
+test("image: outfit takes a model plus tops or a bottom, needs one of them, and sends them in slot order", async () => {
+  api.uploadImage.mockResolvedValueOnce({ key: "model.jpg", url: "blob:model", fileName: "model.jpg" })
+    .mockResolvedValueOnce({ key: "pants.jpg", url: "blob:pants", fileName: "pants.jpg" });
+  await open(SceneImageStudio, "/image?scene=outfit-on-model");
+  await pickFromLibrary("模特");
+  expect(await screen.findByText("先放上身/全身装或下装")).toBeTruthy();
+  await pickFromLibrary("下装");
+  expect(screen.queryByText("先放上身/全身装或下装")).toBeNull();
+  // 上装空着不占号：下装是图2。
+  expect([...document.querySelectorAll(".scene-ref-index")].map(n => n.textContent)).toEqual(["图1", "图2"]);
+  api.composeScene.mockResolvedValue({ text: "描述", skill: null });
+  fireEvent.click(screen.getByRole("button", { name: "生成图片" }));
+  await waitFor(() => expect(api.composeScene).toHaveBeenCalledWith(expect.objectContaining({ sceneId: "outfit-on-model", refCounts: [1, 0, 1] })));
+});
+
+test("image: removing a picture renumbers the 图N written in the box and drops the removed one", async () => {
+  api.signKeys.mockResolvedValue({ "a.jpg": "https://cdn/a.jpg", "b.jpg": "https://cdn/b.jpg" });
+  put({ id: "IPP-5", name: "s", sceneId: "face-turnaround", doc: { ...EMPTY,
+    sceneImageState: { sceneId: "face-turnaround", supplement: "看图1，再看图2", options: {}, slots: [[{ key: "a.jpg", name: "正脸" }, { key: "b.jpg", name: "侧脸" }]], count: 1 } } });
+  await open(SceneImageStudio, "/image?scene=face-turnaround&draft=IPP-5");
+  await screen.findAllByRole("img", { name: "人脸" });
+  fireEvent.click(screen.getByRole("button", { name: "移除人脸 第 1 张" }));
+  await waitFor(() => expect(fieldText("补充要求")).toBe("看，再看图1"));
 });
 
 test("image: a model that can't take that many photos says so before anything is sent", async () => {
@@ -212,7 +236,7 @@ test("image: a model that can't take that many photos says so before anything is
   put({ id: "IPP-4", name: "s", sceneId: "face-turnaround", doc: { ...EMPTY,
     sceneImageState: { sceneId: "face-turnaround", supplement: "", options: {}, slots: [{ key: "a.jpg", name: "正脸" }, { key: "b.jpg", name: "侧脸" }, null], count: 1 } } });
   await open(SceneImageStudio, "/image?scene=face-turnaround&draft=IPP-4");
-  await screen.findByRole("img", { name: "人物照片 2" });
+  await screen.findAllByRole("img", { name: "人脸" });
   expect(((await screen.findByRole("button", { name: "生成图片" })) as HTMLButtonElement).title).toBe("当前模型最多用 1 张参考图，已放 2 张");
   expect(api.composeScene).not.toHaveBeenCalled();
 });

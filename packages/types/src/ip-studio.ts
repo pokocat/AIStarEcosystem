@@ -88,7 +88,8 @@ export interface StudioSceneImageState {
   /** 改过的完整描述；没改为空。不含选项和补充要求，那两样每次由服务端拼。 */
   custom?: string;
   options: Record<string, string>;
-  slots: (StudioSceneUpload | null)[];
+  /** 每个素材位放的图（新写的都是数组）。2026-11-05 之前的草稿每个位一张，元素是单个文件或 null。 */
+  slots: (StudioSceneUpload | StudioSceneUpload[] | null)[];
   model?: string;
   ratio?: string;
   size?: string;

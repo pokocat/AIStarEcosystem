@@ -278,7 +278,7 @@ export interface StudioNodeMetadata {
     /** 写这一版时按哪个视频模型、交给它哪几张图（文件 key，按图1、图2 的顺序）写的：出片时换了就提示让编导按新的改一版。 */
     videoModel?: string; refs?: string[] };
   /** AI 图片页这一次出图用的条件（场景、补充要求、改过的描述、选项、模型和规格；参考图看请求里的 references）。「用这次的设置再做」按它放回，不把拼好的整段话当描述。 */
-  sceneImage?: { sceneId: string; supplement: string; custom?: string; options: Record<string, string>; model?: string; ratio: string; size?: string; count: number };
+  sceneImage?: { sceneId: string; supplement: string; custom?: string; options: Record<string, string>; model?: string; ratio: string; size?: string; count: number; refCounts?: number[] };
   recreation?: { mode?:"segments"; document?:boolean; materializedSegmentNos?:number[]; materializedAudioSourceKey?:string; resumeRunId?:string; study?:StudioFilmStudy; materializedRunId?:string; sourceNodeId: string; sourceStorageKey: string; sourceTitle: string; report?: StudioRecreationReport };
   kind: "recreation" | "text" | "script" | "shot" | "ip" | "work" | "assistant" | "batch" | "audio" | "check";
   /** Stable binding to a plan execution step; status and cost always come from IpRun / ip_plan_execution. */

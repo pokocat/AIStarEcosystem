@@ -4,13 +4,21 @@
  * 出图描述、编导写脚本的要求和交给助手的话由 `POST /v1/ip-studio/scenes/compose` 在服务端拼。字段名与 Java `StudioSceneCatalog` 一一对应。
  */
 export interface StudioSceneGroup { id: string; title: string }
-/** 参考图位：按顺序是图1、图2…；描述里的「图N」对应这里。 */
+/**
+ * 素材位（照参考站的 skill 配置）：一个位可以放好几张。交给模型时按素材位的顺序排，空着的位不占号，
+ * 「图N」是实际交给模型的第几张，所以放了几张、哪个选填位空着，编号都对得上。
+ */
 export interface StudioSceneRef {
   label: string;
   required: boolean;
+  /** 这个位能放多张时给用户的一句话：放什么、有什么用。 */
   hint?: string | null;
-  /** 这个位放的是第几个位（从 0 起）那个人的其他照片：选填，排在最后，多给几张结果更接近本人。 */
-  sameAs?: number | null;
+  /** 最多放几张，没有就是 1。 */
+  max?: number | null;
+  /** 告诉模型这几张是做什么的（服务端拼话用）。 */
+  role?: string | null;
+  /** 放了不止一张时换成这句。 */
+  many?: string | null;
 }
 /** 选项组里的一项：value 给接口用，label 给用户看，prompt 是选中后服务端拼进描述 / 要求里的那句话。 */
 export interface StudioSceneOptionChoice { value: string; label: string; prompt: string }
@@ -47,6 +55,8 @@ export interface StudioImageScene extends StudioSceneMediaFields {
   /** 补充要求输入框的提示。 */
   hint: string;
   ratio: string;
+  /** 这几个选填的素材位（从 0 起）至少放一个，比如服装上身的上装和下装。 */
+  anyOf?: number[] | null;
 }
 export interface StudioSceneSlot { label: string; required: boolean; max?: number | null }
 /** 这类视频要做到什么、要用户给哪些信息（服务端拼进编导和助手的要求；场景页把信息做成可点的小标签）。 */
@@ -92,8 +102,8 @@ export interface StudioSceneComposeRequest {
   text?: string;
   /** 图片：用户改过的完整描述。 */
   custom?: string;
-  /** 图片：放了图的参考图位（从 0 起）。 */
-  filled?: number[];
+  /** 图片：每个素材位放了几张。 */
+  refCounts?: number[];
   /** 视频：按交给模型的顺序（编导写脚本时就是图1、图2…）。 */
   imageTitles?: string[]; characterTitle?: string; voiceTitle?: string; videoTitle?: string;
   duration?: number; ratio?: string;

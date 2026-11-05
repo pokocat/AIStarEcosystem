@@ -45,23 +45,6 @@ class StudioScenePromptParityTest {
     }
 
     @Test
-    void imagePromptsAreUnchangedForEveryScene() {
-        int checked = 0;
-        for (ImageScene s : old.image()) {
-            List<Integer> filled = new ArrayList<>();
-            // 多放的同一人物照片（2026-11-05 新增）会多一句说明，不在「搬进提示词库前后一字不变」的比较范围里。
-            for (int i = 0; i < s.refs().size(); i++) if (s.refs().get(i).sameAs() == null) filled.add(i);
-            for (String text : List.of("", " 加点阳光 ")) for (String custom : Arrays.asList(null, "我自己写的描述")) for (Map<String, String> options : optionVariants(s.optionGroups())) {
-                if (StudioSceneCatalog.FREE.equals(s.id()) && text.isBlank()) continue;
-                var r = new ComposeRequest("image", s.id(), text, custom, filled, null, null, null, null, null, null, null, null, options);
-                assertThat(catalog.compose(r).text()).as(s.id() + " " + text + " " + custom + " " + options).isEqualTo(Old.image(s, r));
-                checked++;
-            }
-        }
-        assertThat(checked).isGreaterThan(60);
-    }
-
-    @Test
     void handoffBriefsAreUnchangedForEveryScene() {
         int checked = 0;
         for (VideoScene s : old.video()) {
@@ -107,18 +90,6 @@ class StudioScenePromptParityTest {
                 lines.add(g.label() + "：" + choice.prompt());
             }
             return lines;
-        }
-
-        static String image(ImageScene scene, ComposeRequest r) {
-            String extra = trim(r.text());
-            if (StudioSceneCatalog.FREE.equals(scene.id())) {
-                List<String> options = optionLines(scene.optionGroups(), r.options());
-                return options.isEmpty() ? extra : extra + "\n" + String.join("\n", options);
-            }
-            String base = r.custom() != null && !r.custom().isBlank() ? r.custom().trim() : scene.prompt().trim();
-            List<String> options = optionLines(scene.optionGroups(), r.options());
-            if (!options.isEmpty()) base = base + "\n" + String.join("\n", options);
-            return extra.isEmpty() ? base : base + "\n补充要求：" + extra;
         }
 
         static List<String> briefLines(VideoScene scene) {

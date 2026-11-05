@@ -7,9 +7,9 @@ export const MOCK_SCENES: StudioSceneCatalog = {
   imageGroups: [{ id: "ip", title: "IP 形象" }, { id: "person", title: "人物" }, { id: "product", title: "商品" }],
   videoGroups: [{ id: "commerce", title: "电商带货" }, { id: "ip", title: "IP 内容" }],
   image: [
-    { id: "free", group: "ip", title: "自由出图", description: "自己写描述，可以放几张参考图", refs: [1, 2, 3, 4].map(n => ({ label: `参考图 ${n}`, required: false })), prompt: "", hint: "说说想要什么画面", ratio: "3:4" },
-    { id: "face-turnaround", group: "person", title: "脸部三视图", description: "正脸、半侧脸、侧脸，做角色参考", refs: [{ label: "人物照片", required: true }, { label: "人物照片 2", required: false, sameAs: 0 }, { label: "人物照片 3", required: false, sameAs: 0 }], prompt: "以图1人物为准，生成纯白背景的头部三视图。", hint: "可以补充气质、表情或写实程度", ratio: "16:9" },
-    { id: "white-background", group: "product", title: "商品白底图", description: "干净的白底主图，平台上架直接用", refs: [{ label: "商品图", required: true }], prompt: "把图1中的商品单独放到纯白背景正中。", hint: "可以补充角度和摆放", ratio: "1:1",
+    { id: "free", group: "ip", title: "自由出图", description: "自己写描述，可以放几张参考图", refs: [{ label: "图片", required: false, max: 9 }], prompt: "", hint: "说说想要什么画面", ratio: "3:4" },
+    { id: "face-turnaround", group: "person", title: "脸部三视图", description: "正脸、半侧脸、侧脸，做角色参考", refs: [{ label: "人脸", required: true, max: 3, role: "要参照的人脸", hint: "放同一个人的不同角度或表情，结果更接近本人" }], prompt: "以参考人脸为准，生成纯白背景的头部三视图。", hint: "可以补充气质、表情或写实程度", ratio: "16:9" },
+    { id: "white-background", group: "product", title: "商品白底图", description: "干净的白底主图，平台上架直接用", refs: [{ label: "商品", required: true, max: 9, role: "要做白底图的商品" }], prompt: "把商品单独放到纯白背景正中。", hint: "可以补充角度和摆放", ratio: "1:1",
       options: [{ key: "angle", label: "拍摄角度", defaultValue: "front", choices: [{ value: "front", label: "正面", prompt: "商品正面朝向镜头" }, { value: "top", label: "俯拍", prompt: "从正上方俯拍商品" }] }] },
   ],
   video: [
@@ -42,7 +42,13 @@ export function mockCompose(r: StudioSceneComposeRequest): StudioSceneComposed {
     const extra = r.text?.trim() || "";
     if (r.sceneId === "free") return { text: extra };
     const picked = (scene?.options ?? []).map(g => `\n${g.label}：${g.choices.find(c => c.value === (r.options?.[g.key] ?? g.defaultValue))?.prompt ?? ""}`).join("");
-    return { text: (r.custom?.trim() || scene?.prompt || "") + picked + (extra ? `\n补充要求：${extra}` : "") };
+    let n = 0;
+    const roles = (scene?.refs ?? []).flatMap((ref, i) => {
+      const count = r.refCounts?.[i] ?? 0;
+      if (!count) return [];
+      return [`${Array.from({ length: count }, () => `图${++n}`).join("、")}是${ref.role ?? ref.label}。\n`];
+    }).join("");
+    return { text: roles + (r.custom?.trim() || scene?.prompt || "") + picked + (extra ? `\n补充要求：${extra}` : "") };
   }
   const scene = MOCK_SCENES.video.find(s => s.id === r.sceneId);
   if (r.kind === "video-script") return { text: `（演示）写一条 ${r.duration ?? scene?.duration} 秒的「${scene?.title}」短视频脚本。${r.revision ? `\n修改意见：${r.revision}` : ""}${r.text ? `\n我的要求：${r.text}` : ""}` };

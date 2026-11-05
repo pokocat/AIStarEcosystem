@@ -220,7 +220,7 @@ public final class StudioPromptCallPoints {
         vars.put("extra", "用户写的补充要求");
         vars.put("custom", "用户改过的完整描述，没改为空");
         vars.put("options", "选中的选项：[{label, prompt}]");
-        vars.put("samePerson", "多放的同一人物照片：[{photos, target}]，比如 photos=图2、图3，target=图1；没放为空");
+        vars.put("materials", "每个放了图的素材位：[{photos, role}]，比如 photos=图2、图3，role=要穿上的上身或全身服装");
         Map<String, Object> sample = new LinkedHashMap<>();
         sample.put("free", false); sample.put("extra", "背景换成浅木色桌面");
         sample.put("options", List.of(Map.of("label", "风格", "prompt", "干净的棚拍质感")));

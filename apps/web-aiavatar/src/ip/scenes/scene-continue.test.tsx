@@ -33,7 +33,7 @@ vi.mock("../studio-select", () => ({ StudioSelect: ({ label, value, onChange, op
 import { SceneImageStudio } from "./scene-image-studio";
 import { SceneVideoStudio } from "./scene-video-studio";
 import { addScriptNode, addVideoRow, patchNode } from "./scene-drafts";
-import { confirmLibrary, openLibrary, openRecent, openSpec, optionGroup, pickFromLibrary, pickScene, setDuration, fieldText } from "./scene-test-helpers";
+import { confirmLibrary, openLibrary, openRecent, openSpec, optionGroup, pickFromLibrary, pickScene, setDuration, fieldText, fillField } from "./scene-test-helpers";
 import { setLibrarySource } from "./scene-test-picker";
 // 素材从资产库选：选中的那份按各测试原来设定的上传结果来（视频页设了 importMedia 就用它，否则用 uploadImage）。
 beforeEach(() => { setLibrarySource(async () => (await api.importMedia()) ?? (await api.uploadImage())); });
@@ -87,11 +87,11 @@ async function oneResult() {
   await screen.findByRole("img", { name: /商品白底图第 1 张/ }, { timeout: 4000 });
 }
 
-test("image: a single result can become the reference picture, replacing the first one when all slots are full", async () => {
+test("image: a result can become a reference picture, going into the first slot with room", async () => {
   await oneResult();
   fireEvent.click(screen.getByRole("button", { name: "当参考图" }));
-  expect((screen.getByRole("img", { name: "商品图" }) as HTMLImageElement).src).toBe("https://cdn/out.jpg");
-  expect(screen.getByText("放进「商品图」了，换掉了原来那张。")).toBeTruthy();
+  expect((screen.getAllByRole("img", { name: "商品" }).at(-1) as HTMLImageElement).src).toBe("https://cdn/out.jpg");
+  expect(screen.getByText("放进「商品」了。")).toBeTruthy();
 });
 
 test("image: 做成视频 takes the picture to the video page; the viewer offers the same for each picture", async () => {
@@ -152,7 +152,7 @@ test("image: edit-type scenes put the original in front of the result for compar
 
   cleanup();
   await open(SceneImageStudio, "/image?scene=free");
-  fireEvent.change(await screen.findByRole("textbox", { name: "想要的画面" }), { target: { value: "一只猫" } });
+  fillField(await screen.findByRole("textbox", { name: "想要的画面" }), "一只猫");
   await pickFromLibrary();
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "生成图片" })); });
   await screen.findByRole("img", { name: /自由出图第 1 张/ }, { timeout: 4000 });
