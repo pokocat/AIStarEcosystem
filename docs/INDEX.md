@@ -255,6 +255,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 - [Studio 头像居中、浅灰底与轮播圆点优化](releases/studio-avatar-polish-release-20261031.md)：main `0921222f6`，仅 web-aiavatar；线上新旧桌面与手机头像偏差 0px、底色统一，圆点只过渡底色，制品与服务核对通过（last-reviewed 2026-10-31）。
 - [画布提示词超长提示发布](releases/prompt-limit-notice-release-20261105.md)：main `d9c50cc4c`，仅 web-aiavatar；写清超出字数并可换模型，5xx 为 0；线上未实际触发（last-reviewed 2026-11-05）。
+- [AI 编导点了先不开始发布](releases/writer-start-release-20261105.md)：main `3520a3c71`，仅 web-aiavatar；点「AI 编导」只换页，发送才开始写，规格面板不再被裁，5xx 为 0；线上未实际发送（last-reviewed 2026-11-05）。
 - [Seedance 提示词上限调到 5000 字](releases/seedance-prompt-limit-config-20261105.md)：仅生产配置，四条端点，无发版无重启；超过 2000 字尚未真调（last-reviewed 2026-11-05）。
 - [Seedance 视频提交故障修复](releases/seedance-video-submit-fix-20261031.md)：OneToken 2.0 / 2.5 移除不支持的末帧输出字段、真人参考图拒绝改为明确中文说明；4 笔冻结全退，两模型独立测试均已出片并通过下载、完整解码及抽帧核验，仅 server。同日另发现九图全能参考间歇 `upstream_rejected` / 提交超时，同输入两笔成功、五笔失败全退，具体拒绝原因及稳定性仍待解决（last-reviewed 2026-10-31）。
 - [Studio 10 月 30 日至 11 月 4 日更新图](releases/weekly/studio-update-20261030-1104.png)：对外更新素材；图中内容是否已上线、优惠期限和验收情况以发布记录为准（last-reviewed: 2026-11-04）。
