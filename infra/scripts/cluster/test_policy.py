@@ -10,6 +10,10 @@ class PolicyTests(unittest.TestCase):
  def test_wrong_resources_refused(self):
   for k,v in [('DB_URL',self.env['DB_URL'].replace('aistar_schema_rehearsal','aistar_prod')),('DB_URL',self.env['DB_URL'].replace('verify-full','require')),('DB_USERNAME','aistar_app'),('AEP_SMS_TAIR_URL',self.env['AEP_SMS_TAIR_URL'].replace('/14','/15')),('AEP_BACKGROUND_ENABLED','true'),('SERVER_ADDRESS','0.0.0.0'),('SERVER_PORT','8080'),('AEP_DEPLOYMENT_TOKEN','short')]:
    with self.subTest(k=k,v=v),self.assertRaises(Refused):environment_guard({**self.env,k:v},'stage',self.expected)
+ def test_crypto_contract_drift_refused(self):
+  c={'format':'aistar-runtime-contract-v1','environment_value_hashes':{k:hashlib.sha256(v.encode()).hexdigest() for k,v in self.env.items()}}
+  contract_guard(self.env,c)
+  with self.assertRaises(Refused):contract_guard({**self.env,'AEP_SECRET_KEY':'drift'},c)
  def test_unaccepted_artifact_refused(self):
   with self.assertRaises(Refused):artifact_guard({'format':'aistar-cluster-artifact-v1','sha':'a'*40,'jar_sha256':'a'*64,'tests_passed':False})
  def test_production_window_is_not_inferred(self):

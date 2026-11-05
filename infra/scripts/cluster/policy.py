@@ -61,3 +61,7 @@ def import_files_guard(plan,snapshot,temporal,migrations):
  for key,path in [('snapshot_sha256',snapshot),('temporal_plan_sha256',temporal)]:require(plan.get(key)==sha256(path),'计划与文件不一致：'+key)
  actual=[{'name':p.name,'sha256':sha256(p)} for p in sorted(pathlib.Path(migrations).glob('V*__*.sql'))]
  require(plan.get('migrations')==actual,'迁移集合或字节发生变化')
+
+def contract_guard(env,contract):
+ actual={k:hashlib.sha256(v.encode()).hexdigest() for k,v in env.items()}
+ require(contract.get('format')=='aistar-runtime-contract-v1' and contract.get('environment_value_hashes')==actual,'运行配置与已核对的加密/身份/支付/OSS配置契约不一致')

@@ -311,6 +311,7 @@ public class AistarSnapshotRestore {
                 receipt.put("database",db);
                 receipt.put("production",production);
                 receipt.put("mode",mode);
+                receipt.put("source_critical_environment_sha256",permit.path("source_critical_environment_sha256").asText());
                 receipt.put("financial_violation_counts",financial);
                 receipt.put("source_artifact_sha256",sourceMetadata.path("source_artifact_sha256").asText());
                 receipt.put("source_schema_sha256",sourceMetadata.path("source_schema_sha256").asText());

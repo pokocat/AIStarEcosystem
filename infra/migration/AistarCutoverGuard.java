@@ -24,7 +24,7 @@ public final class AistarCutoverGuard {
         require(p.path("database").asText().equals(production?"aistar_prod":"aistar_cutover_drill"),"Database scope mismatch");
         require(p.path("role").asText().equals(production?"aistar_migrator":"aistar_rehearsal"),"Import role mismatch");
         require(p.path("table_count").asInt()==192&&p.path("flyway_version").asText().equals("77"),"Unreviewed schema contract");
-        for(String field:List.of("snapshot_sha256","source_artifact_sha256","source_schema_sha256","temporal_plan_sha256"))require(p.path(field).asText().matches("[a-f0-9]{64}"),"Missing immutable identity: "+field);
+        for(String field:List.of("snapshot_sha256","source_artifact_sha256","source_schema_sha256","temporal_plan_sha256","source_critical_environment_sha256"))require(p.path(field).asText().matches("[a-f0-9]{64}"),"Missing immutable identity: "+field);
         if(production) {
             require(p.path("production_authorized").asBoolean(false),"No explicitly authorized production window");
             Instant start=Instant.parse(p.path("window_start_utc").asText()),end=Instant.parse(p.path("window_end_utc").asText());
@@ -61,7 +61,7 @@ public final class AistarCutoverGuard {
     }
     static ObjectNode permit() {
         ObjectNode p=JSON.createObjectNode();p.put("format","aistar-import-permit-v1");p.put("rds_host",HOST);p.put("database","aistar_prod");p.put("role","aistar_migrator");p.put("table_count",192);p.put("flyway_version","77");
-        for(String field:List.of("snapshot_sha256","source_artifact_sha256","source_schema_sha256","temporal_plan_sha256"))p.put(field,"a".repeat(64));
+        for(String field:List.of("snapshot_sha256","source_artifact_sha256","source_schema_sha256","temporal_plan_sha256","source_critical_environment_sha256"))p.put(field,"a".repeat(64));
         p.put("production_authorized",true);p.put("window_start_utc","2026-01-01T01:00:00Z");p.put("window_end_utc","2026-01-01T03:00:00Z");p.put("source_unit","aistareco-server");p.put("source_pid_after_freeze",0);p.put("write_gate_closed",true);p.put("source_background_stopped",true);p.put("sau_idle",true);p.put("sms_lock_quarantine_complete",true);p.putObject("pending_work").put("generation",0);p.put("source_freeze_utc","2026-01-01T01:05:00Z");return p;
     }
     public static void main(String[] args) {

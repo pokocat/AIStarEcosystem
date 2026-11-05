@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Root-only, fixed-node release operations. No legacy hosts or database import operations."""
 import argparse,hashlib,json,os,pathlib,re,subprocess,sys,time,urllib.request,zipfile,shutil,tarfile
-from policy import environment_guard,artifact_guard,require
+from policy import environment_guard,artifact_guard,contract_guard,require
 ROOT=pathlib.Path('/opt/aistar-cluster')
 PYTHON='/opt/aibuzz-id/runtime/python311/bin/python3'
 def run(args,**kw):
@@ -18,13 +18,14 @@ def configuration(mode):
   marker=ROOT/'production-activated.json';require(marker.is_file(),'AIStar生产尚未迁移；拒绝滚动或激活')
   active=json.loads(marker.read_text());require(re.fullmatch('[A-Za-z0-9_-]+[.]json',active.get('receipt','')) is not None,'正式凭证必须是受保护目录内的普通文件名');receipt=pathlib.Path('/opt/aistar-migration/preparation')/active['receipt']
   require(sha(receipt)==active['receipt_sha256'],'正式导入凭证变化')
-  proof=json.loads(receipt.read_text());require(proof.get('production') is True and proof.get('database')=='aistar_prod' and proof.get('source_frozen') is True and proof.get('verified_tables')==192 and all(x.get('matched') for x in proof['tables'].values()),'正式导入未完成')
+  proof=json.loads(receipt.read_text());contract=json.loads(pathlib.Path('/etc/aistar/deployment-contract.json').read_text());require(proof.get('source_artifact_sha256')==contract.get('source_artifact_sha256') and proof.get('source_critical_environment_sha256')==contract.get('source_critical_environment_sha256'),'源包或业务密钥配置已漂移，须重新准备');require(proof.get('production') is True and proof.get('database')=='aistar_prod' and proof.get('source_frozen') is True and proof.get('verified_tables')==192 and all(x.get('matched') for x in proof['tables'].values()),'正式导入未完成')
  return config,expected
 
 def environment(mode,expected):
  path=pathlib.Path(expected['environment']);require(path.stat().st_uid==0 and path.stat().st_mode&0o777==0o600,'环境必须root:600')
  env=json.loads(path.read_text());environment_guard(env,mode,expected)
  if mode=='production':
+  contract_path=pathlib.Path('/etc/aistar/deployment-contract.json');require(contract_path.stat().st_uid==0 and contract_path.stat().st_mode&0o777==0o600,'正式配置契约必须root:600');contract_guard(env,json.loads(contract_path.read_text()))
   require(env.get('AEP_CDN_DRIVER','oss')=='oss','双机持久文件必须使用OSS')
   require(env.get('AEP_CDN_SIGNED_URL_STRATEGY','oss')=='oss','必须启用OSS签名')
  return env
@@ -64,14 +65,14 @@ def prepare(config,expected,mode,release):
 def start(config,expected,mode,release):
  dest,manifest,env=prepare(config,expected,mode,release);unit=expected['unit']
  require(run(['systemctl','show',unit,'-p','MainPID','--value']).strip() in ('','0'),'替换前必须完成排空并停止')
- args=['/usr/bin/podman','run','--rm','--name',unit,'--label','aistar.release='+release,'--label','aistar.mode='+mode,'--network','host','--read-only','--tmpfs','/tmp:rw,size=128m','--memory','1600m','--cpus','1','--pids-limit','256','--user','10001:10001','--env-file',str(ROOT/'control'/('env-'+mode)),'--volume',str(ROOT/'state'/mode)+':/opt/aistar-migration/preparation:rw','--volume',str(dest)+':/app/release:ro']
+ args=['/usr/bin/podman','run','--rm','--name',unit,'--label','aistar.release='+release,'--label','aistar.mode='+mode,'--network','host','--read-only','--tmpfs','/tmp:rw,size=128m','--memory','1600m','--cpus','1','--pids-limit','256','--stop-timeout','240','--user','10001:10001','--env-file',str(ROOT/'control'/('env-'+mode)),'--volume',str(ROOT/'state'/mode)+':/opt/aistar-migration/preparation:rw','--volume',str(dest)+':/app/release:ro']
  if mode=='production':
   work=ROOT/'work';require(work.is_dir(),'缺少已核对持久目录');args+=['--volume',str(work)+':/app/work:rw']
  args+=['--entrypoint','java',manifest['image_configuration_id'],'-Duser.timezone=Asia/Shanghai','-Djavax.net.ssl.trustStore=/opt/aistar-migration/preparation/java-truststore','-Djavax.net.ssl.trustStorePassword=changeit','-Xms128m','-Xmx1024m']
  if mode=='stage':args+=['-Djava.security.manager=allow','--add-opens=java.base/java.lang=ALL-UNNAMED','-cp','/app/release/tools:/app/release/app/BOOT-INF/classes:/app/release/app/BOOT-INF/lib/*','IsolatedApiBootstrap']
  else:args+=['-jar','/app/release/app.jar']
  pathlib.Path('/var/log/aistar').mkdir(mode=0o755,exist_ok=True)
- unitfile='[Unit]\nDescription=AIStar '+mode+' immutable API\nAfter=network-online.target\n[Service]\nType=simple\nRestart=on-failure\nRestartSec=5\nTimeoutStopSec=240\nKillMode=control-group\nStandardOutput=append:/var/log/aistar/'+mode+'.log\nStandardError=inherit\nExecStart='+ ' '.join(args)+'\n[Install]\nWantedBy=multi-user.target\n'
+ unitfile='[Unit]\nDescription=AIStar '+mode+' immutable API\nAfter=network-online.target\n[Service]\nType=simple\nRestart=on-failure\nRestartSec=5\nTimeoutStopSec=300\nKillMode=mixed\nStandardOutput=append:/var/log/aistar/'+mode+'.log\nStandardError=inherit\nExecStart='+ ' '.join(args)+'\nExecStop=/usr/bin/podman stop --ignore --time 240 '+unit+'\n[Install]\nWantedBy=multi-user.target\n'
  require(all(' ' not in x and '\n' not in x for x in args),'systemd参数不能包含空白')
  path=pathlib.Path('/etc/systemd/system')/(unit+'.service');path.write_text(unitfile);run(['systemctl','daemon-reload']);run(['systemctl','start',unit])
  deadline=time.monotonic()+150
@@ -89,7 +90,7 @@ def inspect(expected,env):
  container=json.loads(run(['podman','inspect',unit]))[0]
  actual=dict(x.split('=',1) for x in container['Config']['Env'] if '=' in x)
  environment_guard(actual,'stage' if expected['database']=='aistar_schema_rehearsal' else 'production',expected)
- require(actual['AEP_DEPLOYMENT_TOKEN']==env['AEP_DEPLOYMENT_TOKEN'],'部署令牌漂移')
+ require(all(actual.get(k)==v for k,v in env.items()),'实际容器环境与受保护配置不一致')
  release=container['Config']['Labels']['aistar.release'];manifest=json.loads((ROOT/'releases'/release/'manifest.json').read_text())
  require(container['Image'].removeprefix('sha256:')==manifest['image_configuration_id'].removeprefix('sha256:'),'运行镜像与清单不符')
  return {'release':release,'sha':manifest['sha'],'image':manifest['image_configuration_id'],'pid':int(pid),**ops(expected,env)}

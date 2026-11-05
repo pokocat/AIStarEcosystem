@@ -31,7 +31,7 @@ def main():
  query="SELECT table_name,column_name,column_type,is_nullable,coalesce(column_default,'<NULL>'),extra FROM information_schema.columns WHERE table_schema=database() AND table_name<>'flyway_schema_history' ORDER BY table_name,ordinal_position"
  checked=subprocess.run(['mysql','--protocol=TCP','-h',url.hostname,'-P',str(url.port or 3306),'-u',env.get('DB_USERNAME',env.get('SPRING_DATASOURCE_USERNAME','')),'--batch','--raw','--skip-column-names','--default-character-set=utf8mb4','aistareco','-e',query],env=checkenv,stdout=subprocess.PIPE,stderr=subprocess.PIPE,universal_newlines=True)
  if checked.returncode or hashlib.sha256(checked.stdout.encode()).hexdigest()!=plan['source_schema_sha256']:raise RuntimeError('源结构变化，未停写')
- critical={k:v for k,v in env.items() if any(x in k for x in ['AES','JWT','ENCRYPT','AEP_ID_','WECHAT','PAYMENT'])}
+ critical={k:v for k,v in env.items() if any(x in k for x in ['AES','JWT','ENCRYPT','AEP_ID_','WECHAT','PAYMENT','AEP_SECRET_KEY','AEP_INTERNAL_SECRET','AEP_CDN_'])}
  if hashlib.sha256(json.dumps(critical,sort_keys=True,separators=(',',':')).encode()).hexdigest()!=plan.get('source_critical_environment_sha256'):raise RuntimeError('源加密/身份/支付配置变化，未停写')
  connection={k:v for k,v in env.items() if k in ['DB_URL','DB_USERNAME','DB_PASSWORD','SPRING_DATASOURCE_URL','SPRING_DATASOURCE_USERNAME','SPRING_DATASOURCE_PASSWORD','SPRING_PROFILES_ACTIVE','GIT_SHA','RELEASE_ID']}
  folder=ROOT/a.run;folder.mkdir(mode=0o700,parents=True,exist_ok=False);context={**plan,'source_unit':{'name':'aistareco-server','MainPID':'0'},'connection':connection,'source_argv':argv,'source_jvm_timezone':'Asia/Shanghai','source_frozen':False,'previous_pid':pid}
