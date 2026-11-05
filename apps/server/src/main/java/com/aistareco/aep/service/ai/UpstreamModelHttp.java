@@ -45,6 +45,7 @@ import java.util.function.BooleanSupplier;
 @Component
 public class UpstreamModelHttp {
     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AiGenerationQueueService queue;
+    @org.springframework.beans.factory.annotation.Autowired(required = false) private org.springframework.context.ApplicationEventPublisher events;
 
     private static final Logger log = LoggerFactory.getLogger(UpstreamModelHttp.class);
     /** 上游原始请求/响应全文流水（排查用）。独立 logger，默认 INFO，可单独降级 / 落单独文件。 */
@@ -56,6 +57,16 @@ public class UpstreamModelHttp {
 
     public UpstreamModelHttp(AiModelUsageService usage) {
         this.usage = usage;
+    }
+
+    /** Observers must never change the outcome of the model call. */
+    private void announceRejection(ModelCallCtx ctx, int status, String body) {
+        if (events == null) return;
+        try {
+            events.publishEvent(new ModelProviderRejected(ctx.endpointId(), ctx.endpointName(), ctx.model(), status, body));
+        } catch (RuntimeException e) {
+            log.warn("[upstream-http] rejection observer failed requestId={} type={}", ctx.requestId(), e.getClass().getSimpleName());
+        }
     }
 
     /**
@@ -87,6 +98,7 @@ public class UpstreamModelHttp {
                         recordFailure(ctx, "HTTP_" + resp.statusCode(),
                                 snippet(resp.body(), WARN_BODY_LIMIT), resp.body(), latency);
                     }
+                    announceRejection(ctx, resp.statusCode(), resp.body());
                 }
                 return resp;
             } catch (IOException e) {
@@ -185,6 +197,7 @@ public class UpstreamModelHttp {
             log.warn("[upstream-http] http-error purpose={} endpoint={} model={} status={} durationMs={} requestId={} stream=true body={}",
                     ctx.purposeWire(), ctx.endpointName(), ctx.model(), resp.statusCode(), latency, ctx.requestId(), snippet(body, WARN_BODY_LIMIT));
             if (ctx.recordFailureUsage()) recordFailure(ctx, "HTTP_" + resp.statusCode(), snippet(body, WARN_BODY_LIMIT), body, latency);
+            announceRejection(ctx, resp.statusCode(), body);
             return new StreamResult(resp.statusCode(), body, false, latency, resp.headers());
         }
         long idleNanos = idleTimeout.toNanos(), totalNanos = totalTimeout.toNanos();
