@@ -29,4 +29,14 @@ class DirectorScriptFormatTest {
         assertEquals(List.of(0, 2), DirectorPrompts.headingsFrom(List.of("# 第4集 入口", "正文", "# 第5集 裂缝", "正文", "（第5集 完）"), 4));
         assertEquals(List.of(), DirectorPrompts.headingsFrom(List.of("# 第7集 不对", "正文"), 4));
     }
+
+    /** 模型回了能读的正文但不是 JSON：续写和第一批一样留下正文（2026-11-05「模型正常回包保留」）。 */
+    @Test void aContinuedBatchThatIsNotJsonKeepsItsText() {
+        var om = new com.fasterxml.jackson.databind.ObjectMapper();
+        var input = om.createObjectNode().put("operation", "director");
+        input.putObject("_director").put("task", "script-more");
+        var out = com.aistareco.aep.ipstudio.service.StudioModelOutput.preserve(om, input, om.createObjectNode(), "# 第4集 雨夜\n\n老板：你来了。", "格式不对");
+        assertEquals(false, out.path("rawOnly").asBoolean());
+        assertEquals("# 第4集 雨夜\n\n老板：你来了。", out.path("director").path("content").asText());
+    }
 }

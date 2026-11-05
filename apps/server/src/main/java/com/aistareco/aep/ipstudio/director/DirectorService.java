@@ -2061,7 +2061,7 @@ public class DirectorService {
                 if (c.path("scriptProgress").path("written").asInt(0) != in.path("writeFrom").asInt() - 1) {
                     notice(c, "生成期间剧本有变动，这次接着写的内容未使用"); return;
                 }
-                appendScript(c, d.path("content").asText(), in.path("writeFrom").asInt());
+                appendScript(c, DirectorPrompts.withoutEpisodeEndNotes(d.path("content").asText()), in.path("writeFrom").asInt());
                 recordScriptProgress(c, in);
                 int total = in.path("totalEpisodes").asInt(), to = in.path("writeTo").asInt();
                 notice(c, to >= total ? "全部 " + total + " 集都写好了" : "已写到第 " + to + " 集，共 " + total + " 集");

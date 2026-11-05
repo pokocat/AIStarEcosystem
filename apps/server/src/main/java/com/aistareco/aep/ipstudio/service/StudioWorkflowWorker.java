@@ -174,7 +174,7 @@ public class StudioWorkflowWorker {
                         // reasoning shares the same output budget with the JSON body, so it can consume the whole budget
                         // before the actual script is written. Disable it only for this bounded structured-writing task;
                         // Studio dialogue and the other director tasks keep their existing reasoning behavior.
-                        if("director".equals(operation)&&"script".equals(input.path("_director").path("task").asText())
+                        if("director".equals(operation)&&java.util.Set.of("script","script-more").contains(input.path("_director").path("task").asText())
                                 && endpoint.endpoint().getProviderType()==AiModelProviderType.DEEPSEEK)
                             chatOptions.put("thinking",Map.of("type","disabled"));
                         reply=models.invokeChatOnEndpoint(endpoint.endpoint(),purpose,List.of(Map.of("role","system","content",system),
