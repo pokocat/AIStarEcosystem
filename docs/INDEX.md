@@ -421,6 +421,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [导演台按「E01」标题免费分集](releases/director-episode-codes-release-20261103.md) — server + web-aiavatar；`E01` / `EP01` 写法的分集标题由程序识别、不调模型，助手遇到拆集请求时指路（last-reviewed: 2026-11-03）。
 - [导演台拆分弹窗增加剧本预览](releases/director-split-preview-release-20261104.md) — 仅 web-aiavatar；认不出分集标题时，弹窗旁显示剧本预览，便于复制第 1 集标题行（last-reviewed: 2026-11-04）。
 - [声音参考格式修复发布](releases/voice-reference-format-release-20261104.md) — server；短 M4A 等声音自动转 WAV，报错说明素材类型和可用格式；真实出片未验证（last-reviewed: 2026-11-04）
+- [默认文字模型 Sonnet 与编导第 2 版发布](releases/sonnet-streaming-editor-release-20261104.md) — server + web-aiavatar；长文字任务改流式，编导不再写【待补】，同包带导演台新功能和报错说明；首次验收撞上 Key 额度用完，换 Key 后线上通过（last-reviewed: 2026-11-05）
 - [Studio 图片输入上限与运营发布模板](releases/studio-operator-template-validation-20261104.md) — server + web-aiavatar；3000 字补充要求、运营发布本人画布模板已配套生产发布（last-reviewed: 2026-11-04）。
 
 - [Studio 聚算资源配额拒绝与结算核对](audits/studio-upstream-quota-2026-10.md)（last-reviewed: 2026-10-23）
