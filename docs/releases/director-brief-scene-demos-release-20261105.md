@@ -47,3 +47,12 @@
 
 - server 和 web-aiavatar 要一起回 `20261105-model-output-preservation`：新前端依赖 `settings.format`、`script-more` 和 `example`。
 - studio-admin 回 `20261105-scene-skill-slots-admin`。
+
+## 补发：手机端两处显示问题（2026-11-06）
+
+只发 `web-aiavatar`（发布号 `20261106-director-mobile-chip`），server 和 studio-admin 未动。
+
+- 作品设置按钮不再被截断，很长的风格名显示省略号，悬停看全文。
+- 手机上分区角标排在文字后面，不再压住「资产」。
+
+回滚：`web-aiavatar` 回 `20261105-director-brief-demos`。

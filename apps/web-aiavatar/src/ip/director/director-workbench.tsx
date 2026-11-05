@@ -310,8 +310,8 @@ function DirectorHeader({ work, apply, setError, startPipeline, oneClick, status
     {status}
     <span className="director-spacer"/>
     {work.pricing.mock && <span className="director-mock-tag" title="剧本、图片和视频均为固定样例，不调用模型，不扣积分。">测试模式</span>}
-    <button type="button" className="director-settings-chip" onClick={() => setOpen(o => !o)} aria-expanded={open}>
-      <Settings2 size={15}/>{settings.style} · {settings.aspectRatio}
+    <button type="button" className="director-settings-chip" onClick={() => setOpen(o => !o)} aria-expanded={open} title={`${settings.style} · ${settings.aspectRatio}`}>
+      <Settings2 size={15}/><span>{settings.style} · {settings.aspectRatio}</span>
     </button>
     {oneClick && <OneClickButton startPipeline={startPipeline}/>}
     {open && <SettingsPanel work={work} onClose={() => setOpen(false)} apply={apply} setError={setError}/>}
