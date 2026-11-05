@@ -678,6 +678,7 @@ v0.163：前端手抄了一份 `IpRun`，把 `output` 写成 `outputs`，于是�
   2026-10-24 第六种（AI 导演台编剧，聚算 Qwen3.8 27B）：剧本 JSON 写完了、字符串也闭合了，finish=stop，只漏了最外层的 `}`，严格解析判失败、整单退款，用户只看到「这次创作没有完成」。`ModelJson` 现在只在「文本停在一个完整的值上、只缺结尾括号」时补括号，截在字符串中间或逗号、冒号后面照样失败（`ModelJsonTest`）。
 
   2026-10-31 第七种（场景页编导，本地 Agnes 2.5 Flash）：要求写「第N镜（起–止 秒）」，模型把「起–止」原样抄进括号、第一镜从 0.5 秒开始，H3 解析器一镜都认不出；要求「第一行写还缺」，它写在了最后一行；「怎么买」的说明里列了几个选项，它挑一个当事实填了。判据补充：格式要给一个照抄就对的例子，不要给带占位词的模板；解析时位置放宽（哪一行都认），内容不放宽；说明文字里不要列可选值，模型会当成答案。真模型输出钉成回归用例（`H3PromptRewriteTest#aRealDirectorScriptFromAgnesIsParsed`）。
+  2026-11-05 长视频两处，都是假响应测不到、一真跑就出来的：计划报价用占位 key，带参考素材的视频步骤过不了文件归属校验（`StudioPlanSteps.QUOTE_NODE` 改成按张数算价，`StudioVideoService.planPrice`）；Agnes 3.0 Flash 把 `assets` 字段写了两遍，严格解析判失败、自动重试，而马上重试又撞限流（改成隔约一分钟）。判据补充：报价和提交要用真实服务走一遍，mock 掉 `workflow.quote` 的单测看不出来。
   同类补充（2026-10-24，永久修复已合 main、普通 JAR 未发布；厂商响应 UTC 2026-10-25）：`finish=stop` 的剧本同时出现非法 `\远处` 和缺末尾 `}`。`ModelJson` 可组合恢复汉字前的多余反斜杠、字符串内原始换行 / 制表符、完整值后的尾逗号和末尾括号；合法转义保持原样。未知 ASCII 转义、残缺 Unicode 转义、半截字符串、缺值 / 缺分隔逗号、重复字段和多份 JSON 一律拒绝，不能从残缺数组里截一个对象冒充整份结果。恢复后仍走业务校验；`finish=length` 不进入修复。`StudioWorkflowWorker` 对不能修复的 JSON 保留原异常及上游诊断，以 `AI_BAD_OUTPUT` 明确提示「格式有误，无法自动恢复；本次未扣积分」，释放冻结、不自动重调模型。回归：`ModelJsonTest` / `StudioWorkflowWorkerJsonTest`。
   2026-10-25 UTC 已按用户要求无重启启用官方 JVM-Sandbox 1.4.0 临时模块（namespace `aep-json-20261024`，仅环回 `24769`）：只处理原 `ModelJson.parse` 的 Jackson 异常，正常返回不变，不能恢复则交原工作流按 `AI_BAD_OUTPUT` 退款。固定生产探针通过，PID / 启动时间 / JAR 均未变。临时模块不等同于永久严格解析规则；下次正常发布先卸载模块，再发布含永久修复的 main。见 `docs/runbooks/studio-json-jvm-sandbox.md` 和 `docs/releases/studio-json-jvm-sandbox-release-20261025.md`。
 
@@ -1385,3 +1386,7 @@ Studio 工作线程默认 24，单个模型的上限看端点配置；图片调�
 ### 导演台写剧本前的准备与示例图（2026-11-05，已生产发布 `20261105-director-brief-demos`，main `452c48117`；server + web-aiavatar + studio-admin）
 
 问答只在全能创作助手里，主区只显示已确认的内容和「生成剧本」，别再加第二个对话框。先确认形式、集数、每集时长、题材和调性（不调模型），再由 AI 问还不清楚的，最多两轮、每轮最多 4 题，可以选「AI 决定」。集数多时第一批写全剧大纲和前几集，`script-more` 接着写。见 `docs/ai-director-assistant.md` §7。状态提示是标题后的标签（`director-status-chip`），不再是整行。AI 图片示例是 `public/studio/scene-demos/*.webp` 的前后对比图：一张杂志式画面，左边纸面上是素材小图，右边是铺满的成片，一根细线相连，不画箭头和卡片；标签在图外、写明示意图；图里的人一律韩系风格，不用外国面孔（用户定）。例句在目录的 `example`。改场景默认效果时要对照这张图，两边别走样。
+
+### AI 视频页的长视频（2026-11-05，本地未发布）
+
+真源 `docs/studio-segmented-video.md`。时长超过所选模型单段上限时一键做到成片：写分段脚本 → 审脚本 → 分镜图（第 1 张之后都参考它）→ 审分镜图（不合格重出一次）→ 各段全能参考出片 → 合成。切段只在 `SegmentedPlan`，页面显示服务端算的。复用连续制作（`StudioPlanExecutor`），但没有对话和确认卡（`threadId` 为空），用户在页面上看价点生成就是确认；提示词做到那一步才编（`StudioSegmentedRun`），格式用导演台的。一键到底只对带 `segmented` 状态的执行生效，别的连续制作照旧停下来问。**导演台一段仍然最长 15 秒**（`DirectorService.MAX_CLIP_SECONDS`），模型放开到 30 秒只给这条流程。把 Seedance 2.5 配到 30 秒要先发代码再改配置。真模型整条链没跑过，见 TODO。

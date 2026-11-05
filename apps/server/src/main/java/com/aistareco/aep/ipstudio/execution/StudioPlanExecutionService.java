@@ -166,6 +166,54 @@ public class StudioPlanExecutionService {
         return toDto(row);
     }
 
+    /**
+     * 长视频（docs/studio-segmented-video.md）：计划由服务端按所选模型和时长生成，用户在 AI 视频页上看了价、点了生成，就是确认。
+     * 没有对话、没有确认卡；预算、付款人、单画布一项连续制作、幂等和后面的推进都和普通执行一样。
+     *
+     * @param autoFixCap 上限里留给「分镜图不合格重出一次」的部分
+     * @param identity   请求内容（不含报价），同一个请求编号再交一次时比对
+     */
+    @Transactional
+    public PlanExecution startSegmented(String userId,String projectId,String clientRequestId,ObjectNode plan,ObjectNode segmented,List<String> materials,
+                                        StudioSkillRules.Rules rules,long budgetCap,long autoFixCap,BillingSelection rawBilling,JsonNode identity) {
+        String fingerprint=StudioPlanExecutionIds.sha256(canonical(identity).toString());
+        BillingSelection billing=EnterpriseBillingService.normalize(rawBilling);
+        projects.requiredForUpdate(userId,projectId);
+        var prior=executions.findByOwnerUserIdAndClientRequestId(userId,clientRequestId).orElse(null);
+        if(prior!=null) {
+            String stored=PlanState.parse(mapper,prior.getBudgetJson()).path("production").path("requestFingerprint").asText("");
+            if(!projectId.equals(prior.getProjectId())||!fingerprint.equals(stored))throw changed();
+            return toDto(prior);
+        }
+        var busy=executions.findByProjectIdAndStatusIn(projectId,ACTIVE).stream().filter(e->!detached(e)).toList();
+        if(!busy.isEmpty())throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PLAN_EXECUTION_BUSY","这张画布已经有一项连续制作在进行，请先结束它",
+                mapper.createObjectNode().put("executionId",busy.get(0).getId()));
+        String id="PEX-"+UUID.randomUUID().toString().replace("-","").substring(0,20);
+        String planRunId="SEG-"+UUID.randomUUID().toString().replace("-","").substring(0,20);
+        Instant now=Instant.now();
+        ObjectNode state=mapper.createObjectNode();
+        state.set("skill",StudioSkillRules.snapshot(rules));
+        state.set("segmented",segmented);
+        ArrayNode canvas=state.putArray("canvasContextIds");
+        materials.forEach(canvas::add);
+        ArrayNode steps=state.putArray("steps");
+        var loaded=new LoadedPlan(planRunId,plan,rules,materials,1,null);
+        appendSteps(steps,loaded,"production");
+        String planFingerprint=plan.path("fingerprint").asText();
+        var req=new PlanExecutionCreateRequest(clientRequestId,"production",planRunId,planFingerprint,null,budgetCap,autoFixCap,billing,null,1,null,null);
+        ObjectNode budget=mapper.createObjectNode();
+        budget.set("production",stageBudget(req,fingerprint,loaded,1,plan.path("budget").path("estimated").asLong(),now));
+        var row=IpPlanExecution.builder().id(id).projectId(projectId).ownerUserId(userId).threadId(null)
+                .skillKey(rules.key()).skillVersion(rules.version()).stage("production")
+                .planRunId(planRunId).planRevision(1).planFingerprint(planFingerprint)
+                .status(IpPlanExecution.RUNNING).stepsJson(write(state)).budgetJson(write(budget)).billingJson(write(billingSnapshot(userId,billing,now)))
+                .clientRequestId(clientRequestId).startedAt(now).deadlineAt(now.plus(StudioPlanExecutor.SEGMENTED_WINDOW))
+                .createdAt(now).updatedAt(now).build();
+        executions.saveAndFlush(row);
+        wakeAfterCommit(id);
+        return toDto(row);
+    }
+
     private PlanExecution confirmStage(String userId,String projectId,PlanExecutionCreateRequest req,String fingerprint,BillingSelection billing,boolean byMessage) {
         var e=lockOwned(userId,projectId,req.executionId());
         ObjectNode budget=PlanState.parse(mapper,e.getBudgetJson());
