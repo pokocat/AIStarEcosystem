@@ -1,0 +1,16 @@
+# Install/enable only on A in the approved migration window. B stays disabled.
+# Root-private worker.env: same PG/Tair/OSS/crypto values as the API, but
+# SERVER_PORT=18086, SERVER_ADDRESS=127.0.0.1, AEP_BACKGROUND_ENABLED=true.
+# SHA/image MUST match the validated API release. The worker has no Nginx/ALB route.
+[Unit]
+Description=AIStar single active background worker (A only)
+After=network-online.target
+[Service]
+Type=simple
+EnvironmentFile=/etc/aistar/worker.env
+ExecStart=/usr/bin/podman run --rm --name aistar-background --network host --read-only --tmpfs /tmp:rw,size=256m --memory 1600m --user 10001:10001 --env-file /etc/aistar/worker.env --volume /opt/aistar-cluster/work:/app/work:rw --volume /opt/aistar-cluster/state/production:/opt/aistar-migration/preparation:ro --entrypoint java REPLACE_VERIFIED_IMAGE_CONFIGURATION_ID -Duser.timezone=Asia/Shanghai -Djavax.net.ssl.trustStore=/opt/aistar-migration/preparation/java-truststore -Djavax.net.ssl.trustStorePassword=changeit -Xms128m -Xmx1024m -jar /app/app.jar
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=240
+[Install]
+WantedBy=multi-user.target

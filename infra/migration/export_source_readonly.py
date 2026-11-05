@@ -1,4 +1,4 @@
-import pathlib,os,subprocess,urllib.parse,json,datetime,re
+import pathlib,os,subprocess,urllib.parse,json,datetime,re,hashlib
 
 def run(a,env=None):
  p=subprocess.run(a,env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,universal_newlines=True)
@@ -33,7 +33,11 @@ for line in query('select table_name,column_name,column_type from information_sc
  if t=='flyway_schema_history':continue
  tables.setdefault(t,[]).append({'name':c,'type':typ})
 assert len(tables)==192,'Source table count changed; inspect new migrations first'
-metadata={'type':'snapshot_metadata','database':db,'source_frozen':False,'purpose':'isolated_read_only_rehearsal','captured_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'source_unit':u,'source_release':{k:env[k] for k in ['GIT_SHA','RELEASE_ID','SPRING_PROFILES_ACTIVE'] if k in env},'source_jvm_timezone':jvm_tz[0],'source_jdbc_timezone':'Asia/Shanghai','temporal_interpretation':'per-column Hibernate MySQL binding contract; not assumed from JVM timezone','table_count':len(tables)}
+argv=[x.decode() for x in cmdline if x]
+artifact=pathlib.Path(argv[argv.index('-jar')+1]);source_artifact_sha256=hashlib.sha256(artifact.read_bytes()).hexdigest()
+source_schema=query("SELECT table_name,column_name,column_type,is_nullable,coalesce(column_default,'<NULL>'),extra FROM information_schema.columns WHERE table_schema=database() AND table_name<>'flyway_schema_history' ORDER BY table_name,ordinal_position")+'\n'
+source_schema_sha256=hashlib.sha256(source_schema.encode()).hexdigest()
+metadata={'type':'snapshot_metadata','database':db,'source_frozen':False,'purpose':'isolated_read_only_rehearsal','captured_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'source_unit':u,'source_release':{k:env[k] for k in ['GIT_SHA','RELEASE_ID','SPRING_PROFILES_ACTIVE'] if k in env},'source_jvm_timezone':jvm_tz[0],'source_jdbc_timezone':'Asia/Shanghai','temporal_interpretation':'per-column Hibernate MySQL binding contract; not assumed from JVM timezone','table_count':len(tables),'source_artifact_sha256':source_artifact_sha256,'source_schema_sha256':source_schema_sha256}
 q=["SELECT CONVERT(0x"+json.dumps(metadata,separators=(',',':')).encode().hex()+" USING utf8mb4);","SET SESSION time_zone='+00:00';","SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ;","START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY;"]
 for t,cols in sorted(tables.items()):
  q.append("SELECT CONVERT(0x"+json.dumps({'type':'table','name':t,'columns':cols},separators=(',',':')).encode().hex()+" USING utf8mb4);")
