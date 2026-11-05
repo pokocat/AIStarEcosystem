@@ -92,7 +92,7 @@ def start(config,expected,mode,release):
  if mode=='stage':args+=['-Djava.security.manager=allow','--add-opens=java.base/java.lang=ALL-UNNAMED','-cp','/app/release/tools:/app/release/app/BOOT-INF/classes:/app/release/app/BOOT-INF/lib/*','IsolatedApiBootstrap']
  else:args+=['-jar','/app/release/app.jar']
  pathlib.Path('/var/log/aistar').mkdir(mode=0o755,exist_ok=True)
- unitfile='[Unit]\nDescription=AIStar '+mode+' immutable API\nAfter=network-online.target\n[Service]\nType=simple\nRestart=on-failure\nRestartSec=5\nTimeoutStopSec=300\nKillMode=mixed\nStandardOutput=append:/var/log/aistar/'+mode+'.log\nStandardError=inherit\nExecStart='+ ' '.join(args)+'\nExecStop=/usr/bin/podman stop --ignore --time 240 '+unit+'\n[Install]\nWantedBy=multi-user.target\n'
+ unitfile='[Unit]\nDescription=AIStar '+mode+' immutable API\nAfter=network-online.target\n[Service]\nType=simple\nRestart=on-failure\nRestartSec=5\nSuccessExitStatus=143\nTimeoutStopSec=300\nKillMode=mixed\nStandardOutput=append:/var/log/aistar/'+mode+'.log\nStandardError=inherit\nExecStart='+ ' '.join(args)+'\nExecStop=/usr/bin/podman stop --ignore --time 240 '+unit+'\n[Install]\nWantedBy=multi-user.target\n'
  require(all(' ' not in x and '\n' not in x for x in args),'systemd参数不能包含空白')
  path=pathlib.Path('/etc/systemd/system')/(unit+'.service');path.write_text(unitfile);run(['systemctl','daemon-reload']);run(['systemctl','start',unit])
  deadline=time.monotonic()+300;observations=[]

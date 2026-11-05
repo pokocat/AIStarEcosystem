@@ -85,3 +85,5 @@ PG身份UID唯一索引自检限定当前schema：同一演练数据库里public
 最终receipt保存于迁移工作区outputs：aistar-final-rolling-script-verification.json、aistar-current-importer-protection-verification.json、aistar-final-ci-verification.json、aistar-final-runtime-artifact.json、aistar-final-production-protection.json、aistar-final-sls-verification.json。已停止自有演练API/监控并撤下临时桥，正式库0业务表、旧源MySQL服务及账号中心/军师健康。PR保持draft，生产停写/最终冻结导入、后台SAU单活、前端与旧桥、正式业务和ALB/DNS切换仍需独立窗口。
 
 正式角色准备补齐：两机准备目录原仅保存演练凭据，结束核查发现正式角色缺失并拒绝连接；已只补本项目既有角色到root:600文件，未重置RDS密码。A/B均以aistar_migrator、aistar_app经严格TLS只读连接确认目标，应用无super/createDB/createRole及public schema CREATE权限。正式库仍空，表DML授权仍在正式恢复成功后执行。
+
+停机状态补充：Podman正常接收SIGTERM后可能返回143，systemd单元显式SuccessExitStatus=143，避免手动停止被记作failed。已用同一CI应用在新B真实启动/停止，PID0、inactive/success；另用自有官方systemd单元夹具确认143也归类成功，夹具已删除。仅调整退出状态识别，完整滚动流程与既有615/644次连续请求凭证不变。
