@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Clapperboard, FileText, Loader2, Pause, Play, Settings2, Shapes, Sparkles, Square, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Clapperboard, FileText, Loader2, Pause, Play, Settings2, Shapes, Sparkles, Square, X } from "lucide-react";
 import type { DirectorPipeline, DirectorPipelineEstimate, DirectorPipelineTarget, DirectorWork } from "@ai-star-eco/types";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { isProductNotEnrolledError } from "@ai-star-eco/api-client";
@@ -16,6 +16,7 @@ import { SettingsPanel } from "./director-settings";
 import { InlineError, STALE_GONE_MESSAGE, chooseDirectorBilling, clearDrafts, isWorkGone, onWorkGone, costText, errorText, failed, hasDrafts, secRange, useBusy, useEscape, dialogFocus, type DirectorFail } from "./director-shared";
 import { normalizeStudioError, useStudioFailure } from "../studio-errors";
 import { AiMark } from "../studio-ai-icon";
+import { BriefProvider } from "./director-brief";
 import { AssistantProvider, DirectorAssistantPanel, useAssistant, useAssistantController } from "./director-assistant";
 
 export type Tab = "script" | "assets" | "storyboard";
@@ -48,6 +49,7 @@ function nextStep(work: DirectorWork, episodeId: string | null): NextStep | null
   // AI 正在做的文字任务优先说出来：不然生成中还写着「下一步：生成剧本」，像是没开始。
   const running = work.tasks.filter(t => t.status === "running").map(t => t.target);
   if (running.includes("script")) return { text: "AI 正在写剧本，完成后自动显示", tab: "script", running: true };
+  if (running.includes("script-more")) return { text: "AI 正在继续写剧本", tab: "script", running: true };
   if (running.includes("split")) return { text: "AI 拆分中", tab: "script", running: true };
   if (running.some(t => t.startsWith("extract"))) return { text: "AI 正在提取全剧资产", tab: "script", running: true };
   const planning = running.find(t => t.startsWith("plan:"));
@@ -59,7 +61,7 @@ function nextStep(work: DirectorWork, episodeId: string | null): NextStep | null
   }
   if (running.includes("brief")) return { text: "AI 正在看你的想法", tab: "script", running: true };
   if (!work.draft.trim() && work.episodes.length === 0) return { text: !work.idea.trim() ? "第一步：说说你的想法，或粘贴剧本"
-    : work.brief?.status === "ready" ? "下一步：信息够了，生成剧本" : "下一步：回答 AI 的一两个问题，或直接生成剧本", tab: "script" };
+    : work.brief?.status === "ready" ? "下一步：信息够了，生成剧本" : work.settings.format ? "下一步：回答 AI 的问题，或直接生成剧本" : "下一步：确认形式和集数", tab: "script" };
   if (work.pendingSplit) return { text: `分成 ${work.pendingSplit.episodes.length} 集，确认后生效`, tab: "script" };
   if (work.episodes.length === 0) return { text: "下一步：拆分剧本，或作为一集", tab: "script" };
   const ep = work.episodes.find(e => e.id === episodeId) ?? work.episodes[0];
@@ -103,7 +105,7 @@ export function nextStepShown(step: NextStep | null, tab: Tab) {
   return step.tab !== tab && !step.alsoOn?.includes(tab) && !(tab === "script" && step.tab === "script");
 }
 /** Plain confirmations fade on their own; warnings (a result not used, something to redo) stay until closed. */
-const PASSING_NOTICE = /^(已分成 \d+ 集|资产已保存(，新增 \d+ 项)?|设定资料已并入第 1 集开头)$/;
+const PASSING_NOTICE = /^(已写到第 \d+ 集，共 \d+ 集|全部 \d+ 集都写好了|已分成 \d+ 集|资产已保存(，新增 \d+ 项)?|设定资料已并入第 1 集开头)$/;
 
 export function DirectorWorkbench({ id }: { id: string }) {
   const auth = useRequireAuth();
@@ -237,16 +239,16 @@ export function DirectorWorkbench({ id }: { id: string }) {
       || c.board.adoptedCheck === "outdated" || c.video.adoptedCheck === "outdated")).length,
   };
   const live = !!work.pipeline && ["running", "waiting", "paused"].includes(work.pipeline.status);
-  return <AssistantProvider value={assistant}><main className={`ip-brand-surface director-shell ${assistant.open ? "has-assistant" : ""}`}>
-    <DirectorHeader {...props} settingsOpen={settingsOpen} setSettingsOpen={setSettingsOpen} oneClick={!live}/>
-    {/* 一条状态线：一键制作进行中就说它在做什么，否则说下一步该做什么。 */}
+  return <AssistantProvider value={assistant}><BriefProvider work={work} apply={apply}><main className={`ip-brand-surface director-shell ${assistant.open ? "has-assistant" : ""}`}>
+    <DirectorHeader {...props} settingsOpen={settingsOpen} setSettingsOpen={setSettingsOpen} oneClick={!live} status={live ? null : <>
+      {work.pendingExtract
+        ? <button key="extract" type="button" className="director-status-chip is-warn" onClick={() => setReviewing(true)} title="查看清单">
+          <Sparkles size={13}/><span>识别到 {work.pendingExtract.items.length} 项资产，确认后保存</span><ArrowRight size={13} className="director-chip-go"/></button>
+        : step && nextStepShown(step, tab) && <StatusChip key={step.text} step={step} tab={tab} onGo={switchTab}/>}
+      <StopTextTasks {...props}/>
+    </>}/>
     {reviewing && work.pendingExtract && <ExtractReview key={work.pendingExtract.runId} work={work} apply={apply} onClose={() => setReviewing(false)}/>}
-    {live ? <PipelineBar {...props}/> : (work.pendingExtract || nextStepShown(step, tab) || work.pipeline) && <div className="director-status">
-      {work.pendingExtract ? <div className="director-next is-warn"><Sparkles size={14}/><span>识别到 {work.pendingExtract.items.length} 项资产，确认后保存</span><button type="button" onClick={() => setReviewing(true)}>查看清单</button></div> :
-        step && nextStepShown(step, tab) && <div className="director-next"><Sparkles size={14}/><span title={step.text}>{step.text}</span>{step.tab !== tab && <button type="button" onClick={() => switchTab(step.tab)}>{GO_LABEL[step.tab] ?? "前往"}</button>}</div>}
-      <PipelineBar {...props}/>
-    </div>}
-    {!live && <StopTextTasks {...props}/>}
+    {live ? <PipelineBar {...props}/> : work.pipeline && <div className="director-status"><PipelineBar {...props}/></div>}
     {starting && <StartPipeline work={work} episodeId={episodeId} apply={apply} setError={setError} goTab={switchTab} onClose={() => setStarting(false)}/>}
     {work.notice && <DirectorNoticeToast key={work.notice.message} work={work} apply={apply} setError={setError}/>}
     <div className={`director-body ${assistant.open ? "has-assistant" : ""}`}>
@@ -261,9 +263,18 @@ export function DirectorWorkbench({ id }: { id: string }) {
         {tab === "assets" && <DirectorAssets {...props}/>}
         {tab === "storyboard" && <DirectorStoryboard {...props}/>}
       </section>
-      {assistant.open && <DirectorAssistantPanel work={work} apply={apply} tab={tab} episodeId={episodeId}/>}
+      {assistant.open && <DirectorAssistantPanel work={work} apply={apply} tab={tab} episodeId={episodeId} openSettings={props.openSettings}/>}
     </div>
-  </main></AssistantProvider>;
+  </main></BriefProvider></AssistantProvider>;
+}
+
+/** 标题后面的状态：AI 在做什么，或下一步做什么。下一步在别的工作区时点它直接过去。 */
+function StatusChip({ step, tab, onGo }: { step: NextStep; tab: Tab; onGo: (tab: Tab) => void }) {
+  if (step.running) return <span className="director-status-chip is-running" role="status" title={step.text}><i className="director-chip-dot" aria-hidden/><span>{step.text}</span></span>;
+  const body = <><Sparkles size={13}/><span>{step.text}</span></>;
+  return step.tab === tab
+    ? <span className="director-status-chip is-next" role="status" title={step.text}>{body}</span>
+    : <button type="button" className="director-status-chip is-next" title={`${step.text}。${GO_LABEL[step.tab]}`} onClick={() => onGo(step.tab)}>{body}<ArrowRight size={13} className="director-chip-go"/></button>;
 }
 
 function StopTextTasks({work,apply,setError}:WorkbenchProps) {
@@ -271,15 +282,17 @@ function StopTextTasks({work,apply,setError}:WorkbenchProps) {
   const tasks=work.tasks.filter(task=>task.status==="running"&&task.canStop);
   const settling=work.tasks.some(task=>task.status==="stopping");
   if(!tasks.length&&!settling)return null;
-  const label=(target:string)=>target==="script"?"写剧本":target==="split"?"拆分集":target.startsWith("extract")?"提取资产":target.startsWith("plan:")?"规划分镜":target.startsWith("reshoot:")?"重写分镜脚本":"本次创作";
-  return <div className="director-notice"><span>{settling?"已停止后续处理，已提交模型的请求仍在等待用量结算。可另行确认生成，原请求按实际用量计费。":"停止后已有内容会保留；已提交模型的请求仍按实际用量计费。"}</span>
-    {tasks.map(task=><button key={task.id} type="button" disabled={!!busy}
+  const label=(target:string)=>target==="script"?"写剧本":target==="script-more"?"写剧本":target==="split"?"拆分集":target.startsWith("extract")?"提取资产":target.startsWith("plan:")?"规划分镜":target.startsWith("reshoot:")?"重写分镜脚本":"本次创作";
+  const explain=settling?"已停止后续处理，已提交模型的请求仍在等待用量结算。可另行确认生成，原请求按实际用量计费。":"停止后已有内容会保留；已提交模型的请求仍按实际用量计费。";
+  return <>
+    {settling&&<span className="director-status-chip is-running" role="status" title={explain}><i className="director-chip-dot" aria-hidden/><span>已停止，等待用量结算</span></span>}
+    {tasks.map(task=><button key={task.id} type="button" className="director-chip-stop" title={explain} disabled={!!busy}
       onClick={()=>void run(task.id,async()=>apply(await DirectorApi.stopTask(work.id,task.id)),failed(setError,`停止${label(task.target)}`))}>
       {busy===task.id?"正在停止…":`停止${label(task.target)}`}</button>)}
-  </div>;
+  </>;
 }
 
-function DirectorHeader({ work, apply, setError, startPipeline, oneClick, settingsOpen: open, setSettingsOpen: setOpen }: WorkbenchProps & { oneClick: boolean; settingsOpen: boolean; setSettingsOpen: (v: boolean | ((o: boolean) => boolean)) => void }) {
+function DirectorHeader({ work, apply, setError, startPipeline, oneClick, status, settingsOpen: open, setSettingsOpen: setOpen }: WorkbenchProps & { oneClick: boolean; status?: ReactNode; settingsOpen: boolean; setSettingsOpen: (v: boolean | ((o: boolean) => boolean)) => void }) {
   const [title, setTitle] = useState(work.title);
   const { busy, run } = useBusy();
   useEffect(() => setTitle(work.title), [work.title]);
@@ -293,6 +306,7 @@ function DirectorHeader({ work, apply, setError, startPipeline, oneClick, settin
     <Link href="/director" className="director-back" aria-label="返回作品列表"><ArrowLeft size={18}/></Link>
     <input className="director-title" aria-label="作品名" value={title} maxLength={60} onChange={e => setTitle(e.target.value)} onBlur={saveTitle}
       onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} disabled={busy === "title"}/>
+    {status}
     <span className="director-spacer"/>
     {work.pricing.mock && <span className="director-mock-tag" title="剧本、图片和视频均为固定样例，不调用模型，不扣积分。">测试模式</span>}
     <button type="button" className="director-settings-chip" onClick={() => setOpen(o => !o)} aria-expanded={open}>

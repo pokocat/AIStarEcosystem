@@ -224,7 +224,7 @@ class StudioSceneCatalogTest {
         assertThat(brief).contains("出镜方式：不出现人脸，只拍商品和手部操作", "语气：语气像朋友推荐");
         String image = catalog.compose(new StudioSceneCatalog.ComposeRequest("image", "white-background", "", null, List.of(0), null, null, null, null, null, null,
                 null, null, java.util.Map.of("angle", "top"))).text();
-        assertThat(image).startsWith("图1是要做白底图的商品。\n" + catalog.image("white-background").orElseThrow().prompt()).contains("拍摄角度：从正上方俯拍商品");
+        assertThat(image).startsWith("图1是要做白底图的商品。\n" + catalog.image("white-background").orElseThrow().prompt()).contains("出图方式：商品单独居中，从正上方俯拍");
         assertThatThrownBy(() -> catalog.compose(new StudioSceneCatalog.ComposeRequest("image", "white-background", "", null, List.of(0), null, null, null, null, null, null,
                 null, null, java.util.Map.of("angle", "gone")))).hasMessage("这个选项已经下架，请刷新后重选");
         assertThatThrownBy(() -> catalog.compose(new StudioSceneCatalog.ComposeRequest("image", "white-background", "", null, List.of(0), null, null, null, null, null, null,
@@ -261,7 +261,7 @@ class StudioSceneCatalogTest {
     void picturesAreNumberedByWhatIsActuallySentAndTheDescriptionUsesNames() {
         String base = catalog.image("outfit-on-model").orElseThrow().prompt();
         assertThat(catalog.compose(counted("outfit-on-model", 1, 2, 1)).text()).isEqualTo(
-                "图1是要穿衣服的模特。\n图2、图3是要穿上的上身或全身服装，可能是同一件的不同角度，也可能是要一起穿的几件。\n图4是要穿上的下装。\n" + base);
+                "图1是要穿衣服的模特。\n图2、图3是要穿上的上身或全身服装，可能是同一件的不同角度，也可能是要一起穿的几件。\n图4是要穿上的下装。\n" + base + "\n场景：模特走在干净的城市街边，姿态自然，自然光");
         // 上装空着：下装就是图2。
         assertThat(catalog.compose(counted("outfit-on-model", 1, 0, 1)).text()).startsWith("图1是要穿衣服的模特。\n图2是要穿上的下装。\n" + base);
         // 模特换脸：放了三张的是图2 到图4 这个人，图1 还是模特。

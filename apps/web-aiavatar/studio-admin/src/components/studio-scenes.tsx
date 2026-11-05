@@ -295,6 +295,7 @@ function ImageFields({ scene, patch }: { scene: StudioImageScene; patch: (p: Par
       <Textarea aria-label="出图描述" rows={6} value={scene.prompt} onChange={e => patch({ prompt: e.target.value })}/></Field>
     <div className="grid gap-4 md:grid-cols-2">
       <Field label="补充要求输入框的提示"><Input aria-label="补充要求提示" value={scene.hint} onChange={e => patch({ hint: e.target.value })}/></Field>
+      <Field label="补充要求例句" hint="和示例图对应，用户可以一键填进输入框。"><Input aria-label="补充要求例句" value={scene.example ?? ""} onChange={e => patch({ example: e.target.value })}/></Field>
       <Field label="默认比例"><ChoiceSelect label="默认比例" value={scene.ratio} options={IMAGE_RATIOS.map(r => [r, r])} onChange={v => patch({ ratio: v })}/></Field>
     </div>
   </>;

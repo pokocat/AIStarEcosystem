@@ -2,12 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { BookOpen, ChevronRight, Loader2, MessageSquare, PenLine, RefreshCw, Scissors, Sparkles, Wand2, X } from "lucide-react";
+import { BookOpen, ChevronRight, FileText, Loader2, MessageSquare, PenLine, RefreshCw, Scissors, Sparkles, Wand2, X } from "lucide-react";
 import type { DirectorAssistantScope, DirectorEpisode, DirectorProposal, DirectorWork } from "@ai-star-eco/types";
 import { AiMark } from "../studio-ai-icon";
 import { AiField, proposalImpacts, useAssistant } from "./director-assistant";
-import { proposalRange } from "./director-text";
-import { BriefChat } from "./director-brief";
+import { firstLine, proposalRange } from "./director-text";
+import { BriefDesk, ScriptMore } from "./director-brief";
 import { clearPending, readPending } from "./director-pending";
 import { DirectorApi } from "../api";
 import type { WorkbenchProps } from "./director-workbench";
@@ -45,9 +45,9 @@ function styleText(work: Pick<DirectorWork, "genre" | "tone">) {
   return [work.genre, work.tone].filter(Boolean).join(" · ");
 }
 
-function Chips({ label, options, value, onChange }: { label: string; options: readonly string[]; value: string; onChange: (v: string) => void }) {
+export function Chips({ label, options, value, onChange }: { label: string; options: readonly string[]; value: string; onChange: (v: string) => void }) {
   return <div className="director-field"><span>{label}</span><div className="director-chips" role="group" aria-label={label}>
-    <button type="button" aria-pressed={!value} onClick={() => onChange("")}>不限</button>
+    <button type="button" aria-pressed={!value} onClick={() => onChange("")}>AI 决定</button>
     {options.map(o => <button key={o} type="button" aria-pressed={value === o} onClick={() => onChange(value === o ? "" : o)}>{o}</button>)}
   </div></div>;
 }
@@ -83,7 +83,7 @@ function StartScript({ work, apply, setError, openSettings }: WorkbenchProps & {
       <button type="button" className="ip-brand-text-button" disabled={!!busy || reading} onClick={() => setMode("idea")}>返回，用创意生成</button>
     </div>
   </section>;
-  return <BriefChat work={work} apply={apply} setError={setError} openSettings={openSettings} onPaste={() => setMode("paste")}/>;
+  return <BriefDesk work={work} apply={apply} openSettings={openSettings} onPaste={() => setMode("paste")}/>;
 }
 
 /** 整体故事大纲：先知道全剧在讲什么，再看分集正文。剧本生成时一起写，导入的剧本没有。 */
@@ -135,7 +135,8 @@ function NextChoices({ work, title, desc, children, onShortcut, shortcutDesc, sh
 }
 
 function DraftEditor({ work, apply, setError, splitting, startPipeline }: WorkbenchProps & { splitting: boolean }) {
-  const locked = useAssistant()?.scriptLocked("draft") ?? false;
+  const ctl = useAssistant();
+  const locked = ctl?.scriptLocked("draft") ?? false;
   const draftKey = `${work.id}:draft`;
   const [text, setText, dirty] = useDraft(draftKey, work.draft);
   const [count, setCount] = useState("");
@@ -157,6 +158,12 @@ function DraftEditor({ work, apply, setError, splitting, startPipeline }: Workbe
   }, failed(setError, "拆分集"));
   const byHeadings = splitsByHeadings(work, count);
   const rewriting = runningTask(work, "script");
+  // 正文可以收起来先看大纲和下一步；助手要对这份正文提修改时自动展开，否则看不到对比。
+  const foldKey = `director-draft-text:${work.id}`;
+  const [textOpen, setTextOpen] = useState(() => { try { return window.localStorage.getItem(foldKey) !== "closed"; } catch { return true; } });
+  const toggleText = () => setTextOpen(open => { try { window.localStorage.setItem(foldKey, open ? "closed" : "open"); } catch { /* 只影响下次打开 */ } return !open; });
+  const previewing = !!ctl?.preview && ctl.findProposal(ctl.preview.messageId, ctl.preview.proposalId)?.target === "draft";
+  useEffect(() => { if (previewing) setTextOpen(true); }, [previewing]);
   return <section className="director-panel director-script-list">
     <div className="director-toolbar">
       <div className="director-toolbar-copy"><h3>剧本</h3><p>{work.logline && !work.outline ? work.logline : "还没拆分集"}</p></div>
@@ -169,6 +176,7 @@ function DraftEditor({ work, apply, setError, splitting, startPipeline }: Workbe
       {rewriting ? <AiWorking title="AI 正在重新写剧本" task={rewriting} detail="完成后自动显示新剧本，当前版本保留在历史中。"/> : <>
       <StoryOutline work={work}/>
       <ReferenceNotes work={work} apply={apply} setError={setError}/>
+      <ScriptMore work={work} apply={apply} setError={setError}/>
       {splitting ? <AiWorking compact title="AI 拆分中" task={runningTask(work, "split")} detail="仅划定每集范围，不修改正文。"/> :
         work.pendingSplit ? <SplitPreview key={work.pendingSplit.id} work={work} apply={apply} setError={setError}/> :
         <NextChoices work={work} shortcutDesc="从拆分剧本开始自动完成至成片，也可只完成至分镜脚本或分镜图。开始前显示推荐预算，确认后执行。" title="下一步：拆分剧本"
@@ -180,7 +188,13 @@ function DraftEditor({ work, apply, setError, splitting, startPipeline }: Workbe
           <button type="button" className="ip-brand-secondary" disabled={locked || !!busy || !text.trim()} onClick={asEpisode}>作为一集</button>
           {byHeadings && <span className="director-cost">免费</span>}
         </NextChoices>}
-      <ScriptText work={work} target="draft" label="剧本正文" what="剧本正文" value={text} onChange={setText} disabled={splitting}/>
+      <section className={`director-outline director-draft-text ${textOpen ? "is-open" : ""}`} aria-label="剧本正文">
+        <button type="button" className="director-outline-head" aria-expanded={textOpen} onClick={toggleText}>
+          <FileText size={16}/><b>剧本正文</b><span>{text.replace(/\s/g, "").length.toLocaleString("zh-CN")} 字{!textOpen && firstLine(text) ? ` · ${firstLine(text)}` : ""}</span>
+          <ChevronRight size={16} className="director-outline-chevron"/>
+        </button>
+        {textOpen && <div className="director-outline-body"><ScriptText work={work} target="draft" label="剧本正文" what="剧本正文" value={text} onChange={setText} disabled={splitting}/></div>}
+      </section>
       </>}
     </div>
     {choosing && <SplitChoiceDialog work={work} count={count} apply={apply} onClose={() => setChoosing(false)}/>}
@@ -222,6 +236,7 @@ function EpisodeList(props: WorkbenchProps) {
       {rewriting ? <AiWorking title="AI 正在重新写剧本" task={rewriting} detail="完成后自动显示新剧本和分集，当前版本保留在历史中。"/> : <>
       <StoryOutline work={work} defaultOpen={!work.assets.length}/>
       <ReferenceNotes work={work} apply={apply} setError={setError}/>
+      <ScriptMore work={work} apply={apply} setError={setError}/>
       {extracting ? <AiWorking compact title="AI 正在提取全剧资产" task={extracting} detail="识别角色、场景和道具，完成后先给你确认，再保存。"/> :
         <NextChoices work={work} shortcutDesc="把后面的步骤连着自动做完，一直到成片，也可以只做到分镜脚本或分镜图。系统先算好推荐预算，你确认后开始。" title={work.assets.length ? "下一步：生成资产图" : "下一步：提取全剧资产"}
           desc={work.assets.length ? `已提取 ${work.assets.length} 项资产。到「资产」给角色、场景和道具生成资产图，分镜图和视频都照着它们画。改了正文可以重新提取，同一人物不会重复新建。`

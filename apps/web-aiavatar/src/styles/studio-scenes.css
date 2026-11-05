@@ -369,6 +369,23 @@ button.scene-pill:hover, .scene-pill[aria-expanded="true"], .scene-pill.is-selec
 .scene-example.is-portrait .scene-example-media { width: min(100%, 320px); }
 .scene-example-media>img, .scene-example-media>video, .scene-example-media>.scene-thumb { display: block; width: 100% !important; height: 100% !important; object-fit: cover; border-radius: 0; }
 .scene-example-tag { position: absolute; top: 10px; left: 10px; padding: 1px 9px; border-radius: 999px; background: rgba(23,32,42,.62); color: #fff; font-size: 11px; }
+/* 前后对比图：标签在图上方，不压在画面上；列的比例和图的模板一致（素材占 36%，同一张图对比时按中线分） */
+.scene-example.is-demo { flex-direction: column; flex-wrap: nowrap; justify-content: flex-start; gap: 14px; }
+.scene-demo { width: min(100%, 760px); margin: 0; }
+.scene-demo-labels { display: grid; grid-template-columns: 36% minmax(0, 1fr); margin-bottom: 8px; color: var(--sn-text-2); font-size: 12.5px; font-weight: 500; }
+.scene-demo-labels span:first-child { padding-left: 2%; }
+.scene-demo-open { display: block; width: 100%; aspect-ratio: 16 / 9; padding: 0; overflow: hidden; border: 0; border-radius: 14px; background: #f0efec; cursor: zoom-in; }
+.scene-demo-open img { display: block; width: 100%; height: 100%; object-fit: cover; transition: transform 240ms var(--ip-ease); }
+.scene-demo-open:hover img { transform: scale(1.012); }
+.scene-demo-open:focus-visible { outline: 2px solid var(--ip-ink); outline-offset: 2px; }
+.scene-demo-try { display: flex; align-items: center; gap: 12px; width: min(100%, 760px); padding: 10px 14px; border-radius: 10px; background: #f7f6f3; }
+.scene-demo-try>div { flex: 1; min-width: 0; }
+.scene-demo-try small { display: block; margin-bottom: 2px; color: var(--ip-muted); font-size: 11.5px; }
+.scene-demo-try p { margin: 0 !important; color: var(--ip-ink); font-size: 13.5px; line-height: 1.6; overflow-wrap: anywhere; }
+.scene-demo-try button { flex-shrink: 0; min-height: 32px; padding: 0 10px; }
+.scene-demo-note { width: min(100%, 760px); color: var(--ip-muted); font-size: 12px; }
+.scene-demo-peek { margin: 0 12px 12px; }
+.scene-demo-peek .scene-demo-labels { margin-bottom: 4px; font-size: 11.5px; }
 .scene-example-dots { position: absolute; left: 0; right: 0; bottom: 12px; display: flex; justify-content: center; gap: 6px; }
 .scene-example-dots button { width: 7px; height: 7px; padding: 0; border: 0; border-radius: 999px; background: rgba(255,255,255,.6); transition: background-color 160ms var(--ip-ease); cursor: pointer; }
 .scene-example-dots button[aria-current="true"] { width: 18px; background: #fff; }
@@ -454,6 +471,7 @@ html:not([data-layout="desktop"]) .scene-results-actions .scene-recent-host, htm
 html:not([data-layout="desktop"]) .scene-row-tools { opacity: 1; }
 html:not([data-layout="desktop"]) .scene-row-images { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 html:not([data-layout="desktop"]) .scene-example-media { width: min(100%, 260px); }
+html:not([data-layout="desktop"]) .scene-demo, html:not([data-layout="desktop"]) .scene-demo-try, html:not([data-layout="desktop"]) .scene-demo-note { width: 100%; }
 html:not([data-layout="desktop"]) .scene-settings-panel { position: fixed; left: 12px; right: 12px; bottom: calc(var(--tabbar-h, 58px) + env(safe-area-inset-bottom, 0px) + 12px); width: auto; }
 html:not([data-layout="desktop"]) .scene-switch-panel { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 64px); left: 12px; right: 12px; width: auto; }
 html:not([data-layout="desktop"]) .scene-drawer:not(.is-pinned) { top: calc(env(safe-area-inset-top, 0px) + 12px); left: 12px; right: 12px; width: auto; bottom: calc(var(--tabbar-h, 58px) + 12px); }

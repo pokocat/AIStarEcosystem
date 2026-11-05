@@ -13,12 +13,14 @@ const previewImg = () => preview()!.querySelector<HTMLImageElement>("img.ant-ima
 const scale = () => screen.getByLabelText("当前缩放").textContent;
 const button = (name: string) => screen.getByRole("button", { name }) as HTMLButtonElement;
 const frame = () => act(async () => { await new Promise(r => setTimeout(r, 40)); });
-/** jsdom 不跑 CSS 动画：等关闭动画开始后手动结束它，大图层才会收起来。 */
+/** jsdom 不跑 CSS 动画：关闭动画开始后手动结束它，大图层才会收起来。机器忙时动画开始得晚，所以反复结束，不只等一帧。 */
 async function closed() {
   await frame();
-  const root = preview();
-  if (root) act(() => { fireEvent.animationEnd(root); fireEvent.transitionEnd(root); });
-  await waitFor(() => expect(preview()).toBeNull());
+  await waitFor(() => {
+    const root = preview();
+    if (root) act(() => { fireEvent.animationEnd(root); fireEvent.transitionEnd(root); });
+    expect(preview()).toBeNull();
+  }, { timeout: 5000 });
 }
 /** jsdom 的 TouchEvent 不收 touches，自己挂上去，React 读的是原生事件上的这个字段。每步之间隔一帧，和真手指一样。 */
 async function touch(type: string, target: Element, points: { clientX: number; clientY: number }[]) {

@@ -20,6 +20,7 @@ public final class StudioPromptFormats {
 
     // 导演台（第 4 步，§8 #17–#19）
     public static final String DIRECTOR_SCRIPT_OUTPUT = "输出 JSON：{\"title\":\"剧名\",\"logline\":\"一句话核心卖点\",\"outline\":{\"world\":\"…\",\"characters\":[{\"name\":\"…\",\"age\":\"…\",\"identity\":\"…\",\"secret\":\"…\",\"flaw\":\"…\",\"arc\":\"…\"}],\"plot\":\"…\",\"reversals\":\"…\",\"theme\":\"…\"},\"content\":\"完整剧本正文\"}";
+    public static final String DIRECTOR_SCRIPT_MORE_OUTPUT = "输出 JSON：{\"content\":\"这次写的剧本正文，每集用「# 第N集 集名」做标题\"}";
     public static final String DIRECTOR_SPLIT_OUTPUT = "输出 JSON：{\"bodyStart\":0,\"episodes\":[{\"title\":\"集名\",\"summary\":\"本集剧情摘要\",\"startParagraph\":0}]}";
     public static final String DIRECTOR_EXTRACT_OUTPUT = "输出 JSON：{\"assets\":[{\"existingId\":null,\"kind\":\"character|scene|prop\",\"name\":\"名称\",\"aliases\":[],\"description\":\"外观与设定\",\"episodeNos\":[1],\"forms\":[{\"name\":\"形态名称\",\"description\":\"这个形态和平时不一样的地方\"}]}]}";
     public static final String DIRECTOR_PLAN_OUTPUT = "【输出结构】\n严格按以下 JSON 结构输出，不得增减字段：\n{\"clips\":[{\"title\":\"片段短标题\",\"summary\":\"本段剧情摘要\",\"sourceQuote\":\"本片段对应正文的第一句原文，从正文逐字摘抄，不超过 30 字\",\"assetIds\":[\"资产 id\"],\"assetForms\":{\"角色 id\":\"形态 id\"},\"shots\":[{\"durationSec\":3,\"size\":\"景别\",\"sceneView\":\"main\",\"camera\":\"机位与构图\",\"action\":\"动作过程：开始→过程→结束\",\"still\":\"分镜静态帧描述\",\"dialogue\":[{\"speakerId\":\"角色 id\",\"text\":\"台词内容\"}]}]}]}";

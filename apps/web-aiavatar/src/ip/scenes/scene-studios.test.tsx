@@ -62,9 +62,9 @@ test("图片：没放必填参考图时按钮直接写缺什么；放好后先�
   // 一大段场景描述不摆出来：只有场景标签和补充要求输入框。
   expect(screen.queryByRole("textbox", { name: "完整描述" })).toBeNull();
   fillField(screen.getByRole("textbox", { name: "补充要求" }), "45 度角");
-  // 选项组照参考站：点选，不用写字；默认是「正面」。
-  const angle = within(optionGroup("拍摄角度"));
-  expect(angle.getByRole("button", { name: "正面" }).getAttribute("aria-pressed")).toBe("true");
+  // 选项组照参考站：点选，不用写字；默认是「主图加多角度」。
+  const angle = within(optionGroup("出图方式"));
+  expect(angle.getByRole("button", { name: "主图加多角度" }).getAttribute("aria-pressed")).toBe("true");
   fireEvent.click(angle.getByRole("button", { name: "俯拍" }));
   api.composeScene.mockResolvedValue({ text: "服务端拼好的白底图描述\n补充要求：45 度角" });
 
@@ -75,7 +75,7 @@ test("图片：没放必填参考图时按钮直接写缺什么；放好后先�
   expect(api.composeScene).toHaveBeenCalledWith({ kind: "image", sceneId: "white-background", text: "45 度角", refCounts: [1], options: { angle: "top" } });
   expect(api.createProject).toHaveBeenCalledWith({ name: "商品白底图", sceneId: "white-background" });
   const request = api.submit.mock.calls[0][1];
-  expect(request).toMatchObject({ operation: "image", aspectRatio: "1:1", count: 1, model: "ep-img", maxCost: 8,
+  expect(request).toMatchObject({ operation: "image", aspectRatio: "16:9", count: 1, model: "ep-img", maxCost: 8,
     references: [{ storageKey: "ipstudio/source/u/p.jpg", role: "character" }] });
   expect(request.prompt).toBe("服务端拼好的白底图描述\n补充要求：45 度角");
   // 提交之前那次保存里已经有这条请求：网断了也能按原请求确认，不会换个编号重复扣费。

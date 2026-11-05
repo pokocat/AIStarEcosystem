@@ -7,7 +7,7 @@ import { DirectorStoryboard } from "./director-storyboard";
 import { DirectorApi } from "../api";
 
 vi.mock("../api", () => ({ DirectorApi: { edit: vi.fn(), quote: vi.fn() } }));
-vi.mock("./director-script-reference", () => ({ ScriptReference: ({ ep }: { ep: { no: number } }) => <section aria-label={`第 ${ep.no} 集剧本`}/> }));
+vi.mock("./director-script-reference", () => ({ ScriptReference: ({ ep, onCollapse }: { ep: { no: number }; onCollapse?: () => void }) => <section aria-label={`第 ${ep.no} 集剧本`}>{onCollapse && <button type="button" onClick={onCollapse}>收起</button>}</section> }));
 vi.mock("./director-output", () => ({ ClipVideo: () => null, EpisodeOutput: () => null }));
 
 const media = (id: string): DirectorMedia => ({ id, key: `k-${id}`, url: `https://cdn.test/${id}.mp4`, runId: null, source: "generated", createdAt: "2026-10-29T00:00:00Z" });
@@ -87,13 +87,19 @@ test("the script sits inside the episode next to its clips: the sidebar only lis
   document.documentElement.dataset.layout = "desktop";
   window.localStorage.clear();
   render(<Page initial={work(clip("v2"))}/>);
+  // 默认收起：只留一行，不占地方。
+  expect(screen.queryByRole("region", { name: "第 1 集剧本" })).toBeNull();
+  expect(within(screen.getByRole("navigation", { name: "分集" })).queryByRole("tab")).toBeNull();
+  const fold = screen.getByRole("button", { name: /本集剧本/ });
+  expect(fold.getAttribute("aria-expanded")).toBe("false");
+  fireEvent.click(fold);
   const script = screen.getByRole("region", { name: "第 1 集剧本" });
   expect(script.closest(".director-storyboard")).toBeTruthy();
-  expect(within(screen.getByRole("navigation", { name: "分集" })).queryByRole("tab")).toBeNull();
-  const toggle = screen.getByRole("button", { name: "本集剧本" });
-  fireEvent.click(toggle);
+  // 收起后焦点回到还在页面上的开关。
+  fireEvent.click(within(script).getByRole("button", { name: "收起" }));
   expect(screen.queryByRole("region", { name: "第 1 集剧本" })).toBeNull();
-  // 点片段上的「对照剧本」重新展开，不用先去找开关。
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: /本集剧本/ }));
+  // 点片段上的「对照剧本」也能展开。
   fireEvent.click(screen.getByRole("button", { name: "对照剧本" }));
   expect(screen.getByRole("region", { name: "第 1 集剧本" })).toBeTruthy();
   delete document.documentElement.dataset.layout;

@@ -80,7 +80,24 @@ public final class DirectorPrompts {
 
     /** 编剧：策划与写法照用户给的竖屏短剧编剧提示词；输出 {title, logline, outline, content}，后面的拆分 / 提取 / 规划都读 content。 */
     public static Text script(StudioPromptAssembler prompts, String genre, String tone, String input) {
-        return text(prompts, StudioPromptCallPoints.DIRECTOR_SCRIPT, scriptMethods(genre, tone), java.util.Map.of("input", input));
+        return script(prompts, genre, tone, null, input);
+    }
+
+    /** kind：长剧、单集短片各有一段写法（多集短剧就是编剧环节的默认写法），见 methods/director-form-*。 */
+    public static Text script(StudioPromptAssembler prompts, String genre, String tone, String kind, String input) {
+        return text(prompts, StudioPromptCallPoints.DIRECTOR_SCRIPT, formMethods(genre, tone, kind), java.util.Map.of("input", input));
+    }
+
+    /** 接着写后面几集（长的剧本分批写）。 */
+    public static Text scriptMore(StudioPromptAssembler prompts, String genre, String tone, String kind, String input) {
+        return text(prompts, StudioPromptCallPoints.DIRECTOR_SCRIPT_MORE, formMethods(genre, tone, kind), java.util.Map.of("input", input));
+    }
+
+    private static List<String> formMethods(String genre, String tone, String kind) {
+        List<String> out = new ArrayList<>(scriptMethods(genre, tone));
+        if ("long".equals(kind)) out.add("director-form-long");
+        if ("single".equals(kind)) out.add("director-form-single");
+        return out;
     }
 
     public static Text split(StudioPromptAssembler prompts, String input) {
@@ -126,6 +143,7 @@ public final class DirectorPrompts {
         if (out == null || !out.isObject()) throw bad("模型返回格式有误");
         return switch (meta.path("task").asText()) {
             case "script" -> validateScript(om, out);
+            case "script-more" -> validateScriptMore(om, out);
             case "split" -> validateSplit(om, meta, out);
             case "extract" -> validateExtract(om, meta, out);
             case "plan" -> validatePlan(om, meta, out);
@@ -137,8 +155,20 @@ public final class DirectorPrompts {
         };
     }
 
+    private static JsonNode validateScriptMore(ObjectMapper om, JsonNode out) {
+        String content = withoutEpisodeEndNotes(text(out, "content"));
+        if (content.length() < 20) throw bad("模型未返回剧本正文");
+        return om.createObjectNode().put("content", content);
+    }
+
+    /** 模型照样会写「（第3集 完）」（2026-11-05 提示词里写了不要也没用）：这不是剧本内容，写入前去掉。 */
+    static String withoutEpisodeEndNotes(String content) {
+        return EPISODE_END_LINE.matcher(content).replaceAll("").strip();
+    }
+    private static final Pattern EPISODE_END_LINE = Pattern.compile("(?m)^[ \\t]*[（(【\\[]?[ \\t]*第[ \\t]*[0-9０-９零〇一二两三四五六七八九十百]+[ \\t]*集[ \\t·：:—–-]*(完|终|结束)[ \\t]*[）)】\\]]?[ \\t]*(?:\\r?\\n|\\z)");
+
     private static JsonNode validateScript(ObjectMapper om, JsonNode out) {
-        String content = text(out, "content");
+        String content = withoutEpisodeEndNotes(text(out, "content"));
         if (content.length() < 20) throw bad("模型未返回剧本正文");
         ObjectNode r = om.createObjectNode().put("title", clip(text(out, "title"), 60)).put("logline", clip(text(out, "logline"), 200))
                 .put("content", content);
@@ -218,6 +248,7 @@ public final class DirectorPrompts {
      * 正文「第1集里他……」后面跟的是字，不放宽。
      */
     private static final int LONG_HEADING_MAX_CHARS = 120;
+    private static final Pattern EPISODE_END = Pattern.compile("^[\\s·：:—–-]*(完|终|结束|end)\\b?[\\s）)】\\]。.]*$", Pattern.CASE_INSENSITIVE);
     private static final Pattern AFTER_HEADING = Pattern.compile("^(?:$|[\\s《【「『〔（(\\[：:·、—–\\-/／|｜*~～,，.。])");
 
     private static boolean headingLength(String paragraph, String rest) {
@@ -236,7 +267,8 @@ public final class DirectorPrompts {
             Matcher m = EPISODE_HEADING.matcher(p);
             if (!m.find() || !headingLength(p, p.substring(m.end()))) continue;
             int no = number(m.group(1) != null ? m.group(1) : m.group(2));
-            if (no > 0) found.add(new int[]{i, no});
+            // 「（第3集 完）」这样的收尾行不是新一集（2026-11-05 模型真这么写，编号一断整份认不出）。
+            if (no > 0 && !EPISODE_END.matcher(p.substring(m.end())).find()) found.add(new int[]{i, no});
         }
         int from = -1;
         for (int j = found.size() - 1; j >= 0; j--) if (found.get(j)[1] == 1) { from = j; break; }
@@ -247,6 +279,20 @@ public final class DirectorPrompts {
             out.add(found.get(j)[0]);
         }
         return out.size() >= 2 ? out : List.of();
+    }
+
+    /** 接着写的内容里的分集标题：从第 first 集开始、编号逐个加一；对不上返回空，整段算一集。 */
+    public static List<Integer> headingsFrom(List<String> paragraphs, int first) {
+        List<Integer> out = new ArrayList<>();
+        for (int i = 0; i < paragraphs.size(); i++) {
+            String p = paragraphs.get(i);
+            if (p.length() > LONG_HEADING_MAX_CHARS) continue;
+            Matcher m = EPISODE_HEADING.matcher(p);
+            if (!m.find() || !headingLength(p, p.substring(m.end())) || EPISODE_END.matcher(p.substring(m.end())).find()) continue;
+            if (number(m.group(1) != null ? m.group(1) : m.group(2)) != first + out.size()) return List.of();
+            out.add(i);
+        }
+        return out;
     }
 
     /** 用户照抄的第一集标题开头最多这么多字（只用到编号和它后面一个字，整行粘进来也行）。 */
