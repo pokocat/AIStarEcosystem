@@ -50,9 +50,9 @@
 
 ## 补发：手机端两处显示问题（2026-11-06）
 
-只发 `web-aiavatar`（发布号 `20261106-director-mobile-chip`），server 和 studio-admin 未动。
+只发 `web-aiavatar`，server 和 studio-admin 未动，后端没有重启。连发两版：`20261106-director-mobile-chip` 上线后验收发现，屏幕宽 264 时角标把「资产」挤成两行，`20261106-director-mobile-chip-2` 补上不换行。
 
 - 作品设置按钮不再被截断，很长的风格名显示省略号，悬停看全文。
-- 手机上分区角标排在文字后面，不再压住「资产」。
+- 手机上分区角标排在文字后面，不再压住「资产」，文字不换行。
 
 回滚：`web-aiavatar` 回 `20261105-director-brief-demos`。

@@ -199,6 +199,7 @@ html[data-layout="desktop"] .director-nav button { flex-direction: column; gap: 
 .director-nav button[aria-selected="true"] { background: var(--ip-paper); color: var(--ip-ink); box-shadow: 0 1px 3px rgba(25, 34, 41, .12); }
 .director-nav small { position: absolute; top: 4px; right: 6px; min-width: 16px; padding: 0 4px; border-radius: 8px; background: var(--ip-gold); color: #fff; font-size: 10px; line-height: 16px; text-align: center; }
 /* 手机上按钮窄，角标叠在右上角会压住文字，排在文字后面；桌面左栏只有 56px，角标仍然叠在图标上。 */
+html:not([data-layout="desktop"]) .director-nav button { white-space: nowrap; }
 html:not([data-layout="desktop"]) .director-nav small { position: static; flex: none; }
 .director-main { min-width: 0; }
 
