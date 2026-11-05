@@ -16,7 +16,7 @@ def config_guard(config,mode,environ):
   require(not environ.get(key),'拒绝旧单机覆盖参数：'+key)
  require(set(config['nodes'])=={'a','b'} and config['drain_seconds']>=180,'双机及180秒排空配置不完整')
  require({x['instance_id'] for x in config['nodes'].values()}=={'i-bp1dkkgmjbcpa21a5yi0','i-bp1as9b78f1fjmzlnvct'},'ECS身份不匹配')
- require(all(x['host'] not in LEGACY for x in config['nodes'].values()),'旧机不能作为新发布目标')
+ require({k:v['host'] for k,v in config['nodes'].items()}=={'a':'101.37.189.227','b':'121.199.172.157'},'必须使用已验收新A/B固定IP；旧机和自定义目标不可发布')
  require(config['modes']['stage']['database']!='aistar_prod' and config['modes']['stage']['group']!=config['modes']['production']['group'],'正式与演练资源必须隔离')
 def environment_guard(env,mode,expected):
  u=urllib.parse.urlsplit(env.get('DB_URL','')[5:]);query=urllib.parse.parse_qs(u.query)

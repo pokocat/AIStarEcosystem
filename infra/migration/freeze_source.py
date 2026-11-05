@@ -29,7 +29,7 @@ def main():
  if url.scheme!='mysql' or url.path!='/aistareco' or urllib.parse.parse_qs(url.query).get('serverTimezone')!=['Asia/Shanghai']:raise RuntimeError('源库身份/时区变化')
  checkenv=dict(os.environ);checkenv['MYSQL_PWD']=env.get('DB_PASSWORD',env.get('SPRING_DATASOURCE_PASSWORD',''))
  query="SELECT table_name,column_name,column_type,is_nullable,coalesce(column_default,'<NULL>'),extra FROM information_schema.columns WHERE table_schema=database() AND table_name<>'flyway_schema_history' ORDER BY table_name,ordinal_position"
- checked=subprocess.run(['mysql','--protocol=TCP','-h',url.hostname,'-P',str(url.port or 3306),'-u',env.get('DB_USERNAME',env.get('SPRING_DATASOURCE_USERNAME','')),'--batch','--raw','--skip-column-names','aistareco','-e',query],env=checkenv,stdout=subprocess.PIPE,stderr=subprocess.PIPE,universal_newlines=True)
+ checked=subprocess.run(['mysql','--protocol=TCP','-h',url.hostname,'-P',str(url.port or 3306),'-u',env.get('DB_USERNAME',env.get('SPRING_DATASOURCE_USERNAME','')),'--batch','--raw','--skip-column-names','--default-character-set=utf8mb4','aistareco','-e',query],env=checkenv,stdout=subprocess.PIPE,stderr=subprocess.PIPE,universal_newlines=True)
  if checked.returncode or hashlib.sha256(checked.stdout.encode()).hexdigest()!=plan['source_schema_sha256']:raise RuntimeError('源结构变化，未停写')
  critical={k:v for k,v in env.items() if any(x in k for x in ['AES','JWT','ENCRYPT','AEP_ID_','WECHAT','PAYMENT'])}
  if hashlib.sha256(json.dumps(critical,sort_keys=True,separators=(',',':')).encode()).hexdigest()!=plan.get('source_critical_environment_sha256'):raise RuntimeError('源加密/身份/支付配置变化，未停写')

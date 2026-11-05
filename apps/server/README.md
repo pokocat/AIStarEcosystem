@@ -1389,3 +1389,7 @@ AIStar运行镜像必须同时固定官方Java与Node镜像digest；Studio仿片
 容器路径与本地文件：源环境已有AEP_STUDIO_RECREATION_MEDIA_BIN=/opt/ai-star-eco/hypit-runtime/bin，不能原样继承到镜像；新模板明确使用/usr/bin，并固定Node=/usr/local/bin/node。FileStorageService实际配置键是AEP_STORAGE_LOCAL_DIR，挂载/app/work为UID10001可写；AEP_FILE_STORAGE_ROOT不是有效替代。源file-storage约4GB，保留完整预同步副本并校验，正式停写后补增量；不能仅因已接OSS而假定本地目录可删除。预同步不是冻结数据，禁止据此清理旧服务文件。
 
 迁移文件中转只能使用独立私有Bucket，先以无敏感信息的canary验证匿名Range GET为403；仅设置object private ACL不足以证明Bucket策略未放行。禁止把数据库导出、文件归档或含业务信息的中转包放入现有公开素材Bucket。分发OCI归档时校验归档SHA256、配置摘要和RootFS摘要；Podman导出重新压缩可能改变引擎显示的manifest digest，不能据此跳过内容校验。
+
+### 新集群部署控制（2026-11-05）
+
+回环 `/internal/deployment` 需要独立强令牌 `AEP_DEPLOYMENT_TOKEN`，Nginx必须拒绝该路径。POST 取消未来调度，不中断运行任务；GET 同时检查请求（含异步）、线程池和持久任务。证据不可用返回503，不当作空闲。正式API双机后台关闭，后台单活独立运行。导入/发布门禁见 [PostgreSQL SOP](../../docs/aistar-postgresql-cutover.md)。
