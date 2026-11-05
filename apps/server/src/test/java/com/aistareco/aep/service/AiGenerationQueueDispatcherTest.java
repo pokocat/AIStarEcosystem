@@ -119,4 +119,25 @@ class AiGenerationQueueDispatcherTest {
         var ticket=new AiGenerationQueueEntry();ticket.setId(1L);ticket.setTaskType(type);ticket.setTaskId(id);
         ticket.setEndpointId("e");ticket.setState(state);ticket.setDispatchAfter(Instant.now());return ticket;
     }
+    /** 2026-11-05：线程全忙时同一张票每 30 秒塞一次线程池，塞满 128 条后谁都派不进去。 */
+    @Test void busyPoolLeavesTicketsWaitingInsteadOfStackingDuplicates() throws Exception {
+        var pool=new org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor();
+        pool.setCorePoolSize(1);pool.setMaxPoolSize(1);pool.setQueueCapacity(4);pool.initialize();
+        var release=new java.util.concurrent.CountDownLatch(1);var started=new java.util.concurrent.CountDownLatch(1);
+        try {
+            ReflectionTestUtils.setField(dispatcher,"ipRunExecutor",pool);
+            var ticket=ticket(AiGenerationQueueService.IMAGE,"run","waiting");
+            when(queue.openEntries()).thenReturn(List.of(ticket));
+            when(runs.findById("run")).thenReturn(Optional.of(IpRun.builder().status("running").build()));
+            when(queue.claimDispatch(ticket,false)).thenReturn(true);
+            pool.execute(()->{started.countDown();try{release.await();}catch(InterruptedException ignored){}});
+            started.await();
+            dispatcher.dispatch();
+            verify(queue,never()).claimDispatch(any(),anyBoolean());verify(images,never()).execute(anyString());
+            release.countDown();
+            for(int i=0;i<200&&pool.getThreadPoolExecutor().getActiveCount()>0;i++)Thread.sleep(10);
+            dispatcher.dispatch();
+            verify(images).execute("run");
+        } finally {release.countDown();pool.shutdown();}
+    }
 }

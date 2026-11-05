@@ -748,4 +748,82 @@ class IpRunWorkerTest {
     }
     private void verifyNoCharges(){verify(credits,never()).releaseHold(anyString(),anyString(),anyString());verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString(), org.mockito.ArgumentMatchers.any());}
 
+
+    // ── 供应商因并发拒收：回队列 ─────────────────────────────
+
+    private com.aistareco.aep.service.AiGenerationQueueService queueFor(com.aistareco.aep.ipstudio.service.JusuanImageClient nativeImages) {
+        var queue=mock(com.aistareco.aep.service.AiGenerationQueueService.class);
+        when(queue.acquire(anyString(),anyString(),any(),org.mockito.ArgumentMatchers.anyBoolean())).thenReturn(com.aistareco.aep.service.AiGenerationQueueService.Admission.READY);
+        when(queue.bind(anyString(),anyString())).thenReturn(()->{});
+        when(runs.repo.claimUnstarted(anyString(),any())).thenReturn(1);
+        org.springframework.test.util.ReflectionTestUtils.setField(worker,"queue",queue);
+        org.springframework.test.util.ReflectionTestUtils.setField(worker,"jusuanImages",nativeImages);
+        when(nativeImages.supportsEndpoint("native")).thenReturn(true);
+        return queue;
+    }
+    private void nativeEndpoint(IpRun run) throws Exception {
+        ObjectNode input=(ObjectNode)OM.readTree(run.getInputJson());
+        ((ObjectNode)input.path("_exec")).put("endpointId","native");run.setInputJson(input.toString());runs.repo.save(run);
+    }
+    @Test void loadRefusalReturnsRunToQueueKeepsHoldAndRetriesWithNewRequestId() throws Exception {
+        var nativeImages=mock(com.aistareco.aep.ipstudio.service.JusuanImageClient.class);
+        var queue=queueFor(nativeImages);
+        nativeEndpoint(seedGenerateRun(1));
+        java.util.List<String> requests=new java.util.ArrayList<>();
+        when(nativeImages.generate(eq("native"),anyString(),anyString(),anyList(),anyString(),eq(USER),any(),any(),any(),any(),any())).thenAnswer(inv->{
+            requests.add(inv.getArgument(4));
+            java.util.function.Consumer<ObjectNode> checkpoint=inv.getArgument(10);
+            checkpoint.accept(OM.createObjectNode().put("submitAttempted",true).put("requestBody","body"));
+            if(requests.size()==1)throw new com.aistareco.aep.ipstudio.service.JusuanImageClient.ProviderBusy();
+            return IpStudioFixtures.pngBytes();
+        });
+
+        worker.runBlocking(RID);
+
+        IpRun waiting=reload();
+        assertEquals("running",waiting.getStatus());
+        assertEquals("endpoint.queued",waiting.getStage());
+        assertNull(waiting.getStartedAt());
+        assertFalse(com.aistareco.aep.ipstudio.service.IpRunWorker.hasNativeSubmission(waiting));
+        verify(queue).requeue(com.aistareco.aep.service.AiGenerationQueueService.IMAGE,RID,java.time.Duration.ofSeconds(30));
+        verify(queue,never()).finish(anyString(),anyString());
+        verify(credits,never()).releaseHold(anyString(),anyString(),anyString());
+        verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString(),any());
+
+        worker.runBlocking(RID);
+
+        assertEquals("done",reload().getStatus());
+        assertEquals(List.of(RID+"-image-0",RID+"-image-0-r1"),requests);
+        verify(credits,times(1)).commitHold(eq("ip-run"),eq(RID),eq(8L),anyString(),any());
+        verify(credits,never()).releaseHold(anyString(),anyString(),anyString());
+    }
+    @Test void loadRefusalWaitsLongerEachTimeUpToTwoMinutes() throws Exception {
+        var nativeImages=mock(com.aistareco.aep.ipstudio.service.JusuanImageClient.class);
+        var queue=queueFor(nativeImages);
+        nativeEndpoint(seedGenerateRun(1));
+        when(nativeImages.generate(eq("native"),anyString(),anyString(),anyList(),anyString(),eq(USER),any(),any(),any(),any(),any()))
+                .thenThrow(new com.aistareco.aep.ipstudio.service.JusuanImageClient.ProviderBusy());
+        for(int i=0;i<5;i++)worker.runBlocking(RID);
+        for(int seconds:new int[]{30,60,90,120})
+            verify(queue,org.mockito.Mockito.atLeastOnce()).requeue(com.aistareco.aep.service.AiGenerationQueueService.IMAGE,RID,java.time.Duration.ofSeconds(seconds));
+        verify(queue,times(2)).requeue(com.aistareco.aep.service.AiGenerationQueueService.IMAGE,RID,java.time.Duration.ofSeconds(120));
+    }
+    @Test void loadRefusalFailsAndRefundsAfterWaitingTooLong() throws Exception {
+        var nativeImages=mock(com.aistareco.aep.ipstudio.service.JusuanImageClient.class);
+        var queue=queueFor(nativeImages);
+        IpRun run=seedGenerateRun(1);nativeEndpoint(run);
+        ObjectNode input=(ObjectNode)OM.readTree(run.getInputJson());
+        ((ObjectNode)input.path("_exec")).putObject("loadRefusal").put("index",0).put("attempts",20).put("since",System.currentTimeMillis()-31*60_000L);
+        run.setInputJson(input.toString());runs.repo.save(run);
+        when(nativeImages.generate(eq("native"),anyString(),anyString(),anyList(),anyString(),eq(USER),any(),any(),any(),any(),any()))
+                .thenThrow(new com.aistareco.aep.ipstudio.service.JusuanImageClient.ProviderBusy());
+
+        worker.runBlocking(RID);
+
+        assertEquals("failed",reload().getStatus());
+        assertEquals("STUDIO_IMAGE_PROVIDER_BUSY",reload().getErrorCode());
+        assertEquals(0,reload().getCost());
+        verify(queue,never()).requeue(anyString(),anyString(),any());
+        verify(queue).finish(com.aistareco.aep.service.AiGenerationQueueService.IMAGE,RID);
+    }
 }

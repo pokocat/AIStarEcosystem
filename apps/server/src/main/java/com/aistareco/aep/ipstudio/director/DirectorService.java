@@ -3754,8 +3754,13 @@ public class DirectorService {
 
     /** 新选择只能从这里选：场景开放、可用，出图规格覆盖三种比例。 */
     private List<com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection> imageSelections() {
+        String preferred = scenePolicies.directorImageDefault().orElse(null);
         return scenePolicies.available("studio", "image", textRuns.directorPrices(null)[1]).stream()
-                .filter(s -> missingRatios(s.resolved().endpoint()).isEmpty()).toList();
+                .filter(s -> missingRatios(s.resolved().endpoint()).isEmpty())
+                .map(s -> preferred == null ? s : new com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection(
+                        new com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint(s.resolved().endpoint(), s.resolved().candidate(),
+                                preferred.equals(s.resolved().endpoint().getId())), s.creditCost(), s.billingUnit()))
+                .toList();
     }
 
     private void requireSelectableImageModel(String id) {
@@ -3776,7 +3781,8 @@ public class DirectorService {
     com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection imageSelection(ObjectNode c) {
         String chosen = c.path("settings").path("imageModel").asText(null);
         try {
-            return scenePolicies.resolve("studio", "image", chosen, textRuns.directorPrices(null)[1]);
+            String model = chosen != null ? chosen : scenePolicies.directorImageDefault().orElse(null);
+            return scenePolicies.resolve("studio", "image", model, textRuns.directorPrices(null)[1]);
         } catch (BusinessException e) {
             if (!"ENDPOINT_NOT_ALLOWED".equals(e.getCode())) throw e;
             throw new BusinessException(e.getStatus(), e.getCode(), chosen == null

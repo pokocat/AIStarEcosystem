@@ -129,6 +129,23 @@ class DirectorImageModelTest {
         assertEquals(16, reset.path("pricing").path("image").asLong());
     }
 
+    /** 2026-11-05 用户要求：AI 图片默认 GPT Image 2.5，短剧继续用 2.0。两边共用开放范围和售价，只有默认不同。 */
+    @Test void directorHasItsOwnDefaultImageModelButAnExplicitChoiceStillWins() throws Exception {
+        when(policy.directorImageDefault()).thenReturn(Optional.of("chosen-image"));
+        var view = patch(om.createObjectNode());
+        assertEquals(37, view.path("pricing").path("image").asLong());
+        assertEquals("chosen-image", view.path("imageModelState").path("id").asText());
+        assertFalse(view.path("imageModelState").path("explicit").asBoolean());
+        for (JsonNode model : view.path("imageModels"))
+            assertEquals("chosen-image".equals(model.path("id").asText()), model.path("isDefault").asBoolean(), model.toString());
+        asset("c1", "character", "林夏");
+        generate("asset-image", "c1", 37);
+        assertEquals("chosen-image", lastSubmitted().model());
+
+        var picked = patch(om.createObjectNode().put("imageModel", "default-image"));
+        assertEquals(16, picked.path("pricing").path("image").asLong());
+    }
+
     @Test void onlyModelsThatCanMakeSquareWideAndTallImagesAreOffered() throws Exception {
         var view = patch(om.createObjectNode());
         List<String> offered = new ArrayList<>();

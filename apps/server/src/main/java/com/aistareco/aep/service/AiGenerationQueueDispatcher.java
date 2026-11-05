@@ -22,6 +22,10 @@ public class AiGenerationQueueDispatcher {
     private final ObjectProvider<StudioSpeechWorker> speech;
     private final ObjectProvider<MaterialVideoWorker> videoWorker;
     @org.springframework.beans.factory.annotation.Autowired private com.fasterxml.jackson.databind.ObjectMapper mapper;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    @org.springframework.beans.factory.annotation.Qualifier("ipRunExecutor") private java.util.concurrent.Executor ipRunExecutor;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    @org.springframework.beans.factory.annotation.Qualifier("materialVideoExecutor") private java.util.concurrent.Executor materialVideoExecutor;
     public AiGenerationQueueDispatcher(AiGenerationQueueService queue,IpRunRepository runs,MaterialVideoJobRepository videos,
             ObjectProvider<IpRunWorker> images,ObjectProvider<StudioWorkflowWorker> workflows,
             ObjectProvider<StudioSpeechWorker> speech,ObjectProvider<MaterialVideoWorker> videoWorker) {
@@ -64,6 +68,9 @@ public class AiGenerationQueueDispatcher {
                     continue;
                 }
             }
+            // 等待票据的真值在库里。线程全忙时不往线程池塞：租约 30 秒一到又塞一份，同一张票能堆满 128 条等待，
+            // 之后谁都派不进去（2026-11-05 三张图排了 47 分钟）。
+            if(!poolHasRoom(type))continue;
             if(queue.claimDispatch(entry,false))switch(type) {
                 case AiGenerationQueueService.IMAGE -> images.getObject().execute(id);
                 case AiGenerationQueueService.WORKFLOW -> workflows.getObject().execute(id);
@@ -72,6 +79,16 @@ public class AiGenerationQueueDispatcher {
                 default -> log.error("Unknown generation queue type {}",type);
             }
         } catch(Exception error){log.warn("[generation-queue] dispatch deferred ticket={} reason={}",entry.getId(),error.getClass().getSimpleName());}
+    }
+    private boolean poolHasRoom(String type) {
+        var executor=switch(type) {
+            case AiGenerationQueueService.IMAGE,AiGenerationQueueService.WORKFLOW -> ipRunExecutor;
+            case AiGenerationQueueService.VIDEO -> materialVideoExecutor;
+            default -> null;
+        };
+        if(!(executor instanceof org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor task))return true;
+        var pool=task.getThreadPoolExecutor();
+        return pool.getActiveCount()+pool.getQueue().size()<pool.getMaximumPoolSize();
     }
     private void discoverCommittedTasks() {
         for(var run:runs.findByStatus(IpRun.STATUS_RUNNING)) try {

@@ -34,6 +34,8 @@ public final class ModelCallCtx {
     private final int maxAttempts;
     private final long retryBackoffMs;
     private final HttpClient client;
+    /** 让 HttpRequest.timeout 管到正文收完。JDK 的 timeout 只管到响应头：网关先回头、正文一直不来时会无限等，占死工作线程。 */
+    private final boolean boundBody;
 
     private ModelCallCtx(Builder b) {
         this.purpose = b.purpose;
@@ -49,6 +51,7 @@ public final class ModelCallCtx {
         this.maxAttempts = b.maxAttempts;
         this.retryBackoffMs = b.retryBackoffMs;
         this.client = b.client;
+        this.boundBody = b.boundBody;
     }
 
     public AiModelPurpose purpose()      { return purpose; }
@@ -64,6 +67,7 @@ public final class ModelCallCtx {
     public int maxAttempts()             { return maxAttempts; }
     public long retryBackoffMs()         { return retryBackoffMs; }
     public HttpClient client()           { return client; }
+    public boolean boundBody()           { return boundBody; }
 
     /** purpose wire（== name()）；purpose 为 null 时返回 null。 */
     public String purposeWire() {
@@ -88,6 +92,7 @@ public final class ModelCallCtx {
         private int maxAttempts = 1;
         private long retryBackoffMs = 0L;
         private HttpClient client;
+        private boolean boundBody;
 
         private Builder(AiModelPurpose purpose) {
             this.purpose = purpose;
@@ -109,6 +114,7 @@ public final class ModelCallCtx {
         public Builder maxAttempts(int maxAttempts)              { this.maxAttempts = maxAttempts; return this; }
         public Builder retryBackoffMs(long retryBackoffMs)       { this.retryBackoffMs = retryBackoffMs; return this; }
         public Builder client(HttpClient client)                 { this.client = client; return this; }
+        public Builder boundBody(boolean v)                      { this.boundBody = v; return this; }
 
         public ModelCallCtx build() {
             if (client == null) {

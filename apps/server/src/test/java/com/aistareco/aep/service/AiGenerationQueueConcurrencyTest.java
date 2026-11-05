@@ -167,4 +167,18 @@ class AiGenerationQueueConcurrencyTest {
         queue.finish("ip-image","busy");queue.acquire("ip-image","second","e",false);
         assertNull(queue.position("ip-image","second"));
     }
+    @Test void requeuedTicketWaitsItsDelayThenKeepsItsPlaceInLine() {
+        endpoint("e",1);
+        assertEquals(AiGenerationQueueService.Admission.READY,queue.acquire("ip-image","refused","e",false));
+        assertEquals(AiGenerationQueueService.Admission.WAITING,queue.acquire("ip-image","later","e",false));
+        queue.requeue("ip-image","refused",java.time.Duration.ofMinutes(5));
+        assertTrue(queue.isWaiting("ip-image","refused"));
+        var refused=tickets.findByTaskTypeAndTaskId("ip-image","refused").orElseThrow();
+        var later=tickets.findByTaskTypeAndTaskId("ip-image","later").orElseThrow();
+        assertFalse(queue.claimDispatch(refused,false),"还没到重交时间");
+        assertFalse(queue.claimDispatch(later,false),"排在后面的不能抢先");
+        queue.requeue("ip-image","refused",java.time.Duration.ZERO);
+        assertTrue(queue.claimDispatch(tickets.findByTaskTypeAndTaskId("ip-image","refused").orElseThrow(),false));
+        assertEquals(AiGenerationQueueService.Admission.READY,queue.acquire("ip-image","refused","e",false));
+    }
 }
