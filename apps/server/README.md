@@ -1393,3 +1393,5 @@ AIStar运行镜像必须同时固定官方Java与Node镜像digest；Studio仿片
 ### 新集群部署控制（2026-11-05）
 
 回环 `/internal/deployment` 需要独立强令牌 `AEP_DEPLOYMENT_TOKEN`，Nginx必须拒绝该路径。POST 取消未来调度，不中断运行任务；GET 同时检查请求（含异步）、线程池和持久任务。证据不可用返回503，不当作空闲。正式API双机后台关闭，后台单活独立运行。导入/发布门禁见 [PostgreSQL SOP](../../docs/aistar-postgresql-cutover.md)。
+
+postgres双机的`AEP_STORAGE_REQUIRE_DURABLE_UPLOADS`默认true：混剪素材/预置/官方素材与成片须持久化OSS后才保存确认，读不到本地文件时按已授权资产的cdnKey回源。缓存原子落盘，旧静态素材URL支持Range；本地目录和旧绝对路径映射见迁移SOP，不能只拷贝file-storage。

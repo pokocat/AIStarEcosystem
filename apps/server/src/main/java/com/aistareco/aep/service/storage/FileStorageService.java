@@ -140,6 +140,12 @@ public class FileStorageService {
 
     public record StoredFile(String key, String url, String signedUrl, String localPath, long bytes, String contentType) {}
 
+    public boolean requiresDurableUploads() { return props.isRequireDurableUploads(); }
+    private void requireDurableDriver() {
+        if (requiresDurableUploads() && (cdn == null || !"oss".equals(cdn.driverName())))
+            throw new IllegalStateException("共享文件存储暂不可用，请稍后重试");
+    }
+
     // ── 写入 ──────────────────────────────────────────────────────────────────
 
     /** 存一个 multipart 上传文件（图片 / 视频 / 音频…）。ext / contentType 从上传文件推断。 */
@@ -190,6 +196,7 @@ public class FileStorageService {
      */
     public StoredFile storeExisting(Path localFile, String category, String ownerId, String ext, String contentType, boolean deleteAfter) {
         try {
+            requireDurableDriver();
             long bytes = Files.size(localFile);
             String key = buildKey(category, ownerId, ext);
             String mime = contentType == null ? guessMime(ext) : contentType;
@@ -235,6 +242,7 @@ public class FileStorageService {
     }
 
     private StoredFile ingest(InputStream in, String category, String ownerId, String ext, String contentType) throws IOException {
+        requireDurableDriver();
         String key = buildKey(category, ownerId, ext);
         Path local = Paths.get(props.getLocalDir(), key);
         Files.createDirectories(local.getParent());
@@ -287,22 +295,35 @@ public class FileStorageService {
      * 注意：返回的可能是下载到 read-cache 的临时文件；调用方用完不必删（由清理流程统一管）。
      */
     public Path openForRead(String key) throws IOException {
-        Path local = Paths.get(props.getLocalDir(), key);
-        if (Files.exists(local) && Files.size(local) > 0) return local;
-        // 本机没有 → 从 CDN 下载到 read-cache
+        if(key==null || key.isBlank())throw new IOException("empty storage key");
+        Path root=Paths.get(props.getLocalDir()).toAbsolutePath().normalize();
+        Path local=root.resolve(key).normalize();
+        if(!local.startsWith(root) || Paths.get(key).isAbsolute())throw new IOException("invalid storage key");
+        if (Files.isRegularFile(local) && Files.size(local)>0) {
+            if(!local.toRealPath().startsWith(root.toRealPath()))throw new IOException("storage path escapes root");
+            return local;
+        }
+        // Node-local cache is optional. Publish a complete download atomically so another
+        // render cannot observe a half-written video while a concurrent reader fills it.
         String url = signedUrl(key);
-        if (url == null) throw new IOException("no source for key: " + key);
+        if (url == null) throw new IOException("no source for key");
         Path cacheDir = Paths.get(props.getLocalDir(), ".read-cache");
         Files.createDirectories(cacheDir);
-        Path target = cacheDir.resolve(key.replaceAll("[^A-Za-z0-9._-]", "_"));
-        if (Files.exists(target) && Files.size(target) > 0) return target;
-        URLConnection conn = URI.create(url).toURL().openConnection();
-        conn.setConnectTimeout(15_000);
-        conn.setReadTimeout(60_000);
-        try (InputStream in = conn.getInputStream()) {
-            Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
-        }
-        return target;
+        String name;
+        try { name=java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(key.getBytes(java.nio.charset.StandardCharsets.UTF_8))); }
+        catch(java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
+        Path target=cacheDir.resolve(name);
+        if(Files.isRegularFile(target) && Files.size(target)>0)return target;
+        Path pending=Files.createTempFile(cacheDir,"download-",".pending");
+        try {
+            URLConnection conn=URI.create(url).toURL().openConnection();
+            conn.setConnectTimeout(15_000);conn.setReadTimeout(60_000);
+            try(InputStream in=conn.getInputStream()){Files.copy(in,pending,StandardCopyOption.REPLACE_EXISTING);}
+            if(Files.size(pending)==0)throw new IOException("empty shared file");
+            try{Files.move(pending,target,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);}
+            catch(java.nio.file.AtomicMoveNotSupportedException unavailable){Files.move(pending,target,StandardCopyOption.REPLACE_EXISTING);}
+            return target;
+        } finally { Files.deleteIfExists(pending); }
     }
 
     public String driverName() {

@@ -68,9 +68,10 @@ def prepare(config,expected,mode,release):
 def start(config,expected,mode,release):
  dest,manifest,env=prepare(config,expected,mode,release);unit=expected['unit']
  require(run(['systemctl','show',unit,'-p','MainPID','--value']).strip() in ('','0'),'替换前必须完成排空并停止')
- args=['/usr/bin/podman','run','--rm','--name',unit,'--label','aistar.release='+release,'--label','aistar.mode='+mode,'--network','host','--read-only','--tmpfs','/tmp:rw,size=128m','--memory','1600m','--cpus','1','--pids-limit','256','--stop-timeout','240','--user','10001:10001','--env-file',str(ROOT/'control'/('env-'+mode)),'--volume',str(ROOT/'state'/mode)+':/opt/aistar-migration/preparation:rw','--volume',str(dest)+':/app/release:ro']
- if mode=='production':
-  work=ROOT/'work';require(work.is_dir(),'缺少已核对持久目录');args+=['--volume',str(work)+':/app/work:rw']
+ args=['/usr/bin/podman','run','--rm','--name',unit,'--label','aistar.release='+release,'--label','aistar.mode='+mode,'--network','host','--read-only','--workdir','/app/work','--tmpfs','/tmp:rw,size=128m','--memory','1600m','--cpus','1','--pids-limit','256','--stop-timeout','240','--user','10001:10001','--env-file',str(ROOT/'control'/('env-'+mode)),'--volume',str(ROOT/'state'/mode)+':/opt/aistar-migration/preparation:rw','--volume',str(dest)+':/app/release:ro']
+ work=ROOT/'work'
+ if mode=='production' or work.is_dir():
+  require(work.is_dir(),'缺少已核对持久目录');args+=['--volume',str(work)+':/app/work:rw','--volume',str(work)+':/data/aistareco:rw','--volume',str(work/'file-storage')+':/opt/ai-star-eco/server/file-storage:ro']
  args+=['--entrypoint','java',manifest['image_configuration_id'],'-Duser.timezone=Asia/Shanghai','-Djavax.net.ssl.trustStore=/opt/aistar-migration/preparation/java-truststore','-Djavax.net.ssl.trustStorePassword=changeit','-Xms128m','-Xmx1024m']
  if mode=='stage':args+=['-Djava.security.manager=allow','--add-opens=java.base/java.lang=ALL-UNNAMED','-cp','/app/release/tools:/app/release/app/BOOT-INF/classes:/app/release/app/BOOT-INF/lib/*','IsolatedApiBootstrap']
  else:args+=['-jar','/app/release/app.jar']

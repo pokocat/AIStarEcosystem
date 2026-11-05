@@ -354,6 +354,7 @@ public class MixcutRenderingService {
             String cdnVideoKey = null;
             String cdnThumbUrl = null;
             OffsetDateTime cdnUploadedAt = null;
+            if (cdnUploader==null && assetService.requiresDurableWrites())throw new IOException("共享成片存储未配置");
             if (cdnUploader != null) {
                 String videoKey = "mixcut/" + jobId + "/v" + (i + 1) + ".mp4";
                 try {
@@ -362,6 +363,7 @@ public class MixcutRenderingService {
                     cdnVideoKey = res.key();
                     cdnUploadedAt = OffsetDateTime.now();
                 } catch (Exception e) {
+                    if(assetService.requiresDurableWrites())throw new IOException("成片未能保存到共享存储",e);
                     log.warn("[mixcut] job {} variant {} CDN upload failed (keeping fileUrl): {}",
                             jobId, i + 1, e.getMessage());
                 }
@@ -371,6 +373,7 @@ public class MixcutRenderingService {
                         var res = uploadWithRetry(thumbFile.toPath(), thumbKey, "image/jpeg");
                         cdnThumbUrl = res.cdnUrl();
                     } catch (Exception e) {
+                        if(assetService.requiresDurableWrites())thumbUrl=null;
                         log.warn("[mixcut] job {} variant {} CDN thumbnail upload failed: {}",
                                 jobId, i + 1, e.getMessage());
                     }
@@ -1005,11 +1008,9 @@ public class MixcutRenderingService {
             // 一旦指定资产编号，只能从本人/平台预置资产读取，不能失败后退回不可信 file_url。
             var asset = assetService.getVisibleTo(assetId, userId).orElse(null);
             if (asset == null) throw new IllegalArgumentException("素材不存在或无权访问");
-            if (asset.getLocalPath() != null) {
-                File file = new File(asset.getLocalPath());
-                if (file.isFile()) return file;
-            }
-            return null;
+            if(asset.getLocalPath()!=null && new File(asset.getLocalPath()).isFile())return new File(asset.getLocalPath());
+            try { return assetService.localFileForAuthorizedAsset(asset); }
+            catch(IOException unavailable){throw new IllegalArgumentException("素材读取失败，请稍后重试",unavailable);}
         }
         String fileUrl = b.path("file_url").asText(null);
         if (fileUrl == null || fileUrl.isBlank()) return null;
@@ -1019,7 +1020,14 @@ public class MixcutRenderingService {
                 String relative = fileUrl.substring(assetBase.length() + 1);
                 if (userId == null || !relative.startsWith(userId + "/"))
                     throw new java.io.IOException("素材不属于当前用户，请从素材库重新选择");
-                return confinedFile(new File(props.getAssetDir(), userId), relative.substring(userId.length() + 1));
+                try{return confinedFile(new File(props.getAssetDir(), userId), relative.substring(userId.length() + 1));}
+                catch(java.nio.file.NoSuchFileException missing) {
+                    var asset=assetService.visibleByLegacyUrl(fileUrl,userId).orElse(null);
+                    if(asset==null)throw missing;
+                    File cached=assetService.localFileForAuthorizedAsset(asset);
+                    if(cached==null)throw missing;
+                    return cached;
+                }
             }
             String outBase = props.getPublicUrlBase();
             if (fileUrl.startsWith(outBase + "/")) {
@@ -1880,9 +1888,10 @@ public class MixcutRenderingService {
                     var assetOpt = assetService.get(assetId);
                     if (assetOpt.isEmpty()) continue;
                     var asset = assetOpt.get();
-                    if (asset.getLocalPath() == null) continue;
-                    File f = new File(asset.getLocalPath());
-                    if (!f.exists()) continue;
+                    File f;
+                    try { f=asset.getLocalPath()!=null && new File(asset.getLocalPath()).isFile()?new File(asset.getLocalPath()):assetService.localFileForAuthorizedAsset(asset); }
+                    catch(IOException unavailable){log.warn("[mixcut] shared overlay unavailable id={}",assetId);continue;}
+                    if(f==null || !f.isFile())continue;
 
                     // 仅 sticker / image 类型有意义
                     if (!"sticker".equals(asset.getKind()) && !"image".equals(asset.getKind())) continue;

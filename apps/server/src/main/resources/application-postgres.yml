@@ -52,6 +52,8 @@ aep:
       enabled: ${AEP_PAYMENT_SHADOW_ENABLED:false}
   # PostgreSQL profile 用于生产 / 联调。持久化资产默认走阿里云 OSS；
   # 本地 dev fallback 继续留在 application.yml 的 local fake-CDN。
+  storage:
+    require-durable-uploads: ${AEP_STORAGE_REQUIRE_DURABLE_UPLOADS:true}
   cdn:
     driver: ${AEP_CDN_DRIVER:oss}
     local-root: ${AEP_CDN_LOCAL_ROOT:./cdn-mock}

@@ -36,7 +36,7 @@
       "environment": "/opt/aistar-migration/preparation/api-environment-private.json"
     },
     "production": {
-      "group": null,
+      "group": "sgp-212mzoquv3twzpsr8s",
       "host": "api.aibuzz.cn",
       "port": 8080,
       "unit": "aistar-api",
@@ -44,7 +44,8 @@
       "schema": "public",
       "role": "aistar_app",
       "redis_db": 15,
-      "environment": "/etc/aistar/server.json"
+      "environment": "/etc/aistar/server.json",
+      "probe_host": "api-readiness.aibuzz.cn"
     }
   },
   "physical_cluster_id": "aibuzz-production"

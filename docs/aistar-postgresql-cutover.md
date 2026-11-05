@@ -37,3 +37,13 @@
 凭证需包含实际 SHA/JAR/镜像、192表行数/字段指纹、10项资金检查、重复导入拒绝、两机真实进程/环境、TLS两VIP、持续鉴权请求、ALB A100/B0、180秒排空和失败保护。SLS、其他服务、旧源未变更另有保护记录。
 
 本次准备不会：导入 `aistar_prod`、启动新正式后台/SAU、停旧生产、启用正常Host/DNS。完整生产迁移还需上述独立窗口和前端/后台/文件最终验收；API演练成功不等于全栈已切换。
+
+## 跨机素材与存量预置（2026-11-05）
+
+混剪有独立于file-storage的本地目录：`/data/aistareco/mixcut-assets`、`mixcut-output`、`mixcut-work`。已查到133条素材中9条仅本地，89条成片中4条没有OSS key；不能仅预置file-storage就视为完整。读源文件清单有300文件、约1.56GB，其中约1.52GB可只读GET原有业务OSS对象并逐文件SHA核对，约45MB历史文件/预览通过私有SSH预置。禁止重新启用归档的OSS迁移中转上传工具，也不写旧生产DB。
+
+`aep.storage.require-durable-uploads` 在postgres默认true。新上传（含preset/official）和成片必须OSS成功才确认保存；失败不确认本地独有结果。缩略图共享失败不返回已经不可用的本地链接。缺本机副本时，从已授权的资产记录cdnKey回源，缓存用临时文件原子发布；相对URL仍检查属主与路径边界。旧静态素材URL支持读共享副本和Range，不从DB任意localPath读文件。
+
+新节点的 `/opt/aistar-cluster/work` 独立可写并属UID10001；同时挂到 `/app/work` 和 `/data/aistareco`，为旧DB绝对路径提供兼容映射。旧file-storage读别名只读挂载到 `/opt/ai-star-eco/server/file-storage`。daytime预置不取代窗口最后增量。
+
+网关使用显式include，不能仅把配置放入conf.d后运行nginx -t就宣布生效；须核对nginx -T的实际include并走真实鉴权请求。两VIP探针同时验证`X-Aistar-Node`与目标A/B一致。ALB必须关闭粘滞会话、开启至少180秒连接排空并检查正确Host的`/internal/ready`。冷启动必须就绪与实际运行验收在300秒内共同收敛，失败留私有诊断并保留当前健康主节点。
