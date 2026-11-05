@@ -168,14 +168,14 @@ public class ModelQuotaAlerts {
         String body=ProviderAlertText.sanitize(rejected.body());
         if(body.length()>BODY_LIMIT)body=body.substring(0,BODY_LIMIT)+"…";
         return header("额度已用完",at)+endpointLine(rejected.endpointName(),rejected.endpointId())
-                +"\n模型："+rejected.model()+impact(purposes)
+                +"\n模型："+rejected.model()+impact(FAILING,purposes)
                 +"\n远端 HTTP 状态：HTTP "+rejected.status()+"\n服务方返回：\n"+body
                 +"\n处理：到服务方控制台提高或重置额度，或换 Key 后在后台更新。还在失败的话，每小时提醒一次。"+ADMIN;
     }
 
     static String emptyText(AiModelEndpoint endpoint,Balance balance,List<String> purposes,Instant at) {
         return header(balance.valid()?"余额已用完":"Key 已不可用",at)+endpointLine(endpoint.getName(),endpoint.getId())
-                +"\n服务方余额："+balance.remaining().toPlainString()+" "+balance.unit()+impact(purposes)
+                +"\n服务方余额："+balance.remaining().toPlainString()+" "+balance.unit()+impact(FAILING,purposes)
                 +"\n处理：到服务方控制台充值或重置额度，或换 Key 后在后台更新。还没恢复的话，每小时提醒一次。"+ADMIN;
     }
 
@@ -183,7 +183,7 @@ public class ModelQuotaAlerts {
         return header("余额偏低",at)+endpointLine(endpoint.getName(),endpoint.getId())
                 +"\n服务方余额："+balance.remaining().toPlainString()+" "+balance.unit()+"（提醒线 "+warnBelow.toPlainString()+"）"
                 +(balance.todayCost()==null?"":"\n今日已用："+balance.todayCost().toPlainString()+" "+balance.unit())
-                +impact(purposes)+"\n处理：到服务方控制台充值。余额没恢复的话，每天提醒一次。"+ADMIN;
+                +impact("余额用完后，走这个接入点的调用都会失败，不会自动换模型",purposes)+"\n处理：到服务方控制台充值。余额没恢复的话，每天提醒一次。"+ADMIN;
     }
 
     static String unreadableText(AiModelEndpoint endpoint,String failure,Instant at) {
@@ -195,7 +195,8 @@ public class ModelQuotaAlerts {
     private static final String ADMIN="\n后台：https://admin.aibuzz.cn/admin/platform/ai-models";
     private static String header(String title,Instant at){return "【模型额度告警】"+title+"\n告警时间（北京时间）："+TIME.format(at);}
     private static String endpointLine(String name,String id){return "\n接入点："+name+"（"+id+"）";}
-    private static String impact(List<String> purposes) {
-        return "\n影响：走这个接入点的调用都会失败，不会自动换模型"+(purposes.isEmpty()?"":"\n默认绑定的用途："+String.join("、",purposes));
+    private static final String FAILING="走这个接入点的调用都会失败，不会自动换模型";
+    private static String impact(String effect,List<String> purposes) {
+        return "\n影响："+effect+(purposes.isEmpty()?"":"\n默认绑定的用途："+String.join("、",purposes));
     }
 }

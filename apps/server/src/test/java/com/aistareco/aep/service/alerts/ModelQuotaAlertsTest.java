@@ -141,7 +141,7 @@ class ModelQuotaAlertsTest {
         watch("10");usage("9.5",true);
         alerts.checkBalances();alerts.checkBalances();
         assertEquals(1,rows());assertEquals(ModelQuotaAlerts.LOW,code());
-        assertTrue(text().contains("9.5 USD"));assertTrue(text().contains("0.55"));assertFalse(text().contains("the-real-key"));
+        assertTrue(text().contains("9.5 USD"));assertTrue(text().contains("余额用完后"),"calls still work while the balance is merely low");assertTrue(text().contains("0.55"));assertFalse(text().contains("the-real-key"));
     }
 
     @Test void emptyBalanceAndInvalidKeyAreExhausted() throws Exception {
