@@ -15,10 +15,9 @@ import { sceneCover } from "./scene-catalog";
  */
 export function SceneThumb({ id, title, cover, size = 44 }: { id: string; title: string; cover?: string | null; size?: number }) {
   // 记的是「哪一张」失败了：同一个位置换场景时，新场景的图照样去加载。
-  // 「自由出图」没有固定画面（运营没传封面时），直接用色块，不去请求一张不存在的图。
   const src = cover || sceneCover(id);
   const [failed, setFailed] = useState<string>();
-  const empty = (!cover && id === "free") || failed === src;
+  const empty = failed === src;
   return <span className="scene-thumb" style={{ width: size, height: size }} aria-hidden="true">
     {empty ? <b>{title.slice(0, 1)}</b> : <img key={src} src={src} alt="" loading="lazy" onError={() => setFailed(src)}/>}
   </span>;

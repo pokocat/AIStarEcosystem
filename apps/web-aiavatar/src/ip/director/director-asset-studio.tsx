@@ -16,7 +16,7 @@ export const SCENE_VIEWS: { key: DirectorSceneView; label: string }[] = [
   { key: "reverse", label: "反打" }, { key: "left", label: "左立面" }, { key: "right", label: "右立面" },
 ];
 const EMPTY_SLOT: DirectorMediaSlot = { candidates: [], adoptedId: null, adoptedBy: null, error: null };
-type Variant = { type: "main" } | { type: "form"; id: string } | { type: "view"; view: DirectorSceneView };
+type Variant = { type: "all" } | { type: "main" } | { type: "form"; id: string } | { type: "view"; view: DirectorSceneView };
 
 const IMAGE_ACCEPT = IMAGE_UPLOAD_ACCEPT;
 /** Camera originals are prepared by IpStudioApi.uploadImage; do not reject before conversion. */
@@ -54,8 +54,9 @@ export function EpisodePicker({ episodes, value, onChange }: { episodes: Directo
 }
 
 /**
- * 资产详情弹窗（2026-11-04 用户要求，照 AID 的素材编辑页）：上面一排切换资产，左边生成记录，中间大图，右边资料。
- * 中间的标签切主形象 / 各形态，或场景的主视 / 反打 / 左立面 / 右立面，生成和上传都跟着当前标签走。
+ * 资产详情弹窗（2026-11-04 用户要求，照 AID 的素材编辑页）：上面一排切换资产，左边大图，右边资料。
+ * 标签切主形象 / 各形态，或场景的全部视角 / 主视 / 反打 / 左立面 / 右立面。生成、上传和图下面的生成记录都只对当前标签生效；
+ * 「全部视角」只是总览，没有自己的生成记录，点一格进那个视角。
  */
 export function DirectorAssetStudio(props: WorkbenchProps & { asset: DirectorAsset; list: DirectorAsset[]; onSelect: (id: string) => void; onClose: () => void }) {
   const { asset, list, onSelect, onClose } = props;
@@ -90,16 +91,20 @@ function AssetWorkspace({ work, asset, apply, setError, focusClip, onClose }: Wo
   // 没改过就跟着服务端走（重新提取会补集数），只有改过才随保存提交；切走再回来草稿还在。
   const [episodeIds, setEpisodeIds, episodesEdited] = useDraft(prefix + "episodeIds", asset.episodeIds);
   const [showPrompt, setShowPrompt] = useState(false);
-  const [variant, setVariant] = useState<Variant>({ type: "main" });
+  const audioOnly = asset.description.includes("只出声音");
+  const [variant, setVariant] = useState<Variant>(asset.kind === "scene" && !audioOnly ? { type: "all" } : { type: "main" });
   const [addingForm, setAddingForm] = useState(false);
   const [picking, setPicking] = useState(false);
   const { busy, run } = useBusy();
   const file = useRef<HTMLInputElement>(null);
   const variantFile = useRef<HTMLInputElement>(null);
-  const audioOnly = asset.description.includes("只出声音");
   const form = variant.type === "form" ? asset.forms?.find(f => f.id === variant.id) : undefined;
+  const mainImage = !!asset.image.adoptedId;
+  const overview = variant.type === "all";
   // 形态被删了（或别处改了）就回到主形象，不显示一个对不上的标签。
-  const active: Variant = variant.type === "form" && !form ? { type: "main" } : variant;
+  // 全部视角里的按钮看场景到了哪一步：还没有主视图就做主视图，有了就做其他三个视角。
+  const active: Exclude<Variant, { type: "all" }> = variant.type === "form" && !form ? { type: "main" }
+    : variant.type === "all" ? (mainImage ? { type: "view", view: SCENE_VIEWS[0].key } : { type: "main" }) : variant;
   const slot: DirectorMediaSlot = active.type === "main" ? asset.image : active.type === "form" ? form!.image : asset.views?.[active.view] ?? EMPTY_SLOT;
   const target = active.type === "main" ? `asset:${asset.id}` : active.type === "form" ? `form:${active.id}` : `views:${asset.id}`;
   const generating = runningTask(work, target);
@@ -107,7 +112,8 @@ function AssetWorkspace({ work, asset, apply, setError, focusClip, onClose }: Wo
   const current = adopted(slot);
   const label = active.type === "main" ? asset.name : active.type === "form" ? `${asset.name}·${form!.name}` : `${asset.name}·${SCENE_VIEWS.find(v => v.key === active.view)!.label}`;
   const refs = assetRefs(work, asset.id);
-  const mainImage = !!asset.image.adoptedId;
+  const mainActive = active.type === "main";
+  const anyView = SCENE_VIEWS.some(v => asset.views?.[v.key]?.candidates.length);
 
   const task = (type: DirectorTaskType, targetId: string, action: string) => void run("gen", async () => {
     const cost = work.pricing.image;
@@ -170,19 +176,15 @@ function AssetWorkspace({ work, asset, apply, setError, focusClip, onClose }: Wo
   const appears = nos.length === 0 ? "" : nos.length === work.episodes.length && nos.length > 1 ? "全剧" : `第 ${nos.join("、")} 集`;
   const formClips = (id: string) => work.clips.filter(c => c.assetForms?.[asset.id] === id).length;
   const viewShots = (view: DirectorSceneView) => work.clips.filter(c => c.assetIds.includes(asset.id)).reduce((n, c) => n + c.shots.filter(s => s.sceneView === view).length, 0);
+  const viewCount = (mainImage ? 1 : 0) + SCENE_VIEWS.filter(v => asset.views?.[v.key]?.adoptedId).length;
   const emptyNote = audioOnly ? "仅声音出场，无需资产图" : active.type === "main" ? "暂无资产图"
     : active.type === "form" ? (mainImage ? "这个形态还没有图" : "先生成主形象，形态照着它画") : (mainImage ? "这个视角还没有图" : "先生成主视图，其他视角照着它画");
 
   return <div className="director-studio-body">
-    <aside className="director-studio-history" aria-label="生成记录">
-      <h5>生成记录{slot.candidates.length > 0 && <small>{slot.candidates.length}</small>}</h5>
-      {slot.candidates.length > 1 || slot.candidates.some(m => m.stale) ? <VersionStrip slot={slot} label={label} disabled={!!busy} onAdopt={adoptVersion}/>
-        : <p>{slot.candidates.length ? "再生成或上传一版后，可以在这里切换。" : "生成或上传后，每一版都留在这里。"}</p>}
-    </aside>
-
-    <section className="director-studio-stage" aria-label={active.type === "main" ? "资产图" : `${label}的图`}>
+    <section className="director-studio-stage" aria-label={overview ? "全部视角" : mainActive ? "资产图" : `${label}的图`}>
       {!audioOnly && asset.kind !== "prop" && <div className="director-studio-tabs" role="tablist" aria-label={asset.kind === "scene" ? "视角" : "形态"}>
-        <button type="button" role="tab" aria-selected={active.type === "main"} onClick={() => setVariant({ type: "main" })}>{asset.kind === "scene" ? "主视" : "主形象"}</button>
+        {asset.kind === "scene" && <button type="button" role="tab" aria-selected={overview} title={`已有 ${viewCount} 个视角的图，共 4 个`} onClick={() => setVariant({ type: "all" })}>全部视角<small>{viewCount}/4</small></button>}
+        <button type="button" role="tab" aria-selected={!overview && mainActive} onClick={() => setVariant({ type: "main" })}>{asset.kind === "scene" ? "主视" : "主形象"}{asset.kind === "scene" && runningTask(work, `asset:${asset.id}`) && <Loader2 size={12} className="ip-loading-icon"/>}</button>
         {asset.kind === "character" && asset.forms?.map(f => {
           const used = formClips(f.id);
           return <button key={f.id} type="button" role="tab" aria-selected={active.type === "form" && active.id === f.id} title={used ? `${used} 个片段用这个形态` : "还没有片段用这个形态"} onClick={() => setVariant({ type: "form", id: f.id })}>
@@ -191,31 +193,39 @@ function AssetWorkspace({ work, asset, apply, setError, focusClip, onClose }: Wo
         {asset.kind === "character" && <button type="button" className="director-studio-tab-add" onClick={() => setAddingForm(true)}><Plus size={13}/>添加形态</button>}
         {asset.kind === "scene" && SCENE_VIEWS.map(v => {
           const used = viewShots(v.key);
-          return <button key={v.key} type="button" role="tab" aria-selected={active.type === "view" && active.view === v.key} title={used ? `${used} 个镜头用这个视角` : "还没有镜头用这个视角"} onClick={() => setVariant({ type: "view", view: v.key })}>
+          return <button key={v.key} type="button" role="tab" aria-selected={!overview && active.type === "view" && active.view === v.key} title={used ? `${used} 个镜头用这个视角` : "还没有镜头用这个视角"} onClick={() => setVariant({ type: "view", view: v.key })}>
             {v.label}{used > 0 && <small>{used}</small>}{viewsGenerating && <Loader2 size={12} className="ip-loading-icon"/>}</button>;
         })}
       </div>}
-      <div className={`director-studio-media kind-${asset.kind}`}>
-        {current?.url ? <ZoomableImage src={current.url} alt={label}/> : <div className="director-asset-placeholder"><ImageIcon size={26}/><span>{emptyNote}</span></div>}
-        {generating && <div className="director-asset-overlay"><Spinner label="生成中"/></div>}
-        <div className="director-studio-tags">
-          {slot.adoptedBy === "auto" && <span className="director-tag is-warn">待确认</span>}
-          {slot.adoptedCheck === "outdated" && <span className="director-tag is-warn">需更新</span>}
-          {current?.mock && <span className="director-tag">测试图</span>}
-          {current && !current.mock && current.source !== "generated" && <span className="director-tag is-source">{current.source === "upload" ? "自己上传" : "资产库"}</span>}
+      {overview ? <SceneViewsOverview work={work} asset={asset} onPick={setVariant} shots={viewShots}/> : <>
+        <div className={`director-studio-media kind-${asset.kind}`}>
+          {current?.url ? <ZoomableImage src={current.url} alt={label}/> : <div className="director-asset-placeholder"><ImageIcon size={26}/><span>{emptyNote}</span></div>}
+          {generating && <div className="director-asset-overlay"><Spinner label="生成中"/></div>}
+          <div className="director-studio-tags">
+            {slot.adoptedBy === "auto" && <span className="director-tag is-warn">待确认</span>}
+            {slot.adoptedCheck === "outdated" && <span className="director-tag is-warn">需更新</span>}
+            {current?.mock && <span className="director-tag">测试图</span>}
+            {current && !current.mock && current.source !== "generated" && <span className="director-tag is-source">{current.source === "upload" ? "自己上传" : "资产库"}</span>}
+          </div>
         </div>
-      </div>
+        <div className="director-studio-history" aria-label="生成记录" role="group">
+          <h5>生成记录{slot.candidates.length > 0 && <small>{slot.candidates.length}</small>}</h5>
+          {slot.candidates.length > 1 || slot.candidates.some(m => m.stale) ? <VersionStrip slot={slot} label={label} disabled={!!busy} onAdopt={adoptVersion}/>
+            : <p>{slot.candidates.length ? "再生成或上传一版后，可以在这里切换。" : "生成或上传后，每一版都留在这里。"}</p>}
+        </div>
+      </>}
       {!audioOnly && <div className="director-studio-actions">
+        {overview && mainImage && <InlineError message={asset.image.error?.message}/>}
         <InlineError message={active.type === "view" ? asset.viewsError?.message : slot.error?.message}/>
-        <OutdatedNote slot={slot} what="张图" onRegenerate={generating ? undefined : generate} disabled={!!busy}/>
+        {!overview && <OutdatedNote slot={slot} what="张图" onRegenerate={generating ? undefined : generate} disabled={!!busy}/>}
         <div className="director-card-actions">
-          {slot.adoptedBy === "auto" && active.type === "main" && <button type="button" className="ip-brand-button" disabled={!!busy} onClick={() => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "assets.confirm", null, null, { assetIds: [asset.id] })), failed(setError, `确认「${asset.name}」的资产图`))}><Check size={14}/>确认使用</button>}
+          {asset.image.adoptedBy === "auto" && (mainActive || overview) && <button type="button" className="ip-brand-button" disabled={!!busy} onClick={() => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "assets.confirm", null, null, { assetIds: [asset.id] })), failed(setError, `确认「${asset.name}」的资产图`))}><Check size={14}/>确认使用</button>}
           <button type="button" className={slot.adoptedId ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy || !!generating || (active.type !== "main" && !mainImage)} onClick={generate}
             title={active.type === "view" ? "以主视图为准，一次生成反打、左立面、右立面三张" : undefined}>
-            <Wand2 size={14}/>{generating ? "生成中" : active.type === "view" ? (slot.candidates.length ? "重新生成三个视角" : "生成三个视角") : slot.candidates.length ? "重新生成" : active.type === "form" ? "生成形态图" : "生成资产图"}</button>
-          {active.type === "main" && <button type="button" className="ip-brand-secondary" disabled={!!busy || !!generating} onClick={() => setPicking(true)} title="这项资产就是资产库里已有的那一项，直接用它的图"><Library size={14}/>关联已有资产</button>}
-          {active.type === "main" ? <button type="button" className="ip-brand-secondary" disabled={!!busy || !!generating} onClick={() => file.current?.click()} title={IMAGE_USES.asset.note}><Upload size={14}/>直接上传作为资产图</button>
-            : <button type="button" className="ip-brand-secondary" disabled={!!busy || !!generating} onClick={() => variantFile.current?.click()}><Upload size={14}/>上传图片</button>}
+            <Wand2 size={14}/>{generating ? "生成中" : active.type === "view" ? (anyView ? "重新生成三个视角" : "生成三个视角") : slot.candidates.length ? "重新生成" : active.type === "form" ? "生成形态图" : overview ? "生成主视图" : "生成资产图"}</button>
+          {mainActive && <button type="button" className="ip-brand-secondary" disabled={!!busy || !!generating} onClick={() => setPicking(true)} title="这项资产就是资产库里已有的那一项，直接用它的图"><Library size={14}/>关联已有资产</button>}
+          {mainActive ? <button type="button" className="ip-brand-secondary" disabled={!!busy || !!generating} onClick={() => file.current?.click()} title={IMAGE_USES.asset.note}><Upload size={14}/>直接上传作为资产图</button>
+            : !overview && <button type="button" className="ip-brand-secondary" disabled={!!busy || !!generating} onClick={() => variantFile.current?.click()}><Upload size={14}/>上传图片</button>}
           <span className="director-spacer"/>
           <small className="director-cost">{work.pricing.mock ? costText(0, true) : active.type === "view" ? `三张共${costText(work.pricing.image, false)}` : `每张${costText(work.pricing.image, false)}`}</small>
         </div>
@@ -255,19 +265,45 @@ function AssetWorkspace({ work, asset, apply, setError, focusClip, onClose }: Wo
         {refs.length > 0 && <AssetRefList refs={refs} onGo={r => focusClip({ clipId: r.clipId, assetId: asset.id, open: r.linked ? "assets" : "editor" })}/>}
         {refs.length > 0 && <small className="director-muted">要删除这项资产，先在这些片段里解除关联（「前往」后在「关联资产」里操作）。</small>}
       </section>}
-      {!editing && !audioOnly && active.type === "main" && <section className="director-sheet-section" aria-label="出图提示词">
+      {!editing && !audioOnly && (mainActive || overview) && <section className="director-sheet-section" aria-label="出图提示词">
         <button type="button" className="director-disclosure" aria-expanded={showPrompt} onClick={() => setShowPrompt(s => !s)}>
           <ChevronRight size={14}/>出图提示词{asset.promptCustom && <em>已自定义</em>}</button>
         {showPrompt && <pre className="director-prompt">{asset.prompt}</pre>}
         {showPrompt && asset.promptCustom && <button type="button" className="ip-brand-text-button director-self-start" disabled={!!busy} onClick={resetPrompt}><RefreshCw size={13}/>恢复自动生成</button>}
       </section>}
-      {!editing && !audioOnly && active.type === "main" && <AssetReference work={work} asset={asset} apply={apply} setError={setError} disabled={!!busy || !!generating}/>}
+      {!editing && !audioOnly && (mainActive || overview) && <AssetReference work={work} asset={asset} apply={apply} setError={setError} disabled={!!busy || !!generating}/>}
       <ImageInput input={file} onFile={upload} label={`直接上传「${asset.name}」的资产图`}/>
       <ImageInput input={variantFile} onFile={uploadVariant} label={`上传「${label}」的图`}/>
       <LinkLibrary work={work} asset={asset} apply={apply} open={picking} onClose={() => setPicking(false)}/>
       {!editing && asset.kind === "character" && <VoicePanel work={work} asset={asset} apply={apply}/>}
     </aside>
   </div>;
+}
+
+/**
+ * 场景的全部视角：主视图在上面最大，其他三个视角并排在下面。一格一个视角，点进去才看大图、换版本、单独上传，
+ * 所以这里不放生成记录，免得看起来对整组生效。每格都是 16:9，整组 4:3 时四张图左右正好对齐。
+ */
+function SceneViewsOverview({ work, asset, onPick, shots }: { work: DirectorWork; asset: DirectorAsset; onPick: (v: Variant) => void; shots: (view: DirectorSceneView) => number }) {
+  const viewsBusy = !!runningTask(work, `views:${asset.id}`);
+  const tile = (slot: DirectorMediaSlot, name: string, busy: boolean, used: number, pick: Variant, main?: boolean) => {
+    const img = adopted(slot);
+    const count = [used ? `${used} 镜` : "", slot.candidates.length > 1 ? `${slot.candidates.length} 版` : ""].filter(Boolean).join(" · ");
+    return <button key={name} type="button" className={`director-view-tile${main ? " is-main" : ""}`} aria-label={`查看${name}`} title="查看大图和这个视角的生成记录" onClick={() => onPick(pick)}>
+      {img?.url ? <img src={img.url} alt=""/> : <span className="director-view-empty"><ImageIcon size={main ? 26 : 18}/>{main && "还没有主视图"}</span>}
+      {busy && <span className="director-asset-overlay"><Spinner label="生成中"/></span>}
+      <span className="director-studio-tags">
+        {slot.adoptedBy === "auto" && <span className="director-tag is-warn">待确认</span>}
+        {slot.adoptedCheck === "outdated" && <span className="director-tag is-warn">需更新</span>}
+        {img?.stale && <span className="director-tag is-warn">需更新</span>}
+      </span>
+      <span className="director-view-label"><b>{name}</b>{count && <small>{count}</small>}</span>
+    </button>;
+  };
+  return <div className="director-views-frame"><div className="director-views">
+    {tile(asset.image, "主视", !!runningTask(work, `asset:${asset.id}`), work.clips.filter(c => c.assetIds.includes(asset.id)).reduce((n, c) => n + c.shots.filter(s => !s.sceneView).length, 0), { type: "main" }, true)}
+    <div className="director-views-row">{SCENE_VIEWS.map(v => tile(asset.views?.[v.key] ?? EMPTY_SLOT, v.label, viewsBusy, shots(v.key), { type: "view", view: v.key }))}</div>
+  </div></div>;
 }
 
 /** 新建或修改一个形态：名字和「和平时不一样的地方」。不传 form 是新建。 */

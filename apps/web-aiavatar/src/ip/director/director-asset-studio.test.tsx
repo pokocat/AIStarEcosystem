@@ -70,6 +70,36 @@ test("a scene view generates all three views at once for one image's price, and 
   await waitFor(() => expect(api.runTask).toHaveBeenCalledWith("w", expect.objectContaining({ type: "scene-views", targetId: "s1", maxCost: 16 })));
 });
 
+test("a scene opens on all views: the main view above, the other three below, and clicking one opens that view with its own records", async () => {
+  api.runTask.mockResolvedValue(work);
+  const views = { reverse: withImage("rev"), left: empty, right: empty };
+  const full = { ...work, assets: work.assets.map((a: any) => a.id === "s1" ? { ...a, views } : a) };
+  render(<DirectorAssets {...props} work={full}/>);
+  fireEvent.click(screen.getByRole("button", { name: "查看金山寺" }));
+  expect((screen.getByRole("tab", { name: /全部视角/ }) as HTMLButtonElement).getAttribute("aria-selected")).toBe("true");
+  expect(screen.getByRole("tab", { name: /全部视角/ }).textContent).toContain("2/4");
+  const stage = screen.getByRole("region", { name: "全部视角" });
+  const tiles = within(stage).getAllByRole("button", { name: /^查看/ });
+  expect(tiles.map(b => b.getAttribute("aria-label"))).toEqual(["查看主视", "查看反打", "查看左立面", "查看右立面"]);
+  // 总览里没有生成记录：记录属于单个视角。
+  expect(within(stage).queryByRole("group", { name: "生成记录" })).toBeNull();
+  fireEvent.click(within(stage).getByRole("button", { name: "重新生成三个视角" }));
+  await waitFor(() => expect(api.runTask).toHaveBeenCalledWith("w", expect.objectContaining({ type: "scene-views", targetId: "s1" })));
+  fireEvent.click(within(stage).getByRole("button", { name: "查看反打" }));
+  expect((screen.getByRole("tab", { name: /反打/ }) as HTMLButtonElement).getAttribute("aria-selected")).toBe("true");
+  expect(within(screen.getByRole("region", { name: "金山寺·反打的图" })).getByRole("group", { name: "生成记录" })).toBeTruthy();
+});
+
+test("all views offers the main view first when the scene has none yet", async () => {
+  api.runTask.mockResolvedValue(work);
+  const bare = { ...work, assets: work.assets.map((a: any) => a.id === "s1" ? { ...a, image: empty } : a) };
+  render(<DirectorAssets {...props} work={bare}/>);
+  fireEvent.click(screen.getByRole("button", { name: "查看金山寺" }));
+  expect(screen.getByRole("button", { name: /直接上传作为资产图/ })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "生成主视图" }));
+  await waitFor(() => expect(api.runTask).toHaveBeenCalledWith("w", expect.objectContaining({ type: "asset-image", targetId: "s1" })));
+});
+
 test("a view can't be generated before the scene has a main image", () => {
   const bare = { ...work, assets: work.assets.map((a: any) => a.id === "s1" ? { ...a, image: empty } : a) };
   render(<DirectorAssets {...props} work={bare}/>);

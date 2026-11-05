@@ -457,9 +457,8 @@ export function SceneImageStudio() {
           {!mobile && <SceneRecent drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>}
           <UiVersionSwitch inline/></span></header>
       <div id="scene-image-panel" className="scene-results-panel" role="tabpanel" aria-labelledby={`scene-image-tab-${tab}`}>
-      {tab === "example" ? (isFree
-          ? <SceneEmpty title="图片创作" note="放参考图，说说想要的画面；不知道怎么写，点上面的场景名换一个场景。"/>
-          : <SceneExample id={scene.id} title={scene.title} group={groupTitle} note={scene.description} cover={scene.coverUrl} examples={scene.examples} ratio={scene.ratio}/>)
+      {tab === "example" ? <SceneExample id={scene.id} title={scene.title} group={isFree ? undefined : groupTitle} cover={scene.coverUrl} examples={scene.examples} ratio={scene.ratio}
+          note={isFree ? "放参考图，说说想要的画面。不知道怎么写，可以点上面的场景名换一个场景。" : scene.description}/>
         : opening ? <div className="scene-loading"><Loader2 size={20} className="studio-gallery-spinner"/>正在打开草稿</div>
         : rows.length ? <ol className="scene-row-list">{rows.map(row => <ImageRow key={row.id} row={row} original={originalOf(row)} run={live[row.id]} busy={busy} submitting={submitting === row.id}
           onView={setViewing} onUse={putAsReference} onVideo={toVideo} onReuse={() => reuse(row)} onRetry={() => retry(row)} onConfirm={() => void confirmOriginal(row)}
