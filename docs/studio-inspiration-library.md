@@ -31,7 +31,19 @@ STUDIO_TOKEN=<超级管理员令牌> node scripts/inspiration/publish.mjs --base
 ```
 
 - 走现有接口：上传素材 → 建画布 → 存为官方内容（`kind=example`，素材复制到 `ipstudio_demo/<demoId>/`）→ 设封面和排序 → 删中转画布。不调模型，不扣积分。
-- 编号固定（`IPD-insp-<id>`），重复执行不会多出新条目。已发布的默认只更新名称、说明、排序和上下线。`--only a,b` 只发几条，`--dry-run` 只检查文件。
+手上没有令牌、但浏览器已经用超管登录时，用 `serve.mjs`：本机只提供素材，发布由那个页面自己做，令牌不离开浏览器（2026-11-06 线上就是这样发的）：
+
+```bash
+node scripts/inspiration/serve.mjs --skills <resources/skills 目录> --origin https://aistar.aibuzz.cn
+```
+
+```js
+// 在该站点已登录的页面里，先 dry: true 检查，再去掉；window.__insp.lines 是进度
+const m = await import('http://127.0.0.1:18765/browser.mjs');
+window.__insp = await m.start({ dry: true });
+```
+
+- 编号固定（`IPD-insp-<id>`），重复执行不会多出新条目。已发布的默认只更新名称、说明、排序和上下线。`--only a,b` 只发几条，`--dry-run` 只检查文件（页面里是 `only`、`dry`、`force`）。
 - **`--force` 才换素材和提示词，线上慎用**：服务端发布时会删掉旧版素材副本，而用户做同款得到的画布引用的正是这些文件，他们画布里的「示例效果」会打不开（我的版本和提示词不受影响）。
 - 排序从 100 起，排在已有官方示例后面；要调整到「官方内容管理」（`/projects/demos`）改，上线下线也在那里。
 - 上传的素材会留在发布账号的资产库「灵感库示例素材」文件夹，发布后可以删掉，示例用的是复制件。

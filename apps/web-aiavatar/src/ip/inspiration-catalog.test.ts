@@ -3,6 +3,8 @@ import { studioPromptSpec } from '@/canvas-bridge/studio-composer-spec';
 import { studioBriefNeedsReference } from './studio-entry';
 // @ts-expect-error plain ESM data shared with the publish script (scripts/inspiration/publish.mjs)
 import { INSPIRATIONS, ratioOf } from '../../../../scripts/inspiration/catalog.mjs';
+// @ts-expect-error plain ESM shared between the Node and in-page publish hosts
+import { buildDoc } from '../../../../scripts/inspiration/publish-core.mjs';
 
 type Item = { id: string; kind: string; name: string; summary: string; ratio: string; seconds?: number; method: string[]; replace: string; prompt: string; request?: string; samples: string[]; hold?: boolean };
 const items = INSPIRATIONS as Item[];
@@ -32,5 +34,21 @@ describe('inspiration catalogue', () => {
   test('copy follows the interface rules and names no third-party brand or model', () => {
     const banned = /打造|赋能|助力|一站式|全方位|轻松|即可|开启|——|爱马仕|泡泡玛特|Seedance|GPT Image|Kling|Nano Banana|AGENTS\.md/;
     for (const item of items) expect(allText(item), item.id).not.toMatch(banned);
+  });
+
+  test('the published canvas: assistant prefilled, an optional input that blocks nothing, samples kept apart from my version', () => {
+    const withInput = items as (Item & { input?: { sample?: unknown } })[];
+    const video = withInput.find(i => i.kind === 'video' && i.input && !i.input.sample)!;
+    const sample = { key: 'k.mp4', mimeType: 'video/mp4', bytes: 1, width: 720, height: 1280, seconds: 6 };
+    const doc = buildDoc(video, [sample]);
+    const node = (id: string) => doc.nodes.find((n: { id: string }) => n.id === id);
+    expect(node('guide').metadata).toMatchObject({ studioStart: 'assistant', studioSkill: 'video-generation' });
+    expect(node('guide').metadata.prompt).toContain(video.prompt);
+    expect(node('guide').metadata.content.length).toBeGreaterThan(0);
+    expect(node('input').metadata.studio.templateInput.required).toBe(false);
+    expect(doc.connections).toEqual([{ id: 'c-input', fromNodeId: 'input', toNodeId: 'mine' }]);
+    expect(node('mine').metadata).toMatchObject({ prompt: video.prompt, status: 'idle', seconds: video.seconds });
+    expect(node('mine').metadata.storageKey).toBeUndefined();
+    expect(node('sample-1').metadata).toMatchObject({ storageKey: 'k.mp4', origin: 'example', status: 'success', naturalWidth: 720 });
   });
 });
