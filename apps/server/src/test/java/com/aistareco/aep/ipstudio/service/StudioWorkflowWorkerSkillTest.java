@@ -49,22 +49,16 @@ class StudioWorkflowWorkerSkillTest {
         return new Harness(worker,run,credits,models);
     }
 
-    @Test void invalidModelContentKeepsTheExactSupplierResponseForTheAlert() throws Exception {
+    @Test void unstructuredTextIsKeptInsteadOfBecomingAnAlert() throws Exception {
         var input=json.createObjectNode().put("operation","text");
-        var h=harness(input,"studio-text","invalid JSON",mock(FileStorageService.class));
-        var evidence=com.aistareco.aep.service.ai.ProviderResponseDiagnostics.capture(200,
-                java.net.http.HttpHeaders.of(Map.of("x-request-id",List.of("supplier-123")),(k,v)->true),
-                "{\"choices\":[{\"message\":{\"content\":\"invalid JSON\"}}]}");
-        when(h.models().invokeChatOnEndpoint(any(),any(),anyList(),anyMap())).thenReturn(
-                new AiModelInvocationService.AiModelResponse("invalid JSON","stop",1L,"ep","m",1L,0L,evidence));
+        var h=harness(input,"studio-text","模型返回的普通正文，没有 JSON。",mock(FileStorageService.class));
         var errors=mock(StudioRunErrorLog.class);ReflectionTestUtils.setField(h.worker(),"errorLog",errors);
         h.worker().runBlocking("r");
-        assertEquals("failed",h.run().getStatus());
-        var failure=ArgumentCaptor.forClass(Throwable.class);verify(errors).attach(eq(h.run()),failure.capture());
-        assertSame(evidence,failure.getValue().getSuppressed()[0]);
-        assertTrue(evidence.responseBody().contains("invalid JSON"));
-        verify(h.credits()).releaseHold(anyString(),eq("r"),anyString());
-        verify(h.credits(),never()).commitHold(anyString(),anyString(),anyLong(),anyString(), org.mockito.ArgumentMatchers.any());
+        assertEquals("done",h.run().getStatus());
+        var output=json.readTree(h.run().getOutputJson());
+        assertEquals("模型返回的普通正文，没有 JSON。",output.path("rawResponse").path("content").asText());
+        assertEquals("模型返回的普通正文，没有 JSON。",output.path("textRevision").path("content").asText());
+        verifyNoInteractions(errors);
     }
 
     @Test void checkRunSamplesTheRecordedTimesKeepsUnknownAndSettlesRealTokens() throws Exception {

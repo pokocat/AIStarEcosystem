@@ -139,7 +139,7 @@ public final class DirectorPrompts {
 
     private static JsonNode validateScript(ObjectMapper om, JsonNode out) {
         String content = text(out, "content");
-        if (content.length() < 20) throw bad("模型未返回剧本正文");
+        if (content.isBlank()) throw bad("模型未返回剧本正文");
         ObjectNode r = om.createObjectNode().put("title", clip(text(out, "title"), 60)).put("logline", clip(text(out, "logline"), 200))
                 .put("content", content);
         // 故事大纲是附带的：缺了或不完整不判失败，有什么存什么。

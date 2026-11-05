@@ -239,6 +239,7 @@ export function DirectorWorkbench({ id }: { id: string }) {
   const live = !!work.pipeline && ["running", "waiting", "paused"].includes(work.pipeline.status);
   return <AssistantProvider value={assistant}><main className={`ip-brand-surface director-shell ${assistant.open ? "has-assistant" : ""}`}>
     <DirectorHeader {...props} settingsOpen={settingsOpen} setSettingsOpen={setSettingsOpen} oneClick={!live}/>
+    <p style={{padding:"0 24px"}}><Link href="/model-results">查看生成原文</Link></p>
     {/* 一条状态线：一键制作进行中就说它在做什么，否则说下一步该做什么。 */}
     {reviewing && work.pendingExtract && <ExtractReview key={work.pendingExtract.runId} work={work} apply={apply} onClose={() => setReviewing(false)}/>}
     {live ? <PipelineBar {...props}/> : (work.pendingExtract || nextStepShown(step, tab) || work.pipeline) && <div className="director-status">

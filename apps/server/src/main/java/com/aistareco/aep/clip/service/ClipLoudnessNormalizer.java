@@ -16,7 +16,7 @@ import java.util.regex.Pattern;
  * <p>AAC 是有损编码：滤镜阶段即使把 true peak 目标设为 -1.5 dBTP，编码后仍可能产生
  * 0.5~1 dB 的峰值回弹。质量门验的是编码后的文件，因此处理目标必须比最终 -1 dBTP
  * 门槛保留足够余量。第一遍只测量，第二遍带 measured_* 参数做确定性归一化并以
- * -2.5 dBTP 为编码前目标；最终文件仍由 {@link ClipMediaQualityGate} 实测把关。
+ * -2.5 dBTP 为编码前目标；最终文件由 {@link ClipMediaQualityGate} 记录实测建议，不因指标丢弃产出。
  */
 final class ClipLoudnessNormalizer {
     static final double TARGET_INTEGRATED_LUFS = -16.0;
@@ -38,6 +38,15 @@ final class ClipLoudnessNormalizer {
     record Measurement(double inputI, double inputTp, double inputLra, double inputThresh, double targetOffset) {}
 
     void normalize(Path input, Path output) {
+        try { normalizeMeasured(input,output); }
+        catch(BusinessException e) {
+            if(!"CLIP_OUTPUT_QUALITY_FAILED".equals(e.getCode()))throw e;
+            org.slf4j.LoggerFactory.getLogger(getClass()).warn("[clip-quality] loudness unavailable, retaining original: {}",e.getMessage());
+            try {java.nio.file.Files.copy(input,output,java.nio.file.StandardCopyOption.REPLACE_EXISTING);}
+            catch(java.io.IOException io){throw new IllegalStateException("Cannot retain original composition",io);}
+        }
+    }
+    private void normalizeMeasured(Path input, Path output) {
         String analysis = ffmpeg.runFfmpeg(List.of(
                 "-hide_banner", "-nostats", "-i", input.toString(), "-af",
                 firstPassFilter(), "-vn", "-f", "null", "-"));

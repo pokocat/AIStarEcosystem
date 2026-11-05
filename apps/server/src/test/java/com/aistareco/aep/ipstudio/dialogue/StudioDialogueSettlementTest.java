@@ -105,11 +105,11 @@ class StudioDialogueSettlementTest {
         assertEquals("failed", mapper.readTree(event.getValue().getDataJson()).path("reason").asText());
     }
 
-    @Test void usageBeyondTheApprovedCeilingIsNeverCharged() {
+    @Test void usageBeyondTheApprovedCeilingStillDeliversTheReply() {
         worker.finish("IPR-1", usage(DialogueLoop.Reason.COMPLETED, 20_000, 500), null);
-        verify(credits, never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
-        assertEquals("failed", run.getStatus());
-        assertEquals("AI_USAGE_LIMIT", run.getErrorCode());
+        verify(credits).commitHold(IpRunService.REF_TYPE, "IPR-1", 14L, "Studio 对话实际结算", null);
+        assertEquals("done", run.getStatus());
+        assertNull(run.getErrorCode());
     }
 
 
@@ -122,11 +122,11 @@ class StudioDialogueSettlementTest {
         verify(credits).releaseHold(eq(IpRunService.REF_TYPE), eq("IPR-1"), anyString());
     }
 
-    @Test void nothingIsChargedBeyondTheFrozenMoney() {
+    @Test void overrunChargesOnlyTheFrozenMoneyAndKeepsTheReply() {
         worker.finish("IPR-1", new StudioDialogueTurnWorker.Settlement(
                 new DialogueLoop.Outcome(DialogueLoop.Reason.COMPLETED, null, 50, 30, 25), 15000, 500, rate, 50, null, List.of()), null);
-        assertEquals("failed", run.getStatus()); assertEquals("AI_USAGE_LIMIT", run.getErrorCode());
-        verify(credits, never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
+        assertEquals("done", run.getStatus()); assertNull(run.getErrorCode());
+        verify(credits).commitHold(IpRunService.REF_TYPE, "IPR-1", 14L, "Studio 对话实际结算", null);
     }
 
     @Test void interruptedBeforeAnyCallReleasesEverything() throws Exception {
@@ -263,12 +263,13 @@ class StudioDialogueSettlementTest {
     }
 
     /** More than every hold together is never charged. */
-    @Test void usageBeyondAllHoldsIsNeverCharged() {
+    @Test void usageBeyondAllHoldsKeepsTheReplyAndCapsTheInvoice() {
         threeHolds();
         worker.finish("IPR-1", usage(DialogueLoop.Reason.COMPLETED, 40_000, 2_000), null); // 44 > 42
-        verify(credits, never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
-        assertEquals("AI_USAGE_LIMIT", run.getErrorCode());
-        for (String ref : List.of("IPR-1", "IPR-1#1", "IPR-1#2")) verify(credits).releaseHold(eq(IpRunService.REF_TYPE), eq(ref), anyString());
+        assertEquals("done", run.getStatus()); assertNull(run.getErrorCode());
+        assertEquals(42,run.getCost());
+        for (String ref : List.of("IPR-1", "IPR-1#1", "IPR-1#2"))
+            verify(credits).commitHold(IpRunService.REF_TYPE, ref, 14L, "Studio 对话实际结算", null);
     }
 
     /** A failure, a stop before any call and an abandoned turn release every added hold too. */

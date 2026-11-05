@@ -114,6 +114,22 @@ public class AiModelUsageService {
                 null, null, null, null, null);
     }
 
+    /** Full owner-visible model output, independent of downstream formatting and billing. Never truncate it. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void preserveOutput(String requestId,String content,String finishReason) {
+        if(content==null||content.isBlank())return;
+        try {
+            var row=repo.findFirstByRequestIdOrderByCreatedAtDesc(requestId).orElse(null);
+            if(row==null||row.getUserId()==null)return;
+            var json=new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.node.ObjectNode body;
+            try {var old=json.readTree(row.getResponseBodyJson());body=old!=null&&old.isObject()?(com.fasterxml.jackson.databind.node.ObjectNode)old:json.createObjectNode();}
+            catch(Exception ignored){body=json.createObjectNode();}
+            body.put("preservedContent",content).put("preservedFinishReason",finishReason);
+            row.setResponseBodyJson(json.writeValueAsString(body));repo.save(row);
+        } catch(Exception error) { log.warn("[ai-output] output archive unavailable requestId={}",requestId,error); }
+    }
+
     /**
      * 记录一次带观测字段的调用用量。requestId / latency / errorCode 用于 admin 明细排障。
      */

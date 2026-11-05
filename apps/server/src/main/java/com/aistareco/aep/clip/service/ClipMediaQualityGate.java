@@ -15,7 +15,7 @@ import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** 成片入库前的确定性质量闸：黑/白片、静音、过轻与爆音均失败关闭。 */
+/** 成片质量建议：记录亮度与响度指标，不拒收已经生成的成片。 */
 @Service
 public class ClipMediaQualityGate {
     private static final Logger log = LoggerFactory.getLogger(ClipMediaQualityGate.class);
@@ -48,28 +48,30 @@ public class ClipMediaQualityGate {
             loudness = number(audio, INPUT_I, "综合响度");
             peak = number(audio, INPUT_TP, "真峰值");
         } catch (BusinessException e) {
-            throw e;
+            log.warn("[clip-quality] metrics unavailable; retaining output: {}",e.getMessage());
+            return new Metrics(Double.NaN,Double.NaN,Double.NaN);
         } catch (Exception e) {
-            throw qualityFailure("成片音画质量无法验证", e.toString());
+            log.warn("[clip-quality] metrics unavailable; retaining output",e);
+            return new Metrics(Double.NaN,Double.NaN,Double.NaN);
         }
 
         log.info("[clip-quality] file={} averageLuma={} integratedLufs={} truePeakDb={} maxTruePeakDb={}",
                 video.getFileName(), luma, loudness, peak, props.getMaxTruePeakDb());
 
         if (luma < props.getMinAverageLuma()) {
-            throw qualityFailure("成片画面过暗", metric("averageLuma", luma, props.getMinAverageLuma()));
+            log.warn("[clip-quality] 成片画面过暗; retaining output: {}",metric("averageLuma", luma, props.getMinAverageLuma()));
         }
         if (luma > props.getMaxAverageLuma()) {
-            throw qualityFailure("成片画面过亮", metric("averageLuma", luma, props.getMaxAverageLuma()));
+            log.warn("[clip-quality] 成片画面过亮; retaining output: {}",metric("averageLuma", luma, props.getMaxAverageLuma()));
         }
         if (loudness < props.getMinIntegratedLufs()) {
-            throw qualityFailure("成片声音过轻", metric("integratedLufs", loudness, props.getMinIntegratedLufs()));
+            log.warn("[clip-quality] 成片声音过轻; retaining output: {}",metric("integratedLufs", loudness, props.getMinIntegratedLufs()));
         }
         if (loudness > props.getMaxIntegratedLufs()) {
-            throw qualityFailure("成片声音过响", metric("integratedLufs", loudness, props.getMaxIntegratedLufs()));
+            log.warn("[clip-quality] 成片声音过响; retaining output: {}",metric("integratedLufs", loudness, props.getMaxIntegratedLufs()));
         }
         if (peak > props.getMaxTruePeakDb()) {
-            throw qualityFailure("成片音频存在爆音风险", metric("truePeakDb", peak, props.getMaxTruePeakDb()));
+            log.warn("[clip-quality] 成片音频存在爆音风险; retaining output: {}",metric("truePeakDb", peak, props.getMaxTruePeakDb()));
         }
         return new Metrics(luma, loudness, peak);
     }

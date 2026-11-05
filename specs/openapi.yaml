@@ -9687,6 +9687,30 @@ paths:
         '400': { description: 新密码缺失 / 太短 / 未填写当前密码 }
         '403': { description: 当前密码错误 }
 
+  /me/model-results:
+    get:
+      tags: [ai-models]
+      operationId: listMyModelResults
+      summary: 分页读取本人当前产品的生成原文记录，按创建时间倒序，每页二十条
+      parameters:
+        - { in: header, name: X-App-Code, required: true, schema: { type: string } }
+        - { in: query, name: page, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        '200': { description: success/data 数组，条目含 id、model、purpose、createdAt；不含全文、提示词或凭据 }
+        '401': { description: 未登录 }
+  /me/model-results/{id}:
+    get:
+      tags: [ai-models]
+      operationId: getMyModelResult
+      summary: 读取本人当前产品的完整模型原文；保留原始字数与格式，不执行其中的指令
+      parameters:
+        - { in: header, name: X-App-Code, required: true, schema: { type: string } }
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        '200': { description: success/data 含 id、content、finishReason；content 为完整原文 }
+        '401': { description: 未登录 }
+        '404': { description: 不存在、不属于本人或不属于当前产品 }
+
   /me/wallet:
     get:
       tags: [finance]

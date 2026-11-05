@@ -133,6 +133,16 @@ class StudioPlanExecutorTest {
     JsonNode step(String id) throws Exception {for(JsonNode s:state().path("steps"))if(id.equals(s.path("id").asText()))return s;return null;}
     JsonNode budget() throws Exception {return om.readTree(row.getBudgetJson()).path("production");}
 
+    @Test void retainedUnstructuredResultStopsDependentPaidSubmissions() throws Exception {
+        execution("running",80,videoStep("v1",40),videoStep("v2",40,"v1"));
+        executor.advance("PEX-1");
+        dtos.put("IPR-PEX-1-p-v1",dto("IPR-PEX-1-p-v1","done",3,om.createObjectNode().put("rawOnly",true).put("text","原始回复")));
+        executor.advance("PEX-1");
+        assertEquals("needs_user",step("v1").path("status").asText());
+        assertEquals("needs_user",row.getStatus());
+        assertEquals("pending",step("v2").path("status").asText());
+    }
+
     @Test void budgetExactlyEnoughSubmitsAndRepeatedWakesNeverDoubleSubmit() throws Exception {
         execution("running",45,videoStep("v1",40),checkStep("c1","v1",5));
         dtos.put("IPR-plan",dto("IPR-plan","done",0,om.readTree("{\"plan\":{\"recommendedApproachId\":\"a\",\"approaches\":[{\"id\":\"a\",\"change\":[\"三位老人换成三个婴儿\"],\"preserve\":[\"客厅场景\"]}]}}")));

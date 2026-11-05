@@ -1928,7 +1928,15 @@ public class DirectorService {
             return;
         }
         JsonNode output = parse(run.getOutputJson());
+        if("length".equals(output.path("rawResponse").path("finishReason").asText()))
+            notice(c,"模型因输出额度停止，已保留返回内容，可能尚未写完；请核对后继续");
         JsonNode meta = c.path("taskMeta").path(run.getId());
+        if(output.path("rawOnly").asBoolean()) {
+            notice(c,"模型返回内容已保留，可在生成原文中查看；请核对后再继续制作");
+            if(c.path("pipeline").isObject()&&"running".equals(c.path("pipeline").path("status").asText()))
+                ((ObjectNode)c.path("pipeline")).put("status","paused");
+            return;
+        }
         if (node.startsWith("video:")) {
             JsonNode clip = findOrNull(c, "clips", node.substring(6));
             if (clip != null && output.path("storageKey").isTextual())
@@ -3877,6 +3885,8 @@ public class DirectorService {
                     .put("canStop",IpRun.STATUS_RUNNING.equals(r.getStatus())&&!r.isCancelRequested()&&"studio-director".equals(r.getKind()))
                     .put("stage", r.getStage()).put("cost", r.getCost()).put("errorMessage", r.getErrorMessage())
                     .put("createdAt", r.getCreatedAt() == null ? null : r.getCreatedAt().toString());
+            JsonNode original=parse(r.getOutputJson()).path("rawResponse");
+            if(original.path("content").isTextual())((ObjectNode)tasks.get(tasks.size()-1)).put("hasOriginalContent",true);
             // 「重新优化」只出稿、不接着出视频：页面上不能写「完成后自动开始生成视频」。
             if (c.path("taskMeta").path(r.getId()).path("draftOnly").asBoolean(false)) ((ObjectNode) tasks.get(tasks.size() - 1)).put("draftOnly", true);
         }

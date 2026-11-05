@@ -78,6 +78,7 @@ public class StudioWorkflowWorker {
         var context=queue==null?null:queue.bind(AiGenerationQueueService.WORKFLOW,id);
         AiModelInvocationService.AiModelResponse lastReply=null;
         ObjectNode directorReceipt=null;
+        ObjectNode preservedOutput=mapper.createObjectNode();
         try (var attribution = AiModelUsageContext.bind(run.getOwnerUserId(), "aiavatar", id)) {
             if(!claim(id))return;
             if("studio-director".equals(run.getKind())) {
@@ -87,7 +88,7 @@ public class StudioWorkflowWorker {
             if(!progress(id,10,"studio.prepare")) return;
             JsonNode input=mapper.readTree(run.getInputJson());
             boolean mock=input.path("mock").asBoolean();
-            ObjectNode output=mapper.createObjectNode(); output.put("mock",mock);
+            ObjectNode output=preservedOutput; output.put("mock",mock);
             String operation=input.path("operation").asText();
             if("recreation".equals(operation)&&!mock) {
                 if(!progress(id,12,"recreation.audio"))return;
@@ -180,6 +181,7 @@ public class StudioWorkflowWorker {
                                 Map.of("role","user","content",userContent)),chatOptions);
                         }
                         lastReply=reply;
+                        if(StudioModelOutput.present(reply)){output.set("rawResponse",StudioModelOutput.capture(mapper,reply));checkpointModelOutput(id,reply);}
                         if("director".equals(operation)&&tokenRate!=null) {
                             consumed=consumeUsage(reply,consumed,tokenRate);
                             output.putObject("billing").put("inputTokens",consumed[0]).put("outputTokens",consumed[1])
@@ -188,7 +190,7 @@ public class StudioWorkflowWorker {
                             directorReceipt=mapper.createObjectNode();directorReceipt.set("billing",output.path("billing").deepCopy());
                             if(runs.findById(id).map(IpRun::isCancelRequested).orElse(false)){finish(id,output,null);return;}
                         }
-                        if("length".equals(reply.finishReason()))throw new BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,"AI_BAD_OUTPUT","模型返回的内容被截断，无法自动恢复；本次未扣积分，请缩短要求或更换模型");
+                        if("length".equals(reply.finishReason()))output.withArray("warnings").add("模型回复因输出额度停止，已保留返回内容");
                         try {script=ModelJson.parse(mapper,reply.content());}
                         catch(com.fasterxml.jackson.core.JsonProcessingException malformed) {
                             var failure=BusinessException.wrapped(org.springframework.http.HttpStatus.BAD_GATEWAY,"AI_BAD_OUTPUT",
@@ -279,7 +281,28 @@ public class StudioWorkflowWorker {
                 default -> throw new IllegalArgumentException("Unknown Studio operation");
             }
             finish(id,output,null);
-        } catch(Exception e) {if(lastReply!=null)lastReply.attachDiagnostics(e);log.warn("[studio] run failed id={}",id,e);finish(id,directorReceipt,e);}
+        } catch(Exception e) {
+            if(lastReply!=null)lastReply.attachDiagnostics(e);
+            if(StudioModelOutput.presentationFailure(e)) {
+                try {
+                    var input=mapper.readTree(run.getInputJson());
+                    ObjectNode stored=(ObjectNode)mapper.readTree(runs.findById(id).orElse(run).getOutputJson()==null?"{}":runs.findById(id).orElse(run).getOutputJson());
+                    String raw=preservedOutput.path("rawResponse").path("content").asText(stored.path("rawResponse").path("content").asText());
+                    if(!raw.isBlank()) {
+                        if(!preservedOutput.has("rawResponse"))preservedOutput.set("rawResponse",stored.path("rawResponse"));
+                        StudioModelOutput.preserve(mapper,input,preservedOutput,raw,e.getMessage());
+                        if(!preservedOutput.has("billing")) {
+                            if(lastReply!=null&&lastReply.promptTokens()!=null&&lastReply.completionTokens()!=null&&lastReply.promptTokens()>=0&&lastReply.completionTokens()>=0&&lastReply.promptTokens()+lastReply.completionTokens()>0&&input.path("_exec").has("tokenPricing")) {
+                                var rate=mapper.treeToValue(input.path("_exec").path("tokenPricing"),AiChatTokenPricing.Rate.class);
+                                preservedOutput.putObject("billing").put("inputTokens",lastReply.promptTokens()).put("outputTokens",lastReply.completionTokens()).put("credits",rate.settle(lastReply.promptTokens(),lastReply.completionTokens()));
+                            } else {preservedOutput.put("billingUnknown",true);preservedOutput.putObject("billing").put("credits",0);}
+                        }
+                        finish(id,preservedOutput,null);return;
+                    }
+                }catch(Exception preservationError){e.addSuppressed(preservationError);}
+            }
+            log.warn("[studio] run failed id={}",id,e);finish(id,directorReceipt,e);
+        }
         finally {activeDirectorCalls.remove(id,Thread.currentThread());if(context!=null)context.close();if(queue!=null)queue.finish(AiGenerationQueueService.WORKFLOW,id);}
     }
     /** 复刻用到的环节，按受理时冻结的提示词版本拼（docs/studio-prompt-architecture.md §8 #10）；本页能用的帧编号这类格式由代码给。 */
@@ -348,6 +371,7 @@ public class StudioWorkflowWorker {
                         content=StudioVisualContext.shrink(parts,edge);
                     }
                 }
+                checkpointModelOutput(id,reply);
                 used[0]=consumeUsage(reply,used[0],rate);if(last!=null)last[0]=reply;
                 if("length".equals(reply.finishReason()))throw BusinessException.badRequest("AI_BAD_OUTPUT","模型返回的内容被截断，这次没有完成。请缩短要求或换一个模型后再试");
                 return reply.content();
@@ -415,10 +439,11 @@ public class StudioWorkflowWorker {
             reply=models.invokeChatOnEndpoint(endpoint.endpoint(),purpose,List.of(
                     Map.of("role","system","content",input.path("_exec").path("systemPrompt").asText()),
                     Map.of("role","user","content",input.path("_exec").path("userPrompt").asText())),options);
+            if(StudioModelOutput.present(reply)){output.set("rawResponse",StudioModelOutput.capture(mapper,reply));checkpointModelOutput(id,reply);}
             long[] used=consumeUsage(reply,new long[]{0,0},rate);
             output.putObject("billing").put("inputTokens",used[0]).put("outputTokens",used[1]).put("credits",rate.settle(used[0],used[1]))
                     .put("inputCreditsPerK",rate.inputCreditsPerK()).put("outputCreditsPerK",rate.outputCreditsPerK());
-            if("length".equals(reply.finishReason()))throw com.aistareco.aep.ipstudio.h3.H3PromptRewrite.bad("输出被截断");
+            if("length".equals(reply.finishReason()))output.withArray("warnings").add("模型因输出额度停止，原文已保留");
             JsonNode script;
             try {script=ModelJson.parse(mapper,reply.content());}
             catch(com.fasterxml.jackson.core.JsonProcessingException malformed){throw com.aistareco.aep.ipstudio.h3.H3PromptRewrite.bad("没有返回 JSON");}
@@ -427,6 +452,12 @@ public class StudioWorkflowWorker {
             failure=e;
             if(reply!=null)reply.attachDiagnostics(e);
             log.warn("[studio] video prompt rewrite failed id={} reason={}",id,e.toString());
+        }
+        if(failure!=null&&StudioModelOutput.present(reply)&&StudioModelOutput.presentationFailure(failure)) {
+            output.put("rawOnly",true).put("text",reply.content());
+            output.withArray("warnings").add("优化原文已保留，自动整理未完成");
+            if(!output.has("billing")){output.put("billingUnknown",true);output.putObject("billing").put("credits",0);}
+            if(review){output.put("needsChoice",true);output.putObject("videoPrompt").put("text",reply.content()).put("usable",false).putArray("warnings").add("请核对原文，或按原始描述生成");finish(id,output,null);return;}
         }
         String language=meta.path("language").asText("Chinese");
         boolean usable=result!=null&&result.path("usable").asBoolean(true);
@@ -450,6 +481,8 @@ public class StudioWorkflowWorker {
             // 没改成不收这一步的费用；模型确实回了内容但不能用的，按实际用量结算（视频照常出）。
             if(!output.has("billing"))output.putObject("billing").put("inputTokens",0).put("outputTokens",0).put("credits",0);
         }
+        // In auto mode the already-approved original prompt produced a usable video; raw rewrite text is an extra artifact.
+        output.remove("rawOnly");
         try {handOver(id,input,prompt,output);}
         catch(Exception e) {log.warn("[studio] video submit after prompt rewrite failed id={}",id,e);finish(id,output,e);return;}
         afterTerminal(id);
@@ -508,6 +541,15 @@ public class StudioWorkflowWorker {
             try{run.setOutputJson(mapper.writeValueAsString(partial));}catch(Exception e){throw new IllegalStateException(e);}
             run.setPct(pct);run.setStage(stage);run.setHeartbeatAt(Instant.now());runs.save(run);return true;
         }));
+    }
+    private void checkpointModelOutput(String id,AiModelInvocationService.AiModelResponse reply) {
+        if(!StudioModelOutput.present(reply))return;
+        transactions.executeWithoutResult(tx->{
+            var row=runs.lockById(id).orElse(null);if(row==null||!IpRun.STATUS_RUNNING.equals(row.getStatus()))return;
+            try {var output=row.getOutputJson()==null?mapper.createObjectNode():(ObjectNode)mapper.readTree(row.getOutputJson());
+                output.set("rawResponse",StudioModelOutput.capture(mapper,reply));row.setOutputJson(mapper.writeValueAsString(output));runs.save(row);
+            }catch(Exception invalid){throw new IllegalStateException(invalid);}
+        });
     }
     private static long[] consumeUsage(AiModelInvocationService.AiModelResponse reply,long[] previous,AiChatTokenPricing.Rate rate) {
         if(rate==null)return previous;
@@ -726,18 +768,25 @@ public class StudioWorkflowWorker {
         if(error==null&&!cancelled||cancelled&&output!=null&&output.has("billing")) {
             if(cancelled) {ObjectNode billingOnly=mapper.createObjectNode();billingOnly.set("billing",output.path("billing").deepCopy());output=billingOnly;}
             long actual=output.has("billing")?output.path("billing").path("credits").longValue():cost;
-            if(actual<0||actual>cost)throw new IllegalStateException("Token settlement exceeds reservation");
+            if(actual<0)throw new IllegalStateException("Negative token settlement");
+            // Deliver completed writing even when provider usage exceeds its requested budget. Keep real usage,
+            // but never silently debit beyond the accepted reservation; the platform absorbs the excess.
+            if(actual>cost) {
+                log.warn("[studio] provider usage exceeds reservation run={} actualCredits={} reservedCredits={}",run.getId(),actual,cost);
+                output.withObject("/billing").put("actualCredits",actual).put("platformCoveredCredits",actual-cost).put("credits",cost);
+                actual=cost;
+            }
             JsonNode accepted;
             try {accepted=mapper.readTree(run.getInputJson());}catch(Exception invalid){throw new IllegalStateException(invalid);}
             boolean modelBilling=StudioTokenBilling.applies(accepted);
-            var usage=modelBilling&&!"credit".equals(accepted.path("_exec").path("modelCharge").path("target").path("unit").asText())?StudioTokenBilling.measured(output):null;
+            var usage=modelBilling&&!output.path("billingUnknown").asBoolean()&&!"credit".equals(accepted.path("_exec").path("modelCharge").path("target").path("unit").asText())?StudioTokenBilling.measured(output):null;
             if(usage!=null) {
                 credits.finishModelResources(IpRunService.REF_TYPE,run.getId(),usage.total());
                 // A zero cost component can still have a published selling price; keep a positive internal settlement marker.
                 actual=Math.max(1,actual);
             }
             if(actual>0) credits.commitHold(IpRunService.REF_TYPE,run.getId(),actual,"Studio 创作实际结算", usage);
-            if(actual<cost) credits.releaseHold(IpRunService.REF_TYPE,run.getId(),"Studio 实际用量结算 · 退回余量");
+            if(actual<cost||output.path("billingUnknown").asBoolean()) credits.releaseHold(IpRunService.REF_TYPE,run.getId(),"Studio 实际用量结算 · 退回余量");
             run.setCost(actual);
             if(modelBilling&&modelCharges!=null) {
                 var paid=modelCharges.breakdown(IpRunService.REF_TYPE,List.of(run.getId()));

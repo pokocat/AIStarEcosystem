@@ -549,6 +549,7 @@ function Topbar({ onMenuToggle }: { onMenuToggle?: () => void }) {
       <div className="grow" />
       <GlobalSearch />
       <span className="ws-topbar-tasks">
+        <Link href="/model-results">生成原文</Link>
         <RenderTaskTopbarEntry />
       </span>
 

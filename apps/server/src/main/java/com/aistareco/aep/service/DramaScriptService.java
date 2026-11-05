@@ -189,13 +189,8 @@ public class DramaScriptService {
                     "AI 服务暂时连不上，稍后再试一次。");
         }
 
-        if ("length".equalsIgnoreCase(resp.finishReason())) {
-            // 给运营的处理办法留在日志里（用户改不了 max_tokens）；界面只说用户能做的。
-            log.warn("[drama-script] ai-draft truncated (finish_reason=length) user={} maxTokens={} count={} durationSec={}"
-                    + " —— 运营可在提示词设置中调高 max_tokens", userId, options.get("max_tokens"), count, durationSec);
-            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_OUTPUT_TRUNCATED",
-                    "内容太长，AI 没写完就停了。把要求写短一点再试。");
-        }
+        if ("length".equalsIgnoreCase(resp.finishReason()))
+            log.warn("[model-output] response reached output budget; retaining content");
 
         List<JsonNode> scripts = parseScripts(resp.content(), genre, durationSec);
         if (scripts.isEmpty()) {

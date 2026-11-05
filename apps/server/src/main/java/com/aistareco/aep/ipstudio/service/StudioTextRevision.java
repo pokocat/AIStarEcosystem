@@ -24,15 +24,16 @@ public final class StudioTextRevision {
             if (request.textEdit()!=null) throw BusinessException.badRequest("STUDIO_INPUT_INVALID","文本改稿参数只能用于文本创作");
             return;
         }
-        if (request.textEdit()==null || request.textEdit().content()==null || request.textEdit().content().length()>48000
+        if (request.textEdit()==null || request.textEdit().content()==null
                 || request.scriptEdit()!=null || request.settings()!=null || request.episodeNo()!=null)
-            throw BusinessException.badRequest("STUDIO_INPUT_INVALID","文本创作需要当前正文，最多 48000 字");
+            throw BusinessException.badRequest("STUDIO_INPUT_INVALID","文本创作需要当前正文");
     }
 
     public static void validateOutput(JsonNode revision) {
-        if (!revision.isObject() || !revision.path("summary").isTextual() || revision.path("summary").asText().isBlank()
-                || revision.path("summary").asText().length()>4000 || !revision.path("content").isTextual()
-                || revision.path("content").asText().isBlank() || revision.path("content").asText().length()>48000)
-            throw BusinessException.badRequest("AI_BAD_OUTPUT","AI 返回的文本不完整，原文已保留，请重试");
+        if(!revision.isObject()||!revision.path("content").isTextual()||revision.path("content").asText().isBlank())
+            throw BusinessException.badRequest("AI_BAD_OUTPUT","模型没有返回正文，原文已保留");
+        if(!revision.path("summary").isTextual()||revision.path("summary").asText().isBlank())
+            ((com.fasterxml.jackson.databind.node.ObjectNode)revision).put("summary","已保留模型返回的内容");
     }
+
 }

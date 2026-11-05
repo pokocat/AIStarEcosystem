@@ -14,6 +14,12 @@ import java.util.List;
 @Repository
 public interface AiModelUsageRecordRepository extends JpaRepository<AiModelUsageRecord, String>, JpaSpecificationExecutor<AiModelUsageRecord> {
 
+    java.util.Optional<AiModelUsageRecord> findFirstByRequestIdOrderByCreatedAtDesc(String requestId);
+    java.util.Optional<AiModelUsageRecord> findByIdAndUserIdAndAppCode(String id,String userId,String appCode);
+    interface PreservedSummary { String getId(); String getProviderName(); String getPurpose(); Instant getCreatedAt(); }
+    @Query("select r.id as id,r.providerName as providerName,r.purpose as purpose,r.createdAt as createdAt from AiModelUsageRecord r where r.userId=:userId and r.appCode=:appCode and r.responseBodyJson like :pattern order by r.createdAt desc")
+    List<PreservedSummary> preserved(@Param("userId") String userId,@Param("appCode") String appCode,@Param("pattern") String pattern,Pageable page);
+
     boolean existsByProviderIdAndPurposeAndRequestIdAndSuccessTrue(String providerId, String purpose, String requestId);
 
     // 聚合查询返回 Object[]：[0]=分组键, [1]=分组名, [2]=调用次数, [3]=total,

@@ -15,8 +15,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Only local syntax repairs are allowed: stray escapes before Han characters (2026-10-25 Qwen returned
  * {@code \远处}), literal line breaks/tabs inside strings, trailing commas after complete values, and missing final
- * closing brackets. No values, quotes, commas between values, or missing string contents are invented. Callers must
- * reject {@code finish_reason=length} before parsing and validate the resulting business structure afterwards.
+ * closing brackets. No values, quotes, commas between values, or missing string contents are invented. Callers preserve the original response before parsing. A length finish reason is a warning;
+ * valid structured content may still be read, while incomplete content remains available as original text.
  */
 public final class ModelJson {
     private static final Logger log = LoggerFactory.getLogger(ModelJson.class);

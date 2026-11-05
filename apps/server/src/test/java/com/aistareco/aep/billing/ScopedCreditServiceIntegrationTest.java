@@ -338,6 +338,35 @@ class ScopedCreditServiceIntegrationTest {
         assertEquals(100,grants.findByWalletIdOrderByExpiresAtAscIdAsc("one").get(0).getAvailable());
     }
 
+    @Test void tokenOverrunKeepsRealUsageAndNeverOverdrawsWalletOrGrant() throws Exception {
+        var textTarget=new ModelBillingTarget("aiavatar","script",target.endpointId(),target.providerModel(),"standard","ktoken");
+        var campaign=campaigns.findById("campaign").orElseThrow();
+        campaign.setResourceUnit("ktoken");campaign.setTargetsJson(mapper.writeValueAsString(List.of(textTarget)));
+        campaigns.saveAndFlush(campaign);var gift=grant("one",10,"text-overrun");
+        var context=new ModelChargeContext(textTarget,new ModelBillingMath.Usage(BigDecimal.ONE,BigDecimal.ONE),
+                BigDecimal.TEN,BigDecimal.TEN,"v1",false,20L,null);
+        var hold=credits.hold("one",20,"test","token-overrun","文字预占",context);
+        credits.markModelDispatched("test","token-overrun");
+        var measured=new ModelBillingMath.Usage(new BigDecimal("3"),new BigDecimal("2"));
+        tx.executeWithoutResult(status->{
+            credits.finishModelResources("test","token-overrun",measured.total());
+            credits.commitHold("test","token-overrun",20,"文字完成",measured);
+        });
+        var row=charges.findById(hold.getId()).orElseThrow();
+        assertEquals(20,row.getSettledPayableCredits());assertEquals(10,row.getSettledScopedCredits());
+        assertEquals(10,row.getSettledWalletCredits());
+        assertEquals(0,new BigDecimal("3").compareTo(row.getSettledQuantity()));
+        assertEquals(0,new BigDecimal("2").compareTo(row.getSettledOutputQuantity()));
+        var resource=resources.findByHoldIdOrderByCampaignIdAsc(hold.getId()).get(0);
+        assertEquals(0,new BigDecimal("5").compareTo(resource.getUsed()));
+        assertEquals(0,resource.getReleased().signum());assertEquals(0,resource.getReserved().signum());
+        assertEquals(0,new BigDecimal("5").compareTo(campaigns.findById("campaign").orElseThrow().getResourceUsed()));
+        assertEquals(90,wallets.findById("one").orElseThrow().getTotalBalance());
+        assertEquals(0,wallets.findById("one").orElseThrow().getPendingBalance());
+        assertEquals(10,grants.findById(gift.getId()).orElseThrow().getSpent());
+        assertEquals(0,holds.findById(hold.getId()).orElseThrow().getRemainingAmount());
+    }
+
     @Test void measuredProviderUsageAndCustomerSettlementCloseTogether() {
         grant("one",30,"one");
         var context=new ModelChargeContext(target,new ModelBillingMath.Usage(new BigDecimal("3"),null),BigDecimal.TEN,null,"v1",true,0L,null);
@@ -501,8 +530,8 @@ class ScopedCreditServiceIntegrationTest {
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(booleans={true,false})
-    void dapTextAndMediaHaveSeparateEndpointGrantsAndTextRemainsPaidAfterMediaFailure(boolean mediaSucceeded) throws Exception {
+    @org.junit.jupiter.params.provider.CsvSource({"true,127,3", "false,127,3", "true,2000,5", "false,2000,5"})
+    void dapTextAndMediaHaveSeparateEndpointGrantsAndTextRemainsPaidAfterMediaFailure(boolean mediaSucceeded,long outputTokens,long textCost) throws Exception {
         var models=org.mockito.Mockito.mock(com.aistareco.aep.service.AiModelInvocationService.class);
         var tokenPrice=org.mockito.Mockito.mock(com.aistareco.aep.service.AiChatTokenPricing.class);
         var jobs=org.mockito.Mockito.mock(com.aistareco.aep.dap.repository.DapJobRepository.class);
@@ -531,17 +560,17 @@ class ScopedCreditServiceIntegrationTest {
         org.mockito.Mockito.when(models.resolveDefaultEndpoint(AiModelPurpose.DAP_PERSONA,"aiavatar")).thenReturn(Optional.of(image));
         discount.setFactor(BigDecimal.ONE);discounts.saveAndFlush(discount);
         org.mockito.Mockito.when(models.invokeChatOnEndpoint(org.mockito.ArgumentMatchers.eq(text),org.mockito.ArgumentMatchers.eq(AiModelPurpose.DAP_PERSONA),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any()))
-                .thenReturn(new com.aistareco.aep.service.AiModelInvocationService.AiModelResponse("{\"name\":\"角色\"}","stop",878L,"qwen","qwen",751L,127L));
+                .thenReturn(new com.aistareco.aep.service.AiModelInvocationService.AiModelResponse("{\"name\":\"角色\"}","stop",751L+outputTokens,"qwen","qwen",751L,outputTokens));
         var client=new com.aistareco.aep.dap.service.DapMultimodalClient(new com.aistareco.aep.dap.config.DapProperties(),models,
                 org.mockito.Mockito.mock(com.aistareco.aep.service.AiModelUsageService.class),org.mockito.Mockito.mock(com.aistareco.aep.service.ai.UpstreamModelHttp.class),
                 org.mockito.Mockito.mock(AiAppEndpointCandidateRepository.class));
         try(var execution=billing.open(job)){assertEquals("角色",client.chatJson("system","user").path("name").asText());}
         tx.executeWithoutResult(st->assertTrue(billing.finish(job,mediaSucceeded,"图片失败")));
-        assertEquals(3,grants.findById(gift.getId()).orElseThrow().getSpent());
-        assertEquals(17,grants.findById(gift.getId()).orElseThrow().getAvailable());
+        assertEquals(textCost,grants.findById(gift.getId()).orElseThrow().getSpent());
+        assertEquals(20-textCost,grants.findById(gift.getId()).orElseThrow().getAvailable());
         assertEquals(mediaSucceeded?90:100,wallets.findById("one").orElseThrow().getTotalBalance());
         assertEquals(0,wallets.findById("one").orElseThrow().getPendingBalance());
-        assertEquals(mediaSucceeded?13:3,job.getCost());
+        assertEquals(mediaSucceeded?10+textCost:textCost,job.getCost());
         assertEquals(job.getCost(),ledger.actualCreditsSpentSince("one","dap-job",Instant.EPOCH));
         long entries=ledger.count();tx.executeWithoutResult(st->billing.finish(job,mediaSucceeded,"重复回调"));assertEquals(entries,ledger.count());
         org.mockito.Mockito.when(models.resolveAcceptedEndpoint(AiModelPurpose.DAP_IMAGE,image.getId(),"aiavatar"))
@@ -550,8 +579,8 @@ class ScopedCreditServiceIntegrationTest {
         tx.executeWithoutResult(st->billing.reserve(job,10));
         assertEquals("qwen",billing.plan(job).text().charge().target().endpointId(),"retry keeps the originally accepted text endpoint");
         tx.executeWithoutResult(st->billing.finish(job,false,"重试取消"));
-        assertEquals(mediaSucceeded?13:3,job.getCost(),"prior completed text is counted once across attempts");
-        assertEquals(17,grants.findById(gift.getId()).orElseThrow().getAvailable());
+        assertEquals(mediaSucceeded?10+textCost:textCost,job.getCost(),"prior completed text is counted once across attempts");
+        assertEquals(20-textCost,grants.findById(gift.getId()).orElseThrow().getAvailable());
     }
 
     @Test void dapSplitReservationRollsBackMediaIfTheTextStageCannotBeFunded() {
