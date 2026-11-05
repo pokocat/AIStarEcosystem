@@ -192,6 +192,31 @@ test("image: when the model cannot make the scene's ratio the page says what it 
   expect(await screen.findByText("这个模型出不了 16:9，会按 1:1 出")).toBeTruthy();
 });
 
+test("image: a person scene takes three photos, numbers them as the model sees them, and sends them all", async () => {
+  api.signKeys.mockResolvedValue({ "a.jpg": "https://cdn/a.jpg", "c.jpg": "https://cdn/c.jpg" });
+  put({ id: "IPP-3", name: "s", sceneId: "face-turnaround", doc: { ...EMPTY,
+    sceneImageState: { sceneId: "face-turnaround", supplement: "", options: {}, slots: [{ key: "a.jpg", name: "正脸" }, null, { key: "c.jpg", name: "侧脸" }], count: 1 } } });
+  await open(SceneImageStudio, "/image?scene=face-turnaround&draft=IPP-3");
+  await screen.findByRole("img", { name: "人物照片 3" });
+  expect(screen.getByText("「人物照片」最多可放 3 张，都放同一个人的不同角度或表情，结果更接近本人。")).toBeTruthy();
+  // 第二格空着：第三格那张实际是交给模型的第二张，所以标图2，不标图3。
+  expect([...document.querySelectorAll(".scene-ref-index")].map(n => n.textContent)).toEqual(["图1", "图2"]);
+  api.composeScene.mockResolvedValue({ text: "描述", skill: null });
+  fireEvent.click(screen.getByRole("button", { name: "生成图片" }));
+  await waitFor(() => expect(api.composeScene).toHaveBeenCalledWith(expect.objectContaining({ sceneId: "face-turnaround", filled: [0, 2] })));
+});
+
+test("image: a model that can't take that many photos says so before anything is sent", async () => {
+  api.fetchModels.mockResolvedValue({ image: [{ endpointId: "ep-img", name: "图片模型", isDefault: true, creditCost: 8, billingUnit: "per_call", capability: { maxRefImages: 1 } }], video: [] });
+  api.signKeys.mockResolvedValue({ "a.jpg": "https://cdn/a.jpg", "b.jpg": "https://cdn/b.jpg" });
+  put({ id: "IPP-4", name: "s", sceneId: "face-turnaround", doc: { ...EMPTY,
+    sceneImageState: { sceneId: "face-turnaround", supplement: "", options: {}, slots: [{ key: "a.jpg", name: "正脸" }, { key: "b.jpg", name: "侧脸" }, null], count: 1 } } });
+  await open(SceneImageStudio, "/image?scene=face-turnaround&draft=IPP-4");
+  await screen.findByRole("img", { name: "人物照片 2" });
+  expect(((await screen.findByRole("button", { name: "生成图片" })) as HTMLButtonElement).title).toBe("当前模型最多用 1 张参考图，已放 2 张");
+  expect(api.composeScene).not.toHaveBeenCalled();
+});
+
 // ── AI 视频 ───────────────────────────────────────────────────────────────
 const limit = (mediaType: string, maxCount: number) => ({ mediaType, maxCount, maxBytes: 1e8, formats: [], minDurationSec: null, maxDurationSec: null });
 const H3 = { endpointId: "ep-h3", name: "H3", isDefault: true, selectableById: true, supportsPromptOptimization: false, batchCounts: [1],

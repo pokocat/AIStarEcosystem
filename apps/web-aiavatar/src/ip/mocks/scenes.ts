@@ -8,7 +8,7 @@ export const MOCK_SCENES: StudioSceneCatalog = {
   videoGroups: [{ id: "commerce", title: "电商带货" }, { id: "ip", title: "IP 内容" }],
   image: [
     { id: "free", group: "ip", title: "自由出图", description: "自己写描述，可以放几张参考图", refs: [1, 2, 3, 4].map(n => ({ label: `参考图 ${n}`, required: false })), prompt: "", hint: "说说想要什么画面", ratio: "3:4" },
-    { id: "face-turnaround", group: "person", title: "脸部三视图", description: "正脸、半侧脸、侧脸，做角色参考", refs: [{ label: "人物照片", required: true }], prompt: "以图1人物为准，生成纯白背景的头部三视图。", hint: "可以补充气质、表情或写实程度", ratio: "16:9" },
+    { id: "face-turnaround", group: "person", title: "脸部三视图", description: "正脸、半侧脸、侧脸，做角色参考", refs: [{ label: "人物照片", required: true }, { label: "人物照片 2", required: false, sameAs: 0 }, { label: "人物照片 3", required: false, sameAs: 0 }], prompt: "以图1人物为准，生成纯白背景的头部三视图。", hint: "可以补充气质、表情或写实程度", ratio: "16:9" },
     { id: "white-background", group: "product", title: "商品白底图", description: "干净的白底主图，平台上架直接用", refs: [{ label: "商品图", required: true }], prompt: "把图1中的商品单独放到纯白背景正中。", hint: "可以补充角度和摆放", ratio: "1:1",
       options: [{ key: "angle", label: "拍摄角度", defaultValue: "front", choices: [{ value: "front", label: "正面", prompt: "商品正面朝向镜头" }, { value: "top", label: "俯拍", prompt: "从正上方俯拍商品" }] }] },
   ],

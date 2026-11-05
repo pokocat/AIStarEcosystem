@@ -45,7 +45,13 @@ public class StudioSceneCatalog {
     public static final String MEDIA_PREFIX = com.aistareco.aep.service.storage.FileStorageService.ownedKeyPrefix(MEDIA_CATEGORY, MEDIA_OWNER);
 
     public record Group(String id, String title) {}
-    public record SceneRef(String label, boolean required, String hint) {}
+    /**
+     * @param sameAs 这个位放的是第几个位（从 0 起）那个人的其他照片：多给几张，出来更像本人（2026-11-05）。
+     *               不是新的素材，描述里的「图N」不指它，compose 会告诉模型这几张是同一个人。
+     */
+    public record SceneRef(String label, boolean required, String hint, Integer sameAs) {
+        public SceneRef(String label, boolean required, String hint) { this(label, required, hint, null); }
+    }
     /** 出 wire 时由 key 签出的地址；目录里只存 key。 */
     public record Media(String url, String mediaType) {}
     /** 选项组里的一项：value 是接口用的编号，label 给用户看，prompt 是选中后拼进描述 / 要求里的那句话。 */
@@ -357,8 +363,27 @@ public class StudioSceneCatalog {
         vars.put("extra", extra);
         vars.put("custom", r.custom() != null && !r.custom().isBlank() ? r.custom().trim() : "");
         vars.put("options", optionItems(scene.optionGroups(), r.options()));
+        vars.put("samePerson", samePerson(scene, filled));
         return assembler().assemble(new StudioPromptAssembler.Call(STAGE_IMAGE, null, free ? null : sceneKey(scene.id()), vars, null,
                 free ? null : trim(scene.prompt()))).user();
+    }
+
+    /**
+     * 同一个人的其他照片（{photos, target}），按实际交给模型的顺序编号：空着的位不交，放了第 3 格没放第 2 格时它就是图2。
+     * 校验保证这些位排在最后、前面的位都是必填，所以描述里写死的图1、图2 不会被挤动。
+     */
+    private static List<java.util.Map<String, Object>> samePerson(ImageScene scene, Set<Integer> filled) {
+        java.util.Map<Integer, List<String>> photos = new java.util.LinkedHashMap<>();
+        int position = 0;
+        for (int i = 0; i < scene.refs().size(); i++) {
+            if (!filled.contains(i)) continue;
+            position++;
+            Integer target = scene.refs().get(i).sameAs();
+            if (target != null) photos.computeIfAbsent(target, k -> new ArrayList<>()).add("图" + position);
+        }
+        List<java.util.Map<String, Object>> out = new ArrayList<>();
+        photos.forEach((target, names) -> out.add(java.util.Map.of("photos", String.join("、", names), "target", "图" + (target + 1))));
+        return out;
     }
 
     /** 选中的选项（{label, prompt}），没给的组用默认值；后台下架的选项 400，让页面刷新后重选。 */
@@ -540,6 +565,7 @@ public class StudioSceneCatalog {
             if (blank(s.title()) || blank(s.description())) throw new IllegalStateException("场景要有名称和一句说明：" + s.id());
             if (s.refs() == null || s.refs().size() > 6) throw new IllegalStateException("参考图位最多 6 个：" + name);
             if (s.refs().stream().anyMatch(r -> r == null || blank(r.label()))) throw new IllegalStateException("参考图位要有名称：" + name);
+            samePersonSlots(s.refs(), name);
             if (!FREE.equals(s.id())) {
                 if (blank(s.prompt())) throw new IllegalStateException("场景要写好出图描述：" + name);
                 if (s.prompt().contains("【") || s.prompt().contains("】")) throw new IllegalStateException("场景描述不能留【…】空位：" + name);
@@ -620,6 +646,23 @@ public class StudioSceneCatalog {
     private static BusinessException bad(String message) { return BusinessException.badRequest("STUDIO_SCENE_INPUT_INVALID", message); }
     private static boolean blank(String v) { return v == null || v.isBlank(); }
     private static String trim(String v) { return v == null ? "" : v.trim(); }
+    /** 「同一个人的其他照片」只能排在最后、选填，指向前面的必填位；否则描述里的图N 会被挤到别的图上。 */
+    private static void samePersonSlots(List<SceneRef> refs, String name) {
+        boolean seen = false;
+        for (int i = 0; i < refs.size(); i++) {
+            SceneRef r = refs.get(i);
+            if (r.sameAs() == null) {
+                if (seen) throw new IllegalStateException("同一人物的其他照片要排在最后：" + name);
+                continue;
+            }
+            seen = true;
+            if (r.required()) throw new IllegalStateException("同一人物的其他照片只能选填：" + name);
+            if (r.sameAs() < 0 || r.sameAs() >= i || !refs.get(r.sameAs()).required() || refs.get(r.sameAs()).sameAs() != null)
+                throw new IllegalStateException("同一人物的其他照片要指向前面的必填参考图：" + name);
+        }
+        if (seen) for (SceneRef r : refs) if (r.sameAs() == null && !r.required()) throw new IllegalStateException("有同一人物的其他照片时，前面的参考图都要必填：" + name);
+    }
+
     private static String limit(String v) {
         if (v.length() > 16000) throw bad("描述最多 16000 字");
         return v;

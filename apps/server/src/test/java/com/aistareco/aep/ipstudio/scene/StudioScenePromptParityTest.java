@@ -49,7 +49,8 @@ class StudioScenePromptParityTest {
         int checked = 0;
         for (ImageScene s : old.image()) {
             List<Integer> filled = new ArrayList<>();
-            for (int i = 0; i < s.refs().size(); i++) filled.add(i);
+            // 多放的同一人物照片（2026-11-05 新增）会多一句说明，不在「搬进提示词库前后一字不变」的比较范围里。
+            for (int i = 0; i < s.refs().size(); i++) if (s.refs().get(i).sameAs() == null) filled.add(i);
             for (String text : List.of("", " 加点阳光 ")) for (String custom : Arrays.asList(null, "我自己写的描述")) for (Map<String, String> options : optionVariants(s.optionGroups())) {
                 if (StudioSceneCatalog.FREE.equals(s.id()) && text.isBlank()) continue;
                 var r = new ComposeRequest("image", s.id(), text, custom, filled, null, null, null, null, null, null, null, null, options);

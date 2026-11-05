@@ -5175,7 +5175,11 @@ components:
     StudioSceneRef:
       type: object
       required: [label, required]
-      properties: { label: { type: string }, required: { type: boolean }, hint: { type: string, nullable: true } }
+      properties:
+        label: { type: string }
+        required: { type: boolean }
+        hint: { type: string, nullable: true }
+        sameAs: { type: integer, nullable: true, description: '这个位放的是第几个位（从 0 起）那个人的其他照片：选填、排在最后、指向前面的必填位。compose 会告诉模型这几张是同一个人。' }
     StudioSceneSlot:
       type: object
       required: [label, required]

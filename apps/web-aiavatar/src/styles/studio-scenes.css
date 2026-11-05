@@ -154,6 +154,7 @@ html[data-layout="desktop"] .scene-composer-head .scene-recent-host { display: n
 .scene-ref-index { position: absolute; top: 5px; left: 5px; padding: 0 5px; border-radius: 5px; background: rgba(23,32,42,.68); color: #fff; font-size: 10.5px; font-style: normal; line-height: 16px; }
 .scene-ref-remove { position: absolute; top: -7px; right: -7px; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 1px solid var(--sn-field); border-radius: 50%; background: var(--ip-paper); color: var(--ip-muted); cursor: pointer; }
 .scene-ref-remove:hover { color: var(--ip-ink); }
+.scene-media-note { margin: -8px 0 0; color: var(--ip-muted); font-size: 12px; line-height: 1.5; }
 .scene-media-divider { align-self: stretch; width: 1px; margin: 10px 2px 26px; background: var(--ip-line); }
 .scene-media-row.is-large .scene-media { width: 96px; }
 .scene-media-row.is-large .scene-media>button:first-child, .scene-media-row.is-large .scene-media-preview, .scene-media-row.is-large .scene-slot-add { width: 96px; height: 96px; border-radius: 14px; }

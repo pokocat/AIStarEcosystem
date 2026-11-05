@@ -5,7 +5,13 @@
  */
 export interface StudioSceneGroup { id: string; title: string }
 /** 参考图位：按顺序是图1、图2…；描述里的「图N」对应这里。 */
-export interface StudioSceneRef { label: string; required: boolean; hint?: string | null }
+export interface StudioSceneRef {
+  label: string;
+  required: boolean;
+  hint?: string | null;
+  /** 这个位放的是第几个位（从 0 起）那个人的其他照片：选填，排在最后，多给几张结果更接近本人。 */
+  sameAs?: number | null;
+}
 /** 选项组里的一项：value 给接口用，label 给用户看，prompt 是选中后服务端拼进描述 / 要求里的那句话。 */
 export interface StudioSceneOptionChoice { value: string; label: string; prompt: string }
 /** 照参考站的「选项组」：一个场景几组可选项（拍法、语气……），各有默认值；用户点选，不用写字。 */

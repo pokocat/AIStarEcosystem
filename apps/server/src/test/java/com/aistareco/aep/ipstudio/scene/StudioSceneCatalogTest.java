@@ -252,6 +252,42 @@ class StudioSceneCatalogTest {
     }
 
     @Test
+    void extraPhotosOfThePersonAreNamedByTheirRealPositionAndTheOtherWordsStayPut() {
+        String base = catalog.image("face-turnaround").orElseThrow().prompt();
+        assertThat(catalog.compose(image("face-turnaround", "", null, 0)).text()).isEqualTo(base);
+        // 三张都放：图2、图3 是图1 这个人。
+        assertThat(catalog.compose(image("face-turnaround", "自然微笑", null, 0, 1, 2)).text())
+                .startsWith(base + "\n图2、图3和图1是同一个人的其他照片").endsWith("\n补充要求：自然微笑");
+        // 空着第二格：实际交给模型的第二张是第三格那张，它就是图2。
+        assertThat(catalog.compose(image("face-turnaround", "", null, 0, 2)).text()).startsWith(base + "\n图2和图1是同一个人");
+        // 模特换脸：图1 是模特，多放的是图2 这张新面孔的人，不能说成模特。
+        assertThat(catalog.compose(image("face-swap", "", null, 0, 1, 3)).text()).contains("图3和图2是同一个人");
+        assertThat(catalog.compose(image("face-swap", "", null, 0, 1)).text()).doesNotContain("同一个人的其他照片");
+    }
+
+    @Test
+    void theSixPersonScenesTakeUpToThreePhotosAndOnlyThose() {
+        var withExtras = catalog.catalog().image().stream().filter(s -> s.refs().stream().anyMatch(r -> r.sameAs() != null)).toList();
+        assertThat(withExtras).extracting(StudioSceneCatalog.ImageScene::id)
+                .containsExactlyInAnyOrder("ip-sheet", "ip-portrait", "ip-expression", "face-turnaround", "fullbody-sheet", "face-swap");
+        for (var s : withExtras) assertThat(s.refs().stream().filter(r -> r.sameAs() != null)).hasSize(2);
+    }
+
+    @Test
+    void extraPhotosThatWouldShiftTheNumbersInTheDescriptionAreRejected() {
+        var c = catalog.catalog();
+        var ok = new StudioSceneCatalog.SceneRef("人物照片", true, null);
+        var extra = new StudioSceneCatalog.SceneRef("人物照片 2", false, null, 0);
+        java.util.function.Function<List<StudioSceneCatalog.SceneRef>, StudioSceneCatalog.Catalog> with = refs ->
+                new StudioSceneCatalog.Catalog(1, c.imageGroups(), c.videoGroups(), List.of(new StudioSceneCatalog.ImageScene("x", c.image().get(1).group(), "x", "x", refs, "以图1为准", "x", "1:1")), List.of());
+        StudioSceneCatalog.validate(with.apply(List.of(ok, extra)));
+        assertThatThrownBy(() -> StudioSceneCatalog.validate(with.apply(List.of(ok, extra, new StudioSceneCatalog.SceneRef("场景图", true, null))))).hasMessageContaining("排在最后");
+        assertThatThrownBy(() -> StudioSceneCatalog.validate(with.apply(List.of(ok, new StudioSceneCatalog.SceneRef("场景图", false, null), extra)))).hasMessageContaining("都要必填");
+        assertThatThrownBy(() -> StudioSceneCatalog.validate(with.apply(List.of(ok, new StudioSceneCatalog.SceneRef("x", true, null, 0))))).hasMessageContaining("只能选填");
+        assertThatThrownBy(() -> StudioSceneCatalog.validate(with.apply(List.of(ok, new StudioSceneCatalog.SceneRef("x", false, null, 5))))).hasMessageContaining("指向前面");
+    }
+
+    @Test
     void aCatalogThatLeavesBlanksOrPointsAtMissingPhotosDoesNotStart() {
         var c = catalog.catalog();
         var broken = new StudioSceneCatalog.ImageScene("x", c.image().get(1).group(), "x", "x",

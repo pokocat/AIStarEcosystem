@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { SignedImage } from "@/canvas-bridge/signed-image";
 import { ChevronDown, Clapperboard, Cpu, Download, FolderOpen, ImageUp, ImagePlus, Loader2, Mountain, Package, PencilLine, Plus, RotateCcw, Shirt, SlidersHorizontal, Square, Undo2, UserRound, X } from "lucide-react";
-import type { IpImageAsset, IpProject, IpRun, StudioSceneImageState, StudioSceneOptionGroup } from "@ai-star-eco/types";
+import type { IpImageAsset, IpProject, IpRun, StudioSceneImageState, StudioSceneOptionGroup, StudioSceneRef } from "@ai-star-eco/types";
 import type { StudioCapabilities } from "@ai-star-eco/types/ip-studio-workflow";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { cancelRun, fetchModels, readRun, signKeys, type IpModelOption } from "@/canvas-bridge/api";
@@ -224,8 +224,14 @@ export function SceneImageStudio() {
   const ownText = custom ?? supplement;
   const ownLimit = custom !== undefined || isFree ? maxChars : 3000;
   const missing = scene ? scene.refs.findIndex((r, i) => r.required && !slots[i]) : -1;
+  // 模型收不下这么多参考图时在这里说清楚，别等提交后才被服务端拒绝。null 表示这个模型没有声明上限。
+  const filledCount = scene ? scene.refs.filter((_, i) => slots[i]).length : 0;
+  const maxRefs = caps?.mock ? null : chosen?.capability?.maxRefImages ?? null;
+  const tooManyRefs = maxRefs !== null && filledCount > maxRefs;
+  const samePersonNote = scene ? sameTargetNote(scene.refs) : "";
   const blocker = !scene ? "正在读取场景…" : !models ? "正在读取模型…" : !caps?.mock && !chosen ? "还没有可用的图片模型"
     : missing >= 0 ? `先放${scene.refs[missing].label}` : isFree && !supplement.trim() ? "写一句想要的画面"
+    : tooManyRefs ? (maxRefs ? `当前模型最多用 ${maxRefs} 张参考图，已放 ${filledCount} 张` : "当前模型不能用参考图，请换一个模型")
     : ownText.length > ownLimit ? `最多 ${ownLimit} 字` : "";
 
   // 页面上的条件写进草稿（有草稿时），刷新、再打开都还是这些。想要的比例 / 张数原样记，不记被换掉之后的。
@@ -401,18 +407,20 @@ export function SceneImageStudio() {
       <div className="scene-compose">
         <div className={`scene-media-row${scene.refs.length <= 3 ? " is-large" : ""}`} role="group" aria-label="参考图">
           {/* 「可选」只在有必填的一排里标：自由出图四格全是可选，每格都写一遍在手机上把名字挤成「参考图 2 可…」（2026-11-02）。 */}
+          {/* 小格放不下「新面孔 2 可选」：多放的照片是不是可选，下面那句说明已经写了。 */}
           {scene.refs.map((ref, i) => {
             const slot = slots[i];
             const Icon = refIcon(ref.label);
             return <div key={`${scene.id}-${i}`} className={`scene-media${slot ? " is-filled" : ""}`}>
-              {slot ? <span className="scene-media-preview"><SignedImage src={slot.url} storageKey={slot.key} alt={ref.label}/><i className="scene-ref-index">图{i + 1}</i></span>
+              {slot ? <span className="scene-media-preview"><SignedImage src={slot.url} storageKey={slot.key} alt={ref.label}/><i className="scene-ref-index">图{slots.slice(0, i).filter(Boolean).length + 1}</i></span>
                 : <button type="button" className="scene-slot-add" aria-label={`从资产库选${ref.label}`} title={ref.hint ?? undefined} onClick={() => openPicker(i)}>
                     <SlotEmpty Icon={Icon} size={28}/></button>}
-              <span title={ref.hint}>{ref.label}{!slot && !ref.required && someRequired && <small>可选</small>}</span>
+              <span title={ref.hint}>{ref.label}{!slot && !ref.required && someRequired && (ref.sameAs == null || scene.refs.length <= 3) && <small>可选</small>}</span>
               {slot && <button type="button" className="scene-ref-remove" aria-label={`移除${ref.label}`} onClick={() => setSlots(old => { const next = [...old]; next[i] = undefined; return next; })}><X size={11} strokeWidth={1.8}/></button>}
             </div>;
           })}
         </div>
+        {samePersonNote && <p className="scene-media-note">{samePersonNote}</p>}
 
         <div className="scene-box">
           {custom !== undefined
@@ -557,6 +565,14 @@ function ImageSettingsPanel({ ratios, ratio, onRatio, sizes, size, onSize, count
       <div className="scene-choice-row">{g.choices.map(c => <button key={c.value} type="button" aria-pressed={(picked[g.key] ?? g.defaultValue) === c.value} title={c.prompt}
         onClick={() => onPick(g.key, c.value)}>{c.label}</button>)}</div></div>)}
   </div>;
+}
+
+/** 这个场景能多放几张同一人物的照片时，告诉用户放什么、有什么用（格子上的说明只在悬停时看得到）。 */
+function sameTargetNote(refs: StudioSceneRef[]): string {
+  const extra = refs.filter(r => r.sameAs != null);
+  if (!extra.length) return "";
+  const target = refs[extra[0].sameAs!];
+  return `「${target.label}」最多可放 ${extra.length + 1} 张，都放同一个人的不同角度或表情，结果更接近本人。`;
 }
 
 /**
