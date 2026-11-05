@@ -70,8 +70,8 @@ class SegmentedVideoFlowTest {
         doc = (ObjectNode) om.readTree("{\"nodes\":[{\"id\":\"n1\",\"type\":\"image\",\"title\":\"达人照片\",\"metadata\":{\"storageKey\":\"ipstudio/u/photo.png\"}}],\"connections\":[]}");
         when(projects.readDoc(any())).thenAnswer(i -> doc);
         when(projects.requireOwnedAssetKey(anyString(), anyString())).thenAnswer(i -> i.getArgument(1));
-        when(workflow.quote(anyString(), any())).thenAnswer(i -> switch (((RunRequest) i.getArgument(1)).operation()) {
-            case "image" -> 8L; case "video" -> 900L; case "assemble" -> 0L; default -> 70L; });
+        when(workflow.quote(anyString(), any())).thenAnswer(i -> { RunRequest r = i.getArgument(1); return switch (r.operation()) {
+            case "image" -> 8L; case "video" -> r.video().rewrite() == null ? 900L : 1010L; case "assemble" -> 0L; default -> 70L; }; });
         when(workflow.submit(eq("u"), eq("p"), any())).thenAnswer(i -> {
             RunRequest request = i.getArgument(2);
             submitted.add(request);
@@ -176,6 +176,15 @@ class SegmentedVideoFlowTest {
         // 脚本 + 审核 + 4 次检查按文字上限；上限再加每张分镜图和检查各一次。
         assertEquals(3600 + 32 + 70 * 6, price.estimated());
         assertEquals(price.estimated() + 32 + 70 * 4, price.cap());
+    }
+
+    @Test void theVideoPriceDoesNotCountThePromptRewriteTwice() {
+        when(videos.models()).thenReturn(List.of(new VideoStudioModel("ep-video", "视频模型", true, true, true, VideoStudioService.contract(5, 15), null)));
+        var price = service.price("u", null, null, 30, "9:16", 0, false, false, true);
+        assertEquals(1800, price.videoCost());
+        // 改写的冻结上限（每段 110）算在文字那边：脚本 + 审核 + 2 次检查 + 2 次改写。
+        assertEquals(70 * 4 + 110 * 2, price.textCost());
+        assertEquals(1800 + 16 + 500, price.estimated());
     }
 
     @Test void aStaleCapIsRefusedBeforeAnythingStarts() {

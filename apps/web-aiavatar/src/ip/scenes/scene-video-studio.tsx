@@ -958,7 +958,7 @@ export function SceneVideoStudio() {
           </button>
           {/* 点了没做成的原因用提醒色；还没动手时只是灰字说一句还差什么。 */}
           {(hint || goBlocker) && <p id="scene-video-go-note" className={`scene-hint${hint ? "" : " is-note"}`} role="status">{hint || goBlocker}</p>}
-          {long && longShown && <p className="scene-hint is-note scene-price-note">视频 {longShown.videoCost.toLocaleString("zh-CN")} 积分，分镜图 {longShown.boards} 张 {longShown.boardCost.toLocaleString("zh-CN")} 积分。写脚本、审核和提示词优化按实际用量另扣，整条最多 {longShown.cap.toLocaleString("zh-CN")} 积分。</p>}
+          {long && longShown && <p className="scene-hint is-note scene-price-note">视频 {longShown.videoCost.toLocaleString("zh-CN")} 积分，分镜图 {longShown.boards} 张 {longShown.boardCost.toLocaleString("zh-CN")} 积分。写脚本、审核和提示词优化按实际用量另扣，整条最多 {longShown.cap.toLocaleString("zh-CN")} 积分。有折扣或模型赠款时按实际结算。</p>}
           {!toAssistant && !long && !caps?.mock && price?.note && <p className="scene-hint is-note scene-price-note">{price.note}</p>}
           {!toAssistant && !long && plan?.note && <p className="scene-hint is-note">{plan.note}</p>}
           {!toAssistant && plan?.used.some(m => m.mediaType === 'audio') && <p className="scene-hint is-note" role="status">{AUDIO_REFERENCE_NOTICE}</p>}
