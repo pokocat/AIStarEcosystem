@@ -148,9 +148,8 @@ public class ViewImagesTool implements StudioDialogueTool {
         options.put("temperature", 0.1);
         var reply = models.invokeChatTurnOnEndpoint(ctx.endpoint, AiModelPurpose.DAP_PERSONA,
                 List.of(Map.of("role", "system", "content", system), Map.of("role", "user", "content", parts)), options, null, null);
-        if (reply.promptTokens() == null || reply.completionTokens() == null)
-            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_USAGE_MISSING", "模型未返回有效Token用量，本次未扣积分");
-        ctx.budget.record(reply.promptTokens(), reply.completionTokens());
+        if (reply.promptTokens()!=null && reply.completionTokens()!=null)
+                ctx.budget.record(reply.promptTokens(), reply.completionTokens());
         String text = reply.content() == null ? "" : reply.content().strip();
         if (text.isBlank()) throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "看图模型没有返回内容");
         return text;

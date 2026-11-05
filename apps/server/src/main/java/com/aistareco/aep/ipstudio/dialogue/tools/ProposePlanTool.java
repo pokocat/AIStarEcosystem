@@ -129,11 +129,8 @@ public class ProposePlanTool implements StudioDialogueTool {
         options.put("temperature", 0.4);
         options.put("response_format", Map.of("type", "json_object"));
         var reply = models.invokeChatTurnOnEndpoint(ctx.endpoint, AiModelPurpose.DAP_PERSONA, messages, options, null, null);
-        if (reply.promptTokens() == null || reply.completionTokens() == null)
-            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_USAGE_MISSING", "模型未返回有效Token用量，本次未扣积分");
-        ctx.budget.record(reply.promptTokens(), reply.completionTokens());
-        if ("length".equals(reply.finishReason()))
-            return ToolRun.failed("AI_BAD_OUTPUT", "方案太长被截断了", DialogueTools.fail("方案输出被截断，请缩小范围（减少段数或步骤）后重试")).settlingInTurn();
+        if (reply.promptTokens()!=null && reply.completionTokens()!=null)
+                ctx.budget.record(reply.promptTokens(), reply.completionTokens());
         JsonNode raw;
         try { raw = ModelJson.parse(mapper, reply.content()); }
         catch (Exception e) { raw = null; }

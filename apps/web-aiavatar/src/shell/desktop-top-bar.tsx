@@ -49,6 +49,7 @@ export function DesktopTopBar({ publicMode = false }: { publicMode?: boolean }) 
     <strong>{name}</strong>
     <Link href="/me"><UserRound size={16} />我的账号</Link>
     {process.env.NEXT_PUBLIC_ENTERPRISE_ENABLED === "1" && <Link href="/enterprise"><Building2 size={16} />企业积分</Link>}
+    <Link href="/model-results"><Compass size={16} />生成原文</Link>
     <Link href="/licenses"><Shield size={16} />授权管理</Link>
     <Link href="/cards"><IdCard size={16} />名片</Link>
     <Link href="/discover"><Compass size={16} />发现</Link>

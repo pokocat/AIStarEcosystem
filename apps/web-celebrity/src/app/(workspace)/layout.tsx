@@ -563,6 +563,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         }
       />
       <main style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <Link href="/model-results" style={{padding:"8px 24px"}}>生成原文</Link>
         <CustomTopbar crumbs={crumbs} />
         <div
           style={{

@@ -125,7 +125,7 @@ class DramaShortPromptServiceTest {
         aiReturns("{\"shots\":[{\"visual\":\"半句", "length");
         BusinessException e = assertThrows(BusinessException.class,
                 () -> svc.parse(OM.createObjectNode().put("prompt", PROMPT), USER));
-        assertEquals("AI_OUTPUT_TRUNCATED", e.getCode());
+        assertEquals("AI_BAD_OUTPUT", e.getCode());
     }
 
     @Test

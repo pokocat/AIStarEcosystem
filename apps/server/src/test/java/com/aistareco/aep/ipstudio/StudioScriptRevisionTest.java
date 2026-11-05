@@ -15,9 +15,9 @@ class StudioScriptRevisionTest {
         var plan=mapper.createObjectNode().put("summary","创作建议");plan.putArray("steps");plan.putArray("questions");
         assertThrows(BusinessException.class,()->StudioScriptRevision.validateOutput(plan));
     }
-    @Test void missingDuplicateAndFencedHeadingsCannotMasqueradeAsCompleteRevisions() {
+    @Test void headingPresentationAndLengthDoNotDiscardReturnedRevisions() {
         for(String invalid:new String[]{document.replace("## 人物小传","## 人物"),document+"\n## 人物小传","```md\n"+document+"\n```",document+"x".repeat(48000)})
-            assertThrows(BusinessException.class,()->StudioScriptRevision.validateOutput(mapper.createObjectNode().put("summary","修改").put("markdown",invalid)));
+            assertDoesNotThrow(()->StudioScriptRevision.validateOutput(mapper.createObjectNode().put("summary","修改").put("markdown",invalid)));
     }
     @Test void inputIsBoundedAndOnlyAcceptedOnTheTextAssistantPath() throws Exception {
         var json=mapper.createObjectNode().put("clientRequestId","one-key").put("nodeId","script").put("operation","assistant").put("prompt","增强冲突");json.putObject("scriptEdit").put("markdown",document);
@@ -36,7 +36,7 @@ class StudioScriptRevisionTest {
         var revision=mapper.createObjectNode().put("summary","保留格式稿").put("markdown",rich);
         assertDoesNotThrow(()->StudioScriptRevision.validateOutput(revision));
         assertEquals(rich,revision.path("markdown").asText());
-        assertThrows(BusinessException.class,()->StudioScriptRevision.validateOutput(mapper.createObjectNode().put("summary","修改").put("markdown",rich+"\n### ++第 1 集 · 重复++")));
-        assertThrows(BusinessException.class,()->StudioScriptRevision.validateOutput(mapper.createObjectNode().put("summary","修改").put("markdown",document.replace("## 人物小传","## \\*人物小传\\*"))));
+        assertDoesNotThrow(()->StudioScriptRevision.validateOutput(mapper.createObjectNode().put("summary","修改").put("markdown",rich+"\n### ++第 1 集 · 重复++")));
+        assertDoesNotThrow(()->StudioScriptRevision.validateOutput(mapper.createObjectNode().put("summary","修改").put("markdown",document.replace("## 人物小传","## \\*人物小传\\*"))));
     }
 }

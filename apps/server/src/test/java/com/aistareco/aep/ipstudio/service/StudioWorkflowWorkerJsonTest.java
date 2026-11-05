@@ -62,6 +62,36 @@ class StudioWorkflowWorkerJsonTest {
         verify(h.models(), times(1)).invokeChatOnEndpoint(any(), any(), anyList(), anyMap());
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"3430,69396,76,21", "1000,9000,10,10", "70000,1000,14,14"})
+    void completedScriptSurvivesProviderTokenAndInvoiceOverruns(long in,long out,long actual,long charged) throws Exception {
+        String reply="{\"title\":\"完整剧本\",\"content\":\"深夜便利店里，两个人终于把多年的误会说开，然后一起收拾散落满地的货物。\"}";
+        var h=harness(reply,"stop");
+        when(h.models().invokeChatOnEndpoint(any(),any(),anyList(),anyMap())).thenReturn(
+                new AiModelInvocationService.AiModelResponse(reply,"stop",in+out,"qwen","qwen",in,out));
+        runOnce(h);
+        assertEquals("done",h.run().getStatus());assertNull(h.run().getErrorCode());
+        var output=json.readTree(h.run().getOutputJson());
+        assertEquals("完整剧本",output.path("director").path("title").asText());
+        assertEquals(in,output.path("billing").path("inputTokens").asLong());
+        assertEquals(out,output.path("billing").path("outputTokens").asLong());
+        assertEquals(charged,h.run().getCost());
+        if(actual>charged)assertEquals(actual-charged,output.path("billing").path("platformCoveredCredits").asLong());
+        verify(h.credits(),times(1)).commitHold(eq(IpRunService.REF_TYPE),eq("r"),eq(charged),anyString(),any());
+        verifyNoInteractions(h.errors());
+    }
+
+    @Test void longScriptContentIsPreservedBeyond64000Characters() throws Exception {
+        String content="这是剧本中的一个场景。".repeat(7000);
+        String reply=json.createObjectNode().put("title","长剧本").put("content",content).toString();
+        var h=harness(reply,"stop");
+        when(h.models().invokeChatOnEndpoint(any(),any(),anyList(),anyMap())).thenReturn(
+                new AiModelInvocationService.AiModelResponse(reply,"stop",72826L,"qwen","qwen",3430L,69396L));
+        runOnce(h);
+        assertEquals("done",h.run().getStatus());
+        assertEquals(content,json.readTree(h.run().getOutputJson()).path("director").path("content").asText());
+    }
+
     @Test void deepSeekDirectorScriptDisablesThinking() {
         var h = harness("{\"title\":\"完整剧本\",\"content\":\"深夜便利店里，两个人终于把多年的误会说开，然后一起收拾散落满地的货物。\"}", "stop");
         runOnce(h);
@@ -82,40 +112,38 @@ class StudioWorkflowWorkerJsonTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"{\"content\":\"半句话", "{\"content\":\"未知\\q转义\"}", "{\"content\":\"正文\",,}", "{\"content\":1 \"title\":2}"})
-    void unrecoverableJsonExplainsTheFormatFailureAndRefundsWithoutRetry(String reply) {
-        var h = harness(reply, "stop");
-        runOnce(h);
-        assertEquals("failed", h.run().getStatus());
-        assertEquals("AI_BAD_OUTPUT", h.run().getErrorCode());
-        // The wording is the regression: a parser error used to become only "这次创作没有完成，请重试".
-        assertTrue(h.run().getErrorMessage().contains("格式有误"));
-        assertTrue(h.run().getErrorMessage().contains("无法自动恢复"));
-        assertTrue(h.run().getErrorMessage().contains("未扣积分"));
-        assertFalse(h.run().getErrorMessage().contains("JsonParseException"));
-        assertEquals(0, h.run().getCost());
-        verify(h.credits()).releaseHold(eq(IpRunService.REF_TYPE), eq("r"), anyString());
-        verify(h.credits(), never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
-        verify(h.errors()).attach(eq(h.run()), argThat(e -> e instanceof BusinessException && e.getCause() instanceof JsonProcessingException));
+    @ValueSource(strings={"普通正文，没有 JSON。", "{\"content\":\"半句话", "{\"content\":\"未知\\q转义\"}", "{\"title\":\"只有标题\",}"})
+    void unstructuredOutputIsDeliveredAndRetainedWithoutAnotherModelCall(String reply) throws Exception {
+        var h=harness(reply,"stop");runOnce(h);
+        assertEquals("done",h.run().getStatus());assertNull(h.run().getErrorCode());
+        var out=json.readTree(h.run().getOutputJson());
+        assertEquals(reply,out.path("rawResponse").path("content").asText());
+        assertFalse(out.path("text").asText().isBlank());
+        assertFalse(out.path("warnings").isEmpty());
+        assertEquals(2,h.run().getCost());
     }
-
-    @Test void lengthTerminationCannotBeRepairedIntoSuccess() {
-        var h = harness("{\"content\":\"这一段看起来完整，但后面其实还没有返回，不能靠补括号冒充成功。\"", "length");
-        runOnce(h);
-        assertEquals("failed", h.run().getStatus());
-        assertEquals("AI_BAD_OUTPUT", h.run().getErrorCode());
-        assertTrue(h.run().getErrorMessage().contains("截断"));
-        assertEquals(0, h.run().getCost());
-        verify(h.credits()).releaseHold(eq(IpRunService.REF_TYPE), eq("r"), anyString());
-        verify(h.credits(), never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
+    @Test void lengthTerminationPreservesReturnedTextAndWarnsThatItMayBeIncomplete() throws Exception {
+        String reply="{\"content\":\"已写完的这一段\"}";
+        var h=harness(reply,"length");runOnce(h);
+        assertEquals("done",h.run().getStatus());
+        var out=json.readTree(h.run().getOutputJson());
+        assertEquals(reply,out.path("rawResponse").path("content").asText());
+        assertEquals("已写完的这一段",out.path("director").path("content").asText());
+        assertFalse(out.path("warnings").isEmpty());
     }
-
-    @Test void syntaxRecoveryDoesNotBypassBusinessValidation() {
-        var h = harness("{\"title\":\"缺少剧本正文\",}", "stop");
-        runOnce(h);
-        assertEquals("failed", h.run().getStatus());
-        assertEquals("AI_BAD_OUTPUT", h.run().getErrorCode());
-        assertEquals(0, h.run().getCost());
-        verify(h.credits(), never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
+    @Test void missingUsageKeepsTheScriptAndReleasesTheHoldWithoutInventingUsage() throws Exception {
+        String reply="{\"title\":\"短片\",\"content\":\"门开了。她没回头。\"}";
+        var h=harness(reply,"stop");
+        when(h.models().invokeChatOnEndpoint(any(),any(),anyList(),anyMap())).thenReturn(
+                new AiModelInvocationService.AiModelResponse(reply,"stop",null,"qwen","qwen",null,null));
+        runOnce(h);assertEquals("done",h.run().getStatus());assertEquals(0,h.run().getCost());
+        var out=json.readTree(h.run().getOutputJson());
+        assertEquals("门开了。她没回头。",out.path("director").path("content").asText());
+        assertTrue(out.path("billingUnknown").asBoolean());
+        verify(h.credits(),never()).commitHold(anyString(),anyString(),anyLong(),anyString(),any());
+        verify(h.credits()).releaseHold(eq(IpRunService.REF_TYPE),eq("r"),anyString());
+    }
+    @Test void genuinelyEmptyContentStillFails() {
+        var h=harness("","stop");runOnce(h);assertEquals("failed",h.run().getStatus());
     }
 }
