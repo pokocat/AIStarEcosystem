@@ -95,7 +95,7 @@ public class AiChatTokenPricing {
         public long cost(long input,long output){return inputCreditsPerK.multiply(BigDecimal.valueOf(input)).add(outputCreditsPerK.multiply(BigDecimal.valueOf(output))).divide(BigDecimal.valueOf(1000),0,RoundingMode.CEILING).longValueExact();}
         public long settle(Long input,Long output) {
             if(input==null||output==null||input<0||output<0||input+output==0)throw unavailable("AI_USAGE_MISSING","模型未返回有效 Token 用量，本次未扣积分");
-            if(input>maxInputTokens||output>maxOutputTokens)throw unavailable("AI_USAGE_LIMIT","模型返回用量超出已确认上限，本次未扣积分");
+            // Request budgets estimate reservations; provider-reported usage must not reject a completed response.
             return cost(input,output);
         }
         /**
@@ -105,15 +105,13 @@ public class AiChatTokenPricing {
         public long settleWithin(Long input,Long output,long held) {
             if(input==null||output==null||input<0||output<0||input+output==0)throw unavailable("AI_USAGE_MISSING","模型未返回有效 Token 用量，本次未扣积分");
             long actual=cost(input,output);
-            if(actual>held)throw unavailable("AI_USAGE_LIMIT","模型返回费用超出已冻结积分，本次未扣积分");
-            return actual;
+            return Math.min(actual,held);
         }
         /** Continued work shares the approved monetary ceiling, rather than fixed input/output partitions. */
         public long settleContinued(Long input,Long output) {
             if(input==null||output==null||input<0||output<0||input+output==0)throw unavailable("AI_USAGE_MISSING","模型未返回有效 Token 用量，本次未扣积分");
             long actual=cost(input,output);
-            if(actual>maxCost())throw unavailable("AI_USAGE_LIMIT","模型返回费用超出已确认预算，本次未扣积分");
-            return actual;
+            return Math.min(actual,maxCost());
         }
     }
     private static BusinessException unavailable(String code,String message){return new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,code,message);}

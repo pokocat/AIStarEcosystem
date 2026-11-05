@@ -140,14 +140,14 @@ public class ModelChargeService {
         if(cumulativeUsage==null&&"credit".equals(snapshot.request().target().unit()))
             cumulativeUsage=new ModelBillingMath.Usage(java.math.BigDecimal.valueOf(Math.addExact(row.getSettledBaseCredits(),baseCredits)),null);
         if(cumulativeUsage==null || cumulativeUsage.quantity().compareTo(row.getSettledQuantity())<0
-                || cumulativeUsage.outputQuantity().compareTo(row.getSettledOutputQuantity())<0
-                || cumulativeUsage.quantity().compareTo(snapshot.request().usage().quantity())>0
-                || cumulativeUsage.outputQuantity().compareTo(snapshot.request().usage().outputQuantity())>0)
-            throw new BusinessException(HttpStatus.CONFLICT,"MODEL_SETTLEMENT_USAGE_INVALID","实际用量超出预占范围或低于已结算用量");
+                || cumulativeUsage.outputQuantity().compareTo(row.getSettledOutputQuantity())<0)
+            throw new BusinessException(HttpStatus.CONFLICT,"MODEL_SETTLEMENT_USAGE_INVALID","实际用量缺失或低于已结算用量");
         long cumulativeBase=Math.addExact(row.getSettledBaseCredits(),baseCredits);
         if(baseCredits<0 || cumulativeBase>row.getBaseCredits())
             throw new BusinessException(HttpStatus.CONFLICT,"MODEL_SETTLEMENT_INVALID","结算超过原冻结范围");
+        // Real provider usage may exceed the request. Preserve them without expanding the payer's frozen invoice.
         long cumulativePayable=snapshot.price().payable(cumulativeUsage);
+        cumulativePayable=Math.min(cumulativePayable,row.getPayableCredits());
         long cumulativeScoped=Math.min(cumulativePayable,row.getScopedCredits());
         long cumulativeWallet=cumulativePayable-cumulativeScoped;
         long scopedDelta=cumulativeScoped-row.getSettledScopedCredits();long walletDelta=cumulativeWallet-row.getSettledWalletCredits();

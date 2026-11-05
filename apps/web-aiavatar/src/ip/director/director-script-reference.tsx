@@ -4,6 +4,7 @@
 // 片段在正文里的位置只用真实依据（写分镜时记下的起始句，或台词逐字匹配），找不到就明说，不伪造定位。
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronRight, FileText } from "lucide-react";
 import type { DirectorEpisode, DirectorWork } from "@ai-star-eco/types";
 import { AskAI } from "./director-assistant";
 import { clipRanges, paragraphsWithOffsets } from "./director-text";
@@ -11,7 +12,7 @@ import { clipRanges, paragraphsWithOffsets } from "./director-text";
 /** 剧本对照一次最多画多少段：再多就分批显示，避免长正文一次画几万个段落卡住页面。 */
 const REF_PARAGRAPHS = 600;
 
-export function ScriptReference({ work, ep, focusClipId }: { work: DirectorWork; ep: DirectorEpisode; focusClipId: string | null }) {
+export function ScriptReference({ work, ep, focusClipId, onCollapse, foldId }: { work: DirectorWork; ep: DirectorEpisode; focusClipId: string | null; onCollapse?: () => void; foldId?: string }) {
   const clips = useMemo(() => work.clips.filter(c => c.episodeId === ep.id), [work.clips, ep.id]);
   const ranges = useMemo(() => clipRanges(ep.content, clips), [ep.content, clips]);
   const paragraphs = useMemo(() => paragraphsWithOffsets(ep.content), [ep.content]);
@@ -34,9 +35,14 @@ export function ScriptReference({ work, ep, focusClipId }: { work: DirectorWork;
   const from = all.length <= REF_PARAGRAPHS ? 0 : Math.max(0, center - REF_PARAGRAPHS / 2 - more.before);
   const to = all.length <= REF_PARAGRAPHS ? all.length : Math.min(all.length, Math.max(center, REF_PARAGRAPHS / 2) + REF_PARAGRAPHS / 2 + more.after);
   const shown = all.slice(from, to);
-  return <section className="director-script-ref" aria-label={`第 ${ep.no} 集剧本`}>
+  const chars = `${ep.content.replace(/\s/g, "").length.toLocaleString("zh-CN")} 字${ep.planStale ? " · 写分镜后正文改过" : ""}`;
+  // 和其它可收起的块同一种写法：整行是开关，箭头在右。抽屉里没有收起，只显示标题。
+  return <section className={`director-script-ref${onCollapse ? " director-outline is-open" : ""}`} aria-label={`第 ${ep.no} 集剧本`}>
     <header>
-      <div><b>本集剧本</b><small>{ep.content.replace(/\s/g, "").length.toLocaleString("zh-CN")} 字{ep.planStale ? " · 写分镜后正文改过" : ""}</small></div>
+      {onCollapse
+        ? <button type="button" id={foldId} className="director-outline-head" aria-expanded onClick={onCollapse}>
+          <FileText size={16}/><b>本集剧本</b><span>{chars}</span><ChevronRight size={16} className="director-outline-chevron"/></button>
+        : <div><b>本集剧本</b><small>{chars}</small></div>}
       <AskAI scope={{ kind: "script", episodeId: ep.id, focusAt: range?.start ?? 0 }} what={`第 ${ep.no} 集剧本`} hint="评价、续写、润色这一集"/>
     </header>
     {focus && <div className="director-script-ref-focus">

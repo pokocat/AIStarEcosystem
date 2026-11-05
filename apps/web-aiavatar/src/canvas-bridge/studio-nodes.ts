@@ -88,6 +88,13 @@ export function applyStudioRun(node: CanvasNodeData, run: IpRun): CanvasNodeData
   if(run.kind==="studio-video")metadata.videoTaskId=undefined;
   metadata.status = run.status === "failed" ? "error" : "success";
   metadata.errorDetails = run.status === "failed" ? run.errorMessage || "生成失败，请重试" : undefined;
+  const retained=run.output as typeof run.output & {rawOnly?:boolean;rawResponse?:{content?:string}};
+  if(run.status==="done"&&retained.rawOnly&&retained.rawResponse?.content&&!run.output.textRevision&&!alreadyApplied&&node.type===CanvasNodeType.Text){
+    if(!metadata.content)metadata.content=retained.rawResponse.content;
+    const editor=metadata.studio.textEditor;
+    metadata.studio.textEditor={...editor,turns:[...(editor?.turns||[]),{role:"assistant" as const,content:retained.rawResponse.content}].slice(-16)};
+    metadata.errorDetails=undefined;
+  }
   if(run.status === "done" && run.output.textRevision && !alreadyApplied) {
     const request=run.inputs as unknown as StudioRunRequest;
     const editor=metadata.studio.textEditor;

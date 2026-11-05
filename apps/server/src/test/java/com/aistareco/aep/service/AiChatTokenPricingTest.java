@@ -21,9 +21,17 @@ class AiChatTokenPricingTest {
         assertEquals(21,snapshot.path("maxCost").asLong());
         assertEquals(rate,mapper.treeToValue(snapshot,AiChatTokenPricing.Rate.class));
     }
-    @Test void missingNegativeOrOverBudgetUsageCannotBecomeACharge() {
-        for(Long[] usage:new Long[][]{{null,1L},{1L,null},{-1L,1L},{0L,0L},{65537L,1L},{1L,8193L}})
+    @Test void missingOrNegativeUsageCannotBecomeACharge() {
+        for(Long[] usage:new Long[][]{{null,1L},{1L,null},{-1L,1L},{0L,0L}})
             assertThrows(BusinessException.class,()->rate.settle(usage[0],usage[1]));
+    }
+
+    @Test void providerUsageBeyondTheRequestIsAcceptedAndOnlyCustomerChargesAreCapped() {
+        var sonnet=new AiChatTokenPricing.Rate(new BigDecimal("0.18"),new BigDecimal("1.08"),200000,64000);
+        assertEquals(sonnet.cost(3430,69396),sonnet.settle(3430L,69396L));
+        assertEquals(rate.cost(65537,8193),rate.settle(65537L,8193L));
+        assertEquals(21,rate.settleWithin(200000L,20000L,21));
+        assertEquals(rate.maxCost(),rate.settleContinued(200000L,20000L));
     }
 
     @Test void operationOutputLimitReducesReservationWithoutChangingInputAllowance() {
@@ -50,8 +58,8 @@ class AiChatTokenPricingTest {
         assertEquals(rate.outputCreditsPerK(),dialogue.outputCreditsPerK());
         assertEquals(260,dialogue.maxCost());
         assertEquals(58,dialogue.settle(200_000L,20_000L));
-        assertThrows(BusinessException.class,()->rate.settle(200_000L,20_000L));
-        assertThrows(BusinessException.class,()->dialogue.settle(1_048_577L,20_000L));
+        assertEquals(58,rate.settle(200_000L,20_000L));
+        assertEquals(dialogue.cost(1_048_577L,20_000L),dialogue.settle(1_048_577L,20_000L));
     }
 
     @Test void dialogueConfigHasGlobalAndEndpointLimitsAndAcceptedSnapshotsStayFixed() throws Exception {

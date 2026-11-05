@@ -72,7 +72,7 @@ public final class StudioPromptCallPoints {
     // 导演台拼自己的底座 base-director（原 DirectorPrompts.COMMON）；题材、调性、反转线是内容方法，由代码按作品的选择传进来。
 
     public static final String DIRECTOR_BASE = "base-director";
-    public static final String DIRECTOR_SCRIPT = "stage-director-script", DIRECTOR_SPLIT = "stage-director-split", DIRECTOR_EXTRACT = "stage-director-extract",
+    public static final String DIRECTOR_SCRIPT = "stage-director-script", DIRECTOR_SCRIPT_MORE = "stage-director-script-more", DIRECTOR_SPLIT = "stage-director-split", DIRECTOR_EXTRACT = "stage-director-extract",
             DIRECTOR_STORYBOARD = "stage-director-storyboard", DIRECTOR_ASSISTANT = "stage-director-assistant", DIRECTOR_BRIEF = "stage-director-brief",
             DIRECTOR_ASSET_IMAGE = "stage-director-asset-image", DIRECTOR_BOARD = "stage-director-board", DIRECTOR_IMAGE_NOTES = "stage-director-image-notes",
             DIRECTOR_SCENE_VIEWS = "stage-director-scene-views";
@@ -82,6 +82,8 @@ public final class StudioPromptCallPoints {
         String sampleInput = "{\"brief\":\"外卖员在雨夜捡到一只会说话的猫\",\"style\":\"写实\"}";
         StudioPromptStages.register(director(DIRECTOR_SCRIPT, "导演台编剧", input, Set.of("input"), formats("output", StudioPromptFormats.DIRECTOR_SCRIPT_OUTPUT),
                 Map.of("input", sampleInput)));
+        StudioPromptStages.register(director(DIRECTOR_SCRIPT_MORE, "导演台接着写剧本", input, Set.of("input"), formats("output", StudioPromptFormats.DIRECTOR_SCRIPT_MORE_OUTPUT),
+                Map.of("input", "{\"format\":{\"totalEpisodes\":10,\"secondsPerEpisode\":90,\"writeFrom\":4,\"writeTo\":6},\"written\":\"……\"}")));
         StudioPromptStages.register(director(DIRECTOR_SPLIT, "导演台分集", input, Set.of("input"), formats("output", StudioPromptFormats.DIRECTOR_SPLIT_OUTPUT),
                 Map.of("input", "{\"paragraphs\":[{\"i\":0,\"text\":\"第1集\"}]}")));
         StudioPromptStages.register(director(DIRECTOR_EXTRACT, "导演台资产提取", input, Set.of("input"), formats("output", StudioPromptFormats.DIRECTOR_EXTRACT_OUTPUT),
@@ -102,7 +104,7 @@ public final class StudioPromptCallPoints {
         StudioPromptStages.register(director(DIRECTOR_BRIEF, "导演台写剧本前的问答",
                 vars("input", "创意与之前的问答（JSON，作为素材）", "opening", "这是第一轮", "text", "用户这次的回答", "maxQuestions", "一轮最多几个问题"),
                 Set.of("input"), formats("output", StudioPromptFormats.DIRECTOR_BRIEF_OUTPUT),
-                Map.of("input", "{\"idea\":\"外卖员在雨夜捡到一只会说话的猫\"}", "opening", true, "text", "", "maxQuestions", 2)));
+                Map.of("input", "{\"idea\":\"外卖员在雨夜捡到一只会说话的猫\"}", "opening", true, "text", "", "maxQuestions", 4)));
     }
 
     /** 导演台交给画图模型的两份描述（§8 #20）和出图附加说明：不拼底座；生成时记下版本，核对旧图按那一版编。 */

@@ -8,6 +8,14 @@ import { studioVideoInputKey } from "./studio-video";
 const run = (id: string, key: string): IpRun => ({ id,projectId:"p",nodeId:"n",kind:"studio-image",status:"done",stage:"done",pct:100,cost:0,
   inputs:{},output:{mock:true,candidates:[{key,url:`/cdn/${key}`}]},createdAt:"2026-10-08T00:00:00Z" });
 describe("Studio adoption and recovery", () => {
+  it("keeps an unstructured reply without overwriting the user's existing text",()=>{
+    const node=makeStudioNode("text");node.metadata!.content="原稿，不能覆盖";
+    const task={...run("raw-text","unused"),kind:"studio-text",output:{rawOnly:true,rawResponse:{content:'{"content":"半句'},text:'{"content":"半句'}} as unknown as IpRun;
+    const projected=applyStudioRun(node,task);
+    expect(projected.metadata?.content).toBe("原稿，不能覆盖");
+    expect(projected.metadata?.studio?.textEditor?.turns.at(-1)?.content).toBe('{"content":"半句');
+    expect(applyStudioRun(projected,task).metadata?.studio?.textEditor?.turns).toHaveLength(1);
+  });
   it("projecting the same completed script task never replaces the user's saved Markdown or editor draft",()=>{
     const node=makeStudioNode('script'),script={title:'原生成',outline:'旧大纲',characters:[],scenes:[],props:[],episodes:[{no:1,title:'One',content:'原文'}],shots:[]};
     const task={...run('script-run','unused'),kind:'studio-script' as const,output:{script}};

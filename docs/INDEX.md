@@ -252,6 +252,8 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 ## 7. 发布与验收记录（`docs/releases/`）
 
+- [模型原文保留与被拒剧本恢复](releases/model-output-preservation-release-20261105.md)：main `8ce84083e`，server + Studio / 短剧 / 带货；正常回复不因字数、格式或用量被整份丢弃，新增本人原文入口，已恢复原剧本并回填完整原文；1729 后端、25 前端用例通过（last-reviewed: 2026-11-05）。
+
 - [企业主账号积分转入与成员手机号生产发布](releases/enterprise-owner-deposit-production-release-20261101.md)：main `1e3e3f795`，server / Studio / admin；126 项回归、真实手机号与转入预览验收，未移动真实积分（last-reviewed 2026-11-01）。
 
 - [Studio 头像居中、浅灰底与轮播圆点优化](releases/studio-avatar-polish-release-20261031.md)：main `0921222f6`，仅 web-aiavatar；线上新旧桌面与手机头像偏差 0px、底色统一，圆点只过渡底色，制品与服务核对通过（last-reviewed 2026-10-31）。
@@ -261,6 +263,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [AI 图片多张人物照片发布](releases/scene-multi-person-refs-release-20261105.md) — server + web-aiavatar；6 个人物场景最多放 3 张照片；多张是否更像本人还没用真人照片验证（last-reviewed: 2026-11-05）
 - [AI 图片素材位跟技能走发布](releases/scene-skill-slots-release-20261105.md) — server + web-aiavatar + studio-admin；一个素材位放多张、输入框 @ 选素材；线上没有实际生成（last-reviewed: 2026-11-05）
 - [出图并发与排队卡住修复发布](releases/image-queue-concurrency-release-20261105.md) — 仅 server；工作线程扩容、等上游加总时限、并发拒绝回队列，导演台默认图片模型单独配置；线上没有实际生成（last-reviewed: 2026-11-05）
+- [导演台写剧本准备与 AI 图片示例图发布](releases/director-brief-scene-demos-release-20261105.md) — server + web-aiavatar + studio-admin；问答收进助手、长剧分批写、状态标签、本集剧本收起，17 张示例图换成杂志式版式和韩系人像（2026-11-05）
 - [Studio 默认出图模型切到 GPT Image 2.5](releases/studio-image-default-gpt25-20261105.md) — 线上配置；没手动选模型时每张从 16 积分变成 37 积分（last-reviewed: 2026-11-05）
 - [Seedance 提示词上限调到 5000 字](releases/seedance-prompt-limit-config-20261105.md)：仅生产配置，四条端点，无发版无重启；超过 2000 字尚未真调（last-reviewed 2026-11-05）。
 - [Seedance 视频提交故障修复](releases/seedance-video-submit-fix-20261031.md)：OneToken 2.0 / 2.5 移除不支持的末帧输出字段、真人参考图拒绝改为明确中文说明；4 笔冻结全退，两模型独立测试均已出片并通过下载、完整解码及抽帧核验，仅 server。同日另发现九图全能参考间歇 `upstream_rejected` / 提交超时，同输入两笔成功、五笔失败全退，具体拒绝原因及稳定性仍待解决（last-reviewed 2026-10-31）。

@@ -242,6 +242,18 @@ public class DirectorService {
                 if (!List.of("9:16", "16:9", "1:1").contains(aspect)) throw invalid("画幅仅支持 9:16、16:9、1:1");
                 s.put("aspectRatio", aspect);
             }
+            if (in.has("format")) {
+                JsonNode f = in.path("format");
+                if (f.isNull()) s.remove("format");
+                else {
+                    String kind = f.path("kind").asText("");
+                    if (!FORM_LABELS.containsKey(kind)) throw invalid("请选择多集短剧、长剧或单集短片");
+                    int episodes = "single".equals(kind) ? 1 : f.path("episodes").asInt(0), seconds = f.path("seconds").asInt(0);
+                    if (episodes < 1 || episodes > 200) throw invalid("集数为 1–200");
+                    if (seconds < 15 || seconds > 3600) throw invalid("每集时长为 15 秒到 60 分钟");
+                    s.putObject("format").put("kind", kind).put("episodes", episodes).put("seconds", seconds);
+                }
+            }
             if (in.has("imageModel")) {
                 String model = in.path("imageModel").asText(null);
                 // 原值照存：旧客户端每次保存都会带上它，改别的设置不该因此失败。照存不等于重新授权，
@@ -381,6 +393,7 @@ public class DirectorService {
     private static String taskLabel(String node) {
         if (node == null) return "生成任务";
         if (node.equals("script")) return "剧本生成";
+        if (node.equals("script-more")) return "接着写剧本";
         if (node.equals("split")) return "拆分集";
         if (node.startsWith("extract")) return "资产提取";
         if (node.startsWith("plan:")) return "分镜脚本生成";
@@ -797,7 +810,7 @@ public class DirectorService {
             c.put("idea", o.path("idea").asText().trim());
         }
         // 题材 / 调性：只认提示词里有追加规则的那几个，空串表示不限。
-        if ("script".equals(req.type())) for (var f : List.of(java.util.Map.entry("genre", DirectorPrompts.GENRES), java.util.Map.entry("tone", DirectorPrompts.TONES))) {
+        if ("script".equals(req.type()) || "brief".equals(req.type())) for (var f : List.of(java.util.Map.entry("genre", DirectorPrompts.GENRES), java.util.Map.entry("tone", DirectorPrompts.TONES))) {
             if (!o.has(f.getKey())) continue;
             String v = o.path(f.getKey()).asText("").trim();
             if (!v.isEmpty() && !f.getValue().containsKey(v)) throw invalid("不支持的" + ("genre".equals(f.getKey()) ? "题材" : "调性"));
@@ -850,7 +863,28 @@ public class DirectorService {
                     b.put("status", "writing");
                 }
                 if (!o.path("length").asText().isBlank()) in.put("length", o.path("length").asText());
-                textPrompt = DirectorPrompts.script(prompts(), c.path("genre").asText(null), c.path("tone").asText(null), write(in));
+                JsonNode format = c.path("settings").path("format");
+                if (format.isObject()) {
+                    ObjectNode scope = scriptScope(format, 1);
+                    in.set("format", scope);
+                    meta.put("writeTo", scope.path("writeTo").asInt()).put("totalEpisodes", scope.path("totalEpisodes").asInt());
+                }
+                textPrompt = DirectorPrompts.script(prompts(), c.path("genre").asText(null), c.path("tone").asText(null), format.path("kind").asText(null), write(in));
+            }
+            case "script-more" -> {
+                requireScriptEditable(c, null);
+                JsonNode format = c.path("settings").path("format");
+                int written = c.path("scriptProgress").path("written").asInt(0);
+                if (!format.isObject() || written < 1 || written >= format.path("episodes").asInt(0))
+                    throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_SCRIPT_COMPLETE", "这部作品的集数已经写完了");
+                ObjectNode scope = scriptScope(format, written + 1);
+                nodeId = "script-more";
+                meta.put("writeFrom", written + 1).put("writeTo", scope.path("writeTo").asInt()).put("totalEpisodes", scope.path("totalEpisodes").asInt());
+                ObjectNode in = om.createObjectNode().put("title", w.getTitle()).put("logline", c.path("logline").asText());
+                in.set("format", scope);
+                if (c.path("outline").isObject()) in.set("outline", c.path("outline"));
+                in.put("written", scriptTail(c)).put("style", c.path("settings").path("style").asText());
+                textPrompt = DirectorPrompts.scriptMore(prompts(), c.path("genre").asText(null), c.path("tone").asText(null), format.path("kind").asText(null), write(in));
             }
             case "split" -> {
                 requireScriptEditable(c, "draft");
@@ -1928,7 +1962,15 @@ public class DirectorService {
             return;
         }
         JsonNode output = parse(run.getOutputJson());
+        if("length".equals(output.path("rawResponse").path("finishReason").asText()))
+            notice(c,"模型因输出额度停止，已保留返回内容，可能尚未写完；请核对后继续");
         JsonNode meta = c.path("taskMeta").path(run.getId());
+        if(output.path("rawOnly").asBoolean()) {
+            notice(c,"模型返回内容已保留，可在生成原文中查看；请核对后再继续制作");
+            if(c.path("pipeline").isObject()&&"running".equals(c.path("pipeline").path("status").asText()))
+                ((ObjectNode)c.path("pipeline")).put("status","paused");
+            return;
+        }
         if (node.startsWith("video:")) {
             JsonNode clip = findOrNull(c, "clips", node.substring(6));
             if (clip != null && output.path("storageKey").isTextual())
@@ -2002,6 +2044,7 @@ public class DirectorService {
                     if (!d.path("title").asText().isBlank()) w.setTitle(limited(d.path("title").asText(), 60, "作品名"));
                     if (!d.path("logline").asText().isBlank()) c.put("logline", d.path("logline").asText());
                     if (d.path("outline").isObject()) c.set("outline", d.path("outline")); else c.putNull("outline");
+                    recordScriptProgress(c, in);
                     notice(c, "剧本已重新生成，旧版本保留在历史中；资产保留，请重新拆分并提取资产");
                     return;
                 }
@@ -2012,6 +2055,16 @@ public class DirectorService {
                 if (!d.path("title").asText().isBlank()) w.setTitle(limited(d.path("title").asText(), 60, "作品名"));
                 if (!d.path("logline").asText().isBlank()) c.put("logline", d.path("logline").asText());
                 if (d.path("outline").isObject()) c.set("outline", d.path("outline"));
+                recordScriptProgress(c, in);
+            }
+            case "script-more" -> {
+                if (c.path("scriptProgress").path("written").asInt(0) != in.path("writeFrom").asInt() - 1) {
+                    notice(c, "生成期间剧本有变动，这次接着写的内容未使用"); return;
+                }
+                appendScript(c, DirectorPrompts.withoutEpisodeEndNotes(d.path("content").asText()), in.path("writeFrom").asInt());
+                recordScriptProgress(c, in);
+                int total = in.path("totalEpisodes").asInt(), to = in.path("writeTo").asInt();
+                notice(c, to >= total ? "全部 " + total + " 集都写好了" : "已写到第 " + to + " 集，共 " + total + " 集");
             }
             case "split" -> {
                 String draft = c.path("draft").asText();
@@ -2208,6 +2261,9 @@ public class DirectorService {
         material.set("genres", om.valueToTree(DirectorPrompts.GENRES.keySet()));
         material.set("tones", om.valueToTree(DirectorPrompts.TONES.keySet()));
         material.set("conversation", briefTranscript(b));
+        JsonNode format = c.path("settings").path("format");
+        if (format.isObject()) material.set("format", scriptScope(format, 1));
+        for (String f : List.of("genre", "tone")) if (!c.path(f).asText("").isBlank()) material.put("chosen" + (f.equals("genre") ? "Genre" : "Tone"), c.path(f).asText());
         ObjectNode meta = om.createObjectNode().put("task", "brief").put("mustConclude", mustConclude);
         String messageId = "b" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         meta.put("messageId", messageId).put("round", rounds + 1).put("message", DirectorPrompts.clip(text, 400));
@@ -2224,6 +2280,52 @@ public class DirectorService {
         am.putArray("questions");
         b.put("status", "asking");
         w.setActive(true);
+    }
+
+    // ── 形式与篇幅：写剧本前先确认，长的分批写 ──────────────────────────────
+
+    static final java.util.Map<String, String> FORM_LABELS = java.util.Map.of("series", "多集短剧", "long", "长剧", "single", "单集短片");
+
+    /** 一次写几集：模型一次能写的量有限（3 集 90 秒的剧本已用掉约 5 万输出 Token），短的 3 集一批，长的少一些。 */
+    static int scriptBatch(int seconds) { return seconds <= 180 ? 3 : seconds <= 300 ? 2 : 1; }
+
+    private ObjectNode scriptScope(JsonNode format, int from) {
+        int total = Math.max(1, format.path("episodes").asInt(1)), seconds = format.path("seconds").asInt(90);
+        return om.createObjectNode().put("form", FORM_LABELS.getOrDefault(format.path("kind").asText(), "多集短剧")).put("totalEpisodes", total)
+                .put("secondsPerEpisode", seconds).put("writeFrom", from).put("writeTo", Math.min(total, from + scriptBatch(seconds) - 1));
+    }
+
+    /** 接着写时给模型看的前文：已写内容的结尾，够接上人物状态和未结的线索就行，大纲另外给。 */
+    private String scriptTail(ObjectNode c) {
+        StringBuilder all = new StringBuilder(c.path("draft").asText());
+        for (JsonNode ep : c.path("episodes")) { if (all.length() > 0) all.append("\n\n"); all.append(ep.path("content").asText()); }
+        return all.length() <= SCRIPT_TAIL_CHARS ? all.toString() : all.substring(all.length() - SCRIPT_TAIL_CHARS);
+    }
+    private static final int SCRIPT_TAIL_CHARS = 8000;
+
+    private void recordScriptProgress(ObjectNode c, JsonNode meta) {
+        if (meta.path("writeTo").asInt(0) < 1) { c.remove("scriptProgress"); return; }
+        int written = meta.path("writeTo").asInt(), total = meta.path("totalEpisodes").asInt();
+        ObjectNode progress = c.putObject("scriptProgress").put("written", written).put("total", total);
+        JsonNode format = c.path("settings").path("format");
+        if (format.isObject() && written < total) progress.put("nextTo", scriptScope(format, written + 1).path("writeTo").asInt());
+    }
+
+    /** 接着写的内容接到哪：没拆分就接在正文后面；已拆分就按「第N集」标题加成新的集。 */
+    private void appendScript(ObjectNode c, String content, int from) {
+        if (c.path("episodes").size() == 0) {
+            c.put("draft", c.path("draft").asText().stripTrailing() + "\n\n" + content.strip()).put("draftRev", c.path("draftRev").asLong() + 1);
+            c.putNull("pendingSplit");
+            return;
+        }
+        ArrayNode episodes = (ArrayNode) c.path("episodes");
+        List<String> ps = paragraphs(content);
+        List<Integer> heads = DirectorPrompts.headingsFrom(ps, from);
+        if (heads.isEmpty()) { episodes.add(newEpisode(c, episodes.size() + 1, null, "", content.strip())); return; }
+        for (int i = 0; i < heads.size(); i++) {
+            int end = i + 1 < heads.size() ? heads.get(i + 1) : ps.size();
+            episodes.add(newEpisode(c, episodes.size() + 1, DirectorPrompts.headingTitle(ps.get(heads.get(i))), "", String.join("\n\n", ps.subList(heads.get(i), end))));
+        }
     }
 
     /** 对话记录（给模型和写剧本用）：问题、选项、用户的回答，按顺序。 */
@@ -3879,6 +3981,8 @@ public class DirectorService {
                     .put("canStop",IpRun.STATUS_RUNNING.equals(r.getStatus())&&!r.isCancelRequested()&&"studio-director".equals(r.getKind()))
                     .put("stage", r.getStage()).put("cost", r.getCost()).put("errorMessage", r.getErrorMessage())
                     .put("createdAt", r.getCreatedAt() == null ? null : r.getCreatedAt().toString());
+            JsonNode original=parse(r.getOutputJson()).path("rawResponse");
+            if(original.path("content").isTextual())((ObjectNode)tasks.get(tasks.size()-1)).put("hasOriginalContent",true);
             // 「重新优化」只出稿、不接着出视频：页面上不能写「完成后自动开始生成视频」。
             if (c.path("taskMeta").path(r.getId()).path("draftOnly").asBoolean(false)) ((ObjectNode) tasks.get(tasks.size() - 1)).put("draftOnly", true);
         }

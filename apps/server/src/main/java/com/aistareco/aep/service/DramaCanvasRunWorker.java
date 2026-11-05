@@ -387,15 +387,9 @@ public class DramaCanvasRunWorker {
         }
     }
 
-    /**
-     * 输出被 max_tokens 截断（finish_reason=length）时不解析：补括号能把它补成一个「合法但少了后半截」的对象
-     * （拆角色少几个人、分镜少几段），形状校验看不出来，照常结算就是收了钱给半份。当作不合格，让上面重试。
-     */
+    /** Output-limit metadata alone does not reject a usable structure; full original text is archived upstream. */
     private JsonNode parseChecked(String kind, String stage, ObjectNode meta, int index,
                                   AiModelInvocationService.AiModelResponse resp) {
-        if (resp != null && "length".equalsIgnoreCase(resp.finishReason())) {
-            throw DramaCanvasPromptBuilder.badOutput("内容");
-        }
         return parseText(kind, stage, meta, index, resp == null ? null : resp.content());
     }
 

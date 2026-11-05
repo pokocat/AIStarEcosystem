@@ -57,6 +57,8 @@ export interface StudioImageScene extends StudioSceneMediaFields {
   ratio: string;
   /** 这几个选填的素材位（从 0 起）至少放一个，比如服装上身的上装和下装。 */
   anyOf?: number[] | null;
+  /** 补充要求的例句，和示例图对应；页面上可以一键填进输入框。 */
+  example?: string | null;
 }
 export interface StudioSceneSlot { label: string; required: boolean; max?: number | null }
 /** 这类视频要做到什么、要用户给哪些信息（服务端拼进编导和助手的要求；场景页把信息做成可点的小标签）。 */

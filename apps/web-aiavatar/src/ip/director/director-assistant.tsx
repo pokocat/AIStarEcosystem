@@ -10,6 +10,7 @@
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode, RefObject } from "react";
 import { ArrowUp, Check, ChevronRight, History, Loader2, MessageSquarePlus, Move, PanelRightOpen, Undo2, X } from "lucide-react";
+import { BriefHistory, BriefThread, briefStage, useBrief } from "./director-brief";
 import { Tooltip } from "antd";
 import { createPortal } from "react-dom";
 import type { DirectorAssistantMessage, DirectorAssistantScope, DirectorAssistantThread, DirectorProposal, DirectorWork } from "@ai-star-eco/types";
@@ -35,6 +36,8 @@ export interface AssistantApi {
   setSubmittingScope: (scope: DirectorAssistantScope | null) => void;
   open: boolean;
   setOpen: (open: boolean) => void;
+  /** 打开面板但不改用户记住的开关（写剧本前的问答在这里）。 */
+  showPanel: () => void;
   /** 下一条消息针对的对象：入口点过来的，或者当前工作区的默认对象。 */
   scope: DirectorAssistantScope;
   explicit: boolean;
@@ -110,6 +113,7 @@ export function useAssistantController({ work: maybeWork, apply, tab, episodeId,
     setOpenState(v);
     try { window.localStorage.setItem(OPEN_KEY, v ? "1" : "0"); } catch { /* 忽略 */ }
   }, []);
+  const showPanel = useCallback(() => setOpenState(true), []);
   const [explicitScope, setExplicit] = useState<DirectorAssistantScope | null>(null);
   const [inline, setInline] = useState<InlineAsk | null>(null);
   // 换工作区就回到那个工作区的默认对象，浮层也关掉；对话本身不断。
@@ -309,9 +313,9 @@ export function useAssistantController({ work: maybeWork, apply, tab, episodeId,
 
   const scope = explicitScope ?? defaultScope(work, tab, episodeId);
   return useMemo(() => ({
-    open, setOpen, scope, explicit: !!explicitScope, ask, setScope: setExplicit, preview, setPreview, startPreview, reveal, show, focusToken, draftPrefill, act, regenerate, findProposal, prepareScope, scriptLocked, setSubmittingScope,
+    open, setOpen, showPanel, scope, explicit: !!explicitScope, ask, setScope: setExplicit, preview, setPreview, startPreview, reveal, show, focusToken, draftPrefill, act, regenerate, findProposal, prepareScope, scriptLocked, setSubmittingScope,
     inline, openInline, closeInline, noteSent, work, apply,
-  }), [open, setOpen, scope, explicitScope, ask, preview, startPreview, reveal, show, focusToken, draftPrefill, act, regenerate, findProposal, prepareScope, scriptLocked, inline, openInline, closeInline, noteSent, work, apply]);
+  }), [open, setOpen, showPanel, scope, explicitScope, ask, preview, startPreview, reveal, show, focusToken, draftPrefill, act, regenerate, findProposal, prepareScope, scriptLocked, inline, openInline, closeInline, noteSent, work, apply]);
 }
 
 // ── 对象说明 ────────────────────────────────────────────────────────────────
@@ -377,8 +381,9 @@ function canSeeImages(work: DirectorWork) {
 
 // ── 面板 ────────────────────────────────────────────────────────────────────
 
-export function DirectorAssistantPanel({ work, apply, tab, episodeId }: { work: DirectorWork; apply: (w: DirectorWork) => void; tab: AssistantTab; episodeId: string | null }) {
+export function DirectorAssistantPanel({ work, apply, tab, episodeId, openSettings }: { work: DirectorWork; apply: (w: DirectorWork) => void; tab: AssistantTab; episodeId: string | null; openSettings?: () => void }) {
   const ctl = useAssistant()!;
+  const briefing = !!useBrief() && briefStage(work);
   const store = work.assistant;
   const thread = store?.threads.find(t => t.id === store.current) ?? null;
   const replying = runningTask(work, "assistant");
@@ -407,21 +412,24 @@ export function DirectorAssistantPanel({ work, apply, tab, episodeId }: { work: 
       <span className="director-assistant-mark" aria-hidden><AiMark size={14}/></span>
       <h3>全能创作助手</h3>
       <span className="director-spacer"/>
-      <button type="button" className="director-assistant-tool" disabled={!!replying || !thread?.messages.length} onClick={() => void threadOp("assistant.newThread")}
+      <button type="button" className="director-assistant-tool" disabled={briefing || !!replying || !thread?.messages.length} onClick={() => void threadOp("assistant.newThread")}
         title={replying ? "回复完成后再开新对话" : "开一段新对话，之前的对话留在历史里"}><MessageSquarePlus size={15}/><span>新对话</span></button>
       <button type="button" className="director-assistant-tool is-icon" aria-label="历史对话" aria-expanded={historyOpen} disabled={!store?.threads.length} onClick={() => setHistoryOpen(v => !v)}><History size={15}/></button>
       <button type="button" className="director-assistant-tool is-icon" aria-label="收起助手" onClick={() => ctl.setOpen(false)}><X size={16}/></button>
       {historyOpen && store && <ThreadHistory threads={store.threads} current={store.current} disabled={!!replying} onPick={id => void threadOp("assistant.openThread", id)} onClose={() => setHistoryOpen(false)}/>}
     </header>
     <div className="director-assistant-context">
-      <b>正在讨论：{scopeLabel(work, ctl.scope)}</b>
-      <small>已关联：{linkedText(work, ctl.scope, canSee)}</small>
+      <b>正在讨论：{briefing ? "写剧本前的准备" : scopeLabel(work, ctl.scope)}</b>
+      {!briefing && <small>已关联：{linkedText(work, ctl.scope, canSee)}</small>}
     </div>
-    <div className="director-assistant-list" ref={listRef} aria-live="polite">
-      {!thread?.messages.length ? <AssistantWelcome work={work} tab={tab}/> : thread.messages.map(m => <Message key={m.id} work={work} msg={m}/>)}
-    </div>
-    {error && <div className="director-assistant-error" role="alert">{error}<button type="button" onClick={() => setError("")}>关闭</button></div>}
-    <Composer work={work} apply={apply} tab={tab} episodeId={episodeId} threadId={thread?.id ?? null} replying={!!replying}/>
+    {briefing ? <BriefThread openSettings={openSettings}/> : <>
+      <div className="director-assistant-list" ref={listRef} aria-live="polite">
+        <BriefHistory work={work}/>
+        {!thread?.messages.length ? <AssistantWelcome work={work} tab={tab}/> : thread.messages.map(m => <Message key={m.id} work={work} msg={m}/>)}
+      </div>
+      {error && <div className="director-assistant-error" role="alert">{error}<button type="button" onClick={() => setError("")}>关闭</button></div>}
+      <Composer work={work} apply={apply} tab={tab} episodeId={episodeId} threadId={thread?.id ?? null} replying={!!replying}/>
+    </>}
   </aside>;
 }
 
@@ -446,7 +454,7 @@ function AssistantWelcome({ work, tab }: { work: DirectorWork; tab: AssistantTab
       : tab === "assets" ? ["陈德茂更疲惫一点，但别显老", "保留长相，只换成冬天的衣服", "这个场景再旧一些"]
         : ["先看看这个开头，哪里不够吸引人？", "只改对白，其他别动", "续写下一场"];
   return <div className="director-assistant-welcome">
-    <p>{noScript ? "写剧本前的问答在剧本页进行，也可以在那里直接生成。有了剧本以后，在这里继续评价、续写和局部修改。" : "选中正文、点镜头或图片旁的「AI」按钮，我就知道你要改哪里。讨论的时候我只给分析和方向，你说「改」我才给修改建议，采用前都能先对比。"}</p>
+    <p>{noScript ? "有了剧本以后，在这里继续评价、续写和局部修改。" : "选中正文、点镜头或图片旁的「AI」按钮，我就知道你要改哪里。讨论的时候我只给分析和方向，你说「改」我才给修改建议，采用前都能先对比。"}</p>
     {tips.length > 0 && <ul>{tips.map(t => <li key={t}>{t}</li>)}</ul>}
   </div>;
 }

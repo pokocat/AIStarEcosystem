@@ -264,11 +264,10 @@ public class ScopedCreditService {
         for(var row:lockResources(holdId)) {
             if(row.getCompletedAt()!=null)continue;
             BigDecimal used=measuredUsage!=null?measuredUsage:row.getDispatchedAt()==null?BigDecimal.ZERO:row.getOriginalUnits();
-            if(used.compareTo(row.getOriginalUnits())>0)throw conflict("SCOPED_RESOURCE_OVERRUN","供应商实际用量超过预占，需要核对");
             var campaign=campaigns.findById(row.getCampaignId()).orElseThrow();
             campaign.setResourceReserved(campaign.getResourceReserved().subtract(row.getReserved()));
             campaign.setResourceUsed(campaign.getResourceUsed().add(used));campaigns.save(campaign);
-            row.setUsed(used);row.setReleased(row.getOriginalUnits().subtract(used));row.setReserved(BigDecimal.ZERO);row.setCompletedAt(now);resources.save(row);
+            row.setUsed(used);row.setReleased(row.getOriginalUnits().subtract(used).max(BigDecimal.ZERO));row.setReserved(BigDecimal.ZERO);row.setCompletedAt(now);resources.save(row);
         }
     }
 

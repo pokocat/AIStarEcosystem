@@ -401,7 +401,13 @@ public class AiModelInvocationService {
         log.info("[ai-chat] turn ok requestId={} endpointId={} model={} finish={} stream={} cancelled={} promptTokens={} completionTokens={} toolCalls={} contentLength={} durationMs={}",
                 requestId, e.getId(), model, result.finishReason(), result.streamed(), result.cancelled(), result.promptTokens(),
                 result.completionTokens(), result.toolCalls().size(), result.content().length(), elapsedMs(startNanos));
+        preserveModelOutput(requestId,result.content(),result.finishReason());
         return result;
+    }
+
+    private void preserveModelOutput(String requestId,String content,String finishReason) {
+        try {usage.preserveOutput(requestId,content,finishReason);}
+        catch(RuntimeException error){log.warn("[ai-output] archive transaction failed; delivering response requestId={}",requestId,error);}
     }
 
     private static BusinessException networkFailure(UpstreamCallException ex, String internal) {
@@ -790,6 +796,7 @@ public class AiModelInvocationService {
                 completionTokens,
                 content == null ? 0 : content.length(),
                 elapsedMs(startNanos));
+        preserveModelOutput(requestId,content,finishReason);
         return new AiModelResponse(content, finishReason, tokensUsed, e.getName(), model, promptTokens, completionTokens,
                 com.aistareco.aep.service.ai.ProviderResponseDiagnostics.capture(resp.statusCode(),resp.headers(),resp.body()));
     }
@@ -845,6 +852,7 @@ public class AiModelInvocationService {
         log.info("[ai-chat] invoke ok requestId={} purpose={} endpointId={} endpoint={} model={} finish={} stream=true tokens={} promptTokens={} completionTokens={} contentLength={} durationMs={}",
                 requestId, purpose == null ? null : purpose.wire(), e.getId(), e.getName(), model, result.finishReason(), total, result.promptTokens(), result.completionTokens(),
                 result.content().length(), elapsedMs(startNanos));
+        preserveModelOutput(requestId,result.content(),result.finishReason());
         return new AiModelResponse(result.content(), result.finishReason(), total, e.getName(), model, result.promptTokens(), result.completionTokens(),
                 com.aistareco.aep.service.ai.ProviderResponseDiagnostics.capture(outcome.status(), outcome.headers(), result.content()));
     }

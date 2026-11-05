@@ -67,23 +67,27 @@ public class StudioSceneCatalog {
     public record HomeGoal(String id, String title, String description, String sceneId, List<String> covers) {}
     /** @param anyOf 这几个选填的素材位（从 0 起）至少放一个，比如服装上身的上装和下装 */
     public record ImageScene(String id, String group, String title, String description, List<SceneRef> refs, String prompt, String hint, String ratio,
-                             List<OptionGroup> options, Boolean enabled, String coverKey, List<String> exampleKeys, String coverUrl, List<Media> examples, List<Integer> anyOf) {
+                             List<OptionGroup> options, Boolean enabled, String coverKey, List<String> exampleKeys, String coverUrl, List<Media> examples, List<Integer> anyOf, String example) {
         public ImageScene(String id, String group, String title, String description, List<SceneRef> refs, String prompt, String hint, String ratio) {
-            this(id, group, title, description, refs, prompt, hint, ratio, null, null, null, null, null, null, null);
+            this(id, group, title, description, refs, prompt, hint, ratio, null, null, null, null, null, null, null, null);
+        }
+        public ImageScene(String id, String group, String title, String description, List<SceneRef> refs, String prompt, String hint, String ratio,
+                          List<OptionGroup> options, Boolean enabled, String coverKey, List<String> exampleKeys, String coverUrl, List<Media> examples, List<Integer> anyOf) {
+            this(id, group, title, description, refs, prompt, hint, ratio, options, enabled, coverKey, exampleKeys, coverUrl, examples, anyOf, null);
         }
         public ImageScene(String id, String group, String title, String description, List<SceneRef> refs, String prompt, String hint, String ratio,
                           List<OptionGroup> options, Boolean enabled, String coverKey, List<String> exampleKeys, String coverUrl, List<Media> examples) {
-            this(id, group, title, description, refs, prompt, hint, ratio, options, enabled, coverKey, exampleKeys, coverUrl, examples, null);
+            this(id, group, title, description, refs, prompt, hint, ratio, options, enabled, coverKey, exampleKeys, coverUrl, examples, null, null);
         }
         public boolean on() { return enabled == null || enabled; }
         public List<OptionGroup> optionGroups() { return options == null ? List.of() : options; }
         /** 同一个场景，换掉上下架 / 封面 / 示例这几项（出 wire 签名、保存时剥地址都用它）。 */
         public ImageScene withMedia(Boolean on, String cover, List<String> exampleKeys, String coverUrl, List<Media> examples) {
-            return new ImageScene(id, group, title, description, refs, prompt, hint, ratio, options, on, cover, exampleKeys, coverUrl, examples, anyOf);
+            return new ImageScene(id, group, title, description, refs, prompt, hint, ratio, options, on, cover, exampleKeys, coverUrl, examples, anyOf, example);
         }
         /** 出图描述换成提示词库里的（{@link #overlay}）。 */
         public ImageScene withPrompt(String text) {
-            return new ImageScene(id, group, title, description, refs, text, hint, ratio, options, enabled, coverKey, exampleKeys, coverUrl, examples, anyOf);
+            return new ImageScene(id, group, title, description, refs, text, hint, ratio, options, enabled, coverKey, exampleKeys, coverUrl, examples, anyOf, example);
         }
     }
     public record Slot(String label, boolean required, Integer max) {}

@@ -99,7 +99,7 @@ public final class DirectorAssistant {
             }
             case "script.draft" -> {
                 String content = DirectorPrompts.text(p, "content");
-                if (content.length() < 20) return null; // 剧本不限长度（2026-10-29），只挡明显不是剧本的短内容
+                if (content.isBlank()) return null; // 剧本不限长度（2026-10-29），只挡明显不是剧本的短内容
                 r.put("content", content).put("title", DirectorPrompts.clip(DirectorPrompts.text(p, "title"), 60))
                         .put("logline", DirectorPrompts.clip(DirectorPrompts.text(p, "logline"), 200));
             }
@@ -165,8 +165,8 @@ public final class DirectorAssistant {
     // ── 写剧本前的创意对话（有限澄清）────────────────────────────────────────
 
     /** AI 提问最多几轮；到上限后按已有信息和合理默认收敛，不再追问。 */
-    public static final int MAX_BRIEF_ROUNDS = 3;
-    static final int MAX_BRIEF_QUESTIONS = 2;
+    public static final int MAX_BRIEF_ROUNDS = 2;
+    static final int MAX_BRIEF_QUESTIONS = 4;
 
     /** 用户说这些话就不再问，直接开始写剧本。整句只由这些话（加语气词、标点）组成才算，避免把回答里的「都行」误判。 */
     static boolean saysGo(String message) {

@@ -1,8 +1,9 @@
 "use client";
 
 import { SelectField } from "@ai-star-eco/ui/ui/select-field";
-import { useEffect, useState } from "react";
-import { AlertTriangle, Check, FileText, Lightbulb, Clapperboard, Film, ImageIcon, LayoutGrid, Loader2, Play, Plus, RefreshCw, Scissors, Trash2, Wand2, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { AlertTriangle, Check, ChevronRight, Clapperboard, FileText, Film, ImageIcon, LayoutGrid, Lightbulb, Loader2, Play, Plus, RefreshCw, Scissors, Trash2, Wand2, X } from "lucide-react";
+import { firstLine } from "./director-text";
 import type { DirectorClip, DirectorSceneView, DirectorShot, DirectorTask, DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi } from "../api";
 import { useStudioApp } from "../studio-errors";
@@ -18,6 +19,7 @@ import { SCENE_VIEWS } from "./director-asset-studio";
 import { useSceneMobile } from "../scenes/scene-layout";
 
 const SCRIPT_KEY = "director-episode-script";
+const SCRIPT_FOLD_ID = "director-script-fold";
 
 export function DirectorStoryboard(props: WorkbenchProps) {
   const { work, episodeId, apply, setError, goTab, pickEpisode, focus } = props;
@@ -45,17 +47,26 @@ export function DirectorStoryboard(props: WorkbenchProps) {
   // 本集剧本里正在对照的片段；换集清掉。
   const [focusClipId, setFocusClipId] = useState<string | null>(null);
   const [scriptSheet, setScriptSheet] = useState(false);
-  const [scriptOpen, setScriptOpen] = useState(true);
-  useEffect(() => { try { if (window.localStorage.getItem(SCRIPT_KEY) === "closed") setScriptOpen(false); } catch { /* 默认展开 */ } }, []);
+  // 默认收起：本集正文很占地方，要对照时点开，或点片段上的「对照剧本」。选择按浏览器记住。
+  const [scriptOpen, setScriptOpen] = useState(false);
+  useEffect(() => { try { if (window.localStorage.getItem(SCRIPT_KEY) === "open") setScriptOpen(true); } catch { /* 默认收起 */ } }, []);
   const showScript = (open: boolean) => { setScriptOpen(open); try { window.localStorage.setItem(SCRIPT_KEY, open ? "open" : "closed"); } catch { /* 忽略 */ } };
   // 电脑版在本集内容旁边展开，手机版没有并排的位置，在抽屉里打开。
   const mobile = useSceneMobile();
   const openScript = () => { if (mobile) setScriptSheet(true); else showScript(true); };
   const toggleScript = () => {
     if (mobile) { setScriptSheet(true); return; }
+    foldFocus.current = true;
     if (scriptOpen) setFocusClipId(null);
     showScript(!scriptOpen);
   };
+  // 开关换了位置，焦点跟过去，键盘用户不会被甩回页面开头。
+  const foldFocus = useRef(false);
+  useEffect(() => {
+    if (!foldFocus.current) return;
+    foldFocus.current = false;
+    document.getElementById(SCRIPT_FOLD_ID)?.focus();
+  }, [scriptOpen]);
   useEffect(() => setFocusClipId(null), [episodeId]);
   // 助手卡片上的「查看版本」：打开那个片段的分镜图弹窗。
   const assistant = useAssistant();
@@ -103,7 +114,6 @@ export function DirectorStoryboard(props: WorkbenchProps) {
             {lim ? ` · 每段 ${secRange(lim.minSec, lim.maxSec)} · ${lim.name}` : <span id="director-plan-block"> · 暂无可用视频模型，无法确定片段时长</span>}
             {lim?.mode === "frame" && <span className="director-frame-note" title="仅使用分镜首帧，不支持额外图片或声音参考。多镜头片段请先拆分。"> · 仅分镜首帧</span>}</p></div>
         <span className="director-spacer"/>
-        <button type="button" className="ip-brand-secondary director-script-toggle" aria-pressed={mobile ? undefined : scriptOpen} title={mobile ? "查看本集剧本" : scriptOpen ? "收起本集剧本" : "和片段并排查看本集剧本"} onClick={toggleScript}><FileText size={14}/>本集剧本</button>
         {writing.plan || writing.whole ? <Spinner label={writing.plan ? "正在写分镜脚本" : "正在重写分镜脚本"}/>
           : clips.length ? <button type="button" className="ip-brand-secondary" disabled={!!busy} title="AI 重写本集的镜头，分镜图和视频提示词跟着更新；不出图、不生成视频" onClick={openRewrite}>
             <RefreshCw size={14}/>重写分镜脚本</button>
@@ -114,7 +124,13 @@ export function DirectorStoryboard(props: WorkbenchProps) {
         <EpisodeOutput work={work} ep={ep} apply={apply} setError={setError}/>
       </div>
       <div className={`director-episode-body${scriptOpen && !mobile ? " has-script" : ""}`}>
-        {scriptOpen && !mobile && <div className="director-episode-script"><ScriptReference work={work} ep={ep} focusClipId={focusClipId}/></div>}
+        {scriptOpen && !mobile
+          ? <div className="director-episode-script"><ScriptReference work={work} ep={ep} focusClipId={focusClipId} onCollapse={toggleScript} foldId={SCRIPT_FOLD_ID}/></div>
+          : <div className="director-outline director-script-fold">
+            <button type="button" id={SCRIPT_FOLD_ID} className="director-outline-head" {...(mobile ? { "aria-haspopup": "dialog" as const } : { "aria-expanded": false })} onClick={toggleScript}>
+              <FileText size={16}/><b>本集剧本</b><span>{ep.content.replace(/\s/g, "").length.toLocaleString("zh-CN")} 字{firstLine(ep.content) ? ` · ${firstLine(ep.content)}` : ""}</span>
+              <ChevronRight size={16} className="director-outline-chevron"/></button>
+          </div>}
         <div className="director-episode-clips">
           {writing.plan && <AiWorking compact title={`AI 正在写第 ${ep.no} 集分镜脚本`} task={writing.plan} detail="把本集正文切成视频片段，写好每个镜头，以及每段的分镜图提示词和视频提示词。"/>}
           {writing.whole && <AiWorking compact title={`AI 正在重写第 ${ep.no} 集分镜脚本`} task={writing.whole} detail="片段划分不变，逐段换一套新镜头，分镜图提示词和视频提示词跟着更新。不会出图，也不会生成视频。"/>}

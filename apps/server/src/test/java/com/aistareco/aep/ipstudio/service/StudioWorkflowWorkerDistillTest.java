@@ -81,12 +81,13 @@ class StudioWorkflowWorkerDistillTest {
         verify(h.credits()).releaseHold(anyString(), eq("r"), anyString());
     }
 
-    @Test void aReplyWithoutABodyFailsWithoutCharge() {
-        var h = harness("{\"changeNote\":\"什么也没写\"}");
+    @Test void aReplyWithoutAStructuredBodyRemainsAvailableWithoutSavingAnInvalidDraft() throws Exception {
+        var h=harness("{\"changeNote\":\"什么也没写\"}");
         h.worker().runBlocking("r");
-        assertEquals("failed", h.run().getStatus());
-        assertEquals("AI_BAD_OUTPUT", h.run().getErrorCode());
-        verify(h.sink(), never()).save(any(), any());
-        verify(h.credits(), never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
+        assertEquals("done",h.run().getStatus());assertNull(h.run().getErrorCode());
+        var output=new ObjectMapper().readTree(h.run().getOutputJson());
+        assertTrue(output.path("rawOnly").asBoolean());
+        assertEquals("{\"changeNote\":\"什么也没写\"}",output.path("rawResponse").path("content").asText());
+        verify(h.sink(),never()).save(any(),any());
     }
 }

@@ -122,6 +122,12 @@ export function clipRanges(content: string, clips: Pick<DirectorClip, "id" | "or
 }
 
 /** 正文按行切成段落，带起止位置，方便按片段位置高亮。 */
+/** 收起时显示的一句话：第一段正文（跳过标题），太长就截断。 */
+export function firstLine(content: string, max = 40): string {
+  const line = content.split("\n").map(l => l.trim()).find(l => l && !/^#+\s/.test(l) && !/^第\s*[0-9一二三四五六七八九十百]+\s*集/.test(l) && !/^E(P)?\d+/i.test(l)) ?? "";
+  return line.length > max ? `${line.slice(0, max)}…` : line;
+}
+
 export function paragraphsWithOffsets(content: string): Array<{ text: string; start: number; end: number }> {
   const out: Array<{ text: string; start: number; end: number }> = [];
   let at = 0;

@@ -13,6 +13,8 @@ export type { StudioImageScene as ImageScene, StudioVideoScene as VideoScene, St
 export const FREE_SCENE_ID = "free";
 
 export const sceneCover = (id: string) => `/studio/scene-covers/${id}.webp`;
+/** 图片场景的示例图：左边是放进去的素材，右边是生成结果。列表里的小图仍用封面，对比图缩小后看不清。 */
+export const sceneDemo = (id: string) => `/studio/scene-demos/${id}.webp`;
 export const findImageScene = (catalog: StudioSceneCatalog | undefined, id?: string | null) => catalog?.image.find(s => s.id === id);
 export const findVideoScene = (catalog: StudioSceneCatalog | undefined, id?: string | null) => catalog?.video.find(s => s.id === id);
 export const sceneKind = (catalog: StudioSceneCatalog | undefined, id?: string | null): "image" | "video" | undefined =>

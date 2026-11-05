@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import type { DirectorTask, DirectorWork } from "@ai-star-eco/types";
 import { DirectorScript } from "./director-script";
@@ -44,4 +44,28 @@ test("rewriting a split script hides the episode list until the new script arriv
   expect(screen.getByRole("button", { name: "收起全部" })).toHaveProperty("disabled", true);
   rerender(<DirectorScript {...props} work={work({ draft: "", episodes: [ep] })}/>);
   expect(screen.getByText("第一集")).toBeTruthy();
+});
+
+test("the unsplit script text folds away and keeps what was typed", () => {
+  render(<DirectorScript {...props} work={work({})}/>);
+  const head = screen.getByRole("button", { name: /剧本正文/ });
+  expect(head.getAttribute("aria-expanded")).toBe("true");
+  fireEvent.change(screen.getByRole("textbox", { name: "剧本正文" }), { target: { value: "改过的正文" } });
+  fireEvent.click(head);
+  expect(screen.queryByRole("textbox", { name: "剧本正文" })).toBeNull();
+  expect(head.getAttribute("aria-expanded")).toBe("false");
+  // 收起后还能看到有多少字和第一句，再展开改动都在。
+  expect(head.textContent).toContain("5 字 · 改过的正文");
+  fireEvent.click(head);
+  expect((screen.getByRole("textbox", { name: "剧本正文" }) as HTMLTextAreaElement).value).toBe("改过的正文");
+});
+
+test("the script text stays folded next time this work is opened", () => {
+  window.localStorage.clear();
+  const first = render(<DirectorScript {...props} work={work({})}/>);
+  fireEvent.click(screen.getByRole("button", { name: /剧本正文/ }));
+  first.unmount();
+  render(<DirectorScript {...props} work={work({})}/>);
+  expect(screen.queryByRole("textbox", { name: "剧本正文" })).toBeNull();
+  window.localStorage.clear();
 });

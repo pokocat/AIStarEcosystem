@@ -10,10 +10,14 @@ export interface DirectorScriptImportResult {
   format: "pdf" | "doc" | "docx" | "ppt" | "pptx" | "rtf" | "txt" | "md" | "markdown" | "csv" | "tsv" | "json" | "xml" | "yaml" | "yml" | "log" | "srt" | "vtt";
 }
 
+/** 作品的形式和篇幅，写剧本前确认。kind：series 多集短剧，long 长剧，single 单集短片（1 集）。 */
+export interface DirectorFormat { kind: "series" | "long" | "single"; episodes: number; seconds: number }
+
 export interface DirectorSettings {
   style: string;
   aspectRatio: DirectorAspectRatio;
   language: string;
+  format?: DirectorFormat | null;
   /** 所有文字任务用的模型；null 或缺省 = 后台默认。 */
   textModel?: string | null;
   /** 片段视频用的模型；null = 后台默认。 */
@@ -386,6 +390,8 @@ export interface DirectorWork {
   textError: DirectorError | null;
   /** 写剧本前的创意对话（有限澄清）；导入剧本的作品没有。 */
   brief?: DirectorBrief | null;
+  /** 长的剧本分批写：已写到第几集、全剧几集、下一批写到第几集。写完 total 之前可以接着写。 */
+  scriptProgress?: { written: number; total: number; nextTo?: number } | null;
   /** 最近一次从回收站恢复的时间（ISO），没恢复过为 null。有值时打开作品不自动发起付费任务，由用户自己点开始。 */
   restoredAt?: string | null;
   /** 全能创作助手的对话：整部作品一份，按对话分段；每条消息绑定发送时的对象。 */
@@ -439,7 +445,7 @@ export type DirectorEditOp =
 
 /** plan = 写分镜脚本（切片段，整集替换）；reshoot = 重写分镜脚本、保留片段划分（targetId = 集，options.clipIds 为空则整集）。
  *  assistant = 全能创作助手回复一轮；brief = 写剧本前的创意对话一轮。 */
-export type DirectorTaskType = "script" | "split" | "extract" | "plan" | "reshoot" | "asset-image" | "form-image" | "scene-views" | "board" | "video" | "video-prompt" | "export" | "assistant" | "brief";
+export type DirectorTaskType = "script" | "split" | "extract" | "plan" | "reshoot" | "asset-image" | "form-image" | "scene-views" | "board" | "video" | "video-prompt" | "export" | "assistant" | "brief" | "script-more";
 export type DirectorPipelineAction = "start" | "pause" | "resume" | "retry" | "confirm-assets" | "confirm-boards" | "confirm-videos" | "stop" | "dismiss";
 
 export type DirectorPipelineTarget = "plan" | "board" | "video" | "film";

@@ -86,7 +86,7 @@ async function open(Page: typeof SceneImageStudio, url: string) {
 async function generateWhiteBackground() {
   await open(SceneImageStudio, "/image?scene=white-background");
   await pickFromLibrary();
-  fireEvent.click(within(optionGroup("拍摄角度")).getByRole("button", { name: "俯拍" }));
+  fireEvent.click(within(optionGroup("出图方式")).getByRole("button", { name: "俯拍" }));
   fillField(screen.getByRole("textbox", { name: "补充要求" }), "平放");
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "生成图片" })); });
   await waitFor(() => expect(api.submit).toHaveBeenCalled());
@@ -105,18 +105,18 @@ test("image: what is on the page is kept in the draft; reopening it brings back 
   cleanup();
   await open(SceneImageStudio, "/image?scene=white-background&draft=IPP-A");
   await waitFor(() => expect(text("补充要求")).toBe("平放，阴影淡一点"));
-  expect(pressed("拍摄角度", "俯拍")).toBe("true");
+  expect(pressed("出图方式", "俯拍")).toBe("true");
   expect(screen.getByRole("button", { name: /图片设置/ }).textContent).toContain("2 张");
   expect(screen.getByRole("img", { name: "商品" })).toBeTruthy();
 });
 
 test("image: 「重新编辑」 puts back that time's conditions, and the description is assembled once, not with the options twice", async () => {
   await generateWhiteBackground();
-  fireEvent.click(within(optionGroup("拍摄角度")).getByRole("button", { name: "正面" }));
+  fireEvent.click(within(optionGroup("出图方式")).getByRole("button", { name: "正面主图" }));
   fillField(screen.getByRole("textbox", { name: "补充要求" }), "换个说法");
   fireEvent.click(await screen.findByRole("button", { name: "重新编辑" }));
   expect(text("补充要求")).toBe("平放");
-  expect(pressed("拍摄角度", "俯拍")).toBe("true");
+  expect(pressed("出图方式", "俯拍")).toBe("true");
   // 以前把拼好的整段话塞进「完整描述」，再生成时选项和补充要求又拼一遍。
   expect(screen.queryByRole("textbox", { name: "完整描述" })).toBeNull();
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "生成图片" })); });
@@ -125,14 +125,14 @@ test("image: 「重新编辑」 puts back that time's conditions, and the descri
 
 test("image: 「重新编辑」 says what it put back, moves the cursor to the input, and 撤销 brings back what was being edited", async () => {
   await generateWhiteBackground();
-  fireEvent.click(within(optionGroup("拍摄角度")).getByRole("button", { name: "正面" }));
+  fireEvent.click(within(optionGroup("出图方式")).getByRole("button", { name: "正面主图" }));
   fillField(screen.getByRole("textbox", { name: "补充要求" }), "换个说法");
   fireEvent.click(await screen.findByRole("button", { name: "重新编辑" }));
   expect(screen.getByText(/这次的设置放回来了，改好再生成/)).toBeTruthy();
   await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "补充要求" })));
   fireEvent.click(screen.getByRole("button", { name: "撤销" }));
   expect(text("补充要求")).toBe("换个说法");
-  expect(pressed("拍摄角度", "正面")).toBe("true");
+  expect(pressed("出图方式", "正面主图")).toBe("true");
   expect(screen.queryByText(/放回来了/)).toBeNull();
 });
 

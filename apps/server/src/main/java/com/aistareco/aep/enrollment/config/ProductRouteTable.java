@@ -163,6 +163,9 @@ public final class ProductRouteTable {
     // ── 路由表（顺序敏感：先匹配先生效，具体规则必须排在通配前缀之前）────────────
 
     public static final List<Route> ROUTES = List.of(
+            // Owner-scoped generated text, with the caller's active product selected by X-App-Code.
+            get("/api/me/model-results", MUSIC, DRAMA, CELEBRITY, AIAVATAR, STAR),
+            get("/api/me/model-results/**", MUSIC, DRAMA, CELEBRITY, AIAVATAR, STAR),
             // ── 数字人资产平台（dap，/api/v1）──────────────────────────────────
             // 只读形象清单：music / drama 的「引入数字人」选择器直接读 dap 域（v0.61）。
             get("/api/v1/avatars", AIAVATAR, MUSIC, DRAMA),

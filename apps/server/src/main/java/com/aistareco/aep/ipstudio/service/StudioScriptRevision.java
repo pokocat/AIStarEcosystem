@@ -8,7 +8,6 @@ import java.util.List;
 /** In-editor revisions reuse the assistant's endpoint, queue and immutable credit settlement. */
 public final class StudioScriptRevision {
     private StudioScriptRevision() {}
-    private static final List<String> SECTIONS=List.of("故事大纲","人物小传","场景设计","道具设计","分集剧本");
     public static final String CONTRACT="""
         当前任务是全屏 Markdown 剧本编辑器内的对话改稿。本条覆盖前述创作方案输出结构：
         只输出 JSON 对象 {"summary":"简短说明本次修改或对问题的回答","markdown":"修订后的完整 Markdown 剧本文档"}。
@@ -23,51 +22,14 @@ public final class StudioScriptRevision {
         if(!"assistant".equals(request.operation()) || Boolean.TRUE.equals(request.readVisuals()) || request.settings()!=null || request.episodeNo()!=null)
             throw BusinessException.badRequest("STUDIO_INPUT_INVALID","剧本编辑改稿仅支持文字对话");
         String text=request.scriptEdit().markdown();
-        if(text==null || text.isBlank() || text.length()>48000)
-            throw BusinessException.badRequest("STUDIO_INPUT_INVALID","剧本文档需为 1–48000 字");
+        if(text==null || text.isBlank())
+            throw BusinessException.badRequest("STUDIO_INPUT_INVALID","剧本文档不能为空");
     }
     public static void validateOutput(JsonNode revision) {
-        String markdown=revision.path("markdown").asText("");
-        if(!revision.isObject() || !revision.path("summary").isTextual() || revision.path("summary").asText().isBlank()
-                || revision.path("summary").asText().length()>4000 || !revision.path("markdown").isTextual() || markdown.isBlank() || markdown.length()>48000)
-            fail();
-        StringBuilder visible=new StringBuilder();String fence=null;
-        for(String line:markdown.split("\\n")) {
-            String trimmed=line.stripLeading();
-            if(trimmed.startsWith("```")||trimmed.startsWith("~~~")) {
-                String marker=trimmed.substring(0,3);
-                if(fence==null)fence=marker;else if(fence.equals(marker))fence=null;
-            } else if(fence==null) visible.append(line).append('\n');
-        }
-        // Normalize heading identity only; preserve revision Markdown and all body content verbatim.
-        StringBuilder headings=new StringBuilder();
-        for(String line:visible.toString().split("\\n")) {
-            var heading=java.util.regex.Pattern.compile("^(#{1,6})[ \\t]+(.+)$").matcher(line);
-            if(heading.matches())headings.append(heading.group(1)).append(' ')
-                    .append(StudioScriptHeading.text(heading.group(2).replaceFirst("[ \\t]+#+[ \\t]*$",""))).append('\n');
-        }
-        String document=headings.toString();
-        if(!java.util.regex.Pattern.compile("(?m)^#\\s+\\S.*$").matcher(document).find())fail();
-        for(String section:SECTIONS) {
-            var matcher=java.util.regex.Pattern.compile("(?m)^##[ \\t]+"+section+"[ \\t]*$").matcher(document);
-            int count=0;while(matcher.find())count++;
-            if(count!=1)fail();
-        }
-        boolean inEpisodes=false;var episodeNumbers=new java.util.HashSet<Integer>();
-        for(String line:document.split("\\n")) {
-            var heading=java.util.regex.Pattern.compile("^(#{1,6})[ \\t]+(.+)$").matcher(line);
-            if(!heading.matches())continue;
-            int level=heading.group(1).length();String title=heading.group(2).strip();
-            if(level<=2)inEpisodes=level==2&&"分集剧本".equals(title);
-            else if(inEpisodes&&level==3) {
-                var episode=java.util.regex.Pattern.compile("^第\\s*(\\d+)\\s*集(?:\\s*[·：:—-]\\s*(.*))?$").matcher(title);
-                if(!episode.matches())fail();
-                int no;
-                try{no=Integer.parseInt(episode.group(1));}catch(NumberFormatException e){fail();return;}
-                if(no<1||no>50||!episodeNumbers.add(no))fail();
-            }
-        }
-        if(episodeNumbers.isEmpty())fail();
+        if(!revision.isObject()||!revision.path("markdown").isTextual()||revision.path("markdown").asText().isBlank())
+            throw BusinessException.badRequest("AI_BAD_OUTPUT","模型没有返回正文，原文已保留");
+        if(!revision.path("summary").isTextual()||revision.path("summary").asText().isBlank())
+            ((com.fasterxml.jackson.databind.node.ObjectNode)revision).put("summary","已保留模型返回的内容");
     }
-    private static void fail(){throw BusinessException.badRequest("AI_BAD_OUTPUT","AI 返回的剧本文档不完整，原稿已保留，请重新提出修改要求");}
+
 }
