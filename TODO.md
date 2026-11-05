@@ -1707,7 +1707,7 @@
 - [x] ~~迁移回归发现充值终态被旧轮询覆盖~~ **2026-11-04 修复，未部署**：`studio-recharge-dialog.tsx:accept` 保留同订单服务端终态，到账回调仅一次；固定同批次回执测试复现并验证。
 - [x] ~~剧本保存失败重试测试抢在按钮恢复前点击~~ **2026-11-04 门禁修复，未部署**：`studio-workspace.test.tsx` 等保存按钮恢复可点击，再触发重试并断言第二次云保存；继续校验原节点、原正文和零付费提交。
 
-AIStar PG 主备滚动补充：旧 `/api/auth/sms/*` 的验证码、用途、单次消费、60秒限流、5次失败锁定改用 Tair 单键 Lua 原子状态。`TairSmsCodeStore` 只存 HMAC 手机号键和验证码摘要；短信发送先占位，显式失败释放自己的占位，未知供应商受理状态保留限流；Tair故障返回503且readiness撤下，不回退单机内存。旧MySQL/dev保留原行为。postgres默认tair并强制TLS，正式专用DB15/prefix `aistar:prod:sms:v1:`，演练DB14/prefix `aistar:rehearsal:sms:v1:`；逻辑库与命名空间隔离不等于账号ACL限制。迁移首次停写要处理旧进程内存验证码（TTL默认5分钟）、失败锁定（默认30分钟）和进行中的扫码；无法导出旧锁定时，旧短信接口按最长状态时长保守维护，不能只等待验证码TTL；不能声称可迁出旧进程内存。源码、真实Redis契约及双机真实Tair验证以最终回执为准。
+AIStar PG 主备滚动补充：旧 `/api/auth/sms/*` 的验证码、用途、单次消费、60秒限流、5次失败锁定改用 Tair 单键 Lua 原子状态。`TairSmsCodeStore` 只存 HMAC 手机号键和验证码摘要；短信发送先占位，显式失败释放自己的占位，未知供应商受理状态保留限流；Tair故障返回503且readiness撤下，不回退单机内存。旧MySQL/dev保留原行为。postgres默认tair并强制TLS，正式专用DB15/prefix `aistar:production:sms:v1:`，演练DB14/prefix `aistar:rehearsal:sms:v1:`；逻辑库与命名空间隔离不等于账号ACL限制。迁移首次停写要处理旧进程内存验证码（TTL默认5分钟）、失败锁定（默认30分钟）和进行中的扫码；无法导出旧锁定时，旧短信接口按最长状态时长保守维护，不能只等待验证码TTL；不能声称可迁出旧进程内存。源码、真实Redis契约及双机真实Tair验证以最终回执为准。
 
 迁移保持源JVM业务时区`Asia/Shanghai`，JDBC/Hibernate和PG连接仍UTC。源码4个未显式zone的凌晨03:30/40/45/50清理cron及若干LocalDate.now依赖JVM，不能随数据库迁移改成UTC导致业务日/调度晚8小时；用实际镜像的离线时钟/cron边界验收，后台依旧关闭。
 

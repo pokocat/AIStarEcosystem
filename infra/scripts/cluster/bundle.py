@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 """Package a CI-verified backend and build its image natively on the new ECS B."""
-import argparse,hashlib,io,json,os,pathlib,shlex,subprocess,tarfile
+import argparse,base64,hashlib,json,os,pathlib,shlex,subprocess
 from policy import artifact_guard,config_guard,require
 ROOT=pathlib.Path(__file__).resolve().parents[3]
 BASE='docker.io/aibuzz/aistar-pg-preparation:b195acfddf46-node-native-v1'
 BASE_CONFIG='eccc6ce2970b9e68f07e73050e8820ecbcbc9450e3317a662c47b9d48a11b386'
+def file_sha(path):
+ h=hashlib.sha256()
+ with path.open('rb') as src:
+  for block in iter(lambda:src.read(1024*1024),b''):h.update(block)
+ return h.hexdigest()
 def main():
  p=argparse.ArgumentParser();p.add_argument('--verified-backend',required=True);p.add_argument('--output',required=True);a=p.parse_args();os.umask(0o077)
  source=pathlib.Path(a.verified_backend).resolve();out=pathlib.Path(a.output).resolve();out.mkdir(mode=0o700,parents=True,exist_ok=False)
  config=json.loads((ROOT/'infra/cluster/production.json').read_text());config_guard(config,'stage',os.environ)
- proof=json.loads((source/'verified-backend.json').read_text());jar=source/'ai-star-eco-server-1.0.0.jar';digest=hashlib.sha256(jar.read_bytes()).hexdigest();require(digest==proof['jar_sha256'] and proof['tests_passed'] is True,'CI JAR或验收凭证不匹配')
+ proof=json.loads((source/'verified-backend.json').read_text());jar=source/'ai-star-eco-server-1.0.0.jar';digest=file_sha(jar);require(digest==proof['jar_sha256'] and proof['tests_passed'] is True,'CI JAR或验收凭证不匹配')
  tree=subprocess.check_output(['git','rev-parse','HEAD:apps/server'],cwd=ROOT,text=True).strip();require(tree==proof['source_tree'],'当前后端源码树与CI验收包不一致')
  run=json.loads(subprocess.check_output(['gh','run','view','--repo','pokocat/AIStarEcosystem',str(proof['ci_run']),'--json','headSha,jobs'],text=True));require(run['headSha']==proof['sha'] and any(x['name']=='backend' and x['conclusion']=='success' for x in run['jobs']),'对应最终SHA后端及PG实库门禁未成功')
  buildroot='/opt/aistar-cluster/image-build/'+digest[:16];key=config['ssh_key']
@@ -40,15 +45,42 @@ print(json.dumps({'image_configuration_id':'sha256:'+image['Id'].removeprefix('s
  command('a',shlex.join([config['operation_python'],'-s','-c',code]),timeout=300)
  migrations=[{'name':x.name,'sha256':hashlib.sha256(x.read_bytes()).hexdigest()} for x in sorted((ROOT/'apps/server/src/main/resources/db/postgresql').glob('V*__*.sql'))]
  manifest={'format':'aistar-cluster-artifact-v1',**proof,**metadata,'migrations':migrations};artifact_guard(manifest);release=digest[:16]
- # Two names permit a real restart/rolling rehearsal using one immutable verified artifact.
+ # Compression runs on the new ECS B, never concurrently with another local build.
+ # The workstation only transfers immutable CI input and completed cloud archives.
+ tools=source/'migration-tools'
+ if not tools.is_dir():tools=source
+ classes={}
+ for x in sorted(tools.rglob('*.class')):
+  encoded=base64.b64encode(x.read_bytes()).decode()
+  require(x.name not in classes or classes[x.name]==encoded,'重复工具类冲突');classes[x.name]=encoded
+ require(classes,'CI编译工具缺失')
+ request=out/'cloud-packaging.json';request.write_text(json.dumps({'manifest':manifest,'classes':classes}));request.chmod(0o600)
+ subprocess.run(['scp','-q','-i',key,'-o','BatchMode=yes',str(request),'root@'+config['nodes']['b']['host']+':'+buildroot+'/cloud-packaging.json'],check=True,timeout=60)
+ code="""import pathlib,json,tarfile,base64,io,hashlib,os,re,shutil
+os.umask(0o077);os.nice(19);root=pathlib.Path(BUILDROOT);request=root/'cloud-packaging.json'
+assert hashlib.sha256(request.read_bytes()).hexdigest()==REQUESTSHA
+payload=json.loads(request.read_text());manifest=payload['manifest'];jar=root/'app.jar'
+h=hashlib.sha256()
+with jar.open('rb') as src:
+ for block in iter(lambda:src.read(1024*1024),b''):h.update(block)
+assert h.hexdigest()==manifest['jar_sha256']
+archive=root/'baseline.tar.gz'
+with tarfile.open(archive,'w:gz') as tar:
+ tar.add(jar,arcname='app.jar');raw=json.dumps(manifest,indent=2).encode();info=tarfile.TarInfo('manifest.json');info.size=len(raw);info.mode=0o444;tar.addfile(info,io.BytesIO(raw))
+ for name,encoded in sorted(payload['classes'].items()):
+  assert re.fullmatch('[A-Za-z0-9_$]+[.]class',name);raw=base64.b64decode(encoded,validate=True);info=tarfile.TarInfo('tools/'+name);info.size=len(raw);info.mode=0o444;tar.addfile(info,io.BytesIO(raw))
+shutil.copyfile(archive,root/'candidate.tar.gz');proof={}
+for name in ['baseline','candidate']:
+ p=root/(name+'.tar.gz');p.chmod(0o600);h=hashlib.sha256()
+ with p.open('rb') as src:
+  for block in iter(lambda:src.read(1024*1024),b''):h.update(block)
+ assert p.stat().st_size>1000000;proof[name]={'bytes':p.stat().st_size,'sha256':h.hexdigest()}
+print(json.dumps(proof))
+""".replace('BUILDROOT',repr(buildroot)).replace('REQUESTSHA',repr(file_sha(request)))
+ packages=json.loads(command('b',shlex.join([config['operation_python'],'-s','-c',code]),timeout=240))
  for name in ['baseline','candidate']:
-  bundle=out/(name+'.tar.gz')
-  with tarfile.open(bundle,'w:gz') as t:
-   t.add(jar,arcname='app.jar');raw=json.dumps(manifest,indent=2).encode();info=tarfile.TarInfo('manifest.json');info.size=len(raw);info.mode=0o444;t.addfile(info,io.BytesIO(raw))
-   tools=source/'migration-tools'
-   # Actions upload may flatten a common parent directory. Only compiled class files are accepted.
-   if not tools.is_dir():tools=source
-   for x in sorted(tools.rglob('*.class')):t.add(x,arcname='tools/'+x.name)
-  require(bundle.stat().st_size>1000000,'发布包异常')
+  target=out/(name+'.tar.gz');subprocess.run(['scp','-q','-i',key,'-o','BatchMode=yes','root@'+config['nodes']['b']['host']+':'+buildroot+'/'+name+'.tar.gz',str(target)],check=True,timeout=180)
+  require(file_sha(target)==packages[name]['sha256'] and target.stat().st_size==packages[name]['bytes'],'云端打包结果传输不一致')
+ (out/'cloud-packaging-verification.json').write_text(json.dumps({'built_on':'ecs-b','local_compression':False,'packages':packages},indent=2))
  (out/'manifest.json').write_text(json.dumps(manifest,indent=2));print(json.dumps({'release':release,'sha':proof['sha'],'jar_sha256':digest,**metadata},indent=2))
 if __name__=='__main__':main()

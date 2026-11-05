@@ -47,3 +47,15 @@
 新节点的 `/opt/aistar-cluster/work` 独立可写并属UID10001；同时挂到 `/app/work` 和 `/data/aistareco`，为旧DB绝对路径提供兼容映射。旧file-storage读别名只读挂载到 `/opt/ai-star-eco/server/file-storage`。daytime预置不取代窗口最后增量。
 
 网关使用显式include，不能仅把配置放入conf.d后运行nginx -t就宣布生效；须核对nginx -T的实际include并走真实鉴权请求。两VIP探针同时验证`X-Aistar-Node`与目标A/B一致。ALB必须关闭粘滞会话、开启至少180秒连接排空并检查正确Host的`/internal/ready`。冷启动必须就绪与实际运行验收在300秒内共同收敛，失败留私有诊断并保留当前健康主节点。
+
+## 本轮资料补充
+
+正式私有探针模板为 `infra/nginx/aistar-private-readiness.conf.example`，独立Host `api-readiness.aibuzz.cn`，需ALB Host+本次强header规则；该规则和正式服务只能在另行确认的窗口激活。正常Host的public marker保持关闭直至私有验收通过。探针与正常入口都拒绝deployment控制接口。
+
+混剪素材上传与任务生成集中于2026年5–6月，近90天没有新上传/生成/草稿更新，但61条素材仍有历史引用，11月3日仍有列表GET；源站素材静态访问最后为8月25日，成片为8月23日。源站日志不覆盖直接OSS/CDN访问，不能据此删除或断言全为测试数据。72条无上述引用的素材仅列为清理候选，清理另行确认；本轮不新增NAS。
+
+单活后台模板同时保留 `/app/work` 与 `/data/aistareco` 路径，旧file-storage别名只读，执行前固定检查新A实例身份；不得安装启动到B。后台/SAU真实接管、前端域名迁移、真实付款和第三方发布仍须独立窗口/验收，不把API隔离演练等同于全栈上线。
+
+CI产物的镜像构建、OCI归档和发布包压缩均在新ECS B完成；本机仅进行SSH传输、流式摘要与发布控制，不并发启动本机构建/压缩。本机确需构建/测试时仍必须进入devq，不改动其他聊天的任务。
+
+窗口排空证明需逐项包含 `ip_run`、`material_video_job`、`aep_publish_jobs`、`clip_render_job`、`clip_shot_job`、`music_gen_job`、`video_studio_prompt_optimization`、`ai_generation_queue`、`ip_dialogue_message`，并核对旧入口在途请求、后台线程、供应商未知受理及SAU任务。缺失或未知任一项都不能执行停写。

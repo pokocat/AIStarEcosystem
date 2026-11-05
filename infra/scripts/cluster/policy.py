@@ -6,7 +6,11 @@ TAIR='r-bp182e1w8fk05cnbvr.redis.rds.aliyuncs.com'
 LEGACY={'47.98.162.120','8.136.36.175'}
 def require(ok,message):
  if not ok:raise Refused(message)
-def sha256(path):return hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()
+def sha256(path):
+ digest=hashlib.sha256()
+ with pathlib.Path(path).open('rb') as source:
+  for block in iter(lambda:source.read(1024*1024),b''):digest.update(block)
+ return digest.hexdigest()
 def utc(value):
  value=value.replace('Z','+00:00');result=datetime.datetime.fromisoformat(value)
  require(result.utcoffset()==datetime.timedelta(0),'必须使用UTC时间');return result
