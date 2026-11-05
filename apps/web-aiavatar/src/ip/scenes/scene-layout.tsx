@@ -5,6 +5,7 @@ import { type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObjec
 import Link from "next/link";
 import { Check, ChevronDown, ChevronRight, Download, FileImage, History, Loader2, PanelLeft, Pencil, Pin, PinOff, Plus, X } from "lucide-react";
 import { dialogFocus } from "../dialog-focus";
+import { ImageLightbox } from "../image-lightbox";
 import { StudioErrorNotice } from "../studio-errors";
 import type { IpProjectSummary, StudioSceneMedia, StudioSceneOptionGroup } from "@ai-star-eco/types";
 import { formatDateTime } from "@/lib/datetime";
@@ -241,12 +242,41 @@ export const sceneSteps = (structure?: string | null) => (structure ?? "").split
 /**
  * 示例：左边一张大图（运营传了参考示例就轮播示例，没传放封面），右边场景名、一句说明、做法几条。都是示意，不是用户的作品。
  */
-export function SceneExample({ id, title, group, note, steps = [], cover, examples, ratio = "9:16" }: {
+/** 前后对比图：图上不压字，「素材 / 示例效果」放在图上方；点开看大图。 */
+export function SceneDemoFigure({ src, title, example, onError }: { src: string; title: string; example?: string | null; onError?: () => void }) {
+  const [open, setOpen] = useState(false);
+  const alt = `${title}前后对比${example ? `。补充要求：${example}` : ""}`;
+  return <figure className="scene-demo">
+    <figcaption className="scene-demo-labels"><span>素材</span><span>示例效果</span></figcaption>
+    <button type="button" className="scene-demo-open" aria-label={`放大查看${title}前后对比`} title="点击放大" onClick={() => setOpen(true)}>
+      <img src={src} alt={alt} decoding="async" onError={onError}/>
+    </button>
+    <ImageLightbox src={src} alt={alt} open={open} onClose={() => setOpen(false)}/>
+  </figure>;
+}
+
+export function SceneExample({ id, title, group, note, steps = [], cover, examples, ratio = "9:16", demo, example, onUseExample }: {
   id: string; title: string; group?: string; note: ReactNode; steps?: string[]; cover?: string | null; examples?: StudioSceneMedia[] | null; ratio?: string;
+  /** 随包的前后对比图。运营配了示例或封面时用运营的；文件不存在（运营新加的场景）时退回封面。 */
+  demo?: string;
+  /** 补充要求的例句，和对比图对应。 */
+  example?: string | null;
+  onUseExample?: (text: string) => void;
 }) {
   const list = examples ?? [];
   const [index, setIndex] = useState(0);
   const shown = list[Math.min(index, list.length - 1)];
+  const [demoFailed, setDemoFailed] = useState<string | null>(null);
+  if (!shown && !cover && demo && demoFailed !== demo) {
+    return <div className="scene-example is-demo">
+      <SceneDemoFigure src={demo} title={title} example={example} onError={() => setDemoFailed(demo)}/>
+      {example && <div className="scene-demo-try">
+        <div><small>补充要求示例</small><p>{example}</p></div>
+        {onUseExample && <button type="button" className="scene-text-button" onClick={() => onUseExample(example)}>使用</button>}
+      </div>}
+      <small className="scene-demo-note">示意图，实际效果因素材和模型而异。</small>
+    </div>;
+  }
   const [w, h] = ratio.split(":").map(Number);
   const shape = !w || !h ? "is-tall" : w > h ? "is-wide" : w === h ? "is-square" : h / w > 1.5 ? "is-tall" : "is-portrait";
   return <div className={`scene-example ${shape}`}>

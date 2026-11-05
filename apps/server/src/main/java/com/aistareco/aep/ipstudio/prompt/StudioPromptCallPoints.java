@@ -20,13 +20,59 @@ public final class StudioPromptCallPoints {
         registerStepThree();
         registerDirector();
         registerDirectorImages();
+        registerSegmented();
+    }
+
+    // ── AI 视频页的长视频（docs/studio-segmented-video.md）。分镜图和视频提示词用导演台的模板，这里只有脚本、审稿和两段补充 ──
+
+    public static final String SEGMENTED_SCRIPT = "stage-segmented-script", SEGMENTED_REVIEW = "stage-segmented-review",
+            SEGMENTED_BOARD_NOTES = "stage-segmented-board-notes", SEGMENTED_BOARD_CHECK = "stage-segmented-board-check";
+
+    private static void registerSegmented() {
+        Map<String, String> script = new LinkedHashMap<>(common());
+        script.put("language", "台词语言");
+        script.put("hasScript", "用户已经写好脚本，ask 是脚本");
+        script.put("hasRefs", "有交给视频模型的参考图");
+        script.put("refs", "参考图：[{n, title, label, person}]");
+        script.put("voice", "说话要用的声音名称");
+        script.put("voiceOnly", "没有参考图、只有声音");
+        script.put("visual", "写脚本的模型这次能看到图");
+        script.put("blind", "有图但写脚本的模型看不到");
+        script.put("hasInferable", "有可以从素材推断的信息");
+        script.put("inferable", "可以从素材推断的信息名称");
+        script.put("segments", "定好的分段：[{no, seconds, shotsLo, shotsHi}]");
+        script.put("singleShot", "所选视频模型只按首帧出片，每段一个镜头");
+        Map<String, Function<Map<String, ?>, String>> scriptFormats = new LinkedHashMap<>();
+        scriptFormats.put("output", v -> StudioPromptFormats.SEGMENTED_SCRIPT_OUTPUT);
+        scriptFormats.put("attachments", v -> Boolean.TRUE.equals(v.get("readVisuals")) ? ATTACHMENTS : "");
+        Map<String, Object> scriptSample = sample();
+        scriptSample.put("duration", 60); scriptSample.put("language", "中文"); scriptSample.put("hasRefs", false); scriptSample.put("visual", true); scriptSample.put("hasInferable", false);
+        scriptSample.put("hasScript", false); scriptSample.put("singleShot", false);
+        scriptSample.put("segments", List.of(Map.of("no", 1, "seconds", 30, "shotsLo", 6, "shotsHi", 8), Map.of("no", 2, "seconds", 30, "shotsLo", 6, "shotsHi", 8)));
+        StudioPromptStages.register(new StudioPromptStages.Stage(SEGMENTED_SCRIPT, StudioPromptEntry.LLM, "AI 视频 · 写分段脚本", script,
+                Set.of("duration", "sceneTitle", "language"), scriptFormats, scriptSample));
+        Map<String, Object> reviewSample = new LinkedHashMap<>();
+        reviewSample.put("duration", 60); reviewSample.put("orientation", "竖屏"); reviewSample.put("ask", "探店锅盔");
+        reviewSample.put("segments", scriptSample.get("segments")); reviewSample.put("hasIssues", true);
+        reviewSample.put("issues", List.of("第 1 段第 2 镜 3 秒有 20 个字，念不完")); reviewSample.put("current", "{\"segments\":[]}");
+        StudioPromptStages.register(new StudioPromptStages.Stage(SEGMENTED_REVIEW, StudioPromptEntry.LLM, "AI 视频 · 审分段脚本",
+                vars("duration", "总时长（秒）", "orientation", "竖屏 / 横屏", "ask", "用户写的要求", "segments", "定好的分段：[{no, seconds, shotsLo, shotsHi}]",
+                        "hasIssues", "程序查出了问题", "issues", "程序查出的问题", "current", "当前脚本（JSON）"),
+                Set.of("duration", "current"), formats("output", StudioPromptFormats.SEGMENTED_REVIEW_OUTPUT), reviewSample));
+        Map<String, Object> notesSample = new LinkedHashMap<>();
+        notesSample.put("assets", List.of(Map.of("name", "小夏", "description", "二十多岁，短发，白衬衫")));
+        notesSample.put("prior", "图2"); notesSample.put("fix", "第三格多了一只手");
+        StudioPromptStages.register(new StudioPromptStages.Stage(SEGMENTED_BOARD_NOTES, StudioPromptEntry.IMAGE_MODEL, "AI 视频 · 分镜图补充说明",
+                vars("assets", "没有参考图的人和物：[{name, description}]", "prior", "前面那张分镜图的编号", "fix", "上一版没通过检查的问题"), Set.of(), Map.of(), notesSample).withoutBase());
+        StudioPromptStages.register(new StudioPromptStages.Stage(SEGMENTED_BOARD_CHECK, StudioPromptEntry.MESSAGE, "AI 视频 · 分镜图检查要点",
+                vars("prompt", "这张分镜图的出图描述"), Set.of("prompt"), Map.of(), Map.of("prompt", "左上格：近景，固定机位。小夏举起锅盔。")).withoutBase());
     }
 
     // ── 第 4 步：导演台文字任务（docs/studio-prompt-architecture.md §8 #17–#19）。原文逐字搬来，JSON 格式句在 StudioPromptFormats ──
     // 导演台拼自己的底座 base-director（原 DirectorPrompts.COMMON）；题材、调性、反转线是内容方法，由代码按作品的选择传进来。
 
     public static final String DIRECTOR_BASE = "base-director";
-    public static final String DIRECTOR_SCRIPT = "stage-director-script", DIRECTOR_SPLIT = "stage-director-split", DIRECTOR_EXTRACT = "stage-director-extract",
+    public static final String DIRECTOR_SCRIPT = "stage-director-script", DIRECTOR_SCRIPT_MORE = "stage-director-script-more", DIRECTOR_SPLIT = "stage-director-split", DIRECTOR_EXTRACT = "stage-director-extract",
             DIRECTOR_STORYBOARD = "stage-director-storyboard", DIRECTOR_ASSISTANT = "stage-director-assistant", DIRECTOR_BRIEF = "stage-director-brief",
             DIRECTOR_ASSET_IMAGE = "stage-director-asset-image", DIRECTOR_BOARD = "stage-director-board", DIRECTOR_IMAGE_NOTES = "stage-director-image-notes",
             DIRECTOR_SCENE_VIEWS = "stage-director-scene-views";
@@ -36,6 +82,8 @@ public final class StudioPromptCallPoints {
         String sampleInput = "{\"brief\":\"外卖员在雨夜捡到一只会说话的猫\",\"style\":\"写实\"}";
         StudioPromptStages.register(director(DIRECTOR_SCRIPT, "导演台编剧", input, Set.of("input"), formats("output", StudioPromptFormats.DIRECTOR_SCRIPT_OUTPUT),
                 Map.of("input", sampleInput)));
+        StudioPromptStages.register(director(DIRECTOR_SCRIPT_MORE, "导演台接着写剧本", input, Set.of("input"), formats("output", StudioPromptFormats.DIRECTOR_SCRIPT_MORE_OUTPUT),
+                Map.of("input", "{\"format\":{\"totalEpisodes\":10,\"secondsPerEpisode\":90,\"writeFrom\":4,\"writeTo\":6},\"written\":\"……\"}")));
         StudioPromptStages.register(director(DIRECTOR_SPLIT, "导演台分集", input, Set.of("input"), formats("output", StudioPromptFormats.DIRECTOR_SPLIT_OUTPUT),
                 Map.of("input", "{\"paragraphs\":[{\"i\":0,\"text\":\"第1集\"}]}")));
         StudioPromptStages.register(director(DIRECTOR_EXTRACT, "导演台资产提取", input, Set.of("input"), formats("output", StudioPromptFormats.DIRECTOR_EXTRACT_OUTPUT),
@@ -56,7 +104,7 @@ public final class StudioPromptCallPoints {
         StudioPromptStages.register(director(DIRECTOR_BRIEF, "导演台写剧本前的问答",
                 vars("input", "创意与之前的问答（JSON，作为素材）", "opening", "这是第一轮", "text", "用户这次的回答", "maxQuestions", "一轮最多几个问题"),
                 Set.of("input"), formats("output", StudioPromptFormats.DIRECTOR_BRIEF_OUTPUT),
-                Map.of("input", "{\"idea\":\"外卖员在雨夜捡到一只会说话的猫\"}", "opening", true, "text", "", "maxQuestions", 2)));
+                Map.of("input", "{\"idea\":\"外卖员在雨夜捡到一只会说话的猫\"}", "opening", true, "text", "", "maxQuestions", 4)));
     }
 
     /** 导演台交给画图模型的两份描述（§8 #20）和出图附加说明：不拼底座；生成时记下版本，核对旧图按那一版编。 */

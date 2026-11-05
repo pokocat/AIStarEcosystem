@@ -20,14 +20,14 @@ import { useStudioList } from "../studio-gallery";
 import { studioImageResolution, studioImageSizeLabel } from "../studio-generation-controls";
 import { StudioSelect } from "../studio-select";
 import { HubTabBar } from "@/components/hub/ui";
-import { FREE_SCENE_ID, findImageScene, useSceneCatalog, type ImageScene } from "./scene-catalog";
+import { FREE_SCENE_ID, findImageScene, sceneDemo, useSceneCatalog, type ImageScene } from "./scene-catalog";
 import { useSceneDraftStore, useSceneStateSave } from "./scene-draft-store";
 import { useSceneQuery, writeSceneQuery } from "./scene-query";
 import { UiVersionSwitch } from "@/shell/ui-version-switch";
 import { addImageRow, applyRun, createSceneDraft, groupUploads, imageRows, listSceneDrafts, openedImageState, patchNode, resubmitRow, rowUploads, rejectedNextStep, splitByCounts, submissionRejected, type SceneUpload } from "./scene-drafts";
 import { ScenePromptEditor, type ScenePromptEditorHandle, type ScenePromptRef } from "./scene-prompt-editor";
 import { remapPromptRefs } from "./scene-prompt-refs";
-import { SceneDrawer, SceneEmpty, SceneExample, SceneNoModel, SceneRecent, SceneResultTabs, SceneSwitch, SceneViewer, sceneFailureText, sceneHintText, sceneOptionValues, useSceneDrawerPin, useScenePopover, RatioGlyph, useSceneMobile, SlotEmpty } from "./scene-layout";
+import { SceneDemoFigure, SceneDrawer, SceneEmpty, SceneExample, SceneNoModel, SceneRecent, SceneResultTabs, SceneSwitch, SceneViewer, sceneFailureText, sceneHintText, sceneOptionValues, useSceneDrawerPin, useScenePopover, RatioGlyph, useSceneMobile, SlotEmpty } from "./scene-layout";
 import { AiMark } from "../studio-ai-icon";
 
 const FALLBACK_RATIOS = ["1:1", "3:4", "4:3", "9:16", "16:9"];
@@ -52,6 +52,7 @@ export function SceneImageStudio() {
   const inputBox = useRef<ScenePromptEditorHandle>(null);
   // 用户写的只是补充要求；场景描述藏在场景标签后面，想改的人点「改完整描述」。
   const [supplement, setSupplement] = useState("");
+  const [demoMissing, setDemoGone] = useState<string>();
   const [custom, setCustom] = useState<string>();
   const [picked, setPicked] = useState<Record<string, string>>({});
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -224,6 +225,12 @@ export function SceneImageStudio() {
   const quote = caps?.mock ? 0 : unit * usedCount;
   const maxChars = chosen?.capability?.imagePromptMaxChars || 2000;
   const isFree = scene?.id === FREE_SCENE_ID;
+  const demoGone = !!scene && demoMissing === scene.id;
+  // 例句填进补充要求：已经写了字就接在后面，不覆盖；已经写了这句就不重复。
+  const useExample = (text: string) => {
+    setSupplement(old => !old.trim() ? text : old.includes(text) ? old : `${old.trim()}，${text}`);
+    window.requestAnimationFrame(() => inputBox.current?.focus("end", { preventScroll: true }));
+  };
   // 用户自己写的那部分有多长：完整描述按模型上限，补充要求最多 3000 字，真正发出去的整段由服务端拼并把关。
   const ownText = custom ?? supplement;
   const ownLimit = custom !== undefined || isFree ? maxChars : 3000;
@@ -430,6 +437,7 @@ export function SceneImageStudio() {
         {mobile && <SceneRecent icon drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>}
         <button type="button" className="scene-new" onClick={() => { showDraft(undefined, begin()); pickScene(scene); writeQuery(scene.id); }}><Plus size={13} strokeWidth={1.6}/>新建</button>
       </header>
+      {mobile && !rows.length && !scene.coverUrl && !scene.examples?.length && !demoGone && <div className="scene-demo-peek"><SceneDemoFigure src={sceneDemo(scene.id)} title={scene.title} example={scene.example} onError={() => setDemoGone(scene.id)}/></div>}
 
       <div className="scene-compose">
         <div className="scene-media-group">
@@ -499,7 +507,7 @@ export function SceneImageStudio() {
           {!mobile && <SceneRecent drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>}
           <UiVersionSwitch inline/></span></header>
       <div id="scene-image-panel" className="scene-results-panel" role="tabpanel" aria-labelledby={`scene-image-tab-${tab}`}>
-      {tab === "example" ? <SceneExample id={scene.id} title={scene.title} group={isFree ? undefined : groupTitle} cover={scene.coverUrl} examples={scene.examples} ratio={scene.ratio}
+      {tab === "example" ? <SceneExample id={scene.id} title={scene.title} group={isFree ? undefined : groupTitle} cover={scene.coverUrl} examples={scene.examples} demo={sceneDemo(scene.id)} example={scene.example} onUseExample={useExample} ratio={scene.ratio}
           note={isFree ? "放参考图，说说想要的画面。不知道怎么写，可以点上面的场景名换一个场景。" : scene.description}/>
         : opening ? <div className="scene-loading"><Loader2 size={20} className="studio-gallery-spinner"/>正在打开草稿</div>
         : rows.length ? <ol className="scene-row-list">{rows.map(row => <ImageRow key={row.id} row={row} original={originalOf(row)} run={live[row.id]} busy={busy} submitting={submitting === row.id}

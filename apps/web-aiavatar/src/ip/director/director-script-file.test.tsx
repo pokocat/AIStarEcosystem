@@ -83,7 +83,7 @@ test("workbench paste entry imports and saves through the existing revision guar
   const work: any = { id: "file-test-work", idea: "", genre: "", tone: "", draft: "", draftRev: 7, tasks: [], episodes: [], settings: { style: "真人写实", aspectRatio: "9:16" }, pricing: { textMax: 21 } };
   const apply = vi.fn(); api.patchWork.mockResolvedValue({ ...work, draft: "第一场：夜市\n小鹿：回家吧。", draftRev: 8 });
   render(<DirectorScript work={work} apply={apply} setError={vi.fn()} {...({} as any)}/>);
-  fireEvent.click(screen.getByRole("button", { name: "已有剧本？粘贴或上传" })); upload();
+  fireEvent.click(screen.getByRole("button", { name: "粘贴或上传剧本" })); upload();
   await screen.findByLabelText("文件文字预览");
   fireEvent.click(screen.getByRole("button", { name: "使用文件内容" }));
   fireEvent.click(screen.getByRole("button", { name: "保存剧本" }));

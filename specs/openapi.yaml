@@ -1486,6 +1486,43 @@ components:
         deadlineAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
         finishedAt: { type: string, format: date-time, nullable: true }
+    StudioSegmentedMaterial:
+      type: object
+      required: [nodeId, title, slot]
+      properties:
+        nodeId: { type: string }
+        title: { type: string }
+        slot: { type: string, enum: [image, character, voice] }
+    StudioSegmentedVideoRequest:
+      type: object
+      required: [clientRequestId, sceneId, duration, ratio, budgetCap]
+      properties:
+        clientRequestId: { type: string }
+        sceneId: { type: string }
+        text: { type: string }
+        hasScript: { type: boolean }
+        options: { type: object, additionalProperties: { type: string } }
+        language: { type: string }
+        duration: { type: integer }
+        ratio: { type: string }
+        model: { type: string }
+        tier: { type: string }
+        optimize: { type: boolean }
+        materials: { type: array, items: { $ref: '#/components/schemas/StudioSegmentedMaterial' } }
+        budgetCap: { type: integer, format: int64 }
+        billing: { type: object, additionalProperties: true }
+    StudioSegmentedVideoPrice:
+      type: object
+      required: [segments, boards, boardReview, videoCost, boardCost, textCost, estimated, cap]
+      properties:
+        segments: { type: array, items: { type: integer } }
+        boards: { type: integer }
+        boardReview: { type: boolean }
+        videoCost: { type: integer, format: int64 }
+        boardCost: { type: integer, format: int64 }
+        textCost: { type: integer, format: int64 }
+        estimated: { type: integer, format: int64 }
+        cap: { type: integer, format: int64 }
     StudioPlanExecutionCreateRequest:
       type: object
       required: [clientRequestId, stage, planRunId, planFingerprint, budgetCap, autoFixCap]
@@ -15019,6 +15056,34 @@ paths:
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioBranchRequest' } } } }
       responses:
         '200': { description: 'ApiResponse<StudioDialogueState>' }
+  /v1/ip-studio/studio/segmented-video-price:
+    get:
+      tags: [ipstudio]
+      operationId: ipStudioSegmentedVideoPrice
+      description: AI 视频页长视频（比所选模型单段上限长）的段数和价格，只按段数、张数算，不碰素材文件。真源 docs/studio-segmented-video.md。
+      parameters:
+        - { in: query, name: duration, required: true, schema: { type: integer, minimum: 1, maximum: 60 } }
+        - { in: query, name: ratio, required: true, schema: { type: string } }
+        - { in: query, name: model, schema: { type: string } }
+        - { in: query, name: tier, schema: { type: string } }
+        - { in: query, name: images, schema: { type: integer, minimum: 0 } }
+        - { in: query, name: character, schema: { type: boolean } }
+        - { in: query, name: voice, schema: { type: boolean } }
+        - { in: query, name: optimize, schema: { type: boolean } }
+      responses:
+        '200': { description: 'ApiResponse<StudioSegmentedVideoPrice>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioSegmentedVideoPrice' } } } }
+        '400': { description: STUDIO_INPUT_INVALID / STUDIO_VIDEO_MODE_UNAVAILABLE / STUDIO_SEGMENTS_TOO_MANY / STUDIO_IMAGE_SIZE_UNSUPPORTED }
+  /v1/ip-studio/projects/{id}/segmented-videos:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    post:
+      tags: [ipstudio]
+      operationId: ipStudioStartSegmentedVideo
+      description: 一键做长视频：写分段脚本、审脚本、出分镜图并检查、各段出片、合成。计划由服务端生成，用户点生成就是确认；进度、暂停、继续、停止走 plan-executions。同一个 clientRequestId 再交一次返回原来那次。
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioSegmentedVideoRequest' } } } }
+      responses:
+        '200': { description: 'ApiResponse<StudioPlanExecution>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioPlanExecution' } } } }
+        '400': { description: STUDIO_INPUT_INVALID / STUDIO_VIDEO_MODE_UNAVAILABLE / STUDIO_SEGMENTS_TOO_MANY }
+        '409': { description: STUDIO_PRICE_CHANGED（价格变了，details.cap 是新的上限）/ STUDIO_PLAN_EXECUTION_BUSY / STUDIO_REQUEST_CHANGED }
   /v1/ip-studio/projects/{id}/plan-executions:
     parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
     post:

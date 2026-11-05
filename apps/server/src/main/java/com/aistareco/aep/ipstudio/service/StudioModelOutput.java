@@ -34,7 +34,7 @@ public final class StudioModelOutput {
             output.putObject("textRevision").put("summary","已保留模型返回的内容").put("content",text);
         if(usableBody&&"assistant".equals(operation)&&input.hasNonNull("scriptEdit"))
             output.putObject("scriptRevision").put("summary","已保留模型返回的内容").put("markdown",text);
-        if("director".equals(operation)&&"script".equals(input.path("_director").path("task").asText())) {
+        if("director".equals(operation)&&java.util.Set.of("script","script-more").contains(input.path("_director").path("task").asText())) {
             ObjectNode script=json.createObjectNode().put("content",text);
             try {var parsed=ModelJson.parse(json,raw);if(parsed.isObject()){script=(ObjectNode)parsed.deepCopy();script.put("content",text);}}
             catch(Exception ignored){}

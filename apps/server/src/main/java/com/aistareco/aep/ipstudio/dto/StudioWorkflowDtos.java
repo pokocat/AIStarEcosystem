@@ -11,13 +11,35 @@ public final class StudioWorkflowDtos {
     public record RecreationSettings(String maxSegmentSec, String videoModel) {}
     public record CheckSettings(String targetRunId, String targetStorageKey, List<String> checkIds) {}
     public record DialogueBinding(String threadId, String messageId) {}
+    /**
+     * 长视频的分段脚本 / 审稿（docs/studio-segmented-video.md）。只由连续制作提交，客户端直接发一律拒绝。
+     * kind：script | review；issues：程序查出的硬问题，只有审稿用；refCount：这次有几张编号的参考图。
+     */
+    public record SegmentedText(String kind, com.aistareco.aep.ipstudio.scene.StudioSceneCatalog.ComposeRequest scene,
+                                List<com.aistareco.aep.ipstudio.segmented.SegmentedPlan.Segment> segments, boolean hasScript, boolean singleShot,
+                                List<String> issues, int refCount) {}
     public record RunRequest(String clientRequestId, String nodeId, String operation, String prompt,
                              List<Reference> references, String model, String size, Integer durationSec,
                              String aspectRatio, Integer count, ScriptSettings settings, Integer episodeNo,
                              String mode, List<String> contextNodeIds, List<Turn> history, Long maxCost, Packaging packaging, VideoSettings video, Boolean readVisuals, ScriptEdit scriptEdit, TextEdit textEdit, com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing,
                              RecreationSettings recreation, CheckSettings check, String skillKey, Integer skillVersion, String stage, String executionId, DialogueBinding dialogue,
                              EditTimeline edit,com.aistareco.aep.billing.service.ModelBillingApproval modelBilling,
+                             com.aistareco.aep.ipstudio.scene.StudioSceneCatalog.ComposeRequest scene,
+                             SegmentedText segmented) {
+        /** Before the long-video script input (docs/studio-segmented-video.md). */
+        public RunRequest(String clientRequestId, String nodeId, String operation, String prompt,
+                             List<Reference> references, String model, String size, Integer durationSec,
+                             String aspectRatio, Integer count, ScriptSettings settings, Integer episodeNo,
+                             String mode, List<String> contextNodeIds, List<Turn> history, Long maxCost, Packaging packaging, VideoSettings video, Boolean readVisuals, ScriptEdit scriptEdit, TextEdit textEdit, com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing,
+                             RecreationSettings recreation, CheckSettings check, String skillKey, Integer skillVersion, String stage, String executionId, DialogueBinding dialogue,
+                             EditTimeline edit,com.aistareco.aep.billing.service.ModelBillingApproval modelBilling,
                              com.aistareco.aep.ipstudio.scene.StudioSceneCatalog.ComposeRequest scene) {
+            this(clientRequestId,nodeId,operation,prompt,references,model,size,durationSec,aspectRatio,count,settings,episodeNo,mode,contextNodeIds,history,maxCost,packaging,video,readVisuals,scriptEdit,textEdit,billing,recreation,check,skillKey,skillVersion,stage,executionId,dialogue,edit,modelBilling,scene,null);
+        }
+        /** The same request as a long-video script step of an execution. */
+        public RunRequest withSegmented(SegmentedText input,Boolean visuals) {
+            return new RunRequest(clientRequestId,nodeId,operation,prompt,references,model,size,durationSec,aspectRatio,count,settings,episodeNo,mode,contextNodeIds,history,maxCost,packaging,video,visuals,scriptEdit,textEdit,billing,recreation,check,skillKey,skillVersion,stage,executionId,dialogue,edit,modelBilling,scene,input);
+        }
         /** 31-arg shape before the AI 视频编导 scene input (docs/studio-prompt-architecture.md §5.1, 2026-11-01). */
         public RunRequest(String clientRequestId, String nodeId, String operation, String prompt,
                              List<Reference> references, String model, String size, Integer durationSec,

@@ -60,9 +60,15 @@ final class PlanState {
         String stage=step.path("stage").asText();
         for(JsonNode dependency:step.path("dependsOn")) {
             var target=step(state,stage,dependency.asText());
-            if(target==null||!"done".equals(target.path("status").asText()))return false;
+            if(target==null||!("done".equals(target.path("status").asText())||target.path("softSkipped").asBoolean(false)))return false;
         }
         return true;
+    }
+    /** A step told to wait before its next attempt ({@code notBefore}): not ready yet. Steps without one are always due. */
+    static boolean due(JsonNode step,java.time.Instant now) {
+        String at=step.path("notBefore").asText("");
+        if(at.isEmpty())return true;
+        try {return !java.time.Instant.parse(at).isAfter(now);} catch(RuntimeException e){return true;}
     }
     /** A finished check whose AI verdict is not pass, and which the user has not yet resolved (accept or continue). */
     static boolean unresolvedCheck(JsonNode state,JsonNode step) {

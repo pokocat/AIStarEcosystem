@@ -163,4 +163,20 @@ class DirectorVideoPromptTest {
         assertTrue(legacy.contains("【语音轨】"));
         assertNotEquals(legacy, prompt(clip()));
     }
+
+    /** AI 视频页的长视频：一段 30 秒可以到 8 镜，配两张分镜图（docs/studio-segmented-video.md）。不超过 4 镜时和导演台一字不差。 */
+    @Test
+    void moreThanFourShotsMapToTwoBoards() throws Exception {
+        var base = OM.createObjectNode();
+        var shots = base.put("durationSec", 30).putArray("shots");
+        for (int i = 0; i < 6; i++) shots.addObject().put("durationSec", 5).put("size", "近景").put("camera", "固定机位").put("still", "画面" + (i + 1)).put("action", "动作");
+        String text = DirectorPrompts.videoPrompt(OM.createObjectNode().put("style", "真人写实"), base, List.of(), Map.of(), List.of(), List.of(), new LinkedHashMap<>(), Map.of(), 8);
+        assertTrue(text.contains("参考图1 是 2×2 分镜：左上格对应第1镜，右上格对应第2镜，左下格对应第3镜，右下格对应第4镜"), text);
+        assertTrue(text.contains("参考图2 是 2×2 分镜：左上格对应第5镜，右上格对应第6镜，其余格子是空的"), text);
+        assertTrue(text.contains("第6镜"), text);
+        // 第一个重载不变：还是最多 4 镜
+        String director = prompt(clip());
+        assertEquals(director, DirectorPrompts.videoPrompt(OM.createObjectNode().put("style", "真人写实"), clip(), REFS, NAMES, List.of(), List.of("林小雅", "陈默"), new LinkedHashMap<>(), Map.of(), DirectorPrompts.MAX_SHOTS));
+        assertFalse(director.contains("参考图2 是 2×2"), director);
+    }
 }

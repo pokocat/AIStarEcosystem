@@ -18,6 +18,12 @@ public final class DirectorFixtures {
     public static JsonNode output(ObjectMapper om, JsonNode meta) {
         ObjectNode out = om.createObjectNode();
         switch (meta.path("task").asText()) {
+            case "script-more" -> {
+                StringBuilder s = new StringBuilder();
+                for (int n = meta.path("writeFrom").asInt(); n <= meta.path("writeTo").asInt(); n++)
+                    s.append("# 第").append(n).append("集 接下来的事\n\n## 第1场 旧书店 · 夜\n林夏又回到旧书店，把那封信放回桌上，等人来取。\n林夏：这回我不躲了。\n\n");
+                out.put("content", s.toString().strip());
+            }
             case "script" -> {
                 out.put("title", "旧书店的红信封").put("logline", "林夏在旧书店找到一封写给自己的信。");
                 ObjectNode o = out.putObject("outline").put("world", "老城区一家快关门的旧书店，夜里十点后店里的信会自己出现。")

@@ -54,7 +54,9 @@ jobs:
         working-directory: apps/server
         run: python3 scripts/compile-migration-tools.py
       - name: Cluster release policy refusal tests
-        run: python3 infra/scripts/cluster/test_policy.py
+        run: |
+          python3 -m py_compile infra/scripts/cluster/archive_transfer.py infra/scripts/cluster/bundle.py
+          python3 infra/scripts/cluster/test_policy.py
       - name: PostgreSQL 18.0 real database gate
         working-directory: apps/server
         run: ./mvnw -B -Ppostgres-test -Dspring.test.context.cache.maxSize=2 -Dapi.version=1.44 -DforkCount=1 -DreuseForks=true test && python3 scripts/check-postgres-reports.py

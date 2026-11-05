@@ -15,6 +15,9 @@ import java.util.*;
 public final class StudioPlanSteps {
     private StudioPlanSteps() {}
 
+    /** 报价时的占位节点：{@link #request} 没有 Binding 时请求的 nodeId。 */
+    public static final String QUOTE_NODE="quote";
+
     /** What a video mode consumes, read from the selected model's contract. */
     /** rewrite：所选视频模型出片前会改写描述（H3），视频步骤先按官方写法改写提示词再出片（2026-10-27）。 */
     public record ModeSpec(boolean firstFrame,boolean lastFrame,boolean references,boolean rewrite) {
@@ -67,7 +70,7 @@ public final class StudioPlanSteps {
         String operation=step.path("operation").asText();
         JsonNode settings=step.path("settings");
         String prompt=step.path("prompt").asText("");
-        String requestId=binding==null?"quote":binding.clientRequestId(),nodeId=binding==null?"quote":binding.nodeId();
+        String requestId=binding==null?QUOTE_NODE:binding.clientRequestId(),nodeId=binding==null?QUOTE_NODE:binding.nodeId();
         Long maxCost=binding==null?null:binding.maxCost();
         BillingSelection billing=binding==null?null:binding.billing();
         String executionId=binding==null?null:binding.executionId();
@@ -85,10 +88,10 @@ public final class StudioPlanSteps {
             case "image" -> {
                 List<Reference> refs=new ArrayList<>();
                 for(JsonNode b:ordered(settings.path("referenceBindings")))refs.add(new Reference(null,null,null,keys.binding(b),imageRole(b.path("role").asText()),null));
-                yield new RunRequest(requestId,nodeId,"image",prompt,refs,null,settings.path("size").asText(null),null,settings.path("aspectRatio").asText(null),settings.path("count").asInt(1),
+                yield new RunRequest(requestId,nodeId,"image",prompt,refs,settings.path("model").asText(null),settings.path("size").asText(null),null,settings.path("aspectRatio").asText(null),settings.path("count").asInt(1),
                         null,null,null,null,null,maxCost,null,null,null,null,null,billing,null,null,null,null,stage,executionId,null);
             }
-            case "video" -> new RunRequest(requestId,nodeId,"video",prompt,List.of(),null,null,settings.path("durationSec").asInt(),settings.path("aspectRatio").asText(),
+            case "video" -> new RunRequest(requestId,nodeId,"video",prompt,List.of(),settings.path("model").asText(null),null,settings.path("durationSec").asInt(),settings.path("aspectRatio").asText(),
                     settings.path("count").asInt(1),null,null,null,null,null,maxCost,null,video(settings,keys,modes),null,null,null,billing,null,null,null,null,stage,executionId,null);
             case "check" -> new RunRequest(requestId,nodeId,"check",prompt,null,null,null,null,null,null,null,null,null,null,null,maxCost,null,null,null,null,null,billing,
                     null,binding==null?new CheckSettings("quote",null,strings(settings.path("checkIds"))):binding.check(),
@@ -130,7 +133,9 @@ public final class StudioPlanSteps {
         if(!others.isEmpty()&&!spec.references())throw BusinessException.badRequest("STUDIO_VIDEO_INPUT_INVALID","这一步的视频模式不接受其他参考素材");
         for(JsonNode b:others)references.add(new VideoStudioReferenceInput(mediaType(b.path("role").asText()),keys.binding(b)));
         Long seed=video.hasNonNull("seed")?video.path("seed").asLong():null;
-        return new VideoSettings(mode,video.path("resolutionTier").asText(),seed,first,last,references.isEmpty()?null:references,null,spec.rewrite()?"auto":null);
+        // optimize=false（长视频页关了「智能优化」）：按原文出片，厂商自己的改写也关。规划出来的计划没有这个字段（校验时重建 settings），照旧。
+        boolean off=video.path("optimize").isBoolean()&&!video.path("optimize").asBoolean();
+        return new VideoSettings(mode,video.path("resolutionTier").asText(),seed,first,last,references.isEmpty()?null:references,off&&spec.rewrite()?Boolean.FALSE:null,!off&&spec.rewrite()?"auto":null);
     }
     static List<JsonNode> ordered(JsonNode bindings) {
         List<JsonNode> out=new ArrayList<>();if(bindings.isArray())bindings.forEach(out::add);

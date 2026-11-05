@@ -67,23 +67,27 @@ public class StudioSceneCatalog {
     public record HomeGoal(String id, String title, String description, String sceneId, List<String> covers) {}
     /** @param anyOf 这几个选填的素材位（从 0 起）至少放一个，比如服装上身的上装和下装 */
     public record ImageScene(String id, String group, String title, String description, List<SceneRef> refs, String prompt, String hint, String ratio,
-                             List<OptionGroup> options, Boolean enabled, String coverKey, List<String> exampleKeys, String coverUrl, List<Media> examples, List<Integer> anyOf) {
+                             List<OptionGroup> options, Boolean enabled, String coverKey, List<String> exampleKeys, String coverUrl, List<Media> examples, List<Integer> anyOf, String example) {
         public ImageScene(String id, String group, String title, String description, List<SceneRef> refs, String prompt, String hint, String ratio) {
-            this(id, group, title, description, refs, prompt, hint, ratio, null, null, null, null, null, null, null);
+            this(id, group, title, description, refs, prompt, hint, ratio, null, null, null, null, null, null, null, null);
+        }
+        public ImageScene(String id, String group, String title, String description, List<SceneRef> refs, String prompt, String hint, String ratio,
+                          List<OptionGroup> options, Boolean enabled, String coverKey, List<String> exampleKeys, String coverUrl, List<Media> examples, List<Integer> anyOf) {
+            this(id, group, title, description, refs, prompt, hint, ratio, options, enabled, coverKey, exampleKeys, coverUrl, examples, anyOf, null);
         }
         public ImageScene(String id, String group, String title, String description, List<SceneRef> refs, String prompt, String hint, String ratio,
                           List<OptionGroup> options, Boolean enabled, String coverKey, List<String> exampleKeys, String coverUrl, List<Media> examples) {
-            this(id, group, title, description, refs, prompt, hint, ratio, options, enabled, coverKey, exampleKeys, coverUrl, examples, null);
+            this(id, group, title, description, refs, prompt, hint, ratio, options, enabled, coverKey, exampleKeys, coverUrl, examples, null, null);
         }
         public boolean on() { return enabled == null || enabled; }
         public List<OptionGroup> optionGroups() { return options == null ? List.of() : options; }
         /** 同一个场景，换掉上下架 / 封面 / 示例这几项（出 wire 签名、保存时剥地址都用它）。 */
         public ImageScene withMedia(Boolean on, String cover, List<String> exampleKeys, String coverUrl, List<Media> examples) {
-            return new ImageScene(id, group, title, description, refs, prompt, hint, ratio, options, on, cover, exampleKeys, coverUrl, examples, anyOf);
+            return new ImageScene(id, group, title, description, refs, prompt, hint, ratio, options, on, cover, exampleKeys, coverUrl, examples, anyOf, example);
         }
         /** 出图描述换成提示词库里的（{@link #overlay}）。 */
         public ImageScene withPrompt(String text) {
-            return new ImageScene(id, group, title, description, refs, text, hint, ratio, options, enabled, coverKey, exampleKeys, coverUrl, examples, anyOf);
+            return new ImageScene(id, group, title, description, refs, text, hint, ratio, options, enabled, coverKey, exampleKeys, coverUrl, examples, anyOf, example);
         }
     }
     public record Slot(String label, boolean required, Integer max) {}
@@ -495,6 +499,50 @@ public class StudioSceneCatalog {
     public StudioPromptAssembler.Assembled sceneScript(ComposeRequest r, String current, boolean readVisuals, java.util.Map<String, Integer> frozen) {
         VideoInput in = videoInput(r, false);
         VideoScene scene = in.scene();
+        java.util.Map<String, Object> vars = scriptVars(in, r, current, readVisuals);
+        String method = groupMethod(scene.group());
+        return assembler().assemble(new StudioPromptAssembler.Call(STAGE_SCRIPT, method, sceneKey(scene.id()), vars, frozen, scene.structure()));
+    }
+
+    /**
+     * 长视频的分段脚本（docs/studio-segmented-video.md）：素材、场景拍法和编导一样，只是段数和每段秒数定好了，输出是结构化镜头。
+     * {@code segments} 是 {@code SegmentedPlan.Segment} 的 no / seconds / shotsLo / shotsHi。
+     */
+    public StudioPromptAssembler.Assembled segmentedScript(ComposeRequest r, List<java.util.Map<String, Object>> segments, boolean hasScript, boolean singleShot,
+                                                           boolean readVisuals, java.util.Map<String, Integer> frozen) {
+        VideoInput in = videoInput(r, false);
+        java.util.Map<String, Object> vars = scriptVars(in, r, null, readVisuals);
+        vars.put("segments", segments);
+        vars.put("hasScript", hasScript);
+        vars.put("singleShot", singleShot);
+        return assembler().assemble(new StudioPromptAssembler.Call(com.aistareco.aep.ipstudio.prompt.StudioPromptCallPoints.SEGMENTED_SCRIPT, groupMethod(in.scene().group()), sceneKey(in.scene().id()), vars, frozen, in.scene().structure()));
+    }
+
+    /** 开拍前审一轮：只看脚本和要求，不拼场景拍法，避免按拍法又重写一遍。 */
+    public StudioPromptAssembler.Assembled segmentedReview(ComposeRequest r, List<java.util.Map<String, Object>> segments, List<String> issues, String current, java.util.Map<String, Integer> frozen) {
+        java.util.Map<String, Object> vars = new java.util.LinkedHashMap<>();
+        vars.put("duration", r.duration());
+        vars.put("orientation", orientation(r.ratio()));
+        vars.put("ask", trim(r.text()));
+        vars.put("segments", segments);
+        vars.put("hasIssues", !issues.isEmpty());
+        vars.put("issues", issues);
+        vars.put("current", current);
+        return assembler().assemble(new StudioPromptAssembler.Call(com.aistareco.aep.ipstudio.prompt.StudioPromptCallPoints.SEGMENTED_REVIEW, null, null, vars, frozen, null));
+    }
+
+    /** 受理时冻结分段脚本用到的版本（审稿不拼场景，多冻结也不影响）。 */
+    public java.util.Map<String, Integer> freezeSegmented(String sceneId) {
+        VideoScene scene = video(sceneId).orElseThrow(() -> bad("这个场景不存在，请刷新后重选"));
+        List<String> keys = new ArrayList<>(List.of(com.aistareco.aep.ipstudio.prompt.StudioPromptCallPoints.SEGMENTED_SCRIPT, com.aistareco.aep.ipstudio.prompt.StudioPromptCallPoints.SEGMENTED_REVIEW, sceneKey(scene.id())));
+        String method = groupMethod(scene.group());
+        if (method != null) keys.add(method);
+        return assembler().freeze(keys);
+    }
+
+    /** 编导和分段脚本共用的变量：素材编号、看不看得到图。 */
+    private java.util.Map<String, Object> scriptVars(VideoInput in, ComposeRequest r, String current, boolean readVisuals) {
+        VideoScene scene = in.scene();
         java.util.Map<String, Object> vars = videoVars(in, r);
         vars.put("language", blank(r.language()) ? "中文" : r.language().trim());
         String revision = trim(r.revision()), changed = trim(r.settingsChanged());
@@ -521,8 +569,7 @@ public class StudioSceneCatalog {
         vars.put("noAsk", in.text().isEmpty() && (!refs.isEmpty() || !seen.isEmpty()));
         vars.put("current", current == null || current.isBlank() ? "" : JSON.valueToTree(current).toString());
         vars.put("readVisuals", readVisuals);
-        String method = groupMethod(scene.group());
-        return assembler().assemble(new StudioPromptAssembler.Call(STAGE_SCRIPT, method, sceneKey(scene.id()), vars, frozen, scene.structure()));
+        return vars;
     }
 
     /** 编导受理时冻结的条目：环节、底座、场景、所属分组的内容方法（有的话）。 */
