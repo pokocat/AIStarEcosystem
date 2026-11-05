@@ -32,4 +32,4 @@
 
 备份在生产 root-only 目录 `/opt/ai-star-eco/backups/seedance-prompt-limit-20261105T000616Z/`（`video_request_spec.before.tsv` / `.after.tsv`，只含这四条规格，不含密钥）。回滚时用同一个 `endpointSave` 把 `before` 的规格写回去，或者只把这个数改回 2000。
 
-前端「超出多少字、可换哪个模型」的提示是另一件事，提交在 `main`，还没有发布；线上画布超过 5000 字时看到的仍是旧提示。
+前端「超出多少字、可换哪个模型」的提示是另一件事，同日单独发布，见 [发布记录](prompt-limit-notice-release-20261105.md)。
