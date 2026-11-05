@@ -177,7 +177,8 @@ test("video: after replacing the voice, opening the draft again picks the replac
   // 再写一版脚本时交出去的声音就是换后的那份。
   api.composeScene.mockResolvedValue({ text: "write script" });
   fillField(screen.getByRole("textbox", { name: "想做的视频" }), "保湿精华");
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "AI 编导" })); });
+  fireEvent.click(screen.getByRole("button", { name: "AI 编导" }));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "让编导写" })); });
   await waitFor(() => expect(api.submit).toHaveBeenCalled());
   const saved = store.get("IPP-V")!.doc;
   const script = saved.nodes.find(n => n.metadata?.studio?.sceneDirector)!;

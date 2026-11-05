@@ -110,9 +110,8 @@ test("视频：编导看商品图写脚本（请求先存进画布、带图）�
         billing: { inputTokens: 900, outputTokens: 300, credits: 2, inputCreditsPerK: 1, outputCreditsPerK: 1 } } }
     : { id, status: "running", output: {} });
   await act(async () => { render(<SceneVideoStudio/>); });
-  const send = () => screen.getByRole("button", { name: "AI 编导" }) as HTMLButtonElement;
+  const send = () => screen.getByRole("button", { name: "让编导写" }) as HTMLButtonElement;
   await waitFor(() => expect(screen.getByText("先放商品图")).toBeTruthy());
-  expect(send().disabled).toBe(true);
   fillField(screen.getByRole("textbox", { name: "想做的视频" }), "保湿精华，不黏腻");
   // 连着点两组选项：后一次不能把前一次盖掉。
   optionGroup("出镜方式");
@@ -124,6 +123,11 @@ test("视频：编导看商品图写脚本（请求先存进画布、带图）�
   expect(api.createProject).toHaveBeenCalledWith({ name: "口播带货 · 保湿精华", sceneId: "ecom-talking" });
   // 默认 25 秒超过模型上限：先按模型最长 15 秒出，拖到上限以外才分段交给助手。
   expect(screen.getByRole("button", { name: /^视频规格：/ }).textContent).toContain("15 秒");
+  // 点「AI 编导」只是换到编导那一页：还没开始，想法带过来，能调时长（2026-11-04 用户反馈）。
+  fireEvent.click(screen.getByRole("button", { name: "AI 编导" }));
+  await waitFor(() => expect(fieldText("想做的视频")).toBe("保湿精华，不黏腻"));
+  expect(api.submit).not.toHaveBeenCalled();
+  expect(screen.getByRole("group", { name: "常用开头" })).toBeTruthy();
   await waitFor(() => expect(send().disabled).toBe(false));
   await act(async () => { fireEvent.click(send()); });
 
@@ -161,6 +165,41 @@ test("视频：编导看商品图写脚本（请求先存进画布、带图）�
   expect(videoRequest).toMatchObject({ operation: "video", prompt: script, durationSec: 10, aspectRatio: "9:16", count: 1, model: "ep-h3", maxCost: 400,
     video: { mode: "universal_reference_video", resolutionTier: "768p", rewrite: "auto", references: [{ mediaType: "image", key: "ipstudio/media/u/p.jpg" }] } });
   expect(await screen.findByText(/正在生成，一般要几分钟/)).toBeTruthy();
+});
+
+test("video: AI 编导 opens the page without starting; the duration set there is what the first script is written for, and an idea only fills the box", async () => {
+  window.history.replaceState(null, "", "/video?scene=ecom-talking");
+  api.capabilities.mockResolvedValue({ mock: false, operations: [], imageCost: 8, textCost: 1, videoCost: null,
+    textModels: [{ endpointId: "ep-qwen", name: "Qwen", isDefault: true, supportsVision: true, tokenPricing: { maxCost: 21 } }] });
+  api.videoModels.mockResolvedValue([H3]);
+  api.importMedia.mockResolvedValue({ key: "ipstudio/media/u/p.jpg", url: "blob:p", mediaType: "image", mimeType: "image/jpeg", bytes: 1, fileName: "p.jpg", width: 800, height: 800 });
+  api.submit.mockImplementation(async () => ({ id: "IPR-s", status: "running", output: {} }));
+  api.readRun.mockResolvedValue({ id: "IPR-s", status: "running", output: {} });
+  await act(async () => { render(<SceneVideoStudio/>); });
+  // 什么都没放也能进去；缺的就地说，发送键点不了。
+  fireEvent.click(await screen.findByRole("button", { name: "AI 编导" }));
+  const go = () => screen.getByRole("button", { name: "让编导写" }) as HTMLButtonElement;
+  expect(screen.getByText("想做一条什么视频？")).toBeTruthy();
+  expect(screen.getByText("先放商品图")).toBeTruthy();
+  expect(go().disabled).toBe(true);
+  expect(api.createProject).not.toHaveBeenCalled();
+  // 常用开头只进输入框，不发送；再点一次不重复。
+  fireEvent.click(within(screen.getByRole("group", { name: "常用开头" })).getByRole("button", { name: "开头先说这东西适合谁" }));
+  fireEvent.click(within(screen.getByRole("group", { name: "常用开头" })).getByRole("button", { name: "开头先说这东西适合谁" }));
+  await waitFor(() => expect(fieldText("想做的视频")).toBe("开头先说这东西适合谁"));
+  await pickFromLibrary();
+  setDuration(10);
+  expect(api.submit).not.toHaveBeenCalled();
+  await waitFor(() => expect(go().disabled).toBe(false));
+  await act(async () => { fireEvent.click(go()); });
+  await waitFor(() => expect(api.submit).toHaveBeenCalledTimes(1));
+  expect(api.submit.mock.calls[0][1].scene).toMatchObject({ kind: "video-script", text: "开头先说这东西适合谁", duration: 10 });
+  // 开始之后这一页是改稿的输入框，开场那一块收起来。
+  expect(await screen.findByRole("textbox", { name: "想改哪里" })).toBeTruthy();
+  expect(screen.queryByText("想做一条什么视频？")).toBeNull();
+  // 想法还在编辑框里。
+  fireEvent.click(screen.getByRole("button", { name: "回到编辑" }));
+  await waitFor(() => expect(fieldText("想做的视频")).toBe("开头先说这东西适合谁"));
 });
 
 test("视频：按钮旁的价按服务端报价显示折扣（原价划掉）；报价不带素材 key 和提示词；换时长后慢回来的旧报价不会盖住新选择", async () => {

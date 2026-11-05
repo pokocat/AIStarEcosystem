@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowUp, Check, ChevronDown, Copy, Cpu, Download, FolderOpen, Image as ImageIcon, Loader2, Mic, PencilLine, Plus,
@@ -93,7 +93,7 @@ export function SceneVideoStudio() {
   const [busy, setBusy] = useState(false);
   const [submitting, setSubmitting] = useState<string>();
   const [tab, setTab] = useState<"example" | "results">("example");
-  // 一个编辑框：放想法，或放「采用」进来的脚本，按框里的内容生成。AI 编导写脚本时整张卡换成编导那一页。
+  // 一个编辑框：放想法，或放「采用」进来的脚本，按框里的内容生成。点「AI 编导」整张卡换成编导那一页（点了还没开始，发送才写）。
   const [view, setView] = useState<"compose" | "director">("compose");
   const [scriptId, setScriptId] = useState<string>();
   const [revise, setRevise] = useState("");
@@ -143,6 +143,8 @@ export function SceneVideoStudio() {
   const pickScene = useCallback((next: VideoScene) => {
     sceneNow.current = next.id; durationTouched.current = false;
     setSceneId(next.id); setDuration(next.duration); setRatio(next.ratio); setPicked({});
+    // 爆款复刻交给创作助手，没有编导这一页；停在还没开始的编导页时换过去要回到编辑。
+    if (next.skill === RECREATION) setView("compose");
     writeQuery(next.id, draftRef.current?.id);
   }, []);
 
@@ -592,10 +594,22 @@ export function SceneVideoStudio() {
       ? { text: "脚本放进编辑框了，原来写的那段换掉了", undo: () => { setText(before.text); setScriptId(before.scriptId); setNote(undefined); } } : undefined);
     setTimeout(() => input.current?.focus("end", { preventScroll: true }), 0);
   };
-  /** AI 编导：还没写过就把编辑框里的想法交给编导写第一版；写过了回到编导那一页接着改（不另花一次）。 */
+  /**
+   * AI 编导：只是换到编导那一页，点了不花钱也不开始。还没写过就在那里写要求、放素材、调时长，点发送才写第一版
+   * （2026-11-04 用户反馈：以前一点就开始写，没机会调时长）；写过了就接着改。
+   */
   const openDirector = () => {
-    if (scripts.length) { setView("director"); setHint(""); setTimeout(() => document.querySelector<HTMLInputElement>('.scene-video-studio input[aria-label="想改哪里"]')?.focus(), 0); return; }
-    void send(text);
+    setView("director"); setHint("");
+    setTimeout(() => {
+      if (scripts.length) document.querySelector<HTMLInputElement>('.scene-video-studio input[aria-label="想改哪里"]')?.focus();
+      else input.current?.focus("end", { preventScroll: true });
+    }, 0);
+  };
+  /** 点一条常用开头：接在要求后面，不发送。 */
+  const addIdea = (idea: string) => {
+    setText(old => old.includes(idea) ? old : old.trim() ? `${old.replace(/\s+$/, "")}\n${idea}` : idea);
+    setHint("");
+    setTimeout(() => input.current?.focus("end", { preventScroll: true }), 0);
   };
   /**
    * 重新编辑（成功的视频）：成功了但不满意时用。把这条用的脚本（含出片前改过的字）、时长、画面、清晰度、模型和要不要先优化放回「生成视频」，
@@ -802,6 +816,11 @@ export function SceneVideoStudio() {
         <div className="scene-director-title"><AiMark size={13}/><strong>AI 编导</strong>
           <button type="button" className="scene-text-button" onClick={() => setView("compose")}>回到编辑</button></div>
         <div className="scene-director-thread" ref={thread} aria-live="polite">
+          {!scripts.length && <div className="scene-director-start">
+            <h2>想做一条什么视频？</h2>
+            {scene.ideas.length > 0 && <div className="scene-director-ideas" role="group" aria-label="常用开头">{scene.ideas.map(idea =>
+              <button key={idea} type="button" onClick={() => addIdea(idea)}>{idea}</button>)}</div>}
+          </div>}
           {scripts.map((row, i) => <ScriptTurn key={row.id} row={row} refs={scriptRefs(row)} run={live[row.id]} busy={busy} submitting={submitting === row.id} latest={row.id === latestScript?.id}
             given={scripts.slice(0, i + 1).map(s => s.metadata?.studio?.sceneDirector?.ask ?? "")} facts={scene.brief?.facts}
             copied={copied === row.id} onUse={() => useScript(row)} onBack={() => setView("compose")} onCopy={() => void copy(row)}
@@ -809,18 +828,29 @@ export function SceneVideoStudio() {
             onRetry={() => void retry(row)} onConfirm={() => void confirmOriginal(row)}
             onStop={() => { const id = row.metadata?.studio?.runId; if (id) void cancelRun(id).catch(e => showFailure({ action: "停止", error: e })); }}/>)}
         </div>
-        <form className="scene-director-input" onSubmit={e => { e.preventDefault(); void send(revise); }}>
-          {mediaRow(true)}
-          <input aria-label="想改哪里" placeholder={latestChanges ? "设置改过了，直接发送就照现在的改一版" : "想改哪里，直接说"} title={latestChanges || undefined}
-            value={revise} onChange={e => { setRevise(e.target.value); setHint(""); }}/>
+        {/* 还没写过：这里写的就是编辑框里那段想法（同一份，回到编辑还在）。写过了：这里写改法。 */}
+        <form className="scene-director-input" onSubmit={e => { e.preventDefault(); void send(scripts.length ? revise : text); }}>
+          {scripts.length ? <>
+            {mediaRow(true)}
+            <input aria-label="想改哪里" placeholder={latestChanges ? "设置改过了，直接发送就照现在的改一版" : "想改哪里，直接说"} title={latestChanges || undefined}
+              value={revise} onChange={e => { setRevise(e.target.value); setHint(""); }}/>
+          </> : <>
+            {mediaRow()}
+            <ScenePromptEditor ref={input} ariaLabel="想做的视频" value={text} refs={promptRefs} placeholder={scene.placeholder}
+              onChange={v => { setText(v); setHint(""); }} onEnter={() => void send(text)}/>
+          </>}
           <footer>
             {specPill}
-            <button type="submit" className="scene-send" aria-label="让编导改" title={revise.trim() || !latestChanges ? scriptBlocker(revise) || "发送（Enter）" : "照现在的设置改一版"}
+            {scripts.length ? <button type="submit" className="scene-send" aria-label="让编导改" title={revise.trim() || !latestChanges ? scriptBlocker(revise) || "发送（Enter）" : "照现在的设置改一版"}
               disabled={busy || writing || uploading !== undefined || (!revise.trim() && !latestChanges)}>
               {busy || writing ? <Loader2 size={15} className="studio-gallery-spinner"/> : <ArrowUp size={15} strokeWidth={1.8}/>}</button>
+            : <button type="submit" className="scene-send" aria-label="让编导写" title={scriptBlocker(text) || "发送（Enter），按实际用量扣积分"}
+              disabled={busy || writing || uploading !== undefined || !!scriptBlocker(text)}>
+              {busy || writing ? <Loader2 size={15} className="studio-gallery-spinner"/> : <ArrowUp size={15} strokeWidth={1.8}/>}</button>}
           </footer>
         </form>
-        {hint && <p className="scene-hint" role="status">{hint}</p>}
+        {/* 还没写过时缺什么灰字说一句（发送键点不了）；点了没做成的原因用提醒色。 */}
+        {(hint || !scripts.length && scriptBlocker(text)) && <p className={`scene-hint${hint ? "" : " is-note"}`} role="status">{hint || scriptBlocker(text)}</p>}
       </div>
 
       : <div className="scene-compose">
@@ -835,9 +865,8 @@ export function SceneVideoStudio() {
             <button key={f.label} type="button" onClick={() => addFact(f.label)}><Plus size={11} strokeWidth={1.6}/>{f.label}{!f.required && <small>有就写</small>}</button>)}</div>}
           <footer>
             <small className={contract && Array.from(text).length > contract.promptMaxChars ? "is-over" : undefined}>{Array.from(text).length}{contract && !recreation ? ` / ${contract.promptMaxChars}` : ""}</small>
-            {!recreation && <button type="button" className="scene-ai-button" disabled={busy || writing || uploading !== undefined || (!scripts.length && !!scriptBlocker(text))}
-              title={scriptBlocker(text) || (scripts.length ? "回到 AI 编导接着改" : "按框里的想法写一版分镜脚本，按实际用量扣积分")} onClick={openDirector}>
-              {busy || writing ? <Loader2 size={13} className="studio-gallery-spinner"/> : <AiMark size={12}/>}{scriptId ? "AI 改写" : "AI 编导"}</button>}
+            {!recreation && <button type="button" className="scene-ai-button" title={scripts.length ? "回到 AI 编导接着改" : "让 AI 编导写一版分镜脚本"} onClick={openDirector}>
+              {writing ? <Loader2 size={13} className="studio-gallery-spinner"/> : <AiMark size={12}/>}{scriptId ? "AI 改写" : "AI 编导"}</button>}
           </footer>
         </div>
 
@@ -992,6 +1021,13 @@ function VideoSettingsPanel({ min, max, single, duration, onDuration, segments, 
 }) {
   const panel = useRef<HTMLDivElement>(null);
   useScenePopover(panel, onClose);
+  // 面板贴着按钮往上弹，上面放不下就会被卡片裁掉、滚也滚不到（编导页的输入框高，矮屏上「台词语言」直接看不见）：只用上面有的这么高，多的在面板里滚。
+  useLayoutEffect(() => {
+    const el = panel.current, clip = el?.closest(".scene-compose, .scene-card");
+    if (!el || !clip || getComputedStyle(el).position === "fixed") return;
+    const room = el.getBoundingClientRect().bottom - clip.getBoundingClientRect().top - 8;
+    if (room > 0) el.style.maxHeight = `min(${Math.floor(room)}px, 560px, 70vh)`;
+  }, []);
   const fill = max > min ? ((duration - min) / (max - min)) * 100 : 100;
   // 单段上限的刻度只在「最小值和最大值之间」时才画，等于最小值（如只能做 4 秒的模型）时和左端的字叠在一起。
   const singleAt = single && single > min && single < max && max > min ? ((single - min) / (max - min)) * 100 : undefined;

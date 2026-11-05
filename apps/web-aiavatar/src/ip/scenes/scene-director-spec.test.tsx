@@ -109,7 +109,8 @@ test("video: with a text-only video model the director gets no numbered pictures
   put({ id: "IPP-V", name: "v", sceneId: "ecom-talking", doc: { ...EMPTY, nodes: [productNode] as never } });
   await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
   fillField(await screen.findByRole("textbox", { name: "想做的视频" }), "保湿面霜");
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "AI 编导" })); });
+  fireEvent.click(screen.getByRole("button", { name: "AI 编导" }));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "让编导写" })); });
   // 场景输入随请求提交，服务端按提示词库拼话（docs/studio-prompt-architecture.md §5.1）。
   await waitFor(() => expect(api.submit).toHaveBeenCalled());
   expect(api.composeScene).not.toHaveBeenCalled();

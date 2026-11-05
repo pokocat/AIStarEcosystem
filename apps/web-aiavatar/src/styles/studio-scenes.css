@@ -253,6 +253,12 @@ button.scene-pill:hover, .scene-pill[aria-expanded="true"], .scene-pill.is-selec
 .scene-director-title svg { color: var(--sn-ai-star); }
 .scene-director-title strong { flex: 1; font-size: 13px; font-weight: 500; }
 .scene-director-thread { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; padding: 10px 18px 16px; }
+/* 还没写过脚本时：先问想做什么，下面是这个场景的常用开头，点一下接进输入框。 */
+.scene-director-start { flex: 1 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 16px 0; text-align: center; }
+.scene-director-start h2 { margin: 0; font-size: 16px; font-weight: 500; }
+.scene-director-ideas { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 520px; }
+.scene-studio .scene-director-ideas button { min-height: 32px; padding: 5px 12px; border: 1px solid var(--sn-field); border-radius: 10px; background: var(--ip-paper); color: var(--sn-text-2); font: inherit; font-size: 12.5px; line-height: 1.5; cursor: pointer; transition: background 140ms var(--ip-ease), color 140ms var(--ip-ease); }
+.scene-studio .scene-director-ideas button:hover { background: var(--ip-soft); color: var(--ip-ink); }
 .scene-director-turn { display: flex; flex-direction: column; gap: 10px; }
 .scene-director-ask { align-self: flex-end; max-width: 86%; margin: 0 !important; padding: 8px 12px; border-radius: 14px 14px 4px 14px; background: var(--ip-soft); font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
 .scene-director-ask.is-empty { color: var(--ip-muted); }
@@ -285,6 +291,7 @@ button.scene-pill:hover, .scene-pill[aria-expanded="true"], .scene-pill.is-selec
 .scene-director-input { position: relative; display: flex; flex-direction: column; gap: 10px; margin: 0 18px 16px; padding: 12px 12px 10px 14px; border: 1px solid var(--sn-field); border-radius: 16px; background: var(--ip-paper); }
 .scene-director-input:focus-within { border-color: #c5cad1; }
 .scene-director-input input { width: 100%; min-width: 0; height: 30px; padding: 0; border: 0; background: transparent; color: var(--ip-ink); font: inherit; font-size: 13.5px; outline: none; text-overflow: ellipsis; }
+.scene-director-input .scene-prompt-field { flex: 0 1 auto; min-height: 72px; max-height: 200px; }
 .scene-director-input>footer { display: flex; align-items: center; gap: 8px; }
 .scene-director-input>footer .scene-setting-panel-host { position: static; flex: 0 1 auto; min-width: 0; }
 .scene-director-input>footer .scene-pill { width: auto; max-width: 100%; }
@@ -432,5 +439,6 @@ html:not([data-layout="desktop"]) .scene-drawer .is-pin { display: none; }
 html:not([data-layout="desktop"]) .scene-drawer.is-pinned { display: none; }
 html:not([data-layout="desktop"]) .scene-recent { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 64px); left: 12px; right: 12px; width: auto; }
 html:not([data-layout="desktop"]) .scene-director-input { margin: 0 12px 12px; }
+html:not([data-layout="desktop"]) .scene-studio .scene-director-ideas button { min-height: 36px; }
 html:not([data-layout="desktop"]) .scene-director-thread { padding: 10px 12px 16px; }
 html:not([data-layout="desktop"]) .scene-choice-row button { height: 36px; }

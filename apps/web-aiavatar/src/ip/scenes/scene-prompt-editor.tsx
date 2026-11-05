@@ -89,13 +89,17 @@ export function PromptText({ text, refs }: { text: string; refs: ScenePromptRef[
   </>;
 }
 
-export function ScenePromptEditor({ value, onChange, refs, ariaLabel, placeholder, ref }: {
-  value: string; onChange: (value: string) => void; refs: ScenePromptRef[]; ariaLabel: string; placeholder?: string; ref?: Ref<ScenePromptEditorHandle>;
+export function ScenePromptEditor({ value, onChange, refs, ariaLabel, placeholder, onEnter, ref }: {
+  value: string; onChange: (value: string) => void; refs: ScenePromptRef[]; ariaLabel: string; placeholder?: string;
+  /** 给了就是 Enter 发送、Shift+Enter 换行（输入法拼写中的回车不算）；不给就是 Enter 换行。 */
+  onEnter?: () => void; ref?: Ref<ScenePromptEditorHandle>;
 }) {
   const count = useRef(refs.length);
   count.current = refs.length;
   const last = useRef(value), change = useRef(onChange);
   change.current = onChange;
+  const enter = useRef(onEnter);
+  enter.current = onEnter;
   const [preview, setPreview] = useState<ScenePromptRef>();
   const editor = useEditor({
     immediatelyRender: false,
@@ -106,7 +110,12 @@ export function ScenePromptEditor({ value, onChange, refs, ariaLabel, placeholde
       SceneRef.configure({ count: () => count.current }),
     ],
     content: toDoc(value, refs.length),
-    editorProps: { attributes: { role: "textbox", "aria-label": ariaLabel, "aria-multiline": "true", spellcheck: "false", class: "scene-prompt-editor" } },
+    editorProps: { attributes: { role: "textbox", "aria-label": ariaLabel, "aria-multiline": "true", spellcheck: "false", class: "scene-prompt-editor" },
+      handleKeyDown: (_view, event) => {
+        if (event.key !== "Enter" || event.shiftKey || event.isComposing || !enter.current) return false;
+        enter.current();
+        return true;
+      } },
     onUpdate: ({ editor }) => {
       const text = toText(editor);
       if (text === last.current) return;
