@@ -111,9 +111,8 @@ final class DialogueModels {
                 if (result.promptTokens() != null && result.completionTokens() != null) budget.record(result.promptTokens(), result.completionTokens());
                 return reply;
             }
-            if (result.promptTokens() == null || result.completionTokens() == null)
-                throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_USAGE_MISSING", "模型未返回有效Token用量，本次未扣积分");
-            budget.record(result.promptTokens(), result.completionTokens());
+            if (result.promptTokens()!=null && result.completionTokens()!=null)
+                budget.record(result.promptTokens(), result.completionTokens());
             return reply;
         }
 

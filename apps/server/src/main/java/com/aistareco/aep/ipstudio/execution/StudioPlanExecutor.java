@@ -248,6 +248,10 @@ public class StudioPlanExecutor {
             switch(latest.status()) {
                 case "running" -> {if(!"needs_user".equals(before))step.put("status","running");}
                 case "done" -> {
+                    if(latest.output()!=null&&latest.output().path("rawOnly").asBoolean()) {
+                        step.put("status","needs_user").put("reason","模型原文已保留，请核对后再继续制作");
+                        break;
+                    }
                     if(!"done".equals(before)) {
                         step.put("status","done");step.remove("reason");
                         if("check".equals(step.path("operation").asText()))

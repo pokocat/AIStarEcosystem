@@ -570,9 +570,8 @@ public class StudioDialogueTurnWorker {
             budget.beginSubCall();
             var reply = models.invokeChatTurnOnEndpoint(endpoint, AiModelPurpose.DAP_PERSONA, request,
                     Map.of("timeout_seconds", 120, "max_tokens", budget.outputAllowance(800), "temperature", 0.2), null, null);
-            if (reply.promptTokens() == null || reply.completionTokens() == null)
-                throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_USAGE_MISSING", "模型未返回有效Token用量，本次未扣积分");
-            budget.record(reply.promptTokens(), reply.completionTokens());
+            if (reply.promptTokens()!=null && reply.completionTokens()!=null)
+                budget.record(reply.promptTokens(), reply.completionTokens());
             String out = reply.content() == null ? "" : reply.content().strip();
             return out.isBlank() ? null : out;
         }

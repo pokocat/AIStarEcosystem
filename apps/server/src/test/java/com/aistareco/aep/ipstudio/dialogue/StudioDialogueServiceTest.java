@@ -439,7 +439,7 @@ class StudioDialogueServiceTest {
         verify(runs,times(1)).save(any());
         var budget=DialogueLoop.TurnBudget.metered(snapshot,21,4096,java.time.Clock.systemUTC(),null,need->0);
         budget.record(110000,0);assertEquals("budget",budget.blockReason(10000,256),"nothing added: stops");
-        assertThrows(BusinessException.class,()->snapshot.settleWithin(200000L,0L,21));
+        assertEquals(21,snapshot.settleWithin(200000L,0L,21));
     }
 
     /**

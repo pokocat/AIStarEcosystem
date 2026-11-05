@@ -30,6 +30,7 @@ export function DirectorWorks() {
   if (auth === "no-platform" || works.notEnrolled) return <PlatformGateScreen/>;
   return <StudioPage title="短剧导演台" description="从创意到成片" className="director-page"
     actions={<>
+      <Link href="/model-results" className="ip-brand-secondary">生成原文</Link>
       <Link href="/director/trash" className="ip-brand-secondary director-trash-link"><Trash2 size={16}/>回收站</Link>
       <button type="button" className="ip-brand-button" onClick={() => setCreating(true)}><Plus size={16}/>新建作品</button>
     </>}>

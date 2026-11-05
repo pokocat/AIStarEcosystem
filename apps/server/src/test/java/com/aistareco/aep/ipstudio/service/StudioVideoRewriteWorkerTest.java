@@ -132,14 +132,14 @@ class StudioVideoRewriteWorkerTest {
     }
 
     @Test
-    void onTheCanvasAFailedRewriteIsNotChargedAndDoesNotGenerate() {
-        var h = harness(DIRECTOR_STYLE, "universal_reference_video", "review", "not json");
+    void onTheCanvasAnUnstructuredRewriteIsKeptAndDoesNotGenerate() throws Exception {
+        var h=harness(DIRECTOR_STYLE,"universal_reference_video","review","not json");
         h.worker().runBlocking("r");
-        verify(h.videos(), never()).generateVideoBatch(anyString(), anyString(), any(), anyInt());
-        assertEquals("failed", h.run().getStatus());
-        assertEquals("AI_BAD_OUTPUT", h.run().getErrorCode());
-        verify(h.credits()).releaseHold(anyString(), eq("r"), anyString());
-        verify(h.credits(), never()).commitHold(anyString(), anyString(), anyLong(), anyString(), any());
+        verify(h.videos(),never()).generateVideoBatch(anyString(),anyString(),any(),anyInt());
+        assertEquals("done",h.run().getStatus());assertNull(h.run().getErrorCode());
+        var output=json.readTree(h.run().getOutputJson());
+        assertEquals("not json",output.path("rawResponse").path("content").asText());
+        assertTrue(output.path("needsChoice").asBoolean());assertFalse(output.path("videoPrompt").path("usable").asBoolean());
     }
 
     @Test

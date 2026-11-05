@@ -126,7 +126,7 @@ public class DapModelBilling {
         void record(AiModelInvocationService.AiModelResponse response) {
             var before=usage(job);Long input=response.promptTokens(),output=response.completionTokens();
             if(input==null||output==null||input<0||output<0||input+output==0)
-                throw unavailable("AI_USAGE_MISSING","文本模型未返回有效用量，本次文本调用未扣积分");
+                return; // Missing usage cannot discard the model's returned content.
             var measured=new Usage(Math.addExact(before.input(),input),Math.addExact(before.output(),output));
             plan.textRate().settle(measured.input(),measured.output());
             var payload=new LinkedHashMap<>(payload(job));payload.put(USAGE,json.convertValue(measured,Map.class));job.setPayload(payload);jobs.save(job);
@@ -147,7 +147,7 @@ public class DapModelBilling {
         if(plan.text()!=null) {
             var measured=usage(job);
             if(measured.input()+measured.output()>0) {
-                long actual=plan.textRate().settle(measured.input(),measured.output());
+                long actual=plan.textRate().settleWithin(measured.input(),measured.output(),plan.textRate().maxCost());
                 if(actual>0)credits.commitHold(DapJobService.REF_TYPE,root+":text",actual,job.getKind()+" · 文本处理完成",null);
             }
             credits.releaseHold(DapJobService.REF_TYPE,root+":text",job.getKind()+" · 释放未用文本额度");

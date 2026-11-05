@@ -169,7 +169,7 @@ class StudioTextWorkflowTest {
             TransactionSynchronizationManager.getSynchronizations().forEach(s->s.afterCommit());verify(worker).execute(run.getId());
         } finally {TransactionSynchronizationManager.clearSynchronization();}
     }
-    @Test void providerRevisionSettlesOnceAndBadOutputReleasesTheHold() throws Exception {
+    @Test void providerRevisionSettlesOnceAndUnstructuredOutputIsRetained() throws Exception {
         for(boolean invalid:new boolean[]{false,true}) {
             var runs=mock(IpRunRepository.class);var models=mock(AiModelInvocationService.class);var credits=mock(CreditService.class);var tx=mock(PlatformTransactionManager.class);
             when(tx.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
@@ -179,7 +179,7 @@ class StudioTextWorkflowTest {
             when(models.invokeChatOnEndpoint(eq(endpoint),eq(AiModelPurpose.DAP_PERSONA),anyList(),anyMap())).thenReturn(new AiModelInvocationService.AiModelResponse(invalid?"{}":"{\"summary\":\"添加标题\",\"content\":\"雨夜\\n原文\"}","stop",12L,"text","text"));
             var worker=new StudioWorkflowWorker(runs,mock(StudioFixtureProvider.class),mock(FileStorageService.class),models,mock(DramaAssembleService.class),credits,json,tx,mock(DapAssetService.class));
             worker.runBlocking("r");worker.runBlocking("r");verify(models,times(1)).invokeChatOnEndpoint(eq(endpoint),eq(AiModelPurpose.DAP_PERSONA),anyList(),anyMap());
-            if(invalid){assertEquals("failed",run.getStatus());assertEquals("AI_BAD_OUTPUT",run.getErrorCode());assertEquals(0,run.getCost());verify(credits).releaseHold(anyString(),eq("r"),anyString());verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString(), org.mockito.ArgumentMatchers.any());}
+            if(invalid){assertEquals("done",run.getStatus());assertNull(run.getErrorCode());assertEquals("{}",json.readTree(run.getOutputJson()).path("rawResponse").path("content").asText());assertEquals(0,run.getCost());verify(credits).releaseHold(anyString(),eq("r"),anyString());verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString(), org.mockito.ArgumentMatchers.any());}
             else {assertEquals("done",run.getStatus());assertEquals("雨夜\n原文",json.readTree(run.getOutputJson()).path("textRevision").path("content").asText());verify(credits,times(1)).commitHold(anyString(),eq("r"),eq(2L),anyString(), org.mockito.ArgumentMatchers.any());}
         }
     }
@@ -198,7 +198,7 @@ class StudioTextWorkflowTest {
             worker.runBlocking("r");worker.runBlocking("r");
             verify(models,times(1)).invokeChatOnEndpoint(eq(endpoint),eq(AiModelPurpose.DAP_PERSONA),anyList(),anyMap());
             verify(credits,times(1)).releaseHold(anyString(),eq("r"),anyString());
-            if(missingUsage){assertEquals("failed",run.getStatus());assertEquals("AI_USAGE_MISSING",run.getErrorCode());assertEquals(0,run.getCost());verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString(), org.mockito.ArgumentMatchers.any());}
+            if(missingUsage){assertEquals("done",run.getStatus());assertNull(run.getErrorCode());assertEquals("新正文",json.readTree(run.getOutputJson()).path("textRevision").path("content").asText());assertEquals(0,run.getCost());verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString(), org.mockito.ArgumentMatchers.any());}
             else {assertEquals("done",run.getStatus());assertEquals(2,run.getCost());assertEquals(1000,json.readTree(run.getOutputJson()).path("billing").path("inputTokens").asInt());verify(credits,times(1)).commitHold(anyString(),eq("r"),eq(2L),anyString(), org.mockito.ArgumentMatchers.any());}
         }
     }

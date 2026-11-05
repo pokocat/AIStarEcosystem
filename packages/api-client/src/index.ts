@@ -127,3 +127,5 @@ export { modelTaskException } from "./model-task-state";
 export { publicModelErrorMessage, sanitizeModelErrorFields, MODEL_SERVICE_UNAVAILABLE, isProviderModelError, isCustomerWalletError } from "./public-model-error";
 
 export * as ModelBillingApi from './api/model-billing';
+
+export { ModelResults } from "./model-results";
