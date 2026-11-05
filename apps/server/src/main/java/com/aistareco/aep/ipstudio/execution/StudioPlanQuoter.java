@@ -31,6 +31,13 @@ public class StudioPlanQuoter {
         plan.putObject("budget").put("estimated",total).put("autoFixCap",0);
     }
 
+    /** 这一步视频本身的价，不含先改写提示词的冻结上限（那是按实际用量结算的文字任务）。 */
+    public long videoOnly(String userId,JsonNode step) {
+        ObjectNode copy=step.deepCopy();
+        ((ObjectNode)copy.path("settings").path("video")).put("optimize",false);
+        return workflow.quote(userId,StudioPlanSteps.request(copy,PLACEHOLDERS,modes(copy.path("settings").path("model").asText(null)),null));
+    }
+
     /** Video modes of the default Studio video model (the model video steps run on). */
     public StudioPlanSteps.Modes modes() {return modes(null);}
 
