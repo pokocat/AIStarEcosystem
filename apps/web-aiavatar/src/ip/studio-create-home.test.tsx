@@ -234,19 +234,34 @@ describe("Template market", () => {
     await waitFor(() => expect(mocks.availability).toHaveBeenCalledWith("personal", true));
     await screen.findByRole("button", { name: "停用模板" });
     expect(screen.getByRole("button", { name: "预览模板 个人工作流" }).hasAttribute("disabled")).toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: /精选案例/ }));
-    expect(screen.getByRole("heading", { name: "精选案例" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /全部案例/ }));
+    expect(screen.getByRole("heading", { name: "全部案例" })).toBeTruthy();
     expect(mocks.create).not.toHaveBeenCalled();
   });
   it("retains official example previews and separates template search from the personal canvas catalogue", async () => {
     mocks.examples.mockResolvedValue([{ ...official, id: "example", name: "精选故事" }]);
     render(<StudioTemplateMarket />);
-    fireEvent.click(screen.getByRole("button", { name: /精选案例/ }));
     await screen.findByRole("button", { name: "预览模板 精选故事" });
-    fireEvent.change(screen.getByRole("searchbox", { name: "搜索模板" }), { target: { value: "精选故事" } });
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索案例" }), { target: { value: "精选故事" } });
     expect(screen.queryByRole("button", { name: "预览模板 IP 商品视频" })).toBeNull();
     expect(screen.getByRole("button", { name: "预览模板 精选故事" })).toBeTruthy();
     expect(mocks.projects).not.toHaveBeenCalled();
+  });
+  it("opens on cases and splits them by what they hold; without any case it shows the official templates", async () => {
+    const node = (type: string) => ({ id: type, type, title: type, position: { x: 0, y: 0 }, width: 100, height: 100, metadata: { storageKey: `ipstudio_demo/x/${type}` } });
+    const doc = (type: string) => ({ nodes: [node(type)], connections: [], viewport: { x: 0, y: 0, k: 1 } });
+    mocks.examples.mockResolvedValue([{ ...official, id: "v", name: "一条视频", doc: doc("video") }, { ...official, id: "i", name: "一张图", doc: doc("image") }]);
+    const view = render(<StudioTemplateMarket />);
+    await screen.findByRole("button", { name: "预览模板 一条视频" });
+    expect(screen.getByRole("button", { name: "预览模板 一张图" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^视频/ }));
+    expect(screen.queryByRole("button", { name: "预览模板 一张图" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^图片/ }));
+    expect(screen.queryByRole("button", { name: "预览模板 一条视频" })).toBeNull();
+    view.unmount();
+    mocks.examples.mockResolvedValue([]);
+    render(<StudioTemplateMarket />);
+    expect(await screen.findByRole("heading", { name: "官方模板" })).toBeTruthy();
   });
 });
 

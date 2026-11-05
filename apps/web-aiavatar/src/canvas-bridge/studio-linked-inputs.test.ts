@@ -35,3 +35,16 @@ it('checks missing template inputs only on the connected generation, and reads c
   expect(withStudioLinkedText('展示商品','target',[image,text],edges)).toContain('新的商品卖点');
   expect(studioLinkedInputError('target',[image,text],[])).toBeUndefined();
 });
+
+it('an optional image slot stays out of the way while empty and counts once it holds a picture',()=>{
+  const slot:any={id:'slot',type:CanvasNodeType.Image,title:'我的商品图',width:380,height:280,position:{x:0,y:0},metadata:{status:'idle',studio:{templateInput:{required:false,label:'我的商品图'}}}};
+  const target:any={id:'target',type:CanvasNodeType.Video,title:'我的版本',width:320,height:400,position:{x:400,y:0},metadata:{prompt:'x'}};
+  const edges=[{id:'e',fromNodeId:'slot',toNodeId:'target'}] as any;
+  expect(studioLinkedNodes('target',[slot,target],edges)).toEqual([]);
+  expect(studioLinkedInputError('target',[slot,target],edges)).toBeUndefined();
+  const filled={...slot,metadata:{...slot.metadata,storageKey:'ipstudio_source/u/p.png'}};
+  expect(studioLinkedNodes('target',[filled,target],edges).map(n=>n.id)).toEqual(['slot']);
+  // The same empty slot without the optional mark is a required input, as before.
+  const required={...slot,metadata:{status:'idle'}};
+  expect(studioLinkedInputError('target',[required,target],edges)).toBe('请先为「我的商品图」添加或生成图片');
+});

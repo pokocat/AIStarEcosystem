@@ -14,6 +14,7 @@ const classicNavigation = [
 
 const nextNavigation = [
   { href: '/dashboard', label: '首页' },
+  { href: '/templates', label: '灵感' },
   { href: '/video', label: 'AI 视频' },
   { href: '/image', label: 'AI 图片' },
   { href: '/create', label: '画布' },
@@ -25,10 +26,8 @@ const nextNavigation = [
 
 export const studioNavigation = (version: UiVersion) => version === 'next' ? nextNavigation : classicNavigation;
 
-export function studioNavigationCurrent(href: string, pathname: string, version: UiVersion) {
-  // 新版把灵感（模板与案例）放到了首页，/templates 只是首页「更多灵感」的落点。
-  if (href === '/dashboard') return pathname === '/' || pathname === href
-    || version === 'next' && (pathname.startsWith('/templates') || pathname.startsWith('/projects/demos'));
+export function studioNavigationCurrent(href: string, pathname: string) {
+  if (href === '/dashboard') return pathname === '/' || pathname === href;
   if (href === '/create') return pathname === href;
   if (href === '/projects') return pathname === href || /^\/projects\/(?!demos(?:\/|$))/.test(pathname);
   if (href === '/templates') return pathname.startsWith(href) || pathname.startsWith('/projects/demos');

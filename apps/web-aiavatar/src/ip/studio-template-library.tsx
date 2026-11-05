@@ -28,6 +28,6 @@ export function StudioTemplateLibrary({open,scope,nodes=[],onClose}:{open:boolea
         {loading?<Spin aria-label="正在读取模板"/>:error?<div className="studio-error-recovery"><StudioErrorNotice error={error}/>{<Button onClick={()=>setRefresh(n=>n+1)}>重试</Button>}</div>:items.length?<div className="studio-template-gallery">{items.map(t=><button type="button" key={t.id} className="studio-template-card" onClick={()=>setSelected(t)}><span>{tab==='official'?'官方':'我的'} · {t.doc.nodes.length} 个节点</span><strong>{t.name}</strong><p>{t.summary}</p><small>查看画布 →</small></button>)}</div>:<p>{tab==='personal'?'还没有个人模板，可以在画布顶部保存。':'当前没有可用的官方模板。'}</p>}
       </div>
     </Modal>
-    {selected&&open&&<StudioTemplateUse template={selected} nodes={nodes} onClose={()=>setSelected(undefined)} onCreated={id=>{onClose();router.push(`/projects/${id}`);}}/>}
+    {selected&&open&&<StudioTemplateUse template={selected} nodes={nodes} onClose={()=>setSelected(undefined)} onCreated={href=>{onClose();router.push(href);}}/>}
   </>;
 }

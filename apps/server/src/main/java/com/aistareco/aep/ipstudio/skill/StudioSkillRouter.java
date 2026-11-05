@@ -134,10 +134,11 @@ public final class StudioSkillRouter {
     /** Pictures and videos: a text noun followed by one of these is part of a visual product (标题海报, 口播视频, 分镜图). */
     private static final String VISUAL = "(?:图|海报|封面|插画|头像|视频|短片|片子|动画|宣传片|成片|镜头)";
     /**
-     * Writing verbs. 写 but not 写上 / 写在 / 写到 / 写着 (putting text on something) nor 特写 / 描写; 做 / 出 / 来 because
+     * Writing verbs. 写 but not 写上 / 写在 / 写到 / 写着 (putting text on something) nor 特写 / 描写 / 手写; 出 but not 出现
+     * (「不出现其他文字」 describes a picture: a prompt saying so went to 写稿, local e2e 2026-11-05); 做 / 出 / 来 because
      * 「做个视频脚本」「出几条文案」「来一段口播」 ask for text; 起 only before a count (起几个标题, not 动起来).
      */
-    private static final String VERB = "(?:(?<![特描抄速])写(?![上在到着])|改|润色|扩写|缩写|精简|优化|拟|编|做|出|想|来|列|起(?=[个几一两二三四五六七八九十0-9]))";
+    private static final String VERB = "(?:(?<![特描抄速手])写(?![上在到着])|改|润色|扩写|缩写|精简|优化|拟|编|做|出(?!现)|想|来|列|起(?=[个几一两二三四五六七八九十0-9]))";
     /**
      * Verb, then at most 16 characters of the same clause that do not start a picture / video word, then the text noun
      * that heads the object — optionally right after a picture / video word that only qualifies it (视频脚本, 海报文案,

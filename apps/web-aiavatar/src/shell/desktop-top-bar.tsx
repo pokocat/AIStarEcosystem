@@ -62,7 +62,7 @@ export function DesktopTopBar({ publicMode = false }: { publicMode?: boolean }) 
   if (!publicMode && version === "next") return <><header className="desktop-top-bar desktop-rail ip-surface ip-brand-surface">
     <Link href={authed ? "/dashboard" : "/"} className="desktop-rail-logo" aria-label="IP Studio · 声量引擎旗下首页" title="IP Studio · 声量引擎旗下"><img src="/brand/ip-studio-logo.png" width={32} height={32} alt="" /></Link>
     <nav className="desktop-rail-navigation" aria-label="主导航">{navigation.map(n => {
-      const current = studioNavigationCurrent(n.href, pathname, version);
+      const current = studioNavigationCurrent(n.href, pathname);
       const Icon = studioNavigationIcon(n.href);
       const link = <Link key={n.href} href={n.href} aria-current={current ? "page" : undefined}><span><Icon size={17} strokeWidth={1.4} aria-hidden="true" /></span>{n.label}</Link>;
       // AI 视频 / AI 图片：鼠标停上去就弹出全部场景（rail-scene-flyout.tsx）。
@@ -77,7 +77,7 @@ export function DesktopTopBar({ publicMode = false }: { publicMode?: boolean }) 
   return <header className={"desktop-top-bar ip-surface ip-brand-surface" + (publicMode ? " ip-public-top-bar" : "")}>
     <Link href={authed ? "/dashboard" : "/"} className="ip-brand-logo" aria-label="IP Studio · 声量引擎旗下首页"><img src="/brand/ip-studio-logo.png" width={38} height={38} alt="" /><strong>IP Studio <small>· 声量引擎旗下</small></strong></Link>
     <nav className="ip-top-navigation" aria-label="主导航">{navigation.map(n => {
-      const current = studioNavigationCurrent(n.href, pathname, version);
+      const current = studioNavigationCurrent(n.href, pathname);
       return <Link key={n.href} href={n.href} aria-current={current ? "page" : undefined}>{n.label}</Link>;
     })}</nav>
     <div className="ip-top-account">

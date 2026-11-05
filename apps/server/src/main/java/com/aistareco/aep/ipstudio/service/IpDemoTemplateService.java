@@ -258,7 +258,9 @@ public class IpDemoTemplateService {
             }
             RUN_FIELDS.forEach(mo::remove);
             for(String field:CANDIDATE_FIELDS)for(JsonNode item:mo.path(field))if(item instanceof ObjectNode candidate)RUN_FIELDS.forEach(candidate::remove);
-            mo.remove("content");
+            // 文字节点的 content 是正文（§8.0.1 ⑪），图 / 视频 / 音频的 content 才是带 TTL 的派生地址。
+            // 此前这里不看类型，实例里的文字节点一发布就成了空白方块。
+            if (!IpDocs.T_TEXT.equals(IpDocs.typeOf(node))) mo.remove("content");
             mo.remove("url");
         }
 
@@ -342,6 +344,9 @@ public class IpDemoTemplateService {
         for(String field:List.of("kind","settings","episodeNo","script","shot","parentNodeId","assetRole","order",
                 "libraryCharacterId","libraryCharacterName","libraryAssetRole","videoPreset"))
             if(source.has(field))clean.set(field,source.get(field).deepCopy());
+        // An optional input slot is authored structure too: without the mark an empty 「我的商品图」 blocks generation.
+        // Required constraints stay recipe-driven (StudioTemplateCanvasCopy writes them), so only this case survives.
+        if(!source.path("templateInput").path("required").asBoolean(true))clean.set("templateInput",source.get("templateInput").deepCopy());
         // The accepted request is owner-bound and dropped, but its native video geometry is authored structure:
         // keep mode / resolutionTier / seed as videoPreset so a copy reopens in the same mode (no keys, no task identity).
         JsonNode video=source.path("request").path("video");

@@ -131,6 +131,8 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   const [composerError, setComposerError] = useStudioErrorState();
   const [canvasNotice, setCanvasNotice] = useState("");
   const [skills, setSkills] = useState<StudioSkillSummary[]>([]);
+  // A copied inspiration arrives with its request written: the empty thread says so instead of offering other jobs.
+  const [briefPrefilled, setBriefPrefilled] = useState(false);
   const [skillKey, setSkillKey] = useState<string>(), [skillChoices, setSkillChoices] = useState<SkillChoice[]>(), [skillNotice, setSkillNotice] = useState("");
   const identity = useIdentity();
   const composer = useRef<DialogueComposerHandle>(null);
@@ -155,7 +157,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     draftOwner.current = projectId;
     const saved = readAssistantDraft(projectId, new Set(assistantContextNodes(live.current.nodes).map(n => n.id)));
     setText(saved?.text ?? ""); setPinnedIds(saved?.pinnedIds ?? []); setAttachmentIds(saved?.attachmentIds ?? []);
-    setReading(false); setAttachmentsUnsaved(false); setCanvasNotice(""); setSkillKey(undefined); setSkillChoices(undefined); setSkillNotice(""); setStarter(undefined); setGuideOpen(false);
+    setReading(false); setAttachmentsUnsaved(false); setCanvasNotice(""); setSkillKey(undefined); setBriefPrefilled(false); setSkillChoices(undefined); setSkillNotice(""); setStarter(undefined); setGuideOpen(false);
     starterHeld.current.clear(); starterWritten.current = undefined;
   }, [projectId]);
   // Runs after the switch above in the same commit only if the composer itself changed, so it never files the old
@@ -467,6 +469,8 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     briefApplied.current = projectId;
     if (talked || store.outbox.length) return;
     setText(current => current.trim() ? current : brief);
+    // A copied inspiration names its method on the start node; it goes out with the message instead of keyword routing.
+    if (entry?.metadata?.studioSkill) { setSkillKey(entry.metadata.studioSkill); setBriefPrefilled(true); }
     // 「照这条视频…」 needs the video first: the recreation card says what is missing, keeps the user's words and leaves
     // the send to them — never the auto-send, even when the canvas fills both slots by itself.
     if (studioBriefNeedsReference(brief)) {
@@ -804,7 +808,11 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
       {!execution && canvasNotice && <p className="studio-dialogue-warning" role="status">{canvasNotice}</p>}
       {session.status === "loading" && <p className="studio-dialogue-note" role="status">正在读取这张画布的对话</p>}
       {session.status === "error" && <div className="studio-assistant-pending" role="alert"><p>对话没有读取成功。</p><StudioErrorNotice error={session.loadError} autoReport={false}/><Button onClick={() => void session.reload()}>重新读取</Button></div>}
-      {empty && session.status !== "error" && !starter && <div className="studio-assistant-welcome">
+      {empty && session.status !== "error" && !starter && briefPrefilled && !!text.trim() && <div className="studio-assistant-welcome">
+        <h3 className="w-full max-w-full">要求已填好</h3>
+        <p>可以修改后发送。需要生成时，助手会先说明所需积分。</p>
+      </div>}
+      {empty && session.status !== "error" && !starter && !(briefPrefilled && text.trim()) && <div className="studio-assistant-welcome">
         <h3 className="w-full max-w-full">想做点什么？</h3>
         {!!pinnedIds.length && <p>已选 {pinnedIds.length} 个节点</p>}
         {!!inventory.length && <div className="studio-assistant-inventory"><span>画布上有</span><div>

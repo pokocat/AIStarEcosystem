@@ -127,7 +127,11 @@ class IpDemoTemplateStripTest {
     }
 
     private JsonNode publish(String kind) {
-        IpDemoTemplateService svc = svcWith(busyDoc());
+        return publishDoc(busyDoc(), kind);
+    }
+
+    private JsonNode publishDoc(ObjectNode doc, String kind) {
+        IpDemoTemplateService svc = svcWith(doc);
         svc.publishFromProject(OWNER, PROJECT, null, "潮玩三连", null, kind);
         ArgumentCaptor<IpDemoTemplate> cap = ArgumentCaptor.forClass(IpDemoTemplate.class);
         verify(demoRepo).save(cap.capture());
@@ -275,6 +279,26 @@ class IpDemoTemplateStripTest {
                 "成片历史同样要复制 —— 漏掉就是「当前这版能放、切一版历史签不出来」：" + takeKey);
         assertTrue(md.get("n-img").path("images").get(0).path("content").isMissingNode(),
                 "候选上的签名地址带 TTL，不该进示例");
+    }
+
+    @Test
+    void 实例的文字节点保留正文_媒体节点的派生地址仍然剥掉() {
+        Map<String, JsonNode> md = byId(publish(IpDemoTemplate.KIND_EXAMPLE));
+        assertEquals("① 把你的照片拖到这里", md.get("n-text").path("content").asText(),
+                "实例里的文字是做法说明，删掉之后只剩空白方块");
+        assertTrue(md.get("n-img").path("content").isMissingNode(), "图片的 content 是带 TTL 的签名地址");
+        assertTrue(md.get("n-vid").path("content").isMissingNode(), "视频的 content 是带 TTL 的签名地址");
+    }
+
+    @Test
+    void 选填的图片位标记跟着走_必填约束仍由配方决定() throws Exception {
+        ObjectNode doc = busyDoc();
+        ((ObjectNode) doc.path("nodes").get(0).path("metadata")).set("studio", IpStudioFixtures.OM.readTree("{\"templateInput\":{\"required\":false,\"label\":\"我的商品图\"}}"));
+        ((ObjectNode) doc.path("nodes").get(1).path("metadata")).set("studio", IpStudioFixtures.OM.readTree("{\"templateInput\":{\"required\":true,\"label\":\"创作要求\"}}"));
+        Map<String, JsonNode> md = byId(publishDoc(doc, IpDemoTemplate.KIND_EXAMPLE));
+        assertFalse(md.get("n-img").path("studio").path("templateInput").path("required").asBoolean(true),
+                "没有这个标记，空着的「我的商品图」会挡住生成");
+        assertTrue(md.get("n-text").path("studio").path("templateInput").isMissingNode());
     }
 
     @Test

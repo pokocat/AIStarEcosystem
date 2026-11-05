@@ -831,8 +831,10 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     const start=parseStudioEntry(new URLSearchParams(window.location.search).get("start"));
     if(!start||start==="blank")return;
     const source=[...nodesRef.current,...conversations].find(n=>n.metadata?.studioStart===start);
-    // Existing work never gets reopened into a fresh creation flow on refresh.
-    if(nodesRef.current.length && (nodesRef.current.length!==1||!source))return;
+    // Existing work never gets reopened into a fresh creation flow on refresh. A copied inspiration is the exception: it
+    // arrives with several nodes and a request for the assistant, and the assistant only fills an unused, empty composer.
+    const copiedInspiration=start==="assistant"&&!!source&&nodesRef.current.includes(source);
+    if(nodesRef.current.length && (nodesRef.current.length!==1||!source) && !copiedInspiration)return;
     startOpened.current=projectId;
     if(start==="image"||start==="video"||start==="script")openDirector(start,source);
     else if(start==="assistant"||start==="director"){setEntryAssistantMode(start==="director"?"director":"general");setEntryBrief(source?.metadata?.prompt||"");setEntryAutoSend(start==="assistant"&&new URLSearchParams(window.location.search).get("send")==="1"&&!!source?.metadata?.prompt);setAssistantNodeId(source?.id);setAssistantOpen(true);onClosePanel();}

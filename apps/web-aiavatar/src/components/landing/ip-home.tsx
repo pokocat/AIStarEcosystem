@@ -13,6 +13,7 @@ import { StudioConversationStart } from "@/ip/studio-conversation-start";
 import { useStartNewCanvas } from "@/ip/use-start-new-canvas";
 import { useStudioFailure } from "@/ip/studio-errors";
 import { StudioTemplateUse } from "@/ip/studio-template-use";
+import { templateKind } from "@/ip/template-facts";
 import { ProjectCardPreview } from "@/ip/project-card-preview";
 import { projectPreview } from "@/ip/project-preview";
 import { sceneHref, useSceneHomeCards } from "@/ip/scenes/scene-catalog";
@@ -39,17 +40,9 @@ type FeedTab = "all" | "video" | "image" | "canvas";
 const feedTabs: { value: FeedTab; label: string }[] = [
   { value: "all", label: "发现" }, { value: "video", label: "视频" }, { value: "image", label: "图片" }, { value: "canvas", label: "画布" },
 ];
-/** 模板里实际放着什么：有视频算视频，只有图算图片，都没有就是一套画布流程。 */
-function templateKind(t: IpTemplate): "video" | "image" | "canvas" {
-  const nodes = t.doc?.nodes ?? [];
-  if (nodes.some(n => n.type === "video" && (n.metadata?.storageKey || n.metadata?.content))) return "video";
-  if (nodes.some(n => n.type === "image" && (n.metadata?.storageKey || n.metadata?.content))) return "image";
-  return "canvas";
-}
-
 /**
  * 新版首页（公开落地页与登录后的桌面首页，参考 docs/studio-scene-creation.md §3）：一句话开始、常用工具、按目标选场景、
- * 再往下是灵感（官方模板与精选案例，原来单独一页，现在放在首页上；点开先预览画布，「做同款」才复制）。
+ * 再往下是灵感（官方模板与精选案例，完整的在 /templates；点开是一个弹窗，「做同款」才复制并进入画布）。
  */
 function IpHomeNext({ header = true }: { header?: boolean }) {
   const router = useRouter();
@@ -120,7 +113,7 @@ function IpHomeNext({ header = true }: { header?: boolean }) {
   return <div className="ip-brand-surface ip-home studio-scene-home studio-next-page">
     {/* 登录后电脑上的导航由外壳给（新版是左侧一列，见 shell/app-chrome.tsx），这里只给没登录的访客画公开顶栏。 */}
     {header && <>{!authed && <DesktopTopBar publicMode />}<header className="ip-home-mobile-header"><Link href="/" aria-label="IP Studio · 声量引擎旗下首页"><img src="/brand/ip-studio-logo.png" width={34} height={34} alt="" /><strong>IP Studio <small>· 声量引擎旗下</small></strong></Link><Link href={authed ? "/dashboard" : "/login"}>{authed ? "工作台" : "登录"}</Link></header></>}
-    {using && <StudioTemplateUse key={using.versionId || using.id} template={using} onClose={() => setUsing(undefined)} onCreated={id => router.push(`/projects/${encodeURIComponent(id)}`)}/>}
+    {using && <StudioTemplateUse key={using.versionId || using.id} template={using} onClose={() => setUsing(undefined)} onCreated={href => router.push(href)}/>}
     <main>
       <section className="home-hero">
         {authed && <UiVersionSwitch inline/>}
@@ -146,7 +139,7 @@ function IpHomeNext({ header = true }: { header?: boolean }) {
       </section>}
 
       {authed && <section className="home-feed" aria-labelledby="home-feed-title">
-        <div className="home-section-heading"><h2 id="home-feed-title">灵感</h2><p>预览画布后可做同款</p><Link href="/templates">更多灵感<ArrowRight size={16}/></Link></div>
+        <div className="home-section-heading"><h2 id="home-feed-title">灵感</h2><p>看效果和提示词，再做同款</p><Link href="/templates">更多灵感<ArrowRight size={16}/></Link></div>
         <div className="home-feed-tabs" role="group" aria-label="灵感分类">{feedTabs.map(t => <button key={t.value} type="button" aria-pressed={tab === t.value} onClick={() => setTab(t.value)}>{t.label}</button>)}</div>
         {templates === undefined ? <div className="ip-brand-state" role="status">正在加载灵感…</div>
           : feedError ? <div className="ip-brand-error" role="alert">灵感加载失败，请稍后刷新重试。</div>
@@ -179,7 +172,7 @@ function FeedWall({ children }: { children: ReactNode[] }) {
     <div key={c} className="home-feed-column">{children.filter((_, i) => i % columns === c)}</div>)}</div>;
 }
 
-/** 灵感墙上的一张：图铺满，底下压一行类型和名字（参考站登录后的样子）。点开是只读预览，存为副本再改。 */
+/** 灵感墙上的一张：图铺满，底下压一行类型和名字（参考站登录后的样子）。点开是详情弹窗，做同款才复制。 */
 const FEED_SHAPES = ["3 / 4", "4 / 5", "1 / 1", "9 / 13"];
 /** 首页按版本二选一：默认旧版，拿到 `?ui=new` 的人看新版。 */
 export function IpHome(props: { header?: boolean }) {

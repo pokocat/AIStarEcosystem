@@ -3,13 +3,19 @@ import { makeStudioNode } from './studio-nodes';
 import { placeStudioNode } from './flow-document';
 import { studioScriptPrompt } from './studio-script';
 
+/**
+ * 选填的图片位还空着（灵感库的「我的商品图」）：连线留着，但不算参考、也不挡生成，放了图才算。
+ * 必填的空位仍然由 studioLinkedInputError 拦下。
+ */
+const studioOptionalInputEmpty=(node:CanvasNodeData)=>node.type===CanvasNodeType.Image&&node.metadata?.studio?.templateInput?.required===false&&!(node.metadata?.storageKey||node.metadata?.studio?.adoption?.storageKey);
+
 /** Resolve document edges at submission time, including the contents of a referenced group. */
 export function studioLinkedNodes(targetId:string, nodes:CanvasNodeData[], connections:CanvasConnection[]) {
   const sources=connections.filter(c=>c.toNodeId===targetId).flatMap(c=>{
     const node=nodes.find(n=>n.id===c.fromNodeId);
     return !node?[]:node.type===CanvasNodeType.Group?nodes.filter(n=>n.metadata?.groupId===node.id):[node];
   });
-  return [...new Map(sources.filter(n=>n.id!==targetId).map(n=>[n.id,n])).values()];
+  return [...new Map(sources.filter(n=>n.id!==targetId&&!studioOptionalInputEmpty(n)).map(n=>[n.id,n])).values()];
 }
 
 export function studioLinkedText(node:CanvasNodeData) {

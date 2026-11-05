@@ -22,7 +22,7 @@ export function StudioPage({ title, description, nextDescription, actions, child
   // 新版页面换成改版后的设计语言（studio-next-pages.css），旧版保持原样。
   return <main className={`ip-brand-surface ip-hub-surface studio-page ${className}${version === 'next' ? ' studio-next-page' : ''}`}>
     {/* 手机顶上这一排只给旧版：新版底栏已经有 AI 视频、AI 图片，项目、资产、导演台在「我的」里，再放一排就重复了（2026-11-02 线上走查）。 */}
-    {version !== 'next' && <nav className="studio-mobile-navigation" aria-label="工作台导航">{studioNavigation(version).filter(n => n.href !== "/dashboard" && n.href !== "/assets").map(n => <Link key={n.href} href={n.href} aria-current={studioNavigationCurrent(n.href, pathname, version) ? "page" : undefined}>{n.label}</Link>)}</nav>}
+    {version !== 'next' && <nav className="studio-mobile-navigation" aria-label="工作台导航">{studioNavigation(version).filter(n => n.href !== "/dashboard" && n.href !== "/assets").map(n => <Link key={n.href} href={n.href} aria-current={studioNavigationCurrent(n.href, pathname) ? "page" : undefined}>{n.label}</Link>)}</nav>}
     <header className="studio-page-heading"><div><h1>{title}</h1><p>{version === 'next' && nextDescription ? nextDescription : description}</p></div>{(actions || version === 'next') && <div className="studio-page-actions">{version === 'next' && <UiVersionSwitch inline/>}{actions}</div>}</header>
     <div ref={contentRef} className="studio-page-body" data-studio-overlay-root>{children}</div>
     <HubTabBar/>

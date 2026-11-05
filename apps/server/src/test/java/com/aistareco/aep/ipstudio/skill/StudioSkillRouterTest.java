@@ -114,6 +114,12 @@ class StudioSkillRouterTest {
             assertEquals(StudioSkillRouter.Writing.FIRST, StudioSkillRouter.writingIntent(text.toLowerCase(Locale.ROOT)), text);
     }
 
+    @Test void describingTextOnAPictureIsNotWriting() {
+        assertEquals(StudioSkillRouter.Writing.NONE, StudioSkillRouter.writingIntent("背景是撞色色块，白色大标题，不出现其他文字"));
+        assertEquals(StudioSkillRouter.Writing.NONE, StudioSkillRouter.writingIntent("米白色底，炭黑色手写标题"));
+        assertEquals(StudioSkillRouter.Writing.FIRST, StudioSkillRouter.writingIntent("出几条文案"));
+    }
+
     @Test void textThatIsPartOfAPictureOrAVideoIsNotWriting() {
         for (String text : List.of("画一张海报，标题写「夏日特饮上新」", "画一张海报，写上标题「夏日特饮上新」", "做一张带标题的海报",
                 "做个口播视频", "改一下海报上的标题", "出一张线稿", "做一张卖点图", "出分镜图", "做个人设定图", "用这张图做一段视频",

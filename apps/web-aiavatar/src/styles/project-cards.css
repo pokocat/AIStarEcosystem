@@ -5,6 +5,8 @@
 .project-content-cover img { width: 100%; height: 100%; object-fit: contain; display: block; }
 /* 灵感卡里的成片：静帧铺满，悬停静音播放；右上角的小标说明这是视频，播放时淡出。 */
 .project-content-cover video { width: 100%; height: 100%; object-fit: cover; display: block; background: #111; }
+/* 灵感页的卡片比例固定，竖版视频铺满会切掉人物的头；和图片一样完整显示。 */
+.studio-template-market .project-content-cover video { object-fit: contain; }
 .project-content-play { position: absolute; top: 8px; right: 8px; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: rgb(0 0 0 / .45); color: #fff; pointer-events: none; transition: opacity .2s; }
 .project-content-cover.is-playing .project-content-play { opacity: 0; }
 .project-content-kind { display: inline-flex; align-items: center; gap: 5px; position: absolute; bottom: 10px; left: 10px; padding: 4px 8px; border-radius: 5px; background: var(--ip-paper); color: var(--ip-ink); font-size: 11px; }

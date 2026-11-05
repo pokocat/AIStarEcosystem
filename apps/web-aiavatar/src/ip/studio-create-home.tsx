@@ -72,7 +72,7 @@ export function StudioCreateHome() {
   if (!ready) return <StudioPage title={TITLE} description={DESCRIPTION}><GalleryState loading/></StudioPage>;
 
   return <StudioPage title={TITLE} description={DESCRIPTION} contentRef={surface} className="studio-gallery-page studio-create-page">
-    {usingTemplate && <StudioTemplateUse key={usingTemplate.versionId || usingTemplate.id} template={usingTemplate} onClose={() => setUsingTemplate(undefined)} onCreated={id => router.push(`/projects/${id}`)} />}
+    {usingTemplate && <StudioTemplateUse key={usingTemplate.versionId || usingTemplate.id} template={usingTemplate} onClose={() => setUsingTemplate(undefined)} onCreated={href => router.push(href)} />}
     {actionError && <div className="studio-gallery-action-error"><StudioErrorNotice error={actionError}/></div>}
     {newCanvas.error !== undefined && <div className="studio-gallery-action-error"><StudioErrorNotice error={newCanvas.error}/><span> · 新画布没有创建成功，可以再点一次「新建画布」。</span></div>}
     <section className="studio-gallery-panel studio-creation-section" id="start-creation" aria-label="开始创作">
