@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Root-only, fixed-node release operations. No legacy hosts or database import operations."""
-import argparse,hashlib,json,os,pathlib,re,subprocess,sys,time,urllib.request,urllib.error,zipfile,shutil,tarfile
+import argparse,hashlib,json,os,pathlib,re,socket,subprocess,sys,time,urllib.request,urllib.error,zipfile,shutil,tarfile
 from policy import environment_guard,artifact_guard,contract_guard,require
 ROOT=pathlib.Path('/opt/aistar-cluster')
 PYTHON='/opt/aibuzz-id/runtime/python311/bin/python3'
@@ -65,9 +65,25 @@ def prepare(config,expected,mode,release):
  (ROOT/'control'/('env-'+mode)).write_text(''.join(k+'='+v+'\n' for k,v in env.items()));(ROOT/'control'/('env-'+mode)).chmod(0o600)
  return dest,manifest,env
 
+def retire_exited_owned_container(expected,mode):
+ unit=expected['unit'];rows=json.loads(run(['podman','ps','-a','--external','--no-trunc','--format','json']))
+ matches=[row for row in rows if unit in row.get('Names',[])]
+ require(len(matches)<=1,'容器名称不唯一，拒绝接管')
+ if not matches:return
+ row=matches[0];labels=row.get('Labels',{});old=labels.get('aistar.release','')
+ require(re.fullmatch('[a-f0-9]{64}',row.get('Id','')) and row.get('Exited') is True and row.get('Pid')==0 and labels.get('aistar.mode')==mode and re.fullmatch('[a-f0-9]{16}',old),'存在未知或运行中容器，禁止强制替换')
+ manifest=json.loads((ROOT/'releases'/old/'manifest.json').read_text());artifact_guard(manifest)
+ require(labels.get('aistar.sha')==manifest['sha'] and row['ImageID'].removeprefix('sha256:')==manifest['image_configuration_id'].removeprefix('sha256:'),'残留容器无法绑定本集群已验证发布')
+ with socket.socket() as probe:
+  probe.settimeout(1);require(probe.connect_ex(('127.0.0.1',expected['port']))!=0,'端口仍有服务，禁止清理容器')
+ proof={'unit':unit,'id':row['Id'],'previous_release':old,'mode':mode,'pid':0,'exited':True,'epoch':time.time()}
+ # Podman 4.9 can retain an exited --rm container in Removing. Never remove images or volumes.
+ run(['podman','rm','--force',row['Id']]);log=ROOT/'control'/('retired-container-'+row['Id']+'.json');log.write_text(json.dumps(proof));log.chmod(0o600)
+
 def start(config,expected,mode,release):
  dest,manifest,env=prepare(config,expected,mode,release);unit=expected['unit']
  require(run(['systemctl','show',unit,'-p','MainPID','--value']).strip() in ('','0'),'替换前必须完成排空并停止')
+ retire_exited_owned_container(expected,mode)
  args=['/usr/bin/podman','run','--rm','--name',unit,'--label','aistar.release='+release,'--label','aistar.mode='+mode,'--network','host','--read-only','--workdir','/app/work','--tmpfs','/tmp:rw,size=128m','--memory','1600m','--cpus','1','--pids-limit','256','--stop-timeout','240','--user','10001:10001','--env-file',str(ROOT/'control'/('env-'+mode)),'--volume',str(ROOT/'state'/mode)+':/opt/aistar-migration/preparation:rw','--volume',str(dest)+':/app/release:ro']
  work=ROOT/'work'
  if mode=='production' or work.is_dir():

@@ -4,6 +4,7 @@ class Refused(RuntimeError):pass
 RDS='pgm-bp1gp4819mbs30z3.pg.rds.aliyuncs.com'
 TAIR='r-bp182e1w8fk05cnbvr.redis.rds.aliyuncs.com'
 LEGACY={'47.98.162.120','8.136.36.175'}
+PENDING_WORK=('ip_run', 'material_video_job', 'aep_publish_jobs', 'clip_render_job', 'clip_shot_job', 'music_gen_job', 'video_studio_prompt_optimization', 'ai_generation_queue', 'ip_dialogue_message', 'ip_plan_execution')
 def require(ok,message):
  if not ok:raise Refused(message)
 def sha256(path):
@@ -14,6 +15,9 @@ def sha256(path):
 def utc(value):
  value=value.replace('Z','+00:00');result=datetime.datetime.fromisoformat(value)
  require(result.utcoffset()==datetime.timedelta(0),'必须使用UTC时间');return result
+def pending_work_guard(pending):
+ require(isinstance(pending,dict) and set(PENDING_WORK).issubset(pending),'缺少完整在途工作证明（含连续制作计划）')
+ require(all(type(v) is int and v==0 for v in pending.values()),'仍存在在途或未知受理工作')
 def config_guard(config,mode,environ):
  require(mode in ('stage','production'),'只允许明确的演练或正式模式')
  for key in ('DEPLOY_HOST','ECS_HOST','REMOTE_ROOT','PUBLIC_BASE'):
@@ -59,7 +63,7 @@ def import_plan_guard(plan,mode,now=None,freeze_start=False):
  else:
   require(plan.get('source_unit')=='aistareco-server' and plan.get('source_pid_after_freeze')==0,'旧AIStar服务尚未停写')
   require(all(plan.get(x) is True for x in ('write_gate_closed','source_background_stopped','sau_idle','sms_lock_quarantine_complete')),'停写/后台/发布/短信锁定保护未完成')
-  require(plan.get('pending_work') and all(type(v) is int and v==0 for v in plan['pending_work'].values()),'仍存在在途或未知受理任务')
+  pending_work_guard(plan.get('pending_work'))
   frozen=utc(plan['source_freeze_utc']);require(start<=frozen<=now and now-frozen<datetime.timedelta(minutes=30),'冻结快照已过期或不属本次窗口')
 def import_files_guard(plan,snapshot,temporal,migrations):
  for key,path in [('snapshot_sha256',snapshot),('temporal_plan_sha256',temporal)]:require(plan.get(key)==sha256(path),'计划与文件不一致：'+key)

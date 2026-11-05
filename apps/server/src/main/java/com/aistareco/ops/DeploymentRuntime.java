@@ -41,6 +41,9 @@ public class DeploymentRuntime {
         }
         Long count=jdbc.queryForObject("SELECT count(*) FROM ai_generation_queue WHERE state IS NULL OR lower(state) NOT IN ('finished','failed','cancelled','canceled')",Long.class);pending.put("ai_generation_queue",count==null?-1:count);
         Long dialogue=jdbc.queryForObject("SELECT count(*) FROM ip_dialogue_message WHERE lower(status) IN ('running','streaming','generating')",Long.class);pending.put("ip_dialogue_message",dialogue==null?-1:dialogue);
+        // Autonomous plans can be between child runs while all child-job counters are zero.
+        Long plans=jdbc.queryForObject("SELECT count(*) FROM ip_plan_execution WHERE status IS NULL OR lower(status) = 'running'",Long.class);
+        pending.put("ip_plan_execution",plans==null?-1:plans);
         boolean drained=quiescing.get()&&requests.get()==0&&active==0&&queued==0&&scheduledActive==0&&pending.values().stream().allMatch(v->v==0);
         return Map.of("quiescing",quiescing.get(),"in_flight",requests.get(),"executor_active",active,"executor_queued",queued,"scheduled_active",scheduledActive,"pending_work",pending,"drained",drained);
     }

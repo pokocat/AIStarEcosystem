@@ -28,6 +28,45 @@ class PolicyTests(unittest.TestCase):
  def test_drill_cannot_use_production(self):
   p={'format':'aistar-import-permit-v1','rds_host':RDS,'database':'aistar_prod','role':'aistar_rehearsal','table_count':192,'flyway_version':'77','purpose':'aistar-cutover-drill'}
   with self.assertRaises(Refused):import_plan_guard(p,'drill')
+class SourceFreezeTests(unittest.TestCase):
+ def test_pending_proof_cannot_omit_between_step_plans(self):
+  pending={name:0 for name in PENDING_WORK};pending_work_guard(pending)
+  for mutate in [lambda p:p.pop('ip_plan_execution'),lambda p:p.update(ip_plan_execution=1),lambda p:p.update(ip_run=False)]:
+   candidate=dict(pending);mutate(candidate)
+   with self.assertRaises(Refused):pending_work_guard(candidate)
+ def test_source_freeze_requires_complete_fresh_proof(self):
+  path=pathlib.Path(__file__).resolve().parents[2]/'migration/freeze_source.py';spec=importlib.util.spec_from_file_location('source_freeze',path);module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+  self.assertEqual(set(PENDING_WORK),set(module.PENDING_WORK));plan={'pending_work':{name:0 for name in PENDING_WORK},'drain_checked_epoch':1000};module.check_pending(plan,1001)
+  for when in [1061,997]:
+   with self.assertRaises(RuntimeError):module.check_pending(plan,when)
+  plan['pending_work'].pop('ip_plan_execution')
+  with self.assertRaises(RuntimeError):module.check_pending(plan,1001)
+
+class ContainerRetirementTests(unittest.TestCase):
+ def exercise(self,row,port_open=False):
+  import node,tempfile
+  from unittest.mock import patch
+  manifest={'format':'aistar-cluster-artifact-v1','sha':'a'*40,'jar_sha256':'b'*64,'tests_passed':True,'image_configuration_id':'sha256:'+'c'*64,'archive_sha256':'d'*64,'source_tree':'tree','migrations':[{'name':'V74__schema.sql','sha256':'e'*64}]};calls=[]
+  with tempfile.TemporaryDirectory() as directory:
+   root=pathlib.Path(directory);release=root/'releases'/('1'*16);release.mkdir(parents=True);(root/'control').mkdir();(release/'manifest.json').write_text(json.dumps(manifest))
+   def invoke(args):
+    if args[:2]==['podman','ps']:return json.dumps([row])
+    calls.append(args);return ''
+   with patch.object(node,'ROOT',root),patch.object(node,'run',invoke),patch.object(node.socket,'socket') as sock:
+    sock.return_value.__enter__.return_value.connect_ex.return_value=0 if port_open else 111
+    try:node.retire_exited_owned_container({'unit':'owned','port':18084},'stage')
+    except Refused:return False,calls
+   return True,calls
+ def row(self):return {'Names':['owned'],'Id':'f'*64,'Pid':0,'Exited':True,'ImageID':'c'*64,'Labels':{'aistar.mode':'stage','aistar.release':'1'*16,'aistar.sha':'a'*40}}
+ def test_live_container_never_removed(self):
+  row=self.row();row.update(Pid=123,Exited=False);success,calls=self.exercise(row);self.assertFalse(success);self.assertEqual([],calls)
+ def test_unknown_container_never_removed(self):
+  row=self.row();row['Labels']['aistar.mode']='other';success,calls=self.exercise(row);self.assertFalse(success);self.assertEqual([],calls)
+ def test_listening_port_prevents_retirement(self):
+  success,calls=self.exercise(self.row(),True);self.assertFalse(success);self.assertEqual([],calls)
+ def test_only_verified_exited_container_is_retired(self):
+  success,calls=self.exercise(self.row());self.assertTrue(success);self.assertEqual([['podman','rm','--force','f'*64]],calls)
+
 class RollingFailureTests(unittest.TestCase):
  def test_standby_start_failure_restores_primary(self):self.check_failure('b','start','a')
  def test_primary_start_failure_keeps_standby(self):self.check_failure('a','start','b')
