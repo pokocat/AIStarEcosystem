@@ -547,6 +547,24 @@ export interface StudioPlanExecutionControlRequest { clientRequestId: string; ex
   addMaterialNodeIds?: string[] }
 export interface StudioPlanExecutionAcceptRequest { clientRequestId: string; runId: string; candidateIndex?: number }
 
+// ─── AI 视频页的长视频：比模型单段上限长，一键做到成片（docs/studio-segmented-video.md）───
+/** 一份素材：草稿画布上的节点。slot：image 场景图 | character 出镜人物 | voice 声音。 */
+export interface StudioSegmentedMaterial { nodeId: string; title: string; slot: "image" | "character" | "voice" }
+export interface StudioSegmentedVideoRequest {
+  clientRequestId: string; sceneId: string; text: string;
+  /** text 是已经写好的脚本（采用了编导那一版），按它分段，不改台词。 */
+  hasScript?: boolean;
+  options?: Record<string, string>; language?: string; duration: number; ratio: string;
+  /** 所选视频模型；不写用默认。 */
+  model?: string; tier?: string; optimize?: boolean; materials: StudioSegmentedMaterial[];
+  /** 用户看到的「最多」（StudioSegmentedVideoPrice.cap）；服务端重新报价，对不上 409 STUDIO_PRICE_CHANGED。 */
+  budgetCap: number; billing?: EnterpriseBillingSelection;
+}
+/** 按钮旁的价。cap 比 estimated 多的是分镜图不合格时重出一次的余量；textCost 是脚本、审核和提示词优化的冻结上限，按实际用量结算。 */
+export interface StudioSegmentedVideoPrice { segments: number[]; boards: number; boardReview: boolean; videoCost: number; boardCost: number; textCost: number; estimated: number; cap: number }
+/** 草稿里记的一条长视频。先记下请求再提交；没有 executionId 说明提交结果没确认，同一个请求编号再交一次会拿回原来那次。 */
+export interface StudioSceneSegmentedRecord { clientRequestId: string; at: string; title: string; request: StudioSegmentedVideoRequest; executionId?: string }
+
 // ─── S3: skill registry with immutable versions, admin editing / dry-run, intent routing, distilled drafts ───
 // (docs/ip-studio-conversational-video-recreation-plan.md §第三阶段 S3; server: ipstudio/skill/**, V63 ip_skill / ip_skill_version)
 /** Routing hints in a skill's front matter. media = attachment/pinned node types that suggest this skill; default = tie-breaker among the best matches (a message matching no skill binds none). */

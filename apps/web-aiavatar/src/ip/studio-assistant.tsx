@@ -21,7 +21,8 @@ import { studioTaskQueued } from "@/canvas-bridge/studio-task-status";
 import type { CanvasConnection, CanvasNodeData } from "@/canvas/types/canvas";
 import { USE_MOCK } from "@/ip/api/_client";
 import { isOperatorRole, useIdentity } from "@/proto/api";
-import { getRun } from "@/ip/api/ip-studio";
+import { getProject, getRun } from "@/ip/api/ip-studio";
+import { segmentedActive } from "@/canvas-bridge/studio-segmented";
 import { studioCapabilities } from "@/canvas-bridge/studio-api";
 import { applyStudioRun, dispatchStudioCommand, makeStudioNode } from "@/canvas-bridge/studio-nodes";
 import { readRun } from "@/canvas-bridge/api";
@@ -34,7 +35,7 @@ import { placeStudioNode } from "@/canvas-bridge/flow-document";
 import { markStudioDescendants } from "@/canvas-bridge/studio-script";
 import { approvedCaps, dialogueSections, executionActive, executionBudget, lastAssistantMessage, planForApproval, type DialogueAdoptionBlock, type DialogueApprovalBlock } from "@/canvas-bridge/studio-dialogue-store";
 import {
-  STUDIO_CHECK_COMMAND, checkSubject, checkedStep, executionRestoreUpserts, missingExecutionNodes, projectCanvasOps, projectStudioExecution, proposalFieldValue,
+  STUDIO_CHECK_COMMAND, checkSubject, checkedStep, executionRestoreUpserts, getStudioPlanExecution, missingExecutionNodes, projectCanvasOps, projectStudioExecution, proposalFieldValue,
   readProjectedNodes, rememberProjectedNodes, stepNodeId, stepRunCandidates, type CanvasProjectionOp, type StudioCheckCommand,
 } from "@/canvas-bridge/studio-plan-execution";
 import { activeStudioSkills, completionExecutionId, loadStudioSkills, reloadStudioSkills, skillRequiredChoices, studioSkillBadge } from "@/canvas-bridge/studio-skills";
@@ -75,6 +76,8 @@ type Props = {
 type ComposerDraft = { text: string; pinnedIds: string[]; attachmentIds: string[] };
 /** Contract limit for pinnedNodeIds / attachmentNodeIds (specs/openapi.yaml StudioPostMessageRequest). */
 const MAX_REFERENCES = 64;
+/** 长视频：画布开着时多久读一次进度。 */
+const SEGMENTED_POLL_MS = 20000;
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 /** An open fill-in card (docs/ip-studio-new-canvas-and-threads.md §5): its option choices and its lines of text. Material is the message's own references. */
 type Starter = { key: StarterKey; options: Record<string, string>; fields: Record<string, string> };
@@ -527,6 +530,32 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
       void restoreExecution(project, execution).catch(() => restored.current.delete(execution.id));
     }
   }, [session.executions]);
+  // 长视频是在 AI 视频页发起的，没有对话（docs/studio-segmented-video.md）：画布开着时也把做好的放上来，做完之前隔一会儿读一次。
+  useEffect(() => {
+    const project = projectId;
+    let alive = true, timer: ReturnType<typeof setTimeout> | undefined;
+    void getProject(project).then(({ doc }) => {
+      const ids = (doc.sceneSegmented ?? []).flatMap(record => record.executionId ? [record.executionId] : []);
+      if (!ids.length) return;
+      const poll = async () => {
+        let active = false;
+        for (const id of ids) {
+          const execution = await getStudioPlanExecution(project, id).catch(() => undefined);
+          if (!alive || !same(project)) return;
+          if (!execution) { active = true; continue; }
+          if (segmentedActive(execution)) active = true;
+          if (restored.current.get(execution.id) === execution.updatedAt) continue;
+          restored.current.set(execution.id, execution.updatedAt);
+          await restoreExecution(project, execution).catch(() => restored.current.delete(execution.id));
+          if (!alive) return;
+        }
+        if (active) timer = setTimeout(() => void poll(), SEGMENTED_POLL_MS);
+      };
+      void poll();
+    }).catch(() => undefined);
+    return () => { alive = false; if (timer) clearTimeout(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
   useEffect(() => {
     const execution = store.execution;
     if (!execution || projectStudioExecution(live.current.nodes, execution) === live.current.nodes) return;

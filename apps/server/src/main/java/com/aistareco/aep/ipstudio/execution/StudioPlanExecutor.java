@@ -44,6 +44,8 @@ public class StudioPlanExecutor {
     private static final Logger log=LoggerFactory.getLogger(StudioPlanExecutor.class);
     static final Duration LEASE=Duration.ofMinutes(2);
     static final Duration WINDOW=Duration.ofMinutes(90);
+    /** 长视频一次要出十几个任务，Seedance 一段就要二十分钟左右，给够时间；超过了停在中途，已受理的照常结算。 */
+    static final Duration SEGMENTED_WINDOW=Duration.ofHours(3);
     static final Duration CHILD_GRACE=Duration.ofMinutes(15);
     private static final int MAX_ROUNDS=40;
     static final List<String> TRACKED=List.of(IpPlanExecution.RUNNING,IpPlanExecution.PAUSED,IpPlanExecution.NEEDS_USER,IpPlanExecution.PARTIAL,IpPlanExecution.CANCELED);
@@ -69,6 +71,9 @@ public class StudioPlanExecutor {
     /** D03: user messages sent while this execution ran; read before every submission. */
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     private ObjectProvider<com.aistareco.aep.ipstudio.dialogue.StudioExecutionSteering> steering;
+    /** 长视频：一键到底的自动处理和按脚本编提示词（只对带 segmented 状态的执行）。 */
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private ObjectProvider<StudioSegmentedRun> segmented;
     /** D07 / cards: messages the executor posts on its thread (summary, budget raise, compiled production plan). */
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     private ObjectProvider<com.aistareco.aep.ipstudio.dialogue.StudioExecutionMessages> messages;
@@ -149,7 +154,10 @@ public class StudioPlanExecutor {
                 if(e.getDeadlineAt()!=null&&now.isAfter(e.getDeadlineAt())) {
                     e.setStatus(IpPlanExecution.PARTIAL);e.setFinishedAt(now);
                     state.put("needsUserReason","连续制作超过 90 分钟，已停在这里："+progressSummary(state,e.getStage())+"。已受理的任务会继续结算。");
-                } else next=advanceRunning(e,state,budget,out,after);
+                } else {
+                    if(StudioSegmentedRun.applies(state)&&segmented!=null&&segmented.getIfAvailable()!=null)segmented.getObject().prepare(e,state);
+                    next=advanceRunning(e,state,budget,out,after);
+                }
             }
             case IpPlanExecution.NEEDS_USER -> completeIfResolved(e,state,out,after);
             // Detached when its thread switched method (不锁方法): once nothing is generating any more, it ends quietly.
@@ -260,7 +268,8 @@ public class StudioPlanExecutor {
                     }
                 }
                 case "failed" -> {
-                    if(!"failed".equals(before)&&!"needs_user".equals(before)&&!"pending".equals(before)) {
+                    // 长视频里审不成已跳过的步骤（softSkipped）不再读回成失败，否则下一轮又处理一遍，暂停后继续还会重跑它。
+                    if(!"failed".equals(before)&&!"needs_user".equals(before)&&!"pending".equals(before)&&!step.path("softSkipped").asBoolean(false)) {
                         step.put("status","failed").put("reason",latest.errorMessage()==null?"这一步没有完成":latest.errorMessage());
                         if(latest.errorCode()!=null)step.put("errorCode",latest.errorCode());
                         if(StudioPlanValidator.MATERIAL_OUT_OF_SCOPE.equals(latest.errorCode())&&latest.output()!=null) {
@@ -341,7 +350,7 @@ public class StudioPlanExecutor {
             String status=raw.path("status").asText();
             // A persisted request without a run: resubmit with the same identity (idempotent), budget already counted.
             if("submitted".equals(status)){ready=(ObjectNode)raw;break;}
-            if("pending".equals(status)&&PlanState.dependenciesDone(state,raw)){ready=(ObjectNode)raw;break;}
+            if("pending".equals(status)&&PlanState.dependenciesDone(state,raw)&&PlanState.due(raw,Instant.now())){ready=(ObjectNode)raw;break;}
         }
         if(ready==null) {
             completeIfResolved(e,state,out,after);
@@ -545,7 +554,12 @@ public class StudioPlanExecutor {
         BillingSelection billing=billing(e);
         String nodeId=StudioPlanExecutionIds.stepNodeId(e.getId(),step);
         var binding=new StudioPlanSteps.Binding(requestId,nodeId,step.path("quotedCost").asLong(),billing,e.getId(),e.getSkillKey(),e.getSkillVersion(),stage,canvas,check);
-        return StudioPlanSteps.request(compiled,keys,quoter.modes(),binding);
+        // 长视频：提示词（和用得上的参考）这时才定，内容来自脚本。
+        var segmentedRun=StudioSegmentedRun.applies(state)&&segmented!=null?segmented.getIfAvailable():null;
+        if(segmentedRun!=null)compiled=segmentedRun.materialize(e,state,step,definition);
+        String stepModel=compiled.path("settings").path("model").asText(null);
+        RunRequest request=StudioPlanSteps.request(compiled,keys,stepModel==null?quoter.modes():quoter.modes(stepModel),binding);
+        return segmentedRun==null?request:segmentedRun.attach(state,compiled,request);
     }
 
     private String stepKey(IpPlanExecution e,ObjectNode state,String stage,String stepId,Integer candidate) {

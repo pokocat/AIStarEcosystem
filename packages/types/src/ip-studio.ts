@@ -125,6 +125,8 @@ export interface IpProjectDoc {
   sceneImageState?: StudioSceneImageState;
   /** AI 视频页的创作条件（见 StudioSceneVideoState）。没有这个字段的老草稿按最近一版脚本推断。 */
   sceneVideoState?: StudioSceneVideoState;
+  /** AI 视频页发起的长视频（新的在前）。进度和结果读 ip_plan_execution，这里只记是哪一次。 */
+  sceneSegmented?: import("./ip-studio-workflow").StudioSceneSegmentedRecord[];
   nodes: IpNode[];
   connections: IpConnection[];
   viewport: IpViewport;

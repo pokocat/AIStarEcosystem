@@ -227,6 +227,16 @@ public class StudioWorkflowWorker {
                                 "image".equals(target.path("mediaType").asText()),target.path("mediaFacts").size()>0,
                                 target.path("targetRunId").asText(),target.path("targetStorageKey").asText(null));
                         output.set("check",result);output.put("text",checkSummary(result));
+                    } else if("text".equals(operation)&&input.path("_exec").path("segmented").isObject()) {
+                        // 长视频的分段脚本 / 审稿：结构不对判失败、全额退回；结构化的给后面的步骤，正文放进画布（docs/studio-segmented-video.md）。
+                        JsonNode plan=input.path("_exec").path("segmented");
+                        var specs=new ArrayList<com.aistareco.aep.ipstudio.segmented.SegmentedPlan.Segment>();
+                        for(JsonNode s:plan.path("segments"))specs.add(mapper.treeToValue(s,com.aistareco.aep.ipstudio.segmented.SegmentedPlan.Segment.class));
+                        var normalized=com.aistareco.aep.ipstudio.segmented.SegmentedScript.normalize(mapper,script,specs,plan.path("refCount").asInt());
+                        String body=com.aistareco.aep.ipstudio.segmented.SegmentedScript.render(normalized,specs);
+                        output.set("segmented",normalized);
+                        output.putObject("textRevision").put("summary",normalized.path("summary").asText("分镜脚本")).put("content",body);
+                        output.put("text",body);
                     } else if("text".equals(operation)&&input.path("_exec").path("skillDistill").isObject()) {
                         // S3 distill: the draft body is normalized here (keys / URLs / verbatim case text stripped) and saved
                         // by StudioSkillDraftSink inside the settlement transaction. Not output.text: the asset library would file it.

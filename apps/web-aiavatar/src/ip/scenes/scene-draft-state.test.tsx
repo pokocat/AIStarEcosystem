@@ -27,6 +27,8 @@ vi.mock("../api", () => ({ IpStudioApi: { uploadImage: api.uploadImage, listProj
 vi.mock("@/canvas-bridge/api", () => ({ fetchModels: api.fetchModels, readRun: api.readRun, cancelRun: api.cancelRun, fetchStudioVideoModels: api.videoModels, signKeys: api.signKeys }));
 vi.mock("@/canvas-bridge/studio-api", () => ({ studioCapabilities: api.capabilities, submitStudioRun: api.submit, importStudioMedia: api.importMedia }));
 vi.mock("@/canvas-bridge/studio-image-file", () => ({ prepareStudioImageUpload: async (f: File) => f }));
+vi.mock("@/canvas-bridge/studio-segmented", async original => ({ ...(await original<typeof import("@/canvas-bridge/studio-segmented")>()),
+  segmentedVideoPrice: async () => ({ segments: [10, 5], boards: 2, boardReview: true, videoCost: 0, boardCost: 0, textCost: 0, estimated: 0, cap: 0 }) }));
 vi.mock("../studio-errors", async importOriginal => ({ ...(await importOriginal<typeof import("../studio-errors")>()), useStudioFailure: () => api.failure, studioErrorMetadata: () => ({}) }));
 vi.mock("../library-reference-picker", () => import("./scene-test-picker"));
 vi.mock("../studio-select", () => ({ StudioSelect: ({ label, value, onChange, options }: any) =>
@@ -344,5 +346,5 @@ test("video: a duration this model cannot make is named, not quietly changed", a
     sceneVideoState: { text: "", options: {}, duration: 15, ratio: "9:16" } } });
   await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
   fireEvent.change(await screen.findByRole("combobox", { name: "视频模型" }), { target: { value: "ep-short" } });
-  expect(await screen.findByText("这个模型单段最长 10 秒，15 秒会分 2 段，交给创作助手做")).toBeTruthy();
+  expect(await screen.findByText(/这个模型单段最长 10 秒，15 秒分 2 段（10 \+ 5）/)).toBeTruthy();
 });
