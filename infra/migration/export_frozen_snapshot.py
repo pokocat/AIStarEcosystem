@@ -4,7 +4,7 @@ parser=argparse.ArgumentParser();parser.add_argument('--frozen-context',required
 def run(a,env=None):
  p=subprocess.run(a,env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,universal_newlines=True)
  if p.returncode:raise RuntimeError('只读查询失败；敏感诊断不输出')
- return p.stdout.strip()
+ return p.stdout.rstrip('\r\n')
 context_path=pathlib.Path(args.frozen_context);st=context_path.stat();assert st.st_uid==0 and stat.S_IMODE(st.st_mode)==0o600
 context=json.loads(context_path.read_text());assert context['source_frozen'] is True
 pid=run(['systemctl','show','aistareco-server','-p','MainPID','--value']);assert pid=='0','Source process still active'
@@ -44,7 +44,7 @@ for t,cols in sorted(tables.items()):
   if c['type'].startswith('bit('):value='CAST(`'+c['name']+'`+0 AS CHAR)'
   fields.append('IF(`'+c['name']+'` IS NULL,NULL,HEX('+value+'))')
  q.append("SELECT JSON_OBJECT('type','row','name','"+t+"','values',JSON_ARRAY("+','.join(fields)+')) FROM `'+t+'`;')
-q+=['COMMIT;',"SELECT '{\"type\":\"complete\"}';"]
+q+=['COMMIT;']
 with tempfile.TemporaryFile() as inp,tempfile.TemporaryFile() as err:
  inp.write(('\n'.join(q)+'\n').encode());inp.seek(0)
  proc=subprocess.Popen(base,env=e,stdin=inp,stdout=subprocess.PIPE,stderr=err)
@@ -53,5 +53,10 @@ with tempfile.TemporaryFile() as inp,tempfile.TemporaryFile() as err:
    chunk=proc.stdout.read(1024*1024)
    if not chunk:break
    gz.write(chunk)
- if proc.wait()!=0:
-  err.seek(0);sys.stderr.buffer.write(err.read());raise RuntimeError('Snapshot read failed; diagnostic goes to protected caller file')
+  if proc.wait()!=0:raise RuntimeError('Snapshot read failed; no valid completion record')
+  after_schema=query("SELECT table_name,column_name,column_type,is_nullable,coalesce(column_default,'<NULL>'),extra FROM information_schema.columns WHERE table_schema=database() AND table_name<>'flyway_schema_history' ORDER BY table_name,ordinal_position")+'\n'
+  assert hashlib.sha256(after_schema.encode()).hexdigest()==source_schema_sha256,'Source schema drifted during export'
+  assert hashlib.sha256(artifact.read_bytes()).hexdigest()==source_artifact_sha256,'Source artifact drifted during export'
+  assert run(['systemctl','show','aistareco-server','-p','MainPID','--value'])=='0','Source restarted during frozen export'
+  assert time.time()<context['window_end_epoch'],'Window expired during frozen export'
+  gz.write(b'{"type":"complete"}\n')

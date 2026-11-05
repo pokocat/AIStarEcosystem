@@ -17,6 +17,10 @@ public class AistarApplicationGrant {
         receipt.path("tables").forEach(t->{if(!t.path("matched").asBoolean(false))throw new IllegalStateException("Unmatched table");});receipt.path("financial_violation_counts").forEach(t->{if(t.asLong(-1)!=0)throw new IllegalStateException("Financial check failed");});
         if(mode.equals("production")&&!receipt.path("source_frozen").asBoolean(false))throw new IllegalStateException("Production requires frozen receipt");
         var config=json.readTree(Files.readString(root.resolve("resource-secrets.json")));String url="jdbc:postgresql://"+AistarCutoverGuard.HOST+":5432/"+db+"?sslmode=verify-full&sslrootcert="+root.resolve("rds-ca.pem")+"&connectTimeout=10&socketTimeout=30";
+        String appPassword=config.path("rds_roles").path(app).asText();
+        if(mode.equals("drill")) { var env=json.readTree(Files.readString(root.resolve("api-environment-private.json")));if(!"aistar_runtime".equals(env.path("DB_USERNAME").asText()))throw new IllegalStateException("Drill runtime credential identity mismatch");appPassword=env.path("DB_PASSWORD").asText(); }
+        if(appPassword.isBlank())throw new IllegalStateException("Runtime credential missing");
+        try(var auth=DriverManager.getConnection(url,app,appPassword)) { if(!auth.isValid(5))throw new IllegalStateException("Runtime login unavailable"); }
         try(var c=DriverManager.getConnection(url,owner,config.path("rds_roles").path(owner).asText())) {
             c.setAutoCommit(false);
             try(var s=c.createStatement()) {
@@ -31,7 +35,7 @@ public class AistarApplicationGrant {
                 AistarCutoverGuard.checkMode(mode,permit,Instant.now());c.commit();
             }catch(Exception e){c.rollback();throw e;}
         }
-        try(var c=DriverManager.getConnection(url,app,config.path("rds_roles").path(app).asText());var s=c.createStatement()) {
+        try(var c=DriverManager.getConnection(url,app,appPassword);var s=c.createStatement()) {
             c.setAutoCommit(false);
             try(var r=s.executeQuery("select has_schema_privilege(current_user,'public','CREATE'),(select count(*) from admin_users)")){r.next();if(r.getBoolean(1))throw new IllegalStateException("Runtime role can create schema objects");}
             s.executeUpdate("update admin_users set username=username where false");c.rollback();

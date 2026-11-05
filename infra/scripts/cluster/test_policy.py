@@ -25,7 +25,7 @@ class RollingFailureTests(unittest.TestCase):
  def check_failure(self,failed_node,failed_action,survivor):
   import release
   from unittest.mock import patch
-  cluster=release.Cluster({},'stage') if False else object.__new__(release.Cluster)
+  cluster=object.__new__(release.Cluster)
   cluster.events=[];calls=[];weights=[]
   cluster.members=lambda:{'a':{'Weight':100},'b':{'Weight':0}}
   def action(n,a,r=None):
@@ -37,4 +37,3 @@ class RollingFailureTests(unittest.TestCase):
   self.assertEqual(weights[-1],{'a':100 if survivor=='a' else 0,'b':100 if survivor=='b' else 0})
   if failed_node=='b':self.assertNotIn(('a','drain-stop'),calls)
 if __name__=='__main__':unittest.main()
-

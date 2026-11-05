@@ -16,7 +16,7 @@ def configuration(mode):
  expected=config['modes'][mode]
  if mode=='production':
   marker=ROOT/'production-activated.json';require(marker.is_file(),'AIStar生产尚未迁移；拒绝滚动或激活')
-  active=json.loads(marker.read_text());receipt=pathlib.Path('/opt/aistar-migration/preparation')/active['receipt']
+  active=json.loads(marker.read_text());require(re.fullmatch('[A-Za-z0-9_-]+[.]json',active.get('receipt','')) is not None,'正式凭证必须是受保护目录内的普通文件名');receipt=pathlib.Path('/opt/aistar-migration/preparation')/active['receipt']
   require(sha(receipt)==active['receipt_sha256'],'正式导入凭证变化')
   proof=json.loads(receipt.read_text());require(proof.get('production') is True and proof.get('database')=='aistar_prod' and proof.get('source_frozen') is True and proof.get('verified_tables')==192 and all(x.get('matched') for x in proof['tables'].values()),'正式导入未完成')
  return config,expected
@@ -70,7 +70,8 @@ def start(config,expected,mode,release):
  args+=['--entrypoint','java',manifest['image_configuration_id'],'-Duser.timezone=Asia/Shanghai','-Djavax.net.ssl.trustStore=/opt/aistar-migration/preparation/java-truststore','-Djavax.net.ssl.trustStorePassword=changeit','-Xms128m','-Xmx1024m']
  if mode=='stage':args+=['-Djava.security.manager=allow','--add-opens=java.base/java.lang=ALL-UNNAMED','-cp','/app/release/tools:/app/release/app/BOOT-INF/classes:/app/release/app/BOOT-INF/lib/*','IsolatedApiBootstrap']
  else:args+=['-jar','/app/release/app.jar']
- unitfile='[Unit]\nDescription=AIStar '+mode+' immutable API\nAfter=network-online.target\n[Service]\nType=simple\nRestart=on-failure\nRestartSec=5\nTimeoutStopSec=240\nKillMode=control-group\nExecStart='+ ' '.join(args)+'\n[Install]\nWantedBy=multi-user.target\n'
+ pathlib.Path('/var/log/aistar').mkdir(mode=0o755,exist_ok=True)
+ unitfile='[Unit]\nDescription=AIStar '+mode+' immutable API\nAfter=network-online.target\n[Service]\nType=simple\nRestart=on-failure\nRestartSec=5\nTimeoutStopSec=240\nKillMode=control-group\nStandardOutput=append:/var/log/aistar/'+mode+'.log\nStandardError=inherit\nExecStart='+ ' '.join(args)+'\n[Install]\nWantedBy=multi-user.target\n'
  require(all(' ' not in x and '\n' not in x for x in args),'systemd参数不能包含空白')
  path=pathlib.Path('/etc/systemd/system')/(unit+'.service');path.write_text(unitfile);run(['systemctl','daemon-reload']);run(['systemctl','start',unit])
  deadline=time.monotonic()+150
