@@ -130,6 +130,12 @@ jobs:
       - run: pnpm --filter @ai-star-eco/${{ matrix.product }} build
       - name: Install isolated browser test dependency
         run: |
+          # Use Ubuntu's signed primary archive for Playwright's OS dependencies too.
+          for source in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
+            if [[ -f "$source" ]]; then
+              sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' "$source"
+            fi
+          done
           npm install --prefix "$RUNNER_TEMP/browser-test" --no-package-lock --no-save playwright@1.55.1
           "$RUNNER_TEMP/browser-test/node_modules/.bin/playwright" install --with-deps chromium
       - name: Verify stale payment poll preserves server confirmation

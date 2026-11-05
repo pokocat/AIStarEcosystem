@@ -2,7 +2,7 @@
 import json,pathlib,re,shlex,subprocess
 from policy import require
 
-def copy_archive(config,metadata,command):
+def copy_archive(config,metadata,command,progress=None):
  path=pathlib.PurePosixPath(metadata['path']);root=pathlib.PurePosixPath(config['root'])/'image-build'
  require(path.name=='image.tar' and path.parent.parent==root and re.fullmatch('[a-f0-9]{16}',path.parent.name),'镜像归档必须位于固定构建目录')
  require(re.fullmatch('[a-f0-9]{64}',metadata['archive_sha256']) and metadata['bytes']>0,'归档身份缺失')
@@ -22,12 +22,17 @@ if p.exists():
    if remaining is not None:remaining-=len(block)
 print(json.dumps({'bytes':size,'sha256':h.hexdigest()}))
 """.replace('PATH',repr(str(path))).replace('LIMIT',repr(limit))
-  return json.loads(remote(node,code))
+  # This operation is read-only; retry transport failures without replaying mutations.
+  for attempt in range(3):
+   try:return json.loads(remote(node,code))
+   except (RuntimeError,AssertionError,subprocess.SubprocessError,ValueError):
+    if attempt==2:raise
  source=inspect('b');require(source=={'bytes':metadata['bytes'],'sha256':metadata['archive_sha256']},'源归档不完整或发生变化')
  target=inspect('a');offset=target['bytes'];matched=offset<=source['bytes'] and target['sha256']==inspect('b',offset)['sha256']
  if not matched:
   remote('a',"import pathlib,time;p=pathlib.Path("+repr(str(path))+");assert not p.is_symlink();p.rename(p.with_name(p.name+'.rejected-'+str(time.time_ns())))")
   offset=0
+ if progress:progress({'resumed_bytes':offset,'remaining_bytes':source['bytes']-offset,'prefix_matched':matched})
  if offset<source['bytes']:
   send="import pathlib,sys,shutil;p=pathlib.Path("+repr(str(path))+");f=p.open('rb');f.seek("+str(offset)+");shutil.copyfileobj(f,sys.stdout.buffer,1024*1024)"
   receive="import pathlib,sys,shutil,os;os.umask(0o077);p=pathlib.Path("+repr(str(path))+");assert not p.is_symlink();assert (p.stat().st_size if p.exists() else 0)=="+str(offset)+";f=p.open('ab' if "+str(offset)+" else 'wb');shutil.copyfileobj(sys.stdin.buffer,f,1024*1024);f.close();p.chmod(0o600)"

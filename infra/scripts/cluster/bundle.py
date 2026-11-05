@@ -20,7 +20,9 @@ def main():
  run=json.loads(subprocess.check_output(['gh','run','view','--repo','pokocat/AIStarEcosystem',str(proof['ci_run']),'--json','headSha,jobs'],text=True));require(run['headSha']==proof['sha'] and any(x['name']=='backend' and x['conclusion']=='success' for x in run['jobs']),'对应最终SHA后端及PG实库门禁未成功')
  buildroot='/opt/aistar-cluster/image-build/'+digest[:16];key=config['ssh_key']
  def command(n,cmd,timeout=120):
-  r=subprocess.run(['ssh','-i',key,'-o','BatchMode=yes','root@'+config['nodes'][n]['host'],cmd],capture_output=True,text=True,timeout=timeout);require(r.returncode==0,'原生镜像操作失败；请看节点私有日志');return r.stdout
+  r=subprocess.run(['ssh','-i',key,'-o','BatchMode=yes','root@'+config['nodes'][n]['host'],cmd],capture_output=True,text=True,timeout=timeout)
+  if r.returncode:(out/'last-cloud-command-private.log').write_text(r.stdout+r.stderr)
+  require(r.returncode==0,'原生镜像操作失败；请看私有操作日志');return r.stdout
  for n in ['a','b']:
   identity=json.loads(command(n,'cat /etc/aibuzz-deploy/node.json'));require(identity['instance_id']==config['nodes'][n]['instance_id'] and identity['cluster_id']==config['physical_cluster_id'],'ECS身份不符')
  command('b','install -d -m 700 '+buildroot)
@@ -55,7 +57,7 @@ print(json.dumps(metadata))
  metadata=json.loads(command('b',shlex.join([config['operation_python'],'-s','-c',code]),timeout=300))
  # SSH streams the private archive via this machine, with no public object storage or forwarded private key.
  command('a','install -d -m 700 '+buildroot)
- transfer=copy_archive(config,metadata,command)
+ transfer=copy_archive(config,metadata,command,progress=lambda state:(out/'archive-transfer-progress.json').write_text(json.dumps(state)))
  (out/'archive-transfer-verification.json').write_text(json.dumps(transfer,indent=2))
  code="import pathlib,hashlib,subprocess,json;p=pathlib.Path("+repr(metadata['path'])+");assert hashlib.sha256(p.read_bytes()).hexdigest()=="+repr(metadata['archive_sha256'])+";subprocess.run(['podman','load','-i',str(p)],check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE);i=json.loads(subprocess.check_output(['podman','image','inspect',"+repr(metadata['image_configuration_id'])+"],universal_newlines=True))[0];assert i['Id'].removeprefix('sha256:')=="+repr(metadata['image_configuration_id'].removeprefix('sha256:'))
  command('a',shlex.join([config['operation_python'],'-s','-c',code]),timeout=300)
