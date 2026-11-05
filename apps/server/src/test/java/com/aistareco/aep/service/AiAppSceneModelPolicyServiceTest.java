@@ -84,4 +84,13 @@ class AiAppSceneModelPolicyServiceTest {
         assertTrue(selected.get(0).isDefault());
         assertThrows(BusinessException.class,()->service.resolveStudioVideo("legacy"));
     }
+    @Test void directorDefaultMustBeOpenForStudioImagesAndIsReadBack(){
+        endpoint("a");configured(policy("selectable",9L));
+        assertTrue(service.directorImageDefault().isEmpty());
+        assertThrows(BusinessException.class,()->service.saveDirectorImageDefault("outside","operator"));
+        verify(config,never()).upsert(eq("ai.scene-default.studio.director-image"),any(),any(),any());
+        assertEquals("a",service.saveDirectorImageDefault("a","operator"));
+        verify(config,times(2)).lockExisting("ai.scene-default.studio.director-image");
+        verify(config).upsert(eq("ai.scene-default.studio.director-image"),eq(mapper.createObjectNode().put("endpointId","a")),any(),eq("operator"));
+    }
 }

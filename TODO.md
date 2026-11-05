@@ -1723,7 +1723,9 @@ AIStar运行镜像必须同时固定官方Java与Node镜像digest；Studio仿片
 
 ## AI 图片与出图队列（2026-11-05）
 
-- [ ] 出图排队卡住：`AiGenerationQueueDispatcher` 分发时报 `dispatch deferred ... TaskRejectedException`，2026-11-05 有 3 张图排了 47 分钟，当时已没有在跑的出图任务，server 重启后才开始。先查 `ip-run` 线程池为什么拒绝。记录见 `docs/releases/scene-skill-slots-release-20261105.md`。
+- [x] ~~出图排队卡住~~ **已修复（待发布），2026-11-05**：工作线程扩到 24、线程忙时不再重复入队、图片调用加总时限，并发拒收回队列，见 `docs/ai-endpoint-generation-queue.md` 末节。原记录：`AiGenerationQueueDispatcher` 分发时报 `dispatch deferred ... TaskRejectedException`，2026-11-05 有 3 张图排了 47 分钟，当时已没有在跑的出图任务，server 重启后才开始。先查 `ip-run` 线程池为什么拒绝。记录见 `docs/releases/scene-skill-slots-release-20261105.md`。
+- [ ] 并发拒收回队列目前只做了图片（`IpRunWorker`）。文字任务、视频（`MaterialVideoWorker`）、配音遇到 429 / 明确的并发拒绝仍按原规则失败或受理未知。真实的拒绝原话还没见过，第一次出现时核对 `[ipstudio] 生成服务因并发拒收`。
+- [ ] 图片结果下载（`JusuanImageClient.download` / `resultBytes` 用流式读）还没有总时限，下载中途不来数据仍可能占住线程。
 - [ ] GPT Image 2.5 比 GPT Image 2 慢约 3 倍（平均 508 秒对 169 秒），当前是 Studio 默认模型，价格也从 16 积分变成 37 积分。用真实使用数据判断要不要保留为默认。
 - [ ] AI 图片输入框加「输入 / 选技能」（茂隆有，`ScenePromptEditor` 现在只有 @）。
 - [ ] 运营后台还不能编辑素材位的 `anyOf`（至少放一个）和 `many`（放多张时的说明），保存时原样保留。

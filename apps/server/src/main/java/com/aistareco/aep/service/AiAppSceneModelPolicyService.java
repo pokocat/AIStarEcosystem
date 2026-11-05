@@ -14,6 +14,7 @@ import java.util.*;
 @Service
 public class AiAppSceneModelPolicyService {
     private static final String PREFIX="ai.scene-policy.";
+    private static final String DIRECTOR_IMAGE_DEFAULT_KEY="ai.scene-default.studio.director-image";
     private static final String STUDIO_VIDEO_GROUP_KEY="ai.app-model-group.studio.video";
     public record VideoGroup(String defaultEndpointId,List<String> endpointIds) {}
     private final PlatformConfigService config;
@@ -61,6 +62,19 @@ public class AiAppSceneModelPolicyService {
         for(var c:prices)if(c==null || !allowed.contains(c.endpointId()) || c.creditCost()==null || c.creditCost()<0 || !unit(scene).equals(c.billingUnit()) || updates.put(c.endpointId(),c)!=null)throw bad("仅能修改已配置模型的有效售价");
         var value=new AiAppSceneModelPolicyDto(old.appCode(),old.scene(),old.mode(),old.defaultEndpointId(),old.candidates().stream().map(c->updates.getOrDefault(c.endpointId(),c)).toList());
         config.upsert(PREFIX+app+"."+scene,mapper.valueToTree(value),"应用场景积分售价",actor);return value;
+    }
+    /** 导演台没选模型时用哪个图片模型。没配就跟 Studio 图片的默认走；模型仍要在 Studio 图片的开放范围内，价格也从那里来。 */
+    public Optional<String> directorImageDefault() {
+        return config.findByKey(DIRECTOR_IMAGE_DEFAULT_KEY).map(c->c.value().path("endpointId").asText("")).filter(id->!id.isBlank());
+    }
+    @Transactional
+    public String saveDirectorImageDefault(String endpointId,String updatedBy) {
+        config.lockExisting(DIRECTOR_IMAGE_DEFAULT_KEY);
+        var policy=get("studio","image").orElseThrow(()->bad("Studio 图片尚未配置开放范围"));
+        if(endpointId==null||policy.candidates().stream().noneMatch(c->endpointId.equals(c.endpointId())))throw bad("模型不在 Studio 图片的开放范围内");
+        requireEndpoint(AiModelPurpose.DAP_IMAGE,endpointId,"studio");
+        config.upsert(DIRECTOR_IMAGE_DEFAULT_KEY,mapper.createObjectNode().put("endpointId",endpointId),"AI 导演台默认图片模型",updatedBy);
+        return endpointId;
     }
     public void lockScene(String app,String scene){purpose(app,scene);config.lockExisting(PREFIX+app+"."+scene);}
     public AiModelPurpose registeredPurpose(String app,String scene){return purpose(app,scene);}

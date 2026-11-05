@@ -46,6 +46,38 @@ class JusuanImageClientTest {
         assertTrue(evidence.identifiers().contains("logid=body-123"));
         verify(upstream,times(1)).sendJson(any(),any());
     }
+    private Throwable submitAnswered(int status,String body) {
+        var ep=endpoint("ernie-Image");
+        when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
+        var response=json(body);when(response.statusCode()).thenReturn(status);
+        when(response.headers()).thenReturn(HttpHeaders.of(Map.of(),(k,v)->true));
+        when(upstream.sendJson(any(),any())).thenReturn(response);
+        return assertThrows(RuntimeException.class,()->client.generate("ep","image","1024x1024",List.of(),"request","owner",s->{},null,null,null,state->{}));
+    }
+    @Test void explicitConcurrencyRefusalsGoBackToTheQueue() {
+        for(var refusal:List.of(
+                Map.entry(429,"{\"error\":{\"code\":\"rate_limit_exceeded\",\"message\":\"slow down\"}}"),
+                Map.entry(429,"<html>Too Many Requests</html>"),
+                Map.entry(503,"{\"error\":{\"message\":\"当前分组上游负载已饱和，请稍后再试\"}}"),
+                Map.entry(500,"{\"error\":{\"message\":\"concurrency limit exceeded\"}}"))) {
+            reset(upstream);
+            var error=submitAnswered(refusal.getKey(),refusal.getValue());
+            assertInstanceOf(JusuanImageClient.ProviderBusy.class,error,refusal.getValue());
+            assertEquals("STUDIO_IMAGE_PROVIDER_BUSY",((BusinessException)error).getCode());
+            assertFalse(error.getMessage().contains("rate_limit"));
+            verify(upstream,times(1)).sendJson(any(),any());
+        }
+    }
+    /** 排多久都等不来的，和可能已经受理的，都不能回队列重交。 */
+    @Test void quotaAndAmbiguousServerErrorsAreNotTreatedAsLoadRefusals() {
+        var quota=submitAnswered(429,"{\"error\":{\"code\":\"insufficient_user_quota\",\"message\":\"预扣费额度失败\"}}");
+        assertInstanceOf(JusuanImageClient.ProviderRejected.class,quota);
+        assertFalse(quota instanceof JusuanImageClient.ProviderBusy);
+        reset(upstream);
+        assertInstanceOf(JusuanImageClient.Pending.class,submitAnswered(504,"<html>gateway timeout</html>"));
+        reset(upstream);
+        assertInstanceOf(JusuanImageClient.Pending.class,submitAnswered(503,"{\"error\":{\"code\":\"model_not_found\",\"message\":\"No available channel\"}}"));
+    }
     @Test void moderationRejectionReturnsProviderReasonWithoutRetryingDurableSubmission() throws Exception {
         String reason="生成的图片可能违反了关于青少年与儿童形象适当描绘的防护限制";
         var error=rejectedResponse(400,mapper.createObjectNode().set("error",mapper.createObjectNode()

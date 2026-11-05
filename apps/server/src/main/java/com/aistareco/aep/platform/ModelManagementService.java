@@ -116,6 +116,10 @@ public class ModelManagementService {
     if(old.isPresent()){v.set("creditCostOverride",mapper.valueToTree(old.get().creditCostOverride()));result=bindings.updateCandidate(p,id,dto(v,AiAppEndpointCandidateUpsert.class));}
     else result=bindings.addCandidate(p,dto(v,AiAppEndpointCandidateUpsert.class));break;
    }
+   case "directorImageDefaultSave": {
+    onlyFields(c,Set.of("action","endpointId"));before=scenePolicies.directorImageDefault().orElse(null);
+    result=scenePolicies.saveDirectorImageDefault(text(c,"endpointId"),actor);break;
+   }
    case "scenePolicySave": {var policy=dto(c.path("value"),AiAppSceneModelPolicyDto.class);scenePolicies.lockScene(policy.appCode(),policy.scene());before=scenePolicies.get(policy.appCode(),policy.scene()).orElse(null);result=scenePolicies.save(policy.appCode(),policy.scene(),policy,actor);break;}
    case "endpoints":
    case "endpointCostList": return endpoints.list();

@@ -104,9 +104,14 @@ public class JusuanImageClient {
         }
         public String code(){return known?"STUDIO_IMAGE_RECOVERING":"STUDIO_IMAGE_SUBMISSION_UNKNOWN";}
     }
-    public static final class ProviderRejected extends BusinessException {
+    public static class ProviderRejected extends BusinessException {
+        ProviderRejected(String code,String message,boolean ignored){super(HttpStatus.BAD_GATEWAY,code,message);}
         ProviderRejected(String message){super(HttpStatus.BAD_GATEWAY,"STUDIO_IMAGE_PROVIDER_FAILED",message);}
         ProviderRejected(String message,Map<String,String> details){super(HttpStatus.BAD_GATEWAY,"STUDIO_IMAGE_PROVIDER_FAILED",message,details);}
+    }
+    /** 供应商因为并发或限流明确拒收：没有受理，回队列重交不会多生成一次。 */
+    public static final class ProviderBusy extends ProviderRejected {
+        public ProviderBusy(){super("STUDIO_IMAGE_PROVIDER_BUSY","生成服务当前繁忙，请稍后再试",true);}
     }
     /** Business callers have already resolved their own purpose/application access and keep their own credit rules. */
     public byte[] generateResolved(AiModelEndpoint endpoint,AiModelPurpose purpose,String appCode,String prompt,String size,
@@ -153,6 +158,7 @@ public class JusuanImageClient {
             catch(ProviderRejected error){throw error;}
             catch(RuntimeException error){if(durable)throw new Pending(false,error);throw error;}
             if(ProviderErrorMessage.hasError(accepted)) {
+                if(refusedForLoad(200,accepted.toString()))throw new ProviderBusy();
                 var error=com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attachBody(
                         rejected(accepted,"图片生成服务返回错误，未提供具体原因"),accepted.toString());
                 // Keep sync final failures and async missing-receipt failures on their existing settlement paths.
@@ -445,9 +451,20 @@ public class JusuanImageClient {
         return submit?checkedSubmit(response,wire):checked(response,wire);
     }
     private JsonNode checkedSubmit(HttpResponse<String> response,AiImageRequestSpec.Wire wire) {
+        if(response.statusCode()>=400 && refusedForLoad(response.statusCode(),response.body()))throw attach(new ProviderBusy(),response);
         if(response.statusCode()>=400 && response.statusCode()<500)
             throw attach(rejected(response.body(),"图片生成服务拒绝了这次请求，请调整描述或参考图后再试"),response);
         return checked(response,wire);
+    }
+
+    /**
+     * 只认明确说并发、限流、过载的拒绝。额度用完不算（排多久都没用）；状态码不明确又没这些字的 5xx 也不算，
+     * 那种可能已经受理，仍走「受理未知」，不能重交。读供应商原话，不读对外脱敏后的那份（§8.0.1 ①）。
+     */
+    static boolean refusedForLoad(int status,String body) {
+        if(com.aistareco.aep.service.alerts.ModelQuotaAlerts.isOutOfQuota(body))return false;
+        if(status==429)return true;
+        return com.aistareco.aep.service.alerts.ModelQuotaAlerts.isRateLimited(body);
     }
 
     // AGENTS §8.0.1: keep actionable JSON rejection messages on the public path as well as in diagnostics.
@@ -515,7 +532,7 @@ public class JusuanImageClient {
     }
     private ModelCallCtx context(AiModelEndpoint endpoint,String id,Invocation owner,String body,boolean submit) {
         return ModelCallCtx.builder(owner.purpose()).endpoint(endpoint.getId(),endpoint.getName()).model(endpoint.getModel()).requestId(id).ownerUserId(owner.userId())
-                .appCode(owner.appCode()).client(http).requestBodyJson(body).recordFailureUsage(submit).maxAttempts(1).build();
+                .appCode(owner.appCode()).client(http).requestBodyJson(body).recordFailureUsage(submit).maxAttempts(1).boundBody(true).build();
     }
     private JsonNode checked(HttpResponse<String> response) {
         return checked(response,null);

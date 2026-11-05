@@ -517,7 +517,7 @@ public class IpRunService {
     /**
      * 派发到 {@code ipRunExecutor}。
      *
-     * <p>线程池排满（core 3 + queue 128 全占）时 {@code @Async} 抛
+     * <p>线程池排满（工作线程和 128 条等待全占）时 {@code @Async} 抛
      * {@link TaskRejectedException}：此时 hold 已经冻上、run 行已经落库，
      * 谁都不会再来跑它 —— 不接住就是「用户看着一个永远 running 的节点，钱冻在 pending 桶里
      * 等三小时后的 CreditHoldSweeper」。afterCommit 跑在事务之外，所以收尾必须借
@@ -566,7 +566,8 @@ public class IpRunService {
             if("endpoint.queued".equals(run.getStage())||run.getStartedAt()==null) {
                 credits.releaseHold(REF_TYPE,run.getId(),"排队任务已停止 · 释放冻结");
                 run.setCancelRequested(true);run.setStatus(IpRun.STATUS_FAILED);run.setStage("failed");
-                run.setErrorCode("IP_RUN_CANCELLED");run.setErrorMessage("已停止排队");run.setCost(0);
+                run.setErrorCode("IP_RUN_CANCELLED");run.setErrorMessage("已停止排队");
+                if(projects.parseOrEmptyObject(run.getOutputJson()).path("candidates").isEmpty())run.setCost(0); // 回队列重交的任务可能已出过图，已扣的照实记
                 run.setFinishedAt(Instant.now());run.setHeartbeatAt(Instant.now());runRepo.save(run);
                 if(enterpriseBilling!=null)enterpriseBilling.complete(REF_TYPE,run.getId());
                 return projects.toRunDto(run);

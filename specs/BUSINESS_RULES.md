@@ -1311,6 +1311,10 @@ scripts/check-api-contract.mjs ← CI 漂移校验（apiFetch URLs ↔ openapi.y
 
 图片无回执失败策略（2026-10-22 用户明确调整）：未拿到有效供应商任务号按失败结束，原子释放未完成图片的剩余冻结，已成功图片与已消费积分保留。旧受理未知记录在执行租约结束后按相同规则收尾；已知任务号或已镜像产物不走此策略。原请求、错误响应与追查号保留，后台生成异常告警只读投影既有记录。
 
+### Studio 图片的并发拒收（2026-11-05）
+
+提交图片时收到 429，或错误内容明确说并发、限流、过载，算供应商没有受理：任务回到排队，原冻结和已出的图不动，等 30、60、90、120 秒（封顶）后用新的请求号重交；同一张连续等满 30 分钟仍未成功，失败并退回未完成部分的积分，错误码 `STUDIO_IMAGE_PROVIDER_BUSY`。额度用完、审核或参数错误、没有明确说法的 5xx 不回排队；没有明确说法的 5xx 和等待超时仍按受理未知处理，不重交。排队期间可以停止。
+
 ### Studio 剧本编辑改稿（v0.224，本地未发布）
 
 - `StudioRunRequest.scriptEdit` 仅允许 `operation=assistant` 的文字路径，不允许同时 readVisuals=true、settings 或 episodeNo。markdown 1–48000字，在冻结前校验；沿用配置 assistant 提示词与 DAP_PERSONA 端点、端点并发队列、平台实际价格与 maxCost、同 owner/clientRequestId 幂等和 afterCommit 派发。

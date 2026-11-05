@@ -769,6 +769,11 @@ v0.197：web-drama 所有弹窗在 375 宽下右边都被裁掉一截，四个�
 - 反过来的坑（2026-10-28 导演台删除，独立复核复现）：**持着行锁时不要再开 `REQUIRES_NEW` 去读**。外层连接和锁都不放，内层再要一条连接；并发 N 个请求就占 N 条等 N 条，连接池 3 条时全部 `CannotCreateTransactionException`（active=3 / idle=0），池子 20 只是阈值更高。要在锁内读到最新提交，就在同一事务里用读已提交（`@Transactional(isolation = READ_COMMITTED)`，Spring 对已参与的外层事务不改隔离级别）并只查标量列；回归 `DirectorDeletePoolTest`（小连接池 + 占满后并发）。
 - 同一类（2026-10-25）：`@Transactional(readOnly = true)` 里调 `SELECT … FOR UPDATE`（导演台 `locked()`），MySQL 直接报 `Cannot execute statement in a READ ONLY transaction`，H2 照常执行。只读接口用不加锁的读（`DirectorService.owned()`）。导演台的视频报价、推荐预算、上传声音样本都因此在线上 500。
 
+**⑰ `HttpRequest.timeout` 只管到响应头，不管正文。**
+2026-11-05：三个出图线程发出请求后一直等，占到服务重启；后面的任务排了 47 分钟。网关先回响应头、正文迟迟不来时，JDK 的超时不起作用（线上有 704 秒才回的图，超时写的是 600 秒）。工作线程在等上游时，要有一个管到正文收完的时限：`ModelCallCtx.boundBody(true)`。别只看配置里写了 timeout。
+- 同一次：写「最多同时 N 个」之前，先看真正干活的线程池有多大。端点上限写 5，线程池只有 3。
+- 同一次：`@Async` 线程池前面如果有定时重派，线程忙时不要往里塞，否则同一个任务能堆满等待队列（`AiGenerationQueueDispatcher.poolHasRoom`）。
+
 ### 跨 app 约定
 
 - **UI 文案：用户友好 + 不溢出** ⚠️（v0.98 起强制，全前端适用；所有将来变更都要遵守）。
@@ -1405,3 +1410,7 @@ AIStar运行镜像必须同时固定官方Java与Node镜像digest；Studio仿片
 
 **编导模板第 2 版与默认文字模型 Sonnet（2026-11-04）**：用户定的方向是内容放开、抓人优先：底座只留价格金额、地址、销量排名、获奖认证、检测数据、治病或绝对化功效不凭空写，其它大胆创作；**编导不再写「还缺」和【待补】**（真实用户因此改了 3 轮，页面还拦着不让出片）。脚本六段，镜头写成一块（作用 / 摄影 / 表演 / 台词 / 声音 / 转场），全片台词上限 = 时长 × 4。提示词要求全角标点，模型仍可能写 “ ” 和半角（Sonnet 写过「第1镜(0–3 秒)」「小夏说:「」），`H3PromptRewrite.normalizeSpeechQuotes` 统一后才认得出。原绑 Qwen 的 6 个用途（`DAP_PERSONA`、`DAP_VIDEO_PROMPT`、`DRAMA_SCRIPT_DRAFT`、`VIDEO_REF_ANALYSIS`、`APPEARANCE_FORGE`、`GENERAL`）和 Studio 文字场景默认都改成接入点 `ai-onetoken-sonnet55`（`claude-sonnet-5-5`，网关不认 `sonnet-5.5`），Qwen 留作可选。售价按 OneToken 成本 +50%、1 元 = 100 积分（输入 0.2111、输出 1.0553 积分/千 Token）。思考过程计入输出且关不掉：编导约 1 万、3 集剧本约 4 万输出 Token，所以输出上限配 64000。**OneToken 约 105 秒断开不出字节的连接，流也可能被 `stream_interrupted` 打断**：`AiModelInvocationService.doChat` 对声明 `chatSupportsStreaming` 的端点一律流式收齐再返回（调用方无感），中断自动重发，最多 3 次。这个接入点要开 `chat_supports_streaming`，不开长任务必失败。MAX 通道（`claude-sonnet-5-5-MAX`）不走思考，不流式同样会断，单价未确认，没用。2026-11-05 已生产发布 `20261104-sonnet-streaming-editor`：线上 3 集剧本 376 秒、输出 49305 Token、53 积分，编导 53 秒、9 积分。**这个 Key 额度用完时所有默认文字功能一起失败**（429 `API_KEY_QUOTA_EXHAUSTED`，不回退），发布当天就撞上过；飞书机器人的额度告警见 `docs/runbooks/model-task-alerts.md`。
 
+
+### 出图并发与默认模型（2026-11-05，待发布）
+
+Studio 工作线程默认 24，单个模型的上限看端点配置；图片调用有管到正文的总时限，端点的 `requestTimeoutMillis` 要比真实耗时长。提交时被明确拒绝（429 或说并发、限流、过载）算未受理，任务回队列重交，最多等 30 分钟（`STUDIO_IMAGE_PROVIDER_BUSY`）；额度用完、含糊的 5xx 不回队列。只做了图片。导演台默认图片模型单独配置（`ai.scene-default.studio.director-image`，命令 `directorImageDefaultSave`），AI 图片和画布仍用 `ai.scene-policy.studio.image` 的默认。见 `docs/ai-endpoint-generation-queue.md` 末两节。

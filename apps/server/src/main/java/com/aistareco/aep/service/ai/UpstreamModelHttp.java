@@ -9,6 +9,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
@@ -80,6 +81,25 @@ public class UpstreamModelHttp {
             return queue.synchronous(ctx.endpointId(),req.timeout().orElse(java.time.Duration.ofMinutes(5)),()->sendAdmitted(req,ctx));
         return sendAdmitted(req,ctx);
     }
+    /** 到了 req.timeout 正文还没收完就中断等待，按超时算（HttpClient.send 被中断时会取消这次请求）。 */
+    private static HttpResponse<String> sendWithinTimeout(HttpClient client,HttpRequest req) throws IOException,InterruptedException {
+        var limit=req.timeout().orElse(null);
+        if(limit==null)return client.send(req,HttpResponse.BodyHandlers.ofString());
+        Thread caller=Thread.currentThread();
+        Object lock=new Object();boolean[] done={false},fired={false};
+        var guard=STREAM_WATCHDOG.schedule(()->{
+            synchronized(lock){if(!done[0]){fired[0]=true;caller.interrupt();}}
+        },limit.toMillis(),TimeUnit.MILLISECONDS);
+        try {
+            return client.send(req,HttpResponse.BodyHandlers.ofString());
+        } catch(InterruptedException interrupted) {
+            synchronized(lock){if(!fired[0])throw interrupted;}
+            throw new HttpTimeoutException("response body not complete within "+limit);
+        } finally {
+            synchronized(lock){done[0]=true;if(fired[0])Thread.interrupted();}
+            guard.cancel(false);
+        }
+    }
     private HttpResponse<String> sendAdmitted(HttpRequest req,ModelCallCtx ctx) {
         int maxAttempts = Math.max(1, ctx.maxAttempts());
         long start = System.nanoTime();
@@ -87,7 +107,7 @@ public class UpstreamModelHttp {
         IOException lastIo = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
-                HttpResponse<String> resp = ctx.client().send(req, HttpResponse.BodyHandlers.ofString());
+                HttpResponse<String> resp = ctx.boundBody()?sendWithinTimeout(ctx.client(),req):ctx.client().send(req, HttpResponse.BodyHandlers.ofString());
                 long latency = elapsedMs(start);
                 logResponse(resp, ctx, latency);
                 if (resp.statusCode() < 200 || resp.statusCode() >= 300) {

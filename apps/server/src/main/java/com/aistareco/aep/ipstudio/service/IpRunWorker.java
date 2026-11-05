@@ -45,6 +45,7 @@ public class IpRunWorker {
 
     @org.springframework.beans.factory.annotation.Autowired private StudioRunErrorLog errorLog;
 
+    private static final long LOAD_WAIT_LIMIT_MILLIS=30*60_000L;
     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AiGenerationQueueService queue;
 
     @org.springframework.beans.factory.annotation.Autowired private JusuanImageClient jusuanImages;
@@ -292,7 +293,7 @@ public class IpRunWorker {
                     }
                     var imageSpec=exec.hasNonNull("imageRequestSpec")
                             ? com.aistareco.aep.model.AiImageRequestSpec.read(exec.path("imageRequestSpec").toString()):null;
-                    bytes=jusuanImages.generate(endpointId,inputs.path("userPrompt").asText(prompt),size,keys,run.getId()+"-image-"+i,run.getOwnerUserId(),stage->progress(run,10+(int)Math.round(80.0*current/count),stage),imageSpec,
+                    bytes=jusuanImages.generate(endpointId,inputs.path("userPrompt").asText(prompt),size,keys,imageRequestId(run.getId(),i,exec),run.getOwnerUserId(),stage->progress(run,10+(int)Math.round(80.0*current/count),stage),imageSpec,
                             exec.path("providerModel").asText(null),
                             checkpoint,state->nativeCheckpoint(run,current,state));
                 } else {
@@ -334,6 +335,13 @@ public class IpRunWorker {
                 });
                 committed++;
             } catch(JusuanImageClient.Pending pending) {pending(run,pending);return;}
+            catch(JusuanImageClient.ProviderBusy busy) {
+                while(candidates.size()>committed)candidates.remove(candidates.size()-1);
+                run.setOutputJson(previousOutput);run.setCost(previousCost);
+                if(requeueAfterLoadRefusal(run,i))return;
+                lastErr=busy;
+                break;
+            }
             catch (RuntimeException e) {
                 JsonNode accepted=projects.parseOrEmptyObject(run.getInputJson()).path("_exec").path("imageJobs").path(i);
                 if(accepted.path("submitAttempted").asBoolean() && !(e instanceof JusuanImageClient.ProviderRejected)) {
@@ -374,6 +382,44 @@ public class IpRunWorker {
         }
     }
 
+    /** 重交用新的请求号：上一次已经被明确拒收，用旧号可能拿回上次的拒绝。 */
+    private static String imageRequestId(String runId,int index,JsonNode exec) {
+        JsonNode refusal=exec.path("loadRefusal");
+        String base=runId+"-image-"+index;
+        return refusal.path("index").asInt(-1)==index?base+"-r"+refusal.path("attempts").asInt():base;
+    }
+    /**
+     * 供应商因为并发拒收：这张图回到队列（原冻结不动、已出的图不动），退避后重交。
+     * 同一张连续等够 {@link #LOAD_WAIT_LIMIT_MILLIS} 还没轮上就返回 false，按普通失败退积分。
+     */
+    private boolean requeueAfterLoadRefusal(IpRun run,int index) {
+        if(queue==null)return false;
+        long[] delaySeconds={0};
+        atomic(()->{
+            if(enterpriseBilling!=null)enterpriseBilling.lockForSettlement(IpRunService.REF_TYPE,run.getId());
+            var fresh=runRepo.lockById(run.getId()).orElseThrow();
+            if(!IpRun.STATUS_RUNNING.equals(fresh.getStatus())||fresh.isCancelRequested())return;
+            ObjectNode input=(ObjectNode)projects.parseOrEmptyObject(fresh.getInputJson());
+            ObjectNode exec=(ObjectNode)input.path("_exec");
+            long now=System.currentTimeMillis();
+            JsonNode last=exec.path("loadRefusal");
+            boolean same=last.path("index").asInt(-1)==index;
+            long since=same?last.path("since").asLong(now):now;
+            int attempts=same?last.path("attempts").asInt()+1:1;
+            if(now-since>LOAD_WAIT_LIMIT_MILLIS)return;
+            exec.putObject("loadRefusal").put("index",index).put("since",since).put("attempts",attempts);
+            // 这次没有受理；已出的图记在 output 里，检查点清掉后这条任务又能停止了。
+            exec.remove("imageJobs");exec.remove("nativeLeaseUntil");
+            Instant at=Instant.now();
+            fresh.setInputJson(write(input));fresh.setStartedAt(null);fresh.setStage("endpoint.queued");fresh.setHeartbeatAt(at);runRepo.save(fresh);
+            run.setInputJson(fresh.getInputJson());run.setStartedAt(null);run.setStage("endpoint.queued");run.setHeartbeatAt(at);
+            delaySeconds[0]=Math.min(120,30L*attempts);
+        });
+        if(delaySeconds[0]==0)return false;
+        log.warn("[ipstudio] 生成服务因并发拒收，回到队列 run={} image={} delaySeconds={}",run.getId(),index,delaySeconds[0]);
+        queue.requeue(com.aistareco.aep.service.AiGenerationQueueService.IMAGE,run.getId(),java.time.Duration.ofSeconds(delaySeconds[0]));
+        return true;
+    }
     private void nativeCheckpoint(IpRun run,int index,ObjectNode state) {
         atomic(()->{
             if(enterpriseBilling!=null) {

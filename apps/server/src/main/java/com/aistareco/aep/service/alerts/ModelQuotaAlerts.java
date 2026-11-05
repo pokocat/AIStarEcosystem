@@ -49,6 +49,8 @@ public class ModelQuotaAlerts {
     private static final DateTimeFormatter DAY=DateTimeFormatter.ofPattern("yyyyMMdd").withZone(BEIJING);
     private static final DateTimeFormatter TIME=DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(BEIJING);
     private static final List<String> RATE_LIMIT=List.of("rate_limit","rate limit","too many requests","请求频繁","请求速率","rpm","tpm");
+    private static final List<String> LOAD_REFUSAL=List.of("rate_limit","rate limit","too many requests","too many concurrent","concurrency","concurrent",
+            "overloaded","saturated","server is busy","queue is full","请求频繁","请求速率","请求过多","并发","限流","繁忙","负载已饱和","负载饱和","队列已满");
     private static final List<String> OUT_OF_QUOTA=List.of("quota_exhausted","quota exhausted","insufficient_quota","insufficient_user_quota",
             "exceeded your current quota","quota is not enough","insufficient_balance","insufficient balance","billing_hard_limit",
             "arrearage","accountoverdue","account_overdue","额度已用完","额度不足","配额已用完","余额不足","预扣费","欠费");
@@ -71,7 +73,15 @@ public class ModelQuotaAlerts {
     }
 
     /** Reads the supplier's raw wording: the public message has had these words replaced (AGENTS.md §8.0.1 ①). */
-    static boolean isOutOfQuota(String body) {
+    /** 明确说并发、限流、过载。不含 rpm / tpm：这里决定能否重交，请求号里碰巧有这几个字母不能算数。 */
+    public static boolean isRateLimited(String body) {
+        if(body==null||body.isBlank())return false;
+        String text=(body.length()<=4000?body:body.substring(0,4000)).toLowerCase(Locale.ROOT);
+        for(String phrase:LOAD_REFUSAL)if(text.contains(phrase))return true;
+        return false;
+    }
+
+    public static boolean isOutOfQuota(String body) {
         if(body==null||body.isBlank())return false;
         String text=body.length()<=4000?body:body.substring(0,4000);
         text=text.toLowerCase(Locale.ROOT);

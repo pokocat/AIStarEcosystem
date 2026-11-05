@@ -161,6 +161,45 @@ class UpstreamModelHttpTest {
                 any(), any(), any(), any(), any(), any(), any(), any());
     }
 
+    /** 2026-11-05：网关先回响应头、正文一直不来，HttpRequest.timeout 不管这一段，三个出图线程一直占到服务重启。 */
+    @Test
+    void boundBody_stopsWaitingWhenHeadersArriveButBodyNeverFinishes() throws Exception {
+        var release = new java.util.concurrent.CountDownLatch(1);
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        server.setExecutor(java.util.concurrent.Executors.newCachedThreadPool());
+        server.createContext("/stall", exchange -> {
+            exchange.sendResponseHeaders(200, 0);
+            exchange.getResponseBody().write('{');
+            exchange.getResponseBody().flush();
+            try { release.await(30, java.util.concurrent.TimeUnit.SECONDS); } catch (InterruptedException ignored) { }
+            exchange.close();
+        });
+        server.start();
+        try {
+            HttpRequest req = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/stall"))
+                    .timeout(Duration.ofMillis(300)).POST(HttpRequest.BodyPublishers.ofString("{}")).build();
+            UpstreamModelHttp http = new UpstreamModelHttp(mock(AiModelUsageService.class));
+            UpstreamCallException ex = org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(Duration.ofSeconds(10),
+                    () -> assertThrows(UpstreamCallException.class, () -> http.sendJson(req, ctx(null).boundBody(true).build())));
+            assertTrue(ex.isTimeout());
+            assertFalse(Thread.currentThread().isInterrupted());
+        } finally {
+            release.countDown();
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void boundBody_returnsNormallyAndLeavesNoInterruptBehind() throws Exception {
+        StubServer s = stub(200, "{\"ok\":true}");
+        UpstreamModelHttp http = new UpstreamModelHttp(mock(AiModelUsageService.class));
+        HttpRequest req = HttpRequest.newBuilder(URI.create(s.url()))
+                .timeout(Duration.ofMillis(400)).POST(HttpRequest.BodyPublishers.ofString("{}")).build();
+        assertEquals(200, http.sendJson(req, ctx(null).boundBody(true).build()).statusCode());
+        Thread.sleep(600);
+        assertFalse(Thread.currentThread().isInterrupted());
+    }
+
     @Test
     void networkError_throwsUpstreamCallExceptionAndRecordsFailure() {
         AiModelUsageService usage = mock(AiModelUsageService.class);

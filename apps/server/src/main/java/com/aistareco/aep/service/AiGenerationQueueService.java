@@ -61,6 +61,8 @@ public class AiGenerationQueueService {
         });
     }
     public void finish(String type,String id) {mutate(type,id,e->e.setState("finished"));}
+    /** 供应商因为并发明确拒收：回到等待，不早于 delay 之后再派发。票据号不变，排队位置也不变。 */
+    public void requeue(String type,String id,java.time.Duration delay) {mutate(type,id,e->{e.setState("waiting");e.setDispatchAfter(Instant.now().plus(delay));});}
     public void touch(String type,String id) {mutate(type,id,e->e.setDispatchAfter(Instant.now().plusSeconds(180)));}
     private void mutate(String type,String id,java.util.function.Consumer<AiGenerationQueueEntry> change) {
         tx.executeWithoutResult(s->{
