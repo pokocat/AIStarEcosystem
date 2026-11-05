@@ -1382,6 +1382,6 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 Studio 工作线程默认 24，单个模型的上限看端点配置；图片调用有管到正文的总时限，端点的 `requestTimeoutMillis` 要比真实耗时长。提交时被明确拒绝（429 或说并发、限流、过载）算未受理，任务回队列重交，最多等 30 分钟（`STUDIO_IMAGE_PROVIDER_BUSY`）；额度用完、含糊的 5xx 不回队列。只做了图片。导演台默认图片模型单独配置（`ai.scene-default.studio.director-image`，命令 `directorImageDefaultSave`），AI 图片和画布仍用 `ai.scene-policy.studio.image` 的默认。见 `docs/ai-endpoint-generation-queue.md` 末两节。
 
-### 导演台写剧本前的准备与示例图（2026-11-05，待发布）
+### 导演台写剧本前的准备与示例图（2026-11-05，已生产发布 `20261105-director-brief-demos`，main `452c48117`；server + web-aiavatar + studio-admin）
 
 问答只在全能创作助手里，主区只显示已确认的内容和「生成剧本」，别再加第二个对话框。先确认形式、集数、每集时长、题材和调性（不调模型），再由 AI 问还不清楚的，最多两轮、每轮最多 4 题，可以选「AI 决定」。集数多时第一批写全剧大纲和前几集，`script-more` 接着写。见 `docs/ai-director-assistant.md` §7。状态提示是标题后的标签（`director-status-chip`），不再是整行。AI 图片示例是 `public/studio/scene-demos/*.webp` 的前后对比图：一张杂志式画面，左边纸面上是素材小图，右边是铺满的成片，一根细线相连，不画箭头和卡片；标签在图外、写明示意图；图里的人一律韩系风格，不用外国面孔（用户定）。例句在目录的 `example`。改场景默认效果时要对照这张图，两边别走样。

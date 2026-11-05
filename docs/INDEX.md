@@ -262,6 +262,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [AI 图片多张人物照片发布](releases/scene-multi-person-refs-release-20261105.md) — server + web-aiavatar；6 个人物场景最多放 3 张照片；多张是否更像本人还没用真人照片验证（last-reviewed: 2026-11-05）
 - [AI 图片素材位跟技能走发布](releases/scene-skill-slots-release-20261105.md) — server + web-aiavatar + studio-admin；一个素材位放多张、输入框 @ 选素材；线上没有实际生成（last-reviewed: 2026-11-05）
 - [出图并发与排队卡住修复发布](releases/image-queue-concurrency-release-20261105.md) — 仅 server；工作线程扩容、等上游加总时限、并发拒绝回队列，导演台默认图片模型单独配置；线上没有实际生成（last-reviewed: 2026-11-05）
+- [导演台写剧本准备与 AI 图片示例图发布](releases/director-brief-scene-demos-release-20261105.md) — server + web-aiavatar + studio-admin；问答收进助手、长剧分批写、状态标签、本集剧本收起，17 张示例图换成杂志式版式和韩系人像（2026-11-05）
 - [Studio 默认出图模型切到 GPT Image 2.5](releases/studio-image-default-gpt25-20261105.md) — 线上配置；没手动选模型时每张从 16 积分变成 37 积分（last-reviewed: 2026-11-05）
 - [Seedance 提示词上限调到 5000 字](releases/seedance-prompt-limit-config-20261105.md)：仅生产配置，四条端点，无发版无重启；超过 2000 字尚未真调（last-reviewed 2026-11-05）。
 - [Seedance 视频提交故障修复](releases/seedance-video-submit-fix-20261031.md)：OneToken 2.0 / 2.5 移除不支持的末帧输出字段、真人参考图拒绝改为明确中文说明；4 笔冻结全退，两模型独立测试均已出片并通过下载、完整解码及抽帧核验，仅 server。同日另发现九图全能参考间歇 `upstream_rejected` / 提交超时，同输入两笔成功、五笔失败全退，具体拒绝原因及稳定性仍待解决（last-reviewed 2026-10-31）。

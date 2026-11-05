@@ -1697,6 +1697,8 @@
 
 ## AI 图片与出图队列（2026-11-05）
 
+- [ ] 导演台手机宽度下两处小问题（2026-11-05 线上看到，宽度约 500）：作品设置按钮 `.director-settings-chip` 的 `max-width: 46%` 把「真人写实 · 9:16」截断；分区标签的数字角标压在「资产」两个字上。
+- [ ] `director-errors.test.tsx` 在机器很忙时，环境销毁后还有 React 任务在跑，报 3 个 `window is not defined`，整轮判失败（2026-11-05 全量跑出现一次，单独连跑 3 次干净）。查是哪个定时器或 Promise 没收尾。
 - [ ] 示例图和实际效果还没对过：17 张是 Codex 生成的示意图（2026-11-05），白底图、服装上身、卖点图的技能已照图改过，但没有用线上默认模型跑过。跑一遍，差得多的场景换成真实结果或再调提示词。
 - [ ] 导演台长剧篇幅没实测：线上默认的 Sonnet 一次写 3 集 90 秒已用掉约 5 万输出 Token，每集 5 分钟以上的批量（`DirectorService.scriptBatch`）是估的；一键制作也不会接着写后面的集。
 - [x] ~~出图排队卡住~~ **已修复（待发布），2026-11-05**：工作线程扩到 24、线程忙时不再重复入队、图片调用加总时限，并发拒收回队列，见 `docs/ai-endpoint-generation-queue.md` 末节。原记录：`AiGenerationQueueDispatcher` 分发时报 `dispatch deferred ... TaskRejectedException`，2026-11-05 有 3 张图排了 47 分钟，当时已没有在跑的出图任务，server 重启后才开始。先查 `ip-run` 线程池为什么拒绝。记录见 `docs/releases/scene-skill-slots-release-20261105.md`。
