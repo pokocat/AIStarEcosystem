@@ -25,6 +25,7 @@ class IdentifierComparisonPostgresIT {
         PostgresTestDatabase.configure(r,"test_identifier");
     }
     @Autowired JdbcTemplate jdbc;
+    @Autowired javax.sql.DataSource dataSource;
     @Autowired AdminUserRepository admins;
     @Autowired AepUserRepository users;
     @Autowired PlatformConfigRepository configs;
@@ -74,4 +75,27 @@ class IdentifierComparisonPostgresIT {
             assertThat(accepted).isEqualTo(1);
         } finally {pool.shutdownNow();}
     }
+    @Test void identityIndexCheckDoesNotMergeSameNamedIndexesAcrossSchemas() throws Exception {
+        jdbc.execute("create schema uid_metadata_shadow");
+        jdbc.execute("create table uid_metadata_shadow.aep_users(identity_uid varchar(32) unique)");
+        try {assertIdentityIndexMessage("public",false);} finally {jdbc.execute("drop schema uid_metadata_shadow cascade");}
+    }
+    @Test void identityIndexCheckDoesNotBorrowAnotherSchemasConstraint() throws Exception {
+        jdbc.execute("create schema uid_metadata_unindexed");
+        jdbc.execute("create table uid_metadata_unindexed.aep_users(identity_uid varchar(32))");
+        try {assertIdentityIndexMessage("uid_metadata_unindexed",true);} finally {jdbc.execute("drop schema uid_metadata_unindexed cascade");}
+    }
+    private void assertIdentityIndexMessage(String schema,boolean missing) throws Exception {
+        var logger=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(com.aistareco.aep.identity.IdentityUidIndexCheck.class);
+        var appender=new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();appender.start();logger.addAppender(appender);
+        try(var connection=dataSource.getConnection()){
+            String original=connection.getSchema();connection.setSchema(schema);
+            try {
+                var scoped=new org.springframework.jdbc.datasource.SingleConnectionDataSource(connection,true);
+                new com.aistareco.aep.identity.IdentityUidIndexCheck(scoped).run(new org.springframework.boot.DefaultApplicationArguments(new String[0]));
+            } finally {connection.setSchema(original);}
+            assertThat(appender.list.stream().anyMatch(event->event.getFormattedMessage().contains("缺少唯一约束"))).isEqualTo(missing);
+        } finally {logger.detachAppender(appender);appender.stop();}
+    }
+
 }
