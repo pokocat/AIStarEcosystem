@@ -1697,7 +1697,7 @@ Studio 可展示的正文直接交付；不能安全整理为方案、素材引�
 5. **草稿按 `sceneId` 认**：场景页建的画布在 `ip_project.scene_id`（V72）记来源场景，「最近」按它列，改名不影响；`sceneId` 必须在场景目录里（含下架的），否则 400 `STUDIO_SCENE_INPUT_INVALID`。
 6. **视频子任务结束立即推进制作计划**：Studio 分区的视频任务到终态时发 `MaterialVideoJobEnded`，提交后叫醒该用户仍在跟踪的计划；叫不醒只是退回 60 秒巡检，不影响结算。
 
-### AI 视频页的长视频（2026-11-05，本地实现，未发布）
+### AI 视频页的长视频（2026-11-06 已生产发布 `20261106-segmented-video-2`）
 
 真源 `docs/studio-segmented-video.md`。时长超过所选模型单段上限时一键做到成片：`POST /v1/ip-studio/projects/{id}/segmented-videos`。
 
