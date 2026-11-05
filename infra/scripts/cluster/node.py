@@ -6,6 +6,8 @@ ROOT=pathlib.Path('/opt/aistar-cluster')
 PYTHON='/opt/aibuzz-id/runtime/python311/bin/python3'
 def run(args,**kw):
  p=subprocess.run(args,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,**kw)
+ if p.returncode:
+  diagnostic=ROOT/'control/last-node-error-private.log';diagnostic.write_text(p.stdout+p.stderr);diagnostic.chmod(0o600)
  require(p.returncode==0,'节点操作失败，详细诊断仅保存在节点日志');return p.stdout
 
 def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -51,6 +53,7 @@ def prepare(config,expected,mode,release):
      p=extracted/entry.filename;data=jar.read(entry);require(not p.is_symlink(),'解包文件不能是符号链接');p.parent.mkdir(mode=0o755,parents=True,exist_ok=True)
      if p.exists():require(p.read_bytes()==data,'解包运行代码与固定JAR不一致')
      else:p.write_bytes(data);p.chmod(0o444)
+ for p in [extracted,*extracted.rglob('*')]:p.chmod(0o755 if p.is_dir() else 0o444)
  require((tools/'IsolatedApiBootstrap.class').is_file(),'缺少演练出站屏障')
  state=ROOT/'state'/mode;state.mkdir(mode=0o700,parents=True,exist_ok=True)
  (state/'api-run').mkdir(exist_ok=True)
