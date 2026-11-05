@@ -1695,3 +1695,9 @@
 - [x] ~~**数字资产生成和声音克隆只能扣个人积分**~~ **2026-11-02 已生产发布 `20261102-enterprise-billing-everywhere`**：形象、造型、衍生、场景、商品、合成图、声音克隆走同一个付款选择与企业规则（`X-Aep-Billing` → `DapPayer`）。测试：`EnterpriseStudioBillingIntegrationTest` 数字资产 6 项、前端 `proto/api-payer.test.ts`。
 - [ ] **企业模型名单里选不到数字资产用的模型**：企业设置页「只允许选定的模型」的候选来自 Studio 的图片 / 视频 / 文字模型；数字资产用的是后台「数字人」用途绑定的模型，若不在候选里，限定了名单的企业就不能用企业积分做数字资产（报 `ENTERPRISE_MODEL_NOT_ALLOWED`）。线上 4 家都是「全部模型」，暂不受影响。
 
+## AI 图片与出图队列（2026-11-05）
+
+- [ ] 出图排队卡住：`AiGenerationQueueDispatcher` 分发时报 `dispatch deferred ... TaskRejectedException`，2026-11-05 有 3 张图排了 47 分钟，当时已没有在跑的出图任务，server 重启后才开始。先查 `ip-run` 线程池为什么拒绝。记录见 `docs/releases/scene-skill-slots-release-20261105.md`。
+- [ ] GPT Image 2.5 比 GPT Image 2 慢约 3 倍（平均 508 秒对 169 秒），当前是 Studio 默认模型，价格也从 16 积分变成 37 积分。用真实使用数据判断要不要保留为默认。
+- [ ] AI 图片输入框加「输入 / 选技能」（茂隆有，`ScenePromptEditor` 现在只有 @）。
+- [ ] 运营后台还不能编辑素材位的 `anyOf`（至少放一个）和 `many`（放多张时的说明），保存时原样保留。
