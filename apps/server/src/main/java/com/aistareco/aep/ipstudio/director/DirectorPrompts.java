@@ -628,9 +628,19 @@ public final class DirectorPrompts {
     public static String videoPrompt(JsonNode settings, JsonNode clip, List<Ref> refs, java.util.Map<String, String> speakerNames,
                                      List<VoiceRef> voices, List<String> unvoiced, java.util.Map<String, String> voiceDescs,
                                      java.util.Map<String, List<String>> aliases) {
+        return videoPrompt(settings, clip, refs, speakerNames, voices, unvoiced, voiceDescs, aliases, MAX_SHOTS);
+    }
+
+    /**
+     * @param maxShots 这一段最多几镜。导演台一段一张分镜图（4 镜）；AI 视频页的长视频一段可以到 30 秒，配两张分镜图（8 镜），
+     *                 此时参考图1、参考图2 是这两张分镜（docs/studio-segmented-video.md）。不超过 4 镜时写法和导演台一字不差。
+     */
+    public static String videoPrompt(JsonNode settings, JsonNode clip, List<Ref> refs, java.util.Map<String, String> speakerNames,
+                                     List<VoiceRef> voices, List<String> unvoiced, java.util.Map<String, String> voiceDescs,
+                                     java.util.Map<String, List<String>> aliases, int maxShots) {
         String style = settings.path("style").asText("真人写实");
         JsonNode shots = clip.path("shots");
-        int n = Math.min(shots.size(), MAX_SHOTS);
+        int n = Math.min(shots.size(), maxShots);
         boolean grid = boardLayout(shots.size())[0] == 2;
         List<String> characters = new ArrayList<>();
         StringBuilder people = new StringBuilder();
@@ -652,8 +662,13 @@ public final class DirectorPrompts {
         b.append("【分镜参考】\n");
         if (grid) {
             b.append("参考图1 是 2×2 分镜：");
-            for (int i = 0; i < n; i++) b.append(i > 0 ? "，" : "").append(CELL_ORDER[i]).append("对应第").append(i + 1).append("镜");
+            for (int i = 0; i < Math.min(n, MAX_SHOTS); i++) b.append(i > 0 ? "，" : "").append(CELL_ORDER[i]).append("对应第").append(i + 1).append("镜");
             if (n < 4) b.append("，其余格子是空的");
+            if (n > MAX_SHOTS) {
+                b.append("。参考图2 是 2×2 分镜：");
+                for (int i = MAX_SHOTS; i < n; i++) b.append(i > MAX_SHOTS ? "，" : "").append(CELL_ORDER[i - MAX_SHOTS]).append("对应第").append(i + 1).append("镜");
+                if (n < MAX_SHOTS * 2) b.append("，其余格子是空的");
+            }
             b.append("。每格参考构图、机位和人物位置，人物的受光、肤色和画面整体色调也照对应的格子，每一镜都是一个完整的全屏画面。\n\n");
         } else {
             b.append("参考图1 是这一段的分镜画面，参考它的构图、机位和人物位置，人物的受光、肤色和画面整体色调也照它，视频是一个完整的全屏画面。\n\n");

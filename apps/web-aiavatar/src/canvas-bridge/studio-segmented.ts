@@ -1,0 +1,57 @@
+// AI 视频页的长视频（docs/studio-segmented-video.md）：价格、提交，以及把一次执行整理成界面上的几个阶段。
+// 段数和价格只由服务端算（SegmentedPlan / SegmentedVideoService），这里不另写一遍。
+import type { StudioPlanExecution, StudioPlanExecutionStep, StudioSegmentedVideoPrice, StudioSegmentedVideoRequest } from "@ai-star-eco/types/ip-studio-workflow";
+import { USE_MOCK, apiFetch } from "@/ip/api/_client";
+import { mockSegmentedPrice, mockSegmentedStart } from "@/ip/mocks/studio-dialogue";
+import { withStudioBilling } from "./studio-billing";
+
+export type SegmentedPriceQuery = { model?: string; tier?: string; duration: number; ratio: string; images: number; character: boolean; voice: boolean; optimize: boolean };
+
+export async function segmentedVideoPrice(query: SegmentedPriceQuery, signal?: AbortSignal): Promise<StudioSegmentedVideoPrice> {
+  if (USE_MOCK) return mockSegmentedPrice(query);
+  return apiFetch<StudioSegmentedVideoPrice>("/v1/ip-studio/studio/segmented-video-price", { query, signal });
+}
+
+export async function startSegmentedVideo(projectId: string, request: StudioSegmentedVideoRequest): Promise<StudioPlanExecution> {
+  if (USE_MOCK) return mockSegmentedStart(projectId, request);
+  const body = request.billing ? request : await withStudioBilling(projectId, request, { expectedCost: request.budgetCap });
+  return apiFetch<StudioPlanExecution>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/segmented-videos`, { method: "POST", body });
+}
+
+export type SegmentedPhase = { key: "script" | "review" | "boards" | "videos" | "film"; label: string; done: number; total: number; state: "waiting" | "running" | "done" | "failed" };
+
+const PHASES: { key: SegmentedPhase["key"]; label: string; match: (id: string) => boolean }[] = [
+  { key: "script", label: "写分镜脚本", match: id => id === "script" },
+  { key: "review", label: "审核脚本", match: id => id === "review" },
+  // 分镜图和它的检查算一个阶段：对用户来说就是「分镜图好了没」。
+  { key: "boards", label: "分镜图", match: id => /^[bc]\d+x?$/.test(id) },
+  { key: "videos", label: "各段视频", match: id => /^v\d+$/.test(id) },
+  { key: "film", label: "合成成片", match: id => id === "film" },
+];
+
+/** 一次执行整理成几个阶段。不显示百分比和预计时间（没有依据，AGENTS.md v0.221）。用不上而跳过的步骤不算进总数。 */
+export function segmentedPhases(execution: StudioPlanExecution): SegmentedPhase[] {
+  // 跳过有两种：流程判断用不上（带原因，比如这段一张分镜图放得下），和用户停止后没做的。后者不能显示成做完了。
+  const notNeeded = (s: StudioPlanExecutionStep) => s.status === "skipped" && !!s.reason && execution.status !== "canceled";
+  const out: SegmentedPhase[] = [];
+  for (const phase of PHASES) {
+    const all = execution.steps.filter(s => phase.match(s.id));
+    if (!all.length) continue;
+    const counted = phase.key === "boards" ? all.filter(s => s.operation === "image") : all;
+    const live = counted.filter(s => !notNeeded(s));
+    const done = live.filter(s => s.status === "done").length;
+    const failed = all.some(s => s.status === "failed" || s.status === "needs_user");
+    const running = all.some(s => s.status === "running" || s.status === "submitted");
+    // 审不成跳过了：这一阶段算过去了，不显示成失败。
+    const finished = all.every(s => s.status === "done" || notNeeded(s));
+    out.push({ key: phase.key, label: phase.label, done, total: live.length || counted.length, state: finished ? "done" : failed ? "failed" : running ? "running" : "waiting" });
+  }
+  return out;
+}
+
+/** 这次执行最后出来的那一步：合成，没有合成的就是唯一那段视频。 */
+export const segmentedResultStep = (execution: StudioPlanExecution) =>
+  execution.steps.find(s => s.id === "film") ?? execution.steps.find(s => s.operation === "video");
+
+export const segmentedActive = (execution?: StudioPlanExecution) =>
+  !!execution && (execution.status === "running" || execution.status === "paused" || execution.status === "needs_user");

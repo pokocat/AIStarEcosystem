@@ -25,7 +25,7 @@
 import type {
   StudioBranchRequest, StudioCheckResultData, StudioCreateThreadRequest, StudioDialogueControlRequest, StudioDialogueEvent, StudioDialogueEventType, StudioDialogueMessage,
   StudioDialogueState, StudioDialogueThread, StudioDialogueThreadSummary, StudioMessageBlock, StudioNodeUpsertData, StudioPlanExecution, StudioPlanExecutionAcceptRequest,
-  StudioPlanExecutionCreateRequest, StudioPlanExecutionStep, StudioPostMessageRequest, StudioPostMessageResult, StudioSkillDraftOutput, StudioSkillDraftRequest,
+  StudioPlanExecutionCreateRequest, StudioPlanExecutionStep, StudioPostMessageRequest, StudioPostMessageResult, StudioSegmentedVideoPrice, StudioSegmentedVideoRequest, StudioSkillDraftOutput, StudioSkillDraftRequest,
   StudioSkillSummary, StudioTokenBilling,
 } from "@ai-star-eco/types/ip-studio-workflow";
 import type { IpRun, IpRunOutput } from "@ai-star-eco/types";
@@ -924,6 +924,35 @@ function patchApproval(t: MockThread, approvalId: string | undefined, executionI
   if (!approvalId) return;
   const approved = { approvedBudgetCap: request.budgetCap, approvedAutoFixCap: request.autoFixCap, approvedAt: now(), ...(request.confirmationMessageId ? { approvedByMessageId: request.confirmationMessageId } : {}) };
   t.view = { ...t.view, messages: t.view.messages.map(m => ({ ...m, blocks: m.blocks.map(b => b.type === "approval" && b.approvalId === approvalId ? { ...b, status: "approved" as const, executionId, ...approved } : b) })) };
+}
+
+// ── AI 视频页的长视频（演示：步骤按定时走完，没有真实文件）。段数的算法照服务端 SegmentedPlan。 ──
+function mockSplit(total: number, max: number, min = 5) {
+  const out = Array.from({ length: Math.ceil(total / max) }, () => max);
+  out[out.length - 1] = total - (out.length - 1) * max;
+  for (let i = out.length - 1; i > 0 && out[i] < min; i--) { out[i - 1] -= min - out[i]; out[i] = min; }
+  return out;
+}
+export async function mockSegmentedPrice(query: { duration: number }): Promise<StudioSegmentedVideoPrice> {
+  const segments = mockSplit(query.duration, 15);
+  return { segments, boards: segments.length, boardReview: true, videoCost: 0, boardCost: 0, textCost: 0, estimated: 0, cap: 0 };
+}
+export function mockSegmentedStart(projectId: string, request: StudioSegmentedVideoRequest): Promise<StudioPlanExecution> {
+  const p = project(projectId), id = nextId("exec"), at = now(), segments = mockSplit(request.duration, 15);
+  const steps = [step("script", "写分镜脚本", "text", "production", 0), step("review", "审核脚本", "text", "production", 0, ["script"]),
+    ...segments.flatMap((_, i) => [step(`b${i + 1}`, `第 ${i + 1} 段分镜图`, "image", "production", 0, ["review"]), step(`v${i + 1}`, `第 ${i + 1} 段视频`, "video", "production", 0, [`b${i + 1}`])]),
+    step("film", "合成成片", "assemble", "production", 0, segments.map((_, i) => `v${i + 1}`))];
+  const execution: StudioPlanExecution = { id, projectId, skillKey: "video-generation", skillVersion: 1, stage: "production", planRunId: `mock-plan-${id}`, planRevision: 1, planFingerprint: id,
+    status: "running", steps: withNodeIds(id, steps), budgets: [{ stage: "production", approvedCap: 0, autoFixCap: 0, spent: 0, inFlight: 0, remaining: 0 }], startedAt: at, deadlineAt: new Date(Date.now() + 3 * 3600_000).toISOString(), updatedAt: at };
+  p.execution = execution;
+  const timer = setInterval(() => {
+    const next = execution.steps.find(s => s.status !== "done");
+    if (execution.status !== "running") { if (execution.status === "canceled") clearInterval(timer); return; }
+    if (next) next.status = "done";
+    if (!execution.steps.some(s => s.status !== "done")) { execution.status = "done"; clearInterval(timer); }
+    execution.updatedAt = now();
+  }, 1500);
+  return later(execution);
 }
 
 export function mockExecutionGet(projectId: string, executionId: string): Promise<StudioPlanExecution> {

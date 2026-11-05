@@ -21,10 +21,9 @@ public class StudioPlanQuoter {
     public StudioPlanQuoter(StudioWorkflowService workflow,ObjectProvider<StudioVideoService> videos) {this.workflow=workflow;this.videos=videos;}
 
     public void quote(String userId,ObjectNode plan) {
-        var modes=modes();
         long total=0;
         for(JsonNode step:plan.path("steps")) {
-            long cost=workflow.quote(userId,StudioPlanSteps.request(step,PLACEHOLDERS,modes,null));
+            long cost=workflow.quote(userId,StudioPlanSteps.request(step,PLACEHOLDERS,modes(step.path("settings").path("model").asText(null)),null));
             ((ObjectNode)step).put("quotedCost",cost);
             total=Math.addExact(total,cost);
         }
@@ -33,12 +32,15 @@ public class StudioPlanQuoter {
     }
 
     /** Video modes of the default Studio video model (the model video steps run on). */
-    public StudioPlanSteps.Modes modes() {
+    public StudioPlanSteps.Modes modes() {return modes(null);}
+
+    /** Video modes of the model a step names; without one, the default. */
+    public StudioPlanSteps.Modes modes(String model) {
         StudioVideoService service=videos.getIfAvailable();
         Map<String,StudioPlanSteps.ModeSpec> specs=new HashMap<>();
         if(service!=null) {
             var models=service.models();
-            var chosen=models.stream().filter(m->m.isDefault()).findFirst().orElse(models.isEmpty()?null:models.get(0));
+            var chosen=models.stream().filter(m->model==null?m.isDefault():model.equals(m.endpointId())).findFirst().orElse(model==null&&!models.isEmpty()?models.get(0):null);
             if(chosen!=null&&chosen.contract()!=null)for(var mode:chosen.contract().modes())
                 specs.put(mode.mode(),new StudioPlanSteps.ModeSpec(mode.needsFirstFrame(),mode.needsLastFrame(),mode.references()!=null,chosen.supportsPromptOptimization()));
         }

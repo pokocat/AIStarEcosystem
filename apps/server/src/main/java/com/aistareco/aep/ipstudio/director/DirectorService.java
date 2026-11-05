@@ -3683,6 +3683,7 @@ public class DirectorService {
         int maxShots() { return frame() ? 1 : DirectorPrompts.MAX_SHOTS; }
     }
     record VideoChoice(String id, String name, boolean isDefault, int min, int max, String tier, List<String> aspects, boolean optimizable, String mode) {}
+    private static final int MAX_CLIP_SECONDS = 15;
 
     private List<VideoChoice> videoChoices() {
         List<VideoChoice> out = new ArrayList<>();
@@ -3694,7 +3695,8 @@ public class DirectorService {
                 var tier = tiers.stream().filter(t -> "768p".equals(t.tier())).findFirst().orElse(tiers.isEmpty() ? null : tiers.get(0));
                 List<String> aspects = new ArrayList<>();
                 if (tier != null && tier.canvases() != null) tier.canvases().forEach(cv -> aspects.add(cv.aspectRatio()));
-                out.add(new VideoChoice(m.endpointId(), m.name(), m.isDefault(), contract.minSeconds(), contract.maxSeconds(),
+                // 一段最长 15 秒：分镜图一张 4 镜，节奏也按 2–4 秒一镜写的。模型放开到 30 秒只给 AI 视频页的长视频用（docs/studio-segmented-video.md）。
+                out.add(new VideoChoice(m.endpointId(), m.name(), m.isDefault(), contract.minSeconds(), Math.min(contract.maxSeconds(), MAX_CLIP_SECONDS),
                         tier == null ? null : tier.tier(), aspects, m.supportsPromptOptimization(), "omni"));
             }
         } catch (BusinessException e) {

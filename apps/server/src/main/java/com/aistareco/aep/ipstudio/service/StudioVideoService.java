@@ -125,6 +125,16 @@ public class StudioVideoService {
     public VideoStudioService.CanvasPreparation price(String endpointId,String mode,String tier,String aspectRatio,Integer seconds,int imageRefs,int videoRefs,int audioRefs) {
         return videos.priceCanvas(endpointId,mode,tier,aspectRatio,seconds,imageRefs,videoRefs,audioRefs,"studio");
     }
+    /**
+     * 制作计划的报价：这时素材还没有（占位 key，见 StudioPlanQuoter），按张数走同一张价表，不查文件。
+     * 素材的归属和内容在真正提交时由 {@link #prepare} 查。此前也走 {@link #quote}，占位 key 过不了归属校验，带参考素材的计划报不出价（2026-11-05 本地真跑发现）。
+     */
+    public long planPrice(String requested,com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings video,String aspectRatio,Integer seconds) {
+        int images=0,clips=0,audios=0;
+        if(video.references()!=null)for(var ref:video.references())
+            switch(ref.mediaType()==null?"image":ref.mediaType()){case "video" -> clips++;case "audio" -> audios++;default -> images++;}
+        return price(model(requested),video.mode(),video.resolutionTier(),aspectRatio,seconds,images,clips,audios).credits();
+    }
     public long quote(String userId,IpRunService.IpVideoRequest request) {return quotePreparation(userId,request).credits();}
     public VideoStudioService.CanvasPreparation quotePreparation(String userId,IpRunService.IpVideoRequest request) {
         var v=request.video();

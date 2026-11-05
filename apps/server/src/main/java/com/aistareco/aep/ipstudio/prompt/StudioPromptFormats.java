@@ -27,6 +27,12 @@ public final class StudioPromptFormats {
     public static final String DIRECTOR_ASSISTANT_OUTPUT = "【输出结构】\n严格输出一个 JSON 对象：\n{\"reply\":\"给用户看的话\",\"proposals\":[\n  {\"type\":\"script.replace\",\"target\":\"集 id 或 draft\",\"original\":\"逐字原文\",\"replacement\":\"改写后\",\"note\":\"…\"},\n  {\"type\":\"script.append\",\"target\":\"集 id 或 draft\",\"text\":\"续写内容\",\"note\":\"…\"},\n  {\"type\":\"script.draft\",\"title\":\"\",\"logline\":\"\",\"content\":\"完整剧本\",\"note\":\"…\"},\n  {\"type\":\"idea.update\",\"text\":\"整理后的创意\",\"note\":\"…\"},\n  {\"type\":\"clip.shots\",\"clipId\":\"片段 id\",\"shots\":[{\"id\":\"原镜头 id\",\"durationSec\":3,\"size\":\"\",\"camera\":\"\",\"action\":\"\",\"still\":\"\",\"dialogue\":[{\"speakerId\":\"角色 id\",\"text\":\"\"}]}],\"note\":\"…\"},\n  {\"type\":\"clip.prompt\",\"clipId\":\"片段 id\",\"which\":\"board 或 video\",\"text\":\"完整提示词\",\"regenerate\":false,\"note\":\"…\"},\n  {\"type\":\"asset.update\",\"assetId\":\"资产 id\",\"description\":\"\",\"prompt\":\"\",\"voiceDesc\":\"\",\"regenerate\":false,\"note\":\"…\"}\n]}\n讨论时 proposals 为 []。";
     public static final String DIRECTOR_BRIEF_OUTPUT = "【输出结构】\n严格输出一个 JSON 对象：\n{\"reply\":\"一两句话，像同组编剧那样直接回应用户刚说的内容（不说「为了…需要明确…」，不重复问题本身，不用 Markdown 符号）\",\"questions\":[{\"q\":\"问题\",\"options\":[\"选项1\",\"选项2\"]}],\n \"ready\":false,\"summary\":\"\",\"genre\":\"\",\"tone\":\"\",\"title\":\"\"}";
 
+    // AI 视频页的长视频：分段脚本（docs/studio-segmented-video.md）
+    public static final String SEGMENTED_SCRIPT_OUTPUT = "只输出一个 JSON 对象，不要代码围栏：\n{\"title\":\"片名\",\"summary\":\"一句话：讲什么、给谁看、开头靠什么抓人\",\"style\":\"画面风格，如真人写实\","
+            + "\"assets\":[{\"name\":\"名字\",\"kind\":\"character|scene|prop\",\"ref\":\"图几，没有参考图不写\",\"description\":\"外观：年龄感、发型、穿着、随身物；物件写结构和样子；场景写空间、陈设和光线\",\"voice\":\"会说话的人写声音：性别、年龄感、语速语气\"}],"
+            + "\"segments\":[{\"no\":1,\"title\":\"这段的短标题\",\"summary\":\"这段讲什么\",\"shots\":[{\"durationSec\":3,\"size\":\"远景|全景|中景|近景|特写\",\"camera\":\"角度加一种运镜\",\"still\":\"分镜图要画的那一刻\",\"action\":\"动作的开始、过程、结束\",\"dialogue\":[{\"speaker\":\"名字或旁白\",\"text\":\"台词原文\"}]}]}]}";
+    public static final String SEGMENTED_REVIEW_OUTPUT = SEGMENTED_SCRIPT_OUTPUT.replace("{\"title\":\"片名\",", "{\"changes\":[\"改了什么，一句话一条\"],\"title\":\"片名\",");
+
     // 读图降级分批读取（第 3 步零碎）
     public static final String VISION_BATCH_OUTPUT = "仅输出JSON：{\"frames\":[{\"visible\":\"可见事实\",\"uncertainty\":\"无或不确定之处\"}]}。";
 }

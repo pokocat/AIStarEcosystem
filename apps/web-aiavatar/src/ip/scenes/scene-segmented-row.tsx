@@ -1,0 +1,127 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { Check, Download, Loader2, Pause, Play, RotateCcw, Square } from "lucide-react";
+import { nanoid } from "nanoid";
+import type { IpProjectDoc, IpRun } from "@ai-star-eco/types";
+import type { StudioPlanExecution, StudioSceneSegmentedRecord } from "@ai-star-eco/types/ip-studio-workflow";
+import type { CanvasNodeData } from "@/canvas/types/canvas";
+import { readRun, signKeys } from "@/canvas-bridge/api";
+import { downloadMedia } from "@/canvas-bridge/download-media";
+import { SignedVideo } from "@/canvas-bridge/signed-video";
+import { segmentedActive, segmentedPhases, segmentedResultStep } from "@/canvas-bridge/studio-segmented";
+import { cancelStudioPlanExecution, executionRestoreUpserts, getStudioPlanExecution, missingExecutionNodes, pauseStudioPlanExecution, projectCanvasOps, readProjectedNodes,
+  rememberProjectedNodes, resumeStudioPlanExecution, stepNodeId, stepRunCandidates } from "@/canvas-bridge/studio-plan-execution";
+
+const POLL_MS = 5000, RETRY_MS = 15000;
+
+/**
+ * 一条长视频的进度和结果（docs/studio-segmented-video.md）。做的事在服务端，这里只读执行记录：
+ * 做好一步就把结果放进草稿画布（和画布打开时恢复是同一套投影，重复放不会多出节点）。
+ */
+export function SegmentedRow({ record, projectId, doc, persist, busy, onConfirm, onFailure }: {
+  record: StudioSceneSegmentedRecord; projectId: string; doc: IpProjectDoc;
+  persist: (mutate: (doc: IpProjectDoc) => IpProjectDoc, projectId?: string) => Promise<unknown>;
+  busy: boolean; onConfirm: () => void; onFailure: (action: string, error: unknown) => void;
+}) {
+  const [execution, setExecution] = useState<StudioPlanExecution>();
+  const [acting, setActing] = useState(false);
+  const [url, setUrl] = useState<string>();
+  const docRef = useRef(doc); docRef.current = doc;
+  const executionId = record.executionId;
+
+  useEffect(() => {
+    if (!executionId) return;
+    let alive = true, timer: ReturnType<typeof setTimeout> | undefined;
+    const read = async () => {
+      try {
+        const next = await getStudioPlanExecution(projectId, executionId);
+        if (!alive) return;
+        setExecution(next);
+        // 暂停时已交出去的任务还在做，也接着读；结束了就不读了。
+        if (segmentedActive(next)) timer = setTimeout(() => void read(), POLL_MS);
+      } catch { if (alive) timer = setTimeout(() => void read(), RETRY_MS); }
+    };
+    void read();
+    return () => { alive = false; if (timer) clearTimeout(timer); };
+  }, [projectId, executionId, acting]);
+
+  const updatedAt = execution?.updatedAt;
+  useEffect(() => {
+    if (!execution) return;
+    let alive = true;
+    void (async () => {
+      const steps = missingExecutionNodes(execution, docRef.current.nodes as CanvasNodeData[], readProjectedNodes(projectId));
+      if (!steps.length) return;
+      const runs: Record<string, IpRun> = {};
+      for (const step of steps) for (const id of stepRunCandidates(step)) {
+        const run = await readRun(id).catch(() => undefined);
+        if (!alive) return;
+        if (run) runs[id] = run;
+        if (run?.status === "done") break;
+      }
+      const ops = executionRestoreUpserts(execution, runs, new Set(steps.map(step => stepNodeId(execution, step))))
+        .map(data => ({ kind: "node" as const, data, executionId: execution.id, turnId: execution.id, restore: true }));
+      if (!ops.length) return;
+      await persist(current => {
+        const result = projectCanvasOps({ nodes: current.nodes as CanvasNodeData[], connections: current.connections as never }, ops);
+        rememberProjectedNodes(projectId, result.projected);
+        return { ...current, nodes: result.doc.nodes as never, connections: result.doc.connections as never };
+      }, projectId);
+    })().catch(() => undefined); // 下一次读到新状态再放；任务本身不受影响
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [updatedAt, projectId]);
+
+  const result = execution ? segmentedResultStep(execution) : undefined;
+  const resultNode = execution && result?.status === "done" ? (doc.nodes as CanvasNodeData[]).find(n => n.id === stepNodeId(execution, result)) : undefined;
+  const resultKey = resultNode?.metadata?.storageKey;
+  useEffect(() => {
+    if (!resultKey) return;
+    let alive = true;
+    void signKeys([resultKey]).then(signed => { if (alive) setUrl(signed[resultKey]); }).catch(() => undefined);
+    return () => { alive = false; };
+  }, [resultKey]);
+
+  const act = async (label: string, run: () => Promise<StudioPlanExecution>) => {
+    setActing(true);
+    try { setExecution(await run()); }
+    catch (e) { onFailure(label, e); }
+    finally { setActing(false); }
+  };
+  const control = { clientRequestId: nanoid() };
+
+  if (!executionId) return <li className="scene-row scene-video-row is-loading">
+    <div className="scene-row-meta"><strong>{record.title}</strong><span className="scene-row-state" role="status">提交结果没有确认</span></div>
+    <p className="scene-row-prompt">点「确认原任务」查一下，不会重复开始。</p>
+    <div className="scene-row-actions"><button type="button" disabled={busy} onClick={onConfirm}><RotateCcw size={13}/>确认原任务</button></div>
+  </li>;
+
+  const phases = execution ? segmentedPhases(execution) : [];
+  const spent = execution?.budgets.find(b => b.stage === "production")?.spent ?? 0;
+  const status = execution?.status;
+  const text = !execution ? "正在读取进度"
+    : status === "running" ? "正在制作，可以离开这个页面，做好后回来看。"
+    : status === "paused" ? "已暂停，已经提交的任务会做完。"
+    : status === "needs_user" ? execution.needsUserReason || "需要你看一下"
+    : status === "done" ? "已完成"
+    : status === "canceled" ? "已停止，做好的部分在画布里。"
+    : execution.needsUserReason || "没有全部做完，做好的部分在画布里。";
+  return <li className={`scene-row scene-video-row scene-segmented-row is-${status || "loading"}`}>
+    <div className="scene-row-meta"><strong>{record.title}</strong>
+      <span>{record.request.ratio === "16:9" ? "横屏" : "竖屏"}{record.request.tier ? ` · ${record.request.tier.toUpperCase()}` : ""}</span>
+      <span className="scene-row-state" role={status === "running" ? "status" : undefined}>{(status === "running" || !execution) && <Loader2 size={14} className="studio-gallery-spinner"/>}{status === "done" ? "已完成" : status === "running" ? "制作中" : !execution ? "读取中" : status === "paused" ? "已暂停" : status === "canceled" ? "已停止" : "已停下"}</span></div>
+    {url ? <SignedVideo className="scene-video-player" src={url} storageKey={resultKey} controls playsInline preload="metadata" aria-label={record.title}/> : null}
+    {status !== "done" && <p className={`scene-segmented-note${status === "needs_user" ? " is-waiting" : ""}`} role={status === "needs_user" ? "status" : undefined}>{text}</p>}
+    {phases.length > 0 && status !== "done" && <ol className="scene-segmented-phases">{phases.map(p => <li key={p.key} className={`is-${p.state}`}>
+      <span aria-hidden="true">{p.state === "done" ? <Check size={12} strokeWidth={2}/> : p.state === "running" ? <Loader2 size={12} className="studio-gallery-spinner"/> : <i/>}</span>
+      <span>{p.label}{p.total > 1 ? ` ${p.done}/${p.total}` : ""}</span></li>)}</ol>}
+    {execution && spent > 0 && <p className="scene-segmented-spent">已用 {spent.toLocaleString("zh-CN")} 积分</p>}
+    <div className="scene-row-actions">
+      {status === "running" && <button type="button" disabled={acting} onClick={() => void act("暂停", () => pauseStudioPlanExecution(projectId, executionId, control))}><Pause size={13}/>暂停</button>}
+      {(status === "paused" || status === "needs_user") && <button type="button" className="is-primary" disabled={acting} onClick={() => void act("继续制作", () => resumeStudioPlanExecution(projectId, executionId, control))}><Play size={13}/>继续</button>}
+      {segmentedActive(execution) && <button type="button" disabled={acting} onClick={() => void act("停止制作", () => cancelStudioPlanExecution(projectId, executionId, control))}><Square size={13}/>停止</button>}
+      {url && <button type="button" onClick={() => void downloadMedia(url, record.title, undefined, resultKey)}><Download size={13}/>下载</button>}
+    </div>
+  </li>;
+}

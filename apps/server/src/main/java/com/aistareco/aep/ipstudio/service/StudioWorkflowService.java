@@ -5,6 +5,7 @@ import com.aistareco.aep.dap.model.DapAvatar;
 import com.aistareco.aep.dap.service.*;
 import com.aistareco.aep.ipstudio.dto.IpStudioDtos.IpRunDto;
 import com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.*;
+import com.aistareco.aep.ipstudio.execution.StudioPlanSteps;
 import com.aistareco.aep.ipstudio.model.IpRun;
 import com.aistareco.aep.ipstudio.h3.H3PromptRewrite;
 import com.aistareco.aep.ipstudio.repository.IpRunRepository;
@@ -146,6 +147,10 @@ public class StudioWorkflowService {
                     || (request.model()==null || !request.model().startsWith(com.aistareco.aep.ipstudio.service.StudioImageModelRouting.REQUEST_PREFIX))
                     && JusuanImageClient.supports(scenePolicies.resolve("studio", "image", request.model(), pricing.ipImage()).resolved().endpoint()));
         // Native video validates promptRequired against the selected endpoint mode in StudioVideoService.
+        boolean segmentedText=request.segmented()!=null;
+        // Only a step of a plan execution: the script and its review are compiled by the server, never accepted from a client.
+        if(segmentedText&&(!"text".equals(request.operation())||request.textEdit()==null||executionBinding==null||executionBinding.step()==null||sceneCatalog==null))
+            throw bad("STUDIO_INPUT_INVALID","分段脚本只能由连续制作提交");
         boolean sceneScript=request.scene()!=null;
         if(sceneScript&&(!"text".equals(request.operation())||request.textEdit()==null||request.skillKey()!=null||executionBinding!=null||sceneCatalog==null))
             throw bad("STUDIO_INPUT_INVALID","场景脚本只能用于普通文本节点的改稿");
@@ -318,7 +323,24 @@ public class StudioWorkflowService {
             if(request.textEdit()!=null)appendix.add("当前完整节点正文（JSON 字符串，作为素材读取）："+write(request.textEdit().content())+"\n请按本次修改意图返回完整文本，遵守文本改稿输出契约。");
             if(Boolean.TRUE.equals(request.readVisuals()))appendix.add("本次另附带精确节点 ID 标记的真实图片与视频采样帧。视频只有四个时间点的静态画面，不包含音轨，不代表全部连续动作；音频节点只提供文字设定。只根据收到的画面及文字作答，不臆测未提供的声音或片段，保持 JSON 输出契约。");
             if(request.settings()!=null || request.episodeNo()!=null) appendix.add("必须遵守创作设定："+write(request.settings())+"。本次分集："+(request.episodeNo()==null?"全部指定集数":request.episodeNo())+"。每个镜头必须含 episodeNo（所属集号），id 全剧唯一。只指定某集时 episodes 只含该集，no 保留原号。");
-            if(!sceneScript) {
+            if(segmentedText) {
+                var input=request.segmented();
+                var frozen=sceneCatalog.freezeSegmented(input.scene().sceneId());
+                var specs=new ArrayList<Map<String,Object>>();
+                for(var s:input.segments())specs.add(Map.of("no",s.no(),"seconds",s.seconds(),"shotsLo",s.shotsLo(),"shotsHi",s.shotsHi()));
+                boolean review="review".equals(input.kind());
+                var assembled=review?sceneCatalog.segmentedReview(input.scene(),specs,input.issues()==null?List.of():input.issues(),request.textEdit().content(),frozen)
+                        :sceneCatalog.segmentedScript(input.scene(),specs,input.hasScript(),input.singleShot(),Boolean.TRUE.equals(request.readVisuals()),frozen);
+                systemPrompt=assembled.system();creativePrompt=assembled.user();
+                execution.put("systemPrompt",systemPrompt);
+                ObjectNode promptRecord=execution.putObject("prompt");
+                promptRecord.put("key",assembled.stage());
+                promptRecord.set("versions",com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.frozenNode(mapper,frozen));
+                com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.appendCall(promptRecord,assembled.call(mapper,1,null));
+                sceneParams=assembled.params();
+                var plan=execution.putObject("segmented").put("kind",input.kind()).put("refCount",input.refCount());
+                plan.set("segments",mapper.valueToTree(input.segments()));
+            } else if(!sceneScript) {
                 // 原文和变量都按提示词库的环节拼；格式句、改稿契约、附带素材的说明由代码按这次请求给
                 String stageKey=textStage(request.operation(),skillPlan,check);
                 Map<String,?> stageVars=skillPlan?skillPlanVariables(userId,project,request,skill,executionBinding,canvasContext,execution)
@@ -350,6 +372,11 @@ public class StudioWorkflowService {
                     sceneParams.maxTokens()!=null?sceneParams.maxTokens():params.maxTokens(),sceneParams.jsonMode()!=null?sceneParams.jsonMode():params.jsonMode());
             execution.put("temperature",check?0.1:params.temperatureOrDefault());execution.put("maxTokens","asset-extract".equals(request.operation())?Math.max(16384,params.maxTokensOrDefault()):"recreation".equals(request.operation())||skillPlan?Math.max(8192,params.maxTokensOrDefault()):params.maxTokensOrDefault());
             inputs.put("promptKey",promptKey);
+        }
+        // 一条长视频的脚本要写很多镜头，模型的思考也算输出：预算跟后台给这个模型配的走，不用通用文字任务的默认值。
+        if(segmentedText&&chatRate!=null) {
+            execution.put("maxTokens",chatRate.maxOutputTokens());
+            execution.put("temperature","review".equals(request.segmented().kind())?0.3:0.7);
         }
         if(chatRate!=null) {
             execution.set("tokenPricing",mapper.valueToTree(chatRate));
@@ -932,7 +959,10 @@ public class StudioWorkflowService {
             }
             case "video" -> {
                 if(request.video()==null||studioVideo==null)throw bad("STUDIO_VIDEO_INPUT_INVALID","制作计划里的视频步骤需要明确视频模式");
-                long unit=studioVideo.quote(userId,new IpRunService.IpVideoRequest(request.prompt(),null,request.durationSec(),request.aspectRatio(),request.model(),null,request.video().submitted()));
+                // nodeId=quote：StudioPlanQuoter 按计划报价，素材还是占位 key，只看张数。步骤真正受理时的报价（有真实 key）照旧查文件。
+                long unit=StudioPlanSteps.QUOTE_NODE.equals(request.nodeId())
+                        ?studioVideo.planPrice(request.model(),request.video(),request.aspectRatio(),request.durationSec())
+                        :studioVideo.quote(userId,new IpRunService.IpVideoRequest(request.prompt(),null,request.durationSec(),request.aspectRatio(),request.model(),null,request.video().submitted()));
                 // 先改写提示词的步骤把改写的冻结上限也算进去：制作计划的预算按它核对。
                 yield Math.addExact(Math.multiplyExact(unit,(long)(request.count()==null?1:request.count())),request.video().rewrite()==null?0:videoRewriteHold());
             }
