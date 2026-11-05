@@ -73,3 +73,15 @@ CI产物的镜像构建、OCI归档和发布包压缩均在新ECS B完成；本�
 Podman4.9实测留有已退出的旧演练容器（Pid0、Exited=true、Removing），导致同名新进程反复125退出。启动器仅在同名旧容器能绑定本集群已验证release/镜像/模式，Pid0且Exited、目标端口没有服务时，用官方CLI退役该精确ID；不删镜像/卷，不处理未知或运行中容器，不重置运行时状态/锁。CI验证活进程、未知标签和端口仍活动时均拒绝移除。
 
 PG身份UID唯一索引自检限定当前schema：同一演练数据库里public和隔离schema可能有同名索引，不能把两者的列合并而误报缺失，也不能借用另一schema的唯一约束。仅修运行时自检，V24已执行Java迁移保持字节不变；PG实库回归覆盖两种方向。
+
+## 2026-11-06最终隔离验收
+
+已合并main `b139a694196e1383cf74cf36e9dc713cb3dfe4f0`。代码验收 `aa791d53a99fa19639e1af70ede0099d3d2cf40d`，服务端树2935ed0fa7cf119915a0d267b22d67e1720e3918；CI42086467051八项通过（后端3645、12项既有跳过；PG18实库73全通过；Java门禁20、发布保护17）。一次前端异步fixture失败仅重跑失败任务后通过，未改断言、未跳过检查。
+
+实际JAR `39b8954c9312e425a0033c9046c12deecc7faeb55b41a4b33daf8c603e33d180`，镜像config `sha256:242f8d94115de48f956868c28d634ce6394e04219cbbf1112123d2be4f80a66b`。639,863,296字节原生OCI私有SSH传输和完整SHA通过；两机UID10001可读同一JAR，历史图片SHA/视频206通过。正式恢复器核心、授权、时区规则与192表29102行/约22秒的完整隔离恢复相同；当前CI工具另实测20项门禁、非空目标拒绝且不产生新receipt，新A准备目录工具已更新。白天源快照不能用于正式库。
+
+真实脚本用同一已验证应用、两个不可变release执行B更新接管、A更新、恢复A100/B0，两个节点均排空至少180秒。双VIP严格TLS、节点身份和鉴权通过；本地连续615次、ECS内连续644次鉴权均200零错误，无请求重试。备用错误配置在重启前拒绝，正式未激活拒绝，外网控制及子路径404。旧Next回环桥模式仅在新机19080隔离验证，旧机8080和正常Host/DNS未修改。
+
+最终receipt保存于迁移工作区outputs：aistar-final-rolling-script-verification.json、aistar-current-importer-protection-verification.json、aistar-final-ci-verification.json、aistar-final-runtime-artifact.json、aistar-final-production-protection.json、aistar-final-sls-verification.json。已停止自有演练API/监控并撤下临时桥，正式库0业务表、旧源MySQL服务及账号中心/军师健康。PR保持draft，生产停写/最终冻结导入、后台SAU单活、前端与旧桥、正式业务和ALB/DNS切换仍需独立窗口。
+
+正式角色准备补齐：两机准备目录原仅保存演练凭据，结束核查发现正式角色缺失并拒绝连接；已只补本项目既有角色到root:600文件，未重置RDS密码。A/B均以aistar_migrator、aistar_app经严格TLS只读连接确认目标，应用无super/createDB/createRole及public schema CREATE权限。正式库仍空，表DML授权仍在正式恢复成功后执行。

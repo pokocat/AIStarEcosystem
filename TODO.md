@@ -1724,7 +1724,7 @@ AIStar运行镜像必须同时固定官方Java与Node镜像digest；Studio仿片
 
 容器路径与本地文件：源环境已有AEP_STUDIO_RECREATION_MEDIA_BIN=/opt/ai-star-eco/hypit-runtime/bin，不能原样继承到镜像；新模板明确使用/usr/bin，并固定Node=/usr/local/bin/node。FileStorageService实际配置键是AEP_STORAGE_LOCAL_DIR，挂载/app/work为UID10001可写；AEP_FILE_STORAGE_ROOT不是有效替代。源file-storage约4GB，保留完整预同步副本并校验，正式停写后补增量；不能仅因已接OSS而假定本地目录可删除。预同步不是冻结数据，禁止据此清理旧服务文件。
 
-迁移文件中转只能使用独立私有Bucket，先以无敏感信息的canary验证匿名Range GET为403；仅设置object private ACL不足以证明Bucket策略未放行。禁止把数据库导出、文件归档或含业务信息的中转包放入现有公开素材Bucket。分发OCI归档时校验归档SHA256、配置摘要和RootFS摘要；Podman导出重新压缩可能改变引擎显示的manifest digest，不能据此跳过内容校验。
+迁移快照、归档及私有文件本轮和后续仅走SSH，不再使用OSS迁移中转；原业务OSS仅按既有授权读取素材，不新增公开Bucket或修改ACL。分发OCI归档时校验归档SHA256、配置摘要和RootFS摘要；Podman导出重新压缩可能改变引擎显示的manifest digest，不能据此跳过内容校验。
 
 ## AI 图片与出图队列（2026-11-05）
 
@@ -1742,5 +1742,5 @@ AIStar运行镜像必须同时固定官方Java与Node镜像digest；Studio仿片
 ## 2026-11-05 AIStar 新集群迁移准备
 
 - [x] 新增受保护的排空接口、正式导入与主备滚动入口，旧单机默认入口禁用。
-- [ ] 隔离实库导入/重复拒绝、双机滚动最终凭证和最终 SHA CI 验收。
+- [x] 隔离实库导入/重复拒绝、双机滚动最终凭证和代码SHA `aa791d53a99f` CI验收：192表29102行；双机真实B接管/A更新/A100B0；本地615、云内644次鉴权零错误；PG73/后端3645项，8项CI通过。正式生产未切换。
 - [ ] 正式窗口单独确认；前端/后台SAU单活交接、本地文件最终增量、PG正式导入与生产切流。
