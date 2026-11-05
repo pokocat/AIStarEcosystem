@@ -65,3 +65,8 @@ def import_files_guard(plan,snapshot,temporal,migrations):
 def contract_guard(env,contract):
  actual={k:hashlib.sha256(v.encode()).hexdigest() for k,v in env.items()}
  require(contract.get('format')=='aistar-runtime-contract-v1' and contract.get('environment_value_hashes')==actual,'运行配置与已核对的加密/身份/支付/OSS配置契约不一致')
+
+def alb_guard(group,expected,drain):
+ require(group.get('StickySessionConfig',{}).get('StickySessionEnabled') is False,'主备滚动必须关闭粘滞会话')
+ d=group.get('ConnectionDrainConfig',{});require(d.get('ConnectionDrainEnabled') is True and d.get('ConnectionDrainTimeout',0)>=drain,'ALB必须开启至少180秒连接排空')
+ h=group.get('HealthCheckConfig',{});require(h.get('HealthCheckEnabled') is True and h.get('HealthCheckPath')=='/internal/ready' and h.get('HealthCheckHost')==expected['host'] and h.get('HealthCheckProtocol')=='HTTP','ALB健康检查必须指向正确Host和真实就绪接口')

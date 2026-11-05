@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Root-only, fixed-node release operations. No legacy hosts or database import operations."""
-import argparse,hashlib,json,os,pathlib,re,subprocess,sys,time,urllib.request,zipfile,shutil,tarfile
+import argparse,hashlib,json,os,pathlib,re,subprocess,sys,time,urllib.request,urllib.error,zipfile,shutil,tarfile
 from policy import environment_guard,artifact_guard,contract_guard,require
 ROOT=pathlib.Path('/opt/aistar-cluster')
 PYTHON='/opt/aibuzz-id/runtime/python311/bin/python3'
@@ -78,15 +78,19 @@ def start(config,expected,mode,release):
  unitfile='[Unit]\nDescription=AIStar '+mode+' immutable API\nAfter=network-online.target\n[Service]\nType=simple\nRestart=on-failure\nRestartSec=5\nTimeoutStopSec=300\nKillMode=mixed\nStandardOutput=append:/var/log/aistar/'+mode+'.log\nStandardError=inherit\nExecStart='+ ' '.join(args)+'\nExecStop=/usr/bin/podman stop --ignore --time 240 '+unit+'\n[Install]\nWantedBy=multi-user.target\n'
  require(all(' ' not in x and '\n' not in x for x in args),'systemd参数不能包含空白')
  path=pathlib.Path('/etc/systemd/system')/(unit+'.service');path.write_text(unitfile);run(['systemctl','daemon-reload']);run(['systemctl','start',unit])
- deadline=time.monotonic()+150
+ deadline=time.monotonic()+300;observations=[]
  while time.monotonic()<deadline:
   try:
-   with urllib.request.urlopen('http://127.0.0.1:'+str(expected['port'])+'/internal/ready',timeout=4) as r:
-    if r.status==200 and json.load(r).get('ready'):break
-  except Exception:pass
+   with urllib.request.urlopen('http://127.0.0.1:'+str(expected['port'])+'/internal/ready',timeout=5) as r:ready=r.status==200 and json.load(r).get('ready') is True
+   if ready:
+    info=inspect(expected,env);require(info['release']==release and not info['quiescing'],'实际运行包或状态不符');return info
+  except urllib.error.HTTPError as error:
+   observations.append({'epoch':time.time(),'http_status':error.code})
+   if error.code in (401,403):raise
+  except (urllib.error.URLError,ConnectionError,TimeoutError,json.JSONDecodeError) as error:observations.append({'epoch':time.time(),'error_type':type(error).__name__})
+  diagnostic=ROOT/'control'/('startup-'+mode+'-'+release+'-private.json');diagnostic.write_text(json.dumps(observations[-30:]));diagnostic.chmod(0o600)
   time.sleep(2)
- else:raise RuntimeError('新节点未就绪；保留当前ALB主节点')
- info=inspect(expected,env);require(info['release']==release and not info['quiescing'],'实际运行包或状态不符');return info
+ raise RuntimeError('新节点完整就绪/运行验收未在300秒内收敛；保留当前ALB主节点，详情见节点私有启动诊断')
 
 def inspect(expected,env):
  unit=expected['unit'];pid=run(['systemctl','show',unit,'-p','MainPID','--value']).strip();require(pid not in ('','0'),'服务未运行')

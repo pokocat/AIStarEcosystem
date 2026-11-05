@@ -3,6 +3,7 @@
 server {
     listen 80;
     server_name api.aibuzz.cn;
+    add_header X-Aistar-Node RENDER_A_OR_B always;
     location = /internal/deployment { return 404; }
     location ^~ /internal/deployment/ { return 404; }
     location = /internal/ready { proxy_pass http://127.0.0.1:8080; }

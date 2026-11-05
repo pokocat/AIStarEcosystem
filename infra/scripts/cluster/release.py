@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """ALB A100/B0 rolling release; no database import, DNS changes, or legacy-host fallback."""
 import argparse,datetime,hashlib,http.client,json,os,pathlib,shlex,socket,ssl,subprocess,sys,time,tarfile,tempfile
-from policy import config_guard,artifact_guard,require
+from policy import config_guard,artifact_guard,alb_guard,require
 ROOT=pathlib.Path(__file__).resolve().parents[3]
 class Cluster:
  def __init__(self,config,mode):self.config=config;self.mode=mode;self.expected=config['modes'][mode];self.events=[]
  def record(self,event,**kw):self.events.append({'utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'event':event,**kw});print(event,flush=True)
  def ssh(self,node,command,timeout=2100,stdin=None):
   p=subprocess.run(['ssh','-i',self.config['ssh_key'],'-o','BatchMode=yes','root@'+self.config['nodes'][node]['host'],command],input=stdin,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=timeout)
+  if p.returncode:
+   logs=pathlib.Path.home()/'.local/state/aistar-deploy';logs.mkdir(mode=0o700,parents=True,exist_ok=True);logs.chmod(0o700);diagnostic=logs/'last-ssh-error-private.log';diagnostic.write_text(p.stdout+p.stderr);diagnostic.chmod(0o600)
   require(p.returncode==0,'节点操作失败：'+node+'；未继续切流。请读取节点私有日志');return p.stdout
  def action(self,node,action,release=None):
   cmd=[self.config['operation_python'],'-s',self.config['root']+'/control/node.py','--mode',self.mode,'--action',action]
@@ -19,6 +21,7 @@ class Cluster:
  def members(self):
   group=self.expected['group'];require(group and group!=self.config['modes']['stage' if self.mode=='production' else 'production']['group'],'正式与演练ALB组缺失或混用')
   groups=self.alb('ListServerGroups',['--ServerGroupIds.1',group])['ServerGroups'];require(len(groups)==1 and groups[0].get('AlbId',self.config['load_balancer_id'])==self.config['load_balancer_id'],'ALB身份不符')
+  alb_guard(groups[0],self.expected,self.config['drain_seconds'])
   rows=self.alb('ListServerGroupServers',['--ServerGroupId',group])['Servers'];require(len(rows)==2 and {x['ServerId'] for x in rows}=={x['instance_id'] for x in self.config['nodes'].values()} and all(x['Port']==80 for x in rows),'ALB后端身份/端口不符')
   return {next(n for n,v in self.config['nodes'].items() if v['instance_id']==x['ServerId']):x for x in rows}
  def weights(self,w):
@@ -37,9 +40,9 @@ class Cluster:
   for ip in self.config['verify_ips']:
    host=self.expected['host'];c=http.client.HTTPSConnection(host,timeout=12,context=ssl.create_default_context())
    c.sock=c._context.wrap_socket(socket.create_connection((ip,443),timeout=12),server_hostname=host)
-   c.request('GET','/internal/ready',headers={secret['header']:secret['key']});r=c.getresponse();data=json.loads(r.read());c.close();require(r.status==200 and data.get('ready') is True,'ALB严格TLS就绪验收失败')
+   c.request('GET','/internal/ready',headers={secret['header']:secret['key']});r=c.getresponse();data=json.loads(r.read());observed=r.getheader('X-Aistar-Node');c.close();require(node is None or observed==node,'ALB实际服务节点与目标不一致，禁止停止旧主');require(r.status==200 and data.get('ready') is True,'ALB严格TLS就绪验收失败')
    if authenticated:
-    c=http.client.HTTPSConnection(host,timeout=12,context=ssl.create_default_context());c.sock=c._context.wrap_socket(socket.create_connection((ip,443),timeout=12),server_hostname=host);c.request('GET','/api/admin/auth/me',headers={secret['header']:secret['key'],'Authorization':'Bearer '+secret['token']});r=c.getresponse();d=json.loads(r.read());c.close();require(r.status==200 and d.get('data',{}).get('id')==secret['subject_id'],'ALB跨机鉴权身份验收失败')
+    c=http.client.HTTPSConnection(host,timeout=12,context=ssl.create_default_context());c.sock=c._context.wrap_socket(socket.create_connection((ip,443),timeout=12),server_hostname=host);c.request('GET','/api/admin/auth/me',headers={secret['header']:secret['key'],'Authorization':'Bearer '+secret['token']});r=c.getresponse();d=json.loads(r.read());observed=r.getheader('X-Aistar-Node');c.close();require(node is None or observed==node,'鉴权请求未由目标节点承接');require(r.status==200 and d.get('data',{}).get('id')==secret['subject_id'],'ALB跨机鉴权身份验收失败')
   if node:self.record('alb_ready',node=node)
  def install(self,bundle,release):
   # Only our new cluster namespace. Never extract arbitrary archive entries.

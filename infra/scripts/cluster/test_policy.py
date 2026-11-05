@@ -14,6 +14,12 @@ class PolicyTests(unittest.TestCase):
   c={'format':'aistar-runtime-contract-v1','environment_value_hashes':{k:hashlib.sha256(v.encode()).hexdigest() for k,v in self.env.items()}}
   contract_guard(self.env,c)
   with self.assertRaises(Refused):contract_guard({**self.env,'AEP_SECRET_KEY':'drift'},c)
+ def test_alb_sticky_and_drain_misconfiguration_refused(self):
+  good={'StickySessionConfig':{'StickySessionEnabled':False},'ConnectionDrainConfig':{'ConnectionDrainEnabled':True,'ConnectionDrainTimeout':180},'HealthCheckConfig':{'HealthCheckEnabled':True,'HealthCheckPath':'/internal/ready','HealthCheckHost':self.expected['host'],'HealthCheckProtocol':'HTTP'}}
+  alb_guard(good,self.expected,180)
+  for section,key,value in [('StickySessionConfig','StickySessionEnabled',True),('ConnectionDrainConfig','ConnectionDrainEnabled',False),('ConnectionDrainConfig','ConnectionDrainTimeout',10),('HealthCheckConfig','HealthCheckHost','wrong'),('HealthCheckConfig','HealthCheckPath','/')]:
+   bad=copy.deepcopy(good);bad[section][key]=value
+   with self.subTest(section=section,key=key),self.assertRaises(Refused):alb_guard(bad,self.expected,180)
  def test_unaccepted_artifact_refused(self):
   with self.assertRaises(Refused):artifact_guard({'format':'aistar-cluster-artifact-v1','sha':'a'*40,'jar_sha256':'a'*64,'tests_passed':False})
  def test_production_window_is_not_inferred(self):
