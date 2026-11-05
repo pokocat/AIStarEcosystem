@@ -59,7 +59,7 @@ def prepare(config,expected,mode,release):
  (state/'api-run').mkdir(exist_ok=True)
  if not (state/'rds-ca.pem').exists():
   for name in ['rds-ca.pem','java-truststore']:shutil.copyfile('/opt/aistar-migration/preparation/'+name,state/name)
- for p in [state,*state.iterdir()]:os.chown(p,10001,10001);p.chmod(0o700 if p.is_dir() else 0o400)
+ for p in [state,*state.iterdir()]:os.chown(p,10001,10001);p.chmod(0o700 if p.is_dir() else (0o400 if p.name in ['rds-ca.pem','java-truststore'] else 0o600))
  # Atomic root-private env file, never printed or placed in a release archive.
  require(all('\n' not in k+v and '\r' not in k+v for k,v in env.items()),'环境不能包含换行')
  (ROOT/'control'/('env-'+mode)).write_text(''.join(k+'='+v+'\n' for k,v in env.items()));(ROOT/'control'/('env-'+mode)).chmod(0o600)

@@ -49,6 +49,9 @@ class Cluster:
   for n in self.config['nodes']:
    self.ssh(n,'install -d -m 700 '+remote+'/control '+remote+'/incoming '+remote+'/releases')
    for local,dest in [(bundle,remote+'/incoming/'+release+'.tar.gz'),(ROOT/'infra/cluster/production.json',remote+'/control/config.json'),(pathlib.Path(__file__).with_name('node.py'),remote+'/control/node.py'),(pathlib.Path(__file__).with_name('policy.py'),remote+'/control/policy.py')]:
+    if local==bundle:
+     existing=self.ssh(n,'sha256sum '+shlex.quote(dest)+' 2>/dev/null || true').split()
+     if existing and existing[0]==digest:continue
     p=subprocess.run(['scp','-q','-i',self.config['ssh_key'],'-o','BatchMode=yes',str(local),'root@'+self.config['nodes'][n]['host']+':'+dest],capture_output=True,text=True,timeout=180);require(p.returncode==0,'私有SSH传输失败')
    code="import pathlib,hashlib,tarfile,os;os.umask(0o022);p=pathlib.Path("+repr(remote+'/incoming/'+release+'.tar.gz')+");assert hashlib.sha256(p.read_bytes()).hexdigest()=="+repr(digest)+";d=pathlib.Path("+repr(remote+'/releases/'+release)+");t=tarfile.open(p);members=t.getmembers();assert all(x.isfile() and not x.name.startswith('/') and '..' not in pathlib.PurePosixPath(x.name).parts for x in members);existing=d.exists();assert not existing or all((d/x.name).is_file() and hashlib.sha256((d/x.name).read_bytes()).digest()==hashlib.sha256(t.extractfile(x).read()).digest() for x in members),'不可变发布内容变化';d.mkdir(mode=0o755,exist_ok=True);t.extractall(d) if not existing else None;[(x.chmod(0o755 if x.is_dir() else 0o444)) for x in [d,*d.rglob('*')]]"
    self.ssh(n,shlex.join([self.config['operation_python'],'-s','-c',code]));self.action(n,'prepare',release)
