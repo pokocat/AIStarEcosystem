@@ -2,7 +2,8 @@ import { describe, expect, it, test, vi } from "vitest";
 const api = vi.hoisted(() => ({ listProjects: vi.fn() }));
 vi.mock("../api", () => ({ IpStudioApi: { listProjects: api.listProjects } }));
 import type { IpProjectDoc } from "@ai-star-eco/types";
-import { rejectedNextStep, addImageRow, addScriptNode, addVideoRow, draftSubject, imageRows, listSceneDrafts, patchNode, resubmitRow, rowUploads, scriptNodes, submissionRejected, videoRows, sceneInputsOf, withSceneInput } from "./scene-drafts";
+import { remapPromptRefs } from "./scene-prompt-refs";
+import { groupSlots, splitByCounts, rejectedNextStep, addImageRow, addScriptNode, addVideoRow, draftSubject, imageRows, listSceneDrafts, patchNode, resubmitRow, rowUploads, scriptNodes, submissionRejected, videoRows, sceneInputsOf, withSceneInput } from "./scene-drafts";
 
 const empty: IpProjectDoc = { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
 const photo = { key: "ipstudio/source/u1/a.jpg", url: "https://cdn/a.jpg", name: "a.jpg" };
@@ -157,5 +158,26 @@ describe("rejectedNextStep", () => {
     expect(rejectedNextStep({ status: 409, code: "STUDIO_PRICE_CHANGED" })).toBe("价格已更新，请确认新价格后重试。本次未扣积分。");
     expect(rejectedNextStep({ status: 503, code: "ENDPOINT_NOT_ALLOWED" })).toBe("请换一个模型或稍后重试。本次未扣积分。");
     expect(rejectedNextStep({ status: 400, code: "STUDIO_VIDEO_ASSET_INVALID" })).toBe("请按上述原因调整后重试。本次未扣积分。");
+  });
+});
+
+describe("素材位放多张", () => {
+  const refs = [{ max: 1 }, { max: 3 }];
+  test("老草稿每个位一张：多出来的进最后一个放得下的位", () => {
+    expect(groupSlots(["模特", "脸1", "脸2", "脸3"], refs)).toEqual([["模特"], ["脸1", "脸2", "脸3"]]);
+    expect(groupSlots(["a", null, null, "b"], [{ max: 3 }])).toEqual([["a", "b"]]);
+    expect(groupSlots([null, "脸"], refs)).toEqual([[], ["脸"]]);
+  });
+  test("新草稿按位存，超过上限的不放", () => {
+    expect(groupSlots([["模特", "多的"], ["脸"]], refs)).toEqual([["模特"], ["脸"]]);
+  });
+  test("出图记录按每个位的张数分回去", () => {
+    expect(splitByCounts(["模特", "上1", "上2", "下"], [{ max: 1 }, { max: 3 }, { max: 1 }], [1, 2, 1])).toEqual([["模特"], ["上1", "上2"], ["下"]]);
+    expect(splitByCounts(["模特", "下"], [{ max: 1 }, { max: 3 }, { max: 1 }], [1, 0, 1])).toEqual([["模特"], [], ["下"]]);
+  });
+  test("加减素材时文字里的图N跟着改，移除的连字去掉", () => {
+    const [a, b, c] = [{}, {}, {}];
+    expect(remapPromptRefs("让图1穿上@图3，别动图2和图9", [a, b, c], [a, c])).toBe("让图1穿上@图2，别动和图9");
+    expect(remapPromptRefs("图2的背景", [a, b], [c, a, b])).toBe("图3的背景");
   });
 });

@@ -7,7 +7,7 @@ import { DirectorStoryboard } from "./director-storyboard";
 import { DirectorApi } from "../api";
 
 vi.mock("../api", () => ({ DirectorApi: { edit: vi.fn(), quote: vi.fn() } }));
-vi.mock("./director-script-reference", () => ({ StoryboardSide: () => null }));
+vi.mock("./director-script-reference", () => ({ ScriptReference: ({ ep }: { ep: { no: number } }) => <section aria-label={`第 ${ep.no} 集剧本`}/> }));
 vi.mock("./director-output", () => ({ ClipVideo: () => null, EpisodeOutput: () => null }));
 
 const media = (id: string): DirectorMedia => ({ id, key: `k-${id}`, url: `https://cdn.test/${id}.mp4`, runId: null, source: "generated", createdAt: "2026-10-29T00:00:00Z" });
@@ -81,4 +81,27 @@ test("switching versions inside the video drawer adopts the picked one; re-picki
   expect(DirectorApi.edit).toHaveBeenCalledWith("w", "clip.adoptVideo", "c1", null, { candidateId: "v1" });
   await waitFor(() => expect(screen.getByRole("button", { name: "视频 1 · 采用中" }).getAttribute("aria-pressed")).toBe("true"));
   expect(screen.queryByRole("button", { name: "采用这一版" })).toBeNull();
+});
+
+test("the script sits inside the episode next to its clips: the sidebar only lists episodes, and the toggle collapses it", () => {
+  document.documentElement.dataset.layout = "desktop";
+  window.localStorage.clear();
+  render(<Page initial={work(clip("v2"))}/>);
+  const script = screen.getByRole("region", { name: "第 1 集剧本" });
+  expect(script.closest(".director-storyboard")).toBeTruthy();
+  expect(within(screen.getByRole("navigation", { name: "分集" })).queryByRole("tab")).toBeNull();
+  const toggle = screen.getByRole("button", { name: "本集剧本" });
+  fireEvent.click(toggle);
+  expect(screen.queryByRole("region", { name: "第 1 集剧本" })).toBeNull();
+  // 点片段上的「对照剧本」重新展开，不用先去找开关。
+  fireEvent.click(screen.getByRole("button", { name: "对照剧本" }));
+  expect(screen.getByRole("region", { name: "第 1 集剧本" })).toBeTruthy();
+  delete document.documentElement.dataset.layout;
+});
+
+test("on the phone layout the script opens in a sheet, not beside the clips", () => {
+  window.localStorage.clear();
+  render(<Page initial={work(clip("v2"))}/>);
+  fireEvent.click(screen.getByRole("button", { name: "对照剧本" }));
+  expect(screen.getByRole("dialog", { name: "本集剧本" })).toBeTruthy();
 });

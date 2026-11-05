@@ -4,8 +4,22 @@
  * 出图描述、编导写脚本的要求和交给助手的话由 `POST /v1/ip-studio/scenes/compose` 在服务端拼。字段名与 Java `StudioSceneCatalog` 一一对应。
  */
 export interface StudioSceneGroup { id: string; title: string }
-/** 参考图位：按顺序是图1、图2…；描述里的「图N」对应这里。 */
-export interface StudioSceneRef { label: string; required: boolean; hint?: string | null }
+/**
+ * 素材位（照参考站的 skill 配置）：一个位可以放好几张。交给模型时按素材位的顺序排，空着的位不占号，
+ * 「图N」是实际交给模型的第几张，所以放了几张、哪个选填位空着，编号都对得上。
+ */
+export interface StudioSceneRef {
+  label: string;
+  required: boolean;
+  /** 这个位能放多张时给用户的一句话：放什么、有什么用。 */
+  hint?: string | null;
+  /** 最多放几张，没有就是 1。 */
+  max?: number | null;
+  /** 告诉模型这几张是做什么的（服务端拼话用）。 */
+  role?: string | null;
+  /** 放了不止一张时换成这句。 */
+  many?: string | null;
+}
 /** 选项组里的一项：value 给接口用，label 给用户看，prompt 是选中后服务端拼进描述 / 要求里的那句话。 */
 export interface StudioSceneOptionChoice { value: string; label: string; prompt: string }
 /** 照参考站的「选项组」：一个场景几组可选项（拍法、语气……），各有默认值；用户点选，不用写字。 */
@@ -41,13 +55,15 @@ export interface StudioImageScene extends StudioSceneMediaFields {
   /** 补充要求输入框的提示。 */
   hint: string;
   ratio: string;
+  /** 这几个选填的素材位（从 0 起）至少放一个，比如服装上身的上装和下装。 */
+  anyOf?: number[] | null;
 }
 export interface StudioSceneSlot { label: string; required: boolean; max?: number | null }
 /** 这类视频要做到什么、要用户给哪些信息（服务端拼进编导和助手的要求；场景页把信息做成可点的小标签）。 */
 export interface StudioSceneBrief {
   /** 这一条要让看的人做什么，一句话。 */
   goal: string;
-  /** 要用户给的信息；required 的没给，编导先写「还缺：……」并用【待补：……】占位。use 是怎么用（「有原价才做对比」）。 */
+  /** 要用户给的信息；required 是这条要讲的重点，没给时编导直接写好，价格、金额、地址不写具体数字（2026-11-04 起不再留【待补】）。use 是怎么用（「有原价才做对比」）。 */
   /** inferable：痛点、卖点、使用场景这类能从素材合理推断的，没给也不算还缺（docs/studio-prompt-architecture.md §9.6）。 */
   facts: { label: string; required: boolean; use?: string | null; inferable?: boolean | null }[];
   /** 结尾要观众做什么。 */
@@ -86,8 +102,8 @@ export interface StudioSceneComposeRequest {
   text?: string;
   /** 图片：用户改过的完整描述。 */
   custom?: string;
-  /** 图片：放了图的参考图位（从 0 起）。 */
-  filled?: number[];
+  /** 图片：每个素材位放了几张。 */
+  refCounts?: number[];
   /** 视频：按交给模型的顺序（编导写脚本时就是图1、图2…）。 */
   imageTitles?: string[]; characterTitle?: string; voiceTitle?: string; videoTitle?: string;
   duration?: number; ratio?: string;

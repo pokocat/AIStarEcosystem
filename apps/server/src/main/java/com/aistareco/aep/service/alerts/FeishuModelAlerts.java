@@ -40,6 +40,13 @@ public class FeishuModelAlerts {
         db.update(insert+"model_alert_delivery (id,task_id,error_code,log_id,message_text,state,created_at,next_attempt_at) VALUES (?,?,?,?,?,'pending',?,?)"+conflict,
                 id,taskId,actualCode,logId,text,Timestamp.from(occurredAt),Timestamp.from(occurredAt));
     }
+    /** For alerts that are not about one task. Same delivery and dedupe as enqueue: the same taskId + code is stored once. */
+    void enqueueNotice(String taskId,String code,String logId,String text,Instant occurredAt) {
+        String id=UUID.nameUUIDFromBytes((taskId+"\n"+code).getBytes(StandardCharsets.UTF_8)).toString();
+        Instant at=occurredAt.truncatedTo(java.time.temporal.ChronoUnit.MILLIS);
+        db.update("INSERT IGNORE INTO model_alert_delivery (id,task_id,error_code,log_id,message_text,state,created_at,next_attempt_at) VALUES (?,?,?,?,?,'pending',?,?)",
+                id,taskId,code,logId,text,Timestamp.from(at),Timestamp.from(at));
+    }
     @Scheduled(fixedDelay=10000,initialDelay=15000,scheduler="modelAlertScheduler")
     public void deliver() {
         if(!config.ready())return;

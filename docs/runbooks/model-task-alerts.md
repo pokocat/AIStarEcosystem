@@ -27,6 +27,27 @@ V64 新增 `model_alert_delivery`，仅记录通知投递：同任务+错误码�
 
 `ModelAlertContext` 优先读取原任务快照，图片按已完成候选数定位当前失败图片；缺失快照才回落当前端点配置，禁止按用户或时间猜测其他任务的调用记录。机器人使用精简投影，后台展开详情仍保留原来的脱敏技术参数。全部异步模型 ErrorLog 使用此链路，取消任务不告警。
 
+## 额度告警（2026-11-05）
+
+机器人发的另一种消息，标题是【模型额度告警】，按接入点发，不按任务发。沿用同一张 `model_alert_delivery` 和同一条投递链，无迁移。
+
+| 触发 | 消息 | 频率 |
+| --- | --- | --- |
+| 模型调用被服务方以额度或余额为由拒绝（`UpstreamModelHttp` 的非 2xx 响应，普通和流式都算） | 额度已用完 | 每个接入点每小时最多一条 |
+| 查到余额 ≤ 0，或 `isValid=false` | 余额已用完 / Key 已不可用 | 每个接入点每小时最多一条 |
+| 查到余额低于提醒线 | 余额偏低 | 每个接入点每天最多一条 |
+| 余额连续 6 次（约半小时）查不到 | 余额查询失败 | 第 6 次发一条，当天不重复 |
+
+判断额度用的是服务方原话（`ModelQuotaAlerts.isOutOfQuota`），限流（rate limit、too many requests）不算。告警不改变模型路由、任务和钱包：调用该失败还是失败。服务方拒绝时只在内存里记一下，由告警线程写库，模型调用不会因为告警多一次数据库操作。
+
+要查余额的接入点列在平台配置 `ai.quota-watch` 里，改配置下一轮生效（每 5 分钟一轮），不用重启：
+
+```json
+{"endpoints":{"ai-onetoken-sonnet55":{"usagePath":"/usage","warnBelow":10}}}
+```
+
+`usagePath` 接在接入点基础地址后面；`warnBelow` 的单位跟服务方返回的 `unit` 走，OneToken 是美元。返回里要有数字字段 `remaining`，没有就算查询失败。没列的接入点只有被拒绝时才告警。目前只验证过 OneToken 的 `GET /v1/usage`。每次查询在日志里记一行 `[model-quota] endpoint=… remaining=…`，不记 Key。
+
 ## 验证与维护
 
 2026-10-28 线上配置验收：仅将 `/etc/aistareco/server.env` 的 `AEP_FEISHU_ALERT_URGENT` 从 true 改为 false，重启现有 server 制品，核对进程环境为 false，`/api/config` 返回 200、服务 active、NRestarts=0。普通验证消息走现有持久化投递链，`task_id=alert-normal-20261028`、state=sent、attempts=1、message_id=`om_x100b611699131ca4df20761cc3e267d`，未调用加急。历史通知未重投；本地默认值、env 示例和回归测试已同步，14 项通知相关测试通过，默认值源码变更随后随同日长任务恢复修复发布（main `fda4e433`）。

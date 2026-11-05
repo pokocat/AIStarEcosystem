@@ -154,6 +154,10 @@ html[data-layout="desktop"] .scene-composer-head .scene-recent-host { display: n
 .scene-ref-index { position: absolute; top: 5px; left: 5px; padding: 0 5px; border-radius: 5px; background: rgba(23,32,42,.68); color: #fff; font-size: 10.5px; font-style: normal; line-height: 16px; }
 .scene-ref-remove { position: absolute; top: -7px; right: -7px; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 1px solid var(--sn-field); border-radius: 50%; background: var(--ip-paper); color: var(--ip-muted); cursor: pointer; }
 .scene-ref-remove:hover { color: var(--ip-ink); }
+.scene-media-note { margin: -8px 0 0; color: var(--ip-muted); font-size: 12px; line-height: 1.5; }
+.scene-media-group { display: flex; flex-direction: column; gap: 8px; }
+.scene-media-count { color: var(--ip-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.scene-media>span:not(.scene-media-preview) small { display: block; margin-left: 0; }
 .scene-media-divider { align-self: stretch; width: 1px; margin: 10px 2px 26px; background: var(--ip-line); }
 .scene-media-row.is-large .scene-media { width: 96px; }
 .scene-media-row.is-large .scene-media>button:first-child, .scene-media-row.is-large .scene-media-preview, .scene-media-row.is-large .scene-slot-add { width: 96px; height: 96px; border-radius: 14px; }
@@ -183,6 +187,24 @@ html[data-layout="desktop"] .scene-composer-head .scene-recent-host { display: n
 .scene-prompt-editor { flex: 1 0 auto; color: var(--ip-ink); font-size: 14px; line-height: 1.75; outline: none; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; }
 .scene-prompt-editor p { margin: 0; }
 .scene-prompt-placeholder { position: absolute; top: 0; right: 0; left: 0; color: #7a838d; font-size: 14px; line-height: 1.75; pointer-events: none; }
+/* 技能标签：排在文字最前面，文字绕着它走（float），所以放不下时才换行。 */
+.scene-prompt-field.has-lead { display: block; }
+.scene-prompt-field.has-lead>div { display: block; min-height: 100%; }
+.scene-prompt-field.has-lead .scene-prompt-editor { min-height: 100%; }
+.scene-prompt-skill { float: left; display: inline-flex; align-items: center; gap: 4px; height: 24.5px; margin-right: 8px; color: var(--ai, #4f5bd5); font-size: 13px; font-style: normal; font-weight: 500; user-select: none; }
+.scene-prompt-skill.is-ghost { visibility: hidden; }
+.scene-box-extra { flex: 0 0 auto; padding-top: 10px; border-top: 1px solid var(--sn-line-2); }
+.scene-box-extra .scene-prompt-field { flex: 0 1 auto; min-height: 52px; max-height: 140px; }
+/* @ 菜单：贴着 @ 往下弹，画在 body 上。 */
+.scene-mention-menu { position: fixed; z-index: 1200; display: flex; flex-direction: column; gap: 2px; width: min(248px, calc(100vw - 16px)); max-height: 280px; padding: 6px; overflow-y: auto; border: 1px solid var(--ip-line, #e4e7eb); border-radius: 12px; background: #fff; box-shadow: 0 8px 24px rgba(20, 26, 40, .14); }
+.scene-mention-menu p { margin: 0; padding: 8px 10px; color: var(--ip-muted, #6b7380); font-size: 13px; }
+.scene-mention-menu button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 4px 8px; border: 0; border-radius: 8px; background: transparent; color: #1c222b; text-align: left; cursor: pointer; }
+.scene-mention-menu button.is-active { background: #f1f3f6; }
+.scene-mention-menu img, .scene-mention-menu button>i { flex: 0 0 40px; width: 40px; height: 40px; border-radius: 7px; background: #eceef1; object-fit: cover; }
+.scene-mention-menu button>span { display: grid; grid-template-columns: auto 1fr; column-gap: 6px; min-width: 0; }
+.scene-mention-menu strong { font-size: 13px; font-weight: 500; }
+.scene-mention-menu small { overflow: hidden; color: var(--ip-muted, #6b7380); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.scene-mention-menu em { grid-column: 1 / -1; overflow: hidden; color: var(--ip-muted, #6b7380); font-size: 11.5px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
 .scene-prompt-ref { display: inline-flex; align-items: center; gap: 5px; height: 24px; margin: 0 2px; padding: 0 8px 0 2px; border: 1px solid var(--sn-field); border-radius: 7px; background: #f6f7f9; color: var(--ip-ink); font: inherit; font-size: 12.5px; font-weight: 600; line-height: 1; vertical-align: -6px; white-space: nowrap; cursor: zoom-in; transition: background-color 120ms var(--ip-ease), border-color 120ms var(--ip-ease); }
 .scene-prompt-ref:not(:has(img)) { padding-left: 8px; cursor: default; }
 .scene-prompt-ref img { display: block; width: 20px; height: 20px; border-radius: 5px; object-fit: cover; }
@@ -253,6 +275,12 @@ button.scene-pill:hover, .scene-pill[aria-expanded="true"], .scene-pill.is-selec
 .scene-director-title svg { color: var(--sn-ai-star); }
 .scene-director-title strong { flex: 1; font-size: 13px; font-weight: 500; }
 .scene-director-thread { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; padding: 10px 18px 16px; }
+/* 还没写过脚本时：先问想做什么，下面是这个场景的常用开头，点一下接进输入框。 */
+.scene-director-start { flex: 1 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 16px 0; text-align: center; }
+.scene-director-start h2 { margin: 0; font-size: 16px; font-weight: 500; }
+.scene-director-ideas { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 520px; }
+.scene-studio .scene-director-ideas button { min-height: 32px; padding: 5px 12px; border: 1px solid var(--sn-field); border-radius: 10px; background: var(--ip-paper); color: var(--sn-text-2); font: inherit; font-size: 12.5px; line-height: 1.5; cursor: pointer; transition: background 140ms var(--ip-ease), color 140ms var(--ip-ease); }
+.scene-studio .scene-director-ideas button:hover { background: var(--ip-soft); color: var(--ip-ink); }
 .scene-director-turn { display: flex; flex-direction: column; gap: 10px; }
 .scene-director-ask { align-self: flex-end; max-width: 86%; margin: 0 !important; padding: 8px 12px; border-radius: 14px 14px 4px 14px; background: var(--ip-soft); font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
 .scene-director-ask.is-empty { color: var(--ip-muted); }
@@ -285,6 +313,7 @@ button.scene-pill:hover, .scene-pill[aria-expanded="true"], .scene-pill.is-selec
 .scene-director-input { position: relative; display: flex; flex-direction: column; gap: 10px; margin: 0 18px 16px; padding: 12px 12px 10px 14px; border: 1px solid var(--sn-field); border-radius: 16px; background: var(--ip-paper); }
 .scene-director-input:focus-within { border-color: #c5cad1; }
 .scene-director-input input { width: 100%; min-width: 0; height: 30px; padding: 0; border: 0; background: transparent; color: var(--ip-ink); font: inherit; font-size: 13.5px; outline: none; text-overflow: ellipsis; }
+.scene-director-input .scene-prompt-field { flex: 0 1 auto; min-height: 72px; max-height: 200px; }
 .scene-director-input>footer { display: flex; align-items: center; gap: 8px; }
 .scene-director-input>footer .scene-setting-panel-host { position: static; flex: 0 1 auto; min-width: 0; }
 .scene-director-input>footer .scene-pill { width: auto; max-width: 100%; }
@@ -432,5 +461,6 @@ html:not([data-layout="desktop"]) .scene-drawer .is-pin { display: none; }
 html:not([data-layout="desktop"]) .scene-drawer.is-pinned { display: none; }
 html:not([data-layout="desktop"]) .scene-recent { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 64px); left: 12px; right: 12px; width: auto; }
 html:not([data-layout="desktop"]) .scene-director-input { margin: 0 12px 12px; }
+html:not([data-layout="desktop"]) .scene-studio .scene-director-ideas button { min-height: 36px; }
 html:not([data-layout="desktop"]) .scene-director-thread { padding: 10px 12px 16px; }
 html:not([data-layout="desktop"]) .scene-choice-row button { height: 36px; }

@@ -33,7 +33,7 @@ const errorText = (e: unknown) => e instanceof Error ? e.message : "操作没有
 /** 新场景的起点：照着现成场景的格式，空着的地方运营自己填。 */
 function blankScene(kind: Kind, group: string, id: string): StudioImageScene | StudioVideoScene {
   return kind === "image"
-    ? { id, group, title: "新场景", description: "一句话说清这个场景做什么", refs: [{ label: "参考图", required: true, hint: null }], prompt: "以图1为准，", hint: "可以补充想要的细节", ratio: "1:1", enabled: false }
+    ? { id, group, title: "新场景", description: "一句话说清这个场景做什么", refs: [{ label: "参考图", required: true, hint: null }], prompt: "以参考图为准，", hint: "可以补充想要的细节", ratio: "1:1", enabled: false }
     : { id, group, title: "新场景", description: "一句话说清这类视频", images: { label: "商品图", required: false, max: 4 }, video: null, character: false, voice: false,
       placeholder: "说说想拍什么", textRequired: false, durations: [15, 25, 30], duration: 25, ratio: "9:16", structure: "开头……中间……结尾……", ideas: [], skill: "video-generation", enabled: false };
 }
@@ -278,16 +278,17 @@ function MediaEditor({ scene, mediaOf, onUpload, onClearCover, onRemoveExample }
 function ImageFields({ scene, patch }: { scene: StudioImageScene; patch: (p: Partial<StudioImageScene>) => void }) {
   const setRef = (i: number, changes: Partial<StudioImageScene["refs"][number]>) => patch({ refs: scene.refs.map((r, j) => j === i ? { ...r, ...changes } : r) });
   return <>
-    <Field label="参考图位" hint="按顺序是图1、图2……出图描述里写「图1」就指第一个位。第一个位必须是必填。">
+    <Field label="素材位" hint="一个位可以放好几张。交给模型时按这里的顺序编号，所以出图描述写素材的名字，不要写图1、图2。第一个位必须是必填。">
       <div className="space-y-2">
         {scene.refs.map((r, i) => <div key={i} className="flex flex-wrap items-center gap-2">
-          <span className="w-8 text-sm text-muted-foreground">图{i + 1}</span>
-          <Input aria-label={`图${i + 1}名称`} className="w-40" value={r.label} maxLength={12} onChange={e => setRef(i, { label: e.target.value })}/>
-          <Input aria-label={`图${i + 1}提示`} className="min-w-[160px] flex-1" placeholder="给用户的提示（可选）" value={r.hint ?? ""} onChange={e => setRef(i, { hint: e.target.value || null })}/>
-          <label className="flex items-center gap-1.5 text-sm"><Switch checked={r.required} onCheckedChange={v => setRef(i, { required: v })} aria-label={`图${i + 1}必填`}/>必填</label>
-          <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={`删除图${i + 1}`} onClick={() => patch({ refs: scene.refs.filter((_, j) => j !== i) })}><X className="h-4 w-4"/></Button>
+          <Input aria-label={`第 ${i + 1} 个位的名称`} className="w-32" value={r.label} maxLength={12} onChange={e => setRef(i, { label: e.target.value })}/>
+          <label className="flex items-center gap-1.5 text-sm">最多<Input aria-label={`第 ${i + 1} 个位最多几张`} className="w-16" type="number" min={1} max={9} value={r.max ?? 1} onChange={e => setRef(i, { max: Number(e.target.value) > 1 ? Number(e.target.value) : null })}/>张</label>
+          <Input aria-label={`第 ${i + 1} 个位的用途`} className="min-w-[160px] flex-1" placeholder="告诉模型它是什么（如：要穿衣服的模特）" value={r.role ?? ""} onChange={e => setRef(i, { role: e.target.value || null })}/>
+          <Input aria-label={`第 ${i + 1} 个位的提示`} className="min-w-[160px] flex-1" placeholder="能放多张时给用户的一句话（可选）" value={r.hint ?? ""} onChange={e => setRef(i, { hint: e.target.value || null })}/>
+          <label className="flex items-center gap-1.5 text-sm"><Switch checked={r.required} onCheckedChange={v => setRef(i, { required: v })} aria-label={`第 ${i + 1} 个位必填`}/>必填</label>
+          <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={`删除第 ${i + 1} 个位`} onClick={() => patch({ refs: scene.refs.filter((_, j) => j !== i) })}><X className="h-4 w-4"/></Button>
         </div>)}
-        {scene.refs.length < 6 && <Button size="sm" variant="outline" onClick={() => patch({ refs: [...scene.refs, { label: "参考图", required: false, hint: null }] })}><Plus className="mr-1 h-4 w-4"/>加一个参考图位</Button>}
+        {scene.refs.length < 6 && <Button size="sm" variant="outline" onClick={() => patch({ refs: [...scene.refs, { label: "参考图", required: false, hint: null }] })}><Plus className="mr-1 h-4 w-4"/>加一个素材位</Button>}
       </div>
     </Field>
     <Field label="出图描述" hint="用户看不到这段，只看到场景名和「补充要求」输入框。不要留【…】这种空位，用户要补的写「按补充要求……」。">

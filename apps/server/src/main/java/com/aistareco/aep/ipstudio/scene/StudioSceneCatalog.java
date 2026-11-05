@@ -24,7 +24,6 @@ import com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler;
 import com.aistareco.aep.ipstudio.prompt.StudioPromptEntry;
 import com.aistareco.aep.ipstudio.prompt.StudioPromptLibrary;
 import org.springframework.beans.factory.ObjectProvider;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -45,7 +44,19 @@ public class StudioSceneCatalog {
     public static final String MEDIA_PREFIX = com.aistareco.aep.service.storage.FileStorageService.ownedKeyPrefix(MEDIA_CATEGORY, MEDIA_OWNER);
 
     public record Group(String id, String title) {}
-    public record SceneRef(String label, boolean required, String hint) {}
+    /**
+     * 一个素材位（照参考站的 skill 配置，2026-11-05）：一个位可以放好几张，描述里的「图N」按实际交给模型的顺序编号。
+     *
+     * @param hint 这个位能放多张时给用户的一句话：放什么、有什么用
+     * @param max  最多放几张，没写是 1
+     * @param role 告诉模型这几张是做什么的（「图1是{role}」），没写用名称
+     * @param many 放了不止一张时换成这句（「同一个人的不同照片……」），没写用 role
+     */
+    public record SceneRef(String label, boolean required, String hint, Integer max, String role, String many) {
+        public SceneRef(String label, boolean required, String hint) { this(label, required, hint, null, null, null); }
+        public int limit() { return max == null ? 1 : max; }
+        String usedAs(int count) { return count > 1 && !blank(many) ? many.trim() : blank(role) ? label : role.trim(); }
+    }
     /** 出 wire 时由 key 签出的地址；目录里只存 key。 */
     public record Media(String url, String mediaType) {}
     /** 选项组里的一项：value 是接口用的编号，label 给用户看，prompt 是选中后拼进描述 / 要求里的那句话。 */
@@ -54,20 +65,25 @@ public class StudioSceneCatalog {
     public record OptionGroup(String key, String label, List<OptionChoice> choices, String defaultValue) {}
     /** 首页「你想做什么？」的一张卡：点进去落到 sceneId，两张封面取 covers 里两个场景的封面。 */
     public record HomeGoal(String id, String title, String description, String sceneId, List<String> covers) {}
+    /** @param anyOf 这几个选填的素材位（从 0 起）至少放一个，比如服装上身的上装和下装 */
     public record ImageScene(String id, String group, String title, String description, List<SceneRef> refs, String prompt, String hint, String ratio,
-                             List<OptionGroup> options, Boolean enabled, String coverKey, List<String> exampleKeys, String coverUrl, List<Media> examples) {
+                             List<OptionGroup> options, Boolean enabled, String coverKey, List<String> exampleKeys, String coverUrl, List<Media> examples, List<Integer> anyOf) {
         public ImageScene(String id, String group, String title, String description, List<SceneRef> refs, String prompt, String hint, String ratio) {
-            this(id, group, title, description, refs, prompt, hint, ratio, null, null, null, null, null, null);
+            this(id, group, title, description, refs, prompt, hint, ratio, null, null, null, null, null, null, null);
+        }
+        public ImageScene(String id, String group, String title, String description, List<SceneRef> refs, String prompt, String hint, String ratio,
+                          List<OptionGroup> options, Boolean enabled, String coverKey, List<String> exampleKeys, String coverUrl, List<Media> examples) {
+            this(id, group, title, description, refs, prompt, hint, ratio, options, enabled, coverKey, exampleKeys, coverUrl, examples, null);
         }
         public boolean on() { return enabled == null || enabled; }
         public List<OptionGroup> optionGroups() { return options == null ? List.of() : options; }
         /** 同一个场景，换掉上下架 / 封面 / 示例这几项（出 wire 签名、保存时剥地址都用它）。 */
         public ImageScene withMedia(Boolean on, String cover, List<String> exampleKeys, String coverUrl, List<Media> examples) {
-            return new ImageScene(id, group, title, description, refs, prompt, hint, ratio, options, on, cover, exampleKeys, coverUrl, examples);
+            return new ImageScene(id, group, title, description, refs, prompt, hint, ratio, options, on, cover, exampleKeys, coverUrl, examples, anyOf);
         }
         /** 出图描述换成提示词库里的（{@link #overlay}）。 */
         public ImageScene withPrompt(String text) {
-            return new ImageScene(id, group, title, description, refs, text, hint, ratio, options, enabled, coverKey, exampleKeys, coverUrl, examples);
+            return new ImageScene(id, group, title, description, refs, text, hint, ratio, options, enabled, coverKey, exampleKeys, coverUrl, examples, anyOf);
         }
     }
     public record Slot(String label, boolean required, Integer max) {}
@@ -76,7 +92,7 @@ public class StudioSceneCatalog {
      * 这类视频要做到什么（2026-10-30 审查：只有名称和一句拍法，同城团购拍成了泛泛的探店）。
      *
      * @param goal    这条视频要让看的人做什么，一句话（「让附近的人买下套餐、到店来用」）
-     * @param facts   要用户给的信息；必填的没给，编导先写「还缺：……」并用【待补：……】占位，不拿别的说法糊过去
+     * @param facts   要用户给的信息；必填的是这条要讲的重点；没给时编导直接写好，价格、金额、地址不写具体数字（2026-11-04 起不再留【待补】）
      * @param ending  结尾要观众做什么（有就写）
      * @param fiction 能编到哪一步：none = 只用用户给的，人物也不能写成真实顾客；story = 可以编人物和情节，不能编品牌事实（缺省）
      */
@@ -289,7 +305,8 @@ public class StudioSceneCatalog {
 
     /**
      * @param kind     image = 出图描述；video = 交给画布创作助手的话；video-script = 交给编导写脚本的要求
-     * @param filled   图片场景：哪几个参考图位放了图（从 0 起）
+     * @param filled   图片场景：哪几个素材位放了图（从 0 起），每个位算一张（还没发版的旧页面）
+     * @param refCounts 图片场景：每个素材位放了几张；有它就不看 filled
      * @param text     图片：补充要求；视频：用户写的那句
      * @param custom   图片：用户改过的完整描述（没改为 null）
      * @param revision 编导：对上一版脚本的修改意见（第一次写为 null）
@@ -302,7 +319,14 @@ public class StudioSceneCatalog {
     public record ComposeRequest(String kind, String sceneId, String text, String custom, List<Integer> filled,
                                  List<String> imageTitles, String characterTitle, String voiceTitle, String videoTitle,
                                  Integer duration, String ratio, String language, String revision, java.util.Map<String, String> options,
-                                 List<String> seenTitles, Boolean characterSeen, Boolean visual, String settingsChanged) {
+                                 List<String> seenTitles, Boolean characterSeen, Boolean visual, String settingsChanged, List<Integer> refCounts) {
+        public ComposeRequest(String kind, String sceneId, String text, String custom, List<Integer> filled,
+                              List<String> imageTitles, String characterTitle, String voiceTitle, String videoTitle,
+                              Integer duration, String ratio, String language, String revision, java.util.Map<String, String> options,
+                              List<String> seenTitles, Boolean characterSeen, Boolean visual, String settingsChanged) {
+            this(kind, sceneId, text, custom, filled, imageTitles, characterTitle, voiceTitle, videoTitle, duration, ratio, language, revision, options,
+                    seenTitles, characterSeen, visual, settingsChanged, null);
+        }
         public ComposeRequest(String kind, String sceneId, String text, String custom, List<Integer> filled,
                               List<String> imageTitles, String characterTitle, String voiceTitle, String videoTitle,
                               Integer duration, String ratio, String language, String revision, java.util.Map<String, String> options,
@@ -346,9 +370,7 @@ public class StudioSceneCatalog {
 
     private String imagePrompt(ComposeRequest r) {
         ImageScene scene = image(r.sceneId()).orElseThrow(() -> bad("这个场景不存在，请刷新后重选"));
-        Set<Integer> filled = r.filled() == null ? Set.of() : new HashSet<>(r.filled());
-        for (int i = 0; i < scene.refs().size(); i++)
-            if (scene.refs().get(i).required() && !filled.contains(i)) throw bad("先放" + scene.refs().get(i).label());
+        int[] counts = refCounts(scene, r);
         String extra = trim(r.text());
         boolean free = FREE.equals(scene.id());
         if (free && extra.isEmpty()) throw bad("写一句想要的画面");
@@ -357,8 +379,45 @@ public class StudioSceneCatalog {
         vars.put("extra", extra);
         vars.put("custom", r.custom() != null && !r.custom().isBlank() ? r.custom().trim() : "");
         vars.put("options", optionItems(scene.optionGroups(), r.options()));
+        vars.put("materials", materials(scene, counts));
         return assembler().assemble(new StudioPromptAssembler.Call(STAGE_IMAGE, null, free ? null : sceneKey(scene.id()), vars, null,
                 free ? null : trim(scene.prompt()))).user();
+    }
+
+    /** 每个素材位放了几张，并按场景的配置检查：必填的放了、没超过上限、「至少放一个」的放了。 */
+    private static int[] refCounts(ImageScene scene, ComposeRequest r) {
+        List<SceneRef> refs = scene.refs();
+        int[] counts = new int[refs.size()];
+        if (r.refCounts() != null) {
+            if (r.refCounts().size() > refs.size()) throw bad("这个场景的素材位变了，请刷新后重选");
+            for (int i = 0; i < r.refCounts().size(); i++) counts[i] = r.refCounts().get(i) == null ? 0 : Math.max(0, r.refCounts().get(i));
+        } else if (r.filled() != null) {
+            for (int i : r.filled()) if (i >= 0 && i < refs.size()) counts[i] = 1;
+        }
+        for (int i = 0; i < refs.size(); i++) {
+            if (refs.get(i).required() && counts[i] == 0) throw bad("先放" + refs.get(i).label());
+            if (counts[i] > refs.get(i).limit()) throw bad(refs.get(i).label() + "最多放 " + refs.get(i).limit() + " 张");
+        }
+        List<Integer> any = scene.anyOf() == null ? List.of() : scene.anyOf();
+        if (!any.isEmpty() && any.stream().allMatch(i -> counts[i] == 0))
+            throw bad("先放" + String.join("或", any.stream().map(i -> refs.get(i).label()).toList()));
+        return counts;
+    }
+
+    /**
+     * 告诉模型每张图是做什么的（{photos, role}），按实际交给模型的顺序编号：图片按素材位排，空着的位不占号。
+     * 场景描述只写「模特」「商品」这些名字，不写图1、图2，所以放几张、哪个选填位空着，描述都不用变。
+     */
+    private static List<java.util.Map<String, Object>> materials(ImageScene scene, int[] counts) {
+        List<java.util.Map<String, Object>> out = new ArrayList<>();
+        int position = 0;
+        for (int i = 0; i < counts.length; i++) {
+            if (counts[i] == 0) continue;
+            List<String> names = new ArrayList<>();
+            for (int n = 0; n < counts[i]; n++) names.add("图" + ++position);
+            out.add(java.util.Map.of("photos", String.join("、", names), "role", scene.refs().get(i).usedAs(counts[i])));
+        }
+        return out;
     }
 
     /** 选中的选项（{label, prompt}），没给的组用默认值；后台下架的选项 400，让页面刷新后重选。 */
@@ -540,11 +599,11 @@ public class StudioSceneCatalog {
             if (blank(s.title()) || blank(s.description())) throw new IllegalStateException("场景要有名称和一句说明：" + s.id());
             if (s.refs() == null || s.refs().size() > 6) throw new IllegalStateException("参考图位最多 6 个：" + name);
             if (s.refs().stream().anyMatch(r -> r == null || blank(r.label()))) throw new IllegalStateException("参考图位要有名称：" + name);
+            refLimits(s, name);
             if (!FREE.equals(s.id())) {
                 if (blank(s.prompt())) throw new IllegalStateException("场景要写好出图描述：" + name);
                 if (s.prompt().contains("【") || s.prompt().contains("】")) throw new IllegalStateException("场景描述不能留【…】空位：" + name);
-                Matcher m = REF.matcher(s.prompt());
-                while (m.find()) if (Integer.parseInt(m.group(1)) > s.refs().size()) throw new IllegalStateException("场景描述点了不存在的参考图：" + name);
+                if (REF.matcher(s.prompt()).find()) throw new IllegalStateException("场景描述按素材的名字写，不要写图1、图2（编号随放了几张变）：" + name);
                 if (s.refs().isEmpty() || !s.refs().get(0).required()) throw new IllegalStateException("图1 必须是必填参考图：" + name);
             }
             if (!List.of("1:1", "3:4", "4:3", "9:16", "16:9").contains(s.ratio())) throw new IllegalStateException("默认比例不对：" + name);
@@ -620,6 +679,12 @@ public class StudioSceneCatalog {
     private static BusinessException bad(String message) { return BusinessException.badRequest("STUDIO_SCENE_INPUT_INVALID", message); }
     private static boolean blank(String v) { return v == null || v.isBlank(); }
     private static String trim(String v) { return v == null ? "" : v.trim(); }
+    private static void refLimits(ImageScene s, String name) {
+        for (SceneRef r : s.refs()) if (r.max() != null && (r.max() < 1 || r.max() > 9)) throw new IllegalStateException("「" + r.label() + "」最多放 1 到 9 张：" + name);
+        if (s.anyOf() == null) return;
+        for (int i : s.anyOf()) if (i < 0 || i >= s.refs().size() || s.refs().get(i).required()) throw new IllegalStateException("「至少放一个」只能选已有的选填素材位：" + name);
+    }
+
     private static String limit(String v) {
         if (v.length() > 16000) throw bad("描述最多 16000 字");
         return v;

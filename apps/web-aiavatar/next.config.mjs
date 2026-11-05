@@ -1,3 +1,5 @@
+import { PHASE_DEVELOPMENT_SERVER } from "next/constants.js";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -63,4 +65,15 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+// Local development only: Next 16.2.6 otherwise retains 5 recent pages for 60s.
+// Keep the active page and a recent neighbour; revisiting an evicted route recompiles it.
+// Radix's umbrella entry imports all primitives even when Studio only uses Select.
+// Production settings stay identical; no vendor cache-plugin internals are patched.
+export default (phase) => phase === PHASE_DEVELOPMENT_SERVER ? {
+  ...nextConfig,
+  onDemandEntries: { maxInactiveAge: 25_000, pagesBufferLength: 2 },
+  experimental: {
+    ...nextConfig.experimental,
+    optimizePackageImports: ["radix-ui"],
+  },
+} : nextConfig;

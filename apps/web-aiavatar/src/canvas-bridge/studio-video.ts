@@ -168,13 +168,24 @@ function studioVideoInputs(mode:VideoStudioMode,tier:string,assets:StudioVideoAs
   return {mode,resolutionTier:tier,seed,firstFrameKey:assets[0].storageKey,...(count===2?{lastFrameKey:assets[1].storageKey}:{})};
 }
 
+/** Over a model's prompt limit: the count, the limit and how much to cut. */
+export function studioPromptLimitMessage(chars:number,max:number,hasLinkedText:boolean):string {
+  return `${hasLinkedText?"创作要求和引用文本合计":"提示词"} ${chars} 字，这个模型最多 ${max} 字，需删减 ${chars-max} 字。`;
+}
+
+/** Another selectable model that takes this prompt as it is; the one with the most room. */
+export function studioLongerPromptModel<T extends {promptMaxChars?:number|null}>(models:T[],chars:number):(T&{promptMaxChars:number})|undefined {
+  return models.filter((m):m is T&{promptMaxChars:number}=>m.promptMaxChars!=null&&m.promptMaxChars>=chars)
+    .reduce<(T&{promptMaxChars:number})|undefined>((best,m)=>!best||m.promptMaxChars>best.promptMaxChars?m:best,undefined);
+}
+
 export function studioVideoError(model:VideoStudioModel,video:StudioVideoSettings,prompt:string,ratio:string,seconds:number):string|undefined {
   const contract=model.contract,spec=contract.modes.find(m=>m.mode===video.mode);
   if(!spec)return "这个模型不支持所选视频模式，请重新选择";
   if(!contract.tiers.find(t=>t.tier===video.resolutionTier)?.canvases.some(c=>c.aspectRatio===ratio))return "请按所选模型重新选择清晰度和画幅";
   if(!Number.isInteger(seconds)||seconds<contract.minSeconds||seconds>contract.maxSeconds)return `视频时长需为 ${contract.minSeconds} 到 ${contract.maxSeconds} 秒`;
   if(!prompt.trim()&&spec.promptRequired!==false)return "请先写提示词";
-  if(Array.from(prompt).length>contract.promptMaxChars)return `这个模型最多接收 ${contract.promptMaxChars} 字，请缩短提示词`;
+  if(Array.from(prompt).length>contract.promptMaxChars)return studioPromptLimitMessage(Array.from(prompt).length,contract.promptMaxChars,false);
   if(video.seed!=null&&(!Number.isSafeInteger(video.seed)||video.seed<0||video.seed>contract.seedMax))return `随机种子需为 0 到 ${contract.seedMax} 的整数`;
   if(spec.needsFirstFrame&&!video.firstFrameKey)return "请选择首帧图片";
   if(spec.needsLastFrame&&!video.lastFrameKey)return "请选择尾帧图片";

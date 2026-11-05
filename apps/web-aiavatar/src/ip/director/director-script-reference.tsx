@@ -1,44 +1,12 @@
 "use client";
 
-// 分镜页的剧本预览：改分镜时对照本集剧本，不用来回切到剧本页。
+// 每一集里的剧本：改分镜时对照本集正文，不用来回切到剧本页。
 // 片段在正文里的位置只用真实依据（写分镜时记下的起始句，或台词逐字匹配），找不到就明说，不伪造定位。
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FileText, ListOrdered } from "lucide-react";
 import type { DirectorEpisode, DirectorWork } from "@ai-star-eco/types";
 import { AskAI } from "./director-assistant";
-import { DirectorSheet } from "./director-shared";
 import { clipRanges, paragraphsWithOffsets } from "./director-text";
-
-const SIDE_KEY = "director-board-side";
-
-/**
- * 分镜页左栏：剧本 / 分集 两个视图。手机上剧本在抽屉里打开，不把片段卡挤到下面去。
- * 两套都渲染，按 `<html data-layout>` 用 CSS 显示其一（与全站同一个形态真值，不另读视口）。
- */
-export function StoryboardSide({ work, ep, focusClipId, episodes, sheetOpen, setSheetOpen }: {
-  work: DirectorWork; ep: DirectorEpisode; focusClipId: string | null; episodes: React.ReactNode;
-  sheetOpen: boolean; setSheetOpen: (open: boolean) => void;
-}) {
-  const [view, setView] = useState<"script" | "episodes">("script");
-  useEffect(() => { try { const v = window.localStorage.getItem(SIDE_KEY); if (v === "episodes" || v === "script") setView(v); } catch { /* 默认剧本 */ } }, []);
-  useEffect(() => { if (focusClipId) setView("script"); }, [focusClipId]);
-  const pick = (v: "script" | "episodes") => { setView(v); try { window.localStorage.setItem(SIDE_KEY, v); } catch { /* 忽略 */ } };
-  return <>
-    <div className="director-board-side-mobile">
-      {episodes}
-      <button type="button" className="ip-brand-secondary director-script-ref-open" onClick={() => setSheetOpen(true)}><FileText size={15}/>对照第 {ep.no} 集剧本</button>
-    </div>
-    {sheetOpen && <DirectorSheet label="本集剧本" onClose={() => setSheetOpen(false)}><ScriptReference work={work} ep={ep} focusClipId={focusClipId}/></DirectorSheet>}
-    <div className={`director-board-side is-${view}`}>
-      <div className="director-segmented director-board-side-tabs" role="tablist" aria-label="左栏">
-        <button type="button" role="tab" aria-selected={view === "script"} onClick={() => pick("script")}><FileText size={13}/>本集剧本</button>
-        <button type="button" role="tab" aria-selected={view === "episodes"} onClick={() => pick("episodes")}><ListOrdered size={13}/>分集</button>
-      </div>
-      {view === "script" ? <ScriptReference work={work} ep={ep} focusClipId={focusClipId}/> : episodes}
-    </div>
-  </>;
-}
 
 /** 剧本对照一次最多画多少段：再多就分批显示，避免长正文一次画几万个段落卡住页面。 */
 const REF_PARAGRAPHS = 600;
@@ -68,7 +36,7 @@ export function ScriptReference({ work, ep, focusClipId }: { work: DirectorWork;
   const shown = all.slice(from, to);
   return <section className="director-script-ref" aria-label={`第 ${ep.no} 集剧本`}>
     <header>
-      <div><b>第 {ep.no} 集 · {ep.title}</b><small>{ep.content.replace(/\s/g, "").length.toLocaleString("zh-CN")} 字{ep.planStale ? " · 写分镜后正文改过" : ""}</small></div>
+      <div><b>本集剧本</b><small>{ep.content.replace(/\s/g, "").length.toLocaleString("zh-CN")} 字{ep.planStale ? " · 写分镜后正文改过" : ""}</small></div>
       <AskAI scope={{ kind: "script", episodeId: ep.id, focusAt: range?.start ?? 0 }} what={`第 ${ep.no} 集剧本`} hint="评价、续写、润色这一集"/>
     </header>
     {focus && <div className="director-script-ref-focus">

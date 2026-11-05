@@ -1,6 +1,6 @@
 import { describe,it,expect } from "vitest";
 import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
-import {studioVideoSettings,studioVideoQuote,studioVideoError,studioVideoModeName,changeStudioVideoDraft,studioVideoReferenceIds,studioVideoDraftFromReferences,studioVideoNodeSelection,type StudioVideoDraft} from "./studio-video";
+import {studioPromptLimitMessage,studioLongerPromptModel,studioVideoSettings,studioVideoQuote,studioVideoError,studioVideoModeName,changeStudioVideoDraft,studioVideoReferenceIds,studioVideoDraftFromReferences,studioVideoNodeSelection,type StudioVideoDraft} from "./studio-video";
 import {CanvasNodeType,type CanvasNodeData} from "@/canvas/types/canvas";
 const model={contract:{modes:[{mode:"t2v"},{mode:"i2v",needsFirstFrame:true},{mode:"first_last_frame_video",needsFirstFrame:true,needsLastFrame:true},
   {mode:"universal_reference_video",references:{image:{maxCount:9},video:{maxCount:1},audio:{maxCount:3},maxTotal:12,maxImagesWithVideo:8,minVisual:1,maxAudioTotalSec:15}}],
@@ -154,5 +154,22 @@ describe("video selection across modes, the IP library and legacy models",()=>{
     expect(payload(studioVideoDraftFromReferences(fresh,["C"],images),["C"])).toMatchObject({mode:"i2v",firstFrameKey:"C"});
     const imported=changeStudioVideoDraft(fresh,{...fresh,mode:"i2v",firstId:"C"},[],images);
     expect(payload(imported.draft,imported.referenceIds)).toMatchObject({mode:"i2v",firstFrameKey:"C"});
+  });
+});
+
+describe("prompt over a model's limit",()=>{
+  it("counts by character and says how much to cut",()=>{
+    expect(studioPromptLimitMessage(2350,2000,false)).toBe("提示词 2350 字，这个模型最多 2000 字，需删减 350 字。");
+    expect(studioPromptLimitMessage(2350,2000,true)).toContain("创作要求和引用文本合计");
+    const seedance={...model,contract:{...model.contract,promptMaxChars:3}};
+    const video=studioVideoSettings("t2v","768p",[],undefined,seedance.contract.modes[0]);
+    expect(studioVideoError(seedance,video,"😀😀😀","9:16",5)||"").not.toContain("需删减");
+    expect(studioVideoError(seedance,video,"😀😀😀😀","9:16",5)).toContain("需删减 1 字");
+  });
+  it("offers the roomiest model that takes the prompt, and none when no model does",()=>{
+    const models=[{endpointId:"a",promptMaxChars:2000},{endpointId:"b",promptMaxChars:7000},{endpointId:"c",promptMaxChars:3000},{endpointId:"d"},{endpointId:"e",promptMaxChars:null}];
+    expect(studioLongerPromptModel(models,2500)?.endpointId).toBe("b");
+    expect(studioLongerPromptModel(models,7001)).toBeUndefined();
+    expect(studioLongerPromptModel([],10)).toBeUndefined();
   });
 });

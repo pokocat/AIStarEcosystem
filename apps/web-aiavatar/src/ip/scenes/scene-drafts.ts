@@ -12,6 +12,31 @@ import { IpStudioApi } from "../api";
 
 export type SceneUpload = { key: string; url: string; name: string };
 
+type SlotLimit = { max?: number | null };
+const slotLimit = (ref: SlotLimit) => ref.max ?? 1;
+
+/**
+ * 每个素材位放的图。新写的本来就按位分好；2026-11-05 之前的草稿每个位一张，多出来的（人物照片 2、3，自由出图的四格）
+ * 放进最后一个还放得下的位，它们本来就是排在最后的同类图。
+ */
+export function groupSlots<T>(raw: readonly (T | readonly T[] | null | undefined)[], refs: readonly SlotLimit[]): T[][] {
+  const out: T[][] = refs.map(() => []);
+  raw.forEach((item, i) => {
+    if (Array.isArray(item)) { if (refs[i]) out[i] = (item as T[]).slice(0, slotLimit(refs[i])); return; }
+    if (item === null || item === undefined) return;
+    if (i < refs.length) { out[i].push(item as T); return; }
+    for (let j = refs.length - 1; j >= 0; j--) if (out[j].length < slotLimit(refs[j])) { out[j].push(item as T); return; }
+  });
+  return out;
+}
+
+/** 按记下的每个位的张数，把按顺序的图分回各个位。没记（老记录）就按上面的老规则。 */
+export function splitByCounts<T>(flat: readonly (T | undefined)[], refs: readonly SlotLimit[], counts?: readonly number[]): T[][] {
+  if (!counts) return groupSlots(flat, refs);
+  let at = 0;
+  return refs.map((_, i) => { const part = flat.slice(at, at + (counts[i] ?? 0)); at += counts[i] ?? 0; return part.filter((v): v is T => v !== undefined); });
+}
+
 /** 这一页（图片 / 视频）建过的草稿：按项目上记的场景编号认，改了名字也还在「最近」里。 */
 export async function listSceneDrafts(sceneIds: ReadonlySet<string>): Promise<IpProjectSummary[]> {
   return (await IpStudioApi.listProjects())
@@ -250,7 +275,9 @@ export function imageStateOf(doc: IpProjectDoc, fallbackScene: string): StudioSc
   const latest = imageRows(doc)[0];
   const snap = latest?.metadata?.studio?.sceneImage;
   const request = latest?.metadata?.studio?.request;
-  const slots = latest ? rowSlots(doc, latest) : [];
+  const used = latest ? rowSlots(doc, latest) : [];
+  // 记了每个位几张的就先分好；老记录留给 openedImageState 按老规则分。
+  const slots: StudioSceneImageState["slots"] = snap?.refCounts ? snap.refCounts.map((_, i) => used.slice(snap.refCounts!.slice(0, i).reduce((a, b) => a + b, 0)).slice(0, snap.refCounts![i])) : used;
   if (snap) return { sceneId: snap.sceneId, supplement: snap.supplement, custom: snap.custom, options: snap.options, slots,
     model: snap.model, ratio: snap.ratio, size: snap.size, count: snap.count };
   return { sceneId: fallbackScene, supplement: "", options: {}, slots, ratio: request?.aspectRatio, ...(request?.count ? { count: request.count } : {}) };
@@ -298,6 +325,14 @@ export async function slotUploads(doc: IpProjectDoc, slots: (StudioSceneUpload |
   });
 }
 
+/** 按素材位分好的图换成能显示的地址（换不到的那张去掉，见 slotUploads）。 */
+export async function groupUploads(doc: IpProjectDoc, groups: readonly StudioSceneUpload[][],
+  sign: (keys: string[]) => Promise<Record<string, string>>): Promise<SceneUpload[][]> {
+  const flat = await slotUploads(doc, groups.flat(), sign);
+  let at = 0;
+  return groups.map(g => { const part = flat.slice(at, at + g.length); at += g.length; return part.filter((u): u is SceneUpload => !!u); });
+}
+
 /**
  * 打开一份 AI 图片草稿时页面上会摆出的条件（imageStateOf 再按场景补齐参考图位、比例和张数）。
  * 页面恢复和「页面上的跟草稿里的一样吗」用的是同一份：只是打开一份老草稿不会多存一版（多存会改它的更新时间，「最近」的顺序就乱了）。
@@ -306,7 +341,7 @@ export function openedImageState(doc: IpProjectDoc, catalog: StudioSceneCatalog 
   const recorded = catalog?.image.find(s => s.id === projectSceneId);
   const state = imageStateOf(doc, recorded?.id ?? "free");
   const scene = catalog?.image.find(s => s.id === state.sceneId) ?? recorded;
-  return { ...state, sceneId: scene?.id ?? state.sceneId, slots: (scene?.refs ?? []).map((_, i) => state.slots[i] ?? null),
+  return { ...state, sceneId: scene?.id ?? state.sceneId, slots: groupSlots<StudioSceneUpload>(state.slots, scene?.refs ?? []),
     ...(state.ratio || scene?.ratio ? { ratio: state.ratio || scene?.ratio } : {}), count: state.count ?? 1 };
 }
 

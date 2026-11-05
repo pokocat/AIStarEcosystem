@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // 2026-11-01 用户给了参考站的样子：提示词里的参考图显示成「缩略图 + 图N」的标签，点一下看大图；存下来的仍是原来的字。
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Editor } from "@tiptap/core";
@@ -74,4 +74,29 @@ test("read-only text (the director's script card) shows the same chips", () => {
   render(<p><PromptText text="第1镜：拿起图1" refs={[]}/></p>);
   expect(screen.queryByRole("button")).toBeNull();
   expect(screen.getByText("第1镜：拿起图1")).toBeTruthy();
+});
+
+test("typing @ lists the placed materials and picking one inserts its chip; the saved text is 图N", async () => {
+  render(<Host initial="让"/>);
+  const editor = await editorOf();
+  act(() => { editor.commands.focus("end", { scrollIntoView: false }); editor.commands.insertContent("@"); });
+  const menu = await screen.findByRole("listbox", { name: "选择素材" });
+  expect(within(menu).getAllByRole("option").map(o => o.textContent)).toEqual([expect.stringContaining("图1"), expect.stringContaining("图2")]);
+  fireEvent.click(within(menu).getByRole("option", { name: /图2/ }));
+  await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+  expect(screen.getByRole("button", { name: "图2：出镜人物，看大图" })).toBeTruthy();
+  expect(screen.getByTestId("value").textContent).toBe("让图2 ");
+});
+
+test("the @ menu narrows as you type, and with nothing placed it says how to get materials", async () => {
+  const { unmount } = render(<Host initial=""/>);
+  const editor = await editorOf();
+  act(() => { editor.commands.focus("end", { scrollIntoView: false }); editor.commands.insertContent("@马克"); });
+  const menu = await screen.findByRole("listbox", { name: "选择素材" });
+  expect(within(menu).getAllByRole("option")).toHaveLength(1);
+  unmount();
+  render(<Host initial="" refs={[]}/>);
+  const empty = await editorOf();
+  act(() => { empty.commands.focus("end", { scrollIntoView: false }); empty.commands.insertContent("@"); });
+  expect((await screen.findByRole("listbox", { name: "选择素材" })).textContent).toContain("先放素材");
 });

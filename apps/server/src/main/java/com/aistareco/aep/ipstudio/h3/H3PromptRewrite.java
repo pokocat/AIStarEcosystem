@@ -213,6 +213,21 @@ public final class H3PromptRewrite {
 
     // ── 认台词 ─────────────────────────────────────────────────────────────
 
+    private static final Pattern CURLY_SPEECH = Pattern.compile("说：“([^”\\n]*)”");
+    private static final Pattern ASCII_SHOT = Pattern.compile("第(\\d+)镜\\s*\\(([^)\\n]*秒)\\)");
+    private static final Pattern ASCII_SPEECH = Pattern.compile("说:\\s*(?=[「“])");
+
+    /**
+     * 模型常把台词写成「博主说：“……”」（2026-11-04 线上手表脚本，要求写「」也照样），只认「」就一句都认不出，台词改由改写模型写，
+     * 原话可能被改。这里统一成「」；只动「说：」后面紧跟的这对引号，画面描述里引用的话不碰。
+     * Sonnet 用半角标点（「第1镜(0–3 秒)」「小夏说:「…」」，2026-11-04），镜头和台词同样认不出，一起统一成全角。
+     */
+    public static String normalizeSpeechQuotes(String zh) {
+        String out = ASCII_SHOT.matcher(zh).replaceAll(m -> Matcher.quoteReplacement("第" + m.group(1) + "镜（" + m.group(2) + "）"));
+        out = ASCII_SPEECH.matcher(out).replaceAll("说：");
+        return CURLY_SPEECH.matcher(out).replaceAll(m -> Matcher.quoteReplacement("说：「" + m.group(1) + "」"));
+    }
+
     /**
      * 从中文提示词里认出台词，换成 {@code {{Ln}}}。说话人名字以已知的名字为准（「画面里只有林小雅。林小雅说」只认「林小雅」）。
      * 说话人编号按第一次开口的顺序分配，旁白也算一个说话人。

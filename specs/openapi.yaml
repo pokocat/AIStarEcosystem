@@ -5175,7 +5175,13 @@ components:
     StudioSceneRef:
       type: object
       required: [label, required]
-      properties: { label: { type: string }, required: { type: boolean }, hint: { type: string, nullable: true } }
+      properties:
+        label: { type: string }
+        required: { type: boolean }
+        hint: { type: string, nullable: true }
+        max: { type: integer, nullable: true, description: '这个位最多放几张，没有就是 1' }
+        role: { type: string, nullable: true, description: '告诉模型这几张是做什么的（「图1是…」）' }
+        many: { type: string, nullable: true, description: '放了不止一张时换成这句' }
     StudioSceneSlot:
       type: object
       required: [label, required]
@@ -5298,7 +5304,8 @@ components:
         sceneId: { type: string }
         text: { type: string, description: 'image：补充要求；video / video-script：用户写的那句' }
         custom: { type: string, description: 'image：用户改过的完整描述' }
-        filled: { type: array, items: { type: integer }, description: 'image：放了图的参考图位（从 0 起）' }
+        filled: { type: array, items: { type: integer }, description: 'image：放了图的素材位（从 0 起），每个位算一张；旧页面用，有 refCounts 就不看它' }
+        refCounts: { type: array, items: { type: integer }, description: 'image：每个素材位放了几张' }
         imageTitles: { type: array, items: { type: string } }
         characterTitle: { type: string }
         voiceTitle: { type: string }

@@ -64,6 +64,7 @@ test("asset detail keeps the two uses apart: a reference never replaces the asse
   api.edit.mockResolvedValue(work([asset({ image: uploaded })]));
   render(<DirectorAssets work={work([asset({ image: uploaded })])} episodeId="ep1" apply={vi.fn()} setError={vi.fn()} {...({} as any)}/>);
   fireEvent.click(screen.getByRole("button", { name: "查看老宅" }));
+  fireEvent.click(screen.getByRole("tab", { name: "主视" }));
   const imageSection = screen.getByRole("region", { name: "资产图" });
   const refSection = screen.getByRole("region", { name: "参考图" });
   expect(screen.getAllByText("自己上传").length).toBeGreaterThan(0);

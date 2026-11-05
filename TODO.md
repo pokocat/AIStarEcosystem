@@ -102,7 +102,7 @@
 
 真源 `docs/studio-prompt-architecture.md` §14.3；提示词在 `apps/server/src/main/resources/studio/prompts/**`，线上改内容走后台「平台 › 提示词与技能」。
 
-- [ ] **编导在 Qwen 上不写「还缺」、自己编「怎么买」**（判定：先接受，2026-11-01 用户确认直接发布）：同城团购没给「怎么买、怎么用」时，线上同款聚算 qwen38-27b 5 次都编了领券 / 到店核销的办法（Agnes 照规则写了「还缺」）。编的是团购通用流程、不涉及价格。要改：编导输出里单列缺的项（如 `missing: []`），由代码在脚本前补「还缺：」行、对应台词写【待补】（`stages/stage-scene-script.md` + 编导结果解析），再用 Qwen 复测。证据见验收记录 §2.4。
+- [x] ~~编导在 Qwen 上不写「还缺」、自己编「怎么买」~~ **2026-11-04 改判**：用户要求不再出现【待补】、直接生成，编导模板去掉「还缺 / 待补」；原记录：（判定：先接受，2026-11-01 用户确认直接发布）：同城团购没给「怎么买、怎么用」时，线上同款聚算 qwen38-27b 5 次都编了领券 / 到店核销的办法（Agnes 照规则写了「还缺」）。编的是团购通用流程、不涉及价格。要改：编导输出里单列缺的项（如 `missing: []`），由代码在脚本前补「还缺：」行、对应台词写【待补】（`stages/stage-scene-script.md` + 编导结果解析），再用 Qwen 复测。证据见验收记录 §2.4。
 - [ ] **编导出片还没验的两件**：成片台词有没有完整念出来（2026-11-01 只看了画面不冒字）；口播带货、剧情植入、数字人口播、同城团购 4 个场景没出片。
 - [ ] **上线后看出图包装换新的效果**：线上 `dap.ip_canvas_image` 的 v0.173 旧版（「只画一个人，不要多视图、不要设定图」）不再生效，画布出图和导演台出图改用 `stages/stage-image.md`（按指令决定人数和排版）。看几张线上新出的导演台角色设定集和画布多人画面是否按要求排版、普通单图有没有多出人物或拼图。
 - [ ] **「出视频」做法与转交给助手的五段式、五组行业内容方法**（设计文档 §9.8）：五段式是结构改动，可以先做；行业内容方法要用户给各行业的拍法素材再写，不要凭空编。
@@ -111,6 +111,20 @@
 - [ ] **后端全量测试在本机跑不完**（2026-11-01）：`./mvnw test` 全量在 Maven 预算堆下 GC 打满、长时间不结束，本次只能按 `**/ipstudio/**/*Test`、`**/enterprise/**/*Test`、`Prompt*Test` 子集验证。要查是哪组测试攒内存，或按测试类分批串行跑（`-DforkCount=1 -DreuseForks=false`）。
 - [ ] **导演台形态与四视图上线前再验一遍**（2026-11-04 本地只用 Agnes 验过）：① 用线上聚算 Qwen 真调提取和写分镜，确认 `forms`、`assetForms`、`sceneView`（`stage-director-extract`、`stage-director-storyboard` v2）；Agnes 会把后面的变化也写进主设定描述，主形象可能带上。② 真模型出一组四视图，看 2×2 切开后是不是同一个空间（`DirectorSceneViews`）。③ 全能参考模型下带视角图的成片。④ 切图失败时那张图的费用不退（`applySceneViews`），看线上是否出现。
 - [ ] **导演台视频提示词和首帧模板仍在代码**（设计文档 §14.2 说明了为什么）：资产图、分镜图模板在库里停用时，页面保留原描述、重新出图报「提示词未配置」，要不要给个更明白的说法待定。
+
+## 默认文字模型换 Sonnet 5.5（2026-11-04）
+
+- [x] ~~线上长任务验收~~ **已验收**，2026-11-05：`20261104-sonnet-streaming-editor` 上线后导演台 3 集剧本 376 秒成功（输出 49305 Token，53 积分），编导 53 秒成功（9 积分），没有【待补】。见 `docs/releases/sonnet-streaming-editor-release-20261104.md`。
+- [ ] **按次定价的线路要重算**：`drama.credit.*` 等按次收费（如 6 积分 = ¥0.06），而 Sonnet 一次输出常上万 Token（成本 ¥0.07 起，长剧本约 ¥0.29）。短剧、形象锻造这些走 `DRAMA_SCRIPT_DRAFT` / `APPEARANCE_FORGE` / `GENERAL` 的线路可能亏本，要查实际调用量和用量后定价。
+- [ ] **对话回复漏过程、留占位**：本地 Sonnet 一轮回复写了「前两次调用用错了工具」，文案里留了【品牌】【价格】。要看线上是否常见，再改 `stages/stage-dialogue.md`。
+- [ ] **三个模型的成片对比**：Qwen、Sonnet、Opus / Codex 的脚本都只比了文字，没出过片；要用同一组真实素材各出一条 H3，确认脚本变好后成片也变好。
+- [x] ~~OneToken 额度没有告警~~ **已完成**，2026-11-05：飞书机器人加「模型额度告警」（`ModelQuotaAlerts`）：服务方因额度拒绝时每个接入点每小时发一条，`ai.quota-watch` 里列的接入点每 5 分钟查一次余额，低于提醒线每天发一条。见 `docs/runbooks/model-task-alerts.md`。
+- [ ] **额度用完时逐任务告警会刷屏**（2026-11-05）：`FeishuModelAlerts.enqueue` 对每个失败任务各发一条【模型任务告警】，额度用完的时段会和额度告警一起发。要不要在这种情况下收掉逐任务那条，看线上实际情况再定。
+- [ ] **余额偏低告警的文案修复未发布**（2026-11-05）：main 上已改成「余额用完后……」，线上 `20261105-model-quota-alerts` 仍写「调用都会失败」，随下一次 server 发布上线。
+- [ ] **带独立额度的 Key 查到的是什么**（2026-11-05）：OneToken `GET /v1/usage` 只在 `mode=unrestricted` 的 Key 上看过，`remaining` 是钱包余额。给 Key 单独设了额度时，`remaining` 是否变成这个 Key 的剩余额度没有验证；这种 Key 就算查不准，额度用完时的拒绝告警仍然有效。
+- [ ] **OneToken 稳定性**：流中断实测 27 秒到 2 分钟都有，已自动重发最多 3 次；上线后看 `[ai-chat] stream interrupted` 的频率和 `ai-onetoken-sonnet55` 的失败率。重发的那几次供应商可能也计费，我方不收。
+- [ ] **H3 改写效果**：改写也换成了 Sonnet，要看约 2000 字脚本改写后是否超 7000 字符。
+- [ ] **长视频分段接力**（方案待确认）：完整时间轴按镜头边界切段；上一段尾帧作下一段第一张参考，商品、人物、声音参考照带；分段不配乐、拼接时统一铺；页面内一次报价逐段生成。尾帧接力效果要先真跑两三段。
 
 ## Studio 当前待办
 
@@ -219,6 +233,9 @@
 - [x] ~~**导演台已删除页：其它操作迟到的 404**~~ **2026-10-29 本地修复，未发布**：`api/director.ts` 给每部作品记「恢复代次」，作品级请求发出时记下代次、404 带上它；本页恢复成功或响应带回没见过的 `restoredAt` 时代次前进。只有当前代次的 404 算已删除，恢复前发出的旧请求 404 不标已删除、不清草稿，只提示「删除期间发出的操作没有生效」；恢复之后发出的请求真 404 照常标已删除。不比较时钟。测试 `director-gone-epoch.test.ts` 与 `director-deletion-state.test.tsx` 末两条。
 - [ ] **导演台删除未在预发 / 线上同配置 MySQL 上验证**：2026-10-28 已在本机一次性 MySQL 8.0.46（Homebrew，独立数据目录，默认可重复读）上跑通 `DirectorDelete*Test` 11 条，通用查询日志确认同一连接 `SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED` → `… FOR UPDATE` → 标量查 `ip_run` → 更新 → 恢复可重复读。预发库的连接池规模、代理层（如有）和真实并发未测；上线前在预发验一次「提交任务的同时删除」。运行方式见 `DirectorDeleteTest` 类注释（`DIRECTOR_DELETE_TEST_DB_URL`，只能指向一次性库）。
 - [ ] **Seedance 全能参考首次实际出片验收**（2026-10-29 生产配置上架，见 `docs/releases/seedance-director-reference-production-config-20261029.md`）：两条 OneToken Seedance 端点规格补了 `universal_reference_video`（图片 ≤9、音频 ≤3 / 合计 15 秒、参考视频 0），导演台可选；未付费实测。第一次有人用 Seedance 出导演台片段后，查 `material_video_job` 的请求体与供应商响应（参考图 / 声音是否生效、是否拒绝某类参考）、成片时长与 94 / 146 积分/秒结算；不行就按备份回滚该模式。1:1 画幅与 M4A 声音目前会被提交前拦下，需要时再按供应商实测补规格。
+- [ ] **Seedance 提示词放宽到 5000 字后还没真调过**（2026-11-05 生产配置已改，见 `docs/releases/seedance-prompt-limit-config-20261105.md`）：四条端点从 2000 改成 5000，依据是查不到厂商硬限制；火山文档只建议中文不超过 500 字，太长可能漏内容。第一条超过 2000 字的真实任务出来后，核对厂商有没有拒、成片有没有丢内容（`material_video_job` 按 `CHAR_LENGTH(prompt)>2000` 查）。如果被拒，厂商原话会写进错误，再调这个数。
+- [ ] **画布图片提示词粘贴超过 16000 字会被静默截断**（2026-11-04 发现，未修）：`apps/web-aiavatar/src/ip/studio-asset-mention-input.tsx:8` 写死 `maxLength={16000}`，而 GPT Image 端点上限是 32000。粘贴长文只留下前 16000 字，界面不提示。应按当前模型上限放开，超出时走面板的超长提示。
+- [ ] **OneToken 全能参考提交间歇拒绝**（2026-10-31 生产核对）：同画布节点、提示词与九张图、11 秒 / 720p / 9:16 在 Seedance 2.5 有两次成功，但截图任务 `mvj_d96499cb7af4` 返回 HTTP 400 `upstream_rejected`，未给具体原因；另有三笔平台 30 秒提交超时，供应商列表现均为终态失败。五笔失败冻结全部释放，不能据无人物文生视频探针通过认定此问题解决。继续取得供应商具体拒绝证据；收费重试须有本次授权，不自动换模型、删图或重复提交。见 `docs/releases/seedance-video-submit-fix-20261031.md`「同日后续」。
 - [ ] **导演台选择控件统一**：`director-workbench.tsx`、`director-storyboard.tsx` 的原生选择框仍待与 Studio 控件统一，不影响本次功能归档提交。
 - [x] **导演台图片模型出不了方图，道具整批失败**（2026-10-26 线上，已生产发布 `20261026-director-image-viewer`，main `faee1ac3`）：作品存了只有 16:9 / 9:16 的 4K 接入点，三个道具在冻结前被拒，报错让用户改道具不读的作品画幅。现在只开放出图规格有 1:1、16:9、9:16 的接入点；存着的旧选择照存、照原价出能出的画面；报错按资产类型说该换模型还是画幅；设置页按 `imageModelState` 说明。测试：`DirectorImageModelTest`、`director-settings.test.tsx`、`director-assets-batch.test.tsx`。生产当时已按用户要求把该作品改回标准接入点，现无作品存 4K。
 - [ ] **导演台开放 4K（系列 + 清晰度）**（2026-10-26 评审定为下一阶段，未做）：作品存「系列 + 标准 / 4K」，按资产类型定比例、接入点与价格，价格按类型下发；自动档不升 4K。待用户决定：4K 作品里出不了 4K 的道具方图是拒绝还是明示改用标准档。竖屏 4K 尚无生产成功样本，4K 方图没有渠道规格。
@@ -1703,3 +1720,10 @@ AIStar运行镜像必须同时固定官方Java与Node镜像digest；Studio仿片
 容器路径与本地文件：源环境已有AEP_STUDIO_RECREATION_MEDIA_BIN=/opt/ai-star-eco/hypit-runtime/bin，不能原样继承到镜像；新模板明确使用/usr/bin，并固定Node=/usr/local/bin/node。FileStorageService实际配置键是AEP_STORAGE_LOCAL_DIR，挂载/app/work为UID10001可写；AEP_FILE_STORAGE_ROOT不是有效替代。源file-storage约4GB，保留完整预同步副本并校验，正式停写后补增量；不能仅因已接OSS而假定本地目录可删除。预同步不是冻结数据，禁止据此清理旧服务文件。
 
 迁移文件中转只能使用独立私有Bucket，先以无敏感信息的canary验证匿名Range GET为403；仅设置object private ACL不足以证明Bucket策略未放行。禁止把数据库导出、文件归档或含业务信息的中转包放入现有公开素材Bucket。分发OCI归档时校验归档SHA256、配置摘要和RootFS摘要；Podman导出重新压缩可能改变引擎显示的manifest digest，不能据此跳过内容校验。
+
+## AI 图片与出图队列（2026-11-05）
+
+- [ ] 出图排队卡住：`AiGenerationQueueDispatcher` 分发时报 `dispatch deferred ... TaskRejectedException`，2026-11-05 有 3 张图排了 47 分钟，当时已没有在跑的出图任务，server 重启后才开始。先查 `ip-run` 线程池为什么拒绝。记录见 `docs/releases/scene-skill-slots-release-20261105.md`。
+- [ ] GPT Image 2.5 比 GPT Image 2 慢约 3 倍（平均 508 秒对 169 秒），当前是 Studio 默认模型，价格也从 16 积分变成 37 积分。用真实使用数据判断要不要保留为默认。
+- [ ] AI 图片输入框加「输入 / 选技能」（茂隆有，`ScenePromptEditor` 现在只有 @）。
+- [ ] 运营后台还不能编辑素材位的 `anyOf`（至少放一个）和 `many`（放多张时的说明），保存时原样保留。
