@@ -18,7 +18,7 @@ public class IpStudioProperties {
     private int maxRefImages = 4;
 
     /** 并发出图线程数（一次运行内的多张候选是串行的，这里限制的是同时运行的节点数）。 */
-    private int maxConcurrent = 24;
+    private int maxConcurrent = 30;
 
     /** running 且心跳超过该分钟数 → reaper 判失败并释放冻结。 */
     private int staleMinutes = 15;

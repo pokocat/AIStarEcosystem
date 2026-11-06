@@ -4,6 +4,32 @@ import type { StudioPlanExecution, StudioPlanExecutionStep, StudioSegmentedVideo
 import { USE_MOCK, apiFetch } from "@/ip/api/_client";
 import { mockSegmentedPrice, mockSegmentedStart } from "@/ip/mocks/studio-dialogue";
 import { withStudioBilling } from "./studio-billing";
+import type { IpProject } from "@ai-star-eco/types";
+import type { StudioSceneSegmentedRecord } from "@ai-star-eco/types/ip-studio-workflow";
+
+/** 恢复出的记录只负责读原任务，不能拿缺失的原始请求重新提交。 */
+export type SegmentedRecord = Omit<StudioSceneSegmentedRecord, "request"> & { request?: StudioSegmentedVideoRequest; ratio?: string };
+
+/**
+ * 旧版画布保存会漏掉 sceneSegmented。已受理的脚本任务仍携带 executionId 和 segmented，
+ * 用这份服务端记录找回入口；不猜请求、不发起生成，也不修改原来的任务或费用。
+ */
+export function segmentedRecords(project?: Pick<IpProject, "name" | "doc" | "runs" | "runsById">): SegmentedRecord[] {
+  if (!project) return [];
+  const records: SegmentedRecord[] = [...project.doc.sceneSegmented ?? []];
+  const known = new Set(records.flatMap(record => record.executionId ? [record.executionId] : []));
+  for (const run of Object.values({ ...project.runs, ...project.runsById })) {
+    const inputs = run.inputs as { executionId?: unknown; segmented?: { kind?: unknown; scene?: { duration?: unknown; ratio?: unknown } } };
+    const id = inputs?.executionId, info = inputs?.segmented;
+    if (typeof id !== "string" || !/^PEX-[A-Za-z0-9_-]+$/.test(id) || info?.kind !== "script" || known.has(id)) continue;
+    known.add(id);
+    const duration = info.scene?.duration;
+    records.push({ executionId: id, clientRequestId: id, at: run.createdAt,
+      title: `${project.name || "视频制作"}${typeof duration === "number" ? ` · ${duration} 秒` : ""}`,
+      ...(typeof info.scene?.ratio === "string" ? { ratio: info.scene.ratio } : {}) });
+  }
+  return records.sort((a, b) => b.at.localeCompare(a.at));
+}
 
 export type SegmentedPriceQuery = { model?: string; tier?: string; duration: number; ratio: string; images: number; character: boolean; voice: boolean; optimize: boolean };
 

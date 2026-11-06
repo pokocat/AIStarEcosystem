@@ -4,12 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { Check, Download, Loader2, Pause, Play, RotateCcw, Square } from "lucide-react";
 import { nanoid } from "nanoid";
 import type { IpProjectDoc, IpRun } from "@ai-star-eco/types";
-import type { StudioPlanExecution, StudioSceneSegmentedRecord } from "@ai-star-eco/types/ip-studio-workflow";
+import type { StudioPlanExecution } from "@ai-star-eco/types/ip-studio-workflow";
 import type { CanvasNodeData } from "@/canvas/types/canvas";
 import { readRun, signKeys } from "@/canvas-bridge/api";
 import { downloadMedia } from "@/canvas-bridge/download-media";
 import { SignedVideo } from "@/canvas-bridge/signed-video";
-import { segmentedActive, segmentedPhases, segmentedResultStep } from "@/canvas-bridge/studio-segmented";
+import { segmentedActive, segmentedPhases, segmentedResultStep, type SegmentedRecord } from "@/canvas-bridge/studio-segmented";
 import { cancelStudioPlanExecution, executionRestoreUpserts, getStudioPlanExecution, missingExecutionNodes, pauseStudioPlanExecution, projectCanvasOps, readProjectedNodes,
   rememberProjectedNodes, resumeStudioPlanExecution, stepNodeId, stepRunCandidates } from "@/canvas-bridge/studio-plan-execution";
 
@@ -20,7 +20,7 @@ const POLL_MS = 5000, RETRY_MS = 15000;
  * 做好一步就把结果放进草稿画布（和画布打开时恢复是同一套投影，重复放不会多出节点）。
  */
 export function SegmentedRow({ record, projectId, doc, persist, busy, onConfirm, onFailure }: {
-  record: StudioSceneSegmentedRecord; projectId: string; doc: IpProjectDoc;
+  record: SegmentedRecord; projectId: string; doc: IpProjectDoc;
   persist: (mutate: (doc: IpProjectDoc) => IpProjectDoc, projectId?: string) => Promise<unknown>;
   busy: boolean; onConfirm: () => void; onFailure: (action: string, error: unknown) => void;
 }) {
@@ -109,7 +109,7 @@ export function SegmentedRow({ record, projectId, doc, persist, busy, onConfirm,
     : execution.needsUserReason || "没有全部做完，做好的部分在画布里。";
   return <li className={`scene-row scene-video-row scene-segmented-row is-${status || "loading"}`}>
     <div className="scene-row-meta"><strong>{record.title}</strong>
-      <span>{record.request.ratio === "16:9" ? "横屏" : "竖屏"}{record.request.tier ? ` · ${record.request.tier.toUpperCase()}` : ""}</span>
+      <span>{(record.request?.ratio ?? record.ratio) === "16:9" ? "横屏" : "竖屏"}{record.request?.tier ? ` · ${record.request.tier.toUpperCase()}` : ""}</span>
       <span className="scene-row-state" role={status === "running" ? "status" : undefined}>{(status === "running" || !execution) && <Loader2 size={14} className="studio-gallery-spinner"/>}{status === "done" ? "已完成" : status === "running" ? "制作中" : !execution ? "读取中" : status === "paused" ? "已暂停" : status === "canceled" ? "已停止" : "已停下"}</span></div>
     {url ? <SignedVideo className="scene-video-player" src={url} storageKey={resultKey} controls playsInline preload="metadata" aria-label={record.title}/> : null}
     {status !== "done" && <p className={`scene-segmented-note${status === "needs_user" ? " is-waiting" : ""}`} role={status === "needs_user" ? "status" : undefined}>{text}</p>}

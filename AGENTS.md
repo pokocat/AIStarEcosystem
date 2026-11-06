@@ -1406,4 +1406,10 @@ Studio 工作线程默认 24，单个模型的上限看端点配置；图片调�
 
 ### AI 视频页的长视频（2026-11-06 已生产发布 `20261106-segmented-video-2`，main `f90dfab6d`；线上还没真跑过；Seedance 2.5 已配到 30 秒，也没有真实样本）
 
+**2026-11-06 页面切换后任务恢复（本地修复，未发布）**：画布保存必须原样保留它不编辑的场景字段（`CanvasProject.documentFields` → `project-sync`），不能用只有节点、连线、视口和对话的新对象覆盖文档。已丢 `sceneSegmented` 的草稿由 `segmentedRecords` 从原生脚本任务找回执行入口，只读原任务，不重新生成或扣费；AI 视频页和画布共用。线上已观察到真实长视频停在首张分镜图请求失败，完整出片仍未验收。见 `docs/studio-segmented-video.md`「页面切换后的任务恢复」。
+
+**2026-11-06 图片线上配置**：四个 GPT Image 2/2.5（含 4K）接入点并发上限已从 10 改为 30，请求超时均改为 30 分钟；Image 2 原为 10 分钟、2.5 原为 15 分钟。已受理请求仍用原快照，失败任务不自动重提。共享工作线程默认仍为 24，端点上限不等于实际同时运行数。见 `docs/releases/image-concurrency-timeout-config-20261106.md`。
+
+**2026-11-06 共享线程池调整（待发布）**：`IpStudioProperties.maxConcurrent` 默认从 24 改为 30，需要 server 重启；与 AI 视频任务入口恢复一起发布 server、web-aiavatar，选择无生成任务且无近期用户操作的空闲窗口，不自动恢复或重提失败任务。
+
 真源 `docs/studio-segmented-video.md`。时长超过所选模型单段上限时一键做到成片：写分段脚本 → 审脚本 → 分镜图（第 1 张之后都参考它）→ 审分镜图（不合格重出一次）→ 各段全能参考出片 → 合成。切段只在 `SegmentedPlan`，页面显示服务端算的。复用连续制作（`StudioPlanExecutor`），但没有对话和确认卡（`threadId` 为空），用户在页面上看价点生成就是确认；提示词做到那一步才编（`StudioSegmentedRun`），格式用导演台的。一键到底只对带 `segmented` 状态的执行生效，别的连续制作照旧停下来问。**导演台一段仍然最长 15 秒**（`DirectorService.MAX_CLIP_SECONDS`），模型放开到 30 秒只给这条流程。别的模型配到 15 秒以上，要先有这版服务端再改配置。真模型整条链没跑过，见 TODO。

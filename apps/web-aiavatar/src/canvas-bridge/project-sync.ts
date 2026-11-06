@@ -90,7 +90,7 @@ export async function awaitPendingSaves(projectId: string): Promise<"drained" | 
   return "timeout";
 }
 
-type IpDoc = { assistantConversations?: CanvasNodeData[]; nodes?: CanvasNodeData[]; connections?: CanvasConnection[]; viewport?: ViewportTransform };
+type IpDoc = { assistantConversations?: CanvasNodeData[]; nodes?: CanvasNodeData[]; connections?: CanvasConnection[]; viewport?: ViewportTransform; [key: string]: unknown };
 
 const EMPTY_VIEWPORT: ViewportTransform = { x: 0, y: 0, k: 1 };
 
@@ -134,17 +134,21 @@ export function healDanglingPrimary(nodes: CanvasNodeData[]): CanvasNodeData[] {
 }
 
 function toCanvasProject(id: string, name: string, doc: IpDoc | null | undefined, updatedAt?: string): CanvasProject {
+  // AI 视频 / 图片与画布共用一份文档。画布不编辑的字段也必须原样往返，
+  // 否则一次画布自动保存就会抹掉 sceneSegmented、素材选择和创作条件。
+  const { nodes, connections, viewport, assistantConversations, ...documentFields } = doc ?? {};
   return {
     id,
     title: name || "未命名 IP",
     createdAt: updatedAt || new Date().toISOString(),
     updatedAt: updatedAt || new Date().toISOString(),
-    ...splitStudioConversations(healDanglingPrimary(doc?.nodes ?? []),doc?.assistantConversations,doc?.connections),
+    ...splitStudioConversations(healDanglingPrimary(nodes ?? []),assistantConversations,connections),
+    documentFields,
     chatSessions: [],
     activeChatId: null,
     backgroundMode: "lines",
     showImageInfo: false,
-    viewport: doc?.viewport ?? EMPTY_VIEWPORT,
+    viewport: viewport ?? EMPTY_VIEWPORT,
   };
 }
 
@@ -364,7 +368,7 @@ export function useProjectSync(projectId: string) {
     return {
       id: project.id,
       title: project.title,
-      doc: { ...splitStudioConversations(project.nodes,project.assistantConversations,project.connections), viewport: project.viewport },
+      doc: { ...project.documentFields, ...splitStudioConversations(project.nodes,project.assistantConversations,project.connections), viewport: project.viewport },
       base: baseRef.current,
     };
   }, [projectId]);

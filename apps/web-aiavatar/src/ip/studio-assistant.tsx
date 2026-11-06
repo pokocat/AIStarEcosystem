@@ -22,7 +22,7 @@ import type { CanvasConnection, CanvasNodeData } from "@/canvas/types/canvas";
 import { USE_MOCK } from "@/ip/api/_client";
 import { isOperatorRole, useIdentity } from "@/proto/api";
 import { getProject, getRun } from "@/ip/api/ip-studio";
-import { segmentedActive } from "@/canvas-bridge/studio-segmented";
+import { segmentedActive, segmentedRecords } from "@/canvas-bridge/studio-segmented";
 import { studioCapabilities } from "@/canvas-bridge/studio-api";
 import { applyStudioRun, dispatchStudioCommand, makeStudioNode } from "@/canvas-bridge/studio-nodes";
 import { readRun } from "@/canvas-bridge/api";
@@ -534,8 +534,8 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   useEffect(() => {
     const project = projectId;
     let alive = true, timer: ReturnType<typeof setTimeout> | undefined;
-    void getProject(project).then(({ doc }) => {
-      const ids = (doc.sceneSegmented ?? []).flatMap(record => record.executionId ? [record.executionId] : []);
+    void getProject(project).then(detail => {
+      const ids = segmentedRecords(detail).flatMap(record => record.executionId ? [record.executionId] : []);
       if (!ids.length) return;
       const poll = async () => {
         let active = false;

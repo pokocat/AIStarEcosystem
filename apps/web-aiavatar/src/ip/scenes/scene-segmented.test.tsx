@@ -154,3 +154,18 @@ test("a stopped run says why and can continue; a finished one shows the film", a
   expect(screen.getByRole("button", { name: "下载" })).toBeTruthy();
   expect(screen.queryByText("写分镜脚本")).toBeNull();
 });
+
+test('reopening a canvas-saved draft restores its long-video status from native runs without starting generation', async () => {
+  const draft = longDraft();
+  const run = { id: 'run-script', status: 'done', createdAt: '2026-11-06T08:34:24Z',
+    inputs: { executionId: 'PEX-1', segmented: { kind: 'script', scene: { duration: 24, ratio: '9:16' } } },
+    output: { text: '已经生成的脚本' } };
+  put({ ...draft, runs: { 'script-node': run } as never, runsById: { 'run-script': run } as never });
+  api.getExecution.mockResolvedValue(execution('needs_user', [step('b1', 'image', 'failed')], { needsUserReason: '第 1 段分镜图请求失败，已暂停制作' }));
+  await open();
+  expect(await screen.findByText('第 1 段分镜图请求失败，已暂停制作')).toBeTruthy();
+  expect(screen.getByRole('button', { name: '继续' })).toBeTruthy();
+  expect(api.getExecution).toHaveBeenCalledWith('IPP-V', 'PEX-1');
+  expect(api.start).not.toHaveBeenCalled();
+  expect(api.submit).not.toHaveBeenCalled();
+});

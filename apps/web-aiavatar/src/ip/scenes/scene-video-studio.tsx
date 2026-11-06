@@ -15,8 +15,8 @@ import { cancelRun, fetchStudioVideoModels, readRun, signKeys } from "@/canvas-b
 import { SignedImage } from "@/canvas-bridge/signed-image";
 import { SignedVideo } from "@/canvas-bridge/signed-video";
 import { getStudioPlanExecution } from "@/canvas-bridge/studio-plan-execution";
-import type { StudioPlanExecution, StudioSceneSegmentedRecord, StudioSegmentedVideoPrice, StudioSegmentedVideoRequest } from "@ai-star-eco/types/ip-studio-workflow";
-import { segmentedVideoPrice, startSegmentedVideo } from "@/canvas-bridge/studio-segmented";
+import type { StudioPlanExecution, StudioSegmentedVideoPrice, StudioSegmentedVideoRequest } from "@ai-star-eco/types/ip-studio-workflow";
+import { segmentedRecords, segmentedVideoPrice, startSegmentedVideo, type SegmentedRecord } from "@/canvas-bridge/studio-segmented";
 import { SegmentedRow } from "./scene-segmented-row";
 import { studioCapabilities, submitStudioRun } from "@/canvas-bridge/studio-api";
 import { attachmentNode } from "@/canvas-bridge/studio-attachments";
@@ -232,7 +232,7 @@ export function SceneVideoStudio() {
       setDuration(state.duration!); setRatio(state.ratio!); durationTouched.current = !!project.doc.sceneVideoState?.duration;
       // 写过脚本还没采用：直接看编导写的那几版；采用过就回到编辑框接着改。
       setView(!state.edit && scriptNodes(project.doc).length ? "director" : "compose"); setScriptId(state.edit?.scriptId); setRevise(""); setNote(undefined);
-      setHint(""); setTab(videoRows(project.doc).length || project.doc.sceneSegmented?.length ? "results" : "example");
+      setHint(""); setTab(videoRows(project.doc).length || segmentedRecords(project).length ? "results" : "example");
       writeQuery(from?.id ?? DEFAULT_SCENE, project.id);
     } catch (e) { if (onPage(ticket)) showFailure({ action: "打开草稿", error: e }); }
     finally { if (openingId.current === id) openingId.current = undefined; }
@@ -309,7 +309,7 @@ export function SceneVideoStudio() {
   // 交给画布里创作助手的那份（爆款复刻）：回到这页也看得到做到哪了（2026-10-30 审查 G05 / C2）。
   // 执行就是画布那一套（ip_plan_execution），这里只读它，不另记一份进度。长视频有自己的一行（SegmentedRow），不算在这里。
   const handedOff = !!draft?.doc.assistantConversations?.some(n => n.metadata?.studioStart === "assistant");
-  const segmentedRuns = draft?.doc.sceneSegmented ?? [];
+  const segmentedRuns = segmentedRecords(draft);
   const executionId = [...(doc.nodes as CanvasNodeData[])].reverse().map(n => n.metadata?.studio?.execution?.executionId)
     .find(id => id && !segmentedRuns.some(r => r.executionId === id));
   const [execution, setExecution] = useState<StudioPlanExecution>();
@@ -758,9 +758,9 @@ export function SceneVideoStudio() {
       if (!isStudioBillingCancelled(e)) showFailure({ action: "生成视频", error: e, next: submissionRejected(e, true) ? rejectedNextStep(e) : "这次可能已经开始了，点「确认原任务」查一下，不要直接重新生成。" });
     } finally { setBusy(false); setPriceRevision(r => r + 1); }
   };
-  const confirmLong = async (record: StudioSceneSegmentedRecord) => {
+  const confirmLong = async (record: SegmentedRecord) => {
     const project = draftRef.current;
-    if (busy || !project) return;
+    if (busy || !project || !record.request) return;
     setBusy(true);
     try { await submitLong(project.id, record.request); }
     catch (e) { showFailure({ action: "确认原任务", error: e }); }

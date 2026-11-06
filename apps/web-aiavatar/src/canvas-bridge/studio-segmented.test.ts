@@ -1,6 +1,29 @@
 import { describe, expect, it } from "vitest";
 import type { StudioPlanExecution, StudioPlanExecutionStep } from "@ai-star-eco/types/ip-studio-workflow";
-import { segmentedActive, segmentedPhases, segmentedResultStep } from "./studio-segmented";
+import { segmentedActive, segmentedPhases, segmentedResultStep, segmentedRecords } from "./studio-segmented";
+import type { IpProject, IpRun } from "@ai-star-eco/types";
+
+describe('长视频记录恢复', () => {
+  const run = { id: 'script-run', createdAt: '2026-11-06T08:34:24Z', inputs: { executionId: 'PEX-original', segmented: { kind: 'script', scene: { duration: 24, ratio: '16:9' } } } } as unknown as IpRun;
+  const project = (doc: IpProject['doc'] = { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } }) => ({ name: '场景种草', doc, runs: { script: run }, runsById: { [run.id]: run } });
+  it('recovers a missing row from accepted script runs without fabricating a resubmittable request', () => {
+    const rows = segmentedRecords(project());
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ executionId: 'PEX-original', title: '场景种草 · 24 秒', ratio: '16:9' });
+    expect(rows[0].request).toBeUndefined();
+  });
+  it('keeps the saved request and does not duplicate its recovered execution', () => {
+    const request = { clientRequestId: 'original', sceneId: 'ecom-seeding', duration: 24, ratio: '16:9', materials: [], budgetCap: 2432 };
+    const doc = { ...project().doc, sceneSegmented: [{ executionId: 'PEX-original', clientRequestId: 'original', at: run.createdAt, title: '原始标题', request }] };
+    expect(segmentedRecords(project(doc))).toEqual(doc.sceneSegmented);
+  });
+  it('does not treat ordinary text or review tasks as a new video', () => {
+    const p = project();
+    p.runs.script = { ...run, inputs: { executionId: 'PEX-original' } };
+    p.runsById = { [run.id]: { ...run, inputs: { executionId: 'PEX-original', segmented: { kind: 'review' } } as never } };
+    expect(segmentedRecords(p)).toEqual([]);
+  });
+});
 
 const step = (id: string, operation: StudioPlanExecutionStep["operation"], status: StudioPlanExecutionStep["status"], reason?: string): StudioPlanExecutionStep =>
   ({ id, title: id, operation, stage: "production", dependsOn: [], status, runIds: [], attempt: 1, quotedCost: 0, ...(reason ? { reason } : {}) });
