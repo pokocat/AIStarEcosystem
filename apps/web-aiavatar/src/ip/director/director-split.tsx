@@ -5,7 +5,7 @@ import { BookMarked, ChevronRight, Scissors, Undo2, X } from "lucide-react";
 import type { DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi } from "../api";
 import type { WorkbenchProps } from "./director-workbench";
-import { InlineError, chooseDirectorBilling, clearDrafts, dialogFocus, failed, newRequestId, useBusy, useDraft, useEscape } from "./director-shared";
+import { InlineError, chooseDirectorBilling, clearDrafts, dialogFocus, failed, newRequestId, useBusy, useDraft, useEscape, storyAssets } from "./director-shared";
 import { LargePasteNotice, usePasteGuard } from "./director-script-file";
 import { EDIT_MAX, SectionedScript } from "./director-long-editor";
 
@@ -185,7 +185,7 @@ function UndoDialog({ work, apply, setError, onClose }: Pick<WorkbenchProps, "wo
       <ul className="director-regen-notes">
         <li>剧本回到拆分前的样子，{work.episodes.length} 集合回一整份，可以重新拆分或作为一集。</li>
         <li>拆分后在各集里改过的内容{planned ? `和已写好的 ${planned} 个片段` : ""}会一起清掉。</li>
-        {work.assets.length > 0 && <li>已有的 {work.assets.length} 项资产保留。</li>}
+        {storyAssets(work).length > 0 && <li>已有的 {storyAssets(work).length} 项资产保留。</li>}
       </ul>
       <InlineError message={error}/>
       <footer>

@@ -76,7 +76,7 @@ html:not([data-layout="desktop"]) .director-trash-actions button, html:not([data
 .director-cost.is-error { color: var(--ip-error); }
 .director-running { display: inline-flex; align-items: center; gap: 6px; color: var(--ip-muted); font-size: 13px; }
 .director-inline-error { margin: 8px 0; }
-.director-danger { color: var(--ip-error); }
+.director-danger, .ip-brand-surface button.director-danger { color: var(--ip-error); }
 .director-muted { color: var(--ip-muted); }
 .director-inline-field { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ip-muted); }
 .director-inline-field input { width: 56px !important; text-align: center; }
@@ -1249,8 +1249,9 @@ html[data-layout="desktop"] .director-studio-panel { order: 0; overflow-y: auto;
 .director-product-idea textarea { width: 100%; min-height: 56px; padding: 7px 10px; border: 1px solid var(--ip-line); border-radius: 8px; background: var(--ip-paper); font-size: 13px; line-height: 1.6; resize: vertical; }
 .director-product-idea textarea:focus { outline: none; border-color: var(--ip-ink); }
 .director-product-body > footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; margin-top: auto; padding-top: 2px; }
-.director-product-status { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--ip-muted); font-size: 12px; text-align: left; }
-button.director-product-status:hover { text-decoration: underline; text-underline-offset: 3px; }
+.director-product-status { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--ip-muted); font-size: 12px; }
+.director-product-body button.director-product-status { padding: 0; border: 0; background: transparent; font-size: 12px; text-align: left; }
+.director-product-body button.director-product-status:hover { text-decoration: underline; text-underline-offset: 3px; }
 .director-results-link { text-decoration: none; color: inherit; }
 .director-product-status i { flex: none; width: 6px; height: 6px; border-radius: 50%; background: #c6cbd0; }
 .director-product-status.is-done { color: var(--ip-green); }
@@ -1269,7 +1270,7 @@ button.director-product-status:hover { text-decoration: underline; text-underlin
 .director-product-episodes > div button small { flex: none; color: var(--ip-green); font-size: 11px; }
 .director-product-episodes > div button.is-current span { font-weight: 600; }
 
-.director-clip-products { display: flex; align-items: center; gap: 5px; min-width: 0; margin: 0; color: var(--ip-gold); font-size: 12px; }
+.director-clip-products { display: flex; align-items: center; gap: 5px; min-width: 0; margin: 0; color: var(--ip-muted); font-size: 12px; }
 .director-clip-products svg { flex: none; }
 .director-clip-products span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -1288,13 +1289,14 @@ button.director-product-status:hover { text-decoration: underline; text-underlin
 .director-product-tile.is-skeleton { aspect-ratio: 156 / 212; border-radius: 10px; background: var(--ip-soft); }
 .director-product-tile-pick { display: flex; flex-direction: column; gap: 3px; width: 100%; padding: 0 0 8px; border: 1px solid var(--ip-line); border-radius: 10px; background: var(--ip-paper); text-align: left; overflow: hidden; transition: border-color 140ms var(--ip-ease); }
 .director-product-tile-pick:hover:not(:disabled) { border-color: #cfd3d7; }
-.director-product-tile-pick:disabled { opacity: 1; }
+.ip-brand-surface .director-product-tile-pick:disabled { opacity: 1; }
 .director-product-tile.is-selected .director-product-tile-pick { border-color: var(--ip-ink); box-shadow: 0 0 0 1px var(--ip-ink); }
 .director-product-tile.is-added .director-product-tile-pick { cursor: default; }
 .director-product-tile-image { position: relative; display: grid; place-items: center; aspect-ratio: 1; margin-bottom: 5px; background: var(--ip-soft); color: var(--ip-muted); }
 .director-product-tile-image img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .director-product-tile.is-added .director-product-tile-image img { opacity: .55; }
 .director-product-tile-check { position: absolute; top: 7px; left: 7px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--ip-ink); color: var(--ip-paper); }
+.director-product-tile-check.is-empty { background: rgba(255, 255, 255, .92); box-shadow: inset 0 0 0 1.5px #b9bfc5; }
 .director-product-tile-image em { position: absolute; left: 7px; bottom: 7px; padding: 2px 7px; border-radius: 5px; background: var(--ip-paper); color: var(--ip-muted); font-size: 11px; font-style: normal; }
 .director-product-tile-pick b, .director-product-tile-pick small { display: block; min-width: 0; padding: 0 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .director-product-tile-pick b { font-size: 13px; font-weight: 600; }
@@ -1336,5 +1338,11 @@ html:not([data-layout="desktop"]) .director-product-form { grid-template-columns
 html:not([data-layout="desktop"]) .director-product-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 html:not([data-layout="desktop"]) .director-product-body .director-product-write { height: 40px; }
 html:not([data-layout="desktop"]) .director-product-thumbs button { width: 40px; height: 40px; }
-html:not([data-layout="desktop"]) .director-product-menu summary, html:not([data-layout="desktop"]) .director-product-tile-edit { width: 40px; height: 40px; }
+html:not([data-layout="desktop"]) .director-product-menu summary { width: 40px; height: 40px; }
+html:not([data-layout="desktop"]) .director-product-tile-edit { top: auto; right: 2px; bottom: 2px; width: 40px; height: 40px; border: 0; background: transparent; }
+html:not([data-layout="desktop"]) .director-product-tile-pick b, html:not([data-layout="desktop"]) .director-product-tile-pick small { padding-right: 38px; }
+html:not([data-layout="desktop"]) .director-product-body button.director-product-status { min-height: 40px; }
+html:not([data-layout="desktop"]) .director-product-library > header button, html:not([data-layout="desktop"]) .director-product-form-title button { width: 40px; height: 40px; }
 html:not([data-layout="desktop"]) .director-product-form { gap: 14px; }
+.director-preview-asset-img.is-product img { object-fit: contain; }
+html:not([data-layout="desktop"]) .director-product-library .director-product-search input { font-size: 16px; }

@@ -15,7 +15,7 @@ import { DirectorScriptFile, LargePasteNotice, usePasteGuard, type ScriptFileHan
 import { EDIT_MAX, LongTextCard, SectionedScript } from "./director-long-editor";
 import { ReferenceNotes, SplitChoiceDialog, SplitPreview, UndoSplit, splitsByHeadings } from "./director-split";
 import { CommerceStrip } from "./director-products";
-import { AiWorking, Field, GrowTextarea, InlineError, chooseDirectorBilling, clearDrafts, failed, hasDrafts, newRequestId, runningTask, saveDrafts, useBusy, useDraft, useEscape, dialogFocus } from "./director-shared";
+import { AiWorking, Field, GrowTextarea, InlineError, chooseDirectorBilling, clearDrafts, failed, hasDrafts, newRequestId, runningTask, saveDrafts, useBusy, useDraft, useEscape, dialogFocus, storyAssets } from "./director-shared";
 
 export function DirectorScript(props: WorkbenchProps) {
   return <><CommerceStrip work={props.work} goTab={props.goTab}/><ScriptBody {...props}/></>;
@@ -228,7 +228,7 @@ function EpisodeList(props: WorkbenchProps) {
     const cost = work.pricing.textMax;
     const billing = await chooseDirectorBilling("asset-extract");
     apply(await DirectorApi.runTask(work.id, { type: "extract", targetId: null, clientRequestId: newRequestId(), billing, maxCost: cost }));
-  }, failed(setError, work.assets.length ? "重新提取全剧资产" : "提取全剧资产"));
+  }, failed(setError, storyAssets(work).length ? "重新提取全剧资产" : "提取全剧资产"));
   return <section className="director-panel director-script-list">
     <div className="director-toolbar">
       <div className="director-toolbar-copy"><h3>剧本</h3><p>{work.episodes.length} 集 · 共 {chars.toLocaleString("zh-CN")} 字{work.logline && !work.outline ? ` · ${work.logline}` : ""}</p></div>
@@ -239,17 +239,17 @@ function EpisodeList(props: WorkbenchProps) {
     </div>
     <div className="director-script-content" aria-label="剧本内容" aria-busy={!!rewriting}>
       {rewriting ? <AiWorking title="AI 正在重新写剧本" task={rewriting} detail="完成后自动显示新剧本和分集，当前版本保留在历史中。"/> : <>
-      <StoryOutline work={work} defaultOpen={!work.assets.length}/>
+      <StoryOutline work={work} defaultOpen={!storyAssets(work).length}/>
       <ReferenceNotes work={work} apply={apply} setError={setError}/>
       <ScriptMore work={work} apply={apply} setError={setError}/>
       {extracting ? <AiWorking compact title="AI 正在提取全剧资产" task={extracting} detail="识别角色、场景和道具，完成后先给你确认，再保存。"/> :
-        <NextChoices work={work} shortcutDesc="把后面的步骤连着自动做完，一直到成片，也可以只做到分镜脚本或分镜图。系统先算好推荐预算，你确认后开始。" title={work.assets.length ? "下一步：生成资产图" : "下一步：提取全剧资产"}
-          desc={work.assets.length ? `已提取 ${work.assets.length} 项资产。到「资产」给角色、场景和道具生成资产图，分镜图和视频都照着它们画。改了正文可以重新提取，同一人物不会重复新建。`
+        <NextChoices work={work} shortcutDesc="把后面的步骤连着自动做完，一直到成片，也可以只做到分镜脚本或分镜图。系统先算好推荐预算，你确认后开始。" title={storyAssets(work).length ? "下一步：生成资产图" : "下一步：提取全剧资产"}
+          desc={storyAssets(work).length ? `已提取 ${storyAssets(work).length} 项资产。到「资产」给角色、场景和道具生成资产图，分镜图和视频都照着它们画。改了正文可以重新提取，同一人物不会重复新建。`
             : "AI 从全部集里识别角色、场景和道具，先给你确认清单再入库。之后生成资产图、写分镜脚本，每一步都能先看再改。"}
           onShortcut={startPipeline} shortcutDisabled={!!busy}>
-          <button type="button" className={work.assets.length ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy} onClick={extract} title="对全部集一起提取角色、场景和道具，同一人物不会在各集重复出现">
-            <Wand2 size={15}/>{work.assets.length ? "重新提取全剧资产" : "提取全剧资产"}</button>
-          {work.assets.length > 0 && <button type="button" className="ip-brand-button" onClick={() => goTab("assets")}>前往资产</button>}
+          <button type="button" className={storyAssets(work).length ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy} onClick={extract} title="对全部集一起提取角色、场景和道具，同一人物不会在各集重复出现">
+            <Wand2 size={15}/>{storyAssets(work).length ? "重新提取全剧资产" : "提取全剧资产"}</button>
+          {storyAssets(work).length > 0 && <button type="button" className="ip-brand-button" onClick={() => goTab("assets")}>前往资产</button>}
         </NextChoices>}
       <InlineError message={extractError}/>
       <ol className="director-episode-list">{work.episodes.map(e =>
@@ -335,7 +335,7 @@ function RegenerateDialog({ work, apply, setError, onClose }: Pick<WorkbenchProp
       <GenreTone genre={genre} tone={tone} setGenre={setGenre} setTone={setTone}/>
       <ul className="director-regen-notes">
         <li>新剧本会替换当前{hasEpisodes ? `的剧本和 ${work.episodes.length} 集分集（片段一并清除）` : "剧本"}，旧版本保留在历史中。</li>
-        {work.assets.length > 0 && <li>已有的 {work.assets.length} 项资产保留，生成后需要重新拆分并提取资产。</li>}
+        {storyAssets(work).length > 0 && <li>已有的 {storyAssets(work).length} 项资产保留，生成后需要重新拆分并提取资产。</li>}
         <li>生成期间如果改了剧本或片段，新剧本不会替换当前内容。</li>
       </ul>
       <InlineError message={error}/>

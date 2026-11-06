@@ -253,6 +253,22 @@ test('settings only send the switch when it changed, and explain what turning it
   await waitFor(() => expect(api.patchWork.mock.calls[0][1].settings.commerce).toBe(false));
 });
 
+test('an edit opened from the card can be cancelled', async () => {
+  const p = product(), first = libraryObject('o1', '恒温保温杯');
+  lib.readLibraryObject.mockResolvedValue(first);
+  render(<DirectorProducts {...props(work({ assets: [p] }))}/>);
+  fireEvent.click(within(screen.getByRole('menu', { hidden: true })).getByRole('menuitem', { name: '在商品库编辑', hidden: true }));
+  const dialog = await screen.findByRole('dialog', { name: '编辑商品' });
+  fireEvent.click(within(dialog).getByRole('button', { name: '取消' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+});
+
+test('asset counts on the script page leave products out', () => {
+  const src = readFileSync(resolve(process.cwd(), 'src/ip/director/director-script.tsx'), 'utf8');
+  expect(src).not.toMatch(/work\.assets\.length/);
+  expect(src).toMatch(/已提取 \$\{storyAssets\(work\)\.length\} 项资产/);
+});
+
 test('the workspace only appears behind the switch (§8.0.1 ⑥)', () => {
   const src = readFileSync(resolve(process.cwd(), 'src/ip/director/director-workbench.tsx'), 'utf8');
   expect(src).toMatch(/\.\.\.\(commerce \? \[\["products", "商品", ShoppingBag\]\]/);

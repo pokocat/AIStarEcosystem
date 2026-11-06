@@ -8,7 +8,7 @@ import type { DirectorClip, DirectorSceneView, DirectorShot, DirectorTask, Direc
 import { DirectorApi } from "../api";
 import { useStudioApp } from "../studio-errors";
 import type { WorkbenchProps } from "./director-workbench";
-import { AiWorking, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, chooseDirectorBilling, clearDrafts, costText, errorText, failed, hasDrafts, kindLabel, newRequestId, runningTask, secRange, useBusy, useDraft, useEscape, DirectorSheet, dialogFocus, ZoomableImage, type DirectorFail } from "./director-shared";
+import { AiWorking, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, chooseDirectorBilling, clearDrafts, costText, errorText, failed, hasDrafts, kindLabel, newRequestId, runningTask, secRange, useBusy, useDraft, useEscape, DirectorSheet, dialogFocus, ZoomableImage, type DirectorFail, storyAssets } from "./director-shared";
 import { ClipVideo, EpisodeOutput, type ClipQuote } from "./director-output";
 import { RewriteEpisodeDialog, clipRewriteBlock, shotWriting, useRewriteClip } from "./director-rewrite";
 import { formatDateTime } from "@/lib/datetime";
@@ -142,7 +142,7 @@ export function DirectorStoryboard(props: WorkbenchProps) {
           {clips.length === 0 && !writing.plan && <div className="director-panel director-empty-panel">
             <Clapperboard size={26}/>
             <p>分镜脚本把本集切成几个片段，每段写好镜头、分镜图提示词和视频提示词，一段对应一条视频。写之前先在「资产」准备好角色、场景和道具。</p>
-            {work.assets.length === 0 && <button type="button" className="ip-brand-secondary" onClick={() => goTab("assets")}>前往资产</button>}
+            {storyAssets(work).length === 0 && <button type="button" className="ip-brand-secondary" onClick={() => goTab("assets")}>前往资产</button>}
           </div>}
           {clips.length > 0 && <BatchBar work={work} clips={clips} quotes={quotes} selected={selected} setSelected={setSelected} apply={apply} setError={setError}/>}
           {clips.map(c => <ClipCard key={c.id} {...props} clip={c} quote={quotes[c.id]} onPreview={(kind, candidateId) => setPreview({ clipId: c.id, kind, candidateId })} onBoard={() => setBoardFor(c.id)} editorAt={focus?.open === "editor" && focus.clipId === c.id ? focus.at : undefined}
@@ -505,7 +505,7 @@ function ClipPreview({ work, clip, preview, apply, setError, goTab, onPickVideo,
               failed(setError, `换「${a.name}」在片段 ${clip.order} 的形态`));
             const views = a.kind === "scene" ? SCENE_VIEWS.filter(v => clip.shots.some(s => s.sceneView === v.key)) : [];
             return <li key={a.id} className={a.id === preview.assetId ? "is-focused" : undefined}>
-              <span className="director-preview-asset-img">{img?.url ? <img src={img.url} alt={a.name}/> : <ImageIcon size={18}/>}</span>
+              <span className={`director-preview-asset-img ${a.kind === "product" ? "is-product" : ""}`}>{img?.url ? <img src={img.url} alt={a.name}/> : <ImageIcon size={18}/>}</span>
               <div><b>{a.name}<small>{kindLabel[a.kind]}</small></b>
                 <small className={status === "已确认" ? "is-done" : status === "缺少资产图" ? "is-error" : "is-warn"}>{status}{a.voice ? " · 已绑定声音" : ""}</small>
                 <p title={a.description}>{a.description || "暂无描述"}</p>
@@ -518,7 +518,10 @@ function ClipPreview({ work, clip, preview, apply, setError, goTab, onPickVideo,
                   aria-label={`从片段 ${clip.order} 解除${a.name}的关联`}>{busy === `unlink:${a.id}` ? "正在解除…" : "解除关联"}</button></div>
             </li>;
           })}</ul>}
-        <button type="button" className="ip-brand-secondary" onClick={() => { onClose(); goTab("assets"); }}>去资产页修改</button>
+        <div className="director-actions">
+          <button type="button" className="ip-brand-secondary" onClick={() => { onClose(); goTab("assets"); }}>去资产页修改</button>
+          {linked.some(a => a.kind === "product") && <button type="button" className="ip-brand-secondary" onClick={() => { onClose(); goTab("products"); }}>去商品页修改</button>}
+        </div>
       </> : <>
         <div className={`director-preview-stage ${ratio}`}>
           {media?.url ? <video key={media.id} src={media.url} controls autoPlay preload="metadata" playsInline/> : <span>还没有视频</span>}

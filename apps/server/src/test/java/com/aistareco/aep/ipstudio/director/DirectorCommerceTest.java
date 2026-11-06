@@ -183,6 +183,14 @@ class DirectorCommerceTest {
         assertFalse(om.convertValue(sent.meta().path("assetIds"), List.class).contains(asset(content(), "恒温保温杯").path("id").asText()));
     }
 
+    @Test void theWorkListCountsAssetsWithoutProducts() throws Exception {
+        seed(true);
+        when(works.findByOwnerUserIdAndDeletedAtIsNullOrderByUpdatedAtDesc(USER)).thenReturn(List.of(work));
+        JsonNode summary = service.list(USER).get(0);
+        assertEquals(2, summary.path("assetCount").asInt(), "角色和场景，不算商品");
+        assertTrue(summary.path("commerce").asBoolean());
+    }
+
     // ── 商品库 ──
 
     @Test void addingTakesEveryImageFromTheLibraryAndUsesTheMainOne() throws Exception {

@@ -167,6 +167,8 @@ public class DirectorService {
                 if (b != null) { boards++; if (cover == null) cover = b; }
                 if (adoptedKey(clip.path("video")) != null) videos++;
             }
+            // 还没有分镜图时用资产图作封面。商品图排最后：封面会裁切，商品一裁就看不全，也不能代表这部剧。
+            if (cover == null) for (JsonNode a : c.path("assets")) { if (isProduct(a)) continue; cover = adoptedKey(a.path("image")); if (cover != null) break; }
             if (cover == null) for (JsonNode a : c.path("assets")) { cover = adoptedKey(a.path("image")); if (cover != null) break; }
             if (cover != null) coverKeys.put(w.getId(), cover);
             ObjectNode s = om.createObjectNode().put("id", w.getId()).put("title", w.getTitle())
