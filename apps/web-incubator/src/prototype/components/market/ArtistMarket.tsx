@@ -88,7 +88,7 @@ const MARKET_LISTINGS: MarketListing[] = [
     tags: ['电子音乐', '赛博风', '高人气'], listingStatus: 'active',
     artist: {
       id: 'ma1', name: 'Cyber Aria', type: 'singer', quality: 'epic', status: 'active', level: 38,
-      avatar: 'https://images.unsplash.com/photo-1745532665626-09f20c9408dd?w=200&q=80',
+      avatar: '/images/market-cyber-aria.webp',
       popularity: 84, growth7d: 7.2, fans: '112K', commercialValue: '¥1.1M',
       bio: '赛博朋克风格AI歌手，电子合成嗓音，霓虹舞台主宰者。',
       domains: ['音乐', '舞台表演'],
@@ -102,7 +102,7 @@ const MARKET_LISTINGS: MarketListing[] = [
     tags: ['悬疑短剧', '演技派', '商业价值'], listingStatus: 'active',
     artist: {
       id: 'ma2', name: 'Phantom', type: 'actor', quality: 'rare', status: 'active', level: 33,
-      avatar: 'https://images.unsplash.com/photo-1760564704843-07b22892b0bf?w=200&q=80',
+      avatar: '/images/market-phantom.webp',
       popularity: 70, growth7d: 4.8, fans: '76K', commercialValue: '¥1.8M',
       bio: '实力派悬疑演员，黑暗美学代言人，短剧票房保障。',
       domains: ['影视', '商业代言'],
@@ -116,7 +116,7 @@ const MARKET_LISTINGS: MarketListing[] = [
     tags: ['综艺爆款', '互动王者', '弹幕热榜'], listingStatus: 'active',
     artist: {
       id: 'ma3', name: 'Neon Joker', type: 'entertainer', quality: 'epic', status: 'active', level: 40,
-      avatar: 'https://images.unsplash.com/photo-1611956425642-d5a8169abd63?w=200&q=80',
+      avatar: '/images/market-neon-joker.webp',
       popularity: 90, growth7d: 11.3, fans: '234K', commercialValue: '¥3.5M',
       bio: '顶级综艺咖，笑点密集，弹幕霸榜，带货转化超强。',
       domains: ['综艺', '曲艺表演', '游戏娱乐'],
@@ -130,7 +130,7 @@ const MARKET_LISTINGS: MarketListing[] = [
     tags: ['全能选手', '六边形战士', '跨界王者'], listingStatus: 'active',
     artist: {
       id: 'ma4', name: 'Echo All', type: 'all_rounder', quality: 'epic', status: 'active', level: 44,
-      avatar: 'https://images.unsplash.com/photo-1767755255170-c79c863f1849?w=200&q=80',
+      avatar: '/images/market-echo-all.webp',
       popularity: 88, growth7d: 6.9, fans: '198K', commercialValue: '¥4.1M',
       bio: '无短板全能艺人，跨域联动爆发力极强，商业开发空间巨大。',
       domains: ['音乐', '影视', '综艺', '商业代言'],
@@ -145,7 +145,7 @@ const MARKET_LISTINGS: MarketListing[] = [
     tags: ['街舞', '潜力新星', '爆炸增速'], listingStatus: 'active',
     artist: {
       id: 'ma5', name: 'Flow Step', type: 'dancer', quality: 'rare', status: 'trainee', level: 20,
-      avatar: 'https://images.unsplash.com/photo-1761882619891-6529ff92df0a?w=200&q=80',
+      avatar: '/images/market-flow-step.webp',
       popularity: 58, growth7d: 22.4, fans: '38K', commercialValue: '¥380K',
       bio: '街舞系新星，增速惊人，近30天粉丝增长22%，潜力炸裂。',
       domains: ['舞台表演', '音乐'],
@@ -159,7 +159,7 @@ const MARKET_LISTINGS: MarketListing[] = [
     tags: ['主持新人', '声线好', '成长空间大'], listingStatus: 'active',
     artist: {
       id: 'ma6', name: 'Byte Voice', type: 'host', quality: 'common', status: 'debut', level: 12,
-      avatar: 'https://images.unsplash.com/photo-1610414302351-ded0a0a2664a?w=200&q=80',
+      avatar: '/images/market-byte-voice.webp',
       popularity: 42, growth7d: 18.6, fans: '14K', commercialValue: '¥98K',
       bio: '新生代AI主持，声线辨识度极高，成本低，培育空间大。',
       domains: ['综艺', '教育培训'],
@@ -173,7 +173,7 @@ const MARKET_LISTINGS: MarketListing[] = [
     tags: ['古风偶像', '治愈系', '高互动'], listingStatus: 'active',
     artist: {
       id: 'ma7', name: 'Mist Hana', type: 'idol', quality: 'rare', status: 'debut', level: 18,
-      avatar: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=200&q=80',
+      avatar: '/images/market-mist-hana.webp',
       popularity: 55, growth7d: 15.8, fans: '52K', commercialValue: '¥420K',
       bio: '国风治愈系偶像，评论区暖心女神，粉丝粘性极高。',
       domains: ['音乐', '舞台表演'],
@@ -190,7 +190,7 @@ const MARKET_LISTINGS: MarketListing[] = [
     tags: ['顶级偶像', '传奇品质', '粉丝经济', '应援文化'], listingStatus: 'active',
     artist: {
       id: 'ma8', name: 'Star Bloom', type: 'idol', quality: 'legendary', status: 'active', level: 56,
-      avatar: 'https://images.unsplash.com/photo-1645457979199-709c96b14526?w=200&q=80',
+      avatar: '/images/market-star-bloom.webp',
       popularity: 94, growth7d: 11.2, fans: '318K', commercialValue: '¥5.6M',
       bio: '传奇级偶像，粉丝经济体系完备，IP衍生价值无上限。',
       domains: ['音乐', '综艺', '商业代言', '舞台表演'],
@@ -206,7 +206,7 @@ const MARKET_LISTINGS: MarketListing[] = [
     tags: ['传奇全能', '六边形战士', 'IP矩阵', '顶流商业'], listingStatus: 'active',
     artist: {
       id: 'ma9', name: 'Omni Star', type: 'all_rounder', quality: 'legendary', status: 'active', level: 63,
-      avatar: 'https://images.unsplash.com/photo-1622278802459-7ffa72354cb9?w=200&q=80',
+      avatar: '/images/market-omni-star.webp',
       popularity: 93, growth7d: 8.1, fans: '276K', commercialValue: '¥6.2M',
       bio: '传说级全能艺人，跨圈联动天花板，商业价值持续爆发中。',
       domains: ['音乐', '影视', '综艺', '舞台表演', '商业代言'],
@@ -223,7 +223,7 @@ const MARKET_LISTINGS: MarketListing[] = [
     tags: ['治愈偶像', '借调特惠', '30天'], listingStatus: 'active',
     artist: {
       id: 'ma10', name: 'Dream Light', type: 'idol', quality: 'rare', status: 'active', level: 26,
-      avatar: 'https://images.unsplash.com/photo-1596395463910-3ac2899a5bea?w=200&q=80',
+      avatar: '/images/market-dream-light.webp',
       popularity: 68, growth7d: 16.4, fans: '84K', commercialValue: '¥760K',
       bio: '治愈系偶像，限时借调特惠，适合短期项目合作。',
       domains: ['音乐', '舞台表演'],
@@ -239,7 +239,7 @@ const MARKET_LISTINGS: MarketListing[] = [
     tags: ['电流舞者', '限时特价', '超低折扣'], listingStatus: 'active',
     artist: {
       id: 'ma11', name: 'Volt Dance', type: 'dancer', quality: 'rare', status: 'active', level: 30,
-      avatar: 'https://images.unsplash.com/photo-1745532665626-09f20c9408dd?w=200&q=80',
+      avatar: '/images/market-volt-dance.webp',
       popularity: 72, growth7d: 20.1, fans: '78K', commercialValue: '¥720K',
       bio: '机械舞+霓虹特效，爆款短视频制造机，限时特惠折扣21%。',
       domains: ['舞台表演', '音乐'],
@@ -255,7 +255,7 @@ const MARKET_LISTINGS: MarketListing[] = [
     tags: ['顶流史诗', '7天借调', '超低成本'], listingStatus: 'active',
     artist: {
       id: 'ma12', name: 'Neon Surge', type: 'singer', quality: 'epic', status: 'active', level: 36,
-      avatar: 'https://images.unsplash.com/photo-1694877286935-0e7decac9bb1?w=200&q=80',
+      avatar: '/images/market-neon-surge.webp',
       popularity: 82, growth7d: 9.5, fans: '104K', commercialValue: '¥1.0M',
       bio: '史诗级歌手限时7天借调，适合单曲项目或活动宣传。',
       domains: ['音乐', '舞台表演'],
@@ -272,7 +272,7 @@ const MARKET_LISTINGS: MarketListing[] = [
     tags: ['悬疑演员', '五五分成', '微短剧'], listingStatus: 'active',
     artist: {
       id: 'ma13', name: 'Void Shade', type: 'actor', quality: 'rare', status: 'active', level: 28,
-      avatar: 'https://images.unsplash.com/photo-1760564704843-07b22892b0bf?w=200&q=80',
+      avatar: '/images/market-void-shade.webp',
       popularity: 64, growth7d: 5.6, fans: '62K', commercialValue: '¥1.2M',
       bio: '暗黑风格演员，适合悬疑惊悚赛道，需要专业团队联合运营。',
       domains: ['影视', '商业代言'],
@@ -288,7 +288,7 @@ const MARKET_LISTINGS: MarketListing[] = [
     tags: ['主持人', '三七分成', '知识付费'], listingStatus: 'active',
     artist: {
       id: 'ma14', name: 'Signal MC', type: 'host', quality: 'epic', status: 'active', level: 32,
-      avatar: 'https://images.unsplash.com/photo-1610414302351-ded0a0a2664a?w=200&q=80',
+      avatar: '/images/market-signal-mc.webp',
       popularity: 76, growth7d: 8.8, fans: '142K', commercialValue: '¥2.2M',
       bio: '知识型AI主持人，专业知识付费赛道，需要私域运营合伙人。',
       domains: ['综艺', '教育培训'],
@@ -1028,10 +1028,10 @@ const CELEBRITY_GRADES = [
 ];
 
 const CELEBRITY_LIST = [
-  { name: '陈屿', grade: 'A', tags: ['古装','谍战','正剧'], fans: '2,180万', gmv: '高潜力', score: 92, color: '#06b6d4', img: 'https://images.unsplash.com/photo-1681097561932-36d0df02b379?w=200&q=80', signed: false },
-  { name: '顾然',  grade: 'S', tags: ['流量','品牌','音乐'], fans: '4,530万', gmv: '顶级',   score: 98, color: '#a855f7', img: 'https://images.unsplash.com/photo-1767607746719-38c73b45cd8b?w=200&q=80', signed: true },
-  { name: '苏枝',  grade: 'A', tags: ['时尚','美妆','古装'], fans: '3,920万', gmv: '美妆TOP', score: 95, color: '#ec4899', img: 'https://images.unsplash.com/photo-1596029658179-ddca27260f25?w=200&q=80', signed: false },
-  { name: '陆星野', grade: 'S', tags: ['运动','潮流','音乐'], fans: '5,010万', gmv: '顶级',   score: 99, color: '#f59e0b', img: 'https://images.unsplash.com/photo-1616693629937-fa0aba64d094?w=200&q=80', signed: false },
+  { name: '陈屿', grade: 'A', tags: ['古装','谍战','正剧'], fans: '2,180万', gmv: '高潜力', score: 92, color: '#06b6d4', img: '/images/star-chen-yu.webp', signed: false },
+  { name: '顾然',  grade: 'S', tags: ['流量','品牌','音乐'], fans: '4,530万', gmv: '顶级',   score: 98, color: '#a855f7', img: '/images/star-gu-ran.webp', signed: true },
+  { name: '苏枝',  grade: 'A', tags: ['时尚','美妆','古装'], fans: '3,920万', gmv: '美妆TOP', score: 95, color: '#ec4899', img: '/images/star-su-zhi.webp', signed: false },
+  { name: '陆星野', grade: 'S', tags: ['运动','潮流','音乐'], fans: '5,010万', gmv: '顶级',   score: 99, color: '#f59e0b', img: '/images/star-lu-xingye.webp', signed: false },
 ];
 
 const CelebrityResourceLibrary = ({ lang }: { lang: Lang }) => {

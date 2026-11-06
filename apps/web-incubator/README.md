@@ -34,6 +34,7 @@ pnpm dev:incubator
 src/app/            Next 外壳：layout + 只在客户端渲染的 PrototypeHost
 src/prototype/      搬来的原型：App.tsx、components/、data/、translations.ts、styles/
 public/fonts/       自托管 Inter、JetBrains Mono（不依赖 Google Fonts）
+public/images/      全站演示图（AI 生成，自托管），出图要求见 docs/image-manifest.json
 docs/               原型自带的 PRD、明星端产品文档、设计迭代记录（只读留档）
 ```
 
@@ -65,7 +66,7 @@ docs/               原型自带的 PRD、明星端产品文档、设计迭代�
 
 - 艺人图标、类型标记有很多三个字母的占位（`SNG`、`ACT`、`CEL 正式出道！`），是原型用来代替 emoji 的。
 - 孵化成功后，新艺人不会出现在矩阵列表里；其他「现状差距」见 `docs/prd/` 各章末尾。
-- 图片是 `images.unsplash.com` 的外链（227 处），断网或访问受限时会裂图。
+- 图片全部是我们生成的演示图，放在 `public/images/`，人物都是虚构的。换图时按 `docs/image-manifest.json` 里的要求重新生成同名文件；同一个人全站共用一张图，商品图不带品牌标识，但示例数据里仍写着 SK-II、Jo Malone 等真实品牌名（见 TODO）。
 - 和正式产品有重叠：明星端的正式实现是 `apps/web-star`，运营后台的正式实现是 `apps/admin`，
   创作者工作台的正式实现是 `apps/web-celebrity`、`apps/web-aiavatar`。本应用**不替代**它们。
 

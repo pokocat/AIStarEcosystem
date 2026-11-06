@@ -51,7 +51,7 @@ const fallbackSolution = {
   description: { zh: '孵化 AI 艺人，生产音乐、影视和全娱乐内容，运营艺人矩阵。', en: 'Incubate AI artists and operate music, film and full-entertainment content matrices.' },
   accent: '#a855f7',
   secondary: '#06b6d4',
-  image: 'https://images.unsplash.com/photo-1767661667474-4f2a197c9a51?auto=format&fit=crop&w=1000&q=85',
+  image: '/images/scene-artist-incubation.webp',
 };
 
 const showcaseFilters: ShowcaseFilter[] = (Object.keys(SHOWCASE_GROUP_LABELS) as ShowcaseGroup[]).map(group => ({
@@ -108,7 +108,7 @@ export const IPEcosystemLandingPage = ({ lang, setLang, onEnter, onSelectSolutio
       </nav>
 
       <header id="top" className="relative min-h-screen px-6 pt-24 flex items-center overflow-hidden">
-        <img src="https://images.unsplash.com/photo-1644088379091-d574269d422f?auto=format&fit=crop&w=2200&q=90" alt="" className="absolute inset-0 w-full h-full object-cover opacity-50" />
+        <img src="/images/hero-landing.webp" alt="" className="absolute inset-0 w-full h-full object-cover opacity-50" />
         <div className="absolute inset-0 bg-gradient-to-r from-black via-black/85 to-black/35" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_72%_38%,rgba(168,85,247,.18),transparent_32%)]" />
         <motion.div animate={{ y: [0, -14, 0], rotate: [0, 6, -5, 0] }} transition={{ duration: 5, repeat: Infinity }} className="absolute top-[20%] right-[15%] text-cyan-400/30"><Sparkles className="w-9 h-9" /></motion.div>

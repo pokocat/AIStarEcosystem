@@ -53,7 +53,7 @@ const role = (zh: string, en: string, descZh: string, descEn: string, statZh: st
 
 export const CENTER_ARTIST = {
   name: 'NEON V',
-  image: 'https://images.unsplash.com/photo-1767661667474-4f2a197c9a51?auto=format&fit=crop&w=400&q=85',
+  image: '/images/scene-artist-incubation.webp',
 };
 
 export const ENTERTAINMENT_LAYERS: EcosystemLayer[] = [
@@ -73,7 +73,7 @@ export const ENTERTAINMENT_LAYERS: EcosystemLayer[] = [
     descZh: '以一位 AI 主唱为核心，延展音乐、短剧、直播、综艺与品牌合作。', descEn: 'One AI vocalist expands into music, drama, livestreaming, variety and brand work.',
     chainZh: 'AI 艺人 → 音乐 · 短剧 · 直播', chainEn: 'AI artist → Music · Drama · Live',
     metric: '8600万', metricEn: '86M', metricZh: '全网播放', metricLabelEn: 'Total Views',
-    image: 'https://images.unsplash.com/photo-1767661667474-4f2a197c9a51?auto=format&fit=crop&w=1200&q=85',
+    image: '/images/scene-artist-incubation.webp',
   },
   {
     icon: Film, zh: '幕后创作团队', en: 'Creative Team',
@@ -91,7 +91,7 @@ export const ENTERTAINMENT_LAYERS: EcosystemLayer[] = [
     descZh: '数字制作人、导演和编剧围绕艺人设定，持续产出音乐、短剧与舞台内容。', descEn: 'Digital producers, directors and writers create music, drama and stage content around the artist.',
     chainZh: '制作人 · 导演 → AI 艺人 → 新作品', chainEn: 'Producer · Director → AI artist → New releases',
     metric: '120+', metricEn: '120+', metricZh: '月产内容', metricLabelEn: 'Monthly Assets',
-    image: 'https://images.unsplash.com/photo-1790619451922-feced14b555c?auto=format&fit=crop&w=1200&q=85',
+    image: '/images/scene-film.webp',
   },
   {
     icon: Crown, zh: '娱乐经营者', en: 'Entertainment Operators',
@@ -109,7 +109,7 @@ export const ENTERTAINMENT_LAYERS: EcosystemLayer[] = [
     descZh: '娱乐公司创始人数字分身持续发布行业观点、艺人动态与厂牌内容，并连接商务合作。', descEn: 'A digital entertainment founder shares insight, artist updates and label content while supporting partnerships.',
     chainZh: '数字创始人 → 经纪团队 → 厂牌合作', chainEn: 'Digital founder → Management → Label deals',
     metric: '7×24h', metricEn: '24/7', metricZh: '经营表达', metricLabelEn: 'Always-On Leadership',
-    image: 'https://images.unsplash.com/photo-1633511069490-76aa4c284518?auto=format&fit=crop&w=1200&q=85',
+    image: '/images/scene-digital-founder.webp',
   },
   {
     icon: Heart, zh: '商业与粉丝生态', en: 'Commerce & Fandom',
@@ -127,6 +127,6 @@ export const ENTERTAINMENT_LAYERS: EcosystemLayer[] = [
     descZh: '围绕虚拟偶像连接会员、应援、演出、联名、授权与衍生品，形成长期增长飞轮。', descEn: 'Memberships, fan support, shows, collaborations, licensing and merchandise form a lasting growth loop.',
     chainZh: 'AI 艺人 → 粉丝会员 → 品牌联名 · 授权', chainEn: 'AI artist → Members → Brand collabs · Licensing',
     metric: '420万', metricEn: '4.2M', metricZh: '核心粉丝', metricLabelEn: 'Core Fans',
-    image: 'https://images.unsplash.com/photo-1630754157718-8b7b3aaa57e2?auto=format&fit=crop&w=1200&q=85',
+    image: '/images/scene-virtual-idol.webp',
   },
 ];

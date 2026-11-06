@@ -68,19 +68,19 @@ const MOCK_ITEMS: ContentItem[] = [
     celebrity: '陈屿', platform: '抖音', account: '@neon_v_official', duration: '1:32',
     submittedAt: '2026-05-06 14:30', reviewedAt: '2026-05-06 15:10', reviewer: '系统自动',
     views: 128000, riskTags: [],
-    thumbnail: 'https://images.unsplash.com/photo-1533001104778-31cb0f7ebe2e?w=200&q=60',
+    thumbnail: '/images/review-tactical-clip.webp',
   },
   {
     id: 'c2', title: '顾然同款护肤·AI字幕重剪版', type: 'clip', zone: 'yellow', status: 'pending',
     celebrity: '顾然', platform: '快手', account: '@luna_soft_ks', duration: '0:58',
     submittedAt: '2026-05-07 09:15', riskTags: ['AI字幕', '剪辑重组'],
-    thumbnail: 'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=200&q=60',
+    thumbnail: '/images/review-skincare-remix.webp',
   },
   {
     id: 'c3', title: '苏枝AI声音·护肤品口播版', type: 'voiceover', zone: 'orange', status: 'pending',
     celebrity: '苏枝', platform: '小红书', account: '@project_zero_xhs', duration: '2:10',
     submittedAt: '2026-05-07 08:00', riskTags: ['AI语音合成', '需平台审核'],
-    thumbnail: 'https://images.unsplash.com/photo-1596029658179-ddca27260f25?w=200&q=60',
+    thumbnail: '/images/review-voiceover.webp',
   },
   {
     id: 'c4', title: '陆星野AI虚拟形象·球鞋宣传', type: 'avatar', zone: 'red', status: 'rejected',
@@ -88,14 +88,14 @@ const MOCK_ITEMS: ContentItem[] = [
     submittedAt: '2026-05-05 22:00', reviewedAt: '2026-05-06 10:30', reviewer: '合规团队',
     reason: '未持有AI形象授权包，禁止使用AI虚拟形象商用',
     riskTags: ['AI形象', '无授权包', '高风险'],
-    thumbnail: 'https://images.unsplash.com/photo-1616693629937-fa0aba64d094?w=200&q=60',
+    thumbnail: '/images/review-sneaker.webp',
   },
   {
     id: 'c5', title: '陈屿古装剧直播切片·茶叶推荐', type: 'live_clip', zone: 'green', status: 'approved',
     celebrity: '陈屿', platform: '抖音', account: '@neon_v_official', duration: '3:45',
     submittedAt: '2026-05-04 16:00', reviewedAt: '2026-05-04 16:45', reviewer: '系统自动',
     views: 89000, riskTags: [],
-    thumbnail: 'https://images.unsplash.com/photo-1627484986786-f4d2c04e3f08?w=200&q=60',
+    thumbnail: '/images/review-tea.webp',
   },
   {
     id: 'c6', title: '顾然同款腕表·AI配音脚本', type: 'voiceover', zone: 'orange', status: 'flagged',
@@ -103,14 +103,14 @@ const MOCK_ITEMS: ContentItem[] = [
     submittedAt: '2026-05-03 11:00', reviewedAt: '2026-05-03 14:20', reviewer: '人工审核',
     reason: '配音音色相似度超过85%，需补充明星方声音授权证明',
     riskTags: ['AI配音', '高相似度', '待补材料'],
-    thumbnail: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=200&q=60',
+    thumbnail: '/images/review-watch.webp',
   },
   {
     id: 'c7', title: '苏枝时尚穿搭·图文种草版', type: 'graphic', zone: 'yellow', status: 'approved',
     celebrity: '苏枝', platform: '小红书', account: '@project_zero_xhs',
     submittedAt: '2026-05-02 10:00', reviewedAt: '2026-05-02 10:30', reviewer: '系统自动',
     views: 34000, riskTags: ['品牌植入声明'],
-    thumbnail: 'https://images.unsplash.com/photo-1485230895905-ec40ba36b9bc?w=200&q=60',
+    thumbnail: '/images/review-fashion.webp',
   },
 ];
 

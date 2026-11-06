@@ -45,19 +45,19 @@ const PLATFORM_CLIP_STATS: Record<PlatformId, { clips: string; views: string; re
 const CELEBRITIES = [
   {
     id: 'c1', name: '陈屿',
-    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&q=80',
+    avatar: '/images/star-chen-yu.webp',
     authType: '切片授权', clips: 24, views: '1,240万', status: 'active', expiry: '2026-08-30',
     platforms: ['抖音', 'B站', '快手'],
   },
   {
     id: 'c2', name: '苏枝',
-    avatar: 'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?w=100&q=80',
+    avatar: '/images/star-su-zhi.webp',
     authType: 'AI形象授权', clips: 18, views: '890万', status: 'active', expiry: '2026-06-15',
     platforms: ['小红书', '视频号', '抖音'],
   },
   {
     id: 'c3', name: '顾然',
-    avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=100&q=80',
+    avatar: '/images/star-gu-ran.webp',
     authType: '切片授权', clips: 31, views: '2,100万', status: 'pending', expiry: '审核中',
     platforms: ['抖音', 'B站'],
   },
@@ -78,7 +78,7 @@ const BRAND_TASKS: BrandTask[] = [
   {
     id: 'bt1', productName: '同款护肤套装',
     celebrity: '苏枝', brand: 'SK-II',
-    image: 'https://images.unsplash.com/photo-1556228720-195a672e8a03?w=200&q=80',
+    image: '/images/task-skincare-set.webp',
     commission: 20, price: '¥899', quota: 15, takenQuota: 9,
     bonus: '明星同款+8%', status: 'available',
     requirement: '需含苏枝同款场景切片，时长≥15s',
@@ -89,7 +89,7 @@ const BRAND_TASKS: BrandTask[] = [
   {
     id: 'bt2', productName: '剧中同款汉服',
     celebrity: '陈屿', brand: '汉唐文化',
-    image: 'https://images.unsplash.com/photo-1614252369475-531eba835eb1?w=200&q=80',
+    image: '/images/task-hanfu.webp',
     commission: 25, price: '¥388', quota: 10, takenQuota: 4,
     bonus: '首单双倍佣金', status: 'available',
     requirement: '需使用陈屿古装剧授权素材',
@@ -100,7 +100,7 @@ const BRAND_TASKS: BrandTask[] = [
   {
     id: 'bt3', productName: '明星联名零食礼盒',
     celebrity: '顾然', brand: '三只松鼠',
-    image: 'https://images.unsplash.com/photo-1612198188060-c7c2a3b66eae?w=200&q=80',
+    image: '/images/task-snack-box.webp',
     commission: 18, price: '¥128', quota: 25, takenQuota: 6,
     bonus: '', status: 'locked',
     requirement: '需先完成顾然授权报白',
@@ -111,7 +111,7 @@ const BRAND_TASKS: BrandTask[] = [
   {
     id: 'bt4', productName: '女主同款香水',
     celebrity: '苏枝', brand: 'Jo Malone',
-    image: 'https://images.unsplash.com/photo-1588405748880-12d1d2a59f75?w=200&q=80',
+    image: '/images/task-perfume.webp',
     commission: 22, price: '¥660', quota: 8, takenQuota: 2,
     bonus: '高客单+¥60', status: 'available',
     requirement: '需含苏枝剧中香水使用场景',

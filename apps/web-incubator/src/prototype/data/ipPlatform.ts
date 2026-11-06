@@ -125,7 +125,7 @@ export const SOLUTION_CONFIGS: Record<Exclude<SolutionId, 'ecosystem' | 'ai-arti
     title: L('一个创意，', 'One Idea.'), highlight: L('生成一部持续更新的 AI 短剧', 'An Always-Evolving AI Drama'),
     description: L('从选题、人物、分集剧本到数字演员、分镜制作与矩阵发行，用一套系统完成短剧工业化生产。', 'From concept and characters to scripts, digital actors, storyboards and distribution in one production system.'),
     primaryCTA: L('生成第一部短剧', 'Create Your First Drama'), accent: '#8b5cf6', secondary: '#ec4899',
-    image: 'https://images.unsplash.com/photo-1485846234645-a62644f84728?auto=format&fit=crop&w=1800&q=85',
+    image: '/images/solution-ai-drama.webp',
     audience: [['短剧制作团队', 'Drama Studios', '降低单集成本、缩短制作周期', 'Lower cost and faster episodes'], ['MCN 机构', 'MCN Agencies', '批量出剧，稳定更新多个账号', 'Steady releases across many accounts'], ['品牌内容团队', 'Brand Teams', '用定制短剧讲品牌故事', 'Tell brand stories through custom dramas']],
     heroStats: [['72h', '剧本到成片', 'Script to Final Cut'], ['-70%', '制作成本', 'Production Cost'], ['24 集', '单角色连续产出', 'Episodes per Cast']],
     capabilities: [
@@ -146,7 +146,7 @@ export const SOLUTION_CONFIGS: Record<Exclude<SolutionId, 'ecosystem' | 'ai-arti
     title: L('让商品进入剧情，', 'Put Products Into Stories,'), highlight: L('而不是打断剧情', 'Not Interrupt Them'),
     description: L('AI 自动匹配商品卖点、角色与情节，批量生成兼顾内容质量和商业转化的剧情视频。', 'AI matches product value, characters and plots to produce story-led commerce videos at scale.'),
     primaryCTA: L('创建剧情带货项目', 'Create Commerce Story'), accent: '#f97316', secondary: '#ec4899',
-    image: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&w=1800&q=85',
+    image: '/images/solution-story-commerce.webp',
     audience: [['消费品牌', 'Consumer Brands', '新品上市需要持续的内容声量', 'Sustained buzz for every launch'], ['电商团队', 'Commerce Teams', '提升内容转化率与投产比', 'Higher content conversion and ROI'], ['内容 MCN', 'Content MCNs', '为品牌客户规模化交付剧情内容', 'Deliver story content to brands at scale']],
     heroStats: [['8.6%', '平均转化率', 'Avg. Conversion'], ['3.5x', '平均投产比', 'Avg. ROI'], ['50+', '剧情模型', 'Story Models']],
     capabilities: [
@@ -167,7 +167,7 @@ export const SOLUTION_CONFIGS: Record<Exclude<SolutionId, 'ecosystem' | 'ai-arti
     title: L('创建一个角色，', 'Create One Character.'), highlight: L('连接一个次元世界', 'Connect an Entire World'),
     description: L('从 3D 形象、声音和动捕到直播、音乐、粉丝社群与衍生授权，持续经营虚拟偶像资产。', 'Build and operate a virtual idol across 3D identity, voice, live content, music, fandom and licensing.'),
     primaryCTA: L('创建虚拟偶像', 'Create Virtual Idol'), accent: '#d946ef', secondary: '#8b5cf6',
-    image: 'https://images.unsplash.com/photo-1630754157718-8b7b3aaa57e2?auto=format&fit=crop&w=1800&q=85',
+    image: '/images/scene-virtual-idol.webp',
     audience: [['虚拟人团队', 'Virtual Human Teams', '缩短从建模到出道的周期', 'Faster path from modeling to debut'], ['娱乐公司', 'Entertainment Studios', '打造可持续运营的虚拟艺人', 'Build virtual artists that last'], ['独立创作者', 'Independent Creators', '一个人也能运营虚拟偶像', 'Run a virtual idol as a solo creator']],
     heroStats: [['30 天', '从设定到出道', 'Concept to Debut'], ['<80ms', '动捕延迟', 'Mocap Latency'], ['24/7', '直播在线', 'Always Live']],
     capabilities: [
@@ -188,7 +188,7 @@ export const SOLUTION_CONFIGS: Record<Exclude<SolutionId, 'ecosystem' | 'ai-arti
     title: L('把企业能力，', 'Turn Corporate Capability'), highlight: L('变成持续传播的数字 IP', 'Into an Always-On Digital IP'),
     description: L('统一企业代言人、吉祥物、品牌知识与内容生产，为产品、招聘、招商和全球传播服务。', 'Unify corporate avatars, mascots, knowledge and content for products, hiring, partnerships and global communication.'),
     primaryCTA: L('创建企业 IP', 'Create Corporate IP'), accent: '#3b82f6', secondary: '#06b6d4',
-    image: 'https://images.unsplash.com/photo-1497366811353-6870744d04b2?auto=format&fit=crop&w=1800&q=85',
+    image: '/images/solution-corporate-ip.webp',
     audience: [['集团品牌部', 'Corporate Brand', '统一对外形象与品牌口径', 'One consistent public voice'], ['市场团队', 'Marketing Teams', '高频产出产品与活动内容', 'High-frequency product and event content'], ['人力与招商', 'HR & Partnerships', '让招聘与招商宣传更有温度', 'Warmer hiring and partnership stories']],
     heroStats: [['18 种', '语言覆盖', 'Languages'], ['120+', '月均内容产出', 'Monthly Assets'], ['100%', '发布前合规审核', 'Pre-publish Review']],
     capabilities: [
@@ -209,7 +209,7 @@ export const SOLUTION_CONFIGS: Record<Exclude<SolutionId, 'ecosystem' | 'ai-arti
     title: L('让用户不只认识品牌，', 'Go Beyond Brand Awareness.'), highlight: L('更喜欢一个角色', 'Build a Character People Love'),
     description: L('设计品牌角色与产品人格，连接社交内容、剧情营销、联名商品和长期授权。', 'Create brand characters and product personas across social content, storytelling, merchandise and licensing.'),
     primaryCTA: L('创建品牌角色', 'Create Brand Character'), accent: '#14b8a6', secondary: '#22d3ee',
-    image: 'https://images.unsplash.com/photo-1781445113634-794e0280c6dd?auto=format&fit=crop&w=1800&q=85',
+    image: '/images/solution-brand-ip.webp',
     audience: [['消费品牌', 'Consumer Brands', '用角色建立长期情感连接', 'Long-term emotional bonds through a character'], ['新零售', 'New Retail', '门店与线上统一的角色体验', 'One character across stores and online'], ['品牌代理商', 'Brand Agencies', '为客户快速交付角色方案', 'Deliver character programs to clients fast']],
     heroStats: [['+86%', '平均复购提升', 'Repurchase Lift'], ['26 款', '单 IP 联名产品', 'Collabs per IP'], ['5x', '联名投产比', 'Collab ROI']],
     capabilities: [
@@ -230,7 +230,7 @@ export const SOLUTION_CONFIGS: Record<Exclude<SolutionId, 'ecosystem' | 'ai-arti
     title: L('让一座城市，', 'Give Every City'), highlight: L('拥有会表达的数字形象', 'A Digital Voice and Identity'),
     description: L('用城市数字代言人连接景区、非遗、美食、节庆与多语言海外传播。', 'Connect attractions, heritage, food, festivals and global communication through a digital city ambassador.'),
     primaryCTA: L('创建城市 IP', 'Create City IP'), accent: '#22c55e', secondary: '#06b6d4',
-    image: 'https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=1800&q=85',
+    image: '/images/solution-city-ip.webp',
     audience: [['城市文旅', 'City Tourism', '提升城市知名度与游客量', 'More awareness and more visitors'], ['景区集团', 'Attraction Groups', '提供 7×24 智能导览服务', '24/7 AI guided tours'], ['地方文化机构', 'Cultural Institutions', '让地方文化被更多人看见', 'Bring local culture to more people']],
     heroStats: [['7.6亿', '单城最高曝光', 'Top City Impressions'], ['+50%', '游客增长', 'Visitor Growth'], ['12 种', '语言导览', 'Guide Languages']],
     capabilities: [
@@ -251,7 +251,7 @@ export const SOLUTION_CONFIGS: Record<Exclude<SolutionId, 'ecosystem' | 'ai-arti
     title: L('让创始人的思想，', 'Let Founder Insight'), highlight: L('7×24 小时持续传播', 'Communicate 24/7'),
     description: L('将创始人的形象、声音、知识和表达方式转化为可持续运营的企业内容资产。', 'Turn a founder’s image, voice, knowledge and expression into an always-on corporate content asset.'),
     primaryCTA: L('创建数字创始人', 'Create Digital Founder'), accent: '#f59e0b', secondary: '#f97316',
-    image: 'https://images.unsplash.com/photo-1633511069490-76aa4c284518?auto=format&fit=crop&w=1800&q=85',
+    image: '/images/scene-digital-founder.webp',
     audience: [['企业创始人', 'Founders', '没时间拍摄也能持续发声', 'Stay visible without filming'], ['行业专家', 'Industry Experts', '把专业观点规模化传播', 'Scale expert insight'], ['企业品牌部', 'Corporate Brand', '管理创始人对外内容与口径', 'Govern founder messaging']],
     heroStats: [['30 分钟', '完成形象采集', 'Capture Session'], ['7×24h', '持续输出', 'Always On'], ['9 种', '语言表达', 'Languages']],
     capabilities: [
@@ -272,7 +272,7 @@ export const SOLUTION_CONFIGS: Record<Exclude<SolutionId, 'ecosystem' | 'ai-arti
     title: L('让传统文化，', 'Bring Cultural Heritage'), highlight: L('以新的方式被看见', 'Back Into View'),
     description: L('数字化历史人物、文化符号与非遗内容，连接互动叙事、展览、教育和文创开发。', 'Digitize historical figures, symbols and heritage for stories, exhibitions, education and merchandise.'),
     primaryCTA: L('创建文化 IP', 'Create Culture IP'), accent: '#f97316', secondary: '#ef4444',
-    image: 'https://images.unsplash.com/photo-1564399579883-451a5d44ec08?auto=format&fit=crop&w=1800&q=85',
+    image: '/images/solution-culture-ip.webp',
     audience: [['博物馆', 'Museums', '让馆藏走出展柜', 'Take collections beyond the display case'], ['非遗机构', 'Heritage Organizations', '让传统技艺被年轻人看见', 'Reach younger audiences'], ['文创公司', 'Culture Brands', '开发有故事的文创产品', 'Merchandise with a story']],
     heroStats: [['68%', '年轻观众占比', 'Gen Z Audience'], ['8600万', '单 IP 播放', 'Views per IP'], ['42 种', '角色设定', 'Characters']],
     capabilities: [
@@ -293,7 +293,7 @@ export const SOLUTION_CONFIGS: Record<Exclude<SolutionId, 'ecosystem' | 'ai-arti
     title: L('把专业知识，', 'Turn Expertise'), highlight: L('变成会互动的 AI 导师', 'Into an Interactive AI Mentor'),
     description: L('构建专家知识库、数字导师和课程内容，实现讲解、问答、练习与学习分析。', 'Build expert knowledge, digital tutors and courses for explanation, Q&A, practice and analytics.'),
     primaryCTA: L('创建 AI 导师', 'Create AI Tutor'), accent: '#4f46e5', secondary: '#3b82f6',
-    image: 'https://images.unsplash.com/photo-1509062522246-3755977927d7?auto=format&fit=crop&w=1800&q=85',
+    image: '/images/solution-education-ip.webp',
     audience: [['教育机构', 'Education Providers', '扩大优质师资覆盖面', 'Scale your best teachers'], ['知识博主', 'Knowledge Creators', '把内容变成可售卖的课程', 'Turn content into paid courses'], ['企业培训', 'Corporate Learning', '降低员工培训成本', 'Lower training costs']],
     heroStats: [['92%', '课程完成率', 'Completion'], ['24/7', '答疑在线', 'Q&A Online'], ['200+', '单导师课程', 'Courses per Tutor']],
     capabilities: [
@@ -314,7 +314,7 @@ export const SOLUTION_CONFIGS: Record<Exclude<SolutionId, 'ecosystem' | 'ai-arti
     title: L('从一个角色开始，', 'Start With a Character.'), highlight: L('创造可持续扩展的世界', 'Build an Expandable World'),
     description: L('统一角色设定、世界观、漫画、动画、游戏联动与衍生授权，持续扩展内容宇宙。', 'Unify characters, worlds, comics, animation, games and licensing into an expanding content universe.'),
     primaryCTA: L('创建动漫 IP', 'Create Anime IP'), accent: '#8b5cf6', secondary: '#6366f1',
-    image: 'https://images.unsplash.com/photo-1614728263952-84ea256f9679?auto=format&fit=crop&w=1800&q=85',
+    image: '/images/solution-anime-ip.webp',
     audience: [['动画工作室', 'Animation Studios', '缩短前期设定与制作周期', 'Shorter pre-production and production'], ['漫画作者', 'Comic Creators', '提升连载更新效率', 'Faster serialization'], ['游戏团队', 'Game Studios', '获得可延展的角色与剧情', 'Characters and lore that extend']],
     heroStats: [['18 集', '互动番剧', 'Interactive Episodes'], ['64 款', '衍生商品', 'Merch SKUs'], ['3 款', '联动游戏', 'Game Tie-ins']],
     capabilities: [
@@ -335,7 +335,7 @@ export const SOLUTION_CONFIGS: Record<Exclude<SolutionId, 'ecosystem' | 'ai-arti
     title: L('让数字角色，', 'Build Digital Characters'), highlight: L('真正理解并陪伴用户', 'That Understand and Engage'),
     description: L('融合品牌人格、智能对话、情感计算、社群管理和用户洞察。', 'Combine brand personality, conversation, emotion AI, community operations and insight.'),
     primaryCTA: L('创建社交智能体', 'Create Social Agent'), accent: '#06b6d4', secondary: '#2dd4bf',
-    image: 'https://images.unsplash.com/photo-1535378917042-10a22c95931a?auto=format&fit=crop&w=1800&q=85',
+    image: '/images/solution-social-ip.webp',
     audience: [['品牌社群', 'Brand Communities', '让社群 7×24 小时有人回应', 'A community that always gets a reply'], ['会员运营', 'Membership Teams', '提升会员活跃与续费', 'More active members and renewals'], ['智能客服', 'AI Service Teams', '让服务更有温度', 'Service with warmth']],
     heroStats: [['+68%', '社群活跃度', 'Engagement Lift'], ['76%', '次月留存', 'Month-2 Retention'], ['-55%', '服务成本', 'Service Cost']],
     capabilities: [

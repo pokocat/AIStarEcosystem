@@ -544,8 +544,8 @@ export const TALENT_LABELS: Record<keyof TalentProfile, { zh: string; en: string
 export const MOCK_ARTISTS: Artist[] = [
   {
     id: '1', name: 'Neon V', type: 'singer', designStyle: 'cyber_mecha', quality: 'epic', status: 'active', level: 42, exp: 7800, maxExp: 10000,
-    avatar: 'https://images.unsplash.com/photo-1745532665626-09f20c9408dd?w=200&q=80',
-    portrait: 'https://images.unsplash.com/photo-1745532665626-09f20c9408dd?w=900&q=85',
+    avatar: '/images/artist-neon-v.webp',
+    portrait: '/images/artist-neon-v.webp',
     talents: { singing: 88, acting: 32, dancing: 65, hosting: 18, comedy: 22, variety: 45 },
     stats: { songs: 24, dramas: 1, ads: 5, variety: 3, fans: '128K', revenue: '¥452,000', monthlyRevenue: '¥45,200', popularity: 87, views24h: '2.4M', comments24h: '12.8K', liveCommerceGMV: '¥124K', growth7d: 8.2, engagement: 76 },
     createdAt: '2024-01-15', lastActive: '2025-04-14', bio: 'Cyberpunk风格AI歌手，擅长电子音乐和未来感旋律。',
@@ -563,8 +563,8 @@ export const MOCK_ARTISTS: Artist[] = [
   },
   {
     id: '2', name: 'Luna Soft', type: 'idol', designStyle: 'anime', quality: 'legendary', status: 'active', level: 58, exp: 4200, maxExp: 12000,
-    avatar: 'https://images.unsplash.com/photo-1596395463910-3ac2899a5bea?w=200&q=80',
-    portrait: 'https://images.unsplash.com/photo-1596395463910-3ac2899a5bea?w=900&q=85',
+    avatar: '/images/artist-luna-soft.webp',
+    portrait: '/images/artist-luna-soft.webp',
     talents: { singing: 78, acting: 45, dancing: 82, hosting: 38, comedy: 28, variety: 72 },
     stats: { songs: 18, dramas: 3, ads: 12, variety: 8, fans: '326K', revenue: '¥1,280,000', monthlyRevenue: '¥128,000', popularity: 95, views24h: '8.6M', comments24h: '45.2K', liveCommerceGMV: '¥482K', growth7d: 12.4, engagement: 89 },
     createdAt: '2023-11-20', lastActive: '2025-04-15', bio: '顶级偶像型AI艺人，超强粉丝运营力，应援文化引领者。',
@@ -589,8 +589,8 @@ export const MOCK_ARTISTS: Artist[] = [
   },
   {
     id: '3', name: 'Shadow X', type: 'actor', designStyle: 'gothic', quality: 'rare', status: 'active', level: 35, exp: 5600, maxExp: 8000,
-    avatar: 'https://images.unsplash.com/photo-1694877286935-0e7decac9bb1?w=200&q=80',
-    portrait: 'https://images.unsplash.com/photo-1694877286935-0e7decac9bb1?w=900&q=85',
+    avatar: '/images/artist-shadow-x.webp',
+    portrait: '/images/artist-shadow-x.webp',
     talents: { singing: 22, acting: 82, dancing: 18, hosting: 35, comedy: 55, variety: 42 },
     stats: { songs: 2, dramas: 15, ads: 8, variety: 5, fans: '89K', revenue: '¥320,000', monthlyRevenue: '¥32,000', popularity: 72, views24h: '1.8M', comments24h: '9.6K', liveCommerceGMV: '¥56K', growth7d: 4.1, engagement: 64 },
     createdAt: '2024-03-10', lastActive: '2025-04-13', bio: '实力派AI演员，擅长悬疑短剧和情感微电影。',
@@ -599,8 +599,8 @@ export const MOCK_ARTISTS: Artist[] = [
   },
   {
     id: '4', name: 'DJ Spark', type: 'entertainer', designStyle: 'y2k', quality: 'epic', status: 'active', level: 38, exp: 6200, maxExp: 9000,
-    avatar: 'https://images.unsplash.com/photo-1611956425642-d5a8169abd63?w=200&q=80',
-    portrait: 'https://images.unsplash.com/photo-1611956425642-d5a8169abd63?w=900&q=85',
+    avatar: '/images/artist-dj-spark.webp',
+    portrait: '/images/artist-dj-spark.webp',
     talents: { singing: 25, acting: 42, dancing: 30, hosting: 58, comedy: 85, variety: 90 },
     stats: { songs: 5, dramas: 2, ads: 6, variety: 22, fans: '215K', revenue: '¥580,000', monthlyRevenue: '¥58,000', popularity: 88, views24h: '5.2M', comments24h: '28.4K', liveCommerceGMV: '¥218K', growth7d: 9.8, engagement: 82 },
     createdAt: '2024-02-05', lastActive: '2025-04-15', bio: '顶级综艺咖，笑点密集，弹幕互动王者。',
@@ -615,8 +615,8 @@ export const MOCK_ARTISTS: Artist[] = [
   },
   {
     id: '5', name: 'Flex Nova', type: 'dancer', designStyle: 'hyperreal', quality: 'rare', status: 'trainee', level: 22, exp: 3400, maxExp: 5000,
-    avatar: 'https://images.unsplash.com/photo-1761882619891-6529ff92df0a?w=200&q=80',
-    portrait: 'https://images.unsplash.com/photo-1761882619891-6529ff92df0a?w=900&q=85',
+    avatar: '/images/artist-flex-nova.webp',
+    portrait: '/images/artist-flex-nova.webp',
     talents: { singing: 30, acting: 18, dancing: 78, hosting: 12, comedy: 20, variety: 35 },
     stats: { songs: 3, dramas: 0, ads: 2, variety: 4, fans: '45K', revenue: '¥86,000', monthlyRevenue: '¥8,600', popularity: 62, views24h: '680K', comments24h: '3.2K', liveCommerceGMV: '¥18K', growth7d: 15.6, engagement: 58 },
     createdAt: '2024-06-12', lastActive: '2025-04-12', bio: '街舞风格AI舞者，擅长编舞教学和舞台表演。',
@@ -625,8 +625,8 @@ export const MOCK_ARTISTS: Artist[] = [
   },
   {
     id: '6', name: 'MC Flow', type: 'host', designStyle: 'pixel', quality: 'common', status: 'debut', level: 15, exp: 2100, maxExp: 3500,
-    avatar: 'https://images.unsplash.com/photo-1581092787765-e3feb951d987?w=200&q=80',
-    portrait: 'https://images.unsplash.com/photo-1581092787765-e3feb951d987?w=900&q=85',
+    avatar: '/images/artist-mc-flow.webp',
+    portrait: '/images/artist-mc-flow.webp',
     talents: { singing: 18, acting: 28, dancing: 12, hosting: 72, comedy: 38, variety: 55 },
     stats: { songs: 1, dramas: 0, ads: 1, variety: 6, fans: '18K', revenue: '¥32,000', monthlyRevenue: '¥3,200', popularity: 45, views24h: '240K', comments24h: '1.2K', liveCommerceGMV: '¥6K', growth7d: 22.3, engagement: 51 },
     createdAt: '2024-09-01', lastActive: '2025-04-11', bio: '新人AI主持人，声线温暖，控场能力突出。',
@@ -635,8 +635,8 @@ export const MOCK_ARTISTS: Artist[] = [
   },
   {
     id: '7', name: 'Phoenix All', type: 'all_rounder', designStyle: 'chinoiserie', quality: 'legendary', status: 'active', level: 65, exp: 8900, maxExp: 15000,
-    avatar: 'https://images.unsplash.com/photo-1622278802459-7ffa72354cb9?w=200&q=80',
-    portrait: 'https://images.unsplash.com/photo-1622278802459-7ffa72354cb9?w=900&q=85',
+    avatar: '/images/artist-phoenix-all.webp',
+    portrait: '/images/artist-phoenix-all.webp',
     talents: { singing: 72, acting: 68, dancing: 70, hosting: 65, comedy: 60, variety: 75 },
     stats: { songs: 15, dramas: 8, ads: 10, variety: 12, fans: '280K', revenue: '¥960,000', monthlyRevenue: '¥96,000', popularity: 91, views24h: '6.8M', comments24h: '36.8K', liveCommerceGMV: '¥356K', growth7d: 6.5, engagement: 84 },
     createdAt: '2023-08-15', lastActive: '2025-04-15', bio: '传说级全能艺人，跨领域联动王者，无短板的六边形战士。',
@@ -645,8 +645,8 @@ export const MOCK_ARTISTS: Artist[] = [
   },
   {
     id: '8', name: 'Sakura Mist', type: 'idol', designStyle: 'dreamcore', quality: 'rare', status: 'active', level: 28, exp: 4100, maxExp: 6000,
-    avatar: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=200&q=80',
-    portrait: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=900&q=85',
+    avatar: '/images/artist-sakura-mist.webp',
+    portrait: '/images/artist-sakura-mist.webp',
     talents: { singing: 60, acting: 35, dancing: 55, hosting: 28, comedy: 22, variety: 48 },
     stats: { songs: 9, dramas: 1, ads: 4, variety: 6, fans: '96K', revenue: '¥248,000', monthlyRevenue: '¥24,800', popularity: 70, views24h: '1.2M', comments24h: '6.4K', liveCommerceGMV: '¥42K', growth7d: 18.7, engagement: 73 },
     createdAt: '2024-05-08', lastActive: '2025-04-14', bio: '梦核治愈系偶像，柔焦油画质感，治愈无数失眠夜。',
