@@ -11,7 +11,7 @@ import type { DirectorAsset, DirectorAssistantScope, DirectorWork, LibraryObject
 import { addLibraryVersion, createLibraryObject, deleteLibraryObject, editLibraryObject, libraryObjects, mainLibraryVersion, readLibraryObject } from "@/canvas-bridge/asset-library";
 import { DirectorApi, IpStudioApi } from "../api";
 import { AiMark } from "../studio-ai-icon";
-import { useStudioApp } from "../studio-errors";
+import { normalizeStudioError, useStudioApp } from "../studio-errors";
 import { useAssistant } from "./director-assistant";
 import { confirmDirectorAction } from "./director-antd";
 import { AssetRefList } from "./director-asset-studio";
@@ -40,6 +40,23 @@ export function productMentions(work: DirectorWork, asset: DirectorAsset): { epi
     episodes: work.episodes.filter(e => said(e.content) || asset.episodeIds.includes(e.id)).map(e => e.no),
     inDraft: !work.episodes.length && said(work.draft),
   };
+}
+
+const isDesktop = () => document.documentElement.dataset.layout === "desktop";
+
+/** 手机上打开弹窗不把焦点放进输入框：键盘一弹就把商品盖住了，要搜再点。 */
+function libraryFocus(el: HTMLElement | null) {
+  const cleanup = dialogFocus(el);
+  if (el && !isDesktop()) el.focus({ preventScroll: true });
+  return cleanup;
+}
+
+/** 商品库和本剧的这件商品还一样吗：名称、说明变了，或者多了新图，才算有更新。读不到（已删除）是 gone。 */
+export function libraryDiff(asset: DirectorAsset, object: LibraryObject): "same" | "changed" {
+  const keys = new Set(asset.image.candidates.map(m => m.key));
+  const changed = object.name.slice(0, NAME_MAX) !== asset.name || object.description.trim() !== asset.description
+    || object.versions.some(v => !keys.has(v.storageKey));
+  return changed ? "changed" : "same";
 }
 
 function hasScript(work: DirectorWork) {
@@ -101,6 +118,14 @@ function ProductCard({ work, asset, apply, setError, focusClip, goTab, pickEpiso
       failed(setError, `保存「${asset.name}」的植入想法`, "写好的内容还在输入框里，可以再试一次。"));
   };
   const pick = (id: string) => { if (id !== asset.image.adoptedId) void run("adopt", async () => apply(await DirectorApi.edit(work.id, "asset.adopt", asset.id, null, { candidateId: id })), failed(setError, `更换「${asset.name}」的参考图`)); };
+  const [library, setLibrary] = useState<"same" | "changed" | "gone" | null>(null);
+  useEffect(() => {
+    if (!asset.libraryObjectId) return;
+    let live = true;
+    readLibraryObject(asset.libraryObjectId).then(o => { if (live) setLibrary(libraryDiff(asset, o)); })
+      .catch(e => { if (live && normalizeStudioError(e).code === "IP_LIBRARY_NOT_FOUND") setLibrary("gone"); });
+    return () => { live = false; };
+  }, [asset.libraryObjectId, asset.rev]); // eslint-disable-line react-hooks/exhaustive-deps
   const sync = () => void run("sync", async () => { apply(await DirectorApi.edit(work.id, "product.add", null, null, { objectId: asset.libraryObjectId })); setFlash("已更新"); }, failed(setError, `更新「${asset.name}」`, "本剧已有的商品资料和图片不受影响，可以继续使用。"));
   const refs = assetRefs(work, asset.id);
   // 状态行能点：写进了片段就去那个片段，只写进了剧本就去那一集的正文。
@@ -133,9 +158,11 @@ function ProductCard({ work, asset, apply, setError, focusClip, goTab, pickEpiso
     <div className="director-product-body">
       <header>
         <h3 title={asset.name}>{asset.name}</h3>
-        <ProductMenu name={asset.name} busy={!!busy} canEdit={!!asset.libraryObjectId} onEdit={() => onEdit(asset.libraryObjectId!)} onSync={sync} onRemove={remove}/>
+        <ProductMenu name={asset.name} busy={!!busy} canEdit={!!asset.libraryObjectId && library !== "gone"} onEdit={() => onEdit(asset.libraryObjectId!)} onRemove={remove}/>
       </header>
       {asset.description ? <p className="director-product-desc" title={asset.description}>{asset.description}</p> : <p className="director-product-desc is-empty">没有商品说明</p>}
+      {library === "changed" && <button type="button" className="director-product-outdated" disabled={!!busy} onClick={sync}><RefreshCw size={12}/>商品库有更新，点击同步到本剧</button>}
+      {library === "gone" && <p className="director-product-gone">商品库里已删除这件商品，本剧继续使用已添加的内容。</p>}
       <label className="director-product-idea">
         <span>植入想法<em>选填</em>{flash ? <i className="director-product-saved" role="status"><Check size={12}/>{flash}</i> : placement.length > PLACEMENT_MAX - 50 ? <i>{placement.length}/{PLACEMENT_MAX}</i> : null}</span>
         <textarea rows={2} maxLength={PLACEMENT_MAX} value={placement} placeholder="谁在什么情节里怎么用它。不填由 AI 安排" onChange={e => setPlacement(e.target.value)} onBlur={savePlacement}/>
@@ -150,7 +177,7 @@ function ProductCard({ work, asset, apply, setError, focusClip, goTab, pickEpiso
 }
 
 /** 卡片右上角的「更多」。和作品卡片同一种写法：键盘可达，Esc 或焦点离开时收起。 */
-function ProductMenu({ name, busy, canEdit, onEdit, onSync, onRemove }: { name: string; busy: boolean; canEdit: boolean; onEdit: () => void; onSync: () => void; onRemove: () => void }) {
+function ProductMenu({ name, busy, canEdit, onEdit, onRemove }: { name: string; busy: boolean; canEdit: boolean; onEdit: () => void; onRemove: () => void }) {
   const ref = useRef<HTMLDetailsElement>(null);
   const close = (focus: boolean) => { const el = ref.current; if (!el?.open) return; el.open = false; if (focus) el.querySelector("summary")?.focus(); };
   const item = (fn: () => void) => () => { close(true); fn(); };
@@ -159,7 +186,6 @@ function ProductMenu({ name, busy, canEdit, onEdit, onSync, onRemove }: { name: 
     <summary aria-label={`商品 ${name} 的更多操作`} title="更多"><MoreHorizontal size={16}/></summary>
     <div role="menu">
       {canEdit && <button type="button" role="menuitem" onClick={item(onEdit)}><Pencil size={14}/>在商品库编辑</button>}
-      {canEdit && <button type="button" role="menuitem" disabled={busy} onClick={item(onSync)}><RefreshCw size={14}/>从商品库更新</button>}
       <button type="button" role="menuitem" className="director-danger" disabled={busy} onClick={item(onRemove)}><Trash2 size={14}/>从本剧移除</button>
     </div>
   </details>;
@@ -283,7 +309,7 @@ function ProductLibrary({ work, apply, initialEdit, onClose }: { work: DirectorW
   };
   const onDeleted = (id: string) => { setItems(old => old.filter(x => x.id !== id)); setSelected(s => s.filter(x => x !== id)); if (initialEdit) onClose(); else { setEditing(null); setView("list"); } };
   return <div className="director-dialog-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && !adding && close()}>
-    <div className={`director-dialog director-product-library ${view === "form" ? "is-form" : ""}`} role="dialog" aria-modal="true" aria-labelledby="director-product-library-title" ref={dialogFocus} tabIndex={-1}>
+    <div className={`director-dialog director-product-library ${view === "form" ? "is-form" : ""}`} role="dialog" aria-modal="true" aria-labelledby="director-product-library-title" ref={libraryFocus} tabIndex={-1}>
       {view === "form" ? (initialEdit && !editing && !loadError
         ? <div className="director-product-library-loading"><Loader2 size={20} className="ip-loading-icon"/>加载中…</div>
         : <ProductForm key={editing?.id ?? "new"} object={editing} backable={!initialEdit} onBack={back} onClose={close} onDirty={v => { dirty.current = v; }} onSaved={onSaved} onDeleted={onDeleted} usedHere={!!editing && added.has(editing.id)}/>) : <>
@@ -417,7 +443,7 @@ function ProductForm({ object, backable, usedHere, onBack, onClose, onDirty, onS
       </div>
       <div className="director-product-form-fields">
         <label className="director-field"><span>商品名称</span>
-          <input value={name} maxLength={NAME_MAX} onChange={e => setName(e.target.value)} placeholder="例如：恒温保温杯" disabled={saving} autoFocus={!object}/>
+          <input value={name} maxLength={NAME_MAX} onChange={e => setName(e.target.value)} placeholder="例如：恒温保温杯" disabled={saving} autoFocus={!object && isDesktop()}/>
         </label>
         <label className="director-field"><span>商品说明<em>选填</em></span>
           <textarea rows={6} maxLength={DESCRIPTION_MAX} value={description} onChange={e => setDescription(e.target.value)} disabled={saving} placeholder="卖点、外观和用法，例如：316 不锈钢内胆，12 小时保温，磨砂深蓝杯身"/>

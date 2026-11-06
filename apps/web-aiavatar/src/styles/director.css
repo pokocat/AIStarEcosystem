@@ -1241,6 +1241,9 @@ html[data-layout="desktop"] .director-studio-panel { order: 0; overflow-y: auto;
 .director-product-menu > div { top: 32px; min-width: 150px; z-index: 5; }
 .director-product-desc { display: -webkit-box; overflow: hidden; color: var(--ip-muted); font-size: 12px; line-height: 1.7; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .director-product-desc.is-empty { opacity: .7; }
+.director-product-body button.director-product-outdated { display: inline-flex; align-items: center; gap: 5px; align-self: flex-start; padding: 0; border: 0; background: transparent; color: var(--ip-gold); font-size: 12px; font-weight: 600; }
+.director-product-body button.director-product-outdated:hover { text-decoration: underline; text-underline-offset: 3px; }
+.director-product-gone { color: var(--ip-muted); font-size: 12px; line-height: 1.7; }
 .director-product-idea { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .director-product-idea > span { display: flex; align-items: center; font-size: 12px; font-weight: 600; }
 .director-product-idea > span i { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; color: var(--ip-muted); font-size: 11px; font-style: normal; font-weight: 400; font-variant-numeric: tabular-nums; }
@@ -1341,7 +1344,7 @@ html:not([data-layout="desktop"]) .director-product-thumbs button { width: 40px;
 html:not([data-layout="desktop"]) .director-product-menu summary { width: 40px; height: 40px; }
 html:not([data-layout="desktop"]) .director-product-tile-edit { top: auto; right: 2px; bottom: 2px; width: 40px; height: 40px; border: 0; background: transparent; }
 html:not([data-layout="desktop"]) .director-product-tile-pick b, html:not([data-layout="desktop"]) .director-product-tile-pick small { padding-right: 38px; }
-html:not([data-layout="desktop"]) .director-product-body button.director-product-status { min-height: 40px; }
+html:not([data-layout="desktop"]) .director-product-body :is(button.director-product-status, button.director-product-outdated) { min-height: 40px; }
 html:not([data-layout="desktop"]) .director-product-library > header button, html:not([data-layout="desktop"]) .director-product-form-title button { width: 40px; height: 40px; }
 html:not([data-layout="desktop"]) .director-product-form { gap: 14px; }
 .director-preview-asset-img.is-product img { object-fit: contain; }

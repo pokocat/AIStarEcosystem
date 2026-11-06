@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { CommerceStrip, DirectorProducts, productMentions, productStatus } from './director-products';
 import { SettingsPanel } from './director-settings';
 
@@ -19,6 +19,7 @@ vi.mock('../studio-ai-icon', () => ({ AiMark: () => null }));
 vi.mock('./director-asset-studio', () => ({ AssetRefList: () => null }));
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
+beforeEach(() => { lib.readLibraryObject.mockReset(); lib.readLibraryObject.mockResolvedValue(libraryObject('o1', '恒温保温杯', { description: '316 不锈钢内胆', versions: [{ id: 'v1', storageKey: 'k1', url: '/1.png' }, { id: 'v2', storageKey: 'k2', url: '/2.png' }] })); });
 
 const product = (over: any = {}) => ({
   id: 'p1', kind: 'product', name: '恒温保温杯', aliases: ['保温杯'], description: '316 不锈钢内胆', prompt: '', promptCustom: false, episodeIds: [], voice: null, rev: 3, libraryObjectId: 'o1', placement: '',
@@ -107,6 +108,43 @@ test('the status line takes you to where the product is used', () => {
   render(<DirectorProducts {...props(work({ episodes: eps, assets: [p], clips }), { focusClip })}/>);
   fireEvent.click(screen.getByRole('button', { name: '已写进第 2 集 · 用在 1 个片段' }));
   expect(focusClip).toHaveBeenCalledWith({ clipId: 'c1', assetId: 'p1', open: 'assets' });
+});
+
+test('the update link only appears when the library really changed, and syncs when clicked', async () => {
+  const p = product();
+  api.edit.mockResolvedValue(work({ assets: [p] }));
+  const { unmount } = render(<DirectorProducts {...props(work({ assets: [p] }))}/>);
+  await waitFor(() => expect(lib.readLibraryObject).toHaveBeenCalledWith('o1'));
+  await new Promise(r => setTimeout(r));
+  expect(screen.queryByRole('button', { name: /商品库有更新/ })).toBeNull();
+  unmount();
+  lib.readLibraryObject.mockResolvedValue(libraryObject('o1', '恒温保温杯', { description: '316 不锈钢内胆', versions: [{ id: 'v1', storageKey: 'k1' }, { id: 'v2', storageKey: 'k2' }, { id: 'v3', storageKey: 'k3' }] }));
+  render(<DirectorProducts {...props(work({ assets: [p] }))}/>);
+  fireEvent.click(await screen.findByRole('button', { name: /商品库有更新/ }));
+  await waitFor(() => expect(api.edit).toHaveBeenCalledWith('w1', 'product.add', null, null, { objectId: 'o1' }));
+});
+
+test('a product deleted from the library says so and stops offering to edit it', async () => {
+  const { ApiError } = await import('@ai-star-eco/api-client');
+  lib.readLibraryObject.mockRejectedValue(new ApiError({ code: 'IP_LIBRARY_NOT_FOUND', message: '资产或文件夹不存在' }, 404));
+  render(<DirectorProducts {...props(work({ assets: [product()] }))}/>);
+  await screen.findByText(/商品库里已删除这件商品/);
+  expect(within(screen.getByRole('menu', { hidden: true })).queryByRole('menuitem', { name: '在商品库编辑', hidden: true })).toBeNull();
+});
+
+test('on a phone the library opens without popping the keyboard; on desktop the search box takes focus', async () => {
+  lib.libraryObjects.mockResolvedValue({ items: [libraryObject('o2', '香水')], page: 0, total: 1, hasMore: false });
+  const { unmount } = render(<DirectorProducts {...props(work())}/>);
+  fireEvent.click(screen.getByRole('button', { name: '添加商品' }));
+  const dialog = await screen.findByRole('dialog', { name: '商品库' });
+  expect(document.activeElement).toBe(dialog);
+  unmount();
+  document.documentElement.dataset.layout = 'desktop';
+  render(<DirectorProducts {...props(work())}/>);
+  fireEvent.click(screen.getByRole('button', { name: '添加商品' }));
+  await screen.findByRole('dialog', { name: '商品库' });
+  expect(document.activeElement).toBe(screen.getByRole('textbox', { name: '搜索商品' }));
+  delete document.documentElement.dataset.layout;
 });
 
 test('no write button before there is a script', () => {
