@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import i18n from "@/canvas-bridge/i18n";
 import { ImageSettingsTheme } from "@/canvas/components/image-settings-panel";
 import { type CanvasTheme } from "@/canvas/lib/canvas-theme";
-import { clampVideoSeconds, computeVideoSize, inferVideoRatio, parseAspectRatio, parseVideoResolution, readVideoDimensions, VIDEO_SECONDS_MAX, VIDEO_SECONDS_MIN, videoRatioOptions } from "@/canvas/lib/media-size";
+import { computeVideoSize, inferVideoRatio, parseAspectRatio, parseVideoResolution, readVideoDimensions, VIDEO_SECONDS_MAX, VIDEO_SECONDS_MIN, videoRatioOptions } from "@/canvas/lib/media-size";
 import { type AiConfig } from "@/canvas-bridge/config-store";
 import { videoDurationBoundsFor, videoGeometryFor, nativeVideoModelFor } from "@/canvas-bridge/models";
 import { studioVideoModeName } from "@/canvas-bridge/studio-video";
@@ -42,9 +42,10 @@ export function effectiveVideoSeconds(config: Pick<AiConfig, "videoSeconds" | "v
         return {seconds:Math.min(max,Math.max(min,requested)),min,max};
     }
     const bounds = videoDurationBoundsFor(config.model || config.videoModel);
-    const min = Math.max(VIDEO_SECONDS_MIN, bounds?.min ?? VIDEO_SECONDS_MIN);
-    const max = Math.max(min, Math.min(VIDEO_SECONDS_MAX, bounds?.max ?? VIDEO_SECONDS_MAX));
-    const seconds = Math.min(max, Math.max(min, Number(clampVideoSeconds(config.videoSeconds || "6"))));
+    // Local defaults apply only when a bound is unknown; they must not narrow a model's contract.
+    const min = bounds?.min ?? Math.min(VIDEO_SECONDS_MIN, bounds?.max ?? VIDEO_SECONDS_MIN);
+    const max = Math.max(min, bounds?.max ?? VIDEO_SECONDS_MAX);
+    const seconds = boundedVideoSeconds(config.videoSeconds, min, max);
     return { seconds, min, max };
 }
 
@@ -325,11 +326,16 @@ function ResolutionInput({ value, theme, onChange }: { value: string; theme: Can
     );
 }
 
+function boundedVideoSeconds(value: string, min: number, max: number) {
+    const parsed = Number(value);
+    return Math.min(max, Math.max(min, Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 6));
+}
+
 function SecondsInput({ value, min = VIDEO_SECONDS_MIN, max = VIDEO_SECONDS_MAX, theme, onCommit }: { value: number; min?: number; max?: number; theme: CanvasTheme; onCommit: (value: number) => void }) {
     const commit = (input: HTMLInputElement) => {
         // 手输的值也要夹到选中模型能提交的区间里 —— 只夹滑杆不夹输入框，
         // 用户照样能打一个服务端会拒的数字（v0.176）
-        const next = Math.min(max, Math.max(min, Number(clampVideoSeconds(input.value))));
+        const next = boundedVideoSeconds(input.value, min, max);
         input.value = String(next);
         onCommit(next);
     };

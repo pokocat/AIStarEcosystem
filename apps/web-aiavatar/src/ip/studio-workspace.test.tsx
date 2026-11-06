@@ -63,6 +63,27 @@ const openVideo=()=>{fireEvent(window,new CustomEvent('studio-command',{detail:{
 // If a fake-timer test times out under load its finally never runs; never leak fake timers into the next test.
 afterEach(()=>{vi.useRealTimers();cleanup();});
 beforeEach(()=>{vi.resetAllMocks();api.videoModels.mockResolvedValue([]);api.capabilities.mockResolvedValue({mock:false,operations:['video'],videoCost:80,textModels:[{endpointId:'a',name:'文本 A',isDefault:true,tokenPricing:{inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21}}]});api.models.mockResolvedValue({image:[],video:[{endpointId:'model',name:'model',creditCost:80,capability:{minDurationSec:5,maxDurationSec:15}}]});api.download.mockResolvedValue(undefined);api.save.mockResolvedValue('saved');api.project.mockResolvedValue({runsById:{}});api.history.mockResolvedValue({items:[],hasMore:false});api.submit.mockResolvedValue(done);api.read.mockResolvedValue(done);});
+test('canvas duration follows legacy model capabilities and preserves an out-of-range draft after switching',async()=>{
+ api.models.mockResolvedValue({image:[],video:[
+  {endpointId:'long',name:'长视频',isDefault:true,creditCost:80,capability:{minDurationSec:5,maxDurationSec:60}},
+  {endpointId:'short',name:'短视频',creditCost:80,capability:{minDurationSec:5,maxDurationSec:12}},
+ ]});
+ render(<Host initial={{...node,metadata:{status:'idle',prompt:'镜头缓慢推进'}}}/>);
+ await waitFor(()=>expect(api.models).toHaveBeenCalled());openVideo();
+ const panel=await screen.findByRole('dialog',{name:'生成视频'});
+ await waitFor(()=>expect(within(panel).getByRole('spinbutton',{name:'自定义视频时长'}).getAttribute('max')).toBe('60'));
+ fireEvent.click(within(panel).getByRole('radio',{name:'60 秒'}));
+ fireEvent.change(within(panel).getByRole('spinbutton',{name:'自定义视频时长'}),{target:{value:'45'}});
+ await waitFor(()=>expect(snapshot.find(n=>n.id==='v')?.metadata?.studio?.composerDraft?.durationSec).toBe(45));
+ fireEvent.click(within(panel).getByRole('radio',{name:'短视频'}));
+ await waitFor(()=>expect(within(panel).getByRole('spinbutton',{name:'自定义视频时长'}).getAttribute('max')).toBe('12'));
+ expect(within(panel).queryByRole('radio',{name:'60 秒'})).toBeNull();
+ expect((within(panel).getByRole('spinbutton',{name:'自定义视频时长'}) as HTMLInputElement).value).toBe('45');
+ expect(within(panel).getByRole('alert').textContent).toContain('所选模型支持 5–12 秒，现在设置的是 45 秒');
+ fireEvent.click(within(panel).getByRole('button',{name:'改成 12 秒'}));
+ await waitFor(()=>expect(snapshot.find(n=>n.id==='v')?.metadata?.studio?.composerDraft?.durationSec).toBe(12));
+ expect(api.submit).not.toHaveBeenCalled();
+});
 test('plain text editing keeps extraction and body in one panel without a second context toolbar',async()=>{
  const text={...node,type:'text' as never,title:'文字',metadata:{content:'原文',status:'idle' as const}};
  render(<Host initial={text} textEditingNodeId="v" renderTextEditor={(actions:any)=><section role="dialog" aria-label="编辑文字">{actions}<textarea aria-label="节点文字" defaultValue="原文"/></section>}/>);

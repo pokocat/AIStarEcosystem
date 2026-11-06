@@ -20,9 +20,23 @@ test('native duration keeps four common values and accepts a valid custom intege
 });
 test('duration presets obey contract bounds and legacy discrete values never gain free input',()=>{
  const view=render(<StudioDurationControl value={6} min={6} max={10} onChange={()=>{}}/>);
- expect(screen.getAllByRole('radio').map(el=>el.textContent)).toEqual(['8 秒','10 秒']);
+ expect(screen.getAllByRole('radio').map(el=>el.textContent)).toEqual(['6 秒','8 秒','10 秒']);
  view.rerender(<StudioDurationControl value={8} options={[5,8,12]} onChange={()=>{}}/>);
  expect(screen.queryByRole('spinbutton')).toBeNull();expect(screen.getAllByRole('radio').map(el=>el.textContent)).toEqual(['5 秒','8 秒','12 秒']);
+});
+test('duration choices and custom input follow the selected model maximum, including nonstandard bounds',()=>{
+ const change=vi.fn();
+ const view=render(<StudioDurationControl value={8} min={5} max={30} onChange={change}/>);
+ fireEvent.click(screen.getByRole('radio',{name:'30 秒'}));expect(change).toHaveBeenLastCalledWith(30);
+ expect(screen.getByRole('spinbutton').getAttribute('max')).toBe('30');
+ view.rerender(<StudioDurationControl value={8} min={7} max={23} onChange={change}/>);
+ expect(screen.getAllByRole('radio').map(el=>el.textContent)).toEqual(['7 秒','8 秒','10 秒','15 秒','23 秒']);
+ expect(screen.getByRole('spinbutton').getAttribute('max')).toBe('23');
+ view.rerender(<StudioDurationControl value={8} min={5} max={12} onChange={change}/>);
+ expect(screen.queryByRole('radio',{name:'30 秒'})).toBeNull();expect(screen.queryByRole('radio',{name:'15 秒'})).toBeNull();
+ expect(screen.getByRole('radio',{name:'12 秒'})).toBeDefined();
+ view.rerender(<StudioDurationControl value={12} min={12} max={12} onChange={change}/>);
+ expect(screen.getAllByRole('radio')).toHaveLength(1);expect(screen.queryByRole('spinbutton')).toBeNull();
 });
 test('random seed starts folded and empty while an existing fixed seed remains visible in its summary',()=>{
  const view=render(<StudioVideoSeedControl max={100} onChange={()=>{}}/>);

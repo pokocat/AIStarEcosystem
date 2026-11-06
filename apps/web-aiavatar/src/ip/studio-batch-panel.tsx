@@ -16,6 +16,8 @@ import { readRun, type IpModels } from "@/canvas-bridge/api";
 import { submitStudioRun } from "@/canvas-bridge/studio-api";
 import { saveStudioDocument } from "@/canvas-bridge/studio-save";
 import { placeStudioNode } from "@/canvas-bridge/flow-document";
+import { StudioDurationControl } from "./studio-duration-control";
+import { studioDurationIssue } from "@/canvas-bridge/studio-composer-spec";
 
 type Props={projectId:string;nodes:CanvasNodeData[];shots:CanvasNodeData[];setNodes:Dispatch<SetStateAction<CanvasNodeData[]>>;setConnections:Dispatch<SetStateAction<CanvasConnection[]>>;
   models:IpModels;capabilities?:StudioCapabilities;open:boolean;initialNodeId?:string;onClose:()=>void;ratio:string;episodeNo?:number};
@@ -31,7 +33,7 @@ export function StudioBatchPanel({projectId,nodes,shots,setNodes,setConnections,
   const current=saved.find(n=>n.id===activeId),batch=current?.metadata?.studio?.batch||plan;
   const patch=(id:string,update:(node:CanvasNodeData)=>CanvasNodeData)=>setNodes(list=>list.map(n=>n.id===id?update(n):n));
   useEffect(()=>{if(!open||!current)return;let dead=false;for(const s of current.metadata!.studio!.batch!.steps)if(s.runId)void readRun(s.runId).then(r=>{if(!dead)setRunMap(map=>({...map,[s.id]:r}));}).catch(()=>{});return()=>{dead=true;};},[open,activeId]);
-  const prepare=()=>{try{if(!capabilities)return;setPlan(createStudioBatch(shots.filter(s=>selected.includes(s.id)),kind,models,capabilities,batchRatio,duration,episodeNo,{imageModel,videoModel}));setActiveId(undefined);setError("");}catch(e){setError(e);}};
+  const prepare=()=>{try{if(!capabilities)return;if(durationIssue)throw new Error(durationIssue.message);setPlan(createStudioBatch(shots.filter(s=>selected.includes(s.id)),kind,models,capabilities,batchRatio,duration,episodeNo,{imageModel,videoModel}));setActiveId(undefined);setError("");}catch(e){setError(e);}};
   const execute=async(retryFailed=false)=>{
     if(!batch||busy)return;
     const project=projectId;let approval=current;
@@ -83,8 +85,13 @@ export function StudioBatchPanel({projectId,nodes,shots,setNodes,setConnections,
   };
   const allDone=!!batch?.steps.length&&batch.steps.every(s=>runMap[s.id]?.status==="done");
   const video=videoModel?models.video.find(m=>m.endpointId===videoModel):models.video.find(m=>m.isDefault)||models.video[0];
-  const durations=capabilities?.mock?[8]:[5,6,8,10,12,15].filter(v=>(!video?.capability?.minDurationSec||v>=video.capability.minDurationSec)&&(!video?.capability?.maxDurationSec||v<=video.capability.maxDurationSec));
-  useEffect(()=>{if(durations.length&&!durations.includes(duration))setDuration(durations[0]);},[video?.endpointId,capabilities?.mock]);
+  const durationMin=capabilities?.mock?undefined:video?.capability?.minDurationSec??undefined;
+  const durationMax=capabilities?.mock?undefined:video?.capability?.maxDurationSec??undefined;
+  const durations=capabilities?.mock?[8]:[...new Set([5,6,8,10,12,15,durationMin,durationMax])]
+    .filter((v):v is number=>v!=null&&(durationMin==null||v>=durationMin)&&(durationMax==null||v<=durationMax)).sort((a,b)=>a-b);
+  const durationIssue=kind!=="frames"?studioDurationIssue(duration,{min:durationMin,max:durationMax,options:durations}):undefined;
+  // Keep authored seconds on model changes; the visible issue offers an explicit correction.
+  useEffect(()=>{if(capabilities?.mock)setDuration(8);},[capabilities?.mock]);
   return <StudioFloatingPanel title="连续制作" utility open={open} onClose={()=>{stop.current=true;onClose();}} footer={batch?<div className="studio-row-actions"><Button icon={allDone?undefined:<StudioAiIcon/>} title={allDone?undefined:"AI 处理，会消耗积分"} type="primary" loading={busy} disabled={allDone} onClick={()=>void execute()}>{allDone?"计划已完成":current?"继续已确认计划":"确认费用并开始"}</Button><Button disabled={!busy} onClick={()=>{stop.current=true;setError("已请求暂停，当前任务完成后停止后续提交。");}}>暂停后续制作</Button>
           {batch.steps.some(s=>runMap[s.id]?.status==="failed")&&<Button icon={<StudioAiIcon/>} title="AI 处理，会消耗积分" disabled={busy} onClick={()=>void execute(true)}>只重试失败步骤并继续</Button>}</div>:null} width={660}>
     <div className="studio-batch-panel"><p>确认所选镜头、模型与费用后按顺序执行。暂停会停止后续提交，已经受理的任务仍会完成。刷新后请从保存的计划继续。</p>
@@ -92,9 +99,10 @@ export function StudioBatchPanel({projectId,nodes,shots,setNodes,setConnections,
       {!current&&<><Select aria-label="连续制作范围" value={kind} onChange={v=>{setKind(v);setPlan(undefined);}} options={[{value:"frames",label:"生成所选首帧"},{value:"clips",label:"补首帧并生成视频"},{value:"work",label:"补首帧、视频并合成"}]}/>
         {!capabilities?.mock&&<div className="studio-settings-grid"><label>图片模型<Select aria-label="连续制作图片模型" value={imageModel||models.image.find(m=>m.isDefault)?.endpointId||models.image[0]?.endpointId} onChange={v=>{setImageModel(v);setPlan(undefined);}} options={models.image.map(m=>({value:m.endpointId,label:m.name}))}/></label>{kind!=="frames"&&<label>视频模型<Select aria-label="连续制作视频模型" value={videoModel||video?.endpointId} onChange={v=>{setVideoModel(v);setPlan(undefined);}} options={models.video.map(m=>({value:m.endpointId,label:m.name}))}/></label>}</div>}
         <label>画幅<Select aria-label="连续制作画幅" value={batchRatio} onChange={v=>{setBatchRatio(v);setPlan(undefined);}} options={["9:16","16:9","1:1"].map(v=>({value:v,label:v}))}/></label>
-        {kind!=="frames"&&<Select aria-label="连续制作片段时长" value={duration} onChange={v=>{setDuration(v);setPlan(undefined);}} options={durations.map(v=>({value:v,label:`每镜 ${v} 秒`}))}/>}
+        {kind!=="frames"&&<StudioDurationControl value={duration} onChange={v=>{setDuration(v);setPlan(undefined);}} min={durationMin} max={durationMax} options={durations}/>}
+        {durationIssue&&<p role="alert">{durationIssue.message}<Button onClick={()=>{setDuration(durationIssue.fix);setPlan(undefined);}}>改成 {durationIssue.fix} 秒</Button></p>}
         <div className="studio-batch-shots">{shots.map(n=><Checkbox key={n.id} checked={selected.includes(n.id)} onChange={e=>{setSelected(ids=>e.target.checked?[...ids,n.id]:ids.filter(id=>id!==n.id));setPlan(undefined);}}>{n.title}</Checkbox>)}</div>
-        <Button onClick={prepare} disabled={busy||!selected.length||!capabilities}>查看制作计划与费用</Button></>}
+        <Button onClick={prepare} disabled={busy||!selected.length||!capabilities||!!durationIssue}>查看制作计划与费用</Button></>}
       {batch&&<><p className="studio-quote">共 {batch.steps.length} 步 · 最多 {batch.approvedCost} 积分 · {batch.aspectRatio}</p><p>图片模型：{models.image.find(m=>m.endpointId===batch.imageModel)?.name||"测试响应"}；视频模型：{models.video.find(m=>m.endpointId===batch.videoModel)?.name||"测试响应"}</p>
         <ol className="studio-batch-steps">{batch.steps.map(s=><li key={s.id}><strong>{s.title}</strong><span>{s.maxCost} 积分 · {runMap[s.id]?.status==="done"?"已完成":runMap[s.id]?.status==="failed"?"失败":runMap[s.id]?.status==="running"?studioTaskLabel(runMap[s.id]):s.request?"待确认原任务":"待执行"}</span></li>)}</ol>
 </>}

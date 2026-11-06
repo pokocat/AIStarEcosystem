@@ -1015,10 +1015,14 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     .map(id=>{const n=nodes.find(node=>node.id===id);return {storageKey:n?.metadata?.storageKey,mediaType:n?.type===CanvasNodeType.Video?"video" as const:n?.type===CanvasNodeType.Audio?"audio" as const:"image" as const};});
   let videoSettings:StudioRunRequest["video"],videoValidationError:string|undefined;
   if(nativeVideo)try {if(!nativeModeSpec)throw new Error("这个模型不支持所选视频模式，请重新选择");videoSettings=studioVideoSettings(videoDraft.mode,videoDraft.tier,videoAssets,videoDraft.seed,nativeModeSpec,studioVideoPromptMode(nativeVideo.supportsPromptOptimization,videoDraft.keepPrompt));videoValidationError=studioVideoError(nativeVideo,videoSettings,prompt,ratio,duration);}catch(e){videoValidationError=e instanceof Error?e.message:"请确认视频参考素材";}
-  const durationOptions=capabilities?.mock?[8]:nativeVideo?[]:[5,6,8,10,12,15].filter(v=>(!chosenModel?.capability?.minDurationSec||v>=chosenModel.capability.minDurationSec)&&(!chosenModel?.capability?.maxDurationSec||v<=chosenModel.capability.maxDurationSec));
+  // The /models capability also carries effective bounds for non-native video endpoints.
+  const durationMin=capabilities?.mock?undefined:nativeVideo?.contract.minSeconds??chosenModel?.capability?.minDurationSec??undefined;
+  const durationMax=capabilities?.mock?undefined:nativeVideo?.contract.maxSeconds??chosenModel?.capability?.maxDurationSec??undefined;
+  const durationOptions=capabilities?.mock?[8]:[...new Set([5,6,8,10,12,15,durationMin,durationMax])]
+    .filter((v):v is number=>v!=null&&(durationMin==null||v>=durationMin)&&(durationMax==null||v<=durationMax)).sort((a,b)=>a-b);
   // A duration the chosen model cannot do is shown with a one-press fix; it is never clamped behind the user's back
   // (4 秒 said in the conversation used to become the model's minimum or the first preset without a word).
-  const durationIssue=operation==="video"?studioDurationIssue(duration,nativeVideo?{min:nativeVideo.contract.minSeconds,max:nativeVideo.contract.maxSeconds}:{options:durationOptions}):undefined;
+  const durationIssue=operation==="video"?studioDurationIssue(duration,{min:durationMin,max:durationMax,options:durationOptions}):undefined;
   const videoUnitQuote=nativeVideo?studioVideoQuote(nativeVideo,videoSettings||{mode:videoDraft.mode,resolutionTier:videoDraft.tier},duration):chosenModel?chosenModel.creditCost*(chosenModel.billingUnit==="per_second"?duration:1):null;
   const imageUnitCost=chosenModel?.imageResolutionCosts?.[studioImageResolution(selectedImageSize)||""]??chosenModel?.creditCost??capabilities?.imageCost??0;
   const quote=capabilities?.mock?0:operation==="image"?(imageUnitCost*imageCount):operation==="video"?
@@ -1153,7 +1157,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         {imageRatioUnsupported&&<p role="status">当前模型不支持 {ratio}，请选择可用比例。</p>}
         {operation==="image"&&<StudioChoiceGroup<number> compact label="生成数量" ariaLabel="候选数量" value={imageCount} onChange={setImageCount} options={imageBatchCounts.map(value=>({value,label:`${value} 张`}))}/>}
         {operation==="video"&&<StudioChoiceGroup<number> compact label="生成数量" ariaLabel="视频候选数量" value={videoCount} onChange={setVideoCount} options={videoBatchCounts.map(value=>({value,label:`${value} 条`}))}/>}
-        {operation==="video"&&<StudioDurationControl value={duration} onChange={setDuration} min={nativeVideo?.contract.minSeconds} max={nativeVideo?.contract.maxSeconds} options={durationOptions}/>}
+        {operation==="video"&&<StudioDurationControl value={duration} onChange={setDuration} min={durationMin} max={durationMax} options={durationOptions}/>}
         {nativeVideo&&<StudioVideoSeedControl seed={videoDraft.seed} max={nativeVideo.contract.seedMax} count={videoCount} onChange={seed=>changeVideoDraft({...videoDraft,seed})}/>}
         {nativeVideo&&videoValidationError&&!promptTooLong&&<p role="status">{videoValidationError}</p>}
         {legacyVideoError&&<p role="status">{legacyVideoError}</p>}
