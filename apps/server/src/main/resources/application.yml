@@ -102,7 +102,8 @@ aep:
   # §8.0：不存在「未配置就本地伪造 uid / 假身份」的降级路径。
   identity:
     issuer: ${AEP_ID_ISSUER:http://localhost:8090}
-    # 留空则惰性经 <issuer>/.well-known/openid-configuration 发现 jwks_uri（结果进程内缓存）
+    # 留空则经 <issuer>/.well-known/openid-configuration 发现 jwks_uri。
+    # 公钥由后台取、存进库（IdentityJwkCache），账号中心断开时已登录用户照常验签。
     jwks-uri: ${AEP_ID_JWKS_URI:}
     audience: ${AEP_ID_AUDIENCE:aistar-api}
     client-id: ${AEP_ID_CLIENT_ID:aistar-server}

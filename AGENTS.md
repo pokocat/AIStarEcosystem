@@ -183,7 +183,7 @@ pnpm check:api-contract                          # 扫五个子应用 + api-clie
 
 用户要求：改完先合入 `main`，再发布。功能分支完成后合入主线，保留 `main` 已有功能，解决冲突并通过检查；仅从干净的 `main` 构建正式制品。不得从落后于主线的功能分支直接覆盖生产。发布记录须写明构建所用的 `main` 提交、服务范围和线上验收结果。
 
-**重启 server 前先确认账号中心活着**（2026-11-06 事故）：`curl -m 8 https://id.aibuzz.cn/.well-known/openid-configuration` 要 200。校验登录的密钥只存在内存里，账号中心不可达时一重启，所有已登录请求都卡住（比不重启严重得多）。不通就先别发，先查原因。账号中心的负载均衡在阿里云账号 `1603478465921848`，欠费会被锁：`aliyun --profile sms alb GetLoadBalancerAttribute --region cn-hangzhou --LoadBalancerId alb-8lqfxfyvfyitbs3s6r`，看 `LoadBalancerStatus` 和 `LoadBalancerOperationLocks`。
+**重启 server 前先确认账号中心活着**（2026-11-06 事故）：`curl -m 8 https://id.aibuzz.cn/.well-known/openid-configuration` 要 200。2026-11-06 起公钥存库（`IdentityJwkCache`），不通时重启已不会卡住已登录用户，但新登录和换令牌都做不了，发版时分不清问题出在哪。不通就先别发，先查原因。账号中心的负载均衡在阿里云账号 `1603478465921848`，欠费会被锁：`aliyun --profile sms alb GetLoadBalancerAttribute --region cn-hangzhou --LoadBalancerId alb-8lqfxfyvfyitbs3s6r`，看 `LoadBalancerStatus` 和 `LoadBalancerOperationLocks`。
 
 **只发一部分服务时，先查 main 上的契约改动**（2026-10-30 事故）：从 main 只发 server，会把线上那版之后 main 上所有后端改动一起带上。当天 main 上一次看板提交把 `/api/admin/studio-operations` 的 `hourlyOutcomes` 换成了两个新字段、前后端一起改，而发布只发了 server，线上 Studio 后台（10-26 版）读 `hourlyOutcomes.map` 出错，技术看板约一小时打不开，补发 studio-admin 后恢复。发布前跑 `git diff <线上 GIT_SHA> origin/main -- 'apps/server/**/dto/**' specs/openapi.yaml`，有删除或改名的字段，就把读它的前端（五个 web、admin、studio-admin、小程序）一起发，或者先不发。
 
@@ -584,6 +584,7 @@ sau-service…），当依赖**未配置**或**调用失败**时，在生产 pro
 | SMS 验证码 | driver=log 时 mysql profile ERROR 横幅（待运维改 aliyun） | log driver + dev-fixed 双门禁 |
 | 资产存储 CDN | driver=local 时 mysql profile ERROR 横幅（P1） | local fake-CDN（dev 默认） |
 | 支付渠道（v0.94 多渠道）| 渠道启用但机密缺失 → 下单/回调期 503 PAYMENT_CHANNEL_NOT_CONFIGURED（不入账、不回退）；机密走 admin 后台「支付配置」DB（加密），env 仅 bootstrap | shadow 影子渠道 `aep.payment.shadow.enabled`（dev true / mysql false，启用打 ERROR 横幅） |
+| 账号中心验签公钥（2026-11-06） | 账号中心断开时继续用库里最近一份（`identity.jwks-cache`，只有公钥，后台改不了，连上后 5 分钟内更新）；连不上且对不上令牌 → 503 `IDENTITY_UNAVAILABLE`，不回 401、不放行 | 无降级开关 |
 | dev 免密登录 | `aep.dev-auth.enabled` 默认关 | 显式开 |
 | 演示数据 seeder | mysql 默认 `AEP_SEED_DEV_DATA_ENABLED=false` | dev 自动 seed |
 | music 形象锻造成片视频 | v0.60 已随形象锻造入口下线（债务以退役方式清除；遗留数据只读） | — |
@@ -623,6 +624,7 @@ sau-service…），当依赖**未配置**或**调用失败**时，在生产 pro
   据它把方案换成了 `next/script`，而那个方案实测更差。同理：`preview_logs`、
   `journalctl` 都要带时间窗。
 - **数日志也要先确认 grep 能命中**（2026-10-03）：线上日志的级别字段是 `-ERROR`（`%5p` 正好 5 个字符，前面没空格），`grep ' ERROR '` 永远 0 命中，我据此报过一次「重启后 0 条 ERROR」。用 `grep -E ' -ERROR | ERROR [0-9]+ ---'`，并先拿一条已知会打 ERROR 的日志试一下这个 grep。同一天还栽了一次：脚本按名字里带 `server` 自动挑 systemd 单元，挑中的是账号中心 `aistareco-id-server`，查出来 0 ERROR、0 条上游日志，看着全绿。主服务是 `aistareco-server`；本该有 `[upstream-io]` 的时间窗里一条都没有，就是查错了地方。
+- **`dev` profile 下无效令牌也是 200**（2026-11-06）：`DevAutoAuthFilter` 会给没通过校验的请求自动登录种子账号。验证登录、验签时，我拿「退役钥匙的令牌回 200」差点判成验签放行，而前面几轮「断开后重启仍是 200」同样不能算数。在 `dev` 下要核对 `/api/me` 返回的是不是令牌里的那个账号（不是的话落到 `celebrity_operator`），不能只看状态码。
 - **Review reject**：commit message 里写「因为观察到 X 所以改 Y」，但 X 没有对照样本 → reject。
 
 **③ 验证要走到用户屏幕那一步。**

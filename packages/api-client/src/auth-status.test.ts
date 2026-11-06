@@ -54,6 +54,8 @@ describe("statusForMeFailure", () => {
 
   it("刷新令牌时后端不可用 → error（重试屏），不是 unauthenticated", () => {
     expect(statusForMeFailure(refreshUnavailable)).toBe("error");
+    // 账号中心断开、服务端判断不了令牌：令牌可能好好的，不能当成没登录。
+    expect(statusForMeFailure(new ApiError({ code: "IDENTITY_UNAVAILABLE", message: "x" }, 503))).toBe("error");
     // 顺带钉死这条链路的终点：error 态绝不跳登录，只渲染重试屏。
     expect(shouldRedirectToLogin({ status: "error", hasUser: false, isPublicPath: false })).toBe(false);
     expect(shouldRenderRetryScreen({ status: "error", isPublicPath: false })).toBe(true);

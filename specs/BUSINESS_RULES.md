@@ -327,6 +327,7 @@ enterprise → 全部无限制
 | 400 | `INVALID_CONTRACT_TYPE` | 合同类型不合法 |
 | 400 | `INVALID_RIGHTS_SCOPE` | 权利范围为空或不合法 |
 | 401 | `UNAUTHORIZED` | 未登录或 Token 失效 |
+| 503 | `IDENTITY_UNAVAILABLE` | 账号中心连不上，且本地没有能对上这个令牌的公钥。不等于令牌无效：前端保留令牌、显示重试，不跳登录 |
 | 402 | `INSUFFICIENT_CREDITS` | 积分不足 |
 | 403 | `PLAN_LIMIT_EXCEEDED` | 套餐限额超出 |
 | 403 | `MODULE_LOCKED` | 模块未解锁（需升级套餐） |

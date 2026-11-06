@@ -75,6 +75,7 @@ public class PlatformConfigService {
         if (key == null || key.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "configKey 必填");
         }
+        rejectSystemManaged(key);
         if(AiChatTokenPricing.KEY.equals(key))AiChatTokenPricing.validate(value);
         if(AiChatTokenPricing.DIALOGUE_BUDGET_KEY.equals(key))AiChatTokenPricing.validateDialogueBudget(value);
         // 场景目录不管从哪儿改（后台场景页、通用配置页），都过同一道校验。
@@ -122,9 +123,17 @@ public class PlatformConfigService {
     }
 
     public void delete(String key) {
+        rejectSystemManaged(key);
         PlatformConfig c = repo.findByConfigKey(key)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "config not found: " + key));
         repo.delete(c);
+    }
+
+    /** 验签公钥由系统取、系统存：能改它的人就能伪造任何人的令牌，删掉则账号中心断开时没法重启。 */
+    private static void rejectSystemManaged(String key) {
+        if (com.aistareco.aep.identity.IdentityJwkCache.CONFIG_KEY.equals(key)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "该配置由系统维护，不能修改");
+        }
     }
 
     private String serialize(JsonNode value) {

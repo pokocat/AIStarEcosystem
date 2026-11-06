@@ -23,8 +23,8 @@ public class IdentityProperties {
     private String issuer = "";
 
     /**
-     * JWKS 地址显式覆盖。留空时惰性走 {@code <issuer>/.well-known/openid-configuration}
-     * 发现，发现结果进程内缓存。
+     * JWKS 地址显式覆盖。留空时走 {@code <issuer>/.well-known/openid-configuration} 发现，
+     * 见 {@link IdentityJwkCache}。
      */
     private String jwksUri = "";
 
