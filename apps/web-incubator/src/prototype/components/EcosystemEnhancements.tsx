@@ -10,7 +10,7 @@ type VerticalId = keyof typeof SOLUTION_CONFIGS;
 
 const ARTIST_META = {
   accent: '#a855f7',
-  image: 'https://images.unsplash.com/photo-1767661667474-4f2a197c9a51?auto=format&fit=crop&w=1000&q=85',
+  image: '/images/scene-artist-incubation.webp',
   description: { zh: '孵化 AI 艺人，生产音乐、短剧和直播内容，并组建完整的娱乐团队。', en: 'Incubate AI artists across music, drama and live content, with a full entertainment team.' },
   points: [{ zh: '形象、声线与才艺', en: 'Identity, voice and talent' }, { zh: '多领域内容矩阵', en: 'Multi-format content' }, { zh: '粉丝与商业经营', en: 'Fandom and monetization' }],
 };
@@ -122,10 +122,10 @@ const DEMO_TABS = [
 ] as const;
 
 const AVATAR_IMAGES = [
-  'https://images.unsplash.com/photo-1535467728855-93fe6218a7b1?auto=format&fit=crop&w=400&q=80',
-  'https://images.unsplash.com/photo-1613698808499-f772ccb4f527?auto=format&fit=crop&w=400&q=80',
-  'https://images.unsplash.com/photo-1708616748538-bdd66d6a9e25?auto=format&fit=crop&w=400&q=80',
-  'https://images.unsplash.com/photo-1614583225154-5fcdda07019e?auto=format&fit=crop&w=400&q=80',
+  '/images/case-luna-07.webp',
+  '/images/case-lin-qi.webp',
+  '/images/case-mira.webp',
+  '/images/case-erciyuan-moe.webp',
 ];
 
 const DemoScreen = ({ tab, lang }: { tab: typeof DEMO_TABS[number]; lang: Lang }) => {

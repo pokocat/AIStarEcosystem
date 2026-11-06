@@ -62,7 +62,7 @@ interface Product {
 const PRODUCTS: Product[] = [
   {
     id: 'p1', name: '星辰美白精华液', nameEn: 'Star Glow Serum',
-    brand: 'LUMÉ', image: 'https://images.unsplash.com/photo-1571781926291-c477ebfd024b?w=200&q=80',
+    brand: 'LUMÉ', image: '/images/product-serum.webp',
     commission: 18, price: '¥299', quota: 12, takenQuota: 7,
     bonus: '¥50加成', bonusEn: '+¥50', status: 'available',
     platforms: ['抖音', '小红书'],
@@ -71,7 +71,7 @@ const PRODUCTS: Product[] = [
   },
   {
     id: 'p2', name: '赛博蓝牙耳机', nameEn: 'Cyber BT Headphones',
-    brand: 'SoundX', image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=200&q=80',
+    brand: 'SoundX', image: '/images/product-headphones.webp',
     commission: 22, price: '¥599', quota: 8, takenQuota: 8,
     bonus: '', bonusEn: '', status: 'full',
     platforms: ['抖音', 'B站', '快手'],
@@ -80,7 +80,7 @@ const PRODUCTS: Product[] = [
   },
   {
     id: 'p3', name: '潮流眼影盘', nameEn: 'Trendy Eyeshadow',
-    brand: 'ColorPop', image: 'https://images.unsplash.com/photo-1512496015851-a90fb38ba796?w=200&q=80',
+    brand: 'ColorPop', image: '/images/product-eyeshadow.webp',
     commission: 15, price: '¥189', quota: 20, takenQuota: 3,
     bonus: '首单双佣', bonusEn: '2x first order', status: 'available',
     platforms: ['小红书', '视频号', '抖音'],
@@ -89,7 +89,7 @@ const PRODUCTS: Product[] = [
   },
   {
     id: 'p4', name: '人体工学椅垫', nameEn: 'Ergonomic Cushion',
-    brand: 'ErgoLife', image: 'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=200&q=80',
+    brand: 'ErgoLife', image: '/images/product-seat-cushion.webp',
     commission: 12, price: '¥128', quota: 30, takenQuota: 11,
     bonus: '', bonusEn: '', status: 'available',
     platforms: ['B站', '视频号'],
@@ -98,7 +98,7 @@ const PRODUCTS: Product[] = [
   },
   {
     id: 'p5', name: '维C泡腾片', nameEn: 'Vitamin C Tablets',
-    brand: 'HealthPlus', image: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=200&q=80',
+    brand: 'HealthPlus', image: '/images/product-vitamin-c.webp',
     commission: 20, price: '¥89', quota: 50, takenQuota: 12,
     bonus: '新品+¥20', bonusEn: 'New +¥20', status: 'available',
     platforms: ['快手', '抖音'],
@@ -107,7 +107,7 @@ const PRODUCTS: Product[] = [
   },
   {
     id: 'p6', name: '智能保温杯', nameEn: 'Smart Thermos',
-    brand: 'ThermoTech', image: 'https://images.unsplash.com/photo-1602143407151-7111542de6e8?w=200&q=80',
+    brand: 'ThermoTech', image: '/images/product-thermos.webp',
     commission: 16, price: '¥238', quota: 25, takenQuota: 8,
     bonus: '', bonusEn: '', status: 'available',
     platforms: ['抖音', '小红书', '视频号', 'B站', '快手'],
@@ -130,9 +130,9 @@ const MOCK_COPIES = [
 ];
 
 const ARTISTS = [
-  { id: 'a1', name: '霓虹战士', avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&q=80', fans: '128万', revenue: '¥18,400', trend: '+12%' },
-  { id: 'a2', name: '月色柔柔', avatar: 'https://images.unsplash.com/photo-1494790108755-2616b612b47c?w=100&q=80', fans: '86万', revenue: '¥9,200', trend: '+8%' },
-  { id: 'a3', name: 'Zero计划', avatar: 'https://images.unsplash.com/photo-1527980965255-d3b416303d12?w=100&q=80', fans: '43万', revenue: '¥4,800', trend: '-2%' },
+  { id: 'a1', name: '霓虹战士', avatar: '/images/creator-neon-warrior.webp', fans: '128万', revenue: '¥18,400', trend: '+12%' },
+  { id: 'a2', name: '月色柔柔', avatar: '/images/creator-moon-soft.webp', fans: '86万', revenue: '¥9,200', trend: '+8%' },
+  { id: 'a3', name: 'Zero计划', avatar: '/images/creator-zero-project.webp', fans: '43万', revenue: '¥4,800', trend: '-2%' },
 ];
 
 // ── Shared component ──

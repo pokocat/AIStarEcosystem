@@ -40,7 +40,7 @@ export const ArtistProfilePreview = ({ lang, onEnter }: { lang: Lang; onEnter: (
         <div className="grid lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)] gap-6 items-stretch">
           <motion.div initial={{ opacity: 0, y: 24, rotate: -2 }} whileInView={{ opacity: 1, y: 0, rotate: 0 }} viewport={{ once: true }} transition={{ duration: .6 }}
             className="relative rounded-3xl overflow-hidden min-h-[460px] border border-cyan-500/30" style={{ boxShadow: '0 30px 80px rgba(34,211,238,.15)' }}>
-            <img src="https://images.unsplash.com/photo-1535467728855-93fe6218a7b1?auto=format&fit=crop&w=800&q=85" alt="NEON V" className="absolute inset-0 w-full h-full object-cover" />
+            <img src="/images/artist-neon-v.webp" alt="NEON V" className="absolute inset-0 w-full h-full object-cover" />
             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
             <div className="relative h-full p-6 flex flex-col">
               <div className="flex items-center justify-between">
@@ -226,7 +226,7 @@ export const OperationsDashboard = ({ lang }: { lang: Lang }) => {
             <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
               <div className="flex items-center gap-3">
                 <span className="relative p-[2px] rounded-full bg-gradient-to-br from-cyan-400 via-purple-500 to-pink-500">
-                  <img src="https://images.unsplash.com/photo-1535467728855-93fe6218a7b1?auto=format&fit=crop&w=120&q=80" alt="" className="w-11 h-11 rounded-full object-cover border-2 border-black" />
+                  <img src="/images/artist-neon-v.webp" alt="" className="w-11 h-11 rounded-full object-cover border-2 border-black" />
                 </span>
                 <div>
                   <div className="text-base text-white font-bold">NEON V</div>

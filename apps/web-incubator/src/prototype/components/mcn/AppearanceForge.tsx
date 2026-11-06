@@ -45,12 +45,12 @@ interface TemplateItem {
 
 // ---- Mock Data ----
 const TEMPLATES: TemplateItem[] = [
-  { id: 't1', name: { zh: '霓虹偶像', en: 'Neon Idol' }, image: 'https://images.unsplash.com/photo-1587930708915-55a36837263b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjeWJlcnB1bmslMjBuZW9uJTIwcG9ydHJhaXQlMjBmdXR1cmlzdGljfGVufDF8fHx8MTc3NjQxNDc1N3ww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral', tags: ['cyberpunk', 'neon', 'idol'], style: 'neon' },
-  { id: 't2', name: { zh: '暗黑歌姬', en: 'Dark Diva' }, image: 'https://images.unsplash.com/photo-1760493608711-09ead5e0b7ab?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxkYXJrJTIwYWVzdGhldGljJTIwYW5pbWUlMjBzdHlsZSUyMHBvcnRyYWl0fGVufDF8fHx8MTc3NjQxNDc1OHww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral', tags: ['dark', 'gothic', 'singer'], style: 'dark' },
-  { id: 't3', name: { zh: '未来超模', en: 'Future Model' }, image: 'https://images.unsplash.com/photo-1633767448616-85ff30bdb047?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmdXR1cmlzdGljJTIwZmFzaGlvbiUyMG1vZGVsJTIwbmVvbnxlbnwxfHx8fDE3NzY0MTQ3NTh8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral', tags: ['futuristic', 'fashion', 'elegant'], style: 'future' },
-  { id: 't4', name: { zh: '街头叛客', en: 'Street Rebel' }, image: 'https://images.unsplash.com/photo-1642522501650-ff7d99154e98?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjeWJlcnB1bmslMjBzdHJlZXQlMjBzdHlsZSUyMGZhc2hpb258ZW58MXx8fHwxNzc2NDE0NzU5fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral', tags: ['street', 'punk', 'rebel'], style: 'street' },
-  { id: 't5', name: { zh: '全息幻影', en: 'Holo Phantom' }, image: 'https://images.unsplash.com/photo-1764336312138-14a5368a6cd3?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxob2xvZ3JhcGhpYyUyMGRpZ2l0YWwlMjBhcnQlMjBwb3J0cmFpdHxlbnwxfHx8fDE3NzY0MTQ3NjB8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral', tags: ['holographic', 'digital', 'ethereal'], style: 'holo' },
-  { id: 't6', name: { zh: '哥特暗夜', en: 'Gothic Night' }, image: 'https://images.unsplash.com/photo-1762554561321-75a03de93c2f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxnb3RoaWMlMjBkYXJrJTIwZmFzaGlvbiUyMHBvcnRyYWl0fGVufDF8fHx8MTc3NjQxNDc2MHww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral', tags: ['gothic', 'dark', 'mysterious'], style: 'gothic' },
+  { id: 't1', name: { zh: '霓虹偶像', en: 'Neon Idol' }, image: '/images/forge-neon-idol.webp', tags: ['cyberpunk', 'neon', 'idol'], style: 'neon' },
+  { id: 't2', name: { zh: '暗黑歌姬', en: 'Dark Diva' }, image: '/images/forge-dark-diva.webp', tags: ['dark', 'gothic', 'singer'], style: 'dark' },
+  { id: 't3', name: { zh: '未来超模', en: 'Future Model' }, image: '/images/forge-future-model.webp', tags: ['futuristic', 'fashion', 'elegant'], style: 'future' },
+  { id: 't4', name: { zh: '街头叛客', en: 'Street Rebel' }, image: '/images/forge-street-rebel.webp', tags: ['street', 'punk', 'rebel'], style: 'street' },
+  { id: 't5', name: { zh: '全息幻影', en: 'Holo Phantom' }, image: '/images/forge-holo-phantom.webp', tags: ['holographic', 'digital', 'ethereal'], style: 'holo' },
+  { id: 't6', name: { zh: '哥特暗夜', en: 'Gothic Night' }, image: '/images/forge-gothic-night.webp', tags: ['gothic', 'dark', 'mysterious'], style: 'gothic' },
 ];
 
 const HAIR_STYLES = [

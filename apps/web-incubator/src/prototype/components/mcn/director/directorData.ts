@@ -116,12 +116,12 @@ export const fmtDuration = (s = 0) => `${Math.floor(s / 60)}:${String(s % 60).pa
 
 // Images already used elsewhere in the project, reused as "generated" frames.
 export const FRAME_POOL = [
-  'https://images.unsplash.com/photo-1535467728855-93fe6218a7b1?auto=format&fit=crop&w=480&q=70',
-  'https://images.unsplash.com/photo-1613698808499-f772ccb4f527?auto=format&fit=crop&w=480&q=70',
-  'https://images.unsplash.com/photo-1708616748538-bdd66d6a9e25?auto=format&fit=crop&w=480&q=70',
-  'https://images.unsplash.com/photo-1614583225154-5fcdda07019e?auto=format&fit=crop&w=480&q=70',
-  'https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?auto=format&fit=crop&w=480&q=70',
-  'https://images.unsplash.com/photo-1767661667474-4f2a197c9a51?auto=format&fit=crop&w=480&q=70',
+  '/images/case-luna-07.webp',
+  '/images/case-lin-qi.webp',
+  '/images/case-mira.webp',
+  '/images/case-erciyuan-moe.webp',
+  '/images/scene-entrepreneur.webp',
+  '/images/scene-artist-incubation.webp',
 ];
 
 let seq = 0;

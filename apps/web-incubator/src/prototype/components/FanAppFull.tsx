@@ -45,12 +45,12 @@ interface NFTItem {
 }
 
 const TRENDING_ARTISTS: FanArtist[] = [
-  { id: '1', name: 'Neon V', type: 'MIC', avatar: 'https://images.unsplash.com/photo-1561533140-ac0ab494cdda?w=200&q=80', fans: '162K', trending: true, tags: ['Cyberpunk', 'Electro'] },
-  { id: '2', name: 'Luna Soft', type: 'MIC', avatar: 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=200&q=80', fans: '89K', trending: true, tags: ['Lo-Fi', 'Pop'] },
-  { id: '3', name: 'Blade Runner', type: 'ACT', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&q=80', fans: '256K', trending: false, tags: ['Action', 'Sci-Fi'] },
-  { id: '4', name: 'Crystal Flow', type: 'DNC', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&q=80', fans: '128K', trending: true, tags: ['Dance', 'K-Pop'] },
-  { id: '5', name: 'MC Thunder', type: 'HST', avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=200&q=80', fans: '95K', trending: false, tags: ['Variety', 'Comedy'] },
-  { id: '6', name: 'PRISM 7', type: 'IDL', avatar: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=200&q=80', fans: '310K', trending: true, tags: ['Idol', 'All-Round'] },
+  { id: '1', name: 'Neon V', type: 'MIC', avatar: '/images/artist-neon-v.webp', fans: '162K', trending: true, tags: ['Cyberpunk', 'Electro'] },
+  { id: '2', name: 'Luna Soft', type: 'MIC', avatar: '/images/artist-luna-soft.webp', fans: '89K', trending: true, tags: ['Lo-Fi', 'Pop'] },
+  { id: '3', name: 'Blade Runner', type: 'ACT', avatar: '/images/fan-blade-runner.webp', fans: '256K', trending: false, tags: ['Action', 'Sci-Fi'] },
+  { id: '4', name: 'Crystal Flow', type: 'DNC', avatar: '/images/fan-crystal-flow.webp', fans: '128K', trending: true, tags: ['Dance', 'K-Pop'] },
+  { id: '5', name: 'MC Thunder', type: 'HST', avatar: '/images/fan-mc-thunder.webp', fans: '95K', trending: false, tags: ['Variety', 'Comedy'] },
+  { id: '6', name: 'PRISM 7', type: 'IDL', avatar: '/images/fan-prism-7.webp', fans: '310K', trending: true, tags: ['Idol', 'All-Round'] },
 ];
 
 const HOT_TRACKS: TrackItem[] = [

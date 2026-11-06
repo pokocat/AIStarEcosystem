@@ -108,16 +108,16 @@ const MagneticButton = ({ children, onClick, className }: { children: React.Reac
 
 /* ======== Data ======== */
 const DOMAINS = [
-  { icon: Music, zh: '音乐', en: 'Music', descZh: '声音生成 · 数字专辑', descEn: 'Sound generation · Digital albums', color: 'text-cyan-300', accent: 'from-cyan-500/70', image: 'https://images.unsplash.com/photo-1767661667474-4f2a197c9a51?auto=format&fit=crop&w=1200&q=85', featured: true },
-  { icon: Film, zh: '影视', en: 'Film & TV', descZh: 'AI短剧 · 虚拟制片', descEn: 'AI drama · Virtual production', color: 'text-purple-300', accent: 'from-purple-500/70', image: 'https://images.unsplash.com/photo-1790619451922-feced14b555c?auto=format&fit=crop&w=900&q=85' },
-  { icon: ShoppingBag, zh: '商业代言', en: 'Endorsement', descZh: '品牌共创 · 智能植入', descEn: 'Brand co-creation · Smart placement', color: 'text-pink-300', accent: 'from-pink-500/70', image: 'https://images.unsplash.com/photo-1759273622709-bc2c2065fc76?auto=format&fit=crop&w=900&q=85' },
-  { icon: Tv, zh: '综艺节目', en: 'Variety Show', descZh: '虚拟主持 · 互动内容', descEn: 'Virtual hosts · Interactive content', color: 'text-amber-300', accent: 'from-amber-500/70', image: 'https://images.unsplash.com/photo-1768885514740-d64d25ac9a64?auto=format&fit=crop&w=900&q=85' },
-  { icon: Mic, zh: '曲艺表演', en: 'Performing Arts', descZh: '数字传承 · 创新演绎', descEn: 'Digital heritage · New expression', color: 'text-emerald-300', accent: 'from-emerald-500/70', image: 'https://images.unsplash.com/photo-1768885511861-2066fa2b1f88?auto=format&fit=crop&w=900&q=85' },
-  { icon: Star, zh: '舞台表演', en: 'Stage', descZh: '虚拟演唱会 · 沉浸舞台', descEn: 'Virtual concert · Immersive stage', color: 'text-red-300', accent: 'from-red-500/70', image: 'https://images.unsplash.com/photo-1574613551425-9321df582f65?auto=format&fit=crop&w=1200&q=85', featured: true },
-  { icon: Radio, zh: '直播互动', en: 'Live Interaction', descZh: '虚拟直播 · 粉丝实时互动', descEn: 'Virtual livestreams · Real-time fan chat', color: 'text-blue-300', accent: 'from-blue-500/70', image: 'https://images.unsplash.com/photo-1708616748538-bdd66d6a9e25?auto=format&fit=crop&w=900&q=85' },
-  { icon: Gamepad, zh: '游戏娱乐', en: 'Gaming', descZh: '数字角色 · 互动世界', descEn: 'Digital characters · Interactive worlds', color: 'text-indigo-300', accent: 'from-indigo-500/70', image: 'https://images.unsplash.com/photo-1774803684353-36aef53e8de0?auto=format&fit=crop&w=900&q=85' },
-  { icon: Radio, zh: '剧情带货', en: 'Story Commerce', descZh: 'AI剧情 · 商品软植入 · 内容转化', descEn: 'AI stories · Product placement · Conversion', color: 'text-orange-300', accent: 'from-orange-500/70', image: 'https://images.unsplash.com/photo-1551421250-99978a013168?auto=format&fit=crop&w=900&q=85' },
-  { icon: Crown, zh: '数字主理人', en: 'Digital Founder', descZh: '厂牌主理人 · 制作人数字分身', descEn: 'Label founders · Producer avatars', color: 'text-teal-300', accent: 'from-teal-500/70', image: 'https://images.unsplash.com/photo-1633511069490-76aa4c284518?auto=format&fit=crop&w=900&q=85' },
+  { icon: Music, zh: '音乐', en: 'Music', descZh: '声音生成 · 数字专辑', descEn: 'Sound generation · Digital albums', color: 'text-cyan-300', accent: 'from-cyan-500/70', image: '/images/scene-artist-incubation.webp', featured: true },
+  { icon: Film, zh: '影视', en: 'Film & TV', descZh: 'AI短剧 · 虚拟制片', descEn: 'AI drama · Virtual production', color: 'text-purple-300', accent: 'from-purple-500/70', image: '/images/scene-film.webp' },
+  { icon: ShoppingBag, zh: '商业代言', en: 'Endorsement', descZh: '品牌共创 · 智能植入', descEn: 'Brand co-creation · Smart placement', color: 'text-pink-300', accent: 'from-pink-500/70', image: '/images/scene-endorsement.webp' },
+  { icon: Tv, zh: '综艺节目', en: 'Variety Show', descZh: '虚拟主持 · 互动内容', descEn: 'Virtual hosts · Interactive content', color: 'text-amber-300', accent: 'from-amber-500/70', image: '/images/scene-variety.webp' },
+  { icon: Mic, zh: '曲艺表演', en: 'Performing Arts', descZh: '数字传承 · 创新演绎', descEn: 'Digital heritage · New expression', color: 'text-emerald-300', accent: 'from-emerald-500/70', image: '/images/scene-performing-arts.webp' },
+  { icon: Star, zh: '舞台表演', en: 'Stage', descZh: '虚拟演唱会 · 沉浸舞台', descEn: 'Virtual concert · Immersive stage', color: 'text-red-300', accent: 'from-red-500/70', image: '/images/scene-stage.webp', featured: true },
+  { icon: Radio, zh: '直播互动', en: 'Live Interaction', descZh: '虚拟直播 · 粉丝实时互动', descEn: 'Virtual livestreams · Real-time fan chat', color: 'text-blue-300', accent: 'from-blue-500/70', image: '/images/scene-live.webp' },
+  { icon: Gamepad, zh: '游戏娱乐', en: 'Gaming', descZh: '数字角色 · 互动世界', descEn: 'Digital characters · Interactive worlds', color: 'text-indigo-300', accent: 'from-indigo-500/70', image: '/images/scene-gaming.webp' },
+  { icon: Radio, zh: '剧情带货', en: 'Story Commerce', descZh: 'AI剧情 · 商品软植入 · 内容转化', descEn: 'AI stories · Product placement · Conversion', color: 'text-orange-300', accent: 'from-orange-500/70', image: '/images/scene-story-commerce.webp' },
+  { icon: Crown, zh: '数字主理人', en: 'Digital Founder', descZh: '厂牌主理人 · 制作人数字分身', descEn: 'Label founders · Producer avatars', color: 'text-teal-300', accent: 'from-teal-500/70', image: '/images/scene-digital-founder.webp' },
 ];
 
 const STATS = [
@@ -406,7 +406,7 @@ export const HomePage = ({ onEnter, onHome, lang, setLang }: { onEnter: () => vo
             {/* Production command center */}
             <motion.div initial={{ opacity: 0, x: -30 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} whileHover={{ y: -3 }}
               className="md:col-span-8 md:row-span-2 min-h-[520px] border border-cyan-500/20 rounded-3xl overflow-hidden group relative bg-gray-900/60">
-              <img src="https://images.unsplash.com/photo-1651505942687-efc26cb528ba?auto=format&fit=crop&w=1400&q=85" alt={zh ? 'AI 内容生产中枢' : 'AI content production center'} className="absolute inset-0 w-full h-full object-cover opacity-20 group-hover:scale-105 transition-transform duration-1000" />
+              <img src="/images/scene-production-center.webp" alt={zh ? 'AI 内容生产中枢' : 'AI content production center'} className="absolute inset-0 w-full h-full object-cover opacity-20 group-hover:scale-105 transition-transform duration-1000" />
               <div className="absolute inset-0 bg-gradient-to-br from-gray-950/95 via-gray-950/85 to-cyan-950/60" />
               <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(103,232,249,.35) 1px, transparent 0)', backgroundSize: '22px 22px' }} />
 
@@ -511,7 +511,7 @@ export const HomePage = ({ onEnter, onHome, lang, setLang }: { onEnter: () => vo
             {/* Story commerce */}
             <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: .12 }} whileHover={{ y: -4 }}
               className="md:col-span-4 min-h-[252px] border border-orange-500/20 rounded-3xl overflow-hidden group relative">
-              <img src="https://images.unsplash.com/photo-1551421250-99978a013168?auto=format&fit=crop&w=900&q=85" alt={zh ? '剧情带货' : 'Story commerce'} className="absolute inset-0 w-full h-full object-cover opacity-45 group-hover:scale-110 transition-transform duration-700" />
+              <img src="/images/scene-story-commerce.webp" alt={zh ? '剧情带货' : 'Story commerce'} className="absolute inset-0 w-full h-full object-cover opacity-45 group-hover:scale-110 transition-transform duration-700" />
               <div className="absolute inset-0 bg-gradient-to-t from-black via-black/70 to-orange-950/20" />
               <div className="relative h-full p-6 flex flex-col justify-between">
                 <div className="flex items-center justify-between">
@@ -533,7 +533,7 @@ export const HomePage = ({ onEnter, onHome, lang, setLang }: { onEnter: () => vo
             {/* Digital founder */}
             <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: .2 }} whileHover={{ y: -4 }}
               className="md:col-span-4 min-h-[252px] border border-teal-500/20 rounded-3xl overflow-hidden group relative">
-              <img src="https://images.unsplash.com/photo-1633511069490-76aa4c284518?auto=format&fit=crop&w=900&q=85" alt={zh ? '数字创始人' : 'Digital founder'} className="absolute inset-0 w-full h-full object-cover opacity-35 group-hover:scale-110 transition-transform duration-700" />
+              <img src="/images/scene-digital-founder.webp" alt={zh ? '数字创始人' : 'Digital founder'} className="absolute inset-0 w-full h-full object-cover opacity-35 group-hover:scale-110 transition-transform duration-700" />
               <div className="absolute inset-0 bg-gradient-to-t from-black via-black/75 to-teal-950/20" />
               <div className="relative h-full p-6 flex flex-col justify-between">
                 <div className="flex items-center justify-between">
