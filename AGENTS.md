@@ -677,6 +677,8 @@ v0.163：前端手抄了一份 `IpRun`，把 `output` 写成 `outputs`，于是�
 
   2026-10-24 第六种（AI 导演台编剧，聚算 Qwen3.8 27B）：剧本 JSON 写完了、字符串也闭合了，finish=stop，只漏了最外层的 `}`，严格解析判失败、整单退款，用户只看到「这次创作没有完成」。`ModelJson` 现在只在「文本停在一个完整的值上、只缺结尾括号」时补括号，截在字符串中间或逗号、冒号后面照样失败（`ModelJsonTest`）。
 
+  2026-11-06（灵感库示例，线上 Sonnet 真跑）：两处本地全绿、线上第一次真对话就错。其一，`propose_plan` 按模型自己写的 `brief` 重新选方法，出图要求里引用了要印在图上的字，方法就被切到写作，确认卡变成花 110 积分写一段提示词。判据：**模型的转述不是用户的话**，能不能切走方法要看来源（`StudioSkillRouter.planningMethod`：转述不能切到写作，写作只由用户原话决定）。其二，`DialogueCanvasDigest.spec` 只读助手自己写的 `studio.spec`，用户和模板在节点上设的 `size` / `seconds` 模型看不见，16:9 的节点按默认 9:16 报价。判据：给模型的素材概要要读用户能改的那份设置，不只读模型自己写过的。这两处都要真模型才暴露：单测的 brief 是我们自己写的，正好不含这些词。
+
   2026-10-31 第七种（场景页编导，本地 Agnes 2.5 Flash）：要求写「第N镜（起–止 秒）」，模型把「起–止」原样抄进括号、第一镜从 0.5 秒开始，H3 解析器一镜都认不出；要求「第一行写还缺」，它写在了最后一行；「怎么买」的说明里列了几个选项，它挑一个当事实填了。判据补充：格式要给一个照抄就对的例子，不要给带占位词的模板；解析时位置放宽（哪一行都认），内容不放宽；说明文字里不要列可选值，模型会当成答案。真模型输出钉成回归用例（`H3PromptRewriteTest#aRealDirectorScriptFromAgnesIsParsed`）。
   2026-11-05 长视频两处，都是假响应测不到、一真跑就出来的：计划报价用占位 key，带参考素材的视频步骤过不了文件归属校验（`StudioPlanSteps.QUOTE_NODE` 改成按张数算价，`StudioVideoService.planPrice`）；Agnes 3.0 Flash 把 `assets` 字段写了两遍，严格解析判失败、自动重试，而马上重试又撞限流（改成隔约一分钟）。判据补充：报价和提交要用真实服务走一遍，mock 掉 `workflow.quote` 的单测看不出来。
   同类补充（2026-10-24，永久修复已合 main、普通 JAR 未发布；厂商响应 UTC 2026-10-25）：`finish=stop` 的剧本同时出现非法 `\远处` 和缺末尾 `}`。`ModelJson` 可组合恢复汉字前的多余反斜杠、字符串内原始换行 / 制表符、完整值后的尾逗号和末尾括号；合法转义保持原样。未知 ASCII 转义、残缺 Unicode 转义、半截字符串、缺值 / 缺分隔逗号、重复字段和多份 JSON 一律拒绝，不能从残缺数组里截一个对象冒充整份结果。恢复后仍走业务校验；`finish=length` 不进入修复。`StudioWorkflowWorker` 对不能修复的 JSON 保留原异常及上游诊断，以 `AI_BAD_OUTPUT` 明确提示「格式有误，无法自动恢复；本次未扣积分」，释放冻结、不自动重调模型。回归：`ModelJsonTest` / `StudioWorkflowWorkerJsonTest`。
@@ -1387,7 +1389,7 @@ Studio 工作线程默认 24，单个模型的上限看端点配置；图片调�
 
 问答只在全能创作助手里，主区只显示已确认的内容和「生成剧本」，别再加第二个对话框。先确认形式、集数、每集时长、题材和调性（不调模型），再由 AI 问还不清楚的，最多两轮、每轮最多 4 题，可以选「AI 决定」。集数多时第一批写全剧大纲和前几集，`script-more` 接着写。见 `docs/ai-director-assistant.md` §7。状态提示是标题后的标签（`director-status-chip`），不再是整行。AI 图片示例是 `public/studio/scene-demos/*.webp` 的前后对比图：一张杂志式画面，左边纸面上是素材小图，右边是铺满的成片，一根细线相连，不画箭头和卡片；标签在图外、写明示意图；图里的人一律韩系风格，不用外国面孔（用户定）。例句在目录的 `example`。改场景默认效果时要对照这张图，两边别走样。
 
-### 灵感库：开箱即用的官方示例（2026-11-06 代码已生产发布 `20261106-inspiration-library`，main `3c8e01beb`；35 个示例待发布）
+### 灵感库：开箱即用的官方示例（2026-11-06 已生产发布：web-aiavatar `20261106-inspiration-preview`，server `20261106-inspiration-node-spec`，main `1dca58737`；34 个示例已上线）
 
 真源 `docs/studio-inspiration-library.md`。新版导航加「灵感」（`/templates`，默认案例，可筛视频 / 图片）。点开是弹窗不是全屏（`StudioTemplateUse`），预览不显示提示词（用户 2026-11-06 要求，只读画布点开节点也不显示，v0.232 那句「查看节点提示词」作废），点「做同款」才复制并进画布；首页灵感新发布的在前（比日期，同一天的按运营排序）；`onCreated` 现在收的是地址（`studioTemplateCopyHref`），画布里有 `studioStart: 'assistant'` 的节点就打开助手并预填、绑定 `studioSkill`，只填不发。35 条示例的文字在 `scripts/inspiration/catalog.mjs`，用 `scripts/inspiration/publish.mjs` 经现有接口发布（超管令牌，不调模型）。**文字是我们自己写的，不收录 `resources/skills` 里第三方技能的原文。** 条目的约束由 `inspiration-catalog.test.ts` 守着：提示词不写比例时长、不写「做同款 / 复刻」、不出现第三方品牌和模型名。`publishFromProject` 发布实例时不再删文字节点的正文。
 

@@ -1,4 +1,4 @@
-// 本机素材的类型、尺寸和静帧。只有 Node 这一侧用（publish.mjs、serve.mjs）。
+// 本机素材的类型、尺寸和静帧（publish.mjs 用）。
 
 import { execFileSync } from 'node:child_process';
 import { basename, join } from 'node:path';

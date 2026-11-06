@@ -3,7 +3,7 @@ import { studioPromptSpec } from '@/canvas-bridge/studio-composer-spec';
 import { studioBriefNeedsReference } from './studio-entry';
 // @ts-expect-error plain ESM data shared with the publish script (scripts/inspiration/publish.mjs)
 import { INSPIRATIONS, ratioOf } from '../../../../scripts/inspiration/catalog.mjs';
-// @ts-expect-error plain ESM shared between the Node and in-page publish hosts
+// @ts-expect-error plain ESM used by the publish script
 import { buildDoc } from '../../../../scripts/inspiration/publish-core.mjs';
 
 type Item = { id: string; kind: string; name: string; summary: string; ratio: string; seconds?: number; method: string[]; replace: string; prompt: string; request?: string; samples: string[]; hold?: boolean };

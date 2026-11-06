@@ -1,5 +1,5 @@
-// 灵感库示例的发布逻辑（docs/studio-inspiration-library.md）。Node 和浏览器共用，所以这里不碰文件系统：
-// 素材、尺寸和静帧由调用方提供（publish.mjs 从磁盘读，browser.mjs 从本机 serve.mjs 取）。
+// 灵感库示例的发布逻辑（docs/studio-inspiration-library.md）。这里不碰文件系统，素材、尺寸和静帧由
+// publish.mjs 提供，测试也能直接引用 buildDoc。
 //
 // 走的都是现有接口：上传素材 → 建画布 → 存为官方内容 → 设封面和排序 → 删掉中转画布。
 // 编号固定，重复执行是更新同一条，不会多出新条目。不调用任何模型，不扣积分。

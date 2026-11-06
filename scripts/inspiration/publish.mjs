@@ -4,7 +4,6 @@
 //   node scripts/inspiration/publish.mjs --base http://localhost:18181 --skills <resources/skills> [--only id,id] [--dry-run] [--force]
 //
 // 令牌从环境变量 STUDIO_TOKEN 读，必须是超级管理员（发布官方内容的既有要求）。不接受明文账号密码。
-// 手上没有令牌、但浏览器已经用超管登录时，用 serve.mjs：令牌留在页面里，不经过命令行。
 // 发布逻辑和 force 的后果见 publish-core.mjs。
 
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';

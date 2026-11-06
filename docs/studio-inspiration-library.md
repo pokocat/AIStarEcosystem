@@ -35,19 +35,19 @@ STUDIO_TOKEN=<超级管理员令牌> node scripts/inspiration/publish.mjs --base
 ```
 
 - 走现有接口：上传素材 → 建画布 → 存为官方内容（`kind=example`，素材复制到 `ipstudio_demo/<demoId>/`）→ 设封面和排序 → 删中转画布。不调模型，不扣积分。
-手上没有令牌、但普通 Chrome 已经用超管登录时，可以用 `serve.mjs`：本机只提供素材，发布由那个页面自己做，令牌不离开浏览器。Claude 桌面应用的内置浏览器不行：它不让线上页面访问本机（`ERR_BLOCKED_BY_CLIENT`，2026-11-06 实测）。
-
-```bash
-node scripts/inspiration/serve.mjs --skills <resources/skills 目录> --origin https://aistar.aibuzz.cn
-```
+令牌从已用超管登录的 Chrome 控制台取，不写进命令历史（2026-11-06 线上就是这样发的，令牌过期或复制错会报 401）：
 
 ```js
-// 在该站点已登录的页面里，先 dry: true 检查，再去掉；window.__insp.lines 是进度
-const m = await import('http://127.0.0.1:18765/browser.mjs');
-window.__insp = await m.start({ dry: true });
+copy(localStorage.getItem('aistareco.auth.token'))
 ```
 
-- 编号固定（`IPD-insp-<id>`），重复执行不会多出新条目。已发布的默认只更新名称、说明、排序和上下线。`--only a,b` 只发几条，`--dry-run` 只检查文件（页面里是 `only`、`dry`、`force`）。
+```bash
+STUDIO_TOKEN="$(pbpaste)" node scripts/inspiration/publish.mjs --base https://aistar.aibuzz.cn --skills <resources/skills 目录>; pbcopy </dev/null
+```
+
+Claude 桌面应用的内置浏览器不让线上页面读本机文件（`ERR_BLOCKED_BY_CLIENT`），所以不能在已登录的页面里直接发。
+
+- 编号固定（`IPD-insp-<id>`），重复执行不会多出新条目。已发布的默认只更新名称、说明、排序和上下线。`--only a,b` 只发几条，`--dry-run` 只检查文件。
 - **`--force` 才换素材和提示词，线上慎用**：服务端发布时会删掉旧版素材副本，而用户做同款得到的画布引用的正是这些文件，他们画布里的「示例效果」会打不开（我的版本和提示词不受影响）。
 - 排序从 100 起，排在已有官方示例后面；要调整到「官方内容管理」（`/projects/demos`）改，上线下线也在那里。
 - 上传的素材会留在发布账号的资产库「灵感库示例素材」文件夹，发布后可以删掉，示例用的是复制件。
@@ -63,7 +63,12 @@ window.__insp = await m.start({ dry: true });
 - **服务端修复**：`publishFromProject` 发布实例时不分节点类型删 `content`，文字节点的正文也被删了。现在只删媒体节点的（§8.0.1 ⑪）。线上已有的 13 个示例不受影响，它们的文字节点此前就是空的，要补需要重新发布。
 - `previewVideoUrl`、封面、悬停播放沿用 2026-11-04 的实现。视频示例额外传一张中段静帧做封面。
 
-## 验证情况（2026-11-05，本地）
+## 线上状态与验证（2026-11-06）
 
-- 走通：灵感页 → 弹窗 → 做同款 → 画布；助手预填并绑定方法；在「我的版本」上用预填提示词真实出图（Agnes），结果落进该节点并带 AI 标记。
-- 没走通：助手回复用真模型跑到确认卡（本地 Agnes 限流，且不能看图）；视频真实生成（Agnes 视频只有 4 秒文生视频，常年队列满）。请求内容由组件测试覆盖。线上发布后要用真实对话模型各跑一条图片和视频。
+- 35 条已发布，34 条上线，`one-take` 保持下线。
+- 线上用真实模型走通：灵感页 → 弹窗 → 做同款 → 助手预填 → 确认卡 → 生成，结果落进「我的版本」，示例效果不变。
+  - 图片（高点击电商主图）：对话 24 积分 + GPT Image 2.5 37 积分。
+  - 视频（商品宣传短片）：对话 17 积分 + H3 提示词优化和出片 189 积分，出片 1344×768、约 6 秒。确认卡写的 482 是上限，没算限时折扣。
+- 这轮真跑查出两个问题，都已修，见 [对话意图文档](ip-studio-dialogue-intents.md) 末节：方案概述把出图切到了写作；助手看不到节点上的画幅和时长。
+- 没真跑的：其余 32 条的助手回复。按路由规则核对过全部 35 条的要求文字，都不会切到写作；`poster-motion`、`silk-illustration` 的提示词单看会判成出图，模型的概述带上视频字样就不会，切错了也会被方案校验纠正一次（见 TODO）；`xhs-note` 同时要文案和封面，可能走出图。
+
