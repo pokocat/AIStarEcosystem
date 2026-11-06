@@ -98,8 +98,10 @@ jobs:
           node-version: '22'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm typecheck:all
-      - run: pnpm test:all
+      # The shared runner also executes jsdom suites. Running every workspace
+      # simultaneously can starve UI interactions past the unchanged 5s deadline.
+      - run: pnpm -r --workspace-concurrency=1 run typecheck
+      - run: pnpm -r --workspace-concurrency=1 run test
       - run: pnpm check:api-contract
   build-web-incubator:
     runs-on: ubuntu-latest
