@@ -1,0 +1,39 @@
+{
+  "narrow": {
+    "width": 1080,
+    "height": 800,
+    "focusInside": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ],
+    "restored": "打开最近任务"
+  },
+  "mobile": {
+    "width": 390,
+    "height": 844,
+    "focusInside": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ],
+    "restored": "打开最近任务"
+  }
+}

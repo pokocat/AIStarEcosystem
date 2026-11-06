@@ -74,6 +74,8 @@ public class StudioPlanExecutor {
     /** 长视频：一键到底的自动处理和按脚本编提示词（只对带 segmented 状态的执行）。 */
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     private ObjectProvider<StudioSegmentedRun> segmented;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private ObjectProvider<StudioPlanExecutionService> videoTaskExecutions;
     /** D07 / cards: messages the executor posts on its thread (summary, budget raise, compiled production plan). */
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     private ObjectProvider<com.aistareco.aep.ipstudio.dialogue.StudioExecutionMessages> messages;
@@ -153,13 +155,13 @@ public class StudioPlanExecutor {
             case IpPlanExecution.RUNNING -> {
                 if(e.getDeadlineAt()!=null&&now.isAfter(e.getDeadlineAt())) {
                     e.setStatus(IpPlanExecution.PARTIAL);e.setFinishedAt(now);
-                    state.put("needsUserReason","连续制作超过 90 分钟，已停在这里："+progressSummary(state,e.getStage())+"。已受理的任务会继续结算。");
+                    state.put("needsUserReason","这次制作已超出最长等待时间，已停在这里："+progressSummary(state,e.getStage())+"。已受理的任务会继续结算。");
                 } else {
                     if(StudioSegmentedRun.applies(state)&&segmented!=null&&segmented.getIfAvailable()!=null)segmented.getObject().prepare(e,state);
                     next=advanceRunning(e,state,budget,out,after);
                 }
             }
-            case IpPlanExecution.NEEDS_USER -> completeIfResolved(e,state,out,after);
+            case IpPlanExecution.NEEDS_USER -> completeIfResolved(e,state,budget,out,after);
             // Detached when its thread switched method (不锁方法): once nothing is generating any more, it ends quietly.
             case IpPlanExecution.PAUSED -> {
                 if(state.hasNonNull("detachedThreadId")&&e.getInFlight()==0&&!StudioPlanExecutionService.generating(state)) {
@@ -338,6 +340,8 @@ public class StudioPlanExecutor {
                 if(step.path("materials").isArray()&&!step.path("materials").isEmpty())
                     return needsUser(e,state,"「"+step.path("title").asText()+"」停下了："+step.path("reason").asText()
                             +(StudioPlanMaterials.anyOnCanvas(step.path("materials"))?"。可以把它加入这次制作重新编排，或者不用它重新编排。":"。可以不用它重新编排，或结束本次制作。"));
+                if(state.has("videoTask")&&step.path("attempt").asInt(1)>=3)
+                    return needsUser(e,state,"「"+step.path("title").asText()+"」已尝试 3 次，仍未完成。请到画布查看这一步，处理后继续制作。");
                 return needsUser(e,state,"「"+step.path("title").asText()+"」没有完成："+step.path("reason").asText("原因未知")+"。可以继续重试这一步，或结束本次制作。");
             }
             if(PlanState.unresolvedCheck(state,step)) {
@@ -353,7 +357,7 @@ public class StudioPlanExecutor {
             if("pending".equals(status)&&PlanState.dependenciesDone(state,raw)&&PlanState.due(raw,Instant.now())){ready=(ObjectNode)raw;break;}
         }
         if(ready==null) {
-            completeIfResolved(e,state,out,after);
+            completeIfResolved(e,state,budget,out,after);
             return null;
         }
         boolean resubmit="submitted".equals(ready.path("status").asText());
@@ -393,7 +397,7 @@ public class StudioPlanExecutor {
     }
 
     /** Stage end: analysis waits for the production confirmation; production is done once every check is resolved. */
-    private void completeIfResolved(IpPlanExecution e,ObjectNode state,List<Event> out,List<Runnable> after) {
+    private void completeIfResolved(IpPlanExecution e,ObjectNode state,ObjectNode budget,List<Event> out,List<Runnable> after) {
         String stage=e.getStage();
         boolean finished=true,unresolved=false;
         for(JsonNode step:PlanState.stageSteps(state,stage)) {
@@ -403,6 +407,14 @@ public class StudioPlanExecutor {
         }
         if(!finished)return;
         if("analysis".equals(stage)) {
+            if(state.has("videoTask")&&videoTaskExecutions!=null) {
+                var plan=productionPlan(e,state).orElse(null);
+                if(plan!=null) {
+                    try {videoTaskExecutions.getObject().confirmVideoProduction(e,state,budget,plan.runId());}
+                    catch(BusinessException failure) {needsUser(e,state,failure.getMessage());}
+                    return;
+                }
+            }
             boolean announced=state.path("analysisAnnounced").asBoolean(false);
             e.setStatus(IpPlanExecution.NEEDS_USER);
             state.put("needsUserReason","分析已完成，请确认制作方案和预算后开始制作。");
@@ -473,9 +485,10 @@ public class StudioPlanExecutor {
             // A pause/stop between the decision and the submit bumps the lease version, so it never reaches here.
             if(accepted!=null)attach(step,accepted);
             else {
-                step.put("status","needs_user").put("reason",failure.getMessage());step.remove("pendingRequestId");
+                boolean retry=StudioSegmentedRun.applies(state)&&StudioSegmentedRun.retryable(failure.getCode())&&step.path("attempt").asInt(1)<3;
+                step.put("status",retry?"failed":"needs_user").put("reason",failure.getMessage());step.remove("pendingRequestId");
                 if(failure.getCode()!=null)step.put("errorCode",failure.getCode());
-                e.setStatus(IpPlanExecution.NEEDS_USER);
+                e.setStatus(retry?IpPlanExecution.RUNNING:IpPlanExecution.NEEDS_USER);
                 state.put("needsUserReason","「"+step.path("title").asText()+"」没有提交："+failure.getMessage());
             }
             ObjectNode budget=PlanState.parse(mapper,e.getBudgetJson());
@@ -491,6 +504,13 @@ public class StudioPlanExecutor {
 
     /** Compile a step into its native request with real keys from canvas nodes and earlier accepted/successful runs. */
     private RunRequest compile(IpPlanExecution e,ObjectNode state,ObjectNode step,String requestId) {
+        if(state.path("videoTask").path("direct").isObject()) {
+            ObjectNode direct=state.path("videoTask").path("direct").deepCopy();
+            direct.put("clientRequestId",requestId).put("nodeId",StudioPlanExecutionIds.stepNodeId(e.getId(),step))
+                    .put("executionId",e.getId()).put("maxCost",step.path("quotedCost").asLong()).put("stage",e.getStage());
+            direct.set("billing",mapper.valueToTree(billing(e)));
+            return mapper.convertValue(direct,RunRequest.class);
+        }
         JsonNode doc=projects.readDoc(projects.required(e.getOwnerUserId(),e.getProjectId()));
         JsonNode steps=state.path("steps");
         String stage=step.path("stage").asText();

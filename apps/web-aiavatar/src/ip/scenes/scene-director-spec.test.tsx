@@ -11,7 +11,7 @@ import type { IpProject, IpProjectDoc } from "@ai-star-eco/types";
 const SCENES = JSON.parse(readFileSync(join(__dirname, "../../../../server/src/main/resources/ipstudio/scenes.json"), "utf8"));
 
 const api = vi.hoisted(() => ({
-  push: vi.fn(), failure: vi.fn(),
+  push: vi.fn(), failure: vi.fn(), taskStart: vi.fn(), taskGet: vi.fn(),
   uploadImage: vi.fn(), listProjects: vi.fn(), createProject: vi.fn(), updateProject: vi.fn(), getProject: vi.fn(), listScenes: vi.fn(), composeScene: vi.fn(),
   fetchModels: vi.fn(), readRun: vi.fn(), cancelRun: vi.fn(), capabilities: vi.fn(), submit: vi.fn(), importMedia: vi.fn(), videoModels: vi.fn(), signKeys: vi.fn(),
 }));
@@ -24,6 +24,11 @@ vi.mock("../api", () => ({ IpStudioApi: { uploadImage: api.uploadImage, listProj
   listScenes: api.listScenes, composeScene: api.composeScene } }));
 vi.mock("@/canvas-bridge/api", () => ({ fetchModels: api.fetchModels, readRun: api.readRun, cancelRun: api.cancelRun, fetchStudioVideoModels: api.videoModels, signKeys: api.signKeys }));
 vi.mock("@/canvas-bridge/studio-api", () => ({ studioCapabilities: api.capabilities, submitStudioRun: api.submit, importStudioMedia: api.importMedia }));
+vi.mock("@/canvas-bridge/studio-video-tasks", async original => ({ ...await original<any>(),
+  videoTasks: async () => ({ items: [], page: 0, hasMore: false }), videoTask: api.taskGet,
+  videoTaskPrice: async (q: any) => ({ estimated: q.duration * 40, cap: q.duration * 120, segments: [q.duration], boards: 0 }),
+  prepareVideoTask: async (_id: string, request: any) => request, startVideoTask: api.taskStart,
+}));
 vi.mock("@/canvas-bridge/studio-image-file", () => ({ prepareStudioImageUpload: async (f: File) => f }));
 vi.mock("../studio-errors", async importOriginal => ({ ...(await importOriginal<typeof import("../studio-errors")>()), useStudioFailure: () => api.failure, studioErrorMetadata: () => ({}) }));
 vi.mock("../library-reference-picker", () => import("./scene-test-picker"));
@@ -48,6 +53,13 @@ const saves = (id: string) => api.updateProject.mock.calls.filter(c => c[0] === 
 
 beforeEach(() => {
   store.clear();
+  api.taskStart.mockImplementation(async (projectId: string, request: any) => {
+    if (request.kind === 'direct') await api.submit(projectId, request.video);
+    const task = { id: 'PEX-task', projectId, ...request, request, createdAt: '2026-11-06',
+      execution: { id: 'PEX-task', projectId, stage: 'production', status: 'running', budgets: [],
+        steps: [{ id: 'video', title: '生成视频', operation: 'video', status: 'running', stage: 'production', attempt: 1, runIds: [], dependsOn: [] }], updatedAt: '2026-11-06' } };
+    api.taskGet.mockResolvedValue(task); return task;
+  });
   api.listScenes.mockResolvedValue(SCENES);
   api.listProjects.mockImplementation(async () => [...store.values()].map(p => ({ id: p.id, name: p.name, sceneId: p.sceneId, updatedAt: p.updatedAt, createdAt: p.createdAt })));
   api.getProject.mockImplementation(async (id: string) => structuredClone(store.get(id)));
@@ -223,7 +235,7 @@ test("video: a script that says what is still missing shows it, drops that line 
   expect(screen.getByText("你写的 158 脚本里没用上，要加的话跟编导说一声。")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "采用脚本" }));
   expect(text("视频脚本").startsWith("第1镜")).toBe(true);
-  const go = screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement;
+  const go = screen.getByRole("button", { name: "开始制作" }) as HTMLButtonElement;
   await waitFor(() => expect(screen.getByText("还有没填的：购买入口。在上面换成实际内容，用不上的直接删掉。")).toBeTruthy());
   expect(go.disabled).toBe(true);
   fillField(screen.getByRole("textbox", { name: "视频脚本" }), text("视频脚本").replace("【待补：购买入口】", "本视频团购"));

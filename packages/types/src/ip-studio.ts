@@ -127,6 +127,9 @@ export interface IpProjectDoc {
   sceneVideoState?: StudioSceneVideoState;
   /** AI 视频页发起的长视频（新的在前）。进度和结果读 ip_plan_execution，这里只记是哪一次。 */
   sceneSegmented?: import("./ip-studio-workflow").StudioSceneSegmentedRecord[];
+  /** Only unconfirmed submissions. Accepted tasks are read from native executions, never from this document. */
+  sceneVideoSubmissions?: import("./ip-studio-video-task").StudioVideoTaskCreate[];
+  sceneVideoTasks?: string[];
   nodes: IpNode[];
   connections: IpConnection[];
   viewport: IpViewport;

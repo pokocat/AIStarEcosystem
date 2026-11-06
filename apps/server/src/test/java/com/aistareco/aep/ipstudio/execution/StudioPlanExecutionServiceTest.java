@@ -112,6 +112,32 @@ class StudioPlanExecutionServiceTest {
 
     /** A native planning run with a normalized, quoted, fingerprinted plan. */
     /** A plan run that is also the thread's current plan, with its pending card on assistant message {@code msg-<runId>}. */
+    @Test void sceneRecreationContinuesIntoProductionUnderTheOriginalTotalCap() throws Exception {
+        planRun("compiled","production",PRODUCTION,40);
+        var quote=mock(StudioPlanQuoter.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"quoter",quote);
+        ObjectNode state=om.createObjectNode();state.putArray("steps");
+        state.putObject("videoTask").putObject("request").putObject("configuration").put("duration",12).put("ratio","9:16").put("model","ep-h3").put("tier","768p");
+        ObjectNode budget=om.createObjectNode();budget.putObject("analysis").put("approvedCap",200).put("spent",10).put("requestFingerprint","original");
+        var row=IpPlanExecution.builder().id("PEX-scene").projectId("p").ownerUserId("u").stage("analysis").status("running").build();
+        service.confirmVideoProduction(row,state,budget,"compiled");
+        assertEquals("production",row.getStage());assertEquals("running",row.getStatus());
+        assertEquals(10,budget.path("analysis").path("approvedCap").asLong());assertEquals(190,budget.path("production").path("approvedCap").asLong());
+        assertFalse(state.path("steps").isEmpty());verify(quote).quote(eq("u"),any());
+        assertTrue(cards.approved.isEmpty(),"the scene-page cap, not a fabricated dialogue approval, authorized this production");
+    }
+
+    @Test void sceneRecreationStopsBeforeProductionThatExceedsTheConfirmedTotalCap() throws Exception {
+        planRun("compiled","production",PRODUCTION,40);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"quoter",mock(StudioPlanQuoter.class));
+        ObjectNode state=om.createObjectNode();state.putArray("steps");
+        state.putObject("videoTask").putObject("request").putObject("configuration").put("duration",12).put("ratio","9:16").put("model","ep-h3").put("tier","768p");
+        ObjectNode budget=om.createObjectNode();budget.putObject("analysis").put("approvedCap",100).put("spent",10);
+        var row=IpPlanExecution.builder().id("PEX-scene").projectId("p").ownerUserId("u").stage("analysis").status("running").build();
+        assertThrows(BusinessException.class,()->service.confirmVideoProduction(row,state,budget,"compiled"));
+        assertEquals("analysis",row.getStage());assertTrue(state.path("steps").isEmpty());assertFalse(budget.has("production"));
+    }
+
     String currentPlan(String id,String stage,String raw,long... quotes) throws Exception {
         String fp=planRun(id,stage,raw,quotes);
         cards.currentFingerprint=fp;cards.currentRunId=id;
@@ -718,4 +744,26 @@ class StudioPlanExecutionServiceTest {
         assertEquals(List.of("sheet","gone"),compile.path("excludedMaterials").findValuesAsText("nodeId"));
         assertFalse(canvasContext(id).contains("sheet"));
     }
+    @Test void videoPageCannotStartAFourthAttemptByClickingContinue() throws Exception {
+        String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
+        var created=service.create("u","p",analysisRequest(fp,30));
+        var row=rows.get(created.id());
+        var state=(ObjectNode)om.readTree(row.getStepsJson());state.putObject("videoTask").put("kind","recreation");
+        ((ObjectNode)state.path("steps").get(0)).put("status","failed").put("attempt",3).put("errorCode","AI_CALL_FAILED");
+        row.setStepsJson(state.toString());row.setStatus("needs_user");canvasWith("src");
+        assertTrue(assertThrows(BusinessException.class,()->service.resume("u","p",created.id(),new PlanExecutionControlRequest("retry-four",null))).getMessage().contains("3 次"));
+        assertEquals("needs_user",row.getStatus());
+        assertEquals(3,om.readTree(row.getStepsJson()).path("steps").get(0).path("attempt").asInt());
+    }
+
+    @Test void videoPageUnknownAcceptanceStillCannotBeResubmittedAfterResume() throws Exception {
+        String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
+        var created=service.create("u","p",analysisRequest(fp,30));
+        var row=rows.get(created.id());var state=(ObjectNode)om.readTree(row.getStepsJson());state.putObject("videoTask");
+        ((ObjectNode)state.path("steps").get(0)).put("status","failed").put("errorCode","STUDIO_SUBMISSION_UNKNOWN");
+        row.setStepsJson(state.toString());row.setStatus("needs_user");canvasWith("src");
+        assertTrue(assertThrows(BusinessException.class,()->service.resume("u","p",created.id(),new PlanExecutionControlRequest("retry-unknown",null))).getMessage().contains("不能重复生成"));
+        assertEquals("needs_user",row.getStatus());
+    }
+
 }

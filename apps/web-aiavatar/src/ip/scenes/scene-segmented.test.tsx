@@ -28,6 +28,18 @@ vi.mock("@/canvas-bridge/signed-video", () => ({ SignedVideo: ({ src, "aria-labe
 vi.mock("../studio-errors", async original => ({ ...(await original<typeof import("../studio-errors")>()), useStudioFailure: () => api.failure, studioErrorMetadata: () => ({}) }));
 vi.mock("../library-reference-picker", () => import("./scene-test-picker"));
 vi.mock("../studio-select", () => ({ StudioSelect: () => null }));
+const acceptedTasks = new Map<string, any>();
+vi.mock('@/canvas-bridge/studio-video-tasks', async original => ({ ...(await original<typeof import('@/canvas-bridge/studio-video-tasks')>()),
+  videoTasks: async () => ({ items: [], page: 0, hasMore: false }),
+  videoTaskPrice: async () => ({ ...PRICE, cap: PRICE.estimated * 3 }),
+  prepareVideoTask: async (_id: string, request: any) => ({ ...request, billing: { mode: 'personal' } }),
+  startVideoTask: async (projectId: string, request: any) => {
+    const execution = await api.start(projectId, request.configuration);
+    const task = { id: execution.id, projectId, sceneId: request.sceneId, title: request.title, kind: request.kind, input: request.input, request, execution, createdAt: execution.startedAt };
+    acceptedTasks.set(task.id, task); return task;
+  },
+  videoTask: async (id: string) => ({ ...acceptedTasks.get(id), execution: await api.getExecution() }),
+}));
 import { SceneVideoStudio } from "./scene-video-studio";
 
 const limit = (mediaType: string, maxCount: number) => ({ mediaType, maxCount, maxBytes: 1, formats: [], minDurationSec: null, maxDurationSec: null });
@@ -53,7 +65,7 @@ const execution = (status: StudioPlanExecution["status"], steps: StudioPlanExecu
     budgets: [{ stage: "production", approvedCap: 2290, autoFixCap: 266, spent: 120, inFlight: 0, remaining: 2170 }], startedAt: "2026-11-05T00:00:00Z", deadlineAt: "2026-11-05T03:00:00Z", updatedAt: "2026-11-05T00:01:00Z", ...extra });
 
 beforeEach(() => {
-  store.clear();
+  store.clear(); acceptedTasks.clear(); sessionStorage.clear();
   localStorage.clear();
   api.listScenes.mockResolvedValue(SCENES);
   api.listProjects.mockImplementation(async () => [...store.values()].map(p => ({ id: p.id, name: p.name, sceneId: p.sceneId, updatedAt: p.updatedAt, createdAt: p.createdAt })));
@@ -65,6 +77,7 @@ beforeEach(() => {
   api.capabilities.mockResolvedValue({ mock: false, operations: [], imageCost: 8, textCost: 1, videoCost: null, textModels: [{ endpointId: "text", name: "Text", isDefault: true, supportsVision: true, tokenPricing: { maxCost: 21 } }] });
   api.videoModels.mockResolvedValue([H3]);
   api.price.mockResolvedValue(PRICE);
+  api.signKeys.mockResolvedValue({});
   api.start.mockResolvedValue(execution("running", [step("script", "text", "running")]));
   api.getExecution.mockResolvedValue(execution("running", [step("script", "text", "running"), step("review", "text", "pending"), step("b1", "image", "pending"), step("v1", "video", "pending"), step("film", "assemble", "pending")]));
   api.signKeys.mockResolvedValue({});
@@ -78,15 +91,15 @@ async function open() {
   window.history.replaceState(null, "", "/video?scene=ecom-talking&draft=IPP-V");
   await act(async () => { render(<SceneVideoStudio/>); });
 }
-const go = () => screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement;
-const records = () => store.get("IPP-V")!.doc.sceneSegmented ?? [];
+const go = () => screen.getByRole("button", { name: "开始制作" }) as HTMLButtonElement;
+const records = () => store.get("IPP-V")!.doc.sceneVideoSubmissions ?? [];
 
 test("longer than one segment: the button generates, says how it splits and what it costs, and is not a hand-off", async () => {
   longDraft();
   await open();
   await screen.findByText(/这个模型单段最长 15 秒，40 秒分 3 段（15 \+ 15 \+ 10）/);
-  await waitFor(() => expect(go().textContent).toContain("约 1,624 积分"));
-  expect(screen.getByText(/写脚本、审核和提示词优化按实际用量另扣，整条最多 2,290 积分/)).toBeTruthy();
+  await waitFor(() => expect(go().textContent).toContain(`约 ${PRICE.estimated.toLocaleString("zh-CN")} 积分`));
+  expect(screen.getByText(new RegExp(`本次最多 ${(PRICE.estimated * 3).toLocaleString("zh-CN")} 积分`))).toBeTruthy();
   expect(screen.queryByRole("button", { name: "交给创作助手" })).toBeNull();
   expect(api.price).toHaveBeenLastCalledWith(expect.objectContaining({ model: "ep-h3", tier: "768p", duration: 40, ratio: "9:16", images: 1, character: false, voice: false }), expect.anything());
 });
@@ -98,17 +111,17 @@ test("one click: the request is saved before it is sent, then the row follows th
   await open();
   await waitFor(() => expect(go().disabled).toBe(false), { timeout: 5000 });
   fireEvent.click(go());
-  await waitFor(() => expect(records()[0]?.executionId).toBe("PEX-1"));
+  await waitFor(() => expect(store.get("IPP-V")!.doc.sceneVideoTasks).toContain("PEX-1"));
   expect(savedFirst).toBe(true);
   const [projectId, request] = api.start.mock.calls[0];
   expect(projectId).toBe("IPP-V");
-  expect(request).toMatchObject({ sceneId: "ecom-talking", text: "保湿精华，讲清楚卖点", hasScript: false, duration: 40, ratio: "9:16", model: "ep-h3", tier: "768p", budgetCap: 2290,
+  expect(request).toMatchObject({ sceneId: "ecom-talking", text: "保湿精华，讲清楚卖点", hasScript: false, duration: 40, ratio: "9:16", model: "ep-h3", tier: "768p", budgetCap: PRICE.estimated * 3,
     materials: [{ nodeId: "product", title: expect.any(String), slot: "image" }] });
   expect(api.push).not.toHaveBeenCalled();
-  expect(await screen.findByText("写分镜脚本")).toBeTruthy();
-  expect(screen.getByText("合成成片")).toBeTruthy();
-  expect(screen.getByRole("button", { name: "暂停" })).toBeTruthy();
-  expect(screen.getByRole("button", { name: "停止" })).toBeTruthy();
+  expect(await screen.findByText("正在整理分镜")).toBeTruthy();
+  expect(screen.getByText("合成视频")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "暂停" })).toBeNull();
+  expect(screen.getByRole("button", { name: "停止制作" })).toBeTruthy();
 });
 
 test("a refused start leaves no row and says why; the page keeps what was written", async () => {
@@ -132,7 +145,7 @@ test("an unknown outcome keeps the row: checking again sends the same request id
   expect(records()).toHaveLength(1);
   const first = api.start.mock.calls[0][1].clientRequestId;
   fireEvent.click(confirm);
-  await waitFor(() => expect(records()[0].executionId).toBe("PEX-1"));
+  await waitFor(() => expect(store.get("IPP-V")!.doc.sceneVideoTasks).toContain("PEX-1"));
   expect(api.start.mock.calls[1][1].clientRequestId).toBe(first);
 });
 
@@ -168,4 +181,15 @@ test('reopening a canvas-saved draft restores its long-video status from native 
   expect(api.getExecution).toHaveBeenCalledWith('IPP-V', 'PEX-1');
   expect(api.start).not.toHaveBeenCalled();
   expect(api.submit).not.toHaveBeenCalled();
+});
+
+test('entering bare video page restores its last selected task after scene defaults load', async () => {
+  longDraft(); sessionStorage.setItem('studio:video:selected-task', 'PEX-return');
+  acceptedTasks.set('PEX-return', { id: 'PEX-return', projectId: 'IPP-V', sceneId: 'ecom-talking', title: '上次制作', kind: 'segmented', createdAt: '2026-11-06', input: { sceneVideoState: { text: '原来的要求', duration: 40, ratio: '9:16', options: {} }, nodes: [] } });
+  api.getExecution.mockResolvedValue(execution('running', [step('script', 'text', 'running')], { id: 'PEX-return' }));
+  window.history.replaceState(null, '', '/video');
+  await act(async () => { render(<SceneVideoStudio/>); });
+  await waitFor(() => expect(window.location.search).toContain('task=PEX-return'));
+  expect(await screen.findByRole('region', { name: '本次设置' })).toBeTruthy();
+  expect(api.start).not.toHaveBeenCalled();
 });

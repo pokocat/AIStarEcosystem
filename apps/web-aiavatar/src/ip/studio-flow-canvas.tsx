@@ -1,4 +1,5 @@
 'use client';
+import { CanvasVideoTask } from './canvas-video-task';
 import { useStudioApp, StudioErrorNotice, studioNodeError } from './studio-errors';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type Dispatch, type SetStateAction, type SyntheticEvent } from 'react';
 import { ReactFlow, ReactFlowProvider, Background, BackgroundVariant, Handle, Position, NodeResizer, MiniMap, SelectionMode,
@@ -655,6 +656,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
       // The inserted result survives a save failure; closing the editor prevents re-uploading it on retry.
       try { await saveStudioDocument(projectId); } catch (e) { message.error(e instanceof Error ? `${e.message}；编辑结果已保留，可按 Ctrl/Cmd+S 重试保存` : '编辑结果已保留，请重试保存画布'); }
     }}/>
+    <CanvasVideoTask projectId={projectId}/>
     <Modal title="重命名节点" open={!!named} onCancel={() => setRenameId(undefined)} footer={<Button type="primary" onClick={() => setRenameId(undefined)}>完成</Button>} getContainer={modalContainer}>
       <Input aria-label="节点名称" value={named?.title || ''} maxLength={128} onChange={e => setNodes(old => old.map(n => n.id === renameId ? { ...n, title: e.target.value } : n))}/>
     </Modal>

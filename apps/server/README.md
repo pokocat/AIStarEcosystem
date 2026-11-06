@@ -1371,3 +1371,7 @@ Studio 图片报价为 `POST /api/v1/ip-studio/projects/{id}/{image-quote|studio
 ## 微信 Native 扫码充值（2026-10-30，已生产发布 `20261030-studio-wechat-pay`，微信渠道待商户开通后启用）
 
 `PaymentChannelConfigService` 接收成对的 `publicKeyId/publicKey`，`WechatPaymentGateway` 优先使用 SDK 公钥模式，未提供公钥时兼容旧平台证书模式。微信未知下单结果保留关联和原 PENDING 订单，同套餐订单不允许切换渠道；查单补金额/流水验证，微信回调补商户/AppID/渠道验证。微信取消/驳回/超时先关渠道单，失败保留本地状态，过期单仍参加查单。无新 API/迁移；军师商户权限阻塞与资料映射见 [接入手册](../../docs/runbooks/studio-wechat-ai-pilot.md)。
+
+### Studio 视频页任务（2026-11-06，本地实现，未发布）
+
+`StudioVideoTaskService` 复用原生执行表与模型生成链，对普通视频、分段长视频与复刻提供统一报价、受理、列表和详情。元数据保存在 `ip_plan_execution.steps_json.videoTask`，无新表或独立计费账本；旧任务通过只读投影兼容。复刻分析完成后在已批准的总费用上限内动态接续制作。新视频页步骤总共最多自动尝试三次；不明受理和原文保留不能触发盲目重做。画布修复成功后，明确继续可采纳同一输出节点的本人成功任务，并保留已有成功步骤。契约见 OpenAPI 的 `video-tasks` 与 `specs/BUSINESS_RULES.md`。

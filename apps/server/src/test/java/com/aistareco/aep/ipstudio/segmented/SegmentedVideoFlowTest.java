@@ -167,7 +167,7 @@ class SegmentedVideoFlowTest {
         executor.advance(row.getId());
     }
 
-    @Test void priceSaysHowManySegmentsAndAllowsOneBoardRedoInTheCap() {
+    @Test void priceSaysHowManySegmentsAndAllowsThreeAttemptsInTheCap() {
         var price = service.price("u", null, null, 46, "9:16", 0, false, false, true);
         assertEquals(List.of(15, 15, 11, 5), price.segments());
         assertEquals(4, price.boards());
@@ -175,7 +175,7 @@ class SegmentedVideoFlowTest {
         assertEquals(32, price.boardCost());
         // 脚本 + 审核 + 4 次检查按文字上限；上限再加每张分镜图和检查各一次。
         assertEquals(3600 + 32 + 70 * 6, price.estimated());
-        assertEquals(price.estimated() + 32 + 70 * 4, price.cap());
+        assertEquals(price.estimated() * 3, price.cap());
     }
 
     @Test void theVideoPriceDoesNotCountThePromptRewriteTwice() {
@@ -290,7 +290,7 @@ class SegmentedVideoFlowTest {
         assertEquals(IpPlanExecution.DONE, row.getStatus());
     }
 
-    @Test void aFailedReviewFallsBackToTheOriginalScriptAfterOneRetry() {
+    @Test void aFailedReviewFallsBackToTheOriginalScriptAfterThreeAttempts() {
         start(30);
         String id = row.getId();
         finish(last(), textOutput(script(4, 4)));
@@ -302,6 +302,9 @@ class SegmentedVideoFlowTest {
         assertEquals(review.nodeId(), retry.nodeId());
         assertNotEquals(review.clientRequestId(), retry.clientRequestId());
         fail(retry, "AI_CALL_FAILED");
+        executor.advance(id);
+        assertEquals("text", last().operation());
+        fail(last(), "AI_CALL_FAILED");
         executor.advance(id);
         assertEquals(IpPlanExecution.RUNNING, row.getStatus());
         assertEquals("image", last().operation());
@@ -325,7 +328,7 @@ class SegmentedVideoFlowTest {
         assertEquals(2, submitted.size());
     }
 
-    @Test void aVideoThatFailsIsRetriedOnceThenWaitsAndNoFilmIsMadeFromMissingSegments() {
+    @Test void aVideoThatFailsTriesThreeTimesThenWaitsWithoutAssemblingMissingSegments() {
         vision = false;
         start(30);
         String id = row.getId();
@@ -347,6 +350,10 @@ class SegmentedVideoFlowTest {
         assertEquals(clips.get(1).nodeId(), retry.nodeId());
         fail(retry, "STUDIO_VIDEO_FAILED");
         executor.advance(id);
+        assertEquals("video", last().operation());
+        assertNotEquals(retry.clientRequestId(), last().clientRequestId());
+        fail(last(), "STUDIO_VIDEO_FAILED");
+        executor.advance(id);
         assertEquals(IpPlanExecution.NEEDS_USER, row.getStatus());
         assertTrue(submitted.stream().noneMatch(r -> "assemble".equals(r.operation())));
         assertEquals("done", step("v1").path("status").asText());
@@ -356,7 +363,7 @@ class SegmentedVideoFlowTest {
         vision = false;
         var price = service.price("u", null, null, 30, "9:16", 0, false, false, true);
         assertFalse(price.boardReview());
-        assertEquals(price.estimated() + 16, price.cap());
+        assertEquals(price.estimated() * 3, price.cap());
     }
 
     @Test void refusedForGoodDoesNotRetry() {

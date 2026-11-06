@@ -305,7 +305,7 @@ public class SegmentedVideoService {
         }
         List<Integer> segments = built.segments().stream().map(SegmentedPlan.Segment::seconds).toList();
         long estimated = built.plan().path("budget").path("estimated").asLong();
-        return new SegmentedVideoPrice(segments, boards, built.review(), video, board, text, estimated, Math.addExact(estimated, redo));
+        return new SegmentedVideoPrice(segments, boards, built.review(), video, board, text, estimated, Math.multiplyExact(estimated, 3));
     }
 
     private static BusinessException invalid(String message) {

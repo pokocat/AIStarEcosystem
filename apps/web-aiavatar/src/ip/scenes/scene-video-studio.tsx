@@ -17,6 +17,9 @@ import { SignedVideo } from "@/canvas-bridge/signed-video";
 import { getStudioPlanExecution } from "@/canvas-bridge/studio-plan-execution";
 import type { StudioPlanExecution, StudioSegmentedVideoPrice, StudioSegmentedVideoRequest } from "@ai-star-eco/types/ip-studio-workflow";
 import { segmentedRecords, segmentedVideoPrice, startSegmentedVideo, type SegmentedRecord } from "@/canvas-bridge/studio-segmented";
+import type { StudioVideoTask, StudioVideoTaskCreate, StudioVideoTaskKind, StudioVideoTaskQuote } from '@ai-star-eco/types/ip-studio-video-task';
+import { startVideoTask, prepareVideoTask, videoTaskPrice } from '@/canvas-bridge/studio-video-tasks';
+import { SceneVideoWorkspace, VideoTaskSettings, VIDEO_TASK_SELECTION } from './scene-video-workspace';
 import { SegmentedRow } from "./scene-segmented-row";
 import { studioCapabilities, submitStudioRun } from "@/canvas-bridge/studio-api";
 import { attachmentNode } from "@/canvas-bridge/studio-attachments";
@@ -92,6 +95,8 @@ export function SceneVideoStudio() {
   const [submitting, setSubmitting] = useState<string>();
   const [tab, setTab] = useState<"example" | "results">("example");
   // 一个编辑框：放想法，或放「采用」进来的脚本，按框里的内容生成。点「AI 编导」整张卡换成编导那一页（点了还没开始，发送才写）。
+  const [selectedTask, setSelectedTask] = useState<StudioVideoTask>();
+  const [mobileView, setMobileView] = useState<'compose' | 'result'>('compose');
   const [view, setView] = useState<"compose" | "director">("compose");
   const [scriptId, setScriptId] = useState<string>();
   const [revise, setRevise] = useState("");
@@ -141,7 +146,7 @@ export function SceneVideoStudio() {
   const pickScene = useCallback((next: VideoScene) => {
     sceneNow.current = next.id; durationTouched.current = false;
     setSceneId(next.id); setDuration(next.duration); setRatio(next.ratio); setPicked({});
-    // 爆款复刻交给创作助手，没有编导这一页；停在还没开始的编导页时换过去要回到编辑。
+    // 爆款复刻开始制作，没有编导这一页；停在还没开始的编导页时换过去要回到编辑。
     if (next.skill === RECREATION) setView("compose");
     writeQuery(next.id, draftRef.current?.id);
   }, []);
@@ -160,6 +165,8 @@ export function SceneVideoStudio() {
   }, [show]);
 
   const reset = (next = scene) => {
+    setSelectedTask(undefined); setMobileView('compose');
+    try { sessionStorage.removeItem(VIDEO_TASK_SELECTION); } catch { /* UI preference */ }
     showDraft(undefined, begin()); setText(""); setImages([]); setCharacter(undefined); setVoice(undefined); setVideo(undefined);
     setView("compose"); setScriptId(undefined); setRevise(""); setHint(""); setTab("example");
     if (next) writeQuery(next.id);
@@ -241,6 +248,7 @@ export function SceneVideoStudio() {
   // 地址栏里的场景 / 草稿（首页卡片、「最近」、前进后退都靠它，见 scene-query.ts）。
   // 带草稿号就打开那份（登录就绪后）；没有草稿号就到那个场景，页面上开着别的草稿时先离开它。
   const query = useSceneQuery();
+  const initialVideoEntry = useRef(query);
   useEffect(() => {
     if (!catalog) return;
     if (query.draft) {
@@ -264,15 +272,22 @@ export function SceneVideoStudio() {
   }, [ready, catalog, scene?.id, query.ref, query.draft, query.scene]);
 
   /** 这一次操作用哪份草稿：页面上开着的那份，没有就新建一份（ticket 之后换过草稿，新建的不摆到页面上）。 */
+  const creatingDraft = useRef<{ ticket: number; promise: Promise<string> } | undefined>(undefined);
   const ensureDraft = async (ticket: number) => {
     if (!scene) throw new Error("场景还没读出来，请稍等");
     if (draftRef.current) return draftRef.current.id;
+    if (creatingDraft.current?.ticket === ticket) return creatingDraft.current.promise;
     const subject = draftSubject(text);
-    const created = await createSceneDraft(subject ? `${scene.title} · ${subject}` : scene.title, scene.id);
-    remember(created);
-    if (showDraft(created, ticket)) writeQuery(scene.id, created.id);
-    drafts.reload();
-    return created.id;
+    const promise = (async () => {
+      const created = await createSceneDraft(subject ? `${scene.title} · ${subject}` : scene.title, scene.id);
+      remember(created);
+      if (showDraft(created, ticket)) writeQuery(scene.id, created.id);
+      drafts.reload();
+      return created.id;
+    })();
+    creatingDraft.current = { ticket, promise };
+    try { return await promise; }
+    finally { if (creatingDraft.current?.promise === promise) creatingDraft.current = undefined; }
   };
 
   // 接着看已经受理的任务（脚本和视频）：只读运行记录，绝不重新提交。
@@ -452,7 +467,7 @@ export function SceneVideoStudio() {
     : revising && !ask.trim() && !settingsChanged ? "说说想改哪里"
     : !caps ? "正在读取模型…"
     : !caps.mock && !textModel?.tokenPricing ? "AI 编导暂时用不了（文字模型没配置价格）" : "";
-  /** 爆款复刻交给创作助手之前卡在哪。 */
+  /** 爆款复刻开始制作之前卡在哪。 */
   const handoffBlocker = !scene ? "正在读取场景…" : scene.video?.required && !video ? `先放${scene.video.label}`
     : scene.images.required && !images.length ? `先放${scene.images.label}`
     : scene.textRequired && !text.trim() ? "先写一句要求" : "";
@@ -547,31 +562,8 @@ export function SceneVideoStudio() {
     finally { setBusy(false); }
   };
 
-  // ── 交给创作助手（爆款复刻）─────────────────────────
-  const handoff = async () => {
-    if (!scene) return;
-    setBusy(true);
-    const ticket = session.current;
-    try {
-      const longest = Math.min(MAX_SECONDS, Math.max(1, duration));
-      const composed = await IpStudioApi.composeScene({ kind: "video", sceneId: scene.id, text: text.trim() || scripts[0]?.metadata?.studio?.sceneDirector?.ask || "", duration: longest, ratio,
-        imageTitles: images.map(i => i.title), characterTitle: character?.title, voiceTitle: voice?.title, videoTitle: video?.title,
-        ...(sceneOptionValues(scene.options, picked) ? { options: sceneOptionValues(scene.options, picked) } : {}) });
-      const projectId = await ensureDraft(ticket);
-      // 和首页「说一句话开始」同一种起点：这段话存成助手的第一句，画布打开后带着场景的方法自动发出。
-      const start = { id: `${projectId}-brief`, type: CanvasNodeType.Text, title: "创作想法", position: { x: 100, y: 120 }, width: 480, height: 260,
-        metadata: { content: composed.text, prompt: composed.text, studioStart: "assistant" as const, ...(composed.skillKey ? { studioSkill: composed.skillKey } : {}), studio: { kind: "assistant" as const, conversation: { mode: "general" as const, turns: [] } } } };
-      const chosen = selection();
-      await persist(doc => ({ ...doc, nodes: placeMaterials(doc.nodes as CanvasNodeData[]).nodes, sceneInputs: chosen,
-        assistantConversations: [...(doc.assistantConversations || []).filter(n => n.id !== start.id), start] }), projectId);
-      // 交出去之前换了草稿就不跳：用户已经在看别的了
-      if (onPage(ticket, projectId)) router.push(studioEntryHref(projectId, "assistant", { send: true }));
-      else setBusy(false);
-    } catch (e) {
-      setHint(sceneHintText(e, "没交出去，请再点一次"));
-      setBusy(false);
-    }
-  };
+  // ── 开始制作（爆款复刻）─────────────────────────
+  const handoff = async () => { await startSceneTask('recreation'); };
 
   // ── 按脚本出片 ────────────────────────────────────────────────────────
   // 「还缺：……」那一行是编导写给你看的，不是脚本：拿去出片时去掉。
@@ -655,7 +647,7 @@ export function SceneVideoStudio() {
   const videoQuote = chosenVideo && settings ? studioVideoQuote(chosenVideo, settings, usedDuration) : null;
   // 规格跟着选的视频模型走（画面比例、清晰度都按这个模型实际支持的给）。
   const ratios = contract?.tiers.find(t => t.tier === usedTier)?.canvases.map(c => c.aspectRatio).filter(r => r === "9:16" || r === "16:9") ?? ["9:16", "16:9"];
-  // 比单段上限长的片子（拖到上限以外）一键做到成片；爆款复刻交给画布里的创作助手。
+  // 三种入口共用任务工作区，后台按实际制作方式推进。
   const long = !recreation && !!contract && duration > contract.maxSeconds;
   const toAssistant = recreation;
   const shownDuration = toAssistant || long ? duration : usedDuration;
@@ -697,6 +689,21 @@ export function SceneVideoStudio() {
     return () => { clearTimeout(timer); controller.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [longKey]);
+  const taskKind: StudioVideoTaskKind = recreation ? 'recreation' : long ? 'segmented' : 'direct';
+  const [taskQuote, setTaskQuote] = useState<{ key: string; price?: StudioVideoTaskQuote; error?: string }>();
+  const taskPriceKey = JSON.stringify([taskKind, chosenVideo?.endpointId, settings?.mode, usedTier, shownDuration, ratio, images.length, !!character, !!voice, optimize, priceRevision]);
+  useEffect(() => {
+    if (!chosenVideo) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      videoTaskPrice({ kind: taskKind, model: chosenVideo.endpointId, mode: settings?.mode, tier: usedTier, duration: shownDuration, ratio,
+        images: images.length, character: !!character, voice: !!voice, optimize }, controller.signal)
+        .then(price => { if (!controller.signal.aborted) setTaskQuote({ key: taskPriceKey, price }); })
+        .catch(error => { if (!controller.signal.aborted) setTaskQuote({ key: taskPriceKey, error: sceneHintText(error, '费用暂时没读出来') }); });
+    }, 250);
+    return () => { clearTimeout(timer); controller.abort(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskPriceKey]);
   const longReady = longPrice?.key === longKey ? longPrice : undefined;
   const segments = long ? longReady?.price?.segments ?? longPrice?.price?.segments ?? [] : [];
   // 正在出片的这版脚本是按什么写的：时长、横竖屏、交给视频模型的图。现在的设置跟它对不上（换了模型、改了时长或素材），
@@ -729,35 +736,7 @@ export function SceneVideoStudio() {
     const execution = await startSegmentedVideo(projectId, request);
     await persist(doc => ({ ...doc, sceneSegmented: (doc.sceneSegmented ?? []).map(r => r.clientRequestId === request.clientRequestId ? { ...r, executionId: execution.id } : r) }), projectId);
   };
-  const startLong = async () => {
-    if (busy || !scene || !chosenVideo) return;
-    if (longBlocker) { setHint(longBlocker); return; }
-    setBusy(true); setHint(""); setNote(undefined);
-    const ticket = session.current;
-    let projectId: string | undefined, request: StudioSegmentedVideoRequest | undefined;
-    try {
-      projectId = await ensureDraft(ticket);
-      const chosen = selection();
-      const requestId = nanoid();
-      await persist(doc => {
-        const { nodes, placed } = placeMaterials(doc.nodes as CanvasNodeData[]);
-        const materials = placed.filter(p => p.media.key !== video?.key).map(p => ({ nodeId: p.node.id, title: p.media.title,
-          slot: p.media.key === character?.key ? "character" as const : p.media.key === voice?.key ? "voice" as const : "image" as const }));
-        request = { clientRequestId: requestId, sceneId: scene.id, text: text.trim(), hasScript: !!scriptId, ...(sceneOptionValues(scene.options, picked) ? { options: sceneOptionValues(scene.options, picked)! } : {}),
-          language, duration, ratio, ...(longModel ? { model: longModel } : {}), ...(usedTier ? { tier: usedTier } : {}), optimize, materials, budgetCap: longReady!.price!.cap };
-        return { ...doc, nodes, sceneInputs: chosen, sceneVideoModel: chosenVideo.endpointId,
-          sceneSegmented: [{ clientRequestId: requestId, at: new Date().toISOString(), title: `${scene.title} · ${duration} 秒`, request }, ...(doc.sceneSegmented ?? [])] };
-      }, projectId);
-      if (onPage(ticket, projectId)) setTab("results");
-      await submitLong(projectId, request!);
-    } catch (e) {
-      if (!projectId || !request) { showFailure({ action: "生成视频", error: e }); return; }
-      const id = request.clientRequestId;
-      // 没开始（选付款账户时取消了、被明确拒绝、价格变了）：这一行去掉，页面上的条件都还在。受理结果不明才留着，点「确认原任务」查。
-      if (isStudioBillingCancelled(e) || submissionRejected(e, true)) await persist(doc => ({ ...doc, sceneSegmented: (doc.sceneSegmented ?? []).filter(r => r.clientRequestId !== id) }), projectId).catch(() => undefined);
-      if (!isStudioBillingCancelled(e)) showFailure({ action: "生成视频", error: e, next: submissionRejected(e, true) ? rejectedNextStep(e) : "这次可能已经开始了，点「确认原任务」查一下，不要直接重新生成。" });
-    } finally { setBusy(false); setPriceRevision(r => r + 1); }
-  };
+  const startLong = async () => { await startSceneTask('segmented'); };
   const confirmLong = async (record: SegmentedRecord) => {
     const project = draftRef.current;
     if (busy || !project || !record.request) return;
@@ -767,38 +746,84 @@ export function SceneVideoStudio() {
     finally { setBusy(false); }
   };
 
-  const generate = async () => {
-    if (busy || !scene || !chosenVideo || !settings) return;
-    if (videoBlocker) { setHint(videoBlocker); return; }
-    setBusy(true); setHint(""); setNote(undefined);
+  const generate = async () => { await startSceneTask('direct'); };
+
+  const acceptTask = (task: StudioVideoTask) => {
+    if (selectedTask?.id !== task.id) setMobileView('result');
+    setSelectedTask(task); setTab('results');
+    try { sessionStorage.setItem(VIDEO_TASK_SELECTION, task.id); } catch { /* UI preference */ }
+    const current = new URLSearchParams(location.search);
+    if (current.get('task') !== task.id) writeSceneQuery('/video', task.sceneId, task.projectId, task.id);
+  };
+  const openingTask = useRef(0);
+  const openTask = async (task: StudioVideoTask) => {
+    const selection = ++openingTask.current;
+    try {
+      // Keep an unsent configuration before switching the visible task.
+      if (!draftRef.current && (text.trim() || images.length || video)) {
+        const id = await ensureDraft(session.current);
+        await persist(doc => ({ ...doc, sceneVideoState: videoState }), id);
+      }
+      if (selection === openingTask.current) acceptTask(task);
+    } catch (error) { showFailure({ action: '保存当前草稿', error }); }
+  };
+  const reuseTask = async (task: StudioVideoTask) => {
+    if (!task.input) return;
+    setBusy(true);
+    try {
+      const project = await createSceneDraft(task.title, task.sceneId);
+      const nodes = task.input.nodes ?? [];
+      const keys = nodes.flatMap(n => n.metadata?.storageKey ?? []);
+      const signed = keys.length ? await signKeys(keys) : {};
+      await IpStudioApi.updateProject(project.id, { name: task.title, baseDocVersion: project.docVersion ?? undefined,
+        doc: { ...project.doc, ...task.input, nodes: nodes.map(n => ({ ...n, metadata: { ...n.metadata, content: n.metadata?.storageKey ? signed[n.metadata.storageKey] : n.metadata?.content } })) } });
+      setSelectedTask(undefined);
+      try { sessionStorage.removeItem(VIDEO_TASK_SELECTION); } catch { /* UI preference */ }
+      await openDraft(project.id); setView('compose'); drafts.reload();
+    } catch (error) { showFailure({ action: '改一版', error }); }
+    finally { setBusy(false); }
+  };
+  async function startSceneTask(kind: StudioVideoTaskKind, pending?: StudioVideoTaskCreate) {
+    if (busy || !scene || !chosenVideo) return;
+    const blocker = pending ? '' : kind === 'direct' ? videoBlocker : kind === 'recreation' ? handoffBlocker : longBlocker;
+    if (blocker) { setHint(blocker); return; }
+    if (!pending && (taskQuote?.key !== taskPriceKey || !taskQuote?.price)) { setHint(taskQuote?.error || '正在计算费用，请稍等'); return; }
+    setBusy(true); setHint(''); setNote(undefined);
     const ticket = session.current;
-    let nodeId: string | undefined, posted = false, projectId: string | undefined;
+    let projectId: string | undefined, request: StudioVideoTaskCreate | undefined;
     try {
       projectId = await ensureDraft(ticket);
-      const chosen = selection();
-      let request: Parameters<typeof submitStudioRun>[1] | undefined;
-      await persist(doc => {
-        const { nodes, placed } = placeMaterials(doc.nodes as CanvasNodeData[]);
-        const refIds = plan!.used.map(m => placed.find(p => p.media.key === m.key)?.node.id).filter((id): id is string => !!id);
-        const made = addVideoRow({ ...doc, nodes }, {
-          title: `${scene.title} · ${usedDuration} 秒`, prompt: text.trim(), scriptId, refIds, video: settings!, durationSec: usedDuration, aspectRatio: ratio,
-          model: chosenVideo.selectableById && !caps?.mock ? chosenVideo.endpointId : undefined, maxCost: videoQuote ?? undefined });
-        request = made.request; nodeId = made.nodeId;
-        return { ...made.doc, sceneInputs: chosen, sceneVideoModel: chosenVideo.endpointId };
-      }, projectId);
-      if (onPage(ticket, projectId)) { setSubmitting(nodeId); setTab("results"); }
-      posted = true;
-      const run = await submitStudioRun(projectId, request!);
-      await persist(doc => applyRun(doc, nodeId!, run), projectId);
-    } catch (e) {
-      if (nodeId && isStudioBillingCancelled(e)) { await persist(doc => patchNode(doc, nodeId!, () => undefined), projectId).catch(() => undefined); return; }
-      if (!nodeId) { showFailure({ action: "生成视频", error: e }); return; }
-      const rejected = submissionRejected(e, posted);
-      await persist(doc => patchNode(doc, nodeId!, n => ({ ...n, metadata: { ...n.metadata, ...studioErrorMetadata(e),
-        status: rejected ? "error" : "loading", ...(rejected ? {} : { errorDetails: "提交结果没有确认，点「确认原任务」查一下，不会重复扣费" }) } })), projectId).catch(() => undefined);
-      showFailure({ action: "生成视频", error: e, next: rejected ? rejectedNextStep(e) : "这次可能已经被受理，点「确认原任务」查一下，不要直接重新生成。" });
-    } finally { setBusy(false); setSubmitting(undefined); setPriceRevision(r => r + 1); }
-  };
+      if (pending) request = pending;
+      else {
+        const { nodes, placed } = placeMaterials(draftRef.current?.doc.nodes as CanvasNodeData[] ?? []);
+        const materials = placed.filter(p => p.media.key !== video?.key).map(p => ({ nodeId: p.node.id, title: p.media.title,
+          slot: p.media.key === character?.key ? 'character' : p.media.key === voice?.key ? 'voice' : 'image' })) as StudioSegmentedVideoRequest['materials'];
+        const clientRequestId = nanoid(), cap = taskQuote!.price!.cap;
+        const configuration: StudioSegmentedVideoRequest = { clientRequestId, sceneId: scene.id, text: text.trim(), hasScript: !!scriptId,
+          options: sceneOptionValues(scene.options, picked), language, duration: kind === 'direct' ? usedDuration : duration, ratio,
+          model: chosenVideo.endpointId, tier: usedTier, optimize, materials, budgetCap: cap };
+        const native = kind === 'direct' ? addVideoRow({ ...draftRef.current!.doc, nodes }, { title: scene.title, prompt: text.trim(), scriptId,
+          refIds: plan!.used.map(m => placed.find(p => p.media.key === m.key)?.node.id).filter((id): id is string => !!id),
+          video: settings!, durationSec: usedDuration, aspectRatio: ratio, model: chosenVideo.endpointId, maxCost: videoQuote ?? undefined }).request : undefined;
+        const snapshotNodes = placed.map(p => p.node).map(n => ({ ...n, metadata: { storageKey: n.metadata?.storageKey, mimeType: n.metadata?.mimeType,
+          naturalWidth: n.metadata?.naturalWidth, naturalHeight: n.metadata?.naturalHeight, durationMs: n.metadata?.durationMs } }));
+        request = await prepareVideoTask(projectId, { clientRequestId, kind, sceneId: scene.id, title: `${scene.title} · ${configuration.duration} 秒`,
+          configuration, video: native, budgetCap: cap, sourceNodeId: placed.find(p => p.media.key === video?.key)?.node.id,
+          input: { nodes: snapshotNodes, sceneInputs: selection(), sceneVideoState: { ...videoState, duration: configuration.duration, tier: usedTier, ratio, optimize }, sceneVideoModel: chosenVideo.endpointId } });
+        await persist(doc => ({ ...doc, nodes, sceneInputs: selection(), sceneVideoModel: chosenVideo.endpointId,
+          sceneVideoSubmissions: [...(doc.sceneVideoSubmissions ?? []), request!] }), projectId);
+      }
+      const accepted = await startVideoTask(projectId, request);
+      await persist(doc => ({ ...doc, sceneVideoSubmissions: (doc.sceneVideoSubmissions ?? []).filter(r => r.clientRequestId !== request!.clientRequestId),
+        sceneVideoTasks: [...new Set([accepted.id, ...(doc.sceneVideoTasks ?? [])])] }), projectId);
+      if (onPage(ticket, projectId)) acceptTask(accepted);
+      drafts.reload();
+    } catch (error) {
+      if (projectId && request && (isStudioBillingCancelled(error) || submissionRejected(error, true)))
+        await persist(doc => ({ ...doc, sceneVideoSubmissions: (doc.sceneVideoSubmissions ?? []).filter(r => r.clientRequestId !== request!.clientRequestId) }), projectId).catch(() => undefined);
+      if (!isStudioBillingCancelled(error)) showFailure({ action: '开始制作', error, next: '已受理的任务会保留；提交结果未确认时，请确认原任务。' });
+    } finally { setBusy(false); setPriceRevision(n => n + 1); }
+  }
 
   const copy = async (row: CanvasNodeData) => {
     try { await navigator.clipboard.writeText(row.metadata?.content || ""); setCopied(row.id); setTimeout(() => setCopied(c => c === row.id ? undefined : c), 1500); }
@@ -816,7 +841,7 @@ export function SceneVideoStudio() {
     : !toAssistant && contract && usedDuration !== duration
     ? contract.minSeconds === contract.maxSeconds ? `这个模型只做 ${usedDuration} 秒的片子` : `这个模型最短 ${contract.minSeconds} 秒，会按 ${usedDuration} 秒出` : "";
   const pickDuration = (n: number) => { durationTouched.current = true; setDuration(n); setHint(""); };
-  const goBlocker = toAssistant ? handoffBlocker : long ? longBlocker : videoBlocker;
+  const goBlocker = (!videoModels ? '正在读取视频模型…' : !chosenVideo ? '还没有可用的视频模型' : '') || (toAssistant ? handoffBlocker : long ? longBlocker : videoBlocker) || (taskQuote?.key !== taskPriceKey ? '正在计算费用…' : taskQuote.error || '');
   const longShown = longReady?.price ?? (long ? longPrice?.price : undefined);
   const onPick = (id: string) => { const next = findVideoScene(catalog, id); if (next && (next.id !== scene.id || draftRef.current)) goToScene(next); };
   const tile = (kind: Exclude<Slot, "image">, media: Media | undefined, label: string, Icon: typeof Video, optional: boolean, clear: () => void) =>
@@ -859,20 +884,21 @@ export function SceneVideoStudio() {
     </div>;
   const specPill =
     <div className="scene-setting-panel-host">
-      <button type="button" className="scene-pill" aria-expanded={settingsOpen} aria-label={`视频规格：${language}，${shownDuration} 秒，${ratio}${!toAssistant && usedTier ? `，${usedTier.toUpperCase()}` : ""}`} onClick={() => setSettingsOpen(v => !v)}>
+      <button type="button" className="scene-pill" aria-expanded={settingsOpen} aria-label={`视频规格：${language}，${shownDuration} 秒，${ratio}${usedTier ? `，${usedTier.toUpperCase()}` : ""}`} onClick={() => setSettingsOpen(v => !v)}>
         <SlidersHorizontal size={14} strokeWidth={1.5}/><span>{language} · {shownDuration} 秒 · <RatioGlyph ratio={ratio}/>{ratio}{!toAssistant && usedTier ? ` · ${usedTier.toUpperCase()}` : ""}</span><ChevronDown size={13} strokeWidth={1.6}/></button>
       {settingsOpen && <VideoSettingsPanel min={recreation ? Math.min(...scene.durations) : contract?.minSeconds ?? Math.min(...scene.durations)}
         max={MAX_SECONDS} single={recreation ? undefined : contract?.maxSeconds} duration={duration} onDuration={pickDuration} segments={segments}
         ratios={recreation ? ["9:16", "16:9"] : ratios} ratio={ratio} onRatio={setRatio}
-        tiers={toAssistant ? [] : tiers.map(t => t.tier)} tier={usedTier} onTier={setTier}
-        language={language} onLanguage={setLanguage} optimizable={!toAssistant && !!chosenVideo?.supportsPromptOptimization} optimize={optimize} onOptimize={setOptimize}
+        tiers={tiers.map(t => t.tier)} tier={usedTier} onTier={setTier}
+        language={language} onLanguage={setLanguage} optimizable={!!chosenVideo?.supportsPromptOptimization} optimize={optimize} onOptimize={setOptimize}
         options={scene.options} picked={picked} onPick={(key, choice) => setPicked(old => ({ ...old, [key]: choice }))} onClose={() => setSettingsOpen(false)}/>}
     </div>;
 
-  return <main className={`ip-brand-surface scene-studio scene-video-studio${pinned ? " has-drawer" : ""}`} data-studio-overlay-root>
+  return <main className={`ip-brand-surface scene-studio scene-video-studio${pinned ? " has-drawer" : ""}`} data-studio-overlay-root data-video-view={mobileView}>
+    <nav className="video-mobile-tabs" role="tablist" aria-label="视频制作与作品"><button type="button" role="tab" aria-selected={mobileView === 'compose'} onClick={() => setMobileView('compose')}>制作</button><button type="button" role="tab" aria-selected={mobileView === 'result'} onClick={() => setMobileView('result')}>作品</button></nav>
     {(pinned || drawerOpen) && <SceneDrawer heading="AI 视频" groups={groups} current={scene.id} onPick={onPick} pinned={pinned} onPin={pin} onClose={() => setDrawerOpen(false)}/>}
 
-    <section className="scene-card scene-video-composer" aria-label={view === "director" ? "AI 编导" : "写一条视频"}>
+    {selectedTask && query.task === selectedTask.id ? <VideoTaskSettings task={selectedTask} onNew={() => reset()} onReuse={() => void reuseTask(selectedTask)}/> : <section className="scene-card scene-video-composer" aria-label={view === "director" ? "AI 编导" : "写一条视频"}>
       <header className="scene-composer-head">
         <SceneSwitch scene={scene} groups={groups} onPick={onPick} onAll={() => { if (!pinned) setDrawerOpen(true); }}/>
         {mobile && <SceneRecent icon drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>}
@@ -939,27 +965,22 @@ export function SceneVideoStudio() {
 
         <div className="scene-go-group">
           <div className="scene-pills">
-            {recreation ? <span className="scene-pill"><Cpu size={14} strokeWidth={1.5}/><span>创作助手</span></span>
-              : (videoModels?.length ?? 0) > 1 ? <div className="scene-pill is-select"><Cpu size={14} strokeWidth={1.5}/>
+            {(videoModels?.length ?? 0) > 1 ? <div className="scene-pill is-select"><Cpu size={14} strokeWidth={1.5}/>
                 <StudioSelect compact label="视频模型" value={chosenVideo?.endpointId ?? ""} onChange={chooseVideoModel} options={(videoModels ?? []).map(m => ({ value: m.endpointId, label: m.name }))}/></div>
               : <span className="scene-pill"><Cpu size={14} strokeWidth={1.5}/><span>{chosenVideo?.name ?? "视频模型"}</span></span>}
             {specPill}
           </div>
-          <button type="button" className="scene-go" aria-label={toAssistant ? "交给创作助手" : "生成视频"} aria-describedby={hint || goBlocker ? "scene-video-go-note" : undefined} title={goBlocker || (toAssistant ? "交给画布里的创作助手：先出方案和报价，确认后才扣积分" : undefined)}
+          <button type="button" className="scene-go" aria-label="开始制作" aria-describedby={hint || goBlocker ? "scene-video-go-note" : undefined} title={goBlocker || undefined}
             disabled={busy || !!goBlocker || uploading !== undefined} onClick={() => void (toAssistant ? handoff() : long ? startLong() : generate())}>
             {busy && !writing ? <Loader2 size={16} className="studio-gallery-spinner"/> : null}
-            <span>{toAssistant ? "交给创作助手" : "生成视频"}</span>
-            {/* 价格一直摆着（还没写字时也看得到要花多少）；算不出就不显示，不编。 */}
-            {long ? longShown && <small className={longReady ? undefined : "is-pending"} aria-busy={!longReady || undefined}>约 {(longShown.videoCost + longShown.boardCost).toLocaleString("zh-CN")} 积分</small>
-              : recreation || caps?.mock ? <small>{recreation ? "先出方案" : "免费"}</small>
-              : price && <small className={price.pending ? "is-pending" : undefined} aria-busy={price.pending || undefined}>
-                {price.shown !== price.standard && <s><span className="scene-sr-only">原价 </span>{price.standard.toLocaleString("zh-CN")}</s>}
-                {price.shown !== price.standard && <span className="scene-sr-only">，折后 </span>}{price.shown.toLocaleString("zh-CN")} 积分{price.from ? "起" : ""}</small>}
+            <span>开始制作</span>
+            {taskQuote?.key === taskPriceKey && taskQuote.price && <small>{taskKind === 'direct' && price ? <>{price.shown < price.standard && <del>{price.standard.toLocaleString('zh-CN')}</del>}约 {price.shown.toLocaleString('zh-CN')}</> : <>约 {taskQuote.price.estimated.toLocaleString('zh-CN')}</>} 积分</small>}
           </button>
           {/* 点了没做成的原因用提醒色；还没动手时只是灰字说一句还差什么。 */}
           {(hint || goBlocker) && <p id="scene-video-go-note" className={`scene-hint${hint ? "" : " is-note"}`} role="status">{hint || goBlocker}</p>}
-          {long && longShown && <p className="scene-hint is-note scene-price-note">视频 {longShown.videoCost.toLocaleString("zh-CN")} 积分，分镜图 {longShown.boards} 张 {longShown.boardCost.toLocaleString("zh-CN")} 积分。写脚本、审核和提示词优化按实际用量另扣，整条最多 {longShown.cap.toLocaleString("zh-CN")} 积分。有折扣或模型赠款时按实际结算。</p>}
-          {!toAssistant && !long && !caps?.mock && price?.note && <p className="scene-hint is-note scene-price-note">{price.note}</p>}
+          {taskKind === 'direct' && price?.note && <p className="scene-hint is-note">{price.note}</p>}
+          {taskQuote?.key === taskPriceKey && taskQuote.price && <p className="scene-hint is-note scene-price-note">本次最多 {taskQuote.price.cap.toLocaleString('zh-CN')} 积分，包含失败重试余量，按实际完成的任务结算。</p>}
+          {!!draft?.doc.sceneVideoSubmissions?.length && <div className="video-pending-submissions">{draft!.doc.sceneVideoSubmissions!.map(request => <p key={request.clientRequestId}>这条制作的提交结果还没确认。<button type="button" disabled={busy} onClick={() => void startSceneTask(request.kind, request)}>确认原任务</button></p>)}</div>}
           {!toAssistant && !long && plan?.note && <p className="scene-hint is-note">{plan.note}</p>}
           {!toAssistant && plan?.used.some(m => m.mediaType === 'audio') && <p className="scene-hint is-note" role="status">{AUDIO_REFERENCE_NOTICE}</p>}
           {durationNote && <p className="scene-hint is-note">{durationNote}</p>}
@@ -968,9 +989,13 @@ export function SceneVideoStudio() {
           {videoModels && !videoModels.length && !caps?.mock && !recreation && <SceneNoModel kind="视频"/>}
         </div>
       </div>}
-    </section>
+    </section>}
 
-    <section className="scene-card scene-results" aria-label="作品与示例">
+    <SceneVideoWorkspace enabled={ready} taskId={query.task} draftId={query.draft} sceneId={query.scene} restoreLastTask={!initialVideoEntry.current.draft && !initialVideoEntry.current.scene}
+      selected={selectedTask} onSelect={task => { if (query.task && query.task === task.id) acceptTask(task); else void openTask(task); }}
+      onReuse={task => void reuseTask(task)} onDraft={id => { setSelectedTask(undefined); window.history.replaceState(null, '', `/video?scene=${encodeURIComponent(scene.id)}&draft=${encodeURIComponent(id)}`); void openDraft(id); }}
+      drafts={drafts.data} persist={persist}>
+    <section className="scene-results scene-legacy-results" aria-label="作品与示例">
       <header><SceneResultTabs tab={tab} onTab={setTab} count={rows.length + segmentedRuns.length} idBase="scene-video"/>
         <span className="scene-results-actions">{draft && <Link className="scene-text-button" href={`/projects/${encodeURIComponent(draft.id)}`}><FolderOpen size={14} strokeWidth={1.4}/>在画布中继续</Link>}
           {!mobile && <SceneRecent drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>}
@@ -986,6 +1011,7 @@ export function SceneVideoStudio() {
         : <SceneEmpty title="还没有作品" note="写好提示词点「生成视频」，做好的视频会出现在这里。"/>}
       </div>
     </section>
+    </SceneVideoWorkspace>
     {picking && <div className="scene-picker-host"><LibraryReferencePicker open upload
       mediaType={picking === "voice" ? "audio" : picking === "video" ? "video" : "image"}
       max={picking === "image" ? Math.max(1, (scene.images.max ?? 6) - images.length) : 1}
@@ -1127,11 +1153,11 @@ function VideoSettingsPanel({ min, max, single, duration, onDuration, segments, 
   </div>;
 }
 
-/** 交给创作助手之后做到哪了：一句话加「去画布看」。没有确认方案之前还没开始做，也照实说。 */
+/** 开始制作之后做到哪了：一句话加「去画布看」。没有确认方案之前还没开始做，也照实说。 */
 function HandoffStatus({ projectId, execution, waiting }: { projectId: string; execution?: StudioPlanExecution; waiting: boolean }) {
   const steps = execution?.steps ?? [];
   const done = steps.filter(s => s.status === "done" || s.status === "skipped").length;
-  const text = waiting ? "在画布里交给创作助手做了，正在读进度…"
+  const text = waiting ? "在画布里开始制作做了，正在读进度…"
     : !execution ? "交给画布里的创作助手了，去那边确认方案和费用后才开始做。"
     : execution.status === "running" ? `创作助手在做，第 ${Math.min(done + 1, steps.length)} 步，共 ${steps.length} 步。`
     : execution.status === "done" ? "创作助手做完了，成片在画布里。"

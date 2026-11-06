@@ -28,6 +28,7 @@ import "../styles/control-focus.css";
 import "../styles/studio-select.css";
 import "../styles/director.css";
 import "../styles/studio-scenes.css";
+import "../styles/studio-video-workspace.css";
 import "../styles/studio-home-scenes.css";
 import "../styles/inspiration.css";
 import "../styles/studio-next-pages.css";

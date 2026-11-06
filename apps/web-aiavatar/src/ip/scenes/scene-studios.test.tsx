@@ -8,7 +8,7 @@ import type { IpProject } from "@ai-star-eco/types";
 const SCENES = JSON.parse(readFileSync(join(__dirname, "../../../../server/src/main/resources/ipstudio/scenes.json"), "utf8"));
 
 const api = vi.hoisted(() => ({
-  push: vi.fn(), failure: vi.fn(),
+  push: vi.fn(), failure: vi.fn(), taskStart: vi.fn(), taskGet: vi.fn(),
   uploadImage: vi.fn(), listProjects: vi.fn(), createProject: vi.fn(), updateProject: vi.fn(), getProject: vi.fn(), listScenes: vi.fn(), composeScene: vi.fn(),
   fetchModels: vi.fn(), readRun: vi.fn(), cancelRun: vi.fn(), capabilities: vi.fn(), submit: vi.fn(), importMedia: vi.fn(), videoModels: vi.fn(), videoPrice: vi.fn(),
 }));
@@ -21,6 +21,11 @@ vi.mock("../api", () => ({ IpStudioApi: { uploadImage: api.uploadImage, listProj
   listScenes: api.listScenes, composeScene: api.composeScene } }));
 vi.mock("@/canvas-bridge/api", () => ({ fetchModels: api.fetchModels, readRun: api.readRun, cancelRun: api.cancelRun, fetchStudioVideoModels: api.videoModels, signKeys: api.signKeys }));
 vi.mock("@/canvas-bridge/studio-api", () => ({ studioCapabilities: api.capabilities, submitStudioRun: api.submit, importStudioMedia: api.importMedia }));
+vi.mock("@/canvas-bridge/studio-video-tasks", async original => ({ ...await original<any>(),
+  videoTasks: async () => ({ items: [], page: 0, hasMore: false }), videoTask: api.taskGet,
+  videoTaskPrice: async (q: any) => ({ estimated: q.duration * 40, cap: q.duration * 120, segments: [q.duration], boards: 0 }),
+  prepareVideoTask: async (_id: string, request: any) => request, startVideoTask: api.taskStart,
+}));
 vi.mock("@/canvas-bridge/studio-image-file", () => ({ prepareStudioImageUpload: async (f: File) => f }));
 vi.mock("@/canvas-bridge/studio-model-quote", () => ({ quoteVideoPrice: api.videoPrice }));
 vi.mock("../studio-errors", async importOriginal => ({ ...(await importOriginal<typeof import("../studio-errors")>()), useStudioFailure: () => api.failure, studioErrorMetadata: () => ({}) }));
@@ -38,6 +43,13 @@ const doc = { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
 const project = (patch: Partial<IpProject> = {}): IpProject => ({ id: "IPP-1", name: "x", status: "draft", createdAt: "", updatedAt: "", doc, runs: {}, runsById: {}, docVersion: "v1", ...patch });
 
 beforeEach(() => {
+  api.taskStart.mockImplementation(async (projectId: string, request: any) => {
+    if (request.kind === 'direct') await api.submit(projectId, request.video);
+    const task = { id: 'PEX-task', projectId, ...request, request, createdAt: '2026-11-06',
+      execution: { id: 'PEX-task', projectId, stage: 'production', status: 'running', budgets: [],
+        steps: [{ id: 'video', title: '生成视频', operation: 'video', status: 'running', stage: 'production', attempt: 1, runIds: [], dependsOn: [] }], updatedAt: '2026-11-06' } };
+    api.taskGet.mockResolvedValue(task); return task;
+  });
   api.listScenes.mockResolvedValue(SCENES);
   api.listProjects.mockResolvedValue([]);
   api.createProject.mockImplementation(async ({ name, sceneId }: { name: string; sceneId?: string }) => project({ name, sceneId }));
@@ -152,7 +164,7 @@ test("视频：编导看商品图写脚本（请求先存进画布、带图）�
   await act(async () => { fireEvent.click(use); });
   expect(fieldText("视频脚本")).toBe(script);
   setDuration(10);
-  const go = screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement;
+  const go = screen.getByRole("button", { name: "开始制作" }) as HTMLButtonElement;
   await waitFor(() => expect(go.textContent).toContain("400 积分"));
   // 优化描述单独按用量扣、不含在视频价里，用户可以选按原文生成（只扣视频价）。
   const rewrite = within(screen.getByRole("group", { name: "提示词" }));
@@ -164,7 +176,7 @@ test("视频：编导看商品图写脚本（请求先存进画布、带图）�
   const videoRequest = api.submit.mock.calls[1][1];
   expect(videoRequest).toMatchObject({ operation: "video", prompt: script, durationSec: 10, aspectRatio: "9:16", count: 1, model: "ep-h3", maxCost: 400,
     video: { mode: "universal_reference_video", resolutionTier: "768p", rewrite: "auto", references: [{ mediaType: "image", key: "ipstudio/media/u/p.jpg" }] } });
-  expect(await screen.findByText(/正在生成，一般要几分钟/)).toBeTruthy();
+  expect(await screen.findByRole("heading", { name: "正在生成视频" })).toBeTruthy();
 });
 
 test("video: AI 编导 opens the page without starting; the duration set there is what the first script is written for, and an idea only fills the box", async () => {
@@ -212,9 +224,9 @@ test("视频：按钮旁的价按服务端报价显示折扣（原价划掉）�
   api.videoPrice.mockImplementation((q: { durationSec: number }) => q.durationSec === 10
     ? new Promise(resolve => { late = () => resolve(priced(10)); }) : Promise.resolve(priced(q.durationSec)));
   await act(async () => { render(<SceneVideoStudio/>); });
-  const go = () => screen.getByRole("button", { name: "生成视频" });
+  const go = () => screen.getByRole("button", { name: "开始制作" });
   // 还没写字、没放图也看得到折后价。
-  await waitFor(() => expect(go().querySelector("s")?.textContent).toContain("600"));
+  await waitFor(() => expect(go().querySelector("del")?.textContent).toContain("600"));
   expect(go().textContent).toContain("300 积分");
   expect(screen.getByText("H3限时折扣，省 300 积分。先优化另按实际用量扣少量积分。")).toBeTruthy();
   const [query, billing] = api.videoPrice.mock.calls.at(-1)!;
@@ -225,31 +237,30 @@ test("视频：按钮旁的价按服务端报价显示折扣（原价划掉）�
 
   setDuration(10); // 10 秒那份很慢：先显示价表价，不沿用 15 秒的折扣
   await waitFor(() => expect(go().textContent).toContain("400 积分"));
-  expect(go().querySelector("s")).toBeNull();
+  expect(go().querySelector("del")).toBeNull();
   setDuration(12);
   await waitFor(() => expect(go().textContent).toContain("240 积分"));
   await act(async () => { late?.(); });
   expect(go().textContent).toContain("240 积分");
-  expect(go().querySelector("s")?.textContent).toContain("480");
+  expect(go().querySelector("del")?.textContent).toContain("480");
 });
 
-test("视频：爆款复刻要先拉片，仍交给画布里的创作助手（带场景的方法、自动发出）", async () => {
+test("视频：爆款复刻直接受理后台任务，保留原片与要求，不跳画布", async () => {
   window.history.replaceState(null, "", "/video?scene=recreation");
   api.videoModels.mockResolvedValue([H3]);
-  api.composeScene.mockResolvedValue({ text: "服务端拼好的话", skillKey: "reference-video-recreation" });
   api.importMedia.mockResolvedValue({ key: "ipstudio/media/u/v.mp4", url: "blob:v", mediaType: "video", mimeType: "video/mp4", bytes: 1, fileName: "v.mp4" });
   await act(async () => { render(<SceneVideoStudio/>); });
-  const send = () => screen.getByRole("button", { name: "交给创作助手" }) as HTMLButtonElement;
+  const send = () => screen.getByRole("button", { name: "开始制作" }) as HTMLButtonElement;
   await waitFor(() => expect(screen.getByText("先放参考视频")).toBeTruthy());
   await pickFromLibrary("参考视频");
   fillField(screen.getByRole("textbox", { name: "想做的视频" }), "换成我的面霜");
   await waitFor(() => expect(send().disabled).toBe(false));
   await act(async () => { fireEvent.click(send()); });
-  expect(api.composeScene).toHaveBeenCalledWith(expect.objectContaining({ kind: "video", sceneId: "recreation", text: "换成我的面霜", videoTitle: "参考视频" }));
-  const saved = api.updateProject.mock.calls.at(-1)![1].doc;
-  expect(saved.assistantConversations[0].metadata).toMatchObject({ studioStart: "assistant", studioSkill: "reference-video-recreation", prompt: "服务端拼好的话" });
-  expect(api.push).toHaveBeenCalledWith("/projects/IPP-1?start=assistant&send=1");
-  expect(api.submit).not.toHaveBeenCalled();
+  expect(api.taskStart).toHaveBeenCalledWith("IPP-1", expect.objectContaining({ kind: "recreation", sourceNodeId: expect.any(String),
+    configuration: expect.objectContaining({ sceneId: "recreation", text: "换成我的面霜" }),
+    input: expect.objectContaining({ nodes: expect.arrayContaining([expect.objectContaining({ type: "video", metadata: expect.objectContaining({ storageKey: "ipstudio/media/u/v.mp4" }) })]) }) }));
+  expect(api.composeScene).not.toHaveBeenCalled(); expect(api.push).not.toHaveBeenCalled();
+  expect(api.submit).not.toHaveBeenCalled(); expect(window.location.search).toContain("task=PEX-task");
 });
 
 test("图片：从「最近」或地址栏带草稿号进来，打开那张草稿并接着看它的结果", async () => {

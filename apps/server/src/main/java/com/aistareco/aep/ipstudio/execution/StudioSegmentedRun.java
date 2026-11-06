@@ -40,7 +40,7 @@ public class StudioSegmentedRun {
 
     public StudioSegmentedRun(StudioPlanOutputs outputs, ObjectMapper mapper) { this.outputs = outputs; this.mapper = mapper; }
 
-    public static boolean applies(JsonNode state) { return state.path("segmented").isObject(); }
+    public static boolean applies(JsonNode state) { return state.path("segmented").isObject() || state.path("videoTask").isObject(); }
 
     private StudioPromptAssembler prompts() { return StudioPromptAssembler.or(promptAssembler); }
 
@@ -52,21 +52,23 @@ public class StudioSegmentedRun {
             ObjectNode step = (ObjectNode) raw;
             String status = step.path("status").asText(), id = step.path("id").asText(), operation = step.path("operation").asText();
             if ("failed".equals(status)) {
-                if (step.path("attempt").asInt(1) < 2 && retryable(step.path("errorCode").asText(null))) {
+                if (step.path("attempt").asInt(1) < 3 && retryable(step.path("errorCode").asText(null))) {
                     log.info("[segmented] retry step execution={} step={} code={}", e.getId(), id, step.path("errorCode").asText(""));
                     again(step);
-                    step.put("notBefore", java.time.Instant.now().plus(retryDelay).toString());
-                } else if ("review".equals(id) || "check".equals(operation)) {
+                    step.put("notBefore", java.time.Instant.now().plus(retryDelay.multipliedBy(step.path("attempt").asInt()-1)).toString());
+                } else if (!state.has("videoTask") && ("review".equals(id) || "check".equals(operation))) {
                     // 审不了不该挡住成片：审稿按原稿走，检查按没查过走，都记下来。
                     log.warn("[segmented] review skipped execution={} step={} reason={}", e.getId(), id, step.path("reason").asText(""));
                     softSkip(step, "没有审成：" + step.path("reason").asText("原因未知"));
                 }
                 continue;
             }
-            if ("check".equals(operation) && "done".equals(status) && !"pass".equals(step.path("checkStatus").asText()) && !step.path("acknowledged").asBoolean(false))
-                resolveCheck(e, state, step);
+            if ("check".equals(operation) && "done".equals(status) && !"pass".equals(step.path("checkStatus").asText()) && !step.path("acknowledged").asBoolean(false)) {
+                if(state.has("videoTask"))step.put("acknowledged",true); // advice never discards a valid delivered media file
+                else resolveCheck(e, state, step);
+            }
         }
-        skipUnusedBoards(e, state);
+        if(state.has("segmented"))skipUnusedBoards(e, state);
     }
 
     /** 分镜图不合格重出一次，连检查一起再来；判断不了、或者重出过了，接着往下做。 */
@@ -117,7 +119,8 @@ public class StudioSegmentedRun {
     static boolean retryable(String code) {
         if (code == null || code.isBlank()) return true;
         return !(code.equals(StudioPaymentMessage.CODE) || code.contains("INSUFFICIENT") || code.contains("RESTRICTED") || code.endsWith("_INVALID") || code.contains("NOT_CONFIGURED")
-                || code.contains("PRICE") || code.contains("UNAVAILABLE") || code.contains("UNKNOWN") || code.contains("MODERATION") || code.contains("UNSUPPORTED"));
+                || code.contains("PRICE") || code.contains("UNAVAILABLE") || code.contains("UNKNOWN") || code.contains("RECONCILIATION")
+                || code.contains("RAW_ONLY") || code.contains("OUT_OF_SCOPE") || code.contains("MODERATION") || code.contains("UNSUPPORTED"));
     }
 
     /** 脚本定下来以后：这段镜头少，第二张分镜图用不上（费用不发生，报价是上限）。 */

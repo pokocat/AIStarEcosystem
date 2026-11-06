@@ -535,7 +535,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     const project = projectId;
     let alive = true, timer: ReturnType<typeof setTimeout> | undefined;
     void getProject(project).then(detail => {
-      const ids = segmentedRecords(detail).flatMap(record => record.executionId ? [record.executionId] : []);
+      const ids = [...new Set([...segmentedRecords(detail).flatMap(record => record.executionId ? [record.executionId] : []), ...(detail.doc.sceneVideoTasks ?? [])])];
       if (!ids.length) return;
       const poll = async () => {
         let active = false;
