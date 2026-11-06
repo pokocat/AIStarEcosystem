@@ -936,6 +936,35 @@
 - [ ] **`/studio` 老 SPA（约 11k 行）的文案没过一遍**。它按既有双轨逐屏迁出，
       现在整体重写等于给要退役的代码返工；**迁一屏就顺手按 §8 清一屏**。
 
+- [ ] **PC 站文案全面优化后的存量（2026-11-06，`docs/audits/pc-ui-copy-review-2026-11.md`）**：这次只改文字，下面这些要改行为、有逻辑依赖或拿不准，没动。
+  - **要改行为**
+    - 付款弹窗 `ip/studio-billing-dialog.tsx`：余额或策略没加载时余额显示成「可用 — 积分」，加载中和加载失败没有区分；文字任务只写「按实际用量结算」，但余额低于看不见的冻结上限时仍判「积分不足」。
+    - AI 视频页 `scene-video-studio.tsx`：`describeStudioVideoPrice` 已写「可用积分不足」，`goBlocker` 不看报价，「生成视频」仍可点，点了才在付款确认那一步失败。
+    - 灰按钮还没写原因的：`ip/studio-recreation.tsx`「开始解析 / 开始拉片」（原因在参数浮层里）、`ip/studio-flow-canvas.tsx` 多选条「建立分组」（判断函数不返回原因）、`ip/director/director-asset-studio.tsx` `FormEditor`「添加」、`ip/studio-template-source.tsx`「排版并下载资产包」「整理成片」、`ip/library-extraction-panel.tsx`「提取资产」。首页和助手输入框为空时发送键的原因留在悬停里（占位文字已经说明，用户可改判）。
+    - 邀请：`ip/invitation-registration.tsx` 提交时邀请失效，表单卸载、真实原因显示不出来，只见「邀请加载失败」；`ip/enterprise-invitation-landing.tsx` 运营查看时抛普通 `Error`，界面写「连接暂时中断」。
+    - 名片：`app/cards/page.tsx`、`app/cards/[id]/edit/page.tsx` 的失败走自写底部提示，没走 `reportStudioError`；`components/card/card-view.tsx` 没有微信号时左右两个按钮是同一个动作。
+    - `app/market/[id]/page.tsx`：顶栏和主视觉两个返回去处不同；「立即授权」点了做不成事。
+    - `ip/studio-create-home.tsx`：新版导航叫「画布」，页面标题两版共用「画布·自由创作」，要给 `StudioPage` 加新版标题。
+    - `ip/enterprise-reports.tsx` 消费流水：「记账结果」和「状态」显示同一个字段。
+    - `ip/supplementary-asset-library.tsx`：形象状态筛选「调整中 · 迭代 / 精修」是内部说法，合并要产品确认；全部失败时上方和空态各一个「重试」。
+  - **有逻辑依赖，改文字要两边一起改**
+    - `ip/director/director-workbench.tsx` `PASSING_NOTICE` 按服务端原文判断（「全部 N 集都写好了」「已分成 N 集」「资产已保存」）；`asset.description.includes("只出声音")`；`StudioPlanExecutor`「本阶段预算还差 N 积分」（`StudioPlanExecutionService` 用 `startsWith`）。
+    - 工作记录里的「N 个对象」（`CreateNodesTool`、`ReadCanvasTool`、`UpdateNodesTool`、`ViewImagesTool`）：「对象」是开发词，但也回给模型，`DialogueActionProtocol` 和对话测试都依赖。
+    - 技能名「出图」「出视频」显示在助手头部：真值在 `resources/studio/skills/*.md`，库里有不可变版本，改名要走技能版本。
+  - **要核实**
+    - 导演台 `视频生成中：{stage} {pct}%` 的百分比取自 `progress_pct`，要确认聚算 H3 真的回进度；不回就去掉。价格前的「约」要看报价是不是最终扣费价。
+    - `ip/studio-task-list.tsx` 进行中任务显示「冻结 N 积分」，是否也按「冻结上限不当价格显示」改。
+    - `scene-video-studio.tsx`「按实际完成的内容结算，本次上限 N 积分」是用户确认的任务预算，先保留。
+    - `proto/screen-aicreate.tsx`「约需 30–60 秒」没找到依据；`proto/screen-more.tsx`「配音合成功能上线后可直接使用」要确认。
+    - 线上如果运营保存过 `studio.scene-catalog`，随包 `scenes.json` 的新文字看不到，发布后在 Studio 后台核对。
+  - **范围外**
+    - `proto/` 其余约 1700 条没通读（用户定只改扫描命中）：`screen-compose.tsx`「冻结算力」、`screen-real.tsx`「七牛云」、`screen-library.tsx`「一键生成」等。手机端 `app/me/page.tsx`「扫码即看」「会员与算力」、`components/hub/ui.tsx`、`ip/canvas-gate.tsx` 手机提示页还有口语。
+    - vendored `canvas/components/canvas/canvas-video-settings-popover.tsx`「这个模型只接 X–Y 秒…点开改一下」，只能改语言包以外的文件才能改，先留着。
+    - 账本流水描述（「IP 运行超时 · 释放冻结」「画布出图 ×N」）只有后台和 web-drama 看得到；`IpRunServiceTest` 断言了。
+    - 没有挂到页面上的文件，建议删除：`ip/studio-scene-workshop.tsx`、`ip/studio-scenes.ts`、`components/hub/create-center.tsx`、`components/hub/landing.tsx`、`components/landing/atlas.tsx`、`ip/saved-canvas-assets.tsx`、`shell/ip-navigation.tsx`。
+
+- [ ] **main 上有两个前端测试是红的（2026-11-06 发现，和文案改动无关，相关源码与 main 相同）**：`packages/api-client/src/model-task-state.test.ts`「keeps the actual safe failure reason…」断言 detail 里有「HTTP 503」，而 `publicModelErrorMessage` 已把它换成通用句（`35c24240a` 之后）；`apps/web-drama/src/lib/ai-error.test.ts`「认识的错误码 → 专门的友好文案」同一原因待查。
+
 ### 2026-09-09 · 生产事故复盘（v0.192，@Id 被挤到常量上）
 
 - [ ] **30 个 `@SpringBootTest` 仍然红着，等于没有「上下文能起来」这道网**（既有，见下一节）。

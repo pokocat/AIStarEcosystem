@@ -458,6 +458,6 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [AI 导演台本地验收记录](audits/ai-director-local-acceptance-20261022.md) — 独立 UI 实测真值：测试响应全流程、Agnes 真实剧本／分集／资产／分镜首帧、局部重试修复；真实视频受厂商队列阻塞；实现状态见[总方案 §14](ai-director-plan.md)；last-reviewed: 2026-10-23。
 - [导演台视频提示词对比实测（H3）](audits/director-h3-video-prompt-ab-2026-10.md) — 《敦煌飞仙》两段共 9 条对比：旧写法穿模 / 宫格上屏；台词多时中文正文吞台词、念出提示词，官方 skill 英文版完整；据此提交前按官方 skill 改写，真模型试跑 7/7 合格；2026-10-27 推到 Studio 画布与创作助手、检查改为只提示不拦人（§8）；last-reviewed: 2026-10-27。
 - [导演台 H3 优化稿超长与中文提示词被念出（cl45）](audits/director-h3-cl45-prompt-review-2026-10.md) — 优化稿 8198 字符按段拆分、成片频谱与转写（末尾多出的人声对上「没有声音参考」）、第三镜别名没认出；据此改中文模板第 4 版、出镜认别名、篇幅预算、重新优化与用稿记录；last-reviewed: 2026-10-31。
-- [PC 站界面文案审阅稿](audits/pc-ui-copy-review-2026-11.md) — web-aiavatar 桌面形态逐页文案表（约 1300 条，按 ui-copy 规则）、跨批统一叫法、需要先定行为的 12 件事；品牌标语改为「一个 IP，无限可能」；第 1 批已改；last-reviewed: 2026-11-03。
+- [PC 站界面文案优化记录](audits/pc-ui-copy-review-2026-11.md) — web-aiavatar 桌面形态逐页改动表（位置、原文、改为）、全站统一叫法、用户定下的 12 件事和结果；品牌标语改为「一个 IP，无限可能」；没改的存量见 TODO；last-reviewed: 2026-11-06。
 
 - [Studio 下午至晚间线上使用复盘](audits/studio-production-afternoon-evening-review-20261023.md) — 2026-10-23 北京时间生产查询快照；记录用户旅程、任务／账本、排队与发布窗口及待核证据，不代表本轮已修复或重测；last-reviewed: 2026-10-23。
