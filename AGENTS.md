@@ -1387,7 +1387,7 @@ Studio 工作线程默认 24，单个模型的上限看端点配置；图片调�
 
 问答只在全能创作助手里，主区只显示已确认的内容和「生成剧本」，别再加第二个对话框。先确认形式、集数、每集时长、题材和调性（不调模型），再由 AI 问还不清楚的，最多两轮、每轮最多 4 题，可以选「AI 决定」。集数多时第一批写全剧大纲和前几集，`script-more` 接着写。见 `docs/ai-director-assistant.md` §7。状态提示是标题后的标签（`director-status-chip`），不再是整行。AI 图片示例是 `public/studio/scene-demos/*.webp` 的前后对比图：一张杂志式画面，左边纸面上是素材小图，右边是铺满的成片，一根细线相连，不画箭头和卡片；标签在图外、写明示意图；图里的人一律韩系风格，不用外国面孔（用户定）。例句在目录的 `example`。改场景默认效果时要对照这张图，两边别走样。
 
-### 灵感库：开箱即用的官方示例（2026-11-05，本地未发布）
+### 灵感库：开箱即用的官方示例（2026-11-06 代码已生产发布 `20261106-inspiration-library`，main `3c8e01beb`；35 个示例待发布）
 
 真源 `docs/studio-inspiration-library.md`。新版导航加「灵感」（`/templates`，默认案例，可筛视频 / 图片）。点开是弹窗不是全屏（`StudioTemplateUse`），点「做同款」才复制并进画布；`onCreated` 现在收的是地址（`studioTemplateCopyHref`），画布里有 `studioStart: 'assistant'` 的节点就打开助手并预填、绑定 `studioSkill`，只填不发。35 条示例的文字在 `scripts/inspiration/catalog.mjs`，用 `scripts/inspiration/publish.mjs` 经现有接口发布（超管令牌，不调模型）。**文字是我们自己写的，不收录 `resources/skills` 里第三方技能的原文。** 条目的约束由 `inspiration-catalog.test.ts` 守着：提示词不写比例时长、不写「做同款 / 复刻」、不出现第三方品牌和模型名。`publishFromProject` 发布实例时不再删文字节点的正文。
 

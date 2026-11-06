@@ -31,7 +31,7 @@ STUDIO_TOKEN=<超级管理员令牌> node scripts/inspiration/publish.mjs --base
 ```
 
 - 走现有接口：上传素材 → 建画布 → 存为官方内容（`kind=example`，素材复制到 `ipstudio_demo/<demoId>/`）→ 设封面和排序 → 删中转画布。不调模型，不扣积分。
-手上没有令牌、但浏览器已经用超管登录时，用 `serve.mjs`：本机只提供素材，发布由那个页面自己做，令牌不离开浏览器（2026-11-06 线上就是这样发的）：
+手上没有令牌、但普通 Chrome 已经用超管登录时，可以用 `serve.mjs`：本机只提供素材，发布由那个页面自己做，令牌不离开浏览器。Claude 桌面应用的内置浏览器不行：它不让线上页面访问本机（`ERR_BLOCKED_BY_CLIENT`，2026-11-06 实测）。
 
 ```bash
 node scripts/inspiration/serve.mjs --skills <resources/skills 目录> --origin https://aistar.aibuzz.cn
