@@ -56,6 +56,44 @@ class StudioWorkflowWorkerJsonTest {
         return new Harness(worker, run, models, credits, errors);
     }
 
+    private Harness sceneDirector() throws Exception {
+        var h = harness("", "stop");
+        var input = (com.fasterxml.jackson.databind.node.ObjectNode) json.readTree(h.run().getInputJson());
+        input.put("operation", "text").remove("_director");
+        input.putObject("scene").put("kind", "video-script");
+        h.run().setInputJson(input.toString()); h.run().setKind("studio-text"); h.run().setHostType(null);
+        return h;
+    }
+
+    @Test void sceneDirectorStopsTheStreamAndDoesNotInventAZeroUsageReceipt() throws Exception {
+        var h = sceneDirector();
+        when(h.models().invokeChatCancellable(any(), any(), anyList(), anyMap(), any())).thenAnswer(call -> {
+            h.run().setCancelRequested(true);
+            assertTrue(((java.util.function.BooleanSupplier) call.getArgument(4)).getAsBoolean());
+            throw BusinessException.badRequest("IP_RUN_CANCELLED", "已停止创作");
+        });
+        h.worker().runBlocking("r");
+        assertEquals("failed", h.run().getStatus());
+        assertEquals("STUDIO_USAGE_PENDING", h.run().getErrorCode());
+        verify(h.credits(), never()).commitHold(anyString(), anyString(), anyLong(), anyString(), any());
+        verify(h.credits(), never()).releaseHold(anyString(), anyString(), anyString());
+        assertFalse(json.readTree(h.run().getOutputJson()).has("textRevision"));
+    }
+
+    @Test void sceneDirectorDiscardsALateReplyAndSettlesItsMeasuredUsageExactlyOnce() throws Exception {
+        var h = sceneDirector();
+        when(h.models().invokeChatCancellable(any(), any(), anyList(), anyMap(), any())).thenAnswer(call -> {
+            h.run().setCancelRequested(true);
+            return new AiModelInvocationService.AiModelResponse("late script", "stop", 2000L, "qwen", "qwen", 1000L, 1000L);
+        });
+        h.worker().runBlocking("r"); h.worker().runBlocking("r");
+        assertEquals("IP_RUN_CANCELLED", h.run().getErrorCode());
+        var output = json.readTree(h.run().getOutputJson());
+        assertFalse(output.has("textRevision"));
+        assertEquals(1000, output.path("billing").path("outputTokens").asLong());
+        verify(h.credits(), times(1)).commitHold(eq(IpRunService.REF_TYPE), eq("r"), anyLong(), anyString(), any());
+    }
+
     private void runOnce(Harness h) {
         h.worker().runBlocking("r");
         h.worker().runBlocking("r");

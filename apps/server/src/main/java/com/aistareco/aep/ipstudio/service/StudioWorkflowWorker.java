@@ -177,12 +177,14 @@ public class StudioWorkflowWorker {
                         if("director".equals(operation)&&java.util.Set.of("script","script-more").contains(input.path("_director").path("task").asText())
                                 && endpoint.endpoint().getProviderType()==AiModelProviderType.DEEPSEEK)
                             chatOptions.put("thinking",Map.of("type","disabled"));
-                        reply=models.invokeChatOnEndpoint(endpoint.endpoint(),purpose,List.of(Map.of("role","system","content",system),
-                                Map.of("role","user","content",userContent)),chatOptions);
+                        var messages=List.of(Map.of("role","system","content",(Object)system), Map.of("role","user","content",userContent));
+                        reply=isSceneDirector(input)
+                                ?models.invokeChatCancellable(endpoint.endpoint(),purpose,messages,chatOptions,()->runs.findById(id).map(IpRun::isCancelRequested).orElse(true))
+                                :models.invokeChatOnEndpoint(endpoint.endpoint(),purpose,messages,chatOptions);
                         }
                         lastReply=reply;
                         if(StudioModelOutput.present(reply)){output.set("rawResponse",StudioModelOutput.capture(mapper,reply));checkpointModelOutput(id,reply);}
-                        if("director".equals(operation)&&tokenRate!=null) {
+                        if(("director".equals(operation)||isSceneDirector(input))&&tokenRate!=null) {
                             consumed=consumeUsage(reply,consumed,tokenRate);
                             output.putObject("billing").put("inputTokens",consumed[0]).put("outputTokens",consumed[1])
                                     .put("credits",tokenRate.settle(consumed[0],consumed[1]))
@@ -198,7 +200,7 @@ public class StudioWorkflowWorker {
                                     "Invalid model JSON: "+malformed.getOriginalMessage());
                             failure.initCause(malformed);throw failure;
                         }
-                        if(tokenRate!=null&&!"director".equals(operation)) {
+                        if(tokenRate!=null&&!"director".equals(operation)&&!isSceneDirector(input)) {
                             consumed=consumeUsage(reply,consumed,tokenRate);
                             long actual=tokenRate.settle(consumed[0],consumed[1]);
                             output.putObject("billing").put("inputTokens",consumed[0]).put("outputTokens",consumed[1])
@@ -738,10 +740,10 @@ public class StudioWorkflowWorker {
     private void markModelDispatched(String id) {
         var allowed=transactions.execute(tx->{
             var run=billingLockedRun(id).orElseThrow();
-            if(!"studio-director".equals(run.getKind()))return true;
             if(!IpRun.STATUS_RUNNING.equals(run.getStatus())||run.isCancelRequested())return false;
             try {
                 ObjectNode input=(ObjectNode)mapper.readTree(run.getInputJson());
+                if(!"studio-director".equals(run.getKind())&&!isSceneDirector(input))return true;
                 input.withObject("/_exec").put("modelDispatchedAt",Instant.now().toString());
                 run.setInputJson(mapper.writeValueAsString(input));runs.save(run);return true;
             }catch(Exception invalid){throw new IllegalStateException(invalid);}
@@ -752,12 +754,16 @@ public class StudioWorkflowWorker {
             if(StudioTokenBilling.applies(mapper.readTree(run.getInputJson())))credits.markModelDispatched(IpRunService.REF_TYPE,id);
         } catch(com.fasterxml.jackson.core.JsonProcessingException invalid) {throw new IllegalStateException(invalid);}
     }
+    private static boolean isSceneDirector(JsonNode input) {
+        return "text".equals(input.path("operation").asText()) && "video-script".equals(input.path("scene").path("kind").asText());
+    }
     private boolean directorDispatched(IpRun run) {
-        if(!"studio-director".equals(run.getKind()))return false;
         try {
-            JsonNode exec=mapper.readTree(run.getInputJson()).path("_exec");
+            JsonNode input=mapper.readTree(run.getInputJson());
+            if(!"studio-director".equals(run.getKind())&&!isSceneDirector(input))return false;
+            JsonNode exec=input.path("_exec");
             return exec.hasNonNull("modelDispatchedAt")||run.getStartedAt()!=null&&!exec.path("modelDispatchTracked").asBoolean(false);
-        }catch(Exception invalid){return run.getStartedAt()!=null;}
+        }catch(Exception invalid){return "studio-director".equals(run.getKind())&&run.getStartedAt()!=null;}
     }
     private void pendingDirectorUsage(IpRun run) {
         long reserved=run.getCost();

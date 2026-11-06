@@ -238,6 +238,15 @@ public class AiModelInvocationService {
         }
     }
 
+    /** 可停止的文字创作；流式端点沿用共享的 500ms 取消探针，普通同步端点保留用量回执。 */
+    public AiModelResponse invokeChatCancellable(AiModelEndpoint endpoint, AiModelPurpose purpose,
+            List<? extends Map<String, ?>> messages, Map<String, Object> options, java.util.function.BooleanSupplier cancelled) {
+        if (endpoint == null || !endpoint.isEnabled()) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED", "指定的 AI 模型端点不可用");
+        try { return doChat(endpoint, purpose, messages, options, null, cancelled); }
+        catch (BusinessException e) { throw e; }
+        catch (Exception e) { throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_PROVIDER_ERROR", "调用端点失败: " + endpoint.getName() + " - " + e.getMessage()); }
+    }
+
     // ── 对话轮次：原生工具调用 + 供应商真流式（docs/ip-studio-conversational-video-recreation-plan.md §一轮为有界agent循环） ──
 
     /** One native function call returned by the model ({@code arguments} is the raw JSON text the model produced). */
@@ -646,6 +655,13 @@ public class AiModelInvocationService {
 
     private AiModelResponse doChat(AiModelEndpoint e, AiModelPurpose purpose, List<? extends Map<String, ?>> messages,
                                    Map<String, Object> options, String replayOfRecordId) throws Exception {
+        return doChat(e, purpose, messages, options, replayOfRecordId, () -> false);
+    }
+
+    private AiModelResponse doChat(AiModelEndpoint e, AiModelPurpose purpose, List<? extends Map<String, ?>> messages,
+            Map<String, Object> options, String replayOfRecordId, java.util.function.BooleanSupplier cancelled) throws Exception {
+        requireNotCancelled(cancelled);
+
         AiModelProviderType type = e.getProviderType();
         if (!isOpenAiCompatible(type)) {
             log.warn("[ai-chat] provider unsupported purpose={} endpointId={} providerType={}",
@@ -713,7 +729,7 @@ public class AiModelInvocationService {
                 .replayOfRecordId(replayOfRecordId)
                 .client(HTTP)
                 .build();
-        if (stream) return collectStream(e, purpose, model, req, ctx, timeout, requestId, observedJson, replayOfRecordId, startNanos);
+        if (stream) return collectStream(e, purpose, model, req, ctx, timeout, requestId, observedJson, replayOfRecordId, startNanos, cancelled);
         HttpResponse<String> resp;
         try {
             resp = upstreamHttp.sendJson(req, ctx);
@@ -801,28 +817,43 @@ public class AiModelInvocationService {
                 com.aistareco.aep.service.ai.ProviderResponseDiagnostics.capture(resp.statusCode(),resp.headers(),resp.body()));
     }
 
+    private static void requireNotCancelled(java.util.function.BooleanSupplier cancelled) {
+        if (cancelled.getAsBoolean()) throw new BusinessException(HttpStatus.CONFLICT, "IP_RUN_CANCELLED", "已停止创作");
+    }
+
     private static final Duration STREAM_COLLECT_LIMIT = Duration.ofMinutes(10);
     private static final int STREAM_ATTEMPTS = 3;
 
     /** 流式接收、收齐后按非流式的形状返回。思考过程的增量也算有字节，连接不会因等待被网关断开；只有正文进结果。 */
     private AiModelResponse collectStream(AiModelEndpoint e, AiModelPurpose purpose, String model, HttpRequest req, ModelCallCtx ctx, Duration timeout,
-                                          String requestId, String observedJson, String replayOfRecordId, long startNanos) throws Exception {
+                                          String requestId, String observedJson, String replayOfRecordId, long startNanos, java.util.function.BooleanSupplier cancelled) throws Exception {
         String internal = "endpoint=" + e.getName() + " purpose=" + (purpose == null ? null : purpose.wire()) + " model=" + model;
         StreamAccumulator acc = null;
         UpstreamModelHttp.StreamResult outcome = null;
         // OneToken 的流会中途断（stream_interrupted，2026-11-04 实测 27 秒到 2 分钟都出现过），此时还没有可用结果：同一请求最多重发 2 次。
         for (int attempt = 1; attempt <= STREAM_ATTEMPTS; attempt++) {
+            requireNotCancelled(cancelled);
             acc = new StreamAccumulator(new ChatStreamListener() {
                 @Override public void onTextDelta(String text) { }
-                @Override public boolean cancelled() { return false; }
+                @Override public boolean cancelled() { return cancelled.getAsBoolean(); }
             });
             try {
                 // 只要还在出字节就接着收：长剧本要好几分钟，默认的 90 秒是给「等响应」用的，不是给「收全文」用的。
-                outcome = upstreamHttp.sendStream(req, ctx, acc::line, () -> false, Duration.ofSeconds(90), STREAM_COLLECT_LIMIT);
+                outcome = upstreamHttp.sendStream(req, ctx, acc::line, cancelled, Duration.ofSeconds(90), STREAM_COLLECT_LIMIT);
             } catch (UpstreamCallException ex) {
+                requireNotCancelled(cancelled);
                 if (ex.isTimeout() || attempt == STREAM_ATTEMPTS) throw networkFailure(ex, internal);
                 log.warn("[ai-chat] stream broken, retrying requestId={} attempt={} err={}", requestId, attempt, ex.getCause() == null ? null : ex.getCause().toString());
                 continue;
+            }
+            if (outcome.cancelled()) {
+                usage.recordObserved(e.getId(), e.getName(), model, purpose == null ? null : purpose.wire(), acc.promptTokens, acc.completionTokens, null, false,
+                        requestId, null, elapsedMs(startNanos), "CANCELLED", "用户已停止创作", observedJson, null, replayOfRecordId);
+                if (acc.promptTokens != null && acc.completionTokens != null)
+                    return new AiModelResponse(acc.content.toString(), "cancelled", Math.addExact(acc.promptTokens, acc.completionTokens),
+                            e.getName(), model, acc.promptTokens, acc.completionTokens);
+                // 不把缺失的 Token 回执当成零用量；worker 保留冻结，待核对后结算。
+                requireNotCancelled(() -> true);
             }
             boolean interrupted = acc.error != null && acc.error.contains("stream_interrupted");
             if (!interrupted || attempt == STREAM_ATTEMPTS) break;

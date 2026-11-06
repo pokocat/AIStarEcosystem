@@ -24,5 +24,5 @@ public final class StudioSegmentedDtos {
      * 按钮旁的价。estimated = 视频 + 分镜图 + 文字任务的上限；cap 再加上每张分镜图不合格时重出一次的余量。
      * textCost 是脚本、审核和提示词优化的冻结上限，实际按用量结算，通常只用掉一小部分。
      */
-    public record SegmentedVideoPrice(List<Integer> segments, int boards, boolean boardReview, long videoCost, long boardCost, long textCost, long estimated, long cap) {}
+    public record SegmentedVideoPrice(List<Integer> segments, int boards, boolean boardReview, long videoCost, long boardCost, long textCost, long estimated, long cap, Long discountedVideoCost, String videoDiscountName) {}
 }

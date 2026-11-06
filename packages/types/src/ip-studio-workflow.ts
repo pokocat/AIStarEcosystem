@@ -563,7 +563,7 @@ export interface StudioSegmentedVideoRequest {
   budgetCap: number; billing?: EnterpriseBillingSelection;
 }
 /** 按钮旁的价。cap 比 estimated 多的是分镜图不合格时重出一次的余量；textCost 是脚本、审核和提示词优化的冻结上限，按实际用量结算。 */
-export interface StudioSegmentedVideoPrice { segments: number[]; boards: number; boardReview: boolean; videoCost: number; boardCost: number; textCost: number; estimated: number; cap: number }
+export interface StudioSegmentedVideoPrice { segments: number[]; boards: number; boardReview: boolean; videoCost: number; boardCost: number; textCost: number; estimated: number; cap: number; discountedVideoCost?: number | null; videoDiscountName?: string | null }
 /** 草稿里记的一条长视频。先记下请求再提交；没有 executionId 说明提交结果没确认，同一个请求编号再交一次会拿回原来那次。 */
 export interface StudioSceneSegmentedRecord { clientRequestId: string; at: string; title: string; request: StudioSegmentedVideoRequest; executionId?: string }
 

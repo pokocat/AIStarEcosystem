@@ -49,6 +49,46 @@ class DialogueStreamingInvocationTest {
                 .upstreamApiKeyEncrypted(AepCryptoUtil.encrypt("local-key")).chatSupportsStreaming(streaming).chatSupportsTools(tools).enabled(true).build();
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void collectedScriptCanBeStoppedWithoutRetryingOrInventingUsage(boolean receipt) throws Exception {
+        var received = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var cancelled = new java.util.concurrent.atomic.AtomicBoolean();
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            calls.incrementAndGet(); exchange.getRequestBody().readAllBytes();
+            exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
+            exchange.sendResponseHeaders(200, 0);
+            try (var out = exchange.getResponseBody()) {
+                out.write("data: {\"choices\":[{\"delta\":{\"content\":\"partial script\"}}]}\n\n".getBytes(StandardCharsets.UTF_8));
+                if (receipt) out.write("data: {\"choices\":[],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":20}}\n\n".getBytes(StandardCharsets.UTF_8));
+                out.flush(); received.countDown(); release.await(5, TimeUnit.SECONDS);
+            } catch (Exception ignored) { }
+        });
+        server.start();
+        var executor = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try {
+            var svc = service(); var ep = endpoint(true, false);
+            var result = executor.submit(() -> svc.invokeChatCancellable(ep, AiModelPurpose.DAP_PERSONA,
+                    List.of(Map.of("role", "user", "content", "write script")), Map.of(), cancelled::get));
+            assertTrue(received.await(3, TimeUnit.SECONDS));
+            // 等到 reader 消费这一小段确定性的本地回执，再停止。
+            Thread.sleep(100);
+            cancelled.set(true);
+            if (receipt) {
+                var reply = result.get(3, TimeUnit.SECONDS);
+                assertEquals("cancelled", reply.finishReason());
+                assertEquals(100L, reply.promptTokens()); assertEquals(20L, reply.completionTokens());
+            } else {
+                var error = assertThrows(java.util.concurrent.ExecutionException.class, () -> result.get(3, TimeUnit.SECONDS));
+                assertEquals("IP_RUN_CANCELLED", ((BusinessException) error.getCause()).getCode());
+            }
+            assertEquals(1, calls.get());
+        } finally { release.countDown(); executor.shutdownNow(); }
+    }
+
     @Test void deltasArriveBeforeTheVendorFinishesAndUsageComesFromTheLastChunk() throws Exception {
         CountDownLatch firstSeen = new CountDownLatch(1);
         AtomicReference<String> body = new AtomicReference<>();

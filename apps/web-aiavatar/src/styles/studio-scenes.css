@@ -290,6 +290,7 @@ button.scene-pill:hover, .scene-pill[aria-expanded="true"], .scene-pill.is-selec
 .scene-script-text { margin: 0; font: inherit; font-size: 13px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
 .scene-script-text mark.scene-script-blank { padding: 0 2px; border-radius: 3px; background: var(--ip-gold-soft); color: var(--ip-gold); }
 .scene-script-state { margin: 0 !important; color: var(--ip-muted); font-size: 13px; }
+.scene-script-card.is-stopped .scene-script-writing svg { animation: none; }
 .scene-script-state.is-failed { color: var(--ip-error); overflow-wrap: anywhere; }
 .scene-script-missing { margin: 0 !important; color: var(--ip-gold); font-size: 12px; line-height: 1.6; }
 .scene-script-check { margin: 0 !important; color: var(--ip-muted); font-size: 12px; line-height: 1.6; }

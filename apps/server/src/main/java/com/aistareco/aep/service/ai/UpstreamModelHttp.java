@@ -196,7 +196,28 @@ public class UpstreamModelHttp {
         logRequest(req, ctx);
         HttpResponse<InputStream> resp;
         try {
-            resp = ctx.client().send(req, HttpResponse.BodyHandlers.ofInputStream());
+            try { if (cancelled != null && cancelled.getAsBoolean()) return new StreamResult(200, null, true, elapsedMs(start)); }
+            catch (RuntimeException ignored) { /* 探针失败不替代真实模型结果。 */ }
+            var opening = ctx.client().sendAsync(req, HttpResponse.BodyHandlers.ofInputStream());
+            try {
+                while (true) {
+                    boolean stop = false;
+                    try { stop = cancelled != null && cancelled.getAsBoolean(); }
+                    catch (RuntimeException ignored) { /* 与正文的探针一致：短暂查询失败不放弃健康连接。 */ }
+                    if (stop) {
+                        if (!opening.cancel(true)) {
+                            try { opening.join().body().close(); } catch (Exception ignored) { /* 响应头恰好到了也要释放正文。 */ }
+                        }
+                        return new StreamResult(200, null, true, elapsedMs(start));
+                    }
+                    try { resp = opening.get(500, TimeUnit.MILLISECONDS); break; }
+                    catch (java.util.concurrent.TimeoutException waiting) { /* 还没返回响应头也能停止。 */ }
+                }
+            } catch (InterruptedException interrupted) { opening.cancel(true); throw interrupted; }
+            catch (java.util.concurrent.ExecutionException failed) {
+                if (failed.getCause() instanceof IOException io) throw io;
+                throw new IOException("Opening model stream failed", failed.getCause());
+            }
         } catch (IOException e) {
             long latency = elapsedMs(start);
             log.warn("[upstream-http] stream io-exception purpose={} endpoint={} model={} requestId={} err={}",

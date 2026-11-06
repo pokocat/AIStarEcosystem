@@ -31,11 +31,24 @@ export function segmentedRecords(project?: Pick<IpProject, "name" | "doc" | "run
   return records.sort((a, b) => b.at.localeCompare(a.at));
 }
 
-export type SegmentedPriceQuery = { model?: string; tier?: string; duration: number; ratio: string; images: number; character: boolean; voice: boolean; optimize: boolean };
+export type SegmentedPriceQuery = { model?: string; tier?: string; duration: number; ratio: string; images: number; character: boolean; voice: boolean; optimize: boolean; payer?: "personal" | "enterprise"; enterpriseId?: string };
 
 export async function segmentedVideoPrice(query: SegmentedPriceQuery, signal?: AbortSignal): Promise<StudioSegmentedVideoPrice> {
   if (USE_MOCK) return mockSegmentedPrice(query);
   return apiFetch<StudioSegmentedVideoPrice>("/v1/ip-studio/studio/segmented-video-price", { query, signal });
+}
+
+/** 服务端逐段报价后的折扣展示；分镜图仍按标准价预估，赠款在实际执行时抵扣。 */
+export function describeSegmentedPrice(personal: StudioSegmentedVideoPrice, enterprise?: StudioSegmentedVideoPrice, undecided = false) {
+  const payable = (p: StudioSegmentedVideoPrice) => p.discountedVideoCost ?? p.videoCost;
+  const video = Math.min(payable(personal), enterprise ? payable(enterprise) : Infinity);
+  const from = !!enterprise && payable(personal) !== payable(enterprise);
+  const saving = personal.videoCost - video;
+  const n = (v: number) => v.toLocaleString("zh-CN");
+  const discount = saving > 0 ? `${personal.videoDiscountName || enterprise?.videoDiscountName || "视频优惠"}，视频费省 ${n(saving)} 积分。` : "";
+  const accounts = from ? `个人账户视频费 ${n(payable(personal))} 积分，企业账户视频费 ${n(payable(enterprise!))} 积分，点生成时选账户。`
+    : undecided ? "付款账户点生成时选。" : "";
+  return { standard: personal.videoCost + personal.boardCost, shown: video + personal.boardCost, video, from, note: (from ? "" : discount) + accounts };
 }
 
 export async function startSegmentedVideo(projectId: string, request: StudioSegmentedVideoRequest): Promise<StudioPlanExecution> {
