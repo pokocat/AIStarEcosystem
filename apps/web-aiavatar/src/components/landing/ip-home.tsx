@@ -13,7 +13,7 @@ import { StudioConversationStart } from "@/ip/studio-conversation-start";
 import { useStartNewCanvas } from "@/ip/use-start-new-canvas";
 import { useStudioFailure } from "@/ip/studio-errors";
 import { StudioTemplateUse } from "@/ip/studio-template-use";
-import { templateKind } from "@/ip/template-facts";
+import { newestFirst, templateKind } from "@/ip/template-facts";
 import { ProjectCardPreview } from "@/ip/project-card-preview";
 import { projectPreview } from "@/ip/project-preview";
 import { sceneHref, useSceneHomeCards } from "@/ip/scenes/scene-catalog";
@@ -105,8 +105,8 @@ function IpHomeNext({ header = true }: { header?: boolean }) {
     try { const project = await createStudioEntry(target.entry); router.push(studioEntryHref(project.id, target.entry)); }
     catch (e) { showFailure({ action: "新建画布", error: e, next: "请重试。多次失败时，可复制「错误详情」反馈给我们。" }); setCreating(undefined); createLock.current = false; }
   };
-  // 有成图的排前面：灵感墙先让人看到做出来的东西，只有步骤的模板跟在后面（2026-10-30 线上走查：前几屏大半是没有图的卡）。
-  const feed = useMemo(() => (templates ?? []).filter(t => tab === "all" || (tab === "canvas" ? true : templateKind(t) === tab))
+  // 新发布的在前（用户 2026-11-06 要求）。有成图的仍排前面：灵感墙先让人看到做出来的东西，只有步骤的模板跟在后面（2026-10-30 线上走查：前几屏大半是没有图的卡）。
+  const feed = useMemo(() => newestFirst((templates ?? []).filter(t => tab === "all" || (tab === "canvas" ? true : templateKind(t) === tab)))
     .map((t, i) => ({ t, i, pictured: hasPicture(t) })).sort((a, b) => Number(b.pictured) - Number(a.pictured) || a.i - b.i).map(x => x.t), [templates, tab]);
   const scrollGoals = (direction: number) => goals.current?.scrollBy({ left: direction * goals.current.clientWidth * .8, behavior: "smooth" });
 

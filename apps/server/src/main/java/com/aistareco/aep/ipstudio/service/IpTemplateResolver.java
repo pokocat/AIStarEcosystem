@@ -134,7 +134,8 @@ public class IpTemplateResolver {
                 signOrEmpty(d.getCoverKey() == null ? CanvasCoverService.firstImageKey(docOf(d), key -> true) : d.getCoverKey()),
                 null, 0, 0,
                 docOf(d),d.getCurrentVersionId(),versionNumber(d),d.getVisibility(),userId!=null && userId.equals(d.getCreatedBy()),d.isEnabled(),
-                previewVideoUrl(d));
+                previewVideoUrl(d),
+                d.getCreatedAt()==null?null:d.getCreatedAt().toString());
     }
 
     /** 只有带素材的官方示例才有成片；模板的素材在发布时已剥掉。签不出来就不给，卡片退回静态封面。 */

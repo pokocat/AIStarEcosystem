@@ -232,6 +232,8 @@ export interface IpTemplate {
   id: string; name: string; summary: string; coverUrl?: string;
   /** 官方示例里第一段成片的签名地址（灵感卡悬停播放用）；没有成片时不给。 */
   previewVideoUrl?: string;
+  /** 首次发布时间（ISO 8601）。内置模板没有。 */
+  createdAt?: string;
   stylePresetId?: string; lookCount: number; estimatedCredits: number;
   doc: IpProjectDoc;              // 预排好的节点图（照片 / 参考图为空待填）
 }

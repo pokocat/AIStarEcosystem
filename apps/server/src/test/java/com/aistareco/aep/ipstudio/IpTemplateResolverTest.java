@@ -139,6 +139,15 @@ class IpTemplateResolverTest {
     }
 
     @Test
+    void 示例带首次发布时间_内置模板没有() {
+        IpDemoTemplate published = demo("IPD-ex", "带素材的成品", true, IpDemoTemplate.KIND_EXAMPLE);
+        published.setCreatedAt(java.time.Instant.parse("2026-11-06T00:22:10Z"));
+        IpTemplateResolver r = resolverWith(List.of(published));
+        assertEquals("2026-11-06T00:22:10Z", r.listExamples().get(0).createdAt());
+        assertTrue(r.list().stream().allMatch(t -> t.createdAt() == null), "内置模板不该编一个发布时间");
+    }
+
+    @Test
     void 模板进目录_实例不进目录但仍可按id解析() {
         IpTemplateResolver r = resolverWith(List.of(
                 demo("IPD-tpl", "只有工作流", true, IpDemoTemplate.KIND_TEMPLATE),

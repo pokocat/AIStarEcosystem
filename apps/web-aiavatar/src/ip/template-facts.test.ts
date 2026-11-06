@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { templateKind, templateNeeds, templatePrompt, templateSearchText, templateSpec } from './template-facts';
+import { newestFirst, templateKind, templateNeeds, templatePrompt, templateSearchText, templateSpec } from './template-facts';
 
 const node = (id: string, type: string, title: string, metadata: any) => ({ id, type, title, position: { x: 0, y: 0 }, width: 100, height: 100, metadata });
 const doc = { nodes: [
@@ -26,5 +26,20 @@ describe('what a template tells you before you copy it', () => {
     expect(templateKind({ doc })).toBe('video');
     expect(templateKind({ doc: { nodes: [node('a', 'image', '图', { storageKey: 'k' })] } } as any)).toBe('image');
     expect(templateKind({ doc: { nodes: [node('a', 'image', '图', { prompt: 'x' })] } } as any)).toBe('canvas');
+  });
+});
+
+describe('newestFirst', () => {
+  const row = (id: string, createdAt?: string) => ({ id, createdAt });
+  const ids = (rows: { id: string }[]) => rows.map(r => r.id);
+
+  test('newer days first; a batch published on one day keeps the order it was given', () => {
+    const rows = [row('old', '2026-11-03T02:00:00Z'), row('b1', '2026-11-06T00:22:10Z'), row('b2', '2026-11-06T00:22:20Z'), row('mid', '2026-11-04T02:00:00Z')];
+    expect(ids(newestFirst(rows))).toEqual(['b1', 'b2', 'mid', 'old']);
+    expect(ids(rows)).toEqual(['old', 'b1', 'b2', 'mid']);
+  });
+
+  test('anything without a usable time goes last, in the order given', () => {
+    expect(ids(newestFirst([row('builtin'), row('bad', 'not a date'), row('dated', '2026-11-03T02:00:00Z')]))).toEqual(['dated', 'builtin', 'bad']);
   });
 });

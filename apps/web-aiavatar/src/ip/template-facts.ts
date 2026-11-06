@@ -41,3 +41,16 @@ export function templateNeeds(doc?: Pick<IpProjectDoc, 'nodes'>) {
 /** 搜索范围：名称、说明和提示词。搜「穿搭」要能搜到标题写「小红书封面」、提示词写穿搭的那条。 */
 export const templateSearchText = (t: Pick<IpTemplate, 'name' | 'summary' | 'doc'>) =>
   [t.name, t.summary, ...nodesOf(t.doc).map(n => n.metadata?.prompt)].filter(Boolean).join(' ').toLocaleLowerCase();
+
+/**
+ * 发布新旧：比日期，不比到分秒。同一天发布的是一批，比到分秒就只是把排好的顺序倒过来，
+ * 同一天的按传入的顺序（运营排好的）。没有发布时间的内置模板排最后。不改传入的数组。
+ */
+export function newestFirst<T extends Pick<IpTemplate, 'createdAt'>>(templates: readonly T[]): T[] {
+  const day = (t: T) => {
+    if (!t.createdAt) return -Infinity;
+    const at = new Date(t.createdAt);
+    return Number.isNaN(at.getTime()) ? -Infinity : new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime();
+  };
+  return templates.map((t, i) => ({ t, i, d: day(t) })).sort((a, b) => (b.d === a.d ? a.i - b.i : b.d - a.d)).map(x => x.t);
+}
