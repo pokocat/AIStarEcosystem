@@ -695,6 +695,7 @@ public class StudioWorkflowWorker {
         var quoter=planQuoter==null?null:planQuoter.getIfAvailable();
         if(quoter==null)throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_PLAN_QUOTE_UNAVAILABLE","暂时无法为制作计划报价，本次未扣积分");
         quoter.quote(run.getOwnerUserId(),plan);
+        quoter.estimate(run.getOwnerUserId(),plan);
         plan.put("fingerprint",StudioPlanValidator.fingerprint(plan));
         return plan;
     }

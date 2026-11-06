@@ -26,7 +26,7 @@ const keyOf = (e: StudioError) => e.taskId || e.logId || e.clientMessageId || `$
  */
 const INTERNAL_CODES = new Set(['STUDIO_SKILL_OPERATION_NOT_ALLOWED', 'STUDIO_SKILL_LOCKED']);
 const INTERNAL_TEXT = /当前阶段允许的范围|当前阶段不允许|制作结束前不能换方法|按另一种方法制作/;
-export const PLAN_NOT_READY_TEXT = '这份方案还没准备好，我会按你要做的内容重新整理。';
+export const PLAN_NOT_READY_TEXT = '方案需要调整，正在重新整理。';
 /** What a user sees for an error: internal refusals become one plain sentence and a neutral code. */
 export function userFacingError(code: string | undefined, message: string | undefined): { code?: string; message?: string } {
   if ((code && INTERNAL_CODES.has(code)) || (message && INTERNAL_TEXT.test(message))) return { code: code ? 'STUDIO_PLAN_NOT_READY' : undefined, message: PLAN_NOT_READY_TEXT };

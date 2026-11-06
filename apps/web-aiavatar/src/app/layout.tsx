@@ -29,6 +29,7 @@ import "../styles/studio-select.css";
 import "../styles/director.css";
 import "../styles/studio-scenes.css";
 import "../styles/studio-home-scenes.css";
+import "../styles/inspiration.css";
 import "../styles/studio-next-pages.css";
 import "../styles/assets-hub.css";
 import { StudioNotifications } from '@/ip/studio-errors';

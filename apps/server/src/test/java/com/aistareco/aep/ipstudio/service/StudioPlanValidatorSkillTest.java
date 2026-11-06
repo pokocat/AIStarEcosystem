@@ -135,6 +135,9 @@ class StudioPlanValidatorSkillTest {
         String base=StudioPlanValidator.fingerprint(plan);
         var bound=plan.deepCopy();bound.put("revision",3).put("confirmedApproachId","rewrite").put("fingerprint","x");((ObjectNode)bound.path("budget")).put("approvedCap",100);
         assertEquals(base,StudioPlanValidator.fingerprint(bound));
+        // 预估跟着折扣变，只用于显示；不能让用户确认时报「方案已变化」。
+        var estimated=plan.deepCopy();((ObjectNode)estimated.path("budget")).put("expected",1);
+        assertEquals(base,StudioPlanValidator.fingerprint(estimated));
         var reordered=(ObjectNode)om.readTree(om.writeValueAsString(plan));var budget=reordered.remove("budget");reordered.set("budget",budget);
         assertEquals(base,StudioPlanValidator.fingerprint(reordered),"key order is irrelevant");
         var repriced=plan.deepCopy();((ObjectNode)repriced.path("steps").get(0)).put("quotedCost",9);

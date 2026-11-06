@@ -127,6 +127,9 @@ class StudioSkillRouterTest {
         // Nothing bound, or writing already chosen from the user's own message: the brief still decides.
         assertEquals(StudioSkillRouter.WRITING_SKILL, StudioSkillRouter.planningMethod(shelf, brief, null).key());
         assertEquals(StudioSkillRouter.WRITING_SKILL, StudioSkillRouter.planningMethod(shelf, brief, writing).key());
+        // 线上 2026-11-06 IPR-8b1ed4af：「我的商品图」让视频方案先切到出图，方案校验失败才改回来，界面多一行红字。
+        assertEquals("video-generation", StudioSkillRouter.planningMethod(shelf, "把「我的版本」这个视频对象生成出来，主图放在开头", videoJob).key());
+        assertEquals("image-generation", StudioSkillRouter.planningMethod(shelf, "再出一张主图", videoJob).key());
         // Moving on to another kind of output still works: 「继续下一步」 carries the job only in the brief.
         assertEquals("video-generation", StudioSkillRouter.planningMethod(shelf, "用这张图生成一段视频", image).key());
         assertEquals("video-generation", StudioSkillRouter.planningMethod(shelf, "用这段脚本生成一段视频", writing).key());

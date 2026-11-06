@@ -37,6 +37,7 @@ public final class StudioSkillRouter {
 
     /** The method a writing intent goes to (resources/studio/skills/script-writing.md); the rule is off while it is not active. */
     public static final String WRITING_SKILL = "script-writing";
+    private static final String VIDEO_SKILL = "video-generation", IMAGE_SKILL = "image-generation";
 
     public enum Kind {
         /** The words name one job (writing intent, or a unique best score): bind {@link Decision#skill()}. */
@@ -73,7 +74,11 @@ public final class StudioSkillRouter {
         Decision decision = decide(active, Set.of(), brief, bound);
         if (decision.kind() != Kind.MATCH) return bound;
         boolean offWriting = bound != null && !WRITING_SKILL.equals(bound.key());
-        return offWriting && WRITING_SKILL.equals(decision.skill().key()) ? bound : decision.skill();
+        if (offWriting && WRITING_SKILL.equals(decision.skill().key())) return bound;
+        // A video brief names its materials too (「我的商品图」「首帧图」) and those score for the picture method. Staying is safe:
+        // a plan that really makes pictures still gets there through the covering method.
+        boolean videoBrief = bound != null && VIDEO_SKILL.equals(bound.key()) && brief != null && brief.contains("视频");
+        return videoBrief && IMAGE_SKILL.equals(decision.skill().key()) ? bound : decision.skill();
     }
 
     /**

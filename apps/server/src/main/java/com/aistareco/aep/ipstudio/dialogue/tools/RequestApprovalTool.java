@@ -61,7 +61,10 @@ public class RequestApprovalTool implements StudioDialogueTool {
         ObjectNode block = DialogueTools.OM.createObjectNode().put("type", "approval").put("approvalId", "APV-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16))
                 .put("stage", plan.path("stage").asText(ctx.stage())).put("planFingerprint", latest.path("fingerprint").asText());
         block.set("scope", args.path("scope").deepCopy());
-        block.put("quotedCost", quoted).put("budgetCap", cap).put("autoFixCap", Math.min(autoFix, cap));
+        // 卡上写的是预估；上限照旧是 cap。老方案没有 expected，或预估不低于报价，就只有一个数。
+        long expected = plan.path("budget").path("expected").asLong(0);
+        long shown = expected > 0 ? Math.min(expected, quoted) : quoted;
+        block.put("quotedCost", quoted).put("estimatedCost", shown).put("budgetCap", cap).put("autoFixCap", Math.min(autoFix, cap));
         if (ctx.billing != null) block.set("billingSelection", DialogueTools.OM.valueToTree(ctx.billing));
         block.put("status", "pending");
         if (ctx.executionId != null) block.put("executionId", ctx.executionId);
@@ -69,7 +72,7 @@ public class RequestApprovalTool implements StudioDialogueTool {
         var data = DialogueTools.OM.createObjectNode().put("messageId", ctx.assistantMessageId);
         data.set("block", block);
         ctx.effects.appendBlock(block, StudioDialogueEventTypes.APPROVAL_REQUIRED, data);
-        return ToolRun.done("等你确认：报价 " + quoted + " 积分", DialogueTools.ok(DialogueTools.OM.createObjectNode()
-                .put("summary", "确认卡已显示给用户，等待用户决定").put("quotedCost", quoted).put("budgetCap", cap))).withEnd(DialogueLoop.Reason.WAITING_USER);
+        return ToolRun.done("等你确认：预估 " + shown + " 积分", DialogueTools.ok(DialogueTools.OM.createObjectNode()
+                .put("summary", "确认卡已显示给用户，等待用户决定").put("estimatedCost", shown).put("quotedCost", quoted).put("budgetCap", cap))).withEnd(DialogueLoop.Reason.WAITING_USER);
     }
 }

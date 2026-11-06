@@ -1,0 +1,91 @@
+/* 灵感（首页的灵感区和灵感页）：作品是主角。不加框、不加底，作品按原比例摆在白纸上，名字像展签一样放在图下面。
+   结构见 src/ip/inspiration-wall.tsx。形态读 html[data-layout]，不写媒体查询。 */
+
+.inspiration-wall { display: flex; align-items: flex-start; column-gap: 18px; }
+.inspiration-wall-column { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; row-gap: 26px; }
+
+/* 进场：一页卡片依次浮上来。起点不完全透明，页面在后台或动画没跑时也看得见。 */
+@keyframes inspiration-rise { from { opacity: .3; transform: translateY(16px); } }
+.inspiration-card { position: relative; min-width: 0; animation: inspiration-rise .8s var(--ip-ease) backwards; animation-delay: calc(var(--inspiration-order, 0) * 36ms); }
+
+.inspiration-card-open { display: block; width: 100%; margin: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.inspiration-card-open:disabled { cursor: default; }
+.inspiration-card-open:focus-visible { outline: none; }
+.inspiration-card-open:focus-visible .inspiration-card-media { outline: 2px solid var(--ip-ink); outline-offset: 3px; }
+
+.inspiration-card-media { position: relative; display: block; overflow: hidden; border-radius: 16px; background: var(--ip-soft); transition: transform .5s var(--ip-ease), box-shadow .5s var(--ip-ease); }
+.inspiration-card-media.is-unsized { aspect-ratio: 4 / 5; }
+.inspiration-card-open:not(:disabled):hover .inspiration-card-media { transform: translateY(-4px); box-shadow: 0 22px 40px -22px rgb(25 34 41 / .45), 0 6px 14px -8px rgb(25 34 41 / .18); }
+.inspiration-card-media .project-content-cover :is(img, video) { object-fit: cover; transition: transform 1.2s var(--ip-ease); }
+.inspiration-card-open:not(:disabled):hover .project-content-cover :is(img, video) { transform: scale(1.04); }
+.inspiration-card.is-closed .inspiration-card-media { opacity: .55; }
+
+/* 没有成图的模板：白底细边的一张纸，写着有哪些步骤。 */
+.inspiration-card-media:not(:has(.project-content-cover)) { background: var(--ip-paper); box-shadow: inset 0 0 0 1px var(--ip-line); }
+.inspiration-card-media :is(.project-content-placeholder, .project-content-document) { background: none; }
+
+.inspiration-card-action { position: absolute; right: 10px; bottom: 10px; padding: 7px 14px; border-radius: 999px; background: var(--ip-paper); color: var(--ip-ink); font-size: 12.5px; font-weight: 600; line-height: 1.3; box-shadow: 0 8px 18px -8px rgb(25 34 41 / .5); opacity: 0; transform: translateY(8px); transition: opacity .25s ease, transform .45s var(--ip-ease); pointer-events: none; }
+.inspiration-card-open:is(:hover, :focus-visible) .inspiration-card-action { opacity: 1; transform: none; }
+
+.inspiration-card-label { display: grid; gap: 1px; min-width: 0; padding: 10px 2px 0; }
+.inspiration-card-label strong { overflow: hidden; color: var(--ip-ink); font-family: var(--ip-display); font-size: 15px; font-weight: 600; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
+.inspiration-card-label small { overflow: hidden; color: var(--ip-muted); font-size: 12px; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 管理者的操作：不占版面，指到作品上才出现。 */
+.inspiration-card-manage { position: absolute; top: 8px; left: 8px; display: flex; flex-wrap: wrap; gap: 6px; max-width: calc(100% - 48px); opacity: 0; transition: opacity .2s ease; }
+.inspiration-card:is(:hover, :focus-within) .inspiration-card-manage, .inspiration-card.is-closed .inspiration-card-manage { opacity: 1; }
+.inspiration-card-manage button { display: inline-flex; align-items: center; gap: 4px; padding: 4px 9px; border: 0; border-radius: 999px; background: rgb(255 255 255 / .92); color: var(--ip-ink); font-size: 11.5px; line-height: 1.4; cursor: pointer; }
+.inspiration-card-manage button:not(:disabled):hover { background: var(--ip-paper); }
+
+.inspiration-wall-end { display: flex; justify-content: center; min-height: 72px; padding: 26px 0 8px; color: var(--ip-muted); font-size: 12.5px; }
+.inspiration-wall-end > span { display: inline-flex; align-items: center; gap: 7px; }
+
+/* 还没读到内容时的占位：先有墙的样子，内容到了不跳。 */
+@keyframes inspiration-breathe { 50% { opacity: .55; } }
+.inspiration-wall.is-loading span { display: block; border-radius: 16px; background: var(--ip-soft); animation: inspiration-breathe 1.8s ease-in-out infinite; }
+.inspiration-wall.is-loading .inspiration-wall-column:nth-child(even) span { animation-delay: .3s; }
+
+/* 灵感页 */
+.ip-brand-surface.studio-page.studio-template-market .studio-page-heading { align-items: flex-end; margin-bottom: 14px; }
+.ip-brand-surface.studio-page.studio-template-market .studio-page-heading h1 { font-family: var(--ip-display); font-size: clamp(36px, 3.6vw, 52px); font-weight: 600; line-height: 1.2; letter-spacing: -.02em; }
+.ip-brand-surface.studio-page.studio-template-market .studio-page-heading p { margin-top: 8px !important; color: var(--ip-muted); font-size: 14px; }
+
+.inspiration-admin-link { display: inline-flex; align-items: center; gap: 6px; color: var(--ip-muted); font-size: 12.5px; text-underline-offset: 3px; }
+.inspiration-admin-link:hover { color: var(--ip-ink); text-decoration: underline; }
+
+/* 分类和搜索跟着滚动停在顶上，作品从底下滑过。 */
+.inspiration-toolbar { position: sticky; top: var(--desktop-bar-h, 0px); z-index: 6; display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 -30px 18px; padding: 10px 30px; background: rgb(255 255 255 / .88); -webkit-backdrop-filter: blur(16px) saturate(1.5); backdrop-filter: blur(16px) saturate(1.5); }
+.ip-brand-surface.studio-page.studio-template-market .studio-page-filters { display: flex; flex: 0 1 auto; gap: 2px; min-width: 0; margin: 0; padding: 0; border: 0; border-radius: 0; background: none; overflow-x: auto; scrollbar-width: none; }
+.ip-brand-surface.studio-page.studio-template-market .studio-page-filters::-webkit-scrollbar { display: none; }
+.ip-brand-surface.studio-page.studio-template-market .studio-page-filters > button { flex-shrink: 0; height: 34px; min-height: 0; padding: 0 14px; border: 0; border-radius: 999px; background: none; box-shadow: none; color: var(--ip-muted); font-size: 13.5px; font-weight: 500; transition: color .2s ease, background .2s ease; }
+.ip-brand-surface.studio-page.studio-template-market .studio-page-filters > button:hover { background: var(--ip-soft); color: var(--ip-ink); }
+.ip-brand-surface.studio-page.studio-template-market .studio-page-filters > button[aria-pressed="true"] { background: var(--ip-ink); box-shadow: none; color: var(--ip-paper); font-weight: 500; }
+.ip-brand-surface.studio-page.studio-template-market .inspiration-toolbar .studio-page-search { flex: 0 1 240px; height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--ip-soft); box-shadow: none; transition: background .2s ease; }
+.ip-brand-surface.studio-page.studio-template-market .inspiration-toolbar .studio-page-search:focus-within { background: var(--ip-selected); box-shadow: none; }
+.ip-brand-surface.studio-page.studio-template-market .inspiration-toolbar .studio-page-search input { font-size: 13px; }
+.inspiration-result { margin: 0 0 14px; color: var(--ip-muted); font-size: 13px; }
+
+/* 手机：两列，作品更紧；没有悬停，「做同款」在详情弹窗里，管理按钮常显。 */
+html[data-layout="mobile"] .inspiration-wall { column-gap: 10px; }
+html[data-layout="mobile"] .inspiration-wall-column { row-gap: 18px; }
+html[data-layout="mobile"] .inspiration-card-media { border-radius: 12px; }
+html[data-layout="mobile"] .inspiration-card-action { display: none; }
+html[data-layout="mobile"] .inspiration-card-manage { opacity: 1; }
+html[data-layout="mobile"] .inspiration-card-manage button { min-height: 32px; padding: 4px 10px; }
+html[data-layout="mobile"] .inspiration-card-manage button.is-icon-on-phone { width: 32px; padding: 0; justify-content: center; }
+html[data-layout="mobile"] .inspiration-card-manage button.is-icon-on-phone span { display: none; }
+html[data-layout="mobile"] .inspiration-card-label { padding-top: 8px; }
+html[data-layout="mobile"] .inspiration-card-label strong { font-size: 13.5px; }
+html[data-layout="mobile"] .inspiration-card-label small { font-size: 11.5px; }
+/* 手机屏幕矮，两行的筛选栏吸在顶上太占地方，跟着页面走。 */
+html[data-layout="mobile"] .inspiration-toolbar { position: static; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; padding: 0; background: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+html[data-layout="mobile"] .ip-brand-surface.studio-page.studio-template-market .inspiration-toolbar .studio-page-search { flex: 1 1 100%; height: 40px; }
+html[data-layout="mobile"] .ip-brand-surface.studio-page.studio-template-market .studio-page-filters { flex: 1 1 100%; }
+html[data-layout="mobile"] .ip-brand-surface.studio-page.studio-template-market .studio-page-filters > button { height: 36px; }
+html[data-layout="mobile"] .ip-brand-surface.studio-page.studio-template-market .studio-page-heading h1 { font-size: 32px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .inspiration-card, .inspiration-wall.is-loading span { animation: none; }
+  .inspiration-card-media, .inspiration-card-media .project-content-cover :is(img, video), .inspiration-card-action { transition: none; }
+  .inspiration-card-open:not(:disabled):hover .inspiration-card-media, .inspiration-card-open:not(:disabled):hover .project-content-cover :is(img, video) { transform: none; }
+}

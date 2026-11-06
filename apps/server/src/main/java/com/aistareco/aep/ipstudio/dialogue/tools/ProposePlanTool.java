@@ -195,18 +195,21 @@ public class ProposePlanTool implements StudioDialogueTool {
         ctx.planReady = true;
         var body = DialogueTools.OM.createObjectNode().put("revision", block.path("revision").asInt()).put("summary", plan.path("summary").asText())
                 .put("steps", plan.path("steps").size()).put("quoted", quoted);
-        if (quoted) body.put("estimatedCredits", plan.path("budget").path("estimated").asLong());
+        // 跟用户说预估（卡上就是这个数）；上限是核对预算用的，estimated 这个字段名是历史叫法。
+        long cap = plan.path("budget").path("estimated").asLong(), expected = plan.path("budget").path("expected").asLong(0);
+        long shown = expected > 0 ? Math.min(expected, cap) : cap;
+        if (quoted) body.put("estimatedCredits", shown).put("maxCredits", cap);
         var approaches = body.putArray("approaches");
         for (JsonNode a : plan.path("approaches")) approaches.addObject().put("id", a.path("id").asText()).put("title", a.path("title").asText());
         body.put("note", "方案已显示给用户；用户确认方案和预算前不会执行。" + (quoted ? "" : "服务端暂时没有报价，不要自行估价。"));
         return new ToolRun("done", "方案第 " + block.path("revision").asInt() + " 版：" + plan.path("steps").size() + " 步"
-                + (quoted ? "，报价 " + plan.path("budget").path("estimated").asLong() + " 积分" : ""),
+                + (quoted ? "，预估 " + shown + " 积分" : ""),
                 DialogueTools.ok(body), List.of(), List.of(), null, null, true, null, null, null);
     }
 
     /** The code and words a failed plan shows the user; the reason stays in the log and the model's result. */
     public static final String PLAN_NOT_READY = "STUDIO_PLAN_NOT_READY";
-    public static final String PLAN_NOT_READY_TEXT = "这份方案还没准备好，我会按你要做的内容重新整理。";
+    public static final String PLAN_NOT_READY_TEXT = "方案需要调整，正在重新整理。";
 
     /** The method for this plan: what the brief asks for, also during a production (不锁方法 2026-10-23); else the bound one. */
     private StudioSkill planningSkill(JsonNode args, ToolContext ctx) {

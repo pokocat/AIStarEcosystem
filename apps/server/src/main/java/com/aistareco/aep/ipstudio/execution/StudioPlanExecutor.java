@@ -737,7 +737,9 @@ public class StudioPlanExecutor {
         planBlock.set("plan",plan.plan().deepCopy());
         // The cap covers the production steps only: dialogue turns are billed on their own (2026-10-23).
         var card=approvalBlock(e,"production",approvalId,fingerprint,titles(plan.plan()),estimated,estimated+autoFix,autoFix);
-        String text="分析做完了。我按分析结果整理了制作方案，共 "+plan.plan().path("steps").size()+" 步，当前报价 "+estimated+" 积分。确认方案和预算后开始制作。";
+        long expected=plan.plan().path("budget").path("expected").asLong(0),shown=expected>0?Math.min(expected,estimated):estimated;
+        card.put("estimatedCost",shown);
+        String text="分析做完了。我按分析结果整理了制作方案，共 "+plan.plan().path("steps").size()+" 步，预估 "+shown+" 积分。确认方案后开始制作。";
         String thread=e.getThreadId(),executionId=e.getId();
         after.add(()->postMessage(thread,executionId,"exec-card-"+approvalId,text,List.of(planBlock,card),null));
     }

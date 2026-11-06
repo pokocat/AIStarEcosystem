@@ -556,7 +556,8 @@ public final class StudioPlanValidator {
     public static String fingerprint(JsonNode plan) {
         ObjectNode copy=plan.deepCopy();
         copy.remove(List.of("fingerprint","revision","confirmedApproachId"));
-        if(copy.path("budget").isObject())((ObjectNode)copy.path("budget")).remove("approvedCap");
+        // expected 只是卡片上给人看的预估（跟着折扣变），用户确认和核对的是 estimated。
+        if(copy.path("budget").isObject())((ObjectNode)copy.path("budget")).remove(List.of("approvedCap","expected"));
         try {
             byte[] bytes=OM.writeValueAsBytes(sorted(copy));
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));

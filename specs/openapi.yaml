@@ -1107,7 +1107,8 @@ components:
           nullable: true
           required: [estimated, autoFixCap]
           properties:
-            estimated: { type: integer }
+            estimated: { type: integer, description: 用户授权的上限：标准价加文字任务的冻结额度。 }
+            expected: { type: integer, nullable: true, description: 确认卡上显示的预估：折后价加一般用量。只用于显示，不进方案指纹。 }
             autoFixCap: { type: integer }
             approvedCap: { type: integer, nullable: true }
         steps:

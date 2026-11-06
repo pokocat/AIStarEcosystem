@@ -98,7 +98,11 @@ function renderBlock(block: StudioMessageBlock, message: StudioDialogueMessage, 
   const say = handlers.onQuickReply ?? handlers.onCompose;
   const chooseApproach = readOnly ? undefined : (title: string) => say(`改用「${title}」这个做法，重新报价`);
   switch (block.type) {
-    case 'tool_call': return <StudioDialogueToolCard key={blockKey(block)} block={block} turnEnded={message.status === 'failed' ? 'failed' : message.status === 'interrupted' ? 'interrupted' : undefined}/>;
+    case 'tool_call':
+      // 第一版方案不能用、后面已经重新整理了：过程不用摆出来，也不多一行让人以为出了错。
+      if (block.errorCode === 'STUDIO_PLAN_NOT_READY' && message.blocks.slice(message.blocks.indexOf(block) + 1).some(b => b.type === 'tool_call' && b.toolName === block.toolName)) return null;
+      return <StudioDialogueToolCard key={blockKey(block)} block={block} turnEnded={message.status === 'failed' ? 'failed' : message.status === 'interrupted' ? 'interrupted' : undefined}
+        turnDone={!['streaming', 'pending', 'running', 'queued'].includes(message.status)}/>;
     case 'plan':
       // Its card renders it (an earlier, read-only conversation keeps them apart: there is no card to act on).
       if (!readOnly && message.blocks.some(b => b.type === 'approval' && b.planFingerprint === block.fingerprint)) return null;

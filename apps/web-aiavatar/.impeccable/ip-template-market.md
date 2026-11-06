@@ -1,4 +1,8 @@
-# 模板市场 · 设计意图
+# 灵感页 · 设计意图
+
+2026-11-06 起是作品墙，模式 Experience：作品是主角，界面退后。结构和规则见 [灵感库设计文档](../../../docs/studio-inspiration-library.md)「灵感墙」一节。下面是更早的模板市场说明，留作历史，与上面冲突的以上面为准。
+
+## 历史：模板市场
 
 范围：`/templates`，实现 `src/ip/studio-template-market.tsx`，复用 `studio-gallery.tsx`、`src/styles/ip-create.css` 与现有模板预览。模式：Operate。方向依据为 [ip-create-direction.md](ip-create-direction.md)；视觉系统沿用 [DESIGN.md](../DESIGN.md)，与 [创作页](ip-create.md) 共用浅色顶栏、暖灰底、白色工作面和深墨操作。
 

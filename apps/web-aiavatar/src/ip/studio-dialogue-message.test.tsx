@@ -91,7 +91,7 @@ test('an internal method refusal on a work record shows plain words, not stages 
     errorCode: 'STUDIO_SKILL_OPERATION_NOT_ALLOWED', errorMessage: '第 1 步的操作不在当前阶段允许的范围内' };
   const { container } = render(<StudioDialogueMessageView message={{ ...message, text: '', blocks: [failed] }} nodes={[]} shortfalls={{}} handlers={handlers}/>);
   fireEvent.click(screen.getByRole('button', { name: '展开详情：整理制作方案' }));
-  expect(container.textContent).toContain('这份方案还没准备好，我会按你要做的内容重新整理。');
+  expect(container.textContent).toContain('方案需要调整，正在重新整理。');
   expect(container.textContent).not.toMatch(/阶段允许|范围内|第 ?1 ?步|STUDIO_SKILL_OPERATION_NOT_ALLOWED/);
 });
 
@@ -109,3 +109,43 @@ test('a recharge note links to the payer\'s top-up page, an old note shows as it
   expect(container.querySelector('.studio-dialogue-recharge')).toBeNull();
   expect(container.textContent).toContain('已暂停');
 });
+
+// 用户 2026-11-06：红字「这份方案还没准备好」不明所以。第一版方案不能用是过程，助手还在改就不算出错，改好了就不留痕迹。
+test('a plan the assistant is reworking reads as work in progress, and disappears once the next attempt exists', () => {
+  const rejected: StudioMessageBlock = { type: 'tool_call', toolCallId: 't1', toolName: 'propose_plan', title: '整理制作方案', status: 'failed', startedAt: '2026-11-06T01:00:00Z', finishedAt: '2026-11-06T01:00:05Z',
+    errorCode: 'STUDIO_PLAN_NOT_READY', errorMessage: '这份方案还没准备好，我会按你要做的内容重新整理。' };
+  const next: StudioMessageBlock = { type: 'tool_call', toolCallId: 't2', toolName: 'propose_plan', title: '整理制作方案', status: 'running', startedAt: '2026-11-06T01:00:06Z' };
+  const view = (status: string, blocks: StudioMessageBlock[]) => <StudioDialogueMessageView message={{ ...message, status, text: '', blocks } as any} nodes={[]} shortfalls={{}} handlers={handlers}/>;
+  const { container, rerender } = render(view('streaming', [rejected]));
+  expect(container.textContent).toContain('重新整理中');
+  expect(container.textContent).not.toContain('没有完成');
+  expect(container.querySelector('.studio-dialogue-tool-reason')).toBeNull();
+  rerender(view('streaming', [rejected, next]));
+  expect(container.querySelectorAll('.studio-dialogue-tool')).toHaveLength(1);
+  // Nothing came of it: say so, in words that name a next step.
+  rerender(view('done', [rejected]));
+  expect(container.textContent).toContain('没有完成');
+  expect(container.querySelector('.studio-dialogue-tool-reason')?.textContent).toContain('换个说法');
+  expect(container.textContent).not.toContain('还没准备好');
+});
+
+// 用户 2026-11-06：卡上写 482、实际扣 189。卡上写预估，确认的上限放在提示里；定价明确的就只有一个数。
+test('the card shows the estimate when it is lower than the ceiling, and a single price otherwise', () => {
+  const card: StudioMessageBlock = { type: 'approval', approvalId: 'ap9', stage: 'production', planFingerprint: 'f9', scope: ['一段视频'], quotedCost: 482, estimatedCost: 190, budgetCap: 482, autoFixCap: 0, status: 'pending', expiresAt: '2099-01-01T00:00:00Z' } as any;
+  const view = (block: StudioMessageBlock) => <StudioDialogueMessageView message={{ ...message, text: '', blocks: [block] }} nodes={[]} shortfalls={{}} handlers={handlers}/>;
+  const { container, rerender } = render(view(card));
+  const price = () => container.querySelector('.studio-dialogue-approval-price');
+  expect(price()?.textContent).toContain('预估');
+  expect(price()?.querySelector('strong')?.textContent).toBe('190');
+  expect(price()?.getAttribute('title')).toContain('482');
+  expect(price()?.textContent).not.toContain('482');
+  rerender(view({ ...card, estimatedCost: 482 } as any));
+  expect(price()?.textContent).not.toContain('预估');
+  expect(price()?.querySelector('strong')?.textContent).toBe('482');
+  // A card saved before estimates existed.
+  rerender(view({ ...card, estimatedCost: undefined } as any));
+  expect(price()?.querySelector('strong')?.textContent).toBe('482');
+  rerender(view({ ...card, status: 'approved' } as any));
+  expect(container.querySelector('.studio-dialogue-approval-done summary')?.textContent).toBe('已确认 · 预估 190 积分');
+});
+

@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, AudioLines, Boxes, ChevronLeft, ChevronRight, Clapperboard, Image as ImageIcon, LayoutTemplate, LoaderCircle, MicVocal, Scan, Sparkles, SquareDashedMousePointer, SwatchBook, Video } from "lucide-react";
+import { ArrowRight, AudioLines, Boxes, ChevronLeft, ChevronRight, Clapperboard, Image as ImageIcon, LoaderCircle, MicVocal, Scan, Sparkles, SquareDashedMousePointer, SwatchBook, Video } from "lucide-react";
 import type { IpTemplate } from "@ai-star-eco/types";
 import { auth, USE_MOCK } from "@/proto/api";
 import { DesktopTopBar } from "@/shell/desktop-top-bar";
@@ -13,9 +13,8 @@ import { StudioConversationStart } from "@/ip/studio-conversation-start";
 import { useStartNewCanvas } from "@/ip/use-start-new-canvas";
 import { useStudioFailure } from "@/ip/studio-errors";
 import { StudioTemplateUse } from "@/ip/studio-template-use";
-import { newestFirst, templateKind } from "@/ip/template-facts";
-import { ProjectCardPreview } from "@/ip/project-card-preview";
-import { projectPreview } from "@/ip/project-preview";
+import { inspirationOrder, templateKind } from "@/ip/template-facts";
+import { InspirationWall } from "@/ip/inspiration-wall";
 import { sceneHref, useSceneHomeCards } from "@/ip/scenes/scene-catalog";
 import { SceneThumb } from "@/ip/scenes/scene-layout";
 import { useUiVersion } from "@/shell/ui-version";
@@ -105,9 +104,8 @@ function IpHomeNext({ header = true }: { header?: boolean }) {
     try { const project = await createStudioEntry(target.entry); router.push(studioEntryHref(project.id, target.entry)); }
     catch (e) { showFailure({ action: "新建画布", error: e, next: "请重试。多次失败时，可复制「错误详情」反馈给我们。" }); setCreating(undefined); createLock.current = false; }
   };
-  // 新发布的在前（用户 2026-11-06 要求）。有成图的仍排前面：灵感墙先让人看到做出来的东西，只有步骤的模板跟在后面（2026-10-30 线上走查：前几屏大半是没有图的卡）。
-  const feed = useMemo(() => newestFirst((templates ?? []).filter(t => tab === "all" || (tab === "canvas" ? true : templateKind(t) === tab)))
-    .map((t, i) => ({ t, i, pictured: hasPicture(t) })).sort((a, b) => Number(b.pictured) - Number(a.pictured) || a.i - b.i).map(x => x.t), [templates, tab]);
+  // 新发布的在前，有成图的排在只有步骤的模板前面（用户 2026-11-06 要求；2026-10-30 线上走查：前几屏大半是没有图的卡）。
+  const feed = useMemo(() => inspirationOrder((templates ?? []).filter(t => tab === "all" || (tab === "canvas" ? true : templateKind(t) === tab))), [templates, tab]);
   const scrollGoals = (direction: number) => goals.current?.scrollBy({ left: direction * goals.current.clientWidth * .8, behavior: "smooth" });
 
   return <div className="ip-brand-surface ip-home studio-scene-home studio-next-page">
@@ -143,7 +141,7 @@ function IpHomeNext({ header = true }: { header?: boolean }) {
         <div className="home-feed-tabs" role="group" aria-label="灵感分类">{feedTabs.map(t => <button key={t.value} type="button" aria-pressed={tab === t.value} onClick={() => setTab(t.value)}>{t.label}</button>)}</div>
         {templates === undefined ? <div className="ip-brand-state" role="status">正在加载灵感…</div>
           : feedError ? <div className="ip-brand-error" role="alert">灵感加载失败，请稍后刷新重试。</div>
-          : feed.length ? <FeedWall>{feed.slice(0, 15).map((t, i) => <FeedCard key={t.id} template={t} shape={i} onOpen={setUsing}/>)}</FeedWall>
+          : feed.length ? <InspirationWall items={feed} resetKey={tab} onOpen={setUsing} minColumn={220}/>
           : <div className="ip-brand-state">此分类暂无内容。</div>}
       </section>}
     </main>
@@ -151,41 +149,7 @@ function IpHomeNext({ header = true }: { header?: boolean }) {
   </div>;
 }
 
-/**
- * 灵感墙：按行轮流分到各列（第 1 张进第 1 列，第 2 张进第 2 列……），排在前面的就在第一行。
- * 原来用 CSS columns，是一列从上往下排满再排下一列：有图的排到前面以后，图全挤在左边几列（2026-10-30 线上）。
- */
-function FeedWall({ children }: { children: ReactNode[] }) {
-  const wall = useRef<HTMLDivElement>(null);
-  const [columns, setColumns] = useState(4);
-  useEffect(() => {
-    const el = wall.current;
-    if (!el) return;
-    const fit = () => setColumns(Math.max(2, Math.min(5, Math.floor((el.clientWidth + 14) / (220 + 14)))));
-    fit();
-    if (typeof ResizeObserver === "undefined") return;
-    const watch = new ResizeObserver(fit);
-    watch.observe(el);
-    return () => watch.disconnect();
-  }, []);
-  return <div ref={wall} className="home-feed-wall">{Array.from({ length: columns }, (_, c) =>
-    <div key={c} className="home-feed-column">{children.filter((_, i) => i % columns === c)}</div>)}</div>;
-}
-
-/** 灵感墙上的一张：图铺满，底下压一行类型和名字（参考站登录后的样子）。点开是详情弹窗，做同款才复制。 */
-const FEED_SHAPES = ["3 / 4", "4 / 5", "1 / 1", "9 / 13"];
 /** 首页按版本二选一：默认旧版，拿到 `?ui=new` 的人看新版。 */
 export function IpHome(props: { header?: boolean }) {
   return useUiVersion() === "next" ? <IpHomeNext {...props}/> : <IpHomeClassic {...props}/>;
-}
-
-const hasPicture = (t: IpTemplate) => !!t.coverUrl || !!t.previewVideoUrl || projectPreview(t.doc).images.length > 0;
-
-function FeedCard({ template, shape, onOpen }: { template: IpTemplate; shape: number; onOpen: (t: IpTemplate) => void }) {
-  const kind = templateKind(template);
-  const Icon = kind === "video" ? Video : kind === "image" ? ImageIcon : LayoutTemplate;
-  return <button type="button" className="home-feed-card" style={{ aspectRatio: FEED_SHAPES[shape % FEED_SHAPES.length] }} aria-label={`预览模板 ${template.name}`} title={template.summary || template.name} onClick={() => onOpen(template)}>
-    <span className="home-feed-media"><ProjectCardPreview key={template.coverUrl || template.versionId || template.id} doc={template.doc} coverUrl={template.coverUrl} videoUrl={template.previewVideoUrl} stepsFirst/></span>
-    <span className="home-feed-caption"><Icon size={15} aria-hidden="true"/><strong>{template.name}</strong></span>
-  </button>;
 }

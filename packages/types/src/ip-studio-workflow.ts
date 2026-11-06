@@ -45,6 +45,8 @@ export type StudioSkillStepSettings =
 export interface StudioPlanBudget {
   /** Server-computed quote total of this stage's base steps. */
   estimated: number;
+  /** 确认卡上的预估（折后价加一般用量）；estimated 是用户授权的上限。 */
+  expected?: number;
   /** Auto-fix sub-cap inside the stage cap. */
   autoFixCap: number;
   /** Bound by the server after the user confirms; never supplied by the model. */
@@ -447,7 +449,7 @@ export interface StudioCheckResult { status: StudioCheckVerdict; targetRunId: st
 
 export type StudioMessageBlock =
   | { type: "plan"; planRunId: string; revision: number; fingerprint: string; plan: StudioPlan }
-  | { type: "approval"; approvalId: string; stage: StudioPlanStage; planFingerprint: string; scope: string[]; quotedCost: number; budgetCap: number; autoFixCap: number;
+  | { type: "approval"; approvalId: string; stage: StudioPlanStage; planFingerprint: string; scope: string[]; quotedCost: number; /** 卡上显示的预估（折后价加一般用量）。老卡没有，退回 quotedCost。 */ estimatedCost?: number; budgetCap: number; autoFixCap: number;
       billingSelection?: EnterpriseBillingSelection; status: "pending" | "approved" | "expired" | "superseded"; approvedMessageId?: string; executionId?: string; expiresAt?: string;
       /** What the server actually authorized (immutable once approved); the proposal fields above stay the quote. */
       approvedBudgetCap?: number; approvedAutoFixCap?: number; approvedAt?: string; approvedByMessageId?: string;

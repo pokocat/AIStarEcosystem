@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { newestFirst, templateKind, templateNeeds, templateNodeNote, templatePrompt, templateSearchText, templateSpec } from './template-facts';
+import { inspirationOrder, inspirationPlacement, newestFirst, templateKind, templateNeeds, templateNodeNote, templatePrompt, templateRatio, templateSearchText, templateSpec } from './template-facts';
 
 const node = (id: string, type: string, title: string, metadata: any) => ({ id, type, title, position: { x: 0, y: 0 }, width: 100, height: 100, metadata });
 const doc = { nodes: [
@@ -52,3 +52,37 @@ describe('templateNodeNote', () => {
     expect(templateNodeNote({ type: 'text', metadata: { prompt: '帮我生成' } } as any)).not.toContain('帮我生成');
   });
 });
+
+describe('the inspiration wall', () => {
+  const nodeWith = (metadata: any, type = 'image') => ({ id: 'n', type, title: 't', position: { x: 0, y: 0 }, width: 1, height: 1, metadata });
+  const docOf = (...nodes: any[]) => ({ nodes, connections: [], viewport: { x: 0, y: 0, k: 1 } }) as any;
+
+  test('a work keeps its real shape: measured first, then its size, and nothing is guessed', () => {
+    expect(templateRatio(docOf(nodeWith({ storageKey: 'k', naturalWidth: 1344, naturalHeight: 768 }, 'video')))).toBeCloseTo(1.75);
+    expect(templateRatio(docOf(nodeWith({ storageKey: 'k', size: '1024x1536' })))).toBeCloseTo(2 / 3);
+    expect(templateRatio(docOf(nodeWith({ size: '9:16' }, 'video')))).toBeCloseTo(9 / 16);
+    expect(templateRatio(docOf(nodeWith({ storageKey: 'k' })))).toBeUndefined();
+    expect(templateRatio(docOf(nodeWith({ storageKey: 'k', size: '21:5' })))).toBe(2);
+    expect(templateRatio(docOf(nodeWith({ content: 'words', size: '1:1' }, 'text')))).toBeUndefined();
+  });
+
+  const card = (id: string, size: string) => ({ id, doc: docOf(nodeWith({ storageKey: id, size })) });
+  test('each card goes into the shortest column', () => {
+    const placed = inspirationPlacement([card('tall', '1:2'), card('b', '1:1'), card('c', '1:1')], 2).map(c => c.map(x => x.item.id));
+    expect(placed).toEqual([['tall'], ['b', 'c']]);
+  });
+
+  test('more cards never move the ones already on the page', () => {
+    const rows = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((id, i) => card(id, i % 2 ? '9:16' : '16:9'));
+    const first = inspirationPlacement(rows.slice(0, 4), 3), all = inspirationPlacement(rows, 3);
+    first.forEach((column, c) => expect(all[c].slice(0, column.length)).toEqual(column));
+  });
+
+  test('newest first, and what has something to look at comes before a list of steps', () => {
+    const steps = { id: 'steps', createdAt: '2026-11-06T00:00:00Z', doc: docOf(nodeWith({ prompt: 'p' })) };
+    const old = { id: 'old', createdAt: '2026-11-03T00:00:00Z', coverUrl: 'c', doc: docOf() };
+    const fresh = { id: 'fresh', createdAt: '2026-11-05T00:00:00Z', doc: docOf(nodeWith({ storageKey: 'k' })) };
+    expect(inspirationOrder([old, steps, fresh]).map(t => t.id)).toEqual(['fresh', 'old', 'steps']);
+  });
+});
+

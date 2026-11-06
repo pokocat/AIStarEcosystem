@@ -12,7 +12,7 @@
 | IP 管理 | `/ips` | `src/ip/ip-management.tsx`、`ip-management-data.ts` | `.ip-brand-surface`；编辑 Modal 为 `.ip-management-editor` |
 | 共享桌面顶栏 | 应用页；公开首页自带一份 | `src/shell/desktop-top-bar.tsx` | `.ip-brand-surface` |
 | 创作与个人画布列表 | `/create`；`/projects` 重定向到此 | `src/ip/studio-create-home.tsx`、`studio-gallery.tsx` | `.ip-brand-surface` |
-| 模板市场 | `/templates` | `src/ip/studio-template-market.tsx`、`studio-gallery.tsx` | `.ip-brand-surface` |
+| 灵感 | `/templates` | `src/ip/studio-template-market.tsx`、`inspiration-wall.tsx`、`styles/inspiration.css` | `.ip-brand-surface`；作品墙用 16px 圆角和胶囊筛选，不走 DESIGN.md 的工作台圆角（作品是主角，2026-11-06 用户要求不要像管理工作台） |
 | 个人画布与模板预览 | `/projects/{id}` 及模板预览路由 | `src/ip/`、`src/canvas-bridge/`、`src/canvas/` | 共享浅色 `.ip-brand-surface`，旧组件由局部令牌适配 |
 | 账号与旧 Studio 工具 | `/me`、`/studio` | `src/shell/account-*`、`src/styles/account-workspace.css` | 共享浅色 `.ip-brand-surface`，旧组件由局部令牌适配 |
 

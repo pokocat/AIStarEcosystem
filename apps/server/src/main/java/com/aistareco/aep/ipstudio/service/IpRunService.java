@@ -446,6 +446,12 @@ public class IpRunService {
         var compiled=compileExplicit(user,request);
         return enterpriseBilling.quote(user,request.billing(),imageCharge(compiled,null,null,freeOnly));
     }
+    /** 制作计划的预估：还没有画布节点和素材，只看提示词、张数和尺寸。 */
+    @Transactional(readOnly=true)
+    public com.aistareco.aep.billing.service.ModelChargeService.Quote quoteImagePrice(String user,IpGenerateRequest request) {
+        requireNativeMode();
+        return enterpriseBilling.quote(user,null,imageCharge(compileExplicit(user,request),null,null,false));
+    }
     @Transactional(readOnly=true)
     public com.aistareco.aep.billing.service.ModelChargeService.Quote quoteNode(String user,String projectId,String nodeId,IpRunNodeRequest request,boolean freeOnly) {
         requireNativeMode();var project=projects.required(user,projectId);

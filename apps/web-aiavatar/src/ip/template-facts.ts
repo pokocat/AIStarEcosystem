@@ -61,3 +61,47 @@ export function newestFirst<T extends Pick<IpTemplate, 'createdAt'>>(templates: 
   };
   return templates.map((t, i) => ({ t, i, d: day(t) })).sort((a, b) => (b.d === a.d ? a.i - b.i : b.d - a.d)).map(x => x.t);
 }
+
+/**
+ * 作品的真实比例（宽 / 高），灵感墙按它摆，不裁图。先看成品上量到的尺寸，再看像素尺寸和设置的画幅；都没有就不猜。
+ * 太长太扁的收一下（1:2 到 2:1），不让一张卡占掉一整屏。
+ */
+export function templateRatio(doc?: Pick<IpProjectDoc, 'nodes'>): number | undefined {
+  const nodes = nodesOf(doc).filter(n => MEDIA.has(n.type) && n.type !== 'audio');
+  const done = nodes.filter(n => n.metadata?.storageKey);
+  const measured = done.find(n => Number(n.metadata?.naturalWidth) > 0 && Number(n.metadata?.naturalHeight) > 0);
+  const raw = measured ? Number(measured.metadata?.naturalWidth) / Number(measured.metadata?.naturalHeight) : [...done, ...nodes].map(n => sizeRatio(n.metadata?.size)).find(Boolean);
+  return raw ? Math.min(2, Math.max(.5, raw)) : undefined;
+}
+const sizeRatio = (size: unknown) => {
+  const match = typeof size === 'string' ? size.match(/^(\d+)\s*[:x×]\s*(\d+)$/) : null;
+  return match && Number(match[2]) > 0 ? Number(match[1]) / Number(match[2]) : undefined;
+};
+
+export type RatioKnown = Pick<IpTemplate, 'doc'>;
+/** 图下面那行字占的高度，按一张卡的宽度算大约这么多。 */
+const LABEL_SHARE = .22;
+/** 比例未知的卡先按这个算位置，图到了只改这张卡的高度，不会换列。 */
+const DEFAULT_RATIO = 4 / 5;
+
+/**
+ * 瀑布流：一张一张放进当前最矮的一列。结果只跟前面的卡片有关，所以滚到底加新卡时，已经在页面上的卡不会动。
+ * 用 index 记住原来的次序。
+ */
+export function inspirationPlacement<T extends RatioKnown>(items: readonly T[], columns: number): { item: T; index: number }[][] {
+  const out = Array.from({ length: Math.max(1, columns) }, () => [] as { item: T; index: number }[]);
+  const heights = out.map(() => 0);
+  items.forEach((item, index) => {
+    const target = heights.indexOf(Math.min(...heights));
+    out[target].push({ item, index });
+    heights[target] += 1 / (templateRatio(item.doc) ?? DEFAULT_RATIO) + LABEL_SHARE;
+  });
+  return out;
+}
+
+/** 灵感的次序：新发布的在前；有成图的排在只有步骤的模板前面，墙上先看到做出来的东西。 */
+export function inspirationOrder<T extends Pick<IpTemplate, 'createdAt' | 'coverUrl' | 'previewVideoUrl' | 'doc'>>(templates: readonly T[]): T[] {
+  const pictured = (t: T) => !!t.coverUrl || !!t.previewVideoUrl || nodesOf(t.doc).some(n => n.metadata?.storageKey && MEDIA.has(n.type));
+  return newestFirst(templates).map((t, i) => ({ t, i, p: pictured(t) })).sort((a, b) => Number(b.p) - Number(a.p) || a.i - b.i).map(x => x.t);
+}
+
