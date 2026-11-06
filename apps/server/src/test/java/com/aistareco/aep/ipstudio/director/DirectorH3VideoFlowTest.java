@@ -101,6 +101,27 @@ class DirectorH3VideoFlowTest {
 
     private ObjectNode clip() { return (ObjectNode) c.path("clips").get(0); }
 
+    @Test void videoImageNumbersIncludeTheBoardAndMatchTheSubmittedRequest() {
+        JsonNode refs = service.imageReferences(c, clip(), true, false);
+        assertEquals("图1", refs.get(0).path("label").asText());
+        assertEquals("k/board.png", refs.get(0).path("key").asText());
+        assertEquals("图2", refs.get(1).path("label").asText());
+        assertEquals("陈默", refs.get(1).path("name").asText());
+        assertEquals("图3", refs.get(2).path("label").asText());
+        service.dispatch("u1", w, c, "video", "cl1", "refs-video", om.createObjectNode().put("promptChoice", "original"), null, null, 600L);
+        ArgumentCaptor<IpRunService.IpVideoRequest> req = ArgumentCaptor.forClass(IpRunService.IpVideoRequest.class);
+        verify(imageRuns).generateVideoForDirector(eq("u1"), eq("DW-1"), eq("video:cl1"), req.capture());
+        assertEquals(refs.size(), req.getValue().video().references().size());
+        for (int i = 0; i < refs.size(); i++) assertEquals(refs.get(i).path("key").asText(), req.getValue().video().references().get(i).key());
+    }
+
+    @Test void firstFramePreviewContainsOnlyTheBoard() {
+        JsonNode refs = service.imageReferences(c, clip(), true, true);
+        assertEquals(1, refs.size());
+        assertEquals("首帧", refs.get(0).path("label").asText());
+        assertEquals("k/board.png", refs.get(0).path("key").asText());
+    }
+
     /** 模型按约定写回的 JSON：每句台词只留占位。 */
     private ObjectNode modelOutput() {
         ObjectNode o = om.createObjectNode().put("subject_definitions", "<Subject 1> is Chen Mo in <Picture 2>. <Subject 2> is Lao Zhao in <Picture 3>.")
