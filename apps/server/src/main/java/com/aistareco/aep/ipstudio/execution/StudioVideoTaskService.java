@@ -129,14 +129,14 @@ public class StudioVideoTaskService {
             }
             rules=skills.requireActive("reference-video-recreation");
             plan.put("stage","analysis");
-            var study=steps.addObject().put("id","study").put("operation","recreation").put("title","看参考视频").put("execution","auto")
+            var study=steps.addObject().put("id","study").put("operation","recreation").put("title","分析参考视频").put("execution","auto")
                     .put("prompt","分析参考视频的创意、镜头、动作与节奏，结合本次要求："+Objects.toString(req.configuration().text(),""));
             study.putArray("dependsOn");
             study.putObject("settings").put("operation","recreation").put("sourceNodeId",req.sourceNodeId()).put("mode","segments")
                     .put("maxSegmentSec","model").put("videoModel",req.configuration().model());
-            var compile=steps.addObject().put("id","compile").put("operation","text").put("title","整理分镜与制作安排").put("execution","auto")
+            var compile=steps.addObject().put("id","compile").put("operation","text").put("title","写分镜脚本").put("execution","auto")
                     .put("prompt","根据本次参考片分析与新素材，动态编排可以直接制作到成片的方案。用户要求："+Objects.toString(req.configuration().text(),"")
-                            +"。视频总时长 "+req.configuration().duration()+" 秒；画面 "+req.configuration().ratio()+"；视频模型必须使用 "+req.configuration().model()
+                            +"。视频总时长 "+req.configuration().duration()+" 秒；画面 "+req.configuration().ratio()+(req.configuration().model()==null?"":"；视频模型必须使用 "+req.configuration().model())
                             +"；清晰度 "+req.configuration().tier()+"。使用提供的替换素材；不复用原片的旧人物、旧商品作为新主体。只输出可执行方案，不向用户提问。保留原片值得借鉴的节奏与创意，具体分段和参考方式按实际模型能力安排。");
             compile.putArray("dependsOn").add("study");compile.putObject("settings").put("operation","text").put("purpose","plan-compile");
             quoter.quote(user,plan);

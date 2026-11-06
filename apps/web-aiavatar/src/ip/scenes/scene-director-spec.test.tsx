@@ -79,7 +79,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); window.history.replaceState(null, "", "/"); });
 
-const continueLink = () => screen.queryByRole("link", { name: "在画布中继续" })?.getAttribute("href");
+const continueLink = () => screen.queryByRole("link", { name: "在画布中查看" })?.getAttribute("href");
 const heading = () => document.querySelector(".scene-composer-head strong")?.textContent;
 const pressed = (group: string, name: string) => within(screen.getByRole("group", { name: group })).getByRole("button", { name }).getAttribute("aria-pressed");
 const text = fieldText;
@@ -235,7 +235,7 @@ test("video: a script that says what is still missing shows it, drops that line 
   expect(screen.getByText("你写的 158 脚本里没用上，要加的话跟编导说一声。")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "采用脚本" }));
   expect(text("视频脚本").startsWith("第1镜")).toBe(true);
-  const go = screen.getByRole("button", { name: "开始制作" }) as HTMLButtonElement;
+  const go = screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement;
   await waitFor(() => expect(screen.getByText("还有没填的：购买入口。在上面换成实际内容，用不上的直接删掉。")).toBeTruthy());
   expect(go.disabled).toBe(true);
   fillField(screen.getByRole("textbox", { name: "视频脚本" }), text("视频脚本").replace("【待补：购买入口】", "本视频团购"));

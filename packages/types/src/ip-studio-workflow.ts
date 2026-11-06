@@ -530,7 +530,7 @@ export type StudioPlanExecutionStepStatus = "pending" | "submitted" | "running" 
 export interface StudioPlanExecutionStep { id: string; title: string; operation: StudioPlanOperation; stage: StudioPlanStage; dependsOn: string[]; status: StudioPlanExecutionStepStatus;
   runIds: string[]; attempt: number; quotedCost: number; maxCost?: number; acceptedRunId?: string; acceptedCandidateIndex?: number;
   /** The canvas node this step's result goes to: the prepared object it was bound to at confirmation, else its own output node. */
-  nodeId?: string; reason?: string;
+  nodeId?: string; reason?: string; errorCode?: string;
   /** A stopped plan-compile step: canvas objects its plan used that this execution does not carry (the user adds them or re-plans without). */
   materials?: StudioPlanExecutionMaterial[] }
 /** A canvas object a stopped step named outside the execution's materials; `onCanvas: false` once it was deleted. */

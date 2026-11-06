@@ -4,6 +4,8 @@
 
 ## 结论与边界
 
+> **已被 2026-11-06 评审修正**：本文以 `DESIGN.md` 为基准，把场景页的新版样式当成「既有差异」。之后的评审发现主按钮、圆角、字号都和 AI 图片页不一致，失败页主按钮黑底黑字，已按 `studio-scenes.css` 改正，见[方案 §11](../../studio-video-workflow-redesign.md)。下文的颜色、字号、列宽和截图是修正前的记录。
+
 本次延续 IP Studio 的白色工作面、深墨操作、细边线、紧凑控件与设备形态规则。新增的是同页任务制作、结果交付和历史恢复的组成方式，不创建或替换视觉系统，不批准新的全局令牌。三列仅服务于视频任务工作区，不提升为所有 Studio 页面的固定布局。
 
 保留 [现行 DESIGN.md](../../../apps/web-aiavatar/DESIGN.md) 与 [设计 sidecar](../../../apps/web-aiavatar/.impeccable/design.json) 原文，不重生成、不补写设计演进。产品约束来自 [PRODUCT.md](../../../apps/web-aiavatar/PRODUCT.md)，本次页面方向来自 [流程与界面方案](../../studio-video-workflow-redesign.md)；[批准的组成参考](video-workflow-20261106.png) 是示意图，不能作为真实任务或成片证据。

@@ -158,6 +158,17 @@ class StudioPlanExecutorTest {
         assertTrue(om.readTree(row.getStepsJson()).path("needsUserReason").asText().contains("已尝试 3 次"));
     }
 
+    @Test void videoPageUnreadableCheckDoesNotStopTheTask() throws Exception {
+        var video=videoStep("v1",40).put("status","done");((com.fasterxml.jackson.databind.node.ArrayNode)video.path("runIds")).add("IPR-v");
+        var check=checkStep("c1","v1",1).put("status","running");((com.fasterxml.jackson.databind.node.ArrayNode)check.path("runIds")).add("IPR-c");
+        execution("running",300,video,check);videoPageRetries();
+        dtos.put("IPR-v",dto("IPR-v","done",40,videoOutput("first.mp4")));
+        dtos.put("IPR-c",dto("IPR-c","done",1,om.createObjectNode().put("rawOnly",true).put("text","读不懂")));
+        executor.advance("PEX-1");
+        assertEquals("done",step("c1").path("status").asText());assertEquals("unknown",step("c1").path("checkStatus").asText());
+        assertNotEquals("needs_user",row.getStatus());
+    }
+
     @Test void videoPageDoesNotRetryAnUnknownAcceptedResult() throws Exception {
         execution("running",300,videoStep("v1",40));videoPageRetries();executor.advance("PEX-1");
         String id="IPR-"+submitted.get(0).clientRequestId();

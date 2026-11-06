@@ -7,7 +7,7 @@ import { IpStudioApi } from "../api";
 
 /**
  * 场景页的「草稿」就是一张普通画布：参考图、出图节点和结果都按画布的格式写进文档，
- * 所以随时可以「在画布中继续」，任务恢复、确认原任务也和画布同一套。
+ * 所以随时可以「在画布中查看」，任务恢复、确认原任务也和画布同一套。
  */
 
 export type SceneUpload = { key: string; url: string; name: string };
@@ -152,7 +152,7 @@ export function rowUploads(doc: IpProjectDoc, row: CanvasNodeData): (SceneUpload
 
 /**
  * 编导写一版脚本（AI 视频页）：画布上一个普通文字节点，任务是普通的文字任务（textEdit 是上一版脚本，第一次为空）。
- * 素材连进来、上一版连到下一版，「在画布中继续」看得到每一版看了哪些图；请求先写进节点再提交，和出图同一套恢复规则。
+ * 素材连进来、上一版连到下一版，「在画布中查看」看得到每一版看了哪些图；请求先写进节点再提交，和出图同一套恢复规则。
  */
 export function addScriptNode(doc: IpProjectDoc, input: {
   ask: string; revision: boolean; prompt: string; materialIds: string[]; imageIds: string[];

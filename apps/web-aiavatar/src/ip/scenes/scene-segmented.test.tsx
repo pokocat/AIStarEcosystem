@@ -91,7 +91,7 @@ async function open() {
   window.history.replaceState(null, "", "/video?scene=ecom-talking&draft=IPP-V");
   await act(async () => { render(<SceneVideoStudio/>); });
 }
-const go = () => screen.getByRole("button", { name: "开始制作" }) as HTMLButtonElement;
+const go = () => screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement;
 const records = () => store.get("IPP-V")!.doc.sceneVideoSubmissions ?? [];
 
 test("longer than one segment: the button generates, says how it splits and what it costs, and is not a hand-off", async () => {
@@ -99,7 +99,7 @@ test("longer than one segment: the button generates, says how it splits and what
   await open();
   await screen.findByText(/这个模型单段最长 15 秒，40 秒分 3 段（15 \+ 15 \+ 10）/);
   await waitFor(() => expect(go().textContent).toContain(`约 ${PRICE.estimated.toLocaleString("zh-CN")} 积分`));
-  expect(screen.getByText(new RegExp(`本次最多 ${(PRICE.estimated * 3).toLocaleString("zh-CN")} 积分`))).toBeTruthy();
+  expect(screen.getByText(new RegExp(`本次上限 ${(PRICE.estimated * 3).toLocaleString("zh-CN")} 积分`))).toBeTruthy();
   expect(screen.queryByRole("button", { name: "交给创作助手" })).toBeNull();
   expect(api.price).toHaveBeenLastCalledWith(expect.objectContaining({ model: "ep-h3", tier: "768p", duration: 40, ratio: "9:16", images: 1, character: false, voice: false }), expect.anything());
 });
@@ -118,10 +118,10 @@ test("one click: the request is saved before it is sent, then the row follows th
   expect(request).toMatchObject({ sceneId: "ecom-talking", text: "保湿精华，讲清楚卖点", hasScript: false, duration: 40, ratio: "9:16", model: "ep-h3", tier: "768p", budgetCap: PRICE.estimated * 3,
     materials: [{ nodeId: "product", title: expect.any(String), slot: "image" }] });
   expect(api.push).not.toHaveBeenCalled();
-  expect(await screen.findByText("正在整理分镜")).toBeTruthy();
-  expect(screen.getByText("合成视频")).toBeTruthy();
+  expect(await screen.findByText("正在写分镜脚本")).toBeTruthy();
+  expect(screen.getByText("合成成片")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "暂停" })).toBeNull();
-  expect(screen.getByRole("button", { name: "停止制作" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "停止生成" })).toBeTruthy();
 });
 
 test("a refused start leaves no row and says why; the page keeps what was written", async () => {

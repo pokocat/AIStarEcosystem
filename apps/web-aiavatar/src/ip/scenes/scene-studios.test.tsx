@@ -164,7 +164,7 @@ test("视频：编导看商品图写脚本（请求先存进画布、带图）�
   await act(async () => { fireEvent.click(use); });
   expect(fieldText("视频脚本")).toBe(script);
   setDuration(10);
-  const go = screen.getByRole("button", { name: "开始制作" }) as HTMLButtonElement;
+  const go = screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement;
   await waitFor(() => expect(go.textContent).toContain("400 积分"));
   // 优化描述单独按用量扣、不含在视频价里，用户可以选按原文生成（只扣视频价）。
   const rewrite = within(screen.getByRole("group", { name: "提示词" }));
@@ -172,6 +172,7 @@ test("视频：编导看商品图写脚本（请求先存进画布、带图）�
   fireEvent.click(rewrite.getByRole("button", { name: "按原文生成" }));
   expect(rewrite.getByText("按你写的原文直接生成，只扣视频价。")).toBeTruthy();
   fireEvent.click(rewrite.getByRole("button", { name: "先优化再生成" }));
+  await waitFor(() => expect(go.disabled).toBe(false));
   await act(async () => { fireEvent.click(go); });
   const videoRequest = api.submit.mock.calls[1][1];
   expect(videoRequest).toMatchObject({ operation: "video", prompt: script, durationSec: 10, aspectRatio: "9:16", count: 1, model: "ep-h3", maxCost: 400,
@@ -224,9 +225,9 @@ test("视频：按钮旁的价按服务端报价显示折扣（原价划掉）�
   api.videoPrice.mockImplementation((q: { durationSec: number }) => q.durationSec === 10
     ? new Promise(resolve => { late = () => resolve(priced(10)); }) : Promise.resolve(priced(q.durationSec)));
   await act(async () => { render(<SceneVideoStudio/>); });
-  const go = () => screen.getByRole("button", { name: "开始制作" });
+  const go = () => screen.getByRole("button", { name: "生成视频" });
   // 还没写字、没放图也看得到折后价。
-  await waitFor(() => expect(go().querySelector("del")?.textContent).toContain("600"));
+  await waitFor(() => expect(go().querySelector("s")?.textContent).toContain("600"));
   expect(go().textContent).toContain("300 积分");
   expect(screen.getByText("H3限时折扣，省 300 积分。先优化另按实际用量扣少量积分。")).toBeTruthy();
   const [query, billing] = api.videoPrice.mock.calls.at(-1)!;
@@ -237,12 +238,12 @@ test("视频：按钮旁的价按服务端报价显示折扣（原价划掉）�
 
   setDuration(10); // 10 秒那份很慢：先显示价表价，不沿用 15 秒的折扣
   await waitFor(() => expect(go().textContent).toContain("400 积分"));
-  expect(go().querySelector("del")).toBeNull();
+  expect(go().querySelector("s")).toBeNull();
   setDuration(12);
   await waitFor(() => expect(go().textContent).toContain("240 积分"));
   await act(async () => { late?.(); });
   expect(go().textContent).toContain("240 积分");
-  expect(go().querySelector("del")?.textContent).toContain("480");
+  expect(go().querySelector("s")?.textContent).toContain("480");
 });
 
 test("视频：爆款复刻直接受理后台任务，保留原片与要求，不跳画布", async () => {
@@ -250,7 +251,7 @@ test("视频：爆款复刻直接受理后台任务，保留原片与要求，�
   api.videoModels.mockResolvedValue([H3]);
   api.importMedia.mockResolvedValue({ key: "ipstudio/media/u/v.mp4", url: "blob:v", mediaType: "video", mimeType: "video/mp4", bytes: 1, fileName: "v.mp4" });
   await act(async () => { render(<SceneVideoStudio/>); });
-  const send = () => screen.getByRole("button", { name: "开始制作" }) as HTMLButtonElement;
+  const send = () => screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement;
   await waitFor(() => expect(screen.getByText("先放参考视频")).toBeTruthy());
   await pickFromLibrary("参考视频");
   fillField(screen.getByRole("textbox", { name: "想做的视频" }), "换成我的面霜");

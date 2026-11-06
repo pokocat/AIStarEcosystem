@@ -259,7 +259,13 @@ public class StudioPlanExecutor {
                 case "running" -> {if(!"needs_user".equals(before))step.put("status","running");}
                 case "done" -> {
                     if(latest.output()!=null&&latest.output().path("rawOnly").asBoolean()) {
-                        step.put("status","needs_user").put("reason","模型原文已保留，请核对后再继续制作");
+                        // 检查只是建议，不能挡住有效的成片：视频任务上读不懂的检查按「没查出结论」往下走。
+                        if(state.has("videoTask")&&"check".equals(step.path("operation").asText())) {
+                            step.put("status","done").put("checkStatus","unknown").put("acknowledged",true);step.remove("reason");
+                            break;
+                        }
+                        step.put("status","needs_user").put("errorCode",StudioPlanExecutionService.RAW_ONLY_CODE)
+                                .put("reason",state.has("videoTask")?"这一步的结果无法读取，已完成的内容不受影响。":"模型原文已保留，请核对后再继续制作");
                         break;
                     }
                     if(!"done".equals(before)) {
@@ -341,7 +347,7 @@ public class StudioPlanExecutor {
                     return needsUser(e,state,"「"+step.path("title").asText()+"」停下了："+step.path("reason").asText()
                             +(StudioPlanMaterials.anyOnCanvas(step.path("materials"))?"。可以把它加入这次制作重新编排，或者不用它重新编排。":"。可以不用它重新编排，或结束本次制作。"));
                 if(state.has("videoTask")&&step.path("attempt").asInt(1)>=3)
-                    return needsUser(e,state,"「"+step.path("title").asText()+"」已尝试 3 次，仍未完成。请到画布查看这一步，处理后继续制作。");
+                    return needsUser(e,state,"「"+step.path("title").asText()+"」已尝试 3 次，仍未完成。请到画布查看这一步，处理后继续生成。");
                 return needsUser(e,state,"「"+step.path("title").asText()+"」没有完成："+step.path("reason").asText("原因未知")+"。可以继续重试这一步，或结束本次制作。");
             }
             if(PlanState.unresolvedCheck(state,step)) {

@@ -90,7 +90,7 @@ async function startImageInA() {
   fillField(screen.getByRole("textbox", { name: "想要的画面" }), "test image");
 }
 const openB = async () => { const recent = await openRecent(); await act(async () => { fireEvent.click(recent.getByRole("button", { name: /draft B/ })); }); };
-const continueLink = () => screen.getByRole("link", { name: "在画布中继续" }).getAttribute("href");
+const continueLink = () => screen.getByRole("link", { name: "在画布中查看" }).getAttribute("href");
 
 test("image: A's save coming back after B was opened finishes A's work and leaves the page on B", async () => {
   const first = later<IpProject>();
@@ -224,14 +224,14 @@ test("video: the input bar picks the video model; duration, clearness, materials
   put({ id: "IPP-V", name: "draft V", sceneId: "ecom-talking", doc: { ...EMPTY, nodes: [productNode] as never } });
   await openVideoDraft();
   expect((await videoPick()).value).toBe("ep-h3");
-  await waitFor(() => expect(hintLine()).toMatch(/开始制作约 \d+ 积分/));
+  await waitFor(() => expect(hintLine()).toMatch(/生成视频\d+ 积分/));
   expect(spec()).toContain("768P");
   expect(screen.queryByRole("combobox", { name: "写脚本的模型" })).toBeNull();
 
   fireEvent.change(await videoPick(), { target: { value: "ep-text" } });
   expect(spec()).toContain("720P");
   expect(spec()).toContain("4 秒");
-  await waitFor(() => expect(hintLine()).toContain("开始制作约 12 积分")); // 3 积分/秒 × 4 秒
+  await waitFor(() => expect(hintLine()).toContain("生成视频12 积分")); // 3 积分/秒 × 4 秒
   expect(hintLine()).toContain("这个模型不看参考素材");
   expect(screen.getByRole("button", { name: "移除商品图 1" })).toBeTruthy(); // 换模型不动素材
   await waitFor(() => expect(store.get("IPP-V")!.doc.sceneVideoModel).toBe("ep-text"));
@@ -285,7 +285,7 @@ test("image: a scene in the address that arrives after mounting is followed; lea
   window.history.replaceState(null, "", "/image?scene=white-background");
   view.rerender(<SceneImageStudio/>);
   await waitFor(() => expect(document.querySelector(".scene-composer-head strong")?.textContent).toBe("商品白底图"));
-  expect(screen.queryByRole("link", { name: "在画布中继续" })).toBeNull();
+  expect(screen.queryByRole("link", { name: "在画布中查看" })).toBeNull();
 });
 
 // 2026-10-30 复测：图片场景写了没提交的要求，换个场景再回来全清空了。

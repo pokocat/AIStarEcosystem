@@ -17,7 +17,9 @@ export function useSceneQuery() {
 /** Next copies its own router state. Passing __NA back makes it skip the search-param update. */
 export function writeSceneQuery(path: "/image" | "/video", scene: string, draft?: string, task?: string) {
   const previous = new URLSearchParams(window.location.search);
-  const kept = task ?? (path === '/video' && draft && previous.get('draft') === draft ? previous.get('task') : undefined);
+  // 只带 task 的链接：页面补默认场景时也不能把任务丢掉，读到任务后会写回完整地址。
+  const sameDraft = (draft ?? null) === previous.get('draft');
+  const kept = task ?? (path === '/video' && sameDraft ? previous.get('task') : undefined);
   const q = new URLSearchParams({ scene, ...(draft ? { draft } : {}), ...(kept ? { task: kept } : {}) });
   window.history.replaceState(null, "", `${path}?${q}`);
 }

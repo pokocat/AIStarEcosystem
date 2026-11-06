@@ -102,7 +102,7 @@ public class StudioSegmentedRun {
     }
 
     /** 再试一次：新的请求编号（attempt）；之前的任务留着，费用照算（同重新规划时的做法，放进 previousRunIds 才不会被读回成「已完成」）。 */
-    private void again(ObjectNode step) {
+    static void again(ObjectNode step) {
         ArrayNode previous = step.withArray("previousRunIds");
         step.path("runIds").forEach(previous::add);
         step.putArray("runIds");

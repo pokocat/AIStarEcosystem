@@ -756,6 +756,20 @@ class StudioPlanExecutionServiceTest {
         assertEquals(3,om.readTree(row.getStepsJson()).path("steps").get(0).path("attempt").asInt());
     }
 
+    @Test void videoPageRegeneratesUnusableModelOutputWithANewRequestWhenTheUserContinues() throws Exception {
+        String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
+        var created=service.create("u","p",analysisRequest(fp,30));
+        var row=rows.get(created.id());var state=(ObjectNode)om.readTree(row.getStepsJson());state.putObject("videoTask");
+        var step=(ObjectNode)state.path("steps").get(0);
+        step.put("status","needs_user").put("errorCode",StudioPlanExecutionService.RAW_ONLY_CODE).put("reason","这一步的结果无法读取，已完成的内容不受影响。");
+        step.putArray("runIds").add("IPR-raw");
+        row.setStepsJson(state.toString());row.setStatus("needs_user");canvasWith("src");
+        service.resume("u","p",created.id(),new PlanExecutionControlRequest("regenerate",null));
+        JsonNode after=om.readTree(row.getStepsJson()).path("steps").get(0);
+        assertEquals("running",row.getStatus());assertEquals("pending",after.path("status").asText());assertEquals(2,after.path("attempt").asInt());
+        assertEquals(0,after.path("runIds").size());assertEquals("IPR-raw",after.path("previousRunIds").get(0).asText());assertFalse(after.has("errorCode"));
+    }
+
     @Test void videoPageUnknownAcceptanceStillCannotBeResubmittedAfterResume() throws Exception {
         String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
         var created=service.create("u","p",analysisRequest(fp,30));

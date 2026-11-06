@@ -1304,4 +1304,4 @@ Studio 视频费用确认复用图片弹窗，显示整批原价、优惠、赠�
 
 ### AI 视频统一制作任务（2026-11-06，本地实现，未发布）
 
-`SceneVideoStudio` 的普通视频、长视频与爆款复刻均由 `SceneVideoWorkspace` 展示后台任务：桌面配置 / 作品 / 最近任务三列，手机切换制作与作品。任务通过 `?scene=&draft=&task=` 打开，服务端执行记录为状态真值；快照只保存素材 key，历史设置只读，“改一版”新建草稿。失败步骤最多自动执行三次；去画布会定位同一问题节点并保留返回入口，浏览不会恢复付费执行。详细设计与验收见 `docs/studio-video-workflow-redesign.md`。
+`SceneVideoStudio` 的普通视频、长视频与爆款复刻均由 `SceneVideoWorkspace` 展示后台任务：桌面配置 / 作品 / 最近任务三列，手机切换编辑、作品与示例。任务通过 `?scene=&draft=&task=` 打开，服务端执行记录为状态真值；快照只保存素材 key，历史设置只读，「重新编辑」新建草稿。失败步骤最多自动执行三次；去画布会定位同一问题节点并保留返回入口，浏览不会恢复付费执行。详细设计与验收见 `docs/studio-video-workflow-redesign.md`。

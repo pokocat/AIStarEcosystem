@@ -503,7 +503,7 @@ export function SceneImageStudio() {
 
     <section className="scene-card scene-results" aria-label="作品与示例">
       <header><SceneResultTabs tab={tab} onTab={setTab} count={rows.length} idBase="scene-image"/>
-        <span className="scene-results-actions">{draft && <Link className="scene-text-button" href={`/projects/${encodeURIComponent(draft.id)}`}><FolderOpen size={14} strokeWidth={1.4}/>在画布中继续</Link>}
+        <span className="scene-results-actions">{draft && <Link className="scene-text-button" href={`/projects/${encodeURIComponent(draft.id)}`}><FolderOpen size={14} strokeWidth={1.4}/>在画布中查看</Link>}
           {!mobile && <SceneRecent drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>}
           <UiVersionSwitch inline/></span></header>
       <div id="scene-image-panel" className="scene-results-panel" role="tabpanel" aria-labelledby={`scene-image-tab-${tab}`}>

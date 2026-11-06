@@ -71,7 +71,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); window.history.replaceState(null, "", "/"); });
 
-const continueLink = () => screen.queryByRole("link", { name: "在画布中继续" })?.getAttribute("href");
+const continueLink = () => screen.queryByRole("link", { name: "在画布中查看" })?.getAttribute("href");
 const heading = () => document.querySelector(".scene-composer-head strong")?.textContent;
 const pressed = (group: string, name: string) => within(optionGroup(group)).getByRole("button", { name }).getAttribute("aria-pressed");
 const videoSpec = () => screen.getByRole("button", { name: /^视频规格：/ }).textContent;

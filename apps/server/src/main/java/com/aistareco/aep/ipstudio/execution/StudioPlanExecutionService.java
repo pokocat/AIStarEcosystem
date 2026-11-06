@@ -32,6 +32,8 @@ import java.util.regex.Pattern;
  */
 @Service
 public class StudioPlanExecutionService {
+    /** A text step whose model output could not be parsed; only the original text was kept. */
+    static final String RAW_ONLY_CODE="STUDIO_RAW_ONLY";
     @org.springframework.beans.factory.annotation.Autowired
     private StudioPlanQuoter quoter;
     private static final Logger log=LoggerFactory.getLogger(StudioPlanExecutionService.class);
@@ -236,7 +238,8 @@ public class StudioPlanExecutionService {
             ObjectNode step=(ObjectNode)raw;step.put("execution","auto");
             if("video".equals(step.path("operation").asText())) {
                 ObjectNode settings=(ObjectNode)step.path("settings");
-                settings.put("model",config.path("model").asText()).put("aspectRatio",config.path("ratio").asText("9:16"));
+                if(config.hasNonNull("model"))settings.put("model",config.path("model").asText());
+                settings.put("aspectRatio",config.path("ratio").asText("9:16"));
                 ((ObjectNode)settings.path("video")).put("resolutionTier",config.path("tier").asText());
                 seconds+=settings.path("durationSec").asInt();
             }
@@ -570,7 +573,11 @@ public class StudioPlanExecutionService {
                 for(JsonNode raw:PlanState.stageSteps(next,e.getStage())) {
                     ObjectNode step=(ObjectNode)raw;
                     switch(step.path("status").asText()) {
-                        case "needs_user" -> {step.put("status","pending").put("confirmed",true);step.remove("reason");}
+                        case "needs_user" -> {
+                            // 解析不了的原文留着也没用：重新发一次（新请求编号），否则下一轮又读回同一条，点继续等于没点。
+                            if(next.has("videoTask")&&RAW_ONLY_CODE.equals(step.path("errorCode").asText()))StudioSegmentedRun.again(step);
+                            else {step.put("status","pending").put("confirmed",true);step.remove("reason");}
+                        }
                         // Only the user's explicit continue starts a new attempt (new request identity).
                         case "failed" -> {
                             // Named objects the user did not add are left out of the next plan (StudioPlanExecutor#compile).
@@ -628,7 +635,7 @@ public class StudioPlanExecutionService {
             }
             String code=step.path("errorCode").asText("");
             if(code.contains("UNKNOWN")||code.contains("RECONCILIATION"))throw stale("原任务的受理结果还没有确认，请先核对原任务，不能重复生成");
-            if(step.path("attempt").asInt(1)>=3)throw stale("这一步已尝试 3 次，请先在问题节点完成修复，再继续制作");
+            if(step.path("attempt").asInt(1)>=3)throw stale("这一步已尝试 3 次，请先在问题节点完成修复，再继续生成");
         }
     }
 
@@ -958,7 +965,7 @@ public class StudioPlanExecutionService {
                     depends,step.path("status").asText(),runIds,step.path("attempt").asInt(1),step.path("quotedCost").asLong(),
                     step.hasNonNull("maxCost")?step.path("maxCost").asLong():null,step.path("acceptedRunId").asText(null),
                     step.hasNonNull("acceptedCandidateIndex")?step.path("acceptedCandidateIndex").asInt():null,
-                    StudioPlanExecutionIds.stepNodeId(e.getId(),step),step.path("reason").asText(null),materials(step)));
+                    StudioPlanExecutionIds.stepNodeId(e.getId(),step),step.path("reason").asText(null),materials(step),step.path("errorCode").asText(null)));
         }
         List<PlanExecutionBudget> budgets=new ArrayList<>();
         for(String stage:List.of("analysis","production")) {
