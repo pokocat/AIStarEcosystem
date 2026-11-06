@@ -1249,7 +1249,9 @@ html[data-layout="desktop"] .director-studio-panel { order: 0; overflow-y: auto;
 .director-product-idea textarea { width: 100%; min-height: 56px; padding: 7px 10px; border: 1px solid var(--ip-line); border-radius: 8px; background: var(--ip-paper); font-size: 13px; line-height: 1.6; resize: vertical; }
 .director-product-idea textarea:focus { outline: none; border-color: var(--ip-ink); }
 .director-product-body > footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; margin-top: auto; padding-top: 2px; }
-.director-product-status { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--ip-muted); font-size: 12px; }
+.director-product-status { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--ip-muted); font-size: 12px; text-align: left; }
+button.director-product-status:hover { text-decoration: underline; text-underline-offset: 3px; }
+.director-results-link { text-decoration: none; color: inherit; }
 .director-product-status i { flex: none; width: 6px; height: 6px; border-radius: 50%; background: #c6cbd0; }
 .director-product-status.is-done { color: var(--ip-green); }
 .director-product-status.is-done i { background: var(--ip-green); }
@@ -1272,6 +1274,7 @@ html[data-layout="desktop"] .director-studio-panel { order: 0; overflow-y: auto;
 .director-clip-products span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .director-dialog.director-product-library { width: min(920px, 100%); height: min(720px, calc(100dvh - 32px)); overflow: hidden; }
+.director-dialog.director-product-library.is-form { height: auto; max-height: calc(100dvh - 32px); }
 .director-product-library-loading { display: flex; flex: 1; align-items: center; justify-content: center; gap: 8px; color: var(--ip-muted); font-size: 13px; }
 .director-product-library-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .director-product-library-tools .ip-brand-secondary { min-height: 36px; padding: 6px 14px; font-size: 13px; gap: 7px; }
@@ -1328,6 +1331,7 @@ html:not([data-layout="desktop"]) .director-product-tile-edit { opacity: 1; }
 
 html:not([data-layout="desktop"]) .director-product-card { grid-template-columns: 104px minmax(0, 1fr); gap: 12px; padding: 12px; }
 html:not([data-layout="desktop"]) .director-dialog.director-product-library { height: calc(100dvh - 32px); }
+html:not([data-layout="desktop"]) .director-dialog.director-product-library.is-form { height: auto; }
 html:not([data-layout="desktop"]) .director-product-form { grid-template-columns: minmax(0, 1fr); }
 html:not([data-layout="desktop"]) .director-product-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 html:not([data-layout="desktop"]) .director-product-body .director-product-write { height: 40px; }

@@ -49,6 +49,7 @@ class DirectorCommerceTest {
     private final StudioWorkflowService text = mock(StudioWorkflowService.class);
     private final IpProjectService projects = mock(IpProjectService.class);
     private final IpLibraryService library = mock(IpLibraryService.class);
+    private final StudioVideoService videoModels = mock(StudioVideoService.class);
     private final List<IpRun> stored = new ArrayList<>();
     private DirectorService service;
     private DirectorWork work;
@@ -77,7 +78,6 @@ class DirectorCommerceTest {
             return new IpRunDto("run-" + req.nodeId(), work.getId(), req.nodeId(), "generate", "running", "queued", 0, req.maxCost(),
                     null, null, om.createObjectNode(), om.createObjectNode(), null, null, null);
         });
-        StudioVideoService videoModels = mock(StudioVideoService.class);
         var contract = new VideoStudioContract(List.of(new VideoStudioModeSpec("universal_reference_video", false, false, null, null)),
                 List.of(new VideoStudioTier("768p", List.of(new VideoStudioCanvas("9:16", 768, 1344)))), 4, 15, 7000, 0L);
         when(videoModels.models()).thenReturn(List.of(new VideoStudioModel("ep-h3", "MiniMax H3", true, true, false, contract, null)));
@@ -288,6 +288,23 @@ class DirectorCommerceTest {
         List<String> keys = new ArrayList<>();
         req.getValue().video().references().forEach(r -> keys.add(r.key()));
         assertEquals(List.of("u/board.png", "u/zhou.png", "u/desk.png", "p/front.png"), keys, "图1 分镜图，然后是角色、场景、商品");
+    }
+
+    @Test void theEnglishRewriteListsTheProductImageButNotItsSellingPoints() throws Exception {
+        var contract = new VideoStudioContract(List.of(new VideoStudioModeSpec("universal_reference_video", false, false, null, null)),
+                List.of(new VideoStudioTier("768p", List.of(new VideoStudioCanvas("9:16", 768, 1344)))), 4, 15, 7000, 0L);
+        when(videoModels.models()).thenReturn(List.of(new VideoStudioModel("ep-h3", "MiniMax H3", true, true, true, contract, null)));
+        seed(true);
+        addClip("周小满", "工位", "恒温保温杯");
+        ObjectNode c = content();
+        ObjectNode board = ((ObjectNode) c.path("clips").get(0)).putObject("board");
+        board.putArray("candidates").addObject().put("id", "b1").put("key", "u/board.png").put("source", "generated");
+        board.put("adoptedId", "b1").put("adoptedBy", "user");
+        work.setContentJson(c.toString());
+        runTask("video", "k1", "{}");
+        String user = submittedText().user();
+        assertTrue(user.contains("<Picture 4>: reference image of the product 「恒温保温杯」; keep its shape, colors, packaging and label exactly as shown."), user);
+        assertFalse(user.contains("恒温保温杯的说明"), "卖点不交给视频模型，可能被画成字幕");
     }
 
     // ── 提示词 ──

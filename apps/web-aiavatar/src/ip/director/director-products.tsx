@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { IMAGE_UPLOAD_ACCEPT } from "@ai-star-eco/api-client/image-upload-policy";
-import { ArrowLeft, Check, ImageIcon, Loader2, MoreHorizontal, PackageOpen, Pencil, Plus, RefreshCw, Search, ShoppingBag, Star, Trash2, Upload, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ImageIcon, Loader2, MoreHorizontal, PackageOpen, Pencil, Plus, RefreshCw, Search, ShoppingBag, Star, Trash2, Upload, X } from "lucide-react";
 import type { DirectorAsset, DirectorAssistantScope, DirectorWork, LibraryObject } from "@ai-star-eco/types";
 import { addLibraryVersion, createLibraryObject, deleteLibraryObject, editLibraryObject, libraryObjects, mainLibraryVersion, readLibraryObject } from "@/canvas-bridge/asset-library";
 import { DirectorApi, IpStudioApi } from "../api";
@@ -83,7 +83,7 @@ export function DirectorProducts(props: WorkbenchProps) {
   </div>;
 }
 
-function ProductCard({ work, asset, apply, setError, focusClip, episodeId, onEdit }: WorkbenchProps & { asset: DirectorAsset; onEdit: (objectId: string) => void }) {
+function ProductCard({ work, asset, apply, setError, focusClip, goTab, pickEpisode, episodeId, onEdit }: WorkbenchProps & { asset: DirectorAsset; onEdit: (objectId: string) => void }) {
   const { busy, run } = useBusy();
   const { modal } = useStudioApp();
   const current = adopted(asset.image);
@@ -103,6 +103,11 @@ function ProductCard({ work, asset, apply, setError, focusClip, episodeId, onEdi
   const pick = (id: string) => { if (id !== asset.image.adoptedId) void run("adopt", async () => apply(await DirectorApi.edit(work.id, "asset.adopt", asset.id, null, { candidateId: id })), failed(setError, `更换「${asset.name}」的参考图`)); };
   const sync = () => void run("sync", async () => apply(await DirectorApi.edit(work.id, "product.add", null, null, { objectId: asset.libraryObjectId })), failed(setError, `更新「${asset.name}」`, "本剧已有的商品资料和图片不受影响，可以继续使用。"));
   const refs = assetRefs(work, asset.id);
+  // 状态行能点：写进了片段就去那个片段，只写进了剧本就去那一集的正文。
+  const firstClip = refs.find(r => r.linked);
+  const firstEpisode = work.episodes.find(e => productMentions(work, asset).episodes.includes(e.no));
+  const goToUse = firstClip ? () => focusClip({ clipId: firstClip.clipId, assetId: asset.id, open: "assets" })
+    : status.tone === "done" ? () => { if (firstEpisode) pickEpisode(firstEpisode.id); goTab("script"); } : null;
   const blocked = (list: AssetRef[], error?: unknown) => setError({
     action: `从本剧移除「${asset.name}」`,
     error: error ?? { code: "DIRECTOR_ASSET_IN_USE", message: `「${asset.name}」还用在 ${list.length} 个片段里，没有移除。` },
@@ -136,7 +141,8 @@ function ProductCard({ work, asset, apply, setError, focusClip, episodeId, onEdi
         <textarea rows={2} maxLength={PLACEMENT_MAX} value={placement} placeholder="谁在什么情节里怎么用它。不填由 AI 安排" onChange={e => setPlacement(e.target.value)} onBlur={savePlacement}/>
       </label>
       <footer>
-        <span className={`director-product-status is-${status.tone}`}><i aria-hidden/>{status.text}</span>
+        {goToUse ? <button type="button" className={`director-product-status is-${status.tone}`} title={firstClip ? "前往用到它的片段" : "前往剧本"} onClick={goToUse}><i aria-hidden/>{status.text}<ArrowRight size={12} aria-hidden/></button>
+          : <span className={`director-product-status is-${status.tone}`}><i aria-hidden/>{status.text}</span>}
         <WriteIntoScript work={work} asset={asset} placement={placement} episodeId={episodeId} done={status.tone === "done"}/>
       </footer>
     </div>
@@ -257,13 +263,14 @@ function ProductLibrary({ work, apply, initialEdit, onClose }: { work: DirectorW
   const toggle = (id: string) => setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
   const addSelected = async () => {
     setAdding(true); setAddError("");
-    const failures: string[] = [];
+    const failures: { id: string; text: string }[] = [];
     for (const id of selected) {
       try { apply(await DirectorApi.edit(work.id, "product.add", null, null, { objectId: id })); }
-      catch (e) { failures.push(`${items.find(x => x.id === id)?.name ?? id}：${errorText(e)}`); }
+      catch (e) { failures.push({ id, text: `${items.find(x => x.id === id)?.name ?? id}：${errorText(e)}` }); }
     }
     setAdding(false);
-    if (failures.length) { setAddError(`有 ${failures.length} 件没有添加成功。${failures.join("；")}`); setSelected(s => s.filter(id => failures.some(f => f.startsWith(items.find(x => x.id === id)?.name ?? id)))); return; }
+    // 没加上的留在选中状态，点一下就能重试；加上的不用再选。
+    if (failures.length) { setAddError(`有 ${failures.length} 件没有添加成功。${failures.map(f => f.text).join("；")}`); setSelected(failures.map(f => f.id)); return; }
     onClose();
   };
   const onSaved = async (saved: LibraryObject) => {
@@ -276,12 +283,12 @@ function ProductLibrary({ work, apply, initialEdit, onClose }: { work: DirectorW
   };
   const onDeleted = (id: string) => { setItems(old => old.filter(x => x.id !== id)); setSelected(s => s.filter(x => x !== id)); if (initialEdit) onClose(); else { setEditing(null); setView("list"); } };
   return <div className="director-dialog-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && !adding && close()}>
-    <div className="director-dialog director-product-library" role="dialog" aria-modal="true" aria-labelledby="director-product-library-title" ref={dialogFocus} tabIndex={-1}>
+    <div className={`director-dialog director-product-library ${view === "form" ? "is-form" : ""}`} role="dialog" aria-modal="true" aria-labelledby="director-product-library-title" ref={dialogFocus} tabIndex={-1}>
       {view === "form" ? (initialEdit && !editing && !loadError
         ? <div className="director-product-library-loading"><Loader2 size={20} className="ip-loading-icon"/>加载中…</div>
         : <ProductForm key={editing?.id ?? "new"} object={editing} backable={!initialEdit} onBack={back} onClose={close} onDirty={v => { dirty.current = v; }} onSaved={onSaved} onDeleted={onDeleted} usedHere={!!editing && added.has(editing.id)}/>) : <>
         <header><h2 id="director-product-library-title">商品库</h2><button type="button" aria-label="关闭" onClick={onClose} disabled={adding}><X size={18}/></button></header>
-        {(items.length > 0 || !!query.trim()) && <div className="director-product-library-tools">
+        {(loading || items.length > 0 || !!query.trim()) && <div className="director-product-library-tools">
           <label className="director-product-search"><Search size={15} aria-hidden/><input aria-label="搜索商品" placeholder="搜索商品名称或说明" value={query} onChange={e => setQuery(e.target.value)}/></label>
           <button type="button" className="ip-brand-secondary" onClick={() => { setEditing(null); setView("form"); }}><Plus size={15}/>新建商品</button>
         </div>}
@@ -291,7 +298,7 @@ function ProductLibrary({ work, apply, initialEdit, onClose }: { work: DirectorW
             <span aria-hidden><PackageOpen size={24} strokeWidth={1.5}/></span>
             <h3>{query.trim() ? "没有找到商品" : "商品库还是空的"}</h3>
             <p>{query.trim() ? "换个关键词，或者新建一件商品。" : "上传商品图，写上名称和说明，以后每部带货短剧都能用。"}</p>
-            <button type="button" className="ip-brand-button" onClick={() => { setEditing(null); setView("form"); }}><Plus size={15}/>新建商品</button>
+            <button type="button" className="ip-brand-button" autoFocus onClick={() => { setEditing(null); setView("form"); }}><Plus size={15}/>新建商品</button>
           </div> : <div className="director-product-tiles">
             {items.map(o => <ProductTile key={o.id} object={o} added={added.has(o.id)} selected={selected.includes(o.id)} onToggle={() => toggle(o.id)} onEdit={() => { setEditing(o); setView("form"); }}/>)}
             {loading && items.length === 0 && Array.from({ length: 6 }, (_, i) => <div key={i} className="director-product-tile is-skeleton" aria-hidden/>)}
@@ -334,7 +341,7 @@ function ProductForm({ object, backable, usedHere, onBack, onClose, onDirty, onS
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const input = useRef<HTMLInputElement>(null);
-  // 保存分几步（建对象、加图）。中途失败重试时用已建好的那一项，不会多建一件商品。
+  // 保存分几步（建对象或改资料、加图）。中途失败重试时接着用已存好的那一项：不多建一件商品，也不拿旧的修改时间去核对，否则会被当成别的页面改过。
   const created = useRef<LibraryObject | null>(null);
   const locked = saving || !!uploading;
   const main = mainKey ?? images[0]?.key;
@@ -363,11 +370,11 @@ function ProductForm({ object, backable, usedHere, onBack, onClose, onDirty, onS
     if (locked) return;
     setSaving(true); setError("");
     try {
-      const base = object ?? created.current;
+      const base = created.current ?? object;
       let current = base
-        ? await editLibraryObject(base.id, { name: name.trim(), description: description.trim(), ...(object && !created.current ? { updatedAt: object.updatedAt } : {}) })
+        ? await editLibraryObject(base.id, { name: name.trim(), description: description.trim(), ...(created.current ? {} : { updatedAt: base.updatedAt }) })
         : await createLibraryObject({ kind: "product", name: name.trim(), description: description.trim() });
-      if (!base) created.current = current;
+      created.current = current;
       const existing = new Set(current.versions.map(v => v.storageKey));
       for (const image of images) if (!existing.has(image.key)) current = await addLibraryVersion(current.id, image.key, false);
       const keep = new Set(images.map(i => i.key));
@@ -402,11 +409,11 @@ function ProductForm({ object, backable, usedHere, onBack, onClose, onDirty, onS
             <button type="button" className="director-product-upload-remove" disabled={locked || (!!object && images.length <= 1)} onClick={() => setImages(old => old.filter(x => x.key !== image.key))} aria-label="移除这张图" title={object && images.length <= 1 ? "至少保留一张商品图" : "移除"}><X size={13}/></button>
           </div>)}
           {images.length < IMAGES_MAX && <button type="button" className="director-product-upload-add" disabled={locked} onClick={() => input.current?.click()}>
-            {uploading ? <><Loader2 size={18} className="ip-loading-icon"/><small>上传中 {uploading.done}/{uploading.total}</small></> : <><Upload size={18}/><small>上传或拖入图片</small></>}
+            {uploading ? <><Loader2 size={18} className="ip-loading-icon"/><small>上传中 {uploading.done}/{uploading.total}</small></> : <><Upload size={18}/><small>上传图片</small></>}
           </button>}
         </div>
         <input ref={input} type="file" accept={IMAGE_UPLOAD_ACCEPT} multiple hidden aria-label="选择商品图片" onChange={e => { const files = Array.from(e.target.files ?? []); e.target.value = ""; if (files.length) void upload(files); }}/>
-        <small>分镜图和视频会照着商品图画，请用清晰、完整、没有其他物体遮挡的图。</small>
+        <small>可以多选，也可以把图片拖到这里。分镜图和视频会照着商品图画，请用清晰、完整、没有遮挡的图。</small>
       </div>
       <div className="director-product-form-fields">
         <label className="director-field"><span>商品名称</span>

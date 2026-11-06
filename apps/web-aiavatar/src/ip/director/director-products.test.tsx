@@ -95,6 +95,20 @@ test('writing into the script goes through the assistant, one episode at a time,
   expect(ask).toHaveBeenCalledWith({ kind: 'script', episodeId: 'e1' }, expect.any(String));
 });
 
+test('the status line takes you to where the product is used', () => {
+  const p = product(), focusClip = vi.fn(), goTab = vi.fn(), pickEpisode = vi.fn();
+  const eps = [{ id: 'e1', no: 1, title: '开场', content: '无' }, { id: 'e2', no: 2, title: '反转', content: '他拿起保温杯' }];
+  const { unmount } = render(<DirectorProducts {...props(work({ episodes: eps, assets: [p] }), { goTab, pickEpisode })}/>);
+  fireEvent.click(screen.getByRole('button', { name: '已写进第 2 集' }));
+  expect(pickEpisode).toHaveBeenCalledWith('e2');
+  expect(goTab).toHaveBeenCalledWith('script');
+  unmount();
+  const clips = [{ id: 'c1', episodeId: 'e2', order: 1, title: '', assetIds: ['p1'], shots: [] }];
+  render(<DirectorProducts {...props(work({ episodes: eps, assets: [p], clips }), { focusClip })}/>);
+  fireEvent.click(screen.getByRole('button', { name: '已写进第 2 集 · 用在 1 个片段' }));
+  expect(focusClip).toHaveBeenCalledWith({ clipId: 'c1', assetId: 'p1', open: 'assets' });
+});
+
 test('no write button before there is a script', () => {
   render(<DirectorProducts {...props(work({ assets: [product()] }))}/>);
   expect(screen.queryByRole('button', { name: '写进剧本' })).toBeNull();
@@ -130,7 +144,8 @@ test('a new product needs a name and an image, saves every image, and comes back
   render(<DirectorProducts {...props(work())}/>);
   fireEvent.click(screen.getByRole('button', { name: '添加商品' }));
   const dialog = await screen.findByRole('dialog', { name: '商品库' });
-  fireEvent.click((await within(dialog).findAllByRole('button', { name: '新建商品' }))[0]);
+  await within(dialog).findByRole('heading', { name: '商品库还是空的' });
+  fireEvent.click(within(dialog).getByRole('button', { name: '新建商品' }));
   const save = within(dialog).getByRole('button', { name: '保存' }) as HTMLButtonElement;
   expect(save.disabled).toBe(true);
   expect(within(dialog).getByText('还差：商品图、商品名称')).toBeTruthy();
@@ -155,7 +170,8 @@ test('leaving a form with unsaved content asks first; an untouched form just clo
   render(<DirectorProducts {...props(work())}/>);
   fireEvent.click(screen.getByRole('button', { name: '添加商品' }));
   const dialog = await screen.findByRole('dialog', { name: '商品库' });
-  fireEvent.click(await within(dialog).findByRole('button', { name: '新建商品' }));
+  await within(dialog).findByRole('button', { name: '选择香水' });
+  fireEvent.click(within(dialog).getByRole('button', { name: '新建商品' }));
   fireEvent.click(within(dialog).getByRole('button', { name: '取消' }));
   await within(dialog).findByRole('heading', { name: '商品库' });
   expect(confirm).not.toHaveBeenCalled();
@@ -178,7 +194,8 @@ test('a save that fails halfway retries on the same product instead of creating 
   render(<DirectorProducts {...props(work())}/>);
   fireEvent.click(screen.getByRole('button', { name: '添加商品' }));
   const dialog = await screen.findByRole('dialog', { name: '商品库' });
-  fireEvent.click((await within(dialog).findAllByRole('button', { name: '新建商品' }))[0]);
+  await within(dialog).findByRole('heading', { name: '商品库还是空的' });
+  fireEvent.click(within(dialog).getByRole('button', { name: '新建商品' }));
   fireEvent.change(within(dialog).getByLabelText('选择商品图片'), { target: { files: [new File(['a'], '香水.png', { type: 'image/png' })] } });
   await within(dialog).findByText('主图');
   fireEvent.click(within(dialog).getByRole('button', { name: '保存' }));
@@ -186,6 +203,26 @@ test('a save that fails halfway retries on the same product instead of creating 
   fireEvent.click(within(dialog).getByRole('button', { name: '保存' }));
   await waitFor(() => expect(lib.addLibraryVersion).toHaveBeenCalledTimes(2));
   expect(lib.createLibraryObject).toHaveBeenCalledTimes(1);
+});
+
+test('retrying a failed edit does not trip over its own earlier save', async () => {
+  const p = product(), first = libraryObject('o1', '恒温保温杯');
+  lib.readLibraryObject.mockResolvedValue(first);
+  lib.editLibraryObject.mockResolvedValue({ ...first, updatedAt: 't2' });
+  lib.addLibraryVersion.mockRejectedValueOnce(new Error('网络断了')).mockResolvedValue({ ...first, updatedAt: 't3' });
+  studio.uploadImage.mockResolvedValue({ key: 'k-new', url: '/new.png' });
+  api.edit.mockResolvedValue(work({ assets: [p] }));
+  render(<DirectorProducts {...props(work({ assets: [p] }))}/>);
+  fireEvent.click(within(screen.getByRole('menu', { hidden: true })).getByRole('menuitem', { name: '在商品库编辑', hidden: true }));
+  const dialog = await screen.findByRole('dialog', { name: '编辑商品' });
+  fireEvent.change(within(dialog).getByLabelText('选择商品图片'), { target: { files: [new File(['a'], 'n.png', { type: 'image/png' })] } });
+  await waitFor(() => expect(within(dialog).getAllByRole('button', { name: '移除这张图' })).toHaveLength(2));
+  fireEvent.click(within(dialog).getByRole('button', { name: '保存' }));
+  await within(dialog).findByText(/网络断了/);
+  expect(lib.editLibraryObject).toHaveBeenLastCalledWith('o1', expect.objectContaining({ updatedAt: 't1' }));
+  fireEvent.click(within(dialog).getByRole('button', { name: '保存' }));
+  await waitFor(() => expect(lib.addLibraryVersion).toHaveBeenCalledTimes(2));
+  expect(lib.editLibraryObject.mock.calls[1][1]).not.toHaveProperty('updatedAt');
 });
 
 test('the strip on the script page lists the products, or warns when there are none, and stays away when the switch is off', () => {
