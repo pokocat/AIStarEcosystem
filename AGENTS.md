@@ -183,6 +183,8 @@ pnpm check:api-contract                          # 扫五个子应用 + api-clie
 
 用户要求：改完先合入 `main`，再发布。功能分支完成后合入主线，保留 `main` 已有功能，解决冲突并通过检查；仅从干净的 `main` 构建正式制品。不得从落后于主线的功能分支直接覆盖生产。发布记录须写明构建所用的 `main` 提交、服务范围和线上验收结果。
 
+**重启 server 前先确认账号中心活着**（2026-11-06 事故）：`curl -m 8 https://id.aibuzz.cn/.well-known/openid-configuration` 要 200。校验登录的密钥只存在内存里，账号中心不可达时一重启，所有已登录请求都卡住（比不重启严重得多）。不通就先别发，先查原因。账号中心的负载均衡在阿里云账号 `1603478465921848`，欠费会被锁：`aliyun --profile sms alb GetLoadBalancerAttribute --region cn-hangzhou --LoadBalancerId alb-8lqfxfyvfyitbs3s6r`，看 `LoadBalancerStatus` 和 `LoadBalancerOperationLocks`。
+
 **只发一部分服务时，先查 main 上的契约改动**（2026-10-30 事故）：从 main 只发 server，会把线上那版之后 main 上所有后端改动一起带上。当天 main 上一次看板提交把 `/api/admin/studio-operations` 的 `hourlyOutcomes` 换成了两个新字段、前后端一起改，而发布只发了 server，线上 Studio 后台（10-26 版）读 `hourlyOutcomes.map` 出错，技术看板约一小时打不开，补发 studio-admin 后恢复。发布前跑 `git diff <线上 GIT_SHA> origin/main -- 'apps/server/**/dto/**' specs/openapi.yaml`，有删除或改名的字段，就把读它的前端（五个 web、admin、studio-admin、小程序）一起发，或者先不发。
 
 ## 3. 三端架构
@@ -1392,11 +1394,11 @@ Studio 工作线程默认 24，单个模型的上限看端点配置；图片调�
 
 问答只在全能创作助手里，主区只显示已确认的内容和「生成剧本」，别再加第二个对话框。先确认形式、集数、每集时长、题材和调性（不调模型），再由 AI 问还不清楚的，最多两轮、每轮最多 4 题，可以选「AI 决定」。集数多时第一批写全剧大纲和前几集，`script-more` 接着写。见 `docs/ai-director-assistant.md` §7。状态提示是标题后的标签（`director-status-chip`），不再是整行。AI 图片示例是 `public/studio/scene-demos/*.webp` 的前后对比图：一张杂志式画面，左边纸面上是素材小图，右边是铺满的成片，一根细线相连，不画箭头和卡片；标签在图外、写明示意图；图里的人一律韩系风格，不用外国面孔（用户定）。例句在目录的 `example`。改场景默认效果时要对照这张图，两边别走样。
 
-### 确认卡写预估（2026-11-06）
+### 确认卡写预估（2026-11-06 已生产发布 `20261106-inspiration-wall`）
 
 确认卡上的大数字是预估（`budget.expected` → 卡片 `estimatedCost`，折后价加一般用量，`StudioPlanQuoter.estimate`），用户授权的上限照旧是 `budget.estimated` / `budgetCap`，放在数字的提示里。预估只用于显示，不进方案指纹，算不出来按上限。别再把上限当报价写在卡上：H3 视频卡曾写 482，实际扣 189。第一版方案不能用（`STUDIO_PLAN_NOT_READY`）不算出错：助手还在改显示「重新整理中」，改好了不留痕迹，回合结束也没改成才说没完成。
 
-### 灵感库：开箱即用的官方示例（2026-11-06 已生产发布：web-aiavatar `20261106-inspiration-preview`，server `20261106-inspiration-node-spec`，main `1dca58737`；34 个示例已上线）
+### 灵感库：开箱即用的官方示例（2026-11-06 已生产发布 `20261106-inspiration-wall`，main `50689b693`；34 个示例已上线）
 
 真源 `docs/studio-inspiration-library.md`。新版导航加「灵感」（`/templates`，默认案例，可筛视频 / 图片）。点开是弹窗不是全屏（`StudioTemplateUse`），预览不显示提示词（用户 2026-11-06 要求，只读画布点开节点也不显示，v0.232 那句「查看节点提示词」作废），点「做同款」才复制并进画布；首页和灵感页共用瀑布流（`InspirationWall`：按作品真实比例摆进最矮的一列、不裁图、滚动加载，新发布的在前，比日期，同一天的按运营排序）；`onCreated` 现在收的是地址（`studioTemplateCopyHref`），画布里有 `studioStart: 'assistant'` 的节点就打开助手并预填、绑定 `studioSkill`，只填不发。35 条示例的文字在 `scripts/inspiration/catalog.mjs`，用 `scripts/inspiration/publish.mjs` 经现有接口发布（超管令牌，不调模型）。**文字是我们自己写的，不收录 `resources/skills` 里第三方技能的原文。** 条目的约束由 `inspiration-catalog.test.ts` 守着：提示词不写比例时长、不写「做同款 / 复刻」、不出现第三方品牌和模型名。`publishFromProject` 发布实例时不再删文字节点的正文。
 
