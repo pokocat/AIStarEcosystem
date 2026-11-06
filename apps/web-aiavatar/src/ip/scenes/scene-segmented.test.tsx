@@ -10,7 +10,7 @@ import type { StudioPlanExecution, StudioPlanExecutionStep } from "@ai-star-eco/
 
 const SCENES = JSON.parse(readFileSync(join(__dirname, "../../../../server/src/main/resources/ipstudio/scenes.json"), "utf8"));
 const api = vi.hoisted(() => ({
-  push: vi.fn(), failure: vi.fn(), listProjects: vi.fn(), createProject: vi.fn(), updateProject: vi.fn(), getProject: vi.fn(), listScenes: vi.fn(), composeScene: vi.fn(),
+  push: vi.fn(), failure: vi.fn(), payer: vi.fn(), listProjects: vi.fn(), createProject: vi.fn(), updateProject: vi.fn(), getProject: vi.fn(), listScenes: vi.fn(), composeScene: vi.fn(),
   readRun: vi.fn(), cancelRun: vi.fn(), capabilities: vi.fn(), submit: vi.fn(), videoModels: vi.fn(), signKeys: vi.fn(), price: vi.fn(), start: vi.fn(), getExecution: vi.fn(), pause: vi.fn(), resume: vi.fn(), cancel: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: api.push, replace: vi.fn() }), useSearchParams: () => new URLSearchParams(window.location.search) }));
@@ -23,7 +23,7 @@ vi.mock("@/canvas-bridge/studio-api", () => ({ studioCapabilities: api.capabilit
 vi.mock("@/canvas-bridge/studio-segmented", async original => ({ ...(await original<typeof import("@/canvas-bridge/studio-segmented")>()), segmentedVideoPrice: api.price, startSegmentedVideo: api.start }));
 vi.mock("@/canvas-bridge/studio-plan-execution", async original => ({ ...(await original<typeof import("@/canvas-bridge/studio-plan-execution")>()),
   getStudioPlanExecution: api.getExecution, pauseStudioPlanExecution: api.pause, resumeStudioPlanExecution: api.resume, cancelStudioPlanExecution: api.cancel }));
-vi.mock("@/canvas-bridge/studio-video-price", async original => ({ ...(await original<typeof import("@/canvas-bridge/studio-video-price")>()), useStudioVideoPrice: () => ({ status: "idle" }) }));
+vi.mock("@/canvas-bridge/studio-video-price", async original => ({ ...(await original<typeof import("@/canvas-bridge/studio-video-price")>()), studioPreviewPayer: api.payer, useStudioVideoPrice: () => ({ status: "idle" }) }));
 vi.mock("@/canvas-bridge/signed-video", () => ({ SignedVideo: ({ src, "aria-label": label }: any) => <video src={src} aria-label={label}/> }));
 vi.mock("../studio-errors", async original => ({ ...(await original<typeof import("../studio-errors")>()), useStudioFailure: () => api.failure, studioErrorMetadata: () => ({}) }));
 vi.mock("../library-reference-picker", () => import("./scene-test-picker"));
@@ -41,6 +41,7 @@ vi.mock('@/canvas-bridge/studio-video-tasks', async original => ({ ...(await ori
   videoTask: async (id: string) => ({ ...acceptedTasks.get(id), execution: await api.getExecution() }),
 }));
 import { SceneVideoStudio } from "./scene-video-studio";
+import { addScriptNode } from "./scene-drafts";
 
 const limit = (mediaType: string, maxCount: number) => ({ mediaType, maxCount, maxBytes: 1, formats: [], minDurationSec: null, maxDurationSec: null });
 const H3 = { endpointId: "ep-h3", name: "H3", isDefault: true, selectableById: true, supportsPromptOptimization: false, batchCounts: [1],
@@ -78,6 +79,7 @@ beforeEach(() => {
   api.videoModels.mockResolvedValue([H3]);
   api.price.mockResolvedValue(PRICE);
   api.signKeys.mockResolvedValue({});
+  api.payer.mockResolvedValue({ kind: "decided", billing: { mode: "personal" } });
   api.start.mockResolvedValue(execution("running", [step("script", "text", "running")]));
   api.getExecution.mockResolvedValue(execution("running", [step("script", "text", "running"), step("review", "text", "pending"), step("b1", "image", "pending"), step("v1", "video", "pending"), step("film", "assemble", "pending")]));
   api.signKeys.mockResolvedValue({});
@@ -98,7 +100,7 @@ test("longer than one segment: the button generates, says how it splits and what
   longDraft();
   await open();
   await screen.findByText(/这个模型单段最长 15 秒，40 秒分 3 段（15 \+ 15 \+ 10）/);
-  await waitFor(() => expect(go().textContent).toContain(`约 ${PRICE.estimated.toLocaleString("zh-CN")} 积分`));
+  await waitFor(() => expect(go().textContent).toContain("约 1,624 积分"));
   expect(screen.getByText(new RegExp(`本次上限 ${(PRICE.estimated * 3).toLocaleString("zh-CN")} 积分`))).toBeTruthy();
   expect(screen.queryByRole("button", { name: "交给创作助手" })).toBeNull();
   expect(api.price).toHaveBeenLastCalledWith(expect.objectContaining({ model: "ep-h3", tier: "768p", duration: 40, ratio: "9:16", images: 1, character: false, voice: false }), expect.anything());
@@ -192,4 +194,102 @@ test('entering bare video page restores its last selected task after scene defau
   await waitFor(() => expect(window.location.search).toContain('task=PEX-return'));
   expect(await screen.findByRole('region', { name: '本次设置' })).toBeTruthy();
   expect(api.start).not.toHaveBeenCalled();
+});
+
+test("long video shows the server discount and keeps the standard budget cap", async () => {
+  longDraft();
+  api.price.mockResolvedValue({ ...PRICE, discountedVideoCost: 800, videoDiscountName: "H3限时折扣" });
+  await open();
+  await waitFor(() => expect(go().textContent).toContain("824 积分"));
+  expect(go().querySelector("s")?.textContent).toContain("1,624");
+  expect(screen.getByText(/H3限时折扣，视频费省 800 积分/)).toBeTruthy();
+  fireEvent.click(go());
+  await waitFor(() => expect(api.start).toHaveBeenCalled());
+  expect(api.start.mock.calls[0][1].budgetCap).toBe(PRICE.estimated * 3);
+});
+
+test("undecided payer shows both long-video prices and a starting price", async () => {
+  longDraft();
+  api.payer.mockResolvedValue({ kind: "undecided", enterpriseId: "team" });
+  api.price.mockImplementation(async ({ payer }) => ({ ...PRICE, discountedVideoCost: payer === "enterprise" ? 800 : 1600 }));
+  await open();
+  await waitFor(() => expect(go().textContent).toContain("824 积分起"));
+  expect(screen.getByText(/个人账户视频费 1,600 积分，企业账户视频费 800 积分/)).toBeTruthy();
+  expect(api.price).toHaveBeenCalledWith(expect.objectContaining({ payer: "enterprise", enterpriseId: "team" }), expect.anything());
+});
+
+test("an enterprise payer whose quote is refused still gets the standard price and can generate", async () => {
+  longDraft();
+  api.payer.mockResolvedValue({ kind: "decided", billing: { mode: "enterprise", enterpriseId: "team" } });
+  api.price.mockImplementation(async ({ payer }) => {
+    if (payer === "enterprise") throw new Error("已达到企业设定的在途任务上限");
+    return { ...PRICE, discountedVideoCost: 800, videoDiscountName: "个人折扣" };
+  });
+  await open();
+  await waitFor(() => expect(go().textContent).toContain("1,624 积分"));
+  expect(go().querySelector("s")).toBeNull();
+  expect(screen.queryByText(/个人折扣/)).toBeNull();
+  fireEvent.click(go());
+  await waitFor(() => expect(api.start).toHaveBeenCalled());
+});
+
+test("coming back to the page re-quotes without taking the shown price away", async () => {
+  longDraft();
+  api.price.mockResolvedValue({ ...PRICE, discountedVideoCost: 800 });
+  await open();
+  await waitFor(() => expect(go().textContent).toContain("824 积分"));
+  api.price.mockClear();
+  api.price.mockImplementation(() => new Promise(() => {}));
+  await act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
+  await waitFor(() => expect(api.price).toHaveBeenCalled(), { timeout: 1500 });
+  expect(go().textContent).toContain("824 积分");
+});
+
+function directorDraft() {
+  const made = addScriptNode({ ...EMPTY, nodes: [productNode] as never }, { ask: "写一版脚本", revision: false, prompt: "写脚本", materialIds: ["product"], imageIds: ["product"], duration: 15, ratio: "9:16", language: "中文" });
+  made.doc.nodes.at(-1)!.metadata!.studio!.runId = "script-run";
+  longDraft({ ...made.doc, sceneVideoState: { text: "写一版脚本", options: {}, duration: 15, ratio: "9:16" } });
+  api.readRun.mockResolvedValue({ id: "script-run", status: "running", stage: "studio.generate", output: {} });
+}
+
+test("director stop responds immediately, disables repeats and allows another request after acknowledgement", async () => {
+  directorDraft();
+  let resolve!: (run: unknown) => void;
+  api.cancelRun.mockImplementation(() => new Promise(r => { resolve = r; }));
+  await open();
+  const director = screen.queryByRole("button", { name: "AI 编导" });
+  if (director) fireEvent.click(director);
+  fireEvent.click(screen.getByRole("button", { name: "停止" }));
+  expect(screen.getByText("正在停止…")).toBeTruthy();
+  expect((screen.getByRole("button", { name: "已请求停止" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(api.cancelRun).toHaveBeenCalledTimes(1);
+  await act(async () => resolve({ id: "script-run", status: "running", stage: "studio.stopping", output: {} }));
+  expect(screen.getByText("已停止创作，正在结算已用费用")).toBeTruthy();
+  fireEvent.change(screen.getByRole("textbox", { name: "想改哪里" }), { target: { value: "换一个开场" } });
+  expect((screen.getByRole("button", { name: "让编导改" }) as HTMLButtonElement).disabled).toBe(false);
+});
+
+test("a refused stop restores the writing state and lets the user retry", async () => {
+  directorDraft();
+  api.cancelRun.mockRejectedValue(new TypeError("Failed to fetch"));
+  await open();
+  const director = screen.queryByRole("button", { name: "AI 编导" });
+  if (director) fireEvent.click(director);
+  fireEvent.click(screen.getByRole("button", { name: "停止" }));
+  await waitFor(() => expect(api.failure).toHaveBeenCalled());
+  expect(screen.getByRole("button", { name: "停止" })).toBeTruthy();
+  expect(screen.queryByText("已停止创作，正在结算已用费用")).toBeNull();
+});
+
+test("a stopped director is shown as stopped, and its returned status is applied immediately", async () => {
+  directorDraft();
+  api.cancelRun.mockResolvedValue({ id: "script-run", status: "failed", errorCode: "IP_RUN_CANCELLED",
+    errorMessage: "创作已停止", output: {} });
+  await open();
+  const director = screen.queryByRole("button", { name: "AI 编导" });
+  if (director) fireEvent.click(director);
+  fireEvent.click(screen.getByRole("button", { name: "停止" }));
+  await screen.findByText("创作已停止");
+  expect(document.querySelector(".scene-script-card.is-stopped")).toBeTruthy();
+  expect(document.querySelector(".scene-script-state.is-failed")).toBeNull();
 });

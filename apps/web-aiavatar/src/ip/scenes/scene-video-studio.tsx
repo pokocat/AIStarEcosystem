@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowUp, Check, ChevronDown, Copy, Cpu, Download, FolderOpen, History, Image as ImageIcon, Loader2, Mic, PencilLine, Plus,
   RotateCcw, SlidersHorizontal, Square, UserRound, Video, X } from "lucide-react";
-import type { IpProject, IpRun, IpSavedAsset, StudioMediaImportResult, StudioSceneComposeRequest, StudioSceneInputs, StudioNodeMetadata, StudioSceneOptionGroup, StudioSceneVideoState } from "@ai-star-eco/types";
+import type { IpProject, IpProjectDoc, IpRun, IpSavedAsset, StudioMediaImportResult, StudioSceneComposeRequest, StudioSceneInputs, StudioNodeMetadata, StudioSceneOptionGroup, StudioSceneVideoState } from "@ai-star-eco/types";
 import type { StudioCapabilities } from "@ai-star-eco/types/ip-studio-workflow";
 import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
@@ -16,7 +16,7 @@ import { SignedImage } from "@/canvas-bridge/signed-image";
 import { SignedVideo } from "@/canvas-bridge/signed-video";
 import { getStudioPlanExecution } from "@/canvas-bridge/studio-plan-execution";
 import type { StudioPlanExecution, StudioSegmentedVideoPrice, StudioSegmentedVideoRequest } from "@ai-star-eco/types/ip-studio-workflow";
-import { segmentedRecords, segmentedVideoPrice, startSegmentedVideo, type SegmentedRecord } from "@/canvas-bridge/studio-segmented";
+import { describeSegmentedPrice, segmentedRecords, segmentedVideoPrice, startSegmentedVideo, type SegmentedRecord } from "@/canvas-bridge/studio-segmented";
 import type { StudioVideoTask, StudioVideoTaskCreate, StudioVideoTaskKind, StudioVideoTaskQuote } from '@ai-star-eco/types/ip-studio-video-task';
 import { startVideoTask, prepareVideoTask, videoTaskPrice } from '@/canvas-bridge/studio-video-tasks';
 import { SceneVideoWorkspace, VideoHistoryToggle, VideoTaskSettings, VIDEO_TASK_SELECTION } from './scene-video-workspace';
@@ -26,7 +26,7 @@ import { attachmentNode } from "@/canvas-bridge/studio-attachments";
 import { isStudioBillingCancelled } from "@/canvas-bridge/studio-billing-cancel";
 import { studioChosenTextModel } from "@/canvas-bridge/studio-text-model";
 import { studioVideoError, studioVideoQuote } from "@/canvas-bridge/studio-video";
-import { describeStudioVideoPrice, studioVideoPriceQuery, useStudioVideoPrice } from "@/canvas-bridge/studio-video-price";
+import { describeStudioVideoPrice, studioPreviewPayer, studioVideoPriceQuery, useStudioVideoPrice } from "@/canvas-bridge/studio-video-price";
 import { downloadMedia } from "@/canvas-bridge/download-media";
 import { CanvasNodeType, type CanvasNodeData } from "@/canvas/types/canvas";
 import { studioErrorMetadata, useStudioFailure } from "../studio-errors";
@@ -308,8 +308,7 @@ export function SceneVideoStudio() {
           const run = await readRun(row.metadata!.studio!.runId!);
           if (!alive) return;
           if (run.status === "running") { setLive(l => ({ ...l, [row.id]: run })); continue; }
-          await persist(d => patchNode(applyRun(d, row.id, run), row.id, n => ({ ...n, metadata: { ...n.metadata,
-            status: run.status === "done" ? "success" : "error", ...(run.status === "failed" ? { errorDetails: run.errorMessage || "生成失败", errorCode: run.errorCode, errorLogId: run.logId } : { errorDetails: undefined }) } })), projectId);
+          await persist(d => applyFinishedRun(d, row.id, run), projectId);
           setLive(l => { const next = { ...l }; delete next[row.id]; return next; });
           if (run.status === "done") drafts.reload();
         }
@@ -348,7 +347,30 @@ export function SceneVideoStudio() {
   const scripts = scriptNodes(doc);
   const rows = videoRows(doc);
   const latestScript = [...scripts].reverse().find(s => s.metadata?.status === "success" && s.metadata.content);
-  const writing = scripts.some(s => s.metadata?.status === "loading");
+  const [stoppingScripts, setStoppingScripts] = useState<Record<string, "requesting" | "accepted">>({});
+  const scriptStopping = (row: CanvasNodeData) => stoppingScripts[row.metadata?.studio?.runId ?? ""]
+    ?? (live[row.id]?.stage === "studio.stopping" ? "accepted" : undefined);
+  const writing = scripts.some(s => s.metadata?.status === "loading" && scriptStopping(s) !== "accepted");
+  const stopScript = async (row: CanvasNodeData) => {
+    const id = row.metadata?.studio?.runId;
+    if (!id || scriptStopping(row)) return;
+    const projectId = draftRef.current?.id;
+    setStoppingScripts(old => ({ ...old, [id]: "requesting" }));
+    try {
+      const run = await cancelRun(id);
+      if (run.status === "running") {
+        setStoppingScripts(old => ({ ...old, [id]: "accepted" }));
+        setLive(old => ({ ...old, [row.id]: run }));
+      } else {
+        await persist(doc => applyFinishedRun(doc, row.id, run), projectId);
+        setLive(old => { const next = { ...old }; delete next[row.id]; return next; });
+        setStoppingScripts(old => { const next = { ...old }; delete next[id]; return next; });
+      }
+    } catch (error) {
+      setStoppingScripts(old => { const next = { ...old }; delete next[id]; return next; });
+      showFailure({ action: "停止", error });
+    }
+  };
   // 新的一轮出来时滚到底（只滚对话区自己）。
   // 等这一帧排好版再滚：打开草稿时脚本和图片是后到的，立刻滚会停在半路，最新一版的按钮被输入框挡住一半。
   useEffect(() => {
@@ -673,16 +695,35 @@ export function SceneVideoStudio() {
   // 编导页：最新一版跟现在的设置对不上时，输入框不写字也能发，发出去就是「照现在的设置改一版」。
   const latestChanges = specChanges(latestScript?.metadata?.studio?.sceneDirector);
   // 长视频的段数和价：服务端按所选模型算（拖滑杆时等一下再问，慢回来的旧结果不盖新选择）。
-  const [longPrice, setLongPrice] = useState<{ key: string; price?: StudioSegmentedVideoPrice; error?: string }>();
+  const [longPrice, setLongPrice] = useState<{ key: string; spec: string; price?: StudioSegmentedVideoPrice; enterprise?: StudioSegmentedVideoPrice; undecided?: boolean; error?: string }>();
   const longModel = chosenVideo?.selectableById ? chosenVideo.endpointId : undefined;
-  const longKey = long ? JSON.stringify([longModel, usedTier, duration, ratio, images.length, !!character, !!voice, optimize, priceRevision]) : "";
+  const longSpec = long ? JSON.stringify([longModel, usedTier, duration, ratio, images.length, !!character, !!voice, optimize]) : "";
+  const longKey = long ? JSON.stringify([longSpec, priceRevision]) : "";
   useEffect(() => {
     if (!longKey) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
-      segmentedVideoPrice({ model: longModel, tier: usedTier, duration, ratio, images: images.length, character: !!character, voice: !!voice, optimize }, controller.signal)
-        .then(price => { if (!controller.signal.aborted) setLongPrice({ key: longKey, price }); })
-        .catch(e => { if (!controller.signal.aborted) setLongPrice({ key: longKey, error: sceneHintText(e, "价格没读出来，请再试一次") }); });
+      const query = { model: longModel, tier: usedTier, duration, ratio, images: images.length, character: !!character, voice: !!voice, optimize };
+      const load = async () => {
+        const payer = await studioPreviewPayer().catch(() => ({ kind: "undecided" as const }));
+        if (controller.signal.aborted) return;
+        if (payer.kind === "decided") {
+          if (payer.billing.mode !== "enterprise") return { price: await segmentedVideoPrice({ ...query, payer: "personal" }, controller.signal) };
+          // 企业账户报不出价（在途满了、模型没授权）不挡生成，先显示标准价，同短视频：提交时会说清楚原因。
+          const enterpriseId = payer.billing.enterpriseId;
+          return { price: await segmentedVideoPrice({ ...query, payer: "enterprise", enterpriseId }, controller.signal).catch(async () => {
+            const standard = await segmentedVideoPrice({ ...query, payer: "personal" }, controller.signal);
+            return { ...standard, discountedVideoCost: null, videoDiscountName: null };
+          }) };
+        }
+        const [price, enterprise] = await Promise.all([
+          segmentedVideoPrice({ ...query, payer: "personal" }, controller.signal),
+          "enterpriseId" in payer && payer.enterpriseId ? segmentedVideoPrice({ ...query, payer: "enterprise", enterpriseId: payer.enterpriseId }, controller.signal).catch(() => undefined) : undefined,
+        ]);
+        return { price, enterprise, undecided: true };
+      };
+      load().then(result => { if (!controller.signal.aborted && result) setLongPrice({ key: longKey, spec: longSpec, ...result }); })
+        .catch(e => { if (!controller.signal.aborted) setLongPrice({ key: longKey, spec: longSpec, error: sceneHintText(e, "价格没读出来，请再试一次") }); });
     }, 250);
     return () => { clearTimeout(timer); controller.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -704,6 +745,12 @@ export function SceneVideoStudio() {
     return () => { clearTimeout(timer); controller.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskPriceKey]);
+  useEffect(() => {
+    if (!long) return;
+    const refresh = () => { if (document.visibilityState === "visible") setPriceRevision(n => n + 1); };
+    document.addEventListener("visibilitychange", refresh);
+    return () => document.removeEventListener("visibilitychange", refresh);
+  }, [long]);
   const longReady = longPrice?.key === longKey ? longPrice : undefined;
   const segments = long ? longReady?.price?.segments ?? longPrice?.price?.segments ?? [] : [];
   // 正在出片的这版脚本是按什么写的：时长、横竖屏、交给视频模型的图。现在的设置跟它对不上（换了模型、改了时长或素材），
@@ -847,7 +894,10 @@ export function SceneVideoStudio() {
     ? contract.minSeconds === contract.maxSeconds ? `这个模型只做 ${usedDuration} 秒的片子` : `这个模型最短 ${contract.minSeconds} 秒，会按 ${usedDuration} 秒出` : "";
   const pickDuration = (n: number) => { durationTouched.current = true; setDuration(n); setHint(""); };
   const goBlocker = (!videoModels ? '正在读取视频模型…' : !chosenVideo ? '还没有可用的视频模型' : '') || (recreation ? handoffBlocker : long ? longBlocker : videoBlocker) || (taskQuote?.key !== taskPriceKey ? '正在计算费用…' : taskQuote.error || '');
-  const longShown = longReady?.price ?? (long ? longPrice?.price : undefined);
+  // 规格变了旧价立刻作废；规格没变只是重新报价（切回页面）时，新价回来之前继续显示上一份。
+  const longPriced = longReady?.price ? longReady : longPrice?.spec === longSpec && longPrice.price ? longPrice : undefined;
+  const longShown = longPriced?.price;
+  const longView = longShown ? describeSegmentedPrice(longShown, longPriced?.enterprise, longPriced?.undecided) : undefined;
   const onPick = (id: string) => { const next = findVideoScene(catalog, id); if (next && (next.id !== scene.id || draftRef.current)) goToScene(next); };
   const tile = (kind: Exclude<Slot, "image">, media: Media | undefined, label: string, Icon: typeof Video, optional: boolean, clear: () => void) =>
     <div className={`scene-media${media ? " is-filled" : ""}`}>
@@ -923,12 +973,12 @@ export function SceneVideoStudio() {
             {scene.ideas.length > 0 && <div className="scene-director-ideas" role="group" aria-label="常用开头">{scene.ideas.map(idea =>
               <button key={idea} type="button" onClick={() => addIdea(idea)}>{idea}</button>)}</div>}
           </div>}
-          {scripts.map((row, i) => <ScriptTurn key={row.id} row={row} refs={scriptRefs(row)} run={live[row.id]} busy={busy} submitting={submitting === row.id} latest={row.id === latestScript?.id}
+          {scripts.map((row, i) => <ScriptTurn key={row.id} row={row} refs={scriptRefs(row)} run={live[row.id]} stopping={scriptStopping(row)} busy={busy} submitting={submitting === row.id} latest={row.id === latestScript?.id}
             given={scripts.slice(0, i + 1).map(s => s.metadata?.studio?.sceneDirector?.ask ?? "")} facts={scene.brief?.facts}
             copied={copied === row.id} onUse={() => useScript(row)} onBack={() => setView("compose")} onCopy={() => void copy(row)}
             onAgain={() => void send("换个写法重新写一版，要求和素材都不变。", { auto: true })}
             onRetry={() => void retry(row)} onConfirm={() => void confirmOriginal(row)}
-            onStop={() => { const id = row.metadata?.studio?.runId; if (id) void cancelRun(id).catch(e => showFailure({ action: "停止", error: e })); }}/>)}
+            onStop={() => void stopScript(row)}/>)}
         </div>
         {/* 还没写过：这里写的就是编辑框里那段想法（同一份，回到编辑还在）。写过了：这里写改法。 */}
         <form className="scene-director-input" onSubmit={e => { e.preventDefault(); void send(scripts.length ? revise : text); }}>
@@ -985,6 +1035,8 @@ export function SceneVideoStudio() {
             <span>生成视频</span>
             {/* 普通视频的价格是确定的；长视频和爆款复刻要看实际用量，才写「约」。算不出就不显示，不编。 */}
             {caps?.mock ? <small>免费</small>
+              : long ? longView && <small>约 {longView.shown !== longView.standard && <s><span className="scene-sr-only">原价 </span>{longView.standard.toLocaleString("zh-CN")}</s>}
+                {longView.shown !== longView.standard && <span className="scene-sr-only">，折后 </span>}{longView.shown.toLocaleString("zh-CN")} 积分{longView.from ? "起" : ""}</small>
               : taskKind === 'direct' ? price && <small className={price.pending ? "is-pending" : undefined} aria-busy={price.pending || undefined}>
                 {price.shown !== price.standard && <s><span className="scene-sr-only">原价 </span>{price.standard.toLocaleString("zh-CN")}</s>}
                 {price.shown !== price.standard && <span className="scene-sr-only">，折后 </span>}{price.shown.toLocaleString("zh-CN")} 积分{price.from ? "起" : ""}</small>
@@ -993,7 +1045,7 @@ export function SceneVideoStudio() {
           {/* 点了没做成的原因用提醒色；还没动手时只是灰字说一句还差什么。 */}
           {(hint || goBlocker) && <p id="scene-video-go-note" className={`scene-hint${hint ? "" : " is-note"}`} role="status">{hint || goBlocker}</p>}
           {taskKind === 'direct' && price?.note && <p className="scene-hint is-note">{price.note}</p>}
-          {long && longShown && <p className="scene-hint is-note scene-price-note">视频 {longShown.videoCost.toLocaleString("zh-CN")} 积分，分镜图 {longShown.boards} 张 {longShown.boardCost.toLocaleString("zh-CN")} 积分，写脚本和审核按实际用量结算。</p>}
+          {long && longShown && longView && <p className="scene-hint is-note scene-price-note">{longView.note}视频{longView.from ? "费起价" : ""} {longView.video.toLocaleString("zh-CN")} 积分，分镜图 {longShown.boards} 张 {longShown.boardCost.toLocaleString("zh-CN")} 积分，写脚本和审核按实际用量结算，分镜图优惠和模型赠款在执行时抵扣。</p>}
           {!caps?.mock && taskQuote?.key === taskPriceKey && taskQuote.price && <p className="scene-hint is-note scene-price-note">按实际完成的内容结算，本次上限 {taskQuote.price.cap.toLocaleString("zh-CN")} 积分。</p>}
           {!!draft?.doc.sceneVideoSubmissions?.length && <div className="video-pending-submissions">{draft!.doc.sceneVideoSubmissions!.map(request => <p key={request.clientRequestId}>提交结果待确认。<button type="button" disabled={busy} onClick={() => void startSceneTask(request.kind, request)}>确认原任务</button></p>)}</div>}
           {!recreation && !long && plan?.note && <p className="scene-hint is-note">{plan.note}</p>}
@@ -1037,6 +1089,14 @@ export function SceneVideoStudio() {
   </main>;
 }
 
+/** 轮询或停止接口直接返回终态时，都立即保存同一份状态和原因。 */
+function applyFinishedRun(doc: IpProjectDoc, nodeId: string, run: IpRun): IpProjectDoc {
+  return patchNode(applyRun(doc, nodeId, run), nodeId, node => ({ ...node, metadata: { ...node.metadata,
+    status: run.status === "done" ? "success" : "error",
+    ...(run.status === "failed" ? { errorDetails: run.errorMessage || "生成失败", errorCode: run.errorCode, errorLogId: run.logId } : { errorDetails: undefined }),
+  } }));
+}
+
 /** 一份素材在草稿画布上的节点：同一个文件已经在画布上就用原来那个，新放的排在左边一列。 */
 function placeMedia(nodes: CanvasNodeData[], media: Media, kind: "image" | "video" | "audio", index: number): CanvasNodeData {
   const made = attachmentNode(kind === "image" ? { kind, dataUrl: media.url, storageKey: media.key, title: media.title }
@@ -1047,8 +1107,8 @@ function placeMedia(nodes: CanvasNodeData[], media: Media, kind: "image" | "vide
 }
 
 /** 编导的一轮：你说的话 + 编导写的脚本（写作中 / 失败 / 写好了）。 */
-function ScriptTurn({ row, refs, run, busy, submitting, latest, copied, onUse, onBack, onCopy, onAgain, onRetry, onConfirm, onStop, given, facts }: {
-  row: CanvasNodeData; refs: ScenePromptRef[]; run?: IpRun; busy: boolean; submitting: boolean; latest: boolean; copied: boolean;
+function ScriptTurn({ row, refs, run, stopping, busy, submitting, latest, copied, onUse, onBack, onCopy, onAgain, onRetry, onConfirm, onStop, given, facts }: {
+  row: CanvasNodeData; refs: ScenePromptRef[]; run?: IpRun; stopping?: "requesting" | "accepted"; busy: boolean; submitting: boolean; latest: boolean; copied: boolean;
   onUse: () => void; onBack: () => void; onCopy: () => void; onAgain: () => void; onRetry: () => void; onConfirm: () => void; onStop: () => void;
   /** 到这一版为止用户说过的话（第一句和每次修改意见）：核对里面的数字有没有进脚本。 */
   given: string[];
@@ -1064,13 +1124,14 @@ function ScriptTurn({ row, refs, run, busy, submitting, latest, copied, onUse, o
   const position = run?.queue?.position;
   const summary = meta?.studio?.textEditor?.turns?.at(-1)?.content;
   const failed = meta?.status === "error";
+  const stopped = failed && meta?.errorCode === "IP_RUN_CANCELLED";
   return <article className="scene-director-turn">
     <p className={`scene-director-ask${turn?.ask ? "" : " is-empty"}`}>{turn?.ask || (turn?.revision ? "再改一版" : "看素材写一版脚本")}</p>
-    <div className={`scene-script-card is-${meta?.status || "idle"}`}>
+    <div className={`scene-script-card is-${stopped || stopping ? "stopped" : meta?.status || "idle"}`}>
       {loading ? <div className="scene-script-writing" role="status">
-          <span className="scene-script-lines" aria-hidden="true"><i/><i/><i/></span>
-          <span><AiMark size={12}/>{submitting && !accepted ? "正在交给编导" : !accepted ? "提交结果没有确认" : position && position > 0 ? `排队中，前面还有 ${position - 1} 个` : turn?.revision ? "正在改脚本" : "正在看素材、写脚本"}</span></div>
-        : failed ? <p className="scene-script-state is-failed" title={meta?.errorLogId ? `记录号 ${meta.errorLogId}` : undefined}>{sceneFailureText(meta?.errorCode, meta?.errorDetails, "脚本")}</p>
+          {!stopping && <span className="scene-script-lines" aria-hidden="true"><i/><i/><i/></span>}
+          <span><AiMark size={12}/>{stopping ? stopping === "requesting" ? "正在停止…" : "已停止创作，正在结算已用费用" : submitting && !accepted ? "正在交给编导" : !accepted ? "提交结果没有确认" : position && position > 0 ? `排队中，前面还有 ${position - 1} 个` : turn?.revision ? "正在改脚本" : "正在看素材、写脚本"}</span></div>
+        : failed ? <p className={`scene-script-state${stopped ? "" : " is-failed"}`} role={stopped ? "status" : undefined} title={meta?.errorLogId ? `记录号 ${meta.errorLogId}` : undefined}>{sceneFailureText(meta?.errorCode, meta?.errorDetails, "脚本")}</p>
         : <>{summary && <p className="scene-script-summary">{summary}</p>}
           <pre className="scene-script-text">{splitBlanks(body).map((p, i) => p.blank ? <mark key={i} className="scene-script-blank">{p.text}</mark> : <PromptText key={i} text={p.text} refs={refs}/>)}</pre>
           {mustFill.length > 0 ? <p className="scene-script-missing" role="status">还缺{mustFill.join("、")}。在下面写上发给编导，会补进脚本。{mayFill.length ? `${mayFill.join("、")}没有就不用写。` : ""}</p>
@@ -1079,7 +1140,7 @@ function ScriptTurn({ row, refs, run, busy, submitting, latest, copied, onUse, o
           {absent.length > 0 && <p className="scene-script-check">你写的 {absent.join("、")} 脚本里没用上，要加的话跟编导说一声。</p>}
           {overlong.length > 0 && <p className="scene-script-check">{overlong.map(o => `第 ${o.no} 镜 ${o.seconds} 秒有 ${o.chars} 个字`).join("，")}，可能念不完。可以让编导精简台词，或把时长调长一些。</p>}</>}
       <footer>
-        {loading && accepted && <button type="button" onClick={onStop}><Square size={12}/>停止</button>}
+        {loading && accepted && <button type="button" disabled={!!stopping} onClick={onStop}><Square size={12}/>{stopping ? "已请求停止" : "停止"}</button>}
         {loading && !accepted && !submitting && <button type="button" disabled={busy} onClick={onConfirm}><RotateCcw size={12}/>确认原任务</button>}
         {failed && meta?.studio?.request && <button type="button" className="is-primary" disabled={busy} onClick={onRetry}><RotateCcw size={12}/>重新写</button>}
         {meta?.status === "success" && meta.content && <>

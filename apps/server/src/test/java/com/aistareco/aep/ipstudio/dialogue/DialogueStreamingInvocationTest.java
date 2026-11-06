@@ -49,6 +49,50 @@ class DialogueStreamingInvocationTest {
                 .upstreamApiKeyEncrypted(AepCryptoUtil.encrypt("local-key")).chatSupportsStreaming(streaming).chatSupportsTools(tools).enabled(true).build();
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void collectedScriptStoppedMidStreamUsesTheReceiptOrAnEstimateMarkedAsSuch(boolean receipt) throws Exception {
+        var received = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var cancelled = new java.util.concurrent.atomic.AtomicBoolean();
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            calls.incrementAndGet(); exchange.getRequestBody().readAllBytes();
+            exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
+            exchange.sendResponseHeaders(200, 0);
+            try (var out = exchange.getResponseBody()) {
+                out.write("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"abcdefgh\"}}]}\n\n".getBytes(StandardCharsets.UTF_8));
+                out.write("data: {\"choices\":[{\"delta\":{\"content\":\"剧本开头\"}}]}\n\n".getBytes(StandardCharsets.UTF_8));
+                if (receipt) out.write("data: {\"choices\":[],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":20}}\n\n".getBytes(StandardCharsets.UTF_8));
+                out.flush(); received.countDown(); release.await(5, TimeUnit.SECONDS);
+            } catch (Exception ignored) { }
+        });
+        server.start();
+        var executor = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try {
+            var svc = service(); var ep = endpoint(true, false);
+            var result = executor.submit(() -> svc.invokeChatCancellable(ep, AiModelPurpose.DAP_PERSONA,
+                    List.of(Map.of("role", "user", "content", "write script")), Map.of(), cancelled::get));
+            assertTrue(received.await(3, TimeUnit.SECONDS));
+            // 等到 reader 消费这一小段确定性的本地回执，再停止。
+            Thread.sleep(100);
+            cancelled.set(true);
+            var reply = result.get(3, TimeUnit.SECONDS);
+            assertEquals("cancelled", reply.finishReason());
+            assertEquals("剧本开头", reply.content());
+            assertEquals(!receipt, reply.usageEstimated());
+            if (receipt) {
+                assertEquals(100L, reply.promptTokens()); assertEquals(20L, reply.completionTokens());
+            } else {
+                // 思考 8 个英文字符 = 2，正文 4 个汉字 = 3；思考也按输出算。
+                assertEquals(5L, reply.completionTokens());
+                assertTrue(reply.promptTokens() > 0, "请求已发出，输入不能按零算");
+            }
+            assertEquals(1, calls.get());
+        } finally { release.countDown(); executor.shutdownNow(); }
+    }
+
     @Test void deltasArriveBeforeTheVendorFinishesAndUsageComesFromTheLastChunk() throws Exception {
         CountDownLatch firstSeen = new CountDownLatch(1);
         AtomicReference<String> body = new AtomicReference<>();

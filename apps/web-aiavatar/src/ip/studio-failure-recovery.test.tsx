@@ -108,7 +108,7 @@ test('the assistant spec opens the composer at 16:9 / 4 秒; a duration the mode
  const panel=await screen.findByRole('dialog',{name:'生成视频'});
  await waitFor(()=>expect(snapshot[0].metadata?.studio?.composerDraft).toMatchObject({aspectRatio:'16:9',durationSec:4}));
  const blocker=within(panel).getByRole('alert');
- expect(blocker.textContent).toContain('没有 4 秒');
+ expect(blocker.textContent).toContain('现在设置的是 4 秒');
  expect((within(panel).getByRole('button',{name:'生成视频'}) as HTMLButtonElement).disabled).toBe(true);
  fireEvent.click(within(blocker).getByRole('button',{name:'改成 5 秒'}));
  await waitFor(()=>expect(snapshot[0].metadata?.studio?.composerDraft?.durationSec).toBe(5));

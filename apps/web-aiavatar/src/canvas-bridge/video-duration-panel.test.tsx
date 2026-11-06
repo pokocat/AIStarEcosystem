@@ -4,7 +4,7 @@
 // 纯函数那侧在 video-duration.test.ts；这里测的是 React 那一步 ——
 // v0.176 的缺陷恰恰是「算对了但没写回去」，纯函数测不出来。
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 
 const boundsMock = vi.fn();
 const geometryMock = vi.fn();
@@ -32,6 +32,20 @@ const cfg = (over: Partial<AiConfig>) => ({
 }) as AiConfig;
 
 describe("参数面板：夹过的时长要回写", () => {
+  it.each([false, true])("模型上限 60 秒时，手动输入不再被旧 30 秒上限截断（原生=%s）", (native) => {
+    if (native) nativeMock.mockReturnValue({contract:{minSeconds:5,maxSeconds:60,modes:[],tiers:[]}});
+    else boundsMock.mockReturnValue({min:5,max:60});
+    const config=cfg({videoSeconds:"45"});
+    expect(effectiveVideoSeconds(config)).toEqual({seconds:45,min:5,max:60});
+    const onConfigChange=vi.fn();
+    const view=render(<VideoSettingsPanel config={config} onConfigChange={onConfigChange} theme={canvasThemes.light}/>);
+    const input=view.container.querySelector<HTMLInputElement>('input[type="number"][max="60"]')!;
+    expect(input).toBeTruthy();
+    fireEvent.change(input,{target:{value:"55"}});fireEvent.blur(input);
+    expect(onConfigChange).toHaveBeenLastCalledWith("videoSeconds","55");
+    fireEvent.change(input,{target:{value:"65"}});fireEvent.blur(input);
+    expect(onConfigChange).toHaveBeenLastCalledWith("videoSeconds","60");
+  });
   it("候选数跟随所选端点，旧值不在清单时回写", () => {
     nativeMock.mockReturnValue({batchCounts:[1,3,5],contract:{minSeconds:5,maxSeconds:15,modes:[],tiers:[]}});
     const onConfigChange=vi.fn();

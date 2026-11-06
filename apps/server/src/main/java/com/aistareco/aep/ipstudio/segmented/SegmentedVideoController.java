@@ -17,8 +17,9 @@ public class SegmentedVideoController {
     @GetMapping("/studio/segmented-video-price")
     public ApiResponse<SegmentedVideoPrice> price(Principal principal, @RequestParam(required = false) String model, @RequestParam(required = false) String tier,
             @RequestParam int duration, @RequestParam String ratio, @RequestParam(defaultValue = "0") int images,
-            @RequestParam(defaultValue = "false") boolean character, @RequestParam(defaultValue = "false") boolean voice, @RequestParam(defaultValue = "true") boolean optimize) {
-        return ApiResponse.of(service.price(principal.getName(), model, tier, duration, ratio, images, character, voice, optimize));
+            @RequestParam(defaultValue = "false") boolean character, @RequestParam(defaultValue = "false") boolean voice, @RequestParam(defaultValue = "true") boolean optimize,
+            @RequestParam(defaultValue = "personal") String payer, @RequestParam(required = false) String enterpriseId) {
+        return ApiResponse.of(service.price(principal.getName(), model, tier, duration, ratio, images, character, voice, optimize, new com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection(payer, enterpriseId)));
     }
 
     @PostMapping("/projects/{id}/segmented-videos")
