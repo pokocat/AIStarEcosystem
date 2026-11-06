@@ -19,6 +19,14 @@ const models={image:[],video:[
  {endpointId:'short',name:'短模型',isDefault:false,creditCost:2,billingUnit:'per_second' as const,capability:{minDurationSec:5,maxDurationSec:12}},
 ]};
 function Host(){const[nodes,setNodes]=useState([shot]);return <StudioBatchPanel projectId="p" nodes={nodes} shots={[shot]} setNodes={setNodes} setConnections={()=>{}} models={models} capabilities={{mock:false,operations:[]}} open initialNodeId="shot" onClose={()=>{}} ratio="9:16"/>;}
+test('the default length follows the model until the user picks one, without an error on opening',()=>{
+ const video=[{endpointId:'late',name:'起步长',isDefault:true,creditCost:2,billingUnit:'per_second' as const,capability:{minDurationSec:6,maxDurationSec:60}}];
+ render(<StudioBatchPanel projectId="p" nodes={[shot]} shots={[shot]} setNodes={()=>{}} setConnections={()=>{}} models={{image:[],video}} capabilities={{mock:false,operations:[]}} open initialNodeId="shot" onClose={()=>{}} ratio="9:16"/>);
+ expect((screen.getByRole('spinbutton',{name:'自定义视频时长'}) as HTMLInputElement).value).toBe('6');
+ expect(screen.queryByRole('alert')).toBeNull();
+ expect(screen.getByRole('button',{name:'查看制作计划与费用'})).toHaveProperty('disabled',false);
+ expect(screen.getByText('每镜时长')).toBeDefined();
+});
 test('batch uses model bounds, quotes the chosen seconds and blocks an oversized draft after switching',async()=>{
  render(<Host/>);
  const input=screen.getByRole('spinbutton',{name:'自定义视频时长'});

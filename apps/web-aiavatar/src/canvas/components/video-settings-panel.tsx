@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import i18n from "@/canvas-bridge/i18n";
 import { ImageSettingsTheme } from "@/canvas/components/image-settings-panel";
 import { type CanvasTheme } from "@/canvas/lib/canvas-theme";
-import { computeVideoSize, inferVideoRatio, parseAspectRatio, parseVideoResolution, readVideoDimensions, VIDEO_SECONDS_MAX, VIDEO_SECONDS_MIN, videoRatioOptions } from "@/canvas/lib/media-size";
+import { computeVideoSize, inferVideoRatio, parseAspectRatio, parseVideoResolution, readVideoDimensions, VIDEO_SECONDS_MAX, VIDEO_SECONDS_MIN, videoRatioOptions, videoSecondsBounds } from "@/canvas/lib/media-size";
 import { type AiConfig } from "@/canvas-bridge/config-store";
 import { videoDurationBoundsFor, videoGeometryFor, nativeVideoModelFor } from "@/canvas-bridge/models";
 import { studioVideoModeName } from "@/canvas-bridge/studio-video";
@@ -37,14 +37,9 @@ export function effectiveVideoSeconds(config: Pick<AiConfig, "videoSeconds" | "v
     const native=nativeVideoModelFor(config.model || config.videoModel);
     if(native) {
         const min=native.contract.minSeconds,max=native.contract.maxSeconds;
-        const stored=Number(config.videoSeconds);
-        const requested=Number.isFinite(stored)&&stored>0?Math.floor(stored):Math.max(min,Math.min(max,6));
-        return {seconds:Math.min(max,Math.max(min,requested)),min,max};
+        return {seconds:boundedVideoSeconds(config.videoSeconds,min,max),min,max};
     }
-    const bounds = videoDurationBoundsFor(config.model || config.videoModel);
-    // Local defaults apply only when a bound is unknown; they must not narrow a model's contract.
-    const min = bounds?.min ?? Math.min(VIDEO_SECONDS_MIN, bounds?.max ?? VIDEO_SECONDS_MIN);
-    const max = Math.max(min, bounds?.max ?? VIDEO_SECONDS_MAX);
+    const { min, max } = videoSecondsBounds(videoDurationBoundsFor(config.model || config.videoModel));
     const seconds = boundedVideoSeconds(config.videoSeconds, min, max);
     return { seconds, min, max };
 }
