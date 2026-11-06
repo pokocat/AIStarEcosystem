@@ -25,6 +25,19 @@ class PlannerAssetCatalogTest {
         assertEquals("5:7", DialogueCanvasDigest.ratioLabel(1000, 1400));
     }
 
+    // 线上 2026-11-06：灵感示例的「我的版本」设的是 16:9、6 秒，助手看不到，按默认 9:16 报价。
+    @Test void aDraftsOwnSettingsAreListedAndWhatTheAssistantWroteWins() throws Exception {
+        var own = om.readTree("{\"id\":\"mine\",\"type\":\"video\",\"title\":\"我的版本\",\"metadata\":{\"size\":\"16:9\",\"seconds\":6,\"count\":1}}");
+        assertTrue(DialogueCanvasDigest.line(own).contains("·设定 16:9、6 秒"), DialogueCanvasDigest.line(own));
+        var written = om.readTree("{\"id\":\"mine\",\"type\":\"video\",\"title\":\"我的版本\",\"metadata\":{\"size\":\"16:9\",\"seconds\":6,\"studio\":{\"spec\":{\"aspectRatio\":\"9:16\",\"durationSec\":5}}}}");
+        assertTrue(DialogueCanvasDigest.line(written).contains("·设定 9:16、5 秒"), DialogueCanvasDigest.line(written));
+        // A picture's pixel size is not a setting, and anything with a file has no draft settings at all.
+        var pixels = om.readTree("{\"id\":\"a\",\"type\":\"image\",\"title\":\"图\",\"metadata\":{\"size\":\"1024x1024\"}}");
+        assertFalse(DialogueCanvasDigest.line(pixels).contains("设定"), DialogueCanvasDigest.line(pixels));
+        var done = om.readTree("{\"id\":\"a\",\"type\":\"image\",\"title\":\"图\",\"metadata\":{\"size\":\"1:1\",\"storageKey\":\"k.png\"}}");
+        assertFalse(DialogueCanvasDigest.line(done).contains("设定"), DialogueCanvasDigest.line(done));
+    }
+
     @Test void aDraftCreatedThisTurnIsListedUntilTheCanvasSavesIt() throws Exception {
         var ctx = new ToolContext("u", "p", "t", "turn", "run", "a", "m", null, null, false, null, null, null, null, null, () -> false, null);
         var draft = om.readTree("{\"id\":\"dlg-1\",\"type\":\"video\",\"title\":\"让她转身\",\"metadata\":{\"prompt\":\"转身\",\"studio\":{\"kind\":\"shot\"}}}");
