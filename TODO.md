@@ -1,5 +1,15 @@
 # 待办与已知问题
 
+## AI 艺人孵化全端演示（2026-11-05）
+
+- [ ] **对外演示或部署前换掉真实明星**：`apps/web-incubator/src/prototype` 的示例数据里有肖战（93 处）、杨幂（57 处）、王一博（33 处）、刘亦菲等，配了虚构的授权状态、GMV 和合同。现在只在本地；换成虚拟人物前不要发到公网。
+- [ ] 要上线时登记部署：`infra/scripts/build-release.sh`、deploy / verify 脚本、env example、systemd、nginx、域名（参考 archive 里 web-ipstudio 的七处登记）。当前都没做。
+- [ ] 产品确认和现有应用的关系：明星端与 `apps/web-star`、运营后台与 `apps/admin`、创业者工作台与 `apps/web-celebrity` / `apps/web-aiavatar` 重叠。目前只并存，没有替换或互相链接，线上 `/incubation` 演示页也没动。
+- [ ] 界面文字没有按 AGENTS.md §8 逐条修改（三字母占位 `SNG` / `CEL 正式出道！`、口号式标题等，只处理了门禁命中的三句）；要对外用时跑一遍 `ui-copy`。
+- [ ] 英文分支与 `translations.ts` 英文仍在源码里，运行时走不到（§4.6）。要长期维护就清掉。
+- [ ] 工作台内部菜单没进地址栏，刷新回到工作台首页；图片是 unsplash 外链（227 处），对外演示前换成自托管。
+- [ ] 部分小标签对比度偏低（琥珀 / 绿色字配同色系浅底，对比度约 1.7–2.0，如「已激活」「火山引擎同步中」「确认接受」），是原型配色，暂未改。
+
 ## 客户端图片上传（2026-11-02，已生产发布）
 
 - [x] HEIC / 大图端上处理已随 `20261101-client-image-upload-76b353939` 上线。Chrome 在线上资产库、画布导入及带货首尾帧上传成功；画布保存刷新后仍正常。限额内 JPG 保留原尺寸与存储字节数；详情见[发布记录](docs/releases/client-image-upload-production-release-20261102.md)。

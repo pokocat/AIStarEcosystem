@@ -1,0 +1,7 @@
+@import './fonts.css';
+@import 'tailwindcss' source(none);
+@import 'tw-animate-css';
+@import './default_theme.css';
+@import './globals.css';
+@import './light-ui.css';
+@source '../**/*.{ts,tsx}';

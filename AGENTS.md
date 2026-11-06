@@ -28,6 +28,7 @@ Studio 官方画布模板发布（2026-11-04）：版本化 `template-versions` 
   - **web-aiavatar 一个应用两套形态（v0.190，v0.193 改判定）**：手机端 H5（480px 列 + 底部 tab 栏）与桌面面（52px 深群青顶栏 + 1120px 内容 + 无限画布）。**只有一套路由**（`(mobile)/x` 与 `(desktop)/x` 会解析到同一个 URL，Next 不允许）。
     **形态的真值是 `<html data-layout>`，CSS 与 JS 读同一个**（`src/shell/layout-mode.ts`）：用户显式选过（「我的 → 切换到电脑版」）以他为准，没选过按 `matchMedia(min-width: 960px)`。**新增桌面样式写 `html[data-layout="desktop"] xxx`，不要写 `@media`** —— 媒体查询绕过用户的选择。断点是 960 不是 1024：手机浏览器的「请求桌面版网站」会忽略 viewport meta、改用约 980px 的布局视口，卡 1024 就等于那个开关不生效（真实反馈）。
     画布那一页的设备判定是**柔性提示不是拦路**：手机上先给一屏说明，但主按钮是「仍然在手机上打开」。仍走 `dynamic({ssr:false})`，chunk 只有真进画布才下（CSS 藏起来组件照样 mount、照样下 15k 行）。原 `apps/web-ipstudio`（3015）已删除，`ipstudio.aibuzz.cn` 保留为 308 跳转。
+- **web-incubator**（3020）：AI 艺人孵化平台全端演示。Figma Make 原型整体搬入 `src/prototype/`，纯前端示例数据，不调接口、未部署，**不是**任何子产品的真值；见 [`apps/web-incubator/README.md`](apps/web-incubator/README.md)
 - 管理后台 **apps/admin**（3003，已升级到 pnpm + Next 16）
 - 统一账号中心 **独立仓库 [`pokocat/aibuzz-id`](https://github.com/pokocat/aibuzz-id)**（Spring Boot 3.3.5 + Spring Authorization Server，本地 `./mvnw spring-boot:run` 起 **8090**，生产 `id.aibuzz.cn`；建议 clone 到本仓同级的 `../aibuzz-id`）：全生态 OIDC 身份源（RS256 + JWKS），**v0.149 P1 落地 + 本仓 P2 接入完成，已于 2026-09-05 上线**；设计真源 [`docs/unified-identity-plan.md`](docs/unified-identity-plan.md)。**身份只有一份 uid，产品侧建档自动、开通显式，权益真值永远在产品侧**，账号中心不做任何「开通」写操作
 - **账号注册邀请（2026-10-17，已发布并完成真实短信注册验收）**：关系、首建绑定与权限归 `../aibuzz-id`（README §25，V12）；Studio `/invitations` 提供本人链接生成/复制/预览、邀请人和直属记录、分页刷新，分享 `/invite/{code}` 品牌页直接输入手机号/验证码，ID 核验并签发令牌后进入 `/dashboard`。前端直连 ID，不在本仓 server 复制邀请规则或表。邀请不产生分佣/奖励，产品侧既有开通策略独立执行，见 [`docs/unified-account-referral-plan.md`](docs/unified-account-referral-plan.md)、[本地验收](docs/releases/unified-account-referral-validation-20261017.md)及[当前发布与线上验收](docs/releases/unified-account-referral-production-release-20261017.md)。
@@ -61,6 +62,7 @@ Aisingerecosystem/
 │   ├── web-aiavatar/       # 数字资产平台（六类资产）+ AI IP 工作台（无限画布）— port 3013
 │   │                       #   src/canvas/ vendored 画布 · src/canvas-bridge/ 胶水 · src/ip/ 工作台专属
 │   ├── web-star/           # 明星商务工作台（明星/经纪团队审核中枢，浅色主题）— port 3014
+│   ├── web-incubator/      # AI 艺人孵化平台全端演示（搬入的 Figma Make 原型，纯前端，未部署）— port 3020
 ├── packages/               # pnpm workspace 共享包（新代码真源）
 │   ├── types/              # @ai-star-eco/types（22 域类型定义）
 │   ├── ui/                 # @ai-star-eco/ui（48 shadcn + ThemeProvider + globals.css）
@@ -154,6 +156,7 @@ pnpm dev:drama                                # web-drama — http://localhost:3
 pnpm dev:celebrity                            # web-celebrity — http://localhost:3012
 pnpm dev:aiavatar                             # web-aiavatar — http://localhost:3013
 pnpm dev:star                                 # web-star — http://localhost:3014
+pnpm dev:incubator                            # web-incubator（全端演示）— http://localhost:3020
 pnpm dev:admin                                # apps/admin — http://localhost:3003
 
 pnpm typecheck:all                            # workspace 一次性 typecheck
@@ -515,11 +518,11 @@ pnpm check:api-contract
 
 | 版本 | 日期 | 一句话 |
 |---|---|---|
+| **AI 艺人孵化全端演示** | 2026-11-05（本地，未发布） | 新应用 `apps/web-incubator`（3020）：Figma Make 原型的落地页、创业者工作台、明星端、品牌端、运营后台、粉丝端、两个小程序整体搬入，纯前端示例数据；见 `apps/web-incubator/README.md` |
 | **场景化首页与 AI 图片 / AI 视频** | 2026-10-29；后端 2026-10-30 上线，前端正式站默认旧版，右上角「体验新版」/「回到旧版」切换（`shell/ui-version.ts`） | 参考茂隆掌柜 AI：登录后桌面改左侧导航栏；首页一句话开始 + 常用工具 + 「你想做什么？」+ 灵感搬到首页；`/image` 按场景一步出图（只显示场景标签 + 补充要求，草稿即画布），`/video` 照参考站「超级编导」：编导看素材写分镜脚本、可改稿，「用这个脚本生成」选模型时长确认后出片；两页场景、选项组和首页卡片由 Studio 运营后台（`studio-admin` 的「运营配置 · 场景模板」）配置（`studio.scene-catalog`）；见 `docs/studio-scene-creation.md` §8–§9 |
 | **新建画布与多段对话** | 2026-10-20，2026-10-21 已生产发布 `20261021-studio-new-canvas-threads` | 新建统一走 `startNewCanvas()` 直进画布、空画布中间给五个入口；助手加「新对话 / 历史对话」（三个接口，无迁移）；方案与确认卡合成一张、只说做什么花多少，完成总结一句话；见 `docs/ip-studio-new-canvas-and-threads.md` |
 | **对话意图直达** | 2026-10-20（已生产发布 `20261020-studio-dialogue-intents`） | Studio 助手按意图落到出图 / 写剧本与文案 / 出视频 / 复刻四个技能，直达技能一轮一张确认卡、平手不再 400、按任务换技能，见 `docs/ip-studio-dialogue-intents.md` |
 | **v0.207** | ✅ 本地，未发布 | Studio创作首页：主要功能直达、近期画布/模板、想法保存与原项目恢复；品牌保留，见 `docs/ip-studio-home.md` |
-| **v0.206** | 2026-10-08 | Studio 界面区域分离、响应式工具/生成面板；人物库/添加/引用/商品/模板选择统一，精确版本回填与取消恢复；本地未发布，见 docs/audits/ip-studio-ui-audit-2026-10.md |
 
 
 > **这张表刻意只留 5 行。** 它曾经堆到 110 行、占掉 AGENTS.md 的 **64%** —— 而本文件每个

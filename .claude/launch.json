@@ -26,6 +26,19 @@
       "autoPort": true
     },
     {
+      "name": "incubator",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@ai-star-eco/web-incubator",
+        "exec",
+        "next",
+        "dev"
+      ],
+      "port": 3020,
+      "autoPort": true
+    },
+    {
       "name": "admin",
       "cwd": "apps/admin",
       "runtimeExecutable": "npm",
