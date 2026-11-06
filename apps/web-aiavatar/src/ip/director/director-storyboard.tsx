@@ -2,7 +2,7 @@
 
 import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Check, ChevronRight, Clapperboard, FileText, Film, ImageIcon, LayoutGrid, Lightbulb, Loader2, Play, Plus, RefreshCw, Scissors, Trash2, Wand2, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronRight, Clapperboard, FileText, Film, ImageIcon, LayoutGrid, Lightbulb, Loader2, Play, Plus, RefreshCw, Scissors, Trash2, Wand2, X, ShoppingBag } from "lucide-react";
 import { firstLine } from "./director-text";
 import type { DirectorClip, DirectorSceneView, DirectorShot, DirectorTask, DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi } from "../api";
@@ -353,6 +353,7 @@ function ClipCard({ work, clip, quote, apply, setError, onPreview, onBoard, onPi
           {clip.video.candidates.map((m, i) => <button key={m.id} type="button" aria-pressed={m.id === clip.video.adoptedId} aria-disabled={switching || undefined} onClick={() => onPickVideo(m.id)}
             title={m.id === clip.video.adoptedId ? "采用中" : `${m.stale ? "生成期间设置有变动，此版本需更新。" : ""}点一下换成第 ${i + 1} 版`}>{i + 1}{m.stale ? "·旧" : ""}</button>)}
         </div>}
+        {linked.some(a => a.kind === "product") && <p className="director-clip-products" title="这些商品图会作为分镜图和视频的参考图"><ShoppingBag size={13}/><span>{linked.filter(a => a.kind === "product").map(a => a.name).join("、")}</span></p>}
         <div className="director-clip-links" role="group" aria-label="生成视频用到的参考">
           <button type="button" onClick={() => onPreview("assets")} className={missing.length ? "is-error" : unconfirmed.length ? "is-warn" : ""} title="角色、场景、道具的标准照，用来锁定长相和环境">
             <span className="director-avatar-stack">{linked.slice(0, 3).map(a => { const img = adopted(a.image); return img?.url ? <img key={a.id} src={img.url} alt=""/> : <i key={a.id}>{a.name.slice(0, 1)}</i>; })}</span>
@@ -489,7 +490,7 @@ function ClipPreview({ work, clip, preview, apply, setError, goTab, onPickVideo,
     <div className="director-preview">
       <header><span className="director-clip-no">{clip.order}</span><h3 title={clip.title}>{preview.kind === "assets" ? "关联资产" : "视频"} · {clip.title || `片段 ${clip.order}`}</h3></header>
       {preview.kind === "assets" ? <>
-        <p className="director-dialog-note">角色、场景、道具的标准照，只用来锁定长相、服装和环境；镜头构图看分镜图。</p>
+        <p className="director-dialog-note">{work.settings.commerce ? "角色、场景、道具和商品" : "角色、场景、道具"}的标准照，只用来锁定长相、服装和环境；镜头构图看分镜图。</p>
         {targetGone && <div className="director-notice director-unlinked-note" role="status"><span>「{target!.name}」已不在这个片段的关联资产里。{
           work.clips.some(c => c.assetIds.includes(target!.id)) ? "其他片段还在用它，回到资产页可以看是哪些。" : "没有片段在用它了，回到资产页就可以删除。"}</span>
           <button type="button" onClick={() => { onClose(); goTab("assets"); }}>回到资产页</button></div>}
@@ -615,7 +616,7 @@ function ClipEditor({ work, clip, apply, setError, onDone }: { work: DirectorWor
       <label className="director-field"><span>剧情摘要</span><input value={summary} maxLength={1000} onChange={e => setSummary(e.target.value)}/></label>
     </div>
     <div className="director-field"><span>关联资产（生成分镜图时使用其已采用的资产图）</span>
-      <div className="director-asset-picks">{work.assets.map(a => <label key={a.id}><input type="checkbox" checked={assetIds.includes(a.id)}
+      <div className="director-asset-picks">{work.assets.filter(a => a.kind !== "product" || work.settings.commerce || assetIds.includes(a.id)).sort((a, b) => Number(a.kind === "product") - Number(b.kind === "product")).map(a => <label key={a.id}><input type="checkbox" checked={assetIds.includes(a.id)}
         onChange={e => setAssetIds(e.target.checked ? [...assetIds, a.id] : assetIds.filter(x => x !== a.id))}/>{kindLabel[a.kind]} · {a.name}</label>)}
         {unknownIds.map(id => <label key={id} className="is-missing"><input type="checkbox" checked onChange={() => setAssetIds(assetIds.filter(x => x !== id))}/>资产「{id}」不存在（取消勾选以移除）</label>)}
       </div></div>

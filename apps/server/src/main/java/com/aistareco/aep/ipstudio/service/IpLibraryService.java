@@ -38,9 +38,9 @@ public class IpLibraryService {
         for(var row:rows(user,"object")){var data=json(row);if(id.equals(data.path("folderId").asText())){data.remove("folderId");persist(row,data);}}
         saved.clearFolder(user,id);f.setDeletedAt(Instant.now());records.save(f);
     }
-    /** kind=all|character|scene|prop：资产页「人物」只列角色（2026-10-31）。 */
+    /** kind=all|character|scene|prop|product：资产页「人物」只列角色（2026-10-31）；导演台商品库只列商品（2026-11-06）。 */
     public LibraryPage<LibraryObject> objects(String user,String folder,String query,String status,String kind,int page,String project,String node) {
-        if(kind!=null&&!kind.equals("all")&&!kind.equals("character")&&!kind.equals("scene")&&!kind.equals("prop"))throw BusinessException.badRequest("IP_LIBRARY_INVALID","资产类型不正确");
+        if(kind!=null&&!kind.equals("all")&&!kind.equals("character")&&!kind.equals("scene")&&!kind.equals("prop")&&!kind.equals("product"))throw BusinessException.badRequest("IP_LIBRARY_INVALID","资产类型不正确");
         var names=new HashMap<String,String>();for(var f:folders(user))names.put(f.id(),f.name());
         var list=new ArrayList<IpLibraryRecord>();String needle=query==null?"":query.toLowerCase(Locale.ROOT);
         for(var row:rows(user,"object")){var d=json(row);String f=d.path("folderId").asText();
@@ -66,6 +66,7 @@ public class IpLibraryService {
         if(body.has("folderId")){String folder=body.path("folderId").asText(null);checkFolder(user,folder);if(folder==null||folder.isBlank())data.remove("folderId");else data.put("folderId",folder);}
         if(body.has("referenceKey")){String key=body.path("referenceKey").asText(null);if(key==null||key.isBlank())data.remove("referenceKey");else{projects.requireOwnedAssetKey(user,key);requireImage(key);data.put("referenceKey",key);}}
         if(body.has("mainVersionId")){String version=body.path("mainVersionId").asText();if(!hasVersion(data,version))throw invalid("请选择该资产已有的图片版本");data.put("mainVersionId",version);}
+        if(body.hasNonNull("removeVersionId"))removeVersion(data,body.path("removeVersionId").asText());
         persist(row,data);return wire(row);
     }
     @Transactional public void remove(String user,String id){lock(user);var row=required(user,id,"object");row.setDeletedAt(Instant.now());records.save(row);}
@@ -195,6 +196,14 @@ public class IpLibraryService {
         String id="ILV-"+hash(key).substring(0,20);var v=versions.addObject().put("id",id).put("storageKey",key).put("prompt",prompt).put("createdAt",Instant.now().toString()).put("mock",mock);if(run!=null)v.put("runId",run);
         if(main||!data.hasNonNull("mainVersionId"))data.put("mainVersionId",id);
     }
+    /** 删一张图（商品库的商品）。只从这一项里去掉，文件和已经加进导演台作品的快照不动；删的是主图时第一张顶上。 */
+    private void removeVersion(ObjectNode data,String id){
+        if(!"product".equals(data.path("kind").asText()))throw invalid("只有商品可以删除图片");
+        if(!hasVersion(data,id))throw invalid("这张图片已不存在，请刷新后重试");
+        ArrayNode versions=(ArrayNode)data.path("versions");if(versions.size()<=1)throw invalid("至少保留一张商品图");
+        for(int i=0;i<versions.size();i++)if(id.equals(versions.get(i).path("id").asText())){versions.remove(i);break;}
+        if(id.equals(data.path("mainVersionId").asText()))data.put("mainVersionId",versions.get(0).path("id").asText());
+    }
     private boolean hasVersion(ObjectNode data,String id){for(var v:data.path("versions"))if(id.equals(v.path("id").asText()))return true;return false;}
     private ObjectNode baseObject(LibraryCandidate item,String folder){var data=om.createObjectNode().put("kind",item.kind()).put("name",item.name()).put("description",item.description()).put("prompt",item.description());if(folder!=null&&!folder.isBlank())data.put("folderId",folder);data.putArray("versions");data.putArray("sources");return data;}
     private LibraryObject wire(IpLibraryRecord row) {
@@ -213,7 +222,7 @@ public class IpLibraryService {
     private <T>T convert(JsonNode data,Class<T> type){try{return om.treeToValue(data,type);}catch(Exception e){throw new IllegalStateException(e);}}
     private void lock(String user){users.findByIdForUpdate(user).orElseThrow(()->BusinessException.notFound("USER_NOT_FOUND","账号不存在"));}
     private void requireImage(String key){try(var in=java.nio.file.Files.newInputStream(storage.openForRead(key))){if(com.aistareco.aep.service.storage.MediaBytes.sniff("image",in.readNBytes(64))==null)throw invalid("请使用可读取的图片素材");}catch(BusinessException e){throw e;}catch(Exception e){throw invalid("图片已不可用，请重新上传");}}
-    private void validateCandidate(LibraryCandidate item){if(item==null||!Set.of("character","scene","prop").contains(item.kind()))throw invalid("请选择角色、场景或道具");text(item.key(),180,"条目标识");text(item.name(),128,"资产名称");bounded(item.description(),2000);bounded(item.evidence(),2000);}
+    private void validateCandidate(LibraryCandidate item){if(item==null||!Set.of("character","scene","prop","product").contains(item.kind()))throw invalid("请选择角色、场景、道具或商品");text(item.key(),180,"条目标识");text(item.name(),128,"资产名称");bounded(item.description(),2000);bounded(item.evidence(),2000);}
     private static String text(String value,int max,String label){if(value==null||value.isBlank()||value.length()>max)throw invalid(label+"不能为空，最多 "+max+" 字");return value.strip();}
     private static String bounded(String value,int max){if(value==null||value.length()>max)throw invalid("内容超过长度限制");return value;}
     static String hash(String text){try{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8)));}catch(Exception e){throw new IllegalStateException(e);}}

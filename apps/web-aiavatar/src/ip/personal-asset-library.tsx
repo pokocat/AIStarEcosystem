@@ -21,7 +21,7 @@ import { LibraryGridMotion } from './library-grid-motion';
 import { LibraryWorkspace } from './library-workspace';
 import { studioOverlayContainer } from './studio-overlay';
 
-const objectLabels = { character: '角色', scene: '场景', prop: '道具' };
+const objectLabels = { character: '角色', scene: '场景', prop: '道具', product: '商品' };
 const mediaLabels = { image: '图片', video: '视频', audio: '音频', text: '文本' };
 type SupplementaryTab = { key: string; label: string; icon: ReactNode; count?: number; children: ReactNode };
 

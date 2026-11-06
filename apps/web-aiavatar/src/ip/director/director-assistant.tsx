@@ -21,7 +21,7 @@ import { formatDateTime } from "@/lib/datetime";
 import { DirectorApi } from "../api";
 import { AiMark } from "../studio-ai-icon";
 import { useStudioApp } from "../studio-errors";
-import { adopted, chooseDirectorBilling, costText, errorText, hasDrafts, newRequestId, peekDraft, runningTask, saveDrafts, useDraft } from "./director-shared";
+import { adopted, chooseDirectorBilling, costText, errorText, hasDrafts, kindLabel, newRequestId, peekDraft, runningTask, saveDrafts, useDraft } from "./director-shared";
 import { diffText, shotChanges } from "./director-text";
 import { clearPending, deliver, readPending, UncertainError, uncertain, writePending } from "./director-pending";
 import type { PendingRequest } from "./director-pending";
@@ -326,7 +326,7 @@ export function scopeLabel(work: DirectorWork, s: DirectorAssistantScope): strin
   const clipEp = clip ? work.episodes.find(e => e.id === clip.episodeId) : undefined;
   const clipBase = clip ? `${clipEp ? `第 ${clipEp.no} 集 · ` : ""}片段 ${clip.order}` : "片段";
   const asset = s.assetId ? work.assets.find(a => a.id === s.assetId) : undefined;
-  const kind = asset ? { character: "角色", scene: "场景", prop: "道具" }[asset.kind] : "";
+  const kind = asset ? kindLabel[asset.kind] : "";
   switch (s.kind) {
     case "work": return "整部作品";
     case "script": return ep ? `第 ${ep.no} 集 · ${ep.title}` : s.episodeId === "draft" ? "剧本（未拆集）" : "创意与剧本";

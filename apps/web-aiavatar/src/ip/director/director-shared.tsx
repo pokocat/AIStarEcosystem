@@ -10,7 +10,7 @@ import { publicModelErrorMessage } from "@ai-star-eco/api-client/public-model-er
 import { ApiError } from "@ai-star-eco/api-client";
 import { goneWorkId, isStaleGone } from "../api/director";
 
-export const kindLabel: Record<DirectorAsset["kind"], string> = { character: "角色", scene: "场景", prop: "道具" };
+export const kindLabel: Record<DirectorAsset["kind"], string> = { character: "角色", scene: "场景", prop: "道具", product: "商品" };
 
 export function newRequestId() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID().replace(/-/g, "").slice(0, 32) : `${Date.now()}${Math.random().toString(16).slice(2, 10)}`;

@@ -14,9 +14,14 @@ import type { WorkbenchProps } from "./director-workbench";
 import { DirectorScriptFile, LargePasteNotice, usePasteGuard, type ScriptFileHandle } from "./director-script-file";
 import { EDIT_MAX, LongTextCard, SectionedScript } from "./director-long-editor";
 import { ReferenceNotes, SplitChoiceDialog, SplitPreview, UndoSplit, splitsByHeadings } from "./director-split";
+import { CommerceStrip } from "./director-products";
 import { AiWorking, Field, GrowTextarea, InlineError, chooseDirectorBilling, clearDrafts, failed, hasDrafts, newRequestId, runningTask, saveDrafts, useBusy, useDraft, useEscape, dialogFocus } from "./director-shared";
 
 export function DirectorScript(props: WorkbenchProps) {
+  return <><CommerceStrip work={props.work} goTab={props.goTab}/><ScriptBody {...props}/></>;
+}
+
+function ScriptBody(props: WorkbenchProps) {
   const { work, episodeId } = props;
   // 创意对话 / 跳过生成的请求记录：作品显示服务端已经收到，就清掉（创意对话界面这时可能没挂载）。
   useEffect(() => {

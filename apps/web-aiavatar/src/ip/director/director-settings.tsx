@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { X } from "lucide-react";
+import { Switch } from "antd";
 import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 import type { DirectorImageModelState, DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi } from "../api";
@@ -12,6 +13,7 @@ export function SettingsPanel({ work, onClose, apply, setError }: { work: Direct
   const [style, setStyle] = useState(work.settings.style);
   const [localError, setLocalError] = useState("");
   const [aspect, setAspect] = useState(work.settings.aspectRatio);
+  const [commerce, setCommerce] = useState(!!work.settings.commerce);
   const [videoModel, setVideoModel] = useState(work.settings.videoModel ?? "");
   const savedText = work.settings.textModel ?? "";
   const [textModel, setTextModel] = useState(savedText);
@@ -31,7 +33,8 @@ export function SettingsPanel({ work, onClose, apply, setError }: { work: Direct
     // 图片模型没改就不带：原值不重新提交，另一个页面刚换过的模型也不会被这里改回去。
     const imageChange = imageModel === savedImage ? {} : { imageModel: imageModel || null };
     const textChange = textModel === savedText ? {} : { textModel: textModel || null };
-    apply(await DirectorApi.patchWork(work.id, { settings: { style: style.trim(), aspectRatio: aspect, videoModel: videoModel || null, ...textChange, ...imageChange } }));
+    const commerceChange = commerce === !!work.settings.commerce ? {} : { commerce };
+    apply(await DirectorApi.patchWork(work.id, { settings: { style: style.trim(), aspectRatio: aspect, videoModel: videoModel || null, ...commerceChange, ...textChange, ...imageChange } }));
     onClose();
   }, message => setLocalError(`设置没有保存：${message}。改动还在，调整后再点「保存」。`));
   return <div className="director-popover" role="dialog" aria-label="作品设置" ref={dialogFocus} tabIndex={-1}>
@@ -39,6 +42,7 @@ export function SettingsPanel({ work, onClose, apply, setError }: { work: Direct
     <StyleField value={style} onChange={setStyle} note={style.trim() !== work.settings.style && (work.assets.some(a => a.image.candidates.length) || work.clips.some(c => c.board.candidates.length)) ? "已生成的资产图和分镜图不会自动重做，会标为「需更新」。" : undefined}/>
     <div className="director-field"><span>画幅</span><div className="director-segmented">{(["9:16", "16:9", "1:1"] as const).map(a =>
       <button key={a} type="button" aria-pressed={aspect === a} onClick={() => setAspect(a)}>{a}</button>)}</div></div>
+    <CommerceSwitch checked={commerce} onChange={setCommerce} note={!commerce && work.assets.some(a => a.kind === "product") ? "关闭后不再显示商品，新写的内容也不再植入商品。已加入的商品和已写好的片段保持不变，重新打开后恢复。" : undefined}/>
     <label className="director-field"><span>文本模型</span>
       <SelectField aria-label="文本模型" value={textModel} disabled={!!busy || work.textModelMode === "fixed" || !textModels.length} onChange={e => setTextModel(e.target.value)}>
         <option value="">默认{textModels.find(m => m.isDefault) ? `（${textModels.find(m => m.isDefault)!.name}）` : ""}</option>
@@ -67,11 +71,19 @@ export function SettingsPanel({ work, onClose, apply, setError }: { work: Direct
       <small>{!work.videoModels.length ? "暂无可用视频模型，无法确定片段时长。请联系管理员开通。"
         : work.videoModels.find(m => m.id === videoModel || (!videoModel && m.isDefault))?.mode === "frame"
           ? "仅使用分镜首帧，不支持额外图片或声音参考。多镜头片段请先拆分。"
-          : "同时参考分镜图、角色 / 场景 / 道具图和角色声音。片段时长按模型支持的范围来定。"}</small>
+          : `同时参考分镜图、角色 / 场景 / 道具${commerce ? " / 商品" : ""}图和角色声音。片段时长按模型支持的范围来定。`}</small>
     </label>
     <p className="director-dialog-note">修改仅影响之后生成的内容，已生成的内容不变。</p>
     <InlineError message={localError} onClose={() => setLocalError("")}/>
     <footer><button type="button" className="ip-brand-secondary" onClick={onClose}>取消</button><button type="button" className="ip-brand-button" disabled={busy === "settings"} onClick={save}>保存</button></footer>
+  </div>;
+}
+
+/** 带货短剧开关：决定商品工作区是否出现。新建作品和作品设置共用。 */
+export function CommerceSwitch({ checked, onChange, disabled, note }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; note?: string }) {
+  return <div className="director-commerce-switch">
+    <div><b id="director-commerce-label">带货短剧</b><small>{note ?? "把商品写进剧情，商品图用作分镜图和视频的参考图。"}</small></div>
+    <Switch aria-labelledby="director-commerce-label" checked={checked} disabled={disabled} onChange={onChange}/>
   </div>;
 }
 

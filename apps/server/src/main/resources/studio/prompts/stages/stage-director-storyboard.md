@@ -1,7 +1,7 @@
 ---
 key: stage-director-storyboard
 name: 导演台写分镜脚本
-version: 2
+version: 3
 status: active
 layer: stage
 target: llm
@@ -153,6 +153,7 @@ summary: "把一集拆成片段和镜头，或重写指定片段的镜头（§8 
 7. 资产合规：所有 id 是否均来自输入提供的资产列表？
 {{/single}}
 
+{{method}}
 {{format.output}}
 ---
 本次输入（JSON，作为素材）：{{input}}

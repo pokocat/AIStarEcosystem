@@ -21,21 +21,21 @@ export function DirectorAssets(props: WorkbenchProps) {
   const { busy, run } = useBusy();
   const extracting = work.tasks.find(t => t.status === "running" && t.target.startsWith("extract"));
   const extractError = work.textError?.task === "extract" ? work.textError.message : null;
-  // 资产全剧共用、一次提取，这里不再按集筛选；每张卡片写出现在哪几集。
-  const scoped = work.assets;
+  // 资产全剧共用、一次提取，这里不再按集筛选；每张卡片写出现在哪几集。商品在「商品」工作区，不在这里。
+  const scoped = work.assets.filter(a => a.kind !== "product");
   const shown = scoped.filter(a => kind === "all" || a.kind === kind);
-  const open = work.assets.find(a => a.id === openId);
+  const open = scoped.find(a => a.id === openId);
   const sortedShown = [...shown].sort((a, b) => KINDS.indexOf(a.kind) - KINDS.indexOf(b.kind));
   // 助手卡片上的「查看版本」：打开那项资产的详情，比较新生成的资产图。
   const reveal = useAssistant()?.reveal;
   useEffect(() => { if (reveal?.type === "asset" && work.assets.some(a => a.id === reveal.id)) setOpenId(reveal.id); }, [reveal]); // eslint-disable-line react-hooks/exhaustive-deps
-  const waiting = work.assets.filter(a => a.image.adoptedBy === "auto");
+  const waiting = scoped.filter(a => a.image.adoptedBy === "auto");
   // 资产一次按全剧提取：同一人物、场景在各集是同一个，不会因为分集提取而前后不一致。
   // 全剧一次读不完时分批提取：有的集提取过、有的没有，按钮就写「继续提取」，服务端从第一个没提取的集接着读。
   const budget = work.pricing.textChars ?? 0;
   const batched = budget > 0 && work.episodes.reduce((n, e) => n + e.content.length, 0) > budget;
-  const leftover = batched && work.assets.length > 0 ? work.episodes.filter(e => !e.extracted).length : 0;
-  const extractLabel = leftover > 0 && leftover < work.episodes.length ? `继续提取剩下 ${leftover} 集` : work.assets.length ? "重新提取全剧资产" : "提取全剧资产";
+  const leftover = batched && scoped.length > 0 ? work.episodes.filter(e => !e.extracted).length : 0;
+  const extractLabel = leftover > 0 && leftover < work.episodes.length ? `继续提取剩下 ${leftover} 集` : scoped.length ? "重新提取全剧资产" : "提取全剧资产";
   const extract = () => void run("extract", async () => {
     const cost = work.pricing.textMax;
     const billing = await chooseDirectorBilling("asset-extract");
@@ -43,7 +43,7 @@ export function DirectorAssets(props: WorkbenchProps) {
   }, failed(setError, extractLabel));
   // 一次给所有还没有资产图的资产各出一张：只出画面的（排除仅声音出场）、没在生成的。
   const { modal } = useStudioApp();
-  const missing = work.assets.filter(a => !a.image.adoptedId && !a.description.includes("只出声音") && !runningTask(work, `asset:${a.id}`))
+  const missing = scoped.filter(a => !a.image.adoptedId && !a.description.includes("只出声音") && !runningTask(work, `asset:${a.id}`))
     .sort((a, b) => KINDS.indexOf(a.kind) - KINDS.indexOf(b.kind));
   const generateAll = () => {
     const total = missing.length * work.pricing.image;
@@ -74,7 +74,7 @@ export function DirectorAssets(props: WorkbenchProps) {
       </div>
       <span className="director-spacer"/>
       {extracting ? <Spinner label="资产提取中"/> : <>
-        <button type="button" className={work.assets.length ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy} onClick={extract}><Wand2 size={15}/>{extractLabel}</button>
+        <button type="button" className={scoped.length ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy} onClick={extract}><Wand2 size={15}/>{extractLabel}</button>
       </>}
       <button type="button" className="ip-brand-secondary" onClick={() => setAdding(true)} title="补上提取漏掉的角色、场景或道具，可以直接用自己的图"><Plus size={15}/>添加资产</button>
       {missing.length > 0 && <button type="button" className="ip-brand-button" disabled={!!busy} onClick={generateAll}
@@ -84,9 +84,9 @@ export function DirectorAssets(props: WorkbenchProps) {
     {waiting.length > 0 && <div className="director-confirm-bar"><span>{waiting.length} 张资产图待确认。分镜图将以此为参考，请确认后再继续。</span>
       <button type="button" className="ip-brand-button" disabled={!!busy} onClick={confirmAll}><Check size={15}/>全部确认</button></div>}
     {adding && <AddAsset {...props} onClose={() => setAdding(false)}/>}
-    {shown.length === 0 ? <div className="director-panel director-empty-panel"><p>{!work.assets.length ? "暂无资产。点「提取全剧资产」，从正文识别角色、场景和道具。" : scoped.length ? "这一类暂无资产。" : "暂无资产。"}</p></div> :
+    {shown.length === 0 ? <div className="director-panel director-empty-panel"><p>{!scoped.length ? "暂无资产。点「提取全剧资产」，从正文识别角色、场景和道具。" : "这一类暂无资产。"}</p></div> :
       <div className="director-asset-grid">{sortedShown.map(a => <AssetTile key={a.id} {...props} asset={a} onOpen={() => setOpenId(a.id)}/>)}</div>}
-    {open && <DirectorAssetStudio {...props} asset={open} list={sortedShown.some(a => a.id === open.id) ? sortedShown : work.assets} onSelect={setOpenId} onClose={() => setOpenId(null)}/>}
+    {open && <DirectorAssetStudio {...props} asset={open} list={sortedShown.some(a => a.id === open.id) ? sortedShown : scoped} onSelect={setOpenId} onClose={() => setOpenId(null)}/>}
   </div>;
 }
 

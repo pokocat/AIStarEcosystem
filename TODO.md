@@ -130,6 +130,8 @@
 - [ ] **旧 Prompt 管理里已迁走的 8 行、不再使用的 2 行**（`PromptService.MOVED_TO_STUDIO_LIBRARY` / `RETIRED_KEYS`）：线上稳定一两周后再从后台列表隐藏或删除；回滚到本版之前的 server 时这些行仍是旧路径的真值，不要早删。
 - [ ] **后端全量测试在本机跑不完**（2026-11-01）：`./mvnw test` 全量在 Maven 预算堆下 GC 打满、长时间不结束，本次只能按 `**/ipstudio/**/*Test`、`**/enterprise/**/*Test`、`Prompt*Test` 子集验证。要查是哪组测试攒内存，或按测试类分批串行跑（`-DforkCount=1 -DreuseForks=false`）。
 - [ ] **导演台形态与四视图上线前再验一遍**（2026-11-04 本地只用 Agnes 验过）：① 用线上聚算 Qwen 真调提取和写分镜，确认 `forms`、`assetForms`、`sceneView`（`stage-director-extract`、`stage-director-storyboard` v2）；Agnes 会把后面的变化也写进主设定描述，主形象可能带上。② 真模型出一组四视图，看 2×2 切开后是不是同一个空间（`DirectorSceneViews`）。③ 全能参考模型下带视角图的成片。④ 切图失败时那张图的费用不退（`applySceneViews`），看线上是否出现。
+- [ ] **带货短剧上线前**（2026-11-06 功能分支，`docs/ai-director-commerce-plan.md`）：① 查线上这五个环节后台有没有改过：`stage-director-extract / -assistant / -brief / -storyboard / -board`。后台改过的不会跟仓库文件更新，少了 `{{method}}` 就读不到商品规则，要手动补上。② 用线上聚算 Qwen 真调一次写剧本和写分镜（本地只用 Agnes 验过），看商品是不是写进了情节、片段 `assetIds` 有没有带上商品。③ 用真 H3 出一条带商品的片段，看包装和标签还原得怎么样，要不要加重提示词。④ `/assets` 页暂时没有「商品」分栏：商品图能在「图片」里看到，商品对象只能在导演台管理；手机端老页面的「产品」（`dap_product`）是另一张表，没有合并。
+- [ ] **dap 多模态出图把参考图发了两遍**（2026-11-06 带货短剧验收时发现，和商品无关）：`DapMultimodalClient` 走 Agnes 时请求里 `image` 和 `extra_body.image` 各一份，厂商按两份算（4 张报「输入图数量不能超过 6（当前 8）」），所以 Agnes 实际只能带 3 张参考图，而 `requireRefCapacity` 的上限是 4。只影响走这条链的模型，要么去掉一份，要么把上限改对。
 - [ ] **导演台视频提示词和首帧模板仍在代码**（设计文档 §14.2 说明了为什么）：资产图、分镜图模板在库里停用时，页面保留原描述、重新出图报「提示词未配置」，要不要给个更明白的说法待定。
 
 ## 默认文字模型换 Sonnet 5.5（2026-11-04）

@@ -7,7 +7,7 @@ import type { LibraryFolder, LibraryObject, LibraryObjectKind } from '@ai-star-e
 import { mainLibraryVersion } from '@/canvas-bridge/asset-library';
 import { SignedImage } from '@/canvas-bridge/signed-image';
 
-const kinds = { character: '角色', scene: '场景', prop: '道具' };
+const kinds = { character: '角色', scene: '场景', prop: '道具', product: '商品' };
 
 /** Saved objects are the primary content, including objects that have no image yet. */
 export function LibraryScriptAssets({ assets, folders, onEdit, onExtract }: {
