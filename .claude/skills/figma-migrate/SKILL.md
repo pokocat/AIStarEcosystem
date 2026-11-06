@@ -7,6 +7,8 @@ description: 将 figma/ 目录（Figma Make 导出原型）里新增或变更的
 
 > ⚠️ **待更新（2026-08-03）**：本文档全篇以已删除的遗留 `apps/web`（Next 14）为迁移目标，`apps/web/FIGMA_MIGRATION_GUIDE.md` 前置文档也已随 apps/web 一并删除。Phase 5 完成后新 Figma 原型应落到具体子应用（`apps/web-{music,drama,celebrity,aiavatar,star}`），但本 skill 尚未 retarget —— 使用前需先确认迁移目标子应用，下述所有 `apps/web/...` 路径仅供理解迁移套路参考，不可直接照搬执行。
 
+> **2026-11-05 补充**：整套平台级原型（几万行、多端）不要按下面的五件套拆，也不要往已有子应用里塞。用户选了「纯前端演示 + 照搬视觉」时，做法是搬成独立应用（范例 `apps/web-incubator`）：只搬入口走得到的文件（写脚本沿 import 走一遍，原型里常有大量重复和死代码）；带版本号的 import（`"lucide-react@0.487.0"`）要去掉；Google Fonts 换自托管；`dynamic(..., { ssr: false })` 托管；先 grep 网络请求、`alert/confirm`、§9 文案门禁，再跑严格类型检查，错误往往比想象的少；原型的手机宽度要在 375 下逐端看。用无头或隐藏面板截图时，页面发白是 motion 动画被暂停，不是样式问题，先确认预览面板显示着。开工前先问清范围、真实程度、视觉三件事，别默认。
+
 本技能指导将 `figma/src/**`（Figma Make 导出的一次性 React 产物）里新增或变更的页面 / 组件同步进目标子应用。
 
 ---

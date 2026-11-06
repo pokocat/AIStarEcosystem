@@ -12,7 +12,7 @@
 | IP 管理 | `/ips` | `src/ip/ip-management.tsx`、`ip-management-data.ts` | `.ip-brand-surface`；编辑 Modal 为 `.ip-management-editor` |
 | 共享桌面顶栏 | 应用页；公开首页自带一份 | `src/shell/desktop-top-bar.tsx` | `.ip-brand-surface` |
 | 创作与个人画布列表 | `/create`；`/projects` 重定向到此 | `src/ip/studio-create-home.tsx`、`studio-gallery.tsx` | `.ip-brand-surface` |
-| 模板市场 | `/templates` | `src/ip/studio-template-market.tsx`、`studio-gallery.tsx` | `.ip-brand-surface` |
+| 灵感 | `/templates` | `src/ip/studio-template-market.tsx`、`inspiration-wall.tsx`、`styles/inspiration.css` | `.ip-brand-surface`；作品墙用 16px 圆角和胶囊筛选，不走 DESIGN.md 的工作台圆角（作品是主角，2026-11-06 用户要求不要像管理工作台） |
 | 个人画布与模板预览 | `/projects/{id}` 及模板预览路由 | `src/ip/`、`src/canvas-bridge/`、`src/canvas/` | 共享浅色 `.ip-brand-surface`，旧组件由局部令牌适配 |
 | 账号与旧 Studio 工具 | `/me`、`/studio` | `src/shell/account-*`、`src/styles/account-workspace.css` | 共享浅色 `.ip-brand-surface`，旧组件由局部令牌适配 |
 
@@ -80,9 +80,9 @@
 
 画布正文和操作用 `--ip-font-sans`，资产名用 `--ip-font-serif`，编号和字段标签用 `--ip-font-mono`。内部输入、提示与按钮维持各自现有可读规格，不用缩小字号解决长文；长文换行或滚动。颜色、选中、失败、运行与保存反馈同时有文字，深群青面上的焦点保持可见。这里不把旧文档的节点数量或旧 Inspector 尺寸当作新工作台的不变业务契约。
 
-## 模板：只读预览，再显式存副本
+## 模板：详情弹窗，再显式做同款
 
-模板点击先打开只读画布。浏览、缩放和查看节点提示词不创建个人项目，也不挂载项目同步与生成工作台；不能拖动、增删、改写节点或连线。只点击「存为个人副本」才免费创建普通可编辑画布，保存中禁用重复操作，失败保留预览并允许重试。
+（2026-11-05 起是一个不占满屏幕的弹窗：有成片的先看效果（不显示提示词，做同款后才有），也可切到只读画布；没有成片的直接显示只读画布。按钮叫「做同款」，点了才复制并进入画布。下面的规则不变。）模板点击先打开只读画布。浏览、缩放和查看节点提示词不创建个人项目，也不挂载项目同步与生成工作台；不能拖动、增删、改写节点或连线。只点击「存为个人副本」才免费创建普通可编辑画布，保存中禁用重复操作，失败保留预览并允许重试。
 
 首页模板入口、画布列表与画布内模板库沿用同一路径；个人发布模板按不可变来源预览。个人副本在普通节点内替换输入、编辑和确认费用，原模板保持不变，旧锁定实例继续兼容。不得恢复「点击模板就创建项目」或另加套用报价表单。
 

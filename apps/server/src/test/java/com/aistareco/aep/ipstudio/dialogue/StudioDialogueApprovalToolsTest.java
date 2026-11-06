@@ -97,6 +97,25 @@ class StudioDialogueApprovalToolsTest {
         assertEquals(30, appended.get(1).path("budgetCap").asLong(), "a cap the user named is used as is");
         assertFalse(appended.get(1).has("dialogueReserve"));
     }
+    // 用户 2026-11-06：卡上写 482、实际扣 189。卡上写预估，用户授权的上限不变。
+    @Test void theCardShowsTheEstimateWhileTheCapStaysTheQuote() throws Exception {
+        List<ObjectNode> appended = new ArrayList<>();
+        var plan = om.createObjectNode().put("type", "plan").put("fingerprint", "fp").put("revision", 2).put("planRunId", "IPR-1");
+        plan.putObject("plan").put("stage", "analysis").putObject("budget").put("estimated", 482).put("expected", 190).put("autoFixCap", 0);
+        var effects = mock(ToolContext.Effects.class);
+        when(effects.latestPlanBlock()).thenReturn(Optional.of(plan));
+        doAnswer(i -> { appended.add(i.getArgument(0)); return null; }).when(effects).appendBlock(any(), any(), any());
+        var rate = new AiChatTokenPricing.Rate(BigDecimal.ONE, BigDecimal.valueOf(2), 10_000, 2_000);
+        ObjectNode args = om.createObjectNode();
+        args.putArray("scope").add("一段视频");
+        var run = new RequestApprovalTool().run(args, context(false, rate, effects), HANDLE);
+        JsonNode card = appended.get(0);
+        assertEquals(190, card.path("estimatedCost").asLong());
+        assertEquals(482, card.path("quotedCost").asLong());
+        assertEquals(482, card.path("budgetCap").asLong());
+        assertTrue(run.summary().contains("190"), run.summary());
+    }
+
     @Test void aFailedReplacementPlanCannotConfirmThePreviousImagePlan() throws Exception {
         var effects = mock(ToolContext.Effects.class);
         var old = om.createObjectNode().put("planRunId", "IPR-old").put("fingerprint", "old-image");

@@ -28,6 +28,7 @@ Studio 官方画布模板发布（2026-11-04）：版本化 `template-versions` 
   - **web-aiavatar 一个应用两套形态（v0.190，v0.193 改判定）**：手机端 H5（480px 列 + 底部 tab 栏）与桌面面（52px 深群青顶栏 + 1120px 内容 + 无限画布）。**只有一套路由**（`(mobile)/x` 与 `(desktop)/x` 会解析到同一个 URL，Next 不允许）。
     **形态的真值是 `<html data-layout>`，CSS 与 JS 读同一个**（`src/shell/layout-mode.ts`）：用户显式选过（「我的 → 切换到电脑版」）以他为准，没选过按 `matchMedia(min-width: 960px)`。**新增桌面样式写 `html[data-layout="desktop"] xxx`，不要写 `@media`** —— 媒体查询绕过用户的选择。断点是 960 不是 1024：手机浏览器的「请求桌面版网站」会忽略 viewport meta、改用约 980px 的布局视口，卡 1024 就等于那个开关不生效（真实反馈）。
     画布那一页的设备判定是**柔性提示不是拦路**：手机上先给一屏说明，但主按钮是「仍然在手机上打开」。仍走 `dynamic({ssr:false})`，chunk 只有真进画布才下（CSS 藏起来组件照样 mount、照样下 15k 行）。原 `apps/web-ipstudio`（3015）已删除，`ipstudio.aibuzz.cn` 保留为 308 跳转。
+- **web-incubator**（3020）：AI 艺人孵化平台全端演示。Figma Make 原型整体搬入 `src/prototype/`，纯前端示例数据，不调接口，线上 `incubator.aibuzz.cn`，**不是**任何子产品的真值；见 [`apps/web-incubator/README.md`](apps/web-incubator/README.md)
 - 管理后台 **apps/admin**（3003，已升级到 pnpm + Next 16）
 - 统一账号中心 **独立仓库 [`pokocat/aibuzz-id`](https://github.com/pokocat/aibuzz-id)**（Spring Boot 3.3.5 + Spring Authorization Server，本地 `./mvnw spring-boot:run` 起 **8090**，生产 `id.aibuzz.cn`；建议 clone 到本仓同级的 `../aibuzz-id`）：全生态 OIDC 身份源（RS256 + JWKS），**v0.149 P1 落地 + 本仓 P2 接入完成，已于 2026-09-05 上线**；设计真源 [`docs/unified-identity-plan.md`](docs/unified-identity-plan.md)。**身份只有一份 uid，产品侧建档自动、开通显式，权益真值永远在产品侧**，账号中心不做任何「开通」写操作
 - **账号注册邀请（2026-10-17，已发布并完成真实短信注册验收）**：关系、首建绑定与权限归 `../aibuzz-id`（README §25，V12）；Studio `/invitations` 提供本人链接生成/复制/预览、邀请人和直属记录、分页刷新，分享 `/invite/{code}` 品牌页直接输入手机号/验证码，ID 核验并签发令牌后进入 `/dashboard`。前端直连 ID，不在本仓 server 复制邀请规则或表。邀请不产生分佣/奖励，产品侧既有开通策略独立执行，见 [`docs/unified-account-referral-plan.md`](docs/unified-account-referral-plan.md)、[本地验收](docs/releases/unified-account-referral-validation-20261017.md)及[当前发布与线上验收](docs/releases/unified-account-referral-production-release-20261017.md)。
@@ -61,6 +62,7 @@ Aisingerecosystem/
 │   ├── web-aiavatar/       # 数字资产平台（六类资产）+ AI IP 工作台（无限画布）— port 3013
 │   │                       #   src/canvas/ vendored 画布 · src/canvas-bridge/ 胶水 · src/ip/ 工作台专属
 │   ├── web-star/           # 明星商务工作台（明星/经纪团队审核中枢，浅色主题）— port 3014
+│   ├── web-incubator/      # AI 艺人孵化平台全端演示（搬入的 Figma Make 原型，纯前端）— port 3020
 ├── packages/               # pnpm workspace 共享包（新代码真源）
 │   ├── types/              # @ai-star-eco/types（22 域类型定义）
 │   ├── ui/                 # @ai-star-eco/ui（48 shadcn + ThemeProvider + globals.css）
@@ -154,6 +156,7 @@ pnpm dev:drama                                # web-drama — http://localhost:3
 pnpm dev:celebrity                            # web-celebrity — http://localhost:3012
 pnpm dev:aiavatar                             # web-aiavatar — http://localhost:3013
 pnpm dev:star                                 # web-star — http://localhost:3014
+pnpm dev:incubator                            # web-incubator（全端演示）— http://localhost:3020
 pnpm dev:admin                                # apps/admin — http://localhost:3003
 
 pnpm typecheck:all                            # workspace 一次性 typecheck
@@ -179,6 +182,8 @@ pnpm check:api-contract                          # 扫五个子应用 + api-clie
 ### 生产发布顺序（2026-10-20）
 
 用户要求：改完先合入 `main`，再发布。功能分支完成后合入主线，保留 `main` 已有功能，解决冲突并通过检查；仅从干净的 `main` 构建正式制品。不得从落后于主线的功能分支直接覆盖生产。发布记录须写明构建所用的 `main` 提交、服务范围和线上验收结果。
+
+**重启 server 前先确认账号中心活着**（2026-11-06 事故）：`curl -m 8 https://id.aibuzz.cn/.well-known/openid-configuration` 要 200。2026-11-06 起公钥存库（`IdentityJwkCache`），不通时重启已不会卡住已登录用户，但新登录和换令牌都做不了，发版时分不清问题出在哪。不通就先别发，先查原因。账号中心的负载均衡在阿里云账号 `1603478465921848`，欠费会被锁：`aliyun --profile sms alb GetLoadBalancerAttribute --region cn-hangzhou --LoadBalancerId alb-8lqfxfyvfyitbs3s6r`，看 `LoadBalancerStatus` 和 `LoadBalancerOperationLocks`。
 
 **只发一部分服务时，先查 main 上的契约改动**（2026-10-30 事故）：从 main 只发 server，会把线上那版之后 main 上所有后端改动一起带上。当天 main 上一次看板提交把 `/api/admin/studio-operations` 的 `hourlyOutcomes` 换成了两个新字段、前后端一起改，而发布只发了 server，线上 Studio 后台（10-26 版）读 `hourlyOutcomes.map` 出错，技术看板约一小时打不开，补发 studio-admin 后恢复。发布前跑 `git diff <线上 GIT_SHA> origin/main -- 'apps/server/**/dto/**' specs/openapi.yaml`，有删除或改名的字段，就把读它的前端（五个 web、admin、studio-admin、小程序）一起发，或者先不发。
 
@@ -515,11 +520,11 @@ pnpm check:api-contract
 
 | 版本 | 日期 | 一句话 |
 |---|---|---|
+| **AI 艺人孵化全端演示** | 2026-11-06 已发布 `incubator.aibuzz.cn` | 新应用 `apps/web-incubator`（3020）：Figma Make 原型的落地页、创业者工作台、明星端、品牌端、运营后台、粉丝端、两个小程序整体搬入，纯前端示例数据；见 `apps/web-incubator/README.md` |
 | **场景化首页与 AI 图片 / AI 视频** | 2026-10-29；后端 2026-10-30 上线，前端正式站默认旧版，右上角「体验新版」/「回到旧版」切换（`shell/ui-version.ts`） | 参考茂隆掌柜 AI：登录后桌面改左侧导航栏；首页一句话开始 + 常用工具 + 「你想做什么？」+ 灵感搬到首页；`/image` 按场景一步出图（只显示场景标签 + 补充要求，草稿即画布），`/video` 照参考站「超级编导」：编导看素材写分镜脚本、可改稿，「用这个脚本生成」选模型时长确认后出片；两页场景、选项组和首页卡片由 Studio 运营后台（`studio-admin` 的「运营配置 · 场景模板」）配置（`studio.scene-catalog`）；见 `docs/studio-scene-creation.md` §8–§9 |
 | **新建画布与多段对话** | 2026-10-20，2026-10-21 已生产发布 `20261021-studio-new-canvas-threads` | 新建统一走 `startNewCanvas()` 直进画布、空画布中间给五个入口；助手加「新对话 / 历史对话」（三个接口，无迁移）；方案与确认卡合成一张、只说做什么花多少，完成总结一句话；见 `docs/ip-studio-new-canvas-and-threads.md` |
 | **对话意图直达** | 2026-10-20（已生产发布 `20261020-studio-dialogue-intents`） | Studio 助手按意图落到出图 / 写剧本与文案 / 出视频 / 复刻四个技能，直达技能一轮一张确认卡、平手不再 400、按任务换技能，见 `docs/ip-studio-dialogue-intents.md` |
 | **v0.207** | ✅ 本地，未发布 | Studio创作首页：主要功能直达、近期画布/模板、想法保存与原项目恢复；品牌保留，见 `docs/ip-studio-home.md` |
-| **v0.206** | 2026-10-08 | Studio 界面区域分离、响应式工具/生成面板；人物库/添加/引用/商品/模板选择统一，精确版本回填与取消恢复；本地未发布，见 docs/audits/ip-studio-ui-audit-2026-10.md |
 
 
 > **这张表刻意只留 5 行。** 它曾经堆到 110 行、占掉 AGENTS.md 的 **64%** —— 而本文件每个
@@ -579,6 +584,7 @@ sau-service…），当依赖**未配置**或**调用失败**时，在生产 pro
 | SMS 验证码 | driver=log 时 mysql profile ERROR 横幅（待运维改 aliyun） | log driver + dev-fixed 双门禁 |
 | 资产存储 CDN | driver=local 时 mysql profile ERROR 横幅（P1） | local fake-CDN（dev 默认） |
 | 支付渠道（v0.94 多渠道）| 渠道启用但机密缺失 → 下单/回调期 503 PAYMENT_CHANNEL_NOT_CONFIGURED（不入账、不回退）；机密走 admin 后台「支付配置」DB（加密），env 仅 bootstrap | shadow 影子渠道 `aep.payment.shadow.enabled`（dev true / mysql false，启用打 ERROR 横幅） |
+| 账号中心验签公钥（2026-11-06） | 账号中心断开时继续用库里最近一份（`identity.jwks-cache`，只有公钥，后台改不了，连上后 5 分钟内更新）；连不上且对不上令牌 → 503 `IDENTITY_UNAVAILABLE`，不回 401、不放行 | 无降级开关 |
 | dev 免密登录 | `aep.dev-auth.enabled` 默认关 | 显式开 |
 | 演示数据 seeder | mysql 默认 `AEP_SEED_DEV_DATA_ENABLED=false` | dev 自动 seed |
 | music 形象锻造成片视频 | v0.60 已随形象锻造入口下线（债务以退役方式清除；遗留数据只读） | — |
@@ -618,6 +624,7 @@ sau-service…），当依赖**未配置**或**调用失败**时，在生产 pro
   据它把方案换成了 `next/script`，而那个方案实测更差。同理：`preview_logs`、
   `journalctl` 都要带时间窗。
 - **数日志也要先确认 grep 能命中**（2026-10-03）：线上日志的级别字段是 `-ERROR`（`%5p` 正好 5 个字符，前面没空格），`grep ' ERROR '` 永远 0 命中，我据此报过一次「重启后 0 条 ERROR」。用 `grep -E ' -ERROR | ERROR [0-9]+ ---'`，并先拿一条已知会打 ERROR 的日志试一下这个 grep。同一天还栽了一次：脚本按名字里带 `server` 自动挑 systemd 单元，挑中的是账号中心 `aistareco-id-server`，查出来 0 ERROR、0 条上游日志，看着全绿。主服务是 `aistareco-server`；本该有 `[upstream-io]` 的时间窗里一条都没有，就是查错了地方。
+- **`dev` profile 下无效令牌也是 200**（2026-11-06）：`DevAutoAuthFilter` 会给没通过校验的请求自动登录种子账号。验证登录、验签时，我拿「退役钥匙的令牌回 200」差点判成验签放行，而前面几轮「断开后重启仍是 200」同样不能算数。在 `dev` 下要核对 `/api/me` 返回的是不是令牌里的那个账号（不是的话落到 `celebrity_operator`），不能只看状态码。
 - **Review reject**：commit message 里写「因为观察到 X 所以改 Y」，但 X 没有对照样本 → reject。
 
 **③ 验证要走到用户屏幕那一步。**
@@ -676,6 +683,8 @@ v0.163：前端手抄了一份 `IpRun`，把 `output` 写成 `outputs`，于是�
   2026-10-21 第五种：动作本身完全对，但数组后面又写了一遍 `<<<studio-actions>>>` 当结束标记，严格解析连判三次格式错误、什么都没做还扣了积分；每次失败的回复正文都显示了出来（同一句三遍）；而用户点的「用这张图做一段视频」是我们自己给的完成后建议，出视频却没有这个说法的关键词，和出图平手就留在了出图。判据补充：只在动作块末尾容忍明显的收尾、其它多余内容仍判错；格式错误重试时被判错那次的正文不追加、正文只出现一次；我们自己给的每一条建议都要有测试证明它路由到对的技能或明确不切换（`StudioSuggestionRoutingTest`）。
 
   2026-10-24 第六种（AI 导演台编剧，聚算 Qwen3.8 27B）：剧本 JSON 写完了、字符串也闭合了，finish=stop，只漏了最外层的 `}`，严格解析判失败、整单退款，用户只看到「这次创作没有完成」。`ModelJson` 现在只在「文本停在一个完整的值上、只缺结尾括号」时补括号，截在字符串中间或逗号、冒号后面照样失败（`ModelJsonTest`）。
+
+  2026-11-06（灵感库示例，线上 Sonnet 真跑）：两处本地全绿、线上第一次真对话就错。其一，`propose_plan` 按模型自己写的 `brief` 重新选方法，出图要求里引用了要印在图上的字，方法就被切到写作，确认卡变成花 110 积分写一段提示词。判据：**模型的转述不是用户的话**，能不能切走方法要看来源（`StudioSkillRouter.planningMethod`：转述不能切到写作，写作只由用户原话决定）。其二，`DialogueCanvasDigest.spec` 只读助手自己写的 `studio.spec`，用户和模板在节点上设的 `size` / `seconds` 模型看不见，16:9 的节点按默认 9:16 报价。判据：给模型的素材概要要读用户能改的那份设置，不只读模型自己写过的。这两处都要真模型才暴露：单测的 brief 是我们自己写的，正好不含这些词。
 
   2026-10-31 第七种（场景页编导，本地 Agnes 2.5 Flash）：要求写「第N镜（起–止 秒）」，模型把「起–止」原样抄进括号、第一镜从 0.5 秒开始，H3 解析器一镜都认不出；要求「第一行写还缺」，它写在了最后一行；「怎么买」的说明里列了几个选项，它挑一个当事实填了。判据补充：格式要给一个照抄就对的例子，不要给带占位词的模板；解析时位置放宽（哪一行都认），内容不放宽；说明文字里不要列可选值，模型会当成答案。真模型输出钉成回归用例（`H3PromptRewriteTest#aRealDirectorScriptFromAgnesIsParsed`）。
   2026-11-05 长视频两处，都是假响应测不到、一真跑就出来的：计划报价用占位 key，带参考素材的视频步骤过不了文件归属校验（`StudioPlanSteps.QUOTE_NODE` 改成按张数算价，`StudioVideoService.planPrice`）；Agnes 3.0 Flash 把 `assets` 字段写了两遍，严格解析判失败、自动重试，而马上重试又撞限流（改成隔约一分钟）。判据补充：报价和提交要用真实服务走一遍，mock 掉 `workflow.quote` 的单测看不出来。
@@ -1096,7 +1105,7 @@ Studio 支持模型开放首尾帧、全能参考、清晰度、六种画幅及�
 
 ### v0.232 · 模板只读预览与显式个人副本（2026-10-10）
 
-官方模板点击后先打开只读画布，浏览、缩放和查看节点提示词不创建项目。仅点击“存为个人副本”免费创建一份普通可编辑画布；保存中禁用重复提交，失败保留预览并由用户重试。首页、画布列表与画布内模板库共用这条路径，个人发布模板也按不可变来源预览。预览不挂载项目同步或生成工作台，不能拖动、增删、改写节点及连线；沿用现有节点样式和画布浮层查看设置。个人副本继续在节点内替换输入、编辑和确认生成费用，原模板不变，旧锁定实例保持兼容。本规则替代 v0.231 的“点击即创建”入口。
+（2026-11-05 起预览是一个不占满屏幕的弹窗，见文末「灵感库」节。）官方模板点击后先打开只读画布，浏览、缩放和查看节点提示词不创建项目。仅点击“存为个人副本”免费创建一份普通可编辑画布；保存中禁用重复提交，失败保留预览并由用户重试。首页、画布列表与画布内模板库共用这条路径，个人发布模板也按不可变来源预览。预览不挂载项目同步或生成工作台，不能拖动、增删、改写节点及连线；沿用现有节点样式和画布浮层查看设置。个人副本继续在节点内替换输入、编辑和确认生成费用，原模板不变，旧锁定实例保持兼容。本规则替代 v0.231 的“点击即创建”入口。
 
 ### Studio 节点交互增量 · 2026-10-11
 
@@ -1422,6 +1431,14 @@ Studio 工作线程默认 24，单个模型的上限看端点配置；图片调�
 
 问答只在全能创作助手里，主区只显示已确认的内容和「生成剧本」，别再加第二个对话框。先确认形式、集数、每集时长、题材和调性（不调模型），再由 AI 问还不清楚的，最多两轮、每轮最多 4 题，可以选「AI 决定」。集数多时第一批写全剧大纲和前几集，`script-more` 接着写。见 `docs/ai-director-assistant.md` §7。状态提示是标题后的标签（`director-status-chip`），不再是整行。AI 图片示例是 `public/studio/scene-demos/*.webp` 的前后对比图：一张杂志式画面，左边纸面上是素材小图，右边是铺满的成片，一根细线相连，不画箭头和卡片；标签在图外、写明示意图；图里的人一律韩系风格，不用外国面孔（用户定）。例句在目录的 `example`。改场景默认效果时要对照这张图，两边别走样。
 
-### AI 视频页的长视频（2026-11-05，本地未发布）
+### 确认卡写预估（2026-11-06 已生产发布 `20261106-inspiration-wall`）
 
-真源 `docs/studio-segmented-video.md`。时长超过所选模型单段上限时一键做到成片：写分段脚本 → 审脚本 → 分镜图（第 1 张之后都参考它）→ 审分镜图（不合格重出一次）→ 各段全能参考出片 → 合成。切段只在 `SegmentedPlan`，页面显示服务端算的。复用连续制作（`StudioPlanExecutor`），但没有对话和确认卡（`threadId` 为空），用户在页面上看价点生成就是确认；提示词做到那一步才编（`StudioSegmentedRun`），格式用导演台的。一键到底只对带 `segmented` 状态的执行生效，别的连续制作照旧停下来问。**导演台一段仍然最长 15 秒**（`DirectorService.MAX_CLIP_SECONDS`），模型放开到 30 秒只给这条流程。把 Seedance 2.5 配到 30 秒要先发代码再改配置。真模型整条链没跑过，见 TODO。
+确认卡上的大数字是预估（`budget.expected` → 卡片 `estimatedCost`，折后价加一般用量，`StudioPlanQuoter.estimate`），用户授权的上限照旧是 `budget.estimated` / `budgetCap`，放在数字的提示里。预估只用于显示，不进方案指纹，算不出来按上限。别再把上限当报价写在卡上：H3 视频卡曾写 482，实际扣 189。第一版方案不能用（`STUDIO_PLAN_NOT_READY`）不算出错：助手还在改显示「重新整理中」，改好了不留痕迹，回合结束也没改成才说没完成。
+
+### 灵感库：开箱即用的官方示例（2026-11-06 已生产发布 `20261106-inspiration-wall`，main `50689b693`；34 个示例已上线）
+
+真源 `docs/studio-inspiration-library.md`。新版导航加「灵感」（`/templates`，默认案例，可筛视频 / 图片）。点开是弹窗不是全屏（`StudioTemplateUse`），预览不显示提示词（用户 2026-11-06 要求，只读画布点开节点也不显示，v0.232 那句「查看节点提示词」作废），点「做同款」才复制并进画布；首页和灵感页共用瀑布流（`InspirationWall`：按作品真实比例摆进最矮的一列、不裁图、滚动加载，新发布的在前，比日期，同一天的按运营排序）；`onCreated` 现在收的是地址（`studioTemplateCopyHref`），画布里有 `studioStart: 'assistant'` 的节点就打开助手并预填、绑定 `studioSkill`，只填不发。35 条示例的文字在 `scripts/inspiration/catalog.mjs`，用 `scripts/inspiration/publish.mjs` 经现有接口发布（超管令牌，不调模型）。**文字是我们自己写的，不收录 `resources/skills` 里第三方技能的原文。** 条目的约束由 `inspiration-catalog.test.ts` 守着：提示词不写比例时长、不写「做同款 / 复刻」、不出现第三方品牌和模型名。`publishFromProject` 发布实例时不再删文字节点的正文。
+
+### AI 视频页的长视频（2026-11-06 已生产发布 `20261106-segmented-video-2`，main `f90dfab6d`；线上还没真跑过；Seedance 2.5 已配到 30 秒，也没有真实样本）
+
+真源 `docs/studio-segmented-video.md`。时长超过所选模型单段上限时一键做到成片：写分段脚本 → 审脚本 → 分镜图（第 1 张之后都参考它）→ 审分镜图（不合格重出一次）→ 各段全能参考出片 → 合成。切段只在 `SegmentedPlan`，页面显示服务端算的。复用连续制作（`StudioPlanExecutor`），但没有对话和确认卡（`threadId` 为空），用户在页面上看价点生成就是确认；提示词做到那一步才编（`StudioSegmentedRun`），格式用导演台的。一键到底只对带 `segmented` 状态的执行生效，别的连续制作照旧停下来问。**导演台一段仍然最长 15 秒**（`DirectorService.MAX_CLIP_SECONDS`），模型放开到 30 秒只给这条流程。别的模型配到 15 秒以上，要先有这版服务端再改配置。真模型整条链没跑过，见 TODO。

@@ -647,6 +647,15 @@ RS256 分支的进入条件：JOSE 头 `alg=RS256`，或 HS256 验不过但（�
 `aep.identity.issuer` 留空 = **整体关闭**：RS256 令牌一律 401，HS256 链路不受任何影响。
 §8.0：不存在「未配置就本地伪造 uid」的降级路径。
 
+**账号中心断开时**（`IdentityJwkCache`，2026-11-06 事故后）：验签只读内存，不碰网络。
+
+- 公钥存在平台配置 `identity.jwks-cache`（只有公钥，系统维护，后台改不了），启动时先载入，所以断开时也能重启。库里的 issuer 与当前不同就不用（库可能是别的环境复制来的）。
+- 后台每 5 分钟取一次，取到才替换；取不到、回错误、回空集合都继续用旧的，每次记一条 WARN。
+- 令牌的 kid 不认识：去取一次（最多每 10 秒一次，请求线程最多等 3 秒，不持锁）。取到了还不认识就是无效令牌（401）；取不到回 **503 `IDENTITY_UNAVAILABLE`**，前端保留令牌、显示重试，不把人踢下线。
+- 手机号与资料同步（`/userinfo`）连不上时，每 30 秒只放一个请求去试，其余直接走，保留已有资料。
+
+**这只保住已经拿到令牌的用户**：新登录和换令牌都要账号中心，令牌到期（最长 1 小时）后也要重新进入。
+
 ### 2. JIT 建档（登录即有档案，但**不等于开通**）
 
 `IdentityProvisioningService`：`sub`(uid) → `aep_users.identity_uid` 命中就用；没命中就现场建一行
@@ -721,7 +730,7 @@ offset（处理中候选集在缩小，offset 会漏行）。`dryRun=true` 只�
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `AEP_ID_ISSUER` | dev `http://localhost:8090` | 账号中心 issuer。**留空 = 关闭整个能力** |
-| `AEP_ID_JWKS_URI` | 空 | 显式覆盖 JWKS 地址；留空则惰性经 `<issuer>/.well-known/openid-configuration` 发现 |
+| `AEP_ID_JWKS_URI` | 空 | 显式覆盖 JWKS 地址；留空则经 `<issuer>/.well-known/openid-configuration` 发现 |
 | `AEP_ID_AUDIENCE` | `aistar-api` | 令牌 `aud` 必须包含它 |
 | `AEP_ID_CLIENT_ID` | `aistar-server` | 机器互调 client id |
 | `AEP_ID_CLIENT_SECRET` | 空 | 机器互调机密。**留空 = 不回报、不拉 outbox、不能导入** |

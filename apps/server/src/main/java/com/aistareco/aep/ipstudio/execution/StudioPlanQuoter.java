@@ -31,6 +31,27 @@ public class StudioPlanQuoter {
         plan.putObject("budget").put("estimated",total).put("autoFixCap",0);
     }
 
+    /**
+     * 确认卡上给人看的预估（2026-11-06 用户要求：卡上写 482、实际扣 189，数字吓人）。上面的 estimated 是用户授权的上限，
+     * 按标准价加文字任务的冻结额度算，这里按折后价和一般用量算。只影响显示，不进方案指纹，算不出来的步骤按上限计。
+     * 不放进 {@link #quote}：长视频查价在只读事务里调它，这里的异常不该把那个事务标成回滚。
+     */
+    public void estimate(String userId,ObjectNode plan) {
+        long expected=0;
+        for(JsonNode step:plan.path("steps")) {
+            long quoted=step.path("quotedCost").asLong();
+            expected=Math.addExact(expected,workflow.expectedCost(userId,StudioPlanSteps.request(step,PLACEHOLDERS,modes(step.path("settings").path("model").asText(null)),null),quoted));
+        }
+        ((ObjectNode)plan.path("budget")).put("expected",Math.min(expected,plan.path("budget").path("estimated").asLong()));
+    }
+
+    /** 这一步视频本身的价，不含先改写提示词的冻结上限（那是按实际用量结算的文字任务）。 */
+    public long videoOnly(String userId,JsonNode step) {
+        ObjectNode copy=step.deepCopy();
+        ((ObjectNode)copy.path("settings").path("video")).put("optimize",false);
+        return workflow.quote(userId,StudioPlanSteps.request(copy,PLACEHOLDERS,modes(copy.path("settings").path("model").asText(null)),null));
+    }
+
     /** Video modes of the default Studio video model (the model video steps run on). */
     public StudioPlanSteps.Modes modes() {return modes(null);}
 

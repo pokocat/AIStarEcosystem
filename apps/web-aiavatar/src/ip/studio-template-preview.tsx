@@ -8,11 +8,14 @@ import type { CanvasNodeData } from '@/canvas/types/canvas';
 import { flowNodes, flowEdges } from '@/canvas-bridge/flow-document';
 import { StudioFlowCard } from './studio-flow-canvas';
 import { StudioFloatingContext, StudioFloatingPanel } from './studio-floating-panel';
+import { templateNodeNote } from './template-facts';
 
 const nodeTypes = { studio: StudioFlowCard };
-function Preview({ doc }: { doc: IpProjectDoc }) {
+function Preview({ doc, onInspectingChange }: { doc: IpProjectDoc; onInspectingChange?: (open: boolean) => void }) {
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
   const [inspecting, setInspecting] = useState<CanvasNodeData>();
+  // Esc closes the inner panel first: the dialog around this canvas only takes it back once the panel is gone.
+  useEffect(() => onInspectingChange?.(!!inspecting), [inspecting, onInspectingChange]);
   const viewport = useViewport(), flow = useReactFlow();
   // Nodes are controlled with explicit sizes, so React Flow never fills `measured` and its nodes-initialized hook stays false
   // (AGENTS §8.0.1 ⑭): wait for the viewport instead, then fit once the fullscreen container has laid out.
@@ -40,15 +43,15 @@ function Preview({ doc }: { doc: IpProjectDoc }) {
         <button type="button" aria-label="放大" onClick={() => void flow.zoomIn()}><ZoomIn size={18}/></button>
         <hr/><button type="button" aria-label="适应全部节点" onClick={() => void flow.fitView({ padding: .2, maxZoom: 1 })}><Maximize size={18}/></button>
       </nav>
-      <StudioFloatingPanel open={!!inspecting} container={root} anchorId={inspecting?.id} title="节点设置 · 只读" width={420}
+      <StudioFloatingPanel open={!!inspecting} container={root} anchorId={inspecting?.id} title="节点内容" width={420}
         onClose={() => setInspecting(undefined)} footer={<span>做同款后，可替换素材、编辑和生成。</span>}>
         <strong>{inspecting?.title}</strong>
-        <p className="studio-template-preview-prompt">{inspecting?.metadata?.groupDescription || inspecting?.metadata?.prompt || inspecting?.metadata?.content || (inspecting?.type === 'group' ? '此分组尚未添加说明。' : '此节点等待填写内容或添加参考素材。')}</p>
+        <p className="studio-template-preview-prompt">{templateNodeNote(inspecting)}</p>
         {inspecting?.metadata?.size && <p>画幅 / 尺寸：{inspecting.metadata.size}{inspecting.metadata.seconds ? ` · ${inspecting.metadata.seconds} 秒` : ''}</p>}
       </StudioFloatingPanel>
     </div>
   </StudioFloatingContext.Provider>;
 }
-export default function StudioTemplatePreview({ doc }: { doc: IpProjectDoc }) {
-  return <ReactFlowProvider><Preview doc={doc}/></ReactFlowProvider>;
+export default function StudioTemplatePreview({ doc, onInspectingChange }: { doc: IpProjectDoc; onInspectingChange?: (open: boolean) => void }) {
+  return <ReactFlowProvider><Preview doc={doc} onInspectingChange={onInspectingChange}/></ReactFlowProvider>;
 }

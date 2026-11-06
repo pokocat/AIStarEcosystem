@@ -8,6 +8,8 @@ description: Use when deploying, redeploying, verifying, or rolling back the AI 
 
 完整文件、导入保护、滚动顺序与验收见 [`docs/aistar-postgresql-cutover.md`](../../../docs/aistar-postgresql-cutover.md)。下方旧 ECS/MySQL/身份同机描述仅作历史运维参考，不能用于新发布。
 
+业务 OSS 保留原账号杭州 `aiartist` Bucket、原 key/前缀与签名公网地址；新 A/B 后台走内网 Endpoint。本轮不新建桶、不改原授权、ACL 或付费账号；数据库快照和配置仍只走私有 SSH。
+
 
 # Aliyun Production Deploy
 
@@ -38,6 +40,7 @@ Current production services are:
   `web-ipstudio`; one app serves a mobile shell (<1024px) and a desktop shell (>=1024px).
   `ipstudio.aibuzz.cn` is now a 308 redirect here — do not deploy anything to it.
 - `web-star` - Next.js 16 star business console, systemd unit `aistareco-web-star`.
+- `web-incubator` - Next.js 16 AI 艺人孵化全端演示（纯前端、无密钥、不登录）, systemd unit `aistareco-web-incubator`, port 3020, `incubator.aibuzz.cn`.
 - `admin` - Next.js admin app, systemd unit `aistareco-admin`.
 - `sau-service` - Dockerized FastAPI/Playwright service, systemd unit `aistareco-sau-service`.
   Real-image builds run `apps/sau-service/scripts/prepare_real_runtime.py` to patch

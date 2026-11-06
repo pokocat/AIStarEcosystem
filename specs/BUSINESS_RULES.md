@@ -327,6 +327,7 @@ enterprise → 全部无限制
 | 400 | `INVALID_CONTRACT_TYPE` | 合同类型不合法 |
 | 400 | `INVALID_RIGHTS_SCOPE` | 权利范围为空或不合法 |
 | 401 | `UNAUTHORIZED` | 未登录或 Token 失效 |
+| 503 | `IDENTITY_UNAVAILABLE` | 账号中心连不上，且本地没有能对上这个令牌的公钥。不等于令牌无效：前端保留令牌、显示重试，不跳登录 |
 | 402 | `INSUFFICIENT_CREDITS` | 积分不足 |
 | 403 | `PLAN_LIMIT_EXCEEDED` | 套餐限额超出 |
 | 403 | `MODULE_LOCKED` | 模块未解锁（需升级套餐） |
@@ -1537,6 +1538,7 @@ AiAvatar 发行入口共用当前 uid 的社交账号和历史发布任务：`/a
     - 方案含当前方法不允许的操作 → 先换到允许全部操作的方法（意图路由结果优先，其次目录顺序第一个能覆盖的）再校验；任何方法都不允许才失败，失败原因只给模型。
     - 内部原因（`STUDIO_SKILL_OPERATION_NOT_ALLOWED`、`STUDIO_SKILL_LOCKED`、方案校验「第 N 步…」）不进用户界面：工作记录、确认卡接口、执行步骤原因、前端错误详情一律显示「这份方案还没准备好，我会按你要做的内容重新整理。」（工作记录码 `STUDIO_PLAN_NOT_READY`），原文留在日志与 `internalDetail`。
 32. **方案素材范围跨轮**（2026-10-24，已生产发布 `20261024-studio-plan-material-scope`；真源 `docs/ip-studio-dialogue-intents.md`「2026-10-24：方案素材范围跨轮」；线上 `PEX-fc87e85770074aa9ad51` 首轮点名「三视图」、隔两轮才出方案，确认后执行的素材名单里没有它，「编排制作计划」三次被拒、用户点「继续」两次撞同一个错）：
+33. **确认卡的数字（2026-11-06）**：卡上显示 `estimatedCost`（方案 `budget.expected`：折后价加一般用量，按个人账户的折扣算），只用于显示，不进方案指纹。用户授权和执行核对的上限仍是 `budget.estimated` / `budgetCap`（标准价加文字任务的冻结额度）。算不出预估时按上限显示。实际扣费按结算，不受预估影响。
     - 对话方案确认时的素材范围（`stepsJson.canvasContextIds`）只由 `StudioPlanMaterials.scope` 算，两条加载路径（dialogue run 的 `output.plan` 与对话消息里的方案块）一样：出方案那一轮点选 / 附带的节点 → 方案顶层 `materialNodeIds` → 方案步骤点名的画布节点 → 同一对话最近 200 条里**用户消息**点选 / 附带的节点（新的在前）；只保留当前画布上还在的，最多 16 个（请求的画布上下文上限），超出按这个顺序截断并写 info 日志。不把整张画布放进来。原生规划 run（`studio-text`）不变。
     - 技能计划可带 `materialNodeIds`（≤16，属于方案正文、计入指纹），分析阶段用它写下制作阶段才用到的素材（替换人物设定图、商品图）。
     - 技能计划引用素材范围以外的画布对象（`referenceNodeIds`、`referenceBindings[].nodeId`、拉片 `sourceNodeId`、`editTarget.nodeId`、`materialNodeIds`）→ 400 `STUDIO_PLAN_MATERIAL_OUT_OF_SCOPE`，`details.nodeIds` 列出全部越界 id（不是只报第一个）。执行里的「编排制作计划」不再把它包成 `STUDIO_PLAN_NOT_READY`：失败任务 `output.outOfScopeNodeIds` 记下 id，步骤带 `materials[{nodeId,title,onCanvas}]`，原因用画布标题说清是哪个（不出现 id），停下的说明给出两条路：加入这次制作重新编排，或不用它重新编排。不自动重试。
@@ -1697,7 +1699,7 @@ Studio 可展示的正文直接交付；不能安全整理为方案、素材引�
 5. **草稿按 `sceneId` 认**：场景页建的画布在 `ip_project.scene_id`（V72）记来源场景，「最近」按它列，改名不影响；`sceneId` 必须在场景目录里（含下架的），否则 400 `STUDIO_SCENE_INPUT_INVALID`。
 6. **视频子任务结束立即推进制作计划**：Studio 分区的视频任务到终态时发 `MaterialVideoJobEnded`，提交后叫醒该用户仍在跟踪的计划；叫不醒只是退回 60 秒巡检，不影响结算。
 
-### AI 视频页的长视频（2026-11-05，本地实现，未发布）
+### AI 视频页的长视频（2026-11-06 已生产发布 `20261106-segmented-video-2`）
 
 真源 `docs/studio-segmented-video.md`。时长超过所选模型单段上限时一键做到成片：`POST /v1/ip-studio/projects/{id}/segmented-videos`。
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { CanvasNodeType, type CanvasNodeData } from '@/canvas/types/canvas';
-import { studioUploadedByUser } from './studio-node-origin';
+import { studioAiMade, studioUploadedByUser } from './studio-node-origin';
 import { attachmentNode, readAssistantAttachment, savedAssetPayload } from './studio-attachments';
 import { replaceStudioImage } from './studio-image-upload';
 import { replaceStudioVideo } from './studio-video-upload';
@@ -46,4 +46,10 @@ describe('「你上传的」 is only for the user\'s own files', () => {
     expect(studioUploadedByUser(node(CanvasNodeType.Video, { storageKey: 'ipstudio_source/u1/old.mp4' }))).toBe(true);
     expect(studioUploadedByUser(node(CanvasNodeType.Video, { storageKey: 'ipstudio_gen/u1/old.mp4' }))).toBe(false);
   });
+});
+
+test('a sample in a copied inspiration is not the user\'s upload', () => {
+  const sample = { id: 's', type: CanvasNodeType.Video, title: '示例效果', position: { x: 0, y: 0 }, width: 300, height: 400, metadata: { storageKey: 'ipstudio_demo/IPD-insp-x/a.mp4', origin: 'example' as const } };
+  expect(studioUploadedByUser(sample)).toBe(false);
+  expect(studioAiMade(sample)).toBe(false);
 });

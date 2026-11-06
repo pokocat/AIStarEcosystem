@@ -1107,7 +1107,8 @@ components:
           nullable: true
           required: [estimated, autoFixCap]
           properties:
-            estimated: { type: integer }
+            estimated: { type: integer, description: 用户授权的上限：标准价加文字任务的冻结额度。 }
+            expected: { type: integer, nullable: true, description: 确认卡上显示的预估：折后价加一般用量。只用于显示，不进方案指纹。 }
             autoFixCap: { type: integer }
             approvedCap: { type: integer, nullable: true }
         steps:
@@ -5376,6 +5377,7 @@ components:
         summary: { type: string }
         coverUrl: { type: string, nullable: true }
         previewVideoUrl: { type: string, nullable: true, description: '官方示例第一段成片的签名地址（灵感卡悬停静音播放）；模板与没有成片的示例不给' }
+        createdAt: { type: string, format: date-time, nullable: true, description: '首次发布时间，首页灵感按它从新到旧；内置模板不给' }
         stylePresetId: { type: string, nullable: true }
         lookCount: { type: integer }
         estimatedCredits: { type: integer, description: '按部署默认单价预估（特征卡 2 + 出图 8 每张）' }

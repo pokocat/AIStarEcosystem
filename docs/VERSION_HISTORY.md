@@ -4,6 +4,10 @@
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
 
+### AI 艺人孵化全端演示 · 2026-11-06（`incubator.aibuzz.cn`）
+
+新应用 `apps/web-incubator`（3020）：设计方的 Figma Make 原型整体搬入 `src/prototype/`（入口用到的 131 个文件，约 5 万行），含落地页、生态创业者工作台、明星端、品牌端、运营后台、粉丝端和两个小程序。纯前端示例数据，不调接口、不扣积分，无后端、迁移和契约改动；不替代 web-star / admin / web-celebrity。原型里的真实艺人和作品已换成虚拟。语言固定中文，英文分支留在源码里。相对原型的全部改动和已知问题见该应用 README。
+
 ### 导演台角色形态、场景四视图、风格库与资产弹窗 · 2026-11-04（本地未发布）
 
 资产详情从抽屉改成大弹窗；`asset.forms` + `clip.assetForms`、`asset.views` + `shot.sceneView`（无迁移，存在 `content_json`）；新任务 `form-image` / `scene-views`，新环节 `stage-director-scene-views`；风格卡片；`/create` 加最近画布。见 `docs/ai-director-plan.md` 末节。

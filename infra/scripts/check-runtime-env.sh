@@ -13,7 +13,7 @@
 
 set -euo pipefail
 
-DEFAULT_SERVICES="server web-music web-drama web-celebrity web-aiavatar web-star admin sau-service"
+DEFAULT_SERVICES="server web-music web-drama web-celebrity web-aiavatar web-star web-incubator admin sau-service"
 RAW_SERVICES=""
 RELEASE_DIR=""
 SERVER_ENV_FILE="${SERVER_ENV_FILE:-/etc/aistareco/server.env}"
@@ -75,9 +75,9 @@ normalize_services() {
   for item in $raw; do
     case "$item" in
       all) out="$out $DEFAULT_SERVICES" ;;
-      server|web-music|web-drama|web-celebrity|web-aiavatar|web-star|admin|sau-service) out="$out $item" ;;
+      server|web-music|web-drama|web-celebrity|web-aiavatar|web-star|web-incubator|admin|sau-service) out="$out $item" ;;
       "") ;;
-      *) err "unknown service '$item' (expected server|web-music|web-drama|web-celebrity|web-aiavatar|web-star|admin|sau-service|all)" ;;
+      *) err "unknown service '$item' (expected server|web-music|web-drama|web-celebrity|web-aiavatar|web-star|web-incubator|admin|sau-service|all)" ;;
     esac
   done
 

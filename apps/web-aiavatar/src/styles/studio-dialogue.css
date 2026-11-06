@@ -129,6 +129,7 @@ html[data-layout="desktop"] .ip-surface .studio-dialogue-message-actions { trans
 .ip-surface .studio-dialogue-approval-price { display: flex; align-items: baseline; gap: 8px; margin: 0; min-width: 0; }
 .ip-surface .studio-dialogue-approval-price strong { font-size: 30px; font-weight: 650; line-height: 1; letter-spacing: -.6px; }
 .ip-surface .studio-dialogue-approval-price span { font-size: 13px; color: var(--ink-2); }
+.ip-surface .studio-dialogue-approval-price small { margin-left: auto; font-size: 12px; color: var(--ink-2); white-space: nowrap; }
 .ip-surface .studio-dialogue-approval-actions .studio-assistant-primary { flex: 1; min-width: 120px; }
 .ip-surface .studio-dialogue-approval-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .ip-surface .studio-dialogue-approval-actions .ant-btn { min-height: 36px; }

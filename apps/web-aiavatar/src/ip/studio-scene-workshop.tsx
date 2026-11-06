@@ -35,7 +35,7 @@ export function StudioSceneWorkshop() {
   if (auth === 'no-platform' || templates.notEnrolled || projects.notEnrolled) return <PlatformGateScreen/>;
   const recent = [...projects.data].filter(p => studioScenes.some(s => s.templateId && s.templateId === p.templateId)).sort((a,b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0,4);
   return <StudioPage title="场景·专项创作" description="选一个方向，开启新的创作。" className="studio-scenes-page">
-    {preview && <StudioTemplateUse template={preview} onClose={() => setPreview(undefined)} onCreated={id => router.push(`/projects/${encodeURIComponent(id)}`)}/>}
+    {preview && <StudioTemplateUse template={preview} onClose={() => setPreview(undefined)} onCreated={href => router.push(href)}/>}
     {auth !== 'ok' ? <GalleryState loading/> : <>
       {templates.error && <GalleryState error={templates.error} retry={templates.reload}/>}
       {error && <div className="studio-gallery-action-error"><StudioErrorNotice error={error}/></div>}

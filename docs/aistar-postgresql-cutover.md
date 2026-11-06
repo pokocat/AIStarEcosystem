@@ -4,6 +4,7 @@
 
 ## 发布边界
 
+- 业务 OSS 沿用原账号的杭州 `aiartist` Bucket，保留原对象 key、`media` 前缀及签名公网地址。新 A/B 的后台访问使用同地域内网 Endpoint；存储包和下行流量包继续按原账号的适用范围、余量及有效期抵扣。本轮不新建 Bucket，不改原授权、ACL 或付费归属；SQL 快照和配置文件仍仅走私有 SSH。
 - 新 A/B：`infra/cluster/production.json` 为唯一节点清单。正式 API 两机 `AEP_BACKGROUND_ENABLED=false`；后台/SAU 在 A 单活，B 不启用。API 经 ALB，常态 A100/B0。
 - `infra/scripts/deploy.sh server` 默认进入新双机流程；`--plan` 只读展示。旧 `deploy-release.sh`、`update-and-deploy.sh` 入口已禁用，不接受旧机覆盖参数。前端/SAU 需要对应组件的集群验收，不自动退回旧单机。
 - `--stage` 只能使用 `aistar_schema_rehearsal/aistar_api_rehearsal`、Tair DB14、私有 Host/header 的演练组；JDK 屏障只允许 RDS/Tair，禁用子进程和付费外联。正式为 `aistar_prod`、Tair DB15，必须有正式导入凭证和激活标记。
@@ -87,3 +88,9 @@ PG身份UID唯一索引自检限定当前schema：同一演练数据库里public
 正式角色准备补齐：两机准备目录原仅保存演练凭据，结束核查发现正式角色缺失并拒绝连接；已只补本项目既有角色到root:600文件，未重置RDS密码。A/B均以aistar_migrator、aistar_app经严格TLS只读连接确认目标，应用无super/createDB/createRole及public schema CREATE权限。正式库仍空，表DML授权仍在正式恢复成功后执行。
 
 停机状态补充：Podman正常接收SIGTERM后可能返回143，systemd单元显式SuccessExitStatus=143，避免手动停止被记作failed。已用同一CI应用在新B真实启动/停止，PID0、inactive/success；另用自有官方systemd单元夹具确认143也归类成功，夹具已删除。仅调整退出状态识别，完整滚动流程与既有615/644次连续请求凭证不变。
+
+## 2026-11-06 主线同步
+
+迁移分支同步 main `cf0cabce2`，保留孵化站、灵感库、长视频以及账号中心不可达时的公钥持久化/异步刷新改动。TODO 冲突保留两边条目；旧单机发布入口仍在任何 SSH/上传/重启前拒绝，主备与正式激活门禁保留。孵化站新增独立 CI 构建检查，原六应用的浏览器检查及 PG/正式导入/发布策略门禁保留。
+
+前一节的 JAR、双机滚动和源生产摘要属于此前候选，不能自动视为同步后的应用产物验收。新提交以 PR151 最终 CI 为准；正式窗口前还须核对届时生产包/结构/配置、生成同次冻结快照和文件最后增量。此同步只更新隔离工作副本和 PR，不合并 PR、不部署或切流。

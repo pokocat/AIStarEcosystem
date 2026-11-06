@@ -66,18 +66,19 @@ test("new version: 回到旧版 in the top-right corner switches back", () => {
   expect(ui.set).toHaveBeenCalledWith("classic");
 });
 
-test("new version: the rail leads with the scene pages; 灵感 lives on Home and Projects owns its own state", () => {
+test("new version: 灵感 follows 首页 in the rail and owns its pages; Projects owns its own state", () => {
   useNext();
   state.pathname = "/projects";
   const view = render(<DesktopTopBar/>);
   const nav = within(screen.getByRole("navigation", {name:"主导航"}));
   const links = nav.getAllByRole("link");
-  expect(links.map(link => link.getAttribute("href"))).toEqual(["/dashboard","/video","/image","/create","/director","/projects","/assets","/distribution"]);
+  expect(links.map(link => link.getAttribute("href"))).toEqual(["/dashboard","/templates","/video","/image","/create","/director","/projects","/assets","/distribution"]);
   expect(nav.getByRole("link", {name:"项目",exact:true}).getAttribute("aria-current")).toBe("page");
   expect(nav.getByRole("link", {name:"画布"}).hasAttribute("aria-current")).toBe(false);
   state.pathname = "/projects/demos";
   view.rerender(<DesktopTopBar/>);
-  expect(nav.getByRole("link", {name:"首页"}).getAttribute("aria-current")).toBe("page");
+  expect(nav.getByRole("link", {name:"灵感"}).getAttribute("aria-current")).toBe("page");
+  expect(nav.getByRole("link", {name:"首页"}).hasAttribute("aria-current")).toBe(false);
   expect(nav.getByRole("link", {name:"项目",exact:true}).hasAttribute("aria-current")).toBe(false);
   state.pathname = "/image";
   view.rerender(<DesktopTopBar/>);

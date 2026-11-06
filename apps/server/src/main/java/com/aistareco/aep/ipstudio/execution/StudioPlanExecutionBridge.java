@@ -127,6 +127,7 @@ public class StudioPlanExecutionBridge implements StudioExecutionGate {
     public void quotePlan(String userId,String projectId,ObjectNode plan) {
         projects.required(userId,projectId);
         quoter.quote(userId,plan);
+        quoter.estimate(userId,plan);
     }
 
     private com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing(IpPlanExecution e) {

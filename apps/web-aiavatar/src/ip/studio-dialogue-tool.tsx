@@ -41,9 +41,11 @@ export function toolCreditsText(block: DialogueToolBlock) {
 }
 
 /** `turnEnded`: the turn failed or was stopped; a tool it never closed stops spinning and says so (the server sends no tool.finished then). */
-export function StudioDialogueToolCard({ block, turnEnded }: { block: DialogueToolBlock; turnEnded?: 'failed' | 'interrupted' }) {
+export function StudioDialogueToolCard({ block, turnEnded, turnDone }: { block: DialogueToolBlock; turnEnded?: 'failed' | 'interrupted'; turnDone?: boolean }) {
   const cut = block.status === 'running' && !!turnEnded;
-  const running = block.status === 'running' && !cut, failed = block.status === 'failed' || cut;
+  // 第一版方案不能用，助手还在接着改：这不是出错，不用红字（用户 2026-11-06：「这份方案还没准备好」不明所以）。回合结束了也没改成才算没完成。
+  const replanning = block.status === 'failed' && block.errorCode === 'STUDIO_PLAN_NOT_READY' && !turnEnded && !turnDone;
+  const running = (block.status === 'running' && !cut) || replanning, failed = (block.status === 'failed' && !replanning) || cut;
   const now = useNow(running);
   const [open, setOpen] = useState(false);
   const bodyId = useId();
@@ -51,10 +53,11 @@ export function StudioDialogueToolCard({ block, turnEnded }: { block: DialogueTo
   const elapsed = block.durationMs ?? (Number.isFinite(started) ? (running ? now : Date.parse(block.finishedAt || '') || now) - started : undefined);
   const title = toolTitle(block);
   // The seconds tick outside the live region, so a screen reader hears the state change, not every second.
-  const state = running ? '进行中' : cut ? (turnEnded === 'interrupted' ? '已停止' : '没有完成') : failed ? '没有完成' : '完成';
-  const time = cut || failed || elapsed === undefined ? '' : ` · ${running ? '已用' : '用时'} ${elapsedText(elapsed)}`;
-  const shown = userFacingError(block.errorCode, block.errorMessage);
-  return <div className="studio-dialogue-tool" data-status={cut ? 'failed' : block.status} data-open={open || undefined} role="group" aria-label={`工作记录：${title}`}>
+  const state = replanning ? '重新整理中' : running ? '进行中' : cut ? (turnEnded === 'interrupted' ? '已停止' : '没有完成') : failed ? '没有完成' : '完成';
+  const time = cut || failed || replanning || elapsed === undefined ? '' : ` · ${running ? '已用' : '用时'} ${elapsedText(elapsed)}`;
+  // 回合结束也没改成：说结果，别再说「正在重新整理」。老记录存的是旧文案，一起换掉。
+  const shown = block.errorCode === 'STUDIO_PLAN_NOT_READY' ? { code: undefined, message: '这次没有整理出能用的方案，换个说法再试试。' } : userFacingError(block.errorCode, block.errorMessage);
+  return <div className="studio-dialogue-tool" data-status={cut ? 'failed' : replanning ? 'running' : block.status} data-open={open || undefined} role="group" aria-label={`工作记录：${title}`}>
     <div className="studio-dialogue-tool-row">
       <span className="studio-dialogue-tool-mark" aria-hidden="true">{running ? <i/> : failed ? <AlertCircle size={14}/> : <Check size={14}/>}</span>
       <span className="studio-dialogue-tool-title" title={title}>{title}</span>

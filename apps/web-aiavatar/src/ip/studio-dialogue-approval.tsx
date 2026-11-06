@@ -62,12 +62,14 @@ export function StudioDialogueApprovalCard({ block, plan, approved, shortfall, p
     catch (e) { setError(e); }
     finally { setBusy(false); }
   };
+  // 卡上写预估，上限放在提示里：确认的是上限，要付的通常比它少很多（2026-11-06 用户反馈：卡上 482，实际 189）。
+  const shown = Math.min(block.estimatedCost ?? block.quotedCost, block.quotedCost), estimated = shown < block.quotedCost;
   const content = plan ? <StudioPlanContent plan={plan.plan} onChooseApproach={actionable ? onChooseApproach : undefined}/>
     : !!block.scope.length && <ul className="studio-dialogue-approval-scope" aria-label="这次会做">{block.scope.map((item, i) => <li key={i}>{item}</li>)}</ul>;
   const confirmedAt = approved?.approvedAt || block.approvedAt;
   if (status === 'approved') return <section className="studio-dialogue-approval" data-status={status} aria-label={title}>
     <details className="studio-dialogue-approval-done">
-      <summary>已确认 · {formatCredits(block.quotedCost)} 积分</summary>
+      <summary>已确认 · {estimated ? '预估 ' : ''}{formatCredits(shown)} 积分</summary>
       {content}
       {confirmedAt && <p className="studio-dialogue-note">确认于 {formatDateTime(confirmedAt)}</p>}
     </details>
@@ -81,7 +83,9 @@ export function StudioDialogueApprovalCard({ block, plan, approved, shortfall, p
         <p className="studio-dialogue-warning" role="status">积分超出上限，还差 {formatCredits(shortfall ?? 0)} 积分</p>
         <div className="studio-dialogue-raise-field"><label htmlFor={capId}>新的上限</label>
           <input id={capId} type="number" inputMode="numeric" min={block.budgetCap} step={1} value={cap} disabled={busy} onChange={e => setCap(e.target.value)}/><span>积分</span></div>
-      </div> : <p className="studio-dialogue-approval-price"><strong>{formatCredits(block.quotedCost)}</strong><span>积分</span></p>}
+      </div> : <p className="studio-dialogue-approval-price" title={estimated ? `最多 ${formatCredits(block.quotedCost)} 积分` : undefined}>
+        {estimated && <span>预估</span>}<strong>{formatCredits(shown)}</strong><span>积分</span>{estimated && <small>按实际用量结算</small>}
+      </p>}
       {!planReady && <p className="studio-dialogue-note" role="status">方案还没到，稍等一下</p>}
       <div className="studio-dialogue-approval-actions">
         <Button className="studio-assistant-primary" type="primary" loading={busy} disabled={!!invalid || !planReady} onClick={() => void start()}>{raise ? '提高上限并继续' : analysis ? '开始分析' : '开始制作'}</Button>

@@ -108,7 +108,10 @@ class IdentityJwtFilterTest {
         props.setIssuer(ISSUER);
         props.setJwksUri(jwksUri);
         props.setAudience(AUDIENCE);
-        verifier = new IdentityTokenVerifier(props);
+        var configRepo = mock(com.aistareco.aep.repository.PlatformConfigRepository.class);
+        when(configRepo.findByConfigKey(anyString())).thenReturn(java.util.Optional.empty());
+        verifier = new IdentityTokenVerifier(props,
+                new IdentityJwkCache(props, configRepo, new com.fasterxml.jackson.databind.ObjectMapper()));
 
         IdentityCenterClient client = mock(IdentityCenterClient.class);
         when(client.isEnabled()).thenReturn(false);
@@ -215,7 +218,6 @@ class IdentityJwtFilterTest {
     @Test
     void issuerUnset_rs256TokenRejected() throws Exception {
         props.setIssuer("");
-        verifier.reset();
         String token = mintToken(c -> c.issuer(ISSUER).subject("uid-off").audience(AUDIENCE)
                 .claim("amr", List.of("sms")));
         assertThat(runFilter("/api/me", token)).isNull();
@@ -242,6 +244,27 @@ class IdentityJwtFilterTest {
         assertThat(response.getContentAsString()).contains("ACCOUNT_DISABLED");
         assertThat(chain.getRequest()).as("停用账号不得进入业务链").isNull();
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    }
+
+    /** 判断不了不等于无效：回 401 前端会清令牌、把人踢下线（auth-status.ts）。 */
+    @Test
+    void keysUnavailable_gets503JsonShellNotUnauthorized() throws Exception {
+        // 这个端口上没有服务，本地也没有存过公钥。
+        props.setJwksUri("http://127.0.0.1:1/jwks");
+        String token = mintToken(c -> c.issuer(ISSUER).subject("uid-outage").audience(AUDIENCE)
+                .claim("amr", List.of("sms")));
+
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/me");
+        request.addHeader("Authorization", "Bearer " + token);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+        filter.doFilter(request, response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(503);
+        assertThat(response.getContentAsString()).contains("IDENTITY_UNAVAILABLE");
+        assertThat(chain.getRequest()).as("判断不了身份不得进入业务链").isNull();
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        assertThat(inserts.get()).isZero();
     }
 
     // ------------------------------------------------------------ HS256 admin vs consumer

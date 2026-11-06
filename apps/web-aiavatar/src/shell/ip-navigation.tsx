@@ -13,7 +13,7 @@ export function IpNavigation() {
   return <aside className="ip-management-navigation">
     <nav aria-label="工作空间导航">
       {studioNavigation(version).map(({ href, label }) => { const Icon = studioNavigationIcon(href); return <Link key={href} href={href}
-        aria-current={studioNavigationCurrent(href, pathname || "", version) ? "page" : undefined}><Icon size={18} aria-hidden="true" />{label}</Link>; })}
+        aria-current={studioNavigationCurrent(href, pathname || "") ? "page" : undefined}><Icon size={18} aria-hidden="true" />{label}</Link>; })}
       <Link href="/studio#/settings"><Settings2 size={18} aria-hidden="true" />设置</Link>
     </nav>
     <div className="ip-navigation-art">

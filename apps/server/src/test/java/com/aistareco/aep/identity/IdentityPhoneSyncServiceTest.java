@@ -26,14 +26,34 @@ class IdentityPhoneSyncServiceTest {
     private final AtomicInteger calls = new AtomicInteger();
     private String response;
     private int status;
+    private volatile boolean dropConnection;
+    private volatile boolean stallBody;
+    private java.util.concurrent.atomic.AtomicReference<Instant> now;
 
     @BeforeEach
     void setup() throws Exception {
         response = "{\"sub\":\"uid-test\",\"phone_number\":\"13900000001\",\"phone_number_verified\":true}";
         status = 200;
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.setExecutor(java.util.concurrent.Executors.newCachedThreadPool());
         server.createContext("/userinfo", exchange -> {
             calls.incrementAndGet();
+            if (dropConnection) {
+                exchange.close();
+                return;
+            }
+            if (stallBody) {
+                // 响应头发出去，正文一直不来：HttpRequest.timeout 管不到这一段。
+                exchange.sendResponseHeaders(200, 100);
+                exchange.getResponseBody().flush();
+                try {
+                    Thread.sleep(10_000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                exchange.close();
+                return;
+            }
             byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
             exchange.sendResponseHeaders(status, bytes.length);
@@ -48,7 +68,12 @@ class IdentityPhoneSyncServiceTest {
         when(repo.findByIdForUpdate(user.getId())).thenReturn(Optional.of(user));
         var provisioning = new IdentityProvisioningService(repo, mock(IdentityUserInserter.class),
                 mock(IdentityCenterClient.class), mock(org.springframework.beans.factory.ObjectProvider.class));
-        sync = new IdentityPhoneSyncService(props, provisioning);
+        now = new java.util.concurrent.atomic.AtomicReference<>(Instant.parse("2026-11-06T03:00:00Z"));
+        sync = new IdentityPhoneSyncService(props, provisioning, new java.time.Clock() {
+            @Override public java.time.ZoneId getZone() { return java.time.ZoneOffset.UTC; }
+            @Override public java.time.Clock withZone(java.time.ZoneId zone) { return this; }
+            @Override public Instant instant() { return now.get(); }
+        });
     }
 
     @Test
@@ -89,6 +114,88 @@ class IdentityPhoneSyncServiceTest {
         assertThat(user.getPhone()).isEqualTo("13900000002");
         sync.sync(user, token, "refreshed-bearer");
         assertThat(calls.get()).isEqualTo(3);
+    }
+
+    /** 账号中心断开时，不能让每个令牌的请求都等一次超时。 */
+    @Test
+    void anUnreachableCenterPausesReadsForEveryTokenUntilItIsBack() {
+        Jwt token = jwt("uid-test", List.of("phone"));
+        dropConnection = true;
+        sync.sync(user, token, "token-1");
+        // JDK HttpClient 对连接被断开的 GET 自己会重试一次，这里只看第一次之后不再发。
+        int attempts = calls.get();
+        sync.sync(user, token, "token-2");
+        sync.sync(user, token, "token-3");
+        assertThat(calls.get()).isEqualTo(attempts);
+
+        // outbox 能收到，说明账号中心回来了。
+        dropConnection = false;
+        sync.invalidate();
+        sync.sync(user, token, "token-1");
+        assertThat(calls.get()).isEqualTo(attempts + 1);
+        assertThat(user.getPhone()).isEqualTo("13900000001");
+    }
+
+    /** 断开期间每 30 秒只有一个请求要等，其余的不受影响。 */
+    @Test
+    void afterThePauseOnlyOneRequestProbesAndTheOthersDoNotWait() throws Exception {
+        Jwt token = jwt("uid-test", List.of("phone"));
+        dropConnection = true;
+        sync.sync(user, token, "token-first");
+        dropConnection = false;
+        stallBody = true;
+        now.set(now.get().plusSeconds(31));
+        int before = calls.get();
+
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(8);
+        try {
+            var start = new java.util.concurrent.CountDownLatch(1);
+            var waits = new java.util.ArrayList<java.util.concurrent.Future<Long>>();
+            for (int i = 0; i < 8; i++) {
+                String bearer = "token-" + i;
+                waits.add(pool.submit(() -> {
+                    start.await();
+                    long begin = System.nanoTime();
+                    sync.sync(user, token, bearer);
+                    return java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - begin);
+                }));
+            }
+            start.countDown();
+            long waited = 0;
+            for (var wait : waits) {
+                if (wait.get(10, java.util.concurrent.TimeUnit.SECONDS) > 2000) waited++;
+            }
+            assertThat(waited).isEqualTo(1);
+            assertThat(calls.get() - before).isEqualTo(1);
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void aSuccessfulProbeEndsThePause() {
+        Jwt token = jwt("uid-test", List.of("phone"));
+        dropConnection = true;
+        sync.sync(user, token, "token-first");
+        dropConnection = false;
+        now.set(now.get().plusSeconds(31));
+
+        sync.sync(user, token, "token-probe");
+        int after = calls.get();
+        sync.sync(user, token, "token-next");
+
+        assertThat(calls.get()).isEqualTo(after + 1);
+        assertThat(user.getPhone()).isEqualTo("13900000001");
+    }
+
+    @Test
+    void aResponseBodyThatNeverFinishesDoesNotHoldTheRequestThread() {
+        stallBody = true;
+        long start = System.nanoTime();
+        sync.sync(user, jwt("uid-test", List.of("phone")), "token-stall");
+        assertThat(java.time.Duration.ofNanos(System.nanoTime() - start))
+                .isLessThan(java.time.Duration.ofSeconds(5));
+        assertThat(user.getPhone()).isNull();
     }
 
     @Test

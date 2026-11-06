@@ -302,6 +302,7 @@ ID token 标准 claims + `phone_verified` + `name` / `picture`。Refresh token �
 - `JwtAuthenticationFilter`：先按现有 HS256（`AEP_JWT_SECRET`）验；JOSE 头 `alg=RS256` 或 HS256 失败且 `iss` 等于 `AEP_ID_ISSUER` → 用账号中心 JWKS 验（`AEP_ID_ISSUER` 必填时经 `/.well-known/openid-configuration` 发现 `jwks_uri`，可用 `AEP_ID_JWKS_URI` 覆盖；Nimbus 远端 JWKSource 带缓存与 kid 未命中时刷新）。校验 `iss`、`exp`、`aud` 含 **`aistar-api`**。`amr` 非空 = 用户令牌；无 `amr` 的机器令牌不得进入 `/api/me/**`。
 - **主体解析**：`sub`=uid → `aep_users.identity_uid` → 本地用户。没有 → **JIT 建档**（`kind=PERSONAL`，`status=ACTIVE`，`username` 生成为 `id_<uid 前 12 位>` 保证非空唯一，`phone`/`displayName` 为 null，`platforms` 留空但**不再**视作全集，见 12.2）。原子性：先插后读，捕获唯一键冲突后按 `identity_uid` 回读赢家；随后 best-effort 回报账号中心 `PUT /api/products/aistar/links/{uid}` `{localSubjectId: 本地 id, status: PROVISIONED}`。
 - `AEP_ID_ISSUER` 未配置 → RS256 令牌一律 401，HS256 路径不受影响（过渡期允许，dev 默认 `http://localhost:8090`）。
+- **账号中心断开**（2026-11-06 事故后）：公钥存库（`IdentityJwkCache`），验签不碰网络，已登录用户到令牌过期前不受影响；取不到公钥才回 503 `IDENTITY_UNAVAILABLE`，不回 401。规则见 `apps/server/README.md`「双验」。
 - **后台令牌与消费者令牌分离**：`JwtUtil` 给 `AdminAuthController`（含 `operator-login`）签的令牌加 `typ=admin`；`JwtAuthenticationFilter` 只对 `typ=admin` 的令牌把 `role` 映射成 `ROLE_*` 后台权限；消费者登录（激活 / 短信 / 密码）签发的令牌 `role` 只放 `kind`，**不再**放 `operatorRole`；RS256 令牌永不映射后台角色。`AepUser.operatorRole` 持有人要进后台只能走 `operator-login`。
 
 ### 12.2 开通（enrollment）成为后端权益真值

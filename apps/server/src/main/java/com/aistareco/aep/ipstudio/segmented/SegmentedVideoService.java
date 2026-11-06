@@ -68,7 +68,7 @@ public class SegmentedVideoService {
         for (int i = 0; i < Math.min(images, 12); i++) materials.add(new SegmentedMaterial("m" + i, "素材", "image"));
         if (character) materials.add(new SegmentedMaterial("character", "出镜人物", "character"));
         if (voice) materials.add(new SegmentedMaterial("voice", "声音", "voice"));
-        return summarize(build(userId, model, tier, duration, ratio, optimize, materials));
+        return summarize(userId, build(userId, model, tier, duration, ratio, optimize, materials));
     }
 
     @Transactional
@@ -90,7 +90,7 @@ public class SegmentedVideoService {
         }
         boolean optimize = !Boolean.FALSE.equals(req.optimize());
         Built built = build(userId, req.model(), req.tier(), duration, ratio, optimize, materials);
-        SegmentedVideoPrice price = summarize(built);
+        SegmentedVideoPrice price = summarize(userId, built);
         if (req.budgetCap() == null || req.budgetCap() < price.cap())
             throw new BusinessException(HttpStatus.CONFLICT, "STUDIO_PRICE_CHANGED", "价格有变化，这条最多要 " + price.cap() + " 积分。请看一眼新价格再点一次",
                     Map.of("cap", price.cap()));
@@ -290,7 +290,7 @@ public class SegmentedVideoService {
         return parts.length == 2 ? Long.parseLong(parts[0]) * Long.parseLong(parts[1]) : 0;
     }
 
-    private static SegmentedVideoPrice summarize(Built built) {
+    private SegmentedVideoPrice summarize(String userId, Built built) {
         long video = 0, board = 0, text = 0, redo = 0;
         int boards = 0;
         for (JsonNode step : built.plan().path("steps")) {
@@ -298,7 +298,8 @@ public class SegmentedVideoService {
             switch (step.path("operation").asText()) {
                 case "image" -> { board += cost; boards++; redo += cost; }
                 case "check" -> { text += cost; redo += cost; }
-                case "video" -> video += cost;
+                // 视频价只算视频：H3 先改写提示词的冻结上限归到文字那边，页面才不会把它算两遍。
+                case "video" -> { long only = quoter.videoOnly(userId, step); video += only; text += cost - only; }
                 default -> text += cost;
             }
         }

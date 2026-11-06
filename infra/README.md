@@ -5,6 +5,8 @@
 
 完整文件、导入保护、滚动顺序与验收见 [`docs/aistar-postgresql-cutover.md`](../docs/aistar-postgresql-cutover.md)。下方旧 ECS/MySQL/身份同机描述仅作历史运维参考，不能用于新发布。
 
+业务文件继续使用原账号杭州 `aiartist` OSS Bucket、原对象 key/前缀和签名公网地址；新节点后台使用同地域内网 Endpoint。原存储/下行流量资源包按原账号规则抵扣，不随 ECS 迁移而转账号；本轮不新建桶、不改授权或 ACL。SQL 快照、配置与私有迁移归档仅走 SSH。
+
 
 把部署所需的所有资产（nginx 配置、systemd 单元、环境变量模板、RDS 建库脚本、OSS Bucket
 策略、部署脚本）**全部归一到 git**。新机器从零拉起一套完整环境，按本文 §3
@@ -48,6 +50,7 @@ infra/
 │   ├── web-drama.env.example       ← apps/web-drama
 │   ├── web-aiavatar.env.example    ← apps/web-aiavatar
 │   ├── web-star.env.example        ← apps/web-star（明星商务工作台）
+│   ├── web-incubator.env.example   ← apps/web-incubator（全端演示，无密钥）
 │
 ├── nginx/                          ← Nginx 配置（落 /etc/nginx/conf.d/）
 │   ├── ai.conf.example             ← HTTP 入口形态（首次部署 / 内网联调）
@@ -71,6 +74,7 @@ infra/
 │   │   ── 80 + 443 单文件形态（这两个域名线上就是这么配的，2026-09-06 已补齐反代）──
 │   ├── aistar.aibuzz.cn.conf.example ← web-aiavatar → 3013（与 aiavatar.*.ssl 同上游）
 │   ├── star.aibuzz.cn.conf.example   ← web-star 的 80 块（443 在 star.*.ssl.conf.example）
+│   ├── incubator.aibuzz.cn.conf.example ← web-incubator → 3020（80 + 443 同一个文件，纯前端无 /api）
 │   ├── ipstudio.aibuzz.cn.conf.example ← 同上的 80 块
 │   └── snippets/
 │       └── proxy-defaults.conf     ← 通用 proxy_set_header 集

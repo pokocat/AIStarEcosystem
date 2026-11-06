@@ -17,6 +17,7 @@ import { useHubData } from './data';
 import { sceneHref, useSceneHomeCards } from '@/ip/scenes/scene-catalog';
 import { SceneThumb } from '@/ip/scenes/scene-layout';
 import { useUiVersion } from '@/shell/ui-version';
+import { newestFirst } from '@/ip/template-facts';
 
 const quickEntries = [
   ['image', ImagePlus], ['video', Video], ['script', BookOpen], ['director', Clapperboard], ['work', Film],
@@ -78,10 +79,10 @@ export function StudioHome({ ready }: { ready: boolean }) {
     setUsingTemplate(template);
   };
   const catalogue = gallery === 'examples' ? examples : templates;
-  const items = catalogue.data.filter(t => t.enabled !== false && (gallery === 'examples' || (gallery === 'personal' ? t.visibility === 'personal' : t.visibility !== 'personal'))).slice(0, 4);
+  const items = (gallery === 'examples' ? newestFirst(catalogue.data) : catalogue.data).filter(t => t.enabled !== false && (gallery === 'examples' || (gallery === 'personal' ? t.visibility === 'personal' : t.visibility !== 'personal'))).slice(0, 4);
 
   return <div className="studio-home" aria-label="AI IP Studio 创作首页">
-    {usingTemplate && <StudioTemplateUse key={usingTemplate.versionId} template={usingTemplate} onClose={() => setUsingTemplate(undefined)} onCreated={id => router.push(`/projects/${id}`)} />}
+    {usingTemplate && <StudioTemplateUse key={usingTemplate.versionId} template={usingTemplate} onClose={() => setUsingTemplate(undefined)} onCreated={href => router.push(href)} />}
     <header className="studio-home-heading">
       <div><h1>AI IP Studio</h1><p>从一个 IP，创作形象、故事和视频。</p></div>
       <Link className="studio-home-text-link" href="/projects">我的画布 <ArrowRight size={16}/></Link>

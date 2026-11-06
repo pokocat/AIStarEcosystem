@@ -1163,6 +1163,23 @@ test('history imported from the old assistant does not stop the homepage brief f
   expect(onAutoSent).toHaveBeenCalled();
 });
 
+// docs/studio-inspiration-library.md: a copied inspiration arrives with the request written and its method named. It waits
+// for the user (spending is their call), and when they send it the method goes out with the message, not keyword routing.
+test('a copied inspiration fills the composer, pins its notes, sends nothing by itself and carries its method', async () => {
+  const guide = { id: 'guide', type: 'text', title: '创作说明', position: { x: 0, y: 0 }, width: 380, height: 440,
+    metadata: { content: '这套做法', prompt: '帮我生成这张图：撞色封面', studioStart: 'assistant', studioSkill: 'image-generation' } } as CanvasNodeData;
+  api.skills.mockResolvedValue(starterSkills());
+  const view = await ready(<Host initial={[character, guide]}/>);
+  view.rerender(<Host initial={[character, guide]} initialNodeId="guide" initialPrompt="帮我生成这张图：撞色封面"/>);
+  await waitFor(() => expect(composer().value).toBe('帮我生成这张图：撞色封面'));
+  expect(api.post).not.toHaveBeenCalled();
+  expect(screen.getByRole('heading', { name: '要求已填好' })).toBeDefined();
+  expect(screen.queryByRole('heading', { name: '想做点什么？' })).toBeNull();
+  fireEvent.click(await screen.findByRole('button', { name: '发送' }));
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+  expect(api.post.mock.calls[0][2]).toMatchObject({ text: '帮我生成这张图：撞色封面', skillKey: 'image-generation', pinnedNodeIds: ['guide'] });
+});
+
 test('without auto-send the brief fills the composer of an empty thread and leaves a typed draft alone', async () => {
   const view = await ready(<Host/>);
   view.rerender(<Host initialNodeId="p-brief" initialPrompt="首页写的那句"/>);

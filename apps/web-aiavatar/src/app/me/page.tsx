@@ -7,7 +7,7 @@
 import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Building2, ChevronRight, Clapperboard, FolderOpen, Gem, HardDrive, IdCard, Layers, ListChecks, Monitor, RotateCcw, ScanFace, Settings, ShieldCheck, Trash2, UserPlus, type LucideIcon } from "lucide-react";
+import { Building2, ChevronRight, Clapperboard, FolderOpen, Gem, HardDrive, IdCard, Layers, Lightbulb, ListChecks, Monitor, RotateCcw, ScanFace, Settings, ShieldCheck, Trash2, UserPlus, type LucideIcon } from "lucide-react";
 import { auth, ID_MODE, USE_MOCK, useIdentity } from "@/proto/api";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { studioHref } from "@/components/hub/data";
@@ -172,7 +172,7 @@ function MeRow(props: MeRowProps) {
 
 /**
  * 新版的手机「我的」（2026-11-02）：和 AI 视频、AI 图片同一套设计语言，白底细线、细图标、字不加粗。
- * 内容与旧版一样，只多了项目、资产、短剧导演台三行（新版底栏换成了 AI 视频 / AI 图片，它们从这里进）。
+ * 内容与旧版一样，只多了灵感、项目、资产、短剧导演台四行（新版底栏换成了 AI 视频 / AI 图片，它们从这里进）。
  */
 function MeNext({ name, phone, demo, identity, onLogout }: { name: string; phone?: string; demo: boolean; identity: ReturnType<typeof useIdentity>; onLogout: () => void }) {
   const layout = useLayoutMode();
@@ -189,6 +189,7 @@ function MeNext({ name, phone, demo, identity, onLogout }: { name: string; phone
       </Link>
     </section>
     <nav className="studio-me-group" aria-label="创作">
+      <MeRow href="/templates" icon={Lightbulb} title="灵感" sub="官方案例和模板，可以直接做同款" />
       <MeRow href="/projects" icon={FolderOpen} title="项目" sub="画布与场景草稿，可继续编辑" />
       <MeRow href="/assets" icon={Layers} title="资产" sub="人物、声音与创作素材" />
       <MeRow href="/director" icon={Clapperboard} title="短剧导演台" sub="写剧本、拆分镜、出片" />

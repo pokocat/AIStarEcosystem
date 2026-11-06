@@ -114,6 +114,33 @@ class StudioSkillRouterTest {
             assertEquals(StudioSkillRouter.Writing.FIRST, StudioSkillRouter.writingIntent(text.toLowerCase(Locale.ROOT)), text);
     }
 
+    // 线上 2026-11-06：「高点击电商主图」绑定出图发出后，方案概述带着要印在图上的字，方法被切到写作，确认卡变成花 110 积分写一段提示词。
+    @Test void aPlanBriefCannotMoveAPictureOrAVideoJobToWriting() throws Exception {
+        var writing = skill(StudioSkillRouter.WRITING_SKILL, "triggers:\n  media: [text]\n  keywords: [文案, 脚本]");
+        var image = skill("image-generation", "triggers:\n  media: [image]\n  keywords: [主图, 生成图片]");
+        var videoJob = skill("video-generation", "triggers:\n  media: [video]\n  keywords: [视频, 短片]");
+        var shelf = List.of(writing, image, videoJob);
+        String brief = "写清楚主图的文案：顶部白字「24小时长效保温」，右下角价格标";
+        assertEquals(StudioSkillRouter.WRITING_SKILL, StudioSkillRouter.decide(shelf, Set.of(), brief, image).skill().key(), "the brief alone does read as writing");
+        assertEquals("image-generation", StudioSkillRouter.planningMethod(shelf, brief, image).key());
+        assertEquals("video-generation", StudioSkillRouter.planningMethod(shelf, brief, videoJob).key());
+        // Nothing bound, or writing already chosen from the user's own message: the brief still decides.
+        assertEquals(StudioSkillRouter.WRITING_SKILL, StudioSkillRouter.planningMethod(shelf, brief, null).key());
+        assertEquals(StudioSkillRouter.WRITING_SKILL, StudioSkillRouter.planningMethod(shelf, brief, writing).key());
+        // 线上 2026-11-06 IPR-8b1ed4af：「我的商品图」让视频方案先切到出图，方案校验失败才改回来，界面多一行红字。
+        assertEquals("video-generation", StudioSkillRouter.planningMethod(shelf, "把「我的版本」这个视频对象生成出来，主图放在开头", videoJob).key());
+        assertEquals("image-generation", StudioSkillRouter.planningMethod(shelf, "再出一张主图", videoJob).key());
+        // Moving on to another kind of output still works: 「继续下一步」 carries the job only in the brief.
+        assertEquals("video-generation", StudioSkillRouter.planningMethod(shelf, "用这张图生成一段视频", image).key());
+        assertEquals("video-generation", StudioSkillRouter.planningMethod(shelf, "用这段脚本生成一段视频", writing).key());
+    }
+
+    @Test void describingTextOnAPictureIsNotWriting() {
+        assertEquals(StudioSkillRouter.Writing.NONE, StudioSkillRouter.writingIntent("背景是撞色色块，白色大标题，不出现其他文字"));
+        assertEquals(StudioSkillRouter.Writing.NONE, StudioSkillRouter.writingIntent("米白色底，炭黑色手写标题"));
+        assertEquals(StudioSkillRouter.Writing.FIRST, StudioSkillRouter.writingIntent("出几条文案"));
+    }
+
     @Test void textThatIsPartOfAPictureOrAVideoIsNotWriting() {
         for (String text : List.of("画一张海报，标题写「夏日特饮上新」", "画一张海报，写上标题「夏日特饮上新」", "做一张带标题的海报",
                 "做个口播视频", "改一下海报上的标题", "出一张线稿", "做一张卖点图", "出分镜图", "做个人设定图", "用这张图做一段视频",

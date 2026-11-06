@@ -37,6 +37,7 @@ public final class StudioSkillRouter {
 
     /** The method a writing intent goes to (resources/studio/skills/script-writing.md); the rule is off while it is not active. */
     public static final String WRITING_SKILL = "script-writing";
+    private static final String VIDEO_SKILL = "video-generation", IMAGE_SKILL = "image-generation";
 
     public enum Kind {
         /** The words name one job (writing intent, or a unique best score): bind {@link Decision#skill()}. */
@@ -61,6 +62,23 @@ public final class StudioSkillRouter {
     /** The skill this message is handled with: the match, or the bound skill when nothing named a job; empty for a tie. */
     public static Optional<StudioSkill> route(List<StudioSkill> active, Set<String> media, String text, StudioSkill bound) {
         return Optional.ofNullable(decide(active, media, text, bound).skill());
+    }
+
+    /**
+     * The method for a plan, chosen from the model's brief. The brief is the model's paraphrase, not the user's words, and a
+     * brief for a picture or a video quotes the text that goes on it, so it must not take the plan to the writing method: all
+     * that method can make is a text step (线上 2026-11-06：出一张带标题的主图变成了 110 积分写一段提示词). Writing is decided
+     * from the user's message before the plan; a plan that really is text still gets there through the covering method.
+     */
+    public static StudioSkill planningMethod(List<StudioSkill> active, String brief, StudioSkill bound) {
+        Decision decision = decide(active, Set.of(), brief, bound);
+        if (decision.kind() != Kind.MATCH) return bound;
+        boolean offWriting = bound != null && !WRITING_SKILL.equals(bound.key());
+        if (offWriting && WRITING_SKILL.equals(decision.skill().key())) return bound;
+        // A video brief names its materials too (「我的商品图」「首帧图」) and those score for the picture method. Staying is safe:
+        // a plan that really makes pictures still gets there through the covering method.
+        boolean videoBrief = bound != null && VIDEO_SKILL.equals(bound.key()) && brief != null && brief.contains("视频");
+        return videoBrief && IMAGE_SKILL.equals(decision.skill().key()) ? bound : decision.skill();
     }
 
     /**
@@ -134,10 +152,11 @@ public final class StudioSkillRouter {
     /** Pictures and videos: a text noun followed by one of these is part of a visual product (标题海报, 口播视频, 分镜图). */
     private static final String VISUAL = "(?:图|海报|封面|插画|头像|视频|短片|片子|动画|宣传片|成片|镜头)";
     /**
-     * Writing verbs. 写 but not 写上 / 写在 / 写到 / 写着 (putting text on something) nor 特写 / 描写; 做 / 出 / 来 because
+     * Writing verbs. 写 but not 写上 / 写在 / 写到 / 写着 (putting text on something) nor 特写 / 描写 / 手写; 出 but not 出现
+     * (「不出现其他文字」 describes a picture: a prompt saying so went to 写稿, local e2e 2026-11-05); 做 / 出 / 来 because
      * 「做个视频脚本」「出几条文案」「来一段口播」 ask for text; 起 only before a count (起几个标题, not 动起来).
      */
-    private static final String VERB = "(?:(?<![特描抄速])写(?![上在到着])|改|润色|扩写|缩写|精简|优化|拟|编|做|出|想|来|列|起(?=[个几一两二三四五六七八九十0-9]))";
+    private static final String VERB = "(?:(?<![特描抄速手])写(?![上在到着])|改|润色|扩写|缩写|精简|优化|拟|编|做|出(?!现)|想|来|列|起(?=[个几一两二三四五六七八九十0-9]))";
     /**
      * Verb, then at most 16 characters of the same clause that do not start a picture / video word, then the text noun
      * that heads the object — optionally right after a picture / video word that only qualifies it (视频脚本, 海报文案,

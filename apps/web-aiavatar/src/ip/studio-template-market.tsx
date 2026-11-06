@@ -4,7 +4,7 @@ import { StudioErrorNotice, useStudioErrorState } from './studio-errors';
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, LayoutTemplate, Loader2, RefreshCw, Settings2, Image } from "lucide-react";
+import { ArrowRight, LayoutTemplate, Loader2, Settings2, Image } from "lucide-react";
 import type { IpTemplate } from "@ai-star-eco/types";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { isOperatorRole, useIdentity } from "@/proto/api";
@@ -13,7 +13,12 @@ import { IpStudioApi } from "./api";
 import { CanvasCoverEditor } from "./canvas-cover-editor";
 import { StudioTemplateUse } from "./studio-template-use";
 import { StudioPage, StudioPageFilters } from "./studio-page";
-import { GallerySearch, GalleryState, TemplateCard, useStudioList } from "./studio-gallery";
+import { GallerySearch, GalleryState, useStudioList } from "./studio-gallery";
+import { InspirationWall } from "./inspiration-wall";
+import { inspirationOrder, templateKind, templateSearchText } from "./template-facts";
+
+type MarketTab = "all" | "video" | "image" | "official" | "personal";
+const CASE_TABS: readonly MarketTab[] = ["all", "video", "image"];
 
 export function StudioTemplateMarket() {
   const router = useRouter();
@@ -21,19 +26,26 @@ export function StudioTemplateMarket() {
   const identity = useIdentity();
   const templates = useStudioList(IpStudioApi.listTemplates, authState === "ok");
   const examples = useStudioList(IpStudioApi.listDemoExamples, authState === "ok");
-  const [tab, setTab] = useState<"official" | "personal" | "examples">("official");
+  const [picked, setPicked] = useState<MarketTab>();
   const [query, setQuery] = useState("");
   const [editingCover, setEditingCover] = useState<IpTemplate>();
   const [usingTemplate, setUsingTemplate] = useState<IpTemplate>();
   const [changing, setChanging] = useState<string>();
   const changingRef = useRef(false);
   const [error, setError] = useStudioErrorState();
-  const matches = (t: IpTemplate) => `${t.name} ${t.summary}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
+  const matches = (t: IpTemplate) => templateSearchText(t).includes(query.trim().toLocaleLowerCase());
   const official = templates.data.filter(t => t.visibility !== "personal" && t.enabled !== false);
   const personal = templates.data.filter(t => t.visibility === "personal");
-  const items = (tab === "personal" ? personal : tab === "examples" ? examples.data.filter(t => t.enabled !== false) : official).filter(matches);
+  const cases = examples.data.filter(t => t.enabled !== false);
+  // 默认先看做好的案例；还没有案例（或读不出来）时，不让人对着一个空页面，直接给官方模板。
+  const tab: MarketTab = picked ?? (!examples.loading && !cases.length ? "official" : "all");
+  const isCases = CASE_TABS.includes(tab);
+  const inTab = tab === "personal" ? personal : tab === "official" ? official : tab === "all" ? cases : cases.filter(t => templateKind(t) === tab);
+  // 新发布的在前（用户 2026-11-06 要求）。
+  const items = inspirationOrder(inTab.filter(matches));
+  const noun = isCases ? "案例" : "模板";
 
-  const catalogue = tab === "examples" ? examples : templates;
+  const catalogue = isCases ? examples : templates;
   const changeAvailability = async (template: IpTemplate) => {
     if (changingRef.current) return;
     changingRef.current = true; setChanging(template.id); setError("");
@@ -45,24 +57,38 @@ export function StudioTemplateMarket() {
     finally { changingRef.current = false; setChanging(undefined); }
   };
   if (authState === "no-platform" || templates.notEnrolled || examples.notEnrolled) return <PlatformGateScreen />;
-  if (authState !== "ok") return <StudioPage title="灵感" description="从模板与案例中，找到下一次创作的起点。"><GalleryState loading/></StudioPage>;
+  const heading = { title: "灵感", description: "看效果，再做同款。" };
+  if (authState !== "ok") return <StudioPage {...heading}><GalleryState loading/></StudioPage>;
 
-  return <StudioPage title="灵感" description="从模板与案例中，找到下一次创作的起点。" className="studio-gallery-page studio-template-market" actions={<><Link className="ip-brand-button" href="/create">开始创作<ArrowRight size={16}/></Link>{isOperatorRole(identity?.operatorRole) && <Link className="ip-brand-secondary" href="/projects/demos"><Settings2 size={16}/>官方内容管理</Link>}</>}>
+  return <StudioPage {...heading} className="studio-gallery-page studio-template-market" actions={isOperatorRole(identity?.operatorRole) ? <Link className="inspiration-admin-link" href="/projects/demos"><Settings2 size={15}/>官方内容管理</Link> : undefined}>
     {editingCover && <CanvasCoverEditor target="template" id={editingCover.id} name={editingCover.name} doc={editingCover.doc} onClose={() => setEditingCover(undefined)} onSaved={cover => {
       const update = (rows: IpTemplate[]) => rows.map(t => t.id === editingCover.id ? {...t, coverUrl: cover.coverUrl || undefined} : t);
       templates.setData(update);examples.setData(update);setEditingCover(undefined);templates.reload();examples.reload();
     }}/>}
-    {usingTemplate && <StudioTemplateUse key={usingTemplate.versionId || usingTemplate.id} template={usingTemplate} onClose={() => setUsingTemplate(undefined)} onCreated={id => router.push(`/projects/${id}`)} />}
-    <StudioPageFilters label="模板分类" value={tab} onChange={v => { setTab(v as typeof tab); setQuery(''); setError(''); }} items={[{value:'official',label:'官方模板',count:templates.loading || templates.error ? undefined : official.length},{value:'personal',label:'我的模板',count:templates.loading || templates.error ? undefined : personal.length},{value:'examples',label:'精选案例'}]}/>
-    <section className="studio-gallery-panel" aria-label="模板目录">
-      <div className="studio-gallery-panel-heading"><div><h2>{tab === 'personal' ? '我的模板' : tab === 'examples' ? '精选案例' : '官方模板'}</h2><p>{tab === 'personal' ? '保存自己的工作流，下一次创作从这里开始。' : '先预览创作流程，做同款后编辑。'}</p></div></div>
-      <><div className="studio-page-toolbar"><GallerySearch value={query} onChange={setQuery} label="搜索模板" placeholder="搜索模板名称、创作流程…"/><button type="button" className="studio-page-refresh" disabled={templates.loading || examples.loading} onClick={() => { templates.reload(); examples.reload(); }} aria-label="刷新模板"><RefreshCw size={16}/></button></div><div className="studio-page-result" aria-live="polite">{catalogue.loading ? '正在读取内容…' : catalogue.error ? '暂时无法读取内容' : `${items.length} 项${query.trim() ? '匹配' : ''}${tab === 'examples' ? '案例' : '模板'}`}</div></>
+    {usingTemplate && <StudioTemplateUse key={usingTemplate.versionId || usingTemplate.id} template={usingTemplate} onClose={() => setUsingTemplate(undefined)} onCreated={href => router.push(href)} />}
+    <div className="inspiration-toolbar">
+      <StudioPageFilters label="灵感分类" value={tab} onChange={v => { setPicked(v as MarketTab); setQuery(''); setError(''); }} items={[
+        { value: 'all', label: '全部案例' }, { value: 'video', label: '视频' }, { value: 'image', label: '图片' },
+        { value: 'official', label: '官方模板' }, { value: 'personal', label: '我的模板' },
+      ]}/>
+      <GallerySearch value={query} onChange={setQuery} label={`搜索${noun}`} placeholder={`搜索${noun}…`}/>
+    </div>
+    <section aria-label="灵感列表">
+      <h2 className="sr-only">{tab === 'personal' ? '我的模板' : tab === 'official' ? '官方模板' : tab === 'video' ? '视频案例' : tab === 'image' ? '图片案例' : '全部案例'}</h2>
+      {query.trim() && !catalogue.loading && !catalogue.error && <p className="inspiration-result" aria-live="polite">找到 {items.length} 个{noun}</p>}
       {error && <div className="studio-gallery-action-error"><StudioErrorNotice error={error}/></div>}
-        {catalogue.error ? <GalleryState error={catalogue.error} retry={catalogue.reload} /> : catalogue.loading ? <GalleryState loading /> : items.length ? <div className="studio-template-grid">{items.map(t => <TemplateCard key={t.id} previewMode="content" template={t} onOpen={setUsingTemplate}>
-          {((t.visibility === 'personal' && t.mine) || (t.visibility !== 'personal' && identity?.operatorRole === 'super_admin')) && <div className="studio-template-manage"><button type="button" onClick={() => setEditingCover(t)}><Image size={14}/>设置封面</button></div>}
-          {t.mine && t.versionId && t.visibility === "personal" && <div className="studio-template-manage"><button type="button" disabled={changing !== undefined} onClick={() => void changeAvailability(t)}>{changing === t.id && <Loader2 size={14} className="studio-gallery-spinner" />}{t.enabled === false ? "重新启用" : "停用模板"}</button></div>}
-        </TemplateCard>)}</div> : <GalleryState><LayoutTemplate size={28} /><h3>{query ? "没有找到匹配的模板" : tab === "personal" ? "还没有个人模板" : tab === "examples" ? "精选案例正在准备中" : "暂无官方模板"}</h3><p>{query ? "换个关键词，再看看。" : tab === "personal" ? "在个人画布中选择“发布为模板”，以后就可以从同一流程开始创作。" : "可以先从空白画布开始创作。"}</p>{query ? <button type="button" className="ip-brand-secondary" onClick={() => setQuery("")}>清除搜索</button> : <Link className="ip-brand-secondary" href="/create">去创作 <ArrowRight size={15} /></Link>}</GalleryState>}
-
+      {catalogue.error ? <GalleryState error={catalogue.error} retry={catalogue.reload} />
+        : catalogue.loading ? <div className="inspiration-wall is-loading" role="status" aria-label="正在加载灵感">{[.8, 1.3, 1, 1.25, .9].map((h, i) => <div key={i} className="inspiration-wall-column"><span style={{ aspectRatio: `1 / ${h}` }}/><span style={{ aspectRatio: `1 / ${2.2 - h}` }}/></div>)}</div>
+        : items.length ? <InspirationWall items={items} resetKey={`${tab}:${query.trim()}`} onOpen={setUsingTemplate} manage={t => {
+            const cover = (t.visibility === 'personal' && t.mine) || (t.visibility !== 'personal' && identity?.operatorRole === 'super_admin');
+            const toggle = t.mine && t.versionId && t.visibility === 'personal';
+            if (!cover && !toggle) return null;
+            return <>
+              {cover && <button type="button" className="is-icon-on-phone" aria-label="设置封面" title="设置封面" onClick={() => setEditingCover(t)}><Image size={13} aria-hidden="true"/><span>设置封面</span></button>}
+              {toggle && <button type="button" disabled={changing !== undefined} onClick={() => void changeAvailability(t)}>{changing === t.id && <Loader2 size={13} className="studio-gallery-spinner" />}{t.enabled === false ? '重新启用' : '停用模板'}</button>}
+            </>;
+          }}/>
+        : <GalleryState><LayoutTemplate size={28} /><h3>{query ? `没有找到匹配的${noun}` : tab === "personal" ? "还没有个人模板" : isCases ? "案例正在准备中" : "暂无官方模板"}</h3><p>{query ? "换个关键词再搜。" : tab === "personal" ? "在个人画布中选择“发布为模板”，以后就可以从同一流程开始创作。" : "可以先从空白画布开始创作。"}</p>{query ? <button type="button" className="ip-brand-secondary" onClick={() => setQuery("")}>清除搜索</button> : <Link className="ip-brand-secondary" href="/create">去创作 <ArrowRight size={15} /></Link>}</GalleryState>}
     </section>
   </StudioPage>;
 }

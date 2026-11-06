@@ -32,6 +32,7 @@ import java.util.*;
 /** Studio is an orchestration surface; IpRun and existing assets remain authoritative. */
 @Service
 public class StudioWorkflowService {
+    private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(StudioWorkflowService.class);
     @org.springframework.beans.factory.annotation.Autowired
     private com.aistareco.aep.enterprise.service.EnterpriseBillingService enterpriseBilling;
 
@@ -974,6 +975,46 @@ public class StudioWorkflowService {
                 yield rate.maxCost();
             }
         };
+    }
+
+    /** 一般用量（千 Token）。提示词改写实测约 3 积分；写稿带思考过程，输出多得多（线上编导 9 积分，见 AGENTS 默认文字模型一节）。 */
+    private static final long REWRITE_IN=8000,REWRITE_OUT=2000,TEXT_IN=8000,TEXT_OUT=4000,SCRIPT_IN=10000,SCRIPT_OUT=12000;
+    /**
+     * 这一步大概会花多少，见 {@link com.aistareco.aep.ipstudio.execution.StudioPlanQuoter#estimate}。按个人账户的折扣算（付款账户要到确认时才选）。
+     * 算不出来就按 {@code quoted}：这只是显示，不能挡住方案。
+     */
+    public long expectedCost(String userId,RunRequest request,long quoted) {
+        if(quoted<=0||fixtures.enabled())return quoted;
+        try {
+            long expected=switch(request.operation()) {
+                case "image" -> imageRuns.quoteImagePrice(userId,new IpRunService.IpGenerateRequest(request.nodeId(),request.prompt()==null||request.prompt().isBlank()?"图片":request.prompt(),
+                        List.of(),request.count()==null?1:request.count(),request.size()==null?imageSize(request):request.size(),request.model())).payableCredits();
+                case "video" -> {
+                    if(request.video()==null||studioVideo==null)yield quoted;
+                    int images=0,clips=0,audios=0;
+                    if(request.video().references()!=null)for(var ref:request.video().references())
+                        switch(ref.mediaType()==null?"image":ref.mediaType()){case "video" -> clips++;case "audio" -> audios++;default -> images++;}
+                    long unit=imageRuns.quoteVideoPrice(userId,request.model(),request.video().mode(),request.video().resolutionTier(),request.aspectRatio(),request.durationSec(),images,clips,audios,
+                            new com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection("personal",null)).payableCredits();
+                    long rewrite=request.video().rewrite()==null?0:videoRewriteRate(videoRewriteEndpoint().endpoint()).cost(REWRITE_IN,REWRITE_OUT);
+                    yield Math.addExact(Math.multiplyExact(unit,(long)(request.count()==null?1:request.count())),rewrite);
+                }
+                case "text","assistant","asset-extract" -> textRate(request).cost(TEXT_IN,TEXT_OUT);
+                case "script","storyboard" -> textRate(request).cost(SCRIPT_IN,SCRIPT_OUT);
+                default -> quoted;
+            };
+            return Math.max(0,Math.min(expected,quoted));
+        } catch(RuntimeException e) {
+            log.info("[studio-plan] no estimate op={} code={} reason={}",request.operation(),e instanceof BusinessException b?b.getCode():e.getClass().getSimpleName(),e.getMessage());
+            return quoted;
+        }
+    }
+    private com.aistareco.aep.service.AiChatTokenPricing.Rate textRate(RunRequest request) {
+        AiModelInvocationService.ResolvedEndpoint endpoint=scenePolicies!=null?scenePolicies.resolve("studio","script",request.model(),pricing.ipIdentity()).resolved()
+                :models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,request.model(),"studio").orElseThrow(()->new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","所选文本模型不可用"));
+        var rate=chatRate(endpoint.endpoint().getId());
+        if(rate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED","此模型尚未配置按量积分售价");
+        return rate;
     }
 
     private IpRunService.IpVideoRequest videoRequest(RunRequest request) {

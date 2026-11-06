@@ -2,6 +2,7 @@ package com.aistareco.aep.config;
 
 import com.aistareco.aep.identity.IdentityProperties;
 import com.aistareco.aep.identity.IdentityProvisioningService;
+import com.aistareco.aep.identity.IdentityKeysUnavailableException;
 import com.aistareco.aep.identity.IdentityTokenVerifier;
 import com.aistareco.aep.model.AepUser;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -128,7 +129,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (!rs256 && jwtUtil.isValid(token)) {
             authenticateLegacy(token);
         } else if (rs256 || issuerMatchesIdentityCenter(token)) {
-            // true = 已就地写出 401（账号停用），不再进业务链。
+            // true = 已就地写出响应（账号停用 401、公钥不可用 503），不再进业务链。
             // 不能用 response.isCommitted() 判断：小响应体在真实容器里也未必已 commit。
             if (authenticateIdentity(token, response)) return;
         }
@@ -173,7 +174,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     // -------------------------------------------------------------- identity RS256
 
-    /** @return true 表示已就地写出响应（账号停用 401），调用方必须停止 filter chain。 */
+    /** @return true 表示已就地写出响应（账号停用 401、公钥不可用 503），调用方必须停止 filter chain。 */
     private boolean authenticateIdentity(String token, HttpServletResponse response) throws IOException {
         if (!identityVerifier.isEnabled()) {
             log.debug("[auth] 收到账号中心令牌但 aep.identity.issuer 未配置，按未登录处理");
@@ -182,6 +183,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         Jwt jwt;
         try {
             jwt = identityVerifier.verify(token);
+        } catch (IdentityKeysUnavailableException e) {
+            // 判断不了不等于无效：回 401 前端会清令牌、把用户踢下线。原因已由 IdentityJwkCache 记日志。
+            log.debug("[auth] 账号中心公钥不可用，无法判断令牌：{}", e.getMessage());
+            SecurityJsonEntryPoint.write(MAPPER, response, HttpServletResponse.SC_SERVICE_UNAVAILABLE,
+                    "IDENTITY_UNAVAILABLE", "账号服务暂时不可用，请稍后重试。");
+            return true;
         } catch (JwtException e) {
             log.debug("[auth] 账号中心令牌校验不通过：{}", e.getMessage());
             return false;

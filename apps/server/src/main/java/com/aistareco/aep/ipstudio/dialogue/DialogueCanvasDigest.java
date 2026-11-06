@@ -80,14 +80,21 @@ public final class DialogueCanvasDigest {
     /**
      * The settings written on a draft that has no picture yet (create_nodes / update_nodes, {@code studio.spec}):
      * 「·设定 1:1、5 秒」. The plan for that object should follow them; they used to be invisible to the planner.
+     * What the node's own settings say counts too ({@code size} / {@code seconds} / {@code count}, the user's choice or a
+     * template's): only {@code studio.spec} was read, so on production a 16:9 draft was planned at the default 9:16
+     * (2026-11-06). {@code studio.spec} wins, it is what the assistant wrote last.
      */
     static String spec(JsonNode n) {
-        JsonNode spec = n.path("metadata").path("studio").path("spec");
-        if (!spec.isObject() || IpDocs.primaryStorageKey(n) != null) return "";
+        if (IpDocs.primaryStorageKey(n) != null) return "";
+        JsonNode metadata = n.path("metadata"), spec = metadata.path("studio").path("spec");
+        String size = metadata.path("size").asText("");
+        String ratio = spec.path("aspectRatio").isTextual() ? spec.path("aspectRatio").asText() : size.matches("\\d+:\\d+") ? size : null;
+        int seconds = spec.path("durationSec").isInt() ? spec.path("durationSec").asInt() : metadata.path("seconds").asInt(0);
+        int count = spec.path("count").isInt() ? spec.path("count").asInt() : metadata.path("count").asInt(0);
         List<String> parts = new ArrayList<>();
-        if (spec.path("aspectRatio").isTextual()) parts.add(spec.path("aspectRatio").asText());
-        if (spec.path("durationSec").isInt()) parts.add(spec.path("durationSec").asInt() + " 秒");
-        if (spec.path("count").isInt() && spec.path("count").asInt() > 1) parts.add(spec.path("count").asInt() + " 份");
+        if (ratio != null) parts.add(ratio);
+        if (seconds > 0) parts.add(seconds + " 秒");
+        if (count > 1) parts.add(count + " 份");
         return parts.isEmpty() ? "" : "·设定 " + String.join("、", parts);
     }
 

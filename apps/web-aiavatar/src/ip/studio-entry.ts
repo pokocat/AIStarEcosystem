@@ -31,6 +31,13 @@ export const studioBriefNeedsReference = (text: string) => /复刻|翻拍|拉片
 export const studioEntryHref = (projectId: string, entry: StudioEntry, options: { send?: boolean } = {}) =>
   `/projects/${encodeURIComponent(projectId)}${entry === 'blank' ? '' : `?start=${entry}${options.send && entry === 'assistant' ? '&send=1' : ''}`}`;
 
+/**
+ * 做同款以后去哪：灵感库示例带着预填给助手的要求（studioStart），打开助手；其它模板只进画布。
+ * 只预填不发送：要不要花积分由用户决定。
+ */
+export const studioTemplateCopyHref = (project: Pick<IpProject, 'id'> & { doc?: IpProject['doc'] }) =>
+  `/projects/${encodeURIComponent(project.id)}${project.doc?.nodes?.some(n => n.metadata?.studioStart === 'assistant') ? '?start=assistant' : ''}`;
+
 /** Names nobody chose: what 「新建」 and the entries call a fresh canvas. Only these are ever replaced by a suggested name. */
 export const studioCanvasHasDefaultTitle = (title?: string) => { const t = title?.trim() || ""; return !t || / · 新画布$/.test(t) || t === "未命名画布"; };
 /**
