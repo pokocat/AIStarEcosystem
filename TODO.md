@@ -8,7 +8,7 @@
 - [ ] 界面文字没有按 AGENTS.md §8 逐条修改（三字母占位 `SNG` / `CEL 正式出道！`、口号式标题等，只处理了门禁命中的三句）；要对外用时跑一遍 `ui-copy`。
 - [ ] 英文分支与 `translations.ts` 英文仍在源码里，运行时走不到（§4.6）。要长期维护就清掉。
 - [ ] 工作台内部菜单没进地址栏，刷新回到工作台首页。
-- [x] ~~图片换成自托管~~ **2026-11-06 完成，线上未更新**：Unsplash 外链全部换成 136 张生成图（`apps/web-incubator/public/images/`，共 6.6MB，出图要求在 `apps/web-incubator/docs/image-manifest.json`）；同一个人全站共用一张，共用旧图的不同艺人各有自己的图。
+- [x] ~~图片换成自托管~~ **2026-11-06 已生产发布 `20261106-incubator-images`**：Unsplash 外链全部换成 136 张生成图（`apps/web-incubator/public/images/`，共 6.6MB，出图要求在 `apps/web-incubator/docs/image-manifest.json`）；同一个人全站共用一张，共用旧图的不同艺人各有自己的图。
 - [ ] 切片小程序示例数据仍写着真实品牌（`ClipMiniApp.tsx` 的 SK-II、Jo Malone、三只松鼠），配着虚构佣金和「明星同款」。要对外长期放，换成虚构品牌。
 - [ ] 部分小标签对比度偏低（琥珀 / 绿色字配同色系浅底，对比度约 1.7–2.0，如「已激活」「火山引擎同步中」「确认接受」），是原型配色，暂未改。
 

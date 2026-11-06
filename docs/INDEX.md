@@ -319,6 +319,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | [新版手机端照设计稿收齐](releases/studio-mobile-design-release-20261102.md) | main `5dbb7d79a`（#149）、只发 web-aiavatar、制品与回滚 | 新版手机底栏换成设计稿扁平样式、「我的」重写并显示可用积分、首页手机排版、去掉重复顶部导航；正式站 390 宽验收，发布窗口 0 个 5xx（last-reviewed 2026-11-02） |
 | [所有付费功能同一套企业付款生产发布](releases/enterprise-billing-everywhere-release-20261102.md) | main `856ce19cf`、server / web-aiavatar、V74、制品与回滚 | 付款弹窗可设默认、默认存在成员关系上；数字资产与声音克隆接入企业付款；server 不能单独回滚，502 只有部署探测（last-reviewed 2026-11-02） |
 | [AI 艺人孵化全端演示生产发布](releases/web-incubator-release-20261106.md) | main `7a60835de`、只新增 web-incubator、制品与下线方式 | 原型全部端部署到 `incubator.aibuzz.cn`，公开访问、示例数据、真实艺人已换成虚拟；线上走查全部入口无报错（last-reviewed 2026-11-06） |
+| [AI 艺人孵化演示换图发布](releases/web-incubator-images-release-20261106.md) | main `2898a4966`、只发 web-incubator、走查结果与回滚 | Unsplash 外链换成 136 张自托管生成图；线上桌面和手机走查无裂图、无外部图片请求（last-reviewed 2026-11-06） |
 | [AI 艺人孵化演示版生产发布](releases/celebrity-incubation-demo-release-20261103.md) | main `0bb84ab47`、只发 web-celebrity、制品与回滚 | celebrity 侧栏加「AI 艺人孵化」路演演示页（纯前端示例数据，能力入口提示正在完善中）、形象图换成写实风；发布窗口 0 个 5xx，登录后页面未在正式站点验（last-reviewed 2026-11-03） |
 | [AI 视频页生成前显示模型折扣生产发布](releases/video-discount-price-release-20261103.md) | main `f7e58a31b`、server / web-aiavatar、无迁移、制品与回滚 | 生成按钮按服务端报价显示原价划掉与折后价、优惠名和省多少，付款账户未定不写应付；新增只读 `GET …/studio/video-price`；重启窗口 7 个 502（6 个部署探测、1 个用户读钱包）（last-reviewed 2026-11-03） |
 | [新版手机底栏「创作」先选三项](releases/studio-create-chooser-release-20261102.md) | main `5bcdebd3b`（#150）、只发 web-aiavatar、制品与回滚 | 「创作」点开先选 AI 视频 / AI 图片 / 画布；正式站 390 宽验收，发布窗口 0 个 5xx（last-reviewed 2026-11-02） |
