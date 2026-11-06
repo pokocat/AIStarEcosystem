@@ -1725,6 +1725,7 @@
 ## 账号中心断开时的登录校验（2026-11-06）
 
 - [x] ~~**账号中心不可达时，已登录用户不该全部卡住**~~ **2026-11-06 已生产发布 `20261106-identity-keys`**，见 `docs/releases/identity-keys-release-20261106.md`：`IdentityJwkCache` 把公钥存库、启动先载入、后台异步刷新，验签不碰网络也不持锁；取不到回 503 `IDENTITY_UNAVAILABLE`，不回 401；`/userinfo` 连不上时每 30 秒只放一个请求去试。令牌到期后的换令牌仍要账号中心。测试：`IdentityJwkCacheTest`。
+- [ ] **对话事件流结束时报「拒绝访问」**（2026-11-06，日志噪音，非漏洞）：流打开期间令牌过期（有效期 60 分钟），`JwtAuthenticationFilter` 在异步分发时重新校验不通过，`Servlet.service()` 打 `AccessDeniedException`，响应已发完。一天约 8 次，会计入 ERROR 条数。可考虑异步分发沿用首次校验的结果。
 - [ ] **阿里云账号 `1603478465921848` 打开余额提醒**：按量费用约 3.7 元 / 天（负载均衡、公网 IP、日志），余额到零账号中心就停。可接进 `ModelQuotaAlerts` 的飞书告警。
 
 ## 灵感库示例（2026-11-05）
