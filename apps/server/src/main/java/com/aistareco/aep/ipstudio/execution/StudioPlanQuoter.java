@@ -52,6 +52,17 @@ public class StudioPlanQuoter {
         return workflow.quote(userId,StudioPlanSteps.request(copy,PLACEHOLDERS,modes(copy.path("settings").path("model").asText(null)),null));
     }
 
+    /** 长视频逐段复用提交的折扣报价；只汇总视频费，不把同一笔赠款重复抵多段。 */
+    public com.aistareco.aep.billing.service.ModelChargeService.Quote videoPrice(String userId,JsonNode step,
+            com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing) {
+        var request=StudioPlanSteps.request(step,PLACEHOLDERS,modes(step.path("settings").path("model").asText(null)),null);
+        int images=0,clips=0,audios=0;
+        if(request.video().references()!=null)for(var ref:request.video().references())
+            switch(ref.mediaType()==null?"image":ref.mediaType()){case "video" -> clips++;case "audio" -> audios++;default -> images++;}
+        return workflow.quoteVideoPrice(userId,request.model(),request.video().mode(),request.video().resolutionTier(),request.aspectRatio(),
+                request.durationSec(),images,clips,audios,billing);
+    }
+
     /** Video modes of the default Studio video model (the model video steps run on). */
     public StudioPlanSteps.Modes modes() {return modes(null);}
 

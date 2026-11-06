@@ -64,11 +64,16 @@ public class SegmentedVideoService {
 
     /** 页面上的价：只按段数、张数算，不碰素材文件。 */
     public SegmentedVideoPrice price(String userId, String model, String tier, int duration, String ratio, int images, boolean character, boolean voice, boolean optimize) {
+        return price(userId, model, tier, duration, ratio, images, character, voice, optimize, null);
+    }
+
+    @Transactional(readOnly = true)
+    public SegmentedVideoPrice price(String userId, String model, String tier, int duration, String ratio, int images, boolean character, boolean voice, boolean optimize, BillingSelection billing) {
         List<SegmentedMaterial> materials = new ArrayList<>();
         for (int i = 0; i < Math.min(images, 12); i++) materials.add(new SegmentedMaterial("m" + i, "素材", "image"));
         if (character) materials.add(new SegmentedMaterial("character", "出镜人物", "character"));
         if (voice) materials.add(new SegmentedMaterial("voice", "声音", "voice"));
-        return summarize(userId, build(userId, model, tier, duration, ratio, optimize, materials));
+        return summarize(userId, build(userId, model, tier, duration, ratio, optimize, materials), billing);
     }
 
     @Transactional
@@ -291,7 +296,12 @@ public class SegmentedVideoService {
     }
 
     private SegmentedVideoPrice summarize(String userId, Built built) {
-        long video = 0, board = 0, text = 0, redo = 0;
+        return summarize(userId, built, null);
+    }
+
+    private SegmentedVideoPrice summarize(String userId, Built built, BillingSelection billing) {
+        long video = 0, board = 0, text = 0, redo = 0, discountedVideo = 0;
+        Set<String> discountNames = new LinkedHashSet<>();
         int boards = 0;
         for (JsonNode step : built.plan().path("steps")) {
             long cost = step.path("quotedCost").asLong();
@@ -299,13 +309,20 @@ public class SegmentedVideoService {
                 case "image" -> { board += cost; boards++; redo += cost; }
                 case "check" -> { text += cost; redo += cost; }
                 // 视频价只算视频：H3 先改写提示词的冻结上限归到文字那边，页面才不会把它算两遍。
-                case "video" -> { long only = quoter.videoOnly(userId, step); video += only; text += cost - only; }
+                case "video" -> {
+                    long only = quoter.videoOnly(userId, step); video += only; text += cost - only;
+                    if (billing != null) {
+                        var quote = quoter.videoPrice(userId, step, billing);
+                        discountedVideo = Math.addExact(discountedVideo, quote.payableCredits());
+                        if (quote.discountCredits() > 0 && quote.discountName() != null) discountNames.add(quote.discountName());
+                    }
+                }
                 default -> text += cost;
             }
         }
         List<Integer> segments = built.segments().stream().map(SegmentedPlan.Segment::seconds).toList();
         long estimated = built.plan().path("budget").path("estimated").asLong();
-        return new SegmentedVideoPrice(segments, boards, built.review(), video, board, text, estimated, Math.addExact(estimated, redo));
+        return new SegmentedVideoPrice(segments, boards, built.review(), video, board, text, estimated, Math.addExact(estimated, redo), billing == null ? null : discountedVideo, discountNames.isEmpty() ? null : String.join("、", discountNames));
     }
 
     private static BusinessException invalid(String message) {

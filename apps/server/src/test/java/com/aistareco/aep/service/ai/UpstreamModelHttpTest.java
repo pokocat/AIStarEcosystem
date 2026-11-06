@@ -74,6 +74,38 @@ class UpstreamModelHttpTest {
                 .client(CLIENT);
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void cancellationStopsAStreamBeforeHeadersOrDuringASilentBody(boolean headersSent) throws Exception {
+        var ready = new java.util.concurrent.CountDownLatch(1);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        var cancelled = new java.util.concurrent.atomic.AtomicBoolean();
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/stream", exchange -> {
+            try {
+                if (headersSent) {
+                    exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+                    exchange.sendResponseHeaders(200, 0);
+                    exchange.getResponseBody().write("data: {}\n\n".getBytes(StandardCharsets.UTF_8));
+                    exchange.getResponseBody().flush();
+                }
+                ready.countDown();
+                release.await(10, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            finally { exchange.close(); }
+        });
+        server.start();
+        var executor = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try {
+            var http = new UpstreamModelHttp(mock(AiModelUsageService.class));
+            var result = executor.submit(() -> http.sendStream(post("http://127.0.0.1:" + server.getAddress().getPort() + "/stream", "{}"),
+                    ctx(null).build(), line -> true, cancelled::get, Duration.ofSeconds(20), Duration.ofSeconds(30)));
+            assertTrue(ready.await(3, java.util.concurrent.TimeUnit.SECONDS));
+            cancelled.set(true);
+            assertTrue(result.get(3, java.util.concurrent.TimeUnit.SECONDS).cancelled());
+        } finally { release.countDown(); server.stop(0); executor.shutdownNow(); }
+    }
+
     @Test
     void success_returnsResponseWithoutRecordingUsage() throws Exception {
         AiModelUsageService usage = mock(AiModelUsageService.class);

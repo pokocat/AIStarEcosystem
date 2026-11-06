@@ -1520,6 +1520,8 @@ components:
         boards: { type: integer }
         boardReview: { type: boolean }
         videoCost: { type: integer, format: int64 }
+        discountedVideoCost: { type: integer, format: int64, nullable: true, description: 按付款账户逐段计算的折后视频费；不含赠款抵扣，也不改变预算上限。 }
+        videoDiscountName: { type: string, nullable: true }
         boardCost: { type: integer, format: int64 }
         textCost: { type: integer, format: int64 }
         estimated: { type: integer, format: int64 }
@@ -15039,6 +15041,8 @@ paths:
         - { in: query, name: character, schema: { type: boolean } }
         - { in: query, name: voice, schema: { type: boolean } }
         - { in: query, name: optimize, schema: { type: boolean } }
+        - { in: query, name: payer, schema: { type: string, enum: [personal, enterprise], default: personal } }
+        - { in: query, name: enterpriseId, schema: { type: string } }
       responses:
         '200': { description: 'ApiResponse<StudioSegmentedVideoPrice>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioSegmentedVideoPrice' } } } }
         '400': { description: STUDIO_INPUT_INVALID / STUDIO_VIDEO_MODE_UNAVAILABLE / STUDIO_SEGMENTS_TOO_MANY / STUDIO_IMAGE_SIZE_UNSUPPORTED }
