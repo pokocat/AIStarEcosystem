@@ -107,8 +107,8 @@ export function StudioDialogueThreads({ currentThreadId, busyReason, empty, list
   </div>;
 
   return <>
-    {/* 两个图标不能点时，在旁边写一句原因（完整原因在悬停说明里）。 */}
-    {newReason && <small className="studio-dialogue-threads-note">{busyReason ? "暂不可切换" : "已是新对话"}</small>}
+    {/* 回复或制作中两个图标不能点，在旁边写一句原因（完整原因在悬停说明里）。空对话本来就是新对话，不用再写。 */}
+    {busyReason && <small className="studio-dialogue-threads-note">暂不可切换</small>}
     <button type="button" className="studio-dialogue-thread-action" aria-label="新对话" title={newReason || "新对话"} disabled={!!newReason} onClick={() => void startNew()}>
       <SquarePen size={17} aria-hidden="true"/></button>
     <Popover trigger="click" placement="bottomRight" arrow={false} autoAdjustOverflow={THREADS_OVERFLOW} open={open} onOpenChange={change} destroyOnHidden getPopupContainer={popupContainer}

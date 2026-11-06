@@ -183,7 +183,7 @@ export function studioVideoError(model:VideoStudioModel,video:StudioVideoSetting
   const contract=model.contract,spec=contract.modes.find(m=>m.mode===video.mode);
   if(!spec)return "当前模型不支持所选视频模式，请重新选择";
   if(!contract.tiers.find(t=>t.tier===video.resolutionTier)?.canvases.some(c=>c.aspectRatio===ratio))return "请按所选模型重新选择清晰度和画幅";
-  if(!Number.isInteger(seconds)||seconds<contract.minSeconds||seconds>contract.maxSeconds)return `视频时长需为 ${contract.minSeconds} 到 ${contract.maxSeconds} 秒`;
+  if(!Number.isInteger(seconds)||seconds<contract.minSeconds||seconds>contract.maxSeconds)return contract.minSeconds===contract.maxSeconds?`视频时长需为 ${contract.minSeconds} 秒`:`视频时长需为 ${contract.minSeconds} 到 ${contract.maxSeconds} 秒`;
   if(!prompt.trim()&&spec.promptRequired!==false)return "请输入提示词";
   if(Array.from(prompt).length>contract.promptMaxChars)return studioPromptLimitMessage(Array.from(prompt).length,contract.promptMaxChars,false);
   if(video.seed!=null&&(!Number.isSafeInteger(video.seed)||video.seed<0||video.seed>contract.seedMax))return `随机种子需为 0 到 ${contract.seedMax} 的整数`;

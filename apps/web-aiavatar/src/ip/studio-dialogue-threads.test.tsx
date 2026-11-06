@@ -186,7 +186,7 @@ test('an empty conversation is already new: 新对话 is off and says why', asyn
   expect(screen.getByText('想做点什么？')).toBeDefined();
   expect(headerButton('新对话').disabled).toBe(true);
   expect(headerButton('新对话').title).toBe(DIALOGUE_ALREADY_NEW);
-  expect(screen.getByText('已是新对话')).toBeDefined();
+  expect(screen.queryByText('已是新对话')).toBeNull();
   expect(headerButton('历史对话').disabled).toBe(false);
 });
 

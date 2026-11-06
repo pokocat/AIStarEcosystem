@@ -95,7 +95,7 @@ export function InvitationRegistration({ invitationCode }: { invitationCode: str
   return <div className="studio-invite">
     <header className="header"><a className="brand" href="/" aria-label="IP Studio · 声量引擎旗下"><img src="/brand/ip-studio-logo.png" width={42} height={42} alt=""/><span><strong>IP Studio</strong><small>声量引擎旗下</small></span></a><a className="quiet-link" href="#possibilities">了解 IP Studio <ArrowUpRight/></a></header>
     <main><section className="hero" aria-labelledby="hero-title"><div className="hero-copy">
-      <h1 id="hero-title">一个 IP，无限可能<span className="period">。</span></h1>
+      <h1 id="hero-title">一个 IP，<br/>无限可能<span className="period">。</span></h1>
       <p className="intro">创造你的角色、影像与故事。</p>
       <section className="invitation" aria-label="朋友的邀请">
         {preview === "valid" && <div className="inviter"><span className="avatar" aria-hidden="true">{Array.from(inviter)[0]}</span><p><strong>{inviter}</strong><span>邀请你加入 IP Studio</span></p></div>}

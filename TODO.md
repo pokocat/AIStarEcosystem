@@ -951,6 +951,10 @@
     - `ip/director/director-workbench.tsx` `PASSING_NOTICE` 按服务端原文判断（「全部 N 集都写好了」「已分成 N 集」「资产已保存」）；`asset.description.includes("只出声音")`；`StudioPlanExecutor`「本阶段预算还差 N 积分」（`StudioPlanExecutionService` 用 `startsWith`）。
     - 工作记录里的「N 个对象」（`CreateNodesTool`、`ReadCanvasTool`、`UpdateNodesTool`、`ViewImagesTool`）：「对象」是开发词，但也回给模型，`DialogueActionProtocol` 和对话测试都依赖。
     - 技能名「出图」「出视频」显示在助手头部：真值在 `resources/studio/skills/*.md`，库里有不可变版本，改名要走技能版本。
+  - **走查时看到、这轮没动**
+    - AI 视频页「示例」里的步骤（如「拿到客户的商品和卖点后」「再按同样的结构换成我的内容重新拍」）读的是场景 `structure`，这段同时发给模型，读着像写给模型的话。要改显示得在 `scenes.json` 加一个只给界面用的字段。
+    - 不存在的路由是 Next 默认的英文 404（「This page could not be found.」），要加 `app/not-found.tsx`。
+    - 资产详情 `/assets/[id]`「使用记录」为空时，有两个相同的「开始创作」按钮。
   - **要核实**
     - 导演台 `视频生成中：{stage} {pct}%` 的百分比取自 `progress_pct`，要确认聚算 H3 真的回进度；不回就去掉。价格前的「约」要看报价是不是最终扣费价。
     - `ip/studio-task-list.tsx` 进行中任务显示「冻结 N 积分」，是否也按「冻结上限不当价格显示」改。
