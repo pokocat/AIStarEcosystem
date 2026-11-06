@@ -20,7 +20,7 @@ test('failed save does not preview or publish and a retry preserves the exact so
  fireEvent.click(screen.getByRole('button',{name:'重新预览'}));await screen.findByText('先制作人物设定，再规划镜头');expect(api.preview).toHaveBeenCalledWith('p','n');
 });
 test('new or locked conversations cannot open sharing',()=>{
- render(<StudioConversationShare projectId="p" disabled/>);expect((screen.getByRole('button',{name:'分享对话'}) as HTMLButtonElement).disabled).toBe(true);expect(api.preview).not.toHaveBeenCalled();
+ render(<StudioConversationShare projectId="p" disabled/>);expect((screen.getByRole('button',{name:'分享对话'}) as HTMLButtonElement).disabled).toBe(true);expect(screen.getByText('完成一轮对话后可分享')).toBeDefined();expect(api.preview).not.toHaveBeenCalled();
 });
 
 beforeEach(() => { mountStudioErrorNotifications(); });

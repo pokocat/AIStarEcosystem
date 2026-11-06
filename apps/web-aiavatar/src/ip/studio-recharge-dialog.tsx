@@ -41,7 +41,7 @@ export function StudioRechargeDialog({ pack, initialOrderId, onClose, onPaid }: 
     let stopped = false, timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       try { const next = await WalletApi.order(orderId); if (!stopped) accept(next); }
-      catch (e) { if (!stopped) setError(e instanceof Error ? e.message : "订单状态暂时无法读取，请稍后刷新"); }
+      catch (e) { if (!stopped) setError(e instanceof Error ? e.message : "订单状态加载失败，请稍后刷新重试。"); }
       if (!stopped) timer = setTimeout(poll, 3000);
     };
     void poll();

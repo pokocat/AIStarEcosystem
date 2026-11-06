@@ -44,8 +44,8 @@ test('successful list loading does not clear a folder failure or mislabel a know
   render(<PersonalAssetLibrary/>);
   await screen.findByRole('article', { name: '剧本资产 画家' });
   expect(screen.getByRole('alert').textContent).toContain('暂不可用');
-  expect(screen.getByText('文件夹名称暂不可用')).toBeDefined();
-  expect(screen.getByRole('button', { name: '重新读取文件夹' })).toBeDefined();
+  expect(screen.getByText('未知文件夹')).toBeDefined();
+  expect(screen.getByRole('button', { name: '重试' })).toBeDefined();
 });
 
 test('changing search clears selection and keeps batch actions scoped to visible results', async () => {

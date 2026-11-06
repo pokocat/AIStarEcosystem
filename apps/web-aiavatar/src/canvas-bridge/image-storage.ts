@@ -51,7 +51,7 @@ async function measure(blob: Blob): Promise<{ width: number; height: number }> {
 async function toBlob(input: string | Blob): Promise<Blob> {
   if (typeof input !== "string") return input;
   const res = await fetch(input);
-  if (!res.ok) throw new Error(`读取图片失败（${res.status}）`);
+  if (!res.ok) throw new Error(`图片加载失败（${res.status}）`);
   return res.blob();
 }
 
@@ -113,7 +113,7 @@ export async function refreshImageUrl(storageKey: string): Promise<string> {
   signedCache.delete(storageKey);
   const map = await signKeys([storageKey]);
   const url = map[storageKey];
-  if (!url) throw new Error("图片地址暂时无法读取");
+  if (!url) throw new Error("图片加载失败，请重试");
   return remember(storageKey, url);
 }
 
@@ -157,12 +157,12 @@ export async function imageToDataUrl(
 ): Promise<string> {
   if (image.dataUrl) return image.dataUrl;
   const src = image.storageKey ? await resolveImageUrl(image.storageKey, image.url ?? "") : image.url;
-  if (!src) throw new Error("这张图读不出来");
+  if (!src) throw new Error("图片加载失败，请重试");
   const blob = await toBlob(src);
   return await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error("图片读取失败"));
+    reader.onerror = () => reject(new Error("图片加载失败，请重试"));
     reader.readAsDataURL(blob);
   });
 }

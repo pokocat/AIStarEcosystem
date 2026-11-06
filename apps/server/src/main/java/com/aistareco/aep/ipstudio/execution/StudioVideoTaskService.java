@@ -73,7 +73,7 @@ public class StudioVideoTaskService {
 
     @Transactional
     public Task start(String user,String projectId,Create req) {
-        if(req==null||req.clientRequestId()==null||!req.clientRequestId().matches("[A-Za-z0-9_-]{1,64}"))throw invalid("请求编号无效");
+        if(req==null||req.clientRequestId()==null||!req.clientRequestId().matches("[A-Za-z0-9_-]{1,64}"))throw invalid("请求已失效，请刷新页面后重试");
         if(req.sceneId()==null||req.title()==null||req.title().length()>160||req.input()!=null&&req.input().toString().length()>100000)throw invalid("制作信息不完整");
         if(!"direct".equals(req.kind()) && (req.configuration()==null || !req.clientRequestId().equals(req.configuration().clientRequestId())
                 || !req.sceneId().equals(req.configuration().sceneId()) || req.configuration().duration()==null || req.configuration().duration()<1
@@ -88,7 +88,7 @@ public class StudioVideoTaskService {
             // Stored JSON is parsed back with compact integral nodes; typed Long fields must compare the same way.
             ObjectNode identity=PlanState.parse(mapper,mapper.valueToTree(req).toString());identity.remove("budgetCap");
             ObjectNode before=saved.isObject()?(ObjectNode)saved.deepCopy():mapper.createObjectNode();before.remove("budgetCap");
-            if(!projectId.equals(prior.getProjectId())||!before.equals(identity))throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","这次请求的内容已变化，请新建一次制作");
+            if(!projectId.equals(prior.getProjectId())||!before.equals(identity))throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","请求已失效，请刷新页面后重试");
             return task(prior);
         }
         ObjectNode metadata=mapper.createObjectNode().put("kind",req.kind()).put("sceneId",req.sceneId()).put("title",req.title());
@@ -116,10 +116,10 @@ public class StudioVideoTaskService {
                     .put("quotedCost",estimate).put("prompt",req.video().prompt()).putObject("settings").put("operation","video");
             rules=skills.requireActive("video-generation");
         } else if("recreation".equals(req.kind())) {
-            if(req.configuration()==null||req.sourceNodeId()==null)throw invalid("请先放入参考视频");
+            if(req.configuration()==null||req.sourceNodeId()==null)throw invalid("请添加参考视频");
             var doc=projects.readDoc(projects.required(user,projectId));
             JsonNode source=IpDocs.node(doc,req.sourceNodeId());
-            if(source==null||!"video".equals(source.path("type").asText())||IpDocs.primaryStorageKey(source)==null)throw invalid("参考视频不在草稿里，请重新放入");
+            if(source==null||!"video".equals(source.path("type").asText())||IpDocs.primaryStorageKey(source)==null)throw invalid("参考视频不在草稿中，请重新添加");
             projects.requireOwnedAssetKey(user,IpDocs.primaryStorageKey(source));
             context.add(req.sourceNodeId());
             if(req.configuration().materials()!=null)for(var material:req.configuration().materials()) {

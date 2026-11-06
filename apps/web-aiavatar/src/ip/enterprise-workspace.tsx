@@ -14,6 +14,7 @@ import { EnterpriseManagement } from "./enterprise-management";
 import { ScopedCreditsPanel } from "./scoped-credits-panel";
 import { EnterpriseReports } from "./enterprise-reports";
 import { WalletApi } from "@/proto/api";
+import { formatDateTime } from "@/lib/datetime";
 
 type Direction = "allocate" | "reclaim" | "deposit";
 const directionName = { allocate: "分配", reclaim: "回收", deposit: "转入" };
@@ -154,24 +155,24 @@ function EnterpriseWorkspaceEnabled() {
   if (authState === "no-platform") return <PlatformGateScreen />;
   return <ConfigProvider theme={{ token: { colorPrimary: "#192229", borderRadius: 8, controlHeight: 40, controlHeightSM: 32, fontFamily: "var(--ip-ui, sans-serif)" }, components: { Table: { rowSelectedBg: "#eeefef", rowSelectedHoverBg: "#e5e7e8" } } }}>
     <StudioPage title="企业管理" description={context ? `${context.enterprise.name} · ${roleName[context.member.role]}` : "管理企业积分、成员分配与充值记录。"} className="enterprise-workspace" actions={<><Link className="ip-brand-secondary" href="/me">我的账号</Link><button type="button" className="ip-brand-secondary enterprise-refresh" aria-label="刷新企业数据" aria-busy={loading} disabled={loading || busy || authState !== "ok"} onClick={() => { void load(); setRefreshKey(value => value + 1); }}><RefreshCw size={15} aria-hidden="true"/>{loading ? "刷新中…" : "刷新"}</button></>}>
-      {error && context && <Alert type="error" showIcon title="数据刷新失败，当前显示上次读取的内容" description={error}/>}
+      {error && context && <Alert type="error" showIcon title="企业数据刷新失败，当前显示的是上次加载的内容" description={error}/>}
       {success && <Alert type="success" showIcon title={success} closable onClose={() => setSuccess("")} />}
-      {error && !context ? <Alert type="error" showIcon title="暂时无法读取企业数据" description={error} action={<Button size="small" onClick={() => void load()}>重试</Button>} /> : (loading && !context) || authState !== "ok" ? <Skeleton active paragraph={{ rows: 8 }} /> : !context ? <section className="enterprise-empty">
+      {error && !context ? <Alert type="error" showIcon title="企业数据加载失败" description={error} action={<Button size="small" onClick={() => void load()}>重试</Button>} /> : (loading && !context) || authState !== "ok" ? <Skeleton active paragraph={{ rows: 8 }} /> : !context ? <section className="enterprise-empty">
         <Empty description="你还没有加入企业" />
-        <p>创建企业后，主账号可将个人积分转入企业，也可申请企业充值，再分配给成员。每个人仍需按现有规则开通数字资产产品。</p>
+        <p>创建企业后，主账号可将个人积分转入企业或申请企业充值，并分配给成员。成员需各自开通 IP Studio。</p>
         <div className="enterprise-onboarding"><div><h2>创建企业</h2><label htmlFor="enterprise-name">企业名称</label><Input id="enterprise-name" value={name} maxLength={100} onChange={e => { setName(e.target.value); createKey.current = undefined; }} placeholder="输入企业名称" disabled={busy} /><Button type="primary" loading={busy} disabled={!name.trim()} onClick={() => void mutate(async () => { createKey.current ||= requestId(); await EnterpriseApi.create({ name: name.trim(), clientRequestId: createKey.current }); createKey.current = undefined; await load(); })}>创建企业</Button></div><div><h2>通过邀请加入企业</h2><p>打开管理员分享的企业邀请链接，验证手机号或确认当前账号后加入。一个账号同时只能属于一家企业。</p></div></div>
         {actionError && <Alert type="error" title={actionError} showIcon />}
       </section> : <>
-        <section className="enterprise-own-balances" aria-label="我的两份积分"><div><span>我的个人积分</span><strong>{personalBalance === undefined ? "读取中" : number(personalBalance)}</strong><small>个人充值与消费，企业无权回收</small>{context.member.role === "owner" && <Button className="enterprise-deposit-button" disabled={busy || loading} onClick={() => openTransfer("deposit")}>转入企业</Button>}</div><div><span>我的企业积分</span><strong>{myBalance ? number(myBalance.totalBalance) : "暂未读取"}</strong><small>{context.member.status === "suspended" ? "已停用，仍可选择个人积分创作" : `由 ${context.enterprise.name} 分配，可由企业回收`}</small></div></section>
+        <section className="enterprise-own-balances" aria-label="我的积分"><div><span>我的个人积分</span><strong>{personalBalance === undefined ? "加载中…" : number(personalBalance)}</strong><small>个人充值与消费，企业不可回收</small>{context.member.role === "owner" && <Button className="enterprise-deposit-button" disabled={busy || loading} onClick={() => openTransfer("deposit")}>转入企业</Button>}</div><div><span>我的企业积分</span><strong>{myBalance ? number(myBalance.totalBalance) : "加载中…"}</strong><small>{context.member.status === "suspended" ? "已停用，仍可选择个人积分创作" : `由 ${context.enterprise.name} 分配，可由企业回收`}</small></div></section>
         <ScopedCreditsPanel enterpriseId={context.enterprise.id} />
-        {context.member.status === "suspended" && <Alert type="warning" showIcon title="企业积分使用已停用" description="你仍可查看本人记录，并选择个人积分继续创作。企业在途任务按原账户结算。" />}
+        {context.member.status === "suspended" && <Alert type="warning" showIcon title="企业积分使用已停用" description="你仍可查看本人记录，并使用个人积分继续创作。已开始的企业积分任务仍按企业积分结算。" />}
         {wallet && <section className="enterprise-balances" aria-label="企业积分汇总">{[
-          ["企业待分配积分", wallet.unallocated, "可分配给成员"], ["成员可用积分", wallet.allocated, "已分配，仍归企业"], ["冻结积分", wallet.pending, "在途任务占用，不可回收"], ["实际消耗", wallet.spent, "已结算的企业积分"],
+          ["企业待分配积分", wallet.unallocated, "可分配给成员"], ["成员可用积分", wallet.allocated, "已分配，仍归企业"], ["冻结积分", wallet.pending, "进行中的任务占用，不可回收"], ["实际消耗", wallet.spent, "已结算的企业积分"],
         ].map(([label, value, help]) => <div key={label}><span>{label}</span><strong>{number(value as number)}</strong><small>{help}</small></div>)}</section>}
-        {!wallet && myBalance && <section className="enterprise-balances" aria-label="我的企业积分"><div><span>我的可用企业积分</span><strong>{number(myBalance.totalBalance)}</strong><small>企业分配，可由企业回收</small></div><div><span>我的冻结积分</span><strong>{number(myBalance.pendingBalance)}</strong><small>在途任务占用，不可回收</small></div></section>}
+        {!wallet && myBalance && <section className="enterprise-balances" aria-label="我的企业积分"><div><span>我的可用企业积分</span><strong>{number(myBalance.totalBalance)}</strong><small>企业分配，可由企业回收</small></div><div><span>我的冻结积分</span><strong>{number(myBalance.pendingBalance)}</strong><small>进行中的任务占用，不可回收</small></div></section>}
         <StudioPageFilters label="企业管理分类" value={tab} onChange={setTab} items={tabs} />
         {["team", "policy", "lifecycle"].includes(tab) ? <EnterpriseManagement context={context} section={tab as "team" | "policy" | "lifecycle"} onChanged={load} refreshKey={refreshKey} /> : ["transfers", "usage", "audit"].includes(tab) ? <EnterpriseReports context={context} kind={tab as "transfers" | "usage" | "audit"} refreshKey={refreshKey} /> : tab === "members" ? <section aria-label="成员企业积分">
-          <div className="enterprise-section-heading"><div><h2>{canManage ? "积分分配与回收" : canReadTeam ? "成员企业积分" : "企业积分"}</h2><p>企业积分与个人积分独立。回收仅处理可用余额，冻结积分保留原任务结算。</p></div>{canRequest && <Button onClick={() => { setRechargeOpen(true); setActionError(""); }}>申请充值</Button>}</div>
+          <div className="enterprise-section-heading"><div><h2>{canManage ? "积分分配与回收" : canReadTeam ? "成员企业积分" : "企业积分"}</h2><p>企业积分与个人积分分开计算。回收仅针对可用余额，冻结积分仍用于原任务结算。</p></div>{canRequest && <Button onClick={() => { setRechargeOpen(true); setActionError(""); }}>申请充值</Button>}</div>
           {canManage && <div className="enterprise-batch-bar"><span aria-live="polite">{selected.length ? `已选择 ${selected.length} 人` : "勾选成员，可单人或批量操作"}</span><div><Button type="primary" icon={<ArrowUpRight size={15}/>} disabled={!selected.length || busy || selectedMembers.some(member => member.status !== "active")} onClick={() => openTransfer("allocate")}>分配积分</Button><Button icon={<ArrowDownLeft size={15}/>} disabled={!selected.length || busy} onClick={() => openTransfer("reclaim")}>回收积分</Button>{selected.length > 0 && <Button type="text" disabled={busy} onClick={() => setSelected([])}>清除选择</Button>}</div></div>}
           {canManage && selectedMembers.some(member => member.status !== "active") && <p className="enterprise-selection-hint">所选成员包含已停用成员，可回收积分；恢复后才能继续分配。</p>}
           <Table<EnterpriseMemberBalance> className="enterprise-member-table" rowKey="memberId" dataSource={members} pagination={false} scroll={{ x: 660 }} locale={{ emptyText: "暂无成员积分记录" }} rowSelection={canManage ? { selectedRowKeys: selected, onChange: keys => setSelected(keys.map(String)), getCheckboxProps: member => ({ disabled: !eligible(member), "aria-label": `选择${member.displayName}` }) } : undefined} columns={[
@@ -184,9 +185,9 @@ function EnterpriseWorkspaceEnabled() {
           <div className="enterprise-mobile-hint">可横向滑动查看完整积分信息。</div>
           <Pagination className="enterprise-pagination" current={page + 1} pageSize={pageSize} total={total} showSizeChanger={false} hideOnSinglePage disabled={busy} onChange={next => { setSelected([]); setPage(next - 1); }} />
         </section> : <section aria-label="企业充值记录">
-          <div className="enterprise-section-heading"><div><h2>{canBilling ? "充值记录" : "我的充值申请"}</h2><p>{canBilling ? "申请提交后由平台财务登记收款与入账积分；退款保留原订单记录。" : "这里仅展示你发起的申请，核准后积分进入企业待分配余额。"}</p></div>{canRequest && <Button type="primary" onClick={() => { setRechargeOpen(true); setActionError(""); }}>申请充值</Button>}</div>
-          <Table<EnterpriseRechargeOrder> rowKey="id" dataSource={orders} pagination={false} scroll={{ x: 760 }} locale={{ emptyText: "暂无充值申请，可先提交一笔充值申请" }} columns={[
-            { title: "申请时间", dataIndex: "createdAt", render: value => new Date(value).toLocaleString("zh-CN") },
+          <div className="enterprise-section-heading"><div><h2>{canBilling ? "充值记录" : "我的充值申请"}</h2><p>{canBilling ? "申请提交后由平台财务登记收款与入账积分；退款保留原订单记录。" : "仅显示你提交的申请。核准后，积分进入「企业待分配积分」。"}</p></div>{canRequest && <Button type="primary" onClick={() => { setRechargeOpen(true); setActionError(""); }}>申请充值</Button>}</div>
+          <Table<EnterpriseRechargeOrder> rowKey="id" dataSource={orders} pagination={false} scroll={{ x: 760 }} locale={{ emptyText: "暂无充值申请。" }} columns={[
+            { title: "申请时间", dataIndex: "createdAt", render: value => formatDateTime(value) },
             { title: "入账积分", dataIndex: "credits", align: "right", render: (value, order) => order.status === "pending" ? "待核准" : order.status === "rejected" ? "未入账" : number(value) },
             { title: "实收金额", dataIndex: "priceCents", align: "right", render: (value, order) => order.status === "pending" ? "待核准" : order.status === "rejected" ? "未登记" : `¥${(value / 100).toFixed(2)}` },
             { title: "状态", dataIndex: "status", render: (value: EnterpriseRechargeOrder["status"]) => <Tag>{rechargeStatus[value]}</Tag> },
@@ -203,7 +204,7 @@ function EnterpriseWorkspaceEnabled() {
           <label htmlFor="enterprise-transfer-amount">{direction === "deposit" ? "转入积分" : `每人${direction === "allocate" ? "分配" : "回收"}积分`}</label>
           <InputNumber id="enterprise-transfer-amount" value={amount} precision={0} min={1} max={Number.MAX_SAFE_INTEGER} disabled={busy || reclaimAll} onChange={value => setAmount(value)} placeholder="输入正整数" style={{ width: "100%" }} />
           {direction === "reclaim" && <Checkbox checked={reclaimAll} disabled={busy} onChange={e => setReclaimAll(e.target.checked)}>回收所选成员全部可用企业积分</Checkbox>}
-          <p>{direction === "deposit" ? `从我的个人账户转入「${context?.enterprise.name || "当前企业"}」。转入后归企业，可分配给成员。` : "提交前会核对每人余额与本次总额。整批成功或整批失败，不会扣用个人积分。"}</p>
+          <p>{direction === "deposit" ? `从我的个人账户转入「${context?.enterprise.name || "当前企业"}」。转入后归企业，可分配给成员。` : "提交前将核对每人余额与本次总额，全部成功或全部不执行。不会动用你的个人积分。"}</p>
         </> : <>
           <p>{direction === "deposit" ? "本次转入 " : `本次共 ${draft.preview.memberCount} 人，合计 `}<strong>{number(draft.preview.totalAmount)} 积分</strong>。</p>
           <p>企业待分配积分：{number(draft.preview.rootAvailableBefore)} → {number(draft.preview.rootAvailableAfter)}</p>
@@ -216,7 +217,7 @@ function EnterpriseWorkspaceEnabled() {
         </>}{actionError && <Alert type="error" showIcon title={actionError} />}</div>
       </Modal>
       <Modal open={rechargeOpen} title="申请企业充值" getContainer={studioOverlayContainer} onCancel={() => { if (!busy) setRechargeOpen(false); }} mask={{ closable: !busy }} closable={!busy} okText="提交申请" cancelText="取消" confirmLoading={busy} okButtonProps={{ disabled: !note.trim() }} onOk={() => void requestRecharge()}>
-        <div className="enterprise-transfer-form"><p>申请提交至平台财务，核准后积分进入“企业待分配积分”。此操作不会直接增加积分。</p><label htmlFor="enterprise-recharge-note">充值说明</label><Input.TextArea id="enterprise-recharge-note" value={note} maxLength={500} showCount rows={4} disabled={busy} placeholder="填写联系人、预计充值金额或收款沟通信息" onChange={e => { setNote(e.target.value); rechargeKey.current = undefined; }} />{actionError && <Alert type="error" showIcon title={actionError} />}</div>
+        <div className="enterprise-transfer-form"><p>申请将提交至平台财务，核准后积分进入「企业待分配积分」。提交申请不会直接增加积分。</p><label htmlFor="enterprise-recharge-note">充值说明</label><Input.TextArea id="enterprise-recharge-note" value={note} maxLength={500} showCount rows={4} disabled={busy} placeholder="填写联系人、预计充值金额或收款沟通信息" onChange={e => { setNote(e.target.value); rechargeKey.current = undefined; }} />{actionError && <Alert type="error" showIcon title={actionError} />}</div>
       </Modal>
     </StudioPage>
   </ConfigProvider>;

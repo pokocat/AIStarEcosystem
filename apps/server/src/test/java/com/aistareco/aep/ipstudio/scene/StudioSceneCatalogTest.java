@@ -12,6 +12,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** ipstudio/scenes.json 是场景页唯一真源；拼话规则只在 StudioSceneCatalog 一处（docs/studio-scene-creation.md §7）。 */
 class StudioSceneCatalogTest {
+    /** 这些校验只断言错误码和素材名：句子本身是界面文案，会改（§8.0.1 ⑩）。 */
+    private static final String INVALID = "STUDIO_SCENE_INPUT_INVALID";
     private final StudioSceneCatalog catalog = new StudioSceneCatalog();
 
     private static StudioSceneCatalog.ComposeRequest image(String id, String text, String custom, Integer... filled) {
@@ -43,11 +45,11 @@ class StudioSceneCatalogTest {
     @Test
     void aMissingRequiredPhotoOrAnEmptyFreeDrawingIsRefusedWithAPlainReason() {
         assertThatThrownBy(() -> catalog.compose(image("face-swap", "", null, 0)))
-                .isInstanceOf(BusinessException.class).hasMessage("先放人脸");
+                .isInstanceOf(BusinessException.class).hasFieldOrPropertyWithValue("code", INVALID).hasMessageContaining("人脸");
         assertThatThrownBy(() -> catalog.compose(image("free", " ", null)))
-                .isInstanceOf(BusinessException.class).hasMessage("写一句想要的画面");
+                .isInstanceOf(BusinessException.class).hasFieldOrPropertyWithValue("code", INVALID);
         assertThatThrownBy(() -> catalog.compose(image("no-such-scene", "", null)))
-                .isInstanceOf(BusinessException.class).hasMessageContaining("场景不存在");
+                .isInstanceOf(BusinessException.class).hasFieldOrPropertyWithValue("code", INVALID).hasMessageContaining("场景");
     }
 
     @Test
@@ -62,9 +64,9 @@ class StudioSceneCatalogTest {
 
     @Test
     void videoInputsTheSceneNeedsAreCheckedBeforeAnythingIsSent() {
-        assertThatThrownBy(() -> catalog.compose(video("ecom-talking", "x", List.of(), null, 25, "9:16"))).hasMessage("先放商品图");
-        assertThatThrownBy(() -> catalog.compose(video("drama-twist", " ", List.of(), null, 45, "9:16"))).hasMessage("先写一句要求");
-        assertThatThrownBy(() -> catalog.compose(video("recreation", "换成我的", List.of(), null, 25, "9:16"))).hasMessage("先放参考视频");
+        assertThatThrownBy(() -> catalog.compose(video("ecom-talking", "x", List.of(), null, 25, "9:16"))).hasFieldOrPropertyWithValue("code", INVALID).hasMessageContaining("商品图");
+        assertThatThrownBy(() -> catalog.compose(video("drama-twist", " ", List.of(), null, 45, "9:16"))).hasFieldOrPropertyWithValue("code", INVALID);
+        assertThatThrownBy(() -> catalog.compose(video("recreation", "换成我的", List.of(), null, 25, "9:16"))).hasFieldOrPropertyWithValue("code", INVALID).hasMessageContaining("参考视频");
         assertThatThrownBy(() -> catalog.compose(video("ecom-talking", "x", List.of("商品图 1"), null, 61, "9:16"))).hasMessage("请选择可用的时长");
         // 时长是页面上拖出来的，不必是场景预设的那几档；60 秒以内都交给助手分段做
         assertThat(catalog.compose(video("ecom-talking", "x", List.of("商品图 1"), null, 40, "9:16")).text()).isNotBlank();
@@ -99,11 +101,11 @@ class StudioSceneCatalogTest {
         assertThat(assembled.user()).isEqualTo(brief).doesNotContain("{{", "}}");
         // 一次出片的时长由所选模型决定，不受场景给助手用的可选时长限制；明显不对的数照样挡。
         assertThatThrownBy(() -> catalog.compose(script("ecom-talking", "", List.of("商品图 1"), 0, null))).hasMessage("请选择可用的时长");
-        assertThatThrownBy(() -> catalog.compose(script("ecom-talking", "", List.of(), 10, null))).hasMessage("先放商品图");
+        assertThatThrownBy(() -> catalog.compose(script("ecom-talking", "", List.of(), 10, null))).hasFieldOrPropertyWithValue("code", INVALID).hasMessageContaining("商品图");
         assertThat(catalog.compose(script("ecom-talking", "", List.of("商品图 1"), 10, "口语一点")).text())
                 .startsWith("按这条修改意见改当前脚本：口语一点").contains("重排镜头和台词", "原来的要求");
         // 剧情类必须写一句，但改稿时有修改意见就够了。
-        assertThatThrownBy(() -> catalog.compose(script("drama-twist", " ", List.of(), 15, null))).hasMessage("先写一句要求");
+        assertThatThrownBy(() -> catalog.compose(script("drama-twist", " ", List.of(), 15, null))).hasFieldOrPropertyWithValue("code", INVALID);
         assertThat(catalog.compose(script("drama-twist", " ", List.of(), 15, "结尾再反转一次")).text()).contains("结尾再反转一次");
     }
 
@@ -123,7 +125,7 @@ class StudioSceneCatalogTest {
         // 只放了出镜人物、没放商品图：人物照片不能顶替必填的商品图。
         var onlyPerson = new StudioSceneCatalog.ComposeRequest("video-script", "ecom-talking", "x", null, null, List.of(), "出镜人物", null, null, 4, "9:16",
                 null, null, null, List.of(), true, true);
-        assertThatThrownBy(() -> catalog.compose(onlyPerson)).hasMessage("先放商品图");
+        assertThatThrownBy(() -> catalog.compose(onlyPerson)).hasFieldOrPropertyWithValue("code", INVALID).hasMessageContaining("商品图");
     }
 
     // 2026-10-30 审查 F01–F03：同城团购只有一句拍法，缺价格时还被要求「只引导关注或下单」，团购拍成了探店。
@@ -226,9 +228,9 @@ class StudioSceneCatalogTest {
                 null, null, java.util.Map.of("angle", "top"))).text();
         assertThat(image).startsWith("图1是要做白底图的商品。\n" + catalog.image("white-background").orElseThrow().prompt()).contains("出图方式：商品单独居中，从正上方俯拍");
         assertThatThrownBy(() -> catalog.compose(new StudioSceneCatalog.ComposeRequest("image", "white-background", "", null, List.of(0), null, null, null, null, null, null,
-                null, null, java.util.Map.of("angle", "gone")))).hasMessage("这个选项已经下架，请刷新后重选");
+                null, null, java.util.Map.of("angle", "gone")))).hasFieldOrPropertyWithValue("code", INVALID).hasMessageContaining("选项");
         assertThatThrownBy(() -> catalog.compose(new StudioSceneCatalog.ComposeRequest("image", "white-background", "", null, List.of(0), null, null, null, null, null, null,
-                null, null, java.util.Map.of("nope", "x")))).hasMessage("这个选项已经下架，请刷新后重选");
+                null, null, java.util.Map.of("nope", "x")))).hasFieldOrPropertyWithValue("code", INVALID).hasMessageContaining("选项");
     }
 
     @Test
@@ -270,10 +272,10 @@ class StudioSceneCatalogTest {
 
     @Test
     void theSceneSaysHowManyPicturesEachSlotTakes() {
-        assertThatThrownBy(() -> catalog.compose(counted("outfit-on-model", 1, 0, 0))).hasMessageContaining("先放上身/全身装或下装");
-        assertThatThrownBy(() -> catalog.compose(counted("outfit-on-model", 1, 0, 2))).hasMessageContaining("下装最多放 1 张");
-        assertThatThrownBy(() -> catalog.compose(counted("outfit-on-model", 0, 1, 0))).hasMessageContaining("先放模特");
-        assertThatThrownBy(() -> catalog.compose(counted("face-turnaround", 4))).hasMessageContaining("人脸最多放 3 张");
+        assertThatThrownBy(() -> catalog.compose(counted("outfit-on-model", 1, 0, 0))).hasFieldOrPropertyWithValue("code", INVALID).hasMessageContaining("上身/全身装或下装");
+        assertThatThrownBy(() -> catalog.compose(counted("outfit-on-model", 1, 0, 2))).hasFieldOrPropertyWithValue("code", INVALID).hasMessageContaining("下装").hasMessageContaining("1 张");
+        assertThatThrownBy(() -> catalog.compose(counted("outfit-on-model", 0, 1, 0))).hasFieldOrPropertyWithValue("code", INVALID).hasMessageContaining("模特");
+        assertThatThrownBy(() -> catalog.compose(counted("face-turnaround", 4))).hasFieldOrPropertyWithValue("code", INVALID).hasMessageContaining("人脸").hasMessageContaining("3 张");
         // 还没发版的旧页面只带 filled：每个位算一张。
         assertThat(catalog.compose(image("face-swap", "", null, 0, 1)).text()).startsWith("图1是要换脸的模特图。\n图2是要换上的人脸。\n");
     }

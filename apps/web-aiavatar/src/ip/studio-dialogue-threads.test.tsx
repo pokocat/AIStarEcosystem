@@ -123,7 +123,7 @@ test('the history list shows every conversation with its time and size, marks th
   expect(within(rows[1]).getByText('重新开始')).toBeDefined();
   expect(within(rows[1]).getByText(`${formatDateTime('2026-10-19T12:30:05Z')} · 4 条消息`)).toBeDefined();
   expect(list.textContent).not.toMatch(/(分钟|小时|天)前/);
-  expect(within(list).queryByText('还没有别的对话')).toBeNull();
+  expect(within(list).queryByText('暂无其他对话。')).toBeNull();
 
   fireEvent.click(within(rows[1]).getByRole('button'));
   await waitFor(() => expect(api.openThread).toHaveBeenCalledWith('p', 'th2'));
@@ -140,9 +140,9 @@ test('with only the current conversation the list says so, and a failed read can
   await ready();
   fireEvent.click(headerButton('历史对话'));
   const list = await historyList();
-  expect(await within(list).findByText('对话列表没有读取成功。')).toBeDefined();
+  expect(await within(list).findByText('对话列表加载失败。')).toBeDefined();
   fireEvent.click(within(list).getByRole('button', { name: '重试' }));
-  expect(await within(list).findByText('还没有别的对话')).toBeDefined();
+  expect(await within(list).findByText('暂无其他对话。')).toBeDefined();
   expect(within(list).getAllByRole('listitem')).toHaveLength(1);
 });
 
@@ -177,6 +177,7 @@ test('an execution that is paused keeps both buttons closed too', async () => {
     expect(headerButton(name).disabled).toBe(true);
     expect(headerButton(name).title).toBe(DIALOGUE_THREAD_BUSY);
   }
+  expect(screen.getByText('暂不可切换')).toBeDefined();
 });
 
 test('an empty conversation is already new: 新对话 is off and says why', async () => {
@@ -185,6 +186,7 @@ test('an empty conversation is already new: 新对话 is off and says why', asyn
   expect(screen.getByText('想做点什么？')).toBeDefined();
   expect(headerButton('新对话').disabled).toBe(true);
   expect(headerButton('新对话').title).toBe(DIALOGUE_ALREADY_NEW);
+  expect(screen.getByText('已是新对话')).toBeDefined();
   expect(headerButton('历史对话').disabled).toBe(false);
 });
 

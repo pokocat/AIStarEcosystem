@@ -131,7 +131,7 @@ public class IpStudioController {
                                                @RequestBody(required = false) JsonNode body) {
         // 发布是**推给全平台每一个用户**的动作：一键生效、无复核、素材还会复制进平台
         // 自有存储长期留着。所以要超管，不是任一运营（v0.192 收敛）。
-        operatorGuard.requireSuperAdmin(auth, "存为官方内容会出现在所有人的「新建画布」里，只有超级管理员能做。");
+        operatorGuard.requireSuperAdmin(auth, "保存为官方内容后，所有人都能在「新建画布」中看到，仅超级管理员可操作");
         String kind = text(body, "kind");
         var row = demos.publishFromProject(uid(principal), id,
                 text(body, "demoId"), text(body, "name"), text(body, "summary"),
@@ -156,7 +156,7 @@ public class IpStudioController {
     @GetMapping("/demos")
     public ApiResponse<List<com.aistareco.aep.ipstudio.dto.IpStudioDtos.IpDemoAdminDto>> listDemos(
             Authentication auth) {
-        operatorGuard.require(auth, "只有平台运营能看官方内容管理。");
+        operatorGuard.require(auth, "仅平台运营可查看官方内容管理");
         return ApiResponse.of(demos.listForAdmin());
     }
 
@@ -169,7 +169,7 @@ public class IpStudioController {
     @PostMapping("/demos/{demoId}")
     public ApiResponse<JsonNode> updateDemo(Authentication auth, @PathVariable String demoId,
                                             @RequestBody(required = false) JsonNode body) {
-        operatorGuard.require(auth, "只有平台运营能改官方内容。");
+        operatorGuard.require(auth, "仅平台运营可修改官方内容");
         Integer sortOrder = body != null && body.hasNonNull("sortOrder")
                 ? body.path("sortOrder").asInt() : null;
         var row = demos.updateMeta(demoId, text(body, "name"), text(body, "summary"), sortOrder);
@@ -190,7 +190,7 @@ public class IpStudioController {
     @DeleteMapping("/demos/{demoId}")
     public ApiResponse<JsonNode> deleteDemo(Authentication auth, @PathVariable String demoId) {
         operatorGuard.requireSuperAdmin(auth,
-                "删除会把素材副本一起清掉，删了找不回来，只有超级管理员能做。只是想让别人看不到的话，「下线」就够了。");
+                "删除后素材副本将一并清除且无法恢复，仅超级管理员可操作。如只需隐藏，请使用「下线」");
         var res = demos.deleteDemo(demoId);
         com.fasterxml.jackson.databind.node.ObjectNode out =
                 com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
@@ -209,7 +209,7 @@ public class IpStudioController {
                                                 @RequestBody(required = false) JsonNode body) {
         // 下线**故意维持运营级**：撤掉一个不合适的示例应当尽量容易 ——
         // 为了删掉一个尴尬的东西还得先找到超管，只会让它在线上多挂几天。
-        operatorGuard.require(auth, "只有平台运营能下线官方内容。");
+        operatorGuard.require(auth, "仅平台运营可下线官方内容");
         boolean enabled = body == null || !body.has("enabled") || body.path("enabled").asBoolean(true);
         demos.setEnabled(demoId, enabled);
         com.fasterxml.jackson.databind.node.ObjectNode out =

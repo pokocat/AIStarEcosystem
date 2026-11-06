@@ -76,7 +76,7 @@ function AdoptionProposal({ block, nodes, readOnly, onAdopt }: { block: Dialogue
   return <section className="studio-dialogue-adoption" aria-label="修改建议">
     <p>建议修改「{node?.title || '已删除的节点'}」的{FIELD_LABEL[block.field]}</p>
     <details><summary>查看修改稿</summary><p className="studio-dialogue-adoption-text">{block.content}</p></details>
-    {changed && <p className="studio-dialogue-warning" role="status">你改过这段内容，这份修改稿不再适用</p>}
+    {changed && <p className="studio-dialogue-warning" role="status">此内容已被修改，修改稿不再适用</p>}
     {!node && <p className="studio-dialogue-note">原节点已从画布删除。</p>}
     {!readOnly && <Button className={adopted ? undefined : 'studio-assistant-primary'} loading={busy} disabled={adopted || changed || !node || block.status === 'rejected'}
       title="写回原节点" onClick={() => void adopt()}>{adopted ? '已采用' : '采用'}</Button>}
@@ -108,7 +108,7 @@ function renderBlock(block: StudioMessageBlock, message: StudioDialogueMessage, 
       if (!readOnly && message.blocks.some(b => b.type === 'approval' && b.planFingerprint === block.fingerprint)) return null;
       return <StudioPlanCard key={blockKey(block)} block={block} skillLabel={handlers.skillLabel?.(block.plan)} onChooseApproach={chooseApproach}/>;
     case 'approval': {
-      if (readOnly) return <p key={blockKey(block)} className="studio-dialogue-note">{block.status === 'approved' ? `已确认 · ${formatCredits(block.quotedCost)} 积分` : '没有确认'}</p>;
+      if (readOnly) return <p key={blockKey(block)} className="studio-dialogue-note">{block.status === 'approved' ? `已确认 · ${formatCredits(block.quotedCost)} 积分` : '未确认'}</p>;
       const plan = quotedPlan(message, block);
       return <StudioDialogueApprovalCard key={`${blockKey(block)}:${block.status}`} block={block} plan={plan} skillLabel={plan && handlers.skillLabel?.(plan.plan)}
         approved={handlers.approvedCaps?.(block)} shortfall={shortfalls[block.approvalId] ?? block.shortfall} planReady={handlers.planReady(block)}
@@ -128,7 +128,7 @@ function replyText(key: string, text: string): ReactNode[] {
   const prose = split.prose.trim();
   return [
     ...(prose ? [<p key={key} className="studio-dialogue-text">{prose}</p>] : []),
-    ...(actions ? [<details key={`${key}-actions`} className="studio-dialogue-raw-actions"><summary>这一轮没有执行的操作原文</summary><pre>{actions}</pre></details>] : []),
+    ...(actions ? [<details key={`${key}-actions`} className="studio-dialogue-raw-actions"><summary>本轮未执行的操作原文</summary><pre>{actions}</pre></details>] : []),
   ];
 }
 
@@ -202,20 +202,20 @@ export function StudioDialogueMessageView(props: MessageProps) {
     try { await handlers.onPlaceText(message); } catch (e) { setError(e); } finally { setPlacing(false); }
   };
   const body = user ? [] : messageBody(message, props);
-  return <article className={`studio-dialogue-message is-${message.role}${latest ? ' is-latest' : ''}${activity?.phase === 'writing' ? ' is-writing' : ''}`} data-status={message.status} aria-label={user ? '你的消息' : message.role === 'assistant' ? 'Studio 的回复' : '系统消息'}>
-    <small className="studio-dialogue-author">{user ? '你' : message.role === 'assistant' ? 'Studio' : '提示'}</small>
+  return <article className={`studio-dialogue-message is-${message.role}${latest ? ' is-latest' : ''}${activity?.phase === 'writing' ? ' is-writing' : ''}`} data-status={message.status} aria-label={user ? '你的消息' : message.role === 'assistant' ? 'IP Studio 的回复' : '系统消息'}>
+    <small className="studio-dialogue-author">{user ? '你' : message.role === 'assistant' ? 'IP Studio' : '提示'}</small>
     {user ? <p className="studio-dialogue-text">{message.text}</p> : body}
     {/* The chain ran out of credits (docs/ip-studio-dialogue-no-continue.md §9): the same top-up pages as the wallet badge
         and the enterprise workspace, in a new tab so the canvas stays open. */}
     {message.role === 'system' && message.notice && <p className="studio-dialogue-notice">
       <a className="studio-dialogue-recharge" href={message.notice === 'recharge-enterprise' ? '/enterprise' : '/studio#/membership'} target="_blank" rel="noopener">
-        {message.notice === 'recharge-enterprise' ? '去申请企业充值' : '去充值'}</a></p>}
-    {user && !!refs.length && <p className="studio-dialogue-refs">{refs.map(id => <span key={id} title={nodes.find(n => n.id === id)?.title}>{nodes.find(n => n.id === id)?.title || '已删除的画布对象'}</span>)}</p>}
+        {message.notice === 'recharge-enterprise' ? '申请企业充值' : '充值'}</a></p>}
+    {user && !!refs.length && <p className="studio-dialogue-refs">{refs.map(id => <span key={id} title={nodes.find(n => n.id === id)?.title}>{nodes.find(n => n.id === id)?.title || '已删除的节点'}</span>)}</p>}
     {user && queueState && <StudioDialogueQueueMark state={queueState}/>}
     {/* A running tool already says so on its own line (spinner, 「进行中」); the extra row is for thinking and writing. */}
     {!user && activity && activity.phase !== 'tool' && <StudioDialogueActivity activity={activity}/>}
     {!user && message.status === 'interrupted' && <small className="studio-dialogue-note">已停止</small>}
-    {!user && message.status === 'failed' && <small className="studio-dialogue-warning">没有完成，换个说法再试试</small>}
+    {!user && message.status === 'failed' && <small className="studio-dialogue-warning">回复失败，请重试或调整描述。</small>}
     {/* 设计稿 Main 画板：回复正文 → 逐步清单 → 建议；积分是最后一行小灰字，「放进画布」「从这里重新开始」是同一行右边的小图标。 */}
     {!user && props.progress}
     {!!suggestions?.length && !readOnly && <StudioDialogueSuggestions items={suggestions} busy={handlers.quickReplyBusy} onUse={handlers.onQuickReply ?? handlers.onCompose}/>}
@@ -229,11 +229,11 @@ export function StudioDialogueMessageView(props: MessageProps) {
       {((!readOnly && handlers.onBranch && finished) || placeable) && <div className="studio-dialogue-message-actions" role="group" aria-label="这条消息的操作">
         {placeable && <button type="button" className={`studio-dialogue-action${latest && !placed ? ' has-label' : ''}`} disabled={placing} aria-busy={placing || undefined}
           aria-label={placed ? '在画布上查看' : '放进画布'}
-          title={placed ? '画布上已有这段文字' : '把这段回复放进画布，成为一个文字节点'} onClick={() => void place()}>
+          title={placed ? '画布上已有这段文字' : '将此回复作为文字节点放进画布'} onClick={() => void place()}>
           {placing ? <LoaderCircle size={14} className="studio-dialogue-action-spin" aria-hidden="true"/> : placed ? <LocateFixed size={14} aria-hidden="true"/> : <FilePlus2 size={14} aria-hidden="true"/>}
           {latest && !placed && <span>{placing ? '正在放进画布' : '放进画布'}</span>}</button>}
         {!readOnly && handlers.onBranch && finished && <button type="button" className="studio-dialogue-action" disabled={branching} aria-busy={branching || undefined}
-          aria-label="从这里重新开始" title="从这条消息另开一段对话，原来的对话保留" onClick={() => void branch()}>
+          aria-label="从这里重新开始" title="从此消息新建一段对话，原对话保留" onClick={() => void branch()}>
           {branching ? <LoaderCircle size={14} className="studio-dialogue-action-spin" aria-hidden="true"/> : <GitBranch size={14} aria-hidden="true"/>}</button>}
       </div>}
     </div>}

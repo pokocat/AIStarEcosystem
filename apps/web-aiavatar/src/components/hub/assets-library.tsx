@@ -37,8 +37,8 @@ export function AssetsLibrary() {
   };
   if (auth === 'no-platform') return <PlatformGateScreen/>;
   if (nextUi && auth === 'ok') return <AssetsHub/>;
-  return <StudioPage title="资产" description="人物、声音与创作素材，让每一次灵感有所承接。" nextDescription="人物、声音和素材，做什么都能直接拿来用" className="assets-library ip-management-page" actions={<Link href="/create" className="ip-brand-button">开始创作<ArrowUpRight size={16}/></Link>}>
-    {auth !== 'ok' ? <p role="status">正在打开资产…</p> : <ConfigProvider locale={zhCN} getPopupContainer={studioOverlayContainer} theme={{token:{colorPrimary:'#192229',borderRadius:8,fontFamily:'var(--ip-ui)'}}}>
+  return <StudioPage title="资产" description="人物、声音和创作素材，创作时可直接使用。" nextDescription="人物、声音和素材，创作时可直接使用。" className="assets-library ip-management-page" actions={<Link href="/create" className="ip-brand-button">开始创作<ArrowUpRight size={16}/></Link>}>
+    {auth !== 'ok' ? <p role="status">正在加载资产…</p> : <ConfigProvider locale={zhCN} getPopupContainer={studioOverlayContainer} theme={{token:{colorPrimary:'#192229',borderRadius:8,fontFamily:'var(--ip-ui)'}}}>
       <App className="assets-library-content" data-studio-overlay-root>
         <StudioPageFilters label="资产分类" items={tabs} value={tab} onChange={change}/>
         {tab === 'ips' ? <IpManagement embedded/> : tab === 'objects' || tab === 'materials' ? <PersonalAssetLibrary hideTabs initialTab={tab}/> : tab === 'voices' ? <VoiceLibrary voices={voices} refresh={() => setRevision(n => n+1)}/> : <AvatarLibrary avatars={avatars} grants={grants} licenses={licenses} refresh={() => setRevision(n => n+1)}/>}

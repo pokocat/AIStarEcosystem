@@ -13,7 +13,7 @@ export function replaceStudioImage(nodes: CanvasNodeData[], connections: CanvasC
   image: StudioMediaImportResult): CanvasNodeData[] {
   const node = nodes.find(n => n.id === nodeId);
   if (!node || node.type !== CanvasNodeType.Image) throw new Error('图片节点已移出画布，请重新选择');
-  if (studioGenerationPending(node)) throw new Error('当前节点正在生成，请等待任务完成后再替换图片');
+  if (studioGenerationPending(node)) throw new Error('当前节点生成中，请等待任务完成后替换图片');
   if (image.mediaType !== 'image' || !image.key || !image.url) throw new Error('图片上传未完成，请重试');
   const imageId = `upload-${nanoid()}`;
   const marked = markStudioDescendants(nodes, nodeId);

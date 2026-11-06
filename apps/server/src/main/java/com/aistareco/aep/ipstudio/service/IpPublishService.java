@@ -81,10 +81,10 @@ public class IpPublishService {
         IpProject project = projects.requiredForUpdate(userId, projectId);
         if (IpProject.STATUS_PUBLISHED.equals(project.getStatus()) && project.getPublishedAvatarId() != null) {
             throw new BusinessException(HttpStatus.CONFLICT, "IP_PROJECT_ALREADY_PUBLISHED",
-                    "该项目已发布为数字资产 " + project.getPublishedAvatarId() + "，暂不支持追加发布");
+                    "这张画布已发布为数字资产 " + project.getPublishedAvatarId() + "，暂不支持再次发布");
         }
         if (req == null || req.masterNodeId() == null || req.masterNodeId().isBlank()) {
-            throw BusinessException.badRequest("IP_PUBLISH_SELECTION_REQUIRED", "请先选择要发布的主形象节点");
+            throw BusinessException.badRequest("IP_PUBLISH_SELECTION_REQUIRED", "请选择要发布的主形象图片");
         }
 
         // 资产名是发布产物在资产库里的身份，不能悄悄拿项目名替 —— 用户在发布框里删空了名字，
@@ -189,7 +189,7 @@ public class IpPublishService {
     private Selected selectedOf(String userId, JsonNode doc, String projectId, String nodeId) {
         JsonNode node = IpDocs.node(doc, nodeId);
         if (node == null) {
-            throw BusinessException.notFound("IP_NODE_NOT_FOUND", "画布上找不到节点 " + nodeId);
+            throw BusinessException.notFound("IP_NODE_NOT_FOUND", "画布上找不到所选内容，请刷新后重试");
         }
         if (!IpDocs.T_IMAGE.equals(IpDocs.typeOf(node))) {
             throw BusinessException.badRequest("IP_PUBLISH_SELECTION_REQUIRED", "只能发布画布上的图片");
@@ -197,7 +197,7 @@ public class IpPublishService {
         String key = projects.requireOwnedAssetKey(userId, IpDocs.primaryStorageKey(node));
         if (key == null) {
             throw BusinessException.badRequest("IP_PUBLISH_SELECTION_REQUIRED",
-                    "这张还没出图，先生成再发布");
+                    "这张图片还没有生成，请生成后发布");
         }
 
         JsonNode md = IpDocs.metadataOf(node);

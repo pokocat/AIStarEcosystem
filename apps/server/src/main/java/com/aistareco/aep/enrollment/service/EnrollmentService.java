@@ -234,10 +234,10 @@ public class EnrollmentService {
         if (key.getStatus() != LicenseKey.LicenseKeyStatus.CREATED) {
             log.warn("[license] activation rejected keyId={} status={} {}", key.getId(), key.getStatus(), logCtx);
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "该激活码已被使用或已失效（当前状态: " + key.getStatus() + "）");
+                    "该激活码已被使用或已失效");
         }
         LicenseBatch batch = batchRepo.findById(key.getBatchId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "批次数据异常"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "该激活码暂不可用，请联系平台处理"));
 
         Instant now = Instant.now();
         if (batch.getStatus() == LicenseBatch.LicenseBatchStatus.REVOKED
@@ -259,7 +259,7 @@ public class EnrollmentService {
         // v0.36：issuerTenantId 现可为 null（新批次走纯 SellingChannel 路径）。
         if (batch.getIssuerTenantId() != null && !batch.getIssuerTenantId().isBlank()
                 && !tenantRepo.existsById(batch.getIssuerTenantId())) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "批次发放方租户不存在");
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "该激活码暂不可用，请联系平台处理");
         }
         return new ActivatableKey(key, batch);
     }
@@ -296,7 +296,7 @@ public class EnrollmentService {
         if (requestedProduct != null && !products.contains(primary)) {
             // 先判后占：不匹配的码原样留在 CREATED，用户可以拿去开正确的子产品。
             throw new BusinessException(HttpStatus.BAD_REQUEST, "LICENSE_KEY_PRODUCT_MISMATCH",
-                    "该激活码不能用于开通此子产品",
+                    "该激活码不能用于开通此产品",
                     Map.of("product", primary, "allowed", products));
         }
 
@@ -403,7 +403,7 @@ public class EnrollmentService {
         return enrollmentRepo.findByUserIdAndProduct(userId, normalized)
                 .map(EnrollmentService::toDto)
                 .orElseThrow(() -> new BusinessException(HttpStatus.INTERNAL_SERVER_ERROR,
-                        "ENROLLMENT_WRITE_FAILED", "开通记录写入异常，请重试"));
+                        "ENROLLMENT_WRITE_FAILED", "开通失败，请重试"));
     }
 
     // ── 内部工具 ──────────────────────────────────────────────────────────────
@@ -463,7 +463,7 @@ public class EnrollmentService {
         String p = product == null ? "" : product.trim().toLowerCase(Locale.ROOT);
         if (!PlatformSupport.ALL.contains(p)) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "PRODUCT_INVALID",
-                    "未知的子产品：" + product);
+                    "未知的产品：" + product);
         }
         return p;
     }

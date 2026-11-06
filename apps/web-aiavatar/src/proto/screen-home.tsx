@@ -116,7 +116,7 @@ function MAssetEmpty({ ctx }) {
         hMH(UI.Button, { variant: 'primary', full: true, size: 'lg', icon: Icons.sparkle, onClick: () => ctx.startCreate('ai') }, 'AI 原创'),
         hMH(UI.Button, { variant: 'line', full: true, size: 'lg', icon: Icons.person, onClick: () => ctx.startRealClone() }, '真人复刻')),
       hMH('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 16, fontSize: 11.5, color: 'var(--ink-3)' } },
-        hMH(Icons.bolt, { size: 13, stroke: 2, style: { color: 'var(--primary)' } }), '约 15 秒即可生成第一版形象')));
+        hMH(Icons.bolt, { size: 13, stroke: 2, style: { color: 'var(--primary)' } }), '生成第一版形象后，可继续精调')));
 }
 
 // 进行中链路小卡
@@ -291,7 +291,7 @@ function MHome({ ctx }) {
       hMH('div', { style: { padding: '0 18px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
         hMH(MFeatureCard, { title: '新建人物', sub: '真人复刻 / AI 原创', cta: '开始创建',
           image: '/generated/feature-cards/create-avatar.jpg', icon: Icons.person, onClick: ctx.openCreateSheet }),
-        hMH(MFeatureCard, { title: '上传产品 / 场景', sub: '实拍入库，登记即可用', cta: '去上传',
+        hMH(MFeatureCard, { title: '上传产品 / 场景', sub: '实拍入库，登记后可用', cta: '去上传',
           image: '/generated/avatar-previews/example-street-fashion.jpg', icon: Icons.upload, onClick: ctx.openCreateSheet }),
         hMH(MFeatureCard, { title: '克隆声音', sub: '录一段即生成', cta: '声音工作室',
           image: '/generated/feature-cards/voice-clone.jpg', icon: Icons.mic, onClick: () => ctx.go('voice') }),

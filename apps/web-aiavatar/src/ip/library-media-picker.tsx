@@ -28,7 +28,7 @@ export type LibraryMediaPickerProps = {
 const ACCEPT = { image: IMAGE_UPLOAD_ACCEPT, video: '.mp4', audio: '.mp3,.wav,.m4a' };
 const NOUN = { image: '图片', video: '视频', audio: '音频' };
 
-export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title = '从资产库选', confirmLabel = '使用', max = 1, mediaType, upload, people = true, library: preferred }: LibraryMediaPickerProps) {
+export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title = '从资产库选择', confirmLabel = '使用', max = 1, mediaType, upload, people = true, library: preferred }: LibraryMediaPickerProps) {
   const [folders, setFolders] = useState<LibraryFolder[]>([]);
   const [library, setLibrary] = useState<string>();
   const [last, setLast] = useState('');
@@ -132,7 +132,7 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
         {libRow('all', '全部', <span className="lmp-lib-icon"><LayoutGrid size={13} strokeWidth={1.6}/></span>)}
         {libRow(AI_LIBRARY, 'AI 生成', <span className="lmp-lib-icon is-ai"><AiMark size={11}/></span>)}
         {folders.length > 0 && <hr/>}
-        {folders.map(f => libRow(f.id, f.name, <span className="lmp-lib-icon"><Folder size={13} strokeWidth={1.6}/></span>, f.id === last ? '上次用的' : undefined))}
+        {folders.map(f => libRow(f.id, f.name, <span className="lmp-lib-icon"><Folder size={13} strokeWidth={1.6}/></span>, f.id === last ? '上次使用' : undefined))}
       </nav>
       <div className="lmp-main">
         <div className="lmp-bar">
@@ -142,18 +142,18 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
           </div>}
           <Input className="lmp-search" prefix={<Search size={14}/>} allowClear aria-label="搜索资产" placeholder="搜索名称" value={keyword} disabled={busy} onChange={e => setKeyword(e.target.value)}/>
           <span className="lmp-gap"/>
-          {upload && <><Button icon={<Upload size={14}/>} loading={uploading} disabled={busy} onClick={() => fileInput.current?.click()}>{library && library !== 'all' && library !== AI_LIBRARY ? '上传到这个库' : '上传'}</Button>
+          {upload && <><Button icon={<Upload size={14}/>} loading={uploading} disabled={busy} onClick={() => fileInput.current?.click()}>{library && library !== 'all' && library !== AI_LIBRARY ? '上传到此资产库' : '上传'}</Button>
             {mediaType === 'audio' && <Button icon={<Mic size={14}/>} disabled={busy || uploading || !library} onClick={() => setRecording(true)}>录音</Button>}
             <input ref={fileInput} type="file" hidden aria-label="选择要上传到资产库的文件" accept={ACCEPT[mediaType]} onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; if (file) void putInLibrary(file).catch(() => {}); }}/></>}
         </div>
         {error && <p className="lmp-error"><StudioErrorNotice error={error}/><Button size="small" onClick={() => setRevision(n => n + 1)}>重试</Button></p>}
         {loading && !items.length ? <Skeleton active/> : !items.length
-          ? <p className="lmp-empty">{tab === 'people' ? '这里还没有带图的人物。' : library === AI_LIBRARY ? `还没有 AI 做的${NOUN[mediaType]}。` : keyword.trim() ? '没有找到，换个名称试试。' : upload ? `这里还没有${NOUN[mediaType]}，可以上传一个。` : `这里还没有${NOUN[mediaType]}。`}</p>
+          ? <p className="lmp-empty">{tab === 'people' ? '暂无带图的人物。' : library === AI_LIBRARY ? `还没有 AI 生成的${NOUN[mediaType]}。` : keyword.trim() ? '没有找到匹配的素材，请尝试其他名称。' : upload ? `暂无${NOUN[mediaType]}，可点击「上传」添加。` : `暂无${NOUN[mediaType]}。`}</p>
           : <ul className={`lmp-grid${mediaType === 'audio' ? ' is-list' : ''}`}>{items.map(a => {
             const on = !!selected[a.id], unavailable = a.metadata?.unavailable === true;
             const full = !on && max > 1 && picked.length >= max;
             return <li key={a.id}>
-              <button type="button" className="lmp-item" aria-pressed={on} aria-label={`选 ${a.title}`} disabled={busy || unavailable || full} onClick={() => choose(a)}>
+              <button type="button" className="lmp-item" aria-pressed={on} aria-label={`选择 ${a.title}`} disabled={busy || unavailable || full} onClick={() => choose(a)}>
                 {a.kind === 'image' ? <span className="lmp-thumb"><AssetThumb kind="image" src={a.data.dataUrl} storageKey={a.data.storageKey}/></span>
                   : a.kind === 'video' ? <span className="lmp-thumb"><AssetThumb kind="video" src={a.data.url} storageKey={a.data.storageKey}/></span>
                   : <span className="lmp-voice-icon">{on ? <Check size={15} strokeWidth={2.4}/> : <AudioLines size={16} strokeWidth={1.6}/>}</span>}

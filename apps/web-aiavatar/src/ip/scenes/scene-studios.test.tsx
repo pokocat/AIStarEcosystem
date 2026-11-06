@@ -69,7 +69,7 @@ test("图片：没放必填参考图时按钮直接写缺什么；放好后先�
   window.history.replaceState(null, "", "/image?scene=white-background");
   await act(async () => { render(<SceneImageStudio/>); });
   const go = () => screen.getByRole("button", { name: "生成图片" }) as HTMLButtonElement;
-  await waitFor(() => expect(screen.getByText("先放商品")).toBeTruthy());
+  await waitFor(() => expect(screen.getByText("请添加商品")).toBeTruthy());
   expect(go().disabled).toBe(true);
   // 一大段场景描述不摆出来：只有场景标签和补充要求输入框。
   expect(screen.queryByRole("textbox", { name: "完整描述" })).toBeNull();
@@ -122,8 +122,8 @@ test("视频：编导看商品图写脚本（请求先存进画布、带图）�
         billing: { inputTokens: 900, outputTokens: 300, credits: 2, inputCreditsPerK: 1, outputCreditsPerK: 1 } } }
     : { id, status: "running", output: {} });
   await act(async () => { render(<SceneVideoStudio/>); });
-  const send = () => screen.getByRole("button", { name: "让编导写" }) as HTMLButtonElement;
-  await waitFor(() => expect(screen.getByText("先放商品图")).toBeTruthy());
+  const send = () => screen.getByRole("button", { name: "生成脚本" }) as HTMLButtonElement;
+  await waitFor(() => expect(screen.getByText("请添加商品图")).toBeTruthy());
   fillField(screen.getByRole("textbox", { name: "想做的视频" }), "保湿精华，不黏腻");
   // 连着点两组选项：后一次不能把前一次盖掉。
   optionGroup("出镜方式");
@@ -168,10 +168,10 @@ test("视频：编导看商品图写脚本（请求先存进画布、带图）�
   await waitFor(() => expect(go.textContent).toContain("400 积分"));
   // 优化描述单独按用量扣、不含在视频价里，用户可以选按原文生成（只扣视频价）。
   const rewrite = within(screen.getByRole("group", { name: "提示词" }));
-  expect(rewrite.getByText(/不含在视频价里/)).toBeTruthy();
+  expect(rewrite.getByText(/不含在视频费用中/)).toBeTruthy();
   fireEvent.click(rewrite.getByRole("button", { name: "按原文生成" }));
-  expect(rewrite.getByText("按你写的原文直接生成，只扣视频价。")).toBeTruthy();
-  fireEvent.click(rewrite.getByRole("button", { name: "先优化再生成" }));
+  expect(rewrite.getByText("按原文生成，只收取视频费用。")).toBeTruthy();
+  fireEvent.click(rewrite.getByRole("button", { name: "优化后生成" }));
   await waitFor(() => expect(go.disabled).toBe(false));
   await act(async () => { fireEvent.click(go); });
   const videoRequest = api.submit.mock.calls[1][1];
@@ -191,9 +191,9 @@ test("video: AI 编导 opens the page without starting; the duration set there i
   await act(async () => { render(<SceneVideoStudio/>); });
   // 什么都没放也能进去；缺的就地说，发送键点不了。
   fireEvent.click(await screen.findByRole("button", { name: "AI 编导" }));
-  const go = () => screen.getByRole("button", { name: "让编导写" }) as HTMLButtonElement;
+  const go = () => screen.getByRole("button", { name: "生成脚本" }) as HTMLButtonElement;
   expect(screen.getByText("想做一条什么视频？")).toBeTruthy();
-  expect(screen.getByText("先放商品图")).toBeTruthy();
+  expect(screen.getByText("请添加商品图")).toBeTruthy();
   expect(go().disabled).toBe(true);
   expect(api.createProject).not.toHaveBeenCalled();
   // 常用开头只进输入框，不发送；再点一次不重复。
@@ -208,10 +208,10 @@ test("video: AI 编导 opens the page without starting; the duration set there i
   await waitFor(() => expect(api.submit).toHaveBeenCalledTimes(1));
   expect(api.submit.mock.calls[0][1].scene).toMatchObject({ kind: "video-script", text: "开头先说这东西适合谁", duration: 10 });
   // 开始之后这一页是改稿的输入框，开场那一块收起来。
-  expect(await screen.findByRole("textbox", { name: "想改哪里" })).toBeTruthy();
+  expect(await screen.findByRole("textbox", { name: "修改意见" })).toBeTruthy();
   expect(screen.queryByText("想做一条什么视频？")).toBeNull();
   // 想法还在编辑框里。
-  fireEvent.click(screen.getByRole("button", { name: "回到编辑" }));
+  fireEvent.click(screen.getByRole("button", { name: "返回编辑" }));
   await waitFor(() => expect(fieldText("想做的视频")).toBe("开头先说这东西适合谁"));
 });
 
@@ -229,7 +229,7 @@ test("视频：按钮旁的价按服务端报价显示折扣（原价划掉）�
   // 还没写字、没放图也看得到折后价。
   await waitFor(() => expect(go().querySelector("s")?.textContent).toContain("600"));
   expect(go().textContent).toContain("300 积分");
-  expect(screen.getByText("H3限时折扣，省 300 积分。先优化另按实际用量扣少量积分。")).toBeTruthy();
+  expect(screen.getByText("H3限时折扣，省 300 积分。优化提示词按实际用量另计。")).toBeTruthy();
   const [query, billing] = api.videoPrice.mock.calls.at(-1)!;
   expect(query).toMatchObject({ model: "ep-h3", tier: "768p", aspectRatio: "9:16", durationSec: 15 });
   expect(billing).toEqual({ mode: "personal" });
@@ -252,7 +252,7 @@ test("视频：爆款复刻直接受理后台任务，保留原片与要求，�
   api.importMedia.mockResolvedValue({ key: "ipstudio/media/u/v.mp4", url: "blob:v", mediaType: "video", mimeType: "video/mp4", bytes: 1, fileName: "v.mp4" });
   await act(async () => { render(<SceneVideoStudio/>); });
   const send = () => screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement;
-  await waitFor(() => expect(screen.getByText("先放参考视频")).toBeTruthy());
+  await waitFor(() => expect(screen.getByText("请添加参考视频")).toBeTruthy());
   await pickFromLibrary("参考视频");
   fillField(screen.getByRole("textbox", { name: "想做的视频" }), "换成我的面霜");
   await waitFor(() => expect(send().disabled).toBe(false));
@@ -305,15 +305,15 @@ test("图片设置：选张数时焦点留在选中的按钮上；Esc 关掉面�
   expect(screen.getByRole("tab", { name: "示例" }).getAttribute("aria-selected")).toBe("true");
 });
 
-test("「最近」读失败：写明没读到并能重试，不显示成空列表", async () => {
+test("「最近」读失败：写明加载失败并能重试，不显示成空列表", async () => {
   window.history.replaceState(null, "", "/image?scene=white-background");
   api.listProjects.mockRejectedValueOnce(new Error("网络断了"));
   await act(async () => { render(<SceneImageStudio/>); });
   const recent = await openRecent();
-  expect(await recent.findByText("最近的草稿没读到")).toBeTruthy();
-  expect(recent.queryByText("做过的会出现在这里")).toBeNull();
+  expect(await recent.findByText("草稿加载失败")).toBeTruthy();
+  expect(recent.queryByText("暂无草稿。")).toBeNull();
   api.listProjects.mockResolvedValueOnce([]);
   await act(async () => { fireEvent.click(recent.getByRole("button", { name: "重试" })); });
-  expect(await recent.findByText("做过的会出现在这里")).toBeTruthy();
-  expect(recent.queryByText("最近的草稿没读到")).toBeNull();
+  expect(await recent.findByText("暂无草稿。")).toBeTruthy();
+  expect(recent.queryByText("草稿加载失败")).toBeNull();
 });

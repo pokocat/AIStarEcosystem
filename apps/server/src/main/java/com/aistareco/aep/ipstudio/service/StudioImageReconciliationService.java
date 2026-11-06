@@ -121,7 +121,7 @@ public class StudioImageReconciliationService {
         ((ObjectNode)checkpoint).put("confirmedNoUpstreamTask",true).put("releasedBy",actor).put("releaseEvidence",evidence).put("releasedAt",Instant.now().toString());
         exec.put("nativeLeaseUntil",0);run.setInputJson(input.toString());run.setCost(spent);run.setCancelRequested(true);
         run.setStatus(IpRun.STATUS_FAILED);run.setStage("failed");run.setPct(100);run.setErrorCode("STUDIO_IMAGE_CONFIRMED_NOT_ACCEPTED");
-        run.setErrorMessage("供应商已确认原请求未受理，已退回未用积分"+(completed>0?"；已生成的 "+completed+" 张图片仍可使用":""));
+        run.setErrorMessage("生成服务确认未收到此请求，已退回未用积分"+(completed>0?"；已生成的 "+completed+" 张图片仍可使用":""));
         run.setHeartbeatAt(Instant.now());run.setFinishedAt(Instant.now());runs.saveAndFlush(run);
         credits.releaseHold(IpRunService.REF_TYPE,id,"运营核实供应商未受理原图片请求，退回未用积分");
         billing.complete(IpRunService.REF_TYPE,id);

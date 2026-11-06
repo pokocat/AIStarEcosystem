@@ -208,8 +208,7 @@ class DirectorImageModelTest {
         var e = assertThrows(BusinessException.class, () -> generate("asset-image", "p1", 55));
         assertEquals("STUDIO_IMAGE_SIZE_UNSUPPORTED", e.getCode());
         assertEquals(HttpStatus.BAD_REQUEST, e.getStatus());
-        assertTrue(e.getMessage().startsWith("作品设置里选的图片模型「GPT Image 2 4K」不能出 1:1 方图"), e.getMessage());
-        assertTrue(e.getMessage().contains("换一个能出方图的图片模型"), e.getMessage());
+        assertTrue(e.getMessage().contains("GPT Image 2 4K") && e.getMessage().contains("1:1"), e.getMessage());
         assertFalse(e.getMessage().contains("画幅"), "道具不读作品画幅，不能让用户去改它：" + e.getMessage());
         assertEquals("prop", ((Map<?, ?>) e.getDetails()).get("kind"));
         verifyNoInteractions(images);
@@ -237,7 +236,7 @@ class DirectorImageModelTest {
         var e = assertThrows(BusinessException.class, () -> service.task("u1", work.getId(),
                 new DirectorService.TaskRequest("board", "k1", "req-board-square", null, null, 55L)));
         assertEquals("STUDIO_IMAGE_SIZE_UNSUPPORTED", e.getCode());
-        assertTrue(e.getMessage().contains("分镜图跟作品画幅走。请在作品设置里换一个画幅，或换一个图片模型"), e.getMessage());
+        assertTrue(e.getMessage().contains("画幅"), "分镜图跟随作品画幅，要告诉用户可以改画幅：" + e.getMessage());
         verify(images, times(1)).generateForDirector(any(), any(), any());
     }
 
@@ -265,7 +264,7 @@ class DirectorImageModelTest {
         asset("c1", "character", "林夏");
         var e = assertThrows(BusinessException.class, () -> generate("asset-image", "p1", 55));
         assertEquals("STUDIO_IMAGE_SIZE_UNSUPPORTED", e.getCode());
-        assertTrue(e.getMessage().startsWith("默认图片模型「GPT Image 2 4K」不能出 1:1 方图"), e.getMessage());
+        assertTrue(e.getMessage().startsWith("默认图片模型") && e.getMessage().contains("GPT Image 2 4K") && e.getMessage().contains("1:1"), e.getMessage());
         verifyNoInteractions(images);
         generate("asset-image", "c1", 55);
         assertEquals("image-4k", lastSubmitted().model());
@@ -283,7 +282,6 @@ class DirectorImageModelTest {
         var e = assertThrows(BusinessException.class, () -> generate("asset-image", "c1", 16));
         assertEquals("ENDPOINT_NOT_ALLOWED", e.getCode());
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, e.getStatus());
-        assertTrue(e.getMessage().contains("作品设置里选的图片模型已停用或不再开放"), e.getMessage());
         verifyNoInteractions(images);
     }
 

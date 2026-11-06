@@ -696,7 +696,7 @@ html[data-layout="desktop"] .director-split-source-text { flex: 1 1 auto; height
 html:not([data-layout="desktop"]) .director-clip-body { grid-template-columns: minmax(0, 1fr); }
 html:not([data-layout="desktop"]) .director-clip-media { flex-direction: row; flex-wrap: wrap; }
 html:not([data-layout="desktop"]) .director-clip-stage { width: 120px; }
-.director-video-cost { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.director-video-cost { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .director-clip-stage:has(.director-clip-stage-empty) { border-style: dashed; background: var(--ip-soft); color: var(--ip-muted); }
 .director-clip-stage:has(.director-clip-stage-empty) .director-clip-stage-tag { background: var(--ip-paper); color: var(--ip-muted); border: 1px solid var(--ip-line); }
 

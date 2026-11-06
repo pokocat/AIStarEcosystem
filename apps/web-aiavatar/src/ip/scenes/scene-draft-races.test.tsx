@@ -90,7 +90,7 @@ async function startImageInA() {
   fillField(screen.getByRole("textbox", { name: "想要的画面" }), "test image");
 }
 const openB = async () => { const recent = await openRecent(); await act(async () => { fireEvent.click(recent.getByRole("button", { name: /draft B/ })); }); };
-const continueLink = () => screen.getByRole("link", { name: "在画布中查看" }).getAttribute("href");
+const continueLink = () => screen.getByRole("link", { name: "在画布上查看" }).getAttribute("href");
 
 test("image: A's save coming back after B was opened finishes A's work and leaves the page on B", async () => {
   const first = later<IpProject>();
@@ -169,7 +169,7 @@ test("video: a removed voice stays removed when the draft is opened again; the o
   cleanup(); api.getProject.mockClear();
   await openVideoDraft();
   expect(screen.queryByRole("button", { name: "移除声音" })).toBeNull();
-  expect(screen.getByRole("button", { name: "从资产库选声音" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "从资产库选择声音" })).toBeTruthy();
 });
 
 const productNode = { id: "product", type: "image", title: "商品图 1", position: { x: 100, y: 400 }, width: 100, height: 100,
@@ -190,7 +190,7 @@ test("video: after replacing the voice, opening the draft again picks the replac
   api.composeScene.mockResolvedValue({ text: "write script" });
   fillField(screen.getByRole("textbox", { name: "想做的视频" }), "保湿精华");
   fireEvent.click(screen.getByRole("button", { name: "AI 编导" }));
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "让编导写" })); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "生成脚本" })); });
   await waitFor(() => expect(api.submit).toHaveBeenCalled());
   const saved = store.get("IPP-V")!.doc;
   const script = saved.nodes.find(n => n.metadata?.studio?.sceneDirector)!;
@@ -232,7 +232,7 @@ test("video: the input bar picks the video model; duration, clearness, materials
   expect(spec()).toContain("720P");
   expect(spec()).toContain("4 秒");
   await waitFor(() => expect(hintLine()).toContain("生成视频12 积分")); // 3 积分/秒 × 4 秒
-  expect(hintLine()).toContain("这个模型不看参考素材");
+  expect(hintLine()).toContain("当前模型不使用参考素材");
   expect(screen.getByRole("button", { name: "移除商品图 1" })).toBeTruthy(); // 换模型不动素材
   await waitFor(() => expect(store.get("IPP-V")!.doc.sceneVideoModel).toBe("ep-text"));
 
@@ -285,7 +285,7 @@ test("image: a scene in the address that arrives after mounting is followed; lea
   window.history.replaceState(null, "", "/image?scene=white-background");
   view.rerender(<SceneImageStudio/>);
   await waitFor(() => expect(document.querySelector(".scene-composer-head strong")?.textContent).toBe("商品白底图"));
-  expect(screen.queryByRole("link", { name: "在画布中查看" })).toBeNull();
+  expect(screen.queryByRole("link", { name: "在画布上查看" })).toBeNull();
 });
 
 // 2026-10-30 复测：图片场景写了没提交的要求，换个场景再回来全清空了。

@@ -1,7 +1,7 @@
 "use client";
 // 成片高级编辑（2026-10-19）：在 Twick 的编辑器里做基础剪辑（排顺序、掐头去尾、切开、文字、字幕、两条音轨）。
 // Twick 只管编辑和预览；导出时把工程转成「片段 / 音频 / 文字 / 字幕 + 起止时间」的清单（toEditTimeline），
-// 走普通的成片合成任务交给服务端 FFmpeg 合成，结果和一键成片一样出现在「合成好的作品」里。
+// 走普通的成片合成任务交给服务端 FFmpeg 合成，结果和一键成片一样出现在「已合成的作品」中。
 // 素材一律先用带登录的同源接口取成 Blob 再交给 Twick：线上 OSS 没配 CORS，而 Twick 播放时设了 crossOrigin。
 import "@/styles/twick-scoped.css";
 import { useEffect, useMemo, useReducer, useRef, useState, type ComponentType } from "react";
@@ -43,10 +43,10 @@ const SIZES: Record<string, { width: number; height: number }> = { "16:9": { wid
 // Twick 自带的工具和面板都是英文、功能也多；全部藏起来，换成我们自己的四个中文面板（只留基础剪辑）。
 const HIDDEN_TOOLS = ["video", "image", "audio", "text", "emoji", "text-style", "effect", "shape", "caption", "generate-media", "templates", "record", "chapters", "script"];
 const TOOLS = [
-  { id: "cn-video", name: "视频", icon: "Video", description: "画布里的视频" },
-  { id: "cn-audio", name: "音频", icon: "Audio", description: "画布里的配音和音乐" },
-  { id: "cn-text", name: "文字", icon: "Type", description: "加一段文字" },
-  { id: "cn-caption", name: "字幕", icon: "MessageSquare", description: "加一条字幕" },
+  { id: "cn-video", name: "视频", icon: "Video", description: "画布中的视频" },
+  { id: "cn-audio", name: "音频", icon: "Audio", description: "画布中的配音和音乐" },
+  { id: "cn-text", name: "文字", icon: "Type", description: "添加文字" },
+  { id: "cn-caption", name: "字幕", icon: "MessageSquare", description: "添加字幕" },
 ];
 const fmt = (s: number) => `${Math.round(s * 10) / 10} 秒`;
 /** 字幕轨的样式：半透明底的整句字幕，放在画面中线往下约 30% 高度处（和一键合成烧的字幕位置差不多）。 */
@@ -58,7 +58,7 @@ async function loadMedia(node: CanvasNodeData): Promise<Media | undefined> {
   if (!key) return undefined;
   // 演示数据没有后端，素材本来就在本站；线上一律走同源接口（带登录、查归属）。
   const blob = USE_MOCK && node.metadata?.content
-    ? await fetch(node.metadata.content).then(r => { if (!r.ok) throw new Error(`素材读取失败 ${r.status}`); return r.blob(); })
+    ? await fetch(node.metadata.content).then(r => { if (!r.ok) throw new Error(`素材加载失败 ${r.status}`); return r.blob(); })
     : await fetchAssetBlob(key);
   return { key, url: URL.createObjectURL(blob), name: node.title || "素材", type: node.type === CanvasNodeType.Audio ? "audio" : "video", seconds: studioMediaSeconds(node) };
 }
@@ -169,12 +169,12 @@ function mediaPanel(kind: "video" | "audio", nodes: CanvasNodeData[], resolve: (
       } catch (e) { onError(e); } finally { setAdding(undefined); }
     };
     return <div className="panel-container studio-advanced-panel">
-      <div className="panel-title">{kind === "video" ? "画布里的视频" : "画布里的音频"}</div>
-      {!items.length ? <p className="studio-advanced-hint">{kind === "video" ? "画布上还没有视频" : "画布上还没有配音或音乐，先在画布上做一条配音"}</p>
-        : <ul className="studio-advanced-media">{items.map(n => <li key={n.id}><button type="button" disabled={!!adding} onClick={() => void put(n)} title="从播放头位置加到时间线">
+      <div className="panel-title">{kind === "video" ? "画布中的视频" : "画布中的音频"}</div>
+      {!items.length ? <p className="studio-advanced-hint">{kind === "video" ? "画布中暂无视频" : "画布中暂无配音或音乐，请在画布中生成配音"}</p>
+        : <ul className="studio-advanced-media">{items.map(n => <li key={n.id}><button type="button" disabled={!!adding} onClick={() => void put(n)} title="从播放头位置添加到时间线">
           {kind === "video" ? <SignedVideo src={n.metadata?.content} storageKey={n.metadata?.storageKey} muted playsInline preload="metadata"/> : <span className="studio-advanced-audio-icon">♪</span>}
           <span>{adding === n.id ? "正在添加…" : n.title || "素材"}</span></button></li>)}</ul>}
-      <p className="studio-advanced-hint">点一下从播放头位置加到时间线，再拖动位置、拖两边调长短。</p>
+      <p className="studio-advanced-hint">点击添加到播放头位置，可拖动调整位置，拖动两端调整时长。</p>
     </div>;
   };
 }
@@ -183,10 +183,10 @@ function textPanel(size: { width: number; height: number }): ComponentType<Panel
   const add = useAddToTimeline(size);
   const [text, setText] = useState("");
   return <div className="panel-container studio-advanced-panel">
-    <div className="panel-title">加文字</div>
-    <Input.TextArea aria-label="要加的文字" value={text} onChange={e => setText(e.target.value)} rows={3} maxLength={120} placeholder="比如：限时优惠"/>
-    <Button type="primary" disabled={!text.trim()} onClick={() => { void add(new TextElement(text.trim(), { fontSize: 48, fill: "#FFFFFF", fontWeight: 700 }), 3, "文字", TRACK_TYPES.ELEMENT); setText(""); }}>加到画面</Button>
-    <p className="studio-advanced-hint">从播放头位置开始显示 3 秒。在画面上拖动文字换位置，在右边改字号和颜色。</p>
+    <div className="panel-title">添加文字</div>
+    <Input.TextArea aria-label="文字内容" value={text} onChange={e => setText(e.target.value)} rows={3} maxLength={120} placeholder="例如：限时优惠"/>
+    <Button type="primary" disabled={!text.trim()} onClick={() => { void add(new TextElement(text.trim(), { fontSize: 48, fill: "#FFFFFF", fontWeight: 700 }), 3, "文字", TRACK_TYPES.ELEMENT); setText(""); }}>添加到画面</Button>
+    <p className="studio-advanced-hint">从播放头位置开始显示 3 秒。可在画面中拖动文字调整位置，在属性栏修改字号和颜色。</p>
   </div>;
 }; }
 
@@ -194,10 +194,10 @@ function captionPanel(size: { width: number; height: number }): ComponentType<Pa
   const add = useAddToTimeline(size);
   const [text, setText] = useState("");
   return <div className="panel-container studio-advanced-panel">
-    <div className="panel-title">加字幕</div>
-    <Input.TextArea aria-label="要加的字幕" value={text} onChange={e => setText(e.target.value)} rows={2} maxLength={80} placeholder="这一句要说的话"/>
-    <Button type="primary" disabled={!text.trim()} onClick={() => { void add(new CaptionElement(text.trim(), 0, 3), 3, "字幕", TRACK_TYPES.CAPTION); setText(""); }}>加一条字幕</Button>
-    <p className="studio-advanced-hint">从播放头位置开始显示 3 秒，拖两边调时长。字幕都放在同一条字幕轨上。</p>
+    <div className="panel-title">添加字幕</div>
+    <Input.TextArea aria-label="字幕内容" value={text} onChange={e => setText(e.target.value)} rows={2} maxLength={80} placeholder="例如：今天介绍一款新品"/>
+    <Button type="primary" disabled={!text.trim()} onClick={() => { void add(new CaptionElement(text.trim(), 0, 3), 3, "字幕", TRACK_TYPES.CAPTION); setText(""); }}>添加字幕</Button>
+    <p className="studio-advanced-hint">从播放头位置开始显示 3 秒，拖动两端调整时长。所有字幕位于同一字幕轨。</p>
   </div>;
 }; }
 
@@ -222,20 +222,20 @@ function Inspector() {
   const kind = el instanceof VideoElement ? "视频" : el instanceof AudioElement ? "音频" : el instanceof CaptionElement ? "字幕" : el instanceof TextElement ? "文字" : el ? "素材" : "";
   return <aside className="studio-advanced-inspector" aria-label="选中内容">
     {!el ? <div className="studio-advanced-guide">
-      <h3>怎么剪</h3>
+      <h3>剪辑说明</h3>
       <ul>
-        <li>拖动时间线上的片段换位置。</li>
-        <li>拖片段的两边掐头去尾。</li>
-        <li>把播放头放到要切的地方，点时间线上方的剪刀切开。</li>
-        <li>选中后点这里的「删除」，后面的片段会自动补上来。</li>
-        <li>左边加配音、文字和字幕，选中后在这里改。</li>
+        <li>拖动时间线上的片段调整位置。</li>
+        <li>拖动片段两端裁剪首尾。</li>
+        <li>将播放头移到分割位置，点击时间线上方的剪刀分割。</li>
+        <li>选中后点击「删除」，后续片段将自动前移。</li>
+        <li>在工具栏添加配音、文字和字幕，选中后可在此修改。</li>
       </ul>
     </div> : <>
       <h3>{kind}{el.getName?.() && el.getName() !== kind ? ` · ${el.getName()}` : ""}</h3>
-      <p className="studio-advanced-hint">在成片里 {fmt(el.getStart())} – {fmt(el.getEnd())}，共 {fmt(el.getEnd() - el.getStart())}</p>
+      <p className="studio-advanced-hint">成片中 {fmt(el.getStart())}–{fmt(el.getEnd())}，共 {fmt(el.getEnd() - el.getStart())}</p>
       {(el instanceof VideoElement || el instanceof AudioElement) && <label className="studio-advanced-field">音量 {Math.round((Number(props.volume ?? 1)) * 100)}%
         <Slider aria-label="音量" min={0} max={100} value={Math.round(Number(props.volume ?? 1) * 100)} onChange={(v: number) => setProp("volume", v / 100)}/></label>}
-      {el instanceof VideoElement && Number(props.volume ?? 1) === 0 && <p className="studio-advanced-hint">这段的原声关掉了（选了配音时默认关掉）。</p>}
+      {el instanceof VideoElement && Number(props.volume ?? 1) === 0 && <p className="studio-advanced-hint">此片段原声已关闭（使用配音时默认关闭）。</p>}
       {(el instanceof TextElement || el instanceof CaptionElement) && <label className="studio-advanced-field">{el instanceof CaptionElement ? "字幕内容" : "文字内容"}
         <Input.TextArea aria-label="文字内容" value={el.getText()} rows={3} onChange={e => change(target => (target as TextElement).setText(e.target.value))}/></label>}
       {el instanceof TextElement && <div className="studio-advanced-row">
@@ -258,7 +258,7 @@ export function StudioAdvancedEditor(p: Props) {
     const key = node.metadata?.storageKey || "";
     let pending = cache.current.get(key);
     if (!pending) {
-      pending = loadMedia(node).then(m => { if (!m) throw new Error("素材没有存储位置，加不进来"); return m; });
+      pending = loadMedia(node).then(m => { if (!m) throw new Error("素材无法添加"); return m; });
       pending.catch(() => cache.current.delete(key));
       cache.current.set(key, pending);
     }
@@ -296,8 +296,8 @@ export function StudioAdvancedEditor(p: Props) {
         : await seedProject(p.clips.flatMap(c => loaded.filter(m => m.key === c.metadata?.storageKey)),
           p.voice ? loaded.find(m => m.key === p.voice?.metadata?.storageKey) : undefined, p.draft, size, name => skipped.push(name));
       if (!alive) return;
-      if (loaded.length < byKey.size) setLoadError(`有 ${byKey.size - loaded.length} 个素材没取到，已从时间线去掉`);
-      else if (skipped.length) setLoadError(`「${skipped.join("」「")}」读不出来，没有放进时间线`);
+      if (loaded.length < byKey.size) setLoadError(`${byKey.size - loaded.length} 个素材加载失败，已从时间线移除`);
+      else if (skipped.length) setLoadError(`「${skipped.join("」「")}」加载失败，未加入时间线`);
       setInitial(project);
     });
     return () => { alive = false; };
@@ -324,14 +324,14 @@ export function StudioAdvancedEditor(p: Props) {
   const exportCut = async (project: ProjectJSON) => {
     if (busy) return;
     const timeline = toEditTimeline(project, size);
-    if (!timeline.clips.length) { message.error("时间线上至少要有一段视频"); return; }
+    if (!timeline.clips.length) { message.error("时间线中至少需要一段视频"); return; }
     setBusy(true);
     try {
-      if (await p.onExport(timeline, edit(project))) { message.success("已开始合成，完成后出现在「合成好的作品」里"); p.onClose(); }
+      if (await p.onExport(timeline, edit(project))) { message.success("已开始合成，完成后显示在「已合成的作品」中"); p.onClose(); }
     } finally { setBusy(false); }
   };
 
-  if (!initial) return <div className="studio-advanced-shell studio-advanced-loading" role="status">正在载入素材…</div>;
+  if (!initial) return <div className="studio-advanced-shell studio-advanced-loading" role="status">正在加载素材…</div>;
   return <div className="studio-advanced-shell twick-scope">
     <LivePlayerProvider>
       <TimelineProvider contextId={`studio-advanced-${p.projectId}`} resolution={size} initialData={initial} analytics={{ enabled: false }}>

@@ -7,6 +7,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import type { StudioDialogueMessage, StudioMessageBlock } from '@ai-star-eco/types/ip-studio-workflow';
 import { blockKey } from '@/canvas-bridge/studio-dialogue-store';
 import { StudioDialogueMessageView, StudioDialogueQueueMark } from './studio-dialogue-message';
+import { DIALOGUE_VERIFYING } from './studio-dialogue-session';
 
 afterEach(cleanup);
 
@@ -44,16 +45,16 @@ test('a reply shows its credits once, the execution summary does not repeat them
 });
 
 // Codex review 2026-10-20 (P1): while a lost answer to 「开始制作」 is being settled, the card says so and can check now.
-test('a card whose confirmation is being settled says so and offers 「现在再查一次」', async () => {
+test('a card whose confirmation is being settled says so and offers 「立即核对」', async () => {
   const approval: StudioMessageBlock = { type: 'approval', approvalId: 'ap1', stage: 'production', planFingerprint: 'f1', scope: ['海报'], quotedCost: 8, budgetCap: 12, autoFixCap: 0, status: 'pending' };
   const card = { ...message, text: '', blocks: [approval] };
   const recheck = vi.fn();
   const waiting = { ...handlers, onApprove: vi.fn(() => new Promise(() => {})), verifyingApprovalId: 'ap1', onRecheck: recheck };
   render(<StudioDialogueMessageView message={card} nodes={[]} shortfalls={{}} handlers={waiting}/>);
-  expect(screen.queryByText('正在核对确认结果，请稍等')).toBeNull();
+  expect(screen.queryByText(DIALOGUE_VERIFYING)).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '开始制作' }));
-  expect(await screen.findByText('正在核对确认结果，请稍等')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: '现在再查一次' }));
+  expect(await screen.findByText(DIALOGUE_VERIFYING)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '立即核对' }));
   expect(recheck).toHaveBeenCalledOnce();
 });
 
@@ -102,9 +103,9 @@ test('a recharge note links to the payer\'s top-up page, an old note shows as it
   const note: StudioDialogueMessage = { id: 's1', threadId: 'th', seq: 3, role: 'system', status: 'done', createdAt: '2026-10-23T13:00:00Z',
     text: '积分不够了，已经做好的都留在画布上。充值后跟我说一声，我接着做。', blocks: [], notice: 'recharge' };
   const { container, rerender } = render(<StudioDialogueMessageView message={note} nodes={[]} shortfalls={{}} handlers={handlers}/>);
-  expect(screen.getByRole('link', { name: '去充值' }).getAttribute('href')).toBe('/studio#/membership');
+  expect(screen.getByRole('link', { name: '充值' }).getAttribute('href')).toBe('/studio#/membership');
   rerender(<StudioDialogueMessageView message={{ ...note, notice: 'recharge-enterprise' }} nodes={[]} shortfalls={{}} handlers={handlers}/>);
-  expect(screen.getByRole('link', { name: '去申请企业充值' }).getAttribute('href')).toBe('/enterprise');
+  expect(screen.getByRole('link', { name: '申请企业充值' }).getAttribute('href')).toBe('/enterprise');
   rerender(<StudioDialogueMessageView message={{ ...note, notice: undefined, text: '这次处理步骤较多，已暂停。已完成的内容已保留，点「继续」接着做。' }} nodes={[]} shortfalls={{}} handlers={handlers}/>);
   expect(container.querySelector('.studio-dialogue-recharge')).toBeNull();
   expect(container.textContent).toContain('已暂停');
@@ -118,14 +119,14 @@ test('a plan the assistant is reworking reads as work in progress, and disappear
   const view = (status: string, blocks: StudioMessageBlock[]) => <StudioDialogueMessageView message={{ ...message, status, text: '', blocks } as any} nodes={[]} shortfalls={{}} handlers={handlers}/>;
   const { container, rerender } = render(view('streaming', [rejected]));
   expect(container.textContent).toContain('重新整理中');
-  expect(container.textContent).not.toContain('没有完成');
+  expect(container.textContent).not.toContain('失败');
   expect(container.querySelector('.studio-dialogue-tool-reason')).toBeNull();
   rerender(view('streaming', [rejected, next]));
   expect(container.querySelectorAll('.studio-dialogue-tool')).toHaveLength(1);
   // Nothing came of it: say so, in words that name a next step.
   rerender(view('done', [rejected]));
-  expect(container.textContent).toContain('没有完成');
-  expect(container.querySelector('.studio-dialogue-tool-reason')?.textContent).toContain('换个说法');
+  expect(container.textContent).toContain('失败');
+  expect(container.querySelector('.studio-dialogue-tool-reason')?.textContent).toContain('调整描述');
   expect(container.textContent).not.toContain('还没准备好');
 });
 

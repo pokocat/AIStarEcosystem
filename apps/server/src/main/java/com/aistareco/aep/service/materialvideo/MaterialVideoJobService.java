@@ -524,7 +524,7 @@ public class MaterialVideoJobService {
         if(job.getCreditsHeld()>0)creditService.releaseHold(CREDIT_REF_TYPE,job.getId(),"供应商已确认未受理 · 退回原付款账户");
         enterpriseBilling.complete(CREDIT_REF_TYPE,job.getId());
         payload.put(PAYLOAD_NOT_ACCEPTED_PROOF,proof);job.setPayloadJson(write(payload));
-        job.setStatus("failed");job.setErrorCode("VIDEO_CONFIRMED_NOT_ACCEPTED");job.setErrorMessage("供应商已确认未受理，任务已关闭");
+        job.setStatus("failed");job.setErrorCode("VIDEO_CONFIRMED_NOT_ACCEPTED");job.setErrorMessage("生成服务确认未收到此任务，任务已关闭");
         job.setCompletedAt(OffsetDateTime.now());job.setUpdatedAt(OffsetDateTime.now());jobRepo.saveAndFlush(job);
         if(generationQueue!=null)TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override public void afterCommit(){generationQueue.finish(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,job.getId());}
@@ -727,7 +727,7 @@ public class MaterialVideoJobService {
 
     /** 进度文案（已入队 / 提交生成请求 / AI 生成中 / 已完成 / 生成失败）。视频生成区的任务卡用同一套。 */
     public static String stageLabel(MaterialVideoJob job) {
-        if("VIDEO_SUBMISSION_UNKNOWN".equals(job.getErrorCode()))return "受理结果待核对";
+        if("VIDEO_SUBMISSION_UNKNOWN".equals(job.getErrorCode()))return "提交结果待核对";
         if("VIDEO_RECONCILIATION_PENDING".equals(job.getErrorCode()))return "模型端仍在处理";
         return stageLabel(job.getStatus());
     }

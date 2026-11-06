@@ -44,14 +44,14 @@ export function AccountOverview({ name, phone, demo, identity }: { name: string;
     <header className="account-overview-header"><div><h1>我的账号</h1><p>管理账号、积分和创作资源</p></div><Link href="/projects" className="account-create-link">返回项目<ArrowRight size={16}/></Link></header>
     <section className="account-profile" aria-label="账号信息">
       <EditableAccountAvatar identity={identity} size={52} />
-      <div><h2 title={name}>{name}</h2><p>{phone || "手机号与登录方式可在账号与安全中管理"}{demo && <span className="account-demo">演示数据</span>}</p></div>
+      <div><h2 title={name}>{name}</h2><p>{phone || "手机号与登录方式可在「账号与安全」中管理"}{demo && <span className="account-demo">演示数据</span>}</p></div>
       <Link href="/studio#/security">账号与安全</Link>
     </section>
     <section className="account-overview-section" aria-labelledby="account-management-title">
       <h2 id="account-management-title">账号管理</h2>
       <div className="account-action-list">
         {isIdMode() && <Link href="/invitations"><span><strong>邀请朋友</strong><small>管理邀请链接，查看邀请记录</small></span><ArrowRight size={16} aria-hidden="true"/></Link>}
-        {process.env.NEXT_PUBLIC_ENTERPRISE_ENABLED === "1" && <Link href="/enterprise"><span><strong>企业积分</strong><small>管理企业余额、积分分配与充值记录</small></span><ArrowRight size={16} aria-hidden="true"/></Link>}
+        {process.env.NEXT_PUBLIC_ENTERPRISE_ENABLED === "1" && <Link href="/enterprise"><span><strong>企业积分</strong><small>查看企业积分、分配与充值记录</small></span><ArrowRight size={16} aria-hidden="true"/></Link>}
         {[{ href: "/studio#/membership", title: "会员与积分", text: "查看权益、积分余额与充值套餐" }, { href: "/studio#/storage", title: "存储用量", text: "查看各类资产的空间占用" }, { href: "/studio#/tasks", title: "任务中心", text: "查看资产生成任务的进度与历史" }].map(item => <Link href={item.href} key={item.href}><span><strong>{item.title}</strong><small>{item.text}</small></span><ArrowRight size={16} aria-hidden="true"/></Link>)}
       </div>
     </section>

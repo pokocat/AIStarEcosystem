@@ -66,7 +66,7 @@ describe("IP management user flows", () => {
     await openPerson();
     fireEvent.click(screen.getByRole("tab", { name: "形象版本" }));
     fireEvent.click(screen.getByRole("button", { name: "侧面参考" }));
-    fireEvent.click(screen.getByRole("button", { name: "生成形象" }));
+    fireEvent.click(screen.getByRole("button", { name: "新建画布" }));
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/projects/IPP-free?start=image"));
     const node = mocks.update.mock.calls[0][1].doc.nodes[0];
     expect(node.metadata.storageKey).toBe("owned/side-v1.png");
@@ -76,9 +76,9 @@ describe("IP management user flows", () => {
   it("reuses the existing free project after an initial reference-save failure", async () => {
     mocks.update.mockRejectedValueOnce(new Error("引用尚未保存")).mockResolvedValueOnce(project);
     await openPerson();
-    fireEvent.click(screen.getByRole("button", { name: "生成形象" }));
+    fireEvent.click(screen.getByRole("button", { name: "新建画布" }));
     await screen.findByText("引用尚未保存");
-    fireEvent.click(screen.getByRole("button", { name: "生成形象" }));
+    fireEvent.click(screen.getByRole("button", { name: "新建画布" }));
     await waitFor(() => expect(mocks.push).toHaveBeenCalled());
     expect(mocks.create).toHaveBeenCalledTimes(1);
     expect(mocks.update).toHaveBeenCalledTimes(2);

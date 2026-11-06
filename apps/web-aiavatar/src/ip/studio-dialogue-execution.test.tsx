@@ -34,7 +34,7 @@ test('a failed step can be retried from the strip; the retry is the server-side 
   const onControl = vi.fn(async () => {});
   render(<StudioDialogueExecution execution={failedAnalysis} budget={{ approvedCap: 63, spent: 0 }} checks={[]} onControl={onControl}/>);
   expect(screen.getByText(failedAnalysis.needsUserReason!)).toBeDefined();
-  fireEvent.click(screen.getByRole('button', { name: '重试这一步' }));
+  fireEvent.click(screen.getByRole('button', { name: '重试' }));
   await waitFor(() => expect(onControl).toHaveBeenCalledWith('resume'));
 });
 
@@ -68,13 +68,13 @@ test('a plan stopped on a material outside the run names it and offers add or re
     steps: [{ ...failedAnalysis.steps[0], status: 'done' as const }, { ...failedAnalysis.steps[1], status: 'failed' as const,
       materials: [{ nodeId: 'n-sheet', title: '三视图', onCanvas: true }, { nodeId: 'n-gone', title: '', onCanvas: false }] }] };
   render(<StudioDialogueExecution execution={stopped} budget={{ approvedCap: 63, spent: 7 }} checks={[]} onControl={onControl}/>);
-  expect(screen.queryByRole('button', { name: '重试这一步' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '重试' })).toBeNull();
   expect(screen.getByText('已不在画布上')).toBeDefined();
-  fireEvent.click(screen.getByRole('button', { name: '在画布上看' }));
+  fireEvent.click(screen.getByRole('button', { name: '在画布上查看' }));
   expect(dispatched.some(d => d?.nodeId === 'n-sheet')).toBe(true);
-  fireEvent.click(screen.getByRole('button', { name: '加入这次制作，重新编排' }));
+  fireEvent.click(screen.getByRole('button', { name: '加入并重新编排' }));
   await waitFor(() => expect(onControl).toHaveBeenCalledWith('resume', { addMaterialNodeIds: ['n-sheet'] }));
-  fireEvent.click(screen.getByRole('button', { name: '不用它，重新编排' }));
+  fireEvent.click(screen.getByRole('button', { name: '不使用并重新编排' }));
   await waitFor(() => expect(onControl).toHaveBeenLastCalledWith('resume'));
   window.removeEventListener('studio-command', listen);
 });

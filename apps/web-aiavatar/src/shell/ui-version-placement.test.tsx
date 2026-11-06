@@ -9,12 +9,12 @@ import { HubTabBar } from "@/components/hub/ui";
 
 afterEach(() => { cleanup(); document.documentElement.removeAttribute("data-ui"); });
 
-// 2026-10-30 线上走查：新版的「回到旧版」只悬浮在右上角，压住了卡片标题和「新建创作」。
+// 2026-10-30 线上走查：新版的「返回旧版」只悬浮在右上角，压住了卡片标题和「新建创作」。
 test("in the new version the switch sits in the page heading next to the page actions; the old version has none there", () => {
   document.documentElement.setAttribute("data-ui", "next");
   render(<StudioPage title="项目" description="管理画布" actions={<button type="button">新建创作</button>}>内容</StudioPage>);
   const actions = within(document.querySelector(".studio-page-actions") as HTMLElement);
-  expect(actions.getAllByRole("button").map(b => b.textContent)).toEqual(["回到旧版", "新建创作"]);
+  expect(actions.getAllByRole("button").map(b => b.textContent)).toEqual(["返回旧版","新建创作"]);
   expect(document.querySelector(".ip-ui-switch-inline")).toBeTruthy();
   cleanup();
   document.documentElement.removeAttribute("data-ui");

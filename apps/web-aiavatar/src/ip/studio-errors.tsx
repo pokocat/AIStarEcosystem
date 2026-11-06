@@ -103,7 +103,7 @@ function controlAction(control: Element, dialog: Element | null): string {
   const label = tidy(control.getAttribute('aria-label') || (control as HTMLElement).innerText || control.textContent || control.getAttribute('title') || (control as HTMLInputElement).value || '');
   // 「确定」「确认删除」「确认分配 100 积分」这类确认按钮，说做什么的是弹窗标题（「删除画布」「分配企业积分」）。
   if ((!label || GENERIC.test(label) || /^确认./.test(label)) && dialogTitle(dialog)) return clip(dialogTitle(dialog));
-  return label ? `「${clip(label)}」` : '这次操作';
+  return label ? `「${clip(label)}」` : '本次操作';
 }
 
 /** 记一次用户操作（测试也用它模拟点击）。点在错误弹窗 / 提示自己身上的不算。 */
@@ -242,14 +242,14 @@ const conflictNext = (refreshed: boolean) => refreshed ? '此内容已在其他�
 export function failureNext(code: string, refreshed = false, reason = ''): string {
   if (isConflict(code)) return `${conflictNext(refreshed)}如有需要，请修改后重试。`;
   if (code === 'STUDIO_PRICE_CHANGED') return '价格已更新，请刷新页面后重新确认。';
-  if (code === 'STUDIO_USAGE_PENDING') return '本次用量正在核对，请先查看原任务状态。如需协助，可复制「错误详情」反馈给我们。';
+  if (code === 'STUDIO_USAGE_PENDING') return '本次用量正在核对，请查看原任务状态。如需协助，可复制「错误详情」反馈给我们。';
   if (code === 'VIDEO_MODEL_RETIRED') return '请更换可用的视频模型后重新生成。';
   if (code === 'VIDEO_REFERENCE_PERSON_RESTRICTED' || /未通过内容审核/.test(reason)) return '请根据上述原因检查描述和参考素材，调整后重新生成。原因不明确时，可复制「错误详情」反馈给我们。';
   // Provider codes can contain BALANCE/INSUFFICIENT/NOT_FOUND; none proves the customer's wallet or work is at fault.
   if (isProviderModelError(code)) return '请根据上述原因处理。原因不明确或多次出现时，可复制「错误详情」反馈给我们。';
   if (/_NOT_FOUND$/.test(code)) return '此内容已不存在，可能已在其他地方删除。请刷新页面查看最新内容。';
   if (/_RUNNING$/.test(code)) return '请等待进行中的操作完成后重试。';
-  if (code === 'NETWORK_ERROR') return '请检查网络并刷新页面，确认操作是否已生效后再决定是否重试。';
+  if (code === 'NETWORK_ERROR') return '请检查网络并刷新页面，确认操作是否已生效后决定是否重试。';
   if (isCustomerWalletError(code)) return '请按上述积分提示处理后重试。';
   return '请稍后重试。多次失败时，可复制「错误详情」反馈给我们。';
 }
@@ -322,7 +322,7 @@ export function StudioNotifications() {
         window.setTimeout(() => {
           deciding.delete(key);
           if (shownInOpenDialog(error.message)) recentDialogs.set(key, Date.now());
-          else openStudioFailure(modal, { action: meta.action || '这次操作', error, next: meta.next });
+          else openStudioFailure(modal, { action: meta.action || '本次操作', error, next: meta.next });
         }, 120);
         return;
       }

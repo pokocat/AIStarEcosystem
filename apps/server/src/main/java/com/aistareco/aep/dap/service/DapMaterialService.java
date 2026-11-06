@@ -79,7 +79,7 @@ public class DapMaterialService {
 
     public List<MaterialDto> listByRef(String userId, String refType, String refId) {
         if (refType == null || refType.isBlank() || refId == null || refId.isBlank()) {
-            throw BusinessException.badRequest("DAP_MATERIAL_REF_REQUIRED", "缺少查询条件（refType + refId）");
+            throw BusinessException.badRequest("DAP_MATERIAL_REF_REQUIRED", "缺少查询条件，请刷新后重试");
         }
         return materialRepo.findByRefTypeAndRefIdAndOwnerUserIdOrderByCreatedAtDesc(refType, refId, userId)
                 .stream().map(m -> MaterialDto.from(m, storage::signedUrl)).toList();
@@ -187,7 +187,7 @@ public class DapMaterialService {
     @Transactional
     public List<MaterialDto> resubmitForCapture(String userId, String captureId) {
         DapCapture c = captureRepo.findByIdAndOwnerUserId(captureId, userId)
-                .orElseThrow(() -> BusinessException.notFound("DAP_CAPTURE_NOT_FOUND", "捕获会话不存在或无权访问"));
+                .orElseThrow(() -> BusinessException.notFound("DAP_CAPTURE_NOT_FOUND", "拍摄记录不存在或无权访问"));
         DapMaterialGroup g = realAuth.requireActiveSession(userId, c);
         return submitForCapture(userId, c, g);
     }
@@ -199,7 +199,7 @@ public class DapMaterialService {
                 .filter(x -> x.getDeletedAt() == null)
                 .orElseThrow(() -> BusinessException.notFound("DAP_AVATAR_NOT_FOUND", "数字人不存在或无权访问"));
         if (a.getImageKey() == null || a.getImageKey().isBlank()) {
-            throw BusinessException.badRequest("DAP_NO_IMAGE", "该数字人还没有定妆形象，先完成创建再送审");
+            throw BusinessException.badRequest("DAP_NO_IMAGE", "该数字人还没有定妆形象，请完成创建后送审");
         }
         DapMaterial existing = findReusable(userId, "avatar", avatarId, a.getImageKey());
         if (existing != null) return MaterialDto.from(existing, storage::signedUrl);

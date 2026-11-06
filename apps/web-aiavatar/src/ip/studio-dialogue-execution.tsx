@@ -11,13 +11,13 @@ import type { StudioCheckResultData, StudioPlanExecution, StudioPlanExecutionBud
 import { dispatchStudioCommand } from '@/canvas-bridge/studio-nodes';
 import { StudioErrorNotice, useStudioApp, useStudioErrorState } from './studio-errors';
 
-const STATUS = { running: '进行中', paused: '已暂停', needs_user: '等你确认', done: '已完成', partial: '部分完成', failed: '没有完成', canceled: '已停止' } as const;
-const STEP_STATUS: Record<StudioPlanExecutionStep['status'], string> = { pending: '等前面做完', submitted: '已提交', running: '进行中', needs_user: '等你确认', done: '已完成', skipped: '已跳过', failed: '没有完成' };
+const STATUS = { running: '进行中', paused: '已暂停', needs_user: '待确认', done: '已完成', partial: '部分完成', failed: '失败', canceled: '已停止' } as const;
+const STEP_STATUS: Record<StudioPlanExecutionStep['status'], string> = { pending: '等待中', submitted: '已提交', running: '进行中', needs_user: '待确认', done: '已完成', skipped: '已跳过', failed: '失败' };
 
 export function checkSummary(check: StudioCheckResultData) {
   const count = (status: string) => check.result.items.filter(i => i.status === status).length;
-  const parts = [count('pass') && `通过 ${count('pass')} 项`, count('fail') && `没通过 ${count('fail')} 项`, count('unknown') && `无法判断 ${count('unknown')} 项`].filter(Boolean);
-  return parts.length ? parts.join('，') : '没有检查项';
+  const parts = [count('pass') && `通过 ${count('pass')} 项`, count('fail') && `未通过 ${count('fail')} 项`, count('unknown') && `无法判断 ${count('unknown')} 项`].filter(Boolean);
+  return parts.length ? parts.join('，') : '无检查项';
 }
 
 /** Which step the strip talks about: the one running, else the one waiting on the user or failed. */
@@ -47,7 +47,7 @@ export function StudioDialogueExecution({ execution, budget, checks, notice, onC
     setBusy(key); setError('');
     try { await (options ? onControl(action, options) : onControl(action)); } catch (e) { setError(e); } finally { setBusy(undefined); }
   };
-  const cancel = () => modal.confirm({ title: '停止这次制作？', content: '还没开始的会取消，已经在生成的会做完。', okText: '停止制作', cancelText: '再想想', okButtonProps: { danger: true }, onOk: () => run('cancel') });
+  const cancel = () => modal.confirm({ title: '停止制作？', content: '未开始的步骤将取消，生成中的任务会继续完成。', okText: '停止制作', cancelText: '取消', okButtonProps: { danger: true }, onOk: () => run('cancel') });
   const live = execution.status === 'running', waiting = execution.status === 'paused' || execution.status === 'needs_user';
   // Waiting on the user (a failed step, a go-ahead, or a stop for a new instruction): the same 「继续」 the server already
   // supports (a failed step gets a new attempt; a next step over budget comes back as a raise card). An open shortfall
@@ -65,8 +65,8 @@ export function StudioDialogueExecution({ execution, budget, checks, notice, onC
   const headline = live ? `${stage}中${where ? ` · ${where}` : ''}` : waiting ? `${STATUS[execution.status]}${where ? ` · ${where}` : ''}`
     : `${stage} · ${STATUS[execution.status]}${steps.length ? ` · 共 ${steps.length} 步` : ''}`;
   const queue = active && live ? queueOf?.(active) : undefined;
-  const nowLine = live && active ? `${active.title}${queue ? `，排在队列第 ${queue} 位` : ` · ${STEP_STATUS[active.status]}`}`
-    : waiting ? execution.needsUserReason || (execution.status === 'paused' ? '已暂停，已经提交的任务会做完' : '') : '';
+  const nowLine = live && active ? `${active.title}${queue ? ` · 排队第 ${queue} 位` : ` · ${STEP_STATUS[active.status]}`}`
+    : waiting ? execution.needsUserReason || (execution.status === 'paused' ? '已暂停，已提交的任务将继续完成' : '') : '';
   const controls = live || waiting;
   return <section className="studio-dialogue-execution" aria-label="制作进度" data-status={execution.status}>
     <div className="studio-dialogue-execution-head">
@@ -77,17 +77,17 @@ export function StudioDialogueExecution({ execution, budget, checks, notice, onC
     {(nowLine || controls) && <div className={`studio-dialogue-execution-now${materials ? ' is-stacked' : ''}`}>
       <p className="studio-dialogue-note">{nowLine}</p>
       {controls && <div className="studio-dialogue-execution-actions">
-        {live && <Button size="small" autoInsertSpace={false} loading={busy === 'pause'} disabled={!!busy} title="已经提交的任务会做完，之后不再提交新的" onClick={() => void run('pause')}>暂停</Button>}
+        {live && <Button size="small" autoInsertSpace={false} loading={busy === 'pause'} disabled={!!busy} title="已提交的任务将继续完成，之后不再提交新任务" onClick={() => void run('pause')}>暂停</Button>}
         {execution.status === 'paused' && <Button size="small" autoInsertSpace={false} loading={busy === 'resume'} disabled={!!busy} onClick={() => void run('resume')}>继续制作</Button>}
-        {canContinue && materials && addable.length > 0 && <Button size="small" autoInsertSpace={false} type="primary" loading={busy === 'add'} disabled={!!busy} onClick={() => void run('resume', { addMaterialNodeIds: addable }, 'add')}>加入这次制作，重新编排</Button>}
-        {canContinue && materials && <Button size="small" autoInsertSpace={false} type={addable.length ? 'default' : 'primary'} loading={busy === 'resume'} disabled={!!busy} onClick={() => void run('resume')}>{addable.length ? '不用它，重新编排' : '重新编排'}</Button>}
-        {canContinue && !materials && <Button size="small" autoInsertSpace={false} type="primary" loading={busy === 'resume'} disabled={!!busy} title={failed ? '重新提交没完成的那一步' : undefined} onClick={() => void run('resume')}>{failed ? '重试这一步' : '继续制作'}</Button>}
+        {canContinue && materials && addable.length > 0 && <Button size="small" autoInsertSpace={false} type="primary" loading={busy === 'add'} disabled={!!busy} onClick={() => void run('resume', { addMaterialNodeIds: addable }, 'add')}>加入并重新编排</Button>}
+        {canContinue && materials && <Button size="small" autoInsertSpace={false} type={addable.length ? 'default' : 'primary'} loading={busy === 'resume'} disabled={!!busy} onClick={() => void run('resume')}>{addable.length ? '不使用并重新编排' : '重新编排'}</Button>}
+        {canContinue && !materials && <Button size="small" autoInsertSpace={false} type="primary" loading={busy === 'resume'} disabled={!!busy} title={failed ? '重新提交失败的步骤' : undefined} onClick={() => void run('resume')}>{failed ? '重试' : '继续制作'}</Button>}
         <Button size="small" autoInsertSpace={false} danger loading={busy === 'cancel'} disabled={!!busy} onClick={cancel}>停止</Button>
       </div>}
     </div>}
     {materials && <ul className="studio-dialogue-execution-materials" aria-label="需要处理的素材">{materials.map(m => <li key={m.nodeId}>
-      <span title={m.title || undefined}>{m.title || '未命名的对象'}</span>
-      {m.onCanvas ? <button type="button" className="studio-dialogue-link" onClick={() => dispatchStudioCommand('focus', m.nodeId)}>在画布上看</button> : <small>已不在画布上</small>}
+      <span title={m.title || undefined}>{m.title || '未命名'}</span>
+      {m.onCanvas ? <button type="button" className="studio-dialogue-link" onClick={() => dispatchStudioCommand('focus', m.nodeId)}>在画布上查看</button> : <small>已不在画布上</small>}
     </li>)}</ul>}
     {budget?.shortfall ? <p className="studio-dialogue-warning" role="status">积分超出上限，已暂停</p> : null}
     {!!checks.length && <ul className="studio-dialogue-execution-checks" aria-label="检查结果">{checks.map(c => <li key={c.runId}>检查：{checkSummary(c)}</li>)}</ul>}
@@ -96,15 +96,15 @@ export function StudioDialogueExecution({ execution, budget, checks, notice, onC
   </section>;
 }
 
-const STEP_LINE: Record<StudioPlanExecutionStep['status'], string> = { pending: '等前面做完', submitted: '已提交', running: '生成中', needs_user: '等你确认', done: '', skipped: '已跳过', failed: '没有完成' };
+const STEP_LINE: Record<StudioPlanExecutionStep['status'], string> = { pending: '等待中', submitted: '已提交', running: '生成中', needs_user: '待确认', done: '', skipped: '已跳过', failed: '失败' };
 
 /**
- * 设计稿 Main 画板 · 对话里的逐步清单：完成的打勾、在做的转圈，结果在画布上的给「在画布上看」。
+ * 设计稿 Main 画板 · 对话里的逐步清单：完成的打勾、在做的转圈，结果在画布上的给「在画布上查看」。
  * 只写真实的东西：排队写真实位次，不写预计时间；没有逐步的实付积分，所以不写每步花了多少。
  */
 export function StudioDialogueSteps({ execution, locate, queueOf }: {
   execution: StudioPlanExecution;
-  /** The canvas node a step's result lives in, when the canvas has it; 「在画布上看」 selects and scrolls to it. */
+  /** The canvas node a step's result lives in, when the canvas has it; 「在画布上查看」 selects and scrolls to it. */
   locate?: (step: StudioPlanExecutionStep) => string | undefined;
   queueOf?: (step: StudioPlanExecutionStep) => number | undefined;
 }) {
@@ -116,7 +116,7 @@ export function StudioDialogueSteps({ execution, locate, queueOf }: {
     return <li key={step.id} data-status={step.status}>
       <span className="studio-dialogue-step-mark" aria-label={STEP_STATUS[step.status]}>{step.status === 'done' && <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 5 5L20 7"/></svg>}</span>
       <span className="studio-dialogue-step-title" title={step.title}>{step.title}{line && <small> · {line}</small>}</span>
-      {nodeId ? <button type="button" className="studio-dialogue-link" onClick={() => dispatchStudioCommand('focus', nodeId)}>在画布上看</button> : <span/>}
+      {nodeId ? <button type="button" className="studio-dialogue-link" onClick={() => dispatchStudioCommand('focus', nodeId)}>在画布上查看</button> : <span/>}
     </li>;
   })}</ol>;
 }

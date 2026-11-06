@@ -10,6 +10,8 @@ vi.mock("@ai-star-eco/api-client", () => ({
   InvitationApi: { getMyInvitations: state.read, ensureInvitationCode: state.generate },
   ApiError: class extends Error {},
 }));
+// 页面经 @/lib/datetime 引 formatDateTime，它转自上面整个被 mock 掉的包根；这里换回真实实现。
+vi.mock("@/lib/datetime", () => import("@ai-star-eco/api-client/format"));
 vi.mock("@/components/hub/auth", () => ({ useRequireAuth: () => "ok" }));
 vi.mock("@/shell/account-workspace", () => ({ AccountWorkspace: ({ children }: any) => <main>{children}</main> }));
 vi.mock("next/link", () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
@@ -32,7 +34,7 @@ test("进入页面只读取，明确生成后展示 ID 返回的链接和可预�
   expect(input.value).toBe(`${window.location.origin}/invite/accepted-code`);
   expect(screen.getByRole("link", { name: "预览邀请页" }).getAttribute("href")).toBe(input.value);
   fireEvent.click(screen.getByRole("button", { name: "复制链接" }));
-  await screen.findByText("邀请链接已复制，可以发给朋友了。");
+  await screen.findByText("邀请链接已复制。");
   expect(state.copy).toHaveBeenCalledWith(input.value);
 });
 
@@ -52,7 +54,7 @@ test("邀请人和直属记录来自 ID，翻页不泄露 UID 或修改关系", 
 test("读取失败不会伪造空记录，重试后才显示真实空态", async () => {
   state.read.mockRejectedValueOnce(new TypeError("network")).mockResolvedValueOnce(empty);
   render(<InvitationWorkspace/>);
-  await screen.findByText("暂时无法读取邀请记录");
+  await screen.findByText("邀请记录加载失败");
   expect(screen.queryByText("共 0 条记录")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "重试" }));
   await screen.findByText("共 0 条记录");
@@ -65,7 +67,7 @@ test("刷新失败保留上次列表并明确说明", async () => {
   fireEvent.click(screen.getByRole("button", { name: "刷新记录" }));
   await screen.findByText("邀请记录刷新失败");
   expect(screen.getByText("林小满")).toBeDefined();
-  expect(screen.getByText(/当前仍显示上次读取的记录/)).toBeDefined();
+  expect(screen.getByText(/上次加载的记录/)).toBeDefined();
 });
 
 test("生成失败不显示浏览器临时链接，允许显式重试", async () => {
@@ -85,7 +87,7 @@ test("剪贴板失败提示手动复制，不报告成功", async () => {
   render(<InvitationWorkspace/>);
   fireEvent.click(await screen.findByRole("button", { name: "复制链接" }));
   await screen.findByText("无法自动复制，已选中链接，请手动复制。");
-  expect(screen.queryByText("邀请链接已复制，可以发给朋友了。")).toBeNull();
+  expect(screen.queryByText("邀请链接已复制。")).toBeNull();
   const input = screen.getByLabelText("邀请链接") as HTMLInputElement;
   expect(input.selectionEnd! - input.selectionStart!).toBe(input.value.length);
 });

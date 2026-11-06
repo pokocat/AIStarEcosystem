@@ -68,8 +68,8 @@ const SceneRef = Node.create<{ count: () => number }>({
 /** 一个「缩略图 + 图N」标签：编辑框里和编导的脚本卡片里同一个样子。 */
 export function PromptRefBadge({ index, info, onOpen }: { index: number; info?: ScenePromptRef; onOpen?: (ref: ScenePromptRef) => void }) {
   const label = `图${index}`;
-  return <button type="button" className="scene-prompt-ref" tabIndex={-1} title={info ? `${info.title}，点一下看大图` : label}
-    aria-label={info ? `${label}：${info.title}，看大图` : label} onMouseDown={e => e.preventDefault()} onClick={() => info && onOpen?.(info)}>
+  return <button type="button" className="scene-prompt-ref" tabIndex={-1} title={info ? `${info.title}，点击查看大图` : label}
+    aria-label={info ? `${label}：${info.title}，查看大图` : label} onMouseDown={e => e.preventDefault()} onClick={() => info && onOpen?.(info)}>
     {info?.url || info?.storageKey ? <SignedImage src={info.url} storageKey={info.storageKey} alt="" draggable={false}/> : null}
     <span>{label}</span>
   </button>;
@@ -231,7 +231,7 @@ function MentionMenu({ mention, refs, empty, active, onHover, onPick }: { mentio
   if (!empty && !refs.length) return null;
   const at = Math.min(active, refs.length - 1);
   return <div ref={box} className="scene-mention-menu" role="listbox" aria-label="选择素材" style={place} onMouseDown={e => e.preventDefault()}>
-    {empty ? <p>先放素材，就能在这里选</p> : refs.map((r, i) => <button key={r.index} type="button" role="option" aria-selected={i === at} className={i === at ? "is-active" : undefined} onMouseEnter={() => onHover(i)} onClick={() => onPick(r)}>
+    {empty ? <p>添加素材后可在此选择</p> : refs.map((r, i) => <button key={r.index} type="button" role="option" aria-selected={i === at} className={i === at ? "is-active" : undefined} onMouseEnter={() => onHover(i)} onClick={() => onPick(r)}>
       {r.url || r.storageKey ? <SignedImage src={r.url} storageKey={r.storageKey} alt="" draggable={false}/> : <i/>}
       <span><strong>图{r.index}</strong><small>{r.title}</small>{r.detail && <em>{r.detail}</em>}</span>
     </button>)}

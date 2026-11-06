@@ -44,56 +44,56 @@ const option = (items: StarterItem[], v: StarterValues, id: string) => {
 };
 
 const IP_ITEMS: StarterItem[] = [
-  { kind: "slot", id: "photos", label: "你的照片", type: "image", min: 1, max: 3, need: "1–3 张照片", missing: "还差照片", tooMany: "照片最多 3 张",
-    hint: "正脸清晰、光线均匀、只有一个人，效果最好。只用本人或已获授权的照片。" },
+  { kind: "slot", id: "photos", label: "你的照片", type: "image", min: 1, max: 3, need: "1–3 张照片", missing: "请添加照片", tooMany: "照片最多 3 张",
+    hint: "建议使用正脸清晰、光线均匀的单人照片。仅限本人或已获授权的照片。" },
   { kind: "option", id: "style", label: "风格", defaultValue: "business", choices: IP_PROMPT_STYLES.map(({ value, label }) => ({ value, label })) },
-  { kind: "option", id: "output", label: "要出的图", defaultValue: "sheet", choices: IP_PICTURE_TYPES.map(({ value, label, ratio }) => ({ value, label: `${label} · ${value === "scene" ? "横 / 竖" : ratio}` })) },
+  { kind: "option", id: "output", label: "图片类型", defaultValue: "sheet", choices: IP_PICTURE_TYPES.map(({ value, label, ratio }) => ({ value, label: `${label} · ${value === "scene" ? "横 / 竖" : ratio}` })) },
   { kind: "option", id: "sceneRatio", label: "画幅", defaultValue: "9:16", when: { option: "output", value: "scene" }, choices: [
     { value: "9:16", label: "9:16 竖版" }, { value: "16:9", label: "16:9 横版" }] },
 ];
 const SCRIPT_ITEMS: StarterItem[] = [
-  { kind: "field", id: "synopsis", label: "一句梗概", placeholder: "比如：外卖员送错一单，意外救了老板的女儿", required: true, missing: "先写一句梗概" },
+  { kind: "field", id: "synopsis", label: "一句梗概", placeholder: "例如：外卖员送错一单，意外救了老板的女儿", required: true, missing: "请填写梗概" },
   { kind: "option", id: "type", label: "类型", defaultValue: "短剧", choices: ["短剧", "广告片", "口播", "微电影"].map(value => ({ value, label: value })) },
   { kind: "option", id: "length", label: "时长", defaultValue: "60 秒", choices: ["30 秒", "60 秒", "3 分钟", "分 3 集"].map(value => ({ value, label: value })) },
   { kind: "option", id: "tone", label: "基调", defaultValue: "有反转", choices: ["有反转", "搞笑", "温情", "悬疑"].map(value => ({ value, label: value })) },
 ];
 const VIDEO_ITEMS: StarterItem[] = [
-  { kind: "field", id: "description", label: "画面描述", placeholder: "比如：女孩在海边回头微笑，风吹起围巾", required: true, missing: "先写画面描述" },
-  { kind: "slot", id: "frame", label: "首帧图", type: "image", min: 0, max: 1, need: "1 张图片", missing: "", tooMany: "首帧图只要 1 张" },
+  { kind: "field", id: "description", label: "画面描述", placeholder: "例如：女孩在海边回头微笑，风吹起围巾", required: true, missing: "请填写画面描述" },
+  { kind: "slot", id: "frame", label: "首帧图", type: "image", min: 0, max: 1, need: "1 张图片", missing: "", tooMany: "首帧图仅限 1 张" },
   { kind: "option", id: "ratio", label: "画幅", defaultValue: "9:16", choices: ["9:16", "16:9", "1:1"].map(value => ({ value, label: value })) },
   { kind: "option", id: "length", label: "时长", defaultValue: "5 秒", choices: ["5 秒", "10 秒"].map(value => ({ value, label: value })) },
   { kind: "option", id: "camera", label: "镜头", defaultValue: "自动", choices: ["自动", "缓慢推近", "环绕", "跟拍"].map(value => ({ value, label: value })) },
 ];
 const RECREATION_ITEMS: StarterItem[] = [
-  { kind: "slot", id: "reference", label: "参考视频", type: "video", min: 1, max: 1, need: "1 条视频", missing: "还差参考视频", tooMany: "参考视频只要 1 条" },
-  { kind: "slot", id: "subject", label: "换进去的商品或人物", type: "image", min: 1, max: 3, need: "1–3 张图片", missing: "还差商品或人物图", tooMany: "商品或人物图最多 3 张" },
+  { kind: "slot", id: "reference", label: "参考视频", type: "video", min: 1, max: 1, need: "1 条视频", missing: "请添加参考视频", tooMany: "参考视频仅限 1 条" },
+  { kind: "slot", id: "subject", label: "替换的商品或人物", type: "image", min: 1, max: 3, need: "1–3 张图片", missing: "请添加商品或人物图", tooMany: "商品或人物图最多 3 张" },
   { kind: "option", id: "keep", label: "保留", defaultValue: "shots", choices: [
     { value: "shots", label: "节奏和镜头", phrase: "保留节奏和镜头" },
     { value: "voice", label: "节奏、镜头和口播", phrase: "保留节奏、镜头和口播" },
     { value: "rhythm", label: "只保留节奏", phrase: "只保留节奏" }] },
-  { kind: "field", id: "points", label: "要讲的卖点", placeholder: "比如：保温 12 小时，一键开盖", required: false },
+  { kind: "field", id: "points", label: "卖点", placeholder: "例如：保温 12 小时，一键开盖", required: false },
 ];
 
 export const STUDIO_STARTERS: StarterConfig[] = [{
-  key: "ip", title: "制作个人 IP", gets: "真人照片变成数字形象，出多角度设定图", needs: "1–3 张照片", skill: "image-generation", Icon: ScanFace, tone: "ip", items: IP_ITEMS,
+  key: "ip", title: "制作个人 IP", gets: "用真人照片生成数字形象和多角度设定图", needs: "1–3 张照片", skill: "image-generation", Icon: ScanFace, tone: "ip", items: IP_ITEMS,
   compose: v => {
     return composePersonalIpPrompt((v.slots.photos || []).map(n => n.title), v.options);
   },
 }, {
-  key: "script", title: "写剧本", gets: "一句梗概写成能拍的分场剧本", needs: "一句梗概", skill: "script-writing", Icon: ScrollText, tone: "text", items: SCRIPT_ITEMS,
+  key: "script", title: "写剧本", gets: "根据一句梗概写出可拍摄的分场剧本", needs: "一句梗概", skill: "script-writing", Icon: ScrollText, tone: "text", items: SCRIPT_ITEMS,
   compose: v => {
     const synopsis = starterClause(v.fields.synopsis);
     return `写一个${spaced(option(SCRIPT_ITEMS, v, "length"))}的${option(SCRIPT_ITEMS, v, "type")}剧本${synopsis ? `：${synopsis}` : ""}。${option(SCRIPT_ITEMS, v, "tone")}，分场写清画面、台词和时长。`;
   },
 }, {
-  key: "video", title: "做个短视频", gets: "一句描述出视频，也可以从一张图动起来", needs: "画面描述", skill: "video-generation", Icon: Clapperboard, tone: "video", items: VIDEO_ITEMS,
+  key: "video", title: "生成短视频", gets: "根据描述生成视频，也可以用一张图作首帧", needs: "画面描述", skill: "video-generation", Icon: Clapperboard, tone: "video", items: VIDEO_ITEMS,
   compose: v => {
     const description = starterClause(v.fields.description), frame = v.slots.frame || [], camera = option(VIDEO_ITEMS, v, "camera");
     return `做一条${spaced(option(VIDEO_ITEMS, v, "length"))}、${option(VIDEO_ITEMS, v, "ratio")} 的短视频${description ? `：${description}` : ""}。`
       + (frame.length ? `从 ${tags(frame)} 开始动起来。` : "") + (camera !== "自动" ? `镜头${camera}。` : "");
   },
 }, {
-  key: "recreation", title: "复刻视频", gets: "照爆款的节奏和镜头，换成你的商品或人物", needs: "参考视频 + 你的素材", skill: "reference-video-recreation", Icon: Repeat2, tone: "copy", items: RECREATION_ITEMS,
+  key: "recreation", title: "复刻视频", gets: "按爆款视频的节奏和镜头，换成你的商品或人物", needs: "参考视频 + 你的素材", skill: "reference-video-recreation", Icon: Repeat2, tone: "copy", items: RECREATION_ITEMS,
   compose: v => {
     const reference = v.slots.reference || [], subject = v.slots.subject || [], points = starterClause(v.fields.points);
     return `${reference.length ? `照 ${tags(reference)} 的拍法` : "照参考视频的拍法"}，把里面的商品或人物换成${subject.length ? ` ${tags(subject)}` : "我的"}，${option(RECREATION_ITEMS, v, "keep")}${points ? `，口播改成介绍：${points}` : ""}。`;
@@ -122,7 +122,7 @@ export function composeStarter(key: StarterKey, input: Partial<StarterValues>): 
       const count = (values.slots[item.id] || []).length;
       if (count < item.min) missing.push({ reason: item.missing, kind: "slot" });
       else if (count > item.max) missing.push({ reason: item.tooMany, kind: "slot" });
-    } else if (item.kind === "field" && item.required && !starterClause(values.fields[item.id])) missing.push({ reason: item.missing || `先写${item.label}`, kind: "field" });
+    } else if (item.kind === "field" && item.required && !starterClause(values.fields[item.id])) missing.push({ reason: item.missing || `请填写${item.label}`, kind: "field" });
   }
   return { text: config.compose(values), missing };
 }
@@ -169,7 +169,7 @@ export function StudioAssistantStarterForm({ config, slots, options, fields, edi
     e.preventDefault(); onSubmit();
   };
   return <section className="studio-assistant-starter-form" aria-label={config.title}>
-    <button type="button" className="studio-assistant-starter-back" onClick={onBack}><ArrowLeft size={14} aria-hidden="true"/>换一个</button>
+    <button type="button" className="studio-assistant-starter-back" onClick={onBack}><ArrowLeft size={14} aria-hidden="true"/>返回</button>
     <header><h3>{config.title}</h3><p>{config.gets}</p></header>
     {config.items.map((item, index) => {
       if (item.kind === "slot") {
@@ -179,12 +179,12 @@ export function StudioAssistantStarterForm({ config, slots, options, fields, edi
           <div className="studio-assistant-starter-slot-main">
             <div className="studio-assistant-starter-slot-head">
               <strong>{item.label}</strong>
-              {state === "done" ? <span className="studio-assistant-starter-slot-state" aria-label="已选好"><Check size={14} aria-hidden="true"/></span>
-                : <span className="studio-assistant-starter-slot-state">{state === "over" ? item.tooMany : state === "missing" ? "还缺" : "选填"}</span>}
+              {state === "done" ? <span className="studio-assistant-starter-slot-state" aria-label="已选择"><Check size={14} aria-hidden="true"/></span>
+                : <span className="studio-assistant-starter-slot-state">{state === "over" ? item.tooMany : state === "missing" ? "待补充" : "选填"}</span>}
             </div>
             {chosen.length ? <ul className="studio-assistant-starter-chosen">{chosen.map(node => <li key={node.id}>
               <span title={node.title}>{node.title}</span>
-              <button type="button" aria-label={`去掉 ${node.title}`} title="去掉" onClick={() => onRemove(node)}><X size={12} aria-hidden="true"/></button>
+              <button type="button" aria-label={`移除 ${node.title}`} title="移除" onClick={() => onRemove(node)}><X size={12} aria-hidden="true"/></button>
             </li>)}</ul> : <p className="studio-assistant-starter-need">{item.need}</p>}
           </div>
           <div className="studio-assistant-starter-slot-actions">
@@ -205,8 +205,8 @@ export function StudioAssistantStarterForm({ config, slots, options, fields, edi
       return <label key={item.id} className="studio-assistant-starter-field">
         {/* Like a slot it says when it is still missing (on a phone the reason beside the send button has no room); not once
             the message is the user's own, which no longer needs it. */}
-        <span className="studio-assistant-starter-label">{item.label}{!item.required ? <em>选填</em> : !edited && !starterClause(fields[item.id]) && <em className="is-missing">还缺</em>}</span>
-        {/* A card that starts with a line of text (写剧本, 做个短视频) puts the cursor there. */}
+        <span className="studio-assistant-starter-label">{item.label}{!item.required ? <em>选填</em> : !edited && !starterClause(fields[item.id]) && <em className="is-missing">待补充</em>}</span>
+        {/* A card that starts with a line of text (写剧本, 生成短视频) puts the cursor there. */}
         <input type="text" aria-label={item.label} value={fields[item.id] || ""} placeholder={item.placeholder} maxLength={300} autoFocus={index === 0}
           onChange={(e: ChangeEvent<HTMLInputElement>) => onField(item.id, e.target.value)} onKeyDown={enter}/>
       </label>;
@@ -214,12 +214,12 @@ export function StudioAssistantStarterForm({ config, slots, options, fields, edi
     {ipSelection && <div className="studio-assistant-starter-prompt-note" role="note" aria-label="提示词说明">
       <strong>{ipSelection.ratio} · {ipSelection.picture.label}</strong>
       <p>{ipSelection.picture.layout}</p>
-      <p>{edited ? "你已手动修改提示词，切换选项不会覆盖。点“按选项重写”可使用当前选择。" : "完整提示词已填入下方输入框，包含人物特征、风格、版式和需要避免的内容，可直接发送或修改。"}</p>
+      <p>{edited ? "你已手动修改提示词，切换选项不会覆盖。点击「按选项重写」可使用当前选择。" : "完整提示词已填入下方输入框，包含人物特征、风格、版式和需要避免的内容，可直接发送或修改。"}</p>
     </div>}
     {ipSelection && <details className="studio-assistant-starter-full-prompt" open>
       <summary>完整提示词</summary>
       <div role="region" aria-label="完整提示词正文">{prompt}</div>
     </details>}
-    {edited && <p className="studio-assistant-starter-rewrite"><button type="button" className="studio-dialogue-link" title="用上面的选项重新写输入框里的话" onClick={onRewrite}>按选项重写</button></p>}
+    {edited && <p className="studio-assistant-starter-rewrite"><button type="button" className="studio-dialogue-link" title="按当前选项重写输入框中的内容" onClick={onRewrite}>按选项重写</button></p>}
   </section>;
 }

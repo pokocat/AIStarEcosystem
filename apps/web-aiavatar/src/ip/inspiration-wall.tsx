@@ -64,7 +64,7 @@ export function InspirationWall({ items, resetKey, onOpen, manage, pageSize = 18
     <div ref={end} className="inspiration-wall-end">{more
       ? canObserve ? <span role="status"><Loader2 size={16} className="studio-gallery-spinner" aria-hidden="true"/>正在加载</span>
         : <button type="button" className="ip-brand-secondary" onClick={nextPage}>加载更多</button>
-      : items.length > pageSize && <span>已经到底了</span>}</div>
+      : items.length > pageSize && <span>已显示全部</span>}</div>
   </>;
 }
 

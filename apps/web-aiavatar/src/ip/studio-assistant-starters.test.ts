@@ -7,10 +7,10 @@ const nodes = (...titles: string[]) => titles.map(title => ({ title }));
 
 test('four cards, each naming what it makes, what it needs and the skill it sends', () => {
   expect(STUDIO_STARTERS.map(c => [c.title, c.gets, c.needs, c.skill])).toEqual([
-    ['制作个人 IP', '真人照片变成数字形象，出多角度设定图', '1–3 张照片', 'image-generation'],
-    ['写剧本', '一句梗概写成能拍的分场剧本', '一句梗概', 'script-writing'],
-    ['做个短视频', '一句描述出视频，也可以从一张图动起来', '画面描述', 'video-generation'],
-    ['复刻视频', '照爆款的节奏和镜头，换成你的商品或人物', '参考视频 + 你的素材', 'reference-video-recreation'],
+    ['制作个人 IP', '用真人照片生成数字形象和多角度设定图', '1–3 张照片', 'image-generation'],
+    ['写剧本', '根据一句梗概写出可拍摄的分场剧本', '一句梗概', 'script-writing'],
+    ['生成短视频', '根据描述生成视频，也可以用一张图作首帧', '画面描述', 'video-generation'],
+    ['复刻视频', '按爆款视频的节奏和镜头，换成你的商品或人物', '参考视频 + 你的素材', 'reference-video-recreation'],
   ]);
   expect(starterDefaults(studioStarter('ip'))).toEqual({ style: 'business', output: 'sheet', sceneRatio: '9:16' });
   expect(starterDefaults(studioStarter('script'))).toEqual({ type: '短剧', length: '60 秒', tone: '有反转' });
@@ -19,7 +19,7 @@ test('four cards, each naming what it makes, what it needs and the skill it send
 });
 
 test('制作个人 IP: the defaults, the photos as @ tags, options and the photo limits', () => {
-  expect(composeStarter('ip', {}).missing).toEqual([{ reason: '还差照片', kind: 'slot' }]);
+  expect(composeStarter('ip', {}).missing).toEqual([{ reason: '请添加照片', kind: 'slot' }]);
   const prompt = composeStarter('ip', { slots: { photos: nodes('自拍') } });
   expect(prompt.missing).toEqual([]);
   expect(prompt.text).toContain('用 @自拍 制作个人 IP，出一张IP 全视角图鉴。画幅比例：3:4。');
@@ -36,35 +36,35 @@ test('制作个人 IP: the defaults, the photos as @ tags, options and the photo
 
 test('写剧本: no synopsis leaves no empty 「：」; the synopsis loses its own full stop; every option lands in the sentence', () => {
   expect(composeStarter('script', {})).toEqual({
-    text: '写一个 60 秒的短剧剧本。有反转，分场写清画面、台词和时长。', missing: [{ reason: '先写一句梗概', kind: 'field' }] });
+    text: '写一个 60 秒的短剧剧本。有反转，分场写清画面、台词和时长。', missing: [{ reason: '请填写梗概', kind: 'field' }] });
   expect(composeStarter('script', { fields: { synopsis: '  外卖员送错一单，意外救了老板的女儿。 ' } })).toEqual({
     text: '写一个 60 秒的短剧剧本：外卖员送错一单，意外救了老板的女儿。有反转，分场写清画面、台词和时长。', missing: [] });
   expect(composeStarter('script', { fields: { synopsis: '外卖员送错一单' }, options: { type: '微电影', length: '分 3 集', tone: '悬疑' } }).text)
     .toBe('写一个分 3 集的微电影剧本：外卖员送错一单。悬疑，分场写清画面、台词和时长。');
-  expect(composeStarter('script', { fields: { synopsis: '   ' } }).missing).toEqual([{ reason: '先写一句梗概', kind: 'field' }]);
+  expect(composeStarter('script', { fields: { synopsis: '   ' } }).missing).toEqual([{ reason: '请填写梗概', kind: 'field' }]);
 });
 
-test('做个短视频: the first frame and a camera move only appear when chosen', () => {
-  expect(composeStarter('video', {})).toEqual({ text: '做一条 5 秒、9:16 的短视频。', missing: [{ reason: '先写画面描述', kind: 'field' }] });
+test('生成短视频: the first frame and a camera move only appear when chosen', () => {
+  expect(composeStarter('video', {})).toEqual({ text: '做一条 5 秒、9:16 的短视频。', missing: [{ reason: '请填写画面描述', kind: 'field' }] });
   expect(composeStarter('video', { fields: { description: '女孩在海边回头微笑，风吹起围巾' } })).toEqual({
     text: '做一条 5 秒、9:16 的短视频：女孩在海边回头微笑，风吹起围巾。', missing: [] });
   expect(composeStarter('video', { fields: { description: '女孩在海边回头微笑' }, slots: { frame: nodes('海边') }, options: { ratio: '16:9', length: '10 秒', camera: '环绕' } }).text)
     .toBe('做一条 10 秒、16:9 的短视频：女孩在海边回头微笑。从 @海边 开始动起来。镜头环绕。');
   expect(composeStarter('video', { fields: { description: 'x' }, options: { camera: '缓慢推近' } }).text).toBe('做一条 5 秒、9:16 的短视频：x。镜头缓慢推近。');
   // The first frame is optional, but only one.
-  expect(composeStarter('video', { fields: { description: 'x' }, slots: { frame: nodes('a', 'b') } }).missing).toEqual([{ reason: '首帧图只要 1 张', kind: 'slot' }]);
+  expect(composeStarter('video', { fields: { description: 'x' }, slots: { frame: nodes('a', 'b') } }).missing).toEqual([{ reason: '首帧图仅限 1 张', kind: 'slot' }]);
 });
 
 test('复刻视频: both pieces of material are required; the selling point is optional and leaves nothing behind when empty', () => {
   expect(composeStarter('recreation', {})).toEqual({
     text: '照参考视频的拍法，把里面的商品或人物换成我的，保留节奏和镜头。',
-    missing: [{ reason: '还差参考视频', kind: 'slot' }, { reason: '还差商品或人物图', kind: 'slot' }] });
+    missing: [{ reason: '请添加参考视频', kind: 'slot' }, { reason: '请添加商品或人物图', kind: 'slot' }] });
   const material = { reference: nodes('带货样片'), subject: nodes('保温杯') };
   expect(composeStarter('recreation', { slots: material })).toEqual({ text: '照 @带货样片 的拍法，把里面的商品或人物换成 @保温杯，保留节奏和镜头。', missing: [] });
   expect(composeStarter('recreation', { slots: material, options: { keep: 'rhythm' }, fields: { points: '保温 12 小时，一键开盖。' } }).text)
     .toBe('照 @带货样片 的拍法，把里面的商品或人物换成 @保温杯，只保留节奏，口播改成介绍：保温 12 小时，一键开盖。');
   expect(composeStarter('recreation', { slots: material, options: { keep: 'voice' } }).text).toBe('照 @带货样片 的拍法，把里面的商品或人物换成 @保温杯，保留节奏、镜头和口播。');
-  expect(composeStarter('recreation', { slots: { reference: nodes('a', 'b'), subject: nodes('1', '2', '3', '4') } }).missing.map(m => m.reason)).toEqual(['参考视频只要 1 条', '商品或人物图最多 3 张']);
+  expect(composeStarter('recreation', { slots: { reference: nodes('a', 'b'), subject: nodes('1', '2', '3', '4') } }).missing.map(m => m.reason)).toEqual(['参考视频仅限 1 条', '商品或人物图最多 3 张']);
 });
 
 test('material is matched to slots by node type', () => {

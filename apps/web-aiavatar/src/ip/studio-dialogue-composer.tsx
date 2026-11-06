@@ -69,7 +69,7 @@ export const StudioDialogueComposer = forwardRef<DialogueComposerHandle, Props>(
     const node = contextNodes.find(n => n.id === id);
     const type = nodeKind(node);
     return <div key={`${kind}-${id}`} className="studio-assistant-reference" data-kind={kind}>
-      <span title={node?.title}>{node?.title || '已删除的画布对象'}{node && <small> · {kind === 'attachment' ? `附件 · ${type}` : type}</small>}</span>
+      <span title={node?.title}>{node?.title || '已删除的节点'}{node && <small> · {kind === 'attachment' ? `附件 · ${type}` : type}</small>}</span>
       <button type="button" aria-label={`移除引用 ${node?.title || id}`} onClick={() => kind === 'pin' ? onUnpin(id) : onRemoveAttachment(id)}><X size={14}/></button>
     </div>;
   };
@@ -77,7 +77,7 @@ export const StudioDialogueComposer = forwardRef<DialogueComposerHandle, Props>(
     <div className="studio-assistant-references" aria-label="本次引用">{pinnedIds.map(id => chip(id, 'pin'))}{attachmentIds.filter(id => !pinnedIds.includes(id)).map(id => chip(id, 'attachment'))}</div>
     <Input.TextArea ref={area} aria-label="给创作助手的消息" aria-autocomplete="list" aria-controls={query ? 'studio-dialogue-mentions' : undefined}
       aria-activedescendant={query && suggestions.length ? `studio-dialogue-mention-${suggestions[mentionIndex % suggestions.length].id}` : undefined}
-      placeholder={placeholder || '说说要做什么，输入 @ 引用画布内容'} value={text}
+      placeholder={placeholder || '描述要做的内容，输入 @ 引用画布内容'} value={text}
       onChange={e => { const value = e.target.value; onText(value); setCaret(e.target.selectionStart); setMentionOpen(mentionOpen || (value.match(/@/g)?.length || 0) > (text.match(/@/g)?.length || 0)); setMentionIndex(0); }}
       onSelect={e => setCaret(e.currentTarget.selectionStart)}
       onKeyDown={e => {

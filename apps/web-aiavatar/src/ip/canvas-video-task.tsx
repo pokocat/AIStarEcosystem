@@ -95,7 +95,7 @@ function CanvasVideoTaskBar({ projectId, id }: { projectId: string; id: string }
     {task ? <><Link href={videoTaskHref(task)}><ArrowLeft size={14}/>返回视频页</Link><div><strong>{task.title}</strong><p>{[videoTaskLabel(task), videoTaskProblemText(task)].filter(Boolean).join(' · ')}</p></div>
       {problemNode && <button type="button" onClick={() => dispatchStudioCommand('focus', problemNode)}><LocateFixed size={14}/>定位问题</button>}
       {task.execution && (task.execution.status === 'paused' || task.execution.status === 'needs_user') && <button type="button" className="is-primary" disabled={busy} onClick={() => void resume()}><Play size={13}/>{videoTaskCanRegenerate(task) ? '重试这一步' : '继续生成'}</button>}</>
-      : <p>{error || '正在读取任务'}</p>}
+      : <p>{error || '正在加载任务…'}</p>}
     {task && error && <p role="status">{error}</p>}
   </aside>;
 }

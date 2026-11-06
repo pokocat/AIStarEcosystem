@@ -91,7 +91,7 @@ export function StyleField({ value, onChange, disabled, note }: { value: string;
     {place && <div ref={menu} className="director-style-menu" role="dialog" aria-label="选择画面风格" style={{ left: place.left, top: place.top, width: MENU_W }}>
       {chips("真人")}
       {chips("动画")}
-      <input aria-label="自定义风格" value={preset ? "" : value} maxLength={30} placeholder="或者自己写，例如：九十年代文艺片写实" onChange={e => onChange(e.target.value)}/>
+      <input aria-label="自定义风格" value={preset ? "" : value} maxLength={30} placeholder="或自定义，例如：九十年代文艺片写实" onChange={e => onChange(e.target.value)}/>
     </div>}
     {hover && <div className="director-style-hover" aria-hidden style={{ left: hover.left, top: hover.top, width: HOVER_W, height: HOVER_H }}><img src={largeOf(hover.style.id)} alt=""/></div>}
     {previewing && <StylePreview style={previewing} current={previewing.style === value} onClose={() => setPreviewing(undefined)}
@@ -104,9 +104,9 @@ function StylePreview({ style, current, onClose, onUse }: { style: DirectorStyle
     <div className="director-dialog director-style-preview" role="dialog" aria-modal="true" aria-labelledby="director-style-preview-title" ref={dialogFocus} tabIndex={-1}>
       <header><h2 id="director-style-preview-title">{style.label}</h2><button type="button" aria-label="关闭" onClick={onClose}><X size={18}/></button></header>
       <img src={largeOf(style.id)} alt={`${style.label}风格的样图`}/>
-      <p className="director-dialog-note">{style.note}样图由 AI 生成，实际效果还取决于所选的图片和视频模型。</p>
+      <p className="director-dialog-note">{style.note}样图由 AI 生成，实际效果取决于所选的图片和视频模型。</p>
       <footer><button type="button" className="ip-brand-secondary" onClick={onClose}>取消</button>
-        <button type="button" className="ip-brand-button" disabled={current} onClick={onUse}>{current ? "正在使用" : "使用这个风格"}</button></footer>
+        <button type="button" className="ip-brand-button" disabled={current} onClick={onUse}>{current ? "正在使用" : "使用此风格"}</button></footer>
     </div>
   </div>;
 }

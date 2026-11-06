@@ -88,7 +88,7 @@ public class DapAccountService {
         try {
             if (ledgerRepo.existsByReferenceTypeAndReferenceId(GRANT_REF_TYPE, ref)) return;
             creditService.creditAccount(userId, grant, LedgerEntry.LedgerEntryType.GIFT,
-                    GRANT_REF_TYPE, ref, "数字人资产平台 · 月度赠送算力");
+                    GRANT_REF_TYPE, ref, "IP Studio · 月度赠送算力");
             log.info("[dap] monthly grant issued user={} amount={}", userId, grant);
         } catch (Exception e) {
             log.warn("[dap] monthly grant failed user={}: {}", userId, e.getMessage());

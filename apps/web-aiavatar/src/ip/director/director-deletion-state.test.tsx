@@ -99,7 +99,7 @@ test("reloading a work that is still in the trash says so", async () => {
   vi.mocked(DirectorApi.getWork).mockRejectedValue(await gone("w"));
   render(<DirectorWorkbench id="w"/>);
   fireEvent.click(await screen.findByRole("button", { name: "重新加载" }));
-  expect(await screen.findByText(/还是找不到这部作品/)).toBeTruthy();
+  expect(await screen.findByText(/仍未找到此作品/)).toBeTruthy();
 });
 
 /** 同一部作品：新的读取先成功，更早发出的那次 404 后到 —— 不能把页面打回「已删除」，也不能清掉草稿。 */

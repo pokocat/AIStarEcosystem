@@ -109,7 +109,7 @@ class DirectorImageTemplateVersionTest {
         ((ObjectNode) clip().path("shots").get(1)).put("still", "陈默把信塞进口袋");
         service.refresh(c);
         assertEquals("outdated", check(asset("as1").path("image")));
-        assertEquals("描述或出图提示词已修改", asset("as1").path("image").path("staleReasons").get(0).asText());
+        assertEquals("描述或提示词已修改", asset("as1").path("image").path("staleReasons").get(0).asText());
         assertEquals("current", check(asset("as2").path("image")));
         assertEquals("outdated", check(clip().path("board")));
         assertEquals("镜头、台词或提示词已修改", clip().path("board").path("staleReasons").get(0).asText());

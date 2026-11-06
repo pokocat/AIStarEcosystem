@@ -62,11 +62,11 @@ public class EnterpriseLifecycleService {
         String requestFingerprint=hash(List.of(actor,Objects.toString(request.action(),""),Objects.toString(request.memberId(),""),confirmation));
         var prior=operations.findByEnterpriseIdAndClientRequestId(enterpriseId,key);
         if(prior.isPresent()) {
-            if(!actor.equals(prior.get().getActorUserId())||!requestFingerprint.equals(prior.get().getFingerprint()))throw conflict("ENTERPRISE_REQUEST_CONFLICT","同一请求不能更改成员操作");
+            if(!actor.equals(prior.get().getActorUserId())||!requestFingerprint.equals(prior.get().getFingerprint()))throw conflict("ENTERPRISE_REQUEST_CONFLICT","请求已失效，请刷新页面后重试");
             try{return mapper.readValue(prior.get().getResultJson(),Result.class);}catch(Exception e){throw new IllegalStateException(e);}
         }
         var state=state(actor,enterpriseId,request.action(),request.memberId());
-        if(!confirmation.equals(state.preview().confirmationFingerprint()))throw conflict("ENTERPRISE_LIFECYCLE_PREVIEW_STALE","成员、余额或在途任务已变化，请重新预览确认");
+        if(!confirmation.equals(state.preview().confirmationFingerprint()))throw conflict("ENTERPRISE_LIFECYCLE_PREVIEW_STALE","成员、余额或进行中的任务已变化，请重新预览确认");
         if(!state.preview().canProceed())throw conflict("ENTERPRISE_LIFECYCLE_BLOCKED",String.join("；",state.preview().blockers()));
         long reclaimed=0;int cancelled=0;String status;
         long rootBefore=rootBalance(enterpriseId);
@@ -129,7 +129,7 @@ public class EnterpriseLifecycleService {
         if("resume".equals(action)&&!"suspended".equals(target.getStatus()))blockers.add("此成员并未停用");
         if("suspend".equals(action)&&!"active".equals(target.getStatus()))blockers.add("此成员已停用");
         if("close".equals(action)) {
-            if(!active.isEmpty()||pending>0)blockers.add("仍有在途任务或冻结积分，请先完成结算");
+            if(!active.isEmpty()||pending>0)blockers.add("仍有进行中的任务或冻结积分，请等待任务结算后操作");
             if(available>0)blockers.add("企业仍有可用积分，请先回收并联系平台财务处理余额");
             long orders=em.createQuery("select count(o) from RechargeOrder o where o.enterpriseId=:id and o.status=:state",Long.class).setParameter("id",enterpriseId).setParameter("state",RechargeOrder.Status.PENDING).getSingleResult();
             if(orders>0)blockers.add("仍有待核准充值申请，请联系平台财务核对或驳回");

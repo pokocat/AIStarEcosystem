@@ -68,9 +68,9 @@ public class EnterpriseBillingService {
             return new BillingAccount(credits.getOrCreateWallet(actor).getId(),null,null,null);
         }
         if(!enabled)throw denied("ENTERPRISE_BILLING_DISABLED","企业积分付款尚未开放");
-        if(!SCOPES.contains(referenceType))throw BusinessException.badRequest("ENTERPRISE_BILLING_SCOPE_INVALID","企业积分只用于工作台创作");
+        if(!SCOPES.contains(referenceType))throw BusinessException.badRequest("ENTERPRISE_BILLING_SCOPE_INVALID","此功能不支持使用企业积分");
         if(!allowedIds.isBlank()&&Arrays.stream(allowedIds.split(",")).map(String::trim).noneMatch(payer.enterpriseId()::equals))
-            throw denied("ENTERPRISE_BILLING_NOT_ENABLED","此企业尚未开放企业积分付款，请联系平台管理员");
+            throw denied("ENTERPRISE_BILLING_NOT_ENABLED","此企业尚未开放企业积分付款，请联系平台处理");
         var enterprise=lockEnterprise(payer.enterpriseId());
         var member=access.memberForUpdate(actor,enterprise.getId());
         var prior=authorizations.lockByReference(referenceType,referenceId);
@@ -88,9 +88,9 @@ public class EnterpriseBillingService {
         if(!FLAT_FEES.contains(referenceType))requireAllowed(policy,endpointId,amount);
         // A job's added holds (reference "<job>#n", reserveExtension) belong to that job, not to new jobs.
         long active=authorizations.activeInEnterprise(enterprise.getId()).stream().filter(a->actor.equals(a.getActorUserId())&&countsAsJob(a)).count();
-        if(active>=policy.getMaxActiveJobs())throw conflict("ENTERPRISE_ACTIVE_JOB_LIMIT","已达到企业设定的在途任务上限，请等待已有任务完成");
+        if(active>=policy.getMaxActiveJobs())throw conflict("ENTERPRISE_ACTIVE_JOB_LIMIT","已达到企业设定的同时进行任务上限，请等待进行中的任务完成后重试");
         var wallet=wallets.findByAccountKey("enterprise_member:"+enterprise.getId()+":"+actor)
-                .orElseThrow(()->conflict("ENTERPRISE_WALLET_MISSING","成员企业账户不存在，请联系管理员"));
+                .orElseThrow(()->conflict("ENTERPRISE_WALLET_MISSING","成员企业账户不存在，请联系平台处理"));
         var authorization=new EnterpriseBillingAuthorization();authorization.setId(UUID.randomUUID().toString());
         authorization.setEnterpriseId(enterprise.getId());authorization.setActorUserId(actor);authorization.setMembershipId(member.getId());
         authorization.setWalletId(wallet.getId());authorization.setReferenceType(referenceType);authorization.setReferenceId(referenceId);
@@ -223,7 +223,7 @@ public class EnterpriseBillingService {
             requireAllowed(policy,charge.target().endpointId(),0);
             // Quotes run read-only: a locking read here fails on MySQL (ERROR 1792). reserve() repeats this check under lock.
             long active=authorizations.activeForActorWithoutLock(payer.enterpriseId(),actor).stream().filter(EnterpriseBillingService::countsAsJob).count();
-            if(active+count>policy.getMaxActiveJobs())throw conflict("ENTERPRISE_ACTIVE_JOB_LIMIT","已达到企业设定的在途任务上限，请等待已有任务完成");
+            if(active+count>policy.getMaxActiveJobs())throw conflict("ENTERPRISE_ACTIVE_JOB_LIMIT","已达到企业设定的同时进行任务上限，请等待进行中的任务完成后重试");
             wallet=wallets.findByAccountKey("enterprise_member:"+payer.enterpriseId()+":"+actor)
                     .orElseThrow(()->conflict("ENTERPRISE_WALLET_MISSING","成员企业账户不存在"));
         }

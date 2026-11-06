@@ -45,10 +45,10 @@ const assembleButton = () => screen.getByRole("button", { name: "合成作品" }
 test("the original a recreation copies starts outside the cut, says why, and can be put back", () => {
   const assemble = vi.fn();
   render(<Host nodes={[source, take("t1", "5")]} connections={[{ id: "e", fromNodeId: "src", toNodeId: "t1" }]} spies={{ assemble }}/>);
-  const original = screen.getByRole("checkbox", { name: "把「原片」放进成片" }) as HTMLInputElement;
+  const original = screen.getByRole("checkbox", { name: "将「原片」加入成片" }) as HTMLInputElement;
   expect(original.checked).toBe(false);
-  expect(screen.getByText("其他片段是照着它做的，默认不放进成片。")).toBeTruthy();
-  expect((screen.getByRole("checkbox", { name: "把「AI 生成的片段」放进成片" }) as HTMLInputElement).checked).toBe(true);
+  expect(screen.getByText("其他片段据此生成，默认不加入成片。")).toBeTruthy();
+  expect((screen.getByRole("checkbox", { name: "将「AI 生成的片段」加入成片" }) as HTMLInputElement).checked).toBe(true);
   expect(screen.getByText("已选 1/2 段 · 共 5 秒")).toBeTruthy();
   fireEvent.click(original);
   expect(screen.getByText("已选 2/2 段 · 共 11 秒")).toBeTruthy();
@@ -58,11 +58,11 @@ test("the original a recreation copies starts outside the cut, says why, and can
 test("a voiceover longer than the cut blocks assembly before the user waits for it; a shorter one says where it goes quiet", () => {
   render(<Host nodes={[take("t1", "5"), take("t2", "4"), voice("long", "14"), voice("short", "6")]}/>);
   fireEvent.change(screen.getByRole("combobox", { name: "成片音轨" }), { target: { value: "long.m4a" } });
-  expect(screen.getByText("配音 14 秒，比成片长 5 秒，合成不了。换一条短一点的配音，或者多放几段片段。")).toBeTruthy();
+  expect(screen.getByText("配音 14 秒，长于成片 5 秒，无法合成。请更换较短的配音，或加入更多片段。")).toBeTruthy();
   expect(assembleButton().disabled).toBe(true);
-  expect(within(document.querySelector(".studio-work-actions")!).getByText("配音比成片长，合成不了")).toBeTruthy();
+  expect(within(document.querySelector(".studio-work-actions")!).getByText("配音长于成片，无法合成")).toBeTruthy();
   fireEvent.change(screen.getByRole("combobox", { name: "成片音轨" }), { target: { value: "short.m4a" } });
-  expect(screen.getByText("配音比成片短 3 秒，最后这一段没有声音。")).toBeTruthy();
+  expect(screen.getByText("配音短于成片 3 秒，结尾部分将没有声音。")).toBeTruthy();
   expect(assembleButton().disabled).toBe(false);
 });
 
@@ -80,7 +80,7 @@ test("the browser's reading of the file replaces the stored length", () => {
 test("captions get times from the clips, and a caption past the end is caught", () => {
   render(<Host nodes={[take("t1", "5"), take("t2", "4")]} draft={{ ...baseDraft, packagingEnabled: true }}/>);
   expect(assembleButton().disabled).toBe(true);
-  fireEvent.click(screen.getByRole("button", { name: "按片段填好时间" }));
+  fireEvent.click(screen.getByRole("button", { name: "按片段填写时间" }));
   const box = screen.getByRole("textbox", { name: "成片字幕时间与文字" }) as HTMLTextAreaElement;
   expect(box.value).toBe("0-5: \n5-9: ");
   // 字幕问题的判定与措辞在 studio-work-clips.test.ts「caption problems match」；这里只钉合成按钮被它拦住
@@ -89,7 +89,7 @@ test("captions get times from the clips, and a caption past the end is caught", 
   expect(assembleButton().disabled).toBe(true);
   fireEvent.change(box, { target: { value: "0-5: 第一句\n5-9: 第二句" } });
   expect(assembleButton().disabled).toBe(false);
-  expect((screen.getByRole("button", { name: "按片段填好时间" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole("button", { name: "按片段填写时间" }) as HTMLButtonElement).disabled).toBe(true);
 });
 
 test("dragging moves a clip; arrows stay for keyboard use", () => {
@@ -118,7 +118,7 @@ test("without any voiceover the editor offers to make one instead of an empty li
   const voiceSpy = vi.fn();
   render(<Host nodes={[take("t1", "5")]} spies={{ voice: voiceSpy }}/>);
   expect(screen.queryByRole("combobox", { name: "成片音轨" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "去做一条配音" }));
+  fireEvent.click(screen.getByRole("button", { name: "生成配音" }));
   expect(voiceSpy).toHaveBeenCalledOnce();
 });
 
@@ -132,7 +132,7 @@ test("the preview plays the chosen clips back to back and shows captions on the 
   expect(stage().dataset.key).toBe("t2.mp4");
   expect(document.querySelector(".studio-work-overlay-caption")?.textContent).toBe("第二句");
   expect(screen.getByText("00:05 / 00:09")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "从第 1 段开始看" }));
+  fireEvent.click(screen.getByRole("button", { name: "从第 1 段开始预览" }));
   expect(stage().dataset.key).toBe("t1.mp4");
 });
 
@@ -140,8 +140,8 @@ test("clicking a clip that is not in the cut shows it alone, clearly marked", ()
   render(<Host nodes={[source, take("t1", "5")]} connections={[{ id: "e", fromNodeId: "src", toNodeId: "t1" }]}/>);
   fireEvent.click(screen.getByRole("button", { name: "预览：原片" }));
   expect((document.querySelector(".studio-work-stage video") as HTMLVideoElement).dataset.key).toBe("src.mp4");
-  expect(screen.getByText("正在单独看「原片」，它不在成片里。")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "回到成片预览" }));
+  expect(screen.getByText("正在单独预览「原片」，此片段未加入成片。")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "返回成片预览" }));
   expect((document.querySelector(".studio-work-stage video") as HTMLVideoElement).dataset.key).toBe("t1.mp4");
 });
 
@@ -162,7 +162,7 @@ test("advanced editing opens from the cut page, and once used it takes over unti
   render(<Host nodes={[take("t1", "5")]} spies={{ openAdvanced, dropAdvanced }}
     draft={{ ...baseDraft, advanced: { engine: "twick", savedAt: "2026-10-19T03:04:05Z", project: { tracks: [], version: 1 } } }}/>);
   expect(screen.queryByRole("button", { name: "合成作品" })).toBeNull();
-  expect(screen.getByText("这里播的是一键成片的顺序。高级编辑里剪过的版本，请在高级编辑里播放。")).toBeTruthy();
+  expect(screen.getByText("此处按一键成片的顺序播放。高级编辑中剪辑的版本，请在高级编辑中播放。")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "继续高级编辑" }));
   expect(openAdvanced).toHaveBeenCalledTimes(2);
   fireEvent.click(screen.getByRole("button", { name: "改回一键成片" }));
@@ -173,5 +173,6 @@ test("on a phone the advanced editor is offered but says it needs a computer", (
   render(<Host nodes={[take("t1", "5")]} spies={{ advancedAvailable: false }}/>);
   const button = screen.getByRole("button", { name: "高级编辑" }) as HTMLButtonElement;
   expect(button.disabled).toBe(true);
-  expect(button.title).toBe("高级编辑要在电脑上打开");
+  expect(button.title).toBe("高级编辑仅支持电脑版");
+  expect(screen.getByText("高级编辑仅支持电脑版")).toBeTruthy();
 });

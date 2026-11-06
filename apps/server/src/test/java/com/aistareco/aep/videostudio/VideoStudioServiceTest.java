@@ -1187,7 +1187,7 @@ class VideoStudioServiceTest {
             var pending=job("submitting");pending.setProgress(5);pending.setErrorCode("VIDEO_SUBMISSION_UNKNOWN");
             pending.setErrorMessage("受理结果待核对");when(jobRepo.findById("mvj_9")).thenReturn(Optional.of(pending));
             var dto=svc.getJob(USER,"mvj_9");assertEquals("running",dto.status());
-            assertEquals("VIDEO_SUBMISSION_UNKNOWN",dto.errorCode());assertEquals("受理结果待核对",dto.stage());
+            assertEquals("VIDEO_SUBMISSION_UNKNOWN",dto.errorCode());assertEquals("提交结果待核对",dto.stage());
             assertEquals("受理结果待核对",dto.errorMessage());
             pending.setStatus("generating");pending.setErrorCode("VIDEO_RECONCILIATION_PENDING");
             assertEquals("模型端仍在处理",svc.getJob(USER,"mvj_9").stage());

@@ -27,9 +27,9 @@ it('checks missing template inputs only on the connected generation, and reads c
   const image={...source,metadata:{studio:{kind:'shot' as const,templateInput:{required:true,label:'商品参考'}}}};
   const text={...source,id:'brief',type:CanvasNodeType.Text,metadata:{studio:{kind:'script' as const,templateInput:{required:true,label:'创作要求'},scriptEditor:{draft:'',turns:[]}}}};
   const edges=[{id:'i',fromNodeId:image.id,toNodeId:'target'},{id:'t',fromNodeId:text.id,toNodeId:'target'}];
-  expect(studioLinkedInputError('target',[image,text],edges)).toBe('请先为「商品参考」添加或生成图片');
+  expect(studioLinkedInputError('target',[image,text],edges)).toBe('请为「商品参考」添加或生成图片');
   image.metadata={...image.metadata,storageKey:'my-product'} as any;
-  expect(studioLinkedInputError('target',[image,text],edges)).toBe('请先填写「创作要求」');
+  expect(studioLinkedInputError('target',[image,text],edges)).toBe('请填写「创作要求」');
   text.metadata.studio.scriptEditor.draft='新的商品卖点';
   expect(studioLinkedInputError('target',[image,text],edges)).toBeUndefined();
   expect(withStudioLinkedText('展示商品','target',[image,text],edges)).toContain('新的商品卖点');
@@ -46,5 +46,5 @@ it('an optional image slot stays out of the way while empty and counts once it h
   expect(studioLinkedNodes('target',[filled,target],edges).map(n=>n.id)).toEqual(['slot']);
   // The same empty slot without the optional mark is a required input, as before.
   const required={...slot,metadata:{status:'idle'}};
-  expect(studioLinkedInputError('target',[required,target],edges)).toBe('请先为「我的商品图」添加或生成图片');
+  expect(studioLinkedInputError('target',[required,target],edges)).toBe('请为「我的商品图」添加或生成图片');
 });

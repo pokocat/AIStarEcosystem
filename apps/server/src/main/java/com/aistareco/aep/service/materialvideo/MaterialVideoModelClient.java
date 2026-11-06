@@ -727,7 +727,7 @@ public class MaterialVideoModelClient {
         }
         return invocation.storedEndpoint(endpointId)
                 .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,
-                        "VIDEO_NOT_CONFIGURED", "已受理视频任务的模型端点不存在，暂时无法查询结果。"));
+                        "VIDEO_NOT_CONFIGURED", "视频任务使用的模型已不可用，暂时无法查询结果"));
     }
 
     private String decryptKey(AiModelEndpoint p) {

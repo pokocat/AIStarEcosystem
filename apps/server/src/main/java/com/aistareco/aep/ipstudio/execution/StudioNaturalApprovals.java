@@ -52,15 +52,15 @@ final class StudioNaturalApprovals {
         // (R4-02): a number the user never said is an input error (400) whatever its relation to the quote.
         java.util.Set<Long> saidFix = redoNumbers(said), saidTotal = budgetNumbers(said);
         if (!saidFix.isEmpty() && !saidFix.contains(autoFixCap))
-            throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "你说的重做额度是 " + saidFix.iterator().next() + " 积分，确认时只能用这个数；要改请直接说新的额度，或在卡片上修改");
+            throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "你在消息中提到的重做额度为 " + saidFix.iterator().next() + " 积分，确认时将按此金额执行。如需调整，请在消息中说明新的额度，或在确认卡上修改");
         if (!saidTotal.isEmpty() && !saidTotal.contains(budgetCap))
-            throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "你说的上限是 " + saidTotal.iterator().next() + " 积分，确认时只能用这个数；要改请直接说新的上限，或在卡片上修改");
+            throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "你在消息中提到的上限为 " + saidTotal.iterator().next() + " 积分，确认时将按此金额执行。如需调整，请在消息中说明新的上限，或在确认卡上修改");
         if (budgetCap < quoted)
             throw StudioPlanExecutionService.budgetExceeded(card.path("stage").asText(), 0, 0, quoted, budgetCap);
         if (budgetCap != proposed && !mentions(said, budgetCap))
-            throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "上限与确认卡上的 " + proposed + " 积分不同，需要你在消息里说出新的上限，或在卡片上修改");
+            throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "上限与确认卡上的 " + proposed + " 积分不同，请在消息中说明新的上限，或在确认卡上修改");
         if (autoFixCap != proposedFix && !mentions(said, autoFixCap))
-            throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "重做额度与确认卡上的不同，需要你在消息里说出这个数，或在卡片上修改");
+            throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "重做额度与确认卡上的不同，请在消息中说明新的额度，或在确认卡上修改");
     }
 
     /** True when every piece of the reply is a short affirmative (see {@link #SHORT_AFFIRMATIVES}). */

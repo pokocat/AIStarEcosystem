@@ -35,7 +35,7 @@ test('the node picker uploads video, shows pending state and saves a reusable so
  fireEvent.click(screen.getByRole('button',{name:'上传视频'}));expect(click).toHaveBeenCalledOnce();
  const file=new File(['video'],'我的视频.mp4',{type:'video/mp4'});fireEvent.change(picker,{target:{files:[file]}});
  await waitFor(()=>expect(api.upload).toHaveBeenCalledWith('p',file,'video'));
- expect(screen.getByRole('button',{name:'上传处理中…'})).toHaveProperty('disabled',true);
+ expect(screen.getByRole('button',{name:'上传中…'})).toHaveProperty('disabled',true);
  resolve({key:'own/video.mp4',url:'/video.mp4',mediaType:'video',mimeType:'video/mp4',bytes:5,width:720,height:1280,durationSec:15});
  await waitFor(()=>expect(api.save).toHaveBeenCalledWith('p'));
  const nodes=useCanvasStore.getState().projects[0].nodes;

@@ -32,7 +32,7 @@ export function DirectorScript(props: WorkbenchProps) {
   const textError = work.textError && ["script", "split"].includes(work.textError.task ?? "") ? work.textError.message : null;
   if (work.episodes.length > 0) return <EpisodeList {...props}/>;
   if (writing && !work.draft.trim() && work.episodes.length === 0) return <AiWorking title="AI 正在写剧本" task={writing}
-    detail={`${work.brief?.messages.some(m => m.role === "user") ? "按你们聊定的要求" : "按创意"}设计人物、伏笔和反转，再分场写成剧本${styleText(work) ? `（${styleText(work)}）` : ""}。创意：${work.idea}`}/>;
+    detail={`${work.brief?.messages.some(m => m.role === "user") ? "按对话确定的要求" : "按创意"}设计人物、伏笔和反转，并分场写成剧本${styleText(work) ? `（${styleText(work)}）` : ""}。创意：${work.idea}`}/>;
   if (!work.draft.trim()) return <><InlineError message={textError}/><StartScript {...props}/></>;
   return <><InlineError message={textError}/><DraftEditor key={work.draftRev} {...props} splitting={!!splitting}/></>;
 }
@@ -68,7 +68,7 @@ function StartScript({ work, apply, setError, openSettings }: WorkbenchProps & {
   const file = useRef<ScriptFileHandle>(null);
   const guard = usePasteGuard();
   const save = () => void run("paste", async () => { apply(await saveDrafts({ [`${work.id}:paste`]: paste }, () => DirectorApi.patchWork(work.id, { draft: paste, draftRev: work.draftRev }))); },
-    failed(setError, "保存剧本", "粘贴的剧本还在输入框里，按原因调整后再点保存。"));
+    failed(setError, "保存剧本", "粘贴的剧本已保留在输入框中，请按原因调整后点击「保存剧本」。"));
   if (mode === "paste") return <section className="director-panel director-start">
     <h3><PenLine size={16}/>粘贴或上传剧本</h3>
     <DirectorScriptFile ref={file} hasText={!!paste.trim()} disabled={!!busy} onImport={setPaste} onReadingChange={setReading}/>
@@ -80,7 +80,7 @@ function StartScript({ work, apply, setError, openSettings }: WorkbenchProps & {
     <div className="director-actions">
       <button type="button" className="ip-brand-button" disabled={!!busy || reading || !paste.trim()} onClick={save}>保存剧本</button>
       <span className="director-spacer"/>
-      <button type="button" className="ip-brand-text-button" disabled={!!busy || reading} onClick={() => setMode("idea")}>返回，用创意生成</button>
+      <button type="button" className="ip-brand-text-button" disabled={!!busy || reading} onClick={() => setMode("idea")}>改用创意生成</button>
     </div>
   </section>;
   return <BriefDesk work={work} apply={apply} openSettings={openSettings} onPaste={() => setMode("paste")}/>;
@@ -128,7 +128,7 @@ function NextChoices({ work, title, desc, children, onShortcut, shortcutDesc, sh
       <p>{shortcutDesc}</p>
       <div className="director-actions">
         <button type="button" className="ip-brand-secondary" disabled={shortcutDisabled || live} onClick={onShortcut}><Sparkles size={15}/>一键制作</button>
-        {(live ? "一键制作进行中，进度在上方" : shortcutNote) && <span className="director-muted">{live ? "一键制作进行中，进度在上方" : shortcutNote}</span>}
+        {(live ? "一键制作进行中，进度见页面上方" : shortcutNote) && <span className="director-muted">{live ? "一键制作进行中，进度见页面上方" : shortcutNote}</span>}
       </div>
     </div>
   </div>;
@@ -142,7 +142,7 @@ function DraftEditor({ work, apply, setError, splitting, startPipeline }: Workbe
   const [count, setCount] = useState("");
   const { busy, run } = useBusy();
   const persist = () => saveDrafts({ [draftKey]: text }, () => DirectorApi.patchWork(work.id, { draft: text, draftRev: work.draftRev }));
-  const save = () => run("save", async () => apply(await persist()), failed(setError, "保存剧本", "改动还在编辑框里，按原因调整后再保存。"));
+  const save = () => run("save", async () => apply(await persist()), failed(setError, "保存剧本", "修改内容已保留，请按原因调整后点击「保存」。"));
   const asEpisode = () => void run("one", async () => {
     let w = work;
     if (dirty) w = await persist();
@@ -166,7 +166,7 @@ function DraftEditor({ work, apply, setError, splitting, startPipeline }: Workbe
   useEffect(() => { if (previewing) setTextOpen(true); }, [previewing]);
   return <section className="director-panel director-script-list">
     <div className="director-toolbar">
-      <div className="director-toolbar-copy"><h3>剧本</h3><p>{work.logline && !work.outline ? work.logline : "还没拆分集"}</p></div>
+      <div className="director-toolbar-copy"><h3>剧本</h3><p>{work.logline && !work.outline ? work.logline : "尚未拆分集"}</p></div>
       <span className="director-spacer"/>
       {dirty && <span className="director-unsaved">未保存</span>}
       <button type="button" className="ip-brand-secondary" disabled={locked || !dirty || !!busy || splitting || !!rewriting} onClick={() => void save()}>{dirty ? "保存" : "已保存"}</button>
@@ -182,7 +182,7 @@ function DraftEditor({ work, apply, setError, splitting, startPipeline }: Workbe
         <NextChoices work={work} shortcutDesc="从拆分剧本开始自动完成至成片，也可只完成至分镜脚本或分镜图。开始前显示推荐预算，确认后执行。" title="下一步：拆分剧本"
           desc={byHeadings ? `已识别到 ${work.draftEpisodeHeadings} 集分集标题，将按标题拆分，不消耗积分。第 1 集之前的内容保存为设定资料。拆分结果确认后生效。`
             : "支持两种拆分方式：已分好集的剧本按分集标题拆分，不消耗积分，不限集数；尚未分集的剧本由 AI 按剧情拆分，按实际用量结算。两种方式均不修改正文，拆分结果确认后生效。"}
-          onShortcut={startPipeline} shortcutDisabled={locked || !!busy || !text.trim() || dirty} shortcutNote={dirty ? "先保存剧本" : undefined}>
+          onShortcut={startPipeline} shortcutDisabled={locked || !!busy || !text.trim() || dirty} shortcutNote={dirty ? "请先保存剧本" : undefined}>
           <label className="director-inline-field">分为<input inputMode="numeric" value={count} placeholder="自动" onChange={e => setCount(e.target.value.replace(/\D/g, "").slice(0, 2))}/>集</label>
           <button type="button" className="ip-brand-button" disabled={locked || !!busy || !text.trim()} onClick={split}><Scissors size={15}/>{byHeadings ? "按标题拆分" : "拆分剧本"}</button>
           <button type="button" className="ip-brand-secondary" disabled={locked || !!busy || !text.trim()} onClick={asEpisode}>作为一集</button>
@@ -237,12 +237,12 @@ function EpisodeList(props: WorkbenchProps) {
       <StoryOutline work={work} defaultOpen={!work.assets.length}/>
       <ReferenceNotes work={work} apply={apply} setError={setError}/>
       <ScriptMore work={work} apply={apply} setError={setError}/>
-      {extracting ? <AiWorking compact title="AI 正在提取全剧资产" task={extracting} detail="识别角色、场景和道具，完成后先给你确认，再保存。"/> :
-        <NextChoices work={work} shortcutDesc="把后面的步骤连着自动做完，一直到成片，也可以只做到分镜脚本或分镜图。系统先算好推荐预算，你确认后开始。" title={work.assets.length ? "下一步：生成资产图" : "下一步：提取全剧资产"}
-          desc={work.assets.length ? `已提取 ${work.assets.length} 项资产。到「资产」给角色、场景和道具生成资产图，分镜图和视频都照着它们画。改了正文可以重新提取，同一人物不会重复新建。`
-            : "AI 从全部集里识别角色、场景和道具，先给你确认清单再入库。之后生成资产图、写分镜脚本，每一步都能先看再改。"}
+      {extracting ? <AiWorking compact title="AI 正在提取全剧资产" task={extracting} detail="识别角色、场景和道具，清单经你确认后保存。"/> :
+        <NextChoices work={work} shortcutDesc="自动完成后续步骤至成片，也可只完成至分镜脚本或分镜图。开始前显示推荐预算，确认后执行。" title={work.assets.length ? "下一步：生成资产图" : "下一步：提取全剧资产"}
+          desc={work.assets.length ? `已提取 ${work.assets.length} 项资产。请在「资产」为角色、场景和道具生成资产图，分镜图和视频将以此为参考。修改正文后可重新提取，同一人物不会重复创建。`
+            : "AI 从全部集中识别角色、场景和道具，清单经你确认后保存。之后生成资产图、写分镜脚本，每一步都可检查和修改。"}
           onShortcut={startPipeline} shortcutDisabled={!!busy}>
-          <button type="button" className={work.assets.length ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy} onClick={extract} title="对全部集一起提取角色、场景和道具，同一人物不会在各集重复出现">
+          <button type="button" className={work.assets.length ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy} onClick={extract} title="从全部集中提取角色、场景和道具，同一人物不会在各集重复出现">
             <Wand2 size={15}/>{work.assets.length ? "重新提取全剧资产" : "提取全剧资产"}</button>
           {work.assets.length > 0 && <button type="button" className="ip-brand-button" onClick={() => goTab("assets")}>前往资产</button>}
         </NextChoices>}
@@ -265,7 +265,7 @@ function EpisodeRow({ work, ep, apply, setError, goTab, open, onToggle }: Workbe
   const save = () => void run("save", async () => {
     apply(await saveDrafts({ [prefix + "title"]: title, [prefix + "summary"]: summary, [prefix + "content"]: content },
       () => DirectorApi.edit(work.id, "episode.update", ep.id, ep.rev, { title, summary, content })));
-  }, failed(setError, `保存第 ${ep.no} 集`, "改动还在编辑框里，按原因调整后再点「保存」。"));
+  }, failed(setError, `保存第 ${ep.no} 集`, "修改内容已保留，请按原因调整后点击「保存」。"));
   const clips = work.clips.filter(x => x.episodeId === ep.id);
   const progress = clips.length ? `分镜图 ${clips.filter(x => x.board.adoptedId).length}/${clips.length} · 视频 ${clips.filter(x => x.video.adoptedId).length}/${clips.length}` : "待写分镜";
   return <li className={`director-episode-item ${open ? "is-open" : ""}`}>
@@ -282,7 +282,7 @@ function EpisodeRow({ work, ep, apply, setError, goTab, open, onToggle }: Workbe
         <Field label="集名"><input value={title} readOnly={locked} maxLength={60} onChange={e => { if (!locked) setTitle(e.target.value); }}/></Field>
         <Field label="本集摘要"><GrowTextarea className="director-summary-input" rows={2} value={summary} readOnly={locked} maxLength={1000} onChange={e => { if (!locked) setSummary(e.target.value); }}/></Field>
       </div>
-      {ep.planStale && <div className="director-warn">分镜脚本写好后正文又改过，片段可能和正文对不上。可在「分镜」重写分镜脚本（已有分镜图的片段要先删掉）。<button type="button" onClick={() => goTab("storyboard")}>前往分镜</button></div>}
+      {ep.planStale && <div className="director-warn">分镜脚本写好后正文已修改，片段可能与正文不一致。可在「分镜」重写分镜脚本。<button type="button" onClick={() => goTab("storyboard")}>前往分镜</button></div>}
       <ScriptText work={work} target={ep.id} label={`第 ${ep.no} 集正文`} what={`第 ${ep.no} 集正文`} value={content} onChange={setContent}/>
       <div className="director-actions">
         <button type="button" className="ip-brand-button" disabled={locked || !dirty || !!busy} onClick={save}>{dirty ? "保存" : "已保存"}</button>
@@ -300,8 +300,10 @@ export function RegenerateScript({ work, apply, setError }: Pick<WorkbenchProps,
   const blocked = work.clips.some(c => c.board.candidates.length || c.video.candidates.length) || scriptBusy;
   const writing = runningTask(work, "script");
   if (writing) return null;
+  const regenBlock = scriptBusy ? "助手回复完成后可重新生成" : "请先删除已有分镜图或视频的片段";
   return <>
-    <button type="button" className="ip-brand-secondary" disabled={blocked} title={scriptBusy ? "请等助手回复完成后再重新生成" : blocked ? "已有分镜图或视频的片段，先删除这些片段才能重新生成剧本" : "按创意让 AI 重新写一版剧本"} onClick={() => setOpen(true)}><RefreshCw size={14}/>重新生成剧本</button>
+    <button type="button" className="ip-brand-secondary" disabled={blocked} title={blocked ? regenBlock : "由 AI 按创意重新写剧本"} onClick={() => setOpen(true)}><RefreshCw size={14}/>重新生成剧本</button>
+    {blocked && <small className="director-muted">{regenBlock}</small>}
     {open && <RegenerateDialog work={work} apply={apply} setError={setError} onClose={() => setOpen(false)}/>}
   </>;
 }
@@ -325,13 +327,13 @@ function RegenerateDialog({ work, apply, setError, onClose }: Pick<WorkbenchProp
       <header><h2 id="director-regen-title">重新生成剧本</h2><button type="button" aria-label="关闭" onClick={onClose} disabled={!!busy}><X size={18}/></button></header>
       <label className="director-field"><span>创意</span>
         <textarea rows={5} maxLength={2000} value={idea} onChange={e => setIdea(e.target.value)}/>
-        <small>写明时长、集数、人物或「不要对白」等要求，会照做。</small>
+        <small>可写明时长、集数、人物或「不要对白」等要求。</small>
       </label>
       <GenreTone genre={genre} tone={tone} setGenre={setGenre} setTone={setTone}/>
       <ul className="director-regen-notes">
         <li>新剧本会替换当前{hasEpisodes ? `的剧本和 ${work.episodes.length} 集分集（片段一并清除）` : "剧本"}，旧版本保留在历史中。</li>
         {work.assets.length > 0 && <li>已有的 {work.assets.length} 项资产保留，生成后需要重新拆分并提取资产。</li>}
-        <li>生成期间如果改了剧本或片段，新剧本不会替换当前内容。</li>
+        <li>生成期间如修改剧本或片段，新剧本不会替换当前内容。</li>
       </ul>
       <InlineError message={error}/>
       <footer>
@@ -374,7 +376,7 @@ function ScriptText({ work, target, label, what, value, onChange, disabled }: { 
     ctl.openInline(`script:${target}`, scope, { draft });
   };
   return <div className="director-script-area">
-    {locked && <p className="director-muted" role="status">AI 正在处理这份正文，暂时不能编辑。回复完成或失败后即可继续修改。</p>}
+    {locked && <p className="director-muted" role="status">AI 正在处理此正文，暂时不能编辑。回复结束后可继续修改。</p>}
     {ctl && sel && selected.trim() && <div className="director-selection-bar" role="toolbar" aria-label="对选中的正文">
       <small>已选 {selected.replace(/\s/g, "").length} 字</small>
       {/* 按下不抢焦点，选区保持 */}
@@ -384,7 +386,7 @@ function ScriptText({ work, target, label, what, value, onChange, disabled }: { 
     </div>}
     {/* 点下去时带上光标位置：正文很长时助手读光标附近那一段。 */}
     <AiField scope={() => ({ kind: "script", episodeId: target, focusAt: offset.current + (area.current?.selectionStart ?? 0) })} what={what} inlineKey={`script:${target}`}
-      hint={long ? `评价、续写、润色。正文很长，助手读光标附近约 ${budget.toLocaleString("zh-CN")} 字；只改某一段：先选中它，再点上方的「问 AI」` : "评价、续写、润色。只改某一段：先选中它，再点上方的「问 AI」"}>
+      hint={long ? `评价、续写、润色。正文较长，助手将读取光标附近约 ${budget.toLocaleString("zh-CN")} 字；如需修改某一段，请选中后点击上方的「问 AI」` : "评价、续写、润色。如需修改某一段，请选中后点击上方的「问 AI」"}>
       {sectioned ? <SectionedScript value={value} onChange={v => { if (!locked) onChange(v); }} label={label} readOnly={locked} disabled={disabled}
         area={area} onOffset={s => { offset.current = s; setSel(null); }} onPaste={paste.onPaste} onTrack={track}/>
         : <textarea ref={area} className="director-script-text" aria-label={label} value={value} disabled={disabled} readOnly={locked}
@@ -403,8 +405,8 @@ function ScriptText({ work, target, label, what, value, onChange, disabled }: { 
 export function LongTextNote({ length, budget }: { length: number; budget: number }) {
   if (!budget || length <= budget) return null;
   return <p className="director-long-note" role="note">
-    正文 {length.toLocaleString("zh-CN")} 字，超过 AI 一次能读的约 {budget.toLocaleString("zh-CN")} 字。正文照常保存；助手读光标或选中处附近的一段，
-    提取资产按集分批读，写分镜脚本要求每集在 {budget.toLocaleString("zh-CN")} 字以内（用「第1集」或「E01」这样的标题分集可免费拆分）。
+    正文 {length.toLocaleString("zh-CN")} 字，超过 AI 单次可读取的约 {budget.toLocaleString("zh-CN")} 字。正文可正常保存；助手读取光标或选中处附近的一段，
+    提取资产时按集分批读取，写分镜脚本要求每集不超过 {budget.toLocaleString("zh-CN")} 字（使用「第1集」或「E01」等标题分集可免费拆分）。
   </p>;
 }
 
@@ -427,24 +429,24 @@ function ScriptReview({ work, messageId, p, value, label }: { work: DirectorWork
   };
   const impacts = proposalImpacts(work, p);
   return <div className="director-script-review" aria-label={`${label}：预览修改`}>
-    <header><b>预览修改</b><span>{p.targetLabel} · 只替换这一段</span><span className="director-spacer"/>
+    <header><b>预览修改</b><span>{p.targetLabel} · 只替换此段</span><span className="director-spacer"/>
       <button type="button" className="ip-brand-text-button" onClick={() => ctl.setPreview(null)}>返回编辑</button></header>
-    {!range ? <div className="director-warn">原文已经改动，找不到这条建议要替换的段落。可以让助手按现在的正文重新给建议。</div> :
+    {!range ? <div className="director-warn">原文已修改，未找到此建议要替换的段落。可让助手按当前正文重新给出建议。</div> :
       <div className="director-script-review-body">
         {/* 长正文只画修改处前后各一截，不把几十万字一次画出来。 */}
         {range[0] > REVIEW_CONTEXT && <span className="director-muted">（前面还有 {(range[0] - REVIEW_CONTEXT).toLocaleString("zh-CN")} 字，未显示）{"\n"}</span>}
         <span className="director-script-plain">{value.slice(Math.max(0, range[0] - REVIEW_CONTEXT), range[0])}</span>
         <div ref={mark} className="director-script-change is-del"><em>原文</em><p>{value.slice(range[0], range[1])}</p></div>
-        <div className="director-script-change is-add"><em>建议修改</em><p>{p.replacement || "（删掉这段）"}</p></div>
+        <div className="director-script-change is-add"><em>建议修改</em><p>{p.replacement || "（删除此段）"}</p></div>
         <span className="director-script-plain">{value.slice(range[1], range[1] + REVIEW_CONTEXT)}</span>
         {value.length - range[1] > REVIEW_CONTEXT && <span className="director-muted">{"\n"}（后面还有 {(value.length - range[1] - REVIEW_CONTEXT).toLocaleString("zh-CN")} 字，未显示）</span>}
       </div>}
     {impacts.map(t => <p key={t} className="director-script-review-impact">{t}</p>)}
     {error && <p className="director-proposal-error" role="alert">{error}</p>}
     <footer>
-      <small>只替换这一段，其余正文保留。采用后可以撤销。</small>
+      <small>只替换此段，其余正文保留。采用后可撤销。</small>
       <span className="director-spacer"/>
-      <button type="button" className="ip-brand-button" disabled={!range || !!busy} onClick={() => void run("apply", () => ctl.act(messageId, p, "apply"))}>{busy === "apply" ? "采用中" : "采用这处修改"}</button>
+      <button type="button" className="ip-brand-button" disabled={!range || !!busy} onClick={() => void run("apply", () => ctl.act(messageId, p, "apply"))}>{busy === "apply" ? "采用中" : "采用此修改"}</button>
       <button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={() => void run("keep", () => ctl.act(messageId, p, "dismiss"))}>保留原文</button>
     </footer>
   </div>;

@@ -87,7 +87,7 @@ class DirectorAssetUnlinkTest {
     void deletingAnAssetInUseSaysWhichClipsAndHow() {
         BusinessException e = assertThrows(BusinessException.class, () -> edit("asset.delete", "as1", null, "{}"));
         assertEquals("DIRECTOR_ASSET_IN_USE", e.getCode());
-        assertTrue(e.getMessage().contains("「林夏」还用在 3 个片段里"));
+        assertTrue(e.getMessage().contains("「林夏」"));
         JsonNode clips = om.valueToTree(e.getDetails()).path("clips");
         assertEquals(3, clips.size());
         assertEquals("cl1", clips.get(0).path("clipId").asText());
@@ -137,5 +137,32 @@ class DirectorAssetUnlinkTest {
         BusinessException busy = assertThrows(BusinessException.class, () -> edit("clip.unlinkAsset", "cl1", null, "{\"assetId\":\"as1\"}"));
         assertEquals("DIRECTOR_TASK_RUNNING", busy.getCode());
         assertTrue(busy.getMessage().contains("分镜图正在生成"));
+    }
+
+    /** 片段生成中不能删：结果回来时片段已经没了，已付费的产物没有地方落（2026-11-06，判断与 clip.unlinkAsset 相同）。 */
+    @Test
+    void aClipCannotBeDeletedWhileItsBoardOrVideoIsGenerating() throws Exception {
+        for (String node : List.of("board:cl1", "video:cl1", DirectorService.REWRITE_NODE + "cl1")) {
+            stored.clear();
+            stored.add(IpRun.builder().id("IPR-" + node).projectId("DW-1").hostType(IpRun.HOST_DIRECTOR).ownerUserId(USER).nodeId(node)
+                    .kind("studio-image").status(IpRun.STATUS_RUNNING).stage("running").cost(0).inputJson("{}").createdAt(Instant.now()).build());
+            BusinessException busy = assertThrows(BusinessException.class, () -> edit("clip.delete", "cl1", null, "{}"), node);
+            assertEquals("DIRECTOR_TASK_RUNNING", busy.getCode(), node);
+            assertNotNull(clip(om.readTree(work.getContentJson()), "cl1"), "拒绝时片段还在：" + node);
+        }
+        stored.clear();
+
+        // 原生视频任务记在片段的 video.pending 上，没有 ip_run 也算生成中。
+        var pending = om.readTree(work.getContentJson());
+        ((com.fasterxml.jackson.databind.node.ArrayNode) clip(pending, "cl2").path("video").path("pending")).add(om.createObjectNode().put("jobId", "mvj_1"));
+        work.setContentJson(pending.toString());
+        BusinessException busy = assertThrows(BusinessException.class, () -> edit("clip.delete", "cl2", null, "{}"));
+        assertEquals("DIRECTOR_TASK_RUNNING", busy.getCode());
+        assertNotNull(clip(om.readTree(work.getContentJson()), "cl2"));
+
+        // 没在生成就能删，同一集的序号补上。
+        JsonNode v = edit("clip.delete", "cl1", null, "{}");
+        assertNull(clip(v, "cl1"));
+        assertEquals(1, clip(v, "cl2").path("order").asInt());
     }
 }

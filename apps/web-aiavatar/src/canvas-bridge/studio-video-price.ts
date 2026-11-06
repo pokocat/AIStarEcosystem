@@ -105,19 +105,19 @@ const n = (value: number) => value.toLocaleString("zh-CN");
  */
 export function describeStudioVideoPrice(price: StudioVideoPrice, fallback: number | null, opts: { optimizing?: boolean } = {}): StudioVideoPriceView | undefined {
   if (price.status !== "ready") return fallback == null ? undefined : { standard: fallback, shown: fallback, pending: price.status === "loading" };
-  const optimizing = opts.optimizing ? "先优化另按实际用量扣少量积分。" : "";
+  const optimizing = opts.optimizing ? "优化提示词按实际用量另计。" : "";
   if (price.payer === "decided") {
     const q = price.quote, parts: string[] = [];
     if (q.discountCredits > 0) parts.push(`${q.discountName || "优惠"}，省 ${n(q.discountCredits)} 积分。`);
-    if (q.scopedCredits > 0) parts.push(`模型赠款抵 ${n(q.scopedCredits)} 积分，${q.walletCredits > 0 ? `再付 ${n(q.walletCredits)} 积分` : "不用再付积分"}。`);
-    if (!q.canAfford) parts.push(q.unavailableCode === "MODEL_CREDITS_INSUFFICIENT" ? `可用积分不够，这条要付 ${n(q.walletCredits)} 积分。` : q.unavailableReason || "现在还不能生成。");
+    if (q.scopedCredits > 0) parts.push(`模型赠款抵扣 ${n(q.scopedCredits)} 积分，${q.walletCredits > 0 ? `另需支付 ${n(q.walletCredits)} 积分` : "无需另付积分"}。`);
+    if (!q.canAfford) parts.push(q.unavailableCode === "MODEL_CREDITS_INSUFFICIENT" ? `可用积分不足，需支付 ${n(q.walletCredits)} 积分。` : q.unavailableReason || "暂时无法生成。");
     return { standard: q.standardCredits, shown: q.payableCredits, note: parts.length ? parts.join("") + optimizing : undefined };
   }
   const { personal, enterprise } = price;
   if (enterprise && enterprise.payableCredits !== personal.payableCredits)
     return { standard: personal.standardCredits, shown: Math.min(personal.payableCredits, enterprise.payableCredits), from: true,
-      note: `个人账户 ${n(personal.payableCredits)} 积分，企业账户 ${n(enterprise.payableCredits)} 积分，点生成时选账户。${optimizing}` };
+      note: `个人账户 ${n(personal.payableCredits)} 积分，企业账户 ${n(enterprise.payableCredits)} 积分，生成时选择付款账户。${optimizing}` };
   if (personal.discountCredits <= 0) return { standard: personal.standardCredits, shown: personal.payableCredits };
   return { standard: personal.standardCredits, shown: personal.payableCredits,
-    note: `${personal.discountName || "优惠"}，省 ${n(personal.discountCredits)} 积分。付款账户点生成时选，模型赠款到时再抵。${optimizing}` };
+    note: `${personal.discountName || "优惠"}，省 ${n(personal.discountCredits)} 积分。生成时选择付款账户，模型赠款在付款时抵扣。${optimizing}` };
 }

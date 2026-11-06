@@ -30,7 +30,7 @@ function VariantSheet({ scene, onClose, onSubmit }) {
       hS("div", { style: { padding: "6px 0 14px" } },
         hS("div", { style: { fontFamily: "var(--font-disp)", fontWeight: 800, fontSize: 18 } }, "生成光线变体"),
         hS("div", { style: { fontSize: 12.5, color: "var(--ink-3)", marginTop: 4 } },
-          "同一空间、同一机位，只换光线 —— 生成后可直接用于合成。")),
+          "同一空间、同一机位，只更换光线。生成后可直接用于合成。")),
       hS("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 18 } },
         VARIANT_CHOICES.map((l) => {
           const on = picks.includes(l);

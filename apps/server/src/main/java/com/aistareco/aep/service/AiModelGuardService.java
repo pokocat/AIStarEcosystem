@@ -111,7 +111,7 @@ public class AiModelGuardService {
         long used = usageRepo.sumTotalTokensByProviderSince(endpoint.getId(), todayStart());
         if (used + estimatedTokens > quota) {
             throw new BusinessException(HttpStatus.PAYMENT_REQUIRED, "LLM_DAILY_TOKEN_QUOTA_EXCEEDED",
-                    "该模型今日额度已用完，请联系管理员调整配额");
+                    "该模型今日用量已达上限，请明天再试或选择其他模型");
         }
     }
 
@@ -122,7 +122,7 @@ public class AiModelGuardService {
         long estimatedCost = estimateCostMicros(endpoint, estimate);
         if (used + estimatedCost > quota) {
             throw new BusinessException(HttpStatus.PAYMENT_REQUIRED, "LLM_DAILY_COST_QUOTA_EXCEEDED",
-                    "该模型今日成本额度已用完，请联系管理员调整配额");
+                    "该模型今日用量已达上限，请明天再试或选择其他模型");
         }
     }
 

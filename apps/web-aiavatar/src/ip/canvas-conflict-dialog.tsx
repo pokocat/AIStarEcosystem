@@ -25,9 +25,9 @@ export type CanvasConflictDialogProps = {
 };
 
 const OPTIONS: Array<{ key: ConflictResolution; title: string; detail: string; busy: string; primary?: boolean; danger?: boolean }> = [
-  { key: "save-copy", title: "另存一份，再换成最新内容", detail: "这里的改动存成一张新画布，这张画布换成别处存好的那份。两边都不丢。", busy: "正在另存…", primary: true },
-  { key: "take-theirs", title: "换成最新内容", detail: "用别处存好的那份。这里没存上的改动会丢掉。", busy: "正在加载…" },
-  { key: "keep-mine", title: "以这里为准", detail: "把这里的改动存上去，别处刚存的那份会被覆盖。", busy: "正在保存…", danger: true },
+  { key: "save-copy", title: "另存为新画布并加载最新版本", detail: "此页面的改动另存为新画布，当前画布加载其他窗口保存的版本，两份内容都会保留。", busy: "正在另存…", primary: true },
+  { key: "take-theirs", title: "加载最新版本", detail: "使用其他窗口保存的版本，此页面未保存的改动将丢失。", busy: "正在加载…" },
+  { key: "keep-mine", title: "保留此页改动", detail: "保存此页面的改动，其他窗口保存的版本将被覆盖。", busy: "正在保存…", danger: true },
 ];
 
 export function CanvasConflictDialog({ open, onClose, resolve, onCopySaved }: CanvasConflictDialogProps) {
@@ -45,7 +45,7 @@ export function CanvasConflictDialog({ open, onClose, resolve, onCopySaved }: Ca
       if (!alive.current) return;
       if (result.copyId) onCopySaved?.(result.copyId);
       if (result.outcome === "resolved") { onClose(); return; }
-      if (result.outcome === "conflict") setNote("刚才别处又存了一版。再选一次。");
+      if (result.outcome === "conflict") setNote("其他窗口又保存了新版本，请重新选择。");
       // failed：具体原因已经由通知层说了，这里只把按钮放开
     } finally { if (alive.current) setBusy(null); }
   };
@@ -61,10 +61,10 @@ export function CanvasConflictDialog({ open, onClose, resolve, onCopySaved }: Ca
       width={460}
       getContainer={() => document.querySelector<HTMLElement>(".ip-surface") ?? document.body}
       className="canvas-conflict-dialog"
-      title={<span className="inline-flex items-center gap-2"><AlertTriangle className="w-4 h-4" style={{ color: "var(--err)" }} />这张画布在别处被改过了</span>}
+      title={<span className="inline-flex items-center gap-2"><AlertTriangle className="w-4 h-4" style={{ color: "var(--err)" }} />此画布已在其他窗口修改</span>}
     >
       <p className="text-[13px] leading-relaxed" style={{ color: "var(--ink-2)" }}>
-        你可能在另一个窗口或另一台设备上也打开了这张画布，那边的改动已经存好。这里还有没存上的改动，两份内容不能自动合并，选一种处理方式：
+        此画布可能已在其他窗口或设备上修改并保存。此页面还有未保存的改动，两份内容无法自动合并，请选择处理方式：
       </p>
       <div className="flex flex-col gap-2 mt-4">
         {OPTIONS.map((option) => (
@@ -84,7 +84,7 @@ export function CanvasConflictDialog({ open, onClose, resolve, onCopySaved }: Ca
         ))}
       </div>
       {note && <p role="status" className="text-[12px] mt-3" style={{ color: "var(--err)" }}>{note}</p>}
-      <p className="text-[12px] mt-3" style={{ color: "var(--ink-3)" }}>先关掉去画布上看一眼也行，顶栏的「处理冲突」能再打开这里。关掉之前这里的改动不会自动保存。</p>
+      <p className="text-[12px] mt-3" style={{ color: "var(--ink-3)" }}>关闭后可点击顶栏「处理冲突」重新打开。处理冲突前，此页面的改动不会自动保存。</p>
     </Modal>
   );
 }

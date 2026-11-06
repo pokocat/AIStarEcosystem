@@ -123,7 +123,7 @@ public class IpDemoTemplateService {
             if (IpDocs.T_TEXT.equals(IpDocs.typeOf(node)) && metadata.has("content")) clean.set("content", metadata.get("content").deepCopy());
             String key = IpDocs.text(clean, "storageKey");
             if (key == null && !IpDocs.T_TEXT.equals(IpDocs.typeOf(node)) && !metadata.path("content").asText("").isBlank())
-                throw BusinessException.badRequest("STUDIO_TEMPLATE_ASSET_NOT_SAVED", "请先完成素材上传，再保存画布模板");
+                throw BusinessException.badRequest("STUDIO_TEMPLATE_ASSET_NOT_SAVED", "请完成素材上传后保存模板");
             if (key != null) keys.add(key);
             for (String field : CANDIDATE_FIELDS) {
                 ArrayNode candidates = om.createArrayNode();
@@ -205,7 +205,7 @@ public class IpDemoTemplateService {
         boolean asTemplate = IpDemoTemplate.KIND_TEMPLATE.equals(kind);
         if(demoId != null && !demoId.isBlank())repo.findById(demoId.trim()).ifPresent(existing -> {
             if(existing.getCurrentVersionId()!=null || "personal".equals(existing.getVisibility()))
-                throw BusinessException.badRequest("STUDIO_TEMPLATE_VERSIONED", "请从发布为模板入口新增版本，不能覆盖已发布配方");
+                throw BusinessException.badRequest("STUDIO_TEMPLATE_VERSIONED", "请通过「保存为模板」新增版本，不能覆盖已发布的模板");
         });
         // 只能拿**自己的**项目做示例：运营也不该凭一个 id 就把别人的画布连素材抄成公开内容。
         IpProject p = projects.required(operatorId, projectId);
@@ -223,7 +223,7 @@ public class IpDemoTemplateService {
             int referenced = countAssetRefs(doc);
             if (referenced > MAX_ASSETS) {
                 throw BusinessException.badRequest("IP_DEMO_TOO_MANY_ASSETS",
-                        "这张画布的素材太多（" + referenced + " 个），先精简到 " + MAX_ASSETS + " 个以内");
+                        "这张画布的素材过多（" + referenced + " 个），请减少到 " + MAX_ASSETS + " 个以内");
             }
             preparePublishedCharacters(doc);
         }
@@ -274,7 +274,7 @@ public class IpDemoTemplateService {
         if (row.getDocJson() != null) collectKeys(docOf(row), stale);
         if (row.getCoverKey() != null) stale.add(row.getCoverKey());
         row.setName(name != null && !name.isBlank() ? name.trim()
-                : (p.getName() == null || p.getName().isBlank() ? "未命名工作流" : p.getName()));
+                : (p.getName() == null || p.getName().isBlank() ? "未命名模板" : p.getName()));
         row.setSummary(summary);
         row.setKind(asTemplate ? IpDemoTemplate.KIND_TEMPLATE : IpDemoTemplate.KIND_EXAMPLE);
         row.setDocJson(write(doc));
@@ -659,7 +659,7 @@ public class IpDemoTemplateService {
         try {
             return om.writeValueAsString(doc);
         } catch (Exception e) {
-            throw BusinessException.badRequest("IP_DOC_INVALID", "画布数据无法序列化");
+            throw BusinessException.badRequest("IP_DOC_INVALID", "画布内容保存失败，请重试");
         }
     }
 }

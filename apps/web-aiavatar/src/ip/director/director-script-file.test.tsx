@@ -54,7 +54,7 @@ test("cancellation ignores a late response and allows another import", async () 
   api.importScript.mockReturnValueOnce(new Promise(r => { resolve = r; }));
   const reading = vi.fn();
   render(<DirectorScriptFile hasText={false} onImport={() => {}} onReadingChange={reading}/>);
-  upload(); fireEvent.click(screen.getByRole("button", { name: "取消读取" }));
+  upload(); fireEvent.click(screen.getByRole("button", { name: "取消提取" }));
   expect(api.importScript.mock.calls[0][1].aborted).toBe(true);
   resolve({ text: "过期返回", format: "docx" });
   upload("新的.txt"); await screen.findByLabelText("文件文字预览");
@@ -101,7 +101,7 @@ test("HTML scripts up to exactly 50 MB are sent for extraction, with a visible u
   fireEvent.change(screen.getByLabelText("上传剧本文件"), { target: { files: [page] } });
   expect(api.importScript).toHaveBeenCalledWith(page, expect.anything());
   expect(screen.getByRole("status").textContent).toContain("正在上传并提取「整页剧本.HTM」（50.0 MB）");
-  expect((screen.getByRole("button", { name: /正在读取文件/ }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole("button", { name: /正在提取文字/ }) as HTMLButtonElement).disabled).toBe(true);
   resolve({ text: "第一场：夜市\n小鹿：回家吧。", format: "htm" });
   expect(((await screen.findByLabelText("文件文字预览")) as HTMLTextAreaElement).value).toBe("第一场：夜市\n小鹿：回家吧。");
   expect(screen.queryByRole("status")).toBeNull();

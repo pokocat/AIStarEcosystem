@@ -77,7 +77,7 @@ test("preview shows original and suggestion in the script; adopting saves unsave
   expect(within(review).getAllByText("老贺凑近那盆绿萝，收音机忽然没了声。").length).toBeGreaterThan(0);
   vi.mocked(DirectorApi.edit).mockResolvedValueOnce(work(replied("c1"), { episodes: [{ ...ep, content: ep.content + "\n老贺：你这盆，真是别人丢的？", rev: 4 }] }));
   vi.mocked(DirectorApi.edit).mockResolvedValueOnce(work(replied("c1")));
-  fireEvent.click(within(review).getByRole("button", { name: "采用这处修改" }));
+  fireEvent.click(within(review).getByRole("button", { name: "采用此修改" }));
   await waitFor(() => expect(DirectorApi.edit).toHaveBeenCalledTimes(2));
   expect(vi.mocked(DirectorApi.edit).mock.calls[0]).toEqual(["w", "episode.update", "ep1", 3, { title: ep.title, summary: "", content: ep.content + "\n老贺：你这盆，真是别人丢的？" }]);
   expect(vi.mocked(DirectorApi.edit).mock.calls[1]).toEqual(["w", "assistant.apply", null, null, { messageId: "m2", proposalId: "p1" }]);
@@ -91,7 +91,7 @@ test("an unknown send keeps its request id after closing and reopening the assis
   const area = await screen.findByRole("textbox", { name: "和助手说" });
   fireEvent.change(area, { target: { value: "保留结局，只改对白" } });
   fireEvent.click(screen.getByRole("button", { name: "发送" }));
-  await screen.findByText(/发送状态还不确定/, {}, { timeout: 5000 });
+  await screen.findByText(/送达状态尚未确认/, {}, { timeout: 5000 });
   expect((screen.getByRole("textbox", { name: "第 1 集正文" }) as HTMLTextAreaElement).readOnly).toBe(true);
   // 正文冻结时右下角的入口照样能用：只是打开助手，不改正文。
   expect((screen.getByRole("button", { name: "和助手讨论第 1 集正文" }) as HTMLButtonElement).disabled).toBe(false);
@@ -231,7 +231,7 @@ test("the floating chat can hand over to the sidebar assistant with the same sco
   fireEvent.click(await screen.findByRole("button", { name: "和助手讨论第 1 集正文" }));
   const pop = await screen.findByRole("dialog", { name: "AI 对话：第 1 集 · 叶上的耳朵" });
   fireEvent.change(within(pop).getByRole("textbox", { name: "和 AI 说" }), { target: { value: "这一集节奏怎么样" } });
-  fireEvent.click(within(pop).getByRole("button", { name: "在助手里继续" }));
+  fireEvent.click(within(pop).getByRole("button", { name: "在助手中继续" }));
   const panel = screen.getByRole("complementary", { name: "全能创作助手" });
   expect(within(panel).getByText("正在讨论：第 1 集 · 叶上的耳朵")).toBeTruthy();
   await waitFor(() => expect((within(panel).getByRole("textbox", { name: "和助手说" }) as HTMLTextAreaElement).value).toBe("这一集节奏怎么样"));
@@ -253,7 +253,7 @@ test("on desktop the floating chat can be dragged by its header and resized from
   };
   const header = pop.querySelector(".director-inline-ask > header")!;
   // 第一次打开有引导：告诉用户能拖、能缩放。
-  expect(within(pop).getByRole("note").textContent).toContain("按住标题栏可以拖到别处");
+  expect(within(pop).getByRole("note").textContent).toContain("按住标题栏可拖动位置");
   const before = parseFloat(pop.style.left), beforeTop = pop.getBoundingClientRect().top;
   fireEvent.pointerDown(header, { button: 0, clientX: 300, clientY: 120 });
   fireEvent.pointerMove(window, { clientX: 240, clientY: 160 });
@@ -314,4 +314,12 @@ test("the drag hint can be dismissed with 知道了 and does not come back", asy
   fireEvent.click(ask);
   const again = await screen.findByRole("dialog", { name: "AI 对话：第 1 集 · 叶上的耳朵" });
   expect(within(again).queryByRole("note")).toBeNull();
+});
+
+test("the composer says usage-based billing and never shows the frozen ceiling", async () => {
+  vi.mocked(DirectorApi.getWork).mockResolvedValue(work());
+  render(<DirectorWorkbench id="w"/>);
+  const composer = (await screen.findByRole("textbox", { name: "和助手说" })).closest(".director-assistant-composer")!;
+  expect(composer.textContent).toContain("按实际用量结算");
+  expect(composer.textContent).not.toMatch(/\d+ 积分|每轮最多/);
 });

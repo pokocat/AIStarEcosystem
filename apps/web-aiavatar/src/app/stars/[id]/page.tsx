@@ -1,6 +1,6 @@
 "use client";
 // ============================================================
-// 明星形象名片（P2）：授权给我的明星形象详情 —— 授权范围 / 有效期 / 去带货创作。
+// 明星形象名片（P2）：授权给我的明星形象详情 —— 授权范围 / 有效期 / 前往 AI 明星带货。
 // 真值在 celebrity 域（只读投影）；申请续期、审批进度都回带货线处理，
 // 这里不做任何写操作。使用记录（被用在哪）等带货出片真链路上线后接入。
 // ============================================================
@@ -45,7 +45,7 @@ export default function StarGrantPage({ params }: { params: Promise<{ id: string
       <HubScreen>
         <NavBar back="/assets" title="明星形象" />
         <Card style={{ margin: "12px 16px 0" }}>
-          <EmptyState text={grants.error || "没有找到这条明星授权"} actionHref="/assets" actionLabel="回资产货架" />
+          <EmptyState text={grants.error || "未找到该明星授权。"} actionHref="/assets" actionLabel="返回资产" />
         </Card>
       </HubScreen>
     );
@@ -120,24 +120,22 @@ export default function StarGrantPage({ params }: { params: Promise<{ id: string
                 boxShadow: "0 2px 8px rgba(18,179,222,.3)",
               }}
             >
-              去带货创作（AI 明星带货）
+              前往 AI 明星带货
             </div>
           </a>
         ) : (
           <Card>
             <span style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.7 }}>
               {g.status === "pending"
-                ? "申请已提交，等待明星团队在明星工作台审批。通过后这里会显示可用场景与有效期。"
-                : "授权已到期。要继续使用，请到 AI 明星带货里重新发起授权申请。"}
+                ? "申请已提交，等待明星团队审批。审批通过后将显示可用场景与有效期。"
+                : "授权已到期。如需继续使用，请在 AI 明星带货重新申请授权。"}
             </span>
           </Card>
         )}
       </div>
 
       <div style={{ margin: "16px 24px 0", textAlign: "center", fontSize: 11.5, color: "var(--ink-4)", lineHeight: 1.6 }}>
-        明星授权的申请与审批在带货线和「明星工作台」完成，这里只展示结果。
-        <br />
-        用它生成的视频记录，将随带货出片链路上线后在这里汇总。
+        明星授权的申请与审批在 AI 明星带货与「明星工作台」中完成，此处仅展示结果。
       </div>
     </HubScreen>
   );

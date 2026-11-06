@@ -33,10 +33,10 @@ export function SettingsPanel({ work, onClose, apply, setError }: { work: Direct
     const textChange = textModel === savedText ? {} : { textModel: textModel || null };
     apply(await DirectorApi.patchWork(work.id, { settings: { style: style.trim(), aspectRatio: aspect, videoModel: videoModel || null, ...textChange, ...imageChange } }));
     onClose();
-  }, message => setLocalError(`设置没有保存：${message}。改动还在，调整后再点「保存」。`));
+  }, message => setLocalError(`设置保存失败：${message}。修改内容已保留，请调整后点击「保存」。`));
   return <div className="director-popover" role="dialog" aria-label="作品设置" ref={dialogFocus} tabIndex={-1}>
     <header><h3>作品设置</h3><button type="button" aria-label="关闭" onClick={onClose}><X size={16}/></button></header>
-    <StyleField value={style} onChange={setStyle} note={style.trim() !== work.settings.style && (work.assets.some(a => a.image.candidates.length) || work.clips.some(c => c.board.candidates.length)) ? "已生成的资产图和分镜图不会自动重做，会标为「需更新」。" : undefined}/>
+    <StyleField value={style} onChange={setStyle} note={style.trim() !== work.settings.style && (work.assets.some(a => a.image.candidates.length) || work.clips.some(c => c.board.candidates.length)) ? "已生成的资产图和分镜图不会自动重新生成，将标记为「需更新」。" : undefined}/>
     <div className="director-field"><span>画幅</span><div className="director-segmented">{(["9:16", "16:9", "1:1"] as const).map(a =>
       <button key={a} type="button" aria-pressed={aspect === a} onClick={() => setAspect(a)}>{a}</button>)}</div></div>
     <label className="director-field"><span>文本模型</span>
@@ -45,7 +45,7 @@ export function SettingsPanel({ work, onClose, apply, setError }: { work: Direct
         {unavailableText && <option value={textModel} disabled>原模型已不可用</option>}
         {textModels.map(m => <option key={m.endpointId} value={m.endpointId} disabled={!work.pricing.mock && !m.tokenPricing}>{m.name}{!work.pricing.mock && !m.tokenPricing ? " · 暂不可用" : ""}</option>)}
       </SelectField>
-      <small>{unavailableText ? "原文本模型不在可选范围内，换一个模型才能继续写剧本和分镜。其他设置可以照常保存。"
+      <small>{unavailableText ? "原文本模型已不可用，请更换模型后继续写剧本和分镜脚本。其他设置可正常保存。"
         : !textModels.length ? "暂无可用文本模型，请联系管理员开通。"
         : `用于剧本、拆分集、提取资产和分镜脚本，${work.pricing.mock ? "测试模式，免费。" : "按实际用量结算。"}`}</small>
     </label>
@@ -55,7 +55,7 @@ export function SettingsPanel({ work, onClose, apply, setError }: { work: Direct
         {unavailableImage && <option value={imageModel} disabled>{state?.explicit && state.available && state.name ? `${state.name}（原选择）` : "原模型已不可用"}</option>}
         {imageModels.map(m => <option key={m.id} value={m.id}>{m.name} · {costText(m.creditCost, work.pricing.mock)}/张</option>)}
       </SelectField>
-      <small>{stateNote ?? (unavailableImage ? "原图片模型不在可选范围内，换一个模型才能继续出图。其他设置可以照常保存。" : chosenImage
+      <small>{stateNote ?? (unavailableImage ? "原图片模型已不可用，请更换模型后继续生成图片。其他设置可正常保存。" : chosenImage
         ? `用于资产图和分镜图，${costText(chosenImage.creditCost, work.pricing.mock)}/张。`
         : "暂无可用图片模型，请联系管理员开通。")}</small>
     </label>
@@ -67,7 +67,7 @@ export function SettingsPanel({ work, onClose, apply, setError }: { work: Direct
       <small>{!work.videoModels.length ? "暂无可用视频模型，无法确定片段时长。请联系管理员开通。"
         : work.videoModels.find(m => m.id === videoModel || (!videoModel && m.isDefault))?.mode === "frame"
           ? "仅使用分镜首帧，不支持额外图片或声音参考。多镜头片段请先拆分。"
-          : "同时参考分镜图、角色 / 场景 / 道具图和角色声音。片段时长按模型支持的范围来定。"}</small>
+          : "同时参考分镜图、资产图和角色声音，片段时长按模型支持的范围确定。"}</small>
     </label>
     <p className="director-dialog-note">修改仅影响之后生成的内容，已生成的内容不变。</p>
     <InlineError message={localError} onClose={() => setLocalError("")}/>
@@ -79,12 +79,12 @@ const RATIO_NAMES: Record<string, string> = { "1:1": "方图", "16:9": "横图",
 
 /**
  * 原选择（或默认模型）有问题时的说明；没问题返回 null，照常显示价格。
- * 道具用方图、角色和场景用横图、分镜跟作品画幅，缺哪种就说哪类出不了。
+ * 道具用方图、角色和场景用横图、分镜跟作品画幅，缺哪种就说哪类生成不了。
  */
 function imageStateNote(state: DirectorImageModelState, aspect: string, mock: boolean): string | null {
   const who = state.explicit ? "原图片模型" : "默认图片模型";
   if (!state.available) return state.explicit
-    ? "原图片模型已停用，资产图和分镜图暂时生成不了，换一个模型才能继续出图。其他设置可以照常保存。"
+    ? "原图片模型已停用，暂时无法生成资产图和分镜图，请更换模型。其他设置可正常保存。"
     : "默认图片模型暂不可用，请选择一个图片模型，或联系管理员。";
   if (!state.missingRatios.length) return null;
   const affected: string[] = [];
@@ -95,6 +95,6 @@ function imageStateNote(state: DirectorImageModelState, aspect: string, mock: bo
   const missing = state.missingRatios.map(r => RATIO_NAMES[r] ?? r).join("、");
   const price = state.creditCost == null ? "" : `，${costText(state.creditCost, mock)}/张`;
   return affected.length
-    ? `${who}${name}不能出${missing}，${affected.join("、")}的图生成不了；其他画面照常${price}。换一个模型才能出全部画面，不换也可以保存其他设置。`
-    : `${who}${name}不能出${missing}，当前画幅下不影响出图${price}。`;
+    ? `${who}${name}不支持${missing}，无法生成${affected.join("、")}的图片；其他画面不受影响${price}。更换模型后可生成全部画面，不更换也可保存其他设置。`
+    : `${who}${name}不支持${missing}，当前画幅下不影响生成${price}。`;
 }

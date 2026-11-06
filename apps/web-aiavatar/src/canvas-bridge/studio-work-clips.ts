@@ -80,8 +80,8 @@ export function studioRatioHint(width: number | undefined, height: number | unde
   if (!width || !height || !w || !h) return undefined;
   const want = w / h, have = width / height;
   if (Math.abs(have - want) / want <= 0.02) return undefined;
-  if (have > want) return want < 1 ? "横屏画面，成片里上下会留黑边" : "画面更宽，成片里上下会留黑边";
-  return want > 1 ? "竖屏画面，成片里左右会留黑边" : "画面更窄，成片里左右会留黑边";
+  if (have > want) return want < 1 ? "横屏画面，成片上下将留黑边" : "画面较宽，成片上下将留黑边";
+  return want > 1 ? "竖屏画面，成片左右将留黑边" : "画面较窄，成片左右将留黑边";
 }
 
 /** Start time of each clip in the cut; undefined once a length before it is unknown. */
@@ -101,10 +101,10 @@ export function studioCaptionTemplate(seconds: number[]): string {
 export function studioCaptionProblem(text: string, totalSeconds?: number): string | undefined {
   const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
   const empty = lines.findIndex(l => /^\d+(?:\.\d+)?\s*-\s*\d+(?:\.\d+)?\s*[:：]\s*$/.test(l));
-  if (empty >= 0) return `第 ${empty + 1} 条字幕还没写内容`;
+  if (empty >= 0) return `第 ${empty + 1} 条字幕未填写内容`;
   let captions: ReturnType<typeof parseStudioCaptions>;
-  try { captions = parseStudioCaptions(text); } catch (e) { return e instanceof Error ? e.message : "字幕格式不对"; }
+  try { captions = parseStudioCaptions(text); } catch (e) { return e instanceof Error ? e.message : "字幕格式不正确"; }
   if (totalSeconds === undefined) return undefined;
   const late = captions.findIndex(c => c.end > totalSeconds + 0.25);
-  return late >= 0 ? `第 ${late + 1} 条字幕结束在 ${captions[late].end} 秒，成片只有 ${formatStudioSeconds(totalSeconds)}` : undefined;
+  return late >= 0 ? `第 ${late + 1} 条字幕结束于 ${captions[late].end} 秒，成片时长仅 ${formatStudioSeconds(totalSeconds)}` : undefined;
 }

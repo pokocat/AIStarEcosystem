@@ -116,7 +116,7 @@ public class EnrollmentGuard extends OncePerRequestFilter {
             log.warn("[enrollment] 未登记的业务路由，已拦截（请在 ProductRouteTable 登记）method={} path={}",
                     request.getMethod(), path);
             writeError(response, "PRODUCT_ROUTE_UNMAPPED",
-                    "该接口尚未登记子产品归属，请联系平台运营", Map.of("path", path));
+                    "此功能暂不可用，请联系平台处理", Map.of("path", path));
             return;
         }
 
@@ -128,14 +128,14 @@ public class EnrollmentGuard extends OncePerRequestFilter {
         } else {
             if (headerProduct == null) {
                 writeError(response, "APP_CODE_REQUIRED",
-                        "请求缺少子产品标识，请刷新页面后重试", null);
+                        "请求缺少产品信息，请刷新页面后重试", null);
                 return;
             }
             if (!route.products().contains(headerProduct)) {
                 log.debug("[enrollment] 共享路由的产品声明不在允许集合内 path={} appCode={} allowed={}",
                         path, headerProduct, route.products());
                 writeError(response, "PRODUCT_NOT_ENROLLED",
-                        "尚未开通该子产品，请先使用激活码开通",
+                        "尚未开通此产品，请使用激活码开通",
                         Map.of("product", headerProduct, "allowed", sortedProducts(route)));
                 return;
             }
@@ -146,7 +146,7 @@ public class EnrollmentGuard extends OncePerRequestFilter {
         if (!enrollmentService.isActive(userId, product)) {
             log.debug("[enrollment] blocked userId={} product={} path={}", userId, product, path);
             writeError(response, "PRODUCT_NOT_ENROLLED",
-                    "尚未开通该子产品，请先使用激活码开通", Map.of("product", product));
+                    "尚未开通此产品，请使用激活码开通", Map.of("product", product));
             return;
         }
         chain.doFilter(request, response);

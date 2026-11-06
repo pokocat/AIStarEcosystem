@@ -214,7 +214,7 @@ class H3PromptRewriteTest {
         // 太长：标成不能直接用，提示按原文生成
         r = check(out().put("retention_analysis", "x".repeat(7_000)));
         assertFalse(r.path("usable").asBoolean());
-        assertTrue(String.join("；", warnings(r)).contains("H3 收不下"));
+        assertTrue(String.join("；", warnings(r)).contains("超出模型上限"));
         // 略超长、超出的是 fully_preserved 后面重复列的外貌：精简后收得下，照常可用，只记一笔
         r = check(out().put("retention_analysis", "<Subject 1> (appears in [Shot 1]): fully_preserved - " + "face, ".repeat(1_200) + "retained."));
         assertTrue(r.path("usable").asBoolean(), warnings(r).toString());

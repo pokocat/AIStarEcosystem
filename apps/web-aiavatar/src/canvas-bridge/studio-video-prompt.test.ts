@@ -98,19 +98,19 @@ describe("which mode the frame question suggests", () => {
     const intent = textOnly("图1用作尾帧");
     expect(intent).toMatchObject({ needed: 1, first: false, last: true, lastFrameIgnored: false });
     expect(studioFrameTarget(H3, intent)).toEqual({ mode: FIRST_LAST, kind: "frames-need-first" });
-    expect(studioFrameIntentCopy(intent, H3, 2).lines[0]).toContain("还需要再选一张首帧图");
+    expect(studioFrameIntentCopy(intent, H3, 2).lines[0]).toContain("还需要选择一张首帧图");
     // A first frame already in the request stays; only the last frame is missing.
     const kept = studioFrameIntent("尾帧停在他的手上", { mode: "i2v", resolutionTier: "768p", firstFrameKey: "a" })!;
     expect(studioFrameTarget(H3, kept)).toEqual({ mode: FIRST_LAST, kind: "frames" });
     // A model without any last-frame mode: no frame mode is suggested for it.
     expect(studioFrameTarget([T2V, I2V], intent)).toBeUndefined();
-    expect(studioFrameIntentCopy(intent, [T2V, I2V], 2).lines[0]).toContain("没有能用尾帧的模式");
+    expect(studioFrameIntentCopy(intent, [T2V, I2V], 2).lines[0]).toContain("当前模型不支持尾帧");
   });
 
   test("frames plus more pictures than any frame mode holds: carried as references, and said so", () => {
     const intent = textOnly("图1作为首帧，图2和图3是人物参考");
     expect(studioFrameTarget(H3, intent)).toEqual({ mode: REFERENCE, kind: "references-not-frames" });
-    expect(studioFrameIntentCopy(intent, H3, 3).lines[0]).toContain("只作参考，不会锁定首帧或尾帧");
+    expect(studioFrameIntentCopy(intent, H3, 3).lines[0]).toContain("仅作参考，不会锁定首帧或尾帧");
   });
 
   test("models without a reference mode use pictures as frames only when they fit; otherwise nothing is suggested", () => {
@@ -118,9 +118,9 @@ describe("which mode the frame question suggests", () => {
     const tooMany = textOnly("图1的人走到图2的房子前，拿起图3的商品");
     expect(studioFrameTarget([T2V, I2V, FIRST_LAST], tooMany)).toBeUndefined();
     const copy = studioFrameIntentCopy(tooMany, [T2V, I2V, FIRST_LAST], 3);
-    expect(copy.bindLabel).toBe("去选择视频模式");
-    expect(copy.lines[0]).toContain("最多用 2 张图");
-    expect(studioFrameIntentCopy(tooMany, [T2V], 3).lines[0]).toContain("只能按文字生成");
+    expect(copy.bindLabel).toBe("选择视频模式");
+    expect(copy.lines[0]).toContain("最多支持 2 张图片");
+    expect(studioFrameIntentCopy(tooMany, [T2V], 3).lines[0]).toContain("只支持文字生成");
   });
 });
 

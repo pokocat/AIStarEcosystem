@@ -126,7 +126,7 @@ public class StudioDialogueTurnWorker {
     /** Dispatch rejected (executor full): finish failed and release the hold. */
     public void reject(String runId, Exception error) {
         log.warn("[dialogue] dispatch rejected run={}", runId, error);
-        finish(runId, null, new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "STUDIO_DIALOGUE_BUSY", "现在回复的人太多，请稍后再发一次"));
+        finish(runId, null, new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "STUDIO_DIALOGUE_BUSY", "当前使用人数较多，请稍后重新发送"));
     }
 
     public void runBlocking(String runId) {
@@ -392,7 +392,7 @@ public class StudioDialogueTurnWorker {
         IpRun run = runs.findById(runId).orElse(null);
         if (run == null || !IpRun.STATUS_RUNNING.equals(run.getStatus())) return false;
         if (isLive(run, Instant.now())) return false;
-        finish(runId, null, new BusinessException(HttpStatus.REQUEST_TIMEOUT, "IP_RUN_TIMEOUT", "这一轮回复中断了（服务重启或连接丢失），冻结积分已退回，可以再发一次"));
+        finish(runId, null, new BusinessException(HttpStatus.REQUEST_TIMEOUT, "IP_RUN_TIMEOUT", "本轮回复已中断（服务重启或连接断开），冻结积分已退回，请重新发送"));
         return true;
     }
 
@@ -423,7 +423,7 @@ public class StudioDialogueTurnWorker {
 
     static String friendly(Exception error) {
         if (error instanceof BusinessException b && b.getMessage() != null && !b.getMessage().isBlank()) return b.getMessage();
-        return "这一轮没有完成，请再发一次";
+        return "本轮未完成，请重新发送";
     }
 
     private JsonNode parse(String json) {
@@ -487,7 +487,7 @@ public class StudioDialogueTurnWorker {
             if (mock) this.endpoint = null;
             // D08: the rule acceptance used (default binding, or an enabled candidate), so an accepted turn is runnable.
             else this.endpoint = models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA, exec.path("endpointId").asText(null), "studio")
-                    .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "ENDPOINT_NOT_ALLOWED", "对话模型已停用或不再是默认模型，请联系管理员")).endpoint();
+                    .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "ENDPOINT_NOT_ALLOWED", "当前对话模型已停用，请重新选择或联系平台处理")).endpoint();
             StudioSkill skill = exec.hasNonNull("skill") ? StudioSkill.fromSnapshot(exec.path("skill")) : null;
             String stage = exec.path("stage").asText(null);
             BillingSelection billing = input.hasNonNull("billing") ? mapper.treeToValue(input.path("billing"), BillingSelection.class) : null;

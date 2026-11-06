@@ -39,7 +39,7 @@ test('batch uses model bounds, quotes the chosen seconds and blocks an oversized
  expect(screen.getByRole('spinbutton',{name:'自定义视频时长'}).getAttribute('max')).toBe('12');
  expect((screen.getByRole('spinbutton',{name:'自定义视频时长'}) as HTMLInputElement).value).toBe('45');
  expect(screen.getByRole('button',{name:'查看制作计划与费用'})).toHaveProperty('disabled',true);
- fireEvent.click(screen.getByRole('button',{name:'改成 12 秒'}));
+ fireEvent.click(screen.getByRole('button',{name:'改为 12 秒'}));
  expect(screen.getByRole('button',{name:'查看制作计划与费用'})).toHaveProperty('disabled',false);
  fireEvent.click(screen.getByRole('button',{name:'查看制作计划与费用'}));
  await waitFor(()=>expect(screen.getByText(/最多 24 积分/)).toBeDefined());

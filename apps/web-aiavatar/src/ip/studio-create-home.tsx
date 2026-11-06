@@ -21,7 +21,7 @@ import { studioCreateTools } from "./studio-create-tools";
 import { useStartNewCanvas } from "./use-start-new-canvas";
 
 const TITLE = "画布·自由创作";
-const DESCRIPTION = "自由连接想法与素材，把灵感变成作品。";
+const DESCRIPTION = "自由组合文字、图片、视频和音频。";
 /** 这一行只放最近的十几张，多的横向滑动；看全部去项目页（已按画布类型筛好）。 */
 const RECENT_LIMIT = 12;
 
@@ -74,7 +74,7 @@ export function StudioCreateHome() {
   return <StudioPage title={TITLE} description={DESCRIPTION} contentRef={surface} className="studio-gallery-page studio-create-page">
     {usingTemplate && <StudioTemplateUse key={usingTemplate.versionId || usingTemplate.id} template={usingTemplate} onClose={() => setUsingTemplate(undefined)} onCreated={href => router.push(href)} />}
     {actionError && <div className="studio-gallery-action-error"><StudioErrorNotice error={actionError}/></div>}
-    {newCanvas.error !== undefined && <div className="studio-gallery-action-error"><StudioErrorNotice error={newCanvas.error}/><span> · 新画布没有创建成功，可以再点一次「新建画布」。</span></div>}
+    {newCanvas.error !== undefined && <div className="studio-gallery-action-error"><StudioErrorNotice error={newCanvas.error}/><span> · 新画布没有创建成功，请重试。</span></div>}
     <section className="studio-gallery-panel studio-creation-section" id="start-creation" aria-label="开始创作">
       <div className="studio-create-recent">
         <div className="studio-gallery-panel-heading"><h2>最近的画布</h2><Link className="studio-gallery-more" href="/projects?type=canvas">全部画布<ArrowRight size={14}/></Link></div>
@@ -103,7 +103,7 @@ export function StudioCreateHome() {
       </button>)}</nav>
 
       <div className="studio-creation-templates" id="templates"><div className="studio-gallery-panel-heading"><h2>从模板开始</h2><Link className="studio-gallery-more" href="/templates">更多模板 <ArrowRight size={16} /></Link></div>
-        {templates.error ? <GalleryState error={templates.error} retry={templates.reload} /> : templates.loading ? <GalleryState loading /> : official.length ? <div className="studio-template-grid">{official.map(t => <TemplateCard key={t.id} template={t} onOpen={setUsingTemplate} />)}</div> : <GalleryState><p>官方模板正在准备中。你可以先新建一张画布。</p></GalleryState>}
+        {templates.error ? <GalleryState error={templates.error} retry={templates.reload} /> : templates.loading ? <GalleryState loading /> : official.length ? <div className="studio-template-grid">{official.map(t => <TemplateCard key={t.id} template={t} onOpen={setUsingTemplate} />)}</div> : <GalleryState><p>暂无官方模板。</p></GalleryState>}
       </div>
     </section>
   </StudioPage>;

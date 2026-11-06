@@ -53,7 +53,7 @@ test("clicking another video version on the card adopts it at once and opens it,
   fireEvent.click(within(versions).getByRole("button", { name: "3" }));
   expect(DirectorApi.edit).toHaveBeenCalledWith("w", "clip.adoptVideo", "c1", null, { candidateId: "v3" });
   expect(await screen.findByRole("button", { name: "视频 3 · 采用中" })).toBeTruthy();
-  expect(screen.getByText("点哪一版，这个片段就用哪一版。")).toBeTruthy();
+  expect(screen.getByText("点击某一版，即设为此片段的视频。")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "采用这一版" })).toBeNull();
 });
 
@@ -65,7 +65,7 @@ test("picking another storyboard image in the board dialog adopts it at once, wi
   render(<Page initial={work(c)}/>);
   fireEvent.click(screen.getByRole("button", { name: /^分镜图/ }));
   const dialog = await screen.findByRole("dialog", { name: "分镜图 · 片段 1" });
-  expect(within(dialog).getByText("点哪一张，这个片段就用哪一张。")).toBeTruthy();
+  expect(within(dialog).getByText("点击某一版，即设为此片段的分镜图。")).toBeTruthy();
   expect(within(dialog).queryByRole("button", { name: "采用这一版" })).toBeNull();
   fireEvent.click(within(dialog).getByRole("button", { name: "第 1 版" }));
   expect(DirectorApi.edit).toHaveBeenCalledWith("w", "clip.adoptBoard", "c1", null, { candidateId: "b1" });
@@ -110,4 +110,12 @@ test("on the phone layout the script opens in a sheet, not beside the clips", ()
   render(<Page initial={work(clip("v2"))}/>);
   fireEvent.click(screen.getByRole("button", { name: "对照剧本" }));
   expect(screen.getByRole("dialog", { name: "本集剧本" })).toBeTruthy();
+});
+
+test("when a new script cannot replace the current one the reason is visible next to the button", async () => {
+  const w = work(clip("v1"));
+  w.episodes[0].pendingPlan = { clips: [] } as never;
+  render(<Page initial={w}/>);
+  expect(await screen.findByRole("button", { name: "换成新版本" })).toHaveProperty("disabled", true);
+  expect(screen.getByText("请先删除已有分镜图或视频的片段，才能换成新版本")).toBeTruthy();
 });

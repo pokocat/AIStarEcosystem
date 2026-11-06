@@ -24,11 +24,11 @@ export function useStudioImageSize(node: CanvasNodeData | undefined): { width: n
   return measured && measured.key === key ? measured : undefined;
 }
 
-/** 「首帧图是 1:1，会按 9:16 居中裁剪」 + 「改成 1:1」 when the model can do it. Does not block sending (§6.2). */
+/** 「首帧图是 1:1，会按 9:16 居中裁剪」 + 「改为 1:1」 when the model can do it. Does not block sending (§6.2). */
 export function StudioFrameCropHint({ frame, ratio, ratios, onFix }: { frame: CanvasNodeData | undefined; ratio: string; ratios: string[]; onFix: (ratio: string) => void }) {
   const size = useStudioImageSize(frame);
   const notice = studioFrameCropNotice(size, ratio, ratios);
   if (!notice) return null;
   return <p className="studio-composer-validation studio-frame-crop-hint" role="status">{notice.text}
-    {notice.fix && <Button type="link" size="small" onClick={() => onFix(notice.fix!)}>改成 {notice.fix}</Button>}</p>;
+    {notice.fix && <Button type="link" size="small" onClick={() => onFix(notice.fix!)}>改为 {notice.fix}</Button>}</p>;
 }

@@ -74,9 +74,9 @@ export function StudioFlowImageTools({ nodes, onInsert }: { nodes: CanvasNodeDat
   });
   const close = () => { if (!busy) setEdit(undefined); };
   return <>
-    {edit && !edit.url && <Modal open title="正在读取图片" footer={null} onCancel={close}><Spin aria-label="正在读取图片"/></Modal>}
+    {edit && !edit.url && <Modal open title="正在加载图片…" footer={null} onCancel={close}><Spin aria-label="正在加载图片…"/></Modal>}
     {edit?.url && edit.operation === 'crop' && <CanvasNodeCropDialog dataUrl={edit.url} open onClose={close} onConfirm={crop}/>}
-    {edit?.url && edit.operation === 'mask' && <CanvasNodeMaskEditDialog dataUrl={edit.url} open onClose={close} onConfirm={mask} generationLabel="下一步：确认生成"/>}
+    {edit?.url && edit.operation === 'mask' && <CanvasNodeMaskEditDialog dataUrl={edit.url} open onClose={close} onConfirm={mask} generationLabel="下一步"/>}
     {edit?.url && edit.operation === 'split-image' && <CanvasNodeSplitDialog dataUrl={edit.url} open onClose={close} onConfirm={split}/>}
     {busy && <div className="studio-flow-edit-progress" role="status"><Spin size="small"/>正在保存编辑结果…</div>}
   </>;

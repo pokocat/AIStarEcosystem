@@ -27,16 +27,16 @@ export function StudioDialogueLegacy({ group, projectId, nodes, selectedIds, rec
     <header><strong title={group.node?.title}>{group.node?.title || '之前的对话'}</strong>
       {group.node && <StudioConversationShare key={`${projectId}-${group.id}`} projectId={projectId} nodeId={group.id} disabled={pending || conversation?.turns.at(-1)?.role !== 'assistant'}/>}</header>
     <div className="studio-conversation">{turns.map(t => <div key={t.key} className={`studio-turn studio-turn-${t.role}`}>
-      <small>{t.role === 'user' ? '你' : 'Studio'}</small><p>{t.role === 'user' ? t.text : splitReplyActions(t.text || '').prose}</p>{t.credits !== undefined && <small>已消耗 {formatCredits(t.credits)} 积分</small>}
+      <small>{t.role === 'user' ? '你' : 'IP Studio'}</small><p>{t.role === 'user' ? t.text : splitReplyActions(t.text || '').prose}</p>{t.credits !== undefined && <small>已消耗 {formatCredits(t.credits)} 积分</small>}
     </div>)}</div>
     {conversation?.plan && !pending && group.node && <>
       <StudioAssistantPlan key={`${group.id}-${studio?.runId || 'draft'}`} plan={conversation.plan} nodes={nodes} contextIds={studio?.request?.contextNodeIds || []} selectedIds={selectedIds}
         snapshots={studio?.assistantEditSnapshots} locked={recovering} onEdit={step => onEditStep(group.id, step)} onApply={(step, replacement) => onApplyStep(group.id, step, replacement)}/>
-      {!!conversation.plan.questions.length && <div className="studio-dialogue-chips" role="group" aria-label="当时没确定的问题">{conversation.plan.questions.map((q, i) =>
-        <button key={i} type="button" title="填进输入框，可以改完再发" onClick={() => onCompose(q)}><span>{q}</span></button>)}</div>}
+      {!!conversation.plan.questions.length && <div className="studio-dialogue-chips" role="group" aria-label="未确定的问题">{conversation.plan.questions.map((q, i) =>
+        <button key={i} type="button" title="填入输入框，修改后发送" onClick={() => onCompose(q)}><span>{q}</span></button>)}</div>}
     </>}
-    {pending && <div className="studio-assistant-pending" role="status"><p>{recovering ? '正在确认原来的任务' : '这段对话的任务还没确认结果'}</p>
-      {!recovering && studio?.request && <Button onClick={() => onRecover(group.id)}>确认原对话任务</Button>}</div>}
+    {pending && <div className="studio-assistant-pending" role="status"><p>{recovering ? '正在确认原任务…' : '此对话的任务结果待确认'}</p>
+      {!recovering && studio?.request && <Button onClick={() => onRecover(group.id)}>确认原任务</Button>}</div>}
     {group.node?.metadata?.status === 'error' && group.node.metadata.errorDetails && <p className="studio-assistant-error"><StudioErrorNotice error={studioNodeError(group.node)} autoReport={false}/></p>}
   </section>;
 }

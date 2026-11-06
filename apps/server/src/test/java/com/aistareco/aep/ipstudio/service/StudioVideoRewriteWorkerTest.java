@@ -150,7 +150,7 @@ class StudioVideoRewriteWorkerTest {
         assertEquals(DIRECTOR_STYLE, req.prompt(), "创作助手不停下来问，按原文接着做");
         assertEquals("done", h.run().getStatus());
         JsonNode out = json.readTree(h.run().getOutputJson());
-        assertEquals("提示词优化没成功，已按原文生成", out.path("videoPromptNotes").get(0).asText());
+        assertEquals("提示词优化失败，已按原文生成", out.path("videoPromptNotes").get(0).asText());
     }
 
     @Test

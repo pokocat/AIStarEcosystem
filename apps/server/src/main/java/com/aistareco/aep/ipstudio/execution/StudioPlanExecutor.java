@@ -155,7 +155,7 @@ public class StudioPlanExecutor {
             case IpPlanExecution.RUNNING -> {
                 if(e.getDeadlineAt()!=null&&now.isAfter(e.getDeadlineAt())) {
                     e.setStatus(IpPlanExecution.PARTIAL);e.setFinishedAt(now);
-                    state.put("needsUserReason","这次制作已超出最长等待时间，已停在这里："+progressSummary(state,e.getStage())+"。已受理的任务会继续结算。");
+                    state.put("needsUserReason","这次制作已超出最长等待时间，已停在这里："+progressSummary(state,e.getStage())+"。已提交的任务会继续结算。");
                 } else {
                     if(StudioSegmentedRun.applies(state)&&segmented!=null&&segmented.getIfAvailable()!=null)segmented.getObject().prepare(e,state);
                     next=advanceRunning(e,state,budget,out,after);
@@ -203,7 +203,7 @@ public class StudioPlanExecutor {
         if(latest==null)return;
         // 2026-10-30: 「做到哪了？」 only asks; it is answered while the plan keeps going instead of stopping it.
         if(change!=null&&IpPlanExecution.RUNNING.equals(e.getStatus()))
-            needsUser(e,state,"收到新指令，等待重新确认：「"+excerpt(change,60)+"」。已经提交的任务会照原样完成，后面的步骤先不提交。");
+            needsUser(e,state,"收到新指令，等待重新确认：「"+excerpt(change,60)+"」。已提交的任务会继续完成，后续步骤暂不提交。");
         else if(change==null)log.info("[plan-exec] steering only asks, execution keeps going execution={}",e.getId());
         String thread=e.getThreadId();
         after.add(()->source.openTurn(thread));
@@ -344,14 +344,14 @@ public class StudioPlanExecutor {
             if("failed".equals(step.path("status").asText())) {
                 // Out of scope is deterministic: say what to do with the named objects, not 「重试」 (production 2026-10-23).
                 if(step.path("materials").isArray()&&!step.path("materials").isEmpty())
-                    return needsUser(e,state,"「"+step.path("title").asText()+"」停下了："+step.path("reason").asText()
-                            +(StudioPlanMaterials.anyOnCanvas(step.path("materials"))?"。可以把它加入这次制作重新编排，或者不用它重新编排。":"。可以不用它重新编排，或结束本次制作。"));
+                    return needsUser(e,state,"「"+step.path("title").asText()+"」已暂停："+step.path("reason").asText()
+                            +(StudioPlanMaterials.anyOnCanvas(step.path("materials"))?"。可将它加入本次制作并重新编排，或不使用它并重新编排。":"。可不使用它并重新编排，或结束本次制作。"));
                 if(state.has("videoTask")&&step.path("attempt").asInt(1)>=3)
                     return needsUser(e,state,"「"+step.path("title").asText()+"」已尝试 3 次，仍未完成。请到画布查看这一步，处理后继续生成。");
-                return needsUser(e,state,"「"+step.path("title").asText()+"」没有完成："+step.path("reason").asText("原因未知")+"。可以继续重试这一步，或结束本次制作。");
+                return needsUser(e,state,"「"+step.path("title").asText()+"」没有完成："+step.path("reason").asText("原因未知")+"。可重试此步骤，或结束本次制作。");
             }
             if(PlanState.unresolvedCheck(state,step)) {
-                return needsUser(e,state,"检查「"+step.path("title").asText()+"」认为有问题或无法判断。请看检查建议，决定采用当前版本、修改后重做，或继续下一步。");
+                return needsUser(e,state,"检查「"+step.path("title").asText()+"」发现问题或无法判断。请查看检查建议，决定采用当前版本、修改后重新生成，或继续下一步。");
             }
             if("needs_user".equals(step.path("status").asText()))return needsUser(e,state,step.path("reason").asText("「"+step.path("title").asText()+"」需要你确认"));
         }
@@ -380,7 +380,7 @@ public class StudioPlanExecutor {
             stageBudget.put("shortfall",shortfall);
             out.add(budgetEvent(e,stage,stageBudget,shortfall,"quote"));
             raiseCard(e,state,stage,stageBudget,remainingQuote(state,stage),cap+shortfall,shortfall,ready.path("title").asText(),after);
-            return needsUser(e,state,"预算不够：本阶段已花 "+spent+" 积分、在途 "+inFlight+" 积分，下一步「"+ready.path("title").asText()+"」需要 "+quoted+" 积分，超出已批准的 "+cap+" 积分 "+shortfall+" 积分。可以追加预算或缩小计划。");
+            return needsUser(e,state,"预算不足：本阶段已花费 "+spent+" 积分，进行中 "+inFlight+" 积分，下一步「"+ready.path("title").asText()+"」需要 "+quoted+" 积分，超出已批准的 "+cap+" 积分 "+shortfall+" 积分。请追加预算或缩小计划。");
         }
         stageBudget.remove("shortfall");
         String requestId=StudioPlanExecutionIds.requestId(e.getId(),stage,ready.path("id").asText(),ready.path("attempt").asInt(1));
@@ -430,7 +430,7 @@ public class StudioPlanExecutor {
             }
         } else if(unresolved) {
             e.setStatus(IpPlanExecution.NEEDS_USER);
-            state.put("needsUserReason","成片已做完，但有检查没通过或无法判断。请看检查建议，决定采用当前版本或修改重做。");
+            state.put("needsUserReason","成片已完成，但有检查项未通过或无法判断。请查看检查建议，决定采用当前版本或修改后重新生成。");
         } else {
             e.setStatus(IpPlanExecution.DONE);e.setFinishedAt(Instant.now());state.remove("needsUserReason");
         }

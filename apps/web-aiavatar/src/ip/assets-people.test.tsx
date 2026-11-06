@@ -53,21 +53,23 @@ beforeEach(() => {
   api.avatars.mockResolvedValue([]); api.licenses.mockResolvedValue([]); api.grants.mockResolvedValue([]);
 });
 
-test('用照片建 needs a name, a front photo and the consent, then saves the front as the main image', async () => {
+test('使用照片创建 needs a name, a front photo and the consent, then saves the front as the main image', async () => {
   const onCreated = vi.fn();
   api.create.mockResolvedValue(role('o1', '唐唐'));
   api.version.mockImplementation(async (id: string, key: string) => role(id, '唐唐', { versions: [{ id: key }] }));
   render(<NewPersonDialog open folderId="f1" onClose={vi.fn()} onCreated={onCreated}/>);
   const create = screen.getByRole('button', { name: '创建人物' }) as HTMLButtonElement;
-  expect(create.disabled).toBe(true); expect(screen.getByText('先写个名字')).toBeDefined();
+  const missing = () => document.querySelector('.assets-person-missing')?.textContent;
+  const noName = missing();
+  expect(create.disabled).toBe(true); expect(noName).toBeTruthy();
   fireEvent.change(screen.getByLabelText('人物名字'), { target: { value: '唐唐' } });
-  expect(screen.getByText('还差一张正脸')).toBeDefined();
+  expect(missing()).toBeTruthy(); expect(missing()).not.toBe(noName);
   picks.next = [photo('front.png'), photo('left.png')];
-  fireEvent.click(screen.getByRole('button', { name: '从资产库选正脸' }));
-  fireEvent.click(await screen.findByRole('button', { name: '选正脸·选好了' }));
-  fireEvent.click(await screen.findByRole('button', { name: '从资产库选左侧脸' }));
-  fireEvent.click(await screen.findByRole('button', { name: '选左侧脸·选好了' }));
-  await screen.findByRole('button', { name: '换一张左侧脸' });
+  fireEvent.click(screen.getByRole('button', { name: '从资产库选择正脸' }));
+  fireEvent.click(await screen.findByRole('button', { name: '选择正脸·选好了' }));
+  fireEvent.click(await screen.findByRole('button', { name: '从资产库选择左侧脸' }));
+  fireEvent.click(await screen.findByRole('button', { name: '选择左侧脸·选好了' }));
+  await screen.findByRole('button', { name: '更换左侧脸' });
   expect(create.disabled).toBe(true);
   fireEvent.click(screen.getByLabelText('确认'));
   expect(create.disabled).toBe(false);
@@ -84,10 +86,10 @@ test('a retry after a half-finished create adds the missing photos to the same p
   render(<NewPersonDialog open onClose={vi.fn()} onCreated={onCreated}/>);
   fireEvent.change(screen.getByLabelText('人物名字'), { target: { value: '唐唐' } });
   picks.next = [photo('front.png'), photo('close.png')];
-  fireEvent.click(screen.getByRole('button', { name: '从资产库选正脸' }));
-  fireEvent.click(await screen.findByRole('button', { name: '选正脸·选好了' }));
-  fireEvent.click(await screen.findByRole('button', { name: '从资产库选近景特写' }));
-  fireEvent.click(await screen.findByRole('button', { name: '选近景特写·选好了' }));
+  fireEvent.click(screen.getByRole('button', { name: '从资产库选择正脸' }));
+  fireEvent.click(await screen.findByRole('button', { name: '选择正脸·选好了' }));
+  fireEvent.click(await screen.findByRole('button', { name: '从资产库选择近景特写' }));
+  fireEvent.click(await screen.findByRole('button', { name: '选择近景特写·选好了' }));
   fireEvent.click(await screen.findByLabelText('确认'));
   fireEvent.click(screen.getByRole('button', { name: '创建人物' }));
   expect((await screen.findByRole('alert')).textContent).toContain('网络断了');

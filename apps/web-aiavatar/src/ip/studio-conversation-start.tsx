@@ -37,7 +37,7 @@ export function StudioConversationStart({ onStart, creating, pending = false, co
   const examples = <div className="studio-conversation-start-examples" aria-label="试试这样说">
     {conversationExamples.map(example => <button key={example.label} type="button" disabled={locked} onClick={() => { setBrief(example.text); area.current?.focus(); }}>{example.label}</button>)}
   </div>;
-  return <form className={`studio-conversation-start${compact ? " is-compact" : ""}`} aria-label="和助手开始创作" onSubmit={e => { e.preventDefault(); submit(); }}>
+  return <form className={`studio-conversation-start${compact ? " is-compact" : ""}`} aria-label="与助手开始创作" onSubmit={e => { e.preventDefault(); submit(); }}>
     {heading && <h2>{heading}</h2>}
     <div className="studio-conversation-start-box">
       <label htmlFor="studio-conversation-brief" className="studio-conversation-start-label">想做什么</label>
@@ -46,7 +46,7 @@ export function StudioConversationStart({ onStart, creating, pending = false, co
       <div className="studio-conversation-start-row">
         {/* 新版（设计稿）：常用开头放在框下面一排，框里只留发送；不写扣费说明，花钱的地方会先报价。 */}
         {version !== "next" && examples}
-        <button type="submit" className="studio-conversation-start-send" disabled={!canSubmit} title={pending ? "继续保存并打开画布" : brief.trim() ? "开始对话（Enter）" : "请先输入想做的内容"}>
+        <button type="submit" className="studio-conversation-start-send" disabled={!canSubmit} title={pending ? "继续保存并打开画布" : brief.trim() ? "开始对话（Enter）" : "请输入想做的内容"}>
           {creating ? <Loader2 size={18} className="studio-gallery-spinner" aria-hidden="true"/> : <ArrowUp size={18} aria-hidden="true"/>}<span>{pending ? "继续保存并打开" : "开始对话"}</span>
         </button>
       </div>

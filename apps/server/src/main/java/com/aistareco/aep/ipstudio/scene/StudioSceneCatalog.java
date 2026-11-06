@@ -373,11 +373,11 @@ public class StudioSceneCatalog {
     public static String sceneKey(String sceneId) { return "scene-" + sceneId; }
 
     private String imagePrompt(ComposeRequest r) {
-        ImageScene scene = image(r.sceneId()).orElseThrow(() -> bad("这个场景不存在，请刷新后重选"));
+        ImageScene scene = image(r.sceneId()).orElseThrow(() -> bad("该场景已下架，请刷新后重新选择"));
         int[] counts = refCounts(scene, r);
         String extra = trim(r.text());
         boolean free = FREE.equals(scene.id());
-        if (free && extra.isEmpty()) throw bad("写一句想要的画面");
+        if (free && extra.isEmpty()) throw bad("请描述想要的画面");
         java.util.Map<String, Object> vars = new java.util.LinkedHashMap<>();
         vars.put("free", free);
         vars.put("extra", extra);
@@ -393,18 +393,18 @@ public class StudioSceneCatalog {
         List<SceneRef> refs = scene.refs();
         int[] counts = new int[refs.size()];
         if (r.refCounts() != null) {
-            if (r.refCounts().size() > refs.size()) throw bad("这个场景的素材位变了，请刷新后重选");
+            if (r.refCounts().size() > refs.size()) throw bad("该场景的素材要求已变化，请刷新后重新选择");
             for (int i = 0; i < r.refCounts().size(); i++) counts[i] = r.refCounts().get(i) == null ? 0 : Math.max(0, r.refCounts().get(i));
         } else if (r.filled() != null) {
             for (int i : r.filled()) if (i >= 0 && i < refs.size()) counts[i] = 1;
         }
         for (int i = 0; i < refs.size(); i++) {
-            if (refs.get(i).required() && counts[i] == 0) throw bad("先放" + refs.get(i).label());
-            if (counts[i] > refs.get(i).limit()) throw bad(refs.get(i).label() + "最多放 " + refs.get(i).limit() + " 张");
+            if (refs.get(i).required() && counts[i] == 0) throw bad("请添加" + refs.get(i).label());
+            if (counts[i] > refs.get(i).limit()) throw bad(refs.get(i).label() + "最多 " + refs.get(i).limit() + " 张");
         }
         List<Integer> any = scene.anyOf() == null ? List.of() : scene.anyOf();
         if (!any.isEmpty() && any.stream().allMatch(i -> counts[i] == 0))
-            throw bad("先放" + String.join("或", any.stream().map(i -> refs.get(i).label()).toList()));
+            throw bad("请添加" + String.join("或", any.stream().map(i -> refs.get(i).label()).toList()));
         return counts;
     }
 
@@ -427,11 +427,11 @@ public class StudioSceneCatalog {
     /** 选中的选项（{label, prompt}），没给的组用默认值；后台下架的选项 400，让页面刷新后重选。 */
     static List<java.util.Map<String, Object>> optionItems(List<OptionGroup> groups, java.util.Map<String, String> picked) {
         java.util.Map<String, String> chosen = picked == null ? java.util.Map.of() : picked;
-        for (String key : chosen.keySet()) if (groups.stream().noneMatch(g -> g.key().equals(key))) throw bad("这个选项已经下架，请刷新后重选");
+        for (String key : chosen.keySet()) if (groups.stream().noneMatch(g -> g.key().equals(key))) throw bad("该选项已下架，请刷新后重新选择");
         List<java.util.Map<String, Object>> out = new ArrayList<>();
         for (OptionGroup g : groups) {
             String value = chosen.getOrDefault(g.key(), g.defaultValue());
-            OptionChoice choice = g.choices().stream().filter(c -> c.value().equals(value)).findFirst().orElseThrow(() -> bad("这个选项已经下架，请刷新后重选"));
+            OptionChoice choice = g.choices().stream().filter(c -> c.value().equals(value)).findFirst().orElseThrow(() -> bad("该选项已下架，请刷新后重新选择"));
             out.add(java.util.Map.of("label", g.label(), "prompt", choice.prompt()));
         }
         return out;
@@ -533,7 +533,7 @@ public class StudioSceneCatalog {
 
     /** 受理时冻结分段脚本用到的版本（审稿不拼场景，多冻结也不影响）。 */
     public java.util.Map<String, Integer> freezeSegmented(String sceneId) {
-        VideoScene scene = video(sceneId).orElseThrow(() -> bad("这个场景不存在，请刷新后重选"));
+        VideoScene scene = video(sceneId).orElseThrow(() -> bad("该场景已下架，请刷新后重新选择"));
         List<String> keys = new ArrayList<>(List.of(com.aistareco.aep.ipstudio.prompt.StudioPromptCallPoints.SEGMENTED_SCRIPT, com.aistareco.aep.ipstudio.prompt.StudioPromptCallPoints.SEGMENTED_REVIEW, sceneKey(scene.id())));
         String method = groupMethod(scene.group());
         if (method != null) keys.add(method);
@@ -574,7 +574,7 @@ public class StudioSceneCatalog {
 
     /** 编导受理时冻结的条目：环节、底座、场景、所属分组的内容方法（有的话）。 */
     public java.util.Map<String, Integer> freezeSceneScript(String sceneId) {
-        VideoScene scene = video(sceneId).orElseThrow(() -> bad("这个场景不存在，请刷新后重选"));
+        VideoScene scene = video(sceneId).orElseThrow(() -> bad("该场景已下架，请刷新后重新选择"));
         List<String> keys = new ArrayList<>(List.of(STAGE_SCRIPT, sceneKey(scene.id())));
         String method = groupMethod(scene.group());
         if (method != null) keys.add(method);
@@ -595,15 +595,15 @@ public class StudioSceneCatalog {
     static final int MAX_HANDOFF_SECONDS = 60;
 
     private VideoInput videoInput(ComposeRequest r, boolean sceneDurations) {
-        VideoScene scene = video(r.sceneId()).orElseThrow(() -> bad("这个场景不存在，请刷新后重选"));
+        VideoScene scene = video(r.sceneId()).orElseThrow(() -> bad("该场景已下架，请刷新后重新选择"));
         List<String> images = r.imageTitles() == null ? List.of() : r.imageTitles().stream().filter(t -> t != null && !t.isBlank()).toList();
         String text = trim(r.text());
-        if (scene.video() != null && scene.video().required() && blank(r.videoTitle())) throw bad("先放" + scene.video().label());
+        if (scene.video() != null && scene.video().required() && blank(r.videoTitle())) throw bad("请添加" + scene.video().label());
         // 放了几张图看页面上放的全部：所选视频模型用不上的那几张（seenTitles）用户也放了，只是不编号。
         long placed = images.size() + (r.seenTitles() == null ? 0 : r.seenTitles().stream().filter(t -> !blank(t)).count());
-        if (scene.images().required() && placed == 0) throw bad("先放" + scene.images().label());
-        if (scene.images().max() != null && placed > scene.images().max()) throw bad(scene.images().label() + "最多放 " + scene.images().max() + " 张");
-        if (scene.textRequired() && text.isEmpty() && blank(r.revision())) throw bad("先写一句要求");
+        if (scene.images().required() && placed == 0) throw bad("请添加" + scene.images().label());
+        if (scene.images().max() != null && placed > scene.images().max()) throw bad(scene.images().label() + "最多 " + scene.images().max() + " 张");
+        if (scene.textRequired() && text.isEmpty() && blank(r.revision())) throw bad("请填写要求");
         int duration = r.duration() == null ? scene.duration() : r.duration();
         // 交给助手时最长 60 秒（页面上拖动选，超过模型单段上限由助手分段做再拼起来，2026-10-31 改版）；
         // 编导一次出片时长由所选视频模型决定，这里只挡明显不对的数。

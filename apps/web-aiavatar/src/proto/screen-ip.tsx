@@ -266,7 +266,7 @@ function MIpLicensePanel({ ip, license, ctx, onChanged }) {
     return hI("div", { className: "m-fade", style: { padding: "16px 18px 0" } },
       hI(EmptyBlock, {
         icon: Icons.shield, title: "这个 IP 还没有授权登记",
-        desc: "六类资产里只有真人肖像与 IP 需要授权 —— 登记后会生成 LIC 凭证，合成出片时自动核验。",
+        desc: "六类资产中，只有真人肖像和 IP 需要授权。登记后将生成授权凭证，合成时自动核验。",
         action: busy ? "登记中…" : "登记 IP 授权", onAction: busy ? undefined : act,
       }));
   }

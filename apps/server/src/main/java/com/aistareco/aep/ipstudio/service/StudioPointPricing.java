@@ -28,14 +28,14 @@ public class StudioPointPricing {
         JsonNode customerPrice = value.path("customerPrices").get(endpointId);
         if (customerPrice != null && !customerPrice.isNull()) {
             if (!customerPrice.isNumber() || customerPrice.decimalValue().signum() < 0)
-                throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "STUDIO_POINT_PRICING_INVALID", "模型用户积分售价尚未正确配置");
+                throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "STUDIO_POINT_PRICING_INVALID", "此模型暂未定价，请选择其他模型");
             return new Rate(null, null, null, customerPrice.decimalValue(), null, null, null);
         }
         JsonNode cost = value.path("endpointCosts").path(endpointId);
         if (!cost.isNumber() || cost.decimalValue().signum() < 0) return null;
         JsonNode ratio = value.path("supplierToPlatformRatio"), markup = value.path("markupPercent");
         if (!ratio.isNumber() || ratio.decimalValue().signum() <= 0 || !markup.isNumber() || markup.decimalValue().signum() < 0)
-            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "STUDIO_POINT_PRICING_INVALID", "模型积分换算尚未正确配置");
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "STUDIO_POINT_PRICING_INVALID", "此模型暂未定价，请选择其他模型");
         return new Rate(cost.decimalValue(), ratio.decimalValue(), BigDecimal.ONE.add(markup.decimalValue().movePointLeft(2)));
     }
     public record Rate(BigDecimal supplierPointsPerSecond, BigDecimal supplierToPlatformRatio, BigDecimal markupMultiplier,

@@ -104,7 +104,7 @@ async function waitForRun(runId: string, signal?: AbortSignal): Promise<IpRun> {
       // 别在这儿承诺退款：**前端等超时不等于服务端结束**。那头要么还在跑，要么真的卡住了
       // （由 IpRunReaper 按心跳超时释放冻结）—— 而已经出好的那几张是照价结算的，不退。
       // 所以只给运行号，让人查得到。
-      throw new Error(`等太久了（运行号 ${runId}）。这次运行可能还在服务端跑，把运行号报给运维可以查到它的结果；真卡住时冻结的积分由服务端释放`);
+      throw new Error(`等待超时（运行号 ${runId}）。任务可能仍在处理中，请稍后刷新查看；任务异常时，未使用的积分将自动退回。`);
     }
     await new Promise((r) => setTimeout(r, POLL_MS));
   }
@@ -163,7 +163,7 @@ function toImages(run: IpRun): GeneratedImage[] {
   if (!out.length) {
     // 别替服务端承诺退款：运行是 done 的时候费用已经结算了（这句话此前一直在骗人）。
     // 真正退款的是 failed 分支，那条走的是 run.errorMessage。
-    throw new Error(`这次运行没有返回图片（运行号 ${run.id}）—— 把这个号报给运维可以查到原因`);
+    throw new Error(`本次运行未返回图片（运行号 ${run.id}）。请重试。多次失败时，可复制「错误详情」反馈给我们。`);
   }
   return out;
 }
@@ -185,7 +185,7 @@ export async function requestEdit(
   options?: RequestOptions,
 ): Promise<GeneratedImage[]> {
   const projectId = currentProjectId();
-  if (!projectId) throw new Error("画布还没打开，稍等一下再试");
+  if (!projectId) throw new Error("画布尚未打开，请稍后重试");
   if (options?.signal?.aborted) throw new GenerationCanceled();
 
   const run = await generate(projectId, {
@@ -251,5 +251,5 @@ export async function requestImageQuestion(
   _onDelta: (text: string) => void,
   _options?: RequestOptions,
 ): Promise<string> {
-  throw new Error("看图对话还没开通");
+  throw new Error("暂不支持看图对话");
 }

@@ -165,7 +165,7 @@ public class DapCaptureService {
 
     public DapCapture required(String userId, String captureId) {
         return captureRepo.findByIdAndOwnerUserId(captureId, userId)
-                .orElseThrow(() -> BusinessException.notFound("DAP_CAPTURE_NOT_FOUND", "捕获会话不存在或无权访问"));
+                .orElseThrow(() -> BusinessException.notFound("DAP_CAPTURE_NOT_FOUND", "拍摄记录不存在或无权访问"));
     }
 
     /** ffmpeg 抽帧（best-effort；失败不阻断）。 */

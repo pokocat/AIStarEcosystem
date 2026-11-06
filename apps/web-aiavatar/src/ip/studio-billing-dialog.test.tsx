@@ -53,8 +53,8 @@ test("an enterprise that never chose models lets members pay with enterprise cre
   fireEvent.click(enterprise); fireEvent.click(screen.getByRole("button", { name: "确认账户并生成" }));
   expect(confirm).toHaveBeenCalledWith({ mode: "enterprise", enterpriseId: "team" });
 });
-test("text billing discloses the freeze ceiling and actual settlement", async () => {
-  render(<StudioBillingDialog details={{ operation: "assistant", expectedCost: 300, model: "model" }} onConfirm={vi.fn()} onCancel={vi.fn()}/>); await screen.findByText(/按实际用量结算/); expect(screen.getByText(/本次最多冻结 300 积分/)).toBeTruthy(); expect(screen.getByText(/未用部分退回/)).toBeTruthy();
+test("text billing says it settles by actual usage and does not show the freeze ceiling", async () => {
+  render(<StudioBillingDialog details={{ operation: "assistant", expectedCost: 300, model: "model" }} onConfirm={vi.fn()} onCancel={vi.fn()}/>); await screen.findByText(/按实际用量结算/); expect(screen.queryByText(/300 积分/)).toBeNull(); expect(screen.queryByText(/最多冻结/)).toBeNull();
 });
 
 test("backend enterprise feature disabled permits explicit personal funds only for mine 404", async () => {
@@ -93,7 +93,7 @@ test("a default that could not be saved keeps the chooser open and generates not
   await screen.findByRole("radio", { name: /创作公司/ });
   fireEvent.click(screen.getByRole("checkbox", { name: "设为默认，以后不再询问" }));
   fireEvent.click(screen.getByRole("button", { name: "确认账户并生成" }));
-  await screen.findByText(/默认账户没有保存/); expect(confirm).not.toHaveBeenCalled();
+  await screen.findByText(/默认账户保存失败/); expect(confirm).not.toHaveBeenCalled();
 });
 test("an enterprise default the member can no longer pay from asks again instead of switching to personal", async () => {
   api.account.mockResolvedValue({ userId: "user", context: { ...context(), member: { status: "suspended" }, billingDefault: "enterprise" } });

@@ -52,11 +52,11 @@ test('an unknown accepted outcome shows same-task confirmation instead of a fres
  fireEvent.click(screen.getByRole('button',{name:'确认原任务'}));expect(confirm).toHaveBeenCalledOnce();expect(submit).not.toHaveBeenCalled();
 });
 
-test('per-second speech displays the reservation ceiling and submits that approved amount',async()=>{
+test('per-second speech shows the rate, not the reservation ceiling, and submits that approved amount',async()=>{
  api.studioSpeechCatalog.mockResolvedValue({models:[{endpointId:'tts',isDefault:true,name:'Qwen',creditCost:null,creditCostPerSecond:1.5}],voices:[{speaker:'Vivian',name:'Vivian',language:'中文'}],maxTextLength:600,maxInstructLength:160});
  const submit=vi.fn().mockResolvedValue(undefined);render(<StudioSpeech open onClose={()=>{}} initialText="你好😀" busy={false} onSubmit={submit}/>);
- await waitFor(()=>expect(screen.getByRole('button',{name:'生成配音 · 预冻结 20 积分'})).toBeDefined());
- expect(screen.getByText(/完成后退回差额/)).toBeDefined();
- fireEvent.click(screen.getByRole('button',{name:'生成配音 · 预冻结 20 积分'}));
+ await waitFor(()=>expect(screen.getByRole('button',{name:'生成配音 · 1.5 积分/秒'})).toBeDefined());
+ expect(screen.getByText(/不足 1 秒按 1 秒计/)).toBeDefined();expect(screen.queryByText(/预冻结/)).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'生成配音 · 1.5 积分/秒'}));
  expect(submit).toHaveBeenCalledWith({model:'tts',speaker:'Vivian',text:'你好😀',instruct:undefined,maxCost:20});
 });

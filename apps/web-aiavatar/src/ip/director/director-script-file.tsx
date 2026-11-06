@@ -48,7 +48,7 @@ export function LargePasteNotice({ chars, onUpload, onInsert, onClose, disabled 
   chars: number; onUpload?: () => void; onInsert?: (text: string) => void; onClose: () => void; disabled?: boolean;
 }) {
   return <div className="director-paste-blocked" role="alert">
-    <p><b>粘贴的文字较多（约 {chars.toLocaleString("zh-CN")} 字）</b>，请保存为 TXT 文件后，通过「上传剧本文件」导入。正文没有改动，可以继续编辑。</p>
+    <p><b>粘贴的文字较多（约 {chars.toLocaleString("zh-CN")} 字）</b>，请保存为 TXT 文件后，通过「上传剧本文件」导入。正文未改动，可继续编辑。</p>
     <div className="director-paste-blocked-actions">
       {onUpload && <button type="button" className="ip-brand-button" disabled={disabled} onClick={onUpload}><Upload size={14}/>上传剧本文件</button>}
       <button type="button" className="ip-brand-text-button" onClick={onClose}>知道了</button>
@@ -88,13 +88,13 @@ export function DirectorScriptFile({ hasText, insert, disabled, onImport, onRead
     const extension = file.name.includes(".") ? "." + file.name.split(".").pop()!.toLowerCase() : "";
     if (!ACCEPT.split(",").includes(extension)) { setError("请选择 TXT、Markdown、Word、PPT、PDF、RTF、HTML 或常见文本文件"); return; }
     if (!file.size) { setError("文件为空，请选择有正文的文件"); return; }
-    if (file.size > MAX_SCRIPT_FILE_BYTES) { setError("文件超过 50 MB，请按章节拆分后上传。没有读取任何内容"); return; }
+    if (file.size > MAX_SCRIPT_FILE_BYTES) { setError("文件超过 50 MB，请按章节拆分后上传"); return; }
     const controller = new AbortController(); request.current = controller;
     setReading({ name: file.name, size: file.size, since: Date.now() }); setNow(Date.now()); onReadingChange(true);
     try {
       const result = await DirectorApi.importScript(file, controller.signal);
       if (request.current !== controller) return;
-      if (!result.text.trim()) throw new Error("文件没有可读取的文字，请检查正文或先识别扫描件");
+      if (!result.text.trim()) throw new Error("文件中没有可读取的文字。扫描件请先进行文字识别");
       setPreview({ name: file.name, text: result.text });
     } catch (e) {
       if (request.current === controller) setError(errorText(e));
@@ -105,25 +105,25 @@ export function DirectorScriptFile({ hasText, insert, disabled, onImport, onRead
   return <div className="director-script-file">
     <div className="director-script-file-toolbar">
       <button type="button" className="ip-brand-secondary" disabled={disabled || !!reading} onClick={() => input.current?.click()}>
-        {reading ? <Loader2 size={15} className="ip-loading-icon"/> : <Upload size={15}/>}{reading ? "正在读取文件…" : "上传剧本文件"}
+        {reading ? <Loader2 size={15} className="ip-loading-icon"/> : <Upload size={15}/>}{reading ? "正在提取文字…" : "上传剧本文件"}
       </button>
       <input ref={input} hidden type="file" accept={ACCEPT} aria-label="上传剧本文件" disabled={disabled || !!reading}
         onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) void read(file); }}/>
-      {reading && <button type="button" className="ip-brand-text-button" onClick={cancel}>取消读取</button>}
-      <span>TXT / Markdown / Word / PPT / PDF / RTF / HTML 等 · 文件最多 50 MB，正文不限字数</span>
+      {reading && <button type="button" className="ip-brand-text-button" onClick={cancel}>取消提取</button>}
+      <span>TXT / Markdown / Word / PPT / PDF / RTF / HTML 等 · 文件最大 50 MB，正文不限字数</span>
     </div>
-    <p className="director-script-file-hint">免费提取文字，可预览后导入正文；网页只取正文，不运行里面的脚本；扫描 PDF 请先识别文字。</p>
+    <p className="director-script-file-hint">免费提取文字，预览后导入正文。网页文件仅提取正文，不运行其中的脚本；扫描版 PDF 请先识别文字。</p>
     {reading && <span role="status" className="director-script-file-hint director-script-file-progress">
-      正在上传并提取「{reading.name}」（{sizeText(reading.size)}），已用 {Math.max(0, Math.round((now - reading.since) / 1000))} 秒。完成后可预览，取消不会改动正文。</span>}
+      正在上传并提取「{reading.name}」（{sizeText(reading.size)}），已用时 {Math.max(0, Math.round((now - reading.since) / 1000))} 秒。完成后可预览，取消不会改动正文。</span>}
     <InlineError message={error}/>
     {preview && <div className="director-script-file-preview">
       <div><FileText size={15}/><strong title={preview.name}>{preview.name}</strong><span>{preview.text.length.toLocaleString("zh-CN")} 字</span>
         <button type="button" aria-label="关闭文件预览" onClick={() => setPreview(undefined)}><X size={16}/></button></div>
       <textarea aria-label="文件文字预览" value={preview.text.length > PREVIEW_CHARS ? preview.text.slice(0, PREVIEW_CHARS) : preview.text} readOnly rows={6}/>
-      {preview.text.length > PREVIEW_CHARS && <small className="director-muted">这里只预览开头 {PREVIEW_CHARS.toLocaleString("zh-CN")} 字，导入时整份 {preview.text.length.toLocaleString("zh-CN")} 字都会放进正文，不截断。</small>}
+      {preview.text.length > PREVIEW_CHARS && <small className="director-muted">此处仅预览开头 {PREVIEW_CHARS.toLocaleString("zh-CN")} 字，导入时将完整导入全部 {preview.text.length.toLocaleString("zh-CN")} 字。</small>}
       <div className="director-actions">
         <button type="button" className="ip-brand-button" disabled={disabled} onClick={() => { onImport(preview.text); setPreview(undefined); }}>{insert ? "插入到粘贴的位置" : hasText ? "替换当前正文" : "使用文件内容"}</button>
-        <small>{insert ? "插到你刚才粘贴的位置，原有正文保留；点击保存才会存入作品。" : hasText ? "确认后替换下方正文，请先检查原有内容。" : "导入后仍可编辑，点击保存才会存入作品。"}</small>
+        <small>{insert ? "插入到刚才粘贴的位置，原有正文保留；点击「保存」后存入作品。" : hasText ? "确认后替换下方正文，请先检查原有内容。" : "导入后仍可编辑，点击「保存」后存入作品。"}</small>
       </div>
     </div>}
   </div>;

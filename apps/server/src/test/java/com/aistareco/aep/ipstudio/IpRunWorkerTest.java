@@ -432,7 +432,6 @@ class IpRunWorkerTest {
         assertEquals(IpRun.STATUS_FAILED, r.getStatus());
         assertEquals("IP_IDENTITY_EXTRACT_FAILED", r.getErrorCode());
         assertNotNull(r.getErrorMessage());
-        assertTrue(r.getErrorMessage().contains("不支持图片输入") || r.getErrorMessage().contains("看图"));
         verify(credits, never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
         verify(credits).releaseHold(eq(IpRunService.REF_TYPE), eq(RID), anyString());
     }

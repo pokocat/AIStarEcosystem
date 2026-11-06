@@ -20,7 +20,7 @@ export const SUB_PRODUCT_LABEL_ZH: Record<SubProduct, string> = {
   music: "AI 音乐人",
   drama: "AI 短剧",
   celebrity: "AI 明星带货",
-  aiavatar: "数字人资产平台",
+  aiavatar: "IP Studio",
   star: "明星商务工作台",
 };
 /**

@@ -13,7 +13,7 @@ export function studioVideoModeForAssets(model:VideoStudioModel,selected:string|
   const configured=model.contract.modes.find(mode=>mode.mode===value);
   if(configured)return configured;
   if(value!=="frames"&&value!=="reference") {
-    throw new Error("所选视频模式已不在当前模型的开放范围，请重新选择");
+    throw new Error("当前模型不支持所选视频模式，请重新选择");
   }
   const expectedFrames=value==="reference"?0:assets.length;
   const match=model.contract.modes.find(mode=>{
@@ -26,7 +26,7 @@ export function studioVideoModeForAssets(model:VideoStudioModel,selected:string|
 }
 export function studioVideoTierForConfig(model:VideoStudioModel,stored:string|undefined):string {
   const tier=model.contract.tiers.find(item=>item.tier===stored||item.tier===`${stored}p`);
-  if(!tier)throw new Error("当前清晰度不在所选模型的开放范围，请在参数设置中重新选择");
+  if(!tier)throw new Error("当前模型不支持所选清晰度，请在参数设置中重新选择");
   return tier.tier;
 }
 export const studioVideoTierInputValue = (tier:string):string => /^\d+p$/.test(tier)?tier.slice(0,-1):tier;
@@ -34,7 +34,7 @@ export function studioVideoCanvasForConfig(model:VideoStudioModel,tier:string,si
   const canvases=model.contract.tiers.find(item=>item.tier===tier)?.canvases||[];
   const exact=canvases.find(canvas=>size===canvas.aspectRatio||size===`${canvas.width}x${canvas.height}`);
   const canvas=exact||canvases.find(item=>item.aspectRatio===inferVideoRatio(size||"auto"));
-  if(!canvas)throw new Error("当前画幅不在所选模型的开放范围，请在参数设置中重新选择");
+  if(!canvas)throw new Error("当前模型不支持所选画幅，请在参数设置中重新选择");
   return canvas;
 }
 export type StudioVideoAsset = {mediaType:VideoStudioMediaType;storageKey?:string};
@@ -143,7 +143,7 @@ export const studioVideoPromptMode=(supports:boolean|undefined,keepPrompt:boolea
 function studioVideoInputs(mode:VideoStudioMode,tier:string,assets:StudioVideoAsset[],seed?:number,spec?:VideoStudioModeSpec):StudioVideoSettings {
   if(assets.some(a=>!a.storageKey))throw new Error("有一份参考素材尚未上传完成，请重新选择");
   if(spec) {
-    if(spec.mode!==mode)throw new Error("这个模型不支持所选视频模式，请重新选择");
+    if(spec.mode!==mode)throw new Error("当前模型不支持所选视频模式，请重新选择");
     const remaining=[...assets];
     const frame=(label:string)=>{
       const index=remaining.findIndex(asset=>asset.mediaType==="image");
@@ -170,7 +170,7 @@ function studioVideoInputs(mode:VideoStudioMode,tier:string,assets:StudioVideoAs
 
 /** Over a model's prompt limit: the count, the limit and how much to cut. */
 export function studioPromptLimitMessage(chars:number,max:number,hasLinkedText:boolean):string {
-  return `${hasLinkedText?"创作要求和引用文本合计":"提示词"} ${chars} 字，这个模型最多 ${max} 字，需删减 ${chars-max} 字。`;
+  return `${hasLinkedText?"创作要求和引用文本合计":"提示词"} ${chars} 字，当前模型最多 ${max} 字，需删减 ${chars-max} 字。`;
 }
 
 /** Another selectable model that takes this prompt as it is; the one with the most room. */
@@ -181,10 +181,10 @@ export function studioLongerPromptModel<T extends {promptMaxChars?:number|null}>
 
 export function studioVideoError(model:VideoStudioModel,video:StudioVideoSettings,prompt:string,ratio:string,seconds:number):string|undefined {
   const contract=model.contract,spec=contract.modes.find(m=>m.mode===video.mode);
-  if(!spec)return "这个模型不支持所选视频模式，请重新选择";
+  if(!spec)return "当前模型不支持所选视频模式，请重新选择";
   if(!contract.tiers.find(t=>t.tier===video.resolutionTier)?.canvases.some(c=>c.aspectRatio===ratio))return "请按所选模型重新选择清晰度和画幅";
   if(!Number.isInteger(seconds)||seconds<contract.minSeconds||seconds>contract.maxSeconds)return `视频时长需为 ${contract.minSeconds} 到 ${contract.maxSeconds} 秒`;
-  if(!prompt.trim()&&spec.promptRequired!==false)return "请先写提示词";
+  if(!prompt.trim()&&spec.promptRequired!==false)return "请输入提示词";
   if(Array.from(prompt).length>contract.promptMaxChars)return studioPromptLimitMessage(Array.from(prompt).length,contract.promptMaxChars,false);
   if(video.seed!=null&&(!Number.isSafeInteger(video.seed)||video.seed<0||video.seed>contract.seedMax))return `随机种子需为 0 到 ${contract.seedMax} 的整数`;
   if(spec.needsFirstFrame&&!video.firstFrameKey)return "请选择首帧图片";
@@ -202,5 +202,5 @@ export function studioVideoError(model:VideoStudioModel,video:StudioVideoSetting
     if(counts.video>0&&counts.image>rules.maxImagesWithVideo)return `含视频时最多选择 ${rules.maxImagesWithVideo} 张图片`;
     if(counts.image+counts.video<rules.minVisual)return "至少选择一张图片或一段视频作为参考";
   }
-  if(studioVideoQuote(model,video,seconds)==null)return "这个模式和清晰度尚未定价，暂不可生成";
+  if(studioVideoQuote(model,video,seconds)==null)return "当前模式和清晰度暂不可用";
 }

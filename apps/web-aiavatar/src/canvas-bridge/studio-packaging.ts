@@ -28,7 +28,7 @@ export function parseStudioCaptions(text:string):NonNullable<StudioPackaging["ca
   if(lines.length>24)throw new Error("一次最多添加 24 条字幕");
   return lines.map((line,i)=>{
     const match=line.match(/^(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*[:：]\s*(.+)$/);
-    if(!match)throw new Error(`第 ${i+1} 条字幕请使用“开始秒-结束秒: 文字”`);
+    if(!match)throw new Error(`第 ${i+1} 条字幕请使用「开始秒-结束秒: 文字」格式`);
     const start=Number(match[1]),end=Number(match[2]),value=match[3].trim();
     if(start<last||end<=start||end>600||value.length>160)throw new Error(`第 ${i+1} 条字幕时间或长度不正确`);
     last=end;return {start,end,text:value};

@@ -23,7 +23,7 @@ test('a poll failure resumes the same ticket and only a confirmed success comple
   await waitFor(()=>expect(screen.getByText('网络中断')).toBeDefined());expect(done).not.toHaveBeenCalled();
   const account={id:'a',userId:'u',platform:'douyin' as const,accountName:'owned',status:'active' as const,boundAt:'2026-10-16T01:00:00Z'};
   vi.mocked(SocialAccountApi.pollBind).mockResolvedValue({status:'success',account});
-  fireEvent.click(screen.getByRole('button',{name:'继续查询本次绑定'}));
+  fireEvent.click(screen.getByRole('button',{name:'重新查询绑定状态'}));
   await waitFor(()=>expect(done).toHaveBeenCalledExactlyOnceWith(account));
   expect(close).toHaveBeenCalledOnce();expect(SocialAccountApi.initBind).toHaveBeenCalledOnce();
   expect(SocialAccountApi.pollBind).toHaveBeenLastCalledWith('ticket-original');

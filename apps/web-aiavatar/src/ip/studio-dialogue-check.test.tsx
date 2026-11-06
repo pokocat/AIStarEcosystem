@@ -18,17 +18,17 @@ test('a check node shows 「AI 判断」 item by item with the sampled evidence,
   expect(within(verdict).getAllByText('无法判断')).toHaveLength(2);
   expect(within(verdict).getByText('通过')).toBeDefined();
   expect(within(verdict).getByText('2.5 秒：画面中央是洗衣液')).toBeDefined();
-  expect(within(verdict).getByText('看了 0.5 秒、2.5 秒 的画面')).toBeDefined();
+  expect(within(verdict).getByText('已检查 0.5 秒、2.5 秒处的画面')).toBeDefined();
   expect(within(verdict).getByText('建议：加字幕再检查')).toBeDefined();
   // Not the 「剧本待创作」 summary that ordinary studio text nodes fall back to.
   expect(screen.queryByText('剧本待创作')).toBeNull();
 });
 
-test('「就用这版」 and 「重做这一段」 dispatch to the dialogue without starting a canvas drag', () => {
+test('「采用此版本」 and 「重新生成」 dispatch to the dialogue without starting a canvas drag', () => {
   const drag = vi.fn(), command = vi.fn();
   window.addEventListener(STUDIO_CHECK_COMMAND, command);
   render(<div onMouseDown={drag} onPointerDown={drag}><StudioNodeContent node={node}/></div>);
-  for (const name of ['就用这版', '重做这一段']) {
+  for (const name of ['采用此版本', '重新生成']) {
     const button = screen.getByRole('button', { name });
     fireEvent.pointerDown(button); fireEvent.mouseDown(button); fireEvent.click(button);
   }
@@ -39,8 +39,8 @@ test('「就用这版」 and 「重做这一段」 dispatch to the dialogue with
 
 test('a read-only copy shows the verdict without actions; a check still running says so', () => {
   render(<StudioNodeContent node={node} readOnly/>);
-  expect(screen.queryByRole('button', { name: '就用这版' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '采用此版本' })).toBeNull();
   cleanup();
   render(<StudioNodeContent node={{ ...node, metadata: { studio: { kind: 'check' } } }}/>);
-  expect(screen.getByRole('status').textContent).toContain('正在检查');
+  expect(screen.getByRole('status').textContent).toContain('检查中');
 });

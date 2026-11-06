@@ -80,7 +80,7 @@ test('canvas duration follows legacy model capabilities and preserves an out-of-
  expect(within(panel).queryByRole('radio',{name:'60 秒'})).toBeNull();
  expect((within(panel).getByRole('spinbutton',{name:'自定义视频时长'}) as HTMLInputElement).value).toBe('45');
  expect(within(panel).getByRole('alert').textContent).toContain('所选模型支持 5–12 秒，现在设置的是 45 秒');
- fireEvent.click(within(panel).getByRole('button',{name:'改成 12 秒'}));
+ fireEvent.click(within(panel).getByRole('button',{name:'改为 12 秒'}));
  await waitFor(()=>expect(snapshot.find(n=>n.id==='v')?.metadata?.studio?.composerDraft?.durationSec).toBe(12));
  expect(api.submit).not.toHaveBeenCalled();
 });
@@ -121,10 +121,10 @@ test('deleting the node a generation panel is for closes the panel, so the empty
  render(<Deletable/>);
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'image',nodeId:'v'}}));
  await screen.findByRole('dialog',{name:'生成图片'});
- expect(screen.queryByRole('heading',{name:'这张画布还是空的'})).toBeNull();
+ expect(screen.queryByRole('heading',{name:'画布还没有内容'})).toBeNull();
  act(()=>remove());
  await waitFor(()=>expect(screen.queryByRole('dialog',{name:'生成图片'})).toBeNull());
- expect(screen.getByRole('heading',{name:'这张画布还是空的'})).toBeDefined();
+ expect(screen.getByRole('heading',{name:'画布还没有内容'})).toBeDefined();
  expect(api.submit).not.toHaveBeenCalled();
 });
 test('image composer offers only the ratios, batch sizes and prompt limit of the selected model and blocks an old unsupported draft',async()=>{
@@ -577,7 +577,7 @@ test('assembling a recreation canvas leaves out the original the clip was made f
  render(<Host initialNodes={[source,take]} initialConnections={[{id:'e',fromNodeId:'src',toNodeId:'take'}]}/>);
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'work'}}));
  expect(screen.queryByRole('combobox',{name:'当前分集'})).toBeNull();
- expect((screen.getByRole('checkbox',{name:'把「原片」放进成片'}) as HTMLInputElement).checked).toBe(false);
+ expect((screen.getByRole('checkbox',{name:'将「原片」加入成片'}) as HTMLInputElement).checked).toBe(false);
  fireEvent.click(screen.getByRole('button',{name:'合成作品',exact:true}));await waitFor(()=>expect(api.submit).toHaveBeenCalledOnce());
  expect(api.submit.mock.calls[0][1].references).toEqual([{storageKey:'take.mp4',role:'clip',ipId:undefined}]);
 });
@@ -800,11 +800,11 @@ test('opening and reopening a template draft keeps empty upstream slots and chec
  render(<Host initialNodes={[draft,empty,brief]} initialConnections={[{id:'frame-edge',fromNodeId:'frame',toNodeId:'v'},{id:'brief-edge',fromNodeId:'brief',toNodeId:'v'}]}/>);openVideo();
  await screen.findByRole('button',{name:'移除参考 人物参考'});await screen.findByRole('button',{name:'移除文本引用 创作要求输入'});
  await waitFor(()=>expect(connectionSnapshot).toHaveLength(2));
- fireEvent.click(within(screen.getByRole('dialog',{name:'生成视频'})).getAllByRole('button',{name:'生成视频',exact:true}).at(-1)!);await waitFor(()=>expect(api.error).toHaveBeenCalledWith('请先为「人物参考」添加或生成图片'));expect(api.submit).not.toHaveBeenCalled();
+ fireEvent.click(within(screen.getByRole('dialog',{name:'生成视频'})).getAllByRole('button',{name:'生成视频',exact:true}).at(-1)!);await waitFor(()=>expect(api.error).toHaveBeenCalledWith('请为「人物参考」添加或生成图片'));expect(api.submit).not.toHaveBeenCalled();
  fireEvent.click(screen.getByRole('button',{name:'关闭创作面板'}));await waitFor(()=>expect(screen.queryByRole('dialog',{name:'生成视频'})).toBeNull());openVideo();
  await screen.findByRole('button',{name:'移除参考 人物参考'});expect(connectionSnapshot).toHaveLength(2);
  fireEvent.click(screen.getByRole('button',{name:'移除参考 人物参考'}));await waitFor(()=>expect(connectionSnapshot.map(c=>c.fromNodeId)).toEqual(['brief']));
- fireEvent.click(within(screen.getByRole('dialog',{name:'生成视频'})).getAllByRole('button',{name:'生成视频',exact:true}).at(-1)!);await waitFor(()=>expect(api.error).toHaveBeenCalledWith('请先填写「创作要求输入」'));expect(api.submit).not.toHaveBeenCalled();
+ fireEvent.click(within(screen.getByRole('dialog',{name:'生成视频'})).getAllByRole('button',{name:'生成视频',exact:true}).at(-1)!);await waitFor(()=>expect(api.error).toHaveBeenCalledWith('请填写「创作要求输入」'));expect(api.submit).not.toHaveBeenCalled();
 });
 
 test('storyboard opens an ordinary image in an embedded creator without leaving the typed list, copying or generating',async()=>{
@@ -994,7 +994,7 @@ test('a prompt over the chosen video model limit says how much to cut and offers
  render(<Host initialNodes={[{...node,metadata:{prompt:'十二个字的提示词写满了哦',status:'idle',videoCount:'1'}}]}/>);
  await waitFor(()=>expect(api.videoModels).toHaveBeenCalled());openVideo();
  const notice=await waitFor(()=>{const el=document.querySelector('.studio-prompt-limit');expect(el).toBeTruthy();return el as HTMLElement;});
- expect(notice.textContent).toContain('提示词 12 字，这个模型最多 10 字，需删减 2 字。');
+ expect(notice.textContent).toContain('提示词 12 字，当前模型最多 10 字，需删减 2 字。');
  // One notice: the generic validation line and the error toast would only repeat it.
  expect(document.querySelectorAll('[role="status"]').length).toBe(new Set(Array.from(document.querySelectorAll('[role="status"]')).map(e=>e.textContent)).size);
  expect(api.error).not.toHaveBeenCalled();
@@ -1060,7 +1060,7 @@ test('frame-intent confirmation opens the compact picker, preserves the requeste
  await waitFor(()=>expect(api.videoModels).toHaveBeenCalled());openVideo();await screen.findByRole('button',{name:'视频模式'});
  const generate=()=>within(screen.getByRole('dialog',{name:'生成视频'})).getAllByRole('button',{name:'生成视频',exact:true}).at(-1)!;
  fireEvent.click(generate());
- const question=await screen.findByRole('dialog',{name:'描述里提到了图片，这次没有用上图片'});
+ const question=await screen.findByRole('dialog',{name:'描述中提到了图片，但本次未使用图片'});
  expect(api.submit).not.toHaveBeenCalled();
  fireEvent.click(within(question).getByRole('button',{name:'改用「首尾帧」选图片'}));
  await waitFor(()=>expect(screen.getByRole('button',{name:'参考',exact:true}).getAttribute('aria-expanded')).toBe('true'));
@@ -1117,7 +1117,7 @@ test('finished works keep unique media actions inside their result in the work e
  const work={...node,id:'work',title:'完成作品',metadata:{...node.metadata,studio:{kind:'work' as const}}};
  render(<Host initialNodes={[node,work]}/>);
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'work',nodeId:'work'}}));
- const result=screen.getByRole('region',{name:'合成好的作品'});
+ const result=screen.getByRole('region',{name:'已合成的作品'});
  expect(within(result).getByRole('button',{name:'下载作品'})).toBeDefined();
  expect(within(result).queryByRole('button',{name:'下载视频'})).toBeNull();
  expect(within(result).getByRole('button',{name:'抽帧'})).toBeDefined();

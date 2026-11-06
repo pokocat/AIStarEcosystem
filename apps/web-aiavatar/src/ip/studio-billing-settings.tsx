@@ -16,7 +16,7 @@ export function StudioBillingSettings() {
       if (!active) return;
       setAccount(value);
       setMode(value.context?.billingDefault || "ask");
-    }).catch(() => { if (active) setError("暂时无法读取付款设置，请刷新后重试。"); });
+    }).catch(() => { if (active) setError("付款设置加载失败，请稍后刷新重试。"); });
     return () => { active = false; };
   }, []);
   if (error && !account) return <p role="alert">{error}</p>;
@@ -28,14 +28,14 @@ export function StudioBillingSettings() {
       setMode(next); setError(""); setSaving(true);
       saveStudioBillingPreference(account, next === "ask" ? undefined : next === "enterprise" ? "enterprise" : "personal")
         .then(setAccount)
-        .catch(caught => { setMode(previous); setError(caught instanceof Error && caught.message ? `${caught.message}，没有保存。` : "没有保存，请重试。"); })
+        .catch(caught => { setMode(previous); setError(caught instanceof Error && caught.message ? `${caught.message}，未保存。` : "保存失败，请重试。"); })
         .finally(() => setSaving(false));
     }}>
       <option value="ask">每次询问</option>
       <option value="personal">默认使用个人积分</option>
       <option value="enterprise">默认使用{account.context.enterprise.name}的企业积分</option>
     </SelectField>
-    <p style={{ margin: "9px 0 0", color: "var(--ink-3)", fontSize: 12 }}>改了就保存，出图、视频、数字人、配音等所有生成都按它付款，换电脑或手机也一样。余额不足时不会自动换账户；退出企业后会重新询问。</p>
+    <p style={{ margin: "9px 0 0", color: "var(--ink-3)", fontSize: 12 }}>修改后自动保存。图片、视频、数字人、配音等所有生成均使用此账户付款，在其他设备上同样生效。余额不足时不会自动切换账户；退出企业后将重新询问。</p>
     {error && <p role="alert">{error}</p>}
   </section>;
 }

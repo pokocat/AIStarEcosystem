@@ -6,5 +6,5 @@ export const STUDIO_IMAGE_UPLOAD_MAX_EDGE = STUDIO_MEDIA_IMAGE_LIMITS.maxEdge;
 export const STUDIO_IMAGE_UPLOAD_MAX_PIXELS = STUDIO_MEDIA_IMAGE_LIMITS.maxPixels;
 export const prepareStudioImageUpload = (file: File) => prepareImageForUpload(file, STUDIO_MEDIA_IMAGE_LIMITS);
 export function validateStudioImageUpload(file: File) {
-  if (!file.size) throw new Error('图片是空的，请重新选择');
+  if (!file.size) throw new Error('图片文件为空，请重新选择');
 }

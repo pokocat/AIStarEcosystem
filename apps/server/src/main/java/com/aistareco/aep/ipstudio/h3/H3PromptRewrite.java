@@ -472,7 +472,7 @@ public final class H3PromptRewrite {
      * 7 次只有这类小事，不该为它停下来）。{@code usable=false} 表示这一稿不能直接用（超长）。拼不出提示词时才抛 {@code AI_BAD_OUTPUT}（全额退回）。
      */
     public static ObjectNode validate(ObjectMapper om, JsonNode meta, JsonNode out) {
-        if (out == null || !out.isObject()) throw bad("没有返回 JSON");
+        if (out == null || !out.isObject()) throw bad("模型返回格式有误");
         Mode mode = Mode.wire(meta.path("mode").asText(null));
         boolean codeLines = !meta.has("codeLines") || meta.path("codeLines").asBoolean();
         int fixedShots = meta.path("shots").asInt(0), seconds = meta.path("seconds").asInt(0);
@@ -498,7 +498,7 @@ public final class H3PromptRewrite {
                 starts.add(x.isObject() ? seconds(x.path("start")) : -1);
             }
             else if (out.hasNonNull("shot_1")) for (int i = 1; i <= MAX_FREE_SHOTS && out.hasNonNull("shot_" + i); i++) { bodies.add(text(out, "shot_" + i)); starts.add(-1.0); }
-            if (bodies.isEmpty()) throw bad("没有写镜头");
+            if (bodies.isEmpty()) throw bad("缺少镜头内容");
             fixStarts(starts, seconds);
         }
         for (int i = 0; i < bodies.size(); i++) bodies.set(i, clean(stripShotPrefix(bodies.get(i).strip()), strayHan, codeLines));
@@ -531,9 +531,9 @@ public final class H3PromptRewrite {
         if (music.isEmpty()) music = "N/A";
         if (mode == Mode.REF) {
             if (defs.isEmpty() && summary.isEmpty() && retention.isEmpty()) throw bad("缺少主体说明");
-            if (defs.isEmpty()) warnings.add("优化稿缺少主体说明（subject_definitions），人物可能对不上参考图");
-            if (summary.isEmpty()) warnings.add("优化稿缺少概述（summary）");
-            if (retention.isEmpty()) warnings.add("优化稿缺少保留说明（retention_analysis），人物外观可能不一致");
+            if (defs.isEmpty()) warnings.add("优化稿缺少主体说明，人物可能与参考图不一致");
+            if (summary.isEmpty()) warnings.add("优化稿缺少概述");
+            if (retention.isEmpty()) warnings.add("优化稿缺少保留说明，人物外观可能不一致");
             // 每张参考图、每段参考音频都要在稿里出现：没提到的那份素材 H3 不知道拿它做什么。
             // 2026-10-31 cl45 加篇幅预算后真调第 2 次，整份稿一次都没提分镜图 <Picture 1>。
             // 漏掉的按交给模型的素材清单补一行定义和一行保留说明（只取英文说明，中文资产描述不带进去）；清单里也查不到才提示。
@@ -566,7 +566,7 @@ public final class H3PromptRewrite {
             bodies.set(i, i == 0 ? "The shot opens on the scene described in the request." : "the camera cuts to the next shot of the request.");
             warnings.add("第 " + (i + 1) + " 镜模型没写画面，只补了一句过渡");
         }
-        if (!anyShot) throw bad("没有写镜头");
+        if (!anyShot) throw bad("缺少镜头内容");
 
         if (codeLines) {
             // 台词只能在镜头里：放到镜头外的先摘掉，下面当作漏了的补回所在镜头。
@@ -596,7 +596,7 @@ public final class H3PromptRewrite {
         boolean usable = true;
         if (fill(template, lines(meta), language).length() > MAX_PROMPT_CHARS) {
             usable = false;
-            warnings.add("优化稿超过 " + MAX_PROMPT_CHARS + " 字符，H3 收不下，请重新优化或按原文生成");
+            warnings.add("优化稿超过 " + MAX_PROMPT_CHARS + " 字符，超出模型上限，请重新优化或按原文生成");
         }
         ObjectNode result = om.createObjectNode().put("template", template).put("usable", usable);
         ArrayNode w = result.putArray("warnings");
@@ -927,6 +927,6 @@ public final class H3PromptRewrite {
     }
 
     public static BusinessException bad(String message) {
-        return new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "视频提示词优化没成功（" + message + "），本次未扣积分，请重试或按原文生成");
+        return new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "视频提示词优化失败（" + message + "），本次未扣积分。请重试或按原文生成");
     }
 }

@@ -218,7 +218,7 @@ export default function CardView({ card }: { card: CardProfile }) {
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      say("已生成联系人文件，按提示存入通讯录");
+      say("联系人文件已下载，请按提示存入通讯录。");
     } catch {
       setSheet(true);
     }
@@ -227,7 +227,7 @@ export default function CardView({ card }: { card: CardProfile }) {
   const copy = useCallback(
     async (label: string, value: string) => {
       const ok = await copyText(value);
-      say(ok ? `${label}已复制` : "复制没成功，长按选中试试");
+      say(ok ? `${label}已复制` : "复制失败，请手动选中复制。");
     },
     [say],
   );
@@ -542,7 +542,7 @@ const Hero: React.FC<{
             cursor: "pointer",
           }}
         >
-          {hasWechat ? "加微信" : "复制信息"}
+          {hasWechat ? "复制微信号" : "保存联系人"}
         </button>
         <button
           type="button"
@@ -564,7 +564,7 @@ const Hero: React.FC<{
             textOverflow: "ellipsis",
           }}
         >
-          存到通讯录
+          保存到通讯录
         </button>
       </div>
     </section>
@@ -613,13 +613,16 @@ const Works: React.FC<{ card: CardProfile }> = ({ card }) => (
             我在<br />做的事
           </h2>
         </div>
-        <div style={{ flex: "0 0 126px", marginTop: -6, background: "#fff", border: "1px solid rgba(20,32,43,.12)", boxShadow: "0 18px 40px rgba(20,32,43,.14)", padding: "8px 8px 0" }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/card/demo-works.jpg" alt={`${card.name}的数字人形象 · 抱臂`} style={{ width: "100%", height: "auto", display: "block" }} />
-          <div style={{ padding: "7px 2px 8px", display: "flex", alignItems: "center", gap: 8 }}>
-            <Mono style={{ flex: 1, minWidth: 0 }}>{card.avatarRegNo}</Mono>
+        {/* 这张是演示图，和名片主人无关。真实名片不显示，左栏 flex:1 会占满整行。 */}
+        {card.demo && (
+          <div style={{ flex: "0 0 126px", marginTop: -6, background: "#fff", border: "1px solid rgba(20,32,43,.12)", boxShadow: "0 18px 40px rgba(20,32,43,.14)", padding: "8px 8px 0" }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/card/demo-works.jpg" alt={`${card.name}的数字人形象 · 抱臂`} style={{ width: "100%", height: "auto", display: "block" }} />
+            <div style={{ padding: "7px 2px 8px", display: "flex", alignItems: "center", gap: 8 }}>
+              <Mono style={{ flex: 1, minWidth: 0 }}>{card.avatarRegNo}</Mono>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       <p style={{ fontSize: 13, lineHeight: 1.7, color: "rgba(20,32,43,.68)", margin: "12px 0 0" }}>
@@ -816,6 +819,7 @@ const Company: React.FC<{ card: CardProfile }> = ({ card }) => (
 
 // ── Roll 04 · 找我聊聊 ──────────────────────────────────────
 
+/** 演示名片专用的说明，内容不一定符合真实名片（比如 AI 原创形象没有本人授权），只在 card.demo 时显示。 */
 const ABOUT = [
   { title: "内容出自 AI 军师的战略诊断", sub: "企业诊断的结论，直接用作名片内容" },
   { title: "形象是登记在册的数字人资产", sub: "真人复刻 · 本人授权" },
@@ -835,9 +839,12 @@ const Contact: React.FC<{
         <span aria-hidden style={{ fontFamily: DISP, fontWeight: 800, fontSize: 58, lineHeight: .82, color: ON_SLATE_3 }}>LET&apos;S TALK</span>
         <h2 style={{ fontSize: 46, fontWeight: 800, letterSpacing: "-.035em", lineHeight: 1, color: ON_SLATE, margin: "-6px 0 0" }}>找我聊聊</h2>
       </div>
-      <p style={{ fontSize: 13.5, lineHeight: 1.75, color: ON_SLATE_2, margin: "14px 0 0" }}>
-        想聊门店线上化，想找区域代理，或者只是想问问这个数字人怎么做出来的 —— 直接联系我，我自己看。
-      </p>
+      {/* 这段话是演示文案，不是名片主人写的，真实名片不显示。 */}
+      {card.demo && (
+        <p style={{ fontSize: 13.5, lineHeight: 1.75, color: ON_SLATE_2, margin: "14px 0 0" }}>
+          想聊门店线上化，想找区域代理，或者只是想问问这个数字人怎么做出来的，直接联系我，我自己看。
+        </p>
+      )}
 
       <div style={{ display: "flex", flexDirection: "column", marginTop: 16 }}>
         {shown.map((c, i) => (
@@ -864,25 +871,27 @@ const Contact: React.FC<{
         onClick={onSave}
         style={{ width: "100%", height: 48, marginTop: 18, borderRadius: 2, border: "none", background: "var(--primary-500)", color: "#06313E", fontFamily: "inherit", fontSize: 14.5, fontWeight: 800, cursor: "pointer" }}
       >
-        存到通讯录
+        保存到通讯录
       </button>
 
-      <div style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 2 }}>
-        <span style={{ paddingBottom: 6 }}><Mono color={ON_SLATE_3}>关于这张名片</Mono></span>
-        {ABOUT.map((a) => (
-          <div key={a.title} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderTop: `1px solid ${LINE_SLATE}` }}>
-            <span aria-hidden style={{ width: 6, height: 6, background: "var(--primary-500)", flex: "0 0 6px" }} />
-            <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: ON_SLATE, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.title}</span>
-              <span style={{ fontSize: 11.5, color: ON_SLATE_3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.sub}</span>
-            </span>
-          </div>
-        ))}
-      </div>
+      {card.demo && (
+        <div style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 2 }}>
+          <span style={{ paddingBottom: 6 }}><Mono color={ON_SLATE_3}>关于这张名片</Mono></span>
+          {ABOUT.map((a) => (
+            <div key={a.title} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderTop: `1px solid ${LINE_SLATE}` }}>
+              <span aria-hidden style={{ width: 6, height: 6, background: "var(--primary-500)", flex: "0 0 6px" }} />
+              <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: ON_SLATE, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.title}</span>
+                <span style={{ fontSize: 11.5, color: ON_SLATE_3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.sub}</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, marginTop: 26 }}>
         <Mono color={ON_SLATE_3}>{`REG · ${card.regNo} · ${formatDateTime(card.updatedAt)}`}</Mono>
-        <Mono color={ON_SLATE_3}>形象为本人授权数字人 · 内容由本人确认</Mono>
+        {card.demo && <Mono color={ON_SLATE_3}>形象为本人授权数字人 · 内容由本人确认</Mono>}
         {card.demo && <span style={{ marginTop: 6 }}><Mono color="var(--primary-500)">演示数据</Mono></span>}
       </div>
     </div>
@@ -914,9 +923,9 @@ const ContactSheet: React.FC<{
       <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, background: "var(--surface)", borderRadius: "18px 18px 0 0", boxShadow: "var(--sh-3)", padding: "9px 18px calc(env(safe-area-inset-bottom, 0px) + 20px)" }}>
         <span aria-hidden style={{ display: "block", width: 38, height: 4, borderRadius: 99, background: "var(--line-3)", margin: "0 auto 12px" }} />
         <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 12 }}>
-          <span style={{ fontSize: 17, fontWeight: 800 }}>存下 {card.name}</span>
+          <span style={{ fontSize: 17, fontWeight: 800 }}>保存 {card.name} 的联系方式</span>
           <span style={{ fontSize: 12.5, lineHeight: 1.6, color: "var(--ink-2)" }}>
-            微信里存不进系统通讯录。逐条复制，或右上角用浏览器打开再存。
+            微信内无法保存到通讯录。请逐条复制，或点击右上角在浏览器中打开后保存。
           </span>
         </div>
         <div style={{ display: "flex", flexDirection: "column" }}>

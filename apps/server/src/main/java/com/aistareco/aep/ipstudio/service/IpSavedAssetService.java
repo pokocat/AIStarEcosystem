@@ -115,7 +115,7 @@ public class IpSavedAssetService {
             if(!"text".equals(out.path("kind").asText())) {
                 String key=out.path("data").path("storageKey").asText();
                 String url=projects.signOwnedKeys(user,List.of(key)).get(key);
-                if(url==null || url.isBlank()) throw BusinessException.badRequest("IP_ASSET_UNAVAILABLE","素材地址暂时无法读取，请重试");
+                if(url==null || url.isBlank()) throw BusinessException.badRequest("IP_ASSET_UNAVAILABLE","素材加载失败，请稍后重试");
                 ((ObjectNode)out.path("data")).put("image".equals(out.path("kind").asText())?"dataUrl":"url",url);
                 if("image".equals(out.path("kind").asText())) out.put("coverUrl",url);
             }

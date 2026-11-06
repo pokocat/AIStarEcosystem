@@ -25,7 +25,7 @@ test('a retired saved choice stays visible, other settings still save, and the r
   const retired={...work,settings:{...work.settings,imageModel:'retired'},
     imageModelState:{id:'retired',name:null,explicit:true,available:false,creditCost:null,missingRatios:[]}};
   render(<SettingsPanel work={retired} apply={apply} onClose={close} setError={vi.fn()}/>);
-  expect(screen.getByText(/原图片模型已停用，资产图和分镜图暂时生成不了/)).toBeTruthy();
+  expect(screen.getByText(/原图片模型已停用，暂时无法生成资产图和分镜图/)).toBeTruthy();
   const save=screen.getByRole('button',{name:'保存'}) as HTMLButtonElement;
   expect(save.disabled).toBe(false);
   fireEvent.click(screen.getByRole('button',{name:/真人写实/}));
@@ -47,10 +47,10 @@ test('a saved model that cannot make square images names the asset class it bloc
     imageModelState:{id:'gpt-4k',name:'GPT Image 2 4K',explicit:true,available:true,creditCost:55,missingRatios:['1:1']}};
   render(<SettingsPanel work={limited} apply={apply} onClose={close} setError={vi.fn()}/>);
   expect(screen.getByRole('combobox',{name:'图片模型'}).textContent).toContain('GPT Image 2 4K（原选择）');
-  const note=screen.getByText(/原图片模型「GPT Image 2 4K」不能出方图，道具的图生成不了；其他画面照常，约 55 积分\/张。/);
+  const note=screen.getByText(/原图片模型「GPT Image 2 4K」不支持方图，无法生成道具的图片；其他画面不受影响，约 55 积分\/张。/);
   expect(note.textContent).not.toMatch(/画幅/);
   fireEvent.click(screen.getByRole('button',{name:'1:1'}));
-  expect(screen.getByText(/道具、分镜的图生成不了/)).toBeTruthy();
+  expect(screen.getByText(/无法生成道具、分镜的图片/)).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:'16:9'}));
   fireEvent.click(screen.getByRole('button',{name:'保存'}));
   await waitFor(()=>expect(api.patchWork).toHaveBeenCalledWith('model-work',{settings:{style:'真人写实',aspectRatio:'16:9',videoModel:null}}));
@@ -59,7 +59,7 @@ test('a default model that cannot make square images is explained instead of rep
   const limitedDefault={...work,imageModels:[{id:'other',name:'另一模型',isDefault:false,creditCost:37}],
     imageModelState:{id:'gpt-4k',name:'GPT Image 2 4K',explicit:false,available:true,creditCost:55,missingRatios:['1:1']}};
   render(<SettingsPanel work={limitedDefault} apply={vi.fn()} onClose={vi.fn()} setError={vi.fn()}/>);
-  expect(screen.getByText(/默认图片模型「GPT Image 2 4K」不能出方图，道具的图生成不了/)).toBeTruthy();
+  expect(screen.getByText(/默认图片模型「GPT Image 2 4K」不支持方图，无法生成道具的图片/)).toBeTruthy();
   expect(screen.queryByText('暂无可用图片模型，请联系管理员开通。')).toBeNull();
   choose('other');
   expect(screen.getByText(/用于资产图和分镜图，约 37 积分\/张。/)).toBeTruthy();
@@ -84,7 +84,7 @@ test('the chosen text model is saved without showing any text credit number', as
 test('a retired saved text model is not resubmitted when other settings change', async () => {
   api.patchWork.mockResolvedValue(textWork);
   render(<SettingsPanel work={{...textWork,settings:{...textWork.settings,textModel:'retired'}}} apply={vi.fn()} onClose={vi.fn()} setError={vi.fn()}/>);
-  expect(screen.getByText(/原文本模型不在可选范围内/)).toBeTruthy();
+  expect(screen.getByText(/原文本模型已不可用/)).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:'16:9'}));
   fireEvent.click(screen.getByRole('button',{name:'保存'}));
   await waitFor(()=>expect(api.patchWork).toHaveBeenCalledWith('model-work',{settings:{style:'真人写实',aspectRatio:'16:9',videoModel:null}}));

@@ -29,9 +29,9 @@ test("a new asset can be built from the user's own image, used directly or only 
   pick("选择资产图片");
   await within(panel).findByAltText("已上传的图片");
   expect((within(panel).getByRole("textbox", { name: "名称" }) as HTMLInputElement).value).toBe("我的老宅");
-  const uses = within(panel).getByRole("radiogroup", { name: "这张图怎么用" });
+  const uses = within(panel).getByRole("radiogroup", { name: "图片用途" });
   expect((within(uses).getByRole("radio", { name: /直接作为资产图/ }) as HTMLInputElement).checked).toBe(true);
-  expect(within(uses).getByText(/不用 AI 生成、不扣积分/)).toBeTruthy();
+  expect(within(uses).getByText(/不经 AI 生成，不消耗积分/)).toBeTruthy();
   fireEvent.click(within(uses).getByRole("radio", { name: /作为参考图/ }));
   fireEvent.click(within(panel).getByRole("button", { name: "添加" }));
   await waitFor(() => expect(api.edit).toHaveBeenCalledTimes(1));
@@ -47,7 +47,7 @@ test("default use adopts the image directly; a failed upload shows why and adds 
   fireEvent.click(screen.getByRole("button", { name: /添加资产/ }));
   const panel = screen.getByRole("region", { name: "添加资产" });
   pick("选择资产图片", "大图.png");
-  await waitFor(() => expect(within(panel).getByRole("alert").textContent).toContain("图片没有上传成功：图片超过 10MB 上限"));
+  await waitFor(() => expect(within(panel).getByRole("alert").textContent).toContain("图片上传失败：图片超过 10MB 上限"));
   expect(within(panel).queryByAltText("已上传的图片")).toBeNull();
   expect(within(panel).queryByRole("radiogroup")).toBeNull();
 
@@ -67,7 +67,7 @@ test("asset detail keeps the two uses apart: a reference never replaces the asse
   fireEvent.click(screen.getByRole("tab", { name: "主视" }));
   const imageSection = screen.getByRole("region", { name: "资产图" });
   const refSection = screen.getByRole("region", { name: "参考图" });
-  expect(screen.getAllByText("自己上传").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("已上传").length).toBeGreaterThan(0);
   expect(within(refSection).getByText(/不会替换当前资产图/)).toBeTruthy();
 
   pick("上传「老宅」的参考图", "参考.jpg", "image/jpeg");

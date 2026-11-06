@@ -81,9 +81,9 @@ export function PublishDialog({
       // 「公司 · 职务」和联系方式要填 —— 丢在列表页等于让人自己再找一遍。
       const href = `/cards/${encodeURIComponent(card.id)}/edit`;
       const win = window.open(href, "_blank", "noopener");
-      if (!win) setCardError(`名片已建好（${card.regNo}），浏览器拦了新窗口，去「名片」页里补上公司 · 职务和联系方式`);
+      if (!win) setCardError(`名片已创建（${card.regNo}），但浏览器拦截了新窗口。请前往「名片」页补充公司、职务和联系方式。`);
     } catch (e) {
-      setCardError(e instanceof Error ? e.message : "建卡没成功，稍后再试");
+      setCardError(e instanceof Error ? e.message : "名片创建失败，请重试。");
     } finally {
       setCardBusy(false);
     }
@@ -107,11 +107,11 @@ export function PublishDialog({
 
   const submit = async () => {
     if (!avatarName.trim()) {
-      setError("给这个形象起个名字，发布后在资产库里就用它。");
+      setError("请输入形象名称，发布后资产库将使用此名称。");
       return;
     }
     if (!masterNodeId) {
-      setError("先在画布上给主形象选一张定稿图，才能发布。");
+      setError("请在画布中为主形象选择一张定稿图后发布。");
       return;
     }
     setSubmitting(true);
@@ -150,7 +150,7 @@ export function PublishDialog({
                 className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-lg text-[12.5px] font-bold transition hover:brightness-95"
         style={{ background: "var(--ink)", color: "var(--surface)" }}
       >
-        去数字资产平台查看 <ExternalLink className="w-3.5 h-3.5" />
+        在资产中查看 <ExternalLink className="w-3.5 h-3.5" />
       </a>
       <button
         onClick={() => onOpenChange(false)}
@@ -198,7 +198,7 @@ export function PublishDialog({
     >
       {result ? (
         <>
-          {desc("形象与造型已经登记进数字资产库，可以在各条业务线里引用了。")}
+          {desc("形象与造型已存入数字资产库，可在创作中引用。")}
           <div className="space-y-3">
             <div className="p-3.5 rounded-xl" style={{ background: "var(--ok-soft)" }}>
               <div className="field-label mb-1" style={{ color: "var(--ok)" }}>数字人编号</div>
@@ -213,9 +213,9 @@ export function PublishDialog({
                 用户只剩联系方式要填。这一步不给，人就得自己去另一个站从零建卡。 */}
             <div className="p-3.5 rounded-xl" style={{ background: "var(--primary-tint)" }}>
               <div className="text-[12.5px] leading-[1.7] mb-2.5" style={{ color: "var(--ink-2)" }}>
-                可以直接做成一张 <b style={{ color: "var(--ink)" }}>数字名片</b> ——
-                名字和这 {result.lookIds.length} 套造型自动带过去，访客能点着换装看，
-                你只要再填联系方式。
+                可创建一张 <b style={{ color: "var(--ink)" }}>数字名片</b>：
+                名字和 {result.lookIds.length} 套造型将自动带入，访客可切换造型查看，
+                你只需填写联系方式。
               </div>
               <button
                 onClick={makeCard}
@@ -224,7 +224,7 @@ export function PublishDialog({
                 style={{ background: "var(--primary)", color: "var(--on-primary)" }}
               >
                 {cardBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <IdCard className="w-3.5 h-3.5" />}
-                {cardBusy ? "建卡中" : "做成数字名片"}
+                {cardBusy ? "创建中" : "创建数字名片"}
               </button>
               {cardError && (
                 <div className="mt-2 text-[12px]" style={{ color: "var(--err)", overflowWrap: "anywhere" }}>
@@ -236,13 +236,13 @@ export function PublishDialog({
         </>
       ) : (
         <>
-          {desc("只有已经选好定稿图的形象才能发布。发布本身不花积分。")}
+          {desc("需为形象选择定稿图后才能发布。发布不消耗积分。")}
           <div className="space-y-3">
             {ready.length === 0 ? (
               <div className="flex items-start gap-2 p-3 rounded-xl" style={{ background: "var(--warn-soft)" }}>
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "var(--warn)" }} />
                 <p className="text-[12px] leading-relaxed min-w-0" style={{ color: "var(--warn)" }}>
-                  还没有定稿的形象。先运行生成节点，在候选里点一张定稿，再回来发布。
+                  还没有定稿的形象。请生成图片并在候选中选择一张定稿后发布。
                 </p>
               </div>
             ) : (
@@ -298,7 +298,7 @@ export function PublishDialog({
 
                 {ready.filter((g) => g.id !== masterNodeId).length > 0 && (
                   <div>
-                    <span className="field-label block mb-1.5">一起带上的造型</span>
+                    <span className="field-label block mb-1.5">同时发布的造型</span>
                     <div className="space-y-1 max-h-44 overflow-y-auto scrollbar-thin pr-0.5">
                       {ready
                         .filter((g) => g.id !== masterNodeId)

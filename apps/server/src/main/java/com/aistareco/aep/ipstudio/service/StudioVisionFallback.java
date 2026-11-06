@@ -57,7 +57,7 @@ final class StudioVisionFallback {
         }
         if (state.hasNonNull("result")) return state.path("result").asText();
         if (texts == null) throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED",
-                "提示词库缺少「stage-vision-batch」：请在后台「提示词与技能」里启用或补齐后重试");
+                "看图功能暂不可用，请联系平台处理", null, "提示词库缺少「stage-vision-batch」：请在后台「提示词与技能」里启用或补齐");
         ArrayNode batches = (ArrayNode) state.path("batches");
         for (int from = batches.size()*2; from < indices.size(); from += 2) {
             int allowed = Math.min(320,chat.remainingOutputTokens()-128);
@@ -124,6 +124,6 @@ final class StudioVisionFallback {
         states.fields().forEachRemaining(entry->{if(entry.getValue().hasNonNull("result"))completed.add(entry.getKey());});
         completed.forEach(states::remove);if(states.isEmpty())study.remove("_visionFallback");
     }
-    private static BusinessException budgetExceeded() { return BusinessException.badRequest("AI_USAGE_LIMIT","分批读取所需Token超出本次预算，请减少素材或调整后台预算"); }
-    private static BusinessException badOutput() { return BusinessException.badRequest("AI_BAD_OUTPUT","分批画面记录不完整，请核对模型输出"); }
+    private static BusinessException budgetExceeded() { return BusinessException.badRequest("AI_USAGE_LIMIT","素材过多，超出本次用量上限，请减少素材后重试"); }
+    private static BusinessException badOutput() { return BusinessException.badRequest("AI_BAD_OUTPUT","画面记录不完整，请重试"); }
 }

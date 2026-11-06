@@ -12,7 +12,7 @@ export function StudioScriptSettingsForm({value,onChange}:{value:StudioScriptSet
       <StudioChoiceGroup<number> label="集数" ariaLabel="目标集数" value={value.episodeCount||1} onChange={episodeCount=>change({episodeCount})} options={[1,2,3,4,5,6].map(v=>({value:v,label:`${v} 集`}))}/>
       <StudioChoiceGroup<number> label="每集时长" ariaLabel="每集目标时长" value={value.episodeDurationSec||30} onChange={episodeDurationSec=>change({episodeDurationSec})} options={[10,15,30,60,120].map(v=>({value:v,label:`${v} 秒`}))}/>
     </div>
-    <label>融合题材<Select aria-label="融合题材" mode="multiple" maxCount={3} value={value.fusionGenres||[]} onChange={fusionGenres=>change({fusionGenres})} options={genres.filter(v=>v!==value.genre).map(v=>({value:v,label:v}))} placeholder="可选，最多 3 种"/></label>
+    <label>融合题材<Select aria-label="融合题材" mode="multiple" maxCount={3} value={value.fusionGenres||[]} onChange={fusionGenres=>change({fusionGenres})} options={genres.filter(v=>v!==value.genre).map(v=>({value:v,label:v}))} placeholder="选填，最多 3 种"/></label>
     {(["audience","era","characterBrief","core","structure","style"] as const).map((key,i)=><label key={key}>{["目标观众","时代背景","人物与关系","核心看点","叙事结构","画面风格"][i]}<Input.TextArea aria-label={["目标观众","时代背景","人物与关系","核心看点","叙事结构","画面风格"][i]} value={value[key]} maxLength={1000} autoSize={{minRows:2,maxRows:4}} onChange={e=>change({[key]:e.target.value})}/></label>)}
   </div>;
 }

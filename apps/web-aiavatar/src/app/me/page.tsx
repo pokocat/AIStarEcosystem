@@ -157,7 +157,7 @@ function UiVersionRow() {
         cursor: "pointer", textAlign: "left", font: "inherit",
       }}
     >
-      <span style={{ fontSize: 14, color: "var(--ink)" }}>{next ? "回到旧版" : "体验新版"}</span>
+      <span style={{ fontSize: 14, color: "var(--ink)" }}>{next ? "返回旧版" : "体验新版"}</span>
       <span style={{ fontSize: 12, color: "var(--ink-3)" }}>{next ? "换回原来的首页和导航" : "按场景创作的新首页"}</span>
     </button>
   );
@@ -212,7 +212,7 @@ function MeNext({ name, phone, demo, identity, onLogout }: { name: string; phone
     <div className="studio-me-group">
       {/* 电脑版的「我的」是 AccountOverview，到这里一定是手机版；挂载前不知道形态，先不画这一行。 */}
       {layout === "mobile" && <MeRow icon={Monitor} title="切换到电脑版" sub="画布和宽表格更好用" onClick={() => setLayout("desktop")} />}
-      <MeRow icon={RotateCcw} title="回到旧版" sub="换回原来的首页和导航" onClick={() => setUiVersion("classic")} />
+      <MeRow icon={RotateCcw} title="返回旧版" sub="换回原来的首页和导航" onClick={() => setUiVersion("classic")} />
     </div>
     {!USE_MOCK && <button type="button" className="studio-me-logout" onClick={onLogout}>退出登录</button>}
     <HubTabBar />

@@ -54,7 +54,7 @@ export function StudioDialogueApprovalCard({ block, plan, approved, shortfall, p
   const title = analysis ? '确认分析' : '确认制作';
   const raise = !!shortfall && shortfall > 0;
   const newCap = whole(cap);
-  const invalid = !raise ? '' : Number.isNaN(newCap) ? '请填写整数积分' : newCap < block.budgetCap ? `新的上限至少要 ${formatCredits(block.budgetCap)} 积分` : '';
+  const invalid = !raise ? '' : Number.isNaN(newCap) ? '请填写整数积分' : newCap < block.budgetCap ? `新上限不能低于 ${formatCredits(block.budgetCap)} 积分` : '';
   const start = async () => {
     if (busy || invalid || !actionable || !planReady) return;
     setBusy(true); setError('');
@@ -65,7 +65,7 @@ export function StudioDialogueApprovalCard({ block, plan, approved, shortfall, p
   // 卡上写预估，上限放在提示里：确认的是上限，要付的通常比它少很多（2026-11-06 用户反馈：卡上 482，实际 189）。
   const shown = Math.min(block.estimatedCost ?? block.quotedCost, block.quotedCost), estimated = shown < block.quotedCost;
   const content = plan ? <StudioPlanContent plan={plan.plan} onChooseApproach={actionable ? onChooseApproach : undefined}/>
-    : !!block.scope.length && <ul className="studio-dialogue-approval-scope" aria-label="这次会做">{block.scope.map((item, i) => <li key={i}>{item}</li>)}</ul>;
+    : !!block.scope.length && <ul className="studio-dialogue-approval-scope" aria-label="本次制作内容">{block.scope.map((item, i) => <li key={i}>{item}</li>)}</ul>;
   const confirmedAt = approved?.approvedAt || block.approvedAt;
   if (status === 'approved') return <section className="studio-dialogue-approval" data-status={status} aria-label={title}>
     <details className="studio-dialogue-approval-done">
@@ -76,23 +76,23 @@ export function StudioDialogueApprovalCard({ block, plan, approved, shortfall, p
   </section>;
   return <section className="studio-dialogue-approval" data-status={status} aria-label={title}>
     <header><h4 title={skillLabel}>{title}</h4>{TAG[status] && <span>{TAG[status]}</span>}</header>
-    {status === 'superseded' ? <p className="studio-dialogue-note">已有新的报价，见下方</p> : content}
+    {status === 'superseded' ? <p className="studio-dialogue-note">已有新报价，请查看下方。</p> : content}
     {status === 'expired' && <p className="studio-dialogue-note">报价已过期{onRequote && <button type="button" className="studio-dialogue-link" onClick={onRequote}>重新报价</button>}</p>}
     {actionable && <>
       {raise ? <div className="studio-dialogue-raise">
         <p className="studio-dialogue-warning" role="status">积分超出上限，还差 {formatCredits(shortfall ?? 0)} 积分</p>
-        <div className="studio-dialogue-raise-field"><label htmlFor={capId}>新的上限</label>
+        <div className="studio-dialogue-raise-field"><label htmlFor={capId}>新上限</label>
           <input id={capId} type="number" inputMode="numeric" min={block.budgetCap} step={1} value={cap} disabled={busy} onChange={e => setCap(e.target.value)}/><span>积分</span></div>
       </div> : <p className="studio-dialogue-approval-price" title={estimated ? `最多 ${formatCredits(block.quotedCost)} 积分` : undefined}>
         {estimated && <span>预估</span>}<strong>{formatCredits(shown)}</strong><span>积分</span>{estimated && <small>按实际用量结算</small>}
       </p>}
-      {!planReady && <p className="studio-dialogue-note" role="status">方案还没到，稍等一下</p>}
+      {!planReady && <p className="studio-dialogue-note" role="status">正在加载方案…</p>}
       <div className="studio-dialogue-approval-actions">
         <Button className="studio-assistant-primary" type="primary" loading={busy} disabled={!!invalid || !planReady} onClick={() => void start()}>{raise ? '提高上限并继续' : analysis ? '开始分析' : '开始制作'}</Button>
-        {!raise && <Button className="studio-dialogue-secondary" disabled={busy} onClick={onRevise}>先改改</Button>}
+        {!raise && <Button className="studio-dialogue-secondary" disabled={busy} onClick={onRevise}>修改方案</Button>}
       </div>
       {invalid && <p className="studio-dialogue-warning" role="alert">{invalid}</p>}
-      {busy && verifying && <p className="studio-dialogue-note" role="status">{DIALOGUE_VERIFYING}{onRecheck && <button type="button" className="studio-dialogue-link" onClick={onRecheck}>现在再查一次</button>}</p>}
+      {busy && verifying && <p className="studio-dialogue-note" role="status">{DIALOGUE_VERIFYING}{onRecheck && <button type="button" className="studio-dialogue-link" onClick={onRecheck}>立即核对</button>}</p>}
     </>}
     {error && <p className="studio-assistant-error" role="alert"><span>{error}</span> <StudioErrorNotice error={error} autoReport={false} label="查看详情"/></p>}
   </section>;

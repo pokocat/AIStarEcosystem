@@ -146,23 +146,23 @@ export function studioFrameTarget(modes: VideoStudioModeSpec[], intent: StudioFr
 export function studioFrameIntentCopy(intent: StudioFrameIntent, modes: VideoStudioModeSpec[], canvasImages: number) {
   const target = studioFrameTarget(modes, intent);
   const name = target ? `「${studioVideoModeName(target.mode)}」` : "";
-  const title = intent.bound === 0 ? "描述里提到了图片，这次没有用上图片"
-    : intent.lastFrameIgnored ? "描述里提到了尾帧，当前模式只用首帧" : `描述里提到了 ${intent.needed} 张图，这次只用了 ${intent.bound} 张`;
+  const title = intent.bound === 0 ? "描述中提到了图片，但本次未使用图片"
+    : intent.lastFrameIgnored ? "描述中提到了尾帧，当前模式只使用首帧" : `描述中提到了 ${intent.needed} 张图片，本次只使用了 ${intent.bound} 张`;
   const most = Math.max(0, ...modes.map(studioModeImageCapacity));
-  const advice = !target ? most === 0 ? "这个模型只能按文字生成，要用图片请换一个模型。"
-      : most < intent.needed ? `这个模型一次最多用 ${most} 张图，放不下描述里的 ${intent.needed} 张。可以少用几张，或者换一个模型。`
-      : intent.last ? "这个模型没有能用尾帧的模式，可以换一个支持首尾帧的模型，或者去掉描述里的尾帧。"
-      : "这个模型没有能按描述使用这些图片的模式，可以换一个模型。"
-    : target.kind === "frames" ? `要照着图片出片，改用${name}，再选好要用的图片。`
-    : target.kind === "frames-need-first" ? `要用上尾帧，改用${name}；这个模式还需要再选一张首帧图。`
-    : target.kind === "references" ? `要照着图片出片，改用${name}，再选好这 ${intent.needed} 张图片。`
-    : target.kind === "references-not-frames" ? `这个模型没有能放下 ${intent.needed} 张图、又锁定首帧尾帧的模式。改用${name}能用上这些图，但它们只作参考，不会锁定首帧或尾帧。`
-    : `这个模型只能把图片当作${target.mode.needsLastFrame ? "首帧和尾帧" : "首帧"}用。改用${name}后，图片会成为视频的${target.mode.needsLastFrame ? "开头和结尾" : "第一帧"}。`;
+  const advice = !target ? most === 0 ? "当前模型只支持文字生成，如需使用图片，请更换模型。"
+      : most < intent.needed ? `当前模型最多支持 ${most} 张图片，少于描述中的 ${intent.needed} 张。请减少图片或更换模型。`
+      : intent.last ? "当前模型不支持尾帧，请更换支持首尾帧的模型，或删除描述中的尾帧。"
+      : "当前模型无法按描述使用这些图片，请更换模型。"
+    : target.kind === "frames" ? `如需按图片生成视频，请改用${name}并选择图片。`
+    : target.kind === "frames-need-first" ? `如需使用尾帧，请改用${name}，此模式还需要选择一张首帧图。`
+    : target.kind === "references" ? `如需按图片生成视频，请改用${name}并选择这 ${intent.needed} 张图片。`
+    : target.kind === "references-not-frames" ? `当前模型无法在使用 ${intent.needed} 张图片的同时锁定首帧和尾帧。改用${name}可使用这些图片，但仅作参考，不会锁定首帧或尾帧。`
+    : `当前模型只能将图片用作${target.mode.needsLastFrame ? "首帧和尾帧" : "首帧"}。改用${name}后，图片将作为视频的${target.mode.needsLastFrame ? "开头和结尾" : "第一帧"}。`;
   return {
     target, title,
-    lines: [`${intent.mentions.map(mention => `「${mention}」`).join("")}写在描述里只是文字，模型看不到画布上的图片。${advice}`,
-      ...(canvasImages === 0 ? ["画布上还没有图片，可以先上传，或从人物库里选。"] : []), "只想按文字出片，可以直接生成。"],
-    bindLabel: target ? `改用${name}选图片` : "去选择视频模式",
+    lines: [`${intent.mentions.map(mention => `「${mention}」`).join("")}在描述中只是文字，模型无法看到画布上的图片。${advice}`,
+      ...(canvasImages === 0 ? ["画布中暂无图片，可上传或从人物库选择。"] : []), "如只按文字生成视频，可直接生成。"],
+    bindLabel: target ? `改用${name}选图片` : "选择视频模式",
   };
 }
 

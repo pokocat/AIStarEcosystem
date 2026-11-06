@@ -46,8 +46,8 @@ export function describeSegmentedPrice(personal: StudioSegmentedVideoPrice, ente
   const saving = personal.videoCost - video;
   const n = (v: number) => v.toLocaleString("zh-CN");
   const discount = saving > 0 ? `${personal.videoDiscountName || enterprise?.videoDiscountName || "视频优惠"}，视频费省 ${n(saving)} 积分。` : "";
-  const accounts = from ? `个人账户视频费 ${n(payable(personal))} 积分，企业账户视频费 ${n(payable(enterprise!))} 积分，点生成时选账户。`
-    : undecided ? "付款账户点生成时选。" : "";
+  const accounts = from ? `个人账户视频费 ${n(payable(personal))} 积分，企业账户视频费 ${n(payable(enterprise!))} 积分，生成时选择付款账户。`
+    : undecided ? "生成时选择付款账户。" : "";
   return { standard: personal.videoCost + personal.boardCost, shown: video + personal.boardCost, video, from, note: (from ? "" : discount) + accounts };
 }
 

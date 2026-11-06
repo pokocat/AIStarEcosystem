@@ -477,7 +477,7 @@ public class DapAssetService {
     public Map<String, Object> sceneVariants(String userId, String id, SceneVariantRequest req) {
         DapScene s = requiredScene(userId, id);
         if (s.getImageKey() == null) {
-            throw BusinessException.badRequest("DAP_SCENE_NO_IMAGE", "场景还没有主图，先上传或等待生成完成");
+            throw BusinessException.badRequest("DAP_SCENE_NO_IMAGE", "场景还没有主图，请上传或等待生成完成");
         }
         List<String> labels = req == null || req.labels() == null || req.labels().isEmpty()
                 ? DEFAULT_VARIANT_LABELS : req.labels().stream().filter(l -> l != null && !l.isBlank()).limit(6).toList();
@@ -611,7 +611,7 @@ public class DapAssetService {
     public Map<String, Object> productAngles(String userId, String id, ProductAngleRequest req) {
         DapProduct p = requiredProduct(userId, id);
         if (p.getImageKey() == null) {
-            throw BusinessException.badRequest("DAP_PRODUCT_NO_IMAGE", "产品还没有主图，先上传或等待生成完成");
+            throw BusinessException.badRequest("DAP_PRODUCT_NO_IMAGE", "产品还没有主图，请上传或等待生成完成");
         }
         List<String> labels = req == null || req.labels() == null || req.labels().isEmpty()
                 ? DEFAULT_ANGLE_LABELS : req.labels().stream().filter(l -> l != null && !l.isBlank()).limit(6).toList();
@@ -758,7 +758,7 @@ public class DapAssetService {
             throw BusinessException.badRequest("DAP_NO_FILES", "未收到图片文件");
         }
         if (file.getSize() > UPLOAD_MAX_BYTES) {
-            throw BusinessException.badRequest("DAP_IMAGE_TOO_LARGE", "图片过大（上限 30MB）");
+            throw BusinessException.badRequest("DAP_IMAGE_TOO_LARGE", "图片过大（上限 30 MB）");
         }
         String ct = file.getContentType();
         if (ct == null || !ct.toLowerCase().startsWith("image/")) {

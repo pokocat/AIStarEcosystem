@@ -33,7 +33,7 @@ public class StudioHypitMedia {
                 if(media.exitValue()!=0)throw new IllegalStateException("FFmpeg runtime unsupported");
                 ready=true;
             }finally{Files.deleteIfExists(version);}
-        } catch(Exception e){throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_HYPIT_UNAVAILABLE","视频处理工具不可用，请配置Node.js 22以上、FFmpeg 5.1以上及Hypit媒体适配器");}
+        } catch(Exception e){throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_HYPIT_UNAVAILABLE","视频处理服务暂不可用，请稍后重试或联系平台处理",null,"需要 Node.js 22 以上、FFmpeg 5.1 以上及 Hypit 媒体适配器："+e);}
     }
     JsonNode read(Path source,Path directory,double duration) throws Exception {
         requireReady();var process=builder(script.toString(),source.toAbsolutePath().toString(),directory.toAbsolutePath().toString(),Double.toString(duration)).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();

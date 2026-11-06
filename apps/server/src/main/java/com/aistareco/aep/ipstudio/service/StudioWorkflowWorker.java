@@ -110,7 +110,7 @@ public class StudioWorkflowWorker {
                         if(system.isBlank() || user.isBlank()) throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"PROMPT_NOT_CONFIGURED","剧本提示词未配置");
                         String endpointId=input.path("_exec").path("endpointId").asText(null);
                         var purpose=textPurpose(input);
-                        var endpoint=models.resolveAcceptedEndpoint(purpose,endpointId,"studio").orElseThrow(()->new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","创作模型已停用或不再是默认模型，请联系管理员"));
+                        var endpoint=models.resolveAcceptedEndpoint(purpose,endpointId,"studio").orElseThrow(()->new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","当前创作模型已停用，请联系平台处理"));
                         StudioTokenBilling.requireRoute(input,endpoint.endpoint());
                         JsonNode visual=input.path("_exec").path("visualContext");
                         Object userContent=user;
@@ -122,7 +122,7 @@ public class StudioWorkflowWorker {
                             if(!progress(id,20,"recreation.frames"))return;
                             var study=StudioRecreation.study(input.path("_exec").path("recreationSource"),storage,hypitMedia);recreationStudy=study;
                             if(!checkpointRecreation(id,input.path("_exec").path("recreationSource")))return;
-                            if(finalTokens<4096)throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_RECREATION_TOKEN_BUDGET","全片拆解需要至少4096输出Token预算，请调整模型配置");
+                            if(finalTokens<4096)throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_RECREATION_TOKEN_BUDGET","当前模型不支持全片拆解，请联系平台处理");
                             int pageBudget=Math.min(512,Math.max(128,(finalTokens-3072)/study.pages().size()));
                             finalTokens-=pageBudget*study.pages().size();
                             var observations=mapper.createArrayNode();
@@ -134,7 +134,7 @@ public class StudioWorkflowWorker {
                                 var observed=recreationChat(id,endpoint.endpoint(),tokenRate,consumed,observe.system(),
                                         List.of(Map.of("type","text","text",observe.user()),study.pages().get(page)),pageBudget,.1,java.util.stream.IntStream.range(first-1,last).boxed().toList(),
                                         input.path("_exec").path("recreationSource"),recreationFallback,output,input);
-                                if("length".equals(observed.finishReason()))throw new BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,"AI_BAD_OUTPUT","片段读取结果被截断，请调整模型输出配置");
+                                if("length".equals(observed.finishReason()))throw new BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,"AI_BAD_OUTPUT","片段读取结果不完整，请重试");
                                 consumed=consumeUsage(observed,consumed,tokenRate);
                                 observations.addObject().put("firstFrame",first).put("lastFrame",last).set("facts",StudioRecreation.observation(observed.content(),first,last));
                             }
@@ -193,7 +193,7 @@ public class StudioWorkflowWorker {
                             directorReceipt=mapper.createObjectNode();directorReceipt.set("billing",output.path("billing").deepCopy());
                             if(runs.findById(id).map(IpRun::isCancelRequested).orElse(false)){finish(id,output,null);return;}
                         }
-                        if("length".equals(reply.finishReason()))output.withArray("warnings").add("模型回复因输出额度停止，已保留返回内容");
+                        if("length".equals(reply.finishReason()))output.withArray("warnings").add("模型输出已达上限，已保留返回内容");
                         try {script=ModelJson.parse(mapper,reply.content());}
                         catch(com.fasterxml.jackson.core.JsonProcessingException malformed) {
                             var failure=BusinessException.wrapped(org.springframework.http.HttpStatus.BAD_GATEWAY,"AI_BAD_OUTPUT",
@@ -325,7 +325,7 @@ public class StudioWorkflowWorker {
 
     private void filmStudy(String id,IpRun run,JsonNode input,ObjectNode output) throws Exception {
         var exec=input.path("_exec");
-        var endpoint=models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA,exec.path("endpointId").asText(null),"studio").orElseThrow(()->new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","创作模型已停用或不再是默认模型，请联系管理员"));
+        var endpoint=models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA,exec.path("endpointId").asText(null),"studio").orElseThrow(()->new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","当前创作模型已停用，请联系平台处理"));
         if(!StudioVisualContext.supportsVision(endpoint.endpoint()))throw BusinessException.badRequest("STUDIO_VISION_UNAVAILABLE","所选模型不能读取画面");
         if(!progress(id,15,"recreation.frames"))return;
         var source=exec.path("recreationSource");var evidence=StudioRecreation.study(source,storage,hypitMedia);
@@ -361,7 +361,7 @@ public class StudioWorkflowWorker {
             private String call(String system,List<Map<String,Object>> parts,int tokens,boolean json,boolean withFocus) throws Exception {
                 if(enterpriseBilling!=null)enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,id,endpoint.getId());
                 if(remainingOutputTokens()<64||(rate!=null&&used[0][0]>=rate.maxInputTokens()))
-                    throw BusinessException.badRequest("AI_USAGE_LIMIT","本次Token预算已用完，请调整后台预算");
+                    throw BusinessException.badRequest("AI_USAGE_LIMIT","本次用量已达上限，请缩短内容后重试");
                 var params=new HashMap<String,Object>();params.put("timeout_seconds",300);
                 params.put("max_tokens",Math.min(tokens,remainingOutputTokens()));params.put("temperature",temperature);
                 if(json)params.put("response_format",Map.of("type","json_object"));
@@ -439,7 +439,7 @@ public class StudioWorkflowWorker {
             String endpointId=input.path("_exec").path("endpointId").asText(null);
             var purpose=textPurpose(input);
             var endpoint=models.resolveAcceptedEndpoint(purpose,endpointId,"studio").orElseThrow(()->new BusinessException(
-                    org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","提示词优化用的文本模型已停用，可以关闭智能优化按原文生成"));
+                    org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","提示词优化暂不可用，可关闭「智能优化」按原文生成"));
             StudioTokenBilling.requireRoute(input,endpoint.endpoint());
             var rate=mapper.treeToValue(input.path("_exec").path("tokenPricing"),AiChatTokenPricing.Rate.class);
             if(enterpriseBilling!=null)enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,id,endpoint.endpoint().getId());
@@ -456,10 +456,10 @@ public class StudioWorkflowWorker {
             long[] used=consumeUsage(reply,new long[]{0,0},rate);
             output.putObject("billing").put("inputTokens",used[0]).put("outputTokens",used[1]).put("credits",rate.settle(used[0],used[1]))
                     .put("inputCreditsPerK",rate.inputCreditsPerK()).put("outputCreditsPerK",rate.outputCreditsPerK());
-            if("length".equals(reply.finishReason()))output.withArray("warnings").add("模型因输出额度停止，原文已保留");
+            if("length".equals(reply.finishReason()))output.withArray("warnings").add("模型输出已达上限，原文已保留");
             JsonNode script;
             try {script=ModelJson.parse(mapper,reply.content());}
-            catch(com.fasterxml.jackson.core.JsonProcessingException malformed){throw com.aistareco.aep.ipstudio.h3.H3PromptRewrite.bad("没有返回 JSON");}
+            catch(com.fasterxml.jackson.core.JsonProcessingException malformed){throw com.aistareco.aep.ipstudio.h3.H3PromptRewrite.bad("模型返回格式有误");}
             result=com.aistareco.aep.ipstudio.h3.H3PromptRewrite.validate(mapper,meta,script);
         } catch(Exception e) {
             failure=e;
@@ -489,7 +489,7 @@ public class StudioWorkflowWorker {
         }
         String prompt=usable?output.path("videoPrompt").path("text").asText():input.path("prompt").asText("");
         if(!usable) {
-            output.withArray("videoPromptNotes").add(failure!=null?"提示词优化没成功，已按原文生成":"优化稿超过 "
+            output.withArray("videoPromptNotes").add(failure!=null?"提示词优化失败，已按原文生成":"优化稿超过 "
                     +com.aistareco.aep.ipstudio.h3.H3PromptRewrite.MAX_PROMPT_CHARS+" 字符，已按原文生成");
             // 没改成不收这一步的费用；模型确实回了内容但不能用的，按实际用量结算（视频照常出）。
             if(!output.has("billing"))output.putObject("billing").put("inputTokens",0).put("outputTokens",0).put("credits",0);
@@ -566,7 +566,7 @@ public class StudioWorkflowWorker {
     }
     private static long[] consumeUsage(AiModelInvocationService.AiModelResponse reply,long[] previous,AiChatTokenPricing.Rate rate) {
         if(rate==null)return previous;
-        if(reply.promptTokens()==null||reply.completionTokens()==null)throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"AI_USAGE_MISSING","模型未返回有效Token用量，本次未扣积分");
+        if(reply.promptTokens()==null||reply.completionTokens()==null)throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"AI_USAGE_MISSING","生成服务未返回用量信息，本次未扣积分，请重试");
         long[] total={Math.addExact(previous[0],reply.promptTokens()),Math.addExact(previous[1],reply.completionTokens())};
         rate.settle(total[0],total[1]);return total;
     }
@@ -617,7 +617,7 @@ public class StudioWorkflowWorker {
         return Boolean.TRUE.equals(transactions.execute(tx->{
             IpRun run=billingLockedRun(id).orElse(null);
             if(run==null || !IpRun.STATUS_RUNNING.equals(run.getStatus()) || run.getHeartbeatAt()==null || !run.getHeartbeatAt().isBefore(cutoff)) return false;
-            terminal(run,null,new BusinessException(org.springframework.http.HttpStatus.REQUEST_TIMEOUT,"IP_RUN_TIMEOUT","创作超时，冻结积分已释放，可重新生成"));
+            terminal(run,null,new BusinessException(org.springframework.http.HttpStatus.REQUEST_TIMEOUT,"IP_RUN_TIMEOUT","创作超时，冻结积分已退回，可重新生成"));
             return true;
         }));
     }
@@ -769,7 +769,7 @@ public class StudioWorkflowWorker {
         long reserved=run.getCost();
         run.setCancelRequested(true);
         run.setStatus(IpRun.STATUS_FAILED);run.setStage("settlement.pending");
-        run.setErrorCode("STUDIO_USAGE_PENDING");run.setErrorMessage("创作已停止，模型费用待核对，冻结积分暂未释放");
+        run.setErrorCode("STUDIO_USAGE_PENDING");run.setErrorMessage("创作已停止，模型费用待核对，冻结积分暂未退回");
         run.setCost(0);run.setFinishedAt(Instant.now());run.setHeartbeatAt(Instant.now());
         ObjectNode output=mapper.createObjectNode();output.putObject("billing").put("state","pending").put("reservedCredits",reserved);
         try {run.setOutputJson(mapper.writeValueAsString(output));}catch(Exception invalid){throw new IllegalStateException(invalid);}

@@ -108,7 +108,7 @@ class DirectorLongTextTest {
         JsonNode v = service.create(USER, new DirectorService.CreateRequest("长篇", "", body(100_000, "没有分集标题", "完")));
         BusinessException e = assertThrows(BusinessException.class, () -> task("split", null, om.createObjectNode()));
         assertEquals("DIRECTOR_TEXT_TOO_LONG_FOR_MODEL", e.getCode());
-        assertTrue(e.getMessage().startsWith("剧本约 100,0") && e.getMessage().contains("约 24,000 字") && e.getMessage().contains("没有扣积分"), e.getMessage());
+        assertTrue(e.getMessage().startsWith("剧本约 100,0") && e.getMessage().contains("约 24,000 字") && e.getMessage().contains("未扣积分"), e.getMessage());
         assertTrue(prompts.isEmpty(), "读不全就不交给模型");
 
         String headed = "# 第1集 夜市\n" + body(40_000, "夜市开头", "夜市结尾") + "\n# 第2集 雨夜\n" + body(40_000, "雨夜开头", "雨夜结尾");

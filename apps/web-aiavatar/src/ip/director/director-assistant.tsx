@@ -172,8 +172,8 @@ export function useAssistantController({ work: maybeWork, apply, tab, episodeId,
       }
       return;
     }
-    if (p.clipId && hasDrafts(`${w.id}:clip:${p.clipId}:`)) throw new Error(`${p.targetLabel}有没保存的修改，请先保存或撤销，再采用助手的建议`);
-    if (p.assetId && hasDrafts(`${w.id}:asset:${p.assetId}:`)) throw new Error(`${p.targetLabel}有没保存的修改，请先保存或撤销，再采用助手的建议`);
+    if (p.clipId && hasDrafts(`${w.id}:clip:${p.clipId}:`)) throw new Error(`${p.targetLabel}有未保存的修改，请保存或撤销后采用助手的建议`);
+    if (p.assetId && hasDrafts(`${w.id}:asset:${p.assetId}:`)) throw new Error(`${p.targetLabel}有未保存的修改，请保存或撤销后采用助手的建议`);
   }, [apply]);
 
   const prepareScope = useCallback(async (scope: DirectorAssistantScope) => {
@@ -209,7 +209,7 @@ export function useAssistantController({ work: maybeWork, apply, tab, episodeId,
       if (assets !== undefined) data.assetIds = assets;
       const shots = peekDraft<Array<Record<string, unknown> & { durationText: string }>>(pre + "edit:shots");
       if (shots !== undefined) {
-        if (shots.some(x => !(Number(x.durationText) > 0))) throw new Error(`片段 ${clip.order} 有镜头时长没填好，改好或撤销后再发送`);
+        if (shots.some(x => !(Number(x.durationText) > 0))) throw new Error(`片段 ${clip.order} 有镜头时长未填写，请修改或撤销后发送`);
         data.shots = shots.map(({ durationText, ...x }) => ({ ...x, durationSec: Number(durationText) }));
       }
       await save(saveDrafts(took, () => DirectorApi.edit(w.id, "clip.update", clip.id, clip.rev, data)));
@@ -245,11 +245,11 @@ export function useAssistantController({ work: maybeWork, apply, tab, episodeId,
     const content = scope.episodeId === "draft" ? w.draft : w.episodes.find(e => e.id === scope.episodeId)?.content ?? "";
     const start = scope.start ?? -1, end = scope.end ?? -1;
     if (start >= 0 && content.slice(start, end) === scope.text) return scope;
-    throw new Error("选中的段落改过了，请在正文里重新选择要修改的地方");
+    throw new Error("选中的段落已修改，请在正文中重新选择");
   }, [apply]);
 
   const act = useCallback(async (messageId: string, p: DirectorProposal, op: "apply" | "dismiss" | "undo") => {
-    if (op !== "dismiss" && p.type.startsWith("script.") && p.target && scriptLocked(p.target)) throw new Error("AI 正在处理这份正文，请等回复完成后再修改");
+    if (op !== "dismiss" && p.type.startsWith("script.") && p.target && scriptLocked(p.target)) throw new Error("AI 正在处理此正文，请在回复完成后修改");
     if (op === "apply") await saveLocalEdits(p);
     apply(await DirectorApi.edit(workRef.current.id, `assistant.${op}`, null, null, { messageId, proposalId: p.id }));
     if (op !== "undo") setPreview(cur => cur?.messageId === messageId && cur.proposalId === p.id ? null : cur);
@@ -263,8 +263,8 @@ export function useAssistantController({ work: maybeWork, apply, tab, episodeId,
     modal.confirm({
       title: "按新提示词生成新版本？",
       content: <div className="director-batch-confirm">
-        <p>{p.status === "open" ? "先采用这条文字修改，再" : ""}按修改后的提示词、以当前这张为参考生成一张新图。</p>
-        <p className="director-muted">这不是局部精确修改，画面其他部分也可能有变化。原图保留，生成后可以对比再决定用哪张。</p>
+        <p>{p.status === "open" ? "将采用此文字修改，并" : ""}按修改后的提示词、以当前图片为参考生成新版本。</p>
+        <p className="director-muted">这不是局部精确修改，画面其他部分也可能变化。原图保留，生成后可对比并选择。</p>
         <p>{costText(cost, w.pricing.mock)}</p>
       </div>,
       okText: "生成新版本", cancelText: "取消",
@@ -348,10 +348,10 @@ function linkedText(work: DirectorWork, s: DirectorAssistantScope, canSee: boole
     case "script": return join([work.episodes.length || work.draft.trim() ? "当前正文" : "创意"]);
     case "selection": return join(["本集正文", "选中的段落"]);
     case "storyboard": return join(["本集剧本", "本集全部片段的镜头和提示词"]);
-    case "clip": return join(["本集剧本", "这个片段的镜头", "关联资产"]);
-    case "prompt": return join(["这个片段的镜头", "当前提示词", "关联资产"]);
+    case "clip": return join(["本集剧本", "此片段的镜头", "关联资产"]);
+    case "prompt": return join(["此片段的镜头", "当前提示词", "关联资产"]);
     case "asset": return join(["外观设定", "出图提示词", "出场集数"]);
-    case "image": return join([canSee ? "当前这张图" : "这张图的提示词（当前模型不能看图）", "出图提示词"]);
+    case "image": return join([canSee ? "当前图片" : "此图的提示词（当前模型不支持看图）", "出图提示词"]);
   }
 }
 
@@ -413,7 +413,7 @@ export function DirectorAssistantPanel({ work, apply, tab, episodeId, openSettin
       <h3>全能创作助手</h3>
       <span className="director-spacer"/>
       <button type="button" className="director-assistant-tool" disabled={briefing || !!replying || !thread?.messages.length} onClick={() => void threadOp("assistant.newThread")}
-        title={replying ? "回复完成后再开新对话" : "开一段新对话，之前的对话留在历史里"}><MessageSquarePlus size={15}/><span>新对话</span></button>
+        title={replying ? "回复完成后可新建对话" : "新建对话，之前的对话保留在历史对话中"}><MessageSquarePlus size={15}/><span>新对话</span></button>
       <button type="button" className="director-assistant-tool is-icon" aria-label="历史对话" aria-expanded={historyOpen} disabled={!store?.threads.length} onClick={() => setHistoryOpen(v => !v)}><History size={15}/></button>
       <button type="button" className="director-assistant-tool is-icon" aria-label="收起助手" onClick={() => ctl.setOpen(false)}><X size={16}/></button>
       {historyOpen && store && <ThreadHistory threads={store.threads} current={store.current} disabled={!!replying} onPick={id => void threadOp("assistant.openThread", id)} onClose={() => setHistoryOpen(false)}/>}
@@ -421,6 +421,7 @@ export function DirectorAssistantPanel({ work, apply, tab, episodeId, openSettin
     <div className="director-assistant-context">
       <b>正在讨论：{briefing ? "写剧本前的准备" : scopeLabel(work, ctl.scope)}</b>
       {!briefing && <small>已关联：{linkedText(work, ctl.scope, canSee)}</small>}
+      {!briefing && !!replying && <small>回复完成后可新建对话</small>}
     </div>
     {briefing ? <BriefThread openSettings={openSettings}/> : <>
       <div className="director-assistant-list" ref={listRef} aria-live="polite">
@@ -443,7 +444,7 @@ function ThreadHistory({ threads, current, disabled, onPick, onClose }: { thread
     <h4>历史对话</h4>
     <ul>{threads.map(t => <li key={t.id}><button type="button" aria-current={t.id === current ? "true" : undefined} disabled={disabled || t.id === current} onClick={() => onPick(t.id)}>
       <b title={t.title || "新对话"}>{t.title || "新对话"}</b><small>{t.messages.length} 条 · {formatDateTime(t.updatedAt)}</small></button></li>)}</ul>
-    {disabled && <p className="director-muted">回复完成后可以切换。</p>}
+    {disabled && <p className="director-muted">回复完成后可切换。</p>}
   </div>;
 }
 
@@ -454,7 +455,7 @@ function AssistantWelcome({ work, tab }: { work: DirectorWork; tab: AssistantTab
       : tab === "assets" ? [`${work.assets.find(a => a.kind === "character")?.name ?? "这个角色"}更疲惫一点，但别显老`, "保留长相，只换成冬天的衣服", "这个场景再旧一些"]
         : ["先看看这个开头，哪里不够吸引人？", "只改对白，其他别动", "续写下一场"];
   return <div className="director-assistant-welcome">
-    <p>{noScript ? "有了剧本以后，在这里继续评价、续写和局部修改。" : "选中正文、点镜头或图片旁的「AI」按钮，我就知道你要改哪里。讨论的时候我只给分析和方向，你说「改」我才给修改建议，采用前都能先对比。"}</p>
+    <p>{noScript ? "有剧本后，可在此继续评价、续写和局部修改。" : "选中正文，或点击镜头、图片旁的「AI」按钮，指定要修改的内容。讨论时只给出分析和方向，你明确要求修改后才给出修改建议，采用前可先对比。"}</p>
     {tips.length > 0 && <ul>{tips.map(t => <li key={t}>{t}</li>)}</ul>}
   </div>;
 }
@@ -475,7 +476,7 @@ function Message({ work, msg }: { work: DirectorWork; msg: DirectorAssistantMess
     return <div className="director-msg is-ai is-pending" role="status"><Loader2 size={14} className="ip-loading-icon"/><span>正在思考</span><Elapsed since={task?.createdAt}/></div>;
   }
   if (msg.status === "failed") return <div className="director-msg is-ai is-failed" role="alert">
-    <p>{msg.error || "助手没有回复成功"}</p>
+    <p>{msg.error || "回复失败"}</p>
     <button type="button" className="ip-brand-text-button" onClick={() => {
       const thread = work.assistant?.threads.find(t => t.messages.some(m => m.id === msg.id));
       const i = thread?.messages.findIndex(m => m.id === msg.id) ?? -1;
@@ -485,10 +486,10 @@ function Message({ work, msg }: { work: DirectorWork; msg: DirectorAssistantMess
   </div>;
   return <div className="director-msg is-ai">
     <p>{msg.text}</p>
-    {msg.visual === "prompt-only" && <small className="director-msg-note">当前文字模型不能看图，以上意见只根据这张图的提示词。</small>}
+    {msg.visual === "prompt-only" && <small className="director-msg-note">当前文字模型不支持看图，以上意见仅依据此图的提示词。</small>}
     {msg.range && <small className="director-msg-note">{msg.range}。</small>}
     {(msg.proposals ?? []).map(p => <ProposalCard key={p.id} work={work} msg={msg} p={p}/>)}
-    {(msg.dropped ?? 0) > 0 && <small className="director-msg-note">另有 {msg.dropped} 条建议对不上原文或超出这次的修改范围，已略过。</small>}
+    {(msg.dropped ?? 0) > 0 && <small className="director-msg-note">另有 {msg.dropped} 条建议与原文不符或超出本次修改范围，已忽略。</small>}
   </div>;
 }
 
@@ -527,20 +528,20 @@ export function proposalImpacts(work: DirectorWork, p: DirectorProposal): string
     out.push("本集已有分镜：采用后会提示分镜需要更新，不会自动重新生成。");
   const clip = p.clipId ? work.clips.find(c => c.id === p.clipId) : undefined;
   if (p.type === "clip.shots" && clip) {
-    out.push(clip.boardPromptCustom ? "分镜图提示词是你改过的，不会跟着镜头变；需要的话让助手一起改。" : "分镜图提示词会按新镜头自动更新。");
-    out.push(clip.videoPromptCustom ? "视频提示词是你改过的，不会跟着镜头变；需要的话让助手一起改。" : "视频提示词会按新镜头自动更新。");
-    if (clip.board.adoptedId) out.push("已有的分镜图会标为「需更新」，不会自动重新生成。");
-    if (clip.video.adoptedId) out.push("已有的片段视频会标为「需更新」，不会自动重新生成。");
+    out.push(clip.boardPromptCustom ? "分镜图提示词已自定义，不会随镜头更新；如需修改，可让助手一并调整。" : "分镜图提示词会按新镜头自动更新。");
+    out.push(clip.videoPromptCustom ? "视频提示词已自定义，不会随镜头更新；如需修改，可让助手一并调整。" : "视频提示词会按新镜头自动更新。");
+    if (clip.board.adoptedId) out.push("已有的分镜图将标记为「需更新」，不会自动重新生成。");
+    if (clip.video.adoptedId) out.push("已有的片段视频将标记为「需更新」，不会自动重新生成。");
   }
   if (p.type === "clip.prompt" && clip) {
-    if (p.which === "board" && clip.board.adoptedId) out.push("已有的分镜图会标为「需更新」；要新图请点「生成新版本」。");
-    if (p.which === "video" && clip.video.adoptedId) out.push("已有的片段视频会标为「需更新」，不会自动重新生成。");
-    out.push("采用后这份提示词按「已自定义」保存，镜头再改时不会自动同步。");
+    if (p.which === "board" && clip.board.adoptedId) out.push("已有的分镜图将标记为「需更新」；如需新图，请点击「生成新版本」。");
+    if (p.which === "video" && clip.video.adoptedId) out.push("已有的片段视频将标记为「需更新」，不会自动重新生成。");
+    out.push("采用后此提示词按「已自定义」保存，修改镜头时不会自动同步。");
   }
   const asset = p.assetId ? work.assets.find(a => a.id === p.assetId) : undefined;
   if (p.type === "asset.update" && asset) {
     if (p.description && !p.prompt && !asset.promptCustom) out.push("出图提示词会按新设定自动更新。");
-    if ((p.description && !asset.promptCustom) || p.prompt) { if (asset.image.adoptedId) out.push("已有的资产图会标为「需更新」；要新图请点「生成新版本」。"); }
+    if ((p.description && !asset.promptCustom) || p.prompt) { if (asset.image.adoptedId) out.push("已有的资产图将标记为「需更新」；如需新图，请点击「生成新版本」。"); }
   }
   return out;
 }
@@ -570,7 +571,7 @@ function ProposalCard({ work, msg, p }: { work: DirectorWork; msg: DirectorAssis
     <header><b>{p.targetLabel} · {title}</b>{p.note && <small title={p.note}>{p.note}</small>}</header>
     <div className="director-proposal-body">
       {p.type === "script.replace" && <>
-        <p className="director-proposal-text">{p.replacement || "（删掉这段）"}</p>
+        <p className="director-proposal-text">{p.replacement || "（删除此段）"}</p>
         <button type="button" className="director-disclosure" aria-expanded={showOriginal} onClick={() => setShowOriginal(v => !v)}><ChevronRight size={13}/>对比原文</button>
         {showOriginal && <Diff parts={diffText(p.original ?? "", p.replacement ?? "")}/>}
       </>}
@@ -597,10 +598,10 @@ function ProposalCard({ work, msg, p }: { work: DirectorWork; msg: DirectorAssis
           : <button type="button" className="ip-brand-button" disabled={!!busy} onClick={() => void run("apply", () => ctl.act(msg.id, p, "apply"))}>{busy === "apply" ? "采用中" : "采用"}</button>}
         {script && <button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={() => void run("apply", () => ctl.act(msg.id, p, "apply"))}>直接采用</button>}
         {p.regenerate && <button type="button" className="ip-brand-secondary" disabled={!!busy || !!generating} onClick={() => void run("gen", () => ctl.regenerate(msg.id, p))}
-          title="采用文字后，以当前这张为参考生成一张新图（另外计费）">采用并生成新版本</button>}
+          title="采用文字修改后，以当前图片为参考生成新版本（另行计费）">采用并生成新版本</button>}
         <button type="button" className="ip-brand-text-button" disabled={!!busy} onClick={() => followUp(msg.scope, "")}>继续调整</button>
         <span className="director-spacer"/>
-        <button type="button" className="ip-brand-text-button" disabled={!!busy} onClick={() => void run("dismiss", () => ctl.act(msg.id, p, "dismiss"))}>不用了</button>
+        <button type="button" className="ip-brand-text-button" disabled={!!busy} onClick={() => void run("dismiss", () => ctl.act(msg.id, p, "dismiss"))}>不采用</button>
       </>}
       {p.status === "applied" && <>
         <span className="director-proposal-state is-done"><Check size={13}/>已采用</span>
@@ -610,7 +611,7 @@ function ProposalCard({ work, msg, p }: { work: DirectorWork; msg: DirectorAssis
         <span className="director-spacer"/>
         {p.undoable && <button type="button" className="ip-brand-text-button" disabled={!!busy} onClick={() => void run("undo", () => ctl.act(msg.id, p, "undo"))}><Undo2 size={13}/>撤销</button>}
       </>}
-      {p.status === "dismissed" && <span className="director-proposal-state">没有采用</span>}
+      {p.status === "dismissed" && <span className="director-proposal-state">未采用</span>}
     </footer>
   </article>;
 }
@@ -622,9 +623,9 @@ function ShotDiff({ work, p }: { work: DirectorWork; p: DirectorProposal }) {
   const kept = changes.filter(c => c.kind === "same").length;
   return <div className="director-shot-diff">
     {changes.filter(c => c.kind !== "same").map((c, i) => <div key={i} className={`director-shot-diff-item is-${c.kind}`}>
-      {c.kind === "removed" ? <><b>删掉原第 {c.beforeNo} 镜</b><p>{c.before.size} · {c.before.still}</p></> :
+      {c.kind === "removed" ? <><b>删除原第 {c.beforeNo} 镜</b><p>{c.before.size} · {c.before.still}</p></> :
         c.kind === "added" ? <><b>新增第 {c.no} 镜 · {c.shot.durationSec} 秒 · {c.shot.size}</b><p>{c.shot.still}</p>{c.shot.action && <small>{c.shot.action}</small>}{c.shot.dialogue.length > 0 && <small>{lines(c.shot.dialogue)}</small>}</> :
-          c.kind === "changed" ? <><b>第 {c.no} 镜 · 改了{c.fields.join("、")}</b>
+          c.kind === "changed" ? <><b>第 {c.no} 镜 · 修改了{c.fields.join("、")}</b>
             {c.fields.includes("景别") && <Diff parts={diffText(c.before.size, c.shot.size)}/>}
             {c.fields.includes("时长") && <Diff parts={diffText(`${c.before.durationSec} 秒`, `${c.shot.durationSec} 秒`)}/>}
             {c.fields.includes("分镜画面") && <Diff parts={diffText(c.before.still, c.shot.still)}/>}
@@ -650,7 +651,7 @@ function AssistantModelPicker({ work, apply, disabled }: { work: DirectorWork; a
   const value = work.settings.textModel ?? "";
   const fallback = models.find(m => m.isDefault);
   const current = models.find(m => value ? m.endpointId === value : m.isDefault);
-  const tip = "这部作品的文本模型，和「作品设置」里的是同一项：写剧本、拆分集、写分镜也用它。";
+  const tip = "即本作品的文本模型，与「作品设置」中的选项相同，也用于写剧本、拆分集和写分镜脚本。";
   // 后台固定了模型：只显示是哪个，不给选。
   if (work.textModelMode === "fixed") return <span className="director-model-picker is-fixed" title={tip}>{current?.name ?? "默认模型"}</span>;
   const unavailable = !!value && !models.some(m => m.endpointId === value);
@@ -660,7 +661,7 @@ function AssistantModelPicker({ work, apply, disabled }: { work: DirectorWork; a
         const next = e.target.value;
         setBusy(true); setError("");
         try { apply(await DirectorApi.patchWork(work.id, { settings: { textModel: next || null } })); }
-        catch (err) { setError(`模型没有换成：${errorText(err)}`); }
+        catch (err) { setError(`模型切换失败：${errorText(err)}`); }
         finally { setBusy(false); }
       }}>
       <option value="">默认{fallback ? `（${fallback.name}）` : ""}</option>
@@ -707,7 +708,7 @@ function useAssistantSender(work: DirectorWork, apply: (w: DirectorWork) => void
       // 同一句话：按原请求（原编号、原范围）恢复；改了内容就先处理掉那一条。
       if (prior.body.options.message === message) { setPending(prior); hooks.created?.(prior.id); return void deliverIt(prior, hooks.done); }
       setPending(prior);
-      setError("上一条消息还没确认是否送达，请先按原请求核对送达状态，再发新的消息。"); return;
+      setError("上一条消息的送达状态尚未确认，请点击「按原请求重新发送」，确认送达后可发送新消息。"); return;
     }
     ctl.setSubmittingScope(scope);
     setSending(true); setError("");
@@ -738,10 +739,10 @@ function PendingRetry({ work, sender, done }: { work: DirectorWork; sender: Retu
   const { pending } = sender;
   if (!pending || sender.sending || !sender.error) return null;
   const msg = pending.body.options.message;
-  return <div className="director-assistant-pending" role="group" aria-label="没确认送达的消息">
+  return <div className="director-assistant-pending" role="group" aria-label="未确认送达的消息">
     <small title={msg}>「{msg.slice(0, 30)}{msg.length > 30 ? "…" : ""}」· {scopeLabel(work, pending.body.options.scope)}</small>
     <button type="button" className="ip-brand-secondary" onClick={() => void sender.deliverIt(pending, done)}>按原请求重新发送</button>
-    {!["script", "selection"].includes(pending.body.options.scope.kind) && <button type="button" className="ip-brand-text-button" onClick={sender.discard}>不发了</button>}
+    {!["script", "selection"].includes(pending.body.options.scope.kind) && <button type="button" className="ip-brand-text-button" onClick={sender.discard}>放弃发送</button>}
   </div>;
 }
 
@@ -783,21 +784,21 @@ function Composer({ work, apply, tab, episodeId, threadId, replying }: { work: D
           onChange={e => ctl.setScope(options[Number(e.target.value)])}>
           {options.map((o, i) => <option key={i} value={String(i)}>{scopeLabel(work, o)}</option>)}
         </SelectField>
-        {ctl.explicit && <button type="button" className="director-scope-clear" aria-label="换回当前页面的默认范围" onClick={() => ctl.setScope(null)}><X size={12}/></button>}
+        {ctl.explicit && <button type="button" className="director-scope-clear" aria-label="恢复当前页面的默认范围" onClick={() => ctl.setScope(null)}><X size={12}/></button>}
       </span>
       {scope.kind === "selection" && scope.text && <small className="director-scope-quote" title={scope.text}>「{scope.text.slice(0, 40)}{scope.text.length > 40 ? "…" : ""}」</small>}
     </div>
-    <textarea ref={input} rows={3} maxLength={2000} aria-label="和助手说" placeholder={replying ? "助手正在回复，你可以继续改内容，回复完成后再发送" : "说说你的想法，或者要怎么改。Enter 发送，Shift+Enter 换行"}
+    <textarea ref={input} rows={3} maxLength={2000} aria-label="和助手说" placeholder={replying ? "助手正在回复，可继续编辑，回复完成后发送" : "输入你的想法或修改要求。Enter 发送，Shift+Enter 换行"}
       value={text} onChange={e => setText(e.target.value)}
       onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}/>
     {error && <p className="director-assistant-send-error" role="alert">{error}</p>}
     <PendingRetry work={work} sender={sender} done={clearSent}/>
     <footer>
       <AssistantModelPicker work={work} apply={apply} disabled={busy}/>
-      <small>{work.pricing.mock ? "测试模式，免费" : `按实际用量结算，每轮最多 ${work.pricing.textMax.toLocaleString("zh-CN")} 积分`}</small>
+      <small>{replying ? "回复完成后可发送" : work.pricing.mock ? "测试模式，免费" : "按实际用量结算"}</small>
       <span className="director-spacer"/>
       <button type="button" className="director-assistant-send" aria-label="发送" disabled={busy || !text.trim()} onClick={send}
-        title={replying ? "等这条回复完成" : "发送（Enter）"}>{sending ? <Loader2 size={16} className="ip-loading-icon"/> : <ArrowUp size={16}/>}</button>
+        title={replying ? "请等待回复完成" : "发送（Enter）"}>{sending ? <Loader2 size={16} className="ip-loading-icon"/> : <ArrowUp size={16}/>}</button>
     </footer>
   </div>;
 }
@@ -885,7 +886,7 @@ function ScopePreview({ preview }: { preview: NonNullable<ReturnType<typeof scop
     {preview.image && <img src={preview.image} alt=""/>}
     <div>
       <span>{preview.label}</span>
-      {preview.text.trim() ? <p>{preview.text}</p> : <p className="is-empty">（还是空的）</p>}
+      {preview.text.trim() ? <p>{preview.text}</p> : <p className="is-empty">（暂无内容）</p>}
       {long && <button type="button" onClick={() => setOpen(v => !v)}>{open ? "收起" : "展开全部"}</button>}
     </div>
   </section>;
@@ -955,11 +956,11 @@ function InlineAssistant({ inline, anchor, onAsked, onDrag, tip }: { inline: Inl
   const quick = quickAsks(inline.scope);
   const linked = linkedText(work, inline.scope, canSeeImages(work));
   return <div className="director-inline-ask" role="dialog" aria-label={`AI 对话：${label}`}>
-    <header onPointerDown={onDrag} title="按住标题栏可以拖动">
+    <header onPointerDown={onDrag} title="按住标题栏可拖动">
       <span className="director-inline-ask-handle" aria-hidden/>
       <span className="director-inline-ask-mark" aria-hidden><AiMark size={16}/></span>
-      <div className="director-inline-ask-title"><b title={label}>{label}</b><small title={linked}>会参考：{linked}</small></div>
-      <button type="button" className="director-inline-ask-more" aria-label="在助手里继续" onClick={toSidebar} title="转到侧边栏的创作助手，可以看历史对话"><PanelRightOpen size={14}/><span>在助手里继续</span></button>
+      <div className="director-inline-ask-title"><b title={label}>{label}</b><small title={linked}>将参考：{linked}</small></div>
+      <button type="button" className="director-inline-ask-more" aria-label="在助手中继续" onClick={toSidebar} title="转到侧边栏的创作助手，可查看历史对话"><PanelRightOpen size={14}/><span>在助手中继续</span></button>
       <button type="button" className="director-inline-ask-close" aria-label="关闭" onClick={close}><X size={16}/></button>
     </header>
     {tip}
@@ -967,7 +968,7 @@ function InlineAssistant({ inline, anchor, onAsked, onDrag, tip }: { inline: Inl
       <div className="director-inline-ask-list" ref={list} aria-live="polite">
         {preview && <ScopePreview preview={preview}/>}
         {!items.length ? <div className="director-inline-ask-empty">
-          <p>{inline.hint || "说说你想怎么改，我先给建议，你看过对比再决定用不用。"}</p>
+          <p>{inline.hint || "输入修改要求，助手会给出建议，你可在对比后决定是否采用。"}</p>
           <div className="director-inline-ask-quick">{quick.map(q => <button key={q} type="button" onClick={() => { setText(q); input.current?.focus(); }}>
             <AiMark size={11}/><span>{q}</span></button>)}</div>
         </div> : items.map(({ id, ex }) => <div key={id} className="director-inline-ask-turn">
@@ -981,13 +982,13 @@ function InlineAssistant({ inline, anchor, onAsked, onDrag, tip }: { inline: Inl
     <PendingRetry work={work} sender={sender} done={m => setText(cur => cur.trim() === m ? "" : cur)}/>
     <div className="director-inline-ask-compose">
       <textarea ref={input} rows={3} maxLength={2000} aria-label="和 AI 说" value={text} onChange={e => setText(e.target.value)}
-        placeholder={replying ? "AI 正在回复，回复完成后再发送" : `想怎么改？比如「${quick[0]}」`}
+        placeholder={replying ? "AI 正在回复，回复完成后可发送" : `想如何修改？例如「${quick[0]}」`}
         onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}/>
       <footer>
         <AssistantModelPicker work={work} apply={apply} disabled={busy}/>
-        <small>{work.pricing.mock ? "测试模式，免费" : `按实际用量结算，每轮最多 ${work.pricing.textMax.toLocaleString("zh-CN")} 积分`} · Enter 发送，Shift+Enter 换行</small>
+        <small>{replying ? "回复完成后可发送" : `${work.pricing.mock ? "测试模式，免费" : "按实际用量结算"} · Enter 发送，Shift+Enter 换行`}</small>
         <button type="button" className="director-assistant-send" aria-label="发送" disabled={busy || !text.trim()} onClick={send}
-          title={replying ? "等这条回复完成" : "发送（Enter）"}>{sender.sending ? <Loader2 size={16} className="ip-loading-icon"/> : <ArrowUp size={16}/>}</button>
+          title={replying ? "请等待回复完成" : "发送（Enter）"}>{sender.sending ? <Loader2 size={16} className="ip-loading-icon"/> : <ArrowUp size={16}/>}</button>
       </footer>
     </div>
   </div>;
@@ -1114,7 +1115,7 @@ function InlineWindow({ box, setBox, z, children }: { box: WindowBox; setBox: (b
     height: box.height, maxHeight: maxHeight !== undefined ? Math.min(720, maxHeight) : undefined };
   return <div ref={el} className={`ip-brand-surface director-inline-ask-pop ${box.height !== undefined ? "is-sized" : ""}`} style={style}>
     {children(e => start(e, "move"), tip ? <div className="director-inline-ask-tip" role="note">
-      <Move size={14} aria-hidden/><span>按住标题栏可以拖到别处，拖四边或右下角可以调整大小</span>
+      <Move size={14} aria-hidden/><span>按住标题栏可拖动位置，拖动边缘或右下角可调整大小</span>
       <button type="button" onClick={tipDone}>知道了</button>
     </div> : null)}
     {(["n", "s", "e", "w", "ne", "nw", "se", "sw"] as Edge[]).map(edge => <span key={edge} className={`director-inline-ask-grip is-${edge}`} aria-hidden onPointerDown={e => start(e, edge)}/>)}

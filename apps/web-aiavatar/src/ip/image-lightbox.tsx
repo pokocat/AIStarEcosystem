@@ -36,6 +36,6 @@ function PreviewTools({ transform, actions }: { transform: { scale: number; x: n
     <button type="button" aria-label="缩小" title="缩小" disabled={transform.scale <= 1} onClick={actions.onZoomOut}><ZoomOut size={18}/></button>
     <span className="director-preview-scale" aria-label="当前缩放">{Math.round(transform.scale * 100)}%</span>
     <button type="button" aria-label="放大" title="放大" disabled={transform.scale >= PREVIEW_MAX_SCALE} onClick={actions.onZoomIn}><ZoomIn size={18}/></button>
-    <button type="button" className="is-text" title="回到整张图" disabled={fitted} onClick={actions.onReset}>适应窗口</button>
+    <button type="button" className="is-text" title="适应窗口" disabled={fitted} onClick={actions.onReset}>适应窗口</button>
   </div>;
 }

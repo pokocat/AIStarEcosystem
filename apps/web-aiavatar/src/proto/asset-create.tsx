@@ -26,7 +26,7 @@ export function AssetCreateSheet({ onPick, onClose }) {
       hN("div", { style: { padding: "12px 6px 6px" } },
         hN("div", { style: { fontFamily: "var(--font-disp)", fontSize: 19, fontWeight: 800, letterSpacing: "-.02em" } }, "新建资产"),
         hN("div", { style: { fontSize: 12.5, color: "var(--ink-3)", marginTop: 4, lineHeight: 1.5 } },
-          "先选类型，再选来源 —— 实拍上传与 AI 生成两条路径并重。")),
+          "选择资产类型和来源，支持实拍上传和 AI 生成。")),
       hN("div", { style: { padding: "8px 0 4px", display: "flex", flexDirection: "column", gap: 6 } },
         ASSET_TYPES.map((t: any) => hN("div", { key: t.key, style: {
           display: "flex", alignItems: "center", gap: 12, padding: 12, borderRadius: 15,
@@ -86,8 +86,8 @@ export function DescribeAssetSheet({ kind, onClose, onSubmit, busy }) {
           isScene ? "AI 生成场景" : "AI 生成产品图"),
         hN("div", { style: { fontSize: 12.5, color: "var(--ink-3)", marginTop: 4, lineHeight: 1.5 } },
           isScene
-            ? "描述一个空间 —— 生成的是不含人物的场景板，合成时人物才会站进去。"
-            : "描述一件商品 —— 生成纯净底的产品主图，方便后续抠图与合成。")),
+            ? "描述一个空间，生成不含人物的场景板，人物在合成时加入。"
+            : "描述一件商品，生成纯净底的产品主图，便于后续抠图与合成。")),
 
       hN(UI.Field, { label: isScene ? "场景描述" : "产品描述", required: true, style: { marginBottom: 14 } },
         hN(UI.Textarea, { value: prompt, onChange: setPrompt, rows: 3,
@@ -134,7 +134,7 @@ export function SimpleAssetSheet({ kind, onClose, onSubmit, busy }) {
           isIp ? "新建 IP" : "新建风格模板"),
         hN("div", { style: { fontSize: 12.5, color: "var(--ink-3)", marginTop: 4, lineHeight: 1.5 } },
           isIp
-            ? "IP 是容器 —— 建好后把人物 / 场景 / 产品收拢进来，就能整体授权、整体合成。"
+            ? "将人物、场景和产品归入同一个 IP，可整体授权、整体合成。"
             : "把一组出片基调存成模板，合成时一键复用。")),
       hN(UI.Field, { label: isIp ? "IP 名称" : "模板名称", required: true, style: { marginBottom: 14 } },
         hN(UI.Input, { value: name, onChange: setName, placeholder: isIp ? "星岚 Sēlan" : "品牌基调" })),

@@ -159,7 +159,7 @@ describe("video selection across modes, the IP library and legacy models",()=>{
 
 describe("prompt over a model's limit",()=>{
   it("counts by character and says how much to cut",()=>{
-    expect(studioPromptLimitMessage(2350,2000,false)).toBe("提示词 2350 字，这个模型最多 2000 字，需删减 350 字。");
+    expect(studioPromptLimitMessage(2350,2000,false)).toBe("提示词 2350 字，当前模型最多 2000 字，需删减 350 字。");
     expect(studioPromptLimitMessage(2350,2000,true)).toContain("创作要求和引用文本合计");
     const seedance={...model,contract:{...model.contract,promptMaxChars:3}};
     const video=studioVideoSettings("t2v","768p",[],undefined,seedance.contract.modes[0]);

@@ -42,7 +42,7 @@ export function IpHomeClassic({ header = true }: { header?: boolean }) {
   const [loading, setLoading] = useState(false);
   const [projectError, setProjectError] = useState("");
   const [revision, setRevision] = useState(0);
-  // 「创建空白画布」 is the shared 「新建」 (docs/ip-studio-new-canvas-and-threads.md §2.2).
+  // 「新建画布」 is the shared 「新建」 (docs/ip-studio-new-canvas-and-threads.md §2.2).
   const newCanvas = useStartNewCanvas();
   const busy = !!creating || newCanvas.creating;
   // 新建画布没成功：弹错误弹窗说清楚，不在页面中部挂一行字。
@@ -107,7 +107,7 @@ export function IpHomeClassic({ header = true }: { header?: boolean }) {
         </section>
         {authed && <section className="ip-home-recent">
           <div className="ip-home-section-heading"><div><h2>继续创作</h2><p>最近编辑的画布</p></div><Link href="/projects">全部画布<ArrowRight size={17} /></Link></div>
-          {loading ? <div className="ip-brand-state" role="status">正在加载近期画布…</div> : projectError ? <div className="ip-brand-error" role="alert">{projectError}<button onClick={() => setRevision(v => v + 1)}>重新加载</button></div> : projects.length ? <div className="ip-home-recent-grid">{projects.map(p => <Link className="ip-home-recent-card" href={"/projects/" + encodeURIComponent(p.id)} key={p.id}><div>{p.coverUrl ? <img src={p.coverUrl} alt={p.name} loading="lazy" /> : <FolderOpen size={28} aria-hidden="true" />}</div><section><h3>{p.name}</h3><p>{formatDateTime(p.updatedAt)}</p></section><ArrowRight size={17} aria-hidden="true" /></Link>)}</div> : <div className="ip-home-first-canvas"><p>还没有个人画布。</p><button className="ip-brand-text-button" disabled={busy} aria-busy={newCanvas.creating} onClick={startBlank}>创建空白画布{newCanvas.creating ? <LoaderCircle size={17} className="ip-loading-icon" aria-hidden="true" /> : <ArrowRight size={17} aria-hidden="true" />}</button></div>}
+          {loading ? <div className="ip-brand-state" role="status">正在加载近期画布…</div> : projectError ? <div className="ip-brand-error" role="alert">{projectError}<button onClick={() => setRevision(v => v + 1)}>重新加载</button></div> : projects.length ? <div className="ip-home-recent-grid">{projects.map(p => <Link className="ip-home-recent-card" href={"/projects/" + encodeURIComponent(p.id)} key={p.id}><div>{p.coverUrl ? <img src={p.coverUrl} alt={p.name} loading="lazy" /> : <FolderOpen size={28} aria-hidden="true" />}</div><section><h3>{p.name}</h3><p>{formatDateTime(p.updatedAt)}</p></section><ArrowRight size={17} aria-hidden="true" /></Link>)}</div> : <div className="ip-home-first-canvas"><p>还没有个人画布。</p><button className="ip-brand-text-button" disabled={busy} aria-busy={newCanvas.creating} onClick={startBlank}>新建画布{newCanvas.creating ? <LoaderCircle size={17} className="ip-loading-icon" aria-hidden="true" /> : <ArrowRight size={17} aria-hidden="true" />}</button></div>}
         </section>}
         <section className="ip-home-stories">
           <div className="ip-home-section-heading"><div><h2>灵感故事</h2><p>角色、世界观与故事示例 · 创作示意</p></div><Link href="/templates">探索模板<ArrowRight size={17} /></Link></div>

@@ -42,7 +42,7 @@ export function templateNeeds(doc?: Pick<IpProjectDoc, 'nodes'>) {
 export function templateNodeNote(node?: { type?: string; metadata?: { groupDescription?: unknown; content?: unknown; prompt?: unknown } }): string {
   const meta = node?.metadata, written = (value: unknown) => (typeof value === 'string' ? value : '');
   return written(meta?.groupDescription) || (node?.type === 'text' ? written(meta?.content) : '')
-    || (node?.type === 'group' ? '此分组尚未添加说明。' : meta?.prompt ? '做同款后可查看和修改提示词。' : '此节点等待填写内容或添加参考素材。');
+    || (node?.type === 'group' ? '此分组尚未添加说明。' : meta?.prompt ? '做同款后可查看和修改提示词。' : '此节点尚未填写内容或添加参考素材。');
 }
 
 /** 搜索范围：名称、说明和提示词。搜「穿搭」要能搜到标题写「小红书封面」、提示词写穿搭的那条。 */

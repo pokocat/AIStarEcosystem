@@ -65,7 +65,7 @@ class StudioNativeVideoProjectionTest {
         var b=MaterialVideoJob.builder().id("b").ownerUserId("owner").app("ipstudio").status("generating").progress(45).creditsHeld(320).build();
         when(repository.findById("a")).thenReturn(Optional.of(a));when(repository.findById("b")).thenReturn(Optional.of(b));
         var dto=service.toRunDto(binding);assertEquals("running",dto.status());assertEquals("video.submission_unknown",dto.stage());
-        assertEquals("VIDEO_SUBMISSION_UNKNOWN",dto.errorCode());assertTrue(dto.errorMessage().contains("受理结果待核对"));assertEquals(840,dto.cost());
+        assertEquals("VIDEO_SUBMISSION_UNKNOWN",dto.errorCode());assertTrue(dto.errorMessage().contains("请勿重复生成"));assertEquals(840,dto.cost());
         assertEquals("VIDEO_SUBMISSION_UNKNOWN",dto.output().path("videoCandidates").get(0).path("errorCode").asText());
         a.setErrorMessage("视频受理结果尚未确认（HTTP 503） · 追查号 ABCDEF234567");
         assertEquals(a.getErrorMessage(),service.toRunDto(binding).errorMessage());

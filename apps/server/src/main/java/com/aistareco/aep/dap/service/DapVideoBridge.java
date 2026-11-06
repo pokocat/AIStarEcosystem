@@ -43,7 +43,7 @@ public class DapVideoBridge {
         var billing=DapModelBilling.current();
         var endpoint=(billing==null?models.resolveDefaultEndpoint(AiModelPurpose.DAP_VIDEO,"aiavatar")
                 :models.resolveAcceptedEndpoint(AiModelPurpose.DAP_VIDEO,billing.endpointId(AiModelPurpose.DAP_VIDEO),"aiavatar").map(AiModelInvocationService.ResolvedEndpoint::endpoint))
-                .orElseThrow(()->BusinessException.badRequest("DAP_VIDEO_NOT_CONFIGURED","运镜视频模型未配置"));
+                .orElseThrow(()->BusinessException.badRequest("DAP_VIDEO_NOT_CONFIGURED","运镜视频暂不可用，请联系平台处理"));
         if(billing!=null)billing.requireRoute(AiModelPurpose.DAP_VIDEO,endpoint);
         var item=mapper.createObjectNode();
         item.put("kind","dap-camera"); item.put("name",job.getKind()); item.put("prompt",prompt);

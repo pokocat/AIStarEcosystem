@@ -205,7 +205,7 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
      */
     public State createThread(String userId, String projectId, CreateThreadRequest request) {
         if (request == null || request.clientRequestId() == null || !CLIENT_ID.matcher(request.clientRequestId()).matches())
-            throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "新对话的请求编号无效");
+            throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "请求已失效，请刷新页面后重试");
         IpProject project = projects.required(userId, projectId);
         ensureMainThread(userId, project);
         String threadId = tx.execute(s -> {
@@ -213,7 +213,7 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
             var prior = threads.findByOwnerUserIdAndClientRequestId(userId, request.clientRequestId()).orElse(null);
             if (prior != null) {
                 if (!projectId.equals(prior.getProjectId()) || prior.getBranchFromMessageId() != null)
-                    throw new BusinessException(HttpStatus.CONFLICT, "STUDIO_REQUEST_CHANGED", "同一请求的内容已改变，请重新提交");
+                    throw new BusinessException(HttpStatus.CONFLICT, "STUDIO_REQUEST_CHANGED", "请求已失效，请刷新页面后重试");
                 threads.markOpened(prior.getId(), Instant.now());
                 return prior.getId();
             }
@@ -388,7 +388,7 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
         if (prior != null) {
             if (!Objects.equals(prior.getText(), request.text()) || !ids(prior.getPinnedNodeIdsJson()).equals(pinned)
                     || !ids(prior.getAttachmentNodeIdsJson()).equals(attachments))
-                throw new BusinessException(HttpStatus.CONFLICT, "STUDIO_REQUEST_CHANGED", "同一条消息的内容已改变，请重新发送");
+                throw new BusinessException(HttpStatus.CONFLICT, "STUDIO_REQUEST_CHANGED", "消息内容已变化，请刷新后重新发送");
             String state = IpDialogueMessage.QUEUED.equals(prior.getStatus()) ? "queued" : IpDialogueMessage.APPLIED.equals(prior.getStatus()) ? "applied" : "accepted";
             return new PostMessageResult(prior.getId(), prior.getTurnId(), prior.getRunId(), state);
         }
@@ -510,7 +510,7 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
         if (fixedPayer != null) {
             if (billing != null && !com.aistareco.aep.enterprise.service.EnterpriseBillingService.normalize(billing).equals(fixedPayer))
                 throw new BusinessException(HttpStatus.CONFLICT, "BILLING_SELECTION_CONFLICT",
-                        "这次制作已确认由" + ("enterprise".equals(fixedPayer.mode()) ? "企业" : "个人") + "积分付款，制作期间的对话也由它付；要换付款账户，请先结束这次制作");
+                        "本次制作已确认使用" + ("enterprise".equals(fixedPayer.mode()) ? "企业" : "个人") + "积分付款，制作期间的对话也使用该账户。如需更换付款账户，请结束本次制作");
             billing = fixedPayer;
         }
         // Without a running execution a new plan starts in the skill's first stage (production for 原创创作), whatever stage
@@ -533,7 +533,8 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
                 // no candidate; any other chosen model must be an enabled candidate, refused here before anything is frozen.
                 endpoint = models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA, model, "studio")
                         .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, chosen ? "ENDPOINT_NOT_ALLOWED" : "AI_NOT_CONFIGURED",
-                                chosen ? "所选文本模型不可用：它不是对话用途的默认模型，也没有在后台「AI 模型」里启用为对话用途的候选模型"
+                                chosen ? "所选对话模型不可用，请重新选择" : "对话功能暂不可用，请联系平台处理", null,
+                                chosen ? "所选模型不是对话用途的默认模型，也没有在后台「AI 模型」里启用为对话用途的候选模型"
                                         : "还没有配置可用的对话模型：请在后台「AI 模型」里为对话用途绑定默认模型")).endpoint();
             }
             var assembler = com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.or(promptAssembler);
@@ -542,7 +543,7 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
             prompt = new PromptService.ResolvedPrompt("", "", stageParams, "library");
             // The ordinary text rate: its unit prices bill every call, its ceiling is the hold increment.
             rate = tokenPricing == null ? null : tokenPricing.find(endpoint.getId());
-            if (rate == null) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_TOKEN_PRICE_NOT_CONFIGURED", "此模型尚未配置按量积分售价");
+            if (rate == null) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_TOKEN_PRICE_NOT_CONFIGURED", "此模型暂未定价，请选择其他模型");
             long increment = rate.maxCost();
             long available = availableBalance(userId, billing,com.aistareco.aep.billing.service.ModelChargeContext.forCredits(endpoint,Math.max(1,increment)).target());
             // Below one minimal call the full increment is asked for and the hold answers 402 (unchanged behavior).
@@ -708,7 +709,7 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
      */
     public State control(String userId, String projectId, String threadId, ControlRequest request) {
         if (request == null || request.controlId() == null || !CLIENT_ID.matcher(request.controlId()).matches())
-            throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "控制请求编号无效");
+            throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "请求已失效，请刷新页面后重试");
         if (!Set.of("stop", "pause", "resume").contains(String.valueOf(request.action())))
             throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "不支持的操作");
         IpDialogueThread thread = requireThread(userId, projectId, threadId);
@@ -818,7 +819,7 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
         var prior = threads.findByOwnerUserIdAndClientRequestId(userId, request.clientRequestId()).orElse(null);
         if (prior != null) {
             if (!threadId.equals(prior.getParentThreadId()) || !request.fromMessageId().equals(prior.getBranchFromMessageId()))
-                throw new BusinessException(HttpStatus.CONFLICT, "STUDIO_REQUEST_CHANGED", "同一请求的内容已改变，请重新提交");
+                throw new BusinessException(HttpStatus.CONFLICT, "STUDIO_REQUEST_CHANGED", "请求已失效，请刷新页面后重试");
             return snapshot(userId, prior.getId());
         }
         String branchId = tx.execute(s -> {
@@ -884,7 +885,7 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
         if (target == null) throw cardNotFound();
         if (target.message().getSeq() >= approving.getSeq())
             throw StudioDialogueService.stale("这条消息发在确认卡出现之前，不能当作对这张卡的确认");
-        if (open > 1) throw new BusinessException(HttpStatus.CONFLICT, "STUDIO_APPROVAL_AMBIGUOUS", "现在有不止一张待确认的方案，请说明确认的是哪一张，或直接点卡片上的按钮");
+        if (open > 1) throw new BusinessException(HttpStatus.CONFLICT, "STUDIO_APPROVAL_AMBIGUOUS", "当前有多张待确认的方案，请说明确认哪一张，或点击卡片上的按钮");
         return validated(thread, target.message(), target.block(), approving.getId(), approving.getText());
     }
 
@@ -1159,7 +1160,7 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
 
     private void validate(PostMessageRequest r) {
         if (r == null || r.clientMessageId() == null || !CLIENT_ID.matcher(r.clientMessageId()).matches())
-            throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "消息编号无效");
+            throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "请求已失效，请刷新页面后重试");
         boolean hasAttachments = r.attachmentNodeIds() != null && !r.attachmentNodeIds().isEmpty();
         if (r.text() == null || r.text().length() > TEXT_MAX || r.text().isBlank() && !hasAttachments)
             throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "消息不能为空且不超过 " + TEXT_MAX + " 字");

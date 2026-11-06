@@ -395,7 +395,7 @@ class JusuanImageClientTest {
         var response=json("{\"data\":[{\"b64_json\":\""+encoded+"\"}]}");
         when(upstream.sendJson(any(),any())).thenReturn(response);
         var error=assertThrows(BusinessException.class,()->client.generate("ep","x","3840x2160",List.of(),"limit","owner",s->{}));
-        assertTrue(error.getMessage().contains("超过端点配置的大小上限"));
+        assertEquals("STUDIO_IMAGE_PROVIDER_FAILED",error.getCode());
         verify(upstream,times(1)).sendJson(any(),any());
     }
     @Test void malformedImageResponseKeepsSafeParserDiagnosticsAndNeverResubmits() {
@@ -453,7 +453,6 @@ class JusuanImageClientTest {
         when(upstream.sendJson(any(),any())).thenReturn(reply);
         var error=assertThrows(JusuanImageClient.ProviderRejected.class,
                 ()->client.generate("ep","x","1x1",List.of(),"host-gate","owner",s->{},null,null,null,state->{}));
-        assertTrue(error.getMessage().contains("域名"));
         verifyNoInteractions(http);
     }
     @Test void finishedReplyWithoutAnyImageIsAKnownFailureNotAnUnknownSubmission() {

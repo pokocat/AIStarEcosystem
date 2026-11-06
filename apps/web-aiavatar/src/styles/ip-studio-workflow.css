@@ -986,7 +986,7 @@ html[data-layout="mobile"] .ip-surface .studio-dialogue-threads { width:min(340p
 .ip-surface .studio-dialogue-execution-materials li>span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink); }
 .ip-surface .studio-dialogue-execution-materials li>small { color:var(--ink-3); font-size:12px; white-space:nowrap; }
 .ip-surface .studio-dialogue-execution-actions .ant-btn { height:28px; padding:0 10px; border-radius:8px; font-size:12px; }
-/* 对话里的逐步清单：打勾 / 转圈 / 空圈，右边「在画布上看」。 */
+/* 对话里的逐步清单：打勾 / 转圈 / 空圈，右边「在画布上查看」。 */
 .ip-surface .studio-dialogue-steps { margin:2px 0 0; padding:0; list-style:none; display:grid; gap:10px; }
 .ip-surface .studio-dialogue-steps li { display:grid; grid-template-columns:20px minmax(0, 1fr) auto; gap:10px; align-items:center; font-size:13px; min-width:0; }
 .ip-surface .studio-dialogue-step-title { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -1033,7 +1033,7 @@ html[data-layout="mobile"] .ip-surface .studio-dialogue-threads { width:min(340p
 .ip-surface .studio-assistant-panel .studio-dialogue-message.is-user { position:relative; }
 .ip-surface .studio-assistant-panel .studio-dialogue-message.is-user .studio-dialogue-meta { position:absolute; right:100%; bottom:2px; margin-right:4px; }
 html[data-layout="desktop"] .ip-surface .studio-assistant-panel .studio-dialogue-message.is-user:not(:hover):not(:focus-within) .studio-dialogue-message-actions { opacity:0; }
-/* 「在画布上看」是群青链接。 */
+/* 「在画布上查看」是群青链接。 */
 .ip-surface .studio-dialogue-steps .studio-dialogue-link { color:var(--primary); }
 .ip-surface .studio-dialogue-steps .studio-dialogue-link:hover:not(:disabled) { color:var(--primary-700); text-decoration:underline; }
 /* 停止：红字、浅粉边（危险动作，但不是一块红）。 */
@@ -1045,7 +1045,7 @@ html[data-layout="desktop"] .ip-surface .studio-assistant-panel .studio-dialogue
 .ip-surface .studio-dialogue-approval-done[open] { display:flex; flex-direction:column; gap:6px; }
 /* 确认卡与制作计划（2026-10-20，docs/ip-studio-new-canvas-and-threads.md §4.2）：一张卡只回答做什么、花多少、按哪个按钮。
    方案跟着报价来时画在确认卡里；每一步是标题、类型和要生成的描述（一步时三行，展开看全文；多步时收起，点开看）。
-   主按钮「开始制作 / 开始分析 / 提高上限并继续」是 AI 渐变（.studio-assistant-primary），「先改改」白底细边，状态标签灰底。 */
+   主按钮「开始制作 / 开始分析 / 提高上限并继续」是 AI 渐变（.studio-assistant-primary），「修改方案」白底细边，状态标签灰底。 */
 .ip-surface .studio-assistant-panel .studio-dialogue-plan-step { display:flex; flex-direction:column; gap:6px; min-width:0; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--surface-2); }
 .ip-surface .studio-assistant-panel :is(.studio-dialogue-plan-step, .studio-dialogue-plan-steps li)>header { display:flex; align-items:baseline; gap:8px; min-width:0; }
 .ip-surface .studio-assistant-panel :is(.studio-dialogue-plan-step, .studio-dialogue-plan-steps li)>header strong { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; font-weight:600; }

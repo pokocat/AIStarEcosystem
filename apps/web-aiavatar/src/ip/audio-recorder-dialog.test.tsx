@@ -111,7 +111,7 @@ test('finishing is disabled until 10.5 seconds and shows the remaining time', as
   await beginRecording();
   await act(async () => { vi.advanceTimersByTime(8000); });
   const stop = screen.getByRole('button', { name: '结束录音' }) as HTMLButtonElement;
-  expect(stop.disabled).toBe(true); expect(screen.getByText('再读 3 秒')).toBeDefined();
+  expect(stop.disabled).toBe(true); expect(screen.getByText('还需朗读 3 秒')).toBeDefined();
   fireEvent.click(stop); expect(rec.state).toBe('recording'); expect(api.convert).not.toHaveBeenCalled();
   await act(async () => { vi.advanceTimersByTime(2400); }); expect(stop.disabled).toBe(true);
   await act(async () => { vi.advanceTimersByTime(100); }); expect(stop.disabled).toBe(false);

@@ -141,7 +141,7 @@ function MLicenses({ ctx, realOnly = false }) {
       list.length === 0 && hMS('div', { style: { textAlign: 'center', padding: '46px 18px', border: '1.5px dashed var(--line-3)', borderRadius: 'var(--r-xl)', background: 'var(--surface)' } },
         hMS('div', { style: { width: 50, height: 50, borderRadius: 15, margin: '0 auto 13px', display: 'grid', placeItems: 'center', background: 'var(--primary-soft)', color: 'var(--primary)' } }, hMS(Icons.shield, { size: 23 })),
         hMS('div', { style: { fontSize: 14.5, fontWeight: 700, marginBottom: 5 } }, realOnly ? '还没有真人素材' : '还没有授权登记'),
-        hMS('p', { style: { fontSize: 12.5, color: 'var(--ink-3)', margin: '0 0 16px', lineHeight: 1.5 } }, realOnly ? '上传图片或视频，完成人脸确认与逐条审核后即可在视频生成时选择' : '真人素材或 IP 完成授权后会在这里生成凭证'),
+        hMS('p', { style: { fontSize: 12.5, color: 'var(--ink-3)', margin: '0 0 16px', lineHeight: 1.5 } }, realOnly ? '上传图片或视频，完成人脸确认与逐条审核后，可在生成视频时选择' : '真人素材或 IP 完成授权后会在这里生成凭证'),
         realOnly && hMS(UI.Button, { variant: 'primary', icon: Icons.person, onClick: () => (ctx.startRealMaterial || ctx.startRealClone)() }, '添加第一个真人')),
       hMS('div', { className: 'm-stagger', style: { display: 'flex', flexDirection: 'column', gap: 13 } },
         list.map(l => hMS('div', { key: l.id, className: 'm-card', style: { overflow: 'hidden' } },

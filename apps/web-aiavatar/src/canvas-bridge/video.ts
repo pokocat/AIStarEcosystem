@@ -60,7 +60,7 @@ export type VideoMediaOptions = {
 /** 描述点名的图片没有带上，用户也没确认按文字生成：这次不提交、不扣费。 */
 export class VideoFramesNotBound extends Error {
   constructor(intent:StudioFrameIntent) {
-    super(`这次没有提交：描述里提到了${intent.mentions.map(m=>`「${m}」`).join("")}，但请求里没有这些图片。先把图片连到这个视频节点并选好视频模式，或者确认按文字生成。`);
+    super(`本次未提交：描述中提到了${intent.mentions.map(m=>`「${m}」`).join("")}，但请求中没有这些图片。请将图片连接到此视频节点并选择视频模式，或确认按文字生成。`);
   }
 }
 
@@ -112,19 +112,19 @@ export async function createVideoGenerationTask(
   options?: VideoMediaOptions,
 ): Promise<VideoGenerationTask> {
   const projectId = currentProjectId();
-  if (!projectId) throw new Error("画布还没打开，稍等一下再试");
+  if (!projectId) throw new Error("画布尚未打开，请稍后重试");
   const params = videoParams(config, options);
   // v0.208：按所选模型合同开放全能参考；旧协议不支持时明确拒绝（§8.0）。
   const modelValue=options?.model || config?.model || config?.videoModel;
   const nativeModel=nativeVideoModelFor(modelValue);
   if (!nativeModel && (config?.videoMode ?? "frames") === "reference") {
-    throw new Error("这条视频链现在只支持「首帧模式」——参考图会作为视频第一帧。请在参数面板把模式切回首帧");
+    throw new Error("当前只支持首帧模式，参考图将作为视频第一帧。请在参数面板切换为首帧模式");
   }
-  if(!nativeModel && (references.length>1||options?.videos?.length||options?.audios?.length))throw new Error("这个模型只支持一张首帧图，请选择支持首尾帧或全能参考的模型");
+  if(!nativeModel && (references.length>1||options?.videos?.length||options?.audios?.length))throw new Error("当前模型只支持一张首帧图，请选择支持首尾帧或全能参考的模型");
   if (!params.durationSec) {
     // 到这一步还没有时长，说明面板的值没传进来 —— 说清楚是哪儿的问题，
     // 别让服务端回一句「请提供视频时长」给一个明明已经选过的用户。
-    throw new Error("没读到视频时长，请在参数面板里重新选一次时长后再发送");
+    throw new Error("未获取到视频时长，请在参数面板中重新选择时长后发送");
   }
   // 时长超出这个模型能提交的区间 → **当场说清楚，不悄悄改**（v0.179）。
   //
@@ -137,7 +137,7 @@ export async function createVideoGenerationTask(
   const tooLong = bounds?.max != null && params.durationSec > bounds.max;
   if (tooShort || tooLong) {
     const range = `${bounds?.min ?? "?"}–${bounds?.max ?? "?"} 秒`;
-    throw new Error(`这个模型只接 ${range}，当前是 ${params.durationSec} 秒。请在参数面板把时长调到区间内再发送`);
+    throw new Error(`当前模型支持 ${range}，当前设置为 ${params.durationSec} 秒。请在参数面板调整时长后发送`);
   }
   let video;
   if(nativeModel) {
@@ -157,7 +157,7 @@ export async function createVideoGenerationTask(
   if(!allowedCounts.includes(count))throw new Error(`当前视频模型每次可生成 ${allowedCounts.join('、')} 条`);
   if(options?.nodeId) {
     const unit=video?studioVideoQuote(nativeModel!,video,params.durationSec):legacyVideoQuoteFor(modelValue,params.durationSec);
-    if(unit==null)throw new Error('模型尚未定价，请重新加载模型后生成');
+    if(unit==null)throw new Error('模型暂不可用，请重新加载模型后生成');
     const request:StudioRunRequest={clientRequestId:nanoid(),nodeId:options.nodeId,operation:'video',prompt,
       count,video,maxCost:unit*count,...params,references:video?[]:references.map(r=>({storageKey:r.storageKey!,role:'frame' as const}))};
     await options.beforeSubmit?.(request);
@@ -188,7 +188,7 @@ export async function pollVideoGenerationTask(
   const job = await readVideoJob(task.id);
   if(job.run)onRun?.(job.run);
   if (job.status === "ready" || job.status === "done") {
-    if (!job.video_url) return { status: "failed", error: "任务说成了，但没有成片地址" };
+    if (!job.video_url) return { status: "failed", error: "任务已完成，但未返回视频地址" };
     return {
       status: "completed",
       // storageKey 由服务端给：成片已经镜像进我方存储了（视频链的既有纪律：
@@ -197,7 +197,7 @@ export async function pollVideoGenerationTask(
     };
   }
   if (job.status === "failed") {
-    return { status: "failed", error: job.error_message || "视频生成失败，积分已退回", ended: true };
+    return { status: "failed", error: job.error_message || "视频生成失败，未使用的积分将退回", ended: true };
   }
   return { status: "pending" };
 }
@@ -222,7 +222,7 @@ export async function waitForVideoGenerationTask(
       // 同出图那条：前端等超时不等于服务端结束，别替它承诺退款。
       // 抛普通 Error（不是 VideoTaskFailed）—— 调用点据此**保住任务号**，
       // 刷新回来接着轮询这一条；丢了就再也接不回来，而它在服务端还活着。
-      throw new Error(`等太久了（任务号 ${task.id}）。这条任务在服务端还在跑 —— 刷新页面会接着等它；真卡住时冻结的积分由服务端释放`);
+      throw new Error(`等待超时（任务号 ${task.id}）。任务仍在处理中，刷新页面后将继续等待结果；任务异常时，未使用的积分将自动退回。`);
     }
     await new Promise((r) => setTimeout(r, POLL_MS));
   }
@@ -286,5 +286,5 @@ export async function storeGeneratedVideo(result: VideoGenerationResult): Promis
   }
   // 服务端没给 key = 成片没有镜像进我方存储。直接把上游的时效地址存进画布文档，
   // 过几小时就播不了 —— 那不如现在就说清楚。
-  throw new Error("成片没有落到我方存储，请联系运维检查视频链的镜像配置");
+  throw new Error("视频保存失败，请重试。多次失败时，可复制「错误详情」反馈给我们。");
 }

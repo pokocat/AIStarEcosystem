@@ -52,6 +52,6 @@ export function HubHome() {
       </Link>)}</div>}
     </section>
     <section className="studio-home-assets" aria-label="更多资产工具"><SectionHeader title="更多资产工具"/><div className="studio-home-asset-tools">{ASSET_TOOLS.map(q => <Link key={q.href} href={q.href}><strong>{q.label}</strong><span>{q.sub}</span></Link>)}</div></section>
-    {official.data.length > 0 && <section className="studio-home-assets"><SectionHeader title="官方可授权角色" action={<LinkAction href="/discover">去发现 ›</LinkAction>}/><div className="hub-grid-cards">{official.data.slice(0, 6).map(c => <OfficialCard key={c.id} c={c}/>)}</div></section>}
+    {official.data.length > 0 && <section className="studio-home-assets"><SectionHeader title="官方可授权角色" action={<LinkAction href="/discover">查看全部 ›</LinkAction>}/><div className="hub-grid-cards">{official.data.slice(0, 6).map(c => <OfficialCard key={c.id} c={c}/>)}</div></section>}
   </HubScreen></div>;
 }

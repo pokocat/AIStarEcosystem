@@ -127,7 +127,7 @@ export function rejectedNextStep(error: unknown): string {
   const code = String(e?.code ?? "");
   const action = e?.status === 402 || /INSUFFICIENT/.test(code) ? "请充值或调整生成设置后重试。"
     : code === "STUDIO_PRICE_CHANGED" ? "价格已更新，请确认新价格后重试。"
-    : ["AI_NOT_CONFIGURED", "PROMPT_NOT_CONFIGURED", "ENDPOINT_NOT_ALLOWED"].includes(code) ? "请换一个模型或稍后重试。"
+    : ["AI_NOT_CONFIGURED", "PROMPT_NOT_CONFIGURED", "ENDPOINT_NOT_ALLOWED"].includes(code) ? "请更换模型或稍后重试。"
     : "请按上述原因调整后重试。";
   return `${action}本次未扣积分。`;
 }

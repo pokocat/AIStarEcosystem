@@ -68,7 +68,7 @@ export function StudioSocialBind({ onClose, onBound }: { onClose: () => void; on
         {qr ? <img className="studio-bind-qr" src={qr} alt="平台登录二维码"/> : loginUrl ? <a href={loginUrl} target="_blank" rel="noopener noreferrer">打开平台登录页</a> : <p>{init.alreadyLoggedIn ? '正在确认已有登录状态…' : '正在等待平台登录信息，请稍候。'}</p>}
         {result?.status === 'awaiting_user' && <><label>{result.interactionRequired?.prompt || '请输入手机收到的验证码'}<Input aria-label="绑定验证码" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={e => setCode(e.target.value.replace(/\D/g,''))}/></label><Button disabled={!/^\d{6}$/.test(code)} loading={busy} onClick={() => void submitCode()}>提交验证码</Button></>}
       </>}
-      {error && <div role="alert"><StudioErrorNotice error={error}/>{init && !terminal && <Button onClick={() => setRetry(n => n+1)}>继续查询本次绑定</Button>}</div>}
+      {error && <div role="alert"><StudioErrorNotice error={error}/>{init && !terminal && <Button onClick={() => setRetry(n => n+1)}>重新查询绑定状态</Button>}</div>}
       <p className="studio-workspace-hint">绑定结果以平台确认的信息为准。关闭窗口将结束本次扫码。</p>
     </div>
   </Modal>;

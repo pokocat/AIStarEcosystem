@@ -28,7 +28,7 @@ export function SignedAudio({ storageKey, src, quiet, ...props }: React.Componen
   // SignedImage does. Without this a video the assistant made while the canvas was closed showed as an empty upload card
   // until a reload (Codex retest 2026-10-19, R1).
   React.useEffect(() => { if (!src && storageKey) void renew(); }, [src, storageKey]);
-  if (failed && quiet) return <span className={`signed-audio-missing${props.className ? ` ${props.className}` : ""}`} role="status">读不到这段音频</span>;
+  if (failed && quiet) return <span className={`signed-audio-missing${props.className ? ` ${props.className}` : ""}`} role="status">音频加载失败</span>;
   if (failed) return <div role="status"><button type="button" className="nodrag nopan" onClick={() => void renew()}>音频加载失败 · 重新加载</button></div>;
   return <audio key={reloadKey} {...props} preload="metadata" src={url} onError={() => { if (renewed.current) { setFailed(true); if (quiet) return; reportStudioError({code:'MEDIA_LOAD_FAILED',message:'音频未能加载，请重新选择素材'}, {once:`media:${storageKey || src}`}); return; } renewed.current = true; void renew(); }} />;
 }

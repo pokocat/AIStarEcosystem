@@ -25,7 +25,7 @@ export function StudioReferencePicker({nodes,ids,onChange,accepts,picking,onCanv
       <header><strong>画布素材</strong><button type="button" aria-label="关闭素材选择" onClick={close}><X size={15}/></button></header>
       <div className="studio-reference-options">{usable.map(node=>{const selected=ids.includes(node.id),next=selected?ids.filter(id=>id!==node.id):[...ids,node.id];return <button type="button" role="checkbox" aria-checked={selected} disabled={!selected&&!accepts(next)} key={node.id} onClick={()=>onChange(next)}>
         <span className="studio-reference-option-image"><ReferenceVisual node={node}/></span><span>{node.title}</span>{selected&&<Check size={15}/>}</button>;})}
-        {!usable.length&&<p>画布还没有素材，请先上传图片、视频或音频。</p>}</div>
+        {!usable.length&&<p>画布中暂无素材，请上传图片、视频或音频。</p>}</div>
       <button type="button" className="studio-canvas-reference-action" onClick={()=>{setOpen(false);onCanvasPick();}}>{picking?'完成参考选择':'在画布中选择'}</button>
     </div>}>
     <button ref={trigger} type="button" className="studio-reference-add" aria-label={picking?'完成参考选择':'参考'} aria-expanded={open} onClick={()=>{if(picking)onCanvasPick();}}><Plus size={15}/>{picking?'完成选择':'参考'}</button>

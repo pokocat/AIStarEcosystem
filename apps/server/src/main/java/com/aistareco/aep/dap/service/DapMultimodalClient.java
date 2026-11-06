@@ -108,7 +108,7 @@ public class DapMultimodalClient {
         if(billing!=null) {
             String accepted=billing.endpointId(purpose);
             if(endpointId!=null&&!endpointId.isBlank()&&!accepted.equals(endpointId))
-                throw new DapModelException("MODEL_BILLING_ROUTE_CHANGED","模型接入点与已确认费用不一致");
+                throw new DapModelException("MODEL_BILLING_ROUTE_CHANGED","模型与已确认的费用不一致，请重新提交");
             endpointId=accepted;
         }
         var resolved = (endpointId == null || endpointId.isBlank())
@@ -397,7 +397,7 @@ public class DapMultimodalClient {
                     .build();
             return sendForJson(req, t, path, summarizeRequest(body));
         } catch (IOException e) {
-            throw new DapModelException("DAP_MODEL_CALL_FAILED", "请求体序列化失败: " + e.getMessage());
+            throw new DapModelException("DAP_MODEL_CALL_FAILED", "生成请求准备失败，请重试");
         }
     }
 
@@ -579,7 +579,7 @@ public class DapMultimodalClient {
     private Target require(Target t, String channel) {
         if (t == null) {
             throw new DapModelException("DAP_ENGINE_NOT_CONFIGURED",
-                    "未配置生成引擎(" + channel + "):请在管理后台「AI 模型与 Key + AI 应用绑定」为对应用途绑定启用端点");
+                    "生成服务暂不可用，请联系平台处理");
         }
         return t;
     }

@@ -51,7 +51,7 @@ export function AppChrome() {
   // 边界，否则 `/_not-found` 的静态预渲染直接失败（本次踩过）。反正这段只在挂载后
   // 跑，直接读 window.location.search 更省事。
   // 隐藏入口 `?ui=new` / `?ui=old` 已由首帧脚本记下（shell/ui-version.ts），这里把参数从地址栏去掉：
-  // 留着的话，用户之后点「回到旧版」再刷新，又会被这个参数切回新版。带上 history.state，Next 的路由状态不丢。
+  // 留着的话，用户之后点「返回旧版」再刷新，又会被这个参数切回新版。带上 history.state，Next 的路由状态不丢。
   React.useEffect(() => {
     const href = withoutUiParam(window.location.href);
     if (href !== window.location.href) window.history.replaceState(window.history.state, "", href);

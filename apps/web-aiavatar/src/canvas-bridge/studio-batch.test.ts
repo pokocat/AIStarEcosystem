@@ -30,7 +30,7 @@ describe("approved Studio batches",()=>{
   it("stops before submitting a video without its actual frame",()=>{
     const node=shot(),plan=createStudioBatch([node],"clips",models,cap,"9:16",5);
     expect(()=>studioBatchRequest(plan.steps[1],plan,[node])).toThrow("首帧尚未完成");
-    expect(()=>createStudioBatch(Array.from({length:13},shot),"work",models,cap,"9:16",5)).toThrow("1 到 12");
+    expect(()=>createStudioBatch(Array.from({length:13},shot),"work",models,cap,"9:16",5)).toThrow("1–12");
   });
 });
 
@@ -40,5 +40,5 @@ it('uses the chosen video model and freezes an existing adopted frame in the app
   expect(plan.videoModel).toBe('chosen');expect(plan.approvedCost).toBe(35);
   expect(studioBatchRequest(plan.steps[0],plan,[n])).toMatchObject({model:'chosen',aspectRatio:'16:9',maxCost:35,references:[{storageKey:'approved.jpg'}]});
   n.metadata!.storageKey='different.jpg';expect(()=>studioBatchRequest(plan.steps[0],plan,[n])).toThrow('首帧已更换');
-  expect(()=>createStudioBatch([n],'clips',models,cap,'9:16',5,2,{videoModel:'removed'})).toThrow('模型尚未配置');
+  expect(()=>createStudioBatch([n],'clips',models,cap,'9:16',5,2,{videoModel:'removed'})).toThrow('模型暂不可用');
 });

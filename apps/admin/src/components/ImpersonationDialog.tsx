@@ -7,7 +7,7 @@ import type { AepUser } from "@/types/account";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
-const PRODUCTS = [["drama", "短剧工坊"], ["music", "AI 音乐人"], ["celebrity", "明星带货"], ["aiavatar", "数字人资产平台"], ["star", "明星商务工作台"]];
+const PRODUCTS = [["drama", "短剧工坊"], ["music", "AI 音乐人"], ["celebrity", "明星带货"], ["aiavatar", "IP Studio"], ["star", "明星商务工作台"]];
 export function ImpersonationDialog({ user, onClose }: { user: AepUser | null; onClose: () => void }) {
   const [product, setProduct] = React.useState("drama");
   const [busy, setBusy] = React.useState(false);
