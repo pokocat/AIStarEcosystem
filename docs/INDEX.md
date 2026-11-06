@@ -127,6 +127,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | [`docs/releases/studio-scene-creation-local-validation-20261029.md`](releases/studio-scene-creation-local-validation-20261029.md) | Studio 场景化创作 · 本地真模型验收 | 图片场景真出图扣费、视频场景经助手真出方案并确认执行，厂商限流 / 队列满时退款可重试；据此改的 7 处体验与遗留问题（last-reviewed 2026-10-29） |
 | [`docs/studio-inspiration-library.md`](studio-inspiration-library.md) | **灵感库：开箱即用的官方示例 · 现行设计真源** | 35 个示例的内容与发布脚本（`scripts/inspiration/`）、详情弹窗、做同款后助手预填；last-reviewed 2026-11-05 |
 | [`docs/studio-segmented-video.md`](studio-segmented-video.md) | **AI 视频页的长视频：一键做到成片 · 现行设计真源** | 比模型单段上限长的视频：切段、分段脚本、两轮审核、分镜图、各段出片、合成；已发布，线上还没真跑过。last-reviewed 2026-11-06 |
+| [`docs/releases/studio-video-task-release-20261106.md`](releases/studio-video-task-release-20261106.md) | **AI 视频统一任务发布** | `20261106-video-task`（server + web-aiavatar），线上只读验收与未验证项 | 2026-11-07 |
 | [`docs/releases/studio-ui-walkthrough-validation-20261106.md`](releases/studio-ui-walkthrough-validation-20261106.md) | **Studio 全面 UI 走查** | 新版界面桌面和手机走查、修复项与未验证范围 | 2026-11-06 |
 | [`docs/releases/studio-video-task-local-validation-20261106.md`](releases/studio-video-task-local-validation-20261106.md) | **AI 视频统一任务本地验收** | 三种流程、三次失败停止、画布修复接续、媒体与界面证据；未部署。 |
 | [`docs/studio-video-workflow-redesign.md`](studio-video-workflow-redesign.md) | **AI 视频统一任务流程与界面** | maolong 可见动线对照；左侧配置、右侧制作与成片、常驻最近任务；每步总计最多 3 次尝试、失败定位画布及刷新/换页恢复。本地实现与验收，未发布（2026-11-06） |
