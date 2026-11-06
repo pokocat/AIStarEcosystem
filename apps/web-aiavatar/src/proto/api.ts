@@ -544,8 +544,11 @@ export function useIdentity(): MeIdentity | null {
       meListeners.delete(run);
     };
   }, []);
-  return id;
+  // 水合那一帧和服务端一样按没拿到身份画：Suspense 里的内容可能晚于 /api/me 才水合，直接用缓存会水合失败、整棵树重建。
+  const hydrated = React.useSyncExternalStore(noSubscribe, () => true, () => false);
+  return hydrated || USE_MOCK ? id : null;
 }
+const noSubscribe = () => () => {};
 
 // ── UI 字典（展示配置，同步再导出）────────────────────────────
 

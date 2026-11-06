@@ -45,7 +45,7 @@ function CanvasVideoTaskBar({ projectId, id }: { projectId: string; id: string }
           runCache.current = runs;
           const store = useCanvasStore.getState(), project = store.projects.find(p => p.id === projectId);
           if (!project) return;
-          const fresh = execution.steps.filter(step => step.status === 'done' && step.id !== 'compile' && !restoredSteps.current.has(`${step.stage}:${step.id}:${step.acceptedRunId ?? step.runIds.join()}`));
+          const fresh = execution.steps.filter(step => step.status === 'done' && step.id !== 'compile' && step.operation !== 'check' && !restoredSteps.current.has(`${step.stage}:${step.id}:${step.acceptedRunId ?? step.runIds.join()}`));
           const ops = executionRestoreUpserts(execution, runs, new Set(fresh.map(step => stepNodeId(execution, step)))).map(data => ({ kind: 'node' as const, data, executionId: execution.id, turnId: execution.id, restore: true }));
           const restored = projectCanvasOps({ nodes: project.nodes, connections: project.connections }, ops);
           let nodes = restored.doc.nodes;

@@ -31,7 +31,7 @@
 .studio-projects-page .studio-project-info { padding: 4px 16px 12px; }
 .studio-projects-page .studio-project-info>div { flex-wrap: wrap; gap: 6px 10px; }
 .studio-projects-page .studio-project-info time { font-size: 11px; color: var(--ip-muted); }
-/* 场景草稿的「回到 AI 视频继续」是主操作，单独一行；查看流程、设置封面是次操作，另起一行且不断行（2026-10-30 线上复核：三个挤一行把次操作挤断了）。 */
+/* 场景草稿的「在 AI 视频中打开」是主操作，单独一行；查看流程、设置封面是次操作，另起一行且不断行（2026-10-30 线上复核：三个挤一行把次操作挤断了）。 */
 .project-card-actions { display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 0 16px 14px; }
 .project-card-secondary { display: flex; flex-wrap: wrap; gap: 0 16px; }
 .project-card-actions :is(button, a) { display: inline-flex; align-items: center; gap: 5px; background: none; border: 0; padding: 4px 0; color: var(--ip-muted); font-size: 12px; cursor: pointer; min-height: 32px; white-space: nowrap; }

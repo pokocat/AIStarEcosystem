@@ -450,7 +450,7 @@ function BoardDialog({ work, clip, apply, setError, onClose }: { work: DirectorW
         <button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={onClose}>关闭</button>
         {clip.board.adoptedBy === "auto" && <button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={confirm}><Check size={14}/>确认使用</button>}
         <button type="button" className="ip-brand-button" disabled={!!busy || !!generating || !!blockReason} onClick={regenerate}>
-          <Wand2 size={14}/>{generating ? "生成中" : clip.board.candidates.length ? (dirty ? "保存并重新生成" : "提交重新生成") : (dirty ? "保存并生成" : "生成分镜图")}</button>
+          <Wand2 size={14}/>{generating ? "生成中" : clip.board.candidates.length ? (dirty ? "保存并重新生成" : "重新生成") : (dirty ? "保存并生成" : "生成分镜图")}</button>
       </footer>
     </div>
   </div>;

@@ -204,10 +204,10 @@ describe("Creation catalogue", () => {
     mocks.projects.mockResolvedValue([{ ...projects[0], id: "P-video", name: "口播草稿", sceneId: "ecom-talking" }, { ...projects[1], id: "P-image", name: "出图草稿", sceneId: "free" }, projects[2]]);
     render(<StudioProjects />);
     // 卡片底部一个，「⋯」菜单里一个。
-    const video = await screen.findAllByRole("link", { name: "回到 AI 视频继续" });
+    const video = await screen.findAllByRole("link", { name: "在 AI 视频中打开" });
     expect(video.map(l => l.getAttribute("href"))).toEqual(["/video?scene=ecom-talking&draft=P-video", "/video?scene=ecom-talking&draft=P-video"]);
-    expect(screen.getAllByRole("link", { name: "回到 AI 图片继续" }).map(l => l.getAttribute("href"))).toEqual(["/image?scene=free&draft=P-image", "/image?scene=free&draft=P-image"]);
-    expect(screen.getAllByRole("link", { name: /^回到 AI/ })).toHaveLength(4);
+    expect(screen.getAllByRole("link", { name: "在 AI 图片中打开" }).map(l => l.getAttribute("href"))).toEqual(["/image?scene=free&draft=P-image", "/image?scene=free&draft=P-image"]);
+    expect(screen.getAllByRole("link", { name: /^在 AI (视频|图片)中打开/ })).toHaveLength(4);
     // 继续是主操作，单独一行；查看流程、设置封面另起一行（2026-10-30 线上复核：三个挤一行，次操作断行）。
     const primary = video.find(l => l.className === "project-card-continue");
     expect(primary?.parentElement?.querySelector(".project-card-secondary")?.textContent).toBe("查看流程设置封面");

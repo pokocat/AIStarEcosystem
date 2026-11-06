@@ -95,7 +95,7 @@ function MobileNotice({ projectId, onProceed }: { projectId: string; onProceed: 
         href="/projects"
         style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--ink-3)", textDecoration: "none", marginBottom: 26 }}
       >
-        <ArrowLeft size={15} /> 自由画布
+        <ArrowLeft size={15} /> 返回项目
       </Link>
 
       <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
@@ -120,7 +120,7 @@ function MobileNotice({ projectId, onProceed }: { projectId: string; onProceed: 
         onClick={onProceed}
         style={{
           width: "100%", height: 46, borderRadius: 12, border: "none", cursor: "pointer",
-          background: "var(--primary)", color: "var(--on-primary, #fff)",
+          background: "#17202a", color: "#fff", // 跟新版深墨主按钮一致，不用旧 H5 的青色
           fontSize: 14.5, fontWeight: 600,
           display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7,
         }}

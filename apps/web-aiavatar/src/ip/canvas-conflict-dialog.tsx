@@ -56,7 +56,7 @@ export function CanvasConflictDialog({ open, onClose, resolve, onCopySaved }: Ca
       onCancel={onClose}
       footer={null}
       closable={!busy}
-      maskClosable={false}
+      mask={{ closable: false }}
       keyboard={!busy}
       width={460}
       getContainer={() => document.querySelector<HTMLElement>(".ip-surface") ?? document.body}

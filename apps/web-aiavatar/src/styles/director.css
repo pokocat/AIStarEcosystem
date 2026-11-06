@@ -40,6 +40,7 @@
 .director-trash-restored a { font-weight: 600; text-decoration: underline; text-underline-offset: 3px; color: inherit; }
 .director-gone p { max-width: 46ch; text-align: center; line-height: 1.8; }
 .director-gone-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+html:not([data-layout="desktop"]) .director-page .studio-page-heading { flex-direction: column; align-items: flex-start; gap: 12px; }
 html:not([data-layout="desktop"]) .director-page .studio-page-actions { justify-content: flex-start; }
 html:not([data-layout="desktop"]) .director-trash-actions button, html:not([data-layout="desktop"]) .director-gone-actions > * { min-height: 40px; }
 

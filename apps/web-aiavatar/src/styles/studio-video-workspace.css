@@ -135,6 +135,9 @@ html[data-layout="desktop"] .scene-video-studio.has-drawer { grid-template-colum
 .video-pending-submissions p { margin: 0; }
 .video-pending-submissions button { margin-left: 6px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 
+/* 工作台顶栏右侧放的是操作，悬浮的新旧版切换会压住「创作助手」；作品列表页的标题栏里还有一个。 */
+html[data-layout="desktop"] body:has(.director-shell) .ip-ui-switch-corner { display: none; }
+
 /* 放不下三列时先收起最近任务（固定了场景边栏时要的宽度更多）。 */
 @media (max-width: 1250px) {
   html[data-layout="desktop"] .scene-video-studio { grid-template-columns: minmax(360px, 420px) minmax(0, 1fr); }
@@ -187,3 +190,5 @@ html:not([data-layout="desktop"]) .video-task-history.is-open { width: min(280px
 .canvas-video-task-context button.is-primary:hover:not(:disabled) { background: var(--ai-gradient, #192229); filter: brightness(1.05); }
 .canvas-video-task-context button:disabled { opacity: .55; cursor: wait; }
 html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .canvas-video-task-context { left: calc((100% - var(--studio-docked-panel, 0px) + 56px) / 2); max-width: min(760px, calc(100% - var(--studio-docked-panel, 0px) - 96px)); }
+/* 手机上靠右摆，别压左栏工具和缩放条。 */
+html:not([data-layout="desktop"]) .canvas-video-task-context { right: 12px; bottom: 84px; left: auto; max-width: calc(100% - 64px); transform: none; }

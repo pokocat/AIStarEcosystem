@@ -247,7 +247,7 @@ export function DirectorWorkbench({ id }: { id: string }) {
         : step && nextStepShown(step, tab) && <StatusChip key={step.text} step={step} tab={tab} onGo={switchTab}/>}
       <StopTextTasks {...props}/>
     </>}/>
-    <p style={{padding:"0 24px"}}><Link href="/model-results">查看生成原文</Link></p>
+    <p style={{padding:"0 24px"}}><Link href="/model-results" style={{display:"inline-block",padding:"6px 0"}}>查看生成原文</Link></p>
     {reviewing && work.pendingExtract && <ExtractReview key={work.pendingExtract.runId} work={work} apply={apply} onClose={() => setReviewing(false)}/>}
     {live ? <PipelineBar {...props}/> : work.pipeline && <div className="director-status"><PipelineBar {...props}/></div>}
     {starting && <StartPipeline work={work} episodeId={episodeId} apply={apply} setError={setError} goTab={switchTab} onClose={() => setStarting(false)}/>}

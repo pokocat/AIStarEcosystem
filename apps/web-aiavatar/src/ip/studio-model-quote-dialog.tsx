@@ -29,8 +29,8 @@ export function StudioModelQuoteDialog({loadQuote,billing,initialFreeOnly=false,
         <dl className="studio-model-quote-lines">
           <div><dt>标准价格</dt><dd>{n(quote.standardCredits)} 积分</dd></div>
           {quote.discountCredits>0&&<div><dt>{quote.discountName||'客户优惠'}</dt><dd>−{n(quote.discountCredits)} 积分</dd></div>}
-          <div><dt>折后费用</dt><dd>{n(quote.payableCredits)} 积分</dd></div>
-          <div><dt>模型赠款抵扣</dt><dd>−{n(quote.scopedCredits)} 积分</dd></div>
+          {quote.discountCredits>0&&<div><dt>折后费用</dt><dd>{n(quote.payableCredits)} 积分</dd></div>}
+          {quote.scopedCredits>0&&<div><dt>模型赠款抵扣</dt><dd>−{n(quote.scopedCredits)} 积分</dd></div>}
           <div><dt>需付普通积分</dt><dd><strong>{n(quote.walletCredits)} 积分</strong></dd></div>
         </dl>
         {!quote.canAfford&&<Alert type="warning" showIcon title="当前不能生成" description={quote.unavailableReason||'请检查可用额度后重新报价'} action={<Button size="small" onClick={()=>setReload(value=>value+1)}>重新报价</Button>}/>}

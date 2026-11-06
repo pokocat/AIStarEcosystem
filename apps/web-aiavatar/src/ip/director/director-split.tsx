@@ -52,7 +52,7 @@ export function SplitPreview({ work, apply, setError }: Pick<WorkbenchProps, "wo
       </li>)}</ol>
     <div className="director-actions">
       <button type="button" className="ip-brand-button" disabled={!!busy} onClick={save}>确认分集</button>
-      <button type="button" className="ip-brand-text-button" disabled={!!busy} onClick={discard}>不用这个结果</button>
+      <button type="button" className="ip-brand-text-button" disabled={!!busy} onClick={discard}>放弃拆分</button>
     </div>
   </section>;
 }

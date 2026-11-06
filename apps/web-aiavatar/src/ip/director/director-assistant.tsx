@@ -451,7 +451,7 @@ function AssistantWelcome({ work, tab }: { work: DirectorWork; tab: AssistantTab
   const noScript = !work.draft.trim() && !work.episodes.length;
   const tips = noScript ? []
     : tab === "storyboard" ? ["这一段先给手部特写，再切人物反应", "别直接揭示秘密，留到下一段", "缩短对白，保留动作"]
-      : tab === "assets" ? ["陈德茂更疲惫一点，但别显老", "保留长相，只换成冬天的衣服", "这个场景再旧一些"]
+      : tab === "assets" ? [`${work.assets.find(a => a.kind === "character")?.name ?? "这个角色"}更疲惫一点，但别显老`, "保留长相，只换成冬天的衣服", "这个场景再旧一些"]
         : ["先看看这个开头，哪里不够吸引人？", "只改对白，其他别动", "续写下一场"];
   return <div className="director-assistant-welcome">
     <p>{noScript ? "有了剧本以后，在这里继续评价、续写和局部修改。" : "选中正文、点镜头或图片旁的「AI」按钮，我就知道你要改哪里。讨论的时候我只给分析和方向，你说「改」我才给修改建议，采用前都能先对比。"}</p>

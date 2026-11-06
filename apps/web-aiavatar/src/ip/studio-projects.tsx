@@ -34,7 +34,7 @@ export function StudioProjects() {
   const { catalog: scenes } = useSceneCatalog(ready);
   const sceneHome = (p: IpProjectSummary) => {
     const kind = !p.sceneId || !scenes ? undefined : scenes.video.some(s => s.id === p.sceneId) ? "video" : scenes.image.some(s => s.id === p.sceneId) ? "image" : undefined;
-    return kind && { href: `/${kind}?scene=${encodeURIComponent(p.sceneId!)}&draft=${encodeURIComponent(p.id)}`, label: kind === "video" ? "回到 AI 视频继续" : "回到 AI 图片继续" };
+    return kind && { href: `/${kind}?scene=${encodeURIComponent(p.sceneId!)}&draft=${encodeURIComponent(p.id)}`, label: kind === "video" ? "在 AI 视频中打开" : "在 AI 图片中打开" };
   };
   const projects = useStudioList(IpStudioApi.listProjects, ready);
   // AI 导演台 works are made on their own page; the projects page points at the latest few so nothing seems missing.

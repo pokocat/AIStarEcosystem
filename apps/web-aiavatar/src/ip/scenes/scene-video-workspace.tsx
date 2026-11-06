@@ -229,7 +229,8 @@ function VideoTaskView({ task, persist, onReuse, onRefresh }: {
       const keys = [...new Set(Object.values(next).flatMap(run => outputKey(run) ?? []))];
       if (keys.length) { const signed = await signKeys(keys); if (alive) setUrls(signed); }
       if (!execution) return;
-      const fresh = execution.steps.filter(s => s.status === 'done' && !projection.current.has(`${s.id}:${s.acceptedRunId ?? s.runIds.join()}`));
+      // 整理方案和检查是给执行器看的结果，不摆到画布上。
+      const fresh = execution.steps.filter(s => s.status === 'done' && s.id !== 'compile' && s.operation !== 'check' && !projection.current.has(`${s.id}:${s.acceptedRunId ?? s.runIds.join()}`));
       if (!fresh.length) return;
       const ids = new Set(fresh.map(s => stepNodeId(execution, s)));
       const ops = executionRestoreUpserts(execution, next, ids).map(data => ({ kind: 'node' as const, data, executionId: execution.id, turnId: execution.id, restore: true }));
