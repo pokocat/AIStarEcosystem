@@ -42,6 +42,7 @@ infra/
 │   ├── web-drama.env.example       ← apps/web-drama
 │   ├── web-aiavatar.env.example    ← apps/web-aiavatar
 │   ├── web-star.env.example        ← apps/web-star（明星商务工作台）
+│   ├── web-incubator.env.example   ← apps/web-incubator（全端演示，无密钥）
 │
 ├── nginx/                          ← Nginx 配置（落 /etc/nginx/conf.d/）
 │   ├── ai.conf.example             ← HTTP 入口形态（首次部署 / 内网联调）
@@ -65,6 +66,7 @@ infra/
 │   │   ── 80 + 443 单文件形态（这两个域名线上就是这么配的，2026-09-06 已补齐反代）──
 │   ├── aistar.aibuzz.cn.conf.example ← web-aiavatar → 3013（与 aiavatar.*.ssl 同上游）
 │   ├── star.aibuzz.cn.conf.example   ← web-star 的 80 块（443 在 star.*.ssl.conf.example）
+│   ├── incubator.aibuzz.cn.conf.example ← web-incubator → 3020（80 + 443 同一个文件，纯前端无 /api）
 │   ├── ipstudio.aibuzz.cn.conf.example ← 同上的 80 块
 │   └── snippets/
 │       └── proxy-defaults.conf     ← 通用 proxy_set_header 集

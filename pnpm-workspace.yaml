@@ -6,6 +6,7 @@ packages:
   - "apps/web-celebrity"
   - "apps/web-aiavatar"
   - "apps/web-star"
+  - "apps/web-incubator"
   - "apps/admin"
   - "apps/web-aiavatar/studio-admin"
 patchedDependencies:
