@@ -85,7 +85,7 @@ interface TabConfig {
 const CELEBRITIES: Celebrity[] = [
   {
     id: 'jnl',
-    name: '贾乃亮',
+    name: '周景行',
     avatar: 'https://images.unsplash.com/photo-1681097561932-36d0df02b379?w=80&q=80',
     portrait: 'https://images.unsplash.com/photo-1681097561932-36d0df02b379?w=400&q=80',
     category: '娱乐明星',
@@ -97,7 +97,7 @@ const CELEBRITIES: Celebrity[] = [
   },
   {
     id: 'llq',
-    name: '李立群',
+    name: '程远山',
     avatar: 'https://images.unsplash.com/photo-1758600431229-191932ccee81?w=80&q=80',
     portrait: 'https://images.unsplash.com/photo-1758600431229-191932ccee81?w=400&q=80',
     category: '影视明星',
@@ -109,7 +109,7 @@ const CELEBRITIES: Celebrity[] = [
   },
   {
     id: 'hsw',
-    name: '郝邵文',
+    name: '许知遥',
     avatar: 'https://images.unsplash.com/photo-1585113656556-0da9a6611cdd?w=80&q=80',
     portrait: 'https://images.unsplash.com/photo-1585113656556-0da9a6611cdd?w=400&q=80',
     category: '喜剧明星',
@@ -121,7 +121,7 @@ const CELEBRITIES: Celebrity[] = [
   },
   {
     id: 'ym',
-    name: '杨幂',
+    name: '苏枝',
     avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=80&q=80',
     portrait: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&q=80',
     category: '影视明星',
@@ -133,7 +133,7 @@ const CELEBRITIES: Celebrity[] = [
   },
   {
     id: 'xz',
-    name: '肖战',
+    name: '顾然',
     avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=80&q=80',
     portrait: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&q=80',
     category: '流量明星',
@@ -145,7 +145,7 @@ const CELEBRITIES: Celebrity[] = [
   },
   {
     id: 'lyf',
-    name: '刘亦菲',
+    name: '林鹿白',
     avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=80&q=80',
     portrait: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400&q=80',
     category: '影视明星',
@@ -160,9 +160,9 @@ const CELEBRITIES: Celebrity[] = [
 // Mock已授权明星
 const AUTHORIZED_CELEBRITIES: AuthorizedCelebrity[] = [
   {
-    ...CELEBRITIES[2], // 于震
+    ...CELEBRITIES[2], // 陈屿
     id: 'yz',
-    name: '于震',
+    name: '陈屿',
     avatar: 'https://images.unsplash.com/photo-1590483932826-b5ecfc21094b?w=80&q=80',
     portrait: 'https://images.unsplash.com/photo-1590483932826-b5ecfc21094b?w=400&q=80',
     category: '影视明星',

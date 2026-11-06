@@ -24,12 +24,12 @@ interface Asset {
 }
 
 const MOCK_ASSETS: Asset[] = [
-  { id: 'a1', title: '张艺星618直播回放-完整版', type: 'video', status: 'available', authStatus: 'authorized', partnerName: '张艺星', duration: '3:42:18', versions: 4, usageCount: 67, thumbColor: '#f59e0b', tags: ['直播', '618', '数码'], uploadDate: '2025-06-19', fileSize: '8.4 GB', resolution: '1080p' },
+  { id: 'a1', title: '宋一鸣618直播回放-完整版', type: 'video', status: 'available', authStatus: 'authorized', partnerName: '宋一鸣', duration: '3:42:18', versions: 4, usageCount: 67, thumbColor: '#f59e0b', tags: ['直播', '618', '数码'], uploadDate: '2025-06-19', fileSize: '8.4 GB', resolution: '1080p' },
   { id: 'a2', title: '林音宝产品讲解视频-护肤系列', type: 'video', status: 'available', authStatus: 'authorized', partnerName: '林音宝', duration: '28:45', versions: 3, usageCount: 34, thumbColor: '#a855f7', tags: ['护肤', '开箱', '测评'], uploadDate: '2025-05-12', fileSize: '2.1 GB', resolution: '4K' },
-  { id: 'a3', title: '张艺星形象精修-白底系列', type: 'image', status: 'available', authStatus: 'authorized', partnerName: '张艺星', versions: 2, usageCount: 145, thumbColor: '#06b6d4', tags: ['棚拍', '白底', '正装'], uploadDate: '2025-04-08', fileSize: '420 MB' },
+  { id: 'a3', title: '宋一鸣形象精修-白底系列', type: 'image', status: 'available', authStatus: 'authorized', partnerName: '宋一鸣', versions: 2, usageCount: 145, thumbColor: '#06b6d4', tags: ['棚拍', '白底', '正装'], uploadDate: '2025-04-08', fileSize: '420 MB' },
   { id: 'a4', title: '林音宝标准音色训练素材-V2', type: 'audio', status: 'reviewing', authStatus: 'authorized', partnerName: '林音宝', duration: '45:00', versions: 1, usageCount: 0, thumbColor: '#ec4899', tags: ['音色', '口播', '训练集'], uploadDate: '2025-09-01', fileSize: '380 MB' },
-  { id: 'a5', title: '极速数码 × 张艺星 品牌素材包', type: 'material', status: 'available', authStatus: 'authorized', partnerName: '极速数码品牌', versions: 5, usageCount: 213, thumbColor: '#3b82f6', tags: ['品牌', '素材包', '贴片'], uploadDate: '2025-07-20', fileSize: '1.2 GB' },
-  { id: 'a6', title: '张艺星2024年末演唱会切片素材', type: 'video', status: 'frozen', authStatus: 'expired', partnerName: '张艺星', duration: '1:56:00', versions: 2, usageCount: 89, thumbColor: '#ef4444', tags: ['演唱会', '切片', '禁用'], uploadDate: '2024-12-28', fileSize: '5.8 GB', resolution: '1080p' },
+  { id: 'a5', title: '极速数码 × 宋一鸣 品牌素材包', type: 'material', status: 'available', authStatus: 'authorized', partnerName: '极速数码品牌', versions: 5, usageCount: 213, thumbColor: '#3b82f6', tags: ['品牌', '素材包', '贴片'], uploadDate: '2025-07-20', fileSize: '1.2 GB' },
+  { id: 'a6', title: '宋一鸣2024年末演唱会切片素材', type: 'video', status: 'frozen', authStatus: 'expired', partnerName: '宋一鸣', duration: '1:56:00', versions: 2, usageCount: 89, thumbColor: '#ef4444', tags: ['演唱会', '切片', '禁用'], uploadDate: '2024-12-28', fileSize: '5.8 GB', resolution: '1080p' },
   { id: 'a7', title: '林音宝3D数字人形象模型-V3', type: 'model_3d', status: 'available', authStatus: 'authorized', partnerName: '林音宝', versions: 3, usageCount: 28, thumbColor: '#10b981', tags: ['数字人', '3D', '模型'], uploadDate: '2025-08-15', fileSize: '2.3 GB' },
   { id: 'a8', title: '清洁卫士背景音乐授权包', type: 'audio', status: 'available', authStatus: 'expiring', partnerName: '清洁卫士品牌方', duration: '3:28', versions: 1, usageCount: 56, thumbColor: '#f97316', tags: ['BGM', '授权', '品牌'], uploadDate: '2025-01-10', fileSize: '48 MB' },
 ];

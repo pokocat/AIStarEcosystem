@@ -51,10 +51,10 @@ const MOCK_STRATEGIES: WatermarkStrategy[] = [
 ];
 
 const MOCK_EMBED_RECORDS: EmbedRecord[] = [
-  { id: 'e1', contentTitle: '张艺星618直播切片-极速数码手机开箱', partnerName: '张艺星', platform: 'DY', account: '@张艺星美妆好物', embedTime: '2025-06-21 17:50', wmId: 'WM-202506-0047', status: 'success', contentType: '切片' },
+  { id: 'e1', contentTitle: '宋一鸣618直播切片-极速数码手机开箱', partnerName: '宋一鸣', platform: 'DY', account: '@宋一鸣美妆好物', embedTime: '2025-06-21 17:50', wmId: 'WM-202506-0047', status: 'success', contentType: '切片' },
   { id: 'e2', contentTitle: '林音宝数字人口播-护肤精华评测版', partnerName: '林音宝', platform: 'XHS', account: '@林音宝护肤日记', embedTime: '2025-09-11 15:30', wmId: 'WM-202509-0012', status: 'success', contentType: '数字人' },
   { id: 'e3', contentTitle: '清洁卫士夏季清洁混剪', partnerName: '清洁卫士品牌方', platform: 'KS', account: '@生活妙招分享', embedTime: '2025-09-11 11:20', wmId: 'WM-202509-0011', status: 'success', contentType: '混剪' },
-  { id: 'e4', contentTitle: '张艺星采访切片-年度规划精华', partnerName: '张艺星', platform: 'DY', account: '@张艺星工作室', embedTime: '2025-09-10 20:00', wmId: '-', status: 'failed', contentType: '切片' },
+  { id: 'e4', contentTitle: '宋一鸣采访切片-年度规划精华', partnerName: '宋一鸣', platform: 'DY', account: '@宋一鸣工作室', embedTime: '2025-09-10 20:00', wmId: '-', status: 'failed', contentType: '切片' },
   { id: 'e5', contentTitle: '林音宝日常Vlog混剪', partnerName: '林音宝', platform: 'VCH', account: '@林音宝生活', embedTime: '2025-09-10 18:45', wmId: 'WM-202509-0010', status: 'success', contentType: '混剪' },
 ];
 
@@ -62,13 +62,13 @@ const MOCK_DETECTIONS: DetectionResult[] = [
   {
     id: 'd1', submittedUrl: 'douyin.com/video/xxxxx1', platform: 'DY',
     detectedWmId: 'WM-202506-0047', confidence: 97,
-    sourceContent: '张艺星618直播切片-极速数码手机开箱', sourcePartner: '张艺星',
+    sourceContent: '宋一鸣618直播切片-极速数码手机开箱', sourcePartner: '宋一鸣',
     verdict: 'authorized', submittedAt: '2025-07-15 09:00',
   },
   {
     id: 'd2', submittedUrl: 'kuaishou.com/video/xxxxx2', platform: 'KS',
     detectedWmId: 'WM-202506-0047', confidence: 89,
-    sourceContent: '张艺星618直播切片-极速数码手机开箱', sourcePartner: '张艺星',
+    sourceContent: '宋一鸣618直播切片-极速数码手机开箱', sourcePartner: '宋一鸣',
     verdict: 'unauthorized', submittedAt: '2025-08-03 14:22',
   },
   {

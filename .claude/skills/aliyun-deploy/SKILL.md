@@ -32,6 +32,7 @@ Current production services are:
   `web-ipstudio`; one app serves a mobile shell (<1024px) and a desktop shell (>=1024px).
   `ipstudio.aibuzz.cn` is now a 308 redirect here — do not deploy anything to it.
 - `web-star` - Next.js 16 star business console, systemd unit `aistareco-web-star`.
+- `web-incubator` - Next.js 16 AI 艺人孵化全端演示（纯前端、无密钥、不登录）, systemd unit `aistareco-web-incubator`, port 3020, `incubator.aibuzz.cn`.
 - `admin` - Next.js admin app, systemd unit `aistareco-admin`.
 - `sau-service` - Dockerized FastAPI/Playwright service, systemd unit `aistareco-sau-service`.
   Real-image builds run `apps/sau-service/scripts/prepare_real_runtime.py` to patch

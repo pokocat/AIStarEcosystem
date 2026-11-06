@@ -41,17 +41,17 @@ interface ScriptVariant {
 }
 
 const TASKS: Task[] = [
-  { id: 't1', title: '张艺星618直播回放-切片任务', type: 'clip', priority: 'urgent', due: '今日18:00', dueEn: 'Today 18:00', clips: 12, passed: 9, artist: '张艺星', color: '#ec4899', requiredScript: false, scriptReady: false, licenseCheck: 'valid' },
+  { id: 't1', title: '宋一鸣618直播回放-切片任务', type: 'clip', priority: 'urgent', due: '今日18:00', dueEn: 'Today 18:00', clips: 12, passed: 9, artist: '宋一鸣', color: '#ec4899', requiredScript: false, scriptReady: false, licenseCheck: 'valid' },
   { id: 't2', title: '林音宝护肤-AI数字人口播生成', type: 'digital', priority: 'urgent', due: '今日20:00', dueEn: 'Today 20:00', clips: 1, passed: 0, artist: '林音宝', color: '#10b981', requiredScript: true, scriptReady: false, licenseCheck: 'valid' },
   { id: 't3', title: '林音宝护肤产品讲解-切片', type: 'clip', priority: 'normal', due: '明日12:00', dueEn: 'Tomorrow 12:00', clips: 6, passed: 0, artist: '林音宝', color: '#ec4899', requiredScript: false, scriptReady: false, licenseCheck: 'warning' },
   { id: 't4', title: '清洁卫士混剪-夏季产品线', type: 'mix', priority: 'normal', due: '后日09:00', dueEn: 'Day-3 09:00', clips: 5, passed: 5, artist: '清洁卫士', color: '#f97316', requiredScript: false, scriptReady: false, licenseCheck: 'valid' },
-  { id: 't5', title: '肖战护肤口播脚本生成', type: 'script', priority: 'low', due: '明日18:00', dueEn: 'Tomorrow 18:00', clips: 0, passed: 0, artist: '肖战', color: '#a855f7', requiredScript: true, scriptReady: false, licenseCheck: 'valid' },
+  { id: 't5', title: '顾然护肤口播脚本生成', type: 'script', priority: 'low', due: '明日18:00', dueEn: 'Tomorrow 18:00', clips: 0, passed: 0, artist: '顾然', color: '#a855f7', requiredScript: true, scriptReady: false, licenseCheck: 'valid' },
 ];
 
 const TODAY_OUTPUTS: OutputItem[] = [
-  { id: 'o1', title: '张艺星618-Clip-01', type: 'clip', duration: '1:12', status: 'watermarked', qcScore: 94, watermarkId: 'WM-2025-0891', artist: '张艺星' },
-  { id: 'o2', title: '张艺星618-Clip-02', type: 'clip', duration: '0:58', status: 'watermarked', qcScore: 91, watermarkId: 'WM-2025-0892', artist: '张艺星' },
-  { id: 'o3', title: '张艺星618-Clip-03', type: 'clip', duration: '1:30', status: 'in_pool', qcScore: 88, watermarkId: 'WM-2025-0893', artist: '张艺星' },
+  { id: 'o1', title: '宋一鸣618-Clip-01', type: 'clip', duration: '1:12', status: 'watermarked', qcScore: 94, watermarkId: 'WM-2025-0891', artist: '宋一鸣' },
+  { id: 'o2', title: '宋一鸣618-Clip-02', type: 'clip', duration: '0:58', status: 'watermarked', qcScore: 91, watermarkId: 'WM-2025-0892', artist: '宋一鸣' },
+  { id: 'o3', title: '宋一鸣618-Clip-03', type: 'clip', duration: '1:30', status: 'in_pool', qcScore: 88, watermarkId: 'WM-2025-0893', artist: '宋一鸣' },
   { id: 'o4', title: '林音宝数字人-护肤V1', type: 'digital', duration: '0:55', status: 'review', qcScore: 85, watermarkId: 'WM-2025-0894', artist: '林音宝' },
   { id: 'o5', title: '清洁卫士混剪-01', type: 'mix', duration: '1:45', status: 'rejected', qcScore: 62, watermarkId: 'WM-2025-0895', artist: '清洁卫士' },
 ];
@@ -338,7 +338,7 @@ export const StudioWorkbench = ({ lang, onBack }: Props) => {
                   <div>
                     <label className="text-[10px] text-gray-500 mb-1.5 block">{zh ? '选择艺人' : 'Artist'}</label>
                     <select className="w-full h-9 bg-white/5 border border-white/8 rounded-xl px-3 text-xs text-white focus:outline-none focus:border-purple-500/40">
-                      <option>林音宝</option><option>张艺星</option><option>肖战</option><option>杨幂</option>
+                      <option>林音宝</option><option>宋一鸣</option><option>顾然</option><option>苏枝</option>
                     </select>
                   </div>
                   <div>

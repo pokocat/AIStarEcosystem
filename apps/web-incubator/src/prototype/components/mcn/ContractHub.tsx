@@ -36,8 +36,8 @@ interface ContractTemplate {
 // ─── Mock Data ────────────────────────────────────────────────────
 const MOCK_CONTRACTS: Contract[] = [
   {
-    id: 'c1', name: '张艺星MCN独家签约协议2025版', type: 'artist_mcn',
-    parties: [{ role: 'mcn', name: 'MCN公司' }, { role: 'artist', name: '张艺星' }],
+    id: 'c1', name: '宋一鸣MCN独家签约协议2025版', type: 'artist_mcn',
+    parties: [{ role: 'mcn', name: 'MCN公司' }, { role: 'artist', name: '宋一鸣' }],
     status: 'active', signedAt: '2025-01-15',
     startAt: '2025-01-15', endAt: '2027-01-14',
     value: 2400000, autoRenew: true,
@@ -56,13 +56,13 @@ const MOCK_CONTRACTS: Contract[] = [
     attachments: 2, linkedLicenses: 6,
   },
   {
-    id: 'c3', name: '肖战×极速数码联名合作合同', type: 'brand_collab',
-    parties: [{ role: 'artist', name: '肖战' }, { role: 'brand', name: '极速数码' }, { role: 'mcn', name: 'MCN公司' }],
+    id: 'c3', name: '顾然×极速数码联名合作合同', type: 'brand_collab',
+    parties: [{ role: 'artist', name: '顾然' }, { role: 'brand', name: '极速数码' }, { role: 'mcn', name: 'MCN公司' }],
     status: 'pending_sign', signedAt: undefined,
     startAt: '2025-10-01', endAt: '2026-03-31',
     value: 1200000, autoRenew: false,
-    keyTerms: ['肖战本人出镜', '授权肖像使用6个月', '月固定费+带货阶梯佣金'],
-    keyTermsEn: ['Xiao Zhan personal appearance', '6-month portrait license', 'Fixed fee + tiered commission'],
+    keyTerms: ['顾然本人出镜', '授权肖像使用6个月', '月固定费+带货阶梯佣金'],
+    keyTermsEn: ['Gu Ran personal appearance', '6-month portrait license', 'Fixed fee + tiered commission'],
     attachments: 1, linkedLicenses: 0,
   },
   {

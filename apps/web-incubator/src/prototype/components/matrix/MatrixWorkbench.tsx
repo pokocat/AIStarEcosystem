@@ -53,7 +53,7 @@ const HEAT_DATA = [
 
 const MOCK_CAMPAIGNS: Campaign[] = [
   {
-    id: 'c1', name: '张艺星《星河》打榜计划', artist: '张艺星', song: '《星河》',
+    id: 'c1', name: '宋一鸣《星河》打榜计划', artist: '宋一鸣', song: '《星河》',
     status: 'active', startAt: '2025-09-05', endAt: '2025-09-20',
     targetViews: 5000000, currentViews: 3840000,
     platforms: ['DY', 'KS', 'XHS', 'VCH'], accounts: 24,
@@ -67,7 +67,7 @@ const MOCK_CAMPAIGNS: Campaign[] = [
     hotScore: 64, peakRank: 18, budget: 30000, budgetUsed: 12600,
   },
   {
-    id: 'c3', name: '肖战《逐光》战略发行', artist: '肖战', song: '《逐光》',
+    id: 'c3', name: '顾然《逐光》战略发行', artist: '顾然', song: '《逐光》',
     status: 'scheduled', startAt: '2025-09-15', endAt: '2025-10-05',
     targetViews: 10000000, currentViews: 0,
     platforms: ['DY', 'KS', 'XHS', 'VCH', 'BL', 'WB'], accounts: 42,
@@ -87,7 +87,7 @@ const PLATFORM_STATS: PlatformStat[] = [
 const MOCK_ACCOUNTS: AccountNode[] = [
   { id: 'a1', name: '@星河打歌主力号',  platform: 'DY',  fans: 1280000, lastPost: '2小时前', status: 'active', postsToday: 3, healthScore: 96 },
   { id: 'a2', name: '@星河快手矩阵01', platform: 'KS',  fans: 680000,  lastPost: '4小时前', status: 'active', postsToday: 2, healthScore: 88 },
-  { id: 'a3', name: '@张艺星粉丝站XHS', platform: 'XHS', fans: 420000,  lastPost: '1小时前', status: 'active', postsToday: 4, healthScore: 92 },
+  { id: 'a3', name: '@宋一鸣粉丝站XHS', platform: 'XHS', fans: 420000,  lastPost: '1小时前', status: 'active', postsToday: 4, healthScore: 92 },
   { id: 'a4', name: '@视频号星河推荐',  platform: 'VCH', fans: 180000,  lastPost: '12小时前', status: 'idle',  postsToday: 0, healthScore: 62 },
   { id: 'a5', name: '@B站星河应援',    platform: 'BL',  fans: 95000,   lastPost: '3小时前', status: 'active', postsToday: 1, healthScore: 81 },
   { id: 'a6', name: '@微博超话维护号',  platform: 'WB',  fans: 220000,  lastPost: '8小时前', status: 'idle',  postsToday: 1, healthScore: 55 },
@@ -95,8 +95,8 @@ const MOCK_ACCOUNTS: AccountNode[] = [
 
 const SCHEDULE_ITEMS = [
   { time: '10:00', platform: 'DY',  content: '《星河》MV预告-完整版', account: '@星河打歌主力号', status: 'done' as const },
-  { time: '12:30', platform: 'KS',  content: '张艺星录音室花絮', account: '@星河快手矩阵01', status: 'done' as const },
-  { time: '15:00', platform: 'XHS', content: '星河创作故事·手稿揭秘', account: '@张艺星粉丝站XHS', status: 'pending' as const },
+  { time: '12:30', platform: 'KS',  content: '宋一鸣录音室花絮', account: '@星河快手矩阵01', status: 'done' as const },
+  { time: '15:00', platform: 'XHS', content: '星河创作故事·手稿揭秘', account: '@宋一鸣粉丝站XHS', status: 'pending' as const },
   { time: '18:00', platform: 'DY',  content: '星河挑战赛发起贴', account: '@星河打歌主力号', status: 'pending' as const },
   { time: '20:00', platform: 'VCH', content: '《星河》视频号首推', account: '@视频号星河推荐', status: 'pending' as const },
   { time: '21:30', platform: 'WB',  content: '超话日签·互动话题', account: '@微博超话维护号', status: 'pending' as const },

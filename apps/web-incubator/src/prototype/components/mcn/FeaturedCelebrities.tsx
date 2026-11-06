@@ -1,6 +1,6 @@
 /**
  * 精选明星展示条（4位1排）
- * 于震 · 肖战 · 杨幂 · 王一博
+ * 陈屿 · 顾然 · 苏枝 · 陆星野
  */
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -15,7 +15,7 @@ import type { Lang } from '../../translations';
 const FEATURED = [
   {
     id: 'yu-zhen',
-    name: { zh: '于震', en: 'Yu Zhen' },
+    name: { zh: '陈屿', en: 'Chen Yu' },
     title: { zh: '实力派演员', en: 'Drama Actor' },
     tags: { zh: ['古装', '谍战', '正剧'], en: ['Historical', 'Spy', 'Drama'] },
     photo: 'https://images.unsplash.com/photo-1681097561932-36d0df02b379?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400',
@@ -34,7 +34,7 @@ const FEATURED = [
   },
   {
     id: 'xiao-zhan',
-    name: { zh: '肖战', en: 'Xiao Zhan' },
+    name: { zh: '顾然', en: 'Gu Ran' },
     title: { zh: '演员 / 歌手', en: 'Actor & Singer' },
     tags: { zh: ['流量', '品牌', '音乐'], en: ['Top Traffic', 'Brand', 'Music'] },
     photo: 'https://images.unsplash.com/photo-1767607746719-38c73b45cd8b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400',
@@ -53,7 +53,7 @@ const FEATURED = [
   },
   {
     id: 'yang-mi',
-    name: { zh: '杨幂', en: 'Yang Mi' },
+    name: { zh: '苏枝', en: 'Su Zhi' },
     title: { zh: '女演员 / KOL', en: 'Actress & KOL' },
     tags: { zh: ['时尚', '美妆', '古装'], en: ['Fashion', 'Beauty', 'Historical'] },
     photo: 'https://images.unsplash.com/photo-1596029658179-ddca27260f25?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400',
@@ -72,7 +72,7 @@ const FEATURED = [
   },
   {
     id: 'wang-yibo',
-    name: { zh: '王一博', en: 'Wang Yibo' },
+    name: { zh: '陆星野', en: 'Lu Xingye' },
     title: { zh: '演员 / 赛车手', en: 'Actor & Racer' },
     tags: { zh: ['运动', '潮流', '音乐'], en: ['Sport', 'Streetwear', 'Music'] },
     photo: 'https://images.unsplash.com/photo-1616693629937-fa0aba64d094?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400',

@@ -1028,10 +1028,10 @@ const CELEBRITY_GRADES = [
 ];
 
 const CELEBRITY_LIST = [
-  { name: '于震', grade: 'A', tags: ['古装','谍战','正剧'], fans: '2,180万', gmv: '高潜力', score: 92, color: '#06b6d4', img: 'https://images.unsplash.com/photo-1681097561932-36d0df02b379?w=200&q=80', signed: false },
-  { name: '肖战',  grade: 'S', tags: ['流量','品牌','音乐'], fans: '4,530万', gmv: '顶级',   score: 98, color: '#a855f7', img: 'https://images.unsplash.com/photo-1767607746719-38c73b45cd8b?w=200&q=80', signed: true },
-  { name: '杨幂',  grade: 'A', tags: ['时尚','美妆','古装'], fans: '3,920万', gmv: '美妆TOP', score: 95, color: '#ec4899', img: 'https://images.unsplash.com/photo-1596029658179-ddca27260f25?w=200&q=80', signed: false },
-  { name: '王一博', grade: 'S', tags: ['运动','潮流','音乐'], fans: '5,010万', gmv: '顶级',   score: 99, color: '#f59e0b', img: 'https://images.unsplash.com/photo-1616693629937-fa0aba64d094?w=200&q=80', signed: false },
+  { name: '陈屿', grade: 'A', tags: ['古装','谍战','正剧'], fans: '2,180万', gmv: '高潜力', score: 92, color: '#06b6d4', img: 'https://images.unsplash.com/photo-1681097561932-36d0df02b379?w=200&q=80', signed: false },
+  { name: '顾然',  grade: 'S', tags: ['流量','品牌','音乐'], fans: '4,530万', gmv: '顶级',   score: 98, color: '#a855f7', img: 'https://images.unsplash.com/photo-1767607746719-38c73b45cd8b?w=200&q=80', signed: true },
+  { name: '苏枝',  grade: 'A', tags: ['时尚','美妆','古装'], fans: '3,920万', gmv: '美妆TOP', score: 95, color: '#ec4899', img: 'https://images.unsplash.com/photo-1596029658179-ddca27260f25?w=200&q=80', signed: false },
+  { name: '陆星野', grade: 'S', tags: ['运动','潮流','音乐'], fans: '5,010万', gmv: '顶级',   score: 99, color: '#f59e0b', img: 'https://images.unsplash.com/photo-1616693629937-fa0aba64d094?w=200&q=80', signed: false },
 ];
 
 const CelebrityResourceLibrary = ({ lang }: { lang: Lang }) => {

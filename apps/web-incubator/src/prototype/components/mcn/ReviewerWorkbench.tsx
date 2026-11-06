@@ -49,25 +49,25 @@ const REVIEW_QUEUE: ReviewItem[] = [
     content: '夏天来了！清洁卫士帮你解决厨房油污难题，效果100%好！', checklistScore: 58 },
   { id: 'r3', title: '林音宝数字人口播-护肤精华评测版', type: '成片', stage: 'qc_check', urgency: 'high',
     submittedBy: '制作小李', submittedAt: '1小时前', partnerName: '林音宝', checklistScore: 85 },
-  { id: 'r4', title: '张艺星采访切片-年度规划精华#4', type: '成片', stage: 'compliance', urgency: 'normal',
-    submittedBy: '剪辑小陈', submittedAt: '6小时前', partnerName: '张艺星', checklistScore: 91 },
-  { id: 'r5', title: '肖战护肤联名商品卖点文案', type: '文案', stage: 'legal_final', urgency: 'high',
-    submittedBy: '运营小赵', submittedAt: '30分钟前', partnerName: '肖战', checklistScore: 78 },
+  { id: 'r4', title: '宋一鸣采访切片-年度规划精华#4', type: '成片', stage: 'compliance', urgency: 'normal',
+    submittedBy: '剪辑小陈', submittedAt: '6小时前', partnerName: '宋一鸣', checklistScore: 91 },
+  { id: 'r5', title: '顾然护肤联名商品卖点文案', type: '文案', stage: 'legal_final', urgency: 'high',
+    submittedBy: '运营小赵', submittedAt: '30分钟前', partnerName: '顾然', checklistScore: 78 },
 ];
 
 const INFRINGEMENT_TICKETS: InfringementTicket[] = [
-  { id: 'it1', content: '张艺星618切片-极速数码手机开箱（未授权使用肖像）', platform: 'KS',
+  { id: 'it1', content: '宋一鸣618切片-极速数码手机开箱（未授权使用肖像）', platform: 'KS',
     confidence: 89, status: 'processing', discoveredAt: '3天前', assignedTo: '法务张', evidenceCount: 4 },
   { id: 'it2', content: '林音宝日常Vlog混剪-护肤晨间routine（疑似搬运）', platform: 'DY',
     confidence: 72, status: 'open', discoveredAt: '1周前', evidenceCount: 2 },
-  { id: 'it3', content: '杨幂美妆测评-侵权背景音乐', platform: 'XHS',
+  { id: 'it3', content: '苏枝美妆测评-侵权背景音乐', platform: 'XHS',
     confidence: 95, status: 'resolved', discoveredAt: '2周前', assignedTo: '法务王', evidenceCount: 6 },
 ];
 
 const DECISIONS: DecisionRecord[] = [
-  { id: 'd1', title: '张艺星×极速数码618主推文案-V3', verdict: 'approved', stage: 'legal_final', time: '昨日 16:45', by: '法务张', comment: '已确认授权范围，可发布' },
+  { id: 'd1', title: '宋一鸣×极速数码618主推文案-V3', verdict: 'approved', stage: 'legal_final', time: '昨日 16:45', by: '法务张', comment: '已确认授权范围，可发布' },
   { id: 'd2', title: '林音宝短视频标题库-日常系列', verdict: 'approved', stage: 'legal_final', time: '昨日 17:00', by: '法务张' },
-  { id: 'd3', title: '张艺星商品卖点文案-数码周', verdict: 'rejected', stage: 'ops_first', time: '前日 09:00', by: '运营小赵', comment: '含"全网最低价"违禁词，需修改' },
+  { id: 'd3', title: '宋一鸣商品卖点文案-数码周', verdict: 'rejected', stage: 'ops_first', time: '前日 09:00', by: '运营小赵', comment: '含"全网最低价"违禁词，需修改' },
   { id: 'd4', title: '林音宝护肤产品口播稿-V1', verdict: 'needs_revision', stage: 'partner_review', time: '前日 14:00', by: '法务张', comment: '明星认可内容需林音宝本人确认后再签发' },
 ];
 

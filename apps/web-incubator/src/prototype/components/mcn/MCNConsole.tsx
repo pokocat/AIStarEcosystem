@@ -271,9 +271,9 @@ const OverviewPage = ({ lang, activeSinger, onNavigate }: {
           </div>
           <div className="space-y-3">
             {[
-              { name: '于震', status: zh ? '报白审核中' : 'Whitelist Review', pct: 60, color: '#06b6d4', note: zh ? '预计2天通过' : 'Est. 2 days', dot: '#f59e0b' },
-              { name: '肖战', status: zh ? '已激活' : 'Activated', pct: 100, color: '#22c55e', note: `GMV ¥128,000`, dot: '#22c55e' },
-              { name: '杨幂', status: zh ? '合规审核中' : 'Compliance Review', pct: 40, color: '#a855f7', note: zh ? '橙区内容待审' : 'Orange zone pending', dot: '#a855f7' },
+              { name: '陈屿', status: zh ? '报白审核中' : 'Whitelist Review', pct: 60, color: '#06b6d4', note: zh ? '预计2天通过' : 'Est. 2 days', dot: '#f59e0b' },
+              { name: '顾然', status: zh ? '已激活' : 'Activated', pct: 100, color: '#22c55e', note: `GMV ¥128,000`, dot: '#22c55e' },
+              { name: '苏枝', status: zh ? '合规审核中' : 'Compliance Review', pct: 40, color: '#a855f7', note: zh ? '橙区内容待审' : 'Orange zone pending', dot: '#a855f7' },
             ].map((item, i) => (
               <div key={item.name} className="space-y-1.5">
                 <div className="flex items-center justify-between">
@@ -306,7 +306,7 @@ const OverviewPage = ({ lang, activeSinger, onNavigate }: {
             {[
               { icon: 'RED', text: zh ? '2个报白账号待提交材料补充' : '2 whitelist accounts need material supplement', page: 'account_mgmt', urgent: true },
               { icon: 'YLW', text: zh ? '今日3个内容任务待发布' : '3 content tasks to publish today', page: 'calendar', urgent: false },
-              { icon: 'YLW', text: zh ? '杨幂合规审核待跟进' : 'Yang Mi compliance review follow-up', page: 'artist_hub', urgent: false },
+              { icon: 'YLW', text: zh ? '苏枝合规审核待跟进' : 'Su Zhi compliance review follow-up', page: 'artist_hub', urgent: false },
               { icon: 'GRN', text: zh ? '平台扶持投流：1个视频可接受' : 'Platform grant boost: 1 video eligible', page: 'traffic_boost', urgent: false },
               { icon: 'BLU', text: zh ? 'Pro套餐15天后到期，建议续费' : 'Pro plan expires in 15 days', page: 'billing', urgent: false },
             ].map((todo, i) => (

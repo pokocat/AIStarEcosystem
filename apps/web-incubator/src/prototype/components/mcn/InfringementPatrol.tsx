@@ -31,10 +31,10 @@ interface Ticket {
 
 const MOCK_CASES: PatrolCase[] = [
   {
-    id: 'pc1', title: '搬运：张艺星618直播切片-极速手机', platform: 'KS', url: 'kuaishou.com/v/xxxxx1',
+    id: 'pc1', title: '搬运：宋一鸣618直播切片-极速手机', platform: 'KS', url: 'kuaishou.com/v/xxxxx1',
     discoveredAt: '2025-09-10 08:20', verdict: 'unauthorized', status: 'processing',
-    wmConfidence: 89, wmId: 'WM-202506-0047', sourceContent: '张艺星618直播切片-极速数码手机开箱',
-    sourcePartner: '张艺星', plays: 180000, account: '@草根剪辑工坊', accountFans: 450000,
+    wmConfidence: 89, wmId: 'WM-202506-0047', sourceContent: '宋一鸣618直播切片-极速数码手机开箱',
+    sourcePartner: '宋一鸣', plays: 180000, account: '@草根剪辑工坊', accountFans: 450000,
     ticketId: 'TK-20250910-001',
   },
   {
@@ -47,8 +47,8 @@ const MOCK_CASES: PatrolCase[] = [
   {
     id: 'pc3', title: '极速数码手机测评-无授权剪辑', platform: 'XHS', url: 'xiaohongshu.com/v/xxxxx3',
     discoveredAt: '2025-09-05 22:30', verdict: 'unauthorized', status: 'resolved',
-    wmConfidence: 94, wmId: 'WM-202506-0047', sourceContent: '张艺星618直播切片-极速数码手机开箱',
-    sourcePartner: '张艺星', plays: 28000, account: '@数码测评控', accountFans: 80000,
+    wmConfidence: 94, wmId: 'WM-202506-0047', sourceContent: '宋一鸣618直播切片-极速数码手机开箱',
+    sourcePartner: '宋一鸣', plays: 28000, account: '@数码测评控', accountFans: 80000,
     ticketId: 'TK-20250906-002',
   },
   {
@@ -66,16 +66,16 @@ const MOCK_CASES: PatrolCase[] = [
     ticketId: null,
   },
   {
-    id: 'pc6', title: '张艺星年末演唱会高清录制', platform: 'KS', url: 'kuaishou.com/v/xxxxx6',
+    id: 'pc6', title: '宋一鸣年末演唱会高清录制', platform: 'KS', url: 'kuaishou.com/v/xxxxx6',
     discoveredAt: '2025-08-20 20:10', verdict: 'unauthorized', status: 'resolved',
-    wmConfidence: 97, wmId: 'WM-202412-0089', sourceContent: '张艺星2024年末演唱会切片素材',
-    sourcePartner: '张艺星', plays: 620000, account: '@演唱会精彩集', accountFans: 1200000,
+    wmConfidence: 97, wmId: 'WM-202412-0089', sourceContent: '宋一鸣2024年末演唱会切片素材',
+    sourcePartner: '宋一鸣', plays: 620000, account: '@演唱会精彩集', accountFans: 1200000,
     ticketId: 'TK-20250821-001',
   },
 ];
 
 const MOCK_TICKETS: Ticket[] = [
-  { id: 'TK-20250910-001', caseId: 'pc1', title: '快手无授权搬运举报-张艺星618切片', platform: 'KS', status: 'processing', submittedAt: '2025-09-10 09:00', resolvedAt: null, result: null },
+  { id: 'TK-20250910-001', caseId: 'pc1', title: '快手无授权搬运举报-宋一鸣618切片', platform: 'KS', status: 'processing', submittedAt: '2025-09-10 09:00', resolvedAt: null, result: null },
   { id: 'TK-20250906-002', caseId: 'pc3', title: '小红书未授权剪辑申诉', platform: 'XHS', status: 'resolved', submittedAt: '2025-09-06 10:30', resolvedAt: '2025-09-08 14:00', result: '平台已下架，账号警告处理' },
   { id: 'TK-20250821-001', caseId: 'pc6', title: '快手演唱会录制版权申诉', platform: 'KS', status: 'resolved', submittedAt: '2025-08-21 08:00', resolvedAt: '2025-08-24 16:00', result: '视频已删除，侵权账号被封禁' },
 ];
@@ -347,7 +347,7 @@ export const InfringementPatrol = ({ lang }: Props) => {
           <div className="bg-gray-900/50 border border-white/5 rounded-xl p-4">
             <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">{zh ? '巡查关键词' : 'Patrol Keywords'}</div>
             <div className="flex flex-wrap gap-2 mb-3">
-              {['张艺星', '林音宝', '极速数码手机', '618直播', '护肤精华'].map(kw => (
+              {['宋一鸣', '林音宝', '极速数码手机', '618直播', '护肤精华'].map(kw => (
                 <span key={kw} className="text-[10px] px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-gray-300 flex items-center gap-1">
                   {kw}
                   <XCircle className="w-3 h-3 text-gray-600 cursor-pointer hover:text-red-400" />

@@ -32,8 +32,8 @@ interface PoolItem {
 
 const MOCK_ITEMS: PoolItem[] = [
   {
-    id: 'pp1', title: '张艺星618直播切片-极速数码手机开箱', type: 'clip', partnerName: '张艺星',
-    platform: 'DY', account: '@张艺星美妆好物', status: 'published',
+    id: 'pp1', title: '宋一鸣618直播切片-极速数码手机开箱', type: 'clip', partnerName: '宋一鸣',
+    platform: 'DY', account: '@宋一鸣美妆好物', status: 'published',
     scheduledAt: '2025-06-21 18:00', publishedAt: '2025-06-21 18:00:03',
     preCheck: { auth: true, watermark: true, quality: true }, duration: '1:12',
     plays: 450000, likes: 28600, comments: 3200, thumbColor: '#f59e0b',
@@ -51,8 +51,8 @@ const MOCK_ITEMS: PoolItem[] = [
     preCheck: { auth: true, watermark: true, quality: true }, duration: '0:45', thumbColor: '#06b6d4',
   },
   {
-    id: 'pp4', title: '张艺星采访切片-年度规划精华', type: 'clip', partnerName: '张艺星',
-    platform: 'DY', account: '@张艺星工作室', status: 'pending_review',
+    id: 'pp4', title: '宋一鸣采访切片-年度规划精华', type: 'clip', partnerName: '宋一鸣',
+    platform: 'DY', account: '@宋一鸣工作室', status: 'pending_review',
     scheduledAt: '2025-09-15 20:00',
     preCheck: { auth: true, watermark: false, quality: null }, duration: '1:30', thumbColor: '#f59e0b',
   },
@@ -63,15 +63,15 @@ const MOCK_ITEMS: PoolItem[] = [
     preCheck: { auth: true, watermark: true, quality: false }, duration: '2:15', thumbColor: '#a855f7',
   },
   {
-    id: 'pp6', title: '极速数码旗舰手机-张艺星测评合集', type: 'mix', partnerName: '张艺星',
+    id: 'pp6', title: '极速数码旗舰手机-宋一鸣测评合集', type: 'mix', partnerName: '宋一鸣',
     platform: 'DY', account: '@数码好物推荐', status: 'taken_down',
     scheduledAt: '2024-12-25 19:00', publishedAt: '2024-12-25 19:00:11',
     preCheck: { auth: false, watermark: true, quality: true }, duration: '3:48',
     plays: 89000, likes: 4200, comments: 560, thumbColor: '#ef4444',
   },
   {
-    id: 'pp7', title: '张艺星618直播切片-金句合集', type: 'clip', partnerName: '张艺星',
-    platform: 'XHS', account: '@张艺星粉丝团', status: 'publishing',
+    id: 'pp7', title: '宋一鸣618直播切片-金句合集', type: 'clip', partnerName: '宋一鸣',
+    platform: 'XHS', account: '@宋一鸣粉丝团', status: 'publishing',
     scheduledAt: '2025-06-22 10:00',
     preCheck: { auth: true, watermark: true, quality: true }, duration: '0:36', thumbColor: '#f59e0b',
   },

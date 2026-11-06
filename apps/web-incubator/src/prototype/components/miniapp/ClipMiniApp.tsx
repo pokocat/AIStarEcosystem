@@ -44,19 +44,19 @@ const PLATFORM_CLIP_STATS: Record<PlatformId, { clips: string; views: string; re
 
 const CELEBRITIES = [
   {
-    id: 'c1', name: '于震',
+    id: 'c1', name: '陈屿',
     avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&q=80',
     authType: '切片授权', clips: 24, views: '1,240万', status: 'active', expiry: '2026-08-30',
     platforms: ['抖音', 'B站', '快手'],
   },
   {
-    id: 'c2', name: '杨幂',
+    id: 'c2', name: '苏枝',
     avatar: 'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?w=100&q=80',
     authType: 'AI形象授权', clips: 18, views: '890万', status: 'active', expiry: '2026-06-15',
     platforms: ['小红书', '视频号', '抖音'],
   },
   {
-    id: 'c3', name: '肖战',
+    id: 'c3', name: '顾然',
     avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=100&q=80',
     authType: '切片授权', clips: 31, views: '2,100万', status: 'pending', expiry: '审核中',
     platforms: ['抖音', 'B站'],
@@ -77,44 +77,44 @@ interface BrandTask {
 const BRAND_TASKS: BrandTask[] = [
   {
     id: 'bt1', productName: '同款护肤套装',
-    celebrity: '杨幂', brand: 'SK-II',
+    celebrity: '苏枝', brand: 'SK-II',
     image: 'https://images.unsplash.com/photo-1556228720-195a672e8a03?w=200&q=80',
     commission: 20, price: '¥899', quota: 15, takenQuota: 9,
     bonus: '明星同款+8%', status: 'available',
-    requirement: '需含杨幂同款场景切片，时长≥15s',
+    requirement: '需含苏枝同款场景切片，时长≥15s',
     platforms: ['小红书', '视频号', '抖音'],
     platformLabels: { '小红书': '种草爆文', '视频号': '明星同款', '抖音': '带货热门' },
     expectedViews: { '小红书': '预计5万曝光', '视频号': '预计2万播放', '抖音': '预计8万播放' },
   },
   {
     id: 'bt2', productName: '剧中同款汉服',
-    celebrity: '于震', brand: '汉唐文化',
+    celebrity: '陈屿', brand: '汉唐文化',
     image: 'https://images.unsplash.com/photo-1614252369475-531eba835eb1?w=200&q=80',
     commission: 25, price: '¥388', quota: 10, takenQuota: 4,
     bonus: '首单双倍佣金', status: 'available',
-    requirement: '需使用于震古装剧授权素材',
+    requirement: '需使用陈屿古装剧授权素材',
     platforms: ['抖音', 'B站', '快手'],
     platformLabels: { '抖音': '国风爆款', 'B站': 'B站国风', '快手': '快手热销' },
     expectedViews: { '抖音': '预计6万播放', 'B站': '预计1.5万播放', '快手': '预计8万播放' },
   },
   {
     id: 'bt3', productName: '明星联名零食礼盒',
-    celebrity: '肖战', brand: '三只松鼠',
+    celebrity: '顾然', brand: '三只松鼠',
     image: 'https://images.unsplash.com/photo-1612198188060-c7c2a3b66eae?w=200&q=80',
     commission: 18, price: '¥128', quota: 25, takenQuota: 6,
     bonus: '', status: 'locked',
-    requirement: '需先完成肖战授权报白',
+    requirement: '需先完成顾然授权报白',
     platforms: ['抖音', '小红书'],
     platformLabels: { '抖音': '联名热卖', '小红书': '明星同款' },
     expectedViews: { '抖音': '预计10万播放', '小红书': '预计4万曝光' },
   },
   {
     id: 'bt4', productName: '女主同款香水',
-    celebrity: '杨幂', brand: 'Jo Malone',
+    celebrity: '苏枝', brand: 'Jo Malone',
     image: 'https://images.unsplash.com/photo-1588405748880-12d1d2a59f75?w=200&q=80',
     commission: 22, price: '¥660', quota: 8, takenQuota: 2,
     bonus: '高客单+¥60', status: 'available',
-    requirement: '需含杨幂剧中香水使用场景',
+    requirement: '需含苏枝剧中香水使用场景',
     platforms: ['小红书', '视频号'],
     platformLabels: { '小红书': '香水种草', '视频号': '轻奢推荐' },
     expectedViews: { '小红书': '预计3万曝光', '视频号': '预计1万播放' },
@@ -122,9 +122,9 @@ const BRAND_TASKS: BrandTask[] = [
 ];
 
 const MY_CLIPS = [
-  { id: 'cl1', title: '于震·热血片段精剪', celebrity: '于震', platform: '抖音', status: 'live', views: '12.4万', commission: '¥680', duration: '1:24' },
-  { id: 'cl2', title: '杨幂·甜宠混剪合集', celebrity: '杨幂', platform: '小红书', status: 'review', views: '-', commission: '预计¥240', duration: '2:10' },
-  { id: 'cl3', title: '肖战·古装名场面', celebrity: '肖战', platform: 'B站', status: 'draft', views: '-', commission: '-', duration: '3:05' },
+  { id: 'cl1', title: '陈屿·热血片段精剪', celebrity: '陈屿', platform: '抖音', status: 'live', views: '12.4万', commission: '¥680', duration: '1:24' },
+  { id: 'cl2', title: '苏枝·甜宠混剪合集', celebrity: '苏枝', platform: '小红书', status: 'review', views: '-', commission: '预计¥240', duration: '2:10' },
+  { id: 'cl3', title: '顾然·古装名场面', celebrity: '顾然', platform: 'B站', status: 'draft', views: '-', commission: '-', duration: '3:05' },
 ];
 
 // ── Shared: platform tabs ──
@@ -619,9 +619,9 @@ const RevenuePage = ({ zh }: { zh: boolean }) => {
       <div>
         <SectionLabel>{zh ? '切片收益排行' : 'CLIP LEADERBOARD'}</SectionLabel>
         {[
-          { rank: 1, title: zh ? '于震·热血片段精剪' : 'Yu Zhen Action', views: '12.4万', revenue: '¥680' },
-          { rank: 2, title: zh ? '杨幂·甜宠混剪合集' : 'Yang Mi Romance', views: '8.2万', revenue: '¥420' },
-          { rank: 3, title: zh ? '肖战·古装名场面' : 'Xiao Zhan Ancient', views: '6.1万', revenue: '¥310' },
+          { rank: 1, title: zh ? '陈屿·热血片段精剪' : 'Chen Yu Action', views: '12.4万', revenue: '¥680' },
+          { rank: 2, title: zh ? '苏枝·甜宠混剪合集' : 'Su Zhi Romance', views: '8.2万', revenue: '¥420' },
+          { rank: 3, title: zh ? '顾然·古装名场面' : 'Gu Ran Ancient', views: '6.1万', revenue: '¥310' },
         ].map((r) => (
           <div key={r.rank} className="flex items-center gap-3 bg-white border border-gray-100 rounded-2xl p-3 mb-2 shadow-sm">
             <div className={`w-6 text-center text-[11px] font-black tracking-wider font-mono ${r.rank === 1 ? 'text-amber-500' : 'text-gray-400'}`}>{String(r.rank).padStart(2, '0')}</div>
@@ -677,8 +677,8 @@ const CompliancePage = ({ zh }: { zh: boolean }) => (
     <div>
       <SectionLabel>{zh ? '系统提醒' : 'ALERTS'}</SectionLabel>
       {[
-        { icon: AlertCircle, text: zh ? '杨幂授权将于45天后到期，请及时续签' : 'Yang Mi auth expires in 45 days', color: 'text-amber-700', border: 'border-amber-200', bg: 'bg-amber-50' },
-        { icon: ShieldCheck, text: zh ? '肖战授权报白审核中，预计3个工作日完成' : 'Xiao Zhan whitelist under review, ETA 3 days', color: 'text-sky-700', border: 'border-sky-200', bg: 'bg-sky-50' },
+        { icon: AlertCircle, text: zh ? '苏枝授权将于45天后到期，请及时续签' : 'Su Zhi auth expires in 45 days', color: 'text-amber-700', border: 'border-amber-200', bg: 'bg-amber-50' },
+        { icon: ShieldCheck, text: zh ? '顾然授权报白审核中，预计3个工作日完成' : 'Gu Ran whitelist under review, ETA 3 days', color: 'text-sky-700', border: 'border-sky-200', bg: 'bg-sky-50' },
       ].map((a, i) => {
         const Icon = a.icon;
         return (

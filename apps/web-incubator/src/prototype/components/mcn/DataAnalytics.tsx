@@ -44,10 +44,10 @@ const PLATFORM_DIST = [
 ];
 
 const CELEBRITY_PERF = [
-  { name: '于震', gmv: 28400, videos: 12, conversion: '4.1%', color: '#06b6d4' },
-  { name: '肖战', gmv: 34200, videos: 8,  conversion: '5.2%', color: '#a855f7' },
-  { name: '杨幂', gmv: 19600, videos: 15, conversion: '3.8%', color: '#ec4899' },
-  { name: '王一博',gmv: 11300, videos: 6,  conversion: '3.2%', color: '#f59e0b' },
+  { name: '陈屿', gmv: 28400, videos: 12, conversion: '4.1%', color: '#06b6d4' },
+  { name: '顾然', gmv: 34200, videos: 8,  conversion: '5.2%', color: '#a855f7' },
+  { name: '苏枝', gmv: 19600, videos: 15, conversion: '3.8%', color: '#ec4899' },
+  { name: '陆星野',gmv: 11300, videos: 6,  conversion: '3.2%', color: '#f59e0b' },
 ];
 
 const CONTENT_FUNNEL = [
@@ -69,26 +69,26 @@ const LICENSE_HEALTH = {
     { subject: '溯源准确', value: 88, fullMark: 100 },
   ],
   byPartner: [
-    { name: '张艺星',  active: 12, expiring: 2, expired: 1, pct: 80 },
+    { name: '宋一鸣',  active: 12, expiring: 2, expired: 1, pct: 80 },
     { name: '林音宝',  active: 8,  expiring: 3, expired: 0, pct: 85 },
-    { name: '肖战',    active: 6,  expiring: 1, expired: 2, pct: 70 },
-    { name: '杨幂',    active: 4,  expiring: 1, expired: 2, pct: 60 },
+    { name: '顾然',    active: 6,  expiring: 1, expired: 2, pct: 70 },
+    { name: '苏枝',    active: 4,  expiring: 1, expired: 2, pct: 60 },
     { name: '品牌方A', active: 2,  expiring: 0, expired: 1, pct: 67 },
   ],
   alerts: [
-    { id: 'la1', type: 'expiring', msg: '张艺星618切片授权将于7天后到期', partner: '张艺星', date: '2025-09-18' },
+    { id: 'la1', type: 'expiring', msg: '宋一鸣618切片授权将于7天后到期', partner: '宋一鸣', date: '2025-09-18' },
     { id: 'la2', type: 'expiring', msg: '林音宝护肤口播授权将于3天后到期', partner: '林音宝', date: '2025-09-14' },
     { id: 'la3', type: 'unauthorized', msg: '发现3个视频使用未授权水印素材', partner: '-', date: '2025-09-11' },
-    { id: 'la4', type: 'expired', msg: '肖战某场景授权已过期，相关视频暂停发布', partner: '肖战', date: '2025-08-20' },
+    { id: 'la4', type: 'expired', msg: '顾然某场景授权已过期，相关视频暂停发布', partner: '顾然', date: '2025-08-20' },
   ],
 };
 
 // ─── 维度三：收益溯源 ───
 const REVENUE_TRACE = [
-  { licenseId: 'LIC-2025-0047', partner: '张艺星', content: '618主播切片', platform: 'DY/KS', videos: 23, gmv: 82400, authorized: true,  color: '#06b6d4' },
+  { licenseId: 'LIC-2025-0047', partner: '宋一鸣', content: '618主播切片', platform: 'DY/KS', videos: 23, gmv: 82400, authorized: true,  color: '#06b6d4' },
   { licenseId: 'LIC-2025-0048', partner: '林音宝', content: '护肤精华系列', platform: 'XHS/DY', videos: 15, gmv: 44800, authorized: true,  color: '#a855f7' },
-  { licenseId: 'LIC-2025-0051', partner: '肖战',   content: '护肤联名', platform: 'KS', videos: 8,  gmv: 28300, authorized: true,  color: '#ec4899' },
-  { licenseId: 'LIC-2025-0052', partner: '杨幂',   content: '美妆系列', platform: 'XHS', videos: 11, gmv: 19600, authorized: true,  color: '#f59e0b' },
+  { licenseId: 'LIC-2025-0051', partner: '顾然',   content: '护肤联名', platform: 'KS', videos: 8,  gmv: 28300, authorized: true,  color: '#ec4899' },
+  { licenseId: 'LIC-2025-0052', partner: '苏枝',   content: '美妆系列', platform: 'XHS', videos: 11, gmv: 19600, authorized: true,  color: '#f59e0b' },
   { licenseId: 'UNKNOWN',       partner: '未知来源', content: '疑似搬运', platform: 'KS/XHS', videos: 3,  gmv: 6800,  authorized: false, color: '#ef4444' },
 ];
 

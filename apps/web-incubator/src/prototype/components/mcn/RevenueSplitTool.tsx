@@ -33,22 +33,22 @@ interface PaymentRecord {
 
 // ─── Mock Data ────────────────────────────────────────────────────
 const MOCK_CONTRACTS: SplitContract[] = [
-  { id: 'sc1', name: '张艺星×极速数码618分成协议', artistName: '张艺星', brandName: '极速数码',
+  { id: 'sc1', name: '宋一鸣×极速数码618分成协议', artistName: '宋一鸣', brandName: '极速数码',
     type: 'tripartite', mcnPct: 30, artistPct: 55, brandPct: 15,
     baseRevenue: 182400, status: 'settled', period: '2025-08', settledAt: '2025-09-05' },
   { id: 'sc2', name: '林音宝护肤精华9月分成', artistName: '林音宝', brandName: '护肤品牌A',
     type: 'tripartite', mcnPct: 25, artistPct: 60, brandPct: 15,
     baseRevenue: 98600, status: 'processing', period: '2025-09' },
-  { id: 'sc3', name: '肖战演技系列纯MCN协议', artistName: '肖战', brandName: undefined,
+  { id: 'sc3', name: '顾然演技系列纯MCN协议', artistName: '顾然', brandName: undefined,
     type: 'bipartite', mcnPct: 40, artistPct: 60, brandPct: 0,
     baseRevenue: 64200, status: 'pending', period: '2025-09' },
-  { id: 'sc4', name: '杨幂美妆联名分成协议', artistName: '杨幂', brandName: '美妆品牌B',
+  { id: 'sc4', name: '苏枝美妆联名分成协议', artistName: '苏枝', brandName: '美妆品牌B',
     type: 'tripartite', mcnPct: 28, artistPct: 52, brandPct: 20,
     baseRevenue: 44800, status: 'dispute', period: '2025-08' },
 ];
 
 const MOCK_PAYMENTS: PaymentRecord[] = [
-  { id: 'p1', contractId: 'sc1', party: 'artist', partyName: '张艺星',   amount: 100320, status: 'paid',    date: '2025-09-05', method: '银行转账' },
+  { id: 'p1', contractId: 'sc1', party: 'artist', partyName: '宋一鸣',   amount: 100320, status: 'paid',    date: '2025-09-05', method: '银行转账' },
   { id: 'p2', contractId: 'sc1', party: 'mcn',    partyName: 'MCN掌门人', amount: 54720,  status: 'paid',    date: '2025-09-05', method: '内部结算' },
   { id: 'p3', contractId: 'sc1', party: 'brand',  partyName: '极速数码',  amount: 27360,  status: 'paid',    date: '2025-09-05', method: '平台扣除' },
   { id: 'p4', contractId: 'sc2', party: 'artist', partyName: '林音宝',    amount: 59160,  status: 'pending', date: '2025-10-05', method: '待确认' },

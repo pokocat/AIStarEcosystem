@@ -71,18 +71,18 @@ const SAMPLE_STATUS: Record<SampleStatus, { zh: string; en: string; color: strin
 };
 
 const MOCK_BRANDS: BrandAuth[] = [
-  { id: 'b1', brandName: '某战术刀具品牌', brandLogo: 'KNF', category: '户外运动', celebrity: '于震', status: 'authorized', level: 'gold', gmvTarget: 800000, gmvActual: 512400, commissionPct: 10, startAt: '2026-03-01', endAt: '2026-08-31', products: 12, monthlySales: '¥128,000' },
-  { id: 'b2', brandName: '某护肤品集团', brandLogo: 'CSM', category: '美妆护肤', celebrity: '肖战', status: 'authorized', level: 'diamond', gmvTarget: 3000000, gmvActual: 1842000, commissionPct: 15, startAt: '2026-01-01', endAt: '2026-12-31', products: 28, monthlySales: '¥368,000' },
-  { id: 'b3', brandName: '某运动品牌', brandLogo: 'SPT', category: '运动服饰', celebrity: '王一博', status: 'pending', level: 'silver', gmvTarget: 200000, gmvActual: 0, commissionPct: 7, startAt: '2026-05-15', endAt: '2026-11-15', products: 8, monthlySales: '-' },
-  { id: 'b4', brandName: '某茶叶品牌', brandLogo: 'TEA', category: '食品饮料', celebrity: '于震', status: 'authorized', level: 'bronze', gmvTarget: 50000, gmvActual: 38200, commissionPct: 4, startAt: '2026-04-01', endAt: '2026-06-30', products: 5, monthlySales: '¥12,800' },
-  { id: 'b5', brandName: '某时尚集团', brandLogo: 'FSH', category: '时装配饰', celebrity: '杨幂', status: 'rejected', level: 'gold', gmvTarget: 500000, gmvActual: 0, commissionPct: 9, startAt: '2026-05-01', endAt: '2026-10-31', products: 0, monthlySales: '-' },
+  { id: 'b1', brandName: '某战术刀具品牌', brandLogo: 'KNF', category: '户外运动', celebrity: '陈屿', status: 'authorized', level: 'gold', gmvTarget: 800000, gmvActual: 512400, commissionPct: 10, startAt: '2026-03-01', endAt: '2026-08-31', products: 12, monthlySales: '¥128,000' },
+  { id: 'b2', brandName: '某护肤品集团', brandLogo: 'CSM', category: '美妆护肤', celebrity: '顾然', status: 'authorized', level: 'diamond', gmvTarget: 3000000, gmvActual: 1842000, commissionPct: 15, startAt: '2026-01-01', endAt: '2026-12-31', products: 28, monthlySales: '¥368,000' },
+  { id: 'b3', brandName: '某运动品牌', brandLogo: 'SPT', category: '运动服饰', celebrity: '陆星野', status: 'pending', level: 'silver', gmvTarget: 200000, gmvActual: 0, commissionPct: 7, startAt: '2026-05-15', endAt: '2026-11-15', products: 8, monthlySales: '-' },
+  { id: 'b4', brandName: '某茶叶品牌', brandLogo: 'TEA', category: '食品饮料', celebrity: '陈屿', status: 'authorized', level: 'bronze', gmvTarget: 50000, gmvActual: 38200, commissionPct: 4, startAt: '2026-04-01', endAt: '2026-06-30', products: 5, monthlySales: '¥12,800' },
+  { id: 'b5', brandName: '某时尚集团', brandLogo: 'FSH', category: '时装配饰', celebrity: '苏枝', status: 'rejected', level: 'gold', gmvTarget: 500000, gmvActual: 0, commissionPct: 9, startAt: '2026-05-01', endAt: '2026-10-31', products: 0, monthlySales: '-' },
 ];
 
 const MOCK_SAMPLES: SampleItem[] = [
-  { id: 's1', productName: '战术折叠刀 · 限定版', brandName: '某战术刀具品牌', celebrity: '于震', status: 'delivered', requestedAt: '2026-04-25', deliveredAt: '2026-04-28', trackingNo: 'SF1234567890', quantity: 3, estimatedValue: '¥1,680', reviewStatus: 'pending' },
-  { id: 's2', productName: '明星同款精华液套装', brandName: '某护肤品集团', celebrity: '肖战', status: 'reviewed', requestedAt: '2026-04-10', deliveredAt: '2026-04-13', trackingNo: 'JT9876543210', quantity: 5, estimatedValue: '¥3,200', reviewStatus: 'approved' },
-  { id: 's3', productName: '联名球鞋 · 限量款', brandName: '某运动品牌', celebrity: '王一博', status: 'shipping', requestedAt: '2026-05-05', trackingNo: 'YT5551234567', quantity: 2, estimatedValue: '¥4,800' },
-  { id: 's4', productName: '高山绿茶礼盒套装', brandName: '某茶叶品牌', celebrity: '于震', status: 'requested', requestedAt: '2026-05-07', quantity: 10, estimatedValue: '¥980' },
+  { id: 's1', productName: '战术折叠刀 · 限定版', brandName: '某战术刀具品牌', celebrity: '陈屿', status: 'delivered', requestedAt: '2026-04-25', deliveredAt: '2026-04-28', trackingNo: 'SF1234567890', quantity: 3, estimatedValue: '¥1,680', reviewStatus: 'pending' },
+  { id: 's2', productName: '明星同款精华液套装', brandName: '某护肤品集团', celebrity: '顾然', status: 'reviewed', requestedAt: '2026-04-10', deliveredAt: '2026-04-13', trackingNo: 'JT9876543210', quantity: 5, estimatedValue: '¥3,200', reviewStatus: 'approved' },
+  { id: 's3', productName: '联名球鞋 · 限量款', brandName: '某运动品牌', celebrity: '陆星野', status: 'shipping', requestedAt: '2026-05-05', trackingNo: 'YT5551234567', quantity: 2, estimatedValue: '¥4,800' },
+  { id: 's4', productName: '高山绿茶礼盒套装', brandName: '某茶叶品牌', celebrity: '陈屿', status: 'requested', requestedAt: '2026-05-07', quantity: 10, estimatedValue: '¥980' },
 ];
 
 const CommissionBar = ({ pct, max = 20, color }: { pct: number; max?: number; color: string }) => (
@@ -345,7 +345,7 @@ export const BrandAgencyCenter = ({ lang }: { lang: Lang }) => {
                   className="w-full h-10 bg-white/[0.03] border border-white/8 rounded-xl px-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-purple-500/30 transition" />
                 <select className="w-full h-10 bg-white/[0.03] border border-white/8 rounded-xl px-3 text-sm text-gray-400 focus:outline-none">
                   <option>{zh ? '选择合作明星' : 'Select celebrity'}</option>
-                  <option>于震</option><option>肖战</option><option>杨幂</option><option>王一博</option>
+                  <option>陈屿</option><option>顾然</option><option>苏枝</option><option>陆星野</option>
                 </select>
                 <select className="w-full h-10 bg-white/[0.03] border border-white/8 rounded-xl px-3 text-sm text-gray-400 focus:outline-none">
                   <option>{zh ? '选择品牌类目' : 'Select category'}</option>

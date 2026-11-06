@@ -43,10 +43,10 @@ const QC_ITEMS: QualityCheck[] = [
 
 const MOCK_TASKS: ClipTask[] = [
   {
-    id: 't1', sourceTitle: '张艺星618直播回放-完整版（3.7小时）', sourceType: 'live',
-    partnerName: '张艺星', productScope: '极速数码旗舰手机X12', status: 'quality_check',
+    id: 't1', sourceTitle: '宋一鸣618直播回放-完整版（3.7小时）', sourceType: 'live',
+    partnerName: '宋一鸣', productScope: '极速数码旗舰手机X12', status: 'quality_check',
     totalClips: 12, passedClips: 9, failedClips: 1, assignee: '剪辑小朱',
-    createdAt: '2025-06-20', deadline: '2025-06-22', authContract: '张艺星×极速数码618短视频授权', copyVersion: 'V3',
+    createdAt: '2025-06-20', deadline: '2025-06-22', authContract: '宋一鸣×极速数码618短视频授权', copyVersion: 'V3',
   },
   {
     id: 't2', sourceTitle: '林音宝产品讲解视频-护肤系列（28分钟）', sourceType: 'long_video',
@@ -61,10 +61,10 @@ const MOCK_TASKS: ClipTask[] = [
     createdAt: '2025-07-10', deadline: '2025-07-12', authContract: '清洁卫士内容投放授权', copyVersion: 'V2',
   },
   {
-    id: 't4', sourceTitle: '张艺星专访-年度规划（45分钟）', sourceType: 'interview',
-    partnerName: '张艺星', productScope: '个人品牌宣推', status: 'review',
+    id: 't4', sourceTitle: '宋一鸣专访-年度规划（45分钟）', sourceType: 'interview',
+    partnerName: '宋一鸣', productScope: '个人品牌宣推', status: 'review',
     totalClips: 5, passedClips: 4, failedClips: 1, assignee: '剪辑小陈',
-    createdAt: '2025-09-05', deadline: '2025-09-07', authContract: '张艺星肖像直播回放切片授权', copyVersion: 'V2',
+    createdAt: '2025-09-05', deadline: '2025-09-07', authContract: '宋一鸣肖像直播回放切片授权', copyVersion: 'V2',
   },
 ];
 

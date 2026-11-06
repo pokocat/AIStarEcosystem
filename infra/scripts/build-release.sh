@@ -5,7 +5,7 @@
 #   ./infra/scripts/build-release.sh [services]
 #
 # services:
-#   all                               -> server,web-music,web-drama,web-celebrity,web-aiavatar,web-star,admin,sau-service
+#   all                               -> server,web-music,web-drama,web-celebrity,web-aiavatar,web-star,web-incubator,admin,sau-service
 #   server,web-celebrity,web-aiavatar,web-star,admin -> comma-separated
 #   "server web-celebrity web-aiavatar web-star admin" -> space-separated
 #
@@ -20,7 +20,7 @@ export PATH="/usr/local/bin:/opt/node-current/bin:/usr/bin:/bin:/usr/sbin:/sbin:
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-DEFAULT_SERVICES="server web-music web-drama web-celebrity web-aiavatar web-star admin sau-service"
+DEFAULT_SERVICES="server web-music web-drama web-celebrity web-aiavatar web-star web-incubator admin sau-service"
 RAW_SERVICES="${1:-${SERVICES:-all}}"
 RELEASE_ID="${RELEASE_ID:-$(date -u +%Y%m%d%H%M%S)-$(git rev-parse --short HEAD 2>/dev/null || echo nogit)}"
 OUT_DIR="${OUT_DIR:-$REPO_ROOT/dist/deploy/$RELEASE_ID}"
@@ -64,13 +64,13 @@ normalize_services() {
       all)
         out="$out $DEFAULT_SERVICES"
         ;;
-      server|web-music|web-drama|web-celebrity|web-aiavatar|web-star|admin|sau-service)
+      server|web-music|web-drama|web-celebrity|web-aiavatar|web-star|web-incubator|admin|sau-service)
         out="$out $item"
         ;;
       "")
         ;;
       *)
-        fail "unknown service '$item' (expected server|web-music|web-drama|web-celebrity|web-aiavatar|web-star|admin|sau-service|all)"
+        fail "unknown service '$item' (expected server|web-music|web-drama|web-celebrity|web-aiavatar|web-star|web-incubator|admin|sau-service|all)"
         ;;
     esac
   done
@@ -258,6 +258,29 @@ build_web_star() {
   make_tar_from_dir "$tmp" "$OUT_DIR/web-star.tar.gz"
 }
 
+# 纯前端演示（Figma Make 原型），不登录、不调接口，所以不用 export_auth_env。
+build_web_incubator() {
+  log "building web-incubator standalone"
+  if [[ "$SKIP_INSTALL" != "1" ]]; then
+    pnpm install --frozen-lockfile
+  fi
+  if [[ "$SKIP_TYPECHECK" != "1" ]]; then
+    pnpm --filter @ai-star-eco/web-incubator run typecheck
+  fi
+  pnpm --filter @ai-star-eco/web-incubator run build
+
+  local tmp="$OUT_DIR/.tmp/web-incubator"
+  rm -rf "$tmp"
+  mkdir -p "$tmp"
+  copy_dir_contents "apps/web-incubator/.next/standalone" "$tmp"
+  copy_dir_contents "apps/web-incubator/.next/static" "$tmp/apps/web-incubator/.next/static"
+  if [[ -d apps/web-incubator/public ]]; then
+    copy_dir_contents "apps/web-incubator/public" "$tmp/apps/web-incubator/public"
+  fi
+  strip_env_files "$tmp"
+  make_tar_from_dir "$tmp" "$OUT_DIR/web-incubator.tar.gz"
+}
+
 build_admin() {
   log "building admin standalone"
   if [[ "$SKIP_INSTALL" != "1" ]]; then
@@ -331,6 +354,7 @@ has_service web-drama && build_web_drama
 has_service web-celebrity && build_web_celebrity
 has_service web-aiavatar && build_web_aiavatar
 has_service web-star && build_web_star
+has_service web-incubator && build_web_incubator
 has_service admin && build_admin
 has_service sau-service && build_sau_service
 

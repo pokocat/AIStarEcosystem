@@ -76,7 +76,7 @@ const ROI_DATA = [
 
 const ARTIST_MATCHES: ArtistMatch[] = [
   {
-    id: 'am1', name: '于震', level: 'S', followers: '4530万', avgViews: '86万',
+    id: 'am1', name: '陈屿', level: 'S', followers: '4530万', avgViews: '86万',
     conversionRate: '4.2%', categories: ['数码', '户外', '男装'], matchScore: 96,
     description: '硬汉形象，战术/户外品类高度契合，带货转化率业内顶尖',
     descriptionEn: 'Tough image, ideal fit for tactical/outdoor goods, top conversion rate',
@@ -90,7 +90,7 @@ const ARTIST_MATCHES: ArtistMatch[] = [
     gmvHistory: 480000, exclusiveMonths: 6, available: true,
   },
   {
-    id: 'am3', name: '张艺星', level: 'A', followers: '1280万', avgViews: '42万',
+    id: 'am3', name: '宋一鸣', level: 'A', followers: '1280万', avgViews: '42万',
     conversionRate: '2.8%', categories: ['音乐', '3C', '时尚'], matchScore: 58,
     description: '音乐人背景，3C和潮流品牌具有协同效应，粉丝年龄18-25',
     descriptionEn: 'Musician background, synergy with 3C and trendy brands, fans aged 18-25',
@@ -99,14 +99,14 @@ const ARTIST_MATCHES: ArtistMatch[] = [
 ];
 
 const MOCK_VIDEOS: HotVideo[] = [
-  { id: 'v1', title: '于震亮剑切片·战术刀具测评', mcnName: 'AI Star MCN', artistName: 'Neon V', celebrity: '于震', platform: 'DY', views: '128万', gmv: '¥38,400', conversion: '4.2%', boostable: true },
-  { id: 'v2', title: '肖战同款腕表·带货短视频',  mcnName: 'HypeStar Studio', artistName: 'Luna Soft', celebrity: '肖战', platform: 'KS', views: '56万', gmv: '¥22,800', conversion: '3.8%', boostable: true },
+  { id: 'v1', title: '陈屿《破晓行动》切片·战术刀具测评', mcnName: 'AI Star MCN', artistName: 'Neon V', celebrity: '陈屿', platform: 'DY', views: '128万', gmv: '¥38,400', conversion: '4.2%', boostable: true },
+  { id: 'v2', title: '顾然同款腕表·带货短视频',  mcnName: 'HypeStar Studio', artistName: 'Luna Soft', celebrity: '顾然', platform: 'KS', views: '56万', gmv: '¥22,800', conversion: '3.8%', boostable: true },
   { id: 'v3', title: 'AI艺人孵化平台介绍·合作款', mcnName: 'AI Star MCN', artistName: 'Project Zero', platform: 'XHS', views: '34万', gmv: '¥11,200', conversion: '3.1%', boostable: false },
 ];
 
 const MOCK_THREADS: NegotiationThread[] = [
-  { id: 'n1', mcnName: 'AI Star MCN', proposal: '于震切片长期合作（12期视频）', status: 'counter', myBid: 80000, theirAsk: 120000, lastUpdated: '2026-05-06' },
-  { id: 'n2', mcnName: 'HypeStar Studio', proposal: '肖战同款快手带货月包', status: 'accepted', myBid: 45000, theirAsk: 45000, lastUpdated: '2026-05-04' },
+  { id: 'n1', mcnName: 'AI Star MCN', proposal: '陈屿切片长期合作（12期视频）', status: 'counter', myBid: 80000, theirAsk: 120000, lastUpdated: '2026-05-06' },
+  { id: 'n2', mcnName: 'HypeStar Studio', proposal: '顾然同款快手带货月包', status: 'accepted', myBid: 45000, theirAsk: 45000, lastUpdated: '2026-05-04' },
   { id: 'n3', mcnName: 'TopCreator MCN', proposal: 'AI艺人矩阵广告植入', status: 'open', myBid: 30000, theirAsk: 60000, lastUpdated: '2026-05-07' },
 ];
 

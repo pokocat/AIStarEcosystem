@@ -51,13 +51,13 @@ const PLATFORM_ICONS: Record<string, string> = {
 };
 
 const MOCK_TASKS: PublishTask[] = [
-  { id: 't1', title: '于震《亮剑》切片 · 战术刀具带货', platform: '抖音', account: '@neon_v_official', artist: 'Neon V', celebrity: '于震', contentType: 'clip', status: 'scheduled', scheduledAt: '2026-05-08 18:00', dayOfMonth: 8, month: 5, gmvTarget: '¥8,000' },
-  { id: 't2', title: '肖战同款护肤套装 · AI口播脚本', platform: '快手', account: '@luna_soft_ks', artist: 'Luna Soft', celebrity: '肖战', contentType: 'voiceover', status: 'producing', scheduledAt: '2026-05-09 20:00', dayOfMonth: 9, month: 5 },
-  { id: 't3', title: '杨幂美妆推荐 · 图文种草', platform: '小红书', account: '@project_zero_xhs', artist: 'Project Zero', celebrity: '杨幂', contentType: 'graphic', status: 'review', scheduledAt: '2026-05-10 12:00', dayOfMonth: 10, month: 5, gmvTarget: '¥5,500' },
-  { id: 't4', title: '王一博联名球鞋 · 直播切片', platform: '视频号', account: '@neonv_channel', artist: 'Neon V', celebrity: '王一博', contentType: 'live_clip', status: 'draft', scheduledAt: '2026-05-12 19:30', dayOfMonth: 12, month: 5 },
-  { id: 't5', title: '于震古装剧切片 · 茶叶品牌', platform: '抖音', account: '@neon_v_official', artist: 'Neon V', celebrity: '于震', contentType: 'clip', status: 'published', scheduledAt: '2026-05-05 18:00', dayOfMonth: 5, month: 5, gmvTarget: '¥12,800' },
+  { id: 't1', title: '陈屿《破晓行动》切片 · 战术刀具带货', platform: '抖音', account: '@neon_v_official', artist: 'Neon V', celebrity: '陈屿', contentType: 'clip', status: 'scheduled', scheduledAt: '2026-05-08 18:00', dayOfMonth: 8, month: 5, gmvTarget: '¥8,000' },
+  { id: 't2', title: '顾然同款护肤套装 · AI口播脚本', platform: '快手', account: '@luna_soft_ks', artist: 'Luna Soft', celebrity: '顾然', contentType: 'voiceover', status: 'producing', scheduledAt: '2026-05-09 20:00', dayOfMonth: 9, month: 5 },
+  { id: 't3', title: '苏枝美妆推荐 · 图文种草', platform: '小红书', account: '@project_zero_xhs', artist: 'Project Zero', celebrity: '苏枝', contentType: 'graphic', status: 'review', scheduledAt: '2026-05-10 12:00', dayOfMonth: 10, month: 5, gmvTarget: '¥5,500' },
+  { id: 't4', title: '陆星野联名球鞋 · 直播切片', platform: '视频号', account: '@neonv_channel', artist: 'Neon V', celebrity: '陆星野', contentType: 'live_clip', status: 'draft', scheduledAt: '2026-05-12 19:30', dayOfMonth: 12, month: 5 },
+  { id: 't5', title: '陈屿古装剧切片 · 茶叶品牌', platform: '抖音', account: '@neon_v_official', artist: 'Neon V', celebrity: '陈屿', contentType: 'clip', status: 'published', scheduledAt: '2026-05-05 18:00', dayOfMonth: 5, month: 5, gmvTarget: '¥12,800' },
   { id: 't6', title: 'AI艺人孵化宣传片 · 无明星', platform: 'B站', account: '@luna_soft_bili', artist: 'Luna Soft', contentType: 'clip', status: 'draft', scheduledAt: '2026-05-15 20:00', dayOfMonth: 15, month: 5 },
-  { id: 't7', title: '肖战同款腕表 · 视频脚本', platform: '微博', account: '@neon_official', artist: 'Neon V', celebrity: '肖战', contentType: 'clip', status: 'scheduled', scheduledAt: '2026-05-13 16:00', dayOfMonth: 13, month: 5, gmvTarget: '¥18,000' },
+  { id: 't7', title: '顾然同款腕表 · 视频脚本', platform: '微博', account: '@neon_official', artist: 'Neon V', celebrity: '顾然', contentType: 'clip', status: 'scheduled', scheduledAt: '2026-05-13 16:00', dayOfMonth: 13, month: 5, gmvTarget: '¥18,000' },
 ];
 
 const DAYS_IN_MAY = Array.from({ length: 31 }, (_, i) => i + 1);
@@ -279,7 +279,7 @@ export const ContentCalendar = ({ lang }: { lang: Lang }) => {
                 <div className="grid grid-cols-2 gap-2">
                   <select className="h-10 bg-white/[0.03] border border-white/8 rounded-xl px-3 text-sm text-gray-400 focus:outline-none">
                     <option>{zh ? '关联明星' : 'Link celebrity'}</option>
-                    <option>于震</option><option>肖战</option><option>杨幂</option><option>王一博</option>
+                    <option>陈屿</option><option>顾然</option><option>苏枝</option><option>陆星野</option>
                   </select>
                   <select className="h-10 bg-white/[0.03] border border-white/8 rounded-xl px-3 text-sm text-gray-400 focus:outline-none">
                     <option>{zh ? '内容类型' : 'Content type'}</option>

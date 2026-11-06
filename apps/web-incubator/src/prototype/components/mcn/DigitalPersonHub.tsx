@@ -30,8 +30,8 @@ interface GenTask {
 
 const MOCK_MODELS: PersonModel[] = [
   {
-    id: 'm1', name: '张艺星标准形象-V3', partnerName: '张艺星', type: 'appearance',
-    status: 'active', version: 'V3.2', quality: 94, authContract: '张艺星数字人形象授权协议',
+    id: 'm1', name: '宋一鸣标准形象-V3', partnerName: '宋一鸣', type: 'appearance',
+    status: 'active', version: 'V3.2', quality: 94, authContract: '宋一鸣数字人形象授权协议',
     usageCount: 124, lastUsed: '2025-09-10', color: '#f59e0b', tags: ['日常', '商务', '年轻化'],
   },
   {
@@ -40,8 +40,8 @@ const MOCK_MODELS: PersonModel[] = [
     usageCount: 67, lastUsed: '2025-09-08', color: '#a855f7', tags: ['甜美', '亲切', '普通话'],
   },
   {
-    id: 'm3', name: '张艺星专业讲解形象-V1', partnerName: '张艺星', type: 'appearance',
-    status: 'review', version: 'V1.0', quality: 78, authContract: '张艺星数字人形象授权协议',
+    id: 'm3', name: '宋一鸣专业讲解形象-V1', partnerName: '宋一鸣', type: 'appearance',
+    status: 'review', version: 'V1.0', quality: 78, authContract: '宋一鸣数字人形象授权协议',
     usageCount: 0, lastUsed: '-', color: '#f59e0b', tags: ['专业', '讲解', '测试中'],
   },
   {
@@ -50,7 +50,7 @@ const MOCK_MODELS: PersonModel[] = [
     usageCount: 28, lastUsed: '2025-09-05', color: '#a855f7', tags: ['活力', '时尚', '年轻'],
   },
   {
-    id: 'm5', name: '张艺星音色克隆-综艺风', partnerName: '张艺星', type: 'voice',
+    id: 'm5', name: '宋一鸣音色克隆-综艺风', partnerName: '宋一鸣', type: 'voice',
     status: 'frozen', version: 'V1.5', quality: 82, authContract: '待续签',
     usageCount: 45, lastUsed: '2024-12-20', color: '#ef4444', tags: ['综艺', '活泼', '暂停使用'],
   },
@@ -58,8 +58,8 @@ const MOCK_MODELS: PersonModel[] = [
 
 const MOCK_TASKS: GenTask[] = [
   {
-    id: 'g1', modelId: 'm1', modelName: '张艺星标准形象-V3', partnerName: '张艺星',
-    copyTitle: '张艺星×极速数码618主推文案-V3', platform: 'DY', status: 'approved',
+    id: 'g1', modelId: 'm1', modelName: '宋一鸣标准形象-V3', partnerName: '宋一鸣',
+    copyTitle: '宋一鸣×极速数码618主推文案-V3', platform: 'DY', status: 'approved',
     duration: '1:24', createdAt: '2025-06-21', assignee: '制作小王',
     qualityScore: 92, issues: [],
   },
@@ -70,8 +70,8 @@ const MOCK_TASKS: GenTask[] = [
     qualityScore: 85, issues: ['口型同步度偏低'],
   },
   {
-    id: 'g3', modelId: 'm1', modelName: '张艺星标准形象-V3', partnerName: '张艺星',
-    copyTitle: '张艺星商品卖点文案-数码周', platform: 'KS', status: 'failed',
+    id: 'g3', modelId: 'm1', modelName: '宋一鸣标准形象-V3', partnerName: '宋一鸣',
+    copyTitle: '宋一鸣商品卖点文案-数码周', platform: 'KS', status: 'failed',
     duration: '-', createdAt: '2025-06-10', assignee: '制作小王',
     qualityScore: 52, issues: ['文案含风险词，生成已阻断', '文案未通过法务终审'],
   },

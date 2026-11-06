@@ -42,7 +42,7 @@ interface Settlement {
 
 const MOCK_RULES: CommissionRule[] = [
   { id: 'r1', name: '标准分成方案', artistId: 'a1', artistName: 'Neon V', platform: '全平台', mcnPct: 30, artistPct: 60, platformPct: 10, isDefault: true, updatedAt: '2026-04-01' },
-  { id: 'r2', name: '明星联动特殊方案', artistId: 'a1', artistName: 'Neon V', celebrity: '于震', platform: '抖音', mcnPct: 25, artistPct: 55, platformPct: 10, minMonthlyGmv: 50000, isDefault: false, updatedAt: '2026-04-15' },
+  { id: 'r2', name: '明星联动特殊方案', artistId: 'a1', artistName: 'Neon V', celebrity: '陈屿', platform: '抖音', mcnPct: 25, artistPct: 55, platformPct: 10, minMonthlyGmv: 50000, isDefault: false, updatedAt: '2026-04-15' },
   { id: 'r3', name: '新人培育期方案', artistId: 'a2', artistName: 'Luna Soft', platform: '快手', mcnPct: 40, artistPct: 50, platformPct: 10, isDefault: false, updatedAt: '2026-03-20' },
   { id: 'r4', name: '全能选手高佣方案', artistId: 'a3', artistName: 'Project Zero', platform: '小红书', mcnPct: 20, artistPct: 70, platformPct: 10, minMonthlyGmv: 100000, isDefault: false, updatedAt: '2026-05-01' },
 ];

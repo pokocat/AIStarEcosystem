@@ -56,28 +56,28 @@ const LICENSE_STATUS_CFG: Record<LicenseStatus, { zh: string; en: string; color:
 };
 
 const MOCK_BOOSTS: BoostTask[] = [
-  { id: 'b1', type: 'brand', videoTitle: '于震古装剧切片·战术刀具', platform: 'DY', account: '@neon_v_official',
+  { id: 'b1', type: 'brand', videoTitle: '陈屿古装剧切片·战术刀具', platform: 'DY', account: '@neon_v_official',
     budget: 5000, spent: 3280, status: 'active', goal: 'gmv', views: 128000, gmvIncrease: 18400, roi: 5.6,
-    startAt: '2026-05-01', brand: '某刀具品牌', licenseId: 'LIC-2025-0047', licenseStatus: 'valid', partner: '于震' },
-  { id: 'b2', type: 'self', videoTitle: '肖战同款护肤·AI口播版', platform: 'KS', account: '@luna_soft_ks',
+    startAt: '2026-05-01', brand: '某刀具品牌', licenseId: 'LIC-2025-0047', licenseStatus: 'valid', partner: '陈屿' },
+  { id: 'b2', type: 'self', videoTitle: '顾然同款护肤·AI口播版', platform: 'KS', account: '@luna_soft_ks',
     budget: 2000, spent: 2000, status: 'completed', goal: 'gmv', views: 56000, gmvIncrease: 8200, roi: 4.1,
-    startAt: '2026-04-25', endAt: '2026-04-28', licenseId: 'LIC-2025-0051', licenseStatus: 'valid', partner: '肖战' },
-  { id: 'b3', type: 'platform', videoTitle: '杨幂美妆推荐·爆款切片', platform: 'XHS', account: '@project_zero_xhs',
+    startAt: '2026-04-25', endAt: '2026-04-28', licenseId: 'LIC-2025-0051', licenseStatus: 'valid', partner: '顾然' },
+  { id: 'b3', type: 'platform', videoTitle: '苏枝美妆推荐·爆款切片', platform: 'XHS', account: '@project_zero_xhs',
     budget: 1500, spent: 1500, status: 'completed', goal: 'views', views: 312000, gmvIncrease: 11500, roi: 7.7,
-    startAt: '2026-04-20', endAt: '2026-04-22', licenseId: 'LIC-2025-0052', licenseStatus: 'valid', partner: '杨幂' },
-  { id: 'b4', type: 'brand', videoTitle: '王一博联名球鞋·矩阵版', platform: 'VCH', account: '@neonv_channel',
+    startAt: '2026-04-20', endAt: '2026-04-22', licenseId: 'LIC-2025-0052', licenseStatus: 'valid', partner: '苏枝' },
+  { id: 'b4', type: 'brand', videoTitle: '陆星野联名球鞋·矩阵版', platform: 'VCH', account: '@neonv_channel',
     budget: 8000, spent: 0, status: 'pending', goal: 'gmv', views: 0, gmvIncrease: 0, roi: 0,
-    startAt: '2026-05-10', brand: '某运动品牌', licenseId: 'LIC-2025-0055', licenseStatus: 'expiring', partner: '王一博' },
-  { id: 'b5', type: 'self', videoTitle: '于震切片·茶叶品牌（授权过期）', platform: 'DY', account: '@neon_v_official',
+    startAt: '2026-05-10', brand: '某运动品牌', licenseId: 'LIC-2025-0055', licenseStatus: 'expiring', partner: '陆星野' },
+  { id: 'b5', type: 'self', videoTitle: '陈屿切片·茶叶品牌（授权过期）', platform: 'DY', account: '@neon_v_official',
     budget: 1000, spent: 620, status: 'paused', goal: 'fans', views: 28000, gmvIncrease: 3200, roi: 5.2,
-    startAt: '2026-05-03', licenseId: 'LIC-2025-0039', licenseStatus: 'expired', partner: '于震' },
+    startAt: '2026-05-03', licenseId: 'LIC-2025-0039', licenseStatus: 'expired', partner: '陈屿' },
 ];
 
 const MOCK_VIDEOS: VideoOption[] = [
-  { id: 'v1', title: '于震古装剧切片-战术刀具', platform: 'DY', partner: '于震', licenseId: 'LIC-2025-0047', licenseStatus: 'valid', licenseExpiry: '2026-12-31' },
+  { id: 'v1', title: '陈屿古装剧切片-战术刀具', platform: 'DY', partner: '陈屿', licenseId: 'LIC-2025-0047', licenseStatus: 'valid', licenseExpiry: '2026-12-31' },
   { id: 'v2', title: '林音宝护肤精华-口播版', platform: 'XHS', partner: '林音宝', licenseId: 'LIC-2025-0048', licenseStatus: 'valid', licenseExpiry: '2026-10-15' },
-  { id: 'v3', title: '王一博联名球鞋-矩阵版', platform: 'VCH', partner: '王一博', licenseId: 'LIC-2025-0055', licenseStatus: 'expiring', licenseExpiry: '2025-09-20' },
-  { id: 'v4', title: '肖战美妆系列-过期授权版', platform: 'KS', partner: '肖战', licenseId: 'LIC-2025-0039', licenseStatus: 'expired', licenseExpiry: '2025-08-31' },
+  { id: 'v3', title: '陆星野联名球鞋-矩阵版', platform: 'VCH', partner: '陆星野', licenseId: 'LIC-2025-0055', licenseStatus: 'expiring', licenseExpiry: '2025-09-20' },
+  { id: 'v4', title: '顾然美妆系列-过期授权版', platform: 'KS', partner: '顾然', licenseId: 'LIC-2025-0039', licenseStatus: 'expired', licenseExpiry: '2025-08-31' },
   { id: 'v5', title: '疑似搬运-无授权素材', platform: 'KS', partner: '未知', licenseId: null, licenseStatus: 'none' },
 ];
 

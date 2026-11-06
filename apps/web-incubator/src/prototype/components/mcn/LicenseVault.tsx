@@ -30,7 +30,7 @@ interface Contract {
 }
 
 const MOCK_PARTNERS: Partner[] = [
-  { id: 'p1', name: '张艺星', type: 'celebrity', abbr: 'ZY', contracts: 3, active: 2, color: '#f59e0b', contactPerson: '张助理', contactEmail: 'zyx@example.com' },
+  { id: 'p1', name: '宋一鸣', type: 'celebrity', abbr: 'SY', contracts: 3, active: 2, color: '#f59e0b', contactPerson: '张助理', contactEmail: 'zyx@example.com' },
   { id: 'p2', name: '林音宝', type: 'celebrity', abbr: 'LY', contracts: 2, active: 2, color: '#a855f7', contactPerson: '林经纪', contactEmail: 'lyb@example.com' },
   { id: 'p3', name: '清洁卫士品牌方', type: 'brand', abbr: 'QJ', contracts: 2, active: 1, color: '#06b6d4', contactPerson: '王总监', contactEmail: 'wj@qlean.com' },
   { id: 'p4', name: '极速数码品牌', type: 'brand', abbr: 'JS', contracts: 1, active: 1, color: '#3b82f6', contactPerson: '李市场', contactEmail: 'li@jsdigital.com' },
@@ -40,12 +40,12 @@ const MOCK_PARTNERS: Partner[] = [
 
 const MOCK_CONTRACTS: Contract[] = [
   {
-    id: 'c1', partnerId: 'p1', partnerName: '张艺星', title: '张艺星 × 清洁卫士 短视频授权协议',
+    id: 'c1', partnerId: 'p1', partnerName: '宋一鸣', title: '宋一鸣 × 清洁卫士 短视频授权协议',
     status: 'active', signDate: '2025-10-01', startDate: '2025-10-01', endDate: '2026-09-30',
     platforms: ['DY', 'KS', 'XHS'], contentTypes: ['切片', '数字人', '混剪'], accounts: 8, usageCount: 124, limit: 500, regions: ['中国大陆'],
   },
   {
-    id: 'c2', partnerId: 'p1', partnerName: '张艺星', title: '张艺星 肖像直播回放切片授权',
+    id: 'c2', partnerId: 'p1', partnerName: '宋一鸣', title: '宋一鸣 肖像直播回放切片授权',
     status: 'expiring', signDate: '2024-12-01', startDate: '2024-12-01', endDate: '2025-11-30',
     platforms: ['DY'], contentTypes: ['切片'], accounts: 3, usageCount: 312, limit: 400, regions: ['中国大陆'],
   },

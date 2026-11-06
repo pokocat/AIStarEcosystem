@@ -68,9 +68,9 @@ const MOCK_TEMPLATES: MixTemplate[] = [
 
 const MOCK_TASKS: BatchTask[] = [
   {
-    id: 'bt1', name: '张艺星×极速数码-产品测评-9月矩阵', templateId: 'mt1', templateName: '产品测评标准模板',
+    id: 'bt1', name: '宋一鸣×极速数码-产品测评-9月矩阵', templateId: 'mt1', templateName: '产品测评标准模板',
     totalCount: 20, completedCount: 18, failedCount: 1, status: 'rendering',
-    startedAt: '2025-09-11 10:00', estimatedDone: '2025-09-11 12:30', partnerName: '张艺星',
+    startedAt: '2025-09-11 10:00', estimatedDone: '2025-09-11 12:30', partnerName: '宋一鸣',
   },
   {
     id: 'bt2', name: '林音宝护肤精华-生活情景-8月批次', templateId: 'mt2', templateName: '生活方式情景混剪',
@@ -116,9 +116,9 @@ export const BatchMixStudio = ({ lang }: Props) => {
 
   // Slots for new task wizard (mock)
   const SLOTS: MixSlot[] = [
-    { id: 's1', label: zh ? '开场片段 (0-5s)' : 'Intro (0-5s)', type: 'video', filled: true, content: '张艺星618-Clip-01.mp4' },
+    { id: 's1', label: zh ? '开场片段 (0-5s)' : 'Intro (0-5s)', type: 'video', filled: true, content: '宋一鸣618-Clip-01.mp4' },
     { id: 's2', label: zh ? '产品展示 (5-20s)' : 'Product (5-20s)', type: 'video', filled: true, content: '极速数码X12-产品展示.mp4' },
-    { id: 's3', label: zh ? '口播文案' : 'Script Copy', type: 'text', filled: true, content: '张艺星×极速数码618主推文案-V3' },
+    { id: 's3', label: zh ? '口播文案' : 'Script Copy', type: 'text', filled: true, content: '宋一鸣×极速数码618主推文案-V3' },
     { id: 's4', label: zh ? '功能演示 (20-35s)' : 'Demo (20-35s)', type: 'video', filled: false },
     { id: 's5', label: zh ? '背景音乐' : 'BGM', type: 'audio', filled: true, content: '清洁卫士背景音乐授权包' },
     { id: 's6', label: zh ? '结尾引导 (35-45s)' : 'CTA (35-45s)', type: 'image', filled: false },

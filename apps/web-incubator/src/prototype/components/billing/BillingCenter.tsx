@@ -30,17 +30,17 @@ const COIN_TRANSACTIONS = [
 ];
 
 const GMV_RECORDS = [
-  { id: 'g1', account: '潮品好物优选', platform: '抖音', celebrity: '贾乃亮', month: '2025-05', gmv: 2840000, platformFee: 42600, netGmv: 2797400 },
-  { id: 'g2', account: '优品生活号',   platform: '视频号', celebrity: '贾乃亮', month: '2025-05', gmv: 680000,  platformFee: 10200, netGmv: 669800 },
-  { id: 'g3', account: '潮品好物优选', platform: '抖音', celebrity: '郝邵文', month: '2025-05', gmv: 410000,  platformFee: 6150,  netGmv: 403850 },
-  { id: 'g4', account: '潮品好物优选', platform: '抖音', celebrity: '贾乃亮', month: '2025-04', gmv: 1920000, platformFee: 28800, netGmv: 1891200 },
-  { id: 'g5', account: '优品生活号',   platform: '视频号', celebrity: '贾乃亮', month: '2025-04', gmv: 530000,  platformFee: 7950,  netGmv: 522050 },
+  { id: 'g1', account: '潮品好物优选', platform: '抖音', celebrity: '周景行', month: '2025-05', gmv: 2840000, platformFee: 42600, netGmv: 2797400 },
+  { id: 'g2', account: '优品生活号',   platform: '视频号', celebrity: '周景行', month: '2025-05', gmv: 680000,  platformFee: 10200, netGmv: 669800 },
+  { id: 'g3', account: '潮品好物优选', platform: '抖音', celebrity: '许知遥', month: '2025-05', gmv: 410000,  platformFee: 6150,  netGmv: 403850 },
+  { id: 'g4', account: '潮品好物优选', platform: '抖音', celebrity: '周景行', month: '2025-04', gmv: 1920000, platformFee: 28800, netGmv: 1891200 },
+  { id: 'g5', account: '优品生活号',   platform: '视频号', celebrity: '周景行', month: '2025-04', gmv: 530000,  platformFee: 7950,  netGmv: 522050 },
 ];
 
 const MCN_ACCOUNTS = [
-  { id: 'ma1', name: '潮品好物优选', platform: '抖音', celebrities: ['贾乃亮', '郝邵文'], operatorShare: 25, platformShare: 1.5, pendingShare: 73.5 },
-  { id: 'ma2', name: '优品生活号',   platform: '视频号', celebrities: ['贾乃亮'], operatorShare: 20, platformShare: 1.5, pendingShare: 78.5 },
-  { id: 'ma3', name: '明星好货铺',   platform: '抖音', celebrities: ['李立群'], operatorShare: 22, platformShare: 1.5, pendingShare: 76.5 },
+  { id: 'ma1', name: '潮品好物优选', platform: '抖音', celebrities: ['周景行', '许知遥'], operatorShare: 25, platformShare: 1.5, pendingShare: 73.5 },
+  { id: 'ma2', name: '优品生活号',   platform: '视频号', celebrities: ['周景行'], operatorShare: 20, platformShare: 1.5, pendingShare: 78.5 },
+  { id: 'ma3', name: '明星好货铺',   platform: '抖音', celebrities: ['程远山'], operatorShare: 22, platformShare: 1.5, pendingShare: 76.5 },
 ];
 
 const TOPUP_PACKAGES = [
