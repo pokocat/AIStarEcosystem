@@ -211,8 +211,7 @@ public class ProposePlanTool implements StudioDialogueTool {
     /** The method for this plan: what the brief asks for, also during a production (不锁方法 2026-10-23); else the bound one. */
     private StudioSkill planningSkill(JsonNode args, ToolContext ctx) {
         if (catalog == null) return ctx.skill();
-        var decision = StudioSkillRouter.decide(catalog.available(), Set.of(), DialogueTools.text(args, "brief"), ctx.skill());
-        return decision.kind() == StudioSkillRouter.Kind.MATCH ? decision.skill() : ctx.skill();
+        return StudioSkillRouter.planningMethod(catalog.available(), DialogueTools.text(args, "brief"), ctx.skill());
     }
 
     /** The operations a raw model plan asks for. */

@@ -64,6 +64,19 @@ public final class StudioSkillRouter {
     }
 
     /**
+     * The method for a plan, chosen from the model's brief. The brief is the model's paraphrase, not the user's words, and a
+     * brief for a picture or a video quotes the text that goes on it, so it must not take the plan to the writing method: all
+     * that method can make is a text step (线上 2026-11-06：出一张带标题的主图变成了 110 积分写一段提示词). Writing is decided
+     * from the user's message before the plan; a plan that really is text still gets there through the covering method.
+     */
+    public static StudioSkill planningMethod(List<StudioSkill> active, String brief, StudioSkill bound) {
+        Decision decision = decide(active, Set.of(), brief, bound);
+        if (decision.kind() != Kind.MATCH) return bound;
+        boolean offWriting = bound != null && !WRITING_SKILL.equals(bound.key());
+        return offWriting && WRITING_SKILL.equals(decision.skill().key()) ? bound : decision.skill();
+    }
+
+    /**
      * @param bound the skill the thread is currently bound to (any status) or null; kept only when nothing names a job and
      *              it is still active and offered, so a withdrawn method never carries over.
      */
