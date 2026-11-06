@@ -2,6 +2,14 @@
 name: aliyun-deploy
 description: Use when deploying, redeploying, verifying, or rolling back the AI Star Eco production stack on Aliyun/ECS, including deploying all apps, deploying selected apps, building release artifacts, using the GitHub Actions production deployment workflow, or troubleshooting production deployment issues for server, web-celebrity, web-aiavatar, admin, and sau-service.
 ---
+## AIStar 双机 PostgreSQL 迁移准备（2026-11-05，优先于下方历史单机说明）
+
+新发布入口 `infra/scripts/deploy.sh server --plan`；新 A/B、ALB A100/B0、PG/Tair 配置以 `infra/cluster/production.json` 为准。旧单机发布入口已禁用，不能回退旧机。正式尚未切流，生产激活需另行窗口及正式导入凭证。API 两机关闭后台；后台/SAU 在 A 独立单活。前端及角色交接单独验收。
+
+完整文件、导入保护、滚动顺序与验收见 [`docs/aistar-postgresql-cutover.md`](../../../docs/aistar-postgresql-cutover.md)。下方旧 ECS/MySQL/身份同机描述仅作历史运维参考，不能用于新发布。
+
+业务 OSS 保留原账号杭州 `aiartist` Bucket、原 key/前缀与签名公网地址；新 A/B 后台走内网 Endpoint。本轮不新建桶、不改原授权、ACL 或付费账号；数据库快照和配置仍只走私有 SSH。
+
 
 # Aliyun Production Deploy
 
@@ -267,3 +275,28 @@ templates, OSS credentials, or PEM contents into the repo; runtime app credentia
 Keep `AEP_ENTERPRISE_ENABLED=false` unless enterprise foundation access is explicitly included in a release. E01–E12 provide relations/RBAC, corporate-owned recoverable credits, manual enterprise cash records, all Studio payer selection/admission/settlement, lifecycle recovery, and finance reports. Product enrollment stays explicit; no enterprise seats. This feature is enabled only when explicitly included in an authorized release. NEXT_PUBLIC_ENTERPRISE_ENABLED defaults0 and is a build-time flag for Studio navigation; rebuild with1 only when included in an authorized release. Platform finance handlers remain available for existing enterprise orders when new product entry is disabled. V57 records original recharge provenance and unique cash receipts; refunds wait for original frozen credits to settle and never use later recharge lots. V56 introduces corporate wallets with nullable user_id; once corporate data exists, rollback must retain corporate-aware wallet/ledger readers and hold settlement by wallet_id. Disabling new access must never disable in-flight financial settlement or reconciliation. Environment changes require the existing recreation/restart procedure appropriate to the actual service host.
 
 企业付款灰度：`AEP_ENTERPRISE_ALLOWED_IDS` 可填逗号分隔的企业ID；留空表示全局开关开启后全部企业。只限制新企业付款，不影响原任务结算与恢复。
+
+
+## PostgreSQL preparation — no production cutover（2026-11-04，未生产发布）
+
+V74基线不回改，V75结构补齐、V76业务标识比较、V77重试引用比较。用户名/slug与幂等请求使用限定列ICU+rtrim；身份UID、任务主键和凭据精确比较。ModelPrice/ModelDiscount新建记录补updatedAt。postgres备用/导入验证进程默认 `AEP_BACKGROUND_ENABLED=false`；仅主节点显式开启定时任务，启动发布恢复也遵守该开关，HTTP异步入口仍须另行排空。
+
+真实RDS独立演练已恢复192表/28,280行并核对全字段指纹；工具只允许演练库，不支持生产恢复。源时间按真实Hibernate/JDBC类型逐列转换，不统一减8小时。AIStar生产窗口尚未安排，不执行部署、停写、ALB/DNS切换，不借用账号中心的窗口。完整规则与验收入口见 `../../../docs/runbooks/postgresql-18-migration.md`。
+
+ALB就绪入口为 `GET /internal/ready`：应用启动完成且真实数据库连接与共享Tair状态有效才200，启动中、关闭或数据库故障返回503，响应仅含ready布尔值。它不承诺生成供应商、支付或发布能力均已可用；这些仍须业务验收。
+
+生产postgres配置由 `PostgresEnvironmentGuard` 在EnvironmentPostProcessor阶段检查，早于DataSource/Hibernate创建；拒绝旧环境遗留的ddl-auto=update或MySQL Flyway目录等覆盖。源env复制后必须显式替换数据库/driver/dialect、schema、Flyway目录/开关、UTC、日志目录与后台角色，不能只改DB_URL。实际数据库版本/角色/时区仍在连接后另行验证。
+
+PG正式主备滚动必须使用Tair共享旧短信状态：独立账号/TLS，正式DB15与`aistar:prod:sms:v1:`，演练DB14与独立prefix；`AEP_SMS_TAIR_URL`/`AEP_SMS_TAIR_PREFIX`必填，保留原AES密钥。原子预留、确认、失败锁定及一次消费失败时不回落内存，Tair不可用readiness返回503。首次迁移不能导出旧进程内存：验证码默认5分钟、失败锁定默认30分钟，按实际最长状态时长保守维护旧短信接口。默认运行库`aistar_prod`、DML角色`aistar_app`，DDL由单独`aistar_migrator`先执行，日志写`/var/log/aistar/*.log`并挂SLS采集目录。镜像固定已验收JAR和基础镜像digest；官方Podman通过Cloud Assistant安装，禁止为了运行镜像替换宿主系统Java/Python。
+
+Tair TLS使用阿里云实例`DescribeInstanceSSL`返回的官方CA链；为AIStar复制独立Java truststore（仅trustedCertEntry，保留默认公共根），不修改系统或账号中心信任库。原始JRE默认cacerts不包含此托管私有CA，不能关闭证书或主机名校验绕过。正式镜像入口要求挂载`AISTAR_JAVA_TRUSTSTORE=/etc/aistar/java-truststore`只读；完整API验收必须在相同truststore与不可变镜像上通过。
+
+迁移保持源JVM业务时区`Asia/Shanghai`，JDBC/Hibernate和PG连接仍UTC。源码4个未显式zone的凌晨03:30/40/45/50清理cron及若干LocalDate.now依赖JVM，不能随数据库迁移改成UTC导致业务日/调度晚8小时；用实际镜像的离线时钟/cron边界验收，后台依旧关闭。
+
+PG18低权限元数据兼容：固定pgJDBC42.7.14（旧42.7.4的hideUnprivilegedObjects会引用已移除RULE权限）；生产postgres运行期Flyway仅validate，DDL由迁移角色先执行，待执行迁移使运行期失败且不建表/不写历史。MySQL/dev及postgresit建库门禁保留原迁移行为。COPY使用UTF8字节流，避免Reader分块拆开emoji代理对；真实PG测试覆盖隐藏无权schema、只读历史验证/拒绝待执行DDL、超64KiB中文/emoji/引号/换行COPY。官方说明：https://jdbc.postgresql.org/changelogs/2025-01-14-42/ ，当前固定发行：https://jdbc.postgresql.org/changelogs/2026-10-07-42.7.14-release/ 。
+
+AIStar运行镜像必须同时固定官方Java与Node镜像digest；Studio仿片分析使用JAR内置Hypit适配器，单有Java/FFmpeg会返回STUDIO_HYPIT_UNAVAILABLE。仅从官方node镜像复制Node22+二进制，不安装npm依赖或替换宿主Node。AistarHypitRuntimeVerification离线调用真实StudioHypitMedia的requireReady/read，合成红蓝视频并验证24帧原始时间戳；两机在禁网/只读根目录下运行，不调用模型/支付/短信或发布平台。
+
+容器路径与本地文件：源环境已有AEP_STUDIO_RECREATION_MEDIA_BIN=/opt/ai-star-eco/hypit-runtime/bin，不能原样继承到镜像；新模板明确使用/usr/bin，并固定Node=/usr/local/bin/node。FileStorageService实际配置键是AEP_STORAGE_LOCAL_DIR，挂载/app/work为UID10001可写；AEP_FILE_STORAGE_ROOT不是有效替代。源file-storage约4GB，保留完整预同步副本并校验，正式停写后补增量；不能仅因已接OSS而假定本地目录可删除。预同步不是冻结数据，禁止据此清理旧服务文件。
+
+迁移文件中转只能使用独立私有Bucket，先以无敏感信息的canary验证匿名Range GET为403；仅设置object private ACL不足以证明Bucket策略未放行。禁止把数据库导出、文件归档或含业务信息的中转包放入现有公开素材Bucket。分发OCI归档时校验归档SHA256、配置摘要和RootFS摘要；Podman导出重新压缩可能改变引擎显示的manifest digest，不能据此跳过内容校验。

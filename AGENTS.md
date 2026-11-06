@@ -23,7 +23,7 @@ Studio 官方画布模板发布（2026-11-04）：版本化 `template-versions` 
 
 **核心信息（避免新 agent 反复翻仓）**：
 
-- 后端 server: Spring Boot 3.3.5 + Java 17，port **8080**，H2 (dev) / MySQL (prod)
+- 后端 server: Spring Boot 3.3.5 + Java 17，port **8080**，H2 (dev) / MySQL (迁移前 prod) / PostgreSQL18 (迁移适配目标)
 - 五个新 web app: **web-music**（3010）/ **web-drama**（3011）/ **web-celebrity**（3012）/ **web-aiavatar**（3013，数字资产平台 · 六类资产 **+ AI IP 工作台**）/ **web-star**（3014，明星商务工作台）
   - **web-aiavatar 一个应用两套形态（v0.190，v0.193 改判定）**：手机端 H5（480px 列 + 底部 tab 栏）与桌面面（52px 深群青顶栏 + 1120px 内容 + 无限画布）。**只有一套路由**（`(mobile)/x` 与 `(desktop)/x` 会解析到同一个 URL，Next 不允许）。
     **形态的真值是 `<html data-layout>`，CSS 与 JS 读同一个**（`src/shell/layout-mode.ts`）：用户显式选过（「我的 → 切换到电脑版」）以他为准，没选过按 `matchMedia(min-width: 960px)`。**新增桌面样式写 `html[data-layout="desktop"] xxx`，不要写 `@media`** —— 媒体查询绕过用户的选择。断点是 960 不是 1024：手机浏览器的「请求桌面版网站」会忽略 viewport meta、改用约 980px 的布局视口，卡 1024 就等于那个开关不生效（真实反馈）。
@@ -1384,6 +1384,41 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 ### Studio 提示词库（2026-11-01，已生产发布 `20261101-studio-prompt-library`，main `0ffdde365`）
 
 真源 `docs/studio-prompt-architecture.md`。生成类提示词（身份、规则、红线、做法、行业经验、场景拍法、出图描述）放提示词库，和技能同表，四层：底座 / 环节 / 方法 / 场景；代码只留输出格式、工具与动作协议、H3 改写、拼装与校验。种子在 `resources/studio/prompts/**`，生效规则同技能（不再有 `SEED_VERSION`），受理时冻结版本。调用点要进库：在 `StudioPromptCallPoints` 登记变量和输出格式，写环节种子文件，再加一条逐字一致测试（范式 `StudioScenePromptParityTest`）。**新代码不许在 Java 里写新的生成类提示词文字**（输出格式除外）；对话、画布、导演台已进库，只有交代素材编号和时间的标签留在代码（拼装）；旧 Prompt 管理里已迁走的键后台标「已迁走」、不能保存，新搬一个调用点要同时加进 `PromptService.MOVED_TO_STUDIO_LIBRARY`（测试核对）。环节的变量不能叫 `base` / `method` / `scene`（拼装器填分层正文用，同名会被盖掉，登记时直接报错）。导演台拼自己的底座 `base-director`，平台底座的事实规则面向商品宣传、不进短剧编剧；只看画面的环节（看图、复刻逐页观察、拉片、分批读图）不拼底座（登记时 `withoutBase()`）。导演台资产图、分镜图的候选记 `promptVersions`，「需更新」按候选那一版核对，后台改模板不会把已采用的图标成需更新。AI 视频编导请求是文字任务带 `scene`，服务端按 `stage-scene-script` 拼；场景创作文字以库为准，叠在场景目录上。 发布后画布出图和导演台出图不再读 `prompt_template.dap.ip_canvas_image`（线上那行是 v0.173 的「只画一个人、不要设定图」旧版，没有导入），改用 `stage-image`；见 `docs/releases/studio-prompt-library-release-20261101.md`。
+
+
+## PostgreSQL 18 兼容路径（本地准备，未生产迁移）
+
+后端新增 `postgres` 生产 profile、独立 `db/postgresql/V74__postgresql_baseline.sql`，只用 Flyway+validate，不执行旧 Java 迁移或运行期 DDL。旧 H2/MySQL 路径保留。细则与源库遗留结构差异见 `docs/runbooks/postgresql-18-migration.md`。新增 schema 变更同步两引擎新版本，不改已发布历史；真实 PG `-Ppostgres-test` 不得跳过。
+
+
+## PostgreSQL 18 准备增量（2026-11-04，未生产发布）
+
+V74基线不回改，V75结构补齐、V76业务标识比较、V77重试引用比较。用户名/slug与幂等请求使用限定列ICU+rtrim；身份UID、任务主键和凭据精确比较。ModelPrice/ModelDiscount新建记录补updatedAt。postgres备用/导入验证进程默认 `AEP_BACKGROUND_ENABLED=false`；仅主节点显式开启定时任务，启动发布恢复也遵守该开关，HTTP异步入口仍须另行排空。
+
+真实RDS独立演练已恢复192表/28,280行并核对全字段指纹；工具只允许演练库，不支持生产恢复。源时间按真实Hibernate/JDBC类型逐列转换，不统一减8小时。AIStar生产窗口尚未安排，不执行部署、停写、ALB/DNS切换，不借用账号中心的窗口。完整规则与验收入口见 `docs/runbooks/postgresql-18-migration.md`。
+
+ALB就绪入口为 `GET /internal/ready`：应用启动完成且真实数据库连接有效才200，启动中、关闭或数据库故障返回503，响应仅含ready布尔值。它不承诺生成供应商、支付或发布能力均已可用；这些仍须业务验收。
+
+生产postgres配置由 `PostgresEnvironmentGuard` 在EnvironmentPostProcessor阶段检查，早于DataSource/Hibernate创建；拒绝旧环境遗留的ddl-auto=update或MySQL Flyway目录等覆盖。源env复制后必须显式替换数据库/driver/dialect、schema、Flyway目录/开关、UTC、日志目录与后台角色，不能只改DB_URL。实际数据库版本/角色/时区仍在连接后另行验证。
+
+
+### 充值确认与旧轮询响应（2026-11-04，迁移回归修复，未部署）
+
+同一订单已经由服务端确认终态后，较早请求返回的pending不能覆盖确认状态；后续服务端退款等终态仍可更新。到账回调仍只触发一次，不以客户端扫码或打开支付页判断成功。并发回执回归固定同一React批次，原生付款与真实充值未执行。
+
+AIStar PG 主备滚动补充：旧 `/api/auth/sms/*` 的验证码、用途、单次消费、60秒限流、5次失败锁定改用 Tair 单键 Lua 原子状态。`TairSmsCodeStore` 只存 HMAC 手机号键和验证码摘要；短信发送先占位，显式失败释放自己的占位，未知供应商受理状态保留限流；Tair故障返回503且readiness撤下，不回退单机内存。旧MySQL/dev保留原行为。postgres默认tair并强制TLS，正式专用DB15/prefix `aistar:prod:sms:v1:`，演练DB14/prefix `aistar:rehearsal:sms:v1:`；逻辑库与命名空间隔离不等于账号ACL限制。迁移首次停写要处理旧进程内存验证码（TTL默认5分钟）、失败锁定（默认30分钟）和进行中的扫码；无法导出旧锁定时，旧短信接口按最长状态时长保守维护，不能只等待验证码TTL；不能声称可迁出旧进程内存。源码、真实Redis契约及双机真实Tair验证以最终回执为准。
+
+迁移保持源JVM业务时区`Asia/Shanghai`，JDBC/Hibernate和PG连接仍UTC。源码4个未显式zone的凌晨03:30/40/45/50清理cron及若干LocalDate.now依赖JVM，不能随数据库迁移改成UTC导致业务日/调度晚8小时；用实际镜像的离线时钟/cron边界验收，后台依旧关闭。
+
+PG18低权限元数据兼容：固定pgJDBC42.7.14（旧42.7.4的hideUnprivilegedObjects会引用已移除RULE权限）；生产postgres运行期Flyway仅validate，DDL由迁移角色先执行，待执行迁移使运行期失败且不建表/不写历史。MySQL/dev及postgresit建库门禁保留原迁移行为。COPY使用UTF8字节流，避免Reader分块拆开emoji代理对；真实PG测试覆盖隐藏无权schema、只读历史验证/拒绝待执行DDL、超64KiB中文/emoji/引号/换行COPY。官方说明：https://jdbc.postgresql.org/changelogs/2025-01-14-42/ ，当前固定发行：https://jdbc.postgresql.org/changelogs/2026-10-07-42.7.14-release/ 。
+
+管理端提示生命周期回归：ToastProvider跟踪并清理自动关闭计时器，手动关闭或卸载时释放，卸载后的异步回调忽略；防止离开/热更新后继续更新已销毁界面。验证自动关闭、手动关闭、卸载/晚到回调及真实Chromium交互，不跳过CI未处理异常。
+
+AIStar运行镜像必须同时固定官方Java与Node镜像digest；Studio仿片分析使用JAR内置Hypit适配器，单有Java/FFmpeg会返回STUDIO_HYPIT_UNAVAILABLE。仅从官方node镜像复制Node22+二进制，不安装npm依赖或替换宿主Node。AistarHypitRuntimeVerification离线调用真实StudioHypitMedia的requireReady/read，合成红蓝视频并验证24帧原始时间戳；两机在禁网/只读根目录下运行，不调用模型/支付/短信或发布平台。
+
+容器路径与本地文件：源环境已有AEP_STUDIO_RECREATION_MEDIA_BIN=/opt/ai-star-eco/hypit-runtime/bin，不能原样继承到镜像；新模板明确使用/usr/bin，并固定Node=/usr/local/bin/node。FileStorageService实际配置键是AEP_STORAGE_LOCAL_DIR，挂载/app/work为UID10001可写；AEP_FILE_STORAGE_ROOT不是有效替代。源file-storage约4GB，保留完整预同步副本并校验，正式停写后补增量；不能仅因已接OSS而假定本地目录可删除。预同步不是冻结数据，禁止据此清理旧服务文件。
+
+迁移文件中转只能使用独立私有Bucket，先以无敏感信息的canary验证匿名Range GET为403；仅设置object private ACL不足以证明Bucket策略未放行。禁止把数据库导出、文件归档或含业务信息的中转包放入现有公开素材Bucket。分发OCI归档时校验归档SHA256、配置摘要和RootFS摘要；Podman导出重新压缩可能改变引擎显示的manifest digest，不能据此跳过内容校验。
 
 **编导模板第 2 版与默认文字模型 Sonnet（2026-11-04）**：用户定的方向是内容放开、抓人优先：底座只留价格金额、地址、销量排名、获奖认证、检测数据、治病或绝对化功效不凭空写，其它大胆创作；**编导不再写「还缺」和【待补】**（真实用户因此改了 3 轮，页面还拦着不让出片）。脚本六段，镜头写成一块（作用 / 摄影 / 表演 / 台词 / 声音 / 转场），全片台词上限 = 时长 × 4。提示词要求全角标点，模型仍可能写 “ ” 和半角（Sonnet 写过「第1镜(0–3 秒)」「小夏说:「」），`H3PromptRewrite.normalizeSpeechQuotes` 统一后才认得出。原绑 Qwen 的 6 个用途（`DAP_PERSONA`、`DAP_VIDEO_PROMPT`、`DRAMA_SCRIPT_DRAFT`、`VIDEO_REF_ANALYSIS`、`APPEARANCE_FORGE`、`GENERAL`）和 Studio 文字场景默认都改成接入点 `ai-onetoken-sonnet55`（`claude-sonnet-5-5`，网关不认 `sonnet-5.5`），Qwen 留作可选。售价按 OneToken 成本 +50%、1 元 = 100 积分（输入 0.2111、输出 1.0553 积分/千 Token）。思考过程计入输出且关不掉：编导约 1 万、3 集剧本约 4 万输出 Token，所以输出上限配 64000。**OneToken 约 105 秒断开不出字节的连接，流也可能被 `stream_interrupted` 打断**：`AiModelInvocationService.doChat` 对声明 `chatSupportsStreaming` 的端点一律流式收齐再返回（调用方无感），中断自动重发，最多 3 次。这个接入点要开 `chat_supports_streaming`，不开长任务必失败。MAX 通道（`claude-sonnet-5-5-MAX`）不走思考，不流式同样会断，单价未确认，没用。2026-11-05 已生产发布 `20261104-sonnet-streaming-editor`：线上 3 集剧本 376 秒、输出 49305 Token、53 积分，编导 53 秒、9 积分。**这个 Key 额度用完时所有默认文字功能一起失败**（429 `API_KEY_QUOTA_EXHAUSTED`，不回退），发布当天就撞上过；飞书机器人的额度告警见 `docs/runbooks/model-task-alerts.md`。
 

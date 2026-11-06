@@ -1,0 +1,52 @@
+{
+  "cluster_id": "aistar-production",
+  "region": "cn-hangzhou",
+  "load_balancer_id": "alb-8lqfxfyvfyitbs3s6r",
+  "ssh_key": "/Users/donis/Documents/\u5404\u79cd\u79d8\u94a5/aliyun/slsf.pem",
+  "operation_python": "/opt/aibuzz-id/runtime/python311/bin/python3",
+  "root": "/opt/aistar-cluster",
+  "drain_seconds": 180,
+  "drain_timeout_seconds": 1800,
+  "verify_ips": [
+    "118.178.32.245",
+    "121.40.171.94"
+  ],
+  "nodes": {
+    "a": {
+      "host": "101.37.189.227",
+      "private_ip": "10.20.1.215",
+      "instance_id": "i-bp1dkkgmjbcpa21a5yi0"
+    },
+    "b": {
+      "host": "121.199.172.157",
+      "private_ip": "10.20.2.195",
+      "instance_id": "i-bp1as9b78f1fjmzlnvct"
+    }
+  },
+  "modes": {
+    "stage": {
+      "group": "sgp-nxqoyryygo3inp1q7o",
+      "host": "api-rehearsal.aibuzz.cn",
+      "port": 18084,
+      "unit": "aistar-cluster-rehearsal",
+      "database": "aistar_schema_rehearsal",
+      "schema": "aistar_api_rehearsal",
+      "role": "aistar_runtime",
+      "redis_db": 14,
+      "environment": "/opt/aistar-migration/preparation/api-environment-private.json"
+    },
+    "production": {
+      "group": "sgp-212mzoquv3twzpsr8s",
+      "host": "api.aibuzz.cn",
+      "port": 8080,
+      "unit": "aistar-api",
+      "database": "aistar_prod",
+      "schema": "public",
+      "role": "aistar_app",
+      "redis_db": 15,
+      "environment": "/etc/aistar/server.json",
+      "probe_host": "api-readiness.aibuzz.cn"
+    }
+  },
+  "physical_cluster_id": "aibuzz-production"
+}

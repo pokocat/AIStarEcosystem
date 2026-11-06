@@ -20,7 +20,7 @@ public class RechargeRecord {
     private LocalDate recordDate;
 
     /** Maps to DTO field "desc". */
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(length = org.hibernate.Length.LONG32)
     private String description;
 
     @Enumerated(EnumType.STRING)

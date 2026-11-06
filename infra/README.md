@@ -1,4 +1,12 @@
 # infra/ — 阿里云部署基础设施
+## AIStar 双机 PostgreSQL 迁移准备（2026-11-05，优先于下方历史单机说明）
+
+新发布入口 `infra/scripts/deploy.sh server --plan`；新 A/B、ALB A100/B0、PG/Tair 配置以 `infra/cluster/production.json` 为准。旧单机发布入口已禁用，不能回退旧机。正式尚未切流，生产激活需另行窗口及正式导入凭证。API 两机关闭后台；后台/SAU 在 A 独立单活。前端及角色交接单独验收。
+
+完整文件、导入保护、滚动顺序与验收见 [`docs/aistar-postgresql-cutover.md`](../docs/aistar-postgresql-cutover.md)。下方旧 ECS/MySQL/身份同机描述仅作历史运维参考，不能用于新发布。
+
+业务文件继续使用原账号杭州 `aiartist` OSS Bucket、原对象 key/前缀和签名公网地址；新节点后台使用同地域内网 Endpoint。原存储/下行流量资源包按原账号规则抵扣，不随 ECS 迁移而转账号；本轮不新建桶、不改授权或 ACL。SQL 快照、配置与私有迁移归档仅走 SSH。
+
 
 把部署所需的所有资产（nginx 配置、systemd 单元、环境变量模板、RDS 建库脚本、OSS Bucket
 策略、部署脚本）**全部归一到 git**。新机器从零拉起一套完整环境，按本文 §3
@@ -819,3 +827,34 @@ web-aiavatar 的 Next rewrite 设置 `experimental.proxyClientMaxBodySize=130mb`
 ## Studio JSON 临时 JVM-Sandbox（2026-10-25 UTC）
 
 生产原进程已加载只处理 `ModelJson.parse` Jackson 异常的 `aep-json-recovery` 模块，未替换 app.jar 或修改 systemd / server.env。namespace `aep-json-20261024`，管理端口只在环回 `24769`，目录 `/home/ecs-user/.local/share/aistareco/hotfix/studio-json-31fc2bdf`。下次正常发布先按 [手册](../docs/runbooks/studio-json-jvm-sandbox.md) 卸载临时模块，再从包含永久修复的 main 构建应用；不要仅重启旧 JAR，否则临时修复会丢失。证据见 [发布记录](../docs/releases/studio-json-jvm-sandbox-release-20261025.md)。
+
+## PostgreSQL 18 准备
+
+新增 `env/server-postgres.env.example`，生产 profile 使用 postgres；预检同时识别原 mysql 与 postgres 的 JDBC 引擎。新PG只跑独立V74基线和Hibernate validate，不能把旧MySQL迁移历史拷入PG。当前不修改现有生产主机、RDS、ALB或DNS。源结构差异与演练/回滚步骤见 `../docs/runbooks/postgresql-18-migration.md`；双机worker角色与分布式认领仍须独立验收。
+
+
+## AIStar PG18 迁移准备边界（2026-11-04，未生产发布）
+
+V74基线不回改，V75结构补齐、V76业务标识比较、V77重试引用比较。用户名/slug与幂等请求使用限定列ICU+rtrim；身份UID、任务主键和凭据精确比较。ModelPrice/ModelDiscount新建记录补updatedAt。postgres备用/导入验证进程默认 `AEP_BACKGROUND_ENABLED=false`；仅主节点显式开启定时任务，启动发布恢复也遵守该开关，HTTP异步入口仍须另行排空。
+
+真实RDS独立演练已恢复192表/28,280行并核对全字段指纹；工具只允许演练库，不支持生产恢复。源时间按真实Hibernate/JDBC类型逐列转换，不统一减8小时。AIStar生产窗口尚未安排，不执行部署、停写、ALB/DNS切换，不借用账号中心的窗口。完整规则与验收入口见 `../docs/runbooks/postgresql-18-migration.md`。
+
+ALB就绪入口为 `GET /internal/ready`：应用启动完成且真实数据库连接有效才200，启动中、关闭或数据库故障返回503，响应仅含ready布尔值。它不承诺生成供应商、支付或发布能力均已可用；这些仍须业务验收。
+
+生产postgres配置由 `PostgresEnvironmentGuard` 在EnvironmentPostProcessor阶段检查，早于DataSource/Hibernate创建；拒绝旧环境遗留的ddl-auto=update或MySQL Flyway目录等覆盖。源env复制后必须显式替换数据库/driver/dialect、schema、Flyway目录/开关、UTC、日志目录与后台角色，不能只改DB_URL。实际数据库版本/角色/时区仍在连接后另行验证。
+
+AIStar PG 不可变运行镜像见 [images/server/README.md](images/server/README.md)，使用已验收 JAR 和固定基础镜像 digest；两机官方 Podman/离线媒体与受保护 ALB 演练独立验收，不代表正式激活。
+
+AIStar PG 主备滚动补充：旧 `/api/auth/sms/*` 的验证码、用途、单次消费、60秒限流、5次失败锁定改用 Tair 单键 Lua 原子状态。`TairSmsCodeStore` 只存 HMAC 手机号键和验证码摘要；短信发送先占位，显式失败释放自己的占位，未知供应商受理状态保留限流；Tair故障返回503且readiness撤下，不回退单机内存。旧MySQL/dev保留原行为。postgres默认tair并强制TLS，正式专用DB15/prefix `aistar:prod:sms:v1:`，演练DB14/prefix `aistar:rehearsal:sms:v1:`；逻辑库与命名空间隔离不等于账号ACL限制。迁移首次停写要处理旧进程内存验证码（TTL默认5分钟）、失败锁定（默认30分钟）和进行中的扫码；无法导出旧锁定时，旧短信接口按最长状态时长保守维护，不能只等待验证码TTL；不能声称可迁出旧进程内存。源码、真实Redis契约及双机真实Tair验证以最终回执为准。
+
+Tair TLS使用阿里云实例`DescribeInstanceSSL`返回的官方CA链；为AIStar复制独立Java truststore（仅trustedCertEntry，保留默认公共根），不修改系统或账号中心信任库。原始JRE默认cacerts不包含此托管私有CA，不能关闭证书或主机名校验绕过。正式镜像入口要求挂载`AISTAR_JAVA_TRUSTSTORE=/etc/aistar/java-truststore`只读；完整API验收必须在相同truststore与不可变镜像上通过。
+
+迁移保持源JVM业务时区`Asia/Shanghai`，JDBC/Hibernate和PG连接仍UTC。源码4个未显式zone的凌晨03:30/40/45/50清理cron及若干LocalDate.now依赖JVM，不能随数据库迁移改成UTC导致业务日/调度晚8小时；用实际镜像的离线时钟/cron边界验收，后台依旧关闭。
+
+PG18低权限元数据兼容：固定pgJDBC42.7.14（旧42.7.4的hideUnprivilegedObjects会引用已移除RULE权限）；生产postgres运行期Flyway仅validate，DDL由迁移角色先执行，待执行迁移使运行期失败且不建表/不写历史。MySQL/dev及postgresit建库门禁保留原迁移行为。COPY使用UTF8字节流，避免Reader分块拆开emoji代理对；真实PG测试覆盖隐藏无权schema、只读历史验证/拒绝待执行DDL、超64KiB中文/emoji/引号/换行COPY。官方说明：https://jdbc.postgresql.org/changelogs/2025-01-14-42/ ，当前固定发行：https://jdbc.postgresql.org/changelogs/2026-10-07-42.7.14-release/ 。
+
+AIStar运行镜像必须同时固定官方Java与Node镜像digest；Studio仿片分析使用JAR内置Hypit适配器，单有Java/FFmpeg会返回STUDIO_HYPIT_UNAVAILABLE。仅从官方node镜像复制Node22+二进制，不安装npm依赖或替换宿主Node。AistarHypitRuntimeVerification离线调用真实StudioHypitMedia的requireReady/read，合成红蓝视频并验证24帧原始时间戳；两机在禁网/只读根目录下运行，不调用模型/支付/短信或发布平台。
+
+容器路径与本地文件：源环境已有AEP_STUDIO_RECREATION_MEDIA_BIN=/opt/ai-star-eco/hypit-runtime/bin，不能原样继承到镜像；新模板明确使用/usr/bin，并固定Node=/usr/local/bin/node。FileStorageService实际配置键是AEP_STORAGE_LOCAL_DIR，挂载/app/work为UID10001可写；AEP_FILE_STORAGE_ROOT不是有效替代。源file-storage约4GB，保留完整预同步副本并校验，正式停写后补增量；不能仅因已接OSS而假定本地目录可删除。预同步不是冻结数据，禁止据此清理旧服务文件。
+
+迁移文件中转只能使用独立私有Bucket，先以无敏感信息的canary验证匿名Range GET为403；仅设置object private ACL不足以证明Bucket策略未放行。禁止把数据库导出、文件归档或含业务信息的中转包放入现有公开素材Bucket。分发OCI归档时校验归档SHA256、配置摘要和RootFS摘要；Podman导出重新压缩可能改变引擎显示的manifest digest，不能据此跳过内容校验。

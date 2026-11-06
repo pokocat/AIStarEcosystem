@@ -8,5 +8,6 @@ import java.util.Optional;
 public interface EnterpriseInvitationRepository extends JpaRepository<EnterpriseInvitation,String> {
     Page<EnterpriseInvitation> findByEnterpriseIdOrderByCreatedAtDesc(String enterpriseId,Pageable pageable);
     Optional<EnterpriseInvitation> findByTokenHash(String tokenHash);
+    @org.springframework.data.jpa.repository.Query("select x from EnterpriseInvitation x where x.enterpriseId = ?1 and x.createdBy = ?2 and trim(trailing from x.clientRequestId) = trim(trailing from ?3)")
     Optional<EnterpriseInvitation> findByEnterpriseIdAndCreatedByAndClientRequestId(String enterpriseId,String createdBy,String clientRequestId);
 }

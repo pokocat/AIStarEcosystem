@@ -13,7 +13,7 @@ public interface CreditGrantRepository extends JpaRepository<CreditGrant,String>
     @Query("select x from CreditGrant x where x.id=:id")
     Optional<CreditGrant> lockById(@Param("id") String id);
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select g from CreditGrant g where g.source=:source and g.sourceReference=:reference")
+    @Query("select g from CreditGrant g where g.source=:source and trim(trailing from g.sourceReference)=trim(trailing from :reference)")
     Optional<CreditGrant> lockBySourceAndSourceReference(@Param("source") String source, @Param("reference") String reference);
     List<CreditGrant> findByWalletIdOrderByExpiresAtAscIdAsc(String walletId);
     /** Spendable lots only. Callers hold the wallet lock, which serializes every change to this wallet's lots. */

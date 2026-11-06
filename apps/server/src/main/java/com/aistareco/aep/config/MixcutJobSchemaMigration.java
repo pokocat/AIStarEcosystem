@@ -80,6 +80,9 @@ public class MixcutJobSchemaMigration implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
+        try (Connection c = dataSource.getConnection()) {
+            if ("PostgreSQL".equals(c.getMetaData().getDatabaseProductName())) return;
+        } catch (SQLException e) { throw new IllegalStateException("数据库类型检查失败", e); }
         for (AddColumn c : COLUMNS) {
             tryAddColumn(c);
         }

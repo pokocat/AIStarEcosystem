@@ -4,7 +4,6 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -62,8 +61,8 @@ public class IpProject {
     private String templateVersionId;
 
     /** Server-owned creation inputs and node bindings. Workers never rewrite the client canvas. */
-    @Lob
-    @Column(name = "template_instance_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "template_instance_json", length = org.hibernate.Length.LONG32)
     private String templateInstanceJson;
 
     /** draft | published */
@@ -71,8 +70,8 @@ public class IpProject {
     private String status;
 
     /** IpProjectDoc 整存整取（nodes/edges/viewport）。 */
-    @Lob
-    @Column(nullable = false, columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(nullable = false, length = org.hibernate.Length.LONG32)
     private String docJson;
 
     /** 封面 = 主形象选中图的 storage key（发布时写入；coverUrl 出 wire 派生）。 */

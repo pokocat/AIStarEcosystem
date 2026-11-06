@@ -106,7 +106,7 @@ public final class AepCryptoUtil {
         if (profilesCsv == null || profilesCsv.isBlank()) return false;
         for (String p : profilesCsv.split(",")) {
             String trimmed = p.trim().toLowerCase();
-            if (trimmed.equals("mysql") || trimmed.equals("prod") || trimmed.equals("production")) {
+            if ((trimmed.equals("mysql") || trimmed.equals("postgres")) || trimmed.equals("prod") || trimmed.equals("production")) {
                 return true;
             }
         }

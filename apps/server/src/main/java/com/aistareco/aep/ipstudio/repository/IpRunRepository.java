@@ -13,6 +13,7 @@ public interface IpRunRepository extends JpaRepository<IpRun, String> {
     @org.springframework.data.jpa.repository.Query("select r from IpRun r where r.status in ('done','failed') and not exists (select x from IpLibraryRecord x where x.id=concat('ILC-',r.id)) order by r.createdAt")
     List<IpRun> uncollectedLibraryRuns(org.springframework.data.domain.Pageable pageable);
 
+    @org.springframework.data.jpa.repository.Query("select x from IpRun x where x.projectId = ?1 and trim(trailing from x.clientRequestId) = trim(trailing from ?2)")
     Optional<IpRun> findByProjectIdAndClientRequestId(String projectId, String clientRequestId);
 
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)

@@ -250,7 +250,11 @@ require_url_prefix() {
 check_server_env() {
   check_env_file "$SERVER_ENV_FILE" "server" || return 0
 
-  expect_value "$SERVER_ENV_FILE" SPRING_PROFILES_ACTIVE mysql
+  local db_profile
+  db_profile="$(get_env "$SERVER_ENV_FILE" SPRING_PROFILES_ACTIVE)"
+  if [[ "$db_profile" != mysql && "$db_profile" != postgres ]]; then
+    err "SPRING_PROFILES_ACTIVE 必须是 mysql 或 postgres，不能混入开发或测试 profile"
+  fi
   require_key "$SERVER_ENV_FILE" DB_URL
   require_key "$SERVER_ENV_FILE" DB_USERNAME
   require_key "$SERVER_ENV_FILE" DB_PASSWORD
@@ -262,13 +266,22 @@ check_server_env() {
 
   local db_url sms_driver cdn_driver signed_strategy coze_enabled
   db_url="$(get_env "$SERVER_ENV_FILE" DB_URL)"
-  if [[ "$db_url" != jdbc:mysql://* ]]; then
-    err "DB_URL must start with jdbc:mysql://"
+  if [[ "$db_profile" == postgres ]]; then
+    require_key "$SERVER_ENV_FILE" AEP_SMS_TAIR_URL
+    require_key "$SERVER_ENV_FILE" AEP_SMS_TAIR_PREFIX
+    local sms_tair_url sms_tair_prefix
+    sms_tair_url="$(get_env "$SERVER_ENV_FILE" AEP_SMS_TAIR_URL)"
+    sms_tair_prefix="$(get_env "$SERVER_ENV_FILE" AEP_SMS_TAIR_PREFIX)"
+    [[ "$sms_tair_url" == rediss://* ]] || err "AEP_SMS_TAIR_URL 必须使用 TLS"
+    [[ "$sms_tair_prefix" == aistar:prod:sms:v1: ]] || err "AEP_SMS_TAIR_PREFIX 必须使用正式独立命名空间"
   fi
-  if [[ "$db_url" != *"characterEncoding=UTF-8"* || "$db_url" != *"useUnicode=true"* ]]; then
+  if [[ "$db_url" != jdbc:"${db_profile/postgres/postgresql}"://* ]]; then
+    err "DB_URL 与数据库 profile 不一致"
+  fi
+  if [[ "$db_profile" == mysql && ( "$db_url" != *"characterEncoding=UTF-8"* || "$db_url" != *"useUnicode=true"* ) ]]; then
     warn "DB_URL should include characterEncoding=UTF-8 and useUnicode=true"
   fi
-  if [[ "$db_url" != *"utf8mb4"* ]]; then
+  if [[ "$db_profile" == mysql && "$db_url" != *"utf8mb4"* ]]; then
     warn "DB_URL should include an utf8mb4 connection collation"
   fi
 

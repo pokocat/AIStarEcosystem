@@ -9,7 +9,8 @@ import java.util.Optional;
 public interface CardProfileRepository extends JpaRepository<CardProfile, String> {
 
     /** 公开读的唯一入口。软删与未发布的过滤放在 service，便于区分 404 与「尚未发布」。 */
-    Optional<CardProfile> findBySlug(String slug);
+    @org.springframework.data.jpa.repository.Query("select x from CardProfile x where trim(trailing from x.slug) = trim(trailing from :slug)")
+    Optional<CardProfile> findBySlug(@org.springframework.data.repository.query.Param("slug") String slug);
 
     List<CardProfile> findByOwnerUserIdAndDeletedAtIsNullOrderByUpdatedAtDesc(String ownerUserId);
 

@@ -55,33 +55,33 @@ public class MixcutDraft {
     private String templateVersion;
 
     /** slot_bindings 完整 JSON（Record<slot_id, SlotBinding>）—— 实例的核心填充态。 */
-    @Lob
-    @Column(name = "slot_bindings_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "slot_bindings_json", length = org.hibernate.Length.LONG32)
     private String slotBindingsJson;
 
     /** 画布快照（{width,height,fps}）。 */
-    @Lob
-    @Column(name = "canvas_snapshot_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "canvas_snapshot_json", length = org.hibernate.Length.LONG32)
     private String canvasSnapshotJson;
 
     /** 槽位快照数组。 */
-    @Lob
-    @Column(name = "slots_snapshot_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "slots_snapshot_json", length = org.hibernate.Length.LONG32)
     private String slotsSnapshotJson;
 
     /** 场景快照数组（[{id, label?, duration_sec, slot_ids[]}]，按场景顺序）。 */
-    @Lob
-    @Column(name = "scenes_snapshot_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "scenes_snapshot_json", length = org.hibernate.Length.LONG32)
     private String scenesSnapshotJson;
 
     /** 任务级扰动总开关 JSON。 */
-    @Lob
-    @Column(name = "perturbation_overrides_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "perturbation_overrides_json", length = org.hibernate.Length.LONG32)
     private String perturbationOverridesJson;
 
     /** 扰动贴图池配置 JSON（slot 级 Map）。 */
-    @Lob
-    @Column(name = "sticker_pool_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "sticker_pool_json", length = org.hibernate.Length.LONG32)
     private String stickerPoolJson;
 
     /** light / moderate / aggressive */

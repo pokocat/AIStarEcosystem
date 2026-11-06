@@ -48,6 +48,9 @@ import java.util.UUID;
 @Service
 public class PublishJobService {
 
+    @org.springframework.beans.factory.annotation.Value("${aep.background.enabled:true}")
+    private boolean backgroundEnabled = true;
+
     private static final Logger log = LoggerFactory.getLogger(PublishJobService.class);
 
     /**
@@ -769,6 +772,7 @@ public class PublishJobService {
      */
     @PostConstruct
     void resumeInflight() {
+        if (!backgroundEnabled) return;
         List<PublishJobStatus> inflight = List.of(
                 PublishJobStatus.UPLOADING,
                 PublishJobStatus.TRANSCODING,

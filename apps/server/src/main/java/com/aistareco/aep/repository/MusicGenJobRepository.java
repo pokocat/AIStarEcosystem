@@ -14,6 +14,7 @@ public interface MusicGenJobRepository extends JpaRepository<MusicGenJob, String
     List<MusicGenJob> findByOwnerUserIdOrderByCreatedAtDesc(String ownerUserId);
 
     /** 幂等查单：同一 owner 重复提交同一 clientRequestId 直接复用。 */
+    @org.springframework.data.jpa.repository.Query("select x from MusicGenJob x where x.ownerUserId = ?1 and trim(trailing from x.clientRequestId) = trim(trailing from ?2)")
     Optional<MusicGenJob> findByOwnerUserIdAndClientRequestId(String ownerUserId, String clientRequestId);
 
     /**

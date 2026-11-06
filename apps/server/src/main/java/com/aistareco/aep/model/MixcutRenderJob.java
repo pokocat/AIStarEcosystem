@@ -34,17 +34,17 @@ public class MixcutRenderJob {
     private String templateThumbnail;
 
     /** slot_bindings 完整 JSON（Record<slot_id, SlotBinding>）。 */
-    @Lob
-    @Column(name = "slot_bindings_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "slot_bindings_json", length = org.hibernate.Length.LONG32)
     private String slotBindingsJson;
 
     /** v0.10: 画布快照（{width,height,fps}），缺省回退 720x1280。 */
-    @Column(name = "canvas_snapshot_json", columnDefinition = "LONGTEXT")
+    @Column(name = "canvas_snapshot_json", length = org.hibernate.Length.LONG32)
     private String canvasSnapshotJson;
 
     /** v0.10: 槽位快照数组（[{slot_id, layer_type, rect, z_index, perturbation_policy}]）。 */
-    @Lob
-    @Column(name = "slots_snapshot_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "slots_snapshot_json", length = org.hibernate.Length.LONG32)
     private String slotsSnapshotJson;
 
     /**
@@ -53,12 +53,12 @@ public class MixcutRenderJob {
      * duration_sec 决定。slot_ids 让 overlay 知道自己归属哪个场景的时段。
      * 缺省 → 渲染器回退到 v0.24 行为（硬编 segCount=Math.min(2, sources.size())）。
      */
-    @Lob
-    @Column(name = "scenes_snapshot_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "scenes_snapshot_json", length = org.hibernate.Length.LONG32)
     private String scenesSnapshotJson;
 
     /** v0.10: 任务级扰动总开关 {allow_mirror, allow_speed, allow_brightness, allow_saturation}。 */
-    @Column(name = "perturbation_overrides_json", columnDefinition = "LONGTEXT")
+    @Column(name = "perturbation_overrides_json", length = org.hibernate.Length.LONG32)
     private String perturbationOverridesJson;
 
     /**
@@ -70,8 +70,8 @@ public class MixcutRenderJob {
      *   }
      * 渲染器按 jobId+variantIndex 作为 seed 从 pool_ids 抽样，叠加 GIF overlay。
      */
-    @Lob
-    @Column(name = "sticker_pool_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "sticker_pool_json", length = org.hibernate.Length.LONG32)
     private String stickerPoolJson;
 
     /** light / moderate / aggressive */

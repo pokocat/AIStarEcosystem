@@ -72,11 +72,11 @@ public class PublishJob {
     @Column(length = 512)
     private String title;
 
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(length = org.hibernate.Length.LONG32)
     private String description;
 
     /** 标签数组，逗号分隔存储 */
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(length = org.hibernate.Length.LONG32)
     @Convert(converter = StringListConverter.class)
     @Builder.Default
     private List<String> tags = new ArrayList<>();
@@ -106,7 +106,7 @@ public class PublishJob {
     @Column(name = "error_code", length = 64)
     private String errorCode;
 
-    @Column(name = "error_message", columnDefinition = "LONGTEXT")
+    @Column(name = "error_message", length = org.hibernate.Length.LONG32)
     private String errorMessage;
 
     /** 本任务实际扣的积分；失败也不退 */
@@ -136,7 +136,7 @@ public class PublishJob {
      * 用户在 /me/publish-jobs/{id}/interact 提交后，sau-service 在 page 上
      * 填完验证码 → 再发 callback 推 status=PUBLISHING + interactionRequired=null。
      */
-    @Column(name = "interaction_required", columnDefinition = "LONGTEXT")
+    @Column(name = "interaction_required", length = org.hibernate.Length.LONG32)
     private String interactionRequiredJson;
 
     @Column(name = "scheduled_at")

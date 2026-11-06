@@ -39,8 +39,8 @@ public class MixcutRenderOutput {
     private int phashDistanceToSource;
 
     /** 应用的扰动参数 JSON：mirror / speed / brightness / saturation / crop / slot_jitter */
-    @Lob
-    @Column(name = "applied_transforms_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "applied_transforms_json", length = org.hibernate.Length.LONG32)
     private String appliedTransformsJson;
 
     @Column(length = 64)

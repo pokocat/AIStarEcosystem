@@ -79,11 +79,11 @@ public class DigitalIp {
     private int statEndorsements;
     private long statCommercialValueCredits;
 
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(length = org.hibernate.Length.LONG32)
     private String bio;
 
     /** JSON-encoded list of domain ids. */
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(length = org.hibernate.Length.LONG32)
     @Convert(converter = StringListConverter.class)
     private List<String> domains;
 
@@ -92,7 +92,7 @@ public class DigitalIp {
      * (e.g. faceStyle, fashionStyle, age, height, sweetness, energy, mystery, confidence…)
      * 以 JSON 形式存在单列，字段演进时无需迁移表结构。
      */
-    @Column(name = "incubation_params", columnDefinition = "LONGTEXT")
+    @Column(name = "incubation_params", length = org.hibernate.Length.LONG32)
     @Convert(converter = JsonMapConverter.class)
     private Map<String, Object> incubationParams;
 

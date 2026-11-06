@@ -35,7 +35,7 @@ public class StarDigitalHumanRequest {
     @Column(nullable = false, length = 32)
     private UsageType usageType;
 
-    @Column(name = "platforms_json", columnDefinition = "LONGTEXT")
+    @Column(name = "platforms_json", length = org.hibernate.Length.LONG32)
     @Convert(converter = StringListConverter.class)
     @Builder.Default
     private List<String> platforms = new ArrayList<>();

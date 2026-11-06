@@ -81,15 +81,15 @@ public class ErrorLog {
     private String errorCode;
 
     /** 给用户看的错误文案（异常 message）。 */
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(length = org.hibernate.Length.LONG32)
     private String message;
 
     /** 完整堆栈（已截到 8KB 内，避免 OOM）。 */
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(length = org.hibernate.Length.LONG32)
     private String stacktrace;
 
     /** 请求 query string + sanitized body 摘要（JSON 文本）。 */
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(length = org.hibernate.Length.LONG32)
     private String requestParams;
 
     @Column(length = 512)

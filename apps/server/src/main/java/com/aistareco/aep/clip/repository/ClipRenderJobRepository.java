@@ -17,6 +17,7 @@ public interface ClipRenderJobRepository extends JpaRepository<ClipRenderJob, St
     long sumOutputBytesByOwner(@org.springframework.data.repository.query.Param("owner") String owner);
 
     Optional<ClipRenderJob> findByIdAndExternalOwnerId(String id, String owner);
+    @org.springframework.data.jpa.repository.Query("select x from ClipRenderJob x where x.externalOwnerId = ?1 and trim(trailing from x.clientRequestId) = trim(trailing from ?2)")
     Optional<ClipRenderJob> findByExternalOwnerIdAndClientRequestId(String owner, String requestId);
     List<ClipRenderJob> findTop20ByStatusInOrderByCreatedAtAsc(Collection<String> statuses);
     List<ClipRenderJob> findTop100ByStatusInAndHeartbeatAtBefore(Collection<String> statuses, Instant cutoff);

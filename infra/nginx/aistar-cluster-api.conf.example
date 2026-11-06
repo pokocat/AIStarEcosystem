@@ -1,0 +1,22 @@
+# Render separately on A/B; do not enable production Host before the approved cutover.
+# Readiness is for ALB health only; deployment controls are never proxied.
+server {
+    listen 80;
+    server_name api.aibuzz.cn;
+    add_header X-Aistar-Node RENDER_A_OR_B always;
+    location = /internal/deployment { return 404; }
+    location ^~ /internal/deployment/ { return 404; }
+    location = /internal/ready { proxy_pass http://127.0.0.1:8080; }
+    # The marker is installed only after the PG import and guarded private probes pass.
+    location / {
+        if (!-f /opt/aistar-cluster/public-activated) { return 503; }
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_buffering off;
+        proxy_read_timeout 600s;
+    }
+}

@@ -15,6 +15,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -24,10 +25,57 @@ jobs:
       - name: Prepare pinned platform SDK
         run: ./infra/scripts/prepare-platform-sdk.sh
       - name: Media test dependencies
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-cjk fontconfig
+        timeout-minutes: 10
+        run: |
+          packages=()
+          command -v ffmpeg >/dev/null || packages+=(ffmpeg)
+          command -v fc-list >/dev/null || packages+=(fontconfig)
+          if ! command -v fc-list >/dev/null || [[ -z "$(fc-list ':lang=zh' file)" ]]; then
+            packages+=(fonts-noto-cjk)
+          fi
+          if (( ${#packages[@]} )); then
+            # The Azure mirror stalled the media gate for 10 minutes. Keep Ubuntu's
+            # official signed packages, using its primary HTTPS archive on this runner.
+            for source in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
+              if [[ -f "$source" ]]; then
+                sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' "$source"
+              fi
+            done
+            sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
+            sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y --no-install-recommends "${packages[@]}"
+          fi
+          ffmpeg -version > /tmp/aistar-ci-ffmpeg-version.txt
+          head -n 1 /tmp/aistar-ci-ffmpeg-version.txt
+          test -n "$(fc-list ':lang=zh' file)"
       - name: Full server tests and package
         working-directory: apps/server
         run: ./mvnw -B -DargLine=-Xmx3g -Dspring.test.context.cache.maxSize=2 verify
+      - name: Compile isolated migration helpers
+        working-directory: apps/server
+        run: python3 scripts/compile-migration-tools.py
+      - name: Cluster release policy refusal tests
+        run: |
+          python3 -m py_compile infra/scripts/cluster/archive_transfer.py infra/scripts/cluster/bundle.py
+          python3 infra/scripts/cluster/test_policy.py
+      - name: PostgreSQL 18.0 real database gate
+        working-directory: apps/server
+        run: ./mvnw -B -Ppostgres-test -Dspring.test.context.cache.maxSize=2 -Dapi.version=1.44 -DforkCount=1 -DreuseForks=true test && python3 scripts/check-postgres-reports.py
+      - name: Save verified backend identity
+        run: |
+          python3 - <<'PYCODE'
+          import json,hashlib,os,pathlib,subprocess
+          root=pathlib.Path('.');jar=root/'apps/server/target/ai-star-eco-server-1.0.0.jar'
+          proof={'sha':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'source_tree':subprocess.check_output(['git','rev-parse','HEAD:apps/server'],text=True).strip(),'jar_sha256':hashlib.sha256(jar.read_bytes()).hexdigest(),'tests_passed':True,'ci_run':os.environ['GITHUB_RUN_ID']}
+          (jar.parent/'verified-backend.json').write_text(json.dumps(proof,indent=2))
+          PYCODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-backend
+          path: |
+            apps/server/target/ai-star-eco-server-1.0.0.jar
+            apps/server/target/migration-tools/
+            apps/server/target/verified-backend.json
+          retention-days: 3
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -41,6 +89,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: pnpm/action-setup@v4
         with:
           version: 10.33.2
@@ -49,9 +98,31 @@ jobs:
           node-version: '22'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm typecheck:all
-      - run: pnpm test:all
+      # The shared runner also executes jsdom suites. Running every workspace
+      # simultaneously can starve UI interactions past the unchanged 5s deadline.
+      - run: pnpm -r --workspace-concurrency=1 run typecheck
+      - run: pnpm -r --workspace-concurrency=1 run test
       - run: pnpm check:api-contract
+  build-web-incubator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @ai-star-eco/web-incubator typecheck
+      - run: pnpm --filter @ai-star-eco/web-incubator build
   build-and-browser:
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -69,6 +140,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: pnpm/action-setup@v4
         with:
           version: 10.33.2
@@ -80,8 +152,20 @@ jobs:
       - run: pnpm --filter @ai-star-eco/${{ matrix.product }} build
       - name: Install isolated browser test dependency
         run: |
+          # Use Ubuntu's signed primary archive for Playwright's OS dependencies too.
+          for source in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
+            if [[ -f "$source" ]]; then
+              sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' "$source"
+            fi
+          done
           npm install --prefix "$RUNNER_TEMP/browser-test" --no-package-lock --no-save playwright@1.55.1
           "$RUNNER_TEMP/browser-test/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Verify stale payment poll preserves server confirmation
+        if: matrix.product == 'web-aiavatar'
+        run: NODE_PATH="$RUNNER_TEMP/browser-test/node_modules" node scripts/migration/payment-race-browser.cjs
+      - name: Verify toast deadlines are released on navigation
+        if: matrix.product == 'admin-new'
+        run: NODE_PATH="$RUNNER_TEMP/browser-test/node_modules" node scripts/migration/toast-lifecycle-browser.cjs
       - name: Verify handoff and exit in production pages
         env:
           PRODUCT: ${{ matrix.product }}

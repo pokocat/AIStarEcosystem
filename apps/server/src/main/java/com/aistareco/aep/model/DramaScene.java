@@ -39,13 +39,13 @@ public class DramaScene {
     private String mood;
 
     /** 风格标签 JSON：string[]。 */
-    @Lob
-    @Column(name = "style_tags_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "style_tags_json", length = org.hibernate.Length.LONG32)
     private String styleTagsJson;
 
     /** 多角度参考图集 JSON：[{cdnKey, angle, label}]（真值 cdnKey，出 wire 派生 url）。 */
-    @Lob
-    @Column(name = "ref_images_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "ref_images_json", length = org.hibernate.Length.LONG32)
     private String refImagesJson;
 
     @Column(name = "created_at", nullable = false)

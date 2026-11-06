@@ -25,7 +25,7 @@ public class CelebrityTemplate {
     @Column(nullable = false)
     private String style;
 
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(length = org.hibernate.Length.LONG32)
     private String description;
 
     /** CelebrityEngine：KeLing / HiGen / MiniMax。 */
@@ -41,11 +41,11 @@ public class CelebrityTemplate {
     private String plays;
     private String conversionRate;
 
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(length = org.hibernate.Length.LONG32)
     private String fitHint;
 
     /** previews 数组（{thumb, videoUrl}[]） JSON。 */
-    @Column(name = "previews_json", columnDefinition = "LONGTEXT")
+    @Column(name = "previews_json", length = org.hibernate.Length.LONG32)
     private String previewsJson;
 
     // ── v0.4 字段：模板效果预览（admin 上传整段预览视频） ─────────────────────

@@ -37,7 +37,7 @@ public class PlatformConnection {
 
     private Instant connectedAt;
 
-    @Column(name = "credentials_json", columnDefinition = "LONGTEXT")
+    @Column(name = "credentials_json", length = org.hibernate.Length.LONG32)
     @Convert(converter = JsonMapConverter.class)
     private Map<String, Object> credentialsJson;
 

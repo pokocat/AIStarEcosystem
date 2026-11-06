@@ -47,7 +47,7 @@ public class PublishJobEvent {
     @Column(name = "progress")
     private Integer progress;
 
-    @Column(name = "note", columnDefinition = "LONGTEXT")
+    @Column(name = "note", length = org.hibernate.Length.LONG32)
     private String note;
 
     @Column(name = "at", nullable = false)

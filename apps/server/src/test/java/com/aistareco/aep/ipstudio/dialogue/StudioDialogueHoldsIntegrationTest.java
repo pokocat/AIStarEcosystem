@@ -53,6 +53,10 @@ import static org.junit.jupiter.api.Assertions.*;
 @ActiveProfiles("test")
 class StudioDialogueHoldsIntegrationTest {
     @DynamicPropertySource static void database(DynamicPropertyRegistry r) {
+        if (Boolean.getBoolean("aep.postgres-test.enabled")) {
+            return;
+        }
+
         r.add("spring.datasource.url", () -> "jdbc:h2:mem:studio-dialogue-holds;MODE=MySQL;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=20000");
     }
 

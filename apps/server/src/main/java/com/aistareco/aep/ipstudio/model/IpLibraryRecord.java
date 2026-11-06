@@ -9,7 +9,7 @@ public class IpLibraryRecord {
     @Id @Column(length=32) private String id;
     @Column(nullable=false,length=64) private String ownerUserId;
     @Column(nullable=false,length=16) private String recordType;
-    @Lob @Column(nullable=false,columnDefinition="LONGTEXT") private String payloadJson;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR) @Column(nullable=false,length = org.hibernate.Length.LONG32) private String payloadJson;
     private Instant createdAt;
     private Instant updatedAt;
     private Instant deletedAt;

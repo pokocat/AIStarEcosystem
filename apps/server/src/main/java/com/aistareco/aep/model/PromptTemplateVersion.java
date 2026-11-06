@@ -26,15 +26,15 @@ public class PromptTemplateVersion {
     @Column(name = "version", nullable = false)
     private int version;
 
-    @Lob
-    @Column(name = "system_prompt", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "system_prompt", length = org.hibernate.Length.LONG32)
     private String systemPrompt;
 
-    @Lob
-    @Column(name = "user_template", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "user_template", length = org.hibernate.Length.LONG32)
     private String userTemplate;
 
-    @Lob
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
     @Column(name = "params_json", columnDefinition = "TEXT")
     private String paramsJson;
 
