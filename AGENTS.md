@@ -1391,6 +1391,6 @@ Studio 工作线程默认 24，单个模型的上限看端点配置；图片调�
 
 真源 `docs/studio-inspiration-library.md`。新版导航加「灵感」（`/templates`，默认案例，可筛视频 / 图片）。点开是弹窗不是全屏（`StudioTemplateUse`），点「做同款」才复制并进画布；`onCreated` 现在收的是地址（`studioTemplateCopyHref`），画布里有 `studioStart: 'assistant'` 的节点就打开助手并预填、绑定 `studioSkill`，只填不发。35 条示例的文字在 `scripts/inspiration/catalog.mjs`，用 `scripts/inspiration/publish.mjs` 经现有接口发布（超管令牌，不调模型）。**文字是我们自己写的，不收录 `resources/skills` 里第三方技能的原文。** 条目的约束由 `inspiration-catalog.test.ts` 守着：提示词不写比例时长、不写「做同款 / 复刻」、不出现第三方品牌和模型名。`publishFromProject` 发布实例时不再删文字节点的正文。
 
-### AI 视频页的长视频（2026-11-06 已生产发布 `20261106-segmented-video-2`，main `f90dfab6d`；线上还没真跑过，Seedance 2.5 的 30 秒配置未改）
+### AI 视频页的长视频（2026-11-06 已生产发布 `20261106-segmented-video-2`，main `f90dfab6d`；线上还没真跑过；Seedance 2.5 已配到 30 秒，也没有真实样本）
 
-真源 `docs/studio-segmented-video.md`。时长超过所选模型单段上限时一键做到成片：写分段脚本 → 审脚本 → 分镜图（第 1 张之后都参考它）→ 审分镜图（不合格重出一次）→ 各段全能参考出片 → 合成。切段只在 `SegmentedPlan`，页面显示服务端算的。复用连续制作（`StudioPlanExecutor`），但没有对话和确认卡（`threadId` 为空），用户在页面上看价点生成就是确认；提示词做到那一步才编（`StudioSegmentedRun`），格式用导演台的。一键到底只对带 `segmented` 状态的执行生效，别的连续制作照旧停下来问。**导演台一段仍然最长 15 秒**（`DirectorService.MAX_CLIP_SECONDS`），模型放开到 30 秒只给这条流程。把 Seedance 2.5 配到 30 秒要先发代码再改配置。真模型整条链没跑过，见 TODO。
+真源 `docs/studio-segmented-video.md`。时长超过所选模型单段上限时一键做到成片：写分段脚本 → 审脚本 → 分镜图（第 1 张之后都参考它）→ 审分镜图（不合格重出一次）→ 各段全能参考出片 → 合成。切段只在 `SegmentedPlan`，页面显示服务端算的。复用连续制作（`StudioPlanExecutor`），但没有对话和确认卡（`threadId` 为空），用户在页面上看价点生成就是确认；提示词做到那一步才编（`StudioSegmentedRun`），格式用导演台的。一键到底只对带 `segmented` 状态的执行生效，别的连续制作照旧停下来问。**导演台一段仍然最长 15 秒**（`DirectorService.MAX_CLIP_SECONDS`），模型放开到 30 秒只给这条流程。别的模型配到 15 秒以上，要先有这版服务端再改配置。真模型整条链没跑过，见 TODO。
