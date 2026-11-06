@@ -51,7 +51,7 @@ class DialogueStreamingInvocationTest {
 
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
-    void collectedScriptCanBeStoppedWithoutRetryingOrInventingUsage(boolean receipt) throws Exception {
+    void collectedScriptStoppedMidStreamUsesTheReceiptOrAnEstimateMarkedAsSuch(boolean receipt) throws Exception {
         var received = new CountDownLatch(1);
         var release = new CountDownLatch(1);
         var cancelled = new java.util.concurrent.atomic.AtomicBoolean();
@@ -62,7 +62,8 @@ class DialogueStreamingInvocationTest {
             exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
             exchange.sendResponseHeaders(200, 0);
             try (var out = exchange.getResponseBody()) {
-                out.write("data: {\"choices\":[{\"delta\":{\"content\":\"partial script\"}}]}\n\n".getBytes(StandardCharsets.UTF_8));
+                out.write("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"abcdefgh\"}}]}\n\n".getBytes(StandardCharsets.UTF_8));
+                out.write("data: {\"choices\":[{\"delta\":{\"content\":\"剧本开头\"}}]}\n\n".getBytes(StandardCharsets.UTF_8));
                 if (receipt) out.write("data: {\"choices\":[],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":20}}\n\n".getBytes(StandardCharsets.UTF_8));
                 out.flush(); received.countDown(); release.await(5, TimeUnit.SECONDS);
             } catch (Exception ignored) { }
@@ -77,13 +78,16 @@ class DialogueStreamingInvocationTest {
             // 等到 reader 消费这一小段确定性的本地回执，再停止。
             Thread.sleep(100);
             cancelled.set(true);
+            var reply = result.get(3, TimeUnit.SECONDS);
+            assertEquals("cancelled", reply.finishReason());
+            assertEquals("剧本开头", reply.content());
+            assertEquals(!receipt, reply.usageEstimated());
             if (receipt) {
-                var reply = result.get(3, TimeUnit.SECONDS);
-                assertEquals("cancelled", reply.finishReason());
                 assertEquals(100L, reply.promptTokens()); assertEquals(20L, reply.completionTokens());
             } else {
-                var error = assertThrows(java.util.concurrent.ExecutionException.class, () -> result.get(3, TimeUnit.SECONDS));
-                assertEquals("IP_RUN_CANCELLED", ((BusinessException) error.getCause()).getCode());
+                // 思考 8 个英文字符 = 2，正文 4 个汉字 = 3；思考也按输出算。
+                assertEquals(5L, reply.completionTokens());
+                assertTrue(reply.promptTokens() > 0, "请求已发出，输入不能按零算");
             }
             assertEquals(1, calls.get());
         } finally { release.countDown(); executor.shutdownNow(); }

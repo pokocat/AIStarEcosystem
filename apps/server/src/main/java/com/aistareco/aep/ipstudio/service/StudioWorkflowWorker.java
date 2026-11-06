@@ -189,6 +189,7 @@ public class StudioWorkflowWorker {
                             output.putObject("billing").put("inputTokens",consumed[0]).put("outputTokens",consumed[1])
                                     .put("credits",tokenRate.settle(consumed[0],consumed[1]))
                                     .put("inputCreditsPerK",tokenRate.inputCreditsPerK()).put("outputCreditsPerK",tokenRate.outputCreditsPerK());
+                            if(reply.usageEstimated())output.withObject("/billing").put("usageEstimated",true);
                             directorReceipt=mapper.createObjectNode();directorReceipt.set("billing",output.path("billing").deepCopy());
                             if(runs.findById(id).map(IpRun::isCancelRequested).orElse(false)){finish(id,output,null);return;}
                         }
@@ -741,9 +742,9 @@ public class StudioWorkflowWorker {
         var allowed=transactions.execute(tx->{
             var run=billingLockedRun(id).orElseThrow();
             if(!IpRun.STATUS_RUNNING.equals(run.getStatus())||run.isCancelRequested())return false;
+            if(!"studio-director".equals(run.getKind()))return true;
             try {
                 ObjectNode input=(ObjectNode)mapper.readTree(run.getInputJson());
-                if(!"studio-director".equals(run.getKind())&&!isSceneDirector(input))return true;
                 input.withObject("/_exec").put("modelDispatchedAt",Instant.now().toString());
                 run.setInputJson(mapper.writeValueAsString(input));runs.save(run);return true;
             }catch(Exception invalid){throw new IllegalStateException(invalid);}
@@ -758,12 +759,11 @@ public class StudioWorkflowWorker {
         return "text".equals(input.path("operation").asText()) && "video-script".equals(input.path("scene").path("kind").asText());
     }
     private boolean directorDispatched(IpRun run) {
+        if(!"studio-director".equals(run.getKind()))return false;
         try {
-            JsonNode input=mapper.readTree(run.getInputJson());
-            if(!"studio-director".equals(run.getKind())&&!isSceneDirector(input))return false;
-            JsonNode exec=input.path("_exec");
+            JsonNode exec=mapper.readTree(run.getInputJson()).path("_exec");
             return exec.hasNonNull("modelDispatchedAt")||run.getStartedAt()!=null&&!exec.path("modelDispatchTracked").asBoolean(false);
-        }catch(Exception invalid){return "studio-director".equals(run.getKind())&&run.getStartedAt()!=null;}
+        }catch(Exception invalid){return run.getStartedAt()!=null;}
     }
     private void pendingDirectorUsage(IpRun run) {
         long reserved=run.getCost();
@@ -823,7 +823,7 @@ public class StudioWorkflowWorker {
                 } catch(com.fasterxml.jackson.core.JsonProcessingException e) {throw new IllegalStateException(e);}
             }
             run.setStatus(cancelled?IpRun.STATUS_FAILED:IpRun.STATUS_DONE);run.setStage(cancelled?"failed":"done");run.setPct(100);
-            if(cancelled){run.setErrorCode("IP_RUN_CANCELLED");run.setErrorMessage("已停止创作，已按模型实际用量结算");}
+            if(cancelled){run.setErrorCode("IP_RUN_CANCELLED");run.setErrorMessage(output.path("billing").path("usageEstimated").asBoolean()?"已停止创作，已按生成的内容结算":"已停止创作，已按模型实际用量结算");}
         } else {
             if(directorDispatched(run)&&(cancelled||error instanceof BusinessException b&&"IP_RUN_TIMEOUT".equals(b.getCode()))) {
                 pendingDirectorUsage(run);return;

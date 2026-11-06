@@ -194,6 +194,33 @@ test("undecided payer shows both long-video prices and a starting price", async 
   expect(api.price).toHaveBeenCalledWith(expect.objectContaining({ payer: "enterprise", enterpriseId: "team" }), expect.anything());
 });
 
+test("an enterprise payer whose quote is refused still gets the standard price and can generate", async () => {
+  longDraft();
+  api.payer.mockResolvedValue({ kind: "decided", billing: { mode: "enterprise", enterpriseId: "team" } });
+  api.price.mockImplementation(async ({ payer }) => {
+    if (payer === "enterprise") throw new Error("已达到企业设定的在途任务上限");
+    return { ...PRICE, discountedVideoCost: 800, videoDiscountName: "个人折扣" };
+  });
+  await open();
+  await waitFor(() => expect(go().textContent).toContain("1,624 积分"));
+  expect(go().querySelector("s")).toBeNull();
+  expect(screen.queryByText(/个人折扣/)).toBeNull();
+  fireEvent.click(go());
+  await waitFor(() => expect(api.start).toHaveBeenCalled());
+});
+
+test("coming back to the page re-quotes without taking the shown price away", async () => {
+  longDraft();
+  api.price.mockResolvedValue({ ...PRICE, discountedVideoCost: 800 });
+  await open();
+  await waitFor(() => expect(go().textContent).toContain("824 积分"));
+  api.price.mockClear();
+  api.price.mockImplementation(() => new Promise(() => {}));
+  await act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
+  await waitFor(() => expect(api.price).toHaveBeenCalled(), { timeout: 1500 });
+  expect(go().textContent).toContain("824 积分");
+});
+
 function directorDraft() {
   const made = addScriptNode({ ...EMPTY, nodes: [productNode] as never }, { ask: "写一版脚本", revision: false, prompt: "写脚本", materialIds: ["product"], imageIds: ["product"], duration: 15, ratio: "9:16", language: "中文" });
   made.doc.nodes.at(-1)!.metadata!.studio!.runId = "script-run";
@@ -213,7 +240,7 @@ test("director stop responds immediately, disables repeats and allows another re
   expect((screen.getByRole("button", { name: "已请求停止" }) as HTMLButtonElement).disabled).toBe(true);
   expect(api.cancelRun).toHaveBeenCalledTimes(1);
   await act(async () => resolve({ id: "script-run", status: "running", stage: "studio.stopping", output: {} }));
-  expect(screen.getByText("已停止创作，正在核对已用费用")).toBeTruthy();
+  expect(screen.getByText("已停止创作，正在结算已用费用")).toBeTruthy();
   fireEvent.change(screen.getByRole("textbox", { name: "想改哪里" }), { target: { value: "换一个开场" } });
   expect((screen.getByRole("button", { name: "让编导改" }) as HTMLButtonElement).disabled).toBe(false);
 });
@@ -227,12 +254,12 @@ test("a refused stop restores the writing state and lets the user retry", async 
   fireEvent.click(screen.getByRole("button", { name: "停止" }));
   await waitFor(() => expect(api.failure).toHaveBeenCalled());
   expect(screen.getByRole("button", { name: "停止" })).toBeTruthy();
-  expect(screen.queryByText("已停止创作，正在核对已用费用")).toBeNull();
+  expect(screen.queryByText("已停止创作，正在结算已用费用")).toBeNull();
 });
 
-test.each(["IP_RUN_CANCELLED", "STUDIO_USAGE_PENDING"])("director %s is a stopped state, and its returned status is applied immediately", async code => {
+test("a stopped director is shown as stopped, and its returned status is applied immediately", async () => {
   directorDraft();
-  api.cancelRun.mockResolvedValue({ id: "script-run", status: "failed", errorCode: code,
+  api.cancelRun.mockResolvedValue({ id: "script-run", status: "failed", errorCode: "IP_RUN_CANCELLED",
     errorMessage: "创作已停止", output: {} });
   await open();
   const director = screen.queryByRole("button", { name: "AI 编导" });

@@ -65,19 +65,46 @@ class StudioWorkflowWorkerJsonTest {
         return h;
     }
 
-    @Test void sceneDirectorStopsTheStreamAndDoesNotInventAZeroUsageReceipt() throws Exception {
+    @Test void sceneDirectorStoppedBeforeTheModelIsCalledReleasesTheWholeHold() throws Exception {
+        var h = sceneDirector();
+        var endpoint = AiModelEndpoint.builder().id("qwen").providerType(AiModelProviderType.DEEPSEEK).enabled(true).build();
+        when(h.models().resolveAcceptedEndpoint(any(), any(), any())).thenAnswer(call -> {
+            h.run().setCancelRequested(true);
+            return Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint, null, true));
+        });
+        h.worker().runBlocking("r");
+        verify(h.models(), never()).invokeChatCancellable(any(), any(), anyList(), anyMap(), any());
+        assertEquals("IP_RUN_CANCELLED", h.run().getErrorCode());
+        verify(h.credits()).releaseHold(anyString(), eq("r"), anyString());
+        verify(h.credits(), never()).commitHold(anyString(), anyString(), anyLong(), anyString(), any());
+    }
+
+    @Test void sceneDirectorStoppedMidStreamSettlesTheEstimateAndReleasesTheRest() throws Exception {
         var h = sceneDirector();
         when(h.models().invokeChatCancellable(any(), any(), anyList(), anyMap(), any())).thenAnswer(call -> {
             h.run().setCancelRequested(true);
             assertTrue(((java.util.function.BooleanSupplier) call.getArgument(4)).getAsBoolean());
-            throw BusinessException.badRequest("IP_RUN_CANCELLED", "已停止创作");
+            // 半截正文不是 JSON，不能因为解析失败就退成全额释放。
+            return new AiModelInvocationService.AiModelResponse("{\"summary\":\"写到一半", "cancelled", 2000L, "qwen", "qwen", 1000L, 1000L, null, true);
         });
-        h.worker().runBlocking("r");
+        h.worker().runBlocking("r"); h.worker().runBlocking("r");
         assertEquals("failed", h.run().getStatus());
-        assertEquals("STUDIO_USAGE_PENDING", h.run().getErrorCode());
-        verify(h.credits(), never()).commitHold(anyString(), anyString(), anyLong(), anyString(), any());
-        verify(h.credits(), never()).releaseHold(anyString(), anyString(), anyString());
-        assertFalse(json.readTree(h.run().getOutputJson()).has("textRevision"));
+        assertEquals("IP_RUN_CANCELLED", h.run().getErrorCode());
+        assertTrue(h.run().getErrorMessage().contains("生成的内容"));
+        var output = json.readTree(h.run().getOutputJson());
+        assertFalse(output.has("textRevision"));
+        assertTrue(output.path("billing").path("usageEstimated").asBoolean());
+        verify(h.credits(), times(1)).commitHold(eq(IpRunService.REF_TYPE), eq("r"), anyLong(), anyString(), any());
+        verify(h.credits(), times(1)).releaseHold(eq(IpRunService.REF_TYPE), eq("r"), anyString());
+    }
+
+    @Test void sceneDirectorThatTimesOutReleasesInsteadOfWaitingForever() throws Exception {
+        var h = sceneDirector();
+        h.run().setHeartbeatAt(java.time.Instant.EPOCH);
+        h.run().setStartedAt(java.time.Instant.EPOCH);
+        assertTrue(h.worker().expire("r", java.time.Instant.now()));
+        assertEquals("IP_RUN_TIMEOUT", h.run().getErrorCode());
+        verify(h.credits()).releaseHold(anyString(), eq("r"), anyString());
     }
 
     @Test void sceneDirectorDiscardsALateReplyAndSettlesItsMeasuredUsageExactlyOnce() throws Exception {

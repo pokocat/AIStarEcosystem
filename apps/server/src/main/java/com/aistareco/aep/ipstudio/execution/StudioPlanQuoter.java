@@ -58,7 +58,7 @@ public class StudioPlanQuoter {
         var request=StudioPlanSteps.request(step,PLACEHOLDERS,modes(step.path("settings").path("model").asText(null)),null);
         int images=0,clips=0,audios=0;
         if(request.video().references()!=null)for(var ref:request.video().references())
-            switch(ref.mediaType()){case "video" -> clips++;case "audio" -> audios++;default -> images++;}
+            switch(ref.mediaType()==null?"image":ref.mediaType()){case "video" -> clips++;case "audio" -> audios++;default -> images++;}
         return workflow.quoteVideoPrice(userId,request.model(),request.video().mode(),request.video().resolutionTier(),request.aspectRatio(),
                 request.durationSec(),images,clips,audios,billing);
     }

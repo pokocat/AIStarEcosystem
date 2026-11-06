@@ -705,9 +705,10 @@ export function SceneVideoStudio() {
   // 编导页：最新一版跟现在的设置对不上时，输入框不写字也能发，发出去就是「照现在的设置改一版」。
   const latestChanges = specChanges(latestScript?.metadata?.studio?.sceneDirector);
   // 长视频的段数和价：服务端按所选模型算（拖滑杆时等一下再问，慢回来的旧结果不盖新选择）。
-  const [longPrice, setLongPrice] = useState<{ key: string; price?: StudioSegmentedVideoPrice; enterprise?: StudioSegmentedVideoPrice; undecided?: boolean; error?: string }>();
+  const [longPrice, setLongPrice] = useState<{ key: string; spec: string; price?: StudioSegmentedVideoPrice; enterprise?: StudioSegmentedVideoPrice; undecided?: boolean; error?: string }>();
   const longModel = chosenVideo?.selectableById ? chosenVideo.endpointId : undefined;
-  const longKey = long ? JSON.stringify([longModel, usedTier, duration, ratio, images.length, !!character, !!voice, optimize, priceRevision]) : "";
+  const longSpec = long ? JSON.stringify([longModel, usedTier, duration, ratio, images.length, !!character, !!voice, optimize]) : "";
+  const longKey = long ? JSON.stringify([longSpec, priceRevision]) : "";
   useEffect(() => {
     if (!longKey) return;
     const controller = new AbortController();
@@ -716,15 +717,23 @@ export function SceneVideoStudio() {
       const load = async () => {
         const payer = await studioPreviewPayer().catch(() => ({ kind: "undecided" as const }));
         if (controller.signal.aborted) return;
-        if (payer.kind === "decided") return { price: await segmentedVideoPrice({ ...query, payer: payer.billing.mode, enterpriseId: payer.billing.mode === "enterprise" ? payer.billing.enterpriseId : undefined }, controller.signal) };
+        if (payer.kind === "decided") {
+          if (payer.billing.mode !== "enterprise") return { price: await segmentedVideoPrice({ ...query, payer: "personal" }, controller.signal) };
+          // 企业账户报不出价（在途满了、模型没授权）不挡生成，先显示标准价，同短视频：提交时会说清楚原因。
+          const enterpriseId = payer.billing.enterpriseId;
+          return { price: await segmentedVideoPrice({ ...query, payer: "enterprise", enterpriseId }, controller.signal).catch(async () => {
+            const standard = await segmentedVideoPrice({ ...query, payer: "personal" }, controller.signal);
+            return { ...standard, discountedVideoCost: null, videoDiscountName: null };
+          }) };
+        }
         const [price, enterprise] = await Promise.all([
           segmentedVideoPrice({ ...query, payer: "personal" }, controller.signal),
           "enterpriseId" in payer && payer.enterpriseId ? segmentedVideoPrice({ ...query, payer: "enterprise", enterpriseId: payer.enterpriseId }, controller.signal).catch(() => undefined) : undefined,
         ]);
         return { price, enterprise, undecided: true };
       };
-      load().then(result => { if (!controller.signal.aborted && result) setLongPrice({ key: longKey, ...result }); })
-        .catch(e => { if (!controller.signal.aborted) setLongPrice({ key: longKey, error: sceneHintText(e, "价格没读出来，请再试一次") }); });
+      load().then(result => { if (!controller.signal.aborted && result) setLongPrice({ key: longKey, spec: longSpec, ...result }); })
+        .catch(e => { if (!controller.signal.aborted) setLongPrice({ key: longKey, spec: longSpec, error: sceneHintText(e, "价格没读出来，请再试一次") }); });
     }, 250);
     return () => { clearTimeout(timer); controller.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -855,8 +864,10 @@ export function SceneVideoStudio() {
     ? contract.minSeconds === contract.maxSeconds ? `这个模型只做 ${usedDuration} 秒的片子` : `这个模型最短 ${contract.minSeconds} 秒，会按 ${usedDuration} 秒出` : "";
   const pickDuration = (n: number) => { durationTouched.current = true; setDuration(n); setHint(""); };
   const goBlocker = toAssistant ? handoffBlocker : long ? longBlocker : videoBlocker;
-  const longShown = longReady?.price;
-  const longView = longShown ? describeSegmentedPrice(longShown, longReady?.enterprise, longReady?.undecided) : undefined;
+  // 规格变了旧价立刻作废；规格没变只是重新报价（切回页面）时，新价回来之前继续显示上一份。
+  const longPriced = longReady?.price ? longReady : longPrice?.spec === longSpec && longPrice.price ? longPrice : undefined;
+  const longShown = longPriced?.price;
+  const longView = longShown ? describeSegmentedPrice(longShown, longPriced?.enterprise, longPriced?.undecided) : undefined;
   const onPick = (id: string) => { const next = findVideoScene(catalog, id); if (next && (next.id !== scene.id || draftRef.current)) goToScene(next); };
   const tile = (kind: Exclude<Slot, "image">, media: Media | undefined, label: string, Icon: typeof Video, optional: boolean, clear: () => void) =>
     <div className={`scene-media${media ? " is-filled" : ""}`}>
@@ -1071,13 +1082,13 @@ function ScriptTurn({ row, refs, run, stopping, busy, submitting, latest, copied
   const position = run?.queue?.position;
   const summary = meta?.studio?.textEditor?.turns?.at(-1)?.content;
   const failed = meta?.status === "error";
-  const stopped = failed && (meta?.errorCode === "IP_RUN_CANCELLED" || meta?.errorCode === "STUDIO_USAGE_PENDING");
+  const stopped = failed && meta?.errorCode === "IP_RUN_CANCELLED";
   return <article className="scene-director-turn">
     <p className={`scene-director-ask${turn?.ask ? "" : " is-empty"}`}>{turn?.ask || (turn?.revision ? "再改一版" : "看素材写一版脚本")}</p>
     <div className={`scene-script-card is-${stopped || stopping ? "stopped" : meta?.status || "idle"}`}>
       {loading ? <div className="scene-script-writing" role="status">
           {!stopping && <span className="scene-script-lines" aria-hidden="true"><i/><i/><i/></span>}
-          <span><AiMark size={12}/>{stopping ? stopping === "requesting" ? "正在停止…" : "已停止创作，正在核对已用费用" : submitting && !accepted ? "正在交给编导" : !accepted ? "提交结果没有确认" : position && position > 0 ? `排队中，前面还有 ${position - 1} 个` : turn?.revision ? "正在改脚本" : "正在看素材、写脚本"}</span></div>
+          <span><AiMark size={12}/>{stopping ? stopping === "requesting" ? "正在停止…" : "已停止创作，正在结算已用费用" : submitting && !accepted ? "正在交给编导" : !accepted ? "提交结果没有确认" : position && position > 0 ? `排队中，前面还有 ${position - 1} 个` : turn?.revision ? "正在改脚本" : "正在看素材、写脚本"}</span></div>
         : failed ? <p className={`scene-script-state${stopped ? "" : " is-failed"}`} role={stopped ? "status" : undefined} title={meta?.errorLogId ? `记录号 ${meta.errorLogId}` : undefined}>{sceneFailureText(meta?.errorCode, meta?.errorDetails, "脚本")}</p>
         : <>{summary && <p className="scene-script-summary">{summary}</p>}
           <pre className="scene-script-text">{splitBlanks(body).map((p, i) => p.blank ? <mark key={i} className="scene-script-blank">{p.text}</mark> : <PromptText key={i} text={p.text} refs={refs}/>)}</pre>
