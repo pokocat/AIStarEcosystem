@@ -16,7 +16,7 @@ export function templateKind(t: Pick<IpTemplate, 'doc'>): 'video' | 'image' | 'c
 /** 写好描述、等着生成的那个节点；灵感库示例里是「我的版本」。 */
 const waitingNode = (doc?: Pick<IpProjectDoc, 'nodes'>) => nodesOf(doc).find(n => MEDIA.has(n.type) && !n.metadata?.storageKey && n.metadata?.prompt);
 
-/** 做同款后会带进画布的那段话。 */
+/** 做同款后会带进画布的那段话。预览里不显示（用户 2026-11-06 要求），只用来判断有没有填好。 */
 export function templatePrompt(doc?: Pick<IpProjectDoc, 'nodes'>) {
   return (waitingNode(doc) ?? nodesOf(doc).find(n => n.metadata?.prompt))?.metadata?.prompt?.trim() || '';
 }
@@ -36,6 +36,13 @@ export function templateNeeds(doc?: Pick<IpProjectDoc, 'nodes'>) {
     const input = (n.metadata?.studio as { templateInput?: { label?: string; required?: boolean } } | undefined)?.templateInput;
     return { label: input?.label || n.title, optional: input?.required === false };
   });
+}
+
+/** 只读画布点开一个节点时的说明。不显示提示词，也不显示媒体节点的 content（那是派生地址）。 */
+export function templateNodeNote(node?: { type?: string; metadata?: { groupDescription?: unknown; content?: unknown; prompt?: unknown } }): string {
+  const meta = node?.metadata, written = (value: unknown) => (typeof value === 'string' ? value : '');
+  return written(meta?.groupDescription) || (node?.type === 'text' ? written(meta?.content) : '')
+    || (node?.type === 'group' ? '此分组尚未添加说明。' : meta?.prompt ? '做同款后可查看和修改提示词。' : '此节点等待填写内容或添加参考素材。');
 }
 
 /** 搜索范围：名称、说明和提示词。搜「穿搭」要能搜到标题写「小红书封面」、提示词写穿搭的那条。 */

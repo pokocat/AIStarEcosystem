@@ -8,6 +8,7 @@ import type { CanvasNodeData } from '@/canvas/types/canvas';
 import { flowNodes, flowEdges } from '@/canvas-bridge/flow-document';
 import { StudioFlowCard } from './studio-flow-canvas';
 import { StudioFloatingContext, StudioFloatingPanel } from './studio-floating-panel';
+import { templateNodeNote } from './template-facts';
 
 const nodeTypes = { studio: StudioFlowCard };
 function Preview({ doc, onInspectingChange }: { doc: IpProjectDoc; onInspectingChange?: (open: boolean) => void }) {
@@ -45,7 +46,7 @@ function Preview({ doc, onInspectingChange }: { doc: IpProjectDoc; onInspectingC
       <StudioFloatingPanel open={!!inspecting} container={root} anchorId={inspecting?.id} title="节点内容" width={420}
         onClose={() => setInspecting(undefined)} footer={<span>做同款后，可替换素材、编辑和生成。</span>}>
         <strong>{inspecting?.title}</strong>
-        <p className="studio-template-preview-prompt">{inspecting?.metadata?.groupDescription || (inspecting?.type === 'text' ? inspecting.metadata?.content || inspecting.metadata?.prompt : inspecting?.metadata?.prompt || inspecting?.metadata?.content) || (inspecting?.type === 'group' ? '此分组尚未添加说明。' : '此节点等待填写内容或添加参考素材。')}</p>
+        <p className="studio-template-preview-prompt">{templateNodeNote(inspecting)}</p>
         {inspecting?.metadata?.size && <p>画幅 / 尺寸：{inspecting.metadata.size}{inspecting.metadata.seconds ? ` · ${inspecting.metadata.seconds} 秒` : ''}</p>}
       </StudioFloatingPanel>
     </div>

@@ -139,7 +139,7 @@ function IpHomeNext({ header = true }: { header?: boolean }) {
       </section>}
 
       {authed && <section className="home-feed" aria-labelledby="home-feed-title">
-        <div className="home-section-heading"><h2 id="home-feed-title">灵感</h2><p>看效果和提示词，再做同款</p><Link href="/templates">更多灵感<ArrowRight size={16}/></Link></div>
+        <div className="home-section-heading"><h2 id="home-feed-title">灵感</h2><p>看效果，再做同款</p><Link href="/templates">更多灵感<ArrowRight size={16}/></Link></div>
         <div className="home-feed-tabs" role="group" aria-label="灵感分类">{feedTabs.map(t => <button key={t.value} type="button" aria-pressed={tab === t.value} onClick={() => setTab(t.value)}>{t.label}</button>)}</div>
         {templates === undefined ? <div className="ip-brand-state" role="status">正在加载灵感…</div>
           : feedError ? <div className="ip-brand-error" role="alert">灵感加载失败，请稍后刷新重试。</div>

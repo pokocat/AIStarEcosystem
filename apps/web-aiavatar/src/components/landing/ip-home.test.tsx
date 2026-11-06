@@ -89,7 +89,8 @@ test('灵感 on Home shows the newest first, with what has a picture ahead of st
   api.examples.mockResolvedValue([card('旧案例', '2026-11-03T02:00:00Z'), card('新案例', '2026-11-06T00:22:00Z')]);
   api.templates.mockResolvedValue([card('内置模板'), { ...card('只有步骤', '2026-11-07T00:00:00Z'), coverUrl: undefined, doc: { ...doc, nodes: [] } }]);
   await act(async () => { render(<IpHome header={false}/>); });
-  expect(screen.getAllByRole('button', { name: /^预览模板 / }).map(b => b.getAttribute('aria-label'))).toEqual(['预览模板 新案例', '预览模板 旧案例', '预览模板 内置模板', '预览模板 只有步骤']);
+  // The wall deals cards into columns, two of them here: 1st and 3rd on the left, 2nd and 4th on the right.
+  expect(screen.getAllByRole('button', { name: /^预览模板 / }).map(b => b.getAttribute('aria-label'))).toEqual(['预览模板 新案例', '预览模板 内置模板', '预览模板 旧案例', '预览模板 只有步骤']);
 });
 
 // 灵感 moved onto Home: official templates and examples, filtered by what they contain; opening one previews it.

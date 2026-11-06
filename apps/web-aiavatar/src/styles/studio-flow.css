@@ -20,13 +20,8 @@
 .studio-template-dialog-scroll>p { color:var(--ink-2); font-size:14px; line-height:1.65; }
 .studio-template-dialog-scroll section { margin-top:16px; }
 .studio-template-dialog-scroll h3 { margin:0 0 6px; color:var(--ink-2); font-size:12px; font-weight:500; }
-.studio-template-dialog-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:6px; }
-.studio-template-dialog-heading h3 { margin:0; }
-.studio-template-dialog-heading button { padding:2px 8px; border:0; border-radius:6px; background:transparent; color:var(--ink-2); font-size:12px; cursor:pointer; }
-.studio-template-dialog-heading button:hover { background:var(--canvas); color:var(--ink); }
 .studio-template-dialog-steps { margin:0; padding-left:18px; list-style:decimal; font-size:13px; line-height:1.8; overflow-wrap:anywhere; }
 .studio-template-dialog-scroll section>p { font-size:13px; line-height:1.7; overflow-wrap:anywhere; }
-.studio-template-dialog-prompt { padding:10px 12px; border-radius:8px; background:var(--canvas); white-space:pre-wrap; }
 .studio-template-dialog-copy>footer { display:grid; gap:8px; padding:12px 20px 16px; border-top:1px solid var(--line); }
 .studio-template-dialog-copy>footer small { color:var(--ink-2); font-size:12px; line-height:1.6; }
 /* 工作台页面强制 body 可滚动（studio-page.css），压过了 antd 的滚动锁：弹窗开着时页面不跟着滚。scrollbar-gutter 保证不跳动。 */

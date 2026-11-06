@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { newestFirst, templateKind, templateNeeds, templatePrompt, templateSearchText, templateSpec } from './template-facts';
+import { newestFirst, templateKind, templateNeeds, templateNodeNote, templatePrompt, templateSearchText, templateSpec } from './template-facts';
 
 const node = (id: string, type: string, title: string, metadata: any) => ({ id, type, title, position: { x: 0, y: 0 }, width: 100, height: 100, metadata });
 const doc = { nodes: [
@@ -41,5 +41,14 @@ describe('newestFirst', () => {
 
   test('anything without a usable time goes last, in the order given', () => {
     expect(ids(newestFirst([row('builtin'), row('bad', 'not a date'), row('dated', '2026-11-03T02:00:00Z')]))).toEqual(['dated', 'builtin', 'bad']);
+  });
+});
+
+describe('templateNodeNote', () => {
+  test('a read-only node never shows its prompt, nor the derived address of its media', () => {
+    expect(templateNodeNote({ type: 'video', metadata: { prompt: '倒水的特写' } } as any)).not.toContain('倒水');
+    expect(templateNodeNote({ type: 'image', metadata: { content: 'https://cdn.test/a.jpg' } } as any)).not.toContain('https');
+    expect(templateNodeNote({ type: 'text', metadata: { content: '这套做法', prompt: '帮我生成' } } as any)).toBe('这套做法');
+    expect(templateNodeNote({ type: 'text', metadata: { prompt: '帮我生成' } } as any)).not.toContain('帮我生成');
   });
 });

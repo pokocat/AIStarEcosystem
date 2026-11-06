@@ -72,16 +72,16 @@ const inspiration = { id: 'IPD-insp-cover', name: '小红书封面', summary: '�
     { id: 'mine', type: 'image', title: '我的版本', position: { x: 400, y: 0 }, width: 300, height: 400, metadata: { prompt: '撞色封面' } },
     { id: 'sample', type: 'image', title: '示例效果', position: { x: 800, y: 0 }, width: 300, height: 400, metadata: { storageKey: 'ipstudio_demo/x/a.jpg', prompt: '撞色封面' } },
   ], connections: [], viewport: { x: 0, y: 0, k: 1 } } } as any;
-test('an inspiration opens as a sized dialog with its result and prompt, not the fullscreen canvas', async () => {
+test('an inspiration opens as a sized dialog with its result and no prompt, not the fullscreen canvas', async () => {
   render(<StudioTemplateUse template={inspiration} onClose={() => {}} onCreated={() => {}}/>);
   const shown = await screen.findByAltText('小红书封面 的示例效果');
   expect(shown.getAttribute('src')).toBe('https://cdn.test/cover.jpg');
   expect(screen.getByRole('dialog').getAttribute('data-width')).toBe('1000');
   expect(screen.queryByLabelText('只读模板画布')).toBeNull();
-  // The waiting node's description, not the assistant's phrasing and not the finished sample's.
-  expect(screen.getByLabelText('提示词').textContent).toContain('撞色封面');
-  expect(screen.getByLabelText('提示词').textContent).not.toContain('帮我生成');
   expect(screen.getByLabelText('需要准备').textContent).toContain('不用准备素材');
+  // The prompt belongs to the copied canvas, not to the preview: not on show and nothing to copy it with.
+  expect(screen.getByRole('dialog').textContent).not.toContain('撞色封面');
+  expect(screen.queryByRole('button', { name: '复制' })).toBeNull();
   await waitFor(() => expect(screen.getByRole('button', { name: '查看画布' })).toBeTruthy());
   fireEvent.click(screen.getByRole('button', { name: '查看画布' }));
   await screen.findByLabelText('只读模板画布');
@@ -107,16 +107,7 @@ test('a copied inspiration opens the assistant; only 做同款 creates anything'
   await waitFor(() => expect(created).toHaveBeenCalledExactlyOnceWith('/projects/IPP-1?start=assistant'));
 });
 
-test('the prompt can be copied; a workflow template lists its steps and what to prepare instead of one node\'s prompt', async () => {
-  const writeText = vi.fn().mockResolvedValue(undefined);
-  Object.assign(navigator, { clipboard: { writeText } });
-  const view = render(<StudioTemplateUse template={inspiration} onClose={() => {}} onCreated={() => {}}/>);
-  await screen.findByAltText('小红书封面 的示例效果');
-  await waitFor(() => expect(screen.getByLabelText('提示词')).toBeTruthy());
-  fireEvent.click(screen.getByRole('button', { name: '复制' }));
-  await screen.findByRole('button', { name: '已复制' });
-  expect(writeText).toHaveBeenCalledWith('撞色封面');
-  view.unmount();
+test('a workflow template lists its steps and what to prepare, and shows no prompt either', async () => {
   const workflow = { ...inspiration, coverUrl: undefined, doc: { nodes: [
     { id: 'a', type: 'image', title: '① 你的照片', position: { x: 0, y: 0 }, width: 100, height: 100, metadata: {} },
     { id: 'b', type: 'image', title: '② 招牌形象', position: { x: 0, y: 0 }, width: 100, height: 100, metadata: { prompt: '卖点与创作要求：' } },
@@ -125,7 +116,7 @@ test('the prompt can be copied; a workflow template lists its steps and what to 
   await screen.findByLabelText('只读模板画布');
   await waitFor(() => expect(screen.getByLabelText('创作步骤').textContent).toContain('② 招牌形象'));
   expect(screen.getByLabelText('需要准备').textContent).toContain('① 你的照片');
-  expect(screen.queryByLabelText('提示词')).toBeNull();
+  expect(screen.getByRole('dialog').textContent).not.toContain('卖点与创作要求');
 });
 test('Esc belongs to the inner node panel while it is open; focus goes back to the card when the dialog closes', async () => {
   const card = document.createElement('button'); document.body.append(card); card.focus();
