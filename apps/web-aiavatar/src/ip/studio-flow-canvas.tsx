@@ -9,6 +9,7 @@ import { AlertCircle, AlignLeft, ArrowLeft, Copy, FileText, Group, Hand, ImagePl
 import { AiMark } from './studio-ai-icon';
 import { nanoid } from 'nanoid';
 import { useIdentity } from '@/proto/api';
+import { readCanvasReturn } from '@/shell/canvas-return';
 import { WalletBadge } from '@/shell/wallet-badge';
 import { useCanvasStore } from '@/canvas/stores/canvas/use-canvas-store';
 import { CanvasNodeType, type CanvasNodeData, type CanvasConnection } from '@/canvas/types/canvas';
@@ -147,6 +148,8 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
   // Nodes the assistant just put on the canvas glow for a moment (studio-command: reveal).
   const [fresh, setFresh] = useState<Set<string>>(() => new Set());
   const freshTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // 左上角的返回：回到进画布之前的那一页（shell/canvas-return.ts）。画布不走服务端渲染，这里能直接读。
+  const [back] = useState(readCanvasReturn);
   const [selected, setSelected] = useState(new Set<string>()), [handTool, setHandTool] = useState(true), [spaceHeld, setSpaceHeld] = useState(false), [minimap, setMinimap] = useState(false);
   // 圈选分组：选了这个工具，在画布上按住拖出一块区域（空格照旧临时平移）。用一次就回到原来的工具。
   const [areaTool, setAreaTool] = useState(false), [areaDraft, setAreaDraft] = useState<{ x0: number; y0: number; x1: number; y1: number; id: number }>();
@@ -517,7 +520,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     {key:'minimap',label:minimap?'隐藏小地图':'显示小地图',onClick:()=>setMinimap(v=>!v)},
   ];
   return <StudioFloatingContext.Provider value={{viewport,nodes:project.nodes}}><div ref={shellRef} className="studio-flow-shell" data-history={historyRevision}>
-    <header className="studio-flow-header"><a href="/projects" aria-label="返回项目"><ArrowLeft size={18}/></a>
+    <header className="studio-flow-header"><a className="studio-flow-back" href={back.href} aria-label={`返回${back.label}`}><ArrowLeft size={18}/><span>{back.label}</span></a>
       <Input aria-label="画布名称" variant="borderless" value={project.title} maxLength={80} onChange={e => useCanvasStore.getState().renameProject(projectId, e.target.value)}/>
       <HostActionsSlot/>
       <div className="studio-canvas-credit"><WalletBadge account={identity?.uid ?? null} location={`/projects/${projectId}`} enterprise/></div>

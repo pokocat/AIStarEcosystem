@@ -29,6 +29,7 @@ import { reportStudioError } from "./studio-errors";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { Monitor, Copy, Check, ArrowLeft, ArrowRight } from "lucide-react";
+import { readCanvasReturn } from "@/shell/canvas-return";
 import { setLayout, useLayoutMode } from "@/shell/layout-mode";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 
@@ -88,14 +89,15 @@ function useCopyLink(projectId: string) {
 
 function MobileNotice({ projectId, onProceed }: { projectId: string; onProceed: () => void }) {
   const { copied, failed, copy } = useCopyLink(projectId);
+  const [back] = React.useState(readCanvasReturn);
 
   return (
     <div style={{ maxWidth: 480, margin: "0 auto", padding: "36px 20px 40px", minHeight: "100dvh", background: "var(--canvas)" }}>
       <Link
-        href="/projects"
+        href={back.href}
         style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--ink-3)", textDecoration: "none", marginBottom: 26 }}
       >
-        <ArrowLeft size={15} /> 返回项目
+        <ArrowLeft size={15} /> {back.label}
       </Link>
 
       <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
@@ -185,6 +187,7 @@ function MobileNotice({ projectId, onProceed }: { projectId: string; onProceed: 
  */
 function MobileCanvasBar({ projectId }: { projectId: string }) {
   const { copied, copy } = useCopyLink(projectId);
+  const [back] = React.useState(readCanvasReturn);
   return (
     <div
       style={{
@@ -193,10 +196,10 @@ function MobileCanvasBar({ projectId }: { projectId: string }) {
       }}
     >
       <Link
-        href="/projects"
+        href={back.href}
         style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--ink-2)", textDecoration: "none", flexShrink: 0 }}
       >
-        <ArrowLeft size={13} /> 画布
+        <ArrowLeft size={13} /> {back.label}
       </Link>
       <span style={{ flex: 1, minWidth: 0, fontSize: 11.5, color: "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         电脑上更好用
