@@ -33,6 +33,20 @@ export async function studioCreditShortageCancel(input: import('@/ip/studio-cred
   return Object.assign(new ApiError({code:'STUDIO_BILLING_CANCELLED',message:'本次生成已取消，未提交任务。'},400),{creditShortage:choice});
 }
 
+/**
+ * 花钱之前问一次付不付得起。付不起就弹积分不足提示框，并按「取消生成」抛出（见 studioCreditShortageCancel）。
+ * 本月赠送的积分提交时才发，报价看不到：个人账户先把它领了再判断一次，别把刚好没领的人拦下。报价失败不在这里拦，交给调用方。
+ */
+export async function studioCreditCheck<T extends import('@ai-star-eco/types/model-billing').ModelBillingQuote>(load:()=>Promise<T>,billing:EnterpriseBillingSelection|undefined,input:Omit<import('@/ip/studio-credit-shortage').StudioCreditShortageInput,'quote'|'billing'|'reason'>):Promise<T|undefined> {
+  let first=await load().catch(()=>undefined);
+  if(first?.unavailableCode==='MODEL_CREDITS_INSUFFICIENT'&&billing?.mode!=='enterprise'){
+    await apiFetch('/v1/account').catch(()=>undefined);
+    first=await load().catch(()=>first);
+  }
+  if(first?.unavailableCode==='MODEL_CREDITS_INSUFFICIENT')throw await studioCreditShortageCancel({quote:first,billing,...input});
+  return first;
+}
+
 /** Resolve accepted requests first. Unknown receipts retain the original payer and approval on retry. */
 export async function withStudioBilling<T extends object>(projectId: string, request: T, details: StudioBillingDetails = {}): Promise<T> {
   const payerRequest=request as T&StudioBillingRequest;
@@ -70,13 +84,7 @@ export async function withStudioBilling<T extends object>(projectId: string, req
       // 付不起就不进费用确认：先报一次价，积分不够直接给提示框。报价失败交给费用弹窗（它显示原因和「重新报价」）。
       const freeOnly=original?.freeOnly??false;
       const signal=new AbortController().signal;
-      let first=await load(freeOnly,signal).catch(()=>undefined);
-      // 本月赠送的积分提交时才发，报价看不到：个人账户先把它领了再判断一次，别把刚好没领的人拦下。
-      if(first?.unavailableCode==='MODEL_CREDITS_INSUFFICIENT'&&billing?.mode!=='enterprise'){
-        await apiFetch('/v1/account').catch(()=>undefined);
-        first=await load(freeOnly,signal).catch(()=>first);
-      }
-      if(first?.unavailableCode==='MODEL_CREDITS_INSUFFICIENT')throw await studioCreditShortageCancel({quote:first,billing,modelChoices:details.modelChoices,canRetry:details.canRetry,grantHint:STUDIO_GRANT_HINT,
+      const first=await studioCreditCheck(()=>load(freeOnly,signal),billing,{modelChoices:details.modelChoices,canRetry:details.canRetry,grantHint:STUDIO_GRANT_HINT,
         // 节点出图的模型在节点文档里，换不了。上限是原模型的价，别的模型报价不能带着它。
         verifyChoice:details.nodeId?undefined:(model,patch)=>quoteOf({...body,...patch,model,maxCost:undefined},false,signal)});
       const {confirmStudioModelQuote}=await import('@/ip/studio-model-quote-dialog');

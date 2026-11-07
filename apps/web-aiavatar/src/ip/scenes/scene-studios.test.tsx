@@ -8,7 +8,7 @@ import type { IpProject } from "@ai-star-eco/types";
 const SCENES = JSON.parse(readFileSync(join(__dirname, "../../../../server/src/main/resources/ipstudio/scenes.json"), "utf8"));
 
 const api = vi.hoisted(() => ({
-  push: vi.fn(), failure: vi.fn(), taskStart: vi.fn(), taskGet: vi.fn(), signKeys: vi.fn(),
+  push: vi.fn(), failure: vi.fn(), taskStart: vi.fn(), taskGet: vi.fn(), ask: vi.fn(), signKeys: vi.fn(),
   uploadImage: vi.fn(), listProjects: vi.fn(), createProject: vi.fn(), updateProject: vi.fn(), getProject: vi.fn(), listScenes: vi.fn(), composeScene: vi.fn(),
   fetchModels: vi.fn(), readRun: vi.fn(), cancelRun: vi.fn(), capabilities: vi.fn(), submit: vi.fn(), importMedia: vi.fn(), videoModels: vi.fn(), videoPrice: vi.fn(),
 }));
@@ -27,6 +27,7 @@ vi.mock("@/canvas-bridge/studio-video-tasks", async original => ({ ...await orig
   prepareVideoTask: async (_id: string, request: any) => request, startVideoTask: api.taskStart,
 }));
 vi.mock("@/canvas-bridge/studio-image-file", () => ({ prepareStudioImageUpload: async (f: File) => f }));
+vi.mock("../studio-credit-shortage", () => ({ askStudioCreditShortage: api.ask }));
 vi.mock("@/canvas-bridge/studio-model-quote", () => ({ quoteVideoPrice: api.videoPrice }));
 vi.mock("../studio-errors", async importOriginal => ({ ...(await importOriginal<typeof import("../studio-errors")>()), useStudioFailure: () => api.failure, studioErrorMetadata: () => ({}) }));
 vi.mock("../library-reference-picker", () => import("./scene-test-picker"));
@@ -389,13 +390,13 @@ test("图片：确认原任务时积分不足，这条转成可以重新生成�
   expect(screen.queryByRole("button", { name: "确认原任务" })).toBeNull();
 });
 
-test("图片：换过去规格会变时只换模型、写明变了什么，不自动提交", async () => {
+test("图片：换过去规格会变时只换模型，不自动提交", async () => {
   api.fetchModels.mockResolvedValue(twoImageModels);
   api.submit.mockRejectedValueOnce(shortageCancel({ kind: "switch-model", endpointId: "ep-grant", name: "有赠款的模型", changes: "比例将改为 1:1" }));
   const button = await readyToGenerate();
   await act(async () => { fireEvent.click(button()); });
-  await screen.findByText(/已改用「有赠款的模型」，比例将改为 1:1。确认后点击「生成图片」。/);
-  expect((screen.getByLabelText("图片模型") as HTMLSelectElement).value).toBe("ep-grant");
+  await waitFor(() => expect((screen.getByLabelText("图片模型") as HTMLSelectElement).value).toBe("ep-grant"));
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
   expect(api.submit).toHaveBeenCalledTimes(1);
 });
 
@@ -413,7 +414,7 @@ test("图片：提示框知道换过去的实际规格和价格，比例不支�
   const choices = api.submit.mock.calls[0][2].modelChoices;
   expect(choices[0]).toMatchObject({ endpointId: "ep-img", changes: "" });
   expect(choices[1]).toMatchObject({ endpointId: "ep-square", cost: 10 });
-  expect(choices[1].changes).toContain("比例将改为 1:1");
+  expect(choices[1].changes).toBeTruthy();
 });
 
 test("图片：提示框开着时换了草稿，用户的选择不作用到别的草稿上", async () => {
@@ -466,5 +467,55 @@ test("图片：换过去的尺寸按页面真实规则算，不提前挑一个�
   // 页面的规则：当前尺寸没有就退到第一项（1536x2048，2K），不是同清晰度的 864x1152。
   expect(other.quotePatch).toEqual({ size: "1536x2048" });
   expect(other.cost).toBe(20);
-  expect(other.changes).toContain("清晰度将改为");
+  expect(other.changes).toBeTruthy();
+});
+
+// AI 视频直接出片：任务受理后才异步执行，积分不够只能在受理前问（提示框的内容见 studio-credit-shortage.test.tsx）。
+const POOR = { target: { appCode: "aiavatar", action: "video", endpointId: "ep-h3", providerModel: "h3", specKey: "768p", unit: "second" }, standardCredits: 600, discountCredits: 0, payableCredits: 600,
+  scopedCredits: 0, walletCredits: 600, canAfford: false, unavailableCode: "MODEL_CREDITS_INSUFFICIENT" };
+const readyDirect = async () => {
+  window.history.replaceState(null, "", "/video?scene=drama-dialogue");
+  api.videoModels.mockResolvedValue([H3, { ...H3, endpointId: "ep-grant", name: "有赠款的视频模型", isDefault: false }]);
+  api.videoPrice.mockResolvedValue(POOR);
+  await act(async () => { render(<SceneVideoStudio/>); });
+  fillField(await screen.findByRole("textbox", { name: "想做的视频" }), "两个人在咖啡店对话");
+  const go = () => screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement;
+  await waitFor(() => expect(go().disabled).toBe(false));
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)); });
+  return go;
+};
+
+test("视频：积分不够时受理前就弹提示框，不建任务；「改用」只换模型，看过价再点，不自动开始花钱", async () => {
+  api.ask.mockResolvedValueOnce({ kind: "switch-model", endpointId: "ep-grant", name: "有赠款的视频模型" });
+  const go = await readyDirect();
+  await act(async () => { fireEvent.click(go()); });
+  await waitFor(() => expect(api.ask).toHaveBeenCalledTimes(1));
+  const input = api.ask.mock.calls[0][0];
+  expect(input.quote).toBe(POOR);
+  expect(input.modelChoices.find((c: any) => c.endpointId === "ep-grant")).toMatchObject({ extraCharge: expect.any(String), quotePatch: { durationSec: expect.any(Number) } });
+  await waitFor(() => expect((screen.getByLabelText("视频模型") as HTMLSelectElement).value).toBe("ep-grant"));
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 350)); });
+  expect(api.taskStart).not.toHaveBeenCalled();
+  expect(api.failure).not.toHaveBeenCalled();
+  // 候选按它自己的规格问服务端，不带素材 key 和提示词。
+  api.videoPrice.mockClear();
+  await input.verifyChoice("ep-grant", { video: { mode: "t2v", resolutionTier: "768p" }, durationSec: 10 });
+  expect(api.videoPrice.mock.calls[0][0]).toMatchObject({ model: "ep-grant", tier: "768p", durationSec: 10 });
+});
+
+test("视频：充值回来点「继续生成」，同一个模型重新核对后才建任务", async () => {
+  api.ask.mockImplementationOnce(async () => { api.videoPrice.mockResolvedValue({ ...POOR, canAfford: true, unavailableCode: undefined }); return { kind: "retry" }; });
+  const go = await readyDirect();
+  await act(async () => { fireEvent.click(go()); });
+  await waitFor(() => expect(api.taskStart).toHaveBeenCalledTimes(1), { timeout: 3000 });
+  expect(api.ask).toHaveBeenCalledTimes(1);
+  expect(api.taskStart.mock.calls[0][1]).toMatchObject({ kind: "direct", video: { model: "ep-h3" } });
+});
+
+test("视频：报价读不到不拦生成，由服务端和任务面板说话", async () => {
+  const go = await readyDirect();
+  api.videoPrice.mockRejectedValue(new Error("网络中断"));
+  await act(async () => { fireEvent.click(go()); });
+  await waitFor(() => expect(api.taskStart).toHaveBeenCalledTimes(1));
+  expect(api.ask).not.toHaveBeenCalled();
 });

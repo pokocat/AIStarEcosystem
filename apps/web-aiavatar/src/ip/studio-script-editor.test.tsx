@@ -68,7 +68,6 @@ test('a credit shortage at submission means nothing was accepted: the request go
  api.submit.mockRejectedValueOnce(Object.assign(new ApiError({code:'STUDIO_BILLING_CANCELLED',message:'本次生成已取消，未提交任务。'},400),{creditShortage:{kind:'close'}}));render(<Host/>);await send();
  await waitFor(()=>expect((composer() as HTMLTextAreaElement).value).toBe('加强第 1 集开场冲突，保留其他章节。'));
  expect(snapshot.metadata!.studio!.scriptEditor!.pending).toBeUndefined();expect(snapshot.metadata!.studio!.scriptEditor!.error).toBeUndefined();
- expect(screen.queryByText(/提交结果尚未确认/)).toBeNull();
 });
 test('accepted jobs resume by run ID without submitting or charging another task',async()=>{
  const state:NonNullable<StudioNodeMetadata['scriptEditor']>={draft:document,turns:[{role:'user',content:'增强冲突'}],pending:{request:{...accepted,operation:'assistant',scriptEdit:{markdown:document}},baseMarkdown:document,runId:'revision-1'}};

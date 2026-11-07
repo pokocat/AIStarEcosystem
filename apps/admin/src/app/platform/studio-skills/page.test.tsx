@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // 「Studio 技能」 page against the in-memory contract mock: publish a new version, surface the last-active
 // refusal, roll back, review a distilled draft, dry-run and create from a pasted file.
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { FeedbackProviders } from '@/components/feedback';
 
@@ -26,6 +26,9 @@ vi.mock('@/api', async () => {
 });
 import StudioSkillsPage from './page';
 import { resetMockStudioSkills } from '@/mocks/studio-skills';
+
+// pnpm test:all 同时跑全部项目时，这个文件比空闲时慢约 12 倍（CI 11.7 秒 / 空闲 1 秒），默认 1 秒的等待会假失败。
+configure({ asyncUtilTimeout: 5000 });
 
 beforeEach(() => { resetMockStudioSkills(); Element.prototype.scrollIntoView ||= () => {}; });
 afterEach(cleanup);

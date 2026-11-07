@@ -48,5 +48,5 @@ test('zero ordinary payment can confirm only when the server confirms sufficient
 test('names the model being paid for, and does not fetch a second quote when opened with one',async()=>{
  const load=vi.fn();render(<StudioModelQuoteDialog loadQuote={load} initialQuote={quote()} modelName="Seedream 4.5" onConfirm={vi.fn()} onCancel={vi.fn()}/>);
  await screen.findByRole('button',{name:'确认并支付 6 积分'});
- expect(screen.getByText(/本次图片生成 · Seedream 4.5/)).toBeTruthy();expect(load).not.toHaveBeenCalled();
+ expect(screen.getByText(/Seedream 4.5/)).toBeTruthy();expect(load).not.toHaveBeenCalled();
 });

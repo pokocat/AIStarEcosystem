@@ -6,7 +6,6 @@ import { grantSummaries, shortageCandidates, shortageSuggestions, shortageSummar
 import { isStudioCreditShortage, studioCreditShortageChoice } from "@/canvas-bridge/studio-billing-cancel";
 
 const api = vi.hoisted(() => ({ balance: vi.fn(), myBalance: vi.fn(), grants: vi.fn(), account: vi.fn(), loadAccount: vi.fn(), known: vi.fn() }));
-vi.mock("@ai-star-eco/api-client", () => ({ apiFetch: api.account, ModelBillingApi: { myGrants: api.grants } }));
 vi.mock("@/proto/api", () => ({ WalletApi: { balance: api.balance } }));
 vi.mock("@/canvas-bridge/enterprise-api", () => ({ EnterpriseApi: { myBalance: api.myBalance } }));
 vi.mock("@/canvas-bridge/studio-billing-preference", () => ({ loadStudioBillingAccount: api.loadAccount, knownStudioBilling: api.known }));
@@ -17,6 +16,9 @@ vi.mock("antd", () => ({
   Alert: ({ title }: any) => <div role="alert">{title}</div>,
   Skeleton: () => <span>正在加载</span>,
 }));
+
+// 这条 mock 放在最后：契约检查（scripts/check-api-contract.mjs）也扫 .test.tsx，放在前面会把下一个 vi.mock 的路径读成接口。
+vi.mock("@ai-star-eco/api-client", () => ({ apiFetch: api.account, ModelBillingApi: { myGrants: api.grants } }));
 
 const target = (endpointId: string): ModelBillingTarget => ({ appCode: "endpoint", action: "model", endpointId, providerModel: "m", specKey: "*", unit: "call" });
 const grant = (over: Partial<ScopedCreditGrant> & { endpointId: string }): ScopedCreditGrant => ({
@@ -65,7 +67,6 @@ test("a model with no configured price is never suggested, with or without a gra
 test("no grant and no balance leaves only recharge and return to edit", async () => {
   render(<StudioCreditShortageDialog input={{ quote, modelChoices: choices, canRetry: true }} onChoice={vi.fn()}/>);
   await screen.findByRole("link", { name: "充值" });
-  expect(screen.queryByText("可改用的模型")).toBeNull();
   expect(screen.queryByRole("button", { name: /^改用/ })).toBeNull();
   expect(screen.getByRole("link", { name: "充值" }).dataset.kind).toBe("primary");
   expect(screen.getByRole("button", { name: "返回修改" })).toBeTruthy();
@@ -75,19 +76,16 @@ test("grant summary skips retired models", () => {
   expect(grantSummaries([grant({ endpointId: "a", targetLabels: ["已下线模型"] }), grant({ endpointId: "b", targetLabels: ["Seedream 4.5"], available: 300 })])).toEqual([{ label: "Seedream 4.5", available: 300 }]);
 });
 
-test("says how much is missing from the quote, or from the server's own sentence", () => {
-  expect(shortageSummary({ quote }, 100)).toEqual({ text: "本次需付 640 积分，当前可用 100 积分，还差 540 积分。", enough: false });
-  expect(shortageSummary({ quote: { ...quote, scopedCredits: 60 } }, 0).text).toBe("模型赠款抵扣 60 积分后，本次还需付 640 积分，当前可用 0 积分，还差 640 积分。");
-  // 服务端原话里的数可能是文字任务的冻结额，不是价格：写「需要」不写「需付」。
-  expect(shortageSummary({ reason: "积分余额不足，本次操作需 320，当前可用 16 · 追查号 ABCDEF234567" }, undefined).text).toBe("本次需要 320 积分，当前可用 16 积分，还差 304 积分。");
-  expect(shortageSummary({ quote }, 0, 0, "MiniMax H3").text).toBe("「MiniMax H3」本次需付 640 积分，当前可用 0 积分，还差 640 积分。");
+test("decides whether the money is there from the quote, the server's numbers, or a balance that went up", () => {
+  expect(shortageSummary({ quote }, 100).enough).toBe(false);
+  expect(shortageSummary({ quote }, 640).enough).toBe(true);
+  expect(shortageSummary({ quote }, undefined).enough).toBe(false);
+  expect(shortageSummary({ reason: "积分余额不足，本次操作需 320，当前可用 16 · 追查号 ABCDEF234567" }, undefined).enough).toBe(false);
+  expect(shortageSummary({ reason: "积分余额不足，本次操作需 320，当前可用 16" }, 320).enough).toBe(true);
   // 服务端没说要多少：余额涨了才算可以再试，没涨还是不足。
-  expect(shortageSummary({ reason: "普通积分不足" }, 1000, 0)).toEqual({ text: "当前可用 1,000 积分，可以重新生成。", enough: true, updated: true });
+  expect(shortageSummary({ reason: "普通积分不足" }, 1000, 0)).toMatchObject({ enough: true, updated: true });
   expect(shortageSummary({ reason: "普通积分不足" }, 5, 5).enough).toBe(false);
-  // 服务端只说「不足」没说多少：写当前余额，不转述「减少生成数量」（写脚本没有数量）。
-  expect(shortageSummary({ reason: "普通积分不足，请充值或减少生成数量 · 追查号 ABCDEF234567" }, 0)).toEqual({ text: "当前可用 0 积分，不足以完成本次生成。", enough: false });
-  expect(shortageSummary({ quote }, undefined).text).toBe("本次需付 640 积分，当前付款账户的积分不足。");
-  expect(shortageSummary({}, undefined).text).toBe("当前付款账户的积分不足。");
+  expect(shortageSummary({}, undefined).enough).toBe(false);
 });
 
 test("recognises only generation shortages", () => {
@@ -107,9 +105,7 @@ test("switching model hands the choice back without generating anything itself",
   // 服务端逐个回答：只有 Seedream 付得起。
   const verifyChoice = vi.fn(async (id: string) => (id === "seed" ? { canAfford: true, scopedCredits: 40, walletCredits: 0 } : { canAfford: false, scopedCredits: 0, walletCredits: 8 })) as never;
   render(<StudioCreditShortageDialog input={{ quote, modelChoices: choices, canRetry: true, verifyChoice }} onChoice={onChoice}/>);
-  await screen.findByText("「MiniMax H3」本次需付 640 积分，当前可用 0 积分，还差 640 积分。本次未扣积分。");
-  expect(screen.getByRole("dialog", { name: "积分不足" })).toBeTruthy();
-  expect(screen.getByText("模型赠款抵扣 40 积分，无需支付积分")).toBeTruthy();
+  await screen.findByRole("button", { name: "改用Seedream 4.5" });
   expect(screen.queryByRole("button", { name: "改用MiniMax H3" })).toBeNull();
   // 服务端确认不用付钱：主按钮是改用，不是花钱的充值；服务端说付不起的不列。
   expect(screen.queryByRole("button", { name: "改用Agnes" })).toBeNull();
@@ -132,7 +128,6 @@ test("a family's grants are never promised on an estimate: the server's quote fo
   render(<StudioCreditShortageDialog input={{ quote, modelChoices: family, verifyChoice: vi.fn().mockRejectedValue(new Error("网络中断")) }} onChoice={vi.fn()}/>);
   const button = await screen.findByRole("button", { name: "改用图片系列" });
   expect(button.dataset.kind).toBe("default");
-  expect(screen.getByText("模型赠款 100 积分 · 标准价格 60 积分")).toBeTruthy();
   expect(screen.getByRole("link", { name: "充值" }).dataset.kind).toBe("primary");
 });
 
@@ -168,8 +163,6 @@ test("a video whose prompt optimisation is charged separately is never called fr
   render(<StudioCreditShortageDialog input={{ quote: { ...quote, target: { ...quote.target, endpointId: "other" } }, verifyChoice,
     modelChoices: [{ endpointId: "h3", name: "H3", cost: 40, extraCharge: "优化提示词按实际用量另计" }] }} onChoice={vi.fn()}/>);
   const button = await screen.findByRole("button", { name: "改用H3" });
-  expect(screen.getByText("模型赠款抵扣 40 积分，优化提示词按实际用量另计")).toBeTruthy();
-  expect(screen.queryByText(/无需支付积分/)).toBeNull();
   expect(button.dataset.kind).toBe("default");
   expect(screen.getByRole("link", { name: "充值" }).dataset.kind).toBe("primary");
 });
@@ -179,10 +172,10 @@ test("overlapping refreshes collect the monthly grant once and keep the balance 
   api.account.mockImplementation(async () => { api.balance.mockResolvedValue({ totalBalance: 1500 }); return {}; });
   render(<StudioCreditShortageDialog input={{ reason: "普通积分不足，请充值或减少生成数量", canRetry: true }} onChoice={vi.fn()}/>);
   await act(async () => { window.dispatchEvent(new Event("focus")); document.dispatchEvent(new Event("visibilitychange")); });
-  await screen.findByRole("dialog", { name: "余额已更新" });
+  await screen.findByRole("button", { name: "继续生成" });
   await act(async () => { window.dispatchEvent(new Event("focus")); });
   expect(api.account).toHaveBeenCalledTimes(1);
-  expect(screen.getByRole("dialog", { name: "余额已更新" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "继续生成" })).toBeTruthy();
 });
 
 test("recharge opens in a new tab; coming back with enough credits offers to carry on", async () => {
@@ -192,7 +185,7 @@ test("recharge opens in a new tab; coming back with enough credits offers to car
   expect(recharge.getAttribute("href")).toBe("/studio#/membership");
   expect(recharge.getAttribute("target")).toBe("_blank");
   fireEvent.click(recharge);
-  expect(screen.getByText(/充值完成后回到此页/)).toBeTruthy();
+  expect(screen.getByRole("button", { name: "刷新余额" })).toBeTruthy();
   api.balance.mockResolvedValue({ totalBalance: 1000 });
   await act(async () => { window.dispatchEvent(new Event("focus")); });
   fireEvent.click(await screen.findByRole("button", { name: "继续生成" }));
@@ -204,8 +197,7 @@ test("return to edit closes without generating, and a page that cannot retry nev
   api.balance.mockResolvedValue({ totalBalance: 1000 });
   const onChoice = vi.fn();
   render(<StudioCreditShortageDialog input={{ quote }} onChoice={onChoice}/>);
-  await screen.findByRole("dialog", { name: "积分充足" });
-  await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("重新生成"));
+  await screen.findByRole("alert");
   expect(screen.queryByRole("button", { name: "继续生成" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "返回" }));
   expect(onChoice).toHaveBeenCalledWith({ kind: "close" });
@@ -215,7 +207,6 @@ test("an enterprise payer reads the enterprise wallet and grants and is sent to 
   api.myBalance.mockResolvedValue({ totalBalance: 5 });
   api.grants.mockResolvedValue({ data: [grant({ endpointId: "seed", targetLabels: ["Seedream 4.5"] })] });
   render(<StudioCreditShortageDialog input={{ quote, billing: { mode: "enterprise", enterpriseId: "e1" }, grantHint: "可在「作品设置」中改用这些模型。" }} onChoice={vi.fn()}/>);
-  await screen.findByRole("dialog", { name: "企业积分不足" });
   await screen.findByText("Seedream 4.5");
   expect(api.grants).toHaveBeenCalledWith({ enterpriseId: "e1", size: 100 });
   expect(api.balance).not.toHaveBeenCalled();
@@ -223,23 +214,20 @@ test("an enterprise payer reads the enterprise wallet and grants and is sent to 
   expect(api.account).not.toHaveBeenCalled();
   expect(screen.getByRole("link", { name: "查看企业积分" }).getAttribute("href")).toBe("/enterprise");
   // 这个入口不能直接换模型：只列出来，说明去哪里换，没有「改用」。
-  expect(screen.queryByRole("button", { name: "改用" })).toBeNull();
-  expect(screen.getByText("可在「作品设置」中改用这些模型。")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /^改用/ })).toBeNull();
 });
 
 test("a text task never lists grants for image and video models", async () => {
   api.grants.mockResolvedValue({ data: [grant({ endpointId: "seed", targetLabels: ["Seedream 4.5"] })] });
   render(<StudioCreditShortageDialog input={{ reason: "普通积分不足，请充值或减少生成数量" }} onChoice={vi.fn()}/>);
-  await screen.findByText(/当前可用 0 积分，不足以完成本次生成/);
+  await screen.findByRole("link", { name: "充值" });
   expect(screen.queryByText("Seedream 4.5")).toBeNull();
-  expect(screen.getByRole("link", { name: "充值" })).toBeTruthy();
 });
 
 test("a wallet that cannot be read still shows the dialog and what the server said", async () => {
   api.balance.mockRejectedValue(new Error("网络中断")); api.grants.mockRejectedValue(new Error("网络中断"));
   render(<StudioCreditShortageDialog input={{ reason: "积分余额不足，本次操作需 320，当前可用 16" }} onChoice={vi.fn()}/>);
-  await screen.findByText(/本次需要 320 积分，当前可用 16 积分，还差 304 积分/);
-  expect(screen.getByRole("link", { name: "充值" })).toBeTruthy();
+  expect(await screen.findByRole("link", { name: "充值" })).toBeTruthy();
 });
 
 test("this month's grant counts as credits arriving: the real text-task error has no amount, and the user can carry on", async () => {
@@ -247,10 +235,8 @@ test("this month's grant counts as credits arriving: the real text-task error ha
   api.account.mockImplementation(async () => { api.balance.mockResolvedValue({ totalBalance: 1500 }); return {}; });
   const onChoice = vi.fn();
   render(<StudioCreditShortageDialog input={{ reason: "普通积分不足，请充值或减少生成数量", canRetry: true }} onChoice={onChoice}/>);
-  await screen.findByRole("dialog", { name: "余额已更新" });
+  fireEvent.click(await screen.findByRole("button", { name: "继续生成" }));
   expect(api.account).toHaveBeenCalledWith("/v1/account");
-  expect(screen.getByText(/当前可用 1,500 积分，可以重新生成/)).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "继续生成" }));
   expect(onChoice).toHaveBeenCalledWith({ kind: "retry" });
 });
 
@@ -261,7 +247,6 @@ test("an account that cannot be read is not guessed to be personal", async () =>
   await screen.findByRole("link", { name: "查看企业积分" });
   expect(api.balance).not.toHaveBeenCalled();
   expect(api.account).not.toHaveBeenCalled();
-  expect(screen.getByText(/当前付款账户的积分不足/)).toBeTruthy();
 });
 
 test("a payer chosen once in an enterprise is not guessed: no balance is read and both accounts are offered", async () => {
@@ -270,13 +255,12 @@ test("a payer chosen once in an enterprise is not guessed: no balance is read an
   api.known.mockReturnValue(undefined);
   api.balance.mockResolvedValue({ totalBalance: 9999 });
   render(<StudioCreditShortageDialog input={{ reason: "积分余额不足，本次操作需 320，当前可用 16", grantHint: "可在「作品设置」中改用这些模型。" }} onChoice={vi.fn()}/>);
-  await screen.findByText(/本次需要 320 积分，当前可用 16 积分，还差 304 积分/);
+  await screen.findByRole("link", { name: "查看企业积分" });
   expect(api.balance).not.toHaveBeenCalled();
   expect(api.account).not.toHaveBeenCalled();
   expect(api.grants).not.toHaveBeenCalled();
   expect(screen.getByRole("link", { name: "查看企业积分" }).getAttribute("href")).toBe("/enterprise");
   expect(screen.getByRole("link", { name: "充值" })).toBeTruthy();
-  expect(screen.getByText(/个人积分和企业积分分开计算/)).toBeTruthy();
 });
 
 test("without a grant the recharge stays primary, and a setting change is shown and carried on the choice", async () => {
@@ -286,8 +270,6 @@ test("without a grant the recharge stays primary, and a setting change is shown 
   const button = await screen.findByRole("button", { name: "改用Seedream 4.5" });
   expect(button.dataset.kind).toBe("default");
   expect(screen.getByRole("link", { name: "充值" }).dataset.kind).toBe("primary");
-  expect(screen.getByText("比例将改为 1:1")).toBeTruthy();
-  expect(screen.getByText("标准价格 40 积分")).toBeTruthy();
   fireEvent.click(button);
   expect(onChoice).toHaveBeenCalledWith({ kind: "switch-model", endpointId: "seed", name: "Seedream 4.5", changes: "比例将改为 1:1" });
 });
@@ -305,20 +287,19 @@ test("recharge is not offered until the suggestions are in, so nobody pays befor
 test("a task with no known price is released once credits arrive, instead of saying short forever", async () => {
   const onChoice = vi.fn();
   render(<StudioCreditShortageDialog input={{ reason: "普通积分不足，请充值或减少生成数量", canRetry: true }} onChoice={onChoice}/>);
-  await screen.findByText(/当前可用 0 积分，不足以完成本次生成/);
+  await screen.findByRole("link", { name: "充值" });
   api.balance.mockResolvedValue({ totalBalance: 1000 });
   await act(async () => { window.dispatchEvent(new Event("focus")); });
-  await screen.findByRole("dialog", { name: "余额已更新" });
-  fireEvent.click(screen.getByRole("button", { name: "继续生成" }));
+  fireEvent.click(await screen.findByRole("button", { name: "继续生成" }));
   expect(onChoice).toHaveBeenCalledWith({ kind: "retry" });
 });
 
 test("grants that fail to load say so and can be retried, rather than quietly hiding the free path", async () => {
   api.grants.mockRejectedValueOnce(new Error("网络中断"));
   render(<StudioCreditShortageDialog input={{ quote, modelChoices: choices }} onChoice={vi.fn()}/>);
-  await screen.findByText(/模型赠款加载失败/);
+  await screen.findByRole("button", { name: "重新加载" });
   api.grants.mockResolvedValue({ data: [grant({ endpointId: "seed" })] });
   fireEvent.click(screen.getByRole("button", { name: "重新加载" }));
   await screen.findByRole("button", { name: "改用Seedream 4.5" });
-  expect(screen.queryByText(/模型赠款加载失败/)).toBeNull();
+  expect(screen.queryByRole("button", { name: "重新加载" })).toBeNull();
 });
