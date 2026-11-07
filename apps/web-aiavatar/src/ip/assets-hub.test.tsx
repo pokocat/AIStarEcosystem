@@ -9,6 +9,9 @@ vi.mock('next/navigation', () => ({ useSearchParams: () => route.query, useRoute
 vi.mock('next/link', () => ({ default: ({ children, ...p }: any) => <a {...p}>{children}</a> }));
 vi.mock('./studio-page', () => ({ StudioPage: ({ children }: any) => <main>{children}</main> }));
 vi.mock('./assets-people', () => ({ AssetsPeople: ({ library }: any) => <p>人物 {library}</p> }));
+vi.mock('./assets-objects', () => ({ AssetsObjects: ({ kind, from }: any) => <p>对象 {kind} {from}</p> }));
+vi.mock('./library-source-select', () => ({ LibrarySourceSelect: ({ value, onChange }: any) => <button onClick={() => onChange('DW-2')}>选择作品 {value}</button> }));
+vi.mock('./library-save-dialog', () => ({ LibrarySaveDialog: ({ image }: any) => image ? <p>存入 {image.storageKey} {image.projectId}</p> : null }));
 vi.mock('./audio-recorder-dialog', () => ({ AudioRecorderDialog: ({ open, onSave, onClose }: any) => open ? <button onClick={async () => { await onSave(new File(['wav'], '旁白.wav', { type: 'audio/wav' })); onClose(); }}>保存测试录音</button> : null }));
 vi.mock('./studio-errors', async () => {
   const { useCallback, useState } = await import('react');
@@ -36,7 +39,7 @@ vi.mock('antd', () => ({
   Button: ({ icon, loading, type, size, danger, ...p }: any) => <button {...p}>{icon}{p.children}</button>,
   Input: ({ prefix, allowClear, onPressEnter, ...p }: any) => <input {...p}/>,
   Checkbox: ({ checked, onChange, ...p }: any) => <input type="checkbox" checked={checked} onChange={onChange} {...p}/>,
-  Dropdown: ({ children, menu }: any) => <span>{children}<span role="menu">{(menu?.items || []).filter((i: any) => i.key).map((i: any) =>
+  Dropdown: ({ children, menu }: any) => <span>{children}<span role="menu">{(menu?.items || []).flatMap((i: any) => i.children || [i]).filter((i: any) => i.key).map((i: any) =>
     <button key={i.key} role="menuitem" disabled={i.disabled} onClick={e => menu.onClick({ key: i.key, domEvent: e })}>{i.label}</button>)}</span></span>,
   Modal: ({ open, title, children, onOk, okText }: any) => open ? <div role="dialog" aria-label={title}>{children}{onOk && <button onClick={onOk}>{okText}</button>}</div> : null,
 }));
@@ -111,3 +114,34 @@ test('audio recordings use the audio import path and preserve the current librar
   await waitFor(() => expect(api.upload).toHaveBeenCalledWith(expect.objectContaining({ name: '旁白.wav', type: 'audio/wav' }), 'audio', 'f2'));
   await waitFor(() => expect(screen.queryByRole('button', { name: '保存测试录音' })).toBeNull());
 });
+
+test('scenes and props have their own tabs and keep the source filter', async () => {
+  route.query = new URLSearchParams('tab=scene&from=DW-1');
+  render(<AssetsHub/>);
+  expect(await screen.findByText('对象 scene DW-1')).toBeTruthy();
+  expect(hubTab('prop')).toBe('prop');
+});
+
+test('materials can be narrowed to one work, and clearing keeps other filters', async () => {
+  route.query = new URLSearchParams('tab=image&from=DW-1');
+  render(<AssetsHub/>);
+  await waitFor(() => expect(api.materials).toHaveBeenCalledWith(expect.objectContaining({ kind: 'image', projectId: 'DW-1' })));
+  fireEvent.click(await screen.findByRole('button', { name: /选择作品/ }));
+  expect(route.push).toHaveBeenCalledWith(expect.stringContaining('from=DW-2'));
+  expect(route.push.mock.calls.at(-1)?.[0]).toContain('tab=image');
+});
+
+test('an image can be saved as a character, scene or prop, and only a canvas counts as its source', async () => {
+  api.materials.mockResolvedValue(page([
+    { ...image('a', '门头'), metadata: { projectId: 'IPP-1', nodeId: 'n1' } },
+    { ...image('b', '分镜'), metadata: { projectId: 'DW-1', nodeId: 'board:c1' } },
+  ]));
+  render(<AssetsHub/>);
+  await screen.findByRole('button', { name: '打开 门头' });
+  const menus = screen.getAllByRole('menuitem', { name: '存为角色、场景或道具' });
+  fireEvent.click(menus[0]);
+  expect(screen.getByText('存入 ipstudio_gen/u/a.png IPP-1')).toBeTruthy();
+  fireEvent.click(menus[1]);
+  expect(screen.getByText(/存入 ipstudio_gen\/u\/b\.png\s*$/)).toBeTruthy();
+});
+

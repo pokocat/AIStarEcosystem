@@ -16,8 +16,8 @@ export function LibraryReferencePicker(props: Parameters<typeof LibraryReference
   if (mediaType && !embedded) return <LibraryMediaPicker open={rest.open} projectId={rest.projectId} onClose={rest.onClose} onAssets={rest.onAssets} title={rest.title} confirmLabel={rest.confirmLabel} max={rest.max} mediaType={mediaType} upload={rest.upload} people={people} library={library}/>;
   return <LibraryReferenceList {...rest} mediaType={mediaType} embedded={embedded}/>;
 }
-function LibraryReferenceList({open,query='',projectId,onClose,onAssets,embedded,onBusyChange,objectsOnly,objectKind,title='引用个人资产',intro='选择具体版本添加到当前画布。没有图片的资产会引用文字设定。',confirmLabel='添加并引用',max=16,mediaType,upload}: {open:boolean;query?:string;projectId?:string;onClose:()=>void;onAssets:(assets:IpSavedAsset[])=>Promise<void>;embedded?:boolean;onBusyChange?:(busy:boolean)=>void;
-  /** 只列角色、场景和道具（导演台导入用），不给「生成与上传素材」那一栏。 */objectsOnly?:boolean;/** 只列这一类对象（如只列场景，商品不混进来）。 */objectKind?:string;title?:string;intro?:string;confirmLabel?:string;max?:number;
+function LibraryReferenceList({open,query='',projectId,onClose,onAssets,embedded,onBusyChange,objectsOnly,objectKind,excludeObject,title='引用个人资产',intro='选择具体版本添加到当前画布。没有图片的资产会引用文字设定。',confirmLabel='添加并引用',max=16,mediaType,upload}: {open:boolean;query?:string;projectId?:string;onClose:()=>void;onAssets:(assets:IpSavedAsset[])=>Promise<void>;embedded?:boolean;onBusyChange?:(busy:boolean)=>void;
+  /** 只列角色、场景和道具（导演台导入用），不给「生成与上传素材」那一栏。 */objectsOnly?:boolean;/** 只列这一类对象（如只列场景，商品不混进来）。 */objectKind?:string;/** 不列哪些对象（导演台关联时不列这一项自己的卡）。 */excludeObject?:(object:LibraryObject)=>boolean;title?:string;intro?:string;confirmLabel?:string;max?:number;
   /** 只列这一类素材（AI 图片 / AI 视频的素材位）。视频和声音没有角色、场景和道具那一栏。 */mediaType?:'image'|'video'|'audio';
   /** 框里给「上传到资产库」：新文件先进资产库、再自动选中，不绕开资产库直接用（2026-10-31）。 */upload?:boolean}) {
   const materialsOnly=!!mediaType&&mediaType!=='image';
@@ -25,7 +25,7 @@ function LibraryReferenceList({open,query='',projectId,onClose,onAssets,embedded
   const epoch=useRef(0),fileInput=useRef<HTMLInputElement>(null),uploadedKey=useRef<string|undefined>(undefined);
   useEffect(()=>{onBusyChange?.(busy);return()=>onBusyChange?.(false);},[busy,onBusyChange]);
   useEffect(()=>{if(!open)return;setKeyword(query);setSelected({});setPage(0);setError('');if(mediaType)setTab('materials');Promise.all([libraryFolders(),projectId?canvasLibraryFolder(projectId):Promise.resolve({folderId:''})]).then(([f,p])=>{setFolders(f);setFolder(p.folderId||'all');}).catch(e=>setError(e));},[open,query,projectId]);
-  useEffect(()=>{if(!open)return;const id=++epoch.current;setLoading(true);const timer=setTimeout(()=>{void(tab==='objects'?libraryObjects({folder,query:keyword,page,...(objectKind?{kind:objectKind}:{})}):libraryMaterials({folder,query:keyword,page,...(mediaType?{kind:mediaType}:{})})).then(result=>{if(id!==epoch.current)return;setTotal(result.total);if(tab==='objects'){const list=result.items as LibraryObject[];
+  useEffect(()=>{if(!open)return;const id=++epoch.current;setLoading(true);const timer=setTimeout(()=>{void(tab==='objects'?libraryObjects({folder,query:keyword,page,...(objectKind?{kind:objectKind}:{})}):libraryMaterials({folder,query:keyword,page,...(mediaType?{kind:mediaType}:{})})).then(result=>{if(id!==epoch.current)return;setTotal(result.total);if(tab==='objects'){const list=(result.items as LibraryObject[]).filter(o=>!excludeObject?.(o));
 setObjects(list);setItems(list.map(a=>libraryObjectAsset(a,folders.find(f=>f.id===a.folderId)?.name)));}else{setObjects([]);const list=result.items as IpSavedAsset[];setItems(list);
       // 刚传进资产库的那份：列表读回来后直接选中。
       const fresh=uploadedKey.current&&list.find(a=>'storageKey' in a.data&&a.data.storageKey===uploadedKey.current);if(fresh){uploadedKey.current=undefined;

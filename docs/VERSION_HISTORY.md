@@ -4,6 +4,10 @@
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
 
+### 资产库：导演台有图自动进库、按来源找 · 2026-11-07（本地，未发布）
+
+`IpLibraryDirectorSync` 后台对账，把导演台有图的角色、场景、道具建成资产库的卡（同名不合并、已关联的追加到原卡、主图跟随采用版本直到用户自己选、删掉的不补回），存量作品走同一条路；分镜图、片段视频、整集成片和上传的图进文件层并起能认的名字。新增 `GET /library/sources`、`POST /library/objects/from-media`，素材和对象可按 `projectId` 筛选。资产页加场景、道具分类和来源筛选，导演台显示「已在资产库」，画布和资产页可以把图存为角色、场景、道具，裁剪、拆图、抽帧结果进库。无迁移。方案见 `docs/ip-studio-personal-asset-library-plan.md` 末节。
+
 ### Studio 后台模型配置 · 2026-11-07（本地，未发布）
 
 `studio-admin` 新增 `/models`（模型接入、IP Studio 模型、功能与售价），替代统一后台和 `apps/admin` 的 LLM API 页，接口 `POST /api/admin/studio/model-config/command`，无迁移。规格当不透明 JSON，没改不发，服务端拒收不认识的规格字段；见 `docs/platform-model-management.md`。素材库绑定等 `dev/video-asset-library` 合入后补。

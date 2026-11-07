@@ -31,11 +31,11 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); document.body.replaceChildren(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
-function Host({ nodes = [source], onInsert, demo = false, seen }: { nodes?: CanvasNodeData[]; demo?: boolean;
+function Host({ projectId, nodes = [source], onInsert, demo = false, seen }: { projectId?: string; nodes?: CanvasNodeData[]; demo?: boolean;
   onInsert: (nodes: CanvasNodeData[], connections: CanvasConnection[]) => Promise<void>; seen?: (p: StudioPendingFrame[]) => void }) {
   const [pending, setPending] = useState<StudioPendingFrame[]>([]);
   seen?.(pending);
-  return <><StudioFlowVideoFrames nodes={nodes} pending={pending} onPendingChange={setPending} onInsert={onInsert} demo={demo}/>
+  return <><StudioFlowVideoFrames projectId={projectId} nodes={nodes} pending={pending} onPendingChange={setPending} onInsert={onInsert} demo={demo}/>
     <ul aria-label="占位">{pending.map(p => <li key={p.node.id}>{p.node.title}</li>)}</ul></>;
 }
 
@@ -72,7 +72,7 @@ test('submit shows a local placeholder, then inserts an image node linked to the
   // The panel closes and the placeholder is on the canvas while the frame is captured and uploaded.
   expect(screen.queryByRole('dialog', { name: '抽帧' })).toBeNull();
   expect(screen.getByRole('list', { name: '占位' }).textContent).toBe('镜头一 · 当前帧 00:05');
-  await waitFor(() => expect(uploadImage).toHaveBeenCalledWith(frame));
+  await waitFor(() => expect(uploadImage).toHaveBeenCalledWith(frame, undefined, undefined));
   expect(fetchAssetBlob).toHaveBeenCalledWith('own/v.mp4');
   expect(capture).toHaveBeenCalledWith(clip, 'current', 5.4);
   await act(async () => { finish({ url: '/f.jpg', storageKey: 'own/f.jpg', width: 720, height: 1280, bytes: 1, mimeType: 'image/jpeg' }); });
@@ -116,3 +116,17 @@ test('a video without a file, a generating video and 演示模式 do not capture
   expect(await screen.findByRole('status')).toHaveProperty('textContent', '演示模式不支持抽帧。');
   expect(screen.getByRole('button', { name: /提\s*交/ })).toHaveProperty('disabled', true);
 });
+
+test('the frame reaches the asset library with the upload, tagged with its canvas and node', async () => {
+  const frame = new Blob(['f'], { type: 'image/jpeg' });
+  fetchAssetBlob.mockResolvedValue(new Blob(['x'])); capture.mockResolvedValue(frame);
+  uploadImage.mockResolvedValue({ url: '/f.jpg', storageKey: 'own/f.jpg', width: 720, height: 1280, bytes: 1, mimeType: 'image/jpeg' });
+  const onInsert = vi.fn().mockResolvedValue(undefined);
+  render(<Host projectId="IPP-1" onInsert={onInsert}/>);
+  act(() => dispatchStudioCommand('video-frames', 'v'));
+  fireEvent.click(await screen.findByRole('button', { name: /提\s*交/ }));
+  await waitFor(() => expect(onInsert).toHaveBeenCalledTimes(1));
+  const [node] = onInsert.mock.calls[0][0];
+  expect(uploadImage.mock.calls[0][2]).toEqual({ projectId: 'IPP-1', nodeId: node.id, title: node.title });
+});
+

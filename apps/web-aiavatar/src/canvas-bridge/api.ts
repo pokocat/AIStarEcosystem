@@ -65,12 +65,20 @@ export type IpRun = SharedIpRun;
  */
 export const fetchModels = () => apiFetch<IpModels>("/v1/ip-studio/models");
 
+/** 画布上做出来的新图（裁剪、拆图、抽帧）来自哪里：带上就和上传同一个请求进资产库，不带就只存文件。 */
+export type CanvasImageOrigin = { projectId: string; nodeId: string; title: string; prompt?: string };
+
 /** 上传一张图，落 OSS。返回的 key 是真值，url 是当次派生的签名地址。 */
-export async function uploadImage(file: File | Blob, fileName = "image.png") {
+export async function uploadImage(file: File | Blob, fileName = "image.png", origin?: CanvasImageOrigin) {
   const form = new FormData();
   form.append("file", await prepareImageForUpload(file instanceof File ? file : new File([file], fileName)));
+  if (origin) {
+    form.append("nodeId", origin.nodeId);
+    form.append("title", origin.title);
+    if (origin.prompt) form.append("prompt", origin.prompt);
+  }
   // apiFetch 认得 FormData：不设 Content-Type，让浏览器自己加 boundary
-  return apiFetch<IpUploadResult>("/v1/ip-studio/uploads", { method: "POST", body: form });
+  return apiFetch<IpUploadResult>(origin ? `/v1/ip-studio/projects/${origin.projectId}/library/images` : "/v1/ip-studio/uploads", { method: "POST", body: form });
 }
 
 /**

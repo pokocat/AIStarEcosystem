@@ -5,6 +5,8 @@ import { DirectorAssets } from "./director-assets";
 
 const api = vi.hoisted(() => ({ runTask: vi.fn(), edit: vi.fn() }));
 vi.mock("../api", () => ({ DirectorApi: api, IpStudioApi: {} }));
+vi.mock("next/link", () => ({ default: ({ children, ...p }: any) => <a {...p}>{children}</a> }));
+vi.mock("@/shell/ui-version", () => ({ useUiVersion: () => "next" }));
 vi.mock("../studio-errors", async importOriginal => ({ ...(await importOriginal<typeof import("../studio-errors")>()), useStudioApp: () => ({ modal: { confirm: vi.fn() } }) }));
 // 资产库选择器换成一个按钮：点一下就像用户在资产库里挑了「祖宅」的第 2 版。
 vi.mock("../library-reference-picker", () => ({
@@ -109,3 +111,17 @@ test("a description-only save after re-extraction does not send episodes", async
   fireEvent.click(screen.getByRole("button", { name: "保存" }));
   await waitFor(() => expect(api.edit).toHaveBeenCalledWith("w", "asset.update", "c1", 4, { name: "林晚", description: "主角2" }));
 });
+
+test("an asset already in the library links to it, filtered to this work", () => {
+  const inLibrary = { ...work, assets: [{ ...work.assets[0], libraryEntryId: "ILO-1" }] };
+  render(<DirectorAssets {...props} work={inLibrary}/>);
+  expect(screen.getByRole("link", { name: /在资产库查看/ }).getAttribute("href")).toBe("/assets?tab=people&from=w");
+  fireEvent.click(screen.getByRole("button", { name: "查看林晚" }));
+  expect(screen.getByRole("link", { name: "已在资产库" }).getAttribute("href")).toBe("/assets?tab=people&from=w");
+});
+
+test("no library link while nothing has reached the library", () => {
+  render(<DirectorAssets {...props}/>);
+  expect(screen.queryByRole("link", { name: /在资产库查看/ })).toBeNull();
+});
+

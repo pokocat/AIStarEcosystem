@@ -18,6 +18,9 @@ import { SignedVideo } from '@/canvas-bridge/signed-video';
 import { LibraryAssetEditor } from './library-asset-editor';
 import { LibraryFolderSelect } from './library-folder-select';
 import { LibraryGridMotion } from './library-grid-motion';
+import { LibrarySaveDialog, type LibrarySaveImage } from './library-save-dialog';
+import { LibrarySourceSelect } from './library-source-select';
+import { materialOrigin, objectOriginLabel, originHref } from './assets-hub-shared';
 import { LibraryWorkspace } from './library-workspace';
 import { studioOverlayContainer } from './studio-overlay';
 
@@ -25,7 +28,7 @@ const objectLabels = { character: '角色', scene: '场景', prop: '道具', pro
 const mediaLabels = { image: '图片', video: '视频', audio: '音频', text: '文本' };
 type SupplementaryTab = { key: string; label: string; icon: ReactNode; count?: number; children: ReactNode };
 
-export function PersonalAssetLibrary({ supplementaryTabs = [], hideTabs = false, initialTab = "objects" }: { supplementaryTabs?: SupplementaryTab[]; hideTabs?: boolean; initialTab?: string }) {
+export function PersonalAssetLibrary({ supplementaryTabs = [], hideTabs = false, initialTab = "objects", initialFrom = "" }: { supplementaryTabs?: SupplementaryTab[]; hideTabs?: boolean; initialTab?: string; initialFrom?: string }) {
   const { message, modal } = useStudioApp();
   const router = useRouter();
   const [folders, setFolders] = useState<LibraryFolder[]>([]);
@@ -33,6 +36,8 @@ export function PersonalAssetLibrary({ supplementaryTabs = [], hideTabs = false,
   const [tab, setTab] = useState(initialTab);
   useEffect(() => { if (hideTabs) { setTab(initialTab); setPage(0); setSelected([]); } }, [hideTabs, initialTab]);
   const [query, setQuery] = useState('');
+  const [from, setFrom] = useState(initialFrom);
+  const [saving, setSaving] = useState<LibrarySaveImage>();
   const [status, setStatus] = useState('all');
   const [kind, setKind] = useState('all');
   const [page, setPage] = useState(0);
@@ -51,7 +56,7 @@ export function PersonalAssetLibrary({ supplementaryTabs = [], hideTabs = false,
   const [editing, setEditing] = useState<LibraryObject[]>();
   const [preview, setPreview] = useState<LibraryMaterial>();
   const [folderDialog, setFolderDialog] = useState<{ id?: string; name: string }>();
-  const [newObject, setNewObject] = useState<{ name: string; kind: string; description: string; storageKey?: string }>();
+  const [newObject, setNewObject] = useState<{ name: string; kind: string; description: string }>();
   const [organize, setOrganize] = useState<LibraryMaterial>();
   const [moveFolder, setMoveFolder] = useState('');
   const epoch = useRef(0);
@@ -84,7 +89,7 @@ export function PersonalAssetLibrary({ supplementaryTabs = [], hideTabs = false,
     setListError('');
     setSelected([]);
     const timer = setTimeout(() => {
-      void (tab === 'objects' ? libraryObjects({ folder, query, status, page }) : libraryMaterials({ folder, query, kind, page }))
+      void (tab === 'objects' ? libraryObjects({ folder, query, status, page, projectId: from || undefined }) : libraryMaterials({ folder, query, kind, page, projectId: from || undefined }))
         .then(result => {
           if (id !== epoch.current) return;
           setTotal(result.total); setMore(result.hasMore);
@@ -94,7 +99,7 @@ export function PersonalAssetLibrary({ supplementaryTabs = [], hideTabs = false,
         .finally(() => id === epoch.current && setLoading(false));
     }, 180);
     return () => { clearTimeout(timer); epoch.current++; };
-  }, [folder, query, status, kind, page, tab, revision, isLibraryTab]);
+  }, [folder, query, status, kind, page, tab, from, revision, isLibraryTab]);
 
   const act = async (action: () => Promise<void>) => {
     if (actionPending.current) return;
@@ -116,7 +121,7 @@ export function PersonalAssetLibrary({ supplementaryTabs = [], hideTabs = false,
   };
   const showNewObject = () => setNewObject({ name: '', kind: 'character', description: '' });
   const selection = objects.filter(a => selected.includes(a.id));
-  const filtered = query.trim() || folder !== 'all' || (tab === 'objects' ? status !== 'all' : kind !== 'all');
+  const filtered = query.trim() || from || folder !== 'all' || (tab === 'objects' ? status !== 'all' : kind !== 'all');
 
   const libraryContent = <LibraryWorkspace navigation={
     <aside className="library-folders" aria-label="文件夹导航">
@@ -132,6 +137,7 @@ export function PersonalAssetLibrary({ supplementaryTabs = [], hideTabs = false,
       <div className="library-filter-bar">
         <Input prefix={<Search size={16}/>} allowClear aria-label="搜索个人资产" placeholder="搜索名称、描述或来源" value={query} onChange={e => { setQuery(e.target.value); setPage(0); }}/>
         {tab === 'objects' ? <Select aria-label="资产配图状态" value={status} onChange={v => { setStatus(v); setPage(0); }} options={[{ value: 'all', label: '全部配图状态' }, { value: 'pending', label: '待配图' }, { value: 'ready', label: '已有主图' }]}/> : <Select aria-label="素材媒体类型" value={kind} onChange={v => { setKind(v); setPage(0); }} options={[{ value: 'all', label: '全部类型' }, ...Object.entries(mediaLabels).map(([value, label]) => ({ value, label }))]}/>}
+        <LibrarySourceSelect value={from} onChange={id => { setFrom(id); setPage(0); setSelected([]); }}/>
         <Button aria-label="刷新资产" title="刷新资产" icon={<RefreshCw size={16}/>} onClick={refresh}/>
       </div>
       <div className="library-result-bar"><span aria-live="polite">{loading ? '正在加载资产…' : listError ? '资产加载失败' : `${total} 项${filtered ? '匹配资产' : '资产'}`}</span>{tab === 'objects' && (selected.length ? <div><span>已选择 {selection.length} 项</span><button onClick={() => setSelected([])}>取消选择</button><Button size="small" onClick={() => setEditing(selection)}>编辑与配图</Button></div> : <span>选择资产，可批量编辑与配图</span>)}</div>
@@ -151,7 +157,7 @@ export function PersonalAssetLibrary({ supplementaryTabs = [], hideTabs = false,
           return <article key={a.id} className="library-card" aria-label={`素材 ${a.title}`}>
             <div className="library-card-visual">{a.kind === 'image' ? <SignedImage storageKey={a.data.storageKey} src={a.data.dataUrl} alt={a.title} loading="lazy"/> : a.kind === 'text' ? <div className="library-text-preview"><FileText size={22}/><p>{a.data.content.replace(/^#{1,6}\s*/gm, '').slice(0, 700)}</p></div> : <div className={`library-media-placeholder library-media-${a.kind}`}><Icon size={40} strokeWidth={1.2}/><span>{a.kind === 'video' ? '打开播放视频' : '打开试听音频'}</span></div>}<span className="library-type">{mediaLabels[a.kind]}</span><Button className="library-preview-button" aria-label={`预览素材 ${a.title}`} title="打开预览" icon={<Expand size={16}/>} onClick={() => setPreview(a)}/></div>
             <div className="library-card-body"><button className="library-card-title" onClick={() => setPreview(a)}>{a.title}</button><p className="library-card-source">{a.source || '画布素材'}</p><p className="library-card-folder"><Folder size={12}/>{folderName(typeof a.metadata?.folderId === 'string' ? a.metadata.folderId : undefined)}</p>{a.metadata?.unavailable === true && <p role="status" className="library-notice">素材加载失败</p>}</div>
-            <div className="library-card-actions"><Button type="text" onClick={() => { setOrganize(a); setMoveFolder(typeof a.metadata?.folderId === 'string' ? a.metadata.folderId : ''); }}>整理</Button>{a.kind === 'image' && <Button type="text" onClick={() => setNewObject({ name: a.title, kind: 'character', description: '', storageKey: a.data.storageKey })}>设为角色</Button>}<Button type="text" aria-label={`打开素材 ${a.title}`} icon={<ArrowUpRight size={17}/>} onClick={() => setPreview(a)}/></div>
+            <div className="library-card-actions"><Button type="text" onClick={() => { setOrganize(a); setMoveFolder(typeof a.metadata?.folderId === 'string' ? a.metadata.folderId : ''); }}>整理</Button>{a.kind === 'image' && a.data.storageKey && <Button type="text" onClick={() => setSaving({ storageKey: a.data.storageKey as string, src: a.data.dataUrl, title: a.title, folderId: typeof a.metadata?.folderId === 'string' ? a.metadata.folderId : undefined, projectId: typeof a.metadata?.projectId === 'string' && a.metadata.projectId.startsWith('IPP-') ? a.metadata.projectId : undefined, nodeId: typeof a.metadata?.nodeId === 'string' ? a.metadata.nodeId : undefined })}>存为角色、场景或道具</Button>}<Button type="text" aria-label={`打开素材 ${a.title}`} icon={<ArrowUpRight size={17}/>} onClick={() => setPreview(a)}/></div>
           </article>;
         })}
       </LibraryGridMotion>}
@@ -166,11 +172,12 @@ export function PersonalAssetLibrary({ supplementaryTabs = [], hideTabs = false,
       ...supplementaryTabs.map(t => ({ key: t.key, label: navLabel(t.label, t.icon, t.count), children: t.children })),
     ]}/>}
     {editing && <LibraryAssetEditor assets={editing} folders={folders} onClose={() => { setEditing(undefined); refresh(); }} onChange={refresh}/>}
+    <LibrarySaveDialog image={saving} onClose={() => setSaving(undefined)} onSaved={() => refresh()}/>
     <Modal open={!!preview} title={preview?.title} footer={null} width={960} getContainer={studioOverlayContainer} className="library-preview-modal" onCancel={() => setPreview(undefined)} destroyOnHidden>
       {preview && <div className="library-full-preview">{preview.kind === 'image' ? <SignedImage storageKey={preview.data.storageKey} src={preview.data.dataUrl} alt={preview.title}/> : preview.kind === 'video' ? <SignedVideo storageKey={preview.data.storageKey} src={preview.data.url} controls preload="metadata"/> : preview.kind === 'audio' ? <SignedAudio storageKey={preview.data.storageKey} src={preview.data.url} controls/> : <pre>{preview.data.content}</pre>}{typeof preview.metadata?.prompt === 'string' && <details><summary>提示词</summary><p>{preview.metadata.prompt}</p></details>}</div>}
     </Modal>
     <Modal open={!!folderDialog} title={folderDialog?.id ? '重命名文件夹' : '新建文件夹'} getContainer={studioOverlayContainer} confirmLoading={busy} okButtonProps={{ disabled: !folderDialog?.name.trim() }} onCancel={() => !busy && setFolderDialog(undefined)} onOk={() => void act(async () => { if (!folderDialog) return; const f = folderDialog.id ? await renameLibraryFolder(folderDialog.id, folderDialog.name) : await createLibraryFolder(folderDialog.name); changeFolder(f.id); setFolderDialog(undefined); })}><Input aria-label="文件夹名称" value={folderDialog?.name || ''} maxLength={100} onChange={e => setFolderDialog({ ...folderDialog, name: e.target.value })}/>{actionError && <p className="library-form-error"><StudioErrorNotice error={actionError}/></p>}</Modal>
-    <Modal open={!!newObject} title="新建资产" getContainer={studioOverlayContainer} confirmLoading={busy} okButtonProps={{ disabled: !newObject?.name.trim() }} onCancel={() => !busy && setNewObject(undefined)} onOk={() => void act(async () => { if (!newObject) return; let a = await createLibraryObject({ name: newObject.name, kind: newObject.kind, description: newObject.description, folderId: folder === 'all' || folder === 'unfiled' ? undefined : folder }); if (newObject.storageKey) a = await addLibraryVersion(a.id, newObject.storageKey); setNewObject(undefined); setTab('objects'); setPage(0); setEditing([a]); })}><div className="personal-editor-fields"><label>名称<Input aria-label="新资产名称" value={newObject?.name || ''} onChange={e => newObject && setNewObject({ ...newObject, name: e.target.value })}/></label><label>类别<Select aria-label="新资产类别" value={newObject?.kind} options={Object.entries(objectLabels).map(([value, label]) => ({ value, label }))} onChange={kind => newObject && setNewObject({ ...newObject, kind })}/></label><label>描述<Input.TextArea aria-label="新资产描述" value={newObject?.description || ''} onChange={e => newObject && setNewObject({ ...newObject, description: e.target.value })}/></label></div>{actionError && <p className="library-form-error"><StudioErrorNotice error={actionError}/></p>}</Modal>
+    <Modal open={!!newObject} title="新建资产" getContainer={studioOverlayContainer} confirmLoading={busy} okButtonProps={{ disabled: !newObject?.name.trim() }} onCancel={() => !busy && setNewObject(undefined)} onOk={() => void act(async () => { if (!newObject) return; const a = await createLibraryObject({ name: newObject.name, kind: newObject.kind, description: newObject.description, folderId: folder === 'all' || folder === 'unfiled' ? undefined : folder }); setNewObject(undefined); setTab('objects'); setPage(0); setEditing([a]); })}><div className="personal-editor-fields"><label>名称<Input aria-label="新资产名称" value={newObject?.name || ''} onChange={e => newObject && setNewObject({ ...newObject, name: e.target.value })}/></label><label>类别<Select aria-label="新资产类别" value={newObject?.kind} options={Object.entries(objectLabels).map(([value, label]) => ({ value, label }))} onChange={kind => newObject && setNewObject({ ...newObject, kind })}/></label><label>描述<Input.TextArea aria-label="新资产描述" value={newObject?.description || ''} onChange={e => newObject && setNewObject({ ...newObject, description: e.target.value })}/></label></div>{actionError && <p className="library-form-error"><StudioErrorNotice error={actionError}/></p>}</Modal>
     <Modal open={!!organize} title="整理素材" getContainer={studioOverlayContainer} confirmLoading={busy} onCancel={() => !busy && setOrganize(undefined)} onOk={() => void act(async () => { if (organize) await editLibraryMaterial(organize.id, { folderId: moveFolder || null }); setOrganize(undefined); })}><LibraryFolderSelect folders={folders} value={moveFolder} ariaLabel="素材整理文件夹" onChange={setMoveFolder}/>{actionError && <p className="library-form-error"><StudioErrorNotice error={actionError}/></p>}</Modal>
     <input ref={upload} hidden type="file" accept={`${IMAGE_UPLOAD_ACCEPT},.mp4,.mp3,.wav,.m4a,.md,.txt`} aria-label="上传个人库素材" onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void act(async () => { if (/\.(md|txt)$/i.test(f.name)) { const saved = await saveAsset({ kind: 'text', title: f.name, coverUrl: '', tags: [], data: { content: await f.text() } }); if (folder !== 'all' && folder !== 'unfiled') await editLibraryMaterial(saved.id, { folderId: folder }); } else await uploadLibraryMedia(f, /\.mp4$/i.test(f.name) ? 'video' : /\.(mp3|wav|m4a)$/i.test(f.name) ? 'audio' : 'image', folder === 'all' || folder === 'unfiled' ? undefined : folder); setTab('materials'); setPage(0); message.success('素材已保存'); }); }}/>
   </section>;

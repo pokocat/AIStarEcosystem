@@ -12,7 +12,7 @@ import { prepareImageForUpload } from '@ai-star-eco/api-client/image-upload';
 // 签名有 TTL，所以还有个 resolveImageUrl 负责过期后重新换一张。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { fetchAssetBlob, signKeys, uploadImage as uploadToOss } from "./api";
+import { fetchAssetBlob, signKeys, uploadImage as uploadToOss, type CanvasImageOrigin } from "./api";
 
 export type UploadedImage = {
   url: string;
@@ -68,7 +68,7 @@ export function rememberUploaded(url: string, record: UploadedImage) {
 }
 
 /** 上传一张图到 OSS。入参可以是 Blob，也可以是 dataURL / 远程地址。 */
-export async function uploadImage(input: string | Blob, _options?: ImageReadOptions): Promise<UploadedImage> {
+export async function uploadImage(input: string | Blob, _options?: ImageReadOptions, origin?: CanvasImageOrigin): Promise<UploadedImage> {
   if (typeof input === "string") {
     const known = alreadyUploaded.get(input);
     if (known) return known;   // 服务端刚生成的图，别再传一遍
@@ -77,7 +77,8 @@ export async function uploadImage(input: string | Blob, _options?: ImageReadOpti
   const blob = await prepareImageForUpload(original instanceof File ? original : new File([original], `canvas.${original.type.split("/")[1] || "png"}`, { type: original.type }));
   const { width, height } = await measure(blob);
   const ext = (blob.type.split("/")[1] || "png").replace("jpeg", "jpg");
-  const res = await uploadToOss(blob, `canvas-${Date.now()}.${ext}`);
+  const fileName = `canvas-${Date.now()}.${ext}`;
+  const res = await (origin ? uploadToOss(blob, fileName, origin) : uploadToOss(blob, fileName));
   remember(res.key, res.url);
   return {
     url: res.url,

@@ -19,6 +19,7 @@ import java.util.*;
 
 @Service
 public class IpLibraryService {
+    private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(IpLibraryService.class);
     private final IpLibraryRecordRepository records;private final IpSavedAssetService saved;private final IpProjectService projects;
     private final IpRunRepository runs;private final StudioWorkflowService workflow;private final FileStorageService storage;
     private final ObjectMapper om;private final AepUserRepository users;
@@ -65,14 +66,14 @@ public class IpLibraryService {
         for(String field:List.of("name","description","prompt"))if(body.has(field))data.put(field,field.equals("name")?text(body.path(field).asText(),128,"资产名称"):bounded(body.path(field).asText(),field.equals("prompt")?4000:2000));
         if(body.has("folderId")){String folder=body.path("folderId").asText(null);checkFolder(user,folder);if(folder==null||folder.isBlank())data.remove("folderId");else data.put("folderId",folder);}
         if(body.has("referenceKey")){String key=body.path("referenceKey").asText(null);if(key==null||key.isBlank())data.remove("referenceKey");else{projects.requireOwnedAssetKey(user,key);requireImage(key);data.put("referenceKey",key);}}
-        if(body.has("mainVersionId")){String version=body.path("mainVersionId").asText();if(!hasVersion(data,version))throw invalid("请选择该资产已有的图片版本");data.put("mainVersionId",version);}
+        if(body.has("mainVersionId")){String version=body.path("mainVersionId").asText();if(!hasVersion(data,version))throw invalid("请选择该资产已有的图片版本");data.put("mainVersionId",version).put("mainAssigned",true);}
         if(body.hasNonNull("removeVersionId"))removeVersion(data,body.path("removeVersionId").asText());
         persist(row,data);return wire(row);
     }
     @Transactional public void remove(String user,String id){lock(user);var row=required(user,id,"object");row.setDeletedAt(Instant.now());records.save(row);}
     @Transactional public LibraryObject upload(String user,String id,UploadVersionRequest request) {
         lock(user);var row=required(user,id,"object");projects.requireOwnedAssetKey(user,request.storageKey());requireImage(request.storageKey());
-        var data=json(row);addVersion(data,request.storageKey(),"",null,false,request.main());persist(row,data);
+        var data=json(row);addVersion(data,request.storageKey(),"",null,false,request.main());if(request.main())data.put("mainAssigned",true);persist(row,data);
         saved.saveAutomatic(user,media("image",data.path("name").asText(),request.storageKey(),null,"用户上传",data.path("folderId").asText(null),id));return wire(row);
     }
     @Transactional public LibraryExtraction extract(String user,String project,ExtractRequest request) {
@@ -182,6 +183,40 @@ public class IpLibraryService {
         if(!"running".equals(dto.status()))persist(newRecord(user,"receipt",receipt),p);
     }
     public boolean collected(String runId){return records.existsById("ILC-"+runId);}
+    /** 导演台作品的哪些资产已经在资产库：assetId → 资产库对象 id。用户删掉的不算。 */
+    public Map<String,String> directorLinks(String user,String workId) {
+        var marker=records.findByIdAndOwnerUserIdAndDeletedAtIsNull(IpLibraryDirectorSync.MARKER+workId,user).orElse(null);
+        if(marker==null)return Map.of();
+        var links=new HashMap<String,String>();var assets=json(marker).path("assets");
+        for(var it=assets.fields();it.hasNext();){var e=it.next();String object=e.getValue().path("objectId").asText();if(!object.isBlank())links.put(e.getKey(),object);}
+        if(links.isEmpty())return Map.of();
+        var live=new HashSet<>(records.liveIds(links.values(),user));links.values().removeIf(id->!live.contains(id));return links;
+    }
+    /** 一张已有的图存成角色、场景、道具，或加到已有的一项。文件不复制；同一个 clientRequestId 重复提交返回同一项。 */
+    @Transactional public LibraryObject saveMedia(String user,SaveMediaRequest request) {
+        lock(user);String requestId=text(request.clientRequestId(),64,"请求编号");
+        String key=projects.requireOwnedAssetKey(user,request.storageKey());if(key==null)throw invalid("请选择一张图片");
+        String bindingId="ILB-"+hash(user+"\0media\0"+requestId).substring(0,24);
+        var binding=records.findByIdAndOwnerUserIdAndDeletedAtIsNull(bindingId,user).orElse(null);
+        if(binding!=null)return wire(required(user,json(binding).path("objectId").asText(),"object"));
+        requireImage(key);
+        IpLibraryRecord row;ObjectNode data;
+        if(request.objectId()!=null&&!request.objectId().isBlank()){row=required(user,request.objectId(),"object");data=json(row);}
+        else{var item=new LibraryCandidate(requestId,request.kind(),request.name(),request.description()==null?"":request.description(),"",null);checkFolder(user,request.folderId());validateCandidate(item);
+            // 没指定资产库时跟画布绑定的那个库走。
+            String folder=request.folderId();if((folder==null||folder.isBlank())&&request.projectId()!=null&&!request.projectId().isBlank())folder=canvasFolder(user,request.projectId());
+            row=newRecord(user,"object",null);data=baseObject(item,folder);}
+        String prompt=saved.promptOf(user,"image",key);
+        addVersion(data,key,prompt.length()>1000?prompt.substring(0,1000):prompt,null,false,false);
+        var media=media("image",data.path("name").asText(),key,null,"Canvas",data.path("folderId").asText(null),row.getId());
+        if(request.projectId()!=null&&!request.projectId().isBlank()){
+            var project=projects.required(user,request.projectId());
+            ((ArrayNode)data.path("sources")).addObject().put("id",bindingId).put("projectId",project.getId()).put("nodeId",request.nodeId()==null?"":request.nodeId()).put("title",project.getName()).put("evidence","").put("description","").put("origin","canvas");
+            media.with("metadata").put("projectId",project.getId());if(request.nodeId()!=null)media.with("metadata").put("nodeId",request.nodeId());
+        }
+        persist(row,data);persist(newRecord(user,"binding",bindingId),om.createObjectNode().put("objectId",row.getId()));
+        saved.saveAutomatic(user,media);return wire(row);
+    }
     public String folderName(String user,String id){if(id==null||id.isBlank())return "未分类";return records.findByIdAndOwnerUserIdAndDeletedAtIsNull(id,user).map(r->json(r).path("name").asText()).orElse("未分类");}
     public void checkFolder(String user,String id){if(id!=null&&!id.isBlank())required(user,id,"folder");}
     private ObjectNode media(String kind,String title,String key,IpRun run,String source,String folder,String objectId) {
@@ -189,12 +224,31 @@ public class IpLibraryService {
         var m=out.putObject("metadata");if(folder!=null)m.put("folderId",folder);if(objectId!=null)m.put("objectId",objectId);
         if(run!=null)m.put("runId",run.getId()).put("projectId",run.getProjectId()).put("nodeId",run.getNodeId()).put("prompt",runPrompt(run));return out;
     }
+    /**
+     * 画布上做出来的新图（裁剪、拆图、抽帧）：上传和登记是同一个请求，断网或关页面不会出现「图在画布上、资产库里没有」。
+     * 普通 {@code /uploads} 不登记，局部重绘的蒙版这类中间图也走它。登记失败只记日志，图照常返回，画布上的结果不受影响。
+     */
+    public com.aistareco.aep.ipstudio.dto.IpStudioDtos.IpUploadResultDto uploadCanvasImage(String user,String project,org.springframework.web.multipart.MultipartFile file,String nodeId,String title,String prompt) {
+        projects.required(user,project);
+        var result=projects.upload(user,file);
+        try {
+            var asset=media("image",title==null||title.isBlank()?"画布图片":title,result.key(),null,"Canvas",canvasFolder(user,project),null);
+            asset.with("metadata").put("projectId",project);
+            if(nodeId!=null&&!nodeId.isBlank())asset.with("metadata").put("nodeId",nodeId);
+            if(prompt!=null&&!prompt.isBlank())asset.with("metadata").put("prompt",prompt.length()>4000?prompt.substring(0,4000):prompt);
+            if(result.width()!=null)asset.with("data").put("width",result.width());
+            if(result.height()!=null)asset.with("data").put("height",result.height());
+            saved.saveAutomatic(user,asset);
+        } catch(RuntimeException e) {log.warn("[asset-library] canvas image not registered project={} key={} reason={}",project,result.key(),e.toString());}
+        return result;
+    }
     public void saveUpload(String user,StudioMediaImportService.MediaImportResult result,String folder){checkFolder(user,folder);saved.saveAutomatic(user,media(result.mediaType(),result.fileName(),result.key(),null,"用户上传",folder,null));}
-    private String runPrompt(IpRun run){var input=projects.parseOrEmptyObject(run.getInputJson());return input.path("studioRequest").path("prompt").asText(input.path("userPrompt").asText(input.path("prompt").asText()));}
-    private void addVersion(ObjectNode data,String key,String prompt,String run,boolean mock,boolean main) {
-        ArrayNode versions=(ArrayNode)data.path("versions");for(var v:versions)if(key.equals(v.path("storageKey").asText())){if(main)data.put("mainVersionId",v.path("id").asText());return;}
+    public String runPrompt(IpRun run){var input=projects.parseOrEmptyObject(run.getInputJson());return input.path("studioRequest").path("prompt").asText(input.path("userPrompt").asText(input.path("prompt").asText()));}
+    static ObjectNode addVersion(ObjectNode data,String key,String prompt,String run,boolean mock,boolean main) {
+        ArrayNode versions=(ArrayNode)data.path("versions");for(var v:versions)if(key.equals(v.path("storageKey").asText())){if(main)data.put("mainVersionId",v.path("id").asText());return (ObjectNode)v;}
         String id="ILV-"+hash(key).substring(0,20);var v=versions.addObject().put("id",id).put("storageKey",key).put("prompt",prompt).put("createdAt",Instant.now().toString()).put("mock",mock);if(run!=null)v.put("runId",run);
         if(main||!data.hasNonNull("mainVersionId"))data.put("mainVersionId",id);
+        return v;
     }
     /** 删一张图（商品库的商品）。只从这一项里去掉，文件和已经加进导演台作品的快照不动；删的是主图时第一张顶上。 */
     private void removeVersion(ObjectNode data,String id){
@@ -207,7 +261,7 @@ public class IpLibraryService {
     private boolean hasVersion(ObjectNode data,String id){for(var v:data.path("versions"))if(id.equals(v.path("id").asText()))return true;return false;}
     private ObjectNode baseObject(LibraryCandidate item,String folder){var data=om.createObjectNode().put("kind",item.kind()).put("name",item.name()).put("description",item.description()).put("prompt",item.description());if(folder!=null&&!folder.isBlank())data.put("folderId",folder);data.putArray("versions");data.putArray("sources");return data;}
     private LibraryObject wire(IpLibraryRecord row) {
-        var d=json(row);var versions=new ArrayList<LibraryVersion>();for(var v:d.path("versions"))versions.add(new LibraryVersion(v.path("id").asText(),v.path("storageKey").asText(),storage.signedUrl(v.path("storageKey").asText()),v.path("prompt").asText(),v.path("createdAt").asText(),v.path("runId").asText(null),v.path("mock").asBoolean()));
+        var d=json(row);var versions=new ArrayList<LibraryVersion>();for(var v:d.path("versions"))versions.add(new LibraryVersion(v.path("id").asText(),v.path("storageKey").asText(),storage.signedUrl(v.path("storageKey").asText()),v.path("prompt").asText(),v.path("createdAt").asText(),v.path("runId").asText(null),v.path("mock").asBoolean(),v.path("label").asText(null)));
         var sources=new ArrayList<LibrarySource>();for(var s:d.path("sources"))sources.add(convert(s,LibrarySource.class));
         IpRunDto pending=null;String run=d.path("pendingRunId").asText();if(!run.isBlank())pending=runs.findByIdAndOwnerUserId(run,row.getOwnerUserId()).map(projects::toRunDto).orElse(null);
         String reference=d.path("referenceKey").asText(null);

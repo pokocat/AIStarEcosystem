@@ -174,7 +174,7 @@ test('抽帧 is reachable from the editor and the right-click menu, and its pane
   expect(workspace).toContain('aria-label="节点编辑操作"');
   const canvas = read('ip/studio-flow-canvas.tsx');
   expect(canvas).toContain("{key:'video-frames',label:'抽帧',onClick:()=>dispatchStudioCommand('video-frames',target.id)}");
-  expect(canvas).toMatch(/<StudioFlowVideoFrames nodes=\{project\.nodes\} pending=\{pendingFrames\} onPendingChange=\{setPendingFrames\}/);
+  expect(canvas).toMatch(/<StudioFlowVideoFrames projectId=\{projectId\} nodes=\{project\.nodes\} pending=\{pendingFrames\} onPendingChange=\{setPendingFrames\}/);
   // Placeholders are drawn from local state only, never written to the document.
   expect(canvas).toContain('flowNodes(pendingFrames.map(p => p.node), new Set())');
   const frames = read('ip/studio-flow-video-frames.tsx');

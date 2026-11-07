@@ -14,6 +14,8 @@ last-reviewed：2026-11-07
 - web-drama 另有术语表 `docs/drama-ux-copy-pass.md` §2，改 drama 先查表。
 - 服务端报错也算界面文字：`python3 -I ~/.agents/skills/wenan/scripts/scan_copy.py apps/server/src/main --ext .java,.json`。这里的命中大多是写给模型的话和运营后台文字，只改用户能看到的（`BusinessException` 的 message、积分流水说明）。
 
+- 资产页的「人物」是一个分类，包含我的 IP、角色和授权形象；资产库里能新建、能关联的那一项叫「角色」。两个词不互换。
+
 ## 统一叫法
 
 | 不再使用 | 统一为 | 说明 |

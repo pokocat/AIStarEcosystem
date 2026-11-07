@@ -41,7 +41,7 @@ export function AssetsLibrary() {
     {auth !== 'ok' ? <p role="status">正在加载资产…</p> : <ConfigProvider locale={zhCN} getPopupContainer={studioOverlayContainer} theme={{token:{colorPrimary:'#192229',borderRadius:8,fontFamily:'var(--ip-ui)'}}}>
       <App className="assets-library-content" data-studio-overlay-root>
         <StudioPageFilters label="资产分类" items={tabs} value={tab} onChange={change}/>
-        {tab === 'ips' ? <IpManagement embedded/> : tab === 'objects' || tab === 'materials' ? <PersonalAssetLibrary hideTabs initialTab={tab}/> : tab === 'voices' ? <VoiceLibrary voices={voices} refresh={() => setRevision(n => n+1)}/> : <AvatarLibrary avatars={avatars} grants={grants} licenses={licenses} refresh={() => setRevision(n => n+1)}/>}
+        {tab === 'ips' ? <IpManagement embedded/> : tab === 'objects' || tab === 'materials' ? <PersonalAssetLibrary hideTabs initialTab={tab} initialFrom={search.get('from') || ''}/> : tab === 'voices' ? <VoiceLibrary voices={voices} refresh={() => setRevision(n => n+1)}/> : <AvatarLibrary avatars={avatars} grants={grants} licenses={licenses} refresh={() => setRevision(n => n+1)}/>}
       </App>
     </ConfigProvider>}
   </StudioPage>;

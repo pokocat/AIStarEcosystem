@@ -8,6 +8,8 @@ const api = vi.hoisted(() => ({ folders: vi.fn(), objects: vi.fn(), materials: v
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('@ai-star-eco/api-client', () => ({ apiFetch: api.write }));
 vi.mock('@/canvas-bridge/asset-library', () => ({ libraryFolders: api.folders, libraryObjects: api.objects, libraryMaterials: api.materials, mainLibraryVersion: (a: any) => a.versions.find((v: any) => v.id === a.mainVersionId), createLibraryFolder: api.write, renameLibraryFolder: api.write, deleteLibraryFolder: api.write, editLibraryMaterial: api.write, createLibraryObject: api.write, uploadLibraryMedia: api.write, addLibraryVersion: api.write, setCanvasLibraryFolder: api.write }));
+vi.mock('./library-source-select', () => ({ LibrarySourceSelect: ({ value, onChange }: any) => <button onClick={() => onChange('DW-2')}>来源筛选 {value}</button> }));
+vi.mock('./library-save-dialog', () => ({ LibrarySaveDialog: ({ image }: any) => image ? <p>存入 {image.storageKey}</p> : null }));
 vi.mock('./library-grid-motion', () => ({ LibraryGridMotion: ({ children }: any) => <div>{children}</div> }));
 vi.mock('./library-asset-editor', () => ({ LibraryAssetEditor: ({ assets, onClose }: any) => <div><p>编辑 {assets.map((a: any) => a.name).join('、')}</p><button onClick={onClose}>返回</button></div> }));
 vi.mock('@/canvas-bridge/signed-image', () => ({ SignedImage: (p: any) => <img src={p.src} alt={p.alt}/> }));

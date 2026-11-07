@@ -21,3 +21,29 @@ export function lastLibrary(): string {
 export function rememberLibrary(id: string) {
   try { window.localStorage.setItem(LAST_LIBRARY, id); } catch { /* 隐私模式存不下就不记 */ }
 }
+
+/** 资产页地址（带来源筛选）。新版角色、场景、道具各一个分类；旧版都在「创作素材」。 */
+export function assetsHref(kind: 'character' | 'scene' | 'prop', from: string, ui: 'next' | 'classic') {
+  const tab = ui === 'next' ? (kind === 'character' ? 'people' : kind) : 'objects';
+  return `/assets?tab=${tab}&from=${encodeURIComponent(from)}`;
+}
+
+/** 跳回来源：导演台作品或画布。 */
+export function originHref(id?: unknown): string | undefined {
+  if (typeof id !== 'string') return undefined;
+  return id.startsWith('DW-') ? `/director/${id}` : id.startsWith('IPP-') ? `/projects/${id}` : undefined;
+}
+
+/** 卡片上的来源标签。 */
+export function objectOriginLabel(object: { sources: { origin?: string | null }[] }) {
+  const first = object.sources[0];
+  if (!first) return undefined;
+  return first.origin === 'director' || first.origin === 'director-link' ? '导演台' : first.origin === 'canvas' ? '画布' : '剧本提取';
+}
+
+/** 素材上的来源（服务端按当前名字现查后写进 metadata）。 */
+export function materialOrigin(metadata?: Record<string, unknown>) {
+  const title = metadata?.sourceTitle;
+  if (typeof title !== 'string' || !title) return undefined;
+  return { title, type: metadata?.sourceType === 'director' ? 'director' as const : 'canvas' as const, deleted: metadata?.sourceDeleted === true, href: metadata?.sourceDeleted === true ? undefined : originHref(metadata?.projectId) };
+}

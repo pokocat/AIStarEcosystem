@@ -14,6 +14,10 @@ import java.util.Optional;
 @Repository
 public interface IpProjectRepository extends JpaRepository<IpProject, String> {
 
+    /** 只取名字，不读画布文档。 */
+    @Query("select p.id, p.name, p.deletedAt from IpProject p where p.ownerUserId = :owner")
+    List<Object[]> namesOf(@Param("owner") String owner);
+
     List<IpProject> findByOwnerUserIdAndDeletedAtIsNullOrderByUpdatedAtDesc(String ownerUserId);
     List<IpProject> findByOwnerUserIdAndTemplateVersionIdAndDeletedAtIsNull(String ownerUserId,String templateVersionId);
 

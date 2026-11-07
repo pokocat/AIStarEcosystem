@@ -1,7 +1,8 @@
 "use client";
 import { IMAGE_UPLOAD_ACCEPT } from '@ai-star-eco/api-client/image-upload-policy';
 // 新版「资产」页（2026-10-31 改版，设计稿「资产（新）」一排）：
-// 按文件类型分（全部 / 图片 / 视频 / 音频 / 人物），场景、商品这类按内容的分组交给左边的「资产库」（就是原来的文件夹）。
+// 按类型分（全部 / 图片 / 视频 / 音频 / 人物 / 场景 / 道具），其余分组交给左边的「资产库」（就是原来的文件夹）。
+// 2026-11-07：导演台的场景、道具有图后自动进库，这里加两个分类；来自哪部作品、哪张画布是单独的筛选（地址参数 from）。
 // 「AI 生成」是自带的库：各处做出来、还没放进别的库的东西都在这里，移到别的库就从这里走掉。
 // 旧版不走这里，仍是 components/hub/assets-library.tsx 原来那套。
 import Link from 'next/link';
@@ -23,17 +24,20 @@ import type { VoiceAsset } from '@/proto/data';
 import { masonry, mediaRatio, useMasonryColumns } from './asset-masonry';
 import { AssetThumb } from './asset-thumb';
 import { AudioRecorderDialog } from './audio-recorder-dialog';
-import { AI_LIBRARY, libraryQuery, sourceLabel } from './assets-hub-shared';
+import { AI_LIBRARY, libraryQuery, materialOrigin, sourceLabel } from './assets-hub-shared';
+import { AssetsObjects } from './assets-objects';
 import { AssetsPeople } from './assets-people';
+import { LibrarySaveDialog, type LibrarySaveImage } from './library-save-dialog';
+import { LibrarySourceSelect } from './library-source-select';
 import { AiMark } from './studio-ai-icon';
 import { StudioErrorNotice, useStudioApp, useStudioErrorState } from './studio-errors';
 import { studioOverlayContainer } from './studio-overlay';
 import { StudioPage } from './studio-page';
 
-export type HubTab = 'all' | 'image' | 'video' | 'audio' | 'people';
+export type HubTab = 'all' | 'image' | 'video' | 'audio' | 'people' | 'scene' | 'prop';
 export const HUB_TABS: { value: HubTab; label: string }[] = [
   { value: 'all', label: '全部' }, { value: 'image', label: '图片' }, { value: 'video', label: '视频' },
-  { value: 'audio', label: '音频' }, { value: 'people', label: '人物' },
+  { value: 'audio', label: '音频' }, { value: 'people', label: '人物' }, { value: 'scene', label: '场景' }, { value: 'prop', label: '道具' },
 ];
 // 旧链接（我的 IP / 创作素材 / 生成与上传 / 声音 / 授权形象）落到新分类上。
 const LEGACY_TABS: Record<string, HubTab> = { ips: 'people', objects: 'people', authorized: 'people', materials: 'all', voices: 'audio' };
@@ -47,7 +51,8 @@ const SOURCES = [
   { key: 'upload', label: '我上传的' }, { key: 'canvas', label: '从画布保存' },
 ];
 const TYPE_LABEL = { image: '图片', video: '视频', audio: '音频', text: '文字' } as const;
-const ACCEPT: Record<Exclude<HubTab, 'people'>, string> = {
+type FileTab = Exclude<HubTab, 'people' | 'scene' | 'prop'>;
+const ACCEPT: Record<FileTab, string> = {
   all: `${IMAGE_UPLOAD_ACCEPT},.mp4,.mp3,.wav,.m4a,.md,.txt`, image: IMAGE_UPLOAD_ACCEPT, video: '.mp4', audio: '.mp3,.wav,.m4a',
 };
 const folderIdOf = (item: LibraryMaterial) => typeof item.metadata?.folderId === 'string' ? item.metadata.folderId : '';
@@ -56,6 +61,7 @@ export function AssetsHub() {
   const router = useRouter(), search = useSearchParams();
   const tab = hubTab(search.get('tab'));
   const library = search.get('lib') || 'all';
+  const from = search.get('from') || '';
   const [folders, setFolders] = useState<LibraryFolder[]>([]);
   const [folderRevision, setFolderRevision] = useState(0);
   const [folderError, setFolderError] = useStudioErrorState();
@@ -65,9 +71,10 @@ export function AssetsHub() {
     libraryFolders().then(f => { if (live) { setFolders(f); setFolderError(''); } }).catch(e => live && setFolderError(e)).finally(() => live && setFoldersRead(true));
     return () => { live = false; };
   }, [folderRevision, setFolderError]);
-  const go = (next: { tab?: HubTab; library?: string }) => {
+  const go = (next: { tab?: HubTab; library?: string; from?: string }) => {
     const params = new URLSearchParams(search.toString());
     if (next.tab) params.set('tab', next.tab);
+    if (next.from !== undefined) { if (next.from) params.set('from', next.from); else params.delete('from'); }
     if (next.library !== undefined) { if (next.library === 'all') params.delete('lib'); else params.set('lib', next.library); }
     params.delete('focus');
     router.push(`/assets?${params}`);
@@ -77,7 +84,7 @@ export function AssetsHub() {
   const current = builtIn || folders.some(f => f.id === library) || (foldersRead && !!folderError) ? library : 'all';
   // 地址里是自己建的库：等库列表读回来再读内容，免得先按一个不存在的库读一遍。
   const ready = builtIn || foldersRead;
-  return <StudioPage title="资产" description="人物、声音和创作素材，创作时可直接使用。" nextDescription="上传和 AI 生成的素材都在这里，生成图片和视频时可直接使用。" className="assets-hub-page">
+  return <StudioPage title="资产" description="人物、声音和创作素材，创作时可直接使用。" nextDescription="上传和创作中产生的素材都在这里，创作时可直接使用。" className="assets-hub-page">
     <ConfigProvider locale={zhCN} button={{ autoInsertSpace: false }} getPopupContainer={studioOverlayContainer} theme={{ token: { colorPrimary: '#17202a', borderRadius: 10, fontFamily: 'var(--ip-ui)' } }}>
       <App className="assets-hub" data-studio-overlay-root>
         <div className="assets-hub-tabs" role="tablist" aria-label="资产分类">
@@ -87,8 +94,10 @@ export function AssetsHub() {
           <LibraryNav folders={folders} value={current} error={folderError} onRetry={() => setFolderRevision(n => n + 1)} onChange={id => go({ library: id })} onChanged={() => setFolderRevision(n => n + 1)}/>
           <section className="assets-hub-main" aria-label={HUB_TABS.find(t => t.value === tab)?.label}>
             {!ready ? null : tab === 'people'
-              ? <AssetsPeople library={current} folders={folders}/>
-              : <MediaWall key={`${tab}:${current}`} tab={tab} library={current} folders={folders} onFoldersChanged={() => setFolderRevision(n => n + 1)}/>}
+              ? <AssetsPeople library={current} folders={folders} from={from} onFromChange={id => go({ from: id })}/>
+              : tab === 'scene' || tab === 'prop'
+              ? <AssetsObjects key={tab} kind={tab} library={current} folders={folders} from={from} onFromChange={id => go({ from: id })} onShowAll={() => go({ library: 'all' })}/>
+              : <MediaWall key={`${tab}:${current}`} tab={tab} library={current} folders={folders} from={from} onFromChange={id => go({ from: id })} onFoldersChanged={() => setFolderRevision(n => n + 1)}/>}
           </section>
         </div>
       </App>
@@ -148,8 +157,8 @@ export function FolderDialog({ value, onClose, onSaved }: { value?: { id?: strin
 type WallItem = { type: 'upload' } | { type: 'voice'; voice: VoiceAsset } | { type: 'material'; item: LibraryMaterial };
 
 /** 图片 / 视频 / 音频 / 全部：瀑布流，第一张是上传。 */
-function MediaWall({ tab, library, folders, onFoldersChanged }: {
-  tab: Exclude<HubTab, 'people'>; library: string; folders: LibraryFolder[]; onFoldersChanged: () => void;
+function MediaWall({ tab, library, folders, from, onFromChange, onFoldersChanged }: {
+  tab: FileTab; library: string; folders: LibraryFolder[]; from: string; onFromChange: (id: string) => void; onFoldersChanged: () => void;
 }) {
   const { message } = useStudioApp();
   const [keyword, setKeyword] = useState('');
@@ -169,16 +178,17 @@ function MediaWall({ tab, library, folders, onFoldersChanged }: {
   const [uploading, setUploading] = useState(false);
   const [recording, setRecording] = useState(false);
   const [newFolderFor, setNewFolderFor] = useState<string[]>();
+  const [saving, setSaving] = useState<LibrarySaveImage>();
   const epoch = useRef(0);
   const fileInput = useRef<HTMLInputElement>(null);
   const wall = useRef<HTMLDivElement>(null);
   const columns = useMasonryColumns(wall);
   const isAi = library === AI_LIBRARY;
-  const filtered = !!query || source !== 'all';
+  const filtered = !!query || source !== 'all' || !!from;
 
   useEffect(() => { const timer = setTimeout(() => setQuery(keyword.trim()), 220); return () => clearTimeout(timer); }, [keyword]);
   const fetchPage = (n: number) => libraryMaterials({
-    ...libraryQuery(library), kind: tab, ...(isAi ? {} : { source }), query: query || undefined, page: n,
+    ...libraryQuery(library), kind: tab, ...(isAi ? {} : { source }), query: query || undefined, projectId: from || undefined, page: n,
   });
   useEffect(() => {
     const id = ++epoch.current;
@@ -189,7 +199,7 @@ function MediaWall({ tab, library, folders, onFoldersChanged }: {
     return () => { epoch.current++; };
     // fetchPage 只读这些筛选值
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, library, query, source, revision]);
+  }, [tab, library, query, source, from, revision]);
   const loadMore = async () => {
     const id = epoch.current;
     setLoading(true);
@@ -199,7 +209,7 @@ function MediaWall({ tab, library, folders, onFoldersChanged }: {
   };
 
   // 「音频」里人物的声音也列出来（克隆声、设计声、预设音色），点开去声音工作室管理。只在「全部」库、不筛来源时出现。
-  const showVoices = tab === 'audio' && library === 'all' && source === 'all';
+  const showVoices = tab === 'audio' && library === 'all' && source === 'all' && !from;
   const voices = useHubData<VoiceAsset[]>(() => VoiceApi.mine(), [], [revision], showVoices);
   const voiceItems = showVoices ? voices.data.filter(v => !query || v.name.toLowerCase().includes(query.toLowerCase())) : [];
 
@@ -213,19 +223,35 @@ function MediaWall({ tab, library, folders, onFoldersChanged }: {
       setSelected([]); setSelecting(false); setRevision(n => n + 1);
     } catch (e) { setActionError(e); setRevision(n => n + 1); }
   };
-  const moveMenu = (ids: string[], currentFolder?: string): MenuProps => ({
-    items: [
+  const saveTarget = (item: LibraryMaterial): LibrarySaveImage | undefined => {
+    if (item.kind !== 'image' || !item.data.storageKey) return undefined;
+    const project = item.metadata?.projectId, node = item.metadata?.nodeId;
+    return { storageKey: item.data.storageKey, src: item.data.dataUrl, title: item.title, folderId: folderIdOf(item) || undefined,
+      // 只有画布记成来源；导演台的图有自己的卡，这里按新存的一项处理。
+      projectId: typeof project === 'string' && project.startsWith('IPP-') ? project : undefined, nodeId: typeof node === 'string' ? node : undefined };
+  };
+  const moveMenu = (ids: string[], currentFolder?: string, item?: LibraryMaterial): MenuProps => {
+    const target = item && saveTarget(item);
+    const moves = [
       ...folders.map(f => ({ key: f.id, label: f.name, icon: <Folder size={14}/>, disabled: f.id === currentFolder })),
       ...(folders.length ? [{ type: 'divider' as const }] : []),
       { key: '__new', label: '新建资产库…', icon: <Plus size={14}/> },
       ...(currentFolder ? [{ key: '__out', label: '移出资产库' }] : []),
-    ],
-    onClick: ({ key, domEvent }) => {
-      domEvent.stopPropagation();
-      if (key === '__new') setNewFolderFor(ids);
-      else void move(ids, key === '__out' ? null : key);
-    },
-  });
+    ];
+    return {
+      // 卡片上的菜单除了移动还有别的操作，移动单独成组，看得出「新建资产库」会把图放进去。
+      items: item ? [
+        { type: 'group' as const, key: '__move', label: '移到资产库', children: moves },
+        ...(target ? [{ type: 'divider' as const }, { key: '__object', label: '存为角色、场景或道具' }] : []),
+      ] : moves,
+      onClick: ({ key, domEvent }) => {
+        domEvent.stopPropagation();
+        if (key === '__new') setNewFolderFor(ids);
+        else if (key === '__object') setSaving(target);
+        else void move(ids, key === '__out' ? null : key);
+      },
+    };
+  };
 
   const upload = async (files: File[]) => {
     const folderId = library !== 'all' && !isAi ? library : undefined;
@@ -263,6 +289,7 @@ function MediaWall({ tab, library, folders, onFoldersChanged }: {
       {!isAi && <Dropdown trigger={['click']} getPopupContainer={studioOverlayContainer} menu={{ items: SOURCES.map(s => ({ key: s.key, label: s.label })), selectable: true, selectedKeys: [source], onClick: ({ key }) => setSource(key) }}>
         <button type="button" className="assets-select" aria-label="按来源筛选">{sourceName}<ChevronDown size={14}/></button>
       </Dropdown>}
+      <LibrarySourceSelect value={from} onChange={onFromChange}/>
       <span className="assets-toolbar-gap"/>
       <span className="assets-count" aria-live="polite">{loading && !items.length ? '正在加载…' : `${count} 个`}</span>
       {selecting
@@ -276,7 +303,7 @@ function MediaWall({ tab, library, folders, onFoldersChanged }: {
       : loading && !items.length && !voiceItems.length ? <div className="assets-wall is-loading" aria-label="正在加载资产">{Array.from({ length: columns }, (_, i) => <div key={i} className="assets-wall-col"><span className="assets-skeleton" style={{ aspectRatio: i % 2 ? '3 / 4' : '1 / 1' }}/><span className="assets-skeleton" style={{ aspectRatio: '4 / 3' }}/></div>)}</div>
       : !wallItems.length ? <div className="assets-empty">
         {isAi ? <><h3>还没有 AI 生成的素材</h3><p>在 AI 图片、AI 视频或画布中生成的内容会自动保存在这里。</p><div><Link className="ip-brand-secondary" href="/image">生成图片</Link></div></>
-          : <><h3>没有找到匹配的素材</h3><p>请尝试其他名称或来源。</p><Button onClick={() => { setKeyword(''); setSource('all'); }}>清除筛选</Button></>}
+          : <><h3>没有找到匹配的素材</h3><p>请尝试其他名称或来源。</p><Button onClick={() => { setKeyword(''); setSource('all'); onFromChange(''); }}>清除筛选</Button></>}
       </div>
       : <div className="assets-wall">{columnsOfItems.map((col, i) => <div key={i} className="assets-wall-col">{col.map(w =>
         w.type === 'upload' ? <div key="upload" className="assets-upload-tile" style={{ aspectRatio: `1 / ${uploadRatio}` }}><button type="button" className="assets-upload" disabled={uploading} onClick={() => fileInput.current?.click()}>
@@ -285,8 +312,8 @@ function MediaWall({ tab, library, folders, onFoldersChanged }: {
           {(tab === 'audio' || tab === 'all') && <div className="assets-upload-actions"><button type="button" disabled={uploading} onClick={() => fileInput.current?.click()}>上传文件</button><button type="button" disabled={uploading} onClick={() => setRecording(true)}><Mic size={14}/>录音</button></div>}
         </div>
         : w.type === 'voice' ? <VoiceTile key={`voice:${w.voice.id}`} voice={w.voice}/>
-        : <MaterialTile key={w.item.id} item={w.item} subline={[sourceLabel(w.item.source), folderIdOf(w.item) && folderIdOf(w.item) !== library ? folderName(folderIdOf(w.item)) : ''].filter(Boolean).join(' · ')}
-          selecting={selecting} selected={selected.includes(w.item.id)} onToggle={() => toggle(w.item.id)} onOpen={() => setPreview(w.item)} menu={moveMenu([w.item.id], folderIdOf(w.item) || undefined)}/>)}
+        : <MaterialTile key={w.item.id} item={w.item} subline={[from ? '' : materialOrigin(w.item.metadata)?.title, sourceLabel(w.item.source), folderIdOf(w.item) && folderIdOf(w.item) !== library ? folderName(folderIdOf(w.item)) : ''].filter(Boolean).join(' · ')}
+          selecting={selecting} selected={selected.includes(w.item.id)} onToggle={() => toggle(w.item.id)} onOpen={() => setPreview(w.item)} menu={moveMenu([w.item.id], folderIdOf(w.item) || undefined, w.item)}/>)}
       </div>)}</div>}
     {hasMore && !error && <div className="assets-more"><Button loading={loading} onClick={() => void loadMore()}>加载更多</Button></div>}
 
@@ -296,10 +323,26 @@ function MediaWall({ tab, library, folders, onFoldersChanged }: {
       setKeyword(''); setSource('all'); setRevision(n => n + 1); message.success('录音已保存到资产库');
     }}/>
     <FolderDialog value={newFolderFor ? { name: '' } : undefined} onClose={() => setNewFolderFor(undefined)} onSaved={f => { const ids = newFolderFor || []; setNewFolderFor(undefined); onFoldersChanged(); void move(ids, f.id); }}/>
+    <LibrarySaveDialog image={saving} onClose={() => setSaving(undefined)}/>
     <Modal open={!!preview} title={preview?.title} footer={null} width={960} getContainer={studioOverlayContainer} className="library-preview-modal" onCancel={() => setPreview(undefined)} destroyOnHidden>
       {preview && <div className="library-full-preview">{preview.kind === 'image' ? <SignedImage storageKey={preview.data.storageKey} src={preview.data.dataUrl} alt={preview.title}/> : preview.kind === 'video' ? <SignedVideo storageKey={preview.data.storageKey} src={preview.data.url} controls preload="metadata"/> : preview.kind === 'audio' ? <SignedAudio storageKey={preview.data.storageKey} src={preview.data.url} controls/> : <pre>{preview.data.content}</pre>}{typeof preview.metadata?.prompt === 'string' && <details><summary>提示词</summary><p>{preview.metadata.prompt}</p></details>}</div>}
+      {preview && <PreviewFoot item={preview} canSave={!!saveTarget(preview)} onSave={() => { setSaving(saveTarget(preview)); setPreview(undefined); }}/>}
     </Modal>
   </div>;
+}
+
+/** 预览下面：来自哪部作品或哪张画布（能跳回去），图片可以存成角色、场景或道具。 */
+function PreviewFoot({ item, canSave, onSave }: { item: LibraryMaterial; canSave: boolean; onSave: () => void }) {
+  const origin = materialOrigin(item.metadata);
+  const inObject = typeof item.metadata?.objectName === 'string' ? item.metadata.objectName : '';
+  if (!origin && !canSave && !inObject) return null;
+  const noun = origin?.type === 'director' ? '导演台作品' : '画布';
+  return <footer className="assets-preview-foot">
+    {origin && (origin.href ? <Link href={origin.href}>来自{noun}「{origin.title}」</Link> : <span>来自{noun}「{origin.title}」（已删除）</span>)}
+    {inObject && <span>已保存到「{inObject}」</span>}
+    <span className="assets-toolbar-gap"/>
+    {canSave && <Button onClick={onSave}>{inObject ? '加到其他角色、场景或道具' : '存为角色、场景或道具'}</Button>}
+  </footer>;
 }
 
 function MaterialTile({ item, subline, selecting, selected, onToggle, onOpen, menu }: {
@@ -323,7 +366,7 @@ function MaterialTile({ item, subline, selecting, selected, onToggle, onOpen, me
     {selecting
       ? <Checkbox className="assets-tile-check" aria-label={`选择 ${item.title}`} checked={selected} onChange={onToggle}/>
       : <Dropdown trigger={['click']} getPopupContainer={studioOverlayContainer} menu={menu}>
-        <button type="button" className="assets-tile-move" aria-label={`将 ${item.title} 移到资产库`}><span>移到</span><ChevronDown size={12}/><MoreHorizontal size={15}/></button>
+        <button type="button" className="assets-tile-move" aria-label={`${item.title} 的更多操作`}><span>更多</span><ChevronDown size={12}/><MoreHorizontal size={15}/></button>
       </Dropdown>}
     <strong title={item.title}>{item.title}</strong>
     <small>{subline}</small>

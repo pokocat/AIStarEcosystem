@@ -1,12 +1,15 @@
 "use client";
 import { IMAGE_UPLOAD_ACCEPT } from '@ai-star-eco/api-client/image-upload-policy';
 
+import Link from "next/link";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { ArrowLeft, Check, ChevronRight, ImageIcon, Library, Loader2, Plus, RefreshCw, Trash2, Upload, Wand2, X } from "lucide-react";
 import type { DirectorAsset, DirectorAssetForm, DirectorEpisode, DirectorMediaSlot, DirectorSceneView, DirectorTaskType, DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi, IpStudioApi } from "../api";
 import { useStudioApp } from "../studio-errors";
 import { LibraryReferencePicker } from "../library-reference-picker";
+import { assetsHref } from "../assets-hub-shared";
+import { useUiVersion } from "@/shell/ui-version";
 import type { WorkbenchProps } from "./director-workbench";
 import { DIRECTOR_MEDIA_SHORTAGE, Field, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, assetRefs, chooseDirectorBilling, clearDrafts, costText, dialogFocus, failed, hasDrafts, kindLabel, newRequestId, runningTask, useBusy, useDraft, useEscape, ZoomableImage, type AssetRef } from "./director-shared";
 import { VoicePanel } from "./director-voice";
@@ -81,6 +84,7 @@ export function DirectorAssetStudio(props: WorkbenchProps & { asset: DirectorAss
 }
 
 function AssetWorkspace({ work, asset, apply, setError, focusClip, onClose }: WorkbenchProps & { asset: DirectorAsset; onClose: () => void }) {
+  const ui = useUiVersion();
   const { modal } = useStudioApp();
   // 没保存的修改切走再回来还在，编辑框也保持打开。
   const prefix = `${work.id}:asset:${asset.id}:`;
@@ -236,7 +240,8 @@ function AssetWorkspace({ work, asset, apply, setError, focusClip, onClose }: Wo
       {!editing ? <header className="director-asset-head">
         <div className="director-asset-title">
           <h4 title={asset.name}><span className="director-kind">{kindLabel[asset.kind]}</span>{asset.name}</h4>
-          <small>{[appears, asset.libraryObjectId ? "已关联资产库" : "", asset.aliases.length ? `别名：${asset.aliases.join("、")}` : ""].filter(Boolean).join(" · ")}</small>
+          <small>{[appears, asset.aliases.length ? `别名：${asset.aliases.join("、")}` : ""].filter(Boolean).join(" · ")}</small>
+          {(asset.libraryEntryId || asset.libraryObjectId) && <Link className="director-library-link" href={assetsHref(asset.kind === "product" ? "prop" : asset.kind, work.id, ui)}>{asset.libraryObjectId ? "已关联资产库" : "已在资产库"}</Link>}
         </div>
         <div className="director-asset-head-actions">
           <button type="button" className="ip-brand-text-button" onClick={() => setEditing(true)}>编辑</button>
@@ -379,6 +384,7 @@ function AssetReference({ work, asset, apply, setError, disabled }: Pick<Workben
 /** 关联已有资产：只交资产库对象 id 和选定版本，图和描述由服务端按本人资产库读；所选版本的图直接作为资产图。 */
 function LinkLibrary({ work, asset, apply, open, onClose }: { work: DirectorWork; asset: DirectorAsset; apply: WorkbenchProps["apply"]; open: boolean; onClose: () => void }) {
   return <LibraryReferencePicker open={open} objectsOnly objectKind={asset.kind} max={1} query={asset.name} onClose={onClose}
+    excludeObject={o => o.sources.some(s => s.origin === "director" && s.projectId === work.id && s.nodeId === asset.id)}
     title={`「${asset.name}」关联已有资产`} confirmLabel="关联"
     intro={`从资产库选择同一个${kindLabel[asset.kind]}，所选版本的图片将直接作为资产图，用于生成分镜图和视频。名称保留剧本中的叫法。`}
     onAssets={async picked => {
