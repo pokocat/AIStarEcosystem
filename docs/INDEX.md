@@ -271,6 +271,8 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 ## 7. 发布与验收记录（`docs/releases/`）
 
+- [整仓生产发布](releases/full-production-release-20261107.md)：main `38de5c736`，10 个服务、V75/V76、全量测试与运行制品核对；记录代发依赖复用恢复、约 23 秒重启窗口和回滚备份（last-reviewed: 2026-11-07）。
+
 - [模型原文保留与被拒剧本恢复](releases/model-output-preservation-release-20261105.md)：main `8ce84083e`，server + Studio / 短剧 / 带货；正常回复不因字数、格式或用量被整份丢弃，新增本人原文入口，已恢复原剧本并回填完整原文；1729 后端、25 前端用例通过（last-reviewed: 2026-11-05）。
 
 - [企业主账号积分转入与成员手机号生产发布](releases/enterprise-owner-deposit-production-release-20261101.md)：main `1e3e3f795`，server / Studio / admin；126 项回归、真实手机号与转入预览验收，未移动真实积分（last-reviewed 2026-11-01）。
