@@ -37,7 +37,7 @@ class StudioVideoRewriteWorkerTest {
 
     static final String DIRECTOR_STYLE = "第1镜（0–3 秒）：全景，女孩走进咖啡店。\n第2镜（3–6 秒）：近景，画面里只有女孩。女孩说：「一杯热美式，谢谢。」\n【声音】咖啡机声。";
 
-    record Harness(StudioWorkflowWorker worker, IpRun run, CreditService credits, IpRunService videos) {}
+    record Harness(StudioWorkflowWorker worker, IpRun run, CreditService credits, IpRunService videos, AiModelInvocationService models) {}
 
     Harness harness(String prompt, String mode, String rewrite, String reply) { return harness(prompt, mode, rewrite, reply, false); }
 
@@ -72,7 +72,7 @@ class StudioVideoRewriteWorkerTest {
         @SuppressWarnings("unchecked") ObjectProvider<IpRunService> provider = mock(ObjectProvider.class);
         when(provider.getObject()).thenReturn(videos);
         ReflectionTestUtils.setField(worker, "videoRuns", provider);
-        return new Harness(worker, run, credits, videos);
+        return new Harness(worker, run, credits, videos, models);
     }
 
     /** 模型按约定写回、台词只留占位的一稿。 */
@@ -191,5 +191,58 @@ class StudioVideoRewriteWorkerTest {
         assertNull(free.request().shots(), "没分镜头就由模型定");
         assertEquals(H3PromptRewrite.Mode.I2V, free.request().mode());
         assertEquals(List.of("<Picture 1>: the first frame of the target video."), free.request().references());
+    }
+
+    // ── 模型没按约定回（2026-11-07 OneToken 上的 DeepSeek，30 次里 5 次） ──────────────
+
+    AiModelInvocationService.AiModelResponse replied(String content, long promptTokens) {
+        return new AiModelInvocationService.AiModelResponse(content, "stop", promptTokens + 1000L, "m", "m", promptTokens, 1000L);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"review", "auto"})
+    void anOffContractReplyIsRetriedOnceAndItsUsageAddsUp(String mode) throws Exception {
+        var h = harness(DIRECTOR_STYLE, "universal_reference_video", mode, clean());
+        when(h.models().invokeChatOnEndpoint(any(), any(), anyList(), anyMap()))
+                .thenReturn(replied("I'll read the guide first.", 6446L), replied(clean(), 12000L));
+        h.worker().runBlocking("r");
+        verify(h.models(), times(2)).invokeChatOnEndpoint(any(), any(), anyList(), anyMap());
+        assertTrue(submitted(h).prompt().startsWith("subject_definitions:"), "第二次写对了就接着出片");
+        JsonNode out = json.readTree(h.run().getOutputJson());
+        assertEquals(18446L, out.path("billing").path("inputTokens").asLong(), "两次都是真实用量");
+        assertFalse(out.path("rawOnly").asBoolean());
+    }
+
+    @Test
+    void aReplyThatNeverSawTheGuideIsNotUsedEvenIfItPassesTheChecks() throws Exception {
+        // 280 Token 只够用户那段话：系统提示词没生效，内容照样能过校验
+        var h = harness(DIRECTOR_STYLE, "universal_reference_video", "auto", clean());
+        when(h.models().invokeChatOnEndpoint(any(), any(), anyList(), anyMap()))
+                .thenReturn(replied(clean(), 281L), replied(clean(), 281L));
+        h.worker().runBlocking("r");
+        verify(h.models(), times(2)).invokeChatOnEndpoint(any(), any(), anyList(), anyMap());
+        assertEquals(DIRECTOR_STYLE, submitted(h).prompt(), "自动模式退回原文，不用这份稿");
+    }
+
+    @Test
+    void twoOffContractRepliesStopForAChoiceOnTheCanvas() throws Exception {
+        var h = harness(DIRECTOR_STYLE, "universal_reference_video", "review", clean());
+        when(h.models().invokeChatOnEndpoint(any(), any(), anyList(), anyMap())).thenReturn(replied("I cannot do this.", 12000L));
+        h.worker().runBlocking("r");
+        verify(h.models(), times(2)).invokeChatOnEndpoint(any(), any(), anyList(), anyMap());
+        verify(h.videos(), never()).generateVideoBatch(anyString(), anyString(), any(), anyInt());
+        JsonNode out = json.readTree(h.run().getOutputJson());
+        assertTrue(out.path("rawOnly").asBoolean());
+        assertTrue(out.path("needsChoice").asBoolean());
+        assertFalse(out.path("videoPrompt").path("usable").asBoolean());
+    }
+
+    @Test
+    void aTruncatedReplyIsNotRetried() throws Exception {
+        var h = harness(DIRECTOR_STYLE, "universal_reference_video", "review", clean());
+        when(h.models().invokeChatOnEndpoint(any(), any(), anyList(), anyMap()))
+                .thenReturn(new AiModelInvocationService.AiModelResponse("{\"style\":\"半句", "length", 13000L, "m", "m", 12000L, 1000L));
+        h.worker().runBlocking("r");
+        verify(h.models(), times(1)).invokeChatOnEndpoint(any(), any(), anyList(), anyMap());
     }
 }

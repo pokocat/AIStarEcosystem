@@ -443,24 +443,38 @@ public class StudioWorkflowWorker {
             StudioTokenBilling.requireRoute(input,endpoint.endpoint());
             var rate=mapper.treeToValue(input.path("_exec").path("tokenPricing"),AiChatTokenPricing.Rate.class);
             if(enterpriseBilling!=null)enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,id,endpoint.endpoint().getId());
-            markModelDispatched(id);
+            String system=input.path("_exec").path("systemPrompt").asText();
             var options=new LinkedHashMap<String,Object>();
             options.put("timeout_seconds",300);
             options.put("response_format",Map.of("type","json_object"));
             options.put("temperature",input.path("_exec").path("temperature").asDouble(0.6));
             options.put("max_tokens",input.path("_exec").path("maxTokens").asInt(rate.maxOutputTokens()));
-            reply=models.invokeChatOnEndpoint(endpoint.endpoint(),purpose,List.of(
-                    Map.of("role","system","content",input.path("_exec").path("systemPrompt").asText()),
-                    Map.of("role","user","content",input.path("_exec").path("userPrompt").asText())),options);
-            if(StudioModelOutput.present(reply)){output.set("rawResponse",StudioModelOutput.capture(mapper,reply));checkpointModelOutput(id,reply);}
-            long[] used=consumeUsage(reply,new long[]{0,0},rate);
-            output.putObject("billing").put("inputTokens",used[0]).put("outputTokens",used[1]).put("credits",rate.settle(used[0],used[1]))
-                    .put("inputCreditsPerK",rate.inputCreditsPerK()).put("outputCreditsPerK",rate.outputCreditsPerK());
-            if("length".equals(reply.finishReason()))output.withArray("warnings").add("模型输出已达上限，原文已保留");
-            JsonNode script;
-            try {script=ModelJson.parse(mapper,reply.content());}
-            catch(com.fasterxml.jackson.core.JsonProcessingException malformed){throw com.aistareco.aep.ipstudio.h3.H3PromptRewrite.bad("模型返回格式有误");}
-            result=com.aistareco.aep.ipstudio.h3.H3PromptRewrite.validate(mapper,meta,script);
+            long[] used={0,0};
+            // 模型偶尔不按约定回（没读到写法说明、写成中文、不是 JSON）：同样的请求再试一次，用量累计结算。截断不重试，再来一次也一样。
+            for(int attempt=1;;attempt++) {
+                failure=null;result=null;
+                markModelDispatched(id);
+                reply=models.invokeChatOnEndpoint(endpoint.endpoint(),purpose,List.of(
+                        Map.of("role","system","content",system),
+                        Map.of("role","user","content",input.path("_exec").path("userPrompt").asText())),options);
+                if(StudioModelOutput.present(reply)){output.set("rawResponse",StudioModelOutput.capture(mapper,reply));checkpointModelOutput(id,reply);}
+                used=consumeUsage(reply,used,rate);
+                output.putObject("billing").put("inputTokens",used[0]).put("outputTokens",used[1]).put("credits",rate.settle(used[0],used[1]))
+                        .put("inputCreditsPerK",rate.inputCreditsPerK()).put("outputCreditsPerK",rate.outputCreditsPerK());
+                boolean truncated="length".equals(reply.finishReason());
+                if(truncated&&attempt==1)output.withArray("warnings").add("模型输出已达上限，原文已保留");
+                try {
+                    if(systemPromptUnread(reply,system))throw com.aistareco.aep.ipstudio.h3.H3PromptRewrite.bad("模型没有读到写法说明");
+                    JsonNode script;
+                    try {script=ModelJson.parse(mapper,reply.content());}
+                    catch(com.fasterxml.jackson.core.JsonProcessingException malformed){throw com.aistareco.aep.ipstudio.h3.H3PromptRewrite.bad("模型返回格式有误");}
+                    result=com.aistareco.aep.ipstudio.h3.H3PromptRewrite.validate(mapper,meta,script);
+                    break;
+                } catch(BusinessException offContract) {
+                    if(attempt>=2||truncated||!"AI_BAD_OUTPUT".equals(offContract.getCode())||cancelRequested(id))throw offContract;
+                    log.warn("[studio] video prompt rewrite off contract, retrying id={} promptTokens={} reason={}",id,reply.promptTokens(),offContract.getMessage());
+                }
+            }
         } catch(Exception e) {
             failure=e;
             if(reply!=null)reply.attachDiagnostics(e);
@@ -499,6 +513,17 @@ public class StudioWorkflowWorker {
         try {handOver(id,input,prompt,output);}
         catch(Exception e) {log.warn("[studio] video submit after prompt rewrite failed id={}",id,e);finish(id,output,e);return;}
         afterTerminal(id);
+    }
+
+    /**
+     * 计费输入比写法说明本身少得多：这次回复没有读到系统提示词。一个 Token 不可能对应 50 个字符，所以这条线两边都留足了余量
+     * （说明约 4.4 万字符、1 万 Token；2026-11-07 OneToken 上的 DeepSeek 约十次一次只计 280 Token，内容也不按约定写，校验未必看得出）。
+     */
+    static boolean systemPromptUnread(AiModelInvocationService.AiModelResponse reply,String system) {
+        return reply.promptTokens()!=null&&reply.promptTokens()>0&&reply.promptTokens()*50<system.length();
+    }
+    private boolean cancelRequested(String id) {
+        return runs.findById(id).map(IpRun::isCancelRequested).orElse(true);
     }
 
     /**

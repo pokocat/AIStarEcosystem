@@ -583,6 +583,9 @@ public final class H3PromptRewrite {
             defs = outside[0]; summary = outside[1]; retention = outside[2]; style = outside[3]; sound = outside[4]; music = outside[5];
             placeLines(meta, bodies, warnings);
         } else checkSpoken(meta, bodies, warnings);
+        // 整份写成了中文：汉字删完几乎不剩，不能当优化稿，否则自动模式会拿残缺稿出片（2026-11-07 OneToken 上的 DeepSeek，约十次一次）。
+        int keptChars = defs.length() + summary.length() + retention.length() + style.length() + bodies.stream().mapToInt(String::length).sum();
+        if (strayHan[0] > MAX_STRAY_HAN && keptChars < strayHan[0] * 2) throw bad("优化稿没有写成英文");
         if (strayHan[0] > MAX_STRAY_HAN) warnings.add("优化稿里有 " + strayHan[0] + " 个汉字没翻译，已删掉，画面描述可能缺了内容");
         else if (strayHan[0] > 0) notes.add("删掉了优化稿里零星没翻译的中文");
 

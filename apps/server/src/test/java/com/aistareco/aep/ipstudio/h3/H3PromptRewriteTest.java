@@ -515,4 +515,19 @@ class H3PromptRewriteTest {
         assertTrue(H3PromptRewrite.system(H3PromptRewrite.Mode.I2V, false, false).contains("are not available to you"));
         assertFalse(H3PromptRewrite.system(H3PromptRewrite.Mode.T2V, false, false).contains("are not available to you"), "纯文字没有素材，不用说");
     }
+
+    @Test
+    void aDraftWrittenInChineseIsNotADraft() {
+        // 2026-11-07 OneToken 上的 DeepSeek：整份写成中文，汉字删完只剩标点，自动模式会拿它出片
+        ObjectNode all = OM.createObjectNode().put("style", "全片保持原视频的写实风格和光线，人物动作与镜头运动都不变，只替换衣着。").put("overall_soundscape", "保留原声。").put("non_diegetic_music", "N/A");
+        all.putArray("shots").add(OM.createObjectNode().put("start", 0).put("text", "镜头跟随原视频，人物穿上参考图里的衣服，其余内容都保持不变，动作、表情、场景、道具、构图、光影、色彩和节奏也完全一致。"));
+        assertEquals("AI_BAD_OUTPUT", assertThrows(BusinessException.class, () -> H3PromptRewrite.validate(OM, freeMeta(H3PromptRewrite.Mode.T2V, "换衣服", 5), all)).getCode());
+        // 英文稿里漏翻一小段：删掉并提示，照常可用
+        String english = "A long live-action shot follows the original video from its first frame to its last, with the same framing, camera movement, lighting and pace. ".repeat(3);
+        ObjectNode some = OM.createObjectNode().put("style", "Live-action.").put("overall_soundscape", "Room tone.").put("non_diegetic_music", "N/A");
+        some.putArray("shots").add(OM.createObjectNode().put("start", 0).put("text", english + "镜头跟随原视频人物穿上参考图里的衣服其余内容都保持不变"));
+        JsonNode r = H3PromptRewrite.validate(OM, freeMeta(H3PromptRewrite.Mode.T2V, "换衣服", 5), some);
+        assertTrue(r.path("usable").asBoolean());
+        assertTrue(warnings(r).get(0).contains("个汉字没翻译"), warnings(r).toString());
+    }
 }
