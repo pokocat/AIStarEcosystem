@@ -29,11 +29,15 @@ public class ModelManagementService {
  private final AiModelUsageService usage; private final AuditLogRepository audit; private final ObjectMapper mapper;
  public ModelManagementService(AiModelEndpointAdminService endpoints,AiAppBindingService bindings,PromptService prompts,AgentBotProviderAdminService agents,CelebrityActionPricingService prices,VideoStudioPricingService videoPrices,AiModelUsageService usage,AiAppSceneModelPolicyService scenePolicies,AiModelAccessPolicyService modelAccess,ModelFeatureManagementService features,AuditLogRepository audit,ObjectMapper mapper) {this.endpoints=endpoints;this.bindings=bindings;this.prompts=prompts;this.agents=agents;this.prices=prices;this.videoPrices=videoPrices;this.usage=usage;this.scenePolicies=scenePolicies;this.modelAccess=modelAccess;this.features=features;this.audit=audit;this.mapper=mapper;}
  @Transactional(rollbackFor=Exception.class)
- public Object execute(JsonNode c,String actor) throws Exception {
+ public Object execute(JsonNode c,String actor) throws Exception {return execute(c,actor,"platform-console");}
+ /** source goes into the audit row, so the entry a change came through stays visible. */
+ @Transactional(rollbackFor=Exception.class)
+ public Object execute(JsonNode c,String actor,String source) throws Exception {
   String a=c.path("action").asText(); Object before=null,result;
   switch(a) {
    case "scenePolicies": return scenePolicies.list();
    case "studioVideoGroup": return scenePolicies.studioVideoGroup().orElse(null);
+   case "directorImageDefault": return Collections.singletonMap("endpointId",scenePolicies.directorImageDefault().orElse(null));
    case "studioVideoGroupSave": {
     onlyFields(c,Set.of("action","value"));before=scenePolicies.studioVideoGroup().orElse(null);
     result=scenePolicies.saveStudioVideoGroup(dto(c.path("value"),AiAppSceneModelPolicyService.VideoGroup.class),actor);break;
@@ -51,7 +55,7 @@ public class ModelManagementService {
       boolean legacy=oldCandidate.isPresent() && Boolean.TRUE.equals(oldCandidate.get().enabled())
         && scenePolicies.studioVideoGroup().map(group->group.endpointIds().contains(id)).orElse(false);
       if(endpoint.videoRequestSpec()==null && !legacy)
-        throw BusinessException.badRequest("STUDIO_VIDEO_SPEC_REQUIRED","请先为视频模型选择已核实的视频协议并保存");
+        throw BusinessException.badRequest("STUDIO_VIDEO_SPEC_REQUIRED","请先在「能力与规格」里填写视频规格并保存");
     }
     if(studioVideo && (oldCandidate.isEmpty() || !Boolean.TRUE.equals(oldCandidate.get().enabled()))) {
       var feature=ModelFeatureRegistry.require("studio","video");acknowledge(feature,c);
@@ -66,7 +70,7 @@ public class ModelManagementService {
       ObjectNode candidateDetail=mapper.createObjectNode();candidateDetail.set("before",mapper.valueToTree(previous));candidateDetail.set("after",mapper.valueToTree(prepared));
       audit.save(AuditLog.builder().id(UUID.randomUUID().toString()).userId(actor).username(actor)
         .action("platform.model.studioVideoCandidatePrepare").resourceType("model-config").resourceId(id)
-        .appCode("platform-console").result(AuditLog.AuditResult.SUCCESS)
+        .appCode(source).result(AuditLog.AuditResult.SUCCESS)
         .detail(mapper.writeValueAsString(candidateDetail)).createdAt(Instant.now()).build());
     }
     break;
@@ -138,6 +142,9 @@ public class ModelManagementService {
     ObjectNode v=(ObjectNode)c.path("value").deepCopy();
     // Cost and sale fields cannot be smuggled through a model-manager write.
     rejectFields(v,Set.of("promptTokenPriceMicros","completionTokenPriceMicros","unitPriceMicros","supplierBillingMode","id"));
+    // The lenient request mapper would silently drop a field the spec record does not know; refuse it instead.
+    if(v.hasNonNull("imageRequestSpec"))com.aistareco.aep.model.AiImageRequestSpec.read(v.get("imageRequestSpec").toString());
+    if(v.hasNonNull("videoRequestSpec"))com.aistareco.aep.model.AiVideoRequestSpec.read(v.get("videoRequestSpec").toString());
     if(c.has("id")) {before=endpoints.get(text(c,"id")); result=endpoints.update(text(c,"id"),dto(v,AdminAiModelEndpointUpsertDto.class));}
     else result=endpoints.create(dto(v,AdminAiModelEndpointUpsertDto.class));
     break;
@@ -179,7 +186,7 @@ public class ModelManagementService {
   }
   ObjectNode detail=mapper.createObjectNode();detail.set("before",mapper.valueToTree(before));detail.set("after",mapper.valueToTree(result));
   // Snapshot DTOs contain only masked credentials; no request body is persisted.
-  audit.save(AuditLog.builder().id(UUID.randomUUID().toString()).userId(actor).username(actor).action("platform.model."+a).resourceType("model-config").resourceId(c.path("id").asText(c.path("endpointId").asText(c.path("key").asText(c.path("purpose").asText("global"))))).appCode("platform-console").result(AuditLog.AuditResult.SUCCESS).detail(mapper.writeValueAsString(detail)).createdAt(Instant.now()).build());
+  audit.save(AuditLog.builder().id(UUID.randomUUID().toString()).userId(actor).username(actor).action("platform.model."+a).resourceType("model-config").resourceId(c.path("id").asText(c.path("endpointId").asText(c.path("key").asText(c.path("purpose").asText("global"))))).appCode(source).result(AuditLog.AuditResult.SUCCESS).detail(mapper.writeValueAsString(detail)).createdAt(Instant.now()).build());
   return result;
  }
  private static int promptExpected(JsonNode c) {

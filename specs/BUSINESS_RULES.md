@@ -1683,6 +1683,18 @@ Studio 可展示的正文直接交付；不能安全整理为方案、素材引�
 
 - **导演台长正文（2026-10-29）**：剧本正文（未拆集的 draft、各集 content、设定资料）不限字数，新建、PATCH、episode.update、reference.update、助手建议写回、文件导入都不截断、不报超长；存 `director_work.content_json`（LONGTEXT）。正文能存多长和一次模型调用能读多少是两回事：一次能读的字数 = 所选文本模型按量计价里的输入 Token 上限（没配时按 32000）减去 8000 字提示词余量，按 1 字 ≈ 1 Token 估，出 wire 为 `pricing.textChars`。读不下时绝不悄悄只读前半部：AI 拆集、写分镜脚本、重写分镜返回 400 `DIRECTOR_TEXT_TOO_LONG_FOR_MODEL`（不提交、不扣费，说明怎么拆；按分集标题拆分免费、不限长度）；全剧提取资产按集分批，从第一集未提取的集开始放得下几集读几集，`pendingExtract.batch` 写明这批是第几到第几集，结果照常合并，一键制作接着提剩下的；单集一次读不下则同码拒绝。助手只把选区 / 光标（`scope.focusAt`）/ 片段在剧本里的位置附近一段交给模型，模型收到 `contentRange` 说明，消息带 `range` 告诉用户读了第几到第几字；可改正文时消息范围记 `window`，回复里的修改只在这一段里找位置、在这一段里唯一（请求期间正文冻结，位置不变）。设定资料交给模型时只取前 12000 字并注明省略，页面同步提示。分镜图讨论（image·board）与改提示词一样带上本集剧本（同样按位置取一段），发送前先保存本集正文未保存的修改。助手的正文快照按哈希只存一份（`assistantSnapshots`，建议与撤销记录只存引用），超过 50000 字的快照不随作品下发，前端用锚点前后文预览，采用仍按服务端快照核对。页面：一次粘贴超过 30000 字在进编辑框之前拦下（正文不变），提示保存为 TXT 后用「上传剧本文件」导入；超过 60000 字的正文按段编辑（每段约 15000 字），新建作品与粘贴剧本处显示摘要卡；依据见 `docs/ai-director-plan.md`。
 
+### Studio 后台模型配置（2026-11-07，本地实现，未发布）
+
+替代统一后台的模型接入页和 `apps/admin` 的 LLM API 页，入口 `/api/admin/studio/model-config/command`，权限 SUPER_ADMIN / OPERATOR（FINANCE_ADMIN 不可用）。命令和校验沿用 `ModelManagementService`，改动与审计同事务，审计 `appCode=studio-admin`，只记脱敏后的前后快照。
+
+1. **规格是不透明 JSON。** 前端不按字段解析或校验规格，也不用只列部分字段的表单改写规格；规格没改就不发。发出的规格由服务端严格读取，有不认识的字段就 400（请求解析本身是宽松的，不拦会被悄悄丢掉）。
+2. **保存只发改过的字段，但五个限额例外。** `endpointSave` 没传 `rpmLimit`、`tpmLimit`、`dailyTokenQuota`、`dailyCostQuotaMicros`、`alertFailureRatePct` 会清空它们，其余字段没传是不改。所以每次保存（包括启停）都要带上当前值。`concurrencyLimit`、`chatMaxOutputTokens`、`defaultMaxTokens` 传 0 才是清空。
+3. **换协议、基础地址或模型标识时要明确处理规格。** 服务端默认清掉规格（规格跟模型走），页面要求选择保留或清除，保留时把规格一起发。
+4. **共用配置要确认影响范围。** 默认模型、可选模型和共用售价改一处影响多个功能，保存前列出全部受影响功能，并回传 `acknowledgedAffectedFeatures`；少一个都是 400 `MODEL_FEATURE_IMPACT_REQUIRED`。
+5. **新模型默认停用。** 开放范围一保存，已启用的模型就会出现在产品的模型列表里，所以先配好规格和价格再启用。把视频模型开放给 IP Studio 时，服务端会把它加入共用的视频候选，同样要确认。
+6. **场景模型的价格必填。** 0 表示免费，新加入 IP Studio 剧本或图片的模型价格留空，不默认成 0；留空不能保存。
+7. **服务商只是显示分组。** 按基础地址的主机名归组，没有服务商表，密钥仍存在每个模型上。
+
 ### Studio 场景页：目录、拼话与草稿（2026-10-29，本地实现，未发布）
 
 真源 `docs/studio-scene-creation.md` §7–§9。

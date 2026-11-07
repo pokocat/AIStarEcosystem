@@ -11752,6 +11752,27 @@ paths:
         '409': { description: PROMPT_VERSION_CONFLICT }
 
   # ── Studio 技能库（S3；ip_skill / ip_skill_version，不可变版本；SUPER_ADMIN / OPERATOR，FINANCE_ADMIN 403） ──────────
+  /admin/studio/model-config/command:
+    post:
+      tags: [admin]
+      operationId: adminStudioModelConfigCommand
+      description: 'Studio 运营后台「模型配置」页（SUPER_ADMIN / OPERATOR）。一个地址按 action 执行命令，校验、加锁、审计都在 ModelManagementService，审计行的 appCode 是 studio-admin。只放行页面用到的命令，其余一律 400 MODEL_MANAGEMENT_COMMAND_INVALID。规则见 BUSINESS_RULES「Studio 后台模型配置」；数据形状见 packages/types/src/ai-model-config.ts。'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              additionalProperties: true
+              properties:
+                action:
+                  type: string
+                  enum: [endpoints, presets, modelAccessCatalog, endpointSave, endpointDelete, endpointCosts, modelAccessSave, endpointTest, endpointFetchModels, endpointProbe, sceneCatalog, studioVideoGroup, directorImageDefault, scenePolicySave, sceneCandidatePrepare, studioVideoGroupSave, directorImageDefaultSave, functionCatalog, functionPricingCatalog, functionDefaultSave, functionCandidatePrepare, functionCandidatePriceSave, functionActionPriceSave, functionConfigPriceSave, functionSupplierPointPriceSave, functionEnginePriceSave, videoPricesSave]
+      responses:
+        '200': { description: 'ApiResponse<随 action 而定>' }
+        '400': { description: 'MODEL_MANAGEMENT_COMMAND_INVALID（不在白名单或内容无效）· IMAGE_REQUEST_SPEC_INVALID / VIDEO_REQUEST_SPEC_INVALID（规格无效或有不认识的字段）· MODEL_FEATURE_IMPACT_REQUIRED（共用配置要回传确认的影响范围）· STUDIO_VIDEO_SPEC_REQUIRED · ENDPOINT_HAS_ACTIVE_GENERATIONS' }
+        '409': { description: 'ENDPOINT_IN_USE：模型还是某项能力的默认模型，不能删除' }
   /admin/studio/scenes:
     get:
       tags: [admin]

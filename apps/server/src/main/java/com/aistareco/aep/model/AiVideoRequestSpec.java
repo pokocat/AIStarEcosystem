@@ -177,6 +177,8 @@ public record AiVideoRequestSpec(String adapter, VideoStudioContract contract,
             return spec;
         } catch (BusinessException e) {
             throw e;
+        } catch (com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException e) {
+            throw BusinessException.badRequest("VIDEO_REQUEST_SPEC_INVALID", "视频规格里有不认识的字段：" + e.getPropertyName());
         } catch (Exception e) {
             throw invalid();
         }
