@@ -317,7 +317,7 @@ public class IpRunWorker {
                 final int candidateNo=i+1;
                 atomic(()->{
                 if(enterpriseBilling!=null)enterpriseBilling.lockForSettlement(IpRunService.REF_TYPE,run.getId());
-                if(unit>0)credits.commitHold(IpRunService.REF_TYPE,run.getId(),unit,"IP 形象出图 · 第 "+candidateNo+" 张",
+                if(unit>0)credits.commitHold(IpRunService.REF_TYPE,run.getId(),unit,"IP 形象生成图片 · 第 "+candidateNo+" 张",
                         new com.aistareco.aep.billing.service.ModelBillingMath.Usage(java.math.BigDecimal.valueOf(candidateNo),null));
                 // commit 成功之后才承认这张图。
                 // 带上宽高：画布拿它算节点尺寸 —— 不给的话只能按上限铺成正方形，

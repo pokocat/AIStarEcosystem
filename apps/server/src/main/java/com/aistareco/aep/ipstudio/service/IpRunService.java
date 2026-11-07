@@ -679,7 +679,7 @@ public class IpRunService {
             if(JusuanImageClient.supports(selected.resolved().endpoint()))exec.set("imageRequestSpec",om.valueToTree(com.aistareco.aep.model.AiImageRequestSpec.read(selected.resolved().endpoint().getImageRequestSpecJson())));
         }
         return new Compiled(IpRun.KIND_GENERATE, selected == null ? pricing.ipImage() : selected.creditCost(), count,
-                "画布出图 ×" + count, inputs, false, true,
+                "画布生成图片 ×" + count, inputs, false, true,
                 "stage-image");
     }
 
@@ -774,7 +774,7 @@ public class IpRunService {
             if(JusuanImageClient.supports(selected.resolved().endpoint()))exec.set("imageRequestSpec",om.valueToTree(com.aistareco.aep.model.AiImageRequestSpec.read(selected.resolved().endpoint().getImageRequestSpecJson())));
         }
         return new Compiled(IpRun.KIND_GENERATE, selected == null ? pricing.ipImage() : selected.creditCost(), count,
-                "画布出图 ×" + count, inputs, false, true,
+                "画布生成图片 ×" + count, inputs, false, true,
                 "stage-image");
     }
 

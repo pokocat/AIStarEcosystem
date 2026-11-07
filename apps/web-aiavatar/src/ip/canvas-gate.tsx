@@ -111,7 +111,7 @@ function MobileNotice({ projectId, onProceed }: { projectId: string; onProceed: 
         要拖节点、连线、框选参考图，还得同时看得见整条流程，手机屏幕上会挤。
         <br />
         <span style={{ color: "var(--ink-3)" }}>
-          只是想看看效果、改一句提示词重跑一次的话，手机上也能做。
+          如只需查看效果或修改提示词后重新生成，手机上也可以操作。
         </span>
       </p>
 

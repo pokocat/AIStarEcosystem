@@ -230,7 +230,7 @@ public class StudioPlanExecutionService {
     /** Advance a scene recreation under the one cap approved before analysis. Called under the executor row lock. */
     void confirmVideoProduction(IpPlanExecution e,ObjectNode state,ObjectNode budget,String runId) {
         var loaded=nativePlan(e.getOwnerUserId(),e.getProjectId(),runId);
-        if(loaded==null||!"production".equals(loaded.plan().path("stage").asText()))throw stale("没有可执行的制作安排，请在画布中查看分析结果");
+        if(loaded==null||!"production".equals(loaded.plan().path("stage").asText()))throw stale("没有可执行的制作安排，请在画布上查看分析结果");
         ObjectNode plan=loaded.plan().deepCopy();
         JsonNode config=state.path("videoTask").path("request").path("configuration");
         int seconds=0;
@@ -244,12 +244,12 @@ public class StudioPlanExecutionService {
                 seconds+=settings.path("durationSec").asInt();
             }
         }
-        if(seconds==0||Math.abs(seconds-config.path("duration").asInt())>1)throw stale("分镜时长与本次设置不一致，请在画布中查看后调整");
+        if(seconds==0||Math.abs(seconds-config.path("duration").asInt())>1)throw stale("分镜时长与本次设置不一致，请在画布上查看后调整");
         quoter.quote(e.getOwnerUserId(),plan);
         long spent=budget.path("analysis").path("spent").asLong();
         long remaining=budget.path("analysis").path("approvedCap").asLong()-spent;
         long quoted=plan.path("budget").path("estimated").asLong();
-        if(Math.multiplyExact(quoted,3)>remaining)throw stale("分析已完成，制作费用超出本次上限，请在画布中查看方案后调整");
+        if(Math.multiplyExact(quoted,3)>remaining)throw stale("分析已完成，制作费用超出上限，请在画布上查看方案后调整");
         var normalized=new LoadedPlan(runId,plan,loaded.rules(),loaded.contextNodeIds(),loaded.revision(),null);
         appendSteps((ArrayNode)state.withArray("steps"),normalized,"production");
         state.set("canvasContextIds",mapper.valueToTree(loaded.contextNodeIds()));

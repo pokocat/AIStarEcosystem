@@ -507,7 +507,7 @@ class IpRunServiceTest {
 
         // 2 张 × 8 = 16 一次性冻结，referenceId 就是 runId
         var context=org.mockito.ArgumentCaptor.forClass(com.aistareco.aep.billing.service.ModelChargeContext.class);
-        verify(credits).hold(eq(USER),eq(16L),eq(IpRunService.REF_TYPE),eq(dto.id()),eq("画布出图 ×2"),context.capture());
+        verify(credits).hold(eq(USER),eq(16L),eq(IpRunService.REF_TYPE),eq(dto.id()),eq("画布生成图片 ×2"),context.capture());
         assertEquals("default-image",context.getValue().target().endpointId());
         assertEquals("768x1024",context.getValue().target().specKey());
         assertEquals(2,context.getValue().usage().quantity().intValueExact());

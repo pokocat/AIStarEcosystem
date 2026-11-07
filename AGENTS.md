@@ -832,8 +832,9 @@ v0.197：web-drama 所有弹窗在 375 宽下右边都被裁掉一截，四个�
       「出圈」是营销词。标语和首屏标题不用「让……」句式、不用「让 A，让 B」排比，不用打造、赋能、出圈、
       一站式；副标题只写能做什么，不重复愿景。产品名（IP Studio、AiAvatar）和品牌位「IP Studio · 声量引擎旗下」照旧。
     - **不动的**：§4.6 之外的专业术语。去 AI 味不等于把专业文本改口语。
-    - 改界面文字、整页或整站检查文案，用仓库里的 `ui-copy` skill（`.claude/skills/ui-copy/`）：按位置的规则、改写对照和扫描脚本
-      `python3 -I .claude/skills/ui-copy/scripts/scan_copy.py <目录>`。这里的规则改了，那份同 commit 一起改。
+    - 改界面文字、整页或整站检查文案，用通用技能 `wenan`（`~/.agents/skills/wenan/`，Claude Code、Codex 都能用）：按位置的规则、改写对照、扫描和页面检查脚本。
+      本仓的范围、统一叫法、不能动的文字和验证方法在 [`docs/wenan.md`](docs/wenan.md)。扫描：`python3 -I ~/.agents/skills/wenan/scripts/scan_copy.py <目录>`，加 `--review` 再列长句和宽心话。
+      新定的叫法加进那份文件的叫法表，扫描自动认；这里的规则改了，技能和那份文件一起改。
     - 长篇正文拿不准就调 `shuorenhua` skill（`/Users/donis/.claude/skills/shuorenhua`）。
     - **web-drama 有自己的术语表**（v0.197）：[`docs/drama-ux-copy-pass.md`](docs/drama-ux-copy-pass.md) §2，
       每个东西界面上只许一种叫法，「不再使用」列的旧词（提示词直出、直接出片、验收入片、立项、脑暴、配方、

@@ -139,7 +139,7 @@ function LayoutSwitchRow() {
         {next === "desktop" ? "切换到电脑版" : "切换到手机版"}
       </span>
       <span style={{ fontSize: 12, color: "var(--ink-3)" }}>
-        {next === "desktop" ? "画布和宽表格更好用" : "回到竖排界面"}
+        {next === "desktop" ? "画布和宽表格更好用" : "返回竖排界面"}
       </span>
     </button>
   );
@@ -192,7 +192,7 @@ function MeNext({ name, phone, demo, identity, onLogout }: { name: string; phone
       <MeRow href="/templates" icon={Lightbulb} title="灵感" sub="官方案例和模板，可以直接做同款" />
       <MeRow href="/projects" icon={FolderOpen} title="项目" sub="画布与场景草稿，可继续编辑" />
       <MeRow href="/assets" icon={Layers} title="资产" sub="人物、声音与创作素材" />
-      <MeRow href="/director" icon={Clapperboard} title="短剧导演台" sub="写剧本、拆分镜、出片" />
+      <MeRow href="/director" icon={Clapperboard} title="短剧导演台" sub="写剧本、拆分镜、生成视频" />
     </nav>
     <nav className="studio-me-group" aria-label="名片与授权">
       <MeRow href="/cards" icon={IdCard} title="我的名片" sub="对外发布面 · 扫码即看" />
