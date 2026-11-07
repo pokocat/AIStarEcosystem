@@ -131,6 +131,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | [`docs/releases/studio-final-cut-local-validation-20261107.md`](releases/studio-final-cut-local-validation-20261107.md) | 成片自动字幕与编辑室增强 · 本地验证 | 真语音 + 本机 Whisper、三条路径的浏览器走查、走查修掉的问题和没验证的部分 | 2026-11-07 |
 | [`docs/studio-inspiration-library.md`](studio-inspiration-library.md) | **灵感库：开箱即用的官方示例 · 现行设计真源** | 35 个示例的内容与发布脚本（`scripts/inspiration/`）、详情弹窗、做同款后助手预填；last-reviewed 2026-11-05 |
 | [`docs/studio-segmented-video.md`](studio-segmented-video.md) | **AI 视频页的长视频：一键做到成片 · 现行设计真源** | 比模型单段上限长的视频：切段、分段脚本、两轮审核、分镜图、各段出片、合成；已发布，线上还没真跑过。last-reviewed 2026-11-06 |
+| [`docs/releases/asset-library-auto-import-release-20261108.md`](releases/asset-library-auto-import-release-20261108.md) | **资产库：导演台有图自动进库发布** | `20261108-asset-library-f63970b5f`（server + web-aiavatar，同包带上下线旧版）：存量补齐、窗口、线上只读验收、回滚 | 2026-11-08 |
 | [`docs/releases/pc-ui-copy-release-20261107.md`](releases/pc-ui-copy-release-20261107.md) | **PC 站文案优化发布** | `20261107-pc-ui-copy`（server + web-aiavatar，main `bd4c0d385`）、窗口 502、只读验收、回滚 `20261106-video-task` | 2026-11-07 |
 | [`docs/releases/h3-character-budget-release-20261107.md`](releases/h3-character-budget-release-20261107.md) | **H3 优化稿字符预算发布** | `20261107-h3-character-budget`（server），99 项回归、真实模型两份稿低于 6000；按业务空闲窗口发布 | 2026-11-07 |
 | [`docs/releases/h3-rewrite-checks-release-20261107.md`](releases/h3-rewrite-checks-release-20261107.md) | **H3 提示词优化修复发布** | `20261107-h3-rewrite-checks`（server + web-aiavatar），视频生成不出来的排查、真实重跑与模型对比 | 2026-11-07 |

@@ -14,6 +14,7 @@
 - [ ] 音频、视频任务把输入文字也存成文字素材（`IpLibraryService.collect`：线上「Vivian 配音」文字 13 条、「视频」文字 7 条），和音频卡片并排显示，看着像重复。
 - [ ] 画布右上角「发布到资产库」实际是发布数字 IP，和新的「存为角色、场景或道具」容易混，用户可能以为要点它才能存（2026-11-07 评审）。要改名得先定叫法。
 - [ ] 手机资产页的筛选占了半屏（分类、资产库、搜索、人物类型、来源、作品），第一张卡在 y=375；可收进一个「筛选」。人物页最多读 10 页（240 个），自动进库后可能不够，且没有提示（`assets-people.tsx`）。
+- [ ] 企业收款凭据 `EnterpriseRechargeService.claimReceipt` 用 `saveAndFlush`：主键已存在时走合并更新而不是插入报错。H2 读已提交下两个并发确认都能成功（`EnterpriseRechargeServiceTest.concurrentConfirmation…` 偶发失败，PR 164 CI 碰到过）；线上 MySQL 是可重复读，读代码判断不受影响，没有复现。改成只插入。
 - [ ] 资产库列表每次全量读这个用户的记录再在内存里筛（`IpSavedAssetService.page`、`IpLibraryService.objects`），导演台资产进库后对象数会涨，量大时改成带条件的查询。
 - [ ] AI 视频页没有加字幕和调速入口；`StudioEditMedia` 还不支持 `speed`。
 - [ ] 接入点整体故障只有逐条飞书告警（`alert_failure_rate_pct` 存了没用），页面也没有提示；12:16–15:13 图片线路故障用户问「是不是在维护」。

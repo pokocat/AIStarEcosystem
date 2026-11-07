@@ -1452,7 +1452,7 @@ Studio 工作线程默认 24，单个模型的上限看端点配置；图片调�
 
 `studio-admin` 的 `/models` 替代统一后台和 `apps/admin` 的 LLM API 页，接口 `/api/admin/studio/model-config/command` 复用 `ModelManagementService` 的命令（白名单在 `AdminStudioModelConfigController`）。规格一律当不透明 JSON：前端不解析、不用部分字段的表单重建，没改就不发，这样编辑器不认识的字段（如 `wire.requireExactOutputSize`）丢不了；服务端对发来的规格严格读取，不认识的字段报错而不是丢弃。`endpointSave` 没传五个限额会清空（`rpmLimit`、`tpmLimit`、`dailyTokenQuota`、`dailyCostQuotaMicros`、`alertFailureRatePct`），其余字段没传才是不改，保存规则集中在 `src/lib/model-config.ts`。规则见 `specs/BUSINESS_RULES.md`「Studio 后台模型配置」，页面说明和未搬部分见 `docs/platform-model-management.md`。
 
-### 资产库：有图自动进库（2026-11-07，本地未发布）
+### 资产库：有图自动进库（2026-11-07，已生产发布 `20261108-asset-library-f63970b5f`）
 
 真源 `docs/ip-studio-personal-asset-library-plan.md` 末节，规则 `specs/BUSINESS_RULES.md` 同日条目。资产库两层：文件（`ip_saved_asset`，生成成功自动收录）和角色、场景、道具（`ip_library_record` 的 `object`）。导演台有图的三类资产由 `IpLibraryDirectorSync` 后台对账建卡（`IpLibraryCollector`，`ILW-<作品>` 记作品更新时间），同名不合并，已关联的只把关联后的新图追加到原卡，主图跟采用版本直到用户自己选（`mainAssigned`），删掉的不补回，不写回作品。**先拿用户行锁再读**：MySQL 可重复读的快照在第一次普通读时才定，先读会覆盖用户刚保存的修改（`IpLibraryService.collect` 同序）。抛 `BusinessException` 的 `@Transactional` 调用不能在外层事务里 catch 着继续，会把事务标成回滚，所以对账前先用 `ownsAssetKey` 判。画布的图不自动建卡，用户点「存为角色、场景或道具」（`library-save-dialog.tsx`，`POST /library/objects/from-media`）。来源是筛选维度（`from` / `projectId`），不自动建文件夹。**新增产物入口时**：走 `IpRun` 的由归集收录，导演台作品里的由对账收录，其余要自己登记，且和产生文件的请求放在一起，不要在前端另发一个不等结果的请求（裁剪、抽帧见 `POST /projects/{id}/library/images`）；`/uploads` 不登记，因为蒙版这类中间图也走它。
 
