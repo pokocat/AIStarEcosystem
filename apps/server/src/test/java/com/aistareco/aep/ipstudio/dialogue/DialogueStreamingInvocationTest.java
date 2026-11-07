@@ -38,15 +38,84 @@ class DialogueStreamingInvocationTest {
     @AfterEach void stop() { if (server != null) server.stop(0); }
 
     private AiModelInvocationService service() {
+        return service(mock(AiModelUsageService.class));
+    }
+
+    private AiModelInvocationService service(AiModelUsageService usage) {
         return new AiModelInvocationService(mock(AiModelEndpointRepository.class), mock(AiAppBindingRepository.class),
-                mock(AiAppEndpointCandidateRepository.class), mock(AiModelUsageService.class), mock(AiModelGuardService.class),
-                new UpstreamModelHttp(mock(AiModelUsageService.class)), mock(AiModelAccessPolicyService.class));
+                mock(AiAppEndpointCandidateRepository.class), usage, mock(AiModelGuardService.class),
+                new UpstreamModelHttp(usage), mock(AiModelAccessPolicyService.class));
     }
 
     private AiModelEndpoint endpoint(Boolean streaming, Boolean tools) {
         return AiModelEndpoint.builder().id("ep-local").name("local").providerType(AiModelProviderType.OPENAI_COMPATIBLE)
                 .baseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1").model("local-chat")
                 .upstreamApiKeyEncrypted(AepCryptoUtil.encrypt("local-key")).chatSupportsStreaming(streaming).chatSupportsTools(tools).enabled(true).build();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void aCompletedReplyWithoutBodyIsAFailedCallAndIsNotRetried(boolean streaming) throws Exception {
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            calls.incrementAndGet(); exchange.getRequestBody().readAllBytes();
+            exchange.getResponseHeaders().add("Content-Type", streaming ? "text/event-stream" : "application/json");
+            exchange.sendResponseHeaders(200, 0);
+            String reply = streaming
+                    ? "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"reasoning_content\":\"内部推理\",\"content\":\" \\n\"},\"finish_reason\":\"stop\"}]}\n\n"
+                      + "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":12562,\"completion_tokens\":0}}\n\ndata: [DONE]\n\n"
+                    : "{\"choices\":[{\"message\":{\"content\":null},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":12562,\"completion_tokens\":0,\"total_tokens\":12562}}";
+            try (var out = exchange.getResponseBody()) { out.write(reply.getBytes(StandardCharsets.UTF_8)); }
+        });
+        server.start();
+        var usage = mock(AiModelUsageService.class);
+        var error = assertThrows(BusinessException.class, () -> service(usage).invokeChatOnEndpoint(
+                endpoint(streaming, false), AiModelPurpose.DAP_PERSONA,
+                List.of(Map.of("role", "user", "content", "写分镜")), Map.of()));
+        assertEquals("AI_EMPTY_OUTPUT", error.getCode());
+        assertTrue(error.getMessage().contains("未返回正文"));
+        assertFalse(error.getMessage().contains("格式"));
+        assertEquals(com.aistareco.aep.model.AiModelFailureCategory.BAD_RESPONSE,
+                com.aistareco.aep.model.AiModelFailureCategory.classify(error.getCode(), error.getMessage()));
+        assertEquals(1, calls.get(), "An empty completed reply must not cause another paid submission");
+        var evidence = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(usage).recordObserved(
+                org.mockito.ArgumentMatchers.eq("ep-local"), org.mockito.ArgumentMatchers.eq("local"),
+                org.mockito.ArgumentMatchers.eq("local-chat"), org.mockito.ArgumentMatchers.eq("DAP_PERSONA"),
+                org.mockito.ArgumentMatchers.eq(12562L), org.mockito.ArgumentMatchers.eq(0L), org.mockito.ArgumentMatchers.eq(12562L),
+                org.mockito.ArgumentMatchers.eq(false), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.eq("AI_EMPTY_OUTPUT"),
+                org.mockito.ArgumentMatchers.contains("未返回正文"), org.mockito.ArgumentMatchers.anyString(), evidence.capture(),
+                org.mockito.ArgumentMatchers.isNull());
+        assertNotNull(evidence.getValue(), "Keep the final response evidence even for an empty successful HTTP response");
+        org.mockito.Mockito.verify(usage, org.mockito.Mockito.never()).preserveOutput(
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void aToolOnlyTurnIsNotAnEmptyReply(boolean streaming) throws Exception {
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            exchange.getResponseHeaders().add("Content-Type", streaming ? "text/event-stream" : "application/json");
+            exchange.sendResponseHeaders(200, 0);
+            String message = "{\"tool_calls\":[{\"index\":0,\"id\":\"call-1\",\"type\":\"function\",\"function\":{\"name\":\"inspect\",\"arguments\":\"{}\"}}]}";
+            String reply = streaming
+                    ? "data: {\"choices\":[{\"delta\":" + message + ",\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n"
+                    : "{\"choices\":[{\"message\":" + message + ",\"finish_reason\":\"tool_calls\"}]}";
+            try (var out = exchange.getResponseBody()) { out.write(reply.getBytes(StandardCharsets.UTF_8)); }
+        });
+        server.start();
+        var result = service().invokeChatTurnOnEndpoint(endpoint(streaming, true), AiModelPurpose.DAP_PERSONA,
+                List.of(Map.of("role", "user", "content", "查看")), Map.of(),
+                List.of(Map.of("type", "function", "function", Map.of("name", "inspect", "parameters", Map.of("type", "object")))),
+                new AiModelInvocationService.ChatStreamListener() { public void onTextDelta(String text) { fail("No text expected"); } });
+        assertTrue(result.content().isEmpty());
+        assertEquals("tool_calls", result.finishReason());
+        assertEquals(1, result.toolCalls().size());
+        assertEquals("inspect", result.toolCalls().get(0).name());
     }
 
     @org.junit.jupiter.params.ParameterizedTest

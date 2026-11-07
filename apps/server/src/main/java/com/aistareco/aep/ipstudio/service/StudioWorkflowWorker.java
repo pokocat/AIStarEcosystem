@@ -183,6 +183,7 @@ public class StudioWorkflowWorker {
                                 :models.invokeChatOnEndpoint(endpoint.endpoint(),purpose,messages,chatOptions);
                         }
                         lastReply=reply;
+                        if(!StudioModelOutput.present(reply))throw AiModelInvocationService.emptyOutputFailure();
                         if(StudioModelOutput.present(reply)){output.set("rawResponse",StudioModelOutput.capture(mapper,reply));checkpointModelOutput(id,reply);}
                         if(("director".equals(operation)||isSceneDirector(input))&&tokenRate!=null) {
                             consumed=consumeUsage(reply,consumed,tokenRate);
