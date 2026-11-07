@@ -1,4 +1,6 @@
-// 新版资产页和资产选择框共用的约定（2026-10-31）。
+// 资产页和资产选择框共用的约定（2026-10-31）。
+
+export const ASSETS_DESCRIPTION = '上传和 AI 生成的素材都在这里，生成图片和视频时可直接使用。';
 
 /** 自带的「AI 生成」库：自动收进来的生成结果里，还没放进别的资产库的那些（folder=unfiled + source=generated）。 */
 export const AI_LIBRARY = 'ai';

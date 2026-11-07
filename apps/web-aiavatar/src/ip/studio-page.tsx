@@ -1,29 +1,17 @@
 "use client";
 
 import type { ReactNode, Ref } from 'react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { studioNavigation, studioNavigationCurrent } from '@/shell/studio-navigation';
-import { useUiVersion } from '@/shell/ui-version';
 import { Hourglass, Search, X } from 'lucide-react';
 import { HubTabBar } from '@/components/hub/ui';
-import { UiVersionSwitch } from '@/shell/ui-version-switch';
 
 /** The four workspace routes share one paper surface, heading and mobile navigation. */
-export function StudioPage({ title, description, nextDescription, actions, children, className = '', contentRef }: {
+export function StudioPage({ title, description, actions, children, className = '', contentRef }: {
   title: string; description: string;
-  /** 新版的副标题（2026-10-31 改版，说具体的事）；不给就沿用 description。旧版不变。 */
-  nextDescription?: string;
   actions?: ReactNode; children: ReactNode;
   className?: string; contentRef?: Ref<HTMLDivElement>;
 }) {
-  const pathname = usePathname() || '';
-  const version = useUiVersion();
-  // 新版页面换成改版后的设计语言（studio-next-pages.css），旧版保持原样。
-  return <main className={`ip-brand-surface ip-hub-surface studio-page ${className}${version === 'next' ? ' studio-next-page' : ''}`}>
-    {/* 手机顶上这一排只给旧版：新版底栏已经有 AI 视频、AI 图片，项目、资产、导演台在「我的」里，再放一排就重复了（2026-11-02 线上走查）。 */}
-    {version !== 'next' && <nav className="studio-mobile-navigation" aria-label="工作台导航">{studioNavigation(version).filter(n => n.href !== "/dashboard" && n.href !== "/assets").map(n => <Link key={n.href} href={n.href} aria-current={studioNavigationCurrent(n.href, pathname) ? "page" : undefined}>{n.label}</Link>)}</nav>}
-    <header className="studio-page-heading"><div><h1>{title}</h1><p>{version === 'next' && nextDescription ? nextDescription : description}</p></div>{(actions || version === 'next') && <div className="studio-page-actions">{version === 'next' && <UiVersionSwitch inline/>}{actions}</div>}</header>
+  return <main className={`ip-brand-surface ip-hub-surface studio-page studio-next-page ${className}`}>
+    <header className="studio-page-heading"><div><h1>{title}</h1><p>{description}</p></div>{actions && <div className="studio-page-actions">{actions}</div>}</header>
     <div ref={contentRef} className="studio-page-body" data-studio-overlay-root>{children}</div>
     <HubTabBar/>
   </main>;

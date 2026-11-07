@@ -32,27 +32,13 @@
 .studio-page .studio-page-refresh { display: grid; place-items: center; flex-shrink: 0; width: 40px; height: 40px; border: 1px solid var(--ip-line); border-radius: 8px; background: var(--ip-paper); color: var(--ip-muted); }
 .studio-page .studio-page-refresh:not(:disabled):hover { background: var(--ip-soft); color: var(--ip-ink); }
 .studio-page-result { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; min-height: 48px; color: var(--ip-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
-.studio-page .studio-project-grid:not(.studio-project-list),.studio-page .studio-template-grid,.studio-page .ip-management-cards.is-grid { grid-template-columns: repeat(auto-fill,minmax(min(100%,260px),1fr)); gap: 18px; }
+.studio-page .studio-project-grid:not(.studio-project-list),.studio-page .studio-template-grid { grid-template-columns: repeat(auto-fill,minmax(min(100%,260px),1fr)); gap: 18px; }
 .studio-page .studio-gallery-preview { aspect-ratio: 4/3; }
 .studio-page .studio-gallery-preview > svg,.studio-page .studio-gallery-preview > .studio-gallery-preview-pending { position: absolute; inset: 0; width: 100%; height: 100% !important; }
 .studio-page .studio-project-open h3,.studio-page .studio-template-copy h3 { font-family: var(--ip-display); font-size: 17px; font-weight: 600; line-height: 1.5; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .studio-page .studio-project-list .studio-gallery-preview { aspect-ratio: auto; height: 82px; }
 .studio-page .studio-project-list .studio-project-open h3 { display: block; }
 .studio-page .studio-project-list .studio-new-canvas { min-height: 64px; }
-.studio-page .ip-management { width: 100%; max-width: none; min-height: 0; padding: 0; margin: 0; background: transparent; }
-.studio-page .ip-management-main { padding: 0; border-radius: 0; background: transparent; }
-.studio-page .ip-management-result > div { display: flex; flex-wrap: wrap; gap: 18px; }
-.studio-page .ip-management-card { padding: 0; border-radius: 9px; }
-.studio-page .ip-management-card-image { aspect-ratio: 4/3; border-radius: 8px 8px 0 0; }
-.studio-page .ip-management-card-image img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
-.studio-page .ip-management-card-body { padding: 14px 15px; }
-.studio-page .ip-management-card h2 { font-size: 17px; }
-.studio-page .ip-management-cards.is-list .ip-management-card-image { aspect-ratio: auto; border-radius: 7px; }
-.studio-page .ip-management-cards.is-list .ip-management-card-body { padding: 4px 0; }
-.studio-page .ip-management-detail { top: calc(var(--desktop-bar-h,84px) + 12px); height: calc(100dvh - var(--desktop-bar-h,84px) - 24px); border: 1px solid var(--ip-line); border-radius: 9px; }
-.studio-page .library-redesign { padding: 0; }
-.studio-page .library-filter-bar .ant-input { font-size: 13px; }
-.studio-page .library-section-heading p { line-height: 1.7; }
 .studio-creation-section { container-type: inline-size; scroll-margin-top: calc(var(--desktop-bar-h,84px) + 18px); }
 .studio-page .studio-quick-start button:last-child { background: var(--ip-paper); color: var(--ip-ink); border-color: var(--ip-line); }
 .studio-page .studio-gallery-action-error a { margin-left: 12px; text-decoration: underline; }
@@ -75,25 +61,15 @@ html[data-layout="mobile"] .studio-page-filters small { min-width: 19px; padding
 html[data-layout="mobile"] .studio-page .studio-gallery-panel-heading h2 { font-size: 21px; }
 html[data-layout="mobile"] .studio-page .studio-gallery-panel { padding: 0; border: 0; }
 html[data-layout="mobile"] .studio-page .studio-gallery-panel + .studio-gallery-panel { padding-top: 28px; }
-html[data-layout="mobile"] .studio-page .ip-management,html[data-layout="mobile"] .studio-page .ip-management-main { padding: 0; }
-html[data-layout="mobile"] .studio-page.assets-library .library-redesign { padding: 0; }
-html[data-layout="mobile"] .studio-page.assets-library .library-categories > .ant-tabs-nav .ant-tabs-tab { margin-left: 12px; }
-html[data-layout="mobile"] .studio-page.assets-library .library-categories > .ant-tabs-nav .ant-tabs-tab:first-child { margin-left: 0; }
 html[data-layout="mobile"] .studio-page-toolbar { flex-wrap: wrap; gap: 8px; }
 html[data-layout="mobile"] .studio-page-toolbar > .studio-page-search { flex-basis: 100%; }
 html[data-layout="mobile"] .studio-template-market .studio-page-toolbar > .studio-page-search { flex-basis: 0; }
 html[data-layout="mobile"] .studio-page-toolbar > select { flex: 1; min-width: 0; max-width: none; }
-html[data-layout="mobile"] .studio-page .studio-project-grid:not(.studio-project-list),html[data-layout="mobile"] .studio-page .studio-template-grid,html[data-layout="mobile"] .studio-page .ip-management-cards.is-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
-html[data-layout="mobile"] .studio-page .ip-management-result > div { display: none; }
-html[data-layout="mobile"] .studio-page .ip-management-detail { inset: 8px; height: auto; }
+html[data-layout="mobile"] .studio-page .studio-project-grid:not(.studio-project-list),html[data-layout="mobile"] .studio-page .studio-template-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
 html[data-layout="mobile"] .studio-page .studio-project-list .studio-project-open { gap: 12px; }
 html[data-layout="mobile"] .studio-page .studio-project-list .studio-gallery-preview { width: 72px; height: 64px; }
 html[data-layout="mobile"] .studio-page .studio-project-list .studio-project-info { gap: 8px; padding: 8px; }
 html[data-layout="mobile"] .studio-page .studio-project-list .studio-project-open h3 { font-size: 14px; }
-html[data-layout="mobile"] .studio-page .hub-tabbar { --primary: var(--ip-ink); }
-html[data-layout="mobile"] .studio-page .hub-tabbar .wx-fab .fab-visual { background: var(--ip-ink); }
-html[data-layout="mobile"] .studio-page .hub-tabbar .wx-fab :is(.fab-art,.fab-veil) { display: none; }
-html[data-layout="mobile"] .studio-page .hub-tabbar .wx-fab { color: white; box-shadow: none !important; }
 
 /* Creation: the 「新建画布」 card, the creation tools and one template row; saved canvases live in Projects.
    Same page on both forms (docs/ip-studio-new-canvas-and-threads.md §2.2). */
@@ -132,7 +108,7 @@ html[data-layout="mobile"] .studio-create-tool-copy p { min-height: 34px; font-s
 html[data-layout="mobile"] .studio-create-page .studio-template-grid { grid-template-columns: repeat(4,minmax(210px,1fr)); overflow-x: auto; padding-bottom: 6px; gap: 10px; }
 @media (prefers-reduced-motion: reduce) { .studio-create-new,.studio-create-tool,.studio-create-tool-visual > img { transition: none; } }
 
-/* 「画布·自由创作」第一行（2026-11-04）：小的「新建画布」加最近的画布，一行横向滑动。
+/* 「画布」页第一行（2026-11-04）：小的「新建画布」加最近的画布，一行横向滑动。
    卡片定宽，右边总露出半张，一看就知道还能滑；全部画布在项目页。 */
 .studio-create-recent { margin-bottom: 28px; }
 .studio-create-recent .studio-gallery-more { display: inline-flex; align-items: center; gap: 4px; }

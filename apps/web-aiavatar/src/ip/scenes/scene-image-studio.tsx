@@ -23,7 +23,6 @@ import { HubTabBar } from "@/components/hub/ui";
 import { FREE_SCENE_ID, findImageScene, sceneDemo, useSceneCatalog, type ImageScene } from "./scene-catalog";
 import { useSceneDraftStore, useSceneStateSave } from "./scene-draft-store";
 import { useSceneQuery, writeSceneQuery } from "./scene-query";
-import { UiVersionSwitch } from "@/shell/ui-version-switch";
 import { addImageRow, applyRun, createSceneDraft, groupUploads, imageRows, listSceneDrafts, openedImageState, patchNode, resubmitRow, rowUploads, rejectedNextStep, splitByCounts, submissionRejected, type SceneUpload } from "./scene-drafts";
 import { ScenePromptEditor, type ScenePromptEditorHandle, type ScenePromptRef } from "./scene-prompt-editor";
 import { remapPromptRefs } from "./scene-prompt-refs";
@@ -560,8 +559,7 @@ export function SceneImageStudio() {
     <section className="scene-card scene-results" aria-label="作品与示例">
       <header><SceneResultTabs tab={tab} onTab={setTab} count={rows.length} idBase="scene-image"/>
         <span className="scene-results-actions">{draft && <Link className="scene-text-button" href={`/projects/${encodeURIComponent(draft.id)}`}><FolderOpen size={14} strokeWidth={1.4}/>在画布上查看</Link>}
-          {!mobile && <SceneRecent drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>}
-          <UiVersionSwitch inline/></span></header>
+          {!mobile && <SceneRecent drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>}</span></header>
       <div id="scene-image-panel" className="scene-results-panel" role="tabpanel" aria-labelledby={`scene-image-tab-${tab}`}>
       {tab === "example" ? <SceneExample id={scene.id} title={scene.title} group={isFree ? undefined : groupTitle} cover={scene.coverUrl} examples={scene.examples} demo={sceneDemo(scene.id)} example={scene.example} onUseExample={useExample} ratio={scene.ratio}
           note={isFree ? "添加参考图并描述想要的画面。" : scene.description}/>

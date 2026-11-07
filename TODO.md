@@ -69,7 +69,7 @@
 - [ ] **场景页「优化描述」显示具体上限**：改写那一步按改写模型的上限另外冻结，前端拿不到这个数（`StudioWorkflowService.videoRewriteHold` 只在服务端），界面只能写「按实际用量另扣」。要写出「最多 N 积分」需在视频模型列表或报价接口里带上改写上限。
 - [ ] **项目 / 灵感卡片要缩略图**（2026-10-30 线上走查）：`ProjectCardPreview` 直接加载原图，一张 1728×2304 的出图在 266px 卡片上加载了 18 秒。OSS 签名地址不能在前端追加 `x-oss-process`，要在服务端给图片资产派生缩略图 key（或签名时带处理参数），DTO 另给 `thumbnailUrl`。
 - [ ] **打开画布就会存一版**（2026-10-30 线上走查）：什么都没改，顶栏先显示「未保存」，随即自动保存一次。多半是加载后的文档规整被当成了修改；会让多标签页更容易撞版本，也让用户以为自己改了什么。要查画布加载后哪一步改了文档。
-- [ ] **全部切到新版后删掉旧版界面**（2026-10-30 起正式站默认旧版，`?ui=new` 进新版，见 `docs/studio-scene-creation.md` §10）：删 `components/landing/ip-home-classic.tsx`、`studio-navigation.ts` 的旧版列表、`desktop-top-bar.tsx` 的旧版顶栏分支、`studio-conversation-start.tsx` 旧提示，`ui-version.ts` 改成默认新版或整个去掉。
+- [x] ~~**全部切到新版后删掉旧版界面**~~ **2026-11-07 完成**（本地，未发布）：`ui-version.ts`、`<html data-ui>`、三种切换入口和 `?ui=` 全部去掉，所有人都是新版；旧首页（`ip-home-classic.tsx`、手机 `hub/home.tsx`、`studio-home.tsx`）、旧资产页（`ip-management.tsx`、`personal-asset-library.tsx`、`supplementary-asset-library.tsx`）、旧导航和旧手机底栏一起删除，只有它们用的样式和两张首页图也删了。手机上「发现」原来在底栏，现在在「我的」里。
 - [x] ~~**按新出片方式在 H3 上真出一条带参考图的视频**~~ **已验证**，2026-10-29：本地接聚算 H3，新视频页全能参考带 1 张商品图、544p 9:16 5 秒、200 积分，成片里是参考图的商品，从草稿重开显示已完成。见 `docs/releases/studio-scene-creation-local-validation-20261029.md` 末节。
 - [x] ~~场景的「选项组」~~ **2026-10-29 本地实现（未发布）**：目录每个场景可配最多 4 组选项（默认值），场景页点选，`compose` 拼进描述 / 要求；随包给 6 个场景配了；真 Qwen 按「只拍商品」写出无露脸脚本已验，见 §9。
 - [x] ~~首页「你想做什么？」七张卡仍写在前端~~ **2026-10-29 本地实现（未发布）**：卡片进目录 `homeGoals`，Studio 后台「首页卡片」标签编辑，公开只读 `GET /api/v1/ip-studio/scenes/home` 给未登录访客；落点场景下架的卡片不下发。
@@ -1007,9 +1007,9 @@
     - 邀请：`ip/invitation-registration.tsx` 提交时邀请失效，表单卸载、真实原因显示不出来，只见「邀请加载失败」；`ip/enterprise-invitation-landing.tsx` 运营查看时抛普通 `Error`，界面写「连接暂时中断」。
     - 名片：`app/cards/page.tsx`、`app/cards/[id]/edit/page.tsx` 的失败走自写底部提示，没走 `reportStudioError`；`components/card/card-view.tsx` 没有微信号时左右两个按钮是同一个动作。
     - `app/market/[id]/page.tsx`：顶栏和主视觉两个返回去处不同；「立即授权」点了做不成事。
-    - `ip/studio-create-home.tsx`：新版导航叫「画布」，页面标题两版共用「画布·自由创作」，要给 `StudioPage` 加新版标题。
+    - ~~`ip/studio-create-home.tsx`：页面标题「画布·自由创作」和导航「画布」不一致~~ **2026-11-07 完成**：标题改为「画布」。
     - `ip/enterprise-reports.tsx` 消费流水：「记账结果」和「状态」显示同一个字段。
-    - `ip/supplementary-asset-library.tsx`：形象状态筛选「调整中 · 迭代 / 精修」是内部说法，合并要产品确认；全部失败时上方和空态各一个「重试」。
+    - ~~`ip/supplementary-asset-library.tsx`：形象状态筛选「调整中 · 迭代 / 精修」是内部说法~~ **2026-11-07 随旧版资产页删除**。
   - **有逻辑依赖，改文字要两边一起改**
     - ~~2026-11-07 线上扫描的残留：「每张画布都在这里，点开可继续编辑」、场景名「自由出图」~~ **2026-11-07 已改**：「点击画布继续编辑」、「自由生成」。
     - `ip/director/director-workbench.tsx` `PASSING_NOTICE` 按服务端原文判断（「全部 N 集都写好了」「已分成 N 集」「资产已保存」）；`asset.description.includes("只出声音")`；`StudioPlanExecutor`「本阶段预算还差 N 积分」（`StudioPlanExecutionService` 用 `startsWith`）。
@@ -1029,7 +1029,7 @@
     - `proto/` 其余约 1700 条没通读（用户定只改扫描命中）：`screen-compose.tsx`「冻结算力」、`screen-real.tsx`「七牛云」、`screen-library.tsx`「一键生成」等。手机端 `app/me/page.tsx`「扫码即看」「会员与算力」、`components/hub/ui.tsx`、`ip/canvas-gate.tsx` 手机提示页还有口语。
     - vendored `canvas/components/canvas/canvas-video-settings-popover.tsx`「这个模型只接 X–Y 秒…点开改一下」，只能改语言包以外的文件才能改，先留着。
     - 账本流水描述（「IP 运行超时 · 释放冻结」「画布出图 ×N」）只有后台和 web-drama 看得到；`IpRunServiceTest` 断言了。
-    - 没有挂到页面上的文件，建议删除：`ip/studio-scene-workshop.tsx`、`ip/studio-scenes.ts`、`components/hub/create-center.tsx`、`components/hub/landing.tsx`、`components/landing/atlas.tsx`、`ip/saved-canvas-assets.tsx`、`shell/ip-navigation.tsx`。
+    - 没有挂到页面上的文件，建议删除：`ip/studio-scene-workshop.tsx`、`ip/studio-scenes.ts`、`components/hub/landing.tsx`、`components/landing/atlas.tsx`、`ip/saved-canvas-assets.tsx`（`create-center.tsx`、`ip-navigation.tsx` 已于 2026-11-07 随旧版界面删除）。
 
 - [x] ~~**main 上有两个前端测试是红的（2026-11-06 发现，和文案改动无关，相关源码与 main 相同）**~~ **2026-11-06 修复**：都从 `35c24240a` 起红。`model-task-state.test.ts` 是断言过时，状态码按 §8.0.1 ① 不进界面，改成断言保留原因和追查号、不出现状态码。`ai-error.test.ts` 查出真 bug：web-drama 里英文原文配超时、未配置这类错误码时，`publicModelErrorMessage` 换说法后盖掉了 `FRIENDLY_BY_CODE`，已改成这类错误码仍用专门提示，隐去经营信息和调用失败类错误码照旧。`main` 直推不跑 CI（工作流只在 PR 和手动触发时跑），所以红了两天没人发现。同批把 admin、studio-admin、web-drama 的 vitest 设置改成和 web-aiavatar 一样，消除 5 秒超时的假失败（AGENTS.md §8.0.1 ⑬）。
 

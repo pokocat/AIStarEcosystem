@@ -10,7 +10,7 @@ import { SignedImage } from '@/canvas-bridge/signed-image';
 import { studioOverlayContainer } from './studio-overlay';
 import { LibraryMediaPicker } from './library-media-picker';
 /** One personal-library picker for the canvas, director and assistant. Snapshots retain exact object/version IDs.
- *  AI 图片 / AI 视频的素材位（给了 mediaType、不嵌在面板里）用新版的资产库选择框（library-media-picker.tsx，2026-10-31）。 */
+ *  AI 图片 / AI 视频的素材位（给了 mediaType、不嵌在面板里）用资产库选择框（library-media-picker.tsx，2026-10-31）。 */
 export function LibraryReferencePicker(props: Parameters<typeof LibraryReferenceList>[0] & { people?: boolean; library?: string }) {
   const { mediaType, embedded, people, library, ...rest } = props;
   if (mediaType && !embedded) return <LibraryMediaPicker open={rest.open} projectId={rest.projectId} onClose={rest.onClose} onAssets={rest.onAssets} title={rest.title} confirmLabel={rest.confirmLabel} max={rest.max} mediaType={mediaType} upload={rest.upload} people={people} library={library}/>;

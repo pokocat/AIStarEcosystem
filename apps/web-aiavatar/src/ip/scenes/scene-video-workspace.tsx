@@ -17,7 +17,6 @@ import { SignedAudio } from '@/canvas-bridge/signed-audio';
 import { downloadMedia } from '@/canvas-bridge/download-media';
 import { cancelStudioPlanExecution, executionRestoreUpserts, projectCanvasOps, resumeStudioPlanExecution, stepNodeId, stepRunCandidates } from '@/canvas-bridge/studio-plan-execution';
 import { formatDateTime } from '@/lib/datetime';
-import { UiVersionSwitch } from '@/shell/ui-version-switch';
 import { AiMark } from '../studio-ai-icon';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
 
@@ -121,7 +120,6 @@ export function SceneVideoWorkspace({ enabled, taskId, draftId, sceneId, restore
     <section className="scene-card video-workspace" aria-label="作品">
       {shown && <header className="video-workspace-head"><h2 title={shown.title}>{shown.title}</h2>
         <div>{!videoTaskNeedsAction(shown) && <Link className="scene-text-button" href={videoTaskCanvasHref(shown)}>在画布上查看<ArrowUpRight size={14} strokeWidth={1.5}/></Link>}
-          <UiVersionSwitch inline/>
           {onNew && <button type="button" className="video-head-new" onClick={onNew} aria-label="新建"><Plus size={15} strokeWidth={1.6}/>新建</button>}
           <VideoHistoryToggle onOpen={() => onRail(true)}/></div></header>}
       {error && <div className="video-connection-note" role="status">{error}<button type="button" onClick={() => setReload(n => n + 1)}>重试</button></div>}

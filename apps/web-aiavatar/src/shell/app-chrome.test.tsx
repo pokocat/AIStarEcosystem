@@ -39,20 +39,17 @@ test("unauthenticated direct canvas entry cannot gain navigation or a stale body
   expect(document.body.classList.contains("has-desktop-bar")).toBe(false);
 });
 
-// 2026-10-30 用户反馈：新版里 /dashboard 有左侧导航，从 / 进来就没了。登录后两处是同一个首页。
-test("in the new version a signed-in visit to / keeps the navigation, like /dashboard; signed out it stays the landing page", () => {
-  document.documentElement.setAttribute("data-ui", "next");
-  try {
-    for (const path of ["/", "/dashboard"]) {
-      state.path = path; const view = render(<AppChrome />);
-      expect(screen.getByRole("banner", { name: "网站导航" }), path).toBeTruthy();
-      expect(document.body.classList.contains("has-desktop-bar"), path).toBe(true);
-      view.unmount();
-    }
-    state.path = "/"; state.authed = false;
-    render(<AppChrome />);
-    expect(screen.queryByRole("banner")).toBeNull();
-  } finally { document.documentElement.removeAttribute("data-ui"); }
+// 2026-10-30 用户反馈：/dashboard 有左侧导航，从 / 进来就没了。登录后两处是同一个首页。
+test("a signed-in visit to / keeps the navigation, like /dashboard; signed out it stays the landing page", () => {
+  for (const path of ["/", "/dashboard"]) {
+    state.path = path; const view = render(<AppChrome />);
+    expect(screen.getByRole("banner", { name: "网站导航" }), path).toBeTruthy();
+    expect(document.body.classList.contains("has-desktop-bar"), path).toBe(true);
+    view.unmount();
+  }
+  state.path = "/"; state.authed = false;
+  render(<AppChrome />);
+  expect(screen.queryByRole("banner")).toBeNull();
 });
 
 // 2026-11-07 用户反馈：从 AI 视频进画布回不去。外壳记下进画布之前的那一页，画布的返回按钮读它。

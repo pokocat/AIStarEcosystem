@@ -1,26 +1,16 @@
 /* 场景化创作（AI 图片 / AI 视频）与登录后的左侧导航栏。真源 docs/studio-scene-creation.md。 */
 
-/* ── 左侧导航栏：新版替代登录后的顶栏，页面整体右移（旧版不动，见 shell/ui-version.ts）──────── */
+/* ── 左侧导航栏：登录后的导航，页面整体右移 ──────── */
 html[data-layout="desktop"] { --desktop-rail-w: 76px; }
-html[data-layout="desktop"][data-ui="next"] body.has-desktop-bar { --desktop-bar-h: 12px; padding-top: 12px; padding-left: calc(var(--desktop-rail-w) + 12px); }
+html[data-layout="desktop"] body.has-desktop-bar { --desktop-bar-h: 12px; padding-top: 12px; padding-left: calc(var(--desktop-rail-w) + 12px); }
 /* 只给整页的老界面让位；账号区里的老界面已经在左栏右边，再让一次就超出右边（2026-10-30 复测：设置页开关出了屏幕）。 */
-html[data-layout="desktop"][data-ui="next"] body.has-desktop-bar .app-root:not(.account-legacy-content > .app-root) { left: calc(var(--desktop-rail-w) + 12px); }
+html[data-layout="desktop"] body.has-desktop-bar .app-root:not(.account-legacy-content > .app-root) { left: calc(var(--desktop-rail-w) + 12px); }
 html[data-layout="desktop"] .desktop-top-bar.desktop-rail.ip-brand-surface {
   position: fixed; top: 12px; left: 12px; bottom: 12px; right: auto; z-index: 80; /* 高过场景页的「全部场景」（70），弹出的场景列表和账号菜单不被它盖住 */
   width: var(--desktop-rail-w); height: auto; flex-direction: column; align-items: center; gap: 8px; padding: 14px 0 12px;
   background: var(--ip-paper); border-radius: 13px; overflow: visible;
 }
-/* 新旧版切换（shell/ui-version.ts）：旧版在顶栏右侧，新版固定在页面右上角的留白里。 */
-.ip-ui-switch { display: inline-flex; align-items: center; min-height: 30px; padding: 0 12px; border: 1px solid var(--ip-line); border-radius: 999px; background: var(--ip-paper); color: var(--ip-ink); font: inherit; font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer; }
-.ip-ui-switch:hover { background: var(--ip-soft); }
-.ip-ui-switch:focus-visible { outline: 2px solid var(--ip-ink); outline-offset: 2px; }
-html[data-layout="desktop"] .ip-ui-switch-corner { position: fixed; top: 8px; right: 16px; z-index: 61; background: none; }
-html[data-layout="desktop"] .ip-ui-switch-corner .ip-ui-switch { box-shadow: 0 4px 14px rgba(25, 34, 41, .12); }
-/* 页面标题栏里已经有一个（StudioPage、首页、场景页结果区），悬浮的就不要了：两个同时出现，悬浮的那个会压住内容。 */
-html[data-layout="desktop"] body:has(.ip-ui-switch-inline) .ip-ui-switch-corner { display: none; }
-html:not([data-layout="desktop"]) :is(.ip-ui-switch-corner, .ip-ui-switch-inline) { display: none; }
-.ip-ui-switch-inline { color: var(--ip-muted); font-weight: 500; }
-.ip-ui-switch-inline:hover { color: var(--ip-ink); }
+
 /* 导航栏（2026-10-31 改版，设计稿「AI 视频与图片页重设计」）：白底无框，细图标、小字，当前项浅灰底。 */
 .desktop-rail-logo { display: grid; place-items: center; width: 40px; height: 40px; margin-bottom: 8px; border-radius: 10px; flex-shrink: 0; }
 .desktop-rail-logo img { display: block; width: 32px; height: 32px; border-radius: 9px; object-fit: contain; }
@@ -468,7 +458,7 @@ html:not([data-layout="desktop"]) .scene-icon-button.is-large { width: 44px; hei
 html:not([data-layout="desktop"]) .scene-ref-remove { width: 24px; height: 24px; }
 html:not([data-layout="desktop"]) .scene-ref-remove::before { content: ""; position: absolute; inset: -9px; }
 html:not([data-layout="desktop"]) .scene-results { margin: 0 12px; min-height: 320px; }
-html:not([data-layout="desktop"]) .scene-results-actions .scene-recent-host, html:not([data-layout="desktop"]) .scene-results-actions .ip-ui-switch-inline { display: none; }
+html:not([data-layout="desktop"]) .scene-results-actions .scene-recent-host { display: none; }
 html:not([data-layout="desktop"]) .scene-row-tools { opacity: 1; }
 html:not([data-layout="desktop"]) .scene-row-images { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 html:not([data-layout="desktop"]) .scene-example-media { width: min(100%, 260px); }

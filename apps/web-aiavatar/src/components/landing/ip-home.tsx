@@ -17,9 +17,6 @@ import { inspirationOrder, templateKind } from "@/ip/template-facts";
 import { InspirationWall } from "@/ip/inspiration-wall";
 import { sceneHref, useSceneHomeCards } from "@/ip/scenes/scene-catalog";
 import { SceneThumb } from "@/ip/scenes/scene-layout";
-import { useUiVersion } from "@/shell/ui-version";
-import { UiVersionSwitch } from "@/shell/ui-version-switch";
-import { IpHomeClassic } from "./ip-home-classic";
 
 /** 一个入口：要么是独立页面，要么是带某个面板打开的新画布。 */
 type HomeStart = { entry: StudioEntry } | { href: string } | { blank: true };
@@ -40,10 +37,10 @@ const feedTabs: { value: FeedTab; label: string }[] = [
   { value: "all", label: "发现" }, { value: "video", label: "视频" }, { value: "image", label: "图片" }, { value: "canvas", label: "画布" },
 ];
 /**
- * 新版首页（公开落地页与登录后的桌面首页，参考 docs/studio-scene-creation.md §3）：一句话开始、常用工具、按目标选场景、
+ * 首页（公开落地页与登录后的首页，参考 docs/studio-scene-creation.md §3）：一句话开始、常用工具、按目标选场景、
  * 再往下是灵感（官方模板与精选案例，完整的在 /templates；点开是一个弹窗，「做同款」才复制并进入画布）。
  */
-function IpHomeNext({ header = true }: { header?: boolean }) {
+export function IpHome({ header = true }: { header?: boolean }) {
   const router = useRouter();
   // 「你想做什么？」的卡片由运营在 Studio 后台配，公开接口读，没登录也显示。
   const homeCards = useSceneHomeCards();
@@ -109,12 +106,11 @@ function IpHomeNext({ header = true }: { header?: boolean }) {
   const scrollGoals = (direction: number) => goals.current?.scrollBy({ left: direction * goals.current.clientWidth * .8, behavior: "smooth" });
 
   return <div className="ip-brand-surface ip-home studio-scene-home studio-next-page">
-    {/* 登录后电脑上的导航由外壳给（新版是左侧一列，见 shell/app-chrome.tsx），这里只给没登录的访客画公开顶栏。 */}
+    {/* 登录后电脑上的导航由外壳给（左侧一列，见 shell/app-chrome.tsx），这里只给没登录的访客画公开顶栏。 */}
     {header && <>{!authed && <DesktopTopBar publicMode />}<header className="ip-home-mobile-header"><Link href="/" aria-label="IP Studio · 声量引擎旗下首页"><img src="/brand/ip-studio-logo.png" width={34} height={34} alt="" /><strong>IP Studio <small>· 声量引擎旗下</small></strong></Link><Link href={authed ? "/dashboard" : "/login"}>{authed ? "工作台" : "登录"}</Link></header></>}
     {using && <StudioTemplateUse key={using.versionId || using.id} template={using} onClose={() => setUsing(undefined)} onCreated={href => router.push(href)}/>}
     <main>
       <section className="home-hero">
-        {authed && <UiVersionSwitch inline/>}
         <h1>一个 IP，无限可能</h1>
         <StudioConversationStart creating={creating === "assistant"} onStart={brief => void startConversation(brief)}/>
       </section>
@@ -147,9 +143,4 @@ function IpHomeNext({ header = true }: { header?: boolean }) {
     </main>
     <footer className="ip-home-footer"><span>IP Studio · 声量引擎旗下</span><p>一个 IP，无限可能。</p><Link href="/assets?tab=ips">管理我的 IP<ArrowRight size={15} /></Link></footer>
   </div>;
-}
-
-/** 首页按版本二选一：默认旧版，拿到 `?ui=new` 的人看新版。 */
-export function IpHome(props: { header?: boolean }) {
-  return useUiVersion() === "next" ? <IpHomeNext {...props}/> : <IpHomeClassic {...props}/>;
 }

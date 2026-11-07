@@ -104,10 +104,6 @@ try {
   await open("/director/DW-demo01");
   check("导演台：打开示例作品", await until(() => p.evaluate(() => !!document.querySelector("video,img"))));
 
-  await open("/dashboard?ui=new");
-  check("新版界面：切换生效", await p.evaluate(() => document.documentElement.getAttribute("data-ui") === "next"));
-  await open("/dashboard?ui=old");
-
   await p.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true });
   await open("/dashboard");
   check("手机版：按手机形态显示", await p.evaluate(() => document.documentElement.getAttribute("data-layout") !== "desktop"));
