@@ -142,7 +142,7 @@ class DirectorFormsAndViewsTest {
 
         var missing = assertThrows(BusinessException.class, () -> service.task(USER, work.getId(), new DirectorService.TaskRequest("board", "k1", "b0", null, null, 16L)));
         assertEquals("DIRECTOR_REFERENCE_MISSING", missing.getCode());
-        assertTrue(missing.getMessage().contains("白素贞·半妖态"), "缺的是这个形态的图，要说清楚");
+        assertEquals(List.of("白素贞·半妖态"), ((java.util.Map<?, ?>) missing.getDetails()).get("names"), "缺的是这个形态的图，要说清楚");
 
         edit("form.upload", formId, "{\"key\":\"u/bai-yao.png\"}");
         service.task(USER, work.getId(), new DirectorService.TaskRequest("board", "k1", "b1", null, null, 16L));
@@ -166,7 +166,7 @@ class DirectorFormsAndViewsTest {
     @Test void aFormNeedsTheMainImageFirstAndOnlyCharactersHaveForms() throws Exception {
         seed();
         var scene = assertThrows(BusinessException.class, () -> edit("form.create", assetId("金山寺"), "{\"name\":\"雪景\"}"));
-        assertTrue(scene.getMessage().contains("只有角色"));
+        assertEquals("DIRECTOR_INPUT_INVALID", scene.getCode());
         JsonNode w = edit("asset.create", null, "{\"kind\":\"character\",\"name\":\"小青\",\"description\":\"青衣\"}");
         JsonNode x = edit("form.create", asset(w, "小青").path("id").asText(), "{\"name\":\"剑客装\",\"description\":\"短打\"}");
         String formId = asset(x, "小青").path("forms").get(0).path("id").asText();

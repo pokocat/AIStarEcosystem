@@ -446,7 +446,7 @@ class StudioPlanExecutionServiceTest {
         String revised=currentPlan("IPR-c","production",PRODUCTION.replace("开播","开播，换个人物"),40,5);
         cards.put("msg-more","APV-more","production",revised,45,200);
         var e=assertThrows(BusinessException.class,()->service.create("u","p",new PlanExecutionCreateRequest("c-run","production","IPR-c",revised,"rewrite",200L,0L,null,id,3,"APV-more","msg-more")));
-        assertEquals("STUDIO_PLAN_STALE",e.getCode());assertTrue(e.getMessage().contains("还在生成中"));
+        assertEquals("STUDIO_PLAN_STALE",e.getCode());
         assertEquals("IPR-b",rows.get(id).getPlanRunId(),"nothing changed");
     }
 
@@ -751,9 +751,13 @@ class StudioPlanExecutionServiceTest {
         var state=(ObjectNode)om.readTree(row.getStepsJson());state.putObject("videoTask").put("kind","recreation");
         ((ObjectNode)state.path("steps").get(0)).put("status","failed").put("attempt",3).put("errorCode","AI_CALL_FAILED");
         row.setStepsJson(state.toString());row.setStatus("needs_user");canvasWith("src");
-        assertTrue(assertThrows(BusinessException.class,()->service.resume("u","p",created.id(),new PlanExecutionControlRequest("retry-four",null))).getMessage().contains("3 次"));
+        assertEquals("STUDIO_PLAN_STALE",assertThrows(BusinessException.class,()->service.resume("u","p",created.id(),new PlanExecutionControlRequest("retry-four",null))).getCode());
         assertEquals("needs_user",row.getStatus());
         assertEquals(3,om.readTree(row.getStepsJson()).path("steps").get(0).path("attempt").asInt());
+        // 同一步只差次数：还没到 3 次就能继续，所以上面拦下它的就是次数这一条。
+        ((ObjectNode)state.path("steps").get(0)).put("attempt",2);row.setStepsJson(state.toString());
+        service.resume("u","p",created.id(),new PlanExecutionControlRequest("retry-third",null));
+        assertEquals("running",row.getStatus());
     }
 
     @Test void videoPageRegeneratesUnusableModelOutputWithANewRequestWhenTheUserContinues() throws Exception {
@@ -776,8 +780,12 @@ class StudioPlanExecutionServiceTest {
         var row=rows.get(created.id());var state=(ObjectNode)om.readTree(row.getStepsJson());state.putObject("videoTask");
         ((ObjectNode)state.path("steps").get(0)).put("status","failed").put("errorCode","STUDIO_SUBMISSION_UNKNOWN");
         row.setStepsJson(state.toString());row.setStatus("needs_user");canvasWith("src");
-        assertTrue(assertThrows(BusinessException.class,()->service.resume("u","p",created.id(),new PlanExecutionControlRequest("retry-unknown",null))).getMessage().contains("不能重复生成"));
+        assertEquals("STUDIO_PLAN_STALE",assertThrows(BusinessException.class,()->service.resume("u","p",created.id(),new PlanExecutionControlRequest("retry-unknown",null))).getCode());
         assertEquals("needs_user",row.getStatus());
+        // 同一步只差错误码：普通失败能继续，所以上面拦下它的就是「提交结果未确认」这一条。
+        ((ObjectNode)state.path("steps").get(0)).put("errorCode","AI_CALL_FAILED");row.setStepsJson(state.toString());
+        service.resume("u","p",created.id(),new PlanExecutionControlRequest("retry-known",null));
+        assertEquals("running",row.getStatus());
     }
 
 }

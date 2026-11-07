@@ -106,7 +106,7 @@ class DramaAssembleServiceCanvasTest {
         BusinessException e = assertThrows(BusinessException.class, () -> svc.assembleKeys("u1", "dcv_1", 1,
                 List.of("k1.mp4"), "9:16"));
         assertEquals("DRAMA_ASSEMBLE_BAD_CLIP", e.getCode());
-        assertTrue(e.getMessage().contains("第 1 个片段"));
+        assertTrue(e.getInternalDetail().contains("key=k1.mp4"), e.getInternalDetail());
         verify(uploader, never()).upload(any(), any(), any());
     }
 

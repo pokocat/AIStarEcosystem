@@ -29,7 +29,7 @@ class StudioPromptEntryTest {
         String method = "---\nkey: x\nname: x\nversion: 1\nstatus: active\nplanning: dynamic\noperations: {analysis: [], production: [image]}\n"
                 + "limits: {maxSourceSec: 60, maxSegments: 1, maxSegmentSec: model, maxSteps: 4}\nchecks: []\n---\n正文";
         assertThat(StudioSkillCatalog.parse(method).key()).isEqualTo("x");
-        assertThatThrownBy(() -> StudioPromptEntry.parse(method)).hasMessageContaining("制作做法");
+        assertThatThrownBy(() -> StudioPromptEntry.parse(method)).isInstanceOf(IllegalArgumentException.class);
         String content = "---\nkey: method-commerce\nname: 电商带货\nversion: 1\nstatus: active\nlayer: method\nkind: content\n---\n开头抓人";
         assertThat(StudioPromptEntry.parse(content).layer()).isEqualTo("method");
         assertThatThrownBy(() -> StudioSkillCatalog.parse(content)).hasMessageContaining("not a workflow method");
@@ -38,7 +38,7 @@ class StudioPromptEntryTest {
     @Test
     void onlyStagesMayPlaceLayerOrFormatVariables() {
         assertThatThrownBy(() -> StudioPromptEntry.parse("---\nkey: scene-x\nname: x\nversion: 1\nstatus: active\nlayer: scene\nsceneId: x\nsceneKind: video\n---\n{{base}}拍法"))
-                .hasMessageContaining("只有环节能放");
+                .hasMessageContaining("{{base}}");
         assertThatThrownBy(() -> StudioPromptEntry.parse("---\nkey: base\nname: 底座\nversion: 1\nstatus: active\nlayer: base\nextra: 1\n---\n"))
                 .hasMessageContaining("unknown header field");
     }
@@ -52,7 +52,7 @@ class StudioPromptEntryTest {
         assertThatThrownBy(() -> StudioPromptEntry.parse(head + ok.replace("{{format.shots}}", ""))).hasMessageContaining("format.shots");
         assertThatThrownBy(() -> StudioPromptEntry.parse(head + ok + "{{nobody}}")).hasMessageContaining("{{nobody}}");
         assertThatThrownBy(() -> StudioPromptEntry.parse(head + ok.replace("{{language}}", ""))).hasMessageContaining("{{language}}");
-        assertThatThrownBy(() -> StudioPromptEntry.parse(head.replace("stage-scene-script", "stage-nowhere") + ok)).hasMessageContaining("没有对应的调用点");
+        assertThatThrownBy(() -> StudioPromptEntry.parse(head.replace("stage-scene-script", "stage-nowhere") + ok)).hasMessageContaining("stage-nowhere");
     }
 
     /** §9.4：镜头行例子必须是 H3 改写认得出的写法，时长很短时例子也不超过总时长。 */

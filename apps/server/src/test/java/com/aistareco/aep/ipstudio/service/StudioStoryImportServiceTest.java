@@ -42,9 +42,9 @@ class StudioStoryImportServiceTest {
         }
     }
     @Test void scannedPasswordProtectedAndTooManyPagesAreExplicitFailures() throws Exception {
-        assertTrue(assertThrows(BusinessException.class,()->service.extract(file("扫描.pdf",pdf("",false,1)))).getMessage().contains("扫描件"));
-        assertTrue(assertThrows(BusinessException.class,()->service.extract(file("加密.pdf",pdf("story",true,1)))).getMessage().contains("密码"));
-        assertTrue(assertThrows(BusinessException.class,()->service.extract(file("长篇.pdf",pdf("story",false,101)))).getMessage().contains("100 页"));
+        assertEquals("STUDIO_STORY_INVALID",assertThrows(BusinessException.class,()->service.extract(file("扫描.pdf",pdf("",false,1)))).getCode());
+        assertEquals("STUDIO_STORY_INVALID",assertThrows(BusinessException.class,()->service.extract(file("加密.pdf",pdf("story",true,1)))).getCode());
+        assertEquals("STUDIO_STORY_INVALID",assertThrows(BusinessException.class,()->service.extract(file("长篇.pdf",pdf("story",false,101)))).getCode());
     }
     @Test void damagedAndDisguisedFormatsDoNotReturnPlaceholders() {
         for(String name:new String[]{"坏.pdf","坏.doc","坏.docx","故事.exe"}) {
@@ -53,14 +53,19 @@ class StudioStoryImportServiceTest {
         }
     }
     @Test void oversizeAndOverlongDocumentsRejectWithoutTruncating() throws Exception {
-        assertTrue(assertThrows(BusinessException.class,()->service.extract(file("大.pdf",new byte[StudioStoryImportService.MAX_BYTES+1]))).getMessage().contains("8 MB"));
-        assertTrue(assertThrows(BusinessException.class,()->service.extract(file("长篇.docx",docx("字".repeat(24001))))).getMessage().contains("24000"));
+        assertEquals("STUDIO_STORY_INVALID",assertThrows(BusinessException.class,()->service.extract(file("大.pdf",new byte[StudioStoryImportService.MAX_BYTES+1]))).getCode());
+        assertEquals("STUDIO_STORY_INVALID",assertThrows(BusinessException.class,()->service.extract(file("长篇.docx",docx("字".repeat(24001))))).getCode());
     }
     @Test void restrictedPdfCannotBypassExtractionPermission() throws Exception {
         try(var doc=new PDDocument();var bytes=new ByteArrayOutputStream()) {
-            doc.addPage(new PDPage());var permission=new AccessPermission();permission.setCanExtractContent(false);
+            doc.addPage(new PDPage());
+            // 页面上有文字：空白页去掉权限判断也会因「没有文字」被拒（同一个错误码），测不到权限这一条。
+            try(var stream=new PDPageContentStream(doc,doc.getPage(0))) {
+                stream.beginText();stream.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA),12);stream.newLineAtOffset(40,700);stream.showText("story");stream.endText();
+            }
+            var permission=new AccessPermission();permission.setCanExtractContent(false);
             doc.protect(new StandardProtectionPolicy("owner","",permission));doc.save(bytes);
-            assertTrue(assertThrows(BusinessException.class,()->service.extract(file("受限.pdf",bytes.toByteArray()))).getMessage().contains("限制文字提取"));
+            assertEquals("STUDIO_STORY_INVALID",assertThrows(BusinessException.class,()->service.extract(file("受限.pdf",bytes.toByteArray()))).getCode());
         }
     }
 
@@ -118,12 +123,12 @@ class StudioStoryImportServiceTest {
     @Test void failedImportsNeverReturnTruncatedOrBinaryPlaceholders() throws Exception {
         for (var bad : new MockMultipartFile[]{file("空.txt", new byte[0]), file("空白.txt", " \n\t ".getBytes()), file("伪装.txt", new byte[]{1,2,0,4}), file("文件.exe", new byte[]{1}), file("大.txt", new byte[StudioStoryImportService.MAX_SCRIPT_BYTES+1]), file("损坏.pptx", "broken".getBytes())})
             assertEquals("STUDIO_STORY_INVALID", assertThrows(BusinessException.class, () -> service.extractScript(bad)).getCode());
-        assertTrue(assertThrows(BusinessException.class, () -> service.extractScript(file("扫描.pdf", pdf("", false, 1)))).getMessage().contains("扫描件"));
-        assertTrue(assertThrows(BusinessException.class, () -> service.extractScript(file("加密.pdf", pdf("secret", true, 1)))).getMessage().contains("密码"));
+        assertEquals("STUDIO_STORY_INVALID", assertThrows(BusinessException.class, () -> service.extractScript(file("扫描.pdf", pdf("", false, 1)))).getCode());
+        assertEquals("STUDIO_STORY_INVALID", assertThrows(BusinessException.class, () -> service.extractScript(file("加密.pdf", pdf("secret", true, 1)))).getCode());
         try (var show = new org.apache.poi.xslf.usermodel.XMLSlideShow(); var bytes = new ByteArrayOutputStream()) {
             for (int i=0; i<101; i++) show.createSlide();
             show.write(bytes);
-            assertTrue(assertThrows(BusinessException.class, () -> service.extractScript(file("长.pptx", bytes.toByteArray()))).getMessage().contains("100 页"));
+            assertEquals("STUDIO_STORY_INVALID", assertThrows(BusinessException.class, () -> service.extractScript(file("长.pptx", bytes.toByteArray()))).getCode());
         }
     }
 
@@ -168,7 +173,7 @@ class StudioStoryImportServiceTest {
 
     @Test void htmlWithoutReadableTextFailsExplicitlyAndLongPagesComeBackWhole() {
         for (String empty : new String[]{"<html><body><script>var a=1</script><img src=x></body></html>", "<style>p{}</style>"})
-            assertTrue(assertThrows(BusinessException.class, () -> service.extractScript(file("空.html", empty.getBytes(UTF8)))).getMessage().contains("没有可用的文字"));
+            assertEquals("STUDIO_STORY_INVALID", assertThrows(BusinessException.class, () -> service.extractScript(file("空.html", empty.getBytes(UTF8)))).getCode());
         String longHtml = "<p>" + "字".repeat(200_000) + "</p><p>结尾</p>";
         assertTrue(service.extractScript(file("长.html", longHtml.getBytes(UTF8))).text().endsWith("结尾"), "长网页整份提取");
         // 画布故事导入不收 HTML，保持原合同。

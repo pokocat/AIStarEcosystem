@@ -425,7 +425,7 @@ class AiModelInvocationServiceTest {
         var error=assertThrows(BusinessException.class,()->boundSvc(AiModelPurpose.GENERAL,ep)
                 .invokeChat(AiModelPurpose.GENERAL,List.of(Map.of("role","user","content","describe this image")),null));
         assertEquals("AI_CALL_FAILED",error.getCode());
-        assertTrue(error.getMessage().startsWith("参考图片未通过内容审核"));
+        assertTrue(error.getMessage().startsWith(new com.aistareco.aep.service.ai.ProviderContentModeration.Finding("","reference_image","").message()),error.getMessage());
         assertFalse(error.getMessage().contains("change your prompt"));
         assertEquals(1,bad.requests.size());
     }

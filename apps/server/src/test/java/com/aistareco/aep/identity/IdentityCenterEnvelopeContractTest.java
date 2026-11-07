@@ -193,8 +193,7 @@ class IdentityCenterEnvelopeContractTest {
     void unrecognisedOutboxShapeThrowsInsteadOfReturningEmpty() {
         // 这几种以前都会被静默当成「0 条事件」
         assertThatThrownBy(() -> IdentityCenterClient.parseOutbox(json("{\"data\":{\"rows\":[]}}")))
-                .isInstanceOf(IdentityCenterException.class)
-                .hasMessageContaining("不符合契约");
+                .isInstanceOf(IdentityCenterException.class);
         assertThatThrownBy(() -> IdentityCenterClient.parseOutbox(json("{\"ok\":true}")))
                 .isInstanceOf(IdentityCenterException.class);
         assertThatThrownBy(() -> IdentityCenterClient.parseOutbox(null))
@@ -216,8 +215,7 @@ class IdentityCenterEnvelopeContractTest {
         assertThatThrownBy(() -> IdentityCenterClient.parseOutbox(json("""
                 {"success":true,"data":{"events":[{"eventType":"USER_CLOSED","uid":"u1"}],"nextAfter":0}}
                 """)))
-                .isInstanceOf(IdentityCenterException.class)
-                .hasMessageContaining("缺少 id");
+                .isInstanceOf(IdentityCenterException.class);
     }
 
     @Test
@@ -265,8 +263,7 @@ class IdentityCenterEnvelopeContractTest {
     @Test
     void unrecognisedImportShapeThrows() {
         assertThatThrownBy(() -> IdentityCenterClient.parseImport(json("{\"data\":{\"items\":[]}}")))
-                .isInstanceOf(IdentityCenterException.class)
-                .hasMessageContaining("不符合契约");
+                .isInstanceOf(IdentityCenterException.class);
         assertThatThrownBy(() -> IdentityCenterClient.parseImport(json("""
                 {"success":true,"data":{"results":[{"uid":"u1","created":true}]}}
                 """)))

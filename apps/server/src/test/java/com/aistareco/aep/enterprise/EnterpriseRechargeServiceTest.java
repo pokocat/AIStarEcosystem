@@ -87,7 +87,7 @@ class EnterpriseRechargeServiceTest {
         var wallet=member(c,user);credits.creditWallet(wallet.getId(),50,LedgerEntry.LedgerEntryType.GIFT,"test","g","赠送");credits.creditAccount(user,800,LedgerEntry.LedgerEntryType.RECHARGE,"test","p","个人");
         String ref=UUID.randomUUID().toString();credits.holdWallet(wallet.getId(),150,"enterprise-recharge-test",ref,"冻结",user,m.member().id(),"auth-"+ref, com.aistareco.aep.billing.service.ModelChargeContext.NONE);
         var preview=service.refundPreview(order.id());assertEquals(900,preview.reclaimableCredits());assertEquals(899,preview.refundPriceCents());assertEquals(500,preview.memberRecallCredits());assertEquals(100,preview.pendingCredits());
-        var failure=assertThrows(BusinessException.class,()->service.refund("finance",order.id(),refundRequest(preview)));assertTrue(failure.getMessage().contains("在途任务"));
+        var failure=assertThrows(BusinessException.class,()->service.refund("finance",order.id(),refundRequest(preview)));assertEquals("ENTERPRISE_RECHARGE_CONFLICT",failure.getCode());
         assertEquals(400,root(c).getTotalBalance());assertEquals(150,member(c,user).getPendingBalance());
         credits.releaseHold("enterprise-recharge-test",ref,"失败退回原来源");var fresh=service.refundPreview(order.id());assertEquals(1000,fresh.reclaimableCredits());assertEquals(0,fresh.pendingCredits());
         var input=refundRequest(fresh);var result=service.refund("finance",order.id(),input);assertEquals("refunded",result.status());assertEquals(1000,result.refundedCredits());assertEquals(999,result.refundedPriceCents());

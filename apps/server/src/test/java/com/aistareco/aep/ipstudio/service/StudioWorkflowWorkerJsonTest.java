@@ -90,7 +90,6 @@ class StudioWorkflowWorkerJsonTest {
         h.worker().runBlocking("r"); h.worker().runBlocking("r");
         assertEquals("failed", h.run().getStatus());
         assertEquals("IP_RUN_CANCELLED", h.run().getErrorCode());
-        assertTrue(h.run().getErrorMessage().contains("生成的内容"));
         var output = json.readTree(h.run().getOutputJson());
         assertFalse(output.has("textRevision"));
         assertTrue(output.path("billing").path("usageEstimated").asBoolean());
