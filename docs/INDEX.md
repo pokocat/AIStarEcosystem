@@ -132,6 +132,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | [`docs/releases/studio-ui-walkthrough-validation-20261106.md`](releases/studio-ui-walkthrough-validation-20261106.md) | **Studio 全面 UI 走查** | 新版界面桌面和手机走查、修复项与未验证范围 | 2026-11-06 |
 | [`docs/releases/studio-video-task-local-validation-20261106.md`](releases/studio-video-task-local-validation-20261106.md) | **AI 视频统一任务本地验收** | 三种流程、三次失败停止、画布修复接续、媒体与界面证据；未部署。 |
 | [`docs/studio-video-workflow-redesign.md`](studio-video-workflow-redesign.md) | **AI 视频统一任务流程与界面** | maolong 可见动线对照；左侧配置、右侧制作与成片、常驻最近任务；每步总计最多 3 次尝试、失败定位画布及刷新/换页恢复。本地实现与验收，未发布（2026-11-06） |
+| [`docs/releases/onetoken-assets-release-20261107.md`](releases/onetoken-assets-release-20261107.md) | OneToken 素材库发布记录 | `20261107-onetoken-assets`，两条 Seedance 改走 `asset://` 引用；上传真调过，带引用出片未真跑。回滚步骤有特殊要求。last-reviewed 2026-11-07 |
 | [`docs/releases/segmented-video-release-20261106.md`](releases/segmented-video-release-20261106.md) | AI 视频页长视频发布记录 | `20261106-segmented-video-2`，只读核对过价格，未真跑。last-reviewed 2026-11-06 |
 | [`docs/releases/identity-keys-release-20261106.md`](releases/identity-keys-release-20261106.md) | 账号中心断开时的登录校验发布记录 | `20261106-identity-keys`（server，main `682049984`）：公钥存库、校验不连账号中心、取不到回 503；窗口、线上验收、本地断开实测和没验证的部分 | 2026-11-06 |
 | [`docs/releases/inspiration-library-release-20261106.md`](releases/inspiration-library-release-20261106.md) | 灵感库发布记录 | 五次发布（最终 `20261106-inspiration-wall`，main `50689b693`）的窗口、线上真跑验收和回滚；同时段账号中心欠费停服的经过。last-reviewed 2026-11-06 |

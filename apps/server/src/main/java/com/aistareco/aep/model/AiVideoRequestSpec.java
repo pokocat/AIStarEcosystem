@@ -6,6 +6,7 @@ import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioModeSpec;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioMediaLimit;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioTier;
 import com.aistareco.common.BusinessException;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.net.URI;
@@ -28,7 +29,8 @@ public record AiVideoRequestSpec(String adapter, VideoStudioContract contract,
                                  String pollMethod,
                                  Map<String, Object> pollRequestTemplate,
                                  List<Integer> batchCounts,
-                                 InputAssetSpec inputAssets) {
+                                 // 没配就不写这个字段：更早的版本遇到不认识的字段（值是 null 也一样）会整条规格读不了。
+                                 @JsonInclude(JsonInclude.Include.NON_NULL) InputAssetSpec inputAssets) {
     /** Optional JSON Pointer mappings for gateways whose task responses use different field names. */
     public record ResponseSpec(String submitId, String status, String videoUrl, String error,
                                List<String> succeeded, List<String> failed) {}

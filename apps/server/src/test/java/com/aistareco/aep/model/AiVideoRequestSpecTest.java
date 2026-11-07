@@ -37,9 +37,10 @@ class AiVideoRequestSpecTest {
                 List.of("Active"), "/expires_at");
         assertEquals(library, AiVideoRequestSpec.read(withLibrary("seedance", library).json()).inputAssets());
         assertEquals(library, AiVideoRequestSpec.read(withLibrary("json-template", library).json()).inputAssets());
-        // 线上已存的规格没有这个字段，读出来就是没开。
-        assertEquals(null, AiVideoRequestSpec.read(withLibrary("seedance", null).json()
-                .replace(",\"inputAssets\":null", "")).inputAssets());
+        // 没配就不写，已存的规格读出来也是没开；更早的版本遇到这个字段（哪怕是 null）会读不了。
+        String off = withLibrary("seedance", null).json();
+        assertFalse(off.contains("inputAssets"), off);
+        assertEquals(null, AiVideoRequestSpec.read(off).inputAssets());
     }
 
     @Test void inputAssetLibraryRejectsBadConfiguration() {
