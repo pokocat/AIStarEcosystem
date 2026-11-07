@@ -20,13 +20,13 @@ import { StudioPage } from "./studio-page";
 import { studioCreateTools } from "./studio-create-tools";
 import { useStartNewCanvas } from "./use-start-new-canvas";
 
-const TITLE = "画布·自由创作";
+const TITLE = "画布";
 const DESCRIPTION = "自由组合文字、图片、视频和音频。";
 /** 这一行只放最近的十几张，多的横向滑动；看全部去项目页（已按画布类型筛好）。 */
 const RECENT_LIMIT = 12;
 
 /**
- * 「画布·自由创作」 (/create), the same page on the desktop and the phone (docs/ip-studio-new-canvas-and-threads.md §2.2):
+ * 「画布」 (/create), the same page on the desktop and the phone (docs/ip-studio-new-canvas-and-threads.md §2.2):
  * one sliding row with a small 「新建画布」 tile (the shared startNewCanvas(), reuse rule and assistant included) and the recent
  * canvases, then the creation tools and a row of templates. Nothing is created until the user clicks; there is no mode switch and no conversation box here
  * (the home page has that box).

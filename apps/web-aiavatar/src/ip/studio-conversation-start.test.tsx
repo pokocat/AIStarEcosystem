@@ -19,20 +19,16 @@ test('a brief goes out on 「开始对话」 or Enter; Shift+Enter keeps writing
   expect(onStart).toHaveBeenCalledTimes(2);
 });
 
-test('example openers fill the box without sending; in the new version they sit under the box and there is no charge note (2026-10-31 redesign)', () => {
-  document.documentElement.setAttribute('data-ui', 'next');
-  try {
-    const onStart = vi.fn();
-    render(<StudioConversationStart onStart={onStart} compact/>);
-    fireEvent.click(screen.getByRole('button', { name: '复刻一条短视频' }));
-    expect(box().value).toContain('照这条视频的拍法');
-    expect(onStart).not.toHaveBeenCalled();
-    // 新版：常用开头在框外面一排，框里只有输入和发送；花钱的地方会先报价，这里不写扣费说明。
-    expect(document.querySelector('.studio-conversation-start-box .studio-conversation-start-examples')).toBeNull();
-    expect(document.querySelector('.studio-conversation-start > .studio-conversation-start-examples')).not.toBeNull();
-    expect(document.querySelector('.studio-conversation-start-note')).toBeNull();
-    expect(screen.queryByRole('button', { name: '先进画布看看' })).toBeNull();
-  } finally { document.documentElement.removeAttribute('data-ui'); }
+test('example openers sit under the box and fill it without sending; the box holds no charge note (2026-10-31 redesign)', () => {
+  const onStart = vi.fn();
+  render(<StudioConversationStart onStart={onStart}/>);
+  fireEvent.click(screen.getByRole('button', { name: '复刻一条短视频' }));
+  expect(box().value).toContain('照这条视频的拍法');
+  expect(onStart).not.toHaveBeenCalled();
+  // 常用开头在框外面一排，框里只有输入和发送；花钱的地方会先报价，这里不写扣费说明。
+  expect(document.querySelector('.studio-conversation-start-box .studio-conversation-start-examples')).toBeNull();
+  expect(document.querySelector('.studio-conversation-start > .studio-conversation-start-examples')).not.toBeNull();
+  expect(screen.queryByRole('button', { name: '先进画布看看' })).toBeNull();
 });
 
 test('while a canvas is being created nothing can be sent twice', () => {

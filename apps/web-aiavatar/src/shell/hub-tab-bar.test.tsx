@@ -7,25 +7,19 @@ vi.mock("next/link", () => ({ default: ({ children, replace: _replace, ...p }: a
 import { StudioPage } from "@/ip/studio-page";
 import { HubTabBar } from "@/components/hub/ui";
 
-afterEach(() => { cleanup(); document.documentElement.removeAttribute("data-ui"); });
+afterEach(cleanup);
 
-// 2026-10-30 线上走查：新版的「返回旧版」只悬浮在右上角，压住了卡片标题和「新建创作」。
-test("in the new version the switch sits in the page heading next to the page actions; the old version has none there", () => {
-  document.documentElement.setAttribute("data-ui", "next");
-  render(<StudioPage title="项目" description="管理画布" actions={<button type="button">新建创作</button>}>内容</StudioPage>);
+test("the page heading holds the page's own actions, and has no action row when there are none", () => {
+  const view = render(<StudioPage title="项目" description="管理画布" actions={<button type="button">新建创作</button>}>内容</StudioPage>);
   const actions = within(document.querySelector(".studio-page-actions") as HTMLElement);
-  expect(actions.getAllByRole("button").map(b => b.textContent)).toEqual(["返回旧版","新建创作"]);
-  expect(document.querySelector(".ip-ui-switch-inline")).toBeTruthy();
-  cleanup();
-  document.documentElement.removeAttribute("data-ui");
-  render(<StudioPage title="项目" description="管理画布" actions={<button type="button">新建创作</button>}>内容</StudioPage>);
-  expect(screen.queryByRole("button", { name: /旧版|新版/ })).toBeNull();
+  expect(actions.getAllByRole("button").map(b => b.textContent)).toEqual(["新建创作"]);
+  view.unmount();
+  render(<StudioPage title="项目" description="管理画布">内容</StudioPage>);
+  expect(document.querySelector(".studio-page-actions")).toBeNull();
 });
 
-// 新版手机底栏：AI 视频、AI 图片能直接到；旧版还是原来那一排。
-// 2026-11-02 起新版是设计稿里的扁平底栏（.studio-tabbar），不再借旧底栏的凸起大圆钮。
-test("the phone tab bar offers AI 视频 and AI 图片 in the new version", () => {
-  document.documentElement.setAttribute("data-ui", "next");
+// 手机底栏：AI 视频、AI 图片能直接到（2026-11-02 起是设计稿里的扁平底栏，不再是凸起大圆钮）。
+test("the phone tab bar offers AI 视频 and AI 图片", () => {
   render(<HubTabBar/>);
   const labels = [...document.querySelectorAll(".hub-tabbar .lbl, .hub-tabbar .fab-lbl")].map(e => e.textContent);
   expect(labels).toEqual(["首页", "AI 视频", "创作", "AI 图片", "我的"]);
@@ -33,15 +27,10 @@ test("the phone tab bar offers AI 视频 and AI 图片 in the new version", () =
   expect(document.querySelector(".wx-fab")).toBeNull();
   expect(screen.getByRole("link", { name: /AI 视频/ }).getAttribute("aria-current")).toBe("page");
   expect(screen.getByRole("button", { name: /创作/ }).getAttribute("aria-haspopup")).toBe("dialog");
-  cleanup();
-  document.documentElement.removeAttribute("data-ui");
-  render(<HubTabBar/>);
-  expect([...document.querySelectorAll(".hub-tabbar .lbl, .hub-tabbar .fab-lbl")].map(e => e.textContent)).toEqual(["首页", "发现", "创作", "资产", "我的"]);
 });
 
 // 2026-11-02 用户定：「创作」先选 AI 视频 / AI 图片 / 画布，不再直接进画布。
-test("the new-version 创作 tab asks which of the three to start with", () => {
-  document.documentElement.setAttribute("data-ui", "next");
+test("the 创作 tab asks which of the three to start with", () => {
   render(<HubTabBar/>);
   const create = screen.getByRole("button", { name: /创作/ });
   expect(screen.queryByRole("dialog")).toBeNull();
@@ -67,13 +56,8 @@ test("the new-version 创作 tab asks which of the three to start with", () => {
   expect(screen.queryByRole("dialog")).toBeNull();
 });
 
-// 2026-11-02 线上走查：新版手机上项目、资产、发行顶上还有一排「AI 视频 / AI 图片 / 画布…」，和底栏重复。
-test("the row of workspace links on top of a page is only in the old version", () => {
-  document.documentElement.setAttribute("data-ui", "next");
+// 2026-11-02 线上走查：手机上项目、资产、发行顶上还有一排入口，和底栏重复。
+test("a page has no row of workspace links on top of it", () => {
   render(<StudioPage title="项目" description="管理画布">内容</StudioPage>);
   expect(screen.queryByRole("navigation", { name: "工作台导航" })).toBeNull();
-  cleanup();
-  document.documentElement.removeAttribute("data-ui");
-  render(<StudioPage title="项目" description="管理画布">内容</StudioPage>);
-  expect(screen.getByRole("navigation", { name: "工作台导航" })).toBeTruthy();
 });

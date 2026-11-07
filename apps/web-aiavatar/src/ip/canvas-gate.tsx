@@ -122,7 +122,7 @@ function MobileNotice({ projectId, onProceed }: { projectId: string; onProceed: 
         onClick={onProceed}
         style={{
           width: "100%", height: 46, borderRadius: 12, border: "none", cursor: "pointer",
-          background: "#17202a", color: "#fff", // 跟新版深墨主按钮一致，不用旧 H5 的青色
+          background: "#17202a", color: "#fff", // 跟深墨主按钮一致，不用旧 H5 的青色
           fontSize: 14.5, fontWeight: 600,
           display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7,
         }}

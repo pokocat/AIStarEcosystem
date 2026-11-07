@@ -1,18 +1,5 @@
-import type { UiVersion } from './ui-version';
-
-/** One vocabulary for the desktop bar / rail and the mobile workspace switcher. 旧版是改版前线上那一排，新版见 ui-version.ts。 */
-const classicNavigation = [
-  { href: '/dashboard', label: '首页' },
-  { href: '/projects', label: '项目' },
-  { href: '/create', label: '画布·自由创作' },
-  { href: '/director', label: '短剧导演台' },
-  { href: '/scenes', label: '场景·专项创作' },
-  { href: '/templates', label: '灵感' },
-  { href: '/assets', label: '资产' },
-  { href: '/distribution', label: '发行' },
-] as const;
-
-const nextNavigation = [
+/** One vocabulary for the desktop rail and the public top bar. */
+export const studioNavigation = [
   { href: '/dashboard', label: '首页' },
   { href: '/templates', label: '灵感' },
   { href: '/video', label: 'AI 视频' },
@@ -23,8 +10,6 @@ const nextNavigation = [
   { href: '/assets', label: '资产' },
   { href: '/distribution', label: '发行' },
 ] as const;
-
-export const studioNavigation = (version: UiVersion) => version === 'next' ? nextNavigation : classicNavigation;
 
 export function studioNavigationCurrent(href: string, pathname: string) {
   if (href === '/dashboard') return pathname === '/' || pathname === href;

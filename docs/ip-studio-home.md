@@ -2,6 +2,8 @@
 
 2026-10-08 · v0.207 · 本地实现，未发布。
 
+> 2026-11-07 已下线：这一版创作首页（`components/hub/studio-home.tsx`）随旧版界面删除，现行首页见 [studio-scene-creation.md](studio-scene-creation.md) §3，`/create` 见 [ip-studio-new-canvas-and-threads.md](ip-studio-new-canvas-and-threads.md) §2.2。下面只作历史记录。
+
 登录后的 `/dashboard` 与手机创作入口 `/create` 共用同一 Studio 创作区。沿用本产品的群青、麦黄、纸白，以及既有资产名称字体与桌面顶栏；不复制 LibTV 的商标、配色或营销内容。
 
 ## 对话优先（2026-10-19）

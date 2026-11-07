@@ -1,4 +1,4 @@
-// 视频页不能自成一套样式：卡片、主按钮、配置卡宽度都跟新版场景页（2026-11-06 评审）。
+// 视频页不能自成一套样式：卡片、主按钮、配置卡宽度都跟场景页（2026-11-06 评审）。
 import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
 
