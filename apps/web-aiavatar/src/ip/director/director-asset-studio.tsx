@@ -8,7 +8,7 @@ import { DirectorApi, IpStudioApi } from "../api";
 import { useStudioApp } from "../studio-errors";
 import { LibraryReferencePicker } from "../library-reference-picker";
 import type { WorkbenchProps } from "./director-workbench";
-import { Field, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, assetRefs, chooseDirectorBilling, clearDrafts, costText, dialogFocus, failed, hasDrafts, kindLabel, newRequestId, runningTask, useBusy, useDraft, useEscape, ZoomableImage, type AssetRef } from "./director-shared";
+import { DIRECTOR_MEDIA_SHORTAGE, Field, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, assetRefs, chooseDirectorBilling, clearDrafts, costText, dialogFocus, failed, hasDrafts, kindLabel, newRequestId, runningTask, useBusy, useDraft, useEscape, ZoomableImage, type AssetRef } from "./director-shared";
 import { VoicePanel } from "./director-voice";
 import { AiField } from "./director-assistant";
 
@@ -119,7 +119,7 @@ function AssetWorkspace({ work, asset, apply, setError, focusClip, onClose }: Wo
     const cost = work.pricing.image;
     const billing = await chooseDirectorBilling("image", cost);
     apply(await DirectorApi.runTask(work.id, { type, targetId, clientRequestId: newRequestId(), billing, maxCost: cost }));
-  }, failed(setError, action));
+  }, failed(setError, action, undefined, undefined, DIRECTOR_MEDIA_SHORTAGE));
   const generate = () => active.type === "main" ? task("asset-image", asset.id, `生成「${asset.name}」的资产图`)
     : active.type === "form" ? task("form-image", active.id, `生成「${label}」的形态图`)
     : task("scene-views", asset.id, `生成「${asset.name}」的四视图`);
@@ -378,7 +378,7 @@ function AssetReference({ work, asset, apply, setError, disabled }: Pick<Workben
 
 /** 关联已有资产：只交资产库对象 id 和选定版本，图和描述由服务端按本人资产库读；所选版本的图直接作为资产图。 */
 function LinkLibrary({ work, asset, apply, open, onClose }: { work: DirectorWork; asset: DirectorAsset; apply: WorkbenchProps["apply"]; open: boolean; onClose: () => void }) {
-  return <LibraryReferencePicker open={open} objectsOnly max={1} query={asset.name} onClose={onClose}
+  return <LibraryReferencePicker open={open} objectsOnly objectKind={asset.kind} max={1} query={asset.name} onClose={onClose}
     title={`「${asset.name}」关联已有资产`} confirmLabel="关联"
     intro={`从资产库选择同一个${kindLabel[asset.kind]}，所选版本的图片将直接作为资产图，用于生成分镜图和视频。名称保留剧本中的叫法。`}
     onAssets={async picked => {

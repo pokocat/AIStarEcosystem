@@ -42,7 +42,12 @@ public final class DirectorAssistant {
 
     /** 助手一轮的提示词（环节 stage-director-assistant，正文在提示词库）：material 是作品与当前对象，text 是用户这次说的话。 */
     static DirectorPrompts.Text prompt(StudioPromptAssembler prompts, String material, String text) {
-        return DirectorPrompts.text(prompts, StudioPromptCallPoints.DIRECTOR_ASSISTANT, List.of(), java.util.Map.of("input", material, "text", text));
+        return prompt(prompts, material, text, false);
+    }
+
+    static DirectorPrompts.Text prompt(StudioPromptAssembler prompts, String material, String text, boolean commerce) {
+        return DirectorPrompts.text(prompts, StudioPromptCallPoints.DIRECTOR_ASSISTANT, DirectorPrompts.withCommerce(List.of(), DirectorPrompts.COMMERCE_ASSISTANT, commerce),
+                java.util.Map.of("input", material, "text", text));
     }
 
     /**
@@ -180,12 +185,16 @@ public final class DirectorAssistant {
 
     /** 写剧本前问答一轮的提示词（环节 stage-director-brief）：第一轮没有用户回答。 */
     static DirectorPrompts.Text briefPrompt(StudioPromptAssembler prompts, String material, boolean opening, String text) {
+        return briefPrompt(prompts, material, opening, text, false);
+    }
+
+    static DirectorPrompts.Text briefPrompt(StudioPromptAssembler prompts, String material, boolean opening, String text, boolean commerce) {
         java.util.Map<String, Object> vars = new java.util.LinkedHashMap<>();
         vars.put("input", material);
         vars.put("opening", opening);
         vars.put("text", text == null ? "" : text);
         vars.put("maxQuestions", MAX_BRIEF_QUESTIONS);
-        return DirectorPrompts.text(prompts, StudioPromptCallPoints.DIRECTOR_BRIEF, List.of(), vars);
+        return DirectorPrompts.text(prompts, StudioPromptCallPoints.DIRECTOR_BRIEF, DirectorPrompts.withCommerce(List.of(), DirectorPrompts.COMMERCE_BRIEF, commerce), vars);
     }
 
     static JsonNode validateBrief(ObjectMapper om, JsonNode meta, JsonNode out) {

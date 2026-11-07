@@ -85,12 +85,32 @@ public final class DirectorPrompts {
 
     /** kind：长剧、单集短片各有一段写法（多集短剧就是编剧环节的默认写法），见 methods/director-form-*。 */
     public static Text script(StudioPromptAssembler prompts, String genre, String tone, String kind, String input) {
-        return text(prompts, StudioPromptCallPoints.DIRECTOR_SCRIPT, formMethods(genre, tone, kind), java.util.Map.of("input", input));
+        return script(prompts, genre, tone, kind, false, input);
+    }
+
+    /** commerce：带货短剧且作品里有商品，多拼一份把商品写进剧情的规则（docs/ai-director-commerce-plan.md §5）。 */
+    public static Text script(StudioPromptAssembler prompts, String genre, String tone, String kind, boolean commerce, String input) {
+        return text(prompts, StudioPromptCallPoints.DIRECTOR_SCRIPT, withCommerce(formMethods(genre, tone, kind), COMMERCE_SCRIPT, commerce), java.util.Map.of("input", input, "commerce", commerce));
     }
 
     /** 接着写后面几集（长的剧本分批写）。 */
     public static Text scriptMore(StudioPromptAssembler prompts, String genre, String tone, String kind, String input) {
-        return text(prompts, StudioPromptCallPoints.DIRECTOR_SCRIPT_MORE, formMethods(genre, tone, kind), java.util.Map.of("input", input));
+        return scriptMore(prompts, genre, tone, kind, false, input);
+    }
+
+    public static Text scriptMore(StudioPromptAssembler prompts, String genre, String tone, String kind, boolean commerce, String input) {
+        return text(prompts, StudioPromptCallPoints.DIRECTOR_SCRIPT_MORE, withCommerce(formMethods(genre, tone, kind), COMMERCE_SCRIPT, commerce), java.util.Map.of("input", input));
+    }
+
+    // 带货短剧的内容方法：只有开关打开且作品里有商品才拼，其余情况提示词逐字不变（DirectorPromptStageParityTest）。
+    static final String COMMERCE_SCRIPT = "director-commerce-script", COMMERCE_BRIEF = "director-commerce-brief", COMMERCE_EXTRACT = "director-commerce-extract",
+            COMMERCE_STORYBOARD = "director-commerce-storyboard", COMMERCE_ASSISTANT = "director-commerce-assistant";
+
+    static List<String> withCommerce(List<String> methods, String method, boolean commerce) {
+        if (!commerce) return methods;
+        List<String> out = new ArrayList<>(methods);
+        out.add(method);
+        return out;
     }
 
     private static List<String> formMethods(String genre, String tone, String kind) {
@@ -105,7 +125,11 @@ public final class DirectorPrompts {
     }
 
     public static Text extract(StudioPromptAssembler prompts, String input) {
-        return text(prompts, StudioPromptCallPoints.DIRECTOR_EXTRACT, List.of(), java.util.Map.of("input", input));
+        return extract(prompts, false, input);
+    }
+
+    public static Text extract(StudioPromptAssembler prompts, boolean commerce, String input) {
+        return text(prompts, StudioPromptCallPoints.DIRECTOR_EXTRACT, withCommerce(List.of(), COMMERCE_EXTRACT, commerce), java.util.Map.of("input", input));
     }
 
     /**
@@ -113,7 +137,11 @@ public final class DirectorPrompts {
      * 只按首帧出片的模型一段一个镜头。
      */
     public static Text plan(StudioPromptAssembler prompts, int minSec, int maxSec, int maxShots, String input) {
-        return storyboard(prompts, minSec, maxSec, maxShots, false, input);
+        return storyboard(prompts, minSec, maxSec, maxShots, false, false, input);
+    }
+
+    public static Text plan(StudioPromptAssembler prompts, int minSec, int maxSec, int maxShots, boolean commerce, String input) {
+        return storyboard(prompts, minSec, maxSec, maxShots, false, commerce, input);
     }
 
     /**
@@ -121,10 +149,14 @@ public final class DirectorPrompts {
      * 和 {@link #plan} 是同一个环节，「拆分与引用规则」换成「重写范围」，输出带上片段 id。
      */
     public static Text reshoot(StudioPromptAssembler prompts, int minSec, int maxSec, int maxShots, String input) {
-        return storyboard(prompts, minSec, maxSec, maxShots, true, input);
+        return storyboard(prompts, minSec, maxSec, maxShots, true, false, input);
     }
 
-    private static Text storyboard(StudioPromptAssembler prompts, int minSec, int maxSec, int maxShots, boolean reshoot, String input) {
+    public static Text reshoot(StudioPromptAssembler prompts, int minSec, int maxSec, int maxShots, boolean commerce, String input) {
+        return storyboard(prompts, minSec, maxSec, maxShots, true, commerce, input);
+    }
+
+    private static Text storyboard(StudioPromptAssembler prompts, int minSec, int maxSec, int maxShots, boolean reshoot, boolean commerce, String input) {
         java.util.Map<String, Object> vars = new java.util.LinkedHashMap<>();
         vars.put("input", input);
         vars.put("minSec", minSec);
@@ -134,7 +166,7 @@ public final class DirectorPrompts {
         vars.put("shotsLo", Math.min(3, maxShots));
         vars.put("single", maxShots == 1);
         vars.put("reshoot", reshoot);
-        return text(prompts, StudioPromptCallPoints.DIRECTOR_STORYBOARD, List.of(), vars);
+        return text(prompts, StudioPromptCallPoints.DIRECTOR_STORYBOARD, withCommerce(List.of(), COMMERCE_STORYBOARD, commerce), vars);
     }
 
     // ── 输出校验（worker 内执行）─────────────────────────────────────────────
@@ -407,9 +439,11 @@ public final class DirectorPrompts {
         ArrayNode result = om.createArrayNode();
         for (JsonNode a : assets) {
             String kind = text(a, "kind"), name = clip(text(a, "name"), 40);
-            if (!KINDS.contains(kind) || name.isEmpty()) continue;
-            ObjectNode item = result.addObject();
             String existingId = text(a, "existingId");
+            // 商品只来自商品库：只有对上作品里已有的商品才算数，模型不能新建商品（docs/ai-director-commerce-plan.md §5）。
+            boolean product = "product".equals(kind) && existing.contains(existingId);
+            if (!(KINDS.contains(kind) || product) || name.isEmpty()) continue;
+            ObjectNode item = result.addObject();
             item.put("existingId", existing.contains(existingId) ? existingId : null);
             item.put("kind", kind).put("name", name).put("description", clip(text(a, "description"), 2000));
             ArrayNode aliases = item.putArray("aliases");
@@ -524,7 +558,7 @@ public final class DirectorPrompts {
     }
 
     static String kindLabel(String kind) {
-        return switch (kind) { case "scene" -> "场景"; case "prop" -> "道具"; default -> "角色"; };
+        return switch (kind) { case "scene" -> "场景"; case "prop" -> "道具"; case "product" -> "商品"; default -> "角色"; };
     }
 
     /**
@@ -564,9 +598,11 @@ public final class DirectorPrompts {
         vars.put("live", liveAction(style));
         List<java.util.Map<String, Object>> rs = new ArrayList<>();
         for (Ref r : refs) rs.add(java.util.Map.of("label", r.label(), "name", r.name(), "isScene", "scene".equals(r.kind()), "isProp", "prop".equals(r.kind()),
-                "isCharacter", !"scene".equals(r.kind()) && !"prop".equals(r.kind())));
+                "isProduct", "product".equals(r.kind()),
+                "isCharacter", !"scene".equals(r.kind()) && !"prop".equals(r.kind()) && !"product".equals(r.kind())));
         vars.put("refs", rs);
         vars.put("hasRefs", !refs.isEmpty());
+        vars.put("hasProduct", refs.stream().anyMatch(r -> "product".equals(r.kind())));
         List<java.util.Map<String, Object>> cells = new ArrayList<>();
         for (int i = 0; i < shots.size() && i < MAX_SHOTS; i++) {
             JsonNode sh = shots.get(i);
@@ -694,6 +730,7 @@ public final class DirectorPrompts {
             switch (r.kind()) {
                 case "scene" -> people.append("场景「").append(r.name()).append("」：空间布局和光源位置照参考").append(r.label()).append("。\n");
                 case "prop" -> people.append("道具「").append(r.name()).append("」：外观照参考").append(r.label()).append("。\n");
+                case "product" -> people.append("商品「").append(r.name()).append("」：外观、包装和标签照参考").append(r.label()).append("。\n");
                 default -> {
                     characters.add(r.name());
                     people.append(r.name()).append("：长相、发型和衣服照参考").append(r.label()).append("。\n");

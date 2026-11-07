@@ -167,6 +167,111 @@ class DirectorFormsAndViewsTest {
         assertEquals("u/si.png", refs.get(1).path("key").asText());
     }
 
+    /** 片段当前的分镜图提示词（形态不进提示词，切换前后一样）。 */
+    private String boardPrompt() throws Exception {
+        return service.get(USER, work.getId()).path("clips").get(0).path("boardPrompt").asText();
+    }
+
+    /** 放一张已采用的分镜图：指纹按给定的 key 算（只传主图就是 2026-11-06 之前的算法），refs 记实际提交的图。 */
+    private void adoptBoard(String prompt, List<String> fingerprintKeys, List<String> refKeys) throws Exception {
+        ObjectNode c = content();
+        ObjectNode board = (ObjectNode) c.path("clips").get(0).path("board");
+        ObjectNode m = board.withArray("candidates").addObject().put("id", "b1").put("key", "u/board.png").put("source", "generated").put("prompt", prompt)
+                .put("fingerprint", DirectorService.hash(prompt + "|" + String.join("|", fingerprintKeys)));
+        var refs = m.putArray("refs");
+        for (int i = 0; i < refKeys.size(); i++) refs.addObject().put("label", "图" + (i + 1)).put("key", refKeys.get(i));
+        board.put("adoptedId", "b1").put("adoptedBy", "user");
+        work.setContentJson(c.toString());
+    }
+
+    private JsonNode wireBoard() throws Exception { return service.get(USER, work.getId()).path("clips").get(0).path("board"); }
+
+    /** 建一个有图的形态并返回 id；片段还没选用它。 */
+    private String formWithImage(String key) throws Exception {
+        JsonNode w = edit("form.create", assetId("白素贞"), "{\"name\":\"半妖态\",\"description\":\"下半身化作蛇尾\"}");
+        String formId = asset(w, "白素贞").path("forms").get(0).path("id").asText();
+        edit("form.upload", formId, "{\"key\":\"" + key + "\"}");
+        return formId;
+    }
+
+    private void chooseForm(String formId) throws Exception {
+        edit("clip.setForm", "k1", "{\"assetId\":\"" + assetId("白素贞") + "\",\"formId\":\"" + formId + "\"}");
+    }
+
+    @Test void switchingTheFormMarksABoardMadeWithTheMainImageOutdatedAndSwitchingBackRestoresIt() throws Exception {
+        seed();
+        adoptBoard(boardPrompt(), List.of("u/bai.png", "u/si.png"), List.of("u/bai.png", "u/si.png"));
+        assertEquals("current", wireBoard().path("adoptedCheck").asText());
+        String formId = formWithImage("u/bai-yao.png");
+        assertEquals("current", wireBoard().path("adoptedCheck").asText(), "建了形态但这一段没选，图没变");
+        chooseForm(formId);
+        JsonNode board = wireBoard();
+        assertEquals("outdated", board.path("adoptedCheck").asText());
+        assertEquals("参考图已更换", board.path("staleReasons").get(0).asText());
+        chooseForm("");
+        assertEquals("current", wireBoard().path("adoptedCheck").asText());
+    }
+
+    @Test void replacingTheChosenFormsImageMarksTheBoardOutdated() throws Exception {
+        seed();
+        String formId = formWithImage("u/bai-yao.png");
+        chooseForm(formId);
+        adoptBoard(boardPrompt(), List.of("u/bai-yao.png", "u/si.png"), List.of("u/bai-yao.png", "u/si.png"));
+        assertEquals("current", wireBoard().path("adoptedCheck").asText());
+        edit("form.upload", formId, "{\"key\":\"u/bai-yao-2.png\"}");
+        assertEquals("outdated", wireBoard().path("adoptedCheck").asText());
+    }
+
+    /** 这几张是旧算法下生成的、实际用的图也没变，不能因为算法换了就标「需更新」。 */
+    @Test void boardsMadeBeforeTheFingerprintChangeStayCurrentWhenTheirImagesAreUnchanged() throws Exception {
+        seed();
+        chooseForm(formWithImage("u/bai-yao.png"));
+        adoptBoard(boardPrompt(), List.of("u/bai.png", "u/si.png"), List.of("u/bai-yao.png", "u/si.png"));
+        assertEquals("current", wireBoard().path("adoptedCheck").asText(), "用形态生成的");
+    }
+
+    @Test void legacyBoardsWithAFormAndProductKeepTheProductInTheirFingerprint() throws Exception {
+        seed();
+        ObjectNode c = content();
+        ((ObjectNode) c.path("settings")).put("commerce", true);
+        ObjectNode product = ((ObjectNode) c.path("assets").get(0)).deepCopy();
+        product.put("id", "p1").put("kind", "product").put("name", "保温杯").put("description", "不锈钢保温杯");
+        ((ObjectNode) product.path("image").path("candidates").get(0)).put("key", "u/product.png");
+        c.withArray("assets").add(product);
+        ((ObjectNode) c.path("clips").get(0)).withArray("assetIds").add("p1");
+        work.setContentJson(c.toString());
+        chooseForm(formWithImage("u/bai-yao.png"));
+        adoptBoard(boardPrompt(), List.of("u/bai.png", "u/si.png", "u/product.png"), List.of("u/bai-yao.png", "u/si.png", "u/product.png"));
+        assertEquals("current", wireBoard().path("adoptedCheck").asText(), "旧指纹也包含商品，不能因合并形态修复而误标过期");
+        c = content();
+        ((ObjectNode) c.path("assets").get(2).path("image").path("candidates").get(0)).put("key", "u/product-new.png");
+        work.setContentJson(c.toString());
+        assertEquals("outdated", wireBoard().path("adoptedCheck").asText(), "商品图更换仍须提示更新");
+    }
+
+    @Test void boardsMadeBeforeTheFingerprintChangeWithASceneViewStayCurrent() throws Exception {
+        seed();
+        setSceneView("reverse");
+        adoptReverseView();
+        adoptBoard(boardPrompt(), List.of("u/bai.png", "u/si.png"), List.of("u/bai.png", "u/si.png", "u/si-reverse.png"));
+        assertEquals("current", wireBoard().path("adoptedCheck").asText(), "用视角图生成的");
+    }
+
+    @Test void aBoardRevisedFromItsCurrentImageIgnoresTheExtraReference() throws Exception {
+        seed();
+        adoptBoard(boardPrompt(), List.of("u/bai.png", "u/si.png"), List.of("u/bai.png", "u/si.png", "u/board-old.png"));
+        ObjectNode c = content();
+        ((ObjectNode) c.path("clips").get(0).path("board").path("candidates").get(0)).put("baseOn", "b0");
+        work.setContentJson(c.toString());
+        assertEquals("current", wireBoard().path("adoptedCheck").asText());
+    }
+
+    @Test void aBoardMadeWithAFormIsOutdatedOnceTheClipGoesBackToTheMainImage() throws Exception {
+        seed();
+        adoptBoard(boardPrompt(), List.of("u/bai.png", "u/si.png"), List.of("u/bai-yao.png", "u/si.png"));
+        assertEquals("outdated", wireBoard().path("adoptedCheck").asText());
+    }
+
     private List<String> values(JsonNode refs, String field) {
         List<String> values = new ArrayList<>();
         for (JsonNode ref : refs) values.add(field == null ? ref.asText() : ref.path(field).asText());

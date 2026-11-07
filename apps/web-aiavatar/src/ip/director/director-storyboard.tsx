@@ -2,12 +2,13 @@
 
 import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Check, ChevronDown, ChevronUp, Clapperboard, FileText, Film, ImageIcon, LayoutGrid, Lightbulb, Loader2, Play, Plus, RefreshCw, Scissors, Trash2, Wand2, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ChevronRight, ChevronUp, Clapperboard, FileText, Film, ImageIcon, LayoutGrid, Lightbulb, Loader2, Play, Plus, RefreshCw, Scissors, Trash2, Wand2, X, ShoppingBag } from "lucide-react";
+import { firstLine } from "./director-text";
 import type { DirectorClip, DirectorSceneView, DirectorShot, DirectorTask, DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi } from "../api";
 import { useStudioApp } from "../studio-errors";
 import type { WorkbenchProps } from "./director-workbench";
-import { AiWorking, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, chooseDirectorBilling, clearDrafts, costText, errorText, failed, hasDrafts, kindLabel, newRequestId, runningTask, secRange, useBusy, useDraft, useEscape, DirectorSheet, dialogFocus, ZoomableImage, type DirectorFail } from "./director-shared";
+import { AiWorking, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, chooseDirectorBilling, clearDrafts, costText, errorText, failed, hasDrafts, kindLabel, newRequestId, runningTask, secRange, useBusy, useDraft, useEscape, DirectorSheet, dialogFocus, ZoomableImage, type DirectorFail, storyAssets } from "./director-shared";
 import { ClipVideo, EpisodeOutput, type ClipQuote } from "./director-output";
 import { RewriteEpisodeDialog, clipRewriteBlock, shotWriting, useRewriteClip } from "./director-rewrite";
 import { formatDateTime } from "@/lib/datetime";
@@ -150,7 +151,7 @@ export function DirectorStoryboard(props: WorkbenchProps) {
           {clips.length === 0 && !writing.plan && <div className="director-panel director-empty-panel">
             <Clapperboard size={26}/>
             <p>分镜脚本将本集切分为若干片段，一段对应一条视频。写分镜脚本前，请在「资产」准备角色、场景和道具。</p>
-            {work.assets.length === 0 && <button type="button" className="ip-brand-secondary" onClick={() => goTab("assets")}>前往资产</button>}
+            {storyAssets(work).length === 0 && <button type="button" className="ip-brand-secondary" onClick={() => goTab("assets")}>前往资产</button>}
           </div>}
           {clips.length > 0 && <BatchBar work={work} clips={clips} quotes={quotes} selected={selected} setSelected={setSelected} apply={apply} setError={setError}/>}
           {clips.map(c => <ClipCard key={c.id} {...props} clip={c} quote={quotes[c.id]} onPreview={(kind, candidateId) => setPreview({ clipId: c.id, kind, candidateId })} onBoard={() => setBoardFor(c.id)} editorAt={focus?.open === "editor" && focus.clipId === c.id ? focus.at : undefined}
@@ -337,7 +338,9 @@ function ClipCard({ goTab, work, clip, quote, apply, setError, onPreview, onBoar
   const generating = runningTask(work, `board:${clip.id}`);
   const videoBusy = !!clip.video.pending?.length || !!runningTask(work, `video:${clip.id}`);
   const linked = orderedLinkedAssets(work, clip);
-  const imageRefs = clip.videoRefs?.filter(r => r.assetId !== null) ?? clip.boardRefs;
+  // 首帧模式的视频只交分镜图，没有资产这一项，卡片上仍显示分镜图用到的资产。
+  const videoAssetRefs = clip.videoRefs?.filter(r => r.assetId !== null);
+  const imageRefs = videoAssetRefs?.length ? videoAssetRefs : clip.boardRefs;
   const visual = linked.filter(a => !a.description.includes("只出声音"));
   const missing = visual.filter(a => !a.image.adoptedId);
   const unconfirmed = visual.filter(a => a.image.adoptedBy === "auto");
@@ -374,9 +377,10 @@ function ClipCard({ goTab, work, clip, quote, apply, setError, onPreview, onBoar
           {clip.video.candidates.map((m, i) => <button key={m.id} type="button" aria-pressed={m.id === clip.video.adoptedId} aria-disabled={switching || undefined} onClick={() => onPickVideo(m.id)}
             title={m.id === clip.video.adoptedId ? "正在使用" : `${m.stale ? "生成期间设置有变动，此版本需更新。" : ""}点击换成第 ${i + 1} 版`}>{i + 1}{m.stale ? "·旧" : ""}</button>)}
         </div>}
+        {linked.some(a => a.kind === "product") && <p className="director-clip-products" title="这些商品图会作为分镜图和视频的参考图"><ShoppingBag size={13}/><span>{linked.filter(a => a.kind === "product").map(a => a.name).join("、")}</span></p>}
         <div className="director-clip-links" role="group" aria-label="生成视频用到的参考">
           <button type="button" onClick={() => onPreview("assets")} className={missing.length ? "is-error" : unconfirmed.length ? "is-warn" : ""} title="关联的角色、场景、道具资产图，用于保持长相和环境一致">
-            <span className="director-avatar-stack">{imageRefs
+            <span className="director-avatar-stack">{imageRefs?.length
               ? imageRefs.slice(0, 3).map(r => r.url ? <img key={r.label} src={r.url} alt={`${r.label} ${r.name}`}/> : <i key={r.label}>{r.name.slice(0, 1)}</i>)
               : linked.slice(0, 3).map(a => {
                 const img = adopted(chosenImage(a, clip));
@@ -525,6 +529,7 @@ function ClipPreview({ work, clip, preview, apply, setError, goTab, onPickVideo,
   };
   const target = preview.assetId ? work.assets.find(a => a.id === preview.assetId) : undefined;
   const targetGone = !!target && !clip.assetIds.includes(target.id);
+  const targetPage = target?.kind === "product" ? { tab: "products", name: "商品页" } as const : { tab: "assets", name: "资产页" } as const;
   const linked = orderedLinkedAssets(work, clip);
   const ratio = `ratio-${work.settings.aspectRatio.replace(":", "x")}`;
   const media = clip.video.candidates.find(m => m.id === preview.candidateId) ?? adopted(clip.video);
@@ -537,8 +542,8 @@ function ClipPreview({ work, clip, preview, apply, setError, goTab, onPickVideo,
         <p className="director-dialog-note">资产图仅用于保持人物长相、服装和环境一致，镜头构图以分镜图为准。</p>
         <ReferenceImages refs={clip.videoRefs} title="视频参考图片"/>
         {targetGone && <div className="director-notice director-unlinked-note" role="status"><span>「{target!.name}」已不在此片段的关联资产中。{
-          work.clips.some(c => c.assetIds.includes(target!.id)) ? "其他片段仍在使用此资产，可在资产页查看。" : "已没有片段使用此资产，可在资产页删除。"}</span>
-          <button type="button" onClick={() => { onClose(); goTab("assets"); }}>返回资产页</button></div>}
+          work.clips.some(c => c.assetIds.includes(target!.id)) ? `其他片段仍在使用此资产，可在${targetPage.name}查看。` : `已没有片段使用此资产，可在${targetPage.name}删除。`}</span>
+          <button type="button" onClick={() => { onClose(); goTab(targetPage.tab); }}>返回{targetPage.name}</button></div>}
         {linked.length === 0 ? <p className="director-muted">此片段暂无关联资产，可在片段卡上点击「编辑镜头」添加。</p> :
           <ul className="director-preview-assets">{linked.map(a => {
             const slot = chosenImage(a, clip);
@@ -550,7 +555,7 @@ function ClipPreview({ work, clip, preview, apply, setError, goTab, onPickVideo,
               failed(setError, `切换「${a.name}」在片段 ${clip.order} 的形态`));
             const views = a.kind === "scene" ? SCENE_VIEWS.filter(v => clip.shots.some(s => s.sceneView === v.key)) : [];
             return <li key={a.id} className={a.id === preview.assetId ? "is-focused" : undefined}>
-              <span className="director-preview-asset-img">{img?.url ? <img src={img.url} alt={a.name}/> : <ImageIcon size={18}/>}</span>
+              <span className={`director-preview-asset-img ${a.kind === "product" ? "is-product" : ""}`}>{img?.url ? <img src={img.url} alt={a.name}/> : <ImageIcon size={18}/>}</span>
               <div><b>{a.name}<small>{kindLabel[a.kind]}</small></b>
                 <small className={status === "已确认" ? "is-done" : status === "缺少资产图" ? "is-error" : "is-warn"}>{status}{a.voice ? " · 已绑定声音" : ""}</small>
                 <p title={a.description}>{a.description || "暂无描述"}</p>
@@ -563,7 +568,10 @@ function ClipPreview({ work, clip, preview, apply, setError, goTab, onPickVideo,
                   aria-label={`从片段 ${clip.order} 解除${a.name}的关联`}>{busy === `unlink:${a.id}` ? "解除中…" : "解除关联"}</button></div>
             </li>;
           })}</ul>}
-        <button type="button" className="ip-brand-secondary" onClick={() => { onClose(); goTab("assets"); }}>前往资产页</button>
+        <div className="director-actions">
+          <button type="button" className="ip-brand-secondary" onClick={() => { onClose(); goTab("assets"); }}>前往资产页</button>
+          {linked.some(a => a.kind === "product") && <button type="button" className="ip-brand-secondary" onClick={() => { onClose(); goTab("products"); }}>前往商品页</button>}
+        </div>
       </> : <>
         <div className={`director-preview-stage ${ratio}`}>
           {media?.url ? <video key={media.id} src={media.url} controls autoPlay preload="metadata" playsInline/> : <span>暂无视频</span>}
@@ -661,7 +669,7 @@ function ClipEditor({ work, clip, apply, setError, onDone }: { work: DirectorWor
       <label className="director-field"><span>剧情摘要</span><input value={summary} maxLength={1000} onChange={e => setSummary(e.target.value)}/></label>
     </div>
     <div className="director-field"><span>关联资产（生成分镜图时使用其已采用的资产图）</span>
-      <div className="director-asset-picks">{work.assets.map(a => <label key={a.id}><input type="checkbox" checked={assetIds.includes(a.id)}
+      <div className="director-asset-picks">{work.assets.filter(a => a.kind !== "product" || work.settings.commerce || assetIds.includes(a.id)).sort((a, b) => Number(a.kind === "product") - Number(b.kind === "product")).map(a => <label key={a.id}><input type="checkbox" checked={assetIds.includes(a.id)}
         onChange={e => setAssetIds(e.target.checked ? [...assetIds, a.id] : assetIds.filter(x => x !== a.id))}/>{kindLabel[a.kind]} · {a.name}</label>)}
         {unknownIds.map(id => <label key={id} className="is-missing"><input type="checkbox" checked onChange={() => setAssetIds(assetIds.filter(x => x !== id))}/>该资产已不存在（取消勾选以移除）</label>)}
       </div></div>

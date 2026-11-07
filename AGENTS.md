@@ -1447,3 +1447,11 @@ Studio 工作线程默认 24，单个模型的上限看端点配置；图片调�
 界面叫法统一成「导出」（导出成片、已导出的成片、导出中），页面叫「制作成片」；对话制作计划和 `/video` 进度里系统自动做的「合成成片」没改（TODO）。只打开编辑室没改动时返回不存档，否则一键成片的设置和导出按钮会被替换。Twick 把时间线存在全局表里、按 `contextId` 取：同一页再次打开必须用新 id，否则读到已释放的素材地址，预览一直转圈。
 
 **改 FFmpeg 滤镜要用旧版实跑**（2026-11-07 事故前查出）：线上共享的 ffmpeg 是 2018 版，本机 8.x 能跑的图在旧版可能直接失败。`loudnorm` 之后没有声道布局，`atrim` / `sidechaincompress` 报 `Cannot select channel layout`，成片整条出不来；单测和本机走查全绿。`loudnorm` 后必须跟 `aformat`。验证办法见 `docs/studio-final-cut.md`（Ubuntu 18.04 官方源的 3.4，用 `docker exec` 包装脚本放到 PATH 最前面跑真实渲染测试）。
+
+### Studio 后台模型配置（2026-11-07，本地未发布）
+
+`studio-admin` 的 `/models` 替代统一后台和 `apps/admin` 的 LLM API 页，接口 `/api/admin/studio/model-config/command` 复用 `ModelManagementService` 的命令（白名单在 `AdminStudioModelConfigController`）。规格一律当不透明 JSON：前端不解析、不用部分字段的表单重建，没改就不发，这样编辑器不认识的字段（如 `wire.requireExactOutputSize`）丢不了；服务端对发来的规格严格读取，不认识的字段报错而不是丢弃。`endpointSave` 没传五个限额会清空（`rpmLimit`、`tpmLimit`、`dailyTokenQuota`、`dailyCostQuotaMicros`、`alertFailureRatePct`），其余字段没传才是不改，保存规则集中在 `src/lib/model-config.ts`。规则见 `specs/BUSINESS_RULES.md`「Studio 后台模型配置」，页面说明和未搬部分见 `docs/platform-model-management.md`。
+
+### 导演台带货短剧（2026-11-06，功能分支 `feat/director-commerce-drama`，未发布）
+
+真源 `docs/ai-director-commerce-plan.md`。每部作品一个开关 `settings.commerce`（默认关，新建作品和作品设置里），决定「商品」工作区出不出现。商品库是个人资产库的 `kind=product`，不是 `dap_product`（手机端老页面的另一张表）。商品在作品里是 `assets[]` 的一项 `kind=product`，所以片段关联、参考图、「需更新」、解除关联都走现有的资产路径，不要另写一套传图；参考图的唯一入口是 `visualAssets`，顺序 角色 → 场景 → 道具 → 商品。商品图只来自商品库，不走 `asset-image`。资产页和 `storyAssetCount` 不算商品：只有商品不算「已有资产」。开关关着或作品里没有商品时，`director-commerce-*` 不拼进提示词，提示词逐字不变（`DirectorPromptStageParityTest` 守着）；分镜图、视频提示词只在片段关联了商品时才多出内容，改这里要保证没关联商品的片段一个字不变，否则旧图全被标「需更新」。环节文件里的 `{{method}}` 是这条链的挂载点：后台改过这些环节的不会跟仓库文件更新，发布前要查（见 `TODO.md`）。已有剧本写进商品走创作助手的修改建议，不做覆盖全文的任务。本地用 Agnes 2.5 Flash 实测：第一版规则下把商品写成「掉漆」、漏写第二件、编了「三十多块钱」，所以规则里有「保持崭新」「不写随口的价格」「输出前逐件核对」；「掉漆」是编剧环节的示例带出来的，规则里写「不要掉漆」也一样会诱导，带货作品连这个词都不给（负面例子也会被弱模型照抄）。弱模型仍可能漏，页面上的「剧本里还没有写到」和「写进剧本」就是这种情况的补救；模型写到商品却忘了放进 `assetIds` 时，`linkMentionedProducts` 补上。

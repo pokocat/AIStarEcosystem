@@ -126,3 +126,12 @@ export const StudioScenesApi = {
     return request<StudioSceneUploaded>("/admin/studio/scenes/media", { method: "POST", body });
   },
 };
+
+/**
+ * 模型配置（/admin/studio/model-config/command，超管和平台运营可用）。
+ * 服务端按命令白名单执行，校验、加锁、审计都在服务端（ModelManagementService）。
+ */
+export const ModelConfigApi = {
+  command: <T>(action: string, fields: Record<string, unknown> = {}) =>
+    request<T>("/admin/studio/model-config/command", { method: "POST", body: { action, ...fields } }),
+};

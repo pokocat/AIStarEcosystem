@@ -1,5 +1,5 @@
 "use client";
-import { isStudioBillingCancelled } from '@/canvas-bridge/studio-billing-cancel';
+import { isStudioBillingCancelled, studioCreditShortageChoice } from '@/canvas-bridge/studio-billing-cancel';
 import {filmStudyConnections} from '@/canvas-bridge/studio-film-study';
 import { StudioErrorNotice, reportStudioError, reportStudioRunFailures, studioRunError, studioNodeError, studioErrorMetadata, normalizeStudioError, useStudioApp, useStudioErrorState } from './studio-errors';
 import { StudioRecreation } from "./studio-recreation";
@@ -649,13 +649,20 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       await saveStudioDocument(projectId);
       if(epoch.current!==submissionEpoch)return;
       posted=true;
-      const run = await submitStudioRun(projectId, request);
+      const run = await submitStudioRun(projectId, request, {modelChoices:shortageModelChoices(),canRetry:true});
       if(epoch.current!==submissionEpoch)return;
       setNodes(nodes => applyStudioRunToDocument(nodes,connectionsRef.current,target.id,run)); if(panelSession.current===session){if(mode==="storyboard")setStoryboardNodeId(target.id);else setDirector(false);} void watch(run,target.id);
     } catch (e) {
       if(epoch.current!==submissionEpoch)return;
       if(isStudioBillingCancelled(e)) {
         patch(target.id,n=>({...n,metadata:{...retainedTarget.metadata,prompt:requestPrompt}}));
+        const shortage=studioCreditShortageChoice(e);
+        if(shortage?.kind==="switch-model"){
+          changeGenerationModel(shortage.endpointId);
+          if(shortage.changes)message.info(`已改用「${shortage.name}」，${shortage.changes}。确认后再生成。`);
+          else regenerate.current={model:shortage.endpointId,choice};
+        }
+        else if(shortage?.kind==="retry")regenerate.current={choice};
         return;
       }
       message.error(e);
@@ -705,12 +712,19 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       if(epoch.current!==submissionEpoch)return;
       posted=true;
       const originalRunId=next===request?node.metadata?.studio?.runId:undefined;
-      const run = originalRunId?await readRun(originalRunId):await submitStudioRun(projectId,next);
+      // 打开创作面板的那些模型由面板决定；这里没有面板，只给换模型的入口，换了就打开面板让用户确认设置。
+      const run = originalRunId?await readRun(originalRunId):await submitStudioRun(projectId,next,{modelChoices:next.operation==="image"||next.operation==="video"?models[next.operation].filter(m=>!goneModels.has(m.endpointId)).map(m=>({endpointId:m.endpointId,name:m.name,legacyEndpointIds:m.legacyEndpointIds})):undefined});
       if(epoch.current!==submissionEpoch)return;
       patch(node.id,n=>applyStudioRun(n,run));void watch(run,node.id);
     } catch(e) {
       if(epoch.current!==submissionEpoch)return;
-      if(isStudioBillingCancelled(e)){patch(node.id,n=>({...n,metadata:node.metadata}));return;}
+      if(isStudioBillingCancelled(e)){
+        const shortage=studioCreditShortageChoice(e);
+        // 确认原任务时积分不足：这条没有受理，不用再确认，转成可以重新生成的失败记录。
+        patch(node.id,n=>({...n,metadata:shortage&&confirmingPendingRequest?{...node.metadata,status:"error",errorDetails:"积分不足，未提交"}:node.metadata}));
+        if(shortage?.kind==="switch-model"&&(request.operation==="image"||request.operation==="video")){openDirector(request.operation,node);setModel(shortage.endpointId);}
+        return;
+      }
       // A failed local save cannot reject an earlier possibly accepted request.
       const rejected=!posted ? !confirmingPendingRequest : !confirmingKnownRun&&e instanceof ApiError && typeof e.status==="number"&&e.status>=400&&e.status<500&&e.status!==408;
       patch(node.id,n=>({...n,metadata:{...n.metadata,...studioErrorMetadata(e),status:rejected?"error":"loading",errorDetails:e instanceof Error?e.message:"任务未确认，请确认原任务"}}));
@@ -995,6 +1009,38 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     setVideoDraft(draft=>adaptStudioVideoReferences(nativeVideo,draft,ids,nodesRef.current,manualVideoModes.current.get(originId||'')));
     setReferenceIds(ids);
   };
+  // 积分不足提示框里选了「改用」或「继续生成」：等模型换好、上一次提交收尾后，按面板现在的设置再提交一次（要花钱的话还有费用确认）。
+  const regenerate=useRef<{model?:string;choice?:Parameters<typeof submit>[0]}>(undefined);
+  useEffect(()=>{
+    const next=regenerate.current;
+    if(!next||busy||(next.model&&chosenModel?.endpointId!==next.model))return;
+    regenerate.current=undefined;
+    void submit(next.choice);
+  });
+  /**
+   * 积分不足时能换的模型，标准价按面板现在的数量、清晰度和时长算。换过去比例、数量、时长不一定还在（面板会退到第一项）：
+   * 会变的写进 changes，用户看过再生成；做不了现在的组合就算不出价，写明要调整。
+   */
+  const shortageModelChoices=()=>operation==="image"||operation==="video"?candidates.map(m=>{
+    const native=operation==="video"?nativeVideoModels.find(x=>x.endpointId===m.endpointId):undefined;
+    // 和 selectedImageSize 同一条规则：换过去报的价、写的变化，才是真正会提交的规格。
+    const resolution=studioImageResolution(selectedImageSize);
+    const nextSizes=operation==="image"?m.capability?.imageSizes?.filter(output=>output.aspectRatio===ratio)||[]:[];
+    const nextSize=nextSizes.some(output=>output.size===imageSize)?imageSize:nextSizes[0]?.size;
+    const unit=operation==="image"?m.imageResolutionCosts?.[studioImageResolution(nextSize)||""]??m.creditCost
+      :native?(videoSettings?studioVideoQuote(native,videoSettings,duration):null):m.creditCost*(m.billingUnit==="per_second"?duration:1);
+    const ratios=operation==="image"?m.capability?.imageRatios:m.capability?.videoRatios;
+    const counts=operation==="image"?m.capability?.imageBatchCounts:native?.batchCounts;
+    const count=operation==="image"?imageCount:videoCount;
+    const minSec=m.capability?.minDurationSec,maxSec=m.capability?.maxDurationSec;
+    // 比例面板不会自动改（不支持时生成按钮不可点），只能说要重新选；数量和清晰度面板会自动退到第一项。
+    const changes=[ratios?.length&&!ratios.includes(ratio)&&`不支持 ${ratio} 比例，需要重新选择`,counts?.length&&!counts.includes(count)&&`数量将改为 ${counts[0]}`,
+      nextSize&&studioImageResolution(nextSize)!==resolution&&`清晰度将改为 ${studioImageSizeLabel(nextSize)}`,
+      operation==="video"&&!native&&(minSec&&duration<minSec||maxSec&&duration>maxSec)&&`时长需要调整`,operation==="video"&&native&&unit==null&&"当前设置不支持，需要调整"].filter(Boolean).join("，");
+    return {endpointId:m.endpointId,name:m.name,legacyEndpointIds:m.legacyEndpointIds,changes,quotePatch:nextSize?{size:nextSize}:undefined,cost:unit==null?null:unit*(counts?.length&&!counts.includes(count)?counts[0]:count),
+      // 优化描述是另一笔文字任务，不含在视频报价里。
+      extraCharge:native?.supportsPromptOptimization?"优化提示词按实际用量另计":undefined};
+  }):undefined;
   const changeGenerationModel=(next:string)=>{
     const nextNative=nativeVideoModels.some(m=>m.endpointId===next)&&!capabilities?.mock;
     if(nativeVideo&&!nextNative)setReferenceIds(studioVideoSelectionIds(videoDraft,referenceIds));

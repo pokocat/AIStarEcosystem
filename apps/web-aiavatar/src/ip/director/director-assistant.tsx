@@ -21,7 +21,7 @@ import { formatDateTime } from "@/lib/datetime";
 import { DirectorApi } from "../api";
 import { AiMark } from "../studio-ai-icon";
 import { useStudioApp } from "../studio-errors";
-import { adopted, chooseDirectorBilling, costText, errorText, hasDrafts, newRequestId, peekDraft, runningTask, saveDrafts, useDraft } from "./director-shared";
+import { adopted, chooseDirectorBilling, costText, errorText, hasDrafts, kindLabel, newRequestId, peekDraft, runningTask, saveDrafts, storyAssets, useDraft } from "./director-shared";
 import { diffText, shotChanges } from "./director-text";
 import { clearPending, deliver, readPending, UncertainError, uncertain, writePending } from "./director-pending";
 import type { PendingRequest } from "./director-pending";
@@ -326,7 +326,7 @@ export function scopeLabel(work: DirectorWork, s: DirectorAssistantScope): strin
   const clipEp = clip ? work.episodes.find(e => e.id === clip.episodeId) : undefined;
   const clipBase = clip ? `${clipEp ? `第 ${clipEp.no} 集 · ` : ""}片段 ${clip.order}` : "片段";
   const asset = s.assetId ? work.assets.find(a => a.id === s.assetId) : undefined;
-  const kind = asset ? { character: "角色", scene: "场景", prop: "道具" }[asset.kind] : "";
+  const kind = asset ? kindLabel[asset.kind] : "";
   switch (s.kind) {
     case "work": return "整部作品";
     case "script": return ep ? `第 ${ep.no} 集 · ${ep.title}` : s.episodeId === "draft" ? "剧本（未拆集）" : "创意与剧本";
@@ -341,7 +341,7 @@ export function scopeLabel(work: DirectorWork, s: DirectorAssistantScope): strin
 
 /** 这一轮助手会读到哪些内容（与服务端组装的素材一致），让用户知道它知道什么。 */
 function linkedText(work: DirectorWork, s: DirectorAssistantScope, canSee: boolean): string {
-  const base = [work.outline ? "故事大纲" : "", work.assets.length ? "人物与资产设定" : ""].filter(Boolean);
+  const base = [work.outline ? "故事大纲" : "", storyAssets(work).length ? "人物与资产设定" : "", work.settings.commerce && work.assets.some(a => a.kind === "product") ? "本剧商品" : ""].filter(Boolean);
   const join = (xs: string[]) => [...base, ...xs].join("、");
   switch (s.kind) {
     case "work": return join(["分集摘要"]);

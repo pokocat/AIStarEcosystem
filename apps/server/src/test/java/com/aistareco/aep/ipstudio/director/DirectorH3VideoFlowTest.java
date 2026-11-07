@@ -115,6 +115,25 @@ class DirectorH3VideoFlowTest {
         for (int i = 0; i < refs.size(); i++) assertEquals(refs.get(i).path("key").asText(), req.getValue().video().references().get(i).key());
     }
 
+    @Test void switchingTheFormMarksAVideoMadeWithTheMainImageOutdated() {
+        String prompt = clip().path("videoPrompt").asText();
+        ObjectNode video = (ObjectNode) clip().path("video");
+        ObjectNode m = video.withArray("candidates").addObject().put("id", "v1").put("key", "k/v.mp4").put("source", "generated").put("prompt", prompt)
+                .put("fingerprint", DirectorService.hash(prompt + "|12|9:16|ep-h3|k/board.png|k/chen.png|k/zhao.png"));
+        var refs = m.putArray("refs");
+        for (String key : List.of("k/board.png", "k/chen.png", "k/zhao.png")) refs.addObject().put("label", "图" + (refs.size() + 1)).put("key", key);
+        video.put("adoptedId", "v1").put("adoptedBy", "user");
+        service.refresh(c);
+        assertEquals("current", video.path("adoptedCheck").asText(), "没换图：旧算法的版本仍是当前版本");
+        ObjectNode chen = (ObjectNode) c.path("assets").get(0);
+        ObjectNode form = chen.putArray("forms").addObject().put("id", "f1").put("name", "受伤");
+        form.putObject("image").put("adoptedId", "fm").put("adoptedBy", "user").putArray("candidates").addObject().put("id", "fm").put("key", "k/chen-hurt.png").put("source", "upload");
+        clip().putObject("assetForms").put("as4", "f1");
+        service.refresh(c);
+        assertEquals("outdated", video.path("adoptedCheck").asText());
+        assertEquals("分镜图或参考图已更换", video.path("staleReasons").get(0).asText());
+    }
+
     @Test void firstFramePreviewContainsOnlyTheBoard() {
         JsonNode refs = service.imageReferences(c, clip(), true, true);
         assertEquals(1, refs.size());

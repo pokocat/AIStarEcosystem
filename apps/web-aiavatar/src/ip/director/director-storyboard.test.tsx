@@ -93,6 +93,26 @@ test("video reference images start with the board and keep asset controls in tha
   ]);
 });
 
+test("a first-frame model sends only the board, and the card still shows the linked assets", () => {
+  const w = workWithReferences();
+  w.clips[0].videoRefs = [{ assetId: null, label: "首帧", name: "分镜图", key: "b1", url: "https://cdn.test/b1.png" }];
+  render(<Page initial={w}/>);
+  const stack = screen.getByRole("button", { name: /关联资产/ });
+  expect(within(stack).getAllByRole("img").map(img => img.getAttribute("alt"))).toEqual([
+    "图1 静儿·工作装", "图2 静儿打工的餐馆", "图3 静儿打工的餐馆·反打",
+  ]);
+});
+
+test("voice-only assets have no image reference, and the card still shows their initial", () => {
+  const w = workWithReferences();
+  w.clips[0].boardRefs = [];
+  w.clips[0].videoRefs = [{ assetId: null, label: "图1", name: "分镜图", key: "b1", url: "https://cdn.test/b1.png" }];
+  w.assets.forEach(a => { a.image.adoptedId = null; });
+  render(<Page initial={w}/>);
+  const stack = screen.getByRole("button", { name: /关联资产/ });
+  expect(stack.querySelector(".director-avatar-stack")!.children.length).toBe(2);
+});
+
 test("a missing image keeps its numbered place instead of renumbering later references", () => {
   const w = workWithReferences();
   w.clips[0].boardRefs![0] = { assetId: "jing", name: "静儿", label: "图1", key: null };

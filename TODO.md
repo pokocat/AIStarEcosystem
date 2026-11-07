@@ -142,10 +142,16 @@
 - [ ] **编导出片还没验的两件**：成片台词有没有完整念出来（2026-11-01 只看了画面不冒字）；口播带货、剧情植入、数字人口播、同城团购 4 个场景没出片。
 - [ ] **上线后看出图包装换新的效果**：线上 `dap.ip_canvas_image` 的 v0.173 旧版（「只画一个人，不要多视图、不要设定图」）不再生效，画布出图和导演台出图改用 `stages/stage-image.md`（按指令决定人数和排版）。看几张线上新出的导演台角色设定集和画布多人画面是否按要求排版、普通单图有没有多出人物或拼图。
 - [ ] **「出视频」做法与转交给助手的五段式、五组行业内容方法**（设计文档 §9.8）：五段式是结构改动，可以先做；行业内容方法要用户给各行业的拍法素材再写，不要凭空编。
+- [ ] **模型配置页补素材库绑定**（2026-11-07）：`/models` 第一版按 main 做，`dev/video-asset-library` 还没合入。合入后在编辑面板「能力与规格」加 `assetLibraryId`（查看、设置、解除），换基础地址时和规格一样要明确保留或解除，否则服务端报 400 `VIDEO_ASSET_LIBRARY_INVALID`；规则见 `docs/video-asset-library.md`。
+- [ ] **`apps/admin` 逐步搬到 studio-admin 后停用**（2026-11-07 用户定）：模型接入、开放范围、IP Studio 模型、功能与售价已搬到 `/models`；同一页的用量统计、请求日志、生成告警、对账还没搬，其它后台页面也要盘点。搬完再下线服务端的签名命令通道（用户窄命令也在这条通道上）。
+- [ ] **模型配置页上线后补两项**（2026-11-07）：规格目前只能编辑 JSON，常改的字段（时长、清晰度）可以加表单，但只能按路径改原 JSON，不能重建；同一服务商下换密钥要逐个模型改。
 - [ ] **提示词库后台页挪到 studio-admin**（§12.2）：这次先在 apps/admin「平台 › 提示词与技能」（原「Studio 技能」页）上做（分层筛选、按调用点预览）。
 - [ ] **旧 Prompt 管理里已迁走的 8 行、不再使用的 2 行**（`PromptService.MOVED_TO_STUDIO_LIBRARY` / `RETIRED_KEYS`）：线上稳定一两周后再从后台列表隐藏或删除；回滚到本版之前的 server 时这些行仍是旧路径的真值，不要早删。
 - [ ] **后端全量测试在本机跑不完**（2026-11-01）：`./mvnw test` 全量在 Maven 预算堆下 GC 打满、长时间不结束，本次只能按 `**/ipstudio/**/*Test`、`**/enterprise/**/*Test`、`Prompt*Test` 子集验证。要查是哪组测试攒内存，或按测试类分批串行跑（`-DforkCount=1 -DreuseForks=false`）。
 - [ ] **导演台形态与四视图上线前再验一遍**（2026-11-04 本地只用 Agnes 验过）：① 用线上聚算 Qwen 真调提取和写分镜，确认 `forms`、`assetForms`、`sceneView`（`stage-director-extract`、`stage-director-storyboard` v2）；Agnes 会把后面的变化也写进主设定描述，主形象可能带上。② 真模型出一组四视图，看 2×2 切开后是不是同一个空间（`DirectorSceneViews`）。③ 全能参考模型下带视角图的成片。④ 切图失败时那张图的费用不退（`applySceneViews`），看线上是否出现。
+- [ ] **带货短剧上线前**（2026-11-06 功能分支，`docs/ai-director-commerce-plan.md`）：① 查线上这五个环节后台有没有改过：`stage-director-extract / -assistant / -brief / -storyboard / -board`。后台改过的不会跟仓库文件更新，少了 `{{method}}` 就读不到商品规则，要手动补上。② 用线上默认文字模型真调一次写剧本和写分镜（本地只用免费的 Agnes 验过），看商品是不是写进了情节、片段 `assetIds` 有没有带上商品。③ 用真 H3 出一条带商品的片段，看包装和标签还原得怎么样，要不要加重提示词（链路已用模拟聚算验到交给厂商这一步，这两项要花钱，需要用户批）。④ `/assets` 页暂时没有「商品」分栏：商品图能在「图片」里看到，商品对象只能在导演台管理；手机端老页面的「产品」（`dap_product`）是另一张表，没有合并。
+- [ ] **视频素材上传的报错写死了「音色」**（`MaterialVideoModelClient` 素材状态不是 available 时）：图片也报「图1尚未处理完成，请重新保存音色」，2026-11-06 用模拟聚算验证时撞见。应按素材类型说。
+- [ ] **dap 多模态出图把参考图发了两遍**（2026-11-06 带货短剧验收时发现，和商品无关）：`DapMultimodalClient` 走 Agnes 时请求里 `image` 和 `extra_body.image` 各一份，厂商按两份算（4 张报「输入图数量不能超过 6（当前 8）」），所以 Agnes 实际只能带 3 张参考图，而 `requireRefCapacity` 的上限是 4。只影响走这条链的模型，要么去掉一份，要么把上限改对。
 - [ ] **导演台视频提示词和首帧模板仍在代码**（设计文档 §14.2 说明了为什么）：资产图、分镜图模板在库里停用时，页面保留原描述、重新出图报「提示词未配置」，要不要给个更明白的说法待定。
 
 ## 默认文字模型换 Sonnet 5.5（2026-11-04）
@@ -177,6 +183,15 @@
 - [ ] **长视频的出图完成后最多等 60 秒才推进**（2026-11-05）：图片任务结束不唤醒连续制作，靠每分钟的扫描（`StudioPlanExecutor.scan`）；文字和视频有唤醒。分镜图多时会拖慢一些。
 
 ## Studio 当前待办
+
+### 积分不足提示框后续（2026-11-07 评审，提示框本身见 docs/model-billing-design.md 末节）
+
+- [ ] 企业付款账户积分不足时没有出路：`studio-credit-shortage.tsx` 只有关闭、换模型、重试，设了默认企业账户的普通成员只能看到「查看企业积分」。个人积分够时可以给「改用个人积分」（只影响这一次，在 `withStudioBilling` 里换付款人重新报价即可，页面不用改）。建议的模型也没有按企业模型名单过滤。
+- [ ] 提示框背后同时显示「正在提交」：`scene-image-studio.tsx` / `scene-video-studio.tsx` 的 `setSubmitting` + `setTab("results")` 在 `submitStudioRun` 之前执行，付款询问在提交内部，和「本次未扣积分」互相矛盾。费用确认弹窗背后也一样。把询问从提交里拆出来，付款决定之后再切页。
+- [ ] 分镜图生成积分不足时不列赠款模型：`director-storyboard.tsx` 还没传 `DIRECTOR_MEDIA_SHORTAGE`（当时该文件有别的会话未提交的改动，没有动）。资产图和片段视频已接。
+- [ ] 手机上「充值」新开的会员页只有扫码和支付宝收银台，手机浏览器内还不能直接唤起支付（PRODUCT.md「积分充值收银台」），手机端的充值路径没有实测。
+- [ ] 费用确认弹窗与提示框主题不一致：`studio-model-quote-dialog.tsx` 还是自己的 `ConfigProvider`（#192229、圆角 8、宽 520），提示框用 `AntdTheme`（#202c42、宽 480），连续出现时会跳一下。改用 `AntdTheme`；退出按钮的叫法也统一（「取消生成」和「返回修改」结果相同）。
+- [ ] 配音、口型积分不足时节点仍显示失败（`studio-workspace.tsx` 的 `sendNative` 没有按取消撤销），提示框会弹，但节点上留一条失败记录。
 
 - [ ] **AI 图片页和画布的生成按钮也只显示标准价**（2026-11-03 排查 AI 视频页折扣不显示时发现）：`scene-image-studio.tsx` 的 `quote = unit * usedCount` 和画布创作面板 `studio-workspace.tsx` 的 `quote`（图片 `imageUnitCost*imageCount`、视频 `studioVideoQuote(...)*videoCount`）都按本地价表算标准价，模型折扣和模型赠款要点了生成、在确认弹窗里才看得到。AI 视频页已改为按 `GET /api/v1/ip-studio/studio/video-price` 显示（`canvas-bridge/studio-video-price.ts`）；画布出视频可以直接复用这个接口，图片还没有不需要草稿、也不受「未绑手机号只读」拦截的报价接口（现有 `image-quote` 是 POST），要另加一个同口径的 GET。导演台、创作助手方案卡上的价未逐一核对。
 

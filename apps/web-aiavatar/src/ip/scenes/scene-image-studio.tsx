@@ -10,7 +10,7 @@ import type { StudioCapabilities } from "@ai-star-eco/types/ip-studio-workflow";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { cancelRun, fetchModels, readRun, signKeys, type IpModelOption } from "@/canvas-bridge/api";
 import { studioCapabilities, submitStudioRun } from "@/canvas-bridge/studio-api";
-import { isStudioBillingCancelled } from "@/canvas-bridge/studio-billing-cancel";
+import { isStudioBillingCancelled, studioCreditShortageChoice } from "@/canvas-bridge/studio-billing-cancel";
 import { downloadMedia } from "@/canvas-bridge/download-media";
 import type { CanvasNodeData } from "@/canvas/types/canvas";
 import { IpStudioApi } from "../api";
@@ -223,6 +223,27 @@ export function SceneImageStudio() {
   const usedCount = counts.includes(count) ? count : counts[0];
   const unit = chosen?.imageResolutionCosts?.[studioImageResolution(usedSize) || ""] ?? chosen?.creditCost ?? caps?.imageCost ?? 0;
   const quote = caps?.mock ? 0 : unit * usedCount;
+  /**
+   * 积分不足时能换的模型。换过去比例、张数、清晰度不一定还在（页面会退到第一项）：算出换过去实际的设置和价格，
+   * 会变的写进 changes，用户看过再生成，不悄悄换规格、把赠款花在别的东西上。
+   */
+  const modelChoices = caps?.imageModelMode === "fixed" ? [] : candidates.map(m => {
+    const nextRatios = m.capability?.imageRatios?.length ? m.capability.imageRatios : FALLBACK_RATIOS;
+    const nextRatio = nextRatios.includes(usedRatio) ? usedRatio : nextRatios[0];
+    const nextCounts = m.capability?.imageBatchCounts?.filter(c => [1, 2, 4].includes(c)).length ? m.capability.imageBatchCounts!.filter(c => [1, 2, 4].includes(c)) : [1, 2, 4];
+    const nextCount = nextCounts.includes(usedCount) ? usedCount : nextCounts[0];
+    const nextSizes = m.capability?.imageSizes?.filter(s => s.aspectRatio === nextRatio) ?? [];
+    const resolution = studioImageResolution(usedSize);
+    // 和上面 usedSize 同一条规则：换过去报的价、写的变化，才是真正会提交的规格。
+    const nextSize = nextSizes.some(s => s.size === size) ? size : nextSizes[0]?.size;
+    const maxImages = m.capability?.maxRefImages;
+    const used = slots.reduce((sum, slot) => sum + slot.length, 0);
+    const changes = [nextRatio !== usedRatio && `比例将改为 ${nextRatio}`, nextCount !== usedCount && `张数将改为 ${nextCount}`,
+      nextSize && studioImageResolution(nextSize) !== resolution && `清晰度将改为 ${studioImageSizeLabel(nextSize)}`,
+      maxImages != null && used > maxImages && `最多使用 ${maxImages} 张参考图`].filter(Boolean).join("，");
+    return { endpointId: m.endpointId, name: m.name, legacyEndpointIds: m.legacyEndpointIds, changes, quotePatch: nextSize ? { size: nextSize } : undefined,
+      cost: (m.imageResolutionCosts?.[studioImageResolution(nextSize) || ""] ?? m.creditCost) * nextCount };
+  });
   const maxChars = chosen?.capability?.imagePromptMaxChars || 2000;
   const isFree = scene?.id === FREE_SCENE_ID;
   const demoGone = !!scene && demoMissing === scene.id;
@@ -325,16 +346,47 @@ export function SceneImageStudio() {
       }, projectId);
       if (onPage(ticket, projectId)) { setSubmitting(nodeId); setTab("results"); }
       posted = true;
-      const run = await submitStudioRun(projectId, request!);
+      const run = await submitStudioRun(projectId, request!, { modelChoices, canRetry: typeof input !== "string" });
       await persist(doc => applyRun(doc, nodeId!, run), projectId);
     } catch (e) {
-      if (nodeId && isStudioBillingCancelled(e)) { await persist(doc => patchNode(doc, nodeId!, () => undefined), projectId).catch(() => undefined); return; }
+      const shortage = studioCreditShortageChoice(e);
+      // 提示框开着或撤销保存期间可能已经换了草稿（浏览器前进后退）：这一次的撤销照做，但用户的选择不作用到别的草稿上。
+      // 所以每次等完保存才判断。
+      const here = () => onPage(ticket, projectId);
+      // 重新生成那一行时积分不够：这一行本来就是失败记录，留着；换了模型就把那次的设置放回输入区。
+      if (nodeId && shortage && typeof input === "string") {
+        await persist(doc => patchNode(doc, nodeId!, n => ({ ...n, metadata: { ...n.metadata, status: "error", errorDetails: "已取消" } })), projectId).catch(() => undefined);
+        const row = draftRef.current && imageRows(draftRef.current.doc).find(n => n.id === nodeId);
+        if (here() && shortage.kind === "switch-model" && row) { reuse(row); setModelId(shortage.endpointId); }
+        return;
+      }
+      if (nodeId && isStudioBillingCancelled(e)) {
+        await persist(doc => patchNode(doc, nodeId!, () => undefined), projectId).catch(() => undefined);
+        if (here() && shortage?.kind === "switch-model") {
+          setModelId(shortage.endpointId);
+          if (shortage.changes) setNote({ text: `已改用「${shortage.name}」，${shortage.changes}。确认后点击「生成图片」。` });
+          else regenerate.current = { model: shortage.endpointId, ticket, projectId };
+        }
+        else if (here() && shortage?.kind === "retry") regenerate.current = { ticket, projectId };
+        return;
+      }
       const rejected = submissionRejected(e, posted);
       if (nodeId) await persist(doc => patchNode(doc, nodeId!, n => ({ ...n, metadata: { ...n.metadata, ...studioErrorMetadata(e),
         status: rejected ? "error" : "loading", ...(rejected ? {} : { errorDetails: "提交结果待确认。点击「确认原任务」查询，不会重复扣费。" }) } })), projectId).catch(() => undefined);
       showFailure({ action: "生成图片", error: e, next: rejected ? rejectedNextStep(e) : "本次提交可能已成功。请点击「确认原任务」查询，不要直接重新生成。" });
     } finally { setBusy(false); setSubmitting(undefined); }
   };
+
+  // 积分不足提示框里选了「改用」或「继续生成」：等模型换好、上一次提交收尾后再生成一次（要花钱的话还有费用确认）。
+  const regenerate = useRef<{ model?: string; ticket: number; projectId?: string }>(undefined);
+  useEffect(() => {
+    const next = regenerate.current;
+    if (!next || busy) return;
+    if (!onPage(next.ticket, next.projectId)) { regenerate.current = undefined; return; }
+    if (next.model && chosen?.endpointId !== next.model) return;
+    regenerate.current = undefined;
+    void generate();
+  });
 
   /** 同一个请求编号再交一次：服务端认得它，已受理就返回原任务，不会再扣一次。 */
   const confirmOriginal = async (row: CanvasNodeData) => {
@@ -344,7 +396,11 @@ export function SceneImageStudio() {
     try {
       const run = await submitStudioRun(project.id, request);
       await persist(doc => patchNode(applyRun(doc, row.id, run), row.id, n => ({ ...n, metadata: { ...n.metadata, status: "loading", errorDetails: undefined } })), project.id);
-    } catch (e) { showFailure({ action: "确认原任务", error: e }); }
+    } catch (e) {
+      // 积分不足提示框已经说清了：这条没有受理，不用再确认，转成可以重新生成的失败记录。
+      if (studioCreditShortageChoice(e)) await persist(doc => patchNode(doc, row.id, n => ({ ...n, metadata: { ...n.metadata, status: "error", errorDetails: "积分不足，未提交" } })), project.id).catch(() => undefined);
+      else showFailure({ action: "确认原任务", error: e });
+    }
     finally { setBusy(false); }
   };
 

@@ -1,0 +1,116 @@
+{
+ "adapter": "seedance",
+ "contract": {
+  "modes": [
+   {
+    "mode": "t2v",
+    "needsFirstFrame": false,
+    "needsLastFrame": false,
+    "frameImage": null,
+    "references": null
+   },
+   {
+    "mode": "i2v",
+    "needsFirstFrame": true,
+    "needsLastFrame": false,
+    "frameImage": {
+     "mediaType": "image",
+     "maxCount": 1,
+     "maxBytes": 10485760,
+     "formats": [
+      "JPEG",
+      "PNG",
+      "WEBP"
+     ],
+     "minDurationSec": null,
+     "maxDurationSec": null
+    },
+    "references": null
+   },
+   {
+    "mode": "universal_reference_video",
+    "needsFirstFrame": false,
+    "needsLastFrame": false,
+    "frameImage": null,
+    "references": {
+     "image": {
+      "mediaType": "image",
+      "maxCount": 9,
+      "maxBytes": 31457280,
+      "formats": [
+       "JPEG",
+       "PNG",
+       "WEBP"
+      ],
+      "minDurationSec": null,
+      "maxDurationSec": null
+     },
+     "video": {
+      "mediaType": "video",
+      "maxCount": 0,
+      "maxBytes": 52428800,
+      "formats": [
+       "MP4"
+      ],
+      "minDurationSec": null,
+      "maxDurationSec": null
+     },
+     "audio": {
+      "mediaType": "audio",
+      "maxCount": 3,
+      "maxBytes": 15728640,
+      "formats": [
+       "WAV",
+       "MP3"
+      ],
+      "minDurationSec": 2,
+      "maxDurationSec": 15
+     },
+     "maxImagesWithVideo": 9,
+     "maxTotal": 12,
+     "minVisual": 1,
+     "maxAudioTotalSec": 15
+    }
+   }
+  ],
+  "tiers": [
+   {
+    "tier": "720p",
+    "canvases": [
+     {
+      "aspectRatio": "16:9",
+      "width": 1280,
+      "height": 720,
+      "outputSizeCode": null
+     },
+     {
+      "aspectRatio": "9:16",
+      "width": 720,
+      "height": 1280,
+      "outputSizeCode": null
+     }
+    ]
+   }
+  ],
+  "minSeconds": 4,
+  "maxSeconds": 15,
+  "promptMaxChars": 5000,
+  "seedMax": 4294967295
+ },
+ "submitPath": "/contents/generations/tasks",
+ "pollPathTemplate": "/contents/generations/tasks/{id}",
+ "requestFields": {
+  "return_last_frame": true
+ },
+ "modelsPath": "/api/v3/models",
+ "responseSpec": {
+  "succeeded": [
+   "succeeded"
+  ],
+  "failed": [
+   "failed",
+   "expired",
+   "cancelled"
+  ]
+ }
+}
