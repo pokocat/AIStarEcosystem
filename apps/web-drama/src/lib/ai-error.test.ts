@@ -50,7 +50,7 @@ describe("aiErrorMessage", () => {
   });
 
   it("调用失败类错误码保留服务方给的原因，不换成通用提示", () => {
-    expect(aiErrorMessage({ code: "AI_CALL_FAILED", message: "raw-upstream-text" })).toContain("raw-upstream-text");
+    expect(aiErrorMessage({ code: "AI_CALL_FAILED", message: "voice unavailable" })).toContain("voice unavailable");
   });
 
   it("堆栈里夹着供应商信息 → 仍走调用方兜底，不透出原文，保留编号", () => {

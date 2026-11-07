@@ -54,6 +54,8 @@ public final class PublicModelErrorPolicy {
     private static final Pattern SUPPLIER_LOGIC = Pattern.compile("生图模式|蒙版|接口|入参|请求体|字段|继续查询|查询此任务|重复创建");
     /** A supplier's Chinese reason stays only when it names something the customer can change; anything else gets the caller's retry sentence. */
     private static final Pattern ACTIONABLE = Pattern.compile("参考|素材|图片|图像|照片|视频|音频|声音|音色|语音|文件|尺寸|分辨率|比例|宽高|像素|时长|格式|大小|审核|违规|违反|敏感|拦截|提示词|文本|文案|文字|字数|长度|人脸|真人|肖像|形象|水印|台词|下架");
+    /** Our own redaction mark is not the supplier writing Chinese: "voice unavailable token=[已脱敏]" is still an English reason. */
+    private static final Pattern REDACTED = Pattern.compile("\\[(?:链接)?已脱敏\\]");
     /** A bare code such as InternalServiceError says nothing to a customer. */
     private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-z0-9_.:-]+");
     /** Old rows carry our own code in front of the sentence: VIDEO_MIRROR_FAILED：…. */
@@ -106,7 +108,7 @@ public final class PublicModelErrorPolicy {
         String translated = translate(cleaned);
         if (translated != null) return translated;
         // Null lets the caller use its own sentence. The supplier's words stay in the logs (ProviderResponseDiagnostics).
-        if (!usable(cleaned) || HAN.matcher(cleaned).find() && !ACTIONABLE.matcher(cleaned).find()) return null;
+        if (!usable(cleaned) || HAN.matcher(REDACTED.matcher(cleaned).replaceAll("")).find() && !ACTIONABLE.matcher(cleaned).find()) return null;
         return cleaned;
     }
 

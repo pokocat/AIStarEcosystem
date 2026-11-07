@@ -28,6 +28,14 @@ class PublicModelErrorReadabilityTest {
         assertEquals("参考图尺寸过小，请更换", ProviderErrorMessage.message("{\"message\":\"参考图尺寸过小，请更换\"}", "我们的说明"));
     }
 
+    /** PR 157 的 CI 查出来的：脱敏标记是中文，英文原因曾被当成「没说明原因的中文」整句丢掉。 */
+    @Test void anEnglishReasonWithAMaskedSecretIsStillAnEnglishReason() {
+        String reason = ProviderErrorMessage.reason("{\"error\":{\"message\":\"voice unavailable token=private-token\"}}");
+        assertNotNull(reason);
+        assertTrue(reason.contains("voice unavailable"), reason);
+        assertFalse(reason.contains("private-token"), reason);
+    }
+
     @Test void aBareSupplierCodeIsNotAReason() {
         assertNull(PublicModelErrorPolicy.upstream("InternalServiceError"));
         assertEquals("我们的说明", ProviderErrorMessage.message("{\"message\":\"internal_server_error\"}", "我们的说明"));
