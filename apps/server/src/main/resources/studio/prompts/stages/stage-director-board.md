@@ -1,7 +1,7 @@
 ---
 key: stage-director-board
 name: 导演台分镜图
-version: 1
+version: 2
 status: active
 layer: stage
 target: image-model
@@ -16,11 +16,14 @@ summary: "一个片段的单张分镜画面或 2×2 分镜板（§8 #20）。直
 {{style}}风格，生成 2×2 分镜板：四个等大无间隙的格子，整板 {{aspect}}，每格 {{aspect}}，按左上、右上、左下、右下的顺序阅读。
 {{/single}}
 {{#refs}}
-{{label}} 提供{{#isScene}}场景{{/isScene}}{{#isProp}}道具{{/isProp}}{{#isCharacter}}角色{{/isCharacter}}「{{name}}」的{{#isScene}}空间布局与光源方向{{/isScene}}{{#isProp}}外观{{/isProp}}{{#isCharacter}}身份与造型{{/isCharacter}}。
+{{label}} 提供{{#isScene}}场景{{/isScene}}{{#isProp}}道具{{/isProp}}{{#isProduct}}商品{{/isProduct}}{{#isCharacter}}角色{{/isCharacter}}「{{name}}」的{{#isScene}}空间布局与光源方向{{/isScene}}{{#isProp}}外观{{/isProp}}{{#isProduct}}外形、颜色、包装和标签{{/isProduct}}{{#isCharacter}}身份与造型{{/isCharacter}}。
 {{/refs}}
 {{#hasRefs}}
 参考图里的多视角或资料排版代表同一个资产，不要复制资料排版、背景，也不要把同一个角色画成多个人。参考图只确定人物身份、造型、道具外观和空间，画面里按镜头重新给人物布光，参考图本身偏暗或偏色的地方不照搬。
 {{/hasRefs}}
+{{#hasProduct}}
+商品和参考图保持一致：外形、比例、颜色和包装都不改，不换牌子，包装上原有的图案和文字照参考图保留，主要部分不被手或其他东西遮住。
+{{/hasProduct}}
 {{#cells}}
 {{#single}}画面：{{/single}}{{^single}}{{position}}格：{{/single}}{{size}}，{{camera}}。{{still}}
 {{/cells}}

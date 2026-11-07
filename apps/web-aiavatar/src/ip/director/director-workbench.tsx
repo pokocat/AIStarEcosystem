@@ -2,7 +2,7 @@
 
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, Clapperboard, FileText, Loader2, Pause, Play, Settings2, Shapes, Sparkles, Square, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Clapperboard, FileText, Loader2, Pause, Play, Settings2, Shapes, ShoppingBag, Sparkles, Square, X } from "lucide-react";
 import type { DirectorPipeline, DirectorPipelineEstimate, DirectorPipelineTarget, DirectorWork } from "@ai-star-eco/types";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { isProductNotEnrolledError } from "@ai-star-eco/api-client";
@@ -10,6 +10,7 @@ import { DirectorApi } from "../api";
 import { goneWorkId, isStaleGone } from "../api/director";
 import { DirectorScript } from "./director-script";
 import { DirectorAssets } from "./director-assets";
+import { DirectorProducts } from "./director-products";
 import { DirectorStoryboard } from "./director-storyboard";
 import { ExtractReview } from "./director-extract";
 import { SettingsPanel } from "./director-settings";
@@ -19,8 +20,8 @@ import { AiMark } from "../studio-ai-icon";
 import { BriefProvider } from "./director-brief";
 import { AssistantProvider, DirectorAssistantPanel, useAssistant, useAssistantController } from "./director-assistant";
 
-export type Tab = "script" | "assets" | "storyboard";
-const GO_LABEL: Record<Tab, string> = { script: "前往剧本", assets: "前往资产", storyboard: "前往分镜" };
+export type Tab = "script" | "assets" | "products" | "storyboard";
+const GO_LABEL: Record<Tab, string> = { script: "前往剧本", assets: "前往资产", products: "前往商品", storyboard: "前往分镜" };
 export type WorkbenchProps = {
   work: DirectorWork;
   episodeId: string | null;
@@ -60,6 +61,8 @@ function nextStep(work: DirectorWork, episodeId: string | null): NextStep | null
     return { text: `AI 正在重写${ep ? `第 ${ep.no} 集` : clip ? `片段 ${clip.order} 的` : ""}分镜脚本`, tab: "storyboard", running: true };
   }
   if (running.includes("brief")) return { text: "AI 正在分析你的想法", tab: "script", running: true };
+  // 带货短剧：还没写剧本、也没加商品时，先加商品，剧本才写得进去。
+  if (work.settings.commerce && !work.draft.trim() && !work.episodes.length && !work.assets.some(a => a.kind === "product")) return { text: "下一步：添加要植入的商品", tab: "products" };
   if (!work.draft.trim() && work.episodes.length === 0) return { text: !work.idea.trim() ? "第一步：描述你的想法，或粘贴剧本"
     : work.brief?.status === "ready" ? "下一步：生成剧本" : work.settings.format ? "下一步：回答 AI 的问题，或直接生成剧本" : "下一步：确认形式和集数", tab: "script" };
   if (work.pendingSplit) return { text: `分成 ${work.pendingSplit.episodes.length} 集，确认后生效`, tab: "script" };
@@ -122,7 +125,8 @@ export function DirectorWorkbench({ id }: { id: string }) {
   const [starting, setStarting] = useState(false);
   const reviewedRun = useRef<string | null>(null);
   // 换工作区时清掉上一处的报错：它说的是别处的事，留着会误导（2026-10-24 资产已入库，顶部还挂着「请先提取资产」）。
-  const assistant = useAssistantController({ work, apply: next => apply(next), tab, episodeId, goTab: setTab, pickEpisode: setEpisodeId });
+  // 商品页上和助手说的基本是「把商品写进剧本」，默认对象和剧本页一样。
+  const assistant = useAssistantController({ work, apply: next => apply(next), tab: tab === "products" ? "script" : tab, episodeId, goTab: setTab, pickEpisode: setEpisodeId });
 
   const apply = useCallback((next: DirectorWork) => {
     if (next.revision < revision.current) return;
@@ -210,6 +214,10 @@ export function DirectorWorkbench({ id }: { id: string }) {
     if (!initialTab.current) { initialTab.current = true; const step = nextStep(work, work.episodes[0]?.id ?? null); if (step) setTab(step.tab); }
   }, [work, episodeId]);
 
+  // 带货短剧开关关了，商品工作区就不出现了。
+  const commerce = !!work?.settings.commerce;
+  useEffect(() => { if (!commerce) setTab(t => t === "products" ? "script" : t); }, [commerce]);
+
   // 提取结果一回来就弹出确认；关掉后这一份不再自动弹，可从状态线或资产页再打开。
   const pendingRun = work?.pendingExtract?.runId ?? null;
   useEffect(() => {
@@ -234,7 +242,7 @@ export function DirectorWorkbench({ id }: { id: string }) {
   const props: WorkbenchProps = { work, episodeId, apply, setError, goTab: switchTab, focusClip, focus, reviewExtract: () => setReviewing(true), openSettings: () => { window.scrollTo({ top: 0, behavior: "smooth" }); setSettingsOpen(true); }, pickEpisode: setEpisodeId, startPipeline: () => setStarting(true) };
   const step = nextStep(work, episodeId);
   const counts = {
-    assets: work.assets.filter(a => a.image.adoptedBy === "auto" || !a.image.adoptedId).length,
+    assets: work.assets.filter(a => a.kind !== "product" && (a.image.adoptedBy === "auto" || !a.image.adoptedId)).length,
     storyboard: work.clips.filter(c => c.episodeId === episodeId && (c.issues.length || c.board.adoptedBy === "auto" || c.video.adoptedBy === "auto"
       || c.board.adoptedCheck === "outdated" || c.video.adoptedCheck === "outdated")).length,
   };
@@ -247,24 +255,24 @@ export function DirectorWorkbench({ id }: { id: string }) {
         : step && nextStepShown(step, tab) && <StatusChip key={step.text} step={step} tab={tab} onGo={switchTab}/>}
       <StopTextTasks {...props}/>
     </>}/>
-    <p style={{padding:"0 24px"}}><Link href="/model-results" style={{display:"inline-block",padding:"6px 0"}}>查看生成原文</Link></p>
     {reviewing && work.pendingExtract && <ExtractReview key={work.pendingExtract.runId} work={work} apply={apply} onClose={() => setReviewing(false)}/>}
     {live ? <PipelineBar {...props}/> : work.pipeline && <div className="director-status"><PipelineBar {...props}/></div>}
     {starting && <StartPipeline work={work} episodeId={episodeId} apply={apply} setError={setError} goTab={switchTab} onClose={() => setStarting(false)}/>}
     {work.notice && <DirectorNoticeToast key={work.notice.message} work={work} apply={apply} setError={setError}/>}
     <div className={`director-body ${assistant.open ? "has-assistant" : ""}`}>
       <nav className="director-nav" role="tablist" aria-label="工作区" aria-orientation="vertical">
-        {([["script", "剧本", FileText], ["assets", "资产", Shapes], ["storyboard", "分镜", Clapperboard]] as const).map(([key, label, Icon]) =>
+        {([["script", "剧本", FileText], ["assets", "资产", Shapes], ...(commerce ? [["products", "商品", ShoppingBag]] as const : []), ["storyboard", "分镜", Clapperboard]] as const).map(([key, label, Icon]) =>
           <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => switchTab(key)}>
             <Icon size={18}/><span>{label}</span>
-            {key !== "script" && counts[key] > 0 && <small aria-label={`${counts[key]} 项待处理`}>{counts[key]}</small>}</button>)}
+            {(key === "assets" || key === "storyboard") && counts[key] > 0 && <small aria-label={`${counts[key]} 项待处理`}>{counts[key]}</small>}</button>)}
       </nav>
       <section className="director-main">
         {tab === "script" && <DirectorScript {...props}/>}
         {tab === "assets" && <DirectorAssets {...props}/>}
+        {tab === "products" && commerce && <DirectorProducts {...props}/>}
         {tab === "storyboard" && <DirectorStoryboard {...props}/>}
       </section>
-      {assistant.open && <DirectorAssistantPanel work={work} apply={apply} tab={tab} episodeId={episodeId} openSettings={props.openSettings}/>}
+      {assistant.open && <DirectorAssistantPanel work={work} apply={apply} tab={tab === "products" ? "script" : tab} episodeId={episodeId} openSettings={props.openSettings}/>}
     </div>
   </main></BriefProvider></AssistantProvider>;
 }
@@ -310,6 +318,7 @@ function DirectorHeader({ work, apply, setError, startPipeline, oneClick, status
     {status}
     <span className="director-spacer"/>
     {work.pricing.mock && <span className="director-mock-tag" title="剧本、图片和视频均为固定样例，不调用模型，不消耗积分。">测试模式</span>}
+    <Link href="/model-results" className="director-settings-chip director-results-link" title="查看模型返回的原始内容">生成原文</Link>
     <button type="button" className="director-settings-chip" onClick={() => setOpen(o => !o)} aria-expanded={open} title={`${settings.style} · ${settings.aspectRatio}`}>
       <Settings2 size={15}/><span>{settings.style} · {settings.aspectRatio}</span>
     </button>

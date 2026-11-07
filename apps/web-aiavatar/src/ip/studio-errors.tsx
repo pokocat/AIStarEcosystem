@@ -9,6 +9,7 @@ import type { CanvasNodeData } from '@/canvas/types/canvas';
 import type { IpRun } from '@ai-star-eco/types/ip-studio';
 // 子路径引入：错误整理是纯函数，不跟着包根走（测试常把包根整个 mock 掉，少了这个导出就会在报错时再抛一次，错误永远显示不出来）。
 import { publicModelErrorMessage, isProviderModelError, isCustomerWalletError } from '@ai-star-eco/api-client/public-model-error';
+import { isStudioCreditShortage } from '@/canvas-bridge/studio-billing-cancel';
 
 export type StudioError = { code: string; message: string; logId?: string; taskId?: string; clientMessageId?: string };
 type ErrorInput = unknown;
@@ -163,6 +164,8 @@ function takeActivation() {
 export function reportStudioError(input: ErrorInput, options: { once?: string; fallback?: string; action?: string; next?: ReactNode; background?: boolean; details?: boolean; infer?: boolean } = {}) {
   const error = normalizeStudioError(input, options.fallback);
   if (error.code === "IP_RUN_CANCELLED") return error;
+  // 用户自己取消付款或关掉积分不足提示框，什么都没提交，不算错误。
+  if (error.code === "STUDIO_BILLING_CANCELLED") return error;
   // 画布的保存冲突由顶栏的冲突弹窗负责（canvas-conflict-dialog.tsx）。冲突之后每一条经过
   // saveStudioDocument 的保存都会再抛一次它 —— 助手面板的自动保存、任务轮询回写、脚本编辑器……
   // 逐条弹通知就是用户说的「页面一直在报错」。这里只回传给调用方做内联状态，不弹。
@@ -237,6 +240,8 @@ export type StudioFailure = {
   next?: ReactNode;
   /** 原因下面的补充内容（只放真实数据，如引用它的片段和前往入口）；拿到 close 可以先关弹窗再跳转。 */
   extra?: ReactNode | ((close: () => void) => ReactNode);
+  /** 积分不足时提示框的付款账户（知道就给，不给按默认账户）和去哪里换模型（出图、出视频才给）。 */
+  shortage?: Pick<import('./studio-credit-shortage').StudioCreditShortageInput, 'billing' | 'grantHint'>;
 };
 
 /** 冲突类错误：这句总排在下一步的最前面。调用方刷新过页面才说「已经刷新」，否则请用户刷新。 */
@@ -273,7 +278,13 @@ const deciding = new Set<string>();
 /** 打开错误弹窗。同一个操作的同一个错误还开着时不再弹第二个（连点、轮询重复报错）。 */
 export function openStudioFailure(modal: ModalApi, failure: StudioFailure) {
   const error = normalizeStudioError(failure.error);
-  if (error.code === 'IP_RUN_CANCELLED') return error;
+  if (error.code === 'IP_RUN_CANCELLED' || error.code === 'STUDIO_BILLING_CANCELLED') return error;
+  // 积分不足不当错误弹：说清差多少，给能换的模型和充值入口（「查看错误详情」照旧看详情）。
+  if (!failure.title && isStudioCreditShortage(error)) {
+    recentDialogs.set(keyOf(error), Date.now());
+    void import('./studio-credit-shortage').then(({ askStudioCreditShortage }) => askStudioCreditShortage({ reason: error.message, ...failure.shortage }));
+    return error;
+  }
   // 同一个错误（不论从哪条路报上来）开着时不再弹第二个：页面内联提示与统一出口可能各报一次。
   const key = failure.title ? `details|${keyOf(error)}` : `${error.code}|${error.message}|${error.logId ?? ''}`;
   if (openFailures.has(key)) return error;

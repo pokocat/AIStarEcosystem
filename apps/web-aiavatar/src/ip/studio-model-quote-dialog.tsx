@@ -10,10 +10,12 @@ import { normalizeStudioError } from './studio-errors';
 
 type LoadQuote=(freeOnly:boolean,signal:AbortSignal)=>Promise<ModelBillingQuote>;
 const n=(value:number)=>value.toLocaleString('zh-CN');
-export function StudioModelQuoteDialog({loadQuote,billing,initialFreeOnly=false,onConfirm,onCancel}:{loadQuote:LoadQuote;billing?:EnterpriseBillingSelection|null;initialFreeOnly?:boolean;onConfirm:(approval:ModelBillingApproval)=>void;onCancel:()=>void}) {
+export function StudioModelQuoteDialog({loadQuote,billing,initialFreeOnly=false,initialQuote,modelName,onConfirm,onCancel}:{loadQuote:LoadQuote;billing?:EnterpriseBillingSelection|null;initialFreeOnly?:boolean;initialQuote?:ModelBillingQuote;modelName?:string;onConfirm:(approval:ModelBillingApproval)=>void;onCancel:()=>void}) {
   const [freeOnly,setFreeOnly]=useState(initialFreeOnly),[reload,setReload]=useState(0),[loading,setLoading]=useState(true),[error,setError]=useState('');
-  const [quote,setQuote]=useState<ModelBillingQuote>();const confirmed=useRef(false);
+  const [quote,setQuote]=useState<ModelBillingQuote>();const confirmed=useRef(false),opening=useRef(initialQuote);
   useEffect(()=>{
+    // 打开前刚报过价（积分够才走到这里），不用再报一次。
+    if(opening.current&&opening.current.freeOnly===freeOnly&&reload===0){const value=opening.current;opening.current=undefined;setError('');setQuote(value);setLoading(false);return;}
     const abort=new AbortController();setLoading(true);setError('');setQuote(undefined);
     loadQuote(freeOnly,abort.signal).then(value=>{if(!abort.signal.aborted)setQuote(value);})
       .catch(caught=>{if(!abort.signal.aborted)setError(normalizeStudioError(caught).message);})
@@ -23,7 +25,7 @@ export function StudioModelQuoteDialog({loadQuote,billing,initialFreeOnly=false,
   const blocked=loading||!!error||!quote?.canAfford||quote.freeOnly!==freeOnly;
   return <ConfigProvider theme={{token:{colorPrimary:'#192229',fontFamily:'var(--ip-ui, sans-serif)',borderRadius:8}}}><Modal open title={quote?.target.action==='video'?'确认视频费用':quote?'确认图片费用':'确认生成费用'} okText={quote?.walletCredits?`确认并支付 ${n(quote.walletCredits)} 积分`:'确认并生成'} cancelText="取消生成" getContainer={false}
     onCancel={onCancel} okButtonProps={{disabled:blocked}} onOk={()=>{if(!blocked&&quote&&!confirmed.current){confirmed.current=true;onConfirm(quote.approval);}}}>
-    <div className="studio-billing-form"><p>{billing?.mode==='enterprise'?'所选企业成员账户':'个人账户'} · 本次{quote?.target.action==='video'?'视频':'图片'}生成</p>
+    <div className="studio-billing-form"><p>{billing?.mode==='enterprise'?'所选企业成员账户':'个人账户'} · 本次{quote?.target.action==='video'?'视频':'图片'}生成{modelName&&` · ${modelName}`}</p>
       {loading?<Skeleton active paragraph={{rows:4}}/>:error?<Alert type="error" showIcon title="无法取得报价" description={error} action={<Button size="small" onClick={()=>setReload(value=>value+1)}>重新报价</Button>}/>:quote&&<>
         <p>{quote.target.action==='video'?`视频生成 · 合计 ${n(quote.usage.quantity)} ${quote.target.unit==='second'?'秒':'次'}`:`${n(quote.usage.quantity)} 张 · ${quote.target.specKey.replace('x',' × ')}`}</p>
         <dl className="studio-model-quote-lines">
@@ -40,12 +42,12 @@ export function StudioModelQuoteDialog({loadQuote,billing,initialFreeOnly=false,
     </div>
   </Modal></ConfigProvider>;
 }
-export function confirmStudioModelQuote(loadQuote:LoadQuote,billing?:EnterpriseBillingSelection|null,initialFreeOnly=false):Promise<ModelBillingApproval> {
+export function confirmStudioModelQuote(loadQuote:LoadQuote,billing?:EnterpriseBillingSelection|null,initialFreeOnly=false,initialQuote?:ModelBillingQuote,modelName?:string):Promise<ModelBillingApproval> {
   return new Promise((resolve,reject)=>{
     const host=document.createElement('div');host.className='ip-brand-surface studio-billing-host';document.body.appendChild(host);
     const root=createRoot(host),origin=document.activeElement instanceof HTMLElement?document.activeElement:null;
     const finish=(approval?:ModelBillingApproval)=>{root.unmount();host.remove();setTimeout(()=>{if(origin?.isConnected)origin.focus();},0);
       if(approval)resolve(approval);else reject(new ApiError({code:'STUDIO_BILLING_CANCELLED',message:'本次生成已取消，未提交任务。'},400));};
-    root.render(<StudioModelQuoteDialog loadQuote={loadQuote} billing={billing} initialFreeOnly={initialFreeOnly} onConfirm={finish} onCancel={()=>finish()}/>);
+    root.render(<StudioModelQuoteDialog loadQuote={loadQuote} billing={billing} initialFreeOnly={initialFreeOnly} initialQuote={initialQuote} modelName={modelName} onConfirm={finish} onCancel={()=>finish()}/>);
   });
 }

@@ -1,4 +1,5 @@
 "use client";
+import { isStudioBillingCancelled } from '@/canvas-bridge/studio-billing-cancel';
 import { StudioErrorNotice, useStudioApp, useStudioErrorState } from './studio-errors';
 import { StudioAiIcon } from "./studio-ai-icon";
 import { useEffect, useRef, useState } from 'react';
@@ -21,7 +22,7 @@ type Props={projectId:string;node:CanvasNodeData;capabilities?:StudioCapabilitie
   onState:(state:EditorState)=>void;
   onCommit:(markdown:string,script:StudioScript)=>Promise<void>;onClose:()=>void;
   onStoryboard:(episodeNo:number)=>void;onExtract:()=>void|Promise<void>};
-const rejectedCodes=new Set(['AI_TOKEN_PRICE_NOT_CONFIGURED','AI_TOKEN_PRICE_INVALID','STUDIO_INPUT_INVALID','STUDIO_MODE_INVALID','STUDIO_HISTORY_LIMIT','STUDIO_HISTORY_INVALID','STUDIO_PRICE_CHANGED','ENDPOINT_NOT_ALLOWED','PROMPT_NOT_CONFIGURED','STUDIO_CONTEXT_LIMIT']);
+const rejectedCodes=new Set(['STUDIO_BILLING_CANCELLED','AI_TOKEN_PRICE_NOT_CONFIGURED','AI_TOKEN_PRICE_INVALID','STUDIO_INPUT_INVALID','STUDIO_MODE_INVALID','STUDIO_HISTORY_LIMIT','STUDIO_HISTORY_INVALID','STUDIO_PRICE_CHANGED','ENDPOINT_NOT_ALLOWED','PROMPT_NOT_CONFIGURED','STUDIO_CONTEXT_LIMIT']);
 const container=()=>document.querySelector<HTMLElement>('.ip-surface')||document.body;
 
 /** A focused document task. Its chat produces proposals, never a second script canvas node. */
@@ -83,7 +84,8 @@ export function StudioScriptEditor({projectId,node,capabilities,onState,onCommit
     }catch(e){
       const text=e instanceof Error?e.message:'对话未完成';
       if(!accepted&&(!posted||e instanceof ApiError&&rejectedCodes.has(e.code))) {
-        patch({pending:undefined,chatDraft:snapshot.request.prompt,error:text,turns:live.current.turns.at(-1)?.role==='user'?live.current.turns.slice(0,-1):live.current.turns});
+        // 取消付款或积分不足（提示框已经说清了）：没有提交，要求放回输入框，不再显示成错误。
+        patch({pending:undefined,chatDraft:snapshot.request.prompt,error:isStudioBillingCancelled(e)?undefined:text,turns:live.current.turns.at(-1)?.role==='user'?live.current.turns.slice(0,-1):live.current.turns});
       } else patch({error:accepted?'改稿任务已提交，请确认原任务继续获取结果':'提交结果尚未确认，请确认原任务，避免重复提交'});
       try{await saveStudioDocument(projectId);}catch{patch({error:`${live.current.error||text}。对话状态尚未保存，请重试保存`});}
       if(alive.current)message.error(e);

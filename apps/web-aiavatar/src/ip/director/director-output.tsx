@@ -6,7 +6,7 @@ import type { DirectorClip, DirectorEpisode, DirectorWork } from "@ai-star-eco/t
 import { downloadMedia } from "@/canvas-bridge/download-media";
 import { formatDateTime } from "@/lib/datetime";
 import { DirectorApi } from "../api";
-import { InlineError, OutdatedNote, Spinner, adopted, chooseDirectorBilling, costText, failed, newRequestId, runningTask, useBusy, useEscape, dialogFocus, type DirectorFail } from "./director-shared";
+import { DIRECTOR_MEDIA_SHORTAGE, InlineError, OutdatedNote, Spinner, adopted, chooseDirectorBilling, costText, failed, newRequestId, runningTask, useBusy, useEscape, dialogFocus, type DirectorFail } from "./director-shared";
 
 export type ClipQuote = { credits: number | null; error: string | null };
 
@@ -27,7 +27,7 @@ export function ClipVideo({ work, clip, quote, apply, setError, onBoard, setting
     const billing = await chooseDirectorBilling("video", latest.credits);
     apply(await DirectorApi.runTask(work.id, { type: "video", targetId: clip.id, clientRequestId: newRequestId(), billing, maxCost: latest.credits,
       ...(promptChoice ? { options: { promptChoice } } : {}) }));
-  }, failed(setError, `生成片段 ${clip.order} 的视频`));
+  }, failed(setError, `生成片段 ${clip.order} 的视频`, undefined, undefined, DIRECTOR_MEDIA_SHORTAGE));
   // 重新优化：只重新改写提示词，完成后停在新稿上等你选，不接着生成视频；优化提示词按实际用量另计。
   const reoptimize = () => void run("rewrite", async () => {
     const billing = await chooseDirectorBilling("text");

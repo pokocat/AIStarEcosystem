@@ -65,7 +65,8 @@ function walk(dir, acc = [], exclude = []) {
     if (exclude.some((ex) => p === ex || p.startsWith(`${ex}/`))) continue;
     const s = statSync(p);
     if (s.isDirectory()) walk(p, acc, exclude);
-    else if (/\.tsx?$/.test(name) && !name.endsWith(".test.ts")) acc.push(p);
+    // 只检查产品调用；测试里的 apiFetch 替身不是接口地址（TS 和 TSX 一致排除）。
+    else if (/\.tsx?$/.test(name) && !/\.(?:test|spec)\.tsx?$/.test(name)) acc.push(p);
   }
   return acc;
 }

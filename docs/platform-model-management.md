@@ -1,6 +1,25 @@
 # 平台后台模型管理接入
 
-> 2026-11-07：统一后台（`aibuzz-platform`，`ops.aibuzz.cn`）不再使用，后台功能以后都放进 Studio 后台（`apps/web-aiavatar/studio-admin`）。下面的模型配置接口还在，现在靠签名命令调用；其中关于统一后台的部分是历史记录。
+## 2026-11-07：页面搬到 Studio 后台
+
+统一后台 `aibuzz-platform`（`ops.aibuzz.cn`）不再使用。模型配置页在 `apps/web-aiavatar/studio-admin` 的 `/models`，三个页签：
+
+| 页签 | 能做什么 | 用到的命令 |
+|---|---|---|
+| 模型接入 | 按服务商看模型；新增、编辑、启停、删除、测试连接、读取模型目录；能力与规格、运行限制、开放范围、计费与成本、使用情况 | `endpoints` `presets` `modelAccessCatalog` `endpointSave` `endpointDelete` `endpointCosts` `modelAccessSave` `endpointTest` `endpointFetchModels` `endpointProbe` |
+| IP Studio 模型 | 剧本和图片的可选模型、默认模型、积分价；导演台默认图片模型；视频默认模型和按秒价 | `sceneCatalog` `scenePolicySave` `sceneCandidatePrepare` `directorImageDefault` `directorImageDefaultSave` `studioVideoGroup` `studioVideoGroupSave` `functionCandidatePriceSave` |
+| 功能与售价 | 58 个功能各用哪个模型、卖多少；可选模型的能力；动作价、配置价、引擎价、配音口型价、视频价格表 | `functionCatalog` `functionPricingCatalog` `functionDefaultSave` `functionCandidatePrepare` `functionCandidatePriceSave` `functionActionPriceSave` `functionConfigPriceSave` `functionSupplierPointPriceSave` `functionEnginePriceSave` `videoPricesSave` |
+
+接口是 `POST /api/admin/studio/model-config/command`（`AdminStudioModelConfigController`），用后台登录态，命令和下面的签名通道是同一份（`ModelManagementService`），只是白名单更窄：提示词、Agent 不在这个入口。签名通道 `/api/service/model-management/v1/command` 先留着，下线前要确认没有别的调用方（用户窄命令也在这条通道上）。
+
+保存规则见 `specs/BUSINESS_RULES.md`「Studio 后台模型配置」。有两处容易踩：
+
+- **`endpointSave` 不是「只传的字段才改」。** `rpmLimit`、`tpmLimit`、`dailyTokenQuota`、`dailyCostQuotaMicros`、`alertFailureRatePct` 没传就会清空。用签名命令改模型时同样要带上。
+- **改 `baseUrl`、`model` 或 `providerType` 而不带规格，规格会被清掉。**
+
+页面还没有的：素材库绑定（`assetLibraryId`，服务端已支持；已绑定素材库的模型换基础地址或供应商类型时要明确保留或解除，页面没有这一项，保存会被拒，要走签名命令）；`apps/admin` LLM API 页里的用量统计、请求日志、生成告警和对账。见 `TODO.md`。
+
+设计上参考了 AID Studio 后台（左侧服务商、右侧模型表、编辑面板分页签、行内启停和测试）。没有照搬它把密钥放在服务商上的做法：我们的密钥存在每个模型上，改成服务商一层要改库和调用链路。
 
 ## 2026-10-13 本地补充：草稿端点检测与视频规格
 

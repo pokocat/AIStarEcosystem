@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Clapperboard, Loader2, MoreHorizontal, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { Clapperboard, Loader2, MoreHorizontal, Plus, RefreshCw, ShoppingBag, Trash2, X } from "lucide-react";
 import type { DirectorWorkSummary } from "@ai-star-eco/types";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { formatDateTime } from "@/lib/datetime";
@@ -14,6 +14,7 @@ import { InlineError, errorText, useEscape, dialogFocus } from "./director-share
 import { DirectorScriptFile, LargePasteNotice, usePasteGuard, type ScriptFileHandle } from "./director-script-file";
 import { EDIT_MAX, LongTextCard } from "./director-long-editor";
 import { DEFAULT_STYLE, StyleField } from "./director-styles";
+import { CommerceSwitch } from "./director-settings";
 
 function progressText(w: DirectorWorkSummary) {
   if (!w.hasScript) return "待写剧本";
@@ -49,7 +50,7 @@ export function DirectorWorks() {
         <div className="director-work-grid">{works.data.map(w => <article key={w.id} className="director-work-card">
           {/* 链接和「更多」是兄弟节点：菜单不嵌在链接里，点菜单不会进作品。 */}
           <Link href={`/director/${encodeURIComponent(w.id)}`} className="director-work-open" aria-label={`打开作品 ${w.title}`}>
-            <div className="director-work-cover">{w.coverUrl ? <img src={w.coverUrl} alt=""/> : <Clapperboard size={26}/>}{w.running && <span className="director-work-badge"><Loader2 size={12} className="ip-loading-icon"/>制作中</span>}</div>
+            <div className="director-work-cover">{w.coverUrl ? <img src={w.coverUrl} alt=""/> : <Clapperboard size={26}/>}{w.running && <span className="director-work-badge"><Loader2 size={12} className="ip-loading-icon"/>制作中</span>}{w.commerce && <span className="director-work-commerce"><ShoppingBag size={12}/>带货</span>}</div>
             <div className="director-work-copy"><h3 title={w.title}>{w.title}</h3><p>{progressText(w)}</p><small>{formatDateTime(w.updatedAt)}</small></div>
           </Link>
           <WorkMenu title={w.title} onDelete={() => setDeleting(w)}/>
@@ -121,13 +122,14 @@ function CreateWork({ onClose }: { onClose: () => void }) {
   const locked = busy || reading;
   const file = useRef<ScriptFileHandle>(null);
   const [style, setStyle] = useState(DEFAULT_STYLE);
+  const [commerce, setCommerce] = useState(false);
   const guard = usePasteGuard();
   useEscape(() => { if (!locked) onClose(); });
   const submit = async () => {
     if (locked || !text.trim()) return;
     setBusy(true); setError("");
     try {
-      const work = await DirectorApi.createWork({ title: title.trim() || undefined, ...(style === DEFAULT_STYLE ? {} : { style }), ...(mode === "idea" ? { idea: text.trim() } : { script: text }) });
+      const work = await DirectorApi.createWork({ title: title.trim() || undefined, ...(style === DEFAULT_STYLE ? {} : { style }), ...(commerce ? { commerce } : {}), ...(mode === "idea" ? { idea: text.trim() } : { script: text }) });
       router.push(`/director/${encodeURIComponent(work.id)}`);
     } catch (e) { setError(errorText(e)); setBusy(false); }
   };
@@ -140,15 +142,16 @@ function CreateWork({ onClose }: { onClose: () => void }) {
       </div>
       <label className="director-field"><span>作品名（选填）</span><input value={title} maxLength={60} onChange={e => setTitle(e.target.value)} placeholder="留空将根据内容命名"/></label>
       <StyleField value={style} onChange={setStyle} disabled={locked}/>
+      <CommerceSwitch checked={commerce} onChange={setCommerce} disabled={locked}/>
       {mode === "script" && <DirectorScriptFile ref={file} hasText={!!text.trim()} disabled={busy} onImport={setScript} onReadingChange={setReading}/>}
       {mode === "script" && script.length > EDIT_MAX ? <LongTextCard text={script} onClear={() => setScript("")}/>
         : <label className="director-field director-create-text"><span>{mode === "idea" ? "创意" : "剧本正文"}</span>
         <textarea autoFocus rows={mode === "idea" ? 5 : 12} value={text} disabled={busy} maxLength={mode === "idea" ? 2000 : undefined} onChange={e => setText(e.target.value)}
           onPaste={mode === "script" ? guard.onPaste : undefined}
-          placeholder={mode === "idea" ? "例如：凌晨的快递分拣站，夜班分拣员周小满发现一个寄给十年后自己的包裹。" : "支持场次、动作与对白，导入后可拆分为多集"}/>
+          placeholder={mode === "idea" ? (commerce ? "例如：加班到深夜的写字楼，程序员周小满靠一只保温杯和楼下的保洁阿姨结下交情。" : "例如：凌晨的快递分拣站，夜班分拣员周小满发现一个寄给十年后自己的包裹。") : "支持场次、动作与对白，导入后可拆分为多集"}/>
       </label>}
       {mode === "script" && guard.blocked && <LargePasteNotice chars={guard.blocked.chars} onClose={guard.clear} onUpload={() => { guard.clear(); file.current?.open(); }}/>}
-      <p className="director-dialog-note">{mode === "idea" ? "下一步：AI 提出一两个关键问题以确定故事，然后写剧本；也可跳过问答，直接生成。" : "下一步：作为一集，或拆分为多集。已分好集的剧本，建议每集开头单独一行写明「第1集」「E01」或「EP01」，可按标题拆分，不消耗积分。"}</p>
+      <p className="director-dialog-note">{commerce ? "下一步：添加要植入的商品。商品可随时增减。" : mode === "idea" ? "下一步：AI 提出一两个关键问题以确定故事，然后写剧本；也可跳过问答，直接生成。" : "下一步：作为一集，或拆分为多集。已分好集的剧本，建议每集开头单独一行写明「第1集」「E01」或「EP01」，可按标题拆分，不消耗积分。"}</p>
       <InlineError message={error}/>
       <footer><button type="button" className="ip-brand-secondary" onClick={onClose} disabled={locked}>取消</button>
         <button type="button" className="ip-brand-button" disabled={locked || !text.trim()} onClick={() => void submit()}>{busy ? <><Loader2 size={15} className="ip-loading-icon"/>创建中</> : "创建并继续"}</button></footer>
