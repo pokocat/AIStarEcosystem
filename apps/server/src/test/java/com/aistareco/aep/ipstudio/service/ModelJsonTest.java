@@ -16,6 +16,33 @@ class ModelJsonTest {
         assertEquals(1, ModelJson.parse(om, "{\"a\":1}").path("a").asInt());
     }
 
+    @Test void productionSummaryWithPairedLiteralQuotesKeepsTheQuotesAndAllOtherFields() throws Exception {
+        String reply = "{\"clips\":[{\"summary\":\"老钱平静地说\"又来了\"。\",\"assetIds\":[\"as2\",\"as3\"]}]}";
+        var out = ModelJson.parse(om, reply);
+        assertEquals("老钱平静地说\"又来了\"。", out.path("clips").get(0).path("summary").asText());
+        assertEquals(2, out.path("clips").get(0).path("assetIds").size());
+        assertEquals("as3", out.path("clips").get(0).path("assetIds").get(1).asText());
+        assertThrows(JsonProcessingException.class, () -> om.readTree(reply), "the shared mapper stays strict");
+    }
+
+    @Test void pairedQuotesWorkInArrayValuesAndAlongsideExistingEscapes() throws Exception {
+        var out = ModelJson.parse(om, "{\"items\":[\"称为\"Plan B\"的方案\"],\"content\":\"原有\\\"引号\\\"，再说\"继续\"。\"}");
+        assertEquals("称为\"Plan B\"的方案", out.path("items").get(0).asText());
+        assertEquals("原有\"引号\"，再说\"继续\"。", out.path("content").asText());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "{\"a\":\"x\" \"b\":\"y\"}", "{\"a\":\"x\" true \"b\":\"y\"}",
+            "{\"a\":\"说\"半句\"}", "{\"broken\"key\":\"内容\"}",
+            "{\"a\":\"他说\"继续\"。\",\"a\":\"重复字段\"}",
+            "{\"a\":\"他说\"继续\"。\"} {\"b\":2}",
+            "{\"a\":\"他说\"继续\"。\",\"next\":"
+    })
+    void quoteRepairNeverMergesFieldsOrInventsMissingContent(String reply) {
+        assertThrows(JsonProcessingException.class, () -> ModelJson.parse(om, reply));
+    }
+
     @Test void fencesWithAndWithoutALanguageTagAreRemoved() throws Exception {
         assertEquals(1, ModelJson.parse(om, "```json\n{\"a\":1}\n```").path("a").asInt());
         assertEquals(1, ModelJson.parse(om, "```\n{\"a\":1}\n```  ").path("a").asInt());
