@@ -136,7 +136,7 @@
 
 ## 默认文字模型换 Sonnet 5.5（2026-11-04）
 
-- [ ] **H3 提示词优化该绑哪个模型**（2026-11-07 用户待定）：`DAP_VIDEO_PROMPT` 现在仍绑 `ai-onetoken-sonnet55`。同一批 9 份真实请求（修复后，每个模型 1 次）：Sonnet 平均 91 秒、约 28 积分，台词最完整；DeepSeek Flash 直连 26 秒、约 17 积分，台词多的一份只保留 85/206 字；Qwen 13 秒、约 8 积分，这一份一句台词都没写。OneToken 的 `deepseek-v4.1-flash` 30 次里 5 次系统提示词没生效或转成工具调用，不建议用。切 DeepSeek 直连要先把输出上限降下来，否则每次冻结 275 积分。详见 `docs/releases/h3-rewrite-checks-release-20261107.md`。
+- [ ] **看 H3 提示词优化换模型后的效果，并核算售价**（2026-11-07 切到 OneToken 的 `deepseek-v4.1-flash`，接入点 `ai-fc1064f7-9fc`，用户定）：测试时 30 次里 5 次不按约定回，已加重试和校验；要看线上「提示词优化未完成」的比例和台词是否完整（同一批测试里 Sonnet 最完整）。售价暂按 DeepSeek 已公布费率，这个模型的 OneToken 成本还没核算。余额和 Sonnet 共用一个账户，额度用完两边一起失败。切回：`bind` 到 `ai-onetoken-sonnet55`。详见 `docs/releases/h3-rewrite-checks-release-20261107.md`。
 - [ ] **引用文字里的真台词没有核对**（`H3PromptRewrite.checkSpoken`，2026-11-07）：连入的拉片文字现在不参与核对，避免误报；代价是台词写在引用里时，模型丢了也不提示。要核对得先认准引用里哪些是台词（拉片表格的「字幕"…"」）。
 - [ ] **修复后的优化稿没有真实出片**（2026-11-07）：只比较了文字。要挑「短要求 + 参考视频」和「拉片引用」各出一条，看「其他不变」是否成立。
 - [ ] **参考视频超长要到优化之后才报错**（`StudioWorkflowService.submitVideoRewrite` 不查时长，`handOver` 才发现，2026-11-06 用户等了约 30 秒）：应在受理时拦下。

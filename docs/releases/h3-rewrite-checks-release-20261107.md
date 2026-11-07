@@ -71,4 +71,23 @@
 
 ## 模型绑定
 
-`DAP_VIDEO_PROMPT` 没动，仍是 `ai-onetoken-sonnet55`。怎么选见 `TODO.md`。
+这次发布时 `DAP_VIDEO_PROMPT` 没动，仍是 `ai-onetoken-sonnet55`。后来用户决定用 OneToken 的 DeepSeek，见下一节。
+
+## 第二次发布与切换模型（11:37–11:42 CST）
+
+| 项 | 内容 |
+|---|---|
+| 发布号 | `20261107-h3-offcontract`（只发 server） |
+| main | `fb5795c05` |
+| `app.jar` 校验和 | `6560e935cdc6b53c`，与发布包一致 |
+| 回滚 | server `20261107-h3-rewrite-checks`；模型绑定切回 `ai-onetoken-sonnet55`（不用重启） |
+
+**校验**：OneToken 上的 DeepSeek 有时不按约定回，所以加了校验：整份写成中文不算优化稿；计费输入比写法说明少得多，说明没读到说明；这两种和不是 JSON 的回复，同样的请求自动再试一次，用量累计结算。两次都不行：画布停下让用户选，AI 视频页和创作助手退回原文出片。导演台有自己的重试，没读到说明这一条没有接到导演台。
+
+**配置**（改前备份 `/opt/ai-star-eco/backups/onetoken-deepseek-endpoint-20261107T032327Z`、`h3-rewrite-bind-20261107T034230Z`）：
+
+- 接入点 `ai-fc1064f7-9fc`（OneToken · DeepSeek V4.1 Flash）：`https://api.onetoken.love/v1`，模型 `deepseek-v4.1-flash`，输出上限 20000，并发 2，流式，JSON 模式。先用占位符建好，Key 由用户在后台自己粘贴，没有经过命令、仓库或记录；线上实际调用确认可用。
+- 售价 `ai.chat-token-pricing` v9：沿用 Studio DeepSeek 已公布的输入 0.59、输出 2.36 积分/千 Token，每次先冻结约 86 积分。OneToken 这个模型的成本还不知道，毛利没有核算。其他条目校验值改前改后相同。
+- `DAP_VIDEO_PROMPT` 候选和绑定切到新接入点（11:42:32）。开放范围是 `all`，因为 `bind` 按不限应用检查。用户的文字模型列表和其他用途没变。
+
+**窗口**：11:37 重启期间 13 个 502，都是读取请求，其中有两个视频任务的进度查询。
