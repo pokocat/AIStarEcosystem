@@ -29,6 +29,8 @@ import java.util.function.LongConsumer;
 /** Endpoint-configured image transport shared by Studio and the asset/drama image callers. */
 @Component
 public class JusuanImageClient {
+    /** A supplier refusal we cannot state exactly: never its words or a status code, only that it failed and to retry. */
+    static final String GENERATION_FAILED_MESSAGE = "图片生成失败，未生成的图片不扣积分。请重新生成。";
     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AiModelUsageService usage;
     private final AiModelInvocationService models;
     private final FileStorageService storage;
@@ -59,7 +61,7 @@ public class JusuanImageClient {
     }
     private static void validate(AiModelEndpoint endpoint,String prompt,int references,String size,AiImageRequestSpec snapshot) {
         if(endpoint.getImageRequestSpecJson()!=null && !endpoint.getImageRequestSpecJson().isBlank() && !supports(endpoint))
-            throw BusinessException.badRequest("STUDIO_IMAGE_ENDPOINT_INVALID","图片模型的调用地址必须是有效的 HTTPS 地址");
+            throw BusinessException.badRequest("STUDIO_IMAGE_ENDPOINT_INVALID","当前图片模型暂不可用，请选择其他模型或联系平台处理");
         if(!supports(endpoint))return;
         var spec=snapshot==null?requiredSpec(endpoint):snapshot;
         if(prompt.codePointCount(0,prompt.length())>spec.promptMaxChars())throw BusinessException.badRequest("STUDIO_IMAGE_PROMPT_TOO_LONG","当前图片模型的提示词最多 "+spec.promptMaxChars()+" 字，请缩短后再生成");
@@ -96,7 +98,7 @@ public class JusuanImageClient {
     /** A provider request may have been accepted even when its HTTP reply is lost. Never re-POST that checkpoint. */
     public static final class Pending extends RuntimeException {
         private final boolean known;
-        public Pending(boolean known,Throwable cause){super((known?"正在恢复原图片任务，请勿重新生成":"图片受理结果尚未确认，请联系运营核对原请求；请勿重新生成")+upstreamReason(cause),cause);this.known=known;}
+        public Pending(boolean known,Throwable cause){super((known?"正在恢复原图片任务，请勿重新生成":"图片提交结果尚未确认，请联系平台核对；请勿重新生成")+upstreamReason(cause),cause);this.known=known;}
         private static String upstreamReason(Throwable cause) {
             if(cause instanceof BusinessException error && error.getDetails() instanceof Map<?,?> details
                     && details.get("reason") instanceof String reason && !reason.isBlank())return "；原因："+reason;
@@ -130,7 +132,7 @@ public class JusuanImageClient {
                 .baseUrl(state.path("baseUrl").asText(stored.getBaseUrl())).model(state.path("model").asText(stored.getModel()))
                 .upstreamApiKeyEncrypted(stored.getUpstreamApiKeyEncrypted()).imageRequestSpecJson(snapshot!=null?snapshot.json():state.path("imageRequestSpec").asText(stored.getImageRequestSpecJson())).enabled(true).build():stored;
         if(!attempted)validate(endpoint,prompt,keys.size(),size,snapshot);
-        if(!supports(endpoint))throw failure("图片模型未配置可用的请求协议");
+        if(!supports(endpoint))throw failure("当前图片模型暂不可用，请选择其他模型");
         var spec=snapshot==null?requiredSpec(endpoint):snapshot;
         var wire=spec.wire();
         boolean urlInput=wire!=null && "url".equals(wire.inputMode());
@@ -160,7 +162,7 @@ public class JusuanImageClient {
             if(ProviderErrorMessage.hasError(accepted)) {
                 if(refusedForLoad(200,accepted.toString()))throw new ProviderBusy();
                 var error=com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attachBody(
-                        rejected(accepted,"图片生成服务返回错误，未提供具体原因"),accepted.toString());
+                        rejected(accepted,GENERATION_FAILED_MESSAGE),accepted.toString());
                 // Keep sync final failures and async missing-receipt failures on their existing settlement paths.
                 if(resultMode.startsWith("sync-"))throw error;
                 var unconfirmed=new BusinessException(HttpStatus.BAD_GATEWAY,error.getCode(),error.getMessage(),error.getDetails());
@@ -261,7 +263,7 @@ public class JusuanImageClient {
         try {
             int maxBytes=setting(wire==null?null:wire.maxReferenceBytes(),16*1024*1024);
             byte[] bytes=referenceBytes(key,maxBytes,wire);var format=MediaBytes.sniff("image",bytes);
-            if(format==null || bytes.length>maxBytes)throw failure("参考图格式不支持或超过端点配置的大小上限");
+            if(format==null || bytes.length>maxBytes)throw failure("参考图格式不支持或超过大小上限");
             String boundary="studio-image-"+UUID.randomUUID();
             String field=configured(wire==null?null:wire.uploadFieldName(),"image");
             byte[] head=("--"+boundary+"\r\nContent-Disposition: form-data; name=\""+field+"\"; filename=\"reference."+format.ext()+"\"\r\nContent-Type: "+format.mime()+"\r\n\r\n").getBytes(StandardCharsets.UTF_8);
@@ -284,7 +286,7 @@ public class JusuanImageClient {
         List<HttpRequest.BodyPublisher> parts=new ArrayList<>();
         fields.fields().forEachRemaining(field->{
             if(!field.getKey().matches("[A-Za-z][A-Za-z0-9_]{0,63}") || !field.getValue().isValueNode())
-                throw failure("图片编辑的表单参数必须是简单字段");
+                throw failure("当前图片模型暂不可用，请选择其他模型");
             if(!field.getValue().isNull())parts.add(HttpRequest.BodyPublishers.ofString("--"+boundary+
                     "\r\nContent-Disposition: form-data; name=\""+field.getKey()+"\"\r\n\r\n"+field.getValue().asText()+"\r\n"));
         });
@@ -293,7 +295,7 @@ public class JusuanImageClient {
         for(int i=0;i<keys.size();i++)try {
             int maxBytes=setting(wire.maxReferenceBytes(),50*1024*1024);
             byte[] bytes=referenceBytes(keys.get(i),maxBytes,wire);var format=MediaBytes.sniff("image",bytes);
-            if(format==null || bytes.length>maxBytes)throw failure("参考图格式不支持或超过端点配置的大小上限");
+            if(format==null || bytes.length>maxBytes)throw failure("参考图格式不支持或超过大小上限");
             parts.add(HttpRequest.BodyPublishers.ofString("--"+boundary+"\r\nContent-Disposition: form-data; name=\""+
                     field+"\"; filename=\"reference-"+i+"."+format.ext()+"\"\r\nContent-Type: "+format.mime()+"\r\n\r\n"));
             parts.add(HttpRequest.BodyPublishers.ofByteArray(bytes));parts.add(HttpRequest.BodyPublishers.ofString("\r\n"));
@@ -309,7 +311,7 @@ public class JusuanImageClient {
             int maxBytes=setting(wire.maxReferenceBytes(),16*1024*1024);
             if(key.startsWith("https://") || key.startsWith("http://")) {referenceBytes(key,maxBytes,wire);return key;}
             var file=storage.openForRead(key);
-            if(Files.size(file)<1 || Files.size(file)>maxBytes)throw failure("参考图超过端点配置的大小上限");
+            if(Files.size(file)<1 || Files.size(file)>maxBytes)throw failure("参考图超过大小上限");
             byte[] head;
             try(var input=Files.newInputStream(file)){head=input.readNBytes(64);}
             if(MediaBytes.sniff("image",head)==null)throw failure("参考图格式不支持");
@@ -317,7 +319,7 @@ public class JusuanImageClient {
             URI uri=URI.create(url==null?"":url);
             if(!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost()==null || uri.getUserInfo()!=null
                     || uri.getFragment()!=null)
-                throw failure("参考图没有可供供应商读取的 HTTPS 地址");
+                throw failure("参考图暂时无法读取，请重新上传");
             return url;
         }catch(BusinessException e){throw e;}catch(Exception e){throw failure("参考图地址不可用");}
     }
@@ -341,7 +343,7 @@ public class JusuanImageClient {
             }
         } else {
             var file=storage.openForRead(source);
-            if(Files.size(file)<1 || Files.size(file)>maxBytes)throw failure("参考图超过端点配置的大小上限");
+            if(Files.size(file)<1 || Files.size(file)>maxBytes)throw failure("参考图超过大小上限");
             bytes=Files.readAllBytes(file);
         }
         if(bytes.length<1 || bytes.length>maxBytes || MediaBytes.sniff("image",bytes)==null)throw failure("参考图格式不支持或超过大小上限");
@@ -371,7 +373,7 @@ public class JusuanImageClient {
     }
 
     private byte[] resultBytes(AiModelEndpoint endpoint,AiImageRequestSpec.Wire wire,String value,String mode) {
-        if(value==null || value.isBlank())throw failure("图片引擎返回成功，但结果里没有图片，请重试；多次出现请联系运营核对模型配置");
+        if(value==null || value.isBlank())throw failure(GENERATION_FAILED_MESSAGE);
         if("sync-base64".equals(mode)) {
             String encoded=value;
             if(encoded.startsWith("data:image/")) {
@@ -380,7 +382,7 @@ public class JusuanImageClient {
                 encoded=encoded.substring(marker+8);
             }
             int maxBytes=setting(wire.maxOutputBytes(),64*1024*1024);
-            if(encoded.length()>((long)maxBytes+2)/3*4+4)throw failure("图片结果超过端点配置的大小上限");
+            if(encoded.length()>((long)maxBytes+2)/3*4+4)throw failure("图片结果超过大小上限");
             try{return checkedImage(Base64.getDecoder().decode(encoded),maxBytes);}
             catch(IllegalArgumentException e){throw failure("图片结果编码无效");}
         }
@@ -410,7 +412,7 @@ public class JusuanImageClient {
                     || uri.getFragment()!=null || !(host.equalsIgnoreCase(URI.create(endpoint.getBaseUrl()).getHost())
                     || wire.outputHosts()!=null && wire.outputHosts().stream().anyMatch(host::equalsIgnoreCase)
                     || fallback && wire.outputHosts()==null)
-                    || !com.aistareco.aep.service.ai.PublicMediaUris.publicHost(host))throw failure("图片结果地址不在端点允许的 HTTPS 域名内");
+                    || !com.aistareco.aep.service.ai.PublicMediaUris.publicHost(host))throw failure("图片结果不可用，请重试");
             var response=http.send(HttpRequest.newBuilder(uri)
                     .timeout(Duration.ofMillis(setting(wire.requestTimeoutMillis(),90000))).GET().build(),
                     HttpResponse.BodyHandlers.ofInputStream());
@@ -428,7 +430,7 @@ public class JusuanImageClient {
 
     private static byte[] checkedImage(byte[] bytes,int maxBytes) {
         if(bytes.length==0 || bytes.length>maxBytes || MediaBytes.sniff("image",bytes)==null)
-            throw failure("图片结果不可用或超过端点配置的大小上限");
+            throw failure("图片结果不可用或超过大小上限");
         return bytes;
     }
 
@@ -458,13 +460,26 @@ public class JusuanImageClient {
     }
 
     /**
-     * 只认明确说并发、限流、过载的拒绝。额度用完不算（排多久都没用）；状态码不明确又没这些字的 5xx 也不算，
-     * 那种可能已经受理，仍走「受理未知」，不能重交。读供应商原话，不读对外脱敏后的那份（§8.0.1 ①）。
+     * 只认明确说并发、限流、过载的拒绝，以及网关明确说「没有可用通道」的 503。额度用完不算（排多久都没用）；
+     * 状态码不明确又没这些字的 5xx 也不算，那种可能已经受理，仍走「受理未知」，不能重交。
+     * 读供应商原话，不读对外脱敏后的那份（§8.0.1 ①）。
      */
     static boolean refusedForLoad(int status,String body) {
         if(com.aistareco.aep.service.alerts.ModelQuotaAlerts.isOutOfQuota(body))return false;
         if(status==429)return true;
+        if(status==503 && noAvailableChannel(body))return true;
         return com.aistareco.aep.service.alerts.ModelQuotaAlerts.isRateLimited(body);
+    }
+
+    /**
+     * 分发网关挑不出通道（2026-11-04 线上：`model_not_found` / "No available channel for model … under group …"）。
+     * 请求没有送到任何模型，所以一定没有受理，可以安全重交；只认 503，别的状态码里出现这几个字不算
+     * （同样的字出现在 200 响应或提示词里不代表拒绝）。
+     */
+    private static boolean noAvailableChannel(String body) {
+        if(body==null||body.isBlank())return false;
+        String text=(body.length()<=4000?body:body.substring(0,4000)).toLowerCase(java.util.Locale.ROOT);
+        return text.contains("no available channel")||text.contains("无可用渠道")||text.contains("没有可用渠道")||text.contains("无可用通道");
     }
 
     // AGENTS §8.0.1: keep actionable JSON rejection messages on the public path as well as in diagnostics.
@@ -486,7 +501,7 @@ public class JusuanImageClient {
         var moderation=com.aistareco.aep.service.ai.ProviderContentModeration.find(body);
         if(moderation!=null)return new ProviderRejected(reason,Map.of("providerCode",moderation.providerCode(),
                 "reason",reason,"category","content_moderation","target",moderation.target()));
-        return new ProviderRejected("图片生成服务返回错误："+reason,Map.of("providerCode",code,"reason",reason,
+        return new ProviderRejected("图片生成失败："+reason,Map.of("providerCode",code,"reason",reason,
                 "category","provider_rejection"));
     }
     private HttpRequest.Builder request(AiModelEndpoint endpoint,AiImageRequestSpec.Wire wire,String path) {
@@ -539,7 +554,7 @@ public class JusuanImageClient {
     }
     private JsonNode checked(HttpResponse<String> response,AiImageRequestSpec.Wire wire) {
         if(response.statusCode()/100!=2) {
-            var error=rejected(response.body(),"图片生成服务返回错误（"+response.statusCode()+"）");
+            var error=rejected(response.body(),GENERATION_FAILED_MESSAGE);
             // Keep recoverable failures distinct from a definitive submission rejection.
             throw attach(new BusinessException(HttpStatus.BAD_GATEWAY,error.getCode(),error.getMessage(),error.getDetails()),response);
         }
@@ -561,7 +576,7 @@ public class JusuanImageClient {
                 throw new IllegalStateException("Expected an image response object");
             return result;
         } catch(Exception e) {
-            var error=failure("图片生成接口返回的数据无法解析，请联系运营核查");
+            var error=failure("生成服务返回的数据无法解析，请联系平台处理");
             String detail="image-response parseError="+e.getClass().getSimpleName()
                     +" responseCharacters="+(response.body()==null?0:response.body().length());
             if(e instanceof JsonProcessingException json && json.getLocation()!=null)
@@ -584,9 +599,9 @@ public class JusuanImageClient {
     private static String assetIdNested(JsonNode node){for(String field:List.of("outputAssetId","output_asset_id","assetId","asset_id"))if(node.hasNonNull(field))return node.path(field).asText();return null;}
     private static AiImageRequestSpec requiredSpec(AiModelEndpoint endpoint){
         AiImageRequestSpec spec=AiImageRequestSpec.read(endpoint.getImageRequestSpecJson());
-        if(spec==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_IMAGE_SPEC_NOT_CONFIGURED","当前图片模型尚未配置合法请求规格");
+        if(spec==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_IMAGE_SPEC_NOT_CONFIGURED","当前图片模型暂不可用，请选择其他模型");
         return spec;
     }
-    private static void requireId(String id){if(id==null || !id.matches("[a-zA-Z0-9_-]{1,128}"))throw failure("聚算图片任务或产物编号无效");}
+    private static void requireId(String id){if(id==null || !id.matches("[a-zA-Z0-9_-]{1,128}"))throw failure("生成服务返回的任务编号无效，请联系平台处理");}
     private static BusinessException failure(String message){return new BusinessException(HttpStatus.BAD_GATEWAY,"STUDIO_IMAGE_PROVIDER_FAILED",message);}
 }

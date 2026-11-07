@@ -56,10 +56,10 @@ public class StudioPlatformPricing {
         } catch(PricingException e) {
             log.warn("Platform speech pricing rejected endpoint={} status={} code={} response={}",endpointId,e.status(),e.code(),e.getMessage());
             if(e.status()==404)return null;
-            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_PLATFORM_PRICING_UNAVAILABLE","配音定价暂不可用，请检查运营平台成本与定价配置");
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_PLATFORM_PRICING_UNAVAILABLE","配音暂不可用，请联系平台处理");
         } catch(IllegalArgumentException e) {
             log.warn("Platform speech pricing contract invalid endpoint={} detail={}",endpointId,e.getMessage());
-            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_PLATFORM_PRICING_INVALID","配音定价配置与模型不匹配，请联系运营核对");
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_PLATFORM_PRICING_INVALID","配音暂不可用，请联系平台处理");
         }
     }
     private static BigDecimal decimal(JsonNode value,boolean positive) {

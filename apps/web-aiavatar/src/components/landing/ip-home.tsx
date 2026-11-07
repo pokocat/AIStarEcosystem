@@ -56,7 +56,7 @@ function IpHomeNext({ header = true }: { header?: boolean }) {
   const [tab, setTab] = useState<FeedTab>("all");
   const [using, setUsing] = useState<IpTemplate>();
   const goals = useRef<HTMLDivElement>(null);
-  // 「创建空白画布」和左栏「画布」是同一个「新建」 (docs/ip-studio-new-canvas-and-threads.md §2.2).
+  // 「新建画布」和左栏「画布」是同一个「新建」 (docs/ip-studio-new-canvas-and-threads.md §2.2).
   const newCanvas = useStartNewCanvas();
   const busy = !!creating || newCanvas.creating;
   const showFailure = useStudioFailure();

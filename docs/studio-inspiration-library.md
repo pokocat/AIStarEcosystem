@@ -41,7 +41,7 @@
 STUDIO_TOKEN=<超级管理员令牌> node scripts/inspiration/publish.mjs --base <后端地址> --skills <resources/skills 目录>
 ```
 
-- 走现有接口：上传素材 → 建画布 → 存为官方内容（`kind=example`，素材复制到 `ipstudio_demo/<demoId>/`）→ 设封面和排序 → 删中转画布。不调模型，不扣积分。
+- 走现有接口：上传素材 → 建画布 → 保存为官方内容（`kind=example`，素材复制到 `ipstudio_demo/<demoId>/`）→ 设封面和排序 → 删中转画布。不调模型，不扣积分。
 令牌从已用超管登录的 Chrome 控制台取，不写进命令历史（2026-11-06 线上就是这样发的，令牌过期或复制错会报 401）：
 
 ```js

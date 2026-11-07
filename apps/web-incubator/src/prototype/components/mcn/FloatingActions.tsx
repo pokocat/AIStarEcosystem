@@ -3,14 +3,15 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ChevronDown, Music, Plus, Upload, Users, Wand2 } from 'lucide-react';
+import { ChevronDown, Clapperboard, Film, Image as ImageIcon, Plus, Upload, Wand2 } from 'lucide-react';
 import type { Lang } from '../../translations';
 
 const ACTIONS: Array<{ id: string; icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; zh: string; en: string; descZh: string; descEn: string; color: string }> = [
-  { id: 'studio', icon: Music, zh: '创作内容', en: 'Create content', descZh: '在 AI 导演台新建项目', descEn: 'New project in the AI Director', color: '#06b6d4' },
-  { id: 'artist_hub', icon: Wand2, zh: '艺人中心', en: 'Artist hub', descZh: '孵化与管理角色 IP', descEn: 'Incubate and manage role IPs', color: '#8b5cf6' },
+  { id: 'production_workshop/video', icon: Film, zh: 'AI 视频', en: 'AI video', descZh: '选场景，几句话出一条视频', descEn: 'Pick a scene, get a video', color: '#7c3aed' },
+  { id: 'production_workshop/image', icon: ImageIcon, zh: 'AI 图片', en: 'AI image', descZh: 'IP 写真、商品图、表情包', descEn: 'IP photos, product shots, stickers', color: '#db2777' },
+  { id: 'studio', icon: Clapperboard, zh: '导演台项目', en: 'Director project', descZh: '多镜头、分集与精修', descEn: 'Multi-shot, episodes, fine-tuning', color: '#0891b2' },
+  { id: 'incubation', icon: Wand2, zh: '孵化角色 IP', en: 'New role IP', descZh: '形象、人设与技能', descEn: 'Look, persona and skills', color: '#8b5cf6' },
   { id: 'distribution', icon: Upload, zh: '发布分发', en: 'Distribute', descZh: '多平台一键分发', descEn: 'Publish to every platform', color: '#22c55e' },
-  { id: 'community', icon: Users, zh: '粉丝运营', en: 'Community', descZh: '社群、互动与应援', descEn: 'Community, chat and fan projects', color: '#ec4899' },
 ];
 
 export const QuickCreateMenu = ({ lang, onNavigate }: { lang: Lang; onNavigate: (page: string) => void }) => {
@@ -31,7 +32,7 @@ export const QuickCreateMenu = ({ lang, onNavigate }: { lang: Lang; onNavigate: 
     <div ref={ref} className="relative">
       <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open} aria-haspopup="menu"
         className="h-8 px-2.5 sm:px-3 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 shadow-sm"
-        style={{ background: 'linear-gradient(90deg, #06b6d4, #8b5cf6)', color: '#fff' }}>
+        style={{ background: 'linear-gradient(90deg, #0891b2, #7c3aed)', color: '#fff' }}>
         <Plus className="w-3.5 h-3.5" /><span className="hidden sm:inline">{zh ? '快速创建' : 'Create'}</span>
         <ChevronDown className={`hidden sm:block w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>

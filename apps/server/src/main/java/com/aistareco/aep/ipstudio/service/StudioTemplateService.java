@@ -244,8 +244,8 @@ public class StudioTemplateService {
         for(Step step:recipe.steps()) {
             if(step==null)invalid("步骤不完整");identifier(step.id());text(step.nodeId(),64,"步骤节点");text(step.title(),128,"步骤名称");
             boolean video="video".equals(step.operation());
-            if(video){if(step.prompt()==null)invalid("视频指令不能为空值");}
-            else text(step.prompt(),12000,"图片指令");
+            if(video){if(step.prompt()==null)invalid("视频提示词不能为空");}
+            else text(step.prompt(),12000,"图片提示词");
             if(!ids.add(step.id()) || !nodes.add(step.nodeId()) || !Set.of("image","video").contains(step.operation()==null?"":step.operation()) || (video?!"video".equals(step.outputRole()):!SIZES.contains(step.size()==null?"":step.size()) || !ROLES.contains(step.outputRole()==null?"":step.outputRole())))invalid("步骤重复或能力/输出规格不支持");
             var node=IpDocs.node(source,step.nodeId());if(node==null || !step.operation().equals(node.path("type").asText()))invalid("步骤必须来自对应的图片或视频节点");
             if(step.references()==null || step.references().stream().anyMatch(Objects::isNull) || !video&&step.references().size()>4 || new HashSet<>(step.references()).size()!=step.references().size())invalid("图片最多引用 4 个来源，引用不能重复");
@@ -290,7 +290,7 @@ public class StudioTemplateService {
     static String render(String prompt,Map<String,Value> values,boolean video) {
         var matcher=VARIABLE.matcher(prompt);var result=new StringBuffer();
         while(matcher.find())matcher.appendReplacement(result,java.util.regex.Matcher.quoteReplacement(values.get(matcher.group(1)).text()));
-        matcher.appendTail(result);if(!video && result.length()>16000)inputInvalid("填入后的创作指令超过长度限制");return result.toString();
+        matcher.appendTail(result);if(!video && result.length()>16000)inputInvalid("填入后的提示词超过长度限制");return result.toString();
     }
     private IpTemplateVersion requireUse(String owner,UseRequest request) {
         if(request==null || request.versionId()==null)inputInvalid("请选择模板版本");

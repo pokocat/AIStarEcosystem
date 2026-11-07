@@ -411,7 +411,7 @@ function MPublicShowcase({ char }) {
   return hML('div', { className: 'm-fade', style: { padding: '16px 18px 0' } },
     hML('div', { style: { display: 'flex', alignItems: 'center', gap: 9, marginBottom: 18, padding: '10px 13px', background: 'var(--primary-tint)', border: '1px solid var(--primary-soft)', borderRadius: 'var(--r-md)' } },
       hML(Icons.shield, { size: 16, style: { color: 'var(--primary)', flex: '0 0 auto' } }),
-      hML('span', { style: { fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.45 } }, '广场公开形象 · 只读展示。「另存为我的数字人」后即可自由改名、迭代与生成衍生。')),
+      hML('span', { style: { fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.45 } }, '广场公开形象，仅供查看。点击「另存为我的数字人」后，可改名、迭代和生成衍生内容。')),
     imgs.length > 0 && hML('div', { style: { marginBottom: 22 } },
       title('形象图集'),
       hML('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 } },
@@ -667,7 +667,7 @@ function MDetail({ char: initialChar, ctx }) {
           hML('div', { className: 'm-card', style: { margin: '12px 18px 0', padding: '14px 16px', display: 'flex', justifyContent: 'space-between' } },
             [['版本', char.versions], ['作品', totalAssets], ['视频', counts.video || 0], ['更新', char.updated]].map(([k, v], i) =>
               hML('div', { key: i, style: { textAlign: 'center', flex: 1, borderLeft: i ? '1px solid var(--line)' : 'none' } },
-                // 「更新」是文案（如 "2 小时前"），降字号 + 行高补齐，不破坏数字行节奏
+                // 「更新」是时间串（yyyy-MM-dd HH:mm:ss），降字号 + 行高补齐，不破坏数字行节奏
                 hML('div', { className: 'mono', style: typeof v === 'number'
                   ? { fontSize: 16, fontWeight: 700 }
                   : { fontSize: 12.5, fontWeight: 700, lineHeight: '22px', whiteSpace: 'nowrap' } }, v),
@@ -750,7 +750,7 @@ function MAtlas({ char, busy, onGenerate }) {
     return hML('div', { style: { textAlign: 'center', padding: '34px 18px', border: '1.5px dashed var(--line-3)', borderRadius: 'var(--r-xl)', background: 'var(--surface)' } },
       hML('div', { style: { width: 52, height: 52, borderRadius: 16, margin: '0 auto 14px', display: 'grid', placeItems: 'center', background: 'var(--primary-soft)', color: 'var(--primary)' } }, hML(Icons.images, { size: 24 })),
       hML('div', { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, '还没有标准图集'),
-      hML('p', { style: { fontSize: 12.5, color: 'var(--ink-3)', margin: '0 0 16px', lineHeight: 1.5 } }, busy ? '正在出图…' : '从定妆形象一键生成 5 张标准机位图'),
+      hML('p', { style: { fontSize: 12.5, color: 'var(--ink-3)', margin: '0 0 16px', lineHeight: 1.5 } }, busy ? '生成中…' : '从定妆形象一键生成 5 张标准机位图'),
       busy
         ? hML('div', { style: { maxWidth: 200, margin: '0 auto' } }, hML(UI.Progress, { pct: Math.round(busy.pct || 5), showLabel: true }))
         : hML(UI.Button, { variant: 'primary', icon: Icons.sparkle, onClick: onGenerate }, '生成标准图集'));
@@ -905,7 +905,7 @@ function MAssets({ char, ctx, busy, onGenerate, onOpenGenerate, nonce }) {
       hML('div', { style: { textAlign: 'center', padding: '34px 18px', border: '1.5px dashed var(--line-3)', borderRadius: 'var(--r-xl)', background: 'var(--surface)' } },
         hML('div', { style: { width: 52, height: 52, borderRadius: 16, margin: '0 auto 14px', display: 'grid', placeItems: 'center', background: 'var(--primary-soft)', color: 'var(--primary)' } }, hML(Icons.images, { size: 24 })),
         hML('div', { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, '还没有作品'),
-        hML('p', { style: { fontSize: 12.5, color: 'var(--ink-3)', margin: '0 0 16px', lineHeight: 1.5 } }, '从定妆形象生成标准图集，或生成表情 / 场景 / 换装 / 3D / 运镜视频等衍生资产 —— 生成的内容都会沉淀在这里。'),
+        hML('p', { style: { fontSize: 12.5, color: 'var(--ink-3)', margin: '0 0 16px', lineHeight: 1.5 } }, '从定妆形象生成标准图集，或生成表情、场景、换装、3D、运镜视频等衍生资产。生成的内容都保存在这里。'),
         hML(UI.Button, { variant: 'primary', icon: Icons.sparkle, onClick: onOpenGenerate }, '生成第一个资产')));
   }
 

@@ -63,10 +63,10 @@ public final class IpDocs {
      */
     public static void requireValidDoc(JsonNode doc) {
         if (doc == null || !doc.isObject()) {
-            throw BusinessException.badRequest("IP_DOC_INVALID", "画布内容格式不对");
+            throw BusinessException.badRequest("IP_DOC_INVALID", "画布内容格式不正确，请刷新后重试");
         }
         if (!doc.path("nodes").isArray() || !doc.path("connections").isArray()) {
-            throw BusinessException.badRequest("IP_DOC_INVALID", "画布内容缺 nodes / connections");
+            throw BusinessException.badRequest("IP_DOC_INVALID", "画布内容不完整，请刷新后重试");
         }
     }
 

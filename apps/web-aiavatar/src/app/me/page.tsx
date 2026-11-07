@@ -139,7 +139,7 @@ function LayoutSwitchRow() {
         {next === "desktop" ? "切换到电脑版" : "切换到手机版"}
       </span>
       <span style={{ fontSize: 12, color: "var(--ink-3)" }}>
-        {next === "desktop" ? "画布和宽表格更好用" : "回到竖排界面"}
+        {next === "desktop" ? "画布和宽表格更好用" : "返回竖排界面"}
       </span>
     </button>
   );
@@ -157,7 +157,7 @@ function UiVersionRow() {
         cursor: "pointer", textAlign: "left", font: "inherit",
       }}
     >
-      <span style={{ fontSize: 14, color: "var(--ink)" }}>{next ? "回到旧版" : "体验新版"}</span>
+      <span style={{ fontSize: 14, color: "var(--ink)" }}>{next ? "返回旧版" : "体验新版"}</span>
       <span style={{ fontSize: 12, color: "var(--ink-3)" }}>{next ? "换回原来的首页和导航" : "按场景创作的新首页"}</span>
     </button>
   );
@@ -176,7 +176,7 @@ function MeRow(props: MeRowProps) {
  */
 function MeNext({ name, phone, demo, identity, onLogout }: { name: string; phone?: string; demo: boolean; identity: ReturnType<typeof useIdentity>; onLogout: () => void }) {
   const layout = useLayoutMode();
-  // 手机上没有电脑版顶栏那块余额，生成按钮也只写这次花多少：余额放在个人卡上（和电脑版同一个接口、同样不含冻结积分）。
+  // 手机上没有电脑版顶栏那块余额，生成按钮也只写这次花多少：余额放在个人卡上（和电脑版同一个接口）。
   const { balance, error } = useWalletBalance(identity?.uid ?? null, true, "/me");
   const credit = error ? "—" : balance === undefined ? "…" : new Intl.NumberFormat("zh-CN").format(balance);
   return <main className="ip-brand-surface studio-next-page studio-me">
@@ -184,7 +184,7 @@ function MeNext({ name, phone, demo, identity, onLogout }: { name: string; phone
     <section className="studio-me-profile" aria-label="账号">
       <EditableAccountAvatar identity={identity} size={48} />
       <div><strong>{name}</strong>{phone && <span>{phone}</span>}{demo && <small>演示数据</small>}</div>
-      <Link className="studio-me-credit" href={studioHref("#/membership")} aria-label={error ? "积分暂时读不出来，查看积分" : `可用积分 ${credit}，查看积分`} title="可用积分，不含冻结的；点击查看积分">
+      <Link className="studio-me-credit" href={studioHref("#/membership")} aria-label={error ? "积分加载失败，查看积分" : `可用积分 ${credit}，查看积分`} title="可用积分，点击查看积分">
         <strong>{credit}</strong><span>可用积分</span>
       </Link>
     </section>
@@ -192,7 +192,7 @@ function MeNext({ name, phone, demo, identity, onLogout }: { name: string; phone
       <MeRow href="/templates" icon={Lightbulb} title="灵感" sub="官方案例和模板，可以直接做同款" />
       <MeRow href="/projects" icon={FolderOpen} title="项目" sub="画布与场景草稿，可继续编辑" />
       <MeRow href="/assets" icon={Layers} title="资产" sub="人物、声音与创作素材" />
-      <MeRow href="/director" icon={Clapperboard} title="短剧导演台" sub="写剧本、拆分镜、出片" />
+      <MeRow href="/director" icon={Clapperboard} title="短剧导演台" sub="写剧本、拆分镜、生成视频" />
     </nav>
     <nav className="studio-me-group" aria-label="名片与授权">
       <MeRow href="/cards" icon={IdCard} title="我的名片" sub="对外发布面 · 扫码即看" />
@@ -212,7 +212,7 @@ function MeNext({ name, phone, demo, identity, onLogout }: { name: string; phone
     <div className="studio-me-group">
       {/* 电脑版的「我的」是 AccountOverview，到这里一定是手机版；挂载前不知道形态，先不画这一行。 */}
       {layout === "mobile" && <MeRow icon={Monitor} title="切换到电脑版" sub="画布和宽表格更好用" onClick={() => setLayout("desktop")} />}
-      <MeRow icon={RotateCcw} title="回到旧版" sub="换回原来的首页和导航" onClick={() => setUiVersion("classic")} />
+      <MeRow icon={RotateCcw} title="返回旧版" sub="换回原来的首页和导航" onClick={() => setUiVersion("classic")} />
     </div>
     {!USE_MOCK && <button type="button" className="studio-me-logout" onClick={onLogout}>退出登录</button>}
     <HubTabBar />

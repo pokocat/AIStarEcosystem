@@ -191,7 +191,7 @@ public class IpRunWorker {
         String image = sourceKey == null ? null : imageInput.of(sourceKey);
         if (image == null) {
 
-            failWithoutSpend(run, "IP_NODE_INPUT_MISSING", "读取不到照片，请重新上传后再抽取");
+            failWithoutSpend(run, "IP_NODE_INPUT_MISSING", "照片加载失败，请重新上传后抽取");
             return;
         }
 
@@ -202,8 +202,8 @@ public class IpRunWorker {
         } catch (RuntimeException e) {
 
             failWithoutSpend(run, "IP_IDENTITY_EXTRACT_FAILED",
-                    "看图抽取特征卡失败：当前形象引擎可能不支持图片输入。"
-                            + "请在后台给「数字人 · 人设」用途绑定支持看图的模型，或手动填写特征卡", e);
+                    "特征卡抽取失败，当前模型可能不支持读取图片。"
+                            + "请手动填写特征卡或联系平台处理", e);
             return;
         }
 
@@ -317,7 +317,7 @@ public class IpRunWorker {
                 final int candidateNo=i+1;
                 atomic(()->{
                 if(enterpriseBilling!=null)enterpriseBilling.lockForSettlement(IpRunService.REF_TYPE,run.getId());
-                if(unit>0)credits.commitHold(IpRunService.REF_TYPE,run.getId(),unit,"IP 形象出图 · 第 "+candidateNo+" 张",
+                if(unit>0)credits.commitHold(IpRunService.REF_TYPE,run.getId(),unit,"IP 形象生成图片 · 第 "+candidateNo+" 张",
                         new com.aistareco.aep.billing.service.ModelBillingMath.Usage(java.math.BigDecimal.valueOf(candidateNo),null));
                 // commit 成功之后才承认这张图。
                 // 带上宽高：画布拿它算节点尺寸 —— 不给的话只能按上限铺成正方形，
@@ -525,8 +525,8 @@ public class IpRunWorker {
             }
             if ("master".equals(role) || "source".equals(role)) {
                 throw new UnreadableIdentityRefException("master".equals(role)
-                        ? "读取不到主形象图，无法锁定同一个人的样貌；已退回冻结积分，请重新生成主形象并选图"
-                        : "读取不到原照片，无法锁定同一个人的样貌；已退回冻结积分，请重新上传照片");
+                        ? "主形象图加载失败，无法保持人物样貌一致。冻结积分已退回，请重新生成主形象并选择图片"
+                        : "原照片加载失败，无法保持人物样貌一致。冻结积分已退回，请重新上传照片");
             }
             changed |= markRefUnapplied(inputs, refIndex, role);
         }
@@ -717,7 +717,7 @@ public class IpRunWorker {
             String m = e.getMessage();
             if (m != null && !m.isBlank()) return m;
         }
-        return "生成失败（" + e.getClass().getSimpleName() + "），请稍后重试";
+        return "生成失败，请稍后重试";
     }
 
     private static String textOf(JsonNode n, String field) {

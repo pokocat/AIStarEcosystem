@@ -29,7 +29,7 @@ test("usage pagination goes back to the server rather than slicing current rows"
 
 test("partial consumption and returned remainder keep actual spend distinct from freezing", async () => {
   api.usage.mockResolvedValue({ data: [{ ...usage, cost: 6, pendingCredits: 0, status: "released" }], pagination: { total: 1 } });
-  render(<EnterpriseReports context={context} kind="usage"/>); await screen.findByText("6"); expect(screen.getAllByText("已结算，余款已退回").length).toBeGreaterThan(0); expect(screen.queryByText("20")).toBeNull();
+  render(<EnterpriseReports context={context} kind="usage"/>); await screen.findByText("6"); expect(screen.getAllByText("已结算，多余积分已退回").length).toBeGreaterThan(0); expect(screen.queryByText("20")).toBeNull();
 });
 
 

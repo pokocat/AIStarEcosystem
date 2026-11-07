@@ -77,8 +77,8 @@ test("the clip's related assets can unlink just that asset after the impact is s
   const row = await screen.findByRole("button", { name: "从片段 1 解除林夏的关联" });
   expect(row.closest("li")!.className).toContain("is-focused");
   fireEvent.click(row);
-  expect(await screen.findByText(/不删除片段，不删除资产，其他片段不受影响/)).toBeTruthy();
-  expect(screen.getByText(/这一段已有的分镜图不会删除/)).toBeTruthy();
+  expect(await screen.findByText(/不删除片段和资产，其他片段不受影响/)).toBeTruthy();
+  expect(screen.getByText(/此片段已有的分镜图不会删除/)).toBeTruthy();
   expect(screen.getByText(/还有 1 句台词，台词和说话人不变/)).toBeTruthy();
   await act(async () => { fireEvent.click(screen.getAllByRole("button", { name: "解除关联" }).at(-1)!); });
   await vi.waitFor(() => expect(DirectorApi.edit).toHaveBeenCalledWith("w", "clip.unlinkAsset", "c1", null, { assetId: "as1" }));

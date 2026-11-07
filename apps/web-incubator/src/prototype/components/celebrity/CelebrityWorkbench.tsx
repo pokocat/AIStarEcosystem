@@ -148,9 +148,9 @@ const MOCK_AI_REQUESTS: AILikenessRequest[] = [
   { id: 'ai2', mcnName: 'CyberMCN', modelType: 'face', riskLevel: 'high', platforms: ['抖音', '微博'], purpose: 'AI换脸用于品牌宣传短片', requestedAt: '2026-05-06 14:00', status: 'pending', aiVendor: 'FaceSwap Pro' },
 ];
 const MOCK_CONTENT_REVIEWS: ContentReviewItem[] = [
-  { id: 'cv1', title: '陈屿×泡泡玛特联名开箱视频', type: 'clip', uploader: '@neon_v_official', mcnName: 'AI Star MCN', duration: '3分28秒', submittedAt: '2026-05-07 09:00', status: 'pending', platform: '抖音' },
+  { id: 'cv1', title: '陆承远×萌趣星球联名开箱视频', type: 'clip', uploader: '@neon_v_official', mcnName: 'AI Star MCN', duration: '3分28秒', submittedAt: '2026-05-07 09:00', status: 'pending', platform: '抖音' },
   { id: 'cv2', title: 'AI数字人带货直播高光片段', type: 'digitalHuman', uploader: '@topstar_douyin', mcnName: 'TopCreator MCN', duration: '1分15秒', submittedAt: '2026-05-07 11:30', status: 'pending', platform: '抖音' },
-  { id: 'cv3', title: '陈屿AI声音配音护肤品种草', type: 'aiLikeness', uploader: '@luna_soft_ks', mcnName: 'HypeStar Studio', duration: '0分58秒', submittedAt: '2026-05-06 20:00', status: 'revision', platform: '快手' },
+  { id: 'cv3', title: '陆承远AI声音配音护肤品种草', type: 'aiLikeness', uploader: '@luna_soft_ks', mcnName: 'HypeStar Studio', duration: '0分58秒', submittedAt: '2026-05-06 20:00', status: 'revision', platform: '快手' },
   { id: 'cv4', title: '演唱会回顾混剪合集', type: 'clip', uploader: '@neon_v_channel', mcnName: 'AI Star MCN', duration: '5分40秒', submittedAt: '2026-05-06 15:00', status: 'approved', platform: '视频号', views: '24.3万' },
 ];
 const INIT_IP_AUTH: IPAuthRecord[] = [
@@ -168,7 +168,7 @@ const INIT_PRODUCT_ONBOARD: ProductOnboardItem[] = [
   { id: 'po6', productName: '数字游民背包',        brand: 'NomadGear',  category: '箱包',     price: '¥789',  source: 'creator',  submittedBy: '@luna_soft_ks', mcnName: 'HypeStar Studio', step: 3, platformSample: 'shipping', celebSample: 'notSent', submittedAt: '2026-05-04', trackingPlatform: 'YT5566778899' },
 ];
 const INIT_BRAND_AUTH: BrandAuthRequest[] = [
-  { id: 'ba1', brandName: '安踏运动', authTypes: ['人像授权', '代言授权'], purpose: '2026秋冬系列运动服装代言，线上线下全渠道', duration: '24个月', amount: '¥580万', platforms: ['抖音', '微博', '小红书', '线下广告'], status: 'sampleStage', platformSample: 'approved', celebSample: 'shipping', submittedAt: '2026-05-02' },
+  { id: 'ba1', brandName: '跃锋运动', authTypes: ['人像授权', '代言授权'], purpose: '2026秋冬系列运动服装代言，线上线下全渠道', duration: '24个月', amount: '¥580万', platforms: ['抖音', '微博', '小红书', '线下广告'], status: 'sampleStage', platformSample: 'approved', celebSample: 'shipping', submittedAt: '2026-05-02' },
   { id: 'ba2', brandName: 'CyberGlow护肤', authTypes: ['人像授权', '联名授权'], purpose: '与艺人共同推出限量联名护肤产品线', duration: '12个月', amount: '¥120万', platforms: ['抖音', '小红书', '天猫'], status: 'celebReview', platformSample: 'approved', celebSample: 'notSent', submittedAt: '2026-05-05', platformNote: '平台已审核合规，建议明星同意，品牌调性匹配' },
   { id: 'ba3', brandName: 'NeonSound音频', authTypes: ['AI声音授权'], purpose: 'AI语音合成用于品牌广告音频', duration: '6个月', amount: '¥45万', platforms: ['抖音', '网易云音乐'], status: 'approved', platformSample: 'approved', celebSample: 'approved', submittedAt: '2026-04-20' },
 ];
@@ -310,7 +310,7 @@ export const CelebrityWorkbench = ({ lang, onBack }: { lang: Lang; onBack: () =>
           <div className="w-px h-4 bg-white/10" />
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-red-500 flex items-center justify-center"><Star className="w-4 h-4 text-white" /></div>
-            <div><div className="text-sm font-bold text-white">{zh?'明星端工作台':'Celebrity Workbench'}</div><div className="text-[9px] text-amber-400">✦ {zh?'陈屿 · 经纪人视角':'Chen Yu · Agent View'}</div></div>
+            <div><div className="text-sm font-bold text-white">{zh?'明星端工作台':'Celebrity Workbench'}</div><div className="text-[9px] text-amber-400">✦ {zh?'陆承远 · 经纪人视角':'Lu Chengyuan · Agent View'}</div></div>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -326,7 +326,7 @@ export const CelebrityWorkbench = ({ lang, onBack }: { lang: Lang; onBack: () =>
           <div className="hidden md:block p-3 border-b border-white/[0.04]">
             <div className="flex items-center gap-2.5 p-2.5 rounded-xl" style={{ background:'rgba(245,158,11,0.06)', border:'1px solid rgba(245,158,11,0.12)' }}>
               <div className="w-9 h-9 rounded-full bg-gradient-to-br from-amber-400 to-red-500 flex items-center justify-center shrink-0"><Star className="w-4 h-4 text-white" /></div>
-              <div className="min-w-0"><div className="text-xs font-black text-white truncate">陈屿</div><div className="text-[9px] text-amber-400">S级艺人 · 4530万粉</div></div>
+              <div className="min-w-0"><div className="text-xs font-black text-white truncate">陆承远</div><div className="text-[9px] text-amber-400">S级艺人 · 4530万粉</div></div>
             </div>
           </div>
           <div className="flex md:block gap-1 md:flex-1 p-2 md:pb-3">

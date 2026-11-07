@@ -63,7 +63,7 @@ test("a scene view generates all three views at once for one image's price, and 
   render(<DirectorAssets {...props}/>);
   fireEvent.click(screen.getByRole("button", { name: "查看金山寺" }));
   const reverse = screen.getByRole("tab", { name: /反打/ });
-  expect(reverse.title).toBe("1 个镜头用这个视角");
+  expect(reverse.title).toBe("1 个镜头使用此视角");
   fireEvent.click(reverse);
   expect(screen.getByText(/三张共/)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "生成三个视角" }));
@@ -106,7 +106,7 @@ test("a view can't be generated before the scene has a main image", () => {
   fireEvent.click(screen.getByRole("button", { name: "查看金山寺" }));
   fireEvent.click(screen.getByRole("tab", { name: /反打/ }));
   expect((screen.getByRole("button", { name: "生成三个视角" }) as HTMLButtonElement).disabled).toBe(true);
-  expect(screen.getByText("先生成主视图，其他视角照着它画")).toBeTruthy();
+  expect(screen.getByText("请先生成主视图，其他视角将以其为参考")).toBeTruthy();
 });
 
 test("the style field is one line that opens small text chips: hovering enlarges, clicking previews, and only confirming changes the style", () => {
@@ -122,7 +122,7 @@ test("the style field is one line that opens small text chips: hovering enlarges
   fireEvent.click(chip);
   const preview = screen.getByRole("dialog", { name: "黏土定格" });
   expect(onChange).not.toHaveBeenCalled();
-  fireEvent.click(within(preview).getByRole("button", { name: "使用这个风格" }));
+  fireEvent.click(within(preview).getByRole("button", { name: "使用此风格" }));
   expect(onChange).toHaveBeenCalledWith("黏土定格动画");
   expect(screen.queryByRole("dialog")).toBeNull();
 });

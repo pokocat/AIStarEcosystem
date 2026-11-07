@@ -21,7 +21,7 @@ export function LastRunPanel() {
       <button
         onClick={() => setOpen(true)}
         className="ip-canvas-last-run studio-host-more-item"
-        title="看这次实际发给模型的提示词和参考图"
+        title="查看实际发送给模型的提示词和参考图"
         aria-label="上次发给模型"
       >
         <FileText aria-hidden="true" />
@@ -35,7 +35,7 @@ export function LastRunPanel() {
         onCancel={() => setOpen(false)}
         footer={null}
         width={720}
-        title="上次实际发给模型的内容"
+        title="上次实际发送给模型的内容"
       >
         <div className="text-[12.5px] leading-relaxed" style={{ color: "var(--ink-3)" }}>
           运行号 {last.id}
@@ -57,7 +57,7 @@ export function LastRunPanel() {
                   <span className="min-w-0">
                     图 {i + 1} · {r.note}
                     <span style={{ color: "var(--ink-3)" }}>
-                      {r.applied ? " · 已送给模型" : ` · 没用上${r.reason ? `（${r.reason}）` : ""}`}
+                      {r.applied ? " · 已发送" : ` · 未使用${r.reason ? `（${r.reason}）` : ""}`}
                     </span>
                   </span>
                 </li>
@@ -72,12 +72,12 @@ export function LastRunPanel() {
             className="text-[12.5px] leading-relaxed whitespace-pre-wrap break-words rounded-lg p-3 max-h-[46vh] overflow-auto"
             style={{ background: "var(--surface-2)", color: "var(--ink-1)" }}
           >
-            {last.prompt || "（这次运行没有留下提示词）"}
+            {last.prompt || "（本次运行未记录提示词）"}
           </pre>
           <p className="mt-2 text-[12px]" style={{ color: "var(--ink-3)" }}>
-            你写的那段在中间，前后是系统按模板补的构图与负面词。参考图决定「像谁」，
-            提示词里对长相、发型、穿着的描述会覆盖参考图里的对应部分 ——
-            想保留参考图的样子，就别在提示词里把它重新描述一遍。
+            你写的内容在中间，前后是系统按模板补充的构图与负面词。参考图决定人物长相，
+            提示词中对长相、发型、穿着的描述会覆盖参考图的对应部分。
+            如需保留参考图的样子，请勿在提示词中重新描述。
           </p>
         </div>
       </Modal>

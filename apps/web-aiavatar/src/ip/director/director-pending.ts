@@ -41,7 +41,7 @@ export async function deliver<B, T>(key: string, p: PendingRequest<B>, send: (bo
     try { return await send(p.body); }
     catch (e) {
       if (!uncertain(e)) { clearPending(key); throw e; }
-      throw new UncertainError("网络不稳定，发送状态还不确定。");
+      throw new UncertainError("网络不稳定，送达状态尚未确认。");
     }
   };
   try { const r = await attempt(); clearPending(key); return r; }
@@ -53,7 +53,7 @@ export async function deliver<B, T>(key: string, p: PendingRequest<B>, send: (bo
   await new Promise(r => setTimeout(r, 1200));
   try { const r = await attempt(); clearPending(key); return r; }
   catch (e) {
-    if (e instanceof UncertainError) throw new UncertainError("网络不稳定，这条消息的发送状态还不确定。内容已保留，再点发送会按原请求恢复，不会重复扣费。");
+    if (e instanceof UncertainError) throw new UncertainError("网络不稳定，此消息的送达状态尚未确认。内容已保留，重新发送将按原请求恢复，不会重复扣费。");
     throw e;
   }
 }

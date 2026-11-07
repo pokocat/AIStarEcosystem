@@ -34,7 +34,7 @@ function AngleSheet({ product, onClose, onSubmit }) {
       hP("div", { style: { padding: "6px 0 14px" } },
         hP("div", { style: { fontFamily: "var(--font-disp)", fontWeight: 800, fontSize: 18 } }, "补充角度"),
         hP("div", { style: { fontSize: 12.5, color: "var(--ink-3)", marginTop: 4 } },
-          "锁同一件商品，只换机位 —— 角度越全，合成时越好用。")),
+          "同一件商品，只更换机位。角度越全，合成时选择越多。")),
       hP("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 18 } },
         ANGLE_CHOICES.map((l) => {
           const on = picks.includes(l);

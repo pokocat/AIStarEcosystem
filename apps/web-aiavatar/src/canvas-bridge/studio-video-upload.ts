@@ -8,7 +8,7 @@ export const STUDIO_VIDEO_UPLOAD_ACCEPT = 'video/mp4,.mp4';
 
 export function validateStudioVideoUpload(file: Pick<File, 'name' | 'size'>) {
   if (!/\.mp4$/i.test(file.name)) throw new Error('请选择 MP4 视频');
-  if (!file.size) throw new Error('视频文件是空的，请重新选择');
+  if (!file.size) throw new Error('视频文件为空，请重新选择');
   if (file.size > 128 * 1024 * 1024) throw new Error('视频超过 128 MB，请压缩后重试');
 }
 
@@ -17,7 +17,7 @@ export function replaceStudioVideo(nodes: CanvasNodeData[], connections: CanvasC
   video: StudioMediaImportResult): CanvasNodeData[] {
   const node = nodes.find(n => n.id === nodeId);
   if (!node || node.type !== CanvasNodeType.Video) throw new Error('视频节点已移出画布，请重新选择');
-  if (node.metadata?.status === 'loading' || studioGenerationPending(node)) throw new Error('当前节点正在生成，请等待任务完成后再替换视频');
+  if (node.metadata?.status === 'loading' || studioGenerationPending(node)) throw new Error('当前节点生成中，请等待任务完成后替换视频');
   if (video.mediaType !== 'video' || !video.key || !video.url) throw new Error('视频上传未完成，请重试');
   const id = `upload-${nanoid()}`, dependents = new Set([nodeId]);
   let changed = true;

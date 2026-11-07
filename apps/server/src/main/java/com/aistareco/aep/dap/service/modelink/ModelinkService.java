@@ -77,7 +77,7 @@ public class ModelinkService implements ModelinkGateway {
 
     private static BusinessException notConfigured() {
         return new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "DAP_MODELINK_NOT_CONFIGURED",
-                "未配置素材合规服务：请在管理后台「AI 应用绑定」把用途「数字资产 · 真人素材与授权」绑定七牛 modelink 端点");
+                "素材合规服务暂不可用，请联系平台处理", null, "未配置素材合规服务：请在管理后台「AI 应用绑定」把用途「数字资产 · 真人素材与授权」绑定七牛 modelink 端点");
     }
 
     // ── 委派 ───────────────────────────────────────────────────

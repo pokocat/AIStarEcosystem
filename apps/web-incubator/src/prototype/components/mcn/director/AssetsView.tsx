@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { Image as ImageIcon, Loader2, Mic, MicOff, Plus, RefreshCw, Sparkles, Wand2 } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Image as ImageIcon, Loader2, Mic, MicOff, Plus, RefreshCw, Sparkles, Wand2, Zap } from 'lucide-react';
 import type { Lang } from '../../../translations';
 import { ASSET_LABELS, type Asset, type AssetType } from './studioModel';
+import { PRICE } from './pricing';
 
 interface Props {
   lang: Lang;
@@ -15,14 +16,26 @@ interface Props {
   onExtract: () => void;
   onAdd: (type: AssetType) => void;
   onDiscuss: (id: string) => void;
+  /** Opens the AI 图片 generator for this asset sheet. */
+  onQuickGen: (id: string) => void;
+  /** Asset the AI is drawing (跟随 AI): highlighted and scrolled into view. */
+  followId?: string;
 }
 
 type Filter = 'all' | AssetType;
 
-export const AssetsView = ({ lang, assets, selectedId, propLabel, onSelect, onChange, onGenerate, onGenerateAll, onExtract, onAdd, onDiscuss }: Props) => {
+export const AssetsView = ({ lang, assets, selectedId, propLabel, onSelect, onChange, onGenerate, onGenerateAll, onExtract, onAdd, onDiscuss, onQuickGen, followId }: Props) => {
   const zh = lang === 'zh';
   const [filter, setFilter] = useState<Filter>('all');
   const [addOpen, setAddOpen] = useState(false);
+  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  // Following the AI: show every type so the asset being drawn is on screen.
+  useEffect(() => {
+    if (!followId) return;
+    setFilter('all');
+    const t = window.setTimeout(() => cardRefs.current[followId]?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
+    return () => window.clearTimeout(t);
+  }, [followId]);
   const labelOf = (t: AssetType) => (t === 'prop' && propLabel ? propLabel[lang] : ASSET_LABELS[t][lang]);
   const missing = assets.filter(a => a.status === 'missing').length;
   const shown = filter === 'all' ? assets : assets.filter(a => a.type === filter);
@@ -56,7 +69,7 @@ export const AssetsView = ({ lang, assets, selectedId, propLabel, onSelect, onCh
           </div>
           <button type="button" onClick={onGenerateAll} disabled={!missing} className="h-9 px-3.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 disabled:opacity-50" style={{ background: '#111827', color: '#fff' }}>
             <Sparkles className="w-3.5 h-3.5" />{zh ? '生成全部资产图' : 'Generate all images'}
-            {missing > 0 && <span className="rounded-full px-1.5 text-[10px]" style={{ background: 'rgba(255,255,255,.2)' }}>{missing}</span>}
+            {missing > 0 && <span className="rounded-full px-1.5 text-[10px]" style={{ background: 'rgba(255,255,255,.2)' }}>{missing} · ⬡{missing * PRICE.asset}</span>}
           </button>
         </div>
       </div>
@@ -69,9 +82,9 @@ export const AssetsView = ({ lang, assets, selectedId, propLabel, onSelect, onCh
             const sel = a.id === selectedId;
             const missingImg = a.status === 'missing';
             return (
-              <div key={a.id} onClick={e => { e.stopPropagation(); onSelect(a.id); }}
+              <div key={a.id} ref={el => { cardRefs.current[a.id] = el; }} onClick={e => { e.stopPropagation(); onSelect(a.id); }}
                 className="rounded-xl bg-white overflow-hidden cursor-pointer transition border"
-                style={{ borderColor: sel ? '#8b5cf6' : missingImg ? '#fecaca' : '#e5e7eb', boxShadow: sel ? '0 0 0 1px #8b5cf6' : undefined }}>
+                style={{ borderColor: sel || a.id === followId ? '#8b5cf6' : missingImg ? '#fecaca' : '#e5e7eb', boxShadow: sel ? '0 0 0 1px #8b5cf6' : a.id === followId ? '0 0 0 3px #ede9fe' : undefined }}>
                 <div className="relative aspect-[4/3] bg-gray-100">
                   {a.image && <img src={a.image} alt="" className={`w-full h-full object-cover ${a.status === 'generating' ? 'blur-sm' : ''}`} />}
                   {!a.image && a.status !== 'generating' && (
@@ -97,7 +110,10 @@ export const AssetsView = ({ lang, assets, selectedId, propLabel, onSelect, onCh
                       {missingImg ? (zh ? '缺少资产图' : 'Missing image') : a.status === 'generating' ? (zh ? '生成中' : 'Generating') : (zh ? '已确认' : 'Confirmed')}
                     </span>
                     <div className="flex items-center gap-1.5">
-                      <button type="button" onClick={() => onDiscuss(a.id)} aria-label={zh ? '和 AI 讨论' : 'Discuss with AI'} title={zh ? '和 AI 讨论' : 'Discuss with AI'} className="w-7 h-7 rounded-full inline-flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #06b6d4, #8b5cf6)', color: '#fff' }}><Sparkles className="w-3 h-3" /></button>
+                      <button type="button" onClick={() => onDiscuss(a.id)} aria-label={zh ? '和 AI 讨论' : 'Discuss with AI'} title={zh ? '和 AI 讨论' : 'Discuss with AI'} className="w-7 h-7 rounded-full inline-flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #0891b2, #7c3aed)', color: '#fff' }}><Sparkles className="w-3 h-3" /></button>
+                      <button type="button" onClick={() => onQuickGen(a.id)} disabled={a.status === 'generating'}
+                        aria-label={zh ? '用 AI 图片生成资产图' : 'Generate with AI Image'} title={zh ? '用 AI 图片生成资产图' : 'Generate with AI Image'}
+                        className="w-7 h-7 rounded-lg border border-gray-200 text-violet-600 hover:bg-violet-50 inline-flex items-center justify-center disabled:opacity-45"><Zap className="w-3.5 h-3.5" /></button>
                       {a.type === 'character' && (
                         <button type="button" onClick={() => onChange(a.id, { voice: !a.voice })} aria-pressed={!!a.voice}
                           title={a.voice ? (zh ? '已绑定声音' : 'Voice bound') : (zh ? '绑定声音' : 'Bind voice')}
@@ -107,7 +123,7 @@ export const AssetsView = ({ lang, assets, selectedId, propLabel, onSelect, onCh
                         </button>
                       )}
                       {missingImg ? (
-                        <button type="button" onClick={() => onGenerate(a.id)} className="h-7 px-2.5 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1" style={{ background: '#111827', color: '#fff' }}><Wand2 className="w-3 h-3" />{zh ? '生成' : 'Generate'}</button>
+                        <button type="button" onClick={() => onGenerate(a.id)} className="h-7 px-2.5 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1" style={{ background: '#111827', color: '#fff' }}><Wand2 className="w-3 h-3" />{zh ? '生成' : 'Generate'}<span className="font-normal" style={{ color: 'rgba(255,255,255,.7)' }}>⬡{PRICE.asset}</span></button>
                       ) : a.status === 'confirmed' && (
                         <button type="button" onClick={() => onGenerate(a.id)} aria-label={zh ? '重新生成' : 'Regenerate'} title={zh ? '重新生成' : 'Regenerate'} className="w-7 h-7 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 inline-flex items-center justify-center"><RefreshCw className="w-3.5 h-3.5" /></button>
                       )}

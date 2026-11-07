@@ -91,7 +91,7 @@ test('a failed step is named and the primary action has its own readable class',
   expect(screen.getByText(/已尝试 3 次，仍未完成。视频生成失败：模拟/)).toBeTruthy();
   expect(screen.queryByText(/NX4URKWWGRCQ/)).toBeNull();
   expect(screen.getByRole('button', { name: '查看错误详情' })).toBeTruthy();
-  expect(screen.getByRole('link', { name: '在画布中查看' }).className).toContain('is-primary');
+  expect(screen.getByRole('link', { name: '在画布上查看' }).className).toContain('is-primary');
   expect(screen.queryByRole('button', { name: '重试这一步' })).toBeNull();
 });
 test('output the model could not produce usably offers regenerating in place', async () => {

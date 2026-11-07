@@ -308,7 +308,7 @@ export function useProjectSync(projectId: string) {
         if (!alive || epoch !== epochRef.current) return null;
         if (queue === "timeout") {
           // 已经知道要读到的是旧内容了 —— 不能摆出来当正常内容让人接着改（见上面的注释）
-          setError(reportStudioError({ code: "IP_PROJECT_SAVE_PENDING", message: "上一次的改动还在保存中。请等待原保存完成，再重新加载画布。" }).message);
+          setError(reportStudioError({ code: "IP_PROJECT_SAVE_PENDING", message: "上一次的改动仍在保存中，请等待保存完成后重新加载画布。" }).message);
           setState("error");
           return null;
         }
@@ -338,7 +338,7 @@ export function useProjectSync(projectId: string) {
       })
       .catch((e: unknown) => {
         if (!alive || epoch !== epochRef.current) return;
-        setError(reportStudioError(e, { fallback: "这个项目打不开" }).message);
+        setError(reportStudioError(e, { fallback: "画布加载失败，请稍后刷新重试。" }).message);
         setState("error");
       });
 
@@ -555,27 +555,27 @@ export function useProjectSync(projectId: string) {
     if (choice === "take-theirs") {
       try {
         return { outcome: (await refreshFromServer()) ? "resolved" : "failed" };
-      } catch (e) { return fail(e, "没拿到最新内容，稍后再试"); }
+      } catch (e) { return fail(e, "最新版本加载失败，请重试。"); }
     }
     const snap = snapshot();
     if (!snap) return { outcome: "failed" };
     if (choice === "save-copy") {
       let copyId: string;
       try {
-        const copy = await IpStudioApi.createProject({ name: `${snap.title} · 另一份` });
+        const copy = await IpStudioApi.createProject({ name: `${snap.title} · 副本` });
         copyId = copy.id;
-        await IpStudioApi.updateProject(copy.id, { name: `${snap.title} · 另一份`, doc: snap.doc });
-      } catch (e) { return fail(e, "另存没成功，这里的改动还在"); }
+        await IpStudioApi.updateProject(copy.id, { name: `${snap.title} · 副本`, doc: snap.doc });
+      } catch (e) { return fail(e, "另存失败，此页面的改动仍保留"); }
       try {
         return { outcome: (await refreshFromServer()) ? "resolved" : "failed", copyId };
-      } catch (e) { return { ...fail(e, "已另存一份，但没拿到这张画布的最新内容，稍后再试"), copyId }; }
+      } catch (e) { return { ...fail(e, "已另存为新画布，但当前画布的最新版本加载失败，请重试。"), copyId }; }
     }
     // keep-mine：拿服务端**此刻**的版本号当基线重存一次。这是用户看过说明之后的明确选择，
     // 不是自动重试 —— 自动重试在 put() 里被刻意禁掉了（覆盖的是别处一整份工作）。
     let base: string | null;
     try {
       base = (await IpStudioApi.getProject(projectId)).docVersion ?? null;
-    } catch (e) { return fail(e, "没拿到画布的当前版本，稍后再试"); }
+    } catch (e) { return fail(e, "画布当前版本加载失败，请重试。"); }
     if (epoch !== epochRef.current) return { outcome: "failed" };
     conflictRef.current = false;
     loadedRef.current = true;

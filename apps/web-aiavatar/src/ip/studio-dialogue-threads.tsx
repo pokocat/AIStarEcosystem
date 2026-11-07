@@ -15,7 +15,7 @@ import { formatDateTime } from "@/lib/datetime";
 import { StudioErrorNotice, useStudioErrorState } from "./studio-errors";
 
 /** Shown on 「新对话」 while the current conversation has nothing in it yet. */
-export const DIALOGUE_ALREADY_NEW = "现在就是新对话";
+export const DIALOGUE_ALREADY_NEW = "当前已是新对话";
 
 type Props = {
   /** The conversation shown in the panel; its row is marked 「当前」. */
@@ -78,12 +78,12 @@ export function StudioDialogueThreads({ currentThreadId, busyReason, empty, list
   const content = <div ref={panel} className="studio-dialogue-threads" role="region" aria-label="历史对话">
     <header>
       <strong>历史对话</strong>
-      <button type="button" className="studio-dialogue-threads-new" disabled={!!newReason} title={newReason || "开始一段新的对话，这一段留在历史里"} onClick={() => void startNew()}>
+      <button type="button" className="studio-dialogue-threads-new" disabled={!!newReason} title={newReason || "新建对话，当前对话保留在历史对话中"} onClick={() => void startNew()}>
         <SquarePen size={14} aria-hidden="true"/>新对话</button>
     </header>
-    {busyReason && <p className="studio-dialogue-threads-note" role="status">{busyReason}</p>}
-    {loading && !threads && <p className="studio-dialogue-threads-note" role="status">正在读取对话列表</p>}
-    {error && <div className="studio-dialogue-threads-error" role="alert"><span>对话列表没有读取成功。</span><StudioErrorNotice error={error} autoReport={false} label="查看详情"/>
+    {newReason && <p className="studio-dialogue-threads-note" role="status">{newReason}</p>}
+    {loading && !threads && <p className="studio-dialogue-threads-note" role="status">正在加载对话列表…</p>}
+    {error && <div className="studio-dialogue-threads-error" role="alert"><span>对话列表加载失败。</span><StudioErrorNotice error={error} autoReport={false} label="查看详情"/>
       <button type="button" className="studio-dialogue-link" onClick={load}>重试</button></div>}
     {!!list.length && <ul className="studio-dialogue-threads-list">
       {list.map(thread => {
@@ -91,7 +91,7 @@ export function StudioDialogueThreads({ currentThreadId, busyReason, empty, list
         const disabled = !current && !!busyReason;
         return <li key={thread.id}>
           <button type="button" className={`studio-dialogue-thread${current ? " is-current" : ""}`} aria-current={current ? "true" : undefined} disabled={disabled}
-            title={disabled ? busyReason : current ? "正在看的这段对话" : "打开这段对话"} onClick={() => void pick(thread)}>
+            title={disabled ? busyReason : current ? "当前对话" : "打开此对话"} onClick={() => void pick(thread)}>
             <span className="studio-dialogue-thread-title" title={thread.title}>{thread.title}</span>
             <span className="studio-dialogue-thread-meta">{formatDateTime(thread.lastActivityAt)} · {thread.messageCount} 条消息</span>
             {(current || thread.active || thread.parentThreadId) && <span className="studio-dialogue-thread-tags">
@@ -103,10 +103,12 @@ export function StudioDialogueThreads({ currentThreadId, busyReason, empty, list
         </li>;
       })}
     </ul>}
-    {threads && !error && !others.length && <p className="studio-dialogue-threads-note">还没有别的对话</p>}
+    {threads && !error && !others.length && <p className="studio-dialogue-threads-note">暂无其他对话。</p>}
   </div>;
 
   return <>
+    {/* 回复或制作中两个图标不能点，在旁边写一句原因（完整原因在悬停说明里）。空对话本来就是新对话，不用再写。 */}
+    {busyReason && <small className="studio-dialogue-threads-note">暂不可切换</small>}
     <button type="button" className="studio-dialogue-thread-action" aria-label="新对话" title={newReason || "新对话"} disabled={!!newReason} onClick={() => void startNew()}>
       <SquarePen size={17} aria-hidden="true"/></button>
     <Popover trigger="click" placement="bottomRight" arrow={false} autoAdjustOverflow={THREADS_OVERFLOW} open={open} onOpenChange={change} destroyOnHidden getPopupContainer={popupContainer}

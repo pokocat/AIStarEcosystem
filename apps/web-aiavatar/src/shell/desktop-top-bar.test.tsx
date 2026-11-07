@@ -59,10 +59,10 @@ test.each(["pathname", "hash"] as const)("navigation via %s closes an open menu"
   expect(menu.open).toBe(false);
 });
 
-test("new version: 回到旧版 in the top-right corner switches back", () => {
+test("new version: 返回旧版 in the top-right corner switches back", () => {
   useNext();
   render(<DesktopTopBar/>);
-  fireEvent.click(screen.getByRole("button", {name:"回到旧版"}));
+  fireEvent.click(screen.getByRole("button", {name:"返回旧版"}));
   expect(ui.set).toHaveBeenCalledWith("classic");
 });
 

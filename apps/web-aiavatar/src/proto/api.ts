@@ -925,8 +925,8 @@ export const AvatarApi = {
       const n = c?.versions || 3;
       return mock([
         { v: `v${n}`, t: c?.updated || nowStamp(), note: "完成创建 · 锁定标准图集", kind: "archive", cur: true },
-        { v: `v${Math.max(1, n - 1)}`, t: "今天 11:20", note: "定稿确认 · 5 张标准图", kind: "finalize", cur: false },
-        { v: "v1", t: "昨天 15:30", note: "初始选稿", kind: "init", cur: false },
+        { v: `v${Math.max(1, n - 1)}`, t: "2026-08-30 11:20:00", note: "定稿确认 · 5 张标准图", kind: "finalize", cur: false },
+        { v: "v1", t: "2026-08-29 15:30:00", note: "初始选稿", kind: "init", cur: false },
       ]);
     }
     return apiFetch(`/avatars/${id}/versions`);

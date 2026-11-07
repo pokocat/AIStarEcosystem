@@ -194,7 +194,7 @@ class StudioPlanValidatorSkillTest {
         assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(edit,rules(),"production",context));
     }
 
-    @Test void theAnalysisPlanCannotCompileTheProductionPlanBeforeTheFilmStudy() throws Exception {
+    @Test void theAnalysisPlanCannotCompileBeforeTheFilmStudyAndTheRefusalTellsTheModelWhatToReorder() throws Exception {
         // Third production reply: plan-compile first, the recreation analysis depending on it.
         var raw=analysis();
         var steps=(ArrayNode)raw.path("steps");
@@ -231,7 +231,7 @@ class StudioPlanValidatorSkillTest {
         var raw=production();
         ((ObjectNode)raw.path("steps").get(1).path("settings").path("referenceBindings").get(1)).put("role","video_reference");
         var refused=assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(raw,rules(),"production",context));
-        assertTrue(refused.getMessage().contains("参考用途"));
+        assertEquals("AI_BAD_OUTPUT",refused.getCode());
     }
 
     /** Second production planning reply: every binding wrote the canvas asset id (the photo, a segment clip) under stepId. */

@@ -38,7 +38,7 @@ export function onWorkGone(listener: (workId: string) => void) {
 }
 
 /** 作品删除期间发出、恢复之后才回来的请求：没有生效，但作品在。 */
-export const STALE_GONE_MESSAGE = "这次操作是在作品删除期间发出的，没有生效。作品现在已恢复，请重新操作。";
+export const STALE_GONE_MESSAGE = "此操作在作品删除期间发出，未生效。作品现已恢复，请重新操作。";
 
 /** 导演台所有失败都经过这里拿文案，所以「作品已删除」也在这里通知。归属不明的 404 不通知，只显示文案。 */
 export function errorText(e: unknown) {
@@ -138,7 +138,7 @@ export function AiWorking({ title, detail, task, compact }: { title: string; det
     <div className="director-ai-copy">
       <b>{title}<i className="director-ai-dots" aria-hidden><span/><span/><span/></i></b>
       {detail && <p>{detail}</p>}
-      <small>{elapsed ? `已用时 ${elapsed} · ` : ""}可以关闭页面，后台继续，完成后自动显示</small>
+      <small>{elapsed ? `已用时 ${elapsed} · ` : ""}可离开此页面，后台将继续处理，完成后自动显示</small>
     </div>
     {!compact && <div className="director-ai-lines" aria-hidden><span/><span/><span/><span/></div>}
   </div>;

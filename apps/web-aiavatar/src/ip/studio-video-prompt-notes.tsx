@@ -29,7 +29,7 @@ export function StudioVideoRewriteDetail({ run }: { run: IpRun }) {
   const many = (run.output.videoCandidates?.length || 0) > 1;
   return <div className="studio-video-rewrite-detail">
     {(ours || notes.length > 0) && <section>
-      <strong>{notes.length ? "智能优化 · 没用上" : "智能优化 · 发给模型的英文"}</strong>
+      <strong>{notes.length ? "智能优化 · 未使用" : "智能优化 · 发送给模型的英文"}</strong>
       {notes.map(note => <p key={note}>{note}</p>)}
       {!!ours?.warnings.length && <ul>{ours.warnings.map(warning => <li key={warning}>{warning}</li>)}</ul>}
       {!!ours?.notes?.length && <p>已自动处理：{ours.notes.join("；")}</p>}

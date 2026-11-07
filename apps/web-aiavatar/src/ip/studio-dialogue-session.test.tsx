@@ -120,7 +120,7 @@ function idempotentServer(network: ('lost-request' | 'lost-answer' | 'ok')[]) {
 // Codex review 2026-10-20 (P1): the server took the confirmation, its answer was lost and the catch-up read failed too; the
 // guard let go, the user switched, and the paid execution's nodes went to a conversation no longer shown.
 test('a confirmation the server took, whose answer and the next resend were lost, holds the conversation until the answer is known', async () => {
-  // Long waits, driven by 「现在再查一次」, so each in-between state can be looked at.
+  // Long waits, driven by 「立即核对」, so each in-between state can be looked at.
   dialogueVerifyTiming.firstMs = 60_000; dialogueVerifyTiming.maxMs = 60_000;
   const { result } = await ready();
   const taken = idempotentServer(['lost-answer', 'lost-request']);
@@ -154,7 +154,7 @@ test('a confirmation the server took, whose answer and the next resend were lost
   expect(dialogueThreadBusy(result.current.store)).toBe(true);
 });
 
-test('a confirmation that never reached the server is taken by the resend, once; 「现在再查一次」 skips the wait', async () => {
+test('a confirmation that never reached the server is taken by the resend, once; 「立即核对」 skips the wait', async () => {
   dialogueVerifyTiming.firstMs = 60_000; dialogueVerifyTiming.maxMs = 60_000;
   const { result } = await ready();
   const taken = idempotentServer(['lost-request']);

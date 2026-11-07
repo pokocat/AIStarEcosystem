@@ -1,5 +1,7 @@
 /**
- * Local auto-save for the AI 导演台: one snapshot per solution + artist, plus a shared works library.
+ * Local auto-save for the AI 导演: any number of projects per solution + artist (scope
+ * `${solutionId}:${artistId}#${projectId}`; the bare base scope is a project saved before
+ * multi-project support), a pointer to the one last open, plus a shared works library.
  * Generation timers do not survive a reload, so in-flight states are reset to "pending" on load.
  */
 import type { CanvasNode, ChatMessage, Edge, ProjectSpec, Ratio } from './directorData';
@@ -77,4 +79,51 @@ export const loadWorks = (fallback: Work[]): Work[] => {
 
 export const saveWorks = (works: Work[]) => {
   try { localStorage.setItem(WORKS_KEY, JSON.stringify(works.slice(0, 100))); } catch { /* ignore */ }
+};
+
+/** Every saved project whose scope starts with `scopePrefix` (e.g. `story-commerce:`), newest first. */
+export const listSnapshots = (scopePrefix: string): Array<{ scope: string; snap: StudioSnapshot }> => {
+  const base = projectKey('');
+  const out: Array<{ scope: string; snap: StudioSnapshot }> = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith(base + scopePrefix)) continue;
+      const scope = key.slice(base.length);
+      const snap = loadSnapshot(scope);
+      if (snap) out.push({ scope, snap });
+    }
+  } catch { /* storage blocked */ }
+  return out.sort((a, b) => b.snap.savedAt - a.snap.savedAt);
+};
+
+const currentKey = (base: string) => `ai_director_current_v1:${base}`;
+
+/** Scope of the project last open for this solution + artist (the legacy base scope if none). */
+export const currentProjectScope = (base: string) => {
+  try {
+    const id = localStorage.getItem(currentKey(base));
+    return id ? `${base}#${id}` : base;
+  } catch {
+    return base;
+  }
+};
+export const setCurrentProjectScope = (base: string, scope: string) => {
+  try { localStorage.setItem(currentKey(base), scope.startsWith(`${base}#`) ? scope.slice(base.length + 1) : ''); } catch { /* ignore */ }
+};
+export const newProjectScope = (base: string) => `${base}#p${Date.now().toString(36)}`;
+
+/** Every saved project of exactly this solution + artist, newest first. */
+export const listProjects = (base: string) =>
+  listSnapshots(base).filter(({ scope }) => scope === base || scope.startsWith(`${base}#`));
+
+export const deleteSnapshot = (scope: string) => { try { localStorage.removeItem(projectKey(scope)); } catch { /* ignore */ } };
+
+/** Fired when something outside the AI 导演台 adds to the shared works library. */
+export const WORKS_EVENT = 'ai-director-works-change';
+
+/** Prepend a work to the shared library (used by AI 视频 quick generation). */
+export const addWork = (work: Work, fallback: Work[]) => {
+  saveWorks([work, ...loadWorks(fallback).filter(w => w.id !== work.id)]);
+  window.dispatchEvent(new CustomEvent(WORKS_EVENT));
 };

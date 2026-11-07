@@ -66,7 +66,7 @@ test('a quiet audio that cannot be read says so in place and reports nothing', a
   const { container, findByRole } = render(<SignedAudio quiet className="lmp-audio" src="/same.wav" storageKey="owned/a.wav" controls/>);
   fireEvent.error(container.querySelector('audio')!);
   const note = await findByRole('status');
-  expect(note.textContent).toBe('读不到这段音频');
+  expect(note.textContent).toBe('音频加载失败');
   expect(note.className).toContain('lmp-audio');
   expect(reportStudioError).not.toHaveBeenCalled();
 });

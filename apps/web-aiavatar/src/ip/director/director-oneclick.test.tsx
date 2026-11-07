@@ -24,7 +24,7 @@ test("when every storyboard is written the dialog says so and points to the rewr
   const goTab = vi.fn(), onClose = vi.fn();
   render(<StartPipeline work={work} episodeId="e1" apply={vi.fn()} setError={vi.fn()} goTab={goTab} onClose={onClose}/>);
   fireEvent.click(screen.getByRole("button", { name: "分镜脚本" }));
-  expect(await screen.findByText(/全部 2 集的分镜脚本都已写好。一键制作只补还没做的步骤，不会重写已有的分镜脚本/)).toBeTruthy();
+  expect(await screen.findByText(/全部 2 集的分镜脚本均已写好。一键制作只补充未完成的步骤/)).toBeTruthy();
   expect(screen.queryByRole("button", { name: /开始/ })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "前往分镜" }));
   expect(goTab).toHaveBeenCalledWith("storyboard");

@@ -32,7 +32,7 @@ describe("冲突弹窗挂在画布宿主上", () => {
   });
   it("别的标签页存了新版、这里悄悄换过内容之后，轻轻说一声", () => {
     expect(host).toContain("remoteRefreshes");
-    expect(host).toContain("已经换成最新内容");
+    expect(host).toContain("已加载最新版本");
   });
 });
 

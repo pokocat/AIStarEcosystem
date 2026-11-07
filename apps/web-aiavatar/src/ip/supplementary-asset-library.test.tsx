@@ -39,12 +39,12 @@ test('failed grants do not hide successful avatars and unknown licenses do not b
   render(<AvatarLibrary avatars={ready([avatar('b', '真人画家', 'real')])} licenses={{ ...ready([] as License[]), error: '授权超时' }} grants={{ ...ready([] as StarGrant[]), error: '读取超时' }} refresh={refresh}/>);
   expect(screen.getByRole('article', { name: '人物形象 真人画家' })).toBeDefined();
   expect(screen.getAllByRole('alert')).toHaveLength(1);
-  expect(screen.getByText('授权信息暂不可用')).toBeDefined();
+  expect(screen.getByText('授权信息加载失败')).toBeDefined();
   expect(screen.queryByText('待完成授权')).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: '重新读取' }));
+  fireEvent.click(screen.getByRole('button', { name: '重试' }));
   expect(refresh).toHaveBeenCalledOnce();
   fireEvent.click(screen.getByRole('button', { name: /真人形象/ }));
-  expect(screen.getByRole('alert').textContent).toContain('明星授权读取失败'); // Notifications remain until dismissed; the recovered library is usable.
+  expect(screen.getByRole('alert').textContent).toContain('明星授权加载失败'); // Notifications remain until dismissed; the recovered library is usable.
   expect(screen.getByText('1 项匹配资产')).toBeDefined();
 });
 
@@ -72,9 +72,9 @@ test('voice pagination, category and language filters include all saved voices w
 test('voice load failure is a single retryable error rather than an empty asset library', () => {
   render(<VoiceLibrary voices={{ ...ready([] as VoiceAsset[]), error: '网络不可用' }} refresh={vi.fn()}/>);
   expect(screen.getAllByRole('alert')).toHaveLength(1);
-  expect(screen.getByText('专属声音暂不可读取')).toBeDefined();
+  expect(screen.getByText('专属声音加载失败')).toBeDefined();
   expect(screen.queryByText('还没有专属声音')).toBeNull();
-  expect(screen.getByRole('button', { name: '重新读取资产' })).toBeDefined();
+  expect(screen.getAllByRole('button', { name: '重试' }).length).toBeGreaterThan(0);
 });
 
 beforeEach(() => { mountStudioErrorNotifications(); });

@@ -446,7 +446,7 @@ class StudioPlanExecutionServiceTest {
         String revised=currentPlan("IPR-c","production",PRODUCTION.replace("开播","开播，换个人物"),40,5);
         cards.put("msg-more","APV-more","production",revised,45,200);
         var e=assertThrows(BusinessException.class,()->service.create("u","p",new PlanExecutionCreateRequest("c-run","production","IPR-c",revised,"rewrite",200L,0L,null,id,3,"APV-more","msg-more")));
-        assertEquals("STUDIO_PLAN_STALE",e.getCode());assertTrue(e.getMessage().contains("还在生成中"));
+        assertEquals("STUDIO_PLAN_STALE",e.getCode());
         assertEquals("IPR-b",rows.get(id).getPlanRunId(),"nothing changed");
     }
 
@@ -751,9 +751,13 @@ class StudioPlanExecutionServiceTest {
         var state=(ObjectNode)om.readTree(row.getStepsJson());state.putObject("videoTask").put("kind","recreation");
         ((ObjectNode)state.path("steps").get(0)).put("status","failed").put("attempt",3).put("errorCode","AI_CALL_FAILED");
         row.setStepsJson(state.toString());row.setStatus("needs_user");canvasWith("src");
-        assertTrue(assertThrows(BusinessException.class,()->service.resume("u","p",created.id(),new PlanExecutionControlRequest("retry-four",null))).getMessage().contains("3 次"));
+        assertEquals("STUDIO_PLAN_STALE",assertThrows(BusinessException.class,()->service.resume("u","p",created.id(),new PlanExecutionControlRequest("retry-four",null))).getCode());
         assertEquals("needs_user",row.getStatus());
         assertEquals(3,om.readTree(row.getStepsJson()).path("steps").get(0).path("attempt").asInt());
+        // 同一步只差次数：还没到 3 次就能继续，所以上面拦下它的就是次数这一条。
+        ((ObjectNode)state.path("steps").get(0)).put("attempt",2);row.setStepsJson(state.toString());
+        service.resume("u","p",created.id(),new PlanExecutionControlRequest("retry-third",null));
+        assertEquals("running",row.getStatus());
     }
 
     @Test void videoPageRegeneratesUnusableModelOutputWithANewRequestWhenTheUserContinues() throws Exception {
@@ -770,14 +774,25 @@ class StudioPlanExecutionServiceTest {
         assertEquals(0,after.path("runIds").size());assertEquals("IPR-raw",after.path("previousRunIds").get(0).asText());assertFalse(after.has("errorCode"));
     }
 
-    @Test void videoPageUnknownAcceptanceStillCannotBeResubmittedAfterResume() throws Exception {
+    /** 2026-11-07：这种任务已经按失败结束并退了积分，重试却被「请先确认原任务」挡住，40 分钟内 7 次。只有还在进行中的才不能重试。 */
+    @Test void videoPageRetriesAFailedTaskWhoseReceiptNeverCameButNotOneStillRunning() throws Exception {
         String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
         var created=service.create("u","p",analysisRequest(fp,30));
         var row=rows.get(created.id());var state=(ObjectNode)om.readTree(row.getStepsJson());state.putObject("videoTask");
-        ((ObjectNode)state.path("steps").get(0)).put("status","failed").put("errorCode","STUDIO_SUBMISSION_UNKNOWN");
+        var step=(ObjectNode)state.path("steps").get(0);
+        step.put("status","failed").put("errorCode","STUDIO_IMAGE_SUBMISSION_UNKNOWN");step.putArray("runIds").add("IPR-unknown");
         row.setStepsJson(state.toString());row.setStatus("needs_user");canvasWith("src");
-        assertTrue(assertThrows(BusinessException.class,()->service.resume("u","p",created.id(),new PlanExecutionControlRequest("retry-unknown",null))).getMessage().contains("不能重复生成"));
+        var run=com.aistareco.aep.ipstudio.model.IpRun.builder().id("IPR-unknown").projectId("p").ownerUserId("u").nodeId("n").kind("generate").status("running").build();
+        runs.put("IPR-unknown",run);
+        java.util.function.Function<String,IpRunDto> dto=status->new IpRunDto("IPR-unknown","p","n","generate",status,status,10,0,null,null,om.createObjectNode(),om.createObjectNode(),Instant.now().toString(),null,null);
+        when(projects.toRunDto(run)).thenReturn(dto.apply("running"));
+        assertEquals("STUDIO_PLAN_STEP_RUNNING",assertThrows(BusinessException.class,()->service.resume("u","p",created.id(),new PlanExecutionControlRequest("retry-running",null))).getCode());
         assertEquals("needs_user",row.getStatus());
+        when(projects.toRunDto(run)).thenReturn(dto.apply("failed"));
+        service.resume("u","p",created.id(),new PlanExecutionControlRequest("retry-ended",null));
+        assertEquals("running",row.getStatus());
+        JsonNode after=om.readTree(row.getStepsJson()).path("steps").get(0);
+        assertEquals("pending",after.path("status").asText());assertEquals(2,after.path("attempt").asInt());assertFalse(after.has("errorCode"));
     }
 
 }

@@ -299,7 +299,7 @@ export function Landing() {
         <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.85 }}>
           形象、声音、人设存一次，授权记在账上。
           <br />
-          之后拍短剧、做音乐、带货出片，直接拿来用。
+          之后制作短剧、音乐和带货视频时直接使用。
         </p>
         <div style={{ marginTop: 4 }}>
           <Cta label="免费创建我的数字人" />
@@ -354,7 +354,7 @@ export function Landing() {
         <Feature
           image="/landing/license.jpg"
           title="每次使用都有授权在案"
-          copy="谁授权的、能用在哪、什么时候到期，一张证书写清楚。没有有效授权，出片这一步就走不下去。"
+          copy="谁授权的、能用在哪、什么时候到期，一张证书写清楚。没有有效授权，无法生成视频。"
         />
         <Feature
           image="/landing/hub.jpg"

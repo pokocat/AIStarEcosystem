@@ -62,12 +62,12 @@ public class StudioConversationShareService {
     @Transactional
     public String copy(String owner,String token,CopyRequest request) {
         if(request==null||request.clientRequestId()==null||!request.clientRequestId().matches("[A-Za-z0-9_-]{8,128}"))
-            throw BusinessException.badRequest("STUDIO_SHARE_COPY_INVALID","复制请求缺少有效标识，请刷新后重试");
+            throw BusinessException.badRequest("STUDIO_SHARE_COPY_INVALID","请求已失效，请刷新页面后重试");
         // A lock on the snapshot serializes copy/revoke and repeated copies of this exact link.
         var s=shares.lock(token).orElseThrow(()->missing());
         var prior=copies.findByOwnerUserIdAndClientRequestId(owner,request.clientRequestId());
         if(prior.isPresent()) {
-            if(!token.equals(prior.get().getToken()))throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"STUDIO_SHARE_COPY_CONFLICT","该请求已用于另一份对话");
+            if(!token.equals(prior.get().getToken()))throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"STUDIO_SHARE_COPY_CONFLICT","请求已失效，请刷新页面后重试");
             projects.required(owner,prior.get().getProjectId());return prior.get().getProjectId();
         }
         requireLive(s);

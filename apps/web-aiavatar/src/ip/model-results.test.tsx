@@ -13,7 +13,7 @@ test("the complete long result is displayed as text and can be copied",async()=>
  render(<ModelResults/>);fireEvent.click(await screen.findByRole("button",{name:/测试模型/}));
  await waitFor(()=>expect(document.querySelector("pre")?.textContent).toBe(text));
  expect(document.querySelector("article script")).toBeNull();
- expect(screen.getByText(/可能未写完/)).toBeTruthy();
+ expect(screen.getByText(/可能不完整/)).toBeTruthy();
  fireEvent.click(screen.getByRole("button",{name:"复制全文"}));
  await waitFor(()=>expect(copy).toHaveBeenCalledWith(text));
 });

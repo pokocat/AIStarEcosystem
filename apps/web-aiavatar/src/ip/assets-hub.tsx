@@ -44,7 +44,7 @@ export function hubTab(raw: string | null): HubTab {
 
 const SOURCES = [
   { key: 'all', label: '全部来源' }, { key: 'generated', label: 'AI 生成' },
-  { key: 'upload', label: '我上传的' }, { key: 'canvas', label: '从画布存的' },
+  { key: 'upload', label: '我上传的' }, { key: 'canvas', label: '从画布保存' },
 ];
 const TYPE_LABEL = { image: '图片', video: '视频', audio: '音频', text: '文字' } as const;
 const ACCEPT: Record<Exclude<HubTab, 'people'>, string> = {
@@ -77,7 +77,7 @@ export function AssetsHub() {
   const current = builtIn || folders.some(f => f.id === library) || (foldersRead && !!folderError) ? library : 'all';
   // 地址里是自己建的库：等库列表读回来再读内容，免得先按一个不存在的库读一遍。
   const ready = builtIn || foldersRead;
-  return <StudioPage title="资产" description="人物、声音与创作素材，让每一次灵感有所承接。" nextDescription="上传的和 AI 做的都在这里，做视频、出图时直接拿来用" className="assets-hub-page">
+  return <StudioPage title="资产" description="人物、声音和创作素材，创作时可直接使用。" nextDescription="上传和 AI 生成的素材都在这里，生成图片和视频时可直接使用。" className="assets-hub-page">
     <ConfigProvider locale={zhCN} button={{ autoInsertSpace: false }} getPopupContainer={studioOverlayContainer} theme={{ token: { colorPrimary: '#17202a', borderRadius: 10, fontFamily: 'var(--ip-ui)' } }}>
       <App className="assets-hub" data-studio-overlay-root>
         <div className="assets-hub-tabs" role="tablist" aria-label="资产分类">
@@ -106,7 +106,7 @@ function LibraryNav({ folders, value, error, onChange, onChanged, onRetry }: {
   const row = (id: string, label: string, icon: ReactNode) =>
     <button type="button" className="assets-lib" aria-current={value === id ? 'true' : undefined} onClick={() => onChange(id)}>{icon}<span>{label}</span></button>;
   const remove = (f: LibraryFolder) => modal.confirm({
-    title: `删除「${f.name}」？`, content: '里面的东西不会删，会回到「全部」里。画布里已经用上的也不受影响。', okText: '删除资产库', okButtonProps: { danger: true },
+    title: `删除「${f.name}」？`, content: '库中的素材不会被删除，仍可在「全部」中找到。已在画布中使用的素材不受影响。', okText: '删除资产库', okButtonProps: { danger: true },
     onOk: async () => { await deleteLibraryFolder(f.id); if (value === f.id) onChange('all'); onChanged(); },
   });
   return <nav className="assets-libs" aria-label="资产库">
@@ -116,11 +116,11 @@ function LibraryNav({ folders, value, error, onChange, onChanged, onRetry }: {
     <hr/>
     {folders.map(f => <div className="assets-lib-row" key={f.id}>
       {row(f.id, f.name, <span className="assets-lib-icon"><Folder size={13} strokeWidth={1.6}/></span>)}
-      <Dropdown trigger={['click']} getPopupContainer={studioOverlayContainer} menu={{ items: [{ key: 'rename', label: '改名' }, { key: 'delete', label: '删除', danger: true }], onClick: ({ key }) => key === 'rename' ? setDialog({ id: f.id, name: f.name }) : remove(f) }}>
+      <Dropdown trigger={['click']} getPopupContainer={studioOverlayContainer} menu={{ items: [{ key: 'rename', label: '重命名' }, { key: 'delete', label: '删除', danger: true }], onClick: ({ key }) => key === 'rename' ? setDialog({ id: f.id, name: f.name }) : remove(f) }}>
         <button type="button" className="assets-lib-more" aria-label={`管理资产库 ${f.name}`}><MoreHorizontal size={15}/></button>
       </Dropdown>
     </div>)}
-    {error && <p className="assets-libs-error"><StudioErrorNotice error={error}/><button type="button" onClick={onRetry}>重新读取</button></p>}
+    {error && <p className="assets-libs-error"><StudioErrorNotice error={error}/><button type="button" onClick={onRetry}>重试</button></p>}
     <button type="button" className="assets-lib assets-lib-new" onClick={() => setDialog({ name: '' })}><span className="assets-lib-icon is-plain"><Plus size={14}/></span><span>新建资产库</span></button>
     <FolderDialog value={dialog} onClose={() => setDialog(undefined)} onSaved={f => { setDialog(undefined); onChanged(); if (!dialog?.id) onChange(f.id); }}/>
   </nav>;
@@ -138,7 +138,7 @@ export function FolderDialog({ value, onClose, onSaved }: { value?: { id?: strin
     catch (e) { setError(e); }
     finally { setBusy(false); }
   };
-  return <Modal open={!!value} title={value?.id ? '改名' : '新建资产库'} okText={value?.id ? '保存' : '新建'} cancelText="取消" getContainer={studioOverlayContainer} confirmLoading={busy}
+  return <Modal open={!!value} title={value?.id ? '重命名资产库' : '新建资产库'} okText={value?.id ? '保存' : '新建'} cancelText="取消" getContainer={studioOverlayContainer} confirmLoading={busy}
     okButtonProps={{ disabled: !name.trim() }} onCancel={() => !busy && onClose()} onOk={() => void save()} destroyOnHidden>
     <Input autoFocus aria-label="资产库名称" placeholder="例如：保湿精华、巷里火锅" value={name} maxLength={100} onChange={e => setName(e.target.value)} onPressEnter={() => name.trim() && void save()}/>
     {error && <p className="assets-form-error"><StudioErrorNotice error={error}/></p>}
@@ -257,14 +257,14 @@ function MediaWall({ tab, library, folders, onFoldersChanged }: {
   const sourceName = SOURCES.find(s => s.key === source)?.label;
 
   return <div ref={wall} className="assets-wall-panel">
-    {isAi && <header className="assets-lib-head"><span className="assets-lib-icon is-ai"><AiMark size={14}/></span><div><h2>AI 生成</h2><p>做出来的图片、视频和音频会自动放在这里，移到别的资产库就从这里拿走。</p></div></header>}
+    {isAi && <header className="assets-lib-head"><span className="assets-lib-icon is-ai"><AiMark size={14}/></span><div><h2>AI 生成</h2><p>AI 生成的图片、视频和音频会自动保存在这里。</p></div></header>}
     <div className="assets-toolbar">
       <Input className="assets-search" prefix={<Search size={15}/>} allowClear aria-label="搜索资产" placeholder="搜索名称或提示词" value={keyword} onChange={e => setKeyword(e.target.value)}/>
       {!isAi && <Dropdown trigger={['click']} getPopupContainer={studioOverlayContainer} menu={{ items: SOURCES.map(s => ({ key: s.key, label: s.label })), selectable: true, selectedKeys: [source], onClick: ({ key }) => setSource(key) }}>
         <button type="button" className="assets-select" aria-label="按来源筛选">{sourceName}<ChevronDown size={14}/></button>
       </Dropdown>}
       <span className="assets-toolbar-gap"/>
-      <span className="assets-count" aria-live="polite">{loading && !items.length ? '正在读取…' : `${count} 个`}</span>
+      <span className="assets-count" aria-live="polite">{loading && !items.length ? '正在加载…' : `${count} 个`}</span>
       {selecting
         ? <><span className="assets-count">已选 {selected.length} 个</span>
           <Dropdown trigger={['click']} disabled={!selected.length} getPopupContainer={studioOverlayContainer} menu={moveMenu(selected)}><Button disabled={!selected.length}>移到<ChevronDown size={14}/></Button></Dropdown>
@@ -272,11 +272,11 @@ function MediaWall({ tab, library, folders, onFoldersChanged }: {
         : <Button icon={<SquareCheck size={15}/>} disabled={!items.length} onClick={() => setSelecting(true)}>批量选择</Button>}
     </div>
     {actionError && <p className="assets-notice"><StudioErrorNotice error={actionError}/></p>}
-    {error ? <div className="assets-empty"><p><StudioErrorNotice error={error}/></p><Button onClick={() => setRevision(n => n + 1)}>重新读取</Button></div>
-      : loading && !items.length && !voiceItems.length ? <div className="assets-wall is-loading" aria-label="正在读取资产">{Array.from({ length: columns }, (_, i) => <div key={i} className="assets-wall-col"><span className="assets-skeleton" style={{ aspectRatio: i % 2 ? '3 / 4' : '1 / 1' }}/><span className="assets-skeleton" style={{ aspectRatio: '4 / 3' }}/></div>)}</div>
+    {error ? <div className="assets-empty"><p><StudioErrorNotice error={error}/></p><Button onClick={() => setRevision(n => n + 1)}>重试</Button></div>
+      : loading && !items.length && !voiceItems.length ? <div className="assets-wall is-loading" aria-label="正在加载资产">{Array.from({ length: columns }, (_, i) => <div key={i} className="assets-wall-col"><span className="assets-skeleton" style={{ aspectRatio: i % 2 ? '3 / 4' : '1 / 1' }}/><span className="assets-skeleton" style={{ aspectRatio: '4 / 3' }}/></div>)}</div>
       : !wallItems.length ? <div className="assets-empty">
-        {isAi ? <><h3>这里还是空的</h3><p>在 AI 图片、AI 视频或画布里做出来的东西会自动放进来。</p><div><Link className="ip-brand-secondary" href="/image">去做一张图</Link></div></>
-          : <><h3>没有找到</h3><p>换个名称或来源试试。</p><Button onClick={() => { setKeyword(''); setSource('all'); }}>清除筛选</Button></>}
+        {isAi ? <><h3>还没有 AI 生成的素材</h3><p>在 AI 图片、AI 视频或画布中生成的内容会自动保存在这里。</p><div><Link className="ip-brand-secondary" href="/image">生成图片</Link></div></>
+          : <><h3>没有找到匹配的素材</h3><p>请尝试其他名称或来源。</p><Button onClick={() => { setKeyword(''); setSource('all'); }}>清除筛选</Button></>}
       </div>
       : <div className="assets-wall">{columnsOfItems.map((col, i) => <div key={i} className="assets-wall-col">{col.map(w =>
         w.type === 'upload' ? <div key="upload" className="assets-upload-tile" style={{ aspectRatio: `1 / ${uploadRatio}` }}><button type="button" className="assets-upload" disabled={uploading} onClick={() => fileInput.current?.click()}>
@@ -297,7 +297,7 @@ function MediaWall({ tab, library, folders, onFoldersChanged }: {
     }}/>
     <FolderDialog value={newFolderFor ? { name: '' } : undefined} onClose={() => setNewFolderFor(undefined)} onSaved={f => { const ids = newFolderFor || []; setNewFolderFor(undefined); onFoldersChanged(); void move(ids, f.id); }}/>
     <Modal open={!!preview} title={preview?.title} footer={null} width={960} getContainer={studioOverlayContainer} className="library-preview-modal" onCancel={() => setPreview(undefined)} destroyOnHidden>
-      {preview && <div className="library-full-preview">{preview.kind === 'image' ? <SignedImage storageKey={preview.data.storageKey} src={preview.data.dataUrl} alt={preview.title}/> : preview.kind === 'video' ? <SignedVideo storageKey={preview.data.storageKey} src={preview.data.url} controls preload="metadata"/> : preview.kind === 'audio' ? <SignedAudio storageKey={preview.data.storageKey} src={preview.data.url} controls/> : <pre>{preview.data.content}</pre>}{typeof preview.metadata?.prompt === 'string' && <details><summary>生成时的描述</summary><p>{preview.metadata.prompt}</p></details>}</div>}
+      {preview && <div className="library-full-preview">{preview.kind === 'image' ? <SignedImage storageKey={preview.data.storageKey} src={preview.data.dataUrl} alt={preview.title}/> : preview.kind === 'video' ? <SignedVideo storageKey={preview.data.storageKey} src={preview.data.url} controls preload="metadata"/> : preview.kind === 'audio' ? <SignedAudio storageKey={preview.data.storageKey} src={preview.data.url} controls/> : <pre>{preview.data.content}</pre>}{typeof preview.metadata?.prompt === 'string' && <details><summary>提示词</summary><p>{preview.metadata.prompt}</p></details>}</div>}
     </Modal>
   </div>;
 }
@@ -308,7 +308,7 @@ function MaterialTile({ item, subline, selecting, selected, onToggle, onOpen, me
 }) {
   const unavailable = item.metadata?.unavailable === true;
   const ratio = item.kind === 'image' || item.kind === 'video' ? mediaRatio(item.data.width, item.data.height, item.kind === 'video' ? 16 / 9 : 1) : item.kind === 'text' ? 0.75 : 1;
-  const media = unavailable ? <span className="assets-tile-blank">暂时读不到</span>
+  const media = unavailable ? <span className="assets-tile-blank">加载失败</span>
     : item.kind === 'image' ? <AssetThumb kind="image" storageKey={item.data.storageKey} src={item.data.dataUrl}/>
     : item.kind === 'video' ? <AssetThumb kind="video" storageKey={item.data.storageKey} src={item.data.url}/>
     : item.kind === 'audio' ? <span className="assets-tile-audio"><AudioLines size={34} strokeWidth={1.3}/></span>
@@ -323,7 +323,7 @@ function MaterialTile({ item, subline, selecting, selected, onToggle, onOpen, me
     {selecting
       ? <Checkbox className="assets-tile-check" aria-label={`选择 ${item.title}`} checked={selected} onChange={onToggle}/>
       : <Dropdown trigger={['click']} getPopupContainer={studioOverlayContainer} menu={menu}>
-        <button type="button" className="assets-tile-move" aria-label={`把 ${item.title} 移到资产库`}><span>移到</span><ChevronDown size={12}/><MoreHorizontal size={15}/></button>
+        <button type="button" className="assets-tile-move" aria-label={`将 ${item.title} 移到资产库`}><span>移到</span><ChevronDown size={12}/><MoreHorizontal size={15}/></button>
       </Dropdown>}
     <strong title={item.title}>{item.title}</strong>
     <small>{subline}</small>
@@ -337,7 +337,7 @@ function VoiceTile({ voice }: { voice: VoiceAsset }) {
       <span className="assets-tile-audio">{voice.wave?.length
         ? <span className="assets-wave" aria-hidden="true">{voice.wave.slice(0, 24).map((h, i) => <i key={i} style={{ height: `${Math.max(4, Math.min(40, h))}px` }}/>)}</span>
         : <AudioLines size={34} strokeWidth={1.3}/>}</span>
-      <span className="assets-tile-badge"><Mic size={11}/>人物的声音</span>
+      <span className="assets-tile-badge"><Mic size={11}/>人物声音</span>
     </Link>
     <strong title={voice.name}>{voice.name}</strong>
     <small>{[kind, voice.lang].filter(Boolean).join(' · ')}</small>

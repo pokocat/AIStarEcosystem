@@ -2,7 +2,7 @@
  "note": "web-incubator 全站演示图的出图要求。人物都是虚构的。用 Codex imagegen 生成后压成 webp：方图 768px、横图 1280px、hero-landing 1536px。",
  "images": [
   {
-   "file": "public/images/star-chen-yu.webp",
+   "file": "public/images/star-lu-chengyuan.webp",
    "size": "1024x1024",
    "prompt": "Photoreal editorial portrait, Seoul lookbook and magazine-cover quality, 85mm lens, head and shoulders, the face centred with generous headroom so that a centre crop to a circle or a tall card both work. Subject: man, 38, stage and screen drama actor known for period and spy dramas; composed gaze, charcoal wool overcoat, deep neutral backdrop. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
   },
@@ -12,22 +12,22 @@
    "prompt": "Photoreal editorial portrait, Seoul lookbook and magazine-cover quality, 85mm lens, head and shoulders, the face centred with generous headroom so that a centre crop to a circle or a tall card both work. Subject: man, 40, mainstream entertainer; easy confident half-smile, unstructured navy blazer over a white tee, warm grey backdrop. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
   },
   {
-   "file": "public/images/star-gu-ran.webp",
+   "file": "public/images/star-gu-xingchen.webp",
    "size": "1024x1024",
    "prompt": "Photoreal editorial portrait, Seoul lookbook and magazine-cover quality, 85mm lens, head and shoulders, the face centred with generous headroom so that a centre crop to a circle or a tall card both work. Subject: man, 30, top-tier idol and singer; refined features, soft black hair, ivory silk shirt, pale cream backdrop. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
   },
   {
-   "file": "public/images/star-su-zhi.webp",
+   "file": "public/images/star-su-nian.webp",
    "size": "1024x1024",
    "prompt": "Photoreal editorial portrait, Seoul lookbook and magazine-cover quality, 85mm lens, head and shoulders, the face centred with generous headroom so that a centre crop to a circle or a tall card both work. Subject: woman, 34, fashion-forward lead actress; sleek low bun, black satin blazer, pearl earrings, warm taupe backdrop. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
   },
   {
-   "file": "public/images/star-lu-xingye.webp",
+   "file": "public/images/star-jiang-ye.webp",
    "size": "1024x1024",
    "prompt": "Photoreal editorial portrait, Seoul lookbook and magazine-cover quality, 85mm lens, head and shoulders, the face centred with generous headroom so that a centre crop to a circle or a tall card both work. Subject: man, 28, athlete-turned-singer with street style; short dark hair, technical black jacket, cool concrete backdrop. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
   },
   {
-   "file": "public/images/star-lin-lubai.webp",
+   "file": "public/images/star-lin-qingyi.webp",
    "size": "1024x1024",
    "prompt": "Photoreal editorial portrait, Seoul lookbook and magazine-cover quality, 85mm lens, head and shoulders, the face centred with generous headroom so that a centre crop to a circle or a tall card both work. Subject: woman, 35, elegant film actress; long black hair, ivory knit, gentle gaze, soft window light, muted sage backdrop. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
   },
@@ -680,6 +680,211 @@
    "file": "public/images/case-night-radio.webp",
    "size": "1536x1024",
    "prompt": "Cinematic photograph, anamorphic feel, deep tonal range, the main subject away from the very edges so that it survives cropping. Scene: a late-night radio host seen from the side at a microphone in a dim booth, warm dial glow, rain on the window. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/video-talk-sell.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: a stylish female presenter speaking warmly to camera in a refined boutique, holding an unlabeled skincare bottle; shelves softly blurred behind. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/video-promo.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: a joyful young woman with stacked blank gift boxes and ribbon under warm festive light, tasteful premium sale mood, no signs. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/video-seeding.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: a young woman at a sunlit café table smoothing an unlabeled hand cream onto her hand, relaxed morning life. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/video-pain.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: a tired young man at a desk at dusk rubbing his stiff neck, laptop glow, an unlabeled neck massager waiting beside him. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/video-demo.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: close-up of hands demonstrating a sleek unlabeled compact blender on a stone kitchen counter, ingredients mid-motion, crisp detail. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/video-store-find.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: an independent Seoul-style coffee shop storefront at golden hour with no sign text, warm windows, a visitor about to walk in. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/video-visit.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: a young woman tasting a dish at a small restaurant counter, the chef watching kindly, honest warm atmosphere. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/video-signature.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: a signature bowl of hand-pulled noodles with rising steam on a dark wood counter, appetising close-up, a single warm pendant light. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/video-groupbuy.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: three friends laughing around a bubbling hot-pot table in a warm neighbourhood restaurant, lively but elegant. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/video-claim.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: a lone runner on a misty mountain ridge at dawn, small against an enormous sky, a brand manifesto mood. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/video-brand-story.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: a founder and craftsperson at a wooden workbench with sketches and prototypes, warm workshop light, hands at work. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/video-lifestyle.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: a woman reading on a sunlit linen terrace above a calm sea, aspirational slow life, gentle breeze. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/video-concept.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: surreal creative visual: an unlabeled perfume bottle balancing on a floating stone above a pale desert, a giant soft sphere behind. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/video-dialog.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: two people in a tense conversation across a café table at night, rim light, a short-drama still. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/video-twist.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: a woman pausing at an apartment door and glancing back with a knowing smile, a sealed envelope in her hand, dramatic low light. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/video-mystery.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: a hand holding an old brass key under a narrow flashlight beam in a dim attic full of covered furniture. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/video-emotion.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: an elderly father and his adult daughter embracing on a quiet train platform at dusk, tender and restrained. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/video-placement.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: a young couple in a warm kitchen in the middle of a drama scene, an unlabeled tea tin sitting naturally on the table between them. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/video-dh-talk.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: a fictional digital-human host speaking directly to camera in an elegant studio, an extremely subtle digital sheen on the skin edge. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/video-ip-daily.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: a young woman vlogging with a small camera in a cosy sunlit bedroom in the morning, coffee in hand. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/video-remix.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: a creator rehearsing a move in a home studio, a phone on a tripod playing a reference clip shown only as an abstract colour field. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/image-free.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: an art director's table of blank reference prints, colour swatches and a pencil, soft side light, creative mood board with no writing. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/image-ip-sheet.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: professional character turnaround of one fictional female IP on a pale backdrop: front, side and back full-body views plus a small row of expression heads, clean layout, no writing. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/image-ip-photo.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: a fictional female IP posing for a fashion photoshoot on a seamless backdrop, a softbox and a photographer partly visible at the frame edge. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/image-ip-sticker.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: a neat three-by-three grid of expressive sticker portraits of one cute original 3D character with different emotions, pastel background, no writing. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/image-face3.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: a clean triptych of one fictional woman showing front, three-quarter and profile views of the face, neutral grey backdrop, even studio light. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/image-body4.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: a clean row of one fictional man in a tailored charcoal suit: front, side and back full-body views and one bust close-up, neutral backdrop, no writing. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/image-face-swap.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: a fashion model in a camel coat in a studio with a delicate vertical light seam across the face suggesting a face being replaced, elegant and not scary. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/image-face-blend.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: two fictional portraits in profile facing each other and softly blending into one face in the centre, elegant double exposure, muted tones. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/image-tryon.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: a tailored ivory coat on a hanger beside a fictional model wearing the same coat, clean studio, a virtual try-on comparison. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/image-product-use.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: a woman applying an unlabeled lip balm in front of a round mirror, natural morning bathroom light, intimate and real. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/image-white-bg.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: one unlabeled ceramic mug on a pure seamless white background, marketplace hero shot with a soft contact shadow, nothing else. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/image-selling-point.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: an unlabeled pair of wireless earbuds with its open case in a dramatic close-up, thin elegant callout lines pointing to details with no words. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/image-restyle.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: the same shirt dress on three hangers in three colourways, ivory, sage and deep navy, against a plaster wall. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/image-person-scene.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: a woman in a white dress standing on a vast mirror-like salt flat at sunset, her reflection beneath her. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/image-product-scene.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: an unlabeled amber perfume bottle on a bathroom shelf among folded linen and a small plant, morning light through frosted glass. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/image-realistic.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: an extremely natural close-up portrait of a fictional young woman with real skin texture, fine pores and soft window light, no retouching look. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/image-retouch.webp",
+   "size": "1024x1024",
+   "prompt": "Cinematic editorial photograph, square composition with the main subject centred so that small square thumbnails still read clearly. Scene: a photo retoucher's calm dark desk with a large monitor showing a beautiful portrait, a stylus and tablet in the foreground. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/backdrop-studio.webp",
+   "size": "1536x1024",
+   "prompt": "Cinematic photograph, anamorphic feel, deep tonal range, the main subject away from the very edges so that it survives cropping. Scene: an empty elegant talk-show studio backdrop with soft graded walls and warm practical lights, no people in frame, generous space in the centre. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/backdrop-store.webp",
+   "size": "1536x1024",
+   "prompt": "Cinematic photograph, anamorphic feel, deep tonal range, the main subject away from the very edges so that it survives cropping. Scene: an empty refined boutique interior with shelves of unlabeled products softly out of focus, no people in frame, generous space in the centre. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
+  },
+  {
+   "file": "public/images/backdrop-home.webp",
+   "size": "1536x1024",
+   "prompt": "Cinematic photograph, anamorphic feel, deep tonal range, the main subject away from the very edges so that it survives cropping. Scene: an empty cosy living room with linen sofa and plants in soft daylight, softly out of focus, no people in frame, generous space in the centre. No text, letters, numbers, captions, logos, brand marks, watermarks or UI anywhere in the image. High-end editorial art direction: restrained palette, considered composition, refined light, real material texture, subtle film grain. It must feel expensive and quiet, like a luxury campaign or a prestige film still, never like stock photography, never garish neon, no plastic skin, no extra fingers. Any person shown is a fictional adult with a Korean-style East Asian look (clean natural skin, light makeup, black or dark brown hair unless stated otherwise); no Western, Black or Middle Eastern faces; must not resemble any real celebrity."
   }
  ]
 }

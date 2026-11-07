@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ColorModeToggle } from './ColorModeToggle';
 import {
   ArrowLeft, ArrowRight, ArrowUpRight, BarChart3, CheckCircle2, Cpu, Globe2,
   Layers, Rocket, Shield, Sparkles, Star, Wand2,
@@ -14,6 +15,8 @@ import { LandingFooter } from './LandingFooter';
 import { getContentMode, getEngine } from '../data/ipEngines';
 import { SOLUTION_DETAILS } from '../data/solutionDetails';
 import { DayTimelineSection, DeliverablesSection, FaqSection, ResultsSection, SpotlightSection } from './SolutionDetailSections';
+import { SectionHead } from './landing/SectionHead';
+import { ProductionHub } from './landing/ProductionHub';
 
 interface Props {
   config: SolutionConfig;
@@ -59,7 +62,7 @@ export const SolutionLandingPage = ({ config, lang, setLang, onEnter, onSelectSo
   ];
 
   return (
-    <div className="homepage-dark min-h-screen bg-black text-white overflow-x-hidden" style={{ fontFamily: 'var(--font-sans)' }}>
+    <div className="min-h-screen bg-black text-white overflow-x-hidden" style={{ fontFamily: 'var(--font-sans)' }}>
       <nav className="fixed inset-x-0 top-0 z-50 border-b border-white/10 bg-black/70 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto h-16 px-6 flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
@@ -78,6 +81,7 @@ export const SolutionLandingPage = ({ config, lang, setLang, onEnter, onSelectSo
             {navLinks.map(link => (
               <a key={link.href} href={link.href} className="hover:text-white transition">{link.label}</a>
             ))}
+            <ColorModeToggle lang={zh ? 'zh' : 'en'} className="-mx-1 h-8 w-8 hover:bg-white/10" />
             <button onClick={onEnter} className="text-white rounded-full px-4 py-2 font-semibold" style={{ background: gradient }}>
               {text(config.primaryCTA)}
             </button>
@@ -143,41 +147,47 @@ export const SolutionLandingPage = ({ config, lang, setLang, onEnter, onSelectSo
 
       <section className="px-6 py-24">
         <div className="max-w-7xl mx-auto">
-          <div className="grid lg:grid-cols-[.8fr_1.2fr] gap-10 items-center">
-            <div>
-              <div className="text-xs uppercase tracking-[.22em] mb-4" style={{ color: config.accent }}>{zh ? '为谁打造' : 'BUILT FOR'}</div>
-              <h2 className="text-4xl md:text-5xl font-black leading-tight" style={{ fontFamily: 'var(--font-display)' }}>{zh ? '为这些团队量身打造' : 'Built for Teams Like Yours'}</h2>
-              <p className="text-sm text-gray-500 mt-5 leading-relaxed">{zh ? '从定位、内容生产到商业变现，每类团队都有对应的场景模板与工作流。' : 'From positioning and production to monetization, every team gets matching templates and workflows.'}</p>
-            </div>
-            <div className="grid sm:grid-cols-3 gap-3">
-              {config.audience.map((item, index) => (
-                <motion.div key={item.name.en} whileHover={{ y: -4 }} className="min-h-[180px] rounded-2xl border border-white/10 bg-gray-900/40 p-5 flex flex-col">
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center text-xs font-mono" style={{ color: config.accent, background: `${config.accent}15`, border: `1px solid ${config.accent}30` }}>0{index + 1}</div>
-                  <div className="mt-auto text-base text-white font-bold">{text(item.name)}</div>
-                  <div className="text-xs text-gray-400 mt-2 flex items-start gap-1.5 leading-relaxed"><CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color: config.accent }} /> {text(item.need)}</div>
-                </motion.div>
-              ))}
-            </div>
+          <SectionHead eyebrow={zh ? '为谁打造' : 'Built for'} meta="TEAMS / 03" accent={config.accent}
+            title={zh ? '为这些团队量身打造' : 'Built for Teams Like Yours'}
+            desc={zh ? '从定位、内容生产到商业变现，每类团队都有对应的场景模板与工作流。' : 'From positioning and production to monetization, every team gets matching templates and workflows.'} />
+          <div className="grid sm:grid-cols-3 gap-3">
+            {config.audience.map((item, index) => (
+              <motion.div key={item.name.en} whileHover={{ y: -4 }} className="group relative min-h-[200px] overflow-hidden rounded-2xl border border-white/10 bg-gray-900/60 p-5 flex flex-col">
+                <span aria-hidden className="pointer-events-none absolute inset-0 opacity-0 transition group-hover:opacity-100" style={{ background: `radial-gradient(360px 160px at 0% 0%, ${config.accent}1f, transparent 70%)` }} />
+                <div className="relative flex items-center justify-between">
+                  <span className="eyebrow-mono text-gray-500">TEAM / 0{index + 1}</span>
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: config.accent, boxShadow: `0 0 8px ${config.accent}` }} />
+                </div>
+                <div className="relative mt-auto text-xl text-white font-bold" style={{ fontFamily: 'var(--font-display)' }}>{text(item.name)}</div>
+                <div className="relative text-xs text-gray-400 mt-2 flex items-start gap-1.5 leading-relaxed"><CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color: config.accent }} /> {text(item.need)}</div>
+              </motion.div>
+            ))}
           </div>
         </div>
       </section>
 
-      <section id="capabilities" className="px-6 py-28">
+      <section id="capabilities" className="px-6 py-24">
         <div className="max-w-7xl mx-auto">
-          <div className="max-w-3xl mb-14">
-            <div className="text-xs uppercase tracking-[.22em] mb-4" style={{ color: config.accent }}>{zh ? '核心能力' : 'Capabilities'}</div>
-            <h2 className="text-4xl md:text-5xl font-black" style={{ fontFamily: 'var(--font-display)' }}>{zh ? '从创作到变现，一站完成' : 'From Creation to Revenue, All in One Place'}</h2>
-          </div>
-          <div className="grid md:grid-cols-3 gap-4">
+          <SectionHead eyebrow={zh ? '核心能力' : 'Capabilities'} meta={`CAPABILITIES / 0${config.capabilities.length}`} accent={config.accent}
+            title={zh ? '从创作到变现，一站完成' : 'From Creation to Revenue, All in One Place'} />
+          {/* Bento: the lead capability spans two columns, like the homepage's domain grid. */}
+          <div className="grid md:grid-cols-3 gap-3">
             {config.capabilities.map((item, index) => {
               const Icon = capabilityIcons[index % capabilityIcons.length];
+              const lead = index === 0;
               return (
-                <motion.div key={item.title.en} whileHover={{ y: -5 }} className="rounded-2xl border border-white/10 bg-gray-900/40 p-6 hover:border-white/20 transition">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-6" style={{ color: config.accent, background: `${config.accent}12`, border: `1px solid ${config.accent}30` }}>
-                    <Icon className="w-5 h-5" />
+                <motion.div key={item.title.en} whileHover={{ y: -5 }}
+                  className={`group relative overflow-hidden rounded-2xl border border-white/10 bg-gray-900/60 p-6 flex flex-col transition hover:border-white/20 ${lead ? 'md:col-span-2 min-h-[240px]' : 'min-h-[240px]'}`}>
+                  <span aria-hidden className="pointer-events-none absolute inset-0" style={{ background: `linear-gradient(160deg, transparent 55%, ${index % 2 ? config.secondary : config.accent}1a)` }} />
+                  <div className="relative flex items-start justify-between">
+                    <span className="eyebrow-mono text-gray-500">CAP / 0{index + 1}</span>
+                    <span className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ color: config.accent, background: `${config.accent}14`, border: `1px solid ${config.accent}33` }}><Icon className="w-5 h-5" /></span>
                   </div>
-                  <h3 className="text-lg text-white font-bold">{text(item.title)}</h3>
-                  <p className="text-xs text-gray-500 mt-2 leading-relaxed">{text(item.description)}</p>
+                  <div className="relative mt-auto">
+                    <h3 className={`${lead ? 'text-3xl' : 'text-xl'} text-white font-bold`} style={{ fontFamily: 'var(--font-display)' }}>{text(item.title)}</h3>
+                    <p className="text-sm text-gray-400 mt-2 leading-relaxed max-w-xl">{text(item.description)}</p>
+                  </div>
+                  <ArrowUpRight className="absolute bottom-5 right-5 w-4 h-4 text-gray-500 transition group-hover:text-white" />
                 </motion.div>
               );
             })}
@@ -185,18 +195,18 @@ export const SolutionLandingPage = ({ config, lang, setLang, onEnter, onSelectSo
         </div>
       </section>
 
+      <ProductionHub config={config} lang={lang} />
+
       {detail && <SpotlightSection spotlight={detail.spotlight} {...theme} />}
 
-      <section className="px-6 py-28 border-y border-white/5 bg-gray-950/40">
+      <section className="px-6 py-24 border-y border-white/5 bg-gray-950/40">
         <div className="max-w-7xl mx-auto">
-          <div className="text-center max-w-3xl mx-auto mb-14">
-            <div className="text-xs uppercase tracking-[.22em] mb-4" style={{ color: config.accent }}>{zh ? '内容场景与 AI 引擎' : 'CONTENT MODES & AI ENGINES'}</div>
-            <h2 className="text-4xl md:text-5xl font-black" style={{ fontFamily: 'var(--font-display)' }}>{zh ? '为这个领域预装最合适的生产能力' : 'The Right Production Stack, Preconfigured'}</h2>
-          </div>
+          <SectionHead eyebrow={zh ? '内容场景与 AI 引擎' : 'Content modes & AI engines'} meta="PRESET STACK" accent={config.accent}
+            title={zh ? '为这个领域预装最合适的生产能力' : 'The Right Production Stack, Preconfigured'} />
           <div className="grid lg:grid-cols-2 gap-4">
-            <div className="rounded-3xl border border-white/10 bg-black/35 p-6 md:p-8 flex flex-col">
+            <div className="rounded-3xl border border-white/10 bg-gray-900/60 p-6 md:p-8 flex flex-col">
               <div className="flex items-center justify-between mb-7">
-                <div><div className="text-xs text-gray-600 uppercase tracking-widest">{zh ? '内容场景' : 'CONTENT MODES'}</div><div className="text-xl text-white font-bold mt-1">{zh ? '从模板快速启动' : 'Start From Proven Templates'}</div></div>
+                <div><div className="eyebrow-mono text-gray-500">{zh ? '内容场景' : 'Content modes'}</div><div className="text-xl text-white font-bold mt-1">{zh ? '从模板快速启动' : 'Start From Proven Templates'}</div></div>
                 <Layers className="w-6 h-6" style={{ color: config.accent }} />
               </div>
               <div className="flex-1 grid auto-rows-fr gap-3">
@@ -214,9 +224,9 @@ export const SolutionLandingPage = ({ config, lang, setLang, onEnter, onSelectSo
                 })}
               </div>
             </div>
-            <div className="rounded-3xl border border-white/10 bg-black/35 p-6 md:p-8">
+            <div className="rounded-3xl border border-white/10 bg-gray-900/60 p-6 md:p-8">
               <div className="flex items-center justify-between mb-7">
-                <div><div className="text-xs text-gray-600 uppercase tracking-widest">{zh ? '推荐引擎' : 'RECOMMENDED ENGINES'}</div><div className="text-xl text-white font-bold mt-1">{zh ? '按需组合的 AI 能力栈' : 'Composable AI Capability Stack'}</div></div>
+                <div><div className="eyebrow-mono text-gray-500">{zh ? '推荐引擎' : 'Recommended engines'}</div><div className="text-xl text-white font-bold mt-1">{zh ? '按需组合的 AI 能力栈' : 'Composable AI Capability Stack'}</div></div>
                 <Cpu className="w-6 h-6" style={{ color: config.secondary }} />
               </div>
               <div className="space-y-2">
@@ -229,6 +239,7 @@ export const SolutionLandingPage = ({ config, lang, setLang, onEnter, onSelectSo
                         <div className="text-sm text-gray-200">{text(entry.name)}</div>
                         <div className="text-xs text-gray-500 mt-0.5 truncate">{text(entry.description)}</div>
                       </div>
+                      <span className="eyebrow-mono hidden sm:inline" style={{ color: config.secondary }}>READY</span>
                     </div>
                   );
                 })}
@@ -238,23 +249,21 @@ export const SolutionLandingPage = ({ config, lang, setLang, onEnter, onSelectSo
         </div>
       </section>
 
-      <section id="workflow" className="px-6 py-28 border-y border-white/5 bg-gray-950/40">
+      <section id="workflow" className="px-6 py-24">
         <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-14">
-            <div className="text-xs uppercase tracking-[.22em] mb-4" style={{ color: config.accent }}>{zh ? '业务流程' : 'Workflow'}</div>
-            <h2 className="text-4xl font-black" style={{ fontFamily: 'var(--font-display)' }}>{zh ? '从 IP 定义到商业价值' : 'From IP Definition to Commercial Value'}</h2>
-          </div>
+          <SectionHead eyebrow={zh ? '业务流程' : 'Workflow'} meta={`STEPS / 0${config.workflow.length}`} accent={config.accent}
+            title={zh ? '从 IP 定义到商业价值' : 'From IP Definition to Commercial Value'} />
           <ol className="relative grid md:grid-cols-5 gap-8 md:gap-4">
             <span aria-hidden className="hidden md:block absolute top-6 left-[10%] right-[10%] h-px" style={{ background: `linear-gradient(90deg, ${config.accent}, ${config.secondary})`, opacity: .45 }} />
             {config.workflow.map((step, index) => (
               <motion.li key={step.en} initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: index * .08 }}
                 className="relative flex md:flex-col items-center gap-4 md:gap-0 md:text-center">
                 <span className="relative z-10 w-12 h-12 shrink-0 rounded-full flex items-center justify-center text-sm font-black text-white"
-                  style={{ background: `linear-gradient(135deg, ${config.accent}, ${config.secondary})`, boxShadow: `0 0 0 6px #030712, 0 10px 30px ${config.accent}35`, fontFamily: 'var(--font-display)' }}>
+                  style={{ background: `linear-gradient(135deg, ${config.accent}, ${config.secondary})`, boxShadow: `0 0 0 6px var(--landing-bg), 0 10px 30px ${config.accent}35`, fontFamily: 'var(--font-display)' }}>
                   0{index + 1}
                 </span>
                 <div className="md:mt-5">
-                  <div className="text-xs font-mono text-gray-500">STEP 0{index + 1}</div>
+                  <div className="eyebrow-mono text-gray-500">STEP / 0{index + 1}</div>
                   <div className="text-base text-white font-semibold mt-1">{text(step)}</div>
                 </div>
               </motion.li>

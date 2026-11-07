@@ -92,7 +92,7 @@ export function StudioModelPicker({label="生成模型",value,options,onChange,d
   return <Popover trigger="click" placement={bounds.placement} arrow={false} open={open&&!disabled} onOpenChange={setOpen} afterOpenChange={visible=>{if(visible)focusPopup(panel.current);}} getPopupContainer={popupContainer} destroyOnHidden
     classNames={{root:`studio-model-overlay${className?` ${className}-overlay`:""}`}} styles={{container:{padding:0}}} content={<div ref={panel} style={{maxHeight:Math.min(480,bounds.height)}} className="studio-model-menu"><StudioChoiceGroup label={label} value={value} options={options} onChange={next=>{onChange(next);setOpen(false);trigger.current?.focus();}}/></div>}>
     <button ref={trigger} type="button" className={`studio-model-trigger${className?` ${className}`:""}`} aria-label={label} aria-expanded={open&&!disabled} disabled={disabled||loading||!options.length} title={typeof selected?.label==='string'?selected.label:undefined}>
-      {icon??<Sparkles size={16}/>}<span>{loading?'正在读取模型…':selected?.label||(label==='视频模式'?'请选择模式':'尚未配置模型')}</span><ChevronDown size={14}/>
+      {icon??<Sparkles size={16}/>}<span>{loading?'正在加载模型…':selected?.label||(label==='视频模式'?'请选择模式':'暂无可用模型')}</span><ChevronDown size={14}/>
     </button>
   </Popover>;
 }

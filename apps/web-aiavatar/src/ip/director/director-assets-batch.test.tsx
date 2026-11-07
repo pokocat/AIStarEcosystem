@@ -39,7 +39,7 @@ test("generate-all submits every asset and reports the props the server refused 
   const failure = setError.mock.calls.at(-1)![0] as { action: string; error: string };
   expect(failure.action).toBe("生成全部资产图");
   const message = failure.error;
-  expect(message).toMatch(/^4 项里有 2 项没有提交成功：/);
+  expect(message).toMatch(/^4 项中有 2 项提交失败：/);
   expect(message).toContain(`修复编号工作本：${sizeError}`);
   expect(message).toContain("母亲旧毛衣：");
   expect(message).not.toMatch(/换一个画幅/);

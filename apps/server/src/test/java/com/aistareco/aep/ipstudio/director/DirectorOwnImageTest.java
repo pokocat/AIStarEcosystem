@@ -162,7 +162,7 @@ class DirectorOwnImageTest {
         assertEquals("[\"参考图已移除\"]", last(edit("asset.clearRef", id, "{}")).path("image").path("staleReasons").toString());
         JsonNode a = last(service.get(USER, work.getId()));
         JsonNode changed = last(service.edit(USER, work.getId(), new DirectorService.EditRequest("asset.update", id, a.path("rev").asLong(), om.readTree("{\"description\":\"晴天的老宅门口\"}"))));
-        assertEquals("[\"描述或出图提示词已修改\"]", changed.path("image").path("staleReasons").toString());
+        assertEquals("[\"描述或提示词已修改\"]", changed.path("image").path("staleReasons").toString());
     }
 
     /** 模拟一张已采用的生成图：refKey 是生成时交给模型的参考图。 */

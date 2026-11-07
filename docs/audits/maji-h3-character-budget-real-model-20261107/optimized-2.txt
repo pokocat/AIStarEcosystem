@@ -1,0 +1,32 @@
+subject_definitions:
+<Subject 1> is the beef offal clay pot in <Picture 1>: a black round pot with dark brown broth, offal chunks, red pepper pieces and scallion, excluding the white bowl and plastic bag at the frame edges.
+<Subject 2> is the grilled oyster in <Picture 2>: a large shell packed with minced garlic, red chili rings and scallion over glossy juices.
+<Subject 3> is the salt-and-pepper corn in <Picture 3>: long golden corn strips with browned salt-and-pepper surfaces on a white plate with a green rim.
+<Subject 4> is the storefront in <Picture 4>: a dark wall with glowing gold three-dimensional sign characters, gold handwritten English and two lines of small gold text under top spotlights.
+<Subject 5> is A Lan in <Picture 5>: a woman around 28 with short black hair, thin round metal glasses, a light blue knit cardigan, white straight-leg trousers and white sneakers.
+<Audio 1> is the voice-timbre reference for <Subject 5>, used for all of A Lan's lines.
+
+summary:
+[reference generation + audio reference] A Lan walks past the queue outside Ma Ji dai pai dong in Fuyang, Hangzhou, shows its glowing sign, presents the beef offal pot, grilled oyster and salt-and-pepper corn, and names the location. <Audio 1> guides her voice.
+
+retention_analysis:
+<Subject 1> ([Shot 3], [Shot 5]): fully_preserved - black clay pot, dark broth and toppings kept.
+<Subject 2> ([Shot 4], [Shot 5]): fully_preserved - large shell, garlic, chili rings and glossy juices kept.
+<Subject 3> ([Shot 4], [Shot 5]): fully_preserved - long golden strips on the green-rimmed plate kept.
+<Subject 4> ([Shot 1], [Shot 2]): fully_preserved - sign wording, shape and lighting unchanged.
+<Subject 5> ([Shot 1]-[Shot 5]): fully_preserved - face, short black hair, round metal glasses, light blue cardigan, white trousers and sneakers kept.
+<Audio 1>: reference - its timbre guides all of A Lan's lines without copying the original signal.
+
+detailed_description:
+The target video is a warm first-person live-action street-food vlog shot handheld, in golden and orange tones against deep olive-grey shadows.
+[Shot 1] Full shot at chest height on the pavement outside, handheld first-person view pushing forward two slow steps. <Subject 5>, A Lan, stands in the left third in her light blue cardigan and white trousers, hands at her sides; a row of chairs packed with waiting diners fills the centre, and the glowing gold sign of <Subject 4> sits high in the background. Focus starts on the seated crowd and racks to her face as she stops mid-step, turns to the lens and points her right index finger at the chairs. Behind her a couple leaves a parked car, shuts the door and walks toward the row. A Lan says in a bright, direct young-woman voice: (S1) <d>[Chinese] 有人开车80公里来排队。</d>
+[Shot 2] At 00:03.000, the camera cuts to a medium shot, slight low angle just behind and to one side of her, pushing in slowly and tilting up as she walks under the eave. <Subject 4> fills the upper half: dark wall, glowing gold three-dimensional characters, gold handwritten English and two lines of small gold text under the top spotlights. <Subject 5>, A Lan, occupies the lower left in profile, looks up at the sign, then turns her head to the lens and opens her right palm toward the doorway in an inviting gesture. A Lan says in the same bright voice: (S1) <d>[Chinese] 马记大排档，先进去看看。</d>
+[Shot 3] At 00:06.000, the camera cuts to a close shot at eye level inside the noisy hall, pushing in and tilting down slightly to settle at the table edge. <Subject 1>, the black clay pot, sits low and centre in frame, its dark broth simmering, fine bubbles breaking among offal chunks, red pepper and scallion, steam rising past the lens. Focus slides from the diners behind to the pot surface. A Lan's right hand enters from the lower right, the light blue cuff visible, holding bamboo chopsticks that lift one piece of offal while thick broth drips back into the pot. A Lan says in an off-screen voiceover: (S1) <d>[Chinese] 牛杂煲汤很浓，炖得很软。</d> while the on-screen character's lips remain closed.
+[Shot 4] At 00:09.000, the camera cuts to a close-up, high angle from just above the table and slightly left, drifting down slowly. <Subject 2>, the large oyster shell packed with minced garlic, red chili rings and scallion, sits on the left with glossy juices; <Subject 3>, long golden corn strips on the white plate with a green rim, sits on the right. Focus rests on the garlic and chili, then shifts to the corn as the chopsticks in A Lan's right hand pause above the oyster, move to the plate, pinch one corn strip and lift it toward the lens. A Lan says in an off-screen voiceover: (S1) <d>[Chinese] 烤生蚝和椒盐玉米也得点。</d> while the on-screen character's lips remain closed.
+[Shot 5] At 00:12.000, the camera cuts to a medium close-up at eye level from across the table, a slight handheld sway that settles. <Subject 5>, A Lan, sits centred-left, her face sharp, <Subject 1> in the lower-left foreground and <Subject 2> in the lower-right, warm lamps and full tables blurred behind her. She holds the chopsticks in her right hand with a corn strip from <Subject 3> still gripped at chest height, looks into the lens and tips her left thumb back toward the doorway over her shoulder. A Lan says in the same bright voice: (S1) <d>[Chinese] 杭州富阳，马记大排档，早点来。</d>
+
+overall_soundscape:
+Noisy diners and street traffic outside, a car door thudding shut, footsteps on pavement; inside, clay-pot bubbling, chopsticks tapping the rim, sizzling oyster juices and a low crowd hum.
+
+non_diegetic_music:
+Light upbeat drum groove from 0 seconds, ducking under each line, one accented hit on the food reveal, stopping after the final word.

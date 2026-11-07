@@ -1,6 +1,6 @@
 "use client";
 
-// 官方内容运营后台 —— 「存为官方内容」发出去的那些东西的管理面（v0.192）。
+// 官方内容运营后台 —— 「保存为官方内容」发出去的那些东西的管理面（v0.192）。
 //
 // 为什么要有这一页：发布端点做好了、下线端点也做好了，但下线**没有任何前端调用方**
 // （v0.159 那类死代码：编译绿、typecheck 绿，就是没人挂）。于是上线一条不合适的示例之后，
@@ -57,7 +57,7 @@ function DemosPageInner() {
       setRows(list);
     } catch (e) {
       if (seq !== reqRef.current) return;
-      setLoadError(e instanceof Error ? e.message : "没加载出来，刷新页面再试");
+      setLoadError(e instanceof Error ? e.message : "官方内容加载失败，请稍后刷新重试。");
     } finally {
       if (seq === reqRef.current) setLoading(false);
     }
@@ -75,10 +75,10 @@ function DemosPageInner() {
       // 作废在途的列表请求：慢的那次 GET 若在这之后返回，会把刚改的状态盖回旧值
       reqRef.current++;
       setRows((list) => list.map((r) => (r.id === row.id ? { ...r, enabled: !r.enabled } : r)));
-      toast(row.enabled ? `「${row.name}」已下线，用户看不到了` : `「${row.name}」已重新上线`, "ok");
+      toast(row.enabled ? `「${row.name}」已下线` : `「${row.name}」已重新上线`, "ok");
     } catch (e) {
       // 操作没做成弹错误弹窗（原因、下一步、错误详情），不只是底部一条提示
-      reportStudioError(e, { action: `${row.enabled ? "下线" : "上线"}「${row.name}」`, fallback: "没成功，再试一次" });
+      reportStudioError(e, { action: `${row.enabled ? "下线" : "上线"}「${row.name}」` });
     } finally {
       setBusy(null);
     }
@@ -99,7 +99,7 @@ function DemosPageInner() {
       await load();   // 排序变了要重排，就地改字段不够
       toast("已保存", "ok");
     } catch (e) {
-      reportStudioError(e, { action: `保存「${editing.name}」的修改`, fallback: "没存上，再试一次" });
+      reportStudioError(e, { action: `保存「${editing.name}」的修改` });
     } finally {
       setBusy(null);
     }
@@ -116,13 +116,13 @@ function DemosPageInner() {
       // 说话。说「素材副本已删除」而实际一个都没删，是假成功（§8.0）。
       toast(
         res.assetsFailed > 0
-          ? `「${pendingDelete.name}」已删除，但有 ${res.assetsFailed} 个素材没清掉，要运维去存储里手动删`
+          ? `「${pendingDelete.name}」已删除，${res.assetsFailed} 个素材未能清理，需运维在存储中手动删除。`
           : `「${pendingDelete.name}」及其素材副本（${res.assetsRemoved} 个）已删除`,
         res.assetsFailed > 0 ? "warn" : "ok",
       );
       setPendingDelete(null);
     } catch (e) {
-      reportStudioError(e, { action: `删除「${pendingDelete.name}」`, fallback: "没删掉，再试一次" });
+      reportStudioError(e, { action: `删除「${pendingDelete.name}」` });
     } finally {
       setBusy(null);
     }
@@ -133,7 +133,7 @@ function DemosPageInner() {
 
   if (!isOperator) {
     return <StudioPage title="官方内容管理" description="管理发布到灵感与创作入口的官方内容。" className="studio-demo-admin">
-      <div className="studio-demo-state"><p>这一页只有平台运营能看。</p><Link className="ip-brand-secondary" href="/projects">回到项目</Link></div>
+      <div className="studio-demo-state"><p>此页面仅平台运营可访问。</p><Link className="ip-brand-secondary" href="/projects">返回项目</Link></div>
     </StudioPage>;
   }
 
@@ -147,13 +147,13 @@ function DemosPageInner() {
         {loading ? <Loader2 size={16} className="animate-spin" aria-hidden="true"/> : <RefreshCw size={16} aria-hidden="true"/>}刷新
       </button>
     </>}>
-      <p className="studio-demo-note">下线后用户将看不到这条内容，随时可以重新上线。删除会清理素材副本，无法恢复；已复制到用户画布的内容不受影响。</p>
+      <p className="studio-demo-note">下线后用户将看不到此内容，可随时重新上线。删除将清理素材副本，且无法恢复；已复制到用户画布的内容不受影响。</p>
       {loading && <div className="studio-demo-state" role="status"><Loader2 size={20} className="animate-spin" aria-hidden="true"/><p>正在加载官方内容…</p></div>}
       {loadError && <div className="studio-demo-state is-error" role="alert"><AlertCircle size={20} aria-hidden="true"/><p>{loadError}</p><button type="button" className="ip-brand-secondary" onClick={() => void load()}>重试</button></div>}
-      {!loading && !loadError && rows.length === 0 && <div className="studio-demo-state"><p>还没发过官方内容。</p><p>在画布顶栏选择「存为官方内容」，发布后就会出现在这里。</p></div>}
-      <Group title="工作流模板" hint="用于新建创作，只复制节点和提示词，不包含素材。" rows={templates}
+      {!loading && !loadError && rows.length === 0 && <div className="studio-demo-state"><p>还没有官方内容。</p><p>在画布右上角「⋯」中选择「保存为官方内容」，发布后将显示在这里。</p></div>}
+      <Group title="工作流模板" hint="用于新建画布，用户使用时将复制到自己的画布。" rows={templates}
         {...{ busy, canDelete, toggle, setEditing, setDraft, setPendingDelete }} />
-      <Group title="官方示例" hint="包含素材成图，用户使用时会复制到自己的画布。" rows={examples}
+      <Group title="官方示例" hint="包含素材和成品，用户使用时将复制到自己的画布。" rows={examples}
         {...{ busy, canDelete, toggle, setEditing, setDraft, setPendingDelete }} />
 
       {/* 编辑：只改展示信息。种类不给改 —— 模板与实例的区别是文档里有没有素材，
@@ -170,12 +170,12 @@ function DemosPageInner() {
         getContainer={() => surfaceRef.current ?? document.body}
       >
         <div className="studio-demo-form">
-          <Field label="名字">
+          <Field label="名称">
             <input
               value={draft.name}
               onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
               className="studio-demo-field"
-              placeholder="别人看到的名字"
+              placeholder="用户看到的名称"
             />
           </Field>
           <Field label="一句话说明">
@@ -183,10 +183,10 @@ function DemosPageInner() {
               value={draft.summary}
               onChange={(e) => setDraft((d) => ({ ...d, summary: e.target.value }))}
               className="studio-demo-field"
-              placeholder="选填。写清楚这套工作流能做出什么"
+              placeholder="选填，例如：一张照片生成多角度人物设定图"
             />
           </Field>
-          <Field label="排序" hint="数字小的排前面，一样大的按发布时间">
+          <Field label="排序" hint="数字越小越靠前，相同时按发布时间排序">
             <input
               type="number"
               value={draft.sortOrder}
@@ -199,7 +199,7 @@ function DemosPageInner() {
 
       <Modal
         open={pendingDelete !== null}
-        title={`删除「${pendingDelete?.name ?? ""}」`}
+        title={`删除「${pendingDelete?.name ?? ""}」？`}
         onCancel={() => setPendingDelete(null)}
         onOk={() => void confirmDelete()}
         okText="删除"
@@ -208,11 +208,11 @@ function DemosPageInner() {
         getContainer={() => surfaceRef.current ?? document.body}
       >
         <p className="studio-demo-delete-note">
-          这条内容和它那份素材副本（{pendingDelete?.assetCount ?? 0} 个）会一起删掉，<b>不可恢复</b>。
+          此内容及其 {pendingDelete?.assetCount ?? 0} 个素材副本将一并删除，<b>无法恢复</b>。
           <br />
-          已经拿它建过画布的用户不受影响 —— 那些是各自复制的一份。
+          已用它创建的用户画布不受影响。
           <br />
-          只是想让别人看不到的话，<b>下线</b>就够了，随时能再打开。
+          如只需对用户隐藏，可选择<b>下线</b>，之后可随时重新上线。
         </p>
       </Modal>
     </StudioPage>
@@ -245,14 +245,14 @@ function Group({
             ) : <span>无封面</span>}</div>
             <div className="studio-demo-info">
               <div className="studio-demo-title"><h3 title={row.name}>{row.name}</h3><span className="studio-demo-status" data-enabled={row.enabled}>{row.enabled ? "已上线" : "已下线"}</span></div>
-              <p className="studio-demo-summary" title={row.summary || undefined}>{row.summary || "（没写说明）"}</p>
+              <p className="studio-demo-summary" title={row.summary || undefined}>{row.summary || "暂无说明"}</p>
               <div className="studio-demo-meta"><span>{row.nodeCount} 个节点</span><span>{row.assetCount} 个素材</span><span>排序 {row.sortOrder}</span><time>{formatDateTime(row.updatedAt ?? row.createdAt)}</time></div>
               <p className="studio-demo-id" title={row.id}>{row.id}</p>
             </div>
             <div className="studio-demo-actions" role="group" aria-label={`${row.name}的操作`}>
               <IconBtn label="编辑" onClick={() => { setDraft({ name: row.name, summary: row.summary, sortOrder: row.sortOrder }); setEditing(row); }}><Pencil size={16} /></IconBtn>
               <IconBtn label={row.enabled ? "下线" : "重新上线"} busy={busy === row.id} onClick={() => void toggle(row)}>{row.enabled ? <EyeOff size={16} /> : <Eye size={16} />}</IconBtn>
-              {canDelete && <IconBtn label="删除（连素材，不可恢复）" danger onClick={() => setPendingDelete(row)}><Trash2 size={16} /></IconBtn>}
+              {canDelete && <IconBtn label="删除" danger onClick={() => setPendingDelete(row)}><Trash2 size={16} /></IconBtn>}
             </div>
           </li>
         ))}

@@ -62,7 +62,7 @@ public class DapLicenseService {
         }
         if (req.avatarId() != null && !req.avatarId().isBlank()) {
             throw BusinessException.badRequest("DAP_REAL_AUTH_REQUIRED",
-                    "真人形象不能通过声明式接口直接授权，请完成当前协议确认与本人刷脸核验");
+                    "真人形象需完成授权协议确认和本人刷脸核验后才能授权");
         }
         int years = req.years() == null || req.years() <= 0 ? 2 : Math.min(50, req.years());
         DapLicense l = DapLicense.builder()

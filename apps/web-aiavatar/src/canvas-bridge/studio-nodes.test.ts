@@ -186,6 +186,13 @@ describe("智能优化停在「用优化稿 / 用原文」上", () => {
     expect(next.metadata!.studio!.promptReview).toBeUndefined();
   });
 
+  it("marks a reply that is not a draft, so it is never offered as one", () => {
+    const refused = applyStudioRun(node, run("r1", "done", { needsChoice: true, rawOnly: true, videoPrompt: { text: "I can't see the attachments.", warnings: ["x"], usable: false } }));
+    expect(refused.metadata!.studio!.promptReview).toMatchObject({ runId: "r1", notRewritten: true, usable: false });
+    const reviewed = applyStudioRun(node, run("r2", "done", { needsChoice: true, videoPrompt: { text: "draft", warnings: ["x"], usable: true } }));
+    expect(reviewed.metadata!.studio!.promptReview!.notRewritten).toBeUndefined();
+  });
+
   it("a rewrite that failed on the canvas offers the original too", () => {
     const failed = applyStudioRun(node, { ...run("r1", "failed", {}), errorCode: "AI_BAD_OUTPUT", errorMessage: "视频提示词优化没成功（没有返回 JSON），本次未扣积分，请重试或按原文生成" });
     expect(failed.metadata!.studio!.promptReview).toMatchObject({ runId: "r1", failed: true });

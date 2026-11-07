@@ -286,5 +286,5 @@ export function BeautyStudio({ char, onApplied }: { char: any; onApplied?: (fres
       hB(UI.Button, { variant: 'primary', full: true, icon: Icons.checkc, disabled: busy || status !== 'ready' || isZeroParams(params), onClick: apply, style: { flex: '1 1 0', width: 'auto', padding: '0 14px' } }, busy ? '保存中…' : '应用保存')),
     hB('div', { style: { fontSize: 11, color: 'var(--ink-4)', textAlign: 'center', lineHeight: 1.5 } },
       '端上实时处理 · 不消耗积分 · 像素级保持本人特征',
-      demoImage ? hB('span', null, hB('br'), '当前为标准示意图，生成定妆形象后即可精调真实照片') : null));
+      demoImage ? hB('span', null, hB('br'), '当前为标准示意图，生成定妆形象后可精调真实照片') : null));
 }

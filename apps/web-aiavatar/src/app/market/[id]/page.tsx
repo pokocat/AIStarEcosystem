@@ -5,7 +5,7 @@
 // 按 id 在列表里取，不新增端点。
 //
 // 授权链路尚未打通：档位与价格字段还不存在，所以这里既不编价格、
-// 也不假装能下单 —— 点「立即授权」只提示建设中（设计文档 §1.5）。
+// 也不假装能下单 —— 点「立即授权」只提示暂未开放（设计文档 §1.5）。
 // ============================================================
 import React, { use as usePromise, useState } from "react";
 import Link from "next/link";
@@ -40,7 +40,7 @@ export default function MarketAssetPage({ params }: { params: Promise<{ id: stri
       <HubScreen>
         <NavBar back="/discover" title="官方资产" />
         <Card style={{ margin: "12px 16px 0" }}>
-          <EmptyState text={list.error ? `加载失败：${list.error}` : "没有找到这个官方资产"} actionHref="/assets" actionLabel="回资产货架" />
+          <EmptyState text={list.error ? `官方资产加载失败：${list.error}` : "未找到该官方资产。"} actionHref="/assets" actionLabel="返回资产" />
         </Card>
       </HubScreen>
     );
@@ -108,7 +108,7 @@ export default function MarketAssetPage({ params }: { params: Promise<{ id: stri
         <div style={{ margin: "16px 16px 0" }}>
           <Card>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <span style={{ fontSize: 13.5, fontWeight: 800 }}>适合用来做什么</span>
+              <span style={{ fontSize: 13.5, fontWeight: 800 }}>适用场景</span>
               <span style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.8 }}>{c.def.用途}</span>
             </div>
           </Card>
@@ -120,10 +120,10 @@ export default function MarketAssetPage({ params }: { params: Promise<{ id: stri
         <Card>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
             <span style={{ fontSize: 13.5, fontWeight: 800 }}>授权</span>
-            <Badge tone="warn">建设中</Badge>
+            <Badge tone="warn">暂未开放</Badge>
           </div>
           <span style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.8 }}>
-            授权档位与在线付费正在建设。需要用这个角色出片，先联系客户经理线下开通。
+            在线授权与付费暂未开放。如需使用此角色生成视频，请联系客户经理开通。
           </span>
           <button
             onClick={() => setNotice(true)}
@@ -133,14 +133,14 @@ export default function MarketAssetPage({ params }: { params: Promise<{ id: stri
           </button>
           {notice && (
             <div role="status" style={{ marginTop: 10, padding: "10px 12px", borderRadius: 12, background: "var(--warn-s)", color: "var(--warn)", fontSize: 12, fontWeight: 600, lineHeight: 1.7 }}>
-              授权功能还在建设中，暂时无法在线下单。可以先联系客户经理开通。
+              在线授权暂未开放，请联系客户经理开通。
             </div>
           )}
         </Card>
       </div>
 
       <div style={{ margin: "16px 24px 0", textAlign: "center", fontSize: 11.5, color: "var(--ink-4)", lineHeight: 1.7 }}>
-        明星形象的授权申请与审批在「明星工作台」完成，不在这里下单。
+        明星形象的授权申请与审批在 AI 明星带货与「明星工作台」中完成。
       </div>
     </HubScreen>
   );

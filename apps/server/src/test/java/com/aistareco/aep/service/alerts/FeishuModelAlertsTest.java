@@ -40,6 +40,14 @@ class FeishuModelAlertsTest {
         verify(client,times(1)).send(anyString(),anyString());
         verify(client,never()).urgent(anyString());
     }
+    @Test void webhookDeliveryPersistsReceiptWithoutUrgencyOrResending() throws Exception {
+        config.setWebhook("https://open.feishu.cn/open-apis/bot/v2/hook/test-hook");config.setAppSecret("");config.setUrgent(true);
+        alerts.enqueue("task","MODEL_TASK_FAILED","ABCDEF234567",new IllegalStateException("failure"));
+        when(client.send(anyString(),anyString())).thenReturn("webhook:receipt");
+        alerts.deliver();alerts.deliver();
+        assertEquals("sent",state());assertEquals("webhook:receipt",db.queryForObject("SELECT message_id FROM model_alert_delivery",String.class));
+        verify(client,times(1)).send(anyString(),anyString());verify(client,never()).urgent(anyString());
+    }
     @Test void failedDeliveryIsBoundedAndNeverTouchesTaskOrWalletState() throws Exception {
         db.execute("CREATE TABLE original_wallet(balance INT)");db.update("INSERT INTO original_wallet VALUES(520)");
         alerts.enqueue("task","VIDEO_SUBMISSION_UNKNOWN","ABCDEF234567",new IllegalStateException());

@@ -14,7 +14,7 @@ public class StudioLipSyncMedia {
     public Inputs inspect(Path video, Path audio) {
         try {
             if(Files.size(video)>128L*1024*1024 || Files.size(audio)>25L*1024*1024)
-                throw bad("口型素材过大：视频最多 128MB，音频最多 25MB");
+                throw bad("口型素材过大：视频最多 128 MB，音频最多 25 MB");
             JsonNode v=probe(video),a=probe(audio);
             double vd=v.path("format").path("duration").asDouble(),ad=a.path("format").path("duration").asDouble();
             JsonNode videoStream=null;int videoCount=0;
@@ -22,7 +22,7 @@ public class StudioLipSyncMedia {
             if(videoCount!=1 || !v.path("format").path("format_name").asText().contains("mp4"))throw bad("请选择可播放的单画面 MP4 人物视频");
             String[] fpsParts=videoStream.path("avg_frame_rate").asText("0/1").split("/");
             double fps=Double.parseDouble(fpsParts[0])/(fpsParts.length>1?Double.parseDouble(fpsParts[1]):1);
-            if(!Double.isFinite(fps)||fps<15||fps>60)throw bad("人物视频需为 15–60fps");
+            if(!Double.isFinite(fps)||fps<15||fps>60)throw bad("人物视频需为 15–60 fps");
             if(!"wav".equals(a.path("format").path("format_name").asText())||a.path("streams").size()!=1||!"audio".equals(a.path("streams").path(0).path("codec_type").asText()))
                 throw bad("口型驱动目前需要 WAV 配音，请选择画布中的 WAV 配音");
             if(!Double.isFinite(vd)||!Double.isFinite(ad)||vd<=0||ad<=0||ad>60)throw bad("驱动配音需为 0–60 秒");

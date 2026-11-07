@@ -83,7 +83,7 @@ test("answers are sent with the picked options; skipping mid-way generates with 
   // 中途跳过：网关超时，回读也没收到 → 记录保留
   vi.mocked(DirectorApi.runTask).mockRejectedValue(new ApiError({ code: "HTTP_ERROR", message: "HTTP 504" }, 504));
   fireEvent.click(screen.getByRole("button", { name: /跳过问答，生成剧本/ }));
-  await screen.findByText(/发送状态还不确定/, {}, { timeout: 5000 });
+  await screen.findByText(/送达状态尚未确认/, {}, { timeout: 5000 });
   const skip = vi.mocked(DirectorApi.runTask).mock.calls[1][1];
   expect(skip).toMatchObject({ type: "script", options: { skip: true } });
   first.unmount();

@@ -113,7 +113,7 @@ public class DapAssetJobs {
                         Integer.parseInt(wh[0]), Integer.parseInt(wh[1]));
             }
             p.checkCancel();
-            p.step(85, "storage.persist", "落库…");
+            p.step(85, "storage.persist", "保存结果…");
             FileStorageService.StoredFile stored =
                     storage.store(img, "dap/scene", job.getOwnerUserId(), "png", "image/png");
             s.setImageKey(stored.key());
@@ -188,7 +188,7 @@ public class DapAssetJobs {
                 img = support.placeholderPortrait(pr.getHue(), "占位 · " + pr.getName(), 1024, 1024);
             }
             p.checkCancel();
-            p.step(85, "storage.persist", "落库…");
+            p.step(85, "storage.persist", "保存结果…");
             FileStorageService.StoredFile stored =
                     storage.store(img, "dap/product", job.getOwnerUserId(), "png", "image/png");
             Map<String, Object> doc = pr.anglesOrEmpty();
@@ -286,7 +286,7 @@ public class DapAssetJobs {
             int n = Math.max(1, c.getCount());
             for (int i = 0; i < n; i++) {
                 p.checkCancel();
-                p.step(8 + i * (84 / n), "compose.image." + (i + 1), "合成出片（" + (i + 1) + "/" + n + "）…");
+                p.step(8 + i * (84 / n), "compose.image." + (i + 1), "合成画面（" + (i + 1) + "/" + n + "）…");
                 byte[] img = multimodal.isConfigured()
                         ? multimodal.generateImage(prompt, wh[0] + "x" + wh[1], inputs)
                         : support.placeholderPortrait(avatar.getHue() + i * 13, "占位 · 合成 " + (i + 1),
@@ -328,7 +328,7 @@ public class DapAssetJobs {
                               DapProduct product, DapStyle style) {
         String title = avatar.getName() + " × " + scene.getName()
                 + (product == null ? "" : " × " + product.getName());
-        String meta = "合成工作台 · " + DATE.format(c.getCreatedAt() == null ? Instant.now() : c.getCreatedAt()) + " 出片";
+        String meta = "合成工作台 · " + DATE.format(c.getCreatedAt() == null ? Instant.now() : c.getCreatedAt()) + " 生成";
         String thumb = outputRepo.findByCompositionIdOrderByIdxAsc(c.getId()).stream()
                 .map(DapCompositionOutput::getFileKey)
                 .filter(k -> k != null)

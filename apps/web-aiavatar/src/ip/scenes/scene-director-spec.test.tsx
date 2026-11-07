@@ -79,7 +79,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); window.history.replaceState(null, "", "/"); });
 
-const continueLink = () => screen.queryByRole("link", { name: "在画布中查看" })?.getAttribute("href");
+const continueLink = () => screen.queryByRole("link", { name: "在画布上查看" })?.getAttribute("href");
 const heading = () => document.querySelector(".scene-composer-head strong")?.textContent;
 const pressed = (group: string, name: string) => within(screen.getByRole("group", { name: group })).getByRole("button", { name }).getAttribute("aria-pressed");
 const text = fieldText;
@@ -122,7 +122,7 @@ test("video: with a text-only video model the director gets no numbered pictures
   await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
   fillField(await screen.findByRole("textbox", { name: "想做的视频" }), "保湿面霜");
   fireEvent.click(screen.getByRole("button", { name: "AI 编导" }));
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "让编导写" })); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "生成脚本" })); });
   // 场景输入随请求提交，服务端按提示词库拼话（docs/studio-prompt-architecture.md §5.1）。
   await waitFor(() => expect(api.submit).toHaveBeenCalled());
   expect(api.composeScene).not.toHaveBeenCalled();
@@ -140,10 +140,10 @@ test("video: when the settings no longer match what the script was written for, 
   await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
   fireEvent.click(await screen.findByRole("button", { name: "采用脚本" }));
   // 时长还是 15 秒：不提示。
-  expect(screen.queryByRole("button", { name: /让编导照现在的改一版/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: /按当前设置修改脚本/ })).toBeNull();
   setDuration(10);
-  expect(screen.getByText(/这版脚本是照 15 秒写的，现在要出 10 秒/)).toBeTruthy();
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: /让编导照现在的改一版/ })); });
+  expect(screen.getByText(/此脚本按 15 秒撰写，当前为 10 秒/)).toBeTruthy();
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: /按当前设置修改脚本/ })); });
   await waitFor(() => expect(api.submit).toHaveBeenCalled());
   // 设置变了什么交给服务端的编导模板说成一句话，页面不再自己拼「按现在的设置重新排镜头」。
   expect(api.submit.mock.calls[0][1].scene).toMatchObject({ kind: "video-script", duration: 10, settingsChanged: expect.stringContaining("这版脚本是照 15 秒写的，现在要出 10 秒") });
@@ -159,11 +159,11 @@ test("video: 图1 in a script shows as the picture's chip on the card and in the
   const doc = patchNode(made.doc, made.nodeId, n => ({ ...n, metadata: { ...n.metadata, status: "success", content: "第1镜（0–5 秒）：手拿图1转一圈" } }));
   put({ id: "IPP-V", name: "v", sceneId: "ecom-talking", doc });
   await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
-  const chip = await screen.findByRole("button", { name: "图1：商品图 1，看大图" });
+  const chip = await screen.findByRole("button", { name: "图1：商品图 1，查看大图" });
   expect(chip.closest(".scene-script-card")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "采用脚本" }));
   const box = await screen.findByRole("textbox", { name: "视频脚本" });
-  await waitFor(() => expect(within(box).getByRole("button", { name: "图1：商品图 1，看大图" })).toBeTruthy());
+  await waitFor(() => expect(within(box).getByRole("button", { name: "图1：商品图 1，查看大图" })).toBeTruthy());
   expect(text("视频脚本")).toBe("第1镜（0–5 秒）：手拿图1转一圈");
 });
 
@@ -173,12 +173,12 @@ test("video: the director page shows the chosen materials and the spec; after ch
   put({ id: "IPP-V", name: "v", sceneId: "ecom-talking", doc });
   api.composeScene.mockResolvedValue({ text: "改脚本" });
   await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
-  const box = (await screen.findByRole("textbox", { name: "想改哪里" })).closest("form")!;
+  const box = (await screen.findByRole("textbox", { name: "修改意见" })).closest("form")!;
   // 素材和规格都在编导的输入框里：放好的商品图、还能再加、时长。
   expect(within(box).getByRole("button", { name: "移除商品图 1" })).toBeTruthy();
-  expect(within(box).getByRole("button", { name: "从资产库选商品图" })).toBeTruthy();
+  expect(within(box).getByRole("button", { name: "从资产库选择商品图" })).toBeTruthy();
   expect(within(box).getByRole("button", { name: /^视频规格：英文，15 秒/ })).toBeTruthy();
-  const sendButton = within(box).getByRole("button", { name: "让编导改" }) as HTMLButtonElement;
+  const sendButton = within(box).getByRole("button", { name: "发送修改意见" }) as HTMLButtonElement;
   expect(sendButton.disabled).toBe(true);
   setDuration(10);
   expect(within(box).getByRole("button", { name: /^视频规格：英文，10 秒/ })).toBeTruthy();
@@ -195,7 +195,7 @@ test("video: a typed change on the director page also hands over the new length"
   put({ id: "IPP-V", name: "v", sceneId: "ecom-talking", doc });
   api.composeScene.mockResolvedValue({ text: "改脚本" });
   await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
-  const input = await screen.findByRole("textbox", { name: "想改哪里" });
+  const input = await screen.findByRole("textbox", { name: "修改意见" });
   setDuration(10);
   fireEvent.change(input, { target: { value: "开头更抓人" } });
   await act(async () => { fireEvent.submit(input.closest("form")!); });
@@ -221,22 +221,22 @@ test("video: the scene's facts are chips that start a line in the input", async 
   fillField(screen.getByRole("textbox", { name: "想做的视频" }), "店名和位置：巷里火锅，万达东门");
   fireEvent.click(chips.getByRole("button", { name: "团购价" }));
   expect(text("想做的视频")).toBe("店名和位置：巷里火锅，万达东门\n团购价：");
-  // 选填的标着「有就写」。
-  expect(chips.getByRole("button", { name: /原价有就写/ })).toBeTruthy();
+  // 选填的标着「选填」。
+  expect(chips.getByRole("button", { name: /原价选填/ })).toBeTruthy();
 });
 
 test("video: a script that says what is still missing shows it, drops that line when used, and cannot be generated while 【待补】 is left", async () => {
   put({ id: "IPP-G", name: "g", sceneId: "local-groupbuy", doc: withGroupbuyScript("还缺：怎么买。\n第1镜（0–5 秒）：门头。旁白说：「万达东门巷里火锅，双人餐九十九。」\n第2镜（5–10 秒）：套餐。旁白说：「点【待补：购买入口】下单。」") });
   await open(SceneVideoStudio, "/video?scene=local-groupbuy&draft=IPP-G");
-  expect(await screen.findByText("还缺购买入口。在下面写上发给编导，会补进脚本。")).toBeTruthy();
+  expect(await screen.findByText(/^还缺购买入口。/)).toBeTruthy();
   // 留空的地方标出来。
   expect(document.querySelector("mark.scene-script-blank")?.textContent).toBe("【待补：购买入口】");
   // 原价 158 用户写了、脚本里没有：灰字提醒，不拦。
-  expect(screen.getByText("你写的 158 脚本里没用上，要加的话跟编导说一声。")).toBeTruthy();
+  expect(screen.getByText(/你填写的 158 未出现在脚本中/)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "采用脚本" }));
   expect(text("视频脚本").startsWith("第1镜")).toBe(true);
   const go = screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement;
-  await waitFor(() => expect(screen.getByText("还有没填的：购买入口。在上面换成实际内容，用不上的直接删掉。")).toBeTruthy());
+  await waitFor(() => expect(screen.getByText(/待补充的内容：购买入口/)).toBeTruthy());
   expect(go.disabled).toBe(true);
   fillField(screen.getByRole("textbox", { name: "视频脚本" }), text("视频脚本").replace("【待补：购买入口】", "本视频团购"));
   await waitFor(() => expect(go.disabled).toBe(false));
@@ -245,17 +245,17 @@ test("video: a script that says what is still missing shows it, drops that line 
 test("video: a 还缺 line with no 【待补】 left in the script is shown as a soft note, not a blocker", async () => {
   put({ id: "IPP-G", name: "g", sceneId: "local-groupbuy", doc: withGroupbuyScript("第1镜（0–2 秒）：门头。旁白说：「巷里火锅，双人餐九十九，原价一百五十八。」\n\n还缺：火锅店的名字。") });
   await open(SceneVideoStudio, "/video?scene=local-groupbuy&draft=IPP-G");
-  expect(await screen.findByText("编导觉得可能还缺火锅店的名字，写过了就不用管。")).toBeTruthy();
+  expect(await screen.findByText(/可能还缺火锅店的名字/)).toBeTruthy();
   expect(document.querySelector(".scene-script-missing")).toBeNull();
 });
 
-test("video: blanks for facts marked 有就写 do not count as missing; after a script only the blank facts are offered as chips", async () => {
+test("video: blanks for optional facts do not count as missing; after a script only the blank facts are offered as chips", async () => {
   put({ id: "IPP-G", name: "g", sceneId: "local-groupbuy", doc: withGroupbuyScript("第1镜（0–2 秒）：门头。旁白说：「双人餐九十九，原价【待补：原价】。」") });
   await open(SceneVideoStudio, "/video?scene=local-groupbuy&draft=IPP-G");
-  expect(await screen.findByText("原价没有就不用写，出片前把脚本里标着的那几处删掉就行。")).toBeTruthy();
+  expect(await screen.findByText(/^原价为选填/)).toBeTruthy();
   expect(document.querySelector(".scene-script-missing")).toBeNull();
   // 打开写过脚本的草稿先看到编导写的那版；回到编辑框，只给脚本里还空着的那几条。
-  fireEvent.click(screen.getAllByRole("button", { name: "回到编辑" })[0]);
+  fireEvent.click(screen.getAllByRole("button", { name: "返回编辑" })[0]);
   const chips = within(screen.getByRole("group", { name: "要写清楚的信息" }));
-  expect(chips.getAllByRole("button").map(b => b.textContent)).toEqual(["原价有就写"]);
+  expect(chips.getAllByRole("button").map(b => b.textContent)).toEqual(["原价选填"]);
 });

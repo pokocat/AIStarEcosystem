@@ -73,9 +73,9 @@ export function StudioEffectLibrary({model,disabled,hasEffect=false,onRememberCa
           <label>简介<Input aria-label="特效简介" value={summary} onChange={e=>setSummary(e.target.value)} maxLength={1024}/></label>
           <label>效果描述<Input.TextArea aria-label="特效效果描述" value={prompt} onChange={e=>setPrompt(e.target.value)} rows={5} maxLength={8000} placeholder="描述主体、变化过程及需要保持的细节"/></label>
           <label>标签<Input aria-label="特效标签" value={tags} onChange={e=>setTags(e.target.value)} placeholder="用逗号分隔，最多 8 个"/></label>
-          <Checkbox checked={general} onChange={e=>setGeneral(e.target.checked)}>通用描述，可用于所有已配置视频模型</Checkbox>
+          <Checkbox checked={general} onChange={e=>setGeneral(e.target.checked)}>通用描述，适用于所有视频模型</Checkbox>
           {!general&&<label>适用模型<Select mode="multiple" aria-label="特效适用模型" value={allowed} onChange={setAllowed} options={models.map(m=>({value:m.endpointId,label:m.name}))}/></label>}
-          <label>参考封面<Select allowClear aria-label="特效参考封面" value={previewKey} onChange={setPreviewKey} placeholder={previews.length?'从当前画布选择图片':'当前画布没有可用图片，可不填'} options={previews.map(p=>({value:p.storageKey,label:p.name}))}/></label>
+          <label>参考封面<Select allowClear aria-label="特效参考封面" value={previewKey} onChange={setPreviewKey} placeholder={previews.length?'从当前画布选择图片':'当前画布暂无可用图片，此项选填'} options={previews.map(p=>({value:p.storageKey,label:p.name}))}/></label>
           </div>
           <div className="studio-effect-authoring-footer"><Button type="primary" loading={busy} disabled={!name.trim()||!prompt.trim()||!general&&!allowed.length} onClick={()=>void publish()}>保存特效</Button></div>
         </div>:<>
@@ -95,8 +95,8 @@ export function StudioEffectLibrary({model,disabled,hasEffect=false,onRememberCa
                 </button>
                 <button type="button" className="studio-effect-heart" aria-label={`${effect.favorite?'取消收藏':'收藏'} ${effect.name}`} aria-pressed={effect.favorite} disabled={busy} onClick={()=>void favorite(effect)}><Heart size={17} fill={effect.favorite?'currentColor':'none'}/></button>
                 <button type="button" className="studio-effect-info" aria-label={`查看特效详情 ${effect.name}`} disabled={busy} onClick={()=>setSelectedId(effect.id)}><Info size={17}/></button>
-              </article>):<div className="studio-effect-empty" role="status"><h3>{scope==='favorite'?'还没有匹配的收藏':scope==='recent'?'还没有匹配的使用记录':scope==='personal'?'还没有匹配的个人特效':'没有匹配的特效'}</h3>
-                <p>{scope==='favorite'?'在特效条目上点击收藏，便可在这里再次找到。':scope==='recent'?'应用过的特效会保存在这里。':'换个关键词，或取消“仅适用当前模型”查看其他特效。'}</p>{scope==='personal'&&<Button onClick={()=>setPublishing(true)}>保存我的特效</Button>}</div>}
+              </article>):<div className="studio-effect-empty" role="status"><h3>{scope==='favorite'?'暂无匹配的收藏':scope==='recent'?'暂无匹配的使用记录':scope==='personal'?'暂无匹配的个人特效':'暂无匹配的特效'}</h3>
+                <p>{scope==='favorite'?'收藏的特效会显示在这里。':scope==='recent'?'应用过的特效会保存在这里。':'请更换关键词，或取消「仅适用当前模型」查看其他特效。'}</p>{scope==='personal'&&<Button onClick={()=>setPublishing(true)}>保存我的特效</Button>}</div>}
             </div>
             {selected&&<section className="studio-effect-detail" aria-label="特效详情">
               <Button className="studio-effect-detail-back" type="text" icon={<ArrowLeft size={16}/>} onClick={()=>setSelectedId(undefined)}>返回列表</Button>
@@ -104,9 +104,9 @@ export function StudioEffectLibrary({model,disabled,hasEffect=false,onRememberCa
                 {selected.previewUrl&&<img src={selected.previewUrl} alt={`${selected.name}参考封面`}/>}
                 <h3>{selected.name}</h3><p>{selected.author} · {selected.visibility==='official'?'官方':'仅自己可见'}</p>
                 <p>{selected.summary}</p><h4>效果描述</h4><p className="studio-effect-description">{selected.prompt}</p>
-                <h4>适用模型</h4><p>{selected.models.length?selected.models.map(modelName).join('、'):'所有已配置视频模型'}</p>
+                <h4>适用模型</h4><p>{selected.models.length?selected.models.map(modelName).join('、'):'所有视频模型'}</p>
                 <p>{selected.tags.join(' · ')}</p>
-                {!effectMatchesModel(selected,model)&&<p role="status">当前模型不适用。关闭特效库后选择适用模型，再应用此特效。</p>}
+                {!effectMatchesModel(selected,model)&&<p role="status">此特效不适用于当前模型。请关闭特效库，更换为适用模型后应用。</p>}
               </div>
               <div className="studio-effect-detail-footer"><Button icon={<Heart size={15}/>} disabled={busy} onClick={()=>void favorite(selected)}>{selected.favorite?'取消收藏':'收藏'}</Button>
                 <Button type="primary" loading={busy} disabled={!effectMatchesModel(selected,model)||disabled} onClick={()=>void apply(selected)}>选用特效</Button></div>

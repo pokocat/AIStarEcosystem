@@ -78,7 +78,7 @@ test('an inspiration opens as a sized dialog with its result and no prompt, not 
   expect(shown.getAttribute('src')).toBe('https://cdn.test/cover.jpg');
   expect(screen.getByRole('dialog').getAttribute('data-width')).toBe('1000');
   expect(screen.queryByLabelText('只读模板画布')).toBeNull();
-  expect(screen.getByLabelText('需要准备').textContent).toContain('不用准备素材');
+  expect(screen.getByLabelText('需要准备').textContent).toContain('无需准备素材');
   // The prompt belongs to the copied canvas, not to the preview: not on show and nothing to copy it with.
   expect(screen.getByRole('dialog').textContent).not.toContain('撞色封面');
   expect(screen.queryByRole('button', { name: '复制' })).toBeNull();

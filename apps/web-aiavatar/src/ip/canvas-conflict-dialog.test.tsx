@@ -15,44 +15,44 @@ function setup(outcome: "resolved" | "failed" | "conflict", copyId?: string) {
 
 it("三条出路都摆出来，推荐的是什么都不丢的那条", () => {
   setup("resolved");
-  expect(screen.getByText("这张画布在别处被改过了")).toBeTruthy();
+  expect(screen.getByText("此画布已在其他窗口修改")).toBeTruthy();
   const buttons = screen.getAllByRole("button").filter((b) => b.textContent?.trim());
-  expect(buttons.map((b) => b.querySelector("span")?.textContent)).toEqual(["另存一份，再换成最新内容", "换成最新内容", "以这里为准"]);
+  expect(buttons.map((b) => b.querySelector("span")?.textContent)).toEqual(["另存为新画布并加载最新版本", "加载最新版本", "保留此页改动"]);
   // 每条都写清楚会丢什么
-  expect(screen.getByText(/两边都不丢/)).toBeTruthy();
-  expect(screen.getByText(/这里没存上的改动会丢掉/)).toBeTruthy();
-  expect(screen.getByText(/别处刚存的那份会被覆盖/)).toBeTruthy();
+  expect(screen.getByText(/两份内容都会保留/)).toBeTruthy();
+  expect(screen.getByText(/此页面未保存的改动将丢失/)).toBeTruthy();
+  expect(screen.getByText(/其他窗口保存的版本将被覆盖/)).toBeTruthy();
 });
 
-it("选「换成最新内容」：交给同步层 take-theirs，成功后弹窗关掉", async () => {
+it("选「加载最新版本」：交给同步层 take-theirs，成功后弹窗关掉", async () => {
   const { resolve, onClose } = setup("resolved");
-  fireEvent.click(screen.getByText("换成最新内容"));
+  fireEvent.click(screen.getByText("加载最新版本"));
   await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   expect(resolve).toHaveBeenCalledWith("take-theirs");
 });
 
-it("选「另存一份」：成功后把新画布的 id 交给宿主，再关掉", async () => {
+it("选「另存为新画布」：成功后把新画布的 id 交给宿主，再关掉", async () => {
   const { resolve, onClose, onCopySaved } = setup("resolved", "IPP-copy");
-  fireEvent.click(screen.getByText("另存一份，再换成最新内容"));
+  fireEvent.click(screen.getByText("另存为新画布并加载最新版本"));
   await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   expect(resolve).toHaveBeenCalledWith("save-copy");
   expect(onCopySaved).toHaveBeenCalledWith("IPP-copy");
 });
 
-it("选「以这里为准」时别处又存了一版：弹窗不关，说明一句让用户再选", async () => {
+it("选「保留此页改动」时其他窗口又保存了新版本：弹窗不关，说明一句让用户再选", async () => {
   const { resolve, onClose } = setup("conflict");
-  fireEvent.click(screen.getByText("以这里为准"));
-  await waitFor(() => expect(screen.getByRole("status").textContent).toContain("别处又存了一版"));
+  fireEvent.click(screen.getByText("保留此页改动"));
+  await waitFor(() => expect(screen.getByRole("status").textContent).toContain("其他窗口又保存了新版本"));
   expect(resolve).toHaveBeenCalledWith("keep-mine");
   expect(onClose).not.toHaveBeenCalled();
   // 按钮放开了，能再选
-  expect((screen.getByText("以这里为准").closest("button") as HTMLButtonElement).disabled).toBe(false);
+  expect((screen.getByText("保留此页改动").closest("button") as HTMLButtonElement).disabled).toBe(false);
 });
 
 it("没成功：弹窗不关、本地改动不动，按钮放开让用户再选", async () => {
   const { onClose } = setup("failed");
-  fireEvent.click(screen.getByText("换成最新内容"));
-  await waitFor(() => expect((screen.getByText("换成最新内容").closest("button") as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(screen.getByText("加载最新版本"));
+  await waitFor(() => expect((screen.getByText("加载最新版本").closest("button") as HTMLButtonElement).disabled).toBe(false));
   expect(onClose).not.toHaveBeenCalled();
 });
 

@@ -23,7 +23,7 @@ export async function readAssistantStory(file: File, nodes: CanvasNodeData[], ex
   if (file.size > (document ? 8 * 1024 * 1024 : 256 * 1024)) throw new Error(document ? 'PDF / Word 文件最多 8 MB，请按章节拆分' : '故事文件过大，请拆成不超过 256 KB 的文件');
   let text: string;
   if (document) {
-    if (!extractDocument) throw new Error('暂时无法读取 PDF / Word，请稍后重试');
+    if (!extractDocument) throw new Error('PDF / Word 文件读取失败，请稍后重试');
     text = (await extractDocument(file)).text.trim();
   } else {
     try { text = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer()).replace(/^\uFEFF/, '').trim(); }

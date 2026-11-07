@@ -49,7 +49,7 @@ class ClipAssetQuotaTest {
 
         assertThatThrownBy(() -> serviceWith(repo, props, storage).upload("owner-1", file, "video", null, false, null))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("空间不够");
+                .hasFieldOrPropertyWithValue("code", "CLIP_ASSET_QUOTA_EXCEEDED");
         // 关键：不能先写文件再回滚
         verify(storage, never()).store(any(), anyString(), anyString());
         verify(repo, never()).save(any());
@@ -150,7 +150,7 @@ class ClipAssetQuotaTest {
 
         assertThatThrownBy(() -> serviceWith(repo, props, storage).upload("owner-1", file, "video", null, false, null))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("空间不够");
+                .hasFieldOrPropertyWithValue("code", "CLIP_ASSET_QUOTA_EXCEEDED");
         verify(storage, never()).store(any(), anyString(), anyString());
     }
 

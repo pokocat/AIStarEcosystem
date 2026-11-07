@@ -29,7 +29,7 @@ test("the new version's 我的 lists 灵感, 项目, 资产 and 短剧导演台 
   // 手机上原来哪儿都看不到余额：个人卡上写可用积分，点了去积分页。
   expect(screen.getByRole("link", { name: "可用积分 1,280，查看积分" })).toBeTruthy();
   expect(screen.getByRole("button", { name: /切换到电脑版/ })).toBeTruthy();
-  expect(screen.getByRole("button", { name: /回到旧版/ })).toBeTruthy();
+  expect(screen.getByRole("button", { name: /返回旧版/ })).toBeTruthy();
   expect(screen.getByRole("button", { name: "退出登录" })).toBeTruthy();
   expect(main.querySelector(".studio-tabbar")).toBeTruthy();
 });

@@ -52,15 +52,15 @@ export function ProjectHistory({ projectId, saveNow }: { projectId: string; save
     // State update reaches the canvas/store on the next render. Close only after a paint, then await the real PUT.
     await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
     const result = await saveNow();
-    if (result === "failed" || result === "conflict") throw new Error("图片已放回画布，但尚未保存，请先重试保存");
-    message.success("图片和指令已恢复到画布"); setOpen(false);
+    if (result === "failed" || result === "conflict") throw new Error("图片已添加到画布，但尚未保存，请重试保存。");
+    message.success("图片和提示词已恢复到画布"); setOpen(false);
   };
   const restore = (version: IpRevision) => modal.confirm({
-    title: "恢复这个画布版本？", content: "当前画布会先保存，可在历史记录里找回。",
+    title: "恢复这个画布版本？", content: "恢复前将保存当前画布，之后可在历史记录中找回。",
     okText: "恢复", cancelText: "取消",
     onOk: () => act(async () => {
       const outcome = await saveNow();
-      if (outcome === "failed" || outcome === "conflict") throw new Error("当前画布尚未保存，请先处理保存问题");
+      if (outcome === "failed" || outcome === "conflict") throw new Error("当前画布尚未保存，请保存后重试。");
       const [current, previous] = await Promise.all([IpStudioApi.getProject(projectId), IpStudioApi.getProjectRevision(projectId, version.id)]);
       await IpStudioApi.updateProject(projectId, { name: previous.name, doc: previous.doc, baseDocVersion: current.docVersion });
       window.location.reload();
@@ -81,17 +81,17 @@ export function ProjectHistory({ projectId, saveNow }: { projectId: string; save
               <SignedImage storageKey={image.key} src={image.url} alt="历史生成图片" style={{ width: "100%", height: 150, objectFit: "contain", background: "var(--surface-2)", borderRadius: 8 }} />
               <div style={{ display: "flex", gap: 6, marginTop: 6 }}><Button size="small" disabled={busy} onClick={() => void act(() => add(run, image))}>添加到画布</Button><Button size="small" disabled={busy} onClick={() => void act(async () => {
                 await useAssetStore.getState().addAsset({ kind: "image", title: "历史生成图片", coverUrl: image.url, tags: [], source: "Canvas", data: { dataUrl: image.url, storageKey: image.key, width: image.width || 0, height: image.height || 0, bytes: 0, mimeType: "image/jpeg" }, metadata: { prompt: prompt(run) } });
-                message.success("已保存到资产，可在顶部「资产」页查看");
+                message.success("已保存到资产，可在「资产」页查看。");
               })}>保存到资产</Button></div>
             </div>)}</div>
             {run.output.text && <p style={{ whiteSpace: "pre-wrap" }}>{run.output.text}</p>}
-            {prompt(run) && <details style={{ marginTop: 10 }}><summary>{run.inputs.userPrompt ? "生成指令" : "完整生成提示词"}</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 12, maxHeight: 240, overflowY: "auto" }}>{prompt(run)}</pre></details>}
+            {prompt(run) && <details style={{ marginTop: 10 }}><summary>{run.inputs.userPrompt ? "提示词" : "完整提示词"}</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 12, maxHeight: 240, overflowY: "auto" }}>{prompt(run)}</pre></details>}
           </article>)}
           {loading && <Spin style={{ display: "block", margin: 16 }} />}
           {more && <Button block disabled={loading} onClick={() => void load(page + 1)}>加载更多</Button>}
         </div> },
         { key: "versions", label: "画布版本", children: <div style={{ maxHeight: "65vh", overflowY: "auto" }}>
-          <p style={{ fontSize: 12, color: "var(--ink-3)" }}>保留最近 50 个内容版本。版本记录从此次更新开始，之前的成图和指令可在「生成记录」找回。</p>
+          <p style={{ fontSize: 12, color: "var(--ink-3)" }}>保留最近 50 个画布版本。更早的生成图片和提示词可在「生成记录」中找回。</p>
           {!loading && !error && !versions.length && <Empty description="还没有历史版本" />}
           {versions.map((v) => <div key={v.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "12px 0", borderBottom: "1px solid var(--line-2)" }}><div><b>{v.name}</b><div style={{ fontSize: 12 }}>{time(v.createdAt)} · {v.nodeCount} 个节点</div></div><Button disabled={busy} onClick={() => restore(v)}>恢复此版本</Button></div>)}
         </div> },

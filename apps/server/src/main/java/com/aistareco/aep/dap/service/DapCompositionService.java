@@ -150,11 +150,11 @@ public class DapCompositionService {
         }
         DapAvatar avatar = avatarService.required(userId, req.avatarId());
         if (avatar.getImageKey() == null) {
-            throw BusinessException.badRequest("DAP_NO_IMAGE", "该人物还没有定妆形象，先完成创建再合成");
+            throw BusinessException.badRequest("DAP_NO_IMAGE", "该人物还没有定妆形象，请完成创建后合成");
         }
         DapScene scene = assets.requiredScene(userId, req.sceneId());
         if (scene.getImageKey() == null) {
-            throw BusinessException.badRequest("DAP_SCENE_NO_IMAGE", "该场景还没有图片，等生成完成后再合成");
+            throw BusinessException.badRequest("DAP_SCENE_NO_IMAGE", "该场景还没有图片，请等待生成完成后合成");
         }
         DapProduct product = (req.productId() == null || req.productId().isBlank())
                 ? null : assets.requiredProduct(userId, req.productId());
@@ -217,7 +217,7 @@ public class DapCompositionService {
             if (!"active".equals(status)) {
                 throw new BusinessException(org.springframework.http.HttpStatus.FORBIDDEN,
                         "DAP_LICENSE_REQUIRED",
-                        "「" + avatar.getName() + "」是真人复刻形象，需要生效中的肖像授权才能出片。"
+                        "「" + avatar.getName() + "」是真人复刻形象，需要生效中的肖像授权才能生成视频。"
                                 + (status == null ? "该形象尚未登记授权。" : "当前授权状态：" + zhStatus(status) + "。"));
             }
             parts.add("人物 " + avatar.getLicenseId() + " 有效");

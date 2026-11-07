@@ -726,7 +726,7 @@ public class DramaCanvasRunWorker {
                     String jm = job.getErrorMessage();
                     if (MaterialVideoJobService.CANCELED_MESSAGE.equals(jm)) {
                         runs.cancel(run.getId(), ACTIVE, "已取消", OffsetDateTime.now());
-                    } else if (jm != null && jm.startsWith(MaterialVideoWorker.MIRROR_FAILED_CODE)) {
+                    } else if (MaterialVideoWorker.MIRROR_FAILED_CODE.equals(job.getErrorCode()) || jm != null && jm.startsWith(MaterialVideoWorker.MIRROR_FAILED_CODE)) {
                         // 画布视频提交时带了 require_mirror：没存进我方存储 → 视频 worker 已判失败并退回冻结
                         failRun(run, ACTIVE, false, MaterialVideoWorker.MIRROR_FAILED_CODE,
                                 "视频生成好了但没存下来，积分已退回，请重试。");

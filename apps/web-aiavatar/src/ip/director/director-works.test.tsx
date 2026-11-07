@@ -39,8 +39,8 @@ test("cancel closes without calling the server; the dialog names the work and sa
   vi.mocked(DirectorApi.listWorks).mockResolvedValue([summary("a", "夜班分拣员")]);
   render(<DirectorWorks/>);
   const dialog = await openDelete("夜班分拣员");
-  expect(dialog.textContent).toContain("把「夜班分拣员」移入回收站？");
-  expect(dialog.textContent).toContain("可以在回收站恢复");
+  expect(dialog.textContent).toContain("将「夜班分拣员」移入回收站？");
+  expect(dialog.textContent).toContain("可在回收站恢复");
   expect(dialog.textContent).toContain("已存入个人资产库的素材会保留");
   expect(dialog.textContent).toContain("已消耗的积分不退回");
   expect(dialog.textContent).not.toMatch(/永久|无法恢复|30 天/);

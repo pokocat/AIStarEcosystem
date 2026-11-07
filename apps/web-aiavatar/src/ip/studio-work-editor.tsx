@@ -65,10 +65,10 @@ export function StudioWorkEditor(p: Props) {
 
   const packagingEmpty = draft.packagingEnabled && ![draft.brand, draft.title, draft.cta, draft.captionText].some(v => v.trim());
   const captionProblem = draft.packagingEnabled && draft.captionText.trim() ? studioCaptionProblem(draft.captionText, known ? total : undefined) : undefined;
-  const blocked = !included.length ? "先勾选要放进成片的片段"
-    : voiceMissing ? "选的配音已经不在画布上了，重新选一条或改回片段原声"
-    : voiceTooLong ? "配音比成片长，合成不了"
-    : packagingEmpty ? "品牌、标题、结尾提示和字幕都没填，填一项或关掉文字"
+  const blocked = !included.length ? "请勾选要加入成片的片段"
+    : voiceMissing ? "所选配音已移出画布，请重新选择配音或保留片段原声"
+    : voiceTooLong ? "配音长于成片，无法合成"
+    : packagingEmpty ? "品牌、标题、结尾提示和字幕均未填写，请至少填写一项或取消添加文字"
     : captionProblem;
 
   const [cursor, setCursor] = useState(0);
@@ -94,8 +94,8 @@ export function StudioWorkEditor(p: Props) {
   }, [p.works.length]);
 
   if (!clips.length) return <>
-    <div className="studio-empty"><Play size={28}/><h3>还没有视频片段</h3><p>在画布上传视频，或者先生成几段视频，再回来排顺序、配声音、合成。</p>
-      <Button onClick={p.onAddClips}>去画布添加片段</Button><Button onClick={p.onCreateVideo}>生成一段视频</Button><Button onClick={p.onOpenStoryboard}>去故事板</Button></div>
+    <div className="studio-empty"><Play size={28}/><h3>还没有视频片段</h3><p>在画布中上传或生成视频后，可在此排列顺序、添加声音并合成。</p>
+      <Button onClick={p.onAddClips}>添加片段</Button><Button onClick={p.onCreateVideo}>生成视频</Button><Button onClick={p.onOpenStoryboard}>打开故事板</Button></div>
     <StudioWorkResults works={p.works} onDownload={p.onDownload} renderNodeActions={p.renderNodeActions} anchor={results}/>
   </>;
 
@@ -107,7 +107,7 @@ export function StudioWorkEditor(p: Props) {
       <div className="studio-work-main">
         <section className="studio-work-section" aria-label="片段">
           <header className="studio-work-section-head">
-            <div><h3>片段</h3><p>勾选的片段按这个顺序拼成成片，<span className="studio-work-drag-hint">拖动或</span>用箭头调整顺序。</p></div>
+            <div><h3>片段</h3><p>勾选的片段按此顺序合成，可<span className="studio-work-drag-hint">拖动或</span>用箭头调整顺序。</p></div>
             <div className="studio-work-ratio" role="group" aria-label="成片画幅">
               {RATIOS.map(([value, label]) => <button type="button" key={value} aria-pressed={draft.aspectRatio === value} onClick={() => p.onDraftChange({ aspectRatio: value })}>{label}</button>)}
             </div>
@@ -124,7 +124,7 @@ export function StudioWorkEditor(p: Props) {
               onDrop={e => { e.preventDefault(); const from = drag.current; endDrag(); if (from !== undefined && from !== index && sameEpisode(from, index)) p.onMoveClip(from, index); }}
               onDragEnd={endDrag}>
               <span className="studio-work-grip" aria-hidden="true"><GripVertical size={16}/></span>
-              <button type="button" className="studio-work-thumb" aria-label={`预览：${label}`} title={on ? "在左边预览里从这一段开始看" : "在左边单独看这一段"} onClick={() => preview(node)}>
+              <button type="button" className="studio-work-thumb" aria-label={`预览：${label}`} title={on ? "从此片段开始预览" : "单独预览此片段"} onClick={() => preview(node)}>
                 <SignedVideo src={node.metadata?.content} storageKey={node.metadata?.storageKey} muted playsInline preload="metadata" onLoadedMetadata={e => record(node.id, e.currentTarget)}/>
                 {on && <span className="studio-work-seq">{included.indexOf(node) + 1}</span>}
                 {seconds !== undefined && <span className="studio-work-duration">{formatStudioSeconds(seconds)}</span>}
@@ -132,11 +132,11 @@ export function StudioWorkEditor(p: Props) {
               <div className="studio-work-clip-body">
                 <div className="studio-work-clip-title"><strong title={label}>{label}</strong><span className={`studio-work-tag is-${origin}`}>{ORIGIN_TAGS[origin]}</span></div>
                 {node.metadata?.prompt && <p title={node.metadata.prompt}>{node.metadata.prompt}</p>}
-                {origin === "source" && !on && <small>其他片段是照着它做的，默认不放进成片。</small>}
+                {origin === "source" && !on && <small>其他片段据此生成，默认不加入成片。</small>}
                 {ratioHint && <small className="is-warn">{ratioHint}</small>}
               </div>
               <div className="studio-work-clip-tools">
-                <Checkbox checked={on} aria-label={`把「${label}」放进成片`} onChange={e => p.onIncludeClip(node.id, e.target.checked)}>放进成片</Checkbox>
+                <Checkbox checked={on} aria-label={`将「${label}」加入成片`} onChange={e => p.onIncludeClip(node.id, e.target.checked)}>加入成片</Checkbox>
                 <span>
                   <Button aria-label={`片段 ${index + 1} 上移`} disabled={!sameEpisode(index, index - 1)} onClick={() => p.onMoveClip(index, index - 1)}><ArrowUp size={15}/></Button>
                   <Button aria-label={`片段 ${index + 1} 下移`} disabled={!sameEpisode(index, index + 1)} onClick={() => p.onMoveClip(index, index + 1)}><ArrowDown size={15}/></Button>
@@ -148,19 +148,19 @@ export function StudioWorkEditor(p: Props) {
 
         <section className="studio-work-section" aria-label="声音">
           <h3>声音</h3>
-          {voices.length || voiceMissing ? <label className="studio-work-field">成片用哪条声音
+          {voices.length || voiceMissing ? <label className="studio-work-field">成片音轨
             <Select aria-label="成片音轨" value={draft.voiceoverStorageKey || ""} onChange={(key: string) => p.onDraftChange({ voiceoverStorageKey: key || undefined })}
               options={[{ value: "", label: "保留片段原声" },
                 ...voices.map(n => { const s = secondsOf(n); return { value: n.metadata!.storageKey!, label: `${n.title}${s ? ` · ${formatStudioSeconds(s)}` : ""}` }; }),
                 ...(voiceMissing ? [{ value: draft.voiceoverStorageKey!, label: "已移出画布的配音" }] : [])]}/>
-          </label> : <p className="studio-work-note">画布上还没有配音，成片会保留片段原声。<button type="button" className="studio-work-link" onClick={p.onMakeVoice}><Mic size={14}/>去做一条配音</button></p>}
-          {voiceMissing && <StudioErrorNotice error="选的配音已经不在画布上了，重新选一条或改回片段原声。" background/>}
+          </label> : <p className="studio-work-note">画布中暂无配音，成片将保留片段原声。<button type="button" className="studio-work-link" onClick={p.onMakeVoice}><Mic size={14}/>生成配音</button></p>}
+          {voiceMissing && <StudioErrorNotice error="所选配音已移出画布，请重新选择配音或保留片段原声。" background/>}
           {voice && <>
             <SignedAudio key={voice.id} src={voice.metadata?.content} storageKey={voice.metadata?.storageKey} controls onLoadedMetadata={e => record(voice.id, e.currentTarget)}/>
             {voiceGap !== undefined && (voiceTooLong
-              ? <p className="studio-work-note is-error" role="status">配音 {formatStudioSeconds(voiceSeconds!)}，比成片长 {formatStudioSeconds(voiceGap)}，合成不了。换一条短一点的配音，或者多放几段片段。</p>
-              : voiceGap < -0.5 ? <p className="studio-work-note" role="status">配音比成片短 {formatStudioSeconds(-voiceGap)}，最后这一段没有声音。</p> : null)}
-            <p className="studio-work-note">换成配音后，片段原来的声音不再保留；人物口型不会跟着配音改。</p>
+              ? <p className="studio-work-note is-error" role="status">配音 {formatStudioSeconds(voiceSeconds!)}，长于成片 {formatStudioSeconds(voiceGap)}，无法合成。请更换较短的配音，或加入更多片段。</p>
+              : voiceGap < -0.5 ? <p className="studio-work-note" role="status">配音短于成片 {formatStudioSeconds(-voiceGap)}，结尾部分将没有声音。</p> : null)}
+            <p className="studio-work-note">使用配音后，片段原声将不再保留，人物口型不会随配音变化。</p>
           </>}
         </section>
 
@@ -172,17 +172,18 @@ export function StudioWorkEditor(p: Props) {
               <label className="studio-work-field">品牌<Input aria-label="成片品牌" value={draft.brand} onChange={e => p.onDraftChange({ brand: e.target.value })} maxLength={60}/></label>
               <label className="studio-work-field">作品标题<Input aria-label="成片标题文字" value={draft.title} onChange={e => p.onDraftChange({ title: e.target.value })} maxLength={120}/></label>
             </div>
-            <label className="studio-work-field">结尾提示<Input aria-label="成片结尾提示" value={draft.cta} onChange={e => p.onDraftChange({ cta: e.target.value })} maxLength={100} placeholder="比如：点击下方链接了解更多"/></label>
+            <label className="studio-work-field">结尾提示<Input aria-label="成片结尾提示" value={draft.cta} onChange={e => p.onDraftChange({ cta: e.target.value })} maxLength={100} placeholder="例如：点击下方链接了解更多"/></label>
             <div className="studio-work-field">
               <span className="studio-work-field-head">字幕
-                <button type="button" className="studio-work-link" disabled={!captionTemplateReady} title={draft.captionText.trim() ? "清空字幕后可以按片段重新填时间" : known ? undefined : "片段时长还没读到"}
-                  onClick={() => p.onDraftChange({ captionText: studioCaptionTemplate(lengths as number[]) })}>按片段填好时间</button></span>
+                <button type="button" className="studio-work-link" disabled={!captionTemplateReady} title={draft.captionText.trim() ? "清空字幕后可按片段重新填写时间" : known ? undefined : "片段时长加载中"}
+                  onClick={() => p.onDraftChange({ captionText: studioCaptionTemplate(lengths as number[]) })}>按片段填写时间</button></span>
+              {!captionTemplateReady && <p className="studio-work-note">{draft.captionText.trim() ? "清空字幕后可按片段重新填写时间。" : "片段时长加载中，完成后可按片段填写时间。"}</p>}
               <Input.TextArea aria-label="成片字幕时间与文字" value={draft.captionText} onChange={e => p.onDraftChange({ captionText: e.target.value })} rows={4}
-                placeholder={"每行一条，写成「开始秒-结束秒: 字幕」\n0-3: 第一句字幕\n3-5: 第二句字幕"}/>
+                placeholder={"每行一条，格式为「开始秒-结束秒: 字幕」\n0-3: 第一句字幕\n3-5: 第二句字幕"}/>
               {captionProblem ? <p className="studio-work-note is-error" role="status">{captionProblem}</p>
-                : <p className="studio-work-note">{known ? `成片共 ${formatStudioSeconds(total)}，字幕不要超过这个时间。` : ""}字幕按你写的时间出现，不会自动识别台词。</p>}
+                : <p className="studio-work-note">{known ? `成片共 ${formatStudioSeconds(total)}，字幕时间不能超过成片时长。` : ""}字幕按填写的时间显示，不会自动识别台词。</p>}
             </div>
-            <p className="studio-work-note">品牌和标题在画面左上角，结尾提示在底部，整条成片都显示。左边预览能看到大概位置，合成后以成片为准。</p>
+            <p className="studio-work-note">品牌和标题显示在左上角，结尾提示显示在底部，实际位置以成片为准。</p>
           </>}
         </section>
 
@@ -190,15 +191,16 @@ export function StudioWorkEditor(p: Props) {
           <Button type="primary" icon={<SlidersHorizontal size={15}/>} disabled={!p.advancedAvailable} onClick={p.onOpenAdvanced}>继续高级编辑</Button>
           <Button disabled={p.locked} onClick={p.onDropAdvanced}>改回一键成片</Button>
           <div>
-            <strong>这份成片在高级编辑里改过</strong>
-            <span>{p.advancedAvailable ? `上次保存 ${formatDateTime(draft.advanced.savedAt)}，在高级编辑里导出成片。上面的设置不再生效。` : "高级编辑要在电脑上打开"}</span>
+            <strong>此成片已在高级编辑中修改</strong>
+            <span>{p.advancedAvailable ? `上次保存于 ${formatDateTime(draft.advanced.savedAt)}，请在高级编辑中导出成片，以上设置不再生效。` : "高级编辑仅支持电脑版"}</span>
           </div>
         </div> : <div className="studio-work-actions">
           <Button type="primary" loading={p.busy} disabled={p.locked || !!blocked} onClick={p.onAssemble}>合成作品</Button>
-          <Button icon={<SlidersHorizontal size={15}/>} disabled={p.locked || !p.advancedAvailable} title={p.advancedAvailable ? "掐头去尾、切开、加文字和字幕，再导出" : "高级编辑要在电脑上打开"} onClick={p.onOpenAdvanced}>高级编辑</Button>
+          <Button icon={<SlidersHorizontal size={15}/>} disabled={p.locked || !p.advancedAvailable} title={p.advancedAvailable ? "裁剪、分割、添加文字和字幕后导出" : "高级编辑仅支持电脑版"} onClick={p.onOpenAdvanced}>高级编辑</Button>
           <div>
-            <strong>已选 {included.length}/{clips.length} 段 · {known ? `共 ${formatStudioSeconds(total)}` : included.length ? "时长读取中" : "还没选片段"}</strong>
-            {blocked ? <span className="is-error">{blocked}</span> : <span>{p.mock ? "测试响应，不产生模型费用" : "合成不收模型积分"}</span>}
+            <strong>已选 {included.length}/{clips.length} 段 · {known ? `共 ${formatStudioSeconds(total)}` : included.length ? "时长加载中" : "未选择片段"}</strong>
+            {blocked ? <span className="is-error">{blocked}</span> : <span>{p.mock ? "测试响应，不产生模型费用" : "合成不消耗积分"}</span>}
+            {!p.advancedAvailable && <span>高级编辑仅支持电脑版</span>}
           </div>
         </div>}
       </div>
@@ -209,9 +211,9 @@ export function StudioWorkEditor(p: Props) {
 
 function StudioWorkResults({ works, onDownload, renderNodeActions, anchor }: { renderNodeActions?: (node: CanvasNodeData) => ReactNode; works: CanvasNodeData[]; onDownload: (node: CanvasNodeData) => void; anchor: RefObject<HTMLElement | null> }) {
   if (!works.length) return null;
-  return <section className="studio-work-results" ref={anchor} aria-label="合成好的作品"><h3>合成好的作品</h3>
+  return <section className="studio-work-results" ref={anchor} aria-label="已合成的作品"><h3>已合成的作品</h3>
     {[...works].reverse().map(node => <article key={node.id} className="studio-work-result"><h4>{node.title}</h4>{renderNodeActions?.(node)}
-      {node.metadata?.status === "loading" ? <p>正在合成，可以先回画布继续做。</p>
+      {node.metadata?.status === "loading" ? <p>合成中，可返回画布继续创作。</p>
         : node.metadata?.content || node.metadata?.storageKey ? <><SignedVideo src={node.metadata.content} storageKey={node.metadata.storageKey} controls preload="metadata"/>
           <Button onClick={() => onDownload(node)}><Download size={15}/>下载作品</Button></>
         : node.metadata?.status === "error" ? <StudioErrorNotice error={studioNodeError(node)} once={`run:${node.metadata.studio?.runId || node.id}`} autoReport={false}/>
@@ -268,7 +270,7 @@ function StudioWorkPreview({ clips, seconds, ratio, voice, draft, index, onIndex
           onPlay={() => { setPlaying(true); if (!solo) syncVoice(true); }}
           onPause={e => { if (e.currentTarget.ended) return; setPlaying(false); audio.current?.pause(); }}
           onEnded={ended}/>
-        : <p className="studio-work-stage-empty">勾选片段后，在这里连续看一遍</p>}
+        : <p className="studio-work-stage-empty">勾选片段后可在此连续预览</p>}
       {showText && <div className="studio-work-overlay" aria-hidden="true">
         {(draft.brand.trim() || draft.title.trim()) && <div className="studio-work-overlay-top">
           {draft.brand.trim() && <span>{draft.brand}</span>}{draft.title.trim() && <span className="is-title">{draft.title}</span>}</div>}
@@ -277,17 +279,17 @@ function StudioWorkPreview({ clips, seconds, ratio, voice, draft, index, onIndex
       </div>}
     </div>
     {voice && <SignedAudio key={voice.id} ref={audio} src={voice.metadata?.content} storageKey={voice.metadata?.storageKey} className="studio-work-voice"/>}
-    {solo ? <p className="studio-work-solo">正在单独看「{soloName}」，它不在成片里。<button type="button" className="studio-work-link" onClick={onExitSolo}>回到成片预览</button></p>
+    {solo ? <p className="studio-work-solo">正在单独预览「{soloName}」，此片段未加入成片。<button type="button" className="studio-work-link" onClick={onExitSolo}>返回成片预览</button></p>
       : <div className="studio-work-player">
         <button type="button" className="studio-work-play" disabled={!clip} aria-label={playing ? "暂停预览" : "播放整片预览"} onClick={toggle}>{playing ? <Pause size={16}/> : <Play size={16}/>}</button>
         <span className="studio-work-clock">{formatStudioClock(time)} / {formatStudioClock(total)}</span>
         <div className="studio-work-timeline" role="group" aria-label="成片时间线">{clips.map((c, i) => {
           const len = lengths[i], fill = i < at ? 1 : i === at && len ? Math.min(1, local / len) : 0;
-          return <button type="button" key={c.id} style={{ flexGrow: len || 1 }} aria-label={`从第 ${i + 1} 段开始看`} aria-current={i === at ? "step" : undefined} onClick={() => jump(i)}>
+          return <button type="button" key={c.id} style={{ flexGrow: len || 1 }} aria-label={`从第 ${i + 1} 段开始预览`} aria-current={i === at ? "step" : undefined} onClick={() => jump(i)}>
             <span style={{ width: `${fill * 100}%` }}/></button>;
         })}</div>
       </div>}
-    <p className="studio-work-preview-note">{draft.advanced ? "这里播的是一键成片的顺序。高级编辑里剪过的版本，请在高级编辑里播放。"
-      : `预览把勾选的片段按顺序连着放${voice ? "，配音跟着一起放" : ""}。合成后的画面和文字以成片为准。`}</p>
+    <p className="studio-work-preview-note">{draft.advanced ? "此处按一键成片的顺序播放。高级编辑中剪辑的版本，请在高级编辑中播放。"
+      : `预览按顺序连续播放勾选的片段${voice ? "，并同步播放配音" : ""}。画面和文字以合成后的成片为准。`}</p>
   </aside>;
 }

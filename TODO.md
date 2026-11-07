@@ -1,11 +1,25 @@
 # 待办与已知问题
 
+## 用户反馈 2026-11-07（方案见发布记录 `docs/releases/feedback-errors-release-20261107.md`）
+
+- [x] ~~已失败任务点「重试这一步」报「原任务的提交结果尚未确认」~~ **2026-11-07 修复**：`StudioPlanExecutionService.adoptVideoRepairs` 只拦原任务还在进行的，错误码 `STUDIO_PLAN_STEP_RUNNING`。
+- [x] ~~模型聊天回复、厂商接口说法显示给用户~~ **2026-11-07 修复**：`PublicModelErrorPolicy` 和 `public-model-error.ts` 换成引导重试的文案，旧记录读取时也换。
+- [x] ~~Seedance 2.0 内部错误没有错误码、未识别错误没有兜底~~ **2026-11-07 修复**：`VIDEO_PROVIDER_INTERNAL`；失败任务错误码不再为空；前端不显示浏览器和代码抛的英文。
+- [x] ~~画布返回不到 AI 视频~~ **2026-11-07 修复**：`shell/canvas-return.ts`，场景页按地址恢复草稿。
+- [ ] OneToken Seedance 2.0 的 `InternalServiceError`：把 `sdn_e7f6fe1298fb478ba5bc4b6e135f4cee`、`sdn_3f9fd45e7d2241948e39938345625505` 发给 OneToken 查原因（两次都带 9 张图）。
+- [ ] Seedance Fast 拒收真人参考图（今天 8 个失败 6 个）：用户定后面统一接素材库再看，这批不改。
+- [ ] 优化稿超长仍直接退回原文并收优化费（`StudioWorkflowWorker.rewriteVideo`），编导脚本平均约 3000 字（`stage-scene-script.md`）。
+- [ ] 优化稿自己加语速词、没台词也写说话（`H3PromptRewrite` 约定「how they speak」）；提交前没有台词量检查（11:52 那条 206 字要 15 秒说完）。
+- [ ] 出镜人物位看不到三视图（「人物」栏只列人物对象），「存为人物」入口和导演台「存入资产库」都没有；自动保存已有但没有提示。
+- [ ] AI 视频页没有加字幕和调速入口；`StudioEditMedia` 还不支持 `speed`。
+- [ ] 接入点整体故障只有逐条飞书告警（`alert_failure_rate_pct` 存了没用），页面也没有提示；12:16–15:13 图片线路故障用户问「是不是在维护」。
+
 ## AI 视频任务页（2026-11-06 评审后留下）
 
 - [ ] 画布问题节点本身不显示失败原因和尝试次数：`canvas-video-task.tsx` 合并已有节点时保留了节点原状态，目前只在底部返回条显示。方案 §6.5 要求节点也标明。
 - [ ] 带 `?task=` 进画布时，左上角返回去 `/projects`，底部才回视频页。要决定带任务时左上角是否也回视频页。
-- [ ] 按钮写价格、下方写「本次上限」：`ui-copy` 不让显示冻结上限，方案 §3 要求显示。现在按方案显示，需要定一条规则。
-- [ ] AI 视频和 AI 图片的成片都没有「AI 生成」标识（`ui-copy` 通用规则），两页一起补。
+- [x] ~~按钮写价格、下方写「本次上限」：`ui-copy` 不让显示冻结上限，方案 §3 要求显示。现在按方案显示，需要定一条规则。~~ **2026-11-07 已定**：普通视频价格确定只写价，不写上限；长视频和爆款复刻写「按实际用量结算，最多 X 积分」；单次文字任务只写「按实际用量结算」。写进 `wenan` 技能「费用」一节。
+- [ ] AI 视频和 AI 图片的成片都没有「AI 生成」标识（`docs/wenan.md`「其它写法」），两页一起补。
 - [ ] 重新进入长时间暂停的任务时，「已用时」从任务创建算起，会显示几小时。要决定是否改成从本次继续算起。
 
 ## AI 艺人孵化全端演示（2026-11-05）
@@ -13,12 +27,14 @@
 - [x] ~~对外演示或部署前换掉真实明星~~ **2026-11-06 完成**：九位真实艺人和《亮剑》换成虚拟（对照表见 `apps/web-incubator/README.md`）。
 - [x] ~~登记部署~~ **2026-11-06 完成**：`web-incubator` 进了构建、部署、校验脚本，env / systemd / nginx 示例已加，域名 `incubator.aibuzz.cn`。
 - [ ] 产品确认和现有应用的关系：明星端与 `apps/web-star`、运营后台与 `apps/admin`、创业者工作台与 `apps/web-celebrity` / `apps/web-aiavatar` 重叠。目前只并存，没有替换或互相链接，celebrity 的 `/incubation` 演示页也没动。
-- [ ] 界面文字没有按 AGENTS.md §8 逐条修改（三字母占位 `SNG` / `CEL 正式出道！`、口号式标题等，只处理了门禁命中的三句）；要对外用时跑一遍 `ui-copy`。
+- [ ] 界面文字没有按 AGENTS.md §8 逐条修改（三字母占位 `SNG` / `CEL 正式出道！`、口号式标题等，只处理了门禁命中的三句）；要对外用时跑一遍 `wenan`。
 - [ ] 英文分支与 `translations.ts` 英文仍在源码里，运行时走不到（§4.6）。要长期维护就清掉。
 - [ ] 工作台内部菜单没进地址栏，刷新回到工作台首页。
-- [x] ~~图片换成自托管~~ **2026-11-06 已生产发布 `20261106-incubator-images`**：Unsplash 外链全部换成 136 张生成图（`apps/web-incubator/public/images/`，共 6.6MB，出图要求在 `apps/web-incubator/docs/image-manifest.json`）；同一个人全站共用一张，共用旧图的不同艺人各有自己的图。
-- [ ] 切片小程序示例数据仍写着真实品牌（`ClipMiniApp.tsx` 的 SK-II、Jo Malone、三只松鼠），配着虚构佣金和「明星同款」。要对外长期放，换成虚构品牌。
+- [x] ~~图片换成自托管~~ **2026-11-06 已生产发布 `20261106-incubator-images`**：Unsplash 外链全部换成生成图（第二版后 177 张，`apps/web-incubator/public/images/`，共 8.2MB，出图要求在 `apps/web-incubator/docs/image-manifest.json`）；同一个人全站共用一张，共用旧图的不同艺人各有自己的图。
+- [x] ~~切片小程序示例数据仍写着真实品牌~~ **2026-11-07 已澄清**：设计方第二版已换成虚构品牌（澄光肌研、松果食坊等）；明星签约和账单页残留的三位真实艺人由我们换掉，已生产发布 `20261107-incubator-v2`。
 - [ ] 部分小标签对比度偏低（琥珀 / 绿色字配同色系浅底，对比度约 1.7–2.0，如「已激活」「火山引擎同步中」「确认接受」），是原型配色，暂未改。
+- [ ] 设计包的暗色样式把深色元素按类名整体反转（`dark-ui.css`）：`bg-gray-900/800` 这条已限定到按钮和链接，否则弹窗和面板全是浅底白字。同类问题可能还有，下次同步设计包时先开弹窗走查。
+- [ ] 同步设计包的做法：以上一版压缩包为基准做三方合并，保留我们的修复；新包里的真实人名要重新扫（第二版就漏了三位），图片引用要重跑替换。出图要求在 `apps/web-incubator/docs/image-manifest.json`。
 
 ## 客户端图片上传（2026-11-02，已生产发布）
 
@@ -137,6 +153,13 @@
 
 ## 默认文字模型换 Sonnet 5.5（2026-11-04）
 
+- [ ] **看 H3 提示词优化换模型后的效果，并核算售价**（2026-11-07 切到 OneToken 的 `deepseek-v4.1-flash`，接入点 `ai-fc1064f7-9fc`，用户定）：测试时 30 次里 5 次不按约定回，已加重试和校验；要看线上「提示词优化未完成」的比例和台词是否完整（同一批测试里 Sonnet 最完整）。售价暂按 DeepSeek 已公布费率，这个模型的 OneToken 成本还没核算。余额和 Sonnet 共用一个账户，额度用完两边一起失败。切回：`bind` 到 `ai-onetoken-sonnet55`。详见 `docs/releases/h3-rewrite-checks-release-20261107.md`。
+- [ ] **引用文字里的真台词没有核对**（`H3PromptRewrite.checkSpoken`，2026-11-07）：连入的拉片文字现在不参与核对，避免误报；代价是台词写在引用里时，模型丢了也不提示。要核对得先认准引用里哪些是台词（拉片表格的「字幕"…"」）。
+- [ ] **修复后的优化稿没有真实出片**（2026-11-07）：只比较了文字。要挑「短要求 + 参考视频」和「拉片引用」各出一条，看「其他不变」是否成立。
+- [ ] **参考视频超长要到优化之后才报错**（`StudioWorkflowService.submitVideoRewrite` 不查时长，`handOver` 才发现，2026-11-06 用户等了约 30 秒）：应在受理时拦下。
+- [ ] **复刻分析超过输入额度**（`StudioWorkflowWorker#studioChat`，2026-11-06 两条 41、57 秒的片子）：单次 8.6–11.6 万 Token，20 万额度用两三次就停，重试也过不去。
+- [ ] **Seedance 2.0 Fast 拒绝真人参考图时没有建议换模型**（`VIDEO_REFERENCE_PERSON_RESTRICTED`，2026-11-04、11-06 共 5 次）：用户原样重试仍然失败。
+
 - [x] ~~线上长任务验收~~ **已验收**，2026-11-05：`20261104-sonnet-streaming-editor` 上线后导演台 3 集剧本 376 秒成功（输出 49305 Token，53 积分），编导 53 秒成功（9 积分），没有【待补】。见 `docs/releases/sonnet-streaming-editor-release-20261104.md`。
 - [ ] **按次定价的线路要重算**：`drama.credit.*` 等按次收费（如 6 积分 = ¥0.06），而 Sonnet 一次输出常上万 Token（成本 ¥0.07 起，长剧本约 ¥0.29）。短剧、形象锻造这些走 `DRAMA_SCRIPT_DRAFT` / `APPEARANCE_FORGE` / `GENERAL` 的线路可能亏本，要查实际调用量和用量后定价。
 - [ ] **对话回复漏过程、留占位**：本地 Sonnet 一轮回复写了「前两次调用用错了工具」，文案里留了【品牌】【价格】。要看线上是否常见，再改 `stages/stage-dialogue.md`。
@@ -163,7 +186,7 @@
 - [ ] **导演台轮询任务为空时出现 NPE**（2026-11-02 线上观察，07:56:42 UTC，追查号 `tAVCAMEupHdAp9R5`）：`DirectorService.pollVideos:1578` 对 `videoJobs.getJob(...)` 的 null 结果直接调 `job.path`，导致读取接口 500；该方法与本次发布前一致，不是图片上传验收请求。需独立定位读空原因、加回归并处理轮询状态，不得重提已受理的视频任务；见图片上传生产发布记录。
 
 - [ ] **配音提交了厂商不认的音色**（2026-11-04 发现）：`IPR` 2026-11-01 有一条 `STUDIO_SPEECH_PROVIDER_FAILED`，厂商原话 `voice must be one of: Aiden, Dylan, Eric…`，`StudioSpeechWorker` 提交的音色不在 qwen3-tts 列表内。报错文案已改，音色从哪来的还没查。
-- [ ] **图片受理结果未确认只能找运营**（2026-11-04 发现）：`JusuanImageClient.Pending` 的「图片受理结果尚未确认，请联系运营核对原请求」30 天 28 次、10 人，今天仍有。文案清楚但用户只能等，考虑自动核对。
+- [ ] **图片受理结果未确认只能找运营**（2026-11-04 发现）：`JusuanImageClient.Pending` 的「图片提交结果尚未确认，请联系平台核对」30 天 28 次、10 人，今天仍有。文案清楚但用户只能等，考虑自动核对。
 - [ ] **资产录音真机兼容验收**（2026-11-01）：`audio-recorder-dialog.tsx` / `recording-audio.ts` 的倒数、10.5 秒结束门槛、14.9 秒自动结束、试听、重录保留名称及保存，仍需 iPhone Safari、安卓浏览器、微信内置浏览器分别实测。桌面模拟 WebM／MP4 与采样率回退验证不能代替真机。
 
 - [x] ~~主线 `IpRunServiceTest.videoWithoutChosenModel_leavesTheEndpointToTheDefault` 红着~~ **2026-11-01 已修**（随 `20261101-studio-prompt-library`）：`fa72c50e2` 起视频请求每条都带 `require_mirror`，断言改为 `variant_config` 只有这一项。
@@ -266,6 +289,7 @@
 - [ ] **Seedance 提示词放宽到 5000 字后还没真调过**（2026-11-05 生产配置已改，见 `docs/releases/seedance-prompt-limit-config-20261105.md`）：四条端点从 2000 改成 5000，依据是查不到厂商硬限制；火山文档只建议中文不超过 500 字，太长可能漏内容。第一条超过 2000 字的真实任务出来后，核对厂商有没有拒、成片有没有丢内容（`material_video_job` 按 `CHAR_LENGTH(prompt)>2000` 查）。如果被拒，厂商原话会写进错误，再调这个数。
 - [ ] **画布图片提示词粘贴超过 16000 字会被静默截断**（2026-11-04 发现，未修）：`apps/web-aiavatar/src/ip/studio-asset-mention-input.tsx:8` 写死 `maxLength={16000}`，而 GPT Image 端点上限是 32000。粘贴长文只留下前 16000 字，界面不提示。应按当前模型上限放开，超出时走面板的超长提示。
 - [ ] **OneToken 全能参考提交间歇拒绝**（2026-10-31 生产核对）：同画布节点、提示词与九张图、11 秒 / 720p / 9:16 在 Seedance 2.5 有两次成功，但截图任务 `mvj_d96499cb7af4` 返回 HTTP 400 `upstream_rejected`，未给具体原因；另有三笔平台 30 秒提交超时，供应商列表现均为终态失败。五笔失败冻结全部释放，不能据无人物文生视频探针通过认定此问题解决。继续取得供应商具体拒绝证据；收费重试须有本次授权，不自动换模型、删图或重复提交。见 `docs/releases/seedance-video-submit-fix-20261031.md`「同日后续」。
+- [ ] **OneToken 素材库引用没有真实出片样本**（2026-11-07）：代码已接（`MaterialVideoModelClient.libraryInputs`），上传和读回用线上 Key 真调过，带 `asset://` 引用生成视频要付费，没试。上线后盯第一条：日志 `素材已上传到素材库`，任务是否出片；同时看带真人参考图的任务是否仍被拒、10-31 记的 `upstream_rejected` 是否减少。引用被厂商提前作废时不会自动重传（要等回执到期），真遇到再改。
 - [ ] **导演台选择控件统一**：`director-workbench.tsx`、`director-storyboard.tsx` 的原生选择框仍待与 Studio 控件统一，不影响本次功能归档提交。
 - [x] **导演台图片模型出不了方图，道具整批失败**（2026-10-26 线上，已生产发布 `20261026-director-image-viewer`，main `faee1ac3`）：作品存了只有 16:9 / 9:16 的 4K 接入点，三个道具在冻结前被拒，报错让用户改道具不读的作品画幅。现在只开放出图规格有 1:1、16:9、9:16 的接入点；存着的旧选择照存、照原价出能出的画面；报错按资产类型说该换模型还是画幅；设置页按 `imageModelState` 说明。测试：`DirectorImageModelTest`、`director-settings.test.tsx`、`director-assets-batch.test.tsx`。生产当时已按用户要求把该作品改回标准接入点，现无作品存 4K。
 - [ ] **导演台开放 4K（系列 + 清晰度）**（2026-10-26 评审定为下一阶段，未做）：作品存「系列 + 标准 / 4K」，按资产类型定比例、接入点与价格，价格按类型下发；自动档不升 4K。待用户决定：4K 作品里出不了 4K 的道具方图是拒绝还是明示改用标准档。竖屏 4K 尚无生产成功样本，4K 方图没有渠道规格。
@@ -498,6 +522,8 @@
 - [ ] `DapAccountService.account` 的 `planLabel=PRO` 为旧固定值；后续会员权益展示需按真实产品开通/权益建模，本轮不改后台政策。
 
 ## 已定位问题与后续限制
+
+- [ ] **开发模式：刷新过的页面整页跳走后，浏览器后退会停在未激活状态**（2026-11-07 定位，未修）。顺序是打开页面 → 刷新 → 整页跳到别处 → 后退：页面显示服务端输出的内容（画布是「正在打开画布…」），React 一直没接管，没有报错和失败的请求。`/projects/{id}` 和 `/assets` 都能复现，关掉 `shell/canvas-return.ts` 的记录组件也一样；没刷新过的不会。后退时浏览器用了缓存的文档（开发服务器没收到请求），页面带开发模式才有的 `__next_r`，疑似开发模式独有，尚未在生产构建上验证。复现需要无头浏览器按上述顺序操作。
 
 - [ ] **视频规格的模型目录路径与提交路径口径不一致**（2026-10-29 配火山方舟 Seedance 时发现）：`AiModelInvocationService.modelCatalogUri` 用 `URI.resolve`，`/models` 会丢掉基础地址里的 `/api/v3`，后台连接检测报 404；而 `MaterialVideoModelClient.joinUrl` 把提交、查询路径接在基础地址后面。现在方舟两条端点把目录路径写成 `/api/v3/models` 绕过。只影响连接检测与拉取模型目录，不影响出片。改成同一种拼接前要核对已存端点（OneToken 的目录路径是 `/v1/models?include_video=true`，基础地址不带路径）。
 - [ ] **存量 clip DTO/TS 镜像漂移**（2026-10-15 附加检查发现）：`ClipDtos.java` 的 TemplateDto.sourceProjectId/createdBy、JobDto.segments、AvatarDto.demoVideoUrl/demoAudioUrl、VoiceDto.demoAudioUrl 未在 `packages/types/src/clip.ts` 对应接口声明，导致全局 `pnpm check:wire-mirror` 报4组字段不一致。此项与企业开发分开处理；新增 enterprise 的15组镜像检查已通过。
@@ -788,11 +814,11 @@
 - [ ] **短剧合成下载的是库里存的 videoUrl，下载前不重签**（`DramaAssembleService` 约 181–205 行）：最后一次保存超过签名 TTL（默认 1h）
       后合成，下载可能 403（未实测）。修：按 key 重签后再下载，或文档改存 cdnKey。
 
-- [ ] **短视频合成要求每一镜都点过「就用这版」，短剧只要有视频就能合成**：两条线口径不一。服务端
+- [ ] **短视频合成要求每一镜都点过「采用此版本」，短剧只要有视频就能合成**：两条线口径不一。服务端
       `DramaShortAssembleService.buildPlan`（`approved = "done".equals(flow)`，测试
       `buildPlanRejectsAnyUnacceptedOrMissingClip` 钉着）与 `DramaShortContinuityService.preflight`
       的 `completedShotCount / assemblyReady` 都只认 `flow==='done'`。v0.197 前端没改判定，改成把
-      「还没视频」和「有视频、还没点就用这版」分开说，并加了批量「有视频的镜头全部就用这版」。
+      「还没视频」和「有视频、还没点采用此版本」分开说，并加了批量「有视频的镜头全部采用此版本」。
       要放宽：服务端这两处 + 前端 `shorts/make/page.tsx` 的 `readyToAssemble / missingAssemblyMedia`
       + mock `api/shorts.ts` 的 `assembleDraft / preflightDraft` 一起改，那条测试要同步改语义。
 
@@ -938,6 +964,40 @@
 
 - [ ] **`/studio` 老 SPA（约 11k 行）的文案没过一遍**。它按既有双轨逐屏迁出，
       现在整体重写等于给要退役的代码返工；**迁一屏就顺手按 §8 清一屏**。
+
+- [ ] **PC 站文案全面优化后的存量（2026-11-06，`docs/audits/pc-ui-copy-review-2026-11.md`）**：这次只改文字，下面这些要改行为、有逻辑依赖或拿不准，没动。
+  - **要改行为**
+    - 付款弹窗 `ip/studio-billing-dialog.tsx`：余额或策略没加载时余额显示成「可用 — 积分」，加载中和加载失败没有区分；文字任务只写「按实际用量结算」，但余额低于看不见的冻结上限时仍判「积分不足」。
+    - AI 视频页 `scene-video-studio.tsx`：`describeStudioVideoPrice` 已写「可用积分不足」，`goBlocker` 不看报价，「生成视频」仍可点，点了才在付款确认那一步失败。
+    - 灰按钮还没写原因的：`ip/studio-recreation.tsx`「开始解析 / 开始拉片」（原因在参数浮层里）、`ip/studio-flow-canvas.tsx` 多选条「建立分组」（判断函数不返回原因）、`ip/director/director-asset-studio.tsx` `FormEditor`「添加」、`ip/studio-template-source.tsx`「排版并下载资产包」「整理成片」、`ip/library-extraction-panel.tsx`「提取资产」。首页和助手输入框为空时发送键的原因留在悬停里（占位文字已经说明，用户可改判）。
+    - 邀请：`ip/invitation-registration.tsx` 提交时邀请失效，表单卸载、真实原因显示不出来，只见「邀请加载失败」；`ip/enterprise-invitation-landing.tsx` 运营查看时抛普通 `Error`，界面写「连接暂时中断」。
+    - 名片：`app/cards/page.tsx`、`app/cards/[id]/edit/page.tsx` 的失败走自写底部提示，没走 `reportStudioError`；`components/card/card-view.tsx` 没有微信号时左右两个按钮是同一个动作。
+    - `app/market/[id]/page.tsx`：顶栏和主视觉两个返回去处不同；「立即授权」点了做不成事。
+    - `ip/studio-create-home.tsx`：新版导航叫「画布」，页面标题两版共用「画布·自由创作」，要给 `StudioPage` 加新版标题。
+    - `ip/enterprise-reports.tsx` 消费流水：「记账结果」和「状态」显示同一个字段。
+    - `ip/supplementary-asset-library.tsx`：形象状态筛选「调整中 · 迭代 / 精修」是内部说法，合并要产品确认；全部失败时上方和空态各一个「重试」。
+  - **有逻辑依赖，改文字要两边一起改**
+    - ~~2026-11-07 线上扫描的残留：「每张画布都在这里，点开可继续编辑」、场景名「自由出图」~~ **2026-11-07 已改**：「点击画布继续编辑」、「自由生成」。
+    - `ip/director/director-workbench.tsx` `PASSING_NOTICE` 按服务端原文判断（「全部 N 集都写好了」「已分成 N 集」「资产已保存」）；`asset.description.includes("只出声音")`；`StudioPlanExecutor`「本阶段预算还差 N 积分」（`StudioPlanExecutionService` 用 `startsWith`）。
+    - 工作记录里的「N 个对象」（`CreateNodesTool`、`ReadCanvasTool`、`UpdateNodesTool`、`ViewImagesTool`）：「对象」是开发词，但也回给模型，`DialogueActionProtocol` 和对话测试都依赖。
+    - 技能名「出图」「出视频」显示在助手头部：真值在 `resources/studio/skills/*.md`，库里有不可变版本，改名要走技能版本。
+  - **走查时看到、这轮没动**
+    - AI 视频页「示例」里的步骤（如「拿到客户的商品和卖点后」「再按同样的结构换成我的内容重新拍」）读的是场景 `structure`，这段同时发给模型，读着像写给模型的话。要改显示得在 `scenes.json` 加一个只给界面用的字段。
+    - 不存在的路由是 Next 默认的英文 404（「This page could not be found.」），要加 `app/not-found.tsx`。
+    - 资产详情 `/assets/[id]`「使用记录」为空时，有两个相同的「开始创作」按钮。
+  - **要核实**
+    - 导演台 `视频生成中：{stage} {pct}%` 的百分比取自 `progress_pct`，要确认聚算 H3 真的回进度；不回就去掉。价格前的「约」要看报价是不是最终扣费价。
+    - `ip/studio-task-list.tsx` 进行中任务显示「冻结 N 积分」，是否也按「冻结上限不当价格显示」改。
+    - `scene-video-studio.tsx`「按实际完成的内容结算，本次上限 N 积分」是用户确认的任务预算，先保留。
+    - `proto/screen-aicreate.tsx`「约需 30–60 秒」没找到依据；`proto/screen-more.tsx`「配音合成功能上线后可直接使用」要确认。
+    - 线上如果运营保存过 `studio.scene-catalog`，随包 `scenes.json` 的新文字看不到，发布后在 Studio 后台核对。
+  - **范围外**
+    - `proto/` 其余约 1700 条没通读（用户定只改扫描命中）：`screen-compose.tsx`「冻结算力」、`screen-real.tsx`「七牛云」、`screen-library.tsx`「一键生成」等。手机端 `app/me/page.tsx`「扫码即看」「会员与算力」、`components/hub/ui.tsx`、`ip/canvas-gate.tsx` 手机提示页还有口语。
+    - vendored `canvas/components/canvas/canvas-video-settings-popover.tsx`「这个模型只接 X–Y 秒…点开改一下」，只能改语言包以外的文件才能改，先留着。
+    - 账本流水描述（「IP 运行超时 · 释放冻结」「画布出图 ×N」）只有后台和 web-drama 看得到；`IpRunServiceTest` 断言了。
+    - 没有挂到页面上的文件，建议删除：`ip/studio-scene-workshop.tsx`、`ip/studio-scenes.ts`、`components/hub/create-center.tsx`、`components/hub/landing.tsx`、`components/landing/atlas.tsx`、`ip/saved-canvas-assets.tsx`、`shell/ip-navigation.tsx`。
+
+- [x] ~~**main 上有两个前端测试是红的（2026-11-06 发现，和文案改动无关，相关源码与 main 相同）**~~ **2026-11-06 修复**：都从 `35c24240a` 起红。`model-task-state.test.ts` 是断言过时，状态码按 §8.0.1 ① 不进界面，改成断言保留原因和追查号、不出现状态码。`ai-error.test.ts` 查出真 bug：web-drama 里英文原文配超时、未配置这类错误码时，`publicModelErrorMessage` 换说法后盖掉了 `FRIENDLY_BY_CODE`，已改成这类错误码仍用专门提示，隐去经营信息和调用失败类错误码照旧。`main` 直推不跑 CI（工作流只在 PR 和手动触发时跑），所以红了两天没人发现。同批把 admin、studio-admin、web-drama 的 vitest 设置改成和 web-aiavatar 一样，消除 5 秒超时的假失败（AGENTS.md §8.0.1 ⑬）。
 
 ### 2026-09-09 · 生产事故复盘（v0.192，@Id 被挤到常量上）
 
@@ -1751,7 +1811,7 @@
 - [ ] 示例图和实际效果还没对过：17 张是 Codex 生成的示意图（2026-11-05），白底图、服装上身、卖点图的技能已照图改过，但没有用线上默认模型跑过。跑一遍，差得多的场景换成真实结果或再调提示词。
 - [ ] 导演台长剧篇幅没实测：线上默认的 Sonnet 一次写 3 集 90 秒已用掉约 5 万输出 Token，每集 5 分钟以上的批量（`DirectorService.scriptBatch`）是估的；一键制作也不会接着写后面的集。
 - [x] ~~出图排队卡住~~ **已修复（待发布），2026-11-05**：工作线程扩到 24、线程忙时不再重复入队、图片调用加总时限，并发拒收回队列，见 `docs/ai-endpoint-generation-queue.md` 末节。原记录：`AiGenerationQueueDispatcher` 分发时报 `dispatch deferred ... TaskRejectedException`，2026-11-05 有 3 张图排了 47 分钟，当时已没有在跑的出图任务，server 重启后才开始。先查 `ip-run` 线程池为什么拒绝。记录见 `docs/releases/scene-skill-slots-release-20261105.md`。
-- [ ] 并发拒收回队列目前只做了图片（`IpRunWorker`）。文字任务、视频（`MaterialVideoWorker`）、配音遇到 429 / 明确的并发拒绝仍按原规则失败或受理未知。真实的拒绝原话还没见过，第一次出现时核对 `[ipstudio] 生成服务因并发拒收`。
+- [ ] 并发拒收回队列目前只做了图片（`IpRunWorker`）。文字任务、视频（`MaterialVideoWorker`）、配音遇到 429 / 明确的并发拒绝仍按原规则失败或受理未知。图片已见过一种真实原话（2026-11-04 的 503 `No available channel for model … under group …`，已按未受理回队列）；429 和说并发的原话仍没见过，第一次出现时核对 `[ipstudio] 生成服务因并发拒收`。
 - [ ] 图片结果下载（`JusuanImageClient.download` / `resultBytes` 用流式读）还没有总时限，下载中途不来数据仍可能占住线程。
 - [ ] GPT Image 2.5 比 GPT Image 2 慢约 3 倍（平均 508 秒对 169 秒），当前是 Studio 默认模型，价格也从 16 积分变成 37 积分。用真实使用数据判断要不要保留为默认。
 - [ ] AI 图片输入框加「输入 / 选技能」（茂隆有，`ScenePromptEditor` 现在只有 @）。

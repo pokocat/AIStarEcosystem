@@ -470,7 +470,7 @@ describe("等补存落地也要有上限", () => {
       expect(second.result.current.state).toBe("loading");   // 先等
       await act(async () => { await vi.advanceTimersByTimeAsync(8100); });
       expect(second.result.current.state).toBe("error");     // 等超了如实报错
-      expect(second.result.current.error).toMatch(/还在保存中/);
+      expect(second.result.current.error).toMatch(/仍在保存中/);
       expect(getProjectMock).toHaveBeenCalledTimes(1);       // 没有去读那份已知是旧的文档
       second.unmount();
     } finally {
@@ -635,7 +635,7 @@ describe("撞上冲突之后的三条出路", () => {
     updateProjectMock.mockResolvedValueOnce({ docVersion: "c1" });
     getProjectMock.mockResolvedValueOnce({ id: "IPP-1", name: "A", doc: theirs, docVersion: "v2" });
     await act(async () => { await expect(result.current.resolveConflict("save-copy")).resolves.toEqual({ outcome: "resolved", copyId: "IPP-copy" }); });
-    expect(createProjectMock).toHaveBeenCalledWith({ name: "A · 另一份" });
+    expect(createProjectMock).toHaveBeenCalledWith({ name: "A · 副本" });
     expect(updateProjectMock).toHaveBeenCalledTimes(1);
     expect(updateProjectMock.mock.calls[0]![0]).toBe("IPP-copy");
     expect(updateProjectMock.mock.calls[0]![1]).toMatchObject({ doc: { nodes: [{ id: "n-mine" }] } });

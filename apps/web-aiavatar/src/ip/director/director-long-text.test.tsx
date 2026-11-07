@@ -134,7 +134,7 @@ test("importing a very long file previews only the opening but imports every cha
   fireEvent.change(screen.getByLabelText("上传剧本文件"), { target: { files: [new File(["x"], "长篇.txt")] } });
   const preview = await screen.findByLabelText("文件文字预览") as HTMLTextAreaElement;
   expect(preview.value.length).toBe(PREVIEW_CHARS);
-  expect(screen.getByText(/导入时整份 300,0\d\d 字都会放进正文/)).toBeTruthy();
+  expect(screen.getByText(/导入时将完整导入全部 300,0\d\d 字/)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "使用文件内容" }));
   expect(imported).toHaveBeenCalledWith(text);
 });

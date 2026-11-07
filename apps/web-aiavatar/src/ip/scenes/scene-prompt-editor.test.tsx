@@ -37,8 +37,8 @@ const editorOf = async () => (await screen.findByRole("textbox", { name: "想做
 test("the box shows each reference as a thumbnail chip and keeps the text exactly as written", async () => {
   render(<Host initial={"第1镜：她拿起@图1。\n第2镜：图2对着镜头说话。"}/>);
   const editor = await editorOf();
-  const chips = await screen.findAllByRole("button", { name: /看大图$/ });
-  expect(chips.map(c => c.getAttribute("aria-label"))).toEqual(["图1：马克杯，看大图", "图2：出镜人物，看大图"]);
+  const chips = await screen.findAllByRole("button", { name: /查看大图$/ });
+  expect(chips.map(c => c.getAttribute("aria-label"))).toEqual(["图1：马克杯，查看大图", "图2：出镜人物，查看大图"]);
   expect(chips[0].querySelector("img")?.getAttribute("src")).toBe("https://cdn.test/cup.jpg");
   // 存下来的字一个都不变（「@图1」还是「@图1」）。
   expect(editor.getText({ blockSeparator: "\n" })).toBe("第1镜：她拿起@图1。\n第2镜：图2对着镜头说话。");
@@ -48,7 +48,7 @@ test("typing 图1 turns it into a chip; the saved value is still plain text", as
   render(<Host initial="展示"/>);
   const editor = await editorOf();
   act(() => { editor.commands.focus("end"); editor.commands.insertContent("图1"); });
-  await waitFor(() => expect(screen.getByRole("button", { name: "图1：马克杯，看大图" })).toBeTruthy());
+  await waitFor(() => expect(screen.getByRole("button", { name: "图1：马克杯，查看大图" })).toBeTruthy());
   expect(screen.getByTestId("value").textContent).toBe("展示图1");
   // 编号超出交给模型的图数：还是字。
   act(() => { editor.commands.insertContent("，图5"); });
@@ -58,18 +58,18 @@ test("typing 图1 turns it into a chip; the saved value is still plain text", as
 
 test("clicking a chip opens the picture large; removing that picture turns the chip back into text", async () => {
   render(<Host initial="图1 和 图2"/>);
-  fireEvent.click(await screen.findByRole("button", { name: "图2：出镜人物，看大图" }));
+  fireEvent.click(await screen.findByRole("button", { name: "图2：出镜人物，查看大图" }));
   await waitFor(() => expect(document.querySelector(".director-image-preview")).toBeTruthy());
   fireEvent.keyDown(window, { key: "Escape" });
   fireEvent.click(screen.getByRole("button", { name: "只留图1" }));
   await waitFor(() => expect(screen.queryByRole("button", { name: /^图2/ })).toBeNull());
-  expect(screen.getByRole("button", { name: "图1：马克杯，看大图" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "图1：马克杯，查看大图" })).toBeTruthy();
   expect(screen.getByTestId("value").textContent).toBe("图1 和 图2");
 });
 
 test("read-only text (the director's script card) shows the same chips", () => {
   render(<p><PromptText text="第1镜：拿起图1，转到侧面" refs={REFS}/></p>);
-  expect(screen.getByRole("button", { name: "图1：马克杯，看大图" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "图1：马克杯，查看大图" })).toBeTruthy();
   cleanup();
   render(<p><PromptText text="第1镜：拿起图1" refs={[]}/></p>);
   expect(screen.queryByRole("button")).toBeNull();
@@ -84,7 +84,7 @@ test("typing @ lists the placed materials and picking one inserts its chip; the 
   expect(within(menu).getAllByRole("option").map(o => o.textContent)).toEqual([expect.stringContaining("图1"), expect.stringContaining("图2")]);
   fireEvent.click(within(menu).getByRole("option", { name: /图2/ }));
   await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
-  expect(screen.getByRole("button", { name: "图2：出镜人物，看大图" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "图2：出镜人物，查看大图" })).toBeTruthy();
   expect(screen.getByTestId("value").textContent).toBe("让图2 ");
 });
 
@@ -98,5 +98,5 @@ test("the @ menu narrows as you type, and with nothing placed it says how to get
   render(<Host initial="" refs={[]}/>);
   const empty = await editorOf();
   act(() => { empty.commands.focus("end", { scrollIntoView: false }); empty.commands.insertContent("@"); });
-  expect((await screen.findByRole("listbox", { name: "选择素材" })).textContent).toContain("先放素材");
+  expect((await screen.findByRole("listbox", { name: "选择素材" })).textContent).toContain("添加素材");
 });

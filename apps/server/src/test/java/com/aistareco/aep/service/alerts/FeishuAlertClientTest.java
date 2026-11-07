@@ -8,6 +8,47 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class FeishuAlertClientTest {
+    private static final String WEBHOOK="https://open.feishu.cn/open-apis/bot/v2/hook/test-hook";
+    @Test @SuppressWarnings("unchecked") void webhookNeedsNoAppCredentialsAndDoesNotRequestATokenOrUrgency() throws Exception {
+        var config=new FeishuAlertConfig();config.setEnabled(true);config.setWebhook(WEBHOOK);config.setUrgent(true);
+        assertTrue(config.ready());assertFalse(config.urgencyEnabled());
+        var http=mock(HttpClient.class);HttpResponse<String> response=mock(HttpResponse.class);
+        when(response.statusCode()).thenReturn(200);when(response.body()).thenReturn("{\"code\":0,\"msg\":\"success\"}");
+        when(http.send(any(HttpRequest.class),any(HttpResponse.BodyHandler.class))).thenAnswer(call->{
+            HttpRequest request=call.getArgument(0);
+            assertEquals(WEBHOOK,request.uri().toString());assertTrue(request.headers().firstValue("Authorization").isEmpty());
+            var json=new ObjectMapper().readTree(body(request));
+            assertEquals("text",json.path("msg_type").asText());assertEquals("测试告警",json.path("content").path("text").asText());
+            return response;
+        });
+        var client=new FeishuAlertClient(config,new ObjectMapper(),http);
+        assertEquals("webhook:stable-key",client.send("stable-key","测试告警"));client.urgent("webhook:stable-key");
+        verify(http,times(1)).send(any(HttpRequest.class),any(HttpResponse.BodyHandler.class));
+        config.setEnabled(false);assertFalse(config.ready());
+    }
+    @Test void invalidWebhookDoesNotFallBackToTheApplicationBot() {
+        var config=new FeishuAlertConfig();config.setEnabled(true);config.setAppId("app");config.setAppSecret("secret");config.setChatId("oc_group");config.setUserId("ou_person");
+        var http=mock(HttpClient.class);var client=new FeishuAlertClient(config,new ObjectMapper(),http);
+        for(String url:List.of("https://example.com/hook/secret","https://open.feishu.cn/open-apis/bot/v2/hook/key?token=secret","http://open.feishu.cn/open-apis/bot/v2/hook/key")) {
+            config.setWebhook(url);assertFalse(config.ready());
+            assertEquals("Feishu webhook invalid",assertThrows(IllegalStateException.class,()->client.send("id","text")).getMessage());
+        }
+        verifyNoInteractions(http);
+    }
+    @Test @SuppressWarnings("unchecked") void webhookErrorsAreRedactedAndLongUnicodeAlertsFitThePayloadLimit() throws Exception {
+        var config=new FeishuAlertConfig();config.setWebhook(WEBHOOK);
+        var http=mock(HttpClient.class);HttpResponse<String> response=mock(HttpResponse.class);
+        when(response.statusCode()).thenReturn(200);when(response.body()).thenReturn("{\"code\":19024,\"msg\":\"private-hook\"}");
+        when(http.send(any(HttpRequest.class),any(HttpResponse.BodyHandler.class))).thenAnswer(call->{
+            String payload=body(call.getArgument(0));
+            assertTrue(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8).length<=20000);
+            String text=new ObjectMapper().readTree(payload).path("content").path("text").asText();
+            assertTrue(text.contains("告警过长已截断"));assertTrue(text.endsWith("https://admin.aibuzz.cn/admin/platform/ai-models"));
+            assertFalse(text.contains("\uFFFD"));return response;
+        });
+        var client=new FeishuAlertClient(config,new ObjectMapper(),http);
+        assertEquals("Feishu code 19024",assertThrows(IllegalStateException.class,()->client.send("id","告警😀\n\"".repeat(10000))).getMessage());
+    }
     @Test @SuppressWarnings("unchecked") void sendsAsBotAndUrgentlyNotifiesTheSelectedGroupMemberWithOneToken() throws Exception {
         var config=new FeishuAlertConfig();config.setAppId("app");config.setAppSecret("secret");config.setChatId("oc_group");config.setUserId("ou_person");
         var http=mock(HttpClient.class);List<HttpRequest> requests=new ArrayList<>();List<String> bodies=new ArrayList<>();

@@ -13,6 +13,11 @@ class PublicModelErrorReadabilityTest {
             "{\"error\":{\"message\":\"map[code:invalid_request details:map[violations:[map[location:[body voice]]]]\"}}",
             "{\"message\":\"视频请求未完成，请检查素材和参数，或稍后使用新幂等键重试。Video request failed; check media and parameters, or retry later with a new idempotency key.\"}",
             "{\"error\":{\"message\":\"return_last_frame is not supported by model seedance-2.5\"}}",
+            // 2026-11-07 线上原话：模型在聊天；厂商接口的说法；什么也没说明的中文。
+            "{\"error\":{\"message\":\"我目前无法在此对话中直接生成图片，但可以帮你进一步整理和强化这组分镜提示词\"}}",
+            "{\"error\":{\"message\":\"当前生图模式不接受参考图或蒙版，请使用图片编辑接口\",\"code\":\"unexpected_image_input\"}}",
+            "{\"message\":\"任务执行异常\"}",
+            "{\"error\":{\"message\":\"I'm sorry, I cannot generate this image.\"}}",
     })
     void wordsAboutTheSuppliersInternalsNeverReachACustomer(String body) {
         assertEquals("我们的说明", ProviderErrorMessage.message(body, "我们的说明"));
@@ -21,6 +26,22 @@ class PublicModelErrorReadabilityTest {
 
     @Test void aChineseReasonTheCustomerCanActOnIsKept() {
         assertEquals("参考图尺寸过小，请更换", ProviderErrorMessage.message("{\"message\":\"参考图尺寸过小，请更换\"}", "我们的说明"));
+    }
+
+    @Test void aBareSupplierCodeIsNotAReason() {
+        assertNull(PublicModelErrorPolicy.upstream("InternalServiceError"));
+        assertEquals("我们的说明", ProviderErrorMessage.message("{\"message\":\"internal_server_error\"}", "我们的说明"));
+    }
+
+    @Test void savedRecordsOfAModelChattingOrSupplierLogicReadAsARetryAndKeepTheirLookupNumber() {
+        assertEquals(PublicModelErrorPolicy.UNREADABLE + " · 追查号 ABCDEF234567",
+                PublicModelErrorPolicy.stored("图片生成服务返回错误：我目前无法在此对话中直接生成图片，但可以帮你整理 · 追查号 ABCDEF234567", "STUDIO_IMAGE_PROVIDER_FAILED"));
+        assertEquals(PublicModelErrorPolicy.UNREADABLE,
+                PublicModelErrorPolicy.stored("当前生图模式不接受参考图或蒙版，请使用图片编辑接口", "DAP_MODEL_HTTP_400"));
+        assertEquals(PublicModelErrorPolicy.UNREADABLE,
+                PublicModelErrorPolicy.stored("VIDEO_MIRROR_FAILED：视频生成好了，但没能存进我方存储（oss down）", null));
+        assertEquals(PublicModelErrorPolicy.UNAVAILABLE,
+                PublicModelErrorPolicy.stored("生成服务暂时不可用，请稍后再试或联系平台处理。", "STUDIO_VIDEO_FAILED"));
     }
 
     @Test void englishReasonsTheCustomerCanActOnAreTranslated() {

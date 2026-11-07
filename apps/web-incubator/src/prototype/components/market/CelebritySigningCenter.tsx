@@ -121,9 +121,9 @@ const CELEBRITIES: Celebrity[] = [
   },
   {
     id: 'ym',
-    name: '苏枝',
-    avatar: '/images/star-su-zhi.webp',
-    portrait: '/images/star-su-zhi.webp',
+    name: '苏念',
+    avatar: '/images/star-su-nian.webp',
+    portrait: '/images/star-su-nian.webp',
     category: '影视明星',
     followers: '8900万',
     color: '#ec4899',
@@ -133,9 +133,9 @@ const CELEBRITIES: Celebrity[] = [
   },
   {
     id: 'xz',
-    name: '顾然',
-    avatar: '/images/star-gu-ran.webp',
-    portrait: '/images/star-gu-ran.webp',
+    name: '顾星辰',
+    avatar: '/images/star-gu-xingchen.webp',
+    portrait: '/images/star-gu-xingchen.webp',
     category: '流量明星',
     followers: '12500万',
     color: '#8b5cf6',
@@ -145,9 +145,9 @@ const CELEBRITIES: Celebrity[] = [
   },
   {
     id: 'lyf',
-    name: '林鹿白',
-    avatar: '/images/star-lin-lubai.webp',
-    portrait: '/images/star-lin-lubai.webp',
+    name: '林清漪',
+    avatar: '/images/star-lin-qingyi.webp',
+    portrait: '/images/star-lin-qingyi.webp',
     category: '影视明星',
     followers: '6500万',
     color: '#ec4899',
@@ -160,11 +160,11 @@ const CELEBRITIES: Celebrity[] = [
 // Mock已授权明星
 const AUTHORIZED_CELEBRITIES: AuthorizedCelebrity[] = [
   {
-    ...CELEBRITIES[2], // 陈屿
+    ...CELEBRITIES[2], // 陆承远
     id: 'yz',
-    name: '陈屿',
-    avatar: '/images/star-chen-yu.webp',
-    portrait: '/images/star-chen-yu.webp',
+    name: '陆承远',
+    avatar: '/images/star-lu-chengyuan.webp',
+    portrait: '/images/star-lu-chengyuan.webp',
     category: '影视明星',
     followers: '980万',
     color: '#a855f7',

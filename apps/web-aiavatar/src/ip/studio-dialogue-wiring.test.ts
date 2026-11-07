@@ -27,7 +27,7 @@ test('the dialogue is actually mounted and wired', () => {
   expect(assistant).not.toContain('aria-label="助手模型"');
   expect(assistant).not.toMatch(/studio-dialogue-chip(?!s)/);
   expect(assistant).toContain('title={modeLabelTitle(modeSkill?.name)}');
-  expect(assistant).toContain('按你说的话自动选择；有制作在进行时保持不变，想换做法可以开一段新对话。');
+  expect(assistant).toContain('会按你说的内容自动选择做法。');
   expect(assistant).toContain('aria-label="选一种做法"');
   expect(read('ip/studio-dialogue-composer.tsx')).not.toContain('{tools}');
   expect(assistant).toContain('<StudioDialogueSkillDraft');

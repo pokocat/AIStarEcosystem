@@ -190,6 +190,8 @@ export interface IpRunOutput {
   videoPromptNotes?: string[];
   /** 优化稿有提示，没有出片，等用户选用优化稿还是原文。 */
   needsChoice?: boolean;
+  /** 模型回了内容但整理不成约定的结构（如回复看不到素材）：保留原话，不当作优化稿或方案使用。 */
+  rawOnly?: boolean;
 }
 export interface IpRunInputs {
   /** Explicit Studio input wrapped by the native image pipeline. */

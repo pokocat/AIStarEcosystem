@@ -13,7 +13,7 @@ test('a square first frame for a 9:16 clip says it will be cropped and offers 1:
   const onFix = vi.fn();
   render(<StudioFrameCropHint frame={frame(1024, 1024)} ratio="9:16" ratios={['9:16', '16:9', '1:1']} onFix={onFix}/>);
   expect(screen.getByRole('status').textContent).toContain('首帧图是 1:1，会按 9:16 居中裁剪');
-  fireEvent.click(screen.getByRole('button', { name: '改成 1:1' }));
+  fireEvent.click(screen.getByRole('button', { name: '改为 1:1' }));
   expect(onFix).toHaveBeenCalledWith('1:1');
 });
 

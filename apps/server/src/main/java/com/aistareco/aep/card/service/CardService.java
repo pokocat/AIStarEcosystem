@@ -95,7 +95,7 @@ public class CardService {
         avatarRepo.findById(aid)
                 .filter(a -> a.getDeletedAt() == null)
                 .filter(a -> userId.equals(a.getOwnerUserId()))
-                .orElseThrow(() -> BusinessException.notFound("DAP_AVATAR_NOT_FOUND", "这个形象不存在"));
+                .orElseThrow(() -> BusinessException.notFound("DAP_AVATAR_NOT_FOUND", "形象不存在"));
         return aid;
     }
 
@@ -151,11 +151,11 @@ public class CardService {
     @Transactional
     public CardProfile createFromAvatar(String userId, String avatarId, String slug) {
         String aid = trimToNull(avatarId);
-        if (aid == null) throw BusinessException.badRequest("CARD_AVATAR_REQUIRED", "先选一个数字人形象");
+        if (aid == null) throw BusinessException.badRequest("CARD_AVATAR_REQUIRED", "请选择数字人形象");
         DapAvatar avatar = avatarRepo.findById(aid)
                 .filter(a -> a.getDeletedAt() == null)
                 .filter(a -> userId.equals(a.getOwnerUserId()))
-                .orElseThrow(() -> BusinessException.notFound("DAP_AVATAR_NOT_FOUND", "这个形象不存在"));
+                .orElseThrow(() -> BusinessException.notFound("DAP_AVATAR_NOT_FOUND", "形象不存在"));
 
         ObjectNode doc = mapper.createObjectNode();
         doc.put("name", avatar.getName() == null ? "" : avatar.getName());
@@ -248,10 +248,10 @@ public class CardService {
         CardProfile c = required(userId, id);
         JsonNode doc = readDoc(c);
         if (blank(doc, "name")) {
-            throw BusinessException.badRequest("CARD_NAME_REQUIRED", "名片还没有名字，先把基础信息填上");
+            throw BusinessException.badRequest("CARD_NAME_REQUIRED", "名片还没有姓名，请填写基础信息");
         }
         if (blank(doc, "title")) {
-            throw BusinessException.badRequest("CARD_TITLE_REQUIRED", "名片还没有身份（公司 · 职务），先补上再发布");
+            throw BusinessException.badRequest("CARD_TITLE_REQUIRED", "名片还没有公司和职务，请填写后发布");
         }
         Instant now = Instant.now();
         c.setStatus(CardProfile.STATUS_PUBLISHED);
@@ -300,7 +300,7 @@ public class CardService {
                     "短链只能用小写字母、数字和连字符，3–32 位，且要以字母或数字开头");
         }
         if (RESERVED_SLUGS.contains(s)) {
-            throw BusinessException.badRequest("CARD_SLUG_RESERVED", "「" + s + "」是保留短链，换一个");
+            throw BusinessException.badRequest("CARD_SLUG_RESERVED", "「" + s + "」是保留短链，请更换");
         }
         return s;
     }
@@ -309,7 +309,7 @@ public class CardService {
         repo.findBySlug(slug)
                 .filter(x -> selfId == null || !x.getId().equals(selfId))
                 .ifPresent(x -> {
-                    throw BusinessException.badRequest("CARD_SLUG_TAKEN", "这个短链被占用了，换一个");
+                    throw BusinessException.badRequest("CARD_SLUG_TAKEN", "此短链已被占用，请更换");
                 });
     }
 
@@ -334,7 +334,7 @@ public class CardService {
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
-            throw BusinessException.badRequest("CARD_DOC_INVALID", "名片内容存不下来，检查一下格式");
+            throw BusinessException.badRequest("CARD_DOC_INVALID", "名片内容保存失败，请检查格式后重试");
         }
     }
 
@@ -409,7 +409,7 @@ public class CardService {
             doc = parsed != null && parsed.isObject() ? (ObjectNode) parsed : mapper.createObjectNode();
         } catch (Exception e) {
             throw BusinessException.wrapped(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR,
-                    "CARD_DOC_BROKEN", "名片内容读不出来了", "payloadJson 解析失败 card=" + card.getId());
+                    "CARD_DOC_BROKEN", "名片内容加载失败，请稍后重试", "payloadJson 解析失败 card=" + card.getId());
         }
 
         // 形象引用 → 签名图。名片存的是引用不是图（look:<id> / deriv:<id> / null=跟随定妆照），

@@ -10,5 +10,5 @@ import { setUiVersion, useUiVersion } from "./ui-version";
 export function UiVersionSwitch({ inline = false }: { inline?: boolean }) {
   const version = useUiVersion();
   return <button type="button" className={"ip-ui-switch" + (inline ? " ip-ui-switch-inline" : "")}
-    onClick={() => setUiVersion(version === "next" ? "classic" : "next")}>{version === "next" ? "回到旧版" : "体验新版"}</button>;
+    onClick={() => setUiVersion(version === "next" ? "classic" : "next")}>{version === "next" ? "返回旧版" : "体验新版"}</button>;
 }

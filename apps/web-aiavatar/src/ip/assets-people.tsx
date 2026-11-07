@@ -83,7 +83,7 @@ export function AssetsPeople({ library, folders }: { library: string; folders: L
       return {
         id: o.id, name: o.name, description: o.description, real: false, verified: false, source: 'role', object: o,
         image: main ? { src: main.url, storageKey: main.storageKey } : undefined,
-        meta: o.versions.length ? `${o.versions.length} 张图` : '还没有图', tag: o.sources.length ? { label: '剧本提取' } : undefined,
+        meta: o.versions.length ? `${o.versions.length} 张图` : '暂无图片', tag: o.sources.length ? { label: '剧本提取' } : undefined,
       };
     }),
     ...(inFolder || isAi ? [] : grants.data.filter(g => g.status === 'authorized').map((g): Person => ({
@@ -99,7 +99,7 @@ export function AssetsPeople({ library, folders }: { library: string; folders: L
   const errors = [rolesError, inFolder || isAi ? '' : avatars.error || '', inFolder || isAi ? '' : grants.error || ''].filter(Boolean);
   const filtered = !!needle || kind !== 'all' || source !== 'all';
 
-  if (isAi) return <div className="assets-empty"><h3>AI 生成里没有人物</h3><p>这里只放做出来的图片、视频和音频。人物在「全部」里。</p></div>;
+  if (isAi) return <div className="assets-empty"><h3>AI 生成中没有人物</h3><p>此处仅保存 AI 生成的图片、视频和音频，人物请在「全部」中查看。</p></div>;
   return <div className="assets-people">
     <div className="assets-toolbar">
       <Input className="assets-search" prefix={<Search size={15}/>} allowClear aria-label="搜索人物" placeholder="搜索名字或设定" value={keyword} onChange={e => setKeyword(e.target.value)}/>
@@ -110,23 +110,23 @@ export function AssetsPeople({ library, folders }: { library: string; folders: L
         <button type="button" className="assets-select" aria-label="按来源筛选人物">{SOURCE_OPTIONS.find(o => o.key === source)?.label}<ChevronDown size={14}/></button>
       </Dropdown>}
       <span className="assets-toolbar-gap"/>
-      <span className="assets-count" aria-live="polite">{loading ? '正在读取…' : `${shown.length} 个人物`}</span>
+      <span className="assets-count" aria-live="polite">{loading ? '正在加载…' : `${shown.length} 个人物`}</span>
     </div>
-    {errors.map((e, i) => <p key={i} className="assets-notice"><StudioErrorNotice error={e}/><Button size="small" onClick={() => setRevision(n => n + 1)}>重新读取</Button></p>)}
+    {errors.map((e, i) => <p key={i} className="assets-notice"><StudioErrorNotice error={e}/><Button size="small" onClick={() => setRevision(n => n + 1)}>重试</Button></p>)}
     <ul className="assets-people-grid">
       {!filtered && <li className="assets-person-new">
         <div><strong>新建人物</strong>
-          <button type="button" onClick={() => setCreating(true)}><ImageIcon size={15}/>用照片建</button>
-          <Link href={studioHref('#/create/real')}><Video size={15}/>录一段视频建</Link>
+          <button type="button" onClick={() => setCreating(true)}><ImageIcon size={15}/>使用照片创建</button>
+          <Link href={studioHref('#/create/real')}><Video size={15}/>录制视频创建</Link>
         </div>
       </li>}
       {loading && !shown.length ? Array.from({ length: 4 }, (_, i) => <li key={`s${i}`}><span className="assets-skeleton assets-person-cover"/></li>)
         : shown.map(p => <li key={`${p.source}:${p.id}`}><PersonCard person={p} onOpen={() => p.object && setEditing([p.object])}/></li>)}
     </ul>
-    {!loading && !shown.length && filtered && <div className="assets-empty"><h3>没有找到</h3><p>换个名字或筛选试试。</p><Button onClick={() => { setKeyword(''); setKind('all'); setSource('all'); }}>清除筛选</Button></div>}
+    {!loading && !shown.length && filtered && <div className="assets-empty"><h3>没有找到匹配的人物</h3><p>请尝试其他名字或筛选条件。</p><Button onClick={() => { setKeyword(''); setKind('all'); setSource('all'); }}>清除筛选</Button></div>}
     {editing && <LibraryAssetEditor assets={editing} folders={folders} onClose={() => { setEditing(undefined); setRevision(n => n + 1); }} onChange={() => setRevision(n => n + 1)}/>}
     <NewPersonDialog open={creating} folderId={inFolder ? library : undefined} onClose={() => setCreating(false)}
-      onCreated={o => { setCreating(false); message.success(`已建好「${o.name}」`); setRevision(n => n + 1); setEditing([o]); }}/>
+      onCreated={o => { setCreating(false); message.success(`已创建「${o.name}」`); setRevision(n => n + 1); setEditing([o]); }}/>
   </div>;
 }
 
@@ -135,7 +135,7 @@ function PersonCard({ person: p, onOpen }: { person: Person; onOpen: () => void 
     {p.image?.src || p.image?.storageKey ? <AssetThumb kind="image" src={p.image.src || undefined} storageKey={p.image.storageKey}/> : <span className="assets-person-blank"><UserRound size={40} strokeWidth={1.1}/></span>}
     {p.verified && <span className="assets-person-shield" role="img" aria-label="本人已刷脸确认" title="本人已刷脸确认"><ShieldCheck size={14}/></span>}
   </span>;
-  const body = <>{cover}<span className="assets-person-text"><strong>{p.name}</strong><small>{p.description || '还没写设定'}</small></span>
+  const body = <>{cover}<span className="assets-person-text"><strong>{p.name}</strong><small>{p.description || '暂无设定'}</small></span>
     <span className="assets-person-meta"><span>{p.meta}</span>{p.tag && <span className={`assets-tag${p.tag.tone ? ` is-${p.tag.tone}` : ''}`}>{p.tag.label}</span>}</span></>;
   return p.href ? <Link className="assets-person" href={p.href} aria-label={`查看 ${p.name}`}>{body}</Link>
     : <button type="button" className="assets-person" aria-label={`查看 ${p.name}`} onClick={onOpen}>{body}</button>;
@@ -183,7 +183,7 @@ export function NewPersonDialog({ open, folderId, onClose, onCreated }: { open: 
     } catch (e) { setError(e); }
     finally { setBusy(false); }
   };
-  const missing = !name.trim() ? '先写个名字' : !shots.front ? '还差一张正脸' : !agreed ? '勾选下面的确认' : '';
+  const missing = !name.trim() ? '请填写名字' : !shots.front ? '请添加正脸照片' : !agreed ? '请勾选下方的确认' : '';
   return <Modal open={open} title="新建人物" width={720} footer={null} getContainer={studioOverlayContainer} className="assets-person-dialog" onCancel={() => !busy && onClose()} destroyOnHidden>
     <div className="assets-person-form">
       <label className="assets-field"><span>名字</span><Input aria-label="人物名字" placeholder="例如：唐唐" value={name} maxLength={40} onChange={e => setName(e.target.value)}/></label>
@@ -191,11 +191,11 @@ export function NewPersonDialog({ open, folderId, onClose, onCreated }: { open: 
         <div className="assets-shots">{SHOTS.map(s => {
           const shot = shots[s.key], Icon = s.icon;
           return <div key={s.key} className="assets-shot">
-            <button type="button" className="assets-shot-slot" aria-label={shot ? `换一张${s.label}` : `从资产库选${s.label}`} onClick={() => setPicking(s.key)} disabled={busy}>
-              {shot ? <><AssetThumb kind="image" src={shot.url} storageKey={shot.storageKey}/><span className="assets-shot-change">换一张</span></>
+            <button type="button" className="assets-shot-slot" aria-label={shot ? `更换${s.label}` : `从资产库选择${s.label}`} onClick={() => setPicking(s.key)} disabled={busy}>
+              {shot ? <><AssetThumb kind="image" src={shot.url} storageKey={shot.storageKey}/><span className="assets-shot-change">更换</span></>
                 : <><Icon size={28} strokeWidth={1.3}/><span className="assets-shot-badge"><Plus size={13} strokeWidth={2}/></span></>}
             </button>
-            <small>{s.label}{s.optional && <i>可选</i>}</small>
+            <small>{s.label}{s.optional && <i>选填</i>}</small>
           </div>;
         })}</div>
       </div>
@@ -203,6 +203,6 @@ export function NewPersonDialog({ open, folderId, onClose, onCreated }: { open: 
       {error && <p className="assets-form-error"><StudioErrorNotice error={error}/></p>}
       <footer><span className="assets-person-missing">{missing}</span><Button onClick={onClose} disabled={busy}>取消</Button><Button type="primary" loading={busy} disabled={!!missing} onClick={() => void create()}>创建人物</Button></footer>
     </div>
-    {picking && <LibraryReferencePicker open mediaType="image" upload people={false} library={folderId} max={1} title={`选${SHOTS.find(s => s.key === picking)?.label}`} intro="从资产库里选一张；新照片点「上传到这个库」。" onClose={() => setPicking(undefined)} onAssets={pick}/>}
+    {picking && <LibraryReferencePicker open mediaType="image" upload people={false} library={folderId} max={1} title={`选择${SHOTS.find(s => s.key === picking)?.label}`} intro="从资产库中选择一张，新照片请点击「上传到此资产库」。" onClose={() => setPicking(undefined)} onAssets={pick}/>}
   </Modal>;
 }

@@ -8,6 +8,7 @@ import { auth } from '@/proto/api';
 import type { StudioConversationSharePublic } from '@ai-star-eco/types/ip-studio-share';
 import { readConversationShare,copyConversationShare } from '@/canvas-bridge/studio-share-api';
 import { StudioConversationTranscript } from './studio-conversation-transcript';
+import { formatDateTime } from '@/lib/datetime';
 const modes={general:'全能创作',original:'原创剧本',adapt:'故事改编',director:'分镜讨论'};
 export function StudioConversationPublic({token}:{token:string}) {
   const router=useRouter();const [view,setView]=useState<StudioConversationSharePublic>(),[loading,setLoading]=useState(true),[error,setError]=useStudioErrorState(),[missing,setMissing]=useState(false),[copying,setCopying]=useState(false),[copyError,setCopyError]=useStudioErrorState();
@@ -26,13 +27,13 @@ export function StudioConversationPublic({token}:{token:string}) {
     finally{lock.current=false;}
   };
   return <main className="ip-surface studio-conversation-public">
-    <header className="studio-share-brand"><a href="/">AI IP Studio</a><span>对话分享</span></header>
+    <header className="studio-share-brand"><a href="/">IP Studio</a><span>对话分享</span></header>
     <div className="studio-share-reading">
-      {loading?<div className="studio-share-loading" aria-label="正在加载对话"><div/><div/><div/></div>:error?<section><h1>{missing?'分享链接已失效':'暂时无法打开对话'}</h1><p><StudioErrorNotice error={error}/></p>{!missing&&<button type="button" onClick={()=>setRetry(v=>v+1)}>重新加载</button>}<a href="/dashboard">进入 Studio</a></section>:view&&<>
-        <div className="studio-share-heading"><h1>{view.snapshot.title}</h1><p>{modes[view.snapshot.mode]} · {new Date(view.createdAt).toLocaleString('zh-CN')}</p></div>
+      {loading?<div className="studio-share-loading" aria-label="正在加载对话"><div/><div/><div/></div>:error?<section><h1>{missing?'分享链接已失效':'对话加载失败'}</h1><p><StudioErrorNotice error={error}/></p>{!missing&&<button type="button" onClick={()=>setRetry(v=>v+1)}>重新加载</button>}<a href="/dashboard">进入 IP Studio</a></section>:view&&<>
+        <div className="studio-share-heading"><h1>{view.snapshot.title}</h1><p>{modes[view.snapshot.mode]} · {formatDateTime(view.createdAt)}</p></div>
         <p className="studio-helper-note">这是分享时的对话快照，不含原画布素材。继续创作会复制到你的新画布，参考素材需重新选择；复制不会生成内容或扣积分。</p>
         <StudioConversationTranscript snapshot={view.snapshot}/>
-        <footer className="studio-share-actions"><button className="studio-share-continue" type="button" disabled={copying} onClick={()=>void copy()}>{copying?'正在复制对话':'在 Studio 中继续创作'}</button><a href="/dashboard">进入 Studio</a></footer>
+        <footer className="studio-share-actions"><button className="studio-share-continue" type="button" disabled={copying} onClick={()=>void copy()}>{copying?'正在复制对话…':'在 IP Studio 中继续创作'}</button><a href="/dashboard">进入 IP Studio</a></footer>
         {copyError&&<p className="studio-share-error"><StudioErrorNotice error={copyError}/></p>}
       </>}
     </div>

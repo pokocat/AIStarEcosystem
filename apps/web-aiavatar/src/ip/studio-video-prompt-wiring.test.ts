@@ -17,7 +17,7 @@ test("the composer, the run input view and the dialog are mounted", () => {
   expect(workspace).toMatch(/nativeVideo\?\.supportsPromptOptimization&&<StudioPromptOptimizeToggle on=\{!videoDraft\.keepPrompt\}/);
   expect(workspace).not.toMatch(/\{frameCropHint\}\{promptReviewPanel\}/);
   expect(workspace).toMatch(/onChange=\{setPrompt\}\/><\/label>\}\s*\{\/\*[^*]*\*\/\}\s*\{promptReviewPanel\}/);
-  expect(read("ip/studio-flow-canvas.tsx")).toContain("优化稿有需要留意的地方，选好再出片");
+  expect(read("ip/studio-flow-canvas.tsx")).toContain("优化稿有需要确认的地方，请选择后生成视频");
   expect(read("ip/studio-task-list.tsx")).not.toContain("studioRunRewrites(run)");
 });
 

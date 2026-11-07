@@ -99,9 +99,9 @@ const records = () => store.get("IPP-V")!.doc.sceneVideoSubmissions ?? [];
 test("longer than one segment: the button generates, says how it splits and what it costs, and is not a hand-off", async () => {
   longDraft();
   await open();
-  await screen.findByText(/这个模型单段最长 15 秒，40 秒分 3 段（15 \+ 15 \+ 10）/);
+  await screen.findByText(/当前模型单段最长 15 秒，40 秒将分 3 段（15 \+ 15 \+ 10）/);
   await waitFor(() => expect(go().textContent).toContain("约 1,624 积分"));
-  expect(screen.getByText(new RegExp(`本次上限 ${(PRICE.estimated * 3).toLocaleString("zh-CN")} 积分`))).toBeTruthy();
+  expect(screen.getByText(new RegExp(`最多 ${(PRICE.estimated * 3).toLocaleString("zh-CN")} 积分`))).toBeTruthy();
   expect(screen.queryByRole("button", { name: "交给创作助手" })).toBeNull();
   expect(api.price).toHaveBeenLastCalledWith(expect.objectContaining({ model: "ep-h3", tier: "768p", duration: 40, ratio: "9:16", images: 1, character: false, voice: false }), expect.anything());
 });
@@ -202,7 +202,7 @@ test("long video shows the server discount and keeps the standard budget cap", a
   await open();
   await waitFor(() => expect(go().textContent).toContain("824 积分"));
   expect(go().querySelector("s")?.textContent).toContain("1,624");
-  expect(screen.getByText(/H3限时折扣，视频费省 800 积分/)).toBeTruthy();
+  expect(go().querySelector("small")?.title).toBe("H3限时折扣，视频费省 800 积分");
   fireEvent.click(go());
   await waitFor(() => expect(api.start).toHaveBeenCalled());
   expect(api.start.mock.calls[0][1].budgetCap).toBe(PRICE.estimated * 3);
@@ -265,8 +265,8 @@ test("director stop responds immediately, disables repeats and allows another re
   expect(api.cancelRun).toHaveBeenCalledTimes(1);
   await act(async () => resolve({ id: "script-run", status: "running", stage: "studio.stopping", output: {} }));
   expect(screen.getByText("已停止创作，正在结算已用费用")).toBeTruthy();
-  fireEvent.change(screen.getByRole("textbox", { name: "想改哪里" }), { target: { value: "换一个开场" } });
-  expect((screen.getByRole("button", { name: "让编导改" }) as HTMLButtonElement).disabled).toBe(false);
+  fireEvent.change(screen.getByRole("textbox", { name: "修改意见" }), { target: { value: "换一个开场" } });
+  expect((screen.getByRole("button", { name: "发送修改意见" }) as HTMLButtonElement).disabled).toBe(false);
 });
 
 test("a refused stop restores the writing state and lets the user retry", async () => {

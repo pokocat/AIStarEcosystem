@@ -28,8 +28,8 @@ test('a model the failure proved gone, or that is no longer offered, is not reus
 });
 
 test('the reason is one short line without vendor links', () => {
-  expect(studioFailureReason(retired)).toBe('这个模型已不可用，请换一个模型再生成');
+  expect(studioFailureReason(retired)).toBe('此模型已不可用，请更换模型后重新生成');
   const vendor = node({ errorDetails: '视频模型拒绝了这次请求：model x has been rejected; see https://app.example.com/models for more。后面的话。' });
   expect(studioFailureReason(vendor)).not.toContain('https://');
-  expect(studioFailureReason(node({}))).toBe('没有生成出来，可以修改后重试');
+  expect(studioFailureReason(node({}))).toBe('生成失败，可修改后重试');
 });

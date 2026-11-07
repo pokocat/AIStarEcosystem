@@ -68,7 +68,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); window.history.replaceState(null, "", "/"); });
 
-const continueLink = () => screen.queryByRole("link", { name: "在画布中查看" })?.getAttribute("href");
+const continueLink = () => screen.queryByRole("link", { name: "在画布上查看" })?.getAttribute("href");
 const heading = () => document.querySelector(".scene-composer-head strong")?.textContent;
 const pressed = (group: string, name: string) => within(screen.getByRole("group", { name: group })).getByRole("button", { name }).getAttribute("aria-pressed");
 const text = fieldText;
@@ -89,9 +89,9 @@ async function oneResult() {
 
 test("image: a result can become a reference picture, going into the first slot with room", async () => {
   await oneResult();
-  fireEvent.click(screen.getByRole("button", { name: "当参考图" }));
+  fireEvent.click(screen.getByRole("button", { name: "用作参考图" }));
   expect((screen.getAllByRole("img", { name: "商品" }).at(-1) as HTMLImageElement).src).toBe("https://cdn/out.jpg");
-  expect(screen.getByText("放进「商品」了。")).toBeTruthy();
+  expect(screen.getByText("已添加到「商品」。")).toBeTruthy();
 });
 
 test("image: 做成视频 takes the picture to the video page; the viewer offers the same for each picture", async () => {
@@ -100,7 +100,7 @@ test("image: 做成视频 takes the picture to the video page; the viewer offers
   expect(api.push).toHaveBeenCalledWith("/video?scene=ecom-talking&ref=ipstudio_gen%2Fu%2Fout.jpg");
   fireEvent.click(screen.getByRole("button", { name: "查看第 1 张" }));
   const viewer = within(screen.getByRole("dialog", { name: "查看大图" }));
-  expect(viewer.getByRole("button", { name: "当参考图" })).toBeTruthy();
+  expect(viewer.getByRole("button", { name: "用作参考图" })).toBeTruthy();
   expect(viewer.getByRole("button", { name: "做成视频" })).toBeTruthy();
 });
 
@@ -113,7 +113,7 @@ test("video: a picture brought from AI 图片 goes into the scene's pictures and
   expect(api.signKeys).toHaveBeenCalledWith(["ipstudio_gen/u/out.jpg"]);
   expect(window.location.search).not.toContain("ref=");
   await waitFor(() => expect(store.get("IPP-A")!.doc.sceneInputs?.images).toEqual(["ipstudio_gen/u/out.jpg"]));
-  expect(screen.getByText(/图带过来了，放在「商品图」/)).toBeTruthy();
+  expect(screen.getByText(/图片已添加到「商品图」/)).toBeTruthy();
 });
 
 // 交给画布里的创作助手之后（爆款复刻、超长片），回到这页要看得到做到哪了（审查 G05 / C2）。
@@ -126,20 +126,20 @@ const step = (status: string) => ({ id: status, title: "x", operation: "video", 
 test("video: a draft handed to the assistant says so before a plan is confirmed, then how far it got", async () => {
   put({ id: "IPP-H", name: "h", sceneId: "recreation", doc: handedOff(false) });
   await open(SceneVideoStudio, "/video?scene=recreation&draft=IPP-H");
-  expect(await screen.findByText(/交给画布里的创作助手了，去那边确认方案和费用后才开始做/)).toBeTruthy();
-  expect(screen.getByRole("link", { name: "去画布看" }).getAttribute("href")).toBe("/projects/IPP-H?start=assistant");
+  expect(await screen.findByText(/已交给画布中的创作助手，确认方案和费用后开始制作/)).toBeTruthy();
+  expect(within(document.querySelector<HTMLElement>(".scene-handoff")!).getByRole("link", { name: "在画布上查看" }).getAttribute("href")).toBe("/projects/IPP-H?start=assistant");
 
   cleanup();
   api.execution.mockResolvedValue({ id: "EX-1", status: "running", steps: [step("done"), step("running"), step("pending")] });
   put({ id: "IPP-H", name: "h", sceneId: "recreation", doc: handedOff(true) });
   await open(SceneVideoStudio, "/video?scene=recreation&draft=IPP-H");
-  expect(await screen.findByText(/创作助手在做，第 2 步，共 3 步/)).toBeTruthy();
+  expect(await screen.findByText(/第 2 步，共 3 步/)).toBeTruthy();
   expect(api.execution).toHaveBeenCalledWith("IPP-H", "EX-1");
 
   cleanup();
   api.execution.mockResolvedValue({ id: "EX-1", status: "needs_user", needsUserReason: "参考视频里的人物要换成谁", steps: [step("done"), step("needs_user")] });
   await open(SceneVideoStudio, "/video?scene=recreation&draft=IPP-H");
-  expect(await screen.findByText(/创作助手停下来等你：参考视频里的人物要换成谁/)).toBeTruthy();
+  expect(await screen.findByText(/创作助手已暂停：参考视频里的人物要换成谁/)).toBeTruthy();
 });
 
 test("image: edit-type scenes put the original in front of the result for comparison; free drawing does not", async () => {
@@ -155,6 +155,6 @@ test("image: edit-type scenes put the original in front of the result for compar
   fillField(await screen.findByRole("textbox", { name: "想要的画面" }), "一只猫");
   await pickFromLibrary();
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "生成图片" })); });
-  await screen.findByRole("img", { name: /自由出图第 1 张/ }, { timeout: 4000 });
+  await screen.findByRole("img", { name: /自由生成第 1 张/ });
   expect(screen.queryByRole("button", { name: "查看原图" })).toBeNull();
 });

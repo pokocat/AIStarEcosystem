@@ -128,16 +128,16 @@ public class CardController {
                                              @RequestBody PersonaChatRequest req) {
         cards.required(uid(principal), id); // 归属闸：不是你的名片，连聊都不给聊
         if (req == null || req.message() == null || req.message().isBlank()) {
-            throw BusinessException.badRequest("CARD_PERSONA_MESSAGE_REQUIRED", "说点什么才能接着聊");
+            throw BusinessException.badRequest("CARD_PERSONA_MESSAGE_REQUIRED", "请输入内容后发送");
         }
         // 入口就把体量卡住：截断发生在 service 里、反序列化之后，那时超大 body 已经进内存了。
         // 这里只挡明显过量的，正常聊天离上限差得远。
         if (req.message().length() > CardPersonaService.MAX_MSG_CHARS) {
             throw BusinessException.badRequest("CARD_PERSONA_MESSAGE_TOO_LONG",
-                    "一次说太多了（超过 " + CardPersonaService.MAX_MSG_CHARS + " 字），分几句说。");
+                    "单次内容不能超过 " + CardPersonaService.MAX_MSG_CHARS + " 字，请分次发送");
         }
         if (req.history() != null && req.history().size() > MAX_HISTORY_IN) {
-            throw BusinessException.badRequest("CARD_PERSONA_HISTORY_TOO_LONG", "对话太长了，重新开一段。");
+            throw BusinessException.badRequest("CARD_PERSONA_HISTORY_TOO_LONG", "对话内容已达上限，请新建对话");
         }
         Map<String, Object> ctx = req.context() == null ? Map.of() : req.context();
         return ApiResponse.of(persona.chat(ctx, req.history(), req.message()));
@@ -152,7 +152,7 @@ public class CardController {
         cards.required(uid(principal), id);
         Map<String, Object> ctx = req == null || req.context() == null ? Map.of() : req.context();
         if (str(ctx.get("persona")).isBlank()) {
-            throw BusinessException.badRequest("CARD_PERSONA_REQUIRED", "先把人设聊出来，才能按它改写文案");
+            throw BusinessException.badRequest("CARD_PERSONA_REQUIRED", "请完成人设对话后改写文案");
         }
         return ApiResponse.of(persona.rewrite(ctx));
     }

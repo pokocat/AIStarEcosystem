@@ -35,7 +35,7 @@ const INITIAL_NOTIFICATIONS: Notification[] = [
   { id: 'n7', type: 'achievement', title: { zh: '里程碑: 百万播放', en: 'Milestone: 1M Plays' }, desc: { zh: '《Digital Sunset》总播放量突破 100 万！', en: '"Digital Sunset" exceeded 1M total plays!' }, time: '1d', read: true },
 ];
 
-export const NotificationPanel = ({ lang, open, onClose }: { lang: Lang; open: boolean; onClose: () => void }) => {
+export const NotificationPanel = ({ lang, open, onClose, onViewAll }: { lang: Lang; open: boolean; onClose: () => void; onViewAll?: () => void }) => {
   const zh = lang === 'zh';
   const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
@@ -115,6 +115,12 @@ export const NotificationPanel = ({ lang, open, onClose }: { lang: Lang; open: b
                 })
               )}
             </div>
+            {onViewAll && (
+              <button type="button" onClick={() => { onClose(); onViewAll(); }}
+                className="w-full border-t border-gray-200 py-2.5 text-xs font-medium text-violet-600 hover:bg-violet-50 transition">
+                {zh ? '查看全部通知' : 'View all notifications'}
+              </button>
+            )}
           </motion.div>
         </>
       )}

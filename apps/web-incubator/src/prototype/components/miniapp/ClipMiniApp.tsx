@@ -44,20 +44,20 @@ const PLATFORM_CLIP_STATS: Record<PlatformId, { clips: string; views: string; re
 
 const CELEBRITIES = [
   {
-    id: 'c1', name: '陈屿',
-    avatar: '/images/star-chen-yu.webp',
+    id: 'c1', name: '陆承远',
+    avatar: '/images/star-lu-chengyuan.webp',
     authType: '切片授权', clips: 24, views: '1,240万', status: 'active', expiry: '2026-08-30',
     platforms: ['抖音', 'B站', '快手'],
   },
   {
-    id: 'c2', name: '苏枝',
-    avatar: '/images/star-su-zhi.webp',
+    id: 'c2', name: '苏念',
+    avatar: '/images/star-su-nian.webp',
     authType: 'AI形象授权', clips: 18, views: '890万', status: 'active', expiry: '2026-06-15',
     platforms: ['小红书', '视频号', '抖音'],
   },
   {
-    id: 'c3', name: '顾然',
-    avatar: '/images/star-gu-ran.webp',
+    id: 'c3', name: '顾星辰',
+    avatar: '/images/star-gu-xingchen.webp',
     authType: '切片授权', clips: 31, views: '2,100万', status: 'pending', expiry: '审核中',
     platforms: ['抖音', 'B站'],
   },
@@ -77,44 +77,44 @@ interface BrandTask {
 const BRAND_TASKS: BrandTask[] = [
   {
     id: 'bt1', productName: '同款护肤套装',
-    celebrity: '苏枝', brand: 'SK-II',
+    celebrity: '苏念', brand: '澄光肌研',
     image: '/images/task-skincare-set.webp',
     commission: 20, price: '¥899', quota: 15, takenQuota: 9,
     bonus: '明星同款+8%', status: 'available',
-    requirement: '需含苏枝同款场景切片，时长≥15s',
+    requirement: '需含苏念同款场景切片，时长≥15s',
     platforms: ['小红书', '视频号', '抖音'],
     platformLabels: { '小红书': '种草爆文', '视频号': '明星同款', '抖音': '带货热门' },
     expectedViews: { '小红书': '预计5万曝光', '视频号': '预计2万播放', '抖音': '预计8万播放' },
   },
   {
     id: 'bt2', productName: '剧中同款汉服',
-    celebrity: '陈屿', brand: '汉唐文化',
+    celebrity: '陆承远', brand: '汉唐文化',
     image: '/images/task-hanfu.webp',
     commission: 25, price: '¥388', quota: 10, takenQuota: 4,
     bonus: '首单双倍佣金', status: 'available',
-    requirement: '需使用陈屿古装剧授权素材',
+    requirement: '需使用陆承远古装剧授权素材',
     platforms: ['抖音', 'B站', '快手'],
     platformLabels: { '抖音': '国风爆款', 'B站': 'B站国风', '快手': '快手热销' },
     expectedViews: { '抖音': '预计6万播放', 'B站': '预计1.5万播放', '快手': '预计8万播放' },
   },
   {
     id: 'bt3', productName: '明星联名零食礼盒',
-    celebrity: '顾然', brand: '三只松鼠',
+    celebrity: '顾星辰', brand: '松果食坊',
     image: '/images/task-snack-box.webp',
     commission: 18, price: '¥128', quota: 25, takenQuota: 6,
     bonus: '', status: 'locked',
-    requirement: '需先完成顾然授权报白',
+    requirement: '需先完成顾星辰授权报白',
     platforms: ['抖音', '小红书'],
     platformLabels: { '抖音': '联名热卖', '小红书': '明星同款' },
     expectedViews: { '抖音': '预计10万播放', '小红书': '预计4万曝光' },
   },
   {
     id: 'bt4', productName: '女主同款香水',
-    celebrity: '苏枝', brand: 'Jo Malone',
+    celebrity: '苏念', brand: 'Maison Aurel',
     image: '/images/task-perfume.webp',
     commission: 22, price: '¥660', quota: 8, takenQuota: 2,
     bonus: '高客单+¥60', status: 'available',
-    requirement: '需含苏枝剧中香水使用场景',
+    requirement: '需含苏念剧中香水使用场景',
     platforms: ['小红书', '视频号'],
     platformLabels: { '小红书': '香水种草', '视频号': '轻奢推荐' },
     expectedViews: { '小红书': '预计3万曝光', '视频号': '预计1万播放' },
@@ -122,9 +122,9 @@ const BRAND_TASKS: BrandTask[] = [
 ];
 
 const MY_CLIPS = [
-  { id: 'cl1', title: '陈屿·热血片段精剪', celebrity: '陈屿', platform: '抖音', status: 'live', views: '12.4万', commission: '¥680', duration: '1:24' },
-  { id: 'cl2', title: '苏枝·甜宠混剪合集', celebrity: '苏枝', platform: '小红书', status: 'review', views: '-', commission: '预计¥240', duration: '2:10' },
-  { id: 'cl3', title: '顾然·古装名场面', celebrity: '顾然', platform: 'B站', status: 'draft', views: '-', commission: '-', duration: '3:05' },
+  { id: 'cl1', title: '陆承远·热血片段精剪', celebrity: '陆承远', platform: '抖音', status: 'live', views: '12.4万', commission: '¥680', duration: '1:24' },
+  { id: 'cl2', title: '苏念·甜宠混剪合集', celebrity: '苏念', platform: '小红书', status: 'review', views: '-', commission: '预计¥240', duration: '2:10' },
+  { id: 'cl3', title: '顾星辰·古装名场面', celebrity: '顾星辰', platform: 'B站', status: 'draft', views: '-', commission: '-', duration: '3:05' },
 ];
 
 // ── Shared: platform tabs ──
@@ -619,9 +619,9 @@ const RevenuePage = ({ zh }: { zh: boolean }) => {
       <div>
         <SectionLabel>{zh ? '切片收益排行' : 'CLIP LEADERBOARD'}</SectionLabel>
         {[
-          { rank: 1, title: zh ? '陈屿·热血片段精剪' : 'Chen Yu Action', views: '12.4万', revenue: '¥680' },
-          { rank: 2, title: zh ? '苏枝·甜宠混剪合集' : 'Su Zhi Romance', views: '8.2万', revenue: '¥420' },
-          { rank: 3, title: zh ? '顾然·古装名场面' : 'Gu Ran Ancient', views: '6.1万', revenue: '¥310' },
+          { rank: 1, title: zh ? '陆承远·热血片段精剪' : 'Lu Chengyuan Action', views: '12.4万', revenue: '¥680' },
+          { rank: 2, title: zh ? '苏念·甜宠混剪合集' : 'Su Nian Romance', views: '8.2万', revenue: '¥420' },
+          { rank: 3, title: zh ? '顾星辰·古装名场面' : 'Gu Xingchen Ancient', views: '6.1万', revenue: '¥310' },
         ].map((r) => (
           <div key={r.rank} className="flex items-center gap-3 bg-white border border-gray-100 rounded-2xl p-3 mb-2 shadow-sm">
             <div className={`w-6 text-center text-[11px] font-black tracking-wider font-mono ${r.rank === 1 ? 'text-amber-500' : 'text-gray-400'}`}>{String(r.rank).padStart(2, '0')}</div>
@@ -677,8 +677,8 @@ const CompliancePage = ({ zh }: { zh: boolean }) => (
     <div>
       <SectionLabel>{zh ? '系统提醒' : 'ALERTS'}</SectionLabel>
       {[
-        { icon: AlertCircle, text: zh ? '苏枝授权将于45天后到期，请及时续签' : 'Su Zhi auth expires in 45 days', color: 'text-amber-700', border: 'border-amber-200', bg: 'bg-amber-50' },
-        { icon: ShieldCheck, text: zh ? '顾然授权报白审核中，预计3个工作日完成' : 'Gu Ran whitelist under review, ETA 3 days', color: 'text-sky-700', border: 'border-sky-200', bg: 'bg-sky-50' },
+        { icon: AlertCircle, text: zh ? '苏念授权将于45天后到期，请及时续签' : 'Su Nian auth expires in 45 days', color: 'text-amber-700', border: 'border-amber-200', bg: 'bg-amber-50' },
+        { icon: ShieldCheck, text: zh ? '顾星辰授权报白审核中，预计3个工作日完成' : 'Gu Xingchen whitelist under review, ETA 3 days', color: 'text-sky-700', border: 'border-sky-200', bg: 'bg-sky-50' },
       ].map((a, i) => {
         const Icon = a.icon;
         return (

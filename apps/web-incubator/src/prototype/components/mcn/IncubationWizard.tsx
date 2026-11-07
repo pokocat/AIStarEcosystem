@@ -1613,7 +1613,7 @@ export const IncubationWizard = ({ lang, onClose, onCreated, initialStep = 0, so
                             style={{ boxShadow: '0 0 4px rgba(52,211,153,0.6)' }} />
                         )}
                       </div>
-                      <span className="text-[9px] font-mono mt-0.5" style={{ color: isActive ? 'rgba(6,182,212,0.5)' : '#1f2937' }}>
+                      <span className="text-[9px] font-mono mt-0.5" style={{ color: isActive ? 'rgba(6,182,212,0.5)' : '#64748b' }}>
                         STEP {s.icon}
                       </span>
                     </div>

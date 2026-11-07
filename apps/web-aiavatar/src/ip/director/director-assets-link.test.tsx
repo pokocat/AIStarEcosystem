@@ -40,7 +40,7 @@ test("adding is blocked until at least one episode is chosen", () => {
   fireEvent.change(screen.getByLabelText("名称"), { target: { value: "玉佩" } });
   for (const b of within(screen.getByRole("group", { name: "出现在" })).getAllByRole("button")) fireEvent.click(b);
   expect((screen.getByRole("button", { name: "添加" }) as HTMLButtonElement).disabled).toBe(true);
-  expect(screen.getByText("至少选一集")).toBeTruthy();
+  expect(screen.getByText("至少选择一集")).toBeTruthy();
 });
 
 test("a character can be linked to an existing library asset or get an uploaded image, like scenes and props", async () => {
@@ -70,7 +70,7 @@ test("an old asset with no episodes saves a name change without being forced to 
   render(<DirectorAssets {...props} work={legacy}/>);
   fireEvent.click(screen.getByRole("button", { name: "查看林晚" }));
   fireEvent.click(screen.getByRole("button", { name: "编辑" }));
-  expect(screen.getByText("还没指定出现的集，不改也能保存")).toBeTruthy();
+  expect(screen.getByText("尚未指定出现的集，可直接保存")).toBeTruthy();
   fireEvent.change(screen.getByDisplayValue("林晚"), { target: { value: "林晚晚" } });
   const save = screen.getByRole("button", { name: "保存" }) as HTMLButtonElement;
   expect(save.disabled).toBe(false);

@@ -132,7 +132,7 @@ public class PhoneVerificationGuard extends OncePerRequestFilter {
 
         Map<String, Object> error = new LinkedHashMap<>();
         error.put("code", ERROR_CODE);
-        error.put("message", "请先绑定手机号后再操作");
+        error.put("message", "请绑定手机号后操作");
         String traceId = MDC.get(TraceContext.MDC_KEY);
         if (traceId != null && !traceId.isBlank()) error.put("traceId", traceId);
 

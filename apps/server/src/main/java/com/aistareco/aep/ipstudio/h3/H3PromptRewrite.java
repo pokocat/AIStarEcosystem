@@ -52,8 +52,10 @@ public final class H3PromptRewrite {
     /**
      * 输出约定的修订号，写进任务输入方便追查是哪套规则出的稿；不进指纹，已经能用的英文稿不因它失效。
      * 2026-10-31：加篇幅预算。《扣钱》cl45 的优化稿 8198 字符，主体说明 2403、保留说明 1551，五个资产的中文描述被逐条翻译又列了一遍。
+     * 2026-11-07：最终稿目标 6000 字符，字符预算优先于英文词数；马记大排档真实模型两份稿均低于 6000。
+     * 2026-11-07：写明模型看不到素材。线上 Sonnet 对「把@图1 衣着穿在模特身上」这类短要求 10 次拒绝 7 次（「看不到附件」），关思考的 DeepSeek 则直接编人物和背景。
      */
-    public static final String RULES = "2026-10-31-length";
+    public static final String RULES = "2026-11-07-character-budget";
     /** 镜头由模型定时（画布上的提示词没分镜头）最多这么多镜。 */
     public static final int MAX_FREE_SHOTS = 8;
 
@@ -133,17 +135,19 @@ public final class H3PromptRewrite {
      * 只是给模型的目标，是否收得下仍以填完台词后的全文为准（{@link #validate}）。
      */
     private static final String LENGTH_REF = """
-            - Length: the video model accepts at most 7,000 characters for the whole prompt, every section and the spoken lines included. Keep the whole result under about 1,000 English words.
+            - Length: the video model accepts at most 7,000 characters for the whole prompt, every section and the spoken lines included. This is a hard character limit, not a word or token limit. Aim for at most 6,000 characters in the FINAL assembled prompt, leaving at least 1,000 characters of headroom. Spaces, punctuation, section headings, reference labels, shot markers, timestamps, speaker IDs and dialogue tags all count. Replacing {{Ln}} with the original dialogue also increases the length; reserve room for it.
             - Every attached reference (each <Picture N>, <Video N> and <Audio N>, the storyboard or frame picture included) keeps its own line in subject_definitions and in retention_analysis. Keeping it short never means leaving a reference out.
             - "subject_definitions": one line per item, at most two sentences: the label, its source picture, and only the few features that identify it in the images (for example age and gender, hair, main clothing colors, one signature item). Do not translate the written notes item by item.
             - "retention_analysis": one short line per label: the label, where it appears, the relationship marker, and at most one short phrase. Do not list the features from subject_definitions again.
-            - "summary": two or three sentences.
-            - detailed_description: 350–500 English words for the style line and all shots together, as the guide says, and not shorter than 350; a dialogue-dense request may go somewhat longer. Describe a subject's identifying features at its first clear appearance only, then refer to it by its label.
+            - "summary": one or two short sentences, at most 250 characters. "overall_soundscape": at most 250 characters. "non_diegetic_music": at most 150 characters, or "N/A" when no music is requested.
+            - detailed_description: budget at most 3,000 characters for the style and ALL shots together, not per shot. Divide the space between the shots; use concise, observable actions. Describe a subject's identifying features once, then use its label. The whole-prompt character budget takes priority over every recommended or minimum English word count in the guide, including 350–500 words; use fewer words when necessary.
+            - Before returning JSON, review the WHOLE result against the character budget. If it is too long, shorten repeated appearance descriptions, repeated reference explanations, decorative adjectives and camera prose first. Preserve every shot and its timing, each reference label and its use, speaker identity, on-screen versus off-screen speech, all dialogue placeholders and every original spoken word. Never meet the limit by cutting off the JSON, dropping a shot or reference, or shortening dialogue.
             """;
 
     /** 其余模式：官方没给篇幅，只说总长上限。 */
     private static final String LENGTH_BASE = """
-            - Length: the video model accepts at most 7,000 characters for the whole prompt, every section and the spoken lines included. Keep the result well within it; do not repeat the same appearance details in several places.
+            - Length: the video model accepts at most 7,000 characters for the FINAL assembled prompt, not 7,000 words or tokens. Aim for at most 6,000 characters including spaces, punctuation, section headings, picture-alignment instructions, shot markers, timestamps, speaker IDs, dialogue tags and the complete original dialogue that replaces {{Ln}}. The character budget takes priority over recommended or minimum word counts in the guide.
+            - Keep descriptions concise and do not repeat appearance details. Before returning JSON, review the whole result; shorten repeated descriptions, decorative adjectives and camera prose if needed. Preserve every shot and its timing, reference alignment, speaker identity, on-screen versus off-screen speech, all dialogue placeholders and every original spoken word. Never truncate the JSON or shorten dialogue to meet the limit.
             """;
 
     private static String skillRef, skillBase;
@@ -175,6 +179,9 @@ public final class H3PromptRewrite {
                 - Each value is the English body of that section, without the section name. Separate lines inside a value with \\n.
                 """);
         c.append("- \"style\": the one or two sentences that open ").append(body).append(", before [Shot 1].\n");
+        if (mode != Mode.T2V) c.append("""
+                - The attached images, videos and audio are not available to you: only their labels and the notes in the request reach you. That is expected, so never ask for them, never refuse and never explain it; always return the JSON object. Refer to each one by its label, for example "as in <Video 1>". Do not invent what they show (a person's looks, clothing, setting, actions, cuts or sound) beyond what the request and the notes say. When the request only changes part of <Video 1>, write one shot that follows <Video 1> and say only what changes.
+                """);
         if (mode == Mode.I2V || mode == Mode.FL2V)
             c.append("- Do not write the picture-alignment instruction line that opens the final prompt; the system adds it.\n");
         if (fixedShots) c.append("""
@@ -451,7 +458,8 @@ public final class H3PromptRewrite {
         // 模型写台词时，核对用原文里看着像台词的句子（与前端「台词提醒」同一套认法）。
         if (!r.codeLines()) {
             ArrayNode spoken = meta.putArray("spoken");
-            for (String[] line : spokenLines(r.source().text())) spoken.addObject().put("speaker", line[0]).put("text", line[1]);
+            for (String[] line : spokenLines(ownText(r.source().text()))) spoken.addObject().put("speaker", line[0]).put("text", line[1]);
+            if (r.source().text().contains(QUOTE_HEAD)) meta.put("quotedText", true);
         }
         return meta;
     }
@@ -472,7 +480,7 @@ public final class H3PromptRewrite {
      * 7 次只有这类小事，不该为它停下来）。{@code usable=false} 表示这一稿不能直接用（超长）。拼不出提示词时才抛 {@code AI_BAD_OUTPUT}（全额退回）。
      */
     public static ObjectNode validate(ObjectMapper om, JsonNode meta, JsonNode out) {
-        if (out == null || !out.isObject()) throw bad("没有返回 JSON");
+        if (out == null || !out.isObject()) throw bad("模型返回格式有误");
         Mode mode = Mode.wire(meta.path("mode").asText(null));
         boolean codeLines = !meta.has("codeLines") || meta.path("codeLines").asBoolean();
         int fixedShots = meta.path("shots").asInt(0), seconds = meta.path("seconds").asInt(0);
@@ -498,7 +506,7 @@ public final class H3PromptRewrite {
                 starts.add(x.isObject() ? seconds(x.path("start")) : -1);
             }
             else if (out.hasNonNull("shot_1")) for (int i = 1; i <= MAX_FREE_SHOTS && out.hasNonNull("shot_" + i); i++) { bodies.add(text(out, "shot_" + i)); starts.add(-1.0); }
-            if (bodies.isEmpty()) throw bad("没有写镜头");
+            if (bodies.isEmpty()) throw bad("缺少镜头内容");
             fixStarts(starts, seconds);
         }
         for (int i = 0; i < bodies.size(); i++) bodies.set(i, clean(stripShotPrefix(bodies.get(i).strip()), strayHan, codeLines));
@@ -531,9 +539,9 @@ public final class H3PromptRewrite {
         if (music.isEmpty()) music = "N/A";
         if (mode == Mode.REF) {
             if (defs.isEmpty() && summary.isEmpty() && retention.isEmpty()) throw bad("缺少主体说明");
-            if (defs.isEmpty()) warnings.add("优化稿缺少主体说明（subject_definitions），人物可能对不上参考图");
-            if (summary.isEmpty()) warnings.add("优化稿缺少概述（summary）");
-            if (retention.isEmpty()) warnings.add("优化稿缺少保留说明（retention_analysis），人物外观可能不一致");
+            if (defs.isEmpty()) warnings.add("优化稿缺少主体说明，人物可能与参考图不一致");
+            if (summary.isEmpty()) warnings.add("优化稿缺少概述");
+            if (retention.isEmpty()) warnings.add("优化稿缺少保留说明，人物外观可能不一致");
             // 每张参考图、每段参考音频都要在稿里出现：没提到的那份素材 H3 不知道拿它做什么。
             // 2026-10-31 cl45 加篇幅预算后真调第 2 次，整份稿一次都没提分镜图 <Picture 1>。
             // 漏掉的按交给模型的素材清单补一行定义和一行保留说明（只取英文说明，中文资产描述不带进去）；清单里也查不到才提示。
@@ -566,7 +574,7 @@ public final class H3PromptRewrite {
             bodies.set(i, i == 0 ? "The shot opens on the scene described in the request." : "the camera cuts to the next shot of the request.");
             warnings.add("第 " + (i + 1) + " 镜模型没写画面，只补了一句过渡");
         }
-        if (!anyShot) throw bad("没有写镜头");
+        if (!anyShot) throw bad("缺少镜头内容");
 
         if (codeLines) {
             // 台词只能在镜头里：放到镜头外的先摘掉，下面当作漏了的补回所在镜头。
@@ -578,6 +586,9 @@ public final class H3PromptRewrite {
             defs = outside[0]; summary = outside[1]; retention = outside[2]; style = outside[3]; sound = outside[4]; music = outside[5];
             placeLines(meta, bodies, warnings);
         } else checkSpoken(meta, bodies, warnings);
+        // 整份写成了中文：汉字删完几乎不剩，不能当优化稿，否则自动模式会拿残缺稿出片（2026-11-07 OneToken 上的 DeepSeek，约十次一次）。
+        int keptChars = defs.length() + summary.length() + retention.length() + style.length() + bodies.stream().mapToInt(String::length).sum();
+        if (strayHan[0] > MAX_STRAY_HAN && keptChars < strayHan[0] * 2) throw bad("优化稿没有写成英文");
         if (strayHan[0] > MAX_STRAY_HAN) warnings.add("优化稿里有 " + strayHan[0] + " 个汉字没翻译，已删掉，画面描述可能缺了内容");
         else if (strayHan[0] > 0) notes.add("删掉了优化稿里零星没翻译的中文");
 
@@ -596,7 +607,7 @@ public final class H3PromptRewrite {
         boolean usable = true;
         if (fill(template, lines(meta), language).length() > MAX_PROMPT_CHARS) {
             usable = false;
-            warnings.add("优化稿超过 " + MAX_PROMPT_CHARS + " 字符，H3 收不下，请重新优化或按原文生成");
+            warnings.add("优化稿超过 " + MAX_PROMPT_CHARS + " 字符，超出模型上限，请重新优化或按原文生成");
         }
         ObjectNode result = om.createObjectNode().put("template", template).put("usable", usable);
         ArrayNode w = result.putArray("warnings");
@@ -740,7 +751,8 @@ public final class H3PromptRewrite {
             for (int k = hit[0]; k <= hit[1]; k++) used[k] = true;
             from = hit[1] + 1;
         }
-        if (wanted.isEmpty()) return;
+        // 连进来的文字不参与核对（见 ownText），模型从里面写的台词不算多出来的。
+        if (wanted.isEmpty() || meta.path("quotedText").asBoolean()) return;
         // 剩下的 <d> 是某句没配上的原文台词的一截（说了半句），上面已经报过；其余算多出来的。
         for (int i = 0; i < said.size(); i++) {
             String one = said.get(i);
@@ -760,6 +772,41 @@ public final class H3PromptRewrite {
         }
         return null;
     }
+
+    // ── 连进来的文字：前端按「【引用文本：标题】\n正文」接在提示词后面（studio-linked-inputs.ts），块之间空一行 ──────────
+
+    private static final String QUOTE_HEAD = "【引用文本：";
+    private static final Pattern QUOTE_BLOCK = Pattern.compile("\\s*【引用文本：[^】\\n]*】\\n");
+
+    /**
+     * 用户自己写的那部分。引用块多是拉片或说明文字，「创意：…」「灯光：…」看着像「名字：台词」，
+     * 2026-11-06 线上一次报出 31 条「原文台词没有出现」，任务全部停下等用户选（三个模型都一样）。
+     */
+    static String ownText(String prompt) {
+        Matcher m = QUOTE_BLOCK.matcher(prompt);
+        return m.find() ? prompt.substring(0, m.start()) : prompt;
+    }
+
+    /**
+     * 引用块的内容已经写在前面了就去掉这一块，与前端 withStudioLinkedText 同一条规则；这里兜住早先存下的请求。
+     * 2026-11-06 线上：脚本已填进提示词，又连着同一份文字节点，整份脚本出现两遍，台词也就变成两遍。只比较去掉空白后的文字。
+     */
+    public static String withoutRepeatedQuotes(String prompt) {
+        if (prompt == null || !prompt.contains(QUOTE_HEAD)) return prompt;
+        Matcher m = QUOTE_BLOCK.matcher(prompt);
+        List<int[]> heads = new ArrayList<>();
+        while (m.find()) heads.add(new int[]{m.start(), m.end()});
+        if (heads.isEmpty()) return prompt;
+        StringBuilder out = new StringBuilder(prompt.substring(0, heads.get(0)[0]));
+        for (int i = 0; i < heads.size(); i++) {
+            int end = i + 1 < heads.size() ? heads.get(i + 1)[0] : prompt.length();
+            String body = prompt.substring(heads.get(i)[1], end);
+            if (!squashSpace(out.toString()).contains(squashSpace(body))) out.append(prompt, heads.get(i)[0], end);
+        }
+        return out.toString();
+    }
+
+    private static String squashSpace(String value) { return value.replaceAll("\\s+", ""); }
 
     // ── 原文里的台词（模型写台词时核对用）：与前端 studio-video-prompt.ts 的 studioPromptLines 同一套认法 ──────────
 
@@ -927,6 +974,6 @@ public final class H3PromptRewrite {
     }
 
     public static BusinessException bad(String message) {
-        return new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "视频提示词优化没成功（" + message + "），本次未扣积分，请重试或按原文生成");
+        return new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "视频提示词优化失败（" + message + "），本次未扣积分。请重试或按原文生成");
     }
 }

@@ -60,7 +60,7 @@ public class DapModelBilling {
         }
         if(accepted==null&&needsText(job)) {
             var chat=endpoint(AiModelPurpose.DAP_PERSONA);rate=tokenPricing.find(chat.getId());
-            if(rate==null||rate.maxCost()<=0)throw unavailable("AI_TOKEN_PRICE_NOT_CONFIGURED","请在原模型价格配置中设置文本模型的 Token 售价");
+            if(rate==null||rate.maxCost()<=0)throw unavailable("AI_TOKEN_PRICE_NOT_CONFIGURED","生成服务暂不可用，请联系平台处理");
             var context=ModelChargeContext.forCredits(chat,rate.maxCost());
             text=new Route(context,chat.getBaseUrl());
         }
@@ -115,10 +115,10 @@ public class DapModelBilling {
             var accepted=route(purpose);var target=accepted.charge().target();
             if(!Objects.equals(target.endpointId(),endpoint.getId())||!Objects.equals(target.providerModel(),ModelBillingTarget.providerModelOf(endpoint))
                     ||!Objects.equals(accepted.baseUrl(),endpoint.getBaseUrl()))
-                throw unavailable("MODEL_BILLING_ROUTE_CHANGED","已受理任务的模型接入点已变化，请重新提交");
+                throw unavailable("MODEL_BILLING_ROUTE_CHANGED","任务使用的模型已变化，请重新提交");
         }
         int outputLimit(int requested) {
-            if(plan.textRate()==null)throw unavailable("AI_TOKEN_PRICE_NOT_CONFIGURED","此任务没有已定价的文本处理阶段");
+            if(plan.textRate()==null)throw unavailable("AI_TOKEN_PRICE_NOT_CONFIGURED","此任务暂未定价，请重新提交");
             long left=plan.textRate().maxOutputTokens()-usage(job).output();
             if(left<=0)throw unavailable("AI_USAGE_LIMIT","文本处理已达到本次确认的用量上限");
             return (int)Math.min(requested,left);
@@ -172,11 +172,11 @@ public class DapModelBilling {
     private void requireAccepted(Route route,AiModelPurpose purpose) {
         var target=route.charge().target();
         var endpoint=models.resolveAcceptedEndpoint(purpose,target.endpointId(),"aiavatar")
-                .orElseThrow(()->unavailable("MODEL_BILLING_ROUTE_CHANGED","原任务的模型接入点不可用，不能换模型重试")).endpoint();
+                .orElseThrow(()->unavailable("MODEL_BILLING_ROUTE_CHANGED","原任务使用的模型已不可用，不能更换模型重试")).endpoint();
         if(!Objects.equals(target.providerModel(),ModelBillingTarget.providerModelOf(endpoint))||!Objects.equals(route.baseUrl(),endpoint.getBaseUrl()))
             throw unavailable("MODEL_BILLING_ROUTE_CHANGED","原任务的模型配置已变化，请创建新任务");
     }
-    private AiModelEndpoint endpoint(AiModelPurpose purpose){return models.resolveDefaultEndpoint(purpose,"aiavatar").orElseThrow(()->unavailable("DAP_ENGINE_NOT_CONFIGURED","请在后台为数字人用途绑定模型接入点"));}
+    private AiModelEndpoint endpoint(AiModelPurpose purpose){return models.resolveDefaultEndpoint(purpose,"aiavatar").orElseThrow(()->unavailable("DAP_ENGINE_NOT_CONFIGURED","生成服务暂不可用，请联系平台处理"));}
     private boolean needsText(DapJob job) {
         if(DapJob.T_GENERATE.equals(job.getType())||DapJob.T_ITERATE.equals(job.getType()))return true;
         if(DapJob.T_LOOK.equals(job.getType())) {

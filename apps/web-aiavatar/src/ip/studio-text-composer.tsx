@@ -27,12 +27,12 @@ export function StudioTextComposer({actions,open,embedded,nodeId,value,onChange,
       <StudioModelPicker label="文本模型" value={selected?.endpointId} disabled={busy||!!pending||capabilities?.textModelMode==='fixed'||options.length<=1} onChange={onModelChange} options={options.map(m=>({value:m.endpointId,label:m.name}))}/>
       <div className="studio-text-submit-controls">
         {unknownTask?<button type="button" className="studio-text-confirm" disabled={busy} onClick={onConfirm}>确认原任务</button>
-          :<button type="button" className="studio-text-send" aria-label="发送修改要求" title="AI 处理，会消耗积分" disabled={disabled} onClick={onSubmit}>{busy||pending?<LoaderCircle size={21} className="studio-text-spinner"/>:<StudioAiIcon/>}</button>}
+          :<button type="button" className="studio-text-send" aria-label="发送修改要求" title="AI 处理，将消耗积分" disabled={disabled} onClick={onSubmit}>{busy||pending?<LoaderCircle size={21} className="studio-text-spinner"/>:<StudioAiIcon/>}</button>}
       </div>
     </>}>
     {actions}
     <Input.TextArea aria-label="AI 修改要求" value={value} onChange={e=>onChange(e.target.value)} disabled={busy||!!pending} autoSize={{minRows:3,maxRows:7}} maxLength={16000}
-      placeholder="告诉 AI 你想怎么改，例如：起一个标题、缩短这段、让语气更自然。"
+      placeholder="描述修改要求，例如：起一个标题、缩短这段、让语气更自然。"
       onKeyDown={e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'&&!e.nativeEvent.isComposing&&!disabled){e.preventDefault();onSubmit();}}}/>
     {!pending&&billing&&<p className="studio-text-feedback" role="status">已消耗 {billing.credits} 积分</p>}
     {(pending||summary)&&<p className="studio-text-feedback" role="status" aria-live="polite">{pending||summary}</p>}

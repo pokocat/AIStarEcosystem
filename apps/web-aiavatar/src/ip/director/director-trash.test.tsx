@@ -34,7 +34,7 @@ test("lists my deleted works with their names and deletion times", async () => {
 test("an empty trash says so and links back", async () => {
   vi.mocked(DirectorApi.listTrash).mockResolvedValue([]);
   render(<DirectorTrash/>);
-  expect(await screen.findByText("回收站是空的")).toBeTruthy();
+  expect(await screen.findByText("回收站暂无作品")).toBeTruthy();
 });
 
 test("a failed load can be retried", async () => {
@@ -60,7 +60,7 @@ test("restore sends one request while busy, removes the item and offers to open 
   await waitFor(() => expect(screen.queryByRole("article", { name: "已删除的作品 夜班分拣员" })).toBeNull());
   const notice = screen.getByRole("status");
   expect(notice.textContent).toContain("「夜班分拣员」已恢复到作品列表");
-  expect(notice.textContent).toContain("制作保持停止");
+  expect(notice.textContent).toContain("如需继续制作");
   expect(within(notice).getByRole("link", { name: "打开作品" }).getAttribute("href")).toBe("/director/a");
   expect(screen.getByText("1 部已删除的作品")).toBeTruthy();
 });
@@ -81,6 +81,6 @@ test("restoring a work that is no longer there refreshes the trash", async () =>
   vi.mocked(DirectorApi.restoreWork).mockRejectedValue(new ApiError({ code: "DIRECTOR_WORK_NOT_FOUND", message: "作品不存在" }, 404));
   render(<DirectorTrash/>);
   fireEvent.click(await screen.findByRole("button", { name: "恢复作品 夜班分拣员" }));
-  expect(await screen.findByText("回收站是空的")).toBeTruthy();
+  expect(await screen.findByText("回收站暂无作品")).toBeTruthy();
   expect(failure.show).toHaveBeenCalled();
 });

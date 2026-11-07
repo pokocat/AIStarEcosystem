@@ -39,12 +39,12 @@ test("the episode rewrite keeps the clips by default and cannot re-split clips t
   show(work());
   fireEvent.click(screen.getByRole("button", { name: /重写分镜脚本/ }));
   const dialog = screen.getByRole("dialog", { name: "重写第 1 集分镜脚本" });
-  expect(within(dialog).getByText(/不会出图、不会生成视频，其他集不受影响/)).toBeTruthy();
+  expect(within(dialog).getByText(/不生成图片和视频，其他集不受影响/)).toBeTruthy();
   const [keep, resplit] = within(dialog).getAllByRole("radio") as HTMLInputElement[];
   expect(keep.checked).toBe(true);
   expect(resplit.disabled).toBe(true);
-  expect(within(dialog).getByText(/片段 1 已有分镜图或视频，重新切分会丢掉它们/)).toBeTruthy();
-  expect(within(dialog).getByText("片段 2 手改过的视频提示词会换成新写的")).toBeTruthy();
+  expect(within(dialog).getByText(/片段 1 已有分镜图或视频，重新切分会丢失这些内容/)).toBeTruthy();
+  expect(within(dialog).getByText("片段 2 手动修改过的视频提示词将被替换")).toBeTruthy();
   // 文字任务不展示不确定的积分数字，只说按实际用量结算。
   expect(within(dialog).getByText(/^按实际用量结算/)).toBeTruthy();
   expect(within(dialog).queryByText(/\d+ 积分/)).toBeNull();
@@ -69,8 +69,8 @@ test("a single clip is rewritten on its own after the impact is spelled out", as
   const card = screen.getAllByRole("article")[1];
   fireEvent.click(within(card).getByRole("button", { name: /^重写$/ }));
   expect((await screen.findAllByText("重写片段 2 的分镜脚本？")).length).toBeGreaterThan(0);
-  expect(screen.getByText(/只改这一段的文字，不会出图、不会生成视频，其他片段不变/)).toBeTruthy();
-  expect(screen.getByText("片段 2 手改过的视频提示词会换成新写的")).toBeTruthy();
+  expect(screen.getByText(/只修改此片段的文字，不生成图片和视频，其他片段不变/)).toBeTruthy();
+  expect(screen.getByText("片段 2 手动修改过的视频提示词将被替换")).toBeTruthy();
   expect(screen.getByText("按实际用量结算")).toBeTruthy();
   expect(screen.queryByText(/\d+ 积分/)).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: /开始重写/ }));
@@ -81,7 +81,7 @@ test("a single clip is rewritten on its own after the impact is spelled out", as
 test("a clip that cannot be rewritten says why instead of doing nothing", async () => {
   show(work({ tasks: [task("board:c1")] }));
   fireEvent.click(within(screen.getAllByRole("article")[0]).getByRole("button", { name: /^重写$/ }));
-  expect(await screen.findByText("分镜图生成中，完成后再重写")).toBeTruthy();
+  expect(await screen.findByText("分镜图生成中，完成后可重写")).toBeTruthy();
   expect(DirectorApi.runTask).not.toHaveBeenCalled();
 });
 
@@ -91,14 +91,14 @@ test("while a clip is rewritten the card says so and the episode rewrite waits",
   expect(within(card).getByText("AI 正在重写片段 2 的分镜脚本")).toBeTruthy();
   expect(within(card).queryByRole("button", { name: /^重写$/ })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: /重写分镜脚本/ }));
-  expect(await screen.findByText("片段 2 正在重写，完成后再重写整集")).toBeTruthy();
+  expect(await screen.findByText("片段 2 正在重写，完成后可重写整集")).toBeTruthy();
 });
 
 test("a rewrite that came back after the user edited the clip waits for a choice", async () => {
   vi.mocked(DirectorApi.edit).mockResolvedValue(work() as never);
   const pending = { runId: "IPR-1", at: "2026-10-27T00:00:00Z", title: "新", summary: "", assetIds: [], shots: [{ durationSec: 4, size: "", camera: "", action: "", still: "", dialogue: [] }] };
   show(work({ clips: [clip("c1", 1, { pendingShots: pending })] }));
-  expect(screen.getByText(/重写期间你改过这一段，新写的版本（1 个镜头）没有覆盖现有内容/)).toBeTruthy();
+  expect(screen.getByText(/重写期间你修改过此片段，新版本（1 个镜头）未覆盖现有内容/)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "换成新版本" }));
   await vi.waitFor(() => expect(DirectorApi.edit).toHaveBeenCalledWith("w", "clip.usePendingShots", "c1", null));
 });

@@ -46,7 +46,7 @@ test('opens under the video with 首帧 chosen, shows the current frame time, an
   act(() => dispatchStudioCommand('video-frames', 'v'));
   const dialog = await screen.findByRole('dialog', { name: '抽帧' });
   expect(dialog.dataset.anchorId).toBe('v');
-  expect(screen.getByText('截取一帧画面，生成一张连着这条视频的图片。')).toBeDefined();
+  expect(screen.getByText('截取一帧画面，生成一张与此视频相连的图片。')).toBeDefined();
   expect((screen.getByRole('radio', { name: '截首帧' }) as HTMLInputElement).checked).toBe(true);
   expect(screen.getByRole('radio', { name: '截当前帧 00:05' })).toBeDefined();
   expect(screen.getByText('免费，不消耗积分')).toBeDefined();
@@ -87,8 +87,8 @@ test('submit shows a local placeholder, then inserts an image node linked to the
 });
 
 test.each([
-  ['the clip cannot be read', () => fetchAssetBlob.mockRejectedValue(new Error('HTTP 403')), '无法读取这条视频，请重试'],
-  ['the frame cannot be drawn', () => { fetchAssetBlob.mockResolvedValue(new Blob(['x'])); capture.mockRejectedValue(new Error('boom')); }, '没能截出画面，请重试'],
+  ['the clip cannot be read', () => fetchAssetBlob.mockRejectedValue(new Error('HTTP 403')), '视频加载失败，请重试'],
+  ['the frame cannot be drawn', () => { fetchAssetBlob.mockResolvedValue(new Blob(['x'])); capture.mockRejectedValue(new Error('boom')); }, '截取画面失败，请重试'],
 ])('when %s the placeholder goes away and the reason is shown', async (_, arrange, reason) => {
   arrange();
   const onInsert = vi.fn();
@@ -110,9 +110,9 @@ test('a video without a file, a generating video and 演示模式 do not capture
   rerender(<Host nodes={[{ ...source, metadata: { ...source.metadata, status: 'loading' } }]} onInsert={vi.fn()}/>);
   act(() => dispatchStudioCommand('video-frames', 'v'));
   expect(screen.queryByRole('dialog', { name: '抽帧' })).toBeNull();
-  expect(app.message.info).toHaveBeenCalledWith('视频正在生成，完成后再抽帧');
+  expect(app.message.info).toHaveBeenCalledWith('视频生成中，完成后可抽帧');
   rerender(<Host demo onInsert={vi.fn()}/>);
   act(() => dispatchStudioCommand('video-frames', 'v'));
-  expect(await screen.findByRole('status')).toHaveProperty('textContent', '演示模式不能抽帧，连上服务后可用。');
+  expect(await screen.findByRole('status')).toHaveProperty('textContent', '演示模式不支持抽帧。');
   expect(screen.getByRole('button', { name: /提\s*交/ })).toHaveProperty('disabled', true);
 });

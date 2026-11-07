@@ -136,7 +136,7 @@ public class StudioWorkflowService {
         if(prior!=null) {
             StudioRunBilling.requireSamePayer(prior,request.billing());
             if(!fingerprint.equals(prior.getInputFingerprint()) && !fingerprint.equals(hash(write(canonicalRequest(
-                    projects.parseOrEmptyObject(prior.getInputJson()).has("studioRequest")?projects.parseOrEmptyObject(prior.getInputJson()).path("studioRequest"):projects.parseOrEmptyObject(prior.getInputJson()),mapper.valueToTree(request)))))) throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","同一请求的内容已改变，请重新提交");
+                    projects.parseOrEmptyObject(prior.getInputJson()).has("studioRequest")?projects.parseOrEmptyObject(prior.getInputJson()).path("studioRequest"):projects.parseOrEmptyObject(prior.getInputJson()),mapper.valueToTree(request)))))) throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","请求已失效，请刷新页面后重试");
             return projects.toRunDto(prior);
         }
         boolean skillPlan="text".equals(request.operation())&&request.skillKey()!=null;
@@ -239,7 +239,7 @@ public class StudioWorkflowService {
             com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.or(promptAssembler).requireStage(textStage(request.operation(),skillPlan,check));
             resolved=new PromptService.ResolvedPrompt("","",new com.aistareco.aep.dto.PromptParamsDto(null,null,null),"library");
             if((Boolean.TRUE.equals(request.readVisuals())||"recreation".equals(request.operation())||check)&&!StudioVisualContext.supportsVision(textEndpoint.endpoint()))
-                throw bad("STUDIO_VISION_UNAVAILABLE","这个模型未配置图片读取能力，请切换模型或关闭读取画面");
+                throw bad("STUDIO_VISION_UNAVAILABLE","当前模型不支持读取图片，请切换模型或关闭读取画面");
         }
         if(Boolean.TRUE.equals(request.readVisuals())&&fixtures.enabled())throw bad("STUDIO_VISION_UNAVAILABLE","测试响应不读取真实画面，请关闭测试响应");
         ObjectNode recreationSource=null;
@@ -254,9 +254,9 @@ public class StudioWorkflowService {
         ObjectNode segmentCap=request.recreation()==null?null:segmentCap(request.recreation(),recreationSource,skill);
         ObjectNode checkTarget=check?checkTarget(userId,projectId,request.check(),skill):null;
         var chatRate=!fixtures.enabled()&&text?chatRate(textEndpoint.endpoint().getId()):null;
-        if(!fixtures.enabled()&&text&&chatRate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED","此模型尚未配置按量积分售价");
+        if(!fixtures.enabled()&&text&&chatRate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED","此模型暂未定价，请选择其他模型");
         long cost=chatRate==null?(fixtures.enabled()||!text?0:textPrice):chatRate.maxCost();
-        if(chatRate!=null&&request.maxCost()==null)throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PRICE_CHANGED","模型计费配置已更新，请刷新后重试");
+        if(chatRate!=null&&request.maxCost()==null)throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PRICE_CHANGED","模型价格已更新，请刷新后重试");
         IpRunService.requireApprovedCost(request.maxCost(),cost);
         String id="IPR-"+UUID.randomUUID().toString().replace("-","").substring(0,20);
         ObjectNode inputs=mapper.valueToTree(request);
@@ -279,7 +279,7 @@ public class StudioWorkflowService {
             if(md.path("studio").has("shot"))item.set("shot",md.path("studio").path("shot"));
             if("text".equals(node.path("type").asText()))item.put("text",md.path("content").asText());
         }
-        if(canvasContext.toString().length()>48000) throw bad("STUDIO_CONTEXT_LIMIT","画布上下文过长，请减少引用或按集创作");
+        if(canvasContext.toString().length()>48000) throw bad("STUDIO_CONTEXT_LIMIT","引用的画布内容过长，请减少引用或按集创作");
         if(Boolean.TRUE.equals(request.readVisuals())) {
             execution.set("visualContext",StudioVisualContext.snapshot(projects.readDoc(project),request.contextNodeIds(),projects,userId));
             execution.put("visualContextVersion",1);
@@ -384,7 +384,7 @@ public class StudioWorkflowService {
             execution.put("billingUnit","per_token");
             int budget=Math.min(execution.path("maxTokens").asInt(8192),chatRate.maxOutputTokens());
             if(textEndpoint.endpoint().getChatMaxOutputTokens()!=null)budget=Math.min(budget,textEndpoint.endpoint().getChatMaxOutputTokens());
-            if("recreation".equals(request.operation())&&budget<4096)throw bad("STUDIO_RECREATION_TOKEN_BUDGET","全片拆解需要至少4096输出Token预算，请调整模型配置");
+            if("recreation".equals(request.operation())&&budget<4096)throw bad("STUDIO_RECREATION_TOKEN_BUDGET","当前模型不支持全片拆解，请联系平台处理");
             execution.put("maxTokens",budget);
         }
         var modelCharge=StudioTokenBilling.plan(textEndpoint==null?null:textEndpoint.endpoint(),chatRate);
@@ -463,13 +463,13 @@ public class StudioWorkflowService {
         // 优化是独立能力，不受 script 场景的默认值、固定模式或用户选择影响；仍检查 Studio 端点授权。
         return models.resolveEndpoint(H3PromptRewrite.PURPOSE,null,"studio")
                 .orElseThrow(()->new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED",
-                        "提示词优化未绑定可用模型，可以关闭智能优化按原文生成"));
+                        "提示词优化暂不可用，可关闭「智能优化」按原文生成"));
     }
 
     private com.aistareco.aep.service.AiChatTokenPricing.Rate videoRewriteRate(com.aistareco.aep.model.AiModelEndpoint endpoint) {
         var rate=endpointChatRate(endpoint);
         if(rate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED",
-                "提示词优化暂不可用（绑定模型未配置按量售价），可以关闭智能优化按原文生成");
+                "提示词优化暂不可用，可关闭「智能优化」按原文生成");
         return rate;
     }
 
@@ -508,7 +508,7 @@ public class StudioWorkflowService {
         IpRun prior=runs.findByProjectIdAndClientRequestId(hostId,clientRequestId).orElse(null);
         if(prior!=null) {
             StudioRunBilling.requireSamePayer(prior,billingSelection);
-            if(!fingerprint.equals(prior.getInputFingerprint()))throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","同一请求的内容已改变，请重新提交");
+            if(!fingerprint.equals(prior.getInputFingerprint()))throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","请求已失效，请刷新页面后重试");
             return projects.toRunDto(prior);
         }
         AiModelInvocationService.ResolvedEndpoint textEndpoint=null;
@@ -517,12 +517,12 @@ public class StudioWorkflowService {
         if(!fixtures.enabled()) {
             if(videoRewrite) textEndpoint=videoRewriteEndpoint();
             else if(scenePolicies == null) textEndpoint=models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,model,"studio").orElseThrow(()->
-                    new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","文本模型不可用，请联系管理员配置"));
+                    new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","文本模型不可用，请联系平台处理"));
             else textEndpoint=scenePolicies.resolve("studio","script",model,pricing.ipIdentity()).resolved();
             chatRate=endpointChatRate(textEndpoint.endpoint());
-            if(chatRate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED","此模型尚未配置按量积分售价");
+            if(chatRate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED","此模型暂未定价，请选择其他模型");
             cost=chatRate.maxCost();
-            if(maxCost==null)throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PRICE_CHANGED","模型计费配置已更新，请刷新后重试");
+            if(maxCost==null)throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PRICE_CHANGED","模型价格已更新，请刷新后重试");
         }
         IpRunService.requireApprovedCost(maxCost,cost);
         String id="IPR-"+UUID.randomUUID().toString().replace("-","").substring(0,20);
@@ -744,9 +744,9 @@ public class StudioWorkflowService {
         if(settings.videoModel()==null||settings.videoModel().isBlank())throw bad("STUDIO_INPUT_INVALID","请选择用来生成分段视频的模型");
         var model=(studioVideo==null?List.<com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioModel>of():studioVideo.models()).stream()
                 .filter(m->settings.videoModel().equals(m.endpointId())).findFirst()
-                .orElseThrow(()->bad("STUDIO_VIDEO_MODEL_UNAVAILABLE","所选视频模型不可用，请换一个模型"));
+                .orElseThrow(()->bad("STUDIO_VIDEO_MODEL_UNAVAILABLE","所选视频模型不可用，请更换模型"));
         var contract=model.contract();
-        if(contract==null||contract.maxSeconds()<=0)throw bad("STUDIO_VIDEO_MODEL_UNAVAILABLE","所选视频模型还没有可用的时长规格，请换一个模型");
+        if(contract==null||contract.maxSeconds()<=0)throw bad("STUDIO_VIDEO_MODEL_UNAVAILABLE","所选视频模型暂不可用，请更换模型");
         String requested=settings.maxSegmentSec()==null?"model":settings.maxSegmentSec().strip();
         double cap;
         if("model".equals(requested))cap=contract.maxSeconds();
@@ -971,7 +971,7 @@ public class StudioWorkflowService {
                 AiModelInvocationService.ResolvedEndpoint endpoint=scenePolicies!=null?scenePolicies.resolve("studio","script",request.model(),pricing.ipIdentity()).resolved()
                         :models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,request.model(),"studio").orElseThrow(()->new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","所选文本模型不可用"));
                 var rate=chatRate(endpoint.endpoint().getId());
-                if(rate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED","此模型尚未配置按量积分售价");
+                if(rate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED","此模型暂未定价，请选择其他模型");
                 yield rate.maxCost();
             }
         };
@@ -1013,7 +1013,7 @@ public class StudioWorkflowService {
         AiModelInvocationService.ResolvedEndpoint endpoint=scenePolicies!=null?scenePolicies.resolve("studio","script",request.model(),pricing.ipIdentity()).resolved()
                 :models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,request.model(),"studio").orElseThrow(()->new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","所选文本模型不可用"));
         var rate=chatRate(endpoint.endpoint().getId());
-        if(rate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED","此模型尚未配置按量积分售价");
+        if(rate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED","此模型暂未定价，请选择其他模型");
         return rate;
     }
 
@@ -1147,7 +1147,7 @@ public class StudioWorkflowService {
             var endpoint=scenePolicies.resolve("studio","image",request.model(),pricing.ipImage()).resolved().endpoint();
             if(JusuanImageClient.supports(endpoint)) {
                 var spec=com.aistareco.aep.model.AiImageRequestSpec.read(endpoint.getImageRequestSpecJson());
-                if(spec==null)throw bad("STUDIO_IMAGE_SPEC_NOT_CONFIGURED","当前图片模型尚未配置可用规格");
+                if(spec==null)throw bad("STUDIO_IMAGE_SPEC_NOT_CONFIGURED","当前图片模型暂不可用，请选择其他模型");
                 if(request.size()!=null && !request.size().isBlank()) {
                     var output=spec.output(request.size());
                     if(output!=null && (request.aspectRatio()==null || ratio.equals(output.aspectRatio())))return request.size();

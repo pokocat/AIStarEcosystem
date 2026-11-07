@@ -42,6 +42,10 @@ html[data-layout="desktop"] .studio-template-dialog-copy>footer { padding:14px 2
 .studio-template-preview-prompt { white-space:pre-wrap; overflow-wrap:anywhere; font-size:14px; line-height:1.7; }
 .studio-flow-header { position:absolute; inset:0 0 auto; z-index:85; height:60px; padding:0 18px; display:flex; align-items:center; gap:12px; background:var(--surface); border-bottom:1px solid var(--line); }
 .studio-flow-header>a { color:var(--ink-2); display:flex; padding:8px; border-radius:8px; }
+.studio-flow-header>.studio-flow-back { flex:none; align-items:center; gap:4px; font-size:13px; line-height:18px; white-space:nowrap; text-decoration:none; }
+.studio-flow-header>.studio-flow-back:hover { background:var(--surface-2); color:var(--ink); }
+/* 手机上画布顶部那条细栏已经有带名字的返回（canvas-gate.tsx 的 MobileCanvasBar），这里再放一个箭头就重复了。 */
+html:not([data-layout="desktop"]) .studio-flow-header>.studio-flow-back { display:none; }
 .studio-flow-header>.ant-input { width:220px; font-weight:650; color:var(--ink); }
 .studio-flow-header .ip-canvas-host-actions { margin-left:auto; flex-wrap:nowrap; overflow-x:auto; }
 .studio-canvas-credit { display:none; }

@@ -432,7 +432,6 @@ class IpRunWorkerTest {
         assertEquals(IpRun.STATUS_FAILED, r.getStatus());
         assertEquals("IP_IDENTITY_EXTRACT_FAILED", r.getErrorCode());
         assertNotNull(r.getErrorMessage());
-        assertTrue(r.getErrorMessage().contains("不支持图片输入") || r.getErrorMessage().contains("看图"));
         verify(credits, never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
         verify(credits).releaseHold(eq(IpRunService.REF_TYPE), eq(RID), anyString());
     }
@@ -559,14 +558,15 @@ class IpRunWorkerTest {
         String reason="生成的图片可能违反了关于青少年与儿童形象适当描绘的防护限制";
         java.net.http.HttpResponse<String> response=mock(java.net.http.HttpResponse.class);
         when(response.statusCode()).thenReturn(status);
-        when(response.body()).thenReturn(OM.createObjectNode().set("error",OM.createObjectNode()
-                .put("code","content_policy_violation").put("message",reason)).toString());
+        com.fasterxml.jackson.databind.JsonNode body=OM.createObjectNode().set("error",OM.createObjectNode()
+                .put("code","content_policy_violation").put("message",reason));
+        when(response.body()).thenReturn(body.toString());
         when(upstream.sendJson(any(),any())).thenReturn(response);
         worker.runBlocking(RID);
         assertEquals(IpRun.STATUS_FAILED,reload().getStatus());
         assertEquals(status==400?"STUDIO_IMAGE_PROVIDER_FAILED":"STUDIO_IMAGE_SUBMISSION_UNKNOWN",reload().getErrorCode());
-        assertTrue(reload().getErrorMessage().contains("生成结果未通过内容审核"));
-        assertTrue(reload().getErrorMessage().contains("未成年人"));assertEquals(0,reload().getCost());
+        assertTrue(reload().getErrorMessage().contains(com.aistareco.aep.service.ai.ProviderContentModeration.find(body).message()),reload().getErrorMessage());
+        assertEquals(0,reload().getCost());
         verify(upstream,times(1)).sendJson(any(),any());
         verify(credits,times(1)).releaseHold(eq("ip-run"),eq(RID),anyString());
         verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString(),org.mockito.ArgumentMatchers.any());
@@ -702,7 +702,6 @@ class IpRunWorkerTest {
         worker.runBlocking(RID);assertEquals("failed",reload().getStatus());
         var cause=capturedAlertCause();
         assertFalse(cause.getMessage().contains("请勿重新生成"),cause.getMessage());
-        assertTrue(cause.getMessage().contains("已按失败处理并退回"),cause.getMessage());
         assertEquals("reply lost",cause.getCause().getMessage());
     }
     @Test void expiredShortLeaseDoesNotEndARequestWithinItsSavedTenMinuteTimeout() throws Exception {

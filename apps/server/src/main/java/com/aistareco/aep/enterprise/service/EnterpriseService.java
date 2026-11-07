@@ -53,7 +53,7 @@ public class EnterpriseService {
         users.findByIdForUpdate(actor).orElseThrow();
         var old=enterprises.findByCreatedByAndCreateRequestId(actor,key);
         if(old.isPresent()) {
-            if(!name.equals(old.get().getName())) throw conflict("ENTERPRISE_REQUEST_CONFLICT","同一请求不能更改企业名称");
+            if(!name.equals(old.get().getName())) throw conflict("ENTERPRISE_REQUEST_CONFLICT","请求已失效，请刷新页面后重试");
             return context(actor,old.get().getId());
         }
         if(current.findCurrentForUpdate(actor).isPresent())throw conflict("ENTERPRISE_ALREADY_JOINED","请先退出当前企业");
@@ -98,11 +98,11 @@ public class EnterpriseService {
         access.require(actor,enterpriseId,"member.invite");
         String phone=text(request==null?null:request.phone(),32).replaceAll("\\s+","").replaceFirst("^\\+86","");
         if(!phone.matches("1[3-9]\\d{9}"))throw bad("请输入正确的 11 位手机号");
-        var snapshot=users.findByPhone(phone).orElseThrow(()->BusinessException.notFound("ENTERPRISE_ACCOUNT_NOT_FOUND","未找到该手机号的产品账号，请让对方先登录并开通数字资产平台，或使用企业邀请链接"));
+        var snapshot=users.findByPhone(phone).orElseThrow(()->BusinessException.notFound("ENTERPRISE_ACCOUNT_NOT_FOUND","未找到该手机号对应的账号。请对方登录并开通 IP Studio 后再添加，或通过邀请链接加入"));
         // Match create/accept lock ordering. The user lock serializes additions to different enterprises.
         var user=users.findByIdForUpdate(snapshot.getId()).orElseThrow();
         entityManager.refresh(user,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
-        if(!phone.equals(user.getPhone()) || !user.isPhoneVerified())throw conflict("ENTERPRISE_PHONE_UNVERIFIED","该账号手机号尚未验证或已变更，请让对方登录更新后再添加");
+        if(!phone.equals(user.getPhone()) || !user.isPhoneVerified())throw conflict("ENTERPRISE_PHONE_UNVERIFIED","该账号手机号尚未验证或已变更，请对方登录更新后再添加");
         access.requireUser(user.getId());
         var e=lock(enterpriseId);access.require(actor,enterpriseId,"member.invite");
         var relation=current.findCurrentForUpdate(user.getId());
@@ -124,7 +124,7 @@ public class EnterpriseService {
         if(validDays!=90 && validDays!=365)throw bad("请选择 90 天或 1 年有效期");
         var old=invitations.findByEnterpriseIdAndCreatedByAndClientRequestId(enterpriseId,actor,key);
         if(old.isPresent()) {
-            if(Duration.between(old.get().getCreatedAt(),old.get().getExpiresAt()).toDays()!=validDays)throw conflict("ENTERPRISE_REQUEST_CONFLICT","同一请求不能修改邀请有效期");
+            if(Duration.between(old.get().getCreatedAt(),old.get().getExpiresAt()).toDays()!=validDays)throw conflict("ENTERPRISE_REQUEST_CONFLICT","请求已失效，请刷新页面后重试");
             return new EnterpriseDtos.InvitationCreated(dto(old.get()),null);
         }
         byte[] bytes=new byte[32];random.nextBytes(bytes);String token=Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
@@ -178,7 +178,7 @@ public class EnterpriseService {
     public EnterpriseDtos.Member updateMember(String actor,String enterpriseId,String memberId,EnterpriseDtos.MemberUpdate request) {
         var e=lock(enterpriseId);access.require(actor,enterpriseId,"member.role.manage");
         var target=access.requireOrdinaryTarget(actor,enterpriseId,memberId);
-        if(request==null || request.capabilities()==null || request.role()==null || !Set.of("manager","member").contains(request.role()))throw bad("角色或能力无效");
+        if(request==null || request.capabilities()==null || request.role()==null || !Set.of("manager","member").contains(request.role()))throw bad("角色或授权无效");
         if(target.getVersion()!=request.version())throw conflict("ENTERPRISE_VERSION_CONFLICT","成员权限已变化，请刷新");
         if("member".equals(request.role())&&(request.capabilities().pointsManage()||request.capabilities().billingRead()))throw bad("普通成员不能获得管理权限");
         String before=target.getRole()+":"+target.isPointsManage()+":"+target.isBillingRead()+":"+target.isRechargeRequest();
@@ -211,8 +211,8 @@ public class EnterpriseService {
     @Transactional
     public EnterpriseDtos.Policy updatePolicy(String actor,String enterpriseId,EnterpriseDtos.PolicyUpdate request) {
         lock(enterpriseId);access.require(actor,enterpriseId,"policy.manage");var p=policies.findById(enterpriseId).orElseThrow();
-        if(request==null || request.allowedEndpointIds()==null || request.allowedEndpointIds().size()>100 || request.maxActiveJobs()<1 || request.maxActiveJobs()>100)throw bad("模型或在途上限无效");
-        if(p.getVersion()!=request.version())throw conflict("ENTERPRISE_VERSION_CONFLICT","企业策略已变化，请刷新");
+        if(request==null || request.allowedEndpointIds()==null || request.allowedEndpointIds().size()>100 || request.maxActiveJobs()<1 || request.maxActiveJobs()>100)throw bad("可用模型或任务上限设置无效");
+        if(p.getVersion()!=request.version())throw conflict("ENTERPRISE_VERSION_CONFLICT","企业设置已变化，请刷新");
         var ids=request.allowedEndpointIds().stream().map(v->text(v,64)).distinct().sorted().toList();
         if(endpoints.findAllById(ids).size()!=ids.size())throw bad("所选模型不存在");
         var before=dto(p);p.setAllowedEndpointIdsJson(json(ids));p.setMaxActiveJobs(request.maxActiveJobs());policies.saveAndFlush(p);
@@ -226,7 +226,7 @@ public class EnterpriseService {
                 .orElseThrow(()->bad("请选择当前企业的有效成员"));
         access.member(target.getUserId(),enterpriseId);
         var old=transfers.findByEnterpriseIdAndFromUserIdAndClientRequestId(enterpriseId,actor,key);
-        if(old.isPresent()) {if(!old.get().getToUserId().equals(target.getUserId()))throw conflict("ENTERPRISE_REQUEST_CONFLICT","同一请求不能更改接收人");return dto(old.get());}
+        if(old.isPresent()) {if(!old.get().getToUserId().equals(target.getUserId()))throw conflict("ENTERPRISE_REQUEST_CONFLICT","请求已失效，请刷新页面后重试");return dto(old.get());}
         var t=new EnterpriseOwnershipTransfer();t.setId(id());t.setEnterpriseId(enterpriseId);t.setFromUserId(e.getOwnerUserId());t.setFromOwnerVersion(e.getVersion());t.setToUserId(target.getUserId());t.setStatus("pending");t.setClientRequestId(key);t.setExpiresAt(Instant.now().plus(Duration.ofHours(24)));transfers.save(t);
         audit(actor,enterpriseId,"ownership.request",t.getId(),"发起主账号移交");return dto(t);
     }
@@ -251,7 +251,7 @@ public class EnterpriseService {
         credits.openEnterpriseWallet(e.getId(),userId);return m;
     }
     private Enterprise lock(String id) {
-        return enterprises.lockById(id).filter(e->"active".equals(e.getStatus())).orElseThrow(()->EnterpriseAccessService.denied("ENTERPRISE_ACCESS_DENIED","企业不可使用"));
+        return enterprises.lockById(id).filter(e->"active".equals(e.getStatus())).orElseThrow(()->EnterpriseAccessService.denied("ENTERPRISE_ACCESS_DENIED","该企业已关闭或暂不可用"));
     }
     private void audit(String actor,String enterpriseId,String action,String target,String summary) {
         var a=new EnterpriseAudit();a.setId(id());a.setActorUserId(actor);a.setEnterpriseId(enterpriseId);a.setAction(action);a.setTargetId(target);a.setSummary(summary);a.setCreatedAt(Instant.now());audits.save(a);

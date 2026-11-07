@@ -38,10 +38,10 @@ export function useSceneDraftStore() {
 
   /** 文档一次只存一份：同一份草稿的保存排队，后一次基于前一次的结果，不会拿旧版本去覆盖。 */
   const persist = useCallback((mutate: (doc: IpProjectDoc) => IpProjectDoc, projectId = current.current?.id) => {
-    if (!projectId) return Promise.reject(new Error("草稿还没准备好"));
+    if (!projectId) return Promise.reject(new Error("草稿尚未就绪，请稍后重试。"));
     const job = (tails.current.get(projectId) ?? Promise.resolve()).then(async () => {
       const base = latest.current.get(projectId);
-      if (!base) throw new Error("草稿还没准备好");
+      if (!base) throw new Error("草稿尚未就绪，请稍后重试。");
       const saved = await saveDraftDoc(base, mutate(base.doc));
       latest.current.set(projectId, saved);
       if (current.current?.id === projectId) { current.current = saved; setDraft(saved); }

@@ -1,16 +1,24 @@
 /**
  * AI 导演台 — AI chat on the left, then five views over one shared project:
  * 画布 (node canvas) · 剧本 · 资产 · 分镜 · 成片. Generation is simulated client-side.
+ * This is the workshop's single AI 创作 surface: the left column switches between AI 导演 (project
+ * chat), AI 图片 and AI 视频. In the generation modes the column becomes the scene composer and the
+ * right side the works wall; results can be placed into the project (发到导演台). Shots and assets
+ * can also target the generator directly (快速生成) and take the result back.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, CheckCircle2, Cloud, CloudOff, Library, Plus, Send, Settings2, X, Zap } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Clapperboard, Cloud, CloudOff, Library, Plus, Send, Settings2, X, Zap } from 'lucide-react';
 import type { Lang } from '../../../translations';
 import type { Artist } from '../ArtistTypes';
 import type { SolutionId } from '../../../data/ipPlatform';
 import { TRACKS } from '../workshopData';
 import type { WorkshopIntent } from '../ProductionWorkshop';
 import { addToPool, primeTimeSlot } from '../publishPoolStore';
-import { loadSnapshot, loadWorks, saveSnapshot, saveWorks } from './studioStorage';
+import {
+  currentProjectScope, deleteSnapshot, loadSnapshot, loadWorks, newProjectScope, saveSnapshot, saveWorks, setCurrentProjectScope, WORKS_EVENT,
+  type StudioSnapshot,
+} from './studioStorage';
+import { ProjectSwitcher } from './ProjectSwitcher';
 import { formatsForTemplate, getWorkshopProfile, promptsFor, type WorkshopProfile } from './workshopProfiles';
 import { DirectorCanvas, type AddKind, type Point } from './DirectorCanvas';
 import { DirectorChat, type ChatScopeOption } from './DirectorChat';
@@ -22,7 +30,14 @@ import { ScriptView } from './ScriptView';
 import { AssetsView } from './AssetsView';
 import { StoryboardView } from './StoryboardView';
 import { FinalView } from './FinalView';
-import { ViewRail } from './ViewRail';
+import { BrowseBar, StepRail, type Browse } from './BrowseBar';
+import { currentActivity, flowStatus, pipelineFor, type PipelineStep } from './pipeline';
+import type { DirectorImport, DirectorMedia } from './handoff';
+import { QuickGenStudio, type QuickGenEmbed } from '../quickgen/QuickGenStudio';
+import { getBalance, spend, updateGeneration, useQuickGen } from '../quickgen/quickgenStore';
+import { PRICE, nodeCost, remainingCost, shotVideoCost } from './pricing';
+import type { GenKind } from '../quickgen/sceneData';
+import { CreateModeMenu, ProjectTemplateMenu, type CreateMode } from './CreateModeMenu';
 import {
   FRAME_POOL, KIND_META, NODE_H, STYLES, createProject, fmtDuration, isGeneratable, isVisualFormat, makeCloseUp, makeShot, orderedShots,
   planDirectorReply, shotIdeasFor, uid, writeLyrics,
@@ -40,7 +55,13 @@ interface Props {
   intent?: WorkshopIntent | null;
   /** Opens 发布中心 after an export. */
   onOpenPublish?: () => void;
+  /** AI 创作 mode, owned by the workshop so sidebar / ⌘K links can open a specific mode. */
+  mode: CreateMode;
+  onMode: (mode: CreateMode) => void;
 }
+
+/** Generating for one shot or asset (快速生成): where the result goes and how it is placed. */
+interface GenTarget { key: string; label: string; kinds: GenKind[]; embed: (kind: GenKind) => QuickGenEmbed }
 
 const LYRIC_THEMES = { zh: ['霓虹', '星海', '雨夜', '旧城'], en: ['neon', 'the star sea', 'the rainy night', 'the old town'] };
 
@@ -70,6 +91,15 @@ const welcomeFor = (spec: ProjectSpec, lang: Lang, profile: WorkshopProfile) => 
     : `Hi, I am your ${who}. I wrote episode 1 of "${spec.name}" (${spec.template}) for ${spec.artistName} and split it into 3 segments; segment 3 has no frame yet. Delivering ${formats}. Use the AI button next to any text, segment or asset to point me at it.`;
 };
 
+/**
+ * Default way to browse a new project: linear productions (短剧、带货…) open in 流程, music and the
+ * blank canvas in 画布. Small screens always start in 流程, where the canvas is awkward to use.
+ */
+const defaultView = (spec: ProjectSpec): StudioView => {
+  const narrow = typeof window !== 'undefined' && window.innerWidth < 1024;
+  return !narrow && (spec.mode === 'music' || spec.blank) ? 'canvas' : 'script';
+};
+
 /** Grab a first-frame thumbnail from an uploaded video (best effort). */
 const videoThumb = (url: string) => new Promise<string | undefined>(resolve => {
   const v = document.createElement('video');
@@ -88,8 +118,11 @@ const videoThumb = (url: string) => new Promise<string | undefined>(resolve => {
   v.onerror = () => { window.clearTimeout(timer); done(undefined); };
 });
 
-export const AIDirectorStudio = ({ lang, activeArtist, solutionId, intent = null, onOpenPublish }: Props) => {
-  const storageScope = `${solutionId}:${activeArtist.id}`;
+export const AIDirectorStudio = ({ lang, activeArtist, solutionId, intent = null, onOpenPublish, mode: createMode, onMode }: Props) => {
+  // Projects of this solution + IP live under `baseScope`; `storageScope` is the one open now.
+  const baseScope = `${solutionId}:${activeArtist.id}`;
+  const [storageScope, setStorageScope] = useState(() => currentProjectScope(baseScope));
+  useEffect(() => { setCurrentProjectScope(baseScope, storageScope); }, [baseScope, storageScope]);
   const zh = lang === 'zh';
   const profile = useMemo(() => getWorkshopProfile(solutionId, activeArtist.type), [solutionId, activeArtist.type]);
   const templates = useMemo<DialogTemplate[]>(() => [
@@ -115,7 +148,7 @@ export const AIDirectorStudio = ({ lang, activeArtist, solutionId, intent = null
     const project = createProject(spec, lang, profile);
     return {
       spec, ...project, episodes: buildEpisodes(spec, profile, project.nodes, lang), assets: buildAssets(spec, project.nodes, lang, profile.cast[lang]),
-      style: 'cyber', ratio: '9:16' as Ratio, view: 'canvas' as StudioView, messages: null as ChatMessage[] | null, exported: false, savedAt: 0, restored: false,
+      style: 'cyber', ratio: '9:16' as Ratio, view: defaultView(spec), messages: null as ChatMessage[] | null, exported: false, savedAt: 0, restored: false,
     };
   });
   const [spec, setSpec] = useState<ProjectSpec>(initial.spec);
@@ -141,6 +174,12 @@ export const AIDirectorStudio = ({ lang, activeArtist, solutionId, intent = null
   const [worksOpen, setWorksOpen] = useState(false);
   const [works, setWorks] = useState<Work[]>(() => loadWorks(TRACKS));
   useEffect(() => { saveWorks(works); }, [works]);
+  // AI 视频 quick generations land in the same library while this studio stays mounted.
+  useEffect(() => {
+    const sync = () => setWorks(loadWorks(TRACKS));
+    window.addEventListener(WORKS_EVENT, sync);
+    return () => window.removeEventListener(WORKS_EVENT, sync);
+  }, []);
   const welcome = (s: ProjectSpec): ChatMessage[] => [{ id: uid('m'), role: 'ai', text: welcomeFor(s, lang, profile) }];
   const [messages, setMessages] = useState<ChatMessage[]>(() => initial.messages?.length
     ? [...initial.messages.filter(m => !m.id.startsWith('restored-')), { id: uid('restored-'), role: 'ai', text: zh ? '已恢复你上次的项目，可以继续编辑。' : 'Restored your last project — pick up where you left off.' }]
@@ -171,11 +210,19 @@ export const AIDirectorStudio = ({ lang, activeArtist, solutionId, intent = null
 
   // Links from elsewhere (音乐工坊 / 创作内容 → new project, 查看全部 → works library). Each intent id is handled once.
   const handledIntent = useRef<number | null>(null);
+  const [dialogPreset, setDialogPreset] = useState<{ name: string; description: string } | null>(null);
+  // Template picked in the input toolbar's template library; the dialog opens on it.
+  const [dialogTemplate, setDialogTemplate] = useState<string | null>(null);
+  // 发到导演台 › 用它新建项目: the material becomes the first shot once the project is created.
+  const pendingImport = useRef<DirectorMedia | null>(null);
   useEffect(() => {
     if (!intent || handledIntent.current === intent.id) return;
     handledIntent.current = intent.id;
-    if (intent.kind === 'new') setDialogOpen(true); else setWorksOpen(true);
-  }, [intent]);
+    if (intent.kind === 'new') {
+      pendingImport.current = intent.handoff?.media ?? null;
+      setDialogPreset(intent.preset ?? null); setDialogOpen(true);
+    } else setWorksOpen(true);
+  }, [intent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A new selection or view resets any manually chosen chat scope.
   useEffect(() => { setScopeChoice(null); }, [selectedId, selectedAssetId, view]);
@@ -197,9 +244,20 @@ export const AIDirectorStudio = ({ lang, activeArtist, solutionId, intent = null
     return FRAME_POOL[(frameCursor.current++ + offset) % FRAME_POOL.length];
   };
 
-  /* ───────── generation (simulated) ───────── */
+  /* ───────── generation (simulated, charged in 星币 like AI 图片 / AI 视频) ───────── */
+
+  const { balance } = useQuickGen();
+  const lowNoteAt = useRef(0);
+  const lowBalance = (need: number) => {
+    if (Date.now() - lowNoteAt.current < 3000) return; // one notice per burst
+    lowNoteAt.current = Date.now();
+    note(zh ? `星币不足：需要 ⬡${need}，当前余额 ⬡${getBalance()}。可以到 设置 › 订阅与账单 充值。` : `Not enough credits: needs ⬡${need}, balance ⬡${getBalance()}. Top up in Settings › Billing.`);
+  };
+  const pay = (cost: number) => { if (spend(cost)) return true; lowBalance(cost); return false; };
 
   const generate = (id: string, delay = 0) => {
+    const target = nodesRef.current.find(x => x.id === id);
+    if (target && !pay(nodeCost(target))) return;
     later(() => {
       touch();
       // A new frame invalidates the segment video rendered from the old one.
@@ -224,6 +282,9 @@ export const AIDirectorStudio = ({ lang, activeArtist, solutionId, intent = null
     ids.forEach((id, i) => {
       const n = nodesRef.current.find(x => x.id === id);
       if (!n || n.kind !== 'shot') return;
+      // Check frame + video together so a shot is never left with a frame it cannot render.
+      if (getBalance() < shotVideoCost(n)) { lowBalance(shotVideoCost(n)); return; }
+      spend(PRICE.video(n.duration));
       let start = i * 400;
       if (n.status !== 'done' || !n.image) { if (n.status !== 'generating') generate(id, start); start += 2200; }
       later(() => { touch(); setNodes(ns => staleOutput(ns.map(x => (x.id === id ? { ...x, videoStatus: 'generating' as const } : x)))); }, start);
@@ -243,6 +304,8 @@ export const AIDirectorStudio = ({ lang, activeArtist, solutionId, intent = null
   const renderOutput = () => {
     const output = nodesRef.current.find(n => n.kind === 'output');
     if (!output) return;
+    const need = remainingCost(nodesRef.current, []);
+    if (getBalance() < need) { lowBalance(need); return; }
     const others = nodesRef.current.filter(n => isGeneratable(n) && n.kind !== 'shot' && n.status === 'idle');
     others.forEach((n, i) => generate(n.id, i * 350));
     const videoEnd = generateVideos(orderedShots(nodesRef.current).filter(s => s.videoStatus !== 'done').map(s => s.id));
@@ -252,6 +315,7 @@ export const AIDirectorStudio = ({ lang, activeArtist, solutionId, intent = null
   };
 
   const generateAsset = (id: string, delay = 0) => {
+    if (!pay(PRICE.asset)) return;
     later(() => setAssets(as => as.map(a => (a.id === id ? { ...a, status: 'generating' } : a))), delay);
     later(() => {
       const image = nextFrame();
@@ -550,14 +614,21 @@ export const AIDirectorStudio = ({ lang, activeArtist, solutionId, intent = null
     const target = scopeId.startsWith('node:') ? nodesRef.current.find(n => n.id === scopeId.slice(5)) : undefined;
     const src = sourceNode(nodesRef.current);
     const subject = src && src.kind !== 'lyrics' && src.kind !== 'script' ? src.title : spec.artistName;
-    const plan = planDirectorReply(text, lang, { mode, selected: target, subject, advice: profile.advice[lang] });
+    let plan = planDirectorReply(text, lang, { mode, selected: target, subject, advice: profile.advice[lang] });
+    // One-click: say up front what it will cost, and do not start a run the balance cannot finish.
+    if (plan.ops.some(o => o.type === 'oneClick')) {
+      const est = remainingCost(nodesRef.current, assetsRef.current);
+      plan = getBalance() < est
+        ? { reply: zh ? `星币不足：把剩下的步骤做完预计需要 ⬡${est}，当前余额 ⬡${getBalance()}。可以到 设置 › 订阅与账单 充值，或者先在「分镜」里挑几个镜头单独生成。` : `Not enough credits: finishing needs about ⬡${est}, balance ⬡${getBalance()}. Top up in Settings › Billing, or render a few shots first.`, ops: [], actions: [] }
+        : { ...plan, reply: `${plan.reply}${zh ? `\n\n预计消耗 ⬡${est}，当前余额 ⬡${getBalance()}。` : `\n\nEstimated ⬡${est}; balance ⬡${getBalance()}.`}` };
+    }
     setMessages(m => [...m, { id: uid('m'), role: 'user', text }]);
     setThinking(true);
     setStreaming(true);
     later(() => {
       setThinking(false);
       const id = uid('m');
-      setMessages(m => [...m, { id, role: 'ai', text: '' }]);
+      setMessages(m => [...m, { id, role: 'ai', text: '', pipeline: plan.ops.some(o => o.type === 'oneClick') || undefined }]);
       applyOps(plan.ops, target);
       let i = 0;
       const step = () => {
@@ -572,18 +643,175 @@ export const AIDirectorStudio = ({ lang, activeArtist, solutionId, intent = null
 
   /* ───────── project lifecycle ───────── */
 
+  /** Writes the open project now (the debounced auto-save may not have run yet). */
+  const flushSave = () => saveSnapshot(storageScope, { spec, nodes, edges, episodes, assets, style, ratio, view, messages, exported });
+
+  /** Opens another saved project of this IP; the current one is saved first. */
+  const openProject = (scope: string) => {
+    const snap: StudioSnapshot | null = loadSnapshot(scope);
+    if (!snap) return;
+    flushSave();
+    timers.current.forEach(t => window.clearTimeout(t));
+    timers.current = [];
+    setStorageScope(scope);
+    setSpec(snap.spec); setNodes(snap.nodes); setEdges(snap.edges); setEpisodes(snap.episodes); setAssets(snap.assets);
+    setStyle(snap.style); setRatio(snap.ratio); setView(snap.view); setExported(snap.exported); setSavedAt(snap.savedAt);
+    setActiveEpisodeId(snap.episodes[0]?.id ?? ''); setSelectedId(null); setSelectedAssetId(null); setGenTarget(null);
+    setThinking(false); setStreaming(false); setFollow(true);
+    setMessages([...(snap.messages.length ? snap.messages.filter(m => !m.id.startsWith('restored-')) : welcome(snap.spec)),
+      { id: uid('restored-'), role: 'ai', text: zh ? `已切换到《${snap.spec.name}》，可以接着做。` : `Switched to "${snap.spec.name}" — pick up where you left off.` }]);
+    setFitSignal(n => n + 1);
+  };
+  const removeProject = (scope: string) => { if (scope !== storageScope) deleteSnapshot(scope); };
+
   const startProject = (input: NewProjectInput) => {
+    // The open project stays saved under its own scope; the new one gets a fresh scope.
+    flushSave();
+    setStorageScope(newProjectScope(baseScope));
     const next = buildSpec(input);
     const project = createProject(next, lang, profile);
+    const media = pendingImport.current;
+    pendingImport.current = null;
+    const first = media && orderedShots(project.nodes)[0];
+    if (media && first) {
+      project.nodes = project.nodes.map(n => (n.id === first.id ? { ...n, ...shotMedia(n, media.kind, media.image, media.duration) } : n));
+      updateGeneration(media.genId, { usedIn: zh ? `《${next.name}》镜头 1` : `"${next.name}" shot 1` });
+    }
     timers.current.forEach(t => window.clearTimeout(t));
     timers.current = [];
     const eps = buildEpisodes(next, profile, project.nodes, lang);
     setSpec(next); setNodes(project.nodes); setEdges(project.edges); setSelectedId(null); setSelectedAssetId(null);
     setEpisodes(eps); setActiveEpisodeId(eps[0]?.id ?? ''); setAssets(buildAssets(next, project.nodes, lang, profile.cast[lang]));
-    setThinking(false); setStreaming(false); setExported(false); setDialogOpen(false); setView('canvas');
-    setMessages([{ id: uid('m'), role: 'ai', text: welcomeFor(next, lang, profile) + (input.description ? (zh ? `\n\n我记下了你的要求：“${input.description}”。` : `\n\nNoted your brief: "${input.description}".`) : '') }]);
+    setThinking(false); setStreaming(false); setExported(false); setDialogOpen(false); setView(defaultView(next)); setFollow(true);
+    const brief = input.description ? (zh ? `\n\n我记下了你的要求：“${input.description}”。` : `\n\nNoted your brief: "${input.description}".`) : '';
+    const placed = media && first ? (zh ? `\n\n你带来的素材已放进镜头 1。` : `\n\nYour material is in shot 1.`) : '';
+    setMessages([{ id: uid('m'), role: 'ai', text: welcomeFor(next, lang, profile) + brief + placed }]);
     setFitSignal(s => s + 1);
   };
+
+  /* ───────── quick generation (AI 视频 / AI 图片) ───────── */
+
+  const note = (text: string) => setMessages(m => [...m, { id: uid('m'), role: 'ai', text }]);
+  // A picture replaces the frame (and invalidates its video); a video is the finished segment.
+  const shotMedia = (n: CanvasNode, kind: GenKind, image: string, duration?: number): Partial<CanvasNode> => ({
+    image, status: 'done',
+    videoStatus: kind === 'video' ? 'done' : n.videoStatus === 'done' ? 'idle' : n.videoStatus,
+    duration: kind === 'video' && duration ? Math.min(15, duration) : n.duration,
+  });
+  const placeOnShot = (id: string, kind: GenKind, image: string, duration?: number) => {
+    touch();
+    setNodes(ns => staleOutput(ns.map(n => (n.id === id ? { ...n, ...shotMedia(n, kind, image, duration) } : n))));
+  };
+  const placeOnAsset = (id: string, image: string) => {
+    const asset = assetsRef.current.find(a => a.id === id);
+    setAssets(as => as.map(a => (a.id === id ? { ...a, image, status: 'confirmed' } : a)));
+    if (asset?.type === 'character') setNodes(ns => ns.map(n => (n.kind === 'character' && n.title === asset.name ? { ...n, image } : n)));
+  };
+  const shotLabel = (i: number) => (zh ? `镜头 ${i + 1}` : `Shot ${i + 1}`);
+  const usedLabel = (what: string) => (zh ? `《${spec.name}》${what}` : `"${spec.name}" ${what}`);
+  // Quick-gen prompts can be full AI 编导 scripts; a shot keeps the descriptive lines only.
+  const shotPrompt = (prompt: string, fallback: string) =>
+    prompt.split('\n').map(l => l.trim()).filter(l => l && !/^[【[]/.test(l)).join(zh ? '；' : '; ').slice(0, 240) || fallback;
+
+  /** 发到导演台 from the workshop's AI 视频 / AI 图片. */
+  const applyImport = ({ media, to }: DirectorImport) => {
+    const kindLabel = media.kind === 'video' ? (zh ? '视频' : 'video') : (zh ? '图片' : 'image');
+    if (to.type === 'asset') {
+      const a = assetsRef.current.find(x => x.id === to.assetId);
+      if (a) {
+        placeOnAsset(a.id, media.image);
+        setView('assets'); setSelectedAssetId(a.id);
+        updateGeneration(media.genId, { usedIn: usedLabel(a.name) });
+        note(zh ? `已把「${media.title}」设为${ASSET_LABELS[a.type].zh}「${a.name}」的资产图。` : `Set "${media.title}" as the ${ASSET_LABELS[a.type].en.toLowerCase()} sheet for "${a.name}".`);
+        return;
+      }
+    }
+    if (to.type === 'replace') {
+      const i = orderedShots(nodesRef.current).findIndex(x => x.id === to.shotId);
+      if (i >= 0) {
+        placeOnShot(to.shotId, media.kind, media.image, media.duration);
+        setView('storyboard'); setSelectedId(to.shotId);
+        updateGeneration(media.genId, { usedIn: usedLabel(shotLabel(i)) });
+        note(zh ? `已用「${media.title}」的${kindLabel}替换${shotLabel(i)}。` : `Replaced ${shotLabel(i).toLowerCase()} with the ${kindLabel} "${media.title}".`);
+        return;
+      }
+    }
+    // New shot (also the fallback when the chosen shot or asset no longer exists).
+    if (!nodesRef.current.some(n => n.kind === 'output')) ensureOutput();
+    const video = media.kind === 'video';
+    const [shot] = addShots(1, (x, y) => ({
+      id: uid('shot'), kind: 'shot', x, y, status: 'done', image: media.image, duration: video ? Math.min(15, media.duration ?? 5) : 3,
+      shotSize: 'medium', camera: 'static', videoStatus: video ? 'done' : 'idle', title: media.title, prompt: shotPrompt(media.prompt, media.title),
+    }));
+    const i = orderedShots(nodesRef.current).findIndex(x => x.id === shot.id);
+    setView('storyboard'); setSelectedId(shot.id);
+    updateGeneration(media.genId, { usedIn: usedLabel(shotLabel(i)) });
+    note(zh ? `已把「${media.title}」加为${shotLabel(i)}${video ? '，视频直接可用' : '，可以接着生成视频'}。` : `Added "${media.title}" as ${shotLabel(i).toLowerCase()}${video ? ' — the video is ready' : ' — render its video next'}.`);
+  };
+
+  const [genTarget, setGenTarget] = useState<GenTarget | null>(null);
+  const [videoSeed, setVideoSeed] = useState<{ image: string; id: number } | null>(null);
+  const framePool = () => {
+    const off = Math.max(0, STYLES.findIndex(s => s.id === styleRef.current)) * 2;
+    return [...FRAME_POOL.slice(off), ...FRAME_POOL.slice(0, off)];
+  };
+  /** Back to the project after placing a result, on the view that shows it. */
+  const backToProject = (v?: StudioView) => { setGenTarget(null); if (v) setView(v); onMode('director'); };
+  const openShotQuickGen = (id: string) => {
+    const i = orderedShots(nodesRef.current).findIndex(x => x.id === id);
+    const s = nodesRef.current.find(n => n.id === id);
+    if (!s || i < 0) return;
+    const back: StudioView = view === 'canvas' ? 'canvas' : 'storyboard';
+    setSelectedId(id);
+    setGenTarget({
+      key: `shot:${id}`, label: `${shotLabel(i)} · ${s.title}`, kinds: ['image', 'video'],
+      embed: kind => ({
+        target: `${storageScope}:shot:${id}`, useLabel: zh ? `用到${shotLabel(i)}` : `Use for ${shotLabel(i).toLowerCase()}`, usedLabel: usedLabel(shotLabel(i)),
+        prompt: s.prompt, ratio, reference: s.image, pool: framePool(),
+        onUse: (g, image) => {
+          placeOnShot(id, kind, image, g.duration);
+          backToProject(back);
+          note(zh ? `已把 AI ${kind === 'video' ? '视频' : '图片'}的结果用到${shotLabel(i)}。` : `Used the AI ${kind} result for ${shotLabel(i).toLowerCase()}.`);
+        },
+      }),
+    });
+    onMode(s.image ? 'video' : 'image');
+  };
+  const openAssetQuickGen = (id: string) => {
+    const a = assetsRef.current.find(x => x.id === id);
+    if (!a) return;
+    setSelectedAssetId(id);
+    const typeLabel = a.type === 'prop' && propLabel ? propLabel[lang] : ASSET_LABELS[a.type][lang];
+    setGenTarget({
+      key: `asset:${id}`, label: `${typeLabel} · ${a.name}`, kinds: ['image'],
+      embed: () => ({
+        target: `${storageScope}:asset:${id}`, useLabel: zh ? '设为资产图' : 'Use as asset sheet', usedLabel: usedLabel(a.name),
+        prompt: a.desc || a.name, ratio: '4:3', reference: a.image, pool: framePool(),
+        onUse: (_g, image) => {
+          placeOnAsset(id, image);
+          backToProject('assets');
+          note(zh ? `已把 AI 图片的结果设为「${a.name}」的资产图。` : `Set the AI image result as the sheet for "${a.name}".`);
+        },
+      }),
+    });
+    onMode('image');
+  };
+  // Leaving the generation modes (or picking a kind the target cannot take) drops the target.
+  useEffect(() => {
+    if (genTarget && (createMode === 'director' || !genTarget.kinds.includes(createMode))) setGenTarget(null);
+    if (createMode === 'director') setFitSignal(n => n + 1);
+  }, [createMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** 发到导演台 from the AI 图片 / AI 视频 works wall. */
+  const handoff = (h: DirectorImport) => {
+    if (h.to.type === 'new') {
+      pendingImport.current = h.media;
+      setDialogPreset({ name: h.media.title, description: h.media.prompt });
+      setDialogOpen(true);
+    } else applyImport(h);
+    onMode('director');
+  };
+  const openPresetProject = (preset: { name: string; description: string }) => { setDialogPreset(preset); setDialogOpen(true); onMode('director'); };
 
   const deleteNode = useCallback((id: string) => {
     setNodes(ns => staleOutput(ns.filter(n => n.id !== id)));
@@ -594,7 +822,7 @@ export const AIDirectorStudio = ({ lang, activeArtist, solutionId, intent = null
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
-      if (dialogOpen || view !== 'canvas' || !selectedId || el.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (dialogOpen || createMode !== 'director' || view !== 'canvas' || !selectedId || el.closest('input, textarea, select, [contenteditable="true"]')) return;
       if (e.key === 'Delete' || e.key === 'Backspace') {
         const node = nodesRef.current.find(n => n.id === selectedId);
         if (node && node.kind !== 'output') { e.preventDefault(); deleteNode(node.id); }
@@ -603,7 +831,7 @@ export const AIDirectorStudio = ({ lang, activeArtist, solutionId, intent = null
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selectedId, deleteNode, dialogOpen, view]);
+  }, [selectedId, deleteNode, dialogOpen, view, createMode]);
 
   const onRatio = (r: Ratio) => {
     setRatio(r);
@@ -654,15 +882,98 @@ export const AIDirectorStudio = ({ lang, activeArtist, solutionId, intent = null
   const inspectorProps = {
     lang, nodes, selected, mode, template: spec.template, formats: spec.available, deliverables: spec.formats, style, ratio,
     onToggleFormat, onStyle, onRatio, onChange, onGenerate: (id: string) => generate(id), onGenerateAll: generateAll, onDelete: deleteNode,
+    onQuickGen: openShotQuickGen,
   };
-  const missingAssets = assets.filter(a => a.status === 'missing').length;
   const inspectorVisible = nodes.length > 0 && (!!selected || settingsOpen);
+
+  /* ───────── browse (画布 / 流程) and AI-follow ───────── */
+
+  const browse: Browse = view === 'canvas' ? 'canvas' : 'flow';
+  const lastFlowView = useRef<Exclude<StudioView, 'canvas'>>(view === 'canvas' ? 'script' : view);
+  if (view !== 'canvas') lastFlowView.current = view;
+  // Switching keeps what is selected: a shot opens 分镜, a character its asset, and back again.
+  const switchBrowse = (b: Browse) => {
+    if (b === browse) return;
+    if (b === 'canvas') {
+      const asset = view === 'assets' ? assets.find(a => a.id === selectedAssetId) : undefined;
+      const node = asset?.type === 'character' ? nodes.find(n => n.kind === 'character' && n.title === asset.name) : undefined;
+      if (node) setSelectedId(node.id);
+      setView('canvas'); setFitSignal(n => n + 1);
+      return;
+    }
+    const sel = nodes.find(n => n.id === selectedId);
+    if (sel?.kind === 'character') {
+      const asset = assets.find(a => a.type === 'character' && a.name === sel.title);
+      if (asset) setSelectedAssetId(asset.id);
+    }
+    setView(!sel ? lastFlowView.current
+      : sel.kind === 'shot' ? 'storyboard'
+        : sel.kind === 'character' ? 'assets'
+          : sel.kind === 'output' || sel.kind === 'audio' || sel.kind === 'vocal' ? 'final' : 'script');
+  };
+
+  const pipeline = useMemo(() => pipelineFor({ mode, nodes, episodes, assets }), [mode, nodes, episodes, assets]);
+  const activity = currentActivity(pipeline);
+  const stepStatus = flowStatus(pipeline, mode, assets);
+  const [follow, setFollow] = useState(true);
+  const [canvasFocus, setCanvasFocus] = useState<{ id: string; n: number } | null>(null);
+  const activityKey = activity ? `${activity.id}:${activity.nodeId ?? ''}:${activity.assetId ?? ''}` : '';
+  // While the AI works, the open browse mode follows it: 流程 turns to the step, 画布 glides to the node.
+  useEffect(() => {
+    if (!activity) { setFollow(true); return; }
+    if (!follow || createMode !== 'director') return;
+    if (view === 'canvas') { if (activity.nodeId) setCanvasFocus({ id: activity.nodeId, n: Date.now() }); }
+    else if (view !== activity.view) setView(activity.view);
+  }, [activityKey, follow, createMode, browse]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Taking over (click, drag, scroll) pauses following until 回到 AI 当前进度.
+  const takeOver = () => { if (activity && follow) setFollow(false); };
+  const followId = follow && activity ? activity : null;
+  const jumpTo = (step: PipelineStep) => {
+    setFollow(false);
+    if (view === 'canvas') { if (step.nodeId) { setCanvasFocus({ id: step.nodeId, n: Date.now() }); setSelectedId(step.nodeId); } }
+    else {
+      setView(step.view);
+      if (step.view === 'storyboard' && step.nodeId) setSelectedId(step.nodeId);
+      if (step.view === 'assets' && step.assetId) setSelectedAssetId(step.assetId);
+    }
+  };
+
+  const generating = createMode !== 'director';
+  const genKind: GenKind | null = createMode === 'director' ? null : createMode;
+  const targetFor = (k: GenKind) => (genTarget && genTarget.kinds.includes(k) ? genTarget : null);
+  // Input-toolbar controls: the mode menu (all modes) and, for AI 导演, the project template library.
+  const modeMenu = (forTarget?: GenTarget | null) => (
+    <CreateModeMenu zh={zh} mode={createMode} onMode={onMode}
+      disabled={forTarget ? (['image', 'video'] as const).filter(k => !forTarget.kinds.includes(k)) : []} />
+  );
+  const openTemplate = (name: string) => { setDialogTemplate(name); setDialogPreset(null); setDialogOpen(true); };
+  const templateMenu = <ProjectTemplateMenu zh={zh} current={spec.template} templates={templates} onPick={openTemplate} />;
+  const quickProps = { lang, solutionId, activeArtist, onOpenPublish };
 
   return (
     <div className="lg:h-full flex flex-col bg-gray-50 lg:overflow-hidden">
-      <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 border-b border-gray-200 bg-white">
+      {generating && (
+        <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 border-b border-gray-200 bg-white">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-gray-900 truncate">
+              {createMode === 'video' ? (zh ? 'AI 视频 · 按场景出片' : 'AI Video · scene-based') : (zh ? 'AI 图片 · 按场景出图' : 'AI Image · scene-based')}
+            </div>
+            <div className="text-[11px] text-gray-500 truncate">
+              {genTarget
+                ? (zh ? `生成后可一键用到${genTarget.label}` : `Results can go straight to ${genTarget.label}`)
+                : (zh ? `结果可以单独送审发布，也可以发到《${spec.name}》做镜头或资产` : `Publish results on their own, or send them into "${spec.name}"`)}
+            </div>
+          </div>
+          <button type="button" onClick={() => backToProject()}
+            className="inline-flex max-w-full items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 h-9 text-xs font-medium text-gray-700 hover:bg-gray-50">
+            <Clapperboard className="w-3.5 h-3.5 shrink-0 text-violet-600" /><span className="truncate">{zh ? `回到《${spec.name}》` : `Back to "${spec.name}"`}</span>
+          </button>
+        </div>
+      )}
+      <div className={`shrink-0 flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 border-b border-gray-200 bg-white ${generating ? 'hidden' : ''}`}>
         <div className="min-w-0">
-          <div className="text-sm font-semibold text-gray-900 truncate">{spec.artistName} · {zh ? `《${spec.name}》` : `"${spec.name}"`}</div>
+          <ProjectSwitcher zh={zh} base={baseScope} current={storageScope} title={`${spec.artistName} · ${zh ? `《${spec.name}》` : `"${spec.name}"`}`}
+            onOpen={openProject} onNew={() => { setDialogTemplate(null); setDialogPreset(null); setDialogOpen(true); }} onDelete={removeProject} />
           <div className="text-[11px] text-gray-500 flex items-center gap-1 truncate">
             {savedAt === false
               ? <><CloudOff className="w-3.5 h-3.5 text-amber-500 shrink-0" />{zh ? '浏览器未允许本地保存' : 'Browser blocked local save'}</>
@@ -690,30 +1001,49 @@ export const AIDirectorStudio = ({ lang, activeArtist, solutionId, intent = null
             <button type="button" onClick={exportWork} disabled={output?.status !== 'done'}
               title={output?.status !== 'done' ? (zh ? '请先在「成片」完成合成' : 'Render in Final first') : undefined}
               className="inline-flex items-center gap-1.5 rounded-xl px-3.5 h-9 text-xs font-semibold disabled:opacity-45"
-              style={{ background: 'linear-gradient(90deg, #06b6d4, #8b5cf6)', color: '#fff' }}>
+              style={{ background: 'linear-gradient(90deg, #0891b2, #7c3aed)', color: '#fff' }}>
               <Send className="w-3.5 h-3.5" />{zh ? '导出到发布中心' : 'Send to Publish Center'}
             </button>
           )}
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 flex flex-col lg:flex-row">
-        <DirectorChat lang={lang} messages={messages} typing={thinking} busy={streaming}
-          directorName={profile.director[lang]} focus={`${profile.focus[lang]} · ${profile.cast[lang]}`}
+      {/* AI 图片 / AI 视频: kept mounted so drafts survive switching modes. A shot / asset target gets its own instance. */}
+      {(['image', 'video'] as const).map(k => (
+        <div key={k} className={createMode === k && !targetFor(k) ? 'lg:flex-1 lg:min-h-0' : 'hidden'}>
+          <QuickGenStudio {...quickProps} kind={k} modeMenu={modeMenu()} onSendToDirector={handoff} onOpenDirector={openPresetProject}
+            seed={k === 'video' ? videoSeed : undefined}
+            onMakeVideo={k === 'image' ? image => { setVideoSeed({ image, id: Date.now() }); onMode('video'); } : undefined} />
+        </div>
+      ))}
+      {genKind && genTarget && targetFor(genKind) && (
+        <div className="lg:flex-1 lg:min-h-0">
+          <QuickGenStudio key={`${genTarget.key}:${genKind}`} {...quickProps} kind={genKind} modeMenu={modeMenu(genTarget)} embed={genTarget.embed(genKind)}
+            target={{ label: genTarget.label, onClear: () => setGenTarget(null) }} />
+        </div>
+      )}
+
+      <div className={`flex-1 min-h-0 flex-col lg:flex-row ${generating ? 'hidden' : 'flex'}`}>
+        <DirectorChat lang={lang} messages={messages} typing={thinking} busy={streaming} toolbar={<>{modeMenu()}{templateMenu}</>}
+          directorName={profile.director[lang]}
           scopeLabel={scopeLabel} contextLinks={CONTEXT_LINKS(view)[lang]} scopes={scopes} scopeId={scopeId} onScope={chooseScope}
           starters={startersFor(mode)} suggestions={suggestionsFor(view, mode, promptsFor(profile, mode))}
-          focusSignal={chatFocus} onSend={onSend} onReset={() => { setMessages(welcome(spec)); setScopeChoice(null); }} />
+          focusSignal={chatFocus} onSend={onSend} onReset={() => { setMessages(welcome(spec)); setScopeChoice(null); }}
+          pipeline={{ steps: pipeline, onJump: jumpTo }} balance={balance} />
 
-        <ViewRail lang={lang} mode={mode} view={view} onView={v => { setView(v); if (v === 'canvas') setFitSignal(s => s + 1); }}
-          badges={{ assets: missingAssets, storyboard: shots.filter(s => s.status !== 'done').length }} />
+        <div className="flex min-w-0 flex-col lg:flex-1 lg:min-h-0">
+        <BrowseBar lang={lang} browse={browse} onBrowse={switchBrowse} activity={activity} follow={follow}
+          onFollow={on => { setFollow(on); if (on && activity) { if (view === 'canvas') { if (activity.nodeId) setCanvasFocus({ id: activity.nodeId, n: Date.now() }); } else setView(activity.view); } }} />
+        <div className="flex min-w-0 flex-col lg:flex-row lg:flex-1 lg:min-h-0">
+        {browse === 'flow' && view !== 'canvas' && <StepRail lang={lang} mode={mode} view={view} onView={v => { takeOver(); setView(v); }} status={stepStatus} />}
 
-        <div className="relative flex-none min-w-0 lg:flex-1 flex flex-col">
+        <div className="relative flex-none min-w-0 lg:flex-1 flex flex-col" onPointerDownCapture={takeOver} onWheelCapture={takeOver}>
           {view === 'canvas' && (
             <>
               {/* Mobile: fixed-height canvas so the timeline and inspector stack below it. */}
               <div className="relative h-[560px] flex-none lg:h-auto lg:flex-1 lg:min-h-0">
                 <DirectorCanvas lang={lang} nodes={nodes} edges={edges} selectedId={selectedId} fitSignal={fitSignal} mode={mode} deliverables={spec.formats}
-                  reserveRight={inspectorVisible ? 290 : 0}
+                  reserveRight={inspectorVisible ? 290 : 0} activeId={activity?.nodeId} focus={canvasFocus}
                   onSelect={setSelectedId} onMove={(id, x, y) => patchNode(id, { x, y })}
                   onGenerate={id => generate(id)} onRender={renderOutput}
                   onAdd={addFromCanvas} onUpload={uploadToCanvas} onTidy={tidy} onTemplates={() => setDialogOpen(true)} />
@@ -752,7 +1082,7 @@ export const AIDirectorStudio = ({ lang, activeArtist, solutionId, intent = null
             <AssetsView lang={lang} assets={assets} selectedId={selectedAssetId} propLabel={propLabel}
               onSelect={setSelectedAssetId} onChange={(id, patch) => setAssets(as => as.map(a => (a.id === id ? { ...a, ...patch } : a)))}
               onGenerate={id => generateAsset(id)} onGenerateAll={generateMissingAssets} onExtract={extractAssets} onAdd={addAsset}
-              onDiscuss={id => { setSelectedAssetId(id); discuss(); }} />
+              onDiscuss={id => { setSelectedAssetId(id); discuss(); }} onQuickGen={openAssetQuickGen} followId={followId?.view === 'assets' ? followId.assetId : undefined} />
           )}
           {view === 'storyboard' && (
             <StoryboardView lang={lang} mode={mode} episodes={episodes} lyrics={lyricsNode} shots={shots} assets={assets} styleLabel={styleLabel} ratio={ratio}
@@ -762,7 +1092,7 @@ export const AIDirectorStudio = ({ lang, activeArtist, solutionId, intent = null
               onRewrite={rewriteSegment} onDelete={deleteNode} onDiscuss={id => { setSelectedId(id); discuss(); }}
               onPreview={() => { setView('final'); setPlaySignal(s => s + 1); }}
               onExport={() => { if (output?.status === 'done') setView('final'); else { if (!output) ensureOutput(); later(renderOutput, 0); setView('final'); } }}
-              onGotoAssets={() => setView('assets')} />
+              onGotoAssets={() => setView('assets')} onQuickGen={openShotQuickGen} followId={followId?.view === 'storyboard' ? followId.nodeId : undefined} />
           )}
           {view === 'final' && (
             <FinalView lang={lang} mode={mode} nodes={nodes} ratio={ratio} styleLabel={styleLabel} deliverables={spec.formats} exported={exported} playSignal={playSignal}
@@ -771,10 +1101,13 @@ export const AIDirectorStudio = ({ lang, activeArtist, solutionId, intent = null
           )}
           <WorksDrawer lang={lang} open={worksOpen} works={works} onClose={() => setWorksOpen(false)} />
         </div>
+        </div>
+        </div>
       </div>
 
-      <NewProjectDialog lang={lang} open={dialogOpen} workshopName={profile.focus[lang]} templates={templates} briefPlaceholder={profile.defaultBrief[lang]}
-        onClose={() => setDialogOpen(false)} onCreate={startProject} />
+      <NewProjectDialog lang={lang} open={dialogOpen} workshopName={profile.focus[lang]} templates={templates} briefPlaceholder={profile.defaultBrief[lang]} preset={dialogPreset}
+        initialTemplate={dialogTemplate} keeping={spec.name}
+        onClose={() => { setDialogOpen(false); setDialogPreset(null); setDialogTemplate(null); pendingImport.current = null; }} onCreate={input => { setDialogTemplate(null); startProject(input); }} />
     </div>
   );
 };

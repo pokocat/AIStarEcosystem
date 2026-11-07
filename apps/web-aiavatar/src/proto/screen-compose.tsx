@@ -355,7 +355,7 @@ function MComposeResult({ composition: initial, ctx }) {
         hC("span", { style: { fontSize: 12.5, color: "var(--ink-3)", flex: 1, minWidth: 0 } },
           done
             ? `${outputs.length} 张已入库${c.ipId ? `，登记为 ${c.ipId} 的衍生物` : "，未归入 IP"}`
-            : c.status === "failed" ? "没有产出，已退回冻结算力" : "正在出片，稍后回来查看")),
+            : c.status === "failed" ? "没有产出，已退回冻结算力" : "可稍后返回查看结果")),
 
       done && outputs.length > 0
         ? hC("div", { style: { display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 } },

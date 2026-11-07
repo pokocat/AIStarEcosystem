@@ -214,7 +214,7 @@ class H3PromptRewriteTest {
         // 太长：标成不能直接用，提示按原文生成
         r = check(out().put("retention_analysis", "x".repeat(7_000)));
         assertFalse(r.path("usable").asBoolean());
-        assertTrue(String.join("；", warnings(r)).contains("H3 收不下"));
+        assertTrue(String.join("；", warnings(r)).contains("超出模型上限"));
         // 略超长、超出的是 fully_preserved 后面重复列的外貌：精简后收得下，照常可用，只记一笔
         r = check(out().put("retention_analysis", "<Subject 1> (appears in [Shot 1]): fully_preserved - " + "face, ".repeat(1_200) + "retained."));
         assertTrue(r.path("usable").asBoolean(), warnings(r).toString());
@@ -274,7 +274,7 @@ class H3PromptRewriteTest {
         assertTrue(system.contains("# Video Prompt Writing Guide (T2VA / I2VA / FL2VA / L2VA)"), "base-en.txt");
         // 首发约定原文不动，2026-10-31 只在后面追加篇幅预算（cl45 优化稿 8198 字符）
         assertTrue(system.contains("- non_diegetic_music: \"N/A\" unless the request asks for music.\n- Length: the video model accepts at most 7,000 characters"), system.substring(system.length() - 1500));
-        assertTrue(system.endsWith("then refer to it by its label.\n"));
+        assertTrue(system.endsWith("Never meet the limit by cutting off the JSON, dropping a shot or reference, or shortening dialogue.\n"));
         assertTrue(system.contains("Do not write the words of a line, quotation marks around it, <d> tags, or speaker IDs such as (S1); the system inserts them."));
     }
 
@@ -465,5 +465,69 @@ class H3PromptRewriteTest {
         // 画布：图1 是用户连的图，模型怎么标就怎么留
         ObjectNode canvas = meta(); canvas.remove("storyboardPicture");
         assertTrue(H3PromptRewrite.validate(OM, canvas, out().put("retention_analysis", weak)).path("template").asText().contains("<Picture 1> (storyboard reference): weak_reference"));
+    }
+
+    // ── 连进来的文字（2026-11-06 线上：15 次优化里 8 次因此停下，三个模型都一样） ──────────────
+
+    private static ObjectNode drafted(String shot) {
+        ObjectNode o = OM.createObjectNode().put("style", "Live-action.").put("overall_soundscape", "Room tone.").put("non_diegetic_music", "N/A");
+        o.putArray("shots").add(OM.createObjectNode().put("start", 0).put("text", shot));
+        return o;
+    }
+
+    @Test
+    void quotedNotesAreNotCheckedAsSpokenLines() {
+        // 拉片文档里「创意：…」「灯火：…」形状像「名字：台词」，以前一次报 31 条
+        String zh = "把视频里的人物换成图1。\n\n【引用文本：片段 1 · 镜头拆解】\n创意：深夜饿到睡不着的时候。\n灯火：暖钨丝灯光，正面柔光。";
+        ObjectNode meta = freeMeta(H3PromptRewrite.Mode.T2V, zh, 5);
+        assertEquals(0, meta.path("spoken").size(), meta.toString());
+        assertTrue(warnings(H3PromptRewrite.validate(OM, meta, drafted("A person sits at a table."))).isEmpty());
+        // 模型照引用文字写了台词：不算多出来的（以前写全了反而多报 26 条）
+        assertTrue(warnings(H3PromptRewrite.validate(OM, meta, drafted("A person (S1) says: <d>[Chinese] 深夜饿到睡不着的时候</d>"))).isEmpty());
+    }
+
+    @Test
+    void linesInTheUsersOwnWordsAreStillCheckedWhenTextIsQuoted() {
+        String zh = "门口，女孩：“你来了。”\n\n【引用文本：说明】\n灯火：暖色。";
+        ObjectNode meta = freeMeta(H3PromptRewrite.Mode.T2V, zh, 5);
+        assertEquals(List.of("原文台词「你来了。」在优化稿里没有原样出现，可能被改了或漏了"), warnings(H3PromptRewrite.validate(OM, meta, drafted("The girl waves."))));
+        assertTrue(warnings(H3PromptRewrite.validate(OM, meta, drafted("The girl (S1) says: <d>[Chinese] 你来了。</d>"))).isEmpty());
+    }
+
+    @Test
+    void textAlreadyInThePromptIsNotQuotedAgain() {
+        String script = "第1镜（0–3 秒）：博主停下。\n博主说：「这股香味，路过根本走不动。」\n第2镜（3–6 秒）：博主进店。\n博主说：「零食摆了一整排。」";
+        String twice = script + "\n\n【引用文本：视频脚本】\n" + script;
+        assertEquals(script, H3PromptRewrite.withoutRepeatedQuotes(twice));
+        assertEquals(2, H3PromptRewrite.source(H3PromptRewrite.withoutRepeatedQuotes(twice), List.of("旁白")).lines().size(), "每句台词只出现一次");
+        // 只差空白也算同一份；内容不同的引用、其中重复的那一块分别处理
+        assertEquals(script, H3PromptRewrite.withoutRepeatedQuotes(script + "\n\n【引用文本：视频脚本】\n" + script.replace("\n", "\n\n ")));
+        String other = "【引用文本：卖点】\n才9块9一斤。";
+        assertEquals(script + "\n\n" + other, H3PromptRewrite.withoutRepeatedQuotes(script + "\n\n【引用文本：视频脚本】\n" + script + "\n\n" + other));
+        assertEquals(script + "\n\n" + other, H3PromptRewrite.withoutRepeatedQuotes(script + "\n\n" + other), "没重复的不动");
+        assertEquals("只有一句", H3PromptRewrite.withoutRepeatedQuotes("只有一句"));
+    }
+
+    @Test
+    void theContractSaysTheModelCannotSeeTheAttachments() {
+        // 2026-11-06 线上 Sonnet：「看不到附件」，短要求 10 次拒绝 7 次
+        assertTrue(H3PromptRewrite.system(H3PromptRewrite.Mode.REF, false, false).contains("are not available to you"));
+        assertTrue(H3PromptRewrite.system(H3PromptRewrite.Mode.I2V, false, false).contains("are not available to you"));
+        assertFalse(H3PromptRewrite.system(H3PromptRewrite.Mode.T2V, false, false).contains("are not available to you"), "纯文字没有素材，不用说");
+    }
+
+    @Test
+    void aDraftWrittenInChineseIsNotADraft() {
+        // 2026-11-07 OneToken 上的 DeepSeek：整份写成中文，汉字删完只剩标点，自动模式会拿它出片
+        ObjectNode all = OM.createObjectNode().put("style", "全片保持原视频的写实风格和光线，人物动作与镜头运动都不变，只替换衣着。").put("overall_soundscape", "保留原声。").put("non_diegetic_music", "N/A");
+        all.putArray("shots").add(OM.createObjectNode().put("start", 0).put("text", "镜头跟随原视频，人物穿上参考图里的衣服，其余内容都保持不变，动作、表情、场景、道具、构图、光影、色彩和节奏也完全一致。"));
+        assertEquals("AI_BAD_OUTPUT", assertThrows(BusinessException.class, () -> H3PromptRewrite.validate(OM, freeMeta(H3PromptRewrite.Mode.T2V, "换衣服", 5), all)).getCode());
+        // 英文稿里漏翻一小段：删掉并提示，照常可用
+        String english = "A long live-action shot follows the original video from its first frame to its last, with the same framing, camera movement, lighting and pace. ".repeat(3);
+        ObjectNode some = OM.createObjectNode().put("style", "Live-action.").put("overall_soundscape", "Room tone.").put("non_diegetic_music", "N/A");
+        some.putArray("shots").add(OM.createObjectNode().put("start", 0).put("text", english + "镜头跟随原视频人物穿上参考图里的衣服其余内容都保持不变"));
+        JsonNode r = H3PromptRewrite.validate(OM, freeMeta(H3PromptRewrite.Mode.T2V, "换衣服", 5), some);
+        assertTrue(r.path("usable").asBoolean());
+        assertTrue(warnings(r).get(0).contains("个汉字没翻译"), warnings(r).toString());
     }
 }

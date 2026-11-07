@@ -65,7 +65,7 @@ export async function recordingFile(blob: Blob): Promise<File> {
   try {
     const buffer = await context.decodeAudioData(await blob.arrayBuffer());
     if (!buffer.length || !buffer.numberOfChannels) throw new Error('没有录到声音，请重新录制。');
-    if (buffer.length / buffer.sampleRate < RECORDING_MIN_SECONDS) throw new Error('录音不足 10 秒，请跟着文字完整读一遍再保存。');
+    if (buffer.length / buffer.sampleRate < RECORDING_MIN_SECONDS) throw new Error('录音不足 10 秒，请完整朗读示例文字后保存。');
     const wav = recordingWav(await normalizeRecording(buffer));
     const now = new Date();
     const pad = (n: number) => String(n).padStart(2, '0');
@@ -75,8 +75,8 @@ export async function recordingFile(blob: Blob): Promise<File> {
 
 export function microphoneError(error: unknown): string {
   const name = error && typeof error === 'object' && 'name' in error ? error.name : '';
-  if (name === 'NotAllowedError' || name === 'SecurityError') return '麦克风权限未开启，请在浏览器的网站设置中允许使用麦克风，再试一次。';
-  if (name === 'NotFoundError') return '没有找到麦克风，请连接设备后重试，也可以上传音频文件。';
+  if (name === 'NotAllowedError' || name === 'SecurityError') return '麦克风权限未开启，请在浏览器的网站设置中允许使用麦克风后重试。';
+  if (name === 'NotFoundError') return '没有找到麦克风，请连接设备后重试，也可上传音频文件。';
   if (name === 'NotReadableError') return '麦克风暂时无法使用，请检查是否被其他应用占用后重试。';
-  return '录音未能完成，请重新录制，也可以上传音频文件。';
+  return '录音未能完成，请重新录制，也可上传音频文件。';
 }

@@ -1,364 +1,237 @@
 /**
- * DigitalPersonHub — AI数字人中心
- * P0 新增页面：形象/声音模型管理 + 文案驱动生成 + 质量审核
+ * AI 数字人 — 用已授权的形象模型 + 声音模型，驱动已过审的文案生成口播视频，生成后做质量审核，
+ * 合格的送入 发布中心 › 发布池。模型、授权和文案跟随当前角色 IP；冻结或待审的不能使用。
  */
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import {
-  Cpu, Mic, Star, Shield, CheckCircle2, XCircle, Clock, Plus,
-  Search, Play, Eye, Zap, AlertTriangle, Lock, Users, Video,
-  ChevronRight, BarChart3, RefreshCw, FileText, Settings
-} from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { CheckCircle2, Cpu, FileText, Lock, Mic, RefreshCw, Send, ShieldCheck, Sparkles, User, Wand2 } from 'lucide-react';
 import type { Lang } from '../../translations';
+import type { Artist } from './ArtistTypes';
+import { addToPool, primeTimeSlot } from './publishPoolStore';
+import { spend } from './quickgen/quickgenStore';
+import { PRICE } from './director/pricing';
+import { demoImage } from './quickgen/sceneData';
+import {
+  Bar, Card, Check, Chips, Composer, Empty, Field, Pill, RunButton, SectionHead, SmallButton, Stats, ToolLayout,
+  progressOf, today, uid, useNow, useStoredList, useToast, type Timed,
+} from './batch/kit';
 
-type ModelStatus = 'active' | 'training' | 'frozen' | 'review';
-type GenStatus = 'generating' | 'review' | 'approved' | 'failed' | 'in_pool';
-
-interface PersonModel {
-  id: string; name: string; partnerName: string; type: 'appearance' | 'voice';
-  status: ModelStatus; version: string; quality: number;
-  authContract: string; usageCount: number; lastUsed: string; color: string;
-  tags: string[];
+type ModelState = 'active' | 'review' | 'frozen';
+interface Model { id: string; kind: 'look' | 'voice'; name: string; state: ModelState; quality: number; license: string; note: { zh: string; en: string } }
+interface Copy { id: string; title: string; excerpt: string; seconds: number; approved: boolean }
+interface Job extends Timed {
+  id: string; look: string; voice: string; copy: string; seconds: number; ratio: string; scene: string; captions: boolean;
+  cost: number; date: string; score: number; issue: boolean; fixed?: boolean; pooled?: boolean;
 }
 
-interface GenTask {
-  id: string; modelId: string; modelName: string; partnerName: string;
-  copyTitle: string; platform: string; status: GenStatus;
-  duration: string; createdAt: string; assignee: string;
-  qualityScore: number | null; issues: string[];
-}
+// Backdrops reuse photography already in the AI 视频 scene library.
+const SCENES = [
+  { id: 'studio', zh: '演播室', en: 'Studio', image: demoImage('backdrop-studio') },
+  { id: 'store', zh: '门店', en: 'Store', image: demoImage('backdrop-store') },
+  { id: 'home', zh: '居家', en: 'Home', image: demoImage('backdrop-home') },
+];
+const LIP_FIX_PRICE = 40;
 
-const MOCK_MODELS: PersonModel[] = [
-  {
-    id: 'm1', name: '宋一鸣标准形象-V3', partnerName: '宋一鸣', type: 'appearance',
-    status: 'active', version: 'V3.2', quality: 94, authContract: '宋一鸣数字人形象授权协议',
-    usageCount: 124, lastUsed: '2025-09-10', color: '#f59e0b', tags: ['日常', '商务', '年轻化'],
-  },
-  {
-    id: 'm2', name: '林音宝标准音色-普通话', partnerName: '林音宝', type: 'voice',
-    status: 'active', version: 'V2.1', quality: 97, authContract: '林音宝AI数字人音色授权协议',
-    usageCount: 67, lastUsed: '2025-09-08', color: '#a855f7', tags: ['甜美', '亲切', '普通话'],
-  },
-  {
-    id: 'm3', name: '宋一鸣专业讲解形象-V1', partnerName: '宋一鸣', type: 'appearance',
-    status: 'review', version: 'V1.0', quality: 78, authContract: '宋一鸣数字人形象授权协议',
-    usageCount: 0, lastUsed: '-', color: '#f59e0b', tags: ['专业', '讲解', '测试中'],
-  },
-  {
-    id: 'm4', name: '林音宝活力风格形象-V2', partnerName: '林音宝', type: 'appearance',
-    status: 'active', version: 'V2.0', quality: 91, authContract: '林音宝数字人形象授权协议',
-    usageCount: 28, lastUsed: '2025-09-05', color: '#a855f7', tags: ['活力', '时尚', '年轻'],
-  },
-  {
-    id: 'm5', name: '宋一鸣音色克隆-综艺风', partnerName: '宋一鸣', type: 'voice',
-    status: 'frozen', version: 'V1.5', quality: 82, authContract: '待续签',
-    usageCount: 45, lastUsed: '2024-12-20', color: '#ef4444', tags: ['综艺', '活泼', '暂停使用'],
-  },
+const modelsFor = (name: string, zh: boolean): Model[] => [
+  { id: 'look-std', kind: 'look', name: zh ? `${name} 标准形象 V3` : `${name} standard look V3`, state: 'active', quality: 94, license: zh ? '形象授权 · 至 2026-12-31' : 'Likeness license · to 2026-12-31', note: { zh: '日常 · 商务', en: 'Everyday · business' } },
+  { id: 'look-talk', kind: 'look', name: zh ? `${name} 讲解形象 V1` : `${name} presenter look V1`, state: 'review', quality: 78, license: zh ? '形象授权 · 至 2026-12-31' : 'Likeness license · to 2026-12-31', note: { zh: '模型审核中，暂不能生成', en: 'In review, not usable yet' } },
+  { id: 'voice-ip', kind: 'voice', name: zh ? `${name} 专属声线` : `${name}'s own voice`, state: 'active', quality: 97, license: zh ? '音色授权 · 至 2026-12-31' : 'Voice license · to 2026-12-31', note: { zh: '普通话 · 亲切', en: 'Mandarin · warm' } },
+  { id: 'voice-calm', kind: 'voice', name: zh ? '平台声线 · 知性女声' : 'Platform voice · calm female', state: 'active', quality: 92, license: zh ? '平台自有，无需授权' : 'Platform-owned', note: { zh: '通用旁白', en: 'General narration' } },
+  { id: 'voice-variety', kind: 'voice', name: zh ? `${name} 综艺声线 V1.5` : `${name} variety voice V1.5`, state: 'frozen', quality: 82, license: zh ? '授权已过期，待续签' : 'License expired', note: { zh: '授权过期，已冻结', en: 'Frozen: license expired' } },
+];
+const copiesFor = (name: string, zh: boolean): Copy[] => [
+  { id: 'c1', title: zh ? `${name} 新品口播` : `${name} launch talk`, excerpt: zh ? '大家好，今天给你们看一个我自己用了一个月的好东西…' : "Hi all, here's something I've used for a month…", seconds: 60, approved: true },
+  { id: 'c2', title: zh ? `${name} 日常分享` : `${name} daily share`, excerpt: zh ? '今天想和你们聊聊，我是怎么安排一天的…' : "Let me tell you how I plan my day…", seconds: 30, approved: true },
+  { id: 'c3', title: zh ? `${name} 知识讲解` : `${name} explainer`, excerpt: zh ? '很多人问我这个问题，今天一次讲清楚…' : 'People keep asking me this, so here it is…', seconds: 90, approved: true },
+  { id: 'c4', title: zh ? `${name} 大促口播（含价格）` : `${name} sale talk (with prices)`, excerpt: zh ? '今晚八点，全场直降…' : 'Tonight at 8, everything drops…', seconds: 45, approved: false },
 ];
 
-const MOCK_TASKS: GenTask[] = [
-  {
-    id: 'g1', modelId: 'm1', modelName: '宋一鸣标准形象-V3', partnerName: '宋一鸣',
-    copyTitle: '宋一鸣×极速数码618主推文案-V3', platform: 'DY', status: 'approved',
-    duration: '1:24', createdAt: '2025-06-21', assignee: '制作小王',
-    qualityScore: 92, issues: [],
-  },
-  {
-    id: 'g2', modelId: 'm4', modelName: '林音宝活力风格形象-V2', partnerName: '林音宝',
-    copyTitle: '林音宝短视频标题库-日常系列', platform: 'XHS', status: 'review',
-    duration: '0:58', createdAt: '2025-09-09', assignee: '制作小李',
-    qualityScore: 85, issues: ['口型同步度偏低'],
-  },
-  {
-    id: 'g3', modelId: 'm1', modelName: '宋一鸣标准形象-V3', partnerName: '宋一鸣',
-    copyTitle: '宋一鸣商品卖点文案-数码周', platform: 'KS', status: 'failed',
-    duration: '-', createdAt: '2025-06-10', assignee: '制作小王',
-    qualityScore: 52, issues: ['文案含风险词，生成已阻断', '文案未通过法务终审'],
-  },
-  {
-    id: 'g4', modelId: 'm2', modelName: '林音宝标准音色-普通话', partnerName: '林音宝',
-    copyTitle: '林音宝护肤产品口播稿-效果版', platform: 'DY', status: 'generating',
-    duration: '-', createdAt: '2025-09-11', assignee: '制作小李',
-    qualityScore: null, issues: [],
-  },
-];
-
-const MODEL_STATUS_CFG: Record<ModelStatus, { zh: string; color: string; bg: string; border: string; icon: React.ComponentType<any> }> = {
-  active:   { zh: '可用', color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/25', icon: CheckCircle2 },
-  training: { zh: '训练中', color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/25', icon: RefreshCw },
-  frozen:   { zh: '已冻结', color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/25', icon: Lock },
-  review:   { zh: '审核中', color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/25', icon: Clock },
-};
-
-const GEN_STATUS_CFG: Record<GenStatus, { zh: string; color: string; bg: string; border: string; icon: React.ComponentType<any> }> = {
-  generating: { zh: '生成中', color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/25', icon: RefreshCw },
-  review:     { zh: '质量审核', color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/25', icon: Eye },
-  approved:   { zh: '已通过', color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/25', icon: CheckCircle2 },
-  failed:     { zh: '生成失败', color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/25', icon: XCircle },
-  in_pool:    { zh: '已入发布池', color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/25', icon: Zap },
-};
-
-interface Props { lang: Lang; }
-
-export const DigitalPersonHub = ({ lang }: Props) => {
+export const DigitalPersonHub = ({ lang, activeArtist, onOpenPublish }: { lang: Lang; activeArtist: Artist; onOpenPublish?: () => void }) => {
   const zh = lang === 'zh';
-  const [tab, setTab] = useState<'models' | 'tasks'>('models');
-  const [modelTypeFilter, setModelTypeFilter] = useState<'all' | 'appearance' | 'voice'>('all');
-  const [selectedModel, setSelectedModel] = useState<PersonModel | null>(MOCK_MODELS[0]);
-  const [showGenModal, setShowGenModal] = useState(false);
+  const t = (v: { zh: string; en: string }) => (zh ? v.zh : v.en);
+  const name = activeArtist.name;
+  const models = useMemo(() => modelsFor(name, zh), [name, zh]);
+  const copies = useMemo(() => copiesFor(name, zh), [name, zh]);
+  const [jobs, setJobs] = useStoredList<Job>(`ai_batch_dh_v1:${activeArtist.id}`, () => [{
+    id: uid('dh'), look: 'look-std', voice: 'voice-ip', copy: 'c2', seconds: 30, ratio: '9:16', scene: 'studio', captions: true,
+    cost: PRICE.video(30), date: today(), score: 85, issue: true, startedAt: Date.now() - 3_600_000, durationMs: 8000,
+  }]);
+  const [tab, setTab] = useState<'jobs' | 'models'>('jobs');
+  const [look, setLook] = useState('look-std');
+  const [voice, setVoice] = useState('voice-ip');
+  const [copy, setCopy] = useState('c1');
+  const [ratio, setRatio] = useState('9:16');
+  const [scene, setScene] = useState('studio');
+  const [captions, setCaptions] = useState(true);
+  const [toast, say] = useToast();
 
-  const filteredModels = MOCK_MODELS.filter(m => modelTypeFilter === 'all' || m.type === modelTypeFilter);
+  const running = jobs.some(j => progressOf(j, Date.now()) < 100);
+  const now = useNow(running);
+  const chosenCopy = copies.find(c => c.id === copy);
+  const seconds = chosenCopy?.seconds ?? 30;
+  const cost = PRICE.video(seconds);
+  const usable = (id: string) => models.find(m => m.id === id)?.state === 'active';
+  const blocked = !usable(look) ? (zh ? '这个形象模型现在不能用' : 'This look is not usable')
+    : !usable(voice) ? (zh ? '这个声音模型现在不能用' : 'This voice is not usable')
+      : !chosenCopy?.approved ? (zh ? '只能使用已过审的文案' : 'Only approved copy can be used') : null;
 
-  const stats = [
-    { label: zh ? '形象模型' : 'Appearance', value: MOCK_MODELS.filter(m => m.type === 'appearance').length, color: 'text-cyan-400' },
-    { label: zh ? '声音模型' : 'Voice Models', value: MOCK_MODELS.filter(m => m.type === 'voice').length, color: 'text-purple-400' },
-    { label: zh ? '今日生成' : "Today's Gen", value: 4, color: 'text-pink-400' },
-    { label: zh ? '审核中' : 'In Review', value: MOCK_TASKS.filter(t => t.status === 'review').length, color: 'text-amber-400' },
-  ];
+  const run = (cfg: Pick<Job, 'look' | 'voice' | 'copy' | 'seconds' | 'ratio' | 'scene' | 'captions'>) => {
+    const c = PRICE.video(cfg.seconds);
+    if (!spend(c)) { say(zh ? '星币不足' : 'Not enough credits'); return; }
+    const n = jobs.length;
+    // Simulated QC: most renders pass, roughly one in three needs a lip-sync touch-up.
+    const job: Job = { ...cfg, id: uid('dh'), cost: c, date: today(), score: 86 + ((n * 7) % 10), issue: n % 3 === 1, startedAt: Date.now(), durationMs: 5000 + cfg.seconds * 60 };
+    if (job.issue) job.score = 80 + (n % 5);
+    setJobs(list => [job, ...list]);
+    setTab('jobs');
+    say(zh ? '开始生成，完成后自动做质量审核' : 'Rendering; quality review runs when done');
+  };
+  const patch = (id: string, p: Partial<Job>) => setJobs(list => list.map(j => (j.id === id ? { ...j, ...p } : j)));
+  const ok = (j: Job) => !j.issue || !!j.fixed;
+  const pool = (j: Job) => {
+    const c = copies.find(x => x.id === j.copy);
+    addToPool({
+      id: j.id, type: 'digital_person', title: `${c?.title ?? ''} · ${zh ? '数字人' : 'digital human'}`, partnerName: name, platform: 'DY', account: `@${name}`,
+      status: 'pending_review', scheduledAt: primeTimeSlot(1), preCheck: { auth: true, watermark: true, quality: true },
+      duration: `${Math.floor(j.seconds / 60)}:${String(j.seconds % 60).padStart(2, '0')}`, thumbColor: '#10b981', thumbImage: activeArtist.avatar, formats: [j.ratio],
+    });
+    patch(j.id, { pooled: true });
+    say(zh ? '已送审，在 发布中心 › 发布池 等待审核' : 'Sent to the publish pool');
+  };
+
+  const stats = useMemo(() => {
+    const done = jobs.filter(j => progressOf(j, now) >= 100);
+    return {
+      running: jobs.length - done.length,
+      today: done.filter(j => j.date === today()).length,
+      score: done.length ? Math.round(done.reduce((a, j) => a + (j.fixed ? Math.max(j.score, 90) : j.score), 0) / done.length) : 0,
+      pooled: done.filter(j => j.pooled).length,
+    };
+  }, [jobs, now]);
+
+  // A plain render function (not a component) so rows are not remounted on every progress tick.
+  const modelRow = (m: Model, on: boolean, onPick: () => void) => (
+    <button key={m.id} type="button" onClick={onPick} disabled={m.state !== 'active'} aria-pressed={on}
+      className={`flex w-full items-center gap-2.5 rounded-xl border px-3 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-55 ${on ? 'border-violet-300 bg-violet-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+      {m.kind === 'look' ? <img src={activeArtist.avatar} alt="" className="h-8 w-8 shrink-0 rounded-lg object-cover" /> : <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-500"><Mic className="h-4 w-4" /></span>}
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[13px] text-gray-900">{m.name}</span>
+        <span className="block truncate text-[11px] text-gray-500">{t(m.note)}</span>
+      </span>
+      {m.state === 'frozen' ? <Lock className="h-3.5 w-3.5 shrink-0 text-red-500" /> : m.state === 'review' ? <Pill tone="review">{zh ? '审核中' : 'Review'}</Pill> : <span className="shrink-0 text-[11px] tabular-nums text-gray-400">{m.quality}</span>}
+    </button>
+  );
+
+  const composer = (
+    <Composer icon={User} color="#059669" title={zh ? '新建数字人视频' : 'New digital-human video'} desc={zh ? `形象、声音与文案跟随当前 IP：${name}` : `Look, voice and copy follow ${name}`}
+      footer={<RunButton zh={zh} label={zh ? `生成 ${seconds} 秒口播` : `Render ${seconds}s`} cost={cost} blocked={blocked} onClick={() => run({ look, voice, copy, seconds, ratio, scene, captions })} />}>
+      <Field label={zh ? '形象模型' : 'Look'}><div className="space-y-1.5">{models.filter(m => m.kind === 'look').map(m => modelRow(m, look === m.id, () => setLook(m.id)))}</div></Field>
+      <Field label={zh ? '声音模型' : 'Voice'}><div className="space-y-1.5">{models.filter(m => m.kind === 'voice').map(m => modelRow(m, voice === m.id, () => setVoice(m.id)))}</div></Field>
+      <Field label={zh ? '文案' : 'Copy'} hint={zh ? '只能用已过审文案' : 'Approved copy only'}>
+        <div className="space-y-1.5">
+          {copies.map(c => (
+            <button key={c.id} type="button" onClick={() => setCopy(c.id)} disabled={!c.approved} aria-pressed={copy === c.id}
+              className={`w-full rounded-xl border px-3 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-55 ${copy === c.id ? 'border-violet-300 bg-violet-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+              <span className="flex items-center gap-2">
+                <FileText className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                <span className="min-w-0 flex-1 truncate text-[13px] text-gray-900">{c.title}</span>
+                <span className="shrink-0 text-[11px] text-gray-400">{c.seconds}{zh ? ' 秒' : 's'}</span>
+              </span>
+              <span className="mt-0.5 block truncate pl-5 text-[11px] text-gray-500">{c.approved ? c.excerpt : (zh ? '待法务终审，暂不能使用' : 'Awaiting legal review')}</span>
+            </button>
+          ))}
+        </div>
+      </Field>
+      <Field label={zh ? '背景' : 'Background'}><Chips options={SCENES.map(s => [s.id, t(s)] as [string, string])} value={scene} onChange={setScene} /></Field>
+      <Field label={zh ? '画幅' : 'Ratio'}><Chips options={[['9:16', '9:16'], ['16:9', '16:9'], ['1:1', '1:1']]} value={ratio} onChange={setRatio} /></Field>
+      <Check checked={captions} onChange={setCaptions} label={zh ? '自动字幕' : 'Auto captions'} />
+    </Composer>
+  );
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-            {zh ? 'AI数字人中心' : 'Digital Person Hub'}
-          </h1>
-          <p className="text-xs text-gray-500 mt-1">{zh ? '形象授权管理 · 声音克隆 · 文案驱动生成 · 质量审核' : 'Model licensing · Voice cloning · Copy-driven gen · Quality review'}</p>
-        </div>
-        <button onClick={() => setShowGenModal(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 transition">
-          <Zap className="w-3.5 h-3.5" />
-          {zh ? '新建生成任务' : 'New Generation'}
-        </button>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-4 gap-3">
-        {stats.map((s, i) => (
-          <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-            className="bg-gray-900/50 border border-white/5 rounded-xl p-4">
-            <div className="text-[10px] text-gray-500 mb-1">{s.label}</div>
-            <div className={`text-2xl font-black ${s.color}`} style={{ fontFamily: 'var(--font-display)' }}>{s.value}</div>
-          </motion.div>
-        ))}
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-2 border-b border-white/5 pb-0">
-        {(['models', 'tasks'] as const).map(t => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`px-4 py-2 text-xs font-semibold border-b-2 transition ${tab === t ? 'border-emerald-400 text-emerald-400' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>
-            {t === 'models' ? (zh ? '模型库' : 'Model Library') : (zh ? '生成任务' : 'Generation Tasks')}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'models' && (
-        <div>
-          {/* Filter */}
-          <div className="flex gap-2 mb-4">
-            {(['all', 'appearance', 'voice'] as const).map(f => (
-              <button key={f} onClick={() => setModelTypeFilter(f)}
-                className={`px-3 py-1.5 rounded-lg text-[10px] font-semibold border transition ${modelTypeFilter === f ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-white/5 text-gray-500 border-white/5 hover:border-white/15'}`}>
-                {f === 'all' ? (zh ? '全部' : 'All') : f === 'appearance' ? (zh ? '形象模型' : 'Appearance') : (zh ? '声音模型' : 'Voice')}
-              </button>
+    <ToolLayout composer={composer}>
+      <Stats items={[
+        { label: zh ? '生成中' : 'Rendering', value: stats.running, tone: '#6d28d9' },
+        { label: zh ? '今日生成' : 'Today', value: stats.today },
+        { label: zh ? '平均质量分' : 'Avg. quality', value: stats.score || '-', tone: '#047857' },
+        { label: zh ? '已入发布池' : 'In pool', value: stats.pooled, tone: '#059669' },
+      ]} />
+      <Card>
+        <SectionHead title={tab === 'jobs' ? (zh ? '生成任务' : 'Renders') : (zh ? '模型库' : 'Models')}
+          right={<div role="tablist" className="flex rounded-lg bg-gray-100 p-0.5">
+            {([['jobs', zh ? '生成任务' : 'Renders'], ['models', zh ? '模型库' : 'Models']] as const).map(([id, l]) => (
+              <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
+                className={`h-7 rounded-md px-2.5 text-[12px] font-medium ${tab === id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>{l}</button>
             ))}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-            {filteredModels.map((model, i) => {
-              const sCfg = MODEL_STATUS_CFG[model.status];
-              const SIcon = sCfg.icon;
-              return (
-                <motion.div key={model.id} initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.05 }}
-                  onClick={() => setSelectedModel(selectedModel?.id === model.id ? null : model)}
-                  className={`bg-gray-900/50 border rounded-xl p-4 cursor-pointer transition ${selectedModel?.id === model.id ? 'border-emerald-500/35 bg-emerald-500/3' : 'border-white/5 hover:border-white/15'} ${model.status === 'frozen' ? 'opacity-60' : ''}`}>
-
-                  {/* Header */}
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
-                      style={{ background: `${model.color}15`, border: `1px solid ${model.color}30` }}>
-                      {model.type === 'appearance' ? <Cpu className="w-5 h-5" style={{ color: model.color }} /> : <Mic className="w-5 h-5" style={{ color: model.color }} />}
+          </div>} />
+        {tab === 'jobs' ? (
+          jobs.length === 0 ? <Empty icon={Sparkles} title={zh ? '还没有生成任务' : 'No renders yet'} desc={zh ? '在左侧选好形象、声音和文案开始生成' : 'Pick a look, voice and copy on the left'} /> : (
+            <div className="grid gap-3 px-4 pb-4 sm:grid-cols-2 xl:grid-cols-3">
+              {jobs.map(j => {
+                const pct = progressOf(j, now);
+                const done = pct >= 100;
+                const bg = SCENES.find(s => s.id === j.scene) ?? SCENES[0];
+                const c = copies.find(x => x.id === j.copy);
+                return (
+                  <article key={j.id} className="overflow-hidden rounded-xl border border-gray-200">
+                    <div className="relative bg-slate-100" style={{ aspectRatio: j.ratio === '16:9' ? '16 / 9' : j.ratio === '1:1' ? '1 / 1' : '4 / 5' }}>
+                      <img src={bg.image} alt="" className={`h-full w-full object-cover ${done ? '' : 'blur-[2px]'}`} />
+                      <img src={activeArtist.avatar} alt="" className="absolute bottom-0 left-1/2 h-3/4 -translate-x-1/2 rounded-t-[40%] object-cover shadow-xl" style={{ aspectRatio: '3 / 4' }} />
+                      {!done && <div className="absolute inset-x-3 bottom-3 rounded-lg px-2.5 py-2" style={{ background: 'rgba(255,255,255,.88)' }}>
+                        <div className="flex justify-between text-[11px] font-medium text-gray-800"><span>{pct < 60 ? (zh ? '驱动口型与表情' : 'Driving lips & face') : (zh ? '合成声音与字幕' : 'Mixing voice & captions')}</span><span>{pct}%</span></div>
+                        <div className="mt-1"><Bar pct={pct} /></div>
+                      </div>}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-bold text-white truncate">{model.name}</div>
-                      <div className="text-[10px] text-gray-500">{model.partnerName} · {model.version}</div>
-                    </div>
-                  </div>
-
-                  {/* Status + quality */}
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className={`flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-md border ${sCfg.bg} ${sCfg.color} ${sCfg.border}`}>
-                      <SIcon className="w-2.5 h-2.5" />{zh ? sCfg.zh : model.status}
-                    </span>
-                    <span className="text-[10px] text-gray-500">{zh ? '质量分：' : 'Quality: '}<span className={`font-bold ${model.quality >= 90 ? 'text-emerald-400' : model.quality >= 75 ? 'text-amber-400' : 'text-red-400'}`}>{model.quality}</span></span>
-                  </div>
-
-                  {/* Stats */}
-                  <div className="grid grid-cols-2 gap-2 text-center mb-3">
-                    <div className="bg-black/20 rounded-lg p-2">
-                      <div className="text-xs font-bold text-white">{model.usageCount}</div>
-                      <div className="text-[9px] text-gray-600">{zh ? '使用次数' : 'Usage'}</div>
-                    </div>
-                    <div className="bg-black/20 rounded-lg p-2">
-                      <div className="text-xs font-bold text-white">{model.lastUsed}</div>
-                      <div className="text-[9px] text-gray-600">{zh ? '最近使用' : 'Last Used'}</div>
-                    </div>
-                  </div>
-
-                  {/* Tags */}
-                  <div className="flex flex-wrap gap-1">
-                    {model.tags.map(t => (
-                      <span key={t} className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 border border-white/8 text-gray-500">{t}</span>
-                    ))}
-                  </div>
-
-                  {/* Auth notice */}
-                  <div className="mt-2 text-[9px] text-gray-600 flex items-center gap-1">
-                    <Shield className="w-2.5 h-2.5 text-cyan-400" />
-                    <span className="truncate">{model.authContract}</span>
-                  </div>
-
-                  {/* Frozen warning */}
-                  {model.status === 'frozen' && (
-                    <div className="mt-2 flex items-center gap-1.5 text-[10px] text-red-400 bg-red-500/5 border border-red-500/15 rounded-lg px-2 py-1.5">
-                      <Lock className="w-3 h-3 shrink-0" />
-                      {zh ? '授权过期，模型已冻结，不可用于生成' : 'Auth expired. Model frozen.'}
-                    </div>
-                  )}
-
-                  {model.status === 'active' && (
-                    <button onClick={e => { e.stopPropagation(); setShowGenModal(true); }}
-                      className="mt-3 w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-[10px] font-bold bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 hover:bg-emerald-500/20 transition">
-                      <Zap className="w-3 h-3" />{zh ? '用此模型生成' : 'Generate with this'}
-                    </button>
-                  )}
-                </motion.div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {tab === 'tasks' && (
-        <div className="space-y-3">
-          {MOCK_TASKS.map((task, i) => {
-            const sCfg = GEN_STATUS_CFG[task.status];
-            const SIcon = sCfg.icon;
-            return (
-              <motion.div key={task.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}
-                className="bg-gray-900/50 border border-white/5 rounded-xl p-4 hover:border-white/12 transition">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center shrink-0 border border-white/8">
-                    {task.status === 'generating' ? <RefreshCw className="w-5 h-5 text-blue-400 animate-spin" /> : <Video className="w-5 h-5 text-gray-500" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className="text-xs font-bold text-white">{task.modelName}</span>
-                      <span className={`flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-md border ${sCfg.bg} ${sCfg.color} ${sCfg.border}`}>
-                        <SIcon className="w-2.5 h-2.5" />{zh ? sCfg.zh : task.status}
-                      </span>
-                    </div>
-                    <div className="text-[10px] text-gray-500 mb-1">{zh ? '文案：' : 'Copy: '}{task.copyTitle}</div>
-                    <div className="flex items-center gap-3 text-[10px] text-gray-600 flex-wrap">
-                      <span>{task.partnerName}</span>
-                      <span>{task.platform}</span>
-                      <span>{task.duration !== '-' ? task.duration : ''}</span>
-                      <span>{task.createdAt}</span>
-                      {task.qualityScore !== null && (
-                        <span className="flex items-center gap-0.5">
-                          {zh ? '质量分：' : 'Score: '}
-                          <span className={`font-bold ${task.qualityScore >= 90 ? 'text-emerald-400' : task.qualityScore >= 75 ? 'text-amber-400' : 'text-red-400'}`}>{task.qualityScore}</span>
-                        </span>
+                    <div className="space-y-2 p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="truncate text-[13px] font-medium text-gray-900">{c?.title}</div>
+                          <div className="text-[11px] text-gray-500">{j.seconds}{zh ? ' 秒' : 's'} · {j.ratio} · {t(bg)} · ⬡{j.cost}</div>
+                        </div>
+                        {done && <span className="shrink-0 text-right"><span className="block text-[18px] font-bold tabular-nums" style={{ color: ok(j) ? '#047857' : '#b45309' }}>{j.fixed ? Math.max(j.score, 90) : j.score}</span><span className="block text-[10px] text-gray-400">{zh ? '质量分' : 'Quality'}</span></span>}
+                      </div>
+                      {done && j.issue && !j.fixed && <div className="rounded-lg px-2.5 py-1.5 text-[11px]" style={{ background: '#fffbeb', color: '#92400e' }}>{zh ? '口型同步度偏低，建议精修后再发布' : 'Lip sync is a bit off; touch up before publishing'}</div>}
+                      {done && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {j.pooled ? <><Pill tone="done">{zh ? '已送审' : 'In pool'}</Pill>{onOpenPublish && <SmallButton onClick={onOpenPublish}>{zh ? '去发布池' : 'Open pool'}</SmallButton>}</>
+                            : ok(j) ? <SmallButton primary onClick={() => pool(j)}><Send className="h-3.5 w-3.5" />{zh ? '送审发布' : 'Publish'}</SmallButton>
+                              : <SmallButton onClick={() => { if (spend(LIP_FIX_PRICE)) { patch(j.id, { fixed: true }); say(zh ? '口型精修完成，复审通过' : 'Lip sync fixed'); } else say(zh ? '星币不足' : 'Not enough credits'); }}>
+                                <Wand2 className="h-3.5 w-3.5" />{zh ? '口型精修' : 'Fix lip sync'} ⬡{LIP_FIX_PRICE}
+                              </SmallButton>}
+                          <SmallButton onClick={() => run(j)} title={zh ? '用同样设置再生成一条' : 'Render again with the same settings'}><RefreshCw className="h-3.5 w-3.5" />{zh ? '再来一条' : 'Again'}</SmallButton>
+                        </div>
                       )}
                     </div>
-                    {task.issues.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {task.issues.map(issue => (
-                          <span key={issue} className="flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400">
-                            <AlertTriangle className="w-2.5 h-2.5" />{issue}
-                          </span>
-                        ))}
-                      </div>
-                    )}
+                  </article>
+                );
+              })}
+            </div>
+          )
+        ) : (
+          <div className="grid gap-3 px-4 pb-4 sm:grid-cols-2">
+            {models.map(m => (
+              <div key={m.id} className="rounded-xl border border-gray-200 p-3">
+                <div className="flex items-center gap-2.5">
+                  {m.kind === 'look' ? <img src={activeArtist.avatar} alt="" className="h-10 w-10 rounded-lg object-cover" /> : <span className="grid h-10 w-10 place-items-center rounded-lg bg-slate-100 text-slate-500"><Mic className="h-4 w-4" /></span>}
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[13px] font-medium text-gray-900">{m.name}</div>
+                    <div className="text-[11px] text-gray-500">{m.kind === 'look' ? (zh ? '形象' : 'Look') : (zh ? '声音' : 'Voice')} · {zh ? '质量' : 'Quality'} {m.quality}</div>
                   </div>
-                  <div className="flex gap-2 shrink-0">
-                    {task.status === 'approved' && (
-                      <button className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[10px] font-bold bg-purple-500/10 border border-purple-500/25 text-purple-400 hover:bg-purple-500/20 transition">
-                        <Zap className="w-3 h-3" />{zh ? '入发布池' : 'To Pool'}
-                      </button>
-                    )}
-                    {task.status !== 'generating' && (
-                      <button className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition">
-                        <Eye className="w-3.5 h-3.5 text-gray-400" />
-                      </button>
-                    )}
-                  </div>
+                  {m.state === 'active' ? <Pill tone="done">{zh ? '可用' : 'Active'}</Pill> : m.state === 'review' ? <Pill tone="review">{zh ? '审核中' : 'Review'}</Pill> : <Pill tone="failed">{zh ? '已冻结' : 'Frozen'}</Pill>}
                 </div>
-              </motion.div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* New Generation Modal */}
-      <AnimatePresence>
-        {showGenModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
-            onClick={() => setShowGenModal(false)}>
-            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
-              onClick={e => e.stopPropagation()}
-              className="bg-gray-900 border border-white/10 rounded-2xl p-6 w-full max-w-md shadow-2xl">
-              <div className="text-base font-bold mb-4">{zh ? '新建数字人生成任务' : 'New Generation Task'}</div>
-              <div className="space-y-4">
-                <div>
-                  <label className="text-[10px] text-gray-500 uppercase tracking-wider block mb-2">{zh ? '选择形象模型' : 'Appearance Model'}</label>
-                  <div className="space-y-1.5">
-                    {MOCK_MODELS.filter(m => m.type === 'appearance' && m.status === 'active').map(m => (
-                      <button key={m.id} className="w-full text-left flex items-center gap-3 p-3 rounded-xl bg-black/30 border border-white/8 hover:border-emerald-500/30 transition">
-                        <Cpu className="w-4 h-4 text-emerald-400" />
-                        <span className="text-xs text-white">{m.name}</span>
-                        <span className="ml-auto text-[10px] text-gray-600">{m.partnerName}</span>
-                      </button>
-                    ))}
-                  </div>
+                <div className={`mt-2 flex items-center gap-1.5 text-[11px] ${m.state === 'frozen' ? 'text-red-600' : 'text-gray-500'}`}>
+                  {m.state === 'frozen' ? <Lock className="h-3 w-3" /> : <ShieldCheck className="h-3 w-3 text-emerald-600" />}{m.license}
                 </div>
-                <div>
-                  <label className="text-[10px] text-gray-500 uppercase tracking-wider block mb-2">{zh ? '选择声音模型' : 'Voice Model'}</label>
-                  <div className="space-y-1.5">
-                    {MOCK_MODELS.filter(m => m.type === 'voice' && m.status === 'active').map(m => (
-                      <button key={m.id} className="w-full text-left flex items-center gap-3 p-3 rounded-xl bg-black/30 border border-white/8 hover:border-emerald-500/30 transition">
-                        <Mic className="w-4 h-4 text-purple-400" />
-                        <span className="text-xs text-white">{m.name}</span>
-                        <span className="ml-auto text-[10px] text-gray-600">{m.partnerName}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="text-[10px] text-gray-500 uppercase tracking-wider block mb-2">{zh ? '选择已审文案（必选）' : 'Select Approved Copy (Required)'}</label>
-                  <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-500/5 border border-amber-500/25">
-                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-                    <span className="text-xs text-amber-400">{zh ? '只能使用已通过三阶段审核的文案' : 'Only 3-stage approved copies allowed'}</span>
-                  </div>
-                </div>
-                <div className="flex gap-2 pt-2">
-                  <button onClick={() => setShowGenModal(false)}
-                    className="flex-1 py-2.5 rounded-xl text-xs font-bold border border-white/10 text-gray-400 hover:border-white/20 transition">
-                    {zh ? '取消' : 'Cancel'}
-                  </button>
-                  <button onClick={() => setShowGenModal(false)}
-                    className="flex-1 py-2.5 rounded-xl text-xs font-bold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25 transition">
-                    <Zap className="w-3.5 h-3.5 inline mr-1.5" />{zh ? '开始生成' : 'Start Generation'}
-                  </button>
+                <div className="mt-2.5">
+                  <SmallButton disabled={m.state !== 'active'} onClick={() => { if (m.kind === 'look') setLook(m.id); else setVoice(m.id); say(zh ? `已选用 ${m.name}` : `Using ${m.name}`); }}>
+                    {(m.kind === 'look' ? look : voice) === m.id ? <><CheckCircle2 className="h-3.5 w-3.5" />{zh ? '使用中' : 'In use'}</> : <><Cpu className="h-3.5 w-3.5" />{zh ? '用这个模型' : 'Use this'}</>}
+                  </SmallButton>
                 </div>
               </div>
-            </motion.div>
-          </motion.div>
+            ))}
+          </div>
         )}
-      </AnimatePresence>
-    </div>
+      </Card>
+      {toast}
+    </ToolLayout>
   );
 };

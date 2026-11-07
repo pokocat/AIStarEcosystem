@@ -320,6 +320,15 @@ html:not([data-layout="desktop"]) .director-episode-body { padding-left: 6px; }
 .director-sent-prompt pre { margin: 6px 0 0; padding: 10px 12px; max-height: 220px; overflow: auto; border-radius: 8px; background: var(--ip-soft);
   font-family: var(--ip-ui); font-size: 12px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ip-ink); }
 .director-used-refs { color: var(--ip-muted); font-size: 12px; overflow-wrap: anywhere; }
+.director-reference-images { margin: 12px 0; }
+.director-reference-images h4 { margin: 0 0 8px; font-size: 13px; }
+.director-reference-images ol { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
+.director-reference-images li { min-width: 0; padding: 8px; border: 1px solid var(--ip-line); border-radius: 9px; }
+.director-reference-image { position: relative; display: flex; height: 90px; align-items: center; justify-content: center; overflow: hidden; background: var(--ip-soft); border-radius: 5px; }
+.director-reference-image img { width: 100%; height: 90px; object-fit: contain; }
+.director-reference-images li>span+span { display: flex; align-items: baseline; gap: 6px; margin-top: 6px; font-size: 12px; overflow-wrap: anywhere; }
+.director-reference-images b { flex-shrink: 0; }
+.director-reference-missing { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--ip-muted); font-size: 12px; }
 .director-clip-editor { display: flex; flex-direction: column; gap: 12px; }
 .director-asset-picks { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; }
 .director-asset-picks label { display: inline-flex; align-items: center; gap: 6px; }
@@ -696,7 +705,7 @@ html[data-layout="desktop"] .director-split-source-text { flex: 1 1 auto; height
 html:not([data-layout="desktop"]) .director-clip-body { grid-template-columns: minmax(0, 1fr); }
 html:not([data-layout="desktop"]) .director-clip-media { flex-direction: row; flex-wrap: wrap; }
 html:not([data-layout="desktop"]) .director-clip-stage { width: 120px; }
-.director-video-cost { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.director-video-cost { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .director-clip-stage:has(.director-clip-stage-empty) { border-style: dashed; background: var(--ip-soft); color: var(--ip-muted); }
 .director-clip-stage:has(.director-clip-stage-empty) .director-clip-stage-tag { background: var(--ip-paper); color: var(--ip-muted); border: 1px solid var(--ip-line); }
 

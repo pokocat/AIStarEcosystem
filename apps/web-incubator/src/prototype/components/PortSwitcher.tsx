@@ -86,7 +86,7 @@ export const PortSwitcher = ({ current, lang, solution, onSwitch, onHome, raised
   };
 
   return (
-    <div className="homepage-dark">
+    <div className="keep-dark">
       <AnimatePresence>
         {open && (
           <motion.div key="backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}

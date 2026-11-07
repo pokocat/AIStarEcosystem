@@ -47,8 +47,8 @@ test('opens the library used last time, marks it, and remembers the one the user
   const onAssets = vi.fn().mockResolvedValue(undefined), onClose = vi.fn();
   render(<LibraryMediaPicker open mediaType="image" onClose={onClose} onAssets={onAssets}/>);
   await waitFor(() => expect(api.materials).toHaveBeenCalledWith(expect.objectContaining({ folder: 'f1', source: 'all', kind: 'image', page: 0 })));
-  expect(screen.getByRole('button', { name: /保湿精华.*上次用的/ }).getAttribute('aria-current')).toBe('true');
-  fireEvent.click(await screen.findByRole('button', { name: '选 主图' }));
+  expect(screen.getByRole('button', { name: /保湿精华.*上次使用/ }).getAttribute('aria-current')).toBe('true');
+  fireEvent.click(await screen.findByRole('button', { name: '选择 主图' }));
   fireEvent.click(screen.getByRole('button', { name: /巷里火锅/ }));
   await waitFor(() => expect(api.materials).toHaveBeenLastCalledWith(expect.objectContaining({ folder: 'f2' })));
   fireEvent.click(screen.getByRole('button', { name: '使用' }));
@@ -76,8 +76,8 @@ test('the 人物 tab of an image slot lists roles that have a picture, with thei
   render(<LibraryMediaPicker open mediaType="image" onClose={vi.fn()} onAssets={onAssets}/>);
   fireEvent.click(await screen.findByRole('tab', { name: '人物' }));
   await waitFor(() => expect(api.objects).toHaveBeenCalledWith(expect.objectContaining({ kind: 'character', folder: 'all' })));
-  fireEvent.click(await screen.findByRole('button', { name: '选 林夏' }));
-  expect(screen.queryByRole('button', { name: '选 没图的' })).toBeNull();
+  fireEvent.click(await screen.findByRole('button', { name: '选择 林夏' }));
+  expect(screen.queryByRole('button', { name: '选择 没图的' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '使用' }));
   await waitFor(() => expect(onAssets.mock.calls[0][0][0].metadata.libraryReference).toMatchObject({ objectId: 'o1', versionId: 'v1' }));
 });
@@ -89,11 +89,11 @@ test('an upload goes into the open library and comes back selected; 新建人物
   render(<LibraryMediaPicker open mediaType="image" upload people={false} onClose={vi.fn()} onAssets={vi.fn()}/>);
   expect(screen.queryByRole('tab', { name: '人物' })).toBeNull();
   await waitFor(() => expect(api.materials).toHaveBeenCalledWith(expect.objectContaining({ folder: 'f1' })));
-  expect(screen.getByRole('button', { name: /上传到这个库/ })).toBeDefined();
+  expect(screen.getByRole('button', { name: /上传到此资产库/ })).toBeDefined();
   const file = new File(['x'], '新图.png', { type: 'image/png' });
   fireEvent.change(screen.getByLabelText('选择要上传到资产库的文件'), { target: { files: [file] } });
   await waitFor(() => expect(api.upload).toHaveBeenCalledWith(file, 'image', 'f1'));
-  await waitFor(() => expect(screen.getByRole('button', { name: '选 新图' }).getAttribute('aria-pressed')).toBe('true'));
+  await waitFor(() => expect(screen.getByRole('button', { name: '选择 新图' }).getAttribute('aria-pressed')).toBe('true'));
   expect(screen.getByText('已选：新图')).toBeDefined();
 });
 
@@ -102,11 +102,11 @@ test('an upload never pushes the selection past max', async () => {
   api.upload.mockResolvedValue({ key: 'k/新图' });
   api.materials.mockResolvedValueOnce(page([image('a', 'f1'), image('b', 'f1')])).mockResolvedValue(page([image('a', 'f1'), image('b', 'f1'), image('新图', 'f1')]));
   render(<LibraryMediaPicker open mediaType="image" upload max={2} onClose={vi.fn()} onAssets={vi.fn()}/>);
-  fireEvent.click(await screen.findByRole('button', { name: '选 a' }));
-  fireEvent.click(screen.getByRole('button', { name: '选 b' }));
+  fireEvent.click(await screen.findByRole('button', { name: '选择 a' }));
+  fireEvent.click(screen.getByRole('button', { name: '选择 b' }));
   fireEvent.change(screen.getByLabelText('选择要上传到资产库的文件'), { target: { files: [new File(['x'], '新图.png', { type: 'image/png' })] } });
-  await waitFor(() => expect(screen.getByRole('button', { name: '选 新图' })).toBeDefined());
-  expect(screen.getByRole('button', { name: '选 新图' }).getAttribute('aria-pressed')).toBe('false');
+  await waitFor(() => expect(screen.getByRole('button', { name: '选择 新图' })).toBeDefined());
+  expect(screen.getByRole('button', { name: '选择 新图' }).getAttribute('aria-pressed')).toBe('false');
   expect(screen.getByText('已选 2 个')).toBeDefined();
 });
 
@@ -120,7 +120,7 @@ test('recording in an audio slot is stored in the current library and selected f
   fireEvent.click(screen.getByRole('button', { name: '录音' }));
   fireEvent.click(screen.getByRole('button', { name: '保存测试录音' }));
   await waitFor(() => expect(api.upload).toHaveBeenCalledWith(expect.objectContaining({ name: '旁白.wav' }), 'audio', 'f2'));
-  await waitFor(() => expect(screen.getByRole('button', { name: '选 旁白' }).getAttribute('aria-pressed')).toBe('true'));
+  await waitFor(() => expect(screen.getByRole('button', { name: '选择 旁白' }).getAttribute('aria-pressed')).toBe('true'));
   expect(screen.getByText('已选：旁白')).toBeDefined();
 });
 

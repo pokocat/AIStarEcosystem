@@ -24,11 +24,21 @@ export function studioLinkedText(node:CanvasNodeData) {
   return studio?.scriptEditor?.draft ?? studio?.scriptMarkdown ?? (studio?.script?studioScriptPrompt(studio.script,'当前剧本'):node.metadata?.content||'');
 }
 
-/** Text edges are actual prompt inputs, not just decorations. Accepted requests keep this snapshot. */
+const withoutSpace=(text:string)=>text.replace(/\s+/g,'');
+
+/**
+ * Text edges are actual prompt inputs, not just decorations. Accepted requests keep this snapshot.
+ * Text the prompt already contains is not quoted again: a script filled into the prompt and also linked went out twice,
+ * and every spoken line with it (2026-11-06). The server drops such blocks by the same rule (H3PromptRewrite#withoutRepeatedQuotes).
+ */
 export function withStudioLinkedText(prompt:string, targetId:string|undefined, nodes:CanvasNodeData[], connections:CanvasConnection[], excludedId?:string) {
   if(!targetId)return prompt;
+  const seen=[withoutSpace(prompt)];
   const blocks=studioLinkedNodes(targetId,nodes,connections).filter(n=>n.id!==excludedId).flatMap(n=>{
-    const text=studioLinkedText(n).trim();return text?[`【引用文本：${n.title}】\n${text}`]:[];
+    const text=studioLinkedText(n).trim();
+    if(!text||seen.some(known=>known.includes(withoutSpace(text))))return [];
+    seen.push(withoutSpace(text));
+    return [`【引用文本：${n.title}】\n${text}`];
   });
   return blocks.length?`${prompt.trim()}\n\n${blocks.join('\n\n')}`:prompt;
 }
@@ -48,10 +58,10 @@ export function studioLinkedInputError(targetId:string|undefined, nodes:CanvasNo
   for(const node of studioLinkedNodes(targetId,nodes,connections)) {
     const input=node.metadata?.studio?.templateInput, label=input?.label||node.title;
     if(node.type===CanvasNodeType.Image && !(node.metadata?.storageKey||node.metadata?.studio?.adoption?.storageKey))
-      return `请先为「${label}」添加或生成图片`;
+      return `请为「${label}」添加或生成图片`;
     if(node.type===CanvasNodeType.Text && input) {
       const text=studioLinkedText(node).trim();
-      if(input.required&&!text)return `请先填写「${label}」`;
+      if(input.required&&!text)return `请填写「${label}」`;
       if(text&&input.options&&!input.options.includes(text))return `「${label}」请选择：${input.options.join('、')}`;
     }
   }

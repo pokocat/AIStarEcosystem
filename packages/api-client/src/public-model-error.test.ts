@@ -55,9 +55,18 @@ test('old records in supplier or technical wording read as our own sentence and 
     .toBe('参考视频要 2–15 秒，请调整后再试 · 追查号 JVNLY9US3XJT');
   expect(publicModelErrorMessage('生成服务没有返回有效的任务信息，本次生成失败。未完成部分的冻结积分已退回，你可以重新生成。 错误原因：UpstreamCallException', 'STUDIO_IMAGE_SUBMISSION_UNKNOWN'))
     .toBe('生成服务没有返回结果，这次生成失败。未完成部分的积分已退回，可以重新生成。');
-  expect(publicModelErrorMessage('resource not found', 'AI_CALL_FAILED')).toBe('生成服务未能完成这次请求，请稍后再试或换一个模型。');
+  expect(publicModelErrorMessage('resource not found', 'AI_CALL_FAILED')).toBe('生成服务未能完成本次请求，请重试或更换模型。');
+  expect(publicModelErrorMessage('生成服务暂时不可用，请稍后再试或联系平台处理。', 'STUDIO_VIDEO_FAILED')).toBe('生成服务暂时不可用，请稍后重试。');
   expect(publicModelErrorMessage('图片结果下载失败（上游 500）', 'STUDIO_IMAGE_PROVIDER_FAILED')).toBe('图片结果下载失败');
   expect(publicModelErrorMessage('这张画布不存在，或者已经删了', 'IP_PROJECT_NOT_FOUND')).toBe('这张画布不存在，或者已经删了');
+});
+
+test('a model chatting, supplier logic and our own code prefix read as a retry and keep the lookup number', () => {
+  const retry = '生成服务未能完成本次请求，请重试或更换模型。';
+  expect(publicModelErrorMessage('图片生成服务返回错误：我目前无法在此对话中直接生成图片，但可以帮你整理 · 追查号 ABCDEF234567', 'STUDIO_IMAGE_PROVIDER_FAILED')).toBe(`${retry} · 追查号 ABCDEF234567`);
+  expect(publicModelErrorMessage('当前生图模式不接受参考图或蒙版，请使用图片编辑接口', 'DAP_MODEL_HTTP_400')).toBe(retry);
+  expect(publicModelErrorMessage('VIDEO_MIRROR_FAILED：视频生成好了，但没能存进我方存储（oss down）')).toBe(retry);
+  expect(publicModelErrorMessage('InternalServiceError', 'VIDEO_PROVIDER_INTERNAL')).toBe(retry);
 });
 
 test('our own Chinese sentence that mentions an API Key is left alone', () => {

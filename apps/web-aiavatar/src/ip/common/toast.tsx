@@ -38,7 +38,7 @@ export function useToast(): ToastApi {
 const TONE: Record<Tone, { accent: string; tint: string; label: string; Icon: typeof Info }> = {
   info: { accent: "#3B6CB7", tint: "#EEF3FB", label: "提示", Icon: Info },
   ok:   { accent: "#12A150", tint: "#ECF8F1", label: "完成", Icon: CheckCircle2 },
-  warn: { accent: "#C2410C", tint: "#FDF1EA", label: "没成功", Icon: AlertTriangle },
+  warn: { accent: "#C2410C", tint: "#FDF1EA", label: "失败", Icon: AlertTriangle },
 };
 
 const SHOW_MS = 5200;

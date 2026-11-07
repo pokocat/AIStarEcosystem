@@ -39,8 +39,8 @@ const SAVE_LABEL: Record<string, string> = {
   dirty: "未保存",
   saving: "保存中",
   saved: "已保存",
-  failed: "没保存上，改动还在本地",
-  conflict: "别处改过了，这里的改动没存上",
+  failed: "保存失败，改动仍在此页面",
+  conflict: "保存冲突，此页面的改动未保存",
 };
 
 function Host({ projectId }: { projectId: string }) {
@@ -55,7 +55,7 @@ function Host({ projectId }: { projectId: string }) {
   const [conflictOpen, setConflictOpen] = React.useState(false);
   React.useEffect(() => { setConflictOpen(saveState === "conflict"); }, [saveState]);
   // 别的标签页存了新版、这里没改过东西 → 已经悄悄换成最新内容了，轻轻说一声就够
-  React.useEffect(() => { if (remoteRefreshes > 0) message.info("这张画布在别的窗口改过了，已经换成最新内容"); }, [remoteRefreshes, message]);
+  React.useEffect(() => { if (remoteRefreshes > 0) message.info("此画布已在其他窗口修改，已加载最新版本"); }, [remoteRefreshes, message]);
 
   // 2026-11-04：运营与超级管理员都能把本人画布发布为官方模板。
   // operatorRole 是账号上的内嵌运营角色（InAppOperatorGuard 判的也是它）。
@@ -82,7 +82,7 @@ function Host({ projectId }: { projectId: string }) {
       void saveNow().then((outcome) => {
         // 冲突：直接把选出路的弹窗打开，别再弹一条「请先处理保存问题」让人自己找
         if (outcome === "conflict") { setConflictOpen(true); leaving = false; }
-        else if (outcome === "failed") { message.error("画布尚未保存，已留在当前页面，请先处理保存问题"); leaving = false; }
+        else if (outcome === "failed") { message.error("画布尚未保存，已留在当前页面。请重试保存后离开。"); leaving = false; }
         else window.location.assign(dest.href);
       }).catch((e) => { message.error(e); leaving = false; });
     };
@@ -121,8 +121,8 @@ function Host({ projectId }: { projectId: string }) {
   React.useEffect(() => {
     setModelsUnavailableHandler(() => {
       message.error({ code: serverModelsLoaded() ? "STUDIO_MODEL_NOT_CONFIGURED" : "STUDIO_MODELS_UNAVAILABLE", message: serverModelsLoaded()
-          ? "平台还没配可用的模型，现在生成不了。找管理员在后台加一个。"
-          : "模型列表没加载上，刷新页面再试" });
+          ? "平台暂无可用模型，暂时无法生成。请联系管理员配置。"
+          : "模型列表加载失败，请稍后刷新重试。" });
     });
     return () => setModelsUnavailableHandler(null);
   }, [message]);
@@ -145,7 +145,7 @@ function Host({ projectId }: { projectId: string }) {
             title="完整保存画布和素材，所有用户都能查看"
           >
             <BadgeCheck aria-hidden="true" />
-            存为官方内容
+            保存为官方内容
           </button>
         )}
       </div>}>
@@ -167,7 +167,7 @@ function Host({ projectId }: { projectId: string }) {
           onClick={() => setConflictOpen(true)}
           className="h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-bold transition hover:brightness-95 whitespace-nowrap"
           style={{ background: "var(--err)", color: "var(--on-action)" }}
-          title="选一种处理方式：另存一份 / 换成最新内容 / 以这里为准"
+          title="选择处理方式：另存为新画布 / 加载最新版本 / 保留此页改动"
         >
           <AlertCircle className="w-3.5 h-3.5" />
           处理冲突
@@ -180,7 +180,7 @@ function Host({ projectId }: { projectId: string }) {
           onClick={() => void retrySave()}
           className="studio-host-save h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-bold transition hover:brightness-95 whitespace-nowrap"
           style={{ background: "var(--err-soft)", color: "var(--err)" }}
-          title="再存一次。改动还在这个页面上，先别关"
+          title="重新保存。改动仍在此页面，请勿关闭。"
         >
           <RefreshCw className="w-3.5 h-3.5" />
           重试保存
@@ -192,10 +192,10 @@ function Host({ projectId }: { projectId: string }) {
           href={`/assets/${publishedAvatarId}`}
           className="studio-host-publish h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-bold transition hover:brightness-95 max-w-[220px]"
           style={{ background: "var(--ok-soft)", color: "var(--ok)" }}
-          title={`已发布为 ${publishedAvatarId}，点开去资产库看`}
+          title="已发布，点击在资产中查看"
         >
           <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-          <span className="truncate">已发布 · {publishedAvatarId}</span>
+          <span className="truncate">已发布 · 查看资产</span>
         </a>
       ) : (
         <button
@@ -224,7 +224,7 @@ function Host({ projectId }: { projectId: string }) {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-3 px-8 text-center">
         <AlertCircle className="w-6 h-6" style={{ color: "var(--err)" }} />
-        <p className="text-[13px] max-w-sm" style={{ color: "var(--ink-2)" }}>画布暂时无法打开</p>
+        <p className="text-[13px] max-w-sm" style={{ color: "var(--ink-2)" }}>画布加载失败</p>
         <StudioErrorNotice error={error}/>
         <button
           onClick={() => window.location.reload()}
@@ -247,7 +247,7 @@ function Host({ projectId }: { projectId: string }) {
         open={conflictOpen}
         onClose={() => setConflictOpen(false)}
         resolve={resolveConflict}
-        onCopySaved={(copyId) => message.success({ content: <span>这里的改动已另存为新画布，<a href={`/projects/${copyId}`} target="_blank" rel="noreferrer">打开看看</a></span>, duration: 8 })}
+        onCopySaved={(copyId) => message.success({ content: <span>此页面的改动已另存为新画布，<a href={`/projects/${copyId}`} target="_blank" rel="noreferrer">打开</a></span>, duration: 8 })}
       />
       {templateOpen && <StudioTemplatePublish projectId={projectId} canPublishOfficial={isOperator} initialVisibility={templateVisibility} saveNow={saveNow} onClose={()=>setTemplateOpen(false)}/>}
 

@@ -200,7 +200,7 @@ public class DapWorkflowService {
             throw BusinessException.badRequest("DAP_NO_FILES", "未收到精调结果图");
         }
         if (file.getSize() > REFINE_MAX_BYTES) {
-            throw BusinessException.badRequest("DAP_IMAGE_TOO_LARGE", "精调结果图过大（上限 15MB）");
+            throw BusinessException.badRequest("DAP_IMAGE_TOO_LARGE", "精调结果图过大（上限 15 MB）");
         }
         String ct = file.getContentType();
         if (ct == null || !ct.toLowerCase().startsWith("image/")) {
@@ -254,7 +254,7 @@ public class DapWorkflowService {
     public LookDto createLook(String userId, String avatarId, CreateLookRequest req) {
         DapAvatar a = avatarService.required(userId, avatarId);
         if (a.getImageKey() == null) {
-            throw BusinessException.badRequest("DAP_NO_IMAGE", "数字人还没有定妆形象，先完成创建再设计造型");
+            throw BusinessException.badRequest("DAP_NO_IMAGE", "数字人还没有定妆形象，请完成创建后设计造型");
         }
         boolean hasPrompt = req.prompt() != null && !req.prompt().isBlank();
         boolean hasScene = req.sceneId() != null && !req.sceneId().isBlank();
@@ -304,7 +304,7 @@ public class DapWorkflowService {
             throw BusinessException.badRequest("DAP_BAD_DERIV", "未知衍生类型：" + derivKey);
         }
         if (a.getImageKey() == null) {
-            throw BusinessException.badRequest("DAP_NO_IMAGE", "数字人还没有定妆形象，先完成创建再生成衍生");
+            throw BusinessException.badRequest("DAP_NO_IMAGE", "数字人还没有定妆形象，请完成创建后生成衍生");
         }
         Object st = a.derivOrEmpty().get(key);
         if ("running".equals(st)) {

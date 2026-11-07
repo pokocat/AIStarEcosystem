@@ -23,12 +23,12 @@ export function ClipVideo({ work, clip, quote, apply, setError, onBoard, setting
   // promptChoice：优化稿有提示时用户的选择，或随时「按原文生成」（不拦人，2026-10-26 用户定）。
   const generate = (promptChoice?: "optimized" | "original") => void run("video", async () => {
     const latest = (await DirectorApi.quote(work.id, [clip.id])).items[0];
-    if (latest?.error || latest?.credits == null) throw new Error(latest?.error || "该片段暂不能生成视频");
+    if (latest?.error || latest?.credits == null) throw new Error(latest?.error || "此片段暂无法生成视频");
     const billing = await chooseDirectorBilling("video", latest.credits);
     apply(await DirectorApi.runTask(work.id, { type: "video", targetId: clip.id, clientRequestId: newRequestId(), billing, maxCost: latest.credits,
       ...(promptChoice ? { options: { promptChoice } } : {}) }));
   }, failed(setError, `生成片段 ${clip.order} 的视频`));
-  // 重新优化：只重新改写提示词，完成后停在新稿上等你选，不接着生成视频；按实际用量另扣少量积分。
+  // 重新优化：只重新改写提示词，完成后停在新稿上等你选，不接着生成视频；优化提示词按实际用量另计。
   const reoptimize = () => void run("rewrite", async () => {
     const billing = await chooseDirectorBilling("text");
     apply(await DirectorApi.runTask(work.id, { type: "video-prompt", targetId: clip.id, clientRequestId: newRequestId(), billing }));
@@ -38,11 +38,12 @@ export function ClipVideo({ work, clip, quote, apply, setError, onBoard, setting
   const review = rewrite === "review";
   const frame = work.videoLimits?.mode === "frame";
   const voiceBlocked = frame && (clip.voiced?.length ?? 0) > 0 && !clip.videoWithoutVoice;
-  const reason = clip.issues.length ? "先处理上面标出的问题" : !clip.board.adoptedId ? "请先生成分镜图" : !boardReady ? "请先确认分镜图" : quote?.error ?? (voiceBlocked ? "请先选择不带声音参考" : "");
+  const reason = clip.issues.length ? "请先处理上方标出的问题" : !clip.board.adoptedId ? "请先生成分镜图" : !boardReady ? "请先确认分镜图" : quote?.error ?? (voiceBlocked ? "请先选择不带声音参考" : "");
+  const priceText = quote?.credits != null ? `${clip.durationSec} 秒，${costText(quote.credits, work.pricing.mock)}${rewrite === "needed" ? "。优化提示词按实际用量另计。" : rewrite === "original" ? "，按原文生成" : ""}` : "";
   const setVoiceMode = (withoutVoice: boolean) => void run("voice", async () => apply(await DirectorApi.edit(work.id, "clip.setVoiceMode", clip.id, null, { withoutVoice })), failed(setError, withoutVoice ? `设置片段 ${clip.order} 不带声音参考` : `恢复片段 ${clip.order} 的声音参考`));
   return <div className="director-video">
-    {rewriting && !pending && <Spinner label={rewriting.draftOnly ? "正在重新优化提示词，好了之后由你决定用哪一份" : "正在优化提示词，完成后自动开始生成视频"}/>}
-    {(pending || fixtureRun) && <Spinner label={pending ? `视频生成中：${pending.stage}${pending.pct ? ` ${pending.pct}%` : ""}。约需数分钟，关闭页面不中断` : "视频生成中"}/>}
+    {rewriting && !pending && <Spinner label={rewriting.draftOnly ? "正在重新优化提示词，完成后可选择使用哪一份" : "正在优化提示词，完成后自动开始生成视频"}/>}
+    {(pending || fixtureRun) && <Spinner label={pending ? `视频生成中：${pending.stage}${pending.pct ? ` ${pending.pct}%` : ""}。通常需要几分钟，关闭页面不影响生成` : "视频生成中"}/>}
     {frame && (clip.voiced?.length ?? 0) > 0 && <div className="director-voice-warn">
       <AlertTriangle size={13}/>
       <span>当前视频模型不支持声音参考，{clip.voiced!.join("、")} 的声音本次不使用，声音绑定保留。</span>
@@ -51,12 +52,12 @@ export function ClipVideo({ work, clip, quote, apply, setError, onBoard, setting
     {!frame && (clip.unvoiced?.length ?? 0) > 0 && <p className="director-voice-warn"><AlertTriangle size={13}/>{clip.unvoiced.join("、")} 未绑定声音，各片段音色可能不一致。可在「资产」中绑定。</p>}
     <InlineError message={clip.video.error?.message}/>
     {review && !rewriting && !pending && <div className="director-prompt-review" role="group" aria-label="优化稿待确认">
-      <strong><AlertTriangle size={13}/>{draftTooLong ? "优化稿太长，视频模型收不下" : "优化稿有需要留意的地方"}</strong>
+      <strong><AlertTriangle size={13}/>{draftTooLong ? "优化稿过长，超出视频模型限制" : "优化稿有需要注意的问题"}</strong>
       {!!clip.videoPromptEn?.warnings?.length && <ul>{clip.videoPromptEn.warnings.map(w => <li key={w}>{w}</li>)}</ul>}
       <div className="director-card-actions">
         {!draftTooLong && <button type="button" className="ip-brand-button" disabled={!!busy || !!reason} onClick={() => generate("optimized")}>用优化稿生成</button>}
         <button type="button" className="ip-brand-secondary" disabled={!!busy || !!reason} onClick={() => generate("original")}>用原文生成</button>
-        <button type="button" className="ip-brand-text-button" disabled={!!busy || !!reason} title="重新改写一版提示词，只出稿、不生成视频，按实际用量另扣少量积分" onClick={reoptimize}>重新优化</button>
+        <button type="button" className="ip-brand-text-button" disabled={!!busy || !!reason} title="只改写提示词，不生成视频。优化提示词按实际用量另计。" onClick={reoptimize}>重新优化</button>
       </div>
     </div>}
     {current?.promptUsed && <p className="director-sent-prompt-note">{promptUsedText(current)}</p>}
@@ -64,27 +65,27 @@ export function ClipVideo({ work, clip, quote, apply, setError, onBoard, setting
     <div className="director-card-actions director-video-actions">
       {settings && <span className="director-video-settings" title={settings}>{settings}</span>}
       <span className="director-spacer"/>
-      {onBoard && <button type="button" className="ip-brand-button" onClick={onBoard}>{!clip.board.adoptedId ? "去生成分镜图" : "确认分镜图"}</button>}
+      {onBoard && <button type="button" className="ip-brand-button" onClick={onBoard}>{!clip.board.adoptedId ? "生成分镜图" : "确认分镜图"}</button>}
       {clip.video.adoptedBy === "auto" && <button type="button" className="ip-brand-button" disabled={!!busy} onClick={() => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "clip.confirmVideo", clip.id, null)), failed(setError, `确认片段 ${clip.order} 的视频`))}><Check size={14}/>确认使用</button>}
       {(rewrite === "needed" || rewrite === "ready") && <button type="button" className="ip-brand-text-button" disabled={!!busy || !!pending || !!fixtureRun || !!rewriting || !!reason}
-        title="不优化，直接把中文提示词发给视频模型" onClick={() => generate("original")}>按原文生成</button>}
+        title="不优化，直接将中文提示词发送给视频模型" onClick={() => generate("original")}>按原文生成</button>}
       {rewrite === "original" && (draftTooLong
         ? <button type="button" className="ip-brand-text-button" disabled={!!busy || !!pending || !!fixtureRun || !!rewriting || !!reason}
-            title="上一份优化稿太长用不了。重新改写一版，只出稿、不生成视频，按实际用量另扣少量积分" onClick={reoptimize}>重新优化</button>
+            title="上一份优化稿过长，无法使用。只改写提示词，不生成视频。优化提示词按实际用量另计。" onClick={reoptimize}>重新优化</button>
         : <button type="button" className="ip-brand-text-button" disabled={!!busy || !!pending || !!fixtureRun || !!rewriting || !!reason}
-            title="先按 H3 官方写法优化提示词再生成，会额外消耗少量积分" onClick={() => generate("optimized")}>改回智能优化</button>)}
+            title="按 H3 官方写法优化提示词后生成视频。优化提示词按实际用量另计。" onClick={() => generate("optimized")}>改回智能优化</button>)}
       <button type="button" className={current || onBoard ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy || !!pending || !!fixtureRun || !!rewriting || !!reason || review} onClick={() => generate()}>
         <Wand2 size={14}/>{clip.video.candidates.length ? "重新生成视频" : "生成片段视频"}</button>
-      <span className="director-cost director-video-cost" title={reason || (current?.refs?.length ? `参考：${current.refs.map(r => `${r.label} ${r.name}`).join("、")}` : undefined)}>{reason || (quote?.credits != null ? `${clip.durationSec} 秒，${costText(quote.credits, work.pricing.mock)}${rewrite === "needed" ? "，另需少量积分优化提示词" : rewrite === "original" ? "，按原文生成" : ""}` : "报价中…")}</span>
+      <span className="director-cost director-video-cost" title={reason || [priceText, current?.refs?.length ? `参考：${current.refs.map(r => `${r.label} ${r.name}`).join("、")}` : ""].filter(Boolean).join("\n") || undefined}>{reason || priceText || "报价中…"}</span>
     </div>
   </div>;
 }
 
 /** 当前这条视频用的是哪份提示词：提交时记下的，不按片段现在的状态推。花费是那份优化稿的，同一份稿出多条视频只扣过一次。 */
 export function promptUsedText(v: { promptUsed?: "optimized" | "original"; promptReason?: string; rewriteCost?: number }): string {
-  const why = v.promptReason === "too_long" ? "（优化稿太长，没用上）" : v.promptReason === "rewrite_failed" ? "（优化没成功）" : v.promptReason === "user" ? "（你选的）" : "";
-  const head = v.promptUsed === "optimized" ? "这条视频用的是优化后的提示词" : `这条视频用的是中文原文${why}`;
-  return v.rewriteCost ? `${head}，这份优化稿花了 ${v.rewriteCost.toLocaleString()} 积分` : head;
+  const why = v.promptReason === "too_long" ? "（优化稿过长，未使用）" : v.promptReason === "rewrite_failed" ? "（优化失败）" : v.promptReason === "user" ? "（手动选择）" : "";
+  const head = v.promptUsed === "optimized" ? "此视频使用优化后的提示词" : `此视频使用中文原文提示词${why}`;
+  return v.rewriteCost ? `${head}，优化消耗 ${v.rewriteCost.toLocaleString()} 积分` : head;
 }
 
 /** 本集成片：按片段顺序连播已采用的视频，缺的段明确标出；整集导出按当时采用的版本合成。 */
@@ -110,6 +111,7 @@ export function EpisodeOutput({ work, ep, apply, setError }: { work: DirectorWor
       <button type="button" className="ip-brand-button" disabled={!!busy || !!exportReason}
         title={exportReason ? `${exportReason}。导出免费。` : outdated.length ? `${outdated.join("、")} 的视频需更新。导出将使用当前版本，如需新设置请先重新生成并采用。` : "导出免费"} onClick={exportNow}><Film size={14}/>导出整集</button>}
     {!exportReason && outdated.length > 0 && <span className="director-output-warn" title={`${outdated.join("、")} 的视频需更新。导出将使用当前版本，如需新设置请先重新生成并采用。`}><AlertTriangle size={13}/>含需更新视频</span>}
+    {exportReason && !exporting && <span className="director-output-count" title={exportReason}>{missing.length ? `${missing.length} 个片段缺少视频` : `${unconfirmed.length} 个片段的视频待确认`}</span>}
     {latest && <button type="button" className="director-output-toggle" aria-expanded={showExports} onClick={() => setShowExports(s => !s)}>导出记录 {exports.length}<ChevronDown size={13}/></button>}
     {showExports && <ul className="director-exports">{exports.slice(0, 5).map(e => {
       const stale = e.status === "done" && (e.clips.length !== clips.length || e.clips.some(x => clips.find(c => c.id === x.clipId)?.video.adoptedId !== x.candidateId));

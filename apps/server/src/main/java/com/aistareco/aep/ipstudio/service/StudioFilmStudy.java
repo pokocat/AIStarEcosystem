@@ -148,7 +148,7 @@ public final class StudioFilmStudy {
         for(JsonNode segment:conflicts)items.addObject().put("no",segment.path("no").asInt()).put("startSec",segment.path("startSec").asDouble())
                 .put("endSec",segment.path("endSec").asDouble()).put("durationSec",segment.path("durationSec").asDouble(segment.path("endSec").asDouble()-segment.path("startSec").asDouble()));
         return new BusinessException(org.springframework.http.HttpStatus.BAD_REQUEST,"STUDIO_SEGMENT_TOO_LONG",
-                "原片 "+seconds(duration)+" 秒，按每段不超过 "+seconds(cap.maxSegmentSec())+" 秒最多分 "+cap.maxSegments()+" 段放不下，请先剪短原片或换支持更长时长的视频模型",details);
+                "原片 "+seconds(duration)+" 秒，按每段不超过 "+seconds(cap.maxSegmentSec())+" 秒最多分 "+cap.maxSegments()+" 段，超出上限。请先剪短原片或更换支持更长时长的视频模型",details);
     }
     private static String seconds(double value) {return value==Math.rint(value)?String.valueOf((long)value):String.format(Locale.ROOT,"%.1f",value);}
     static List<Double> validEnds(JsonNode plan,double duration) {

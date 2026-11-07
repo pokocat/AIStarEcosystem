@@ -16,16 +16,16 @@ describe("按脚本出片时素材怎么交给模型", () => {
     const plan = sceneVideoInputs(model([mode("t2v"), reference]), [m("a"), m("b"), m("c"), m("v", "audio")]);
     expect(plan.spec.mode).toBe("universal_reference_video");
     expect(plan.used.map(u => u.key)).toEqual(["a", "b", "v"]);
-    expect(plan.note).toContain("最多用 2 张图");
+    expect(plan.note).toContain("最多使用 2 张图片");
   });
   test("只能看首帧的模型用第一张图；声音用不上也要说", () => {
     const plan = sceneVideoInputs(model([mode("t2v"), firstFrame]), [m("a"), m("v", "audio")]);
     expect(plan.spec.mode).toBe("i2v");
     expect(plan.used.map(u => u.key)).toEqual(["a"]);
-    expect(plan.note).toBe("这个模型只用第一张图做开头画面，声音不会用上");
+    expect(plan.note).toBe("当前模型仅使用第一张图片作为首帧，不使用声音");
   });
   test("不看素材的模型只按脚本出，并且说清楚；没有素材时不多嘴", () => {
-    expect(sceneVideoInputs(model([mode("t2v")]), [m("a")])).toMatchObject({ used: [], note: "这个模型不看参考素材，只按脚本生成" });
+    expect(sceneVideoInputs(model([mode("t2v")]), [m("a")])).toMatchObject({ used: [], note: "当前模型不使用参考素材，仅按脚本生成" });
     expect(sceneVideoInputs(model([mode("t2v"), reference]), []).note).toBeUndefined();
   });
   test("会改写描述的模型（H3）由我们先按它的写法优化再出片", () => {

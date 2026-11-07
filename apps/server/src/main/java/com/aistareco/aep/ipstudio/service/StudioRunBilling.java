@@ -29,7 +29,7 @@ final class StudioRunBilling {
         boolean enterprise=requested!=null&&"enterprise".equals(requested.mode());
         if(enterprise != (run.getEnterpriseId()!=null)
                 || enterprise&&!Objects.equals(run.getEnterpriseId(),requested.enterpriseId()))
-            throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","同一请求的付款账户已改变，请重新提交");
+            throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","请求已失效，请刷新页面后重试");
     }
     static com.aistareco.aep.billing.service.ModelBillingApproval approval(IpRun run,com.fasterxml.jackson.databind.ObjectMapper mapper) {
         try {

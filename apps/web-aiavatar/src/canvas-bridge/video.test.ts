@@ -137,7 +137,7 @@ describe("native video from a node: the user's text choice and the frame questio
     const beforeSubmit=vi.fn(async()=>{});
     await expect(createVideoGenerationTask(t2v,"图1作为首帧，图2作为尾帧",[],{nodeId:"v",beforeSubmit})).rejects.toBeInstanceOf(VideoFramesNotBound);
     const declined=vi.fn(async()=>false);
-    await expect(createVideoGenerationTask(t2v,"图1作为首帧，图2作为尾帧",[],{nodeId:"v",beforeSubmit,confirmFrames:declined})).rejects.toThrow("这次没有提交");
+    await expect(createVideoGenerationTask(t2v,"图1作为首帧，图2作为尾帧",[],{nodeId:"v",beforeSubmit,confirmFrames:declined})).rejects.toThrow("本次未提交");
     expect(declined.mock.calls[0][0]).toMatchObject({mentions:["图1","图2","首帧","尾帧"],first:true,last:true,needed:2,bound:0});
     expect(beforeSubmit).not.toHaveBeenCalled();expect(submitStudioMock).not.toHaveBeenCalled();expect(generateVideoMock).not.toHaveBeenCalled();
     const confirmed=vi.fn(async()=>true);
@@ -234,7 +234,7 @@ describe("哪些错误代表「这条任务已经结束了」", () => {
   // （轮询这一下没成功）、用户取消 = 不是，任务号要留着。
   it("只有服务端明确说失败才算结束", () => {
     expect(isVideoTaskFailed(new VideoTaskFailed("视频生成失败，积分已退回"))).toBe(true);
-    expect(isVideoTaskFailed(new Error("等太久了（任务号 mvj_1）"))).toBe(false);
+    expect(isVideoTaskFailed(new Error("等待超时（任务号 mvj_1）"))).toBe(false);
     expect(isVideoTaskFailed(new TypeError("Failed to fetch"))).toBe(false);
     expect(isVideoTaskFailed(new GenerationCanceled())).toBe(false);
   });

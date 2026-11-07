@@ -69,3 +69,11 @@ test("the script text stays folded next time this work is opened", () => {
   expect(screen.queryByRole("textbox", { name: "剧本正文" })).toBeNull();
   window.localStorage.clear();
 });
+
+test("when the script cannot be regenerated the reason is visible next to the disabled button", () => {
+  const ep = { id: "e1", no: 1, title: "第一集", summary: "", content: "第一集正文", extracted: false, planStale: false, planError: null, pendingPlan: null, rev: 0 };
+  const clip = { id: "c1", episodeId: "e1", board: { candidates: [{ id: "b" }], adoptedId: "b" }, video: { candidates: [], adoptedId: null } };
+  render(<DirectorScript {...props} work={work({ draft: "", episodes: [ep], clips: [clip] as never })}/>);
+  expect(screen.getByRole("button", { name: /重新生成剧本/ })).toHaveProperty("disabled", true);
+  expect(screen.getByText("请先删除已有分镜图或视频的片段")).toBeTruthy();
+});

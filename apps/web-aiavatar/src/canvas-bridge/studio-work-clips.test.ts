@@ -76,17 +76,17 @@ test("length comes from the adopted take, then the upload probe, then the node",
 });
 
 test("letterbox hints follow the server's 2% ratio tolerance", () => {
-  expect(studioRatioHint(1280, 720, "9:16")).toBe("横屏画面，成片里上下会留黑边");
-  expect(studioRatioHint(720, 1280, "16:9")).toBe("竖屏画面，成片里左右会留黑边");
+  expect(studioRatioHint(1280, 720, "9:16")).toBe("横屏画面，成片上下将留黑边");
+  expect(studioRatioHint(720, 1280, "16:9")).toBe("竖屏画面，成片左右将留黑边");
   expect(studioRatioHint(768, 1344, "9:16")).toBeUndefined();
   expect(studioRatioHint(undefined, undefined, "9:16")).toBeUndefined();
 });
 
 test("caption problems match what the server rejects, said before assembling", () => {
   expect(studioCaptionTemplate([6, 5, 4])).toBe("0-6: \n6-11: \n11-15: ");
-  expect(studioCaptionProblem("0-6: \n6-11: 第二句")).toBe("第 1 条字幕还没写内容");
-  expect(studioCaptionProblem("0-6 第一句")).toBe("第 1 条字幕请使用“开始秒-结束秒: 文字”");
-  expect(studioCaptionProblem("0-6: 第一句\n6-20: 第二句", 15)).toBe("第 2 条字幕结束在 20 秒，成片只有 15 秒");
+  expect(studioCaptionProblem("0-6: \n6-11: 第二句")).toBe("第 1 条字幕未填写内容");
+  expect(studioCaptionProblem("0-6 第一句")).toBe("第 1 条字幕请使用「开始秒-结束秒: 文字」格式");
+  expect(studioCaptionProblem("0-6: 第一句\n6-20: 第二句", 15)).toBe("第 2 条字幕结束于 20 秒，成片时长仅 15 秒");
   expect(studioCaptionProblem("0-6: 第一句\n6-15.2: 第二句", 15)).toBeUndefined();
   expect(studioCaptionProblem("0-6: 第一句\n6-20: 第二句")).toBeUndefined();
 });

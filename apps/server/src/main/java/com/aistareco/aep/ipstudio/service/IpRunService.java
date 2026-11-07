@@ -151,17 +151,17 @@ public class IpRunService {
 
         JsonNode node = IpDocs.node(doc, nodeId);
         if (node == null) {
-            throw BusinessException.notFound("IP_NODE_NOT_FOUND", "画布上找不到该节点，请刷新后重试");
+            throw BusinessException.notFound("IP_NODE_NOT_FOUND", "画布上找不到所选内容，请刷新后重试");
         }
         String type = IpDocs.typeOf(node);
         // 能跑的只有图节点 —— 文字 / 分组这些不产出媒体，跑它们没有意义。
         // 视频节点走另一条链（要有形象才能跑），不在这里。
         if (!IpDocs.T_IMAGE.equals(type)) {
-            throw BusinessException.badRequest("IP_NODE_NOT_RUNNABLE", "这个节点不用运行");
+            throw BusinessException.badRequest("IP_NODE_NOT_RUNNABLE", "此内容无需生成");
         }
         if (!runRepo.findByProjectIdAndNodeIdAndStatus(projectId, nodeId, IpRun.STATUS_RUNNING).isEmpty()) {
             throw new BusinessException(HttpStatus.CONFLICT, "IP_RUN_ALREADY_RUNNING",
-                    "该节点正在生成中，请等它完成后再运行");
+                    "正在生成中，请等待完成后重试");
         }
 
         // 输入编译（含缺失校验 + 资产 key 归属闸）—— 全部在 hold 之前
@@ -207,7 +207,7 @@ public class IpRunService {
         if (!"adhoc".equals(nodeId)
                 && !runRepo.findByProjectIdAndNodeIdAndStatus(projectId, nodeId, IpRun.STATUS_RUNNING).isEmpty()) {
             throw new BusinessException(HttpStatus.CONFLICT, "IP_RUN_ALREADY_RUNNING",
-                    "这张正在生成中，等它完成再跑");
+                    "该图片正在生成中，请等待完成后重试");
         }
         Compiled compiled = compileExplicit(userId, req);
         if(req.modelBilling()==null)requireApprovedCost(req.maxCost(), compiled.unitCost() * compiled.count());
@@ -246,7 +246,7 @@ public class IpRunService {
         if(prior!=null) {
             var ids=IpProjectService.nativeVideoJobIds(projects.parseOrEmptyObject(prior.getInputJson()));
             if(!"studio-video".equals(prior.getKind()) || ids.size()!=1)
-                throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","同一请求的创作方式已改变，请重新提交");
+                throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","请求已失效，请刷新页面后重试");
             return videoJobs.getJob(ids.get(0),userId,
                     com.aistareco.aep.service.materialvideo.MaterialVideoJobService.APP_IPSTUDIO);
         }
@@ -281,12 +281,12 @@ public class IpRunService {
     public JsonNode generateVideoForDirector(String userId, String workId, String nodeId, IpVideoRequest req) {
         requireNativeMode();
         String requestId=req==null?null:req.clientRequestId();
-        if(requestId==null||requestId.isBlank())throw BusinessException.badRequest("STUDIO_REQUEST_ID_REQUIRED","缺少请求编号，请刷新后重试");
+        if(requestId==null||requestId.isBlank())throw BusinessException.badRequest("STUDIO_REQUEST_ID_REQUIRED","请求已失效，请刷新页面后重试");
         String fingerprint=nativeFingerprint(nodeId,req);
         IpRun prior=nativeReplay(workId,requestId,fingerprint,req.billing());
         if(prior!=null) {
             var ids=IpProjectService.nativeVideoJobIds(projects.parseOrEmptyObject(prior.getInputJson()));
-            if(ids.size()!=1)throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","同一请求的内容已改变，请重新提交");
+            if(ids.size()!=1)throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","请求已失效，请刷新页面后重试");
             return videoJobs.getJob(ids.get(0),userId,com.aistareco.aep.service.materialvideo.MaterialVideoJobService.APP_IPSTUDIO);
         }
         VideoBatch batch=generateVideoBatch(userId, workId, req, 1, true);
@@ -317,7 +317,7 @@ public class IpRunService {
                 ? videoJobs.submit(body,userId,com.aistareco.aep.service.materialvideo.MaterialVideoJobService.APP_IPSTUDIO)
                 : videoJobs.submit(body,userId,com.aistareco.aep.service.materialvideo.MaterialVideoJobService.APP_IPSTUDIO,req.billing());
         if (created.size() != count) {
-            throw BusinessException.badRequest("IP_VIDEO_SUBMIT_FAILED", "视频任务没建齐，请稍后再试");
+            throw BusinessException.badRequest("IP_VIDEO_SUBMIT_FAILED", "视频任务创建失败，请重试。");
         }
         return new VideoBatch(created, prepared.frameAdjustments());
     }
@@ -428,9 +428,9 @@ public class IpRunService {
         String requestedEndpoint=execution.path("endpointId").asText(null);
         var endpoint=requestedEndpoint==null
                 ? aiModels.resolveDefaultEndpoint(AiModelPurpose.DAP_IMAGE,"studio").orElseThrow(() ->
-                    new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","选择的出图模型不可用"))
+                    new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","所选图片模型不可用，请重新选择"))
                 : aiModels.resolveEndpoint(AiModelPurpose.DAP_IMAGE,requestedEndpoint,"studio").orElseThrow(() ->
-                    new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","选择的出图模型不可用")).endpoint();
+                    new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","所选图片模型不可用，请重新选择")).endpoint();
         execution.put("endpointId",endpoint.getId()).put("providerModel",endpoint.getModel());
         var charge=new ModelChargeContext(new ModelBillingTarget("aiavatar","image",endpoint.getId(),ModelBillingTarget.providerModelOf(endpoint),
                 compiled.inputs().path("size").asText(DEFAULT_SIZE),"image"),
@@ -457,7 +457,7 @@ public class IpRunService {
         requireNativeMode();var project=projects.required(user,projectId);
         var doc=request!=null&&request.doc()!=null&&!request.doc().isNull()?request.doc():projects.readDoc(project);
         var node=IpDocs.node(doc,nodeId);
-        if(node==null||!IpDocs.T_IMAGE.equals(IpDocs.typeOf(node)))throw BusinessException.badRequest("IP_NODE_NOT_RUNNABLE","请选择图片节点");
+        if(node==null||!IpDocs.T_IMAGE.equals(IpDocs.typeOf(node)))throw BusinessException.badRequest("IP_NODE_NOT_RUNNABLE","请选择一张图片");
         var compiled=compileGeneration(user,projectId,doc,node);
         return enterpriseBilling.quote(user,request==null?null:request.billing(),imageCharge(compiled,null,null,freeOnly));
     }
@@ -557,15 +557,15 @@ public class IpRunService {
         if(enterpriseBilling!=null)enterpriseBilling.lockForSettlement(REF_TYPE,runId);
         run=runRepo.lockById(runId).orElseThrow();
         if(entityManager!=null)entityManager.refresh(run,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
-        if(IpRunWorker.hasNativeSubmission(run))throw BusinessException.badRequest("STUDIO_IMAGE_ALREADY_SUBMITTED","图片已交给生成引擎，请等待原任务结果");
+        if(IpRunWorker.hasNativeSubmission(run))throw BusinessException.badRequest("STUDIO_IMAGE_ALREADY_SUBMITTED","图片已提交生成，暂时无法停止，请等待生成结果");
         if(StudioSpeechWorker.manages(run.getKind()) && IpRun.STATUS_RUNNING.equals(run.getStatus()) &&
                 projects.parseOrEmptyObject(run.getInputJson()).path("_exec").path("submitAttempts").asInt()>0)
-            throw BusinessException.badRequest("STUDIO_SPEECH_ALREADY_SUBMITTED","生成已交给引擎，暂时不能停止。请等待原任务结果");
+            throw BusinessException.badRequest("STUDIO_SPEECH_ALREADY_SUBMITTED","已提交生成，暂时无法停止。请等待生成结果");
         var nativeVideoIds=IpProjectService.nativeVideoJobIds(projects.parseOrEmptyObject(run.getInputJson()));
         if(!nativeVideoIds.isEmpty()) {
             // The enclosing transaction rolls back earlier cancellations if any candidate has been submitted.
             for (String id : nativeVideoIds) if(!videoJobs.cancelQueued(id,userId))
-                throw BusinessException.badRequest("STUDIO_VIDEO_ALREADY_SUBMITTED","视频已交给生成引擎，暂时不能停止。可以继续编辑并等待原任务结果");
+                throw BusinessException.badRequest("STUDIO_VIDEO_ALREADY_SUBMITTED","视频已提交生成，暂时无法停止。你可以继续编辑，并等待生成结果");
             return projects.toRunDto(run);
         }
         if (IpRun.STATUS_RUNNING.equals(run.getStatus())) {
@@ -679,7 +679,7 @@ public class IpRunService {
             if(JusuanImageClient.supports(selected.resolved().endpoint()))exec.set("imageRequestSpec",om.valueToTree(com.aistareco.aep.model.AiImageRequestSpec.read(selected.resolved().endpoint().getImageRequestSpecJson())));
         }
         return new Compiled(IpRun.KIND_GENERATE, selected == null ? pricing.ipImage() : selected.creditCost(), count,
-                "画布出图 ×" + count, inputs, false, true,
+                "画布生成图片 ×" + count, inputs, false, true,
                 "stage-image");
     }
 
@@ -699,13 +699,13 @@ public class IpRunService {
     }
     private IpRun nativeReplay(String projectId,String requestId,String fingerprint,com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection selected) {
         if(com.aistareco.aep.enterprise.service.EnterpriseBillingService.enterprise(selected) && (requestId==null||requestId.isBlank()))
-            throw BusinessException.badRequest("STUDIO_REQUEST_ID_REQUIRED","企业积分创作需要请求编号，请刷新后重试");
+            throw BusinessException.badRequest("STUDIO_REQUEST_ID_REQUIRED","请求已失效，请刷新页面后重试");
         if(requestId==null)return null;
-        if(requestId.isBlank()||requestId.length()>64)throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请求编号无效");
+        if(requestId.isBlank()||requestId.length()>64)throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请求已失效，请刷新页面后重试");
         var prior=runRepo.findByProjectIdAndClientRequestId(projectId,requestId).orElse(null);
         if(prior!=null) {
             StudioRunBilling.requireSamePayer(prior,selected);
-            if(!fingerprint.equals(prior.getInputFingerprint()))throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","同一请求的内容已改变，请重新提交");
+            if(!fingerprint.equals(prior.getInputFingerprint()))throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","请求已失效，请刷新页面后重试");
         }
         return prior;
     }
@@ -774,7 +774,7 @@ public class IpRunService {
             if(JusuanImageClient.supports(selected.resolved().endpoint()))exec.set("imageRequestSpec",om.valueToTree(com.aistareco.aep.model.AiImageRequestSpec.read(selected.resolved().endpoint().getImageRequestSpecJson())));
         }
         return new Compiled(IpRun.KIND_GENERATE, selected == null ? pricing.ipImage() : selected.creditCost(), count,
-                "画布出图 ×" + count, inputs, false, true,
+                "画布生成图片 ×" + count, inputs, false, true,
                 "stage-image");
     }
 
@@ -793,7 +793,7 @@ public class IpRunService {
                         var spec = com.aistareco.aep.model.AiImageRequestSpec.read(s.resolved().endpoint().getImageRequestSpecJson());
                         return spec != null && spec.outputs().stream().anyMatch(o -> o.canvasSize().equals(size));
                     }).findFirst().orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,
-                            "STUDIO_IMAGE_ROUTE_UNAVAILABLE", "所选模型暂未开放该分辨率，请重新选择模型或联系运营"));
+                            "STUDIO_IMAGE_ROUTE_UNAVAILABLE", "所选模型暂不支持该分辨率，请选择其他模型"));
             return route;
         }
         if (requestedModel != null && requestedModel.startsWith(StudioImageModelRouting.REQUEST_PREFIX)) {
@@ -856,11 +856,11 @@ public class IpRunService {
     void preflight(Compiled c) {
         if (c.needsChat() && (multimodal.chatModel() == null || multimodal.chatModel().isBlank())) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "DAP_ENGINE_NOT_CONFIGURED",
-                    "形象引擎未配置：请在管理后台「AI 应用绑定」为「数字人 · 人设」用途绑定一个支持图片输入的模型");
+                    "生成服务暂不可用，请联系平台处理", null, "形象引擎未配置：请在管理后台「AI 应用绑定」为「数字人 · 人设」用途绑定一个支持图片输入的模型");
         }
         if (c.needsImage() && !c.inputs().path("_exec").hasNonNull("endpointId") && (multimodal.imageModel() == null || multimodal.imageModel().isBlank())) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "DAP_ENGINE_NOT_CONFIGURED",
-                    "形象引擎未配置：请在管理后台「AI 应用绑定」为「数字人 · 图片」用途绑定启用端点");
+                    "生成服务暂不可用，请联系平台处理", null, "形象引擎未配置：请在管理后台「AI 应用绑定」为「数字人 · 图片」用途绑定启用端点");
         }
         // 用户选的模型必须现在就验：等到 worker 才发现不合法的话，钱已经冻上、
         // 运行行已经落库，用户看到的是一次「跑起来又失败」而不是「这个模型不能选」。
@@ -868,7 +868,7 @@ public class IpRunService {
         String endpointId = IpDocs.text(c.inputs().path("_exec"), "endpointId");
         if (endpointId != null && aiModels.resolveEndpoint(AiModelPurpose.DAP_IMAGE, endpointId,"studio").isEmpty()) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "ENDPOINT_NOT_ALLOWED",
-                    "选择的出图模型不可用，请在下拉里重新选一个");
+                    "所选图片模型不可用，请重新选择");
         }
         // 出图包装在提示词库里（docs/studio-prompt-architecture.md §8 #15）；库里没有就 503，不产假图
         com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.or(promptAssembler).requireStage(c.promptKey());

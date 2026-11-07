@@ -36,7 +36,7 @@ export function StudioModelQuoteDialog({loadQuote,billing,initialFreeOnly=false,
         {!quote.canAfford&&<Alert type="warning" showIcon title="当前不能生成" description={quote.unavailableReason||'请检查可用额度后重新报价'} action={<Button size="small" onClick={()=>setReload(value=>value+1)}>重新报价</Button>}/>}
       </>}
       <Checkbox checked={freeOnly} onChange={event=>{setQuote(undefined);setLoading(true);setFreeOnly(event.target.checked);}}>只用模型赠款</Checkbox>
-      <p>选中后，额度不足就停止生成，不扣普通积分。提交时会再次核对价格与额度。</p>
+      <p>勾选后，模型赠款不足时将停止生成，不扣除普通积分。</p>
     </div>
   </Modal></ConfigProvider>;
 }

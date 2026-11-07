@@ -44,15 +44,14 @@ export function StudioSceneWorkshop() {
         return <article key={scene.id} className="studio-scene-card">
           <div className="studio-scene-visual"><Image src={scene.image} alt="" width={960} height={640} sizes="(min-width: 960px) 25vw, 50vw"/></div>
           <div className="studio-scene-copy"><h2>{scene.title}</h2><p>{scene.description}</p>
-            <button className="ip-brand-button" disabled={!template || starting !== undefined || templates.loading} onClick={() => template && void start(template)}>{starting === template?.id && starting ? <><Loader2 size={16} className="studio-gallery-spinner"/>正在打开</> : template ? <>开始创作<ArrowRight size={16}/></> : templates.loading && scene.templateId ? '正在读取…' : <StudioComingSoon/>}</button>
+            <button className="ip-brand-button" disabled={!template || starting !== undefined || templates.loading} onClick={() => template && void start(template)}>{starting === template?.id && starting ? <><Loader2 size={16} className="studio-gallery-spinner"/>正在打开</> : template ? <>开始创作<ArrowRight size={16}/></> : templates.loading && scene.templateId ? '正在加载…' : <StudioComingSoon/>}</button>
             {template ? <button className="studio-scene-preview" disabled={starting !== undefined} onClick={() => setPreview(template)}>预览模板</button> : <small>{scene.templateId ? '模板上线后开放' : '创作能力后续接入'}</small>}
             {template && scene.id === "commerce" && <small className="studio-scene-upcoming">商品选品与融合<StudioComingSoon/></small>}
           </div>
         </article>;
       })}</div>
-      <p className="studio-scene-note">从这里起步，按你的想法自由创作。</p>
-      <section className="studio-scene-recent"><div className="studio-gallery-panel-heading"><div><h2>继续创作</h2><p>从上次停下的地方，继续。</p></div><button className="studio-page-refresh" aria-label="刷新最近画布" disabled={projects.loading} onClick={projects.reload}><RefreshCw size={16}/></button></div>
-        {projects.error ? <GalleryState error={projects.error} retry={projects.reload}/> : projects.loading ? <GalleryState loading/> : recent.length ? <div className="studio-recent-list">{recent.map(p => <Link key={p.id} href={`/projects/${encodeURIComponent(p.id)}`}><div><strong title={p.name}>{p.name}</strong><span>{formatDateTime(p.updatedAt)}</span></div><span>继续创作<ArrowRight size={16}/></span></Link>)}</div> : <div className="studio-workspace-empty"><p>新的创作，将从这里留下第一笔。</p><Link href="/projects">查看项目<ArrowRight size={16}/></Link></div>}
+      <section className="studio-scene-recent"><div className="studio-gallery-panel-heading"><div><h2>继续创作</h2><p>最近编辑的画布。</p></div><button className="studio-page-refresh" aria-label="刷新最近画布" disabled={projects.loading} onClick={projects.reload}><RefreshCw size={16}/></button></div>
+        {projects.error ? <GalleryState error={projects.error} retry={projects.reload}/> : projects.loading ? <GalleryState loading/> : recent.length ? <div className="studio-recent-list">{recent.map(p => <Link key={p.id} href={`/projects/${encodeURIComponent(p.id)}`}><div><strong title={p.name}>{p.name}</strong><span>{formatDateTime(p.updatedAt)}</span></div><span>继续创作<ArrowRight size={16}/></span></Link>)}</div> : <div className="studio-workspace-empty"><p>还没有画布。</p><Link href="/projects">查看项目<ArrowRight size={16}/></Link></div>}
       </section>
     </>}
   </StudioPage>;

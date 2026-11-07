@@ -10,6 +10,7 @@ import {
   type Artist, type ArtistType
 } from './ArtistTypes';
 import type { Lang } from "../../translations";
+import { NAV_SEARCH } from "./consoleNav";
 
 interface CommandItem {
   id: string;
@@ -22,21 +23,14 @@ interface CommandItem {
   artist?: Artist;
 }
 
-const PAGE_ITEMS: CommandItem[] = [
-  { id: 'p-overview', type: 'page', icon: LayoutDashboard, label: { zh: '经纪大盘', en: 'Dashboard' }, desc: { zh: '总览与数据', en: 'Overview & metrics' }, keywords: ['dashboard', 'overview', '大盘', '总览'], pageId: 'overview' },
-  { id: 'p-artists', type: 'page', icon: Users, label: { zh: '艺人中心', en: 'Artist Hub' }, desc: { zh: '一站式艺人管理', en: 'One-stop artist management' }, keywords: ['artists', '艺人', '矩阵', 'mcn', '孵化', '签约', '市场', 'hub'], pageId: 'artist_hub' },
-  { id: 'p-studio', type: 'page', icon: Music, label: { zh: '创作工坊', en: 'Workshop' }, desc: { zh: '内容创作', en: 'Content creation' }, keywords: ['studio', 'workshop', '工坊', '创作', 'music'], pageId: 'studio' },
-  { id: 'p-wardrobe', type: 'page', icon: Shirt, label: { zh: '造型与道具', en: 'Wardrobe' }, desc: { zh: '装扮与形象', en: 'Styling & props' }, keywords: ['wardrobe', '造型', '衣服', 'style'], pageId: 'wardrobe' },
-  { id: 'p-distribution', type: 'page', icon: Globe, label: { zh: '全网分发', en: 'Distribution' }, desc: { zh: '内容分发', en: 'Content distribution' }, keywords: ['distribution', '分发', '发布', 'publish'], pageId: 'distribution' },
-  { id: 'p-copyright', type: 'page', icon: Shield, label: { zh: '版权资产', en: 'Copyright' }, desc: { zh: '版权管理', en: 'Copyright management' }, keywords: ['copyright', '版权', 'ip'], pageId: 'copyright' },
-  { id: 'p-community', type: 'page', icon: Heart, label: { zh: '粉丝社群', en: 'Community' }, desc: { zh: '粉丝运营', en: 'Fan operations' }, keywords: ['community', '粉丝', '社群', 'fan'], pageId: 'community' },
-  { id: 'p-finance', type: 'page', icon: Wallet, label: { zh: '商业变现', en: 'Monetization' }, desc: { zh: '收益管理', en: 'Revenue management' }, keywords: ['finance', '变现', '收益', 'money', 'revenue'], pageId: 'finance' },
-  { id: 'p-settings', type: 'page', icon: Settings, label: { zh: '设置', en: 'Settings' }, desc: { zh: '账号与偏好', en: 'Account & preferences' }, keywords: ['settings', '设置', 'config'], pageId: 'settings' },
-];
+// Every sidebar page and sub-tab, so search mirrors the navigation exactly.
+const PAGE_ITEMS: CommandItem[] = NAV_SEARCH.map(e => ({
+  id: `p-${e.route}`, type: 'page', icon: e.icon, label: e.label, desc: e.desc, keywords: e.keywords, pageId: e.route,
+}));
 
 const ACTION_ITEMS: CommandItem[] = [
-  { id: 'a-new-artist', type: 'action', icon: Plus, label: { zh: '孵化新艺人', en: 'Incubate New Artist' }, desc: { zh: '开始AI孵化流程', en: 'Start AI incubation' }, keywords: ['new', 'create', '新建', '创建', '孵化', 'incubate'], pageId: 'incubation' },
-  { id: 'a-generate', type: 'action', icon: Sparkles, label: { zh: 'AI 快速生成', en: 'AI Quick Generate' }, desc: { zh: '生成内容', en: 'Generate content' }, keywords: ['generate', 'ai', '生成'], pageId: 'studio' },
+  { id: 'a-new-artist', type: 'action', icon: Plus, label: { zh: '孵化新角色 IP', en: 'Incubate a Role IP' }, desc: { zh: '开始 AI 孵化流程', en: 'Start AI incubation' }, keywords: ['new', 'create', '新建', '创建', '孵化', 'incubate'], pageId: 'incubation' },
+  { id: 'a-generate', type: 'action', icon: Sparkles, label: { zh: '新建创作项目', en: 'New Project' }, desc: { zh: '在 AI 导演台开始创作', en: 'Start in the AI Director' }, keywords: ['generate', 'ai', '生成'], pageId: 'studio' },
 ];
 
 export const CommandPalette = ({
@@ -72,7 +66,8 @@ export const CommandPalette = ({
   const allItems = useMemo(() => [...ACTION_ITEMS, ...PAGE_ITEMS, ...artistItems], [artistItems]);
 
   const filtered = useMemo(() => {
-    if (!query.trim()) return allItems;
+    // Without a query, list top-level pages only; sub-tabs surface once the user types.
+    if (!query.trim()) return allItems.filter(i => !(i.type === 'page' && i.pageId?.includes('/')));
     const q = query.toLowerCase();
     return allItems.filter(item =>
       item.label.zh.toLowerCase().includes(q) ||

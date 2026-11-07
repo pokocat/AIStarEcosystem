@@ -79,7 +79,7 @@ export function applyStudioRun(node: CanvasNodeData, run: IpRun): CanvasNodeData
     if(metadata.studio.promptReview&&metadata.studio.promptReview.runId!==run.id)delete metadata.studio.promptReview;
     const inputs=run.inputs as {prompt?:string;video?:StudioVideoSettings;durationSec?:number;aspectRatio?:string;model?:string};
     const inputKey=studioVideoInputKey(inputs);
-    if(run.status==="done"&&run.output.needsChoice&&run.output.videoPrompt)metadata.studio.promptReview={runId:run.id,inputKey,...run.output.videoPrompt};
+    if(run.status==="done"&&run.output.needsChoice&&run.output.videoPrompt)metadata.studio.promptReview={runId:run.id,inputKey,...run.output.videoPrompt,...(run.output.rawOnly?{notRewritten:true}:{})};
     else if(inputs.video?.rewrite==="review"&&run.status==="failed"&&!run.output.videoCandidates?.length&&run.errorCode!=="IP_RUN_CANCELLED")
       metadata.studio.promptReview={runId:run.id,inputKey,failed:true,message:run.errorMessage,...(run.output.videoPrompt||{})};
     else if(metadata.studio.promptReview?.runId===run.id)delete metadata.studio.promptReview;

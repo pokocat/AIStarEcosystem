@@ -105,7 +105,7 @@ public class StudioVideoService {
         catch(Exception e) {
             log.warn("[studio-video] frame crop failed user={} key={} ratio={} reason={}",userId,owned,aspectRatio,e.toString());
             throw BusinessException.badRequest("STUDIO_VIDEO_FRAME_CROP_FAILED",
-                    "首帧图读不出来，没法按 "+aspectRatio.strip()+" 裁剪。请换一张 PNG 或 JPG 图片，或把画幅改成和首帧图一致");
+                    "首帧图无法读取，无法按 "+aspectRatio.strip()+" 裁剪。请更换 PNG 或 JPG 图片，或将画幅改为与首帧图一致");
         }
     }
     private byte[] decodeWithFfmpeg(java.nio.file.Path source) throws java.io.IOException {
@@ -176,7 +176,7 @@ public class StudioVideoService {
             if(!"image".equals(type)) {
                 var probe=ffmpeg.probeMedia(path.toFile());
                 if(!probe.readable() || "video".equals(type)&&!probe.hasVideo() || "audio".equals(type)&&!probe.hasAudio())
-                    throw invalid(label+"读不出来，请重新选择");
+                    throw invalid(label+"无法读取，请重新选择");
                 if((media.minDurationSec()!=null || media.maxDurationSec()!=null)
                         && (probe.durationSec()<=0
                         || media.minDurationSec()!=null && probe.durationSec()<media.minDurationSec()

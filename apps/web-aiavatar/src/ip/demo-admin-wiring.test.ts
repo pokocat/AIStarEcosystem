@@ -75,9 +75,9 @@ describe("节点自动标题", () => {
     }
   });
 
-  it("保存完整画布允许沿用节点默认名，不再要求逐一重命名", () => {
+  it("保存模板允许沿用节点默认名，不再要求逐一重命名", () => {
     const form = read("src/ip/studio-template-publish.tsx");
-    expect(form).toContain("保存完整画布");
+    expect(form).toContain("保存模板");
     expect(form).not.toContain("looksAutoTitled");
   });
 });

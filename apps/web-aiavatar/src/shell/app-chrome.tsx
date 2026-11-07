@@ -17,8 +17,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { auth, USE_MOCK } from "@/proto/api";
+import { isCanvasPath, rememberCanvasReturn } from "./canvas-return";
 import { DesktopTopBar } from "./desktop-top-bar";
 import { useLayoutMode } from "./layout-mode";
 import { useUiVersion, withoutUiParam } from "./ui-version";
@@ -26,6 +27,14 @@ import { useUiVersion, withoutUiParam } from "./ui-version";
 const BARE_PREFIXES = ["/enterprise/invite", "/invite/","/card/p/", "/shared/conversations/", "/login", "/auth/callback", "/auth/test-login"];
 /** 精确匹配（不走前缀）：根目录是落地页，它自带一条顶栏，不能再叠一条产品导航。 */
 const BARE_EXACT = ["/"];
+
+/** 记下用户在哪一页，画布的返回按钮要用（shell/canvas-return.ts）。场景页改场景、草稿号走 replaceState，useSearchParams 也跟得上。 */
+function CanvasReturnTracker() {
+  const pathname = usePathname() ?? "";
+  const search = useSearchParams()?.toString() ?? "";
+  React.useEffect(() => { rememberCanvasReturn(pathname, search); }, [pathname, search]);
+  return null;
+}
 
 export function AppChrome() {
   // 订阅形态：这是根布局里**唯一常驻**的客户端组件，靠它保证「视口变了 →
@@ -36,8 +45,7 @@ export function AppChrome() {
   // 没登录还是落地页自己的顶栏（下面 show 只在登录后才为 true）；旧版不变。
   const version = useUiVersion();
   const rootIsHome = pathname === "/" && version === "next";
-  const canvasWorkspace = /^\/projects\/[^/]+\/?$/.test(pathname)
-    && pathname.replace(/\/$/, "") !== "/projects/demos";
+  const canvasWorkspace = isCanvasPath(pathname);
   const bare = (BARE_EXACT.includes(pathname) && !rootIsHome)
     || canvasWorkspace
     || BARE_PREFIXES.some((p) => pathname === p.replace(/\/$/, "") || pathname.startsWith(p));
@@ -51,7 +59,7 @@ export function AppChrome() {
   // 边界，否则 `/_not-found` 的静态预渲染直接失败（本次踩过）。反正这段只在挂载后
   // 跑，直接读 window.location.search 更省事。
   // 隐藏入口 `?ui=new` / `?ui=old` 已由首帧脚本记下（shell/ui-version.ts），这里把参数从地址栏去掉：
-  // 留着的话，用户之后点「回到旧版」再刷新，又会被这个参数切回新版。带上 history.state，Next 的路由状态不丢。
+  // 留着的话，用户之后点「返回旧版」再刷新，又会被这个参数切回新版。带上 history.state，Next 的路由状态不丢。
   React.useEffect(() => {
     const href = withoutUiParam(window.location.href);
     if (href !== window.location.href) window.history.replaceState(window.history.state, "", href);
@@ -72,6 +80,9 @@ export function AppChrome() {
     return () => document.body.classList.remove("has-desktop-bar");
   }, [visible]);
 
-  if (!visible) return null;
-  return <DesktopTopBar />;
+  // useSearchParams 在根 layout 里要有 Suspense 边界，否则 /_not-found 静态预渲染会失败。
+  return <>
+    <React.Suspense fallback={null}><CanvasReturnTracker /></React.Suspense>
+    {visible && <DesktopTopBar />}
+  </>;
 }

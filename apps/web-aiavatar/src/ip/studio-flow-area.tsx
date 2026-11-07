@@ -48,11 +48,11 @@ export function StudioFlowArea({ node, selected, data, port }: { node: CanvasNod
         </Popover> : <span className="studio-flow-area-tone" aria-hidden/>}
         <StudioNodeTitle title={node.title} label="分组名称" autoEdit={data.naming} onEditEnd={data.onNamingEnd}
           onRename={editable && data.onRename ? value => data.onRename!(node.id, value) : undefined}/>
-        {count > 0 && <span className="studio-flow-area-count" title={`区域里有 ${count} 个节点`} aria-label={`${count} 个节点`}>{count}</span>}
+        {count > 0 && <span className="studio-flow-area-count" title={`区域内有 ${count} 个节点`} aria-label={`${count} 个节点`}>{count}</span>}
       </div>
     </header>
     {port}
     <StudioGroupDescription title={node.title} description={node.metadata?.groupDescription} onChange={editable && data.onDescribeGroup ? value => data.onDescribeGroup!(node.id, value) : undefined}/>
-    {editable && !count && !node.metadata?.groupDescription && <p className="studio-flow-area-empty" aria-hidden>把节点拖进来</p>}
+    {editable && !count && !node.metadata?.groupDescription && <p className="studio-flow-area-empty" aria-hidden>将节点拖入此区域</p>}
   </article>;
 }

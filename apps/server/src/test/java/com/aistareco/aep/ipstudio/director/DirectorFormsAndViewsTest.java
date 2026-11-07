@@ -134,6 +134,45 @@ class DirectorFormsAndViewsTest {
         return req.getValue();
     }
 
+    @Test void displayedReferenceNumbersMatchThePromptAndSubmittedImagesEvenWhenSceneWasLinkedFirst() throws Exception {
+        seed();
+        setSceneView("reverse");
+        adoptReverseView();
+        ObjectNode c = content();
+        ObjectNode clip = (ObjectNode) c.path("clips").get(0);
+        clip.putArray("assetIds").add(assetId("金山寺")).add(assetId("白素贞"));
+        work.setContentJson(c.toString());
+
+        JsonNode wire = service.get(USER, work.getId()).path("clips").get(0);
+        JsonNode refs = wire.path("boardRefs");
+        assertEquals(List.of("图1", "图2", "图3"), values(refs, "label"));
+        assertEquals(List.of("白素贞", "金山寺", "金山寺·反打"), values(refs, "name"));
+        assertTrue(wire.path("boardPrompt").asText().contains("图1 提供角色「白素贞」"));
+        assertTrue(wire.path("boardPrompt").asText().contains("图2 提供场景「金山寺」"));
+        service.task(USER, work.getId(), new DirectorService.TaskRequest("board", "k1", "refs-order", null, null, 16L));
+        assertEquals(submitted().refKeys(), values(refs, "key"));
+        assertFalse(content().path("clips").get(0).has("boardRefs"), "wire 投影不写回作品");
+        assertEquals(List.of(assetId("金山寺"), assetId("白素贞")), values(content().path("clips").get(0).path("assetIds"), null));
+    }
+
+    @Test void missingAnImageDoesNotMoveTheOtherReferenceNumbers() throws Exception {
+        seed();
+        ObjectNode c = content();
+        ((ObjectNode) c.path("assets").get(0).path("image")).putNull("adoptedId");
+        work.setContentJson(c.toString());
+        JsonNode refs = service.get(USER, work.getId()).path("clips").get(0).path("boardRefs");
+        assertEquals("图1", refs.get(0).path("label").asText());
+        assertTrue(refs.get(0).path("key").isNull());
+        assertEquals("图2", refs.get(1).path("label").asText());
+        assertEquals("u/si.png", refs.get(1).path("key").asText());
+    }
+
+    private List<String> values(JsonNode refs, String field) {
+        List<String> values = new ArrayList<>();
+        for (JsonNode ref : refs) values.add(field == null ? ref.asText() : ref.path(field).asText());
+        return values;
+    }
+
     @Test void aClipWithAFormSendsTheFormImageButTheCharacterKeepsItsName() throws Exception {
         seed();
         JsonNode w = edit("form.create", assetId("白素贞"), "{\"name\":\"半妖态\",\"description\":\"下半身化作蛇尾\"}");
@@ -142,11 +181,14 @@ class DirectorFormsAndViewsTest {
 
         var missing = assertThrows(BusinessException.class, () -> service.task(USER, work.getId(), new DirectorService.TaskRequest("board", "k1", "b0", null, null, 16L)));
         assertEquals("DIRECTOR_REFERENCE_MISSING", missing.getCode());
-        assertTrue(missing.getMessage().contains("白素贞·半妖态"), "缺的是这个形态的图，要说清楚");
+        assertEquals(List.of("白素贞·半妖态"), ((java.util.Map<?, ?>) missing.getDetails()).get("names"), "缺的是这个形态的图，要说清楚");
 
         edit("form.upload", formId, "{\"key\":\"u/bai-yao.png\"}");
         service.task(USER, work.getId(), new DirectorService.TaskRequest("board", "k1", "b1", null, null, 16L));
         assertEquals(List.of("u/bai-yao.png", "u/si.png"), submitted().refKeys(), "主形象不再交给模型");
+        JsonNode refs = service.get(USER, work.getId()).path("clips").get(0).path("boardRefs");
+        assertEquals(submitted().refKeys(), values(refs, "key"));
+        assertEquals("白素贞·半妖态", refs.get(0).path("name").asText());
         String prompt = submitted().prompt();
         assertTrue(prompt.contains("「白素贞」"), prompt);
         assertFalse(prompt.contains("半妖态"), "说话人和画内画外都按角色名认，提示词不改名");
@@ -166,7 +208,7 @@ class DirectorFormsAndViewsTest {
     @Test void aFormNeedsTheMainImageFirstAndOnlyCharactersHaveForms() throws Exception {
         seed();
         var scene = assertThrows(BusinessException.class, () -> edit("form.create", assetId("金山寺"), "{\"name\":\"雪景\"}"));
-        assertTrue(scene.getMessage().contains("只有角色"));
+        assertEquals("DIRECTOR_INPUT_INVALID", scene.getCode());
         JsonNode w = edit("asset.create", null, "{\"kind\":\"character\",\"name\":\"小青\",\"description\":\"青衣\"}");
         JsonNode x = edit("form.create", asset(w, "小青").path("id").asText(), "{\"name\":\"剑客装\",\"description\":\"短打\"}");
         String formId = asset(x, "小青").path("forms").get(0).path("id").asText();

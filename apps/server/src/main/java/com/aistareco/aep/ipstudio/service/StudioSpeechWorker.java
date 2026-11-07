@@ -100,7 +100,7 @@ public class StudioSpeechWorker {
             String state=result.path("status").asText();
             if("failed".equals(state)||"canceled".equals(state)) {
                 String code=lip?"STUDIO_LIP_SYNC_PROVIDER_FAILED":"STUDIO_SPEECH_PROVIDER_FAILED";
-                String message=com.aistareco.aep.service.ai.ProviderErrorMessage.message(result.toString(),label+"引擎未完成本次生成，冻结积分已释放");
+                String message=com.aistareco.aep.service.ai.ProviderErrorMessage.message(result.toString(),label+"未能完成，冻结积分已退回");
                 finish(id,null,code,message,com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attachBody(
                         new BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,code,message),result.toString()));return;
             }
@@ -148,7 +148,7 @@ public class StudioSpeechWorker {
         String codePrefix="lip-sync".equals(prefix)?"STUDIO_LIP_SYNC":"STUDIO_SPEECH";
         if(exec.path("jobId").asText().isBlank()&&exec.path("submitAttempts").asInt()==0) {
             finish(id,null,error instanceof BusinessException business?business.getCode():codePrefix+"_PREPARATION_FAILED",
-                    (error instanceof BusinessException business?business.getMessage()+"。":"")+"生成准备失败，任务未提交，冻结积分已释放。请检查素材后重试",error);return;
+                    (error instanceof BusinessException business?business.getMessage()+"。":"")+"生成准备失败，任务未提交，冻结积分已退回。请检查素材后重试",error);return;
         }
         if(exec.path("jobId").asText().isBlank()) {
             finish(id,null,codePrefix+"_SUBMISSION_UNKNOWN",GenerationSubmissionFailure.message(error),error);return;

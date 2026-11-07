@@ -65,7 +65,7 @@ public class DapRealAuthController {
                                                         @RequestBody CreateRealAuthSessionRequest req,
                                                         HttpServletRequest httpRequest) {
         if (req == null || req.captureId() == null || req.captureId().isBlank()) {
-            throw BusinessException.badRequest("DAP_CAPTURE_REQUIRED", "缺少捕获会话 id");
+            throw BusinessException.badRequest("DAP_CAPTURE_REQUIRED", "缺少拍摄记录，请重新录制或上传");
         }
         return ApiResponse.of(realAuth.start(uid(principal), req.captureId(), req.agreementVersion(),
                 req.agreementAccepted(), clientIp(httpRequest), httpRequest.getHeader("User-Agent")));
@@ -127,7 +127,7 @@ public class DapRealAuthController {
         String refType = req == null ? null : req.refType();
         String refId = req == null ? null : req.refId();
         if (refId == null || refId.isBlank()) {
-            throw BusinessException.badRequest("DAP_MATERIAL_REF_REQUIRED", "缺少送审对象 id");
+            throw BusinessException.badRequest("DAP_MATERIAL_REF_REQUIRED", "缺少送审对象，请刷新后重试");
         }
         if ("avatar".equals(refType)) {
             return ApiResponse.of(List.of(materials.submitAvatarModeration(userId, refId)));
@@ -135,6 +135,6 @@ public class DapRealAuthController {
         if ("capture".equals(refType)) {
             return ApiResponse.of(materials.resubmitForCapture(userId, refId));
         }
-        throw BusinessException.badRequest("DAP_MATERIAL_BAD_REF", "未知送审对象类型：" + refType);
+        throw BusinessException.badRequest("DAP_MATERIAL_BAD_REF", "送审对象类型不正确");
     }
 }

@@ -31,13 +31,13 @@ export function SplitPreview({ work, apply, setError }: Pick<WorkbenchProps, "wo
         : "AI 已划定每集范围，正文未做修改。"}</p>
     </header>
     {pre && <div className="director-split-preamble">
-      <p><b>剧本开头 {pre.paragraphs} 段（{pre.chars.toLocaleString("zh-CN")} 字）不在任何一集里</b>
+      <p><b>剧本开头 {pre.paragraphs} 段（{pre.chars.toLocaleString("zh-CN")} 字）不属于任何一集</b>
         <span title={`${pre.head} … ${pre.tail}`}>从「{pre.head}」到「{pre.tail}」</span></p>
       <div className="director-segmented" role="radiogroup" aria-label="剧本开头的内容">
-        <button type="button" role="radio" aria-checked={preamble === "reference"} aria-pressed={preamble === "reference"} onClick={() => setPreamble("reference")}>是设定资料，不拍</button>
-        <button type="button" role="radio" aria-checked={preamble === "episode"} aria-pressed={preamble === "episode"} onClick={() => setPreamble("episode")}>是正片，并入第 1 集</button>
+        <button type="button" role="radio" aria-checked={preamble === "reference"} aria-pressed={preamble === "reference"} onClick={() => setPreamble("reference")}>设定资料（不生成画面）</button>
+        <button type="button" role="radio" aria-checked={preamble === "episode"} aria-pressed={preamble === "episode"} onClick={() => setPreamble("episode")}>正片内容（并入第 1 集）</button>
       </div>
-      <small>{preamble === "reference" ? "保留在「设定资料」里，提取资产和写分镜脚本时作为参考。以后也可以并入第 1 集。" : "放在第 1 集正文最前面，会被拍成画面。"}</small>
+      <small>{preamble === "reference" ? "保留在「设定资料」中，提取资产和写分镜脚本时作为参考，之后也可并入第 1 集。" : "放在第 1 集正文开头，将生成画面。"}</small>
     </div>}
     {(pending.warnings.length > 0 || pending.notes.length > 0) && <ul className="director-split-notes">
       {pending.warnings.map(w => <li key={w} className="is-warn">{w}</li>)}
@@ -52,7 +52,7 @@ export function SplitPreview({ work, apply, setError }: Pick<WorkbenchProps, "wo
       </li>)}</ol>
     <div className="director-actions">
       <button type="button" className="ip-brand-button" disabled={!!busy} onClick={save}>确认分集</button>
-      <button type="button" className="ip-brand-text-button" disabled={!!busy} onClick={discard}>放弃拆分</button>
+      <button type="button" className="ip-brand-text-button" disabled={!!busy} onClick={discard}>放弃分集</button>
     </div>
   </section>;
 }
@@ -136,12 +136,12 @@ export function ReferenceNotes({ work, apply, setError }: Pick<WorkbenchProps, "
   const { busy, run } = useBusy();
   const guard = usePasteGuard();
   if (!work.reference.trim() && !dirty) return null;
-  const save = () => void run("save", async () => { const next = await DirectorApi.edit(work.id, "reference.update", null, work.referenceRev, { text }); clearDrafts(key); apply(next); }, failed(setError, "保存设定资料", "改动还在编辑框里，按原因调整后再保存。"));
+  const save = () => void run("save", async () => { const next = await DirectorApi.edit(work.id, "reference.update", null, work.referenceRev, { text }); clearDrafts(key); apply(next); }, failed(setError, "保存设定资料", "修改内容已保留，请按原因调整后点击「保存」。"));
   const merge = () => void run("merge", async () => { const next = await DirectorApi.edit(work.id, "reference.toEpisode", null, work.referenceRev); clearDrafts(key); apply(next); }, failed(setError, "把设定资料并入第 1 集"));
   const chars = work.reference.replace(/\s/g, "").length;
   return <section className={`director-outline director-reference ${open ? "is-open" : ""}`} aria-label="设定资料">
     <button type="button" className="director-outline-head" aria-expanded={open} onClick={() => setOpen(v => !v)}>
-      <BookMarked size={16}/><b>设定资料</b><span>{chars.toLocaleString("zh-CN")} 字 · 不拍成画面，提取资产和写分镜脚本时作为参考</span>
+      <BookMarked size={16}/><b>设定资料</b><span>{chars.toLocaleString("zh-CN")} 字 · 不生成画面，提取资产和写分镜脚本时作为参考</span>
       {dirty && <em className="director-unsaved">未保存</em>}
       <ChevronRight size={16} className="director-outline-chevron"/>
     </button>
@@ -150,10 +150,11 @@ export function ReferenceNotes({ work, apply, setError }: Pick<WorkbenchProps, "
         : <textarea className="director-script-text" aria-label="设定资料" value={text} onChange={e => setText(e.target.value)} onPaste={guard.onPaste}/>}
       {guard.blocked && <LargePasteNotice chars={guard.blocked.chars} onClose={guard.clear}
         onInsert={t => { const b = guard.blocked!; setText(text.slice(0, b.start) + t + text.slice(b.end)); }}/>}
-      {text.length > REFERENCE_PROMPT_MAX && <p className="director-long-note" role="note">设定资料 {text.length.toLocaleString("zh-CN")} 字，照常保存；提取资产和写分镜脚本时 AI 只参考前 {REFERENCE_PROMPT_MAX.toLocaleString("zh-CN")} 字，要紧的设定请放在前面。</p>}
+      {text.length > REFERENCE_PROMPT_MAX && <p className="director-long-note" role="note">设定资料 {text.length.toLocaleString("zh-CN")} 字，可正常保存；提取资产和写分镜脚本时 AI 仅参考前 {REFERENCE_PROMPT_MAX.toLocaleString("zh-CN")} 字，重要设定请放在前面。</p>}
       <div className="director-actions">
         <button type="button" className="ip-brand-button" disabled={!dirty || !!busy} onClick={save}>{dirty ? "保存" : "已保存"}</button>
-        {work.episodes.length > 0 && <button type="button" className="ip-brand-secondary" disabled={dirty || !!busy} title={dirty ? "先保存修改" : "这部分其实是正片：整段放到第 1 集最前面"} onClick={merge}>并入第 1 集</button>}
+        {work.episodes.length > 0 && <button type="button" className="ip-brand-secondary" disabled={dirty || !!busy} title={dirty ? "请先保存修改" : "将整段内容并入第 1 集正文开头"} onClick={merge}>并入第 1 集</button>}
+        {work.episodes.length > 0 && dirty && <small className="director-muted">请先保存修改</small>}
       </div>
     </div>}
   </section>;
@@ -164,7 +165,7 @@ export function UndoSplit({ work, apply, setError }: Pick<WorkbenchProps, "work"
   const [open, setOpen] = useState(false);
   if (!work.canUndoSplit) return null;
   return <>
-    <button type="button" className="ip-brand-secondary" title="回到拆分前的整份剧本，可以重新拆分" onClick={() => setOpen(true)}><Undo2 size={14}/>撤销拆分</button>
+    <button type="button" className="ip-brand-secondary" title="恢复为拆分前的完整剧本，可重新拆分" onClick={() => setOpen(true)}><Undo2 size={14}/>撤销拆分</button>
     {open && <UndoDialog work={work} apply={apply} setError={setError} onClose={() => setOpen(false)}/>}
   </>;
 }
@@ -183,8 +184,8 @@ function UndoDialog({ work, apply, setError, onClose }: Pick<WorkbenchProps, "wo
     <div className="director-dialog" role="dialog" aria-modal="true" aria-labelledby="director-undo-title" ref={dialogFocus} tabIndex={-1}>
       <header><h2 id="director-undo-title">撤销拆分</h2><button type="button" aria-label="关闭" onClick={onClose} disabled={!!busy}><X size={18}/></button></header>
       <ul className="director-regen-notes">
-        <li>剧本回到拆分前的样子，{work.episodes.length} 集合回一整份，可以重新拆分或作为一集。</li>
-        <li>拆分后在各集里改过的内容{planned ? `和已写好的 ${planned} 个片段` : ""}会一起清掉。</li>
+        <li>剧本恢复为拆分前的状态，{work.episodes.length} 集合并为完整剧本，可重新拆分或作为一集。</li>
+        <li>拆分后在各集中修改的内容{planned ? `及已写好的 ${planned} 个片段` : ""}将一并清除。</li>
         {storyAssets(work).length > 0 && <li>已有的 {storyAssets(work).length} 项资产保留。</li>}
       </ul>
       <InlineError message={error}/>

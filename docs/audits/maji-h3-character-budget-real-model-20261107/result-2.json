@@ -1,0 +1,118 @@
+{
+  "sample": 2,
+  "characters": 5680,
+  "codePoints": 5680,
+  "usable": true,
+  "model": "deepseek-v4.1-flash",
+  "warnings": [],
+  "notes": [],
+  "usage": {
+    "prompt_tokens": 12965,
+    "completion_tokens": 4217,
+    "total_tokens": 17182,
+    "prompt_tokens_details": {
+      "cached_tokens": 12800
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 2869
+    },
+    "prompt_cache_hit_tokens": 12800,
+    "prompt_cache_miss_tokens": 165
+  },
+  "dialogue": [
+    {
+      "id": "L1",
+      "shot": 1,
+      "text": "有人开车80公里来排队。",
+      "rawOccurrences": 1,
+      "finalOccurrences": 1,
+      "correctShot": true,
+      "passed": true
+    },
+    {
+      "id": "L2",
+      "shot": 2,
+      "text": "马记大排档，先进去看看。",
+      "rawOccurrences": 1,
+      "finalOccurrences": 1,
+      "correctShot": true,
+      "passed": true
+    },
+    {
+      "id": "L3",
+      "shot": 3,
+      "text": "牛杂煲汤很浓，炖得很软。",
+      "rawOccurrences": 1,
+      "finalOccurrences": 1,
+      "correctShot": true,
+      "passed": true
+    },
+    {
+      "id": "L4",
+      "shot": 4,
+      "text": "烤生蚝和椒盐玉米也得点。",
+      "rawOccurrences": 1,
+      "finalOccurrences": 1,
+      "correctShot": true,
+      "passed": true
+    },
+    {
+      "id": "L5",
+      "shot": 5,
+      "text": "杭州富阳，马记大排档，早点来。",
+      "rawOccurrences": 1,
+      "finalOccurrences": 1,
+      "correctShot": true,
+      "passed": true
+    }
+  ],
+  "references": [
+    {
+      "label": "<Picture 1>",
+      "definition": true,
+      "retention": true,
+      "retentionLabel": "<Subject 1>"
+    },
+    {
+      "label": "<Picture 2>",
+      "definition": true,
+      "retention": true,
+      "retentionLabel": "<Subject 2>"
+    },
+    {
+      "label": "<Picture 3>",
+      "definition": true,
+      "retention": true,
+      "retentionLabel": "<Subject 3>"
+    },
+    {
+      "label": "<Picture 4>",
+      "definition": true,
+      "retention": true,
+      "retentionLabel": "<Subject 4>"
+    },
+    {
+      "label": "<Picture 5>",
+      "definition": true,
+      "retention": true,
+      "retentionLabel": "<Subject 5>"
+    },
+    {
+      "label": "<Audio 1>",
+      "definition": true,
+      "retention": true,
+      "retentionLabel": "<Audio 1>"
+    }
+  ],
+  "shots": 5,
+  "passed": true,
+  "exactDialogueOrder": true,
+  "cutTimes": [
+    0,
+    3,
+    6,
+    9,
+    12
+  ],
+  "promptSha256": "36b67aaaddb486f54f97c8d7e07ddc199434991a031d3c6826ed001fefe5b201"
+}

@@ -43,7 +43,7 @@ export async function readAssistantAttachment(file: File, nodes: CanvasNodeData[
   story: (file: File) => Promise<{ text: string }>, media: (file: File, type: StudioMediaImportResult['mediaType']) => Promise<StudioMediaImportResult>) {
   if (/\.(txt|md|markdown|pdf|doc|docx)$/i.test(file.name)) return readAssistantStory(file, nodes, story);
   const type = isUploadImage(file) ? 'image' : /\.mp4$/i.test(file.name) ? 'video' : /\.(mp3|wav|m4a)$/i.test(file.name) ? 'audio' : undefined;
-  if (!type) throw new Error('不支持这个文件格式，请选择图片、MP4、音频或故事文件');
+  if (!type) throw new Error('不支持此文件格式，请选择图片、MP4、音频或故事文件');
   if (type === 'image') validateStudioImageUpload(file);
   else if (file.size > (type === 'video' ? 128 : 25) * 1024 * 1024) throw new Error('视频最多 128 MB，音频最多 25 MB，请压缩后重试');
   const result = await media(file, type);
