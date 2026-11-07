@@ -314,7 +314,7 @@ export function sceneHintText(error: unknown, fallback: string): string {
 export function sceneFailureText(code?: string, details?: string, thing = "图片"): string {
   if (code && /_429$|RATE_LIMIT|TOO_MANY/.test(code)) return `生成服务请求过多，请稍后点击「重新生成」。未生成的${thing}不扣积分。`;
   if (code && /QUEUE_FULL/.test(code)) return `生成服务繁忙，请稍后点击「重新生成」。未生成的${thing}不扣积分。`;
-  return details?.replace(/ · 追查号 \S+$/, "") || `生成失败，未生成的${thing}不扣积分。`;
+  return details?.replace(/ · 追查号 \S+$/, "") || `生成失败，未生成的${thing}不扣积分。请点击「重新生成」。`;
 }
 
 /**

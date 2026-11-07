@@ -634,9 +634,21 @@ public class StudioPlanExecutionService {
                 }
             }
             String code=step.path("errorCode").asText("");
-            if(code.contains("UNKNOWN")||code.contains("RECONCILIATION"))throw stale("原任务的提交结果尚未确认，不能重复生成。请先确认原任务");
+            // A receipt we never got is settled as failed and refunded (docs/runbooks/model-task-alerts.md), and the user may
+            // retry it. 2026-11-07: this refused every such retry, 7 times in 40 minutes while the image supplier was down, with
+            // a request to confirm a task that had already ended. Only a task still in progress must not get a second attempt.
+            if((code.contains("UNKNOWN")||code.contains("RECONCILIATION"))&&stepStillRunning(userId,projectId,step))
+                throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"STUDIO_PLAN_STEP_RUNNING","这一步正在生成，请等待完成后重试。");
             if(step.path("attempt").asInt(1)>=3)throw stale("此步骤已尝试 3 次，请在画布上修复后继续生成");
         }
+    }
+
+    private boolean stepStillRunning(String userId,String projectId,JsonNode step) {
+        for(JsonNode id:step.path("runIds")) {
+            var run=projects.ownedRun(userId,projectId,id.asText()).orElse(null);
+            if(run!=null&&!Set.of("done","failed").contains(projects.toRunDto(run).status()))return true;
+        }
+        return false;
     }
 
     private void addMaterials(String userId,String projectId,ObjectNode state,String stage,List<String> added) {

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, expect, test, vi } from "vitest";
 import { writeSceneQuery } from "../ip/scenes/scene-query";
-import { CANVAS_RETURN_DEFAULT, isCanvasPath, readCanvasReturn, rememberCanvasReturn } from "./canvas-return";
+import { CANVAS_RETURN_DEFAULT, canvasReturnText, isCanvasPath, readCanvasReturn, rememberCanvasReturn } from "./canvas-return";
 
 beforeEach(() => { window.sessionStorage.clear(); });
 
@@ -81,4 +81,9 @@ test("every way back out of the canvas reads the remembered page", () => {
   expect(gate).not.toContain('href="/projects"');
   // 手机上细栏和画布顶栏各有一个返回会重复（2026-11-07 用户指出），只留细栏上带名字的那个。
   expect(read("styles/studio-flow.css")).toContain('html:not([data-layout="desktop"]) .studio-flow-header>.studio-flow-back { display:none; }');
+});
+
+test("names the page on the button, with a space between Chinese and English", () => {
+  expect(canvasReturnText("AI 视频")).toBe("返回 AI 视频");
+  expect(canvasReturnText("项目")).toBe("返回项目");
 });

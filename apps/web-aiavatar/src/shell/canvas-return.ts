@@ -27,6 +27,9 @@ const STORAGE_KEY = "studio:canvas-return";
 export type CanvasReturn = { href: string; label: string };
 export const CANVAS_RETURN_DEFAULT: CanvasReturn = { href: "/projects", label: "项目" };
 
+/** 按钮上的字：返回项目、返回 AI 视频（中文和英文之间留空格）。 */
+export const canvasReturnText = (label: string) => /^[A-Za-z0-9]/.test(label) ? `返回 ${label}` : `返回${label}`;
+
 /** /projects/{id} 是画布；/projects/demos 是普通列表页。 */
 export const isCanvasPath = (pathname: string) =>
   /^\/projects\/[^/]+\/?$/.test(pathname) && pathname.replace(/\/$/, "") !== "/projects/demos";

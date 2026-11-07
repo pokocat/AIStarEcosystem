@@ -1,5 +1,19 @@
 # 待办与已知问题
 
+## 用户反馈 2026-11-07（方案见发布记录 `docs/releases/feedback-errors-release-20261107.md`）
+
+- [x] ~~已失败任务点「重试这一步」报「原任务的提交结果尚未确认」~~ **2026-11-07 修复**：`StudioPlanExecutionService.adoptVideoRepairs` 只拦原任务还在进行的，错误码 `STUDIO_PLAN_STEP_RUNNING`。
+- [x] ~~模型聊天回复、厂商接口说法显示给用户~~ **2026-11-07 修复**：`PublicModelErrorPolicy` 和 `public-model-error.ts` 换成引导重试的文案，旧记录读取时也换。
+- [x] ~~Seedance 2.0 内部错误没有错误码、未识别错误没有兜底~~ **2026-11-07 修复**：`VIDEO_PROVIDER_INTERNAL`；失败任务错误码不再为空；前端不显示浏览器和代码抛的英文。
+- [x] ~~画布返回不到 AI 视频~~ **2026-11-07 修复**：`shell/canvas-return.ts`，场景页按地址恢复草稿。
+- [ ] OneToken Seedance 2.0 的 `InternalServiceError`：把 `sdn_e7f6fe1298fb478ba5bc4b6e135f4cee`、`sdn_3f9fd45e7d2241948e39938345625505` 发给 OneToken 查原因（两次都带 9 张图）。
+- [ ] Seedance Fast 拒收真人参考图（今天 8 个失败 6 个）：用户定后面统一接素材库再看，这批不改。
+- [ ] 优化稿超长仍直接退回原文并收优化费（`StudioWorkflowWorker.rewriteVideo`），编导脚本平均约 3000 字（`stage-scene-script.md`）。
+- [ ] 优化稿自己加语速词、没台词也写说话（`H3PromptRewrite` 约定「how they speak」）；提交前没有台词量检查（11:52 那条 206 字要 15 秒说完）。
+- [ ] 出镜人物位看不到三视图（「人物」栏只列人物对象），「存为人物」入口和导演台「存入资产库」都没有；自动保存已有但没有提示。
+- [ ] AI 视频页没有加字幕和调速入口；`StudioEditMedia` 还不支持 `speed`。
+- [ ] 接入点整体故障只有逐条飞书告警（`alert_failure_rate_pct` 存了没用），页面也没有提示；12:16–15:13 图片线路故障用户问「是不是在维护」。
+
 ## AI 视频任务页（2026-11-06 评审后留下）
 
 - [ ] 画布问题节点本身不显示失败原因和尝试次数：`canvas-video-task.tsx` 合并已有节点时保留了节点原状态，目前只在底部返回条显示。方案 §6.5 要求节点也标明。

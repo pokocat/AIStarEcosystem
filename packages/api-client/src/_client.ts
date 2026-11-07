@@ -55,6 +55,13 @@ export function registerUnauthorizedHandler(fn: UnauthorizedHandler | null) {
   unauthorizedHandler = fn;
 }
 
+/**
+ * 网关直接回的错误（发布重启时的 502、超时的 504）：没有业务原因可说。状态码在 ApiError.status 里，不写进给用户看的句子。
+ */
+function httpFailureMessage(status: number): string {
+  return status >= 500 ? "服务暂时不可用，请稍后重试。" : "请求没有完成，请重试。";
+}
+
 export class ApiError extends Error {
   code: string;
   logId?: string;
@@ -277,13 +284,13 @@ export async function apiFetch<T>(
   if (!raw) {
     if (!res.ok) {
       throw new ApiError(
-        { code: "HTTP_ERROR", message: `HTTP ${res.status}` },
+        { code: "HTTP_ERROR", message: httpFailureMessage(res.status) },
         res.status
       );
     }
     if (res.status !== 204 && res.status !== 205) {
       throw new ApiError(
-        { code: "BAD_ENVELOPE", message: "Response envelope missing success:true" },
+        { code: "BAD_ENVELOPE", message: "服务返回了无法识别的响应，请稍后重试。" },
         res.status
       );
     }
@@ -306,10 +313,7 @@ export async function apiFetch<T>(
       throw new ApiError(
         {
           code: "HTTP_ERROR",
-          message:
-            res.status >= 500
-              ? `服务器处理请求失败（HTTP ${res.status}）`
-              : `请求失败（HTTP ${res.status}）`,
+          message: httpFailureMessage(res.status),
           details: { contentType },
         },
         res.status,
@@ -318,7 +322,7 @@ export async function apiFetch<T>(
     throw new ApiError(
       {
         code: "PARSE_ERROR",
-        message: "服务返回了无法识别的响应，请稍后再试或联系平台处理。",
+        message: "服务返回了无法识别的响应，请稍后重试。",
       },
       res.status,
     );
@@ -327,7 +331,7 @@ export async function apiFetch<T>(
   if (!res.ok) {
     const err = (parsed as { error?: ApiErrorShape })?.error ?? {
       code: "HTTP_ERROR",
-      message: `HTTP ${res.status}`,
+      message: httpFailureMessage(res.status),
     };
     if (res.status === 403 && err.code === PRODUCT_NOT_ENROLLED) {
       enrollmentRequiredHandler?.(readEnrollmentProduct(err.details));
@@ -342,7 +346,7 @@ export async function apiFetch<T>(
   if (!envelope || envelope.success !== true) {
     const err = (parsed as { error?: ApiErrorShape })?.error ?? {
       code: "BAD_ENVELOPE",
-      message: "Response envelope missing success:true",
+      message: "服务返回了无法识别的响应，请稍后重试。",
     };
     throw new ApiError(err, res.status);
   }
@@ -433,7 +437,7 @@ export async function apiFetchPaginated<T>(
     throw new ApiError(
       {
         code: "PARSE_ERROR",
-        message: "服务返回了无法识别的响应，请稍后再试或联系平台处理。",
+        message: "服务返回了无法识别的响应，请稍后重试。",
         details: { contentType },
       },
       res.status,
@@ -443,7 +447,7 @@ export async function apiFetchPaginated<T>(
   if (!res.ok) {
     const err = (parsed as { error?: ApiErrorShape })?.error ?? {
       code: "HTTP_ERROR",
-      message: `HTTP ${res.status}`,
+      message: httpFailureMessage(res.status),
     };
     if (res.status === 403 && err.code === PRODUCT_NOT_ENROLLED) {
       enrollmentRequiredHandler?.(readEnrollmentProduct(err.details));

@@ -262,7 +262,7 @@ test('storyboard script creation stays in detail and canvas reference picking re
 test('a lost submit response replaces ordinary generation with same-key confirmation even after editing the draft',async()=>{
  api.submit.mockRejectedValueOnce(new TypeError('Failed to fetch'));render(<Host/>);openVideo();
  await waitFor(()=>expect((screen.getByRole('button',{name:'生成视频',exact:true}) as HTMLButtonElement).disabled).toBe(false));
- fireEvent.click(screen.getByRole('button',{name:'生成视频',exact:true}));await waitFor(()=>expect(api.error).toHaveBeenCalledWith('Failed to fetch'));
+ fireEvent.click(screen.getByRole('button',{name:'生成视频',exact:true}));await waitFor(()=>expect(api.error).toHaveBeenCalledWith('网络连接中断，未收到服务器响应。'));
  expect(screen.queryByRole('button',{name:'生成视频',exact:true})).toBeNull();const original=api.submit.mock.calls[0][1];expect(snapshot[0].metadata?.storageKey).toBe('old.mp4');expect(snapshot[0].metadata?.studio?.request).toEqual(original);
  fireEvent.change(screen.getByRole('textbox'),{target:{value:'changed after timeout'}});
  fireEvent.click(screen.getAllByRole('button',{name:'确认原任务'})[0]);await waitFor(()=>expect(api.submit).toHaveBeenCalledTimes(2));expect(api.submit.mock.calls[1][1]).toEqual(original);
@@ -293,7 +293,7 @@ test('refresh with an active accepted batch offers its existing task rather than
  expect(screen.queryByRole('button',{name:'生成视频',exact:true})).toBeNull();fireEvent.click(screen.getByRole('button',{name:'查看原任务'}));await waitFor(()=>expect(screen.getByRole('dialog',{name:'创作任务'})).toBeDefined());expect(api.submit).not.toHaveBeenCalled();expect(snapshot[0].metadata?.studio?.request).toEqual(request);
 });
 test('refresh of an unknown outcome confirms the original body; repeated network failures do not unlock a new key',async()=>{
- api.submit.mockRejectedValue(new TypeError('network'));render(<Host initial={{...node,metadata:{...node.metadata,status:'loading',studio:{...node.metadata!.studio,request}}}}/>);openVideo();fireEvent.click(screen.getAllByRole('button',{name:'确认原任务'})[0]);await waitFor(()=>expect(api.error).toHaveBeenCalledWith('network'));expect(api.submit.mock.calls[0][1]).toEqual(request);expect(screen.queryByRole('button',{name:'生成视频',exact:true})).toBeNull();expect(snapshot[0].metadata?.studio?.request?.clientRequestId).toBe('original-key');
+ api.submit.mockRejectedValue(new TypeError('network'));render(<Host initial={{...node,metadata:{...node.metadata,status:'loading',studio:{...node.metadata!.studio,request}}}}/>);openVideo();fireEvent.click(screen.getAllByRole('button',{name:'确认原任务'})[0]);await waitFor(()=>expect(api.error).toHaveBeenCalledWith('网络连接中断，未收到服务器响应。'));expect(api.submit.mock.calls[0][1]).toEqual(request);expect(screen.queryByRole('button',{name:'生成视频',exact:true})).toBeNull();expect(snapshot[0].metadata?.studio?.request?.clientRequestId).toBe('original-key');
 });
 test.each([['STUDIO_PRICE_CHANGED',409],['ENDPOINT_NOT_ALLOWED',503]] as const)('a definite unaccepted %s server rejection permits an edited request with a new key',async(code,status)=>{
  api.submit.mockRejectedValueOnce(new ApiError({code,message:'price changed'},status));render(<Host/>);openVideo();await waitFor(()=>expect((screen.getByRole('button',{name:'生成视频',exact:true}) as HTMLButtonElement).disabled).toBe(false));fireEvent.click(screen.getByRole('button',{name:'生成视频',exact:true}));await waitFor(()=>expect(api.error).toHaveBeenCalledWith('price changed'));const old=api.submit.mock.calls[0][1];fireEvent.change(screen.getByRole('textbox'),{target:{value:'edited after rejection'}});fireEvent.click(screen.getByRole('button',{name:'生成视频',exact:true}));await waitFor(()=>expect(api.submit).toHaveBeenCalledTimes(2));expect(api.submit.mock.calls[1][1].clientRequestId).not.toBe(old.clientRequestId);expect(api.submit.mock.calls[1][1].prompt).toBe('edited after rejection');
@@ -302,12 +302,12 @@ test('polling failure on an accepted batch keeps the original task locked withou
  vi.useFakeTimers({toFake:['setTimeout','clearTimeout']});
  try {
  const active={...done,status:'running',pct:20,output:{videoCandidates:[{index:0,jobId:'job',status:'running',pct:20,durationSec:8}]}};
- api.project.mockResolvedValue({runsById:{accepted:active}});api.read.mockRejectedValue(new TypeError('polling network failure'));
+ api.project.mockResolvedValue({runsById:{accepted:active}});api.read.mockRejectedValue(new TypeError('轮询网络失败'));
  render(<Host initial={{...node,metadata:{...node.metadata,status:'loading',studio:{...node.metadata!.studio,request,runId:'accepted'}}}}/>);openVideo();
  await act(async()=>{await vi.advanceTimersByTimeAsync(1300);});
- expect(api.error).toHaveBeenCalledWith('polling network failure');
+ expect(api.error).toHaveBeenCalledWith('轮询网络失败');
  await act(async()=>{await vi.advanceTimersByTimeAsync(4500);});
- expect(api.error.mock.calls.filter(([message])=>message==='polling network failure')).toHaveLength(1);
+ expect(api.error.mock.calls.filter(([message])=>message==='轮询网络失败')).toHaveLength(1);
  expect(api.read).toHaveBeenCalledWith('accepted');expect(screen.queryByRole('button',{name:'生成视频',exact:true})).toBeNull();expect(screen.getByRole('button',{name:'查看原任务'})).toBeDefined();expect(snapshot[0].metadata?.status).toBe('loading');expect(snapshot[0].metadata?.studio?.request).toEqual(request);expect(api.submit).not.toHaveBeenCalled();
  } finally {vi.useRealTimers();}
 });
@@ -322,7 +322,7 @@ test('a newly accepted task discloses its live provider error before reaching a 
 });
 // A local document conflict currently fails the same way (plain Error from save); add a case if it ever gets its own branch.
 test('a local save failure during unknown-task recovery retains the saved request and keeps ordinary generation locked',()=>{
- const failure='save offline';
+ const failure='保存离线';
  return (async()=>{
   api.save.mockRejectedValueOnce(new Error(failure));render(<Host initial={{...node,metadata:{...node.metadata,status:'loading',studio:{...node.metadata!.studio,request}}}}/>);openVideo();fireEvent.click(screen.getAllByRole('button',{name:'确认原任务'})[0]);await waitFor(()=>expect(api.error).toHaveBeenCalledWith(failure));
   expect(api.submit).not.toHaveBeenCalled();expect(snapshot[0].metadata?.status).toBe('loading');expect(snapshot[0].metadata?.studio?.request).toEqual(request);expect(screen.queryByRole('button',{name:'生成视频',exact:true})).toBeNull();
@@ -330,19 +330,19 @@ test('a local save failure during unknown-task recovery retains the saved reques
  })();
 });
 test('a known active batch keeps ordinary generation locked when local saving is unavailable',async()=>{
- api.save.mockRejectedValue(new Error('save offline'));render(<Host initial={{...node,metadata:{...node.metadata,status:'loading',studio:{...node.metadata!.studio,request,runId:'accepted'}}}}/>);openVideo();fireEvent.click(screen.getByRole('button',{name:'查看原任务'}));await waitFor(()=>expect(screen.getByRole('dialog',{name:'创作任务'})).toBeDefined());expect(api.submit).not.toHaveBeenCalled();expect(api.save).not.toHaveBeenCalled();expect(snapshot[0].metadata?.status).toBe('loading');expect(snapshot[0].metadata?.studio).toMatchObject({request,runId:'accepted'});
+ api.save.mockRejectedValue(new Error('保存离线'));render(<Host initial={{...node,metadata:{...node.metadata,status:'loading',studio:{...node.metadata!.studio,request,runId:'accepted'}}}}/>);openVideo();fireEvent.click(screen.getByRole('button',{name:'查看原任务'}));await waitFor(()=>expect(screen.getByRole('dialog',{name:'创作任务'})).toBeDefined());expect(api.submit).not.toHaveBeenCalled();expect(api.save).not.toHaveBeenCalled();expect(snapshot[0].metadata?.status).toBe('loading');expect(snapshot[0].metadata?.studio).toMatchObject({request,runId:'accepted'});
 });
 test.each(['speech','lip'])('an unknown %s task retains its original identity across a failed save and a lost confirmation response',async kind=>{
  const original={clientRequestId:'original-native-key',nodeId:'v',model:'tts',speaker:'Vivian',text:'奶白杯身，浅紫杯盖。',maxCost:8,...(kind==='lip'?{videoStorageKey:'clip.mp4',audioStorageKey:'voice.wav'}:{})};
- const submit=kind==='speech'?api.speech:api.lip;submit.mockRejectedValueOnce(new TypeError('confirmation response lost'));
- api.save.mockRejectedValueOnce(new Error('save offline'));
+ const submit=kind==='speech'?api.speech:api.lip;submit.mockRejectedValueOnce(new TypeError('确认响应丢失'));
+ api.save.mockRejectedValueOnce(new Error('保存离线'));
  render(<Host initial={{...node,type:kind==='speech'?'audio':'video',metadata:{status:'loading',studio:{kind:'audio',...(kind==='speech'?{speechRequest:original}:{lipSyncRequest:original})}}}}/>);
  fireEvent.click(screen.getByRole('button',{name:'查看创作任务'}));
  fireEvent.click((await screen.findAllByRole('button',{name:'确认原任务'}))[0]);
- await waitFor(()=>expect(api.error).toHaveBeenCalledWith('save offline'));
+ await waitFor(()=>expect(api.error).toHaveBeenCalledWith('保存离线'));
  expect(submit).not.toHaveBeenCalled();expect(snapshot[0].metadata?.status).toBe('loading');
  fireEvent.click(screen.getAllByRole('button',{name:'确认原任务'})[0]);
- await waitFor(()=>expect(api.error).toHaveBeenCalledWith('confirmation response lost'));
+ await waitFor(()=>expect(api.error).toHaveBeenCalledWith('确认响应丢失'));
  expect(submit.mock.calls[0][1]).toEqual(original);expect(snapshot[0].metadata?.status).toBe('loading');
  submit.mockResolvedValueOnce({...done,nodeId:'v',kind:kind==='speech'?'studio-audio':'studio-lip-sync',cost:8,output:{}});
  fireEvent.click(screen.getAllByRole('button',{name:'确认原任务'})[0]);
@@ -431,11 +431,11 @@ test('a new canvas script resumes its saved draft and generation fills that same
 
 test('a lost script rewrite response confirms its successor request instead of creating another paid node',async()=>{
  const script={title:'Original',outline:'Keep this',characters:[],scenes:[],props:[],episodes:[{no:1,title:'One',content:'Edited body'}],shots:[]};
- api.submit.mockRejectedValueOnce(new TypeError('script response lost'));
+ api.submit.mockRejectedValueOnce(new TypeError('脚本响应丢失'));
  render(<Host initial={{...node,type:'text',metadata:{status:'success',studio:{kind:'script',script}}}}/>);
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'script',nodeId:'v'}}));
  fireEvent.click(await screen.findByRole('button',{name:'创作剧本',exact:true}));
- await waitFor(()=>expect(api.error).toHaveBeenCalledWith('script response lost'));
+ await waitFor(()=>expect(api.error).toHaveBeenCalledWith('脚本响应丢失'));
  const original=api.submit.mock.calls[0][1];expect(original.nodeId).not.toBe('v');expect(snapshot).toHaveLength(2);
  expect(screen.queryByRole('button',{name:'创作剧本',exact:true})).toBeNull();
  await waitFor(()=>expect(screen.getAllByRole('button',{name:'确认原任务'})[0].hasAttribute('disabled')).toBe(false));
@@ -445,13 +445,13 @@ test('a lost script rewrite response confirms its successor request instead of c
 });
 
 test('saving an existing script is free and retries the same draft after a cloud-save failure',async()=>{
- api.save.mockRejectedValueOnce(new Error('import save failed'));render(<Host initialNodes={[]}/>);
+ api.save.mockRejectedValueOnce(new Error('导入保存失败'));render(<Host initialNodes={[]}/>);
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'script'}}));
  fireEvent.change(await screen.findByRole('textbox',{name:'创作要求'}),{target:{value:'My script\nA complete scene.'}});
  fireEvent.click(screen.getByRole('checkbox',{name:'直接保存已有剧本'}));
  expect(screen.getByText('保存剧本 · 免费')).toBeDefined();
  const id=snapshot[0].id;fireEvent.click(screen.getByRole('button',{name:'保存并编辑剧本'}));
- await waitFor(()=>expect(api.error).toHaveBeenCalledWith('import save failed'));
+ await waitFor(()=>expect(api.error).toHaveBeenCalledWith('导入保存失败'));
  expect(snapshot).toHaveLength(1);expect(snapshot[0].metadata?.studio?.script?.episodes[0].content).toBe('My script\nA complete scene.');
  fireEvent.click(screen.getByRole('button',{name:'保存并编辑剧本'}));
  await screen.findByRole('dialog',{name:'剧本编辑器'});expect(snapshot).toHaveLength(1);expect(snapshot[0].id).toBe(id);
@@ -461,13 +461,13 @@ test('saving an existing script is free and retries the same draft after a cloud
 test('editor save failure retains edited script and splitting after another edit cannot restore obsolete content',async()=>{
  const script={title:'Original',outline:'Outline',characters:[],scenes:[],props:[],episodes:[{no:1,title:'One',content:'Old scene'}],shots:[]};
  const composerDraft={operation:'storyboard',prompt:'obsolete split snapshot',referenceNodeIds:[],aspectRatio:'9:16',count:1,durationSec:5,settings:{},video:{mode:'t2v',tier:'768p'}};
- api.save.mockRejectedValueOnce(new Error('editor save failed'));
+ api.save.mockRejectedValueOnce(new Error('编辑器保存失败'));
  render(<Host initial={{...node,type:'text',metadata:{status:'success',studio:{kind:'script',script,composerDraft}}}}/>);
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'editor',nodeId:'v'}}));
  const markdown=await screen.findByRole('textbox',{name:'剧本文档'}) as HTMLTextAreaElement;
  fireEvent.change(markdown,{target:{value:markdown.value.replace('Old scene','Newest edited scene')}});
  fireEvent.click(screen.getByRole('button',{name:'返回画布'}));
- await waitFor(()=>expect(api.error).toHaveBeenCalledWith('editor save failed'));
+ await waitFor(()=>expect(api.error).toHaveBeenCalledWith('编辑器保存失败'));
  expect(screen.getByRole('dialog',{name:'剧本编辑器'})).toBeDefined();
  fireEvent.click(screen.getByRole('button',{name:'返回画布'}));
  await waitFor(()=>expect(screen.queryByRole('dialog',{name:'剧本编辑器'})).toBeNull());

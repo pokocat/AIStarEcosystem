@@ -9,7 +9,7 @@ import { AlertCircle, AlignLeft, ArrowLeft, Copy, FileText, Group, Hand, ImagePl
 import { AiMark } from './studio-ai-icon';
 import { nanoid } from 'nanoid';
 import { useIdentity } from '@/proto/api';
-import { readCanvasReturn } from '@/shell/canvas-return';
+import { canvasReturnText, readCanvasReturn } from '@/shell/canvas-return';
 import { WalletBadge } from '@/shell/wallet-badge';
 import { useCanvasStore } from '@/canvas/stores/canvas/use-canvas-store';
 import { CanvasNodeType, type CanvasNodeData, type CanvasConnection } from '@/canvas/types/canvas';
@@ -520,7 +520,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     {key:'minimap',label:minimap?'隐藏小地图':'显示小地图',onClick:()=>setMinimap(v=>!v)},
   ];
   return <StudioFloatingContext.Provider value={{viewport,nodes:project.nodes}}><div ref={shellRef} className="studio-flow-shell" data-history={historyRevision}>
-    <header className="studio-flow-header"><a className="studio-flow-back" href={back.href} aria-label={`返回${back.label}`}><ArrowLeft size={18}/><span>{back.label}</span></a>
+    <header className="studio-flow-header"><a className="studio-flow-back" href={back.href} ><ArrowLeft size={18}/><span>{canvasReturnText(back.label)}</span></a>
       <Input aria-label="画布名称" variant="borderless" value={project.title} maxLength={80} onChange={e => useCanvasStore.getState().renameProject(projectId, e.target.value)}/>
       <HostActionsSlot/>
       <div className="studio-canvas-credit"><WalletBadge account={identity?.uid ?? null} location={`/projects/${projectId}`} enterprise/></div>
