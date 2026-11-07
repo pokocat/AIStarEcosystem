@@ -271,6 +271,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 ## 7. 发布与验收记录（`docs/releases/`）
 
+- [sun5.5：Sonnet low 生产切换](releases/sun55-sonnet-low-production-release-20261107.md)：main `27351bb9c`，server 参数支持与 V77，实际业务请求携带 low、39.873 秒正常回包；页面显示 sun5.5，完整 CI 与线上验收通过（last-reviewed: 2026-11-07）。
 - [Sonnet 切换为 Orange5.5 与一次真实图文实测](releases/orange55-model-switch-20261107.md)：生产配置改用 `claude-opus-5-5-Kiro`，对外显示 Orange5.5；实测 38.731 秒、3053/3197 Token、5 积分，同量级历史比较未显示明显提速（last-reviewed: 2026-11-07）。
 
 - [整仓生产发布](releases/full-production-release-20261107.md)：main `38de5c736`，10 个服务、V75/V76、全量测试与运行制品核对；记录代发依赖复用恢复、约 23 秒重启窗口和回滚备份（last-reviewed: 2026-11-07）。
