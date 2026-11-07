@@ -19,4 +19,9 @@ public interface MaterialVideoInputAssetRepository extends JpaRepository<Materia
     @Query(value = "INSERT INTO material_video_input_asset (id, source_key, asset_id, expires_at) VALUES (:id, :source, :asset, :expiry) "
             + "ON DUPLICATE KEY UPDATE asset_id = :asset, expires_at = :expiry", nativeQuery = true)
     void remember(@Param("id") String id, @Param("source") String source, @Param("asset") String asset, @Param("expiry") Instant expiry);
+
+    @Modifying
+    @Transactional
+    @Query("delete from MaterialVideoInputAsset a where a.id = :id")
+    int forget(@Param("id") String id);
 }

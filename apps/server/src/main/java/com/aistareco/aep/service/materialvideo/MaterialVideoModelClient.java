@@ -79,6 +79,9 @@ public class MaterialVideoModelClient {
     private final HttpClient http;
     @org.springframework.beans.factory.annotation.Autowired
     private MaterialVideoInputAssets inputAssets;
+    /** 配了素材库的模型才用到；直接 new 出来的协议单测没有它。 */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private VideoAssetPreparer assetPreparer;
     /** 重传兜底（{@link InputAssetCopy#viaFfmpeg}）；直接 new 出来的协议单测没有它。 */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.aistareco.aep.service.mixcut.FfmpegRunner ffmpeg;
@@ -353,6 +356,22 @@ public class MaterialVideoModelClient {
     /** Persist the exact resolved route immediately before the create HTTP request, including uncertain replies. */
     public SubmitResult submit(String prompt,int durationSec,String aspectRatio,String ownerUserId,
             String appCode,String endpointId,VideoGenSpec spec,java.util.function.Consumer<SubmitResult> beforeSubmit) {
+        try {
+            return submitOnce(prompt,durationSec,aspectRatio,ownerUserId,appCode,endpointId,spec,beforeSubmit,true);
+        } catch (StaleLibraryReference stale) {
+            // 回执还没到期，引用却被厂商作废了。拒绝不产生任务，也不收费；回执已作废，这里重传一次，第二次仍被拒就照常报错。
+            return submitOnce(prompt,durationSec,aspectRatio,ownerUserId,appCode,endpointId,spec,beforeSubmit,false);
+        }
+    }
+
+    /** 素材库引用失效，只在 {@link #submit} 内部流转。 */
+    private static final class StaleLibraryReference extends RuntimeException {
+        StaleLibraryReference() { super(null, null, false, false); }
+    }
+
+    private SubmitResult submitOnce(String prompt,int durationSec,String aspectRatio,String ownerUserId,
+            String appCode,String endpointId,VideoGenSpec spec,java.util.function.Consumer<SubmitResult> beforeSubmit,
+            boolean refreshStaleReferences) {
         VideoGenSpec genSpec = spec == null ? VideoGenSpec.EMPTY : spec;
         AiModelEndpoint p = requireEndpoint(endpointId, appCode);
         String apiKey = requireKey(p);
@@ -438,6 +457,14 @@ public class MaterialVideoModelClient {
             // 而这里跑在 @Async worker 里，不写这一行就等于什么都没记。
             log.warn("[material-video] submit rejected endpoint={} model={} protocol={} status={} durationMs={} body={}",
                     p.getName(), model, protocol, resp.statusCode(), elapsedMs(startNanos), snippet(resp.body()));
+            if (refreshStaleReferences) {
+                VideoAssetPreparer.Session library = librarySession(p, model, configured, apiKey);
+                if (library != null && library.rejectedStaleReference(resp.statusCode(), resp.body())) {
+                    library.forget(sourceKeys(genSpec));
+                    log.warn("[material-video] 素材库引用已失效，作废回执后重传一次 endpoint={} model={}", p.getName(), model);
+                    throw new StaleLibraryReference();
+                }
+            }
             // Message propagation is independent of status classification and settlement.
             var mappedError = VideoProviderErrorMapper.submit(resp.statusCode(), resp.body());
             // A generic gateway/server failure cannot prove the supplier rejected a non-idempotent create.
@@ -897,8 +924,9 @@ public class MaterialVideoModelClient {
                                                  AiVideoRequestSpec configured) {
         // 「首帧走上传换 assetId 还是给 URL」只在 usesUploadedFirstFrame 一处判定（2026-09-30 热修收口，§8.0.1 ④）
         if (!usesUploadedFirstFrame(protocol)) {
-            if (configured != null && configured.inputAssets() != null && spec.isExplicit())
-                return libraryInputs(p, apiKey, model, spec, configured);
+            VideoAssetPreparer.Session library = librarySession(p, model, configured, apiKey);
+            if (library != null && spec.isExplicit())
+                return libraryInputs(library, spec, configured);
             String first = spec.firstFrameKey() == null ? null : PROTOCOL_AGNES.equals(protocol)
                     ? agnesFirstFrameInput(spec.firstFrameKey()) : requireFetchableUrl(spec.firstFrameKey());
             if ((PROTOCOL_SEEDANCE.equals(protocol) || PROTOCOL_JSON_TEMPLATE.equals(protocol)) && spec.isExplicit()) {
@@ -950,33 +978,46 @@ public class MaterialVideoModelClient {
      * 端点配了厂商素材库：所有素材先传上去换引用，请求里不再出现我方的签名地址。
      * 传不上去就让这次任务失败，不退回 URL、也不丢素材（§8.0）。此时还没向厂商提交，冻结照常退回。
      */
-    private UpstreamInputs libraryInputs(AiModelEndpoint p, String apiKey, String model, VideoGenSpec spec,
-                                         AiVideoRequestSpec configured) {
+    private UpstreamInputs libraryInputs(VideoAssetPreparer.Session library, VideoGenSpec spec, AiVideoRequestSpec configured) {
         String mode = spec.generationMode();
-        String first = spec.firstFrameKey() == null ? null : libraryRef(p, apiKey, model, configured, spec.firstFrameKey(),
+        String first = spec.firstFrameKey() == null ? null : libraryRef(library, spec.firstFrameKey(),
                 JusuanH3Contract.MEDIA_IMAGE, materialMaxBytes(configured, mode, "image", true),
                 materialFormats(configured, mode, "image", true), "首帧图");
-        String last = spec.lastFrameKey() == null ? null : libraryRef(p, apiKey, model, configured, spec.lastFrameKey(),
+        String last = spec.lastFrameKey() == null ? null : libraryRef(library, spec.lastFrameKey(),
                 JusuanH3Contract.MEDIA_IMAGE, materialMaxBytes(configured, mode, "image", true),
                 materialFormats(configured, mode, "image", true), "尾帧图");
         List<ReferenceAsset> refs = new ArrayList<>();
         List<String> labels = VideoGenSpec.referenceLabels(spec.references());
         for (int i = 0; i < spec.references().size(); i++) {
             VideoGenSpec.Reference r = spec.references().get(i);
-            refs.add(new ReferenceAsset(r.mediaType(), libraryRef(p, apiKey, model, configured, r.key(), r.mediaType(),
+            refs.add(new ReferenceAsset(r.mediaType(), libraryRef(library, r.key(), r.mediaType(),
                     materialMaxBytes(configured, mode, r.mediaType(), false),
                     materialFormats(configured, mode, r.mediaType(), false), labels.get(i))));
         }
         return new UpstreamInputs(first, null, last, refs);
     }
 
-    private String libraryRef(AiModelEndpoint p, String apiKey, String model, AiVideoRequestSpec configured, String key,
-                              String mediaType, long maxBytes, List<String> allowedFormats, String label) {
-        java.util.function.Supplier<MaterialVideoInputAssets.Receipt> upload =
-                () -> uploadToLibrary(p, apiKey, model, configured, key, mediaType, maxBytes, allowedFormats, label);
-        // 分段视频的每一段都用同一批参考，复用引用既省上传次数，也避开厂商的频率限制。
-        return (inputAssets == null ? upload.get()
-                : inputAssets.resolve(p.getId(), p.getBaseUrl(), model, apiKey, key, LIBRARY_RECEIPT_MIN_REMAINING, upload)).assetId();
+    private String libraryRef(VideoAssetPreparer.Session library, String key, String mediaType, long maxBytes,
+                              List<String> allowedFormats, String label) {
+        return library.ref(key, () -> {
+            LocalInput input = readLocalInput(key, mediaType, maxBytes, allowedFormats, label);
+            return new VideoAssetLibrary.LibraryFile(input.path(), input.size(), input.format(), input.filename(), mediaType, label);
+        });
+    }
+
+    /** 模型配了素材库才有；没配返回 null，素材按原来的方式交给厂商。 */
+    private VideoAssetPreparer.Session librarySession(AiModelEndpoint p, String model, AiVideoRequestSpec configured, String apiKey) {
+        if (p.getAssetLibraryId() == null || configured == null) return null;
+        return assetPreparer.open(p.getAssetLibraryId(), new VideoAssetLibrary.EndpointAccess(p.getName(), p.getBaseUrl(), model,
+                configured.credentialHeaderName(), configured.credentialHeaderValue(apiKey)));
+    }
+
+    private static List<String> sourceKeys(VideoGenSpec spec) {
+        List<String> keys = new ArrayList<>();
+        if (spec.firstFrameKey() != null) keys.add(spec.firstFrameKey());
+        if (spec.lastFrameKey() != null) keys.add(spec.lastFrameKey());
+        for (VideoGenSpec.Reference reference : spec.references()) keys.add(reference.key());
+        return keys;
     }
 
     static long materialMaxBytes(AiVideoRequestSpec configured, String mode, String type, boolean frame) {
@@ -1510,11 +1551,11 @@ public class MaterialVideoModelClient {
         return normalizeStatus(raw);
     }
 
-    private static boolean matchesStatus(List<String> values, String raw) {
+    static boolean matchesStatus(List<String> values, String raw) {
         return values != null && values.stream().anyMatch(value -> value.equalsIgnoreCase(raw.trim()));
     }
 
-    private static String pointerText(JsonNode root, String pointer) {
+    static String pointerText(JsonNode root, String pointer) {
         JsonNode value = root == null ? null : root.at(pointer);
         if (value == null || !value.isValueNode() || value.isNull()) return null;
         String text = value.asText("").trim();
@@ -1786,7 +1827,7 @@ public class MaterialVideoModelClient {
     }
 
     /** Relative provider route with URL-encoded accepted task/model values; query fields stay in the saved spec. */
-    private static URI configuredRoute(String baseUrl, String path, String taskId, String model) {
+    static URI configuredRoute(String baseUrl, String path, String taskId, String model) {
         String route = path.replace("{model}", encodeRouteValue(model));
         if (taskId != null) route = route.replace("{id}", encodeRouteValue(taskId));
         return URI.create(joinUrl(baseUrl, route));
@@ -1812,7 +1853,7 @@ public class MaterialVideoModelClient {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
-    private static String snippet(String body) {
+    static String snippet(String body) {
         if (body == null) return "";
         return body.length() > 300 ? body.substring(0, 300) + "…" : body;
     }
@@ -1890,11 +1931,6 @@ public class MaterialVideoModelClient {
 
     /** 判格式只需要文件头这么多字节；大文件不整个读进内存。 */
     private static final int SNIFF_HEAD_BYTES = 4096;
-    /** 厂商排队时也可能校验引用，离过期太近就重传。上传免费。 */
-    private static final Duration LIBRARY_RECEIPT_MIN_REMAINING = Duration.ofMinutes(30);
-    private static final int LIBRARY_UPLOAD_RATE_RETRIES = 2;
-    private static final long LIBRARY_UPLOAD_DEFAULT_WAIT_SECONDS = 5;
-    private static final long LIBRARY_UPLOAD_MAX_WAIT_SECONDS = 30;
 
     /** Director binds an owned sample before any paid generation. The worker uses this same receipt lookup. */
     public void prepareAudioReference(String endpointId, String key, String appCode) {
@@ -1955,105 +1991,6 @@ public class MaterialVideoModelClient {
     }
 
     private record LocalInput(Path path, long size, MediaBytes.Format format, String filename) {}
-
-    /** 按端点配置上传到厂商素材库。{@code 429} 按厂商给的等待时间重试，等待有上限，超了就让任务失败。 */
-    private MaterialVideoInputAssets.Receipt uploadToLibrary(AiModelEndpoint p, String apiKey, String model,
-                                                             AiVideoRequestSpec configured, String key, String mediaType,
-                                                             long maxBytes, List<String> allowedFormats, String label) {
-        LocalInput input = readLocalInput(key, mediaType, maxBytes, allowedFormats, label);
-        AiVideoRequestSpec.InputAssetSpec library = configured.inputAssets();
-        URI uri = configuredRoute(p.getBaseUrl(), library.uploadPath(), null, model);
-        String boundary = "----aistareco" + UUID.randomUUID().toString().replace("-", "");
-        try {
-            HttpResponse<String> resp;
-            for (int attempt = 0; ; attempt++) {
-                HttpRequest req = HttpRequest.newBuilder(uri)
-                        .timeout(Duration.ofSeconds(Math.max(props.getHttpTimeoutSeconds(), props.getDownloadTimeoutSeconds())))
-                        .header(configured.credentialHeaderName(), configured.credentialHeaderValue(apiKey))
-                        .header("Content-Type", "multipart/form-data; boundary=" + boundary)
-                        .POST(multipartFile(boundary, library.fileField(), input.filename(), input.format().mime(), input.path()))
-                        .build();
-                resp = http.send(req, HttpResponse.BodyHandlers.ofString());
-                if (resp.statusCode() != 429 || attempt >= LIBRARY_UPLOAD_RATE_RETRIES) break;
-                Duration wait = libraryRetryAfter(resp.headers().firstValue("Retry-After").orElse(null));
-                log.warn("[material-video] 素材库上传被限流，等待后重试 endpoint={} field={} attempt={} waitSec={} body={}",
-                        p.getName(), mediaType, attempt + 1, wait.toSeconds(), snippet(resp.body()));
-                Thread.sleep(wait.toMillis());
-            }
-            if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
-                log.warn("[material-video] 素材库上传被拒 endpoint={} model={} url={} field={} bytes={} contentType={} status={} body={}",
-                        p.getName(), model, uri, mediaType, input.size(), input.format().mime(), resp.statusCode(), snippet(resp.body()));
-                throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_REF_UPLOAD_FAILED",
-                        resp.statusCode() == 429 ? label + "上传繁忙，请稍后重试"
-                                : uploadFailureMessage(label, resp.statusCode(), resp.body()),
-                        "status=" + resp.statusCode() + " url=" + uri + " body=" + snippet(resp.body()));
-            }
-            MaterialVideoInputAssets.Receipt receipt = libraryReceipt(library, resp.body(), label);
-            log.info("[material-video] 素材已上传到素材库 endpoint={} model={} field={} bytes={} contentType={} ref={} expiresAt={}",
-                    p.getName(), model, mediaType, input.size(), input.format().mime(), receipt.assetId(), receipt.expiresAt());
-            return receipt;
-        } catch (BusinessException e) {
-            throw e;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_REF_UPLOAD_FAILED",
-                    label + "上传失败，请稍后重试", "interrupted");
-        } catch (Exception e) {
-            log.warn("[material-video] 素材库上传异常 endpoint={} field={} url={} err={}", p.getName(), mediaType, uri, e.toString());
-            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_REF_UPLOAD_FAILED",
-                    label + "上传失败，请稍后重试", "err=" + e);
-        }
-    }
-
-    /** 没有引用、状态不可用都算失败；状态和引用只从端点配置指定的位置读。 */
-    static MaterialVideoInputAssets.Receipt libraryReceipt(AiVideoRequestSpec.InputAssetSpec library, String body, String label)
-            throws IOException {
-        JsonNode root = OM.readTree(body);
-        String ref = pointerText(root, library.ref());
-        if (ref == null || ref.isBlank()) {
-            log.warn("[material-video] 素材库返回里没有引用 pointer={} body={}", library.ref(), snippet(body));
-            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_REF_UPLOAD_FAILED",
-                    label + "上传失败，请稍后重试", "响应里没有素材引用: " + snippet(body));
-        }
-        if (library.status() != null) {
-            String status = pointerText(root, library.status());
-            if (status == null || !matchesStatus(library.ready(), status)) {
-                log.warn("[material-video] 素材库素材不可用 status={} body={}", status, snippet(body));
-                throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_REF_UPLOAD_FAILED",
-                        label + "尚未处理完成，请稍后重试", "status=" + status + " body=" + snippet(body));
-            }
-        }
-        Instant expiresAt = library.expiresAt() == null ? null : libraryExpiry(root.at(library.expiresAt()));
-        if (expiresAt != null && !expiresAt.isAfter(Instant.now().plusSeconds(60)))
-            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_REF_UPLOAD_FAILED",
-                    label + "上传失败，请稍后重试", "素材有效期不足 expiresAt=" + expiresAt);
-        return new MaterialVideoInputAssets.Receipt(ref, expiresAt);
-    }
-
-    /** 文档只写了 expires_at 这个名字，没写格式，时间串和秒 / 毫秒时间戳都认。读不出来按未知处理：这次用完下次重传。 */
-    static Instant libraryExpiry(JsonNode value) {
-        if (value == null || value.isMissingNode() || value.isNull()) return null;
-        String text = value.asText("").trim();
-        try {
-            if (text.matches("\\d+")) {
-                long number = Long.parseLong(text);
-                return number >= 100_000_000_000L ? Instant.ofEpochMilli(number) : Instant.ofEpochSecond(number);
-            }
-            return java.time.OffsetDateTime.parse(text).toInstant();
-        } catch (RuntimeException unreadable) {
-            log.warn("[material-video] 素材库有效期无法读取 value={}", text);
-            return null;
-        }
-    }
-
-    static Duration libraryRetryAfter(String header) {
-        long seconds = LIBRARY_UPLOAD_DEFAULT_WAIT_SECONDS;
-        if (header != null) {
-            try { seconds = Long.parseLong(header.trim()); }
-            catch (NumberFormatException httpDate) { /* 时间格式少见，按默认等待 */ }
-        }
-        return Duration.ofSeconds(Math.max(0, Math.min(seconds, LIBRARY_UPLOAD_MAX_WAIT_SECONDS)));
-    }
 
     private MaterialVideoInputAssets.Receipt uploadInputAssetReceipt(AiModelEndpoint p, String apiKey, String model, String key,
                                     String mediaType, long maxBytes, List<String> allowedFormats, String label) {
@@ -2160,7 +2097,7 @@ public class MaterialVideoModelClient {
     }
 
     /** 手写 multipart：只有一个文件字段，不值得为它引一个 HTTP 客户端库。文件体直接从磁盘流出去。 */
-    private static HttpRequest.BodyPublisher multipartFile(String boundary, String field, String filename,
+    static HttpRequest.BodyPublisher multipartFile(String boundary, String field, String filename,
                                                            String contentType, Path file) throws FileNotFoundException {
         return multipart(boundary, field, filename, contentType, HttpRequest.BodyPublishers.ofFile(file));
     }

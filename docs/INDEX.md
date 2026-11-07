@@ -150,6 +150,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | [`docs/studio-final-cut.md`](studio-final-cut.md) | **成片：生产阶段做好基础，编辑室只做精修 · 现行设计真源** | 自动字幕、声音处理、清晰度放在合成阶段默认做好；编辑室加变速、淡入淡出、调色、小窗和图片 | 2026-11-07 |
 | [`docs/ip-studio-workflow-template-plan.md`](ip-studio-workflow-template-plan.md) | **标准画布模板与人物设定图方案** | 用户新增核心方向；含 LibTV 公开/复制画布实测、默认一次人物设定图与反推提示词，进阶独立资产/拼板；模板输入/依赖/输出/版本/套用和有限执行（last-reviewed 2026-10-08） |
 | [Studio 创作首页](ip-studio-home.md) | AI IP 工作台 | 首页主要功能、近期画布与模板、同一 Studio 落点与品牌保留（last-reviewed 2026-10-08） |
+| [视频素材库统一方案](video-asset-library.md) | 方案 | 所有视频任务走同一步素材准备，各渠道走各自的入库流程。OneToken 已接入，火山官方的真人认证和虚拟人像库因权限暂缓。last-reviewed 2026-11-07 |
 | [Studio 视频模式](ip-studio-video-modes.md) | 产品 / 实施 | 原生首尾帧、全能参考、模型合同与费用校验；本地验证边界 |
 | [Studio 运镜标签](ip-studio-camera-motion.md) | 产品 / 实施 | 原生面板、展开编辑器与抽屉共用命名指令、光标插入、编辑/移除及正文保存；v0.211 本地 |
 | [Studio 视频特效库](ip-studio-video-effects.md) | 产品 / 实施 | 共用官方描述、本人收藏/最近/个人发布、模型筛选、点选与替换；v0.213 本地，原生供应商效果及完整社区未接 |

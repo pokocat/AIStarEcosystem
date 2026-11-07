@@ -13,6 +13,7 @@ class VideoProviderErrorMapperTest {
         assertEquals("VIDEO_REFERENCE_PERSON_RESTRICTED", mapped.code());
         assertTrue(mapped.publicMessage(response).contains("真人"));
         assertTrue(mapped.publicMessage(response).contains("更换参考图片"));
+        assertTrue(mapped.publicMessage(response).contains("Seedance 2.5"), "别的模型可以用这些素材，要告诉用户");
         assertFalse(mapped.publicMessage(response).contains("content["));
         assertFalse(mapped.publicMessage(response).contains("private-trace"));
         assertTrue(VideoProviderErrorMapper.submit(503, response).isEmpty(), "do not reclassify uncertain server failures");

@@ -37,6 +37,11 @@ public class MaterialVideoInputAssets {
         return result;
     }
 
+    /** The supplier says this reference is gone even though the receipt has not expired. The next resolve uploads again. */
+    public void forget(String endpoint, String baseUrl, String model, String credential, String key) {
+        repo.forget(digest(endpoint, baseUrl, model, credential, key));
+    }
+
     private static String digest(String... parts) {
         try {
             var hash = MessageDigest.getInstance("SHA-256");

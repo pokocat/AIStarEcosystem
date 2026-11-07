@@ -28,6 +28,7 @@ public record AdminAiModelEndpointUpsertDto(
         Boolean clearImageRequestSpec,
         com.aistareco.aep.model.AiVideoRequestSpec videoRequestSpec,
         Boolean clearVideoRequestSpec,
+        String assetLibraryId,         // 所属素材库；null = 不改，空字符串 = 清除
         Integer rpmLimit,
         Integer concurrencyLimit,
         Integer tpmLimit,
