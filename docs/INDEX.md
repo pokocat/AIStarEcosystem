@@ -128,7 +128,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | [`docs/studio-inspiration-library.md`](studio-inspiration-library.md) | **灵感库：开箱即用的官方示例 · 现行设计真源** | 35 个示例的内容与发布脚本（`scripts/inspiration/`）、详情弹窗、做同款后助手预填；last-reviewed 2026-11-05 |
 | [`docs/studio-segmented-video.md`](studio-segmented-video.md) | **AI 视频页的长视频：一键做到成片 · 现行设计真源** | 比模型单段上限长的视频：切段、分段脚本、两轮审核、分镜图、各段出片、合成；已发布，线上还没真跑过。last-reviewed 2026-11-06 |
 | [`docs/releases/pc-ui-copy-release-20261107.md`](releases/pc-ui-copy-release-20261107.md) | **PC 站文案优化发布** | `20261107-pc-ui-copy`（server + web-aiavatar，main `bd4c0d385`）、窗口 502、只读验收、回滚 `20261106-video-task` | 2026-11-07 |
-| [`releases/h3-rewrite-checks-release-20261107.md`](releases/h3-rewrite-checks-release-20261107.md) | H3 提示词优化修复：视频生成不出来的排查、真实重跑与模型对比 | 2026-11-07 |
+| [`docs/releases/h3-rewrite-checks-release-20261107.md`](releases/h3-rewrite-checks-release-20261107.md) | **H3 提示词优化修复发布** | `20261107-h3-rewrite-checks`（server + web-aiavatar），视频生成不出来的排查、真实重跑与模型对比 | 2026-11-07 |
 | [`docs/releases/studio-video-task-release-20261106.md`](releases/studio-video-task-release-20261106.md) | **AI 视频统一任务发布** | `20261106-video-task`（server + web-aiavatar），线上只读验收与未验证项 | 2026-11-07 |
 | [`docs/releases/studio-ui-walkthrough-validation-20261106.md`](releases/studio-ui-walkthrough-validation-20261106.md) | **Studio 全面 UI 走查** | 新版界面桌面和手机走查、修复项与未验证范围 | 2026-11-06 |
 | [`docs/releases/studio-video-task-local-validation-20261106.md`](releases/studio-video-task-local-validation-20261106.md) | **AI 视频统一任务本地验收** | 三种流程、三次失败停止、画布修复接续、媒体与界面证据；未部署。 |
