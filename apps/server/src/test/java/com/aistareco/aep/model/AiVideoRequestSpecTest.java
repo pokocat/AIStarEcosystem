@@ -20,6 +20,45 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AiVideoRequestSpecTest {
+    private static VideoStudioContract t2vContract() {
+        return new VideoStudioContract(List.of(new VideoStudioModeSpec("t2v", false, false, null, null)),
+                List.of(new VideoStudioTier("720p", List.of(new VideoStudioCanvas("16:9", 1280, 720, "16:9@720")))),
+                4, 15, 2000, 4294967295L);
+    }
+    private static AiVideoRequestSpec withLibrary(String adapter, AiVideoRequestSpec.InputAssetSpec library) {
+        Map<String, Map<String, Object>> templates = "json-template".equals(adapter)
+                ? Map.of("t2v", Map.<String, Object>of("prompt", "${prompt}")) : null;
+        return new AiVideoRequestSpec(adapter, t2vContract(), "/tasks", "/tasks/{id}", Map.of(), null, null, templates,
+                null, null, null, null, null, null, null, null, library);
+    }
+
+    @Test void inputAssetLibrarySurvivesARoundTripAndOlderSpecsReadWithoutIt() {
+        var library = new AiVideoRequestSpec.InputAssetSpec("/api/v3/video/assets", "file", "/ref", "/status",
+                List.of("Active"), "/expires_at");
+        assertEquals(library, AiVideoRequestSpec.read(withLibrary("seedance", library).json()).inputAssets());
+        assertEquals(library, AiVideoRequestSpec.read(withLibrary("json-template", library).json()).inputAssets());
+        // 线上已存的规格没有这个字段，读出来就是没开。
+        assertEquals(null, AiVideoRequestSpec.read(withLibrary("seedance", null).json()
+                .replace(",\"inputAssets\":null", "")).inputAssets());
+    }
+
+    @Test void inputAssetLibraryRejectsBadConfiguration() {
+        var ok = new AiVideoRequestSpec.InputAssetSpec("/assets", "file", "/ref", null, null, null);
+        withLibrary("seedance", ok).validate();
+        assertThrows(RuntimeException.class, () -> withLibrary("jusuan-media", ok).validate());
+        for (var bad : List.of(
+                new AiVideoRequestSpec.InputAssetSpec("assets", "file", "/ref", null, null, null),
+                new AiVideoRequestSpec.InputAssetSpec("/assets/{id}", "file", "/ref", null, null, null),
+                new AiVideoRequestSpec.InputAssetSpec("/assets", "bad name", "/ref", null, null, null),
+                new AiVideoRequestSpec.InputAssetSpec("/assets", "file", "ref", null, null, null),
+                new AiVideoRequestSpec.InputAssetSpec("/assets", "file", null, null, null, null),
+                new AiVideoRequestSpec.InputAssetSpec("/assets", "file", "/ref", "/status", null, null),
+                new AiVideoRequestSpec.InputAssetSpec("/assets", "file", "/ref", null, List.of("Active"), null),
+                new AiVideoRequestSpec.InputAssetSpec("/assets", "file", "/ref", "/status", List.of(), null),
+                new AiVideoRequestSpec.InputAssetSpec("/assets", "file", "/ref", null, null, "expires_at")))
+            assertThrows(RuntimeException.class, () -> withLibrary("seedance", bad).validate(), bad.toString());
+    }
+
     @Test void referenceMinimumMustBeReachableWithConfiguredLimits() {
         var image = new VideoStudioMediaLimit("image", 1, 1024, List.of("PNG"), null, null);
         var video = new VideoStudioMediaLimit("video", 1, 1024, List.of("MP4"), null, null);

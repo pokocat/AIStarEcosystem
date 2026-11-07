@@ -4,6 +4,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.List;
 
@@ -14,6 +15,7 @@ public interface MaterialVideoInputAssetRepository extends JpaRepository<Materia
 
     // Concurrent clips can first encounter the same voice together. Atomic upsert avoids duplicate-key job failures.
     @Modifying
+    @Transactional
     @Query(value = "INSERT INTO material_video_input_asset (id, source_key, asset_id, expires_at) VALUES (:id, :source, :asset, :expiry) "
             + "ON DUPLICATE KEY UPDATE asset_id = :asset, expires_at = :expiry", nativeQuery = true)
     void remember(@Param("id") String id, @Param("source") String source, @Param("asset") String asset, @Param("expiry") Instant expiry);

@@ -65,3 +65,15 @@ V49 成功新增可空供应商计量字段；JAR SHA256 `fcb138dd5e6f6e90935f5a
 ## 2026-10-10 第一批管理功能生产发布
 
 用户授权提交部署后，用户窄命令与模型操作通道已随 `76debecff` 推送至 `codex/unified-ip-studio`，只部署 server，发布 `20261011040736-76debecf`。Platform 运行 `bf96d698137bdf40a13073928070aeffa4df7627`，入口仍为 ops.aibuzz.cn。保留原生产身份与测试账号清理修复，没有新增业务表或迁移。平台权限与原 Java 签名分别校验；匿名用户命令 401。线上浏览器已验证原用户分页/档案、15 个端点、概览与调用记录读取；没有生产用户状态变更、价格变更或供应商调用。定向 Java 13 个用例通过，线上 JAR 与本地产物 SHA256 一致。完整发布记录在 aibuzz-platform 的 `docs/reviews/2026-10-10-admin-production-release.md`。
+
+## 视频端点的厂商素材库（2026-11-07）
+
+厂商有自己的素材库时，在端点视频规格里加 `inputAssets`，素材就先传上去换引用，请求里不再有我方签名地址：
+
+```json
+"inputAssets": {"uploadPath": "/api/v3/video/assets", "fileField": "file", "ref": "/ref", "status": "/status", "ready": ["Active"], "expiresAt": "/expires_at"}
+```
+
+`uploadPath` 接在基础地址后，`ref`、`status`、`expiresAt` 是响应里的 JSON Pointer，`status` 和 `ready` 要么都写要么都不写。`seedance`、`json-template` 协议可用，聚算有自己的上传协议，配了会被拒绝。
+
+旧版服务端读不了这个字段，整条规格都会解析失败。所以先发服务端再改配置；回滚时先把配置改回去，并确认这些端点没有在途任务（在途任务存的规格快照里也有这个字段）。
