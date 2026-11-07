@@ -14,7 +14,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 // 命中即判定为「疑似后台技术细节泄漏」，替换成友好兜底文案。
-import { publicModelErrorMessage } from '@ai-star-eco/api-client';
+import { MODEL_SERVICE_UNAVAILABLE, publicModelErrorMessage } from '@ai-star-eco/api-client';
 
 const TECHNICAL_LEAK =
   /HTTP\s*\d{3}|upstream_error|OpenAIException|NotFoundError|\{\s*"?error"?\s*:|"type"\s*:\s*"|status[_-]?code|Traceback|\b[A-Za-z][A-Za-z.]*Exception\b/;
@@ -80,7 +80,12 @@ export function aiErrorMessage(e: unknown, fallback = "AI 生成失败，请稍�
   const protectedMessage = publicModelErrorMessage(raw, code);
   // 堆栈、异常类名这类技术细节照旧换成调用方的兜底文案（按场景写的，比通用说法具体）；
   // 供应商余额、密钥这类经营信息才用 publicModelErrorMessage 的统一说法。两条都不透出原文。
-  if (protectedMessage !== raw) return TECHNICAL_LEAK.test(clean) ? leakFallback : protectedMessage;
+  if (protectedMessage !== raw) {
+    // 英文原文只是换了说法（没有隐去经营信息）时，超时、未配置这类错误码仍用专门的提示。
+    // 调用失败类错误码不走这里：它们的原因来自服务方，换成通用说法反而丢信息。
+    if (!protectedMessage.startsWith(MODEL_SERVICE_UNAVAILABLE) && !PROVIDER_FAILURE_CODE.test(code) && FRIENDLY_BY_CODE[code]) return FRIENDLY_BY_CODE[code];
+    return TECHNICAL_LEAK.test(clean) ? leakFallback : protectedMessage;
+  }
   if (PROVIDER_FAILURE_CODE.test(code) && raw && !raw.startsWith("{") && !/<\/?html\b/i.test(raw)) return raw;
   if (code && FRIENDLY_BY_CODE[code]) return FRIENDLY_BY_CODE[code];
   if (code && CREDIT_RE.test(code)) return CREDIT_HINT;

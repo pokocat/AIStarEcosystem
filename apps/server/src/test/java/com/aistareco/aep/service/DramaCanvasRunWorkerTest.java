@@ -224,8 +224,8 @@ class DramaCanvasRunWorkerTest {
     }
 
     @Test
-    void truncatedOutput_finishLength_isNotRepairedIntoHalfAResult_askedAgain() {
-        // 补括号能把被 max_tokens 截断的输出补成合法对象（少了后半截），形状校验看不出来；finish=length 一律当不合格
+    void truncatedOutput_finishLength_usableStructureIsKept_notAskedAgain() {
+        // 2026-11-05「模型正常回包保留」：finish=length 本身不再判不合格。能修复成合格结构就交付，原文另存，不重复调用模型。
         textRun("dcr_r9", "storyboard", storyboardMeta(), "切片段");
         String cut = "{\"segments\":[{\"text\":\"（5 秒）@[林微](look:lk1) 蹲着。\",\"durationSec\":5}";
         when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), any(), any(), eq("drama")))
@@ -234,7 +234,7 @@ class DramaCanvasRunWorkerTest {
         worker.runBlocking("dcr_r9");
 
         assertEquals("succeeded", store.get("dcr_r9").getStatus());
-        verify(invocation, times(2)).invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), any(), any(), eq("drama"));
+        verify(invocation, times(1)).invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), any(), any(), eq("drama"));
         verify(credits, times(1)).commitHold(DramaCanvasRunService.REF_TYPE, "dcr_r9", 4L, "画布 · 测试", null);
     }
 

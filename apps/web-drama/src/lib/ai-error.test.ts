@@ -45,6 +45,14 @@ describe("aiErrorMessage", () => {
     }
   });
 
+  it("隐去经营信息优先于错误码的专门提示：不把供应商余额不足说成功能没开通", () => {
+    expect(aiErrorMessage({ code: "VIDEO_NOT_CONFIGURED", message: "供应商账户余额不足" })).toBe(MODEL_SERVICE_UNAVAILABLE);
+  });
+
+  it("调用失败类错误码保留服务方给的原因，不换成通用提示", () => {
+    expect(aiErrorMessage({ code: "AI_CALL_FAILED", message: "raw-upstream-text" })).toContain("raw-upstream-text");
+  });
+
   it("堆栈里夹着供应商信息 → 仍走调用方兜底，不透出原文，保留编号", () => {
     const leaked = "java.lang.IllegalStateException: 供应商账户余额不足 · 追查号 ABCDEF234567";
     const out = aiErrorMessage(new Error(leaked), "脚本生成失败，请稍后重试");

@@ -752,6 +752,7 @@ v0.197：web-drama 所有弹窗在 375 宽下右边都被裁掉一截，四个�
 - 已做：所有 vitest 项目（web-drama / web-aiavatar / packages/api-client）的 `setupFiles` 共用 `scripts/vitest/setup-storage.ts`：
   jsdom 环境把 Storage 换回 jsdom 自己的那份，node 环境把 Node 25 的空壳删掉（Node 22 的 node 环境里本来就没有），本机与 CI 一致；
   用到 localStorage 的测试文件在 `beforeEach` 里 `localStorage.clear()`。web-celebrity 的测试走 `node --test`、不碰 Storage，不受影响。
+- **5 秒超时的假失败**（2026-11-06）：`pnpm test:all` 同时跑全部项目，CI 上 admin 的 `studio-skills` 报过 `Test timed out in 5000ms`，负载高的本机上 admin、studio-admin、web-drama 也会出现；一条超时后，同文件后面的用例会接着报找不到元素，别当成多处问题。这几个项目已和 web-aiavatar 一样设 `maxWorkers: "50%"`、`testTimeout: 15_000`，新建 vitest 项目照抄。`pnpm test:all` 遇到第一个红项就停，要看全部红项用 `pnpm -r --no-bail --parallel run test`。工作流只在 PR 和手动触发时跑，直推 main 不跑 CI。
 
 **⑭ 交互改完要按用户的真实路径走一遍，不是只看结构测试和截图。**
 2026-10-19 画布页改版：结构测试全绿、截图也对得上设计稿，用户一用就说「不顺畅」。端到端走一遍才发现五处一直坏着：

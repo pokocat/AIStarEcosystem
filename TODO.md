@@ -967,7 +967,7 @@
     - 账本流水描述（「IP 运行超时 · 释放冻结」「画布出图 ×N」）只有后台和 web-drama 看得到；`IpRunServiceTest` 断言了。
     - 没有挂到页面上的文件，建议删除：`ip/studio-scene-workshop.tsx`、`ip/studio-scenes.ts`、`components/hub/create-center.tsx`、`components/hub/landing.tsx`、`components/landing/atlas.tsx`、`ip/saved-canvas-assets.tsx`、`shell/ip-navigation.tsx`。
 
-- [ ] **main 上有两个前端测试是红的（2026-11-06 发现，和文案改动无关，相关源码与 main 相同）**：`packages/api-client/src/model-task-state.test.ts`「keeps the actual safe failure reason…」断言 detail 里有「HTTP 503」，而 `publicModelErrorMessage` 已把它换成通用句（`35c24240a` 之后）；`apps/web-drama/src/lib/ai-error.test.ts`「认识的错误码 → 专门的友好文案」同一原因待查。
+- [x] ~~**main 上有两个前端测试是红的（2026-11-06 发现，和文案改动无关，相关源码与 main 相同）**~~ **2026-11-06 修复**：都从 `35c24240a` 起红。`model-task-state.test.ts` 是断言过时，状态码按 §8.0.1 ① 不进界面，改成断言保留原因和追查号、不出现状态码。`ai-error.test.ts` 查出真 bug：web-drama 里英文原文配超时、未配置这类错误码时，`publicModelErrorMessage` 换说法后盖掉了 `FRIENDLY_BY_CODE`，已改成这类错误码仍用专门提示，隐去经营信息和调用失败类错误码照旧。`main` 直推不跑 CI（工作流只在 PR 和手动触发时跑），所以红了两天没人发现。同批把 admin、studio-admin、web-drama 的 vitest 设置改成和 web-aiavatar 一样，消除 5 秒超时的假失败（AGENTS.md §8.0.1 ⑬）。
 
 ### 2026-09-09 · 生产事故复盘（v0.192，@Id 被挤到常量上）
 
