@@ -12,9 +12,10 @@ import { studioHref, useHubData } from '@/components/hub/data';
 import { AssetApi, AvatarApi, LicenseApi } from '@/proto/api';
 import type { Avatar, License, StarGrant } from '@/proto/data';
 import { AssetThumb } from './asset-thumb';
-import { AI_LIBRARY } from './assets-hub-shared';
+import { AI_LIBRARY, objectOriginLabel } from './assets-hub-shared';
 import { LibraryAssetEditor } from './library-asset-editor';
 import { LibraryReferencePicker } from './library-reference-picker';
+import { LibrarySourceSelect } from './library-source-select';
 import { StudioErrorNotice, useStudioApp, useStudioErrorState } from './studio-errors';
 import { studioOverlayContainer } from './studio-overlay';
 
@@ -33,7 +34,7 @@ export function verifiedReal(avatar: Avatar, license?: License) {
   return avatar.path === 'real' && license?.status === 'active' && license.verifyMethod === 'liveness';
 }
 
-export function AssetsPeople({ library, folders }: { library: string; folders: LibraryFolder[] }) {
+export function AssetsPeople({ library, folders, from = '', onFromChange }: { library: string; folders: LibraryFolder[]; from?: string; onFromChange?: (id: string) => void }) {
   const { message } = useStudioApp();
   const [keyword, setKeyword] = useState('');
   const [kind, setKind] = useState<'all' | 'virtual' | 'real'>('all');
@@ -46,10 +47,11 @@ export function AssetsPeople({ library, folders }: { library: string; folders: L
   const [creating, setCreating] = useState(false);
   const isAi = library === AI_LIBRARY;
   const inFolder = library !== 'all' && !isAi;
-  // 数字人和明星授权不在资产库里，只在「全部」里出现；自己建的库里只有角色。
-  const avatars = useHubData<Avatar[]>(() => AvatarApi.list('mine'), [], [revision], !inFolder && !isAi);
-  const licenses = useHubData<License[]>(() => LicenseApi.list(), [], [revision], !inFolder && !isAi);
-  const grants = useHubData<StarGrant[]>(() => AssetApi.starGrants(), [], [revision], !inFolder && !isAi);
+  // 数字人和明星授权不在资产库里，只在「全部」里出现；自己建的库里、按作品或画布筛选时只有角色。
+  const rolesOnly = inFolder || !!from;
+  const avatars = useHubData<Avatar[]>(() => AvatarApi.list('mine'), [], [revision], !rolesOnly && !isAi);
+  const licenses = useHubData<License[]>(() => LicenseApi.list(), [], [revision], !rolesOnly && !isAi);
+  const grants = useHubData<StarGrant[]>(() => AssetApi.starGrants(), [], [revision], !rolesOnly && !isAi);
   const epoch = useRef(0);
   useEffect(() => {
     if (isAi) { setRoles([]); setRolesLoading(false); return; }
@@ -59,7 +61,7 @@ export function AssetsPeople({ library, folders }: { library: string; folders: L
     const readAll = async () => {
       const all: LibraryObject[] = [];
       for (let page = 0; page < 10; page++) {
-        const r = await libraryObjects({ kind: 'character', folder: inFolder ? library : 'all', page });
+        const r = await libraryObjects({ kind: 'character', folder: inFolder ? library : 'all', projectId: from || undefined, page });
         all.push(...r.items);
         if (!r.hasMore) break;
       }
@@ -68,11 +70,11 @@ export function AssetsPeople({ library, folders }: { library: string; folders: L
     readAll().then(list => id === epoch.current && setRoles(list)).catch(e => id === epoch.current && setRolesError(e))
       .finally(() => id === epoch.current && setRolesLoading(false));
     return () => { epoch.current++; };
-  }, [library, isAi, inFolder, revision, setRolesError]);
+  }, [library, isAi, inFolder, from, revision, setRolesError]);
 
   const licenseOf = new Map(licenses.data.filter(l => l.char).map(l => [l.char as string, l]));
   const people: Person[] = [
-    ...(inFolder || isAi ? [] : avatars.data.map((a): Person => ({
+    ...(rolesOnly || isAi ? [] : avatars.data.map((a): Person => ({
       id: a.id, name: a.name, description: a.tagline || a.archetype || a.def?.设定语 || '', real: a.path === 'real',
       verified: verifiedReal(a, licenseOf.get(a.id)), source: 'ip', image: { src: a.imageUrl }, href: `/assets/${encodeURIComponent(a.id)}`,
       meta: [a.voiceName ? '有声音' : '', a.status === 'draft' ? '草稿' : ''].filter(Boolean).join(' · '),
@@ -83,32 +85,34 @@ export function AssetsPeople({ library, folders }: { library: string; folders: L
       return {
         id: o.id, name: o.name, description: o.description, real: false, verified: false, source: 'role', object: o,
         image: main ? { src: main.url, storageKey: main.storageKey } : undefined,
-        meta: o.versions.length ? `${o.versions.length} 张图` : '暂无图片', tag: o.sources.length ? { label: '剧本提取' } : undefined,
+        meta: [o.sources[0]?.title, o.versions.length ? `${o.versions.length} 张图` : '暂无图片'].filter(Boolean).join(' · '), tag: objectOriginLabel(o) ? { label: objectOriginLabel(o) as string } : undefined,
       };
     }),
-    ...(inFolder || isAi ? [] : grants.data.filter(g => g.status === 'authorized').map((g): Person => ({
+    ...(rolesOnly || isAi ? [] : grants.data.filter(g => g.status === 'authorized').map((g): Person => ({
       id: g.id, name: g.starName, description: [g.category, g.scenes.length ? `可用于${g.scenes.join('、')}` : ''].filter(Boolean).join(' · '),
       real: true, verified: false, source: 'grant', image: { src: g.starAvatar }, href: `/stars/${encodeURIComponent(g.id)}`,
       meta: g.expireDate ? `有效期至 ${g.expireDate}` : '', tag: { label: '授权给我', tone: 'star' },
     }))),
   ];
   const needle = keyword.trim().toLowerCase();
-  const shown = people.filter(p => (kind === 'all' || (kind === 'real') === p.real) && (source === 'all' || p.source === source)
+  // 只有角色时（在自己建的库里、按作品筛选）这两个筛选都不显示，之前选的也不再生效，否则角色会被藏起来的条件过滤光。
+  const shown = people.filter(p => (rolesOnly || ((kind === 'all' || (kind === 'real') === p.real) && (source === 'all' || p.source === source)))
     && (!needle || `${p.name} ${p.description}`.toLowerCase().includes(needle)));
-  const loading = rolesLoading || (!inFolder && !isAi && (avatars.loading || grants.loading));
-  const errors = [rolesError, inFolder || isAi ? '' : avatars.error || '', inFolder || isAi ? '' : grants.error || ''].filter(Boolean);
-  const filtered = !!needle || kind !== 'all' || source !== 'all';
+  const loading = rolesLoading || (!rolesOnly && !isAi && (avatars.loading || grants.loading));
+  const errors = [rolesError, rolesOnly || isAi ? '' : avatars.error || '', rolesOnly || isAi ? '' : grants.error || ''].filter(Boolean);
+  const filtered = !!needle || !!from || (!rolesOnly && (kind !== 'all' || source !== 'all'));
 
-  if (isAi) return <div className="assets-empty"><h3>AI 生成中没有人物</h3><p>此处仅保存 AI 生成的图片、视频和音频，人物请在「全部」中查看。</p></div>;
+  if (isAi) return <div className="assets-empty"><h3>AI 生成库里没有人物</h3><p>此处仅保存 AI 生成的图片、视频和音频，人物请在「全部」中查看。</p></div>;
   return <div className="assets-people">
     <div className="assets-toolbar">
       <Input className="assets-search" prefix={<Search size={15}/>} allowClear aria-label="搜索人物" placeholder="搜索名字或设定" value={keyword} onChange={e => setKeyword(e.target.value)}/>
-      <div className="assets-seg" role="group" aria-label="人物类型">
+      {!rolesOnly && <div className="assets-seg" role="group" aria-label="人物类型">
         {([['all', '全部'], ['virtual', '虚拟形象'], ['real', '真人']] as const).map(([k, l]) => <button key={k} type="button" aria-pressed={kind === k} onClick={() => setKind(k)}>{l}</button>)}
-      </div>
-      {!inFolder && <Dropdown trigger={['click']} getPopupContainer={studioOverlayContainer} menu={{ items: SOURCE_OPTIONS.map(o => ({ key: o.key, label: o.label })), selectable: true, selectedKeys: [source], onClick: ({ key }) => setSource(key as typeof source) }}>
+      </div>}
+      {!rolesOnly && <Dropdown trigger={['click']} getPopupContainer={studioOverlayContainer} menu={{ items: SOURCE_OPTIONS.map(o => ({ key: o.key, label: o.label })), selectable: true, selectedKeys: [source], onClick: ({ key }) => setSource(key as typeof source) }}>
         <button type="button" className="assets-select" aria-label="按来源筛选人物">{SOURCE_OPTIONS.find(o => o.key === source)?.label}<ChevronDown size={14}/></button>
       </Dropdown>}
+      {onFromChange && <LibrarySourceSelect value={from} onChange={onFromChange}/>}
       <span className="assets-toolbar-gap"/>
       <span className="assets-count" aria-live="polite">{loading ? '正在加载…' : `${shown.length} 个人物`}</span>
     </div>
@@ -123,7 +127,7 @@ export function AssetsPeople({ library, folders }: { library: string; folders: L
       {loading && !shown.length ? Array.from({ length: 4 }, (_, i) => <li key={`s${i}`}><span className="assets-skeleton assets-person-cover"/></li>)
         : shown.map(p => <li key={`${p.source}:${p.id}`}><PersonCard person={p} onOpen={() => p.object && setEditing([p.object])}/></li>)}
     </ul>
-    {!loading && !shown.length && filtered && <div className="assets-empty"><h3>没有找到匹配的人物</h3><p>请尝试其他名字或筛选条件。</p><Button onClick={() => { setKeyword(''); setKind('all'); setSource('all'); }}>清除筛选</Button></div>}
+    {!loading && !shown.length && filtered && <div className="assets-empty"><h3>没有找到匹配的人物</h3><p>请尝试其他名字或筛选条件。</p><Button onClick={() => { setKeyword(''); setKind('all'); setSource('all'); onFromChange?.(''); }}>清除筛选</Button></div>}
     {editing && <LibraryAssetEditor assets={editing} folders={folders} onClose={() => { setEditing(undefined); setRevision(n => n + 1); }} onChange={() => setRevision(n => n + 1)}/>}
     <NewPersonDialog open={creating} folderId={inFolder ? library : undefined} onClose={() => setCreating(false)}
       onCreated={o => { setCreating(false); message.success(`已创建「${o.name}」`); setRevision(n => n + 1); setEditing([o]); }}/>

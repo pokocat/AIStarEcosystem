@@ -4107,6 +4107,11 @@ public class DirectorService {
             ((ObjectNode) clip).set("videoRefs", imageReferences(c, clip, true, lim != null && lim.frame()));
         }
         List<String> keys = new ArrayList<>();
+        // 哪些资产已经在资产库（后台对账时写的）。字段别叫 key：collectKeys 会把名叫 key 的都当素材地址去签名。
+        if (library != null) {
+            Map<String, String> inLibrary = library.directorLinks(userId, w.getId());
+            for (JsonNode a : v.path("assets")) if (inLibrary.containsKey(a.path("id").asText())) ((ObjectNode) a).put("libraryEntryId", inLibrary.get(a.path("id").asText()));
+        }
         collectKeys(v, keys);
         Map<String, String> signed = sign(userId, keys);
         attachUrls(v, signed);
@@ -5075,7 +5080,7 @@ public class DirectorService {
         if (key == null) throw invalid("「" + o.name() + "」在资产库里还没有图片，请换一项");
         String description = o.description() == null ? "" : o.description().trim();
         if (target.path("description").asText().isBlank() && !description.isEmpty()) target.put("description", limited(description, 2000, "描述"));
-        target.put("libraryObjectId", o.id());
+        target.put("libraryObjectId", o.id()).put("libraryLinkedAt", Instant.now().toString());
         ObjectNode m = addCandidate(c, (ObjectNode) target.path("image"), key, null, "library");
         // 同一张图以前作为生成图进过历史时 addCandidate 返回旧候选：用户点名它就是资产库那一项，按资产库图处理，不再按生成指纹判过期。
         m.put("source", "library"); m.remove("stale"); m.remove("fingerprint");

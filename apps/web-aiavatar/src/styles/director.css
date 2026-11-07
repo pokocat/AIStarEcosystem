@@ -1424,3 +1424,7 @@ html:not([data-layout="desktop"]) .director-product-library > header button, htm
 html:not([data-layout="desktop"]) .director-product-form { gap: 14px; }
 .director-preview-asset-img.is-product img { object-fit: contain; }
 html:not([data-layout="desktop"]) .director-product-library .director-product-search input { font-size: 16px; }
+
+/* 资产已在资产库：详情里的一行链接，工具条上的入口（2026-11-07）。 */
+.director-library-link { display: inline-block; margin-top: 2px; font-size: 12px; color: var(--ip-muted, #5b6572); text-decoration: underline; text-underline-offset: 2px; }
+.director-library-open { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }

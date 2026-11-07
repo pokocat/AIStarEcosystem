@@ -12,7 +12,7 @@ import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
 import { placeStudioNode } from "@/canvas-bridge/flow-document";
 import { App, Button, Checkbox, Dropdown, Input, Modal, Popover, Select } from "antd";
 import { ApiError } from "@ai-star-eco/api-client";
-import { ArrowUp, ArrowLeftRight, BookOpen, Camera, Clapperboard, Download, Ellipsis, FileText, ImagePlus, Play, RotateCcw, SquareCheckBig, Upload, UserRound, X } from "lucide-react";
+import { ArrowUp, ArrowLeftRight, BookOpen, Camera, Clapperboard, Download, Ellipsis, FileText, ImagePlus, Play, RotateCcw, SquareCheckBig, Upload, UserRound, X, Library } from "lucide-react";
 import { nanoid } from "nanoid";
 import { LibraryExtractionPanel } from "./library-extraction-panel";
 import { LibraryReferencePicker } from "./library-reference-picker";
@@ -84,6 +84,7 @@ import { StudioCanvasGuide, studioCanvasGuideVisible } from "./studio-canvas-gui
 import { IpStudioApi } from "./api";
 import { studioLinkedInputError, studioLinkedNodes, studioLinkedText, withStudioLinkedText } from '@/canvas-bridge/studio-linked-inputs';
 import { StudioStoryboard } from './studio-storyboard';
+import { LibrarySaveDialog } from './library-save-dialog';
 import { updateStudioStoryboardShot } from '@/canvas-bridge/studio-storyboard';
 
 type Props = { projectId: string; nodes: CanvasNodeData[]; connections:CanvasConnection[]; selectedNodeIds: Set<string>;
@@ -209,6 +210,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const [lipOriginId,setLipOriginId]=useState<string>();
   const openLipSync=(node?:CanvasNodeData)=>{setLipOriginId(node?.id);setDirector(false);setLipSyncOpen(true);onClosePanel();};
   const [voiceAdoptId,setVoiceAdoptId]=useState<string>();
+  const [librarySaveId,setLibrarySaveId]=useState<string>();
   const [speechOpen,setSpeechOpen]=useState(false);
   const [speechOriginId,setSpeechOriginId]=useState<string>(),[speechSaving,setSpeechSaving]=useState(false);
   const [settings,setSettings]=useState<StudioScriptSettings>({genre:"都市治愈",episodeCount:1,episodeDurationSec:30});
@@ -536,6 +538,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       const { action: requestedAction, nodeId } = (event as CustomEvent<{ action: string; nodeId?: string }>).detail;
       // Keep the current draft visible if the native file picker is cancelled.
       if (requestedAction === 'upload-image' || requestedAction === 'upload-video') return;
+      // 存为资产是一个小弹窗，不关掉正在用的面板。
+      if (requestedAction === 'library-save') { setLibrarySaveId(nodeId); return; }
       // A newly added Flow node is already in the document store before React updates these props.
       const node = nodesRef.current.find(n => n.id === nodeId)
         || useCanvasStore.getState().projects.find(p=>p.id===projectId)?.nodes.find(n=>n.id===nodeId);
@@ -1188,6 +1192,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       }}>采用口型片段</button>);
     if(selected.type===CanvasNodeType.Audio && studio?.speechRequest && studio?.runId && meta?.status==="success") add("voice",<button type="button" onClick={()=>setVoiceAdoptId(selected.id)}>设为人物声音</button>);
     if(selected.type===CanvasNodeType.Audio && meta?.content) add("download-audio",<button type="button" onClick={()=>void downloadMedia(selected.metadata!.content!,selected.title,selected.metadata?.mimeType,selected.metadata?.storageKey).catch(e=>message.error(e))}><Download size={15}/>下载配音</button>);
+    if(selected.type===CanvasNodeType.Image&&meta?.storageKey) add("library-save",<button type="button" onClick={()=>dispatchStudioCommand("library-save",selected.id)}><Library size={15}/>存为角色、场景或道具</button>);
     if((selected.type===CanvasNodeType.Image||selected.type===CanvasNodeType.Video)&&meta?.storageKey&&meta.content) add("download",<button type="button" onClick={()=>void downloadMedia(selected.metadata!.content!,selected.title,selected.metadata?.mimeType,selected.metadata!.storageKey).catch(e=>message.error(e))}><Download size={15}/>{selected.type===CanvasNodeType.Image?"下载图片":"下载视频"}</button>);
     if(selectedTakes && selectedTakes.length>1){
       add("compare",<button type="button" onClick={()=>setTakePicker(selected.id)}>比较版本</button>);
@@ -1383,6 +1388,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     <StudioTemplateLibrary open={templateLibraryOpen} scope={templateScope} nodes={nodes} onClose={()=>setTemplateLibraryOpen(false)}/>
     <StudioLipSync actions={nodeActions(lipOriginId,["lip"])} open={lipSyncOpen} onClose={()=>setLipSyncOpen(false)} projectId={projectId} nodes={nodes} initialNodeId={lipOriginId} busy={busy} onSubmit={createLipSync}/>
     <StudioSpeech actions={nodeActions(speechOriginId,["confirm"])} anchorId={speechOriginId} key={speechOriginId} initialDraft={speechOrigin?.metadata?.studio?.speechDraft} onDraft={updateSpeechDraft} initialVoiceId={speechOrigin?.metadata?.studio?.speechRequest?.voiceId||speechOrigin?.metadata?.studio?.voiceProfile?.voiceId} initialAvatarId={speechOrigin?.metadata?.studio?.speechRequest?.avatarId||speechOrigin?.metadata?.studio?.voiceProfile?.avatarId||speechOrigin?.metadata?.studio?.references?.find(r=>r.avatarId)?.avatarId||speechAvatarId} open={speechOpen} onClose={()=>void closeSpeech()} initialText={speechOrigin?.metadata?.studio?.speechRequest?.text||speechOrigin?.metadata?.prompt||""} busy={busy||speechSaving} pending={studioGenerationPending(speechOrigin)?{confirmed:!!speechOrigin?.metadata?.studio?.runId}:undefined} onConfirm={()=>{if(speechOrigin?.metadata?.studio?.runId){setSpeechOpen(false);setTaskList(true);}else if(speechOrigin)void retry(speechOrigin);}} onSubmit={createSpeech}/>
+    {(()=>{const image=nodes.find(n=>n.id===librarySaveId),key=image?.metadata?.storageKey;return <LibrarySaveDialog image={image&&key?{storageKey:key,src:image.metadata?.content,title:image.title,projectId,nodeId:image.id}:undefined} onClose={()=>setLibrarySaveId(undefined)}/>;})()}
     {(()=>{const audio=nodes.find(n=>n.id===voiceAdoptId);return <StudioVoiceAdopt open={!!voiceAdoptId} projectId={projectId} runId={audio?.metadata?.studio?.runId} title={audio?.metadata?.studio?.voiceProfile?.name||audio?.title} initialAvatarId={audio?.metadata?.studio?.voiceProfile?.avatarId||audio?.metadata?.studio?.speechRequest?.avatarId} audioUrl={audio?.metadata?.content} audioKey={audio?.metadata?.storageKey} onClose={()=>setVoiceAdoptId(undefined)} onAdopt={async profile=>{
       if(!audio)return;const {demoUrl: _demoUrl,...snapshot}=profile;patch(audio.id,n=>({...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,voiceProfile:snapshot}}}));await saveStudioDocument(projectId);message.success(`已保存 ${profile.name} · v${profile.version}，未额外扣除积分`);
     }}/>;})()}

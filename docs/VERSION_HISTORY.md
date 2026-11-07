@@ -4,6 +4,10 @@
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
 
+### 资产库：导演台有图自动进库、按来源找 · 2026-11-07（本地，未发布）
+
+`IpLibraryDirectorSync` 后台对账，把导演台有图的角色、场景、道具建成资产库的卡（同名不合并、已关联的追加到原卡、主图跟随采用版本直到用户自己选、删掉的不补回），存量作品走同一条路；分镜图、片段视频、整集成片和上传的图进文件层并起能认的名字。新增 `GET /library/sources`、`POST /library/objects/from-media`，素材和对象可按 `projectId` 筛选。资产页加场景、道具分类和来源筛选，导演台显示「已在资产库」，画布和资产页可以把图存为角色、场景、道具，裁剪、拆图、抽帧结果进库。无迁移。方案见 `docs/ip-studio-personal-asset-library-plan.md` 末节。
+
 ### 下线 Studio 旧版界面 · 2026-11-07（本地，未发布；仅 web-aiavatar）
 
 去掉「体验新版 / 返回旧版」和 `?ui=` 开关，登录后左侧导航、新首页、新资产页、新手机底栏和新「我的」成为唯一界面，真值 `<html data-ui>` 与 `shell/ui-version.ts` 删除。旧首页、旧资产页、旧导航、旧手机底栏连同只给它们用的样式和图片一并删除。旧链接照常：`/ips`、`/scenes`、`/assets?tab=ips|objects|materials|voices|authorized` 都落到对应页面。手机「发现」从底栏移到「我的」。`/studio`（老工作室：会员、任务、声音等）不归这个开关管，没有改动。无接口和迁移变更。

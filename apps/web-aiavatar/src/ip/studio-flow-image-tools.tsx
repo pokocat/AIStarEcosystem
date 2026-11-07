@@ -14,7 +14,7 @@ import { fetchAssetBlob } from '@/canvas-bridge/api';
 import { dispatchStudioCommand } from '@/canvas-bridge/studio-nodes';
 
 type Edit = { operation: 'crop' | 'mask' | 'split-image'; source: CanvasNodeData; url?: string };
-export function StudioFlowImageTools({ nodes, onInsert }: { nodes: CanvasNodeData[]; onInsert: (nodes: CanvasNodeData[], connections: CanvasConnection[]) => Promise<void> }) {
+export function StudioFlowImageTools({ projectId, nodes, onInsert }: { projectId?: string; nodes: CanvasNodeData[]; onInsert: (nodes: CanvasNodeData[], connections: CanvasConnection[]) => Promise<void> }) {
   const [edit, setEdit] = useState<Edit>(), [busy, setBusy] = useState(false);
   const { message } = useStudioApp();
   useEffect(() => {
@@ -43,9 +43,11 @@ export function StudioFlowImageTools({ nodes, onInsert }: { nodes: CanvasNodeDat
     try { await operation(); setEdit(undefined); } catch (e) { message.error(e); }
     finally { setBusy(false); }
   };
-  const imageNode = async (url: string, title: string, x: number, y: number, width: number): Promise<CanvasNodeData> => {
-    const image = await uploadImage(url);
-    return { id: nanoid(), type: CanvasNodeType.Image, title, position: { x, y }, width,
+  const imageNode = async (url: string, title: string, x: number, y: number, width: number, remember = true): Promise<CanvasNodeData> => {
+    const id = nanoid();
+    // 裁剪、拆图是用户明确做出来的新图，随上传进资产库；局部重绘的蒙版只是中间产物，不进。
+    const image = await uploadImage(url, undefined, projectId && remember ? { projectId, nodeId: id, title, prompt: edit?.source.metadata?.prompt } : undefined);
+    return { id, type: CanvasNodeType.Image, title, position: { x, y }, width,
       height: Math.max(140, width * image.height / Math.max(1, image.width) + 36), metadata: { ...imageMetadata(image), origin: 'derived', prompt: edit?.source.metadata?.prompt } };
   };
   const crop = (rect: CanvasImageCropRect) => void run(async () => {
@@ -66,7 +68,7 @@ export function StudioFlowImageTools({ nodes, onInsert }: { nodes: CanvasNodeDat
   });
   const mask = (payload: CanvasImageMaskEditPayload) => void run(async () => {
     const { source } = edit!;
-    const overlay = await imageNode(payload.maskDataUrl, `${source.title} · 编辑区域`, source.position.x, source.position.y + source.height + 80, source.width);
+    const overlay = await imageNode(payload.maskDataUrl, `${source.title} · 编辑区域`, source.position.x, source.position.y + source.height + 80, source.width, false);
     const child: CanvasNodeData = { id: nanoid(), type: CanvasNodeType.Image, title: `${source.title} · 局部修改`, position: { x: source.position.x + source.width + 80, y: source.position.y }, width: source.width, height: source.height,
       metadata: { status: 'idle', prompt: `参考图1是原始图片，参考图2标明需要修改的区域。只修改标记区域，保留其他内容、人物身份及构图。修改要求：${payload.prompt}` } };
     await onInsert([overlay, child], [source.id, overlay.id].map(id => ({ id: nanoid(), fromNodeId: id, toNodeId: child.id })));

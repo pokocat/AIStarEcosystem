@@ -192,6 +192,8 @@ export interface DirectorAsset {
   refImage?: { key: string; url?: string | null } | null;
   /** 从个人资产库导入时记下的资产库对象 id；再导入同一项时据此对上，不重复建。 */
   libraryObjectId?: string;
+  /** 这一项已经在资产库（有图后自动进库，或关联过）对应的那张卡。只读，服务端算好给的。 */
+  libraryEntryId?: string;
   /** 只有商品有：这部剧里想怎么植入（如「男主角加班时拿起保温杯喝水」）。 */
   placement?: string;
   /** 只有角色有。 */

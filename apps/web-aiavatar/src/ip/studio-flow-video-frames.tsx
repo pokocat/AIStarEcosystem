@@ -21,6 +21,7 @@ import { StudioFloatingPanel } from './studio-floating-panel';
 
 export type StudioPendingFrame = { node: CanvasNodeData; connection: CanvasConnection };
 type Props = {
+  projectId?: string;
   nodes: CanvasNodeData[];
   pending: StudioPendingFrame[];
   onPendingChange: Dispatch<SetStateAction<StudioPendingFrame[]>>;
@@ -36,7 +37,7 @@ const MIN_HEIGHT = 140;
 const shapeHeight = (width: number, w?: number, h?: number) => w && h ? Math.max(MIN_HEIGHT, Math.round((width - STUDIO_CARD_BORDER_X) * h / w + STUDIO_CARD_CHROME)) : undefined;
 const busy = (node: CanvasNodeData) => node.metadata?.status === 'loading' || studioGenerationPending(node);
 
-export function StudioFlowVideoFrames({ nodes, pending, onPendingChange, onInsert, demo = USE_MOCK }: Props) {
+export function StudioFlowVideoFrames({ projectId, nodes, pending, onPendingChange, onInsert, demo = USE_MOCK }: Props) {
   const { message } = useStudioApp();
   const [sourceId, setSourceId] = useState<string>();
   const [position, setPosition] = useState<StudioFramePosition>('first');
@@ -92,7 +93,8 @@ export function StudioFlowVideoFrames({ nodes, pending, onPendingChange, onInser
       try { frame = await captureStudioVideoFrame(clip, position, at); }
       catch (e) { drop(); message.error(e instanceof StudioFrameError ? e : new Error('截取画面失败，请重试')); return; }
       try {
-        const image = await uploadImage(frame);
+        // 抽出来的帧随上传进资产库。
+        const image = await uploadImage(frame, undefined, projectId ? { projectId, nodeId: placeholder.id, title: placeholder.title } : undefined);
         const node: CanvasNodeData = { ...placeholder, height: shapeHeight(width, image.width, image.height) ?? placeholder.height,
           metadata: { ...imageMetadata(image), origin: 'derived' } };
         drop(); await onInsert([node], [entry.connection]);

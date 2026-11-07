@@ -34,6 +34,7 @@ vi.mock('@/components/hub/data', async () => {
 });
 vi.mock('@/proto/api', () => ({ AvatarApi: { list: api.avatars }, LicenseApi: { list: api.licenses }, AssetApi: { starGrants: api.grants } }));
 vi.mock('./library-asset-editor', () => ({ LibraryAssetEditor: ({ assets }: any) => <p>编辑 {assets[0].name}</p> }));
+vi.mock('./library-source-select', () => ({ LibrarySourceSelect: ({ value, onChange }: any) => <button onClick={() => onChange('DW-2')}>选择作品 {value}</button> }));
 // 选择框换成一个按钮：点一下就把 picks.next 交回去。
 vi.mock('./library-reference-picker', () => ({ LibraryReferencePicker: ({ title, onAssets, onClose }: any) => <button onClick={async () => { await onAssets([picks.next.shift()]); onClose(); }}>{title}·选好了</button> }));
 vi.mock('antd', () => ({
@@ -129,3 +130,21 @@ test('a library of your own shows only its roles; IPs and stars live in 全部',
   expect(api.objects).toHaveBeenCalledWith(expect.objectContaining({ kind: 'character', folder: 'f1' }));
   expect(api.avatars).not.toHaveBeenCalled(); expect(api.grants).not.toHaveBeenCalled();
 });
+
+test('filters hidden while narrowed to a work no longer apply, and come back afterwards', async () => {
+  api.objects.mockResolvedValue({ items: [role('o1', '林夏')], total: 1, page: 0, hasMore: false });
+  api.avatars.mockResolvedValue([{ id: 'a1', name: '小星', path: 'ai' }]);
+  const { rerender } = render(<AssetsPeople library="all" folders={[]} onFromChange={vi.fn()}/>);
+  await screen.findByRole('button', { name: '查看 林夏' });
+  // 先选「我的 IP」和「真人」：角色都被筛掉。
+  fireEvent.click(screen.getByRole('menuitem', { name: '我的 IP' }));
+  fireEvent.click(screen.getByRole('button', { name: '真人' }));
+  expect(screen.queryByRole('button', { name: '查看 林夏' })).toBeNull();
+  // 再按作品筛选：两个筛选都不显示了，作品里的角色不能被藏起来的条件过滤掉。
+  rerender(<AssetsPeople library="all" folders={[]} from="DW-1" onFromChange={vi.fn()}/>);
+  expect(await screen.findByRole('button', { name: '查看 林夏' })).toBeTruthy();
+  expect(screen.queryByRole('group', { name: '人物类型' })).toBeNull();
+  expect(screen.queryByRole('menuitem', { name: '我的 IP' })).toBeNull();
+  await waitFor(() => expect(api.objects).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'DW-1' })));
+});
+

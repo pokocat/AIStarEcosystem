@@ -1,9 +1,11 @@
 "use client";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { Check, ImageIcon, Mic, Plus, Upload, Wand2 } from "lucide-react";
+import { Check, ImageIcon, Library, Mic, Plus, Upload, Wand2 } from "lucide-react";
 import type { DirectorAsset, DirectorAssetKind } from "@ai-star-eco/types";
 import { DirectorApi, IpStudioApi } from "../api";
 import { useStudioApp } from "../studio-errors";
+import { assetsHref } from "../assets-hub-shared";
 import type { WorkbenchProps } from "./director-workbench";
 import { DIRECTOR_MEDIA_SHORTAGE, Field, InlineError, Spinner, adopted, chooseDirectorBilling, costText, errorText, failed, kindLabel, newRequestId, runningTask, useBusy } from "./director-shared";
 import { VoiceDialog } from "./director-voice";
@@ -73,6 +75,7 @@ export function DirectorAssets(props: WorkbenchProps) {
           {k === "all" ? "全部" : kindLabel[k]}<small>{k === "all" ? scoped.length : scoped.filter(a => a.kind === k).length}</small></button>)}
       </div>
       <span className="director-spacer"/>
+      {scoped.some(a => a.libraryEntryId || a.libraryObjectId) && <Link className="ip-brand-text-button director-library-open" href={assetsHref(kind === "scene" || kind === "prop" ? kind : "character", work.id)} title="本作品有图的资产会自动保存到资产库，其他作品和画布可以直接使用"><Library size={15}/>在资产库查看</Link>}
       {extracting ? <Spinner label="资产提取中"/> : <>
         <button type="button" className={scoped.length ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy} onClick={extract}><Wand2 size={15}/>{extractLabel}</button>
       </>}

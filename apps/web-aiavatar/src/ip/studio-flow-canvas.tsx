@@ -503,6 +503,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     ...(target.type === CanvasNodeType.Image ? [{ key: 'upload', label: target.metadata?.storageKey ? '替换图片' : '上传图片', onClick: () => dispatchStudioCommand('upload-image', target.id) }] : []),
     ...(target.type === 'image' && target.metadata?.storageKey ? ['crop', 'mask', 'split-image'].map(action => ({ key: action, label: { crop: '裁剪图片', mask: '局部重绘', 'split-image': '拆分图片' }[action], onClick: () => dispatchStudioCommand(action, target.id) })) : []),
     ...((target.type === CanvasNodeType.Image || target.type === CanvasNodeType.Video || target.type === CanvasNodeType.Audio) && target.metadata?.content && (target.type === CanvasNodeType.Audio || target.metadata.storageKey) ? [{ key: 'download', label: { image: '下载图片', video: '下载视频', audio: '下载音频' }[target.type as 'image'|'video'|'audio'], onClick: () => { const m = target.metadata!; void downloadMedia(m.content!, target.title, m.mimeType, m.storageKey).catch(e => message.error(e)); } }] : []),
+    ...(target.type === CanvasNodeType.Image && target.metadata?.storageKey ? [{ key: 'library-save', label: '存为角色、场景或道具', onClick: () => dispatchStudioCommand('library-save', target.id) }] : []),
     { key: 'copy', label: '复制节点', onClick: () => paste(true) },
     ...(canGroupSelectedNodes(selected, project.nodes) ? [{ key: 'group', label: '建立分组', onClick: () => group() }] : []),
     ...(canUngroupSelectedNodes(selected, project.nodes) ? [{ key: 'ungroup', label: '解除分组', onClick: () => group(true) }] : []),
@@ -629,7 +630,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
         <button title="适应全部节点" aria-label="适应全部节点" onClick={() => void flow.fitView({ padding: visibleFitPadding(shellRef.current), duration: 260 })}><Maximize size={15} strokeWidth={1.75}/></button>
       </div>
       {selected.size > 1 && <div className="studio-flow-selection"><span>已选择 {selected.size} 个节点</span><button title="建立分组" aria-label="建立分组" disabled={!canGroupSelectedNodes(selected,project.nodes)} onClick={() => group()}><Group size={16}/></button><button title="整理选中节点" aria-label="整理选中节点" onClick={arrange}><AlignLeft size={16}/></button><button title="复制选中节点" aria-label="复制选中节点" onClick={() => paste(true)}><Copy size={16}/></button><button title="删除选中节点" aria-label="删除选中节点" onClick={remove}><Trash2 size={16}/></button></div>}
-      {context && <div className="studio-flow-context" style={{ left: Math.min(context.x, window.innerWidth - 200), top: Math.min(context.y, window.innerHeight - 330) }}>{(context.nodeId?nodeMenu:paneMenu).map(item => <button key={item.key} onClick={() => { item.onClick(); setContext(undefined); }}>{item.label}</button>)}</div>}
+      {context && <div className="studio-flow-context" style={{ left: Math.min(context.x, window.innerWidth - 200), top: Math.max(8, Math.min(context.y, window.innerHeight - 16 - (context.nodeId ? nodeMenu : paneMenu).length * 42)) }}>{(context.nodeId?nodeMenu:paneMenu).map(item => <button key={item.key} onClick={() => { item.onClick(); setContext(undefined); }}>{item.label}</button>)}</div>}
       {find && <aside className="studio-flow-find"><header><strong>查找节点</strong><button title="关闭节点查找" aria-label="关闭节点查找" onClick={() => setFind(false)}><X size={16}/></button></header><Input autoFocus aria-label="搜索画布节点" placeholder="搜索名称或提示词" value={query} onChange={e => setQuery(e.target.value)}/>{project.nodes.filter(n => `${n.title} ${n.metadata?.prompt || ''}`.toLocaleLowerCase().includes(query.toLocaleLowerCase())).map(n => <button key={n.id} onClick={() => focusNode(n.id)}>{n.title}</button>)}</aside>}
     </div>
     <StudioWorkspace projectId={projectId} nodes={project.nodes} connections={project.connections} selectedNodeIds={selected} setNodes={setNodes} setConnections={setConnections}
@@ -643,14 +644,14 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
           value={text.metadata?.content||''} onChange={content=>setNodes(old=>old.map(n=>n.id===text.id?{...n,metadata:{...n.metadata,content}}:n))}
           onSave={async()=>{await saveStudioDocument(projectId);}} onClose={()=>setTextExpanded(false)}/>}
       </>}/>
-    <StudioFlowVideoFrames nodes={project.nodes} pending={pendingFrames} onPendingChange={setPendingFrames} onInsert={async (nodes, connections) => {
+    <StudioFlowVideoFrames projectId={projectId} nodes={project.nodes} pending={pendingFrames} onPendingChange={setPendingFrames} onInsert={async (nodes, connections) => {
       checkpoint(); const p = current(), placed=[...p.nodes];
       for(const node of nodes)placed.push(placeStudioNode(node,placed));
       useCanvasStore.getState().updateProject(projectId, { nodes: placed, connections: [...p.connections, ...connections] });
       focusNode(nodes[nodes.length - 1].id);
       try { await saveStudioDocument(projectId); } catch (e) { message.error(e instanceof Error ? `${e.message}；截取的图片已保留，可按 Ctrl/Cmd+S 重试保存` : '截取的图片已保留，请重试保存画布'); }
     }}/>
-    <StudioFlowImageTools nodes={project.nodes} onInsert={async (nodes, connections) => {
+    <StudioFlowImageTools projectId={projectId} nodes={project.nodes} onInsert={async (nodes, connections) => {
       checkpoint(); const p = current(), placed=[...p.nodes];
       // Crop, split and redraw share the same collision avoidance as other automatic additions.
       for(const node of nodes)placed.push(placeStudioNode(node,placed));
