@@ -14,11 +14,17 @@ interface Props {
   workshopName: string;
   templates: DialogTemplate[];
   briefPlaceholder?: string;
+  /** Prefill when arriving from elsewhere, e.g. AI 视频 › 转入导演台精修. */
+  preset?: { name: string; description: string } | null;
   onClose: () => void;
   onCreate: (input: NewProjectInput) => void;
+  /** Template to open on (picked from the input toolbar's template library). */
+  initialTemplate?: string | null;
+  /** Name of the project open now; it is kept and can be reopened from the project switcher. */
+  keeping?: string;
 }
 
-export const NewProjectDialog = ({ lang, open, workshopName, templates, briefPlaceholder, onClose, onCreate }: Props) => {
+export const NewProjectDialog = ({ lang, open, workshopName, templates, briefPlaceholder, preset = null, onClose, onCreate, initialTemplate = null, keeping }: Props) => {
   const zh = lang === 'zh';
   const [template, setTemplate] = useState(templates[0]?.name ?? '');
   const [name, setName] = useState('');
@@ -30,7 +36,8 @@ export const NewProjectDialog = ({ lang, open, workshopName, templates, briefPla
   // Reset the form each time the dialog opens (only on open, so typing is never clobbered).
   useEffect(() => {
     if (!open) return;
-    setTemplate(templates[0]?.name ?? ''); setName(''); setDescription(''); setPicked((templates[0]?.formats ?? []).slice(0, 2));
+    const start = templates.find(t => t.name === initialTemplate) ?? templates[0];
+    setTemplate(start?.name ?? ''); setName(preset?.name ?? ''); setDescription(preset?.description ?? ''); setPicked((start?.formats ?? []).slice(0, 2));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -55,7 +62,7 @@ export const NewProjectDialog = ({ lang, open, workshopName, templates, briefPla
             <div className="flex items-start justify-between px-6 pt-5">
               <div>
                 <div className="text-lg font-bold text-gray-900">{zh ? '新建创作项目' : 'New project'}</div>
-                <p className="text-xs text-gray-500 mt-1">{zh ? `${workshopName} · 选择模板后由 AI 导演台搭好画布` : `${workshopName} · pick a template and the AI Director sets up the canvas`}</p>
+                <p className="text-xs text-gray-500 mt-1">{zh ? `${workshopName} · 选择模板后由 AI 导演搭好项目` : `${workshopName} · pick a template and the AI Director sets up the project`}</p>
               </div>
               <button type="button" onClick={onClose} aria-label={zh ? '关闭' : 'Close'} className="w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 inline-flex items-center justify-center"><X className="w-4 h-4" /></button>
             </div>
@@ -107,10 +114,11 @@ export const NewProjectDialog = ({ lang, open, workshopName, templates, briefPla
               </label>
             </div>
 
-            <div className="flex justify-end gap-2 px-6 pb-5">
+            <div className="flex flex-wrap items-center justify-end gap-2 px-6 pb-5">
+              {keeping && <span className="mr-auto text-[11px] text-gray-500">{zh ? `《${keeping}》会保留，可在顶部项目名处切换回去` : `"${keeping}" is kept — switch back from the project name`}</span>}
               <button type="button" onClick={onClose} className="h-10 px-4 rounded-xl text-sm text-gray-600 hover:bg-gray-100">{zh ? '取消' : 'Cancel'}</button>
               <button type="button" onClick={submit} className="h-10 px-5 rounded-xl text-sm font-semibold inline-flex items-center gap-2"
-                style={{ background: 'linear-gradient(90deg, #06b6d4, #8b5cf6)', color: '#fff' }}>
+                style={{ background: 'linear-gradient(90deg, #0891b2, #7c3aed)', color: '#fff' }}>
                 <Sparkles className="w-4 h-4" />{zh ? '创建并交给 AI 导演' : 'Create with AI Director'}
               </button>
             </div>

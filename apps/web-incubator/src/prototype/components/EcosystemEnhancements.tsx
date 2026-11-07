@@ -70,7 +70,7 @@ export const ScenarioPicker = ({ lang, onSelectSolution }: { lang: Lang; onSelec
               return (
                 <button key={item.goal.en} type="button" onClick={() => setIndex(i)}
                   className="rounded-xl border px-3.5 py-3 text-left text-sm transition"
-                  style={active ? { borderColor: color, background: `${color}1f`, color: '#fff', boxShadow: `0 0 20px ${color}30` } : { borderColor: 'rgba(255,255,255,.1)', color: '#9ca3af' }}>
+                  style={active ? { borderColor: color, background: `${color}1f`, color: 'var(--hub-node-ink)', boxShadow: `0 0 20px ${color}30` } : { borderColor: 'rgba(255,255,255,.1)', color: '#9ca3af' }}>
                   <span className="text-xs block mb-1" style={{ color: active ? color : '#4b5563' }}>{zh ? '我想' : 'I want to'}</span>
                   {item.goal[lang]}
                 </button>

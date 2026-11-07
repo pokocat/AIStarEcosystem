@@ -1,210 +1,119 @@
 /**
- * 艺人中心 - 融合版
- *
- * 整合：我的艺人 + 明星签约 + 艺人市场
- * 提供一站式艺人获取与管理体验
- * 注：AI孵化入口统一从"概览页-快速启动"进入
+ * 角色 IP 中心 — 我的 IP、明星专区、IP 市场、IP 估值、成长档案与生态图谱。
+ * “我的 IP” 顶部按四层角色 IP 体系汇总当前矩阵，空缺的层级可以直接发起孵化。
  */
-
 import React, { useState } from 'react';
-import {
-  Users, Star, Store, Coins, Plus
-} from 'lucide-react';
-import { Button } from '../ui/button';
-import { motion, AnimatePresence } from 'motion/react';
+import { Coins, Plus } from 'lucide-react';
 import type { Lang } from '../../translations';
 import { MCNMatrix } from './MCNMatrix';
 import { CelebritySigningCenter } from '../market/CelebritySigningCenter';
 import { ArtistMarket } from '../market/ArtistMarket';
-
-type TabId = 'my_artists' | 'celebrity' | 'market';
-
-interface TabConfig {
-  id: TabId;
-  icon: React.ComponentType<any>;
-  labelZh: string;
-  labelEn: string;
-  descZh: string;
-  descEn: string;
-  color: string;
-  bg: string;
-  badge?: string;
-}
-
-const TABS: TabConfig[] = [
-  {
-    id: 'my_artists',
-    icon: Users,
-    labelZh: '我的艺人',
-    labelEn: 'My Artists',
-    descZh: '管理我的艺人矩阵',
-    descEn: 'Manage my artist matrix',
-    color: '#06b6d4',
-    bg: 'bg-cyan-500/10',
-  },
-  {
-    id: 'celebrity',
-    icon: Star,
-    labelZh: '明星专区',
-    labelEn: 'Celebrity Zone',
-    descZh: '明星IP授权合作',
-    descEn: 'Celebrity IP authorization',
-    color: '#f59e0b',
-    bg: 'bg-amber-500/10',
-  },
-  {
-    id: 'market',
-    icon: Store,
-    labelZh: '艺人市场',
-    labelEn: 'Artist Market',
-    descZh: 'MCN二级市场交易',
-    descEn: 'MCN secondary market',
-    color: '#ec4899',
-    bg: 'bg-pink-500/10',
-  },
-];
+import { IPValuationEngine } from './IPValuationEngine';
+import { ArtistGrowthTracker } from './ArtistGrowthTracker';
+import { EcosystemMap } from './EcosystemMap';
+import { MOCK_ARTISTS } from './ArtistTypes';
+import { ROLE_GROUPS, ROLE_COUNT } from '../../data/roleIpSystem';
+import { HubShell, useHubTab } from './HubShell';
 
 interface Props {
   lang: Lang;
+  initialTab?: string;
   onNavigateWorkshop?: () => void;
   onIncubate?: () => void;
   onGoToTraining?: () => void;
 }
 
-export const ArtistHub = ({ lang, onNavigateWorkshop, onIncubate, onGoToTraining }: Props) => {
+/** The current roster is all on-stage talent; the other layers start empty. */
+const rosterCount = (groupIndex: number) => (groupIndex === 0 ? MOCK_ARTISTS.length : 0);
+
+const RoleLayerStrip = ({ lang, onIncubate }: { lang: Lang; onIncubate?: () => void }) => {
   const zh = lang === 'zh';
-  const [activeTab, setActiveTab] = useState<TabId>('my_artists');
+  return (
+    <section aria-label={zh ? '角色 IP 分层' : 'Role IP layers'} className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+      {ROLE_GROUPS.map((g, i) => {
+        const Icon = g.icon;
+        const count = rosterCount(i);
+        return (
+          <div key={g.name.en} className="flex items-center gap-3 rounded-xl border border-gray-200 bg-[#ffffff] p-3">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg" style={{ background: `${g.color}14`, color: g.color }}>
+              <Icon className="h-4 w-4" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[13px] font-semibold text-slate-900">{zh ? g.name.zh : g.name.en}</div>
+              <div className="text-[11px] text-slate-500">
+                {count > 0
+                  ? (zh ? `${count} 个 IP · 共 ${g.roles.length} 种角色` : `${count} IPs · ${g.roles.length} roles`)
+                  : (zh ? `尚未布局 · 可孵化 ${g.roles.length} 种` : `Empty · ${g.roles.length} roles available`)}
+              </div>
+            </div>
+            {count === 0 && onIncubate && (
+              <button type="button" onClick={onIncubate}
+                className="shrink-0 rounded-md px-2 py-1 text-[11px] font-medium transition hover:bg-slate-100" style={{ color: g.color }}>
+                {zh ? '孵化' : 'Start'}
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </section>
+  );
+};
+
+export const ArtistHub = ({ lang, initialTab, onNavigateWorkshop, onIncubate, onGoToTraining }: Props) => {
+  const zh = lang === 'zh';
+  const [tab, setTab] = useHubTab('artist_hub', initialTab);
   const [marketBalance, setMarketBalance] = useState(100000);
   const [showMarketWizard, setShowMarketWizard] = useState(false);
 
+  const actions = (
+    <>
+      {tab === 'market' && (
+        <>
+          <div className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-1.5">
+            <Coins className="h-4 w-4 text-amber-500" />
+            <div className="text-right leading-tight">
+              <div className="text-[10px] text-slate-500">{zh ? '余额' : 'Balance'}</div>
+              <div className="text-sm font-bold text-amber-600">⬡ {marketBalance.toLocaleString()}</div>
+            </div>
+          </div>
+          <button type="button" onClick={() => setShowMarketWizard(true)}
+            className="flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-xs font-medium text-slate-700 transition hover:bg-slate-50">
+            <Plus className="h-3.5 w-3.5" />{zh ? '上架 IP' : 'List IP'}
+          </button>
+        </>
+      )}
+      {onIncubate && (
+        <button type="button" onClick={onIncubate}
+          className="flex h-9 items-center gap-1.5 rounded-lg px-3.5 text-xs font-semibold shadow-sm transition hover:opacity-90"
+          style={{ background: 'linear-gradient(135deg,#7c3aed,#0891b2)', color: '#ffffff' }}>
+          <Plus className="h-3.5 w-3.5" />{zh ? '孵化新角色 IP' : 'New Role IP'}
+        </button>
+      )}
+    </>
+  );
+
   return (
-    <div className="h-full flex flex-col bg-black">
-      {/* Header with Tabs */}
-      <div className="shrink-0 border-b border-white/5 bg-gray-900/30 backdrop-blur-xl">
-        <div className="px-6 py-4">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent"
-                style={{ fontFamily: 'var(--font-display)' }}>
-                {zh ? 'AI艺人孵化' : 'AI Incubation'}
-              </h1>
-              <p className="text-sm text-gray-500 mt-1">
-                {zh ? '管理你的AI艺人生态' : 'Manage your AI artist ecosystem'}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {/* 孵化新艺人 — shown on my_artists tab */}
-              {activeTab === 'my_artists' && onIncubate && (
-                <Button
-                  onClick={onIncubate}
-                  className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:opacity-90 text-white border-0 h-9 text-xs gap-1.5"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  {zh ? '孵化新艺人' : 'New Artist'}
-                </Button>
-              )}
-
-              {/* Market tab controls */}
-              {activeTab === 'market' && (
-                <>
-                  <div className="flex items-center gap-2 bg-white/[0.03] border border-white/8 rounded-xl px-3 py-2">
-                    <Coins className="w-4 h-4 text-amber-400" />
-                    <div className="text-right">
-                      <div className="text-[9px] text-gray-500 leading-none">{zh ? '余额' : 'Balance'}</div>
-                      <div className="text-sm font-bold text-amber-400 leading-tight">⬡ {marketBalance.toLocaleString()}</div>
-                    </div>
-                  </div>
-                  <Button onClick={() => setShowMarketWizard(true)}
-                    className="bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white border-0 h-9 text-xs">
-                    <Plus className="w-3.5 h-3.5 mr-1.5" />{zh ? '上架艺人' : 'List Artist'}
-                  </Button>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Tab Navigation */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-2">
-            {TABS.map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`
-                    relative flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium
-                    transition-all whitespace-nowrap
-                    ${isActive
-                      ? 'bg-white/10 text-white shadow-lg'
-                      : 'text-gray-400 hover:text-white hover:bg-white/5'
-                    }
-                  `}
-                  style={isActive ? {
-                    boxShadow: `0 0 20px ${tab.color}40`,
-                    border: `1px solid ${tab.color}30`,
-                  } : undefined}
-                >
-                  <Icon
-                    className="w-4 h-4"
-                    style={{ color: isActive ? tab.color : undefined }}
-                  />
-                  <span>{zh ? tab.labelZh : tab.labelEn}</span>
-                  {tab.badge && isActive && (
-                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-gradient-to-r from-orange-500 to-pink-500 text-white">
-                      {tab.badge}
-                    </span>
-                  )}
-                  {isActive && (
-                    <motion.div
-                      layoutId="activeTab"
-                      className="absolute inset-0 rounded-xl -z-10"
-                      style={{ background: tab.bg }}
-                      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                    />
-                  )}
-                </button>
-              );
-            })}
-          </div>
+    <HubShell lang={lang} pageId="artist_hub" active={tab} onChange={setTab}
+      badges={{ mine: MOCK_ARTISTS.length }}
+      actions={actions}
+      banner={tab === 'mine' ? (
+        <div className="space-y-1.5">
+          <RoleLayerStrip lang={lang} onIncubate={onIncubate} />
+          <p className="px-1 text-[11px] text-slate-500">
+            {zh ? `四层生态共 ${ROLE_COUNT} 种角色 IP，补齐幕后、经营和商业层，能让台前 IP 的内容与变现形成闭环。`
+              : `${ROLE_COUNT} role IPs across four layers — filling the creative, operating and business layers closes the loop for on-stage IPs.`}
+          </p>
         </div>
-      </div>
-
-      {/* Tab Content */}
-      <div className="flex-1 overflow-hidden">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
-            className="h-full"
-          >
-            {activeTab === 'my_artists' && (
-              <MCNMatrix
-                lang={lang}
-                onNavigateWorkshop={onNavigateWorkshop}
-              />
-            )}
-
-            {activeTab === 'celebrity' && (
-              <CelebritySigningCenter lang={lang} onGoToTraining={onGoToTraining} />
-            )}
-
-            {activeTab === 'market' && (
-              <ArtistMarket
-                lang={lang}
-                balance={marketBalance}
-                setBalance={setMarketBalance}
-                showWizard={showMarketWizard}
-                setShowWizard={setShowMarketWizard}
-              />
-            )}
-          </motion.div>
-        </AnimatePresence>
-      </div>
-    </div>
+      ) : undefined}>
+      {tab === 'mine' && <MCNMatrix lang={lang} onNavigateWorkshop={onNavigateWorkshop} />}
+      {tab === 'celebrity' && <CelebritySigningCenter lang={lang} onGoToTraining={onGoToTraining} />}
+      {tab === 'market' && (
+        <ArtistMarket lang={lang} balance={marketBalance} setBalance={setMarketBalance}
+          showWizard={showMarketWizard} setShowWizard={setShowMarketWizard} />
+      )}
+      {tab === 'valuation' && <IPValuationEngine lang={lang} />}
+      {tab === 'growth' && <ArtistGrowthTracker lang={lang} />}
+      {tab === 'ecosystem' && <EcosystemMap lang={lang} />}
+    </HubShell>
   );
 };

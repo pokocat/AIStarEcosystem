@@ -53,30 +53,30 @@ const MOCK_ACCOUNTS: Account[] = [
     id: 'acc1', platform: 'douyin', handle: '@neon_v_official', fans: '128.4万',
     healthScore: 92, boundArtist: 'Neon V', isActive: true, lastPublished: '2小时前', monthlyGmv: '¥48,200',
     whitelist: [
-      { celebrity: '陈屿', status: 'approved', approvedAt: '2026-04-15' },
-      { celebrity: '顾然', status: 'pending', submittedAt: '2026-04-28' },
+      { celebrity: '陆承远', status: 'approved', approvedAt: '2026-04-15' },
+      { celebrity: '顾星辰', status: 'pending', submittedAt: '2026-04-28' },
     ]
   },
   {
     id: 'acc2', platform: 'kuaishou', handle: '@luna_soft_ks', fans: '56.2万',
     healthScore: 78, boundArtist: 'Luna Soft', isActive: true, lastPublished: '1天前', monthlyGmv: '¥22,800',
     whitelist: [
-      { celebrity: '苏枝', status: 'pending', submittedAt: '2026-04-30' },
+      { celebrity: '苏念', status: 'pending', submittedAt: '2026-04-30' },
     ]
   },
   {
     id: 'acc3', platform: 'xiaohongshu', handle: '@project_zero_xhs', fans: '23.7万',
     healthScore: 85, boundArtist: 'Project Zero', isActive: true, lastPublished: '3天前', monthlyGmv: '¥11,500',
     whitelist: [
-      { celebrity: '陆星野', status: 'rejected', submittedAt: '2026-04-10', reason: '账号粉丝量不足要求（需>50万）' },
-      { celebrity: '陈屿', status: 'unsubmitted' },
+      { celebrity: '江野', status: 'rejected', submittedAt: '2026-04-10', reason: '账号粉丝量不足要求（需>50万）' },
+      { celebrity: '陆承远', status: 'unsubmitted' },
     ]
   },
   {
     id: 'acc4', platform: 'wechat', handle: '@neonv_channel', fans: '18.9万',
     healthScore: 67, boundArtist: 'Neon V', isActive: false,
     whitelist: [
-      { celebrity: '顾然', status: 'supplementing', submittedAt: '2026-04-20', reason: '需补充：MCN机构授权证明' },
+      { celebrity: '顾星辰', status: 'supplementing', submittedAt: '2026-04-20', reason: '需补充：MCN机构授权证明' },
     ]
   },
   {

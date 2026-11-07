@@ -30,7 +30,8 @@ export interface CanvasNode {
 }
 
 export interface Edge { from: string; to: string }
-export interface ChatMessage { id: string; role: 'user' | 'ai'; text: string; actions?: string[] }
+/** `pipeline`: the reply that started a one-click run; the chat shows live progress under it. */
+export interface ChatMessage { id: string; role: 'user' | 'ai'; text: string; actions?: string[]; pipeline?: boolean }
 export type LT = { zh: string; en: string };
 
 /** What the user asked for when creating a project (template, deliverables, artist). */
@@ -60,7 +61,7 @@ export const KIND_META: Record<NodeKind, { label: LT; color: string }> = {
   shot: { label: { zh: '镜头', en: 'Shot' }, color: '#8b5cf6' },
   audio: { label: { zh: '编曲', en: 'Arrangement' }, color: '#f59e0b' },
   vocal: { label: { zh: '人声', en: 'Vocals' }, color: '#d946ef' },
-  output: { label: { zh: '交付', en: 'Delivery' }, color: '#06b6d4' },
+  output: { label: { zh: '交付', en: 'Delivery' }, color: '#0891b2' },
 };
 
 export const SHOT_SIZES: Array<{ id: ShotSize; label: LT }> = [
@@ -252,7 +253,7 @@ export const planDirectorReply = (text: string, lang: Lang, ctx: PlanContext): {
   if (/一键制作|一键做|one.?click/.test(t)) {
     ops.push({ type: 'oneClick' });
     say(zh ? '一键制作已启动：剧本 → 资产图 → 分镜 → 视频 → 成片' : 'One-click run started: script → assets → storyboard → video → final',
-      zh ? '我会按顺序把剩下的步骤连起来做完：先补齐资产图，再生成分镜和视频，最后合成成片。每一步都可以在左侧视图里随时查看和修改。' : 'I will chain the remaining steps: fill in asset images, then storyboard and video, then the final cut. You can check or edit each step in its view.');
+      zh ? '我会按顺序把剩下的步骤连起来做完：先补齐资产图，再生成分镜和视频，最后合成成片。右侧的画布或流程会跟着我的进度走，你随时可以停下来查看和修改。' : 'I will chain the remaining steps: fill in asset images, then storyboard and video, then the final cut. The canvas or flow on the right follows along; take over any time.');
     return { reply: replies.join(zh ? '' : ' '), ops, actions };
   }
   if (/续写|下一集|下一场|continue|next episode/.test(t)) {

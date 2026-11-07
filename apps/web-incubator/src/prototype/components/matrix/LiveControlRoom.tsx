@@ -38,7 +38,7 @@ interface Alert {
 
 // ─── Mock Data ────────────────────────────────────────────────────
 const LIVE_ROOMS: LiveRoom[] = [
-  { id: 'lr1', accountName: '@宋一鸣官方',   platform: 'DY',  artist: '宋一鸣',
+  { id: 'lr1', accountName: '@沈亦舟官方',   platform: 'DY',  artist: '沈亦舟',
     title: '《星河》打榜直播·粉丝见面会', status: 'live', viewers: 128400, viewersMax: 180000,
     gmv: 48200, gmvTarget: 80000, likes: 892000, gifts: 2340, comments: 12800,
     duration: '02:14:33', network: 'excellent', hotScore: 94, clip_count: 8 },
@@ -46,11 +46,11 @@ const LIVE_ROOMS: LiveRoom[] = [
     title: '换季护肤专场·精华测评直播', status: 'live', viewers: 42600, viewersMax: 60000,
     gmv: 22800, gmvTarget: 35000, likes: 340000, gifts: 890, comments: 5600,
     duration: '01:08:22', network: 'good', hotScore: 71, clip_count: 4 },
-  { id: 'lr3', accountName: '@星河快手矩阵', platform: 'KS',  artist: '宋一鸣',
+  { id: 'lr3', accountName: '@星河快手矩阵', platform: 'KS',  artist: '沈亦舟',
     title: '《星河》快手应援·同步开播', status: 'live', viewers: 18900, viewersMax: 25000,
     gmv: 8400, gmvTarget: 15000, likes: 128000, gifts: 420, comments: 3200,
     duration: '02:14:33', network: 'good', hotScore: 62, clip_count: 3 },
-  { id: 'lr4', accountName: '@宋一鸣视频号', platform: 'VCH', artist: '宋一鸣',
+  { id: 'lr4', accountName: '@沈亦舟视频号', platform: 'VCH', artist: '沈亦舟',
     title: '《星河》视频号同步直播', status: 'offline', viewers: 0, viewersMax: 12000,
     gmv: 0, gmvTarget: 10000, likes: 0, gifts: 0, comments: 0,
     duration: '--:--:--', network: 'poor', hotScore: 0, clip_count: 0 },
@@ -61,7 +61,7 @@ const LIVE_ROOMS: LiveRoom[] = [
 ];
 
 const DANMAKU: DanmakuMsg[] = [
-  { id: 'd1', user: '星河应援团',  content: '宋一鸣加油！《星河》冲冲冲！', type: 'normal',  time: '刚刚' },
+  { id: 'd1', user: '星河应援团',  content: '沈亦舟加油！《星河》冲冲冲！', type: 'normal',  time: '刚刚' },
   { id: 'd2', user: '用户12345',   content: '',                            type: 'gift',    amount: 888, time: '5秒前' },
   { id: 'd3', user: '护肤控Linda', content: '林音宝真的好用！已下单！',    type: 'purchase', amount: 299, time: '8秒前' },
   { id: 'd4', user: '新粉丝小甜',  content: '',                            type: 'follow',  time: '10秒前' },
@@ -72,7 +72,7 @@ const DANMAKU: DanmakuMsg[] = [
 ];
 
 const ALERTS: Alert[] = [
-  { id: 'a1', level: 'critical', msg: '宋一鸣DY直播间流量异常下降40%，建议立即发起投流', msgEn: 'DY traffic dropped 40% — recommend immediate boost', roomId: 'lr1', time: '2分钟前' },
+  { id: 'a1', level: 'critical', msg: '沈亦舟DY直播间流量异常下降40%，建议立即发起投流', msgEn: 'DY traffic dropped 40% — recommend immediate boost', roomId: 'lr1', time: '2分钟前' },
   { id: 'a2', level: 'warning',  msg: '视频号账号已离线30分钟，请检查推流状态', msgEn: 'VCH account offline 30min — check stream status', roomId: 'lr4', time: '30分钟前' },
   { id: 'a3', level: 'info',     msg: '林音宝DY直播即将开始，请准备监控接入', msgEn: 'Lin Yin Bao DY live starting — prepare monitor', roomId: 'lr5', time: '刚刚' },
 ];
@@ -246,7 +246,7 @@ export const LiveControlRoom = ({ lang }: Props) => {
             </div>
 
             {/* Simulated live monitor */}
-            <div className="w-full h-48 rounded-xl bg-black border border-white/8 relative overflow-hidden mb-4">
+            <div data-surface="dark" className="w-full h-48 rounded-xl bg-black border border-white/8 relative overflow-hidden mb-4">
               {selectedRoom.status === 'live' ? (
                 <>
                   {/* Fake live gradient */}

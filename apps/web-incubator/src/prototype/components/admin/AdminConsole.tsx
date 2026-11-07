@@ -14,8 +14,8 @@ import { Badge } from "../ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Progress } from "../ui/progress";
 import { motion } from "motion/react";
-import { useTheme, themeConfig } from "../ThemeProvider";
-import { ThemeSwitcher } from "../ThemeSwitcher";
+import { sidebarStyle } from "../ThemeProvider";
+import { ColorModeToggle } from "../ColorModeToggle";
 import type { Lang } from "../../translations";
 import { UserManagement } from "./UserManagement";
 import { ContentModeration } from "./ContentModeration";
@@ -31,8 +31,7 @@ interface AdminConsoleProps {
 
 const AdminConsole: React.FC<AdminConsoleProps> = ({ onLogout, lang, setLang }) => {
   const zh = lang === 'zh';
-  const { theme } = useTheme();
-  const themeStyles = themeConfig[theme].sidebar;
+  const themeStyles = sidebarStyle;
   const [activePage, setActivePage] = useState('dashboard');
   const isNarrow = () => window.matchMedia('(max-width: 767px)').matches;
   const [sidebarCollapsed, setSidebarCollapsed] = useState(isNarrow);
@@ -128,7 +127,7 @@ const AdminConsole: React.FC<AdminConsoleProps> = ({ onLogout, lang, setLang }) 
             <Badge variant="outline" className="hidden md:inline-flex border-red-500/30 text-red-400">
               {zh ? '管理员' : 'Admin'}
             </Badge>
-            <ThemeSwitcher lang={lang} />
+            <ColorModeToggle lang={zh ? 'zh' : 'en'} />
             <Button variant="ghost" size="sm">
               <Bell className="w-4 h-4" />
             </Button>

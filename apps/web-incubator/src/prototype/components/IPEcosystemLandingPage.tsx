@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { SectionHead } from './landing/SectionHead';
+import { ColorModeToggle } from './ColorModeToggle';
 import {
   ArrowRight, ArrowUpRight, BarChart3, Building2, CheckCircle2,
   Crown, Film, Globe2, GraduationCap, Heart, Layers,
@@ -80,7 +82,7 @@ export const IPEcosystemLandingPage = ({ lang, setLang, onEnter, onSelectSolutio
   ];
 
   return (
-    <div className="homepage-dark min-h-screen bg-black text-white overflow-x-hidden" style={{ fontFamily: 'var(--font-sans)' }}>
+    <div className="min-h-screen bg-black text-white overflow-x-hidden" style={{ fontFamily: 'var(--font-sans)' }}>
       <nav className="fixed inset-x-0 top-0 z-50 border-b border-white/10 bg-black/65 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto h-16 px-6 flex items-center justify-between">
           <a href="#top" className="flex items-center gap-2.5">
@@ -92,6 +94,7 @@ export const IPEcosystemLandingPage = ({ lang, setLang, onEnter, onSelectSolutio
             {navLinks.map(link => (
               <a key={link.href} href={link.href} className="hover:text-white transition">{link.label}</a>
             ))}
+            <ColorModeToggle lang={zh ? 'zh' : 'en'} className="-mx-1 h-8 w-8 hover:bg-white/10" />
             <button onClick={onEnter} className="h-9 px-4 rounded-full text-white font-semibold bg-gradient-to-r from-cyan-500 to-purple-600">{zh ? '进入平台' : 'Enter Platform'}</button>
           </div>
           <LandingMobileMenu
@@ -162,18 +165,15 @@ export const IPEcosystemLandingPage = ({ lang, setLang, onEnter, onSelectSolutio
 
       <section id="ip-types" className="relative px-6 py-28">
         <div className="max-w-7xl mx-auto">
-          <div className="max-w-3xl mb-14">
-            <div className="text-xs text-purple-400 uppercase tracking-[.24em] mb-4">{zh ? '十种 IP 类型模板' : '10 IP TYPE TEMPLATES'}</div>
-            <h2 className="text-4xl md:text-6xl font-black tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>{zh ? '你的影响力，可以从这里开始' : 'Every Kind of Influence Starts Here'}</h2>
-            <p className="text-gray-500 mt-5">{zh ? '选择最贴近你的 IP 类型，查看专属方案、标杆案例与创作模板。' : 'Pick the IP type closest to you to explore tailored solutions, cases and templates.'}</p>
-          </div>
+          <SectionHead accent="#a855f7" meta="IP TYPES / 10" eyebrow={zh ? '十种 IP 类型模板' : '10 IP type templates'}
+            title={zh ? '你的影响力，可以从这里开始' : 'Every Kind of Influence Starts Here'}
+            desc={zh ? '选择最贴近你的 IP 类型，查看专属方案、标杆案例与创作模板。' : 'Pick the IP type closest to you to explore tailored solutions, cases and templates.'} />
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             {IP_TYPE_TEMPLATES.map((item, index) => {
               const meta = typeMeta[item.id];
               const Icon = meta.icon;
               return (
-                <motion.button key={item.id} onClick={() => onSelectSolution(meta.solution)} whileHover={{ y: -6 }} className="group min-h-[210px] rounded-2xl p-5 text-left relative overflow-hidden"
-                  style={{ background: 'linear-gradient(145deg, rgba(16,23,38,.92), rgba(5,8,14,.98))', border: '1px solid rgba(255,255,255,.08)' }}>
+                <motion.button key={item.id} onClick={() => onSelectSolution(meta.solution)} whileHover={{ y: -6 }} className="group min-h-[210px] rounded-2xl p-5 text-left relative overflow-hidden border border-white/10 bg-gradient-to-br from-gray-900 to-black">
                   <div className="absolute inset-x-0 top-0 h-px opacity-0 group-hover:opacity-100 transition" style={{ background: `linear-gradient(90deg, transparent, ${meta.color}, transparent)` }} />
                   <div className="flex items-start justify-between">
                     <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ color: '#fff', background: `linear-gradient(135deg, ${meta.color}, ${meta.color}99)`, boxShadow: `0 12px 30px ${meta.color}20` }}>
@@ -195,13 +195,9 @@ export const IPEcosystemLandingPage = ({ lang, setLang, onEnter, onSelectSolutio
 
       <section id="solutions" className="px-6 py-28">
         <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-12">
-            <div>
-              <div className="text-xs text-pink-400 uppercase tracking-[.24em] mb-4">{zh ? '垂直解决方案' : 'VERTICAL SOLUTIONS'}</div>
-              <h2 className="text-4xl md:text-6xl font-black" style={{ fontFamily: 'var(--font-display)' }}>{zh ? '深入每一种真实业务场景' : 'Built for Real Business Scenarios'}</h2>
-            </div>
-            <p className="text-xs text-gray-500 max-w-sm">{zh ? '覆盖娱乐、企业、品牌与城市等场景，每个方案都有专属工作流与标杆案例。' : 'Entertainment, business, brand and city scenarios, each with dedicated workflows and featured cases.'}</p>
-          </div>
+          <SectionHead accent="#ec4899" meta="SOLUTIONS / 11" eyebrow={zh ? '垂直解决方案' : 'Vertical solutions'}
+            title={zh ? '深入每一种真实业务场景' : 'Built for Real Business Scenarios'}
+            desc={zh ? '覆盖娱乐、企业、品牌与城市等场景，每个方案都有专属工作流与标杆案例。' : 'Entertainment, business, brand and city scenarios, each with dedicated workflows and featured cases.'} />
           <div className="grid md:grid-cols-3 gap-4">
             {featuredSolutions.map((id, index) => {
               const config = id === 'ai-artist' ? fallbackSolution : SOLUTION_CONFIGS[id as Exclude<SolutionId, 'ecosystem' | 'ai-artist'>];
@@ -250,10 +246,8 @@ export const IPEcosystemLandingPage = ({ lang, setLang, onEnter, onSelectSolutio
 
       <section className="px-6 py-28 border-y border-white/5 bg-gray-950/40">
         <div className="max-w-7xl mx-auto">
-          <div className="text-center max-w-3xl mx-auto mb-14">
-            <div className="text-xs text-cyan-400 uppercase tracking-[.24em] mb-4">{zh ? '三端协同生态' : 'THREE-PORT ECOSYSTEM'}</div>
-            <h2 className="text-4xl md:text-5xl font-black" style={{ fontFamily: 'var(--font-display)' }}>{zh ? '共同创造、管理与放大 IP 价值' : 'Create, Govern and Grow IP Value Together'}</h2>
-          </div>
+          <SectionHead accent="#06b6d4" meta="PORTS / 03" eyebrow={zh ? '三端协同生态' : 'Three-port ecosystem'}
+            title={zh ? '共同创造、管理与放大 IP 价值' : 'Create, Govern and Grow IP Value Together'} />
           <div className="grid md:grid-cols-3 gap-4">
             {[
               { icon: Rocket, titleZh: '生态创业者工作台', titleEn: 'Creator Workspace', descZh: '创建 IP、生产内容、运营矩阵并完成商业变现。', descEn: 'Create IP, produce content, operate matrices and monetize.', color: '#06b6d4' },

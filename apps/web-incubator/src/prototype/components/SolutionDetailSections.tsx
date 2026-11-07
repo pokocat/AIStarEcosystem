@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { ArrowRight, CheckCircle2, ChevronDown, Clock, Package, Pause, Play, Sparkles, TrendingUp } from 'lucide-react';
 import type { Lang } from '../translations';
 import type { SolutionDetail, SolutionSpotlight } from '../data/solutionDetails';
+import { SectionHead } from './landing/SectionHead';
 
 interface Theme {
   lang: Lang;
@@ -10,12 +11,9 @@ interface Theme {
   secondary: string;
 }
 
-const Heading = ({ eyebrow, title, desc, accent }: { eyebrow: string; title: string; desc?: string; accent: string }) => (
-  <div className="text-center max-w-3xl mx-auto mb-12">
-    <div className="text-xs uppercase tracking-[.22em] mb-4" style={{ color: accent }}>{eyebrow}</div>
-    <h2 className="text-3xl md:text-5xl font-black text-white [text-wrap:balance]" style={{ fontFamily: 'var(--font-display)' }}>{title}</h2>
-    {desc && <p className="text-gray-400 mt-4 leading-relaxed">{desc}</p>}
-  </div>
+// All detail sections share the homepage-style heading (left-aligned, eyebrow pill, mono meta).
+const Heading = ({ eyebrow, title, desc, accent, meta }: { eyebrow: string; title: string; desc?: string; accent: string; meta?: string }) => (
+  <SectionHead eyebrow={eyebrow} title={title} desc={desc} accent={accent} meta={meta} />
 );
 
 /* ─────────────── Spotlight: the solution's own interactive module ─────────────── */
@@ -27,7 +25,7 @@ export const SpotlightSection = ({ spotlight, lang, accent, secondary }: Theme &
     <section id="spotlight" className="px-6 py-28 relative overflow-hidden">
       <div className="absolute inset-0 pointer-events-none" style={{ background: `radial-gradient(ellipse at 50% 0%, ${accent}18, transparent 55%)` }} />
       <div className="max-w-6xl mx-auto relative">
-        <Heading eyebrow={zh ? '互动体验' : 'Try It'} title={t(spotlight.title)} desc={t(spotlight.desc)} accent={accent} />
+        <Heading eyebrow={zh ? '互动体验' : 'Try It'} meta="LIVE DEMO" title={t(spotlight.title)} desc={t(spotlight.desc)} accent={accent} />
         {spotlight.kind === 'tabs'
           ? <SpotlightTabs spotlight={spotlight} lang={lang} accent={accent} secondary={secondary} />
           : <SpotlightJourney spotlight={spotlight} lang={lang} accent={accent} secondary={secondary} />}
@@ -146,7 +144,7 @@ const SpotlightJourney = ({ spotlight, lang, accent, secondary }: Theme & { spot
                   <span className="relative z-10 w-10 h-10 rounded-full flex items-center justify-center text-xs font-black transition-all"
                     style={done
                       ? { background: gradient, color: '#fff', boxShadow: i === index ? `0 0 0 5px ${accent}25, 0 0 24px ${accent}60` : undefined }
-                      : { background: '#0b0f17', color: '#6b7280', border: '1px solid rgba(255,255,255,.12)' }}>
+                      : { background: 'var(--step-idle-bg)', color: '#6b7280', border: '1px solid var(--step-idle-line)' }}>
                     {item.time}
                   </span>
                   <span className={`mt-3 text-sm leading-tight ${i === index ? 'text-white font-semibold' : 'text-gray-500 group-hover:text-gray-300'}`}>{t(item.label)}</span>
@@ -190,7 +188,7 @@ export const DayTimelineSection = ({ day, lang, accent, secondary, name }: Theme
   return (
     <section id="day" className="px-6 py-28 border-y border-white/5 bg-gray-950/40">
       <div className="max-w-5xl mx-auto">
-        <Heading eyebrow={zh ? '一个真实工作日' : 'A Day With AI'} title={zh ? `用${name}的一天` : `A Day Running ${name}`} desc={zh ? 'AI 承担重复工作，团队专注创意与决策。' : 'AI handles the repetitive work so the team can focus on decisions.'} accent={accent} />
+        <Heading eyebrow={zh ? '一个真实工作日' : 'A Day With AI'} meta="24H · TIMELINE" title={zh ? `用${name}的一天` : `A Day Running ${name}`} desc={zh ? 'AI 承担重复工作，团队专注创意与决策。' : 'AI handles the repetitive work so the team can focus on decisions.'} accent={accent} />
         <ol className="relative">
           <span aria-hidden className="absolute left-[27px] md:left-1/2 top-2 bottom-2 w-px" style={{ background: `linear-gradient(${accent}, ${secondary})`, opacity: .35 }} />
           {day.map((item, i) => (
@@ -217,7 +215,7 @@ export const DeliverablesSection = ({ deliverables, lang, accent, secondary }: T
   return (
     <section id="deliverables" className="px-6 py-28">
       <div className="max-w-7xl mx-auto">
-        <Heading eyebrow={zh ? '你将得到什么' : 'What You Get'} title={zh ? '可以长期复用的 IP 资产' : 'IP Assets You Keep Reusing'} desc={zh ? '每一次创作都会沉淀下来，越用越有价值。' : 'Everything you make is kept and compounds over time.'} accent={accent} />
+        <Heading eyebrow={zh ? '你将得到什么' : 'What You Get'} meta="IP ASSETS" title={zh ? '可以长期复用的 IP 资产' : 'IP Assets You Keep Reusing'} desc={zh ? '每一次创作都会沉淀下来，越用越有价值。' : 'Everything you make is kept and compounds over time.'} accent={accent} />
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {deliverables.map((item, i) => (
             <motion.div key={item.title.en} initial={{ opacity: 0, y: 18 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * .07 }} whileHover={{ y: -5 }}
@@ -242,7 +240,7 @@ export const ResultsSection = ({ results, lang, accent, secondary }: Theme & { r
   return (
     <section id="results" className="px-6 py-28 border-y border-white/5 bg-gray-950/40">
       <div className="max-w-6xl mx-auto">
-        <Heading eyebrow={zh ? '使用前后对比' : 'Before & After'} title={zh ? '效率和效果，都看得见' : 'Results You Can Measure'} accent={accent} />
+        <Heading eyebrow={zh ? '使用前后对比' : 'Before & After'} meta="BEFORE / AFTER" title={zh ? '效率和效果，都看得见' : 'Results You Can Measure'} accent={accent} />
         <div className="grid md:grid-cols-3 gap-4">
           {results.map((item, i) => (
             <motion.div key={item.label.en} initial={{ opacity: 0, y: 18 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * .08 }}
@@ -279,7 +277,7 @@ export const FaqSection = ({ faq, lang, accent }: Omit<Theme, 'secondary'> & { f
   return (
     <section id="faq" className="px-6 py-28">
       <div className="max-w-3xl mx-auto">
-        <Heading eyebrow="FAQ" title={zh ? '你可能关心的问题' : 'Questions You May Have'} accent={accent} />
+        <Heading eyebrow="FAQ" meta="HELP CENTER" title={zh ? '你可能关心的问题' : 'Questions You May Have'} accent={accent} />
         <div className="space-y-3">
           {faq.map((item, i) => {
             const isOpen = open === i;

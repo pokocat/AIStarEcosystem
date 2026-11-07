@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, CheckSquare, FileText, Film, Grid3X3, ListOrdered, Loader2, Play, RefreshCw, SlidersHorizontal, Sparkles, Square, Trash2, Wand2 } from 'lucide-react';
+import { AlertTriangle, CheckSquare, FileText, Film, Grid3X3, ListOrdered, Loader2, Play, RefreshCw, SlidersHorizontal, Sparkles, Square, Trash2, Wand2, Zap } from 'lucide-react';
 import type { Lang } from '../../../translations';
 import { CAMERA_MOVES, SHOT_SIZES, labelOf, type CanvasNode, type ProjectMode } from './directorData';
 import type { Asset, Episode } from './studioModel';
+import { PRICE, shotVideoCost } from './pricing';
 
 interface Props {
   lang: Lang;
@@ -25,6 +26,10 @@ interface Props {
   onPreview: () => void;
   onExport: () => void;
   onGotoAssets: () => void;
+  /** Opens the AI 视频 / AI 图片 generator for this shot. */
+  onQuickGen: (id: string) => void;
+  /** Segment the AI is working on (跟随 AI): highlighted and scrolled into view. */
+  followId?: string;
 }
 
 const SmallBtn = ({ onClick, children, disabled, dark, label }: { onClick: () => void; children: React.ReactNode; disabled?: boolean; dark?: boolean; label?: string }) => (
@@ -34,6 +39,8 @@ const SmallBtn = ({ onClick, children, disabled, dark, label }: { onClick: () =>
     {children}
   </button>
 );
+
+const Cost = ({ n, dark }: { n: number; dark?: boolean }) => <span className={`text-[10px] font-normal ${dark ? '' : 'text-gray-400'}`} style={dark ? { color: 'rgba(255,255,255,.7)' } : undefined}>⬡{n}</span>;
 
 export const StoryboardView = (p: Props) => {
   const { lang, mode, shots, assets } = p;
@@ -45,6 +52,7 @@ export const StoryboardView = (p: Props) => {
 
   useEffect(() => { setChecked(c => c.filter(id => shots.some(s => s.id === id))); }, [shots]);
   useEffect(() => { if (p.selectedId) cardRefs.current[p.selectedId]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, [p.selectedId]);
+  useEffect(() => { if (p.followId) cardRefs.current[p.followId]?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, [p.followId]);
 
   const allChecked = shots.length > 0 && checked.length === shots.length;
   const videosDone = shots.filter(s => s.videoStatus === 'done').length;
@@ -123,8 +131,8 @@ export const StoryboardView = (p: Props) => {
             </button>
             <span className="text-xs text-gray-500">{zh ? `已选择 ${checked.length} 个片段` : `${checked.length} selected`}</span>
             <span className="flex-1" />
-            <SmallBtn onClick={() => p.onFrames(checked)} disabled={!checked.length}><Grid3X3 className="w-3.5 h-3.5" />{zh ? '批量生成分镜图' : 'Generate frames'}</SmallBtn>
-            <SmallBtn onClick={() => p.onVideos(checked)} disabled={!checked.length} dark><Film className="w-3.5 h-3.5" />{zh ? '批量生成视频' : 'Generate videos'}</SmallBtn>
+            <SmallBtn onClick={() => p.onFrames(checked)} disabled={!checked.length}><Grid3X3 className="w-3.5 h-3.5" />{zh ? '批量生成分镜图' : 'Generate frames'}{checked.length > 0 && <Cost n={checked.length * PRICE.frame} />}</SmallBtn>
+            <SmallBtn onClick={() => p.onVideos(checked)} disabled={!checked.length} dark><Film className="w-3.5 h-3.5" />{zh ? '批量生成视频' : 'Generate videos'}{checked.length > 0 && <Cost dark n={shots.filter(s => checked.includes(s.id)).reduce((a, s) => a + shotVideoCost(s), 0)} />}</SmallBtn>
           </div>
         </div>
 
@@ -140,9 +148,11 @@ export const StoryboardView = (p: Props) => {
           const videoBusy = s.videoStatus === 'generating';
           const videoDone = s.videoStatus === 'done';
           const isEditing = editing === s.id;
+          const followed = s.id === p.followId;
           return (
             <div key={s.id} ref={el => { cardRefs.current[s.id] = el; }} onClick={e => { e.stopPropagation(); p.onSelect(s.id); }}
-              className="rounded-xl bg-white p-3 md:p-4 border transition" style={{ borderColor: sel ? '#8b5cf6' : '#e5e7eb', boxShadow: sel ? '0 0 0 1px #8b5cf6' : undefined }}>
+              className="relative rounded-xl bg-white p-3 md:p-4 border transition" style={{ borderColor: sel || followed ? '#8b5cf6' : '#e5e7eb', boxShadow: sel ? '0 0 0 1px #8b5cf6' : followed ? '0 0 0 3px #ede9fe' : undefined }}>
+              {followed && <span className="absolute -top-2.5 right-4 rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ background: '#7c3aed', color: '#ffffff' }}>{zh ? 'AI 正在处理' : 'AI working'}</span>}
               <div className="flex flex-wrap items-center gap-2" onClick={e => e.stopPropagation()}>
                 <button type="button" onClick={() => toggle(s.id)} aria-pressed={checked.includes(s.id)} aria-label={zh ? '选择片段' : 'Select segment'}>
                   {checked.includes(s.id) ? <CheckSquare className="w-4 h-4 text-purple-600" /> : <Square className="w-4 h-4 text-gray-400" />}
@@ -153,7 +163,8 @@ export const StoryboardView = (p: Props) => {
                   <div className="text-[11px] text-gray-500">{s.duration}{zh ? ' 秒' : 's'} · {labelOf(SHOT_SIZES, s.shotSize, lang)} · {labelOf(CAMERA_MOVES, s.camera, lang)} · {videoDone ? (zh ? '视频已确认' : 'Video confirmed') : s.status === 'done' ? (zh ? '分镜图已确认' : 'Frame confirmed') : (zh ? '待生成' : 'Pending')}</div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button type="button" onClick={() => p.onDiscuss(s.id)} aria-label={zh ? '和 AI 讨论这一段' : 'Discuss this segment'} title={zh ? '和 AI 讨论这一段' : 'Discuss this segment'} className="w-7 h-7 rounded-full inline-flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #06b6d4, #8b5cf6)', color: '#fff' }}><Sparkles className="w-3.5 h-3.5" /></button>
+                  <button type="button" onClick={() => p.onDiscuss(s.id)} aria-label={zh ? '和 AI 讨论这一段' : 'Discuss this segment'} title={zh ? '和 AI 讨论这一段' : 'Discuss this segment'} className="w-7 h-7 rounded-full inline-flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #0891b2, #7c3aed)', color: '#fff' }}><Sparkles className="w-3.5 h-3.5" /></button>
+                  <SmallBtn onClick={() => p.onQuickGen(s.id)} disabled={frameBusy || videoBusy} label={zh ? '用 AI 图片 / AI 视频生成这一镜' : 'Generate this shot with AI Image / AI Video'}><Zap className="w-3.5 h-3.5 text-violet-600" /><span className="hidden md:inline">{zh ? '快速生成' : 'Quick gen'}</span></SmallBtn>
                   <SmallBtn onClick={() => p.onRewrite(s.id)} label={zh ? '重写提示词' : 'Rewrite prompt'}><RefreshCw className="w-3.5 h-3.5" /><span className="hidden md:inline">{zh ? '重写' : 'Rewrite'}</span></SmallBtn>
                   <SmallBtn onClick={() => setEditing(isEditing ? null : s.id)} label={zh ? '编辑镜头' : 'Edit shot'}><SlidersHorizontal className="w-3.5 h-3.5" /><span className="hidden md:inline">{zh ? '编辑镜头' : 'Edit shot'}</span></SmallBtn>
                   <button type="button" onClick={() => p.onDelete(s.id)} aria-label={zh ? '删除片段' : 'Delete segment'} className="w-8 h-8 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 inline-flex items-center justify-center"><Trash2 className="w-3.5 h-3.5" /></button>
@@ -166,7 +177,10 @@ export const StoryboardView = (p: Props) => {
                     {s.image && <img src={s.image} alt="" className={`w-full h-full object-cover ${frameBusy ? 'blur-sm' : ''}`} />}
                     {!s.image && !frameBusy && (
                       <div className="absolute inset-0 flex items-center justify-center" onClick={e => e.stopPropagation()}>
-                        <SmallBtn onClick={() => p.onFrames([s.id])}><Wand2 className="w-3.5 h-3.5" />{zh ? '生成分镜图' : 'Generate frame'}</SmallBtn>
+                        <div className="flex flex-col items-center gap-1.5">
+                          <SmallBtn onClick={() => p.onFrames([s.id])}><Wand2 className="w-3.5 h-3.5" />{zh ? '生成分镜图' : 'Generate frame'}<Cost n={PRICE.frame} /></SmallBtn>
+                          <button type="button" onClick={() => p.onQuickGen(s.id)} className="text-[11px] font-medium text-violet-700 hover:underline">{zh ? '或用快速生成挑场景出图' : 'or pick a scene in Quick gen'}</button>
+                        </div>
                       </div>
                     )}
                     {(frameBusy || videoBusy) && (
@@ -225,7 +239,7 @@ export const StoryboardView = (p: Props) => {
                   )}
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="text-[11px] text-gray-500">{p.styleLabel} · {p.ratio} · {s.duration}{zh ? ' 秒' : 's'}</span>
-                    <SmallBtn onClick={() => p.onVideos([s.id])} disabled={videoBusy || frameBusy}><Film className="w-3.5 h-3.5" />{videoDone ? (zh ? '重新生成视频' : 'Re-render video') : (zh ? '生成视频' : 'Render video')}</SmallBtn>
+                    <SmallBtn onClick={() => p.onVideos([s.id])} disabled={videoBusy || frameBusy}><Film className="w-3.5 h-3.5" />{videoDone ? (zh ? '重新生成视频' : 'Re-render video') : (zh ? '生成视频' : 'Render video')}<Cost n={shotVideoCost(s)} /></SmallBtn>
                   </div>
                 </div>
               </div>

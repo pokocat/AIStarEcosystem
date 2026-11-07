@@ -4,7 +4,7 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ThemeProvider } from './components/ThemeProvider';
+import { ThemeProvider, applyColorMode, readColorMode } from './components/ThemeProvider';
 import type { Lang } from './translations';
 import { SolutionSwitcher } from './components/SolutionSwitcher';
 import { PortSwitcher, type PortId } from './components/PortSwitcher';
@@ -35,6 +35,9 @@ const PAGE_TO_PORT: Partial<Record<AppPage, PortId>> = {
 
 const LANG: Lang = 'zh';
 const keepChinese = () => {};
+
+// 首屏前应用保存的暗色 / 亮色（原型写在 main.tsx）。
+applyColorMode(readColorMode());
 
 const readPageFromUrl = (): AppPage => {
   const end = new URLSearchParams(window.location.search).get('end');

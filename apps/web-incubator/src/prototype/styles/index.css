@@ -4,4 +4,6 @@
 @import './default_theme.css';
 @import './globals.css';
 @import './light-ui.css';
+@import './dark-ui.css';
+@import './system-ui.css';
 @source '../**/*.{ts,tsx}';

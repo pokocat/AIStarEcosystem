@@ -8,9 +8,10 @@ import {
   Video, Image, Music, Layers, Search, Filter, Plus, Upload,
   Tag, Shield, CheckCircle2, Lock, AlertTriangle, Clock,
   Eye, Download, GitBranch, ChevronRight, Star, Cpu,
-  Hash, FileText
+  Hash, FileText, Sparkles, Clapperboard
 } from 'lucide-react';
 import type { Lang } from '../../translations';
+import { useQuickGen } from './quickgen/quickgenStore';
 
 type AssetType = 'video' | 'image' | 'audio' | 'model_3d' | 'material';
 type AssetStatus = 'available' | 'reviewing' | 'frozen' | 'disputed';
@@ -24,12 +25,12 @@ interface Asset {
 }
 
 const MOCK_ASSETS: Asset[] = [
-  { id: 'a1', title: '宋一鸣618直播回放-完整版', type: 'video', status: 'available', authStatus: 'authorized', partnerName: '宋一鸣', duration: '3:42:18', versions: 4, usageCount: 67, thumbColor: '#f59e0b', tags: ['直播', '618', '数码'], uploadDate: '2025-06-19', fileSize: '8.4 GB', resolution: '1080p' },
+  { id: 'a1', title: '沈亦舟618直播回放-完整版', type: 'video', status: 'available', authStatus: 'authorized', partnerName: '沈亦舟', duration: '3:42:18', versions: 4, usageCount: 67, thumbColor: '#f59e0b', tags: ['直播', '618', '数码'], uploadDate: '2025-06-19', fileSize: '8.4 GB', resolution: '1080p' },
   { id: 'a2', title: '林音宝产品讲解视频-护肤系列', type: 'video', status: 'available', authStatus: 'authorized', partnerName: '林音宝', duration: '28:45', versions: 3, usageCount: 34, thumbColor: '#a855f7', tags: ['护肤', '开箱', '测评'], uploadDate: '2025-05-12', fileSize: '2.1 GB', resolution: '4K' },
-  { id: 'a3', title: '宋一鸣形象精修-白底系列', type: 'image', status: 'available', authStatus: 'authorized', partnerName: '宋一鸣', versions: 2, usageCount: 145, thumbColor: '#06b6d4', tags: ['棚拍', '白底', '正装'], uploadDate: '2025-04-08', fileSize: '420 MB' },
+  { id: 'a3', title: '沈亦舟形象精修-白底系列', type: 'image', status: 'available', authStatus: 'authorized', partnerName: '沈亦舟', versions: 2, usageCount: 145, thumbColor: '#06b6d4', tags: ['棚拍', '白底', '正装'], uploadDate: '2025-04-08', fileSize: '420 MB' },
   { id: 'a4', title: '林音宝标准音色训练素材-V2', type: 'audio', status: 'reviewing', authStatus: 'authorized', partnerName: '林音宝', duration: '45:00', versions: 1, usageCount: 0, thumbColor: '#ec4899', tags: ['音色', '口播', '训练集'], uploadDate: '2025-09-01', fileSize: '380 MB' },
-  { id: 'a5', title: '极速数码 × 宋一鸣 品牌素材包', type: 'material', status: 'available', authStatus: 'authorized', partnerName: '极速数码品牌', versions: 5, usageCount: 213, thumbColor: '#3b82f6', tags: ['品牌', '素材包', '贴片'], uploadDate: '2025-07-20', fileSize: '1.2 GB' },
-  { id: 'a6', title: '宋一鸣2024年末演唱会切片素材', type: 'video', status: 'frozen', authStatus: 'expired', partnerName: '宋一鸣', duration: '1:56:00', versions: 2, usageCount: 89, thumbColor: '#ef4444', tags: ['演唱会', '切片', '禁用'], uploadDate: '2024-12-28', fileSize: '5.8 GB', resolution: '1080p' },
+  { id: 'a5', title: '极速数码 × 沈亦舟 品牌素材包', type: 'material', status: 'available', authStatus: 'authorized', partnerName: '极速数码品牌', versions: 5, usageCount: 213, thumbColor: '#3b82f6', tags: ['品牌', '素材包', '贴片'], uploadDate: '2025-07-20', fileSize: '1.2 GB' },
+  { id: 'a6', title: '沈亦舟2024年末演唱会切片素材', type: 'video', status: 'frozen', authStatus: 'expired', partnerName: '沈亦舟', duration: '1:56:00', versions: 2, usageCount: 89, thumbColor: '#ef4444', tags: ['演唱会', '切片', '禁用'], uploadDate: '2024-12-28', fileSize: '5.8 GB', resolution: '1080p' },
   { id: 'a7', title: '林音宝3D数字人形象模型-V3', type: 'model_3d', status: 'available', authStatus: 'authorized', partnerName: '林音宝', versions: 3, usageCount: 28, thumbColor: '#10b981', tags: ['数字人', '3D', '模型'], uploadDate: '2025-08-15', fileSize: '2.3 GB' },
   { id: 'a8', title: '清洁卫士背景音乐授权包', type: 'audio', status: 'available', authStatus: 'expiring', partnerName: '清洁卫士品牌方', duration: '3:28', versions: 1, usageCount: 56, thumbColor: '#f97316', tags: ['BGM', '授权', '品牌'], uploadDate: '2025-01-10', fileSize: '48 MB' },
 ];
@@ -65,6 +66,14 @@ export const AssetVault = ({ lang }: Props) => {
   const [statusFilter, setStatusFilter] = useState<AssetStatus | 'all'>('all');
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+
+  // Everything made in 制作工坊 › AI 视频 / AI 图片 and the AI 导演台's 快速生成 lands here too.
+  const { gens } = useQuickGen();
+  const generated = gens.filter(g => g.status === 'done'
+    && (typeFilter === 'all' || typeFilter === g.kind)
+    && (statusFilter === 'all' || statusFilter === 'available')
+    && g.title.toLowerCase().includes(search.toLowerCase()));
+  const fmtDate = (ts: number) => new Date(ts).toLocaleDateString(zh ? 'zh-CN' : 'en-US', { month: '2-digit', day: '2-digit' });
 
   const filtered = MOCK_ASSETS.filter(a => {
     const matchSearch = a.title.toLowerCase().includes(search.toLowerCase()) || a.partnerName.toLowerCase().includes(search.toLowerCase());
@@ -138,6 +147,44 @@ export const AssetVault = ({ lang }: Props) => {
           ))}
         </div>
       </div>
+
+      {/* AI-generated, shared with the workshop and the AI Director */}
+      <section className="bg-gray-900/50 border border-white/5 rounded-xl p-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-purple-400" />
+            <h2 className="text-sm font-bold text-white">{zh ? 'AI 生成' : 'AI generated'}</h2>
+            <span className="text-[11px] text-gray-500">{generated.length}</span>
+          </div>
+          <p className="text-[11px] text-gray-500">{zh ? '制作工坊 AI 视频 / AI 图片和导演台快速生成的结果自动入库，在导演台快速生成的「素材库」里可直接复用' : 'Results from AI Video / AI Image and the AI Director are filed here automatically'}</p>
+        </div>
+        {generated.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-white/10 px-4 py-6 text-center text-xs text-gray-500">
+            {gens.length ? (zh ? '没有符合筛选条件的 AI 生成素材' : 'No AI results match the filters') : (zh ? '还没有 AI 生成素材。到 制作工坊 › AI 视频 / AI 图片 生成后会出现在这里。' : 'Nothing yet — generate in Workshop › AI Video / AI Image.')}
+          </div>
+        ) : (
+          <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1 [scrollbar-width:thin]">
+            {generated.map(g => (
+              <figure key={g.id} className="w-36 shrink-0">
+                <div className="relative aspect-[3/4] overflow-hidden rounded-lg bg-black/20">
+                  <img src={g.images[0]} alt="" loading="lazy" className="h-full w-full object-cover" />
+                  <span className="absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ background: 'rgba(15,23,42,.72)', color: '#ffffff' }}>
+                    {g.kind === 'video' ? <Video className="w-2.5 h-2.5" /> : <Image className="w-2.5 h-2.5" />}
+                    {g.kind === 'video' ? `${zh ? '视频' : 'Video'} · ${g.duration ?? 0}s` : `${zh ? '图片' : 'Image'}${g.images.length > 1 ? ` ×${g.images.length}` : ''}`}
+                  </span>
+                </div>
+                <figcaption className="mt-1.5 min-w-0">
+                  <div className="truncate text-[11px] font-semibold text-white" title={g.title}>{g.title}</div>
+                  <div className="mt-0.5 flex items-center gap-1 truncate text-[10px] text-gray-500">
+                    {g.usedIn ? <><Clapperboard className="w-2.5 h-2.5 shrink-0" /><span className="truncate">{zh ? '已用于' : 'Used in'} {g.usedIn}</span></>
+                      : <span>{fmtDate(g.createdAt)} · {g.target ? (zh ? '导演台生成' : 'AI Director') : g.kind === 'video' ? 'AI 视频' : 'AI 图片'}</span>}
+                  </div>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        )}
+      </section>
 
       {/* Asset Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">

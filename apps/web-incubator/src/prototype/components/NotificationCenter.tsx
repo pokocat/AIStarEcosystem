@@ -30,7 +30,7 @@ interface Notification {
 const NOTIFICATIONS: Notification[] = [
   {
     id: 'n1', title: '直播间流量异常告警', titleEn: 'Live Room Traffic Alert',
-    body: '宋一鸣DY直播间流量在过去1小时下降42%，当前在线12.8万，建议立即投流干预',
+    body: '沈亦舟DY直播间流量在过去1小时下降42%，当前在线12.8万，建议立即投流干预',
     bodyEn: 'DY live traffic dropped 42% in 1h, 128K online. Recommend immediate boost intervention.',
     category: 'alert', priority: 'critical', role: 'matrix', read: false,
     createdAt: '2分钟前', actionLabel: '立即投流', actionLabelEn: 'Boost Now',
@@ -38,8 +38,8 @@ const NOTIFICATIONS: Notification[] = [
   },
   {
     id: 'n2', title: '合同到期提醒', titleEn: 'Contract Expiry Reminder',
-    body: '宋一鸣MCN独家签约协议将在89天后到期（2027-01-14），请提前启动续签流程',
-    bodyEn: 'Song Yiming MCN exclusive contract expires in 89 days (2027-01-14). Start renewal process.',
+    body: '沈亦舟MCN独家签约协议将在89天后到期（2027-01-14），请提前启动续签流程',
+    bodyEn: 'Shen Yizhou MCN exclusive contract expires in 89 days (2027-01-14). Start renewal process.',
     category: 'contract', priority: 'high', role: 'mcn', read: false,
     createdAt: '15分钟前', actionLabel: '申请续签', actionLabelEn: 'Request Renewal',
     icon: FileText, color: '#f59e0b',
@@ -54,8 +54,8 @@ const NOTIFICATIONS: Notification[] = [
   },
   {
     id: 'n4', title: '紧急制作任务分配', titleEn: 'Urgent Task Assigned',
-    body: '「宋一鸣618直播回放-切片任务」被标记为紧急，截止时间今日18:00，请立即处理',
-    bodyEn: '"Song Yiming 618 Live Clip Task" marked URGENT, due today 18:00. Handle immediately.',
+    body: '「沈亦舟618直播回放-切片任务」被标记为紧急，截止时间今日18:00，请立即处理',
+    bodyEn: '"Shen Yizhou 618 Live Clip Task" marked URGENT, due today 18:00. Handle immediately.',
     category: 'task', priority: 'critical', role: 'studio', read: false,
     createdAt: '1小时前', actionLabel: '立即开始', actionLabelEn: 'Start Now',
     icon: Scissors, color: '#ef4444',
@@ -70,15 +70,15 @@ const NOTIFICATIONS: Notification[] = [
   },
   {
     id: 'n6', title: '艺人孵化里程碑达成', titleEn: 'Artist Milestone Achieved',
-    body: '宋一鸣全平台粉丝突破1000万，触发A→S级晋升评估流程，请查看成长档案',
-    bodyEn: 'Song Yiming total fans hit 10M. A→S class promotion evaluation triggered. Check growth tracker.',
+    body: '沈亦舟全平台粉丝突破1000万，触发A→S级晋升评估流程，请查看成长档案',
+    bodyEn: 'Shen Yizhou total fans hit 10M. A→S class promotion evaluation triggered. Check growth tracker.',
     category: 'system', priority: 'high', role: 'mcn', read: true,
     createdAt: '3小时前', actionLabel: '查看档案', actionLabelEn: 'View Profile',
     icon: Award, color: '#a855f7',
   },
   {
     id: 'n7', title: '收益结算单已生成', titleEn: 'Revenue Settlement Ready',
-    body: '5月份艺人收益分成结算单已生成，宋一鸣应收¥24,800，林音宝应收¥12,400，请确认',
+    body: '5月份艺人收益分成结算单已生成，沈亦舟应收¥24,800，林音宝应收¥12,400，请确认',
     bodyEn: 'May revenue split statement ready. Zhang: ¥24,800, Lin: ¥12,400. Please confirm.',
     category: 'system', priority: 'normal', role: 'mcn', read: true,
     createdAt: '5小时前', actionLabel: '查看结算', actionLabelEn: 'View Settlement',
@@ -101,8 +101,8 @@ const NOTIFICATIONS: Notification[] = [
   },
   {
     id: 'n10', title: '品牌合作请求待处理', titleEn: 'Brand Collab Request Pending',
-    body: '品牌方「安踏运动」已提交顾然品牌授权申请（¥580万），处于合作方复审阶段，需本人确认',
-    bodyEn: 'Anta Sports submitted brand authorization request for Gu Ran (¥5.8M). Pending artist confirmation.',
+    body: '品牌方「跃锋运动」已提交顾星辰品牌授权申请（¥580万），处于合作方复审阶段，需本人确认',
+    bodyEn: 'Yuefeng Sports submitted brand authorization request for Gu Xingchen (¥5.8M). Pending artist confirmation.',
     category: 'review', priority: 'high', role: 'celebrity', read: false,
     createdAt: '2天前', actionLabel: '查看申请', actionLabelEn: 'View Request',
     icon: Users, color: '#f59e0b',
