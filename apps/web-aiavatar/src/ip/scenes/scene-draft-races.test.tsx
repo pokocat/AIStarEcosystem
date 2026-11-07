@@ -12,7 +12,7 @@ import type { IpProject, IpProjectDoc } from "@ai-star-eco/types";
 const SCENES = JSON.parse(readFileSync(join(__dirname, "../../../../server/src/main/resources/ipstudio/scenes.json"), "utf8"));
 
 const api = vi.hoisted(() => ({
-  push: vi.fn(), failure: vi.fn(), taskStart: vi.fn(), taskGet: vi.fn(),
+  push: vi.fn(), failure: vi.fn(), taskStart: vi.fn(), taskGet: vi.fn(), signKeys: vi.fn(),
   uploadImage: vi.fn(), listProjects: vi.fn(), createProject: vi.fn(), updateProject: vi.fn(), getProject: vi.fn(), listScenes: vi.fn(), composeScene: vi.fn(),
   fetchModels: vi.fn(), readRun: vi.fn(), cancelRun: vi.fn(), capabilities: vi.fn(), submit: vi.fn(), importMedia: vi.fn(), videoModels: vi.fn(),
 }));
@@ -61,6 +61,7 @@ beforeEach(() => {
         steps: [{ id: 'video', title: '生成视频', operation: 'video', status: 'running', stage: 'production', attempt: 1, runIds: [], dependsOn: [] }], updatedAt: '2026-11-06' } };
     api.taskGet.mockResolvedValue(task); return task;
   });
+  api.signKeys.mockImplementation(async (keys: string[]) => Object.fromEntries(keys.map(key => [key, `https://cdn/${key}`])));
   api.listScenes.mockResolvedValue(SCENES);
   api.listProjects.mockImplementation(async () => [...store.values()].map(p => ({ id: p.id, name: p.name, sceneId: p.sceneId, updatedAt: p.updatedAt, createdAt: p.createdAt })));
   api.getProject.mockImplementation(async (id: string) => structuredClone(store.get(id)));
@@ -103,7 +104,7 @@ test("image: A's save coming back after B was opened finishes A's work and leave
   await act(async () => { first.release(store.get("IPP-A")!); });
 
   // A 的提交照样做完：任务交给 A，结果也写回 A。
-  await waitFor(() => expect(api.submit).toHaveBeenCalledWith("IPP-A", expect.anything()));
+  await waitFor(() => expect(api.submit).toHaveBeenCalledWith("IPP-A", expect.anything(), expect.anything()));
   // 断内容不断次数：换到 B 时，A 还没写出去的创作条件也要补写给 A（见 useSceneStateSave），A 因此可能多存一次。
   await waitFor(() => expect(store.get("IPP-A")!.doc.nodes.some(n => n.metadata?.studio?.runId === "run-A")).toBe(true));
   // 页面和 B 都没被动过。
@@ -119,7 +120,7 @@ test("image: a draft created after the page moved on is kept for its own work, n
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "生成图片" })); });
   await openB();
   await act(async () => { created.release(undefined as never); });
-  await waitFor(() => expect(api.submit).toHaveBeenCalledWith("IPP-A", expect.anything()));
+  await waitFor(() => expect(api.submit).toHaveBeenCalledWith("IPP-A", expect.anything(), expect.anything()));
   expect(continueLink()).toBe("/projects/IPP-B");
   expect(window.location.search).toContain("IPP-B");
   expect(saves("IPP-B")).toBe(0);

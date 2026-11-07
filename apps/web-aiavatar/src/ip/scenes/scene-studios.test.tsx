@@ -8,7 +8,7 @@ import type { IpProject } from "@ai-star-eco/types";
 const SCENES = JSON.parse(readFileSync(join(__dirname, "../../../../server/src/main/resources/ipstudio/scenes.json"), "utf8"));
 
 const api = vi.hoisted(() => ({
-  push: vi.fn(), failure: vi.fn(), taskStart: vi.fn(), taskGet: vi.fn(),
+  push: vi.fn(), failure: vi.fn(), taskStart: vi.fn(), taskGet: vi.fn(), signKeys: vi.fn(),
   uploadImage: vi.fn(), listProjects: vi.fn(), createProject: vi.fn(), updateProject: vi.fn(), getProject: vi.fn(), listScenes: vi.fn(), composeScene: vi.fn(),
   fetchModels: vi.fn(), readRun: vi.fn(), cancelRun: vi.fn(), capabilities: vi.fn(), submit: vi.fn(), importMedia: vi.fn(), videoModels: vi.fn(), videoPrice: vi.fn(),
 }));
@@ -50,6 +50,7 @@ beforeEach(() => {
         steps: [{ id: 'video', title: '生成视频', operation: 'video', status: 'running', stage: 'production', attempt: 1, runIds: [], dependsOn: [] }], updatedAt: '2026-11-06' } };
     api.taskGet.mockResolvedValue(task); return task;
   });
+  api.signKeys.mockImplementation(async (keys: string[]) => Object.fromEntries(keys.map(key => [key, `https://cdn/${key}`])));
   api.listScenes.mockResolvedValue(SCENES);
   api.listProjects.mockResolvedValue([]);
   api.createProject.mockImplementation(async ({ name, sceneId }: { name: string; sceneId?: string }) => project({ name, sceneId }));
@@ -319,4 +320,151 @@ test("「最近」读失败：写明加载失败并能重试，不显示成空�
   await act(async () => { fireEvent.click(recent.getByRole("button", { name: "重试" })); });
   expect(await recent.findByText("暂无草稿。")).toBeTruthy();
   expect(recent.queryByText("草稿加载失败")).toBeNull();
+});
+
+// ── 积分不足（提示框的内容见 studio-credit-shortage.test.tsx，这里看页面怎么收尾）────────
+const shortageCancel = (choice: unknown) => Object.assign(new Error("本次生成已取消，未提交任务。"), { code: "STUDIO_BILLING_CANCELLED", status: 400, creditShortage: choice });
+const twoImageModels = { image: [{ endpointId: "ep-img", name: "图片模型", isDefault: true, creditCost: 8, billingUnit: "per_call", capability: null },
+  { endpointId: "ep-grant", name: "有赠款的模型", isDefault: false, creditCost: 40, billingUnit: "per_call", capability: null }], video: [] };
+const readyToGenerate = async () => {
+  window.history.replaceState(null, "", "/image?scene=white-background");
+  api.composeScene.mockResolvedValue({ text: "白底图" });
+  await act(async () => { render(<SceneImageStudio/>); });
+  // 资产库按钮出现后再选图；不依赖必填提示的具体文案。
+  await pickFromLibrary();
+  const button = () => screen.getByRole("button", { name: "生成图片" }) as HTMLButtonElement;
+  await waitFor(() => expect(button().disabled).toBe(false));
+  return button;
+};
+const savedRows = () => {
+  const calls = api.updateProject.mock.calls;
+  return calls[calls.length - 1][1].doc.nodes.filter((n: any) => n.metadata?.studio?.request);
+};
+
+test("图片：积分不足点「返回修改」，不留失败记录、不弹错误、输入还在", async () => {
+  api.fetchModels.mockResolvedValue(twoImageModels);
+  api.submit.mockRejectedValueOnce(shortageCancel({ kind: "close" }));
+  const button = await readyToGenerate();
+  fillField(screen.getByRole("textbox", { name: "补充要求" }), "45 度角");
+  await act(async () => { fireEvent.click(button()); });
+  await waitFor(() => expect(savedRows()).toHaveLength(0));
+  expect(api.failure).not.toHaveBeenCalled();
+  expect(api.submit).toHaveBeenCalledTimes(1);
+  expect(fieldText("补充要求")).toBe("45 度角");
+  // 提示框知道这个页面能换哪些模型，标准价按现在的张数算。
+  expect(api.submit.mock.calls[0][2]).toMatchObject({ canRetry: true, modelChoices: [{ endpointId: "ep-img", cost: 8 }, { endpointId: "ep-grant", cost: 40 }] });
+});
+
+test("图片：提示框里改用另一个模型，选择器跟着换，并按新模型再提交一次（新的请求和报价）", async () => {
+  api.fetchModels.mockResolvedValue(twoImageModels);
+  api.submit.mockRejectedValueOnce(shortageCancel({ kind: "switch-model", endpointId: "ep-grant", name: "有赠款的模型" }));
+  const button = await readyToGenerate();
+  await act(async () => { fireEvent.click(button()); });
+  await waitFor(() => expect(api.submit).toHaveBeenCalledTimes(2));
+  const [first, second] = api.submit.mock.calls.map((c: any) => c[1]);
+  expect(first).toMatchObject({ model: "ep-img", maxCost: 8 });
+  expect(second).toMatchObject({ model: "ep-grant", maxCost: 40 });
+  expect(second.clientRequestId).not.toBe(first.clientRequestId);
+  expect(second.nodeId).not.toBe(first.nodeId);
+  expect((screen.getByLabelText("图片模型") as HTMLSelectElement).value).toBe("ep-grant");
+  expect(api.failure).not.toHaveBeenCalled();
+});
+
+test("图片：充值后点「继续生成」，同一个模型再提交一次", async () => {
+  api.submit.mockRejectedValueOnce(shortageCancel({ kind: "retry" }));
+  const button = await readyToGenerate();
+  await act(async () => { fireEvent.click(button()); });
+  await waitFor(() => expect(api.submit).toHaveBeenCalledTimes(2));
+  expect(api.submit.mock.calls[1][1]).toMatchObject({ model: "ep-img", maxCost: 8 });
+});
+
+test("图片：确认原任务时积分不足，这条转成可以重新生成的失败记录，不再要求确认", async () => {
+  api.submit.mockRejectedValueOnce(Object.assign(new Error("网络中断"), { code: "NETWORK_ERROR" }));
+  const button = await readyToGenerate();
+  await act(async () => { fireEvent.click(button()); });
+  const confirm = await screen.findByRole("button", { name: "确认原任务" });
+  api.submit.mockRejectedValueOnce(shortageCancel({ kind: "close" }));
+  await act(async () => { fireEvent.click(confirm); });
+  await waitFor(() => expect(savedRows()[0].metadata).toMatchObject({ status: "error", errorDetails: "积分不足，未提交" }));
+  expect(screen.queryByRole("button", { name: "确认原任务" })).toBeNull();
+});
+
+test("图片：换过去规格会变时只换模型、写明变了什么，不自动提交", async () => {
+  api.fetchModels.mockResolvedValue(twoImageModels);
+  api.submit.mockRejectedValueOnce(shortageCancel({ kind: "switch-model", endpointId: "ep-grant", name: "有赠款的模型", changes: "比例将改为 1:1" }));
+  const button = await readyToGenerate();
+  await act(async () => { fireEvent.click(button()); });
+  await screen.findByText(/已改用「有赠款的模型」，比例将改为 1:1。确认后点击「生成图片」。/);
+  expect((screen.getByLabelText("图片模型") as HTMLSelectElement).value).toBe("ep-grant");
+  expect(api.submit).toHaveBeenCalledTimes(1);
+});
+
+test("图片：提示框知道换过去的实际规格和价格，比例不支持时写进 changes", async () => {
+  api.fetchModels.mockResolvedValue({ image: [{ endpointId: "ep-img", name: "图片模型", isDefault: true, creditCost: 8, billingUnit: "per_call", capability: null },
+    { endpointId: "ep-square", name: "只出方图", isDefault: false, creditCost: 10, billingUnit: "per_call", capability: { imageRatios: ["1:1"], imageBatchCounts: [1] } }], video: [] });
+  api.submit.mockRejectedValueOnce(shortageCancel({ kind: "close" }));
+  window.history.replaceState(null, "", "/image?scene=free");
+  api.composeScene.mockResolvedValue({ text: "画面" });
+  await act(async () => { render(<SceneImageStudio/>); });
+  fillField(await screen.findByRole("textbox", { name: "想要的画面" }), "一只猫");
+  const go = () => screen.getByRole("button", { name: "生成图片" }) as HTMLButtonElement;
+  await waitFor(() => expect(go().disabled).toBe(false));
+  await act(async () => { fireEvent.click(go()); });
+  const choices = api.submit.mock.calls[0][2].modelChoices;
+  expect(choices[0]).toMatchObject({ endpointId: "ep-img", changes: "" });
+  expect(choices[1]).toMatchObject({ endpointId: "ep-square", cost: 10 });
+  expect(choices[1].changes).toContain("比例将改为 1:1");
+});
+
+test("图片：提示框开着时换了草稿，用户的选择不作用到别的草稿上", async () => {
+  api.fetchModels.mockResolvedValue(twoImageModels);
+  let refuse!: (e: unknown) => void;
+  api.submit.mockImplementationOnce(() => new Promise((_, reject) => { refuse = reject; }));
+  const button = await readyToGenerate();
+  await act(async () => { fireEvent.click(button()); });
+  await waitFor(() => expect(api.submit).toHaveBeenCalledTimes(1));
+  // 付款询问还开着，用户点了「新建」，页面上已经是另一份空草稿。
+  fireEvent.click(screen.getByRole("button", { name: "新建" }));
+  await act(async () => { refuse(shortageCancel({ kind: "switch-model", endpointId: "ep-grant", name: "有赠款的模型" })); });
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
+  expect(api.submit).toHaveBeenCalledTimes(1);
+  expect((screen.getByLabelText("图片模型") as HTMLSelectElement).value).toBe("ep-img");
+});
+
+test("图片：提示框选完、撤销保存还没结束时换了草稿，选择也不作用到新草稿", async () => {
+  api.fetchModels.mockResolvedValue(twoImageModels);
+  const button = await readyToGenerate();
+  // 撤销那次保存卡住：提交被拒之后的第一次保存，等测试放行才结束。
+  let release!: () => void;
+  const realUpdate = api.updateProject.getMockImplementation();
+  api.submit.mockImplementationOnce(async () => {
+    api.updateProject.mockImplementationOnce(async (...args: unknown[]) => { await new Promise<void>(resolve => { release = resolve; }); return realUpdate!(...args as [string, { doc: IpProject["doc"] }]); });
+    throw shortageCancel({ kind: "switch-model", endpointId: "ep-grant", name: "有赠款的模型" });
+  });
+  await act(async () => { fireEvent.click(button()); });
+  await waitFor(() => expect(release).toBeTruthy());
+  fireEvent.click(screen.getByRole("button", { name: "新建" }));
+  await act(async () => { release(); await new Promise(resolve => setTimeout(resolve, 50)); });
+  expect(api.submit).toHaveBeenCalledTimes(1);
+  expect((screen.getByLabelText("图片模型") as HTMLSelectElement).value).toBe("ep-img");
+});
+
+test("图片：换过去的尺寸按页面真实规则算，不提前挑一个页面不会用的同清晰度尺寸", async () => {
+  api.fetchModels.mockResolvedValue({ image: [{ endpointId: "ep-img", name: "图片模型", isDefault: true, creditCost: 8, billingUnit: "per_call",
+      capability: { imageRatios: ["3:4"], imageSizes: [{ size: "768x1024", aspectRatio: "3:4" }] }, imageResolutionCosts: { "1K": 8, "2K": 20 } },
+    { endpointId: "ep-other", name: "别的模型", isDefault: false, creditCost: 8, billingUnit: "per_call",
+      capability: { imageRatios: ["3:4"], imageSizes: [{ size: "1536x2048", aspectRatio: "3:4" }, { size: "864x1152", aspectRatio: "3:4" }] }, imageResolutionCosts: { "1K": 8, "2K": 20 } }], video: [] });
+  api.submit.mockRejectedValueOnce(shortageCancel({ kind: "close" }));
+  window.history.replaceState(null, "", "/image?scene=free");
+  api.composeScene.mockResolvedValue({ text: "画面" });
+  await act(async () => { render(<SceneImageStudio/>); });
+  fillField(await screen.findByRole("textbox", { name: "想要的画面" }), "一只猫");
+  const go = () => screen.getByRole("button", { name: "生成图片" }) as HTMLButtonElement;
+  await waitFor(() => expect(go().disabled).toBe(false));
+  await act(async () => { fireEvent.click(go()); });
+  const other = api.submit.mock.calls[0][2].modelChoices.find((c: any) => c.endpointId === "ep-other");
+  // 页面的规则：当前尺寸没有就退到第一项（1536x2048，2K），不是同清晰度的 864x1152。
+  expect(other.quotePatch).toEqual({ size: "1536x2048" });
+  expect(other.cost).toBe(20);
+  expect(other.changes).toContain("清晰度将改为");
 });

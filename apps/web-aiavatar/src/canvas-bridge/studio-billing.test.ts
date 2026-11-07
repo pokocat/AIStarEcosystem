@@ -2,13 +2,15 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { webcrypto } from "node:crypto";
 import { invalidateStudioModelQuote, withStudioBilling } from "./studio-billing";
-const api = vi.hoisted(() => ({ lookup: vi.fn(), choose: vi.fn(), confirm: vi.fn(), quote: vi.fn() }));
-vi.mock("@ai-star-eco/api-client", () => ({ apiFetch: api.lookup }));
+import { isStudioBillingCancelled, studioCreditShortageChoice } from "./studio-billing-cancel";
+const api = vi.hoisted(() => ({ lookup: vi.fn(), choose: vi.fn(), confirm: vi.fn(), quote: vi.fn(), shortage: vi.fn() }));
+vi.mock("@ai-star-eco/api-client", () => ({ apiFetch: api.lookup, ApiError: class extends Error { code: string; constructor(shape: { code: string; message: string }) { super(shape.message); this.code = shape.code; } } }));
+vi.mock("@/ip/studio-credit-shortage", () => ({ askStudioCreditShortage: api.shortage }));
 vi.mock("@/ip/studio-model-quote-dialog", () => ({ confirmStudioModelQuote: api.confirm }));
 vi.mock("./studio-model-quote", () => ({ quoteWorkflowImage: api.quote, quoteImageRequest: api.quote, quoteImageNode: api.quote, quoteWorkflowVideo: api.quote, quoteVideoRequest: api.quote }));
 vi.mock("@/ip/studio-billing-dialog", () => ({ chooseStudioBilling: api.choose }));
 const approval = { walletId: "member", target: { appCode: "aiavatar", action: "image", endpointId: "endpoint", providerModel: "image-model", specKey: "1024x1024", unit: "image" as const }, usage: { quantity: 1, outputQuantity: 0 }, priceVersion: "v1", freeOnly: false, maxWalletCredits: 8 };
-beforeEach(() => { vi.resetAllMocks(); vi.stubEnv("NEXT_PUBLIC_ENTERPRISE_ENABLED", "1"); vi.stubGlobal("crypto", webcrypto); sessionStorage.clear(); api.lookup.mockImplementation(async (path: string) => path.endsWith("/capabilities") ? { mock: false } : { found: false }); api.confirm.mockResolvedValue(approval); api.choose.mockResolvedValue({ mode: "enterprise", enterpriseId: "team" }); });
+beforeEach(() => { vi.resetAllMocks(); api.quote.mockResolvedValue(undefined); vi.stubEnv("NEXT_PUBLIC_ENTERPRISE_ENABLED", "1"); vi.stubGlobal("crypto", webcrypto); sessionStorage.clear(); api.lookup.mockImplementation(async (path: string) => path.endsWith("/capabilities") ? { mock: false } : { found: false }); api.confirm.mockResolvedValue(approval); api.choose.mockResolvedValue({ mode: "enterprise", enterpriseId: "team" }); });
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 test("new requests explicitly choose a payer with cost, and an uncertain retry keeps it", async () => {
   const request = { clientRequestId: "new", model: "model", operation: "image", maxCost: 24 };
@@ -100,4 +102,45 @@ test("video creation confirms one batch quote without an enterprise picker when 
  expect(await withStudioBilling("project",request)).toMatchObject({modelBilling:approval});
  await api.confirm.mock.calls[0][0](true,new AbortController().signal);
  expect(api.quote).toHaveBeenCalledWith("project",expect.objectContaining({count:4,durationSec:5}),true,expect.any(AbortSignal));expect(api.choose).not.toHaveBeenCalled();
+});
+
+test("a request the payer cannot afford opens the shortage dialog instead of the fee confirmation, and ends as a cancellation", async () => {
+  const quote = { target: approval.target, walletCredits: 640, scopedCredits: 0, freeOnly: false, canAfford: false, unavailableCode: "MODEL_CREDITS_INSUFFICIENT", approval };
+  api.quote.mockResolvedValue(quote);
+  api.shortage.mockResolvedValue({ kind: "switch-model", endpointId: "cheap" });
+  const modelChoices = [{ endpointId: "cheap", name: "便宜的模型", cost: 8 }];
+  const error = await withStudioBilling("project", { clientRequestId: "poor", operation: "image", prompt: "x" }, { modelChoices, canRetry: true }).catch(e => e);
+  expect(api.shortage).toHaveBeenCalledWith(expect.objectContaining({ quote, modelChoices, canRetry: true, billing: { mode: "enterprise", enterpriseId: "team" } }));
+  expect(api.confirm).not.toHaveBeenCalled();
+  expect(isStudioBillingCancelled(error)).toBe(true);
+  expect(studioCreditShortageChoice(error)).toEqual({ kind: "switch-model", endpointId: "cheap" });
+  // 候选模型按它自己的规格重新报价：换模型、带页面给的差异字段，不带原模型批准的金额。
+  api.quote.mockClear();
+  await api.shortage.mock.calls[0][0].verifyChoice("cheap", { size: "1024x1024" });
+  expect(api.quote.mock.calls[0][1]).toMatchObject({ model: "cheap", size: "1024x1024", prompt: "x" });
+  expect(api.quote.mock.calls[0][1].maxCost).toBeUndefined();
+  expect(api.quote.mock.calls[0][2]).toBe(false);
+});
+test("an affordable request reuses the quote it just read, and a failed quote still reaches the fee dialog", async () => {
+  const quote = { target: approval.target, walletCredits: 6, scopedCredits: 0, freeOnly: false, canAfford: true, approval };
+  api.quote.mockResolvedValue(quote);
+  api.confirm.mockResolvedValue(approval);
+  await withStudioBilling("project", { clientRequestId: "rich", operation: "image", prompt: "x" });
+  expect(api.shortage).not.toHaveBeenCalled();
+  expect(api.confirm.mock.calls[0][3]).toBe(quote);
+  api.quote.mockRejectedValue(new Error("网络中断"));
+  await withStudioBilling("project", { clientRequestId: "offline", operation: "image", prompt: "x" });
+  expect(api.confirm).toHaveBeenCalledTimes(2);
+  expect(api.confirm.mock.calls[1][3]).toBeUndefined();
+});
+test("a personal payer short of credits collects this month's grant and is quoted again before being told", async () => {
+  const poor = { target: approval.target, walletCredits: 8, scopedCredits: 0, freeOnly: false, canAfford: false, unavailableCode: "MODEL_CREDITS_INSUFFICIENT", approval };
+  const fine = { ...poor, canAfford: true, unavailableCode: undefined };
+  api.choose.mockResolvedValue({ mode: "personal" });
+  api.quote.mockResolvedValueOnce(poor).mockResolvedValueOnce(fine);
+  api.confirm.mockResolvedValue(approval);
+  await withStudioBilling("project", { clientRequestId: "new-month", operation: "image", prompt: "x" });
+  expect(api.lookup).toHaveBeenCalledWith("/v1/account");
+  expect(api.shortage).not.toHaveBeenCalled();
+  expect(api.confirm.mock.calls[0][3]).toBe(fine);
 });

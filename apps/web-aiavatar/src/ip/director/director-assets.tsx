@@ -5,7 +5,7 @@ import type { DirectorAsset, DirectorAssetKind } from "@ai-star-eco/types";
 import { DirectorApi, IpStudioApi } from "../api";
 import { useStudioApp } from "../studio-errors";
 import type { WorkbenchProps } from "./director-workbench";
-import { Field, InlineError, Spinner, adopted, chooseDirectorBilling, costText, errorText, failed, kindLabel, newRequestId, runningTask, useBusy } from "./director-shared";
+import { DIRECTOR_MEDIA_SHORTAGE, Field, InlineError, Spinner, adopted, chooseDirectorBilling, costText, errorText, failed, kindLabel, newRequestId, runningTask, useBusy } from "./director-shared";
 import { VoiceDialog } from "./director-voice";
 import { useAssistant } from "./director-assistant";
 import { confirmDirectorAction } from "./director-antd";
@@ -61,7 +61,7 @@ export function DirectorAssets(props: WorkbenchProps) {
       }
       if (failures.length) setError({ action: "生成全部资产图", error: `${missing.length} 项中有 ${failures.length} 项提交失败：${failures.join("；")}`,
         next: "其余资产图已开始生成。提交失败的，请按上述原因处理后，在对应资产上点击「生成」。" });
-    }, failed(setError, "生成全部资产图")));
+    }, failed(setError, "生成全部资产图", undefined, undefined, DIRECTOR_MEDIA_SHORTAGE)));
   };
   const confirmAll = () => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "assets.confirm", null, null, { assetIds: waiting.map(a => a.id) })), failed(setError, "确认全部资产图"));
 
@@ -107,7 +107,7 @@ function AssetTile({ work, asset, apply, setError, onOpen }: WorkbenchProps & { 
     const cost = work.pricing.image;
     const billing = await chooseDirectorBilling("image", cost);
     apply(await DirectorApi.runTask(work.id, { type: "asset-image", targetId: asset.id, clientRequestId: newRequestId(), billing, maxCost: cost }));
-  }, failed(setError, `生成「${asset.name}」的资产图`));
+  }, failed(setError, `生成「${asset.name}」的资产图`, undefined, undefined, DIRECTOR_MEDIA_SHORTAGE));
   return <article className={`director-asset-tile ${tone} kind-${asset.kind}`}>
     <button type="button" className="director-asset-tile-open" onClick={onOpen} aria-label={`查看${asset.name}`}>
       <span className="director-asset-tile-image">
