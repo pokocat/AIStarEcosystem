@@ -100,7 +100,7 @@ class JusuanImageClientTest {
         verify(upstream,times(1)).sendJson(any(),any());
     }
     @Test void otherJsonRejectionsExposeSanitizedBoundedReason() throws Exception {
-        String reason="invalid parameter; token=private-token; https://private.example/file?signature=secret; sk-testsecret "+"字".repeat(450);
+        String reason="invalid parameter; token=private-token; https://private.example/file?signature=secret; sk-testsecret "+"尺寸".repeat(225);
         var error=rejectedResponse(400,mapper.createObjectNode().put("message",reason).toString(),false);
         var details=(Map<?,?>)error.getDetails();String safe=(String)details.get("reason");
         assertEquals("provider_rejection",details.get("category"));

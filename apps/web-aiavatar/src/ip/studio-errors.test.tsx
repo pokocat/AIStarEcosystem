@@ -20,6 +20,20 @@ it('does not send customers to recharge or delete work for supplier errors', () 
   expect(failureNext('STUDIO_PAYMENT_REQUIRED')).toContain('积分提示');
   expect(failureNext('VIDEO_MODEL_RETIRED')).toContain('更换');
 });
+it('guides an unrecognized failure to a retry and only asks to change something when the reason names it', () => {
+  expect(failureNext('VIDEO_PROVIDER_INTERNAL')).toBe('请重试。多次失败时，可复制「错误详情」反馈给我们。');
+  expect(failureNext('STUDIO_IMAGE_PROVIDER_FAILED', false, '参考图尺寸过小')).toContain('调整后重试');
+  expect(failureNext('SOMETHING_NEW')).toContain('重试');
+  expect(failureNext('STUDIO_PLAN_STALE')).not.toContain('其他地方修改');
+  expect(failureNext('STUDIO_PLAN_STEP_RUNNING')).toContain('等待');
+});
+it('never shows a browser or code exception in English', () => {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  expect(normalizeStudioError(new Error('Cannot read properties of undefined'))).toMatchObject({ code: 'CLIENT_ERROR', message: '操作未完成，请重试' });
+  expect(normalizeStudioError(new TypeError('Failed to fetch'))).toMatchObject({ code: 'NETWORK_ERROR', message: '网络连接中断，未收到服务器响应。' });
+  expect(normalizeStudioError(new Error('图片不可用')).message).toBe('图片不可用');
+  warn.mockRestore();
+});
 it('shows corrected cause and input guidance together for the original moderation alert', async () => {
   render(<StudioNotifications/>);
   reportStudioError({ code: 'STUDIO_IMAGE_PROVIDER_FAILED', message: '图片未通过生成服务的内容审核：非常抱歉，该提示可能违反了关于暴力内容的防护限制。', logId: 'ABCDEF234567' }, { action: '生成分镜图' });
