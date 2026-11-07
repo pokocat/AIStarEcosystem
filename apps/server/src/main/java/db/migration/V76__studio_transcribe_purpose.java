@@ -8,7 +8,7 @@ import java.sql.Connection;
  * 成片自动字幕的语音识别用途（2026-11-07）。只扩枚举，不建绑定：要在后台「AI 应用绑定」选好模型才生效，
  * 没绑定时导演台按镜头时间排字幕，一键成片不加字幕并如实说明（AGENTS §8.0 审计表）。
  */
-public class V75__studio_transcribe_purpose extends BaseJavaMigration {
+public class V76__studio_transcribe_purpose extends BaseJavaMigration {
     private static final String PURPOSE="DAP_TRANSCRIBE";
 
     @Override public void migrate(Context context) throws Exception {

@@ -1380,4 +1380,4 @@ Studio 图片报价为 `POST /api/v1/ip-studio/projects/{id}/{image-quote|studio
 
 ### 成片自动字幕与声音（2026-11-07，本地未发布）
 
-真源 `docs/studio-final-cut.md`。合成最后一道是 `StudioPackagingService.finish`：叠字幕和品牌文字、统一响度、混背景音乐，画面没变化时视频流直接复制。字幕来源由 `StudioCaptionService` 决定，对时和排版在纯函数 `StudioCaptionAligner`。语音识别用途 `DAP_TRANSCRIBE`（V75 只扩枚举），接口兼容 `POST {base}/audio/transcriptions`、返回带 `segments` 的 `verbose_json`；未绑定时导演台按镜头时间估算，一键成片不加字幕并如实说明，`GET capabilities` 的 `captionRecognition` 告诉前端能不能识别。真语音联调：设 `STUDIO_ASR_E2E_URL` 和 `STUDIO_ASR_E2E_DIR` 跑 `StudioCaptionSpeechE2ETest`。
+真源 `docs/studio-final-cut.md`。合成最后一道是 `StudioPackagingService.finish`：叠字幕和品牌文字、统一响度、混背景音乐，画面没变化时视频流直接复制。字幕来源由 `StudioCaptionService` 决定，对时和排版在纯函数 `StudioCaptionAligner`。语音识别用途 `DAP_TRANSCRIBE`（V76 只扩枚举），接口兼容 `POST {base}/audio/transcriptions`、返回带 `segments` 的 `verbose_json`；未绑定时导演台按镜头时间估算，一键成片不加字幕并如实说明，`GET capabilities` 的 `captionRecognition` 告诉前端能不能识别。真语音联调：设 `STUDIO_ASR_E2E_URL` 和 `STUDIO_ASR_E2E_DIR` 跑 `StudioCaptionSpeechE2ETest`。

@@ -29,7 +29,7 @@
 - 所有字幕合成一路透明画面（`StudioPackagingService.captionTrack`，ffconcat 清单），不再一条字幕一路输入，上限从 24 条放到 200 条。
 - 去掉 Whisper 在近静音处常见的幻听句（「请不吝点赞订阅」等），只在没有已知台词时用得上。
 
-**语音识别的配置**：后台「AI 模型」给「Studio · 语音识别」（`DAP_TRANSCRIBE`，V75 扩枚举）绑定端点，接口要兼容 OpenAI 的 `POST {base}/audio/transcriptions`，返回带 `segments` 的 `verbose_json`。费用算在导出里，不向用户收积分。线上还没绑定。
+**语音识别的配置**：后台「AI 模型」给「Studio · 语音识别」（`DAP_TRANSCRIBE`，V76 扩枚举）绑定端点，接口要兼容 OpenAI 的 `POST {base}/audio/transcriptions`，返回带 `segments` 的 `verbose_json`。费用算在导出里，不向用户收积分。线上还没绑定。
 
 ## 3. 声音
 
