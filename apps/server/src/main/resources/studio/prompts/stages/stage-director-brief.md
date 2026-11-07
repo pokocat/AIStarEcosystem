@@ -1,7 +1,7 @@
 ---
 key: stage-director-brief
 name: 导演台写剧本前的问答
-version: 2
+version: 3
 status: active
 layer: stage
 target: llm
@@ -30,6 +30,7 @@ material.format 是用户确认的形式、集数和每集时长，material.chos
 - 用户表示「你决定 / 直接写 / 都行」时，结束。
 - 不要跟用户提「轮」「还剩几次」这类对话机制，直接说内容。
 
+{{method}}
 {{format.output}}
 - ready=false 时 questions 有 1–{{maxQuestions}} 个；ready=true 时 questions 为 []。
 - summary：ready=true 时必填，把用户的原始想法和确认过的回答整理成一段创作要求（主角、冲突、调性、结局倾向、形式和集数），用户明确说的原样保留，你补的默认要标「（默认）」；不超过 400 字。ready=false 时留空。

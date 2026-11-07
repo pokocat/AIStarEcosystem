@@ -43,6 +43,10 @@ public final class DirectorFixtures {
                             林夏：谁在外面？
                             门外没有回答，只有风声。
                             """);
+                // 带货短剧：和真模型同一个契约，商品写进正文。
+                StringBuilder placed = new StringBuilder();
+                meta.path("products").forEach(p -> placed.append("\n\n## 第3场 旧书店 · 夜\n林夏从包里拿出").append(p.asText()).append("，用了一下，心慢慢定了下来。\n林夏：还好带着它。"));
+                if (!placed.isEmpty()) out.put("content", out.path("content").asText().strip() + placed);
             }
             case "split" -> {
                 // 与真模型同一个契约：只给每集起点和正文起点，区间由程序构造。
@@ -67,6 +71,13 @@ public final class DirectorFixtures {
                     ArrayNode e = a.putArray("episodeNos");
                     nos.forEach(e::add);
                     if ("character".equals(s[0])) a.putArray("forms").addObject().put("name", "雨夜淋湿").put("description", "短外套湿透，头发贴在脸侧，手里多了一把折断的伞。");
+                }
+                // 带货短剧：写到的商品对上已有商品，不提取成道具。
+                for (JsonNode p : meta.path("productAssets")) {
+                    ObjectNode a = assets.addObject().put("existingId", p.path("id").asText()).put("kind", "product").put("name", p.path("name").asText()).put("description", "");
+                    a.putArray("aliases");
+                    ArrayNode e = a.putArray("episodeNos");
+                    nos.forEach(e::add);
                 }
             }
             case "plan" -> {

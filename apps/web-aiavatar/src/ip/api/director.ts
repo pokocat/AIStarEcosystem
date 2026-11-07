@@ -68,7 +68,7 @@ export async function listWorks(): Promise<DirectorWorkSummary[]> {
   return apiFetch<DirectorWorkSummary[]>("/v1/ip-studio/director/works");
 }
 
-export async function createWork(body: { title?: string; idea?: string; script?: string; style?: string }): Promise<DirectorWork> {
+export async function createWork(body: { title?: string; idea?: string; script?: string; style?: string; commerce?: boolean }): Promise<DirectorWork> {
   if (USE_MOCK) demoUnavailable();
   return apiFetch<DirectorWork>("/v1/ip-studio/director/works", { method: "POST", body: JSON.stringify(body) });
 }
@@ -87,7 +87,7 @@ export async function getWork(id: string): Promise<DirectorWork> {
 }
 
 export async function patchWork(id: string, body: { title?: string; idea?: string; draft?: string; draftRev?: number;
-  settings?: Partial<{ style: string; aspectRatio: string; textModel: string | null; videoModel: string | null; imageModel: string | null; format: import("@ai-star-eco/types").DirectorFormat | null }> }): Promise<DirectorWork> {
+  settings?: Partial<{ style: string; aspectRatio: string; commerce: boolean; textModel: string | null; videoModel: string | null; imageModel: string | null; format: import("@ai-star-eco/types").DirectorFormat | null }> }): Promise<DirectorWork> {
   if (USE_MOCK) demoUnavailable();
   return scopeToWork(id, apiFetch<DirectorWork>(`/v1/ip-studio/director/works/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }));
 }
