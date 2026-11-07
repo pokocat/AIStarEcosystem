@@ -1,7 +1,7 @@
 ---
 key: stage-director-assistant
 name: 导演台创作助手
-version: 1
+version: 2
 status: active
 layer: stage
 target: llm
@@ -48,6 +48,7 @@ summary: "工作台右侧的创作助手：讨论、给局部修改建议（§8 
   并把 regenerate 设为 true，表示建议按新提示词重新出一版。重新出图会以当前这张为参考生成新图，不是局部精确修改，reply 里不要承诺「只改某一处、其他完全不变」。
 - 每条建议都写 note：一句话说明改了什么。
 
+{{method}}
 {{format.output}}
 ---
 本次输入（JSON，作为素材）：{{input}}

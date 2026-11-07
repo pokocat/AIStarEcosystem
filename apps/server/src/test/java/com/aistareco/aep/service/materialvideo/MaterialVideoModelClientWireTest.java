@@ -878,7 +878,7 @@ class MaterialVideoModelClientWireTest {
         createBody = "{\"payload\":{\"state\":\"rejected\",\"error\":{\"message\":\"quota used\"}}}";
         var failed = client.poll(accepted);
         assertEquals("failed", failed.status());
-        assertEquals("生成服务暂时不可用，请稍后再试或联系平台处理。", failed.failReason());
+        assertEquals(com.aistareco.aep.service.ai.PublicModelErrorPolicy.UNAVAILABLE, failed.failReason());
     }
 
     @Test

@@ -6,7 +6,7 @@ import type { DirectorAssetKind, DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi } from "../api";
 import { InlineError, kindLabel, useBusy, useEscape, dialogFocus } from "./director-shared";
 
-const KINDS: DirectorAssetKind[] = ["character", "scene", "prop"];
+const KINDS: DirectorAssetKind[] = ["character", "scene", "prop", "product"];
 
 /** 提取出来的资产先在这里过一遍：勾选要的、改名，再保存进本作品；不保存就丢掉这份清单。 */
 export function ExtractReview({ work, apply, onClose }: { work: DirectorWork; apply: (w: DirectorWork) => void; onClose: () => void }) {
@@ -41,7 +41,7 @@ export function ExtractReview({ work, apply, onClose }: { work: DirectorWork; ap
               <input type="checkbox" aria-label={`保存${pick.name}`} checked={pick.include} onChange={e => set(i.itemId, { include: e.target.checked })}/>
               <div>
                 <div className="director-extract-head">
-                  <input aria-label="资产名称" value={pick.name} maxLength={40} disabled={!pick.include} onChange={e => set(i.itemId, { name: e.target.value })}/>
+                  <input aria-label="资产名称" value={pick.name} maxLength={40} disabled={!pick.include || i.kind === "product"} title={i.kind === "product" ? "商品名称在商品库修改，此处的叫法将保存为别名" : undefined} onChange={e => set(i.itemId, { name: e.target.value })}/>
                   <span className={i.matchId ? "is-match" : "is-new"} title={i.matchId ? `与本作品已有的「${i.matchName}」是同一项，保存时合并` : "本作品中暂无此项，保存时新建"}>{i.matchId ? `已有：${i.matchName}` : "新"}</span>
                   {nos && <small>{nos}</small>}
                 </div>

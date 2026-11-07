@@ -66,7 +66,7 @@ class MaterialVideoModelClientTest {
         // 不同字段保留可行动的失败原因；供应商账号配额遵循主线的公开错误策略。
         assertEquals("敏感内容拦截",
                 MaterialVideoModelClient.extractFailReason(json("{\"task_status\":\"failed\",\"fail_reason\":\"敏感内容拦截\"}")));
-        assertEquals("生成服务暂时不可用，请稍后再试或联系平台处理。",
+        assertEquals(com.aistareco.aep.service.ai.PublicModelErrorPolicy.UNAVAILABLE,
                 MaterialVideoModelClient.extractFailReason(json("{\"status\":\"error\",\"message\":\"quota exceeded\"}")));
         assertEquals("bad prompt",
                 MaterialVideoModelClient.extractFailReason(json("{\"data\":{\"error\":\"bad prompt\"}}")));

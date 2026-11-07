@@ -2,7 +2,8 @@
 // 媒体只在服务端存 key，出 wire 时附带短期签名的 url。
 import type { StudioCapabilities } from "./ip-studio-workflow";
 
-export type DirectorAssetKind = "character" | "scene" | "prop";
+/** product = 带货短剧的商品（docs/ai-director-commerce-plan.md）：只来自商品库，不用 AI 生成。 */
+export type DirectorAssetKind = "character" | "scene" | "prop" | "product";
 export type DirectorAspectRatio = "9:16" | "16:9" | "1:1";
 
 export interface DirectorScriptImportResult {
@@ -24,6 +25,8 @@ export interface DirectorSettings {
   videoModel: string | null;
   /** 资产参考图和分镜图使用的模型；未设置或 null = 后台默认。 */
   imageModel?: string | null;
+  /** 带货短剧开关：决定商品工作区是否出现、新写的内容是否植入商品。关掉不删数据。 */
+  commerce?: boolean;
 }
 
 export interface DirectorError {
@@ -37,6 +40,15 @@ export interface DirectorRefUsed {
   name: string;
   label: string;
   key: string;
+  url?: string | null;
+}
+
+/** 当前提示词对应的图片参考，按实际提交顺序由服务端投影；缺图保留编号，不提前挪动后面的图号。 */
+export interface DirectorImageReference {
+  assetId: string | null;
+  name: string;
+  label: string;
+  key: string | null;
   url?: string | null;
 }
 
@@ -162,6 +174,8 @@ export interface DirectorAsset {
   refImage?: { key: string; url?: string | null } | null;
   /** 从个人资产库导入时记下的资产库对象 id；再导入同一项时据此对上，不重复建。 */
   libraryObjectId?: string;
+  /** 只有商品有：这部剧里想怎么植入（如「男主角加班时拿起保温杯喝水」）。 */
+  placement?: string;
   /** 只有角色有。 */
   forms?: DirectorAssetForm[];
   /** 只有场景有：反打、左立面、右立面，一次生成三张。 */
@@ -199,6 +213,10 @@ export interface DirectorClip {
   assetIds: string[];
   /** 这一段里角色用哪个形态（角色 id → 形态 id）；没写的用主形象。 */
   assetForms?: Record<string, string>;
+  /** 分镜出图：角色 → 场景（含所选视角）→ 道具，与提示词的图号一致。 */
+  boardRefs?: DirectorImageReference[];
+  /** 视频生成：图1 为分镜图，资产从图2 起；首帧模式只有分镜图。 */
+  videoRefs?: DirectorImageReference[];
   shots: DirectorShot[];
   boardPrompt: string;
   boardPromptCustom: boolean;
@@ -419,6 +437,8 @@ export interface DirectorWorkSummary {
   running: boolean;
   updatedAt: string;
   coverUrl: string | null;
+  /** 打开了带货短剧。 */
+  commerce?: boolean;
 }
 
 /** 回收站里的一项：作品摘要 + 删除时间（ISO）。`running` 恒为 false。 */
@@ -439,7 +459,7 @@ export type DirectorEditOp =
   | "clip.usePendingShots" | "clip.discardPendingShots" | "clip.unlinkAsset"
   | "asset.setVoice" | "asset.clearVoice" | "asset.setRef" | "asset.clearRef" | "clip.adoptVideo" | "clip.confirmVideo" | "clips.confirmBoards" | "clip.setVoiceMode"
   | "extract.save" | "extract.discard"
-  | "split.save" | "split.discard" | "split.undo" | "reference.update" | "reference.toEpisode" | "asset.link"
+  | "split.save" | "split.discard" | "split.undo" | "reference.update" | "reference.toEpisode" | "asset.link" | "product.add"
   | "form.create" | "form.update" | "form.delete" | "form.adopt" | "form.upload" | "view.adopt" | "view.upload" | "clip.setForm"
   | "assistant.apply" | "assistant.dismiss" | "assistant.undo" | "assistant.newThread" | "assistant.openThread";
 

@@ -47,6 +47,61 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+function workWithReferences() {
+  const c = clip("v2");
+  // 复现客户作品：关联先加餐馆、后加静儿，服务端按角色、场景提交。
+  c.assetIds = ["restaurant", "jing"];
+  c.boardRefs = [
+    { assetId: "jing", label: "图1", name: "静儿·工作装", key: "jing-form", url: "https://cdn.test/jing-form.png" },
+    { assetId: "restaurant", label: "图2", name: "静儿打工的餐馆", key: "restaurant", url: "https://cdn.test/restaurant.png" },
+    { assetId: "restaurant", label: "图3", name: "静儿打工的餐馆·反打", key: "reverse", url: "https://cdn.test/reverse.png" },
+  ];
+  c.videoRefs = [{ assetId: null, label: "图1", name: "分镜图", key: "b1", url: "https://cdn.test/b1.png" },
+    ...c.boardRefs.map((r, i) => ({ ...r, label: `图${i + 2}` }))];
+  const w = work(c);
+  const asset = (id: string, kind: "character" | "scene", name: string) => ({ id, kind, name, description: "", aliases: [], episodeIds: [], prompt: "", promptCustom: false, rev: 1, voice: null,
+    image: { candidates: [media(id)], adoptedId: id, adoptedBy: "user" as const, error: null } });
+  w.assets = [asset("restaurant", "scene", "静儿打工的餐馆"), asset("jing", "character", "静儿")];
+  return w;
+}
+
+test("storyboard reference images show the server order, exact form and scene view beside the prompt", () => {
+  render(<Page initial={workWithReferences()}/>);
+  const stack = screen.getByRole("button", { name: /关联资产/ });
+  expect(within(stack).getAllByRole("img").map(img => img.getAttribute("alt"))).toEqual([
+    "图2 静儿·工作装", "图3 静儿打工的餐馆", "图4 静儿打工的餐馆·反打",
+  ]);
+  fireEvent.click(screen.getByRole("button", { name: /^分镜图/ }));
+  const refs = screen.getByRole("region", { name: "分镜图参考图片" });
+  expect(within(refs).getAllByRole("img").map(img => img.getAttribute("alt"))).toEqual([
+    "图1 静儿·工作装", "图2 静儿打工的餐馆", "图3 静儿打工的餐馆·反打",
+  ]);
+  expect(within(refs).getAllByRole("img")[0].getAttribute("src")).toBe("https://cdn.test/jing-form.png");
+});
+
+test("video reference images start with the board and keep asset controls in that order", () => {
+  render(<Page initial={workWithReferences()}/>);
+  fireEvent.click(screen.getByRole("button", { name: /关联资产/ }));
+  const refs = screen.getByRole("region", { name: "视频参考图片" });
+  expect(within(refs).getAllByRole("img").map(img => img.getAttribute("alt"))).toEqual([
+    "图1 分镜图", "图2 静儿·工作装", "图3 静儿打工的餐馆", "图4 静儿打工的餐馆·反打",
+  ]);
+  const drawer = screen.getByRole("dialog", { name: "关联资产" });
+  expect(within(drawer).getAllByRole("button", { name: /解除.*关联/ }).map(b => b.getAttribute("aria-label"))).toEqual([
+    "从片段 1 解除静儿的关联", "从片段 1 解除静儿打工的餐馆的关联",
+  ]);
+});
+
+test("a missing image keeps its numbered place instead of renumbering later references", () => {
+  const w = workWithReferences();
+  w.clips[0].boardRefs![0] = { assetId: "jing", name: "静儿", label: "图1", key: null };
+  render(<Page initial={w}/>);
+  fireEvent.click(screen.getByRole("button", { name: /^分镜图/ }));
+  const refs = screen.getByRole("region", { name: "分镜图参考图片" });
+  expect(within(refs).getAllByRole("listitem")[0].textContent).toBe("缺少图片图1静儿");
+  expect(within(refs).getAllByRole("img")[0].getAttribute("alt")).toBe("图2 静儿打工的餐馆");
+});
+
 test("clicking another video version on the card adopts it at once and opens it, with no separate adopt button", async () => {
   render(<Page initial={work(clip("v2"))}/>);
   const versions = screen.getByRole("group", { name: "视频版本" });

@@ -221,7 +221,7 @@ class DramaRenderServiceImageTest {
         assertFalse(DramaRenderService.upstreamMessage(truncated).contains("abcdef1234567890"));
         assertNull(DramaRenderService.upstreamMessage("<html><body>502 Bad Gateway</body></html>"));
         assertNull(DramaRenderService.upstreamMessage(""));
-        String longMsg = DramaRenderService.upstreamMessage("{\"message\":\"" + "很长".repeat(200) + "\"}");
+        String longMsg = DramaRenderService.upstreamMessage("{\"message\":\"" + "尺寸".repeat(200) + "\"}");
         assertTrue(longMsg.length() <= DramaRenderService.UPSTREAM_MESSAGE_LIMIT + 1, longMsg);
     }
 

@@ -292,7 +292,7 @@ export async function fetchAssetBlob(storageKey: string): Promise<Blob> {
   const res = await fetch(assetContentUrl(storageKey), {
     headers: getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {},
   });
-  if (!res.ok) throw new Error(`素材加载失败（HTTP ${res.status}）`);
+  if (!res.ok) throw new Error('素材加载失败，请重试。');
   return res.blob();
 }
 

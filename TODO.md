@@ -1,5 +1,19 @@
 # 待办与已知问题
 
+## 用户反馈 2026-11-07（修复见 PR 157，文案记录在 `docs/audits/pc-ui-copy-review-2026-11.md` 第 11 批）
+
+- [x] ~~已失败任务点「重试这一步」报「原任务的提交结果尚未确认」~~ **2026-11-07 修复**：`StudioPlanExecutionService.adoptVideoRepairs` 只拦原任务还在进行的，错误码 `STUDIO_PLAN_STEP_RUNNING`。
+- [x] ~~模型聊天回复、厂商接口说法显示给用户~~ **2026-11-07 修复**：`PublicModelErrorPolicy` 和 `public-model-error.ts` 换成引导重试的文案，旧记录读取时也换。
+- [x] ~~Seedance 2.0 内部错误没有错误码、未识别错误没有兜底~~ **2026-11-07 修复**：`VIDEO_PROVIDER_INTERNAL`；失败任务错误码不再为空；前端不显示浏览器和代码抛的英文。
+- [x] ~~画布返回不到 AI 视频~~ **2026-11-07 修复**：`shell/canvas-return.ts`，场景页按地址恢复草稿。
+- [ ] OneToken Seedance 2.0 的 `InternalServiceError`：把 `sdn_e7f6fe1298fb478ba5bc4b6e135f4cee`、`sdn_3f9fd45e7d2241948e39938345625505` 发给 OneToken 查原因（两次都带 9 张图）。
+- [ ] Seedance Fast 拒收真人参考图（今天 8 个失败 6 个）：用户定后面统一接素材库再看，这批不改。
+- [ ] 优化稿超长仍直接退回原文并收优化费（`StudioWorkflowWorker.rewriteVideo`），编导脚本平均约 3000 字（`stage-scene-script.md`）。
+- [ ] 优化稿自己加语速词、没台词也写说话（`H3PromptRewrite` 约定「how they speak」）；提交前没有台词量检查（11:52 那条 206 字要 15 秒说完）。
+- [ ] 出镜人物位看不到三视图（「人物」栏只列人物对象），「存为人物」入口和导演台「存入资产库」都没有；自动保存已有但没有提示。
+- [ ] AI 视频页没有加字幕和调速入口；`StudioEditMedia` 还不支持 `speed`。
+- [ ] 接入点整体故障只有逐条飞书告警（`alert_failure_rate_pct` 存了没用），页面也没有提示；12:16–15:13 图片线路故障用户问「是不是在维护」。
+
 ## AI 视频任务页（2026-11-06 评审后留下）
 
 - [ ] 画布问题节点本身不显示失败原因和尝试次数：`canvas-video-task.tsx` 合并已有节点时保留了节点原状态，目前只在底部返回条显示。方案 §6.5 要求节点也标明。
@@ -135,6 +149,9 @@
 - [ ] **旧 Prompt 管理里已迁走的 8 行、不再使用的 2 行**（`PromptService.MOVED_TO_STUDIO_LIBRARY` / `RETIRED_KEYS`）：线上稳定一两周后再从后台列表隐藏或删除；回滚到本版之前的 server 时这些行仍是旧路径的真值，不要早删。
 - [ ] **后端全量测试在本机跑不完**（2026-11-01）：`./mvnw test` 全量在 Maven 预算堆下 GC 打满、长时间不结束，本次只能按 `**/ipstudio/**/*Test`、`**/enterprise/**/*Test`、`Prompt*Test` 子集验证。要查是哪组测试攒内存，或按测试类分批串行跑（`-DforkCount=1 -DreuseForks=false`）。
 - [ ] **导演台形态与四视图上线前再验一遍**（2026-11-04 本地只用 Agnes 验过）：① 用线上聚算 Qwen 真调提取和写分镜，确认 `forms`、`assetForms`、`sceneView`（`stage-director-extract`、`stage-director-storyboard` v2）；Agnes 会把后面的变化也写进主设定描述，主形象可能带上。② 真模型出一组四视图，看 2×2 切开后是不是同一个空间（`DirectorSceneViews`）。③ 全能参考模型下带视角图的成片。④ 切图失败时那张图的费用不退（`applySceneViews`），看线上是否出现。
+- [ ] **带货短剧上线前**（2026-11-06 功能分支，`docs/ai-director-commerce-plan.md`）：① 查线上这五个环节后台有没有改过：`stage-director-extract / -assistant / -brief / -storyboard / -board`。后台改过的不会跟仓库文件更新，少了 `{{method}}` 就读不到商品规则，要手动补上。② 用线上默认文字模型真调一次写剧本和写分镜（本地只用免费的 Agnes 验过），看商品是不是写进了情节、片段 `assetIds` 有没有带上商品。③ 用真 H3 出一条带商品的片段，看包装和标签还原得怎么样，要不要加重提示词（链路已用模拟聚算验到交给厂商这一步，这两项要花钱，需要用户批）。④ `/assets` 页暂时没有「商品」分栏：商品图能在「图片」里看到，商品对象只能在导演台管理；手机端老页面的「产品」（`dap_product`）是另一张表，没有合并。
+- [ ] **视频素材上传的报错写死了「音色」**（`MaterialVideoModelClient` 素材状态不是 available 时）：图片也报「图1尚未处理完成，请重新保存音色」，2026-11-06 用模拟聚算验证时撞见。应按素材类型说。
+- [ ] **dap 多模态出图把参考图发了两遍**（2026-11-06 带货短剧验收时发现，和商品无关）：`DapMultimodalClient` 走 Agnes 时请求里 `image` 和 `extra_body.image` 各一份，厂商按两份算（4 张报「输入图数量不能超过 6（当前 8）」），所以 Agnes 实际只能带 3 张参考图，而 `requireRefCapacity` 的上限是 4。只影响走这条链的模型，要么去掉一份，要么把上限改对。
 - [ ] **导演台视频提示词和首帧模板仍在代码**（设计文档 §14.2 说明了为什么）：资产图、分镜图模板在库里停用时，页面保留原描述、重新出图报「提示词未配置」，要不要给个更明白的说法待定。
 
 ## 默认文字模型换 Sonnet 5.5（2026-11-04）
@@ -508,6 +525,8 @@
 - [ ] `DapAccountService.account` 的 `planLabel=PRO` 为旧固定值；后续会员权益展示需按真实产品开通/权益建模，本轮不改后台政策。
 
 ## 已定位问题与后续限制
+
+- [ ] **开发模式：刷新过的页面整页跳走后，浏览器后退会停在未激活状态**（2026-11-07 定位，未修）。顺序是打开页面 → 刷新 → 整页跳到别处 → 后退：页面显示服务端输出的内容（画布是「正在打开画布…」），React 一直没接管，没有报错和失败的请求。`/projects/{id}` 和 `/assets` 都能复现，关掉 `shell/canvas-return.ts` 的记录组件也一样；没刷新过的不会。后退时浏览器用了缓存的文档（开发服务器没收到请求），页面带开发模式才有的 `__next_r`，疑似开发模式独有，尚未在生产构建上验证。复现需要无头浏览器按上述顺序操作。
 
 - [ ] **视频规格的模型目录路径与提交路径口径不一致**（2026-10-29 配火山方舟 Seedance 时发现）：`AiModelInvocationService.modelCatalogUri` 用 `URI.resolve`，`/models` 会丢掉基础地址里的 `/api/v3`，后台连接检测报 404；而 `MaterialVideoModelClient.joinUrl` 把提交、查询路径接在基础地址后面。现在方舟两条端点把目录路径写成 `/api/v3/models` 绕过。只影响连接检测与拉取模型目录，不影响出片。改成同一种拼接前要核对已存端点（OneToken 的目录路径是 `/v1/models?include_video=true`，基础地址不带路径）。
 - [ ] **存量 clip DTO/TS 镜像漂移**（2026-10-15 附加检查发现）：`ClipDtos.java` 的 TemplateDto.sourceProjectId/createdBy、JobDto.segments、AvatarDto.demoVideoUrl/demoAudioUrl、VoiceDto.demoAudioUrl 未在 `packages/types/src/clip.ts` 对应接口声明，导致全局 `pnpm check:wire-mirror` 报4组字段不一致。此项与企业开发分开处理；新增 enterprise 的15组镜像检查已通过。
