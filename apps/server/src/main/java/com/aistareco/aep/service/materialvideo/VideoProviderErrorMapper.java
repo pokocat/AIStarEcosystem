@@ -29,7 +29,7 @@ final class VideoProviderErrorMapper {
             "400:model_delisted", new MappedError(VIDEO_MODEL_RETIRED,
                     "这个视频模型已被提供方下架，不能再用它生成，请换一个模型"),
             "400:inputimagesensitivecontentdetected.privacyinformation", new MappedError(VIDEO_REFERENCE_PERSON_RESTRICTED,
-                    "参考图片被模型识别为包含真人，当前模型不接受这类素材。请更换参考图片后再试，使用相同素材重试仍会失败")
+                    com.aistareco.aep.service.ai.PublicModelErrorPolicy.PERSON_RESTRICTED)
     );
 
     private VideoProviderErrorMapper() {}

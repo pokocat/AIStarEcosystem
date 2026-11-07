@@ -434,7 +434,7 @@ src/main/java/com/aistareco/aep/
 ## 数据模型
 
 - **`material_video_input_asset`（V71，2026-10-29）**：角色声音的聚算输入回执；按端点、地址、模型、凭据及来源 key 散列隔离，保存 `source_key` / `asset_id` / `expires_at`，不保存密钥和签名 URL。人物长期绑定仍存我方 key；保存音色和生成 worker 共用上传路径，仅在厂商有效期前复用，过期从原样本重新上传。上传使用可写事务，避免个人素材库持用户行锁时触发 MySQL 只读事务 500。
-- **厂商素材库回执（2026-11-07，同一张表）**：端点规格配了 `inputAssets` 的（OneToken `POST /api/v3/video/assets`），首帧、尾帧和全部参考都先上传换 `asset://ota-…`，回执按同样的散列隔离，图和声音都复用，离过期不足 30 分钟就重传（厂商默认 6 小时）。上传不再包在数据库事务里，避免等待限流时占着连接。
+- **视频素材库（2026-11-07，V75，方案见 `docs/video-asset-library.md`）**：`video_asset_library` 一个素材库对应一个供应商账号，`ai_model_providers.asset_library_id` 指明模型属于哪个库。提交前由 `VideoAssetPreparer` 把素材换成引用，渠道差异在 `VideoAssetLibrary` 的实现里，现在只有 `OneTokenAssetLibrary`（`POST /api/v3/video/assets`，`onetoken-main`）：首帧、尾帧和全部参考都先上传换 `asset://ota-…`。回执仍存 `material_video_input_asset`，散列范围是素材库、地址、凭据和素材 key，不分型号，所以 2.0 和 2.5 共用；离过期不足 30 分钟就重传（厂商默认 6 小时）。厂商拒绝说引用失效（`content[n].image_url: asset not found`）时作废回执、重传一次再提交。上传不包在数据库事务里，避免等待限流时占着连接。规格里旧的 `inputAssets` 字段新版读的时候忽略，已存的规格和已受理任务的快照照常能读。
 
 - **`director_work`（V65，AI 导演台）**：作品一行，`content_json` 存剧本 / 分集 / 资产使用 / 片段与镜头 / 采用指针（只存存储 key），`revision` 作品级修订、`active` 供后台调度扫描。生成任务复用 `ip_run`，新增 `host_type`（NULL = 画布，`director` = 导演作品，`project_id` 存作品 id）。接口 `/api/v1/ip-studio/director/**`。
   2026-11-04（无迁移）：`content_json` 的资产加 `forms[]`、`views`，片段加 `assetForms`，镜头加 `sceneView`；任务节点 `form:<形态id>`、`views:<场景id>`。

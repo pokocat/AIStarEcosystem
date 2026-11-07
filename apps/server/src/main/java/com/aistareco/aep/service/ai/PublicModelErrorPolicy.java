@@ -43,13 +43,16 @@ public final class PublicModelErrorPolicy {
     private static final Pattern RETIRED = Pattern.compile("(?i)has been retired|model_delisted");
     private static final Pattern BUSY = Pattern.compile("(?i)rate.?limit|too many requests|overloaded|速率限制");
     private static final Pattern UNREADABLE_MEDIA = Pattern.compile("(?i)cannot be decoded|invalid image|unsupported (?:image|format|media)");
+    /** 火山方舟直连的 Seedance 不收含真人的参考图，别的渠道不受这条限制，所以要说可以换模型。 */
+    public static final String PERSON_RESTRICTED =
+            "参考图片被识别为包含真人，这个模型不接受，同样的素材重试也不会通过。可以换用 Seedance 2.5 或 MiniMax H3 再生成，或更换参考图片";
     private PublicModelErrorPolicy() {}
 
     /** The supplier reasons we can state exactly, in our own words. Plain English we cannot state stays as a hint, see {@link #withHint}. */
     private static String translate(String text) {
         var duration = DURATION.matcher(text);
         if (duration.find()) return "参考视频要 " + duration.group(1) + "–" + duration.group(2) + " 秒，请调整后再试";
-        if (PERSON.matcher(text).find()) return "参考图片被模型识别为包含真人，当前模型不接受这类素材。请更换参考图片后再试，使用相同素材重试仍会失败";
+        if (PERSON.matcher(text).find()) return PERSON_RESTRICTED;
         if (RETIRED.matcher(text).find()) return "这个视频模型已被提供方下架，不能再用它生成，请换一个模型";
         if (BUSY.matcher(text).find()) return "生成服务当前请求过多，请稍后再试";
         if (UNREADABLE_MEDIA.matcher(text).find()) return "参考素材无法读取，请更换后再试";

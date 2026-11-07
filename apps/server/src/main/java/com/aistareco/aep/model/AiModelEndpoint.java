@@ -104,6 +104,10 @@ public class AiModelEndpoint {
     @Column(name = "video_request_spec_json", columnDefinition = "LONGTEXT")
     private String videoRequestSpecJson;
 
+    /** 这个视频模型属于哪个素材库；空表示没有素材库。放列不放规格 JSON：规格解析很严格，加字段会挡住回滚。 */
+    @Column(name = "asset_library_id", length = 64)
+    private String assetLibraryId;
+
     /** 每分钟请求数限制；为空表示不限制。 */
     @Column(name = "rpm_limit")
     private Integer rpmLimit;
