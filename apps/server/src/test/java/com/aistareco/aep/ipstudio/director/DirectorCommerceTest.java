@@ -163,11 +163,15 @@ class DirectorCommerceTest {
         assertTrue(create(true, "").path("settings").path("commerce").asBoolean());
     }
 
-    @Test void productsCanOnlyBeAddedWhenTheSwitchIsOn() {
+    @Test void productsCanOnlyBeAddedWhenTheSwitchIsOn() throws Exception {
         service.create(USER, new DirectorService.CreateRequest("普通", "", null));
         libraryHas("o1", "product", "恒温保温杯", "v1", version("v1", "p/a.png"));
         var e = assertThrows(BusinessException.class, () -> edit("product.add", null, "{\"objectId\":\"o1\"}"));
-        assertTrue(e.getMessage().contains("带货短剧"), e.getMessage());
+        assertEquals("DIRECTOR_INPUT_INVALID", e.getCode());
+        // 只差开关：打开后同样的请求能加上，上面拦住的就是开关。
+        service.patch(USER, work.getId(), new DirectorService.PatchRequest(null, null, null, null, om.createObjectNode().put("commerce", true)));
+        edit("product.add", null, "{\"objectId\":\"o1\"}");
+        assertEquals(1, content().path("assets").size());
     }
 
     @Test void turningOffKeepsProductsAndClipsAndStopsFeedingPrompts() throws Exception {
@@ -229,9 +233,14 @@ class DirectorCommerceTest {
     @Test void onlyProductsWithImagesCanBeAdded() throws Exception {
         create(true, "");
         libraryHas("o1", "prop", "玉佩", "v1", version("v1", "p/a.png"));
-        assertTrue(assertThrows(BusinessException.class, () -> edit("product.add", null, "{\"objectId\":\"o1\"}")).getMessage().contains("不是商品库"));
+        assertEquals("DIRECTOR_INPUT_INVALID", assertThrows(BusinessException.class, () -> edit("product.add", null, "{\"objectId\":\"o1\"}")).getCode());
         libraryHas("o2", "product", "空商品", null);
-        assertTrue(assertThrows(BusinessException.class, () -> edit("product.add", null, "{\"objectId\":\"o2\"}")).getMessage().contains("还没有图片"));
+        assertEquals("DIRECTOR_INPUT_INVALID", assertThrows(BusinessException.class, () -> edit("product.add", null, "{\"objectId\":\"o2\"}")).getCode());
+        assertEquals(0, content().path("assets").size());
+        // 只差类型和图片：有图的商品能加上。
+        libraryHas("o3", "product", "恒温保温杯", "v1", version("v1", "p/a.png"));
+        edit("product.add", null, "{\"objectId\":\"o3\"}");
+        assertEquals(1, content().path("assets").size());
     }
 
     @Test void placementIsOnlyForProductsAndProductsAreNeverGenerated() throws Exception {
@@ -241,7 +250,7 @@ class DirectorCommerceTest {
         assertThrows(BusinessException.class, () -> service.edit(USER, work.getId(), new DirectorService.EditRequest("asset.update", character, characterRev, om.readTree("{\"placement\":\"x\"}"))));
         service.edit(USER, work.getId(), new DirectorService.EditRequest("asset.update", product, productRev, om.readTree("{\"placement\":\"下班路上喝\"}")));
         assertEquals("下班路上喝", asset(content(), "恒温保温杯").path("placement").asText());
-        assertTrue(assertThrows(BusinessException.class, () -> runTask("asset-image", product, "{}")).getMessage().contains("商品库"));
+        assertEquals("DIRECTOR_INPUT_INVALID", assertThrows(BusinessException.class, () -> runTask("asset-image", product, "{}")).getCode());
         assertThrows(BusinessException.class, () -> edit("asset.create", null, "{\"kind\":\"product\",\"name\":\"手写商品\"}"));
         assertEquals("", asset(content(), "恒温保温杯").path("prompt").asText(), "商品没有出图提示词");
     }

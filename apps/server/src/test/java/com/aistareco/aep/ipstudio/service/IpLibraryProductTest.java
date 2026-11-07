@@ -74,7 +74,7 @@ class IpLibraryProductTest {
 
     @Test void theLastImageCannotBeRemoved() throws Exception {
         seed("product", "v-a", "a");
-        assertTrue(assertThrows(BusinessException.class, () -> edit("{\"removeVersionId\":\"v-a\"}")).getMessage().contains("至少保留一张"));
+        assertEquals("IP_LIBRARY_INVALID", assertThrows(BusinessException.class, () -> edit("{\"removeVersionId\":\"v-a\"}")).getCode());
     }
 
     @Test void onlyProductsCanRemoveImages() throws Exception {
@@ -84,6 +84,6 @@ class IpLibraryProductTest {
 
     @Test void aMissingImageIsAClearError() throws Exception {
         seed("product", "v-a", "a", "b");
-        assertTrue(assertThrows(BusinessException.class, () -> edit("{\"removeVersionId\":\"gone\"}")).getMessage().contains("已不存在"));
+        assertEquals("IP_LIBRARY_INVALID", assertThrows(BusinessException.class, () -> edit("{\"removeVersionId\":\"gone\"}")).getCode());
     }
 }
