@@ -33,6 +33,8 @@ import java.net.URI;
 @Transactional
 public class AiModelEndpointAdminService {
     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.repository.AiGenerationQueueRepository generationQueue;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.aistareco.aep.service.materialvideo.VideoAssetPreparer assetPreparer;
 
     private static final ObjectMapper OM = new ObjectMapper();
 
@@ -135,6 +137,7 @@ public class AiModelEndpointAdminService {
                 .chatSupportsStreaming(req.chatSupportsStreaming())
                 .imageRequestSpecJson(req.imageRequestSpec() == null ? null : req.imageRequestSpec().json())
                 .videoRequestSpecJson(req.videoRequestSpec() == null ? null : req.videoRequestSpec().json())
+                .assetLibraryId(blankToNull(req.assetLibraryId()))
                 .concurrencyLimit(req.concurrencyLimit() != null && req.concurrencyLimit() > 0 ? req.concurrencyLimit() : null)
                 .rpmLimit(req.rpmLimit() != null && req.rpmLimit() > 0 ? req.rpmLimit() : null)
                 .tpmLimit(req.tpmLimit() != null && req.tpmLimit() > 0 ? req.tpmLimit() : null)
@@ -166,6 +169,12 @@ public class AiModelEndpointAdminService {
         boolean supplierChanged=(req.providerType()!=null && AiModelProviderType.fromWire(req.providerType())!=entity.getProviderType())
                 || (req.baseUrl()!=null && !req.baseUrl().equals(entity.getBaseUrl()))
                 || (req.model()!=null && !req.model().equals(entity.getModel()));
+        // 素材库属于供应商账号：换型号不影响；换地址或供应商类型可能换了账号，要明确说保留还是解除，不能悄悄改回签名链接。
+        boolean accountChanged=(req.providerType()!=null && AiModelProviderType.fromWire(req.providerType())!=entity.getProviderType())
+                || (req.baseUrl()!=null && !req.baseUrl().equals(entity.getBaseUrl()));
+        boolean videoSpecGone=Boolean.TRUE.equals(req.clearVideoRequestSpec()) || (supplierChanged && req.videoRequestSpec()==null);
+        if (accountChanged && !videoSpecGone && req.assetLibraryId()==null && entity.getAssetLibraryId()!=null)
+            throw BusinessException.badRequest("VIDEO_ASSET_LIBRARY_INVALID","这个模型绑定了素材库，更换地址或供应商类型时要明确保留或解除绑定");
         if (req.concurrencyLimit() != null) entity.setConcurrencyLimit(req.concurrencyLimit() == 0 ? null : req.concurrencyLimit());
         if (req.name() != null) entity.setName(req.name());
         if (req.providerType() != null) entity.setProviderType(AiModelProviderType.fromWire(req.providerType()));
@@ -191,6 +200,9 @@ public class AiModelEndpointAdminService {
         if (Boolean.TRUE.equals(req.clearImageRequestSpec())) entity.setImageRequestSpecJson(null);
         if (req.videoRequestSpec() != null) entity.setVideoRequestSpecJson(req.videoRequestSpec().json());
         if (Boolean.TRUE.equals(req.clearVideoRequestSpec())) entity.setVideoRequestSpecJson(null);
+        // 视频规格没了，素材库也用不了了；其余情况不带这个字段就是不改。
+        if (videoSpecGone && req.assetLibraryId()==null) entity.setAssetLibraryId(null);
+        if (req.assetLibraryId() != null) entity.setAssetLibraryId(blankToNull(req.assetLibraryId()));
         entity.setRpmLimit(req.rpmLimit() != null && req.rpmLimit() > 0 ? req.rpmLimit() : null);
         entity.setTpmLimit(req.tpmLimit() != null && req.tpmLimit() > 0 ? req.tpmLimit() : null);
         entity.setDailyTokenQuota(req.dailyTokenQuota() != null && req.dailyTokenQuota() > 0 ? req.dailyTokenQuota() : null);
@@ -216,8 +228,14 @@ public class AiModelEndpointAdminService {
         return AiModelEndpointDto.from(repo.save(entity));
     }
 
-    private static void requireConfiguredVideoModel(AiModelEndpoint endpoint) {
+    private void requireConfiguredVideoModel(AiModelEndpoint endpoint) {
         AiVideoRequestSpec spec = AiVideoRequestSpec.read(endpoint.getVideoRequestSpecJson());
+        if (endpoint.getAssetLibraryId() != null) {
+            // 聚算有自己的上传协议，不走素材库配置；没有规格的端点不知道怎么发凭据。配上去也不会生效，不能让它看起来开着。
+            if (spec == null || "jusuan-media".equals(spec.adapter()))
+                throw BusinessException.badRequest("VIDEO_ASSET_LIBRARY_INVALID", "这个模型的请求方式不支持素材库");
+            if (assetPreparer != null) assetPreparer.requireUsable(endpoint.getAssetLibraryId());
+        }
         if (spec != null && spec.requiresModelIdentifier()
                 && (endpoint.getModel() == null || endpoint.getModel().isBlank())) {
             throw BusinessException.badRequest("VIDEO_REQUEST_SPEC_INVALID", "视频端点需要填写模型标识");

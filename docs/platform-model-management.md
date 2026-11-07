@@ -17,7 +17,7 @@
 - **`endpointSave` 不是「只传的字段才改」。** `rpmLimit`、`tpmLimit`、`dailyTokenQuota`、`dailyCostQuotaMicros`、`alertFailureRatePct` 没传就会清空。用签名命令改模型时同样要带上。
 - **改 `baseUrl`、`model` 或 `providerType` 而不带规格，规格会被清掉。**
 
-页面还没有的：素材库绑定（`assetLibraryId`，等 `dev/video-asset-library` 合入后补，换基础地址时要明确保留或解除）；`apps/admin` LLM API 页里的用量统计、请求日志、生成告警和对账。见 `TODO.md`。
+页面还没有的：素材库绑定（`assetLibraryId`，服务端已支持；已绑定素材库的模型换基础地址或供应商类型时要明确保留或解除，页面没有这一项，保存会被拒，要走签名命令）；`apps/admin` LLM API 页里的用量统计、请求日志、生成告警和对账。见 `TODO.md`。
 
 设计上参考了 AID Studio 后台（左侧服务商、右侧模型表、编辑面板分页签、行内启停和测试）。没有照搬它把密钥放在服务商上的做法：我们的密钥存在每个模型上，改成服务商一层要改库和调用链路。
 
@@ -87,16 +87,26 @@ V49 成功新增可空供应商计量字段；JAR SHA256 `fcb138dd5e6f6e90935f5a
 
 用户授权提交部署后，用户窄命令与模型操作通道已随 `76debecff` 推送至 `codex/unified-ip-studio`，只部署 server，发布 `20261011040736-76debecf`。Platform 运行 `bf96d698137bdf40a13073928070aeffa4df7627`，入口仍为 ops.aibuzz.cn。保留原生产身份与测试账号清理修复，没有新增业务表或迁移。平台权限与原 Java 签名分别校验；匿名用户命令 401。线上浏览器已验证原用户分页/档案、15 个端点、概览与调用记录读取；没有生产用户状态变更、价格变更或供应商调用。定向 Java 13 个用例通过，线上 JAR 与本地产物 SHA256 一致。完整发布记录在 aibuzz-platform 的 `docs/reviews/2026-10-10-admin-production-release.md`。
 
-## 视频端点的厂商素材库（2026-11-07）
+## 视频端点的素材库（2026-11-07）
 
-厂商有自己的素材库时，在端点视频规格里加 `inputAssets`，素材就先传上去换引用，请求里不再有我方签名地址：
+素材库单独成表（`video_asset_library`），一个素材库对应一个供应商账号，同一账号下的模型共用，同一张图不用传两次。方案见 [video-asset-library.md](video-asset-library.md)。
+
+模型用 `endpointSave` 的 `assetLibraryId` 指向素材库，素材就先传上去换引用，请求里不再有我方签名地址：
 
 ```json
-"inputAssets": {"uploadPath": "/api/v3/video/assets", "fileField": "file", "ref": "/ref", "status": "/status", "ready": ["Active"], "expiresAt": "/expires_at"}
+"assetLibraryId": "onetoken-main"
 ```
 
-`uploadPath` 接在基础地址后，`ref`、`status`、`expiresAt` 是响应里的 JSON Pointer，`status` 和 `ready` 要么都写要么都不写。`seedance`、`json-template` 协议可用，聚算有自己的上传协议，配了会被拒绝。
+- 不带这个字段是不改，传空字符串是清除（素材改回给签名链接），不用回滚代码。
+- 素材库属于供应商账号，换型号不影响绑定。换基础地址或供应商类型时要明确带上这个字段（保留或清除），不带会报 400 `VIDEO_ASSET_LIBRARY_INVALID`，避免悄悄改回签名链接。清除视频规格时绑定一起清除。
+- 库不存在或配置无效报 503 `VIDEO_ASSET_LIBRARY_NOT_CONFIGURED`。聚算（`jusuan-media`）有自己的上传协议，没有视频规格的端点不知道怎么发凭据，这两种配了报 400 `VIDEO_ASSET_LIBRARY_INVALID`。
 
-只想关掉：`endpointSave` 去掉这个字段，读到没有就是关，不用回滚代码。
+现在只有 OneToken 一个适配器，上传地址和响应字段的位置在 `config_json`：
 
-`20261107-onetoken-assets` 之前的服务端读不了这个字段，值是 null 也不行，整条规格都会解析失败。所以先发服务端再改配置；回滚到那之前的版本时，规格里不能留这个字段，并确认这些端点没有在途任务（在途任务存的规格快照里也有）。具体步骤见 [发布记录](releases/onetoken-assets-release-20261107.md)。
+```json
+{"uploadPath": "/api/v3/video/assets", "fileField": "file", "ref": "/ref", "status": "/status", "ready": ["Active"], "expiresAt": "/expires_at"}
+```
+
+`uploadPath` 接在模型的基础地址后，`ref`、`status`、`expiresAt` 是响应里的 JSON Pointer，`status` 和 `ready` 要么都写要么都不写。
+
+**视频规格里的 `inputAssets` 不再生效。** 配置搬到上面的表（V75）后，新版读规格时忽略这个字段，已存的规格和已受理任务的快照照常能读。线上两条 OneToken 规格里的旧字段没有删：回滚到 `20261107-onetoken-assets` 至 V75 之前的版本时，旧版还靠它走素材库，不用改配置。用新版 `endpointSave` 保存视频规格后这个字段会消失，这之后回滚到旧版，这条模型会改回给签名链接。回滚到 `20261107-onetoken-assets` 更早的版本的步骤见 [发布记录](releases/onetoken-assets-release-20261107.md)。

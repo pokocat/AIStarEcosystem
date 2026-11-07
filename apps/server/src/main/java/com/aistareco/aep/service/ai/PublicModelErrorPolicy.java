@@ -45,6 +45,9 @@ public final class PublicModelErrorPolicy {
     private static final Pattern RETIRED = Pattern.compile("(?i)has been retired|model_delisted");
     private static final Pattern BUSY = Pattern.compile("(?i)rate.?limit|too many requests|overloaded|速率限制");
     private static final Pattern UNREADABLE_MEDIA = Pattern.compile("(?i)cannot be decoded|invalid image|unsupported (?:image|format|media)");
+    /** 火山方舟直连的 Seedance 不收含真人的参考图，别的渠道不受这条限制，所以要说可以换模型。 */
+    public static final String PERSON_RESTRICTED =
+            "参考图片被识别为包含真人，这个模型不接受，同样的素材重试也不会通过。可以换用 Seedance 2.5 或 MiniMax H3 再生成，或更换参考图片";
     /** A model chatting instead of generating (2026-11-07: 「我目前无法在此对话中直接生成图片，但可以帮你……」). A retry can work; the words mean nothing to a customer. */
     private static final Pattern CHAT_REPLY = Pattern.compile("(?i)我目前|我无法|我不能|我可以|在此对话|帮你|帮您|\\bI(?:'m| am) (?:sorry|unable)\\b|\\bI (?:can't|cannot)\\b|\\bas an ai\\b");
     /** How the supplier's API works (2026-11-07: 「当前生图模式不接受参考图或蒙版，请使用图片编辑接口」): nothing a customer can change. */
@@ -63,7 +66,7 @@ public final class PublicModelErrorPolicy {
     private static String translate(String text) {
         var duration = DURATION.matcher(text);
         if (duration.find()) return "参考视频要 " + duration.group(1) + "–" + duration.group(2) + " 秒，请调整后再试";
-        if (PERSON.matcher(text).find()) return "参考图片被模型识别为包含真人，当前模型不接受这类素材。请更换参考图片后再试，使用相同素材重试仍会失败";
+        if (PERSON.matcher(text).find()) return PERSON_RESTRICTED;
         if (RETIRED.matcher(text).find()) return "这个视频模型已被提供方下架，不能再用它生成，请换一个模型";
         if (BUSY.matcher(text).find()) return "生成服务当前请求过多，请稍后再试";
         if (UNREADABLE_MEDIA.matcher(text).find()) return "参考素材无法读取，请更换后再试";

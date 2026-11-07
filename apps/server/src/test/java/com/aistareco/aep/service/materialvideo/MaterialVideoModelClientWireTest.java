@@ -43,6 +43,8 @@ import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -71,6 +73,9 @@ class MaterialVideoModelClientWireTest {
     private HttpServer server;
     private final List<Recorded> requests = new CopyOnWriteArrayList<>();
     private final AtomicInteger assetSeq = new AtomicInteger();
+    /** 排在前面的提交响应，用完回到 createStatus / createBody。 */
+    private final java.util.Queue<int[]> createResponses = new java.util.concurrent.ConcurrentLinkedQueue<>();
+    private final java.util.Queue<String> createResponseBodies = new java.util.concurrent.ConcurrentLinkedQueue<>();
     private volatile int createStatus = 202;
     private volatile String createBody = "{\"jobId\":\"job_1\",\"jobUrl\":\"https://example/jobs/job_1\"}";
     private volatile int uploadStatus = 201;
@@ -123,6 +128,9 @@ class MaterialVideoModelClientWireTest {
                         ? "{\"asset\":{\"assetId\":\"asset_" + assetSeq.incrementAndGet() + "\",\"status\":\"available\""
                             + (uploadExpiresAt == null ? "" : ",\"expiresAt\":\"" + uploadExpiresAt + "\"") + "}}"
                         : uploadErrorBody;
+            } else if (!createResponses.isEmpty()) {
+                status = createResponses.poll()[0];
+                resp = createResponseBodies.poll();
             } else {
                 status = createStatus;
                 resp = createBody;
@@ -610,18 +618,40 @@ class MaterialVideoModelClientWireTest {
 
     // ── 厂商素材库（OneToken POST /api/v3/video/assets） ─────────────────────────
 
-    private static final AiVideoRequestSpec.InputAssetSpec ONETOKEN_LIBRARY = new AiVideoRequestSpec.InputAssetSpec(
-            "/api/v3/video/assets", "file", "/ref", "/status", List.of("Active"), "/expires_at");
+    private static final String ONETOKEN_LIBRARY = "{\"uploadPath\":\"/api/v3/video/assets\",\"fileField\":\"file\","
+            + "\"ref\":\"/ref\",\"status\":\"/status\",\"ready\":[\"Active\"],\"expiresAt\":\"/expires_at\"}";
+    /** 2026-11-07 用线上 Key 真调得到的原话：不存在和已过期的引用都是这样。 */
+    private static final String STALE_REFERENCE_BODY = "{\"error\":{\"code\":\"InvalidParameter\",\"message\":\"content[1].image_url: asset not found\"},"
+            + "\"status_message\":{\"state_id\":5,\"next_action\":\"check_request\",\"retry_after_seconds\":null,\"fee_status\":\"unknown\"}}";
+    private final java.util.Map<String, Object[]> receiptRows = new java.util.HashMap<>();
+    private VideoAssetLibraryRecordRepository libraries;
 
     private void useOneTokenLibrary(String model) {
         var spec = new AiVideoRequestSpec("seedance", VideoStudioService.contract(5, 15),
-                "/api/v3/contents/generations/tasks", "/api/v3/contents/generations/tasks/{id}", Map.of(),
-                null, null, null, null, null, null, null, null, null, null, null, ONETOKEN_LIBRARY);
-        var endpoint = AiModelEndpoint.builder().id("ep-onetoken").name("OneToken · Seedance")
-                .baseUrl(base("")).model(model).videoRequestSpecJson(spec.json())
+                "/api/v3/contents/generations/tasks", "/api/v3/contents/generations/tasks/{id}", Map.of());
+        var endpoint = AiModelEndpoint.builder().id("ep-onetoken-" + model).name("OneToken · Seedance")
+                .baseUrl(base("")).model(model).videoRequestSpecJson(spec.json()).assetLibraryId("onetoken-main")
                 .upstreamApiKeyEncrypted(AepCryptoUtil.encrypt("sk-test")).enabled(true).build();
         when(invocation.resolveDefaultEndpoint(AiModelPurpose.VIDEO_GENERATION, "ipstudio"))
                 .thenReturn(Optional.of(endpoint));
+        var repo = mock(MaterialVideoInputAssetRepository.class);
+        when(repo.receipt(any())).thenAnswer(i -> receiptRows.containsKey(i.getArgument(0))
+                ? java.util.Collections.singletonList(receiptRows.get(i.getArgument(0))) : List.of());
+        org.mockito.Mockito.doAnswer(i -> { receiptRows.put(i.getArgument(0), new Object[]{ i.getArgument(2), i.getArgument(3) }); return null; })
+                .when(repo).remember(any(), any(), any(), any());
+        when(repo.forget(any())).thenAnswer(i -> receiptRows.remove(i.<String>getArgument(0)) == null ? 0 : 1);
+        var library = new VideoAssetLibraryRecord();
+        library.setId("onetoken-main");
+        library.setAdapter("onetoken");
+        library.setConfigJson(ONETOKEN_LIBRARY);
+        libraries = mock(VideoAssetLibraryRecordRepository.class);
+        when(libraries.findById("onetoken-main")).thenReturn(Optional.of(library));
+        org.springframework.test.util.ReflectionTestUtils.setField(client, "assetPreparer",
+                new VideoAssetPreparer(libraries, new MaterialVideoInputAssets(repo), new MaterialVideoProperties()));
+    }
+
+    private List<Recorded> creates() {
+        return requests.stream().filter(r -> r.path().endsWith("/generations/tasks")).toList();
     }
 
     private List<Recorded> libraryUploads() {
@@ -680,13 +710,6 @@ class MaterialVideoModelClientWireTest {
     @DisplayName("素材库：分段视频每段用同一批参考，只上传一次")
     void libraryReceiptsAreReusedAcrossSegments() throws Exception {
         useOneTokenLibrary("seedance-2.5");
-        var repo = mock(MaterialVideoInputAssetRepository.class);
-        var rows = new java.util.HashMap<String, Object[]>();
-        when(repo.receipt(any())).thenAnswer(i -> rows.containsKey(i.getArgument(0))
-                ? java.util.Collections.singletonList(rows.get(i.getArgument(0))) : List.of());
-        org.mockito.Mockito.doAnswer(i -> { rows.put(i.getArgument(0), new Object[]{ i.getArgument(2), i.getArgument(3) }); return null; })
-                .when(repo).remember(any(), any(), any(), any());
-        org.springframework.test.util.ReflectionTestUtils.setField(client, "inputAssets", new MaterialVideoInputAssets(repo));
         stored("owner/person.png", png());
 
         client.submit("第一段", 5, "9:16", "u1", "ipstudio", null, universalReference("owner/person.png"));
@@ -770,23 +793,107 @@ class MaterialVideoModelClientWireTest {
     }
 
     @Test
+    @DisplayName("素材库：同一账号的两个型号共用回执，同一张图不用传两次")
+    void libraryReceiptsAreSharedAcrossModels() throws Exception {
+        useOneTokenLibrary("seedance-2.0");
+        stored("owner/person.png", png());
+        client.submit("人物", 5, "9:16", "u1", "ipstudio", null, universalReference("owner/person.png"));
+        var repoOfFirst = org.springframework.test.util.ReflectionTestUtils.getField(client, "assetPreparer");
+
+        useOneTokenLibrary("seedance-2.5");
+        org.springframework.test.util.ReflectionTestUtils.setField(client, "assetPreparer", repoOfFirst);
+        client.submit("人物", 5, "9:16", "u1", "ipstudio", null, universalReference("owner/person.png"));
+
+        assertEquals(1, libraryUploads().size());
+        assertEquals(2, creates().size());
+    }
+
+    @Test
+    @DisplayName("素材库：引用被厂商作废就作废回执、重传一次再提交，用户不用重新点生成")
+    void libraryRefreshesAStaleReferenceOnce() throws Exception {
+        useOneTokenLibrary("seedance-2.5");
+        stored("owner/person.png", png());
+        client.submit("第一段", 5, "9:16", "u1", "ipstudio", null, universalReference("owner/person.png"));
+        String firstRef = om.readTree(creates().get(0).body()).path("content").get(1).path("image_url").path("url").asText();
+        requests.clear();
+        createResponses.add(new int[]{400});
+        createResponseBodies.add(STALE_REFERENCE_BODY);
+
+        var result = client.submit("第二段", 5, "9:16", "u1", "ipstudio", null, universalReference("owner/person.png"));
+
+        assertNotNull(result);
+        assertEquals(1, libraryUploads().size(), "回执没过期，第一次提交不传；被拒后才重传");
+        assertEquals(2, creates().size());
+        assertEquals(firstRef, om.readTree(creates().get(0).body()).path("content").get(1).path("image_url").path("url").asText());
+        String newRef = om.readTree(creates().get(1).body()).path("content").get(1).path("image_url").path("url").asText();
+        assertTrue(newRef.startsWith("asset://ota-"));
+        assertNotEquals(firstRef, newRef);
+    }
+
+    @Test
+    @DisplayName("素材库：重传后仍被拒就照常报错，不再循环")
+    void libraryStaleReferenceRetriesOnlyOnce() throws Exception {
+        useOneTokenLibrary("seedance-2.5");
+        createStatus = 400;
+        createBody = STALE_REFERENCE_BODY;
+        stored("owner/person.png", png());
+
+        var error = assertThrows(BusinessException.class, () -> client.submit("人物", 5, "9:16", "u1", "ipstudio", null,
+                universalReference("owner/person.png")));
+
+        assertEquals("VIDEO_SUBMIT_FAILED", error.getCode());
+        assertEquals(2, creates().size());
+        assertEquals(2, libraryUploads().size());
+    }
+
+    @Test
+    @DisplayName("素材库：其它参数错误不算引用失效，不重传也不重复提交")
+    void libraryOtherRejectionsDoNotRetry() throws Exception {
+        useOneTokenLibrary("seedance-2.5");
+        createStatus = 400;
+        createBody = "{\"error\":{\"code\":\"InvalidParameter\",\"message\":\"content[1].image_url: image too small\"}}";
+        stored("owner/person.png", png());
+
+        assertThrows(BusinessException.class, () -> client.submit("人物", 5, "9:16", "u1", "ipstudio", null,
+                universalReference("owner/person.png")));
+
+        assertEquals(1, creates().size());
+        assertEquals(1, libraryUploads().size());
+    }
+
+    @Test
+    @DisplayName("素材库：模型配了素材库但库不存在就报错，不退回签名链接")
+    void libraryMissingFailsInsteadOfFallingBackToUrls() throws Exception {
+        useOneTokenLibrary("seedance-2.5");
+        when(libraries.findById("onetoken-main")).thenReturn(Optional.empty());
+        stored("owner/person.png", png());
+
+        var error = assertThrows(BusinessException.class, () -> client.submit("人物", 5, "9:16", "u1", "ipstudio", null,
+                universalReference("owner/person.png")));
+
+        assertEquals("VIDEO_ASSET_LIBRARY_NOT_CONFIGURED", error.getCode());
+        assertTrue(requests.isEmpty());
+        org.mockito.Mockito.verify(storage, org.mockito.Mockito.never()).upstreamFetchUrl(any());
+    }
+
+    @Test
     void libraryExpiryAcceptsTimestampsAndTreatsUnreadableAsUnknown() throws Exception {
         assertEquals(java.time.Instant.parse("2026-11-06T12:00:00Z"),
-                MaterialVideoModelClient.libraryExpiry(om.readTree("\"2026-11-06T20:00:00+08:00\"")));
+                OneTokenAssetLibrary.expiry(om.readTree("\"2026-11-06T20:00:00+08:00\"")));
         assertEquals(java.time.Instant.ofEpochSecond(1_800_000_000L),
-                MaterialVideoModelClient.libraryExpiry(om.readTree("1800000000")));
+                OneTokenAssetLibrary.expiry(om.readTree("1800000000")));
         assertEquals(java.time.Instant.ofEpochMilli(1_800_000_000_123L),
-                MaterialVideoModelClient.libraryExpiry(om.readTree("1800000000123")));
-        assertNull(MaterialVideoModelClient.libraryExpiry(om.readTree("\"tomorrow\"")));
-        assertNull(MaterialVideoModelClient.libraryExpiry(om.readTree("null")));
+                OneTokenAssetLibrary.expiry(om.readTree("1800000000123")));
+        assertNull(OneTokenAssetLibrary.expiry(om.readTree("\"tomorrow\"")));
+        assertNull(OneTokenAssetLibrary.expiry(om.readTree("null")));
     }
 
     @Test
     void libraryWaitIsBounded() {
-        assertEquals(0, MaterialVideoModelClient.libraryRetryAfter("0").toSeconds());
-        assertEquals(30, MaterialVideoModelClient.libraryRetryAfter("3600").toSeconds());
-        assertEquals(5, MaterialVideoModelClient.libraryRetryAfter(null).toSeconds());
-        assertEquals(5, MaterialVideoModelClient.libraryRetryAfter("Fri, 06 Nov 2026 12:00:00 GMT").toSeconds());
+        assertEquals(0, OneTokenAssetLibrary.retryAfter("0").toSeconds());
+        assertEquals(30, OneTokenAssetLibrary.retryAfter("3600").toSeconds());
+        assertEquals(5, OneTokenAssetLibrary.retryAfter(null).toSeconds());
+        assertEquals(5, OneTokenAssetLibrary.retryAfter("Fri, 06 Nov 2026 12:00:00 GMT").toSeconds());
     }
 
     private void useConfiguredSeedance(String model, Map<String, Object> fields) {

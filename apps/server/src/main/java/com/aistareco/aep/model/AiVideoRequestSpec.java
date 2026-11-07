@@ -6,7 +6,7 @@ import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioModeSpec;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioMediaLimit;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioTier;
 import com.aistareco.common.BusinessException;
-import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.net.URI;
@@ -15,7 +15,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** The editable video contract and wire adapter for one fixed supplier/model endpoint. */
+/**
+ * The editable video contract and wire adapter for one fixed supplier/model endpoint.
+ *
+ * <p>{@code inputAssets} used to hold the asset library config; it moved to {@code video_asset_library}. Saved specs and
+ * the snapshots on accepted jobs still carry it, and a rollback relies on it, so reading ignores it instead of failing.
+ */
+@JsonIgnoreProperties({"inputAssets"})
 public record AiVideoRequestSpec(String adapter, VideoStudioContract contract,
                                  String submitPath, String pollPathTemplate,
                                  Map<String, Object> requestFields, String modelsPath,
@@ -28,9 +34,7 @@ public record AiVideoRequestSpec(String adapter, VideoStudioContract contract,
                                  String submitIdempotencyHeader,
                                  String pollMethod,
                                  Map<String, Object> pollRequestTemplate,
-                                 List<Integer> batchCounts,
-                                 // 没配就不写这个字段：更早的版本遇到不认识的字段（值是 null 也一样）会整条规格读不了。
-                                 @JsonInclude(JsonInclude.Include.NON_NULL) InputAssetSpec inputAssets) {
+                                 List<Integer> batchCounts) {
     /** Optional JSON Pointer mappings for gateways whose task responses use different field names. */
     public record ResponseSpec(String submitId, String status, String videoUrl, String error,
                                List<String> succeeded, List<String> failed) {}
@@ -52,25 +56,6 @@ public record AiVideoRequestSpec(String adapter, VideoStudioContract contract,
             if (name == null || !name.matches("[!#$%&'*+.^_`|~0-9A-Za-z-]+")
                     || FORBIDDEN.contains(name.toLowerCase(java.util.Locale.ROOT))
                     || prefix == null || prefix.chars().anyMatch(c -> c < 32 || c == 127)) throw invalid();
-        }
-    }
-
-    /**
-     * A supplier's own asset library. Owned files are uploaded there and the request carries the returned
-     * reference instead of a signed URL. Our storage key stays the source of truth; a reference expires.
-     * Pointers are JSON Pointers into the upload response.
-     */
-    public record InputAssetSpec(String uploadPath, String fileField, String ref, String status,
-                                 List<String> ready, String expiresAt) {
-        void validate() {
-            if (!validPath(uploadPath, false) || uploadPath.contains("{")
-                    || fileField == null || !fileField.matches("[A-Za-z][A-Za-z0-9_.-]{0,63}")
-                    || !pointer(ref) || expiresAt != null && !pointer(expiresAt)
-                    || (status == null) != (ready == null)
-                    || status != null && (!pointer(status) || ready.isEmpty() || !statuses(ready))) throw invalid();
-        }
-        private static boolean pointer(String value) {
-            return value != null && value.startsWith("/") && value.length() <= 200;
         }
     }
 
@@ -146,18 +131,6 @@ public record AiVideoRequestSpec(String adapter, VideoStudioContract contract,
                 authHeader, catalogSpec, referenceItemTemplate, referenceTemplates,
                 submitIdempotencyHeader, pollMethod, pollRequestTemplate, null);
     }
-    public AiVideoRequestSpec(String adapter, VideoStudioContract contract, String submitPath,
-                              String pollPathTemplate, Map<String, Object> requestFields, String modelsPath,
-                              ResponseSpec responseSpec, Map<String, Map<String, Object>> requestTemplates,
-                              AuthHeader authHeader, CatalogSpec catalogSpec,
-                              Map<String, Object> referenceItemTemplate,
-                              Map<String, Map<String, Object>> referenceTemplates,
-                              String submitIdempotencyHeader, String pollMethod,
-                              Map<String, Object> pollRequestTemplate, List<Integer> batchCounts) {
-        this(adapter, contract, submitPath, pollPathTemplate, requestFields, modelsPath, responseSpec, requestTemplates,
-                authHeader, catalogSpec, referenceItemTemplate, referenceTemplates,
-                submitIdempotencyHeader, pollMethod, pollRequestTemplate, batchCounts, null);
-    }
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Set<String> ADAPTERS = Set.of("jusuan-media", "seedance", "json-template");
     private static final Set<String> MODES = Set.of("t2v", "i2v", "first_last_frame_video", "universal_reference_video");
@@ -215,11 +188,6 @@ public record AiVideoRequestSpec(String adapter, VideoStudioContract contract,
                     && !("POST".equals(queryMethod) && containsVariable(pollRequestTemplate, "id"))) throw invalid();
         if (authHeader != null) authHeader.validate();
         if (catalogSpec != null) catalogSpec.validate();
-        if (inputAssets != null) {
-            // 聚算有自己的上传协议（usesUploadedFirstFrame），不走这份配置。
-            if ("jusuan-media".equals(adapter)) throw invalid();
-            inputAssets.validate();
-        }
         if (submitIdempotencyHeader != null && !submitIdempotencyHeader.isEmpty()
                 && (!submitIdempotencyHeader.matches("[!#$%&'*+.^_`|~0-9A-Za-z-]+")
                 || AuthHeader.FORBIDDEN.contains(submitIdempotencyHeader.toLowerCase(java.util.Locale.ROOT))
