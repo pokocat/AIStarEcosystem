@@ -139,7 +139,8 @@ class MaterialVideoWorkerMirrorClaimTest {
         worker(new FailingUploader()).generateAsync("mvj_m");
 
         assertEquals("failed", job.getStatus());
-        assertTrue(job.getErrorMessage().startsWith(MaterialVideoWorker.MIRROR_FAILED_CODE), job.getErrorMessage());
+        assertEquals(MaterialVideoWorker.MIRROR_FAILED_CODE, job.getErrorCode());
+        assertTrue(job.getErrorMessage().startsWith("视频保存失败"), job.getErrorMessage());
         verify(creditService).releaseHold(eq("material_video_job"), eq("mvj_m"), anyString());
         verify(creditService, never()).commitHold(any(), any(), anyLong(), any(), org.mockito.ArgumentMatchers.any());
     }
@@ -171,7 +172,8 @@ class MaterialVideoWorkerMirrorClaimTest {
         worker(new FailingUploader()).generateAsync("mvj_m");
 
         assertEquals("failed", job.getStatus());
-        assertTrue(job.getErrorMessage().startsWith(MaterialVideoWorker.MIRROR_FAILED_CODE), job.getErrorMessage());
+        assertEquals(MaterialVideoWorker.MIRROR_FAILED_CODE, job.getErrorCode());
+        assertTrue(job.getErrorMessage().startsWith("视频保存失败"), job.getErrorMessage());
         assertNull(job.getVideoUrl());
         verify(creditService).releaseHold(eq("material_video_job"), eq("mvj_m"), anyString());
         verify(creditService, never()).commitHold(any(), any(), anyLong(), any(), org.mockito.ArgumentMatchers.any());

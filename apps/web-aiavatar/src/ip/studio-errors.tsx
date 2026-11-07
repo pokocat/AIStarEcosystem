@@ -34,6 +34,7 @@ export function userFacingError(code: string | undefined, message: string | unde
   return { code, message: message === undefined ? undefined : publicModelErrorMessage(message, code) };
 }
 
+const NETWORK_MESSAGE = '网络连接中断，未收到服务器响应。';
 /** Read structured errors and the older server's message suffix without inventing a log ID. */
 export function normalizeStudioError(input: ErrorInput, fallback = '操作未完成，请重试'): StudioError {
   if (typeof input === 'string' && remembered.has(input)) return remembered.get(input)!;
@@ -44,9 +45,13 @@ export function normalizeStudioError(input: ErrorInput, fallback = '操作未完
   const logId = typeof value.logId === 'string' ? value.logId : typeof details.logId === 'string' ? details.logId : suffix && /^[A-HJ-NP-Z2-9]{12}$/.test(suffix[1]) ? suffix[1] : undefined;
   const visible = userFacingError(typeof value.errorCode === 'string' ? value.errorCode : typeof value.code === 'string' ? value.code : undefined,
     suffix ? raw.slice(0, suffix.index).trim() || fallback : raw);
+  const network = input instanceof TypeError && /fetch|network|load failed/i.test(raw);
+  // 没有错误码的英文是浏览器或代码抛的（Failed to fetch、Cannot read properties…）：用户看不懂也做不了什么，换成引导重试的话，原文只进控制台。
+  const unreadable = !visible.code && !!visible.message && !/\p{Script=Han}/u.test(visible.message);
+  if (unreadable) console.warn('[studio-error]', raw);
   const result = {
-    code: visible.code ?? (input instanceof TypeError && /fetch|network|load failed/i.test(raw) ? 'NETWORK_ERROR' : 'CLIENT_ERROR'),
-    message: visible.message ?? fallback,
+    code: visible.code ?? (network ? 'NETWORK_ERROR' : 'CLIENT_ERROR'),
+    message: unreadable ? (network ? NETWORK_MESSAGE : fallback) : visible.message ?? fallback,
     logId,
     taskId: typeof value.taskId === 'string' ? value.taskId : typeof value.runId === 'string' ? value.runId : undefined,
     ...(typeof value.clientMessageId === 'string' ? { clientMessageId: value.clientMessageId } : {}),
@@ -240,18 +245,22 @@ export type StudioFailure = {
 };
 
 /** 冲突类错误：这句总排在下一步的最前面。调用方刷新过页面才说「已经刷新」，否则请用户刷新。 */
+const CHANGEABLE_REASON = /参考|素材|尺寸|分辨率|比例|时长|格式|大小|审核|违规|敏感|提示词|文案|字数|人脸|真人|下架/;
 const isConflict = (code: string) => /_CONFLICT$|_STALE$|_EXPIRED$/.test(code);
 const conflictNext = (refreshed: boolean) => refreshed ? '此内容已在其他地方修改，页面已更新为最新内容。' : '此内容已在其他地方修改，请刷新页面查看最新内容。';
 
 /** 按错误码给的通用下一步。调用方知道得更具体时自己写 next。 */
 export function failureNext(code: string, refreshed = false, reason = ''): string {
+  // 制作状态变了或这一步不能重试，不是别处改了内容；原因里已经写了具体情况。
+  if (code === 'STUDIO_PLAN_STALE') return '请刷新页面后重试。多次失败时，可复制「错误详情」反馈给我们。';
   if (isConflict(code)) return `${conflictNext(refreshed)}如有需要，请修改后重试。`;
   if (code === 'STUDIO_PRICE_CHANGED') return '价格已更新，请刷新页面后重新确认。';
   if (code === 'STUDIO_USAGE_PENDING') return '本次用量正在核对，请查看原任务状态。如需协助，可复制「错误详情」反馈给我们。';
   if (code === 'VIDEO_MODEL_RETIRED') return '请更换可用的视频模型后重新生成。';
   if (code === 'VIDEO_REFERENCE_PERSON_RESTRICTED' || /未通过内容审核/.test(reason)) return '请根据上述原因检查描述和参考素材，调整后重新生成。原因不明确时，可复制「错误详情」反馈给我们。';
   // Provider codes can contain BALANCE/INSUFFICIENT/NOT_FOUND; none proves the customer's wallet or work is at fault.
-  if (isProviderModelError(code)) return '请根据上述原因处理。原因不明确或多次出现时，可复制「错误详情」反馈给我们。';
+  // 原因说到了用户能改的东西才让用户改，其余（模型或服务方的问题）就是重试。
+  if (isProviderModelError(code)) return CHANGEABLE_REASON.test(reason) ? '请根据上述原因调整后重试。多次失败时，可复制「错误详情」反馈给我们。' : '请重试。多次失败时，可复制「错误详情」反馈给我们。';
   if (/_NOT_FOUND$/.test(code)) return '此内容已不存在，可能已在其他地方删除。请刷新页面查看最新内容。';
   if (/_RUNNING$/.test(code)) return '请等待进行中的操作完成后重试。';
   if (code === 'NETWORK_ERROR') return '请检查网络并刷新页面，确认操作是否已生效后决定是否重试。';
@@ -288,7 +297,7 @@ export function openStudioFailure(modal: ModalApi, failure: StudioFailure) {
   instance = modal.error({
     title: failure.title ?? `${failure.action}${/[0-9A-Za-z]$/.test(failure.action) ? ' ' : ''}没有完成`,
     content: <div className="studio-failure">
-      <section><h4>原因</h4><p>{error.code === 'NETWORK_ERROR' ? '网络连接中断，未收到服务器响应。' : error.message}</p></section>
+      <section><h4>原因</h4><p>{error.code === 'NETWORK_ERROR' ? NETWORK_MESSAGE : error.message}</p></section>
       {extra}
       <section><h4>下一步</h4><div>{failure.next === undefined ? failureNext(error.code, failure.refreshed, error.message) : isConflict(error.code) ? <><p>{conflictNext(!!failure.refreshed)}</p>{failure.next}</> : failure.next}</div></section>
       <details className="studio-failure-details" open={!!failure.title}><summary>错误详情</summary><ErrorDetails error={error}/></details>
