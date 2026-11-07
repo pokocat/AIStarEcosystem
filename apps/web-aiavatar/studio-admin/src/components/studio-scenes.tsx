@@ -14,15 +14,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@ai-star-eco/ui/ui/switch";
 import { Textarea } from "@ai-star-eco/ui/ui/textarea";
 import { Tabs, TabsList, TabsTrigger } from "@ai-star-eco/ui/ui/tabs";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@ai-star-eco/ui/ui/alert-dialog";
 import { cn } from "@ai-star-eco/ui/ui/utils";
 import type {
   StudioSceneBrief,
   StudioImageScene, StudioSceneAdminView, StudioSceneCatalog, StudioSceneGroup, StudioSceneHomeGoal, StudioSceneMedia, StudioSceneOptionGroup, StudioVideoScene,
 } from "@ai-star-eco/types/ip-studio-scenes";
 import { ApiError, StudioScenesApi } from "@/lib/api";
+import { useConfirmDialog } from "@/components/use-confirm-dialog";
 
 type Kind = "image" | "video";
 const IMAGE_RATIOS = ["1:1", "3:4", "4:3", "9:16", "16:9"];
@@ -36,21 +34,6 @@ function blankScene(kind: Kind, group: string, id: string): StudioImageScene | S
     ? { id, group, title: "新场景", description: "一句话说清这个场景做什么", refs: [{ label: "参考图", required: true, hint: null }], prompt: "以参考图为准，", hint: "可以补充想要的细节", ratio: "1:1", enabled: false }
     : { id, group, title: "新场景", description: "一句话说清这类视频", images: { label: "商品图", required: false, max: 4 }, video: null, character: false, voice: false,
       placeholder: "说说想拍什么", textRequired: false, durations: [15, 25, 30], duration: 25, ratio: "9:16", structure: "开头……中间……结尾……", ideas: [], skill: "video-generation", enabled: false };
-}
-
-/** 不用浏览器原生 confirm：一个 AlertDialog，返回用户点没点确定。 */
-type ConfirmRequest = { title: string; description: string; confirmLabel: string; resolve: (ok: boolean) => void };
-function useConfirmDialog() {
-  const [request, setRequest] = React.useState<ConfirmRequest | null>(null);
-  const confirm = (title: string, description: string, confirmLabel: string) => new Promise<boolean>(resolve => setRequest({ title, description, confirmLabel, resolve }));
-  const close = (ok: boolean) => { request?.resolve(ok); setRequest(null); };
-  const dialog = <AlertDialog open={!!request} onOpenChange={open => { if (!open) close(false); }}>
-    <AlertDialogContent>
-      <AlertDialogHeader><AlertDialogTitle>{request?.title}</AlertDialogTitle><AlertDialogDescription>{request?.description}</AlertDialogDescription></AlertDialogHeader>
-      <AlertDialogFooter><AlertDialogCancel onClick={() => close(false)}>取消</AlertDialogCancel><AlertDialogAction onClick={() => close(true)}>{request?.confirmLabel}</AlertDialogAction></AlertDialogFooter>
-    </AlertDialogContent>
-  </AlertDialog>;
-  return { confirm, dialog };
 }
 
 export function StudioScenes() {

@@ -1437,3 +1437,7 @@ Studio 工作线程默认 24，单个模型的上限看端点配置；图片调�
 **2026-11-06 共享线程池调整（待发布）**：`IpStudioProperties.maxConcurrent` 默认从 24 改为 30，需要 server 重启；与 AI 视频任务入口恢复一起发布 server、web-aiavatar，选择无生成任务且无近期用户操作的空闲窗口，不自动恢复或重提失败任务。
 
 真源 `docs/studio-segmented-video.md`。时长超过所选模型单段上限时一键做到成片：写分段脚本 → 审脚本 → 分镜图（第 1 张之后都参考它）→ 审分镜图（不合格重出一次）→ 各段全能参考出片 → 合成。切段只在 `SegmentedPlan`，页面显示服务端算的。复用连续制作（`StudioPlanExecutor`），但没有对话和确认卡（`threadId` 为空），用户在页面上看价点生成就是确认；提示词做到那一步才编（`StudioSegmentedRun`），格式用导演台的。一键到底只对带 `segmented` 状态的执行生效，别的连续制作照旧停下来问。**导演台一段仍然最长 15 秒**（`DirectorService.MAX_CLIP_SECONDS`），模型放开到 30 秒只给这条流程。别的模型配到 15 秒以上，要先有这版服务端再改配置。真模型整条链没跑过，见 TODO。
+
+### Studio 后台模型配置（2026-11-07，本地未发布）
+
+`studio-admin` 的 `/models` 替代统一后台和 `apps/admin` 的 LLM API 页，接口 `/api/admin/studio/model-config/command` 复用 `ModelManagementService` 的命令（白名单在 `AdminStudioModelConfigController`）。规格一律当不透明 JSON：前端不解析、不用部分字段的表单重建，没改就不发，这样编辑器不认识的字段（如 `wire.requireExactOutputSize`）丢不了；服务端对发来的规格严格读取，不认识的字段报错而不是丢弃。`endpointSave` 没传五个限额会清空（`rpmLimit`、`tpmLimit`、`dailyTokenQuota`、`dailyCostQuotaMicros`、`alertFailureRatePct`），其余字段没传才是不改，保存规则集中在 `src/lib/model-config.ts`。规则见 `specs/BUSINESS_RULES.md`「Studio 后台模型配置」，页面说明和未搬部分见 `docs/platform-model-management.md`。

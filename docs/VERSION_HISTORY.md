@@ -4,6 +4,10 @@
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
 
+### Studio 后台模型配置 · 2026-11-07（本地，未发布）
+
+`studio-admin` 新增 `/models`（模型接入、IP Studio 模型、功能与售价），替代统一后台和 `apps/admin` 的 LLM API 页，接口 `POST /api/admin/studio/model-config/command`，无迁移。规格当不透明 JSON，没改不发，服务端拒收不认识的规格字段；见 `docs/platform-model-management.md`。素材库绑定等 `dev/video-asset-library` 合入后补。
+
 ### AI 艺人孵化演示同步设计方第二版 · 2026-11-07
 
 `apps/web-incubator` 同步设计方 11-05 的第二版压缩包，以第一版为基准三方合并，保留语言固定中文、去原生弹窗、手机宽度、地址栏同步和运营后台入口。工作台导航重排为七组加页签，新增总览、AI 图片、AI 视频，导演台支持多项目和画布 / 流程两种浏览，批量工具重做，默认暗色可切亮色。残留的三位真实艺人换成虚拟，演示图增加到 177 张。修了设计包暗色样式把弹窗反转成浅底白字、琥珀按钮白字的问题。发布记录见 `docs/releases/web-incubator-v2-release-20261107.md`。
