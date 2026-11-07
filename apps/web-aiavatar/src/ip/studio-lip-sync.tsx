@@ -39,7 +39,7 @@ export function StudioLipSync({actions,open,onClose,projectId,nodes,initialNodeI
     <Button icon={<StudioAiIcon/>} title="AI 处理，将消耗积分" type="primary" loading={busy||quoting} disabled={loading||!!error||!quote||!video||!audio||!selected} onClick={()=>{if(quote&&video&&audio&&selected)void onSubmit({model:selected.endpointId,videoStorageKey:video.metadata!.storageKey!,audioStorageKey:audio.metadata!.storageKey!,maxCost:quote.cost},video.id,audio.id);}}>{quote?`生成口型视频 · ${quote.cost} 积分`:"请选择视频和配音"}</Button>
   </div>}>
     {actions}
-    <div className="studio-director-form"><p>选择画布中的单人视频和配音，让人物按此音频说话。结果另存为新片段，原视频仍可使用。</p>
+    <div className="studio-director-form"><p>选择画布中的单人视频和配音，生成口型同步的新片段，原视频保留。</p>
       {error&&<p><StudioErrorNotice error={error}/><Button onClick={reload}>重新加载</Button></p>}
       {!loading&&!error&&!catalog?.models.length&&<p role="status">口型同步暂不可用，请联系管理员配置口型模型。</p>}
 

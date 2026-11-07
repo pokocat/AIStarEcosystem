@@ -161,8 +161,7 @@ test("a 404 that cannot be attributed to a work only shows its message", async (
   const title = await screen.findByRole("textbox", { name: "作品名" });
   fireEvent.change(title, { target: { value: "改个名字" } });
   fireEvent.blur(title);
-  // 默认只等 1 秒，高负载下来不及；这里等的是失败提示，不是在测速度。
-  await waitFor(() => expect(failure.show).toHaveBeenCalled(), { timeout: 5_000 });
+  await waitFor(() => expect(failure.show).toHaveBeenCalled());
   expect(screen.queryByText("作品已删除或不存在")).toBeNull();
 });
 

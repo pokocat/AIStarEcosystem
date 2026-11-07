@@ -49,7 +49,7 @@
     {
       "id": "free",
       "group": "ip",
-      "title": "自由出图",
+      "title": "自由生成",
       "description": "自己写描述，可添加参考图",
       "refs": [
         {

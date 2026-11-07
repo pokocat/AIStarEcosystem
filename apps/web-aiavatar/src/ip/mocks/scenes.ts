@@ -7,7 +7,7 @@ export const MOCK_SCENES: StudioSceneCatalog = {
   imageGroups: [{ id: "ip", title: "IP 形象" }, { id: "person", title: "人物" }, { id: "product", title: "商品" }],
   videoGroups: [{ id: "commerce", title: "电商带货" }, { id: "ip", title: "IP 内容" }],
   image: [
-    { id: "free", group: "ip", title: "自由出图", description: "自己写描述，可添加参考图", refs: [{ label: "图片", required: false, max: 9 }], example: "把杯子放进阳光咖啡馆的木桌上，旁边放一束小花，杯口冒热气", prompt: "", hint: "描述想要的画面", ratio: "3:4" },
+    { id: "free", group: "ip", title: "自由生成", description: "自己写描述，可添加参考图", refs: [{ label: "图片", required: false, max: 9 }], example: "把杯子放进阳光咖啡馆的木桌上，旁边放一束小花，杯口冒热气", prompt: "", hint: "描述想要的画面", ratio: "3:4" },
     { id: "face-turnaround", group: "person", title: "脸部三视图", description: "正脸、半侧脸、侧脸，做角色参考", refs: [{ label: "人脸", required: true, max: 3, role: "要参照的人脸", hint: "添加同一人的不同角度或表情，结果更接近本人" }], example: "自然微笑，偏写实", prompt: "以参考人脸为准，生成纯白背景的头部三视图。", hint: "可以补充气质、表情或写实程度", ratio: "16:9" },
     { id: "white-background", group: "product", title: "商品白底图", description: "白底主图加多角度图，上架直接用", refs: [{ label: "商品", required: true, max: 9, role: "要做白底图的商品" }], example: "保留瓶身的拉丝质感，其中一个角度打开瓶盖", prompt: "把商品放到纯白背景上。", hint: "可以补充角度和摆放", ratio: "16:9",
       options: [{ key: "angle", label: "出图方式", defaultValue: "front", choices: [{ value: "front", label: "正面", prompt: "商品正面朝向镜头" }, { value: "top", label: "俯拍", prompt: "从正上方俯拍商品" }] }] },

@@ -155,6 +155,6 @@ test("image: edit-type scenes put the original in front of the result for compar
   fillField(await screen.findByRole("textbox", { name: "想要的画面" }), "一只猫");
   await pickFromLibrary();
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "生成图片" })); });
-  await screen.findByRole("img", { name: /自由出图第 1 张/ }, { timeout: 4000 });
+  await screen.findByRole("img", { name: /自由生成第 1 张/ });
   expect(screen.queryByRole("button", { name: "查看原图" })).toBeNull();
 });

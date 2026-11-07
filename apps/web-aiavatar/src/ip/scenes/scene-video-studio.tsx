@@ -702,7 +702,7 @@ export function SceneVideoStudio() {
   const latestChanges = specChanges(latestScript?.metadata?.studio?.sceneDirector);
   const latestChangesShown = specChangesShown(latestScript?.metadata?.studio?.sceneDirector);
   // 长视频的段数和价：服务端按所选模型算（拖滑杆时等一下再问，慢回来的旧结果不盖新选择）。
-  const [longPrice, setLongPrice] = useState<{ key: string; spec: string; price?: StudioSegmentedVideoPrice; enterprise?: StudioSegmentedVideoPrice; undecided?: boolean; error?: string }>();
+  const [longPrice, setLongPrice] = useState<{ key: string; spec: string; price?: StudioSegmentedVideoPrice; enterprise?: StudioSegmentedVideoPrice; error?: string }>();
   const longModel = chosenVideo?.selectableById ? chosenVideo.endpointId : undefined;
   const longSpec = long ? JSON.stringify([longModel, usedTier, duration, ratio, images.length, !!character, !!voice, optimize]) : "";
   const longKey = long ? JSON.stringify([longSpec, priceRevision]) : "";
@@ -727,7 +727,7 @@ export function SceneVideoStudio() {
           segmentedVideoPrice({ ...query, payer: "personal" }, controller.signal),
           "enterpriseId" in payer && payer.enterpriseId ? segmentedVideoPrice({ ...query, payer: "enterprise", enterpriseId: payer.enterpriseId }, controller.signal).catch(() => undefined) : undefined,
         ]);
-        return { price, enterprise, undecided: true };
+        return { price, enterprise };
       };
       load().then(result => { if (!controller.signal.aborted && result) setLongPrice({ key: longKey, spec: longSpec, ...result }); })
         .catch(e => { if (!controller.signal.aborted) setLongPrice({ key: longKey, spec: longSpec, error: sceneHintText(e, "价格加载失败，请稍后刷新重试。") }); });
@@ -897,7 +897,7 @@ export function SceneVideoStudio() {
   const groupTitle = catalog.videoGroups.find(g => g.id === scene.group)?.title;
   // 选的时长这个模型出不了（比下限短）：照实说按几秒出，不悄悄换。
   // 比单段上限长的照实说会怎么分（换了个更短的模型时最常见），不悄悄改时长。
-  const durationNote = long ? (segments.length ? `当前模型单段最长 ${contract!.maxSeconds} 秒，${duration} 秒将分 ${segments.length} 段（${segments.join(" + ")}）。脚本、分镜图、各段视频和合成将一次完成。` : "")
+  const durationNote = long ? (segments.length ? `当前模型单段最长 ${contract!.maxSeconds} 秒，${duration} 秒将分 ${segments.length} 段（${segments.join(" + ")}）。完成后自动合成。` : "")
     : !recreation && contract && usedDuration !== duration
     ? contract.minSeconds === contract.maxSeconds ? `当前模型仅支持 ${usedDuration} 秒` : `当前模型最短 ${contract.minSeconds} 秒，将按 ${usedDuration} 秒生成` : "";
   const pickDuration = (n: number) => { durationTouched.current = true; setDuration(n); setHint(""); };
@@ -908,7 +908,7 @@ export function SceneVideoStudio() {
   // 规格变了旧价立刻作废；规格没变只是重新报价（切回页面）时，新价回来之前继续显示上一份。
   const longPriced = longReady?.price ? longReady : longPrice?.spec === longSpec && longPrice.price ? longPrice : undefined;
   const longShown = longPriced?.price;
-  const longView = longShown ? describeSegmentedPrice(longShown, longPriced?.enterprise, longPriced?.undecided) : undefined;
+  const longView = longShown ? describeSegmentedPrice(longShown, longPriced?.enterprise) : undefined;
   const onPick = (id: string) => { const next = findVideoScene(catalog, id); if (next && (next.id !== scene.id || draftRef.current)) goToScene(next); };
   const tile = (kind: Exclude<Slot, "image">, media: Media | undefined, label: string, Icon: typeof Video, optional: boolean, clear: () => void) =>
     <div className={`scene-media${media ? " is-filled" : ""}`}>
@@ -1046,9 +1046,9 @@ export function SceneVideoStudio() {
             <span>生成视频</span>
             {/* 普通视频的价格是确定的；长视频和爆款复刻要看实际用量，才写「约」。算不出就不显示，不编。 */}
             {caps?.mock ? <small>免费</small>
-              : long ? longView && <small>约 {longView.shown !== longView.standard && <s><span className="scene-sr-only">原价 </span>{longView.standard.toLocaleString("zh-CN")}</s>}
+              : long ? longView && <small title={longView.discount}>约 {longView.shown !== longView.standard && <s><span className="scene-sr-only">原价 </span>{longView.standard.toLocaleString("zh-CN")}</s>}
                 {longView.shown !== longView.standard && <span className="scene-sr-only">，折后 </span>}{longView.shown.toLocaleString("zh-CN")} 积分{longView.from ? "起" : ""}</small>
-              : taskKind === 'direct' ? price && <small className={price.pending ? "is-pending" : undefined} aria-busy={price.pending || undefined}>
+              : taskKind === 'direct' ? price && <small title={price.discount} className={price.pending ? "is-pending" : undefined} aria-busy={price.pending || undefined}>
                 {price.shown !== price.standard && <s><span className="scene-sr-only">原价 </span>{price.standard.toLocaleString("zh-CN")}</s>}
                 {price.shown !== price.standard && <span className="scene-sr-only">，折后 </span>}{price.shown.toLocaleString("zh-CN")} 积分{price.from ? "起" : ""}</small>
               : taskQuote?.key === taskPriceKey && taskQuote.price && <small>约 {taskQuote.price.estimated.toLocaleString("zh-CN")} 积分</small>}
@@ -1056,8 +1056,8 @@ export function SceneVideoStudio() {
           {/* 点了没做成的原因用提醒色；还没动手时只是灰字说一句还差什么。 */}
           {(hint || goBlocker) && <p id="scene-video-go-note" className={`scene-hint${hint ? "" : " is-note"}`} role="status">{hint || goBlocker}</p>}
           {taskKind === 'direct' && price?.note && <p className="scene-hint is-note">{price.note}</p>}
-          {long && longShown && longView && <p className="scene-hint is-note scene-price-note">{longView.note}视频{longView.from ? "费起价" : ""} {longView.video.toLocaleString("zh-CN")} 积分，分镜图 {longShown.boards} 张 {longShown.boardCost.toLocaleString("zh-CN")} 积分，{chosenVideo?.supportsPromptOptimization && optimize ? "写脚本、审核和优化提示词" : "写脚本和审核"}按实际用量结算，分镜图优惠和模型赠款在执行时抵扣。</p>}
-          {!caps?.mock && taskQuote?.key === taskPriceKey && taskQuote.price && <p className="scene-hint is-note scene-price-note">按实际完成的内容结算，本次上限 {taskQuote.price.cap.toLocaleString("zh-CN")} 积分。</p>}
+          {long && longShown && longView && <p className="scene-hint is-note scene-price-note">{longView.videoNote}分镜图 {longShown.boardCost.toLocaleString("zh-CN")} 积分，其余按实际用量结算{!caps?.mock && taskQuote?.key === taskPriceKey && taskQuote.price ? `，最多 ${taskQuote.price.cap.toLocaleString("zh-CN")} 积分` : ""}。</p>}
+          {recreation && !caps?.mock && taskQuote?.key === taskPriceKey && taskQuote.price && <p className="scene-hint is-note scene-price-note">按实际用量结算，最多 {taskQuote.price.cap.toLocaleString("zh-CN")} 积分。</p>}
           {!!draft?.doc.sceneVideoSubmissions?.length && <div className="video-pending-submissions">{draft!.doc.sceneVideoSubmissions!.map(request => <p key={request.clientRequestId}>提交结果待确认。<button type="button" disabled={busy} onClick={() => void startSceneTask(request.kind, request)}>确认原任务</button></p>)}</div>}
           {!recreation && !long && plan?.note && <p className="scene-hint is-note">{plan.note}</p>}
           {!recreation && plan?.used.some(m => m.mediaType === 'audio') && <p className="scene-hint is-note" role="status">{AUDIO_REFERENCE_NOTICE}</p>}
@@ -1086,7 +1086,7 @@ export function SceneVideoStudio() {
             onConfirm={() => void confirmLong(record)} onFailure={(action, error) => showFailure({ action, error })}/>)}{rows.map(row => <VideoRow key={row.id} row={row} run={live[row.id]} busy={busy} submitting={submitting === row.id}
             onRetry={() => void retry(row)} onConfirm={() => void confirmOriginal(row)} onReuse={() => reuseVideo(row)}
             onStop={() => { const id = row.metadata?.studio?.runId; if (id) void cancelRun(id).catch(e => showFailure({ action: "停止生成", error: e })); }}/>)}</ol>
-        : <SceneEmpty title="还没有作品" note="填写提示词后点击「生成视频」，生成的视频将显示在这里。"/>}
+        : <SceneEmpty title="还没有作品" note="生成的视频将显示在这里。"/>}
       </div>
     </section>
     </SceneVideoWorkspace>
@@ -1094,7 +1094,7 @@ export function SceneVideoStudio() {
       mediaType={picking === "voice" ? "audio" : picking === "video" ? "video" : "image"}
       max={picking === "image" ? Math.max(1, (scene.images.max ?? 6) - images.length) : 1}
       title={`选择${picking === "image" ? scene.images.label : picking === "character" ? "出镜人物" : picking === "voice" ? "声音" : scene.video?.label ?? "参考视频"}`}
-      intro="从资产库选择。新文件可点击「上传到资产库」，上传后自动选中，原文件不会被修改。"
+      intro="从资产库选择，也可上传新文件。"
       onClose={() => setPicking(undefined)} onAssets={assets => addFromLibrary(picking, assets)}/></div>}
     <HubTabBar/>
   </main>;
@@ -1232,8 +1232,8 @@ function VideoSettingsPanel({ min, max, single, duration, onDuration, segments, 
       <div className="scene-choice-row">
         <button type="button" aria-pressed={optimize} onClick={() => onOptimize(true)}>优化后生成</button>
         <button type="button" aria-pressed={!optimize} onClick={() => onOptimize(false)}>按原文生成</button></div>
-      {/* 2026-10-30 线上复核：优化提示词是另一笔文字任务，要说清不含在视频费用里、可以不要。 */}
-      <p>{optimize ? "生成前按此模型的写法优化提示词。优化提示词按实际用量另计，不含在视频费用中。" : "按原文生成，只收取视频费用。"}</p></div>}
+      {/* 2026-10-30 线上复核：优化提示词是另一笔文字任务，要说清是视频费之外的另一笔、可以不要。 */}
+      {optimize && <p>按此模型的写法优化提示词，按实际用量另计。</p>}</div>}
     {options?.map(g => <div key={g.key} className="scene-setting-row" role="group" aria-label={g.label}><span>{g.label}</span>
       <div className="scene-choice-row">{g.choices.map(c => <button key={c.value} type="button" aria-pressed={(picked[g.key] ?? g.defaultValue) === c.value} title={c.prompt}
         onClick={() => onPick(g.key, c.value)}>{c.label}</button>)}</div></div>)}

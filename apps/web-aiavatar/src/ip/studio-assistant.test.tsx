@@ -969,7 +969,7 @@ test('个人 IP scene ratio follows the selection, and hand edits survive until 
   expect(composer().value).toBe(edited);
   expect(within(form).getByRole('region', { name: '完整提示词正文' }).textContent).toBe(edited);
   expect(within(form).queryByRole('group', { name: '画幅' })).toBeNull();
-  expect(within(form).getByRole('note', { name: '提示词说明' }).textContent).toContain('你已手动修改提示词');
+  expect(within(form).getByRole('note', { name: '提示词说明' }).textContent).toContain('提示词已手动修改');
   fireEvent.click(within(form).getByRole('button', { name: '按选项重写' }));
   expect(composer().value).toContain('画幅比例：1:1。风格：未来科技元宇宙风。');
   expect(composer().value).not.toMatch(/16:9|深绿色/);

@@ -59,9 +59,9 @@ export function useRewriteClip(work: DirectorWork, apply: (w: DirectorWork) => v
     confirmDirectorAction(modal, {
       title: `重写片段 ${clip.order} 的分镜脚本？`,
       content: <ul className="director-regen-notes">
-        <li>AI 按本集正文重写此片段的镜头，分镜图提示词和视频提示词随之更新；此片段在本集中的位置和剧情不变。</li>
+        <li>AI 按本集正文重写此片段的镜头和提示词，位置和剧情不变。</li>
         <li>只修改此片段的文字，不生成图片和视频，其他片段不变。</li>
-        {hasMedia(clip) && <li>已有的分镜图和视频保留在历史版本中，将标记为「需更新」，是否重新生成由你决定。</li>}
+        {hasMedia(clip) && <li>已有的分镜图和视频保留在历史版本中，将标记为「需更新」。</li>}
         {lost.map(t => <li key={t} className="is-warn">{t}</li>)}
         <li>{work.pricing.mock ? costText(0, true) : "按实际用量结算"}</li>
       </ul>,
@@ -98,13 +98,13 @@ export function RewriteEpisodeDialog({ work, ep, apply, onClose }: { work: Direc
   return <div className="director-dialog-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && !busy && onClose()}>
     <div className="director-dialog director-rewrite-dialog" role="dialog" aria-modal="true" aria-labelledby="director-rewrite-title" ref={dialogFocus} tabIndex={-1}>
       <header><h2 id="director-rewrite-title">重写第 {ep.no} 集分镜脚本</h2><button type="button" aria-label="关闭" onClick={onClose} disabled={!!busy}><X size={18}/></button></header>
-      <p className="director-dialog-note">AI 按本集正文重写镜头，各片段的分镜图提示词和视频提示词随之更新。只修改文字，不生成图片和视频，其他集不受影响。如只需重写某个片段，请关闭此窗口，在该片段上点击「重写」。</p>
+      <p className="director-dialog-note">AI 按本集正文重写镜头和提示词，不生成图片和视频，其他集不受影响。</p>
       <div className="director-field" role="radiogroup" aria-label="重写方式">
         <span>重写方式</span>
         <label className="director-check">
           <input type="radio" name="director-rewrite-mode" checked={mode === "keep"} onChange={() => setMode("keep")}/>
           <span><b>保留现有 {clips.length} 个片段，逐段重写</b>
-            <small>片段的数量和顺序不变，每段重写镜头。{withMedia.length ? "已有的分镜图和视频保留在历史版本中，将标记为「需更新」，是否重新生成由你决定。" : ""}</small></span>
+            <small>片段的数量和顺序不变，每段重写镜头。{withMedia.length ? "已有的分镜图和视频保留在历史版本中，将标记为「需更新」。" : ""}</small></span>
         </label>
         <label className={`director-check ${withMedia.length ? "is-disabled" : ""}`}>
           <input type="radio" name="director-rewrite-mode" checked={mode === "resplit"} disabled={withMedia.length > 0} onChange={() => setMode("resplit")}/>

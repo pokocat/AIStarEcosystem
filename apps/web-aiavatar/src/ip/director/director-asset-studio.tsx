@@ -364,8 +364,8 @@ function AssetReference({ work, asset, apply, setError, disabled }: Pick<Workben
       {ref?.url ? <img src={ref.url} alt={`${asset.name}的参考图`}/> : <span className="director-ref-empty"><ImageIcon size={16}/></span>}
       <div className="director-ref-text">
         <strong>{busy ? "正在上传参考图…" : ref ? `生成资产图时参照其${takes}` : `生成资产图时由 AI 参照一张图（取${takes}）`}</strong>
-        <small>{ref ? (asset.image.adoptedId ? "不会替换当前资产图。如需按参考图生成新版本，请点击上方「重新生成」。" : "上传后不会立即生成。点击上方「生成资产图」时将参照此图。")
-          : "上传不会替换当前资产图，也不会自动生成，不消耗积分。"}</small>
+        <small>{ref ? (asset.image.adoptedId ? "不会替换当前资产图，点击「重新生成」时将参照此图。" : "点击「生成资产图」时将参照此图。")
+          : "不会替换当前资产图，不消耗积分。"}</small>
       </div>
       <div className="director-ref-actions">
         <button type="button" className="ip-brand-secondary" disabled={disabled || !!busy} onClick={() => file.current?.click()}><Upload size={14}/>{ref ? "更换参考图" : "上传作为参考图"}</button>

@@ -183,7 +183,7 @@ export function StudioWorkEditor(p: Props) {
               {captionProblem ? <p className="studio-work-note is-error" role="status">{captionProblem}</p>
                 : <p className="studio-work-note">{known ? `成片共 ${formatStudioSeconds(total)}，字幕时间不能超过成片时长。` : ""}字幕按填写的时间显示，不会自动识别台词。</p>}
             </div>
-            <p className="studio-work-note">品牌和标题显示在画面左上角，结尾提示显示在底部，全片持续显示。预览中的位置仅供参考，以合成后的成片为准。</p>
+            <p className="studio-work-note">品牌和标题显示在左上角，结尾提示显示在底部，实际位置以成片为准。</p>
           </>}
         </section>
 

@@ -1104,7 +1104,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         if(busy||!selected.metadata?.studio?.runId)return;setBusy(true);const token=epoch.current;
         try{const run=await extractStudioLipSync(projectId,selected.metadata.studio.runId);if(epoch.current!==token)return;
           patch(selected.id,n=>applyStudioRun(n,run));setRuns(current=>[run,...current.filter(r=>r.id!==run.id)]);await saveStudioDocument(projectId);
-          message.success("口型片段已提取，原始对照视频保留在版本中，未额外扣除积分。");}
+          message.success("口型片段已提取，未额外扣除积分。");}
         catch(e){if(epoch.current===token)message.error(e);}
         finally{if(epoch.current===token)setBusy(false);}
       })()}>提取口型片段 · 免费</button>);
@@ -1349,15 +1349,15 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         }).catch(e=>message.error(e));}}/>
     </StudioFloatingPanel>
     <Modal title="本次创作输入" open={!!runDetail} onCancel={()=>setRunDetail(undefined)} footer={null} width={720} getContainer={containers}>
-      {runDetail&&<div className="studio-director-form"><p>{runDetail.output.mock||Boolean((runDetail.inputs as unknown as {mock?:boolean}).mock)?"测试响应：使用已有样例，本次未向模型发送请求。":"此处保留提交时的输入快照。"}</p>
-        {runDetail.kind==="studio-lip-sync"?<p>本次采用人物视频与配音驱动，具体素材和时长保存在下方快照中。</p>:<label>{runDetail.kind==="studio-audio"?"配音文案":"创作要求"}<Input.TextArea readOnly rows={8} value={(runDetail.inputs as unknown as {text?:string}).text||(runDetail.inputs as unknown as {prompt?:string}).prompt||""}/></label>}
+      {runDetail&&<div className="studio-director-form"><p>{runDetail.output.mock||Boolean((runDetail.inputs as unknown as {mock?:boolean}).mock)?"测试响应：使用已有样例，本次未向模型发送请求。":"此处显示提交时的内容。"}</p>
+        {runDetail.kind==="studio-lip-sync"?<p>本次由人物视频和配音生成，素材和时长见下方。</p>:<label>{runDetail.kind==="studio-audio"?"配音文案":"创作要求"}<Input.TextArea readOnly rows={8} value={(runDetail.inputs as unknown as {text?:string}).text||(runDetail.inputs as unknown as {prompt?:string}).prompt||""}/></label>}
         {runDetail.kind==="studio-video"&&<StudioVideoRewriteDetail run={runDetail}/>}
         <details><summary>查看参考、版本与参数快照</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",fontSize:12}}>{JSON.stringify(runDetail.inputs,null,2)}</pre></details></div>}
     </Modal>
     <Modal open={!!specConflict} title="描述和设置不一致" getContainer={containers} width={440} onCancel={()=>specConflict?.resolve("cancel")}
       footer={[<Button key="keep" onClick={()=>specConflict?.resolve("keep")}>按当前设置生成</Button>,<Button key="adopt" type="primary" onClick={()=>specConflict?.resolve("adopt")}>按描述修改设置</Button>]}>
       {specConflict&&<div className="studio-director-form"><p>描述中写的是 {studioSpecConflictText(specConflict.conflict).said}，当前设置是 {studioSpecConflictText(specConflict.conflict).set}。</p>
-        <p>模型按设置生成视频，描述中的规格不会自动生效。修改设置后费用可能变化，确认前会显示新费用。</p></div>}
+        <p>模型按设置生成视频，描述中的规格不会自动生效。</p></div>}
     </Modal>
     <StudioFrameIntentDialog intent={frameIntent?.intent} model={nativeVideo} getContainer={containers}
       onClosed={()=>{if(!focusFrameSlot.current)return;focusFrameSlot.current=false;

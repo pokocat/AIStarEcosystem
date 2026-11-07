@@ -214,7 +214,7 @@ export function StudioAssistantStarterForm({ config, slots, options, fields, edi
     {ipSelection && <div className="studio-assistant-starter-prompt-note" role="note" aria-label="提示词说明">
       <strong>{ipSelection.ratio} · {ipSelection.picture.label}</strong>
       <p>{ipSelection.picture.layout}</p>
-      <p>{edited ? "你已手动修改提示词，切换选项不会覆盖。点击「按选项重写」可使用当前选择。" : "完整提示词已填入下方输入框，包含人物特征、风格、版式和需要避免的内容，可直接发送或修改。"}</p>
+      <p>{edited ? "提示词已手动修改，切换选项不会覆盖。" : "提示词已填入下方输入框，可修改后发送。"}</p>
     </div>}
     {ipSelection && <details className="studio-assistant-starter-full-prompt" open>
       <summary>完整提示词</summary>

@@ -455,7 +455,7 @@ function AssistantWelcome({ work, tab }: { work: DirectorWork; tab: AssistantTab
       : tab === "assets" ? [`${work.assets.find(a => a.kind === "character")?.name ?? "这个角色"}更疲惫一点，但别显老`, "保留长相，只换成冬天的衣服", "这个场景再旧一些"]
         : ["先看看这个开头，哪里不够吸引人？", "只改对白，其他别动", "续写下一场"];
   return <div className="director-assistant-welcome">
-    <p>{noScript ? "有剧本后，可在此继续评价、续写和局部修改。" : "选中正文，或点击镜头、图片旁的「AI」按钮，指定要修改的内容。讨论时只给出分析和方向，你明确要求修改后才给出修改建议，采用前可先对比。"}</p>
+    <p>{noScript ? "有剧本后，可在此继续评价、续写和局部修改。" : "选中正文，或点击镜头、图片旁的「AI」按钮，指定要修改的内容。采用建议前可先对比。"}</p>
     {tips.length > 0 && <ul>{tips.map(t => <li key={t}>{t}</li>)}</ul>}
   </div>;
 }
@@ -528,10 +528,9 @@ export function proposalImpacts(work: DirectorWork, p: DirectorProposal): string
     out.push("本集已有分镜：采用后会提示分镜需要更新，不会自动重新生成。");
   const clip = p.clipId ? work.clips.find(c => c.id === p.clipId) : undefined;
   if (p.type === "clip.shots" && clip) {
-    out.push(clip.boardPromptCustom ? "分镜图提示词已自定义，不会随镜头更新；如需修改，可让助手一并调整。" : "分镜图提示词会按新镜头自动更新。");
-    out.push(clip.videoPromptCustom ? "视频提示词已自定义，不会随镜头更新；如需修改，可让助手一并调整。" : "视频提示词会按新镜头自动更新。");
-    if (clip.board.adoptedId) out.push("已有的分镜图将标记为「需更新」，不会自动重新生成。");
-    if (clip.video.adoptedId) out.push("已有的片段视频将标记为「需更新」，不会自动重新生成。");
+    if (clip.boardPromptCustom) out.push("分镜图提示词已自定义，不会随镜头更新。");
+    if (clip.videoPromptCustom) out.push("视频提示词已自定义，不会随镜头更新。");
+    if (clip.board.adoptedId || clip.video.adoptedId) out.push(`已有的${clip.board.adoptedId && clip.video.adoptedId ? "分镜图和视频" : clip.board.adoptedId ? "分镜图" : "视频"}将标记为「需更新」，不会自动重新生成。`);
   }
   if (p.type === "clip.prompt" && clip) {
     if (p.which === "board" && clip.board.adoptedId) out.push("已有的分镜图将标记为「需更新」；如需新图，请点击「生成新版本」。");
@@ -540,7 +539,6 @@ export function proposalImpacts(work: DirectorWork, p: DirectorProposal): string
   }
   const asset = p.assetId ? work.assets.find(a => a.id === p.assetId) : undefined;
   if (p.type === "asset.update" && asset) {
-    if (p.description && !p.prompt && !asset.promptCustom) out.push("出图提示词会按新设定自动更新。");
     if ((p.description && !asset.promptCustom) || p.prompt) { if (asset.image.adoptedId) out.push("已有的资产图将标记为「需更新」；如需新图，请点击「生成新版本」。"); }
   }
   return out;

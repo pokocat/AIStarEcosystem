@@ -284,7 +284,7 @@ function StopTextTasks({work,apply,setError}:WorkbenchProps) {
   const settling=work.tasks.some(task=>task.status==="stopping");
   if(!tasks.length&&!settling)return null;
   const label=(target:string)=>target==="script"?"写剧本":target==="script-more"?"写剧本":target==="split"?"拆分集":target.startsWith("extract")?"提取资产":target.startsWith("plan:")?"写分镜脚本":target.startsWith("reshoot:")?"重写分镜脚本":"本次创作";
-  const explain=settling?"已停止后续处理。已提交给模型的请求正在等待用量结算，将按实际用量计费。":"停止后已有内容将保留；已提交给模型的请求仍按实际用量计费。";
+  const explain=settling?"已停止。已提交给模型的请求按实际用量计费。":"停止后已有内容将保留；已提交给模型的请求仍按实际用量计费。";
   return <>
     {settling&&<span className="director-status-chip is-running" role="status" title={explain}><i className="director-chip-dot" aria-hidden/><span>已停止，等待用量结算</span></span>}
     {tasks.map(task=><button key={task.id} type="button" className="director-chip-stop" title={explain} disabled={!!busy}
@@ -347,7 +347,7 @@ const PIPELINE_ACTIONS: Record<string, string> = {
 
 /** 一键制作 is a shortcut, always in the header; the step-by-step route stays on the script page. */
 function OneClickButton({ startPipeline }: Pick<WorkbenchProps, "startPipeline">) {
-  return <button type="button" className="ip-brand-secondary director-oneclick" title="快捷方式：从剧本自动制作到成片（也可只制作到分镜脚本或分镜图），在后台执行，关闭页面不影响进行。如需逐步检查，请按剧本页的步骤操作。" onClick={startPipeline}><Sparkles size={15}/>一键制作<em className="director-shortcut-tag">快捷</em></button>;
+  return <button type="button" className="ip-brand-secondary director-oneclick" title="从剧本自动制作到成片，在后台执行，关闭页面不影响进行。" onClick={startPipeline}><Sparkles size={15}/>一键制作<em className="director-shortcut-tag">快捷</em></button>;
 }
 
 function DirectorNoticeToast({ work, apply, setError }: Pick<WorkbenchProps, "work" | "apply" | "setError">) {
@@ -446,7 +446,7 @@ export function StartPipeline({ work, episodeId, apply, setError, goTab, onClose
   // 只做到分镜脚本、范围里每集都写好了：估算里一次文字生成都没有，开始也什么都不会做。先说清楚，给出去哪重写。
   const scriptsDone = target === "plan" && !!est && est.text.count === 0 && work.episodes.length > 0;
   const scopeName = effectiveScope === "episode" ? `第 ${ep?.no} 集` : work.episodes.length > 1 ? `全部 ${work.episodes.length} 集` : "本集";
-  const doneNote = nothing || (scriptsDone ? `${scopeName}的分镜脚本均已写好。一键制作只补充未完成的步骤，不会重写已有的分镜脚本；如需重写，请在「分镜」点击「重写分镜脚本」（整集），或在片段上点击「重写」（单段）。` : "");
+  const doneNote = nothing || (scriptsDone ? `${scopeName}的分镜脚本均已写好。一键制作只补充未完成的步骤；如需重写，请在「分镜」点击「重写分镜脚本」。` : "");
   const start = () => void run("start", async () => {
     const billing = await chooseDirectorBilling("script", budget);
     try {
@@ -464,7 +464,7 @@ export function StartPipeline({ work, episodeId, apply, setError, goTab, onClose
   return <div className="director-dialog-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && onClose()}>
     <div className="director-dialog director-start-dialog" role="dialog" aria-modal="true" aria-labelledby="director-start-title" ref={dialogFocus} tabIndex={-1}>
       <header><h2 id="director-start-title">一键制作</h2><button type="button" aria-label="关闭" onClick={onClose}><X size={18}/></button></header>
-      <p className="director-shortcut-note">这是快捷方式，将自动连续完成后续步骤。如需逐步检查和修改，请关闭此窗口，按剧本页的步骤操作。</p>
+      <p className="director-shortcut-note">将自动连续完成后续步骤。如需逐步检查和修改，请关闭此窗口，按剧本页的步骤操作。</p>
       <div className="director-field"><span>制作到</span><div className="director-segmented">
         {TARGETS.map(t => <button key={t.key} type="button" aria-pressed={target === t.key} onClick={() => { setTarget(t.key); setCustom(null); }}>{t.label}</button>)}</div>
         <small>{note}已完成的步骤不重复执行，已有内容不会被覆盖。</small></div>

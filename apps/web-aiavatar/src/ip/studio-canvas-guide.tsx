@@ -27,7 +27,7 @@ export function StudioCanvasGuide({ assistantOpen, onStartAssistant }: { assista
   return <div className="studio-canvas-guide">
     <section className="studio-canvas-guide-card" aria-labelledby="studio-canvas-guide-title">
       <h2 id="studio-canvas-guide-title">画布还没有内容</h2>
-      <p>向助手描述需求，助手会把每一步放进画布。也可以从下方选择：</p>
+      <p>向助手描述需求，或从下方选择：</p>
       {!assistantOpen && <button type="button" className="studio-canvas-guide-primary" onClick={onStartAssistant}><AiMark size={14}/>与助手对话</button>}
       <div className="studio-canvas-guide-entries" role="group" aria-label="选择开始方式">
         {studioCanvasGuideEntries.map(({ action, label, hint, Icon }) => <button type="button" key={action} className="studio-canvas-guide-entry"

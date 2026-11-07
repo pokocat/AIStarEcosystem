@@ -839,7 +839,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
       {session.status === "error" && <div className="studio-assistant-pending" role="alert"><p>对话加载失败。</p><StudioErrorNotice error={session.loadError} autoReport={false}/><Button onClick={() => void session.reload()}>重试</Button></div>}
       {empty && session.status !== "error" && !starter && briefPrefilled && !!text.trim() && <div className="studio-assistant-welcome">
         <h3 className="w-full max-w-full">要求已填好</h3>
-        <p>可以修改后发送。需要生成时，助手会先说明所需积分。</p>
+        <p>可修改后发送。</p>
       </div>}
       {empty && session.status !== "error" && !starter && !(briefPrefilled && text.trim()) && <div className="studio-assistant-welcome">
         <h3 className="w-full max-w-full">想做点什么？</h3>

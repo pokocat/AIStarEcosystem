@@ -257,7 +257,7 @@ function MediaWall({ tab, library, folders, onFoldersChanged }: {
   const sourceName = SOURCES.find(s => s.key === source)?.label;
 
   return <div ref={wall} className="assets-wall-panel">
-    {isAi && <header className="assets-lib-head"><span className="assets-lib-icon is-ai"><AiMark size={14}/></span><div><h2>AI 生成</h2><p>AI 生成的图片、视频和音频会自动保存在这里，移到其他资产库后不再显示在此处。</p></div></header>}
+    {isAi && <header className="assets-lib-head"><span className="assets-lib-icon is-ai"><AiMark size={14}/></span><div><h2>AI 生成</h2><p>AI 生成的图片、视频和音频会自动保存在这里。</p></div></header>}
     <div className="assets-toolbar">
       <Input className="assets-search" prefix={<Search size={15}/>} allowClear aria-label="搜索资产" placeholder="搜索名称或提示词" value={keyword} onChange={e => setKeyword(e.target.value)}/>
       {!isAi && <Dropdown trigger={['click']} getPopupContainer={studioOverlayContainer} menu={{ items: SOURCES.map(s => ({ key: s.key, label: s.label })), selectable: true, selectedKeys: [source], onClick: ({ key }) => setSource(key) }}>

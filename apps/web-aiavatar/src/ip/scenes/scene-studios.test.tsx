@@ -168,9 +168,9 @@ test("视频：编导看商品图写脚本（请求先存进画布、带图）�
   await waitFor(() => expect(go.textContent).toContain("400 积分"));
   // 优化描述单独按用量扣、不含在视频价里，用户可以选按原文生成（只扣视频价）。
   const rewrite = within(screen.getByRole("group", { name: "提示词" }));
-  expect(rewrite.getByText(/不含在视频费用中/)).toBeTruthy();
+  expect(rewrite.getByText(/按实际用量另计/)).toBeTruthy();
   fireEvent.click(rewrite.getByRole("button", { name: "按原文生成" }));
-  expect(rewrite.getByText("按原文生成，只收取视频费用。")).toBeTruthy();
+  expect(rewrite.queryByText(/按实际用量另计/)).toBeNull();
   fireEvent.click(rewrite.getByRole("button", { name: "优化后生成" }));
   await waitFor(() => expect(go.disabled).toBe(false));
   await act(async () => { fireEvent.click(go); });
@@ -229,7 +229,10 @@ test("视频：按钮旁的价按服务端报价显示折扣（原价划掉）�
   // 还没写字、没放图也看得到折后价。
   await waitFor(() => expect(go().querySelector("s")?.textContent).toContain("600"));
   expect(go().textContent).toContain("300 积分");
-  expect(screen.getByText("H3限时折扣，省 300 积分。优化提示词按实际用量另计。")).toBeTruthy();
+  // 折后价已经划掉原价，折扣只放悬停提示；普通视频价格确定，不写上限。
+  expect(go().querySelector("small")?.title).toBe("H3限时折扣，省 300 积分");
+  expect(screen.getByText("优化提示词按实际用量另计。")).toBeTruthy();
+  expect(screen.queryByText(/最多 .*积分|本次上限|限时折扣/)).toBeNull();
   const [query, billing] = api.videoPrice.mock.calls.at(-1)!;
   expect(query).toMatchObject({ model: "ep-h3", tier: "768p", aspectRatio: "9:16", durationSec: 15 });
   expect(billing).toEqual({ mode: "personal" });

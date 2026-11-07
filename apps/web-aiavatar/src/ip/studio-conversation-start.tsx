@@ -50,7 +50,7 @@ export function StudioConversationStart({ onStart, creating, pending = false, co
           {creating ? <Loader2 size={18} className="studio-gallery-spinner" aria-hidden="true"/> : <ArrowUp size={18} aria-hidden="true"/>}<span>{pending ? "继续保存并打开" : "开始对话"}</span>
         </button>
       </div>
-      {version !== "next" && <p className="studio-conversation-start-note">助手回复按实际用量扣除积分；生成图片和视频前会先报价，确认后开始。也可浏览<Link href="/templates" className="studio-conversation-start-link">灵感</Link>或<Link href="/scenes" className="studio-conversation-start-link">专项创作</Link>。</p>}
+      {version !== "next" && <p className="studio-conversation-start-note">助手回复按实际用量计费，生成图片和视频前会先报价。也可浏览<Link href="/templates" className="studio-conversation-start-link">灵感</Link>或<Link href="/scenes" className="studio-conversation-start-link">专项创作</Link>。</p>}
     </div>
     {version === "next" && examples}
   </form>;

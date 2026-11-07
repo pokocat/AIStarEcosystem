@@ -122,7 +122,6 @@ export function PersonalAssetLibrary({ supplementaryTabs = [], hideTabs = false,
     <aside className="library-folders" aria-label="文件夹导航">
       <div className="library-folders-heading"><h2>文件夹</h2><button aria-label="新建文件夹" onClick={() => setFolderDialog({ name: '' })}><Plus size={17}/></button></div>
       <nav>{folderOptions.map(f => <button key={f.value} aria-current={folder === f.value ? 'true' : undefined} onClick={() => changeFolder(f.value)}>{f.value === 'all' ? <Images size={17}/> : f.value === 'unfiled' ? <FolderOpen size={17}/> : <Folder size={17}/>}<span>{f.label}</span></button>)}</nav>
-      <p className="library-folder-hint">按作品或主题整理，方便下次创作时查找。</p>
     </aside>}>
       <div className="library-mobile-folder"><LibraryFolderSelect folders={folders} value={folder} options={folderOptions} ariaLabel="资产范围" onChange={changeFolder}/><Button aria-label="新建文件夹" icon={<Plus size={16}/>} onClick={() => setFolderDialog({ name: '' })}/></div>
       {folderError && <div className="library-notice">文件夹加载失败：<StudioErrorNotice error={folderError}/><Button size="small" onClick={refresh}>重试</Button></div>}

@@ -35,7 +35,7 @@ export function StudioBillingSettings() {
       <option value="personal">默认使用个人积分</option>
       <option value="enterprise">默认使用{account.context.enterprise.name}的企业积分</option>
     </SelectField>
-    <p style={{ margin: "9px 0 0", color: "var(--ink-3)", fontSize: 12 }}>修改后自动保存。图片、视频、数字人、配音等所有生成均使用此账户付款，在其他设备上同样生效。余额不足时不会自动切换账户；退出企业后将重新询问。</p>
+    <p style={{ margin: "9px 0 0", color: "var(--ink-3)", fontSize: 12 }}>修改后自动保存。所有生成均使用此账户付款，余额不足时不会自动切换账户。</p>
     {error && <p role="alert">{error}</p>}
   </section>;
 }

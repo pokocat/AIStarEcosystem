@@ -951,7 +951,7 @@
     - `ip/enterprise-reports.tsx` 消费流水：「记账结果」和「状态」显示同一个字段。
     - `ip/supplementary-asset-library.tsx`：形象状态筛选「调整中 · 迭代 / 精修」是内部说法，合并要产品确认；全部失败时上方和空态各一个「重试」。
   - **有逻辑依赖，改文字要两边一起改**
-    - 2026-11-07 线上扫描的残留，下次发 web-aiavatar 时带上：`ip/studio-projects.tsx`「每张画布都在这里，点开可继续编辑」（「点开」偏口语）；`scenes.json` 与 mock 的场景名「自由出图」（测试按这个名字选场景，要一起改）。
+    - ~~2026-11-07 线上扫描的残留：「每张画布都在这里，点开可继续编辑」、场景名「自由出图」~~ **2026-11-07 已改**：「点击画布继续编辑」、「自由生成」。
     - `ip/director/director-workbench.tsx` `PASSING_NOTICE` 按服务端原文判断（「全部 N 集都写好了」「已分成 N 集」「资产已保存」）；`asset.description.includes("只出声音")`；`StudioPlanExecutor`「本阶段预算还差 N 积分」（`StudioPlanExecutionService` 用 `startsWith`）。
     - 工作记录里的「N 个对象」（`CreateNodesTool`、`ReadCanvasTool`、`UpdateNodesTool`、`ViewImagesTool`）：「对象」是开发词，但也回给模型，`DialogueActionProtocol` 和对话测试都依赖。
     - 技能名「出图」「出视频」显示在助手头部：真值在 `resources/studio/skills/*.md`，库里有不可变版本，改名要走技能版本。

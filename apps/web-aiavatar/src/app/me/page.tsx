@@ -176,7 +176,7 @@ function MeRow(props: MeRowProps) {
  */
 function MeNext({ name, phone, demo, identity, onLogout }: { name: string; phone?: string; demo: boolean; identity: ReturnType<typeof useIdentity>; onLogout: () => void }) {
   const layout = useLayoutMode();
-  // 手机上没有电脑版顶栏那块余额，生成按钮也只写这次花多少：余额放在个人卡上（和电脑版同一个接口、同样不含冻结积分）。
+  // 手机上没有电脑版顶栏那块余额，生成按钮也只写这次花多少：余额放在个人卡上（和电脑版同一个接口）。
   const { balance, error } = useWalletBalance(identity?.uid ?? null, true, "/me");
   const credit = error ? "—" : balance === undefined ? "…" : new Intl.NumberFormat("zh-CN").format(balance);
   return <main className="ip-brand-surface studio-next-page studio-me">
@@ -184,7 +184,7 @@ function MeNext({ name, phone, demo, identity, onLogout }: { name: string; phone
     <section className="studio-me-profile" aria-label="账号">
       <EditableAccountAvatar identity={identity} size={48} />
       <div><strong>{name}</strong>{phone && <span>{phone}</span>}{demo && <small>演示数据</small>}</div>
-      <Link className="studio-me-credit" href={studioHref("#/membership")} aria-label={error ? "积分暂时读不出来，查看积分" : `可用积分 ${credit}，查看积分`} title="可用积分，不含冻结的；点击查看积分">
+      <Link className="studio-me-credit" href={studioHref("#/membership")} aria-label={error ? "积分加载失败，查看积分" : `可用积分 ${credit}，查看积分`} title="可用积分，点击查看积分">
         <strong>{credit}</strong><span>可用积分</span>
       </Link>
     </section>

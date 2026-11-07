@@ -132,8 +132,8 @@ export function DirectorStoryboard(props: WorkbenchProps) {
               <ChevronRight size={16} className="director-outline-chevron"/></button>
           </div>}
         <div className="director-episode-clips">
-          {writing.plan && <AiWorking compact title={`AI 正在写第 ${ep.no} 集分镜脚本`} task={writing.plan} detail="将本集正文切分为视频片段，写出每个镜头及每段的分镜图提示词和视频提示词。"/>}
-          {writing.whole && <AiWorking compact title={`AI 正在重写第 ${ep.no} 集分镜脚本`} task={writing.whole} detail="片段划分不变，逐段重写镜头，分镜图提示词和视频提示词随之更新，不生成图片和视频。"/>}
+          {writing.plan && <AiWorking compact title={`AI 正在写第 ${ep.no} 集分镜脚本`} task={writing.plan} detail="将本集正文切分为视频片段，写出每段的镜头和提示词。"/>}
+          {writing.whole && <AiWorking compact title={`AI 正在重写第 ${ep.no} 集分镜脚本`} task={writing.whole} detail="片段划分不变，逐段重写镜头和提示词，不生成图片和视频。"/>}
           {ep.planError && <InlineError message={ep.planError.message}/>}
           {ep.planStale && <div className="director-warn">分镜脚本写好后正文已修改，片段可能与正文不一致。</div>}
           {pending && <div className="director-warn"><span>写分镜脚本期间你修改过片段，新版本（{pending.clips.length} 个片段）未覆盖现有内容。是否换成新版本？</span>
@@ -142,7 +142,7 @@ export function DirectorStoryboard(props: WorkbenchProps) {
             {hasMedia && <small>请先删除已有分镜图或视频的片段，才能换成新版本</small>}</div>}
           {clips.length === 0 && !writing.plan && <div className="director-panel director-empty-panel">
             <Clapperboard size={26}/>
-            <p>分镜脚本会将本集切分为若干片段，每段包含镜头、分镜图提示词和视频提示词，一段对应一条视频。写分镜脚本前，请在「资产」准备角色、场景和道具。</p>
+            <p>分镜脚本将本集切分为若干片段，一段对应一条视频。写分镜脚本前，请在「资产」准备角色、场景和道具。</p>
             {work.assets.length === 0 && <button type="button" className="ip-brand-secondary" onClick={() => goTab("assets")}>前往资产</button>}
           </div>}
           {clips.length > 0 && <BatchBar work={work} clips={clips} quotes={quotes} selected={selected} setSelected={setSelected} apply={apply} setError={setError}/>}
@@ -333,7 +333,7 @@ function ClipCard({ work, clip, quote, apply, setError, onPreview, onBoard, onPi
   return <article id={`clip-${clip.id}`} className={`director-clip-card ${clip.issues.length ? "has-issues" : ""} ${focused ? "is-focused" : ""}`}>
     <ClipHead work={work} clip={clip} apply={apply} setError={setError} onEdit={editing || rewriteTask ? null : () => setEditing(true)} selected={selected} onSelect={onSelect}
       onRewrite={onRewrite} rewriteBlock={clipRewriteBlock(work, clip, editing)} rewriting={!!rewriteTask} onFocusScript={onFocusScript} focused={focused}/>
-    {rewriteTask && rewriteTask.target === `reshoot:${clip.id}` && <AiWorking compact title={`AI 正在重写片段 ${clip.order} 的分镜脚本`} task={rewriteTask} detail="完成后此片段的镜头、分镜图提示词和视频提示词将自动更新，不生成图片和视频。"/>}
+    {rewriteTask && rewriteTask.target === `reshoot:${clip.id}` && <AiWorking compact title={`AI 正在重写片段 ${clip.order} 的分镜脚本`} task={rewriteTask} detail="完成后此片段的镜头和提示词将自动更新，不生成图片和视频。"/>}
     {pendingShots && <div className="director-warn"><span>重写期间你修改过此片段，新版本（{pendingShots.shots.length} 个镜头）未覆盖现有内容。是否换成新版本？</span>
       <button type="button" disabled={!!pendingBusy} onClick={() => void runPending("use", async () => apply(await DirectorApi.edit(work.id, "clip.usePendingShots", clip.id, null)), failed(setError, `把片段 ${clip.order} 换成新写的版本`))}>换成新版本</button>
       <button type="button" disabled={!!pendingBusy} onClick={() => void runPending("discard", async () => apply(await DirectorApi.edit(work.id, "clip.discardPendingShots", clip.id, null)), failed(setError, `保留片段 ${clip.order} 的现有版本`))}>保留现有</button></div>}
@@ -574,7 +574,7 @@ function SentPrompt({ clip }: { clip: DirectorClip }) {
   if (clip.videoPromptRewrite === "original")
     return <p className="director-sent-prompt-note">此片段已选择按原文生成，中文提示词将直接发送给视频模型。</p>;
   if (clip.videoPromptRewrite === "needed" || !clip.videoPromptEn?.text)
-    return <p className="director-sent-prompt-note">生成视频前，将先把提示词改写为 H3 官方要求的英文格式（台词保留中文原文）。优化提示词按实际用量另计。</p>;
+    return <p className="director-sent-prompt-note">生成视频前按 H3 写法优化提示词，按实际用量另计。</p>;
   const cost = clip.videoPromptEn.cost ? `，消耗 ${clip.videoPromptEn.cost.toLocaleString()} 积分` : "";
   return <details className="director-sent-prompt">
     <summary>{clip.videoPromptRewrite === "review" ? "优化稿（未发送）" : "已发送的英文提示词"}（{formatDateTime(clip.videoPromptEn.at)} 改写{cost}）</summary>

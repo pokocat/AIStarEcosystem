@@ -62,14 +62,13 @@ export function StudioBillingDialog({ details, account, onConfirm, onCancel }: {
   };
   return <ConfigProvider theme={{ token: { colorPrimary: "#192229", fontFamily: "var(--ip-ui, sans-serif)", borderRadius: 8 } }}><Modal open title="确认本次付款账户" okText={details.modelQuote?"确认账户并核对报价":"确认账户并生成"} cancelText="取消生成" onCancel={onCancel} onOk={() => void confirm()} okButtonProps={{ disabled: blocked, loading: saving }} getContainer={false}>
     <div className="studio-billing-form">
-      <p>{operationNames[details.operation || ""] || "IP Studio 生成"} · {details.modelQuote ? "下一步确认折扣、模型赠款抵扣和应付积分。" : isText ? "按实际用量结算，完成后显示实际消耗积分。" : expected === undefined ? "按当前模型与生成参数结算。" : `本次预计 ${n(expected)} 积分。`}</p>
+      <p>{operationNames[details.operation || ""] || "IP Studio 生成"}{details.modelQuote ? " · 下一步确认应付积分。" : isText ? " · 按实际用量结算。" : expected === undefined ? "" : ` · 本次预计 ${n(expected)} 积分。`}</p>
       {loading ? <Skeleton active paragraph={{ rows: 4 }} /> : <Radio.Group value={selection} onChange={event => setSelection(event.target.value)} className="studio-billing-options" aria-label="本次付款账户"><Radio value="personal"><span><strong>个人积分</strong><small>可用 {personal === undefined ? "—" : n(personal)} 积分</small></span></Radio><Radio value="enterprise" disabled={!!enterpriseUnavailable}><span><strong>{context ? `${context.enterprise.name} · 企业积分` : "企业积分"}</strong><small>{enterpriseUnavailable || `本人可用 ${n(balance?.totalBalance || 0)} 积分 · 冻结 ${n(balance?.pendingBalance || 0)} 积分`}</small></span></Radio></Radio.Group>}
-      {account?.context && <div className="studio-billing-default"><Checkbox checked={remember} onChange={event => { setRemember(event.target.checked); setPreferenceError(""); }}>设为默认，以后不再询问</Checkbox><p>图片、视频、数字人、配音等所有生成均使用此账户付款，在其他设备上同样生效。如需改为每次询问，请前往<a href="/studio#/settings">设置</a>。余额不足时不会自动切换账户。</p></div>}
+      {account?.context && <div className="studio-billing-default"><Checkbox checked={remember} onChange={event => { setRemember(event.target.checked); setPreferenceError(""); }}>设为默认，以后不再询问</Checkbox><p>所有生成均使用此账户付款。如需改为每次询问，请前往<a href="/studio#/settings">设置</a>。余额不足时不会自动切换账户。</p></div>}
       {preferenceError && <Alert type="error" showIcon title="默认账户保存失败" description={`${preferenceError} 可取消勾选，仅本次使用此账户。`} />}
       {context && <p>企业积分归企业所有，使用时受企业允许的模型及每人 {policy?.maxActiveJobs ?? "—"} 项进行中任务的限制。作品归个人所有。</p>}
       {insufficient && <Alert type="warning" showIcon title={`${selection === "enterprise" ? "企业" : "个人"}积分不足`} description="请充值或联系企业分配积分，也可选择其他付款账户。系统不会自动切换或混合扣款。" />}
       {error && <Alert type="error" showIcon title="无法核对付款账户" description={error} action={<Button size="small" onClick={() => void load()}>重新核对</Button>} />}
-      <p>本次提交后付款账户固定；重试和失败退款均沿用原账户。</p>
     </div>
   </Modal></ConfigProvider>;
 }

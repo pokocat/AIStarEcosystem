@@ -112,7 +112,7 @@ export function DirectorScriptFile({ hasText, insert, disabled, onImport, onRead
       {reading && <button type="button" className="ip-brand-text-button" onClick={cancel}>取消提取</button>}
       <span>TXT / Markdown / Word / PPT / PDF / RTF / HTML 等 · 文件最大 50 MB，正文不限字数</span>
     </div>
-    <p className="director-script-file-hint">免费提取文字，预览后导入正文。网页文件仅提取正文，不运行其中的脚本；扫描版 PDF 请先识别文字。</p>
+    <p className="director-script-file-hint">免费提取文字，预览后导入正文。扫描版 PDF 请先识别文字。</p>
     {reading && <span role="status" className="director-script-file-hint director-script-file-progress">
       正在上传并提取「{reading.name}」（{sizeText(reading.size)}），已用时 {Math.max(0, Math.round((now - reading.since) / 1000))} 秒。完成后可预览，取消不会改动正文。</span>}
     <InlineError message={error}/>

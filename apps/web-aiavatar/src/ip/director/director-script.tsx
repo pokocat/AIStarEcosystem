@@ -179,9 +179,9 @@ function DraftEditor({ work, apply, setError, splitting, startPipeline }: Workbe
       <ScriptMore work={work} apply={apply} setError={setError}/>
       {splitting ? <AiWorking compact title="AI 拆分中" task={runningTask(work, "split")} detail="仅划定每集范围，不修改正文。"/> :
         work.pendingSplit ? <SplitPreview key={work.pendingSplit.id} work={work} apply={apply} setError={setError}/> :
-        <NextChoices work={work} shortcutDesc="从拆分剧本开始自动完成至成片，也可只完成至分镜脚本或分镜图。开始前显示推荐预算，确认后执行。" title="下一步：拆分剧本"
-          desc={byHeadings ? `已识别到 ${work.draftEpisodeHeadings} 集分集标题，将按标题拆分，不消耗积分。第 1 集之前的内容保存为设定资料。拆分结果确认后生效。`
-            : "支持两种拆分方式：已分好集的剧本按分集标题拆分，不消耗积分，不限集数；尚未分集的剧本由 AI 按剧情拆分，按实际用量结算。两种方式均不修改正文，拆分结果确认后生效。"}
+        <NextChoices work={work} shortcutDesc="自动完成至成片，开始前显示推荐预算。" title="下一步：拆分剧本"
+          desc={byHeadings ? `已识别到 ${work.draftEpisodeHeadings} 集分集标题，将按标题拆分，不消耗积分。第 1 集之前的内容保存为设定资料。`
+            : "已分好集的剧本按分集标题拆分，不消耗积分；尚未分集的由 AI 按剧情拆分，按实际用量结算。均不修改正文。"}
           onShortcut={startPipeline} shortcutDisabled={locked || !!busy || !text.trim() || dirty} shortcutNote={dirty ? "请先保存剧本" : undefined}>
           <label className="director-inline-field">分为<input inputMode="numeric" value={count} placeholder="自动" onChange={e => setCount(e.target.value.replace(/\D/g, "").slice(0, 2))}/>集</label>
           <button type="button" className="ip-brand-button" disabled={locked || !!busy || !text.trim()} onClick={split}><Scissors size={15}/>{byHeadings ? "按标题拆分" : "拆分剧本"}</button>
@@ -238,11 +238,11 @@ function EpisodeList(props: WorkbenchProps) {
       <ReferenceNotes work={work} apply={apply} setError={setError}/>
       <ScriptMore work={work} apply={apply} setError={setError}/>
       {extracting ? <AiWorking compact title="AI 正在提取全剧资产" task={extracting} detail="识别角色、场景和道具，清单经你确认后保存。"/> :
-        <NextChoices work={work} shortcutDesc="自动完成后续步骤至成片，也可只完成至分镜脚本或分镜图。开始前显示推荐预算，确认后执行。" title={work.assets.length ? "下一步：生成资产图" : "下一步：提取全剧资产"}
-          desc={work.assets.length ? `已提取 ${work.assets.length} 项资产。请在「资产」为角色、场景和道具生成资产图，分镜图和视频将以此为参考。修改正文后可重新提取，同一人物不会重复创建。`
-            : "AI 从全部集中识别角色、场景和道具，清单经你确认后保存。之后生成资产图、写分镜脚本，每一步都可检查和修改。"}
+        <NextChoices work={work} shortcutDesc="自动完成后续步骤至成片，开始前显示推荐预算。" title={work.assets.length ? "下一步：生成资产图" : "下一步：提取全剧资产"}
+          desc={work.assets.length ? `已提取 ${work.assets.length} 项资产。请在「资产」生成资产图，分镜图和视频将以此为参考。`
+            : "AI 从全部集中识别角色、场景和道具，清单经你确认后保存。"}
           onShortcut={startPipeline} shortcutDisabled={!!busy}>
-          <button type="button" className={work.assets.length ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy} onClick={extract} title="从全部集中提取角色、场景和道具，同一人物不会在各集重复出现">
+          <button type="button" className={work.assets.length ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy} onClick={extract} title="从全部集中提取角色、场景和道具">
             <Wand2 size={15}/>{work.assets.length ? "重新提取全剧资产" : "提取全剧资产"}</button>
           {work.assets.length > 0 && <button type="button" className="ip-brand-button" onClick={() => goTab("assets")}>前往资产</button>}
         </NextChoices>}

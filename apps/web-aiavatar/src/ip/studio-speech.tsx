@@ -44,14 +44,14 @@ export function StudioSpeech({actions,anchorId,open,onClose,initialText,initialA
       <StudioChoiceGroup<string> label="固定音色" disabled={!!profile} value={speaker} onChange={setSpeaker} options={(catalog?.voices||[]).map(v=>({value:v.speaker,label:v.name,description:v.language}))}/>
       {voice&&<small>{voice.description}</small>}
       <label>声音风格（选填）<Input.TextArea aria-label="声音风格" disabled={!!profile} value={instruct} onChange={e=>setInstruct(e.target.value)} rows={2} maxLength={catalog?.maxInstructLength||160} placeholder="例如：温暖自然，像朋友一样介绍"/></label>
-      <details><summary>声音版本说明</summary><p>{profile?"要调整音色或风格，请选择临时固定音色；生成满意后可保存为新声音版本。":"临时音色不会改变人物默认声音。生成满意后，选中音频并点击「设为人物声音」，保存音色、风格和真实试听。"}官方预设音色无需训练；暂不支持专属声音克隆。</p></details>
+      <details><summary>声音版本说明</summary><p>{profile?"要调整音色或风格，请选择临时固定音色。":"临时音色不会改变人物默认声音。生成后可选中音频，点击「设为人物声音」保存。"}官方预设音色无需训练；暂不支持专属声音克隆。</p></details>
 </div></StudioSettingsPopover></div>
     {pending?<><p role="status">{pending.confirmed?'原配音任务生成中，请等待结果。':'配音提交结果尚未确认，请确认原任务。'}</p><Button type="primary" loading={busy} onClick={onConfirm}>{pending.confirmed?'查看原任务':'确认原任务'}</Button></>:<Button icon={<StudioAiIcon/>} title="AI 处理，将消耗积分" type="primary" loading={busy} disabled={loading||binding||!!error||!selected||!voice||cost==null||!text.trim()} onClick={()=>{if(selected&&cost!=null)void onSubmit({model:selected.endpointId,speaker,text:text.trim(),instruct:instruct.trim()||undefined,maxCost:cost,...(avatarId?{avatarId}:{}),...(profile?{voiceId:profile.voiceId}:{})});}}>
       {cost==null?"配音暂不可用":rate==null?`生成配音 · ${cost} 积分`:`生成配音 · ${rate} 积分/秒`}
     </Button>}
   </div>}>
     {actions}
-    <div className="studio-director-form">{rate!=null&&<p role="status">按生成音频的实际时长计费，不足 1 秒按 1 秒计。</p>}<p>指定人物与声音版本，为台词或商品介绍生成配音。音频会保存在当前画布，可试听、下载并用于成片。</p>
+    <div className="studio-director-form">{rate!=null&&<p role="status">按生成音频的实际时长计费，不足 1 秒按 1 秒计。</p>}<p>为台词或商品介绍生成配音，音频保存在当前画布。</p>
       {error&&<p><StudioErrorNotice error={error}/><Button onClick={()=>void reload()}>重新加载</Button></p>}
       {notice&&<p role="status">{notice}</p>}
       {!loading&&!error&&!catalog?.models.length&&<p role="status">配音暂不可用，请联系管理员配置配音模型。</p>}

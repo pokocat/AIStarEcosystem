@@ -56,8 +56,8 @@ export function StudioVideoSeedControl({seed,max,onChange,count=1}:{seed?:number
       <div className="studio-seed-heading"><label htmlFor={id}>随机种子</label><button type="button" disabled={seed==null} onClick={()=>onChange(undefined)}>恢复随机</button></div>
       <InputNumber id={id} aria-label="视频随机种子" aria-describedby={`${id}-hint`} min={0} max={max} precision={0} controls={false} value={seed??null}
         placeholder="留空，每次随机" onChange={value=>onChange(value??undefined)}/>
-      <p id={`${id}-hint`}>留空让每次生成有所变化；固定数值有助于复现相近结果，效果也受提示词、素材和模型影响。</p>
-      {count>1&&seed!=null&&<p>第一条使用此种子，后续结果依次递增；超过上限从 0 继续。</p>}
+      <p id={`${id}-hint`}>留空则每次生成不同；固定数值可复现相近结果。</p>
+      {count>1&&seed!=null&&<p>第一条使用此种子，后续依次递增。</p>}
     </div>
   </details>;
 }

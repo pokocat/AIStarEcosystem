@@ -9,7 +9,7 @@ import { IpStudioApi } from "../api";
 
 export type { StudioImageScene as ImageScene, StudioVideoScene as VideoScene, StudioSceneCatalog as SceneCatalog } from "@ai-star-eco/types";
 
-/** 不选场景时的「自由出图」。 */
+/** 不选场景时的「自由生成」。 */
 export const FREE_SCENE_ID = "free";
 
 export const sceneCover = (id: string) => `/studio/scene-covers/${id}.webp`;

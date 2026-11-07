@@ -75,7 +75,7 @@ describe('the card', () => {
   test('says what the canvas is for and offers the five ways in; with the assistant open there is no extra button', () => {
     render(<StudioCanvasGuide assistantOpen onStartAssistant={vi.fn()}/>);
     expect(screen.getByRole('heading', { name: '画布还没有内容' })).toBeTruthy();
-    expect(screen.getByText('向助手描述需求，助手会把每一步放进画布。也可以从下方选择：')).toBeTruthy();
+    expect(screen.getByText('向助手描述需求，或从下方选择：')).toBeTruthy();
     const expected = [['文字', '写设定、剧本或提示词'], ['图片生成', '输入描述生成图片，可添加参考图'], ['视频生成', '根据描述或首帧图生成视频'], ['配音', '选择声音，为台词配音'], ['上传素材', '图片、视频或文档']];
     for (const [name, hint] of expected) expect(screen.getByRole('button', { name, description: hint })).toBeTruthy();
     expect(screen.getByText(/双击画布空白处也可添加/)).toBeTruthy();

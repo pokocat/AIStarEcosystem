@@ -256,7 +256,7 @@ test("video: confirming an unconfirmed video resends its original request and mo
   expect(request.model).toBe("ep-h3");
 });
 
-// ── 地址参数（2026-10-30 复测：从首页点「同城到店」进了口播带货，点「商品套图」进了自由出图）──────────
+// ── 地址参数（2026-10-30 复测：从首页点「同城到店」进了口播带货，点「商品套图」进了自由生成）──────────
 // 站内跳转时 Next 先渲染新页面、后改地址栏：挂载时读到的还是首页地址，之后地址才变成带场景的。
 test("video: a scene in the address that arrives after mounting is followed, and going to another one switches again", async () => {
   window.history.replaceState(null, "", "/dashboard");
@@ -274,7 +274,7 @@ test("image: a scene in the address that arrives after mounting is followed; lea
   put({ id: "IPP-B", name: "draft B", sceneId: "free" });
   window.history.replaceState(null, "", "/dashboard");
   const view = render(<SceneImageStudio/>);
-  await waitFor(() => expect(document.querySelector(".scene-composer-head strong")?.textContent).toBe("自由出图"));
+  await waitFor(() => expect(document.querySelector(".scene-composer-head strong")?.textContent).toBe("自由生成"));
   window.history.replaceState(null, "", "/image?scene=white-background");
   view.rerender(<SceneImageStudio/>);
   await waitFor(() => expect(document.querySelector(".scene-composer-head strong")?.textContent).toBe("商品白底图"));
@@ -296,7 +296,7 @@ test("image: unsent inputs come back when returning to a scene; a scene never fi
   pickScene("商品白底图");
   await waitFor(() => expect(document.querySelector(".scene-composer-head strong")?.textContent).toBe("商品白底图"));
   expect(fieldText("补充要求")).toBe("");
-  pickScene("自由出图");
-  await waitFor(() => expect(document.querySelector(".scene-composer-head strong")?.textContent).toBe("自由出图"));
+  pickScene("自由生成");
+  await waitFor(() => expect(document.querySelector(".scene-composer-head strong")?.textContent).toBe("自由生成"));
   expect(fieldText("想要的画面")).toBe("一只橘猫坐在窗台上看雨");
 });

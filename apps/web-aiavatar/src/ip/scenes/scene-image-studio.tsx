@@ -508,16 +508,16 @@ export function SceneImageStudio() {
           <UiVersionSwitch inline/></span></header>
       <div id="scene-image-panel" className="scene-results-panel" role="tabpanel" aria-labelledby={`scene-image-tab-${tab}`}>
       {tab === "example" ? <SceneExample id={scene.id} title={scene.title} group={isFree ? undefined : groupTitle} cover={scene.coverUrl} examples={scene.examples} demo={sceneDemo(scene.id)} example={scene.example} onUseExample={useExample} ratio={scene.ratio}
-          note={isFree ? "添加参考图并描述想要的画面，也可点击场景名选择其他场景。" : scene.description}/>
+          note={isFree ? "添加参考图并描述想要的画面。" : scene.description}/>
         : opening ? <div className="scene-loading"><Loader2 size={20} className="studio-gallery-spinner"/>正在打开草稿…</div>
         : rows.length ? <ol className="scene-row-list">{rows.map(row => <ImageRow key={row.id} row={row} original={originalOf(row)} run={live[row.id]} busy={busy} submitting={submitting === row.id}
           onView={setViewing} onUse={putAsReference} onVideo={toVideo} onReuse={() => reuse(row)} onRetry={() => retry(row)} onConfirm={() => void confirmOriginal(row)}
           onStop={() => { const id = row.metadata?.studio?.runId; if (id) void cancelRun(id).catch(e => showFailure({ action: "停止生成", error: e })); }}/>)}</ol>
-        : <SceneEmpty title="还没有作品" note="点击「生成图片」后，生成的图片将显示在这里。"/>}
+        : <SceneEmpty title="还没有作品" note="生成的图片将显示在这里。"/>}
       </div>
     </section>
 
-    {picking !== undefined && <div className="scene-picker-host"><LibraryReferencePicker open max={Math.max(1, (scene.refs[picking]?.max ?? 1) - (slots[picking]?.length ?? 0))} mediaType="image" upload title={`选择${scene.refs[picking]?.label ?? "图片"}`} intro="从资产库选择图片。新图片可点击「上传到资产库」，上传后自动选中，原文件不会被修改。"
+    {picking !== undefined && <div className="scene-picker-host"><LibraryReferencePicker open max={Math.max(1, (scene.refs[picking]?.max ?? 1) - (slots[picking]?.length ?? 0))} mediaType="image" upload title={`选择${scene.refs[picking]?.label ?? "图片"}`} intro="从资产库选择图片，也可上传新图片。"
       onClose={() => setPicking(undefined)} onAssets={async assets => {
         const images = assets.filter((a): a is IpImageAsset => a.kind === "image" && !!a.data.storageKey);
         if (!images.length) throw new Error("请选择一张带图片的资产");

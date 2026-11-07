@@ -98,11 +98,11 @@ export function InvitationWorkspace() {
       {!data && !loadError && <p className="invitation-state" role="status">正在加载邀请记录…</p>}
       {data && <>
         <section className="invitation-link-section" aria-labelledby="invitation-link-heading">
-          <div className="invitation-section-heading"><div><h2 id="invitation-link-heading">我的邀请链接</h2><p>朋友通过链接注册新账号后，会留下邀请记录。已有账号登录不新增记录。</p></div><Link2 size={22} aria-hidden="true"/></div>
+          <div className="invitation-section-heading"><div><h2 id="invitation-link-heading">我的邀请链接</h2><p>朋友通过链接注册新账号后，会显示在这里。</p></div><Link2 size={22} aria-hidden="true"/></div>
           {data.canInvite ? url ? <>
             <label className="invitation-input-label" htmlFor="studio-invitation-link">邀请链接</label>
             <div className="invitation-link-controls"><input ref={linkInput} id="studio-invitation-link" type="text" readOnly value={url} spellCheck={false}/><button type="button" className="ip-brand-button" disabled={Boolean(busy)} onClick={() => void copy()}>{notice.startsWith("邀请链接已复制") ? <Check size={16}/> : <Copy size={16}/>}复制链接</button><a className="ip-brand-secondary" href={url} target="_blank" rel="noopener noreferrer">预览邀请页<ArrowUpRight size={15}/></a></div>
-            <p className="invitation-field-hint">可选中链接手动复制。此链接用于注册账号，各产品的使用权限与权益需另行开通。</p>
+            <p className="invitation-field-hint">可选中链接手动复制。</p>
           </> : <div className="invitation-generate"><p>生成你的专属链接，发给想邀请的朋友。</p><button type="button" className="ip-brand-button" disabled={Boolean(busy)} onClick={() => void generate()}>{busy === "generate" ? "正在生成…" : "生成邀请链接"}</button></div>
           : <p className="invitation-field-hint">体验账号由多人共用。请使用自己的账号邀请朋友。</p>}
           {notice && <p className="invitation-feedback invitation-feedback-success" role="status">{notice}</p>}
@@ -112,12 +112,12 @@ export function InvitationWorkspace() {
           {data.inviter ? <div className="invitation-account-row"><Avatar key={data.inviter.avatarUrl} person={data.inviter}/><div><strong>{data.inviter.displayName}</strong><p>{data.invitedAt && <>邀请于 <time dateTime={data.invitedAt}>{formatDateTime(data.invitedAt)}</time></>}</p></div></div> : <p className="invitation-field-hint">暂无邀请人。</p>}
         </section>
         <section className="invitation-records-section" aria-labelledby="invitation-records-heading" aria-busy={loading}>
-          <div className="invitation-section-heading"><div><h2 id="invitation-records-heading">我邀请的账号</h2><p>仅记录由你直接邀请注册的账号，不反映对方的开通或使用情况。</p></div><span className="invitation-record-count">共 {data.total} 条记录</span></div>
+          <div className="invitation-section-heading"><div><h2 id="invitation-records-heading">我邀请的账号</h2><p>仅记录由你直接邀请注册的账号。</p></div><span className="invitation-record-count">共 {data.total} 条记录</span></div>
           {data.records.length ? <ul className="invitation-records">{data.records.map(record => <li className="invitation-account-row" key={record.id}><Avatar key={record.account.avatarUrl} person={record.account}/><div><strong>{record.account.displayName}</strong>{record.account.status === "merged" && <p>账号已合并，保留注册时的邀请记录</p>}{record.account.status === "suspended" && <p>账号已停用</p>}</div><time dateTime={record.createdAt}>{formatDateTime(record.createdAt)}</time></li>)}</ul>
           : <p className="invitation-records-empty">{data.total === 0 ? "暂无邀请记录。" : "此页暂无记录。"}</p>}
           {(data.page > 0 || (data.page + 1) * data.pageSize < data.total) && <nav className="invitation-pagination" aria-label="邀请记录翻页"><button type="button" className="ip-brand-secondary" disabled={loading || Boolean(busy) || data.page === 0} onClick={() => void load(data.page - 1)}>上一页</button><span>第 {data.page + 1} 页</span><button type="button" className="ip-brand-secondary" disabled={loading || Boolean(busy) || (data.page + 1) * data.pageSize >= data.total} onClick={() => void load(data.page + 1)}>下一页</button></nav>}
         </section>
-        <aside className="invitation-rules"><h2>关于邀请记录</h2><p>只记录注册时的邀请关系，已有账号不会补记。更换手机号或合并账号，不会改变原有记录。</p><p>邀请不产生分佣或奖励。</p></aside>
+        <aside className="invitation-rules"><h2>关于邀请记录</h2><p>邀请不产生分佣或奖励。</p></aside>
       </>}
     </>}
   </AccountWorkspace></div>;

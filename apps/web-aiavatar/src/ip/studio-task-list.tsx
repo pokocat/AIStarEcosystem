@@ -31,7 +31,7 @@ export function StudioTaskList({ runs, nodes, unconfirmed, loading, busy, hasMor
   const visible = runs.filter(r => filter === 'all' || (filter === 'active' ? r.status === 'running' : filter === 'failed' ? failed(r) : r.status === 'done'));
   return <div className="studio-task-list">
     <nav className="studio-task-filters" aria-label="筛选创作任务">{filters.map(item => <button type="button" key={item.id} aria-pressed={filter === item.id} onClick={() => setFilter(item.id)}>{item.label}<span>{item.count}</span></button>)}</nav>
-    <p className="studio-task-polling">{filters[1].count ? '任务状态自动更新，可继续在画布创作' : '按时间查看每次创作记录'}{hasMore ? ' · 数量仅统计已加载任务' : ''}</p>
+    <p className="studio-task-polling">{filters[1].count ? '任务状态自动更新' : '按时间查看每次创作记录'}{hasMore ? ' · 数量仅统计已加载任务' : ''}</p>
     {error && <div className="studio-task-load-error"><span>{error}</span><button type="button" disabled={loading} onClick={onReload}>重试加载任务</button></div>}
     {(filter === 'all' || filter === 'active') && unconfirmed.map(node => <article className="studio-task-item" key={node.id}>
       <div className="studio-task-heading"><strong>{node.title}</strong><span className="studio-task-status" data-status="queued">待确认</span></div>

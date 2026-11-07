@@ -79,7 +79,7 @@ export function StudioAssistantPlan({plan,nodes,contextIds,selectedIds,snapshots
         {error?'重试保存':appliedEdit?step.editTarget!.field==='content'?'已放进画布':`已更新${fieldLabels[step.editTarget!.field]}`:target?`替换节点${fieldLabels[targetField]}`:step.operation==='text'?result?'已放进画布':'放进画布':result?'打开节点':`创建${labels[step.operation]}节点`}
       </Button>
       {result&&step.operation!=='text'&&!appliedEdit&&<p className="studio-helper-note">{assistantOutputReady(result)?'画布节点已生成，可打开继续调整。':result.metadata?.status==='loading'?'节点正在生成，完成后可继续下一步。':result.metadata?.status==='error'?'节点生成失败，请打开查看原因。':'节点已创建，等待确认参数并生成。'}</p>}
-      <small className="studio-assistant-result-note">{target||appliedEdit?'采用后写回原节点，保留素材和连线，不启动生成、不另扣积分。':step.operation==='text'?'采用文字无需再次生成，不另扣积分。':'创建节点后确认参数，生成时扣积分。'}</small>
+      <small className="studio-assistant-result-note">{target||appliedEdit?'采用后写回原节点，不另扣积分。':step.operation==='text'?'采用不另扣积分。':'创建节点后确认参数，生成时扣积分。'}</small>
       {error&&<p className="studio-assistant-error"><StudioErrorNotice error={error}/></p>}
     </div>
   </section>;
