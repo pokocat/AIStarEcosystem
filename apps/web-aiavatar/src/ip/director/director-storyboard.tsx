@@ -320,7 +320,9 @@ function ClipCard({ work, clip, quote, apply, setError, onPreview, onBoard, onPi
   const generating = runningTask(work, `board:${clip.id}`);
   const videoBusy = !!clip.video.pending?.length || !!runningTask(work, `video:${clip.id}`);
   const linked = orderedLinkedAssets(work, clip);
-  const imageRefs = clip.videoRefs?.filter(r => r.assetId !== null) ?? clip.boardRefs;
+  // 首帧模式的视频只交分镜图，没有资产这一项，卡片上仍显示分镜图用到的资产。
+  const videoAssetRefs = clip.videoRefs?.filter(r => r.assetId !== null);
+  const imageRefs = videoAssetRefs?.length ? videoAssetRefs : clip.boardRefs;
   const visual = linked.filter(a => !a.description.includes("只出声音"));
   const missing = visual.filter(a => !a.image.adoptedId);
   const unconfirmed = visual.filter(a => a.image.adoptedBy === "auto");
@@ -359,7 +361,7 @@ function ClipCard({ work, clip, quote, apply, setError, onPreview, onBoard, onPi
         {linked.some(a => a.kind === "product") && <p className="director-clip-products" title="这些商品图会作为分镜图和视频的参考图"><ShoppingBag size={13}/><span>{linked.filter(a => a.kind === "product").map(a => a.name).join("、")}</span></p>}
         <div className="director-clip-links" role="group" aria-label="生成视频用到的参考">
           <button type="button" onClick={() => onPreview("assets")} className={missing.length ? "is-error" : unconfirmed.length ? "is-warn" : ""} title="关联的角色、场景、道具资产图，用于保持长相和环境一致">
-            <span className="director-avatar-stack">{imageRefs
+            <span className="director-avatar-stack">{imageRefs?.length
               ? imageRefs.slice(0, 3).map(r => r.url ? <img key={r.label} src={r.url} alt={`${r.label} ${r.name}`}/> : <i key={r.label}>{r.name.slice(0, 1)}</i>)
               : linked.slice(0, 3).map(a => {
                 const img = adopted(chosenImage(a, clip));

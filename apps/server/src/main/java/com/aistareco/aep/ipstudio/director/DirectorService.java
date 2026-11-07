@@ -4352,10 +4352,24 @@ public class DirectorService {
     // 生成时记下的指纹（提示词 + 实际参考 key + 时长 / 画幅 / 模型）和按当前设置算出来的比；
     // 老数据没有指纹就比提示词和参考 key，连这些也没有就如实标「未核对」。不自动重跑。
 
-    /** 按当前设置，下一次生成会用的东西。images / audios 是请求里的实际 key（顺序与提交时一致）。 */
-    private record Current(String fingerprint, String prompt, List<String> images, List<String> audios) {}
+    /**
+     * 按当前设置，下一次生成会用的东西。images / audios 是请求里的实际 key（顺序与提交时一致）。
+     * mainOnlyFingerprint：参考图只算主图的旧算法，核对 2026-11-06 之前生成的版本用（见 {@link #sameInput}）。
+     */
+    private record Current(String fingerprint, String prompt, List<String> images, List<String> audios, String mainOnlyFingerprint) {}
 
+    /** 实际交给模型的参考图：选了形态是形态的图，用到其他视角时含视角图。 */
     private List<String> adoptedAssetKeys(ObjectNode c, JsonNode clip) {
+        List<String> keys = new ArrayList<>();
+        for (JsonNode a : visualAssets(c, clip)) {
+            String key = adoptedKey(a.path("image"));
+            if (key != null) keys.add(key);
+        }
+        return keys;
+    }
+
+    /** 旧指纹用的参考图：只有主图。不再用来判断新生成的版本。 */
+    private List<String> mainImageKeys(ObjectNode c, JsonNode clip) {
         List<String> keys = new ArrayList<>();
         for (String kind : REF_KINDS)
             for (JsonNode idNode : clip.path("assetIds")) {
@@ -4396,9 +4410,13 @@ public class DirectorService {
 
     private Current boardCurrent(ObjectNode c, JsonNode clip, String prompt) {
         List<String> images = adoptedAssetKeys(c, clip);
-        StringBuilder b = new StringBuilder(prompt);
-        images.forEach(k -> b.append('|').append(k));
-        return new Current(hash(b.toString()), prompt, images, List.of());
+        return new Current(withKeys(prompt, images), prompt, images, List.of(), withKeys(prompt, mainImageKeys(c, clip)));
+    }
+
+    private static String withKeys(String head, List<String> keys) {
+        StringBuilder b = new StringBuilder(head);
+        keys.forEach(k -> b.append('|').append(k));
+        return hash(b.toString());
     }
 
     private Current videoCurrent(ObjectNode c, JsonNode clip, Limits lim) {
@@ -4414,16 +4432,37 @@ public class DirectorService {
         List<String> audios = new ArrayList<>();
         if (lim != null && lim.frame()) {
             // 首帧出片只交分镜画面，参考图和声音不进请求，也就不参与核对。
-            StringBuilder b = new StringBuilder("frame|").append(prompt).append('|').append(duration).append('|').append(aspect).append('|').append(lim.model());
-            images.forEach(k -> b.append('|').append(k));
-            return new Current(hash(b.toString()), prompt, images, audios);
+            String frame = withKeys("frame|" + prompt + '|' + duration + '|' + aspect + '|' + lim.model(), images);
+            return new Current(frame, prompt, images, audios, frame);
         }
+        List<String> mainOnly = new ArrayList<>(images);
         images.addAll(adoptedAssetKeys(c, clip));
+        mainOnly.addAll(mainImageKeys(c, clip));
         for (JsonNode a : speakers(c, clip)) { String k = a.path("voice").path("key").asText(null); if (k != null) audios.add(k); }
-        StringBuilder b = new StringBuilder(prompt).append('|').append(duration).append('|').append(aspect).append('|').append(lim == null ? null : lim.model());
-        images.forEach(k -> b.append('|').append(k));
-        audios.forEach(k -> b.append('|').append(k));
-        return new Current(hash(b.toString()), prompt, images, audios);
+        String head = prompt + '|' + duration + '|' + aspect + '|' + (lim == null ? null : lim.model());
+        return new Current(withKeys(head, joined(images, audios)), prompt, images, audios, withKeys(head, joined(mainOnly, audios)));
+    }
+
+    private static List<String> joined(List<String> a, List<String> b) {
+        List<String> out = new ArrayList<>(a);
+        out.addAll(b);
+        return out;
+    }
+
+    /**
+     * 这个版本是否就是按这份输入生成的。2026-11-06 之前的指纹只算主图，切换形态、换形态的图都对得上，
+     * 所以对上旧算法时再核对版本记下的实际参考（没记参考的老数据只能信指纹）。顺序不比：这里只判断图换没换。
+     */
+    private static boolean sameInput(JsonNode m, Current now) {
+        String fingerprint = m.path("fingerprint").asText(null);
+        if (fingerprint == null) return false;
+        if (!fingerprint.equals(now.mainOnlyFingerprint())) return fingerprint.equals(now.fingerprint());
+        if (!m.has("refs")) return true;
+        List<String> images = new ArrayList<>();
+        for (JsonNode r : m.path("refs")) if (!r.path("label").asText().startsWith("音频")) images.add(r.path("key").asText());
+        // 「围绕当前图修改」多带的那张在最后，不算参考换了。
+        if (m.hasNonNull("baseOn") && !images.isEmpty()) images.remove(images.size() - 1);
+        return new HashSet<>(images).equals(new HashSet<>(now.images()));
     }
 
     /** 给采用位写 adoptedCheck（current / outdated / unknown）和 staleReasons（说人话的原因）。 */
@@ -4445,8 +4484,7 @@ public class DirectorService {
         boolean hasRefs = m.has("refs") && m.has("prompt");
         if (!m.hasNonNull("fingerprint") && !hasRefs) { slot.put("adoptedCheck", "unknown"); return; }
         // 对得上旧模板或当前模板都算当前版本（没记版本、但就是按现在的提示词生成的，也是当前版本）。
-        if (m.hasNonNull("fingerprint") && (m.path("fingerprint").asText().equals(now.fingerprint())
-                || m.path("fingerprint").asText().equals(current.fingerprint()))) { slot.put("adoptedCheck", "current"); return; }
+        if (sameInput(m, now) || sameInput(m, current)) { slot.put("adoptedCheck", "current"); return; }
         List<String> images = new ArrayList<>(), audios = new ArrayList<>();
         for (JsonNode r : m.path("refs")) (r.path("label").asText().startsWith("音频") ? audios : images).add(r.path("key").asText());
         if (hasRefs) {
