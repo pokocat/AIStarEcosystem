@@ -34,7 +34,8 @@ describe("SupplierPerformancePanel", () => {
   it("loads the bounded query and keeps running work outside the failure denominator", async () => {
     render(<SupplierPerformancePanel />);
     expect(await screen.findByText("供应商性能观察")).toBeTruthy();
-    expect(screen.getByText("71.4%")).toBeTruthy();
+    // 标题先出来，数据后到：CI 上并行跑时这里会抢在数据之前。
+    expect(await screen.findByText("71.4%")).toBeTruthy();
     expect(screen.getByText("均不计入失败率")).toBeTruthy();
     expect(StudioOperationsApi.supplierPerformance).toHaveBeenCalledWith(expect.objectContaining({
       timezone: "Asia/Shanghai", status: "all", page: 0, size: 20,
