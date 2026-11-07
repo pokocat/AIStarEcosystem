@@ -32,9 +32,9 @@ const libraryObject = (id: string, name: string, over: any = {}) => ({ id, kind:
 
 test('status says what is true: not written yet, written into episodes, used by clips', () => {
   const p = product();
-  expect(productStatus(work({ assets: [p] }), p as any)).toEqual({ text: '生成剧本时写进剧情', tone: 'idle' });
+  expect(productStatus(work({ assets: [p] }), p as any)).toEqual({ text: '生成剧本时写入剧情', tone: 'idle' });
   const draft = work({ draft: '他走进办公室。', assets: [p] });
-  expect(productStatus(draft, p as any)).toEqual({ text: '剧本里还没有写到', tone: 'todo' });
+  expect(productStatus(draft, p as any)).toEqual({ text: '剧本中尚未写到', tone: 'todo' });
   // 剧本里写简称也认得出来：别名、名字的结尾两个字以上
   expect(productMentions(work({ draft: '他拿起保温杯。' }), p as any).inDraft).toBe(true);
   expect(productMentions(work({ draft: '他拿起保温杯。' }), { ...p, aliases: [] } as any).inDraft).toBe(true);
@@ -42,18 +42,18 @@ test('status says what is true: not written yet, written into episodes, used by 
   expect(productMentions(work({ draft: '她摘了一朵玫瑰。' }), { ...p, name: '玫瑰香水', aliases: [] } as any).inDraft).toBe(false);
   const eps = [{ id: 'e1', no: 1, content: '他拿起保温杯。' }, { id: 'e2', no: 2, content: '第二天。' }];
   const written = work({ episodes: eps, assets: [p] });
-  expect(productStatus(written, p as any).text).toBe('已写进第 1 集');
+  expect(productStatus(written, p as any).text).toBe('已写入第 1 集');
   const used = work({ episodes: eps, assets: [p], clips: [{ id: 'c1', assetIds: ['p1'], shots: [] }, { id: 'c2', assetIds: [], shots: [] }] });
-  expect(productStatus(used, p as any)).toEqual({ text: '已写进第 1 集 · 用在 1 个片段', tone: 'done' });
+  expect(productStatus(used, p as any)).toEqual({ text: '已写入第 1 集 · 用于 1 个片段', tone: 'done' });
 });
 
 test('with no products the workspace offers the library', async () => {
   lib.libraryObjects.mockResolvedValue({ items: [], page: 0, total: 0, hasMore: false });
   render(<DirectorProducts {...props(work())}/>);
-  expect(screen.getByRole('heading', { name: '还没有商品' })).toBeTruthy();
+  expect(screen.getByRole('heading', { name: '暂无商品' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: '添加商品' }));
   await screen.findByRole('dialog', { name: '商品库' });
-  await screen.findByRole('heading', { name: '商品库还是空的' });
+  await screen.findByRole('heading', { name: '商品库暂无商品' });
   expect(lib.libraryObjects).toHaveBeenCalledWith(expect.objectContaining({ kind: 'product' }));
 });
 
@@ -84,13 +84,13 @@ test('choosing another image changes which picture goes to the storyboard', asyn
 test('writing into the script goes through the assistant, one episode at a time, and waits for the user to send', () => {
   const p = product({ placement: '加班时喝水' });
   const { unmount } = render(<DirectorProducts {...props(work({ draft: '正文', assets: [p] }))}/>);
-  fireEvent.click(screen.getByRole('button', { name: '写进剧本' }));
+  fireEvent.click(screen.getByRole('button', { name: '写入剧本' }));
   expect(ask).toHaveBeenCalledWith({ kind: 'script', episodeId: 'draft' }, expect.stringContaining('把商品「恒温保温杯」自然写进这一段剧情：加班时喝水'));
   expect(api.edit).not.toHaveBeenCalled();
   unmount(); ask.mockClear();
   const eps = [{ id: 'e1', no: 1, title: '开场', content: '无' }, { id: 'e2', no: 2, title: '反转', content: '他拿起保温杯' }];
   render(<DirectorProducts {...props(work({ episodes: eps, assets: [p] }))}/>);
-  const menu = screen.getByRole('menu', { name: '写进哪一集', hidden: true });
+  const menu = screen.getByRole('menu', { name: '写入哪一集', hidden: true });
   expect(within(menu).getByRole('menuitem', { name: /第 2 集 · 反转.*已写到/, hidden: true })).toBeTruthy();
   fireEvent.click(within(menu).getByRole('menuitem', { name: /第 1 集 · 开场/, hidden: true }));
   expect(ask).toHaveBeenCalledWith({ kind: 'script', episodeId: 'e1' }, expect.any(String));
@@ -100,13 +100,13 @@ test('the status line takes you to where the product is used', () => {
   const p = product(), focusClip = vi.fn(), goTab = vi.fn(), pickEpisode = vi.fn();
   const eps = [{ id: 'e1', no: 1, title: '开场', content: '无' }, { id: 'e2', no: 2, title: '反转', content: '他拿起保温杯' }];
   const { unmount } = render(<DirectorProducts {...props(work({ episodes: eps, assets: [p] }), { goTab, pickEpisode })}/>);
-  fireEvent.click(screen.getByRole('button', { name: '已写进第 2 集' }));
+  fireEvent.click(screen.getByRole('button', { name: '已写入第 2 集' }));
   expect(pickEpisode).toHaveBeenCalledWith('e2');
   expect(goTab).toHaveBeenCalledWith('script');
   unmount();
   const clips = [{ id: 'c1', episodeId: 'e2', order: 1, title: '', assetIds: ['p1'], shots: [] }];
   render(<DirectorProducts {...props(work({ episodes: eps, assets: [p], clips }), { focusClip })}/>);
-  fireEvent.click(screen.getByRole('button', { name: '已写进第 2 集 · 用在 1 个片段' }));
+  fireEvent.click(screen.getByRole('button', { name: '已写入第 2 集 · 用于 1 个片段' }));
   expect(focusClip).toHaveBeenCalledWith({ clipId: 'c1', assetId: 'p1', open: 'assets' });
 });
 
@@ -149,8 +149,8 @@ test('on a phone the library opens without popping the keyboard; on desktop the 
 
 test('no write button before there is a script', () => {
   render(<DirectorProducts {...props(work({ assets: [product()] }))}/>);
-  expect(screen.queryByRole('button', { name: '写进剧本' })).toBeNull();
-  expect(screen.getByText('生成剧本时写进剧情')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: '写入剧本' })).toBeNull();
+  expect(screen.getByText('生成剧本时写入剧情')).toBeTruthy();
 });
 
 test('picking several products adds them to the work; ones already in the work cannot be picked again', async () => {
@@ -182,11 +182,11 @@ test('a new product needs a name and an image, saves every image, and comes back
   render(<DirectorProducts {...props(work())}/>);
   fireEvent.click(screen.getByRole('button', { name: '添加商品' }));
   const dialog = await screen.findByRole('dialog', { name: '商品库' });
-  await within(dialog).findByRole('heading', { name: '商品库还是空的' });
+  await within(dialog).findByRole('heading', { name: '商品库暂无商品' });
   fireEvent.click(within(dialog).getByRole('button', { name: '新建商品' }));
   const save = within(dialog).getByRole('button', { name: '保存' }) as HTMLButtonElement;
   expect(save.disabled).toBe(true);
-  expect(within(dialog).getByText('还差：商品图、商品名称')).toBeTruthy();
+  expect(within(dialog).getByText('待补充：商品图、商品名称')).toBeTruthy();
   const input = within(dialog).getByLabelText('选择商品图片') as HTMLInputElement;
   fireEvent.change(input, { target: { files: [new File(['a'], '玫瑰香水.png', { type: 'image/png' }), new File(['b'], 'b.png', { type: 'image/png' })] } });
   await within(dialog).findByText('主图');
@@ -232,7 +232,7 @@ test('a save that fails halfway retries on the same product instead of creating 
   render(<DirectorProducts {...props(work())}/>);
   fireEvent.click(screen.getByRole('button', { name: '添加商品' }));
   const dialog = await screen.findByRole('dialog', { name: '商品库' });
-  await within(dialog).findByRole('heading', { name: '商品库还是空的' });
+  await within(dialog).findByRole('heading', { name: '商品库暂无商品' });
   fireEvent.click(within(dialog).getByRole('button', { name: '新建商品' }));
   fireEvent.change(within(dialog).getByLabelText('选择商品图片'), { target: { files: [new File(['a'], '香水.png', { type: 'image/png' })] } });
   await within(dialog).findByText('主图');
@@ -266,12 +266,12 @@ test('retrying a failed edit does not trip over its own earlier save', async () 
 test('the strip on the script page lists the products, or warns when there are none, and stays away when the switch is off', () => {
   const goTab = vi.fn();
   const { rerender, container } = render(<CommerceStrip work={work()} goTab={goTab}/>);
-  expect(screen.getByText('还没有添加商品，生成的剧本不会植入商品。')).toBeTruthy();
+  expect(screen.getByText('尚未添加商品，生成的剧本不会植入商品。')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: '添加商品' }));
   expect(goTab).toHaveBeenCalledWith('products');
   rerender(<CommerceStrip work={work({ assets: [product()] })} goTab={goTab}/>);
   expect(screen.getByText('恒温保温杯')).toBeTruthy();
-  expect(screen.getByText('写进剧情的商品')).toBeTruthy();
+  expect(screen.getByText('写入剧情的商品')).toBeTruthy();
   rerender(<CommerceStrip work={work({ settings: { commerce: false }, assets: [product()] })} goTab={goTab}/>);
   expect(container.textContent).toBe('');
 });

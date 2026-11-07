@@ -527,7 +527,7 @@ public class DirectorService {
                 // 角色音色的文字描述：没有参考音频时视频按它配音，有参考音频时作补充。
                 if (d.has("voiceDesc")) a.put("voiceDesc", limited(d.path("voiceDesc").asText(), 200, "音色描述"));
                 if (d.has("placement")) {
-                    if (!isProduct(a)) throw invalid("只有商品可以写植入想法");
+                    if (!isProduct(a)) throw invalid("仅商品可填写植入想法");
                     a.put("placement", limited(d.path("placement").asText(), PLACEMENT_MAX, "植入想法"));
                 }
                 if (d.has("episodeIds")) a.set("episodeIds", episodeIds(c, d.path("episodeIds")));
@@ -1103,7 +1103,7 @@ public class DirectorService {
             }
             case "asset-image" -> {
                 ObjectNode a = find(c, "assets", targetId, "这个资产");
-                if (isProduct(a)) throw invalid("商品图来自商品库，不用生成。可以在「商品」里换一张");
+                if (isProduct(a)) throw invalid("商品图来自商品库，无需生成，可在「商品」中更换");
                 String prompt = a.path("prompt").asText();
                 if (prompt.isBlank()) throw invalid("请先填写资产描述");
                 String refKey = assetRefKey(a);
@@ -5111,8 +5111,8 @@ public class DirectorService {
      * 商品库的每张图都进候选（source=library，不会因设置改动过期）；本剧已选的图不动，新加的默认用主图；植入想法只属于这部剧。
      */
     void addProduct(String userId, ObjectNode c, IpLibraryDtos.LibraryObject o, JsonNode d) {
-        if (!PRODUCT.equals(o.kind())) throw invalid("「" + o.name() + "」不是商品库里的商品");
-        if (o.versions() == null || o.versions().isEmpty()) throw invalid("「" + o.name() + "」还没有图片，请先在商品库上传");
+        if (!PRODUCT.equals(o.kind())) throw invalid("「" + o.name() + "」不是商品库中的商品");
+        if (o.versions() == null || o.versions().isEmpty()) throw invalid("「" + o.name() + "」暂无图片，请先在商品库上传");
         ObjectNode target = null;
         for (JsonNode a : c.path("assets")) if (isProduct(a) && o.id().equals(a.path("libraryObjectId").asText())) target = (ObjectNode) a;
         String name = DirectorPrompts.clip(o.name(), 40), description = o.description() == null ? "" : o.description().trim();
@@ -5132,7 +5132,7 @@ public class DirectorService {
             if (v.id().equals(o.mainVersionId()) || mainId == null) mainId = m.path("id").asText();
         }
         if (adoptedKey(target.path("image")) == null) {
-            if (mainId == null) throw invalid("「" + o.name() + "」还没有可用的图片，请先在商品库上传");
+            if (mainId == null) throw invalid("「" + o.name() + "」暂无可用图片，请先在商品库上传");
             adopt(target, "image", mainId);
         }
         if (d.has("placement")) target.put("placement", limited(d.path("placement").asText(), PLACEMENT_MAX, "植入想法"));

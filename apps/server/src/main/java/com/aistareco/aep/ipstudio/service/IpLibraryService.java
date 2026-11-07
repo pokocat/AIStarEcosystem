@@ -198,7 +198,7 @@ public class IpLibraryService {
     }
     /** 删一张图（商品库的商品）。只从这一项里去掉，文件和已经加进导演台作品的快照不动；删的是主图时第一张顶上。 */
     private void removeVersion(ObjectNode data,String id){
-        if(!"product".equals(data.path("kind").asText()))throw invalid("只有商品可以删除图片");
+        if(!"product".equals(data.path("kind").asText()))throw invalid("仅商品可删除图片");
         if(!hasVersion(data,id))throw invalid("这张图片已不存在，请刷新后重试");
         ArrayNode versions=(ArrayNode)data.path("versions");if(versions.size()<=1)throw invalid("至少保留一张商品图");
         for(int i=0;i<versions.size();i++)if(id.equals(versions.get(i).path("id").asText())){versions.remove(i);break;}

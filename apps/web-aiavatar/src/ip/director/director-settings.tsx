@@ -82,7 +82,7 @@ export function SettingsPanel({ work, onClose, apply, setError }: { work: Direct
 /** 带货短剧开关：决定商品工作区是否出现。新建作品和作品设置共用。 */
 export function CommerceSwitch({ checked, onChange, disabled, note }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; note?: string }) {
   return <div className="director-commerce-switch">
-    <div><b id="director-commerce-label">带货短剧</b><small>{note ?? "把商品写进剧情，商品图用作分镜图和视频的参考图。"}</small></div>
+    <div><b id="director-commerce-label">带货短剧</b><small>{note ?? "将商品写入剧情，商品图用作分镜图和视频的参考图。"}</small></div>
     <Switch aria-labelledby="director-commerce-label" checked={checked} disabled={disabled} onChange={onChange}/>
   </div>;
 }
