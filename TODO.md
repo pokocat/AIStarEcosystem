@@ -1,6 +1,6 @@
 # 待办与已知问题
 
-## 用户反馈 2026-11-07（方案见发布记录 `docs/releases/feedback-errors-release-20261107.md`）
+## 用户反馈 2026-11-07（修复见 PR 157，文案记录在 `docs/audits/pc-ui-copy-review-2026-11.md` 第 11 批）
 
 - [x] ~~已失败任务点「重试这一步」报「原任务的提交结果尚未确认」~~ **2026-11-07 修复**：`StudioPlanExecutionService.adoptVideoRepairs` 只拦原任务还在进行的，错误码 `STUDIO_PLAN_STEP_RUNNING`。
 - [x] ~~模型聊天回复、厂商接口说法显示给用户~~ **2026-11-07 修复**：`PublicModelErrorPolicy` 和 `public-model-error.ts` 换成引导重试的文案，旧记录读取时也换。

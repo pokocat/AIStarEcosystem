@@ -50,7 +50,7 @@ class DapUpstreamMessageTest {
     @Test
     @DisplayName("超长 message 截断，别让一段长文把弹窗撑爆")
     void longMessagesAreTruncated() throws Exception {
-        String out = call(400, "{\"message\":\"" + "很长的原因".repeat(200) + "\"}");
+        String out = call(400, "{\"message\":\"" + "参考图尺寸不符".repeat(200) + "\"}");
         assertTrue(out.length() < 260, "没有截断，长度=" + out.length());
         assertTrue(out.endsWith("…"), out);
     }
