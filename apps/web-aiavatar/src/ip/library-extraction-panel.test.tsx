@@ -44,7 +44,9 @@ test('a rejected price clears the unaccepted request so the next click can use c
  await waitFor(()=>expect(analyze.disabled).toBe(false));fireEvent.click(analyze);
  await screen.findByRole('alert');expect(api.task).toHaveBeenLastCalledWith(undefined);
  const first=api.extract.mock.calls.find((c:any)=>c[1].analyze)?.[1];
- api.extract.mockImplementation(async(_:string,r:any)=>r.analyze?done:seed);fireEvent.click(analyze);
+ api.extract.mockImplementation(async(_:string,r:any)=>r.analyze?done:seed);
+ // 报错后面板会重新读取价格，读完按钮才能点；机器一忙，提前点的这一下会落在禁用的按钮上（CI 2026-11-07）。
+ await waitFor(()=>expect(analyze.disabled).toBe(false));fireEvent.click(analyze);
  await screen.findByText('已消耗 4 积分');
  expect(api.extract.mock.calls.at(-1)?.[1].clientRequestId).not.toBe(first.clientRequestId);
 });

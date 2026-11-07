@@ -16,6 +16,10 @@ vi.mock("./director-assets", () => ({ DirectorAssets: () => null }));
 vi.mock("./director-storyboard", () => ({ DirectorStoryboard: () => null }));
 vi.mock("./director-extract", () => ({ ExtractReview: () => null }));
 
+// 页面首次渲染后，把作品名同步进输入框的 effect 可能还没跑，排到输入之后执行就会把刚输入的名字改回去，失焦时当成没改、不保存。
+// CI 2026-11-07 失败时输入框是原名、patchWork 没被调用，据此判断，没有单独复现。真人来不及在这几毫秒里输入。
+const settleEffects = () => act(async () => {});
+
 function work(mode: "fixed" | "selectable" = "selectable"): DirectorWork {
   return {
     id: "w", title: "原作品名", revision: 1, createdAt: "2026-10-26T00:00:00Z", updatedAt: "2026-10-26T00:00:00Z",
@@ -50,6 +54,7 @@ test("when any request finds this work deleted, the page stops showing editable 
   const title = await screen.findByRole("textbox", { name: "作品名" });
   fireEvent.change(screen.getByRole("textbox", { name: "草稿" }), { target: { value: "没保存的正文" } });
   expect(hasDrafts("w:")).toBe(true);
+  await settleEffects();
   fireEvent.change(title, { target: { value: "改个名字" } });
   fireEvent.blur(title);
   expect(await screen.findByText("作品已删除或不存在")).toBeTruthy();
@@ -135,6 +140,7 @@ test("a late 404 for the previous work leaves the current work editable and keep
     scopeToWork(id, new Promise<DirectorWork>((_resolve, reject) => { rejectOld = reject; }))));
   const oldPage = render(<DirectorWorkbench id="old"/>);
   const oldTitle = await screen.findByRole("textbox", { name: "作品名" });
+  await settleEffects();
   fireEvent.change(oldTitle, { target: { value: "保存旧作品" } });
   fireEvent.blur(oldTitle);
   await waitFor(() => expect(rejectOld).toBeTypeOf("function"));
@@ -159,6 +165,7 @@ test("a 404 that cannot be attributed to a work only shows its message", async (
   vi.mocked(DirectorApi.patchWork).mockRejectedValue(new ApiError({ code: "DIRECTOR_WORK_NOT_FOUND", message: "作品不存在" }, 404));
   render(<DirectorWorkbench id="w"/>);
   const title = await screen.findByRole("textbox", { name: "作品名" });
+  await settleEffects();
   fireEvent.change(title, { target: { value: "改个名字" } });
   fireEvent.blur(title);
   await waitFor(() => expect(failure.show).toHaveBeenCalled());
@@ -199,6 +206,7 @@ async function restoredScenario(id: string) {
   render(<><DirectorWorkbench id={id}/><DraftProbe/></>);
   const rename = async (to: string) => {
     const title = await screen.findByRole("textbox", { name: "作品名" });
+    await settleEffects();
     fireEvent.change(title, { target: { value: to } });
     fireEvent.blur(title);
     await waitFor(() => expect(pending.length).toBeGreaterThan(0));
