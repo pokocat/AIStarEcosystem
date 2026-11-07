@@ -21,7 +21,7 @@ Webhook 留空时沿用应用机器人。2026-10-28 起生产关闭应用内加�
 
 环境变量见 `infra/env/server.env.example`：`AEP_FEISHU_ALERTS_ENABLED`、`AEP_FEISHU_ALERT_WEBHOOK`、`AEP_FEISHU_APP_ID`、`AEP_FEISHU_APP_SECRET`、`AEP_FEISHU_ALERT_CHAT_ID`、`AEP_FEISHU_ALERT_USER_ID`、`AEP_FEISHU_ALERT_URGENT`。Webhook 完整地址也是密钥，只安装在受限 env 文件，不写 Git 或日志。默认禁用；配置完整才入队/发送。
 
-Webhook 的 HTTP 200 且业务 `code=0` 才算成功；它不返回飞书 `message_id`，现有投递表的 `message_id` 存 `webhook:<投递记录ID>` 作为本地成功回执，不用于加急。入库去重、数据库租约和最多五次重试不变；Webhook 没有应用机器人的 UUID 去重保障，请求已送达但响应丢失时重试可能重复通知。已经有成功回执的通知不会因切换渠道重新发送。此支持于 2026-11-07 本地新增，尚未生产发布。
+Webhook 的 HTTP 200 且业务 `code=0` 才算成功；它不返回飞书 `message_id`，现有投递表的 `message_id` 存 `webhook:<投递记录ID>` 作为本地成功回执，不用于加急。入库去重、数据库租约和最多五次重试不变；Webhook 没有应用机器人的 UUID 去重保障，请求已送达但响应丢失时重试可能重复通知。已经有成功回执的通知不会因切换渠道重新发送。此支持已于 2026-11-07 随 server 上线，同日 09:56:40 PST 将生产配置切换至用户指定的新 Webhook 并重启生效；运行配置与健康检查通过，尚未观察到切换后的真实通知投递。见[配置发布记录](../releases/model-alert-webhook-config-release-20261107.md)。
 
 V64 新增 `model_alert_delivery`，仅记录通知投递：同任务+错误码生成稳定 UUID 主键去重，飞书发送复用该 UUID。独立调度线程每10秒取一条、数据库60秒租约防抢占；HTTP单次5秒超时。发送成功先持久化 message_id，加急失败只重试已有消息；最多5次、30/60/120/240秒退避，最终失败留下状态与脱敏错误。通知异常不得回滚任务失败/退款，或拖住生成调度。
 
