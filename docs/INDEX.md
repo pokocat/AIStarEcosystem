@@ -52,6 +52,7 @@
 
 ### 1.3 现行设计真源（`docs/` 根）
 
+- [模型配置接入](platform-model-management.md)：Studio 后台 `/models` 三个页签、保存规则和没搬完的部分；最新在文件开头（last-reviewed 2026-11-07）。
 - [模型接入点赠款与折扣](model-billing-design.md)：接入点唯一范围、沿用原价、企业折扣、文本/媒体分账及本地核验；本地完成，未发布，last-reviewed 2026-10-25。
 - [模型计费后台本地验收](releases/model-scoped-credits-admin-validation-20261025.md)：价格/折扣/活动/发放的真实页面、接口与余额证据；局部验收，未发布，last-reviewed 2026-10-25。
 - [模型赠款与折扣生产发布](releases/model-scoped-credits-production-release-20261025.md)：`20261025-model-grants`，合并处理、发布前检查、线上验收与回滚，last-reviewed 2026-10-25。

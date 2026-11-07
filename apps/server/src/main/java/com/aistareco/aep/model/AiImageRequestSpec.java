@@ -54,6 +54,8 @@ public record AiImageRequestSpec(int promptMaxChars, int minReferenceImages, int
             spec.validate();
             return spec;
         } catch(BusinessException e) {throw e;
+        } catch(com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException e) {
+            throw BusinessException.badRequest("IMAGE_REQUEST_SPEC_INVALID","图片规格里有不认识的字段："+e.getPropertyName());
         } catch(Exception e) {throw invalid();}
     }
 

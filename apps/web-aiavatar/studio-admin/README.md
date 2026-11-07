@@ -15,7 +15,8 @@ pnpm --filter @ai-star-eco/studio-admin build
 
 ## 信息架构与请求边界
 
-- 左侧主菜单是独立路由：`/business`、`/technology`、`/suppliers`、`/scenes`；根路由跳转到经营分析。
+- 左侧主菜单是独立路由：`/business`、`/technology`、`/suppliers`、`/scenes`、`/models`；根路由跳转到经营分析。
+- `/models` 是模型配置（模型接入、IP Studio 模型、功能与售价），替代统一后台和 `apps/admin` 的 LLM API 页；规则见 `docs/platform-model-management.md`。保存逻辑都在 `src/lib/model-config.ts`，规格一律当不透明 JSON，不要写只列部分字段的表单。
 - 顶部页签只切换当前模块的子页面，状态保存在 `tab` 查询参数中，支持刷新、前进和后退。
 - 经营与技术请求分别使用 `scope=business|technology`，后端不计算当前模块不会展示的另一半聚合；共用健康状态仍在两者中展示。
 - 供应商性能只在 `/suppliers` 动态加载，不随技术监控页面一起请求；切换筛选或离开页面会取消过期查询。
