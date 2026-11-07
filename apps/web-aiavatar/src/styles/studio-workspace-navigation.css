@@ -5,7 +5,6 @@ html[data-layout="desktop"] .ip-brand-logo { gap: 10px; }
 html[data-layout="desktop"] .ip-brand-logo strong { flex-direction: column; align-items: flex-start; gap: 0; font-size: 18px; line-height: 1.35; }
 html[data-layout="desktop"] .ip-brand-logo small { font-size: 10px; }
 html[data-layout="desktop"] .ip-top-account { gap: 10px; }
-.studio-mobile-navigation { display: none; }
 .studio-scene-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 18px; }
 .studio-scene-card { min-width: 0; border: 1px solid var(--ip-line); border-radius: 9px; overflow: hidden; }
 .studio-scene-visual { aspect-ratio: 1.5; overflow: hidden; background: var(--ip-soft); }
@@ -83,9 +82,6 @@ html[data-layout="desktop"] .ip-top-account { gap: 10px; }
 .studio-job-row > div { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 8px; }
 .studio-job-row time { color: var(--ip-muted); font-size: 12px; }
 .studio-job-row a { display: inline-flex; gap: 6px; align-items: center; margin-top: 10px; }
-html[data-layout="mobile"] .studio-mobile-navigation { display: flex; gap: 20px; overflow-x: auto; margin: -4px -4px 24px; padding: 6px 4px 12px; border-bottom: 1px solid var(--ip-line); }
-html[data-layout="mobile"] .studio-mobile-navigation a { flex-shrink: 0; font-size: 12px; color: var(--ip-muted); }
-html[data-layout="mobile"] .studio-mobile-navigation a[aria-current="page"] { color: var(--ip-ink); font-weight: 700; }
 html[data-layout="mobile"] .studio-scene-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
 html[data-layout="mobile"] .studio-scene-copy { padding: 12px; gap: 10px; }
 html[data-layout="mobile"] .studio-scene-copy h2 { font-size: 19px; }

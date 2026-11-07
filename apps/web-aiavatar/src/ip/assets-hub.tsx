@@ -1,10 +1,9 @@
 "use client";
 import { IMAGE_UPLOAD_ACCEPT } from '@ai-star-eco/api-client/image-upload-policy';
-// 新版「资产」页（2026-10-31 改版，设计稿「资产（新）」一排）：
+// 「资产」页（2026-10-31 改版，设计稿「资产（新）」一排）：
 // 按类型分（全部 / 图片 / 视频 / 音频 / 人物 / 场景 / 道具），其余分组交给左边的「资产库」（就是原来的文件夹）。
 // 2026-11-07：导演台的场景、道具有图后自动进库，这里加两个分类；来自哪部作品、哪张画布是单独的筛选（地址参数 from）。
 // 「AI 生成」是自带的库：各处做出来、还没放进别的库的东西都在这里，移到别的库就从这里走掉。
-// 旧版不走这里，仍是 components/hub/assets-library.tsx 原来那套。
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -24,7 +23,7 @@ import type { VoiceAsset } from '@/proto/data';
 import { masonry, mediaRatio, useMasonryColumns } from './asset-masonry';
 import { AssetThumb } from './asset-thumb';
 import { AudioRecorderDialog } from './audio-recorder-dialog';
-import { AI_LIBRARY, libraryQuery, materialOrigin, sourceLabel } from './assets-hub-shared';
+import { AI_LIBRARY, ASSETS_DESCRIPTION, libraryQuery, materialOrigin, sourceLabel } from './assets-hub-shared';
 import { AssetsObjects } from './assets-objects';
 import { AssetsPeople } from './assets-people';
 import { LibrarySaveDialog, type LibrarySaveImage } from './library-save-dialog';
@@ -84,7 +83,7 @@ export function AssetsHub() {
   const current = builtIn || folders.some(f => f.id === library) || (foldersRead && !!folderError) ? library : 'all';
   // 地址里是自己建的库：等库列表读回来再读内容，免得先按一个不存在的库读一遍。
   const ready = builtIn || foldersRead;
-  return <StudioPage title="资产" description="人物、声音和创作素材，创作时可直接使用。" nextDescription="上传和创作中产生的素材都在这里，创作时可直接使用。" className="assets-hub-page">
+  return <StudioPage title="资产" description={ASSETS_DESCRIPTION} className="assets-hub-page">
     <ConfigProvider locale={zhCN} button={{ autoInsertSpace: false }} getPopupContainer={studioOverlayContainer} theme={{ token: { colorPrimary: '#17202a', borderRadius: 10, fontFamily: 'var(--ip-ui)' } }}>
       <App className="assets-hub" data-studio-overlay-root>
         <div className="assets-hub-tabs" role="tablist" aria-label="资产分类">

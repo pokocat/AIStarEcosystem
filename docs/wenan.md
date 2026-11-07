@@ -9,7 +9,6 @@ last-reviewed：2026-11-07
 ## 范围
 
 - PC 站是 `apps/web-aiavatar` 的桌面形态（`html[data-layout="desktop"]`）。页面在 `src/app/`，Studio 业务组件在 `src/ip/`，画布胶水在 `src/canvas-bridge/`，外壳在 `src/shell/`。
-- 新旧两版都要看：`?ui=new`、`?ui=old`（`shell/ui-version.ts`）。
 - 导航叫法的真值：`src/shell/studio-navigation.ts`。「画布」是一张张可编辑的画布，「项目」是作品画廊页，两者不要混叫。
 - web-drama 另有术语表 `docs/drama-ux-copy-pass.md` §2，改 drama 先查表。
 - 服务端报错也算界面文字：`python3 -I ~/.agents/skills/wenan/scripts/scan_copy.py apps/server/src/main --ext .java,.json`。这里的命中大多是写给模型的话和运营后台文字，只改用户能看到的（`BusinessException` 的 message、积分流水说明）。

@@ -1,5 +1,5 @@
-/* 新版（html[data-ui="next"]）的项目、资产、发行等 StudioPage 页面：2026-10-31 改版，和 AI 视频 / AI 图片、首页同一套设计语言。
-   令牌在 studio-scenes.css 的 .studio-next-page 上；这里只改样子，不改结构。旧版不受影响。 */
+/* 项目、资产、发行等 StudioPage 页面：2026-10-31 改版，和 AI 视频 / AI 图片、首页同一套设计语言。
+   令牌在 studio-scenes.css 的 .studio-next-page 上；这里只改样子，不改结构。 */
 html[data-layout="desktop"] .studio-page.studio-next-page { background: #ffffff; border-radius: 0; box-shadow: none; }
 .studio-page.studio-next-page .studio-page-body { gap: 20px; }
 .studio-page.studio-next-page .studio-page-heading { align-items: flex-end; gap: 16px; padding-bottom: 0; border-bottom: 0; }
@@ -55,15 +55,6 @@ html[data-layout="desktop"] .studio-page.studio-next-page { background: #ffffff;
 .studio-next-page .project-content-document { background: #f7f8fa; }
 .studio-next-page .studio-gallery-pagination button { border: 1px solid var(--ip-line); border-radius: 8px; background: #fff; }
 
-/* 资产：分类是下划线标签，卡片是 3:4 大图加两行字 */
-.studio-next-page.assets-library .studio-page-filters { display: flex; width: 100%; gap: 24px; padding: 0; border-bottom: 1px solid var(--ip-line); border-radius: 0; background: transparent; scrollbar-width: none; }
-.studio-next-page.assets-library .studio-page-filters::-webkit-scrollbar { display: none; }
-.studio-next-page.assets-library .studio-page-filters>button { flex-shrink: 0; height: 38px; padding: 0; border-radius: 0; font-size: 13px; box-shadow: inset 0 -1.5px 0 transparent; }
-.studio-next-page.assets-library .studio-page-filters>button[aria-pressed="true"] { background: transparent; box-shadow: inset 0 -1.5px 0 var(--ip-ink); }
-.studio-next-page.assets-library .ip-management-card { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
-.studio-next-page.assets-library .ip-management-card-image { border-radius: 14px; background: #f7f8fa; overflow: hidden; }
-.studio-next-page.assets-library .ip-management-card h2 { font-size: 13.5px; font-weight: 500; }
-
 /* 发行：左列批次、右侧详情一张细边卡；状态是浅底小标签 */
 .studio-next-page.studio-distribution-page .studio-page-filters { display: flex; width: 100%; gap: 24px; padding: 0; border-bottom: 1px solid var(--ip-line); border-radius: 0; background: transparent; scrollbar-width: none; }
 .studio-next-page.studio-distribution-page .studio-page-filters::-webkit-scrollbar { display: none; }
@@ -76,7 +67,7 @@ html[data-layout="desktop"] .studio-page.studio-next-page { background: #ffffff;
 html:not([data-layout="desktop"]) .studio-page.studio-next-page .studio-page-heading h1 { font-size: 22px; }
 html:not([data-layout="desktop"]) .studio-page.studio-next-page .studio-page-heading p { text-wrap: pretty; }
 
-/* ── 新版手机底栏（2026-11-02，照设计稿的两张手机稿）：白底细线、细图标，「创作」是栏里的墨色小方块。
+/* ── 手机底栏（2026-11-02，照设计稿的两张手机稿）：白底细线、细图标，「创作」是栏里的墨色小方块。
    高度与旧底栏一样是 --tabbar-h（6 + 46 + 8），各页留给底栏的空白不用改。 ── */
 .studio-tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 60; max-width: 480px; margin-inline: auto; box-sizing: border-box;
   display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: end;
@@ -113,7 +104,7 @@ html[data-layout="desktop"] .studio-create-backdrop { display: none; }
 @keyframes studio-create-up { from { opacity: 0; transform: translateY(24px); } }
 @media (prefers-reduced-motion: reduce) { .studio-create-backdrop, .studio-create-sheet { animation: none; } }
 
-/* ── 新版手机「我的」（2026-11-02）：白底，三组细边列表，图标细、字不加粗；个人卡右边是可用积分（手机上原来哪儿都看不到余额） ── */
+/* ── 手机「我的」（2026-11-02）：白底，三组细边列表，图标细、字不加粗；个人卡右边是可用积分（手机上原来哪儿都看不到余额） ── */
 .studio-me { display: flex; flex-direction: column; gap: 14px; min-height: 100dvh; box-sizing: border-box; padding: calc(env(safe-area-inset-top, 0px) + 16px) 16px calc(var(--tabbar-h, 60px) + env(safe-area-inset-bottom, 0px) + 20px); background: #ffffff; }
 .studio-me>h1 { margin: 0 4px; font-family: var(--ip-display); font-size: 22px; font-weight: 500; line-height: 1.35; }
 .studio-me-profile { display: flex; align-items: center; gap: 14px; padding: 16px; border: 1px solid var(--ip-line); border-radius: 18px; }
@@ -138,16 +129,17 @@ html[data-layout="desktop"] .studio-create-backdrop { display: none; }
 .studio-me .studio-me-logout { height: 46px; margin-top: 4px; border: 1px solid var(--ip-line); border-radius: 14px; background: #ffffff; color: var(--ip-error); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; }
 .studio-me .studio-me-logout:active { background: var(--ip-error-soft); }
 
-/* ── 新版手机首页（2026-11-02）：电脑版首页稿的样子搬到手机上，标题和留白按手机缩小。
+/* ── 手机首页（2026-11-02）：电脑版首页稿的样子搬到手机上，标题和留白按手机缩小。
    原来电脑版的 56/48 内边距在手机上照样生效，对话框两边各空出近 50px，大标题折成三行。 ── */
 /* 首页的 main 原来不是 flex，电脑版写的 gap 在手机上不起作用，快捷词、工具、场景几块贴在一起。 */
 html:not([data-layout="desktop"]) .studio-next-page.studio-scene-home>main { display: flex; flex-direction: column; gap: 28px; padding: calc(env(safe-area-inset-top, 0px) + 28px) 16px 28px; }
 html:not([data-layout="desktop"]) .studio-next-page .home-hero { gap: 16px; padding: 0; }
 /* 只在逗号处换行：按字均分会折成「让灵感 / 成形」。 */
 html:not([data-layout="desktop"]) .studio-next-page .home-hero h1 { font-size: 24px; line-height: 1.4; letter-spacing: .01em; word-break: keep-all; }
-html:not([data-layout="desktop"]) .studio-next-page :is(.home-goals, .home-recent, .home-feed) { padding: 0; }
+
+html:not([data-layout="desktop"]) .studio-next-page :is(.home-goals, .home-feed) { padding: 0; }
 /* main 改成 flex 列以后，电脑版的 margin: 0 auto 会把工具格缩到内容宽，这里撑满。 */
-html:not([data-layout="desktop"]) .studio-next-page :is(.home-tools, .home-goals, .home-recent, .home-feed) { width: 100%; margin: 0; box-sizing: border-box; }
+html:not([data-layout="desktop"]) .studio-next-page :is(.home-tools, .home-goals, .home-feed) { width: 100%; margin: 0; box-sizing: border-box; }
 html:not([data-layout="desktop"]) .studio-next-page .home-tools { gap: 8px; padding: 0; }
 html:not([data-layout="desktop"]) .studio-next-page .home-tools button { padding: 12px 2px 10px; font-size: 12px; }
 html:not([data-layout="desktop"]) .studio-next-page .home-section-heading { margin-bottom: 12px; }

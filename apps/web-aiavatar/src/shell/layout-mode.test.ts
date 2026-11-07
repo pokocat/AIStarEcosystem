@@ -206,7 +206,6 @@ describe("CSS 与 JS 读的是同一个真值", () => {
     // 变成无条件生效，手机版就坏了：480 列被撑开、底部 tab 栏消失、内容被顶栏盖住…
     const mustBeGuarded = [
       ".hub-screen {\n  max-width: 1120px",
-      ".wx-tabbar.hub-tabbar { display: none; }",
       "body.has-desktop-bar { padding-top:",
       "body.has-desktop-bar .app-root { top:",
       ".desktop-top-bar { display: flex; }",
@@ -227,6 +226,9 @@ describe("CSS 与 JS 读的是同一个真值", () => {
 
     // 手机形态的兜底：没有属性时那批桌面规则一条都不该生效
     expect(css).toContain(".desktop-top-bar { display: none; }");
+    // 手机底栏的样式在另一个文件，同样只在桌面形态隐藏。
+    expect(read("src/styles/studio-next-pages.css"))
+      .toContain('html[data-layout="desktop"] .studio-tabbar { display: none; }');
   });
 
   it("画布闸不再自己量宽度 —— 它和外壳必须同一个判定", () => {

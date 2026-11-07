@@ -9,7 +9,6 @@ import { DirectorApi, IpStudioApi } from "../api";
 import { useStudioApp } from "../studio-errors";
 import { LibraryReferencePicker } from "../library-reference-picker";
 import { assetsHref } from "../assets-hub-shared";
-import { useUiVersion } from "@/shell/ui-version";
 import type { WorkbenchProps } from "./director-workbench";
 import { DIRECTOR_MEDIA_SHORTAGE, Field, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, assetRefs, chooseDirectorBilling, clearDrafts, costText, dialogFocus, failed, hasDrafts, kindLabel, newRequestId, runningTask, useBusy, useDraft, useEscape, ZoomableImage, type AssetRef } from "./director-shared";
 import { VoicePanel } from "./director-voice";
@@ -84,7 +83,6 @@ export function DirectorAssetStudio(props: WorkbenchProps & { asset: DirectorAss
 }
 
 function AssetWorkspace({ work, asset, apply, setError, focusClip, onClose }: WorkbenchProps & { asset: DirectorAsset; onClose: () => void }) {
-  const ui = useUiVersion();
   const { modal } = useStudioApp();
   // 没保存的修改切走再回来还在，编辑框也保持打开。
   const prefix = `${work.id}:asset:${asset.id}:`;
@@ -241,7 +239,7 @@ function AssetWorkspace({ work, asset, apply, setError, focusClip, onClose }: Wo
         <div className="director-asset-title">
           <h4 title={asset.name}><span className="director-kind">{kindLabel[asset.kind]}</span>{asset.name}</h4>
           <small>{[appears, asset.aliases.length ? `别名：${asset.aliases.join("、")}` : ""].filter(Boolean).join(" · ")}</small>
-          {(asset.libraryEntryId || asset.libraryObjectId) && <Link className="director-library-link" href={assetsHref(asset.kind === "product" ? "prop" : asset.kind, work.id, ui)}>{asset.libraryObjectId ? "已关联资产库" : "已在资产库"}</Link>}
+          {(asset.libraryEntryId || asset.libraryObjectId) && <Link className="director-library-link" href={assetsHref(asset.kind === "product" ? "prop" : asset.kind, work.id)}>{asset.libraryObjectId ? "已关联资产库" : "已在资产库"}</Link>}
         </div>
         <div className="director-asset-head-actions">
           <button type="button" className="ip-brand-text-button" onClick={() => setEditing(true)}>编辑</button>

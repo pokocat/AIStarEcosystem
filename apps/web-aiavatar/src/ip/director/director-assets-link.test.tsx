@@ -6,7 +6,6 @@ import { DirectorAssets } from "./director-assets";
 const api = vi.hoisted(() => ({ runTask: vi.fn(), edit: vi.fn() }));
 vi.mock("../api", () => ({ DirectorApi: api, IpStudioApi: {} }));
 vi.mock("next/link", () => ({ default: ({ children, ...p }: any) => <a {...p}>{children}</a> }));
-vi.mock("@/shell/ui-version", () => ({ useUiVersion: () => "next" }));
 vi.mock("../studio-errors", async importOriginal => ({ ...(await importOriginal<typeof import("../studio-errors")>()), useStudioApp: () => ({ modal: { confirm: vi.fn() } }) }));
 // 资产库选择器换成一个按钮：点一下就像用户在资产库里挑了「祖宅」的第 2 版。
 vi.mock("../library-reference-picker", () => ({

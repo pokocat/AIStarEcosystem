@@ -149,7 +149,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | [`docs/ip-studio-new-canvas-and-threads.md`](ip-studio-new-canvas-and-threads.md) | **Studio 新建画布、多段对话与卡片精简 · 现行设计真源** | 新建统一走 `startNewCanvas()` 直进画布并复用没动过的空白画布、空画布引导卡；助手「新对话 / 历史对话」三个接口（无迁移）；方案与确认卡合成一张、完成总结一句话、提示词 seed v20；§5 新对话的四张填空卡（制作个人 IP / 写剧本 / 生成短视频 / 复刻视频，复刻清单并入）；§6 执行结果落到助手准备的节点（`targetNodeId` + 确认时绑定）、首帧比例不同时居中裁剪不拉伸、节点按产物比例（seed v23）。取代复刻方案 §对话形态「每张画布一段对话」那一句。2026-10-21 已生产发布 `20261021-studio-new-canvas-threads`（last-reviewed 2026-10-21） |
 | [`docs/studio-final-cut.md`](studio-final-cut.md) | **成片：生产阶段做好基础，编辑室只做精修 · 现行设计真源** | 自动字幕、声音处理、清晰度放在合成阶段默认做好；编辑室加变速、淡入淡出、调色、小窗和图片 | 2026-11-07 |
 | [`docs/ip-studio-workflow-template-plan.md`](ip-studio-workflow-template-plan.md) | **标准画布模板与人物设定图方案** | 用户新增核心方向；含 LibTV 公开/复制画布实测、默认一次人物设定图与反推提示词，进阶独立资产/拼板；模板输入/依赖/输出/版本/套用和有限执行（last-reviewed 2026-10-08） |
-| [Studio 创作首页](ip-studio-home.md) | AI IP 工作台 | 首页主要功能、近期画布与模板、同一 Studio 落点与品牌保留（last-reviewed 2026-10-08） |
+| [Studio 创作首页](ip-studio-home.md) | AI IP 工作台 | **已随旧版界面下线（2026-11-07）**，只作历史记录；现行首页见 studio-scene-creation.md（last-reviewed 2026-11-07） |
 | [视频素材库统一方案](video-asset-library.md) | 方案 | 所有视频任务走同一步素材准备，各渠道走各自的入库流程。OneToken 已接入，火山官方的真人认证和虚拟人像库因权限暂缓。last-reviewed 2026-11-07 |
 | [Studio 视频模式](ip-studio-video-modes.md) | 产品 / 实施 | 原生首尾帧、全能参考、模型合同与费用校验；本地验证边界 |
 | [Studio 运镜标签](ip-studio-camera-motion.md) | 产品 / 实施 | 原生面板、展开编辑器与抽屉共用命名指令、光标插入、编辑/移除及正文保存；v0.211 本地 |
@@ -270,6 +270,10 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 原始 UI 证据：[1032px 首轮截图](audits/studio-new-ui-review-20261030/video-1032.png)、[1032px 复测截图](audits/studio-new-ui-review-20261030/video-1032-recheck.png)、[393px 复测截图](audits/studio-new-ui-review-20261030/video-393-recheck.png)。CLI detector 的空数组结果已记入首轮报告，不另存重复 JSON；该结果仅代表该次扫描无发现，不能替代交互验收。
 
 ## 7. 发布与验收记录（`docs/releases/`）
+
+- [Sonnet 切换为 Orange5.5 与一次真实图文实测](releases/orange55-model-switch-20261107.md)：生产配置改用 `claude-opus-5-5-Kiro`，对外显示 Orange5.5；实测 38.731 秒、3053/3197 Token、5 积分，同量级历史比较未显示明显提速（last-reviewed: 2026-11-07）。
+
+- [整仓生产发布](releases/full-production-release-20261107.md)：main `38de5c736`，10 个服务、V75/V76、全量测试与运行制品核对；记录代发依赖复用恢复、约 23 秒重启窗口和回滚备份（last-reviewed: 2026-11-07）。
 
 - [模型原文保留与被拒剧本恢复](releases/model-output-preservation-release-20261105.md)：main `8ce84083e`，server + Studio / 短剧 / 带货；正常回复不因字数、格式或用量被整份丢弃，新增本人原文入口，已恢复原剧本并回填完整原文；1729 后端、25 前端用例通过（last-reviewed: 2026-11-05）。
 

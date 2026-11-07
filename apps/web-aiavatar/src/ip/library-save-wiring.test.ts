@@ -14,9 +14,8 @@ test('canvas image nodes can be saved from the right-click menu and the action b
   expect(workspace).toContain('<LibrarySaveDialog ');
 });
 
-test('both asset pages offer it', () => {
+test('the asset page offers it', () => {
   expect(read('ip/assets-hub.tsx')).toContain('<LibrarySaveDialog ');
-  expect(read('ip/personal-asset-library.tsx')).toContain('<LibrarySaveDialog ');
 });
 
 test('crops, splits and frames reach the library; the inpaint mask does not', () => {
@@ -30,6 +29,6 @@ test('crops, splits and frames reach the library; the inpaint mask does not', ()
 });
 
 test('the source filter is on every asset view', () => {
-  for (const file of ['ip/assets-hub.tsx', 'ip/assets-people.tsx', 'ip/assets-objects.tsx', 'ip/personal-asset-library.tsx'])
+  for (const file of ['ip/assets-hub.tsx', 'ip/assets-people.tsx', 'ip/assets-objects.tsx'])
     expect(read(file)).toContain('<LibrarySourceSelect ');
 });

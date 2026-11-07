@@ -1,4 +1,6 @@
-// 新版资产页和资产选择框共用的约定（2026-10-31）。
+// 资产页和资产选择框共用的约定（2026-10-31）。
+
+export const ASSETS_DESCRIPTION = '上传和创作中产生的素材都在这里，创作时可直接使用。';
 
 /** 自带的「AI 生成」库：自动收进来的生成结果里，还没放进别的资产库的那些（folder=unfiled + source=generated）。 */
 export const AI_LIBRARY = 'ai';
@@ -22,10 +24,9 @@ export function rememberLibrary(id: string) {
   try { window.localStorage.setItem(LAST_LIBRARY, id); } catch { /* 隐私模式存不下就不记 */ }
 }
 
-/** 资产页地址（带来源筛选）。新版角色、场景、道具各一个分类；旧版都在「创作素材」。 */
-export function assetsHref(kind: 'character' | 'scene' | 'prop', from: string, ui: 'next' | 'classic') {
-  const tab = ui === 'next' ? (kind === 'character' ? 'people' : kind) : 'objects';
-  return `/assets?tab=${tab}&from=${encodeURIComponent(from)}`;
+/** 资产页地址（带来源筛选）。 */
+export function assetsHref(kind: 'character' | 'scene' | 'prop', from: string) {
+  return `/assets?tab=${kind === 'character' ? 'people' : kind}&from=${encodeURIComponent(from)}`;
 }
 
 /** 跳回来源：导演台作品或画布。 */

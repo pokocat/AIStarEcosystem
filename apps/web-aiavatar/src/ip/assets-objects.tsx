@@ -1,5 +1,5 @@
 "use client";
-// 新版资产页的「场景」「道具」：导演台有图后自动进来，也可以在这里新建。
+// 资产页的「场景」「道具」：导演台有图后自动进来，也可以在这里新建。
 import { useEffect, useRef, useState } from 'react';
 import { Button, Input, Modal } from 'antd';
 import { Box, MapPin, Plus, Search } from 'lucide-react';

@@ -209,5 +209,10 @@ class StudioWorkflowWorkerJsonTest {
     }
     @Test void genuinelyEmptyContentStillFails() {
         var h=harness("","stop");runOnce(h);assertEquals("failed",h.run().getStatus());
+        assertEquals("AI_EMPTY_OUTPUT",h.run().getErrorCode());
+        assertTrue(h.run().getErrorMessage().contains("未返回正文"));
+        assertEquals(0,h.run().getCost());
+        verify(h.credits()).releaseHold(eq(IpRunService.REF_TYPE),eq("r"),anyString());
+        verify(h.credits(),never()).commitHold(anyString(),anyString(),anyLong(),anyString(),any());
     }
 }

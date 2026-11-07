@@ -132,7 +132,6 @@ describe("Creation catalogue", () => {
     expect(screen.queryByRole("group", { name: "创作工作区" })).toBeNull();
     expect(screen.getByRole("button", { name: "新建画布" })).toBeTruthy();
     expect(screen.queryByRole("searchbox", { name: "搜索我的画布" })).toBeNull();
-    expect(within(screen.getByRole("navigation", { name: "工作台导航" })).getByRole("link", { name: "项目", exact: true }).getAttribute("href")).toBe("/projects");
     fireEvent.click(await screen.findByRole("button", { name: "预览模板 IP 商品视频" }));
     expect(screen.getByRole("dialog").textContent).toContain("只读预览");
     fireEvent.click(screen.getByRole("button", { name: "返回" }));

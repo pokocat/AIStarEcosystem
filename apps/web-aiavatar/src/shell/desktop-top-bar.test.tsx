@@ -9,13 +9,10 @@ vi.mock("@/proto/api", () => ({ USE_MOCK: false, auth: { isAuthed: () => true, l
 vi.mock("./account-workspace", () => ({ useStudioHash: () => state.hash }));
 vi.mock("./layout-mode", () => ({ setLayout: vi.fn() }));
 vi.mock("./wallet-badge", () => ({ WalletBadge: () => null }));
-const ui = vi.hoisted(() => ({ set: vi.fn() }));
-vi.mock("./ui-version", async original => ({ ...await original<typeof import("./ui-version")>(), setUiVersion: ui.set }));
 import { DesktopTopBar } from "./desktop-top-bar";
 
 beforeEach(() => { state.pathname = "/me"; state.hash = ""; });
-afterEach(() => { cleanup(); ui.set.mockClear(); document.documentElement.removeAttribute("data-ui"); });
-const useNext = () => document.documentElement.setAttribute("data-ui", "next");
+afterEach(cleanup);
 function openMenu() {
   const details = screen.getByLabelText("测试账号，打开账号菜单").closest("details")!;
   details.open = true;
@@ -59,15 +56,7 @@ test.each(["pathname", "hash"] as const)("navigation via %s closes an open menu"
   expect(menu.open).toBe(false);
 });
 
-test("new version: 返回旧版 in the top-right corner switches back", () => {
-  useNext();
-  render(<DesktopTopBar/>);
-  fireEvent.click(screen.getByRole("button", {name:"返回旧版"}));
-  expect(ui.set).toHaveBeenCalledWith("classic");
-});
-
-test("new version: 灵感 follows 首页 in the rail and owns its pages; Projects owns its own state", () => {
-  useNext();
+test("灵感 follows 首页 in the rail and owns its pages; Projects owns its own state", () => {
   state.pathname = "/projects";
   const view = render(<DesktopTopBar/>);
   const nav = within(screen.getByRole("navigation", {name:"主导航"}));
@@ -83,4 +72,15 @@ test("new version: 灵感 follows 首页 in the rail and owns its pages; Project
   state.pathname = "/image";
   view.rerender(<DesktopTopBar/>);
   expect(nav.getByRole("link", {name:"AI 图片"}).getAttribute("aria-current")).toBe("page");
+});
+
+test("a signed-out visitor gets the public top bar with sign-in, not the rail or an account menu", () => {
+  state.pathname = "/";
+  render(<DesktopTopBar publicMode/>);
+  const bar = screen.getByRole("banner");
+  expect(bar.classList.contains("ip-public-top-bar")).toBe(true);
+  expect(bar.classList.contains("desktop-rail")).toBe(false);
+  expect(within(bar).getByRole("link", {name:"登录 / 注册"}).getAttribute("href")).toBe("/login?next=%2Fdashboard");
+  expect(within(bar).getByRole("link", {name:"首页"}).getAttribute("aria-current")).toBe("page");
+  expect(screen.queryByLabelText("测试账号，打开账号菜单")).toBeNull();
 });

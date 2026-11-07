@@ -409,6 +409,13 @@ public class AiModelInvocationService {
                     result.toolCalls().size(), result.content());
         }
         Long total = result.promptTokens() != null && result.completionTokens() != null ? result.promptTokens() + result.completionTokens() : null;
+        // A tool-only turn is valid; a completed turn with neither text nor tools is not a successful reply.
+        if (!result.cancelled() && result.content().isBlank() && result.toolCalls().isEmpty()) {
+            usage.recordObserved(e.getId(), e.getName(), model, purpose == null ? null : purpose.wire(),
+                    result.promptTokens(), result.completionTokens(), total, false, requestId, null, elapsedMs(startNanos),
+                    "AI_EMPTY_OUTPUT", emptyOutputFailure().getMessage(), observedJson, rawForUsage, null);
+            throw emptyOutputFailure();
+        }
         usage.recordObserved(e.getId(), e.getName(), model, purpose != null ? purpose.wire() : null,
                 result.promptTokens(), result.completionTokens(), total, !result.cancelled(), requestId, null, elapsedMs(startNanos),
                 result.cancelled() ? "CANCELLED" : null, null, observedJson, rawForUsage, null);
@@ -422,6 +429,10 @@ public class AiModelInvocationService {
     private void preserveModelOutput(String requestId,String content,String finishReason) {
         try {usage.preserveOutput(requestId,content,finishReason);}
         catch(RuntimeException error){log.warn("[ai-output] archive transaction failed; delivering response requestId={}",requestId,error);}
+    }
+
+    public static BusinessException emptyOutputFailure() {
+        return new BusinessException(HttpStatus.BAD_GATEWAY, "AI_EMPTY_OUTPUT", "生成服务未返回正文，请重试或更换模型");
     }
 
     private static BusinessException networkFailure(UpstreamCallException ex, String internal) {
@@ -792,6 +803,12 @@ public class AiModelInvocationService {
             completionTokens = asLong(usageMap.get("completion_tokens"));
             tokensUsed = asLong(usageMap.get("total_tokens"));
         }
+        if (content.isBlank()) {
+            usage.recordObserved(e.getId(), e.getName(), model, purpose == null ? null : purpose.wire(),
+                    promptTokens, completionTokens, tokensUsed, false, requestId, upstreamId, elapsedMs(startNanos),
+                    "AI_EMPTY_OUTPUT", emptyOutputFailure().getMessage(), observedJson, resp.body(), replayOfRecordId);
+            throw attach(emptyOutputFailure(), resp);
+        }
         // 模型原文返回全文（排查用）。
         if (ioLog.isInfoEnabled()) {
             ioLog.info("[ai-chat-io] RESPONSE requestId={} upstreamId={} purpose={} model={} finish={} content={}",
@@ -891,6 +908,15 @@ public class AiModelInvocationService {
         }
         ChatTurnResult result = acc.result(model, false);
         Long total = result.promptTokens() != null && result.completionTokens() != null ? result.promptTokens() + result.completionTokens() : null;
+        if (result.content().isBlank()) {
+            String evidence = OM.createObjectNode().put("stream", true).put("done", acc.done)
+                    .put("finishReason", result.finishReason()).put("content", result.content())
+                    .put("promptTokens", result.promptTokens()).put("completionTokens", result.completionTokens()).toString();
+            usage.recordObserved(e.getId(), e.getName(), model, purpose == null ? null : purpose.wire(),
+                    result.promptTokens(), result.completionTokens(), total, false, requestId, null, elapsedMs(startNanos),
+                    "AI_EMPTY_OUTPUT", emptyOutputFailure().getMessage(), observedJson, evidence, replayOfRecordId);
+            throw attach(emptyOutputFailure(), outcome.status(), outcome.headers(), evidence);
+        }
         if (ioLog.isInfoEnabled()) {
             ioLog.info("[ai-chat-io] RESPONSE requestId={} purpose={} model={} finish={} stream=true content={}",
                     requestId, purpose == null ? null : purpose.wire(), model, result.finishReason(), result.content());

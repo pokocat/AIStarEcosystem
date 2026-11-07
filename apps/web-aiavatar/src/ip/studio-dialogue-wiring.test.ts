@@ -52,7 +52,6 @@ test('the dialogue is actually mounted and wired', () => {
   // itself, and the assistant's new nodes come into view. The creation page (/create) has no box of its own: its first
   // entry is the 「新建画布」 card, the shared startNewCanvas() (docs/ip-studio-new-canvas-and-threads.md §2.2).
   expect(read('components/landing/ip-home.tsx')).toContain('<StudioConversationStart ');
-  expect(read('components/hub/studio-home.tsx')).toContain('<StudioConversationStart ');
   expect(read('ip/studio-create-home.tsx')).not.toContain('StudioConversationStart');
   expect(read('ip/studio-create-home.tsx')).toContain('className="studio-create-new"');
   expect(read('ip/studio-create-home.tsx')).not.toContain('router.replace');

@@ -1,4 +1,4 @@
-/* 新版「资产」页与 AI 图片 / AI 视频素材位的资产选择框（2026-10-31，设计稿「资产（新）」）。
+/* 「资产」页与 AI 图片 / AI 视频素材位的资产选择框（2026-10-31，设计稿「资产（新）」）。
    令牌沿用 .studio-next-page / .scene-studio 上那套（studio-scenes.css），弹窗挂在页面里，同样拿得到；拿不到时用后面的默认值。
    手机是默认样式，桌面写在 html[data-layout="desktop"] 下（不写 @media，跟用户选的形态走）。 */
 
@@ -100,7 +100,7 @@ html[data-layout="desktop"] .assets-tile:is(:hover, :focus-within) .assets-tile-
 .assets-upload-tile button:disabled { opacity: .5; cursor: default; }
 .assets-upload-tile button:focus-visible { outline: 2px solid var(--ip-ink, #17202a); outline-offset: -3px; }
 
-/* 录音沿用新版的白面、深墨按钮与小圆角；不显示模拟波形。 */
+/* 录音沿用同一套白面、深墨按钮与小圆角；不显示模拟波形。 */
 .asset-recorder { color: var(--ip-ink, #17202a); font-family: var(--ip-ui, sans-serif); }
 .asset-recorder-intro { margin: 0 0 20px; font-size: 13px; line-height: 1.7; color: var(--ip-muted, #5b6572); }
 .asset-recorder-reading-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
