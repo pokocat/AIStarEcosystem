@@ -36,7 +36,7 @@ OneToken 的 Seedance 2.0（`ai-98b369eb-b59`）和 2.5（`ai-onetoken-seedance2
 ## 窗口与验收
 
 - 发布前：没有在途文字、出图和视频任务；账号中心 200。
-- 重启期间 API 共 12 个 502：部署探测 6 个，用户请求 6 个（视频任务页轮询 5、钱包 1）。verify 全绿，`NRestarts=0`，启动后 0 条 ERROR；09:32 起到写记录时 0 个 5xx。
+- 重启期间 API 共 12 个 502：部署探测 6 个，用户请求 6 个（视频任务页轮询 5、钱包 1）。verify 全绿，`NRestarts=0`。启动后 2 条 ERROR 和 2 个 500 是同一件事：09:33 验收查价时参数名写错了（`seconds` 应为 `duration`，必填参数缺失按 500 返回），不是用户请求；除此之外没有 ERROR 和 5xx。
 - 线上只读：模型列表里两条 Seedance 都在，返回内容不带 `inputAssets`；长视频报价没变，Seedance 2.5 的 60 秒视频 7260 积分，Seedance 2.0 的 30 秒 2400 积分。
 
 测试：服务端相关 186 条（素材上传、回执复用、限流、长视频流程、角色声音、视频规格）全过；`pnpm typecheck:all`、`typecheck:admin`、`mvnw compile`、`check:api-contract` 全过。
