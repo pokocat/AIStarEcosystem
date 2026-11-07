@@ -458,13 +458,26 @@ public class JusuanImageClient {
     }
 
     /**
-     * 只认明确说并发、限流、过载的拒绝。额度用完不算（排多久都没用）；状态码不明确又没这些字的 5xx 也不算，
-     * 那种可能已经受理，仍走「受理未知」，不能重交。读供应商原话，不读对外脱敏后的那份（§8.0.1 ①）。
+     * 只认明确说并发、限流、过载的拒绝，以及网关明确说「没有可用通道」的 503。额度用完不算（排多久都没用）；
+     * 状态码不明确又没这些字的 5xx 也不算，那种可能已经受理，仍走「受理未知」，不能重交。
+     * 读供应商原话，不读对外脱敏后的那份（§8.0.1 ①）。
      */
     static boolean refusedForLoad(int status,String body) {
         if(com.aistareco.aep.service.alerts.ModelQuotaAlerts.isOutOfQuota(body))return false;
         if(status==429)return true;
+        if(status==503 && noAvailableChannel(body))return true;
         return com.aistareco.aep.service.alerts.ModelQuotaAlerts.isRateLimited(body);
+    }
+
+    /**
+     * 分发网关挑不出通道（2026-11-04 线上：`model_not_found` / "No available channel for model … under group …"）。
+     * 请求没有送到任何模型，所以一定没有受理，可以安全重交；只认 503，别的状态码里出现这几个字不算
+     * （同样的字出现在 200 响应或提示词里不代表拒绝）。
+     */
+    private static boolean noAvailableChannel(String body) {
+        if(body==null||body.isBlank())return false;
+        String text=(body.length()<=4000?body:body.substring(0,4000)).toLowerCase(java.util.Locale.ROOT);
+        return text.contains("no available channel")||text.contains("无可用渠道")||text.contains("没有可用渠道")||text.contains("无可用通道");
     }
 
     // AGENTS §8.0.1: keep actionable JSON rejection messages on the public path as well as in diagnostics.
