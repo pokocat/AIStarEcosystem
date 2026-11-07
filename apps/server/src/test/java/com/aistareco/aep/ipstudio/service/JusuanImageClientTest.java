@@ -59,6 +59,8 @@ class JusuanImageClientTest {
                 Map.entry(429,"{\"error\":{\"code\":\"rate_limit_exceeded\",\"message\":\"slow down\"}}"),
                 Map.entry(429,"<html>Too Many Requests</html>"),
                 Map.entry(503,"{\"error\":{\"message\":\"当前分组上游负载已饱和，请稍后再试\"}}"),
+                // 2026-11-04 线上原话：网关挑不出通道，请求没有送到模型，一定没受理。
+                Map.entry(503,"{\"error\":{\"code\":\"model_not_found\",\"message\":\"No available channel for model gpt-image-2-1k-pic under group gpt-image-2.5 (distributor) (request id: 20261104123456789)\",\"type\":\"new_api_error\"}}"),
                 Map.entry(500,"{\"error\":{\"message\":\"concurrency limit exceeded\"}}"))) {
             reset(upstream);
             var error=submitAnswered(refusal.getKey(),refusal.getValue());
@@ -76,7 +78,12 @@ class JusuanImageClientTest {
         reset(upstream);
         assertInstanceOf(JusuanImageClient.Pending.class,submitAnswered(504,"<html>gateway timeout</html>"));
         reset(upstream);
-        assertInstanceOf(JusuanImageClient.Pending.class,submitAnswered(503,"{\"error\":{\"code\":\"model_not_found\",\"message\":\"No available channel\"}}"));
+        assertInstanceOf(JusuanImageClient.Pending.class,submitAnswered(503,"<html>service unavailable</html>"));
+        // 「没有可用通道」只在 503 才算明确拒绝；别的状态码里出现同样的字，不能当成可以重交。
+        assertTrue(JusuanImageClient.refusedForLoad(503,"{\"error\":{\"message\":\"No available channel for model x\"}}"));
+        assertFalse(JusuanImageClient.refusedForLoad(500,"{\"error\":{\"message\":\"No available channel for model x\"}}"));
+        assertFalse(JusuanImageClient.refusedForLoad(200,"{\"revised_prompt\":\"a sign saying no available channel\"}"));
+        assertFalse(JusuanImageClient.refusedForLoad(503,"{\"error\":{\"code\":\"insufficient_user_quota\",\"message\":\"No available channel, 额度不足\"}}"));
     }
     @Test void moderationRejectionReturnsProviderReasonWithoutRetryingDurableSubmission() throws Exception {
         String reason="生成的图片可能违反了关于青少年与儿童形象适当描绘的防护限制";

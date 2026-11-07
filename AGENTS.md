@@ -1400,7 +1400,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 ### 出图并发与默认模型（2026-11-05，待发布）
 
-Studio 工作线程默认 24，单个模型的上限看端点配置；图片调用有管到正文的总时限，端点的 `requestTimeoutMillis` 要比真实耗时长。提交时被明确拒绝（429 或说并发、限流、过载）算未受理，任务回队列重交，最多等 30 分钟（`STUDIO_IMAGE_PROVIDER_BUSY`）；额度用完、含糊的 5xx 不回队列。只做了图片。导演台默认图片模型单独配置（`ai.scene-default.studio.director-image`，命令 `directorImageDefaultSave`），AI 图片和画布仍用 `ai.scene-policy.studio.image` 的默认。见 `docs/ai-endpoint-generation-queue.md` 末两节。
+Studio 工作线程默认 24，单个模型的上限看端点配置；图片调用有管到正文的总时限，端点的 `requestTimeoutMillis` 要比真实耗时长。提交时被明确拒绝（429、说并发、限流、过载，或 503「没有可用通道」）算未受理，任务回队列重交，最多等 30 分钟（`STUDIO_IMAGE_PROVIDER_BUSY`）；额度用完、含糊的 5xx 不回队列。只做了图片。导演台默认图片模型单独配置（`ai.scene-default.studio.director-image`，命令 `directorImageDefaultSave`），AI 图片和画布仍用 `ai.scene-policy.studio.image` 的默认。见 `docs/ai-endpoint-generation-queue.md` 末两节。
 
 ### 导演台写剧本前的准备与示例图（2026-11-05，已生产发布 `20261105-director-brief-demos`，main `452c48117`；server + web-aiavatar + studio-admin）
 
