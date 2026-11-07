@@ -114,7 +114,7 @@ class StudioAudioReferenceTest {
         var e=assertThrows(BusinessException.class,()->service.requireMedia("u","audio","original",false,seedanceMode()));
         assertEquals("STUDIO_VIDEO_ASSET_INVALID",e.getCode());
         assertTrue(e.getMessage().contains("声音"),e.getMessage());
-        assertTrue(e.getMessage().contains("WAV、MP3"),e.getMessage());
+        assertTrue(e.getMessage().contains("WAV")&&e.getMessage().contains("MP3"),e.getMessage());
     }
     /** H3 的参考视频厂商只收 2–15 秒；这条提前拦下，报错要写规则和实际时长。 */
     @Test void aReferenceVideoOutOfRangeSaysTheRuleAndItsLength() throws Exception {
@@ -127,7 +127,7 @@ class StudioAudioReferenceTest {
         var h3=VideoStudioService.contract(5,15).modes().stream().filter(m->m.references()!=null).findFirst().orElseThrow();
         var e=assertThrows(BusinessException.class,()->service.requireMedia("u","video","original",false,h3));
         assertEquals("STUDIO_VIDEO_ASSET_INVALID",e.getCode());
-        assertEquals("视频素材要 2–15 秒，现在是 30.2 秒，请调整后再试",e.getMessage());
+        assertTrue(e.getMessage().contains("2–15")&&e.getMessage().contains("30.2"),e.getMessage());
     }
     @Test void anOversizedMaterialSaysTheLimit() throws Exception {
         var source=dir.resolve("original.wav");Files.write(source,wav(3));
@@ -135,7 +135,7 @@ class StudioAudioReferenceTest {
         var service=new StudioVideoService(mock(AiAppSceneModelPolicyService.class),mock(VideoStudioService.class),projects,storage(source),mock(FfmpegRunner.class));
         var tiny=new VideoStudioModeSpec("universal_reference_video",false,false,null,new VideoStudioReferenceRules(null,null,new VideoStudioMediaLimit("audio",3,1024,List.of("WAV"),2,15),9,12,1,15));
         var e=assertThrows(BusinessException.class,()->service.requireMedia("u","audio","original",false,tiny));
-        assertTrue(e.getMessage().startsWith("声音素材超过当前模型"),e.getMessage());
+        assertTrue(e.getMessage().contains("声音")&&e.getMessage().contains(" MB"),e.getMessage());
     }
     /** 上传报错要说清传上来的是什么：字节认得出就报格式，认不出就说不是这类文件。 */
     @Test void anUnsupportedUploadSaysWhatItIs() {

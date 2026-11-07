@@ -132,7 +132,7 @@ class ClipAssetServiceTest {
 
         assertThatThrownBy(() -> service.delete("owner-1", "ca_tail_story_v2"))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("内置素材");
+                .hasFieldOrPropertyWithValue("code", "CLIP_ASSET_PRESET_READONLY");
         verify(repo, never()).delete(any(ClipAsset.class));
         verify(storage, never()).delete(anyString());
     }
@@ -149,6 +149,6 @@ class ClipAssetServiceTest {
 
         assertThatThrownBy(() -> service.delete("owner-1", "ca_2"))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("不存在或无权访问");
+                .hasFieldOrPropertyWithValue("code", "CLIP_ASSET_NOT_FOUND");
     }
 }

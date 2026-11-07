@@ -716,10 +716,18 @@ v0.192：`saveNow()` 明确返回 `saved / failed / conflict`（保存失败不�
 
 **⑩ 测试断言契约，不断言可视文案。**
 v0.194 改文案时 `IpDemoAdminTest` 红了 —— 它断言的是「示例不存在」这句话。文案本来就会
-改，错误码才是调用方依赖的东西。
-- 断错误码（`e.getCode()`）、断状态码、断结构；不断言可视文案。
+改，错误码才是调用方依赖的东西。2026-11-07 又一次：退款报错里「在途任务」改成「进行中的任务」，
+`EnterpriseRechargeServiceTest` 红了，发布被拖慢，而它没查出任何真问题。
+- 断错误码（`e.getCode()`）、断状态码、断结构（`getDetails()` / `getInternalDetail()`）；不断言可视文案。
+  同一个错误码有多条分支时，靠「同样的输入只差一处就能通过」证明走的是这条路径，不靠文案。
 - 例外：**文案本身就是被测行为**时才断（如 §8.0 要求「未配置时必须明确报错而不是产假
   数据」，那可以断关键词）。这种断言要在测试名里写清楚为什么。
+- 现状：2026-11-07 清理过 `apps/server/src/test`，服务端这类断言只剩下面这条 grep 的命中，都是留下有理由的
+  （大多是 `doesNotContain`：对外文案不得泄露供应商余额、不得把用户引向错误的操作）。新测试别再加；要加就在测试名写清为什么。
+  前端 `getByRole` 带 name 是按名字找控件去测行为，不归这条管。
+  ```bash
+  git grep -nE '(getMessage\(\)\)?\.(contains|doesNotContain|startsWith|endsWith)\(|hasMessage[A-Za-z]*\()"[^"]*[一-龥]' -- apps/server/src/test
+  ```
 
 **⑪ 同一个字段名在不同类型上语义不同，"一刀切"必错。**
 v0.192：模板剥素材时无条件删 `metadata.content` —— 图 / 视频 / 音频节点的 `content`

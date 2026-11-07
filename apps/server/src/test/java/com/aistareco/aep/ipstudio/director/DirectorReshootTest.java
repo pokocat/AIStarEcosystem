@@ -206,7 +206,7 @@ class DirectorReshootTest {
         verify(textRuns).submitDirectorText(any(), any(), eq("reshoot:ep1"), any(), any(), any(), any(), any(), any(), any());
 
         BusinessException missing = assertThrows(BusinessException.class, () -> DirectorPrompts.validate(om, meta, modelOutput(List.of("cl1"))));
-        assertTrue(missing.getMessage().contains("漏写"));
+        assertEquals("AI_BAD_OUTPUT", missing.getCode());
 
         JsonNode v = finish("IPR-1", "reshoot:ep1", meta, modelOutput(List.of("cl1", "cl2", "cl3")));
         assertEquals("新标题 cl1", clip(v, "cl1").path("title").asText());
@@ -265,12 +265,12 @@ class DirectorReshootTest {
         stored.clear();
         running("plan:ep1");
         BusinessException planning = assertThrows(BusinessException.class, () -> reshoot("ep1", "cl2"));
-        assertTrue(planning.getMessage().contains("正在写分镜脚本"));
+        assertEquals("DIRECTOR_TASK_RUNNING", planning.getCode());
 
         stored.clear();
         running("board:cl1");
         BusinessException boarding = assertThrows(BusinessException.class, () -> reshoot("ep1", "cl1"));
-        assertTrue(boarding.getMessage().contains("分镜图正在生成"));
+        assertEquals("DIRECTOR_TASK_RUNNING", boarding.getCode());
     }
 
     @Test
@@ -283,17 +283,15 @@ class DirectorReshootTest {
     }
 
     @Test
-    void oneClickStoryboardWithNothingLeftSaysWhyInsteadOfFinishingSilently() {
+    void oneClickStoryboardWithNothingLeftIsRefusedInsteadOfFinishingSilently() {
         BusinessException e = assertThrows(BusinessException.class, () ->
                 service.pipeline(USER, "DW-1", new DirectorService.PipelineRequest("start", "work", null, "plan", 100L, null, true)));
         assertEquals("DIRECTOR_PIPELINE_NOTHING_TO_DO", e.getCode());
-        assertTrue(e.getMessage().contains("全部 2 集的分镜脚本都已写好"));
-        assertTrue(e.getMessage().contains("重写分镜脚本"));
         verify(textRuns, never()).submitDirectorText(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
 
         BusinessException one = assertThrows(BusinessException.class, () ->
                 service.pipeline(USER, "DW-1", new DirectorService.PipelineRequest("start", "episode", "ep2", "plan", 100L, null, true)));
-        assertTrue(one.getMessage().startsWith("第 2 集的分镜脚本都已写好"));
+        assertEquals("DIRECTOR_PIPELINE_NOTHING_TO_DO", one.getCode());
     }
 
     @Test
