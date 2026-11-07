@@ -4,6 +4,10 @@
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
 
+### Studio 后台模型配置 · 2026-11-07（本地，未发布）
+
+`studio-admin` 新增 `/models`（模型接入、IP Studio 模型、功能与售价），替代统一后台和 `apps/admin` 的 LLM API 页，接口 `POST /api/admin/studio/model-config/command`，无迁移。规格当不透明 JSON，没改不发，服务端拒收不认识的规格字段；见 `docs/platform-model-management.md`。素材库绑定等 `dev/video-asset-library` 合入后补。
+
 ### AI 艺人孵化演示同步设计方第二版 · 2026-11-07
 
 `apps/web-incubator` 同步设计方 11-05 的第二版压缩包，以第一版为基准三方合并，保留语言固定中文、去原生弹窗、手机宽度、地址栏同步和运营后台入口。工作台导航重排为七组加页签，新增总览、AI 图片、AI 视频，导演台支持多项目和画布 / 流程两种浏览，批量工具重做，默认暗色可切亮色。残留的三位真实艺人换成虚拟，演示图增加到 177 张。修了设计包暗色样式把弹窗反转成浅底白字、琥珀按钮白字的问题。发布记录见 `docs/releases/web-incubator-v2-release-20261107.md`。
@@ -4913,3 +4917,7 @@ AiAvatar 模板统一为只读画布预览，浏览不产生草稿；明确“�
 ### 2026-10-10 · IP Studio 品牌更新上线
 
 品牌为「IP Studio · 声量引擎旗下」，slogan 为「让灵感成形，让 IP 出圈」。沿用旧数字人多面体侧脸 icon 的蓝灰、深墨配色版本，更新首页、共享导航、登录品牌、favicon 与 Apple 图标，手机简介补齐句间标点。前端代码 `fb4502a2`，发布包 `20261010172357-fb4502a2`；四门、548 项前端测试和生产构建通过，线上首页、21 项资源 SHA256、BUILD_ID 与服务状态一致，桌面与手机模拟视图及线上首页视觉通过。无后端发布或收费操作。详见 [发布记录](releases/ip-studio-ui-release-20261010.md)。
+
+### 2026-11-06 · 导演台带货短剧（功能分支，未发布）
+
+每部作品一个「带货短剧」开关；打开后多一个「商品」工作区和商品库（个人资产库 `kind=product`，无迁移、无新路径）。商品写进剧本（编剧规则或创作助手的修改建议），提取资产时对上商品不变成道具，写分镜时关联到片段，商品图作为分镜图和视频的参考图。真源 `docs/ai-director-commerce-plan.md`，规则 `specs/BUSINESS_RULES.md`「导演台带货短剧」。

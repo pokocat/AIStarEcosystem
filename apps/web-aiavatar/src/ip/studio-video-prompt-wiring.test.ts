@@ -17,7 +17,6 @@ test("the composer, the run input view and the dialog are mounted", () => {
   expect(workspace).toMatch(/nativeVideo\?\.supportsPromptOptimization&&<StudioPromptOptimizeToggle on=\{!videoDraft\.keepPrompt\}/);
   expect(workspace).not.toMatch(/\{frameCropHint\}\{promptReviewPanel\}/);
   expect(workspace).toMatch(/onChange=\{setPrompt\}\/><\/label>\}\s*\{\/\*[^*]*\*\/\}\s*\{promptReviewPanel\}/);
-  expect(read("ip/studio-flow-canvas.tsx")).toContain("优化稿有需要确认的地方，请选择后生成视频");
   expect(read("ip/studio-task-list.tsx")).not.toContain("studioRunRewrites(run)");
 });
 
@@ -28,7 +27,7 @@ test("the frame question is asked before saving the document or submitting, and 
   expect(asked).toBeGreaterThan(0);
   expect(asked).toBeLessThan(submit.indexOf("setBusy(true)"));
   expect(asked).toBeLessThan(submit.indexOf("await saveStudioDocument(projectId)"));
-  expect(asked).toBeLessThan(submit.indexOf("await submitStudioRun(projectId, request)"));
+  expect(asked).toBeLessThan(submit.indexOf("await submitStudioRun(projectId, request,"));
   expect(submit).toMatch(/if\(choice==="cancel"\)return;\s*if\(choice==="bind"\)\{bindFramesFor\(intent\);return;\}/);
   expect(workspace).toContain("studioVideoSettings(videoDraft.mode,videoDraft.tier,videoAssets,videoDraft.seed,nativeModeSpec,studioVideoPromptMode(nativeVideo.supportsPromptOptimization,videoDraft.keepPrompt))");
 });

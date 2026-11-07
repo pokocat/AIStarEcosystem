@@ -378,7 +378,7 @@ function AssetReference({ work, asset, apply, setError, disabled }: Pick<Workben
 
 /** 关联已有资产：只交资产库对象 id 和选定版本，图和描述由服务端按本人资产库读；所选版本的图直接作为资产图。 */
 function LinkLibrary({ work, asset, apply, open, onClose }: { work: DirectorWork; asset: DirectorAsset; apply: WorkbenchProps["apply"]; open: boolean; onClose: () => void }) {
-  return <LibraryReferencePicker open={open} objectsOnly max={1} query={asset.name} onClose={onClose}
+  return <LibraryReferencePicker open={open} objectsOnly objectKind={asset.kind} max={1} query={asset.name} onClose={onClose}
     title={`「${asset.name}」关联已有资产`} confirmLabel="关联"
     intro={`从资产库选择同一个${kindLabel[asset.kind]}，所选版本的图片将直接作为资产图，用于生成分镜图和视频。名称保留剧本中的叫法。`}
     onAssets={async picked => {

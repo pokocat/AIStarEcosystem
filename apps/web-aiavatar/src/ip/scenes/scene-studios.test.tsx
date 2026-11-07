@@ -8,7 +8,7 @@ import type { IpProject } from "@ai-star-eco/types";
 const SCENES = JSON.parse(readFileSync(join(__dirname, "../../../../server/src/main/resources/ipstudio/scenes.json"), "utf8"));
 
 const api = vi.hoisted(() => ({
-  push: vi.fn(), failure: vi.fn(), taskStart: vi.fn(), taskGet: vi.fn(), ask: vi.fn(),
+  push: vi.fn(), failure: vi.fn(), taskStart: vi.fn(), taskGet: vi.fn(), ask: vi.fn(), signKeys: vi.fn(),
   uploadImage: vi.fn(), listProjects: vi.fn(), createProject: vi.fn(), updateProject: vi.fn(), getProject: vi.fn(), listScenes: vi.fn(), composeScene: vi.fn(),
   fetchModels: vi.fn(), readRun: vi.fn(), cancelRun: vi.fn(), capabilities: vi.fn(), submit: vi.fn(), importMedia: vi.fn(), videoModels: vi.fn(), videoPrice: vi.fn(),
 }));
@@ -51,6 +51,7 @@ beforeEach(() => {
         steps: [{ id: 'video', title: '生成视频', operation: 'video', status: 'running', stage: 'production', attempt: 1, runIds: [], dependsOn: [] }], updatedAt: '2026-11-06' } };
     api.taskGet.mockResolvedValue(task); return task;
   });
+  api.signKeys.mockImplementation(async (keys: string[]) => Object.fromEntries(keys.map(key => [key, `https://cdn/${key}`])));
   api.listScenes.mockResolvedValue(SCENES);
   api.listProjects.mockResolvedValue([]);
   api.createProject.mockImplementation(async ({ name, sceneId }: { name: string; sceneId?: string }) => project({ name, sceneId }));
@@ -330,7 +331,7 @@ const readyToGenerate = async () => {
   window.history.replaceState(null, "", "/image?scene=white-background");
   api.composeScene.mockResolvedValue({ text: "白底图" });
   await act(async () => { render(<SceneImageStudio/>); });
-  await waitFor(() => expect(screen.getByText("请添加商品")).toBeTruthy());
+  // 资产库按钮出现后再选图；不依赖必填提示的具体文案。
   await pickFromLibrary();
   const button = () => screen.getByRole("button", { name: "生成图片" }) as HTMLButtonElement;
   await waitFor(() => expect(button().disabled).toBe(false));

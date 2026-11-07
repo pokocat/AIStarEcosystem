@@ -80,7 +80,7 @@ public final class StudioPromptCallPoints {
     private static void registerDirector() {
         Map<String, String> input = vars("input", "本次输入（JSON，作为素材）");
         String sampleInput = "{\"brief\":\"外卖员在雨夜捡到一只会说话的猫\",\"style\":\"写实\"}";
-        StudioPromptStages.register(director(DIRECTOR_SCRIPT, "导演台编剧", input, Set.of("input"), formats("output", StudioPromptFormats.DIRECTOR_SCRIPT_OUTPUT),
+        StudioPromptStages.register(director(DIRECTOR_SCRIPT, "导演台编剧", vars("input", "本次输入（JSON，作为素材）", "commerce", "带货短剧且作品里有商品：不给道具外观的示例，免得模型照着把商品写旧"), Set.of("input"), formats("output", StudioPromptFormats.DIRECTOR_SCRIPT_OUTPUT),
                 Map.of("input", sampleInput)));
         StudioPromptStages.register(director(DIRECTOR_SCRIPT_MORE, "导演台接着写剧本", input, Set.of("input"), formats("output", StudioPromptFormats.DIRECTOR_SCRIPT_MORE_OUTPUT),
                 Map.of("input", "{\"format\":{\"totalEpisodes\":10,\"secondsPerEpisode\":90,\"writeFrom\":4,\"writeTo\":6},\"written\":\"……\"}")));
@@ -118,12 +118,13 @@ public final class StudioPromptCallPoints {
         Map<String, Object> board = new LinkedHashMap<>();
         board.put("style", "真人写实"); board.put("aspect", "9:16"); board.put("single", false); board.put("live", true); board.put("blanks", true);
         board.put("hasRefs", true);
-        board.put("refs", List.of(Map.of("label", "图1", "name", "周桂芬", "isScene", false, "isProp", false, "isCharacter", true)));
+        board.put("hasProduct", false);
+        board.put("refs", List.of(Map.of("label", "图1", "name", "周桂芬", "isScene", false, "isProp", false, "isProduct", false, "isCharacter", true)));
         board.put("cells", List.of(Map.of("position", "左上", "size", "近景", "camera", "平视，固定机位", "still", "周桂芬抬头看向门口"),
                 Map.of("position", "右上", "size", "中景", "camera", "越过肩膀拍门口，镜头缓慢推近", "still", "门被推开一条缝")));
         StudioPromptStages.register(new StudioPromptStages.Stage(DIRECTOR_BOARD, StudioPromptEntry.IMAGE_MODEL, "导演台分镜图",
-                vars("style", "画面风格", "aspect", "画幅", "single", "只有一个镜头（单张画面，不是 2×2）", "refs", "参考图：[{label, name, isScene, isProp, isCharacter}]",
-                        "hasRefs", "有参考图", "cells", "每格：[{position（左上 / 右上 / 左下 / 右下）, size, camera, still}]", "blanks", "2×2 板有空着的格子",
+                vars("style", "画面风格", "aspect", "画幅", "single", "只有一个镜头（单张画面，不是 2×2）", "refs", "参考图：[{label, name, isScene, isProp, isProduct, isCharacter}]",
+                        "hasRefs", "有参考图", "hasProduct", "参考图里有商品", "cells", "每格：[{position（左上 / 右上 / 左下 / 右下）, size, camera, still}]", "blanks", "2×2 板有空着的格子",
                         "live", "真人实拍类风格"), Set.of(), Map.of(), board));
         StudioPromptStages.register(new StudioPromptStages.Stage(DIRECTOR_IMAGE_NOTES, StudioPromptEntry.MESSAGE, "导演台出图附加说明",
                 vars("refScene", "带了用户的场景参考图", "refProp", "带了用户的道具参考图", "refCharacter", "带了用户的形象参考照片",

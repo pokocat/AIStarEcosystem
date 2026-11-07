@@ -8,7 +8,7 @@ export function orderedLinkedAssets(work: DirectorWork, clip: DirectorClip) {
   const rank = new Map<string, number>();
   clip.boardRefs?.forEach(r => { if (r.assetId && !rank.has(r.assetId)) rank.set(r.assetId, rank.size); });
   // 兼容旧服务端响应；同类保持原顺序，与后端 visualAssets 一致。
-  const kinds = { character: 0, scene: 1, prop: 2 };
+  const kinds = { character: 0, scene: 1, prop: 2, product: 3 };
   return linked.sort((a, b) => rank.size ? (rank.get(a.id) ?? rank.size) - (rank.get(b.id) ?? rank.size) : kinds[a.kind] - kinds[b.kind]);
 }
 

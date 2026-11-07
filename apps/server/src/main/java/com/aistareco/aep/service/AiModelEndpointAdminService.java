@@ -247,11 +247,11 @@ public class AiModelEndpointAdminService {
         repo.lockById(id);
         if(generationQueue!=null && (generationQueue.countByEndpointIdAndState(id,"waiting")+
                 generationQueue.countByEndpointIdAndState(id,"running")>0))
-            throw BusinessException.badRequest("ENDPOINT_HAS_ACTIVE_GENERATIONS","此端点还有生成或排队任务，请等任务结束后再删除");
+            throw BusinessException.badRequest("ENDPOINT_HAS_ACTIVE_GENERATIONS","这个模型还有生成或排队中的任务，请等任务结束后再删除");
         long bound = bindingRepo.countByEndpointId(id);
         if (bound > 0) {
             throw new BusinessException(HttpStatus.CONFLICT, "ENDPOINT_IN_USE",
-                    "该端点还有 " + bound + " 个 AI 应用绑定，请先在「AI 应用绑定」改绑或解绑后再删除。");
+                    "这个模型还是 " + bound + " 项能力的默认模型，请先在「功能与售价」改掉默认模型再删除。");
         }
         repo.deleteById(id);
     }
