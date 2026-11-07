@@ -81,15 +81,15 @@ export function StudioPromptReview({review,busy,onOptimized,onOriginal,onRetry}:
   review:NonNullable<StudioNodeMetadata["promptReview"]>;busy:boolean;onOptimized:()=>void;onOriginal:()=>void;onRetry:()=>void;
 }) {
   const usable=!review.failed&&review.usable!==false&&!!review.text;
-  const title=review.failed?"提示词优化失败":review.usable===false?"优化稿超出视频模型的长度上限":"优化稿有需要确认的地方";
+  const title=review.failed?"提示词优化失败":review.notRewritten?"提示词优化未完成":review.usable===false?"优化稿超出视频模型的长度上限":"优化稿有需要确认的地方";
   return <section className="studio-prompt-review" aria-label={title}>
     <strong><AiMark size={12}/>{title}</strong>
     {review.failed&&review.message&&<p>{review.message}</p>}
     {!!review.warnings?.length&&<ul>{review.warnings.map(warning=><li key={warning}>{warning}</li>)}</ul>}
-    {review.text&&<details><summary>查看优化稿（发送给模型的英文）</summary><pre>{review.text}</pre></details>}
+    {review.text&&<details><summary>{review.notRewritten?"查看模型回复":"查看优化稿（发送给模型的英文）"}</summary><pre>{review.text}</pre></details>}
     <div className="studio-prompt-review-actions">
       {usable&&<Button type="primary" loading={busy} onClick={onOptimized}>用优化稿生成</Button>}
-      {review.failed&&<Button loading={busy} onClick={onRetry}>重新优化</Button>}
+      {(review.failed||review.notRewritten)&&<Button loading={busy} onClick={onRetry}>重新优化</Button>}
       <Button loading={busy} onClick={onOriginal}>用原文生成</Button>
     </div>
   </section>;

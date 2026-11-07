@@ -466,4 +466,53 @@ class H3PromptRewriteTest {
         ObjectNode canvas = meta(); canvas.remove("storyboardPicture");
         assertTrue(H3PromptRewrite.validate(OM, canvas, out().put("retention_analysis", weak)).path("template").asText().contains("<Picture 1> (storyboard reference): weak_reference"));
     }
+
+    // ── 连进来的文字（2026-11-06 线上：15 次优化里 8 次因此停下，三个模型都一样） ──────────────
+
+    private static ObjectNode drafted(String shot) {
+        ObjectNode o = OM.createObjectNode().put("style", "Live-action.").put("overall_soundscape", "Room tone.").put("non_diegetic_music", "N/A");
+        o.putArray("shots").add(OM.createObjectNode().put("start", 0).put("text", shot));
+        return o;
+    }
+
+    @Test
+    void quotedNotesAreNotCheckedAsSpokenLines() {
+        // 拉片文档里「创意：…」「灯火：…」形状像「名字：台词」，以前一次报 31 条
+        String zh = "把视频里的人物换成图1。\n\n【引用文本：片段 1 · 镜头拆解】\n创意：深夜饿到睡不着的时候。\n灯火：暖钨丝灯光，正面柔光。";
+        ObjectNode meta = freeMeta(H3PromptRewrite.Mode.T2V, zh, 5);
+        assertEquals(0, meta.path("spoken").size(), meta.toString());
+        assertTrue(warnings(H3PromptRewrite.validate(OM, meta, drafted("A person sits at a table."))).isEmpty());
+        // 模型照引用文字写了台词：不算多出来的（以前写全了反而多报 26 条）
+        assertTrue(warnings(H3PromptRewrite.validate(OM, meta, drafted("A person (S1) says: <d>[Chinese] 深夜饿到睡不着的时候</d>"))).isEmpty());
+    }
+
+    @Test
+    void linesInTheUsersOwnWordsAreStillCheckedWhenTextIsQuoted() {
+        String zh = "门口，女孩：“你来了。”\n\n【引用文本：说明】\n灯火：暖色。";
+        ObjectNode meta = freeMeta(H3PromptRewrite.Mode.T2V, zh, 5);
+        assertEquals(List.of("原文台词「你来了。」在优化稿里没有原样出现，可能被改了或漏了"), warnings(H3PromptRewrite.validate(OM, meta, drafted("The girl waves."))));
+        assertTrue(warnings(H3PromptRewrite.validate(OM, meta, drafted("The girl (S1) says: <d>[Chinese] 你来了。</d>"))).isEmpty());
+    }
+
+    @Test
+    void textAlreadyInThePromptIsNotQuotedAgain() {
+        String script = "第1镜（0–3 秒）：博主停下。\n博主说：「这股香味，路过根本走不动。」\n第2镜（3–6 秒）：博主进店。\n博主说：「零食摆了一整排。」";
+        String twice = script + "\n\n【引用文本：视频脚本】\n" + script;
+        assertEquals(script, H3PromptRewrite.withoutRepeatedQuotes(twice));
+        assertEquals(2, H3PromptRewrite.source(H3PromptRewrite.withoutRepeatedQuotes(twice), List.of("旁白")).lines().size(), "每句台词只出现一次");
+        // 只差空白也算同一份；内容不同的引用、其中重复的那一块分别处理
+        assertEquals(script, H3PromptRewrite.withoutRepeatedQuotes(script + "\n\n【引用文本：视频脚本】\n" + script.replace("\n", "\n\n ")));
+        String other = "【引用文本：卖点】\n才9块9一斤。";
+        assertEquals(script + "\n\n" + other, H3PromptRewrite.withoutRepeatedQuotes(script + "\n\n【引用文本：视频脚本】\n" + script + "\n\n" + other));
+        assertEquals(script + "\n\n" + other, H3PromptRewrite.withoutRepeatedQuotes(script + "\n\n" + other), "没重复的不动");
+        assertEquals("只有一句", H3PromptRewrite.withoutRepeatedQuotes("只有一句"));
+    }
+
+    @Test
+    void theContractSaysTheModelCannotSeeTheAttachments() {
+        // 2026-11-06 线上 Sonnet：「看不到附件」，短要求 10 次拒绝 7 次
+        assertTrue(H3PromptRewrite.system(H3PromptRewrite.Mode.REF, false, false).contains("are not available to you"));
+        assertTrue(H3PromptRewrite.system(H3PromptRewrite.Mode.I2V, false, false).contains("are not available to you"));
+        assertFalse(H3PromptRewrite.system(H3PromptRewrite.Mode.T2V, false, false).contains("are not available to you"), "纯文字没有素材，不用说");
+    }
 }

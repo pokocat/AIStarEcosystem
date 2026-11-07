@@ -52,8 +52,9 @@ public final class H3PromptRewrite {
     /**
      * 输出约定的修订号，写进任务输入方便追查是哪套规则出的稿；不进指纹，已经能用的英文稿不因它失效。
      * 2026-10-31：加篇幅预算。《扣钱》cl45 的优化稿 8198 字符，主体说明 2403、保留说明 1551，五个资产的中文描述被逐条翻译又列了一遍。
+     * 2026-11-07：写明模型看不到素材。线上 Sonnet 对「把@图1 衣着穿在模特身上」这类短要求 10 次拒绝 7 次（「看不到附件」），关思考的 DeepSeek 则直接编人物和背景。
      */
-    public static final String RULES = "2026-10-31-length";
+    public static final String RULES = "2026-11-07-no-media";
     /** 镜头由模型定时（画布上的提示词没分镜头）最多这么多镜。 */
     public static final int MAX_FREE_SHOTS = 8;
 
@@ -175,6 +176,9 @@ public final class H3PromptRewrite {
                 - Each value is the English body of that section, without the section name. Separate lines inside a value with \\n.
                 """);
         c.append("- \"style\": the one or two sentences that open ").append(body).append(", before [Shot 1].\n");
+        if (mode != Mode.T2V) c.append("""
+                - The attached images, videos and audio are not available to you: only their labels and the notes in the request reach you. That is expected, so never ask for them, never refuse and never explain it; always return the JSON object. Refer to each one by its label, for example "as in <Video 1>". Do not invent what they show (a person's looks, clothing, setting, actions, cuts or sound) beyond what the request and the notes say. When the request only changes part of <Video 1>, write one shot that follows <Video 1> and say only what changes.
+                """);
         if (mode == Mode.I2V || mode == Mode.FL2V)
             c.append("- Do not write the picture-alignment instruction line that opens the final prompt; the system adds it.\n");
         if (fixedShots) c.append("""
@@ -451,7 +455,8 @@ public final class H3PromptRewrite {
         // 模型写台词时，核对用原文里看着像台词的句子（与前端「台词提醒」同一套认法）。
         if (!r.codeLines()) {
             ArrayNode spoken = meta.putArray("spoken");
-            for (String[] line : spokenLines(r.source().text())) spoken.addObject().put("speaker", line[0]).put("text", line[1]);
+            for (String[] line : spokenLines(ownText(r.source().text()))) spoken.addObject().put("speaker", line[0]).put("text", line[1]);
+            if (r.source().text().contains(QUOTE_HEAD)) meta.put("quotedText", true);
         }
         return meta;
     }
@@ -740,7 +745,8 @@ public final class H3PromptRewrite {
             for (int k = hit[0]; k <= hit[1]; k++) used[k] = true;
             from = hit[1] + 1;
         }
-        if (wanted.isEmpty()) return;
+        // 连进来的文字不参与核对（见 ownText），模型从里面写的台词不算多出来的。
+        if (wanted.isEmpty() || meta.path("quotedText").asBoolean()) return;
         // 剩下的 <d> 是某句没配上的原文台词的一截（说了半句），上面已经报过；其余算多出来的。
         for (int i = 0; i < said.size(); i++) {
             String one = said.get(i);
@@ -760,6 +766,41 @@ public final class H3PromptRewrite {
         }
         return null;
     }
+
+    // ── 连进来的文字：前端按「【引用文本：标题】\n正文」接在提示词后面（studio-linked-inputs.ts），块之间空一行 ──────────
+
+    private static final String QUOTE_HEAD = "【引用文本：";
+    private static final Pattern QUOTE_BLOCK = Pattern.compile("\\s*【引用文本：[^】\\n]*】\\n");
+
+    /**
+     * 用户自己写的那部分。引用块多是拉片或说明文字，「创意：…」「灯光：…」看着像「名字：台词」，
+     * 2026-11-06 线上一次报出 31 条「原文台词没有出现」，任务全部停下等用户选（三个模型都一样）。
+     */
+    static String ownText(String prompt) {
+        Matcher m = QUOTE_BLOCK.matcher(prompt);
+        return m.find() ? prompt.substring(0, m.start()) : prompt;
+    }
+
+    /**
+     * 引用块的内容已经写在前面了就去掉这一块，与前端 withStudioLinkedText 同一条规则；这里兜住早先存下的请求。
+     * 2026-11-06 线上：脚本已填进提示词，又连着同一份文字节点，整份脚本出现两遍，台词也就变成两遍。只比较去掉空白后的文字。
+     */
+    public static String withoutRepeatedQuotes(String prompt) {
+        if (prompt == null || !prompt.contains(QUOTE_HEAD)) return prompt;
+        Matcher m = QUOTE_BLOCK.matcher(prompt);
+        List<int[]> heads = new ArrayList<>();
+        while (m.find()) heads.add(new int[]{m.start(), m.end()});
+        if (heads.isEmpty()) return prompt;
+        StringBuilder out = new StringBuilder(prompt.substring(0, heads.get(0)[0]));
+        for (int i = 0; i < heads.size(); i++) {
+            int end = i + 1 < heads.size() ? heads.get(i + 1)[0] : prompt.length();
+            String body = prompt.substring(heads.get(i)[1], end);
+            if (!squashSpace(out.toString()).contains(squashSpace(body))) out.append(prompt, heads.get(i)[0], end);
+        }
+        return out.toString();
+    }
+
+    private static String squashSpace(String value) { return value.replaceAll("\\s+", ""); }
 
     // ── 原文里的台词（模型写台词时核对用）：与前端 studio-video-prompt.ts 的 studioPromptLines 同一套认法 ──────────
 

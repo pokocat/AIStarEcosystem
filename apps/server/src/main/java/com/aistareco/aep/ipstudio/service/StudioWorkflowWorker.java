@@ -470,7 +470,7 @@ public class StudioWorkflowWorker {
             output.put("rawOnly",true).put("text",reply.content());
             output.withArray("warnings").add("优化原文已保留，自动整理未完成");
             if(!output.has("billing")){output.put("billingUnknown",true);output.putObject("billing").put("credits",0);}
-            if(review){output.put("needsChoice",true);output.putObject("videoPrompt").put("text",reply.content()).put("usable",false).putArray("warnings").add("请核对原文，或按原始描述生成");finish(id,output,null);return;}
+            if(review){output.put("needsChoice",true);output.putObject("videoPrompt").put("text",reply.content()).put("usable",false).putArray("warnings").add("模型没有返回可用的优化稿，可以重新优化，或按原文生成");finish(id,output,null);return;}
         }
         String language=meta.path("language").asText("Chinese");
         boolean usable=result!=null&&result.path("usable").asBoolean(true);

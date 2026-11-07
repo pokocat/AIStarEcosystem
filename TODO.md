@@ -136,6 +136,13 @@
 
 ## 默认文字模型换 Sonnet 5.5（2026-11-04）
 
+- [ ] **H3 提示词优化该绑哪个模型**（2026-11-07 用户待定）：`DAP_VIDEO_PROMPT` 现在仍绑 `ai-onetoken-sonnet55`。同一批 9 份真实请求（修复后，每个模型 1 次）：Sonnet 平均 91 秒、约 28 积分，台词最完整；DeepSeek Flash 直连 26 秒、约 17 积分，台词多的一份只保留 85/206 字；Qwen 13 秒、约 8 积分，这一份一句台词都没写。OneToken 的 `deepseek-v4.1-flash` 30 次里 5 次系统提示词没生效或转成工具调用，不建议用。切 DeepSeek 直连要先把输出上限降下来，否则每次冻结 275 积分。详见 `docs/releases/h3-rewrite-checks-release-20261107.md`。
+- [ ] **引用文字里的真台词没有核对**（`H3PromptRewrite.checkSpoken`，2026-11-07）：连入的拉片文字现在不参与核对，避免误报；代价是台词写在引用里时，模型丢了也不提示。要核对得先认准引用里哪些是台词（拉片表格的「字幕"…"」）。
+- [ ] **修复后的优化稿没有真实出片**（2026-11-07）：只比较了文字。要挑「短要求 + 参考视频」和「拉片引用」各出一条，看「其他不变」是否成立。
+- [ ] **参考视频超长要到优化之后才报错**（`StudioWorkflowService.submitVideoRewrite` 不查时长，`handOver` 才发现，2026-11-06 用户等了约 30 秒）：应在受理时拦下。
+- [ ] **复刻分析超过输入额度**（`StudioWorkflowWorker#studioChat`，2026-11-06 两条 41、57 秒的片子）：单次 8.6–11.6 万 Token，20 万额度用两三次就停，重试也过不去。
+- [ ] **Seedance 2.0 Fast 拒绝真人参考图时没有建议换模型**（`VIDEO_REFERENCE_PERSON_RESTRICTED`，2026-11-04、11-06 共 5 次）：用户原样重试仍然失败。
+
 - [x] ~~线上长任务验收~~ **已验收**，2026-11-05：`20261104-sonnet-streaming-editor` 上线后导演台 3 集剧本 376 秒成功（输出 49305 Token，53 积分），编导 53 秒成功（9 积分），没有【待补】。见 `docs/releases/sonnet-streaming-editor-release-20261104.md`。
 - [ ] **按次定价的线路要重算**：`drama.credit.*` 等按次收费（如 6 积分 = ¥0.06），而 Sonnet 一次输出常上万 Token（成本 ¥0.07 起，长剧本约 ¥0.29）。短剧、形象锻造这些走 `DRAMA_SCRIPT_DRAFT` / `APPEARANCE_FORGE` / `GENERAL` 的线路可能亏本，要查实际调用量和用量后定价。
 - [ ] **对话回复漏过程、留占位**：本地 Sonnet 一轮回复写了「前两次调用用错了工具」，文案里留了【品牌】【价格】。要看线上是否常见，再改 `stages/stage-dialogue.md`。

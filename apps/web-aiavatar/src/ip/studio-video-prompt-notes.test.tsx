@@ -68,6 +68,15 @@ test("a draft with notes offers both ways forward; a failed one offers to retry"
     busy={false} onOptimized={optimized} onOriginal={original} onRetry={retry}/>);
   expect(screen.getByText("优化稿超出视频模型的长度上限")).toBeDefined();
   expect(screen.queryByRole("button", { name: "用优化稿生成" })).toBeNull();
+  // 模型回的不是优化稿：不说成太长，不把它当优化稿发出去，可以重试
+  rerender(<StudioPromptReview review={{ runId: "r", text: "I can't see the attachments.", usable: false, notRewritten: true, warnings: ["模型没有返回可用的优化稿，可以重新优化，或按原文生成"] }}
+    busy={false} onOptimized={optimized} onOriginal={original} onRetry={retry}/>);
+  expect(screen.getByText("提示词优化未完成")).toBeDefined();
+  expect(screen.queryByText("优化稿超出视频模型的长度上限")).toBeNull();
+  expect(screen.getByText("查看模型回复")).toBeDefined();
+  expect(screen.queryByRole("button", { name: "用优化稿生成" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "重新优化" }));
+  expect(retry).toHaveBeenCalledTimes(2);
 });
 
 test("the run input view shows what our optimization sent, or why it was not used", () => {

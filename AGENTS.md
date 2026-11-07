@@ -687,6 +687,7 @@ v0.163：前端手抄了一份 `IpRun`，把 `output` 写成 `outputs`，于是�
   2026-11-06（灵感库示例，线上 Sonnet 真跑）：两处本地全绿、线上第一次真对话就错。其一，`propose_plan` 按模型自己写的 `brief` 重新选方法，出图要求里引用了要印在图上的字，方法就被切到写作，确认卡变成花 110 积分写一段提示词。判据：**模型的转述不是用户的话**，能不能切走方法要看来源（`StudioSkillRouter.planningMethod`：转述不能切到写作，写作只由用户原话决定）。其二，`DialogueCanvasDigest.spec` 只读助手自己写的 `studio.spec`，用户和模板在节点上设的 `size` / `seconds` 模型看不见，16:9 的节点按默认 9:16 报价。判据：给模型的素材概要要读用户能改的那份设置，不只读模型自己写过的。这两处都要真模型才暴露：单测的 brief 是我们自己写的，正好不含这些词。
 
   2026-10-31 第七种（场景页编导，本地 Agnes 2.5 Flash）：要求写「第N镜（起–止 秒）」，模型把「起–止」原样抄进括号、第一镜从 0.5 秒开始，H3 解析器一镜都认不出；要求「第一行写还缺」，它写在了最后一行；「怎么买」的说明里列了几个选项，它挑一个当事实填了。判据补充：格式要给一个照抄就对的例子，不要给带占位词的模板；解析时位置放宽（哪一行都认），内容不放宽；说明文字里不要列可选值，模型会当成答案。真模型输出钉成回归用例（`H3PromptRewriteTest#aRealDirectorScriptFromAgnesIsParsed`）。
+  2026-11-07 第八种（H3 提示词优化，Sonnet 5.5）：只发文字、不发素材，官方写法又说「参考图说了算」，Sonnet 对短的改视频要求 10 次拒绝 7 次（「看不到附件」），关思考的 DeepSeek 则直接编人物和背景。判据补充：不给模型的东西要在约定里说清楚（看不到什么、不能怎么做），否则诚实的模型拒绝，不诚实的模型编造；约定改完后同样的请求四个模型 36 次全部写出，短要求里没有再编造。检查也要用已知正确的稿子试：提示数相同（三个模型都是 31 条）说明错在检查，不在模型；写全台词反而比丢光台词提示更多，说明检查方向反了。换接入方式要重测：同一个 DeepSeek，直连 18 次正常，经 OneToken 30 次里 5 次系统提示词没生效或转成工具调用。
   2026-11-05 长视频两处，都是假响应测不到、一真跑就出来的：计划报价用占位 key，带参考素材的视频步骤过不了文件归属校验（`StudioPlanSteps.QUOTE_NODE` 改成按张数算价，`StudioVideoService.planPrice`）；Agnes 3.0 Flash 把 `assets` 字段写了两遍，严格解析判失败、自动重试，而马上重试又撞限流（改成隔约一分钟）。判据补充：报价和提交要用真实服务走一遍，mock 掉 `workflow.quote` 的单测看不出来。
   同类补充（2026-10-24，永久修复已合 main、普通 JAR 未发布；厂商响应 UTC 2026-10-25）：`finish=stop` 的剧本同时出现非法 `\远处` 和缺末尾 `}`。`ModelJson` 可组合恢复汉字前的多余反斜杠、字符串内原始换行 / 制表符、完整值后的尾逗号和末尾括号；合法转义保持原样。未知 ASCII 转义、残缺 Unicode 转义、半截字符串、缺值 / 缺分隔逗号、重复字段和多份 JSON 一律拒绝，不能从残缺数组里截一个对象冒充整份结果。恢复后仍走业务校验；`finish=length` 不进入修复。`StudioWorkflowWorker` 对不能修复的 JSON 保留原异常及上游诊断，以 `AI_BAD_OUTPUT` 明确提示「格式有误，无法自动恢复；本次未扣积分」，释放冻结、不自动重调模型。回归：`ModelJsonTest` / `StudioWorkflowWorkerJsonTest`。
   2026-10-25 UTC 已按用户要求无重启启用官方 JVM-Sandbox 1.4.0 临时模块（namespace `aep-json-20261024`，仅环回 `24769`）：只处理原 `ModelJson.parse` 的 Jackson 异常，正常返回不变，不能恢复则交原工作流按 `AI_BAD_OUTPUT` 退款。固定生产探针通过，PID / 启动时间 / JAR 均未变。临时模块不等同于永久严格解析规则；下次正常发布先卸载模块，再发布含永久修复的 main。见 `docs/runbooks/studio-json-jvm-sandbox.md` 和 `docs/releases/studio-json-jvm-sandbox-release-20261025.md`。
@@ -1337,6 +1338,10 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
   选择发一次普通视频请求（`optimizePrompt=false`，用优化稿时 prompt 是英文、节点上仍显示中文），记 `studio.promptChoice`，开关仍算开着。创作助手（auto）不停：能用就用，用不了按原文并写 `videoPromptNotes`。
 - **创作助手**：出视频 / 原创 / 复刻技能要求按导演台格式写中文（「第N镜（起–止 秒）：」「名字说：「原文」」），这样镜头固定、台词由代码填；制作计划的视频步骤 `ModeSpec.rewrite`，报价加改写冻结上限（`videoRewriteHold`）。
 - 规则见 `specs/BUSINESS_RULES.md`「H3 视频提示词改写」；测试 `H3PromptRewriteTest`、`StudioVideoRewriteWorkerTest`、`DirectorH3VideoFlowTest`、`studio-video-prompt-notes.test.tsx`。
+
+### H3 改写的素材说明与检查（2026-11-07）
+
+客户反馈「视频经常生成不出来」，查下来视频模型本身正常（H3 18/18），卡在出片前的优化：11-05 换 Sonnet 后，11-06 的 26 次优化只有 8 次接着出片。约定写明模型看不到素材（`H3PromptRewrite.contract`，导演台约定不动）；台词核对只看用户自己写的部分（`ownText`），引用文字不核对；连入文字已写在提示词里就不再引用（前端 `withStudioLinkedText`，服务端 `withoutRepeatedQuotes`，以前整份脚本两遍，代码还把「漏掉的」台词补回去，每句说两次）；模型回的不是优化稿时卡片写「提示词优化未完成」（前端按 `output.rawOnly` 判断），不当优化稿发出去。已返回正文仍按实际用量结算（2026-11-05 用户定的规则）。修完后真实重跑 36 次全部接着出片，模型绑定仍是 Sonnet，选择见 TODO。
 
 ### 导演台 H3 提示词：不写给系统的话（2026-10-31，本地未发布）
 
