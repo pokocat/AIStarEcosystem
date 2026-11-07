@@ -274,7 +274,7 @@ class H3PromptRewriteTest {
         assertTrue(system.contains("# Video Prompt Writing Guide (T2VA / I2VA / FL2VA / L2VA)"), "base-en.txt");
         // 首发约定原文不动，2026-10-31 只在后面追加篇幅预算（cl45 优化稿 8198 字符）
         assertTrue(system.contains("- non_diegetic_music: \"N/A\" unless the request asks for music.\n- Length: the video model accepts at most 7,000 characters"), system.substring(system.length() - 1500));
-        assertTrue(system.endsWith("then refer to it by its label.\n"));
+        assertTrue(system.endsWith("Never meet the limit by cutting off the JSON, dropping a shot or reference, or shortening dialogue.\n"));
         assertTrue(system.contains("Do not write the words of a line, quotation marks around it, <d> tags, or speaker IDs such as (S1); the system inserts them."));
     }
 
