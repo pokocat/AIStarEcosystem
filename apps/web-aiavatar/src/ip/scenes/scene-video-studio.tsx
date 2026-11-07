@@ -18,15 +18,19 @@ import { getStudioPlanExecution } from "@/canvas-bridge/studio-plan-execution";
 import type { StudioPlanExecution, StudioSegmentedVideoPrice, StudioSegmentedVideoRequest } from "@ai-star-eco/types/ip-studio-workflow";
 import { describeSegmentedPrice, segmentedRecords, segmentedVideoPrice, startSegmentedVideo, type SegmentedRecord } from "@/canvas-bridge/studio-segmented";
 import type { StudioVideoTask, StudioVideoTaskCreate, StudioVideoTaskKind, StudioVideoTaskQuote } from '@ai-star-eco/types/ip-studio-video-task';
+import type { EnterpriseBillingSelection } from '@ai-star-eco/types/enterprise';
+import type { StudioVideoSettings } from '@ai-star-eco/types/ip-studio-workflow';
 import { startVideoTask, prepareVideoTask, videoTaskPrice } from '@/canvas-bridge/studio-video-tasks';
 import { SceneVideoWorkspace, VideoHistoryToggle, VideoTaskSettings, VIDEO_TASK_SELECTION } from './scene-video-workspace';
 import { SegmentedRow } from "./scene-segmented-row";
 import { studioCapabilities, submitStudioRun } from "@/canvas-bridge/studio-api";
 import { attachmentNode } from "@/canvas-bridge/studio-attachments";
-import { isStudioBillingCancelled } from "@/canvas-bridge/studio-billing-cancel";
+import { isStudioBillingCancelled, studioCreditShortageChoice } from "@/canvas-bridge/studio-billing-cancel";
 import { studioChosenTextModel } from "@/canvas-bridge/studio-text-model";
 import { studioVideoError, studioVideoQuote } from "@/canvas-bridge/studio-video";
 import { describeStudioVideoPrice, studioPreviewPayer, studioVideoPriceQuery, useStudioVideoPrice } from "@/canvas-bridge/studio-video-price";
+import { quoteVideoPrice } from "@/canvas-bridge/studio-model-quote";
+import { STUDIO_GRANT_HINT, studioCreditCheck } from "@/canvas-bridge/studio-billing";
 import { downloadMedia } from "@/canvas-bridge/download-media";
 import { CanvasNodeType, type CanvasNodeData } from "@/canvas/types/canvas";
 import { studioErrorMetadata, useStudioFailure } from "../studio-errors";
@@ -544,10 +548,16 @@ export function SceneVideoStudio() {
       }, projectId);
       if (onPage(ticket, projectId)) { if (revising && !opts?.auto) setRevise(""); setSubmitting(nodeId); setView("director"); }
       posted = true;
-      const run = await submitStudioRun(projectId, request!);
+      const run = await submitStudioRun(projectId, request!, { canRetry: true });
       await persist(doc => applyRun(doc, nodeId!, run), projectId);
     } catch (e) {
       if (!nodeId) { if (onPage(ticket)) setHint(sceneHintText(e, "提交失败，请重试。")); return; }
+      // 积分不够：这一版没发出去，撤掉它，用户写的字放回输入框。
+      if (isStudioBillingCancelled(e)) {
+        await persist(doc => patchNode(doc, nodeId!, () => undefined), projectId).catch(() => undefined);
+        if (onPage(ticket, projectId)) { if (revising && !opts?.auto) setRevise(raw); if (studioCreditShortageChoice(e)?.kind === "retry") rewrite.current = { raw, opts, ticket, projectId }; }
+        return;
+      }
       const rejected = submissionRejected(e, posted);
       await persist(doc => patchNode(doc, nodeId!, n => ({ ...n, metadata: { ...n.metadata, ...studioErrorMetadata(e),
         status: rejected ? "error" : "loading", ...(rejected ? {} : { errorDetails: "提交结果待确认。点击「确认原任务」查询，不会重复扣费。" }) } })), projectId).catch(() => undefined);
@@ -582,7 +592,11 @@ export function SceneVideoStudio() {
     try {
       const run = await submitStudioRun(project.id, request);
       await persist(doc => patchNode(applyRun(doc, row.id, run), row.id, n => ({ ...n, metadata: { ...n.metadata, status: "loading", errorDetails: undefined } })), project.id);
-    } catch (e) { showFailure({ action: "确认原任务", error: e }); }
+    } catch (e) {
+      // 积分不足提示框已经说清了：这条没有受理，不用再确认，转成可以重新生成的失败记录。
+      if (studioCreditShortageChoice(e)) await persist(doc => patchNode(doc, row.id, n => ({ ...n, metadata: { ...n.metadata, status: "error", errorDetails: "积分不足，未提交" } })), project.id).catch(() => undefined);
+      else showFailure({ action: "确认原任务", error: e });
+    }
     finally { setBusy(false); }
   };
 
@@ -666,6 +680,26 @@ export function SceneVideoStudio() {
   try { settings = chosenVideo && usedTier && plan ? sceneVideoSettings(chosenVideo, usedTier, plan, optimize) : undefined; }
   catch (e) { planError = e instanceof Error ? e.message : "素材与当前模型不匹配"; }
   const videoQuote = chosenVideo && settings ? studioVideoQuote(chosenVideo, settings, usedDuration) : null;
+  /**
+   * 积分不足时能换的模型。标准价按换过去实际的时长、清晰度和素材算；会变的写进 changes，用户看过再生成。
+   * 做不了现在的组合就算不出价，有赠款照样列出来，写明要调整，换过去也不会自动提交。
+   */
+  const modelChoices = (videoModels ?? []).filter(m => m.selectableById).map(m => {
+    const fits = m.contract.tiers.filter(t => t.canvases.some(c => c.aspectRatio === ratio));
+    // 和上面 usedTier 同一条规则：换过去报的价、写的变化，才是真正会提交的规格。
+    const nextTier = (fits.find(t => t.tier === tier) ?? fits[0])?.tier;
+    if (!nextTier) return { endpointId: m.endpointId, name: m.name, cost: null, changes: `不支持 ${ratio} 画面，需要重新选择` };
+    const nextDuration = clampSceneDuration(duration, m.contract);
+    const changes = [nextTier !== usedTier && `清晰度将改为 ${nextTier}`, nextDuration !== usedDuration && `时长将改为 ${nextDuration} 秒`];
+    try {
+      const inputs = sceneVideoInputs(m, materials);
+      const nextSettings = sceneVideoSettings(m, nextTier, inputs, optimize);
+      return { endpointId: m.endpointId, name: m.name, cost: studioVideoQuote(m, nextSettings, nextDuration), quotePatch: { video: nextSettings, durationSec: nextDuration },
+        // 优化描述是另一笔文字任务，不含在视频报价里。
+        extraCharge: nextSettings.rewrite ? "优化提示词按实际用量另计" : undefined,
+        changes: [...changes, inputs.note].filter(Boolean).join("，") };
+    } catch { return { endpointId: m.endpointId, name: m.name, cost: null, changes: "当前素材不支持，需要调整" }; }
+  });
   // 规格跟着选的视频模型走（画面比例、清晰度都按这个模型实际支持的给）。
   const ratios = contract?.tiers.find(t => t.tier === usedTier)?.canvases.map(c => c.aspectRatio).filter(r => r === "9:16" || r === "16:9") ?? ["9:16", "16:9"];
   // 三种入口共用任务工作区，后台按实际制作方式推进。
@@ -870,6 +904,14 @@ export function SceneVideoStudio() {
         request = await prepareVideoTask(projectId, { clientRequestId, kind, sceneId: scene.id, title: `${scene.title} · ${subject || `${configuration.duration} 秒`}`,
           configuration, video: native, budgetCap: cap, sourceNodeId: placed.find(p => p.media.key === video?.key)?.node.id,
           input: { nodes: snapshotNodes, sceneInputs: selection(), sceneVideoState: { ...videoState, duration: configuration.duration, tier: usedTier, ratio, optimize }, sceneVideoModel: chosenVideo.endpointId } });
+        // 任务受理后才异步执行，积分不够要到那时才知道，只能落成一条「需处理」的记录：直接出片的价钱是确定的，受理前先问。
+        // 长视频和复刻是多步任务，总价只是估算，这里不拦。
+        if (kind === 'direct' && !caps?.mock) {
+          const billing: EnterpriseBillingSelection = request.billing ?? { mode: 'personal' };
+          await studioCreditCheck(() => quoteVideoPrice(studioVideoPriceQuery(taskModel, settings!, usedDuration, ratio), billing), billing, {
+            modelChoices, canRetry: true, grantHint: STUDIO_GRANT_HINT,
+            verifyChoice: (model, patch) => quoteVideoPrice(studioVideoPriceQuery(model, patch?.video as StudioVideoSettings, patch?.durationSec as number, ratio), billing) });
+        }
         await persist(doc => ({ ...doc, nodes, sceneInputs: selection(), sceneVideoModel: chosenVideo.endpointId,
           sceneVideoSubmissions: [...(doc.sceneVideoSubmissions ?? []), request!] }), projectId);
       }
@@ -882,8 +924,32 @@ export function SceneVideoStudio() {
       if (projectId && request && (isStudioBillingCancelled(error) || submissionRejected(error, true)))
         await persist(doc => ({ ...doc, sceneVideoSubmissions: (doc.sceneVideoSubmissions ?? []).filter(r => r.clientRequestId !== request!.clientRequestId) }), projectId).catch(() => undefined);
       if (!isStudioBillingCancelled(error)) showFailure({ action: '生成视频', error, next: submissionRejected(error, true) ? rejectedNextStep(error) : '本次提交可能已成功。请点击「确认原任务」查询，不要直接重新生成。' });
+      const shortage = studioCreditShortageChoice(error);
+      // 提示框开着或保存期间可能已经换了草稿（浏览器前进后退）：用户的选择不作用到别的草稿上。
+      if (shortage && onPage(ticket, projectId)) {
+        // 这条路径没有费用确认弹窗，点生成就开始花钱：换了模型只换模型，看过按钮上的价再点。充值后继续生成是同一个模型、同一个价，才自动开始。
+        if (shortage.kind === 'switch-model') {
+          chooseVideoModel(shortage.endpointId);
+          setNote({ text: `已改用「${shortage.name}」${shortage.changes ? `，${shortage.changes}` : ''}。确认费用后点击「生成视频」。` });
+        } else if (shortage.kind === 'retry') regenerate.current = { ticket, projectId, kind };
+      }
     } finally { setBusy(false); setPriceRevision(n => n + 1); }
   }
+
+  // 积分不足提示框里选了「继续生成」：等上一次提交收尾、费用重新算好后再来一次（生成要用这个价）。
+  const regenerate = useRef<{ ticket: number; projectId?: string; kind: StudioVideoTaskKind }>(undefined);
+  const rewrite = useRef<{ raw: string; opts?: { auto?: boolean; changes?: string }; ticket: number; projectId?: string }>(undefined);
+  useEffect(() => {
+    if (busy) return;
+    const again = rewrite.current;
+    if (again) { rewrite.current = undefined; if (onPage(again.ticket, again.projectId)) void send(again.raw, again.opts); return; }
+    const next = regenerate.current;
+    if (!next) return;
+    if (!onPage(next.ticket, next.projectId)) { regenerate.current = undefined; return; }
+    if (taskQuote?.key !== taskPriceKey || !(taskQuote.price || taskQuote.error)) return;
+    regenerate.current = undefined;
+    void startSceneTask(next.kind);
+  });
 
   const copy = async (row: CanvasNodeData) => {
     try { await navigator.clipboard.writeText(row.metadata?.content || ""); setCopied(row.id); setTimeout(() => setCopied(c => c === row.id ? undefined : c), 1500); }

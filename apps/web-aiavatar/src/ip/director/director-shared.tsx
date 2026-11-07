@@ -75,9 +75,11 @@ export type DirectorFail = (failure: string | StudioFailure) => void;
  * useBusy 的 onError：带上「哪个操作」交给工作台弹错误弹窗。
  * 已经打开的操作弹窗、编辑区里的失败不用它，照旧在那个位置就地显示。
  */
-export function failed(fail: DirectorFail, action: string, next?: StudioFailure["next"], extra?: StudioFailure["extra"]) {
-  return (message: string, raw?: unknown) => fail({ action, error: raw ?? message, next, extra });
+export function failed(fail: DirectorFail, action: string, next?: StudioFailure["next"], extra?: StudioFailure["extra"], shortage?: StudioFailure["shortage"]) {
+  return (message: string, raw?: unknown) => fail({ action, error: raw ?? message, next, extra, shortage });
 }
+/** 出图、出视频积分不足时：模型在作品设置里换。 */
+export const DIRECTOR_MEDIA_SHORTAGE = { grantHint: "可在「作品设置」中改用这些模型。" };
 
 /** 资产被哪些片段用着（关联资产，或台词说话人），和服务端 asset.delete 的判断一致。 */
 export type AssetRef = { clipId: string; episodeId: string; episodeNo: number; order: number; title: string; linked: boolean; lines: number };

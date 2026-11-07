@@ -100,6 +100,21 @@ html[data-layout="mobile"] .enterprise-add-member-fields > .ant-input { flex-bas
 .enterprise-workspace .ant-table-cell { overflow-wrap: anywhere; max-width: 360px; }
 .enterprise-workspace .studio-page-heading p { overflow-wrap: anywhere; }
 
+/* 积分不足提示框（studio-credit-shortage.tsx） */
+.studio-credit-form { gap: 14px; }
+.studio-credit-form h4 { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--ip-ink,#192229); }
+.studio-credit-form .studio-credit-summary { font-size: 14px; color: var(--ip-ink,#192229); }
+.studio-credit-models { list-style: none; margin: 0; padding: 0; }
+.studio-credit-models li { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 10px 0; border-top: 1px solid var(--ip-line,#e8eaec); }
+.studio-credit-models li > span { display: grid; gap: 2px; min-width: 0; }
+.studio-credit-models strong { overflow: hidden; font-size: 14px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.studio-credit-models small { font-size: 12px; color: var(--ip-muted,#65707e); }
+.studio-credit-models small.is-change { color: var(--ip-ink,#192229); }
+/* 手机上是最常点的按钮，触控高度不能只有 24px。 */
+html:not([data-layout="desktop"]) .studio-credit-models .ant-btn,
+html:not([data-layout="desktop"]) .studio-credit-actions .ant-btn { min-height: 44px; padding-inline: 16px; }
+.studio-credit-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.studio-credit-form .studio-credit-recheck { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .studio-model-quote-lines { display: grid; gap: 12px; margin: 0; font-size: 14px; font-variant-numeric: tabular-nums; }
 .studio-model-quote-lines > div { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
 .studio-model-quote-lines dt { min-width: 0; overflow-wrap: anywhere; }

@@ -164,6 +164,16 @@
 
 ## Studio 当前待办
 
+### 积分不足提示框后续（2026-11-07 评审，提示框本身见 docs/model-billing-design.md 末节）
+
+- [ ] 企业付款账户积分不足时没有出路：`studio-credit-shortage.tsx` 只有关闭、换模型、重试，设了默认企业账户的普通成员只能看到「查看企业积分」。个人积分够时可以给「改用个人积分」（只影响这一次，在 `withStudioBilling` 里换付款人重新报价即可，页面不用改）。建议的模型也没有按企业模型名单过滤。
+- [ ] 提示框背后同时显示「正在提交」：`scene-image-studio.tsx` / `scene-video-studio.tsx` 的 `setSubmitting` + `setTab("results")` 在 `submitStudioRun` 之前执行，付款询问在提交内部，和「本次未扣积分」互相矛盾。费用确认弹窗背后也一样。把询问从提交里拆出来，付款决定之后再切页。
+- [ ] 分镜图生成积分不足时不列赠款模型：`director-storyboard.tsx` 还没传 `DIRECTOR_MEDIA_SHORTAGE`（当时该文件有别的会话未提交的改动，没有动）。资产图和片段视频已接。
+- [ ] 手机上「充值」新开的会员页只有扫码和支付宝收银台，手机浏览器内还不能直接唤起支付（PRODUCT.md「积分充值收银台」），手机端的充值路径没有实测。
+- [ ] 费用确认弹窗与提示框主题不一致：`studio-model-quote-dialog.tsx` 还是自己的 `ConfigProvider`（#192229、圆角 8、宽 520），提示框用 `AntdTheme`（#202c42、宽 480），连续出现时会跳一下。改用 `AntdTheme`；退出按钮的叫法也统一（「取消生成」和「返回修改」结果相同）。
+- [ ] AI 视频页的长视频和爆款复刻积分不足时没有提示框：这两种是多步任务，总价只是估算，受理前不拦，跑到哪一步积分不够，就在任务面板里显示「需处理」（`StudioPlanExecutor` 的 `STUDIO_PAYMENT_REQUIRED`）。可以在任务面板上给充值和继续的入口。
+- [ ] 配音、口型积分不足时节点仍显示失败（`studio-workspace.tsx` 的 `sendNative` 没有按取消撤销），提示框会弹，但节点上留一条失败记录。
+
 - [ ] **AI 图片页和画布的生成按钮也只显示标准价**（2026-11-03 排查 AI 视频页折扣不显示时发现）：`scene-image-studio.tsx` 的 `quote = unit * usedCount` 和画布创作面板 `studio-workspace.tsx` 的 `quote`（图片 `imageUnitCost*imageCount`、视频 `studioVideoQuote(...)*videoCount`）都按本地价表算标准价，模型折扣和模型赠款要点了生成、在确认弹窗里才看得到。AI 视频页已改为按 `GET /api/v1/ip-studio/studio/video-price` 显示（`canvas-bridge/studio-video-price.ts`）；画布出视频可以直接复用这个接口，图片还没有不需要草稿、也不受「未绑手机号只读」拦截的报价接口（现有 `image-quote` 是 POST），要另加一个同口径的 GET。导演台、创作助手方案卡上的价未逐一核对。
 
 - [ ] **导演台轮询任务为空时出现 NPE**（2026-11-02 线上观察，07:56:42 UTC，追查号 `tAVCAMEupHdAp9R5`）：`DirectorService.pollVideos:1578` 对 `videoJobs.getJob(...)` 的 null 结果直接调 `job.path`，导致读取接口 500；该方法与本次发布前一致，不是图片上传验收请求。需独立定位读空原因、加回归并处理轮询状态，不得重提已受理的视频任务；见图片上传生产发布记录。

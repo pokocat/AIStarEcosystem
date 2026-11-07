@@ -1,9 +1,13 @@
-import { apiFetch } from "@ai-star-eco/api-client";
+import { apiFetch, ApiError } from "@ai-star-eco/api-client";
 import type { IpModels } from "./api";
 import type { EnterpriseBillingSelection } from "@ai-star-eco/types/enterprise";
 
 export type StudioBillingRequest = { clientRequestId?: string; billing?: EnterpriseBillingSelection | null; model?: string; maxCost?: number; operation?: string; modelBilling?: import('@ai-star-eco/types/model-billing').ModelBillingApproval };
-export type StudioBillingDetails = { operation?: string; expectedCost?: number; textUsage?: boolean; model?: string; libraryObjectId?: string; nodeId?: string; modelQuote?: boolean };
+export type StudioBillingDetails = { operation?: string; expectedCost?: number; textUsage?: boolean; model?: string; libraryObjectId?: string; nodeId?: string; modelQuote?: boolean } & StudioShortageOptions;
+/** 积分不足提示框要用的：页面能换成哪些模型、能不能接着生成。不给就只说明情况，不提供直接换模型。 */
+export type StudioShortageOptions = { modelChoices?: import('@/ip/studio-credit-shortage').StudioModelChoice[]; canRetry?: boolean };
+/** 出图、出视频的入口不能直接换模型时的说明。 */
+export const STUDIO_GRANT_HINT='选用这些模型生成时，可用赠款抵扣。';
 export type BillingLookup = import('@ai-star-eco/types/enterprise').EnterpriseBillingReplaySelection;
 type Decision={billing?:EnterpriseBillingSelection;modelBilling?:import('@ai-star-eco/types/model-billing').ModelBillingApproval};
 const pending = new Map<string, Promise<Decision>>();
@@ -19,6 +23,30 @@ export function readSavedStudioBilling(key: string): EnterpriseBillingSelection 
 function savedApproval(key:string) {
   try {const value=JSON.parse(sessionStorage.getItem(quotePrefix+key)||'null');if(value?.target&&value?.usage&&typeof value.priceVersion==='string'&&typeof value.freeOnly==='boolean'&&Number.isSafeInteger(value.maxWalletCredits))return value as NonNullable<StudioBillingRequest['modelBilling']>;}catch{ /* No local draft can authorize a server charge. */ }
 }
+/**
+ * 积分不够：打开提示框，用户选完后按「取消生成」收尾。各入口已经会撤销取消的那一次（不留失败的节点和记录），
+ * 用户选了换模型或接着生成，页面从错误上读（studioCreditShortageChoice）。
+ */
+export async function studioCreditShortageCancel(input: import('@/ip/studio-credit-shortage').StudioCreditShortageInput) {
+  const {askStudioCreditShortage}=await import('@/ip/studio-credit-shortage');
+  const choice=await askStudioCreditShortage(input);
+  return Object.assign(new ApiError({code:'STUDIO_BILLING_CANCELLED',message:'本次生成已取消，未提交任务。'},400),{creditShortage:choice});
+}
+
+/**
+ * 花钱之前问一次付不付得起。付不起就弹积分不足提示框，并按「取消生成」抛出（见 studioCreditShortageCancel）。
+ * 本月赠送的积分提交时才发，报价看不到：个人账户先把它领了再判断一次，别把刚好没领的人拦下。报价失败不在这里拦，交给调用方。
+ */
+export async function studioCreditCheck<T extends import('@ai-star-eco/types/model-billing').ModelBillingQuote>(load:()=>Promise<T>,billing:EnterpriseBillingSelection|undefined,input:Omit<import('@/ip/studio-credit-shortage').StudioCreditShortageInput,'quote'|'billing'|'reason'>):Promise<T|undefined> {
+  let first=await load().catch(()=>undefined);
+  if(first?.unavailableCode==='MODEL_CREDITS_INSUFFICIENT'&&billing?.mode!=='enterprise'){
+    await apiFetch('/v1/account').catch(()=>undefined);
+    first=await load().catch(()=>first);
+  }
+  if(first?.unavailableCode==='MODEL_CREDITS_INSUFFICIENT')throw await studioCreditShortageCancel({quote:first,billing,...input});
+  return first;
+}
+
 /** Resolve accepted requests first. Unknown receipts retain the original payer and approval on retry. */
 export async function withStudioBilling<T extends object>(projectId: string, request: T, details: StudioBillingDetails = {}): Promise<T> {
   const payerRequest=request as T&StudioBillingRequest;
@@ -48,12 +76,21 @@ export async function withStudioBilling<T extends object>(projectId: string, req
       if(original&&!original.priceVersion.startsWith('stale:'))return {billing,modelBilling:original};
       const body={...request,billing,modelBilling:undefined};
       const quote=await import('./studio-model-quote');
-      const load=(freeOnly:boolean,signal:AbortSignal)=>kind==='video'
-        ?payerRequest.operation==='video'?quote.quoteWorkflowVideo(projectId,body,freeOnly,signal):quote.quoteVideoRequest(projectId,body,freeOnly,signal)
-        :details.nodeId?quote.quoteImageNode(projectId,details.nodeId,body,freeOnly,signal)
-        :payerRequest.operation==='image'?quote.quoteWorkflowImage(projectId,body,freeOnly,signal):quote.quoteImageRequest(projectId,body,freeOnly,signal);
+      const quoteOf=(request:object,freeOnly:boolean,signal:AbortSignal)=>kind==='video'
+        ?payerRequest.operation==='video'?quote.quoteWorkflowVideo(projectId,request,freeOnly,signal):quote.quoteVideoRequest(projectId,request,freeOnly,signal)
+        :details.nodeId?quote.quoteImageNode(projectId,details.nodeId,request,freeOnly,signal)
+        :payerRequest.operation==='image'?quote.quoteWorkflowImage(projectId,request,freeOnly,signal):quote.quoteImageRequest(projectId,request,freeOnly,signal);
+      const load=(freeOnly:boolean,signal:AbortSignal)=>quoteOf(body,freeOnly,signal);
+      // 付不起就不进费用确认：先报一次价，积分不够直接给提示框。报价失败交给费用弹窗（它显示原因和「重新报价」）。
+      const freeOnly=original?.freeOnly??false;
+      const signal=new AbortController().signal;
+      const first=await studioCreditCheck(()=>load(freeOnly,signal),billing,{modelChoices:details.modelChoices,canRetry:details.canRetry,grantHint:STUDIO_GRANT_HINT,
+        // 节点出图的模型在节点文档里，换不了。上限是原模型的价，别的模型报价不能带着它。
+        verifyChoice:details.nodeId?undefined:(model,patch)=>quoteOf({...body,...patch,model,maxCost:undefined},false,signal)});
       const {confirmStudioModelQuote}=await import('@/ip/studio-model-quote-dialog');
-      const modelBilling=await confirmStudioModelQuote(load,billing,original?.freeOnly??false);
+      const chosenId=first?.target.endpointId;
+      const modelName=details.modelChoices?.find(m=>chosenId&&(m.endpointId===chosenId||m.legacyEndpointIds?.includes(chosenId)))?.name;
+      const modelBilling=await confirmStudioModelQuote(load,billing,freeOnly,first,modelName);
       try{sessionStorage.setItem(quotePrefix+key,JSON.stringify(modelBilling));}catch{ /* The original request still retains approval for retry. */ }
       return {billing,modelBilling};
     })();pending.set(key,operation);
