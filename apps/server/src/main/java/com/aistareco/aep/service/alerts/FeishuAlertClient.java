@@ -7,7 +7,7 @@ import java.net.http.*;
 import java.time.Duration;
 import java.util.Map;
 
-/** Application bot; secrets and raw Feishu responses are never logged or included in exceptions. */
+/** Webhook or application bot; secrets and raw Feishu responses never leave this client. */
 @Component
 public class FeishuAlertClient {
     private final FeishuAlertConfig config;private final ObjectMapper mapper;private final HttpClient http;
@@ -24,18 +24,41 @@ public class FeishuAlertClient {
         token=value;expiresAt=System.currentTimeMillis()+Math.max(1,response.path("expire").asLong(7200)-120)*1000;return token;
     }
     public String send(String id,String text) throws Exception {
+        if(config.usesWebhook()) {
+            if(!config.validWebhook())throw new IllegalStateException("Feishu webhook invalid");
+            request("POST",URI.create(config.getWebhook()),webhookBody(text),null);
+            // Custom bots return no message_id. This is a local delivery receipt, not a Feishu ID.
+            return "webhook:"+id;
+        }
         var result=request("POST","/im/v1/messages?receive_id_type=chat_id",Map.of("receive_id",config.getChatId(),"msg_type","text",
                 "content",mapper.writeValueAsString(Map.of("text",text)),"uuid",id),token());
         String messageId=result.path("data").path("message_id").asText();
         if(!messageId.matches("om_[A-Za-z0-9]+"))throw new IllegalStateException("Feishu message ID missing");return messageId;
     }
     public void urgent(String messageId) throws Exception {
+        if(config.usesWebhook())return;
         if(!messageId.matches("om_[A-Za-z0-9]+"))throw new IllegalArgumentException("Invalid Feishu message ID");
         var result=request("PATCH","/im/v1/messages/"+messageId+"/urgent_app?user_id_type=open_id",Map.of("user_id_list",java.util.List.of(config.getUserId())),token());
         if(result.path("data").path("invalid_user_id_list").size()>0)throw new IllegalStateException("Feishu urgency recipient invalid");
     }
     private JsonNode request(String method,String path,Object body,String token) throws Exception {
-        var builder=HttpRequest.newBuilder(URI.create("https://open.feishu.cn/open-apis"+path)).timeout(Duration.ofSeconds(5))
+        return request(method,URI.create("https://open.feishu.cn/open-apis"+path),body,token);
+    }
+    private Object webhookBody(String text) throws Exception {
+        // Custom-bot messages are limited to 20 KB, including JSON escaping and UTF-8 encoding.
+        String suffix="\n（告警过长已截断，完整详情请查看后台）\nhttps://admin.aibuzz.cn/admin/platform/ai-models";
+        int low=0,high=text.codePointCount(0,text.length());
+        Object full=Map.of("msg_type","text","content",Map.of("text",text));
+        if(mapper.writeValueAsBytes(full).length<=20000)return full;
+        while(low<high) {
+            int mid=(low+high+1)/2;
+            Object body=Map.of("msg_type","text","content",Map.of("text",text.substring(0,text.offsetByCodePoints(0,mid))+suffix));
+            if(mapper.writeValueAsBytes(body).length<=20000)low=mid;else high=mid-1;
+        }
+        return Map.of("msg_type","text","content",Map.of("text",text.substring(0,text.offsetByCodePoints(0,low))+suffix));
+    }
+    private JsonNode request(String method,URI uri,Object body,String token) throws Exception {
+        var builder=HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(5))
                 .header("Content-Type","application/json").method(method,HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body)));
         if(token!=null)builder.header("Authorization","Bearer "+token);
         HttpResponse<String> response;

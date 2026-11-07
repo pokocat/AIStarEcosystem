@@ -9,12 +9,16 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 @Getter @Setter @Configuration
 public class FeishuAlertConfig {
     @Value("${AEP_FEISHU_ALERTS_ENABLED:false}") private boolean enabled;
+    @Value("${AEP_FEISHU_ALERT_WEBHOOK:}") private String webhook="";
     @Value("${AEP_FEISHU_APP_ID:}") private String appId="";
     @Value("${AEP_FEISHU_APP_SECRET:}") private String appSecret="";
     @Value("${AEP_FEISHU_ALERT_CHAT_ID:}") private String chatId="";
     @Value("${AEP_FEISHU_ALERT_USER_ID:}") private String userId="";
     @Value("${AEP_FEISHU_ALERT_URGENT:false}") private boolean urgent=false;
-    public boolean ready(){return enabled&&!appId.isBlank()&&!appSecret.isBlank()&&chatId.startsWith("oc_")&&userId.startsWith("ou_");}
+    public boolean usesWebhook(){return !webhook.isBlank();}
+    public boolean validWebhook(){return webhook.matches("https://open\\.feishu\\.cn/open-apis/bot/v2/hook/[A-Za-z0-9-]+");}
+    public boolean urgencyEnabled(){return urgent&&!usesWebhook();}
+    public boolean ready(){return enabled&&(usesWebhook()?validWebhook():!appId.isBlank()&&!appSecret.isBlank()&&chatId.startsWith("oc_")&&userId.startsWith("ou_"));}
     // Once a custom scheduler exists Boot backs off. Keep an explicit default so unqualified
     // existing @Scheduled jobs do not accidentally run on the notification executor.
     @Bean(name="taskScheduler") public ThreadPoolTaskScheduler coreScheduler() {
