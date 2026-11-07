@@ -128,7 +128,7 @@ test('a product deleted from the library says so and stops offering to edit it',
   const { ApiError } = await import('@ai-star-eco/api-client');
   lib.readLibraryObject.mockRejectedValue(new ApiError({ code: 'IP_LIBRARY_NOT_FOUND', message: '资产或文件夹不存在' }, 404));
   render(<DirectorProducts {...props(work({ assets: [product()] }))}/>);
-  await screen.findByText(/商品库里已删除这件商品/);
+  await screen.findByText(/商品库中已删除此商品/);
   expect(within(screen.getByRole('menu', { hidden: true })).queryByRole('menuitem', { name: '在商品库编辑', hidden: true })).toBeNull();
 });
 
