@@ -63,7 +63,7 @@ class ClipVoiceNoGuessTest {
 
         assertThatThrownBy(() -> service().requiredVoiceEngineRef("owner-1", "DH-new", null))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("还没有关联声音");
+                .hasFieldOrPropertyWithValue("code", "CLIP_VOICE_NOT_SELECTED");
     }
 
     @Test

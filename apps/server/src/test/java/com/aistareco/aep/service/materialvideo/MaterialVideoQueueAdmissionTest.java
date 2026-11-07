@@ -51,7 +51,7 @@ class MaterialVideoQueueAdmissionTest {
     @Test void historicalUnknownIsClosedOnceWithoutAnyProviderCall() {
         job.setStatus("submitting");job.setErrorCode("VIDEO_SUBMISSION_UNKNOWN");
         worker.failUnconfirmedSubmission("job");worker.failUnconfirmedSubmission("job");
-        assertEquals("failed",job.getStatus());assertTrue(job.getErrorMessage().contains("重新生成"));
+        assertEquals("failed",job.getStatus());assertTrue(job.getErrorMessage().startsWith(com.aistareco.aep.service.GenerationSubmissionFailure.MESSAGE),job.getErrorMessage());
         verify(credits,times(1)).releaseHold(eq(MaterialVideoJobService.CREDIT_REF_TYPE),eq("job"),anyString());
         verifyNoInteractions(client);
     }

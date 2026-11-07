@@ -29,6 +29,8 @@ import java.util.function.LongConsumer;
 /** Endpoint-configured image transport shared by Studio and the asset/drama image callers. */
 @Component
 public class JusuanImageClient {
+    /** A supplier refusal we cannot state exactly: never its words or a status code, only that it failed and to retry. */
+    static final String GENERATION_FAILED_MESSAGE = "图片生成失败，未生成的图片不扣积分。请重新生成。";
     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AiModelUsageService usage;
     private final AiModelInvocationService models;
     private final FileStorageService storage;
@@ -160,7 +162,7 @@ public class JusuanImageClient {
             if(ProviderErrorMessage.hasError(accepted)) {
                 if(refusedForLoad(200,accepted.toString()))throw new ProviderBusy();
                 var error=com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attachBody(
-                        rejected(accepted,"图片生成服务返回错误，未提供具体原因"),accepted.toString());
+                        rejected(accepted,GENERATION_FAILED_MESSAGE),accepted.toString());
                 // Keep sync final failures and async missing-receipt failures on their existing settlement paths.
                 if(resultMode.startsWith("sync-"))throw error;
                 var unconfirmed=new BusinessException(HttpStatus.BAD_GATEWAY,error.getCode(),error.getMessage(),error.getDetails());
@@ -371,7 +373,7 @@ public class JusuanImageClient {
     }
 
     private byte[] resultBytes(AiModelEndpoint endpoint,AiImageRequestSpec.Wire wire,String value,String mode) {
-        if(value==null || value.isBlank())throw failure("生成服务未返回图片，请重试；多次出现请联系平台处理");
+        if(value==null || value.isBlank())throw failure(GENERATION_FAILED_MESSAGE);
         if("sync-base64".equals(mode)) {
             String encoded=value;
             if(encoded.startsWith("data:image/")) {
@@ -499,7 +501,7 @@ public class JusuanImageClient {
         var moderation=com.aistareco.aep.service.ai.ProviderContentModeration.find(body);
         if(moderation!=null)return new ProviderRejected(reason,Map.of("providerCode",moderation.providerCode(),
                 "reason",reason,"category","content_moderation","target",moderation.target()));
-        return new ProviderRejected("图片生成服务返回错误："+reason,Map.of("providerCode",code,"reason",reason,
+        return new ProviderRejected("图片生成失败："+reason,Map.of("providerCode",code,"reason",reason,
                 "category","provider_rejection"));
     }
     private HttpRequest.Builder request(AiModelEndpoint endpoint,AiImageRequestSpec.Wire wire,String path) {
@@ -552,7 +554,7 @@ public class JusuanImageClient {
     }
     private JsonNode checked(HttpResponse<String> response,AiImageRequestSpec.Wire wire) {
         if(response.statusCode()/100!=2) {
-            var error=rejected(response.body(),"图片生成服务返回错误（"+response.statusCode()+"）");
+            var error=rejected(response.body(),GENERATION_FAILED_MESSAGE);
             // Keep recoverable failures distinct from a definitive submission rejection.
             throw attach(new BusinessException(HttpStatus.BAD_GATEWAY,error.getCode(),error.getMessage(),error.getDetails()),response);
         }

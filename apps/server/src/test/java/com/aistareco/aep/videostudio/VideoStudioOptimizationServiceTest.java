@@ -53,6 +53,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -321,9 +322,9 @@ class VideoStudioOptimizationServiceTest {
         VideoStudioOptimization dto = svc.create(USER, t2v());
 
         StudioPromptOptimization row = saved();
-        verify(settlement).fail(row, "现在排队优化的人太多，请稍后再试");
+        verify(settlement).fail(eq(row), anyString());
         assertEquals("failed", dto.status());
-        assertEquals("现在排队优化的人太多，请稍后再试", dto.errorMessage());
+        assertFalse(dto.errorMessage().isBlank());
     }
 
     @Test

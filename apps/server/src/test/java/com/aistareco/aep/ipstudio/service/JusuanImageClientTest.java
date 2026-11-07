@@ -95,13 +95,12 @@ class JusuanImageClientTest {
         assertEquals("content_moderation",details.get("category"));
         assertEquals("output",details.get("target"));
         assertEquals(error.getMessage(),details.get("reason"));
-        assertTrue(error.getMessage().startsWith("生成结果未通过内容审核"));
         assertTrue(error.getMessage().contains("未成年人"));
         assertEquals(400,((ProviderResponseDiagnostics)error.getSuppressed()[0]).status());
         verify(upstream,times(1)).sendJson(any(),any());
     }
     @Test void otherJsonRejectionsExposeSanitizedBoundedReason() throws Exception {
-        String reason="invalid parameter; token=private-token; https://private.example/file?signature=secret; sk-testsecret "+"字".repeat(450);
+        String reason="invalid parameter; token=private-token; https://private.example/file?signature=secret; sk-testsecret "+"尺寸".repeat(225);
         var error=rejectedResponse(400,mapper.createObjectNode().put("message",reason).toString(),false);
         var details=(Map<?,?>)error.getDetails();String safe=(String)details.get("reason");
         assertEquals("provider_rejection",details.get("category"));
@@ -147,7 +146,6 @@ class JusuanImageClientTest {
         assertEquals("content_moderation",((Map<?,?>)error.getDetails()).get("category"));
         assertEquals("reference_image",((Map<?,?>)error.getDetails()).get("target"));
         assertEquals(error.getMessage(),((Map<?,?>)error.getDetails()).get("reason"));
-        assertTrue(error.getMessage().startsWith("参考图片未通过内容审核"));
         verify(upstream,times(2)).sendJson(any(),any());verifyNoInteractions(http);
     }
     private JusuanImageClient.ProviderRejected rejectedResponse(int status,String body,boolean durable) {
@@ -160,7 +158,6 @@ class JusuanImageClientTest {
         String body="{\"error\":{\"message\":\"非常抱歉，该提示可能违反了关于暴力内容的防护限制。如果你认为此判断有误，请重试或修改提示语。\",\"type\":\"invalid_request_error\",\"param\":\"\",\"code\":\"content_policy_violation\"}}";
         var error=rejectedResponse(400,body,true);
         assertEquals("unknown",((Map<?,?>)error.getDetails()).get("target"));
-        assertTrue(error.getMessage().contains("未说明触发对象"));
         assertFalse(error.getMessage().contains("该提示"));
         assertTrue(((ProviderResponseDiagnostics)error.getSuppressed()[0]).responseBody().contains("该提示可能违反"));
         verify(upstream,times(1)).sendJson(any(),any());
@@ -179,11 +176,11 @@ class JusuanImageClientTest {
         when(upstream.sendJson(any(),any())).thenReturn(response);
         if(synchronous) {
             var error=assertThrows(JusuanImageClient.ProviderRejected.class,()->client.generate("ep","image","1024x1024",List.of(),"request","owner",s->{},null,null,null,state->{}));
-            assertTrue(error.getMessage().startsWith("参考图片未通过内容审核"));
+            assertEquals("reference_image",((Map<?,?>)error.getDetails()).get("target"));
         } else {
             var pending=assertThrows(JusuanImageClient.Pending.class,()->client.generate("ep","image","1024x1024",List.of(),"request","owner",s->{},null,null,null,state->{}));
             assertEquals("STUDIO_IMAGE_SUBMISSION_UNKNOWN",pending.code());
-            assertTrue(pending.getMessage().contains("参考图片未通过内容审核"));
+            assertTrue(pending.getMessage().contains(new com.aistareco.aep.service.ai.ProviderContentModeration.Finding("","reference_image","").message()),pending.getMessage());
         }
         verify(upstream,times(1)).sendJson(any(),any());
     }

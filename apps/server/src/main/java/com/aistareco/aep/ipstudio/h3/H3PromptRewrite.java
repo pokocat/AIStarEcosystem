@@ -52,9 +52,10 @@ public final class H3PromptRewrite {
     /**
      * 输出约定的修订号，写进任务输入方便追查是哪套规则出的稿；不进指纹，已经能用的英文稿不因它失效。
      * 2026-10-31：加篇幅预算。《扣钱》cl45 的优化稿 8198 字符，主体说明 2403、保留说明 1551，五个资产的中文描述被逐条翻译又列了一遍。
+     * 2026-11-07：最终稿目标 6000 字符，字符预算优先于英文词数；马记大排档真实模型两份稿均低于 6000。
      * 2026-11-07：写明模型看不到素材。线上 Sonnet 对「把@图1 衣着穿在模特身上」这类短要求 10 次拒绝 7 次（「看不到附件」），关思考的 DeepSeek 则直接编人物和背景。
      */
-    public static final String RULES = "2026-11-07-no-media";
+    public static final String RULES = "2026-11-07-character-budget";
     /** 镜头由模型定时（画布上的提示词没分镜头）最多这么多镜。 */
     public static final int MAX_FREE_SHOTS = 8;
 
@@ -134,17 +135,19 @@ public final class H3PromptRewrite {
      * 只是给模型的目标，是否收得下仍以填完台词后的全文为准（{@link #validate}）。
      */
     private static final String LENGTH_REF = """
-            - Length: the video model accepts at most 7,000 characters for the whole prompt, every section and the spoken lines included. Keep the whole result under about 1,000 English words.
+            - Length: the video model accepts at most 7,000 characters for the whole prompt, every section and the spoken lines included. This is a hard character limit, not a word or token limit. Aim for at most 6,000 characters in the FINAL assembled prompt, leaving at least 1,000 characters of headroom. Spaces, punctuation, section headings, reference labels, shot markers, timestamps, speaker IDs and dialogue tags all count. Replacing {{Ln}} with the original dialogue also increases the length; reserve room for it.
             - Every attached reference (each <Picture N>, <Video N> and <Audio N>, the storyboard or frame picture included) keeps its own line in subject_definitions and in retention_analysis. Keeping it short never means leaving a reference out.
             - "subject_definitions": one line per item, at most two sentences: the label, its source picture, and only the few features that identify it in the images (for example age and gender, hair, main clothing colors, one signature item). Do not translate the written notes item by item.
             - "retention_analysis": one short line per label: the label, where it appears, the relationship marker, and at most one short phrase. Do not list the features from subject_definitions again.
-            - "summary": two or three sentences.
-            - detailed_description: 350–500 English words for the style line and all shots together, as the guide says, and not shorter than 350; a dialogue-dense request may go somewhat longer. Describe a subject's identifying features at its first clear appearance only, then refer to it by its label.
+            - "summary": one or two short sentences, at most 250 characters. "overall_soundscape": at most 250 characters. "non_diegetic_music": at most 150 characters, or "N/A" when no music is requested.
+            - detailed_description: budget at most 3,000 characters for the style and ALL shots together, not per shot. Divide the space between the shots; use concise, observable actions. Describe a subject's identifying features once, then use its label. The whole-prompt character budget takes priority over every recommended or minimum English word count in the guide, including 350–500 words; use fewer words when necessary.
+            - Before returning JSON, review the WHOLE result against the character budget. If it is too long, shorten repeated appearance descriptions, repeated reference explanations, decorative adjectives and camera prose first. Preserve every shot and its timing, each reference label and its use, speaker identity, on-screen versus off-screen speech, all dialogue placeholders and every original spoken word. Never meet the limit by cutting off the JSON, dropping a shot or reference, or shortening dialogue.
             """;
 
     /** 其余模式：官方没给篇幅，只说总长上限。 */
     private static final String LENGTH_BASE = """
-            - Length: the video model accepts at most 7,000 characters for the whole prompt, every section and the spoken lines included. Keep the result well within it; do not repeat the same appearance details in several places.
+            - Length: the video model accepts at most 7,000 characters for the FINAL assembled prompt, not 7,000 words or tokens. Aim for at most 6,000 characters including spaces, punctuation, section headings, picture-alignment instructions, shot markers, timestamps, speaker IDs, dialogue tags and the complete original dialogue that replaces {{Ln}}. The character budget takes priority over recommended or minimum word counts in the guide.
+            - Keep descriptions concise and do not repeat appearance details. Before returning JSON, review the whole result; shorten repeated descriptions, decorative adjectives and camera prose if needed. Preserve every shot and its timing, reference alignment, speaker identity, on-screen versus off-screen speech, all dialogue placeholders and every original spoken word. Never truncate the JSON or shorten dialogue to meet the limit.
             """;
 
     private static String skillRef, skillBase;

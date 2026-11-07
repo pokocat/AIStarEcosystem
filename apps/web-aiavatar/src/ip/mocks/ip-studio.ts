@@ -310,7 +310,7 @@ export function mockCompilePrompt(doc: IpProjectDoc, nodeId: string): { prompt: 
   return {
     prompt,
     inputs: { prompt, refs, size: node.metadata?.size ?? "768x1024", count: node.metadata?.count ?? 1 },
-    caption: node.title || "画布出图",
+    caption: node.title || "画布生成图片",
   };
 }
 

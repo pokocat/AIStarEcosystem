@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 
 /** Customer error presentation only. Never changes stored evidence, recovery classification or wallet errors. */
 public final class PublicModelErrorPolicy {
-    public static final String UNAVAILABLE = "生成服务暂时不可用，请稍后再试或联系平台处理。";
+    public static final String UNAVAILABLE = "生成服务暂时不可用，请稍后重试。";
     /**
      * The supplier's own storage on our account is full (聚算 personal_asset_quota_exceeded: 「个人资源空间不足，请清理资源
      * (含回收站)或扩容后重试」). Passed through, that told customers to delete their own work, which cannot help.
@@ -27,7 +27,9 @@ public final class PublicModelErrorPolicy {
     private static final Pattern TRACE = Pattern.compile("(?:[·。]\\s*)?追查号[：:\\s]+([A-HJ-NP-Z2-9]{12})(?:\\s*[—-].*)?$");
     private static final Pattern EXTERNAL_ID = Pattern.compile("(?i)\\s*\\(?\\b(?:request|trace|log)[ _-]?id\\s*[:=]\\s*(?:\\[已脱敏\\]|[A-Za-z0-9_.:-]+)\\)?");
     /** Shown when a supplier refused in words that tell a customer nothing; the original stays in the logs. */
-    public static final String UNREADABLE = "生成服务未能完成这次请求，请稍后再试或换一个模型。";
+    public static final String UNREADABLE = "生成服务未能完成本次请求，请重试或更换模型。";
+    /** Saved in old records and canvas documents; read back in the current wording. */
+    private static final String OLD_UNAVAILABLE = "生成服务暂时不可用，请稍后再试或联系平台处理。", OLD_UNREADABLE = "生成服务未能完成这次请求，请稍后再试或换一个模型。";
     private static final String OLD_SUBMISSION_PREFIX = "生成服务没有返回有效的任务信息";
     private static final Pattern HAN = Pattern.compile("\\p{IsHan}");
     /** Supplier internals, even inside a Chinese sentence: Go/JSON dumps, 幂等键, plan names, status codes, field names. */
@@ -46,6 +48,16 @@ public final class PublicModelErrorPolicy {
     /** 火山方舟直连的 Seedance 不收含真人的参考图，别的渠道不受这条限制，所以要说可以换模型。 */
     public static final String PERSON_RESTRICTED =
             "参考图片被识别为包含真人，这个模型不接受，同样的素材重试也不会通过。可以换用 Seedance 2.5 或 MiniMax H3 再生成，或更换参考图片";
+    /** A model chatting instead of generating (2026-11-07: 「我目前无法在此对话中直接生成图片，但可以帮你……」). A retry can work; the words mean nothing to a customer. */
+    private static final Pattern CHAT_REPLY = Pattern.compile("(?i)我目前|我无法|我不能|我可以|在此对话|帮你|帮您|\\bI(?:'m| am) (?:sorry|unable)\\b|\\bI (?:can't|cannot)\\b|\\bas an ai\\b");
+    /** How the supplier's API works (2026-11-07: 「当前生图模式不接受参考图或蒙版，请使用图片编辑接口」): nothing a customer can change. */
+    private static final Pattern SUPPLIER_LOGIC = Pattern.compile("生图模式|蒙版|接口|入参|请求体|字段|继续查询|查询此任务|重复创建");
+    /** A supplier's Chinese reason stays only when it names something the customer can change; anything else gets the caller's retry sentence. */
+    private static final Pattern ACTIONABLE = Pattern.compile("参考|素材|图片|图像|照片|视频|音频|声音|音色|语音|文件|尺寸|分辨率|比例|宽高|像素|时长|格式|大小|审核|违规|违反|敏感|拦截|提示词|文本|文案|文字|字数|长度|人脸|真人|肖像|形象|水印|台词|下架");
+    /** A bare code such as InternalServiceError says nothing to a customer. */
+    private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-z0-9_.:-]+");
+    /** Old rows carry our own code in front of the sentence: VIDEO_MIRROR_FAILED：…. */
+    private static final Pattern CODE_PREFIX = Pattern.compile("^[A-Z][A-Z0-9_]{5,}[:：]");
     private PublicModelErrorPolicy() {}
 
     /** The supplier reasons we can state exactly, in our own words. Plain English we cannot state stays as a hint, see {@link #withHint}. */
@@ -59,7 +71,8 @@ public final class PublicModelErrorPolicy {
         return null;
     }
     private static boolean usable(String text) {
-        return !TECHNICAL.matcher(text).find() && !NO_INFORMATION.matcher(text).matches();
+        return !TECHNICAL.matcher(text).find() && !NO_INFORMATION.matcher(text).matches() && !IDENTIFIER.matcher(text).matches()
+                && !CHAT_REPLY.matcher(text).find() && !SUPPLIER_LOGIC.matcher(text).find();
     }
     /**
      * A plain English reason can be what lets someone fix the request ("size must be one of 1024x1024"), so it stays, but
@@ -77,9 +90,10 @@ public final class PublicModelErrorPolicy {
         if (body.startsWith(OLD_SUBMISSION_PREFIX)) return com.aistareco.aep.service.GenerationSubmissionFailure.MESSAGE;
         String translated = translate(body);
         if (translated != null) return translated;
-        String cleaned = body.replaceAll("[（(](?:上游 ?|HTTP )\\d{3}[)）]", "").replace("被上游拒收", "被生成服务拒绝").replace("上游原因", "原因");
+        String cleaned = body.replaceAll("[（(](?:上游 ?|HTTP )\\d{3}[)）]", "").replace("被上游拒收", "被生成服务拒绝").replace("上游原因", "原因")
+                .replace(OLD_UNAVAILABLE, UNAVAILABLE).replace(OLD_UNREADABLE, UNREADABLE);
         if (!HAN.matcher(cleaned).find()) return usable(cleaned) ? withHint(UNREADABLE, cleaned) : UNREADABLE;
-        if (DUMP.matcher(cleaned).find()) return UNREADABLE;
+        if (DUMP.matcher(cleaned).find() || CHAT_REPLY.matcher(cleaned).find() || SUPPLIER_LOGIC.matcher(cleaned).find()) return UNREADABLE;
         return cleaned.equals(body) ? text : cleaned;
     }
 
@@ -92,7 +106,8 @@ public final class PublicModelErrorPolicy {
         String translated = translate(cleaned);
         if (translated != null) return translated;
         // Null lets the caller use its own sentence. The supplier's words stay in the logs (ProviderResponseDiagnostics).
-        return usable(cleaned) ? cleaned : null;
+        if (!usable(cleaned) || HAN.matcher(cleaned).find() && !ACTIONABLE.matcher(cleaned).find()) return null;
+        return cleaned;
     }
 
     /** Read-time guard for already persisted errors; preserve our own logId and real customer credit messages. */
@@ -103,7 +118,7 @@ public final class PublicModelErrorPolicy {
 
     private static String guard(String text, String code, boolean reword) {
         if (text == null || text.isBlank()) return text;
-        boolean provider = code != null && CODE.matcher(code).matches() || CONTEXT.matcher(text).find();
+        boolean provider = code != null && CODE.matcher(code).matches() || CONTEXT.matcher(text).find() || CODE_PREFIX.matcher(text).find();
         boolean wallet = code != null && WALLET.matcher(code).matches();
         if (provider && !wallet && SUPPLIER_STORAGE.matcher(text).find()) {
             var trace = TRACE.matcher(text);

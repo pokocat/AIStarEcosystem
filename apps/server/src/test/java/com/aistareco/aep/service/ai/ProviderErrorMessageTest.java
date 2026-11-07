@@ -10,11 +10,11 @@ class ProviderErrorMessageTest {
     private final ObjectMapper json = new ObjectMapper();
 
     @ParameterizedTest
-    @ValueSource(strings={"{\"error\":{\"message\":\"reason\"}}", "{\"message\":\"reason\"}",
-            "{\"error\":\"reason\"}", "{\"data\":{\"error\":{\"msg\":\"reason\"}}}",
-            "{\"ResponseMetadata\":{\"Error\":{\"Message\":\"reason\"}}}",
-            "{\"result\":{\"failReason\":\"reason\"}}", "{\"error_description\":\"reason\"}"})
-    void readsProviderEnvelopes(String body) { assertEquals("reason",ProviderErrorMessage.reason(body)); }
+    @ValueSource(strings={"{\"error\":{\"message\":\"size invalid\"}}", "{\"message\":\"size invalid\"}",
+            "{\"error\":\"size invalid\"}", "{\"data\":{\"error\":{\"msg\":\"size invalid\"}}}",
+            "{\"ResponseMetadata\":{\"Error\":{\"Message\":\"size invalid\"}}}",
+            "{\"result\":{\"failReason\":\"size invalid\"}}", "{\"error_description\":\"size invalid\"}"})
+    void readsProviderEnvelopes(String body) { assertEquals("size invalid",ProviderErrorMessage.reason(body)); }
 
     @Test void policyCodeDoesNotIdentifyAReferenceOrPromptAndDiagnosticsKeepTheOriginal() throws Exception {
         String original="非常抱歉，该提示可能违反了关于暴力内容的防护限制。如果你认为此判断有误，请重试或修改提示语。";
@@ -86,7 +86,7 @@ class ProviderErrorMessageTest {
     void unreadableErrorUsesFallback(String body) { assertEquals("fallback",ProviderErrorMessage.message(body,"fallback")); }
 
     @Test void boundedMessagesDoNotSplitUnicodeAndTruncatedJsonRetainsCompleteMessage() throws Exception {
-        String raw="提示"+"😀".repeat(300);
+        String raw="参考图"+"😀".repeat(300);
         String safe=ProviderErrorMessage.reason(json.createObjectNode().put("message",raw).toString());
         assertEquals(201,safe.codePointCount(0,safe.length()));
         assertFalse(Character.isHighSurrogate(safe.charAt(safe.length()-2)));

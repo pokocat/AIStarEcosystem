@@ -78,7 +78,7 @@ class ClipVoiceRetrainTest {
 
         assertThatThrownBy(() -> retrain(service))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("已经用完");
+                .hasFieldOrPropertyWithValue("code", "CLIP_VOICE_RETRAIN_QUOTA_EXHAUSTED");
         // 这一条是本用例的全部意义：不许有任何「悄悄换成新建」的路径。
         verify(gateway, never()).cloneVoice(anyString(), anyString());
     }
@@ -94,7 +94,7 @@ class ClipVoiceRetrainTest {
 
         assertThatThrownBy(() -> retrain(service))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("供应商拒绝了这次重训");
+                .hasFieldOrPropertyWithValue("code", "CLIP_ENGINE_FAILED");
         verify(gateway, never()).cloneVoice(anyString(), anyString());
     }
 
@@ -106,7 +106,7 @@ class ClipVoiceRetrainTest {
 
         assertThatThrownBy(() -> retrain(service))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("新建一条声音");
+                .hasFieldOrPropertyWithValue("code", "CLIP_VOICE_NOT_RETRAINABLE");
         verify(gateway, never()).cloneVoice(anyString(), anyString());
         verify(gateway, never()).recreateVoice(anyString(), anyString(), anyString());
     }

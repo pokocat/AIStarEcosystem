@@ -187,6 +187,32 @@ class MaterialVideoWorkerTest {
         assertSame(evidence,failure.getValue().getSuppressed()[0]);
     }
 
+    @Test void aProviderFailureWithoutAReasonStillGetsACodeAndASentenceThatSaysToRetry() {
+        when(modelClient.poll(any(MaterialVideoModelClient.SubmitResult.class))).thenReturn(
+                new MaterialVideoModelClient.PollResult("failed",null,null,"failed",100,null,null,null,null,null));
+        worker(new FakeUploader(false)).generateAsync("mvj_test");
+        assertEquals("failed",job.getStatus());
+        assertEquals("STUDIO_VIDEO_FAILED",job.getErrorCode());
+        assertTrue(job.getErrorMessage().contains("重新生成"),job.getErrorMessage());
+    }
+
+    @Test void aMappedProviderFailureKeepsItsOwnCode() {
+        when(modelClient.poll(any(MaterialVideoModelClient.SubmitResult.class))).thenReturn(
+                new MaterialVideoModelClient.PollResult("failed",null,null,"failed",100,"模型服务临时出错，未生成的视频不扣积分。请重新生成。",null,null,null,null,"VIDEO_PROVIDER_INTERNAL"));
+        worker(new FakeUploader(false)).generateAsync("mvj_test");
+        assertEquals("VIDEO_PROVIDER_INTERNAL",job.getErrorCode());
+        assertTrue(job.getErrorMessage().contains("重新生成"),job.getErrorMessage());
+    }
+
+    @Test void aCodeExceptionBeforeTheSupplierAcceptedNeverReachesTheCustomer() {
+        when(modelClient.submit(any(),anyInt(),any(),any(),any(),any(),any(),any())).thenThrow(new IllegalStateException("Cannot read field \"x\" because y is null"));
+        worker(new FakeUploader(false)).generateAsync("mvj_test");
+        assertEquals("failed",job.getStatus());
+        assertEquals("STUDIO_VIDEO_FAILED",job.getErrorCode());
+        assertFalse(job.getErrorMessage().contains("Cannot read"),job.getErrorMessage());
+        assertTrue(job.getErrorMessage().contains("重新生成"),job.getErrorMessage());
+    }
+
     @Test void successfulOriginalTaskPollingClearsAnEarlierRecoveryNotice() {
         job.setErrorCode("VIDEO_RECONCILIATION_PENDING");job.setErrorMessage("正在核对生成结果");
         var calls=new java.util.concurrent.atomic.AtomicInteger();

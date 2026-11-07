@@ -653,10 +653,11 @@ public class MaterialVideoModelClient {
             String outputAssetId = extractOutputAssetId(root);
             Integer progressPct = extractProgressPct(root);
             VideoPromptRewrite promptRewrite = VideoPromptRewrite.fromVendor(root);
-            String failReason = "failed".equals(status)
-                    ? responseSpec != null && responseSpec.error() != null
-                        ? ProviderErrorMessage.sanitize(pointerText(root, responseSpec.error())) : extractFailReason(root)
-                    : null;
+            var mappedFailure = "failed".equals(status) ? VideoProviderErrorMapper.poll(resp.body()) : java.util.Optional.<VideoProviderErrorMapper.MappedError>empty();
+            String failReason = !"failed".equals(status) ? null
+                    : mappedFailure.isPresent() ? mappedFailure.get().message()
+                    : responseSpec != null && responseSpec.error() != null
+                        ? ProviderErrorMessage.sanitize(pointerText(root, responseSpec.error())) : extractFailReason(root);
             if ("failed".equals(status)) {
                 // 上游判失败：记原始响应体，方便排查（agnes 等可能不给结构化原因字段）。
                 log.warn("[material-video] poll FAILED endpoint={} protocol={} taskId={} rawStatus={} progress={} failReason={} durationMs={} body={}",
@@ -670,7 +671,8 @@ public class MaterialVideoModelClient {
                         elapsedMs(startNanos));
             }
             return new PollResult(status, videoUrl, thumb, rawStatus, progressPct, failReason, lastFrameUrl,
-                    outputAssetId, promptRewrite, com.aistareco.aep.service.ai.ProviderResponseDiagnostics.capture(resp.statusCode(),resp.headers(),resp.body()));
+                    outputAssetId, promptRewrite, com.aistareco.aep.service.ai.ProviderResponseDiagnostics.capture(resp.statusCode(),resp.headers(),resp.body()),
+                    mappedFailure.map(VideoProviderErrorMapper.MappedError::code).orElse(null));
         } catch (BusinessException be) {
             throw be;
         } catch (Exception e) {
@@ -1893,10 +1895,16 @@ public class MaterialVideoModelClient {
     public record PollResult(String status, String videoUrl, String thumbnailUrl, String rawStatus,
                              Integer progressPct, String failReason, String lastFrameUrl, String outputAssetId,
                              VideoPromptRewrite promptRewrite,
-                             @com.fasterxml.jackson.annotation.JsonIgnore com.aistareco.aep.service.ai.ProviderResponseDiagnostics diagnostics) {
+                             @com.fasterxml.jackson.annotation.JsonIgnore com.aistareco.aep.service.ai.ProviderResponseDiagnostics diagnostics,
+                             @com.fasterxml.jackson.annotation.JsonIgnore String failCode) {
+        public PollResult(String status, String videoUrl, String thumbnailUrl, String rawStatus,
+                          Integer progressPct, String failReason, String lastFrameUrl, String outputAssetId, VideoPromptRewrite promptRewrite,
+                          com.aistareco.aep.service.ai.ProviderResponseDiagnostics diagnostics) {
+            this(status, videoUrl, thumbnailUrl, rawStatus, progressPct, failReason, lastFrameUrl, outputAssetId, promptRewrite, diagnostics, null);
+        }
         public PollResult(String status, String videoUrl, String thumbnailUrl, String rawStatus,
                           Integer progressPct, String failReason, String lastFrameUrl, String outputAssetId, VideoPromptRewrite promptRewrite) {
-            this(status, videoUrl, thumbnailUrl, rawStatus, progressPct, failReason, lastFrameUrl, outputAssetId, promptRewrite, null);
+            this(status, videoUrl, thumbnailUrl, rawStatus, progressPct, failReason, lastFrameUrl, outputAssetId, promptRewrite, null, null);
         }
         /** 兼容既有测试与 mock 构造。 */
         public PollResult(String status, String videoUrl, String thumbnailUrl, String rawStatus,

@@ -32,6 +32,7 @@
 | [`product_spec_ai_celebrity.md`](../product_spec_ai_celebrity.md) | **AI 明星带货主线**：明星市场、授权、模板 / 脚本、AI 模型、生成器、积分钱包、消息、社交账号绑定 | v0.5.x 滚动 |
 | [`docs/ADMIN_PRODUCT_SPEC.md`](ADMIN_PRODUCT_SPEC.md) | **运营后台规划**（全配置化终态）；当前 admin 是其 P0 子集。正文里的 `apps/web/...` 路径是遗留前端，按头注换算 | v1.0 大目标稿（2026-05-07） |
 
+- [界面文案规则](wenan.md)：本仓的范围、统一叫法、不能动的文字、本地验证方法；通用规则在 `wenan` 技能，扫描脚本读这份文件（last-reviewed 2026-11-07）；
 - [客户端图片上传处理](client-image-upload.md)：HEIC 端上转换、大原图自动压缩、共用入口；已生产发布，资产库 / 画布 / 带货首尾帧真实上传通过（last-reviewed 2026-11-02）。
 
 ### 1.2 子应用产品 + 设计约束（每 app 一份，★ = 必读）
@@ -128,6 +129,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | [`docs/studio-inspiration-library.md`](studio-inspiration-library.md) | **灵感库：开箱即用的官方示例 · 现行设计真源** | 35 个示例的内容与发布脚本（`scripts/inspiration/`）、详情弹窗、做同款后助手预填；last-reviewed 2026-11-05 |
 | [`docs/studio-segmented-video.md`](studio-segmented-video.md) | **AI 视频页的长视频：一键做到成片 · 现行设计真源** | 比模型单段上限长的视频：切段、分段脚本、两轮审核、分镜图、各段出片、合成；已发布，线上还没真跑过。last-reviewed 2026-11-06 |
 | [`docs/releases/pc-ui-copy-release-20261107.md`](releases/pc-ui-copy-release-20261107.md) | **PC 站文案优化发布** | `20261107-pc-ui-copy`（server + web-aiavatar，main `bd4c0d385`）、窗口 502、只读验收、回滚 `20261106-video-task` | 2026-11-07 |
+| [`docs/releases/h3-character-budget-release-20261107.md`](releases/h3-character-budget-release-20261107.md) | **H3 优化稿字符预算发布** | `20261107-h3-character-budget`（server），99 项回归、真实模型两份稿低于 6000；按业务空闲窗口发布 | 2026-11-07 |
 | [`docs/releases/h3-rewrite-checks-release-20261107.md`](releases/h3-rewrite-checks-release-20261107.md) | **H3 提示词优化修复发布** | `20261107-h3-rewrite-checks`（server + web-aiavatar），视频生成不出来的排查、真实重跑与模型对比 | 2026-11-07 |
 | [`docs/releases/studio-video-task-release-20261106.md`](releases/studio-video-task-release-20261106.md) | **AI 视频统一任务发布** | `20261106-video-task`（server + web-aiavatar），线上只读验收与未验证项 | 2026-11-07 |
 | [`docs/releases/studio-ui-walkthrough-validation-20261106.md`](releases/studio-ui-walkthrough-validation-20261106.md) | **Studio 全面 UI 走查** | 新版界面桌面和手机走查、修复项与未验证范围 | 2026-11-06 |
@@ -463,6 +465,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [AI 导演台本地验收记录](audits/ai-director-local-acceptance-20261022.md) — 独立 UI 实测真值：测试响应全流程、Agnes 真实剧本／分集／资产／分镜首帧、局部重试修复；真实视频受厂商队列阻塞；实现状态见[总方案 §14](ai-director-plan.md)；last-reviewed: 2026-10-23。
 - [导演台视频提示词对比实测（H3）](audits/director-h3-video-prompt-ab-2026-10.md) — 《敦煌飞仙》两段共 9 条对比：旧写法穿模 / 宫格上屏；台词多时中文正文吞台词、念出提示词，官方 skill 英文版完整；据此提交前按官方 skill 改写，真模型试跑 7/7 合格；2026-10-27 推到 Studio 画布与创作助手、检查改为只提示不拦人（§8）；last-reviewed: 2026-10-27。
 - [导演台 H3 优化稿超长与中文提示词被念出（cl45）](audits/director-h3-cl45-prompt-review-2026-10.md) — 优化稿 8198 字符按段拆分、成片频谱与转写（末尾多出的人声对上「没有声音参考」）、第三镜别名没认出；据此改中文模板第 4 版、出镜认别名、篇幅预算、重新优化与用稿记录；last-reviewed: 2026-10-31。
+- [马记大排档 H3 字符预算真实模型验证](audits/maji-h3-character-budget-real-model-20261107.md) — 同一原稿、同一真实模型，两份最终稿 5813 / 5680 字符，台词、镜头与六份素材完整；第三次连接中断未计通过（last-reviewed: 2026-11-07）。
 - [PC 站界面文案优化记录](audits/pc-ui-copy-review-2026-11.md) — web-aiavatar 桌面形态逐页改动表（位置、原文、改为）、全站统一叫法、用户定下的 12 件事和结果；品牌标语改为「一个 IP，无限可能」；没改的存量见 TODO；last-reviewed: 2026-11-06。
 
 - [Studio 下午至晚间线上使用复盘](audits/studio-production-afternoon-evening-review-20261023.md) — 2026-10-23 北京时间生产查询快照；记录用户旅程、任务／账本、排队与发布窗口及待核证据，不代表本轮已修复或重测；last-reviewed: 2026-10-23。

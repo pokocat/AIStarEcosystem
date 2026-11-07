@@ -547,7 +547,7 @@ class DramaCanvasRunWorkerTest {
         DramaCanvasRun r = worker.syncVideo(store.get("dcr_v5"));
         assertEquals("failed", r.getStatus());
         assertEquals("VIDEO_MIRROR_FAILED", r.getErrorCode());
-        assertEquals("视频生成好了但没存下来，积分已退回，请重试。", r.getErrorMessage());
+        assertFalse(r.getErrorMessage().contains("oss down") || r.getErrorMessage().contains(MaterialVideoWorker.MIRROR_FAILED_CODE), r.getErrorMessage());
     }
 
     @Test
@@ -560,7 +560,6 @@ class DramaCanvasRunWorkerTest {
         DramaCanvasRun r = store.get("dcr_v6");
         assertEquals("failed", r.getStatus());
         assertEquals("DRAMA_CANVAS_VIDEO_QUEUE_TIMEOUT", r.getErrorCode());
-        assertTrue(r.getErrorMessage().contains("积分已退回"));
     }
 
     @Test

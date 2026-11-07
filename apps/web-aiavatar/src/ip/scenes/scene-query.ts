@@ -1,6 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
+import { rememberCanvasReturn } from "@/shell/canvas-return";
 
 /**
  * 场景页地址里的 `?scene=…&draft=…`（首页卡片、「最近」、前进后退都靠它）。
@@ -14,7 +15,10 @@ export function useSceneQuery() {
   return { scene: params.get("scene") || undefined, draft: params.get("draft") || undefined, ref: params.get("ref") || undefined, task: params.get("task") || undefined };
 }
 
-/** Next copies its own router state. Passing __NA back makes it skip the search-param update. */
+/**
+ * Next copies its own router state. Passing __NA back makes it skip the search-param update.
+ * 这里顺手记下草稿号，画布的返回才能回到这份草稿。
+ */
 export function writeSceneQuery(path: "/image" | "/video", scene: string, draft?: string, task?: string) {
   const previous = new URLSearchParams(window.location.search);
   // 只带 task 的链接：页面补默认场景时也不能把任务丢掉，读到任务后会写回完整地址。
@@ -22,4 +26,5 @@ export function writeSceneQuery(path: "/image" | "/video", scene: string, draft?
   const kept = task ?? (path === '/video' && sameDraft ? previous.get('task') : undefined);
   const q = new URLSearchParams({ scene, ...(draft ? { draft } : {}), ...(kept ? { task: kept } : {}) });
   window.history.replaceState(null, "", `${path}?${q}`);
+  rememberCanvasReturn(path, q.toString());
 }

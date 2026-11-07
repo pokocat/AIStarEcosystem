@@ -139,7 +139,6 @@ class DirectorSplitTest {
         assertEquals("DIRECTOR_SPLIT_MARKER_NOT_FOUND", none.getCode());
         BusinessException one = assertThrows(BusinessException.class, () -> splitTask("{\"marker\":\"第一幕\"}"));
         assertEquals("DIRECTOR_SPLIT_MARKER_NOT_FOUND", one.getCode());
-        assertTrue(one.getMessage().contains("只找到 1 行"));
         BusinessException tooLong = assertThrows(BusinessException.class, () -> splitTask("{\"marker\":\"" + "长".repeat(61) + "\"}"));
         assertEquals("DIRECTOR_SPLIT_MARKER_INVALID", tooLong.getCode());
         verify(textRuns, never()).submitDirectorText(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());

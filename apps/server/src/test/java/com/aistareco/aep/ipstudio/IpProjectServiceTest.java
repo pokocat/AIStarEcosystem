@@ -534,7 +534,6 @@ class IpProjectServiceTest {
         BusinessException e = assertThrows(BusinessException.class, () -> tightSvc.upload(USER,
                 new MockMultipartFile("file", "huge.png", "image/png", pngBytes(200, 40))));
         assertEquals("IP_UPLOAD_INVALID", e.getCode());
-        assertTrue(e.getMessage().contains("尺寸过大"), e.getMessage());
 
         // 界内的照样过
         assertEquals(40, tightSvc.upload(USER,

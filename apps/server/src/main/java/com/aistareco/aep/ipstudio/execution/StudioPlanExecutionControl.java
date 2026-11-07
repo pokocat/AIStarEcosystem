@@ -75,7 +75,7 @@ public class StudioPlanExecutionControl implements StudioExecutionControl {
         String reason=state.path("needsUserReason").asText("");
         if(!reason.isBlank())out.append("（").append(reason).append("）");
         if(budget.isObject())out.append("；本阶段上限 ").append(budget.path("approvedCap").asLong()).append(" 积分，已花 ")
-                .append(budget.path("spent").asLong()).append(" 积分，在途 ").append(budget.path("inFlight").asLong()).append(" 积分");
+                .append(budget.path("spent").asLong()).append(" 积分，进行中 ").append(budget.path("inFlight").asLong()).append(" 积分");
         out.append("。改动未来步骤需要提出新一版方案并请用户确认；用户只是在问进度时，如实回答，并告诉用户确认后可以继续原来的制作。");
         return out.toString();
     }

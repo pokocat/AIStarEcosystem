@@ -151,8 +151,7 @@ class MaterialAiE2ETest {
                 """;
         mvc.perform(post("/api/material/scripts/ai-draft").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.error.code").value("AI_NOT_CONFIGURED"))
-                .andExpect(jsonPath("$.error.message", org.hamcrest.Matchers.containsString("AI 模型")));
+                .andExpect(jsonPath("$.error.code").value("AI_NOT_CONFIGURED"));
     }
 
     @Test

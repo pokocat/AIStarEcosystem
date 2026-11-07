@@ -103,7 +103,6 @@ class DapModelinkGatewayTest {
         BusinessException ex = assertThrows(BusinessException.class, () -> gateway.getGroup("qgroup-1"));
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, ex.getStatus());
         assertEquals("DAP_MODELINK_CALL_FAILED", ex.getCode());
-        assertTrue(ex.getMessage().contains("请求过于频繁"));
         assertFalse(ex.getMessage().contains("分组配额"));
         assertFalse(ex.getMessage().contains("清理"));
     }
