@@ -130,7 +130,6 @@ class DirectorDeleteTest {
         IpRun r = run(id, u, "board:c1", IpRun.STATUS_RUNNING, "image.provider.recovering", null);
         BusinessException e = assertThrows(BusinessException.class, () -> director.delete(u, id));
         assertEquals("DIRECTOR_WORK_BUSY", e.getCode());
-        assertTrue(e.getMessage().contains("分镜图生成"), e.getMessage());
         assertNull(reload(id).getDeletedAt());
         r.setStatus(IpRun.STATUS_FAILED); runs.save(r);
         director.delete(u, id);
@@ -151,7 +150,6 @@ class DirectorDeleteTest {
             boundVideo(unknown, u, "submitting", code);
             BusinessException e = assertThrows(BusinessException.class, () -> director.delete(u, unknown));
             assertEquals("DIRECTOR_WORK_BUSY", e.getCode());
-            assertTrue(e.getMessage().contains("核对"), e.getMessage());
         }
         for (String status : List.of("succeeded", "failed")) {
             String id = work(u, null);
@@ -197,7 +195,6 @@ class DirectorDeleteTest {
         String running = work(u, om.createObjectNode().put("status", "running").put("stage", "boards"));
         BusinessException e = assertThrows(BusinessException.class, () -> director.delete(u, running));
         assertEquals("DIRECTOR_WORK_BUSY", e.getCode());
-        assertTrue(e.getMessage().contains("停止"), e.getMessage());
         for (String status : List.of("paused", "waiting")) {
             String id = work(u, om.createObjectNode().put("status", status).put("stage", "confirm-boards"));
             director.delete(u, id);

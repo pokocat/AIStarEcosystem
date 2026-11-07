@@ -101,7 +101,8 @@ class ClipAssembleServiceTest {
     void everyShotWithoutAnArtifactIsNamedInOneGoInsteadOfOneRoundTripEach() {
         BusinessException error = assertThrows(BusinessException.class, () -> service.assemble("owner-1", "cp_1", "req-assemble-1", 3));
         assertEquals("CLIP_SHOT_ARTIFACT_MISSING", error.getCode());
-        assertTrue(error.getMessage().contains("第 1、2 镜"), "要一次点清是哪几镜：" + error.getMessage());
+        List<?> missing = (List<?>) ((Map<?, ?>) error.getDetails()).get("missing");
+        assertEquals(List.of(1, 2), missing.stream().map(row -> ((Map<?, ?>) row).get("shotNo")).toList(), "要一次点清是哪几镜");
         verify(jobs, never()).save(any());
     }
 

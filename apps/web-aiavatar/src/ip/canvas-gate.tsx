@@ -29,6 +29,7 @@ import { reportStudioError } from "./studio-errors";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { Monitor, Copy, Check, ArrowLeft, ArrowRight } from "lucide-react";
+import { canvasReturnText, readCanvasReturn } from "@/shell/canvas-return";
 import { setLayout, useLayoutMode } from "@/shell/layout-mode";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 
@@ -88,14 +89,15 @@ function useCopyLink(projectId: string) {
 
 function MobileNotice({ projectId, onProceed }: { projectId: string; onProceed: () => void }) {
   const { copied, failed, copy } = useCopyLink(projectId);
+  const [back] = React.useState(readCanvasReturn);
 
   return (
     <div style={{ maxWidth: 480, margin: "0 auto", padding: "36px 20px 40px", minHeight: "100dvh", background: "var(--canvas)" }}>
       <Link
-        href="/projects"
+        href={back.href}
         style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--ink-3)", textDecoration: "none", marginBottom: 26 }}
       >
-        <ArrowLeft size={15} /> 返回项目
+        <ArrowLeft size={15} /> {canvasReturnText(back.label)}
       </Link>
 
       <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
@@ -111,7 +113,7 @@ function MobileNotice({ projectId, onProceed }: { projectId: string; onProceed: 
         要拖节点、连线、框选参考图，还得同时看得见整条流程，手机屏幕上会挤。
         <br />
         <span style={{ color: "var(--ink-3)" }}>
-          只是想看看效果、改一句提示词重跑一次的话，手机上也能做。
+          如只需查看效果或修改提示词后重新生成，手机上也可以操作。
         </span>
       </p>
 
@@ -185,6 +187,7 @@ function MobileNotice({ projectId, onProceed }: { projectId: string; onProceed: 
  */
 function MobileCanvasBar({ projectId }: { projectId: string }) {
   const { copied, copy } = useCopyLink(projectId);
+  const [back] = React.useState(readCanvasReturn);
   return (
     <div
       style={{
@@ -193,10 +196,10 @@ function MobileCanvasBar({ projectId }: { projectId: string }) {
       }}
     >
       <Link
-        href="/projects"
+        href={back.href}
         style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--ink-2)", textDecoration: "none", flexShrink: 0 }}
       >
-        <ArrowLeft size={13} /> 画布
+        <ArrowLeft size={13} /> {canvasReturnText(back.label)}
       </Link>
       <span style={{ flex: 1, minWidth: 0, fontSize: 11.5, color: "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         电脑上更好用

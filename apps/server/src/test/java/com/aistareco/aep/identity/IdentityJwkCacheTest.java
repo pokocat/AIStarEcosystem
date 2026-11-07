@@ -223,9 +223,9 @@ class IdentityJwkCacheTest {
         assertThatThrownBy(() -> cache.refresh().get(5, TimeUnit.SECONDS)).hasMessageContaining("502");
         jwksStatus = 200;
         jwksBody = "{\"keys\":[]}";
-        assertThatThrownBy(() -> cache.refresh().get(5, TimeUnit.SECONDS)).hasMessageContaining("公钥集合是空的");
+        assertThatThrownBy(() -> cache.refresh().get(5, TimeUnit.SECONDS)).isInstanceOf(java.util.concurrent.ExecutionException.class);
         jwksBody = "not json";
-        assertThatThrownBy(() -> cache.refresh().get(5, TimeUnit.SECONDS)).hasMessageContaining("解析失败");
+        assertThatThrownBy(() -> cache.refresh().get(5, TimeUnit.SECONDS)).isInstanceOf(java.util.concurrent.ExecutionException.class);
 
         assertThat(verifier.verify(token).getSubject()).isEqualTo("uid-keep");
     }

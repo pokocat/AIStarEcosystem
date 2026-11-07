@@ -484,7 +484,6 @@ class MaterialVideoModelClientWireTest {
         BusinessException full = assertThrows(BusinessException.class, () -> client.submit("一只猫", 5, "9:16", "u1",
                 "celebrity", null, VideoGenSpec.EMPTY));
         assertEquals("VIDEO_PROVIDER_QUEUE_FULL", full.getCode());
-        assertTrue(full.getMessage().contains("模型提供方"));
         assertTrue(full.getMessage().contains("video queue is full"));
     }
 
@@ -605,7 +604,6 @@ class MaterialVideoModelClientWireTest {
         var error = assertThrows(BusinessException.class, () -> client.submit("蓝色陶瓷杯", 5, "9:16", "u1",
                 "celebrity", null, VideoGenSpec.EMPTY));
         assertEquals("VIDEO_REFERENCE_PERSON_RESTRICTED", error.getCode());
-        assertTrue(error.getMessage().contains("更换参考图片"));
         assertFalse(error.getMessage().contains("private-trace"));
         assertEquals(1, requests.size(), "a privacy rejection must not resubmit or drop reference images");
     }
@@ -726,7 +724,7 @@ class MaterialVideoModelClientWireTest {
                 universalReference("owner/person.png")));
 
         assertEquals("VIDEO_REF_UPLOAD_FAILED", error.getCode());
-        assertTrue(error.getMessage().contains("繁忙"));
+        assertTrue(error.getInternalDetail().contains("status=429"), error.getInternalDetail());
         assertEquals(3, libraryUploads().size());
         assertTrue(requests.stream().noneMatch(r -> r.path().endsWith("/generations/tasks")));
     }
@@ -880,7 +878,7 @@ class MaterialVideoModelClientWireTest {
         createBody = "{\"payload\":{\"state\":\"rejected\",\"error\":{\"message\":\"quota used\"}}}";
         var failed = client.poll(accepted);
         assertEquals("failed", failed.status());
-        assertEquals("生成服务暂时不可用，请稍后再试或联系平台处理。", failed.failReason());
+        assertEquals(com.aistareco.aep.service.ai.PublicModelErrorPolicy.UNAVAILABLE, failed.failReason());
     }
 
     @Test

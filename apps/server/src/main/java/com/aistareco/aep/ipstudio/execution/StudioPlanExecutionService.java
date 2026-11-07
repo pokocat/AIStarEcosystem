@@ -230,7 +230,7 @@ public class StudioPlanExecutionService {
     /** Advance a scene recreation under the one cap approved before analysis. Called under the executor row lock. */
     void confirmVideoProduction(IpPlanExecution e,ObjectNode state,ObjectNode budget,String runId) {
         var loaded=nativePlan(e.getOwnerUserId(),e.getProjectId(),runId);
-        if(loaded==null||!"production".equals(loaded.plan().path("stage").asText()))throw stale("没有可执行的制作安排，请在画布中查看分析结果");
+        if(loaded==null||!"production".equals(loaded.plan().path("stage").asText()))throw stale("没有可执行的制作安排，请在画布上查看分析结果");
         ObjectNode plan=loaded.plan().deepCopy();
         JsonNode config=state.path("videoTask").path("request").path("configuration");
         int seconds=0;
@@ -244,12 +244,12 @@ public class StudioPlanExecutionService {
                 seconds+=settings.path("durationSec").asInt();
             }
         }
-        if(seconds==0||Math.abs(seconds-config.path("duration").asInt())>1)throw stale("分镜时长与本次设置不一致，请在画布中查看后调整");
+        if(seconds==0||Math.abs(seconds-config.path("duration").asInt())>1)throw stale("分镜时长与本次设置不一致，请在画布上查看后调整");
         quoter.quote(e.getOwnerUserId(),plan);
         long spent=budget.path("analysis").path("spent").asLong();
         long remaining=budget.path("analysis").path("approvedCap").asLong()-spent;
         long quoted=plan.path("budget").path("estimated").asLong();
-        if(Math.multiplyExact(quoted,3)>remaining)throw stale("分析已完成，制作费用超出本次上限，请在画布中查看方案后调整");
+        if(Math.multiplyExact(quoted,3)>remaining)throw stale("分析已完成，制作费用超出上限，请在画布上查看方案后调整");
         var normalized=new LoadedPlan(runId,plan,loaded.rules(),loaded.contextNodeIds(),loaded.revision(),null);
         appendSteps((ArrayNode)state.withArray("steps"),normalized,"production");
         state.set("canvasContextIds",mapper.valueToTree(loaded.contextNodeIds()));
@@ -634,9 +634,21 @@ public class StudioPlanExecutionService {
                 }
             }
             String code=step.path("errorCode").asText("");
-            if(code.contains("UNKNOWN")||code.contains("RECONCILIATION"))throw stale("原任务的提交结果尚未确认，不能重复生成。请先确认原任务");
+            // A receipt we never got is settled as failed and refunded (docs/runbooks/model-task-alerts.md), and the user may
+            // retry it. 2026-11-07: this refused every such retry, 7 times in 40 minutes while the image supplier was down, with
+            // a request to confirm a task that had already ended. Only a task still in progress must not get a second attempt.
+            if((code.contains("UNKNOWN")||code.contains("RECONCILIATION"))&&stepStillRunning(userId,projectId,step))
+                throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"STUDIO_PLAN_STEP_RUNNING","这一步正在生成，请等待完成后重试。");
             if(step.path("attempt").asInt(1)>=3)throw stale("此步骤已尝试 3 次，请在画布上修复后继续生成");
         }
+    }
+
+    private boolean stepStillRunning(String userId,String projectId,JsonNode step) {
+        for(JsonNode id:step.path("runIds")) {
+            var run=projects.ownedRun(userId,projectId,id.asText()).orElse(null);
+            if(run!=null&&!Set.of("done","failed").contains(projects.toRunDto(run).status()))return true;
+        }
+        return false;
     }
 
     private void addMaterials(String userId,String projectId,ObjectNode state,String stage,List<String> added) {

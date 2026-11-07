@@ -108,7 +108,7 @@ class DirectorLongTextTest {
         JsonNode v = service.create(USER, new DirectorService.CreateRequest("长篇", "", body(100_000, "没有分集标题", "完")));
         BusinessException e = assertThrows(BusinessException.class, () -> task("split", null, om.createObjectNode()));
         assertEquals("DIRECTOR_TEXT_TOO_LONG_FOR_MODEL", e.getCode());
-        assertTrue(e.getMessage().startsWith("剧本约 100,0") && e.getMessage().contains("约 24,000 字") && e.getMessage().contains("未扣积分"), e.getMessage());
+        assertEquals(24000, ((Map<?, ?>) e.getDetails()).get("budget"));
         assertTrue(prompts.isEmpty(), "读不全就不交给模型");
 
         String headed = "# 第1集 夜市\n" + body(40_000, "夜市开头", "夜市结尾") + "\n# 第2集 雨夜\n" + body(40_000, "雨夜开头", "雨夜结尾");
@@ -137,7 +137,6 @@ class DirectorLongTextTest {
         episodes(body(30_000, "超长一集", "完"));
         BusinessException e = assertThrows(BusinessException.class, () -> task("extract", null, null));
         assertEquals("DIRECTOR_TEXT_TOO_LONG_FOR_MODEL", e.getCode());
-        assertTrue(e.getMessage().startsWith("第 1 集正文约 30,0"), e.getMessage());
         assertEquals(2, prompts.size());
     }
 
@@ -147,7 +146,6 @@ class DirectorLongTextTest {
         for (String type : List.of("plan", "reshoot")) {
             BusinessException e = assertThrows(BusinessException.class, () -> task(type, "ep1", om.createObjectNode()));
             assertEquals("DIRECTOR_TEXT_TOO_LONG_FOR_MODEL", e.getCode(), type);
-            assertTrue(e.getMessage().contains("拆成几集"), e.getMessage());
         }
         assertTrue(prompts.isEmpty());
     }

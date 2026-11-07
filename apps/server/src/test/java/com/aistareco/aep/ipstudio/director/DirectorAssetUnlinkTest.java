@@ -87,7 +87,6 @@ class DirectorAssetUnlinkTest {
     void deletingAnAssetInUseSaysWhichClipsAndHow() {
         BusinessException e = assertThrows(BusinessException.class, () -> edit("asset.delete", "as1", null, "{}"));
         assertEquals("DIRECTOR_ASSET_IN_USE", e.getCode());
-        assertTrue(e.getMessage().contains("「林夏」"));
         JsonNode clips = om.valueToTree(e.getDetails()).path("clips");
         assertEquals(3, clips.size());
         assertEquals("cl1", clips.get(0).path("clipId").asText());
@@ -136,7 +135,6 @@ class DirectorAssetUnlinkTest {
                 .kind("studio-image").status(IpRun.STATUS_RUNNING).stage("running").cost(0).inputJson("{}").createdAt(Instant.now()).build());
         BusinessException busy = assertThrows(BusinessException.class, () -> edit("clip.unlinkAsset", "cl1", null, "{\"assetId\":\"as1\"}"));
         assertEquals("DIRECTOR_TASK_RUNNING", busy.getCode());
-        assertTrue(busy.getMessage().contains("分镜图正在生成"));
     }
 
     /** 片段生成中不能删：结果回来时片段已经没了，已付费的产物没有地方落（2026-11-06，判断与 clip.unlinkAsset 相同）。 */

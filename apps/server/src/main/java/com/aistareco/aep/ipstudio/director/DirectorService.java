@@ -1270,6 +1270,23 @@ public class DirectorService {
         return out;
     }
 
+    /** 页面图号与提示词、提交共用 visualAssets；只在 wire 上投影，不改作品的资产关联顺序。 */
+    ArrayNode imageReferences(ObjectNode c, JsonNode clip, boolean video, boolean frame) {
+        ArrayNode out = om.createArrayNode();
+        if (video) {
+            out.addObject().putNull("assetId").put("name", "分镜图").put("label", frame ? "首帧" : "图1")
+                    .put("key", adoptedKey(clip.path("board")));
+            if (frame) return out;
+        }
+        for (JsonNode a : visualAssets(c, clip)) {
+            String label = "图" + (out.size() + 1);
+            out.addObject().put("assetId", a.path("id").asText())
+                    .put("name", a.path("displayName").asText(a.path("name").asText()))
+                    .put("label", label).put("key", adoptedKey(a.path("image")));
+        }
+        return out;
+    }
+
     /** 「围绕当前图修改」：把当前采用的那张追加为最后一张参考图，返回它的版本 id。 */
     private String baseOnCurrent(JsonNode target, String slotName, String name, List<Bound> refs) {
         JsonNode slot = target.path(slotName);
@@ -4047,6 +4064,10 @@ public class DirectorService {
         if (lim == null) v.putNull("videoLimits");
         else v.putObject("videoLimits").put("model", lim.model()).put("name", lim.name()).put("minSec", lim.min()).put("maxSec", lim.max()).put("mock", lim.mock())
                 .put("mode", lim.mode()).put("maxShots", lim.maxShots());
+        for (JsonNode clip : v.path("clips")) {
+            ((ObjectNode) clip).set("boardRefs", imageReferences(c, clip, false, false));
+            ((ObjectNode) clip).set("videoRefs", imageReferences(c, clip, true, lim != null && lim.frame()));
+        }
         List<String> keys = new ArrayList<>();
         collectKeys(v, keys);
         Map<String, String> signed = sign(userId, keys);

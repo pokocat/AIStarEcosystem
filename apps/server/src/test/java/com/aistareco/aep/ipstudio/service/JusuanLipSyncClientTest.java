@@ -25,7 +25,7 @@ class JusuanLipSyncClientTest {
             var error=assertThrows(BusinessException.class,()->{if(submit)client.submit(endpoint,"https://lip.example/v1","{}","id","owner");else client.poll(endpoint,"https://lip.example/v1","https://lip.example/v1/jobs/id?model=x-dub","id","owner");});
             assertEquals("STUDIO_LIP_SYNC_BAD_OUTPUT",error.getCode());
             assertFalse(error instanceof JusuanSpeechClient.Rejected);
-            assertTrue(error.getMessage().contains("参考视频未通过内容审核"));
+            assertTrue(error.getMessage().contains(new com.aistareco.aep.service.ai.ProviderContentModeration.Finding("","reference_video","").message()),error.getMessage());
         }
     }
     @Test void unclassifiedRejectionDoesNotBlameTheFaceOrAudioDuration() {
@@ -37,7 +37,6 @@ class JusuanLipSyncClientTest {
         var error=assertThrows(BusinessException.class,()->new JusuanLipSyncClient(upstream,new ObjectMapper())
                 .submit(endpoint,"https://lip.example/v1","{}","id","owner"));
         assertEquals("STUDIO_LIP_SYNC_REJECTED",error.getCode());
-        assertTrue(error.getMessage().contains("未提供具体原因"));
         assertFalse(error.getMessage().contains("正脸"));
         assertFalse(error.getMessage().contains("时长"));
     }

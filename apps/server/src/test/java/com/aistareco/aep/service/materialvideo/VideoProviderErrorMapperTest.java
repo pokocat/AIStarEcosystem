@@ -18,6 +18,20 @@ class VideoProviderErrorMapperTest {
         assertTrue(VideoProviderErrorMapper.submit(503, response).isEmpty(), "do not reclassify uncertain server failures");
     }
 
+    /** 2026-11-07 OneToken Seedance 2.0：任务查询到 failed，原因是对方内部错误，提示里还写着幂等键。 */
+    @Test
+    void aSupplierInternalFailureWhilePollingIsARetryNotTheSuppliersWords() {
+        String response = "{\"status\":\"failed\",\"error\":{\"category\":\"internal\",\"code\":\"InternalServiceError\","
+                + "\"hint\":\"此 Idempotency-Key 只会回放已保存的创建响应；请稍候再用新的 Idempotency-Key 提交。\"}}";
+        var mapped = VideoProviderErrorMapper.poll(response).orElseThrow();
+        assertEquals("VIDEO_PROVIDER_INTERNAL", mapped.code());
+        assertTrue(mapped.message().contains("重新生成"));
+        assertFalse(mapped.message().contains("Idempotency"));
+        assertEquals("VIDEO_PROVIDER_INTERNAL", VideoProviderErrorMapper.poll("{\"code\":\"InternalServiceError\"}").orElseThrow().code());
+        assertTrue(VideoProviderErrorMapper.poll("{\"status\":\"failed\",\"error\":{\"code\":\"content_filter\"}}").isEmpty(), "other reasons keep their own handling");
+        assertTrue(VideoProviderErrorMapper.poll("not json").isEmpty());
+    }
+
     @Test
     void mapsKnownProviderCodeToStablePlatformCode() {
         var mapped = VideoProviderErrorMapper.submit(503,

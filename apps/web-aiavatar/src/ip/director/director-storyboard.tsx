@@ -15,6 +15,8 @@ import { AiField, AskAI, useAssistant } from "./director-assistant";
 import { ScriptReference } from "./director-script-reference";
 import { confirmDirectorAction } from "./director-antd";
 import { SCENE_VIEWS } from "./director-asset-studio";
+import { useSceneMobile } from "../scenes/scene-layout";
+import { orderedLinkedAssets, ReferenceImages } from "./director-references";
 
 const SCRIPT_FOLD_ID = "director-script-fold";
 
@@ -334,7 +336,8 @@ function ClipCard({ goTab, work, clip, quote, apply, setError, onPreview, onBoar
   const board = adopted(clip.board);
   const generating = runningTask(work, `board:${clip.id}`);
   const videoBusy = !!clip.video.pending?.length || !!runningTask(work, `video:${clip.id}`);
-  const linked = clip.assetIds.map(id => work.assets.find(a => a.id === id)).filter(Boolean) as DirectorWork["assets"];
+  const linked = orderedLinkedAssets(work, clip);
+  const imageRefs = clip.videoRefs?.filter(r => r.assetId !== null) ?? clip.boardRefs;
   const visual = linked.filter(a => !a.description.includes("只出声音"));
   const missing = visual.filter(a => !a.image.adoptedId);
   const unconfirmed = visual.filter(a => a.image.adoptedBy === "auto");
@@ -373,7 +376,12 @@ function ClipCard({ goTab, work, clip, quote, apply, setError, onPreview, onBoar
         </div>}
         <div className="director-clip-links" role="group" aria-label="生成视频用到的参考">
           <button type="button" onClick={() => onPreview("assets")} className={missing.length ? "is-error" : unconfirmed.length ? "is-warn" : ""} title="关联的角色、场景、道具资产图，用于保持长相和环境一致">
-            <span className="director-avatar-stack">{linked.slice(0, 3).map(a => { const img = adopted(a.image); return img?.url ? <img key={a.id} src={img.url} alt=""/> : <i key={a.id}>{a.name.slice(0, 1)}</i>; })}</span>
+            <span className="director-avatar-stack">{imageRefs
+              ? imageRefs.slice(0, 3).map(r => r.url ? <img key={r.label} src={r.url} alt={`${r.label} ${r.name}`}/> : <i key={r.label}>{r.name.slice(0, 1)}</i>)
+              : linked.slice(0, 3).map(a => {
+                const img = adopted(chosenImage(a, clip));
+                return img?.url ? <img key={a.id} src={img.url} alt={a.name}/> : <i key={a.id}>{a.name.slice(0, 1)}</i>;
+              })}</span>
             <span>关联资产 <b>{linked.length}</b></span>{assetIssue && <small>{assetIssue}</small>}</button>
           <button type="button" onClick={onBoard} className={`director-board-link ${boardStatus === "待确认" || boardStatus === "需更新" ? "is-warn" : ""}`} title="视频按此分镜图逐格生成，用于保持前后镜头一致">
             <LayoutGrid size={14}/><span>分镜图</span>
@@ -454,6 +462,7 @@ function BoardDialog({ work, clip, apply, setError, onClose }: { work: DirectorW
         </aside>
       </div>
       <OutdatedNote slot={clip.board} what="张分镜图"/>
+      <ReferenceImages refs={clip.boardRefs} title="分镜图参考图片"/>
       {/* 和视频提示词一样，AI 已按镜头写好：默认收起，改过的才展开。 */}
       <details className="director-video-section director-prompt-fold" open={clip.boardPromptCustom || dirty || undefined}>
         <summary><ChevronDown size={15}/><b>查看或修改提示词</b><small>{clip.boardPromptCustom ? "已修改" : "AI 已按镜头写好，一般不用改"}</small></summary>
@@ -516,7 +525,7 @@ function ClipPreview({ work, clip, preview, apply, setError, goTab, onPickVideo,
   };
   const target = preview.assetId ? work.assets.find(a => a.id === preview.assetId) : undefined;
   const targetGone = !!target && !clip.assetIds.includes(target.id);
-  const linked = clip.assetIds.map(id => work.assets.find(a => a.id === id)).filter(Boolean) as DirectorWork["assets"];
+  const linked = orderedLinkedAssets(work, clip);
   const ratio = `ratio-${work.settings.aspectRatio.replace(":", "x")}`;
   const media = clip.video.candidates.find(m => m.id === preview.candidateId) ?? adopted(clip.video);
   // 只有一条但还没采用（比如生成期间设置变了）也要能选上它，所以这时版本条照样显示。
@@ -526,6 +535,7 @@ function ClipPreview({ work, clip, preview, apply, setError, goTab, onPickVideo,
       <header><span className="director-clip-no">{clip.order}</span><h3 title={clip.title}>{preview.kind === "assets" ? "关联资产" : "视频"} · {clip.title || `片段 ${clip.order}`}</h3></header>
       {preview.kind === "assets" ? <>
         <p className="director-dialog-note">资产图仅用于保持人物长相、服装和环境一致，镜头构图以分镜图为准。</p>
+        <ReferenceImages refs={clip.videoRefs} title="视频参考图片"/>
         {targetGone && <div className="director-notice director-unlinked-note" role="status"><span>「{target!.name}」已不在此片段的关联资产中。{
           work.clips.some(c => c.assetIds.includes(target!.id)) ? "其他片段仍在使用此资产，可在资产页查看。" : "已没有片段使用此资产，可在资产页删除。"}</span>
           <button type="button" onClick={() => { onClose(); goTab("assets"); }}>返回资产页</button></div>}

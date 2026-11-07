@@ -202,7 +202,7 @@ class DirectorImageModelTest {
         assertEquals(55L, lastSubmitted().maxCost());
     }
 
-    @Test void propOnAModelWithoutSquareSizesIsRefusedBeforeAnythingIsSubmitted() throws Exception {
+    @Test void propOnAModelWithoutSquareSizesIsRefusedBeforeSubmittingAndDoesNotTellTheUserToChangeTheAspect() throws Exception {
         storedImageModel("image-4k");
         asset("p1", "prop", "修复编号工作本");
         var e = assertThrows(BusinessException.class, () -> generate("asset-image", "p1", 55));
@@ -264,7 +264,7 @@ class DirectorImageModelTest {
         asset("c1", "character", "林夏");
         var e = assertThrows(BusinessException.class, () -> generate("asset-image", "p1", 55));
         assertEquals("STUDIO_IMAGE_SIZE_UNSUPPORTED", e.getCode());
-        assertTrue(e.getMessage().startsWith("默认图片模型") && e.getMessage().contains("GPT Image 2 4K") && e.getMessage().contains("1:1"), e.getMessage());
+        assertTrue(e.getMessage().contains("GPT Image 2 4K") && e.getMessage().contains("1:1"), e.getMessage());
         verifyNoInteractions(images);
         generate("asset-image", "c1", 55);
         assertEquals("image-4k", lastSubmitted().model());

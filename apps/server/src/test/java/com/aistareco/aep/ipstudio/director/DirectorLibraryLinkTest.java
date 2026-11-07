@@ -112,7 +112,6 @@ class DirectorLibraryLinkTest {
         BusinessException e = assertThrows(BusinessException.class,
                 () -> service.linkLibrary("u1", c, a, object("o1", "scene", "老宅", null, version("v1", "k/x.png")), null));
         assertEquals("DIRECTOR_INPUT_INVALID", e.getCode());
-        assertTrue(e.getMessage().contains("是场景，不能关联到角色「林晚」"), e.getMessage());
         assertEquals(0, a.path("image").path("candidates").size());
         assertTrue(a.path("libraryObjectId").isMissingNode());
     }

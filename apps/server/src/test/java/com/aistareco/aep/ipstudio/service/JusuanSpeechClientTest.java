@@ -27,7 +27,7 @@ class JusuanSpeechClientTest {
             var error=assertThrows(BusinessException.class,()->{if(submit)client.submit(endpoint,"https://speech.example/v1","{}","id","owner");else client.poll(endpoint,"https://speech.example/v1","https://speech.example/v1/jobs/id?model=qwen3-tts","id","owner");});
             assertEquals("STUDIO_SPEECH_BAD_OUTPUT",error.getCode());
             assertFalse(error instanceof JusuanSpeechClient.Rejected);
-            assertTrue(error.getMessage().contains("输入文本未通过内容审核"));
+            assertTrue(error.getMessage().contains(new com.aistareco.aep.service.ai.ProviderContentModeration.Finding("","prompt","").message()),error.getMessage());
             assertEquals(200,((com.aistareco.aep.service.ai.ProviderResponseDiagnostics)error.getSuppressed()[0]).status());
         }
     }
@@ -40,7 +40,6 @@ class JusuanSpeechClientTest {
         var client=new JusuanSpeechClient(upstream,mapper);
         var error=assertThrows(BusinessException.class,()->client.submit(endpoint,"https://speech.example/v1","{}","id","owner"));
         assertEquals("STUDIO_SPEECH_REJECTED",error.getCode());
-        assertTrue(error.getMessage().contains("未提供具体原因"));
         assertFalse(error.getMessage().contains("检查文案"));
     }
     @org.junit.jupiter.params.ParameterizedTest

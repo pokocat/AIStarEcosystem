@@ -64,7 +64,7 @@ class PromptTemplateTest {
     @Test
     void namesListsOnlyTopLevelNamesAndSyntaxErrorsAreReported() {
         assertThat(PromptTemplate.names("{{a}}{{#b}}{{c}}{{/b}}{{format.x}}{{#l}}{{.}}{{-last}}{{/l}}")).containsExactly("a", "b", "format.x", "l");
-        assertThatThrownBy(() -> PromptTemplate.check("{{#a}}没关")).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("没有结尾");
-        assertThatThrownBy(() -> PromptTemplate.check("{{#a}}{{/b}}")).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("没有对应的开头");
+        assertThatThrownBy(() -> PromptTemplate.check("{{#a}}没关")).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("{{/a}}");
+        assertThatThrownBy(() -> PromptTemplate.check("{{#a}}{{/b}}")).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("{{/b}}");
     }
 }

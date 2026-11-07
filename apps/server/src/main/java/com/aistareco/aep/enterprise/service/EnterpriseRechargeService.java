@@ -127,7 +127,7 @@ public class EnterpriseRechargeService {
         }
         requirePaid(order);var locked=lockWallets(order.getEnterpriseId());var preview=preview(order,locked);
         if(!preview.previewToken().equals(token))throw conflict("可退积分或金额已变化，请重新核对");
-        if(preview.pendingCredits()>0)throw conflict("原充值积分仍有在途任务，请等待任务结算后重新核对退款");
+        if(preview.pendingCredits()>0)throw conflict("原充值积分仍有进行中的任务，请等待任务结算后重新核对退款");
         if(preview.reclaimableCredits()<=0||preview.refundPriceCents()<=0)throw conflict("没有可退的原订单积分或现金金额");
         claimReceipt(order,"out",receipt);
         var root=locked.get(order.getTargetWalletId());requireTarget(order,root);

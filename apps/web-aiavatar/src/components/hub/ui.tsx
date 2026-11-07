@@ -140,8 +140,8 @@ const NEXT_TABS = [
  * 「创作」先选做什么，再进去（2026-11-02 用户定）：原来直接进画布，而手机上最常用的是 AI 视频和 AI 图片，画布在手机上最难用。
  */
 const CREATE_CHOICES = [
-  { href: "/video", label: "AI 视频", sub: "选个场景，编导先写分镜再出片", icon: Video, match: (p: string) => p.startsWith("/video") },
-  { href: "/image", label: "AI 图片", sub: "选个场景，补一句要求就出图", icon: ImageIcon, match: (p: string) => p.startsWith("/image") },
+  { href: "/video", label: "AI 视频", sub: "选择场景，编导写好分镜后生成视频", icon: Video, match: (p: string) => p.startsWith("/video") },
+  { href: "/image", label: "AI 图片", sub: "选择场景，填写要求后生成图片", icon: ImageIcon, match: (p: string) => p.startsWith("/image") },
   { href: "/create", label: "画布", sub: "素材和结果摆在一起，自由组合", icon: SquareDashedMousePointer, match: (p: string) => p === "/create" },
 ];
 

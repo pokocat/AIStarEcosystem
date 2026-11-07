@@ -58,6 +58,10 @@ public class MaterialVideoWorker {
      * errorMessage 以它开头。任务表没有错误码列，调用方据此前缀认出失败原因。
      */
     public static final String MIRROR_FAILED_CODE = "VIDEO_MIRROR_FAILED";
+    /** Every failure without a code of its own. A failed job always has a code and a sentence that says to retry; the cause goes to ErrorLog. */
+    static final String GENERATION_FAILED_CODE = "STUDIO_VIDEO_FAILED";
+    static final String GENERATION_FAILED_MESSAGE = "视频生成失败，未生成的视频不扣积分。请重新生成。";
+    private static final String MIRROR_FAILED_MESSAGE = "视频保存失败，未保存的视频不扣积分。请重新生成。";
 
     private final MaterialVideoJobRepository jobRepo;
     private final MaterialVideoModelClient modelClient;
@@ -118,7 +122,8 @@ public class MaterialVideoWorker {
             runGeneration(job,terminal);
         } catch (Throwable t) {
             log.error("[material-video] job {} failed", jobId, t);
-            String msg = t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage();
+            // BusinessException carries our own sentence; anything else is a Java message, kept in ErrorLog only.
+            String msg = t instanceof BusinessException && t.getMessage() != null ? t.getMessage() : GENERATION_FAILED_MESSAGE;
             MaterialVideoJob current=jobRepo.findById(jobId).orElse(job);
             if(hasAcceptedTask(current)) {
                 // A recorded supplier job can still be queried; do not create a second generation.
@@ -354,7 +359,7 @@ public class MaterialVideoWorker {
                 if (!hasVideoUrl && !hasProtectedAsset) {
                     // 任务号、上游状态只进日志；失败原因是给用户看的，不放内部字段（AGENTS.md §8 界面文案）
                     log.warn("[material-video] job {} upstream succeeded without output taskId={}", jobId, submit.taskId());
-                    markFailed(jobId, "视频模型报告已完成，但没有交回成片");
+                    markFailed(jobId, GENERATION_FAILED_MESSAGE);
                     return;
                 }
                 String videoUrl = poll.videoUrl();
@@ -364,7 +369,7 @@ public class MaterialVideoWorker {
                 if (hasProtectedAsset && (!props.isUploadToCdn() || cdnUploader == null)) {
                     log.error("[material-video] job {} protected output but OSS mirror disabled (uploadToCdn={} uploader={}) taskId={}",
                             jobId, props.isUploadToCdn(), cdnUploader != null, submit.taskId());
-                    markFailed(jobId, "成片已经生成，但平台存储还没配置好，暂时取不回来，请联系运营");
+                    markFailed(jobId, MIRROR_FAILED_CODE, MIRROR_FAILED_MESSAGE);
                     return;
                 }
                 // v0.198：要求必须存进我方存储的任务（画布只存 key，厂商外链交付不了）—— 镜像不了就不交付、不扣费（§8.0）。
@@ -374,7 +379,7 @@ public class MaterialVideoWorker {
                         || extractRequireMirror(job.getVariantConfigJson());
                 if (requireMirror && (!props.isUploadToCdn() || cdnUploader == null)) {
                     log.warn("[material-video] job {} require_mirror 但没配置我方存储镜像，判失败并退回冻结", jobId);
-                    markFailed(jobId, MIRROR_FAILED_CODE + "：视频生成好了，但当前没配置我方存储，没能存下来");
+                    markFailed(jobId, MIRROR_FAILED_CODE, MIRROR_FAILED_MESSAGE);
                     return;
                 }
                 if (props.isUploadToCdn() && cdnUploader != null) {
@@ -402,8 +407,7 @@ public class MaterialVideoWorker {
                                 terminal[0] = false;
                                 markPending(jobId, "VIDEO_RECONCILIATION_PENDING", e);
                             } else {
-                                markFailed(jobId, MIRROR_FAILED_CODE + "：视频生成好了，但没能存进我方存储（"
-                                        + truncate(e.getMessage(), 200) + "）");
+                                markFailed(jobId, MIRROR_FAILED_CODE, MIRROR_FAILED_MESSAGE, e);
                             }
                             return;
                         }
@@ -420,10 +424,11 @@ public class MaterialVideoWorker {
                         ? "：" + poll.failReason() : "";
                 log.warn("[material-video] job {} failed upstream status={} taskId={} reason={}",
                         jobId, poll.rawStatus(), submit.taskId(), poll.failReason());
-                String message=reason.isEmpty() ? "视频生成失败，模型没有给出原因" : "视频生成失败" + reason;
-                var error=new BusinessException(HttpStatus.BAD_GATEWAY,"STUDIO_VIDEO_FAILED",message);
+                String message=reason.isEmpty() ? GENERATION_FAILED_MESSAGE : "视频生成失败" + reason;
+                String code=poll.failCode()!=null?poll.failCode():GENERATION_FAILED_CODE;
+                var error=new BusinessException(HttpStatus.BAD_GATEWAY,code,message);
                 if(poll.diagnostics()!=null)poll.diagnostics().attachTo(error);
-                markFailed(jobId, null, message, error);
+                markFailed(jobId, code, message, error);
                 return;
             }
             // 仍在生成：优先采用服务商返回的真实进度；没有则按 elapsed/maxWait 估算。
@@ -717,10 +722,10 @@ public class MaterialVideoWorker {
             releaseCredits(j,message);
             if(enterpriseBilling!=null)enterpriseBilling.complete(MaterialVideoJobService.CREDIT_REF_TYPE,jobId);
             j.setStatus("failed");
-            j.setErrorCode(code);
+            j.setErrorCode(code == null ? GENERATION_FAILED_CODE : code);
             String visible = truncate(message, 900);
             if (errorLogs != null) {
-                String logId = errorLogs.recordTask(cause==null?new IllegalStateException(message):cause, code == null ? "STUDIO_VIDEO_FAILED" : code, j.getOwnerUserId(), j.getId());
+                String logId = errorLogs.recordTask(cause==null?new IllegalStateException(message):cause, code == null ? GENERATION_FAILED_CODE : code, j.getOwnerUserId(), j.getId());
                 if (logId != null) visible += " · 追查号 " + logId;
             }
             j.setErrorMessage(visible);

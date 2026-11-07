@@ -604,7 +604,7 @@ sau-service…），当依赖**未配置**或**调用失败**时，在生产 pro
   请求路径上才落进 `ErrorLog`；`@Async` worker / `@Scheduled` 里抛的异常到不了那儿，
   等于什么都没记（v0.184 就是这么丢的）。
 - **模型错误区分用户可操作原因与平台内部诊断**（2026-10-25 用户修正边界）：素材、尺寸、审核等可操作原因继续明确展示；供应商余额、预扣费、配额、费率/成本、密钥、签名链接与技术堆栈不得透传到客户端（包括错误详情、历史任务、导演作品和事件流）。`ProviderErrorMessage` 在源头过滤，`PublicModelErrorPolicy` / 公共 JSON 出口及前端兜底保护历史错误；原始证据仅留在有权限的后台日志/诊断中。客户真实的积分钱包不足提示和我方追查号保留，不把供应商额度不足引导成客户充值。不得以“脱敏后仍可读”为由保留内部经营信息；也不把全部可操作原因一律覆盖成通用提示。
-  **厂商原话不单独给用户看**（2026-11-04 用户要求报错说清楚）：能说准的英文原因由 `PublicModelErrorPolicy.translate` 翻成中文；普通英文句放在我方句子后面（「…（服务方提示：size must be one of 1024x1024）」）；Go/JSON 结构、字段名、幂等键、套餐名和「resource not found」这类没信息量的话一律不显示，用调用方写好的那句。界面文字不写「上游」和状态码，状态码留在日志和 `internalDetail`。**素材不合规尽量提交前判**（`VideoMediaMessages`：哪类素材、上限多少、现在多少），别等厂商拒绝。Review reject：新增面向用户的 `（上游 N）` / `（HTTP N）`（`git grep -n '（上游 "' -- apps/server/src/main` 应 0 命中）。
+  **厂商原话不单独给用户看**（2026-11-04 用户要求报错说清楚）：能说准的英文原因由 `PublicModelErrorPolicy.translate` 翻成中文；普通英文句放在我方句子后面（「…（服务方提示：size must be one of 1024x1024）」）；Go/JSON 结构、字段名、幂等键、套餐名和「resource not found」这类没信息量的话一律不显示，用调用方写好的那句。界面文字不写「上游」和状态码，状态码留在日志和 `internalDetail`。**未识别的错误一律走兜底**（2026-11-07 用户要求）：厂商的中文原话只有说到用户能改的东西（素材、尺寸、时长、审核…，`PublicModelErrorPolicy.ACTIONABLE`）才显示；模型聊天回复、厂商接口的说法、裸错误码、没说明原因的中文，一律换成调用方自己的句子，而那句话必须引导重试（「视频生成失败，未生成的视频不扣积分。请重新生成。」）。任务失败时错误码不能为空（`MaterialVideoWorker.GENERATION_FAILED_CODE`）；浏览器和代码抛的英文不显示（`normalizeStudioError`）。**素材不合规尽量提交前判**（`VideoMediaMessages`：哪类素材、上限多少、现在多少），别等厂商拒绝。Review reject：新增面向用户的 `（上游 N）` / `（HTTP N）`（`git grep -n '（上游 "' -- apps/server/src/main` 应 0 命中）。
   上游 HTTP 状态、明确拒绝 / 受理未知的分类、计费和重试策略仍按既有协议判断，不能因展示了上游消息就改判失败或重复付费提交。**按供应商原话分类（额度 / 配额 / 权益 / 鉴权…）一律读 `ProviderErrorMessage.diagnosticReason` / `diagnostic`，不读 `reason` / `message` / `sanitize`**：对外那份已经把这些词换成通用句，拿它判永远判不中（2026-10-25 起石榴「克隆权益不足」和七牛分组配额的分类就这样失效了四天，单测直接传原话所以没测到，10-29 修复）。响应体不是 JSON 时不外泄
   （别把网关的 HTML 错误页糊到界面上）。范式：`DapMultimodalClient#upstreamMessage`、
   `MaterialVideoModelClient#uploadFailureMessage`。
@@ -718,10 +718,18 @@ v0.192：`saveNow()` 明确返回 `saved / failed / conflict`（保存失败不�
 
 **⑩ 测试断言契约，不断言可视文案。**
 v0.194 改文案时 `IpDemoAdminTest` 红了 —— 它断言的是「示例不存在」这句话。文案本来就会
-改，错误码才是调用方依赖的东西。
-- 断错误码（`e.getCode()`）、断状态码、断结构；不断言可视文案。
+改，错误码才是调用方依赖的东西。2026-11-07 又一次：退款报错里「在途任务」改成「进行中的任务」，
+`EnterpriseRechargeServiceTest` 红了，发布被拖慢，而它没查出任何真问题。
+- 断错误码（`e.getCode()`）、断状态码、断结构（`getDetails()` / `getInternalDetail()`）；不断言可视文案。
+  同一个错误码有多条分支时，靠「同样的输入只差一处就能通过」证明走的是这条路径，不靠文案。
 - 例外：**文案本身就是被测行为**时才断（如 §8.0 要求「未配置时必须明确报错而不是产假
   数据」，那可以断关键词）。这种断言要在测试名里写清楚为什么。
+- 现状：2026-11-07 清理过 `apps/server/src/test`，服务端这类断言只剩下面这条 grep 的命中，都是留下有理由的
+  （大多是 `doesNotContain`：对外文案不得泄露供应商余额、不得把用户引向错误的操作）。新测试别再加；要加就在测试名写清为什么。
+  前端 `getByRole` 带 name 是按名字找控件去测行为，不归这条管。
+  ```bash
+  git grep -nE '(getMessage\(\)\)?\.(contains|doesNotContain|startsWith|endsWith)\(|hasMessage[A-Za-z]*\()"[^"]*[一-龥]' -- apps/server/src/test
+  ```
 
 **⑪ 同一个字段名在不同类型上语义不同，"一刀切"必错。**
 v0.192：模板剥素材时无条件删 `metadata.content` —— 图 / 视频 / 音频节点的 `content`
@@ -834,8 +842,9 @@ v0.197：web-drama 所有弹窗在 375 宽下右边都被裁掉一截，四个�
       「出圈」是营销词。标语和首屏标题不用「让……」句式、不用「让 A，让 B」排比，不用打造、赋能、出圈、
       一站式；副标题只写能做什么，不重复愿景。产品名（IP Studio、AiAvatar）和品牌位「IP Studio · 声量引擎旗下」照旧。
     - **不动的**：§4.6 之外的专业术语。去 AI 味不等于把专业文本改口语。
-    - 改界面文字、整页或整站检查文案，用仓库里的 `ui-copy` skill（`.claude/skills/ui-copy/`）：按位置的规则、改写对照和扫描脚本
-      `python3 -I .claude/skills/ui-copy/scripts/scan_copy.py <目录>`。这里的规则改了，那份同 commit 一起改。
+    - 改界面文字、整页或整站检查文案，用通用技能 `wenan`（`~/.agents/skills/wenan/`，Claude Code、Codex 都能用）：按位置的规则、改写对照、扫描和页面检查脚本。
+      本仓的范围、统一叫法、不能动的文字和验证方法在 [`docs/wenan.md`](docs/wenan.md)。扫描：`python3 -I ~/.agents/skills/wenan/scripts/scan_copy.py <目录>`，加 `--review` 再列长句和宽心话。
+      新定的叫法加进那份文件的叫法表，扫描自动认；这里的规则改了，技能和那份文件一起改。
     - 长篇正文拿不准就调 `shuorenhua` skill（`/Users/donis/.claude/skills/shuorenhua`）。
     - **web-drama 有自己的术语表**（v0.197）：[`docs/drama-ux-copy-pass.md`](docs/drama-ux-copy-pass.md) §2，
       每个东西界面上只许一种叫法，「不再使用」列的旧词（提示词直出、直接出片、验收入片、立项、脑暴、配方、

@@ -40,6 +40,15 @@ export interface DirectorRefUsed {
   url?: string | null;
 }
 
+/** 当前提示词对应的图片参考，按实际提交顺序由服务端投影；缺图保留编号，不提前挪动后面的图号。 */
+export interface DirectorImageReference {
+  assetId: string | null;
+  name: string;
+  label: string;
+  key: string | null;
+  url?: string | null;
+}
+
 export interface DirectorMedia {
   id: string;
   key: string;
@@ -217,6 +226,10 @@ export interface DirectorClip {
   assetIds: string[];
   /** 这一段里角色用哪个形态（角色 id → 形态 id）；没写的用主形象。 */
   assetForms?: Record<string, string>;
+  /** 分镜出图：角色 → 场景（含所选视角）→ 道具，与提示词的图号一致。 */
+  boardRefs?: DirectorImageReference[];
+  /** 视频生成：图1 为分镜图，资产从图2 起；首帧模式只有分镜图。 */
+  videoRefs?: DirectorImageReference[];
   shots: DirectorShot[];
   boardPrompt: string;
   boardPromptCustom: boolean;

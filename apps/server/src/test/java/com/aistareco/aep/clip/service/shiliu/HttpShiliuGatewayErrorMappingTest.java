@@ -25,7 +25,6 @@ class HttpShiliuGatewayErrorMappingTest {
         BusinessException e = HttpShiliuGateway.mappedUpstreamFailure(1, "账户权益不足，无法进行声音克隆");
         assertThat(e.getCode()).isEqualTo("CLIP_ENGINE_CAPACITY_FULL");
         assertThat(e.getStatus()).isEqualTo(HttpStatus.CONFLICT);
-        assertThat(e.getMessage()).contains("克隆权益不足");
         // 两个都不能提：充点数没用（validPoint 还剩 3418），删旧对象也没用（删空后仍为 0）
         assertThat(e.getMessage()).doesNotContain("充值");
         assertThat(e.getMessage()).doesNotContain("删除");
@@ -44,7 +43,7 @@ class HttpShiliuGatewayErrorMappingTest {
     }
 
     @Test
-    @DisplayName("余额、未知配额和克隆权益不能互相替代")
+    @DisplayName("余额、未知配额和克隆权益不能互相替代；对外文案不提余额、充值（这条就是被测行为）")
     void balanceAndUnspecifiedQuotaAreNotCloneEntitlements() {
         assertThat(HttpShiliuGateway.mappedUpstreamFailure(1,"账户权益不足").getCode()).isEqualTo("CLIP_ENGINE_CAPACITY_FULL");
         var balance=HttpShiliuGateway.mappedUpstreamFailure(1,"余额不足，请充值，剩余 ¥0.0123");

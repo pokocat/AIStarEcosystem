@@ -29,7 +29,7 @@ const MAKE_PEOPLE: Entry[] = [
 ];
 
 const MAKE_VIDEO: Entry[] = [
-  { href: "/studio?start=compose", title: "合成出片", sub: "挑人物、场景、产品，直接生成成片" },
+  { href: "/studio?start=compose", title: "合成成片", sub: "挑人物、场景、产品，直接生成成片" },
 ];
 
 const MAKE_MATERIAL: Entry[] = [
@@ -88,12 +88,12 @@ export function CreateCenter() {
       </div>
 
       <div style={{ margin: "18px 16px 0" }}>
-        <SectionHeader title="用资产出片" />
+        <SectionHeader title="用资产生成视频" />
         <EntryList items={MAKE_VIDEO} />
       </div>
 
       <div style={{ margin: "18px 16px 0" }}>
-        <SectionHeader title="补素材" hint="出片时搭配使用" />
+        <SectionHeader title="补素材" hint="生成视频时搭配使用" />
         <EntryList items={MAKE_MATERIAL} />
       </div>
 
