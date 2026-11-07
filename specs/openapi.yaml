@@ -969,6 +969,9 @@ components:
         height: {type: integer, minimum: 320, maximum: 1920, description: 偶数}
         clips: {type: array, minItems: 1, maxItems: 60, items: {$ref: '#/components/schemas/StudioEditMedia'}}
         audios: {type: array, maxItems: 20, items: {$ref: '#/components/schemas/StudioEditMedia'}}
+        overlays: {type: array, maxItems: 12, items: {$ref: '#/components/schemas/StudioEditOverlay'}}
+        autoCaptions: {type: boolean, description: 时间线上没有字幕时，导出时自动生成}
+        musicStorageKey: {type: string, description: '本人音频 key：背景音乐，不在时间线上，导出时循环铺满全片、说话时自动压低，和一键成片同一套处理。'}
         texts:
           type: array
           maxItems: 30
@@ -1002,6 +1005,26 @@ components:
         end: {type: number, maximum: 600}
         from: {type: number, minimum: 0, description: 从素材的第几秒开始取}
         volume: {type: number, minimum: 0, maximum: 2}
+        speed: {type: number, minimum: 0.5, maximum: 2, description: 播放速度，缺省 1}
+        fadeIn: {type: number, minimum: 0, maximum: 3, description: 开头淡入秒数}
+        fadeOut: {type: number, minimum: 0, maximum: 3, description: 结尾淡出秒数}
+        look: {type: string, enum: [saturated, bright, black_white, warm, cool], description: 调色预设}
+    StudioEditOverlay:
+      type: object
+      description: 叠在主轨上的小窗（video）或图片（image），只在自己的时间段显示。
+      required: [kind, storageKey, start, end, x, y, width, height]
+      properties:
+        kind: {type: string, enum: [video, image]}
+        storageKey: {type: string}
+        start: {type: number, minimum: 0}
+        end: {type: number, maximum: 600}
+        from: {type: number, minimum: 0}
+        x: {type: number, description: 相对画面中心的偏移（像素）}
+        y: {type: number}
+        width: {type: number, minimum: 16}
+        height: {type: number, minimum: 16}
+        volume: {type: number, minimum: 0, maximum: 2}
+        speed: {type: number, minimum: 0.5, maximum: 2}
     StudioPackaging:
       type: object
       properties:
@@ -1009,9 +1032,12 @@ components:
         brand: { type: string, maxLength: 60 }
         title: { type: string, maxLength: 120 }
         cta: { type: string, maxLength: 100 }
+        autoCaptions: { type: boolean, description: '合成时自动生成字幕（手写 captions 优先）。结果在 output.captions：status 为 recognized / estimated / manual / no_lines / no_speech / unavailable，cues 为烧进画面的字幕。语音识别不可用且没有已知台词时不编字幕、成片照常合成（status=unavailable）。' }
+        musicStorageKey: { type: string, description: '本人音频 key，只许 assemble：背景音乐，循环铺满，说话时自动压低。' }
+        quality: { type: string, enum: ['720p', '1080p'], description: '缺省跟随片段。' }
         captions:
           type: array
-          maxItems: 24
+          maxItems: 200
           description: '用户明确填写的时间窗，须有序且不重叠，不冒称自动识别字幕。超过真实成片时长拒绝。'
           items:
             type: object
@@ -15679,6 +15705,15 @@ paths:
       tags: [ipstudio]
       operationId: directorUploadAudio
       description: '角色声音样本上传（mp3 / wav / m4a，至少 2 秒、最多 25 MiB、10 分钟）。界面提前提示：超过 14.9 秒会截取前 14.9 秒作为模型样本。服务端核验实际音轨后将完整原音频写入本人素材库和存储额度；使用可写事务，返回原音频 key 与实测时长。asset.setVoice 绑定时截取长音频作为模型样本，原文件保持不变；服务端核验归属、格式和真实音频，当前为聚算全能参考模型时先上传取得 assetId，成功后才替换角色声音。不信客户端时长或厂商 assetId，不调用生成、不扣积分。'
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } } } } }
+      responses:
+        '200': { description: ok }
+  /v1/ip-studio/director/works/{id}/uploads/music:
+    post:
+      tags: [ipstudio]
+      operationId: directorUploadMusic
+      description: '导出成片用的背景音乐（mp3 / wav / m4a，最多 25 MiB、10 分钟）。返回存储 key，放进整集导出 options.musicStorageKey。options.confirmPending=true 时，开始导出把本集待确认的视频一并确认；不带时仍按 400 DIRECTOR_EXPORT_UNCONFIRMED 拒绝。'
       parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
       requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } } } } }
       responses:

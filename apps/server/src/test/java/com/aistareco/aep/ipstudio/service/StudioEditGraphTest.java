@@ -3,6 +3,7 @@ package com.aistareco.aep.ipstudio.service;
 import com.aistareco.aep.config.MixcutProperties;
 import com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.EditCaption;
 import com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.EditMedia;
+import com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.EditOverlay;
 import com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.EditText;
 import com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.EditTimeline;
 import com.aistareco.aep.repository.DramaProjectRepository;
@@ -105,6 +106,122 @@ class StudioEditGraphTest {
         } finally {
             http.stop(0);
         }
+    }
+
+    /** 编辑室导出也要带上一键成片选的背景音乐（2026-11-07 复评发现：之前只要进过编辑室，音乐就悄悄丢了）。片段本身没声音时，成片里听到的就是音乐。 */
+    @Test void backgroundMusicGoesThroughTheWholeRender(@TempDir Path dir) throws Exception {
+        var ffmpeg = new FfmpegRunner(new MixcutProperties());
+        Path a = dir.resolve("a.mp4"), song = dir.resolve("song.m4a");
+        ffmpeg.runFfmpeg(List.of("-v", "error", "-y", "-f", "lavfi", "-i", "color=c=red:size=720x1280:rate=30:duration=3", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", a.toString()));
+        ffmpeg.runFfmpeg(List.of("-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=2", "-c:a", "aac", song.toString()));
+        HttpServer http = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        http.createContext("/", ex -> {
+            byte[] body = Files.readAllBytes(dir.resolve(ex.getRequestURI().getPath().replaceAll(".*/", "")));
+            ex.sendResponseHeaders(200, body.length); ex.getResponseBody().write(body); ex.close();
+        });
+        http.start();
+        try {
+            CdnUrlSigner signer = mock(CdnUrlSigner.class);
+            when(signer.signKey(anyString())).thenAnswer(inv -> "/cdn/" + inv.getArgument(0));
+            CdnUploader uploader = mock(CdnUploader.class);
+            Path uploaded = dir.resolve("whole.mp4");
+            when(uploader.upload(any(Path.class), anyString(), anyString())).thenAnswer(inv -> {
+                Files.copy((Path) inv.getArgument(0), uploaded);
+                return new CdnUploader.CdnUploadResult("/cdn/x", inv.getArgument(1), Files.size(uploaded), Instant.now());
+            });
+            var fonts = new FontRegistry(); fonts.load();
+            var svc = new DramaAssembleService(mock(DramaProjectRepository.class), ffmpeg, uploader, signer, mock(StorageQuotaService.class),
+                    new ObjectMapper(), http.getAddress().getPort(), "/cdn", "");
+            ReflectionTestUtils.setField(svc, "studioPackaging", new StudioPackagingService(ffmpeg, fonts));
+            var result = svc.renderStudioEdit("u1", "IPP-1", new EditTimeline(720, 1280, List.of(new EditMedia("a.mp4", 0.0, 3.0, 0.0, 1.0)), List.of(), List.of(), List.of(), null, null, "song.m4a"));
+            assertEquals(3, result.durationSec());
+            String log = ffmpeg.runFfmpeg(List.of("-hide_banner", "-nostats", "-i", uploaded.toString(), "-af", "volumedetect", "-f", "null", "-"));
+            var mean = java.util.regex.Pattern.compile("mean_volume: (-?[0-9.]+) dB").matcher(log);
+            assertTrue(mean.find(), log);
+            assertTrue(Double.parseDouble(mean.group(1)) > -50, "成片里听得到音乐：" + mean.group(1));
+        } finally {
+            http.stop(0);
+        }
+    }
+
+    /** 走 renderStudioEdit 整条路：图片没有时长，不能被当成读不出来的素材（2026-11-07 浏览器走查时撞到）。 */
+    @Test void anImageOverlayGoesThroughTheWholeRender(@TempDir Path dir) throws Exception {
+        var ffmpeg = new FfmpegRunner(new MixcutProperties());
+        Path a = dir.resolve("a.mp4"), image = dir.resolve("g.png");
+        ffmpeg.runFfmpeg(List.of("-v", "error", "-y", "-f", "lavfi", "-i", "color=c=red:size=720x1280:rate=30:duration=2", "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", a.toString()));
+        ffmpeg.runFfmpeg(List.of("-v", "error", "-y", "-f", "lavfi", "-i", "color=c=yellow:size=64x64", "-frames:v", "1", image.toString()));
+        HttpServer http = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        http.createContext("/", ex -> {
+            byte[] body = Files.readAllBytes(dir.resolve(ex.getRequestURI().getPath().replaceAll(".*/", "")));
+            ex.sendResponseHeaders(200, body.length); ex.getResponseBody().write(body); ex.close();
+        });
+        http.start();
+        try {
+            CdnUrlSigner signer = mock(CdnUrlSigner.class);
+            when(signer.signKey(anyString())).thenAnswer(inv -> "/cdn/" + inv.getArgument(0));
+            CdnUploader uploader = mock(CdnUploader.class);
+            Path uploaded = dir.resolve("whole.mp4");
+            when(uploader.upload(any(Path.class), anyString(), anyString())).thenAnswer(inv -> {
+                Files.copy((Path) inv.getArgument(0), uploaded);
+                return new CdnUploader.CdnUploadResult("/cdn/x", inv.getArgument(1), Files.size(uploaded), Instant.now());
+            });
+            var fonts = new FontRegistry(); fonts.load();
+            var svc = new DramaAssembleService(mock(DramaProjectRepository.class), ffmpeg, uploader, signer, mock(StorageQuotaService.class),
+                    new ObjectMapper(), http.getAddress().getPort(), "/cdn", "");
+            ReflectionTestUtils.setField(svc, "studioPackaging", new StudioPackagingService(ffmpeg, fonts));
+            svc.renderStudioEdit("u1", "IPP-1", new EditTimeline(720, 1280, List.of(new EditMedia("a.mp4", 0.0, 2.0, 0.0, 1.0)), List.of(), List.of(), List.of(),
+                    List.of(new EditOverlay("image", "g.png", 0.0, 2.0, null, 0.0, 0.0, 100.0, 100.0, null, null)), null));
+            int pixel = frame(ffmpeg, uploaded, dir, 1.0).getRGB(360, 640);
+            assertTrue(((pixel >> 8) & 255) > 180, "图片叠在画面中央");
+        } finally {
+            http.stop(0);
+        }
+    }
+
+    @Test void rejectsSpeedsFadesAndLooksTheEditorDoesNotOffer() {
+        assertEquals("STUDIO_EDIT_INVALID", code(() -> StudioEditGraph.validate(timeline(List.of(new EditMedia("k", 0.0, 3.0, 0.0, 1.0, 4.0, null, null, null))))));
+        assertEquals("STUDIO_EDIT_INVALID", code(() -> StudioEditGraph.validate(timeline(List.of(new EditMedia("k", 0.0, 3.0, 0.0, 1.0, null, 5.0, null, null))))));
+        assertEquals("STUDIO_EDIT_INVALID", code(() -> StudioEditGraph.validate(timeline(List.of(new EditMedia("k", 0.0, 3.0, 0.0, 1.0, null, null, null, "neon"))))));
+        assertEquals("STUDIO_EDIT_INVALID", code(() -> StudioEditGraph.validate(new EditTimeline(720, 1280, List.of(clip("k", 0, 3)), null, null, null,
+                List.of(new EditOverlay("gif", "o", 0.0, 1.0, null, 0.0, 0.0, 100.0, 100.0, null, null)), null))));
+        StudioEditGraph.validate(new EditTimeline(720, 1280, List.of(new EditMedia("k", 0.0, 3.0, 0.0, 1.0, 0.5, 0.5, 0.5, "warm")), null, null, null,
+                List.of(new EditOverlay("video", "o", 0.0, 1.0, 0.0, 100.0, -200.0, 240.0, 135.0, 0.0, 1.5)), null));
+    }
+
+    /** 真 ffmpeg：变速、淡入、黑白、小窗、图片，每样都看画面。 */
+    @Test void rendersSpeedFadeLookPictureInPictureAndImage(@TempDir Path dir) throws Exception {
+        var ffmpeg = new FfmpegRunner(new MixcutProperties());
+        Path a = dir.resolve("a.mp4"), b = dir.resolve("b.mp4"), pipFile = dir.resolve("pip.mp4"), image = dir.resolve("g.png"), out = dir.resolve("out.mp4");
+        // a：前 2 秒红、后 2 秒绿，用来判断 2 倍速后颜色切换提前到第 1 秒。
+        ffmpeg.runFfmpeg(List.of("-v", "error", "-y", "-f", "lavfi", "-i", "color=c=red:size=720x1280:rate=30:duration=2", "-f", "lavfi", "-i", "color=c=green:size=720x1280:rate=30:duration=2",
+                "-f", "lavfi", "-i", "sine=frequency=440:duration=4", "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0[v]", "-map", "[v]", "-map", "2:a", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", a.toString()));
+        ffmpeg.runFfmpeg(List.of("-v", "error", "-y", "-f", "lavfi", "-i", "color=c=white:size=720x1280:rate=30:duration=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", b.toString()));
+        ffmpeg.runFfmpeg(List.of("-v", "error", "-y", "-f", "lavfi", "-i", "color=c=blue:size=320x180:rate=30:duration=3", "-c:v", "libx264", "-pix_fmt", "yuv420p", pipFile.toString()));
+        ffmpeg.runFfmpeg(List.of("-v", "error", "-y", "-f", "lavfi", "-i", "color=c=yellow:size=64x64", "-frames:v", "1", image.toString()));
+
+        var clips = List.of(new EditMedia("a", 0.0, 2.0, 0.0, 1.0, 2.0, 0.5, null, null), new EditMedia("b", 2.0, 4.0, 0.0, 1.0, null, null, null, "black_white"));
+        var pips = List.of(new EditOverlay("video", "p", 1.0, 3.0, 0.0, -200.0, -400.0, 240.0, 136.0, 0.0, null),
+                new EditOverlay("image", "i", 2.5, 3.5, null, 200.0, 400.0, 100.0, 100.0, null, null));
+        ffmpeg.runFfmpeg(StudioEditGraph.args(720, 1280, 4, clips, List.of(a, b), List.of(true, false), List.of(), List.of(), List.of(),
+                pips, List.of(pipFile, image), List.of(false, false), null, out), 120_000);
+
+        var probe = ffmpeg.probeMedia(out.toFile());
+        assertEquals(4, probe.durationSec(), 0.15);
+        assertTrue(probe.hasAudio(), "原声变速后还在");
+        assertTrue(brightness(ffmpeg, out, dir, 0.02) < 40, "开头是淡入，第一帧接近黑");
+        assertTrue(redness(ffmpeg, out, dir, 0.7) > 150, "淡入结束后看到红色");
+        var green = frame(ffmpeg, out, dir, 1.5);
+        assertTrue(((green.getRGB(600, 1000) >> 8) & 255) > 90 && ((green.getRGB(600, 1000) >> 16) & 255) < 60, "2 倍速：素材第 3 秒的绿色出现在成片第 1.5 秒");
+        // 小窗中心在画面中心 + (-200, -400)。
+        assertEquals(0, ((frame(ffmpeg, out, dir, 0.7).getRGB(160, 240)) & 255) / 200, "小窗开始前这里没有蓝色");
+        assertTrue((frame(ffmpeg, out, dir, 1.5).getRGB(160, 240) & 255) > 180, "小窗时间内这里是蓝色");
+        var late = frame(ffmpeg, out, dir, 3.0);
+        int pixel = late.getRGB(560, 1040);
+        assertTrue(((pixel >> 16) & 255) > 180 && ((pixel >> 8) & 255) > 180 && (pixel & 255) < 90, "图片叠在指定位置");
+        int plain = late.getRGB(360, 900);
+        assertEquals((plain >> 16) & 255, plain & 255, 12, "黑白的画面没有颜色");
     }
 
     private static BufferedImage frame(FfmpegRunner ffmpeg, Path video, Path dir, double at) throws Exception {

@@ -290,6 +290,10 @@ public class StudioWorkflowWorker {
                             ?assembly.renderStudioEdit(run.getOwnerUserId(),run.getProjectId(),mapper.treeToValue(input.path("edit"),com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.EditTimeline.class))
                             :assembly.assembleStudioKeys(run.getOwnerUserId(),run.getProjectId(),keys,input.path("aspectRatio").asText("9:16"),input.hasNonNull("packaging")?mapper.treeToValue(input.path("packaging"),com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.Packaging.class):null);
                     output.put("storageKey",file.key());output.put("durationSec",file.durationSec());
+                    if(file.captionStatus()!=null) {
+                        var captions=output.putObject("captions");captions.put("status",file.captionStatus());
+                        captions.set("cues",mapper.valueToTree(file.captions()==null?List.of():file.captions()));
+                    }
                 }
                 default -> throw new IllegalArgumentException("Unknown Studio operation");
             }

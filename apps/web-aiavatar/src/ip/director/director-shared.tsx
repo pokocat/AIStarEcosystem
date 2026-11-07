@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
 import type { ReactNode, TextareaHTMLAttributes } from "react";
 import { Check, Loader2, Maximize2, Sparkles, X } from "lucide-react";
-import type { DirectorAsset, DirectorMedia, DirectorMediaSlot, DirectorTask, DirectorWork } from "@ai-star-eco/types";
+import type { DirectorAsset, DirectorClip, DirectorExport, DirectorMedia, DirectorMediaSlot, DirectorTask, DirectorWork } from "@ai-star-eco/types";
 import type { EnterpriseBillingSelection } from "@ai-star-eco/types/enterprise";
 import { normalizeStudioError, type StudioFailure } from "../studio-errors";
 import { publicModelErrorMessage } from "@ai-star-eco/api-client/public-model-error";
@@ -123,13 +123,17 @@ export function Spinner({ label }: { label: string }) {
 }
 
 /** 从任务开始算的已用时间，每秒走一次；时间来自服务端任务的 createdAt，不编进度。 */
-function useElapsed(since?: string | null) {
+export function useElapsedSeconds(since?: string | null) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const t = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(t); }, []);
   const start = since ? Date.parse(since) : NaN;
   if (!Number.isFinite(start)) return null;
-  const sec = Math.max(0, Math.floor((now - start) / 1000));
-  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+  return Math.max(0, Math.floor((now - start) / 1000));
+}
+
+function useElapsed(since?: string | null) {
+  const sec = useElapsedSeconds(since);
+  return sec === null ? null : `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
 }
 
 /** AI 正在写：一块会动的卡片，说清在做什么、已经多久、关掉页面也不停。只写真实信息，没有假进度。 */
@@ -290,4 +294,9 @@ export function OutdatedNote({ slot, what, onRegenerate, disabled }: { slot: Dir
   </div>;
   if (slot.adoptedCheck === "unknown") return <div className="director-outdated is-unknown" role="status"><span>这{what}缺少生成记录，无法核对是否与当前设置一致。</span></div>;
   return null;
+}
+
+/** 导出之后片段的视频或顺序变了：已导出的成片不是最新版本。 */
+export function exportIsStale(e: Pick<DirectorExport, "status" | "clips">, clips: DirectorClip[]) {
+  return e.status === "done" && (e.clips.length !== clips.length || e.clips.some(x => clips.find(c => c.id === x.clipId)?.video.adoptedId !== x.candidateId));
 }

@@ -94,7 +94,8 @@ public class StudioWorkflowService {
     public Capabilities capabilities() {
         return new Capabilities(fixtures.enabled(), List.of("text","script","storyboard","image","video","assemble","assistant","recreation","check"),
                 fixtures.enabled()?0:scenePolicies == null ? pricing.ipImage() : scenePolicies.available("studio","image",pricing.ipImage()).stream().filter(s->s.resolved().isDefault()).findFirst().map(com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection::creditCost).orElse(pricing.ipImage()), fixtures.enabled()?0:textModelOptions().stream().filter(TextModel::isDefault).findFirst().map(TextModel::creditCost).orElse(pricing.ipIdentity()),
-                fixtures.enabled()?0L:null, textModelOptions(), scenePolicies == null ? "selectable" : scenePolicies.mode("studio","script"), scenePolicies == null ? "selectable" : scenePolicies.mode("studio","image"));
+                fixtures.enabled()?0L:null, textModelOptions(), scenePolicies == null ? "selectable" : scenePolicies.mode("studio","script"), scenePolicies == null ? "selectable" : scenePolicies.mode("studio","image"),
+                models.resolveEndpoint(AiModelPurpose.DAP_TRANSCRIBE).isPresent());
     }
     private List<TextModel> textModelOptions() {
         if(scenePolicies == null) return models.listCandidates(AiModelPurpose.DAP_PERSONA,"studio").stream()
@@ -166,7 +167,7 @@ public class StudioWorkflowService {
         List<Reference> references = request.references()==null?List.of():request.references();
         for (Reference reference:references) requireReference(userId, reference);
         if ("assemble".equals(request.operation()) && (references.isEmpty() || references.stream().anyMatch(r->!"clip".equals(r.role()))))
-            throw bad("STUDIO_CLIPS_REQUIRED", "请先选择要合成的视频片段");
+            throw bad("STUDIO_CLIPS_REQUIRED", "请先选择要导出的视频片段");
         if (request.video()!=null && !"video".equals(request.operation())) throw bad("STUDIO_VIDEO_INPUT_INVALID","视频参数只能用于生成视频");
         if (request.video()!=null && fixtures.enabled()) throw bad("STUDIO_VIDEO_MODE_UNAVAILABLE","测试响应不支持原生视频模式，请关闭测试响应后使用");
         if (request.aspectRatio()!=null && request.video()==null && !("image".equals(request.operation())
@@ -177,13 +178,19 @@ public class StudioWorkflowService {
         validateSkillRequest(request,skillPlan,check);
         StudioPackagingService.validate(request.packaging());
         if(request.edit()!=null) {
-            if(!"assemble".equals(request.operation()))throw bad("STUDIO_EDIT_ASSEMBLE_ONLY","剪辑时间线只能用于成片合成");
+            if(!"assemble".equals(request.operation()))throw bad("STUDIO_EDIT_ASSEMBLE_ONLY","剪辑时间线只能用于导出成片");
             StudioEditGraph.validate(request.edit());
             for(var media:request.edit().clips())projects.requireOwnedAssetKey(userId,media.storageKey());
             if(request.edit().audios()!=null)for(var media:request.edit().audios())projects.requireOwnedAssetKey(userId,media.storageKey());
+            if(request.edit().overlays()!=null)for(var media:request.edit().overlays())projects.requireOwnedAssetKey(userId,media.storageKey());
+            if(request.edit().musicStorageKey()!=null&&!request.edit().musicStorageKey().isBlank())projects.requireOwnedAssetKey(userId,request.edit().musicStorageKey());
+        }
+        if(request.packaging()!=null && request.packaging().musicStorageKey()!=null && !request.packaging().musicStorageKey().isBlank()) {
+            if(!"assemble".equals(request.operation()))throw bad("STUDIO_SPEECH_ASSEMBLE_ONLY","背景音乐只能用于导出成片");
+            projects.requireOwnedAssetKey(userId,request.packaging().musicStorageKey());
         }
         if(request.packaging()!=null && request.packaging().voiceoverStorageKey()!=null) {
-            if(!"assemble".equals(request.operation()))throw bad("STUDIO_SPEECH_ASSEMBLE_ONLY","配音只能用于成片合成");
+            if(!"assemble".equals(request.operation()))throw bad("STUDIO_SPEECH_ASSEMBLE_ONLY","配音只能用于导出成片");
             projects.requireOwnedAssetKey(userId,request.packaging().voiceoverStorageKey());
         }
         // Execution-bound steps write to their own output node (projected by the client), never into the canvas document.

@@ -2,7 +2,7 @@
 import {setupSelectFieldDom,createSelectFieldUser} from '../../../../scripts/vitest/select-field';
 setupSelectFieldDom();
 const selectFieldValue=createSelectFieldUser({fireEvent,screen});
-import {useEffect,useState} from 'react';
+import {createContext,useContext,useEffect,useState} from 'react';
 import { mountStudioErrorNotifications } from './testing/studio-notification-harness';
 
 import {act,cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
@@ -28,7 +28,10 @@ vi.mock('./studio-script-rich-editor',async()=>{
 vi.mock('antd',()=>{
  const Input=({children,...p}:any)=><input {...p}/>;Input.TextArea=({autoSize,...p}:any)=><textarea {...p}/>;
  const message={error:api.error,info:api.info,success:api.success};
- return {InputNumber:({value,onChange,min,max,precision,controls,suffix,...p}:any)=><input type="number" {...p} min={min} max={max} value={value??''} onChange={e=>onChange(e.target.value?Number(e.target.value):null)}/>,App:{useApp:()=>({message})},Input, Segmented:({options,value,onChange}:any)=><div>{options.map((o:string)=><button key={o} aria-pressed={o===value} onClick={()=>onChange(o)}>{o}</button>)}</div>,
+ const RadioContext=createContext<any>(undefined);
+ const Radio=({value,children}:any)=>{const group=useContext(RadioContext);return <label><input type="radio" checked={group?.value===value} onChange={()=>group?.onChange({target:{value}})}/>{children}</label>;};
+ Radio.Group=({value,onChange,children}:any)=><RadioContext.Provider value={{value,onChange}}><div role="radiogroup">{children}</div></RadioContext.Provider>;
+ return {Radio,InputNumber:({value,onChange,min,max,precision,controls,suffix,...p}:any)=><input type="number" {...p} min={min} max={max} value={value??''} onChange={e=>onChange(e.target.value?Number(e.target.value):null)}/>,App:{useApp:()=>({message})},Input, Segmented:({options,value,onChange}:any)=><div>{options.map((o:string)=><button key={o} aria-pressed={o===value} onClick={()=>onChange(o)}>{o}</button>)}</div>,
  Button:({loading,block,type,icon,size,...p}:any)=><button {...p} disabled={loading||p.disabled}>{p.children}</button>,
  Drawer:({open,title,children,onClose,footer}:any)=>open?<section role="dialog" aria-label={title}><button aria-label="关闭创作面板" onClick={onClose}>关闭</button>{children}{footer}</section>:null,
  Modal:({open,title,children,onCancel,footer,afterClose}:any)=>{useEffect(()=>{if(!open)afterClose?.();},[open]);return open?<section role="dialog" aria-label={title||'剧本编辑器'}>{onCancel&&<button aria-label={`关闭${title}`} onClick={onCancel}>关闭</button>}{children}{footer}</section>:null;},
@@ -545,27 +548,28 @@ test('blank and unaccepted template videos cannot enter assembly; server accepta
  render(<Host initial={pending}/>);
  expect(screen.queryByLabelText('节点编辑操作')).toBeNull();
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'work'}}));
- expect(screen.getByText('还没有视频片段')).toBeDefined();expect(screen.queryByRole('button',{name:'合成作品'})).toBeNull();
+ expect(screen.getByText('还没有视频片段')).toBeDefined();expect(screen.queryByRole('button',{name:'导出成片'})).toBeNull();
  cleanup();mountStudioErrorNotifications(api.error);render(<Host initial={{...pending,metadata:{...pending.metadata,studio:{...pending.metadata.studio,kind:'shot',templateAccepted:true}}}}/>);
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'work'}}));
- expect(screen.getByRole('button',{name:'合成作品'})).toBeDefined();expect(api.submit).not.toHaveBeenCalled();
+ expect(screen.getByRole('button',{name:'导出成片'})).toBeDefined();expect(api.submit).not.toHaveBeenCalled();
 });
 
 test('work settings survive remount without assembly, and a failed save keeps the editor open for retry',async()=>{
  render(<Host/>);fireEvent(window,new CustomEvent('studio-command',{detail:{action:'work'}}));
- fireEvent.click(screen.getByRole('checkbox',{name:'添加品牌文字与字幕'}));
+ fireEvent.click(screen.getByRole('checkbox',{name:'添加品牌、标题和结尾提示'}));
  fireEvent.change(screen.getByRole('textbox',{name:'成片标题文字'}),{target:{value:'新商品介绍'}});
- fireEvent.change(screen.getByRole('textbox',{name:'成片字幕时间与文字'}),{target:{value:'0-5: 日常随行'}});
+ fireEvent.click(screen.getByRole('radio',{name:/手动填写/}));
+ fireEvent.change(screen.getByRole('textbox',{name:'第 1 条字幕文字'}),{target:{value:'日常随行'}});
  fireEvent.click(screen.getByRole('button',{name:'横屏 16:9'}));
  const persisted=JSON.parse(JSON.stringify(snapshot));cleanup();mountStudioErrorNotifications(api.error);render(<Host initialNodes={persisted}/>);
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'work'}}));
  expect((screen.getByRole('textbox',{name:'成片标题文字'}) as HTMLInputElement).value).toBe('新商品介绍');
- expect((screen.getByRole('textbox',{name:'成片字幕时间与文字'}) as HTMLInputElement).value).toBe('0-5: 日常随行');
+ expect((screen.getByRole('textbox',{name:'第 1 条字幕文字'}) as HTMLInputElement).value).toBe('日常随行');
  expect(screen.getByRole('button',{name:'横屏 16:9'}).getAttribute('aria-pressed')).toBe('true');
  api.save.mockRejectedValueOnce(new Error('成片配置保存失败'));
  fireEvent.click(screen.getByRole('button',{name:'返回画布'}));await waitFor(()=>expect(api.error).toHaveBeenCalledWith('成片配置保存失败'));
- expect(screen.getByRole('region',{name:'成片编辑器'})).toBeDefined();
- fireEvent.click(screen.getByRole('button',{name:'返回画布'}));await waitFor(()=>expect(screen.queryByRole('region',{name:'成片编辑器'})).toBeNull());
+ expect(screen.getByRole('region',{name:'制作成片'})).toBeDefined();
+ fireEvent.click(screen.getByRole('button',{name:'返回画布'}));await waitFor(()=>expect(screen.queryByRole('region',{name:'制作成片'})).toBeNull());
  expect(api.submit).not.toHaveBeenCalled();expect(snapshot.filter(n=>n.metadata?.studio?.workDraft)).toHaveLength(1);
 });
 
@@ -578,7 +582,7 @@ test('assembling a recreation canvas leaves out the original the clip was made f
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'work'}}));
  expect(screen.queryByRole('combobox',{name:'当前分集'})).toBeNull();
  expect((screen.getByRole('checkbox',{name:'将「原片」加入成片'}) as HTMLInputElement).checked).toBe(false);
- fireEvent.click(screen.getByRole('button',{name:'合成作品',exact:true}));await waitFor(()=>expect(api.submit).toHaveBeenCalledOnce());
+ fireEvent.click(screen.getByRole('button',{name:'导出成片',exact:true}));await waitFor(()=>expect(api.submit).toHaveBeenCalledOnce());
  expect(api.submit.mock.calls[0][1].references).toEqual([{storageKey:'take.mp4',role:'clip',ipId:undefined}]);
 });
 
@@ -607,7 +611,7 @@ test('assembly resumes saved packaging and adds the actual audio dependency with
  api.submit.mockImplementation(async(_project,body)=>({...done,kind:'studio-assemble',nodeId:body.nodeId,inputs:body,output:{storageKey:'work.mp4',url:'/work.mp4'}}));
  render(<Host initialNodes={[{...node,metadata:{...node.metadata,studio:{...node.metadata!.studio!,includeInWork:true}}},audio,draft]}/>);
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'work'}}));
- fireEvent.click(screen.getByRole('button',{name:'合成作品',exact:true}));await waitFor(()=>expect(api.submit).toHaveBeenCalledOnce());
+ fireEvent.click(screen.getByRole('button',{name:'导出成片',exact:true}));await waitFor(()=>expect(api.submit).toHaveBeenCalledOnce());
  const body=api.submit.mock.calls[0][1];expect(body).toMatchObject({operation:'assemble',aspectRatio:'16:9',references:[{storageKey:'old.mp4',role:'clip'}],packaging:{brand:'杯子',title:'随行',cta:'了解更多',captions:[{start:0,end:5,text:'日常随行'}],voiceoverStorageKey:'voice.wav'}});
  expect(connectionSnapshot.some(c=>c.fromNodeId==='voice'&&c.toNodeId===body.nodeId)).toBe(true);
  expect(snapshot.find(n=>n.id==='draft')?.metadata?.studio?.workDraft).toEqual(draft.metadata.studio.workDraft);
@@ -1117,8 +1121,8 @@ test('finished works keep unique media actions inside their result in the work e
  const work={...node,id:'work',title:'完成作品',metadata:{...node.metadata,studio:{kind:'work' as const}}};
  render(<Host initialNodes={[node,work]}/>);
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'work',nodeId:'work'}}));
- const result=screen.getByRole('region',{name:'已合成的作品'});
- expect(within(result).getByRole('button',{name:'下载作品'})).toBeDefined();
+ const result=screen.getByRole('region',{name:'已导出的成片'});
+ expect(within(result).getByRole('button',{name:'下载成片'})).toBeDefined();
  expect(within(result).queryByRole('button',{name:'下载视频'})).toBeNull();
  expect(within(result).getByRole('button',{name:'抽帧'})).toBeDefined();
  const commands=vi.fn();window.addEventListener('studio-command',commands);

@@ -433,4 +433,24 @@ class DirectorFormsAndViewsTest {
     private static int corner(byte[] png) throws Exception {
         return ImageIO.read(new ByteArrayInputStream(png)).getRGB(1, 1);
     }
+
+    /** 2026-11-07：待确认的视频不挡导出。对话框写明「将一并确认」，点了开始导出才带 confirmPending；不带仍按原规则拒绝。 */
+    @Test void exportConfirmsPendingVideosOnlyWhenAsked() throws Exception {
+        seed();
+        ObjectNode c = content();
+        ObjectNode video = (ObjectNode) c.path("clips").get(0).path("video");
+        video.put("adoptedId", "m1").put("adoptedBy", "auto").withArray("candidates").addObject().put("id", "m1").put("key", "u/clip.mp4").put("source", "generated");
+        work.setContentJson(c.toString());
+        BusinessException refused = assertThrows(BusinessException.class, () -> service.task(USER, work.getId(),
+                new DirectorService.TaskRequest("export", "e1", "r1", om.readTree("{\"captions\":false}"), null, null)));
+        assertEquals("DIRECTOR_EXPORT_UNCONFIRMED", refused.getCode());
+        org.springframework.transaction.support.TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.task(USER, work.getId(), new DirectorService.TaskRequest("export", "e1", "r2", om.readTree("{\"captions\":false,\"confirmPending\":true}"), null, null));
+        } finally {
+            org.springframework.transaction.support.TransactionSynchronizationManager.clearSynchronization();
+        }
+        assertEquals("user", content().path("clips").get(0).path("video").path("adoptedBy").asText());
+        assertEquals("running", content().path("exports").get(0).path("status").asText());
+    }
 }

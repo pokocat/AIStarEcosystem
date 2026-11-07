@@ -4,7 +4,7 @@
 // 片段在正文里的位置只用真实依据（写分镜时记下的起始句，或台词逐字匹配），找不到就明说，不伪造定位。
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronRight, FileText } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import type { DirectorEpisode, DirectorWork } from "@ai-star-eco/types";
 import { AskAI } from "./director-assistant";
 import { clipRanges, paragraphsWithOffsets } from "./director-text";
@@ -36,14 +36,11 @@ export function ScriptReference({ work, ep, focusClipId, onCollapse, foldId }: {
   const to = all.length <= REF_PARAGRAPHS ? all.length : Math.min(all.length, Math.max(center, REF_PARAGRAPHS / 2) + REF_PARAGRAPHS / 2 + more.after);
   const shown = all.slice(from, to);
   const chars = `${ep.content.replace(/\s/g, "").length.toLocaleString("zh-CN")} 字${ep.planStale ? " · 写分镜脚本后正文已修改" : ""}`;
-  // 和其它可收起的块同一种写法：整行是开关，箭头在右。抽屉里没有收起，只显示标题。
-  return <section className={`director-script-ref${onCollapse ? " director-outline is-open" : ""}`} aria-label={`第 ${ep.no} 集剧本`}>
+  return <section className="director-script-ref" aria-label={`第 ${ep.no} 集剧本`}>
     <header>
-      {onCollapse
-        ? <button type="button" id={foldId} className="director-outline-head" aria-expanded onClick={onCollapse}>
-          <FileText size={16}/><b>本集剧本</b><span>{chars}</span><ChevronRight size={16} className="director-outline-chevron"/></button>
-        : <div><b>本集剧本</b><small>{chars}</small></div>}
+      <div><b>本集剧本</b><small>{chars}</small></div>
       <AskAI scope={{ kind: "script", episodeId: ep.id, focusAt: range?.start ?? 0 }} what={`第 ${ep.no} 集剧本`} hint="评价、续写、润色本集"/>
+      {onCollapse && <button type="button" id={foldId} className="director-script-collapse" aria-expanded onClick={onCollapse}>收起<ChevronDown size={16}/></button>}
     </header>
     {focus && <div className="director-script-ref-focus">
       <span>正在对照：片段 {focus.order}{focus.title ? ` · ${focus.title}` : ""}</span>

@@ -205,7 +205,7 @@ function Host({ projectId }: { projectId: string }) {
           style={{ background: "var(--ink)", color: "var(--surface)" }}
         >
           <Send className="w-3.5 h-3.5" />
-          发布
+          发布到资产库
         </button>
       )}
     </>,

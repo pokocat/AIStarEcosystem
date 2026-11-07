@@ -91,6 +91,12 @@ public class DirectorController {
         return ApiResponse.of(director.uploadAudio(uid(principal), id, file));
     }
 
+    @PostMapping(value = "/works/{id}/uploads/music", consumes = "multipart/form-data")
+    public ApiResponse<com.aistareco.aep.ipstudio.service.StudioMediaImportService.MediaImportResult> uploadMusic(
+            Principal principal, @PathVariable String id, @RequestPart("file") org.springframework.web.multipart.MultipartFile file) {
+        return ApiResponse.of(director.uploadMusic(uid(principal), id, file));
+    }
+
     /** 一键制作：开始 / 暂停 / 继续 / 确认参考图后继续 / 停止。 */
     @PostMapping("/works/{id}/pipeline/estimate")
     public ApiResponse<JsonNode> estimate(Principal principal, @PathVariable String id, @RequestBody DirectorService.EstimateRequest req) {

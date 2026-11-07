@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import type { CanvasConnection, CanvasNodeData } from "@/canvas/types/canvas";
 import { reorderStudioClips } from "./studio-script";
 import {
-  formatStudioSeconds, studioCaptionProblem, studioCaptionTemplate, studioClipIncluded, studioClipName, studioClipOffsets,
+  formatStudioSeconds, studioCaptionProblem, studioCaptionRows, studioCaptionRowsFor, studioCaptionRowsText, studioNextCaptionRow, studioClipIncluded, studioClipName, studioClipOffsets,
   studioClipOrigin, studioMediaSeconds, studioRatioHint, studioSourceClipIds,
 } from "./studio-work-clips";
 
@@ -83,9 +83,9 @@ test("letterbox hints follow the server's 2% ratio tolerance", () => {
 });
 
 test("caption problems match what the server rejects, said before assembling", () => {
-  expect(studioCaptionTemplate([6, 5, 4])).toBe("0-6: \n6-11: \n11-15: ");
+  expect(studioCaptionRowsFor([6, 5, 4]).map(r => `${r.start}-${r.end}`)).toEqual(["0-6", "6-11", "11-15"]);
   expect(studioCaptionProblem("0-6: \n6-11: 第二句")).toBe("第 1 条字幕未填写内容");
-  expect(studioCaptionProblem("0-6 第一句")).toBe("第 1 条字幕请使用「开始秒-结束秒: 文字」格式");
+  expect(studioCaptionProblem("0-6 第一句")).toBe("第 1 条字幕需要填写开始和结束时间");
   expect(studioCaptionProblem("0-6: 第一句\n6-20: 第二句", 15)).toBe("第 2 条字幕结束于 20 秒，成片时长仅 15 秒");
   expect(studioCaptionProblem("0-6: 第一句\n6-15.2: 第二句", 15)).toBeUndefined();
   expect(studioCaptionProblem("0-6: 第一句\n6-20: 第二句")).toBeUndefined();
@@ -96,4 +96,12 @@ test("moving a clip shifts the ones in between instead of swapping the two ends"
   const moved = reorderStudioClips(clips, clips.map(n => n.id), 0, 2);
   expect(moved.map(n => [n.id, n.metadata?.studio?.order])).toEqual([["a", 2], ["b", 0], ["c", 1], ["d", 3]]);
   expect(reorderStudioClips(clips, clips.map(n => n.id), 1, 1)).toBe(clips);
+});
+
+test("caption rows read and write the same text; a row with no words is not a caption", () => {
+  expect(studioCaptionRows("0-3: 第一句\n3-5：第二句")).toEqual([{ start: "0", end: "3", text: "第一句" }, { start: "3", end: "5", text: "第二句" }]);
+  expect(studioCaptionRows("写错的一行")).toEqual([{ start: "", end: "", text: "写错的一行" }]);
+  expect(studioCaptionRowsText([{ start: "0", end: "3", text: "第一句" }, { start: "3", end: "5", text: "  " }])).toBe("0-3: 第一句");
+  expect(studioNextCaptionRow([{ start: "0", end: "3", text: "a" }], 4)).toEqual({ start: "3", end: "4", text: "" });
+  expect(studioNextCaptionRow([], undefined)).toEqual({ start: "0", end: "3", text: "" });
 });

@@ -24,6 +24,7 @@ public enum AiModelPurpose {
     DAP_VIDEO,              // 数字人平台 · 视频生成（异步 submit+poll，见 DapMultimodalClient）
     DAP_AUDIO,              // Studio · 固定音色配音（聚算异步音频 Job）
     DAP_LIP_SYNC,           // Studio · 视频 + 配音口型同步（聚算 X-Dub）
+    DAP_TRANSCRIBE,         // Studio · 成片自动字幕的语音识别（OpenAI 兼容 /audio/transcriptions）
     DAP_REAL_AVATAR,        // 数字资产平台 · 真人素材与授权（七牛 modelink 刷脸认证 + 素材送审，见 ModelinkService）
     MUSIC_GENERATION,       // 音乐生成（web-music 创作工坊；异步 submit+poll，见 MusicGenModelClient）
     GENERAL;                // 通用兜底
@@ -52,6 +53,7 @@ public enum AiModelPurpose {
             case DAP_VIDEO -> "数字人 · 视频生成";
             case DAP_AUDIO -> "Studio · 配音";
             case DAP_LIP_SYNC -> "Studio · 口型同步";
+            case DAP_TRANSCRIBE -> "Studio · 语音识别";
             case DAP_REAL_AVATAR -> "数字资产 · 真人素材与授权";
             case MUSIC_GENERATION -> "音乐生成";
             case GENERAL -> "通用";

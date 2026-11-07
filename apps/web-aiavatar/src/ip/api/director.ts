@@ -145,6 +145,14 @@ export async function quote(id: string, targetIds: string[]): Promise<DirectorQu
   return scopeToWork(id, apiFetch<DirectorQuote>(`/v1/ip-studio/director/works/${encodeURIComponent(id)}/quote`, { method: "POST", body: JSON.stringify({ type: "video", targetIds }) }));
 }
 
+/** 导出成片用的背景音乐（mp3 / wav / m4a）。 */
+export async function uploadMusic(id: string, file: File): Promise<DirectorAudioUpload> {
+  if (USE_MOCK) demoUnavailable();
+  const form = new FormData();
+  form.append("file", file);
+  return scopeToWork(id, apiFetch<DirectorAudioUpload>(`/v1/ip-studio/director/works/${encodeURIComponent(id)}/uploads/music`, { method: "POST", body: form }));
+}
+
 /** 角色声音样本（mp3 / wav / m4a）。 */
 export async function uploadAudio(id: string, file: File): Promise<DirectorAudioUpload> {
   if (USE_MOCK) demoUnavailable();

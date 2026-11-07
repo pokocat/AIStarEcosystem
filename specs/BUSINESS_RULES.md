@@ -1222,6 +1222,11 @@ scripts/check-api-contract.mjs ← CI 漂移校验（apiFetch URLs ↔ openapi.y
 - 供应商 URL 先验同主机、正确资源路径和 model 作用域后携同 Key 下载，真实音频探测后转存 key；signed URL 不落库，浏览器无厂商 Key。
 - `packaging.voiceoverStorageKey` 只能合成使用本人音频，替换原轨。音频长于视频拒绝 STUDIO_SPEECH_TOO_LONG，不裁掉台词，不冒称口型同步。预设声音与个人克隆/人物驱动保持独立状态。配音过长与字幕超过成片在下载完各段、拼接之前就判（按各段时长之和加拼接容差），合成后仍按真实时长复核。
 - 成片高级编辑（2026-10-19）：`edit`（StudioEditTimeline）只许 `operation=assemble`，非 assemble 带它报 STUDIO_EDIT_ASSEMBLE_ONLY；有它时按时间线合成、不用 `packaging`。视频按 start 排成一条主轨，后开始的截断前一段，空隙补黑；音频、文字、字幕按时间叠加。画幅 320–1920 偶数，视频 1–60 段、音频 ≤20、文字 ≤30（≤120 字、字号 12–200、颜色 #RRGGBB）、字幕 ≤200（≤80 字），音量 0–2，总长 ≤600 秒，越界报 STUDIO_EDIT_INVALID；clips 与 audios 的 key 必须是本人素材。读不出的素材报 STUDIO_EDIT_BAD_MEDIA。不扣积分。
+- 成片自动字幕与声音（2026-11-07，`docs/studio-final-cut.md`）：`packaging.autoCaptions=true` 且没有手写 `captions` 时，合成阶段生成字幕，结果在 `output.captions`（`status` + `cues`）。有已知台词（导演台）字幕内容永远是台词原文，语音识别只校正时间；语音识别未绑定、失败或对不上时按镜头时间估算（`estimated`，界面如实说明）。没有已知台词时字幕内容来自识别结果，识别不可用就不加字幕（`unavailable`），**不编内容、不让整次合成失败**。语音识别用途 `DAP_TRANSCRIBE`，费用算在导出里，不向用户收积分。Studio 成片一律统一响度（-16 LUFS / -2.5 dBTP）、片段接缝去爆音；`packaging.musicStorageKey` 循环铺满并在说话时压低；`packaging.quality` 为 720p / 1080p，缺省跟随片段。素材归属闸覆盖音乐和小窗 / 图片（`requireOwnedAssetKey`）。整集导出 `options`：`captions`（默认 true）、`quality`、`musicStorageKey`；一键制作走默认。
+- 成片高级编辑的时间线（2026-11-07 增）：`speed` 0.5–2、`fadeIn` / `fadeOut` 不超过 3 秒、`look` 只认五个预设、`overlays` 最多 12 个（`kind` = video / image），超出报 `STUDIO_EDIT_INVALID`；响度统一同一键成片；`autoCaptions` 只在时间线上没有字幕时生效。
+- 成片高级编辑的背景音乐（2026-11-07）：`edit.musicStorageKey` 查本人归属，不在时间线上；导出时在字幕识别之后混入（识别听到的是干净的人声），循环、说话时压低、结尾淡出都和一键成片同一套。只打开编辑室没有改动时不写 `workDraft.advanced`，一键成片的设置和导出按钮不变。
+- 导演台整集导出的待确认视频（2026-11-07）：只有缺视频才拦（`DIRECTOR_EXPORT_INCOMPLETE`）。`options.confirmPending=true` 时，开始导出把本集 `adoptedBy=auto` 的视频改成 `user`，与导出同一事务；不带时仍 400 `DIRECTOR_EXPORT_UNCONFIRMED`。对话框写明「将一并确认」，界面只在用户点「开始导出」时带这个参数。
+- 导演台批量生成视频（2026-11-07，前端规则）：已有视频的片段默认跳过，不提交、不扣费；用户明确选择「已有视频的片段也重新生成」后才提交。单个片段已有视频时，所有会再生成一条的按钮都先确认价格。
 
 
 ### 模型任务异常状态与并发（2026-10-22）

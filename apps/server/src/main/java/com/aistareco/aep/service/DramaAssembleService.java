@@ -61,6 +61,7 @@ public class DramaAssembleService {
             .build();
 
     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.ipstudio.service.StudioPackagingService studioPackaging;
+    @org.springframework.beans.factory.annotation.Autowired(required = false) private com.aistareco.aep.ipstudio.service.StudioCaptionService studioCaptions;
     private final DramaProjectRepository repo;
     private final FfmpegRunner ffmpeg;
     private final CdnUploader cdnUploader;
@@ -184,7 +185,10 @@ public class DramaAssembleService {
     // ── v0.198 画布：按给定视频 key 顺序拼接 ─────────────────────────────────────────
 
     /** 画布合成成片的产物（key 已记进 storage_asset，app=drama）。 */
-    public record AssembledVideo(String key, long durationSec, long bytes) {}
+    /** captions / captionStatus 只有 Studio 自动字幕时有：烧进画面的字幕和它的来源（见 StudioCaptionService）。 */
+    public record AssembledVideo(String key, long durationSec, long bytes, List<com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.Caption> captions, String captionStatus) {
+        public AssembledVideo(String key, long durationSec, long bytes) { this(key, durationSec, bytes, null, null); }
+    }
 
     /** 成片时长与各段时长之和的允许偏差：取 1.5 秒与 5% 中较大的那个。 */
     static double durationTolerance(double expectedSec) {
@@ -269,13 +273,18 @@ public class DramaAssembleService {
 
             Path out = workDir.resolve("episode.mp4");
             double tolerance = durationTolerance(expected);
-            Path speech = null;
+            Path speech = null, music = null;
             if (studio && packaging != null) {
                 if (studioPackaging == null) throw new IllegalStateException("Studio packaging renderer unavailable");
                 if (packaging.voiceoverStorageKey() != null) {
                     String speechUrl = signer.signKey(packaging.voiceoverStorageKey());
                     if (speechUrl == null || speechUrl.isBlank()) throw new IllegalStateException("Speech URL unavailable");
                     speech = download(speechUrl, workDir.resolve("speech.media"));
+                }
+                if (packaging.musicStorageKey() != null && !packaging.musicStorageKey().isBlank()) {
+                    String musicUrl = signer.signKey(packaging.musicStorageKey());
+                    if (musicUrl == null || musicUrl.isBlank()) throw new IllegalStateException("Music URL unavailable");
+                    music = download(musicUrl, workDir.resolve("music.media"));
                 }
                 // 拼接前先按各段时长之和判一次配音 / 字幕（2026-10-19）：注定超长的不再等整段拼接、重编码完才失败。
                 // 放宽 tolerance 是因为成片在质量门内可以比各段之和长这么多 —— 这里只拒绝拼完也一定会被拒的。
@@ -284,8 +293,9 @@ public class DramaAssembleService {
             double actual = -1;
             // Studio lets users choose an output ratio after selecting clips. A uniform input
             // must still be normalized when it does not match that explicit choice.
+            String quality = studio && packaging != null ? packaging.quality() : null;
             if (uniformForCopy(probes) && (!studio || ratioMatches(probes.get(0).width(),
-                    probes.get(0).height(), parseRatio(canvasRatio)))) {
+                    probes.get(0).height(), parseRatio(canvasRatio)) && qualityMatches(quality, probes.get(0)))) {
                 log.info("[drama-assemble] canvas path=copy canvas={} ep={} clips={} size={}x{}",
                         refId, episodeNo, locals.size(), probes.get(0).width(), probes.get(0).height());
                 Path listFile = workDir.resolve("list.txt");
@@ -318,7 +328,7 @@ public class DramaAssembleService {
                     }
                 }
             } else {
-                int[] target = studio ? studioTargetSize(probes, canvasRatio) : targetSize(probes, canvasRatio);
+                int[] target = studio ? studioTargetSize(probes, canvasRatio, quality) : targetSize(probes, canvasRatio);
                 log.info("[drama-assemble] canvas path=normalize canvas={} ep={} clips={} ratio={} target={}x{} clipsMeta={}",
                         refId, episodeNo, locals.size(), canvasRatio, target[0], target[1], describe(probes));
                 ffmpeg.runFfmpeg(normalizeArgs(locals, probes, target[0], target[1], out));
@@ -328,11 +338,16 @@ public class DramaAssembleService {
                 }
             }
 
-            if(studio && packaging!=null) {
-                // 配音在拼接前已下载并预检过；这里按成片实际时长做最终裁判。
-                out=studioPackaging.decorate(out,workDir,packaging,speech);
-                actual=gatedDuration(out);
-                if(actual<0 || Math.abs(actual-expected)>tolerance)throw new IllegalStateException("包装后成片时长不匹配");
+            com.aistareco.aep.ipstudio.service.StudioCaptionService.Outcome captions = null;
+            if (studio && studioPackaging != null) {
+                // 成片的最后一道（2026-11-07）：字幕和声音都在这里默认做好，用户不用操作。配音在拼接前已下载并预检过；这里按成片实际时长做最终裁判。
+                Path clean = studioPackaging.cleanClipAudio(locals, probes, workDir);
+                FfmpegRunner.MediaProbe made = ffmpeg.probeMedia(out.toFile());
+                if (studioCaptions != null) captions = studioCaptions.resolve(packaging, speech != null ? speech : clean,
+                        probes.stream().map(FfmpegRunner.MediaProbe::durationSec).toList(), actual, made.width(), made.height(), workDir, userId, refId);
+                out = studioPackaging.finish(out, workDir, packaging, speech, clean, music, captions == null ? (packaging == null ? null : packaging.captions()) : captions.captions());
+                actual = gatedDuration(out);
+                if (actual < 0 || Math.abs(actual - expected) > tolerance) throw new IllegalStateException("包装后成片时长不匹配");
             }
             String prefix = studio ? studioAssemblyPrefix(userId) : "drama/canvas/assemblies/";
             String key = prefix + safeSegment(refId) + "_ep" + episodeNo + "_"
@@ -344,7 +359,7 @@ public class DramaAssembleService {
             storage.record(studio ? "aiavatar" : "drama", userId, "成片", refId, key, bytes);
             log.info("[drama-assemble] canvas ok user={} canvas={} ep={} clips={} dur={}s key={}",
                     userId, refId, episodeNo, locals.size(), Math.round(actual), key);
-            return new AssembledVideo(key, Math.round(actual), bytes);
+            return new AssembledVideo(key, Math.round(actual), bytes, captions == null ? null : captions.captions(), captions == null ? null : captions.status());
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
@@ -374,23 +389,28 @@ public class DramaAssembleService {
             var audios = edit.audios() == null ? List.<com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.EditMedia>of() : edit.audios();
             Map<String, Path> files = new LinkedHashMap<>();
             Map<String, FfmpegRunner.MediaProbe> probes = new LinkedHashMap<>();
-            List<com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.EditMedia> all = new ArrayList<>(clips);
-            all.addAll(audios);
-            for (var media : all) {
-                String key = media.storageKey();
+            var pips = edit.overlays() == null ? List.<com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.EditOverlay>of() : edit.overlays();
+            List<String> allKeys = new ArrayList<>();
+            clips.forEach(c -> allKeys.add(c.storageKey()));
+            audios.forEach(a -> allKeys.add(a.storageKey()));
+            pips.forEach(o -> allKeys.add(o.storageKey()));
+            for (String key : allKeys) {
                 if (files.containsKey(key)) continue;
                 String url = signer.signKey(key);
                 if (url == null || url.isBlank()) url = signer.publicUrlFor(key);
                 if (url == null || url.isBlank()) throw new IllegalStateException("素材没有可读地址 key=" + key);
                 Path local = download(url, workDir.resolve("media_" + files.size() + ".bin"));
                 FfmpegRunner.MediaProbe probe = ffmpeg.probeMedia(local.toFile());
-                if (!probe.readable() || probe.durationSec() <= 0) throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "STUDIO_EDIT_BAD_MEDIA",
+                // 图片没有时长，只要读得出来就行。
+                boolean still = pips.stream().anyMatch(o -> "image".equals(o.kind()) && key.equals(o.storageKey()));
+                if (!probe.readable() || (probe.durationSec() <= 0 && !still)) throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "STUDIO_EDIT_BAD_MEDIA",
                         "有一段素材读不出来，换一段再导出。", "key=" + key + " readable=" + probe.readable() + " dur=" + probe.durationSec());
                 files.put(key, local);
                 probes.put(key, probe);
             }
             for (var clip : clips) if (!probes.get(clip.storageKey()).hasVideo()) throw BusinessException.badRequest("STUDIO_EDIT_INVALID", "有一段视频读不出画面，换一段再导出");
             for (var audio : audios) if (!probes.get(audio.storageKey()).hasAudio()) throw BusinessException.badRequest("STUDIO_EDIT_INVALID", "有一条音频没有声音，换一条再导出");
+            for (var pip : pips) if (!probes.get(pip.storageKey()).hasVideo()) throw BusinessException.badRequest("STUDIO_EDIT_INVALID", "有一张图片或一段小窗视频读不出画面，换一个再导出");
             List<com.aistareco.aep.ipstudio.service.StudioEditGraph.Overlay> overlays = new ArrayList<>();
             int n = 0;
             if (edit.texts() != null) for (var text : edit.texts()) {
@@ -398,15 +418,27 @@ public class DramaAssembleService {
                 javax.imageio.ImageIO.write(studioPackaging.editText(width, height, text.text(), text.x(), text.y(), text.fontSize(), text.color()), "png", png.toFile());
                 overlays.add(new com.aistareco.aep.ipstudio.service.StudioEditGraph.Overlay(png, text.start(), text.end()));
             }
-            if (edit.captions() != null) for (var caption : edit.captions()) {
-                Path png = workDir.resolve("caption_" + (n++) + ".png");
-                javax.imageio.ImageIO.write(studioPackaging.editCaption(width, height, caption.text()), "png", png.toFile());
-                overlays.add(new com.aistareco.aep.ipstudio.service.StudioEditGraph.Overlay(png, caption.start(), caption.end()));
-            }
+            Path captionTrack = null;
+            if (edit.captions() != null && !edit.captions().isEmpty()) captionTrack = studioPackaging.captionTrack(workDir,
+                    edit.captions().stream().map(c -> new com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.Caption(c.start(), c.end(), c.text())).toList(), width, height, total);
             Path out = workDir.resolve("edit.mp4");
             ffmpeg.runFfmpeg(com.aistareco.aep.ipstudio.service.StudioEditGraph.args(width, height, total, clips,
                     clips.stream().map(c -> files.get(c.storageKey())).toList(), clips.stream().map(c -> probes.get(c.storageKey()).hasAudio()).toList(),
-                    audios, audios.stream().map(a -> files.get(a.storageKey())).toList(), overlays, out), 600_000);
+                    audios, audios.stream().map(a -> files.get(a.storageKey())).toList(), overlays,
+                    pips, pips.stream().map(o -> files.get(o.storageKey())).toList(), pips.stream().map(o -> probes.get(o.storageKey()).hasAudio()).toList(), captionTrack, out), 600_000);
+            com.aistareco.aep.ipstudio.service.StudioCaptionService.Outcome heard = null;
+            if (Boolean.TRUE.equals(edit.autoCaptions()) && captionTrack == null && studioCaptions != null) {
+                // 时间线上没有字幕、用户又要自动字幕：从合成好的声音里识别，再叠上去。
+                heard = studioCaptions.recognize(out, total, width, height, workDir, userId, projectId);
+                if (!heard.captions().isEmpty()) out = studioPackaging.burnCaptions(out, workDir, heard.captions());
+            }
+            if (edit.musicStorageKey() != null && !edit.musicStorageKey().isBlank()) {
+                // 背景音乐放在字幕识别之后混，识别听到的才是干净的人声。说话时压低、循环、淡出都和一键成片同一套。
+                String musicUrl = signer.signKey(edit.musicStorageKey());
+                if (musicUrl == null || musicUrl.isBlank()) musicUrl = signer.publicUrlFor(edit.musicStorageKey());
+                if (musicUrl == null || musicUrl.isBlank()) throw new IllegalStateException("Music URL unavailable");
+                out = studioPackaging.finish(out, workDir, null, null, null, download(musicUrl, workDir.resolve("music.media")), null);
+            }
             double actual = gatedDuration(out);
             if (actual < 0 || Math.abs(actual - total) > durationTolerance(total))
                 throw new IllegalStateException("剪辑成片时长不对 expected=" + total + " actual=" + actual);
@@ -417,7 +449,7 @@ public class DramaAssembleService {
             storage.record("aiavatar", userId, "成片", projectId, key, bytes);
             log.info("[studio-edit] ok user={} project={} clips={} audios={} overlays={} dur={}s key={}",
                     userId, projectId, clips.size(), audios.size(), overlays.size(), Math.round(actual), key);
-            return new AssembledVideo(key, Math.round(actual), bytes);
+            return new AssembledVideo(key, Math.round(actual), bytes, heard == null ? null : heard.captions(), heard == null ? null : heard.status());
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
@@ -473,7 +505,23 @@ public class DramaAssembleService {
     }
 
     /** Keep a matching source resolution; otherwise honor Studio's selected output canvas. */
-    private static int[] studioTargetSize(List<FfmpegRunner.MediaProbe> probes, String ratio) {
+    /** 指定了清晰度时片段短边要正好是这个档，否则要重新缩放。 */
+    private static boolean qualityMatches(String quality, FfmpegRunner.MediaProbe probe) {
+        return quality == null || Math.min(probe.width(), probe.height()) == shortSide(quality);
+    }
+
+    private static int shortSide(String quality) { return "1080p".equals(quality) ? 1080 : 720; }
+
+    private static int[] studioTargetSize(List<FfmpegRunner.MediaProbe> probes, String ratio, String quality) {
+        if (quality != null) {
+            int shortSide = shortSide(quality), longSide = shortSide * 16 / 9;
+            switch (ratio == null ? "" : ratio) {
+                case "9:16": return new int[]{shortSide, longSide};
+                case "16:9": return new int[]{longSide, shortSide};
+                case "1:1": return new int[]{shortSide, shortSide};
+                default: break;
+            }
+        }
         int[] target = targetSize(probes, ratio);
         if (ratioMatches(target[0], target[1], parseRatio(ratio))) return target;
         return switch (ratio) {

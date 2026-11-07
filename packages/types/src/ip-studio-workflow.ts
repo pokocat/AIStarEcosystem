@@ -139,7 +139,23 @@ export interface StudioRunRequest {
   scene?: import('./ip-studio-scenes').StudioSceneComposeRequest;
 }
 
-export interface StudioPackaging { brand?:string;title?:string;cta?:string;captions?:{start:number;end:number;text:string}[];voiceoverStorageKey?:string }
+export type StudioQuality = "720p" | "1080p";
+/** auto = 合成时自动生成；manual = 用户自己填写时间和文字；off = 不加。 */
+export type StudioCaptionMode = "auto" | "manual" | "off";
+export interface StudioPackaging {
+  brand?:string;title?:string;cta?:string;captions?:{start:number;end:number;text:string}[];voiceoverStorageKey?:string;
+  /** 合成阶段自动生成字幕（手写的 captions 优先）。 */
+  autoCaptions?:boolean;
+  /** 背景音乐，说话时自动压低。 */
+  musicStorageKey?:string;
+  /** 缺省跟随片段。 */
+  quality?:StudioQuality;
+}
+/**
+ * 合成结果带回来的字幕。status：recognized = 时间来自语音识别；estimated = 有台词，时间按镜头估算；manual = 手写；
+ * no_lines = 没有台词；no_speech = 没听到人声；unavailable = 语音识别不可用，这次没加。
+ */
+export interface StudioCaptionResult { status:"recognized"|"estimated"|"manual"|"no_lines"|"no_speech"|"unavailable"; cues:{start:number;end:number;text:string}[] }
 /** Editable work settings live in the canvas document, separately from accepted requests. */
 export interface StudioWorkDraft {
   aspectRatio: string;
@@ -149,6 +165,10 @@ export interface StudioWorkDraft {
   cta: string;
   captionText: string;
   voiceoverStorageKey?: string;
+  /** 老画布没有这个字段：填过字幕的按手写，其余按自动（见 studioCaptionMode）。 */
+  captionMode?: StudioCaptionMode;
+  musicStorageKey?: string;
+  quality?: StudioQuality;
   /** 高级编辑（Twick）的工程；有它时成片以它为准。素材只存 storageKey，打开时再取。 */
   advanced?: StudioAdvancedEdit;
 }
@@ -157,6 +177,12 @@ export interface StudioAdvancedEdit {
   engine: "twick";
   savedAt: string;
   project: { tracks: unknown[]; version: number; [key: string]: unknown };
+  /** 这份工程的画面尺寸（元素坐标都按它算）；2026-11-07 之前的工程没有，是 720 档。 */
+  size?: { width: number; height: number };
+  /** 时间线上没有字幕时，导出时自动生成。 */
+  autoCaptions?: boolean;
+  /** 背景音乐：循环铺满全片，人物说话时自动压低，和一键成片同一套处理。 */
+  musicStorageKey?: string;
 }
 /**
  * 交给服务端合成的剪辑清单（由高级编辑的工程转出来，时间单位秒）。
@@ -169,9 +195,20 @@ export interface StudioEditTimeline {
   audios: StudioEditMedia[];
   texts: StudioEditText[];
   captions: StudioEditCaption[];
+  /** 画中画和贴图。 */
+  overlays?: StudioEditOverlay[];
+  /** 时间线上没有字幕时，导出时自动生成。 */
+  autoCaptions?: boolean;
+  /** 背景音乐：循环铺满全片，人物说话时自动压低，和一键成片同一套处理。 */
+  musicStorageKey?: string;
 }
-/** start / end 是在成片里的位置；from 是从素材的第几秒开始取；volume 0–2。 */
-export interface StudioEditMedia { storageKey: string; start: number; end: number; from: number; volume: number }
+/**
+ * start / end 是在成片里的位置；from 是从素材的第几秒开始取；volume 0–2。
+ * speed 播放速度（缺省 1）；fadeIn / fadeOut 开头、结尾淡入淡出的秒数；look 调色预设（saturated | bright | black_white | warm | cool）。
+ */
+export interface StudioEditMedia { storageKey: string; start: number; end: number; from: number; volume: number; speed?: number; fadeIn?: number; fadeOut?: number; look?: string }
+/** 画中画（video）或贴图（image）：x / y 是相对画面中心的偏移（像素），width / height 是显示尺寸。 */
+export interface StudioEditOverlay { kind: "video" | "image"; storageKey: string; start: number; end: number; from?: number; x: number; y: number; width: number; height: number; volume?: number; speed?: number }
 /** x / y 是相对画面中心的偏移（像素）；color 为 #RRGGBB。 */
 export interface StudioEditText { text: string; start: number; end: number; x: number; y: number; fontSize: number; color: string }
 export interface StudioEditCaption { text: string; start: number; end: number }
@@ -201,6 +238,8 @@ export interface StudioCapabilities {
   videoCost: number | null;
   imageModelMode?: "fixed" | "selectable";
   textModelMode?: "fixed" | "selectable";
+  /** 语音识别已开通：自动字幕能从声音生成。没开通时一键成片合成前就说明。 */
+  captionRecognition?: boolean;
   textModels?: { endpointId: string; name: string; isDefault: boolean; supportsVision?: boolean; supportsTools?: boolean; supportsStreaming?: boolean; creditCost?: number; tokenPricing?:StudioTokenPricing; dialogueTokenPricing?:StudioTokenPricing }[];
 }
 export interface StudioAdoptRequest {
@@ -256,6 +295,10 @@ export interface StudioNodeMetadata {
   task?: { status: "running" | "done" | "failed"; stage: string; pct: number; errorCode?: string; errorMessage?: string; logId?: string;
     queue?: import('./ai-model-concurrency').AiGenerationQueuePosition | null };
   workDraft?: StudioWorkDraft;
+  /** 合成时自动生成的字幕：结果说明用它，打开高级编辑时放到时间线上。 */
+  captions?: StudioCaptionResult;
+  /** 成片节点：提交导出的时间，用来在「已导出的成片」里分清哪条最新。 */
+  exportedAt?: string;
   speechDraft?: Omit<StudioSpeechRequest,'clientRequestId'|'nodeId'|'maxCost'>;
   /**
    * Settings the assistant wrote for this image / video draft (create_nodes / update_nodes): what the user said in the
@@ -293,6 +336,8 @@ export interface StudioNodeMetadata {
   /** Display projection of the latest native check run on this node. */
   check?: StudioCheckResult;
   speechRequest?: StudioSpeechRequest;
+  /** 上传时就说明白的用途：music 只出现在背景音乐的选择里，不进「人物声音」。 */
+  audioRole?: "music";
   voiceProfile?: StudioVoiceProfile;
   lipSyncRequest?: StudioLipSyncRequest;
   lipSyncNormalized?: boolean;
