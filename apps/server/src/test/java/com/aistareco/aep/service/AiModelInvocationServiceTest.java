@@ -218,6 +218,20 @@ class AiModelInvocationServiceTest {
         assertEquals(256, ((Number) sent.get("max_tokens")).intValue());
         assertTrue(sent.get("messages") instanceof List<?>);
         assertEquals(2, ((List<?>) sent.get("messages")).size());
+        assertFalse(sent.containsKey("reasoning_effort"), "Unconfigured endpoints retain the provider default");
+    }
+
+    @Test
+    void reasoningSettingCannotBeAppliedToADifferentModel() throws Exception {
+        StubServer server = stub(200, CHAT_OK);
+        var ep = endpoint("reasoning", server.baseUrl(), AiModelProviderType.OPENAI_COMPATIBLE,
+                "claude-sonnet-5-5", "test-key", true);
+        ep.setChatReasoningEffort("low");
+        var error = assertThrows(BusinessException.class, () -> boundSvc(AiModelPurpose.DAP_PERSONA, ep)
+                .invokeChatOnEndpoint(ep, AiModelPurpose.DAP_PERSONA,
+                        List.of(Map.of("role", "user", "content", "写剧本")), Map.of("model", "another-model")));
+        assertEquals("MODEL_MISMATCH_FOR_ENDPOINT", error.getCode());
+        assertTrue(server.requests.isEmpty());
     }
 
     @Test

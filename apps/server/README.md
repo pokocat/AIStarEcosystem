@@ -1381,3 +1381,7 @@ Studio 图片报价为 `POST /api/v1/ip-studio/projects/{id}/{image-quote|studio
 ### 成片自动字幕与声音（2026-11-07，本地未发布）
 
 真源 `docs/studio-final-cut.md`。合成最后一道是 `StudioPackagingService.finish`：叠字幕和品牌文字、统一响度、混背景音乐，画面没变化时视频流直接复制。字幕来源由 `StudioCaptionService` 决定，对时和排版在纯函数 `StudioCaptionAligner`。语音识别用途 `DAP_TRANSCRIBE`（V76 只扩枚举），接口兼容 `POST {base}/audio/transcriptions`、返回带 `segments` 的 `verbose_json`；未绑定时导演台按镜头时间估算，一键成片不加字幕并如实说明，`GET capabilities` 的 `captionRecognition` 告诉前端能不能识别。真语音联调：设 `STUDIO_ASR_E2E_URL` 和 `STUDIO_ASR_E2E_DIR` 跑 `StudioCaptionSpeechE2ETest`。
+
+### 端点思考强度（2026-11-07）
+
+后台模型端点 API 的 `chatReasoningEffort` 是此供应商与固定型号的请求配置（V77 新增可空列 `ai_model_providers.chat_reasoning_effort`），普通聊天、流式收齐与编导 turn 共用，以 `reasoning_effort` 发送并进入既有用量记录的脱敏请求。空值不发送、保持供应商默认；PUT 省略保留、空字符串清空。更换供应商类型、地址或固定型号时，未显式重设就清空，不能把旧型号的验证结论套到新型号。该配置不能被业务 options 覆盖，也不等于关闭思考；不推断别的模型支持同一参数。管理端只接受 none/minimal/low/medium/high/xhigh/max，真实支持须实测确认。

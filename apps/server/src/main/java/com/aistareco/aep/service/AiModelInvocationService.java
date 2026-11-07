@@ -947,6 +947,9 @@ public class AiModelInvocationService {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", model);
         body.put("messages", messages);
+        // Both ordinary calls and agent turns use this body. Callers cannot override the fixed endpoint setting.
+        String reasoningEffort = com.aistareco.aep.model.AiChatReasoningEffort.normalize(e.getChatReasoningEffort());
+        if (reasoningEffort != null) body.put("reasoning_effort", reasoningEffort);
         if (options != null) {
             if (options.get("temperature") != null && supports(e.getChatSupportsTemperature())) {
                 body.put("temperature", options.get("temperature"));
@@ -991,7 +994,8 @@ public class AiModelInvocationService {
         return Boolean.FALSE.equals(endpoint.getChatSupportsTemperature())
                 || Boolean.FALSE.equals(endpoint.getChatSupportsTopP())
                 || Boolean.FALSE.equals(endpoint.getChatSupportsResponseFormat())
-                || endpoint.getChatMaxOutputTokens() != null;
+                || endpoint.getChatMaxOutputTokens() != null
+                || endpoint.getChatReasoningEffort() != null;
     }
 
     private static void clampOutputBudget(Integer cap, Map<String, Object> body) {

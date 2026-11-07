@@ -135,6 +135,7 @@ public class AiModelEndpointAdminService {
                 .chatMaxOutputTokens(req.chatMaxOutputTokens() != null && req.chatMaxOutputTokens() > 0 ? req.chatMaxOutputTokens() : null)
                 .chatSupportsTools(req.chatSupportsTools())
                 .chatSupportsStreaming(req.chatSupportsStreaming())
+                .chatReasoningEffort(com.aistareco.aep.model.AiChatReasoningEffort.normalize(req.chatReasoningEffort()))
                 .imageRequestSpecJson(req.imageRequestSpec() == null ? null : req.imageRequestSpec().json())
                 .videoRequestSpecJson(req.videoRequestSpec() == null ? null : req.videoRequestSpec().json())
                 .assetLibraryId(blankToNull(req.assetLibraryId()))
@@ -183,6 +184,8 @@ public class AiModelEndpointAdminService {
             entity.setUpstreamApiKeyEncrypted(AepCryptoUtil.encrypt(req.apiKey()));
         }
         if (req.apiVersion() != null) entity.setApiVersion(req.apiVersion());
+        // A setting verified for the old supplier/model must not silently follow a supplier/model switch.
+        if (supplierChanged && req.chatReasoningEffort() == null) entity.setChatReasoningEffort(null);
         if (req.model() != null) entity.setModel(req.model());
         if (supplierChanged && req.imageRequestSpec()==null) entity.setImageRequestSpecJson(null);
         if (supplierChanged && req.videoRequestSpec()==null) entity.setVideoRequestSpecJson(null);
@@ -196,6 +199,8 @@ public class AiModelEndpointAdminService {
         if (req.chatMaxOutputTokens() != null) entity.setChatMaxOutputTokens(req.chatMaxOutputTokens() == 0 ? null : req.chatMaxOutputTokens());
         if (req.chatSupportsTools() != null) entity.setChatSupportsTools(req.chatSupportsTools());
         if (req.chatSupportsStreaming() != null) entity.setChatSupportsStreaming(req.chatSupportsStreaming());
+        if (req.chatReasoningEffort() != null)
+            entity.setChatReasoningEffort(com.aistareco.aep.model.AiChatReasoningEffort.normalize(req.chatReasoningEffort()));
         if (req.imageRequestSpec() != null) entity.setImageRequestSpecJson(req.imageRequestSpec().json());
         if (Boolean.TRUE.equals(req.clearImageRequestSpec())) entity.setImageRequestSpecJson(null);
         if (req.videoRequestSpec() != null) entity.setVideoRequestSpecJson(req.videoRequestSpec().json());

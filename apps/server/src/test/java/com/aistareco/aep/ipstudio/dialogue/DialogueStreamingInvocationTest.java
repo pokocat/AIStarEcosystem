@@ -55,6 +55,50 @@ class DialogueStreamingInvocationTest {
 
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void endpointEffortReachesBothStreamingCallPathsAndTheirUsageRecord(boolean turn) throws Exception {
+        var sent = new AtomicReference<Map<?, ?>>();
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            sent.set(OM.readValue(exchange.getRequestBody().readAllBytes(), Map.class));
+            exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
+            exchange.sendResponseHeaders(200, 0);
+            String reply = "data: {\"choices\":[{\"delta\":{\"content\":\"完整脚本\"},\"finish_reason\":\"stop\"}]}\n\n"
+                    + "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5,\"total_tokens\":15}}\n\ndata: [DONE]\n\n";
+            try (var out = exchange.getResponseBody()) { out.write(reply.getBytes(StandardCharsets.UTF_8)); }
+        });
+        server.start();
+        var ep = endpoint(true, false);
+        ep.setChatReasoningEffort("low");
+        var usage = mock(AiModelUsageService.class);
+        var svc = service(usage);
+        var messages = List.of(Map.of("role", "user", "content", "写剧本"));
+        // A caller must not silently restore the slower setting on this fixed endpoint.
+        Map<String, Object> options = Map.of("max_tokens", 4096, "reasoning_effort", "high");
+        if (turn) {
+            var result = svc.invokeChatTurnOnEndpoint(ep, AiModelPurpose.DAP_PERSONA, messages, options, List.of(), delta -> {});
+            assertEquals("完整脚本", result.content());
+        } else {
+            assertEquals("完整脚本", svc.invokeChatOnEndpoint(ep, AiModelPurpose.DAP_PERSONA, messages, options).content());
+        }
+        assertEquals("low", sent.get().get("reasoning_effort"));
+        assertEquals(true, sent.get().get("stream"));
+        assertEquals(4096, ((Number) sent.get().get("max_tokens")).intValue());
+        assertFalse(sent.get().containsKey("thinking"));
+        var observation = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(usage).recordObserved(
+                org.mockito.ArgumentMatchers.eq(ep.getId()), org.mockito.ArgumentMatchers.eq(ep.getName()),
+                org.mockito.ArgumentMatchers.eq(ep.getModel()), org.mockito.ArgumentMatchers.eq("DAP_PERSONA"),
+                org.mockito.ArgumentMatchers.eq(10L), org.mockito.ArgumentMatchers.eq(5L), org.mockito.ArgumentMatchers.eq(15L),
+                org.mockito.ArgumentMatchers.eq(true), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.nullable(String.class),
+                org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(),
+                observation.capture(), org.mockito.ArgumentMatchers.nullable(String.class), org.mockito.ArgumentMatchers.nullable(String.class));
+        assertEquals("low", OM.readTree(observation.getValue()).path("reasoning_effort").asText());
+        org.mockito.Mockito.verify(usage).preserveOutput(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.eq("完整脚本"), org.mockito.ArgumentMatchers.eq("stop"));
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
     void aCompletedReplyWithoutBodyIsAFailedCallAndIsNotRetried(boolean streaming) throws Exception {
         var calls = new java.util.concurrent.atomic.AtomicInteger();
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);

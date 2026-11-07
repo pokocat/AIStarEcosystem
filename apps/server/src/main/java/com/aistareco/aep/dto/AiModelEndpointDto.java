@@ -33,6 +33,7 @@ public record AiModelEndpointDto(
         /** Null-safe false when unknown: tools / streaming are only used when explicitly declared. */
         boolean chatSupportsTools,
         boolean chatSupportsStreaming,
+        String chatReasoningEffort,
         com.aistareco.aep.model.AiImageRequestSpec imageRequestSpec,
         com.aistareco.aep.model.AiVideoRequestSpec videoRequestSpec,
         String assetLibraryId,
@@ -84,6 +85,7 @@ public record AiModelEndpointDto(
                 e.getChatMaxOutputTokens(),
                 Boolean.TRUE.equals(e.getChatSupportsTools()),
                 Boolean.TRUE.equals(e.getChatSupportsStreaming()),
+                e.getChatReasoningEffort(),
                 com.aistareco.aep.model.AiImageRequestSpec.read(e.getImageRequestSpecJson()),
                 com.aistareco.aep.model.AiVideoRequestSpec.read(e.getVideoRequestSpecJson()),
                 e.getAssetLibraryId(),

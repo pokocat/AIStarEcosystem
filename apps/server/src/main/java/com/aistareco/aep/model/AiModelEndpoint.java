@@ -96,6 +96,10 @@ public class AiModelEndpoint {
     @Column(name = "chat_supports_streaming")
     private Boolean chatSupportsStreaming;
 
+    /** Fixed supplier reasoning setting for this endpoint/model; null leaves the provider default. */
+    @Column(name = "chat_reasoning_effort", length = 16)
+    private String chatReasoningEffort;
+
     /** Legal image request limits and canvas-to-wire presets for this fixed supplier model. */
     @Column(name = "image_request_spec_json", columnDefinition = "LONGTEXT")
     private String imageRequestSpecJson;
