@@ -169,6 +169,12 @@ public class AiModelEndpointAdminService {
         boolean supplierChanged=(req.providerType()!=null && AiModelProviderType.fromWire(req.providerType())!=entity.getProviderType())
                 || (req.baseUrl()!=null && !req.baseUrl().equals(entity.getBaseUrl()))
                 || (req.model()!=null && !req.model().equals(entity.getModel()));
+        // 素材库属于供应商账号：换型号不影响；换地址或供应商类型可能换了账号，要明确说保留还是解除，不能悄悄改回签名链接。
+        boolean accountChanged=(req.providerType()!=null && AiModelProviderType.fromWire(req.providerType())!=entity.getProviderType())
+                || (req.baseUrl()!=null && !req.baseUrl().equals(entity.getBaseUrl()));
+        boolean videoSpecGone=Boolean.TRUE.equals(req.clearVideoRequestSpec()) || (supplierChanged && req.videoRequestSpec()==null);
+        if (accountChanged && !videoSpecGone && req.assetLibraryId()==null && entity.getAssetLibraryId()!=null)
+            throw BusinessException.badRequest("VIDEO_ASSET_LIBRARY_INVALID","这个模型绑定了素材库，更换地址或供应商类型时要明确保留或解除绑定");
         if (req.concurrencyLimit() != null) entity.setConcurrencyLimit(req.concurrencyLimit() == 0 ? null : req.concurrencyLimit());
         if (req.name() != null) entity.setName(req.name());
         if (req.providerType() != null) entity.setProviderType(AiModelProviderType.fromWire(req.providerType()));
@@ -194,8 +200,8 @@ public class AiModelEndpointAdminService {
         if (Boolean.TRUE.equals(req.clearImageRequestSpec())) entity.setImageRequestSpecJson(null);
         if (req.videoRequestSpec() != null) entity.setVideoRequestSpecJson(req.videoRequestSpec().json());
         if (Boolean.TRUE.equals(req.clearVideoRequestSpec())) entity.setVideoRequestSpecJson(null);
-        // 换了供应商或清了规格，原来的素材库就不一定对得上了，除非这次明确指定。
-        if ((supplierChanged || Boolean.TRUE.equals(req.clearVideoRequestSpec())) && req.assetLibraryId()==null) entity.setAssetLibraryId(null);
+        // 视频规格没了，素材库也用不了了；其余情况不带这个字段就是不改。
+        if (videoSpecGone && req.assetLibraryId()==null) entity.setAssetLibraryId(null);
         if (req.assetLibraryId() != null) entity.setAssetLibraryId(blankToNull(req.assetLibraryId()));
         entity.setRpmLimit(req.rpmLimit() != null && req.rpmLimit() > 0 ? req.rpmLimit() : null);
         entity.setTpmLimit(req.tpmLimit() != null && req.tpmLimit() > 0 ? req.tpmLimit() : null);

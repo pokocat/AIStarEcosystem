@@ -88,14 +88,39 @@ class AiModelEndpointAssetLibraryTest {
     }
 
     @Test
-    void changingTheSupplierDropsTheBindingUnlessItIsSentAgain() throws Exception {
+    void changingTheModelKeepsTheBindingBecauseTheLibraryBelongsToTheAccount() throws Exception {
         endpoint.setAssetLibraryId("onetoken-main");
-        save("{\"baseUrl\":\"https://other.example\",\"videoRequestSpec\":" + spec("seedance").json() + "}");
-        assertNull(endpoint.getAssetLibraryId());
-
-        endpoint.setAssetLibraryId("onetoken-main");
-        save("{\"baseUrl\":\"https://third.example\",\"videoRequestSpec\":" + spec("seedance").json() + ",\"assetLibraryId\":\"onetoken-main\"}");
+        save("{\"model\":\"seedance-2.0\",\"videoRequestSpec\":" + spec("seedance").json() + "}");
+        assertEquals("seedance-2.0", endpoint.getModel());
         assertEquals("onetoken-main", endpoint.getAssetLibraryId());
+    }
+
+    @Test
+    void changingTheAddressMustSayWhetherToKeepTheBinding() throws Exception {
+        endpoint.setAssetLibraryId("onetoken-main");
+        String newAddress = "\"baseUrl\":\"https://other.example\",\"videoRequestSpec\":" + spec("seedance").json();
+
+        var error = assertThrows(BusinessException.class, () -> save("{" + newAddress + "}"));
+        assertEquals("VIDEO_ASSET_LIBRARY_INVALID", error.getCode());
+        assertEquals("https://vendor.example", endpoint.getBaseUrl(), "拒绝时什么都不改");
+        assertEquals("onetoken-main", endpoint.getAssetLibraryId());
+        verify(repo, never()).save(any(AiModelEndpoint.class));
+
+        save("{" + newAddress + ",\"assetLibraryId\":\"onetoken-main\"}");
+        assertEquals("https://other.example", endpoint.getBaseUrl());
+        assertEquals("onetoken-main", endpoint.getAssetLibraryId());
+
+        save("{\"baseUrl\":\"https://third.example\",\"videoRequestSpec\":" + spec("seedance").json() + ",\"assetLibraryId\":\"\"}");
+        assertEquals("https://third.example", endpoint.getBaseUrl());
+        assertNull(endpoint.getAssetLibraryId());
+    }
+
+    @Test
+    void changingTheSupplierWithoutANewSpecDropsTheSpecAndTheBindingTogether() throws Exception {
+        endpoint.setAssetLibraryId("onetoken-main");
+        save("{\"baseUrl\":\"https://other.example\"}");
+        assertNull(endpoint.getVideoRequestSpecJson());
+        assertNull(endpoint.getAssetLibraryId());
     }
 
     @Test
