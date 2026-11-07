@@ -1376,3 +1376,7 @@ Studio 图片报价为 `POST /api/v1/ip-studio/projects/{id}/{image-quote|studio
 ### Studio 视频页任务（2026-11-06，本地实现，未发布）
 
 `StudioVideoTaskService` 复用原生执行表与模型生成链，对普通视频、分段长视频与复刻提供统一报价、受理、列表和详情。元数据保存在 `ip_plan_execution.steps_json.videoTask`，无新表或独立计费账本；旧任务通过只读投影兼容。复刻分析完成后在已批准的总费用上限内动态接续制作。新视频页步骤总共最多自动尝试三次；不明受理和原文保留不能触发盲目重做。画布修复成功后，明确继续可采纳同一输出节点的本人成功任务，并保留已有成功步骤。契约见 OpenAPI 的 `video-tasks` 与 `specs/BUSINESS_RULES.md`。
+
+### 成片自动字幕与声音（2026-11-07，本地未发布）
+
+真源 `docs/studio-final-cut.md`。合成最后一道是 `StudioPackagingService.finish`：叠字幕和品牌文字、统一响度、混背景音乐，画面没变化时视频流直接复制。字幕来源由 `StudioCaptionService` 决定，对时和排版在纯函数 `StudioCaptionAligner`。语音识别用途 `DAP_TRANSCRIBE`（V75 只扩枚举），接口兼容 `POST {base}/audio/transcriptions`、返回带 `segments` 的 `verbose_json`；未绑定时导演台按镜头时间估算，一键成片不加字幕并如实说明，`GET capabilities` 的 `captionRecognition` 告诉前端能不能识别。真语音联调：设 `STUDIO_ASR_E2E_URL` 和 `STUDIO_ASR_E2E_DIR` 跑 `StudioCaptionSpeechE2ETest`。

@@ -38,6 +38,7 @@ export type AiModelPurpose =
   | "DAP_VIDEO"
   | "DAP_AUDIO"
   | "DAP_LIP_SYNC"
+  | "DAP_TRANSCRIBE"
   | "DAP_REAL_AVATAR"
   | "MUSIC_GENERATION"
   | "GENERAL";

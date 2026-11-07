@@ -10,7 +10,7 @@ export const studioEntries = {
   video: { title: '视频创作', description: '描述画面，或从一张首帧开始' },
   script: { title: '剧本创编', description: '原创、改编与分集剧本' },
   director: { title: '分镜讨论', description: '与助手讨论镜头语言、节奏与分镜方案' },
-  work: { title: '成片编辑', description: '片段排序、配音、字幕与合成' },
+  work: { title: '制作成片', description: '片段排序、配音、字幕与导出' },
   commerce: { title: 'IP 商品视频', description: '人物与商品、卖点、脚本和成片' },
   speech: { title: '人物配音', description: '选择人物声音，编辑台词并试听' },
   lip: { title: '数字人口型', description: '用视频和配音驱动人物口型' },

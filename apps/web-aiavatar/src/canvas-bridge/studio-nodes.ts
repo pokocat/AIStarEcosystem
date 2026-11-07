@@ -11,7 +11,7 @@ import { markStudioMediaFit, runAspectRatio } from "./studio-media-fit";
 
 export function makeStudioNode(operation: StudioOperation, origin?: CanvasNodeData): CanvasNodeData {
   const type = operation === "image" ? CanvasNodeType.Image : ["video", "assemble"].includes(operation) ? CanvasNodeType.Video : CanvasNodeType.Text;
-  const title = operation==="video"&&origin?.metadata?.studio?.shot?`${origin.title} · 视频`:{ text: "文本", script: "新剧本", storyboard: "分镜草案", image: "形象图片", video: "视频片段", assemble: "合成作品", assistant: "导演对话", recreation: "全片创作拆解" }[operation];
+  const title = operation==="video"&&origin?.metadata?.studio?.shot?`${origin.title} · 视频`:{ text: "文本", script: "新剧本", storyboard: "分镜草案", image: "形象图片", video: "视频片段", assemble: "成片", assistant: "导演对话", recreation: "全片创作拆解" }[operation];
   const studio: StudioNodeMetadata = { kind: operation === "recreation" ? "recreation" : operation === "text" ? "text" : operation === "assistant" ? "assistant" : operation === "assemble" ? "work" : ["image", "video"].includes(operation) ? "shot" : "script", includeInWork: operation === "video", episodeNo:["image","video"].includes(operation)?studioNodeEpisode(origin):undefined,order:operation==="video"?origin?.metadata?.studio?.order:undefined };
   return { id: nanoid(), type, title, width: type === CanvasNodeType.Text ? 480 : 320, height: type === CanvasNodeType.Text ? 300 : 400,
     position: { x: origin ? origin.position.x + origin.width + 90 : 100, y: origin?.position.y ?? 120 },
@@ -51,6 +51,7 @@ export function applyStudioRun(node: CanvasNodeData, run: IpRun): CanvasNodeData
   metadata.studio = { ...metadata.studio!, runId: run.id, mock: run.output.mock,
     task: { status: run.status, stage: run.stage, pct: run.pct, errorCode:run.errorCode,errorMessage:run.errorMessage,logId:run.logId||run.output.logId, queue: run.status==='running'?run.queue:null } };
   if(run.output.lipSyncNormalized)metadata.studio.lipSyncNormalized=true;
+  if(run.output.captions)metadata.studio.captions=run.output.captions;
   if(metadata.studio.episodeNo===undefined)metadata.studio.episodeNo=studioNodeEpisode(node);
   if (run.output.videoCandidates?.length) {
     const incoming=run.output.videoCandidates.map(candidate=>({

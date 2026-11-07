@@ -109,6 +109,24 @@ export interface DirectorExport {
   createdAt: string;
   /** 导出时用的每个片段视频版本；和现在采用的不一致就说明成片是旧的。 */
   clips: Array<{ clipId: string; candidateId: string }>;
+  /** 这次要不要字幕（老记录没有这个字段）。 */
+  captions?: boolean;
+  /** 字幕的来源：recognized = 时间来自语音识别；estimated = 时间按镜头估算；no_lines = 没有台词；no_speech = 没听到人声。 */
+  captionStatus?: "recognized" | "estimated" | "no_lines" | "no_speech" | "unavailable" | "manual";
+  captionCount?: number;
+  quality?: "720p" | "1080p";
+  musicStorageKey?: string;
+  musicName?: string;
+}
+
+/** 整集导出的选项。 */
+export interface DirectorExportOptions {
+  captions: boolean;
+  quality?: "720p" | "1080p";
+  musicStorageKey?: string;
+  musicName?: string;
+  /** 开始导出时把本集还没确认的视频一并确认（对话框里写明了）。 */
+  confirmPending?: boolean;
 }
 
 export interface DirectorPlannedClip {

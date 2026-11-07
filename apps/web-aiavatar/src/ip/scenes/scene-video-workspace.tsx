@@ -29,7 +29,7 @@ export function videoTaskPhases(task: StudioVideoTask) {
     { key: 'script', label: '写分镜脚本', match: (s: StudioPlanExecutionStep) => s.operation === 'text' },
     { key: 'boards', label: '生成分镜图', match: (s: StudioPlanExecutionStep) => s.operation === 'image' || s.operation === 'check' },
     { key: 'videos', label: task.kind === 'direct' ? '生成视频' : '生成片段', match: (s: StudioPlanExecutionStep) => s.operation === 'video' },
-    { key: 'film', label: '合成成片', match: (s: StudioPlanExecutionStep) => s.operation === 'assemble' },
+    { key: 'film', label: '导出成片', match: (s: StudioPlanExecutionStep) => s.operation === 'assemble' },
   ];
   if (!task.execution) return [{ key: 'videos', label: '生成视频', done: task.run?.status === 'done' ? 1 : 0, total: 1, state: task.run?.status === 'done' ? 'done' : task.run?.status === 'failed' ? 'failed' : 'running' }];
   return groups.flatMap(group => {

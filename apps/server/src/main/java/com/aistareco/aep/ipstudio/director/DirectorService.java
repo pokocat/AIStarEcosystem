@@ -1132,7 +1132,7 @@ public class DirectorService {
             }
             case "video" -> { return video(userId, w, c, find(c, "clips", targetId, "这个片段"), requestId, pipeline, billing, maxCost, o.path("promptChoice").asText(null)); }
             case "video-prompt" -> { return reoptimize(userId, w, c, find(c, "clips", targetId, "这个片段"), requestId, billing); }
-            case "export" -> { return export(userId, w, c, targetId, requestId); }
+            case "export" -> { return export(userId, w, c, targetId, requestId, o); }
             default -> throw invalid("不支持的生成");
         }
         requireIdle(w, nodeId);
@@ -1832,7 +1832,8 @@ public class DirectorService {
 
     // ── 整集导出 ─────────────────────────────────────────────────────────────
 
-    private String export(String userId, DirectorWork w, ObjectNode c, String episodeId, String requestId) {
+    /** options：captions（默认带字幕）、quality（720p / 1080p，缺省跟随片段）、musicStorageKey（背景音乐）。 */
+    private String export(String userId, DirectorWork w, ObjectNode c, String episodeId, String requestId, JsonNode options) {
         ObjectNode ep = find(c, "episodes", episodeId, "这一集");
         List<JsonNode> clips = new ArrayList<>();
         for (JsonNode clip : c.path("clips")) if (episodeId.equals(clip.path("episodeId").asText())) clips.add(clip);
@@ -1850,17 +1851,35 @@ public class DirectorService {
         }
         if (!missing.isEmpty()) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_EXPORT_INCOMPLETE",
                 "缺少视频：" + String.join("、", missing) + "。整集导出需每个片段均有采用的视频");
-        if (!unconfirmed.isEmpty()) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_EXPORT_UNCONFIRMED",
+        // 导出对话框写明了「将一并确认」，用户点了开始导出才带 confirmPending；不带时仍按原规则拒绝。
+        boolean confirmPending = options != null && options.path("confirmPending").asBoolean(false);
+        if (!unconfirmed.isEmpty() && !confirmPending) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_EXPORT_UNCONFIRMED",
                 "待确认视频：" + String.join("、", unconfirmed) + "。确认后可导出");
         String node = "export:" + episodeId;
         requireIdle(w, node);
+        if (confirmPending) for (JsonNode clip : clips) if ("auto".equals(clip.path("video").path("adoptedBy").asText())) ((ObjectNode) clip.path("video")).put("adoptedBy", "user");
         ObjectNode input = om.createObjectNode().put("operation", "assemble").put("mock", fixtures.enabled())
                 .put("aspectRatio", c.path("settings").path("aspectRatio").asText("9:16"));
         ArrayNode references = input.putArray("references");
         keys.forEach(k -> references.addObject().put("role", "clip").put("storageKey", k));
+        boolean captions = options == null || options.path("captions").asBoolean(true);
+        String quality = options == null ? null : options.path("quality").asText(null);
+        if (quality != null && !Set.of("720p", "1080p").contains(quality)) throw invalid("清晰度只能选 720P 或 1080P");
+        String music = options == null ? null : options.path("musicStorageKey").asText(null);
+        if (music != null && !music.isBlank()) projects.requireOwnedAssetKey(userId, music); else music = null;
+        ObjectNode packaging = input.putObject("packaging").put("autoCaptions", captions);
+        if (quality != null) packaging.put("quality", quality);
+        if (music != null) packaging.put("musicStorageKey", music);
+        if (captions) packaging.set("knownClips", DirectorCaptions.knownClips(om, clips));
         String runId = newTx.execute(tx -> workflowRun(userId, w.getId(), node, requestId, "studio-assemble", input));
         ObjectNode entry = c.withArray("exports").addObject().put("id", runId).put("episodeId", episodeId).put("episodeNo", ep.path("no").asInt())
-                .put("status", "running").put("createdAt", Instant.now().toString());
+                .put("status", "running").put("createdAt", Instant.now().toString()).put("captions", captions);
+        if (quality != null) entry.put("quality", quality);
+        if (music != null) {
+            // 记下来，下次打开导出对话框不用重新上传。
+            String musicName = options.path("musicName").asText("背景音乐");
+            entry.put("musicStorageKey", music).put("musicName", musicName.length() > 120 ? musicName.substring(0, 120) : musicName);
+        }
         entry.putNull("key"); entry.putNull("durationSec"); entry.putNull("error");
         entry.set("clips", used);
         track(c, null, runId, om.createObjectNode().put("node", node));
@@ -1873,8 +1892,14 @@ public class DirectorService {
             ObjectNode entry = (ObjectNode) e;
             if (IpRun.STATUS_DONE.equals(run.getStatus()) && output.path("storageKey").isTextual()) {
                 entry.put("status", "done").put("key", output.path("storageKey").asText()).put("durationSec", output.path("durationSec").asDouble());
+                if (output.path("captions").path("status").isTextual()) {
+                    entry.put("captionStatus", output.path("captions").path("status").asText());
+                    entry.put("captionCount", output.path("captions").path("cues").size());
+                }
+                notice(c, "第 " + entry.path("episodeNo").asInt() + " 集已导出，可以观看和下载。");
             } else {
-                entry.put("status", "failed").put("error", run.getErrorMessage() == null ? "合成失败，请重试" : run.getErrorMessage());
+                entry.put("status", "failed").put("error", run.getErrorMessage() == null ? "导出失败，请重试" : run.getErrorMessage());
+                notice(c, "第 " + entry.path("episodeNo").asInt() + " 集导出失败，片段不受影响，可以重新导出。");
             }
         }
     }
@@ -3202,6 +3227,12 @@ public class DirectorService {
     public StudioMediaImportService.MediaImportResult uploadAudio(String userId, String id, org.springframework.web.multipart.MultipartFile file) {
         owned(userId, id);
         return mediaImport.uploadReferenceAudio(userId, file);
+    }
+
+    /** 导出成片用的背景音乐：和声音样本不同，长度不限制在几秒之内。 */
+    public StudioMediaImportService.MediaImportResult uploadMusic(String userId, String id, org.springframework.web.multipart.MultipartFile file) {
+        owned(userId, id);
+        return mediaImport.upload(userId, file, "audio");
     }
 
     // ── 一键连跑 ─────────────────────────────────────────────────────────────

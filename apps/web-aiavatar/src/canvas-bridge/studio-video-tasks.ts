@@ -32,7 +32,7 @@ export const videoTaskCanRegenerate = (task: StudioVideoTask) => !!task.executio
 export const videoTaskProblemStep = (task: StudioVideoTask) => task.execution?.steps.find(s => s.status === 'failed' || s.status === 'needs_user');
 export function videoTaskProblemTitle(step: StudioPlanExecutionStep) {
   const named = /^第/.test(step.title) ? step.title : undefined;
-  const name = step.operation === 'recreation' ? '参考视频分析' : step.operation === 'text' ? '分镜脚本' : step.operation === 'assemble' ? '成片合成'
+  const name = step.operation === 'recreation' ? '参考视频分析' : step.operation === 'text' ? '分镜脚本' : step.operation === 'assemble' ? '导出成片'
     : named ?? (step.operation === 'video' ? '视频' : '分镜图');
   return `${name}没有完成`;
 }

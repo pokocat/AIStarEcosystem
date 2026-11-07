@@ -166,6 +166,7 @@ export interface IpRunOutput {
   /** Native check run: verdicts on the target run's real media. */
   check?: import("./ip-studio-workflow").StudioCheckResult;
   sourceAudio?: import("./ip-studio-workflow").StudioSourceAudio;
+  captions?: import("./ip-studio-workflow").StudioCaptionResult;
   scriptRevision?: { markdown: string; summary: string };
   textRevision?: { content: string; summary: string };
   shots?: import("./ip-studio-workflow").StudioShot[];

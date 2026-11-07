@@ -11,11 +11,11 @@ afterEach(cleanup);
 const slot = { candidates: [], adoptedId: null, adoptedBy: null, pending: [], error: null };
 const clip: any = { id: "cl1", title: "通道对话", durationSec: 12, issues: [], unvoiced: [], shots: [], assetIds: [],
   board: { candidates: [{ id: "b1", key: "k" }], adoptedId: "b1", adoptedBy: "user" }, video: slot, videoPromptRewrite: "needed" };
-const work = (tasks: any[] = []): any => ({ id: "w1", tasks, pricing: { mock: false }, videoLimits: { mode: "omni" } });
+const work = (tasks: any[] = []): any => ({ id: "w1", tasks, assets: [], pricing: { mock: false }, videoLimits: { mode: "omni" } });
 
 test("the price is the video only and says the prompt rewrite is billed by usage", () => {
   render(<ClipVideo work={work()} clip={clip} quote={{ credits: 480, error: null }} apply={vi.fn()} setError={vi.fn()}/>);
-  expect(screen.getByText(/12 秒，约 480 积分。优化提示词按实际用量另计。/)).toBeTruthy();
+  expect(screen.getByText(/12 秒，约 480 积分，优化另需少量积分/)).toBeTruthy();
 });
 
 test("no rewrite note once the English prompt is ready", () => {
@@ -33,18 +33,18 @@ test("a draft with notes asks which prompt to use instead of generating straight
   const reviewed = { ...clip, videoPromptRewrite: "review", videoPromptEn: { at: "2026-10-27T01:00:00Z", text: "subject_definitions: ...", usable: true,
     warnings: ["第 3 句台词「难受？」模型漏了，已补在第 2 镜末尾"] } };
   render(<ClipVideo work={work()} clip={reviewed} quote={{ credits: 480, error: null }} apply={vi.fn()} setError={vi.fn()}/>);
-  expect(screen.getByText("优化稿有需要注意的问题")).toBeTruthy();
+  expect(screen.getByText("AI 优化后的版本有几处需要留意")).toBeTruthy();
   expect(screen.getByText("第 3 句台词「难受？」模型漏了，已补在第 2 镜末尾")).toBeTruthy();
   expect((screen.getByRole("button", { name: /生成片段视频/ }) as HTMLButtonElement).disabled).toBe(true);
-  expect(screen.getByRole("button", { name: "用优化稿生成" })).toBeTruthy();
-  expect(screen.getByRole("button", { name: "用原文生成" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "用优化后的版本（推荐）" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "用原来的版本" })).toBeTruthy();
 });
 
 test("the original Chinese is always one click away and the choice is sent with the task", async () => {
   vi.mocked(DirectorApi.quote).mockResolvedValue({ items: [{ clipId: "cl1", credits: 480, error: null }] } as never);
   vi.mocked(DirectorApi.runTask).mockResolvedValue({} as never);
   render(<ClipVideo work={work()} clip={clip} quote={{ credits: 480, error: null }} apply={vi.fn()} setError={vi.fn()}/>);
-  fireEvent.click(screen.getByRole("button", { name: "按原文生成" }));
+  fireEvent.click(screen.getByRole("button", { name: "不优化，直接生成" }));
   await vi.waitFor(() => expect(DirectorApi.runTask).toHaveBeenCalled());
   expect(vi.mocked(DirectorApi.runTask).mock.calls[0][1]).toMatchObject({ type: "video", targetId: "cl1", options: { promptChoice: "original" } });
 });
@@ -55,8 +55,8 @@ test("a draft that is too long can be re-optimised, which only writes a new draf
   const tooLong = { ...clip, videoPromptRewrite: "review", videoPromptEn: { at: "2026-10-31T05:03:03Z", text: "subject_definitions: ...", usable: false,
     warnings: ["优化稿超过 7000 字符，H3 收不下，请重新优化或按原文生成"] } };
   render(<ClipVideo work={work()} clip={tooLong} quote={{ credits: 480, error: null }} apply={vi.fn()} setError={vi.fn()}/>);
-  expect(screen.getByText("优化稿过长，超出视频模型限制")).toBeTruthy();
-  expect(screen.queryByRole("button", { name: "用优化稿生成" })).toBeNull();
+  expect(screen.getByText("AI 优化后的版本太长，无法使用")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "用优化后的版本（推荐）" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "重新优化" }));
   await vi.waitFor(() => expect(DirectorApi.runTask).toHaveBeenCalled());
   const body = vi.mocked(DirectorApi.runTask).mock.calls[0][1];

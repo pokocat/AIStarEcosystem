@@ -8,7 +8,7 @@ type TaskInputs = IpRun['inputs'] & Partial<StudioRunRequest> & {
 };
 const operations: Record<string, string> = {
   recreation: '解析视频 · 全片拆解', text: '修改正文', script: '创作剧本', storyboard: '拆分镜头', image: '生成图片',
-  video: '生成视频', assemble: '合成作品', audio: '生成配音', 'lip-sync': '口型同步',
+  video: '生成视频', assemble: '导出成片', audio: '生成配音', 'lip-sync': '口型同步',
   'asset-extract': '提取资产', adopt: '保存 IP 形象', identity: '生成角色设定', generate: '生成图片',
 };
 const clean = (text?: string) => text?.replace(/\s+/g, ' ').trim() || '';

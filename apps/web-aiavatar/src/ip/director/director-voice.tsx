@@ -61,7 +61,7 @@ export function VoiceDialog({ work, asset, apply, onClose }: { work: DirectorWor
   }, setError);
   return <div className="director-dialog-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && !busy && onClose()}>
     <div className="director-dialog director-voice-dialog" role="dialog" aria-modal="true" aria-labelledby="director-voice-dialog-title" ref={dialogFocus} tabIndex={-1}>
-      <header><h2 id="director-voice-dialog-title">角色音色</h2><button type="button" aria-label="关闭" onClick={onClose} disabled={!!busy}><X size={18}/></button></header>
+      <header><h2 id="director-voice-dialog-title">{asset.name}的音色</h2><button type="button" aria-label="关闭" onClick={onClose} disabled={!!busy}><X size={18}/></button></header>
       <div className="director-field"><span>角色</span><p className="director-voice-name">{asset.name}</p></div>
       <label className="director-field"><span>音色描述</span>
         <textarea rows={3} maxLength={200} value={desc} onChange={e => setDesc(e.target.value)} placeholder="例如：女声，青年音色，语调中偏低，温柔清晰"/>
@@ -85,7 +85,7 @@ export function VoiceDialog({ work, asset, apply, onClose }: { work: DirectorWor
         <input ref={file} type="file" disabled={!!busy} accept="audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a,.mp3,.wav,.m4a" hidden onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; if (f) setPending({ kind: "file", file: f }); }}/>
       </div>
       <InlineError message={error}/>
-      <footer><button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={onClose}>取消</button>
+      <footer>{!dirty && !busy && <small className="director-muted director-voice-save-hint">填写描述或选择音频后可以保存</small>}<button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={onClose}>取消</button>
         <button type="button" className="ip-brand-button" disabled={!!busy || !dirty} onClick={save}>{busy ? "保存中" : "保存音色"}</button></footer>
     </div>
     {picking && <VoiceLibrary onClose={() => setPicking(false)} onPick={p => { setPending({ kind: "library", profile: p }); setPicking(false); }}/>}

@@ -23,7 +23,7 @@ import type { IpRun } from "@ai-star-eco/types";
 import type { StudioCapabilities, StudioIpAsset, StudioIpAssetRole, StudioVoiceProfile, StudioOperation, StudioReference, StudioRunRequest, StudioScript, StudioScriptSettings, StudioPlan, StudioNodeMetadata } from "@ai-star-eco/types/ip-studio-workflow";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "@/canvas/types/canvas";
 import { applyStudioRun, applyStudioRunToDocument, makeStudioNode, retainStudioMediaVersions, adoptStudioTake, studioGenerationPending, dispatchStudioCommand } from "@/canvas-bridge/studio-nodes";
-import { adoptStudioImage, listStudioIpAssets, listStudioIps, readStudioProject, studioCapabilities, submitStudioRun } from "@/canvas-bridge/studio-api";
+import { importStudioMedia, adoptStudioImage, listStudioIpAssets, listStudioIps, readStudioProject, studioCapabilities, submitStudioRun } from "@/canvas-bridge/studio-api";
 import { markStudioDescendants, reorderStudioClips, studioNodeEpisode, studioNodeReferences, studioScriptPrompt, studioScriptInput, studioShotNodes } from "@/canvas-bridge/studio-script";
 import { readRun, cancelRun, fetchModels, fetchStudioVideoModels, type IpModels } from "@/canvas-bridge/api";
 import { studioQueueNotice, studioTaskLabel, studioTaskQueued } from '@/canvas-bridge/studio-task-status';
@@ -52,7 +52,8 @@ import { computeVideoSize } from "@/canvas/lib/media-size";
 import { saveStudioDocument } from "@/canvas-bridge/studio-save";
 import { downloadMedia } from "@/canvas-bridge/download-media";
 import { SignedImage } from "@/canvas-bridge/signed-image";
-import { parseStudioCaptions, studioWorkDraft, updateStudioWorkDraft } from "@/canvas-bridge/studio-packaging";
+import { studioPackagingOf, studioWorkDraft, updateStudioWorkDraft } from "@/canvas-bridge/studio-packaging";
+import { toEditTimeline } from "@/canvas-bridge/studio-edit-timeline";
 import { StudioScriptSettingsForm } from "./studio-script-settings";
 import { StudioScriptEditor } from "./studio-script-editor";
 import { StudioDocumentEditor } from "./studio-document-editor";
@@ -73,7 +74,7 @@ import { StudioWorkEditor } from "./studio-work-editor";
 import dynamic from "next/dynamic";
 import { createPortal } from "react-dom";
 import { useLayoutMode } from "@/shell/layout-mode";
-import type { StudioAdvancedEdit, StudioEditTimeline } from "@ai-star-eco/types/ip-studio-workflow";
+import type { StudioAdvancedEdit, StudioEditTimeline, StudioPackaging } from "@ai-star-eco/types/ip-studio-workflow";
 import { studioClipEpisode, studioClipIncluded, studioSourceClipIds } from "@/canvas-bridge/studio-work-clips";
 import { StudioIpLibrary } from "./studio-ip-library";
 import { StudioMaterialLibrary } from './studio-material-library';
@@ -93,7 +94,7 @@ const containers = () => document.querySelector<HTMLElement>(".ip-surface") || d
 // 高级编辑（Twick）只有点开才下载：它带着播放器、时间线和导出引擎，体积不小。
 const StudioAdvancedEditor = dynamic(() => import("./studio-advanced-editor").then(m => m.StudioAdvancedEditor), { ssr: false,
   loading: () => <div className="studio-advanced-shell studio-advanced-loading" role="status">正在打开高级编辑…</div> });
-const labels = { recreation: "解析视频", text: "AI 修改文本", script: "创作剧本", storyboard: "拆分镜头", image: "生成图片", video: "生成视频", assemble: "合成作品", assistant: "导演对话" };
+const labels = { recreation: "解析视频", text: "AI 修改文本", script: "创作剧本", storyboard: "拆分镜头", image: "生成图片", video: "生成视频", assemble: "导出成片", assistant: "导演对话" };
 const legacyBatchCounts=[1,2,4];
 function imageRatioLabel(ratio:string){
   const [width,height]=ratio.split(":").map(Number);
@@ -264,7 +265,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const patch = useCallback((id: string, update: (node: CanvasNodeData) => CanvasNodeData) => setNodes(current => current.map(n => n.id === id ? update(n) : n)), [setNodes]);
   const workEpisode=episodeFilter==='all'?undefined:episodeFilter;
   const workDraft=studioWorkDraft(nodes,workEpisode);
-  const {packagingEnabled,brand,title:workTitle,cta,captionText,voiceoverStorageKey:voiceoverKey}=workDraft;
+  const {packagingEnabled,brand,title:workTitle,cta,voiceoverStorageKey:voiceoverKey}=workDraft;
   const changeWorkDraft=(changes:Partial<typeof workDraft>)=>{const id=nanoid();setNodes(current=>updateStudioWorkDraft(current,changes,id,workEpisode));};
   const saveWork=async(nextMode?:typeof mode)=>{
     if(workSaving)return;setWorkSaving(true);
@@ -776,7 +777,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   /** 一键成片：按勾选的片段顺序拼。带着 edit（高级编辑的时间线）时按时间线合成，品牌文字和字幕已经在时间线里。返回是否已提交。 */
   const assemble = async (edit?: StudioEditTimeline): Promise<boolean> => {
     if(!edit&&workVoiceMissing){message.error('原配音已移出画布，请重新选择配音或保留原音轨');return false;}
-    if(!edit&&packagingEnabled){try{parseStudioCaptions(captionText);if(!brand.trim()&&!workTitle.trim()&&!cta.trim()&&!captionText.trim())throw new Error("请填写品牌文字或字幕");}catch(e){message.error(e);return false;}}
+    let oneClickPackaging:StudioPackaging|undefined;
+    if(!edit){try{if(packagingEnabled&&!brand.trim()&&!workTitle.trim()&&!cta.trim())throw new Error("请填写品牌、标题或结尾提示，或取消添加文字");oneClickPackaging=studioPackagingOf(workDraft,capabilities?.captionRecognition);}catch(e){message.error(e);return false;}}
     const editKeys=edit?[...new Set(edit.clips.map(c=>c.storageKey))]:[];
     const editAudioKeys=edit?new Set(edit.audios.map(a=>a.storageKey)):new Set<string>();
     const selectedClips = edit ? editKeys.flatMap(key=>nodes.find(n=>n.metadata?.storageKey===key&&n.metadata.studio?.kind!=='work')??[]) : clips.filter(n => studioClipIncluded(n,sourceClipIds));
@@ -787,10 +789,10 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       episodeNo:episodeFilter==="all"?undefined:episodeFilter,aspectRatio:workDraft.aspectRatio,
       ...(edit?{references:editKeys.map(storageKey=>({storageKey,role:"clip" as const})),edit}
         :{references:selectedClips.map(n => ({storageKey:n.metadata!.storageKey!,role:"clip" as const,ipId:n.metadata?.studio?.references?.find(r=>r.ipId)?.ipId})),
-          ...((packagingEnabled||voiceoverKey)?{packaging:{...(packagingEnabled?{brand:brand.trim(),title:workTitle.trim(),cta:cta.trim(),captions:parseStudioCaptions(captionText)}:{}),voiceoverStorageKey:voiceoverKey}}:{})}) };
-    target.metadata={...target.metadata,status:"loading",studio:{kind:"work",request,references:request.references,episodeNo:request.episodeNo}};addNode(target);
+          ...(oneClickPackaging?{packaging:oneClickPackaging}:{})}) };
+    target.metadata={...target.metadata,status:"loading",studio:{kind:"work",request,references:request.references,episodeNo:request.episodeNo,exportedAt:new Date().toISOString()}};addNode(target);
     const voiceNodes=edit?nodes.filter(n=>n.type===CanvasNodeType.Audio&&n.metadata?.storageKey&&editAudioKeys.has(n.metadata.storageKey))
-      :voiceoverKey?nodes.filter(n=>n.type===CanvasNodeType.Audio&&n.metadata?.storageKey===voiceoverKey).slice(0,1):[];
+      :nodes.filter(n=>n.type===CanvasNodeType.Audio&&n.metadata?.storageKey&&(n.metadata.storageKey===voiceoverKey||n.metadata.storageKey===workDraft.musicStorageKey));
     setConnections(current => [...current,...[...selectedClips,...voiceNodes].map(n=>({id:nanoid(),fromNodeId:n.id,toNodeId:target.id}))]);
     try {
       await saveStudioDocument(projectId);if(epoch.current!==submissionEpoch)return false;
@@ -800,7 +802,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     } catch(e){
       if(epoch.current!==submissionEpoch)return false;
       const rejected=!posted||e instanceof ApiError&&typeof e.status==="number"&&e.status>=400&&e.status<500&&e.status!==408;
-      patch(target.id,n=>({...n,metadata:{...n.metadata,...studioErrorMetadata(e),status:rejected?"error":"loading",errorDetails:e instanceof Error?e.message:"合成提交未确认，请确认原任务"}}));
+      patch(target.id,n=>({...n,metadata:{...n.metadata,...studioErrorMetadata(e),status:rejected?"error":"loading",errorDetails:e instanceof Error?e.message:"导出提交未确认，请确认原任务"}}));
       message.error(e);
       return !rejected;
     } finally{if(epoch.current===submissionEpoch)setBusy(false);}
@@ -808,13 +810,39 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const moveClip = (from: number, to: number) => setNodes(current => reorderStudioClips(current, clips.map(n=>n.id), from, to));
   const [advancedOpen,setAdvancedOpen]=useState(false);
   const layout=useLayoutMode();
-  const advancedLibrary=useMemo(()=>nodes.filter(n=>(n.type===CanvasNodeType.Video||n.type===CanvasNodeType.Audio)&&n.metadata?.storageKey&&n.metadata.status==='success'&&n.metadata.studio?.kind!=='work'&&!n.metadata.studio?.workDraft),[nodes]);
-  const saveAdvanced=(advanced:StudioAdvancedEdit)=>{changeWorkDraft({advanced});void saveStudioDocument(projectId).catch(e=>message.error(e));};
+  const advancedLibrary=useMemo(()=>nodes.filter(n=>(n.type===CanvasNodeType.Video||n.type===CanvasNodeType.Audio||n.type===CanvasNodeType.Image)&&n.metadata?.storageKey&&n.metadata.status==='success'&&n.metadata.studio?.kind!=='work'&&!n.metadata.studio?.workDraft),[nodes]);
+  // 导出过一次、片段没变：自动字幕已经有了，打开高级编辑时直接放到时间线上，只改个别句子就行。
+  const advancedCaptions=useMemo(()=>{
+    const selected=clips.filter(n=>studioClipIncluded(n,sourceClipIds)).map(n=>n.metadata?.storageKey);
+    return [...work].reverse().find(n=>{
+      const refs=n.metadata?.studio?.request?.references?.map(r=>r.storageKey);
+      return !n.metadata?.studio?.request?.edit&&n.metadata?.studio?.captions?.cues?.length&&refs?.length===selected.length&&refs.every((key,i)=>key===selected[i]);
+    })?.metadata?.studio?.captions?.cues;
+  },[work,clips,sourceClipIds]);
+  const saveAdvanced=async(advanced:StudioAdvancedEdit)=>{changeWorkDraft({advanced});await saveStudioDocument(projectId);};
+  // 一键成片里直接传背景音乐：进画布成为音频节点（素材都在画布上），并选中它。
+  const uploadWorkMusic=async(file:File)=>{
+    const imported=await importStudioMedia(projectId,file,'audio');
+    const music=attachmentNode({kind:'audio',url:imported.url,storageKey:imported.key,title:imported.fileName||file.name,mimeType:imported.mimeType},nodes);
+    addNode({...music,metadata:{...music.metadata,origin:'upload' as const,durationMs:imported.durationSec?Math.round(imported.durationSec*1000):undefined,studio:{kind:'audio' as const,audioRole:'music' as const}}});
+    changeWorkDraft({musicStorageKey:imported.key});
+    return {key:imported.key,name:imported.fileName||file.name};
+  };
   const exportAdvanced=async(edit:StudioEditTimeline,advanced:StudioAdvancedEdit)=>{
     if(busy){message.error('有操作正在提交，请稍后导出');return false;}
     changeWorkDraft({advanced});return assemble(edit);
   };
-  const dropAdvanced=()=>modal.confirm({title:'改回一键成片？',content:'高级编辑中的剪辑（裁剪、文字、音轨等）将被清除，已导出的作品不受影响。',okText:'改回一键成片',cancelText:'取消',okButtonProps:{danger:true},
+  // 存过高级编辑后，不用再进编辑室（要重新加载全部素材）：直接按存档导出。清单是纯数据，不需要 Twick。
+  const exportSavedAdvanced=()=>{
+    const saved=workDraft.advanced;
+    if(!saved)return;
+    const size=saved.size||(workDraft.aspectRatio==='16:9'?{width:1280,height:720}:{width:720,height:1280});
+    const edit=toEditTimeline(saved.project as unknown as Parameters<typeof toEditTimeline>[0],size,{autoCaptions:saved.autoCaptions,musicStorageKey:workDraft.musicStorageKey});
+    if(!edit.clips.length){message.error('高级编辑中至少需要一段视频，请继续高级编辑或放弃修改');return;}
+    if(busy){message.error('有操作正在提交，请稍后导出');return;}
+    void assemble(edit);
+  };
+  const dropAdvanced=()=>modal.confirm({title:'放弃高级编辑的修改？',content:'剪辑、文字、音频等修改将被清除，片段和设置恢复到高级编辑之前的样子。已导出的成片不受影响。',okText:'放弃修改',cancelText:'取消',okButtonProps:{danger:true},
     onOk:()=>changeWorkDraft({advanced:undefined})});
   const includeClip = (id: string, includeInWork: boolean) => patch(id,n => ({...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,includeInWork}}}));
   const loadIpAssets = () => {
@@ -1248,8 +1276,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       &&<StudioCanvasGuide assistantOpen={assistantOpen} onStartAssistant={()=>{setAssistantNodeId(undefined);setAssistantOpen(true);onClosePanel();}}/>}
     {/* Node actions live inside editors only; selection and right-click never mount an extra floating toolbar. */}
     {textEditingNodeId && mode==="canvas" && renderTextEditor?.(nodeActions(textEditingNodeId))}
-    {mode!=="canvas" && <section className={`studio-focused-view${mode==="storyboard"?" studio-storyboard-view":""}`} aria-label={mode==="storyboard"?"故事板":"成片编辑器"}>
-      <header><h2>{mode==="storyboard"?"故事板":"成片编辑器"}</h2><button type="button" aria-label="返回画布" disabled={workSaving||directorSaving||storyboardChanging||busy} onClick={() => void switchView("canvas")}><X size={18}/></button></header>
+    {mode!=="canvas" && <section className={`studio-focused-view${mode==="storyboard"?" studio-storyboard-view":""}`} aria-label={mode==="storyboard"?"故事板":"制作成片"}>
+      <header><h2>{mode==="storyboard"?"故事板":"制作成片"}</h2><button type="button" aria-label="返回画布" disabled={workSaving||directorSaving||storyboardChanging||busy} onClick={() => void switchView("canvas")}><X size={18}/></button></header>
       {mode==="work"&&(episodeNumbers.length>1||episodeFilter!=="all")&&<div className="studio-episode-nav"><Select aria-label="当前分集" value={episodeFilter} onChange={setEpisodeFilter} options={[{value:"all",label:"全部分集"},...episodeNumbers.map(no=>({value:no,label:`第 ${no} 集`}))]}/></div>}
       {mode==="storyboard" ? <StudioStoryboard nodes={nodes} connections={connections}
         selectedNodeId={storyboardNodeId} changing={storyboardChanging||directorSaving||busy}
@@ -1272,14 +1300,17 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
           draft={workDraft} onDraftChange={changeWorkDraft} onIncludeClip={includeClip} onMoveClip={moveClip} works={work}
           renderNodeActions={node=>nodeActions(node.id,["work","download"])}
           busy={busy} locked={workSaving} mock={capabilities?.mock} onAssemble={() => void assemble()}
-          onDownload={node => void downloadMedia(node.metadata!.content!,node.title,"video/mp4",node.metadata!.storageKey).catch(e => message.error(e))}
+          onDownload={node => downloadMedia(node.metadata!.content!,node.title,"video/mp4",node.metadata!.storageKey).catch(e => {message.error(e);throw e;})}
           onAddClips={() => setMode("canvas")} onCreateVideo={() => openDirector("video")} onOpenStoryboard={() => setMode("storyboard")}
           onMakeVoice={() => {setMode("canvas");openSpeech();}}
-          advancedAvailable={layout!=="mobile"} onOpenAdvanced={() => setAdvancedOpen(true)} onDropAdvanced={dropAdvanced}/>}
+          advancedAvailable={layout!=="mobile"} onOpenAdvanced={() => setAdvancedOpen(true)} onDropAdvanced={dropAdvanced} onExportAdvanced={exportSavedAdvanced}
+          captionRecognition={capabilities?.captionRecognition} onUploadMusic={uploadWorkMusic}/>}
     </section>}
     {mode!=="storyboard"&&directorPanel}
-    {advancedOpen&&mode==="work"&&createPortal(<StudioAdvancedEditor projectId={projectId} title={workTitle.trim()||"成片"} draft={workDraft} library={advancedLibrary}
+    {advancedOpen&&mode==="work"&&createPortal(<StudioAdvancedEditor projectId={projectId} title={workTitle.trim()||"成片"} draft={workDraft} library={advancedLibrary} seedCaptions={advancedCaptions}
       clips={clips.filter(n=>studioClipIncluded(n,sourceClipIds))} voice={voiceoverKey?nodes.find(n=>n.type===CanvasNodeType.Audio&&n.metadata?.storageKey===voiceoverKey):undefined}
+      music={workDraft.musicStorageKey?nodes.find(n=>n.type===CanvasNodeType.Audio&&n.metadata?.storageKey===workDraft.musicStorageKey):undefined} onMusicChange={musicStorageKey=>changeWorkDraft({musicStorageKey})} onUploadMusic={uploadWorkMusic}
+      captionRecognition={capabilities?.captionRecognition}
       onSave={saveAdvanced} onExport={exportAdvanced} onClose={()=>setAdvancedOpen(false)}/>,document.body)}
     <StudioFloatingPanel title="剧本" anchorId={scriptPreviewId} open={!!scriptPreviewId&&!editorId} onClose={()=>setScriptPreviewId(undefined)} footer={<Button type="primary" onClick={()=>{setEditorId(scriptPreviewId);}}>展开剧本编辑器</Button>}>
       {nodeActions(scriptPreviewId,["editor"])}

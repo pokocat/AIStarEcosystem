@@ -90,11 +90,33 @@ export function studioClipOffsets(seconds: (number | undefined)[]): (number | un
   return seconds.map(s => { const start = at; at = at === undefined || s === undefined ? undefined : at + s; return start; });
 }
 
-/** "0-5: " lines for each clip, so the user only writes the words. */
-export function studioCaptionTemplate(seconds: number[]): string {
-  const round = (v: number) => Math.round(v * 10) / 10;
+/** 手动字幕的一行：界面上每条字幕一行，存回去还是同一份文本。 */
+export type StudioCaptionRow = { start: string; end: string; text: string };
+
+export function studioCaptionRows(text: string): StudioCaptionRow[] {
+  return text.split("\n").map(l => l.trim()).filter(Boolean).map(line => {
+    const m = line.match(/^(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*[:：]\s*(.*)$/);
+    return m ? { start: m[1], end: m[2], text: m[3] } : { start: "", end: "", text: line };
+  });
+}
+
+/** 没写字的行不算字幕：按片段分好时间后，不想配字的那段空着就行。 */
+export function studioCaptionRowsText(rows: StudioCaptionRow[]): string {
+  return rows.filter(r => r.text.trim()).map(r => `${r.start.trim()}-${r.end.trim()}: ${r.text.trim()}`).join("\n");
+}
+
+/** 每个片段一行，时间按片段长度算好。 */
+export function studioCaptionRowsFor(seconds: number[]): StudioCaptionRow[] {
+  const round = (v: number) => String(Math.round(v * 10) / 10);
   let at = 0;
-  return seconds.map(s => { const line = `${round(at)}-${round(at + s)}: `; at += s; return line; }).join("\n");
+  return seconds.map(s => { const row = { start: round(at), end: round(at + s), text: "" }; at += s; return row; });
+}
+
+/** 新加一条：接着上一条往后 3 秒，不超过成片长度。 */
+export function studioNextCaptionRow(rows: StudioCaptionRow[], total?: number): StudioCaptionRow {
+  const from = Number(rows[rows.length - 1]?.end) || 0;
+  const to = total !== undefined && total > from ? Math.min(from + 3, total) : from + 3;
+  return { start: String(from), end: String(Math.round(to * 10) / 10), text: "" };
 }
 
 /** Caption problems the server would reject, said before the user waits for an assembly. */

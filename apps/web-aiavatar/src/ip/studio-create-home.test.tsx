@@ -277,7 +277,7 @@ describe("Creation page", () => {
     expect(screen.queryByRole('button', { name:'开始对话' })).toBeNull();
     const tools = screen.getByRole("navigation", { name: "快速开始创作" });
     expect(within(tools).queryByRole('button', { name:'空白画布' })).toBeNull();
-    expect(within(tools).getAllByRole('button').map(b => b.getAttribute('aria-label'))).toEqual(['图片创作','视频创作','剧本创编','解析视频','分镜讨论','成片编辑','人物配音','数字人口型','IP 人物库']);
+    expect(within(tools).getAllByRole('button').map(b => b.getAttribute('aria-label'))).toEqual(['图片创作','视频创作','剧本创编','解析视频','分镜讨论','制作成片','人物配音','数字人口型','IP 人物库']);
     // The card comes first, above the tools.
     const card = screen.getByRole('button', { name:'新建画布' });
     expect(card.compareDocumentPosition(tools) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

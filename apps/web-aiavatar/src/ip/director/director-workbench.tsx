@@ -13,7 +13,7 @@ import { DirectorAssets } from "./director-assets";
 import { DirectorStoryboard } from "./director-storyboard";
 import { ExtractReview } from "./director-extract";
 import { SettingsPanel } from "./director-settings";
-import { InlineError, STALE_GONE_MESSAGE, chooseDirectorBilling, clearDrafts, isWorkGone, onWorkGone, costText, errorText, failed, hasDrafts, secRange, useBusy, useEscape, dialogFocus, type DirectorFail } from "./director-shared";
+import { exportIsStale, InlineError, STALE_GONE_MESSAGE, chooseDirectorBilling, clearDrafts, isWorkGone, onWorkGone, costText, errorText, failed, hasDrafts, secRange, useBusy, useEscape, dialogFocus, type DirectorFail, runningTask } from "./director-shared";
 import { normalizeStudioError, useStudioFailure } from "../studio-errors";
 import { AiMark } from "../studio-ai-icon";
 import { BriefProvider } from "./director-brief";
@@ -90,7 +90,10 @@ function nextStep(work: DirectorWork, episodeId: string | null): NextStep | null
   if (oldVideos.length) return { text: `${oldVideos.map(c => `片段 ${c.order}`).join("、")} 的视频需更新`, tab: "storyboard" };
   const autoVideo = clips.filter(c => c.video.adoptedBy === "auto");
   if (autoVideo.length) return { text: `${autoVideo.length} 条片段视频待确认`, tab: "storyboard" };
-  if (!(work.exports ?? []).some(e => e.episodeId === ep.id && e.status === "done")) return { text: `第 ${ep.no} 集视频已确认，可预览或导出`, tab: "storyboard" };
+  if (runningTask(work, `export:${ep.id}`)) return { text: `第 ${ep.no} 集导出中，完成后可以观看和下载`, tab: "storyboard" };
+  const lastExport = (work.exports ?? []).filter(e => e.episodeId === ep.id && e.status === "done").sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  if (!lastExport) return { text: `第 ${ep.no} 集视频已确认，可预览或导出`, tab: "storyboard" };
+  if (exportIsStale(lastExport, clips)) return { text: `片段有变动，第 ${ep.no} 集需要重新导出`, tab: "storyboard" };
   return { text: `第 ${ep.no} 集已导出。更换片段视频后需重新导出`, tab: "storyboard" };
 }
 
@@ -105,7 +108,7 @@ export function nextStepShown(step: NextStep | null, tab: Tab) {
   return step.tab !== tab && !step.alsoOn?.includes(tab) && !(tab === "script" && step.tab === "script");
 }
 /** Plain confirmations fade on their own; warnings (a result not used, something to redo) stay until closed. */
-const PASSING_NOTICE = /^(已写到第 \d+ 集，共 \d+ 集|全部 \d+ 集都写好了|已分成 \d+ 集|资产已保存(，新增 \d+ 项)?|设定资料已并入第 1 集开头)$/;
+const PASSING_NOTICE = /^(已写到第 \d+ 集，共 \d+ 集|全部 \d+ 集都写好了|已分成 \d+ 集|资产已保存(，新增 \d+ 项)?|设定资料已并入第 1 集开头|第 \d+ 集已导出，可以观看和下载。)$/;
 
 export function DirectorWorkbench({ id }: { id: string }) {
   const auth = useRequireAuth();
@@ -247,9 +250,8 @@ export function DirectorWorkbench({ id }: { id: string }) {
         : step && nextStepShown(step, tab) && <StatusChip key={step.text} step={step} tab={tab} onGo={switchTab}/>}
       <StopTextTasks {...props}/>
     </>}/>
-    <p style={{padding:"0 24px"}}><Link href="/model-results" style={{display:"inline-block",padding:"6px 0"}}>查看生成原文</Link></p>
     {reviewing && work.pendingExtract && <ExtractReview key={work.pendingExtract.runId} work={work} apply={apply} onClose={() => setReviewing(false)}/>}
-    {live ? <PipelineBar {...props}/> : work.pipeline && <div className="director-status"><PipelineBar {...props}/></div>}
+    {live ? <PipelineBar {...props}/> : work.pipeline && <div className="director-status"><PipelineBar {...props} doneText={step?.text}/></div>}
     {starting && <StartPipeline work={work} episodeId={episodeId} apply={apply} setError={setError} goTab={switchTab} onClose={() => setStarting(false)}/>}
     {work.notice && <DirectorNoticeToast key={work.notice.message} work={work} apply={apply} setError={setError}/>}
     <div className={`director-body ${assistant.open ? "has-assistant" : ""}`}>
@@ -266,6 +268,7 @@ export function DirectorWorkbench({ id }: { id: string }) {
       </section>
       {assistant.open && <DirectorAssistantPanel work={work} apply={apply} tab={tab} episodeId={episodeId} openSettings={props.openSettings}/>}
     </div>
+  <p className="director-foot-link"><Link href="/model-results">查看生成原文</Link></p>
   </main></BriefProvider></AssistantProvider>;
 }
 
@@ -365,7 +368,7 @@ function DirectorNoticeToast({ work, apply, setError }: Pick<WorkbenchProps, "wo
     <span>{message}</span><button type="button" onClick={dismiss}>关闭</button></div>;
 }
 
-function PipelineBar({ work, apply, setError, goTab, reviewExtract }: WorkbenchProps) {
+function PipelineBar({ work, apply, setError, goTab, reviewExtract, doneText }: WorkbenchProps & { doneText?: string }) {
   const p = work.pipeline;
   const { busy, run } = useBusy();
   const act = (action: "pause" | "resume" | "retry" | "confirm-assets" | "confirm-boards" | "confirm-videos" | "stop" | "dismiss", budget?: number) =>
@@ -375,8 +378,8 @@ function PipelineBar({ work, apply, setError, goTab, reviewExtract }: WorkbenchP
   return <>
     <div className={`director-pipeline is-${p.status}`}>
       {!live && <>
-        {p && <span className="director-pipeline-hint"><PipelineSummary p={p}/></span>}
-        {p && <button type="button" className="ip-brand-text-button" onClick={() => act("dismiss")}>收起</button>}
+        {p && <span className="director-pipeline-hint"><PipelineSummary p={p} doneText={doneText}/></span>}
+        {p && <button type="button" className="ip-brand-text-button" onClick={() => act("dismiss")}>关闭</button>}
       </>}
       {live && p && <>
         <PipelineSummary p={p}/>
@@ -403,11 +406,12 @@ function PipelineBar({ work, apply, setError, goTab, reviewExtract }: WorkbenchP
   </>;
 }
 
-function PipelineSummary({ p }: { p: DirectorPipeline }) {
-  const label = { running: "制作中", waiting: "待处理", paused: "已暂停", done: "已完成", failed: "未完成", stopped: "已停止" }[p.status];
+/** doneText：制作结束后，后面又做了什么（确认、导出）这条结束语不知道，按现在的状态说下一步。 */
+function PipelineSummary({ p, doneText }: { p: DirectorPipeline; doneText?: string }) {
+  const label = { running: "制作中", waiting: "待处理", paused: "已暂停", done: "一键制作已完成", failed: "未完成", stopped: "已停止" }[p.status];
   return <span className="director-pipeline-summary">
     {p.status === "running" && <Loader2 size={14} className="ip-loading-icon"/>}
-    <b>{label}</b><span>{p.message}</span><small>已用 {p.spent.toLocaleString("zh-CN")} / 预算 {p.budget.toLocaleString("zh-CN")} 积分</small>
+    <b>{label}</b><span>{p.status === "done" && doneText ? doneText : p.message}</span><small>已用 {p.spent.toLocaleString("zh-CN")} / 预算 {p.budget.toLocaleString("zh-CN")} 积分</small>
   </span>;
 }
 

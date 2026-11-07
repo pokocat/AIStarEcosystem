@@ -64,7 +64,7 @@ const PHASES: { key: SegmentedPhase["key"]; label: string; match: (id: string) =
   // 分镜图和它的检查算一个阶段：对用户来说就是「分镜图好了没」。
   { key: "boards", label: "分镜图", match: id => /^[bc]\d+x?$/.test(id) },
   { key: "videos", label: "各段视频", match: id => /^v\d+$/.test(id) },
-  { key: "film", label: "合成成片", match: id => id === "film" },
+  { key: "film", label: "导出成片", match: id => id === "film" },
 ];
 
 /** 一次执行整理成几个阶段。不显示百分比和预计时间（没有依据，AGENTS.md v0.221）。用不上而跳过的步骤不算进总数。 */

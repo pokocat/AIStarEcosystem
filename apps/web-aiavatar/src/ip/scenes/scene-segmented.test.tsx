@@ -121,7 +121,7 @@ test("one click: the request is saved before it is sent, then the row follows th
     materials: [{ nodeId: "product", title: expect.any(String), slot: "image" }] });
   expect(api.push).not.toHaveBeenCalled();
   expect(await screen.findByText("正在写分镜脚本")).toBeTruthy();
-  expect(screen.getByText("合成成片")).toBeTruthy();
+  expect(screen.getByText("导出成片")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "暂停" })).toBeNull();
   expect(screen.getByRole("button", { name: "停止生成" })).toBeTruthy();
 });
