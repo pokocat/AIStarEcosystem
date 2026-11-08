@@ -274,7 +274,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 ## 7. 发布与验收记录（`docs/releases/`）
 
-- [Studio 反馈 5、7、8 修复发布](releases/studio-feedback-578-release-20261107.md)：已有 IP 与视角选择、团购产品/环境图片引导、重新编辑保留脚本；main `1e3aa4bb7`，团购上传占位后续调整 `a01c7da4c`，仅 web-aiavatar，CI 与线上验收通过（last-reviewed: 2026-11-07）。
+- [Studio 反馈 5、7、8 修复发布](releases/studio-feedback-578-release-20261107.md)：已有 IP 与视角选择、团购产品/环境图片引导、重新编辑保留脚本；main `1e3aa4bb7`，团购上传占位后续调整 `721e02873`（保留门店、旁增产品和环境），仅 web-aiavatar，CI 与线上验收通过（last-reviewed: 2026-11-08）。
 
 - [sun5.5：Sonnet low 生产切换](releases/sun55-sonnet-low-production-release-20261107.md)：main `27351bb9c`，server 参数支持与 V77，实际业务请求携带 low、39.873 秒正常回包；页面显示 sun5.5，完整 CI 与线上验收通过（last-reviewed: 2026-11-07）。
 - [Sonnet 切换为 Orange5.5 与一次真实图文实测](releases/orange55-model-switch-20261107.md)：生产配置改用 `claude-opus-5-5-Kiro`，对外显示 Orange5.5；实测 38.731 秒、3053/3197 Token、5 积分，同量级历史比较未显示明显提速（last-reviewed: 2026-11-07）。

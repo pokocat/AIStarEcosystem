@@ -64,3 +64,22 @@
 ![上方原素材区的两个上传占位](studio-feedback-578-release-20261107/inline-slots-desktop.png)
 
 ![375px 手机宽度](studio-feedback-578-release-20261107/inline-slots-mobile.png)
+
+
+## 保留门店照片并新增两个占位（2026-11-08）
+
+用户进一步明确：原有门店照片必须保留，产品图片、环境图片是在旁边新增的两个占位。上一版误替换了原入口，本次补回，三个图片入口在同一个素材区并存。
+
+- PR [#171](https://github.com/pokocat/AIStarEcosystem/pull/171)，构建 main `721e0287335141cd54a16db16137f4974e1707a0`，正式制品 `20261108-groupbuy-keep-store-721e02873`，只更新 web-aiavatar。
+- Mini 检查队列 `343fc9ba5eff` 退出 0：全仓串行类型、后台类型、后端离线编译、API 契约通过；4 文件 / 66 项场景回归通过。用例依次从门店、产品、环境入口添加图片，验证三个 key 保存且重开草稿保留，不触发生成。
+- 最终 PR CI [42461119265](https://github.com/pokocat/AIStarEcosystem/actions/runs/42461119265)：两组全量前端测试、生产构建及浏览器、API 契约和聚合检查全部通过。
+- 干净 main 构建队列 `4602fa3c2bac` 退出 0，制品校验通过。SHA256 `1d055c39ed022436472fdd2b5f60e043db9ceda2ed23b15980d5563e7cea081d`，BUILD_ID `f377UP8N7VuA-4DzFviU3`，线上回读一致。
+- 08:06:33 UTC 发布前复查：近 5 分钟 40 条后台轮询，0 主动操作，三类生成任务均为 0。前端于 2026-11-08 16:07:02 CST 启动，active / NRestarts=0；部署脚本成功，`verify.sh ALL GREEN`。后端启动时间、JAR 校验和保持本记录初版所列值。
+- 08:06:33–08:08:34 UTC 日志有 1 次启动探测 `GET /` 502（UA `curl/8.7.1`），随后验证成功，没有浏览器 UA 的 5xx；不称为无中断发布。
+- 线上确认门店照片、产品图片、环境图片三个占位同时显示，原门店入口可打开选择框及上传按钮。375px 下三格均 68×68，x=12/90/168、y 相同，全部在素材组；页面无横向溢出，已恢复默认视口。未创建草稿、上传文件或生成视频，积分仍为 2078。
+- 飞书只更新第 7 项并回读至 revision 162，保留原截图，第 5、8 项未改动。
+- 回滚制品为前一前端 `20261107-groupbuy-inline-slots-a01c7da4c`，SHA256 `24282f22831b99c84badb923c6d6cfe34a50915194c80a2fa168f2d6e9246a21`；仅回滚前端，不改数据库或重新提交生成。
+
+![门店照片保留，旁边新增产品与环境图片](studio-feedback-578-release-20261107/three-slots-desktop.png)
+
+![375px 下三个图片占位并列](studio-feedback-578-release-20261107/three-slots-mobile.png)
