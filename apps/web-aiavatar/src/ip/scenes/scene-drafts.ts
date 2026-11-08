@@ -354,3 +354,21 @@ export function openedVideoState(doc: IpProjectDoc, defaults: { language: string
     duration: state.duration ?? turn?.duration ?? defaults.duration, ratio: state.ratio ?? turn?.ratio ?? defaults.ratio,
     optimize: state.optimize ?? true, ...(edit ? { edit } : {}) };
 }
+
+/**
+ * 视频任务只快照素材节点，采用的脚本另存于 sceneVideoState.edit。重新编辑时要把这份脚本一起恢复，
+ * 否则 openedVideoState 会因找不到原脚本节点丢掉 edit，页面只剩空的 text（2026-11-07 反馈 8）。
+ * 这是恢复已有正文，不创建模型请求，也不带原任务的 runId / request / 计费状态。
+ */
+export function restoreVideoTaskScript(doc: IpProjectDoc): IpProjectDoc {
+  const state = doc.sceneVideoState, edit = state?.edit;
+  if (!edit?.scriptId || scriptNodes(doc).some(n => n.id === edit.scriptId)) return doc;
+  const node = makeStudioNode("text");
+  const restored: CanvasNodeData = { ...node, id: edit.scriptId, title: "视频脚本", position: { x: 520, y: rowBottom(doc.nodes as CanvasNodeData[]) },
+    metadata: { content: edit.prompt, status: "success", studio: { kind: "text", sceneDirector: {
+      ask: "", revision: false, duration: state.duration ?? 15, ratio: state.ratio ?? "9:16", language: state.language ?? "中文",
+      // 快照没有保留当时编导实际看过的图片，不把当前素材冒充脚本的看图记录。
+      options: state.options, at: new Date().toISOString(),
+    } } } };
+  return { ...doc, nodes: [...doc.nodes, restored] };
+}
