@@ -7,6 +7,7 @@ import { AlertTriangle, Check, ChevronDown, ChevronRight, ChevronUp, Clapperboar
 import { firstLine } from "./director-text";
 import type { DirectorClip, DirectorSceneView, DirectorShot, DirectorTask, DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi } from "../api";
+import { DirectorVideo } from "./director-video";
 import { useStudioApp } from "../studio-errors";
 import type { WorkbenchProps } from "./director-workbench";
 import { AiWorking, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, chooseDirectorBilling, clearDrafts, costText, errorText, failed, hasDrafts, kindLabel, newRequestId, runningTask, secRange, useBusy, useDraft, useEscape, DirectorSheet, dialogFocus, ZoomableImage, type DirectorFail, storyAssets } from "./director-shared";
@@ -574,7 +575,7 @@ function ClipPreview({ work, clip, preview, apply, setError, goTab, onPickVideo,
         </div>
       </> : <>
         <div className={`director-preview-stage ${ratio}`}>
-          {media?.url ? <video key={media.id} src={media.url} controls autoPlay preload="metadata" playsInline/> : <span>暂无视频</span>}
+          {media?.url ? <DirectorVideo media={media} controls autoPlay preload="metadata" playsInline/> : <span>暂无视频</span>}
           {media && media.id === clip.video.adoptedId && <span className={`director-tag-inline ${clip.video.adoptedBy === "auto" ? "is-warn" : ""}`}>{clip.video.adoptedBy === "auto" ? "正在使用 · 待确认" : "正在使用"}</span>}
         </div>
         {switchable && <div className="director-preview-switch">

@@ -262,3 +262,18 @@ test("the storyboard prompt stays folded with the plain note until someone has c
   expect(fold.open).toBe(false);
   expect(dialog.textContent).not.toMatch(/宫格|景别/);
 });
+
+test("polling new signatures does not restart the open clip preview or replace its fullscreen element", () => {
+  const props = { episodeId: "e1", apply: vi.fn(), setError: vi.fn(), goTab: vi.fn(), reviewExtract: vi.fn(), openSettings: vi.fn(), pickEpisode: vi.fn() };
+  const { rerender } = render(<DirectorStoryboard {...props} work={work(clip("v2"))}/>);
+  fireEvent.click(screen.getByRole("button", { name: "播放片段 1 的视频" }));
+  const video = screen.getByRole("dialog", { name: "视频" }).querySelector("video")!;
+  video.currentTime = 4.5;
+  const src = video.getAttribute("src");
+  const next = work(clip("v2")); next.revision++;
+  next.clips[0].video.candidates.forEach(m => { m.url += "?renewed=1"; });
+  rerender(<DirectorStoryboard {...props} work={next}/>);
+  expect(screen.getByRole("dialog", { name: "视频" }).querySelector("video")).toBe(video);
+  expect(video.getAttribute("src")).toBe(src);
+  expect(video.currentTime).toBe(4.5);
+});

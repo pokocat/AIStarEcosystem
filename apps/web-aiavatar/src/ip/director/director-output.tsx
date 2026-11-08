@@ -1,7 +1,7 @@
 "use client";
 
 import { runDirectorTask, withSavedDirectorDrafts } from "./director-generation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Check, ChevronDown, Download, Film, Music, Play, SkipForward, Trash2, Upload, Wand2, X } from "lucide-react";
 import { Switch } from "antd";
 import type { DirectorClip, DirectorEpisode, DirectorExport, DirectorExportOptions, DirectorWork } from "@ai-star-eco/types";
@@ -10,6 +10,7 @@ import { studioCaptionNote } from "@/canvas-bridge/studio-packaging";
 import { downloadMedia } from "@/canvas-bridge/download-media";
 import { formatDateTime } from "@/lib/datetime";
 import { DirectorApi } from "../api";
+import { DirectorVideo } from "./director-video";
 import { VoiceDialog } from "./director-voice";
 import { DIRECTOR_MEDIA_SHORTAGE, InlineError, OutdatedNote, Spinner, adopted, chooseDirectorBilling, costText, errorText, exportIsStale, failed, newRequestId, runningTask, useBusy, useElapsedSeconds, useEscape, dialogFocus, type DirectorFail } from "./director-shared";
 
@@ -365,7 +366,7 @@ function ExportPlayer({ work, ep, item, downloading, started, onDownload, onClos
   return <div className="director-dialog-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && onClose()}>
     <div className="director-dialog director-player" role="dialog" aria-modal="true" aria-labelledby="director-film-title" ref={dialogFocus} tabIndex={-1}>
       <header><h2 id="director-film-title">第 {ep.no} 集成片</h2><button type="button" aria-label="关闭" onClick={onClose}><X size={18}/></button></header>
-      <div className={`director-player-stage ratio-${work.settings.aspectRatio.replace(":", "x")}`}><video src={item.url ?? undefined} controls playsInline autoPlay/></div>
+      <div className={`director-player-stage ratio-${work.settings.aspectRatio.replace(":", "x")}`}><DirectorVideo media={item} controls playsInline autoPlay/></div>
       <footer>{started && !downloading && <span className="director-cost" role="status">已开始下载，可在浏览器的下载列表中查看。</span>}
         <button type="button" className="ip-brand-button" disabled={downloading} onClick={onDownload}><Download size={14}/>{downloading ? "正在准备下载" : "下载成片"}</button></footer>
     </div>
@@ -374,31 +375,22 @@ function ExportPlayer({ work, ep, item, downloading, started, onDownload, onClos
 
 function SequencePlayer({ work, clips, onClose }: { work: DirectorWork; clips: DirectorClip[]; onClose: () => void }) {
   useEscape(onClose);
-  // 页面每隔几秒刷新一次，线上的签名地址每次都不同；按版本记住第一次的地址，否则正在播的视频会被重新加载。
-  const urls = useRef(new Map<string, string>());
-  const playable = useMemo(() => clips.map(c => {
-    const take = adopted(c.video);
-    if (!take?.url) return { clip: c, url: null };
-    if (!urls.current.has(take.id)) urls.current.set(take.id, take.url);
-    return { clip: c, url: urls.current.get(take.id)! };
-  }), [clips]);
-  const firstPlayable = Math.max(0, playable.findIndex(p => p.url));
+  const playable = clips.map(clip => ({ clip, media: adopted(clip.video) }));
+  const firstPlayable = Math.max(0, playable.findIndex(p => p.media?.url));
   const [index, setIndex] = useState(firstPlayable);
-  const ref = useRef<HTMLVideoElement>(null);
   const current = playable[index];
-  const nextIndex = playable.findIndex((p, i) => i > index && p.url);
+  const nextIndex = playable.findIndex((p, i) => i > index && p.media?.url);
   const [finished, setFinished] = useState(false);
   const next = () => { if (nextIndex >= 0) { setFinished(false); setIndex(nextIndex); } else setFinished(true); };
-  useEffect(() => { const v = ref.current; if (v && current?.url) { v.load(); void v.play().catch(() => { /* 浏览器拦了自动播放，用户点播放即可 */ }); } }, [index, current?.url]);
   return <div className="director-dialog-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && onClose()}>
     <div className="director-dialog director-player" role="dialog" aria-modal="true" aria-labelledby="director-player-title" ref={dialogFocus} tabIndex={-1}>
       <header><h2 id="director-player-title">连播预览</h2><button type="button" aria-label="关闭" onClick={onClose}><X size={18}/></button></header>
       <div className={`director-player-stage ratio-${work.settings.aspectRatio.replace(":", "x")}`}>
-        {current?.url ? <video ref={ref} src={current.url} controls playsInline onEnded={next}/> : <p>该片段暂无视频</p>}
+        {current?.media?.url ? <DirectorVideo media={current.media} controls playsInline autoPlay onEnded={next}/> : <p>该片段暂无视频</p>}
       </div>
       <ol className="director-player-list">{playable.map((p, i) => <li key={p.clip.id}>
-        <button type="button" aria-current={i === index ? "true" : undefined} disabled={!p.url} onClick={() => { setFinished(false); setIndex(i); }}>
-          <b>{p.clip.order}</b><span>{p.clip.title || `片段 ${p.clip.order}`}</span><small>{p.url ? `${p.clip.durationSec} 秒` : "无视频，跳过"}</small>
+        <button type="button" aria-current={i === index ? "true" : undefined} disabled={!p.media?.url} onClick={() => { setFinished(false); setIndex(i); }}>
+          <b>{p.clip.order}</b><span>{p.clip.title || `片段 ${p.clip.order}`}</span><small>{p.media?.url ? `${p.clip.durationSec} 秒` : "无视频，跳过"}</small>
         </button></li>)}</ol>
       <p className="director-dialog-note">按顺序播放已采用的视频，无视频的片段跳过。导出后的成片以「导出整集」为准。</p>
       <footer>{nextIndex >= 0 ? <button type="button" className="ip-brand-secondary" onClick={next}><SkipForward size={14}/>下一段</button>

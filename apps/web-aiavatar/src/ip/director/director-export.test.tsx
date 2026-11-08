@@ -288,3 +288,38 @@ test("once the export button has scrolled away, the next-step bar never calls an
     expect(bar.textContent).not.toContain("视频都好了");
   } finally { vi.unstubAllGlobals(); }
 });
+
+test("sequence playback stays on its current source during polling and advances on the same element", () => {
+  const a = clip("a", "一"), b = clip("b", "二");
+  b.video.candidates[0] = { id: "m2", key: "two", url: "/two.mp4" }; b.video.adoptedId = "m2";
+  const props = { ep, apply: vi.fn(), setError: vi.fn() };
+  const { rerender } = render(<EpisodeOutput {...props} work={work([a, b])}/>);
+  fireEvent.click(screen.getByRole("button", { name: /连播预览/ }));
+  const dialog = screen.getByRole("dialog", { name: "连播预览" });
+  const video = dialog.querySelector("video")!;
+  video.currentTime = 7;
+  const refreshed = structuredClone([a, b]);
+  refreshed.forEach(c => { c.video.candidates[0].url += "?signature=next"; });
+  rerender(<EpisodeOutput {...props} work={work(refreshed)}/>);
+  expect(dialog.querySelector("video")).toBe(video);
+  expect(video.getAttribute("src")).toBe("/k.mp4");
+  expect(video.currentTime).toBe(7);
+  fireEvent.ended(video);
+  expect(dialog.querySelector("video")).toBe(video);
+  expect(video.getAttribute("src")).toBe("/two.mp4?signature=next");
+  expect(video.autoplay).toBe(true);
+});
+
+test("export playback keeps its source through work refreshes", () => {
+  const done = { id: "x", episodeId: "e1", episodeNo: 3, status: "done", key: "out.mp4", url: "/out.mp4", durationSec: 65, error: null,
+    createdAt: "2026-11-07T00:00:00Z", clips: [{ clipId: "a", candidateId: "m" }] };
+  const props = { ep, apply: vi.fn(), setError: vi.fn() };
+  const { rerender } = render(<EpisodeOutput {...props} work={work([clip("a", "你好")], [done])}/>);
+  fireEvent.click(screen.getByRole("button", { name: "观看成片" }));
+  const video = screen.getByRole("dialog", { name: "第 3 集成片" }).querySelector("video")!;
+  video.currentTime = 10;
+  rerender(<EpisodeOutput {...props} work={work([clip("a", "你好")], [{ ...done, url: "/out.mp4?renewed=1" }])}/>);
+  expect(screen.getByRole("dialog", { name: "第 3 集成片" }).querySelector("video")).toBe(video);
+  expect(video.getAttribute("src")).toBe("/out.mp4");
+  expect(video.currentTime).toBe(10);
+});
