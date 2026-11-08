@@ -138,6 +138,10 @@ html[data-layout="desktop"] .scene-composer-head .scene-recent-host { display: n
 .scene-media { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 68px; }
 .scene-media>button:first-child, .scene-media-preview, .scene-slot-add { position: relative; display: grid; place-items: center; width: 68px; height: 68px; padding: 0; border: 0; border-radius: 12px; background: var(--ip-soft); color: var(--ip-muted); overflow: hidden; cursor: pointer; }
 .scene-media>button:first-child:hover:not(:disabled), .scene-slot-add:hover:not(:disabled) { background: #eceef1; color: var(--ip-ink); }
+.scene-media>button.scene-voice-picked { background: var(--sn-select-ink); color: #fff; }
+.scene-media>button.scene-voice-picked:hover:not(:disabled) { background: var(--sn-select-ink); color: #fff; filter: brightness(1.08); }
+.scene-media>button.scene-voice-picked:focus-visible { outline: 2px solid var(--sn-select-ink); outline-offset: 3px; }
+.scene-voice-picked-icon { display: grid; place-items: center; }
 .scene-media-preview img, .scene-media>button:first-child img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .scene-media>span:not(.scene-media-preview) { max-width: 100%; overflow: hidden; color: var(--sn-text-2); font-size: 11.5px; line-height: 1.3; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
 .scene-media small { margin-left: 3px; color: var(--ip-muted); font-size: 11px; }
