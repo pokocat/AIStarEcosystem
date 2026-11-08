@@ -196,7 +196,7 @@ function BatchBar({ work, clips, quotes, selected, setSelected, apply, setError 
       if (reason) skipped.push(`片段 ${c.order}：${reason}`);
       // 全选后想补缺的人，最容易给已有视频的片段再花一次钱：默认跳过，要重新生成得明确选。
       else if (kind === "video" && !includeExisting && c.video.candidates.length) existing.push(`片段 ${c.order}`);
-      else ok.push({ clip: c, cost: kind === "board" ? work.pricing.image : quotes[c.id]!.credits! });
+      else ok.push({ clip: c, cost: kind === "board" ? (work.pricing.boardImage ?? work.pricing.image) : quotes[c.id]!.credits! });
     }
     return { ok, skipped, existing, total: ok.reduce((n, x) => n + x.cost, 0) };
   };
@@ -286,6 +286,7 @@ function chosenImage(a: DirectorWork["assets"][number], clip: DirectorClip) {
 
 /** 这个片段现在能不能生成分镜图：有问题、缺资产图、资产图没确认都不能。卡片、弹窗、批量共用这一条。 */
 function boardBlockReason(work: DirectorWork, clip: DirectorClip) {
+  if (work.boardImage?.error) return work.boardImage.error;
   const visual = (clip.assetIds.map(id => work.assets.find(a => a.id === id)).filter(Boolean) as DirectorWork["assets"]).filter(a => !a.description.includes("只出声音"));
   const missing = visual.filter(a => !chosenImage(a, clip).adoptedId);
   const unconfirmed = visual.filter(a => chosenImage(a, clip).adoptedBy === "auto");
@@ -446,7 +447,7 @@ function BoardDialog({ work, clip, apply, setError, onClose }: { work: DirectorW
   const ratio = `ratio-${work.settings.aspectRatio.replace(":", "x")}`;
   const cells = Math.min(clip.shots.length, 4);
   const regenerate = () => void run("board", async () => {
-    const cost = work.pricing.image;
+    const cost = work.pricing.boardImage ?? work.pricing.image;
     const billing = await chooseDirectorBilling("image", cost);
     apply(await runDirectorTask(work, apply, { type: "board", targetId: clip.id, clientRequestId: newRequestId(), billing, maxCost: cost }));
   }, setLocalError);
@@ -497,15 +498,16 @@ function BoardDialog({ work, clip, apply, setError, onClose }: { work: DirectorW
         {dirty && <><span className="director-unsaved">未保存</span><button type="button" className="ip-brand-text-button" onClick={() => setText(clip.boardPrompt)}>撤销修改</button></>}
         {clip.boardPromptCustom && !dirty && <button type="button" className="ip-brand-text-button" disabled={!!busy} onClick={() => void run("reset", async () => apply(await DirectorApi.edit(work.id, "clip.update", clip.id, clip.rev, { resetBoardPrompt: true })), setLocalError)}><RefreshCw size={13}/>恢复自动生成</button>}
       </div>
+      {work.boardImage?.name && work.boardImage.size && <p className="director-dialog-note">{work.boardImage.name} · {work.boardImage.size.replace("x", "×")} · {work.settings.aspectRatio}</p>}
       <InlineError message={localError || clip.board.error?.message}/>
       {/* 有图之后，主按钮是确认或完成；重新生成要花钱，退到次要位置并先确认。 */}
       <footer>
         {confirmRegenerate ? <div className="director-regenerate-confirm" role="group" aria-label="确认重新生成">
-          <span>重新生成一张分镜图，{costText(work.pricing.image, work.pricing.mock)}。现有版本会保留，可以换回。</span>
+          <span>重新生成一张分镜图，{costText(work.pricing.boardImage ?? work.pricing.image, work.pricing.mock)}。现有版本会保留，可以换回。</span>
           <button type="button" className="ip-brand-secondary" onClick={() => setConfirmRegenerate(false)}>取消</button>
           <button type="button" className="ip-brand-button" disabled={!!busy || !!generating || !!blockReason} onClick={() => { setConfirmRegenerate(false); regenerate(); }}>确定重新生成</button>
         </div> : <>
-          <small className="director-cost">{blockReason || (work.pricing.mock ? costText(0, true) : `每张${costText(work.pricing.image, false)}`)}</small>
+          <small className="director-cost">{blockReason || (work.pricing.mock ? costText(0, true) : `每张${costText(work.pricing.boardImage ?? work.pricing.image, false)}`)}</small>
           <span className="director-spacer"/>
           {clip.board.adoptedBy !== "user" && <button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={onClose}>关闭</button>}
           {clip.board.candidates.length > 0 ? <button type="button" className="ip-brand-secondary" disabled={!!busy || !!generating || !!blockReason} onClick={() => setConfirmRegenerate(true)}>

@@ -436,9 +436,11 @@ export interface DirectorWork {
   assistant?: DirectorAssistant | null;
   tasks: DirectorTask[];
   /** textChars：所选文本模型一次调用最多读多少字正文（正文本身不限长；超过的任务分批、按范围读或说明怎么拆）。 */
-  pricing: { textMax: number; image: number; mock: boolean; textChars?: number };
+  pricing: { textMax: number; image: number; boardImage?: number; mock: boolean; textChars?: number };
   imageModels?: DirectorImageModel[];
   imageModelState?: DirectorImageModelState;
+  /** 按作品画幅解析的分镜图规格与价格；默认只在同一图片系列选择可用接入点。 */
+  boardImage?: { endpointId?: string; name?: string; size?: string; creditCost?: number; error?: string };
   textModels?: StudioCapabilities["textModels"];
   textModelMode?: StudioCapabilities["textModelMode"];
   videoModels: DirectorVideoModel[];

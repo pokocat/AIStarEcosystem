@@ -1332,7 +1332,7 @@ public class DirectorService {
         String runId;
         if (fixtures.enabled()) runId = newTx.execute(tx -> fixtureMedia(userId, w.getId(), nodeId, requestId, "image", prompt));
         else runId = newTx.execute(tx -> imageRuns.generateForDirector(userId, w.getId(),
-                new IpRunService.IpGenerateRequest(nodeId, prompt, keys, 1, size, imageSelection(c).resolved().endpoint().getId(), maxCost, billing, requestId)).id());
+                new IpRunService.IpGenerateRequest(nodeId, prompt, keys, 1, size, (nodeId.startsWith("board:") ? boardImageSelection(c) : imageSelection(c)).resolved().endpoint().getId(), maxCost, billing, requestId)).id());
         ObjectNode m = om.createObjectNode().put("node", nodeId).put("prompt", prompt).put("fingerprint", fingerprint)
                 .put("promptFormat", DirectorPrompts.IMAGE_PROMPT_FORMAT);
         // 记下这次按出图模板哪一版编的：后台发了新版本，这张图仍按这一版核对，换模板本身不算「描述已修改」
@@ -3388,7 +3388,7 @@ public class DirectorService {
         List<JsonNode> eps = new ArrayList<>();
         for (JsonNode ep : c.path("episodes")) if (work || req.episodeId() == null || req.episodeId().equals(ep.path("id").asText())) eps.add(ep);
         if (!work && req.episodeId() == null && eps.size() > 1) eps = List.of(eps.get(0));
-        int text = 0, images = 0, clipsTotal = 0, seconds = 0, plannedVideos = 0;
+        int text = 0, images = 0, boardImages = 0, clipsTotal = 0, seconds = 0, plannedVideos = 0;
         Set<String> variantsCounted = new HashSet<>();
         long textCredits = 0, videoCredits = 0;
         boolean rough = false;
@@ -3406,7 +3406,7 @@ public class DirectorService {
             text += n; textCredits += (long) n * directorTextPrice(c, prices[0]);
             images += 6;                                      // 角色、场景、道具参考图
             clipsTotal = n * estClipsPerEp;
-            images += clipsTotal;                             // 分镜图
+            images += clipsTotal; boardImages += clipsTotal;   // 分镜图
         } else {
             if (eps.stream().anyMatch(e -> !e.path("extracted").asBoolean(false))) { text++; textCredits += directorTextPrice(c, prices[0]); }
             Set<String> epIds = new HashSet<>();
@@ -3420,9 +3420,9 @@ public class DirectorService {
             }
             for (JsonNode ep : eps) {
                 List<JsonNode> clips = clipsOf(c, List.of(ep));
-                if (clips.isEmpty()) { rough = true; text++; textCredits += directorTextPrice(c, prices[0]); clipsTotal += estClipsPerEp; images += estClipsPerEp; continue; }
+                if (clips.isEmpty()) { rough = true; text++; textCredits += directorTextPrice(c, prices[0]); clipsTotal += estClipsPerEp; images += estClipsPerEp; boardImages += estClipsPerEp; continue; }
                 for (JsonNode clip : clips) {
-                    if (clip.path("board").path("candidates").isEmpty()) images++;
+                    if (clip.path("board").path("candidates").isEmpty()) { images++; boardImages++; }
                     for (String need : neededVariants(c, clip)) if (variantsCounted.add(need)) images++;
                     if (!toVideo || clip.path("video").path("candidates").size() > 0) continue;
                     int sec = (int) Math.round(clip.path("durationSec").asDouble());
@@ -3441,8 +3441,8 @@ public class DirectorService {
             catch (BusinessException e) { videoError = e.getMessage(); }
         }
         if (toVideo && lim == null) videoError = "暂无可用视频模型，无法估算视频费用";
-        if ("plan".equals(target)) images = 0;
-        long imageCredits = (long) images * prices[1];
+        if ("plan".equals(target)) { images = 0; boardImages = 0; }
+        long imageCredits = (long) (images - boardImages) * prices[1] + (long) boardImages * boardImagePrice(c, prices[1]);
         long total = textCredits + imageCredits + (toVideo ? videoCredits : 0);
         long recommended = Math.max(10, (long) Math.ceil(total * 1.15 / 10.0) * 10);
         ObjectNode out = om.createObjectNode().put("target", target).put("rough", rough).put("total", total).put("recommended", recommended);
@@ -3754,7 +3754,8 @@ public class DirectorService {
             };
             if (busy.contains(node)) { p.put("stage", stage).put("message", stage); return true; }
             long estimate = "video".equals(type) ? videoQuote(userId, c, findOrNull(c, "clips", target))
-                    : "export".equals(type) ? 0 : Set.of("asset-image", "form-image", "scene-views", "board").contains(type) ? prices[1] : directorTextPrice(c, prices[0]);
+                    : "export".equals(type) ? 0 : "board".equals(type) ? boardImagePrice(c, prices[1])
+                    : Set.of("asset-image", "form-image", "scene-views").contains(type) ? prices[1] : directorTextPrice(c, prices[0]);
             // H3 视频先改写提示词：改写不进视频报价，但要占一键制作的预算。
             long reserve = "video".equals(type) ? rewriteReserve(c, findOrNull(c, "clips", target)) : 0;
             p.put("stage", stage).put("message", stage);
@@ -3989,6 +3990,41 @@ public class DirectorService {
         }
     }
 
+    /** 默认分镜缺少作品画幅时，只在同一 GPT 系列的已开放接入点中选规格；资产和用户显式选择不变。 */
+    com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection boardImageSelection(ObjectNode c) {
+        var selected = imageSelection(c);
+        if (selected == null || c.path("settings").hasNonNull("imageModel")) return selected;
+        String ratio = c.path("settings").path("aspectRatio").asText("9:16");
+        var spec = com.aistareco.aep.model.AiImageRequestSpec.read(selected.resolved().endpoint().getImageRequestSpecJson());
+        if (spec == null || spec.ratios().contains(ratio)) return selected;
+        var family = com.aistareco.aep.ipstudio.service.StudioImageModelRouting.familyForProviderModel(selected.resolved().endpoint().getModel());
+        if (family == null) return selected;
+        return scenePolicies.available("studio", "image", textRuns.directorPrices(null)[1]).stream()
+                .filter(s -> family.equals(com.aistareco.aep.ipstudio.service.StudioImageModelRouting.familyForProviderModel(s.resolved().endpoint().getModel())))
+                .filter(s -> {
+                    var other = com.aistareco.aep.model.AiImageRequestSpec.read(s.resolved().endpoint().getImageRequestSpecJson());
+                    return other != null && other.ratios().contains(ratio);
+                }).min(Comparator.comparingLong(com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection::creditCost)).orElse(selected);
+    }
+
+    long boardImagePrice(ObjectNode c, long fallback) {
+        if (fixtures.enabled()) return fallback;
+        try { var selected = boardImageSelection(c); return selected == null ? fallback : selected.creditCost(); }
+        catch (BusinessException ignored) { return fallback; } // 页面仍可打开，提交与 boardImage.error 明确报错。
+    }
+
+    private ObjectNode boardImageInfo(ObjectNode c) {
+        ObjectNode info = om.createObjectNode();
+        try {
+            var selected = fixtures.enabled() ? null : boardImageSelection(c);
+            if (!fixtures.enabled() && selected == null) return info;
+            info.put("size", sizeFor(c, "board"));
+            if (selected != null) info.put("endpointId", selected.resolved().endpoint().getId())
+                    .put("name", selected.resolved().endpoint().publicModelName()).put("creditCost", selected.creditCost());
+        } catch (BusinessException e) { info.put("error", e.getMessage()); }
+        return info;
+    }
+
     long[] directorPrices(ObjectNode c) {
         long[] prices;
         // 存着的文本模型停用了就按默认价展示，提交时 submitDirectorText 会明确报错，页面不因此打不开。
@@ -4084,7 +4120,7 @@ public class DirectorService {
             tasks.insertObject(0).put("id", pend.path("jobId").asText()).put("target", "video:" + clip.path("id").asText()).put("status", "running")
                     .put("stage", pend.path("stage").asText()).put("cost", 0).putNull("errorMessage").put("createdAt", pend.path("at").asText());
         long[] prices = directorPrices(c);
-        v.putObject("pricing").put("textMax", prices[0]).put("image", prices[1]).put("mock", fixtures.enabled()).put("textChars", textBudget(c));
+        v.putObject("pricing").put("textMax", prices[0]).put("image", prices[1]).put("boardImage", boardImagePrice(c, prices[1])).put("mock", fixtures.enabled()).put("textChars", textBudget(c));
         ArrayNode imageModels = v.putArray("imageModels");
         for (var selection : imageSelections()) {
             var endpoint = selection.resolved().endpoint();
@@ -4092,6 +4128,7 @@ public class DirectorService {
                     .put("isDefault", selection.resolved().isDefault()).put("creditCost", selection.creditCost());
         }
         v.set("imageModelState", imageModelState(c));
+        v.set("boardImage", boardImageInfo(c));
         var textCapabilities = textRuns.capabilities();
         v.set("textModels", om.valueToTree(textCapabilities.textModels()));
         v.put("textModelMode", textCapabilities.textModelMode());
@@ -4604,7 +4641,7 @@ public class DirectorService {
         };
         String fallback = switch (ratio) { case "16:9" -> "1365x768"; case "1:1" -> "1024x1024"; default -> "768x1365"; };
         if (fixtures.enabled()) return fallback;
-        var endpoint = imageSelection(c).resolved().endpoint();
+        var endpoint = ("board".equals(kind) ? boardImageSelection(c) : imageSelection(c)).resolved().endpoint();
         var spec = com.aistareco.aep.model.AiImageRequestSpec.read(endpoint.getImageRequestSpecJson());
         if (spec == null) return fallback;
         // 同一比例有几档时取最大的：设定集、宫格分镜图要放好几个分区，小图细节糊。只在这一个接入点的尺寸里挑，
