@@ -984,12 +984,10 @@ export function SceneVideoStudio() {
   const onPick = (id: string) => { const next = findVideoScene(catalog, id); if (next && (next.id !== scene.id || draftRef.current)) goToScene(next); };
   const tile = (kind: Exclude<Slot, "image">, media: Media | undefined, label: string, Icon: typeof Video, optional: boolean, clear: () => void) =>
     <div className={`scene-media${media ? " is-filled" : ""}`}>
-      <button type="button" disabled={uploading !== undefined} onClick={() => choose(kind)} aria-label={media ? `更换${label}` : `从资产库选择${label}`} title={media?.fileName || `从资产库选择${label}`}>
+      <button type="button" className={media && kind === "voice" ? "scene-voice-picked" : undefined} disabled={uploading !== undefined} onClick={() => choose(kind)} aria-label={media ? `更换${label}` : `从资产库选择${label}`} title={media?.fileName || `从资产库选择${label}`}>
         {uploading === kind ? <Loader2 size={18} className="studio-gallery-spinner"/> : media && kind === "character" ? <SignedImage src={media.url} storageKey={media.key} alt=""/>
-          : media && kind === "voice" ? <>
-            <AudioLines size={22} strokeWidth={1.5} aria-hidden="true"/>
-            <i className="scene-slot-badge" aria-label="已选择声音"><Check size={11} strokeWidth={2.4}/></i>
-          </> : <SlotEmpty Icon={Icon} size={22}/>}
+          : media && kind === "voice" ? <span className="scene-voice-picked-icon" aria-label="已选择声音"><AudioLines size={22} strokeWidth={1.5} aria-hidden="true"/></span>
+          : <SlotEmpty Icon={Icon} size={22}/>}
       </button>
       <span title={kind === "voice" && media ? media.fileName || media.title : undefined}>{kind === "voice" && media ? media.fileName || media.title : label}{!media && optional && <small>选填</small>}</span>
       {media && <button type="button" className="scene-ref-remove" aria-label={`移除${label}`} onClick={clear}><X size={11} strokeWidth={1.8}/></button>}
