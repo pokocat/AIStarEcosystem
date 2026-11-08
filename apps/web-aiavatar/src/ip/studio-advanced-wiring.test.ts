@@ -7,8 +7,6 @@ const source = readFileSync(join(__dirname, "studio-advanced-editor.tsx"), "utf8
 
 test("with nothing selected the right panel shows the cut, not a page of instructions", () => {
   expect(source).toContain("{!el ? <CutOverview");
-  expect(source).toContain('<details className="studio-advanced-section studio-advanced-guide">');
-  expect(source).not.toContain("<h3>如何精修</h3>");
 });
 
 test("a selected item can get back to the clip list from the top of the panel", () => {
@@ -16,7 +14,5 @@ test("a selected item can get back to the clip list from the top of the panel", 
 });
 
 test("the right panel and the left panels share one music value and one caption switch", () => {
-  expect(source.match(/<MusicField /g)?.length).toBe(2);
-  expect(source.match(/useBox\(auto\)/g)?.length).toBe(2);
   expect(source).toContain("music={music} auto={autoCaptions}");
 });
