@@ -414,7 +414,10 @@ export function SceneVideoStudio() {
       await persist(doc => titled.reduce((next, media) => {
         const nodes = next.nodes as CanvasNodeData[];
         const made = placeMedia(nodes, media, type, nodes.filter(n => n.metadata?.origin === "upload").length);
-        const placed = nodes.some(n => n.id === made.id) ? next : { ...next, nodes: [...nodes, made] };
+        // 老草稿的声音节点可能只叫「声音样本」；重选同一文件时也保留资产库里的名称。
+        const placed = nodes.some(n => n.id === made.id)
+          ? kind === "voice" ? { ...next, nodes: nodes.map(n => n.id === made.id ? { ...n, title: media.title } : n) } : next
+          : { ...next, nodes: [...nodes, made] };
         return withSceneInput(placed, kind, media.key, "add", max);
       }, doc), projectId).catch(() => undefined);
     } catch (e) { showFailure({ action: "添加素材", error: e }); }
