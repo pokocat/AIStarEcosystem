@@ -237,10 +237,9 @@ export function SceneEmpty({ title, note }: { title: string; note: ReactNode }) 
 }
 
 /** 场景的做法拆成几条（「开头…，中间…，结尾…」按逗号分号断开），只有一句时不拆。 */
-export const sceneSteps = (structure?: string | null) => (structure ?? "").split(/[，；。]/).map(s => s.trim()).filter(Boolean);
-
 /**
- * 示例：左边一张大图（运营传了参考示例就轮播示例，没传放封面），右边场景名、一句说明、做法几条。都是示意，不是用户的作品。
+ * 示例：左边一张大图（运营传了参考示例就轮播示例，没传放封面），右边场景名和一句说明。都是示意，不是用户的作品。
+ * 不再列「做法」：那是写给模型的拍法，按标点切开后像「拿到客户的商品和卖点后」这样的半句话（2026-11-07 用户：有图就够了）。
  */
 /** 前后对比图：图上不压字，「素材 / 示例效果」放在图上方；点开看大图。 */
 export function SceneDemoFigure({ src, title, example, onError }: { src: string; title: string; example?: string | null; onError?: () => void }) {
@@ -255,8 +254,8 @@ export function SceneDemoFigure({ src, title, example, onError }: { src: string;
   </figure>;
 }
 
-export function SceneExample({ id, title, group, note, steps = [], cover, examples, ratio = "9:16", demo, example, onUseExample }: {
-  id: string; title: string; group?: string; note: ReactNode; steps?: string[]; cover?: string | null; examples?: StudioSceneMedia[] | null; ratio?: string;
+export function SceneExample({ id, title, group, note, cover, examples, ratio = "9:16", demo, example, onUseExample }: {
+  id: string; title: string; group?: string; note: ReactNode; cover?: string | null; examples?: StudioSceneMedia[] | null; ratio?: string;
   /** 随包的前后对比图。运营配了示例或封面时用运营的；文件不存在（运营新加的场景）时退回封面。 */
   demo?: string;
   /** 补充要求的例句，和对比图对应。 */
@@ -293,7 +292,6 @@ export function SceneExample({ id, title, group, note, steps = [], cover, exampl
       {group && <span className="scene-example-group">{group}</span>}
       <h2>{title}</h2>
       <p>{note}</p>
-      {steps.length > 1 && <ol>{steps.map((step, i) => <li key={i}><span>{String(i + 1).padStart(2, "0")}</span>{step}</li>)}</ol>}
     </div>
   </div>;
 }

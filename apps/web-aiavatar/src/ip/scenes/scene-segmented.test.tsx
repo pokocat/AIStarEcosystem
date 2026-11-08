@@ -96,12 +96,13 @@ async function open() {
 const go = () => screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement;
 const records = () => store.get("IPP-V")!.doc.sceneVideoSubmissions ?? [];
 
-test("longer than one segment: the button generates, says how it splits and what it costs, and is not a hand-off", async () => {
+// 2026-11-07 用户：按钮下的费用明细和分段说明多余。按钮上写约数，上限放悬停提示；怎么分段写在时长设置里。
+test("longer than one segment: the button generates and shows what it costs, the cap only on hover, and is not a hand-off", async () => {
   longDraft();
   await open();
-  await screen.findByText(/当前模型单段最长 15 秒，40 秒将分 3 段（15 \+ 15 \+ 10）/);
   await waitFor(() => expect(go().textContent).toContain("约 1,624 积分"));
-  expect(screen.getByText(new RegExp(`最多 ${(PRICE.estimated * 3).toLocaleString("zh-CN")} 积分`))).toBeTruthy();
+  await waitFor(() => expect(go().querySelector("small")?.getAttribute("title")).toContain(`最多 ${(PRICE.estimated * 3).toLocaleString("zh-CN")} 积分`));
+  expect(screen.queryByText(/将分 3 段|其余按实际用量结算|最多 .*积分/)).toBeNull();
   expect(screen.queryByRole("button", { name: "交给创作助手" })).toBeNull();
   expect(api.price).toHaveBeenLastCalledWith(expect.objectContaining({ model: "ep-h3", tier: "768p", duration: 40, ratio: "9:16", images: 1, character: false, voice: false }), expect.anything());
 });
@@ -202,7 +203,9 @@ test("long video shows the server discount and keeps the standard budget cap", a
   await open();
   await waitFor(() => expect(go().textContent).toContain("824 积分"));
   expect(go().querySelector("s")?.textContent).toContain("1,624");
-  expect(go().querySelector("small")?.title).toBe("H3限时折扣，视频费省 800 积分");
+  // 优惠和上限都在价格的悬停提示里，按钮下不写（2026-11-07）。
+  expect(go().querySelector("small")?.title).toContain("H3限时折扣，视频费省 800 积分");
+  await waitFor(() => expect(go().querySelector("small")?.title).toContain("按实际用量结算，最多"));
   fireEvent.click(go());
   await waitFor(() => expect(api.start).toHaveBeenCalled());
   expect(api.start.mock.calls[0][1].budgetCap).toBe(PRICE.estimated * 3);
@@ -214,7 +217,8 @@ test("undecided payer shows both long-video prices and a starting price", async 
   api.price.mockImplementation(async ({ payer }) => ({ ...PRICE, discountedVideoCost: payer === "enterprise" ? 800 : 1600 }));
   await open();
   await waitFor(() => expect(go().textContent).toContain("824 积分起"));
-  expect(screen.getByText(/个人账户视频费 1,600 积分，企业账户视频费 800 积分/)).toBeTruthy();
+  expect(go().querySelector("small")?.title).toContain("个人账户视频费 1,600 积分，企业账户视频费 800 积分");
+  expect(screen.queryByText(/个人账户视频费/)).toBeNull();
   expect(api.price).toHaveBeenCalledWith(expect.objectContaining({ payer: "enterprise", enterpriseId: "team" }), expect.anything());
 });
 

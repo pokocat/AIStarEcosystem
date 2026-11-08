@@ -2,6 +2,7 @@
 
 ## 用户反馈 2026-11-07（修复见 PR 157，文案记录在 `docs/audits/pc-ui-copy-review-2026-11.md` 第 11 批）
 
+- [x] ~~视频页失败后没有重试入口~~ **2026-11-07 修复**：线上 `PEX-9caea05b1848414ca167` 分镜图没回结果、积分已退，页面只有「在画布上查看」。视频页和画布任务条共用 `videoTaskResumeLabel`，服务端能接着做的都给「重试这一步 / 继续生成」，见 `docs/studio-video-workflow-redesign.md` §12。预算不够时视频页仍只能去画布（视频任务没有对话，没有追加预算卡），未做。
 - [x] ~~已失败任务点「重试这一步」报「原任务的提交结果尚未确认」~~ **2026-11-07 修复**：`StudioPlanExecutionService.adoptVideoRepairs` 只拦原任务还在进行的，错误码 `STUDIO_PLAN_STEP_RUNNING`。
 - [x] ~~模型聊天回复、厂商接口说法显示给用户~~ **2026-11-07 修复**：`PublicModelErrorPolicy` 和 `public-model-error.ts` 换成引导重试的文案，旧记录读取时也换。
 - [x] ~~Seedance 2.0 内部错误没有错误码、未识别错误没有兜底~~ **2026-11-07 修复**：`VIDEO_PROVIDER_INTERNAL`；失败任务错误码不再为空；前端不显示浏览器和代码抛的英文。

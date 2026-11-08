@@ -2,10 +2,11 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { StudioVideoTask } from '@ai-star-eco/types/ip-studio-video-task';
-const api = vi.hoisted(() => ({ list: vi.fn(), get: vi.fn(), readRun: vi.fn(), readVideoJob: vi.fn(), signKeys: vi.fn() }));
+const api = vi.hoisted(() => ({ list: vi.fn(), get: vi.fn(), readRun: vi.fn(), readVideoJob: vi.fn(), signKeys: vi.fn(), resume: vi.fn() }));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('@/canvas-bridge/studio-video-tasks', async original => ({ ...await original<any>(), videoTasks: api.list, videoTask: api.get }));
 vi.mock('@/canvas-bridge/api', () => ({ readRun: api.readRun, readVideoJob: api.readVideoJob, signKeys: api.signKeys, cancelRun: vi.fn() }));
+vi.mock('@/canvas-bridge/studio-plan-execution', async original => ({ ...await original<any>(), resumeStudioPlanExecution: api.resume }));
 vi.mock('@/canvas-bridge/signed-image', () => ({ SignedImage: ({ storageKey, ...p }: any) => <img {...p} data-key={storageKey}/> }));
 vi.mock('@/canvas-bridge/signed-video', () => ({ SignedVideo: ({ storageKey, ...p }: any) => <video {...p} data-key={storageKey}/> }));
 import { useState } from 'react';
@@ -101,13 +102,57 @@ test('output the model could not produce usably offers regenerating in place', a
   expect(await screen.findByRole('button', { name: '重试这一步' })).toBeTruthy();
   expect(screen.queryByText(/模型原文/)).toBeNull();
 });
-test('previews stay short: pending placeholders only while running, and the rest behind one toggle', async () => {
+// 线上 PEX-9caea05b1848414ca167（2026-11-07）：分镜图生成服务没回结果、积分已退，原因写着「可以重新生成」，页面上却只有「在画布上查看」。
+test('a failed step whose credits came back can be retried on the video page', async () => {
+  const saved = task('PEX-board', 'segmented'); saved.execution!.status = 'needs_user';
+  Object.assign(saved.execution!.steps[0], { title: '第 1 段分镜图', operation: 'image', status: 'failed', errorCode: 'STUDIO_IMAGE_SUBMISSION_UNKNOWN', attempt: 1,
+    reason: '生成服务没有返回结果，这次生成失败。未完成部分的积分已退回，可以重新生成。', runIds: ['IPR-board'] });
+  api.get.mockResolvedValue(saved); api.readRun.mockResolvedValue({ id: 'IPR-board', status: 'failed' });
+  api.resume.mockResolvedValue({ ...saved.execution, status: 'running' });
+  render(<SceneVideoWorkspace {...props} taskId="PEX-board" selected={saved}/>);
+  expect(await screen.findByRole('heading', { name: '第 1 段分镜图没有完成' })).toBeTruthy();
+  expect(screen.getByRole('link', { name: '在画布上查看' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '重试这一步' }));
+  await waitFor(() => expect(api.resume).toHaveBeenCalledWith('IPP-PEX-board', 'PEX-board', expect.objectContaining({ expectedStatus: 'needs_user' })));
+});
+// 这几种点了也会停在同一处（服务端不接或接着停），页面不给按钮，让用户去画布处理。
+test.each([
+  ['the stage budget is short', (t: StudioVideoTask) => { t.execution!.budgets = [{ stage: 'production', approvedCap: 100, autoFixCap: 0, spent: 90, inFlight: 0, remaining: 10, shortfall: 20 }]; }],
+  ['the step names materials outside this task', (t: StudioVideoTask) => { t.execution!.steps[0].materials = [{ nodeId: 'n1', title: '图1', onCanvas: true }]; }],
+  ['the step already ran three times', (t: StudioVideoTask) => { t.execution!.steps[0].attempt = 3; }],
+  ['the task timed out', (t: StudioVideoTask) => { t.execution!.status = 'partial'; }],
+])('no retry when %s', async (_name, change) => {
+  const saved = failedTask('失败', 'STUDIO_VIDEO_FAILED'); saved.execution!.steps[0].status = 'failed'; change(saved);
+  api.get.mockResolvedValue(saved);
+  render(<SceneVideoWorkspace {...props} taskId="PEX-bad" selected={saved}/>);
+  expect((await screen.findAllByRole('link', { name: /在画布上查看/ })).length).toBeGreaterThan(0);
+  expect(screen.queryByRole('button', { name: '重试这一步' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '继续生成' })).toBeNull();
+});
+test('a paused task continues from the video page', async () => {
+  const saved = task('PEX-paused', 'segmented'); saved.execution!.status = 'paused';
+  api.get.mockResolvedValue(saved); api.resume.mockResolvedValue({ ...saved.execution, status: 'running' });
+  render(<SceneVideoWorkspace {...props} taskId="PEX-paused" selected={saved}/>);
+  fireEvent.click(await screen.findByRole('button', { name: '继续生成' }));
+  await waitFor(() => expect(api.resume).toHaveBeenCalledWith('IPP-PEX-paused', 'PEX-paused', expect.objectContaining({ expectedStatus: 'paused' })));
+});
+// 2026-11-07 用户：有分镜图就只摆图，视频那一步不占格子；状态、进度条和操作在图的上面。
+test('previews stay short: images only, pending placeholders only while running, and the rest behind one toggle', async () => {
   const saved = task('PEX-long', 'segmented');
   const step = saved.execution!.steps[0];
-  saved.execution!.steps = Array.from({ length: 6 }, (_, i) => ({ ...step, id: `s${i}`, title: `第 ${i + 1} 项`, operation: i % 2 ? 'video' : 'image', status: i === 0 ? 'running' : 'pending' })) as never;
+  saved.execution!.steps = [
+    ...Array.from({ length: 6 }, (_, i) => ({ ...step, id: `s${i}`, title: `第 ${i + 1} 张`, operation: 'image', status: i === 0 ? 'running' : 'pending' })),
+    { ...step, id: 'v1', title: '第 1 段视频', operation: 'video', status: 'pending' },
+  ] as never;
   api.get.mockResolvedValue(saved); api.readRun.mockResolvedValue({ status: 'running' });
   const mounted = render(<SceneVideoWorkspace {...props} taskId="PEX-long" selected={saved}/>);
   expect(mounted.container.querySelectorAll('.video-production-previews figure').length).toBe(4);
+  expect(screen.queryByText('第 1 段视频')).toBeNull();
+  // 状态、进度条和操作在上面，图在下面。
+  const head = mounted.container.querySelector('.video-production-head')!, stage = mounted.container.querySelector('.video-production-stage')!;
+  expect(head.querySelector('.video-production-tracker')).toBeTruthy();
+  expect(head.querySelector('.video-production-actions button')?.textContent).toContain('停止生成');
+  expect(head.compareDocumentPosition(stage) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: '查看全部（共 6 项）' }));
   expect(mounted.container.querySelectorAll('.video-production-previews figure').length).toBe(6);
   mounted.unmount();

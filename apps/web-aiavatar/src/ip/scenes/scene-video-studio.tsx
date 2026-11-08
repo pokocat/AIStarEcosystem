@@ -44,7 +44,7 @@ import { findVideoScene, useSceneCatalog, type VideoScene } from "./scene-catalo
 import { addScriptNode, addVideoRow, applyRun, createSceneDraft, draftSubject, listSceneDrafts, openedVideoState, patchNode, resubmitRow, sceneInputsOf, scriptNodes, scriptOfRow, rejectedNextStep, submissionRejected, videoRows, withSceneInput, type SceneInputKind } from "./scene-drafts";
 import { useSceneDraftStore, useSceneStateSave } from "./scene-draft-store";
 import { useSceneQuery, writeSceneQuery } from "./scene-query";
-import { SceneDrawer, SceneEmpty, SceneExample, SceneNoModel, SceneResultTabs, SceneSwitch, sceneFailureText, sceneHintText, sceneOptionValues, sceneSteps, useSceneDrawerPin, useScenePopover, RatioGlyph, useSceneMobile, SlotEmpty } from "./scene-layout";
+import { SceneDrawer, SceneEmpty, SceneExample, SceneNoModel, SceneResultTabs, SceneSwitch, sceneFailureText, sceneHintText, sceneOptionValues, useSceneDrawerPin, useScenePopover, RatioGlyph, useSceneMobile, SlotEmpty } from "./scene-layout";
 import { PromptText, ScenePromptEditor, type ScenePromptEditorHandle, type ScenePromptRef } from "./scene-prompt-editor";
 import { AiMark } from "../studio-ai-icon";
 import { clampSceneDuration, sceneVideoDurations, sceneVideoInputs, sceneVideoSettings, type SceneVideoMaterial } from "./scene-video-plan";
@@ -632,8 +632,9 @@ export function SceneVideoStudio() {
     }, 0);
   };
   /** 点一条常用开头：接在要求后面，不发送。 */
-  const addIdea = (idea: string) => {
-    setText(old => old.includes(idea) ? old : old.trim() ? `${old.replace(/\s+$/, "")}\n${idea}` : idea);
+  // 点开头建议是换一种写法，不是叠加：输入框换成这一条（2026-11-07 用户要求，原来接在后面越点越长）。
+  const useIdea = (idea: string) => {
+    setText(idea);
     setHint("");
     setTimeout(() => input.current?.focus("end", { preventScroll: true }), 0);
   };
@@ -961,9 +962,8 @@ export function SceneVideoStudio() {
   const groups = catalog.videoGroups.map(g => ({ id: g.id, title: g.title, items: catalog.video.filter(s => s.group === g.id) }));
   const groupTitle = catalog.videoGroups.find(g => g.id === scene.group)?.title;
   // 选的时长这个模型出不了（比下限短）：照实说按几秒出，不悄悄换。
-  // 比单段上限长的照实说会怎么分（换了个更短的模型时最常见），不悄悄改时长。
-  const durationNote = long ? (segments.length ? `当前模型单段最长 ${contract!.maxSeconds} 秒，${duration} 秒将分 ${segments.length} 段（${segments.join(" + ")}）。完成后自动合成。` : "")
-    : !recreation && contract && usedDuration !== duration
+  // 比单段上限长的怎么分，写在时长设置里（「超过单段上限，将分 N 段…」），按钮下不再重复（2026-11-07 用户：说明多余）。
+  const durationNote = !long && !recreation && contract && usedDuration !== duration
     ? contract.minSeconds === contract.maxSeconds ? `当前模型仅支持 ${usedDuration} 秒` : `当前模型最短 ${contract.minSeconds} 秒，将按 ${usedDuration} 秒生成` : "";
   const pickDuration = (n: number) => { durationTouched.current = true; setDuration(n); setHint(""); };
   const goBlocker = (!videoModels ? '正在加载视频模型…' : !chosenVideo ? '暂无可用的视频模型' : '') || (recreation ? handoffBlocker : long ? longBlocker : videoBlocker) || (taskQuote?.key !== taskPriceKey ? '正在计算费用…' : taskQuote.error || '');
@@ -974,6 +974,9 @@ export function SceneVideoStudio() {
   const longPriced = longReady?.price ? longReady : longPrice?.spec === longSpec && longPrice.price ? longPrice : undefined;
   const longShown = longPriced?.price;
   const longView = longShown ? describeSegmentedPrice(longShown, longPriced?.enterprise) : undefined;
+  // 长视频和爆款复刻按实际用量结算：按钮上写约数，上限和明细只放悬停提示（2026-11-07 用户：按钮下的费用说明多余）。
+  const capNote = !caps?.mock && taskQuote?.key === taskPriceKey && taskQuote.price ? `按实际用量结算，最多 ${taskQuote.price.cap.toLocaleString("zh-CN")} 积分` : undefined;
+  const priceTitle = (...lines: (string | false | undefined)[]) => lines.filter(Boolean).join("\n") || undefined;
   const onPick = (id: string) => { const next = findVideoScene(catalog, id); if (next && (next.id !== scene.id || draftRef.current)) goToScene(next); };
   const tile = (kind: Exclude<Slot, "image">, media: Media | undefined, label: string, Icon: typeof Video, optional: boolean, clear: () => void) =>
     <div className={`scene-media${media ? " is-filled" : ""}`}>
@@ -1047,7 +1050,7 @@ export function SceneVideoStudio() {
           {!scripts.length && <div className="scene-director-start">
             <h2>想做一条什么视频？</h2>
             {scene.ideas.length > 0 && <div className="scene-director-ideas" role="group" aria-label="常用开头">{scene.ideas.map(idea =>
-              <button key={idea} type="button" onClick={() => addIdea(idea)}>{idea}</button>)}</div>}
+              <button key={idea} type="button" aria-pressed={text.trim() === idea} onClick={() => useIdea(idea)}>{idea}</button>)}</div>}
           </div>}
           {scripts.map((row, i) => <ScriptTurn key={row.id} row={row} refs={scriptRefs(row)} run={live[row.id]} stopping={scriptStopping(row)} busy={busy} submitting={submitting === row.id} latest={row.id === latestScript?.id}
             given={scripts.slice(0, i + 1).map(s => s.metadata?.studio?.sceneDirector?.ask ?? "")} facts={scene.brief?.facts}
@@ -1111,18 +1114,16 @@ export function SceneVideoStudio() {
             <span>生成视频</span>
             {/* 普通视频的价格是确定的；长视频和爆款复刻要看实际用量，才写「约」。算不出就不显示，不编。 */}
             {caps?.mock ? <small>免费</small>
-              : long ? longView && <small title={longView.discount}>约 {longView.shown !== longView.standard && <s><span className="scene-sr-only">原价 </span>{longView.standard.toLocaleString("zh-CN")}</s>}
+              : long ? longView && <small title={priceTitle(longView.discount, longView.accounts, capNote)}>约 {longView.shown !== longView.standard && <s><span className="scene-sr-only">原价 </span>{longView.standard.toLocaleString("zh-CN")}</s>}
                 {longView.shown !== longView.standard && <span className="scene-sr-only">，折后 </span>}{longView.shown.toLocaleString("zh-CN")} 积分{longView.from ? "起" : ""}</small>
               : taskKind === 'direct' ? price && <small title={price.discount} className={price.pending ? "is-pending" : undefined} aria-busy={price.pending || undefined}>
                 {price.shown !== price.standard && <s><span className="scene-sr-only">原价 </span>{price.standard.toLocaleString("zh-CN")}</s>}
                 {price.shown !== price.standard && <span className="scene-sr-only">，折后 </span>}{price.shown.toLocaleString("zh-CN")} 积分{price.from ? "起" : ""}</small>
-              : taskQuote?.key === taskPriceKey && taskQuote.price && <small>约 {taskQuote.price.estimated.toLocaleString("zh-CN")} 积分</small>}
+              : taskQuote?.key === taskPriceKey && taskQuote.price && <small title={capNote}>约 {taskQuote.price.estimated.toLocaleString("zh-CN")} 积分</small>}
           </button>
           {/* 点了没做成的原因用提醒色；还没动手时只是灰字说一句还差什么。 */}
           {(hint || goBlocker) && <p id="scene-video-go-note" className={`scene-hint${hint ? "" : " is-note"}`} role="status">{hint || goBlocker}</p>}
           {taskKind === 'direct' && price?.note && <p className="scene-hint is-note">{price.note}</p>}
-          {long && longShown && longView && <p className="scene-hint is-note scene-price-note">{longView.videoNote}分镜图 {longShown.boardCost.toLocaleString("zh-CN")} 积分，其余按实际用量结算{!caps?.mock && taskQuote?.key === taskPriceKey && taskQuote.price ? `，最多 ${taskQuote.price.cap.toLocaleString("zh-CN")} 积分` : ""}。</p>}
-          {recreation && !caps?.mock && taskQuote?.key === taskPriceKey && taskQuote.price && <p className="scene-hint is-note scene-price-note">按实际用量结算，最多 {taskQuote.price.cap.toLocaleString("zh-CN")} 积分。</p>}
           {!!draft?.doc.sceneVideoSubmissions?.length && <div className="video-pending-submissions">{draft!.doc.sceneVideoSubmissions!.map(request => <p key={request.clientRequestId}>提交结果待确认。<button type="button" disabled={busy} onClick={() => void startSceneTask(request.kind, request)}>确认原任务</button></p>)}</div>}
           {!recreation && !long && plan?.note && <p className="scene-hint is-note">{plan.note}</p>}
           {!recreation && plan?.used.some(m => m.mediaType === 'audio') && <p className="scene-hint is-note" role="status">{AUDIO_REFERENCE_NOTICE}</p>}
@@ -1144,7 +1145,7 @@ export function SceneVideoStudio() {
           <VideoHistoryToggle onOpen={() => setRailOpen(true)}/></span></header>
       {draft && handedOff && <HandoffStatus projectId={draft.id} execution={execution} waiting={!!executionId && !execution}/>}
       <div id="scene-video-panel" className="scene-results-panel" role="tabpanel" aria-labelledby={`scene-video-tab-${tab}`}>
-      {tab === "example" ? <SceneExample id={scene.id} title={scene.title} group={groupTitle} note={scene.description} steps={sceneSteps(scene.structure)}
+      {tab === "example" ? <SceneExample id={scene.id} title={scene.title} group={groupTitle} note={scene.description}
           cover={scene.coverUrl} examples={scene.examples} ratio={scene.ratio}/>
         : rows.length || segmentedRuns.length ? <ol className="scene-row-list">{draft && segmentedRuns.map(record => <SegmentedRow key={record.clientRequestId} record={record} projectId={draft.id} doc={draft.doc} persist={persist} busy={busy}
             onConfirm={() => void confirmLong(record)} onFailure={(action, error) => showFailure({ action, error })}/>)}{rows.map(row => <VideoRow key={row.id} row={row} run={live[row.id]} busy={busy} submitting={submitting === row.id}
