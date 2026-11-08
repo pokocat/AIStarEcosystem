@@ -22,6 +22,7 @@ import type { EnterpriseBillingSelection } from '@ai-star-eco/types/enterprise';
 import type { StudioVideoSettings } from '@ai-star-eco/types/ip-studio-workflow';
 import { startVideoTask, prepareVideoTask, videoTaskPrice } from '@/canvas-bridge/studio-video-tasks';
 import { SceneVideoWorkspace, VideoHistoryToggle, VideoTaskSettings, VIDEO_TASK_SELECTION } from './scene-video-workspace';
+import { SceneImageGuide } from './scene-image-guide';
 import { SegmentedRow } from "./scene-segmented-row";
 import { studioCapabilities, submitStudioRun } from "@/canvas-bridge/studio-api";
 import { attachmentNode } from "@/canvas-bridge/studio-attachments";
@@ -41,7 +42,7 @@ import { LibraryReferencePicker } from "../library-reference-picker";
 import { AUDIO_REFERENCE_NOTICE } from '@/canvas-bridge/recording-audio';
 import { IpStudioApi } from "../api";
 import { findVideoScene, useSceneCatalog, type VideoScene } from "./scene-catalog";
-import { addScriptNode, addVideoRow, applyRun, createSceneDraft, draftSubject, listSceneDrafts, openedVideoState, patchNode, resubmitRow, sceneInputsOf, scriptNodes, scriptOfRow, rejectedNextStep, submissionRejected, videoRows, withSceneInput, type SceneInputKind } from "./scene-drafts";
+import { addScriptNode, addVideoRow, applyRun, createSceneDraft, draftSubject, listSceneDrafts, openedVideoState, patchNode, resubmitRow, restoreVideoTaskScript, sceneInputsOf, scriptNodes, scriptOfRow, rejectedNextStep, submissionRejected, videoRows, withSceneInput, type SceneInputKind } from "./scene-drafts";
 import { useSceneDraftStore, useSceneStateSave } from "./scene-draft-store";
 import { useSceneQuery, writeSceneQuery } from "./scene-query";
 import { SceneDrawer, SceneEmpty, SceneExample, SceneNoModel, SceneResultTabs, SceneSwitch, sceneFailureText, sceneHintText, sceneOptionValues, useSceneDrawerPin, useScenePopover, RatioGlyph, useSceneMobile, SlotEmpty } from "./scene-layout";
@@ -121,6 +122,7 @@ export function SceneVideoStudio() {
   // 草稿与保存队列（换草稿时旧回包不改这一页，见 scene-draft-store.ts）。
   const { draft, current: draftRef, session, begin, remember, show, onPage, persist, settled } = useSceneDraftStore();
   const [picking, setPicking] = useState<Slot>();
+  const [imagePurpose, setImagePurpose] = useState<string>();
   const input = useRef<ScenePromptEditorHandle>(null);
   const thread = useRef<HTMLDivElement>(null);
 
@@ -463,7 +465,7 @@ export function SceneVideoStudio() {
     const projectId = draftRef.current?.id;
     if (projectId) void persist(doc => withSceneInput(doc, kind, key, "remove"), projectId).catch(e => showFailure({ action: "移除素材", error: e }));
   };
-  const choose = (kind: Slot) => setPicking(kind);
+  const choose = (kind: Slot, purpose?: string) => { setImagePurpose(kind === "image" ? purpose : undefined); setPicking(kind); };
 
   /**
    * 素材放进草稿画布（同一个文件只放一次），返回每份素材对应的节点，顺序就是编导写的图1、图2…。
@@ -866,10 +868,10 @@ export function SceneVideoStudio() {
       const keys = nodes.flatMap(n => n.metadata?.storageKey ?? []);
       const signed = keys.length ? await signKeys(keys) : {};
       await IpStudioApi.updateProject(project.id, { name: task.title, baseDocVersion: project.docVersion ?? undefined,
-        doc: { ...project.doc, ...task.input, nodes: nodes.map(n => ({ ...n, metadata: { ...n.metadata, content: n.metadata?.storageKey ? signed[n.metadata.storageKey] : n.metadata?.content } })) } });
+        doc: restoreVideoTaskScript({ ...project.doc, ...task.input, nodes: nodes.map(n => ({ ...n, metadata: { ...n.metadata, content: n.metadata?.storageKey ? signed[n.metadata.storageKey] : n.metadata?.content } })) }) });
       setSelectedTask(undefined);
       try { sessionStorage.removeItem(VIDEO_TASK_SELECTION); } catch { /* UI preference */ }
-      await openDraft(project.id); setView('compose'); drafts.reload();
+      await openDraft(project.id); setView('compose'); setMobileView('compose'); drafts.reload();
     } catch (error) { showFailure({ action: '重新编辑', error }); }
     finally { setBusy(false); }
   };
@@ -1002,8 +1004,8 @@ export function SceneVideoStudio() {
   const imageIndex = (key: string) => (plan?.used ?? []).filter(m => m.mediaType === "image").findIndex(m => m.key === key);
 
   // 素材和规格在编辑页和编导页是同一份：编导页的输入框里也看得到、改得了，编导按这里的时长和素材写（2026-10-31 用户反馈）。
-  const mediaRow = (compact = false) =>
-<div className={`scene-media-row${compact ? " is-compact" : ""}`} role="group" aria-label="素材">
+  const mediaRow = (compact = false) => <>
+    <div className={`scene-media-row${compact ? " is-compact" : ""}`} role="group" aria-label="素材">
       {scene.video && tile("video", video, scene.video.label, Video, !scene.video.required, () => { if (video) drop("video", video.key); setVideo(undefined); })}
       {images.map((m, i) => { const at = imageIndex(m.key); return <div key={m.key} className="scene-media is-filled">
         <span className="scene-media-preview"><SignedImage src={m.url} storageKey={m.key} alt={m.title}/>{at >= 0 && <i className="scene-ref-index">图{at + 1}</i>}</span>
@@ -1015,7 +1017,10 @@ export function SceneVideoStudio() {
       {(scene.character || scene.voice) && <i className="scene-media-divider" aria-hidden="true"/>}
       {scene.character && tile("character", character, "角色", UserRound, true, () => { if (character) drop("character", character.key); setCharacter(undefined); })}
       {scene.voice && tile("voice", voice, "声音", Mic, true, () => { if (voice) drop("voice", voice.key); setVoice(undefined); })}
-    </div>;
+    </div>
+    {!compact && scene.id === "local-groupbuy" && images.length < (scene.images.max ?? 6) &&
+      <SceneImageGuide max={scene.images.max ?? 6} disabled={uploading !== undefined} onChoose={label => choose("image", label)}/>}
+  </>;
   const specPill =
     <div className="scene-setting-panel-host">
       <button type="button" className="scene-pill" aria-expanded={settingsOpen} aria-label={`视频规格：${language}，${shownDuration} 秒，${ratio}${usedTier ? `，${usedTier.toUpperCase()}` : ""}`} onClick={() => setSettingsOpen(v => !v)}>
@@ -1158,7 +1163,7 @@ export function SceneVideoStudio() {
     {picking && <div className="scene-picker-host"><LibraryReferencePicker open upload
       mediaType={picking === "voice" ? "audio" : picking === "video" ? "video" : "image"}
       max={picking === "image" ? Math.max(1, (scene.images.max ?? 6) - images.length) : 1}
-      title={`选择${picking === "image" ? scene.images.label : picking === "character" ? "出镜人物" : picking === "voice" ? "声音" : scene.video?.label ?? "参考视频"}`}
+      title={`选择${picking === "image" ? imagePurpose ?? scene.images.label : picking === "character" ? "出镜人物" : picking === "voice" ? "声音" : scene.video?.label ?? "参考视频"}`}
       intro="从资产库选择，也可上传新文件。"
       onClose={() => setPicking(undefined)} onAssets={assets => addFromLibrary(picking, assets)}/></div>}
     <HubTabBar/>

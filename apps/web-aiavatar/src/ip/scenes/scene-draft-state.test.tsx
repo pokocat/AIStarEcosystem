@@ -82,6 +82,23 @@ async function open(Page: typeof SceneImageStudio, url: string) {
   await act(async () => { render(<Page/>); });
 }
 
+test("group buy: product and environment guidance add to the same references and survive reopening", async () => {
+  await open(SceneVideoStudio, "/video?scene=local-groupbuy");
+  fireEvent.click(await screen.findByRole("button", { name: "添加产品图片" }));
+  expect(screen.getByRole("dialog", { name: "选择产品图片" })).toBeTruthy();
+  await confirmLibrary();
+  await waitFor(() => expect(store.get("IPP-A")?.doc.sceneInputs?.images).toEqual(["ipstudio/source/u/p.jpg"]));
+  setLibrarySource(async () => ({ key: "ipstudio/source/u/store.jpg", url: "blob:store", fileName: "店内环境.jpg" }));
+  fireEvent.click(screen.getByRole("button", { name: "添加环境图片" }));
+  expect(screen.getByRole("dialog", { name: "选择环境图片" })).toBeTruthy();
+  await confirmLibrary();
+  await waitFor(() => expect(store.get("IPP-A")?.doc.sceneInputs?.images).toEqual(["ipstudio/source/u/p.jpg", "ipstudio/source/u/store.jpg"]));
+  cleanup();
+  await open(SceneVideoStudio, "/video?scene=local-groupbuy&draft=IPP-A");
+  await waitFor(() => expect(screen.getByRole("button", { name: "移除门店照片 2" })).toBeTruthy());
+  expect(api.submit).not.toHaveBeenCalled();
+});
+
 // ── AI 图片 ───────────────────────────────────────────────────────────────
 async function generateWhiteBackground() {
   await open(SceneImageStudio, "/image?scene=white-background");

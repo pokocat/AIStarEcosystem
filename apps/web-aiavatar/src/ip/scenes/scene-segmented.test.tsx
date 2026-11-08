@@ -25,9 +25,10 @@ vi.mock("@/canvas-bridge/studio-plan-execution", async original => ({ ...(await 
   getStudioPlanExecution: api.getExecution, pauseStudioPlanExecution: api.pause, resumeStudioPlanExecution: api.resume, cancelStudioPlanExecution: api.cancel }));
 vi.mock("@/canvas-bridge/studio-video-price", async original => ({ ...(await original<typeof import("@/canvas-bridge/studio-video-price")>()), studioPreviewPayer: api.payer, useStudioVideoPrice: () => ({ status: "idle" }) }));
 vi.mock("@/canvas-bridge/signed-video", () => ({ SignedVideo: ({ src, "aria-label": label }: any) => <video src={src} aria-label={label}/> }));
+vi.mock("@/canvas-bridge/signed-image", () => ({ SignedImage: ({ src, alt }: any) => <img src={src} alt={alt}/> }));
 vi.mock("../studio-errors", async original => ({ ...(await original<typeof import("../studio-errors")>()), useStudioFailure: () => api.failure, studioErrorMetadata: () => ({}) }));
 vi.mock("../library-reference-picker", () => import("./scene-test-picker"));
-vi.mock("../studio-select", () => ({ StudioSelect: () => null }));
+vi.mock("../studio-select", () => ({ StudioSelect: ({ label, value, onChange, options }: any) => <select aria-label={label} value={value} onChange={e => onChange(e.target.value)}>{options.map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}</select> }));
 const acceptedTasks = new Map<string, any>();
 vi.mock('@/canvas-bridge/studio-video-tasks', async original => ({ ...(await original<typeof import('@/canvas-bridge/studio-video-tasks')>()),
   videoTasks: async () => ({ items: [], page: 0, hasMore: false }),
@@ -95,6 +96,37 @@ async function open() {
 }
 const go = () => screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement;
 const records = () => store.get("IPP-V")!.doc.sceneVideoSubmissions ?? [];
+
+test.each([false, true])('failed Fast task: re-edit retains the prompt and switching models keeps it (adopted script: %s)', async adopted => {
+  const prompt = '第1镜（0–5秒）：产品特写。旁白说：「这是我写好的脚本。」';
+  const state = { text: adopted ? '' : prompt, options: {}, duration: 15, ratio: '9:16', tier: '768p',
+    ...(adopted ? { edit: { scriptId: 'script-from-original-draft', prompt } } : {}) };
+  longDraft();
+  api.videoModels.mockResolvedValue([{ ...H3, endpointId: 'ep-fast', name: 'Seedance Fast' }, { ...H3, isDefault: false }]);
+  api.createProject.mockImplementation(async (body: any) => put({ id: 'IPP-REEDIT', ...body }));
+  const input = { nodes: [productNode], sceneInputs: { images: ['product.jpg'], character: null, voice: null, video: null },
+    sceneVideoModel: 'ep-fast', sceneVideoState: state };
+  acceptedTasks.set('PEX-fast-failed', { id: 'PEX-fast-failed', projectId: 'IPP-V', sceneId: 'ecom-talking', title: 'Fast 失败的原任务', kind: 'direct',
+    createdAt: '2026-11-07', input, request: { input, configuration: { text: prompt, hasScript: adopted } } });
+  api.getExecution.mockResolvedValue(execution('needs_user', [step('video', 'video', 'failed')], { id: 'PEX-fast-failed' }));
+  window.history.replaceState(null, '', '/video?scene=ecom-talking&draft=IPP-V&task=PEX-fast-failed');
+  await act(async () => { render(<SceneVideoStudio/>); });
+  fireEvent.click(await screen.findByRole('button', { name: '重新编辑' }));
+  await waitFor(() => expect(screen.getByRole('textbox', { name: /想做的视频|视频脚本/ }).textContent).toBe(prompt));
+  expect(document.querySelector('.scene-video-studio')?.getAttribute('data-video-view')).toBe('compose');
+  if (adopted) expect(screen.getByRole('textbox', { name: '视频脚本' })).toBeTruthy();
+  expect(screen.getByRole('combobox', { name: '视频模型' })).toHaveProperty('value', 'ep-fast');
+  fireEvent.change(screen.getByRole('combobox', { name: '视频模型' }), { target: { value: 'ep-h3' } });
+  expect(screen.getByRole('textbox', { name: /想做的视频|视频脚本/ }).textContent).toBe(prompt);
+  await waitFor(() => expect(store.get('IPP-REEDIT')!.doc.sceneVideoModel).toBe('ep-h3'));
+  expect(api.start).not.toHaveBeenCalled();
+  expect(api.submit).not.toHaveBeenCalled();
+  cleanup();
+  window.history.replaceState(null, '', '/video?scene=ecom-talking&draft=IPP-REEDIT');
+  await act(async () => { render(<SceneVideoStudio/>); });
+  await waitFor(() => expect(screen.getByRole('textbox', { name: /想做的视频|视频脚本/ }).textContent).toBe(prompt));
+  expect(screen.getByRole('combobox', { name: '视频模型' })).toHaveProperty('value', 'ep-h3');
+});
 
 // 2026-11-07 用户：按钮下的费用明细和分段说明多余。按钮上写约数，上限放悬停提示；怎么分段写在时长设置里。
 test("longer than one segment: the button generates and shows what it costs, the cap only on hover, and is not a hand-off", async () => {
