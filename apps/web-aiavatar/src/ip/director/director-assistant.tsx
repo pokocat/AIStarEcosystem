@@ -260,7 +260,7 @@ export function useAssistantController({ work: maybeWork, apply, tab, episodeId,
     const w = workRef.current;
     const board = p.type === "clip.prompt";
     const targetId = board ? p.clipId! : p.assetId!;
-    const cost = w.pricing.image;
+    const cost = board ? (w.pricing.boardImage ?? w.pricing.image) : w.pricing.image;
     modal.confirm({
       title: "按新提示词生成新版本？",
       content: <div className="director-batch-confirm">
