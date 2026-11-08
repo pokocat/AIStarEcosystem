@@ -178,6 +178,21 @@ test("video: a removed voice stays removed when the draft is opened again; the o
 const productNode = { id: "product", type: "image", title: "商品图 1", position: { x: 100, y: 400 }, width: 100, height: 100,
   metadata: { storageKey: "product.jpg", content: "https://cdn/product.jpg", origin: "upload", mimeType: "image/jpeg", status: "success" } };
 
+test("video: reselecting a legacy voice keeps its library name after reopening without duplicating the node", async () => {
+  put({ id: "IPP-V", sceneId: "ecom-talking", doc: { ...EMPTY, nodes: [voiceNode("old", "old.mp3")] as never } });
+  api.importMedia.mockResolvedValue({ key: "old.mp3", url: "https://cdn/old.mp3", fileName: "原唱音轨.wav", bytes: 3, mimeType: "audio/wav", mediaType: "audio" });
+  await openVideoDraft();
+  await pickFromLibrary("声音");
+  await waitFor(() => expect(store.get("IPP-V")!.doc.nodes[0].title).toBe("原唱音轨.wav"));
+  expect(store.get("IPP-V")!.doc.nodes).toHaveLength(1);
+  cleanup();
+  await openVideoDraft();
+  const selected = screen.getByRole("button", { name: "更换声音" });
+  expect(selected.getAttribute("title")).toBe("原唱音轨.wav");
+  expect(selected.parentElement?.textContent).toContain("原唱音轨.wav");
+  expect(screen.getByLabelText("已选择声音")).toBeTruthy();
+});
+
 test("video: after replacing the voice, opening the draft again picks the replacement", async () => {
   put({ id: "IPP-V", name: "draft V", sceneId: "ecom-talking", doc: { ...EMPTY, nodes: [voiceNode("old", "old.mp3"), productNode] as never } });
   api.importMedia.mockResolvedValue({ key: "new.mp3", url: "https://cdn/new.mp3", fileName: "new.mp3", bytes: 3, mimeType: "audio/mpeg", mediaType: "audio" });
