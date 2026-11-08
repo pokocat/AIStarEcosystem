@@ -264,7 +264,7 @@
 
 ### 2026-10-23 · AI 导演台（2026-10-24 生产发布 `20261024-ai-director`）
 
-- [x] ~~生成前自动保存当前修改~~ **2026-11-07 已合入 main，待统一部署**：导演台单项、批量和一键制作共用 `director-generation.ts`，先保存剧本、资产 / 形态、镜头和提示词再派发；失败保留修改且不生成，保存期间继续输入不丢稿。测试见 `director-generation.test.tsx`、`director-asset-studio.test.tsx`。
+- [x] ~~生成前自动保存当前修改~~ **2026-11-07 已随 `20261108-director-video-playback-7121e8ada` 发布**：导演台单项、批量和一键制作共用 `director-generation.ts`，先保存剧本、资产 / 形态、镜头和提示词再派发；失败保留修改且不生成，保存期间继续输入不丢稿。测试见 `director-generation.test.tsx`、`director-asset-studio.test.tsx`。
 
 总方案：[AI 导演台完整方案](docs/ai-director-plan.md)；实测边界见[本地验收](docs/audits/ai-director-local-acceptance-20261022.md)。
 
