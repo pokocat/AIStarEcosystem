@@ -46,8 +46,7 @@ export function affected(paths, { full = false, packages = workspaces() } = {}) 
         selectAll(); browser = true;
       }
       // These tests consume server resources directly, outside the package graph.
-      if (path.startsWith('apps/server/src/main/resources/ipstudio/')
-        || path.endsWith('/StudioNaturalApprovals.java')) select('web-aiavatar');
+      if (path.startsWith('apps/server/src/main/resources/ipstudio/')) select('web-aiavatar');
       if (path.startsWith('apps/server/src/main/resources/prompts/material/')) select('web-drama');
     } else if (path.startsWith('infra/vendor/platform-sdk/') || path === 'infra/scripts/prepare-platform-sdk.sh') {
       backend = true;
@@ -82,7 +81,8 @@ export function affected(paths, { full = false, packages = workspaces() } = {}) 
   const targets = packages.filter(p => selected.has(p.name)).sort((a, b) => a.name.localeCompare(b.name));
   return {
     backend, contract,
-    frontend: targets.filter(p => p.scripts.typecheck || p.scripts.test).map(p => ({ package: p.name })),
+    frontend: targets.filter(p => p.scripts.typecheck || p.scripts.test).flatMap(p =>
+      p.product === 'web-aiavatar' ? [1, 2].map(shard => ({ package: p.name, shard })) : [{ package: p.name, shard: 0 }]),
     builds: targets.filter(p => p.scripts.build && p.dir.startsWith('apps/'))
       .map(p => ({ package: p.name, product: p.product, browser: browser && BROWSER_PRODUCTS.has(p.product) })),
   };

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { affected, changedPaths, workspaces, ROOT } from './affected.mjs';
 
-const names = plan => plan.frontend.map(p => p.package);
+const names = plan => [...new Set(plan.frontend.map(p => p.package))];
 const products = plan => plan.builds.map(p => p.product);
 
 test('documentation-only changes start no heavy job, including application READMEs', () => {
@@ -18,6 +18,7 @@ test('Studio source checks only Studio; ordinary business changes do not run the
   const plan = affected(['apps/web-aiavatar/src/ip/assets-hub.tsx']);
   assert.deepEqual(products(plan), ['web-aiavatar']);
   assert.deepEqual(names(plan), ['@ai-star-eco/web-aiavatar']);
+  assert.deepEqual(plan.frontend.map(p => p.shard), [1, 2]);
   assert.equal(plan.backend, false);
   assert.equal(plan.contract, true);
   assert.equal(plan.builds[0].browser, false);
@@ -87,14 +88,14 @@ test('script consumers and contract-only changes have explicit scopes', () => {
 test('lockfile changes check all frontends but do not start Maven', () => {
   const plan = affected(['pnpm-lock.yaml']);
   assert.equal(plan.backend, false);
-  assert.equal(plan.frontend.length, workspaces().length);
+  assert.equal(plan.frontend.length, workspaces().length + 1);
 });
 
 test('unknown files, deleted workspaces and CI changes fall back to full checks', () => {
   for (const path of ['new-root-config.json', 'apps/removed-app/package.json', '.github/workflows/impersonation-ci.yml', 'scripts/ci/affected.mjs']) {
     const plan = affected([path]);
     assert.equal(plan.backend, true, path);
-    assert.equal(plan.frontend.length, workspaces().length, path);
+    assert.equal(plan.frontend.length, workspaces().length + 1, path);
   }
 });
 
@@ -102,7 +103,7 @@ test('manual and scheduled full checks include every app, with browsers only for
   const plan = affected([], { full: true });
   assert.equal(plan.backend, true);
   assert.equal(plan.contract, true);
-  assert.equal(plan.frontend.length, workspaces().length);
+  assert.equal(plan.frontend.length, workspaces().length + 1);
   assert.equal(plan.builds.filter(p => p.browser).length, 6);
   assert.ok(products(plan).includes('studio-admin'));
   assert.ok(products(plan).includes('web-incubator'));
@@ -122,7 +123,7 @@ test('CLI writes typed GitHub outputs and refuses a PR without diff SHAs', () =>
     }));
     assert.equal(outputs.backend, true);
     assert.equal(outputs.contract, true);
-    assert.equal(outputs.frontend.length, workspaces().length);
+    assert.equal(outputs.frontend.length, workspaces().length + 1);
     assert.equal(outputs.builds.filter(p => p.browser).length, 6);
     assert.match(readFileSync(summary, 'utf8'), /CI scope/);
     assert.notEqual(run({ GITHUB_EVENT_NAME: 'pull_request', CI_BASE_SHA: '', CI_HEAD_SHA: '' }).status, 0);

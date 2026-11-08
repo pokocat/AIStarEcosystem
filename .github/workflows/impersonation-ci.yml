@@ -28,18 +28,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test scripts/ci/affected.test.mjs
+      - run: node --test scripts/ci/*.test.mjs
       - name: Select affected checks
         id: plan
         env:
           CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           CI_HEAD_SHA: ${{ github.sha }}
         run: node scripts/ci/affected.mjs
-  backend:
+  backend-tests:
     needs: scope
     if: needs.scope.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,19 +54,41 @@ jobs:
           java-version: '17'
           cache: maven
           cache-dependency-path: apps/server/pom.xml
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Prepare pinned platform SDK
         run: ./infra/scripts/prepare-platform-sdk.sh
       - name: Media test dependencies
         run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-cjk fontconfig
-      - name: Full server tests and package
+      - name: Select backend test shard
+        id: tests
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: node scripts/ci/server-tests.mjs plan "$SHARD" "$RUNNER_TEMP/server-tests.json"
+      - name: Server test shard and package
         working-directory: apps/server
-        run: ./mvnw -B -DargLine=-Xmx3g -Dspring.test.context.cache.maxSize=2 verify
+        env:
+          TEST_CLASSES: ${{ steps.tests.outputs.tests }}
+        run: ./mvnw -B "-Dtest=$TEST_CLASSES" -DargLine=-Xmx3g -Dspring.test.context.cache.maxSize=2 -DforkCount=1 -DreuseForks=true -Djunit.jupiter.execution.parallel.enabled=false verify
+      - name: Verify every selected class produced a report
+        run: node scripts/ci/server-tests.mjs verify "$RUNNER_TEMP/server-tests.json" apps/server/target/surefire-reports
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: impersonation-server-tests
+          name: impersonation-server-tests-${{ matrix.shard }}
           path: apps/server/target/surefire-reports/
           retention-days: 3
+  backend:
+    needs: [scope, backend-tests]
+    if: always() && needs.scope.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check all backend shards
+        env:
+          RESULT: ${{ needs.backend-tests.result }}
+        run: test "$RESULT" = success
   frontend-checks:
     needs: scope
     if: needs.scope.outputs.frontend != '[]'
@@ -86,8 +112,22 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # One workspace per runner: independent Vitest worker pools no longer
       # compete for the same runner's CPUs. Shared dependencies are source-only.
-      - run: pnpm --filter "${{ matrix.package }}" --if-present typecheck
-      - run: pnpm --filter "${{ matrix.package }}" --if-present test
+      - if: matrix.shard < 2
+        run: pnpm --filter "${{ matrix.package }}" --if-present typecheck
+      - if: matrix.shard == 0
+        run: pnpm --filter "${{ matrix.package }}" --if-present test
+      - name: Studio test shard
+        if: matrix.shard > 0
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: pnpm --filter "${{ matrix.package }}" exec vitest run "--shard=$SHARD/2" --reporter=default --reporter=junit --outputFile="$RUNNER_TEMP/studio-tests.xml"
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.shard > 0
+        with:
+          name: studio-tests-${{ matrix.shard }}
+          path: ${{ runner.temp }}/studio-tests.xml
+          if-no-files-found: error
+          retention-days: 3
   api-contract:
     needs: scope
     if: needs.scope.outputs.contract == 'true'
