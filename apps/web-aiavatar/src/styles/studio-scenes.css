@@ -145,15 +145,6 @@ html[data-layout="desktop"] .scene-composer-head .scene-recent-host { display: n
 .scene-ref-remove { position: absolute; top: -7px; right: -7px; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 1px solid var(--sn-field); border-radius: 50%; background: var(--ip-paper); color: var(--ip-muted); cursor: pointer; }
 .scene-ref-remove:hover { color: var(--ip-ink); }
 .scene-media-note { margin: -8px 0 0; color: var(--ip-muted); font-size: 12px; line-height: 1.5; }
-.scene-image-guide { margin-top: -8px; }
-.scene-image-guide p { margin: 0 0 8px; color: var(--ip-muted); font-size: 12px; line-height: 1.5; }
-.scene-image-guide>div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.scene-image-guide button { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 9px 10px; text-align: left; }
-.scene-image-guide button>svg { flex: 0 0 auto; }
-.scene-image-guide button>span { min-width: 0; }
-.scene-image-guide strong, .scene-image-guide small { display: block; white-space: normal; }
-.scene-image-guide strong { font-size: 12px; font-weight: 500; line-height: 1.5; }
-.scene-image-guide small { margin-top: 2px; color: var(--ip-muted); font-size: 11px; line-height: 1.5; }
 .scene-media-group { display: flex; flex-direction: column; gap: 8px; }
 .scene-media-count { color: var(--ip-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .scene-media>span:not(.scene-media-preview) small { display: block; margin-left: 0; }
