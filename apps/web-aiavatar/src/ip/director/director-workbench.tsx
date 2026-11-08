@@ -3,7 +3,7 @@
 import { withSavedDirectorDrafts } from "./director-generation";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, Clapperboard, FileText, Loader2, Pause, Play, Settings2, Shapes, ShoppingBag, Sparkles, Square, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, Clapperboard, FileText, Loader2, Pause, Play, Settings2, Shapes, ShoppingBag, Sparkles, Square, X } from "lucide-react";
 import type { DirectorPipeline, DirectorPipelineEstimate, DirectorPipelineTarget, DirectorWork } from "@ai-star-eco/types";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { isProductNotEnrolledError } from "@ai-star-eco/api-client";
@@ -46,59 +46,59 @@ export type WorkbenchProps = {
 export type ClipFocus = { clipId: string; assetId?: string; open: "assets" | "editor"; at: number };
 
 /** 下一步提示：按作品现状告诉用户该做什么，按钮直接带到对应位置。 */
-type NextStep = { text: string; tab: Tab; running?: true; alsoOn?: Tab[] };
+type NextStep = { text: string; tab: Tab; tone: "info" | "warning" | "success" | "running"; alsoOn?: Tab[] };
 function nextStep(work: DirectorWork, episodeId: string | null): NextStep | null {
   // AI 正在做的文字任务优先说出来：不然生成中还写着「下一步：生成剧本」，像是没开始。
   const running = work.tasks.filter(t => t.status === "running").map(t => t.target);
-  if (running.includes("script")) return { text: "AI 正在写剧本，完成后自动显示", tab: "script", running: true };
-  if (running.includes("script-more")) return { text: "AI 正在继续写剧本", tab: "script", running: true };
-  if (running.includes("split")) return { text: "AI 拆分中", tab: "script", running: true };
-  if (running.some(t => t.startsWith("extract"))) return { text: "AI 正在提取全剧资产", tab: "script", running: true };
+  if (running.includes("script")) return { text: "AI 正在写剧本，完成后自动显示", tab: "script", tone: "running" };
+  if (running.includes("script-more")) return { text: "AI 正在继续写剧本", tab: "script", tone: "running" };
+  if (running.includes("split")) return { text: "AI 拆分中", tab: "script", tone: "running" };
+  if (running.some(t => t.startsWith("extract"))) return { text: "AI 正在提取全剧资产", tab: "script", tone: "running" };
   const planning = running.find(t => t.startsWith("plan:"));
-  if (planning) { const ep = work.episodes.find(e => `plan:${e.id}` === planning); return { text: `AI 正在写${ep ? `第 ${ep.no} 集` : ""}分镜脚本`, tab: "storyboard", running: true }; }
+  if (planning) { const ep = work.episodes.find(e => `plan:${e.id}` === planning); return { text: `AI 正在写${ep ? `第 ${ep.no} 集` : ""}分镜脚本`, tab: "storyboard", tone: "running" }; }
   const reshooting = running.find(t => t.startsWith("reshoot:"));
   if (reshooting) {
     const id = reshooting.slice(8), ep = work.episodes.find(e => e.id === id), clip = work.clips.find(c => c.id === id);
-    return { text: `AI 正在重写${ep ? `第 ${ep.no} 集` : clip ? `片段 ${clip.order} 的` : ""}分镜脚本`, tab: "storyboard", running: true };
+    return { text: `AI 正在重写${ep ? `第 ${ep.no} 集` : clip ? `片段 ${clip.order} 的` : ""}分镜脚本`, tab: "storyboard", tone: "running" };
   }
-  if (running.includes("brief")) return { text: "AI 正在分析你的想法", tab: "script", running: true };
+  if (running.includes("brief")) return { text: "AI 正在分析你的想法", tab: "script", tone: "running" };
   // 带货短剧：还没写剧本、也没加商品时，先加商品，剧本才写得进去。
-  if (work.settings.commerce && !work.draft.trim() && !work.episodes.length && !work.assets.some(a => a.kind === "product")) return { text: "下一步：添加要植入的商品", tab: "products" };
-  if (!work.draft.trim() && work.episodes.length === 0) return { text: !work.idea.trim() ? "第一步：描述你的想法，或粘贴剧本"
+  if (work.settings.commerce && !work.draft.trim() && !work.episodes.length && !work.assets.some(a => a.kind === "product")) return { tone: "info", text: "下一步：添加要植入的商品", tab: "products" };
+  if (!work.draft.trim() && work.episodes.length === 0) return { tone: "info", text: !work.idea.trim() ? "第一步：描述你的想法，或粘贴剧本"
     : work.brief?.status === "ready" ? "下一步：生成剧本" : work.settings.format ? "下一步：回答 AI 的问题，或直接生成剧本" : "下一步：确认形式和集数", tab: "script" };
-  if (work.pendingSplit) return { text: `分成 ${work.pendingSplit.episodes.length} 集，确认后生效`, tab: "script" };
-  if (work.episodes.length === 0) return { text: "下一步：拆分剧本，或作为一集", tab: "script" };
+  if (work.pendingSplit) return { tone: "info", text: `分成 ${work.pendingSplit.episodes.length} 集，确认后生效`, tab: "script" };
+  if (work.episodes.length === 0) return { tone: "info", text: "下一步：拆分剧本，或作为一集", tab: "script" };
   const ep = work.episodes.find(e => e.id === episodeId) ?? work.episodes[0];
-  if (!ep.extracted && !work.assets.some(a => a.episodeIds.includes(ep.id))) return { text: "下一步：提取全剧资产", tab: "script", alsoOn: ["assets"] };
+  if (!ep.extracted && !work.assets.some(a => a.episodeIds.includes(ep.id))) return { tone: "info", text: "下一步：提取全剧资产", tab: "script", alsoOn: ["assets"] };
   const clips = work.clips.filter(c => c.episodeId === ep.id);
-  if (clips.length === 0) return { text: `下一步：写第 ${ep.no} 集分镜脚本`, tab: "storyboard" };
+  if (clips.length === 0) return { tone: "info", text: `下一步：写第 ${ep.no} 集分镜脚本`, tab: "storyboard" };
   const used = new Set(clips.flatMap(c => c.assetIds));
   const needImage = work.assets.filter(a => used.has(a.id) && !a.image.adoptedId);
-  if (needImage.length) return { text: `缺少 ${needImage.length} 张资产图：${needImage.slice(0, 3).map(a => a.name).join("、")}`, tab: "assets" };
+  if (needImage.length) return { tone: "warning", text: `缺少 ${needImage.length} 张资产图：${needImage.slice(0, 3).map(a => a.name).join("、")}`, tab: "assets" };
   const unconfirmed = work.assets.filter(a => used.has(a.id) && a.image.adoptedBy === "auto");
-  if (unconfirmed.length) return { text: `${unconfirmed.length} 张资产图待确认`, tab: "assets" };
+  if (unconfirmed.length) return { tone: "warning", text: `${unconfirmed.length} 张资产图待确认`, tab: "assets" };
   const fix = clips.filter(c => c.issues.length);
-  if (fix.length) return { text: `${fix.length} 个片段需修改后才能生成分镜图`, tab: "storyboard" };
+  if (fix.length) return { tone: "warning", text: `${fix.length} 个片段需修改后才能生成分镜图`, tab: "storyboard" };
   const noBoard = clips.filter(c => !c.board.adoptedId);
-  if (noBoard.length) return { text: `下一步：生成 ${noBoard.length} 张分镜图`, tab: "storyboard" };
+  if (noBoard.length) return { tone: "info", text: `下一步：生成 ${noBoard.length} 张分镜图`, tab: "storyboard" };
   const oldRefs = work.assets.filter(a => used.has(a.id) && a.image.adoptedCheck === "outdated");
-  if (oldRefs.length) return { text: `${oldRefs.map(a => a.name).join("、")} 的资产图需更新`, tab: "assets" };
+  if (oldRefs.length) return { tone: "warning", text: `${oldRefs.map(a => a.name).join("、")} 的资产图需更新`, tab: "assets" };
   const oldBoards = clips.filter(c => c.board.adoptedCheck === "outdated");
-  if (oldBoards.length) return { text: `${oldBoards.map(c => `片段 ${c.order}`).join("、")} 的分镜图需更新`, tab: "storyboard" };
+  if (oldBoards.length) return { tone: "warning", text: `${oldBoards.map(c => `片段 ${c.order}`).join("、")} 的分镜图需更新`, tab: "storyboard" };
   const autoBoard = clips.filter(c => c.board.adoptedBy === "auto");
-  if (autoBoard.length) return { text: `${autoBoard.length} 张分镜图待确认`, tab: "storyboard" };
-  if (clips.some(c => c.video.pending?.length)) return { text: "片段视频生成中，完成后将显示在片段卡上", tab: "storyboard" };
+  if (autoBoard.length) return { tone: "warning", text: `${autoBoard.length} 张分镜图待确认`, tab: "storyboard" };
+  if (clips.some(c => c.video.pending?.length)) return { tone: "running", text: "片段视频生成中，完成后将显示在片段卡上", tab: "storyboard" };
   const noVideo = clips.filter(c => !c.video.adoptedId);
-  if (noVideo.length) return { text: `下一步：生成 ${noVideo.length} 条片段视频`, tab: "storyboard" };
+  if (noVideo.length) return { tone: "info", text: `下一步：生成 ${noVideo.length} 条片段视频`, tab: "storyboard" };
   const oldVideos = clips.filter(c => c.video.adoptedId && c.video.adoptedCheck === "outdated");
-  if (oldVideos.length) return { text: `${oldVideos.map(c => `片段 ${c.order}`).join("、")} 的视频需更新`, tab: "storyboard" };
+  if (oldVideos.length) return { tone: "warning", text: `${oldVideos.map(c => `片段 ${c.order}`).join("、")} 的视频需更新`, tab: "storyboard" };
   const autoVideo = clips.filter(c => c.video.adoptedBy === "auto");
-  if (autoVideo.length) return { text: `${autoVideo.length} 条片段视频待确认`, tab: "storyboard" };
-  if (runningTask(work, `export:${ep.id}`)) return { text: `第 ${ep.no} 集导出中，完成后可以观看和下载`, tab: "storyboard" };
+  if (autoVideo.length) return { tone: "warning", text: `${autoVideo.length} 条片段视频待确认`, tab: "storyboard" };
+  if (runningTask(work, `export:${ep.id}`)) return { tone: "running", text: `第 ${ep.no} 集导出中，完成后可以观看和下载`, tab: "storyboard" };
   const lastExport = (work.exports ?? []).filter(e => e.episodeId === ep.id && e.status === "done").sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
-  if (!lastExport) return { text: `第 ${ep.no} 集视频已确认，可预览或导出`, tab: "storyboard" };
-  if (exportIsStale(lastExport, clips)) return { text: `片段有变动，第 ${ep.no} 集需要重新导出`, tab: "storyboard" };
-  return { text: `第 ${ep.no} 集已导出。更换片段视频后需重新导出`, tab: "storyboard" };
+  if (!lastExport) return { tone: "success", text: `第 ${ep.no} 集视频已确认，可预览或导出`, tab: "storyboard" };
+  if (exportIsStale(lastExport, clips)) return { tone: "warning", text: `片段有变动，第 ${ep.no} 集需要重新导出`, tab: "storyboard" };
+  return { tone: "success", text: `第 ${ep.no} 集已导出。更换片段视频后需重新导出`, tab: "storyboard" };
 }
 
 /**
@@ -108,7 +108,7 @@ function nextStep(work: DirectorWork, episodeId: string | null): NextStep | null
  */
 export function nextStepShown(step: NextStep | null, tab: Tab) {
   if (!step) return false;
-  if (step.running) return true;
+  if (step.tone === "running") return true;
   return step.tab !== tab && !step.alsoOn?.includes(tab) && !(tab === "script" && step.tab === "script");
 }
 /** Plain confirmations fade on their own; warnings (a result not used, something to redo) stay until closed. */
@@ -283,12 +283,13 @@ export function DirectorWorkbench({ id }: { id: string }) {
 }
 
 /** 标题后面的状态：AI 在做什么，或下一步做什么。下一步在别的工作区时点它直接过去。 */
-function StatusChip({ step, tab, onGo }: { step: NextStep; tab: Tab; onGo: (tab: Tab) => void }) {
-  if (step.running) return <span className="director-status-chip is-running" role="status" title={step.text}><i className="director-chip-dot" aria-hidden/><span>{step.text}</span></span>;
-  const body = <><Sparkles size={13}/><span>{step.text}</span></>;
+export function StatusChip({ step, tab, onGo }: { step: NextStep; tab: Tab; onGo: (tab: Tab) => void }) {
+  if (step.tone === "running") return <span className="director-status-chip is-running" role="status" title={step.text}><i className="director-chip-dot" aria-hidden/><span>{step.text}</span></span>;
+  const className = `director-status-chip ${step.tone === "warning" ? "is-warn" : step.tone === "success" ? "is-success" : "is-next"}`;
+  const body = <>{step.tone === "warning" ? <AlertTriangle size={13}/> : step.tone === "success" ? <Check size={13}/> : <Sparkles size={13}/>}<span>{step.text}</span></>;
   return step.tab === tab
-    ? <span className="director-status-chip is-next" role="status" title={step.text}>{body}</span>
-    : <button type="button" className="director-status-chip is-next" title={`${step.text}。${GO_LABEL[step.tab]}`} onClick={() => onGo(step.tab)}>{body}<ArrowRight size={13} className="director-chip-go"/></button>;
+    ? <span className={className} role="status" title={step.text}>{body}</span>
+    : <button type="button" className={className} title={`${step.text}。${GO_LABEL[step.tab]}`} onClick={() => onGo(step.tab)}>{body}<ArrowRight size={13} className="director-chip-go"/></button>;
 }
 
 function StopTextTasks({work,apply,setError}:WorkbenchProps) {

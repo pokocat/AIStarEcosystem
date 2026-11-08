@@ -38,7 +38,7 @@ export function ScriptReference({ work, ep, focusClipId, onCollapse, foldId }: {
   const chars = `${ep.content.replace(/\s/g, "").length.toLocaleString("zh-CN")} 字${ep.planStale ? " · 写分镜脚本后正文已修改" : ""}`;
   return <section className="director-script-ref" aria-label={`第 ${ep.no} 集剧本`}>
     <header>
-      <div><b>本集剧本</b><small>{chars}</small></div>
+      <div><b>第 {ep.no} 集剧本</b><small>{ep.title} · {chars}</small></div>
       <AskAI scope={{ kind: "script", episodeId: ep.id, focusAt: range?.start ?? 0 }} what={`第 ${ep.no} 集剧本`} hint="评价、续写、润色本集"/>
       {onCollapse && <button type="button" id={foldId} className="director-script-collapse" aria-expanded onClick={onCollapse}>收起<ChevronDown size={16}/></button>}
     </header>

@@ -102,7 +102,7 @@ pre.director-prompt { max-height: 220px; overflow: auto; }
 .director-script-file-preview strong { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .director-script-file-preview textarea { width: 100%; max-height: 240px; resize: vertical; font-size: 13px; line-height: 1.8; }
 .director-script-file-preview > div:first-child > button { flex-shrink: 0; padding: 4px; border: 0; background: transparent; }
-.director-shell { min-height: 100dvh; padding: 10px 12px 32px; background: var(--ip-paper); }
+.director-shell { --director-guide: #344b70; --director-guide-soft: #e3e7f1; min-height: 100dvh; padding: 10px 12px 32px; background: var(--ip-paper); }
 /* Same paper-on-warm-gray frame as the other workspace pages (StudioPage). */
 html[data-layout="desktop"] body:has(.director-shell) { background: var(--ip-bg, #f0efec); overflow-y: scroll; scrollbar-gutter: stable; }
 html[data-layout="desktop"] .director-shell { width: calc(100% - 24px); max-width: none; margin: 0 auto 12px; padding: 16px 22px 32px; border-radius: 13px; min-height: calc(100dvh - var(--desktop-bar-h, 84px) - 12px); }
@@ -162,7 +162,8 @@ html:not([data-layout="desktop"]) .director-notice-toast { right: 12px; left: 12
 .director-status-chip svg { flex-shrink: 0; }
 button.director-status-chip { cursor: pointer; transition: box-shadow 160ms var(--ip-ease), transform 160ms var(--ip-ease); }
 button.director-status-chip:hover { box-shadow: 0 0 0 1px currentColor inset; transform: translateY(-1px); }
-.director-status-chip.is-next { background: var(--ip-green-soft); color: var(--ip-green); }
+.director-status-chip.is-next { background: var(--director-guide-soft); color: var(--director-guide); }
+.director-status-chip.is-success { background: var(--ip-green-soft); color: var(--ip-green); }
 .director-status-chip.is-warn { background: var(--ip-gold-soft); color: var(--ip-gold); }
 .director-status-chip.is-running { background: rgba(79, 91, 213, .1); color: #4f5bd5; }
 .director-status-chip.is-running > span { background: linear-gradient(90deg, #4f5bd5 0%, #4f5bd5 38%, #b5baf2 50%, #4f5bd5 62%, #4f5bd5 100%); background-size: 220% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: director-chip-shimmer 2s linear infinite; }
@@ -307,7 +308,7 @@ html:not([data-layout="desktop"]) .director-episode-body { padding-left: 6px; }
 .director-clip-status { font-weight: 600; color: var(--ip-ink); }
 .director-clip-status.is-done { color: var(--ip-green); }
 .director-clip-status.is-warn { color: var(--ip-gold); }
-/* 下一步跟着人走：工具栏滚出视野时才出现。排在本集剧本右边，不压片段卡右下角的按钮。 */
+/* 下一步跟着人走：工具栏滚出视野时才出现，不压片段卡右下角的按钮。 */
 .director-next-bar { position: fixed; left: calc(var(--desktop-rail-w, 0px) + 220px); bottom: 20px; z-index: 850; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 12px; max-width: calc(100vw - var(--desktop-rail-w, 0px) - 244px); padding: 8px 8px 8px 16px; border: 1px solid var(--ip-line); border-radius: 12px; background: var(--ip-paper); box-shadow: 0 8px 24px rgba(25, 34, 41, .16); font-size: 14px; }
 html:not([data-layout="desktop"]) .director-next-bar { right: 12px; bottom: 72px; left: 12px; max-width: none; justify-content: space-between; }
 html[data-layout="desktop"] .director-foot-link { padding-bottom: 88px; }
@@ -448,18 +449,24 @@ html:not([data-layout="desktop"]) .director-export-options { grid-template-colum
 .director-board-layout { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 html[data-layout="desktop"] .director-board-layout { display: grid; grid-template-columns: 188px minmax(0, 1fr); gap: 14px; align-items: start; }
 .director-episode-side { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 10px; border: 1px solid var(--ip-line); border-radius: 10px; background: var(--ip-paper); }
-html[data-layout="desktop"] .director-episode-side { position: sticky; top: calc(var(--desktop-bar-h, 84px) + 12px); max-height: calc(100dvh - var(--desktop-bar-h, 84px) - 24px); overflow: auto; }
+html[data-layout="desktop"] .director-episode-side { position: sticky; top: calc(var(--desktop-bar-h, 84px) + 12px); max-height: calc(100dvh - var(--desktop-bar-h, 84px) - 24px); overflow: hidden; }
 .director-episode-side h4 { display: flex; align-items: baseline; gap: 6px; font-size: 13px; }
 .director-episode-side h4 small { color: var(--ip-muted); font-weight: 500; }
 .director-episode-side ol { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
 html:not([data-layout="desktop"]) .director-episode-side ol { flex-direction: row; overflow-x: auto; }
-.director-episode-side button { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 6px; width: 100%; min-width: 140px; padding: 7px 8px; border: 1px solid transparent; border-radius: 8px; background: transparent; text-align: left; font-size: 13px; color: var(--ip-ink); }
-.director-episode-side button:hover { background: var(--ip-soft); }
-.director-episode-side button[aria-current="true"] { border-color: var(--ip-ink); background: var(--ip-soft); }
-.director-episode-side b { font-weight: 700; }
-.director-episode-side span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.director-episode-item { display: grid; grid-template-columns: minmax(0, 1fr) 32px; align-items: center; gap: 2px; padding: 3px; border: 1px solid transparent; border-radius: 8px; }
+.director-episode-item:hover { background: var(--ip-soft); }
+.director-episode-item:has([aria-current="true"]) { border-color: var(--ip-ink); background: var(--ip-soft); }
+.director-episode-pick { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 6px; width: 100%; min-width: 0; padding: 4px; border: 0; border-radius: 5px; background: transparent; text-align: left; font-size: 13px; color: var(--ip-ink); }
+.director-episode-pick b { font-weight: 700; white-space: nowrap; }
+.director-episode-pick span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .director-episode-side small { grid-column: 1 / -1; color: var(--ip-muted); font-size: 11px; }
 .director-episode-side small.is-done { color: var(--ip-green); }
+.director-episode-side .director-episode-script { display: grid; place-items: center; width: 32px; height: 36px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--director-guide); }
+.director-episode-script:hover, .director-episode-script[aria-expanded="true"] { background: var(--director-guide-soft); }
+html[data-layout="desktop"] .director-episode-side ol { min-height: 0; overflow-y: auto; }
+html:not([data-layout="desktop"]) .director-episode-item { flex: 0 0 188px; grid-template-columns: minmax(0, 1fr) 40px; }
+html:not([data-layout="desktop"]) .director-episode-script { width: 40px; height: 44px; }
 
 .director-clip-card { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 12px 14px; border: 1px solid var(--ip-line); border-radius: 12px; background: var(--ip-paper); }
 .director-clip-card.has-issues { border-color: #efc9ce; }
@@ -896,13 +903,9 @@ html[data-layout="desktop"] .director-assistant { position: sticky; inset: auto;
 .director-script-review > footer { position: sticky; bottom: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 8px; border-top: 1px solid var(--ip-line); background: var(--ip-paper); }
 .director-script-review > footer small { color: var(--ip-muted); font-size: 12px; }
 
-/* 每一集里的剧本：平时收在左下角，点开从下方滑出，盖在页面上但不挡操作，可以一边看一边改片段。 */
+/* 每集右侧的剧本图标打开浮层，可以一边看一边改片段。 */
 .director-episode-body, .director-episode-clips { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .director-clip-card { scroll-margin-top: calc(var(--desktop-bar-h, 84px) + 12px); }
-.director-script-dock { position: fixed; left: calc(var(--desktop-rail-w, 0px) + 20px); bottom: 20px; z-index: 860; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; border: 1px solid var(--ip-line); border-radius: 22px; background: var(--ip-paper); box-shadow: 0 8px 24px rgba(25, 34, 41, .16); color: var(--ip-ink); font-size: 14px; cursor: pointer; }
-.director-script-dock b { font-weight: 600; }
-.director-script-dock span { color: var(--ip-muted); font-size: 13px; font-variant-numeric: tabular-nums; }
-.director-script-dock:hover { box-shadow: 0 10px 28px rgba(25, 34, 41, .22); }
 .director-script-panel { position: fixed; left: calc(var(--desktop-rail-w, 0px) + 20px); bottom: 0; z-index: 860; display: flex; width: min(520px, calc(100vw - var(--desktop-rail-w, 0px) - 40px)); height: min(56dvh, 560px); border-radius: 14px 14px 0 0; background: var(--ip-paper); box-shadow: 0 -10px 40px rgba(25, 34, 41, .2); transform: translateY(100%); visibility: hidden; transition: transform 220ms cubic-bezier(.2, .8, .2, 1), visibility 0s linear 220ms; }
 /* 打开时立刻可见（否则焦点放不进去），收起时等滑完再隐藏。 */
 .director-script-panel.is-open { transform: none; visibility: visible; transition: transform 220ms cubic-bezier(.2, .8, .2, 1), visibility 0s; }
@@ -916,12 +919,7 @@ html[data-layout="desktop"] .director-assistant { position: sticky; inset: auto;
 .director-script-collapse { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; min-height: 36px; padding: 0 10px; border: 1px solid var(--ip-line); border-radius: 8px; background: transparent; color: var(--ip-ink); font-size: 14px; cursor: pointer; }
 .director-script-collapse:hover { background: var(--ip-soft); }
 @media (prefers-reduced-motion: reduce) { .director-script-panel { transition: none; } }
-html:not([data-layout="desktop"]) .director-script-dock { left: 16px; bottom: 16px; }
-html:not([data-layout="desktop"]) .director-script-dock span { display: none; }
 html:not([data-layout="desktop"]) .director-script-panel { left: 0; width: 100%; height: 72dvh; }
-/* 手机上入口盖在内容上，留出底部空间，最后一张片段卡的按钮不被挡住。 */
-html:not([data-layout="desktop"]) .director-episode-clips { padding-bottom: 64px; }
-html:not([data-layout="desktop"]) .director-foot-link { padding-bottom: 148px; }
 .director-script-ref { display: flex; flex-direction: column; gap: 8px; min-height: 0; padding: 10px; border: 1px solid var(--ip-line); border-radius: 10px; background: var(--ip-paper); }
 .director-script-ref > header { display: flex; align-items: flex-start; gap: 8px; }
 .director-script-ref > header > div { display: flex; flex-direction: column; min-width: 0; flex: 1; }

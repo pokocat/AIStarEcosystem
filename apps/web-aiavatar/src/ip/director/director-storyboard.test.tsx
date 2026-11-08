@@ -159,30 +159,49 @@ test("switching versions inside the video drawer adopts the picked one; re-picki
   expect(screen.queryByRole("button", { name: "采用这一版" })).toBeNull();
 });
 
-test("the script waits in the lower left, slides up over the page without blocking it, and collapses back", () => {
+test("each episode script icon opens its overlay without blocking the page and restores focus", () => {
   document.documentElement.dataset.layout = "desktop";
   render(<Page initial={work(clip("v2"))}/>);
   expect(screen.queryByRole("region", { name: "第 1 集剧本" })).toBeNull();
   expect(within(screen.getByRole("navigation", { name: "分集" })).queryByRole("tab")).toBeNull();
-  const dock = screen.getByRole("button", { name: /本集剧本/ });
-  expect(dock.className).toContain("director-script-dock");
+  const dock = screen.getByRole("button", { name: "查看第 1 集剧本" });
+  expect(within(screen.getByRole("navigation", { name: "分集" })).getByRole("button", { name: "查看第 1 集剧本" })).toBe(dock);
+  expect(dock.closest("li")).toBeTruthy();
   expect(dock.getAttribute("aria-expanded")).toBe("false");
   fireEvent.click(dock);
   const script = screen.getByRole("region", { name: "第 1 集剧本" });
   expect(script.closest(".director-script-panel")?.className).toContain("is-open");
   // 不是弹窗：页面照常能点。
   expect(screen.queryByRole("dialog")).toBeNull();
-  expect(screen.queryByRole("button", { name: /本集剧本/ })).toBeNull();
-  // 收起后焦点回到左下角的入口。
+  expect(dock.getAttribute("aria-expanded")).toBe("true");
+  // 收起后焦点回到当前集右侧的剧本图标。
   fireEvent.click(within(script).getByRole("button", { name: "收起" }));
   expect(screen.queryByRole("region", { name: "第 1 集剧本" })).toBeNull();
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: /本集剧本/ }));
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "查看第 1 集剧本" }));
   // 点片段上的「对照剧本」也能打开，Esc 收起。
   fireEvent.click(screen.getByRole("button", { name: "对照剧本" }));
   expect(screen.getByRole("region", { name: "第 1 集剧本" })).toBeTruthy();
   fireEvent.keyDown(window, { key: "Escape" });
   expect(screen.queryByRole("region", { name: "第 1 集剧本" })).toBeNull();
   delete document.documentElement.dataset.layout;
+});
+
+test("opening another episode script leaves the current storyboard selected and returns focus to that episode icon", () => {
+  const w = work(clip("v2"));
+  w.episodes.push({ ...w.episodes[0], id: "e2", no: 2, title: "第二集", content: "第二集的正文" });
+  render(<Page initial={w}/>);
+  const other = screen.getByRole("button", { name: "查看第 2 集剧本" });
+  fireEvent.click(other);
+  expect(screen.getByRole("region", { name: "第 2 集剧本" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: /第 1 集.*第一集/ })).toBeTruthy();
+  expect(other.getAttribute("aria-expanded")).toBe("true");
+  fireEvent.click(screen.getByRole("button", { name: "查看第 1 集剧本" }));
+  expect(screen.getByRole("region", { name: "第 1 集剧本" })).toBeTruthy();
+  expect(other.getAttribute("aria-expanded")).toBe("false");
+  fireEvent.click(other);
+  fireEvent.keyDown(window, { key: "Escape" });
+  expect(screen.queryByRole("region", { name: "第 2 集剧本" })).toBeNull();
+  expect(document.activeElement).toBe(other);
 });
 
 test("on the phone layout the script opens the same way", () => {

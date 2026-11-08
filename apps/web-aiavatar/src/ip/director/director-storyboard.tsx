@@ -3,7 +3,8 @@
 import { runDirectorTask, saveDirectorDrafts } from "./director-generation";
 import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Check, ChevronDown, ChevronRight, ChevronUp, Clapperboard, FileText, Film, ImageIcon, LayoutGrid, Lightbulb, Loader2, Play, Plus, RefreshCw, Scissors, Trash2, Wand2, X, ShoppingBag } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ChevronRight, Clapperboard, FileText, Film, ImageIcon, LayoutGrid, Lightbulb, Loader2, Play, Plus, RefreshCw, Scissors, Trash2, Wand2, X, ShoppingBag } from "lucide-react";
+import { Tooltip } from "antd";
 import { firstLine } from "./director-text";
 import type { DirectorClip, DirectorSceneView, DirectorShot, DirectorTask, DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi } from "../api";
@@ -22,6 +23,7 @@ import { useSceneMobile } from "../scenes/scene-layout";
 import { orderedLinkedAssets, ReferenceImages } from "./director-references";
 
 const SCRIPT_FOLD_ID = "director-script-fold";
+const scriptTriggerId = (episodeId: string) => `director-script-trigger-${episodeId}`;
 
 export function DirectorStoryboard(props: WorkbenchProps) {
   const { work, episodeId, apply, setError, goTab, pickEpisode, focus } = props;
@@ -48,8 +50,11 @@ export function DirectorStoryboard(props: WorkbenchProps) {
   }, [focus?.at, episodeId]); // eslint-disable-line react-hooks/exhaustive-deps
   // 本集剧本里正在对照的片段；换集清掉。
   const [focusClipId, setFocusClipId] = useState<string | null>(null);
-  // 本集剧本平时收在左下角，点开从下方滑出，盖在页面上但不挡操作：可以一边看剧本一边改片段。
+  // 每集右侧的图标打开对应剧本；查看别集不切换正在编辑的分镜。
   const [scriptOpen, setScriptOpen] = useState(false);
+  const [scriptEpisodeId, setScriptEpisodeId] = useState(episodeId);
+  const scriptReturnEpisode = useRef(episodeId);
+  const scriptEp = work.episodes.find(e => e.id === scriptEpisodeId) ?? ep;
   // 第一次打开才画正文（长正文很占资源），之后留着，收起时才有内容可以滑下去。
   const scriptEverOpen = useRef(false);
   if (scriptOpen) scriptEverOpen.current = true;
@@ -60,7 +65,13 @@ export function DirectorStoryboard(props: WorkbenchProps) {
     if (scriptOpen) setFocusClipId(null);
     setScriptOpen(!scriptOpen);
   };
+  const openEpisodeScript = (id: string) => {
+    if (scriptOpen && scriptEpisodeId === id) { toggleScript(); return; }
+    scriptReturnEpisode.current = id; foldFocus.current = true;
+    setFocusClipId(null); setScriptEpisodeId(id); setScriptOpen(true);
+  };
   const compareScript = (clipId: string) => {
+    scriptReturnEpisode.current = episodeId; setScriptEpisodeId(episodeId);
     setFocusClipId(clipId); setScriptOpen(true);
     // 片段卡滚到上面，别被滑出来的剧本盖住。
     window.requestAnimationFrame(() => document.getElementById(`clip-${clipId}`)?.scrollIntoView?.({ block: "start", behavior: "smooth" }));
@@ -68,8 +79,9 @@ export function DirectorStoryboard(props: WorkbenchProps) {
   useEffect(() => {
     if (!foldFocus.current) return;
     foldFocus.current = false;
-    document.getElementById(SCRIPT_FOLD_ID)?.focus();
-  }, [scriptOpen]);
+    const id = scriptOpen ? SCRIPT_FOLD_ID : scriptReturnEpisode.current ? scriptTriggerId(scriptReturnEpisode.current) : "";
+    document.getElementById(id)?.focus();
+  }, [scriptOpen, scriptEpisodeId]);
   useEffect(() => {
     if (!scriptOpen) return;
     // 上面还有弹窗时，Esc 只关弹窗。
@@ -80,7 +92,7 @@ export function DirectorStoryboard(props: WorkbenchProps) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [scriptOpen]);
-  useEffect(() => setFocusClipId(null), [episodeId]);
+  useEffect(() => { setFocusClipId(null); setScriptEpisodeId(episodeId); scriptReturnEpisode.current = episodeId; }, [episodeId]);
   // 助手卡片上的「查看版本」：打开那个片段的分镜图弹窗。
   const assistant = useAssistant();
   const reveal = assistant?.reveal;
@@ -118,11 +130,9 @@ export function DirectorStoryboard(props: WorkbenchProps) {
   };
   const boardClip = boardFor ? work.clips.find(c => c.id === boardFor) : undefined;
   return <div className="director-board-layout">
-    <EpisodeSidebar work={work} episodeId={ep.id} onPick={pickEpisode}/>
-    {!scriptOpen && <button type="button" id={SCRIPT_FOLD_ID} className="director-script-dock" aria-expanded={false} onClick={toggleScript}>
-      <FileText size={16}/><b>本集剧本</b><span>{ep.content.replace(/\s/g, "").length.toLocaleString("zh-CN")} 字</span><ChevronUp size={16}/></button>}
-    <div className={`director-script-panel${scriptOpen ? " is-open" : ""}`} aria-hidden={!scriptOpen} inert={!scriptOpen}>
-      {scriptEverOpen.current && <ScriptReference key={ep.id} work={work} ep={ep} focusClipId={focusClipId} onCollapse={toggleScript} foldId={scriptOpen ? SCRIPT_FOLD_ID : undefined}/>}
+    <EpisodeSidebar work={work} episodeId={ep.id} onPick={pickEpisode} onOpenScript={openEpisodeScript} scriptEpisodeId={scriptOpen ? scriptEp?.id ?? null : null}/>
+    <div id="director-episode-script-panel" className={`director-script-panel${scriptOpen ? " is-open" : ""}`} aria-hidden={!scriptOpen} inert={!scriptOpen}>
+      {scriptEverOpen.current && scriptEp && <ScriptReference key={scriptEp.id} work={work} ep={scriptEp} focusClipId={focusClipId} onCollapse={toggleScript} foldId={scriptOpen ? SCRIPT_FOLD_ID : undefined}/>}
     </div>
     <div className="director-storyboard">
       <div className="director-toolbar">
@@ -231,17 +241,21 @@ function BatchBar({ work, clips, quotes, selected, setSelected, apply, setError 
 }
 
 /** 分集放左侧一列：集多也好找，每集带进度，点一下切换。 */
-function EpisodeSidebar({ work, episodeId, onPick }: { work: DirectorWork; episodeId: string; onPick: (id: string) => void }) {
+function EpisodeSidebar({ work, episodeId, onPick, onOpenScript, scriptEpisodeId }: { work: DirectorWork; episodeId: string; onPick: (id: string) => void; onOpenScript: (id: string) => void; scriptEpisodeId: string | null }) {
   return <nav className="director-episode-side" aria-label="分集">
     <h4>分集<small>{work.episodes.length}</small></h4>
     <ol>{work.episodes.map(e => {
       const clips = work.clips.filter(c => c.episodeId === e.id);
       const videos = clips.filter(c => c.video.adoptedId).length;
       const done = clips.length > 0 && videos === clips.length;
-      return <li key={e.id}><button type="button" aria-current={e.id === episodeId ? "true" : undefined} onClick={() => onPick(e.id)} title={`第 ${e.no} 集 · ${e.title}`}>
+      return <li key={e.id} className="director-episode-item"><button type="button" className="director-episode-pick" aria-current={e.id === episodeId ? "true" : undefined} onClick={() => onPick(e.id)} title={`第 ${e.no} 集 · ${e.title}`}>
         <b>第 {e.no} 集</b><span>{e.title}</span>
         <small className={done ? "is-done" : undefined}>{clips.length ? `视频 ${videos}/${clips.length}` : "待写分镜"}</small>
-      </button></li>;
+      </button>
+        <Tooltip title={`查看第 ${e.no} 集剧本`} placement="right">
+          <button type="button" id={scriptTriggerId(e.id)} className="director-episode-script" aria-label={`查看第 ${e.no} 集剧本`} aria-expanded={scriptEpisodeId === e.id} aria-controls="director-episode-script-panel" onClick={() => onOpenScript(e.id)}><FileText size={16}/></button>
+        </Tooltip>
+      </li>;
     })}</ol>
   </nav>;
 }

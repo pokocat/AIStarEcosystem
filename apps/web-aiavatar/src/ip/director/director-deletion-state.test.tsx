@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { DirectorWork } from "@ai-star-eco/types";
-import { DirectorWorkbench } from "./director-workbench";
+import { DirectorWorkbench, StatusChip, nextStepShown } from "./director-workbench";
 import { DirectorApi } from "../api";
 
 const failure = vi.hoisted(() => ({ show: vi.fn() }));
@@ -244,4 +244,26 @@ test("after the restore, a new request that really gets 404 still marks the work
   await act(async () => { s.pending[0](s.notFound()); }); // 作品又被删了
   expect(await screen.findByText("作品已删除或不存在")).toBeTruthy();
   expect(hasDrafts("fresh-w:")).toBe(false);
+});
+
+// Status colors follow the semantic type, independently of the text content.
+test.each([
+  ["info", "is-next"],
+  ["warning", "is-warn"],
+  ["success", "is-success"],
+  ["running", "is-running"],
+] as const)("header feedback uses the %s style and preserves navigation/running behavior", (tone, className) => {
+  const onGo = vi.fn();
+  const step = { text: "状态说明", tone, tab: "assets" as const };
+  const { container } = render(<StatusChip step={step} tab="storyboard" onGo={onGo}/>);
+  const chip = container.querySelector(".director-status-chip")!;
+  expect(chip.classList.contains(className)).toBe(true);
+  expect(nextStepShown(step, "assets")).toBe(tone === "running");
+  if (tone === "running") {
+    expect(chip.getAttribute("role")).toBe("status");
+    expect(screen.queryByRole("button")).toBeNull();
+  } else {
+    fireEvent.click(screen.getByRole("button"));
+    expect(onGo).toHaveBeenCalledWith("assets");
+  }
 });
