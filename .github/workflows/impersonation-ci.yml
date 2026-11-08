@@ -2,13 +2,42 @@ name: Impersonation CI
 on:
   pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: '23 10 * * 1'
 permissions:
   contents: read
 concurrency:
   group: impersonation-ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
+  scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      backend: ${{ steps.plan.outputs.backend }}
+      contract: ${{ steps.plan.outputs.contract }}
+      frontend: ${{ steps.plan.outputs.frontend }}
+      builds: ${{ steps.plan.outputs.builds }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          # The PR merge commit and its parents include the base tree needed
+          # for git diff; fetching the entire asset-heavy history is unnecessary.
+          fetch-depth: 2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test scripts/ci/affected.test.mjs
+      - name: Select affected checks
+        id: plan
+        env:
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CI_HEAD_SHA: ${{ github.sha }}
+        run: node scripts/ci/affected.mjs
   backend:
+    needs: scope
+    if: needs.scope.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -34,9 +63,15 @@ jobs:
           name: impersonation-server-tests
           path: apps/server/target/surefire-reports/
           retention-days: 3
-  frontend-tests:
+  frontend-checks:
+    needs: scope
+    if: needs.scope.outputs.frontend != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.scope.outputs.frontend) }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,16 +84,51 @@ jobs:
           node-version: '22'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm typecheck:all
-      - run: pnpm test:all
-      - run: pnpm check:api-contract
+      # One workspace per runner: independent Vitest worker pools no longer
+      # compete for the same runner's CPUs. Shared dependencies are source-only.
+      - run: pnpm --filter "${{ matrix.package }}" --if-present typecheck
+      - run: pnpm --filter "${{ matrix.package }}" --if-present test
+  api-contract:
+    needs: scope
+    if: needs.scope.outputs.contract == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # This scanner uses Node built-ins; installing the workspace is unnecessary.
+      - run: node scripts/check-api-contract.mjs
+  frontend-tests:
+    # Keep a stable check name even when the affected workspace matrix is empty.
+    needs: [scope, frontend-checks, api-contract]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check frontend results
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          CHECKS_RESULT: ${{ needs.frontend-checks.result }}
+          CONTRACT_RESULT: ${{ needs.api-contract.result }}
+        run: |
+          test "$SCOPE_RESULT" = success
+          for result in "$CHECKS_RESULT" "$CONTRACT_RESULT"; do
+            case "$result" in success|skipped) ;; *) exit 1 ;; esac
+          done
   build-and-browser:
+    needs: scope
+    if: needs.scope.outputs.builds != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        product: [admin-new, web-music, web-drama, web-celebrity, web-aiavatar, web-star]
+        include: ${{ fromJSON(needs.scope.outputs.builds) }}
+    name: build-and-browser (${{ matrix.product }})
     env:
       NEXT_PUBLIC_USE_MOCK: '0'
       NEXT_PUBLIC_AUTH_MODE: id
@@ -77,12 +147,14 @@ jobs:
           node-version: '22'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @ai-star-eco/${{ matrix.product }} build
+      - run: pnpm --filter "${{ matrix.package }}" build
       - name: Install isolated browser test dependency
+        if: matrix.browser
         run: |
           npm install --prefix "$RUNNER_TEMP/browser-test" --no-package-lock --no-save playwright@1.55.1
           "$RUNNER_TEMP/browser-test/node_modules/.bin/playwright" install --with-deps chromium
       - name: Verify handoff and exit in production pages
+        if: matrix.browser
         env:
           PRODUCT: ${{ matrix.product }}
         run: |
@@ -95,9 +167,28 @@ jobs:
           done
           NODE_PATH="$RUNNER_TEMP/browser-test/node_modules" node scripts/impersonation/browser.cjs "${PRODUCT#web-}"
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && matrix.browser
         with:
           name: impersonation-browser-${{ matrix.product }}
           path: test-results/
           if-no-files-found: ignore
           retention-days: 3
+  ci:
+    name: CI
+    needs: [scope, backend, frontend-tests, build-and-browser]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check all selected jobs
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          FRONTEND_RESULT: ${{ needs.frontend-tests.result }}
+          BUILD_RESULT: ${{ needs.build-and-browser.result }}
+        run: |
+          test "$SCOPE_RESULT" = success
+          test "$FRONTEND_RESULT" = success
+          for result in "$BACKEND_RESULT" "$BUILD_RESULT"; do
+            case "$result" in success|skipped) ;; *) exit 1 ;; esac
+          done

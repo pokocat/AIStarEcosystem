@@ -726,7 +726,7 @@ v0.194 改文案时 `IpDemoAdminTest` 红了 —— 它断言的是「示例不�
   数据」，那可以断关键词）。这种断言要在测试名里写清楚为什么。
 - 现状：2026-11-07 清理过 `apps/server/src/test`，服务端这类断言只剩下面这条 grep 的命中，都是留下有理由的
   （大多是 `doesNotContain`：对外文案不得泄露供应商余额、不得把用户引向错误的操作）。新测试别再加；要加就在测试名写清为什么。
-  前端 `getByRole` 带 name 是按名字找控件去测行为，不归这条管。
+  前端 `getByRole` 带 name 是按名字找控件去测行为，不归这条管。2026-11-07 补充：入口卡标题、介绍、空态说明和固定 CSS 色值 / 尺寸 / 选择器写法不作阻塞断言；保留技能映射、用户输入、素材限制、点击后请求与状态。布局与可读性改动按真实页面验收，不靠匹配 CSS 源码字符串。
   ```bash
   git grep -nE '(getMessage\(\)\)?\.(contains|doesNotContain|startsWith|endsWith)\(|hasMessage[A-Za-z]*\()"[^"]*[一-龥]' -- apps/server/src/test
   ```
@@ -763,7 +763,7 @@ v0.197：web-drama 所有弹窗在 375 宽下右边都被裁掉一截，四个�
 - 已做：所有 vitest 项目（web-drama / web-aiavatar / packages/api-client）的 `setupFiles` 共用 `scripts/vitest/setup-storage.ts`：
   jsdom 环境把 Storage 换回 jsdom 自己的那份，node 环境把 Node 25 的空壳删掉（Node 22 的 node 环境里本来就没有），本机与 CI 一致；
   用到 localStorage 的测试文件在 `beforeEach` 里 `localStorage.clear()`。web-celebrity 的测试走 `node --test`、不碰 Storage，不受影响。
-- **5 秒超时的假失败**（2026-11-06）：`pnpm test:all` 同时跑全部项目，CI 上 admin 的 `studio-skills` 报过 `Test timed out in 5000ms`，负载高的本机上 admin、studio-admin、web-drama 也会出现；一条超时后，同文件后面的用例会接着报找不到元素，别当成多处问题。这几个项目已和 web-aiavatar 一样设 `maxWorkers: "50%"`、`testTimeout: 15_000`，新建 vitest 项目照抄。`pnpm test:all` 遇到第一个红项就停，要看全部红项用 `pnpm -r --no-bail --parallel run test`。工作流只在 PR 和手动触发时跑，直推 main 不跑 CI。
+- **5 秒超时的假失败**（2026-11-06）：`pnpm test:all` 同时跑全部项目，CI 上 admin 的 `studio-skills` 报过 `Test timed out in 5000ms`，负载高的本机上 admin、studio-admin、web-drama 也会出现；一条超时后，同文件后面的用例会接着报找不到元素，别当成多处问题。这几个项目已和 web-aiavatar 一样设 `maxWorkers: "50%"`、`testTimeout: 15_000`，新建 vitest 项目照抄。2026-11-07 起 PR CI 按 `scripts/ci/affected.mjs` 的 workspace 依赖关系选范围，每个 workspace 独立 runner，不再同机 `pnpm test:all`；认证 / 布局改动追加附身浏览器验证，手动与每周定时仍全量。直推 main 不触发 CI。本机 / Mini 检查仍进 devq，链内串行。说明见 `docs/runbooks/ci-checks.md`。
 
 **⑭ 交互改完要按用户的真实路径走一遍，不是只看结构测试和截图。**
 2026-10-19 画布页改版：结构测试全绿、截图也对得上设计稿，用户一用就说「不顺畅」。端到端走一遍才发现五处一直坏着：
@@ -853,7 +853,7 @@ v0.197：web-drama 所有弹窗在 375 宽下右边都被裁掉一截，四个�
       用户点名的那一条：**「提示词直出」看不懂**（「直出」是内部说法），现在叫「粘贴写好的脚本」。
       改 drama 界面文字前先查表；要新增叫法，先改表再改代码。
   - Review reject：新增/改动 UI 出现上述任一类 → reject。
-- **场景页（AI 图片 / AI 视频）的样式真值是 `studio-scenes.css` 的新版令牌**（白底、渐变主按钮、18px 卡片、13px 正文），不是 `DESIGN.md` 里的暖灰。2026-11-06 视频任务页以 `DESIGN.md` 为基准另写了一套，主按钮、圆角、字号都和图片页对不上；配置卡缩窄后规格和场景面板也被裁切。新增区块只写布局，不覆盖 `.scene-go` / `.scene-card`（`scene-video-workspace-style.test.ts` 守着）。同一次还有：深底链接写 `a.xxx`，单个 class 盖不过 `.ip-brand-surface a { color: inherit }`（失败页主按钮黑底黑字，验收截图里就看得到，复核仍判通过）。
+- **场景页（AI 图片 / AI 视频）的样式真值是 `studio-scenes.css` 的新版令牌**（白底、渐变主按钮、18px 卡片、13px 正文），不是 `DESIGN.md` 里的暖灰。2026-11-06 视频任务页以 `DESIGN.md` 为基准另写了一套，主按钮、圆角、字号都和图片页对不上；配置卡缩窄后规格和场景面板也被裁切。新增区块只写布局，不覆盖 `.scene-go` / `.scene-card`；2026-11-07 起不再用源码正则锁定 CSS 写法，改动时在 375px 与桌面真实页面检查裁切、规格面板和按钮可读性。同一次还有：深底链接写 `a.xxx`，单个 class 盖不过 `.ip-brand-surface a { color: inherit }`（失败页主按钮黑底黑字，验收截图里就看得到，复核仍判通过）。
 - **web-aiavatar 的 antd 颜色走全站主题**（2026-10-31）：`src/shell/antd-theme.tsx` 在根布局挂一次（主按钮 #202c42 白字、不能点的浅灰底灰字、两字按钮不加空格），新页面不用再包 ConfigProvider 配主色。别写压过 antd 按钮字色的样式（`ip-brand.css` 的 `color: inherit` 已排除 `.ant-btn`），也别用 `.容器 span {}` 这种会命中按钮里文字的后代选择器（资产选择框「使用」灰字蓝底就是这两条叠出来的）。
 - **shadcn 原语**：放在 `packages/ui/src/ui/`（共享包）；不要手改，要扩展用 wrapper
 - **`"use client"`**：新 client 组件保留

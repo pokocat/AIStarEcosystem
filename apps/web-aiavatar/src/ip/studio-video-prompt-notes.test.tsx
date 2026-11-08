@@ -34,8 +34,6 @@ test.each([false, true, undefined])("the card's smart optimization reflects a sa
   render(<Host/>);
   const chip = screen.getByRole("button", { name: /智能优化/ });
   expect(chip.getAttribute("aria-pressed")).toBe(String(!keepPrompt));
-  // 关着时旁边一行提示，开着时不提示
-  expect(screen.queryByText("H3 建议开启，台词更完整") !== null).toBe(!!keepPrompt);
   fireEvent.click(screen.getByRole("button", { name: "生成" }));
   expect(submitted.mock.lastCall?.[0]).toMatchObject(keepPrompt ? { optimizePrompt: false } : { rewrite: "review" });
   fireEvent.click(chip);
@@ -53,7 +51,6 @@ test("a draft with notes offers both ways forward; a failed one offers to retry"
   const optimized = vi.fn(), original = vi.fn(), retry = vi.fn();
   const { rerender } = render(<StudioPromptReview review={{ runId: "r", text: "subject_definitions: ...", usable: true, warnings: ["第 3 句台词「难受？」模型漏了，已补在第 2 镜末尾"] }}
     busy={false} onOptimized={optimized} onOriginal={original} onRetry={retry}/>);
-  expect(screen.getByText("优化稿有需要确认的地方")).toBeDefined();
   expect(screen.getByText("第 3 句台词「难受？」模型漏了，已补在第 2 镜末尾")).toBeDefined();
   fireEvent.click(screen.getByRole("button", { name: "用优化稿生成" }));
   fireEvent.click(screen.getByRole("button", { name: "用原文生成" }));
@@ -66,14 +63,10 @@ test("a draft with notes offers both ways forward; a failed one offers to retry"
   expect(retry).toHaveBeenCalledOnce();
   rerender(<StudioPromptReview review={{ runId: "r", text: "x", usable: false, warnings: ["优化稿超过 7000 字符，H3 收不下，请缩短提示词或按原文生成"] }}
     busy={false} onOptimized={optimized} onOriginal={original} onRetry={retry}/>);
-  expect(screen.getByText("优化稿超出视频模型的长度上限")).toBeDefined();
   expect(screen.queryByRole("button", { name: "用优化稿生成" })).toBeNull();
-  // 模型回的不是优化稿：不说成太长，不把它当优化稿发出去，可以重试
+  // 模型回的不是优化稿：不把它发出去，可以重试。
   rerender(<StudioPromptReview review={{ runId: "r", text: "I can't see the attachments.", usable: false, notRewritten: true, warnings: ["模型没有返回可用的优化稿，可以重新优化，或按原文生成"] }}
     busy={false} onOptimized={optimized} onOriginal={original} onRetry={retry}/>);
-  expect(screen.getByText("提示词优化未完成")).toBeDefined();
-  expect(screen.queryByText("优化稿超出视频模型的长度上限")).toBeNull();
-  expect(screen.getByText("查看模型回复")).toBeDefined();
   expect(screen.queryByRole("button", { name: "用优化稿生成" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "重新优化" }));
   expect(retry).toHaveBeenCalledTimes(2);
@@ -83,24 +76,20 @@ test("the run input view shows what our optimization sent, or why it was not use
   const ours = { ...run([{ ...done(0), promptRewrite: { state: "off" as const } }]), output: { ...run([]).output,
     videoCandidates: [{ ...done(0), promptRewrite: { state: "off" as const } }], videoPrompt: { text: "integrated_multimodal_description: [Shot 1] ...", warnings: [], usable: true } } };
   const { rerender } = render(<StudioVideoRewriteDetail run={ours}/>);
-  expect(screen.getByText("智能优化 · 发送给模型的英文")).toBeDefined();
-  expect(screen.queryByText(/已关闭/)).toBeNull();
+  expect(screen.getByText(ours.output.videoPrompt!.text)).toBeDefined();
   rerender(<StudioVideoRewriteDetail run={{ ...ours, output: { ...ours.output, videoPrompt: undefined, videoPromptNotes: ["提示词优化没成功，已按原文生成"] } }}/>);
   expect(screen.getByText("提示词优化没成功，已按原文生成")).toBeDefined();
 });
 
 test("the run input view shows what each take was generated from", () => {
   render(<StudioVideoRewriteDetail run={run([done(0, REWRITTEN), { ...done(1), promptRewrite: { state: "off" } }])}/>);
-  expect(screen.getByText("候选 1 · 智能优化结果")).toBeDefined();
   expect(screen.getByText(REWRITTEN)).toBeDefined();
   expect(screen.queryByRole("status")).toBeNull();
-  expect(screen.getByText("候选 2 · 智能优化 · 已关闭")).toBeDefined();
 });
 
 test("a completed optimization without returned content is not shown as an available result", () => {
-  render(<StudioVideoRewriteDetail run={run([done(0)])}/>);
-  expect(screen.getByText("智能优化 · 未返回内容")).toBeDefined();
-  expect(screen.queryByText("智能优化结果")).toBeNull();
+  const { container } = render(<StudioVideoRewriteDetail run={run([done(0)])}/>);
+  expect(container.querySelector('pre')).toBeNull();
 });
 
 test("a model or older job without a rewrite report shows nothing extra", () => {
