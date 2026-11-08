@@ -21,28 +21,29 @@ const ready = (q: ModelBillingQuote): StudioVideoPrice => ({ status: "ready", pa
 beforeEach(() => { vi.resetAllMocks(); });
 afterEach(() => { vi.unstubAllEnvs(); });
 
-test("付款账户定了：折后价只在按钮上，折扣放悬停提示；下面只写赠款、积分不足和优化另计", () => {
+// 2026-11-07 用户：按钮下的说明多余。赠款、优化另计只放悬停提示（detail），按钮下（note）只写生成不了的原因。
+test("付款账户定了：折后价在按钮上，折扣和其余细节放悬停提示；按钮下只写积分不足", () => {
   expect(describeStudioVideoPrice(ready(half()), 930, { optimizing: true }))
-    .toEqual({ standard: 930, shown: 465, discount: "H3限时折扣，省 465 积分", note: "优化提示词按实际用量另计。" });
-  expect(describeStudioVideoPrice(ready(half({ scopedCredits: 100, walletCredits: 365 })), 930)?.note)
-    .toBe("模型赠款抵扣 100 积分，另需支付 365 积分。");
-  expect(describeStudioVideoPrice(ready(half({ scopedCredits: 465, walletCredits: 0 })), 930)?.note).toContain("无需另付积分");
+    .toEqual({ standard: 930, shown: 465, discount: "H3限时折扣，省 465 积分", detail: "优化提示词按实际用量另计。", note: undefined });
+  expect(describeStudioVideoPrice(ready(half({ scopedCredits: 100, walletCredits: 365 })), 930))
+    .toMatchObject({ detail: "模型赠款抵扣 100 积分，另需支付 365 积分。", note: undefined });
+  expect(describeStudioVideoPrice(ready(half({ scopedCredits: 465, walletCredits: 0 })), 930)?.detail).toContain("无需另付积分");
   expect(describeStudioVideoPrice(ready(half({ canAfford: false, unavailableCode: "MODEL_CREDITS_INSUFFICIENT" })), 930)?.note)
     .toBe("可用积分不足，需支付 465 积分。");
-  // 优化提示词不含在按钮价格里，有没有折扣都要说；不优化、没赠款就只有价，没有那一行字。
-  expect(describeStudioVideoPrice(ready(quote()), 930, { optimizing: true })?.note).toBe("优化提示词按实际用量另计。");
-  expect(describeStudioVideoPrice(ready(quote()), 930)).toEqual({ standard: 930, shown: 930, note: undefined });
+  // 优化提示词不含在按钮价格里，有没有折扣都在悬停提示里说；不优化、没赠款就只有价。
+  expect(describeStudioVideoPrice(ready(quote()), 930, { optimizing: true })?.detail).toBe("优化提示词按实际用量另计。");
+  expect(describeStudioVideoPrice(ready(quote()), 930)).toEqual({ standard: 930, shown: 930, detail: undefined, note: undefined });
 });
 
 test("付款账户没定：只说视频费，不说要付多少；两个账户价不同就都写出来", () => {
   const same = describeStudioVideoPrice({ status: "ready", payer: "undecided", personal: half(), enterprise: half() }, 930);
   expect(same).toMatchObject({ standard: 930, shown: 465 });
   expect(same?.discount).toBe("H3限时折扣，省 465 积分");
-  expect(same?.note).toBeUndefined();
+  expect(same?.detail).toBeUndefined();
   const differ = describeStudioVideoPrice({ status: "ready", payer: "undecided", personal: half(), enterprise: quote() }, 930);
-  expect(differ).toMatchObject({ standard: 930, shown: 465, from: true, note: "个人账户 465 积分，企业账户 930 积分。" });
+  expect(differ).toMatchObject({ standard: 930, shown: 465, from: true, detail: "个人账户 465 积分，企业账户 930 积分。" });
   // 个人账户有模型赠款也不提：账户没定。
-  expect(describeStudioVideoPrice({ status: "ready", payer: "undecided", personal: half({ scopedCredits: 100, walletCredits: 365 }) }, 930)?.note).toBeUndefined();
+  expect(describeStudioVideoPrice({ status: "ready", payer: "undecided", personal: half({ scopedCredits: 100, walletCredits: 365 }) }, 930)?.detail).toBeUndefined();
 });
 
 test("报价没回来先垫本地价表价（淡显示）；报不出来就是本地价；本地也算不出就不显示价格", () => {

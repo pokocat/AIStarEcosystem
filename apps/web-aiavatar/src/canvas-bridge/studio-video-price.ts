@@ -96,29 +96,32 @@ export type StudioVideoPriceView = {
   pending?: boolean;
   /** 折扣名和省了多少，放在价格的悬停提示里；划掉的原价已经说明有折扣，不再单写一行。 */
   discount?: string;
+  /** 价格的其余细节（赠款抵扣、两个账户各多少、优化提示词另计），也只放悬停提示（2026-11-07 用户：按钮下的说明多余）。 */
+  detail?: string;
+  /** 按钮下那一行：只有生成不了的原因（积分不足、暂时无法生成）。 */
   note?: string;
 };
 
 const n = (value: number) => value.toLocaleString("zh-CN");
 
 /**
- * 按钮与下面那一行字。那一行只写按钮上看不出来的事：模型赠款抵扣、积分不足、两个账户价不同、优化提示词另计。
+ * 按钮上的价、悬停提示和下面那一行字。下面那一行只写生成不了的原因；赠款抵扣、两个账户价不同、优化提示词另计都放悬停提示。
  * fallback 是本地按价表算的标准价，报价没回来或报不出来时用；为空就不显示价格（不编）。
  */
 export function describeStudioVideoPrice(price: StudioVideoPrice, fallback: number | null, opts: { optimizing?: boolean } = {}): StudioVideoPriceView | undefined {
   if (price.status !== "ready") return fallback == null ? undefined : { standard: fallback, shown: fallback, pending: price.status === "loading" };
   const optimizing = opts.optimizing ? "优化提示词按实际用量另计。" : "";
-  const noteOf = (text = "") => (text + optimizing) || undefined;
+  const detailOf = (text = "") => (text + optimizing) || undefined;
   const discountOf = (q: ModelBillingQuote) => q.discountCredits > 0 ? `${q.discountName || "优惠"}，省 ${n(q.discountCredits)} 积分` : undefined;
   if (price.payer === "decided") {
-    const q = price.quote, parts: string[] = [];
-    if (q.scopedCredits > 0) parts.push(`模型赠款抵扣 ${n(q.scopedCredits)} 积分，${q.walletCredits > 0 ? `另需支付 ${n(q.walletCredits)} 积分` : "无需另付积分"}。`);
-    if (!q.canAfford) parts.push(q.unavailableCode === "MODEL_CREDITS_INSUFFICIENT" ? `可用积分不足，需支付 ${n(q.walletCredits)} 积分。` : q.unavailableReason || "暂时无法生成。");
-    return { standard: q.standardCredits, shown: q.payableCredits, discount: discountOf(q), note: noteOf(parts.join("")) };
+    const q = price.quote;
+    const grant = q.scopedCredits > 0 ? `模型赠款抵扣 ${n(q.scopedCredits)} 积分，${q.walletCredits > 0 ? `另需支付 ${n(q.walletCredits)} 积分` : "无需另付积分"}。` : "";
+    const note = q.canAfford ? undefined : q.unavailableCode === "MODEL_CREDITS_INSUFFICIENT" ? `可用积分不足，需支付 ${n(q.walletCredits)} 积分。` : q.unavailableReason || "暂时无法生成。";
+    return { standard: q.standardCredits, shown: q.payableCredits, discount: discountOf(q), detail: detailOf(grant), note };
   }
   const { personal, enterprise } = price;
   if (enterprise && enterprise.payableCredits !== personal.payableCredits)
     return { standard: personal.standardCredits, shown: Math.min(personal.payableCredits, enterprise.payableCredits), from: true,
-      note: noteOf(`个人账户 ${n(personal.payableCredits)} 积分，企业账户 ${n(enterprise.payableCredits)} 积分。`) };
-  return { standard: personal.standardCredits, shown: personal.payableCredits, discount: discountOf(personal), note: noteOf() };
+      detail: detailOf(`个人账户 ${n(personal.payableCredits)} 积分，企业账户 ${n(enterprise.payableCredits)} 积分。`) };
+  return { standard: personal.standardCredits, shown: personal.payableCredits, discount: discountOf(personal), detail: detailOf() };
 }

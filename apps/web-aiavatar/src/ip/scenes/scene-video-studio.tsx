@@ -1116,7 +1116,7 @@ export function SceneVideoStudio() {
             {caps?.mock ? <small>免费</small>
               : long ? longView && <small title={priceTitle(longView.discount, longView.accounts, capNote)}>约 {longView.shown !== longView.standard && <s><span className="scene-sr-only">原价 </span>{longView.standard.toLocaleString("zh-CN")}</s>}
                 {longView.shown !== longView.standard && <span className="scene-sr-only">，折后 </span>}{longView.shown.toLocaleString("zh-CN")} 积分{longView.from ? "起" : ""}</small>
-              : taskKind === 'direct' ? price && <small title={price.discount} className={price.pending ? "is-pending" : undefined} aria-busy={price.pending || undefined}>
+              : taskKind === 'direct' ? price && <small title={priceTitle(price.discount, price.detail)} className={price.pending ? "is-pending" : undefined} aria-busy={price.pending || undefined}>
                 {price.shown !== price.standard && <s><span className="scene-sr-only">原价 </span>{price.standard.toLocaleString("zh-CN")}</s>}
                 {price.shown !== price.standard && <span className="scene-sr-only">，折后 </span>}{price.shown.toLocaleString("zh-CN")} 积分{price.from ? "起" : ""}</small>
               : taskQuote?.key === taskPriceKey && taskQuote.price && <small title={capNote}>约 {taskQuote.price.estimated.toLocaleString("zh-CN")} 积分</small>}
