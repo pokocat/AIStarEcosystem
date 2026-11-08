@@ -1,4 +1,5 @@
 "use client";
+import { runDirectorTask, saveDirectorDrafts } from "./director-generation";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Check, ImageIcon, Library, Mic, Plus, Upload, Wand2 } from "lucide-react";
@@ -41,7 +42,7 @@ export function DirectorAssets(props: WorkbenchProps) {
   const extract = () => void run("extract", async () => {
     const cost = work.pricing.textMax;
     const billing = await chooseDirectorBilling("asset-extract");
-    apply(await DirectorApi.runTask(work.id, { type: "extract", targetId: null, clientRequestId: newRequestId(), billing, maxCost: cost }));
+    apply(await runDirectorTask(work, apply, { type: "extract", targetId: null, clientRequestId: newRequestId(), billing, maxCost: cost }));
   }, failed(setError, extractLabel));
   // 一次给所有还没有资产图的资产各出一张：只出画面的（排除仅声音出场）、没在生成的。
   const { modal } = useStudioApp();
@@ -55,10 +56,11 @@ export function DirectorAssets(props: WorkbenchProps) {
         <p className="director-muted">每项一张，{costText(total, work.pricing.mock)}。生成后逐张确认，分镜图将以确认后的资产图为参考。</p></div>,
       okText: "开始生成", cancelText: "取消",
     }, () => void run("all", async () => {
+      let saved = await saveDirectorDrafts(work, apply);
       const billing = await chooseDirectorBilling("image", total);
       const failures: string[] = [];
       for (const a of missing) {
-        try { apply(await DirectorApi.runTask(work.id, { type: "asset-image", targetId: a.id, clientRequestId: newRequestId(), billing, maxCost: work.pricing.image })); }
+        try { saved = await runDirectorTask(saved, apply, { type: "asset-image", targetId: a.id, clientRequestId: newRequestId(), billing, maxCost: saved.pricing.image }); apply(saved); }
         catch (e) { failures.push(`${a.name}：${errorText(e)}`); }
       }
       if (failures.length) setError({ action: "生成全部资产图", error: `${missing.length} 项中有 ${failures.length} 项提交失败：${failures.join("；")}`,
@@ -109,7 +111,7 @@ function AssetTile({ work, asset, apply, setError, onOpen }: WorkbenchProps & { 
   const generate = () => void run("gen", async () => {
     const cost = work.pricing.image;
     const billing = await chooseDirectorBilling("image", cost);
-    apply(await DirectorApi.runTask(work.id, { type: "asset-image", targetId: asset.id, clientRequestId: newRequestId(), billing, maxCost: cost }));
+    apply(await runDirectorTask(work, apply, { type: "asset-image", targetId: asset.id, clientRequestId: newRequestId(), billing, maxCost: cost }));
   }, failed(setError, `生成「${asset.name}」的资产图`, undefined, undefined, DIRECTOR_MEDIA_SHORTAGE));
   return <article className={`director-asset-tile ${tone} kind-${asset.kind}`}>
     <button type="button" className="director-asset-tile-open" onClick={onOpen} aria-label={`查看${asset.name}`}>

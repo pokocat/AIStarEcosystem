@@ -1,5 +1,6 @@
 "use client";
 
+import { runDirectorTask, saveDirectorDrafts } from "./director-generation";
 import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Check, ChevronDown, ChevronRight, ChevronUp, Clapperboard, FileText, Film, ImageIcon, LayoutGrid, Lightbulb, Loader2, Play, Plus, RefreshCw, Scissors, Trash2, Wand2, X, ShoppingBag } from "lucide-react";
@@ -99,7 +100,7 @@ export function DirectorStoryboard(props: WorkbenchProps) {
   const plan = () => void run("plan", async () => {
     const cost = work.pricing.textMax;
     const billing = await chooseDirectorBilling("storyboard");
-    apply(await DirectorApi.runTask(work.id, { type: "plan", targetId: ep.id, clientRequestId: newRequestId(), billing, maxCost: cost }));
+    apply(await runDirectorTask(work, apply, { type: "plan", targetId: ep.id, clientRequestId: newRequestId(), billing, maxCost: cost }));
   }, failed(setError, `写第 ${ep.no} 集分镜脚本`));
   const rewriteBlock = !lim ? "暂无可用视频模型，无法确定片段时长" : writing.clips.length
     ? `${clips.filter(c => runningTask(work, `reshoot:${c.id}`)).map(c => `片段 ${c.order}`).join("、")} 正在重写，完成后可重写整集` : "";
@@ -206,10 +207,11 @@ function BatchBar({ work, clips, quotes, selected, setSelected, apply, setError 
     };
     if (!p.ok.length) { dialog = modal.info(options); return; }
     dialog = confirmDirectorAction(modal, options, () => void run(kind, async () => {
+      let saved = await saveDirectorDrafts(work, apply);
       const billing = await chooseDirectorBilling(kind === "board" ? "image" : "video", p.total);
       const failures: string[] = [];
       for (const x of p.ok) {
-        try { apply(await DirectorApi.runTask(work.id, { type: kind, targetId: x.clip.id, clientRequestId: newRequestId(), billing, maxCost: x.cost })); }
+        try { saved = await runDirectorTask(saved, apply, { type: kind, targetId: x.clip.id, clientRequestId: newRequestId(), billing, maxCost: x.cost }); apply(saved); }
         catch (e) { failures.push(`片段 ${x.clip.order}：${errorText(e)}`); }
       }
       if (failures.length) setError({ action: `批量生成${what}`, error: `${p.ok.length} 个片段中有 ${failures.length} 个提交失败：${failures.join("；")}`,
@@ -354,7 +356,7 @@ function ClipCard({ goTab, work, clip, quote, apply, setError, onPreview, onBoar
     : videoBusy ? "视频生成中" : null;
   return <article id={`clip-${clip.id}`} className={`director-clip-card ${clip.issues.length ? "has-issues" : ""} ${focused ? "is-focused" : ""}`}>
     <ClipHead work={work} clip={clip} apply={apply} setError={setError} onEdit={editing || rewriteTask ? null : () => setEditing(true)} selected={selected} onSelect={onSelect}
-      onRewrite={onRewrite} rewriteBlock={clipRewriteBlock(work, clip, editing)} rewriting={!!rewriteTask} onFocusScript={onFocusScript} focused={focused}/>
+      onRewrite={onRewrite} rewriteBlock={clipRewriteBlock(work, clip)} rewriting={!!rewriteTask} onFocusScript={onFocusScript} focused={focused}/>
     {rewriteTask && rewriteTask.target === `reshoot:${clip.id}` && <AiWorking compact title={`AI 正在重写片段 ${clip.order} 的分镜脚本`} task={rewriteTask} detail="完成后此片段的镜头和提示词将自动更新，不生成图片和视频。"/>}
     {pendingShots && <div className="director-warn"><span>重写期间你修改过此片段，新版本（{pendingShots.shots.length} 个镜头）未覆盖现有内容。是否换成新版本？</span>
       <button type="button" disabled={!!pendingBusy} onClick={() => void runPending("use", async () => apply(await DirectorApi.edit(work.id, "clip.usePendingShots", clip.id, null)), failed(setError, `把片段 ${clip.order} 换成新写的版本`))}>换成新版本</button>
@@ -429,11 +431,9 @@ function BoardDialog({ work, clip, apply, setError, onClose }: { work: DirectorW
   const ratio = `ratio-${work.settings.aspectRatio.replace(":", "x")}`;
   const cells = Math.min(clip.shots.length, 4);
   const regenerate = () => void run("board", async () => {
-    let w = work;
-    if (dirty) { w = await DirectorApi.edit(work.id, "clip.update", clip.id, clip.rev, { boardPrompt: text }); clearDrafts(prefix); apply(w); }
     const cost = work.pricing.image;
     const billing = await chooseDirectorBilling("image", cost);
-    apply(await DirectorApi.runTask(work.id, { type: "board", targetId: clip.id, clientRequestId: newRequestId(), billing, maxCost: cost }));
+    apply(await runDirectorTask(work, apply, { type: "board", targetId: clip.id, clientRequestId: newRequestId(), billing, maxCost: cost }));
   }, setLocalError);
   // 点哪一张就用哪一张：没采用的直接采用（服务端记为已确认），不用再点「采用这一版」。请求在途时不接新的点击。
   const pick = (id: string) => {

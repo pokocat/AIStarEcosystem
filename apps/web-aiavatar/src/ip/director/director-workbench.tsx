@@ -1,5 +1,6 @@
 "use client";
 
+import { withSavedDirectorDrafts } from "./director-generation";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, Clapperboard, FileText, Loader2, Pause, Play, Settings2, Shapes, ShoppingBag, Sparkles, Square, X } from "lucide-react";
@@ -382,7 +383,9 @@ function PipelineBar({ work, apply, setError, goTab, reviewExtract, doneText }: 
   const p = work.pipeline;
   const { busy, run } = useBusy();
   const act = (action: "pause" | "resume" | "retry" | "confirm-assets" | "confirm-boards" | "confirm-videos" | "stop" | "dismiss", budget?: number) =>
-    void run(action, async () => apply(await DirectorApi.pipeline(work.id, { action, budget })), failed(setError, PIPELINE_ACTIONS[action]));
+    void run(action, async () => apply(await (["pause", "stop", "dismiss"].includes(action)
+      ? DirectorApi.pipeline(work.id, { action, budget })
+      : withSavedDirectorDrafts(work, apply, saved => DirectorApi.pipeline(saved.id, { action, budget })))), failed(setError, PIPELINE_ACTIONS[action]));
   const live = p && ["running", "waiting", "paused"].includes(p.status);
   if (!p) return null;
   return <>
@@ -464,7 +467,7 @@ export function StartPipeline({ work, episodeId, apply, setError, goTab, onClose
   const start = () => void run("start", async () => {
     const billing = await chooseDirectorBilling("script", budget);
     try {
-      apply(await DirectorApi.pipeline(work.id, { action: "start", scope: effectiveScope, episodeId: effectiveScope === "episode" ? ep?.id ?? null : null, target, budget, billing, auto }));
+      apply(await withSavedDirectorDrafts(work, apply, saved => DirectorApi.pipeline(saved.id, { action: "start", scope: effectiveScope, episodeId: effectiveScope === "episode" ? ep?.id ?? null : null, target, budget, billing, auto })));
     } catch (e) {
       const err = normalizeStudioError(e);
       if (err.code === "DIRECTOR_PIPELINE_NOTHING_TO_DO") { setNothing(err.message); setLocalError(""); return; }

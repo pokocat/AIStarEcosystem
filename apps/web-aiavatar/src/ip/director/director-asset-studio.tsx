@@ -1,4 +1,5 @@
 "use client";
+import { runDirectorTask } from "./director-generation";
 import { IMAGE_UPLOAD_ACCEPT } from '@ai-star-eco/api-client/image-upload-policy';
 
 import Link from "next/link";
@@ -10,7 +11,7 @@ import { useStudioApp } from "../studio-errors";
 import { LibraryReferencePicker } from "../library-reference-picker";
 import { assetsHref } from "../assets-hub-shared";
 import type { WorkbenchProps } from "./director-workbench";
-import { DIRECTOR_MEDIA_SHORTAGE, Field, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, assetRefs, chooseDirectorBilling, clearDrafts, costText, dialogFocus, failed, hasDrafts, kindLabel, newRequestId, runningTask, useBusy, useDraft, useEscape, ZoomableImage, type AssetRef } from "./director-shared";
+import { DIRECTOR_MEDIA_SHORTAGE, Field, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, assetRefs, chooseDirectorBilling, clearDrafts, costText, dialogFocus, failed, hasDrafts, kindLabel, newRequestId, runningTask, saveDrafts, useBusy, useDraft, useEscape, ZoomableImage, type AssetRef } from "./director-shared";
 import { VoicePanel } from "./director-voice";
 import { AiField } from "./director-assistant";
 
@@ -120,7 +121,7 @@ function AssetWorkspace({ work, asset, apply, setError, focusClip, onClose }: Wo
   const task = (type: DirectorTaskType, targetId: string, action: string) => void run("gen", async () => {
     const cost = work.pricing.image;
     const billing = await chooseDirectorBilling("image", cost);
-    apply(await DirectorApi.runTask(work.id, { type, targetId, clientRequestId: newRequestId(), billing, maxCost: cost }));
+    apply(await runDirectorTask(work, apply, { type, targetId, clientRequestId: newRequestId(), billing, maxCost: cost }));
   }, failed(setError, action, undefined, undefined, DIRECTOR_MEDIA_SHORTAGE));
   const generate = () => active.type === "main" ? task("asset-image", asset.id, `生成「${asset.name}」的资产图`)
     : active.type === "form" ? task("form-image", active.id, `生成「${label}」的形态图`)
@@ -154,8 +155,9 @@ function AssetWorkspace({ work, asset, apply, setError, focusClip, onClose }: Wo
     const data: Record<string, unknown> = { name, description };
     if (prompt !== asset.prompt) data.prompt = prompt;
     if (episodesEdited) data.episodeIds = episodeIds;
-    const next = await DirectorApi.edit(work.id, "asset.update", asset.id, asset.rev, data);
-    clearDrafts(prefix); apply(next);
+    const saved = { [prefix + "name"]: name, [prefix + "description"]: description, [prefix + "prompt"]: prompt, [prefix + "episodeIds"]: episodeIds };
+    const next = await saveDrafts(saved, () => DirectorApi.edit(work.id, "asset.update", asset.id, asset.rev, data));
+    apply(next);
     setEditing(false);
   }, failed(setError, `保存「${asset.name}」的修改`, "修改内容已保留，请按原因调整后点击「保存」。"));
   const resetPrompt = () => void run("reset", async () => apply(await DirectorApi.edit(work.id, "asset.update", asset.id, asset.rev, { resetPrompt: true })), failed(setError, `恢复「${asset.name}」的自动提示词`));
@@ -311,14 +313,16 @@ function SceneViewsOverview({ work, asset, onPick, shots }: { work: DirectorWork
 
 /** 新建或修改一个形态：名字和「和平时不一样的地方」。不传 form 是新建。 */
 function FormEditor({ work, asset, form, apply, setError, onClose, onCreated }: Pick<WorkbenchProps, "work" | "apply" | "setError"> & { asset: DirectorAsset; form?: DirectorAssetForm; onClose?: () => void; onCreated?: (id: string) => void }) {
-  const [name, setName] = useState(form?.name ?? "");
-  const [description, setDescription] = useState(form?.description ?? "");
+  const prefix = `${work.id}:form:${form?.id ?? `new:${asset.id}`}:`;
+  const [name, setName] = useDraft(prefix + "name", form?.name ?? "");
+  const [description, setDescription] = useDraft(prefix + "description", form?.description ?? "");
   const { busy, run } = useBusy();
   const { modal } = useStudioApp();
   const dirty = !form || name !== form.name || description !== form.description;
   const save = () => void run("form", async () => {
-    if (form) { apply(await DirectorApi.edit(work.id, "form.update", form.id, null, { name, description })); return; }
-    const next = await DirectorApi.edit(work.id, "form.create", asset.id, null, { name, description });
+    const saved = { [prefix + "name"]: name, [prefix + "description"]: description };
+    if (form) { apply(await saveDrafts(saved, () => DirectorApi.edit(work.id, "form.update", form.id, null, { name, description }))); return; }
+    const next = await saveDrafts(saved, () => DirectorApi.edit(work.id, "form.create", asset.id, null, { name, description }));
     apply(next);
     const created = next.assets.find(a => a.id === asset.id)?.forms?.find(f => f.name === name.trim());
     if (created) onCreated?.(created.id);
@@ -337,7 +341,7 @@ function FormEditor({ work, asset, form, apply, setError, onClose, onCreated }: 
     <Field label="和平时不一样的地方"><textarea rows={3} maxLength={1000} placeholder="例如：白色长裙换成染血的盔甲，左脸有一道新伤" value={description} onChange={e => setDescription(e.target.value)}/></Field>
     <div className="director-card-actions">
       <button type="button" className="ip-brand-button" disabled={!!busy || !name.trim() || !dirty} onClick={save}>{form ? "保存" : "添加"}</button>
-      {onClose && <button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={onClose}>取消</button>}
+      {onClose && <button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={() => { clearDrafts(prefix); onClose(); }}>取消</button>}
       {form && <button type="button" className="ip-brand-text-button director-danger" disabled={!!busy} onClick={remove}>删除形态</button>}
     </div>
   </section>;

@@ -7,6 +7,7 @@
 // 采用文字永远不触发收费的出图；「生成新版本」是单独的按钮，先说清范围和费用。
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { runDirectorTask, saveDirectorDrafts } from "./director-generation";
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode, RefObject } from "react";
 import { ArrowUp, Check, ChevronRight, History, Loader2, MessageSquarePlus, Move, PanelRightOpen, Undo2, X } from "lucide-react";
@@ -273,6 +274,7 @@ export function useAssistantController({ work: maybeWork, apply, tab, episodeId,
       onCancel: () => resolve(),
       onOk: async () => {
         try {
+          await saveDirectorDrafts(workRef.current, apply);
           if (p.status === "open") await act(messageId, p, "apply");
           // 结果不确定时记着这一次（编号 + 正文），再点「生成新版本」按原请求恢复，不会多出一张、不会重复扣费。
           const pkey = `director-assistant:regen:${w.id}:${messageId}:${p.id}`;
@@ -285,7 +287,7 @@ export function useAssistantController({ work: maybeWork, apply, tab, episodeId,
             writePending(pkey, req);
           }
           const target = `${board ? "board" : "asset"}:${targetId}`;
-          apply(await deliver(pkey, req, b => DirectorApi.runTask(w.id, b), async () => {
+          apply(await deliver(pkey, req, b => runDirectorTask(w, apply, b), async () => {
             const latest = await DirectorApi.getWork(w.id);
             return latest.tasks.some(t => t.target === target && t.status === "running") ? latest : null;
           }));
@@ -692,7 +694,7 @@ function useAssistantSender(work: DirectorWork, apply: (w: DirectorWork) => void
     ctl.setSubmittingScope(p.body.options.scope);
     setSending(true); setError("");
     try {
-      apply(await deliver(pkey, p, b => DirectorApi.runTask(work.id, b), received(p.id)));
+      apply(await deliver(pkey, p, b => runDirectorTask(work, apply, b), received(p.id)));
       setPending(null); done?.(p.body.options.message);
     } catch (e) {
       if (!(e instanceof UncertainError)) setPending(null);

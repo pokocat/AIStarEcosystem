@@ -1,12 +1,13 @@
 "use client";
 
+import { runDirectorTask } from "./director-generation";
 import { useState } from "react";
 import { RefreshCw, X } from "lucide-react";
 import type { DirectorClip, DirectorEpisode, DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi } from "../api";
 import { useStudioApp } from "../studio-errors";
 import { confirmDirectorAction } from "./director-antd";
-import { InlineError, chooseDirectorBilling, clearDrafts, costText, dialogFocus, failed, hasDrafts, newRequestId, runningTask, useBusy, useEscape, type DirectorFail } from "./director-shared";
+import { InlineError, chooseDirectorBilling, costText, dialogFocus, failed, newRequestId, runningTask, useBusy, useEscape, type DirectorFail } from "./director-shared";
 
 // 分镜脚本 = 每个片段的镜头（还有标题、摘要、关联资产）；分镜图提示词和视频提示词由镜头自动编出来。
 // 所以「重新生成提示词」就是让 AI 重写分镜脚本：整集或单个片段。只改文字，不生成图片和视频。
@@ -22,7 +23,7 @@ export function shotWriting(work: DirectorWork, ep: DirectorEpisode) {
 }
 
 /** 片段能不能单独重写；能就返回空串。 */
-export function clipRewriteBlock(work: DirectorWork, clip: DirectorClip, editing: boolean) {
+export function clipRewriteBlock(work: DirectorWork, clip: DirectorClip) {
   const ep = work.episodes.find(e => e.id === clip.episodeId);
   if (ep) {
     const w = shotWriting(work, ep);
@@ -32,7 +33,6 @@ export function clipRewriteBlock(work: DirectorWork, clip: DirectorClip, editing
   if (clip.video.pending?.length || runningTask(work, `video:${clip.id}`)) return "视频生成中，完成后可重写";
   if (runningTask(work, `board:${clip.id}`)) return "分镜图生成中，完成后可重写";
   if (!work.videoLimits) return "暂无可用视频模型，无法确定片段时长";
-  if (editing) return "请先保存或取消镜头修改";
   return "";
 }
 
@@ -45,8 +45,6 @@ function replaced(work: DirectorWork, clips: DirectorClip[]) {
   const video = clips.filter(c => c.videoPromptCustom), board = clips.filter(c => c.boardPromptCustom);
   if (video.length) out.push(`${names(video)} 手动修改过的视频提示词将被替换`);
   if (board.length) out.push(`${names(board)} 手动修改过的分镜图提示词将被替换`);
-  const unsaved = clips.filter(c => hasDrafts(`${work.id}:clip:${c.id}:`));
-  if (unsaved.length) out.push(`${names(unsaved)} 有未保存的修改，开始重写后将丢失`);
   return out;
 }
 
@@ -69,8 +67,7 @@ export function useRewriteClip(work: DirectorWork, apply: (w: DirectorWork) => v
     }, () => void run(clip.id, async () => {
       const billing = await chooseDirectorBilling("storyboard");
       const ep = clip.episodeId;
-      const next = await DirectorApi.runTask(work.id, { type: "reshoot", targetId: ep, options: { clipIds: [clip.id] }, clientRequestId: newRequestId(), billing, maxCost: work.pricing.textMax });
-      clearDrafts(`${work.id}:clip:${clip.id}:`);
+      const next = await runDirectorTask(work, apply, { type: "reshoot", targetId: ep, options: { clipIds: [clip.id] }, clientRequestId: newRequestId(), billing, maxCost: work.pricing.textMax });
       apply(next);
     }, failed(setError, `重写片段 ${clip.order} 的分镜脚本`)));
   };
@@ -89,9 +86,8 @@ export function RewriteEpisodeDialog({ work, ep, apply, onClose }: { work: Direc
   const go = () => void run("rewrite", async () => {
     const billing = await chooseDirectorBilling("storyboard");
     const next = mode === "keep"
-      ? await DirectorApi.runTask(work.id, { type: "reshoot", targetId: ep.id, clientRequestId: newRequestId(), billing, maxCost: work.pricing.textMax })
-      : await DirectorApi.runTask(work.id, { type: "plan", targetId: ep.id, clientRequestId: newRequestId(), billing, maxCost: work.pricing.textMax });
-    for (const c of clips) clearDrafts(`${work.id}:clip:${c.id}:`);
+      ? await runDirectorTask(work, apply, { type: "reshoot", targetId: ep.id, clientRequestId: newRequestId(), billing, maxCost: work.pricing.textMax })
+      : await runDirectorTask(work, apply, { type: "plan", targetId: ep.id, clientRequestId: newRequestId(), billing, maxCost: work.pricing.textMax });
     apply(next);
     onClose();
   }, setLocalError);

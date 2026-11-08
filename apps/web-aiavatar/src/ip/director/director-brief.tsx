@@ -8,6 +8,7 @@
 // 每次发送都按 director-pending 记下原请求：刷新、断网后按同一编号恢复，不重复受理、不重复扣费。
 // ────────────────────────────────────────────────────────────────────────
 
+import { runDirectorTask } from "./director-generation";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUp, Check, ChevronRight, Loader2, MessageSquare, PenLine, RotateCcw, Sparkles } from "lucide-react";
 import type { DirectorBrief, DirectorBriefMessage, DirectorFormat, DirectorTaskType, DirectorWork } from "@ai-star-eco/types";
@@ -97,7 +98,7 @@ function useBriefController(work: DirectorWork, apply: (w: DirectorWork) => void
         writePending(key, req);
       }
       setPendingState(req);
-      apply(await deliver(key, req, b => DirectorApi.runTask(work.id, b), received(req.body)));
+      apply(await deliver(key, req, b => runDirectorTask(work, apply, b), received(req.body)));
       setPendingState(null);
       return true;
     } catch (e) {
@@ -349,7 +350,7 @@ export function ScriptMore({ work, apply, setError }: { work: DirectorWork; appl
   const start = useCallback(() => void run("more", async () => {
     const cost = work.pricing.textMax;
     const billing = await chooseDirectorBilling("script", cost);
-    apply(await DirectorApi.runTask(work.id, { type: "script-more", clientRequestId: newRequestId(), options: {}, billing, maxCost: cost }));
+    apply(await runDirectorTask(work, apply, { type: "script-more", clientRequestId: newRequestId(), options: {}, billing, maxCost: cost }));
   }, failed(setError, "继续写剧本")), [work.id, work.pricing.textMax]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!p || p.written >= p.total) return null;
   const from = p.written + 1, to = p.nextTo ?? from;

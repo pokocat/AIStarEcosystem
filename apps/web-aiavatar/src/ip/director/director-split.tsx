@@ -1,5 +1,6 @@
 "use client";
 
+import { runDirectorTask } from "./director-generation";
 import { useState } from "react";
 import { BookMarked, ChevronRight, Scissors, Undo2, X } from "lucide-react";
 import type { DirectorWork } from "@ai-star-eco/types";
@@ -77,8 +78,8 @@ export function SplitChoiceDialog({ work, count, apply, onClose }: { work: Direc
   const go = () => void run("split", async () => {
     setLocalError("");
     const next = mode === "marker"
-      ? await DirectorApi.runTask(work.id, { type: "split", clientRequestId: newRequestId(), options: { ...episodeCount, marker: marker.trim() }, maxCost: 0 })
-      : await DirectorApi.runTask(work.id, { type: "split", clientRequestId: newRequestId(), options: episodeCount,
+      ? await runDirectorTask(work, apply, { type: "split", clientRequestId: newRequestId(), options: { ...episodeCount, marker: marker.trim() }, maxCost: 0 })
+      : await runDirectorTask(work, apply, { type: "split", clientRequestId: newRequestId(), options: episodeCount,
         billing: await chooseDirectorBilling("script"), maxCost: work.pricing.textMax });
     apply(next);
     onClose();

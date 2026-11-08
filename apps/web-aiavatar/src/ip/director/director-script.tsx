@@ -1,5 +1,6 @@
 "use client";
 
+import { runDirectorTask } from "./director-generation";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { BookOpen, ChevronRight, FileText, Loader2, MessageSquare, PenLine, RefreshCw, Scissors, Sparkles, Wand2, X } from "lucide-react";
@@ -159,7 +160,7 @@ function DraftEditor({ work, apply, setError, splitting, startPipeline }: Workbe
     if (dirty) { w = await persist(); apply(w); }
     // 剧本里标好了分集：服务端按标题分、不扣积分，不用选付款方。没认出来先问用户，不直接交给模型。
     if (!splitsByHeadings(w, count)) { setChoosing(true); return; }
-    apply(await DirectorApi.runTask(w.id, { type: "split", clientRequestId: newRequestId(), options: count ? { episodeCount: Number(count) } : {}, billing: undefined, maxCost: 0 }));
+    apply(await runDirectorTask(w, apply, { type: "split", clientRequestId: newRequestId(), options: count ? { episodeCount: Number(count) } : {}, billing: undefined, maxCost: 0 }));
   }, failed(setError, "拆分集"));
   const byHeadings = splitsByHeadings(work, count);
   const rewriting = runningTask(work, "script");
@@ -187,7 +188,7 @@ function DraftEditor({ work, apply, setError, splitting, startPipeline }: Workbe
         <NextChoices work={work} shortcutDesc="自动完成至成片，开始前显示推荐预算。" title="下一步：拆分剧本"
           desc={byHeadings ? `已识别到 ${work.draftEpisodeHeadings} 集分集标题，将按标题拆分，不消耗积分。第 1 集之前的内容保存为设定资料。`
             : "已分好集的剧本按分集标题拆分，不消耗积分；尚未分集的由 AI 按剧情拆分，按实际用量结算。均不修改正文。"}
-          onShortcut={startPipeline} shortcutDisabled={locked || !!busy || !text.trim() || dirty} shortcutNote={dirty ? "请先保存剧本" : undefined}>
+          onShortcut={startPipeline} shortcutDisabled={locked || !!busy || !text.trim()}>
           <label className="director-inline-field">分为<input inputMode="numeric" value={count} placeholder="自动" onChange={e => setCount(e.target.value.replace(/\D/g, "").slice(0, 2))}/>集</label>
           <button type="button" className="ip-brand-button" disabled={locked || !!busy || !text.trim()} onClick={split}><Scissors size={15}/>{byHeadings ? "按标题拆分" : "拆分剧本"}</button>
           <button type="button" className="ip-brand-secondary" disabled={locked || !!busy || !text.trim()} onClick={asEpisode}>作为一集</button>
@@ -227,7 +228,7 @@ function EpisodeList(props: WorkbenchProps) {
   const extract = () => void run("extract", async () => {
     const cost = work.pricing.textMax;
     const billing = await chooseDirectorBilling("asset-extract");
-    apply(await DirectorApi.runTask(work.id, { type: "extract", targetId: null, clientRequestId: newRequestId(), billing, maxCost: cost }));
+    apply(await runDirectorTask(work, apply, { type: "extract", targetId: null, clientRequestId: newRequestId(), billing, maxCost: cost }));
   }, failed(setError, storyAssets(work).length ? "重新提取全剧资产" : "提取全剧资产"));
   return <section className="director-panel director-script-list">
     <div className="director-toolbar">
@@ -324,7 +325,7 @@ function RegenerateDialog({ work, apply, setError, onClose }: Pick<WorkbenchProp
   const go = () => void run("regen", async () => {
     const cost = work.pricing.textMax;
     const billing = await chooseDirectorBilling("script");
-    apply(await DirectorApi.runTask(work.id, { type: "script", clientRequestId: newRequestId(), options: { idea: idea.trim(), genre, tone, regenerate: true }, billing, maxCost: cost }));
+    apply(await runDirectorTask(work, apply, { type: "script", clientRequestId: newRequestId(), options: { idea: idea.trim(), genre, tone, regenerate: true }, billing, maxCost: cost }));
     onClose();
   }, e => { setLocalError(e); setError(""); });
   return <div className="director-dialog-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && !busy && onClose()}>

@@ -3,13 +3,14 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, expect, test, vi } from "vitest";
 import { DirectorAssets } from "./director-assets";
 import { StyleField } from "./director-styles";
+import { clearDrafts, hasDrafts } from "./director-shared";
 
 const api = vi.hoisted(() => ({ runTask: vi.fn(), edit: vi.fn() }));
 vi.mock("../api", () => ({ DirectorApi: api, IpStudioApi: {} }));
 vi.mock("../studio-errors", async importOriginal => ({ ...(await importOriginal<typeof import("../studio-errors")>()), useStudioApp: () => ({ modal: { confirm: vi.fn() } }) }));
 vi.mock("../library-reference-picker", () => ({ LibraryReferencePicker: () => null }));
 vi.mock("./director-shared", async importOriginal => ({ ...(await importOriginal<typeof import("./director-shared")>()), chooseDirectorBilling: async () => undefined }));
-afterEach(() => { cleanup(); vi.clearAllMocks(); });
+afterEach(() => { cleanup(); clearDrafts("w:"); vi.clearAllMocks(); });
 
 const empty = { candidates: [], adoptedId: null, adoptedBy: null, error: null };
 const withImage = (key: string) => ({ candidates: [{ id: `m-${key}`, key, url: `/${key}.png`, source: "upload", runId: null, createdAt: "2026-11-04T00:00:00Z" }], adoptedId: `m-${key}`, adoptedBy: "user", error: null });
@@ -22,6 +23,48 @@ const work: any = { id: "w", episodes: [{ id: "ep1", no: 1, title: "一" }], tas
     { ...base, id: "p1", kind: "prop", name: "金钵", description: "铜钵", image: empty },
   ] };
 const props = { work, episodeId: "ep1", apply: vi.fn(), setError: vi.fn(), focusClip: vi.fn() } as any;
+
+test("generating saves the edited character before submitting, without another save click", async () => {
+  let finish!: (value: typeof work) => void;
+  api.edit.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  api.runTask.mockResolvedValue(work);
+  render(<DirectorAssets {...props}/>);
+  fireEvent.click(screen.getByRole("button", { name: "查看白素贞" }));
+  fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+  fireEvent.change(screen.getByLabelText(/外观与设定/), { target: { value: "40–50岁，深色休闲装" } });
+  fireEvent.click(screen.getByRole("button", { name: "重新生成" }));
+  await waitFor(() => expect(api.edit).toHaveBeenCalledWith("w", "asset.update", "c1", 1, { description: "40–50岁，深色休闲装" }));
+  expect(api.runTask).not.toHaveBeenCalled();
+  finish({ ...work, revision: 2 });
+  await waitFor(() => expect(api.runTask).toHaveBeenCalledWith("w", expect.objectContaining({ type: "asset-image", targetId: "c1" })));
+  expect(hasDrafts("w:asset:c1:")).toBe(false);
+});
+
+test("a failed save preserves the character edits and never submits a paid generation", async () => {
+  api.edit.mockRejectedValue(new Error("保存失败"));
+  render(<DirectorAssets {...props}/>);
+  fireEvent.click(screen.getByRole("button", { name: "查看白素贞" }));
+  fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "出图提示词", exact: true }), { target: { value: "40岁男性，黑色夹克" } });
+  fireEvent.click(screen.getByRole("button", { name: "重新生成" }));
+  await waitFor(() => expect(props.setError).toHaveBeenCalled());
+  expect(api.runTask).not.toHaveBeenCalled();
+  expect(hasDrafts("w:asset:c1:prompt")).toBe(true);
+  expect((screen.getByRole("textbox", { name: "出图提示词", exact: true }) as HTMLTextAreaElement).value).toBe("40岁男性，黑色夹克");
+});
+
+test("generating a form also saves its currently edited appearance", async () => {
+  api.edit.mockResolvedValue(work);
+  api.runTask.mockResolvedValue(work);
+  render(<DirectorAssets {...props}/>);
+  fireEvent.click(screen.getByRole("button", { name: "查看白素贞" }));
+  fireEvent.click(screen.getByRole("tab", { name: /半妖态/ }));
+  fireEvent.change(screen.getByLabelText("和平时不一样的地方"), { target: { value: "黑色长裙，蛇尾" } });
+  fireEvent.click(screen.getByRole("button", { name: "生成形态图" }));
+  await waitFor(() => expect(api.edit).toHaveBeenCalledWith("w", "form.update", "fm1", null, { description: "黑色长裙，蛇尾" }));
+  await waitFor(() => expect(api.runTask).toHaveBeenCalledWith("w", expect.objectContaining({ type: "form-image", targetId: "fm1" })));
+  expect(api.edit.mock.invocationCallOrder[0]).toBeLessThan(api.runTask.mock.invocationCallOrder[0]);
+});
 
 test("clicking an asset opens one big dialog with a strip to switch between assets", () => {
   render(<DirectorAssets {...props}/>);

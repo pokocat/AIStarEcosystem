@@ -1,5 +1,6 @@
 "use client";
 
+import { runDirectorTask, withSavedDirectorDrafts } from "./director-generation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Check, ChevronDown, Download, Film, Music, Play, SkipForward, Trash2, Upload, Wand2, X } from "lucide-react";
 import { Switch } from "antd";
@@ -28,16 +29,18 @@ export function ClipVideo({ work, clip, quote, apply, setError, onBoard, onAsset
   const boardReady = !!clip.board.adoptedId && clip.board.adoptedBy === "user";
   // promptChoice：优化稿有提示时用户的选择，或随时「按原文生成」（不拦人，2026-10-26 用户定）。
   const generate = (promptChoice?: "optimized" | "original") => void run("video", async () => {
-    const latest = (await DirectorApi.quote(work.id, [clip.id])).items[0];
-    if (latest?.error || latest?.credits == null) throw new Error(latest?.error || "此片段暂无法生成视频");
-    const billing = await chooseDirectorBilling("video", latest.credits);
-    apply(await DirectorApi.runTask(work.id, { type: "video", targetId: clip.id, clientRequestId: newRequestId(), billing, maxCost: latest.credits,
-      ...(promptChoice ? { options: { promptChoice } } : {}) }));
+    apply(await withSavedDirectorDrafts(work, apply, async saved => {
+      const latest = (await DirectorApi.quote(saved.id, [clip.id])).items[0];
+      if (latest?.error || latest?.credits == null) throw new Error(latest?.error || "此片段暂无法生成视频");
+      const billing = await chooseDirectorBilling("video", latest.credits);
+      return DirectorApi.runTask(saved.id, { type: "video", targetId: clip.id, clientRequestId: newRequestId(), billing, maxCost: latest.credits,
+        ...(promptChoice ? { options: { promptChoice } } : {}) });
+    }));
   }, failed(setError, `生成片段 ${clip.order} 的视频`, undefined, undefined, DIRECTOR_MEDIA_SHORTAGE));
   // 重新优化：只重新改写提示词，完成后停在新稿上等你选，不接着生成视频；优化提示词按实际用量另计。
   const reoptimize = () => void run("rewrite", async () => {
     const billing = await chooseDirectorBilling("text");
-    apply(await DirectorApi.runTask(work.id, { type: "video-prompt", targetId: clip.id, clientRequestId: newRequestId(), billing }));
+    apply(await runDirectorTask(work, apply, { type: "video-prompt", targetId: clip.id, clientRequestId: newRequestId(), billing }));
   }, failed(setError, `重新优化片段 ${clip.order} 的提示词`));
   // 所有会花钱的「再生成一条」都走这里，不留绕过确认的按钮。
   const paid = (choice?: "optimized" | "original") => { if (clip.video.candidates.length) setConfirmRegenerate({ choice }); else generate(choice); };
@@ -187,7 +190,7 @@ export function EpisodeOutput({ work, ep, apply, setError }: { work: DirectorWor
     setDownloadStarted(undefined);
     const options: DirectorExportOptions = { captions: current.captions, ...(unconfirmed.length ? { confirmPending: true } : {}), ...(current.quality ? { quality: current.quality } : {}),
       ...(current.music ? { musicStorageKey: current.music.key, musicName: current.music.name } : {}) };
-    apply(await DirectorApi.runTask(work.id, { type: "export", targetId: ep.id, clientRequestId: newRequestId(), options }));
+    apply(await runDirectorTask(work, apply, { type: "export", targetId: ep.id, clientRequestId: newRequestId(), options }));
     setExportOpen(false); setChoice(undefined);
   }, failed(setError, `导出第 ${ep.no} 集`));
   if (!clips.length) return null;
