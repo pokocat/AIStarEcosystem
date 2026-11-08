@@ -1017,9 +1017,8 @@ export function SceneVideoStudio() {
         <span>{scene.images.label}</span>
         <button type="button" className="scene-ref-remove" aria-label={`移除${m.title}`} onClick={() => { drop("image", m.key); setImages(old => old.filter((_, j) => j !== i).map((o, j) => ({ ...o, title: `${scene.images.label} ${j + 1}` }))); }}><X size={11} strokeWidth={1.8}/></button></div>; })}
       {images.length < (scene.images.max ?? 6) && <>
-        {scene.id === "local-groupbuy"
-          ? ["产品图片", "环境图片"].map(label => imageSlot(label, true))
-          : imageSlot(scene.images.label)}
+        {imageSlot(scene.images.label)}
+        {scene.id === "local-groupbuy" && ["产品图片", "环境图片"].map(label => imageSlot(label, true))}
       </>}
       {(scene.character || scene.voice) && <i className="scene-media-divider" aria-hidden="true"/>}
       {scene.character && tile("character", character, "角色", UserRound, true, () => { if (character) drop("character", character.key); setCharacter(undefined); })}

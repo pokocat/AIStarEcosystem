@@ -82,27 +82,33 @@ async function open(Page: typeof SceneImageStudio, url: string) {
   await act(async () => { render(<Page/>); });
 }
 
-test("group buy: product and environment slots stay in the existing material row and survive reopening", async () => {
+test("group buy: store, product and environment slots coexist and their images survive reopening", async () => {
   await open(SceneVideoStudio, "/video?scene=local-groupbuy");
   const product = await screen.findByRole("button", { name: "添加产品图片" });
   const materials = screen.getByRole("group", { name: "素材" });
   expect(within(materials).getByRole("button", { name: "添加产品图片" })).toBe(product);
   expect(within(materials).getByRole("button", { name: "添加环境图片" }).parentElement?.className).toBe("scene-media");
   expect(product.parentElement?.className).toBe("scene-media");
-  expect(within(materials).queryByRole("button", { name: "从资产库选择门店照片" })).toBeNull();
+  const storePhoto = within(materials).getByRole("button", { name: "从资产库选择门店照片" });
+  expect(storePhoto.parentElement?.className).toBe("scene-media");
   expect(screen.queryByRole("group", { name: "图片上传建议" })).toBeNull();
-  fireEvent.click(product);
-  expect(screen.getByRole("dialog", { name: "选择产品图片" })).toBeTruthy();
+  fireEvent.click(storePhoto);
+  expect(screen.getByRole("dialog", { name: "选择门店照片" })).toBeTruthy();
   await confirmLibrary();
   await waitFor(() => expect(store.get("IPP-A")?.doc.sceneInputs?.images).toEqual(["ipstudio/source/u/p.jpg"]));
+  setLibrarySource(async () => ({ key: "ipstudio/source/u/product.jpg", url: "blob:product", fileName: "产品.jpg" }));
+  fireEvent.click(screen.getByRole("button", { name: "添加产品图片" }));
+  expect(screen.getByRole("dialog", { name: "选择产品图片" })).toBeTruthy();
+  await confirmLibrary();
+  await waitFor(() => expect(store.get("IPP-A")?.doc.sceneInputs?.images).toEqual(["ipstudio/source/u/p.jpg", "ipstudio/source/u/product.jpg"]));
   setLibrarySource(async () => ({ key: "ipstudio/source/u/store.jpg", url: "blob:store", fileName: "店内环境.jpg" }));
   fireEvent.click(screen.getByRole("button", { name: "添加环境图片" }));
   expect(screen.getByRole("dialog", { name: "选择环境图片" })).toBeTruthy();
   await confirmLibrary();
-  await waitFor(() => expect(store.get("IPP-A")?.doc.sceneInputs?.images).toEqual(["ipstudio/source/u/p.jpg", "ipstudio/source/u/store.jpg"]));
+  await waitFor(() => expect(store.get("IPP-A")?.doc.sceneInputs?.images).toEqual(["ipstudio/source/u/p.jpg", "ipstudio/source/u/product.jpg", "ipstudio/source/u/store.jpg"]));
   cleanup();
   await open(SceneVideoStudio, "/video?scene=local-groupbuy&draft=IPP-A");
-  await waitFor(() => expect(screen.getByRole("button", { name: "移除门店照片 2" })).toBeTruthy());
+  await waitFor(() => expect(screen.getByRole("button", { name: "移除门店照片 3" })).toBeTruthy());
   expect(api.submit).not.toHaveBeenCalled();
 });
 
