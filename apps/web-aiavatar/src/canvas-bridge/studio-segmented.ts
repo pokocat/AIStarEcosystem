@@ -46,8 +46,9 @@ export function describeSegmentedPrice(personal: StudioSegmentedVideoPrice, ente
   const saving = personal.videoCost - video;
   const n = (v: number) => v.toLocaleString("zh-CN");
   const discount = saving > 0 ? `${personal.videoDiscountName || enterprise?.videoDiscountName || "视频优惠"}，视频费省 ${n(saving)} 积分` : undefined;
-  const videoNote = from ? `个人账户视频费 ${n(payable(personal))} 积分，企业账户视频费 ${n(payable(enterprise!))} 积分。` : `视频 ${n(video)} 积分，`;
-  return { standard: personal.videoCost + personal.boardCost, shown: video + personal.boardCost, video, from, discount, videoNote };
+  /** 个人和企业账户价不同时（按钮上写「起」），两种各多少，放悬停提示。 */
+  const accounts = from ? `个人账户视频费 ${n(payable(personal))} 积分，企业账户视频费 ${n(payable(enterprise!))} 积分` : undefined;
+  return { standard: personal.videoCost + personal.boardCost, shown: video + personal.boardCost, video, from, discount, accounts };
 }
 
 export async function startSegmentedVideo(projectId: string, request: StudioSegmentedVideoRequest): Promise<StudioPlanExecution> {

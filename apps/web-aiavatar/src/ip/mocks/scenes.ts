@@ -15,12 +15,12 @@ export const MOCK_SCENES: StudioSceneCatalog = {
   video: [
     { id: "ecom-talking", group: "commerce", title: "口播带货", description: "有人出镜推荐，建立购买信任", images: { label: "商品图", required: true, max: 4 }, video: null, character: true, voice: true,
       placeholder: "卖什么商品、想突出哪一点", textRequired: false, durations: [15, 25, 30, 45], duration: 25, ratio: "9:16",
-      structure: "真人对着镜头讲：开头一句话说清商品能解决什么，中间展示商品，结尾引导下单。", ideas: ["开头用一个反常识的说法抓人"], skill: "video-generation",
+      structure: "真人对着镜头讲：开头一句话说清商品能解决什么，中间展示商品，结尾引导下单。", ideas: ["直击产品核心痛点", "开口先说适合谁", "边讲边上手实测", "用反常识观点开场", "讲一个使用细节", "对比同类突出差异"], skill: "video-generation",
       options: [{ key: "presenter", label: "出镜方式", defaultValue: "person", choices: [{ value: "person", label: "真人讲解", prompt: "真人出镜对着镜头讲" }, { value: "product", label: "只拍商品", prompt: "不出现人脸，只拍商品和手部操作" }] }],
       brief: { goal: "让看的人信这个东西好用，愿意去买", facts: [{ label: "商品和给谁用", required: true }, { label: "最想突出的一点", required: true }, { label: "优惠", required: false, use: "有才讲" }], ending: "说清怎么买", fiction: "story" } },
     { id: "recreation", group: "ip", title: "爆款复刻", description: "参考一条爆款，做你自己的版本", images: { label: "替换素材", required: false, max: 4 }, video: { label: "参考视频", required: true }, character: false, voice: false,
       placeholder: "要替换的内容", textRequired: true, durations: [15, 25], duration: 25, ratio: "9:16",
-      structure: "先拆解参考视频，再按同样的结构换成我的内容。", ideas: ["保留原片的节奏"], skill: "reference-video-recreation",
+      structure: "先拆解参考视频，再按同样的结构换成我的内容。", ideas: ["保留原片的开场钩子", "保留原片的节奏", "台词换成我的卖点", "人物换成我的 IP", "原片的价格不照搬", "结尾换成我的引导"], skill: "reference-video-recreation",
       brief: { goal: "借原片的结构，讲我自己的东西", facts: [{ label: "要换成什么", required: true }], fiction: "story" } },
   ],
   homeGoals: [

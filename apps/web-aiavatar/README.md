@@ -1262,7 +1262,7 @@ Studio 视频费用确认复用图片弹窗，显示整批原价、优惠、赠�
 
 - **AI 视频**（`src/ip/scenes/scene-video-studio.tsx`）：一张创作卡 + 作品与示例。场景名就是切换按钮（就地换同组场景，「全部场景」打开可固定的侧边栏）；一个编辑框放想法或提示词，直接「生成视频」；点「AI 编导」整张卡换成编导那一页，「采用脚本」把脚本放回编辑框（换掉自己写的有撤销）。模型和规格是两个胶囊（4:6），规格面板里有台词语言、时长滑块（最长 60 秒，超过模型单段上限分段交给创作助手）、画面比例、清晰度、先优化还是按原文、场景的几组选项。去掉了「写脚本按实际用量……」这类常驻说明，卡住时只说还差什么。
 - **AI 图片**（`scene-image-studio.tsx`）：同一套结构；空的参考图位点一下选「上传」或「从资产库选」；作品按一次生成一块，每张图上直接「做成视频 / 用作参考图 / 下载」。
-- **共用部件**（`scene-layout.tsx`）：`SceneSwitch`、`SceneDrawer`（固定状态按浏览器记）、`SceneRecent`（「最近」弹层）、作品 / 示例标签、示例展示（大图 + 场景做法几条）。手机 / 电脑形态读 `<html data-layout>`（`useSceneMobile`）。
+- **共用部件**（`scene-layout.tsx`）：`SceneSwitch`、`SceneDrawer`（固定状态按浏览器记）、`SceneRecent`（「最近」弹层）、作品 / 示例标签、示例展示（大图 + 场景名和一句说明；2026-11-07 起不再列做法）。手机 / 电脑形态读 `<html data-layout>`（`useSceneMobile`）。
 - **新版其他页面**：首页（`studio-home-scenes.css` 末尾）、项目 / 资产 / 发行（`StudioPage` 在新版加 `studio-next-page`，样式在 `studio-next-pages.css`）只改样子；导航栏图标改细、字改小。旧版不受影响。
 - 服务端：交给创作助手的视频时长放宽到 1–60 秒（`StudioSceneCatalog.MAX_HANDOFF_SECONDS`），不再要求是场景预设的那几档。
 - 素材位只从资产库选（`LibraryReferencePicker` 的 `mediaType` / `upload`）：选择框里能把新文件先传进资产库再选中；页面上不再直接上传或拖入文件。

@@ -11,7 +11,9 @@ html[data-layout="desktop"] .scene-video-studio.has-drawer { grid-template-colum
 
 /* 制作过程 */
 .video-task-view { display: flex; flex: 1; min-height: 0; flex-direction: column; overflow: auto; padding: 8px 18px 14px; }
-.video-production-stage { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 20px; padding: 12px 0 20px; }
+/* 上面是状态、进度条和操作，下面是做出来的图（2026-11-07 用户要求）。 */
+.video-production-head { display: flex; flex-direction: column; gap: 16px; padding: 12px 0 0; }
+.video-production-stage { display: flex; flex-direction: column; gap: 12px; padding: 20px 0 12px; }
 .video-state-heading { max-width: 60ch; margin: 0 auto; text-align: center; }
 .video-state-symbol { display: inline-flex; margin-bottom: 10px; color: var(--ip-muted); }
 .video-state-symbol.is-active { color: var(--sn-ai-star); animation: scene-breathe 1.6s ease-in-out infinite; }
@@ -20,8 +22,12 @@ html[data-layout="desktop"] .scene-video-studio.has-drawer { grid-template-colum
 .video-state-heading p { margin: 6px 0 0; color: var(--ip-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .video-state-heading .video-problem-note { color: var(--ip-error); overflow-wrap: anywhere; }
 .video-problem-note .studio-error-link { margin-left: 6px; }
-.video-production-previews { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; width: 100%; }
-.video-production-previews figure { flex: 0 1 280px; min-width: 0; margin: 0; }
+/* 一行排开不折行，放不下就横向滑；首尾 auto 外边距让放得下时居中、放不下时从头开始滑。展开全部后才折行。 */
+.video-production-previews { display: flex; gap: 14px; width: 100%; overflow-x: auto; scroll-snap-type: x proximity; }
+.video-production-previews.is-all { flex-wrap: wrap; justify-content: center; }
+.video-production-previews figure { flex: 0 1 280px; min-width: 0; margin: 0; scroll-snap-align: start; }
+.video-production-previews:not(.is-all)>figure:first-child { margin-left: auto; }
+.video-production-previews:not(.is-all)>figure:last-child { margin-right: auto; }
 .video-production-previews.is-portrait figure { flex-basis: 150px; }
 .video-production-previews figure>div { position: relative; display: grid; place-items: center; overflow: hidden; border-radius: 14px; }
 /* 生成中的占位用场景页的 .scene-row-placeholder，这里不要盖掉它的底色。 */
@@ -36,7 +42,7 @@ html[data-layout="desktop"] .scene-video-studio.has-drawer { grid-template-colum
 .video-preview-more:hover { background: var(--ip-soft); }
 
 .video-production-bottom { margin-top: auto; }
-.video-production-tracker { display: flex; justify-content: center; padding: 6px 0 16px; }
+.video-production-tracker { display: flex; justify-content: center; }
 .video-production-tracker>div { position: relative; display: flex; flex: 1; flex-direction: column; align-items: center; gap: 8px; min-width: 0; max-width: 150px; color: var(--ip-muted); font-size: 12px; }
 .video-production-tracker>div:not(:last-child)::after { content: ""; position: absolute; top: 9px; left: calc(50% + 14px); width: calc(100% - 28px); height: 1px; background: var(--ip-line); }
 .video-production-tracker>div>span { z-index: 1; box-sizing: border-box; display: grid; place-items: center; width: 19px; height: 19px; border: 1px solid #a4abb0; border-radius: 50%; background: var(--ip-paper); }
@@ -48,16 +54,16 @@ html[data-layout="desktop"] .scene-video-studio.has-drawer { grid-template-colum
 .video-production-tracker [data-state="running"] strong { font-weight: 500; }
 .video-production-tracker [data-state="failed"] { color: var(--ip-error); }
 .video-production-tracker [data-state="failed"]>span { border-color: var(--ip-error); background: var(--ip-error); color: #fff; font-size: 12px; font-weight: 600; line-height: 1; }
-.video-production-bottom footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; border-top: 1px solid var(--ip-line); }
-.video-production-bottom footer p { margin: 0; color: var(--ip-muted); font-size: 12px; }
+.video-production-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-block: 1px solid var(--ip-line); }
+.video-production-actions p { min-width: 0; margin: 0; overflow: hidden; color: var(--ip-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .video-footer-actions { display: inline-flex; flex-shrink: 0; align-items: center; gap: 8px; }
 
 /* 按钮和场景页作品行同一种样子。.ip-brand-surface a 的 color: inherit 优先级不低于单个 class，链接要写 a.xxx，否则深底上是深色字。 */
-.video-production-bottom :is(button, a.video-task-link), .video-task-settings>footer button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; height: 28px; padding: 0 10px; border: 1px solid var(--sn-field); border-radius: 8px; background: var(--ip-paper); color: var(--ip-ink); font: inherit; font-size: 12px; white-space: nowrap; text-decoration: none; cursor: pointer; }
-.video-production-bottom :is(button, a.video-task-link):hover:not(:disabled), .video-task-settings>footer button:hover { border-color: #cfd4da; }
-.video-production-bottom :is(button, a.video-task-link):disabled { opacity: .55; cursor: wait; }
-.video-production-bottom :is(button.is-primary, a.video-task-link.is-primary) { border-color: var(--ip-ink); background: var(--ip-ink); color: #fff; }
-.video-production-bottom :is(button.is-primary, a.video-task-link.is-primary):hover:not(:disabled) { border-color: #2a3540; background: #2a3540; }
+:is(.video-production-bottom, .video-production-actions) :is(button, a.video-task-link), .video-task-settings>footer button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; height: 28px; padding: 0 10px; border: 1px solid var(--sn-field); border-radius: 8px; background: var(--ip-paper); color: var(--ip-ink); font: inherit; font-size: 12px; white-space: nowrap; text-decoration: none; cursor: pointer; }
+:is(.video-production-bottom, .video-production-actions) :is(button, a.video-task-link):hover:not(:disabled), .video-task-settings>footer button:hover { border-color: #cfd4da; }
+:is(.video-production-bottom, .video-production-actions) :is(button, a.video-task-link):disabled { opacity: .55; cursor: wait; }
+:is(.video-production-bottom, .video-production-actions) :is(button.is-primary, a.video-task-link.is-primary) { border-color: var(--ip-ink); background: var(--ip-ink); color: #fff; }
+:is(.video-production-bottom, .video-production-actions) :is(button.is-primary, a.video-task-link.is-primary):hover:not(:disabled) { border-color: #2a3540; background: #2a3540; }
 .video-process-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
 .video-production-bottom button.video-process-toggle { height: auto; padding: 4px 0; border: 0; background: none; color: var(--ip-muted); font-size: 12px; }
 .video-process-canvas { display: none; align-items: center; gap: 3px; color: var(--ip-muted); font-size: 12px; text-decoration: none; }
@@ -153,7 +159,7 @@ html:not([data-layout="desktop"]) .video-mobile-tabs { display: flex; margin: ca
 html:not([data-layout="desktop"]) .scene-video-composer .scene-composer-head { padding-top: 8px; }
 html:not([data-layout="desktop"]) .video-workspace-head>div>.scene-text-button { display: none; }
 html:not([data-layout="desktop"]) .video-process-canvas, html:not([data-layout="desktop"]) .video-head-new { display: inline-flex; }
-html:not([data-layout="desktop"]) .video-production-bottom :is(button, a.video-task-link) { height: 32px; }
+html:not([data-layout="desktop"]) :is(.video-production-bottom, .video-production-actions) :is(button, a.video-task-link) { height: 32px; }
 html:not([data-layout="desktop"]) .video-production-bottom button.video-process-toggle { height: 32px; }
 html:not([data-layout="desktop"]) .video-mobile-tabs button { flex: 1; justify-content: center; height: 32px; }
 .video-mobile-tabs button[aria-pressed="true"] { background: var(--ip-paper); box-shadow: 0 1px 2px rgba(23,32,42,.08); color: var(--ip-ink); font-weight: 500; }
@@ -170,7 +176,7 @@ html:not([data-layout="desktop"]) .video-production-bottom { padding-bottom: 20p
 html:not([data-layout="desktop"]) .video-workspace-head { gap: 8px; padding: 10px 8px 10px 14px; }
 html:not([data-layout="desktop"]) .video-production-tracker strong { font-size: 11px; }
 html:not([data-layout="desktop"]) .video-production-previews { gap: 10px; }
-html:not([data-layout="desktop"]) .video-production-previews figure { flex-basis: calc(50% - 5px); }
+html:not([data-layout="desktop"]) .video-production-previews figure { flex: 0 0 calc(50% - 5px); }
 html:not([data-layout="desktop"]) .video-task-settings { margin: 0 12px; }
 html:not([data-layout="desktop"]) .video-task-history.is-open { width: min(280px, calc(100vw - 48px)); }
 @media (prefers-reduced-motion: reduce) { .video-state-symbol.is-active, .video-loading-frame { animation: none; } }
