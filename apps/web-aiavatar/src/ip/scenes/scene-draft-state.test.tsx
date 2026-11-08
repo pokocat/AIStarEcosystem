@@ -82,9 +82,16 @@ async function open(Page: typeof SceneImageStudio, url: string) {
   await act(async () => { render(<Page/>); });
 }
 
-test("group buy: product and environment guidance add to the same references and survive reopening", async () => {
+test("group buy: product and environment slots stay in the existing material row and survive reopening", async () => {
   await open(SceneVideoStudio, "/video?scene=local-groupbuy");
-  fireEvent.click(await screen.findByRole("button", { name: "添加产品图片" }));
+  const product = await screen.findByRole("button", { name: "添加产品图片" });
+  const materials = screen.getByRole("group", { name: "素材" });
+  expect(within(materials).getByRole("button", { name: "添加产品图片" })).toBe(product);
+  expect(within(materials).getByRole("button", { name: "添加环境图片" }).parentElement?.className).toBe("scene-media");
+  expect(product.parentElement?.className).toBe("scene-media");
+  expect(within(materials).queryByRole("button", { name: "从资产库选择门店照片" })).toBeNull();
+  expect(screen.queryByRole("group", { name: "图片上传建议" })).toBeNull();
+  fireEvent.click(product);
   expect(screen.getByRole("dialog", { name: "选择产品图片" })).toBeTruthy();
   await confirmLibrary();
   await waitFor(() => expect(store.get("IPP-A")?.doc.sceneInputs?.images).toEqual(["ipstudio/source/u/p.jpg"]));

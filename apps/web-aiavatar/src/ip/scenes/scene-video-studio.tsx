@@ -22,7 +22,6 @@ import type { EnterpriseBillingSelection } from '@ai-star-eco/types/enterprise';
 import type { StudioVideoSettings } from '@ai-star-eco/types/ip-studio-workflow';
 import { startVideoTask, prepareVideoTask, videoTaskPrice } from '@/canvas-bridge/studio-video-tasks';
 import { SceneVideoWorkspace, VideoHistoryToggle, VideoTaskSettings, VIDEO_TASK_SELECTION } from './scene-video-workspace';
-import { SceneImageGuide } from './scene-image-guide';
 import { SegmentedRow } from "./scene-segmented-row";
 import { studioCapabilities, submitStudioRun } from "@/canvas-bridge/studio-api";
 import { attachmentNode } from "@/canvas-bridge/studio-attachments";
@@ -1003,6 +1002,12 @@ export function SceneVideoStudio() {
     .map((key, i) => ({ index: i + 1, title: placedMedia(key)?.title || `图${i + 1}`, url: placedMedia(key)?.url, storageKey: key }));
   const imageIndex = (key: string) => (plan?.used ?? []).filter(m => m.mediaType === "image").findIndex(m => m.key === key);
 
+  // 团购的产品图、环境图复用同一排素材占位和上传入口，不另设引导区。
+  const imageSlot = (label: string, guided = false) => <div key={label} className="scene-media">
+    <button type="button" disabled={uploading !== undefined} onClick={() => choose("image", guided ? label : undefined)} aria-label={guided ? `添加${label}` : `从资产库选择${label}`} title={`从资产库选择${label}`}>
+      {uploading === "image" ? <Loader2 size={18} className="studio-gallery-spinner"/> : <SlotEmpty Icon={ImageIcon} size={22}/>}</button>
+    <span>{guided ? label : images.length ? "添加图片" : label}{!guided && !images.length && !scene.images.required && <small>选填</small>}</span>
+  </div>;
   // 素材和规格在编辑页和编导页是同一份：编导页的输入框里也看得到、改得了，编导按这里的时长和素材写（2026-10-31 用户反馈）。
   const mediaRow = (compact = false) => <>
     <div className={`scene-media-row${compact ? " is-compact" : ""}`} role="group" aria-label="素材">
@@ -1011,15 +1016,15 @@ export function SceneVideoStudio() {
         <span className="scene-media-preview"><SignedImage src={m.url} storageKey={m.key} alt={m.title}/>{at >= 0 && <i className="scene-ref-index">图{at + 1}</i>}</span>
         <span>{scene.images.label}</span>
         <button type="button" className="scene-ref-remove" aria-label={`移除${m.title}`} onClick={() => { drop("image", m.key); setImages(old => old.filter((_, j) => j !== i).map((o, j) => ({ ...o, title: `${scene.images.label} ${j + 1}` }))); }}><X size={11} strokeWidth={1.8}/></button></div>; })}
-      {images.length < (scene.images.max ?? 6) && <div className="scene-media"><button type="button" disabled={uploading !== undefined} onClick={() => choose("image")} aria-label={`从资产库选择${scene.images.label}`} title={`从资产库选择${scene.images.label}`}>
-        {uploading === "image" ? <Loader2 size={18} className="studio-gallery-spinner"/> : <SlotEmpty Icon={ImageIcon} size={22}/>}</button>
-        <span>{images.length ? "添加图片" : scene.images.label}{!images.length && !scene.images.required && <small>选填</small>}</span></div>}
+      {images.length < (scene.images.max ?? 6) && <>
+        {scene.id === "local-groupbuy"
+          ? ["产品图片", "环境图片"].map(label => imageSlot(label, true))
+          : imageSlot(scene.images.label)}
+      </>}
       {(scene.character || scene.voice) && <i className="scene-media-divider" aria-hidden="true"/>}
       {scene.character && tile("character", character, "角色", UserRound, true, () => { if (character) drop("character", character.key); setCharacter(undefined); })}
       {scene.voice && tile("voice", voice, "声音", Mic, true, () => { if (voice) drop("voice", voice.key); setVoice(undefined); })}
     </div>
-    {!compact && scene.id === "local-groupbuy" && images.length < (scene.images.max ?? 6) &&
-      <SceneImageGuide max={scene.images.max ?? 6} disabled={uploading !== undefined} onChoose={label => choose("image", label)}/>}
   </>;
   const specPill =
     <div className="scene-setting-panel-host">
