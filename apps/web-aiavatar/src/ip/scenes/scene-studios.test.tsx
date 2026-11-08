@@ -235,8 +235,9 @@ test("视频：按钮旁的价按服务端报价显示折扣（原价划掉）�
   await waitFor(() => expect(go().querySelector("s")?.textContent).toContain("600"));
   expect(go().textContent).toContain("300 积分");
   // 折后价已经划掉原价，折扣只放悬停提示；普通视频价格确定，不写上限。
-  expect(go().querySelector("small")?.title).toBe("H3限时折扣，省 300 积分");
-  expect(screen.getByText("优化提示词按实际用量另计。")).toBeTruthy();
+  // 优化另计也只在悬停提示里，按钮下不写（2026-11-07 用户）。
+  expect(go().querySelector("small")?.title).toBe("H3限时折扣，省 300 积分\n优化提示词按实际用量另计。");
+  expect(screen.queryByText("优化提示词按实际用量另计。")).toBeNull();
   expect(screen.queryByText(/最多 .*积分|本次上限|限时折扣/)).toBeNull();
   const [query, billing] = api.videoPrice.mock.calls.at(-1)!;
   expect(query).toMatchObject({ model: "ep-h3", tier: "768p", aspectRatio: "9:16", durationSec: 15 });
