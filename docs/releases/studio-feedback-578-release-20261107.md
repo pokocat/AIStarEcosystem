@@ -44,3 +44,23 @@
 ![已有 IP 与各造型](studio-feedback-578-release-20261107/ip-picker.png)
 
 ![重新编辑、切换 Fast 并刷新后保留脚本](studio-feedback-578-release-20261107/reedit.png)
+
+
+## 团购上传占位调整（2026-11-07）
+
+用户纠正：产品图片、环境图片应放在上方原图片素材区，使用两个上传占位，不另做下方引导卡。
+
+- PR [#170](https://github.com/pokocat/AIStarEcosystem/pull/170)，构建 main `a01c7da4cb1efcbe0517a8580032069344d439c2`，干净主线制品 `20261107-groupbuy-inline-slots-a01c7da4c`，仍只部署 web-aiavatar。
+- 团购图片添加入口改为同一 `.scene-media-row` 内的产品图片、环境图片两个方框，复用现有图标、加号、选择和上传；删除 `SceneImageGuide` 组件与全部专用样式。编导页也使用同一排素材。没有新增图片分类入参或必填条件。
+- Mini 队列 `33452c7d85dd` 退出 0：全仓串行类型、后台类型、后端离线编译、API 契约，以及 4 文件 / 66 项场景回归通过。最终 PR CI [42459848026](https://github.com/pokocat/AIStarEcosystem/actions/runs/42459848026) 的两组全量前端测试、构建和浏览器、契约及聚合全部通过。
+- 正式构建队列 `2a046633adf0` 退出 0，制品校验通过。SHA256 `24282f22831b99c84badb923c6d6cfe34a50915194c80a2fa168f2d6e9246a21`，BUILD_ID `wP3j3lZWAiSSdXkuliuMa`，生产与制品一致。
+- 第一轮准备发布时发现线上还有页面操作和草稿保存，因此未部署。07:51:43 UTC 再查：近 5 分钟 40 条后台轮询、0 主动操作、3 类生成任务全部 0 后才开始切换。
+- 前端于 2026-11-08 15:52:01 CST 启动，active / NRestarts=0。`deploy-release.sh` 完成，`verify.sh ALL GREEN`，公开页面及全部服务健康检查通过。后端启动时间及 JAR 校验和仍与前一发布一致。
+- 07:51:43–07:53:38 UTC nginx 日志有 1 次启动探测 `GET /` 502（UA `curl/8.7.1`、无 referrer），随后 verify 成功；此窗口没有浏览器 UA 的 5xx。不称为无中断发布。
+- 线上桌面截图确认两个上传占位在最上方、与角色和声音同排；点击产品/环境分别打开对应选择框，均有上传按钮。375px 下两处占位均 68×68，处在素材组内，页面 scrollWidth=375，无横向溢出；已恢复浏览器默认视口。未创建新草稿、上传文件或触发生成，积分仍为 2078。
+- 飞书仅更新第 7 项并回读至 revision 161，原截图 token 保留。第 5、8 项未改动。
+- 前一回滚制品仍是本记录首版 `20261107-studio-feedback-578-1e3aa4bb7`，校验和见开头；必要时仅恢复该前端制品。
+
+![上方原素材区的两个上传占位](studio-feedback-578-release-20261107/inline-slots-desktop.png)
+
+![375px 手机宽度](studio-feedback-578-release-20261107/inline-slots-mobile.png)
