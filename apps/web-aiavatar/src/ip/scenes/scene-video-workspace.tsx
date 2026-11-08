@@ -2,12 +2,12 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import Link from 'next/link';
-import { AlertCircle, ArrowUpRight, Check, ChevronRight, Download, Film, Image as ImageIcon, Layers, ListVideo, PencilLine, Plus, RefreshCw, Square, X } from 'lucide-react';
+import { AlertCircle, ArrowUpRight, Check, ChevronRight, Download, Film, Image as ImageIcon, Layers, ListVideo, PencilLine, Play, Plus, RefreshCw, Square, X } from 'lucide-react';
 import { nanoid } from 'nanoid';
 import type { IpRun, IpProjectDoc } from '@ai-star-eco/types';
 import type { StudioPlanExecutionStep } from '@ai-star-eco/types/ip-studio-workflow';
 import type { StudioVideoTask } from '@ai-star-eco/types/ip-studio-video-task';
-import { videoTask, videoTasks, videoTaskLabel, videoTaskStatus, videoTaskCanvasHref, videoTaskNeedsAction, videoTaskCanRegenerate, videoTaskProblemStep, videoTaskProblemText, videoTaskProblemTitle } from '@/canvas-bridge/studio-video-tasks';
+import { videoTask, videoTasks, videoTaskLabel, videoTaskStatus, videoTaskCanvasHref, videoTaskNeedsAction, videoTaskResumeLabel, videoTaskProblemStep, videoTaskProblemText, videoTaskProblemTitle } from '@/canvas-bridge/studio-video-tasks';
 import { cancelRun, readRun, readVideoJob, signKeys } from '@/canvas-bridge/api';
 import { dialogFocus } from '@/ip/dialog-focus';
 import { normalizeStudioError, StudioErrorNotice, useStudioFailure } from '@/ip/studio-errors';
@@ -248,7 +248,7 @@ function VideoTaskView({ task, persist, onReuse, onRefresh }: {
   const failed = videoTaskProblemStep(task);
   const retry = execution?.steps.find(s => s.id === task.retryStepId);
   const active = phases.find(p => p.state === 'running' || p.state === 'failed') ?? phases.find(p => p.state === 'waiting');
-  const needsAction = videoTaskNeedsAction(task), canRegenerate = videoTaskCanRegenerate(task);
+  const needsAction = videoTaskNeedsAction(task), resumeLabel = videoTaskResumeLabel(task);
   const runningStep = execution?.steps.find(s => s.status === 'running' || s.status === 'submitted');
   const activeRun = task.run ?? (runningStep ? stepRunCandidates(runningStep).map(id => runs[id]).find(Boolean) : undefined);
   const queuePosition = running && activeRun?.queue && activeRun.queue.position > 0 ? activeRun.queue.position : undefined;
@@ -263,37 +263,50 @@ function VideoTaskView({ task, persist, onReuse, onRefresh }: {
     try { if (execution) await cancelStudioPlanExecution(task.projectId, execution.id, { clientRequestId: nanoid(), expectedStatus: execution.status }); else if (task.run) await cancelRun(task.run.id); onRefresh(); }
     catch (error) { showFailure({ action: '停止生成', error, next: '状态可能已变化，请刷新页面后重试。' }); } finally { setActing(false); }
   };
-  const regenerate = async () => {
-    if (!execution) return;
+  const resume = async () => {
+    if (!execution || !resumeLabel) return;
     setActing(true);
     try { await resumeStudioPlanExecution(task.projectId, execution.id, { clientRequestId: nanoid(), expectedStatus: execution.status }); onRefresh(); }
-    catch (error) { showFailure({ action: '重试这一步', error }); } finally { setActing(false); }
+    catch (error) { showFailure({ action: resumeLabel, error }); } finally { setActing(false); }
   };
   const download = () => void downloadMedia(urls[result!], task.title, 'video/mp4', result!).catch(error => showFailure({ action: '下载视频', error }));
   const spent = execution?.budgets.reduce((n, b) => n + b.spent, 0) ?? task.run?.cost;
-  const media = (execution?.steps ?? []).filter(s => (s.operation === 'image' || s.operation === 'video') && s.status !== 'skipped');
+  // 有分镜图就只摆图：视频那一步做好之前只是一个空框，成片出来后整片在上面播（2026-11-07 用户：有图就够了）。没有图的任务（直接出视频）才摆视频。
+  const steps = (execution?.steps ?? []).filter(s => s.status !== 'skipped');
+  const images = steps.filter(s => s.operation === 'image');
+  const media = images.length ? images : steps.filter(s => s.operation === 'video');
   const reached = media.filter(s => s.status !== 'pending');
   // 还没轮到的步骤只在生成中占位；停下来之后不留一排空框。步骤多时只露最近的进度，其余收起。
   const candidates = running ? media : reached;
   const previews = allPreviews || candidates.length <= MAX_PREVIEWS ? candidates
     : running ? [...reached.slice(-(MAX_PREVIEWS - 1)), ...media.filter(s => s.status === 'pending')].slice(0, MAX_PREVIEWS) : reached.slice(-MAX_PREVIEWS);
-  // 「已保留」只在页面上真看得到做好的东西时才说。
-  const hasVisibleResults = media.some(s => s.status === 'done');
   const ratio = task.input?.sceneVideoState?.ratio ?? task.request?.configuration?.ratio ?? '9:16';
   const portrait = ratio === '9:16';
+  // 状态、进度条和操作在上面，做出来的图在下面（2026-11-07 用户要求）；进度条下面那一行只写已消耗的积分，不折行。
+  const actionNote = running ? '可离开此页面，制作将在后台继续。' : spent ? `已消耗 ${spent} 积分` : '';
   return <div className={`video-task-view is-${status}`}>
     {completed ? <div className="video-final-player"><SignedVideo src={urls[result]} storageKey={result} controls playsInline preload="metadata" aria-label={task.title}/></div>
-      : <div className="video-production-stage">
+      : <div className="video-production-head">
         <div className="video-state-heading"><span className={`video-state-symbol${running ? ' is-active' : failed || needsAction ? ' is-problem' : ''}`} aria-hidden="true">{failed || needsAction ? <AlertCircle size={24} strokeWidth={1.35}/> : running ? <AiMark size={22}/> : <Layers size={24} strokeWidth={1.35}/>}</span>
           <h2>{heading}</h2>
           {retry ? reader(`「${retry.title}」失败，稍后自动重试（第 ${retry.attempt} 次，共 3 次）。`)
             : queuePosition ? reader(`${queuePosition > 1 ? `前面还有 ${queuePosition - 1} 个任务` : '即将开始'} · 已用时 ${elapsed}`)
             : running ? reader([progress, `已用时 ${elapsed}`].filter(Boolean).join(' · ')) : null}
-          {needsAction && failureError && <p className="video-problem-note">{videoTaskProblemText(task)}{failed && failed.attempt >= 3 && !canRegenerate && ' 请在画布上查看这一步，处理后继续生成。'}
+          {needsAction && failureError && <p className="video-problem-note">{videoTaskProblemText(task)}{failed && failed.attempt >= 3 && !resumeLabel && ' 请在画布上查看这一步，处理后继续生成。'}
             {failureError.logId && <StudioErrorNotice error={failure} autoReport={false} label="查看错误详情"/>}</p>}
           {status === 'paused' && reader('已提交的步骤会继续完成。')}
         </div>
-        {!!previews.length && <div className={`video-production-previews${portrait ? ' is-portrait' : ''}`}>{previews.map(step => {
+        <div className="video-production-tracker" aria-label="生成步骤">{phases.map(phase => <div key={phase.key} data-state={phase.state}><span aria-hidden="true">{phase.state === 'done' ? <Check size={12}/> : phase.state === 'failed' ? '!' : null}</span><strong>{phase.label}</strong></div>)}</div>
+        {status !== 'done' && <footer className="video-production-actions">
+          <p title={actionNote || undefined}>{actionNote}</p>
+          {running ? <button type="button" disabled={acting} onClick={() => void stop()}><Square size={12}/>停止生成</button>
+            : resumeLabel ? <div className="video-footer-actions"><Link className="video-task-link" href={videoTaskCanvasHref(task)}>在画布上查看</Link>
+              <button type="button" className="is-primary" disabled={acting} onClick={() => void resume()}>{resumeLabel === '重试这一步' ? <RefreshCw size={12}/> : <Play size={12}/>}{resumeLabel}</button></div>
+            : <Link className={needsAction ? 'video-task-link is-primary' : 'video-task-link'} href={videoTaskCanvasHref(task)}>在画布上查看<ArrowUpRight size={14} strokeWidth={1.5}/></Link>}
+        </footer>}
+      </div>}
+    {!completed && !!previews.length && <div className="video-production-stage">
+        <div className={`video-production-previews${portrait ? ' is-portrait' : ''}${allPreviews ? ' is-all' : ''}`}>{previews.map(step => {
           const run = stepRunCandidates(step).map(id => runs[id]).find(r => r?.status === 'done');
           const asset = outputKey(run), Placeholder = step.operation === 'image' ? ImageIcon : Film;
           return <figure key={`${step.stage}-${step.id}`} data-state={step.status}><div className={!asset && (step.status === 'running' || step.status === 'submitted') ? 'scene-row-placeholder' : undefined} style={{ aspectRatio: ratio.replace(':', ' / '), '--tile-ratio': ratio.replace(':', ' / ') } as CSSProperties}>{asset ? step.operation === 'image'
@@ -302,21 +315,13 @@ function VideoTaskView({ task, persist, onReuse, onRefresh }: {
             : <><Placeholder size={26} strokeWidth={1.1}/></>}
             {step.status === 'done' && <span className="video-preview-done"><Check size={13}/></span>}</div>
             <figcaption>{media.length > 1 && step.title}<span>{stepStateText(step)}</span></figcaption></figure>;
-        })}</div>}
+        })}</div>
         {candidates.length > MAX_PREVIEWS && <button type="button" className="video-preview-more" aria-expanded={allPreviews} onClick={() => setAllPreviews(v => !v)}>{allPreviews ? '收起' : `查看全部（共 ${candidates.length} 项）`}</button>}
       </div>}
     <div className="video-production-bottom">
       {completed && <div className="video-final-actions"><div><h2>视频已完成</h2>{spent !== undefined && <p>本次消耗 {spent} 积分</p>}</div>
         <button type="button" className="is-primary" onClick={download}><Download size={14} strokeWidth={1.6}/>下载视频</button>
         {task.input?.sceneVideoState && <button type="button" onClick={onReuse} title="将此次的设置恢复到编辑器，原任务保留"><PencilLine size={13} strokeWidth={1.6}/>重新编辑</button>}</div>}
-      {!completed && <div className="video-production-tracker" aria-label="生成步骤">{phases.map(phase => <div key={phase.key} data-state={phase.state}><span aria-hidden="true">{phase.state === 'done' ? <Check size={12}/> : phase.state === 'failed' ? '!' : null}</span><strong>{phase.label}</strong></div>)}</div>}
-      {!completed && status !== 'done' && <footer>
-        <p>{running ? '可离开此页面，制作将在后台继续。' : [hasVisibleResults && '已完成的内容已保留', !!spent && `已消耗 ${spent} 积分`, canRegenerate && '重试按实际用量结算'].filter(Boolean).join(' · ')}</p>
-        {running ? <button type="button" disabled={acting} onClick={() => void stop()}><Square size={12}/>停止生成</button>
-          : canRegenerate ? <div className="video-footer-actions"><Link className="video-task-link" href={videoTaskCanvasHref(task)}>在画布上查看</Link>
-            <button type="button" className="is-primary" disabled={acting} onClick={() => void regenerate()}><RefreshCw size={12}/>重试这一步</button></div>
-          : <Link className={needsAction ? 'video-task-link is-primary' : 'video-task-link'} href={videoTaskCanvasHref(task)}>在画布上查看<ArrowUpRight size={14} strokeWidth={1.5}/></Link>}
-      </footer>}
       {previewError && <p className="video-connection-note" role="status">部分预览加载失败<button type="button" onClick={() => { setPreviewError(false); onRefresh(); setPoll(n => n + 1); }}>重试</button></p>}
       <div className="video-process-row">
         {!!execution?.steps.length && <button type="button" className="video-process-toggle" aria-expanded={details} onClick={() => setDetails(v => !v)}>{details ? '收起生成记录' : '查看生成记录'}</button>}

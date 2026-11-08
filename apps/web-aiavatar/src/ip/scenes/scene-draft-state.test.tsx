@@ -346,5 +346,9 @@ test("video: a duration this model cannot make is named, not quietly changed", a
     sceneVideoState: { text: "", options: {}, duration: 15, ratio: "9:16" } } });
   await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
   fireEvent.change(await screen.findByRole("combobox", { name: "视频模型" }), { target: { value: "ep-short" } });
-  expect(await screen.findByText(/当前模型单段最长 10 秒，15 秒将分 2 段（10 \+ 5）/)).toBeTruthy();
+  // 按钮下不再重复；怎么分段写在时长设置里。
+  await waitFor(() => expect(videoSpec()).toContain("15 秒"));
+  expect(screen.queryByText(/当前模型单段最长/)).toBeNull();
+  openSpec();
+  expect(await screen.findByText(/将分 2 段生成后拼接：10 \+ 5 秒/)).toBeTruthy();
 });

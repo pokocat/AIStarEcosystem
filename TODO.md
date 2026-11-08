@@ -2,6 +2,7 @@
 
 ## 用户反馈 2026-11-07（修复见 PR 157，文案记录在 `docs/audits/pc-ui-copy-review-2026-11.md` 第 11 批）
 
+- [x] ~~视频页失败后没有重试入口~~ **2026-11-07 修复**：线上 `PEX-9caea05b1848414ca167` 分镜图没回结果、积分已退，页面只有「在画布上查看」。视频页和画布任务条共用 `videoTaskResumeLabel`，服务端能接着做的都给「重试这一步 / 继续生成」，见 `docs/studio-video-workflow-redesign.md` §12。预算不够时视频页仍只能去画布（视频任务没有对话，没有追加预算卡），未做。
 - [x] ~~已失败任务点「重试这一步」报「原任务的提交结果尚未确认」~~ **2026-11-07 修复**：`StudioPlanExecutionService.adoptVideoRepairs` 只拦原任务还在进行的，错误码 `STUDIO_PLAN_STEP_RUNNING`。
 - [x] ~~模型聊天回复、厂商接口说法显示给用户~~ **2026-11-07 修复**：`PublicModelErrorPolicy` 和 `public-model-error.ts` 换成引导重试的文案，旧记录读取时也换。
 - [x] ~~Seedance 2.0 内部错误没有错误码、未识别错误没有兜底~~ **2026-11-07 修复**：`VIDEO_PROVIDER_INTERNAL`；失败任务错误码不再为空；前端不显示浏览器和代码抛的英文。
@@ -14,7 +15,7 @@
 - [ ] 音频、视频任务把输入文字也存成文字素材（`IpLibraryService.collect`：线上「Vivian 配音」文字 13 条、「视频」文字 7 条），和音频卡片并排显示，看着像重复。
 - [ ] 画布右上角「发布到资产库」实际是发布数字 IP，和新的「存为角色、场景或道具」容易混，用户可能以为要点它才能存（2026-11-07 评审）。要改名得先定叫法。
 - [ ] 手机资产页的筛选占了半屏（分类、资产库、搜索、人物类型、来源、作品），第一张卡在 y=375；可收进一个「筛选」。人物页最多读 10 页（240 个），自动进库后可能不够，且没有提示（`assets-people.tsx`）。
-- [ ] 企业收款凭据 `EnterpriseRechargeService.claimReceipt` 用 `saveAndFlush`：主键已存在时走合并更新而不是插入报错。H2 读已提交下两个并发确认都能成功（`EnterpriseRechargeServiceTest.concurrentConfirmation…` 偶发失败，PR 164 CI 碰到过）；线上 MySQL 是可重复读，读代码判断不受影响，没有复现。改成只插入。
+- [x] ~~企业收款凭据 `claimReceipt` 用 `saveAndFlush`，读已提交下同一张凭据能入账两次~~ **2026-11-08 修复**：改成只插入（`em.persist` + `flush`），撞主键报 `ENTERPRISE_RECEIPT_REVIEW_REQUIRED`；`EnterpriseRechargeServiceTest.aReceiptCommittedByAnotherConfirmationMeanwhileIsRejectedNotOverwritten` 固定时机复现（修复前第二笔确认不报错）。别处固定主键 + 唯一约束防重的写法查过（`ClipUploadService`、`IdentityImportService`、`StoreService`），都是随机主键或更新已有行，不受影响。
 - [ ] 资产库列表每次全量读这个用户的记录再在内存里筛（`IpSavedAssetService.page`、`IpLibraryService.objects`），导演台资产进库后对象数会涨，量大时改成带条件的查询。
 - [ ] AI 视频页没有加字幕和调速入口；`StudioEditMedia` 还不支持 `speed`。
 - [ ] 接入点整体故障只有逐条飞书告警（`alert_failure_rate_pct` 存了没用），页面也没有提示；12:16–15:13 图片线路故障用户问「是不是在维护」。

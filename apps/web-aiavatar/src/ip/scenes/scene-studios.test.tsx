@@ -198,23 +198,26 @@ test("video: AI 编导 opens the page without starting; the duration set there i
   expect(screen.getByText("请添加商品图")).toBeTruthy();
   expect(go().disabled).toBe(true);
   expect(api.createProject).not.toHaveBeenCalled();
-  // 常用开头只进输入框，不发送；再点一次不重复。
-  fireEvent.click(within(screen.getByRole("group", { name: "常用开头" })).getByRole("button", { name: "开头先说这东西适合谁" }));
-  fireEvent.click(within(screen.getByRole("group", { name: "常用开头" })).getByRole("button", { name: "开头先说这东西适合谁" }));
-  await waitFor(() => expect(fieldText("想做的视频")).toBe("开头先说这东西适合谁"));
+  // 常用开头只进输入框，不发送；点另一条是换掉，不接在后面（2026-11-07 用户要求）。
+  const idea = (name: string) => within(screen.getByRole("group", { name: "常用开头" })).getByRole("button", { name });
+  fireEvent.click(idea("直击产品核心痛点"));
+  await waitFor(() => expect(fieldText("想做的视频")).toBe("直击产品核心痛点"));
+  fireEvent.click(idea("开口先说适合谁"));
+  await waitFor(() => expect(fieldText("想做的视频")).toBe("开口先说适合谁"));
+  expect(idea("开口先说适合谁").getAttribute("aria-pressed")).toBe("true");
   await pickFromLibrary();
   setDuration(10);
   expect(api.submit).not.toHaveBeenCalled();
   await waitFor(() => expect(go().disabled).toBe(false));
   await act(async () => { fireEvent.click(go()); });
   await waitFor(() => expect(api.submit).toHaveBeenCalledTimes(1));
-  expect(api.submit.mock.calls[0][1].scene).toMatchObject({ kind: "video-script", text: "开头先说这东西适合谁", duration: 10 });
+  expect(api.submit.mock.calls[0][1].scene).toMatchObject({ kind: "video-script", text: "开口先说适合谁", duration: 10 });
   // 开始之后这一页是改稿的输入框，开场那一块收起来。
   expect(await screen.findByRole("textbox", { name: "修改意见" })).toBeTruthy();
   expect(screen.queryByText("想做一条什么视频？")).toBeNull();
   // 想法还在编辑框里。
   fireEvent.click(screen.getByRole("button", { name: "返回编辑" }));
-  await waitFor(() => expect(fieldText("想做的视频")).toBe("开头先说这东西适合谁"));
+  await waitFor(() => expect(fieldText("想做的视频")).toBe("开口先说适合谁"));
 });
 
 test("视频：按钮旁的价按服务端报价显示折扣（原价划掉）；报价不带素材 key 和提示词；换时长后慢回来的旧报价不会盖住新选择", async () => {

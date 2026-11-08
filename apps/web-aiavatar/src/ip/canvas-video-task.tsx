@@ -7,7 +7,7 @@ import { ArrowLeft, LocateFixed, Play } from 'lucide-react';
 import { nanoid } from 'nanoid';
 import type { IpRun } from '@ai-star-eco/types';
 import type { StudioVideoTask } from '@ai-star-eco/types/ip-studio-video-task';
-import { videoTask, videoTaskCanRegenerate, videoTaskHref, videoTaskLabel, videoTaskProblemText } from '@/canvas-bridge/studio-video-tasks';
+import { videoTask, videoTaskHref, videoTaskLabel, videoTaskProblemText, videoTaskResumeLabel } from '@/canvas-bridge/studio-video-tasks';
 import { useStudioFailure } from './studio-errors';
 import { executionRestoreUpserts, projectCanvasOps, resumeStudioPlanExecution, stepNodeId, stepRunCandidates } from '@/canvas-bridge/studio-plan-execution';
 import { dispatchStudioCommand } from '@/canvas-bridge/studio-nodes';
@@ -15,6 +15,9 @@ import { readRun } from '@/canvas-bridge/api';
 import { saveStudioDocument } from '@/canvas-bridge/studio-save';
 import { useCanvasStore } from '@/canvas/stores/canvas/use-canvas-store';
 import { videoTaskProblemNode } from '@/canvas-bridge/studio-video-task-node';
+
+/** 在画布上修好这一步后也能继续（服务端采用修好的结果），所以暂停和停下等用户时按钮都在；名字跟视频页一致。 */
+const resumeLabel = (task: StudioVideoTask) => videoTaskResumeLabel(task) ?? '继续生成';
 
 /** A task context on the canvas, including a stable way back. Reading it never resumes paid work. */
 export function CanvasVideoTask({ projectId }: { projectId: string }) {
@@ -82,7 +85,7 @@ function CanvasVideoTaskBar({ projectId, id }: { projectId: string; id: string }
   }, [id, projectId, query]);
   const resume = async () => {
     if (!task?.execution) return;
-    const action = videoTaskCanRegenerate(task) ? '重试这一步' : '继续生成';
+    const action = resumeLabel(task);
     setBusy(true);
     try {
       await saveStudioDocument(projectId);
@@ -94,7 +97,7 @@ function CanvasVideoTaskBar({ projectId, id }: { projectId: string; id: string }
   return <aside className="canvas-video-task-context" aria-label="视频任务">
     {task ? <><Link href={videoTaskHref(task)}><ArrowLeft size={14}/>返回视频页</Link><div><strong>{task.title}</strong><p>{[videoTaskLabel(task), videoTaskProblemText(task)].filter(Boolean).join(' · ')}</p></div>
       {problemNode && <button type="button" onClick={() => dispatchStudioCommand('focus', problemNode)}><LocateFixed size={14}/>定位问题</button>}
-      {task.execution && (task.execution.status === 'paused' || task.execution.status === 'needs_user') && <button type="button" className="is-primary" disabled={busy} onClick={() => void resume()}><Play size={13}/>{videoTaskCanRegenerate(task) ? '重试这一步' : '继续生成'}</button>}</>
+      {task.execution && (task.execution.status === 'paused' || task.execution.status === 'needs_user') && <button type="button" className="is-primary" disabled={busy} onClick={() => void resume()}><Play size={13}/>{resumeLabel(task)}</button>}</>
       : <p>{error || '正在加载任务…'}</p>}
     {task && error && <p role="status">{error}</p>}
   </aside>;
