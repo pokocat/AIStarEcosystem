@@ -100,6 +100,23 @@ class StudioWorkflowSkillRequestTest {
         assertFalse(capabilities.textModels().get(1).supportsTools(),"null means not supported");assertFalse(capabilities.textModels().get(1).supportsStreaming());
     }
 
+    @Test void plannerReceivesTheSelectedModesCompleteReferenceContract() throws Exception {
+        var refs=new VideoStudioReferenceRules(
+                new VideoStudioMediaLimit("image",8,1000,List.of("png"),null,null),
+                new VideoStudioMediaLimit("video",1,2000,List.of("mp4"),2,15),
+                new VideoStudioMediaLimit("audio",2,3000,List.of("mp3"),2,10),6,10,1,20);
+        var mode=new VideoStudioModeSpec("reference",false,false,null,refs);
+        var contract=new VideoStudioContract(List.of(mode),List.of(),4,15,2000,2147483647L);
+        when(videos.models()).thenReturn(List.of(new VideoStudioModel("configured","Configured",true,true,contract,null)));
+        var advertised=json.readTree(service.planCapabilities()).at("/videoModels/0/modes/0/references");
+        assertEquals(json.readTree(json.writeValueAsString(refs)),advertised);
+        // A backend contract change is immediately visible; no separately maintained prompt limit.
+        var changed=new VideoStudioReferenceRules(refs.image(),new VideoStudioMediaLimit("video",3,2000,List.of("mp4"),2,15),refs.audio(),6,10,1,20);
+        when(videos.models()).thenReturn(List.of(new VideoStudioModel("configured","Configured",true,true,
+                new VideoStudioContract(List.of(new VideoStudioModeSpec("reference",false,false,null,changed)),List.of(),4,15,2000,2147483647L),null)));
+        assertEquals(3,json.readTree(service.planCapabilities()).at("/videoModels/0/modes/0/references/video/maxCount").asInt());
+    }
+
     RunRequest check(String target,String key,String... ids) throws Exception {
         ObjectNode body=json.createObjectNode().put("clientRequestId","chk").put("nodeId","n-check").put("operation","check").put("prompt","第一段要换成蓝色保温杯")
                 .put("maxCost",21).put("skillKey","reference-video-recreation");

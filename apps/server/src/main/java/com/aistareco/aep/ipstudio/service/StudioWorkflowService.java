@@ -922,6 +922,7 @@ public class StudioWorkflowService {
         constraints.put("models","recreation.videoModel 必须原样复制「可用模型与合同」里 videoModels[].endpointId 的值，不能写模型名、别名或自己缩写。");
         constraints.put("targets","targetNodeId 只填素材清单里为这一步准备、还没有画面或正文的对象 id，类型与这一步的结果一致（image 填图片对象、video 填视频对象、写稿的 text 填文字对象）；check、assemble、recreation、plan-compile 和改稿的步骤不填。");
         constraints.put("references","referenceNodeIds 只能填素材清单里的画布对象 id，不能填步骤编号；要用更早步骤的产物，写进 dependsOn，图片和视频步骤再用 settings.referenceBindings 的 stepId 指定。素材清单里的对象（包括分析阶段产出的分段片段）在 referenceBindings 里一律写 nodeId，stepId 只填本计划里更早的步骤编号。");
+        constraints.put("videoReferences","每个视频步骤的参考素材必须服从所选模型、所选模式的 references 合同：各类型 maxCount、maxTotal、maxImagesWithVideo、minVisual 及素材时长限制。拉片得到的每个片段都算一段参考视频，不能把多段当作一段；不能为满足数量上限删掉用户要保留的内容。若多段超过上限，按原片顺序拆成各自合规的视频步骤，再用允许的 assemble 操作合成；不能满足目标时明确说明限制，不输出不可执行的步骤。");
         return constraints;
     }
 
@@ -938,6 +939,7 @@ public class StudioWorkflowService {
                     for(var mode:model.contract().modes()) {
                         var m=modes.addObject().put("mode",mode.mode()).put("needsFirstFrame",mode.needsFirstFrame()).put("needsLastFrame",mode.needsLastFrame())
                                 .put("acceptsReferences",mode.references()!=null);
+                        if(mode.references()!=null)m.set("references",mapper.valueToTree(mode.references()));
                         if(mode.label()!=null)m.put("label",mode.label());
                     }
                     var tiers=item.putArray("resolutionTiers");

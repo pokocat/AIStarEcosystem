@@ -57,6 +57,7 @@ import java.util.stream.IntStream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -210,6 +211,28 @@ class VideoStudioServiceTest {
                 ()->svc.priceCanvas("ep-h3","t2v","768p","9:16",99,0,0,0,"celebrity")).getCode());
         assertEquals("VIDEO_STUDIO_MODE_INVALID",assertThrows(BusinessException.class,
                 ()->svc.priceCanvas("ep-h3","nope","768p","9:16",5,0,0,0,"celebrity")).getCode());
+        verify(videoJobs,never()).submit(any(),anyString(),anyString());
+    }
+
+    @Test void priceRejectsTheSameReferenceCountViolationsAsSubmission() {
+        var rules=svc.listModels().stream().filter(m->m.endpointId().equals("ep-h3")).findFirst().orElseThrow().contract()
+                .modes().stream().filter(m->m.references()!=null).findFirst().orElseThrow().references();
+        int[][] counts={{1,2,0},{rules.image().maxCount()+1,0,0},{0,0,rules.audio().maxCount()+1},
+                {rules.maxImagesWithVideo()+1,1,0},{rules.maxTotal()+1,0,0}};
+        for(var count:counts) {
+            var refs=new java.util.ArrayList<VideoStudioReferenceInput>();
+            String[] types={"image","video","audio"};
+            for(int t=0;t<types.length;t++)for(int i=0;i<count[t];i++)refs.add(r(types[t],"ipstudio/u1/"+types[t]+i));
+            var quoted=assertThrows(BusinessException.class,()->svc.priceCanvas("ep-h3","universal_reference_video","768p","9:16",5,count[0],count[1],count[2],"celebrity"));
+            var submitted=assertThrows(BusinessException.class,()->svc.prepareCanvas(USER,
+                    jr("ep-h3","universal_reference_video","替换人物","768p","9:16",5,null,null,null,refs),
+                    (VideoStudioService.CanvasAssetValidator)(type,key,frame)->{}));
+            assertEquals("VIDEO_STUDIO_INPUT_INVALID",quoted.getCode());
+            assertEquals(submitted.getMessage(),quoted.getMessage());
+        }
+        // The page may show a price before any asset has been uploaded.
+        assertNotNull(svc.priceCanvas("ep-h3","universal_reference_video","768p","9:16",5,0,0,0,"celebrity"));
+        assertNotNull(svc.priceCanvas("ep-h3","universal_reference_video","768p","9:16",5,1,1,0,"celebrity"));
         verify(videoJobs,never()).submit(any(),anyString(),anyString());
     }
 
