@@ -288,6 +288,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [Studio 头像居中、浅灰底与轮播圆点优化](releases/studio-avatar-polish-release-20261031.md)：main `0921222f6`，仅 web-aiavatar；线上新旧桌面与手机头像偏差 0px、底色统一，圆点只过渡底色，制品与服务核对通过（last-reviewed 2026-10-31）。
 - [画布提示词超长提示发布](releases/prompt-limit-notice-release-20261105.md)：main `d9c50cc4c`，仅 web-aiavatar；写清超出字数并可换模型，5xx 为 0；线上未实际触发（last-reviewed 2026-11-05）。
 - [AI 编导点了先不开始发布](releases/writer-start-release-20261105.md)：main `3520a3c71`，仅 web-aiavatar；点「AI 编导」只换页，发送才开始写，规格面板不再被裁，5xx 为 0；线上未实际发送（last-reviewed 2026-11-05）。
+- [GPT Image 切换 SuperAIToken 与 URL 返回](releases/superaitoken-gpt-image-url-production-20261109.md)：四个 GPT Image 端点的完整型号、URL 输出及供应商结果下载；分镜跟随作品画幅，恢复 2K 竖图。（last-reviewed 2026-11-09）
 - [导演台 GPT Image 2 竖屏分镜默认规格](releases/director-gpt2-board-default-production-20261108.md)：main `dfeb20f1b`，server + web-aiavatar；9:16 分镜仍用 GPT Image 2，同系列 4K / 55 积分，资产原接入点 / 16 积分，线上规格、价格与按钮验收通过，未收费生成。
 - [导演台本集剧本与场景全部视角发布](releases/director-script-views-release-20261105.md)：main `0529b6db3`，仅 web-aiavatar；本集剧本放进每一集、场景全部视角、生成记录挪到图下、自由出图案例图，5xx 为 0。
 - [AI 图片多张人物照片发布](releases/scene-multi-person-refs-release-20261105.md) — server + web-aiavatar；6 个人物场景最多放 3 张照片；多张是否更像本人还没用真人照片验证（last-reviewed: 2026-11-05）

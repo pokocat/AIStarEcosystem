@@ -356,6 +356,22 @@ class DirectorImageModelTest {
         assertEquals(71, estimate.path("images").path("credits").asLong());
     }
 
+    @Test void restoredGptTwoPortraitFollowsEveryWorkAspectAtItsExistingPrice() throws Exception {
+        gptTwoPolicy(true); boardClip();
+        var low=policy.resolve("studio","image",null,16).resolved().endpoint();
+        low.setImageRequestSpecJson(selection("gpt-low","GPT Image 2",16,true,STANDARD)
+                .resolved().endpoint().getImageRequestSpecJson());
+        for(var ratio:Map.of("9:16","1152x2048","16:9","2048x1152","1:1","2048x2048").entrySet()) {
+            edit(c->((ObjectNode)c.path("settings")).put("aspectRatio",ratio.getKey()));
+            service.task("u1",work.getId(),new DirectorService.TaskRequest("board","k1","restored-"+ratio.getKey(),null,null,16L));
+            assertEquals("gpt-low",lastSubmitted().model());
+            assertEquals(ratio.getValue(),lastSubmitted().size());
+            assertEquals(16L,lastSubmitted().maxCost());
+            var view=service.get("u1",work.getId());
+            assertEquals(16,view.path("pricing").path("boardImage").asLong());
+        }
+    }
+
     @Test void batchOnAModelWithoutSquareSizesSubmitsOnlyTheAssetsItCanMake() throws Exception {
         storedImageModel("image-4k");
         asset("c1", "character", "林夏");

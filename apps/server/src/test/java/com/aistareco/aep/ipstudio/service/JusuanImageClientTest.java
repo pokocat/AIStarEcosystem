@@ -451,13 +451,36 @@ class JusuanImageClientTest {
         assertTrue(request.getValue().headers().firstValue("Authorization").isEmpty());
         verify(upstream,times(1)).sendJson(any(),any());
     }
-    @Test void configuredOutputHostsStillBindTheFallbackUrl() {
+    @Test void resultDownloadsIgnoreLegacyHostAllowlistAndAcceptHttpWithCustomPort() throws Exception {
         base64Endpoint("[\"cdn.supplier.example\"]");
-        var reply=json("{\"data\":[{\"url\":\"https://8.8.4.4/images/result\"}]}");
+        var reply=json("{\"data\":[{\"url\":\"http://23.146.144.189:3001/images/result\"}]}");
         when(upstream.sendJson(any(),any())).thenReturn(reply);
-        var error=assertThrows(JusuanImageClient.ProviderRejected.class,
-                ()->client.generate("ep","x","1x1",List.of(),"host-gate","owner",s->{},null,null,null,state->{}));
-        verifyNoInteractions(http);
+        byte[] bytes=Base64.getDecoder().decode(PNG_1X1);
+        var downloaded=mock(HttpResponse.class);
+        when(downloaded.statusCode()).thenReturn(200);when(downloaded.body()).thenReturn(new ByteArrayInputStream(bytes));
+        when(http.send(any(),any())).thenReturn(downloaded);
+        assertArrayEquals(bytes,client.generate("ep","x","1x1",List.of(),"any-result-url","owner",s->{}));
+        var request=org.mockito.ArgumentCaptor.forClass(HttpRequest.class);
+        verify(http).send(request.capture(),any());
+        assertEquals("http://23.146.144.189:3001/images/result",request.getValue().uri().toString());
+        assertTrue(request.getValue().headers().firstValue("Authorization").isEmpty());
+    }
+    @Test void resultDownloadsFollowReturnedRedirectsWithoutSendingSupplierCredentials() throws Exception {
+        base64Endpoint(null);
+        var reply=json("{\"data\":[{\"url\":\"https://cdn.supplier.example/image\"}]}");
+        when(upstream.sendJson(any(),any())).thenReturn(reply);
+        var redirect=mock(HttpResponse.class);
+        when(redirect.statusCode()).thenReturn(302);when(redirect.body()).thenReturn(new ByteArrayInputStream(new byte[0]));
+        when(redirect.headers()).thenReturn(HttpHeaders.of(Map.of("Location",List.of("http://23.146.144.189:3001/result.png")),(k,v)->true));
+        byte[] bytes=Base64.getDecoder().decode(PNG_1X1);
+        var downloaded=mock(HttpResponse.class);
+        when(downloaded.statusCode()).thenReturn(200);when(downloaded.body()).thenReturn(new ByteArrayInputStream(bytes));
+        when(http.send(any(),any())).thenReturn(redirect,downloaded);
+        assertArrayEquals(bytes,client.generate("ep","x","1x1",List.of(),"redirect-result","owner",s->{}));
+        var requests=org.mockito.ArgumentCaptor.forClass(HttpRequest.class);
+        verify(http,times(2)).send(requests.capture(),any());
+        assertEquals("http://23.146.144.189:3001/result.png",requests.getAllValues().get(1).uri().toString());
+        requests.getAllValues().forEach(r->assertTrue(r.headers().firstValue("Authorization").isEmpty()));
     }
     @Test void finishedReplyWithoutAnyImageIsAKnownFailureNotAnUnknownSubmission() {
         base64Endpoint(null);
@@ -601,7 +624,7 @@ class JusuanImageClientTest {
             assertTrue(request.getValue().headers().firstValue("Authorization").isEmpty());
         }finally{Files.deleteIfExists(image);}
     }
-    @Test void privateResultUrlIsRejectedEvenIfListedByEndpoint() {
+    @Test void supplierResultUrlHasNoNetworkAddressFilter() throws Exception {
         var ep=endpoint("image-model");
         ep.setImageRequestSpecJson("""
                 {"promptMaxChars":1000,"minReferenceImages":0,"maxReferenceImages":0,"referenceField":"none",
@@ -612,9 +635,12 @@ class JusuanImageClientTest {
                 .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
         var reply=json("{\"url\":\"https://127.0.0.1/private.png\"}");
         when(upstream.sendJson(any(),any())).thenReturn(reply);
-        assertEquals("STUDIO_IMAGE_PROVIDER_FAILED",assertThrows(BusinessException.class,
-                ()->client.generate("ep","portrait","1024x1024",List.of(),"private-run","owner",stage->{})).getCode());
-        verifyNoInteractions(http);
+        byte[] bytes=Base64.getDecoder().decode(PNG_1X1);
+        var downloaded=mock(HttpResponse.class);
+        when(downloaded.statusCode()).thenReturn(200);when(downloaded.body()).thenReturn(new ByteArrayInputStream(bytes));
+        when(http.send(any(),any())).thenReturn(downloaded);
+        assertArrayEquals(bytes,client.generate("ep","portrait","1024x1024",List.of(),"returned-url","owner",stage->{}));
+        verify(http).send(any(),any());
     }
     @Test void durableAcceptedJobResumesOriginalIdAndBodyAfterPollOutageWithoutReposting() throws Exception {
         var ep=endpoint("ernie-Image");when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
