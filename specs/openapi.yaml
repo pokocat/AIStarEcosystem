@@ -5045,6 +5045,16 @@ components:
               properties:
                 summary: { type: string, maxLength: 4000 }
                 content: { type: string, minLength: 1, maxLength: 48000 }
+                suggestions:
+                  type: array
+                  maxItems: 3
+                  description: 'AI 视频编导同次调用生成的可选修改建议；异常条目独立隐藏，不影响正文及原文保留。'
+                  items:
+                    type: object
+                    required: [label, instruction]
+                    properties:
+                      label: { type: string, minLength: 1, maxLength: 8 }
+                      instruction: { type: string, minLength: 1, maxLength: 80 }
             shots: { type: array, items: { type: object }, description: 'Studio 分镜，与 script.shots 同一结果投影' }
             logId: { type: string, nullable: true, description: 异步失败的真实 ErrorLog 追查号 }
             storageKey: { type: string, description: 'Studio 视频及合成文件的存储真值' }

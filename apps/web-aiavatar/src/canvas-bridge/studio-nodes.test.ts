@@ -170,6 +170,21 @@ it('text revisions update once and preserve later manual edits across task refre
  const failed=applyStudioRun(n,{...result,status:'failed',output:{},errorMessage:'模型服务暂不可用'});expect(failed.metadata?.content).toBe('原文');expect(failed.metadata?.status).toBe('error');
 });
 
+it("persists this reply's suggestions through JSON reload and polling without mixing them into script content", () => {
+ const spec={ask:"精华",revision:false,duration:15,ratio:"9:16",language:"中文",at:"now"};
+ const node={...makeStudioNode("text"),metadata:{content:"原文",status:"loading" as const,studio:{kind:"text" as const,sceneDirector:spec}}};
+ const suggestions=[{label:"先拍质地",instruction:"用精华质地特写开场。"}];
+ const result={...run("suggestion-run","unused"),kind:"studio-text" as const,inputs:{operation:"text",prompt:"改开场",textEdit:{content:"原文"},scene:{kind:"video-script"}} as any,output:{textRevision:{summary:"改了开场",content:"完整脚本",suggestions}}};
+ const applied=applyStudioRun(node,result);
+ const reloaded=JSON.parse(JSON.stringify(applied));
+ expect(applyStudioRun(reloaded,result).metadata?.studio?.sceneDirector?.suggestions).toEqual(suggestions);
+ expect(reloaded.metadata.content).toBe("完整脚本");
+ const concurrent=applyStudioRun({...node,metadata:{...node.metadata,content:"手动改稿"}},result);
+ expect(concurrent.metadata?.content).toBe("手动改稿");
+ expect(concurrent.metadata?.studio?.sceneDirector?.suggestions).toBeUndefined();
+ expect(concurrent.metadata?.studio?.textEditor?.proposal).toMatchObject({suggestions,content:"完整脚本"});
+});
+
 describe("智能优化停在「用优化稿 / 用原文」上", () => {
   const video = { mode: "t2v" as const, resolutionTier: "768p", rewrite: "review" as const };
   const node = { id: "v", type: CanvasNodeType.Video, title: "视频", position: { x: 0, y: 0 }, width: 320, height: 180, metadata: { studio: { kind: "shot" as const } } } as unknown as CanvasNodeData;

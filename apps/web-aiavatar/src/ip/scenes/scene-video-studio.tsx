@@ -7,7 +7,8 @@ import { useRouter } from "next/navigation";
 import { ArrowUp, ArrowUpRight, AudioLines, Check, ChevronDown, Copy, Cpu, Download, FolderOpen, History, Image as ImageIcon, Loader2, Mic, PencilLine, Plus,
   RotateCcw, SlidersHorizontal, Square, UserRound, Video, X } from "lucide-react";
 import type { IpProject, IpProjectDoc, IpRun, IpSavedAsset, StudioMediaImportResult, StudioSceneComposeRequest, StudioSceneInputs, StudioNodeMetadata, StudioSceneOptionGroup, StudioSceneVideoState } from "@ai-star-eco/types";
-import type { StudioCapabilities, StudioRunRequest } from "@ai-star-eco/types/ip-studio-workflow";
+import { studioScriptSuggestions } from "@/canvas-bridge/studio-script-suggestions";
+import type { StudioScriptSuggestion, StudioCapabilities, StudioRunRequest } from "@ai-star-eco/types/ip-studio-workflow";
 import type { StudioTakeChange } from "@ai-star-eco/types/ip-studio-scenes";
 import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
@@ -62,11 +63,6 @@ const LANGUAGES = ["中文", "英文"];
 const MAX_SECONDS = 60;
 const RECREATION = "reference-video-recreation";
 const EMPTY_DOC = { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
-const SCRIPT_SUGGESTIONS = [
-  { label: "开头更抓人", text: "把开头写得更抓人，用一个生活中的小困扰切入。" },
-  { label: "台词更自然", text: "让台词更自然，像朋友聊天，减少广告感。" },
-  { label: "突出商品卖点", text: "突出商品卖点，多用具体画面展示，不添加未经提供的功能。" },
-];
 
 const writeQuery = (scene: string, draft?: string) => writeSceneQuery("/video", scene, draft);
 /** 草稿里没记过的条件按场景默认值。 */
@@ -362,8 +358,7 @@ export function SceneVideoStudio() {
     return () => { alive = false; if (timer) clearTimeout(timer); };
   }, [draftId, executionId]);
   const scripts = scriptNodes(doc);
-  const scriptSuggestions = scene?.group === "commerce" ? SCRIPT_SUGGESTIONS : [...SCRIPT_SUGGESTIONS.slice(0, 2),
-    { label: "突出内容重点", text: "突出核心信息，多用具体画面展示，不添加未经提供的事实。" }];
+
   const rows = videoRows(doc);
   const latestScript = [...scripts].reverse().find(s => s.metadata?.status === "success" && s.metadata.content);
   const [stoppingScripts, setStoppingScripts] = useState<Record<string, "requesting" | "accepted">>({});
@@ -1229,7 +1224,7 @@ export function SceneVideoStudio() {
           {scripts.map((row, i) => <ScriptTurn key={row.id} row={row} refs={scriptRefs(row)} run={live[row.id]} stopping={scriptStopping(row)} busy={busy} submitting={submitting === row.id} latest={row.id === latestScript?.id}
             given={scripts.slice(0, i + 1).map(s => s.metadata?.studio?.sceneDirector?.ask ?? "")} facts={scene.brief?.facts}
             copied={copied === row.id} onUse={() => useScript(row)} onCopy={() => void copy(row)}
-            revision={revise} suggestions={row.id === scripts.at(-1)?.id ? scriptSuggestions : []}
+            revision={revise} suggestions={row.id === scripts.at(-1)?.id ? studioScriptSuggestions(row.metadata?.studio?.sceneDirector?.suggestions) : []}
             onSuggest={value => { setRevise(value); setHint(""); revisionInput.current?.focus({ preventScroll: true }); }}
             onAgain={() => void send("换个写法重新写一版，要求和素材都不变。", { auto: true })}
             onRetry={() => void retry(row)} onConfirm={() => void confirmOriginal(row)}
@@ -1368,7 +1363,7 @@ function placeMedia(nodes: CanvasNodeData[], media: Media, kind: "image" | "vide
 function ScriptTurn({ row, refs, run, stopping, busy, submitting, latest, copied, onUse, onCopy, onAgain, onRetry, onConfirm, onStop, revision, suggestions, onSuggest, given, facts }: {
   row: CanvasNodeData; refs: ScenePromptRef[]; run?: IpRun; stopping?: "requesting" | "accepted"; busy: boolean; submitting: boolean; latest: boolean; copied: boolean;
   onUse: () => void; onCopy: () => void; onAgain: () => void; onRetry: () => void; onConfirm: () => void; onStop: () => void;
-  revision: string; suggestions: typeof SCRIPT_SUGGESTIONS; onSuggest: (value: string) => void;
+  revision: string; suggestions: StudioScriptSuggestion[]; onSuggest: (value: string) => void;
   /** 到这一版为止用户说过的话（第一句和每次修改意见）：核对里面的数字有没有进脚本。 */
   given: string[];
   /** 场景要的信息：分清哪些空着的必须补、哪些选填。 */
@@ -1411,8 +1406,8 @@ function ScriptTurn({ row, refs, run, stopping, busy, submitting, latest, copied
       </footer>
     </div>
     {!!suggestions.length && meta?.status === "success" && meta.content && <div className="scene-script-suggestions" role="group" aria-label="脚本修改建议">
-      {suggestions.map(suggestion => <button key={suggestion.label} type="button" disabled={busy} aria-pressed={revision === suggestion.text}
-        onClick={() => onSuggest(suggestion.text)}>{suggestion.label}<ArrowUpRight size={12} strokeWidth={1.5}/></button>)}
+      {suggestions.map(suggestion => <button key={suggestion.label} type="button" disabled={busy} aria-pressed={revision === suggestion.instruction}
+        onClick={() => onSuggest(suggestion.instruction)}>{suggestion.label}<ArrowUpRight size={12} strokeWidth={1.5}/></button>)}
     </div>}
   </article>;
 }

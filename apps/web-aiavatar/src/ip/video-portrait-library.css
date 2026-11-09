@@ -1,7 +1,37 @@
 /* Controls, tables, tabs and dialogs are Ant Design; these rules only arrange the feature's content. */
 .portrait-library-page .ant-tabs { margin-top: 24px; }
 .portrait-secondary { font-size: 12px; line-height: 1.7; }
-.portrait-agreement { max-width: 68ch; line-height: 1.8; }
-.portrait-declaration { max-width: 560px; padding: 8px 0; }
-.portrait-person-select { min-width: min(240px, 100%); flex: 1; }
-.portrait-declaration .ant-form-item { margin-bottom: 16px; }
+.portrait-loading { padding: 48px 0; }
+
+/* Guided declaration: the photo stays in view while the steps change beside it; phones show a thumbnail above. */
+.portrait-guide { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
+.portrait-guide-photo { margin: 0; display: flex; align-items: center; gap: 12px; min-width: 0; }
+.portrait-guide-photo figcaption { min-width: 0; }
+.portrait-guide-image, .portrait-guide-placeholder { flex: none; width: 64px; }
+.portrait-guide-image, .portrait-guide-image img, .portrait-guide-placeholder { aspect-ratio: 4 / 5; border-radius: 10px; }
+.portrait-guide-image img { width: 100%; height: 100%; object-fit: cover; }
+.portrait-guide-placeholder { display: grid; place-items: center; background: rgba(25, 34, 41, .05); color: rgba(25, 34, 41, .45); }
+.portrait-guide-body { min-width: 0; }
+.portrait-guide-form .ant-form-item { margin-bottom: 20px; }
+.portrait-guide-form > .ant-alert { margin-bottom: 20px; }
+.portrait-table-thumb { flex: none; }
+.portrait-consent { margin-bottom: 0; }
+.portrait-terms-link { padding: 0; height: auto; font-size: inherit; line-height: inherit; vertical-align: baseline; text-decoration: underline; text-underline-offset: 3px; }
+.portrait-terms { margin: 8px 0 0; padding: 12px 14px; max-height: 168px; overflow-y: auto; border-radius: 8px; background: rgba(25, 34, 41, .04); font-size: 12px; line-height: 1.8; }
+.portrait-verify, .portrait-state { padding: 8px 0 4px; text-align: center; }
+.portrait-state { padding-block: 32px 24px; }
+.portrait-qr { padding: 8px; border-radius: 12px; background: #fff; box-shadow: 0 0 0 1px rgba(25, 34, 41, .08); }
+.portrait-done-icon { color: #3f8f5b; }
+.portrait-actions { margin-top: 4px; }
+/* One button row per dialog; the current step renders its hint and main button into the two slots. */
+.portrait-slot { display: contents; }
+.portrait-footer { width: 100%; text-align: start; }
+.portrait-footer-start { min-width: 0; flex: 1 1 200px; }
+.portrait-footer-end { margin-inline-start: auto; }
+.portrait-switcher { align-self: flex-start; max-width: 100%; overflow-x: auto; }
+.portrait-switcher-item { padding: 6px 2px 4px; font-size: 12px; line-height: 1.4; }
+
+html[data-layout="desktop"] .portrait-guide { grid-template-columns: 168px minmax(0, 1fr); gap: 28px; }
+html[data-layout="desktop"] .portrait-guide-photo { flex-direction: column; align-items: stretch; gap: 8px; }
+html[data-layout="desktop"] .portrait-guide-image, html[data-layout="desktop"] .portrait-guide-placeholder { width: 100%; }
+html[data-layout="desktop"] .portrait-guide-image, html[data-layout="desktop"] .portrait-guide-image img { border-radius: 12px; }

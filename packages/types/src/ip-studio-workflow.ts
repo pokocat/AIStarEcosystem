@@ -1,6 +1,8 @@
 import type { StudioTakeChange } from "./ip-studio-scenes";
 import type { EnterpriseBillingSelection } from "./enterprise";
 import type { VideoStudioMode, VideoStudioReferenceInput } from "./video-studio";
+/** Optional model-generated script follow-ups; limits count Unicode code points. */
+export interface StudioScriptSuggestion { label: string; instruction: string }
 /** Unified Studio operations. IpRun remains the single execution record. */
 export interface StudioVideoSettings {
   mode: VideoStudioMode;
@@ -322,7 +324,9 @@ export interface StudioNodeMetadata {
     /** 写这一版时选的场景选项（出镜方式、语气…）：改稿沿用它，不回到默认值。2026-10-30 之前写的版本没有。 */
     options?: Record<string, string>;
     /** 写这一版时按哪个视频模型、交给它哪几张图（文件 key，按图1、图2 的顺序）写的：出片时换了就提示让编导按新的改一版。 */
-    videoModel?: string; refs?: string[] };
+    videoModel?: string; refs?: string[];
+    /** Suggestions from this reply only: at most 3, label <=8, instruction <=80 code points. */
+    suggestions?: StudioScriptSuggestion[] };
   /**
    * AI 视频页「视频裂变」给某条任务（of = 任务编号）找的变量（kind=variables，正文是变量清单）或 AI 改写的一版脚本（kind=rewrite，正文是脚本）。
    * 和编导的版本分开放，不出现在编导那一页；batch 是同一次操作的编号，每次重新写换一个。

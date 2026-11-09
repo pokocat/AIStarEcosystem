@@ -169,7 +169,7 @@ export interface IpRunOutput {
   sourceAudio?: import("./ip-studio-workflow").StudioSourceAudio;
   captions?: import("./ip-studio-workflow").StudioCaptionResult;
   scriptRevision?: { markdown: string; summary: string };
-  textRevision?: { content: string; summary: string };
+  textRevision?: { content: string; summary: string; suggestions?: import("./ip-studio-workflow").StudioScriptSuggestion[] };
   shots?: import("./ip-studio-workflow").StudioShot[];
   storageKey?: string;
   url?: string;

@@ -77,8 +77,11 @@ class StudioTextWorkflowTest {
             var exec=json.readTree(capture.getValue().getInputJson()).path("_exec");
             assertTrue(exec.path("systemPrompt").asText().contains("你是资深短视频编导"));
             assertTrue(exec.path("systemPrompt").asText().contains("大胆创作"));
+            assertTrue(exec.path("systemPrompt").asText().contains("\"suggestions\""));
+            assertTrue(exec.path("systemPrompt").asText().contains("不超过 80 个字"));
             assertFalse(exec.path("systemPrompt").asText().contains(StudioTextRevision.CONTRACT));
             String user=exec.path("userPrompt").asText();
+            assertTrue(user.contains("不要每轮照抄通用建议"));
             assertTrue(user.startsWith("写一条 25 秒的竖屏「同城团购」短视频脚本"));
             assertTrue(user.contains("我的要求：萧山公安路188号，锅盔原价19现价9.9"));
             assertTrue(user.contains("图1「门店门头.jpg」是门店照片"));

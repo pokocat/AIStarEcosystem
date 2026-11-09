@@ -315,7 +315,7 @@ public final class StudioPromptCallPoints {
         vars.put("inferable", "可以从素材推断的信息名称");
         vars.put("current", "当前脚本（JSON 字符串），第一次写为空");
         Map<String, Function<Map<String, ?>, String>> formats = new LinkedHashMap<>();
-        formats.put("output", v -> OUTPUT);
+        formats.put("output", v -> SCENE_SCRIPT_OUTPUT);
         formats.put("shots", StudioPromptCallPoints::shots);
         formats.put("attachments", v -> Boolean.TRUE.equals(v.get("readVisuals")) ? ATTACHMENTS : "");
         Map<String, Object> sample = sample();
@@ -377,6 +377,13 @@ public final class StudioPromptCallPoints {
     }
 
     // ── 编导的输出格式（和 H3PromptRewrite 的解析、StudioTextRevision 的校验是一对，改了要一起改） ────────────────
+
+    static final String SCENE_SCRIPT_OUTPUT = "只输出一个 JSON 对象 {\"summary\":\"一句话说明这一版的思路\",\"content\":\"完整脚本正文\","
+            + "\"suggestions\":[{\"label\":\"简短按钮文案\",\"instruction\":\"用户可直接发送的完整修改意见\"}]}，不要代码围栏；"
+            + "suggestions 最多 3 条，label 为 2 到 8 个字，instruction 不超过 80 个字，两者均为单行文字；"
+            + "只建议基于这版脚本、用户要求和已有素材的具体可选改法，方向互不重复，不重复刚完成的修改，不新增未经提供的事实；"
+            + "建议用用户的口吻表达，不提问、不承诺已修改，不把建议写进 content 或 summary。没有合适建议时返回空数组。"
+            + "不输出 steps、shots 或工具指令；不要声称已经保存或生成视频。";
 
     static final String OUTPUT = "只输出一个 JSON 对象 {\"summary\":\"一句话说明这一版的思路\",\"content\":\"完整脚本正文\"}，不要代码围栏；"
             + "不输出 steps、shots 或工具指令；不要声称已经保存或生成视频。";

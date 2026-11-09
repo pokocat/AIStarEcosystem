@@ -1,0 +1,73 @@
+{
+  "model": "gpt-6.1-terra-official",
+  "scope": "Exact application prompts and Java output validation; supplier requests direct, no product ledger writes or video generation. Browser uses these saved real replies with a local API lifecycle.",
+  "samples": [
+    {
+      "sample": 1,
+      "seconds": 28.61,
+      "model": "gpt-6.1-terra-official",
+      "finish": "stop",
+      "usage": {
+        "prompt_tokens": 6702,
+        "completion_tokens": 1429,
+        "total_tokens": 8131,
+        "prompt_tokens_details": {
+          "cache_write_tokens": 0
+        }
+      },
+      "rawSha256": "38b1b26a4e793a1c446c09bdc42fa6a6bec6f4dcc1eefdf80a389c2011fd9d8c",
+      "bodyChars": 1421,
+      "lengths": [
+        {
+          "label": "调整开场",
+          "labelChars": 4,
+          "instructionChars": 28
+        },
+        {
+          "label": "强化细节",
+          "labelChars": 4,
+          "instructionChars": 28
+        },
+        {
+          "label": "调整语气",
+          "labelChars": 4,
+          "instructionChars": 28
+        }
+      ]
+    },
+    {
+      "sample": 2,
+      "seconds": 30.15,
+      "model": "gpt-6.1-terra-official",
+      "finish": "stop",
+      "usage": {
+        "prompt_tokens": 8113,
+        "completion_tokens": 1458,
+        "total_tokens": 9571,
+        "prompt_tokens_details": {
+          "cached_tokens": 4608,
+          "cache_write_tokens": 0
+        }
+      },
+      "rawSha256": "1a19d8b5f166ad9eb84edaf2c4970ac35b5da98c9bf278f9741bbd09e9cd14e8",
+      "bodyChars": 1445,
+      "lengths": [
+        {
+          "label": "调整开场",
+          "labelChars": 4,
+          "instructionChars": 27
+        },
+        {
+          "label": "细节展示",
+          "labelChars": 4,
+          "instructionChars": 27
+        },
+        {
+          "label": "口播精简",
+          "labelChars": 4,
+          "instructionChars": 26
+        }
+      ]
+    }
+  ]
+}
