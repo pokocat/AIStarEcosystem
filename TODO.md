@@ -584,7 +584,9 @@
 - [x] ~~**存储用量缺历史文件**~~ **2026-11-09 完成**：`StudioStorageBackfill` 在用户第一次打开存储用量时（后台异步，当次页面显示补记前的数），按资产库（ip_saved_asset）里 `ipstudio_gen/`、`ipstudio_source/` 开头的文件 key 补记（大小优先用收录时的 bytes，没有再查存储），只加统计记录、同 key 不重复，每进程每用户一次。资产库里已删除的条目不补；没被资产库收录的历史文件仍不在统计里。
 - [x] ~~**存储上限没有拦截**~~ **2026-11-09 已实现、默认关闭**：`StudioStorageGuard` 在上传（`IpProjectService.upload`、`StudioMediaImportService`）前按账号页同一口径检查，超出 402 `STORAGE_QUOTA_EXCEEDED`；生成不拦。开关 `aep.ipstudio.storage-enforce`（默认 false），打开前先在后台配好 `storage.quota_mb.aiavatar` 和存储空间套餐。原描述：：账号页显示的上限是通用存储的 aiavatar 配额（后台 `storage.quota_mb.aiavatar`），但 IP Studio 的生成和上传都没调 `StorageQuotaService.checkQuota`；数字资产页原来的 5,000 MB 也只是展示。拦不拦、在哪一步拦要单独定。
 - [x] ~~**画布、导演台作品没有彻底删除和到期清理**~~ **2026-11-09 已实现**：`StudioTrashService` 提供 `DELETE /projects/{id}/purge`、`DELETE /director/works/{id}/purge`（只删画布 / 作品本身和画布历史版本，生成记录与文件保留在资产库；还有生成中的任务时 409）。到期自动清理 `aep.ipstudio.trash-retention-days`，默认 0 = 不清理。原描述：：账号页回收站能列出并恢复（`/projects/trash`、`/projects/{id}/restore`、导演台 `/works/trash`），但只有数字人有「彻底删除」和 30 天清理。
-- [ ] **任务历史的汇总最多统计 300 条**（`StudioTaskHistoryService.SUMMARY_LIMIT`），超出时界面写明「只统计了最近 N 条」；数字人任务的积分只有 `cost` 一个数，没有模型赠款与退回的拆分。
+- [ ] **任务历史的汇总最多统计 300 条**（`StudioTaskHistoryService.SUMMARY_LIMIT`），超出时消耗卡片写明「只统计了最近 N 条」；总览「生成中」卡片同样只看这 300 条，没有说明（Codex 复核 2026-11-09）。数字人任务已读结算明细（`result.billingBreakdown`）；重试后成功的任务明细只有最后一次尝试，前几次的消费不在里面。
+- [ ] **视频提示词改写的赠款与退回没拆开**（Codex 评审 2026-11-09 第 6 条）：`IpProjectService.videoBindingDto` 的 breakdown 只有视频那一笔，改写只加进总 `cost`；任务历史用差额补进「已消耗」，其中模型赠款没进 `scopedSpent`、退回没进 `released`。要合并视频与改写两组真实明细。
+- [ ] **存储上限检查不预占、台账没有唯一约束**（Codex 评审 2026-11-09 第 8 条与复核）：`StudioStorageGuard` 先查后传，`aep.ipstudio.storage-enforce` 打开后并发上传可能超出上限；`StorageQuotaService.record` 先 `existsByCdnKey` 后插入、`storage_assets.cdn_key` 只有普通索引，同一 key 并发写可能记两次。打开开关前要按用户原子预占字节，并给 `cdn_key` 加唯一约束（需迁移，先查存量重复）。
 - [ ] **任务历史的取消 / 重试只覆盖一部分**：画布上的图片、视频、配音、口型任务和数字人任务可以直接取消（已提交给模型的由接口拒绝并说明），数字人失败任务可以重试；导演台、对话、写作任务只给「查看」，回原处用各自的停止流程。画布任务失败后的重试也要回画布做（需要原请求）。
 - [ ] 旧 SPA 里的 `MTasks` / `MStorage` / `MMembership` / `MSettings` / `MSecurity` / `MRealMaterials` / `MTrash` 不再从 `/studio#/<页>` 进入（改由 `src/account/*`），确认没有内部入口后删除。
 

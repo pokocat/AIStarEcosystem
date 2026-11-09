@@ -511,7 +511,7 @@ src/main/java/com/aistareco/aep/
 | `dap_material_group` | **v0.105** 素材分组（MG-xxxx；七牛 modelink asset-group 本地镜像。`kind=liveness_face` 即真人授权刷脸会话，状态 preparing→awaiting_auth→validating→active/failed；`callbackToken` 唯一，是无 JWT 回跳端点的防伪 state；`validateCalledAt` 是一次性凭证 byted_token 的幂等闸；**v0.105-补丁** `kind=aigc` 启用为「数字人专属 aigc 分组」的账号级共享单例行（owner=`__platform__`，`callbackToken` 改承载去重键 `aigc:<model>`）；`recycledAt` = 上游分组已删、配额已还的时间〔本地行保留作审计；账号级只有 3 分组配额，failed 组超期回收、active 组永不删〕） |
 | `dap_material` | **v0.105** 送审素材（MAT-xxxx；modelink asset 本地镜像。`sourceKey` 是 §4.7.4 真值，送审时才派生签名 URL；状态 pending→reviewing→approved/failed；`refType=capture` 挂 liveness 分组、`refType=avatar` 走平台 aigc 默认组） |
 
-### 账号区接口（2026-11-09，本地未发布）
+### 账号区接口（2026-11-09，已生产发布 `20261109-account-pages-e978bfce`）
 
 - `GET /api/v1/ip-studio/task-history`（`ipstudio/history/StudioTaskHistoryService`）：本人 IpRun + DapJob 合并的任务历史，每条带积分明细（复用 `toRunDto` 的 breakdown）与时间窗汇总。
 - `GET /api/v1/ip-studio/storage`（`StudioStorageService`）：数字资产文件 + 通用存储统计（app=aiavatar / studio）合并的存储用量；`FileStorageService` 写 `ipstudio/gen`、`ipstudio/source` 时记一笔。

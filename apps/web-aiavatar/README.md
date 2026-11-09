@@ -1336,7 +1336,7 @@ Fast / Mini 的生产 API Key 已切换；官方库 `bingbing` 已真实验证�
 
 AI 编导修改建议随该轮模型回复返回、随脚本节点保存；最多 3 条，按钮最多 8 字、修改指令最多 80 字。异常建议隐藏，无固定兜底；点击只填入，发送才改稿。
 
-### 2026-11-09 · 账号区新版（本地，未发布）
+### 2026-11-09 · 账号区新版（已生产发布 `20261109-account-pages-e978bfce`）
 
 电脑版「我的账号」和 `/studio#/membership|tasks|storage|realmaterials|trash|settings` 换成新版页面（`src/account/*`，外壳 `shell/account-workspace.tsx`）：账号卡 + 页内标签，去掉第二列账号菜单；「任务中心」改为「任务历史」并写出每条消耗的积分；存储用量合并数字资产与 IP Studio 文件；回收站加入导演台作品和画布；设置与账号与安全合并，账号相关的修改跳账号中心。说明见 `docs/aiavatar-account-unification.md` 末节。
 

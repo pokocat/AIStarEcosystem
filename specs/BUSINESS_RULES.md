@@ -1794,7 +1794,7 @@ Studio 可展示的正文直接交付；不能安全整理为方案、素材引�
 - 最多 3 条，label <=8、instruction <=80 个 Unicode code point。缺失、类型错误、控制字符、超长或重复建议逐条忽略，不丢弃正常脚本，不触发付费重试；解析前保留完整模型原文。
 - 客户端随该轮脚本节点保存建议，只展示最新一轮成功回复的有效建议，无固定兜底。点击只填入修改意见；主动发送才改稿。采用和生成视频只用脚本正文。
 
-## 账号区任务历史、存储用量与画布回收站（2026-11-09，本地实现，未发布）
+## 账号区任务历史、存储用量与画布回收站（2026-11-09，已生产发布 `20261109-account-pages-e978bfce`）
 
 1. **任务历史只读既有真值**：`GET /api/v1/ip-studio/task-history` 合并本人的 IpRun（画布、AI 图片 / 视频、导演台、对话；不含 `studio-adopt` 等非生成记录）与 DapJob，按开始时间倒序。IpRun 的积分来自 `IpProjectService.toRunDto` 的 breakdown：`spent` 为已扣（含模型赠款），`scopedSpent` 为其中模型赠款，`pending` 为进行中未结算，`released` 为已退回；视频任务的提示词优化另一笔计入 `spent`。旧任务没有 breakdown 时按 `cost` 与状态归类。DapJob 读结算时写入的 `result.billingBreakdown`（文本成功、媒体失败时文本费用照扣）与 `payload._billing` 付款账户；进行中（含失败后重试）时明细是上一次尝试的，本次冻结的 `cost` 全部算待结算；没有明细的旧任务 done 按 `cost` 全额消费、failed 按全额退回（旧计费路径失败时释放冻结但不清零 `cost`）。不新增计费口径，不改任务或账本。
 2. 汇总（`summary`）只看时间窗与类型、不受状态筛选影响，最多统计 300 条，超出时 `partial=true`。合并翻页最深 1000 条，超出 400 `TASK_HISTORY_TOO_DEEP`；非法参数 400 `TASK_HISTORY_INVALID`。
