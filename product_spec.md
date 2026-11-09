@@ -1455,3 +1455,7 @@ AiAvatar 新增 `/director` 作品列表和「剧本 / 资产 / 分镜」制作�
 owner 可在企业管理页将本人的个人可用普通积分转入企业根账户，再分配给企业成员。`POST /api/v1/ip-studio/enterprises/{id}/points/deposit/preview` 与 `/points/deposit` 复用 points 的 items、确认指纹与 clientRequestId。gift/license/recharge 原桶等额转移，冻结积分不动；写关联 TRANSFER_OUT/IN、现有批次和审计，不重复计算现金充值或积分发行。转入不增加新权限项、不增加财务审批。
 
 `EnterpriseMember` 与 `EnterpriseMemberBalance` 增加可空 phone，读取产品档案的当前手机号；企业“成员积分 / 成员与邀请”列表直接展示，访问范围沿用原接口。无数据库迁移。
+
+### Seedance 人像素材前置检查（2026-11-09，本地未发布）
+
+新增 `/assets/verification` 及 `/api/v1/ip-studio/asset-library` 本人素材、声明、核验与任务续接接口。生成前优先处理人像，不清空当前内容；官方明确拒绝且未受理时在原页面弹窗继续。素材需 Active，真人还需有效本人授权；预置虚拟人像与自有素材入库分开。接口见 `specs/openapi.yaml`，实施和验收边界见 `docs/video-asset-library.md`。

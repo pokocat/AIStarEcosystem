@@ -392,7 +392,7 @@ public class MaterialVideoModelClient {
             throw BusinessException.badRequest("VIDEO_DURATION_UNSUPPORTED", "视频时长不在所选模型的配置范围内");
         }
 
-        UpstreamInputs inputs = resolveUpstreamInputs(p, apiKey, model, protocol, genSpec, configured);
+        UpstreamInputs inputs = resolveUpstreamInputs(p, apiKey, model, protocol, genSpec, configured, ownerUserId);
         String requestId = "vid-" + UUID.randomUUID().toString().substring(0, 16);
         Map<String, Object> body = buildSubmitBody(protocol, model, prompt, durationSec, aspectRatio, genSpec, inputs,
                 configured, requestId);
@@ -460,11 +460,14 @@ public class MaterialVideoModelClient {
             if (refreshStaleReferences) {
                 VideoAssetPreparer.Session library = librarySession(p, model, configured, apiKey);
                 if (library != null && library.rejectedStaleReference(resp.statusCode(), resp.body())) {
-                    library.forget(sourceKeys(genSpec));
+                    library.forget(ownerUserId, sourceKeys(genSpec));
                     log.warn("[material-video] 素材库引用已失效，作废回执后重传一次 endpoint={} model={}", p.getName(), model);
                     throw new StaleLibraryReference();
                 }
             }
+            VideoAssetPreparer.Session portraitLibrary = librarySession(p, model, configured, apiKey);
+            if (portraitLibrary != null && portraitLibrary.flag(ownerUserId, genSpec, resp.statusCode(), resp.body()))
+                throw ArkPortraitLibrary.review();
             // Message propagation is independent of status classification and settlement.
             var mappedError = VideoProviderErrorMapper.submit(resp.statusCode(), resp.body());
             // A generic gateway/server failure cannot prove the supplier rejected a non-idempotent create.
@@ -921,12 +924,12 @@ public class MaterialVideoModelClient {
      */
     private UpstreamInputs resolveUpstreamInputs(AiModelEndpoint p, String apiKey, String model,
                                                  String protocol, VideoGenSpec spec,
-                                                 AiVideoRequestSpec configured) {
+                                                 AiVideoRequestSpec configured, String ownerUserId) {
         // 「首帧走上传换 assetId 还是给 URL」只在 usesUploadedFirstFrame 一处判定（2026-09-30 热修收口，§8.0.1 ④）
         if (!usesUploadedFirstFrame(protocol)) {
             VideoAssetPreparer.Session library = librarySession(p, model, configured, apiKey);
-            if (library != null && spec.isExplicit())
-                return libraryInputs(library, spec, configured);
+            if (library != null && (spec.isExplicit() || library.preparesLegacyInputs()))
+                return libraryInputs(library, spec, configured, ownerUserId);
             String first = spec.firstFrameKey() == null ? null : PROTOCOL_AGNES.equals(protocol)
                     ? agnesFirstFrameInput(spec.firstFrameKey()) : requireFetchableUrl(spec.firstFrameKey());
             if ((PROTOCOL_SEEDANCE.equals(protocol) || PROTOCOL_JSON_TEMPLATE.equals(protocol)) && spec.isExplicit()) {
@@ -978,28 +981,28 @@ public class MaterialVideoModelClient {
      * 端点配了厂商素材库：所有素材先传上去换引用，请求里不再出现我方的签名地址。
      * 传不上去就让这次任务失败，不退回 URL、也不丢素材（§8.0）。此时还没向厂商提交，冻结照常退回。
      */
-    private UpstreamInputs libraryInputs(VideoAssetPreparer.Session library, VideoGenSpec spec, AiVideoRequestSpec configured) {
+    private UpstreamInputs libraryInputs(VideoAssetPreparer.Session library, VideoGenSpec spec, AiVideoRequestSpec configured, String ownerUserId) {
         String mode = spec.generationMode();
-        String first = spec.firstFrameKey() == null ? null : libraryRef(library, spec.firstFrameKey(),
+        String first = spec.firstFrameKey() == null ? null : libraryRef(library, ownerUserId, spec.firstFrameKey(),
                 JusuanH3Contract.MEDIA_IMAGE, materialMaxBytes(configured, mode, "image", true),
                 materialFormats(configured, mode, "image", true), "首帧图");
-        String last = spec.lastFrameKey() == null ? null : libraryRef(library, spec.lastFrameKey(),
+        String last = spec.lastFrameKey() == null ? null : libraryRef(library, ownerUserId, spec.lastFrameKey(),
                 JusuanH3Contract.MEDIA_IMAGE, materialMaxBytes(configured, mode, "image", true),
                 materialFormats(configured, mode, "image", true), "尾帧图");
         List<ReferenceAsset> refs = new ArrayList<>();
         List<String> labels = VideoGenSpec.referenceLabels(spec.references());
         for (int i = 0; i < spec.references().size(); i++) {
             VideoGenSpec.Reference r = spec.references().get(i);
-            refs.add(new ReferenceAsset(r.mediaType(), libraryRef(library, r.key(), r.mediaType(),
+            refs.add(new ReferenceAsset(r.mediaType(), libraryRef(library, ownerUserId, r.key(), r.mediaType(),
                     materialMaxBytes(configured, mode, r.mediaType(), false),
                     materialFormats(configured, mode, r.mediaType(), false), labels.get(i))));
         }
         return new UpstreamInputs(first, null, last, refs);
     }
 
-    private String libraryRef(VideoAssetPreparer.Session library, String key, String mediaType, long maxBytes,
+    private String libraryRef(VideoAssetPreparer.Session library, String ownerUserId, String key, String mediaType, long maxBytes,
                               List<String> allowedFormats, String label) {
-        return library.ref(key, () -> {
+        return library.ref(ownerUserId, key, () -> {
             LocalInput input = readLocalInput(key, mediaType, maxBytes, allowedFormats, label);
             return new VideoAssetLibrary.LibraryFile(input.path(), input.size(), input.format(), input.filename(), mediaType, label);
         });
@@ -2208,7 +2211,7 @@ public class MaterialVideoModelClient {
         // 上传慢 + 重试满就可能超过兜底回收的 20 分钟。从这里算起，整个 worker 的耗时不超过 max(预算, 上传耗时)。
         long deadline = optimizeNanoClock.getAsLong() + optimizeBudget.toNanos();
         // 素材只上传一次：重发必须是「同一正文同一键」，换了 assetId 就不是同一个请求了。
-        UpstreamInputs inputs = resolveUpstreamInputs(p, apiKey, model, protocol, genSpec, configured);
+        UpstreamInputs inputs = resolveUpstreamInputs(p, apiKey, model, protocol, genSpec, configured, ownerUserId);
         Map<String, Object> body = buildOptimizationBody(idempotencyKey, model, originalPrompt, seconds, aspectRatio,
                 genSpec, inputs, configured);
         String bodyJson;

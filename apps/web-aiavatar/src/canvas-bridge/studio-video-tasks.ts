@@ -1,3 +1,4 @@
+import { ensureStudioVideoPortraits } from '@/ip/portrait-review-preflight';
 import { apiFetch } from '@/ip/api/_client';
 import { withStudioBilling } from './studio-billing';
 import { normalizeStudioError } from '@/ip/studio-errors';
@@ -15,6 +16,7 @@ export async function prepareVideoTask(projectId: string, input: StudioVideoTask
   return body;
 }
 export async function startVideoTask(projectId: string, input: StudioVideoTaskCreate) {
+  if (input.video) await ensureStudioVideoPortraits(input.video);
   const body = await prepareVideoTask(projectId, input);
   return apiFetch<StudioVideoTask>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/video-tasks`, { method: "POST", body });
 }

@@ -76,5 +76,27 @@ class MaterialVideoQueueAdmissionTest {
         worker.recoverQueuedGeneration("job");
         assertEquals("generating",job.getStatus());verify(queue,never()).finish(any(),any());
         verify(client,never()).submit(any(),anyInt(),any(),any(),any(),any(),any(),any());
+    }    @Test void portraitRefusalPausesOriginalTaskWithoutAnotherHoldOrProviderAttempt() {
+        when(client.submit(any(),anyInt(),any(),any(),any(),any(),any(),any())).thenThrow(ArkPortraitLibrary.review());
+        worker.generateAsync("job");
+        assertEquals("queued",job.getStatus());assertEquals(ArkPortraitLibrary.REVIEW_CODE,job.getErrorCode());
+        assertTrue(job.getPayloadJson().contains("portrait_review_since"));
+        worker.generateAsync("job");
+        verify(client,times(1)).submit(any(),anyInt(),any(),any(),any(),any(),any(),any());
+        verifyNoInteractions(credits);verify(queue,never()).finish(any(),any());
+        verify(queue,times(2)).requeue(eq(AiGenerationQueueService.VIDEO),eq("job"),eq(java.time.Duration.ofSeconds(30)));
     }
+    @Test void abandonedPortraitReviewExpiresAndReleasesTheOriginalHoldOnce() {
+        job.setErrorCode(ArkPortraitLibrary.REVIEW_CODE);
+        job.setPayloadJson("{\"portrait_review_since\":\""+java.time.Instant.now().minusSeconds(1900)+"\"}");
+        worker.generateAsync("job");worker.generateAsync("job");
+        assertEquals("failed",job.getStatus());assertEquals("VIDEO_ASSET_REVIEW_TIMEOUT",job.getErrorCode());
+        verify(credits,times(1)).releaseHold(eq(MaterialVideoJobService.CREDIT_REF_TYPE),eq("job"),any());verifyNoInteractions(client);
+    }
+    @Test void acceptedTaskCannotEnterPortraitPauseOrBeRecreated() {
+        when(client.submit(any(),anyInt(),any(),any(),any(),any(),any(),any())).thenAnswer(i->{job.setExternalTaskId("accepted");throw ArkPortraitLibrary.review();});
+        worker.generateAsync("job");assertNotEquals(ArkPortraitLibrary.REVIEW_CODE,job.getErrorCode());
+        verify(credits,never()).releaseHold(any(),any(),any());
+    }
+
 }
