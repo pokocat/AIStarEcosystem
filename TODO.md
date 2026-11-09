@@ -1,5 +1,9 @@
 # 待办与已知问题
 
+## AI 编导建议（2026-11-09）
+
+- [x] 修改建议由模型与脚本同次生成，最多 3 条、按钮最多 8 字、完整指令最多 80 字；异常建议独立忽略。真模型、桌面和手机浏览器通过，已发布 `20261109-ai-suggestions-f62ca8ff`（server + web-aiavatar）。见 [验收与发布记录](docs/releases/script-ai-suggestions-release-20261109.md)。
+
 ## 用户反馈 2026-11-07（修复见 PR 157，文案记录在 `docs/audits/pc-ui-copy-review-2026-11.md` 第 11 批）
 
 - [x] ~~视频页失败后没有重试入口~~ **2026-11-07 修复**：线上 `PEX-9caea05b1848414ca167` 分镜图没回结果、积分已退，页面只有「在画布上查看」。视频页和画布任务条共用 `videoTaskResumeLabel`，服务端能接着做的都给「重试这一步 / 继续生成」，见 `docs/studio-video-workflow-redesign.md` §12。预算不够时视频页仍只能去画布（视频任务没有对话，没有追加预算卡），未做。

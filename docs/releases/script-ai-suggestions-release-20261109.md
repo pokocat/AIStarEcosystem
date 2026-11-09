@@ -17,4 +17,21 @@
 
 ## 正式发布
 
-待从干净 main 构建 `server,web-aiavatar`，部署后补记 SHA、提示词实际生效版本和线上验收。
+- main 制品提交：`f62ca8ffe18ce349c132ab61aff8e2b6c6e688e1`，构建时工作树干净、与 origin/main 对齐。发布 `20261109-ai-suggestions-f62ca8ff`，仅 `server,web-aiavatar`。
+- 本机队列 `59c9675a581a` 构建退出码 0，制品校验和全部通过。打包脚本按既有流程跳过测试运行；测试已单独通过上述门禁。AUTH_MODE=id，mock / dev-login 关闭，企业功能开启。
+- server JAR SHA256：`16117a4ec6a6769138ae988e5773b4cc13384d816c9b07cff2bbe2c2b5031e0e`；前端包 SHA256：`8d8fedb81bf8562e7b1054f90e43e6e8beba31187cd3dd867f249ca48c453f8b`；线上前端 BUILD_ID：`9VPKb8auB21GXKPws_jS1`。线上 JAR 与发布目录逐字节相等。
+- 发布前账号中心 discovery 200；`ip_run`、原生视频在途任务均为 0。生产实际旧 server 是 `719ccbfefd2a0c197095568bd1d49bd63a993b4d`（JAR 校验和与该制品一致），旧 release-sha 文件停留在 11 月 5 日，未把它当运行真值。与新 main 的契约差异只有新增可选 suggestions，无删除或改名，故无需扩大服务范围。
+- 北京时间 19:47:42 / 19:47:43 分别启动 server / web-aiavatar；server 19:48:00 完成启动，两个服务 NRestarts=0。运行环境检查、发布 verify 均 ALL GREEN，公网首页、登录、视频、项目、config 均 200。两端 release-id / release-sha 和 server release-manifest 已更新。
+- `stage-scene-script` 启动时从仓库自动升级为 **v3，active，updated_by=seed**；原 v1 / v2 保留。未手工覆盖后台内容或修改生产环境文件。
+
+## 线上端到端验收
+
+实际浏览器新建「品牌故事 · 界面验收」草稿 `IPP-ed015b49`，只发起一次编导文字调用，不生成视频。真实任务 `IPR-20520f74a60541edbaf4` 已 done，模型 `gpt-6.1-terra-official`，冻结提示词明确记录 stage-scene-script v3；返回 1452 字正文和三条建议「强化开场／调整独白／突出书店」，按钮均 4 字，指令分别 27 / 24 / 32 字。1767 字完整原文已保留，原文内的 suggestions 与结构化输出完全相同。
+
+账本仅一笔 SPEND -3：冻结 110、释放 107，余额从 1613 变成 1610。点击两条建议以及刷新、切换手机视口均未发起第二个任务。刷新后仍恢复该轮真实建议；390px 手机上三按钮均高 44px、无裁切和横向溢出；临时视口已恢复。
+
+[线上任务、原文与账本核对](evidence/script-ai-suggestions-20261109/online-proof.json)。真实账号的截图仅留本机可视化目录，未把右侧私人任务列表提交仓库：`ai-suggestions-production-desktop.jpg`、`ai-suggestions-production-mobile.jpg`。
+
+共享 nginx 日志的部署观察窗口为 UTC 11:47:10–11:50:59：576 请求，其中 16 个 502，发布后已恢复并通过公网验收；该统计包含共享入口全部流量，不能解释成零停机或仅本功能请求。其余 410 个 200、23 个 304、5 个 401、122 个 404。单实例重启仍有短暂读取中断。
+
+上一版制品保留：server `20261109-plan-model-719ccbfe`，web-aiavatar `20261109-script-chat-fe1a75e7`。本次没有数据库迁移。
