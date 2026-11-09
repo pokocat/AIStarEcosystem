@@ -4,6 +4,7 @@ export const studioNavigation = [
   { href: '/templates', label: '灵感' },
   { href: '/video', label: 'AI 视频' },
   { href: '/image', label: 'AI 图片' },
+  { href: '/toolbox', label: '工具箱' },
   { href: '/create', label: '画布' },
   { href: '/director', label: '短剧导演台' },
   { href: '/projects', label: '项目' },

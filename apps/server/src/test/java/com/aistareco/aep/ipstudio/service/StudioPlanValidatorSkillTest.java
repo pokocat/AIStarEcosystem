@@ -67,6 +67,19 @@ class StudioPlanValidatorSkillTest {
         assertFalse(plan.path("steps").get(3).path("settings").path("clipOrder").get(0).has("runId"));
     }
 
+    @Test void firstFrameInheritsOnlyTheExactIdentityAlreadyBoundToItsImage() throws Exception {
+        var raw=production();
+        var video=(ObjectNode)raw.path("steps").get(1).path("settings");
+        ((ObjectNode)video.path("video")).put("mode","i2v");
+        video.set("referenceBindings",om.readTree("[{\"stepId\":\"img\",\"role\":\"frame\",\"order\":0},{\"nodeId\":\"product-img\",\"role\":\"product\",\"order\":1},{\"nodeId\":\"person-img\",\"role\":\"character\",\"order\":2}]"));
+        var plan=StudioPlanValidator.validateSkillPlan(raw,rules(),"production",context);
+        var refs=plan.path("steps").get(1).path("settings").path("referenceBindings");
+        assertEquals(2,refs.size());assertEquals("frame",refs.get(0).path("role").asText());
+        assertEquals("person-img",refs.get(1).path("nodeId").asText(),"unrelated identity must remain visible to capability validation");
+        ((ObjectNode)video.path("video")).put("mode","omni");
+        assertEquals(3,StudioPlanValidator.validateSkillPlan(raw,rules(),"production",context).path("steps").get(1).path("settings").path("referenceBindings").size());
+    }
+
     @Test void operationsOutsideTheStageWhitelistAreRefused() throws Exception {
         var raw=analysis();((ObjectNode)raw.path("steps").get(1)).put("operation","video");
         assertEquals("STUDIO_SKILL_OPERATION_NOT_ALLOWED",assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(raw,rules(),"analysis",context)).getCode());

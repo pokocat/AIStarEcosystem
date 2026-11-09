@@ -1,0 +1,192 @@
+[
+  {
+    "taskId": "PEX-0945ab53decb475f9f31",
+    "projectId": "IPP-f49731da",
+    "kind": "recreation",
+    "status": "done",
+    "credits": 963,
+    "identityImages": [
+      "5c42bd948c3d4d24c325aaf3eb5035bcc4dce0c150b818160175294638951024"
+    ],
+    "runs": [
+      {
+        "stepId": "study",
+        "operation": "recreation",
+        "runId": "IPR-707d5a21b1fc44e4b4d3",
+        "status": "done",
+        "cost": 19
+      },
+      {
+        "stepId": "compile",
+        "operation": "text",
+        "runId": "IPR-38526d07674b4d6a901d",
+        "status": "done",
+        "cost": 11
+      },
+      {
+        "stepId": "step-1",
+        "operation": "video",
+        "runId": "IPR-9fe674cd9fc24262b64f",
+        "status": "done",
+        "cost": 310,
+        "nativeJobId": "mvj_4e740661d6ea",
+        "supplierJobId": "job_836676c13d92545335eac226",
+        "supplierStatus": "ready"
+      },
+      {
+        "stepId": "step-2",
+        "operation": "video",
+        "runId": "IPR-0b68d2d33feb4066a3ec",
+        "status": "done",
+        "cost": 310,
+        "nativeJobId": "mvj_2453e9b666f3",
+        "supplierJobId": "job_20e10aa1616df0dc8411fd1c",
+        "supplierStatus": "ready"
+      },
+      {
+        "stepId": "step-3",
+        "operation": "video",
+        "runId": "IPR-72ed26cb8a0f48bc8ef1",
+        "status": "done",
+        "cost": 310,
+        "nativeJobId": "mvj_8188473a668c",
+        "supplierJobId": "job_60721b26b0b345ea6a278b40",
+        "supplierStatus": "ready"
+      },
+      {
+        "stepId": "step-4",
+        "operation": "check",
+        "runId": "IPR-3677f8f35d2f420f8bcb",
+        "status": "done",
+        "cost": 3,
+        "checkStatus": "unknown"
+      },
+      {
+        "stepId": "step-5",
+        "operation": "assemble",
+        "runId": "IPR-6c86313a9c404349967e",
+        "status": "done",
+        "cost": 0
+      }
+    ]
+  },
+  {
+    "taskId": "PEX-f9f167290c8b4ea995da",
+    "projectId": "IPP-0fe4aceb",
+    "kind": "recreation",
+    "status": "done",
+    "credits": 953,
+    "identityImages": [
+      "5c42bd948c3d4d24c325aaf3eb5035bcc4dce0c150b818160175294638951024"
+    ],
+    "runs": [
+      {
+        "stepId": "study",
+        "operation": "recreation",
+        "runId": "IPR-2359f1c97a874db08a78",
+        "status": "done",
+        "cost": 10
+      },
+      {
+        "stepId": "compile",
+        "operation": "text",
+        "runId": "IPR-8398433e09444156b99c",
+        "status": "done",
+        "cost": 9
+      },
+      {
+        "stepId": "step-1",
+        "operation": "video",
+        "runId": "IPR-ed7b03a23601491c93ba",
+        "status": "done",
+        "cost": 496,
+        "nativeJobId": "mvj_2be22b699217",
+        "supplierJobId": "job_2e86208a837da19dd0d14f4b",
+        "supplierStatus": "ready"
+      },
+      {
+        "stepId": "step-2",
+        "operation": "video",
+        "runId": "IPR-eebc65b6c58c41f489aa",
+        "status": "done",
+        "cost": 434,
+        "nativeJobId": "mvj_58ce45d0056c",
+        "supplierJobId": "job_a95e66a19a48431e16ebff3a",
+        "supplierStatus": "ready"
+      },
+      {
+        "stepId": "step-3",
+        "operation": "check",
+        "runId": "IPR-8194a293771a4157ae60",
+        "status": "done",
+        "cost": 4,
+        "checkStatus": "fail"
+      },
+      {
+        "stepId": "step-4",
+        "operation": "assemble",
+        "runId": "IPR-707ad542d9c64e6f85c9",
+        "status": "done",
+        "cost": 0
+      }
+    ]
+  },
+  {
+    "taskId": "PEX-a029f6b9333548349822",
+    "projectId": "IPP-3912c71a",
+    "kind": "depth",
+    "status": "done",
+    "credits": 930,
+    "identityImages": [
+      "5c42bd948c3d4d24c325aaf3eb5035bcc4dce0c150b818160175294638951024"
+    ],
+    "runs": [
+      {
+        "stepId": "depth",
+        "operation": "video-control",
+        "runId": "IPR-f9b8c113e42a43cda788",
+        "status": "done",
+        "cost": 0
+      },
+      {
+        "stepId": "video",
+        "operation": "video",
+        "runId": "IPR-b63dd05d52734669bc80",
+        "status": "done",
+        "cost": 930,
+        "nativeJobId": "mvj_387bb539c954",
+        "supplierJobId": "job_6694f84d1f5b7b6812fecd7b",
+        "supplierStatus": "ready"
+      }
+    ]
+  },
+  {
+    "taskId": "PEX-2da30d70125743baae1f",
+    "projectId": "IPP-0b81ef7d",
+    "kind": "depth",
+    "status": "done",
+    "credits": 930,
+    "identityImages": [
+      "5c42bd948c3d4d24c325aaf3eb5035bcc4dce0c150b818160175294638951024"
+    ],
+    "runs": [
+      {
+        "stepId": "depth",
+        "operation": "video-control",
+        "runId": "IPR-a14e59c960214f0dbab5",
+        "status": "done",
+        "cost": 0
+      },
+      {
+        "stepId": "video",
+        "operation": "video",
+        "runId": "IPR-c43ace9e3b574b3aa9b5",
+        "status": "done",
+        "cost": 930,
+        "nativeJobId": "mvj_149cde89535d",
+        "supplierJobId": "job_204226d2cf130749572defee",
+        "supplierStatus": "ready"
+      }
+    ]
+  }
+]

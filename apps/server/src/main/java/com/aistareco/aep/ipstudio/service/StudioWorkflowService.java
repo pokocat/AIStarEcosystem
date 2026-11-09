@@ -38,7 +38,8 @@ public class StudioWorkflowService {
     @org.springframework.beans.factory.annotation.Autowired
     private com.aistareco.aep.enterprise.service.EnterpriseBillingService enterpriseBilling;
 
-    private static final Set<String> OPERATIONS = Set.of("text", "script", "storyboard", "image", "video", "assemble", "assistant", "asset-extract", "recreation", "check");
+    private static final Set<String> OPERATIONS = Set.of("text", "script", "storyboard", "image", "video", "assemble", "assistant", "asset-extract", "recreation", "check", "video-control");
+    @org.springframework.beans.factory.annotation.Autowired private StudioDepthVideoService depthVideo;
     private final IpProjectService projects;
     private final IpRunRepository runs;
     private final StudioFixtureProvider fixtures;
@@ -94,7 +95,9 @@ public class StudioWorkflowService {
     public List<IpAsset> ipAssets(String userId) {return ipAssets.list(userId);}
 
     public Capabilities capabilities() {
-        return new Capabilities(fixtures.enabled(), List.of("text","script","storyboard","image","video","assemble","assistant","recreation","check"),
+        var operations=new ArrayList<>(List.of("text","script","storyboard","image","video","assemble","assistant","recreation","check"));
+        if(!fixtures.enabled()&&depthVideo!=null&&depthVideo.configured())operations.add("video-control");
+        return new Capabilities(fixtures.enabled(), operations,
                 fixtures.enabled()?0:scenePolicies == null ? pricing.ipImage() : scenePolicies.available("studio","image",pricing.ipImage()).stream().filter(s->s.resolved().isDefault()).findFirst().map(com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection::creditCost).orElse(pricing.ipImage()), fixtures.enabled()?0:textModelOptions().stream().filter(TextModel::isDefault).findFirst().map(TextModel::creditCost).orElse(pricing.ipIdentity()),
                 fixtures.enabled()?0L:null, textModelOptions(), scenePolicies == null ? "selectable" : scenePolicies.mode("studio","script"), scenePolicies == null ? "selectable" : scenePolicies.mode("studio","image"),
                 models.resolveEndpoint(AiModelPurpose.DAP_TRANSCRIBE).isPresent());
@@ -146,6 +149,13 @@ public class StudioWorkflowService {
         boolean check="check".equals(request.operation());
         ExecutionBinding executionBinding=executionBinding(userId,projectId,request);
         com.aistareco.aep.ipstudio.execution.StudioSkillRules.Rules skill=skillRules(request,skillPlan,check,executionBinding);
+        if("video-control".equals(request.operation())) {
+            if(executionBinding==null||executionBinding.step()==null||!"depth".equals(executionBinding.state().path("videoTask").path("kind").asText())
+                    ||request.references()==null||request.references().size()!=1||!"clip".equals(request.references().get(0).role()))
+                throw bad("STUDIO_INPUT_INVALID","动作提取只能由深度复刻任务执行");
+            if(fixtures.enabled())throw bad("STUDIO_DEPTH_NOT_CONFIGURED","深度复刻需要真实的动作提取服务");
+            depthVideo.requireConfigured();
+        }
         boolean configuredImage = "image".equals(request.operation()) && !fixtures.enabled() && scenePolicies != null
                 && (com.aistareco.aep.ipstudio.service.StudioImageModelRouting.isProductRequest(request.model())
                     || (request.model()==null || !request.model().startsWith(com.aistareco.aep.ipstudio.service.StudioImageModelRouting.REQUEST_PREFIX))
@@ -218,9 +228,10 @@ public class StudioWorkflowService {
             if(request.video()==null && references.size()>1) throw bad("STUDIO_VIDEO_FIRST_FRAME_ONLY","这个视频模型只支持一张首帧参考图，请选择支持首尾帧或全能参考的模型");
             if(request.video()!=null && !references.isEmpty()) throw bad("STUDIO_VIDEO_INPUT_INVALID","请在视频模式中明确选择首帧、尾帧或参考素材");
             // 只用模型赠款（freeOnly）也照常优化：以出片效果为准，改写按文本模型自己的价格扣（界面写明另需少量积分），积分不够用户可以取消（2026-10-27 用户定）。
-            if(request.video()!=null && request.video().rewrite()!=null) return submitVideoRewrite(userId,projectId,project,request,fingerprint);
+            if(request.video()!=null && request.video().rewrite()!=null) return submitVideoRewrite(userId,projectId,project,request,fingerprint,executionBinding);
             var batch=imageRuns.generateVideoBatch(userId,projectId,videoRequest(request),request.count()==null?1:request.count());
             ObjectNode inputs=mapper.valueToTree(request);
+            attachCloneInputs(inputs,executionBinding);
             ObjectNode exec=inputs.putObject("_exec");
             var ids=exec.putArray("nativeVideoJobIds");
             batch.jobs().forEach(job->ids.add(job.path("id").asText()));
@@ -276,6 +287,7 @@ public class StudioWorkflowService {
         IpRunService.requireApprovedCost(request.maxCost(),cost);
         String id="IPR-"+UUID.randomUUID().toString().replace("-","").substring(0,20);
         ObjectNode inputs=mapper.valueToTree(request);
+        attachCloneInputs(inputs,executionBinding);
         inputs.put("mock",fixtures.enabled());
         var context=inputs.putArray("appliedCharacterContext");
         for(Reference ref:references) if(ref.avatarId()!=null) {
@@ -437,7 +449,7 @@ public class StudioWorkflowService {
      * worker 改写完在同一行上提交视频（写进 {@code _exec.nativeVideoJobIds}，之后按视频任务投影）。review 模式有提示时不出片，
      * 停在「用优化稿 / 用原文」上。视频的价格、付款方照常在提交视频时核对；这里先按同样的规则预检一遍，免得改写完才发现出不了片。
      */
-    private IpRunDto submitVideoRewrite(String userId,String projectId,com.aistareco.aep.ipstudio.model.IpProject project,RunRequest request,String fingerprint) {
+    private IpRunDto submitVideoRewrite(String userId,String projectId,com.aistareco.aep.ipstudio.model.IpProject project,RunRequest request,String fingerprint,ExecutionBinding binding) {
         var video=request.video();
         if(!Set.of("auto","review").contains(video.rewrite()))throw bad("STUDIO_VIDEO_INPUT_INVALID","不支持的提示词优化方式");
         if(studioVideo==null)throw bad("STUDIO_VIDEO_MODE_UNAVAILABLE","视频模型暂不可用");
@@ -452,15 +464,18 @@ public class StudioWorkflowService {
         boolean planBudget=request.executionId()!=null;
         if(request.modelBilling()==null)IpRunService.requireApprovedCost(request.maxCost(),planBudget?Math.addExact(videoCost,rate.maxCost()):videoCost);
         int seconds=request.durationSec()==null?5:request.durationSec();
-        var built=com.aistareco.aep.ipstudio.h3.H3StudioPrompt.build(request.prompt(),seconds,video,projects.readDoc(project));
+        var built=com.aistareco.aep.ipstudio.h3.H3StudioPrompt.build(request.prompt(),seconds,video,projects.readDoc(project),cloneControls(userId,binding,video));
         var h3=built.request();
         String id="IPR-"+UUID.randomUUID().toString().replace("-","").substring(0,20);
         long cost=rate.maxCost();
         ObjectNode inputs=mapper.valueToTree(request);
+        attachCloneInputs(inputs,binding);
         inputs.put("mock",false);
         var execution=inputs.putObject("_exec").put("holdTotal",cost).put("unitCost",cost).put("billingUnit","per_token")
                 .put("rewrite",video.rewrite()).put("videoCost",videoCost).put("planBudget",planBudget);
-        execution.set("h3",com.aistareco.aep.ipstudio.h3.H3PromptRewrite.meta(mapper,h3,built.pictures(),built.videos(),built.audios()));
+        var h3Meta=com.aistareco.aep.ipstudio.h3.H3PromptRewrite.meta(mapper,h3,built.pictures(),built.videos(),built.audios());
+        if(!built.controlVideos().isEmpty())built.controlVideos().forEach(h3Meta.putArray("controlVideos")::add);
+        execution.set("h3",h3Meta);
         execution.put("systemPrompt",com.aistareco.aep.ipstudio.h3.H3PromptRewrite.system(h3.mode(),h3.codeLines(),h3.shots()!=null));
         execution.put("userPrompt",com.aistareco.aep.ipstudio.h3.H3PromptRewrite.user(h3));
         execution.put("purpose",H3PromptRewrite.PURPOSE.wire()).put("endpointId",endpoint.getId()).put("temperature",0.6);
@@ -484,6 +499,35 @@ public class StudioWorkflowService {
             }
         });
         return projects.toRunDto(run);
+    }
+
+    /**
+     * 深度复刻：这一步要交给 H3 的参考视频里，哪段是本次执行里「提取动作」那一步的产物、是深度图还是骨骼图。
+     * 只认同一执行里已完成的 video-control 运行、且产物 key 正好是这一步引用的那段，不按客户端说法。
+     */
+    private java.util.Map<String,String> cloneControls(String userId,ExecutionBinding binding,com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings video) {
+        if(binding==null||binding.step()==null||video==null||video.references()==null)return java.util.Map.of();
+        if(!"depth".equals(binding.state().path("videoTask").path("kind").asText()))return java.util.Map.of();
+        Set<String> referenced=new HashSet<>();
+        for(var r:video.references())if("video".equals(r.mediaType()))referenced.add(r.key());
+        java.util.Map<String,String> out=new java.util.HashMap<>();
+        for(JsonNode step:binding.state().path("steps")) {
+            if(!"video-control".equals(step.path("operation").asText()))continue;
+            for(JsonNode runId:step.path("runIds"))runs.findByIdAndOwnerUserId(runId.asText(),userId).ifPresent(run->{
+                if(!IpRun.STATUS_DONE.equals(run.getStatus())||run.getOutputJson()==null)return;
+                JsonNode output=projects.parseOrEmptyObject(run.getOutputJson());
+                String key=output.path("storageKey").asText(null);
+                if(key!=null&&referenced.contains(key))out.put(key,"pose".equals(output.path("controlType").asText())?"pose":"depth");
+            });
+        }
+        return out;
+    }
+
+    private void attachCloneInputs(ObjectNode inputs,ExecutionBinding binding) {
+        if(binding==null||binding.step()==null||!binding.state().path("videoTask").path("cloneKeys").isObject())return;
+        var ids=inputs.putArray("canvasInputNodeIds");
+        for(JsonNode ref:binding.step().path("definition").path("settings").path("referenceBindings"))
+            if(ref.hasNonNull("nodeId"))ids.add(ref.path("nodeId").asText());
     }
 
     private AiModelInvocationService.ResolvedEndpoint videoRewriteEndpoint() {
@@ -784,10 +828,12 @@ public class StudioWorkflowService {
         }
         int maxSegments=skill==null?8:skill.maxSegments();
         double duration=source==null?0:source.path("durationSec").asDouble();
-        var limit=new StudioFilmStudy.SegmentCap(cap,maxSegments);
+        double referenceMin=contract.modes().stream().filter(m->m.references()!=null&&m.references().video()!=null&&m.references().video().maxCount()>0)
+                .mapToDouble(m->m.references().video().minDurationSec()==null?0:m.references().video().minDurationSec()).min().orElse(0);
+        var limit=new StudioFilmStudy.SegmentCap(cap,maxSegments,referenceMin);
         if(duration>cap*maxSegments+1e-6)throw StudioFilmStudy.tooLong(limit,duration,List.of());
         ObjectNode out=mapper.createObjectNode().put("maxSegmentSec",cap).put("requested",requested).put("maxSegments",maxSegments)
-                .put("videoModel",model.endpointId());
+                .put("videoModel",model.endpointId()).put("minSegmentSec",referenceMin);
         out.putObject("contract").put("minSeconds",contract.minSeconds()).put("maxSeconds",contract.maxSeconds());
         return out;
     }
@@ -1028,6 +1074,7 @@ public class StudioWorkflowService {
         if(fixtures.enabled())return 0;
         return switch(request.operation()) {
             case "assemble" -> 0L;
+            case "video-control" -> {depthVideo.requireConfigured();yield 0L;}
             case "image" -> {
                 var compiled=imageRuns.compileExplicit(userId,new IpRunService.IpGenerateRequest(request.nodeId(),request.prompt()==null||request.prompt().isBlank()?"图片":request.prompt(),
                         List.of(),request.count()==null?1:request.count(),request.size()==null?imageSize(request):request.size(),request.model()));

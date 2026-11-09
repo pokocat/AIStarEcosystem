@@ -77,6 +77,9 @@ public final class StudioPlanSteps {
         String stage=binding==null?null:binding.stage();
         List<String> context=binding==null?List.of():binding.canvasContextIds();
         return switch(operation) {
+            case "video-control" -> new RunRequest(requestId,nodeId,"video-control",prompt,
+                    List.of(new Reference(null,null,null,keys.binding(settings.path("referenceBindings").path(0)),"clip",null)),
+                    null,null,null,null,null,null,null,null,null,null,maxCost,null,null,null,null,null,billing,null,null,null,null,stage,executionId,null);
             case "recreation" -> new RunRequest(requestId,nodeId,"recreation",prompt,null,null,null,null,null,null,null,null,"segments",
                     List.of(settings.path("sourceNodeId").asText()),null,maxCost,null,null,null,null,null,billing,
                     new RecreationSettings(settings.path("maxSegmentSec").asText("model"),settings.path("videoModel").asText()),null,null,null,stage,executionId,null);

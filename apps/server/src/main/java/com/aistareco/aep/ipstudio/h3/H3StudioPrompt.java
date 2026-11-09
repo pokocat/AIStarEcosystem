@@ -15,11 +15,21 @@ public final class H3StudioPrompt {
     private H3StudioPrompt() {}
 
     /** 改写请求与参考素材数量（核对标签用）。 */
-    public record Built(H3PromptRewrite.Request request, int pictures, int videos, int audios) {}
+    public record Built(H3PromptRewrite.Request request, int pictures, int videos, int audios, List<String> controlVideos) {
+        public Built(H3PromptRewrite.Request request, int pictures, int videos, int audios) { this(request, pictures, videos, audios, List.of()); }
+    }
 
     public static Built build(String prompt, int seconds, VideoSettings video, JsonNode doc) {
+        return build(prompt, seconds, video, doc, java.util.Map.of());
+    }
+
+    /**
+     * {@code controls}：这次参考视频里哪几段是深度复刻提取的控制视频（素材 key → depth / pose，由服务端按实际产物给）。
+     * 写法照 ReShot 给 H3 的示例：把它定义成单独的主体，只迁移动作、时间和机位（attribute_transfer），灰色画面 / 火柴人本身不迁移。
+     */
+    public static Built build(String prompt, int seconds, VideoSettings video, JsonNode doc, java.util.Map<String, String> controls) {
         H3PromptRewrite.Mode mode = H3PromptRewrite.Mode.of(video.mode());
-        List<String> refs = new ArrayList<>();
+        List<String> refs = new ArrayList<>(), controlVideos = new ArrayList<>();
         int pictures = 0, videos = 0, audios = 0;
         if (video.firstFrameKey() != null && mode != H3PromptRewrite.Mode.T2V)
             refs.add("<Picture " + (++pictures) + ">: the first frame of the target video" + named(doc, video.firstFrameKey()) + ".");
@@ -27,7 +37,11 @@ public final class H3StudioPrompt {
             refs.add("<Picture " + (++pictures) + ">: the last frame of the target video" + named(doc, video.lastFrameKey()) + ".");
         if (mode == H3PromptRewrite.Mode.REF && video.references() != null) for (var r : video.references()) {
             switch (r.mediaType() == null ? "image" : r.mediaType()) {
-                case "video" -> refs.add("<Video " + (++videos) + ">: reference video" + named(doc, r.key()) + ".");
+                case "video" -> {
+                    String control = controls == null ? null : controls.get(r.key());
+                    refs.add("<Video " + (++videos) + ">: " + (control == null ? "reference video" + named(doc, r.key()) + "." : controlNote(control)));
+                    if (control != null) controlVideos.add("<Video " + videos + ">");
+                }
                 case "audio" -> refs.add("<Audio " + (++audios) + ">: reference audio" + named(doc, r.key()) + "; use only its timbre and delivery.");
                 default -> refs.add("<Picture " + (++pictures) + ">: reference image" + named(doc, r.key()) + ".");
             }
@@ -39,7 +53,20 @@ public final class H3StudioPrompt {
         boolean codeLines = !src.lines().isEmpty() && H3PromptRewrite.complete(src, starts != null);
         if (!codeLines) src = new H3PromptRewrite.Source(zh, List.of());
         var request = new H3PromptRewrite.Request(mode, seconds, refs, src, codeLines, starts == null ? null : starts.size(), starts, null, false);
-        return new Built(request, pictures, videos, audios);
+        return new Built(request, pictures, videos, audios, List.copyOf(controlVideos));
+    }
+
+    /** 控制视频的英文说明。不带中文标题：漏写时 H3PromptRewrite 按这句补回，带汉字的说明不会被采用。 */
+    static String controlNote(String control) {
+        return "pose".equals(control)
+                ? "an OpenPose skeleton video made from the reference footage: coloured stick figures on black, one per person, hands included."
+                  + " It is a motion and camera reference only. Define it as its own subject that carries every pose, movement, their timing and the camera,"
+                  + " with retention attribute_transfer onto the new characters; the stick-figure look is not transferred, no skeleton lines appear in the picture,"
+                  + " and it says nothing about anyone's face, body shape, clothes or the setting."
+                : "a grey depth map made from the reference footage, in which near objects are white and far objects are black."
+                  + " It is a motion and camera reference only. Define it as its own subject that carries where everyone stands, how big they are, every movement,"
+                  + " their timing and the camera, with retention attribute_transfer onto the new characters, objects and setting; its grey depth look is not transferred,"
+                  + " and it says nothing about anyone's face, clothes, colours or lighting.";
     }
 
     /** 画布上这个素材节点的标题（「「林小雅定妆照」」），找不到就不写名字。 */

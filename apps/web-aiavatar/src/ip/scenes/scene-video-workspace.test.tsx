@@ -285,3 +285,20 @@ test('a draft with a video still generating cannot be deleted from the rail', as
   expect((within(dialog).getByRole('button', { name: '删除' }) as HTMLButtonElement).disabled).toBe(true);
   expect(api.deleteProject).not.toHaveBeenCalled();
 });
+
+test('completed media stays downloadable while its AI quality findings remain visible', async () => {
+  const saved = task('PEX-quality', 'recreation'); saved.execution!.status = 'done';
+  const base = saved.execution!.steps[0];
+  saved.execution!.steps = [{ ...base, status: 'done', runIds: ['IPR-final'] }, { ...base, id: 'review', operation: 'check', status: 'done', runIds: ['IPR-review'] }];
+  api.get.mockResolvedValue(saved);
+  api.readRun.mockImplementation(async id => id === 'IPR-final' ? { id, status: 'done', output: { storageKey: 'final.mp4' } }
+    : { id, status: 'done', output: { check: { status: 'fail', items: [{ id: 'clothing', status: 'fail', reason: '衣服颜色偏浅', suggestion: '调整为宝蓝色' }] } } });
+  render(<SceneVideoWorkspace {...props} taskId="PEX-quality" selected={saved}/>);
+  expect(await screen.findByRole('heading', { name: '视频已完成' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '下载视频' })).toBeTruthy();
+  expect(await screen.findByText('AI 检查建议（1 项）')).toBeTruthy();
+  expect(screen.getByText('衣服颜色偏浅')).toBeTruthy();
+  const phases = videoTaskPhases(saved);
+  expect(phases.some(p => p.key === 'boards')).toBe(false);
+  expect(phases.find(p => p.key === 'review')?.state).toBe('done');
+});

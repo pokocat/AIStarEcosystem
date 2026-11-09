@@ -21,7 +21,9 @@ public final class StudioFilmStudy {
     }
     @FunctionalInterface public interface Checkpoint {boolean save(int pct,String stage,ObjectNode study);}
     /** Effective per-segment length cap (seconds) from the selected video model contract, plus the segment count limit. */
-    public record SegmentCap(double maxSegmentSec,int maxSegments) {}
+    public record SegmentCap(double maxSegmentSec,int maxSegments,double minSegmentSec) {
+        public SegmentCap(double maxSegmentSec,int maxSegments){this(maxSegmentSec,maxSegments,0);}
+    }
     public static ObjectNode run(JsonNode source,String fullFilm,JsonNode resume,StudioRecreation.Study evidence,
             FileStorageService storage,String owner,int budget,int maxImages,Chat chat,Checkpoint checkpoint) throws Exception {
         return run(source,fullFilm,resume,evidence,storage,owner,budget,maxImages,chat,checkpoint,null);
@@ -119,6 +121,17 @@ public final class StudioFilmStudy {
             for(int i=1;i<pieces;i++)out.add(start+length*i/pieces);
             out.add(end);start=end;
         }
+        // Source references also have a minimum length. Merge short action fragments with neighbours rather than
+        // padding/fabricating motion or letting an already-paid production fail its provider media check.
+        double minimum=Math.min(limit,cap.minSegmentSec()+.1);
+        if(cap.minSegmentSec()>0)for(int i=0;i<out.size()&&out.size()>1;) {
+            double from=i==0?0:out.get(i-1),length=out.get(i)-from;
+            if(length>=minimum){i++;continue;}
+            int left=i>0?i-1:i,right=i>0?i:i+1;
+            double pairStart=left==0?0:out.get(left-1),pairEnd=out.get(right);
+            if(pairEnd-pairStart<=limit+1e-6){out.remove(left);i=Math.max(0,left-1);}
+            else {out.set(left,(pairStart+pairEnd)/2);i=right+1;}
+        }
         while(out.size()>cap.maxSegments()) {
             int best=-1;double shortest=Double.MAX_VALUE;
             for(int i=0;i+1<out.size();i++) {
@@ -137,6 +150,8 @@ public final class StudioFilmStudy {
     }
     static boolean withinCap(JsonNode segments,SegmentCap cap) {
         if(segments.size()>cap.maxSegments())return false;
+        if(cap.minSegmentSec()>0&&segments.size()>1)for(JsonNode segment:segments)
+            if(segment.path("endSec").asDouble()-segment.path("startSec").asDouble()<Math.min(cap.maxSegmentSec(),cap.minSegmentSec()+.1))return false;
         for(JsonNode segment:segments)if(segment.path("endSec").asDouble()-segment.path("startSec").asDouble()>cap.maxSegmentSec()+1e-6)return false;
         return true;
     }

@@ -235,7 +235,34 @@ public final class StudioPlanValidator {
         JsonNode notes=raw.path("notes");
         if(notes.isTextual())notes=OM.createArrayNode().add(notes.asText());
         if(raw.hasNonNull("notes"))plan.set("notes",strings(notes,12,16500));
+        inheritFirstFrameReferences(plan);
         return plan;
+    }
+
+    /** i2v receives one image. A character already explicitly used to build that image is inherited through it.
+     * Keep every unproven reference so mode validation still rejects unsupported or unrelated materials. */
+    private static void inheritFirstFrameReferences(ObjectNode plan) {
+        Map<String,JsonNode> earlier=new HashMap<>();
+        for(JsonNode step:plan.path("steps")) {
+            JsonNode settings=step.path("settings");
+            if("video".equals(step.path("operation").asText())&&"i2v".equals(settings.path("video").path("mode").asText())) {
+                List<JsonNode> frames=new ArrayList<>();
+                for(JsonNode b:settings.path("referenceBindings"))if("frame".equals(b.path("role").asText()))frames.add(b);
+                JsonNode image=frames.size()==1?earlier.get(frames.get(0).path("stepId").asText()):null;
+                if(image!=null&&"image".equals(image.path("operation").asText())) {
+                    ArrayNode kept=OM.createArrayNode();
+                    for(JsonNode b:settings.path("referenceBindings")) {
+                        boolean inherited=false;
+                        if(Set.of("character","scene","product","reference-image").contains(b.path("role").asText()))
+                            for(JsonNode source:image.path("settings").path("referenceBindings"))
+                                if(b.path("role").equals(source.path("role"))&&b.path("stepId").equals(source.path("stepId"))&&b.path("nodeId").equals(source.path("nodeId")))inherited=true;
+                        if(!inherited)kept.add(b);
+                    }
+                    ((ObjectNode)settings).set("referenceBindings",kept);
+                }
+            }
+            earlier.put(step.path("id").asText(),step);
+        }
     }
 
     private static ObjectNode settings(JsonNode raw,String operation,String stage,StudioSkillRules.Rules rules,Set<String> allowed,

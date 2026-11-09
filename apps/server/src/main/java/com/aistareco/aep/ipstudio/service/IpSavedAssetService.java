@@ -47,6 +47,9 @@ public class IpSavedAssetService {
             String mime=source.path("mimeType").asText("");
             if(mime.length()>100) throw invalid();
             data.put("mimeType",mime);
+            // Only server collectors supply measured duration. Client metadata never bypasses submission's media probe.
+            double duration=source.path("durationSec").asDouble(0);
+            if(automatic&&Double.isFinite(duration)&&duration>0)data.put("durationSec",duration);
         }
         ObjectNode meta=payload.putObject("metadata");
         String prompt=request.path("metadata").path("prompt").asText("");
@@ -68,6 +71,9 @@ public class IpSavedAssetService {
         if(existing.isPresent() && (row.getDeletedAt()==null || automatic)) {
             if(automatic&&row.getDeletedAt()==null){
                 try{ObjectNode old=(ObjectNode)om.readTree(row.getPayloadJson());ObjectNode oldMeta=old.with("metadata");
+                    ObjectNode oldData=old.with("data");
+                    for(String field:List.of("width","height","bytes","durationSec"))if(oldData.path(field).asDouble(0)<=0&&data.path(field).asDouble(0)>0)oldData.set(field,data.get(field));
+                    if(oldData.path("mimeType").asText().isBlank()&&!data.path("mimeType").asText().isBlank())oldData.set("mimeType",data.get("mimeType"));
                     // Enrich provenance once; repeated collectors never undo manual folder moves or edits.
                     for(String field:List.of("folderId","objectId","runId","projectId","nodeId","prompt"))if(!(field.equals("folderId")&&oldMeta.path("folderAssigned").asBoolean())&&(!oldMeta.hasNonNull(field)||oldMeta.path(field).asText().isBlank()))if(meta.hasNonNull(field)&&!meta.path(field).asText().isBlank())oldMeta.set(field,meta.get(field));
                     // 默认名换成有意义的名字；用户改过的、已经有意义的都不动。

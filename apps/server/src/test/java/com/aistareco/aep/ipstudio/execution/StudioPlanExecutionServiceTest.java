@@ -117,13 +117,17 @@ class StudioPlanExecutionServiceTest {
         var quote=mock(StudioPlanQuoter.class);
         org.springframework.test.util.ReflectionTestUtils.setField(service,"quoter",quote);
         ObjectNode state=om.createObjectNode();state.putArray("steps");
-        state.putObject("videoTask").putObject("request").putObject("configuration").put("duration",12).put("ratio","9:16").put("model","ep-h3").put("tier","768p");
-        ObjectNode budget=om.createObjectNode();budget.putObject("analysis").put("approvedCap",200).put("spent",10).put("requestFingerprint","original");
+        state.putObject("videoTask").putObject("request").putObject("configuration").put("duration",12).put("ratio","9:16").put("model","ep-h3").put("tier","768p").put("optimize",false);
+        ObjectNode budget=om.createObjectNode();budget.putObject("analysis").put("approvedCap",60).put("spent",10).put("requestFingerprint","original");
         var row=IpPlanExecution.builder().id("PEX-scene").projectId("p").ownerUserId("u").stage("analysis").status("running").build();
         service.confirmVideoProduction(row,state,budget,"compiled");
         assertEquals("production",row.getStage());assertEquals("running",row.getStatus());
-        assertEquals(10,budget.path("analysis").path("approvedCap").asLong());assertEquals(190,budget.path("production").path("approvedCap").asLong());
-        assertFalse(state.path("steps").isEmpty());verify(quote).quote(eq("u"),any());
+        assertEquals(10,budget.path("analysis").path("approvedCap").asLong());assertEquals(50,budget.path("production").path("approvedCap").asLong());
+        assertFalse(state.path("steps").isEmpty());verify(quote).quote(eq("u"),argThat(p -> {
+            for(JsonNode step:p.path("steps"))if("video".equals(step.path("operation").asText()))
+                if(!step.path("settings").path("video").path("optimize").isBoolean()||step.path("settings").path("video").path("optimize").asBoolean())return false;
+            return true;
+        }));
         assertTrue(cards.approved.isEmpty(),"the scene-page cap, not a fabricated dialogue approval, authorized this production");
     }
 
@@ -131,8 +135,8 @@ class StudioPlanExecutionServiceTest {
         planRun("compiled","production",PRODUCTION,40);
         org.springframework.test.util.ReflectionTestUtils.setField(service,"quoter",mock(StudioPlanQuoter.class));
         ObjectNode state=om.createObjectNode();state.putArray("steps");
-        state.putObject("videoTask").putObject("request").putObject("configuration").put("duration",12).put("ratio","9:16").put("model","ep-h3").put("tier","768p");
-        ObjectNode budget=om.createObjectNode();budget.putObject("analysis").put("approvedCap",100).put("spent",10);
+        state.putObject("videoTask").putObject("request").putObject("configuration").put("duration",12).put("ratio","9:16").put("model","ep-h3").put("tier","768p").put("optimize",false);
+        ObjectNode budget=om.createObjectNode();budget.putObject("analysis").put("approvedCap",45).put("spent",10);
         var row=IpPlanExecution.builder().id("PEX-scene").projectId("p").ownerUserId("u").stage("analysis").status("running").build();
         assertThrows(BusinessException.class,()->service.confirmVideoProduction(row,state,budget,"compiled"));
         assertEquals("analysis",row.getStage());assertTrue(state.path("steps").isEmpty());assertFalse(budget.has("production"));

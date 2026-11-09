@@ -1,0 +1,15 @@
+.studio-toolbox { display: grid; grid-template-columns: 1fr; gap: 16px; }
+.ip-brand-surface .studio-toolbox-card { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 28px; border: 1px solid var(--scene-line, #e4e7ed); border-radius: 18px; color: inherit; background: #fff; text-decoration: none; }
+.studio-toolbox-card > svg { color: #7163c4; }
+.studio-toolbox-card h2 { margin: 0; font-size: 18px; font-weight: 600; }
+.studio-toolbox-card p { margin: 0; font-size: 13px; line-height: 1.7; }
+.studio-toolbox-card small { color: #6b7280; font-size: 12px; line-height: 1.7; }
+.studio-toolbox-card span { display: flex; align-items: center; gap: 7px; margin-top: auto; padding-top: 20px; font-size: 13px; font-weight: 600; }
+.studio-toolbox-card:hover, .studio-toolbox-card:focus-visible { border-color: #8a7ac8; }
+html[data-layout="desktop"] .studio-toolbox { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.studio-clone-modes { padding: 0 0 16px; }
+.studio-clone-modes > div { display: flex; gap: 4px; padding: 4px; border-radius: 10px; background: #f3f4f8; }
+.studio-clone-modes button { flex: 1; min-width: 0; min-height: 36px; padding: 6px; border: 0; border-radius: 7px; background: transparent; color: #636977; font: inherit; font-size: 12px; cursor: pointer; }
+.studio-clone-modes button[aria-pressed="true"] { background: #fff; color: #413276; box-shadow: 0 1px 4px #24203912; }
+.studio-clone-modes button:focus-visible { outline: 2px solid #8a7ac8; outline-offset: 2px; }
+.studio-clone-modes p { margin: 10px 0 0; color: #6b7280; font-size: 12px; line-height: 1.6; }

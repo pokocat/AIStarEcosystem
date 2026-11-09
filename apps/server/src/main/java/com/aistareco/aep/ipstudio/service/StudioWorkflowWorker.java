@@ -36,6 +36,7 @@ public class StudioWorkflowWorker {
     @org.springframework.beans.factory.annotation.Autowired private org.springframework.beans.factory.ObjectProvider<com.aistareco.aep.ipstudio.skill.StudioSkillDraftSink> skillDrafts;
     @org.springframework.beans.factory.annotation.Autowired private org.springframework.beans.factory.ObjectProvider<com.aistareco.aep.ipstudio.dialogue.StudioDialogueEvents> dialogueEvents;
     private static final Logger log=LoggerFactory.getLogger(StudioWorkflowWorker.class);
+    @org.springframework.beans.factory.annotation.Autowired private StudioDepthVideoService depthVideo;
     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.billing.service.ModelChargeService modelCharges;
     // H3 提示词改写完在同一行上提交视频（StudioWorkflowService#submitVideoRewrite）。
     @org.springframework.beans.factory.annotation.Autowired private org.springframework.beans.factory.ObjectProvider<IpRunService> videoRuns;
@@ -68,7 +69,7 @@ public class StudioWorkflowWorker {
     public void runBlocking(String id) {
         IpRun run=runs.findById(id).orElse(null);
         if(run==null||!IpRun.STATUS_RUNNING.equals(run.getStatus())) return;
-        if(queue!=null && !"studio-assemble".equals(run.getKind())) {
+        if(queue!=null && !Set.of("studio-assemble","studio-video-control").contains(run.getKind())) {
             JsonNode input;
             try {input=mapper.readTree(run.getInputJson());}catch(Exception e){finish(id,null,e);return;}
             var admission=queue.acquire(AiGenerationQueueService.WORKFLOW,id,queue.endpointFor(AiModelPurpose.DAP_PERSONA,input.path("_exec").path("endpointId").asText(null)),false);
@@ -101,6 +102,10 @@ public class StudioWorkflowWorker {
             }
             if("video".equals(operation)&&input.path("_exec").has("h3")) {rewriteVideo(id,input,output);return;}
             switch(operation) {
+                case "video-control" -> {
+                    output.setAll(depthVideo.convert(run.getOwnerUserId(),input.path("references").path(0).path("storageKey").asText(),
+                            ()->progress(id,15,"video-control.depth")));
+                }
                 case "text","script","storyboard","assistant","asset-extract","recreation","check","director" -> {
                     JsonNode script;StudioRecreation.Study recreationStudy=null;ObjectNode recreationFallback=mapper.createObjectNode();
                     if(mock&&"director".equals(operation)) script=com.aistareco.aep.ipstudio.director.DirectorFixtures.output(mapper,input.path("_director"));
@@ -340,7 +345,7 @@ public class StudioWorkflowWorker {
         StudioTokenBilling.requireRoute(input,endpoint.endpoint());
         var rate=mapper.treeToValue(exec.path("tokenPricing"),AiChatTokenPricing.Rate.class);long[][] used={new long[]{0,0}};
         var capNode=exec.path("segmentCap");
-        var cap=capNode.isObject()?new StudioFilmStudy.SegmentCap(capNode.path("maxSegmentSec").asDouble(),capNode.path("maxSegments").asInt(8)):null;
+        var cap=capNode.isObject()?new StudioFilmStudy.SegmentCap(capNode.path("maxSegmentSec").asDouble(),capNode.path("maxSegments").asInt(8),capNode.path("minSegmentSec").asDouble(0)):null;
         String focus=input.path("prompt").asText("").strip();
         // 用户写了想重点分析什么：那句话的说法在提示词库 stage-analysis-focus，仍由 chat 接在系统提示词后面（分批读图的续跑指纹不变）
         String focusLine=focus.isBlank()?"":recreationStage(input,"stage-analysis-focus",Map.of("focus",focus),null).user();

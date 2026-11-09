@@ -400,10 +400,11 @@ export function executionRestoreUpserts(execution: StudioPlanExecution, runs: Re
     const run = stepOutputRun(step, runs);
     if (!run) continue;
     const output = run.output || {}, operation = step.operation;
-    const type = operation === 'image' ? 'image' : operation === 'video' || operation === 'assemble' ? 'video' : 'text';
+    const type = operation === 'image' ? 'image' : operation === 'video' || operation === 'assemble' || operation === 'video-control' ? 'video' : 'text';
     // A step bound to a prepared object fills it (StudioPlanExecutor.nodeEvents: op update).
     const data = stepUpsert(execution, nodeId, type, step.title, step.id, run.id, output.mock, nodeId === executionNodeId(execution.id, step.stage, step.id) ? 'create' : 'update');
     const metadata = meta(data), studio = metadata.studio!;
+    if (operation === 'video-control') studio.includeInWork = false;
     const prompt = runSentPrompt(run);
     if (prompt) metadata.prompt = prompt;
     if (type !== 'text') {
@@ -425,6 +426,8 @@ export function executionRestoreUpserts(execution: StudioPlanExecution, runs: Re
       studio.kind = 'text'; metadata.content = output.textRevision?.content ?? output.text ?? '';
     }
     out.push(data);
+    for (const inputId of run.inputs?.canvasInputNodeIds ?? []) out.push({ nodeId, op: 'connect', executionId: execution.id, stepId: step.id, runId: run.id,
+      connection: { fromNodeId: inputId, toNodeId: nodeId } });
     if (operation !== 'check') for (const dependency of step.dependsOn) {
       const upstream = stageSteps(step.stage).find(s => s.id === dependency);
       if (!upstream || upstream.operation === 'check') continue;

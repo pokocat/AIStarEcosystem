@@ -729,12 +729,20 @@ public final class H3PromptRewrite {
                     String desc = referenceNote(meta, label);
                     if (desc == null) { warnings.add("优化稿没有提到" + kind.getValue() + " " + i + "，这份素材可能不起作用"); continue; }
                     defs = (defs + "\n" + label + " is the attached reference: " + desc).strip();
-                    retention = (retention + "\n" + label + ": " + ("Audio".equals(kind.getKey()) ? "reference" : "fully_preserved")
+                    retention = (retention + "\n" + label + ": " + ("Audio".equals(kind.getKey()) ? "reference" : controlVideo(meta, label) ? "attribute_transfer" : "fully_preserved")
                             + " - used as described in subject_definitions.").strip();
                     notes.add("优化稿漏了" + kind.getValue() + " " + i + " 的说明，已按素材清单补上");
                 }
             // 分镜图管构图、机位、人物位置和受光，导演台要 H3 照着拍：模型标成「部分保留」「只取大致相似」就改回完全保留
             //（2026-10-31 cl45 真调第 1 次标了 weak_reference）。只改关系标记，后面的说明不动；画布没有这个标记，不受影响。
+            // 深度复刻的控制视频（深度图 / 骨骼图）只能迁移动作和机位：标成完全保留，H3 会把灰色画面或火柴人原样画出来（ReShot 的 H3 示例同此）。
+            for (JsonNode c : meta.path("controlVideos")) {
+                Matcher m = Pattern.compile("(?m)^(" + Pattern.quote(c.asText()) + "[^\\n]*?:\\s*)(fully_preserved|partially_preserved|weak_reference)\\b").matcher(retention);
+                if (m.find()) {
+                    retention = m.replaceAll("$1attribute_transfer");
+                    notes.add("动作参考视频的保留关系已改为只迁移动作");
+                }
+            }
             String board = meta.path("storyboardPicture").asText("");
             if (!board.isEmpty()) {
                 Matcher m = Pattern.compile("(?m)^(" + Pattern.quote(board) + "[^\\n]*?:\\s*)(partially_preserved|attribute_transfer|weak_reference)\\b").matcher(retention);
@@ -792,6 +800,11 @@ public final class H3PromptRewrite {
         ArrayNode n = result.putArray("notes");
         notes.forEach(n::add);
         return result;
+    }
+
+    private static boolean controlVideo(JsonNode meta, String label) {
+        for (JsonNode c : meta.path("controlVideos")) if (label.equals(c.asText())) return true;
+        return false;
     }
 
     /** 素材清单里这一份的英文说明（去掉「Written notes」后面的中文资产描述）；旧任务没记清单或找不到时返回 null。 */

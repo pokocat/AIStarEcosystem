@@ -37,6 +37,7 @@ public class StudioVideoTaskService {
     private final IpProjectService projects;
     private final StudioVideoService videos;
     private final ObjectMapper mapper;
+    @org.springframework.beans.factory.annotation.Autowired private StudioCloneVideoPlan clones;
 
     public StudioVideoTaskService(IpPlanExecutionRepository repository,IpRunRepository runs,StudioPlanExecutionService executions,
             SegmentedVideoService segmented,StudioWorkflowService workflow,StudioPlanQuoter quoter,StudioSkillRules skills,
@@ -46,6 +47,7 @@ public class StudioVideoTaskService {
     }
 
     public Quote price(String user,String kind,String model,String mode,String tier,int duration,String ratio,int images,boolean character,boolean voice,boolean optimize) {
+        if(StudioCloneVideoPlan.nativeClone(kind))return clones.price(user,kind,model,tier,duration,ratio,images,character,voice,optimize);
         if(!Set.of("direct","segmented","recreation").contains(kind))throw invalid("请选择制作方式");
         if(!"direct".equals(kind)) {
             var p=segmented.price(user,model,tier,duration,ratio,images,character,voice,optimize);
@@ -114,6 +116,14 @@ public class StudioVideoTaskService {
             metadata.set("direct",mapper.valueToTree(req.video()));
             steps.addObject().put("id","video").put("operation","video").put("title","生成视频").put("execution","auto")
                     .put("quotedCost",estimate).put("prompt",req.video().prompt()).putObject("settings").put("operation","video");
+            rules=skills.requireActive("video-generation");
+        } else if(StudioCloneVideoPlan.nativeClone(req.kind())) {
+            context.addAll(clones.build(user,projectId,req.kind(),req.sourceNodeId(),req.configuration(),plan));
+            var snapshot=metadata.putObject("cloneKeys");
+            var doc=projects.readDoc(projects.required(user,projectId));
+            for(String id:context)snapshot.put(id,IpDocs.primaryStorageKey(IpDocs.node(doc,id)));
+            quoter.quote(user,plan);
+            estimate=plan.path("budget").path("estimated").asLong();
             rules=skills.requireActive("video-generation");
         } else if("recreation".equals(req.kind())) {
             if(req.configuration()==null||req.sourceNodeId()==null)throw invalid("请添加参考视频");

@@ -241,6 +241,7 @@ public class StudioPlanExecutionService {
                 if(config.hasNonNull("model"))settings.put("model",config.path("model").asText());
                 settings.put("aspectRatio",config.path("ratio").asText("9:16"));
                 ((ObjectNode)settings.path("video")).put("resolutionTier",config.path("tier").asText());
+                if(config.path("optimize").isBoolean())((ObjectNode)settings.path("video")).put("optimize",config.path("optimize").asBoolean());
                 seconds+=settings.path("durationSec").asInt();
             }
         }
@@ -249,7 +250,8 @@ public class StudioPlanExecutionService {
         long spent=budget.path("analysis").path("spent").asLong();
         long remaining=budget.path("analysis").path("approvedCap").asLong()-spent;
         long quoted=plan.path("budget").path("estimated").asLong();
-        if(Math.multiplyExact(quoted,3)>remaining)throw stale("分析已完成，制作费用超出上限，请在画布上查看方案后调整");
+        // The page already approved a total cap including its retry allowance; do not multiply that allowance again.
+        if(quoted>remaining)throw stale("分析已完成，制作费用超出上限，请在画布上查看方案后调整");
         var normalized=new LoadedPlan(runId,plan,loaded.rules(),loaded.contextNodeIds(),loaded.revision(),null);
         appendSteps((ArrayNode)state.withArray("steps"),normalized,"production");
         state.set("canvasContextIds",mapper.valueToTree(loaded.contextNodeIds()));

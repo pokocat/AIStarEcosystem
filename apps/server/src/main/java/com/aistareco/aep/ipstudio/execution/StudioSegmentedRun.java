@@ -52,6 +52,7 @@ public class StudioSegmentedRun {
             ObjectNode step = (ObjectNode) raw;
             String status = step.path("status").asText(), id = step.path("id").asText(), operation = step.path("operation").asText();
             if ("failed".equals(status)) {
+                if("AI_BAD_OUTPUT".equals(step.path("errorCode").asText()))continue;
                 if (step.path("attempt").asInt(1) < 3 && retryable(step.path("errorCode").asText(null))) {
                     log.info("[segmented] retry step execution={} step={} code={}", e.getId(), id, step.path("errorCode").asText(""));
                     again(step);
@@ -122,7 +123,8 @@ public class StudioSegmentedRun {
         if (code == null || code.isBlank()) return true;
         return !(code.equals(StudioPaymentMessage.CODE) || code.contains("INSUFFICIENT") || code.contains("RESTRICTED") || code.endsWith("_INVALID") || code.contains("NOT_CONFIGURED")
                 || code.startsWith("VIDEO_ASSET_") || code.contains("PRICE") || code.contains("UNAVAILABLE") || code.contains("UNKNOWN") || code.contains("RECONCILIATION")
-                || code.contains("RAW_ONLY") || code.contains("OUT_OF_SCOPE") || code.contains("MODERATION") || code.contains("UNSUPPORTED"));
+                // A nonempty truncated/unusable reply must be retained, not bought again automatically.
+                || code.equals("AI_BAD_OUTPUT") || code.contains("RAW_ONLY") || code.contains("OUT_OF_SCOPE") || code.contains("MODERATION") || code.contains("UNSUPPORTED"));
     }
 
     /** 脚本定下来以后：这段镜头少，第二张分镜图用不上（费用不发生，报价是上限）。 */

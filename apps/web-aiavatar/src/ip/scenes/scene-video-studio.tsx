@@ -19,7 +19,7 @@ import { SignedVideo } from "@/canvas-bridge/signed-video";
 import { getStudioPlanExecution } from "@/canvas-bridge/studio-plan-execution";
 import type { StudioPlanExecution, StudioSegmentedVideoPrice, StudioSegmentedVideoRequest } from "@ai-star-eco/types/ip-studio-workflow";
 import { describeSegmentedPrice, segmentedRecords, segmentedVideoPrice, startSegmentedVideo, type SegmentedRecord } from "@/canvas-bridge/studio-segmented";
-import type { StudioVideoTask, StudioVideoTaskCreate, StudioVideoTaskKind, StudioVideoTaskQuote } from '@ai-star-eco/types/ip-studio-video-task';
+import type { StudioVideoCloneMode, StudioVideoTask, StudioVideoTaskCreate, StudioVideoTaskKind, StudioVideoTaskQuote } from '@ai-star-eco/types/ip-studio-video-task';
 import type { EnterpriseBillingSelection } from '@ai-star-eco/types/enterprise';
 import type { StudioVideoSettings } from '@ai-star-eco/types/ip-studio-workflow';
 import { startVideoTask, prepareVideoTask, videoTaskPrice } from '@/canvas-bridge/studio-video-tasks';
@@ -54,6 +54,7 @@ import { AiMark } from "../studio-ai-icon";
 import { clampSceneDuration, sceneVideoDurations, sceneVideoInputs, sceneVideoSettings, type SceneVideoMaterial } from "./scene-video-plan";
 import { sceneScriptLayers } from "./scene-script-layers";
 import { classifyBlanks, missingFigures, overlongShots, scriptMissing, scriptPlaceholders, splitBlanks } from "./scene-script-check";
+import { CloneModePicker, cloneModeOf, cloneReferenceMode, cloneTool } from './scene-video-clone';
 
 type Media = StudioMediaImportResult & { title: string };
 type Slot = "image" | "character" | "voice" | "video";
@@ -65,7 +66,7 @@ const MAX_SECONDS = 60;
 const RECREATION = "reference-video-recreation";
 const EMPTY_DOC = { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
 
-const writeQuery = (scene: string, draft?: string) => writeSceneQuery("/video", scene, draft);
+const writeQuery = (scene: string, draft?: string, mode?: StudioVideoCloneMode) => writeSceneQuery("/video", scene, draft, undefined, mode);
 /** 草稿里没记过的条件按场景默认值。 */
 const videoDefaults = (scene?: VideoScene) => ({ language: LANGUAGES[0], duration: scene?.duration ?? 15, ratio: scene?.ratio ?? "9:16" });
 
@@ -79,6 +80,8 @@ export function SceneVideoStudio() {
   const router = useRouter();
   const auth = useRequireAuth();
   const ready = auth === "ok";
+  const query = useSceneQuery();
+  const [cloneMode, setCloneMode] = useState<StudioVideoCloneMode>(() => cloneModeOf(query.tool));
   const mobile = useSceneMobile();
   const showFailure = useStudioFailure();
   const { catalog, error: catalogError, retry: retryCatalog } = useSceneCatalog(ready);
@@ -145,7 +148,10 @@ export function SceneVideoStudio() {
   }, [ready, showFailure]);
   const textModel = studioChosenTextModel(caps, undefined);
   const scriptCost = caps?.mock ? 0 : textModel?.tokenPricing ? Math.ceil(textModel.tokenPricing.maxCost) : undefined;
-  const chosenVideo = (videoModels ?? []).find(m => m.endpointId === modelId) ?? videoModels?.find(m => m.isDefault) ?? videoModels?.[0];
+  const nativeClone = scene?.skill === RECREATION && cloneMode !== 'recreation';
+  const depthClone = nativeClone && cloneMode === 'depth';
+  const modelsForScene = nativeClone ? videoModels?.filter(m => !!cloneReferenceMode(m)) : videoModels;
+  const chosenVideo = (modelsForScene ?? []).find(m => m.endpointId === modelId) ?? modelsForScene?.find(m => m.isDefault) ?? modelsForScene?.[0];
   const contract = chosenVideo?.contract;
   const durations = contract ? sceneVideoDurations(contract) : [duration];
   const usedDuration = contract ? clampSceneDuration(duration, contract) : duration;
@@ -236,6 +242,7 @@ export function SceneVideoStudio() {
         const n = key ? [...nodes].reverse().find(x => x.metadata?.storageKey === key) : undefined;
         return n?.metadata?.storageKey && n.metadata.content
           ? { key: n.metadata.storageKey, url: n.metadata.content, title: n.title || "素材", fileName: n.title || "", bytes: 0, mimeType: n.metadata.mimeType || "",
+            ...(n.metadata.durationMs ? { durationSec: n.metadata.durationMs / 1000 } : {}),
             mediaType: n.type === CanvasNodeType.Audio ? "audio" : n.type === CanvasNodeType.Video ? "video" : "image" } : undefined;
       };
       // 选中哪些素材以草稿里记的为准（移除、更换都记了）；老草稿没记过，按画布上的素材推断。
@@ -249,21 +256,22 @@ export function SceneVideoStudio() {
       // 离开时的条件放回来：没发的那句话、选项、台词语言、清晰度、时长、画面、要不要先优化，停在「生成视频」时连改了一半的脚本一起
       // （存在草稿里，见 sceneVideoState；老草稿按最近一版脚本记的推断）。改稿因此沿用写那一版时的选项，不会悄悄回到默认值。
       const state = openedVideoState(project.doc, videoDefaults(from));
+      setCloneMode(cloneModeOf(state.cloneMode));
       setText(state.edit ? state.edit.prompt ?? "" : state.text); setPicked(state.options); setLanguage(state.language!); setTier(state.tier); setOptimize(state.optimize!);
       // 草稿里记过时长才算用户定的；没记过的按场景默认值，同样先按模型单段上限出。
       setDuration(state.duration!); setRatio(state.ratio!); durationTouched.current = !!project.doc.sceneVideoState?.duration;
       // 写过脚本还没采用：直接看编导写的那几版；采用过就回到编辑框接着改。
       setView(!state.edit && scriptNodes(project.doc).length ? "director" : "compose"); setScriptId(state.edit?.scriptId); setRevise(""); setNote(undefined);
       setHint(""); setTab(videoRows(project.doc).length || segmentedRecords(project).length ? "results" : "example");
-      writeQuery(from?.id ?? DEFAULT_SCENE, project.id);
+      writeQuery(from?.id ?? DEFAULT_SCENE, project.id, cloneModeOf(state.cloneMode));
     } catch (e) { if (onPage(ticket)) showFailure({ action: "打开草稿", error: e }); }
     finally { if (openingId.current === id) openingId.current = undefined; }
   }, [begin, settled, showDraft, onPage, showFailure]);
 
   // 地址栏里的场景 / 草稿（首页卡片、「最近」、前进后退都靠它，见 scene-query.ts）。
   // 带草稿号就打开那份（登录就绪后）；没有草稿号就到那个场景，页面上开着别的草稿时先离开它。
-  const query = useSceneQuery();
   const initialVideoEntry = useRef(query);
+  useEffect(() => { if (!query.draft && !query.task) setCloneMode(cloneModeOf(query.tool)); }, [query.tool, query.draft, query.task]);
   const taskOpen = !!selectedTask && query.task === selectedTask.id;
   useEffect(() => {
     if (!catalog) return;
@@ -405,6 +413,7 @@ export function SceneVideoStudio() {
       if (a.kind !== type) return [];
       const key = a.data.storageKey, url = a.kind === "image" ? a.data.dataUrl : a.data.url;
       return key && url ? [{ key, url, title: a.title, fileName: a.title, mediaType: type, mimeType: a.data.mimeType, bytes: a.data.bytes,
+        ...(a.kind === "video" || a.kind === "audio" ? { durationSec: a.data.durationSec } : {}),
         ...(a.kind !== "audio" ? { width: a.data.width, height: a.data.height } : {}) }] : [];
     });
     if (!chosen.length) throw new Error(type === "image" ? "请选择一张图片" : type === "video" ? "请选择一段视频" : "请选择一段声音");
@@ -517,7 +526,10 @@ export function SceneVideoStudio() {
   /** 爆款复刻生成之前卡在哪。 */
   const handoffBlocker = !scene ? "正在加载场景…" : scene.video?.required && !video ? `请添加${scene.video.label}`
     : scene.images.required && !images.length ? `请添加${scene.images.label}`
-    : scene.textRequired && !text.trim() ? "请填写要求" : "";
+    : scene.textRequired && !text.trim() ? "请填写要求"
+    : nativeClone && cloneMode === 'depth' && !caps?.operations.includes('video-control') ? '深度复刻暂不可用，请联系平台处理。'
+    : nativeClone && video?.durationSec && video.durationSec > Math.min(60, cloneReferenceMode(chosenVideo)?.references?.video.maxDurationSec ?? 60) + .05
+      ? `参考视频过长，当前模型最长支持 ${Math.min(60, cloneReferenceMode(chosenVideo)?.references?.video.maxDurationSec ?? 60)} 秒，请先裁剪或使用分镜复刻` : '';
 
   /**
    * 让编导写第一版（ask 是编辑框里的想法）或改一版（ask 是「修改意见」）。
@@ -686,7 +698,8 @@ export function SceneVideoStudio() {
   // 页面上的条件写进草稿（有草稿时）：刷新、从「最近」再打开都从离开的地方接着来。素材另记在 sceneInputs、视频模型在 sceneVideoModel。
   // 采用过脚本时，编辑框里的就是（可能改过的）脚本，记成 edit；没采用时记成那句想法。
   const videoState = useMemo<StudioSceneVideoState>(() => ({ text: scriptId ? "" : text, options: picked, language, ...(tier ? { tier } : {}), duration, ratio, optimize,
-    ...(scriptId ? { edit: { scriptId, prompt: text } } : {}) }), [text, picked, language, tier, duration, ratio, optimize, scriptId]);
+    ...(scene?.skill === RECREATION ? { cloneMode } : {}),
+    ...(scriptId ? { edit: { scriptId, prompt: text } } : {}) }), [text, picked, language, tier, duration, ratio, optimize, scriptId, cloneMode, scene?.skill]);
   useSceneStateSave("sceneVideoState", draft, videoState, persist, doc => openedVideoState(doc, videoDefaults(findVideoScene(catalogRef.current, draft?.sceneId))));
   const materials: SceneVideoMaterial[] = useMemo(() => {
     const nodes = doc.nodes as CanvasNodeData[];
@@ -707,7 +720,7 @@ export function SceneVideoStudio() {
    * 积分不足时能换的模型。标准价按换过去实际的时长、清晰度和素材算；会变的写进 changes，用户看过再生成。
    * 做不了现在的组合就算不出价，有赠款照样列出来，写明要调整，换过去也不会自动提交。
    */
-  const modelChoices = (videoModels ?? []).filter(m => m.selectableById).map(m => {
+  const modelChoices = (modelsForScene ?? []).filter(m => m.selectableById).map(m => {
     const fits = m.contract.tiers.filter(t => t.canvases.some(c => c.aspectRatio === ratio));
     // 和上面 usedTier 同一条规则：换过去报的价、写的变化，才是真正会提交的规格。
     const nextTier = (fits.find(t => t.tier === tier) ?? fits[0])?.tier;
@@ -727,7 +740,7 @@ export function SceneVideoStudio() {
   const ratios = contract?.tiers.find(t => t.tier === usedTier)?.canvases.map(c => c.aspectRatio).filter(r => r === "9:16" || r === "16:9") ?? ["9:16", "16:9"];
   // 三种入口共用任务工作区，后台按实际制作方式推进。
   const long = !recreation && !!contract && duration > contract.maxSeconds;
-  const shownDuration = recreation || long ? duration : usedDuration;
+  const shownDuration = recreation && !nativeClone || long ? duration : usedDuration;
   // 按钮旁的价按服务端报价显示（折扣、模型赠款、付款账户），本地价表只在报价回来之前垫着，也作为提交时的上限。
   const priceQuery = useMemo(() => chosenVideo && settings && videoQuote != null && !recreation && !long && caps && !caps.mock
     ? studioVideoPriceQuery(chosenVideo.selectableById ? chosenVideo.endpointId : undefined, settings, usedDuration, ratio) : undefined,
@@ -792,7 +805,7 @@ export function SceneVideoStudio() {
     return () => { clearTimeout(timer); controller.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [longKey]);
-  const taskKind: StudioVideoTaskKind = recreation ? 'recreation' : long ? 'segmented' : 'direct';
+  const taskKind: StudioVideoTaskKind = recreation ? cloneMode : long ? 'segmented' : 'direct';
   const [taskQuote, setTaskQuote] = useState<{ key: string; price?: StudioVideoTaskQuote; error?: string }>();
   // 爆款复刻的分析要写明用哪个模型（服务端必填）；其余按原来的规则，不可按编号选的模型走默认。
   const taskModel = recreation ? chosenVideo?.endpointId : chosenVideo?.selectableById && !caps?.mock ? chosenVideo.endpointId : undefined;
@@ -802,7 +815,7 @@ export function SceneVideoStudio() {
     const controller = new AbortController();
     const timer = setTimeout(() => {
       videoTaskPrice({ kind: taskKind, model: taskModel, mode: settings?.mode, tier: usedTier, duration: shownDuration, ratio,
-        images: images.length, character: !!character, voice: !!voice, optimize }, controller.signal)
+        images: images.length, character: !!character, voice: !!voice, optimize: optimize || depthClone }, controller.signal)
         .then(price => { if (!controller.signal.aborted) setTaskQuote({ key: taskPriceKey, price }); })
         .catch(error => { if (!controller.signal.aborted) setTaskQuote({ key: taskPriceKey, error: sceneHintText(error, '费用加载失败，请稍后刷新重试。') }); });
     }, 250);
@@ -866,7 +879,7 @@ export function SceneVideoStudio() {
     try { sessionStorage.setItem(VIDEO_TASK_SELECTION, task.id); } catch { /* UI preference */ }
     const current = new URLSearchParams(location.search);
     // 只带 task 的链接也写回完整地址：要打开任务自己的草稿，场景也要对。
-    if (current.get('task') !== task.id || current.get('draft') !== task.projectId) writeSceneQuery('/video', task.sceneId, task.projectId, task.id);
+    if (current.get('task') !== task.id || current.get('draft') !== task.projectId) writeSceneQuery('/video', task.sceneId, task.projectId, task.id, cloneModeOf(task.kind));
   };
   const openingTask = useRef(0);
   const openTask = async (task: StudioVideoTask) => {
@@ -1032,7 +1045,7 @@ export function SceneVideoStudio() {
   };
   async function startSceneTask(kind: StudioVideoTaskKind, pending?: StudioVideoTaskCreate) {
     if (busy || !scene || !chosenVideo) return;
-    const blocker = pending ? '' : kind === 'direct' ? videoBlocker : kind === 'recreation' ? handoffBlocker : longBlocker;
+    const blocker = pending ? '' : kind === 'direct' ? videoBlocker : ['recreation','depth','replacement'].includes(kind) ? handoffBlocker : longBlocker;
     if (blocker) { setHint(blocker); return; }
     if (!pending && (taskQuote?.key !== taskPriceKey || !taskQuote?.price)) { setHint(taskQuote?.error || '正在计算费用，请稍等'); return; }
     setBusy(true); setHint(''); setNote(undefined);
@@ -1047,8 +1060,8 @@ export function SceneVideoStudio() {
           slot: p.media.key === character?.key ? 'character' : p.media.key === voice?.key ? 'voice' : 'image' })) as StudioSegmentedVideoRequest['materials'];
         const clientRequestId = nanoid(), cap = taskQuote!.price!.cap;
         const configuration: StudioSegmentedVideoRequest = { clientRequestId, sceneId: scene.id, text: text.trim(), hasScript: !!scriptId,
-          options: sceneOptionValues(scene.options, picked), language, duration: kind === 'direct' ? usedDuration : duration, ratio,
-          model: taskModel, tier: usedTier, optimize, materials, budgetCap: cap };
+          options: sceneOptionValues(scene.options, picked), language, duration: kind === 'direct' || nativeClone ? usedDuration : duration, ratio,
+          model: taskModel, tier: usedTier, optimize: optimize || depthClone, materials, budgetCap: cap };
         const native = kind === 'direct' ? addVideoRow({ ...draftRef.current!.doc, nodes }, { title: scene.title, prompt: sentPrompt, script: text.trim(), scriptId,
           refIds: plan!.used.map(m => placed.find(p => p.media.key === m.key)?.node.id).filter((id): id is string => !!id),
           video: settings!, durationSec: usedDuration, aspectRatio: ratio, model: taskModel, maxCost: videoQuote ?? undefined }).request : undefined;
@@ -1058,7 +1071,7 @@ export function SceneVideoStudio() {
         const brief = (scriptId ? scripts.find(s => s.id === scriptId)?.metadata?.studio?.sceneDirector?.ask ?? '' : text).trim();
         const cut = draftSubject(brief);
         const subject = cut && brief.split(/[，。,.!?！？；;\n]/)[0].trim() !== cut ? `${cut}…` : cut;
-        request = await prepareVideoTask(projectId, { clientRequestId, kind, sceneId: scene.id, title: `${scene.title} · ${subject || `${configuration.duration} 秒`}`,
+        request = await prepareVideoTask(projectId, { clientRequestId, kind, sceneId: scene.id, title: `${recreation ? cloneTool(cloneMode).title : scene.title} · ${subject || `${configuration.duration} 秒`}`,
           configuration, video: native, budgetCap: cap, sourceNodeId: placed.find(p => p.media.key === video?.key)?.node.id,
           input: { nodes: snapshotNodes, sceneInputs: selection(), sceneVideoState: { ...videoState, duration: configuration.duration, tier: usedTier, ratio, optimize }, sceneVideoModel: chosenVideo.endpointId } }, shownEstimate);
         // 任务受理后才异步执行，积分不够要到那时才知道，只能落成一条「需处理」的记录：直接出片的价钱是确定的，受理前先问。
@@ -1123,7 +1136,7 @@ export function SceneVideoStudio() {
   const durationNote = !long && !recreation && contract && usedDuration !== duration
     ? contract.minSeconds === contract.maxSeconds ? `当前模型仅支持 ${usedDuration} 秒` : `当前模型最短 ${contract.minSeconds} 秒，将按 ${usedDuration} 秒生成` : "";
   const pickDuration = (n: number) => { durationTouched.current = true; setDuration(n); setHint(""); };
-  const goBlocker = (!videoModels ? '正在加载视频模型…' : !chosenVideo ? '暂无可用的视频模型' : '') || (recreation ? handoffBlocker : long ? longBlocker : videoBlocker) || (taskQuote?.key !== taskPriceKey ? '正在计算费用…' : taskQuote.error || '');
+  const goBlocker = (!videoModels ? '正在加载视频模型…' : !chosenVideo ? nativeClone ? '暂无支持视频参考的模型，请使用分镜复刻或联系平台处理。' : '暂无可用的视频模型' : '') || (recreation ? handoffBlocker : long ? longBlocker : videoBlocker) || (taskQuote?.key !== taskPriceKey ? '正在计算费用…' : taskQuote.error || '');
   // 编导页发送键点不了的原因，写在键旁边。提交和写脚本期间键在转圈、输入框也空了，这时不提示。
   const directorNote = busy || writing ? "" : scripts.length
     ? scriptBlocker(revise, !!latestChanges) || (!revise.trim() && !latestChanges ? "请填写修改意见" : "") : scriptBlocker(text);
@@ -1196,9 +1209,9 @@ export function SceneVideoStudio() {
         {imageSlot(scene.images.label)}
         {scene.id === "local-groupbuy" && ["产品图片", "环境图片"].map(label => imageSlot(label, true))}
       </>}
-      {(scene.character || scene.voice) && <i className="scene-media-divider" aria-hidden="true"/>}
-      {scene.character && tile("character", character, "角色", UserRound, true, () => { if (character) drop("character", character.key); setCharacter(undefined); })}
-      {scene.voice && tile("voice", voice, "声音", Mic, true, () => { if (voice) drop("voice", voice.key); setVoice(undefined); })}
+      {(scene.character || scene.voice || recreation) && <i className="scene-media-divider" aria-hidden="true"/>}
+      {(scene.character || recreation) && tile("character", character, "角色", UserRound, true, () => { if (character) drop("character", character.key); setCharacter(undefined); })}
+      {(scene.voice || recreation) && tile("voice", voice, "声音", Mic, true, () => { if (voice) drop("voice", voice.key); setVoice(undefined); })}
     </div>
   </>;
   const specPill =
@@ -1206,10 +1219,11 @@ export function SceneVideoStudio() {
       <button type="button" className="scene-pill" aria-expanded={settingsOpen} aria-label={`视频规格：${language}，${shownDuration} 秒，${ratio}${usedTier ? `，${usedTier.toUpperCase()}` : ""}`} onClick={() => setSettingsOpen(v => !v)}>
         <SlidersHorizontal size={14} strokeWidth={1.5}/><span>{language} · {shownDuration} 秒 · <RatioGlyph ratio={ratio}/>{ratio}{usedTier ? ` · ${usedTier.toUpperCase()}` : ""}</span><ChevronDown size={13} strokeWidth={1.6}/></button>
       {settingsOpen && <VideoSettingsPanel min={recreation ? Math.min(...scene.durations) : contract?.minSeconds ?? Math.min(...scene.durations)}
-        max={MAX_SECONDS} single={recreation ? undefined : contract?.maxSeconds} duration={duration} onDuration={pickDuration} segments={segments}
+        max={nativeClone ? contract?.maxSeconds ?? MAX_SECONDS : MAX_SECONDS} single={recreation ? undefined : contract?.maxSeconds} duration={nativeClone ? usedDuration : duration} onDuration={pickDuration} segments={segments}
         ratios={recreation ? ["9:16", "16:9"] : ratios} ratio={ratio} onRatio={setRatio}
         tiers={tiers.map(t => t.tier)} tier={usedTier} onTier={setTier}
-        language={language} onLanguage={setLanguage} optimizable={!!chosenVideo?.supportsPromptOptimization} optimize={optimize} onOptimize={setOptimize}
+        language={language} onLanguage={setLanguage} optimizable={!!chosenVideo?.supportsPromptOptimization} optimize={optimize || depthClone} onOptimize={setOptimize}
+        optimizeFixed={depthClone}
         options={scene.options} picked={picked} onPick={(key, choice) => setPicked(old => ({ ...old, [key]: choice }))} onClose={() => setSettingsOpen(false)}/>}
     </div>;
 
@@ -1272,6 +1286,10 @@ export function SceneVideoStudio() {
       </div>
 
       : <div className="scene-compose">
+        {recreation && <CloneModePicker mode={cloneMode} disabled={busy || uploading !== undefined} onChange={mode => {
+          setCloneMode(mode); setScriptId(undefined); setHint(''); writeQuery(scene.id, draftRef.current?.id, mode);
+          if (mode !== 'recreation') { durationTouched.current = false; setDuration(Math.min(duration, contract?.maxSeconds ?? 15)); }
+        }}/>}
         {mediaRow()}
 
         <div className="scene-box">
@@ -1291,13 +1309,13 @@ export function SceneVideoStudio() {
 
         <div className="scene-go-group">
           <div className="scene-pills">
-            {(videoModels?.length ?? 0) > 1 ? <div className="scene-pill is-select"><Cpu size={14} strokeWidth={1.5}/>
-                <StudioSelect compact label="视频模型" value={chosenVideo?.endpointId ?? ""} onChange={chooseVideoModel} options={(videoModels ?? []).map(m => ({ value: m.endpointId, label: m.name }))}/></div>
+            {(modelsForScene?.length ?? 0) > 1 ? <div className="scene-pill is-select"><Cpu size={14} strokeWidth={1.5}/>
+                <StudioSelect compact label="视频模型" value={chosenVideo?.endpointId ?? ""} onChange={chooseVideoModel} options={(modelsForScene ?? []).map(m => ({ value: m.endpointId, label: m.name }))}/></div>
               : <span className="scene-pill"><Cpu size={14} strokeWidth={1.5}/><span>{chosenVideo?.name ?? "视频模型"}</span></span>}
             {specPill}
           </div>
           <button type="button" className="scene-go" aria-label="生成视频" aria-describedby={hint || goBlocker ? "scene-video-go-note" : undefined} title={goBlocker || undefined}
-            disabled={busy || !!goBlocker || uploading !== undefined} onClick={() => void (recreation ? startSceneTask('recreation') : long ? startLong() : generate())}>
+            disabled={busy || !!goBlocker || uploading !== undefined} onClick={() => void (recreation ? startSceneTask(cloneMode) : long ? startLong() : generate())}>
             {busy && !writing ? <Loader2 size={16} className="studio-gallery-spinner"/> : null}
             <span>生成视频</span>
             {/* 普通视频的价格是确定的；长视频和爆款复刻要看实际用量，才写「约」。算不出就不显示，不编。 */}
@@ -1459,10 +1477,10 @@ function VideoRow({ row, run, busy, submitting, onRetry, onConfirm, onReuse, onS
 
 /** 视频规格：台词语言、时长（拖动，超过单段上限分段）、画面比例、清晰度，以及场景的几组选项。就地展开在按钮上方。 */
 function VideoSettingsPanel({ min, max, single, duration, onDuration, segments, ratios, ratio, onRatio, tiers, tier, onTier, language, onLanguage,
-  optimizable, optimize, onOptimize, options, picked, onPick, onClose }: {
+  optimizable, optimize, onOptimize, optimizeFixed, options, picked, onPick, onClose }: {
   min: number; max: number; single?: number; duration: number; onDuration: (n: number) => void; segments: number[];
   ratios: string[]; ratio: string; onRatio: (r: string) => void; tiers: string[]; tier?: string; onTier: (t: string) => void;
-  language: string; onLanguage: (l: string) => void; optimizable: boolean; optimize: boolean; onOptimize: (on: boolean) => void;
+  language: string; onLanguage: (l: string) => void; optimizable: boolean; optimize: boolean; onOptimize: (on: boolean) => void; optimizeFixed?: boolean;
   options?: StudioSceneOptionGroup[] | null; picked: Record<string, string>; onPick: (key: string, choice: string) => void; onClose: () => void;
 }) {
   const panel = useRef<HTMLDivElement>(null);
@@ -1491,7 +1509,10 @@ function VideoSettingsPanel({ min, max, single, duration, onDuration, segments, 
       <div className="scene-choice-row">{ratios.map(value => <button key={value} type="button" aria-pressed={value === ratio} onClick={() => onRatio(value)}><RatioGlyph ratio={value}/>{value}</button>)}</div></div>
     {tiers.length > 1 && <div className="scene-setting-row"><span>清晰度</span>
       <div className="scene-choice-row">{tiers.map(t => <button key={t} type="button" aria-pressed={t === tier} onClick={() => onTier(t)}>{t.toUpperCase()}</button>)}</div></div>}
-    {optimizable && <div className="scene-setting-row" role="group" aria-label="提示词"><span>提示词</span>
+    {optimizable && optimizeFixed && <div className="scene-setting-row" role="group" aria-label="提示词"><span>提示词</span>
+      {/* 服务端对深度复刻总是先优化（StudioCloneVideoPlan.optimize）：动作参考视频要按模型的写法单独交代，按原文直发效果差。 */}
+      <p>深度复刻会按此模型的写法优化提示词，按实际用量另计。</p></div>}
+    {optimizable && !optimizeFixed && <div className="scene-setting-row" role="group" aria-label="提示词"><span>提示词</span>
       <div className="scene-choice-row">
         <button type="button" aria-pressed={optimize} onClick={() => onOptimize(true)}>优化后生成</button>
         <button type="button" aria-pressed={!optimize} onClick={() => onOptimize(false)}>按原文生成</button></div>
