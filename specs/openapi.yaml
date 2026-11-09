@@ -54,6 +54,54 @@ components:
 
   # ── Reusable response wrappers ──────────
   schemas:
+    VideoPortraitItem:
+      type: object
+      required: [id, libraryId, key, mediaType, label, status, updatedAt]
+      properties:
+        id: {type: string}
+        libraryId: {type: string}
+        key: {type: string}
+        mediaType: {type: string}
+        label: {type: string}
+        previewUrl: {type: string}
+        status: {type: string, enum: [needs_review, uploading, processing, active, failed, revoked]}
+        placement: {type: string, enum: [virtual, person]}
+        personId: {type: string}
+        errorMessage: {type: string}
+        updatedAt: {type: string, format: date-time}
+    VideoPortraitPerson:
+      type: object
+      required: [id, libraryId, name, status, expiresAt, createdAt]
+      properties:
+        id: {type: string}
+        libraryId: {type: string}
+        name: {type: string}
+        status: {type: string, enum: [verifying, active, failed, revoked]}
+        verificationUrl: {type: string, description: 仅本人可读的短期官方 H5 核验地址，不得缓存或记录}
+        expiresAt: {type: string, format: date-time}
+        createdAt: {type: string, format: date-time}
+    VideoPortraitOverview:
+      type: object
+      properties:
+        libraries: {type: array, items: {type: object, properties: {id: {type: string}, name: {type: string}}}}
+        items: {type: array, items: {$ref: '#/components/schemas/VideoPortraitItem'}}
+        persons: {type: array, items: {$ref: '#/components/schemas/VideoPortraitPerson'}}
+        agreement: {type: object, properties: {version: {type: string}, text: {type: string}, virtualDeclaration: {type: string}}}
+    VideoPortraitPreparation:
+      type: object
+      required: [items, candidateKeys]
+      properties:
+        libraryId: {type: string}
+        items: {type: array, items: {$ref: '#/components/schemas/VideoPortraitItem'}}
+        candidateKeys: {type: array, items: {type: string}}
+    VideoPortraitReview:
+      type: object
+      required: [jobId, items, awaiting, canContinue]
+      properties:
+        jobId: {type: string}
+        items: {type: array, items: {$ref: '#/components/schemas/VideoPortraitItem'}}
+        awaiting: {type: boolean}
+        canContinue: {type: boolean}
     ModelBillingTargetOption:
       type: object
       required:
@@ -698,7 +746,7 @@ components:
     DirectorWork:
       type: object
       description: '服务端拥有的导演作品（docs/ai-director-plan.md §10.3）；完整形状见 packages/types/src/director.ts DirectorWork。媒体只存 key，url 为出 wire 时的短期签名。clips 的 boardRefs / videoRefs 为当前图片参考的只读投影（assetId/name/label/key/url），按提示词与实际提交顺序排列；缺图保留编号且 key=null；视频图1为分镜图，首帧模式只有首帧。'
-      properties: { id: { type: string }, title: { type: string }, revision: { type: integer }, draft: { type: string }, draftRev: { type: integer }, settings: { type: object }, episodes: { type: array, items: { type: object } }, assets: { type: array, items: { type: object } }, clips: { type: array, items: { type: object } }, pipeline: { type: object, nullable: true }, tasks: { type: array, items: { type: object } }, pricing: { type: object }, imageModels: { type: array, description: '可以新选的图片模型：出图规格覆盖 1:1、16:9、9:16', items: { type: object, properties: { id: { type: string }, name: { type: string }, isDefault: { type: boolean }, creditCost: { type: integer } } } }, imageModelState: { type: object, description: '作品实际会用的图片模型（存着的或默认的）：available=false 为停用或不再开放；missingRatios 为出图规格缺的比例，对应画面出不了', properties: { id: { type: string, nullable: true }, name: { type: string, nullable: true }, explicit: { type: boolean }, available: { type: boolean }, creditCost: { type: integer, nullable: true }, missingRatios: { type: array, items: { type: string } } } }, textModels: { type: array, items: { type: object }, description: Studio 文本候选（不含展示用价格；文字按实际用量结算） }, textModelMode: { type: string, enum: [fixed, selectable] }, videoModels: { type: array, items: { type: object } }, videoLimits: { type: object, nullable: true }, reference: { type: string, description: '设定资料：拆分时从剧本开头分出来的内容，不拍成画面，提取资产和写分镜脚本时作为参考' }, referenceRev: { type: integer }, pendingSplit: { type: object, nullable: true, description: '待确认的分集（id、source=headings|model、preamble、episodes[{title,summary,startParagraph,endParagraph,paragraphs,chars,head,tail}]、notes、warnings）' }, canUndoSplit: { type: boolean }, restoredAt: { type: string, format: date-time, nullable: true, description: '最近一次从回收站恢复的时间，没恢复过为 null；有值时前端打开作品不自动发起付费任务（如创意对话开场）' }, draftEpisodeHeadings: { type: integer, description: '拆分前剧本里标好的「第N集」标题数，≥2 时按标题分集不扣积分' } }
+      properties: { id: { type: string }, title: { type: string }, revision: { type: integer }, draft: { type: string }, draftRev: { type: integer }, settings: { type: object }, episodes: { type: array, items: { type: object } }, assets: { type: array, items: { type: object } }, clips: { type: array, items: { type: object } }, pipeline: { type: object, nullable: true }, tasks: { type: array, items: { type: object } }, pricing: { type: object, properties: { image: { type: integer }, boardImage: { type: integer } } }, boardImage: { type: object, description: 'Resolved storyboard image endpoint, dimensions and price; error blocks generation', properties: { endpointId: { type: string }, name: { type: string }, size: { type: string }, creditCost: { type: integer }, error: { type: string } } }, imageModels: { type: array, description: '可以新选的图片模型：出图规格覆盖 1:1、16:9、9:16', items: { type: object, properties: { id: { type: string }, name: { type: string }, isDefault: { type: boolean }, creditCost: { type: integer } } } }, imageModelState: { type: object, description: '作品实际会用的图片模型（存着的或默认的）：available=false 为停用或不再开放；missingRatios 为出图规格缺的比例，对应画面出不了', properties: { id: { type: string, nullable: true }, name: { type: string, nullable: true }, explicit: { type: boolean }, available: { type: boolean }, creditCost: { type: integer, nullable: true }, missingRatios: { type: array, items: { type: string } } } }, textModels: { type: array, items: { type: object }, description: Studio 文本候选（不含展示用价格；文字按实际用量结算） }, textModelMode: { type: string, enum: [fixed, selectable] }, videoModels: { type: array, items: { type: object } }, videoLimits: { type: object, nullable: true }, reference: { type: string, description: '设定资料：拆分时从剧本开头分出来的内容，不拍成画面，提取资产和写分镜脚本时作为参考' }, referenceRev: { type: integer }, pendingSplit: { type: object, nullable: true, description: '待确认的分集（id、source=headings|model、preamble、episodes[{title,summary,startParagraph,endParagraph,paragraphs,chars,head,tail}]、notes、warnings）' }, canUndoSplit: { type: boolean }, restoredAt: { type: string, format: date-time, nullable: true, description: '最近一次从回收站恢复的时间，没恢复过为 null；有值时前端打开作品不自动发起付费任务（如创意对话开场）' }, draftEpisodeHeadings: { type: integer, description: '拆分前剧本里标好的「第N集」标题数，≥2 时按标题分集不扣积分' } }
 
     StudioVideoEffect:
       type: object
@@ -743,7 +791,7 @@ components:
       required: [mode, resolutionTier]
       properties:
         mode: { type: string, enum: [t2v, i2v, first_last_frame_video, universal_reference_video] }
-        resolutionTier: { type: string, enum: [544p, 768p] }
+        resolutionTier: { type: string, description: 须是所选模型 contract.tiers 中的标识 }
         seed: { type: integer, minimum: 0, nullable: true }
         firstFrameKey: { type: string, nullable: true }
         lastFrameKey: { type: string, nullable: true }
@@ -5080,7 +5128,7 @@ components:
                 required: [mode, resolutionTier]
                 properties:
                   mode: { type: string, enum: [t2v, i2v, first_last_frame_video, universal_reference_video] }
-                  resolutionTier: { type: string, enum: [768p, 544p] }
+                  resolutionTier: { type: string, description: 须是所选模型 contract.tiers 中的标识 }
                   seed: { type: integer, minimum: 0, maximum: 2147483647 }
     StudioTemplateVersion:
       type: object
@@ -5366,7 +5414,7 @@ components:
       type: object
       required: [kind, sceneId]
       properties:
-        kind: { type: string, enum: [image, video, video-script], description: 'image 出图描述；video 交给创作助手的话；video-script 交给编导写脚本的要求（AI 视频页）' }
+        kind: { type: string, enum: [image, video, video-script, video-variables], description: 'image 出图描述；video 交给创作助手的话；video-script 交给编导写脚本的要求（AI 视频页）；video-variables「视频裂变」从当前脚本里找可以替换的说法（只作为文字任务的 scene 提交，只读脚本、不看图）' }
         sceneId: { type: string }
         text: { type: string, description: 'image：补充要求；video / video-script：用户写的那句' }
         custom: { type: string, description: 'image：用户改过的完整描述' }
@@ -5385,6 +5433,23 @@ components:
         characterSeen: { type: boolean, description: 'video-script：出镜人物这张视频模型也用不上' }
         visual: { type: boolean, description: 'video-script：写脚本的模型能否看到图；false 时要求里不说「已附图片」「先看图」。缺省按能看到' }
         settingsChanged: { type: string, description: 'video-script 改稿：设置变了什么（时长、画面、参考图），由服务端的编导模板说成一句话' }
+        variant:
+          type: object
+          description: 'video-script 改稿：「视频裂变」AI 改写的第 index 版（共 total 版，1–8）；changes 是这一版要换的变量，空则由编导自己换。当前脚本（textEdit.content）必须有'
+          required: [index, total]
+          properties:
+            index: { type: integer, minimum: 1 }
+            total: { type: integer, minimum: 1, maximum: 8 }
+            changes:
+              type: array
+              maxItems: 8
+              items:
+                type: object
+                required: [name, from, to]
+                properties:
+                  name: { type: string, maxLength: 80 }
+                  from: { type: string, maxLength: 80, description: '脚本里的原文' }
+                  to: { type: string, maxLength: 80 }
     StudioSceneComposed:
       type: object
       required: [text]
@@ -18002,3 +18067,84 @@ paths:
                 type: object
                 properties:
                   data: {$ref: '#/components/schemas/ModelBillingQuote'}
+
+  /v1/ip-studio/asset-library:
+    get:
+      tags: [ipstudio]
+      summary: 本人人像素材与核验记录
+      description: 仅本人可见，Cache-Control no-store；GET 不触发供应商核验或入库。
+      responses:
+        '200': {description: 人像素材、核验人物及当前授权说明, content: {application/json: {schema: {type: object, properties: {data: {$ref: '#/components/schemas/VideoPortraitOverview'}}}}}}
+  /v1/ip-studio/asset-library/check:
+    post:
+      tags: [ipstudio]
+      summary: 视频提交前准备人像素材
+      description: 仅官方素材库生效；检查引用归属，返回待处理记录与尚未登记的参考图 key。客户端本地人脸存在检测只作提示，不识别人或判定真人/AI；不确定时保留官方报错兜底。此接口不入库、不计费、不生成视频。
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [model, keys], properties: {model: {type: string}, keys: {type: array, maxItems: 12, items: {type: string}}}}}}}
+      responses:
+        '200': {description: 前置准备结果, content: {application/json: {schema: {type: object, properties: {data: {$ref: '#/components/schemas/VideoPortraitPreparation'}}}}}}
+        '400': {description: 引用或数量无效}
+  /v1/ip-studio/asset-library/items:
+    post:
+      tags: [ipstudio]
+      summary: 登记本人参考人像
+      description: 校验 key 归属，幂等登记本地待确认记录，不调用官方入库，不代替用户声明。
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [libraryId, key, mediaType], properties: {libraryId: {type: string}, key: {type: string}, mediaType: {type: string, enum: [image, video, audio]}, label: {type: string}}}}}}
+      responses: {'200': {description: 素材记录, content: {application/json: {schema: {type: object, properties: {data: {$ref: '#/components/schemas/VideoPortraitItem'}}}}}}, '400': {description: 非本人素材或配置无效}}
+  /v1/ip-studio/asset-library/items/{id}/declaration:
+    parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+    post:
+      tags: [ipstudio]
+      summary: 确认人像类型并提交官方审核
+      description: 须本人明确同意当前版本。真人须选择本人已核验人物；虚拟人像须声明不与自然人雷同。并发仅上传一次，入库异步，未到 Active 不可用于生成。
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [kind, accepted, agreementVersion], properties: {kind: {type: string, enum: [person, virtual]}, personId: {type: string}, accepted: {type: boolean}, agreementVersion: {type: string}}}}}}
+      responses: {'200': {description: 素材审核状态}, '400': {description: 需同意授权、需完成人物核验或提交频繁}, '404': {description: 非本人记录}}
+  /v1/ip-studio/asset-library/items/{id}/refresh:
+    parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+    post:
+      tags: [ipstudio]
+      summary: 刷新素材审核结果
+      description: 仅查询已有官方素材；不重新上传、不创建视频。HTTP 200 且素材 Failed 仍为审核失败。
+      responses: {'200': {description: 素材审核状态}, '404': {description: 非本人记录}}
+  /v1/ip-studio/asset-library/persons:
+    post:
+      tags: [ipstudio]
+      summary: 开始本人 H5 核验
+      description: 须明确同意当前版本；clientRequestId 幂等，令牌加密落库，H5 链接仅本人可读且不缓存。H5 创建成功不代表已核验。
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [libraryId, name, clientRequestId, accepted, agreementVersion], properties: {libraryId: {type: string}, name: {type: string, maxLength: 64}, clientRequestId: {type: string}, accepted: {type: boolean}, agreementVersion: {type: string}}}}}}
+      responses: {'200': {description: 本人核验会话}, '400': {description: 输入或授权无效}}
+  /v1/ip-studio/asset-library/persons/{id}/refresh:
+    parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+    post:
+      tags: [ipstudio]
+      summary: 查询官方本人核验结果
+      description: 服务端调用 GetVisualValidateResult，取得 GroupId 才认定通过，不能信任前端参数。
+      responses: {'200': {description: 核验人物状态}, '404': {description: 非本人记录}}
+  /v1/ip-studio/asset-library/persons/{id}:
+    parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+    delete:
+      tags: [ipstudio]
+      summary: 撤销本人授权
+      description: 本地立即停止引用，删除官方组；删除失败可重试。与在途核验、入库互斥，晚到的结果不得恢复授权。
+      responses: {'200': {description: 已撤销}, '404': {description: 非本人记录}}
+  /v1/ip-studio/asset-library/reviews/{id}:
+    parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+    get:
+      tags: [ipstudio]
+      summary: 当前视频任务的人像核验上下文
+      responses: {'200': {description: 仅该任务引用的素材, content: {application/json: {schema: {type: object, properties: {data: {$ref: '#/components/schemas/VideoPortraitReview'}}}}}}, '404': {description: 非本人任务}}
+  /v1/ip-studio/asset-library/reviews/{id}/resume:
+    parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+    post:
+      tags: [ipstudio]
+      summary: 人像审核通过后继续原视频任务
+      description: 仅 queued、人像待核验、无官方任务号且全部素材 Active 时条件更新。复用原任务、原请求及冻结，不新增任务或重复冻结；事务提交后重新派发，重复请求幂等。受理不明及已有任务号一律不得重提。
+      responses: {'200': {description: 原任务已恢复}, '400': {description: 核验未完成或等待超时}, '404': {description: 非本人任务}}
+  /v1/asset-library/callback:
+    get:
+      tags: [ipstudio]
+      security: []
+      summary: 官方 H5 浏览器回跳
+      parameters: [{in: query, name: state, required: true, schema: {type: string}}]
+      description: 使用不可枚举 state 校验会话，服务端查询官方核验结果，移除供应商令牌后跳转。回调参数不能直接授予授权。
+      responses: {'303': {description: 返回核验页面}, '400': {description: 会话无效}}

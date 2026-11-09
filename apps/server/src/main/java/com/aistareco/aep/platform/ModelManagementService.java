@@ -27,6 +27,7 @@ public class ModelManagementService {
  private final AiModelAccessPolicyService modelAccess;
  private final ModelFeatureManagementService features;
  private final AiModelUsageService usage; private final AuditLogRepository audit; private final ObjectMapper mapper;
+ @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.materialvideo.VideoAssetLibraryAdminService videoAssetLibraries;
  public ModelManagementService(AiModelEndpointAdminService endpoints,AiAppBindingService bindings,PromptService prompts,AgentBotProviderAdminService agents,CelebrityActionPricingService prices,VideoStudioPricingService videoPrices,AiModelUsageService usage,AiAppSceneModelPolicyService scenePolicies,AiModelAccessPolicyService modelAccess,ModelFeatureManagementService features,AuditLogRepository audit,ObjectMapper mapper) {this.endpoints=endpoints;this.bindings=bindings;this.prompts=prompts;this.agents=agents;this.prices=prices;this.videoPrices=videoPrices;this.usage=usage;this.scenePolicies=scenePolicies;this.modelAccess=modelAccess;this.features=features;this.audit=audit;this.mapper=mapper;}
  @Transactional(rollbackFor=Exception.class)
  public Object execute(JsonNode c,String actor) throws Exception {return execute(c,actor,"platform-console");}
@@ -125,6 +126,11 @@ public class ModelManagementService {
     result=scenePolicies.saveDirectorImageDefault(text(c,"endpointId"),actor);break;
    }
    case "scenePolicySave": {var policy=dto(c.path("value"),AiAppSceneModelPolicyDto.class);scenePolicies.lockScene(policy.appCode(),policy.scene());before=scenePolicies.get(policy.appCode(),policy.scene()).orElse(null);result=scenePolicies.save(policy.appCode(),policy.scene(),policy,actor);break;}
+   case "videoAssetLibrarySave": {
+    onlyFields(c,Set.of("action","id","value"));
+    onlyFields(c.path("value"),Set.of("name","projectName","virtualGroupId","accessKeyId","secretAccessKey"));
+    result=videoAssetLibraries.save(text(c,"id"),dto(c.path("value"),com.aistareco.aep.service.materialvideo.VideoAssetLibraryAdminService.Configuration.class));break;
+   }
    case "endpoints":
    case "endpointCostList": return endpoints.list();
    case "presets": return endpoints.listPresets();

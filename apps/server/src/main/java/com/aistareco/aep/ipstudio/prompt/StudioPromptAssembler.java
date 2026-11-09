@@ -184,6 +184,12 @@ public class StudioPromptAssembler {
         calls.add(call);
     }
 
+    /** 这个环节的生效版本（或受理时冻结的版本）用到了某个变量：后台改过的旧版本可能没有新加的那一段。 */
+    public boolean stageUses(String key, Map<String, Integer> frozen, String var) {
+        StudioPromptEntry e = entry(key, frozen, true);
+        return PromptTemplate.names(e.system()).contains(var) || PromptTemplate.names(e.user()).contains(var);
+    }
+
     private StudioPromptEntry entry(String key, Map<String, Integer> frozen, boolean required) {
         Integer version = frozen == null ? null : frozen.get(key);
         if (version != null) {

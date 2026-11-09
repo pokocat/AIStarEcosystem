@@ -648,9 +648,10 @@ public class IpProjectService {
             String key=done?storage.keyOfStoredUrl(job.getVideoUrl()):null;
             if(done && key==null) {done=false;failed=true;}
             boolean review=!done&&!failed&&"VIDEO_SUBMISSION_UNKNOWN".equals(job.getErrorCode());
+            boolean portrait=!done&&!failed&&com.aistareco.aep.service.materialvideo.ArkPortraitLibrary.REVIEW_CODE.equals(job.getErrorCode());
             boolean recovering=!done&&!failed&&"VIDEO_RECONCILIATION_PENDING".equals(job.getErrorCode());
             String pending=review?"生成服务响应异常，提交结果待核对。请联系平台核对原任务，请勿重复生成；冻结积分将在核实后结算。"
-                    :recovering?MaterialVideoJobService.STILL_PROCESSING:null;
+                    :portrait?com.aistareco.aep.service.materialvideo.ArkPortraitLibrary.REVIEW_MESSAGE:recovering?MaterialVideoJobService.STILL_PROCESSING:null;
             if(review && job.getErrorMessage()!=null && !job.getErrorMessage().isBlank())pending=job.getErrorMessage();
             // Older pending jobs stored longer wording; the user sees the one sentence, the 追查号 is kept for error details.
             if(recovering && job.getErrorMessage()!=null) {
@@ -661,10 +662,14 @@ public class IpProjectService {
             var candidate=candidates.addObject().put("index",index).put("jobId",id)
                     .put("status",done?"done":failed?"failed":"running").put("pct",done||failed?100:job.getProgress())
                     .put("durationSec",job.getDurationSec());
+            if(portrait) {
+                if(!output.has("assetReviews"))output.putArray("assetReviews");
+                ((com.fasterxml.jackson.databind.node.ArrayNode)output.path("assetReviews")).addObject().put("jobId",id).put("reviewId",parseOrEmptyObject(job.getPayloadJson()).path("portrait_review_id").asText());
+            }
             if(pending!=null) {
                 candidate.put("errorCode",job.getErrorCode()).put("errorMessage",pending);
                 // Any uncertain item must remain visible even when other batch items are progressing or done.
-                if(pendingCode==null||review) {pendingCode=job.getErrorCode();pendingMessage=pending;}
+                if(pendingCode==null||review||portrait) {pendingCode=job.getErrorCode();pendingMessage=pending;}
             }
             // 厂商出片前改写提示词的结果（只读；受理后才知道，只用来解释成片与原文的差异）。
             var rewrite=com.aistareco.aep.service.materialvideo.VideoPromptRewrite.wire(om,job.getVariantConfigJson(),job.getPayloadJson());
@@ -698,7 +703,7 @@ public class IpProjectService {
         boolean allFailed=!active&&successes==0;
         String stage=active?(allQueued?"endpoint.queued":"视频生成中")
                 :allFailed?"视频生成失败":successes<ids.size()?"部分视频生成失败":"视频生成完成";
-        if(pendingCode!=null)stage="VIDEO_SUBMISSION_UNKNOWN".equals(pendingCode)?"video.submission_unknown":"video.recovering";
+        if(pendingCode!=null)stage="VIDEO_SUBMISSION_UNKNOWN".equals(pendingCode)?"video.submission_unknown":com.aistareco.aep.service.materialvideo.ArkPortraitLibrary.REVIEW_CODE.equals(pendingCode)?"video.asset_review":"video.recovering";
         var billing=modelCharges==null?null:modelCharges.breakdown(MaterialVideoJobService.CREDIT_REF_TYPE,ids);
         if(billing!=null){output.set("billingBreakdown",om.valueToTree(billing));cost=billing.displayedCost();}
         // 先改写提示词再出片的那一行（StudioWorkflowService#submitVideoRewrite）：改写按实际用量的花费算在一起（有模型明细时用明细的显示金额），

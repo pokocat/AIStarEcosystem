@@ -110,6 +110,55 @@ class StudioSceneCatalogTest {
         assertThat(catalog.compose(script("drama-twist", " ", List.of(), 15, "结尾再反转一次")).text()).contains("结尾再反转一次");
     }
 
+    private static StudioSceneCatalog.ComposeRequest variant(String id, String text, StudioSceneCatalog.Variant v) {
+        return new StudioSceneCatalog.ComposeRequest("video-script", id, text, null, null, List.of("商品图 1"), null, null, null, 15, "9:16",
+                null, null, null, null, null, false, null, null, v);
+    }
+
+    // 2026-11-09「视频裂变」：AI 改写的一版把这一版要换的变量交给编导，当前脚本作为改稿的底稿；剧情类没写要求也能改。
+    @Test
+    void aRewriteTakeHandsTheDirectorItsChangesAndTheCurrentScript() {
+        var changes = List.of(new StudioSceneCatalog.Change("场景", "厨房", "阳台"), new StudioSceneCatalog.Change("人物身份", "宝妈", "上班族"));
+        var assembled = catalog.sceneScript(variant("ecom-talking", "", new StudioSceneCatalog.Variant(2, 3, changes)), "宝妈在厨房里试用", false, null);
+        assertThat(assembled.user()).contains("第 2 版（共 3 版）", "场景从「厨房」换成「阳台」", "人物身份从「宝妈」换成「上班族」", "原来的要求", "宝妈在厨房里试用")
+                .doesNotContain("{{", "我没写具体要求");
+        // 没指定变量：由编导自己换，同样带上当前脚本。
+        var free = catalog.sceneScript(variant("drama-twist", " ", new StudioSceneCatalog.Variant(1, 1, List.of())), "原脚本", false, null);
+        assertThat(free.user()).contains("第 1 版（共 1 版）", "原脚本").doesNotContain("换成「");
+        // 没有底稿、版本号不对、变量不完整都挡下。
+        assertThatThrownBy(() -> catalog.sceneScript(variant("ecom-talking", "", new StudioSceneCatalog.Variant(1, 2, List.of())), "", false, null))
+                .hasFieldOrPropertyWithValue("code", INVALID);
+        assertThatThrownBy(() -> catalog.sceneScript(variant("ecom-talking", "", new StudioSceneCatalog.Variant(3, 2, List.of())), "x", false, null))
+                .hasFieldOrPropertyWithValue("code", INVALID);
+        assertThatThrownBy(() -> catalog.sceneScript(variant("ecom-talking", "", new StudioSceneCatalog.Variant(1, 2, List.of(new StudioSceneCatalog.Change("场景", "厨房", " ")))), "x", false, null))
+                .hasFieldOrPropertyWithValue("code", INVALID);
+        // 生效的编导版本没有改写段（后台改过的旧版本）：拒绝，不拿普通改稿冒充改写。
+        var entries = new java.util.ArrayList<com.aistareco.aep.ipstudio.prompt.StudioPromptEntry>();
+        for (var seed : com.aistareco.aep.ipstudio.prompt.StudioPromptLibrary.loadSeeds()) {
+            if (!seed.entry().key().equals("stage-scene-script")) { entries.add(seed.entry()); continue; }
+            String body = seed.entry().body().replaceAll("(?s)\\{\\{#hasVariant}}.*?\\{\\{/hasVariant}}\\n", "");
+            assertThat(body).doesNotContain("hasVariant");
+            entries.add(com.aistareco.aep.ipstudio.prompt.StudioPromptEntry.fromHeader(seed.header(), body, "old"));
+        }
+        var old = new StudioSceneCatalog(catalog.catalog(), com.aistareco.aep.ipstudio.prompt.StudioPromptLibrary.of(entries));
+        assertThatThrownBy(() -> old.sceneScript(variant("ecom-talking", "", new StudioSceneCatalog.Variant(1, 2, changes)), "x", false, null))
+                .hasFieldOrPropertyWithValue("code", "STUDIO_REWRITE_NOT_CONFIGURED");
+        assertThat(old.sceneScript(script("ecom-talking", "", List.of("商品图 1"), 10, "口语一点"), "x", false, null).user()).contains("口语一点");
+        // 普通改稿不受影响：没有改写版本就没有这一段。
+        assertThat(catalog.sceneScript(script("ecom-talking", "", List.of("商品图 1"), 10, "口语一点"), "x", false, null).user()).doesNotContain("共 1 版", "版（共");
+    }
+
+    @Test
+    void findingVariablesReadsOnlyTheScriptAndAsksForOneVariablePerLine() {
+        var req = new StudioSceneCatalog.ComposeRequest("video-variables", "ecom-talking", "", null, null, null, null, null, null, 15, "9:16", null, null);
+        var assembled = catalog.sceneVariables(req, "宝妈在厨房里试用", null);
+        assertThat(assembled.system()).contains("名称｜原文｜替换1｜替换2｜替换3", "只输出一个 JSON 对象");
+        assertThat(assembled.user()).contains("15 秒", "竖屏", "宝妈在厨房里试用").doesNotContain("{{", "参考素材（");
+        assertThatThrownBy(() -> catalog.sceneVariables(req, " ", null)).hasFieldOrPropertyWithValue("code", INVALID);
+        assertThatThrownBy(() -> catalog.sceneVariables(new StudioSceneCatalog.ComposeRequest("video-variables", "no-such", "", null, null, null, null, null, null, 15, "9:16", null, null), "x", null))
+                .hasFieldOrPropertyWithValue("code", INVALID);
+    }
+
     // 2026-10-30 审查 F07：编导按全部素材编号，出片时只认首帧的模型只拿第一张、纯文字模型一张都不拿，脚本里的「图2」视频模型看不到；
     // 写脚本的模型看不到图时还说「已附图片、先看图」，它就会编图里的东西。
     @Test

@@ -1,20 +1,20 @@
 # 视频素材库统一方案
 
-状态：OneToken 已接入统一框架，代码在分支上，未发布；火山官方因子账号没有权限暂缓（见第 12 节）。last-reviewed 2026-11-07。
+状态：OneToken 已接入统一框架；2026-11-09 新凭据的 `bingbing` 项目已通过官方素材组、虚拟人像入库及核验会话实测。Fast / Mini 已绑定 `ark-bingbing`，官方素材库和核验页已随 `20261109-ark-portraits-137b5754` 发布。本人刷脸和真人成片尚待验收。last-reviewed 2026-11-09。
 
 ## 现在做到哪了
 
 | | 状态 |
 |---|---|
-| 素材准备（`VideoAssetPreparer`）、适配器接口（`VideoAssetLibrary`）、素材库表（V75） | 已实现，未发布 |
-| OneToken 搬入（`OneTokenAssetLibrary`），两条 Seedance 绑定 `onetoken-main` | 已实现，未发布 |
-| 同账号的型号共用回执（2.0 和 2.5 同一张图只传一次） | 已实现，未发布 |
-| 引用失效时作废回执、重传一次再提交 | 已实现，未发布 |
-| 火山拒绝真人图时提示换 Seedance 2.5 或 MiniMax H3 | 已实现，未发布 |
-| 火山虚拟库、真人认证、弹窗、等审核 | 没做，等权限 |
+| 素材准备（`VideoAssetPreparer`）、适配器接口（`VideoAssetLibrary`）、素材库表（V75） | 已发布 |
+| OneToken 搬入（`OneTokenAssetLibrary`），两条 Seedance 绑定 `onetoken-main` | 已发布 |
+| 同账号的型号共用回执（2.0 和 2.5 同一张图只传一次） | 已发布 |
+| 引用失效时作废回执、重传一次再提交 | 已发布 |
+| 火山拒绝真人图时提示换 Seedance 2.5 或 MiniMax H3 | 已发布 |
+| 火山虚拟库、真人认证、人像核验页 | 新凭据权限已验证，已发布并绑定 Fast / Mini；本人刷脸及真人成片尚未验收 |
 | 聚算、七牛搬入 | 没做 |
 
-下面第 3 节往后写的是完整方案。接口和表现在只有 OneToken 用得到的部分，第 4 节和第 8 节标了哪些要等火山一起加。
+下文按 2026-11-09 当前工作区实现更新。生产已切换 Fast / Mini API Key 并绑定官方素材库；后续渠道和容量治理列为待办。
 
 ## 1. 为什么要做
 
@@ -44,15 +44,13 @@
 
 **OneToken：** 没有变化。
 
-**火山官方，AI 生成的人物：** 任务卡显示「素材审核中」，审核通过后自动继续，不用操作。
+**火山官方：** 画布、AI 视频和分段视频在调用生成接口及冻结积分之前检查参考素材。已入库的人像复用 `asset://`；已登记但未就绪的人像，以及前端本地检测到可能含人脸的图片，在当前页弹窗确认。检测只判断可能含人脸，不判断真人或虚拟，也不代替供应商审核。检测不可用或漏检时，由官方明确的人脸拒绝作为兜底。
 
-**火山官方，用户上传的人物图：** 第一次被拦下时弹窗，列出被点名的图，每张选一项：
+弹窗保留提示词、参考图和当前任务。用户选择「真人照片」并关联已核验人物，或选择「AI 虚拟人像」并确认声明后提交审核。真人首次通过官方 H5 本人核验取得专属素材组；新增同一人的素材仍需一致性审核。审核通过后点「继续生成」。关闭弹窗只推迟处理，不清空创作内容。
 
-- **真人：** 进入本人认证。电脑上显示二维码，本人手机扫码刷脸。通过后这张图入库。
-- **AI 生成的虚拟人物：** 进虚拟库审核。
-- **不用这张：** 回到编辑。
+资产页 `/assets/verification` 沿用白底、深墨、精简列表，默认「人像素材」，次级「本人核验」。页面与弹窗复用同一套 Ant Design 表格、表单、选择器、授权勾选及核验对话框，不使用原生下拉控件。
 
-入库过的图下次直接可用，不再弹窗。同一个人认证一次，之后加图不用再刷脸。积分在弹窗出现时已退回，全部通过后点「重新生成」，按原来的请求再提交一次，这时才重新冻结积分。
+官方**预置虚拟人像**已有资产 ID，可以直接引用；自有图片属于私域素材入库，不能仅加上 `asset://` 前缀。当前没有接官方预置库的浏览/检索界面。本人核验不能由服务端自动完成。
 
 ## 4. 总体结构
 
@@ -74,32 +72,7 @@ VideoAssetLibrary（适配器）         ← 新增接口
    └ PassThroughLibrary    没有素材库的渠道，给签名链接
 ```
 
-完整的适配器接口如下。现在代码里只有 OneToken 用得到的两个方法（交文件换引用、判断引用是否失效），其余的和火山的实现一起加，不提前写没人调用的方法：
-
-```java
-public interface VideoAssetLibrary {
-    Capabilities capabilities();
-    /** 上传或入库。同步渠道直接返回 active，异步渠道返回 processing。 */
-    LibraryReceipt submit(LibraryFile file, Placement placement, String groupId);
-    /** 查询异步入库结果。 */
-    LibraryReceipt refresh(String assetRef);
-    /** 从供应商拒绝里找出被点名的素材序号；不是素材问题就返回空。 */
-    List<Integer> flaggedInputs(int httpStatus, String responseBody);
-    /** 只有支持真人认证的渠道实现。 */
-    PersonSession startPersonCheck(String callbackUrl);
-    String finishPersonCheck(String token);
-    void delete(String assetRef);
-}
-
-record Capabilities(
-    IngestScope scope,      // ALL：全部入库；PEOPLE_ONLY：只入人物
-    boolean async,          // 是否要轮询审核结果
-    boolean personCheck,    // 是否支持真人认证
-    boolean virtualLibrary  // 是否支持虚拟人像入库
-) {}
-```
-
-`Placement` 只有三种：`PLAIN`（普通存放）、`VIRTUAL`（虚拟人像）、`PERSON`（真人）。
+当前 `VideoAssetLibrary` 保留 OneToken 的同步上传方法，并增加带 owner 的 `preparedReference`、`flagReview`、`forgetReferences` 和 `preparesLegacyInputs` 扩展。`ArkAssetLibrary` 负责官方渠道引用与拒绝映射，`ArkPortraitLibrary` 负责官方控制面、本人记录和素材状态；普通素材继续签名 URL，只有登记的人像进入官方库。不用空适配器或空引用表示成功。
 
 ## 5. 各渠道的流程
 
@@ -128,8 +101,8 @@ record Capabilities(
 | 被点名的图 | 处理 |
 |---|---|
 | 已有 `Active` 引用 | 不会被点名，直接用引用 |
-| 平台纯文生图（可确认生成时没用上传图当参考） | 自动进虚拟库，任务继续等 |
-| 其它（用户上传，或用上传图生成的） | 任务结束退积分，弹窗问用户 |
+| 尚未声明的含人脸图片（包括平台生成图片） | 弹窗明确选择人像类型并确认声明 |
+| 其它（用户上传，或用上传图生成的） | 同一弹窗确认，不自动声明为虚拟人物 |
 | 虚拟库审核失败 | 弹窗说明「被判定为含真人」，只能走真人认证或换图 |
 | 真人比对失败 | 弹窗说明「和认证的本人不一致」，建议换清晰正面图 |
 
@@ -139,96 +112,50 @@ record Capabilities(
 
 ## 7. 任务流转
 
-**不新增任务状态。** 现有的取消、过期和退积分都认 `queued`，新增状态要改一串地方。等审核的任务保持 `queued`，通过已有的 `queue.requeue(延迟)` 回到等待，不占端点名额。
+前置检查先于计费；处理期间尚未创建视频任务或冻结积分。
 
-```
-generateAsync
- ├ queue.acquire
- ├ preparer.prepare(job, spec)                ← 在 claimQueued 之前
- │    ├ READY → claimQueued → submit
- │    ├ WAIT  → queue.requeue(30 秒)，线程退出
- │    └ FAIL  → markFailed，退积分
- └ submit 被拒且点名素材
-      ├ 全部能自动入库 → submitting 回到 queued（条件更新，只有没有任务号才允许）→ 入库 → WAIT
-      └ 有要问用户的 → markFailed(VIDEO_ASSET_NEEDS_REVIEW)，退积分，details 带被点名的素材
-```
+已受理任务遇到官方明确的人脸拒绝时，只有未取得供应商任务号才进入 `queued + VIDEO_ASSET_NEEDS_REVIEW`，原请求、原任务及原冻结保留，等待期间不占端点槽、不重复调用。服务端记录核验轮次和开始时间，30 分钟未恢复则取消并释放原冻结。此为当前“原地继续”实现；取代第 12 节原先“失败退回后重新生成”的草案流程，已随 `20261109-ark-portraits-137b5754` 生效。
 
-几个容易错的地方：
+客户端从原运行记录的 `assetReviews` / 任务卡 `asset_reviews` 打开同一弹窗。核验完毕，`reviews/{id}/resume` 在服务端重验本人归属、素材 Active、真人授权有效和任务未受理，以条件更新清除阻断，事务提交后唤醒原队列。双击、刷新或丢失响应不新建任务、不二次冻结。
 
-- **退回 `queued` 只限明确拒绝。** 受理结果不明（`SubmissionUnknown`）照旧，不能重新提交。
-- **`CreditHoldSweeper` 会让久未结算的 `queued` 任务过期。** 素材准备的上限（暂定 30 分钟）必须短于它的超时，或在它那里判断。
-- **等待期间不能持锁、不能占连接。** `MaterialVideoInputAssets.resolve` 已改成不包事务，继续保持。
-- **频率限制按素材库算，不按端点算。** 火山免费档每分钟 3 次，超了走 `requeue`，不在线程里睡。OneToken 现有的线程内短等可以保留。
-- **长视频：** `VIDEO_ASSET_NEEDS_REVIEW` 不自动重试，执行停在 `needs_user`，用户处理完点「继续」。
-
-**为什么等用户时要退积分：** 刷脸可能拖很久，用户也可能走开，不该一直冻着积分。代价是通过后要多点一次「重新生成」。
+受理未知或已有供应商任务号不进入此流程，继续原有对账。取消与 30 分钟过期只释放一次。核验期间不持数据库锁或连接；官方上传按素材库限频。长视频不把核验错误当成自动重试的生成失败。
 
 ## 8. 数据
 
-全部是新增表和新增列，不改已执行的迁移。V75 已建 `video_asset_library`（`id`、`name`、`adapter`、`config_json`、时间戳）和 `ai_model_providers.asset_library_id`，并把规格里有 `inputAssets` 的端点绑到 `onetoken-main`。下面其余的列和表等火山一起加，编号按线上最大值 +1。
+V75 保留 `video_asset_library` 和模型的 `asset_library_id`；V78 新增加密凭据列以及 `video_asset_person`、`video_asset_portrait`，不修改已执行迁移。项目名、AIGC 素材组等非敏感配置存在 `config_json`；AK/SK 与本人会话凭证加密，不出 DTO、审计或日志。
 
-**`video_asset_library`（新表）：** 一个素材库对应一个供应商账号。
-
-| 字段 | 说明 |
-|---|---|
-| `id` | 如 `ark-main`、`onetoken-main` |
-| `adapter` | `ark` / `onetoken` / `jusuan` / `qiniu` |
-| `config_json` | 地址、路径、响应字段位置；OneToken 现在 `inputAssets` 的内容搬到这里 |
-| `credential_mode` | `endpoint`：用模型自己的 Key；`own`：用下面这列 |
-| `credential_encrypted` | 火山 AK/SK，加密存储，格式同音乐模型的 `AccessKeyId:AccessKeySecret` |
-| `project_name` | 火山项目名，必须和出视频的 API Key 同项目 |
-| `virtual_group_id` | 平台共用的虚拟人像组 |
-| `rate_per_minute`、`asset_limit` | 频率和容量，用于限流和告警 |
-
-**`ai_model_providers.asset_library_id`（新列）：** 模型属于哪个素材库。放列而不放规格 JSON，因为规格解析很严格，加字段会挡住回滚（见 `docs/releases/onetoken-assets-release-20261107.md`）。火山 Fast 和 Mini 共用一个素材库，同一张图不用传两次。
-
-**`material_video_input_asset`（加列，保留原表和旧数据）：**
-
-| 新增字段 | 说明 |
-|---|---|
-| `library_id` | 所属素材库 |
-| `status` | `processing` / `active` / `failed` / `expired` / `deleted` |
-| `placement` | `plain` / `virtual` / `person` |
-| `person_id` | 真人素材对应的人 |
-| `owner_user_id` | 素材所有者 |
-| `fail_code`、`fail_reason` | 入库失败原因 |
-| `declared_kind`、`declared_by`、`declared_at` | 用户声明记录 |
-| `last_used_at` | 用于清理 |
-
-**`video_asset_person`（新表）：** 一个用户在一个素材库里认证过的一个人。字段：`id`、`owner_user_id`、`library_id`、`name`、`group_id`、`status`（`verifying` / `active` / `failed` / `revoked`）、`consent_id`、`callback_token`、`byted_token`、时间戳。
+人像记录按 owner + library + storage key 隔离，保存官方资产 ID、入库状态、人物关联、声明版本与时间。真人组只能由官方本人核验结果取得。声明保留不可变记录；撤销后本地立即禁用后续引用，并删除官方素材组，处理迟到回调及并发上传的清理。
 
 ## 9. 接口
 
 | 接口 | 用途 |
 |---|---|
-| `POST /api/v1/ip-studio/asset-library/declarations` | 提交弹窗里每张图的选择，触发入库 |
-| `GET /api/v1/ip-studio/asset-library/items?keys=` | 查这些素材的入库状态，弹窗和任务卡轮询 |
-| `POST /api/v1/ip-studio/asset-library/persons` | 开始真人认证，返回链接和二维码内容 |
-| `GET /api/v1/ip-studio/asset-library/persons` | 我认证过的人 |
-| `GET /api/v1/ip-studio/asset-library/persons/{id}` | 认证进度 |
-| `DELETE /api/v1/ip-studio/asset-library/persons/{id}` | 撤销授权，同时删火山上的素材和素材组 |
-| `GET /api/v1/asset-library/callback` | 刷脸后浏览器回跳，无登录，靠 `callback_token` 校验 |
+| `GET /api/v1/ip-studio/asset-library` | 本人素材、人物及协议版本 |
+| `POST /api/v1/ip-studio/asset-library/check` | 官方模型引用的前置检查，不上传、不计费 |
+| `POST /api/v1/ip-studio/asset-library/items` | 登记本人素材，尚不上传官方 |
+| `POST /api/v1/ip-studio/asset-library/items/{id}/declaration` | 明确类型与授权后入库 |
+| `POST /api/v1/ip-studio/asset-library/items/{id}/refresh` | 查询已有资产审核结果 |
+| `POST /api/v1/ip-studio/asset-library/persons` | 创建本人核验会话 |
+| `POST /api/v1/ip-studio/asset-library/persons/{id}/refresh` | 服务端确认本人核验结果 |
+| `DELETE /api/v1/ip-studio/asset-library/persons/{id}` | 撤销及清理官方组 |
+| `GET /api/v1/ip-studio/asset-library/reviews/{id}` | 原任务需处理的素材 |
+| `POST /api/v1/ip-studio/asset-library/reviews/{id}/resume` | 审核通过后恢复原任务 |
+| `GET /api/v1/asset-library/callback` | 随机会话 state，服务器核对后 303 去除令牌 |
 
-视频任务和运行记录的返回内容新增 `assetReview`：状态、每张图的序号、缩略图、入库状态。错误码新增 `VIDEO_ASSET_NEEDS_REVIEW`、`VIDEO_ASSET_REVIEW_FAILED`、`VIDEO_ASSET_REVIEW_TIMEOUT`、`VIDEO_ASSET_QUOTA_EXCEEDED`。
-
-**回调不能只信地址参数：** 收到 `resultCode=10000` 后，还要用 `GetVisualValidateResult` 向火山确认，拿到 `GroupId` 才算通过。
-
-**前端：** `reportStudioError` 认出 `VIDEO_ASSET_NEEDS_REVIEW` 后打开同一个弹窗组件，画布、AI 视频页、导演台、长视频共用。
-
-**可以复用的：** `VolcOpenApiSigner`（火山签名）、`DapConsentService`（人脸授权协议和版本）、`/api/v1/real-auth/callback` 的回调写法、`DapModelinkPoller` 的轮询写法。真人记录不并入 `dap_material_group`，那张表和数字人的捕获流程绑得很紧，而且线上在用。
+回调不信任 URL 的成功参数，必须由 `GetVisualValidateResult` 返回 GroupId。素材入库后必须由 `GetAsset` 返回 Active，HTTP 200 本身不表示审核通过。控制面经现有签名管理命令 `videoAssetLibrarySave` 配置，校验项目及组归属；客户端不能填写官方凭据。
 
 ## 10. 边界和故障
 
 | 情况 | 处理 |
 |---|---|
-| 入库失败、超时 | 任务失败退积分，写明第几张、什么原因 |
+| 入库失败、超时 | 弹窗展示失败原因并允许处理；原任务等待超过 30 分钟取消并释放冻结 |
 | 引用失效（过期、被删、付费档逾期被回收） | 提交被拒时作废这条记录，重新入库一次；真人素材要重新上传，不用重新刷脸 |
 | 同一张图两个任务同时要入库 | 记录唯一，第二个任务等第一个的结果 |
-| 素材库容量满 | 报 `VIDEO_ASSET_QUOTA_EXCEEDED`，飞书告警；80% 时提前告警（接 `ModelQuotaAlerts`） |
-| 火山项目不一致 | 启动时不查，第一次真调时会失败；配置时用 `GetAsset` 验证 |
+| 素材库容量满 | 当前展示官方服务失败；专门错误映射与容量告警待补 |
+| 火山项目不一致 | 启动时不查，第一次真调时会失败；配置时用 `GetAssetGroup` 验证 |
 | OneToken 被拒且判真人 | 它没有真人认证，提示换模型 |
 | 用户撤销授权 | 调 `DeleteAsset` / `DeleteAssetGroup`，把记录标为 `revoked`，之后不能再引用 |
-| 长期不用的虚拟素材 | 30 天没用就 `DeleteAsset`，释放额度；真人素材不自动删 |
+| 长期不用的虚拟素材 | 后续补容量告警和清理策略，当前不自动删 |
 
 **费用：** 入库和认证不扣用户积分。火山的上传和被拒都不收费，真人认证现在限时免费。权益包月费由平台承担。
 
@@ -239,19 +166,21 @@ generateAsync
 | 阶段 | 内容 | 用户能看到什么 |
 |---|---|---|
 | **OneToken 接入（已做）** | 适配器和素材准备；OneToken 搬入；同账号共用回执；引用失效重传一次 | 引用失效时任务不再失败；同一张图换型号不重传 |
-| **0 真调（等权限）** | 开通权益，配 AK/SK；真调建组、入库、查询和一次刷脸，确认响应格式、审核时长、API 流程要不要登录火山账号、逼真的 AI 脸能否通过虚拟库审核 | 没有 |
-| **1 虚拟库** | 火山适配器和虚拟库；等审核；纯文生图自动入库后继续 | 平台生成的人物图在火山模型上能出片 |
-| **2 弹窗和真人库** | 弹窗、声明记录、真人认证和回调、已认证人物列表、撤销授权 | 用户上传的真人图能出片 |
+| **0 真调（部分完成）** | 凭据、建组、虚拟样本入库、查询和 H5 会话已完成；真人刷脸和成片待验收，确认响应格式、审核时长、API 流程要不要登录火山账号、逼真的 AI 脸能否通过虚拟库审核 | 没有 |
+| **1 虚拟库** | 火山适配器和虚拟库；等审核；明确声明后入库并继续 | 已发布，真实生成待验收 |
+| **2 弹窗和真人库** | 弹窗、声明记录、真人认证和回调、已认证人物列表、撤销授权 | 已发布，真实核验与成片待验收 |
 | **3 收尾** | 聚算、七牛搬入；额度告警和清理；导演台角色图提前入库，不用等拒绝；Studio 后台的素材库页（查看和设置模型绑定、用量） | 少一次等待，后台能看用量 |
 
-阶段 0 不用写业务代码，它的结果可能改变后面的设计，所以要先做。真调脚本要 AK/SK（存本机 `~/.config/aistar/ark-assets.key`，格式 `AK:SK`），子账号要有 `ArkFullAccess`，还要开通免费的 Entry 权益。
+当前已解除子账号权限阻碍。业务代码和 V78 已发布，Fast / Mini 已绑定官方素材库；真实本人刷脸、真人一致性审核与成片仍是未完成验收项。不得把示例预览、H5 会话或虚拟样本 Active 当作真人闭环。
 
-## 12. 已确认的决定（2026-11-07，用户）
+## 12. 历史决定（2026-11-07，用户）
+
+本节保留当时选择；权限和发布状态以后续顶部现状及第 7 节为准。
 
 1. **官方渠道只入人物。** 全部入库不符合官方用法，还要开 1 万元/月的档位。
 2. **权益先开免费的 Entry**（50 个素材、50 个组、每分钟 3 次）跑通，上量再升 1 万元/月（100 万个、每分钟 120 次）。
-3. **只有能确认的纯文生图才自动进虚拟库，其余问用户。** 这条承诺是公司签的。
-4. **等用户时退积分。** 代价是通过后多点一次「重新生成」。
+3. **原草案只有能确认的纯文生图才自动进虚拟库，其余问用户。** 当前实现对所有新登记的人像都要求显式声明，未增加自动虚拟声明。
+4. **原草案等用户时退积分。** 2026-11-09 为接入原地续接，当前工作区改为优先在冻结前核验；漏检后的明确拒绝保留原冻结最多 30 分钟，超时释放，见第 7 节。
 5. **先搭 OneToken。** 开通火山素材库时子账号没有权限，这部分先放下。在这之前，火山的 Seedance 2.0 Fast / Mini 仍不收含真人的参考图，报错时提示换模型，不替用户换。
 
 ## 13. 依据

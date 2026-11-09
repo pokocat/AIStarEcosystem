@@ -4,10 +4,11 @@ import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, u
 import { nanoid } from "nanoid";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowUp, Check, ChevronDown, Copy, Cpu, Download, FolderOpen, History, Image as ImageIcon, Loader2, Mic, PencilLine, Plus,
+import { ArrowUp, ArrowUpRight, AudioLines, Check, ChevronDown, Copy, Cpu, Download, FolderOpen, History, Image as ImageIcon, Loader2, Mic, PencilLine, Plus,
   RotateCcw, SlidersHorizontal, Square, UserRound, Video, X } from "lucide-react";
 import type { IpProject, IpProjectDoc, IpRun, IpSavedAsset, StudioMediaImportResult, StudioSceneComposeRequest, StudioSceneInputs, StudioNodeMetadata, StudioSceneOptionGroup, StudioSceneVideoState } from "@ai-star-eco/types";
-import type { StudioCapabilities } from "@ai-star-eco/types/ip-studio-workflow";
+import type { StudioCapabilities, StudioRunRequest } from "@ai-star-eco/types/ip-studio-workflow";
+import type { StudioTakeChange } from "@ai-star-eco/types/ip-studio-scenes";
 import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { HubTabBar } from "@/components/hub/ui";
@@ -23,6 +24,8 @@ import type { StudioVideoSettings } from '@ai-star-eco/types/ip-studio-workflow'
 import { startVideoTask, prepareVideoTask, videoTaskPrice } from '@/canvas-bridge/studio-video-tasks';
 import { SceneVideoWorkspace, VideoHistoryToggle, VideoTaskSettings, VIDEO_TASK_SELECTION } from './scene-video-workspace';
 import { SegmentedRow } from "./scene-segmented-row";
+import { takeNodes, takePriceQuery, takeRequest, takeScript } from './scene-video-takes';
+import { VideoMoreDialog, type MoreTake } from './scene-video-more';
 import { studioCapabilities, submitStudioRun } from "@/canvas-bridge/studio-api";
 import { attachmentNode } from "@/canvas-bridge/studio-attachments";
 import { isStudioBillingCancelled, studioCreditShortageChoice } from "@/canvas-bridge/studio-billing-cancel";
@@ -30,7 +33,7 @@ import { studioChosenTextModel } from "@/canvas-bridge/studio-text-model";
 import { studioVideoError, studioVideoQuote } from "@/canvas-bridge/studio-video";
 import { describeStudioVideoPrice, studioPreviewPayer, studioVideoPriceQuery, useStudioVideoPrice } from "@/canvas-bridge/studio-video-price";
 import { quoteVideoPrice } from "@/canvas-bridge/studio-model-quote";
-import { STUDIO_GRANT_HINT, studioCreditCheck } from "@/canvas-bridge/studio-billing";
+import { rememberStudioBilling, STUDIO_GRANT_HINT, studioCreditCheck } from "@/canvas-bridge/studio-billing";
 import { downloadMedia } from "@/canvas-bridge/download-media";
 import { CanvasNodeType, type CanvasNodeData } from "@/canvas/types/canvas";
 import { studioErrorMetadata, useStudioFailure } from "../studio-errors";
@@ -41,7 +44,7 @@ import { LibraryReferencePicker } from "../library-reference-picker";
 import { AUDIO_REFERENCE_NOTICE } from '@/canvas-bridge/recording-audio';
 import { IpStudioApi } from "../api";
 import { findVideoScene, useSceneCatalog, type VideoScene } from "./scene-catalog";
-import { addScriptNode, addVideoRow, applyRun, createSceneDraft, draftSubject, listSceneDrafts, openedVideoState, patchNode, resubmitRow, sceneInputsOf, scriptNodes, scriptOfRow, rejectedNextStep, submissionRejected, videoRows, withSceneInput, type SceneInputKind } from "./scene-drafts";
+import { addScriptNode, addTakeNode, addVideoRow, applyRun, createSceneDraft, draftSubject, listSceneDrafts, openedVideoState, patchNode, resubmitRow, restoreVideoTaskScript, sceneInputsOf, scriptNodes, scriptOfRow, rejectedNextStep, submissionRejected, videoRows, withSceneInput, type SceneInputKind } from "./scene-drafts";
 import { useSceneDraftStore, useSceneStateSave } from "./scene-draft-store";
 import { useSceneQuery, writeSceneQuery } from "./scene-query";
 import { SceneDrawer, SceneEmpty, SceneExample, SceneNoModel, SceneResultTabs, SceneSwitch, sceneFailureText, sceneHintText, sceneOptionValues, useSceneDrawerPin, useScenePopover, RatioGlyph, useSceneMobile, SlotEmpty } from "./scene-layout";
@@ -59,6 +62,11 @@ const LANGUAGES = ["中文", "英文"];
 const MAX_SECONDS = 60;
 const RECREATION = "reference-video-recreation";
 const EMPTY_DOC = { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
+const SCRIPT_SUGGESTIONS = [
+  { label: "开头更抓人", text: "把开头写得更抓人，用一个生活中的小困扰切入。" },
+  { label: "台词更自然", text: "让台词更自然，像朋友聊天，减少广告感。" },
+  { label: "突出商品卖点", text: "突出商品卖点，多用具体画面展示，不添加未经提供的功能。" },
+];
 
 const writeQuery = (scene: string, draft?: string) => writeSceneQuery("/video", scene, draft);
 /** 草稿里没记过的条件按场景默认值。 */
@@ -99,8 +107,12 @@ export function SceneVideoStudio() {
   const [tab, setTab] = useState<"example" | "results">("example");
   // 一个编辑框：放想法，或放「采用」进来的脚本，按框里的内容生成。点「AI 编导」整张卡换成编导那一页（点了还没开始，发送才写）。
   const [selectedTask, setSelectedTask] = useState<StudioVideoTask>();
+  /** 「视频裂变」开着的那条任务（换了任务就不显示）。 */
+  const [moreFor, setMoreFor] = useState<string>();
   const [mobileView, setMobileView] = useState<'compose' | 'result'>('compose');
   const [railOpen, setRailOpen] = useState(false);
+  // 视频裂变之后让任务列表马上重读，新的几条才排得进「本批视频」。
+  const [taskListRevision, setTaskListRevision] = useState(0);
   const [view, setView] = useState<"compose" | "director">("compose");
   const [scriptId, setScriptId] = useState<string>();
   const [revise, setRevise] = useState("");
@@ -121,7 +133,9 @@ export function SceneVideoStudio() {
   // 草稿与保存队列（换草稿时旧回包不改这一页，见 scene-draft-store.ts）。
   const { draft, current: draftRef, session, begin, remember, show, onPage, persist, settled } = useSceneDraftStore();
   const [picking, setPicking] = useState<Slot>();
+  const [imagePurpose, setImagePurpose] = useState<string>();
   const input = useRef<ScenePromptEditorHandle>(null);
+  const revisionInput = useRef<HTMLTextAreaElement>(null);
   const thread = useRef<HTMLDivElement>(null);
 
   // ── 模型 ──────────────────────────────────────────────────────────────
@@ -306,7 +320,7 @@ export function SceneVideoStudio() {
         // 这一轮读的是哪份草稿就写回哪份：读任务时页面换走了也不会写到别的草稿上。
         const projectId = draftRef.current?.id;
         const doc = draftRef.current?.doc ?? EMPTY_DOC;
-        const pending = [...scriptNodes(doc), ...videoRows(doc)].filter(n => n.metadata?.status === "loading" && n.metadata.studio?.runId);
+        const pending = [...scriptNodes(doc), ...videoRows(doc), ...takeNodes(doc.nodes as CanvasNodeData[])].filter(n => n.metadata?.status === "loading" && n.metadata.studio?.runId);
         for (const row of pending) {
           const run = await readRun(row.metadata!.studio!.runId!);
           if (!alive) return;
@@ -348,6 +362,8 @@ export function SceneVideoStudio() {
     return () => { alive = false; if (timer) clearTimeout(timer); };
   }, [draftId, executionId]);
   const scripts = scriptNodes(doc);
+  const scriptSuggestions = scene?.group === "commerce" ? SCRIPT_SUGGESTIONS : [...SCRIPT_SUGGESTIONS.slice(0, 2),
+    { label: "突出内容重点", text: "突出核心信息，多用具体画面展示，不添加未经提供的事实。" }];
   const rows = videoRows(doc);
   const latestScript = [...scripts].reverse().find(s => s.metadata?.status === "success" && s.metadata.content);
   const [stoppingScripts, setStoppingScripts] = useState<Record<string, "requesting" | "accepted">>({});
@@ -402,7 +418,7 @@ export function SceneVideoStudio() {
       const projectId = await ensureDraft(ticket);
       const max = scene.images.max ?? 6;
       const fresh = kind === "image" ? chosen.filter(m => !images.some(o => o.key === m.key)).slice(0, Math.max(0, max - images.length)) : chosen.slice(0, 1);
-      const titled = fresh.map((m, i) => ({ ...m, title: kind === "image" ? `${scene.images.label} ${images.length + i + 1}` : kind === "character" ? "出镜人物" : kind === "voice" ? "声音样本" : "参考视频" }));
+      const titled = fresh.map((m, i) => ({ ...m, title: kind === "image" ? `${scene.images.label} ${images.length + i + 1}` : kind === "character" ? "出镜人物" : kind === "voice" ? m.title || "声音样本" : "参考视频" }));
       // 选的时候换了草稿：素材照样记进它自己那份草稿，只是不放到新打开的这页上。
       if (onPage(ticket, projectId)) {
         if (kind === "image") setImages(old => [...old, ...titled].slice(0, max));
@@ -413,7 +429,10 @@ export function SceneVideoStudio() {
       await persist(doc => titled.reduce((next, media) => {
         const nodes = next.nodes as CanvasNodeData[];
         const made = placeMedia(nodes, media, type, nodes.filter(n => n.metadata?.origin === "upload").length);
-        const placed = nodes.some(n => n.id === made.id) ? next : { ...next, nodes: [...nodes, made] };
+        // 老草稿的声音节点可能只叫「声音样本」；重选同一文件时也保留资产库里的名称。
+        const placed = nodes.some(n => n.id === made.id)
+          ? kind === "voice" ? { ...next, nodes: nodes.map(n => n.id === made.id ? { ...n, title: media.title } : n) } : next
+          : { ...next, nodes: [...nodes, made] };
         return withSceneInput(placed, kind, media.key, "add", max);
       }, doc), projectId).catch(() => undefined);
     } catch (e) { showFailure({ action: "添加素材", error: e }); }
@@ -463,7 +482,7 @@ export function SceneVideoStudio() {
     const projectId = draftRef.current?.id;
     if (projectId) void persist(doc => withSceneInput(doc, kind, key, "remove"), projectId).catch(e => showFailure({ action: "移除素材", error: e }));
   };
-  const choose = (kind: Slot) => setPicking(kind);
+  const choose = (kind: Slot, purpose?: string) => { setImagePurpose(kind === "image" ? purpose : undefined); setPicking(kind); };
 
   /**
    * 素材放进草稿画布（同一个文件只放一次），返回每份素材对应的节点，顺序就是编导写的图1、图2…。
@@ -627,7 +646,7 @@ export function SceneVideoStudio() {
   const openDirector = () => {
     setView("director"); setHint("");
     setTimeout(() => {
-      if (scripts.length) document.querySelector<HTMLInputElement>('.scene-video-studio input[aria-label="修改意见"]')?.focus();
+      if (scripts.length) revisionInput.current?.focus();
       else input.current?.focus("end", { preventScroll: true });
     }, 0);
   };
@@ -857,21 +876,154 @@ export function SceneVideoStudio() {
       if (selection === openingTask.current) acceptTask(task);
     } catch (error) { showFailure({ action: '保存当前草稿', error }); }
   };
-  const reuseTask = async (task: StudioVideoTask) => {
-    if (!task.input) return;
+  /**
+   * 一条请求的提交：先记进任务自己的草稿再交，交完把记录换成任务编号。提交结果没确认时记录留着，
+   * 「确认原任务」用同一个请求编号再交一次会拿回原来那次，不会重复开始。
+   */
+  const submitTake = async (projectId: string, request: StudioVideoTaskCreate) => {
+    try {
+      const accepted = await startVideoTask(projectId, request);
+      await persist(doc => ({ ...doc, sceneVideoSubmissions: (doc.sceneVideoSubmissions ?? []).filter(r => r.clientRequestId !== request.clientRequestId),
+        sceneVideoTasks: [...new Set([accepted.id, ...(doc.sceneVideoTasks ?? [])])] }), projectId);
+      return accepted;
+    } catch (error) {
+      if (isStudioBillingCancelled(error) || submissionRejected(error, true))
+        await persist(doc => ({ ...doc, sceneVideoSubmissions: (doc.sceneVideoSubmissions ?? []).filter(r => r.clientRequestId !== request.clientRequestId) }), projectId).catch(() => undefined);
+      throw error;
+    }
+  };
+  /**
+   * 视频裂变（2026-11-09 用户要求）：按这条任务提交时的请求再出几条，每条是独立的任务、单独计费，原任务和已出的视频不动。
+   * 换变量、AI 改写的那几条只换脚本（takes[i].text），其余设置不变。新任务进同一份草稿，结果区同一组。
+   * 费用按现在的报价重新算上限；付款账户第一条选定后后面几条沿用。
+   */
+  const generateTakes = async (task: StudioVideoTask, takes: MoreTake[]) => {
+    const base = task.request, query = base && takePriceQuery(base);
+    if (busy || !base || !query || !takes.length) return false;
+    setBusy(true);
+    let made = 0, billing: EnterpriseBillingSelection | undefined, request: StudioVideoTaskCreate | undefined;
+    try {
+      const { cap } = await videoTaskPrice(query);
+      for (const [i, take] of takes.entries()) {
+        // AI 改写的脚本没有对应的编导版本：给一个新的编号，「修改后生成」放回时按它补一版脚本（restoreVideoTaskScript）。
+        request = await prepareVideoTask(task.projectId, { ...takeRequest(base, nanoid(), cap, nanoid(),
+          { ...take, ...(take.take.mode === 'rewrite' ? { scriptId: nanoid() } : {}) }), ...(billing ? { billing } : {}) });
+        billing = request.billing;
+        // 普通视频受理后才异步扣费，积分不够要到那时才知道：第一条交之前先问一次，同「生成视频」。
+        if (i === 0 && base.kind === 'direct' && request.video?.video && !caps?.mock) {
+          const payer: EnterpriseBillingSelection = billing ?? { mode: 'personal' };
+          const video = request.video;
+          await studioCreditCheck(() => quoteVideoPrice(studioVideoPriceQuery(video.model, video.video!, video.durationSec ?? query.duration, video.aspectRatio ?? query.ratio), payer), payer, { grantHint: STUDIO_GRANT_HINT });
+        }
+        const pending = request;
+        await persist(doc => ({ ...doc, sceneVideoSubmissions: [...(doc.sceneVideoSubmissions ?? []), pending] }), task.projectId);
+        await submitTake(task.projectId, pending);
+        made++;
+      }
+      if (mobile) setMobileView('result');
+      return true;
+    } catch (error) {
+      const unsure = !!request && !isStudioBillingCancelled(error) && !submissionRejected(error, true);
+      if (!isStudioBillingCancelled(error)) showFailure({ action: '视频裂变', error,
+        next: [made ? `已开始生成 ${made} 条，其余没有提交。` : '', unsure ? '这一条可能已提交成功，请点击「确认原任务」查询，不要直接重新生成。' : ''].filter(Boolean).join('') || undefined });
+      return false;
+    } finally { setBusy(false); setTaskListRevision(n => n + 1); setPriceRevision(n => n + 1); }
+  };
+
+  /**
+   * 「视频裂变」给编导的场景输入：用写这版脚本时的那份（节点上的请求），只去掉改稿意见；找不到（老草稿、手写的脚本）就按任务的设置拼一份。
+   * 不附图：编导照着当前脚本改，脚本里已经按图1、图2 写好了素材。
+   */
+  const takeSceneInput = (task: StudioVideoTask, extra: Partial<StudioSceneComposeRequest>): StudioSceneComposeRequest => {
+    const c = task.request!.configuration!;
+    const nodes = (draftRef.current?.doc.nodes ?? []) as CanvasNodeData[];
+    const scriptId = task.input?.sceneVideoState?.edit?.scriptId;
+    const written = nodes.find(n => n.id === scriptId)?.metadata?.studio?.request?.scene;
+    const first = scriptNodes(draftRef.current?.doc ?? EMPTY_DOC)[0]?.metadata?.studio?.sceneDirector?.ask ?? '';
+    const materials = c.materials ?? [];
+    const own = written ? { ...written, revision: undefined, settingsChanged: undefined }
+      : { sceneId: task.sceneId, text: first, imageTitles: materials.filter(m => m.slot === 'image').map(m => m.title),
+        characterTitle: materials.find(m => m.slot === 'character')?.title, voiceTitle: materials.find(m => m.slot === 'voice')?.title,
+        ...(c.options ? { options: c.options } : {}) };
+    return { ...own, kind: 'video-script', sceneId: task.sceneId, duration: c.duration, ratio: c.ratio, language: c.language, visual: false, ...extra };
+  };
+  /** 「视频裂变」里交一次文字任务（找变量、AI 改写的一版）：先把请求写进节点再交，交完记下任务编号，页面接着读结果。 */
+  const submitTakeText = async (projectId: string, request: StudioRunRequest, title: string, take: NonNullable<StudioNodeMetadata['sceneTake']>) => {
+    await persist(doc => addTakeNode(doc, { request, title, take }).doc, projectId);
+    try {
+      const run = await submitStudioRun(projectId, request, { canRetry: true });
+      await persist(doc => applyRun(doc, request.nodeId!, run), projectId);
+    } catch (e) {
+      // 没交上去（取消付款、被拒绝）就撤掉这个节点；结果不确定的留着，「确认原任务」用同一个请求编号再交一次。
+      const rejected = isStudioBillingCancelled(e) || submissionRejected(e, true);
+      await persist(doc => rejected ? patchNode(doc, request.nodeId!, () => undefined)
+        : patchNode(doc, request.nodeId!, n => ({ ...n, metadata: { ...n.metadata, ...studioErrorMetadata(e), status: 'loading', errorDetails: '提交结果待确认。' } })), projectId).catch(() => undefined);
+      throw e;
+    }
+  };
+  const textRequest = (script: string, title: string, scene: StudioSceneComposeRequest): StudioRunRequest => ({ clientRequestId: nanoid(), nodeId: nanoid(), operation: 'text',
+    prompt: title, textEdit: { content: script }, scene, ...(caps?.mock ? {} : { ...(textModel?.endpointId ? { model: textModel.endpointId } : {}), ...(scriptCost !== undefined ? { maxCost: scriptCost } : {}) }) });
+  /** 找变量：从这条任务的脚本里找能换的说法（stage-scene-variables）。按实际用量结算，结果只给「视频裂变」用。 */
+  const findTakeVariables = async (task: StudioVideoTask) => {
+    const c = task.request?.configuration;
+    if (busy || !c) return;
     setBusy(true);
     try {
-      const project = await createSceneDraft(task.title, task.sceneId);
-      const nodes = task.input.nodes ?? [];
+      await submitTakeText(task.projectId, textRequest(takeScript(task.request), '找变量', { kind: 'video-variables', sceneId: task.sceneId, duration: c.duration, ratio: c.ratio }),
+        '视频裂变 · 变量', { of: task.id, kind: 'variables', batch: nanoid(), at: new Date().toISOString() });
+    } catch (e) { if (!isStudioBillingCancelled(e)) showFailure({ action: '找变量', error: e }); }
+    finally { setBusy(false); }
+  };
+  /** AI 改写：每条一个编导改稿任务，带「第几版、换哪组变量」；写好后在弹窗里看，再点生成。 */
+  const writeTakeScripts = async (task: StudioVideoTask, changes: StudioTakeChange[][]) => {
+    if (busy || !task.request?.configuration || !changes.length) return;
+    setBusy(true);
+    const batch = nanoid(), at = new Date().toISOString(), total = changes.length, script = takeScript(task.request);
+    let billing: EnterpriseBillingSelection | undefined | null, written = 0;
+    try {
+      for (const [i, change] of changes.entries()) {
+        const request = textRequest(script, `视频裂变 · 第 ${i + 1} 版`, takeSceneInput(task, { variant: { index: i + 1, total, changes: change } }));
+        if (billing) rememberStudioBilling(task.projectId, request.clientRequestId, billing);
+        await submitTakeText(task.projectId, request, `视频裂变 · 第 ${i + 1} 版`, { of: task.id, kind: 'rewrite', batch, at, index: i + 1, total, changes: change });
+        billing = request.billing; written++;
+      }
+    } catch (e) {
+      if (!isStudioBillingCancelled(e)) showFailure({ action: 'AI 改写', error: e, next: written ? `已开始写 ${written} 版，其余没有提交。` : undefined });
+    } finally { setBusy(false); }
+  };
+  /**
+   * 自己改：把这条任务的设置放回同一份草稿的编辑页（素材、脚本、规格、模型）。改完生成的新视频和它在同一组；已有任务和视频都不动。
+   * 草稿里没有的素材节点按快照补回来（签名地址现签）。
+   */
+  const editTask = async (task: StudioVideoTask) => {
+    const input = task.input;
+    if (!input || busy) return;
+    setBusy(true);
+    try {
+      const nodes = input.nodes ?? [];
       const keys = nodes.flatMap(n => n.metadata?.storageKey ?? []);
       const signed = keys.length ? await signKeys(keys) : {};
-      await IpStudioApi.updateProject(project.id, { name: task.title, baseDocVersion: project.docVersion ?? undefined,
-        doc: { ...project.doc, ...task.input, nodes: nodes.map(n => ({ ...n, metadata: { ...n.metadata, content: n.metadata?.storageKey ? signed[n.metadata.storageKey] : n.metadata?.content } })) } });
-      setSelectedTask(undefined);
+      await persist(doc => {
+        const have = new Set((doc.nodes as CanvasNodeData[]).map(n => n.id));
+        const added = nodes.filter(n => !have.has(n.id)).map(n => ({ ...n, metadata: { ...n.metadata, content: n.metadata?.storageKey ? signed[n.metadata.storageKey] : n.metadata?.content } }));
+        return restoreVideoTaskScript({ ...doc, nodes: [...doc.nodes, ...added], ...(input.sceneInputs ? { sceneInputs: input.sceneInputs } : {}),
+          ...(input.sceneVideoState ? { sceneVideoState: input.sceneVideoState } : {}), ...(input.sceneVideoModel ? { sceneVideoModel: input.sceneVideoModel } : {}) });
+      }, task.projectId);
+      setMoreFor(undefined); setSelectedTask(undefined);
       try { sessionStorage.removeItem(VIDEO_TASK_SELECTION); } catch { /* UI preference */ }
-      await openDraft(project.id); setView('compose'); drafts.reload();
-    } catch (error) { showFailure({ action: '重新编辑', error }); }
+      // writeSceneQuery 在同一份草稿里会留着 task（只带 task 的链接要能打开），这里是离开任务，地址直接换掉。
+      window.history.replaceState(null, '', `/video?scene=${encodeURIComponent(task.sceneId)}&draft=${encodeURIComponent(task.projectId)}`);
+      await openDraft(task.projectId); setView('compose'); setMobileView('compose');
+      setNote({ text: '已放回这条视频的设置。改完点「生成视频」，新视频和它在同一批。' });
+    } catch (error) { showFailure({ action: '修改后生成', error }); }
     finally { setBusy(false); }
+  };
+  const confirmTake = async (projectId: string, request: StudioVideoTaskCreate) => {
+    if (busy) return;
+    setBusy(true);
+    try { await submitTake(projectId, request); }
+    catch (error) { if (!isStudioBillingCancelled(error)) showFailure({ action: '确认原任务', error }); }
+    finally { setBusy(false); setTaskListRevision(n => n + 1); }
   };
   async function startSceneTask(kind: StudioVideoTaskKind, pending?: StudioVideoTaskCreate) {
     if (busy || !scene || !chosenVideo) return;
@@ -978,13 +1130,28 @@ export function SceneVideoStudio() {
   const capNote = !caps?.mock && taskQuote?.key === taskPriceKey && taskQuote.price ? `按实际用量结算，最多 ${taskQuote.price.cap.toLocaleString("zh-CN")} 积分` : undefined;
   const priceTitle = (...lines: (string | false | undefined)[]) => lines.filter(Boolean).join("\n") || undefined;
   const onPick = (id: string) => { const next = findVideoScene(catalog, id); if (next && (next.id !== scene.id || draftRef.current)) goToScene(next); };
+  // 左上角是当前场景：编辑时是正在用的场景，打开历史任务时是提交时选的那个（2026-11-09 用户要求对齐参考站，原来打开历史后看不出是哪个场景）。
+  // 在历史任务上换场景就是从那个场景新建。
+  const composerHead = (shown: VideoScene, pick: (id: string) => void) => <header className="scene-composer-head">
+    <SceneSwitch scene={shown} groups={groups} onPick={pick} onAll={() => { if (!pinned) setDrawerOpen(true); }}/>
+    {mobile && <button type="button" className="scene-icon-button is-large" aria-label="最近任务" onClick={() => setRailOpen(true)}><History size={19} strokeWidth={1.4}/></button>}
+    <button type="button" className="scene-new" onClick={() => reset()}><Plus size={13} strokeWidth={1.6}/>新建</button>
+  </header>;
+  const taskScene = selectedTask ? findVideoScene(catalog, selectedTask.sceneId) : undefined;
+  /** 提交时选的视频模型。模型列表还没读到时先不显示；读到了但找不到，说明已经停用。 */
+  const taskModelName = (task: StudioVideoTask) => {
+    const id = task.input?.sceneVideoModel ?? task.request?.configuration?.model ?? task.request?.video?.model;
+    if (!id || !videoModels) return undefined;
+    return videoModels.find(m => m.endpointId === id)?.name ?? '该模型已停用';
+  };
   const tile = (kind: Exclude<Slot, "image">, media: Media | undefined, label: string, Icon: typeof Video, optional: boolean, clear: () => void) =>
     <div className={`scene-media${media ? " is-filled" : ""}`}>
-      <button type="button" disabled={uploading !== undefined} onClick={() => choose(kind)} aria-label={media ? `更换${label}` : `从资产库选择${label}`} title={media?.fileName || `从资产库选择${label}`}>
+      <button type="button" className={media && kind === "voice" ? "scene-voice-picked" : undefined} disabled={uploading !== undefined} onClick={() => choose(kind)} aria-label={media ? `更换${label}` : `从资产库选择${label}`} title={media?.fileName || `从资产库选择${label}`}>
         {uploading === kind ? <Loader2 size={18} className="studio-gallery-spinner"/> : media && kind === "character" ? <SignedImage src={media.url} storageKey={media.key} alt=""/>
+          : media && kind === "voice" ? <span className="scene-voice-picked-icon" aria-label="已选择声音"><AudioLines size={22} strokeWidth={1.5} aria-hidden="true"/></span>
           : <SlotEmpty Icon={Icon} size={22}/>}
       </button>
-      <span>{label}{!media && optional && <small>选填</small>}</span>
+      <span title={kind === "voice" && media ? media.fileName || media.title : undefined}>{kind === "voice" && media ? media.fileName || media.title : label}{!media && optional && <small>选填</small>}</span>
       {media && <button type="button" className="scene-ref-remove" aria-label={`移除${label}`} onClick={clear}><X size={11} strokeWidth={1.8}/></button>}
     </div>;
   // 编辑框里的「图N」标签：这次交给视频模型的图，按图1、图2 的顺序（和素材格上的角标同一套）。
@@ -1001,21 +1168,29 @@ export function SceneVideoStudio() {
     .map((key, i) => ({ index: i + 1, title: placedMedia(key)?.title || `图${i + 1}`, url: placedMedia(key)?.url, storageKey: key }));
   const imageIndex = (key: string) => (plan?.used ?? []).filter(m => m.mediaType === "image").findIndex(m => m.key === key);
 
+  // 团购的产品图、环境图复用同一排素材占位和上传入口，不另设引导区。
+  const imageSlot = (label: string, guided = false) => <div key={label} className="scene-media">
+    <button type="button" disabled={uploading !== undefined} onClick={() => choose("image", guided ? label : undefined)} aria-label={guided ? `添加${label}` : `从资产库选择${label}`} title={`从资产库选择${label}`}>
+      {uploading === "image" ? <Loader2 size={18} className="studio-gallery-spinner"/> : <SlotEmpty Icon={ImageIcon} size={22}/>}</button>
+    <span>{guided ? label : images.length ? "添加图片" : label}{!guided && !images.length && !scene.images.required && <small>选填</small>}</span>
+  </div>;
   // 素材和规格在编辑页和编导页是同一份：编导页的输入框里也看得到、改得了，编导按这里的时长和素材写（2026-10-31 用户反馈）。
-  const mediaRow = (compact = false) =>
-<div className={`scene-media-row${compact ? " is-compact" : ""}`} role="group" aria-label="素材">
+  const mediaRow = (compact = false) => <>
+    <div className={`scene-media-row${compact ? " is-compact" : ""}`} role="group" aria-label="素材">
       {scene.video && tile("video", video, scene.video.label, Video, !scene.video.required, () => { if (video) drop("video", video.key); setVideo(undefined); })}
       {images.map((m, i) => { const at = imageIndex(m.key); return <div key={m.key} className="scene-media is-filled">
         <span className="scene-media-preview"><SignedImage src={m.url} storageKey={m.key} alt={m.title}/>{at >= 0 && <i className="scene-ref-index">图{at + 1}</i>}</span>
         <span>{scene.images.label}</span>
         <button type="button" className="scene-ref-remove" aria-label={`移除${m.title}`} onClick={() => { drop("image", m.key); setImages(old => old.filter((_, j) => j !== i).map((o, j) => ({ ...o, title: `${scene.images.label} ${j + 1}` }))); }}><X size={11} strokeWidth={1.8}/></button></div>; })}
-      {images.length < (scene.images.max ?? 6) && <div className="scene-media"><button type="button" disabled={uploading !== undefined} onClick={() => choose("image")} aria-label={`从资产库选择${scene.images.label}`} title={`从资产库选择${scene.images.label}`}>
-        {uploading === "image" ? <Loader2 size={18} className="studio-gallery-spinner"/> : <SlotEmpty Icon={ImageIcon} size={22}/>}</button>
-        <span>{images.length ? "添加图片" : scene.images.label}{!images.length && !scene.images.required && <small>选填</small>}</span></div>}
+      {images.length < (scene.images.max ?? 6) && <>
+        {imageSlot(scene.images.label)}
+        {scene.id === "local-groupbuy" && ["产品图片", "环境图片"].map(label => imageSlot(label, true))}
+      </>}
       {(scene.character || scene.voice) && <i className="scene-media-divider" aria-hidden="true"/>}
       {scene.character && tile("character", character, "角色", UserRound, true, () => { if (character) drop("character", character.key); setCharacter(undefined); })}
       {scene.voice && tile("voice", voice, "声音", Mic, true, () => { if (voice) drop("voice", voice.key); setVoice(undefined); })}
-    </div>;
+    </div>
+  </>;
   const specPill =
     <div className="scene-setting-panel-host">
       <button type="button" className="scene-pill" aria-expanded={settingsOpen} aria-label={`视频规格：${language}，${shownDuration} 秒，${ratio}${usedTier ? `，${usedTier.toUpperCase()}` : ""}`} onClick={() => setSettingsOpen(v => !v)}>
@@ -1036,16 +1211,15 @@ export function SceneVideoStudio() {
     </div>
     {(pinned || drawerOpen) && <SceneDrawer heading="AI 视频" groups={groups} current={scene.id} onPick={onPick} pinned={pinned} onPin={pin} onClose={() => setDrawerOpen(false)}/>}
 
-    {taskOpen ? <VideoTaskSettings task={selectedTask!} onNew={() => reset()} onReuse={() => void reuseTask(selectedTask!)}/> : <section className="scene-card scene-video-composer" aria-label={view === "director" ? "AI 编导" : "写一条视频"}>
-      <header className="scene-composer-head">
-        <SceneSwitch scene={scene} groups={groups} onPick={onPick} onAll={() => { if (!pinned) setDrawerOpen(true); }}/>
-        {mobile && <button type="button" className="scene-icon-button is-large" aria-label="最近任务" onClick={() => setRailOpen(true)}><History size={19} strokeWidth={1.4}/></button>}
-        <button type="button" className="scene-new" onClick={() => reset()}><Plus size={13} strokeWidth={1.6}/>新建</button>
-      </header>
+    {taskOpen ? <VideoTaskSettings task={selectedTask!} head={composerHead(taskScene ?? scene, id => { const next = findVideoScene(catalog, id); if (next) reset(next); })}
+        modelName={taskModelName(selectedTask!)} busy={busy}
+        onMore={() => setMoreFor(selectedTask!.id)}
+        pending={draft?.id === selectedTask!.projectId ? draft.doc.sceneVideoSubmissions ?? [] : []} onConfirm={request => void confirmTake(selectedTask!.projectId, request)}/>
+      : <section className="scene-card scene-video-composer" aria-label={view === "director" ? "AI 编导" : "写一条视频"}>
+      {composerHead(scene, onPick)}
 
       {view === "director" ? <div className="scene-director">
-        <div className="scene-director-title"><AiMark size={13}/><strong>AI 编导</strong>
-          <button type="button" className="scene-text-button" onClick={() => setView("compose")}>返回编辑</button></div>
+        <div className="scene-director-title"><AiMark size={13}/><strong>AI 编导</strong></div>
         <div className="scene-director-thread" ref={thread} aria-live="polite">
           {!scripts.length && <div className="scene-director-start">
             <h2>想做一条什么视频？</h2>
@@ -1054,7 +1228,9 @@ export function SceneVideoStudio() {
           </div>}
           {scripts.map((row, i) => <ScriptTurn key={row.id} row={row} refs={scriptRefs(row)} run={live[row.id]} stopping={scriptStopping(row)} busy={busy} submitting={submitting === row.id} latest={row.id === latestScript?.id}
             given={scripts.slice(0, i + 1).map(s => s.metadata?.studio?.sceneDirector?.ask ?? "")} facts={scene.brief?.facts}
-            copied={copied === row.id} onUse={() => useScript(row)} onBack={() => setView("compose")} onCopy={() => void copy(row)}
+            copied={copied === row.id} onUse={() => useScript(row)} onCopy={() => void copy(row)}
+            revision={revise} suggestions={row.id === scripts.at(-1)?.id ? scriptSuggestions : []}
+            onSuggest={value => { setRevise(value); setHint(""); revisionInput.current?.focus({ preventScroll: true }); }}
             onAgain={() => void send("换个写法重新写一版，要求和素材都不变。", { auto: true })}
             onRetry={() => void retry(row)} onConfirm={() => void confirmOriginal(row)}
             onStop={() => void stopScript(row)}/>)}
@@ -1063,8 +1239,9 @@ export function SceneVideoStudio() {
         <form className="scene-director-input" onSubmit={e => { e.preventDefault(); void send(scripts.length ? revise : text); }}>
           {scripts.length ? <>
             {mediaRow(true)}
-            <input aria-label="修改意见" placeholder={latestChanges ? "设置已修改，直接发送将按当前设置修改脚本" : "例如：开头更抓人，台词更口语"} title={latestChangesShown || undefined}
-              value={revise} onChange={e => { setRevise(e.target.value); setHint(""); }}/>
+            <textarea ref={revisionInput} className="scene-revision-input" rows={2} aria-label="修改意见" placeholder={latestChanges ? "设置已修改，直接发送将按当前设置修改脚本" : "告诉 AI 你想怎么修改脚本…"} title={latestChangesShown || undefined}
+              value={revise} onChange={e => { setRevise(e.target.value); setHint(""); }}
+              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229) { e.preventDefault(); void send(revise); } }}/>
           </> : <>
             {mediaRow()}
             <ScenePromptEditor ref={input} ariaLabel="想做的视频" value={text} refs={promptRefs} placeholder={scene.placeholder}
@@ -1137,8 +1314,8 @@ export function SceneVideoStudio() {
 
     <SceneVideoWorkspace enabled={ready} taskId={query.task} draftId={query.draft} sceneId={query.scene} restoreLastTask={!initialVideoEntry.current.draft && !initialVideoEntry.current.scene}
       selected={selectedTask} onSelect={task => { if (query.task && query.task === task.id) acceptTask(task); else void openTask(task); }}
-      onReuse={task => void reuseTask(task)} onDraft={id => { setSelectedTask(undefined); window.history.replaceState(null, '', `/video?scene=${encodeURIComponent(scene.id)}&draft=${encodeURIComponent(id)}`); void openDraft(id); }}
-      drafts={drafts.data} draftsError={drafts.error} onRetryDrafts={drafts.reload} railOpen={railOpen} onRail={setRailOpen} onNew={() => reset()} persist={persist}>
+      onDraft={id => { setSelectedTask(undefined); window.history.replaceState(null, '', `/video?scene=${encodeURIComponent(scene.id)}&draft=${encodeURIComponent(id)}`); void openDraft(id); }}
+      drafts={drafts.data} draftsError={drafts.error} onRetryDrafts={drafts.reload} railOpen={railOpen} onRail={setRailOpen} onNew={() => reset()} persist={persist} listRevision={taskListRevision}>
     <section className="scene-results scene-legacy-results" aria-label="作品与示例">
       <header><SceneResultTabs tab={tab} onTab={setTab} count={rows.length + segmentedRuns.length} idBase="scene-video"/>
         <span className="scene-results-actions">{draft && <Link className="scene-text-button" href={`/projects/${encodeURIComponent(draft.id)}`}><FolderOpen size={14} strokeWidth={1.4}/>在画布上查看</Link>}
@@ -1158,9 +1335,14 @@ export function SceneVideoStudio() {
     {picking && <div className="scene-picker-host"><LibraryReferencePicker open upload
       mediaType={picking === "voice" ? "audio" : picking === "video" ? "video" : "image"}
       max={picking === "image" ? Math.max(1, (scene.images.max ?? 6) - images.length) : 1}
-      title={`选择${picking === "image" ? scene.images.label : picking === "character" ? "出镜人物" : picking === "voice" ? "声音" : scene.video?.label ?? "参考视频"}`}
+      title={`选择${picking === "image" ? imagePurpose ?? scene.images.label : picking === "character" ? "出镜人物" : picking === "voice" ? "声音" : scene.video?.label ?? "参考视频"}`}
       intro="从资产库选择，也可上传新文件。"
       onClose={() => setPicking(undefined)} onAssets={assets => addFromLibrary(picking, assets)}/></div>}
+    {taskOpen && moreFor === selectedTask!.id && <VideoMoreDialog key={selectedTask!.id} task={selectedTask!} modelName={taskModelName(selectedTask!)}
+      free={!!caps?.mock} busy={busy} textBlocker={!caps ? '正在加载模型…' : !caps.mock && !textModel?.tokenPricing ? 'AI 编导暂时不可用，请联系平台处理。' : undefined}
+      nodes={draft?.id === selectedTask!.projectId ? draft.doc.nodes as CanvasNodeData[] : []}
+      onClose={() => setMoreFor(undefined)} onFind={() => findTakeVariables(selectedTask!)} onWrite={changes => writeTakeScripts(selectedTask!, changes)}
+      onGenerate={takes => generateTakes(selectedTask!, takes)} onEdit={() => void editTask(selectedTask!)} onConfirm={node => void confirmOriginal(node)}/>}
     <HubTabBar/>
   </main>;
 }
@@ -1183,9 +1365,10 @@ function placeMedia(nodes: CanvasNodeData[], media: Media, kind: "image" | "vide
 }
 
 /** 编导的一轮：你说的话 + 编导写的脚本（写作中 / 失败 / 写好了）。 */
-function ScriptTurn({ row, refs, run, stopping, busy, submitting, latest, copied, onUse, onBack, onCopy, onAgain, onRetry, onConfirm, onStop, given, facts }: {
+function ScriptTurn({ row, refs, run, stopping, busy, submitting, latest, copied, onUse, onCopy, onAgain, onRetry, onConfirm, onStop, revision, suggestions, onSuggest, given, facts }: {
   row: CanvasNodeData; refs: ScenePromptRef[]; run?: IpRun; stopping?: "requesting" | "accepted"; busy: boolean; submitting: boolean; latest: boolean; copied: boolean;
-  onUse: () => void; onBack: () => void; onCopy: () => void; onAgain: () => void; onRetry: () => void; onConfirm: () => void; onStop: () => void;
+  onUse: () => void; onCopy: () => void; onAgain: () => void; onRetry: () => void; onConfirm: () => void; onStop: () => void;
+  revision: string; suggestions: typeof SCRIPT_SUGGESTIONS; onSuggest: (value: string) => void;
   /** 到这一版为止用户说过的话（第一句和每次修改意见）：核对里面的数字有没有进脚本。 */
   given: string[];
   /** 场景要的信息：分清哪些空着的必须补、哪些选填。 */
@@ -1220,14 +1403,17 @@ function ScriptTurn({ row, refs, run, stopping, busy, submitting, latest, copied
         {loading && !accepted && !submitting && <button type="button" disabled={busy} onClick={onConfirm}><RotateCcw size={12}/>确认原任务</button>}
         {failed && meta?.studio?.request && <button type="button" className="is-primary" disabled={busy} onClick={onRetry}><RotateCcw size={12}/>重试</button>}
         {meta?.status === "success" && meta.content && <>
-          {latest && <button type="button" className="is-icon" aria-label="重新生成" title="重新生成" disabled={busy} onClick={onAgain}><RotateCcw size={14} strokeWidth={1.5}/></button>}
           <button type="button" className="is-icon" aria-label={copied ? "已复制" : "复制"} title={copied ? "已复制" : "复制"} onClick={onCopy}>{copied ? <Check size={14} strokeWidth={1.6}/> : <Copy size={14} strokeWidth={1.5}/>}</button>
+          {latest && <button type="button" className="is-icon" aria-label="重新生成" title="重新生成" disabled={busy} onClick={onAgain}><RotateCcw size={14} strokeWidth={1.5}/></button>}
           <span className="scene-spacer"/>
-          {latest && <button type="button" onClick={onBack}>返回编辑</button>}
           <button type="button" className="is-primary" onClick={onUse}><Check size={13} strokeWidth={1.8}/>采用脚本</button>
         </>}
       </footer>
     </div>
+    {!!suggestions.length && meta?.status === "success" && meta.content && <div className="scene-script-suggestions" role="group" aria-label="脚本修改建议">
+      {suggestions.map(suggestion => <button key={suggestion.label} type="button" disabled={busy} aria-pressed={revision === suggestion.text}
+        onClick={() => onSuggest(suggestion.text)}>{suggestion.label}<ArrowUpRight size={12} strokeWidth={1.5}/></button>)}
+    </div>}
   </article>;
 }
 

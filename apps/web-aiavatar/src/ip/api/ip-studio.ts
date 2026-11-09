@@ -1,3 +1,4 @@
+import { observePortraitReviews } from '../portrait-review-events';
 import { prepareImageForUpload } from '@ai-star-eco/api-client/image-upload';
 import { legacyImageBillingDetails, withStudioBilling, invalidateStudioModelQuote } from "@/canvas-bridge/studio-billing";
 // ─────────────────────────────────────────────────────────────────────────────
@@ -155,7 +156,7 @@ export async function runNode(id: string, nodeId: string, doc?: IpProjectDoc): P
 
 export async function getRun(id: string): Promise<IpRun> {
   if (USE_MOCK) return mockDelay(mockReadRun(id), 60);
-  return apiFetch<IpRun>(`/v1/ip-studio/runs/${id}`);
+  const run=await apiFetch<IpRun>(`/v1/ip-studio/runs/${id}`); observePortraitReviews(run.output?.assetReviews); return run;
 }
 
 export async function cancelRun(id: string): Promise<IpRun> {

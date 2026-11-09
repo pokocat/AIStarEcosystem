@@ -32,6 +32,8 @@ import java.util.*;
 /** Studio is an orchestration surface; IpRun and existing assets remain authoritative. */
 @Service
 public class StudioWorkflowService {
+    /** 「视频裂变」找变量用的场景输入种类（见 StudioSceneCatalog#sceneVariables）。 */
+    static final String SCENE_VARIABLES="video-variables";
     private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(StudioWorkflowService.class);
     @org.springframework.beans.factory.annotation.Autowired
     private com.aistareco.aep.enterprise.service.EnterpriseBillingService enterpriseBilling;
@@ -156,6 +158,9 @@ public class StudioWorkflowService {
         boolean sceneScript=request.scene()!=null;
         if(sceneScript&&(!"text".equals(request.operation())||request.textEdit()==null||request.skillKey()!=null||executionBinding!=null||sceneCatalog==null))
             throw bad("STUDIO_INPUT_INVALID","场景脚本只能用于普通文本节点的改稿");
+        // 找变量只读脚本：不看图，也不能带改写版本。
+        if(sceneScript&&SCENE_VARIABLES.equals(request.scene().kind())&&(Boolean.TRUE.equals(request.readVisuals())||request.scene().variant()!=null))
+            throw bad("STUDIO_INPUT_INVALID","找变量只读脚本");
         if (!"assemble".equals(request.operation()) && !check && !sceneScript
                 && !("video".equals(request.operation()) && request.video() != null) && !configuredImage)
             requireText(request.prompt(), 16000, "创作内容");
@@ -363,12 +368,16 @@ public class StudioWorkflowService {
             }
             if(sceneScript) {
                 // 编导：system / user 都按提示词库的环节拼，原来的通用助手模板和改稿句不用；受理时冻结版本（§3.4）。
-                var frozen=sceneCatalog.freezeSceneScript(request.scene().sceneId());
-                var assembled=sceneCatalog.sceneScript(request.scene(),request.textEdit().content(),Boolean.TRUE.equals(request.readVisuals()),frozen);
+                // 「视频裂变」的找变量也走这里，只是换成自己的环节；结果是给页面用的变量清单，不收进资产库（sceneVariables）。
+                boolean findVariables=SCENE_VARIABLES.equals(request.scene().kind());
+                var frozen=findVariables?sceneCatalog.freezeSceneVariables(request.scene().sceneId()):sceneCatalog.freezeSceneScript(request.scene().sceneId());
+                var assembled=findVariables?sceneCatalog.sceneVariables(request.scene(),request.textEdit().content(),frozen)
+                        :sceneCatalog.sceneScript(request.scene(),request.textEdit().content(),Boolean.TRUE.equals(request.readVisuals()),frozen);
                 systemPrompt=assembled.system();creativePrompt=assembled.user();
                 execution.put("systemPrompt",systemPrompt);
+                if(findVariables)execution.put("sceneVariables",true);
                 ObjectNode promptRecord=execution.putObject("prompt");
-                promptRecord.put("key","stage-scene-script");
+                promptRecord.put("key",findVariables?"stage-scene-variables":"stage-scene-script");
                 promptRecord.set("versions",com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.frozenNode(mapper,frozen));
                 com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.appendCall(promptRecord,assembled.call(mapper,1,null));
                 sceneParams=assembled.params();
@@ -905,7 +914,7 @@ public class StudioWorkflowService {
         var operations=constraints.putArray("operations");skill.stageOperations(stage).forEach(operations::add);
         constraints.put("maxSteps",skill.maxSteps()).put("maxSegments",skill.maxSegments()).put("maxSourceSec",skill.maxSourceSec()).put("maxSegmentSec",skill.maxSegmentSec());
         var checks=constraints.putArray("checks");skill.checks().forEach(checks::add);
-        constraints.put("settings","每步 settings 按操作填写：recreation{sourceNodeId,mode:\"segments\",maxSegmentSec:\"model\"|秒数,videoModel}；image{count:1|2|4,aspectRatio?:\"9:16\"|\"16:9\"|\"1:1\"|\"3:4\"（画幅，按技能默认填）,size?:\"宽x高\"（只在用户给了像素尺寸时填）,referenceBindings[]}；video{video:{mode,resolutionTier,seed?},durationSec,aspectRatio,count:1|2|4,referenceBindings[]}；check{targetStepId,checkIds[],candidateIndex?}；assemble{clipOrder:[{stepId,candidateIndex?}],audioStrategy:\"generated\"|\"source-audio\"}；text{purpose:\"script\"|\"prompt-revision\"|\"plan-compile\"|\"note\",editTarget?}。referenceBindings 每项 {stepId 或 nodeId 二选一,role,order}。plan-compile 只在分析阶段用于编排制作计划。");
+        constraints.put("settings","每步 settings 按操作填写：recreation{sourceNodeId,mode:\"segments\",maxSegmentSec:\"model\"|秒数,videoModel}；image{count:1|2|4,aspectRatio?:\"9:16\"|\"16:9\"|\"1:1\"|\"3:4\"（画幅，按技能默认填）,size?:\"宽x高\"（只在用户给了像素尺寸时填）,referenceBindings[],model?}；video{model,video:{mode,resolutionTier,seed?},durationSec,aspectRatio,count:1|2|4,referenceBindings[]}；check{targetStepId,checkIds[],candidateIndex?}；assemble{clipOrder:[{stepId,candidateIndex?}],audioStrategy:\"generated\"|\"source-audio\"}；text{purpose:\"script\"|\"prompt-revision\"|\"plan-compile\"|\"note\",editTarget?}。referenceBindings 每项 {stepId 或 nodeId 二选一,role,order}。plan-compile 只在分析阶段用于编排制作计划。");
         var allowed=new java.util.HashSet<>(skill.stageOperations(stage));
         String directGuide=(skill.direct()?"这个方法没有分析阶段：直接写制作步骤，不写 plan-compile，没有真实取舍时 approaches 只写一个推荐方案或省略。":"")
                 +"制作阶段只写本阶段允许的操作："+String.join("、",skill.stageOperations(stage))+"。"
@@ -919,7 +928,7 @@ public class StudioWorkflowService {
                 :directGuide);
         constraints.put("bindingRoles","referenceBindings 的 role 只能取这些值：图片步骤 "+String.join(" / ",new java.util.TreeSet<>(StudioPlanValidator.IMAGE_BINDING_ROLES))
                 +"；视频步骤 "+String.join(" / ",new java.util.TreeSet<>(StudioPlanValidator.BINDING_ROLES))+"（原片片段用 reference-video 或 clip）。order 从 0 开始，同一步里不重复。");
-        constraints.put("models","recreation.videoModel 必须原样复制「可用模型与合同」里 videoModels[].endpointId 的值，不能写模型名、别名或自己缩写。");
+        constraints.put("models","recreation.videoModel 与视频步骤 settings.model 必须原样复制「可用模型与合同」里 videoModels[].endpointId 的值，不能写模型名、别名或自己缩写。settings.model 与 settings.video 同级；settings.video 只放模式、清晰度、随机种子。视频模式、resolutionTier、画幅和时长必须来自所选模型同一份合同，不能混用其他模型的规格；未指定模型时按 isDefault 的合同填写。");
         constraints.put("targets","targetNodeId 只填素材清单里为这一步准备、还没有画面或正文的对象 id，类型与这一步的结果一致（image 填图片对象、video 填视频对象、写稿的 text 填文字对象）；check、assemble、recreation、plan-compile 和改稿的步骤不填。");
         constraints.put("references","referenceNodeIds 只能填素材清单里的画布对象 id，不能填步骤编号；要用更早步骤的产物，写进 dependsOn，图片和视频步骤再用 settings.referenceBindings 的 stepId 指定。素材清单里的对象（包括分析阶段产出的分段片段）在 referenceBindings 里一律写 nodeId，stepId 只填本计划里更早的步骤编号。");
         constraints.put("videoReferences","每个视频步骤的参考素材必须服从所选模型、所选模式的 references 合同：各类型 maxCount、maxTotal、maxImagesWithVideo、minVisual 及素材时长限制。拉片得到的每个片段都算一段参考视频，不能把多段当作一段；不能为满足数量上限删掉用户要保留的内容。若多段超过上限，按原片顺序拆成各自合规的视频步骤，再用允许的 assemble 操作合成；不能满足目标时明确说明限制，不输出不可执行的步骤。");

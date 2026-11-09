@@ -259,6 +259,32 @@ test("a clip waiting for the user's choice between prompt versions is left out o
   expect(DirectorApi.runTask).not.toHaveBeenCalled();
 });
 
+test("vertical GPT boards show their own 4K price and submit that approved amount", async () => {
+  const w = work(clip("v2"));
+  w.pricing.boardImage = 55;
+  w.boardImage = { endpointId: "gpt-high", name: "GPT Image 2 4K", size: "2160x3840", creditCost: 55 };
+  vi.mocked(DirectorApi.runTask).mockResolvedValue(w);
+  render(<App><Page initial={w}/></App>);
+  fireEvent.click(screen.getByRole("button", { name: /^分镜图/ }));
+  const dialog = await screen.findByRole("dialog", { name: "分镜图 · 片段 1" });
+  expect(within(dialog).getByText(/GPT Image 2 4K · 2160×3840 · 9:16/)).toBeTruthy();
+  expect(within(dialog).getByText(/每张.*55/)).toBeTruthy();
+  fireEvent.click(within(dialog).getByRole("button", { name: "重新生成" }));
+  expect(within(dialog).getByRole("group", { name: "确认重新生成" }).textContent).toContain("55");
+  fireEvent.click(within(dialog).getByRole("button", { name: "确定重新生成" }));
+  await waitFor(() => expect(DirectorApi.runTask).toHaveBeenCalledWith("w", expect.objectContaining({ type: "board", maxCost: 55 })));
+});
+
+test("board batch quotes use the board price rather than the asset image price", async () => {
+  const w = work(clip("v2"));
+  w.pricing.boardImage = 55;
+  render(<App><Page initial={w}/></App>);
+  fireEvent.click(screen.getByRole("checkbox", { name: "全选" }));
+  fireEvent.click(screen.getByRole("button", { name: "批量生成分镜图" }));
+  expect(await screen.findByText(/55 积分/)).toBeTruthy();
+  expect(DirectorApi.runTask).not.toHaveBeenCalled();
+});
+
 test("once a storyboard image exists, regenerating is the secondary button and asks before spending", async () => {
   render(<App><Page initial={work(clip("v2"))}/></App>);
   fireEvent.click(screen.getByRole("button", { name: /^分镜图/ }));

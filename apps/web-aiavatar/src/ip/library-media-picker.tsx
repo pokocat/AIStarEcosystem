@@ -8,7 +8,8 @@ import { Button, ConfigProvider, Input, Modal, Skeleton } from 'antd';
 import { AudioLines, Check, Folder, LayoutGrid, Mic, Search, Upload } from 'lucide-react';
 import type { IpSavedAsset, LibraryFolder, LibraryObject } from '@ai-star-eco/types';
 import { canvasLibraryFolder, libraryFolders, libraryMaterials, libraryObjects, uploadLibraryMedia } from '@/canvas-bridge/asset-library';
-import { libraryObjectAsset } from '@/canvas-bridge/library-reference';
+import { libraryObjectAsset, studioIpAssetReference } from '@/canvas-bridge/library-reference';
+import { listStudioIpAssets } from '@/canvas-bridge/studio-api';
 import { SignedAudio } from '@/canvas-bridge/signed-audio';
 import { AssetThumb } from './asset-thumb';
 import { AudioRecorderDialog } from './audio-recorder-dialog';
@@ -64,9 +65,20 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
     if (!library) return { items: [], hasMore: false };
     if (tab !== 'files') {
       if (library === AI_LIBRARY) return { items: [], hasMore: false };
-      const r = await libraryObjects({ kind: tab, folder: library, query: keyword.trim() || undefined, page: n });
+      const [r, ips] = await Promise.all([
+        libraryObjects({ kind: tab, folder: library, query: keyword.trim() || undefined, page: n }),
+        tab === 'character' && library === 'all' && n === 0 ? listStudioIpAssets() : Promise.resolve([]),
+      ]);
       // 图片位只要有图的角色、场景和道具；引用时带上对象和版本（同画布的引用规则）。
-      return { items: (r.items as LibraryObject[]).filter(o => o.versions.length).map(o => libraryObjectAsset(o, folderName(o.folderId))), hasMore: r.hasMore };
+      const objects = (r.items as LibraryObject[]).flatMap(o => o.versions.map((version, i) => {
+        const asset = libraryObjectAsset(o, folderName(o.folderId), version.id);
+        return o.versions.length === 1 ? asset : { ...asset, id: `${o.id}:${version.id}`, title: `${o.name} · 图片 ${i + 1}${version.id === o.mainVersionId ? '（主图）' : ''}` };
+      }));
+      const needle = keyword.trim().toLocaleLowerCase();
+      // 官方 IP 需先通过原有导入流程取得本人素材，不能直接拿官方 key 生成；自建库仍只列该库的角色。
+      const mine = ips.filter(a => a.librarySource !== 'official' && a.storageKey && a.url).map(studioIpAssetReference)
+        .filter(a => !needle || `${a.title} ${a.metadata.assetRole}`.toLocaleLowerCase().includes(needle));
+      return { items: [...mine, ...objects], hasMore: r.hasMore };
     }
     const r = await libraryMaterials({ ...libraryQuery(library), kind: mediaType, query: keyword.trim() || undefined, page: n });
     return { items: r.items, hasMore: r.hasMore };
@@ -74,7 +86,7 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
   useEffect(() => {
     if (!open || !library) return;
     const id = ++epoch.current;
-    setLoading(true);
+    setLoading(true); setItems([]); setPage(0); setHasMore(false);
     const timer = setTimeout(() => {
       fetchPage(0).then(r => {
         if (id !== epoch.current) return;
@@ -149,18 +161,19 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
             <input ref={fileInput} type="file" hidden aria-label="选择要上传到资产库的文件" accept={ACCEPT[mediaType]} onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; if (file) void putInLibrary(file).catch(() => {}); }}/></>}
         </div>
         {error && <p className="lmp-error"><StudioErrorNotice error={error}/><Button size="small" onClick={() => setRevision(n => n + 1)}>重试</Button></p>}
-        {loading && !items.length ? <Skeleton active/> : !items.length
-          ? <p className="lmp-empty">{tab !== 'files' ? `暂无带图的${OBJECT_TABS.find(t => t.key === tab)?.label}。` : library === AI_LIBRARY ? `还没有 AI 生成的${NOUN[mediaType]}。` : keyword.trim() ? '没有找到匹配的素材，请尝试其他名称。' : upload ? `暂无${NOUN[mediaType]}，可点击「上传」添加。` : `暂无${NOUN[mediaType]}。`}</p>
+        {loading && !items.length ? <Skeleton active/> : error && !items.length ? null : !items.length
+          ? library === AI_LIBRARY && tab !== 'files' ? <div className="lmp-empty"><p>AI 生成库仅保存图片、视频和音频。请在「全部」中选择{OBJECT_TABS.find(t => t.key === tab)?.label}。</p><Button onClick={() => setLibrary('all')}>查看全部{OBJECT_TABS.find(t => t.key === tab)?.label}</Button></div>
+            : <p className="lmp-empty">{tab !== 'files' ? `暂无带图的${OBJECT_TABS.find(t => t.key === tab)?.label}。` : library === AI_LIBRARY ? `还没有 AI 生成的${NOUN[mediaType]}。` : keyword.trim() ? '没有找到匹配的素材，请尝试其他名称。' : upload ? `暂无${NOUN[mediaType]}，可点击「上传」添加。` : `暂无${NOUN[mediaType]}。`}</p>
           : <ul className={`lmp-grid${mediaType === 'audio' ? ' is-list' : ''}`}>{items.map(a => {
             const on = !!selected[a.id], unavailable = a.metadata?.unavailable === true;
             const full = !on && max > 1 && picked.length >= max;
             return <li key={a.id}>
-              <button type="button" className="lmp-item" aria-pressed={on} aria-label={`选择 ${a.title}`} disabled={busy || unavailable || full} onClick={() => choose(a)}>
+              <button type="button" className="lmp-item" aria-pressed={on} aria-label={`选择 ${a.title}`} title={a.title} disabled={busy || unavailable || full} onClick={() => choose(a)}>
                 {a.kind === 'image' ? <span className="lmp-thumb"><AssetThumb kind="image" src={a.data.dataUrl} storageKey={a.data.storageKey}/></span>
                   : a.kind === 'video' ? <span className="lmp-thumb"><AssetThumb kind="video" src={a.data.url} storageKey={a.data.storageKey}/></span>
                   : <span className="lmp-voice-icon">{on ? <Check size={15} strokeWidth={2.4}/> : <AudioLines size={16} strokeWidth={1.6}/>}</span>}
                 {on && a.kind !== 'audio' && <span className="lmp-check"><Check size={11} strokeWidth={2.6}/></span>}
-                <span className="lmp-text"><strong>{a.title}</strong><small>{a.metadata?.libraryReference ? '人物' : sourceLabel(a.source)}</small></span>
+                <span className="lmp-text"><strong>{a.title}</strong><small>{a.metadata?.ipReference ? `我的 IP · ${a.metadata.assetRole}` : a.metadata?.libraryReference ? OBJECT_TABS.find(t => t.key === tab)?.label : sourceLabel(a.source)}</small></span>
               </button>
               {a.kind === 'audio' && <SignedAudio className="lmp-audio" quiet src={a.data.url} storageKey={a.data.storageKey} controls preload="none"/>}
             </li>;

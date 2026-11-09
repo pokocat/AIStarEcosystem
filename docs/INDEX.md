@@ -1,5 +1,11 @@
 # 文档索引 · INDEX
 
+AI 编导对话与修改建议：[浏览器验收及发布记录](releases/script-chat-suggestions-release-20261109.md)，last-reviewed：2026-11-09。
+
+AI 视频“重新编辑”统一入口：[浏览器验收与发布记录](releases/video-reedit-position-release-20261109.md)，last-reviewed：2026-11-09。
+
+Seedance 官方人像素材：[当前实现与边界](video-asset-library.md)；[正式发布记录](releases/ark-portrait-production-release-20261109.md)；[凭据切换及真实接口验收](releases/ark-bingbing-key-and-portrait-preparation-20261109.md)。已发布并绑定 Fast / Mini；真人刷脸和成片待验收，last-reviewed：2026-11-09。
+
 > 单页地图。任何 agent / 新人进仓库先开本文，按「想做什么」找到对应真源。
 > last-reviewed：**2026-10-29**（文档整理：`docs/` 分出 `runbooks/` / `audits/` / `archive/` 三个子目录，去掉 `[Fabel5]` 前缀，
 > 根目录 `DEPLOYED.md` 并入 clip 方案；上一次内容性更新是 2026-10-07 / v0.201）。
@@ -274,6 +280,8 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 ## 7. 发布与验收记录（`docs/releases/`）
 
+- [Studio 反馈 5、7、8 修复发布](releases/studio-feedback-578-release-20261107.md)：已有 IP 与视角选择、团购产品/环境图片引导、重新编辑保留脚本；main `1e3aa4bb7`，团购上传占位后续调整 `721e02873`（保留门店、旁增产品和环境），仅 web-aiavatar，CI 与线上验收通过（last-reviewed: 2026-11-08）。
+
 - [sun5.5：Sonnet low 生产切换](releases/sun55-sonnet-low-production-release-20261107.md)：main `27351bb9c`，server 参数支持与 V77，实际业务请求携带 low、39.873 秒正常回包；页面显示 sun5.5，完整 CI 与线上验收通过（last-reviewed: 2026-11-07）。
 - [Sonnet 切换为 Orange5.5 与一次真实图文实测](releases/orange55-model-switch-20261107.md)：生产配置改用 `claude-opus-5-5-Kiro`，对外显示 Orange5.5；实测 38.731 秒、3053/3197 Token、5 积分，同量级历史比较未显示明显提速（last-reviewed: 2026-11-07）。
 
@@ -286,6 +294,8 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [Studio 头像居中、浅灰底与轮播圆点优化](releases/studio-avatar-polish-release-20261031.md)：main `0921222f6`，仅 web-aiavatar；线上新旧桌面与手机头像偏差 0px、底色统一，圆点只过渡底色，制品与服务核对通过（last-reviewed 2026-10-31）。
 - [画布提示词超长提示发布](releases/prompt-limit-notice-release-20261105.md)：main `d9c50cc4c`，仅 web-aiavatar；写清超出字数并可换模型，5xx 为 0；线上未实际触发（last-reviewed 2026-11-05）。
 - [AI 编导点了先不开始发布](releases/writer-start-release-20261105.md)：main `3520a3c71`，仅 web-aiavatar；点「AI 编导」只换页，发送才开始写，规格面板不再被裁，5xx 为 0；线上未实际发送（last-reviewed 2026-11-05）。
+- [GPT Image 切换 SuperAIToken 与 URL 返回](releases/superaitoken-gpt-image-url-production-20261109.md)：四个 GPT Image 端点的完整型号、URL 输出及供应商结果下载；分镜跟随作品画幅，恢复 2K 竖图。（last-reviewed 2026-11-09）
+- [导演台 GPT Image 2 竖屏分镜默认规格](releases/director-gpt2-board-default-production-20261108.md)：main `dfeb20f1b`，server + web-aiavatar；9:16 分镜仍用 GPT Image 2，同系列 4K / 55 积分，资产原接入点 / 16 积分，线上规格、价格与按钮验收通过，未收费生成。
 - [导演台本集剧本与场景全部视角发布](releases/director-script-views-release-20261105.md)：main `0529b6db3`，仅 web-aiavatar；本集剧本放进每一集、场景全部视角、生成记录挪到图下、自由出图案例图，5xx 为 0。
 - [AI 图片多张人物照片发布](releases/scene-multi-person-refs-release-20261105.md) — server + web-aiavatar；6 个人物场景最多放 3 张照片；多张是否更像本人还没用真人照片验证（last-reviewed: 2026-11-05）
 - [AI 图片素材位跟技能走发布](releases/scene-skill-slots-release-20261105.md) — server + web-aiavatar + studio-admin；一个素材位放多张、输入框 @ 选素材；线上没有实际生成（last-reviewed: 2026-11-05）

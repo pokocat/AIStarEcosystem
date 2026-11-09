@@ -49,9 +49,15 @@ test('an uncertain submit retains its request id for a recovery click',async()=>
 });
 test('video results preview and adopt as videos, with no character archive or image-package entry',async()=>{
   state={...state,steps:[{id:'video',nodeId:'v',title:'商品视频',operation:'video',outputRole:'video',status:'waiting_adoption',requiresAdoption:true,cost:20,accepted:false,storageKey:'own/video.mp4',url:'video-url',run:{id:'video-run',status:'done',inputs:{prompt:'video direction'}} as any}]};
+  // 模板说明先返回、制作计划后返回时，入口已经出现，但视频还没有加载。CI 上不能依赖两次请求恰好同帧完成。
+  let release!:(result:StudioTemplateExecution)=>void;
+  const pending=new Promise<StudioTemplateExecution>(resolve=>{release=resolve;});
+  vi.mocked(api.readTemplateExecution).mockReturnValue(pending);
   vi.mocked(api.readTemplateInstance).mockResolvedValue({...instance,plan:{...instance.plan,imageCount:0,videoCount:1,totalCost:20}});
   render(<StudioTemplateSource projectId="p"/>);await waitFor(()=>expect(screen.getByRole('button',{name:'模板 v1 · 制作计划'})).toBeDefined());fireEvent.click(screen.getByRole('button',{name:'模板 v1 · 制作计划'}));
-  expect(screen.getByLabelText('商品视频结果').tagName).toBe('VIDEO');expect(screen.queryByRole('button',{name:'归档到 IP'})).toBeNull();expect((screen.getByRole('button',{name:'排版并下载资产包'}) as HTMLButtonElement).disabled).toBe(true);expect((screen.getByRole('button',{name:'整理成片'}) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.queryByLabelText('商品视频结果')).toBeNull();
+  void Promise.resolve().then(()=>release(state));
+  expect((await screen.findByLabelText('商品视频结果')).tagName).toBe('VIDEO');expect(screen.queryByRole('button',{name:'归档到 IP'})).toBeNull();expect((screen.getByRole('button',{name:'排版并下载资产包'}) as HTMLButtonElement).disabled).toBe(true);expect((screen.getByRole('button',{name:'整理成片'}) as HTMLButtonElement).disabled).toBe(true);
   vi.mocked(api.acceptTemplateStep).mockResolvedValue({...state,steps:[{...state.steps[0],status:'done',accepted:true}]});fireEvent.click(screen.getByRole('button',{name:'采用此视频'}));
   await waitFor(()=>expect(api.acceptTemplateStep).toHaveBeenCalledWith('p','video',{runId:'video-run',storageKey:'own/video.mp4',accepted:true}));expect(api.executeTemplateStep).not.toHaveBeenCalled();
   await waitFor(()=>expect((screen.getByRole('button',{name:'整理成片'}) as HTMLButtonElement).disabled).toBe(false));

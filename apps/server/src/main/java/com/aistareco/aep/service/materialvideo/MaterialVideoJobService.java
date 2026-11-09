@@ -704,6 +704,7 @@ public class MaterialVideoJobService {
             lastFrame = signer.maybeSign(job.getLastFrameUrl());
         }
         if (lastFrame != null) card.put("last_frame_url", lastFrame);
+        if (ArkPortraitLibrary.REVIEW_CODE.equals(job.getErrorCode())) card.putArray("asset_reviews").addObject().put("jobId",job.getId()).put("reviewId",portraitReviewId(job.getPayloadJson()));
         if (job.getErrorCode() != null) card.put("error_code", job.getErrorCode());
         if (job.getErrorMessage() != null) card.put("error_message", job.getErrorMessage());
         if (job.getExternalTaskId() != null) card.put("external_task_id", job.getExternalTaskId());
@@ -813,6 +814,10 @@ public class MaterialVideoJobService {
         return v == null || v.isBlank() ? d : v;
     }
 
+    private static String portraitReviewId(String payload) {
+        try{return new ObjectMapper().readTree(payload==null?"{}":payload).path("portrait_review_id").asText();}
+        catch(Exception ignored){return "";}
+    }
     private static String safe(String v, String d) {
         return (v == null || v.isBlank()) ? d : v;
     }

@@ -20,6 +20,11 @@ export function readSavedStudioBilling(key: string): EnterpriseBillingSelection 
     if (value?.mode === "enterprise" && typeof value.enterpriseId === "string") return { mode: "enterprise", enterpriseId: value.enterpriseId };
   } catch { /* The server remains authoritative when browser storage is unavailable. */ }
 }
+/** 同一次操作连着交几条文字任务（「视频裂变」的 AI 改写）：后面几条沿用第一条选的付款账户，不再一条一条问。 */
+export function rememberStudioBilling(projectId: string, clientRequestId: string, billing?: EnterpriseBillingSelection | null) {
+  if (!billing) return;
+  try { sessionStorage.setItem(prefix + `${projectId}:${clientRequestId}`, JSON.stringify(billing)); } catch { /* 存不下就照常询问 */ }
+}
 function savedApproval(key:string) {
   try {const value=JSON.parse(sessionStorage.getItem(quotePrefix+key)||'null');if(value?.target&&value?.usage&&typeof value.priceVersion==='string'&&typeof value.freeOnly==='boolean'&&Number.isSafeInteger(value.maxWalletCredits))return value as NonNullable<StudioBillingRequest['modelBilling']>;}catch{ /* No local draft can authorize a server charge. */ }
 }

@@ -1,0 +1,32 @@
+[
+  {
+    "button": {
+      "bottom": 838,
+      "height": 28,
+      "left": 107,
+      "right": 489,
+      "top": 810,
+      "width": 382,
+      "x": 107,
+      "y": 810
+    },
+    "count": 1,
+    "insideSettings": true,
+    "state": "done"
+  },
+  {
+    "button": {
+      "bottom": 838,
+      "height": 28,
+      "left": 107,
+      "right": 489,
+      "top": 810,
+      "width": 382,
+      "x": 107,
+      "y": 810
+    },
+    "count": 1,
+    "insideSettings": true,
+    "state": "failed"
+  }
+]

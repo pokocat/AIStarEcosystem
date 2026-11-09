@@ -366,7 +366,7 @@ public class JusuanImageClient {
             if(alternate!=null && !alternate.isBlank()) {
                 org.slf4j.LoggerFactory.getLogger(getClass()).info("[studio-jusuan-image] result field fallback request={} endpoint={} configured={} used={}",
                         requestId,endpoint.getId(),pointer,sibling);
-                return sibling.endsWith("/url")?downloadUrl(endpoint,wire,alternate,true):resultBytes(endpoint,wire,alternate,"sync-base64");
+                return sibling.endsWith("/url")?downloadUrl(wire,alternate):resultBytes(endpoint,wire,alternate,"sync-base64");
             }
         }
         return resultBytes(endpoint,wire,value,mode);
@@ -386,7 +386,7 @@ public class JusuanImageClient {
             try{return checkedImage(Base64.getDecoder().decode(encoded),maxBytes);}
             catch(IllegalArgumentException e){throw failure("图片结果编码无效");}
         }
-        return downloadUrl(endpoint,wire,value,false);
+        return downloadUrl(wire,value);
     }
 
     /**
@@ -403,27 +403,31 @@ public class JusuanImageClient {
                 requestId,endpoint.getId(),endpoint.getModel(),size,received);
     }
 
-    /** A fallback URL is not configured, so without an explicit outputHosts list any public HTTPS host is accepted. */
-    private byte[] downloadUrl(AiModelEndpoint endpoint,AiImageRequestSpec.Wire wire,String value,boolean fallback) {
+    /** Supplier image results use their returned URL, including HTTP, arbitrary ports and redirects (2026-11-09). */
+    private byte[] downloadUrl(AiImageRequestSpec.Wire wire,String value) {
         try {
             URI uri=URI.create(value);
-            String host=uri.getHost();
-            if(!"https".equalsIgnoreCase(uri.getScheme()) || host==null || uri.getUserInfo()!=null
-                    || uri.getFragment()!=null || !(host.equalsIgnoreCase(URI.create(endpoint.getBaseUrl()).getHost())
-                    || wire.outputHosts()!=null && wire.outputHosts().stream().anyMatch(host::equalsIgnoreCase)
-                    || fallback && wire.outputHosts()==null)
-                    || !com.aistareco.aep.service.ai.PublicMediaUris.publicHost(host))throw failure("图片结果不可用，请重试");
-            var response=http.send(HttpRequest.newBuilder(uri)
-                    .timeout(Duration.ofMillis(setting(wire.requestTimeoutMillis(),90000))).GET().build(),
-                    HttpResponse.BodyHandlers.ofInputStream());
-            try(var input=response.body()) {
-                if(response.statusCode()/100!=2) {
-                    String body=new String(input.readNBytes(4096),StandardCharsets.UTF_8);
-                    throw com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attachBody(failure(ProviderErrorMessage.message(body,"图片结果下载失败，请稍后再试")),body);
+            for(int redirects=0;redirects<=10;redirects++) {
+                // Result downloads never carry the supplier API key. Keep reference-input fetching separate.
+                var response=http.send(HttpRequest.newBuilder(uri)
+                        .timeout(Duration.ofMillis(setting(wire.requestTimeoutMillis(),90000))).GET().build(),
+                        HttpResponse.BodyHandlers.ofInputStream());
+                try(var input=response.body()) {
+                    if(Set.of(301,302,303,307,308).contains(response.statusCode())) {
+                        String location=response.headers().firstValue("Location").orElse(null);
+                        if(location==null || redirects==10)throw failure("图片结果下载失败");
+                        uri=uri.resolve(location);
+                        continue;
+                    }
+                    if(response.statusCode()/100!=2) {
+                        String body=new String(input.readNBytes(4096),StandardCharsets.UTF_8);
+                        throw com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attachBody(failure(ProviderErrorMessage.message(body,"图片结果下载失败，请稍后再试")),body);
+                    }
+                    int maxBytes=setting(wire.maxOutputBytes(),64*1024*1024);
+                    return checkedImage(input.readNBytes(maxBytes+1),maxBytes);
                 }
-                int maxBytes=setting(wire.maxOutputBytes(),64*1024*1024);
-                return checkedImage(input.readNBytes(maxBytes+1),maxBytes);
             }
+            throw failure("图片结果下载失败");
         }catch(BusinessException e){throw e;}catch(Exception e){throw failure("图片结果下载失败");}
     }
 

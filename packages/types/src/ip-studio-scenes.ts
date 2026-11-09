@@ -98,8 +98,11 @@ export interface StudioSceneCatalog {
   homeGoals?: StudioSceneHomeGoal[] | null;
 }
 export interface StudioSceneComposeRequest {
-  /** image = 出图描述；video = 交给画布创作助手的话；video-script = 交给编导写脚本的要求。 */
-  kind: "image" | "video" | "video-script"; sceneId: string;
+  /**
+   * image = 出图描述；video = 交给画布创作助手的话；video-script = 交给编导写脚本的要求；
+   * video-variables = 「视频裂变」从当前脚本里找可以替换的说法（只读脚本，正文每行一个变量）。
+   */
+  kind: "image" | "video" | "video-script" | "video-variables"; sceneId: string;
   /** 图片：补充要求；视频：用户写的那句。 */
   text?: string;
   /** 图片：用户改过的完整描述。 */
@@ -123,7 +126,13 @@ export interface StudioSceneComposeRequest {
   visual?: boolean;
   /** 编导改稿：设置变了什么（如「时长改成 30 秒」），服务端的编导模板把它说成一句话；页面不自己拼话。 */
   settingsChanged?: string;
+  /** 编导：「视频裂变」里 AI 改写的第几版、按哪组变化改；changes 为空由编导自己换。 */
+  variant?: StudioSceneVariant;
 }
+/** 「视频裂变」AI 改写的一版：同一条视频的第 index 版（共 total 版）。 */
+export interface StudioSceneVariant { index: number; total: number; changes?: StudioTakeChange[] }
+/** 一处变量换成什么：name 是变量名（人物身份、场景…），from 是脚本里的原文。 */
+export interface StudioTakeChange { name: string; from: string; to: string }
 /** 图片：`text` 是出图描述；视频：`text` 是交给助手的话，`skillKey` 是该场景的方法；编导：`text` 是写脚本的要求。 */
 export interface StudioSceneComposed { text: string; skillKey?: string | null }
 
