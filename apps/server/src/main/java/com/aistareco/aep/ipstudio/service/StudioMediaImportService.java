@@ -121,7 +121,9 @@ public class StudioMediaImportService {
                 if (compatible != null) try { Files.deleteIfExists(compatible); } catch (Exception ignored) {}
             }
         }
-        quota.checkQuota("aiavatar", user, bytes.length);
+        // 2026-11-09：原来这里无条件按通用台账（当时只记画布附件）拦。生成文件也开始记进同一台账后，继续无条件拦会突然挡住老用户的导入，
+        // 所以统一交给 StudioStorageGuard：按账号页同一口径、受 aep.ipstudio.storage-enforce 开关控制（入口处已按上传大小检查一次，这里按转码后大小再查）。
+        if (storageGuard != null) storageGuard.checkUpload(user, bytes.length);
         // Existing owned source namespace; signed URLs are returned only on the wire.
         var stored = storage.store(bytes, "ipstudio/source", user, format.ext(), format.mime());
         quota.record("aiavatar", user, "画布附件", null, stored.key(), stored.bytes());

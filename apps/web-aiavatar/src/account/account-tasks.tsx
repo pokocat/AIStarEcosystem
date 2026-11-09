@@ -3,7 +3,7 @@
 // 任务历史：画布、AI 图片 / 视频、导演台、对话和数字人的全部生成任务，每条写实际消耗的积分。
 // 数据：/api/v1/ip-studio/task-history（StudioTaskHistoryService）。积分口径与画布任务弹层相同。
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { StudioTaskHistoryItem, StudioTaskHistoryPage, StudioTaskStatus, StudioTaskType } from "@ai-star-eco/types";
 import { AccountApi } from "@/ip/api";
@@ -60,9 +60,12 @@ export function AccountTasks() {
     finally { setActing(""); }
   };
 
+  // 每次换筛选递增；「加载更多」的回包只认发出时的那一版，切了筛选的旧分页直接丢掉（Codex 评审 2026-11-09）。
+  const queryVersion = useRef(0);
   useEffect(() => {
     let live = true;
-    setLoading(true); setError(""); setPages([]);
+    queryVersion.current += 1;
+    setLoading(true); setError(""); setPages([]); setMore(false);
     AccountApi.taskHistory({ status, type, days, page: 0 }).then(p => { if (live) setPages([p]); })
       .catch(() => { if (live) setError("任务历史加载失败，请稍后刷新重试。"); })
       .finally(() => { if (live) setLoading(false); });
@@ -75,8 +78,11 @@ export function AccountTasks() {
   const loadMore = () => {
     if (!last?.hasMore || more) return;
     setMore(true);
-    AccountApi.taskHistory({ status, type, days, page: last.page + 1 }).then(p => setPages(prev => [...prev, p]))
-      .catch(() => setError("更多任务加载失败，请重试。")).finally(() => setMore(false));
+    const version = queryVersion.current;
+    AccountApi.taskHistory({ status, type, days, page: last.page + 1 })
+      .then(p => { if (version === queryVersion.current) setPages(prev => prev.length && prev[prev.length - 1].page === p.page - 1 ? [...prev, p] : prev); })
+      .catch(() => { if (version === queryVersion.current) setError("更多任务加载失败，请重试。"); })
+      .finally(() => { if (version === queryVersion.current) setMore(false); });
   };
   const range = RANGES.find(r => r.days === days)?.label ?? "近 30 天";
 

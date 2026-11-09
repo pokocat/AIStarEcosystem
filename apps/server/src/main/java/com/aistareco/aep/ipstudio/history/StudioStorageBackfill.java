@@ -57,6 +57,7 @@ public class StudioStorageBackfill {
     public int backfill(String user) {
         if (user == null || !done.add(user)) return 0;
         int recorded = 0;
+        boolean incomplete = false;
         try {
             for (IpSavedAsset row : savedAssets.findByOwnerUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(user)) {
                 JsonNode data = om.readTree(row.getPayloadJson()).path("data");
@@ -66,16 +67,18 @@ public class StudioStorageBackfill {
                 long bytes = data.path("bytes").asLong(0);
                 if (bytes <= 0) {
                     try { var info = files.stat(key); bytes = info == null ? 0 : info.bytes(); }
-                    catch (Exception e) { log.warn("[storage-backfill] stat failed key={}: {}", key, e.getMessage()); continue; }
+                    catch (Exception e) { log.warn("[storage-backfill] stat failed key={}: {}", key, e.getMessage()); incomplete = true; continue; }
                 }
-                if (bytes <= 0) continue;
+                if (bytes <= 0) continue; // 存储里没有这个对象（或本地驱动查不到大小）：不算失败，也不记
                 quota.record(StudioStorageService.APP, user, category, null, key, bytes);
-                recorded++;
+                // record 自己吞异常，按「记上了没有」判断，记不上留给下次
+                if (storageAssets.existsByCdnKey(key)) recorded++; else incomplete = true;
             }
         } catch (Exception e) {
-            done.remove(user); // 下次打开再补
+            incomplete = true;
             log.warn("[storage-backfill] user={} stopped after {} records: {}", user, recorded, e.getMessage());
         }
+        if (incomplete) done.remove(user); // 有没补上的，下次打开再补（已记上的不会重复）
         if (recorded > 0) log.info("[storage-backfill] user={} recorded={}", user, recorded);
         return recorded;
     }

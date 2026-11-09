@@ -49,6 +49,16 @@ class StudioAccountHistoryTest {
     }
 
     @Test
+    void digitalHumanJobsUseTheirRecordedBreakdownEvenWhenFailed() {
+        // 文本成功、媒体失败：文本费用照扣，breakdown 里有；不能因为状态是 failed 就显示 0（Codex 评审 2026-11-09）
+        var b = breakdown(5, 0, 0, 40).path("billingBreakdown");
+        var c = StudioTaskHistoryService.credits(b, 5, "failed");
+        assertThat(c.spent()).isEqualTo(5);
+        assertThat(c.released()).isEqualTo(40);
+        assertThat(StudioTaskHistoryService.credits(null, 0, "failed").spent()).isZero();
+    }
+
+    @Test
     void kindsMapToTheFilterTypes() {
         assertThat(StudioTaskHistoryService.typeOf("generate")).isEqualTo("image");
         assertThat(StudioTaskHistoryService.typeOf("studio-lip-sync")).isEqualTo("video");

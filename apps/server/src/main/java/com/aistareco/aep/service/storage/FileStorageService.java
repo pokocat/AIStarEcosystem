@@ -278,13 +278,32 @@ public class FileStorageService {
     private void recordStudioUsage(String category, String ownerId, String key, long bytes, String contentType) {
         String label = studioUsageCategory(category, contentType);
         if (label == null || ownerId == null || ownerId.isBlank() || storageQuota == null) return;
-        try {
-            StorageQuotaService quota = storageQuota.getIfAvailable();
-            if (quota != null) quota.record("aiavatar", ownerId, label, null, key, bytes);
-        } catch (RuntimeException e) {
-            log.warn("[file-storage] studio usage record failed key={}: {}", key, e.getMessage());
-        }
+        // 不在调用方事务里写台账：调用方常在持锁的业务事务里存文件，台账写失败会把业务事务一起拖垮（§8.0.1 ⑯）。
+        // 有事务就等它提交后再记，没有就直接排进后台；台账写入在自己的线程和事务里，失败只 WARN。
+        Runnable task = () -> {
+            try {
+                StorageQuotaService quota = storageQuota.getIfAvailable();
+                if (quota != null) quota.record("aiavatar", ownerId, label, null, key, bytes);
+            } catch (RuntimeException e) {
+                log.warn("[file-storage] studio usage record failed key={}: {}", key, e.getMessage());
+            }
+        };
+        Runnable submit = () -> {
+            try { USAGE_RECORDER.execute(task); }
+            catch (RuntimeException e) { log.warn("[file-storage] studio usage record rejected key={}: {}", key, e.getMessage()); }
+        };
+        if (org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override public void afterCommit() { submit.run(); }
+                    });
+        } else submit.run();
     }
+
+    /** 台账写入专用的单线程后台；队列有界，满了丢弃并 WARN（观测类旁路，下次打开账号页的回填会补上）。 */
+    private static final java.util.concurrent.ExecutorService USAGE_RECORDER = new java.util.concurrent.ThreadPoolExecutor(
+            1, 1, 0L, java.util.concurrent.TimeUnit.MILLISECONDS, new java.util.concurrent.LinkedBlockingQueue<>(10_000),
+            r -> { Thread t = new Thread(r, "studio-usage-recorder"); t.setDaemon(true); return t; });
 
     /** 存储用量分类：生成的按媒体类型分，上传的统一算「上传的素材」；其余分类不在这里记。 */
     static String studioUsageCategory(String category, String contentType) {

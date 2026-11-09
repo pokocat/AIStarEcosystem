@@ -35,6 +35,7 @@ export function AccountOverview(_props: { name?: string; phone?: string | null; 
         <div className="account-stat-top"><span>近 30 天消耗</span><IconBox tone="is-image"><TrendingUp /></IconBox></div>
         <strong>{s ? number.format(s.spent) : "…"}<small>积分</small></strong>
         {s && s.scopedSpent > 0 && <span className="account-muted">其中模型赠款 {number.format(s.scopedSpent)}</span>}
+        {s?.partial && <span className="account-muted">任务较多，只统计了最近 {number.format(s.count)} 条</span>}
         <a href="/studio#/tasks">查看任务历史</a>
       </section>
       <section className="account-card account-stat" aria-label="存储用量">

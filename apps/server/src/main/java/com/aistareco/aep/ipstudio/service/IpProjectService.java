@@ -272,7 +272,8 @@ public class IpProjectService {
     /** 恢复已删除的画布：原 ID、原内容。没删除时直接成功；不是本人的按不存在处理。 */
     @Transactional
     public void restore(String userId, String id) {
-        IpProject p = projectRepo.findById(id).filter(x -> userId.equals(x.getOwnerUserId()))
+        // 与彻底删除（StudioTrashService.purgeCanvas）抢同一把行锁：否则恢复成功后仍可能被并发的彻底删除删掉。
+        IpProject p = projectRepo.lockById(id).filter(x -> userId.equals(x.getOwnerUserId()))
                 .orElseThrow(() -> BusinessException.notFound("IP_PROJECT_NOT_FOUND", "这张画布不存在"));
         if (p.getDeletedAt() == null) return;
         p.setDeletedAt(null);

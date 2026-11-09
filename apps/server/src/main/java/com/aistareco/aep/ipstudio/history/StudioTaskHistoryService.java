@@ -13,7 +13,6 @@ import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -58,13 +57,19 @@ public class StudioTaskHistoryService {
     private final EnterpriseRepository enterprises;
     private final IpProjectService projectService;
 
+    private final com.fasterxml.jackson.databind.ObjectMapper om;
+
     public StudioTaskHistoryService(IpRunRepository runs, DapJobRepository dapJobs, IpProjectRepository projects,
-                                    DirectorWorkRepository works, EnterpriseRepository enterprises, IpProjectService projectService) {
+                                    DirectorWorkRepository works, EnterpriseRepository enterprises, IpProjectService projectService,
+                                    com.fasterxml.jackson.databind.ObjectMapper om) {
         this.runs = runs; this.dapJobs = dapJobs; this.projects = projects; this.works = works;
-        this.enterprises = enterprises; this.projectService = projectService;
+        this.enterprises = enterprises; this.projectService = projectService; this.om = om;
     }
 
-    @Transactional(readOnly = true)
+    /**
+     * 不包外层事务：投影里查排队位次会另开事务、锁端点，外层再占一条连接会在并发请求下把连接池耗尽（Codex 评审 2026-11-09）。
+     * 各仓库调用各自短事务即可，这里只读。
+     */
     public Page list(String user, String status, String type, int days, int page) {
         String t = type == null || type.isBlank() ? "all" : type;
         if (!TYPES.contains(t)) throw BusinessException.badRequest("TASK_HISTORY_INVALID", "不支持的任务类型");
@@ -75,6 +80,7 @@ public class StudioTaskHistoryService {
         if ((p + 1) * PAGE_SIZE > MAX_DEPTH) throw BusinessException.badRequest("TASK_HISTORY_TOO_DEEP", "请缩小时间范围后再查看更早的任务");
         Instant from = days == 0 ? Instant.EPOCH : Instant.now().minus(Duration.ofDays(days));
         Names names = names(user);
+        Map<String, Item> cache = new HashMap<>(); // 同一次请求里，扩大取数窗口与汇总会多次遇到同一条，只投影一次
 
         // 状态按显示状态筛：视频任务的状态取自它的视频子任务，任务行本身可能还记着 done，数据库层面筛不准。
         // 所以按时间顺序取出、逐条投影后再筛，不够就把取数窗口翻倍，最多翻到 MAX_DEPTH。
@@ -85,7 +91,7 @@ public class StudioTaskHistoryService {
             List<Row> rows = rows(user, from, t, List.copyOf(STATUSES), limit);
             matched.clear();
             for (Row row : rows) {
-                Item it = item(row, names);
+                Item it = cache.computeIfAbsent(row.key(), k -> item(row, names));
                 if (statuses.contains(it.status()) && matched.add(it) && matched.size() >= want) break;
             }
             if (matched.size() >= want || rows.size() < limit || limit >= MAX_DEPTH) break;
@@ -100,7 +106,7 @@ public class StudioTaskHistoryService {
         boolean partial = window.size() > SUMMARY_LIMIT;
         long spent = 0, scoped = 0, released = 0, running = 0;
         for (Row row : window.subList(0, Math.min(window.size(), SUMMARY_LIMIT))) {
-            Item it = item(row, names);
+            Item it = cache.computeIfAbsent(row.key(), k -> item(row, names));
             spent += it.credits().spent(); scoped += it.credits().scopedSpent(); released += it.credits().released();
             if ("running".equals(it.status())) running++;
         }
@@ -131,7 +137,7 @@ public class StudioTaskHistoryService {
     }
 
     private Item item(Row row, Names names) {
-        return row.run() != null ? runItem(row.run(), names) : dapItem(row.job());
+        return row.run() != null ? runItem(row.run(), names) : dapItem(row.job(), names);
     }
 
     private Item runItem(IpRun r, Names names) {
@@ -148,31 +154,44 @@ public class StudioTaskHistoryService {
                 credits(dto), payer, dto.errorCode(), dto.errorMessage(), href);
     }
 
-    private Item dapItem(DapJob j) {
+    /**
+     * 数字人任务：结算后 {@code result.billingBreakdown} 是真实明细（文本成功、媒体失败时文本费用照扣），付款账户在 {@code payload._billing}。
+     * 旧任务没有明细时才按 cost 与状态归类。
+     */
+    private Item dapItem(DapJob j, Names names) {
         String status = j.getStatus();
-        long cost = Math.max(0, j.getCost());
-        Credits credits = "running".equals(status) ? new Credits(0, 0, cost, 0)
-                : "done".equals(status) ? new Credits(cost, 0, 0, 0) : new Credits(0, 0, 0, 0);
+        Object breakdown = j.getResult() == null ? null : j.getResult().get("billingBreakdown");
+        Credits credits = breakdown != null
+                ? credits(om.valueToTree(breakdown), j.getCost(), status)
+                : credits(null, j.getCost(), status);
+        Payer payer = new Payer("personal", null);
+        Object billing = j.getPayload() == null ? null : j.getPayload().get("_billing");
+        if (billing instanceof Map<?, ?> m && "enterprise".equals(m.get("mode")) && m.get("enterpriseId") instanceof String eid)
+            payer = new Payer("enterprise", names.enterprise(eid));
         String title = j.getKind() == null || j.getKind().isBlank() ? "数字人任务" : j.getKind();
         return new Item(j.getId(), "digital-human", j.getAvatarId(), j.getCharName(), "digital-human", j.getType(), title,
-                status, j.getPct(), null, iso(j.getCreatedAt()), iso(j.getFinishedAt()), credits, new Payer("personal", null),
+                status, j.getPct(), null, iso(j.getCreatedAt()), iso(j.getFinishedAt()), credits, payer,
                 null, "failed".equals(status) ? j.getErrorMessage() : null,
                 j.getAvatarId() == null ? "/studio#/library" : "/studio#/avatar/" + j.getAvatarId());
     }
 
     /** 读 toRunDto 已算好的 breakdown；没有（旧任务）时按 cost 和状态归类。 */
     static Credits credits(IpRunDto dto) {
-        JsonNode b = dto.output() == null ? null : dto.output().path("billingBreakdown");
+        return credits(dto.output() == null ? null : dto.output().path("billingBreakdown"), dto.cost(), dto.status());
+    }
+
+    static Credits credits(JsonNode b, long rawCost, String status) {
+        long cost = Math.max(0, rawCost);
         if (b == null || b.isMissingNode() || b.isNull()) {
-            long cost = Math.max(0, dto.cost());
-            return "running".equals(dto.status()) ? new Credits(0, 0, cost, 0) : new Credits(cost, 0, 0, 0);
+            return "running".equals(status) ? new Credits(0, 0, cost, 0)
+                    : "failed".equals(status) && cost == 0 ? new Credits(0, 0, 0, 0) : new Credits(cost, 0, 0, 0);
         }
         long scoped = b.path("spent").path("scopedCredits").asLong();
         long spent = scoped + b.path("spent").path("walletCredits").asLong();
         long pending = b.path("pending").path("scopedCredits").asLong() + b.path("pending").path("walletCredits").asLong();
         long released = b.path("released").path("scopedCredits").asLong() + b.path("released").path("walletCredits").asLong();
         // 视频任务的 cost 另含提示词优化那一笔（单独结算，不在视频的 breakdown 里），补进已消耗。
-        long extra = Math.max(0, dto.cost() - spent - pending);
+        long extra = Math.max(0, cost - spent - pending);
         return new Credits(spent + extra, scoped, pending, released);
     }
 
@@ -211,7 +230,9 @@ public class StudioTaskHistoryService {
         return new Names(projectNames, workNames, new HashMap<>());
     }
 
-    private record Row(Instant at, String id, IpRun run, DapJob job) {}
+    private record Row(Instant at, String id, IpRun run, DapJob job) {
+        String key() { return (run != null ? "r:" : "j:") + id; }
+    }
 
     private final class Names {
         private final Map<String, String> projects, works, enterprises;

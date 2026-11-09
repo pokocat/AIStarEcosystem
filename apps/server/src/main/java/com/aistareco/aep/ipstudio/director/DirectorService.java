@@ -370,6 +370,17 @@ public class DirectorService {
      * （冻结已释放，见 BUSINESS_RULES「模型任务异常状态与并发」）；还没结案的（排队、提交中、生成中、受理待核对、
      * 正在重新查询原任务）、查不到或不属本人的，都算没结束。
      */
+    /**
+     * 回收站「彻底删除」前的在途核对，与删除同一口径（{@link #inFlight}）：一键制作在跑、任务记录未结束、
+     * 绑定的视频任务未结束 / 受理待核对 / 查不到，都返回原因；没有在途返回 null。调用方须已持有作品行锁。
+     */
+    public String purgeBlockReason(DirectorWork w) {
+        ObjectNode c = read(w);
+        if ("running".equals(c.path("pipeline").path("status").asText(""))) return "一键制作进行中，请停止制作后再彻底删除";
+        String busy = inFlight(w, c);
+        return busy == null ? null : busy.replace("删除", "彻底删除");
+    }
+
     private String inFlight(DirectorWork w, ObjectNode c) {
         Set<String> jobIds = new LinkedHashSet<>();
         for (JsonNode clip : c.path("clips")) for (JsonNode pend : clip.path("video").path("pending"))

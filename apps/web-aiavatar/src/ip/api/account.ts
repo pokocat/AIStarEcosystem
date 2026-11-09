@@ -5,8 +5,9 @@
 import type {
   RechargeOrder, StudioStorageUsage, StudioTaskHistoryItem, StudioTaskHistoryPage, StudioTaskStatus, StudioTaskType, StudioTrashedCanvas,
 } from "@ai-star-eco/types";
-import { JobApi } from "@/proto/api";
-import { apiFetch, buildQuery, mockDelay, USE_MOCK } from "./_client";
+// 演示开关跟本应用其余页面（proto/api）同一个定义：未设置 NEXT_PUBLIC_USE_MOCK 时两边默认值不同，混用会一半演示一半真数据。
+import { JobApi, USE_MOCK } from "@/proto/api";
+import { apiFetch, buildQuery, mockDelay } from "./_client";
 
 export interface TaskHistoryQuery {
   status?: StudioTaskStatus;
