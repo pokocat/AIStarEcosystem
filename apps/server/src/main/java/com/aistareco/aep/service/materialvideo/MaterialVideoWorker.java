@@ -112,6 +112,14 @@ public class MaterialVideoWorker {
             log.info("[material-video] job {} already terminal ({}), skip", jobId, job.getStatus());
             return;
         }
+        // An explicit portrait refusal is resumable inside the current task. No provider slot or second hold while waiting.
+        if (ArkPortraitLibrary.REVIEW_CODE.equals(job.getErrorCode()) && !hasAcceptedTask(job)) {
+            if (portraitReviewExpired(job)) {
+                markFailed(jobId,"VIDEO_ASSET_REVIEW_TIMEOUT","人像核验等待超时，本次生成已取消。请完成核验后重新生成。");
+                if(queue!=null)queue.finish(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId);
+            } else if(queue!=null) queue.requeue(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId,Duration.ofSeconds(30));
+            return;
+        }
         if(queue!=null) {
             var admission=queue.acquire(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId,
                 queue.endpointFor(com.aistareco.aep.model.AiModelPurpose.VIDEO_GENERATION,extractEndpointId(job.getVariantConfigJson())),false);
@@ -121,6 +129,11 @@ public class MaterialVideoWorker {
         try {
             runGeneration(job,terminal);
         } catch (Throwable t) {
+            if (t instanceof BusinessException business && ArkPortraitLibrary.REVIEW_CODE.equals(business.getCode())
+                    && !hasAcceptedTask(jobRepo.findById(jobId).orElse(job))) {
+                pauseForPortraitReview(jobId);
+                return;
+            }
             log.error("[material-video] job {} failed", jobId, t);
             // BusinessException carries our own sentence; anything else is a Java message, kept in ErrorLog only.
             String msg = t instanceof BusinessException && t.getMessage() != null ? t.getMessage() : GENERATION_FAILED_MESSAGE;
@@ -136,6 +149,29 @@ public class MaterialVideoWorker {
             if(queue!=null && terminal[0] && jobRepo.findById(jobId).map(j->isTerminal(j.getStatus())).orElse(true))
                 queue.finish(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId);
         }
+    }
+
+    static final String PORTRAIT_REVIEW_SINCE="portrait_review_since";
+    static boolean portraitReviewExpired(MaterialVideoJob job) {
+        try {
+            JsonNode payload=OM.readTree(job.getPayloadJson()==null?"{}":job.getPayloadJson());
+            String since=payload.path(PORTRAIT_REVIEW_SINCE).asText();
+            return !since.isBlank() && java.time.Instant.parse(since).plus(Duration.ofMinutes(30)).isBefore(java.time.Instant.now());
+        } catch(Exception invalid) { return true; }
+    }
+    private void pauseForPortraitReview(String jobId) {
+        boolean[] paused={false};
+        inTransaction(()->settlementJob(jobId).ifPresent(job->{
+            if(hasAcceptedTask(job)||!"submitting".equals(job.getStatus()))return;
+            com.fasterxml.jackson.databind.node.ObjectNode payload;
+            try {var parsed=OM.readTree(job.getPayloadJson()==null?"{}":job.getPayloadJson());payload=parsed.isObject()?(com.fasterxml.jackson.databind.node.ObjectNode)parsed:OM.createObjectNode();}
+            catch(Exception invalid){payload=OM.createObjectNode();}
+            if(!payload.has(PORTRAIT_REVIEW_SINCE))payload.put(PORTRAIT_REVIEW_SINCE,java.time.Instant.now().toString());
+            payload.put("portrait_review_id",java.util.UUID.randomUUID().toString());
+            job.setPayloadJson(payload.toString());job.setStatus("queued");job.setErrorCode(ArkPortraitLibrary.REVIEW_CODE);
+            job.setErrorMessage(ArkPortraitLibrary.REVIEW_MESSAGE);job.setUpdatedAt(OffsetDateTime.now());jobRepo.save(job);paused[0]=true;
+        }));
+        if(paused[0]&&queue!=null)queue.requeue(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId,Duration.ofSeconds(30));
     }
 
     /** Apply the explicit fail-and-refund policy to historical unknown receipts, without any provider call. */

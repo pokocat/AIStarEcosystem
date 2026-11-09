@@ -153,6 +153,7 @@ export interface IpVideoCandidate {
   promptRewrite?: IpVideoPromptRewrite;
 }
 export interface IpRunOutput {
+  assetReviews?: import('./video-portrait-library').VideoPortraitReviewLink[];
   billingBreakdown?: import('./model-billing').ModelBillingBreakdown;
   /** Persisted async ErrorLog lookup ID, alongside partial output when applicable. */
   logId?: string;

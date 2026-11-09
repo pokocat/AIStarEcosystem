@@ -1,0 +1,7 @@
+/* Controls, tables, tabs and dialogs are Ant Design; these rules only arrange the feature's content. */
+.portrait-library-page .ant-tabs { margin-top: 24px; }
+.portrait-secondary { font-size: 12px; line-height: 1.7; }
+.portrait-agreement { max-width: 68ch; line-height: 1.8; }
+.portrait-declaration { max-width: 560px; padding: 8px 0; }
+.portrait-person-select { min-width: min(240px, 100%); flex: 1; }
+.portrait-declaration .ant-form-item { margin-bottom: 16px; }

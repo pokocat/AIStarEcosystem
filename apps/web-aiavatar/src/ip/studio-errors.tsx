@@ -9,6 +9,8 @@ import type { CanvasNodeData } from '@/canvas/types/canvas';
 import type { IpRun } from '@ai-star-eco/types/ip-studio';
 // 子路径引入：错误整理是纯函数，不跟着包根走（测试常把包根整个 mock 掉，少了这个导出就会在报错时再抛一次，错误永远显示不出来）。
 import { publicModelErrorMessage, isProviderModelError, isCustomerWalletError } from '@ai-star-eco/api-client/public-model-error';
+import { PortraitReviewHost } from './portrait-review-host';
+import { observePortraitReviews } from './portrait-review-events';
 import { isStudioCreditShortage } from '@/canvas-bridge/studio-billing-cancel';
 
 export type StudioError = { code: string; message: string; logId?: string; taskId?: string; clientMessageId?: string };
@@ -165,7 +167,7 @@ export function reportStudioError(input: ErrorInput, options: { once?: string; f
   const error = normalizeStudioError(input, options.fallback);
   if (error.code === "IP_RUN_CANCELLED") return error;
   // 用户自己取消付款或关掉积分不足提示框，什么都没提交，不算错误。
-  if (error.code === "STUDIO_BILLING_CANCELLED") return error;
+  if (error.code === "STUDIO_BILLING_CANCELLED" || error.code === "STUDIO_PORTRAIT_REVIEW_DEFERRED") return error;
   // 画布的保存冲突由顶栏的冲突弹窗负责（canvas-conflict-dialog.tsx）。冲突之后每一条经过
   // saveStudioDocument 的保存都会再抛一次它 —— 助手面板的自动保存、任务轮询回写、脚本编辑器……
   // 逐条弹通知就是用户说的「页面一直在报错」。这里只回传给调用方做内联状态，不弹。
@@ -194,6 +196,8 @@ export const studioRunError = (run: IpRun) => {
 export const studioNodeError = (node: CanvasNodeData) => ({ code: node.metadata?.studio?.task?.errorCode || node.metadata?.errorCode || 'STUDIO_RUN_FAILED', message: node.metadata?.studio?.task?.errorMessage || node.metadata?.errorDetails || '生成失败，请查看任务', logId: node.metadata?.studio?.task?.logId || node.metadata?.errorLogId, taskId: node.metadata?.studio?.runId || node.metadata?.runId });
 /** 生成任务（轮询得知）失败：后台状态，右上角提示一次，画布节点上有「查看错误详情」。 */
 export function reportStudioRunFailures(run: IpRun) {
+  observePortraitReviews(run.output?.assetReviews);
+  if (run.errorCode === 'VIDEO_ASSET_NEEDS_REVIEW') return;
   if (run.status === 'failed' || (run.status === 'running' && (run.errorCode || run.errorMessage))) reportStudioError(studioRunError(run), {once: `run:${run.id}`});
   if (run.status === 'done') for (const candidate of run.output.videoCandidates || []) {
     if (candidate.status === 'failed') reportStudioError({code: candidate.errorCode || 'STUDIO_VIDEO_FAILED', message: candidate.errorMessage || '本条视频生成失败，其他候选仍可采用', logId: candidate.logId, taskId: candidate.jobId}, {once: `video:${candidate.jobId}`});
@@ -256,6 +260,7 @@ export function failureNext(code: string, refreshed = false, reason = ''): strin
   if (isConflict(code)) return `${conflictNext(refreshed)}如有需要，请修改后重试。`;
   if (code === 'STUDIO_PRICE_CHANGED') return '价格已更新，请刷新页面后重新确认。';
   if (code === 'STUDIO_USAGE_PENDING') return '本次用量正在核对，请查看原任务状态。如需协助，可复制「错误详情」反馈给我们。';
+  if (code === 'VIDEO_ASSET_NEEDS_REVIEW') return '请在当前核验窗口处理参考人像，审核通过后继续生成。';
   if (code === 'VIDEO_MODEL_RETIRED') return '请更换可用的视频模型后重新生成。';
   if (code === 'VIDEO_REFERENCE_PERSON_RESTRICTED' || /未通过内容审核/.test(reason)) return '请根据上述原因检查描述和参考素材，调整后重新生成。原因不明确时，可复制「错误详情」反馈给我们。';
   // Provider codes can contain BALANCE/INSUFFICIENT/NOT_FOUND; none proves the customer's wallet or work is at fault.
@@ -278,7 +283,7 @@ const deciding = new Set<string>();
 /** 打开错误弹窗。同一个操作的同一个错误还开着时不再弹第二个（连点、轮询重复报错）。 */
 export function openStudioFailure(modal: ModalApi, failure: StudioFailure) {
   const error = normalizeStudioError(failure.error);
-  if (error.code === 'IP_RUN_CANCELLED' || error.code === 'STUDIO_BILLING_CANCELLED') return error;
+  if (error.code === 'IP_RUN_CANCELLED' || error.code === 'STUDIO_BILLING_CANCELLED' || error.code === 'STUDIO_PORTRAIT_REVIEW_DEFERRED') return error;
   // 积分不足不当错误弹：说清差多少，给能换的模型和充值入口（「查看错误详情」照旧看详情）。
   if (!failure.title && isStudioCreditShortage(error)) {
     recentDialogs.set(keyOf(error), Date.now());
@@ -352,7 +357,7 @@ export function StudioNotifications() {
     };
     return subscribeStudioErrors(show);
   }, [api, modal]);
-  return <ConfigProvider theme={{ components: { Notification: { width: 'min(440px, calc(100vw - 48px))' } }, token: { colorPrimary: '#192229', borderRadius: 13, fontFamily: 'var(--ip-font-sans, sans-serif)' } }}>{holder}{modalHolder}</ConfigProvider>;
+  return <ConfigProvider theme={{ components: { Notification: { width: 'min(440px, calc(100vw - 48px))' } }, token: { colorPrimary: '#192229', borderRadius: 13, fontFamily: 'var(--ip-font-sans, sans-serif)' } }}>{holder}{modalHolder}<PortraitReviewHost /></ConfigProvider>;
 }
 
 /** Preserve success feedback; every action error goes to the shared error exit (a dialog for the action the user just took). */

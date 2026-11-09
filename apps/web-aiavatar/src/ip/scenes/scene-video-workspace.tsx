@@ -1,5 +1,8 @@
 'use client';
 
+import { Button } from 'antd';
+import { observePortraitReviews, requestPortraitReview } from '../portrait-review-events';
+
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import Link from 'next/link';
 import { AlertCircle, ArrowUpRight, Check, ChevronRight, Download, Film, Image as ImageIcon, Layers, ListVideo, PencilLine, Play, Plus, RefreshCw, Square, X } from 'lucide-react';
@@ -205,6 +208,8 @@ function VideoTaskView({ task, persist, onReuse, onRefresh }: {
   const [poll, setPoll] = useState(0);
   const cache = useRef<Record<string, IpRun>>({}), projection = useRef(new Set<string>());
   const execution = task.execution, status = videoTaskStatus(task), phases = videoTaskPhases(task);
+  const portraitReview = task.run?.output?.assetReviews ?? (execution?.steps ?? []).flatMap(step => stepRunCandidates(step).flatMap(id => runs[id]?.output?.assetReviews || []));
+  useEffect(() => { observePortraitReviews(portraitReview); }, [JSON.stringify(portraitReview)]);
   const running = status === 'running';
   const elapsed = useElapsed(task.createdAt, running);
   const key = JSON.stringify(execution?.steps.map(s => [s.id, s.status, s.runIds, s.acceptedRunId]) ?? task.run?.id);
@@ -252,7 +257,7 @@ function VideoTaskView({ task, persist, onReuse, onRefresh }: {
   const runningStep = execution?.steps.find(s => s.status === 'running' || s.status === 'submitted');
   const activeRun = task.run ?? (runningStep ? stepRunCandidates(runningStep).map(id => runs[id]).find(Boolean) : undefined);
   const queuePosition = running && activeRun?.queue && activeRun.queue.position > 0 ? activeRun.queue.position : undefined;
-  const heading = completed ? '视频已完成' : status === 'done' ? '正在加载视频…' : failed ? videoTaskProblemTitle(failed) : needsAction ? '生成没有完成'
+  const heading = portraitReview.length ? '参考人像待核验' : completed ? '视频已完成' : status === 'done' ? '正在加载视频…' : failed ? videoTaskProblemTitle(failed) : needsAction ? '生成没有完成'
     : status === 'canceled' ? '已停止生成' : status === 'paused' ? '已暂停' : retry ? '等待重试' : queuePosition ? '排队中' : active ? `正在${active.label}` : '正在准备';
   const progress = active && active.total > 1 && active.key === 'boards' ? `分镜图 ${active.done} / ${active.total} 张已完成` : active && active.total > 1 && active.key === 'videos' ? `片段 ${active.done} / ${active.total} 段已完成` : '';
   const failure = failed?.reason ?? execution?.needsUserReason ?? (task.run?.status === 'failed' ? task.run.errorMessage : undefined);
@@ -288,7 +293,7 @@ function VideoTaskView({ task, persist, onReuse, onRefresh }: {
     {completed ? <div className="video-final-player"><SignedVideo src={urls[result]} storageKey={result} controls playsInline preload="metadata" aria-label={task.title}/></div>
       : <div className="video-production-head">
         <div className="video-state-heading"><span className={`video-state-symbol${running ? ' is-active' : failed || needsAction ? ' is-problem' : ''}`} aria-hidden="true">{failed || needsAction ? <AlertCircle size={24} strokeWidth={1.35}/> : running ? <AiMark size={22}/> : <Layers size={24} strokeWidth={1.35}/>}</span>
-          <h2>{heading}</h2>
+          <h2>{heading}</h2>{portraitReview.length > 0 && <Button onClick={() => void requestPortraitReview(portraitReview)}>处理人像</Button>}
           {retry ? reader(`「${retry.title}」失败，稍后自动重试（第 ${retry.attempt} 次，共 3 次）。`)
             : queuePosition ? reader(`${queuePosition > 1 ? `前面还有 ${queuePosition - 1} 个任务` : '即将开始'} · 已用时 ${elapsed}`)
             : running ? reader([progress, `已用时 ${elapsed}`].filter(Boolean).join(' · ')) : null}

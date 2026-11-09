@@ -119,7 +119,7 @@ public class StudioSegmentedRun {
     static boolean retryable(String code) {
         if (code == null || code.isBlank()) return true;
         return !(code.equals(StudioPaymentMessage.CODE) || code.contains("INSUFFICIENT") || code.contains("RESTRICTED") || code.endsWith("_INVALID") || code.contains("NOT_CONFIGURED")
-                || code.contains("PRICE") || code.contains("UNAVAILABLE") || code.contains("UNKNOWN") || code.contains("RECONCILIATION")
+                || code.startsWith("VIDEO_ASSET_") || code.contains("PRICE") || code.contains("UNAVAILABLE") || code.contains("UNKNOWN") || code.contains("RECONCILIATION")
                 || code.contains("RAW_ONLY") || code.contains("OUT_OF_SCOPE") || code.contains("MODERATION") || code.contains("UNSUPPORTED"));
     }
 

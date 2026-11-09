@@ -1321,3 +1321,7 @@ Studio 视频费用确认复用图片弹窗，显示整批原价、优惠、赠�
 ### 2026-11-06 · 导演台带货短剧（功能分支，未发布）
 
 新增 `src/ip/director/director-products.tsx`：商品工作区、商品库弹窗、剧本页商品栏。开关在 `director-settings.tsx`（`CommerceSwitch`，新建作品也用它）。真源 `docs/ai-director-commerce-plan.md`。
+
+## Seedance 官方人像素材（2026-11-09，本地实现，未发布）
+
+Fast / Mini 的生产 API Key 已切换；官方库 `bingbing` 已真实验证虚拟样本入库 Active 与本人 H5 会话。官方素材库绑定、V78 和页面未发布。生成前在积分冻结前检查引用，需要处理时在当前页弹窗，复用 Ant Design 控件；用户明确确认真人或虚拟声明后入库，Active 后继续原操作。官方明确拒绝且尚无供应商任务号时，保留原任务及冻结最多 30 分钟，审核后恢复同一任务，不二次冻结；超时释放。已有供应商任务继续对账。本人刷脸、真人一致性审核和真人成片尚未实测。真源：[视频素材库](../../docs/video-asset-library.md)。
