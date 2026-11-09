@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { StudioVideoTask } from '@ai-star-eco/types/ip-studio-video-task';
 const api = vi.hoisted(() => ({ list: vi.fn(), get: vi.fn(), readRun: vi.fn(), readVideoJob: vi.fn(), signKeys: vi.fn(), resume: vi.fn() }));
@@ -14,7 +14,7 @@ import { SceneVideoWorkspace, VideoHistoryToggle, VideoTaskSettings, videoTaskPh
 const task = (id: string, kind: StudioVideoTask['kind'] = 'direct') => ({ id, kind, title: id, projectId: `IPP-${id}`, sceneId: 'drama-twist', createdAt: '2026-11-06T00:00:00Z',
   execution: { id, projectId: `IPP-${id}`, status: 'running', stage: 'production', steps: [{ id: 'v1', title: '第一段', operation: 'video', status: 'pending', stage: 'production', attempt: 1, runIds: [], dependsOn: [] }], budgets: [], updatedAt: '2026-11-06' },
   input: { nodes: [], sceneVideoState: { text: '保留这一版要求', duration: 40, ratio: '9:16', tier: '720p', options: {} } } }) as unknown as StudioVideoTask;
-const props = { enabled: true, onSelect: vi.fn(), onReuse: vi.fn(), onDraft: vi.fn(), drafts: [], railOpen: false, onRail: vi.fn(), persist: vi.fn().mockResolvedValue(undefined), children: <p>尚未制作</p> };
+const props = { enabled: true, onSelect: vi.fn(), onDraft: vi.fn(), drafts: [], railOpen: false, onRail: vi.fn(), persist: vi.fn().mockResolvedValue(undefined), children: <p>尚未制作</p> };
 beforeEach(() => { sessionStorage.clear(); window.history.replaceState(null, '', '/video?scene=drama-twist'); api.list.mockResolvedValue({ items: [], page: 0, hasMore: false }); api.signKeys.mockResolvedValue({}); });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 test.each(['direct', 'segmented', 'recreation'] as const)('%s uses the same durable recent-task entry', async kind => {
@@ -41,9 +41,25 @@ test('historical inputs are read-only and explicitly reused through a new draft'
   expect(screen.getByText('保留这一版要求')).toBeTruthy(); expect(screen.queryByRole('textbox')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '重新编辑' })); expect(reuse).toHaveBeenCalledOnce();
 });
-test('the settings panel leaves reuse to the result while a task runs or has finished, and hides empty rows', () => {
+test.each(['running', 'done', 'needs_user', 'partial', 'paused', 'canceled'] as const)('%s keeps exactly one re-edit action in the settings footer', async status => {
+  const saved = task('PEX-edit'); saved.execution!.status = status;
+  if (status === 'done') saved.run = { id: 'IPR-final', status: 'done', output: { storageKey: 'final.mp4' } } as StudioVideoTask['run'];
+  api.get.mockResolvedValue(saved);
+  const reuse = vi.fn();
+  await act(async () => { render(<><VideoTaskSettings task={saved} onNew={vi.fn()} onReuse={reuse}/><SceneVideoWorkspace {...props} taskId={saved.id} selected={saved}/></>); });
+  const settings = screen.getByRole('region', { name: '本次设置' });
+  const button = within(settings).getByRole('button', { name: '重新编辑' });
+  expect(button.closest('footer')?.parentElement).toBe(settings);
+  if (status === 'done') await screen.findByRole('button', { name: '下载视频' });
+  expect(screen.getAllByRole('button', { name: '重新编辑' })).toHaveLength(1);
+  fireEvent.click(button); expect(reuse).toHaveBeenCalledOnce();
+});
+test('the settings panel hides empty rows and only offers re-edit when inputs were saved', () => {
   const noSpecs = task('PEX-one'); noSpecs.input = { nodes: [], sceneVideoState: { text: '要求', options: {} } } as never;
-  render(<VideoTaskSettings task={noSpecs} onNew={vi.fn()} onReuse={vi.fn()}/>);
+  const mounted = render(<VideoTaskSettings task={noSpecs} onNew={vi.fn()} onReuse={vi.fn()}/>);
+  expect(screen.getByRole('button', { name: '重新编辑' })).toBeTruthy();
+  noSpecs.input = undefined;
+  mounted.rerender(<VideoTaskSettings task={noSpecs} onNew={vi.fn()} onReuse={vi.fn()}/>);
   expect(screen.queryByRole('button', { name: '重新编辑' })).toBeNull(); expect(screen.queryByText('清晰度')).toBeNull(); expect(screen.queryByText(/— 秒/)).toBeNull();
 });
 test('completed steps stay complete while only the failed step retries', () => {

@@ -1150,7 +1150,7 @@ export function SceneVideoStudio() {
 
     <SceneVideoWorkspace enabled={ready} taskId={query.task} draftId={query.draft} sceneId={query.scene} restoreLastTask={!initialVideoEntry.current.draft && !initialVideoEntry.current.scene}
       selected={selectedTask} onSelect={task => { if (query.task && query.task === task.id) acceptTask(task); else void openTask(task); }}
-      onReuse={task => void reuseTask(task)} onDraft={id => { setSelectedTask(undefined); window.history.replaceState(null, '', `/video?scene=${encodeURIComponent(scene.id)}&draft=${encodeURIComponent(id)}`); void openDraft(id); }}
+      onDraft={id => { setSelectedTask(undefined); window.history.replaceState(null, '', `/video?scene=${encodeURIComponent(scene.id)}&draft=${encodeURIComponent(id)}`); void openDraft(id); }}
       drafts={drafts.data} draftsError={drafts.error} onRetryDrafts={drafts.reload} railOpen={railOpen} onRail={setRailOpen} onNew={() => reset()} persist={persist}>
     <section className="scene-results scene-legacy-results" aria-label="作品与示例">
       <header><SceneResultTabs tab={tab} onTab={setTab} count={rows.length + segmentedRuns.length} idBase="scene-video"/>

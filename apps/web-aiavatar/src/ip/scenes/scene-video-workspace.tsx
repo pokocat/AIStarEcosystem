@@ -53,9 +53,9 @@ export function VideoHistoryToggle({ onOpen }: { onOpen: () => void }) {
 }
 
 /** Data loading never submits work. A stale response cannot replace a more recently selected task. */
-export function SceneVideoWorkspace({ enabled, taskId, draftId, sceneId, restoreLastTask, selected, onSelect, onReuse, onDraft, drafts, draftsError, onRetryDrafts, railOpen, onRail, onNew, children, persist }: {
+export function SceneVideoWorkspace({ enabled, taskId, draftId, sceneId, restoreLastTask, selected, onSelect, onDraft, drafts, draftsError, onRetryDrafts, railOpen, onRail, onNew, children, persist }: {
   enabled: boolean; taskId?: string; draftId?: string; sceneId?: string; restoreLastTask?: boolean; selected?: StudioVideoTask;
-  onSelect: (task: StudioVideoTask) => void; onReuse: (task: StudioVideoTask) => void;
+  onSelect: (task: StudioVideoTask) => void;
   onDraft: (id: string) => void; drafts: { id: string; name: string; updatedAt: string }[]; draftsError?: string; onRetryDrafts?: () => void;
   railOpen: boolean; onRail: (open: boolean) => void; onNew?: () => void;
   children: ReactNode;
@@ -127,7 +127,7 @@ export function SceneVideoWorkspace({ enabled, taskId, draftId, sceneId, restore
           <VideoHistoryToggle onOpen={() => onRail(true)}/></div></header>}
       {error && <div className="video-connection-note" role="status">{error}<button type="button" onClick={() => setReload(n => n + 1)}>重试</button></div>}
       {taskId && !shown ? <div className="video-task-loading" role="status"><div className="video-loading-frame"/>正在加载任务…</div>
-        : shown ? <VideoTaskView key={shown.id} task={shown} persist={persist} onReuse={() => onReuse(shown)} onRefresh={() => setReload(n => n + 1)}/>
+        : shown ? <VideoTaskView key={shown.id} task={shown} persist={persist} onRefresh={() => setReload(n => n + 1)}/>
         : children}
     </section>
     {railOpen && <button type="button" className="video-history-backdrop" aria-label="关闭最近任务" onClick={() => onRail(false)}/>}
@@ -198,9 +198,9 @@ function useElapsed(since: string, active: boolean) {
   return seconds >= 3600 ? `${Math.floor(seconds / 3600)}:${pad(Math.floor(seconds / 60) % 60)}:${pad(seconds % 60)}` : `${pad(Math.floor(seconds / 60))}:${pad(seconds % 60)}`;
 }
 
-function VideoTaskView({ task, persist, onReuse, onRefresh }: {
+function VideoTaskView({ task, persist, onRefresh }: {
   task: StudioVideoTask; persist: (mutate: (doc: IpProjectDoc) => IpProjectDoc, projectId?: string) => Promise<unknown>;
-  onReuse: () => void; onRefresh: () => void;
+  onRefresh: () => void;
 }) {
   const showFailure = useStudioFailure();
   const [runs, setRuns] = useState<Record<string, IpRun>>({}), [urls, setUrls] = useState<Record<string, string>>({});
@@ -325,8 +325,7 @@ function VideoTaskView({ task, persist, onReuse, onRefresh }: {
       </div>}
     <div className="video-production-bottom">
       {completed && <div className="video-final-actions"><div><h2>视频已完成</h2>{spent !== undefined && <p>本次消耗 {spent} 积分</p>}</div>
-        <button type="button" className="is-primary" onClick={download}><Download size={14} strokeWidth={1.6}/>下载视频</button>
-        {task.input?.sceneVideoState && <button type="button" onClick={onReuse} title="将此次的设置恢复到编辑器，原任务保留"><PencilLine size={13} strokeWidth={1.6}/>重新编辑</button>}</div>}
+        <button type="button" className="is-primary" onClick={download}><Download size={14} strokeWidth={1.6}/>下载视频</button></div>}
       {previewError && <p className="video-connection-note" role="status">部分预览加载失败<button type="button" onClick={() => { setPreviewError(false); onRefresh(); setPoll(n => n + 1); }}>重试</button></p>}
       <div className="video-process-row">
         {!!execution?.steps.length && <button type="button" className="video-process-toggle" aria-expanded={details} onClick={() => setDetails(v => !v)}>{details ? '收起生成记录' : '查看生成记录'}</button>}
@@ -340,13 +339,12 @@ function VideoTaskView({ task, persist, onReuse, onRefresh }: {
 export function VideoTaskSettings({ task, onNew, onReuse }: { task: StudioVideoTask; onNew: () => void; onReuse: () => void }) {
   const state = task.input?.sceneVideoState, nodes = task.input?.nodes ?? [];
   const reference = nodes.find(n => n.type === 'video');
-  const status = videoTaskStatus(task);
   const ratio = state?.ratio ?? task.request?.configuration?.ratio;
   const duration = state?.duration ?? task.request?.configuration?.duration;
   const tier = state?.tier ?? task.request?.configuration?.tier;
   const rows: [string, string][] = [...(ratio ? [['画面', ratio] as [string, string]] : []), ...(duration ? [['时长', `${duration} 秒`] as [string, string]] : []), ...(tier ? [['清晰度', tier.toUpperCase()] as [string, string]] : [])];
-  // 完成后「重新编辑」在成片下面，生成中不用它：同一屏只留一个入口。
-  const canReuse = !!state && status !== 'done' && status !== 'running';
+  // 所有任务状态共用设置面板底部的入口，不随进度或结果移动。
+  const canReuse = !!state;
   return <section className="scene-card video-task-settings" aria-label="本次设置">
     <header><div><h2>本次设置</h2><p>按提交时的内容显示</p></div><button type="button" className="scene-new" onClick={onNew}><Plus size={13} strokeWidth={1.6}/>新建</button></header>
     <div className="video-task-settings-body">
