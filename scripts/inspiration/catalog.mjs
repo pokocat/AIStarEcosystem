@@ -1,9 +1,10 @@
 // 灵感库官方示例的内容（docs/studio-inspiration-library.md）。发布脚本是 scripts/inspiration/publish.mjs。
 //
-// 每一条是一张官方示例画布：示例效果 + 预填好的提示词 + 这套做法的说明。
+// 每一条是一张官方示例画布，原样展示生成链：参考图（有的话）→ 生成节点（提示词 + 生成结果），旁边是这套做法的说明。
 // · 文字是我们自己写的，只描述示例画面和做法要点，不收录第三方技能的原文；
 //   原技能里的工具链术语（分组、资产、AGENTS.md、指定模型）在 Studio 里没有对应物，收进来用户也用不上。
-// · prompt 进「我的版本」卡片，也是助手输入框的预填内容（有 request 时助手用 request）。助手的方法默认按类型，assistantSkill 可改。
+// · prompt 进生成节点（「成片」/「成图」），也是助手输入框的预填内容（有 request 时助手用 request）。助手的方法默认按类型，assistantSkill 可改。
+// · input.sample 是生成这条示例实际用到的参考图，会连到生成节点；没有 sample 的 input 是给用户放自己素材的选填空位。
 //   不要写比例和时长：画布按节点设置生成，描述里写了不一致的数字会被拦下来确认。
 // · 不要在 prompt / request 里写「做同款」「复刻」「原片」：助手会把它当成照视频复刻，改走素材清单。
 // · skill / sample 只用来在本机 resources/skills（未入库）里找文件。
@@ -126,7 +127,7 @@ export const INSPIRATIONS = [
   {
     id: 'poster-motion', kind: 'video', skill: '56c42aec1b4b48df9903c2dede12c953', samples: ['ai_sample.mp4'], ratio: '3:4', seconds: 5,
     name: '静态海报变动态', summary: '海报不重做，人物和背景动起来，文字保持原样。',
-    input: { title: '我的海报', hint: '海报', sample: { skill: 'a63228473c7442c6859c7f2463190995', file: 'ai_sample.jpg' } },
+    input: { title: '参考海报', hint: '海报', sample: { skill: 'a63228473c7442c6859c7f2463190995', file: 'ai_sample.jpg' } },
     method: ['海报作首帧，文字和版式不要变', '只做小幅动作：衣摆、头发、光影、背景流动', '时长五秒左右，循环播放也自然'],
     replace: '把这张海报换成你的海报',
     prompt: '以参考海报为首帧。人物轻轻转身，头发和大衣衣摆随之摆动，背景的色块缓慢流动，有一道光扫过。标题文字保持原样，不变形、不移动。镜头固定。',
@@ -206,7 +207,7 @@ export const INSPIRATIONS = [
   {
     id: 'grid-video', kind: 'video', skill: '30913253771d9322e507c27e11753ed6', samples: ['ai_sample.mp4'], ratio: '1:1', seconds: 5,
     name: '多宫格生视频', summary: '一张九宫格直接出视频，每一格都动起来。',
-    input: { title: '我的宫格图', hint: '宫格图', sample: { skill: 'b2c654f4120a4f5ab9dc7a77da2253a2', file: 'ai_sample.jpg' } },
+    input: { title: '参考宫格图', hint: '宫格图', sample: { skill: 'b2c654f4120a4f5ab9dc7a77da2253a2', file: 'ai_sample.jpg' } },
     method: ['先出一张多宫格图，造型和风格一次定好', '宫格图作首帧，不用分别出九张', '动作要小，九格同时动才不乱'],
     replace: '把这张宫格图换成你的',
     prompt: '以参考九宫格为首帧。每一格里的手办轻轻摇摆、点头，保持各自的造型和位置不变，分隔线不动。棚拍光，镜头固定。',

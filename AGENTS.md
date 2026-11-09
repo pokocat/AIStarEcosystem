@@ -1430,7 +1430,7 @@ Studio 工作线程默认 24，单个模型的上限看端点配置；图片调�
 
 ### 灵感库：开箱即用的官方示例（2026-11-06 已生产发布 `20261106-inspiration-wall`，main `50689b693`；34 个示例已上线）
 
-真源 `docs/studio-inspiration-library.md`。新版导航加「灵感」（`/templates`，默认案例，可筛视频 / 图片）。点开是弹窗不是全屏（`StudioTemplateUse`），预览不显示提示词（用户 2026-11-06 要求，只读画布点开节点也不显示，v0.232 那句「查看节点提示词」作废），点「做同款」才复制并进画布；首页和灵感页共用瀑布流（`InspirationWall`：按作品真实比例摆进最矮的一列、不裁图、滚动加载，新发布的在前，比日期，同一天的按运营排序）；`onCreated` 现在收的是地址（`studioTemplateCopyHref`），画布里有 `studioStart: 'assistant'` 的节点就打开助手并预填、绑定 `studioSkill`，只填不发。35 条示例的文字在 `scripts/inspiration/catalog.mjs`，用 `scripts/inspiration/publish.mjs` 经现有接口发布（超管令牌，不调模型）。**文字是我们自己写的，不收录 `resources/skills` 里第三方技能的原文。** 条目的约束由 `inspiration-catalog.test.ts` 守着：提示词不写比例时长、不写「做同款 / 复刻」、不出现第三方品牌和模型名。`publishFromProject` 发布实例时不再删文字节点的正文。
+真源 `docs/studio-inspiration-library.md`。新版导航加「灵感」（`/templates`，默认案例，可筛视频 / 图片）。点开是弹窗不是全屏（`StudioTemplateUse`），预览不显示提示词（用户 2026-11-06 要求，只读画布点开节点也不显示，v0.232 那句「查看节点提示词」作废），点「做同款」才复制并进画布；首页和灵感页共用瀑布流（`InspirationWall`：按作品真实比例摆进最矮的一列、不裁图、滚动加载，新发布的在前，比日期，同一天的按运营排序）；`onCreated` 现在收的是地址（`studioTemplateCopyHref`），画布里有 `studioStart: 'assistant'` 的节点就打开助手并预填、绑定 `studioSkill`，只填不发。35 条示例的文字在 `scripts/inspiration/catalog.mjs`，用 `scripts/inspiration/publish.mjs` 经现有接口发布（超管令牌，不调模型）。**文字是我们自己写的，不收录 `resources/skills` 里第三方技能的原文。** 条目的约束由 `inspiration-catalog.test.ts` 守着：提示词不写比例时长、不写「做同款 / 复刻」、不出现第三方品牌和模型名。`publishFromProject` 发布实例时不再删文字节点的正文。**画布原样展示生成链（2026-11-09，本地未发布）**：参考图连到生成节点「成片 / 成图」，提示词和结果在同一张卡上，和官方模板一样，不再有空的「我的版本」和孤立的「示例效果」；重新发布同一条示例时，它自己目录下的素材原样留用（`copyKey`），否则用户做同款的画布会裂图；线上用 `publish.mjs --rebuild` 按原素材重排，先发 server。
 
 ### AI 视频页的长视频（2026-11-06 已生产发布 `20261106-segmented-video-2`，main `f90dfab6d`；线上还没真跑过；Seedance 2.5 已配到 30 秒，也没有真实样本）
 

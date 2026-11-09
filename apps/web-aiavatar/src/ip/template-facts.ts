@@ -13,18 +13,26 @@ export function templateKind(t: Pick<IpTemplate, 'doc'>): 'video' | 'image' | 'c
   return 'canvas';
 }
 
-/** 写好描述、等着生成的那个节点；灵感库示例里是「我的版本」。 */
+/** 写好描述、等着生成的那个节点。 */
 const waitingNode = (doc?: Pick<IpProjectDoc, 'nodes'>) => nodesOf(doc).find(n => MEDIA.has(n.type) && !n.metadata?.storageKey && n.metadata?.prompt);
+/**
+ * 已经生成过的节点：提示词和结果在同一张卡上。灵感库示例的「成片」「成图」就是它，参考图没有提示词，不算。
+ * 首帧 → 成片这种链上有两个，取视频：卡片上说的规格是成片的。
+ */
+const generatedNode = (doc?: Pick<IpProjectDoc, 'nodes'>) => {
+  const generated = nodesOf(doc).filter(n => MEDIA.has(n.type) && n.metadata?.storageKey && n.metadata?.prompt);
+  return generated.find(n => n.type === 'video') ?? generated[0];
+};
 
 /** 做同款后会带进画布的那段话。预览里不显示（用户 2026-11-06 要求），只用来判断有没有填好。 */
 export function templatePrompt(doc?: Pick<IpProjectDoc, 'nodes'>) {
-  return (waitingNode(doc) ?? nodesOf(doc).find(n => n.metadata?.prompt))?.metadata?.prompt?.trim() || '';
+  return (waitingNode(doc) ?? generatedNode(doc) ?? nodesOf(doc).find(n => n.metadata?.prompt))?.metadata?.prompt?.trim() || '';
 }
 
 /** 「16:9 · 6 秒」。读不到的项不写，不猜。 */
 export function templateSpec(doc?: Pick<IpProjectDoc, 'nodes'>) {
   const nodes = nodesOf(doc);
-  const node = waitingNode(doc) ?? nodes.find(n => MEDIA.has(n.type) && n.metadata?.storageKey);
+  const node = waitingNode(doc) ?? generatedNode(doc) ?? nodes.find(n => MEDIA.has(n.type) && n.metadata?.storageKey);
   const size = node?.metadata?.size;
   const seconds = node?.type === 'video' ? node.metadata?.seconds : undefined;
   return [size && /^\d+:\d+$/.test(size) ? size : undefined, seconds ? `${seconds} 秒` : undefined].filter(Boolean).join(' · ');
@@ -68,7 +76,8 @@ export function newestFirst<T extends Pick<IpTemplate, 'createdAt'>>(templates: 
  */
 export function templateRatio(doc?: Pick<IpProjectDoc, 'nodes'>): number | undefined {
   const nodes = nodesOf(doc).filter(n => MEDIA.has(n.type) && n.type !== 'audio');
-  const done = nodes.filter(n => n.metadata?.storageKey);
+  // 生成结果排在参考图前面：海报变动态这类，参考图和成片不一定一样大，墙上摆的是成片。
+  const done = nodes.filter(n => n.metadata?.storageKey).sort((a, b) => Number(!!b.metadata?.prompt) - Number(!!a.metadata?.prompt));
   const measured = done.find(n => Number(n.metadata?.naturalWidth) > 0 && Number(n.metadata?.naturalHeight) > 0);
   const raw = measured ? Number(measured.metadata?.naturalWidth) / Number(measured.metadata?.naturalHeight) : [...done, ...nodes].map(n => sizeRatio(n.metadata?.size)).find(Boolean);
   return raw ? Math.min(2, Math.max(.5, raw)) : undefined;

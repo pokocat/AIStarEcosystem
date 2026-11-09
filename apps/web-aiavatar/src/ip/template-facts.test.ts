@@ -22,6 +22,23 @@ describe('what a template tells you before you copy it', () => {
   test('search reaches into the prompts', () => {
     expect(templateSearchText({ name: '小红书封面', summary: '撞色', doc: { nodes: [node('a', 'image', '我的版本', { prompt: '秋冬美拉德穿搭' })] } } as any)).toContain('穿搭');
   });
+  test('an inspiration case is the real chain: the reference has no prompt, the generated card holds prompt, spec and result', () => {
+    const chain = { nodes: [
+      node('guide', 'text', '创作说明', { content: '这套做法', prompt: '帮我生成这段视频：海报动起来' }),
+      node('input', 'image', '参考海报', { storageKey: 'ipstudio_demo/x/poster.jpg', naturalWidth: 1680, naturalHeight: 2240, size: '1680x2240' }),
+      node('result', 'video', '成片', { storageKey: 'ipstudio_demo/x/a.mp4', prompt: '海报动起来', size: '3:4', seconds: 5, naturalWidth: 834, naturalHeight: 1112 }),
+    ] } as any;
+    expect(templatePrompt(chain)).toBe('海报动起来');
+    expect(templateSpec(chain)).toBe('3:4 · 5 秒');
+    expect(templateNeeds(chain)).toEqual([]);
+    expect(templateRatio(chain)).toBeCloseTo(834 / 1112);
+    // 首帧 → 成片：两个都生成过，规格说的是成片
+    const frames = { nodes: [
+      node('frame', 'image', '首帧', { storageKey: 'k1', prompt: '电梯门' }),
+      node('clip', 'video', '成片', { storageKey: 'k2', prompt: '门打开', seconds: '5', size: '768x1344' }),
+    ] } as any;
+    expect(templateSpec(frames)).toBe('5 秒');
+  });
   test('kind follows what the document holds', () => {
     expect(templateKind({ doc })).toBe('video');
     expect(templateKind({ doc: { nodes: [node('a', 'image', '图', { storageKey: 'k' })] } } as any)).toBe('image');

@@ -308,6 +308,38 @@ class IpDemoTemplateStripTest {
                 "实例是「做完的成品」，素材必须跟着走");
     }
 
+    /**
+     * 用户做同款得到的画布直接引用示例目录里的文件。重新发布同一条示例（灵感脚本按原素材重排画布）时，
+     * 这些文件要原样留用：复制一份再清理旧版，用户画布里的图和视频就都打不开了。
+     */
+    @Test
+    void 重新发布同一条示例时_它自己目录下的素材原样留用_只清掉不再引用的() throws Exception {
+        String own = "ipstudio_demo/IPD-insp-x/sample.png", stale = "ipstudio_demo/IPD-insp-x/old.png";
+        ObjectNode doc = IpStudioFixtures.OM.createObjectNode();
+        doc.putArray("connections");
+        ObjectNode md = doc.putArray("nodes").addObject().put("id", "result").put("type", "image").put("title", "成图").putObject("metadata");
+        md.put("prompt", "撞色封面").put("storageKey", own).put("status", "success").put("primaryImageId", "take-1");
+        md.putArray("images").addObject().put("id", "take-1").put("status", "success").put("storageKey", own);
+        IpDemoTemplateService svc = svcWith(doc);
+        ObjectNode previous = IpStudioFixtures.OM.createObjectNode();
+        ArrayNode oldNodes = previous.putArray("nodes");
+        oldNodes.addObject().put("id", "sample-1").put("type", "image").putObject("metadata").put("storageKey", own);
+        oldNodes.addObject().put("id", "other").put("type", "image").putObject("metadata").put("storageKey", stale);
+        IpDemoTemplate existing = IpDemoTemplate.builder().id("IPD-insp-x").name("小红书封面").enabled(true).sortOrder(101)
+                .kind(IpDemoTemplate.KIND_EXAMPLE).docJson(previous.toString()).createdAt(Instant.now()).build();
+        when(demoRepo.findById("IPD-insp-x")).thenReturn(Optional.of(existing));
+
+        svc.publishFromProject(OWNER, PROJECT, "IPD-insp-x", "小红书封面", null, IpDemoTemplate.KIND_EXAMPLE);
+
+        Map<String, JsonNode> published = byId(IpStudioFixtures.OM.readTree(existing.getDocJson()));
+        assertEquals(own, published.get("result").path("storageKey").asText());
+        assertEquals(own, published.get("result").path("images").get(0).path("storageKey").asText());
+        assertEquals(own, existing.getCoverKey());
+        verify(storage, org.mockito.Mockito.never()).store(any(byte[].class), anyString(), anyString(), anyString(), anyString());
+        verify(storage, org.mockito.Mockito.never()).delete(own);
+        verify(storage).delete(stale);
+    }
+
     @Test
     void 已有示例改存成模板时旧封面要清掉() {
         IpDemoTemplateService svc = svcWith(busyDoc());
