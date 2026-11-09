@@ -82,6 +82,7 @@ class MaterialVideoModelClientWireTest {
     private volatile String uploadErrorBody = "";
     /** 前几次上传按聚算「内容已作废」回 409。 */
     private final AtomicInteger uploadConflicts = new AtomicInteger();
+    private String uploadConflictField;
     private static final String CONFLICT_BODY = "{\"code\":\"input_asset_binding_conflict\",\"error\":{\"code\":\"input_asset_binding_conflict\","
             + "\"message\":\"input asset is unavailable; reupload does not restore expired or deleted assets\",\"retryable\":false}}";
     private String uploadExpiresAt;
@@ -119,7 +120,9 @@ class MaterialVideoModelClientWireTest {
                 resp = libraryBody != null ? libraryBody : "{\"id\":\"" + id + "\",\"ref\":\"asset://" + id
                         + "\",\"status\":\"Active\",\"type\":\"image\",\"mime_type\":\"image/png\",\"size\":12345,\"expires_at\":\""
                         + java.time.Instant.now().plusSeconds(6 * 3600) + "\"}";
-            } else if (r.path().endsWith("/assets/input") && uploadConflicts.getAndUpdate(n -> Math.max(0, n - 1)) > 0) {
+            } else if (r.path().endsWith("/assets/input")
+                    && (uploadConflictField == null || uploadConflictField.equals(part(r).name()))
+                    && uploadConflicts.getAndUpdate(n -> Math.max(0, n - 1)) > 0) {
                 status = 409;
                 resp = CONFLICT_BODY;
             } else if (r.path().endsWith("/assets/input")) {
@@ -175,16 +178,22 @@ class MaterialVideoModelClientWireTest {
         useEndpoint("MiniMax H3", base("/jusuanhub/v1"), "minimax-h3");
     }
 
-    @Test
-    void preuploadedCharacterVoiceIsReusedBySeparateVideoTasks() throws Exception {
-        useJusuan();
+    private java.util.Map<String, Object[]> useInputAssetCache() {
         uploadExpiresAt = java.time.Instant.now().plusSeconds(3600).toString();
         var repo = mock(MaterialVideoInputAssetRepository.class);
         var rows = new java.util.HashMap<String, Object[]>();
         when(repo.receipt(any())).thenAnswer(i -> rows.containsKey(i.getArgument(0)) ? java.util.Collections.singletonList(rows.get(i.getArgument(0))) : List.of());
         org.mockito.Mockito.doAnswer(i -> { rows.put(i.getArgument(0), new Object[]{ i.getArgument(2), i.getArgument(3) }); return null; })
                 .when(repo).remember(any(), any(), any(), any());
+        when(repo.forget(any())).thenAnswer(i -> rows.remove(i.<String>getArgument(0)) == null ? 0 : 1);
         org.springframework.test.util.ReflectionTestUtils.setField(client, "inputAssets", new MaterialVideoInputAssets(repo));
+        return rows;
+    }
+
+    @Test
+    void preuploadedCharacterVoiceIsReusedBySeparateVideoTasks() throws Exception {
+        useJusuan();
+        useInputAssetCache();
         stored("owner/voice.mp3", mp3()); stored("owner/photo.png", png());
         client.prepareAudioReference(null, "owner/voice.mp3", "ipstudio");
         var spec = new VideoGenSpec("universal_reference_video", "768p", null, null, null,
@@ -195,6 +204,129 @@ class MaterialVideoModelClientWireTest {
         for (var request : requests) if (request.path().endsWith("/media/generations"))
             assertEquals("asset_1", om.readTree(request.text()).path("referenceInputs").get(1).path("assetId").asText());
         assertEquals(2, requests.stream().filter(r -> r.path().endsWith("/media/generations")).count());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{\"code\":\"not_found\",\"message\":\"resource not found\"}",
+            "{\"error\":{\"code\":\"not_found\",\"message\":\"resource not found\",\"param\":null,\"retryable\":false}}"})
+    void rejectedCachedAudioIsForgottenWithoutResubmissionAndNextAttemptRefreshesIt(String response) throws Exception {
+        useJusuan();
+        var rows = useInputAssetCache();
+        byte[] original = stored("owner/voice.wav", wav());
+        stored("owner/other.wav", wav());
+        stored("owner/photo.png", png());
+        client.prepareAudioReference(null, "owner/voice.wav", "ipstudio");
+        client.prepareAudioReference(null, "owner/other.wav", "ipstudio");
+        requests.clear();
+        var spec = new VideoGenSpec("universal_reference_video", "768p", null, null, null,
+                List.of(new VideoGenSpec.Reference("image", "owner/photo.png"),
+                        new VideoGenSpec.Reference("audio", "owner/voice.wav")));
+        createStatus = 404;
+        createBody = response;
+
+        var error = assertThrows(BusinessException.class, () ->
+                client.submit("人物说一句话", 5, "9:16", "owner", "ipstudio", null, spec));
+        assertEquals("VIDEO_SUBMIT_FAILED", error.getCode());
+        assertEquals("asset_1", createJson().path("referenceInputs").get(1).path("assetId").asText(),
+                "失败发生在使用缓存引用的创建阶段，且只创建一次");
+        assertEquals(1, uploads().size(), "本次只上传图片，不在失败后自动上传或重交生成");
+        assertEquals(1, rows.size());
+        assertEquals("asset_2", rows.values().iterator().next()[0], "不影响未参与本次请求的音频");
+
+        requests.clear();
+        createStatus = 202;
+        createBody = "{\"jobId\":\"job_fresh\"}";
+        uploadConflictField = "audio";
+        uploadConflicts.set(1);
+        var accepted = client.submit("人物说一句话", 5, "9:16", "owner", "ipstudio", null, spec);
+        assertEquals("job_fresh", accepted.externalId());
+        var audio = uploads().stream().map(MaterialVideoModelClientWireTest::part)
+                .filter(p -> "audio".equals(p.name())).toList();
+        assertEquals(2, audio.size(), "新一次提交遇到409时，只变更素材重传一次");
+        assertArrayEquals(original, audio.get(0).content());
+        assertFalse(Arrays.equals(original, audio.get(1).content()));
+        try (var before = javax.sound.sampled.AudioSystem.getAudioInputStream(new java.io.ByteArrayInputStream(original));
+             var after = javax.sound.sampled.AudioSystem.getAudioInputStream(new java.io.ByteArrayInputStream(audio.get(1).content()))) {
+            assertArrayEquals(before.readAllBytes(), after.readAllBytes(), "变更容器标记不能改变声音采样");
+        }
+        assertNotEquals("asset_1", createJson().path("referenceInputs").get(1).path("assetId").asText());
+        assertEquals(2, rows.size(), "新回执重新入缓存，其他音频保留");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"<html>nginx 404 page</html>", "{\"code\":\"other_error\"}", "not_found"})
+    void unstructuredOrUnrelated404DoesNotForgetAudio(String response) throws Exception {
+        assertAudioCacheSurvivesCreateFailure(404, response);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {400, 401, 403, 429, 500, 502, 503})
+    void otherCreateFailureStatusesDoNotForgetAudio(int status) throws Exception {
+        assertAudioCacheSurvivesCreateFailure(status, "{\"code\":\"not_found\"}");
+    }
+
+    private void assertAudioCacheSurvivesCreateFailure(int status, String response) throws Exception {
+        useJusuan();
+        var rows = useInputAssetCache();
+        stored("owner/voice.wav", wav());
+        stored("owner/photo.png", png());
+        client.prepareAudioReference(null, "owner/voice.wav", "ipstudio");
+        createStatus = status;
+        createBody = response;
+        var spec = new VideoGenSpec("universal_reference_video", "768p", null, null, null,
+                List.of(new VideoGenSpec.Reference("image", "owner/photo.png"),
+                        new VideoGenSpec.Reference("audio", "owner/voice.wav")));
+        assertThrows(BusinessException.class, () -> client.submit("人物说话", 5, "9:16", "owner", "ipstudio", null, spec));
+        assertEquals(1, rows.size());
+        assertEquals("asset_1", rows.values().iterator().next()[0]);
+        create(); // 其他错误同样不能自动重复创建。
+    }
+
+    @Test
+    void resourceNotFoundInvalidatesAllReferencedMediaButPreservesOtherScopes() throws Exception {
+        useJusuan();
+        var rows = useInputAssetCache();
+        var cache = (MaterialVideoInputAssets) org.springframework.test.util.ReflectionTestUtils.getField(client, "inputAssets");
+        for (String key : List.of("owner/photo.png", "owner/video.mp4", "owner/voice.wav"))
+            cache.resolve("ep-test", base("/jusuanhub/v1"), "minimax-h3", "sk-test", key,
+                    () -> new MaterialVideoInputAssets.Receipt("old-" + key, java.time.Instant.now().plusSeconds(3600)));
+        cache.resolve("other-endpoint", base("/jusuanhub/v1"), "minimax-h3", "sk-test", "owner/voice.wav",
+                () -> new MaterialVideoInputAssets.Receipt("other-endpoint", java.time.Instant.now().plusSeconds(3600)));
+        cache.resolve("ep-test", base("/jusuanhub/v1"), "minimax-h3", "another-key", "owner/voice.wav",
+                () -> new MaterialVideoInputAssets.Receipt("other-credential", java.time.Instant.now().plusSeconds(3600)));
+        stored("owner/photo.png", png());
+        stored("owner/video.mp4", mp4());
+        stored("owner/voice.wav", wav());
+        createStatus = 404;
+        createBody = "{\"code\":\"not_found\",\"message\":\"resource not found\"}";
+        var spec = new VideoGenSpec("universal_reference_video", "768p", null, null, null, List.of(
+                new VideoGenSpec.Reference("image", "owner/photo.png"),
+                new VideoGenSpec.Reference("video", "owner/video.mp4"),
+                new VideoGenSpec.Reference("audio", "owner/voice.wav")));
+
+        assertThrows(BusinessException.class, () -> client.submit("人物说话", 5, "9:16", "owner", "ipstudio", null, spec));
+        assertEquals(List.of("other-credential", "other-endpoint"),
+                rows.values().stream().map(r -> (String) r[0]).sorted().toList());
+        create();
+    }
+
+    @Test
+    void resourceNotFoundAlsoInvalidatesFirstAndLastFrameReceipts() throws Exception {
+        useJusuan();
+        var rows = useInputAssetCache();
+        var cache = (MaterialVideoInputAssets) org.springframework.test.util.ReflectionTestUtils.getField(client, "inputAssets");
+        for (String key : List.of("owner/first.png", "owner/last.png")) {
+            stored(key, png());
+            cache.resolve("ep-test", base("/jusuanhub/v1"), "minimax-h3", "sk-test", key,
+                    () -> new MaterialVideoInputAssets.Receipt("old-" + key, java.time.Instant.now().plusSeconds(3600)));
+        }
+        createStatus = 404;
+        createBody = "{\"error\":{\"code\":\"not_found\"}}";
+        var spec = new VideoGenSpec("first_last_frame_video", "768p", null,
+                "owner/first.png", "owner/last.png", List.of());
+        assertThrows(BusinessException.class, () -> client.submit("人物转身", 5, "9:16", "owner", "ipstudio", null, spec));
+        assertTrue(rows.isEmpty());
+        create();
     }
 
     @Test
@@ -238,6 +370,16 @@ class MaterialVideoModelClientWireTest {
 
     private static byte[] mp3() {
         return withHead(300, 'I', 'D', '3', 4, 0);
+    }
+
+    private static byte[] wav() throws IOException {
+        byte[] pcm = withHead(320, 1, 2, 3, 4);
+        var format = new javax.sound.sampled.AudioFormat(8000, 16, 1, true, false);
+        var out = new java.io.ByteArrayOutputStream();
+        try (var audio = new javax.sound.sampled.AudioInputStream(new java.io.ByteArrayInputStream(pcm), format, pcm.length / 2)) {
+            javax.sound.sampled.AudioSystem.write(audio, javax.sound.sampled.AudioFileFormat.Type.WAVE, out);
+        }
+        return out.toByteArray();
     }
 
     private List<Recorded> uploads() {

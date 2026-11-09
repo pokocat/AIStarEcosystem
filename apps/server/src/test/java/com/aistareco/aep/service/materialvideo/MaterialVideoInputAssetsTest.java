@@ -48,4 +48,18 @@ class MaterialVideoInputAssetsTest {
         cache.resolve("ep", "base", "h3", "key", "voice", () -> new MaterialVideoInputAssets.Receipt("unknown", null));
         assertEquals("renewed", cache.resolve("ep", "base", "h3", "key", "voice", () -> new MaterialVideoInputAssets.Receipt("renewed", Instant.now().plusSeconds(3600))).assetId());
     }
+
+    @Test void forgettingARejectedReferenceRenewsOnlyItsOwnScope() {
+        cache.resolve("ep", "base", "h3", "key", "source",
+                () -> new MaterialVideoInputAssets.Receipt("rejected", Instant.now().plusSeconds(3600)));
+        cache.resolve("ep", "base", "h3", "other-key", "source",
+                () -> new MaterialVideoInputAssets.Receipt("other-account", Instant.now().plusSeconds(3600)));
+        cache.forget("ep", "base", "h3", "key", "source");
+
+        var restarted = new MaterialVideoInputAssets(repo);
+        assertEquals("fresh", restarted.resolve("ep", "base", "h3", "key", "source",
+                () -> new MaterialVideoInputAssets.Receipt("fresh", Instant.now().plusSeconds(3600))).assetId());
+        assertEquals("other-account", restarted.resolve("ep", "base", "h3", "other-key", "source",
+                () -> { throw new AssertionError("另一个凭据的回执不能被清除"); }).assetId());
+    }
 }

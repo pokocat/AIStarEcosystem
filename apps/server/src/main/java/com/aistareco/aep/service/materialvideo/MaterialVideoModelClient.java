@@ -457,6 +457,7 @@ public class MaterialVideoModelClient {
             // 而这里跑在 @Async worker 里，不写这一行就等于什么都没记。
             log.warn("[material-video] submit rejected endpoint={} model={} protocol={} status={} durationMs={} body={}",
                     p.getName(), model, protocol, resp.statusCode(), elapsedMs(startNanos), snippet(resp.body()));
+            forgetRejectedInputReferences(p, apiKey, model, protocol, genSpec, resp.statusCode(), resp.body());
             if (refreshStaleReferences) {
                 VideoAssetPreparer.Session library = librarySession(p, model, configured, apiKey);
                 if (library != null && library.rejectedStaleReference(resp.statusCode(), resp.body())) {
@@ -1960,6 +1961,36 @@ public class MaterialVideoModelClient {
         return ("audio".equals(mediaType) && inputAssets != null
                 ? inputAssets.resolve(p.getId(), p.getBaseUrl(), model, apiKey, key, upload)
                 : upload.get()).assetId();
+    }
+
+    /**
+     * 聚算创建返回 not_found 没有指明哪个资源消失了，不能据此自动重交收费生成。
+     * 统一作废本次素材的回执：下次用户提交会重新上传，若上传明确返回 409，沿用变更字节的恢复路径。
+     * 不按图片、视频或音频分支；尤其要覆盖未重新上传、直接复用旧回执的素材。
+     */
+    private void forgetRejectedInputReferences(AiModelEndpoint p, String apiKey, String model, String protocol,
+                                               VideoGenSpec spec, int status, String response) {
+        if (inputAssets == null || !PROTOCOL_JUSUAN_MEDIA.equals(protocol) || status != 404) return;
+        JsonNode error;
+        try {
+            error = OM.readTree(response);
+        } catch (Exception invalidJson) {
+            return; // 网关页面和无法解析的响应不当作结构化的资源不存在。
+        }
+        if (error == null || !error.isObject()) return;
+        String code = firstText(error.path("error"), "code");
+        if (code == null) code = firstText(error, "code");
+        if (!"not_found".equals(code)) return;
+        var keys = sourceKeys(spec).stream().distinct().toList();
+        try {
+            for (String key : keys) inputAssets.forget(p.getId(), p.getBaseUrl(), model, apiKey, key);
+            if (!keys.isEmpty())
+                log.warn("[material-video] 创建返回资源不存在，清除本次素材引用缓存，下次重新上传；本次不自动重交 endpoint={} model={} referenceCount={}",
+                        p.getId(), model, keys.size());
+        } catch (RuntimeException failure) {
+            // 缓存维护失败不能覆盖原供应商错误，也不能泄露素材 key 或凭据。
+            log.warn("[material-video] 清除素材引用缓存失败 endpoint={} reason={}", p.getId(), failure.getClass().getSimpleName());
+        }
     }
 
     /** 准备交给厂商的本地文件：大小和类型都按真实字节判。 */
