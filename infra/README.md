@@ -828,3 +828,6 @@ web-aiavatar 的 Next rewrite 设置 `experimental.proxyClientMaxBodySize=130mb`
 ## Studio JSON 临时 JVM-Sandbox（2026-10-25 UTC）
 
 生产原进程已加载只处理 `ModelJson.parse` Jackson 异常的 `aep-json-recovery` 模块，未替换 app.jar 或修改 systemd / server.env。namespace `aep-json-20261024`，管理端口只在环回 `24769`，目录 `/home/ecs-user/.local/share/aistareco/hotfix/studio-json-31fc2bdf`。下次正常发布先按 [手册](../docs/runbooks/studio-json-jvm-sandbox.md) 卸载临时模块，再从包含永久修复的 main 构建应用；不要仅重启旧 JAR，否则临时修复会丢失。证据见 [发布记录](../docs/releases/studio-json-jvm-sandbox-release-20261025.md)。
+## GPT Image 渠道配置发布（2026-11-09）
+
+`scripts/switch-gpt-images-superaitoken.py` 在生产主机运行，默认只读计划；通过 stdin 接收 `{"apiKey":"..."}`，不把 Key 放进参数、仓库或环境模板。`--apply --backup-dir <新的私有绝对目录>` 才执行：拉取当前 Key 的模型目录、确认对应型号、备份原端点（Key 仅保留原密文）、按签名 `endpointSave` 逐条保存并回读核验，核对场景售价配置未变。先合入 main 并部署支持新下载规则的 server，再切换配置；前端无需重建。备份目录的 `rollback.sql` 仅恢复受影响端点的名称、地址、型号、密文 Key 和图片规格，不修改用户作品、售价或账本。发布前避免覆盖运行中的同路径计划与备份目录，回滚后回读端点及场景配置。

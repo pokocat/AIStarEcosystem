@@ -1,0 +1,24 @@
+{
+  "desktop": {
+    "background": "rgb(70, 80, 207)",
+    "cardText": "",
+    "icon": true,
+    "iconColor": "rgb(255, 255, 255)",
+    "plus": false,
+    "selected": true,
+    "title": "原唱音轨.wav"
+  },
+  "mobile": {
+    "background": "rgb(70, 80, 207)",
+    "cardText": "",
+    "iconColor": "rgb(255, 255, 255)",
+    "plus": false,
+    "selected": true,
+    "title": "原唱音轨.wav"
+  },
+  "mobileLayout": {
+    "layout": "mobile",
+    "scrollWidth": 375,
+    "width": 375
+  }
+}

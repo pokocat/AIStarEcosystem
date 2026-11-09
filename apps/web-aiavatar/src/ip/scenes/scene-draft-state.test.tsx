@@ -82,6 +82,36 @@ async function open(Page: typeof SceneImageStudio, url: string) {
   await act(async () => { render(<Page/>); });
 }
 
+test("group buy: store, product and environment slots coexist and their images survive reopening", async () => {
+  await open(SceneVideoStudio, "/video?scene=local-groupbuy");
+  const product = await screen.findByRole("button", { name: "添加产品图片" });
+  const materials = screen.getByRole("group", { name: "素材" });
+  expect(within(materials).getByRole("button", { name: "添加产品图片" })).toBe(product);
+  expect(within(materials).getByRole("button", { name: "添加环境图片" }).parentElement?.className).toBe("scene-media");
+  expect(product.parentElement?.className).toBe("scene-media");
+  const storePhoto = within(materials).getByRole("button", { name: "从资产库选择门店照片" });
+  expect(storePhoto.parentElement?.className).toBe("scene-media");
+  expect(screen.queryByRole("group", { name: "图片上传建议" })).toBeNull();
+  fireEvent.click(storePhoto);
+  expect(screen.getByRole("dialog", { name: "选择门店照片" })).toBeTruthy();
+  await confirmLibrary();
+  await waitFor(() => expect(store.get("IPP-A")?.doc.sceneInputs?.images).toEqual(["ipstudio/source/u/p.jpg"]));
+  setLibrarySource(async () => ({ key: "ipstudio/source/u/product.jpg", url: "blob:product", fileName: "产品.jpg" }));
+  fireEvent.click(screen.getByRole("button", { name: "添加产品图片" }));
+  expect(screen.getByRole("dialog", { name: "选择产品图片" })).toBeTruthy();
+  await confirmLibrary();
+  await waitFor(() => expect(store.get("IPP-A")?.doc.sceneInputs?.images).toEqual(["ipstudio/source/u/p.jpg", "ipstudio/source/u/product.jpg"]));
+  setLibrarySource(async () => ({ key: "ipstudio/source/u/store.jpg", url: "blob:store", fileName: "店内环境.jpg" }));
+  fireEvent.click(screen.getByRole("button", { name: "添加环境图片" }));
+  expect(screen.getByRole("dialog", { name: "选择环境图片" })).toBeTruthy();
+  await confirmLibrary();
+  await waitFor(() => expect(store.get("IPP-A")?.doc.sceneInputs?.images).toEqual(["ipstudio/source/u/p.jpg", "ipstudio/source/u/product.jpg", "ipstudio/source/u/store.jpg"]));
+  cleanup();
+  await open(SceneVideoStudio, "/video?scene=local-groupbuy&draft=IPP-A");
+  await waitFor(() => expect(screen.getByRole("button", { name: "移除门店照片 3" })).toBeTruthy());
+  expect(api.submit).not.toHaveBeenCalled();
+});
+
 // ── AI 图片 ───────────────────────────────────────────────────────────────
 async function generateWhiteBackground() {
   await open(SceneImageStudio, "/image?scene=white-background");
@@ -280,11 +310,11 @@ test("video: revising a script after reopening the draft keeps the options and t
   put({ id: "IPP-V", name: "v", sceneId: "ecom-talking", doc });
   api.composeScene.mockResolvedValue({ text: "改脚本" });
   await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
-  // 打开写过脚本的草稿先看到编导那一页；选项在编辑框那一页的规格里。
-  fireEvent.click((await screen.findAllByRole("button", { name: "返回编辑" }))[0]);
+  // 打开写过脚本的草稿先看到对话，采用后进入可直接编辑脚本的页面。
+  fireEvent.click(await screen.findByRole("button", { name: "采用脚本" }));
   await waitFor(() => expect(pressed("出镜方式", "只拍商品")).toBe("true"));
   expect(pressed("语气", "专业讲解")).toBe("true");
-  fireEvent.click(screen.getByRole("button", { name: "AI 编导" }));
+  fireEvent.click(screen.getByRole("button", { name: "AI 改写" }));
   fireEvent.change(screen.getByRole("textbox", { name: "修改意见" }), { target: { value: "口语一点" } });
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "发送修改意见" })); });
   // 以前重开草稿后选项回到默认值（真人讲解、像朋友推荐），改出来的那版拍法就变了。

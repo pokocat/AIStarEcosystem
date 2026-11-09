@@ -180,6 +180,20 @@ export function addScriptNode(doc: IpProjectDoc, input: {
   return { doc: { ...doc, nodes: [...nodes, node], connections }, request, nodeId: node.id };
 }
 
+/**
+ * 「视频裂变」的一次文字任务（找变量，或 AI 改写的一版）：草稿上一个普通文字节点，请求先写进节点再提交（同出图、写脚本的恢复规则）。
+ * 带 sceneTake 不带 sceneDirector，不算编导的版本，编导那一页看不到它。
+ */
+export function addTakeNode(doc: IpProjectDoc, input: { request: StudioRunRequest; title: string;
+  take: NonNullable<StudioNodeMetadata["sceneTake"]> }): { doc: IpProjectDoc; nodeId: string } {
+  const nodes = doc.nodes as CanvasNodeData[];
+  const target = makeStudioNode("text");
+  const node: CanvasNodeData = { ...target, id: input.request.nodeId ?? target.id, title: input.title, position: { x: 1700, y: rowBottom(nodes) }, width: 420, height: 320,
+    // 正文先放交出去的脚本：改稿结果只在正文没被改过时写回（applyStudioRunToDocument），和编导改稿同一套。
+    metadata: { ...target.metadata, content: input.request.textEdit?.content ?? "", status: "loading", studio: { ...target.metadata!.studio!, request: input.request, sceneTake: input.take } } };
+  return { doc: { ...doc, nodes: [...nodes, node] }, nodeId: node.id };
+}
+
 /** 编导写过的每一版，按先后。 */
 export function scriptNodes(doc: IpProjectDoc): CanvasNodeData[] {
   return (doc.nodes as CanvasNodeData[]).filter(n => n.type === CanvasNodeType.Text && n.metadata?.studio?.sceneDirector)
@@ -353,4 +367,22 @@ export function openedVideoState(doc: IpProjectDoc, defaults: { language: string
   return { text: state.text, options: state.options, language: state.language ?? defaults.language, ...(state.tier ? { tier: state.tier } : {}),
     duration: state.duration ?? turn?.duration ?? defaults.duration, ratio: state.ratio ?? turn?.ratio ?? defaults.ratio,
     optimize: state.optimize ?? true, ...(edit ? { edit } : {}) };
+}
+
+/**
+ * 视频任务只快照素材节点，采用的脚本另存于 sceneVideoState.edit。重新编辑时要把这份脚本一起恢复，
+ * 否则 openedVideoState 会因找不到原脚本节点丢掉 edit，页面只剩空的 text（2026-11-07 反馈 8）。
+ * 这是恢复已有正文，不创建模型请求，也不带原任务的 runId / request / 计费状态。
+ */
+export function restoreVideoTaskScript(doc: IpProjectDoc): IpProjectDoc {
+  const state = doc.sceneVideoState, edit = state?.edit;
+  if (!edit?.scriptId || scriptNodes(doc).some(n => n.id === edit.scriptId)) return doc;
+  const node = makeStudioNode("text");
+  const restored: CanvasNodeData = { ...node, id: edit.scriptId, title: "视频脚本", position: { x: 520, y: rowBottom(doc.nodes as CanvasNodeData[]) },
+    metadata: { content: edit.prompt, status: "success", studio: { kind: "text", sceneDirector: {
+      ask: "", revision: false, duration: state.duration ?? 15, ratio: state.ratio ?? "9:16", language: state.language ?? "中文",
+      // 快照没有保留当时编导实际看过的图片，不把当前素材冒充脚本的看图记录。
+      options: state.options, at: new Date().toISOString(),
+    } } } };
+  return { ...doc, nodes: [...doc.nodes, restored] };
 }

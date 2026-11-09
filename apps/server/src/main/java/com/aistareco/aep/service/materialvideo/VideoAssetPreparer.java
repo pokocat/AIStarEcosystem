@@ -22,6 +22,8 @@ public class VideoAssetPreparer {
     /** 厂商排队时也可能校验引用，离过期太近就重传。上传免费。 */
     static final Duration RECEIPT_MIN_REMAINING = Duration.ofMinutes(30);
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private ArkPortraitLibrary ark;
     private final VideoAssetLibraryRecordRepository libraries;
     private final MaterialVideoInputAssets receipts;
     private final MaterialVideoProperties props;
@@ -46,6 +48,7 @@ public class VideoAssetPreparer {
     }
 
     private VideoAssetLibrary adapterOf(VideoAssetLibraryRecord record) {
+        if ("ark".equals(record.getAdapter())) return new ArkAssetLibrary(record,ark);
         if (!"onetoken".equals(record.getAdapter()))
             throw notConfigured(record.getId(), "未知的适配器 " + record.getAdapter());
         try {
@@ -81,7 +84,18 @@ public class VideoAssetPreparer {
                     RECEIPT_MIN_REMAINING, () -> library.submit(access, file.get())).assetId();
         }
 
-        void forget(Collection<String> sourceKeys) {
+        boolean preparesLegacyInputs() { return library.preparesLegacyInputs(); }
+
+        String ref(String owner, String sourceKey, Supplier<VideoAssetLibrary.LibraryFile> file) {
+            return library.preparedReference(owner,sourceKey).orElseGet(()->ref(sourceKey,file));
+        }
+
+        boolean flag(String owner, VideoGenSpec spec, int status, String response) {
+            return library.flagReview(owner,spec,status,response);
+        }
+
+        void forget(String owner, Collection<String> sourceKeys) {
+            if (library.forgetReferences(owner,sourceKeys)) return;
             for (String sourceKey : sourceKeys)
                 receipts.forget(libraryId, access.baseUrl(), null, access.credentialValue(), sourceKey);
         }

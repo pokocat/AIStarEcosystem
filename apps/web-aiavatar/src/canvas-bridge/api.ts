@@ -1,3 +1,5 @@
+import { observePortraitReviews } from '@/ip/portrait-review-events';
+import { ensurePortraitInputs } from '@/ip/portrait-review-preflight';
 import { prepareImageForUpload } from '@ai-star-eco/api-client/image-upload';
 import { legacyImageBillingDetails, withStudioBilling, invalidateStudioModelQuote } from "./studio-billing";
 import type { EnterpriseBillingSelection } from "@ai-star-eco/types/enterprise";
@@ -130,6 +132,7 @@ export const generateVideo = async (projectId: string, req: IpVideoRequest):Prom
       references:req.refKey?[{storageKey:req.refKey,role:"frame"}]:[],durationSec:req.durationSec,aspectRatio:req.aspectRatio,model:req.model,video:req.video,maxCost:req.maxCost});
     return studioVideoCard(run);
   }
+  await ensurePortraitInputs(req.model, [req.refKey, req.video?.firstFrameKey, req.video?.lastFrameKey, ...(req.video?.references?.filter(ref => ref.mediaType === 'image').map(ref => ref.key) || [])]);
   const choices = process.env.NEXT_PUBLIC_ENTERPRISE_ENABLED === "1" && req.maxCost === undefined ? (await fetchModels()).video : [];
   const chosen = choices.find(model => model.endpointId === req.model) || choices.find(model => model.isDefault) || choices[0];
   const expectedCost = req.maxCost ?? (chosen ? chosen.creditCost * (chosen.billingUnit === "per_second" ? req.durationSec || 5 : 1) : undefined);
@@ -139,7 +142,7 @@ export const generateVideo = async (projectId: string, req: IpVideoRequest):Prom
   catch(error){invalidateStudioModelQuote(projectId,req,error);throw error;}
 
 };
-const studioVideoCard = (run:IpRun):IpVideoJob => ({run,id:run.id,status:run.status,video_url:run.output.url,video_key:run.output.storageKey,error_message:run.errorMessage});
+const studioVideoCard = (run:IpRun):IpVideoJob => ({run,id:run.id,status:run.status,video_url:run.output.url,video_key:run.output.storageKey,error_message:run.errorMessage,error_code:run.errorCode,asset_reviews:run.output.assetReviews});
 
 /** 视频任务状态（与带货 / 短剧同一张表，按 app 分区隔离）。 */
 export type IpVideoJob = {
@@ -148,7 +151,7 @@ export type IpVideoJob = {
   video_url?: string;
   /** 成片在我方存储里的 key —— 服务端镜像后给出，画布引用它而不是重新上传。 */
   video_key?: string;
-  thumbnail_url?: string; error_message?: string;
+  thumbnail_url?: string; error_message?: string; error_code?: string; asset_reviews?: import('@ai-star-eco/types/video-portrait-library').VideoPortraitReviewLink[];
 };
 
 // 轮询画布自己的视频任务。
@@ -158,8 +161,10 @@ export type IpVideoJob = {
 // 真实表现是先被开通闸判成「该接口尚未登记子产品归属」403；就算把路由登记了，
 // 后面还是 404。带货线那条同名接口把 app 写死成 celebrity（v0.108 分区），
 // 拿它查画布的任务只会查不到 —— 所以正确做法是 ip-studio 域自己出一条。
-export const readVideoJob = async (jobId: string):Promise<IpVideoJob> => jobId.startsWith("IPR-") ? studioVideoCard(await readRun(jobId)) :
-  apiFetch<IpVideoJob>(`/v1/ip-studio/videos/${encodeURIComponent(jobId)}`);
+export const readVideoJob = async (jobId: string):Promise<IpVideoJob> => {
+  const job = jobId.startsWith("IPR-") ? studioVideoCard(await readRun(jobId)) : await apiFetch<IpVideoJob>(`/v1/ip-studio/videos/${encodeURIComponent(jobId)}`);
+  observePortraitReviews(job.asset_reviews); return job;
+};
 
 /** 跑一个节点。服务端整存整取地收下最新画布，再按这个节点编译、扣费、派发。 */
 export const runNode = async (projectId: string, nodeId: string, doc: unknown) => {
@@ -169,8 +174,10 @@ export const runNode = async (projectId: string, nodeId: string, doc: unknown) =
   catch(error){invalidateStudioModelQuote(projectId,request,error);throw error;}
 };
 
-export const readRun = (runId: string) =>
-  apiFetch<IpRun>(`/v1/ip-studio/runs/${encodeURIComponent(runId)}`);
+export const readRun = async (runId: string) => {
+  const run=await apiFetch<IpRun>(`/v1/ip-studio/runs/${encodeURIComponent(runId)}`);
+  observePortraitReviews(run.output?.assetReviews); return run;
+};
 
 export const cancelRun = (runId: string) =>
   apiFetch<IpRun>(`/v1/ip-studio/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" });

@@ -171,10 +171,27 @@ test("video: a removed voice stays removed when the draft is opened again; the o
   await openVideoDraft();
   expect(screen.queryByRole("button", { name: "移除声音" })).toBeNull();
   expect(screen.getByRole("button", { name: "从资产库选择声音" })).toBeTruthy();
+  expect(screen.queryByLabelText("已选择声音")).toBeNull();
+  expect(screen.getByRole("button", { name: "从资产库选择声音" }).querySelector(".lucide-plus")).not.toBeNull();
 });
 
 const productNode = { id: "product", type: "image", title: "商品图 1", position: { x: 100, y: 400 }, width: 100, height: 100,
   metadata: { storageKey: "product.jpg", content: "https://cdn/product.jpg", origin: "upload", mimeType: "image/jpeg", status: "success" } };
+
+test("video: reselecting a legacy voice keeps its library name after reopening without duplicating the node", async () => {
+  put({ id: "IPP-V", sceneId: "ecom-talking", doc: { ...EMPTY, nodes: [voiceNode("old", "old.mp3")] as never } });
+  api.importMedia.mockResolvedValue({ key: "old.mp3", url: "https://cdn/old.mp3", fileName: "原唱音轨.wav", bytes: 3, mimeType: "audio/wav", mediaType: "audio" });
+  await openVideoDraft();
+  await pickFromLibrary("声音");
+  await waitFor(() => expect(store.get("IPP-V")!.doc.nodes[0].title).toBe("原唱音轨.wav"));
+  expect(store.get("IPP-V")!.doc.nodes).toHaveLength(1);
+  cleanup();
+  await openVideoDraft();
+  const selected = screen.getByRole("button", { name: "更换声音" });
+  expect(selected.getAttribute("title")).toBe("原唱音轨.wav");
+  expect(selected.parentElement?.textContent).toContain("原唱音轨.wav");
+  expect(screen.getByLabelText("已选择声音")).toBeTruthy();
+});
 
 test("video: after replacing the voice, opening the draft again picks the replacement", async () => {
   put({ id: "IPP-V", name: "draft V", sceneId: "ecom-talking", doc: { ...EMPTY, nodes: [voiceNode("old", "old.mp3"), productNode] as never } });
@@ -182,11 +199,17 @@ test("video: after replacing the voice, opening the draft again picks the replac
   await openVideoDraft();
   await pickFromLibrary("声音");
   await waitFor(() => expect(store.get("IPP-V")!.doc.sceneInputs?.voice).toBe("new.mp3"));
+  const selected = screen.getByRole("button", { name: "更换声音" });
+  expect(selected.parentElement?.textContent).toContain("new.mp3");
+  expect(selected.querySelector(".lucide-plus")).toBeNull();
+  expect(screen.getByLabelText("已选择声音")).toBeTruthy();
   expect(store.get("IPP-V")!.doc.nodes.filter(n => n.type === "audio")).toHaveLength(2);
 
   cleanup();
   await openVideoDraft();
-  expect(screen.getByRole("button", { name: "更换声音" }).getAttribute("title")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "更换声音" }).getAttribute("title")).toBe("new.mp3");
+  expect(screen.getByRole("button", { name: "更换声音" }).parentElement?.textContent).toContain("new.mp3");
+  expect(screen.getByRole("button", { name: "更换声音" }).querySelector(".lucide-plus")).toBeNull();
   // 再写一版脚本时交出去的声音就是换后的那份。
   api.composeScene.mockResolvedValue({ text: "write script" });
   fillField(screen.getByRole("textbox", { name: "想做的视频" }), "保湿精华");

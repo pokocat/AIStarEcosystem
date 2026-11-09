@@ -1,0 +1,26 @@
+{
+  "desktop": {
+    "turnsAfterSendAndRefresh": 2,
+    "suggestions": [
+      "调整开场",
+      "细节展示",
+      "口播精简"
+    ],
+    "horizontalOverflow": false,
+    "clickOnlySubmits": 0,
+    "afterSendSubmits": 1,
+    "adoptedScriptExactlyMatchesModelContent": true
+  },
+  "mobile": {
+    "width": 390,
+    "layout": "mobile",
+    "buttonHeights": [
+      44,
+      44,
+      44
+    ],
+    "horizontalOverflow": false,
+    "buttonClipping": false
+  },
+  "scope": "Real Next app; synthetic local persistence and queued-run API, with two complete saved real-model replies. No new video generation."
+}

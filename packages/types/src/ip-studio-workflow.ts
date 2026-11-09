@@ -1,5 +1,8 @@
+import type { StudioTakeChange } from "./ip-studio-scenes";
 import type { EnterpriseBillingSelection } from "./enterprise";
 import type { VideoStudioMode, VideoStudioReferenceInput } from "./video-studio";
+/** Optional model-generated script follow-ups; limits count Unicode code points. */
+export interface StudioScriptSuggestion { label: string; instruction: string }
 /** Unified Studio operations. IpRun remains the single execution record. */
 export interface StudioVideoSettings {
   mode: VideoStudioMode;
@@ -37,8 +40,8 @@ export interface StudioProductionApproach {
 export interface StudioStepReferenceBinding { stepId?: string; nodeId?: string; role: "character" | "scene" | "product" | "frame" | "clip" | "reference-image" | "reference-video" | "reference-audio"; order: number }
 export type StudioSkillStepSettings =
   | { operation: "recreation"; sourceNodeId: string; mode: "segments"; maxSegmentSec: number | "model"; videoModel: string }
-  | { operation: "image"; size?: string; aspectRatio?: string; count: 1 | 2 | 4; referenceBindings: StudioStepReferenceBinding[] }
-  | { operation: "video"; video: StudioVideoSettings; durationSec: number; aspectRatio: string; count: 1 | 2 | 4; referenceBindings: StudioStepReferenceBinding[] }
+  | { operation: "image"; model?: string; size?: string; aspectRatio?: string; count: 1 | 2 | 4; referenceBindings: StudioStepReferenceBinding[] }
+  | { operation: "video"; model?: string; video: StudioVideoSettings; durationSec: number; aspectRatio: string; count: 1 | 2 | 4; referenceBindings: StudioStepReferenceBinding[] }
   | { operation: "check"; targetStepId: string; targetRunId?: string; candidateIndex?: number; checkIds: string[] }
   | { operation: "assemble"; clipOrder: { stepId: string; runId?: string; candidateIndex?: number }[]; audioStrategy: "generated" | "source-audio" | "none" }
   | { operation: "text"; purpose: "script" | "prompt-revision" | "plan-compile" | "note"; editTarget?: { nodeId: string; field: "content" | "prompt" | "script"; snapshot: string } };
@@ -321,7 +324,14 @@ export interface StudioNodeMetadata {
     /** 写这一版时选的场景选项（出镜方式、语气…）：改稿沿用它，不回到默认值。2026-10-30 之前写的版本没有。 */
     options?: Record<string, string>;
     /** 写这一版时按哪个视频模型、交给它哪几张图（文件 key，按图1、图2 的顺序）写的：出片时换了就提示让编导按新的改一版。 */
-    videoModel?: string; refs?: string[] };
+    videoModel?: string; refs?: string[];
+    /** Suggestions from this reply only: at most 3, label <=8, instruction <=80 code points. */
+    suggestions?: StudioScriptSuggestion[] };
+  /**
+   * AI 视频页「视频裂变」给某条任务（of = 任务编号）找的变量（kind=variables，正文是变量清单）或 AI 改写的一版脚本（kind=rewrite，正文是脚本）。
+   * 和编导的版本分开放，不出现在编导那一页；batch 是同一次操作的编号，每次重新写换一个。
+   */
+  sceneTake?: { of: string; kind: "variables" | "rewrite"; batch: string; at: string; index?: number; total?: number; changes?: StudioTakeChange[] };
   /** AI 图片页这一次出图用的条件（场景、补充要求、改过的描述、选项、模型和规格；参考图看请求里的 references）。「用这次的设置再做」按它放回，不把拼好的整段话当描述。 */
   sceneImage?: { sceneId: string; supplement: string; custom?: string; options: Record<string, string>; model?: string; ratio: string; size?: string; count: number; refCounts?: number[] };
   recreation?: { mode?:"segments"; document?:boolean; materializedSegmentNos?:number[]; materializedAudioSourceKey?:string; resumeRunId?:string; study?:StudioFilmStudy; materializedRunId?:string; sourceNodeId: string; sourceStorageKey: string; sourceTitle: string; report?: StudioRecreationReport };

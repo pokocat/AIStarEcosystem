@@ -83,7 +83,7 @@ export function AssetsHub() {
   const current = builtIn || folders.some(f => f.id === library) || (foldersRead && !!folderError) ? library : 'all';
   // 地址里是自己建的库：等库列表读回来再读内容，免得先按一个不存在的库读一遍。
   const ready = builtIn || foldersRead;
-  return <StudioPage title="资产" description={ASSETS_DESCRIPTION} className="assets-hub-page">
+  return <StudioPage title="资产" description={ASSETS_DESCRIPTION} className="assets-hub-page" actions={<Link href="/assets/verification">人像核验</Link>}>
     <ConfigProvider locale={zhCN} button={{ autoInsertSpace: false }} getPopupContainer={studioOverlayContainer} theme={{ token: { colorPrimary: '#17202a', borderRadius: 10, fontFamily: 'var(--ip-ui)' } }}>
       <App className="assets-hub" data-studio-overlay-root>
         <div className="assets-hub-tabs" role="tablist" aria-label="资产分类">

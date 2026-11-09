@@ -27,7 +27,7 @@ export function SettingsPanel({ work, onClose, apply, setError }: { work: Direct
   const unavailableImage = !!imageModel && !imageModels.some(m => m.id === imageModel);
   const state = work.imageModelState;
   // 说明的是「这次保存后实际会用的模型」：还停在原选择上（含跟默认走），服务端给的状况才对得上。
-  const stateNote = imageModel === savedImage && state ? imageStateNote(state, aspect, work.pricing.mock) : null;
+  const stateNote = imageModel === savedImage && state ? imageStateNote(state, aspect, work.pricing.mock, imageModel === savedImage && aspect === work.settings.aspectRatio && !!work.boardImage?.size && !work.boardImage.error) : null;
   const { busy, run } = useBusy();
   const save = () => void run("settings", async () => {
     // 图片模型没改就不带：原值不重新提交，另一个页面刚换过的模型也不会被这里改回去。
@@ -55,13 +55,14 @@ export function SettingsPanel({ work, onClose, apply, setError }: { work: Direct
     </label>
     <label className="director-field"><span>图片模型</span>
       <SelectField aria-label="图片模型" value={imageModel} disabled={!!busy} onChange={e => setImageModel(e.target.value)}>
-        <option value="">默认{imageModels.find(m => m.isDefault) ? `（${imageModels.find(m => m.isDefault)!.name}）` : ""}</option>
+        <option value="">默认{imageModels.find(m => m.isDefault) ? `（${imageModels.find(m => m.isDefault)!.name}）` : !state?.explicit && state?.name ? `（${state.name}）` : ""}</option>
         {unavailableImage && <option value={imageModel} disabled>{state?.explicit && state.available && state.name ? `${state.name}（原选择）` : "原模型已不可用"}</option>}
         {imageModels.map(m => <option key={m.id} value={m.id}>{m.name} · {costText(m.creditCost, work.pricing.mock)}/张</option>)}
       </SelectField>
+      {imageModel === savedImage && work.boardImage?.name && work.boardImage.size && <small>分镜图：{work.boardImage.name} · {work.boardImage.size.replace("x", "×")} · {costText(work.pricing.boardImage ?? work.pricing.image, work.pricing.mock)}/张</small>}
       <small>{stateNote ?? (unavailableImage ? "原图片模型已不可用，请更换模型后继续生成图片。其他设置可正常保存。" : chosenImage
-        ? `用于资产图和分镜图，${costText(chosenImage.creditCost, work.pricing.mock)}/张。`
-        : "暂无可用图片模型，请联系管理员开通。")}</small>
+        ? `资产图${costText(chosenImage.creditCost, work.pricing.mock)}/张；分镜图按作品画幅选择规格，生成前显示费用。`
+        : imageModel === savedImage && state?.available && work.boardImage?.size ? `资产图${costText(work.pricing.image, work.pricing.mock)}/张。` : "暂无可用图片模型，请联系管理员开通。")}</small>
     </label>
     <label className="director-field"><span>视频模型</span>
       <SelectField value={videoModel} onChange={e => setVideoModel(e.target.value)}>
@@ -93,16 +94,16 @@ const RATIO_NAMES: Record<string, string> = { "1:1": "方图", "16:9": "横图",
  * 原选择（或默认模型）有问题时的说明；没问题返回 null，照常显示价格。
  * 道具用方图、角色和场景用横图、分镜跟作品画幅，缺哪种就说哪类生成不了。
  */
-function imageStateNote(state: DirectorImageModelState, aspect: string, mock: boolean): string | null {
+function imageStateNote(state: DirectorImageModelState, aspect: string, mock: boolean, boardAvailable = false): string | null {
   const who = state.explicit ? "原图片模型" : "默认图片模型";
   if (!state.available) return state.explicit
     ? "原图片模型已停用，暂时无法生成资产图和分镜图，请更换模型。其他设置可正常保存。"
     : "默认图片模型暂不可用，请选择一个图片模型，或联系管理员。";
-  if (!state.missingRatios.length) return null;
+  if (!state.missingRatios.length || (boardAvailable && state.missingRatios.every(r => r !== "1:1" && r !== "16:9"))) return null;
   const affected: string[] = [];
   if (state.missingRatios.includes("16:9")) affected.push("角色", "场景");
   if (state.missingRatios.includes("1:1")) affected.push("道具");
-  if (state.missingRatios.includes(aspect)) affected.push("分镜");
+  if (state.missingRatios.includes(aspect) && !boardAvailable) affected.push("分镜");
   const name = state.name ? `「${state.name}」` : "";
   const missing = state.missingRatios.map(r => RATIO_NAMES[r] ?? r).join("、");
   const price = state.creditCost == null ? "" : `，${costText(state.creditCost, mock)}/张`;

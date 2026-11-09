@@ -214,6 +214,10 @@ public class IpDemoTemplateService {
 
         Map<String, String> remap = new HashMap<>();
         String cover = null;
+        // 已经在这条示例自己目录下的素材原样留用：从这条示例做同款的画布再发布回它，
+        // 或者灵感脚本按原素材重排画布（docs/studio-inspiration-library.md）。
+        // 再复制一份的话，下面的清理会把旧文件删掉，而用户做同款得到的画布引用的正是旧文件，打开就是裂图。
+        String prefix = demoPrefix(id);
 
         // 素材上限必须在复制之前判：copyKey 会同步把文件写进 OSS（storage.store →
         // cdn.upload），而 @Transactional 只回滚 DB 行、回滚不了这些 OSS 对象。若先复制
@@ -238,7 +242,7 @@ public class IpDemoTemplateService {
                 continue;
             }
 
-            String newKey = copyKey(id, IpDocs.text(mo, "storageKey"), remap);
+            String newKey = copyKey(id, prefix, IpDocs.text(mo, "storageKey"), remap);
             if (newKey != null) {
                 mo.put("storageKey", newKey);
                 if (cover == null && IpDocs.T_IMAGE.equals(IpDocs.typeOf(node))) cover = newKey;
@@ -249,7 +253,7 @@ public class IpDemoTemplateService {
             for (String field : CANDIDATE_FIELDS) {
                 for (JsonNode item : mo.path(field)) {
                     if (!(item instanceof ObjectNode io)) continue;
-                    String k = copyKey(id, IpDocs.text(io, "storageKey"), remap);
+                    String k = copyKey(id, prefix, IpDocs.text(io, "storageKey"), remap);
                     if (k != null) { io.put("storageKey", k); }
                     // 派生地址不进示例：它们是当次签的、带 TTL（§4.7.7）。真值是 storageKey，
                     // 用户打开示例时按 key 现签。
@@ -292,7 +296,6 @@ public class IpDemoTemplateService {
         Set<String> keep = new LinkedHashSet<>();
         collectKeys(doc, keep);
         if (row.getCoverKey() != null) keep.add(row.getCoverKey());
-        String prefix = demoPrefix(id);
         int swept = 0;
         for (String k : stale) {
             if (keep.contains(k) || !ownedByDemo(k, prefix)) continue;
@@ -611,8 +614,11 @@ public class IpDemoTemplateService {
         return s != null && !s.isBlank();
     }
 
-    /** 把一个素材复制进示例目录，返回新 key；同一个 key 只复制一次。读不出来返回 null（跳过那一张）。 */
-    private String copyKey(String demoId, String key, Map<String, String> remap) {
+    /**
+     * 把一个素材复制进示例目录，返回新 key；同一个 key 只复制一次。读不出来返回 null（跳过那一张）。
+     * 已经在这条示例自己目录下（{@code prefix}）的原样返回，不复制，发布后的清理也就不会删它。
+     */
+    private String copyKey(String demoId, String prefix, String key, Map<String, String> remap) {
         if (key == null || key.isBlank()) return null;
         // 文档是客户端拥有的，storageKey 能塞任意字符串；本机 fallback 走 Paths.get(localDir, key)，
         // 文件系统会解析掉 `..` —— 一份被污染的文档就能把 ../../etc/passwd 抄进公开示例目录
@@ -623,6 +629,10 @@ public class IpDemoTemplateService {
         }
         String hit = remap.get(key);
         if (hit != null) return hit;
+        if (ownedByDemo(key, prefix)) {
+            remap.put(key, key);
+            return key;
+        }
         try {
             Path src = storage.openForRead(key);
             byte[] bytes = Files.readAllBytes(src);

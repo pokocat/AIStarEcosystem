@@ -319,11 +319,20 @@ public class StudioSceneCatalog {
      * @param characterSeen 编导：出镜人物这张视频模型也用不上（同上，只给编导看）
      * @param visual   编导：写脚本的模型这次能不能看到图（false = 看不到，只能按名称写）；null 按能看到算（老前端）
      * @param settingsChanged 编导：改稿时设置变了什么（时长、画面、参考图），由环节模板说成一句话；页面不再自己拼话
+     * @param variant  编导：「视频裂变」里 AI 改写的第几版、按哪组变化改（没有为 null，见 docs/studio-video-workflow-redesign.md）
      */
     public record ComposeRequest(String kind, String sceneId, String text, String custom, List<Integer> filled,
                                  List<String> imageTitles, String characterTitle, String voiceTitle, String videoTitle,
                                  Integer duration, String ratio, String language, String revision, java.util.Map<String, String> options,
-                                 List<String> seenTitles, Boolean characterSeen, Boolean visual, String settingsChanged, List<Integer> refCounts) {
+                                 List<String> seenTitles, Boolean characterSeen, Boolean visual, String settingsChanged, List<Integer> refCounts,
+                                 Variant variant) {
+        public ComposeRequest(String kind, String sceneId, String text, String custom, List<Integer> filled,
+                              List<String> imageTitles, String characterTitle, String voiceTitle, String videoTitle,
+                              Integer duration, String ratio, String language, String revision, java.util.Map<String, String> options,
+                              List<String> seenTitles, Boolean characterSeen, Boolean visual, String settingsChanged, List<Integer> refCounts) {
+            this(kind, sceneId, text, custom, filled, imageTitles, characterTitle, voiceTitle, videoTitle, duration, ratio, language, revision, options,
+                    seenTitles, characterSeen, visual, settingsChanged, refCounts, null);
+        }
         public ComposeRequest(String kind, String sceneId, String text, String custom, List<Integer> filled,
                               List<String> imageTitles, String characterTitle, String voiceTitle, String videoTitle,
                               Integer duration, String ratio, String language, String revision, java.util.Map<String, String> options,
@@ -356,6 +365,13 @@ public class StudioSceneCatalog {
 
     public record Composed(String text, String skillKey) {}
 
+    /**
+     * 「视频裂变」里 AI 改写的一版：同一条视频的第 index 版（共 total 版）。changes 是这一版要换的变量（名称、原文里的说法、换成什么），
+     * 为空就由编导自己换开场、人物、场景和台词。只在改稿时用，当前脚本必须有。
+     */
+    public record Variant(Integer index, Integer total, List<Change> changes) {}
+    public record Change(String name, String from, String to) {}
+
     public Composed compose(ComposeRequest request) {
         if (request == null || request.kind() == null) throw bad("请选择场景");
         return switch (request.kind()) {
@@ -369,7 +385,8 @@ public class StudioSceneCatalog {
 
     // ── 按提示词库的环节拼（docs/studio-prompt-architecture.md §8 #12–#14；句子都在 resources/studio/prompts 里） ──────
 
-    static final String STAGE_IMAGE = "stage-scene-image", STAGE_HANDOFF = "stage-scene-handoff", STAGE_SCRIPT = "stage-scene-script";
+    static final String STAGE_IMAGE = "stage-scene-image", STAGE_HANDOFF = "stage-scene-handoff", STAGE_SCRIPT = "stage-scene-script",
+            STAGE_VARIABLES = "stage-scene-variables";
     public static String sceneKey(String sceneId) { return "scene-" + sceneId; }
 
     private String imagePrompt(ComposeRequest r) {
@@ -498,6 +515,11 @@ public class StudioSceneCatalog {
      */
     public StudioPromptAssembler.Assembled sceneScript(ComposeRequest r, String current, boolean readVisuals, java.util.Map<String, Integer> frozen) {
         VideoInput in = videoInput(r, false);
+        if (r.variant() != null && blank(current)) throw bad("请先写好一版脚本");
+        // 编导环节可能是从线上旧 Prompt 管理导入、或后台改过的版本，没有改写段：照常改稿就和原脚本差不多，不能当作改写交差（§8.0）。
+        if (r.variant() != null && !assembler().stageUses(STAGE_SCRIPT, frozen, "hasVariant"))
+            throw BusinessException.wrapped(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "STUDIO_REWRITE_NOT_CONFIGURED", "AI 改写暂不可用，请联系平台处理。",
+                    "提示词库 stage-scene-script 的生效版本没有「视频裂变」改写段（hasVariant）。请在后台「提示词与技能」发布包含改写段的版本（仓库文件 studio/prompts/stages/stage-scene-script.md）。");
         VideoScene scene = in.scene();
         java.util.Map<String, Object> vars = scriptVars(in, r, current, readVisuals);
         String method = groupMethod(scene.group());
@@ -548,7 +570,14 @@ public class StudioSceneCatalog {
         String revision = trim(r.revision()), changed = trim(r.settingsChanged());
         vars.put("revision", revision);
         vars.put("settingsChanged", changed);
-        vars.put("revising", !revision.isEmpty() || !changed.isEmpty());
+        Variant variant = r.variant();
+        List<java.util.Map<String, Object>> changes = variantChanges(variant);
+        vars.put("hasVariant", variant != null);
+        vars.put("variantIndex", variant == null ? 0 : variant.index());
+        vars.put("variantTotal", variant == null ? 0 : variant.total());
+        vars.put("hasChanges", !changes.isEmpty());
+        vars.put("changes", changes);
+        vars.put("revising", !revision.isEmpty() || !changed.isEmpty() || variant != null);
         boolean visual = !Boolean.FALSE.equals(r.visual());
         vars.put("visual", visual);
         List<java.util.Map<String, Object>> refs = new ArrayList<>();
@@ -566,7 +595,7 @@ public class StudioSceneCatalog {
         vars.put("hasSeen", !seen.isEmpty());
         vars.put("seen", seen);
         vars.put("blind", !visual && (!refs.isEmpty() || !seen.isEmpty()));
-        vars.put("noAsk", in.text().isEmpty() && (!refs.isEmpty() || !seen.isEmpty()));
+        vars.put("noAsk", in.text().isEmpty() && variant == null && (!refs.isEmpty() || !seen.isEmpty()));
         vars.put("current", current == null || current.isBlank() ? "" : JSON.valueToTree(current).toString());
         vars.put("readVisuals", readVisuals);
         return vars;
@@ -579,6 +608,42 @@ public class StudioSceneCatalog {
         String method = groupMethod(scene.group());
         if (method != null) keys.add(method);
         return assembler().freeze(keys);
+    }
+
+    /**
+     * 「视频裂变」里的找变量（docs/studio-video-workflow-redesign.md）：从当前脚本里找出能在多条视频里替换的说法，每个给几个同类替换。
+     * 只读脚本，不看图、不拼场景拍法；输出仍是普通文字任务的外壳，正文每行一个变量，由页面解析并核对原文确实出现在脚本里。
+     */
+    public StudioPromptAssembler.Assembled sceneVariables(ComposeRequest r, String current, java.util.Map<String, Integer> frozen) {
+        VideoScene scene = video(r.sceneId()).orElseThrow(() -> bad("该场景已下架，请刷新后重新选择"));
+        if (blank(current)) throw bad("没有可以找变量的脚本");
+        java.util.Map<String, Object> vars = new java.util.LinkedHashMap<>();
+        vars.put("sceneTitle", scene.title());
+        vars.put("duration", r.duration() == null ? scene.duration() : r.duration());
+        vars.put("orientation", orientation(r.ratio() == null ? scene.ratio() : r.ratio()));
+        vars.put("current", JSON.valueToTree(current).toString());
+        return assembler().assemble(new StudioPromptAssembler.Call(STAGE_VARIABLES, null, null, vars, frozen, null));
+    }
+
+    public java.util.Map<String, Integer> freezeSceneVariables(String sceneId) {
+        video(sceneId).orElseThrow(() -> bad("该场景已下架，请刷新后重新选择"));
+        return assembler().freeze(List.of(STAGE_VARIABLES));
+    }
+
+    /** AI 改写那一版要换的变量：名称、原文、换成什么都要有；最多 8 个，每项不超过 80 字。 */
+    private static List<java.util.Map<String, Object>> variantChanges(Variant v) {
+        if (v == null) return List.of();
+        if (v.index() == null || v.total() == null || v.total() < 1 || v.total() > 8 || v.index() < 1 || v.index() > v.total())
+            throw bad("改写的版本编号不对");
+        List<Change> in = v.changes() == null ? List.of() : v.changes();
+        if (in.size() > 8) throw bad("一版最多换 8 处");
+        List<java.util.Map<String, Object>> out = new ArrayList<>();
+        for (Change c : in) {
+            if (c == null || blank(c.name()) || blank(c.from()) || blank(c.to())) throw bad("要换的内容不完整");
+            if (c.name().length() > 80 || c.from().length() > 80 || c.to().length() > 80) throw bad("要换的内容太长");
+            out.add(java.util.Map.of("name", c.name().trim(), "from", c.from().trim(), "to", c.to().trim()));
+        }
+        return out;
     }
 
     /** 场景分组对应的内容方法（{@code method-<分组>}，§9.8：第一版为空，库里有了就用）。 */
@@ -603,7 +668,7 @@ public class StudioSceneCatalog {
         long placed = images.size() + (r.seenTitles() == null ? 0 : r.seenTitles().stream().filter(t -> !blank(t)).count());
         if (scene.images().required() && placed == 0) throw bad("请添加" + scene.images().label());
         if (scene.images().max() != null && placed > scene.images().max()) throw bad(scene.images().label() + "最多 " + scene.images().max() + " 张");
-        if (scene.textRequired() && text.isEmpty() && blank(r.revision())) throw bad("请填写要求");
+        if (scene.textRequired() && text.isEmpty() && blank(r.revision()) && r.variant() == null) throw bad("请填写要求");
         int duration = r.duration() == null ? scene.duration() : r.duration();
         // 交给助手时最长 60 秒（页面上拖动选，超过模型单段上限由助手分段做再拼起来，2026-10-31 改版）；
         // 编导一次出片时长由所选视频模型决定，这里只挡明显不对的数。

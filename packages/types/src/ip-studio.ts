@@ -153,6 +153,7 @@ export interface IpVideoCandidate {
   promptRewrite?: IpVideoPromptRewrite;
 }
 export interface IpRunOutput {
+  assetReviews?: import('./video-portrait-library').VideoPortraitReviewLink[];
   billingBreakdown?: import('./model-billing').ModelBillingBreakdown;
   /** Persisted async ErrorLog lookup ID, alongside partial output when applicable. */
   logId?: string;
@@ -168,7 +169,7 @@ export interface IpRunOutput {
   sourceAudio?: import("./ip-studio-workflow").StudioSourceAudio;
   captions?: import("./ip-studio-workflow").StudioCaptionResult;
   scriptRevision?: { markdown: string; summary: string };
-  textRevision?: { content: string; summary: string };
+  textRevision?: { content: string; summary: string; suggestions?: import("./ip-studio-workflow").StudioScriptSuggestion[] };
   shots?: import("./ip-studio-workflow").StudioShot[];
   storageKey?: string;
   url?: string;

@@ -1,0 +1,71 @@
+[
+  {
+    "cost": 3,
+    "kind": "studio-text",
+    "runId": "IPR-20520f74a60541edbaf4",
+    "status": "done",
+    "endpoint": "ai-onetoken-sonnet55",
+    "rawModel": "gpt-6.1-terra-official",
+    "versions": {
+      "base": 2,
+      "scene-brand-story": 1,
+      "stage-scene-script": 3
+    },
+    "suggestions": [
+      {
+        "label": "强化开场",
+        "instruction": "把第一镜改得更有反差，让林宁抬眼看见慢页的瞬间更抓人。"
+      },
+      {
+        "label": "调整独白",
+        "instruction": "把林宁的画外独白改得更像下班路上的自然自言自语。"
+      },
+      {
+        "label": "突出书店",
+        "instruction": "在不增加时长的前提下，让第二镜更清楚地呈现慢页的书架和阅读空间。"
+      }
+    ],
+    "contentChars": 1452,
+    "rawChars": 1767,
+    "rawRetained": true,
+    "rawSuggestionsMatch": true,
+    "lengths": [
+      {
+        "label": "强化开场",
+        "labelChars": 4,
+        "instructionChars": 27
+      },
+      {
+        "label": "调整独白",
+        "labelChars": 4,
+        "instructionChars": 24
+      },
+      {
+        "label": "突出书店",
+        "labelChars": 4,
+        "instructionChars": 32
+      }
+    ]
+  },
+  {
+    "count": 1,
+    "amount": 107,
+    "entryType": "UNFREEZE"
+  },
+  {
+    "count": 1,
+    "amount": -3,
+    "entryType": "SPEND"
+  },
+  {
+    "count": 1,
+    "amount": -110,
+    "entryType": "FREEZE"
+  },
+  {
+    "key": "stage-scene-script",
+    "status": "active",
+    "version": 3,
+    "updatedBy": "seed"
+  }
+]

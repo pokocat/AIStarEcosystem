@@ -69,8 +69,7 @@ beforeEach(() => { mountStudioErrorNotifications(); });
 const inspiration = { id: 'IPD-insp-cover', name: '小红书封面', summary: '撞色大标题', lookCount: 0, estimatedCredits: 0, coverUrl: 'https://cdn.test/cover.jpg', doc: {
   nodes: [
     { id: 'guide', type: 'text', title: '创作说明', position: { x: 0, y: 0 }, width: 300, height: 200, metadata: { content: '这套做法', prompt: '帮我生成这张图：撞色封面', studioStart: 'assistant', studioSkill: 'image-generation' } },
-    { id: 'mine', type: 'image', title: '我的版本', position: { x: 400, y: 0 }, width: 300, height: 400, metadata: { prompt: '撞色封面' } },
-    { id: 'sample', type: 'image', title: '示例效果', position: { x: 800, y: 0 }, width: 300, height: 400, metadata: { storageKey: 'ipstudio_demo/x/a.jpg', prompt: '撞色封面' } },
+    { id: 'result', type: 'image', title: '成图', position: { x: 400, y: 0 }, width: 300, height: 400, metadata: { prompt: '撞色封面', size: '3:4', count: 1, storageKey: 'ipstudio_demo/x/a.jpg', status: 'success', origin: 'example', primaryImageId: 'take-1', images: [{ id: 'take-1', status: 'success', storageKey: 'ipstudio_demo/x/a.jpg', prompt: '撞色封面', content: '' }] } },
   ], connections: [], viewport: { x: 0, y: 0, k: 1 } } } as any;
 test('an inspiration opens as a sized dialog with its result and no prompt, not the fullscreen canvas', async () => {
   render(<StudioTemplateUse template={inspiration} onClose={() => {}} onCreated={() => {}}/>);

@@ -17,6 +17,12 @@ public interface MaterialVideoJobRepository extends JpaRepository<MaterialVideoJ
     @Query("select j from MaterialVideoJob j where j.id=:id")
     java.util.Optional<MaterialVideoJob> lockById(@Param("id") String id);
 
+    /** Only an explicitly paused, unaccepted request may continue. Concurrent resume clicks share this claim. */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query("update MaterialVideoJob j set j.errorCode=null,j.errorMessage=null,j.updatedAt=:now where j.id=:id and j.ownerUserId=:owner and j.status='queued' and j.errorCode='VIDEO_ASSET_NEEDS_REVIEW' and (j.externalTaskId is null or j.externalTaskId='')")
+    int resumePortraitReview(@Param("id") String id,@Param("owner") String owner,@Param("now") java.time.OffsetDateTime now);
+
     /** 导演台删除前核对在途：id / status / errorCode / ownerUserId 四列，不进持久化上下文。 */
     @Query("select j.id, j.status, j.errorCode, j.ownerUserId from MaterialVideoJob j where j.id in :ids")
     List<Object[]> states(@Param("ids") java.util.Collection<String> ids);

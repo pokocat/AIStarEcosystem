@@ -17,6 +17,7 @@ public final class StudioPromptCallPoints {
         StudioPromptStages.register(sceneImage());
         StudioPromptStages.register(sceneHandoff());
         StudioPromptStages.register(sceneScript());
+        StudioPromptStages.register(sceneVariables());
         registerStepThree();
         registerDirector();
         registerDirectorImages();
@@ -261,7 +262,8 @@ public final class StudioPromptCallPoints {
 
     // ── AI 图片 / AI 视频（docs/studio-prompt-architecture.md §8 #12–#14） ───────────────────────────────────────
 
-    static final String SCENE_IMAGE = "stage-scene-image", SCENE_HANDOFF = "stage-scene-handoff", SCENE_SCRIPT = "stage-scene-script";
+    static final String SCENE_IMAGE = "stage-scene-image", SCENE_HANDOFF = "stage-scene-handoff", SCENE_SCRIPT = "stage-scene-script",
+            SCENE_VARIABLES = "stage-scene-variables";
 
     private static StudioPromptStages.Stage sceneImage() {
         Map<String, String> vars = new LinkedHashMap<>();
@@ -295,7 +297,12 @@ public final class StudioPromptCallPoints {
         vars.put("language", "台词语言");
         vars.put("revision", "用户写的修改意见");
         vars.put("settingsChanged", "设置变了什么（时长、画面、参考图），没变为空");
-        vars.put("revising", "这是改稿（有修改意见或设置变了）");
+        vars.put("revising", "这是改稿（有修改意见、设置变了，或是「视频裂变」的改写版）");
+        vars.put("hasVariant", "这是「视频裂变」里 AI 改写的一版");
+        vars.put("variantIndex", "第几版（从 1 起）");
+        vars.put("variantTotal", "共几版");
+        vars.put("hasChanges", "这一版有指定要换的变量");
+        vars.put("changes", "这一版要换的变量：[{name, from, to}]");
         vars.put("hasRefs", "有交给视频模型的参考图");
         vars.put("refs", "参考图：[{n, title, label, person}]");
         vars.put("voice", "说话要用的声音名称");
@@ -308,7 +315,7 @@ public final class StudioPromptCallPoints {
         vars.put("inferable", "可以从素材推断的信息名称");
         vars.put("current", "当前脚本（JSON 字符串），第一次写为空");
         Map<String, Function<Map<String, ?>, String>> formats = new LinkedHashMap<>();
-        formats.put("output", v -> OUTPUT);
+        formats.put("output", v -> SCENE_SCRIPT_OUTPUT);
         formats.put("shots", StudioPromptCallPoints::shots);
         formats.put("attachments", v -> Boolean.TRUE.equals(v.get("readVisuals")) ? ATTACHMENTS : "");
         Map<String, Object> sample = sample();
@@ -320,6 +327,26 @@ public final class StudioPromptCallPoints {
         return new StudioPromptStages.Stage(SCENE_SCRIPT, StudioPromptEntry.LLM, "AI 视频 · 编导写脚本", vars,
                 Set.of("duration", "sceneTitle", "language"), formats, sample);
     }
+
+    /** 「视频裂变」找变量：只读当前脚本，正文每行一个变量，页面解析（scene-video-takes.ts parseTakeVariables）。 */
+    private static StudioPromptStages.Stage sceneVariables() {
+        Map<String, String> vars = new LinkedHashMap<>();
+        vars.put("sceneTitle", "场景名称");
+        vars.put("duration", "时长（秒）");
+        vars.put("orientation", "竖屏 / 横屏");
+        vars.put("current", "当前脚本（JSON 字符串）");
+        Map<String, Function<Map<String, ?>, String>> formats = new LinkedHashMap<>();
+        formats.put("output", v -> VARIABLES_OUTPUT);
+        Map<String, Object> sample = new LinkedHashMap<>();
+        sample.put("sceneTitle", "口播带货"); sample.put("duration", 15); sample.put("orientation", "竖屏");
+        sample.put("current", "\"一、剧情概述：宝妈小林在厨房里用卸妆膏三秒卸掉防水睫毛膏……\"");
+        return new StudioPromptStages.Stage(SCENE_VARIABLES, StudioPromptEntry.LLM, "AI 视频 · 视频裂变找变量", vars,
+                Set.of("current"), formats, sample);
+    }
+
+    /** 每行「名称｜原文｜替换1｜替换2｜替换3」：页面按这个拆，原文不在脚本里的那行丢掉。 */
+    static final String VARIABLES_OUTPUT = "只输出一个 JSON 对象 {\"summary\":\"一句话说找到了几处、主要换什么\",\"content\":\"变量清单\"}，不要代码围栏。"
+            + "content 每行一个变量，格式：名称｜原文｜替换1｜替换2｜替换3，用全角竖线分隔，不编号、不加表头；一个都找不到就只写「无」。";
 
     /** 两个视频环节共用的变量。 */
     private static Map<String, String> common() {
@@ -350,6 +377,13 @@ public final class StudioPromptCallPoints {
     }
 
     // ── 编导的输出格式（和 H3PromptRewrite 的解析、StudioTextRevision 的校验是一对，改了要一起改） ────────────────
+
+    static final String SCENE_SCRIPT_OUTPUT = "只输出一个 JSON 对象 {\"summary\":\"一句话说明这一版的思路\",\"content\":\"完整脚本正文\","
+            + "\"suggestions\":[{\"label\":\"简短按钮文案\",\"instruction\":\"用户可直接发送的完整修改意见\"}]}，不要代码围栏；"
+            + "suggestions 最多 3 条，label 为 2 到 8 个字，instruction 不超过 80 个字，两者均为单行文字；"
+            + "只建议基于这版脚本、用户要求和已有素材的具体可选改法，方向互不重复，不重复刚完成的修改，不新增未经提供的事实；"
+            + "建议用用户的口吻表达，不提问、不承诺已修改，不把建议写进 content 或 summary。没有合适建议时返回空数组。"
+            + "不输出 steps、shots 或工具指令；不要声称已经保存或生成视频。";
 
     static final String OUTPUT = "只输出一个 JSON 对象 {\"summary\":\"一句话说明这一版的思路\",\"content\":\"完整脚本正文\"}，不要代码围栏；"
             + "不输出 steps、shots 或工具指令；不要声称已经保存或生成视频。";

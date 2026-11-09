@@ -178,11 +178,16 @@ public class IpLibraryService {
         if(output.hasNonNull("script")){var script=output.path("script");var b=new StringBuilder("# "+script.path("title").asText(title)+"\n\n## 故事大纲\n\n"+script.path("outline").asText()+"\n");
             String[] fields={"characters","scenes","props"},headings={"人物小传","场景设计","道具设计"};for(int i=0;i<fields.length;i++){b.append("\n## ").append(headings[i]).append("\n");for(var item:script.path(fields[i]))b.append("\n### ").append(item.path("name").asText()).append("\n\n").append(item.path("description").asText()).append("\n");}
             b.append("\n## 分集剧本\n");for(var episode:script.path("episodes"))b.append("\n### 第 ").append(episode.path("no").asInt()).append(" 集 · ").append(episode.path("title").asText()).append("\n\n").append(episode.path("content").asText()).append("\n");content=b.toString();}
-        if(!content.isBlank()&&!"studio-asset-extract".equals(run.getKind())){var text=media("text",title,null,run,"AI 生成",folder,null);text.with("data").put("content",content);saved.saveAutomatic(user,text);}
+        // 「视频裂变」找变量的结果是给页面用的清单，不是作品，不收进资产库。
+        if(!content.isBlank()&&!"studio-asset-extract".equals(run.getKind())&&!sceneVariables(run)){var text=media("text",title,null,run,"AI 生成",folder,null);text.with("data").put("content",content);saved.saveAutomatic(user,text);}
         if(target!=null)persist(target,data);
         if(!"running".equals(dto.status()))persist(newRecord(user,"receipt",receipt),p);
     }
     public boolean collected(String runId){return records.existsById("ILC-"+runId);}
+    private boolean sceneVariables(IpRun run) {
+        try { return run.getInputJson()!=null&&om.readTree(run.getInputJson()).path("_exec").path("sceneVariables").asBoolean(false); }
+        catch(Exception e) { return false; }
+    }
     /** 导演台作品的哪些资产已经在资产库：assetId → 资产库对象 id。用户删掉的不算。 */
     public Map<String,String> directorLinks(String user,String workId) {
         var marker=records.findByIdAndOwnerUserIdAndDeletedAtIsNull(IpLibraryDirectorSync.MARKER+workId,user).orElse(null);

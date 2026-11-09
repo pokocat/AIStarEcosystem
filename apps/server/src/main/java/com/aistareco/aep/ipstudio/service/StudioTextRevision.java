@@ -3,6 +3,8 @@ package com.aistareco.aep.ipstudio.service;
 import com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.RunRequest;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.HashSet;
 
 /** Node-local text edits share the Studio endpoint policy, queue, hold and task lifecycle. */
 public final class StudioTextRevision {
@@ -34,6 +36,31 @@ public final class StudioTextRevision {
             throw BusinessException.badRequest("AI_BAD_OUTPUT","模型没有返回正文，原文已保留");
         if(!revision.path("summary").isTextual()||revision.path("summary").asText().isBlank())
             ((com.fasterxml.jackson.databind.node.ObjectNode)revision).put("summary","已保留模型返回的内容");
+    }
+
+    /** Optional UI hints: reject only the malformed hint, never the retained model/script output. */
+    public static void normalizeSceneSuggestions(JsonNode revision) {
+        if (!(revision instanceof ObjectNode object)) return;
+        var supplied = object.remove("suggestions");
+        var accepted = object.putArray("suggestions");
+        var labels = new HashSet<String>();
+        var instructions = new HashSet<String>();
+        if (supplied == null || !supplied.isArray()) return;
+        for (var item : supplied) {
+            if (!item.path("label").isTextual() || !item.path("instruction").isTextual()) continue;
+            String label = item.path("label").asText().strip();
+            String instruction = item.path("instruction").asText().strip();
+            if (!hintText(label, 8) || !hintText(instruction, 80)
+                    || labels.contains(label) || instructions.contains(instruction)) continue;
+            accepted.addObject().put("label", label).put("instruction", instruction);
+            labels.add(label); instructions.add(instruction);
+            if (accepted.size() == 3) break;
+        }
+    }
+
+    private static boolean hintText(String value, int limit) {
+        return !value.isBlank() && value.codePointCount(0, value.length()) <= limit
+                && value.codePoints().noneMatch(c -> Character.isISOControl(c) || c == 0x2028 || c == 0x2029);
     }
 
 }

@@ -1,5 +1,11 @@
 # AI Star Eco Server
 
+### 2026-11-09 · GPT Image URL 结果下载
+
+`JusuanImageClient` 对供应商图片结果直接下载返回的 HTTP / HTTPS URL，支持跨域、非标准端口和最多 10 次重定向；不再应用旧 `wire.outputHosts` 或网络地址过滤。每跳都不发送供应商 Key，下载超时、大小和媒体有效性检查保留。参考图输入与端点地址校验不变。既有 `sync-url` / `/data/0/url` 配置可完成 SuperAIToken 的 GPT Image 2 / 2.5 接入，完整型号从端点 `model` 取。四个 GPT 接入点有参考图时均走 multipart `/images/edits`，没有参考图时仍用 JSON `/images/generations`；文生图不带 `images` 字段。
+
+生产配置通过 `infra/scripts/switch-gpt-images-superaitoken.py` 的签名管理命令更新并加密保存 Key；脚本先校验所有型号对当前 Key 可见，保留端点 ID、费用、额度和参考图协议，备份后切换 URL 返回并恢复 2K 竖图。分镜按作品比例选原接入点的最大尺寸，覆盖 9:16 / 16:9 / 1:1。发布证据见 [本次记录](../../docs/releases/superaitoken-gpt-image-url-production-20261109.md)。
+
 > 阿里云 **ECS + RDS + OSS** 部署的完整版本化基础设施在 [`../../infra/`](../../infra/README.md)。
 > 新机器从零拉起、env / nginx / systemd / RDS / OSS 模板、deploy 脚本均在该目录。
 
@@ -1393,3 +1399,11 @@ Studio 图片报价为 `POST /api/v1/ip-studio/projects/{id}/{image-quote|studio
 ### 端点思考强度（2026-11-07）
 
 后台模型端点 API 的 `chatReasoningEffort` 是此供应商与固定型号的请求配置（V77 新增可空列 `ai_model_providers.chat_reasoning_effort`），普通聊天、流式收齐与编导 turn 共用，以 `reasoning_effort` 发送并进入既有用量记录的脱敏请求。空值不发送、保持供应商默认；PUT 省略保留、空字符串清空。更换供应商类型、地址或固定型号时，未显式重设就清空，不能把旧型号的验证结论套到新型号。该配置不能被业务 options 覆盖，也不等于关闭思考；不推断别的模型支持同一参数。管理端只接受 none/minimal/low/medium/high/xhigh/max，真实支持须实测确认。
+
+## Seedance 官方人像素材（2026-11-09，已发布）
+
+Fast / Mini 的生产 API Key 已切换；官方库 `bingbing` 已真实验证虚拟样本入库 Active 与本人 H5 会话。官方素材库 `ark-bingbing` 已绑定 Fast / Mini，V78 和页面已随 `20261109-ark-portraits-137b5754` 发布。生成前在积分冻结前检查引用，需要处理时在当前页弹窗，复用 Ant Design 控件；用户明确确认真人或虚拟声明后入库，Active 后继续原操作。官方明确拒绝且尚无供应商任务号时，保留原任务及冻结最多 30 分钟，审核后恢复同一任务，不二次冻结；超时释放。已有供应商任务继续对账。本人刷脸、真人一致性审核和真人成片尚未实测。真源：[视频素材库](../../docs/video-asset-library.md)。
+
+### AI 视频编导修改建议（2026-11-09）
+
+场景文字任务（scene.kind=video-script）的 textRevision 可返回 suggestions:[{label,instruction}]，与脚本同次调用生成。独立过滤空值、错类型、控制字符、重复和超长项，最多保留 3 条，label 最多 8、instruction 最多 80 个 Unicode code point。建议异常不影响脚本，完整模型原文仍在既有任务和用量记录中保留。通用画布文字与分段脚本契约不变。发布须核对 stage-scene-script 实际生效版本。

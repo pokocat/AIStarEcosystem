@@ -1,0 +1,89 @@
+{
+  "environment": "Real Next UI with isolated deterministic APIs; no production calls or paid generation",
+  "positions": [
+    {
+      "button": {
+        "bottom": 894,
+        "height": 28,
+        "left": 107,
+        "right": 489,
+        "top": 866,
+        "width": 382,
+        "x": 107,
+        "y": 866
+      },
+      "count": 1,
+      "insideSettings": true,
+      "overflow": false,
+      "panel": {
+        "bottom": 907,
+        "height": 895,
+        "left": 88,
+        "right": 508,
+        "top": 12,
+        "width": 420,
+        "x": 88,
+        "y": 12
+      },
+      "state": "running",
+      "viewport": {
+        "height": 919,
+        "width": 1319
+      }
+    },
+    {
+      "button": {
+        "bottom": 894,
+        "height": 28,
+        "left": 107,
+        "right": 489,
+        "top": 866,
+        "width": 382,
+        "x": 107,
+        "y": 866
+      },
+      "count": 1,
+      "downloadButtons": 1,
+      "insideSettings": true,
+      "state": "done"
+    },
+    {
+      "button": {
+        "bottom": 894,
+        "height": 28,
+        "left": 107,
+        "right": 489,
+        "top": 866,
+        "width": 382,
+        "x": 107,
+        "y": 866
+      },
+      "count": 1,
+      "insideSettings": true,
+      "state": "failed"
+    }
+  ],
+  "restored": [
+    {
+      "state": "running",
+      "url": "http://127.0.0.1:3316/video?scene=ecom-talking&draft=IPP-ui-new-3",
+      "text": true,
+      "image": true,
+      "canGenerate": true
+    },
+    {
+      "state": "done",
+      "url": "http://127.0.0.1:3316/video?scene=ecom-talking&draft=IPP-ui-new-4",
+      "text": true,
+      "image": true,
+      "canGenerate": true
+    },
+    {
+      "state": "failed",
+      "url": "http://127.0.0.1:3316/video?scene=ecom-talking&draft=IPP-ui-new-5",
+      "text": true,
+      "image": true,
+      "canGenerate": true
+    }
+  ]
+}

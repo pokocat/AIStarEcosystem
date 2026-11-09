@@ -1,3 +1,4 @@
+import { ensureStudioVideoPortraits } from '@/ip/portrait-review-preflight';
 import { prepareStudioImageUpload } from './studio-image-file';
 import { withStudioBilling, invalidateStudioModelQuote, studioCreditShortageCancel, STUDIO_GRANT_HINT, type StudioShortageOptions } from "./studio-billing";
 import { isStudioCreditShortage } from "./studio-billing-cancel";
@@ -34,6 +35,7 @@ export const submitStudioSpeech = async (projectId: string, request: StudioSpeec
 export const studioCapabilities = () => apiFetch<StudioCapabilities>("/v1/ip-studio/studio/capabilities");
 /** shortage：积分不足时这个页面能换哪些模型、能不能接着生成；不传就只说明情况。 */
 export const submitStudioRun = async (projectId: string, request: StudioRunRequest, shortage: StudioShortageOptions = {}) => {
+  await ensureStudioVideoPortraits(request);
   const body=await withStudioBilling(projectId,request,shortage);
   try{return await apiFetch<IpRun>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/studio-runs`,{method:"POST",body});}
   catch(error){
