@@ -310,11 +310,11 @@ test("video: revising a script after reopening the draft keeps the options and t
   put({ id: "IPP-V", name: "v", sceneId: "ecom-talking", doc });
   api.composeScene.mockResolvedValue({ text: "改脚本" });
   await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
-  // 打开写过脚本的草稿先看到编导那一页；选项在编辑框那一页的规格里。
-  fireEvent.click((await screen.findAllByRole("button", { name: "返回编辑" }))[0]);
+  // 打开写过脚本的草稿先看到对话，采用后进入可直接编辑脚本的页面。
+  fireEvent.click(await screen.findByRole("button", { name: "采用脚本" }));
   await waitFor(() => expect(pressed("出镜方式", "只拍商品")).toBe("true"));
   expect(pressed("语气", "专业讲解")).toBe("true");
-  fireEvent.click(screen.getByRole("button", { name: "AI 编导" }));
+  fireEvent.click(screen.getByRole("button", { name: "AI 改写" }));
   fireEvent.change(screen.getByRole("textbox", { name: "修改意见" }), { target: { value: "口语一点" } });
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "发送修改意见" })); });
   // 以前重开草稿后选项回到默认值（真人讲解、像朋友推荐），改出来的那版拍法就变了。

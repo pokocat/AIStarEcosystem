@@ -1,0 +1,72 @@
+[
+  {
+    "focused": true,
+    "overflow": false,
+    "returnEditButtons": 0,
+    "stage": "suggestion-filled",
+    "turns": 1,
+    "value": "突出商品卖点，多用具体画面展示，不添加未经提供的功能。"
+  },
+  {
+    "stage": "adopted",
+    "editable": true,
+    "text": true
+  },
+  {
+    "focused": true,
+    "returnEditButtons": 0,
+    "scrollWidth": 379,
+    "stage": "mobile-filled",
+    "suggestions": [
+      {
+        "rect": {
+          "bottom": 558.1171875,
+          "height": 44,
+          "left": 12,
+          "right": 108,
+          "top": 514.1171875,
+          "width": 96,
+          "x": 12,
+          "y": 514.1171875
+        },
+        "text": "开头更抓人"
+      },
+      {
+        "rect": {
+          "bottom": 558.1171875,
+          "height": 44,
+          "left": 115,
+          "right": 211,
+          "top": 514.1171875,
+          "width": 96,
+          "x": 115,
+          "y": 514.1171875
+        },
+        "text": "台词更自然"
+      },
+      {
+        "rect": {
+          "bottom": 558.1171875,
+          "height": 44,
+          "left": 218,
+          "right": 326,
+          "top": 514.1171875,
+          "width": 108,
+          "x": 218,
+          "y": 514.1171875
+        },
+        "text": "突出商品卖点"
+      }
+    ],
+    "value": "让台词更自然，像朋友聊天，减少广告感。",
+    "viewport": {
+      "height": 844,
+      "width": 390
+    }
+  },
+  {
+    "stage": "mobile-adopted",
+    "editable": true,
+    "text": true
+  }
+]

@@ -4,7 +4,7 @@ import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, u
 import { nanoid } from "nanoid";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowUp, AudioLines, Check, ChevronDown, Copy, Cpu, Download, FolderOpen, History, Image as ImageIcon, Loader2, Mic, PencilLine, Plus,
+import { ArrowUp, ArrowUpRight, AudioLines, Check, ChevronDown, Copy, Cpu, Download, FolderOpen, History, Image as ImageIcon, Loader2, Mic, PencilLine, Plus,
   RotateCcw, SlidersHorizontal, Square, UserRound, Video, X } from "lucide-react";
 import type { IpProject, IpProjectDoc, IpRun, IpSavedAsset, StudioMediaImportResult, StudioSceneComposeRequest, StudioSceneInputs, StudioNodeMetadata, StudioSceneOptionGroup, StudioSceneVideoState } from "@ai-star-eco/types";
 import type { StudioCapabilities } from "@ai-star-eco/types/ip-studio-workflow";
@@ -59,6 +59,11 @@ const LANGUAGES = ["中文", "英文"];
 const MAX_SECONDS = 60;
 const RECREATION = "reference-video-recreation";
 const EMPTY_DOC = { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
+const SCRIPT_SUGGESTIONS = [
+  { label: "开头更抓人", text: "把开头写得更抓人，用一个生活中的小困扰切入。" },
+  { label: "台词更自然", text: "让台词更自然，像朋友聊天，减少广告感。" },
+  { label: "突出商品卖点", text: "突出商品卖点，多用具体画面展示，不添加未经提供的功能。" },
+];
 
 const writeQuery = (scene: string, draft?: string) => writeSceneQuery("/video", scene, draft);
 /** 草稿里没记过的条件按场景默认值。 */
@@ -123,6 +128,7 @@ export function SceneVideoStudio() {
   const [picking, setPicking] = useState<Slot>();
   const [imagePurpose, setImagePurpose] = useState<string>();
   const input = useRef<ScenePromptEditorHandle>(null);
+  const revisionInput = useRef<HTMLTextAreaElement>(null);
   const thread = useRef<HTMLDivElement>(null);
 
   // ── 模型 ──────────────────────────────────────────────────────────────
@@ -349,6 +355,8 @@ export function SceneVideoStudio() {
     return () => { alive = false; if (timer) clearTimeout(timer); };
   }, [draftId, executionId]);
   const scripts = scriptNodes(doc);
+  const scriptSuggestions = scene?.group === "commerce" ? SCRIPT_SUGGESTIONS : [...SCRIPT_SUGGESTIONS.slice(0, 2),
+    { label: "突出内容重点", text: "突出核心信息，多用具体画面展示，不添加未经提供的事实。" }];
   const rows = videoRows(doc);
   const latestScript = [...scripts].reverse().find(s => s.metadata?.status === "success" && s.metadata.content);
   const [stoppingScripts, setStoppingScripts] = useState<Record<string, "requesting" | "accepted">>({});
@@ -631,7 +639,7 @@ export function SceneVideoStudio() {
   const openDirector = () => {
     setView("director"); setHint("");
     setTimeout(() => {
-      if (scripts.length) document.querySelector<HTMLInputElement>('.scene-video-studio input[aria-label="修改意见"]')?.focus();
+      if (scripts.length) revisionInput.current?.focus();
       else input.current?.focus("end", { preventScroll: true });
     }, 0);
   };
@@ -1057,8 +1065,7 @@ export function SceneVideoStudio() {
       </header>
 
       {view === "director" ? <div className="scene-director">
-        <div className="scene-director-title"><AiMark size={13}/><strong>AI 编导</strong>
-          <button type="button" className="scene-text-button" onClick={() => setView("compose")}>返回编辑</button></div>
+        <div className="scene-director-title"><AiMark size={13}/><strong>AI 编导</strong></div>
         <div className="scene-director-thread" ref={thread} aria-live="polite">
           {!scripts.length && <div className="scene-director-start">
             <h2>想做一条什么视频？</h2>
@@ -1067,7 +1074,9 @@ export function SceneVideoStudio() {
           </div>}
           {scripts.map((row, i) => <ScriptTurn key={row.id} row={row} refs={scriptRefs(row)} run={live[row.id]} stopping={scriptStopping(row)} busy={busy} submitting={submitting === row.id} latest={row.id === latestScript?.id}
             given={scripts.slice(0, i + 1).map(s => s.metadata?.studio?.sceneDirector?.ask ?? "")} facts={scene.brief?.facts}
-            copied={copied === row.id} onUse={() => useScript(row)} onBack={() => setView("compose")} onCopy={() => void copy(row)}
+            copied={copied === row.id} onUse={() => useScript(row)} onCopy={() => void copy(row)}
+            revision={revise} suggestions={row.id === scripts.at(-1)?.id ? scriptSuggestions : []}
+            onSuggest={value => { setRevise(value); setHint(""); revisionInput.current?.focus({ preventScroll: true }); }}
             onAgain={() => void send("换个写法重新写一版，要求和素材都不变。", { auto: true })}
             onRetry={() => void retry(row)} onConfirm={() => void confirmOriginal(row)}
             onStop={() => void stopScript(row)}/>)}
@@ -1076,8 +1085,9 @@ export function SceneVideoStudio() {
         <form className="scene-director-input" onSubmit={e => { e.preventDefault(); void send(scripts.length ? revise : text); }}>
           {scripts.length ? <>
             {mediaRow(true)}
-            <input aria-label="修改意见" placeholder={latestChanges ? "设置已修改，直接发送将按当前设置修改脚本" : "例如：开头更抓人，台词更口语"} title={latestChangesShown || undefined}
-              value={revise} onChange={e => { setRevise(e.target.value); setHint(""); }}/>
+            <textarea ref={revisionInput} className="scene-revision-input" rows={2} aria-label="修改意见" placeholder={latestChanges ? "设置已修改，直接发送将按当前设置修改脚本" : "告诉 AI 你想怎么修改脚本…"} title={latestChangesShown || undefined}
+              value={revise} onChange={e => { setRevise(e.target.value); setHint(""); }}
+              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229) { e.preventDefault(); void send(revise); } }}/>
           </> : <>
             {mediaRow()}
             <ScenePromptEditor ref={input} ariaLabel="想做的视频" value={text} refs={promptRefs} placeholder={scene.placeholder}
@@ -1196,9 +1206,10 @@ function placeMedia(nodes: CanvasNodeData[], media: Media, kind: "image" | "vide
 }
 
 /** 编导的一轮：你说的话 + 编导写的脚本（写作中 / 失败 / 写好了）。 */
-function ScriptTurn({ row, refs, run, stopping, busy, submitting, latest, copied, onUse, onBack, onCopy, onAgain, onRetry, onConfirm, onStop, given, facts }: {
+function ScriptTurn({ row, refs, run, stopping, busy, submitting, latest, copied, onUse, onCopy, onAgain, onRetry, onConfirm, onStop, revision, suggestions, onSuggest, given, facts }: {
   row: CanvasNodeData; refs: ScenePromptRef[]; run?: IpRun; stopping?: "requesting" | "accepted"; busy: boolean; submitting: boolean; latest: boolean; copied: boolean;
-  onUse: () => void; onBack: () => void; onCopy: () => void; onAgain: () => void; onRetry: () => void; onConfirm: () => void; onStop: () => void;
+  onUse: () => void; onCopy: () => void; onAgain: () => void; onRetry: () => void; onConfirm: () => void; onStop: () => void;
+  revision: string; suggestions: typeof SCRIPT_SUGGESTIONS; onSuggest: (value: string) => void;
   /** 到这一版为止用户说过的话（第一句和每次修改意见）：核对里面的数字有没有进脚本。 */
   given: string[];
   /** 场景要的信息：分清哪些空着的必须补、哪些选填。 */
@@ -1233,14 +1244,17 @@ function ScriptTurn({ row, refs, run, stopping, busy, submitting, latest, copied
         {loading && !accepted && !submitting && <button type="button" disabled={busy} onClick={onConfirm}><RotateCcw size={12}/>确认原任务</button>}
         {failed && meta?.studio?.request && <button type="button" className="is-primary" disabled={busy} onClick={onRetry}><RotateCcw size={12}/>重试</button>}
         {meta?.status === "success" && meta.content && <>
-          {latest && <button type="button" className="is-icon" aria-label="重新生成" title="重新生成" disabled={busy} onClick={onAgain}><RotateCcw size={14} strokeWidth={1.5}/></button>}
           <button type="button" className="is-icon" aria-label={copied ? "已复制" : "复制"} title={copied ? "已复制" : "复制"} onClick={onCopy}>{copied ? <Check size={14} strokeWidth={1.6}/> : <Copy size={14} strokeWidth={1.5}/>}</button>
+          {latest && <button type="button" className="is-icon" aria-label="重新生成" title="重新生成" disabled={busy} onClick={onAgain}><RotateCcw size={14} strokeWidth={1.5}/></button>}
           <span className="scene-spacer"/>
-          {latest && <button type="button" onClick={onBack}>返回编辑</button>}
           <button type="button" className="is-primary" onClick={onUse}><Check size={13} strokeWidth={1.8}/>采用脚本</button>
         </>}
       </footer>
     </div>
+    {!!suggestions.length && meta?.status === "success" && meta.content && <div className="scene-script-suggestions" role="group" aria-label="脚本修改建议">
+      {suggestions.map(suggestion => <button key={suggestion.label} type="button" disabled={busy} aria-pressed={revision === suggestion.text}
+        onClick={() => onSuggest(suggestion.text)}>{suggestion.label}<ArrowUpRight size={12} strokeWidth={1.5}/></button>)}
+    </div>}
   </article>;
 }
 

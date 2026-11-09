@@ -281,6 +281,8 @@ button.scene-pill:hover, .scene-pill[aria-expanded="true"], .scene-pill.is-selec
 .scene-director-ask { align-self: flex-end; max-width: 86%; margin: 0 !important; padding: 8px 12px; border-radius: 14px 14px 4px 14px; background: var(--ip-soft); font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
 .scene-director-ask.is-empty { color: var(--ip-muted); }
 .scene-script-card { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--sn-ai-card-line); border-radius: 14px; background: var(--sn-ai-card); }
+/* 已完成的脚本是对话回复，直接阅读；输入区只用于继续告诉 AI 如何修改。 */
+.scene-script-card.is-success { padding: 0; border: 0; background: transparent; }
 .scene-script-card.is-error { border-color: #efc9ce; background: var(--ip-paper); }
 .scene-script-summary { margin: 0 !important; color: var(--ip-muted); font-size: 12px; line-height: 1.6; }
 .scene-script-text { margin: 0; font: inherit; font-size: 13px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -306,10 +308,14 @@ button.scene-pill:hover, .scene-pill[aria-expanded="true"], .scene-pill.is-selec
 .scene-script-card>footer button.is-icon:hover:not(:disabled) { background: rgba(23,32,42,.05); color: var(--ip-ink); }
 .scene-script-card>footer button.is-primary { border: 0; background: var(--ip-ink); color: #fff; }
 .scene-script-card>footer button.is-primary:hover { background: #2a3540; }
+.scene-script-suggestions { display: flex; flex-wrap: wrap; gap: 7px; padding-top: 2px; }
+.scene-script-suggestions button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 32px; padding: 6px 9px; border: 1px solid var(--sn-field); border-radius: 9px; background: var(--ip-paper); color: var(--ip-ink); font: inherit; font-size: 12px; line-height: 1.5; cursor: pointer; }
+.scene-script-suggestions button:hover:not(:disabled), .scene-script-suggestions button[aria-pressed="true"] { border-color: var(--sn-ai-star); background: var(--sn-ai-card); }
+.scene-script-suggestions button:disabled { opacity: .5; cursor: default; }
 /* 编导页的输入框：上面是素材（和编辑页同一份，小一号），中间写改法，下面是规格（时长等，和编辑页同一个设置）和发送。 */
 .scene-director-input { position: relative; display: flex; flex-direction: column; gap: 10px; margin: 0 18px 16px; padding: 12px 12px 10px 14px; border: 1px solid var(--sn-field); border-radius: 16px; background: var(--ip-paper); }
 .scene-director-input:focus-within { border-color: #c5cad1; }
-.scene-director-input input { width: 100%; min-width: 0; height: 30px; padding: 0; border: 0; background: transparent; color: var(--ip-ink); font: inherit; font-size: 13.5px; outline: none; text-overflow: ellipsis; }
+.scene-director-input .scene-revision-input { width: 100%; min-width: 0; min-height: 64px; max-height: 160px; resize: vertical; padding: 0; border: 0; background: transparent; color: var(--ip-ink); font: inherit; font-size: 13.5px; line-height: 1.7; }
 .scene-director-input .scene-prompt-field { flex: 0 1 auto; min-height: 72px; max-height: 200px; }
 .scene-director-input>footer { display: flex; align-items: center; gap: 8px; }
 .scene-director-input>footer .scene-setting-panel-host { position: static; flex: 0 1 auto; min-width: 0; }
@@ -326,7 +332,7 @@ button.scene-pill:hover, .scene-pill[aria-expanded="true"], .scene-pill.is-selec
 .scene-media-row.is-compact .scene-media>button:first-child>svg { width: 17px; height: 17px; }
 .scene-media-row.is-compact .scene-ref-index { font-size: 9.5px; }
 .scene-media-row.is-compact .scene-ref-remove { top: -5px; right: -5px; width: 18px; height: 18px; }
-.scene-director-input input::placeholder { color: #7a838d; }
+.scene-director-input .scene-revision-input::placeholder { color: #7a838d; }
 .scene-studio .scene-send { display: grid; place-items: center; flex-shrink: 0; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: var(--sn-go); color: #fff; cursor: pointer; }
 .scene-studio .scene-send:disabled { opacity: .4; cursor: not-allowed; }
 .scene-director>.scene-hint { margin: -8px 20px 14px !important; }
@@ -474,6 +480,7 @@ html:not([data-layout="desktop"]) .scene-drawer.is-pinned { display: none; }
 html:not([data-layout="desktop"]) .scene-recent { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 64px); left: 12px; right: 12px; width: auto; }
 html:not([data-layout="desktop"]) .scene-director-input { margin: 0 12px 12px; }
 html:not([data-layout="desktop"]) .scene-studio .scene-director-ideas button { min-height: 36px; padding-inline: 8px; }
+html:not([data-layout="desktop"]) .scene-script-suggestions button { min-height: 44px; }
 html:not([data-layout="desktop"]) .scene-director-thread { padding: 10px 12px 16px; }
 html:not([data-layout="desktop"]) .scene-choice-row button { height: 36px; }
 

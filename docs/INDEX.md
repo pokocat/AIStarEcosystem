@@ -1,5 +1,7 @@
 # 文档索引 · INDEX
 
+AI 编导对话与修改建议：[浏览器验收及发布记录](releases/script-chat-suggestions-release-20261109.md)，last-reviewed：2026-11-09。
+
 AI 视频“重新编辑”统一入口：[浏览器验收与发布记录](releases/video-reedit-position-release-20261109.md)，last-reviewed：2026-11-09。
 
 Seedance 官方人像素材：[当前实现与边界](video-asset-library.md)；[正式发布记录](releases/ark-portrait-production-release-20261109.md)；[凭据切换及真实接口验收](releases/ark-bingbing-key-and-portrait-preparation-20261109.md)。已发布并绑定 Fast / Mini；真人刷脸和成片待验收，last-reviewed：2026-11-09。

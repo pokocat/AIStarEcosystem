@@ -215,9 +215,8 @@ test("video: AI 编导 opens the page without starting; the duration set there i
   // 开始之后这一页是改稿的输入框，开场那一块收起来。
   expect(await screen.findByRole("textbox", { name: "修改意见" })).toBeTruthy();
   expect(screen.queryByText("想做一条什么视频？")).toBeNull();
-  // 想法还在编辑框里。
-  fireEvent.click(screen.getByRole("button", { name: "返回编辑" }));
-  await waitFor(() => expect(fieldText("想做的视频")).toBe("开口先说适合谁"));
+  expect(screen.queryByRole("button", { name: "返回编辑" })).toBeNull();
+  expect(screen.queryByRole("group", { name: "脚本修改建议" })).toBeNull();
 });
 
 test("视频：按钮旁的价按服务端报价显示折扣（原价划掉）；报价不带素材 key 和提示词；换时长后慢回来的旧报价不会盖住新选择", async () => {
