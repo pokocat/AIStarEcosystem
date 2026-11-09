@@ -26,4 +26,10 @@ Mac mini 队列 `cd7fc4f0800d` 退出码 0：视频工作区、场景制作与�
 
 ## 发布
 
-浏览器验收已通过。正式制品将从合入 `main` 的干净提交构建，沿用线上 OIDC、企业功能及 API 构建配置。发布制品、线上版本和健康结果在部署完成后补记。
+已发布，2026-11-09 14:54（北京时间）。
+
+- 代码已合入并推送 `main`：`870c518cd8a7a5d82fbdac0104988ad8659b2edf`。
+- 干净的该主线提交经 Mini 队列 `0fe19329b661` 构建，退出码 0；制品 `20261109-video-reedit-870c518c`，校验和通过，Next build ID `4OYOszOgZqUEl_rj_a8uv`。
+- 仅更新 `web-aiavatar`，沿用 `NEXT_PUBLIC_USE_MOCK=0`、OIDC 模式、企业开关 `1` 与原 API 配置；后端未重新发布或重启。
+- 发布后服务 active。第一次 `deploy-release.sh` 的公网校验受到本机域名连接超时影响；指定已经核对的生产 IP 后完整重跑 `verify.sh`，退出码 0、`ALL GREEN`。首页、登录、视频、项目和公开配置均返回 200；其他现有服务、后端 API、SAU 健康和 nginx 配置检查通过，见[健康检查输出](evidence/video-reedit-20261109/verify.txt)。
+- 在 `https://aistar.aibuzz.cn/video` 用真实已完成与失败任务再验：每屏唯一入口、均位于左侧设置底部，1319×863 视口下按钮 x=107、y=810、382×28；[读屏测量](evidence/video-reedit-20261109/production-observations.json)。线上当前无正在生成任务，生成中状态由上文隔离任务覆盖；未为验收新建付费任务或重试历史任务。线上截图仅本地交付，不提交用户原始素材或脚本截图。
