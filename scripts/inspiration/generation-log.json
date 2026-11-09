@@ -1,0 +1,448 @@
+{
+  "source": "Trae 本地会话「项目使用说明」，分享页 share.traecontent.cn/share/SDP6VWANUIYIF8，2026-11-05 生成，2026-11-09 导出",
+  "note": "灵感库示例素材（resources/skills/covers/by_skill_id/<skill>/ai_sample*）的生成记录：每次调用的提示词、尺寸设置和参考图。references 为空就是纯文字生成。",
+  "calls": [
+    {
+      "skill": "a63228473c7442c6859c7f2463190995",
+      "file": "ai_sample.jpg",
+      "tool": "GenerateImage",
+      "at": "2026-11-05T22:33:33+08:00",
+      "settings": {
+        "image_size": "portrait_4_3"
+      },
+      "references": [],
+      "prompt": "Xiaohongshu viral cover image (3:4 vertical): dopamine-style high-saturation clashing color block background, an oversized bold Chinese headline \"秋冬美拉德穿搭\" with thick dark outline occupying about 40% of the frame, below it a cute 3D-rendered illustration of a fashion model in a beige caramel autumn coat, playful pop aesthetic, vibrant pink orange and teal color blocks, eye-catching social media thumbnail design"
+    },
+    {
+      "skill": "1df2de7cf9e348dab0382fe50929b01b",
+      "file": "ai_sample.jpg",
+      "tool": "GenerateImage",
+      "at": "2026-11-05T22:33:33+08:00",
+      "settings": {
+        "image_size": "square"
+      },
+      "references": [],
+      "prompt": "E-commerce product main image with high click-through-rate design: a premium stainless steel insulated thermos bottle as the main subject occupying 60% of the frame, placed on a warm cozy desk scene with soft rising steam, large bold Chinese benefit text \"24小时长效保温\" and a red price tag \"¥69.9\" as visual anchor, small brand badge in corner, clean commercial product photography, bright studio lighting, professional online shopping thumbnail for Taobao"
+    },
+    {
+      "skill": "1548c7f6d5764d4abec6ac8255faab3c",
+      "file": "ai_sample.jpg",
+      "tool": "GenerateImage",
+      "at": "2026-11-05T22:33:33+08:00",
+      "settings": {
+        "image_size": "square"
+      },
+      "references": [],
+      "prompt": "Brand mascot character design: a friendly round chubby panda mascot wearing a small green tea-leaf hat and apron, holding a bubble milk tea cup, full body standing pose, big expressive eyes, warm smile, cute approachable personality, soft pastel colors with clean bold outlines, 3D render style like a collectible toy, plain light cream background, IP character for a milk tea brand"
+    },
+    {
+      "skill": "097902dc2c584c68ab49c33709798839",
+      "file": "ai_sample.jpg",
+      "tool": "GenerateImage",
+      "at": "2026-11-05T22:45:49+08:00",
+      "settings": {
+        "image_size": "3000x1277"
+      },
+      "references": [],
+      "prompt": "WeChat Official Account article cover banner (2.35:1 wide horizontal): tutorial-quality editorial cover for an autumn skincare guide article, off-white background, charcoal black bold Chinese title \"秋季护肤指南\", muted orange accent bar and minimal decoration, low-saturation warm palette, clean premium magazine layout with generous whitespace"
+    },
+    {
+      "skill": "157df4fdc2314162baac0122d0a59cb8",
+      "file": "ai_sample.jpg",
+      "tool": "GenerateImage",
+      "at": "2026-11-05T22:45:49+08:00",
+      "settings": {
+        "image_size": "portrait_16_9"
+      },
+      "references": [],
+      "prompt": "WeChat Moments brand daily greeting poster (9:16 vertical): warm healing-style wellness brand poster, soft morning sunlight on cream beige background, silhouette of a person from behind holding a warm tea cup near a window, no face visible, elegant Chinese text \"早安 · 好好爱自己\" in thin refined typography, cozy muted warm tones, health lifestyle brand aesthetic"
+    },
+    {
+      "skill": "2230ae9bf0484f76bb16501d6cbf2d69",
+      "file": "ai_sample.jpg",
+      "tool": "GenerateImage",
+      "at": "2026-11-05T22:45:49+08:00",
+      "settings": {
+        "image_size": "square"
+      },
+      "references": [],
+      "prompt": "Product marketing set sample — studio product photo (1:1): a glass serum bottle with dropper standing on a beige podium, soft directional studio lighting, gentle shadow, minimal warm background, premium skincare product photography, one image from an 8-piece marketing set"
+    },
+    {
+      "skill": "3fe30cb5bf764e1392a984f6b770c75e",
+      "file": "ai_sample.jpg",
+      "tool": "GenerateImage",
+      "at": "2026-11-05T22:45:49+08:00",
+      "settings": {
+        "image_size": "portrait_4_3"
+      },
+      "references": [],
+      "prompt": "Xiaohongshu note cover (3:4 vertical): lifestyle note cover about weekend brunch inspiration, fresh appetizing photo of avocado toast and latte art on marble table, overlaid bold Chinese headline \"周末早午餐灵感\" in clean sans-serif, bright natural light, shareable social media cover"
+    },
+    {
+      "skill": "4cff3acfa60e4940a8b5d49a0b5bedb0",
+      "file": "ai_sample.jpg",
+      "tool": "GenerateImage",
+      "at": "2026-11-05T22:45:49+08:00",
+      "settings": {
+        "image_size": "square"
+      },
+      "references": [],
+      "prompt": "E-commerce material set sample — scene main image (1:1): wireless aroma diffuser on a bedside table in a cozy bedroom at dusk, warm lamp glow, soft steam mist rising, clean composition with copy space, Taobao main image quality, lifestyle product photography"
+    },
+    {
+      "skill": "7b6df2a6b16f4c6cbe5d792ec9d0dff9",
+      "file": "ai_sample.jpg",
+      "tool": "GenerateImage",
+      "at": "2026-11-05T22:45:49+08:00",
+      "settings": {
+        "image_size": "square"
+      },
+      "references": [],
+      "prompt": "E-commerce ad creative for feed placement (1:1): single-hook ad image, a sleek robot vacuum cleaner on wooden floor, one big bold Chinese headline \"扫拖一体 解放双手\", one orange discount badge \"立减200\", one red CTA button \"立即抢购\", clean ad layout with safe margins, product prominent and unchanged"
+    },
+    {
+      "skill": "8db7a43b074c4796bb29a5d3183b0522",
+      "file": "ai_sample.jpg",
+      "tool": "GenerateImage",
+      "at": "2026-11-05T22:45:49+08:00",
+      "settings": {
+        "image_size": "2680x1403"
+      },
+      "references": [],
+      "prompt": "Open Graph social share card (1200x630, 1.91:1 ratio): minimal share preview card for a coffee subscription brand, one single Chinese headline \"每月一盒精品咖啡豆\" centered within safe area, small brand logo mark in bottom-right corner, deep espresso brown background with cream typography, one message only, generous margins"
+    },
+    {
+      "skill": "92a563681b914d56a0492e89e5bb8797",
+      "file": "ai_sample.jpg",
+      "tool": "GenerateImage",
+      "at": "2026-11-05T22:45:49+08:00",
+      "settings": {
+        "image_size": "square"
+      },
+      "references": [],
+      "prompt": "Minimal eco-friendly social media visual (1:1): earth-tone sustainable brand post, recycled paper texture background with natural wood grain accent, a single eucalyptus sprig in a small ceramic vase, large negative space, muted terracotta and sage palette, restrained premium eco aesthetic, soft diffused natural light"
+    },
+    {
+      "skill": "9daba5fb71ce4d519aed654c6ab997b5",
+      "file": "ai_sample.jpg",
+      "tool": "GenerateImage",
+      "at": "2026-11-05T22:45:49+08:00",
+      "settings": {
+        "image_size": "portrait_4_3"
+      },
+      "references": [],
+      "prompt": "Xiaohongshu vertical cover (1080x1440, 3:4): study desk setup theme cover, aesthetic wooden desk with laptop notebook warm lamp and small plant at golden hour, bold Chinese title \"高效学习桌面布置\" with clear typography in upper third, cozy warm tones, clean composition, platform cover quality"
+    },
+    {
+      "skill": "a314bac9d02543d7a0e11e8aa4876ceb",
+      "file": "ai_sample.jpg",
+      "tool": "GenerateImage",
+      "at": "2026-11-05T22:45:49+08:00",
+      "settings": {
+        "image_size": "square"
+      },
+      "references": [],
+      "prompt": "Brand design material sample — flatlay of branded stationery (1:1): business card, letterhead and kraft envelope for a tea house brand \"山雾茶事\", muted sage green and off-white palette, minimal leaf logo mark, elegant Chinese typography, knolling flatlay on textured paper background, premium print design mockup"
+    },
+    {
+      "skill": "aab037e6e0044341ab2da760fb3049c7",
+      "file": "ai_sample.jpg",
+      "tool": "GenerateImage",
+      "at": "2026-11-05T22:45:49+08:00",
+      "settings": {
+        "image_size": "square"
+      },
+      "references": [],
+      "prompt": "WeChat article series illustration (square): flat cartoon style 4-panel comic strip about an office worker on Monday morning, fixed blue and orange color scheme, cute simple rounded character with Chinese speech bubbles reading \"周一不想上班\" and \"再撑一下\", clean vector illustration style, white background, humorous relatable workplace scene"
+    },
+    {
+      "skill": "afe8d24fd5cd4397bc400d97611e1c39",
+      "file": "ai_sample.jpg",
+      "tool": "GenerateImage",
+      "at": "2026-11-05T22:45:49+08:00",
+      "settings": {
+        "image_size": "portrait_16_9"
+      },
+      "references": [],
+      "prompt": "Character design reference sheet (9:16 vertical, white background): full character turnaround for a young adventurer girl with short red hair and khaki explorer outfit, front side and back three-view layout with a close-up face detail panel, consistent anime-influenced illustration style, clean white background, character setting sheet"
+    },
+    {
+      "skill": "b2c654f4120a4f5ab9dc7a77da2253a2",
+      "file": "ai_sample.jpg",
+      "tool": "GenerateImage",
+      "at": "2026-11-05T22:45:49+08:00",
+      "settings": {
+        "image_size": "square"
+      },
+      "references": [],
+      "prompt": "Designer toy IP blind box 3x3 grid (1:1): nine cute vinyl figure variants of a small robot cat character in different outfits and pastel colors arranged in a clean 3x3 grid, collectible toy photography style, soft studio lighting, plain pastel background, blind box series display"
+    },
+    {
+      "skill": "b7ecf5ea8ced4d16955172d88eb18f32",
+      "file": "ai_sample.jpg",
+      "tool": "GenerateImage",
+      "at": "2026-11-05T22:45:49+08:00",
+      "settings": {
+        "image_size": "square"
+      },
+      "references": [],
+      "prompt": "Leather goods e-commerce main image (1:1): a caramel full-grain leather handbag on textured stone surface, soft side lighting revealing fine leather grain, minimal elegant composition, luxury craftsmanship feel, warm neutral tones, premium product photography for bag category"
+    },
+    {
+      "skill": "b8a2837a8f1d4880891c5221b6c549ed",
+      "file": "ai_sample.jpg",
+      "tool": "GenerateImage",
+      "at": "2026-11-05T22:45:49+08:00",
+      "settings": {
+        "image_size": "landscape_4_3"
+      },
+      "references": [],
+      "prompt": "Brand VI manual overview spread (4:3): top-down flatlay of a complete brand identity system for a bakery brand — wheat logo, color swatches, typography specimen, business card, paper bag packaging and coffee cup mockup arranged neatly, warm cream and caramel palette, clean grid layout, professional brand guidelines presentation"
+    },
+    {
+      "skill": "0d772a84d6afe8b6e1e3b0ad45c6cbfb",
+      "file": "ai_sample.mp4",
+      "tool": "GenerateVideo",
+      "at": "2026-11-05T23:03:51+08:00",
+      "settings": {
+        "duration": 6,
+        "ratio": "9:16",
+        "resolution": "720p"
+      },
+      "references": [],
+      "prompt": "真实感开箱测评短视频，9:16 竖屏。一只手拿着橙色无线蓝牙耳机充电盒放在木质桌面上，自然光从窗边照进来，手持镜头轻微晃动，手指打开盒盖拿出耳机，镜头缓慢推进特写耳机细节，居家客厅背景虚化，暖色调，真实手机拍摄质感，无文字无字幕。"
+    },
+    {
+      "skill": "6467aa9511d31bfe96af854b89288d6f",
+      "file": "ai_sample.mp4",
+      "tool": "GenerateVideo",
+      "at": "2026-11-05T23:03:51+08:00",
+      "settings": {
+        "duration": 6,
+        "ratio": "16:9",
+        "resolution": "720p"
+      },
+      "references": [],
+      "prompt": "电影感汽车宣传短片。一辆哑光深灰色电动轿跑停在雨后湿润的城市街道旁，霓虹灯光在车漆上反射流动；镜头从车头低角度缓慢滑行至车身侧面，随后环绕到车尾，贯穿式尾灯逐一点亮；冷蓝与橙色霓虹对比色调，湿滑地面清晰倒影，高级汽车广告质感，无文字。"
+    },
+    {
+      "skill": "56c42aec1b4b48df9903c2dede12c953",
+      "file": "ai_sample.mp4",
+      "tool": "GenerateVideo",
+      "at": "2026-11-05T23:03:51+08:00",
+      "settings": {
+        "duration": 5,
+        "ratio": "3:4",
+        "resolution": "720p"
+      },
+      "references": [
+        {
+          "skill": "a63228473c7442c6859c7f2463190995",
+          "file": "ai_sample.jpg"
+        }
+      ],
+      "prompt": "以<图片1>为首帧和画面主体，让这张静态海报自然觉醒：背景撞色色块缓慢流动并泛起微妙光泽变化，画面中的 3D 人物轻轻眨眼、转身并摆动大衣下摆，中文标题「秋冬美拉德穿搭」保持稳定清晰不变形，整体节奏轻快活泼，保持原图的高饱和撞色配色、构图与字体设计，3:4 竖屏。"
+    },
+    {
+      "skill": "0e71172cd28d87e7669dd4fc8d5e0668",
+      "file": "ai_sample.mp4",
+      "tool": "GenerateVideo",
+      "at": "2026-11-05T23:22:47+08:00",
+      "settings": {
+        "duration": 8,
+        "ratio": "21:9",
+        "resolution": "720p"
+      },
+      "references": [],
+      "prompt": "宣言式概念短片，21:9 超宽画幅，画面零文字。主题：时间。镜头 1：黎明时分的空旷海滩，一位穿长风衣的人独自走向海平线，逆光剪影，镜头缓慢推进，海浪规律涌上沙滩又退去。镜头 2：切换到城市高空俯拍延时，车流化作流动的光轨。冷灰蓝与暖金对比色调，电影感颗粒，史诗氛围，全程无文字无字幕。"
+    },
+    {
+      "skill": "0eaa6c03f35b4e6ab7d5dc1c052a881c",
+      "file": "ai_sample.mp4",
+      "tool": "GenerateVideo",
+      "at": "2026-11-05T23:22:47+08:00",
+      "settings": {
+        "duration": 5,
+        "ratio": "9:16",
+        "resolution": "720p"
+      },
+      "references": [],
+      "prompt": "品牌 Logo 创意场景动态视频，9:16 竖屏。一个发光的简约山形线条 Logo 悬浮在晨雾缭绕的竹林之上，超写实场景；镜头缓慢环绕 Logo 旋转，晨光穿过竹叶在 Logo 表面投下流动的光影，轻微体积雾与粒子浮动；青绿与米白色调，高级质感，无其他文字。"
+    },
+    {
+      "skill": "1eca7c63d4ea41a3994fb88ee640bc46",
+      "file": "ai_sample.mp4",
+      "tool": "GenerateVideo",
+      "at": "2026-11-05T23:22:47+08:00",
+      "settings": {
+        "duration": 6,
+        "ratio": "16:9",
+        "resolution": "720p"
+      },
+      "references": [],
+      "prompt": "爱马仕丝巾画风格插画短视频，奢侈品 TVC 质感。全景建立镜头：精细手绘线稿风格的异国集市广场，暖赭石色调点缀宝石蓝与祖母绿，骑着装饰骏马的人物、繁复花纹遮阳棚与飘动的丝巾；镜头缓慢跟随运镜推向画面局部近景，线条优雅流动，色彩如丝巾印染般浓郁细腻，插画质感，无文字。"
+    },
+    {
+      "skill": "21f60e493e524cb7a31092659a62c3a1",
+      "file": "ai_sample.mp4",
+      "tool": "GenerateVideo",
+      "at": "2026-11-05T23:22:47+08:00",
+      "settings": {
+        "duration": 6,
+        "ratio": "9:16",
+        "resolution": "720p"
+      },
+      "references": [],
+      "prompt": "Instagram Reels 香氛广告短片，9:16 竖屏。一只琥珀色玻璃香水瓶置于薄雾弥漫的苔藓岩石上，清晨森林逆光，金色光柱穿过雾气；微距镜头缓慢环绕瓶身，光线在玻璃内部折射出流动光斑，细小的水雾粒子悬浮飘散；深绿与暖金色调，高级情绪氛围，无文字。"
+    },
+    {
+      "skill": "30913253771d9322e507c27e11753ed6",
+      "file": "ai_sample.mp4",
+      "tool": "GenerateVideo",
+      "at": "2026-11-05T23:22:47+08:00",
+      "settings": {
+        "duration": 5,
+        "ratio": "1:1",
+        "resolution": "720p"
+      },
+      "references": [
+        {
+          "skill": "b2c654f4120a4f5ab9dc7a77da2253a2",
+          "file": "ai_sample.jpg"
+        }
+      ],
+      "prompt": "以<图片1>的九宫格潮玩展示图为基准，让九个格子里的机器人猫手办依次苏醒：从左到右逐格微微抬头、眨眼、摆动耳朵和手中道具，格子之间的分割线保持稳定，镜头缓慢整体推近，柔和影棚光线在每个手办表面流动，保持原有的清新粉彩配色与 3D 手办质感，1:1 方形画幅。"
+    },
+    {
+      "skill": "31f88e88b369497a9981d8d1505999cd",
+      "file": "ai_sample.mp4",
+      "tool": "GenerateVideo",
+      "at": "2026-11-05T23:22:47+08:00",
+      "settings": {
+        "duration": 6,
+        "ratio": "9:16",
+        "resolution": "720p"
+      },
+      "references": [],
+      "prompt": "写实 DIY 手作解压短视频，9:16 竖屏。特写俯拍：一双手在木工台上用砂纸打磨一块胡桃木托盘表面，木屑细腻飞扬，阳光从工坊窗户斜照进来；随后手拿起蜂蜡布给木面上蜡，木纹在蜡油浸润下逐渐显现深邃光泽；真实手作质感，温暖自然光，治愈解压氛围，无文字。"
+    },
+    {
+      "skill": "3604cee7390da31179ca10124a4f7e5a",
+      "file": "ai_sample.mp4",
+      "tool": "GenerateVideo",
+      "at": "2026-11-05T23:22:47+08:00",
+      "settings": {
+        "duration": 6,
+        "ratio": "9:16",
+        "resolution": "720p"
+      },
+      "references": [],
+      "prompt": "时装展示短片，9:16 竖屏。一位东亚女模特身穿极简剪裁的米色廓形西装套装，站在纯色浅灰摄影棚背景前，缓慢转身展示服装廓形与垂坠感，随后走近镜头展示面料纹理细节；柔和均匀的影棚灯光，高级电商时装展示质感，镜头平稳跟随，无文字。"
+    },
+    {
+      "skill": "4145ee281d8548f3963a357ddfdf6b90",
+      "file": "ai_sample.mp4",
+      "tool": "GenerateVideo",
+      "at": "2026-11-05T23:22:47+08:00",
+      "settings": {
+        "duration": 6,
+        "ratio": "16:9",
+        "resolution": "720p"
+      },
+      "references": [],
+      "prompt": "商品宣传短片，16:9。一只白色陶瓷马克杯置于深色背景中央，一束聚光打在杯身；热水注入杯中，蒸汽优雅升腾旋转，镜头环绕杯子缓慢旋转一周，杯壁上映出流动的光影；最后一片茶叶落入水中激起微小涟漪；简约高级的商业广告质感，深色背景与暖白高光对比，无文字。"
+    },
+    {
+      "skill": "51176de869cf70aa011dc837c0be3bba",
+      "file": "ai_sample.mp4",
+      "tool": "GenerateVideo",
+      "at": "2026-11-05T23:22:47+08:00",
+      "settings": {
+        "duration": 8,
+        "ratio": "16:9",
+        "resolution": "720p"
+      },
+      "references": [],
+      "prompt": "高奢时尚新品 TVC 情绪宣传片，16:9。镜头 1：黑暗中一束光逐渐勾勒出一支银色智能手表的轮廓，表盘缓缓亮起。镜头 2：手表悬浮于空中缓慢旋转，周围环绕流动的金属粒子与光尘，表带细节在微距下呈现精密质感。镜头 3：手表轻轻落在大理石台面上，光影静止。黑金色调，大牌广告氛围，电影级布光，无文字。"
+    },
+    {
+      "skill": "53dccb46504a4781b5ccff815eb2ad3b",
+      "file": "ai_sample.mp4",
+      "tool": "GenerateVideo",
+      "at": "2026-11-05T23:22:47+08:00",
+      "settings": {
+        "duration": 8,
+        "ratio": "16:9",
+        "resolution": "720p"
+      },
+      "references": [],
+      "prompt": "一镜到底广告短片，无剪辑连续镜头。镜头从一杯拿铁的拉花特写开始，持续缓慢后拉上升，依次展现咖啡师的手、吧台全貌、清晨咖啡馆内景、窗边就座的顾客，最后穿过咖啡馆玻璃窗来到街道，整个运动一气呵成无切换；暖木色调与晨光，生活化场景连贯流动，真实质感，无文字。"
+    },
+    {
+      "skill": "593f4b02937f49b3b206d45888c1eb89",
+      "file": "ai_sample.mp4",
+      "tool": "GenerateVideo",
+      "at": "2026-11-05T23:22:47+08:00",
+      "settings": {
+        "duration": 6,
+        "ratio": "16:9",
+        "resolution": "720p"
+      },
+      "references": [],
+      "prompt": "工业产品商业宣传片，冷峻工业风，16:9。一台精密 CNC 加工中心的金属切削头在微距下缓慢移动，冷却液飞溅的液滴在慢镜头中悬浮，金属切面反射冷蓝色光泽；随后镜头拉远展现整洁的现代工厂车间，机械臂有序运转；冷蓝灰色调，金属质感，精密工业美学，无文字。"
+    },
+    {
+      "skill": "5b2e1d0628d02bad1f3cf9c8a09f54a9",
+      "file": "ai_sample.mp4",
+      "tool": "GenerateVideo",
+      "at": "2026-11-05T23:22:47+08:00",
+      "settings": {
+        "duration": 6,
+        "ratio": "9:16",
+        "resolution": "720p"
+      },
+      "references": [],
+      "prompt": "节日主题变身特效短片，9:16 竖屏。一位穿日常卫衣的年轻女性站在纯色背景前，抬手遮脸再放下的一瞬间完成华丽变身：妆容变为 520 情人节主题的清透桃花妆，发型变为编发点缀珍珠发饰，服装变为淡粉色纱裙，手中多了一束粉色玫瑰，周围飘起花瓣粒子特效；变装瞬间配合闪光转场，节奏明快，甜美氛围，无文字。"
+    },
+    {
+      "skill": "790f8a316ee5463586eee831cef86a36",
+      "file": "ai_sample.mp4",
+      "tool": "GenerateVideo",
+      "at": "2026-11-05T23:22:47+08:00",
+      "settings": {
+        "duration": 5,
+        "ratio": "16:9",
+        "resolution": "720p"
+      },
+      "references": [],
+      "prompt": "动态字体广告，16:9。深色背景上，一组粗体中文黑体字「型」以金属流体质感缓缓成形，笔画如液态铬合金流动汇聚，随后字体表面泛起光泽变化并轻微呼吸般缩放；周围有细小的光粒子环绕；极简高级，黑银色调，字体设计展示质感。"
+    },
+    {
+      "skill": "e483801a67534c94aa713657704883e3",
+      "file": "ai_sample.mp4",
+      "tool": "GenerateVideo",
+      "at": "2026-11-05T23:22:47+08:00",
+      "settings": {
+        "duration": 6,
+        "ratio": "9:16",
+        "resolution": "720p"
+      },
+      "references": [],
+      "prompt": "Instagram Reels 电商推广短片，9:16 竖屏。一只极简设计的白色香薰蜡烛在米白色亚麻桌布上，旁边散落干花与一本打开的杂志，午后阳光投下百叶窗的光影条纹；镜头缓慢推进聚焦蜡烛火焰轻轻摇曳，随后拉远展示整个精致桌面场景；奶油色调，海外生活方式电商质感，无文字。"
+    },
+    {
+      "skill": "0d772a84d6afe8b6e1e3b0ad45c6cbfb",
+      "file": "ai_sample_1.mp4",
+      "tool": "GenerateVideo",
+      "at": "2026-11-06T00:17:20+08:00",
+      "settings": {
+        "duration": 8,
+        "ratio": "9:16",
+        "resolution": "720p"
+      },
+      "references": [],
+      "prompt": "真实感开箱测评短视频，9:16 竖屏，手持手机拍摄质感。镜头 1：居家桌面上放着一个普通的牛皮纸快递纸箱，贴有快递面单，一只手拿美工刀划开纸箱封口胶带，镜头轻微晃动。镜头 2：双手翻开纸箱盖子，从里面拿出一个裹着气泡膜的产品包装，撕掉气泡膜。镜头 3：露出一副白色无线蓝牙耳机的包装盒，手拿起盒子凑近镜头展示，随后打开盒盖拿出耳机。自然光从窗边照入，客厅背景虚化，暖色调，真实生活化场景，无文字无字幕。"
+    }
+  ]
+}
