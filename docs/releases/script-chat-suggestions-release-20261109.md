@@ -21,4 +21,10 @@ Chrome 实际打开当前 Next 前端；API 为隔离界面数据，不连接生
 
 ## 发布
 
-浏览器与检查已通过，正式制品从合入 main 的干净提交构建；部署完成后补记制品、SHA 与线上验收。
+已于 2026-11-09 16:07（北京时间）发布。
+
+- main 代码提交：`fe1a75e756f3478b901cb80c732862524381f38f`，干净提交构建。
+- Mac mini 构建队列 `c43a06899e75` 退出码 0；制品 `20261109-script-chat-fe1a75e7`，校验和通过，线上 Next build ID `ypxM1J2lCQBuNJEODgQCr`。
+- 仅更新 `web-aiavatar`，保留 OIDC、企业开关 `1` 和原 API 构建配置；server PID `3021825`、启动时间 14:56:33 均未变化。
+- `deploy-release.sh` 退出码 0；环境预检、公共路由、所有现有服务、后端 API、SAU 健康和 nginx 配置检查 `ALL GREEN`，见 [健康检查](evidence/script-chat-20261109/verify.txt)。本机探针沿用已核对的 aistar 域名与生产 IP 解析，SSH 绑定 en0。
+- 线上真实已有草稿打开 AI 改写后验证：零个「返回编辑」、三条建议、选择后多行输入获得焦点；脚本原文与对话轮数不变、发送按钮可用。未点击线上发送或重新生成，未发起付费模型任务。见 [线上观察](evidence/script-chat-20261109/production-observations.json)。线上素材和原文截图仅本地交付，不提交仓库。
