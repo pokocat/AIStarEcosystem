@@ -14,11 +14,13 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 class StudioMediaImportServiceTest {
     FileStorageService storage; StorageQuotaService quota; FfmpegRunner ffmpeg; StudioMediaImportService service;
+    com.aistareco.aep.ipstudio.history.StudioStorageGuard guard;
     @BeforeEach void setup() {
         storage=mock(FileStorageService.class); quota=mock(StorageQuotaService.class); ffmpeg=mock(FfmpegRunner.class);
         when(storage.store(any(),anyString(),anyString(),anyString(),anyString())).thenAnswer(i -> new FileStorageService.StoredFile("ipstudio_source/u/1."+i.getArgument(3),null,null,null, ((byte[])i.getArgument(0)).length,i.getArgument(4)));
         when(storage.signedUrl(anyString())).thenReturn("https://cdn.test/short-signed");
         service=new StudioMediaImportService(storage,quota,ffmpeg);
+        guard=mock(com.aistareco.aep.ipstudio.history.StudioStorageGuard.class); service.setStorageGuard(guard);
     }
     byte[] mp4() { return new byte[]{0,0,0,20,'f','t','y','p','i','s','o','m',0,0,0,0}; }
     MockMultipartFile file(byte[] bytes) { return new MockMultipartFile("file","../假的名字.png","image/png",bytes); }
@@ -27,7 +29,7 @@ class StudioMediaImportServiceTest {
         var bytes=new ByteArrayOutputStream();ImageIO.write(new BufferedImage(20,12,BufferedImage.TYPE_INT_RGB),"png",bytes);
         var result=service.upload("u",file(bytes.toByteArray()),"image");
         assertEquals("image/png",result.mimeType());assertEquals(20,result.width());assertEquals("假的名字.png",result.fileName());
-        var order=inOrder(quota,storage);order.verify(quota).checkQuota("aiavatar","u",bytes.size());
+        var order=inOrder(guard,storage,quota);order.verify(guard,atLeastOnce()).checkUpload("u",(long)bytes.size());
         order.verify(storage).store(any(),eq("ipstudio/source"),eq("u"),eq("png"),eq("image/png"));
         order.verify(quota).record(eq("aiavatar"),eq("u"),eq("画布附件"),isNull(),eq(result.key()),eq((long)bytes.size()));
     }
@@ -71,7 +73,7 @@ class StudioMediaImportServiceTest {
     }
     @Test void quotaFailureNeverStoresMedia() {
         when(ffmpeg.probeMedia(any())).thenReturn(probe(5,"h264","aac"));
-        doThrow(BusinessException.badRequest("STORAGE_QUOTA_EXCEEDED","配额不足")).when(quota).checkQuota(anyString(),anyString(),anyLong());
+        doThrow(BusinessException.badRequest("STORAGE_QUOTA_EXCEEDED","配额不足")).when(guard).checkUpload(anyString(),anyLong());
         assertThrows(BusinessException.class,()->service.upload("u",file(mp4()),"video"));verifyNoInteractions(storage);
     }
     @Test void rejectsForeignProjectBeforeReadingOrWritingFile() {

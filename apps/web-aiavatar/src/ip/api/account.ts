@@ -5,9 +5,12 @@
 import type {
   RechargeOrder, StudioStorageUsage, StudioTaskHistoryItem, StudioTaskHistoryPage, StudioTaskStatus, StudioTaskType, StudioTrashedCanvas,
 } from "@ai-star-eco/types";
-// 演示开关跟本应用其余页面（proto/api）同一个定义：未设置 NEXT_PUBLIC_USE_MOCK 时两边默认值不同，混用会一半演示一半真数据。
-import { JobApi, USE_MOCK } from "@/proto/api";
 import { apiFetch, buildQuery, mockDelay } from "./_client";
+
+// 演示开关照抄 proto/api 的定义（未设置 NEXT_PUBLIC_USE_MOCK 时默认演示）：账号页其余部分走 proto/api，两边要一致。
+// 不直接从 proto/api 引入：它在模块加载时就设置产品码，`@/ip/api` 的所有使用方都会被连带加载它。
+const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK !== "0";
+const jobApi = async () => (await import("@/proto/api")).JobApi;
 
 export interface TaskHistoryQuery {
   status?: StudioTaskStatus;
@@ -37,14 +40,14 @@ export function canRetryTask(item: StudioTaskHistoryItem): boolean {
 
 /** 取消：画布任务走 /runs/{id}/cancel（已提交给模型的会明确拒绝），数字人任务走 /jobs/{id}/cancel。 */
 export async function cancelTask(item: StudioTaskHistoryItem): Promise<void> {
-  if (item.source === "digital-human") { await JobApi.cancel(item.id); return; }
+  if (item.source === "digital-human") { await (await jobApi()).cancel(item.id); return; }
   if (USE_MOCK) return mockDelay(undefined);
   await apiFetch(`/v1/ip-studio/runs/${encodeURIComponent(item.id)}/cancel`, { method: "POST" });
 }
 
 /** 数字人任务失败后重新排队（原任务、原参数）。 */
 export async function retryTask(item: StudioTaskHistoryItem): Promise<void> {
-  await JobApi.retry(item.id);
+  await (await jobApi()).retry(item.id);
 }
 
 export async function storageUsage(): Promise<StudioStorageUsage> {
