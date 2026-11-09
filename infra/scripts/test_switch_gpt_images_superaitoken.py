@@ -25,7 +25,7 @@ class EndpointConfigurationTest(unittest.TestCase):
                              "submitTemplate": {"model": "wrong-generic-model", "prompt": "${prompt}"},
                              "outputHosts": ["old.example"], "resultMode": "sync-base64"}}}
 
-    def test_preserves_input_and_limits_while_using_exact_model_and_url(self):
+    def test_native_edits_preserve_limits_and_use_exact_model_and_url(self):
         for model in switch.MODELS:
             with self.subTest(model=model):
                 endpoint = self.endpoint(model, "multipart" if "2.5" in model else "url")
@@ -42,7 +42,10 @@ class EndpointConfigurationTest(unittest.TestCase):
                 self.assertNotIn("billingMode", value)
                 wire = value["imageRequestSpec"]["wire"]
                 self.assertEqual(wire["submitTemplate"]["model"], "${model}")
-                self.assertEqual(wire["inputMode"], endpoint["imageRequestSpec"]["wire"]["inputMode"])
+                self.assertEqual(wire["inputMode"], "multipart")
+                self.assertEqual(wire["referenceSubmitPath"], "/images/edits")
+                self.assertEqual(wire["submitPath"], "/images/generations")
+                self.assertEqual(set(wire["submitTemplate"]), {"model", "prompt"})
                 self.assertEqual(wire["resultMode"], "sync-url")
                 self.assertEqual(wire["outputPointer"], "/data/0/url")
                 self.assertNotIn("outputHosts", wire)
