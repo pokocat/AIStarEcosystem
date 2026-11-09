@@ -1392,6 +1392,6 @@ Studio 图片报价为 `POST /api/v1/ip-studio/projects/{id}/{image-quote|studio
 
 后台模型端点 API 的 `chatReasoningEffort` 是此供应商与固定型号的请求配置（V77 新增可空列 `ai_model_providers.chat_reasoning_effort`），普通聊天、流式收齐与编导 turn 共用，以 `reasoning_effort` 发送并进入既有用量记录的脱敏请求。空值不发送、保持供应商默认；PUT 省略保留、空字符串清空。更换供应商类型、地址或固定型号时，未显式重设就清空，不能把旧型号的验证结论套到新型号。该配置不能被业务 options 覆盖，也不等于关闭思考；不推断别的模型支持同一参数。管理端只接受 none/minimal/low/medium/high/xhigh/max，真实支持须实测确认。
 
-## Seedance 官方人像素材（2026-11-09，本地实现，未发布）
+## Seedance 官方人像素材（2026-11-09，已发布）
 
-Fast / Mini 的生产 API Key 已切换；官方库 `bingbing` 已真实验证虚拟样本入库 Active 与本人 H5 会话。官方素材库绑定、V78 和页面未发布。生成前在积分冻结前检查引用，需要处理时在当前页弹窗，复用 Ant Design 控件；用户明确确认真人或虚拟声明后入库，Active 后继续原操作。官方明确拒绝且尚无供应商任务号时，保留原任务及冻结最多 30 分钟，审核后恢复同一任务，不二次冻结；超时释放。已有供应商任务继续对账。本人刷脸、真人一致性审核和真人成片尚未实测。真源：[视频素材库](../../docs/video-asset-library.md)。
+Fast / Mini 的生产 API Key 已切换；官方库 `bingbing` 已真实验证虚拟样本入库 Active 与本人 H5 会话。官方素材库 `ark-bingbing` 已绑定 Fast / Mini，V78 和页面已随 `20261109-ark-portraits-137b5754` 发布。生成前在积分冻结前检查引用，需要处理时在当前页弹窗，复用 Ant Design 控件；用户明确确认真人或虚拟声明后入库，Active 后继续原操作。官方明确拒绝且尚无供应商任务号时，保留原任务及冻结最多 30 分钟，审核后恢复同一任务，不二次冻结；超时释放。已有供应商任务继续对账。本人刷脸、真人一致性审核和真人成片尚未实测。真源：[视频素材库](../../docs/video-asset-library.md)。

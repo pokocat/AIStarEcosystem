@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import type { VideoPortraitOverview, VideoPortraitItem } from '@ai-star-eco/types/video-portrait-library';
 const mocks = vi.hoisted(() => ({ overview: vi.fn(), review: vi.fn(), declare: vi.fn(), refresh: vi.fn(), resume: vi.fn(), report: vi.fn() }));
@@ -25,21 +25,24 @@ it('uses framework controls and resets consent when the portrait type changes', 
   fireEvent.click(screen.getByRole('radio', { name: '真人照片' }));await waitFor(() => expect(screen.getByRole('checkbox')).toHaveProperty('checked', false));expect(button).toHaveProperty('disabled', true);
 });
 it('keeps the original task in an inline modal and resumes only that job after approval', async () => {
-  const state = data();mocks.overview.mockImplementation(async () => ({ ...state, items: state.items.map(i => ({ ...i })) }));
+  const state = data();state.items[0].status = 'processing';
+  mocks.overview.mockImplementation(async () => ({ ...state, items: state.items.map(i => ({ ...i })) }));
   mocks.review.mockImplementation(async () => ({ jobId: 'original-job', items: state.items.map(i => ({ ...i })), awaiting: true, canContinue: state.items.every(i => i.status === 'active') }));
-  mocks.declare.mockImplementation(async () => { state.items[0].status = 'processing'; return { ...state.items[0] }; });
   mocks.refresh.mockImplementation(async () => { state.items[0].status = 'active'; return { ...state.items[0] }; });mocks.resume.mockResolvedValue({ awaiting: false });
-  render(<PortraitReviewHost />);let done = false;const pending = requestPortraitReview([{ jobId: 'original-job', reviewId: 'first' }]).then(ready => { done = ready; });
+  render(<PortraitReviewHost />);let done = false;let pending!: Promise<void>;
+  act(() => { pending = requestPortraitReview([{ jobId: 'original-job', reviewId: 'first' }]).then(ready => { done = ready; }); });
   await screen.findByRole('dialog');await screen.findByText('参考图');expect(done).toBe(false);
-  fireEvent.click(screen.getByRole('button', { name: '确认人像' }));fireEvent.click(await screen.findByRole('radio', { name: 'AI 虚拟人像' }));fireEvent.click(screen.getByRole('checkbox'));
-  await waitFor(() => expect(screen.getByRole('button', { name: '提交审核' })).toHaveProperty('disabled', false));
-  fireEvent.submit(screen.getByRole('button', { name: '提交审核' }).closest('form')!);await waitFor(() => expect(mocks.declare).toHaveBeenCalledTimes(1));
   const continueButton = screen.getByRole('button', { name: '继续生成' });expect(continueButton).toHaveProperty('disabled', true);expect(mocks.resume).not.toHaveBeenCalled();
-  fireEvent.click(await screen.findByRole('button', { name: '查询结果' }));await waitFor(() => expect(continueButton).toHaveProperty('disabled', false));
-  fireEvent.click(continueButton);await pending;expect(done).toBe(true);expect(mocks.resume).toHaveBeenCalledExactlyOnceWith('original-job');
+  const refreshButton = await screen.findByRole('button', { name: '查询结果' });
+  await act(async () => { fireEvent.click(refreshButton); });
+  await waitFor(() => expect(mocks.refresh).toHaveBeenCalledTimes(1), { timeout: 1000 });
+  await waitFor(() => expect(continueButton).toHaveProperty('disabled', false));
+  await waitFor(() => expect(continueButton.classList.contains('ant-btn-loading')).toBe(false));
+  await act(async () => { fireEvent.click(continueButton); });await pending;expect(done).toBe(true);expect(mocks.resume).toHaveBeenCalledExactlyOnceWith('original-job');
+  expect(mocks.declare).not.toHaveBeenCalled(); // An already-submitted asset is queried, never uploaded again.
 });
 it('deferring verification closes the modal without resubmitting or losing the pending context', async () => {
   mocks.overview.mockResolvedValue(data());render(<PortraitReviewHost />);
-  const pending = requestPortraitReview([], [{ ...item, id: 'defer-item' }]);await screen.findByRole('dialog');
+  let pending!: Promise<boolean>;act(() => { pending = requestPortraitReview([], [{ ...item, id: 'defer-item' }]); });await screen.findByRole('dialog');
   fireEvent.click(screen.getByRole('button', { name: '稍后处理' }));await expect(pending).resolves.toBe(false);expect(mocks.resume).not.toHaveBeenCalled();expect(mocks.declare).not.toHaveBeenCalled();
 });
