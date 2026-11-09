@@ -102,18 +102,19 @@ const H3 = { endpointId: "ep-h3", name: "H3", isDefault: true, selectableById: t
 const productNode = { id: "product", type: "image", title: "商品图 1", position: { x: 100, y: 400 }, width: 100, height: 100,
   metadata: { storageKey: "product.jpg", content: "https://cdn/product.jpg", origin: "upload", mimeType: "image/jpeg", status: "success" } };
 /** 编导写好的一版脚本（照 addScriptNode 的形状），写的时候选了「只拍商品、专业讲解」。 */
-function withScript(doc: IpProjectDoc) {
+const MODEL_SUGGESTIONS = [
+  { label: "先拍精华质地", instruction: "先用精华质地特写开场，再切到洗手台，保留原有信息。" },
+  { label: "改成护肤独白", instruction: "把台词改成护肤时的自然独白，减少讲解感。" },
+  { label: "强调使用动作", instruction: "重点拍清取用和涂抹动作，不新增功效。" },
+];
+function withScript(doc: IpProjectDoc, suggestions: unknown = MODEL_SUGGESTIONS) {
   const made = addScriptNode(doc, { ask: "保湿精华", revision: false, prompt: "写脚本", materialIds: ["product"], imageIds: ["product"],
     duration: 15, ratio: "9:16", language: "英文", options: { presenter: "product", tone: "expert" } });
-  return { id: made.nodeId, doc: patchNode(made.doc, made.nodeId, n => ({ ...n, metadata: { ...n.metadata, status: "success", content: "第1镜（0–5 秒）：精华放在洗手台上" } })) };
+  return { id: made.nodeId, doc: patchNode(made.doc, made.nodeId, n => ({ ...n, metadata: { ...n.metadata, status: "success", content: "第1镜（0–5 秒）：精华放在洗手台上", studio: { ...n.metadata!.studio!, sceneDirector: { ...n.metadata!.studio!.sceneDirector!, suggestions: suggestions as never } } } })) };
 }
 beforeEach(() => { api.videoModels.mockResolvedValue([H3]); });
 
-test.each([
-  ["开头更抓人", "把开头写得更抓人，用一个生活中的小困扰切入。"],
-  ["台词更自然", "让台词更自然，像朋友聊天，减少广告感。"],
-  ["突出商品卖点", "突出商品卖点，多用具体画面展示，不添加未经提供的功能。"],
-])('编导建议“%s”只填入修改意见并聚焦，不提交任务或改写原脚本', async (label, value) => {
+test.each(MODEL_SUGGESTIONS.map(s => [s.label, s.instruction]))('编导建议“%s”只填入修改意见并聚焦，不提交任务或改写原脚本', async (label, value) => {
   const { doc } = withScript({ ...EMPTY, nodes: [productNode] as never });
   put({ id: "IPP-V", name: "v", sceneId: "ecom-talking", doc });
   await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
@@ -134,7 +135,7 @@ test("修改建议可手动修改后发送；换行和中文输入法回车不�
   const { doc } = withScript({ ...EMPTY, nodes: [productNode] as never });
   put({ id: "IPP-V", name: "v", sceneId: "ecom-talking", doc });
   await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
-  fireEvent.click(await screen.findByRole("button", { name: "台词更自然" }));
+  fireEvent.click(await screen.findByRole("button", { name: "改成护肤独白" }));
   const field = screen.getByRole("textbox", { name: "修改意见" });
   const revision = "台词自然一点。\n保留第一句台词。";
   fireEvent.change(field, { target: { value: revision } });
@@ -148,6 +149,15 @@ test("修改建议可手动修改后发送；换行和中文输入法回车不�
   expect(document.querySelectorAll(".scene-director-turn")).toHaveLength(2);
   expect(document.querySelector(".scene-script-text")?.textContent).toBe("第1镜（0–5 秒）：精华放在洗手台上");
   expect(screen.queryByRole("group", { name: "脚本修改建议" })).toBeNull();
+});
+
+test.each([undefined, [], [{ label: "超出八个字的按钮文字", instruction: "调整" }], [{ label: "短按钮", instruction: "字".repeat(81) }]])("旧回复或不合格建议不使用固定兜底，正文仍可采用：%j", async (suggestions) => {
+  const made = withScript({ ...EMPTY, nodes: [productNode] as never }, suggestions ?? []);
+  put({ id: "IPP-V", name: "v", sceneId: "ecom-talking", doc: made.doc });
+  await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
+  await screen.findByRole("button", { name: "采用脚本" });
+  expect(screen.queryByRole("group", { name: "脚本修改建议" })).toBeNull();
+  expect(document.querySelector(".scene-script-text")?.textContent).toBe("第1镜（0–5 秒）：精华放在洗手台上");
 });
 
 /** 只能按文字出、4 秒（照本地 Agnes Video 2.5 Flash 的形状）。 */

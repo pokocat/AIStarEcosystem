@@ -1395,3 +1395,7 @@ Studio 图片报价为 `POST /api/v1/ip-studio/projects/{id}/{image-quote|studio
 ## Seedance 官方人像素材（2026-11-09，已发布）
 
 Fast / Mini 的生产 API Key 已切换；官方库 `bingbing` 已真实验证虚拟样本入库 Active 与本人 H5 会话。官方素材库 `ark-bingbing` 已绑定 Fast / Mini，V78 和页面已随 `20261109-ark-portraits-137b5754` 发布。生成前在积分冻结前检查引用，需要处理时在当前页弹窗，复用 Ant Design 控件；用户明确确认真人或虚拟声明后入库，Active 后继续原操作。官方明确拒绝且尚无供应商任务号时，保留原任务及冻结最多 30 分钟，审核后恢复同一任务，不二次冻结；超时释放。已有供应商任务继续对账。本人刷脸、真人一致性审核和真人成片尚未实测。真源：[视频素材库](../../docs/video-asset-library.md)。
+
+### AI 视频编导修改建议（2026-11-09）
+
+场景文字任务（scene.kind=video-script）的 textRevision 可返回 suggestions:[{label,instruction}]，与脚本同次调用生成。独立过滤空值、错类型、控制字符、重复和超长项，最多保留 3 条，label 最多 8、instruction 最多 80 个 Unicode code point。建议异常不影响脚本，完整模型原文仍在既有任务和用量记录中保留。通用画布文字与分段脚本契约不变。发布须核对 stage-scene-script 实际生效版本。

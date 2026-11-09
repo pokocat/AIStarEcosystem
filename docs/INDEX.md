@@ -1,5 +1,7 @@
 # 文档索引 · INDEX
 
+AI 编导模型生成修改建议：[真模型与浏览器验收](releases/script-ai-suggestions-release-20261109.md)，last-reviewed：2026-11-09。
+
 AI 编导对话与修改建议：[浏览器验收及发布记录](releases/script-chat-suggestions-release-20261109.md)，last-reviewed：2026-11-09。
 
 AI 视频“重新编辑”统一入口：[浏览器验收与发布记录](releases/video-reedit-position-release-20261109.md)，last-reviewed：2026-11-09。

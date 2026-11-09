@@ -251,6 +251,7 @@ public class StudioWorkflowWorker {
                         if(mock)script=mapper.createObjectNode().put("summary","测试响应：保留原文，不调用真实模型。")
                                 .put("content",input.path("textEdit").path("content").asText().isBlank()?"测试文本样例":input.path("textEdit").path("content").asText());
                         StudioTextRevision.validateOutput(script);
+                        if("video-script".equals(input.path("scene").path("kind").asText())) StudioTextRevision.normalizeSceneSuggestions(script);
                         output.set("textRevision",script);output.put("text",script.path("content").asText());
                     } else if("assistant".equals(operation)) {
                         if(input.hasNonNull("scriptEdit")) {

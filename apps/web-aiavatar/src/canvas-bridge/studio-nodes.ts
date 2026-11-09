@@ -1,3 +1,4 @@
+import { studioScriptSuggestions } from "./studio-script-suggestions";
 import { materializeFilmStudy } from './studio-film-study';
 import { materializeRecreationAudio } from './studio-recreation-audio';
 import { materializeRecreation } from './studio-recreation-document';
@@ -104,6 +105,7 @@ export function applyStudioRun(node: CanvasNodeData, run: IpRun): CanvasNodeData
       {role:"assistant" as const,content:run.output.textRevision.summary,...(run.output.billing?{billing:run.output.billing}:{})}].slice(-16)};
     if((metadata.content||"") === request.textEdit?.content) {
       metadata.content=run.output.textRevision.content;
+      if(metadata.studio.sceneDirector) metadata.studio.sceneDirector={...metadata.studio.sceneDirector, suggestions:studioScriptSuggestions(run.output.textRevision.suggestions)};
       delete metadata.studio.textEditor.proposal;
     } else {
       // A different tab/editor may have changed the body during the accepted request.
