@@ -564,6 +564,15 @@
 
 - [ ] `DapAccountService.account` 的 `planLabel=PRO` 为旧固定值；后续会员权益展示需按真实产品开通/权益建模，本轮不改后台政策。
 
+### 账号区新版（2026-11-09，dev/aistar-studio-migration）
+
+- [x] ~~**存储用量缺历史文件**~~ **2026-11-09 完成**：`StudioStorageBackfill` 在用户第一次打开存储用量时（后台异步，当次页面显示补记前的数），按资产库（ip_saved_asset）里 `ipstudio_gen/`、`ipstudio_source/` 开头的文件 key 补记（大小优先用收录时的 bytes，没有再查存储），只加统计记录、同 key 不重复，每进程每用户一次。资产库里已删除的条目不补；没被资产库收录的历史文件仍不在统计里。
+- [x] ~~**存储上限没有拦截**~~ **2026-11-09 已实现、默认关闭**：`StudioStorageGuard` 在上传（`IpProjectService.upload`、`StudioMediaImportService`）前按账号页同一口径检查，超出 402 `STORAGE_QUOTA_EXCEEDED`；生成不拦。开关 `aep.ipstudio.storage-enforce`（默认 false），打开前先在后台配好 `storage.quota_mb.aiavatar` 和存储空间套餐。原描述：：账号页显示的上限是通用存储的 aiavatar 配额（后台 `storage.quota_mb.aiavatar`），但 IP Studio 的生成和上传都没调 `StorageQuotaService.checkQuota`；数字资产页原来的 5,000 MB 也只是展示。拦不拦、在哪一步拦要单独定。
+- [x] ~~**画布、导演台作品没有彻底删除和到期清理**~~ **2026-11-09 已实现**：`StudioTrashService` 提供 `DELETE /projects/{id}/purge`、`DELETE /director/works/{id}/purge`（只删画布 / 作品本身和画布历史版本，生成记录与文件保留在资产库；还有生成中的任务时 409）。到期自动清理 `aep.ipstudio.trash-retention-days`，默认 0 = 不清理。原描述：：账号页回收站能列出并恢复（`/projects/trash`、`/projects/{id}/restore`、导演台 `/works/trash`），但只有数字人有「彻底删除」和 30 天清理。
+- [ ] **任务历史的汇总最多统计 300 条**（`StudioTaskHistoryService.SUMMARY_LIMIT`），超出时界面写明「只统计了最近 N 条」；数字人任务的积分只有 `cost` 一个数，没有模型赠款与退回的拆分。
+- [ ] **任务历史的取消 / 重试只覆盖一部分**：画布上的图片、视频、配音、口型任务和数字人任务可以直接取消（已提交给模型的由接口拒绝并说明），数字人失败任务可以重试；导演台、对话、写作任务只给「查看」，回原处用各自的停止流程。画布任务失败后的重试也要回画布做（需要原请求）。
+- [ ] 旧 SPA 里的 `MTasks` / `MStorage` / `MMembership` / `MSettings` / `MSecurity` / `MRealMaterials` / `MTrash` 不再从 `/studio#/<页>` 进入（改由 `src/account/*`），确认没有内部入口后删除。
+
 ## 已定位问题与后续限制
 
 - [ ] **开发模式：刷新过的页面整页跳走后，浏览器后退会停在未激活状态**（2026-11-07 定位，未修）。顺序是打开页面 → 刷新 → 整页跳到别处 → 后退：页面显示服务端输出的内容（画布是「正在打开画布…」），React 一直没接管，没有报错和失败的请求。`/projects/{id}` 和 `/assets` 都能复现，关掉 `shell/canvas-return.ts` 的记录组件也一样；没刷新过的不会。后退时浏览器用了缓存的文档（开发服务器没收到请求），页面带开发模式才有的 `__next_r`，疑似开发模式独有，尚未在生产构建上验证。复现需要无头浏览器按上述顺序操作。

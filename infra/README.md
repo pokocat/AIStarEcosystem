@@ -19,6 +19,15 @@
 脚本不操作 Studio 的产品库、开通或积分。Studio 前端与后端配置见
 [`apps/web-aiavatar/README.md`](../apps/web-aiavatar/README.md#studio-统一登录2026-10-10)。
 
+## IP Studio 账号区可选开关（2026-11-09，默认都关）
+
+| 变量 | 默认 | 作用 |
+|---|---|---|
+| `AEP_IPSTUDIO_STORAGE_ENFORCE`（`aep.ipstudio.storage-enforce`） | `false` | 上传前按账号存储上限检查，超出返回 402 `STORAGE_QUOTA_EXCEEDED`；生成不拦。打开前先在后台配 `storage.quota_mb.aiavatar` 和存储空间套餐。 |
+| `AEP_IPSTUDIO_TRASH_RETENTION_DAYS`（`aep.ipstudio.trash-retention-days`） | `0` | 画布、导演台作品在回收站保留的天数，到期每天 04:20 自动彻底删除（只删画布 / 作品本身，生成记录和文件保留）；0 = 不自动清理。 |
+
+不配置就是现有行为。规则见 `specs/BUSINESS_RULES.md`「账号区任务历史、存储用量与画布回收站」。
+
 ## `clip` 军师预发隔离实例（2026-08-11）
 
 军师「快出片」预发不复用 AIStar 生产实例：`aistareco-clip-preprod` 仅监听 `127.0.0.1:8081`，工作目录 `/opt/aistareco-clip-preprod/server`，运行时机密在 `/etc/aistareco/clip-preprod.env`（0600）。军师预发 BFF 从同机 `http://127.0.0.1:8081` 回源；公网只通过 `wxapi.aibuzz.cn/clip_preprod/cdn/` 与 `/files/` 读取作品，不公开 AIStar API。

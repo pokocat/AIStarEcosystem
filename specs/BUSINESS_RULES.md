@@ -1762,3 +1762,11 @@ Studio 可展示的正文直接交付；不能安全整理为方案、素材引�
 - 新视频页任务的每个失败步骤包含首次在内，最多自动执行三次；延后 60 秒、120 秒重试，成功的步骤不重跑。明确输入/配置/余额/审核拒绝、受理不明、需要原任务对账、仅原文保留的结果等不做盲目重试。三次失败后停止，进入同画布定位该步骤；仅浏览画布不启动生成，用户处理并明确继续才恢复。
 - 爆款复刻的拉片和制作计划在后台接续，制作方案仍按原片、素材与实际模型能力动态生成。开始前明确的总费用上限贯穿两个阶段；制作预算只用原总上限扣除已花分析费后的余量，不能隐式追加。无法安全解释模型原文时保留原文并暂停后续付费操作。
 - 刷新、离开页面、进入画布及从最近任务重新打开均只恢复既有记录，不重提任务。已成功的可播放媒体不得因审美或检查意见被自动丢弃、反复重做；所有产物和实际费用继续沿用原生结果记录。
+
+## 账号区任务历史、存储用量与画布回收站（2026-11-09，本地实现，未发布）
+
+1. **任务历史只读既有真值**：`GET /api/v1/ip-studio/task-history` 合并本人的 IpRun（画布、AI 图片 / 视频、导演台、对话；不含 `studio-adopt` 等非生成记录）与 DapJob，按开始时间倒序。IpRun 的积分来自 `IpProjectService.toRunDto` 的 breakdown：`spent` 为已扣（含模型赠款），`scopedSpent` 为其中模型赠款，`pending` 为进行中未结算，`released` 为已退回；视频任务的提示词优化另一笔计入 `spent`。旧任务没有 breakdown 时按 `cost` 与状态归类。DapJob 只有 `cost`。不新增计费口径，不改任务或账本。
+2. 汇总（`summary`）只看时间窗与类型、不受状态筛选影响，最多统计 300 条，超出时 `partial=true`。合并翻页最深 1000 条，超出 400 `TASK_HISTORY_TOO_DEEP`；非法参数 400 `TASK_HISTORY_INVALID`。
+3. **存储用量一个口径**：`GET /api/v1/ip-studio/storage` = 数字资产文件（`DapAccountService.storageMb`，与旧账号页同一份计算）+ 通用存储统计 app=aiavatar 与 app=studio 的记录；上限读通用存储的 aiavatar 配额（含已购扩容）。`FileStorageService` 写入 `ipstudio/gen`、`ipstudio/source` 时记一笔（观测类旁路，失败只 WARN，同一 key 不重复）。用户第一次打开存储用量时按资产库（ip_saved_asset）补记历史文件（只加统计、同 key 不重复）；上限目前不拦截。
+4. **画布回收站**：画布删除只打 `deletedAt`；`GET /api/v1/ip-studio/projects/trash` 列出本人已删除的画布（只读名字与删除时间），`POST /projects/{id}/restore` 原 ID 原内容恢复，没删除时直接成功，不是本人的 404 `IP_PROJECT_NOT_FOUND`。彻底删除 `DELETE /projects/{id}/purge`（导演台作品 `DELETE /director/works/{id}/purge`）只删画布 / 作品本身与画布历史版本，生成记录与文件保留；只能删回收站里的（否则 409 `*_NOT_IN_TRASH`），还有生成中的任务时 409 `*_BUSY`。到期自动清理由 `aep.ipstudio.trash-retention-days` 控制，默认 0 不清理。
+5. **存储上限只拦上传**：`aep.ipstudio.storage-enforce=true` 时，上传前按第 3 条的口径检查，超出 402 `STORAGE_QUOTA_EXCEEDED`；生成不拦。默认关闭。

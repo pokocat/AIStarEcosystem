@@ -45,3 +45,20 @@ v0.230 · 2026-10-10。目标是让桌面账号管理和画布属于同一个产
 同次小修保留轮播圆点 7px/选中胶囊 18px 的样式，只对底色做过渡，取消宽度动画，避免切换示例时逐帧触发布局；没有添加检测忽略规则。
 
 生产发布：从干净的 main `0921222f6` 构建 `20261031-studio-avatar-polish`，只更新 web-aiavatar。线上桌面旧版、新版与 390px 手机的头像圆心偏差均为 0px，浅灰底和键盘焦点生效，页面脚本错误为零；发布样式中的圆点为 7px/18px、仅过渡底色。验收使用合成账号 API 响应加载真实线上前端，未操作真实用户资料或付费生成。制品与服务核对见[发布记录](releases/studio-avatar-polish-release-20261031.md)。
+
+## 账号区新版（2026-11-09，本地未发布）
+
+按「账号页新版设计稿」把电脑版「我的账号」和 `/studio#/<页>` 的账号页换成新版设计语言（白底、冷色细线、渐变主按钮），不再把旧 SPA 页面套进外壳。
+
+- **外壳**：`src/shell/account-workspace.tsx` 的 `AccountShell`。电脑版是账号卡（头像、昵称、手机号、可用积分、模型赠款、充值）+ 页内标签；左边只留全站导航栏，原来 192px 的账号菜单去掉。手机版是返回栏 + 标题，返回「我的」。邀请页（`/invitations`）仍用 `AccountWorkspace` 这个名字，标签不高亮。
+- **标签**：总览、会员与积分、任务历史（原任务中心）、存储用量、真人授权素材、回收站、设置与安全（原「设置」与「账号与安全」合并，`#/security` 也进这一页）。「邀请朋友」「企业积分」从总览进入。
+- **页面**：`src/account/*`，`/studio` 遇到上面这些哈希直接渲染新页面；数字人详情、创建向导、刷脸回跳等其余哈希照旧交给旧 SPA，外框不变。给指定真人补素材 / 授权用 `/studio#/create/real/<人物 id>`（旧 SPA 新增的冷启动入口），添加新真人用 `/studio?start=real`。
+- **任务历史**：新接口 `GET /api/v1/ip-studio/task-history`（`StudioTaskHistoryService`），把画布、AI 图片 / 视频、导演台、对话（IpRun）和数字人任务（DapJob）按时间合并；每条的积分读 `IpProjectService.toRunDto` 已有的 breakdown，分出已扣、其中模型赠款、待结算和已退回，不新增计费口径。画布上的图片、视频、配音、口型任务和数字人任务可在这里取消（已提交给模型的由接口拒绝并说明原因），数字人失败任务可重试；导演台、对话、写作任务只给「查看」，回原处用各自的停止流程。
+- **存储用量**：新接口 `GET /api/v1/ip-studio/storage`（`StudioStorageService`），数字资产按表实时求和（`DapAccountService.storageMb`，与旧页同一份计算）+ 通用存储统计（app=aiavatar 与 studio）；上限读通用存储的 aiavatar 配额，含已购扩容。`FileStorageService` 从这次起把 `ipstudio/gen`、`ipstudio/source` 文件记进统计；历史文件在用户第一次打开存储用量时按资产库补记（`StudioStorageBackfill`，只加统计记录）。后台配了存储空间套餐才显示「购买存储空间」。
+- **回收站**：数字人（恢复、彻底删除、30 天清理）、导演台作品和画布（恢复、彻底删除；彻底删除只删作品 / 画布本身，生成记录和文件保留在资产库）。画布接口 `GET /projects/trash`、`POST /projects/{id}/restore`、`DELETE /projects/{id}/purge`，导演台 `DELETE /director/works/{id}/purge`。到期自动清理和存储上限拦截都已实现、默认关闭（`aep.ipstudio.trash-retention-days`、`aep.ipstudio.storage-enforce`），页面按 `GET /trash/policy` 显示实际规则。
+- **会员与积分**：充值套餐（存储空间套餐单列）、模型赠款（剩余 / 总额 / 到期）、充值记录（`/api/me/wallet/recharge/orders`，前端只留 aiavatar 发起的）。不再显示后台写死的 PRO 标签和「本月已用」（后者只算数字资产任务）。
+- **设置与安全**：生成付款账户改成三个选项卡片（同一套 `studio-billing-preference`）；头像昵称、手机号、微信、密码、注销都跳账号中心对应页面；旧的本产品登录密码表单不再出现。
+
+验证：Mac mini 上 web-aiavatar 与 types 类型检查、契约检查、`src/account`、`src/shell`、`src/app/me`、邀请页共 13 个测试文件 93 项通过；后端新单测 `StudioAccountHistoryTest` 6 项通过。演示数据下在 1440 和 375 宽度逐页看过；再用本地开发库副本（283 条真实生成记录）起真后端，在浏览器里走过任务历史的状态筛选与翻页、画布删除后在回收站恢复、存储用量、付款账户和总览。走查中发现视频任务按「失败」筛不出（状态取自视频子任务），已改为按显示状态筛选。
+
+补充验证（同日）：真后端打开 `aep.ipstudio.storage-enforce` 并把 aiavatar 配额设为 49 MB（已用 49 MB）时，上传图片返回 402 `STORAGE_QUOTA_EXCEEDED`；配额改回 5,120 MB 后同一张图上传成功。画布彻底删除：未进回收站时 409，删除后回收站清空、再恢复 404，任务历史条数不变。

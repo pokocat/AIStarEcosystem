@@ -51,3 +51,5 @@ export * from "./invitation";
 export * from "./director";
 
 export * from "./model-billing";
+
+export * from "./studio-account";

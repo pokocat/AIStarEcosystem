@@ -39,7 +39,15 @@ public class StudioMediaImportService {
     public MediaImportResult uploadReferenceAudio(String user, MultipartFile file) {
         return upload(user, file, "audio", true);
     }
+    /** 存储上限检查（开关默认关，见 StudioStorageGuard）。 */
+    private com.aistareco.aep.ipstudio.history.StudioStorageGuard storageGuard;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setStorageGuard(@org.springframework.context.annotation.Lazy com.aistareco.aep.ipstudio.history.StudioStorageGuard storageGuard) {
+        this.storageGuard = storageGuard;
+    }
+
     private MediaImportResult upload(String user, MultipartFile file, String type, boolean voiceReference) {
+        if (storageGuard != null && file != null) storageGuard.checkUpload(user, file.getSize());
         if (!Set.of("image", "video", "audio").contains(type == null ? "" : type)) throw invalid("请选择图片、视频或音频");
         long max = ("image".equals(type) ? 8 : "video".equals(type) ? 128 : 25) * MIB;
         if (file == null || file.isEmpty()) throw invalid("文件是空的，请重新选择");

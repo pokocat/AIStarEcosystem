@@ -1321,3 +1321,8 @@ Studio 视频费用确认复用图片弹窗，显示整批原价、优惠、赠�
 ### 2026-11-06 · 导演台带货短剧（功能分支，未发布）
 
 新增 `src/ip/director/director-products.tsx`：商品工作区、商品库弹窗、剧本页商品栏。开关在 `director-settings.tsx`（`CommerceSwitch`，新建作品也用它）。真源 `docs/ai-director-commerce-plan.md`。
+
+### 2026-11-09 · 账号区新版（本地，未发布）
+
+电脑版「我的账号」和 `/studio#/membership|tasks|storage|realmaterials|trash|settings` 换成新版页面（`src/account/*`，外壳 `shell/account-workspace.tsx`）：账号卡 + 页内标签，去掉第二列账号菜单；「任务中心」改为「任务历史」并写出每条消耗的积分；存储用量合并数字资产与 IP Studio 文件；回收站加入导演台作品和画布；设置与账号与安全合并，账号相关的修改跳账号中心。说明见 `docs/aiavatar-account-unification.md` 末节。
+
