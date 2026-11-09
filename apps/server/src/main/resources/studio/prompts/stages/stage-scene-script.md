@@ -1,7 +1,7 @@
 ---
 key: stage-scene-script
 name: AI 视频编导写脚本
-version: 1
+version: 2
 status: active
 layer: stage
 target: llm
@@ -21,6 +21,16 @@ summary: "资深短视频编导按场景写一版能直接出片的六段式方�
 {{#settingsChanged}}
 {{#revision}}另外，{{/revision}}{{^revision}}按现在的设置改当前脚本：{{/revision}}{{settingsChanged}}，按现在的设置重新排镜头和台词，内容和卖点不变。
 {{/settingsChanged}}
+{{#hasVariant}}
+这一版是同一条视频的第 {{variantIndex}} 版（共 {{variantTotal}} 版），要和当前脚本一起投放，让人一看就是不同的一条。
+{{#hasChanges}}
+这一版按下面这组变化改：{{#changes}}{{name}}从「{{from}}」换成「{{to}}」{{^-last}}；{{/-last}}{{/changes}}。不只换这几个词，和它们相关的镜头、表演、场景描述和台词一起改，前后说得通。
+{{/hasChanges}}
+{{^hasChanges}}
+开场第一句和开场靠什么抓人、出镜人物的身份和说话方式、场景和台词都换一种写法。
+{{/hasChanges}}
+卖点、价格和数字、素材职责、时长和镜头数不变。
+{{/hasVariant}}
 {{#revising}}
 
 这条视频原来的要求（仍然有效）：

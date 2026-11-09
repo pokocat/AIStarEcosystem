@@ -5,11 +5,11 @@ import { observePortraitReviews, requestPortraitReview } from '../portrait-revie
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import Link from 'next/link';
-import { AlertCircle, ArrowUpRight, Check, ChevronRight, Download, Film, Image as ImageIcon, Layers, ListVideo, PencilLine, Play, Plus, RefreshCw, Square, X } from 'lucide-react';
+import { AlertCircle, ArrowUpRight, Check, ChevronRight, Clock3, Download, Film, Image as ImageIcon, Layers, ListVideo, Loader2, Play, Plus, RefreshCw, Square, X } from 'lucide-react';
 import { nanoid } from 'nanoid';
 import type { IpRun, IpProjectDoc } from '@ai-star-eco/types';
 import type { StudioPlanExecutionStep } from '@ai-star-eco/types/ip-studio-workflow';
-import type { StudioVideoTask } from '@ai-star-eco/types/ip-studio-video-task';
+import type { StudioVideoTask, StudioVideoTaskCreate } from '@ai-star-eco/types/ip-studio-video-task';
 import { videoTask, videoTasks, videoTaskLabel, videoTaskStatus, videoTaskCanvasHref, videoTaskNeedsAction, videoTaskResumeLabel, videoTaskProblemStep, videoTaskProblemText, videoTaskProblemTitle } from '@/canvas-bridge/studio-video-tasks';
 import { cancelRun, readRun, readVideoJob, signKeys } from '@/canvas-bridge/api';
 import { dialogFocus } from '@/ip/dialog-focus';
@@ -21,9 +21,14 @@ import { downloadMedia } from '@/canvas-bridge/download-media';
 import { cancelStudioPlanExecution, executionRestoreUpserts, projectCanvasOps, resumeStudioPlanExecution, stepNodeId, stepRunCandidates } from '@/canvas-bridge/studio-plan-execution';
 import { formatDateTime } from '@/lib/datetime';
 import { AiMark } from '../studio-ai-icon';
+import { groupTakes, sameTakes, takeTag } from './scene-video-takes';
+import { FissionIcon } from './fission-icon';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
 
 export const VIDEO_TASK_SELECTION = 'studio:video:selected-task';
+/** 最近任务怎么排：按批次（同一份草稿一行）或按时间（每条一行）。只是本浏览器的偏好。 */
+export const VIDEO_TASK_GROUPING = 'studio:video:task-grouping';
+type Grouping = 'batch' | 'time';
 /** 进度只写真实的东西：所处阶段和真实数量。阶段名与制作记录里的步骤名保持一致。 */
 export function videoTaskPhases(task: StudioVideoTask) {
   const groups = [
@@ -53,8 +58,10 @@ export function VideoHistoryToggle({ onOpen }: { onOpen: () => void }) {
 }
 
 /** Data loading never submits work. A stale response cannot replace a more recently selected task. */
-export function SceneVideoWorkspace({ enabled, taskId, draftId, sceneId, restoreLastTask, selected, onSelect, onDraft, drafts, draftsError, onRetryDrafts, railOpen, onRail, onNew, children, persist }: {
+export function SceneVideoWorkspace({ enabled, taskId, draftId, sceneId, restoreLastTask, selected, onSelect, onDraft, drafts, draftsError, onRetryDrafts, railOpen, onRail, onNew, children, persist, listRevision = 0 }: {
   enabled: boolean; taskId?: string; draftId?: string; sceneId?: string; restoreLastTask?: boolean; selected?: StudioVideoTask;
+  /** 变了就重读任务列表（视频裂变之后，新任务要马上排进「本批视频」）。 */
+  listRevision?: number;
   onSelect: (task: StudioVideoTask) => void;
   onDraft: (id: string) => void; drafts: { id: string; name: string; updatedAt: string }[]; draftsError?: string; onRetryDrafts?: () => void;
   railOpen: boolean; onRail: (open: boolean) => void; onNew?: () => void;
@@ -98,7 +105,7 @@ export function SceneVideoWorkspace({ enabled, taskId, draftId, sceneId, restore
     return () => { alive = false; if (timer) clearTimeout(timer); };
     // selected is included directly on submission; polling must not restart every time its timestamp changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, page, reload]);
+  }, [enabled, page, reload, listRevision]);
   useEffect(() => {
     if (!taskId || !enabled) return;
     let alive = true, timer: ReturnType<typeof setTimeout> | undefined;
@@ -118,7 +125,14 @@ export function SceneVideoWorkspace({ enabled, taskId, draftId, sceneId, restore
   const shown = selected?.id === taskId ? selected : undefined;
   const openDrafts = drafts.filter(d => !items.some(t => t.projectId === d.id));
   const today = new Date().toDateString();
-  const groups = [{ label: '今天', tasks: items.filter(t => new Date(t.createdAt).toDateString() === today) }, { label: '更早', tasks: items.filter(t => new Date(t.createdAt).toDateString() !== today) }].filter(g => g.tasks.length);
+  // 按批次：同一份草稿（原视频、改了再出的、裂变出的）只占一行，打开后在结果区并排看；按时间：每条一行，新的在前。
+  // 读偏好放在挂载之后，服务端渲染和首帧一致。
+  const [grouping, setGrouping] = useState<Grouping>('batch');
+  useEffect(() => { try { if (localStorage.getItem(VIDEO_TASK_GROUPING) === 'time') setGrouping('time'); } catch { /* 读不到就按批次 */ } }, []);
+  const pickGrouping = (next: Grouping) => { setGrouping(next); try { localStorage.setItem(VIDEO_TASK_GROUPING, next); } catch { /* 只是偏好 */ } };
+  const takeGroups = grouping === 'batch' ? groupTakes(items)
+    : [...items].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(task => ({ latest: task, tasks: [task] }));
+  const groups = [{ label: '今天', takes: takeGroups.filter(g => new Date(g.latest.createdAt).toDateString() === today) }, { label: '更早', takes: takeGroups.filter(g => new Date(g.latest.createdAt).toDateString() !== today) }].filter(g => g.takes.length);
   return <>
     <section className="scene-card video-workspace" aria-label="作品">
       {shown && <header className="video-workspace-head"><h2 title={shown.title}>{shown.title}</h2>
@@ -127,7 +141,7 @@ export function SceneVideoWorkspace({ enabled, taskId, draftId, sceneId, restore
           <VideoHistoryToggle onOpen={() => onRail(true)}/></div></header>}
       {error && <div className="video-connection-note" role="status">{error}<button type="button" onClick={() => setReload(n => n + 1)}>重试</button></div>}
       {taskId && !shown ? <div className="video-task-loading" role="status"><div className="video-loading-frame"/>正在加载任务…</div>
-        : shown ? <VideoTaskView key={shown.id} task={shown} persist={persist} onRefresh={() => setReload(n => n + 1)}/>
+        : shown ? <VideoTaskView key={shown.id} task={shown} takes={sameTakes(items, shown)} onOpen={onSelect} persist={persist} onRefresh={() => setReload(n => n + 1)}/>
         : children}
     </section>
     {railOpen && <button type="button" className="video-history-backdrop" aria-label="关闭最近任务" onClick={() => onRail(false)}/>}
@@ -135,13 +149,23 @@ export function SceneVideoWorkspace({ enabled, taskId, draftId, sceneId, restore
       role={railOpen ? 'dialog' : undefined} aria-modal={railOpen || undefined} tabIndex={railOpen ? -1 : undefined}
       ref={railOpen ? dialogFocus : undefined} onKeyDown={event => { if (event.key === 'Escape' && railOpen) { event.preventDefault(); event.stopPropagation(); onRail(false); } }}>
       <header><h2>最近任务</h2><button type="button" className="video-history-close" aria-label="关闭最近任务" onClick={() => onRail(false)}><X size={16}/></button></header>
+      <div className="video-history-grouping" role="group" aria-label="排列方式">
+        <button type="button" aria-pressed={grouping === 'batch'} onClick={() => pickGrouping('batch')}><Layers size={13} strokeWidth={1.6}/>按批次</button>
+        <button type="button" aria-pressed={grouping === 'time'} onClick={() => pickGrouping('time')}><Clock3 size={13} strokeWidth={1.6}/>按时间</button>
+      </div>
       <div className="video-task-history-scroll">
         {loading && !items.length && <p role="status">正在加载任务…</p>}
         {!loading && !items.length && <p>生成视频后，任务会保存在这里。</p>}
-        {groups.map(group => <div key={group.label} role="group" aria-label={group.label}><h4>{group.label}</h4>{group.tasks.map(task => <button type="button" className="video-history-item" key={task.id} title={task.title} aria-current={taskId === task.id ? 'true' : undefined} onClick={() => choose(task)}>
-          <TaskThumb task={task}/><span><strong>{task.title}</strong><small data-state={videoTaskStatus(task)}>{videoTaskLabel(task)}</small>
-            <time dateTime={task.createdAt}>{formatDateTime(task.createdAt)}</time></span>
-        </button>)}</div>)}
+        {groups.map(group => <div key={group.label} role="group" aria-label={group.label}><h4>{group.label}</h4>{group.takes.map(({ latest, tasks }) => {
+          const current = tasks.find(t => t.id === taskId), busy = tasks.find(t => videoTaskStatus(t) === 'running') ?? latest;
+          const batch = tasks.length > 1, tag = takeTag(latest);
+          return <button type="button" className={`video-history-item${batch ? ' is-batch' : ''}`} key={latest.id} title={latest.title} aria-current={current ? 'true' : undefined} onClick={() => choose(current ?? latest)}>
+            <span className="video-history-thumb-wrap"><TaskThumb task={latest}/>{batch && <i className="video-history-count" aria-label={`本批 ${tasks.length} 条`}>{tasks.length}</i>}</span>
+            <span><strong>{latest.title}</strong><small data-state={videoTaskStatus(busy)}>{videoTaskLabel(busy)}{batch && ` · 共 ${tasks.length} 条`}</small>
+              <span className="video-history-meta">{grouping === 'time' && tag.label && <i className="video-take-tag" title={tag.detail}>{tag.label}</i>}
+                <time dateTime={latest.createdAt}>{formatDateTime(latest.createdAt)}</time></span></span>
+          </button>;
+        })}</div>)}
         {(!!openDrafts.length || !!draftsError) && <h3>草稿</h3>}
         {draftsError && <p role="status">草稿加载失败{onRetryDrafts && <button type="button" className="video-history-retry" onClick={onRetryDrafts}>重试</button>}</p>}
         {openDrafts.map(d => <button type="button" className="video-history-draft" key={d.id} title={d.name} onClick={() => { onRail(false); onDraft(d.id); }}><Film size={15} strokeWidth={1.5}/><span>{d.name}</span><ChevronRight size={13}/></button>)}
@@ -151,7 +175,7 @@ export function SceneVideoWorkspace({ enabled, taskId, draftId, sceneId, restore
   </>;
 }
 
-function TaskThumb({ task }: { task: StudioVideoTask }) {
+function TaskThumb({ task, className = 'video-history-thumb' }: { task: StudioVideoTask; className?: string }) {
   const [cover, setCover] = useState<string>(), job = useRef<string | undefined>(undefined), retried = useRef(false);
   const done = videoTaskStatus(task) === 'done';
   useEffect(() => {
@@ -176,7 +200,7 @@ function TaskThumb({ task }: { task: StudioVideoTask }) {
     catch { setCover(undefined); }
   };
   const image = task.input?.nodes?.find(n => n.type === 'image' && n.metadata?.storageKey);
-  return <span className="video-history-thumb">{cover ? <img src={cover} alt="" onError={() => void refreshCover()}/>
+  return <span className={className}>{cover ? <img src={cover} alt="" onError={() => void refreshCover()}/>
     : image ? <SignedImage storageKey={image.metadata!.storageKey!} alt=""/> : <Film size={18} strokeWidth={1.4}/>}</span>;
 }
 
@@ -198,8 +222,10 @@ function useElapsed(since: string, active: boolean) {
   return seconds >= 3600 ? `${Math.floor(seconds / 3600)}:${pad(Math.floor(seconds / 60) % 60)}:${pad(seconds % 60)}` : `${pad(Math.floor(seconds / 60))}:${pad(seconds % 60)}`;
 }
 
-function VideoTaskView({ task, persist, onRefresh }: {
+function VideoTaskView({ task, takes, onOpen, persist, onRefresh }: {
   task: StudioVideoTask; persist: (mutate: (doc: IpProjectDoc) => IpProjectDoc, projectId?: string) => Promise<unknown>;
+  /** 内容相同的全部任务（含这一条），先提交的在前。 */
+  takes: StudioVideoTask[]; onOpen: (task: StudioVideoTask) => void;
   onRefresh: () => void;
 }) {
   const showFailure = useStudioFailure();
@@ -289,7 +315,7 @@ function VideoTaskView({ task, persist, onRefresh }: {
   const portrait = ratio === '9:16';
   // 状态、进度条和操作在上面，做出来的图在下面（2026-11-07 用户要求）；进度条下面那一行只写已消耗的积分，不折行。
   const actionNote = running ? '可离开此页面，制作将在后台继续。' : spent ? `已消耗 ${spent} 积分` : '';
-  return <div className={`video-task-view is-${status}`}>
+  return <div className={`video-task-view is-${status}${takes.length > 1 ? ' has-takes' : ''}`}>
     {completed ? <div className="video-final-player"><SignedVideo src={urls[result]} storageKey={result} controls playsInline preload="metadata" aria-label={task.title}/></div>
       : <div className="video-production-head">
         <div className="video-state-heading"><span className={`video-state-symbol${running ? ' is-active' : failed || needsAction ? ' is-problem' : ''}`} aria-hidden="true">{failed || needsAction ? <AlertCircle size={24} strokeWidth={1.35}/> : running ? <AiMark size={22}/> : <Layers size={24} strokeWidth={1.35}/>}</span>
@@ -326,6 +352,7 @@ function VideoTaskView({ task, persist, onRefresh }: {
     <div className="video-production-bottom">
       {completed && <div className="video-final-actions"><div><h2>视频已完成</h2>{spent !== undefined && <p>本次消耗 {spent} 积分</p>}</div>
         <button type="button" className="is-primary" onClick={download}><Download size={14} strokeWidth={1.6}/>下载视频</button></div>}
+      {takes.length > 1 && <VideoTakes takes={takes} current={task.id} onOpen={onOpen}/>}
       {previewError && <p className="video-connection-note" role="status">部分预览加载失败<button type="button" onClick={() => { setPreviewError(false); onRefresh(); setPoll(n => n + 1); }}>重试</button></p>}
       <div className="video-process-row">
         {!!execution?.steps.length && <button type="button" className="video-process-toggle" aria-expanded={details} onClick={() => setDetails(v => !v)}>{details ? '收起生成记录' : '查看生成记录'}</button>}
@@ -336,24 +363,55 @@ function VideoTaskView({ task, persist, onRefresh }: {
   </div>;
 }
 
-export function VideoTaskSettings({ task, onNew, onReuse }: { task: StudioVideoTask; onNew: () => void; onReuse: () => void }) {
+/** 结果区下方：内容相同的几条并排，点哪条看哪条。只读任务列表，不发起任何生成。 */
+function VideoTakes({ takes, current, onOpen }: { takes: StudioVideoTask[]; current: string; onOpen: (task: StudioVideoTask) => void }) {
+  return <section className="video-takes" aria-label="本批视频">
+    <h3>本批视频<span>{takes.length} 条</span></h3>
+    <div className="video-takes-list">{takes.map((take, i) => { const tag = takeTag(take);
+      return <button type="button" key={take.id} aria-current={take.id === current ? 'true' : undefined}
+        title={[`第 ${i + 1} 条 · ${formatDateTime(take.createdAt)}`, tag.detail].filter(Boolean).join('\n')} onClick={() => { if (take.id !== current) onOpen(take); }}>
+        <TaskThumb task={take} className="video-take-thumb"/>
+        <span>第 {i + 1} 条{tag.label && <i className="video-take-tag">{tag.label}</i>}</span><small data-state={videoTaskStatus(take)}>{videoTaskLabel(take)}</small>
+      </button>; })}</div>
+  </section>;
+}
+
+/**
+ * 左侧「本次设置」：按提交时的快照显示，顶上是当时选的场景（和编辑时同一个位置，2026-11-09 用户要求对齐参考站）。
+ * 底部只有一个「视频裂变」（原样、换变量、AI 改写、自己改都在里面），都只新建任务，已有视频都保留。
+ */
+export function VideoTaskSettings({ task, head, modelName, onMore, busy, pending = [], onConfirm }: {
+  task: StudioVideoTask; head: ReactNode; modelName?: string;
+  /** 打开「视频裂变」（原样、换变量、AI 改写、自己改）。没有提交快照的旧任务不给。 */
+  onMore?: () => void; busy?: boolean;
+  /** 这份草稿里提交结果还没确认的请求：同一个请求编号再交一次会拿回原来那次。 */
+  pending?: StudioVideoTaskCreate[]; onConfirm?: (request: StudioVideoTaskCreate) => void;
+}) {
   const state = task.input?.sceneVideoState, nodes = task.input?.nodes ?? [];
   const reference = nodes.find(n => n.type === 'video');
   const ratio = state?.ratio ?? task.request?.configuration?.ratio;
   const duration = state?.duration ?? task.request?.configuration?.duration;
   const tier = state?.tier ?? task.request?.configuration?.tier;
-  const rows: [string, string][] = [...(ratio ? [['画面', ratio] as [string, string]] : []), ...(duration ? [['时长', `${duration} 秒`] as [string, string]] : []), ...(tier ? [['清晰度', tier.toUpperCase()] as [string, string]] : [])];
-  // 所有任务状态共用设置面板底部的入口，不随进度或结果移动。
-  const canReuse = !!state;
+  const rows: [string, string][] = [...(modelName ? [['模型', modelName] as [string, string]] : []), ...(ratio ? [['画面', ratio] as [string, string]] : []),
+    ...(duration ? [['时长', `${duration} 秒`] as [string, string]] : []), ...(tier ? [['清晰度', tier.toUpperCase()] as [string, string]] : [])];
+  const tag = takeTag(task);
+  // 视频裂变要么按提交记录再交，要么放回设置自己改：两样都没有的旧任务不给。
+  const canMore = !!onMore && (!!task.request?.configuration || !!task.input);
   return <section className="scene-card video-task-settings" aria-label="本次设置">
-    <header><div><h2>本次设置</h2><p>按提交时的内容显示</p></div><button type="button" className="scene-new" onClick={onNew}><Plus size={13} strokeWidth={1.6}/>新建</button></header>
+    {head}
     <div className="video-task-settings-body">
+      <p className="video-task-settings-caption">提交时的设置{tag.label && <span className="video-take-tag" title={tag.detail}>{tag.label}</span>}</p>
       {reference?.metadata?.storageKey && <div className="video-input-reference"><h3>参考视频</h3><SignedVideo storageKey={reference.metadata.storageKey} controls preload="metadata" playsInline aria-label="本次参考视频"/></div>}
       {nodes.some(n => n.type === 'image') && <div><h3>素材</h3><div className="video-input-images">{nodes.filter(n => n.type === 'image').map(n => <figure key={n.id}><SignedImage storageKey={n.metadata?.storageKey} alt={n.title}/><figcaption>{n.title}</figcaption></figure>)}</div></div>}
       {nodes.filter(n => n.type === 'audio').map(n => <div key={n.id}><h3>{n.title || '声音'}</h3><SignedAudio storageKey={n.metadata?.storageKey} controls preload="none" aria-label={n.title || '本次声音'}/></div>)}
       {state && <div className="video-input-brief"><h3>{state.edit ? '脚本' : '补充要求'}</h3><p>{state.edit?.prompt ?? state.text ?? '使用所选素材生成'}</p></div>}
-      {!!rows.length && <dl>{rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>}
+      {!!rows.length && <dl>{rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd title={value}>{value}</dd></div>)}</dl>}
     </div>
-    {canReuse && <footer><button type="button" onClick={onReuse} title="将此次的设置恢复到编辑器，原任务保留"><PencilLine size={13} strokeWidth={1.6}/>重新编辑</button></footer>}
+    {(canMore || pending.length > 0) && <footer>
+      {pending.map(request => <p key={request.clientRequestId} className="video-take-pending" role="status">提交结果待确认。
+        <button type="button" disabled={busy} onClick={() => onConfirm?.(request)}>确认原任务</button></p>)}
+      {canMore && <button type="button" className="scene-go is-compact video-more-open" disabled={busy} onClick={onMore}><FissionIcon size={17}/><span>视频裂变</span></button>}
+      {canMore && <p className="video-task-settings-note">新视频和这条在同一批，已生成的视频保留。</p>}
+    </footer>}
   </section>;
 }

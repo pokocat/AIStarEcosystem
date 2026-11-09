@@ -5414,7 +5414,7 @@ components:
       type: object
       required: [kind, sceneId]
       properties:
-        kind: { type: string, enum: [image, video, video-script], description: 'image 出图描述；video 交给创作助手的话；video-script 交给编导写脚本的要求（AI 视频页）' }
+        kind: { type: string, enum: [image, video, video-script, video-variables], description: 'image 出图描述；video 交给创作助手的话；video-script 交给编导写脚本的要求（AI 视频页）；video-variables「视频裂变」从当前脚本里找可以替换的说法（只作为文字任务的 scene 提交，只读脚本、不看图）' }
         sceneId: { type: string }
         text: { type: string, description: 'image：补充要求；video / video-script：用户写的那句' }
         custom: { type: string, description: 'image：用户改过的完整描述' }
@@ -5433,6 +5433,23 @@ components:
         characterSeen: { type: boolean, description: 'video-script：出镜人物这张视频模型也用不上' }
         visual: { type: boolean, description: 'video-script：写脚本的模型能否看到图；false 时要求里不说「已附图片」「先看图」。缺省按能看到' }
         settingsChanged: { type: string, description: 'video-script 改稿：设置变了什么（时长、画面、参考图），由服务端的编导模板说成一句话' }
+        variant:
+          type: object
+          description: 'video-script 改稿：「视频裂变」AI 改写的第 index 版（共 total 版，1–8）；changes 是这一版要换的变量，空则由编导自己换。当前脚本（textEdit.content）必须有'
+          required: [index, total]
+          properties:
+            index: { type: integer, minimum: 1 }
+            total: { type: integer, minimum: 1, maximum: 8 }
+            changes:
+              type: array
+              maxItems: 8
+              items:
+                type: object
+                required: [name, from, to]
+                properties:
+                  name: { type: string, maxLength: 80 }
+                  from: { type: string, maxLength: 80, description: '脚本里的原文' }
+                  to: { type: string, maxLength: 80 }
     StudioSceneComposed:
       type: object
       required: [text]

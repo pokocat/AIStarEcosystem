@@ -180,6 +180,20 @@ export function addScriptNode(doc: IpProjectDoc, input: {
   return { doc: { ...doc, nodes: [...nodes, node], connections }, request, nodeId: node.id };
 }
 
+/**
+ * 「视频裂变」的一次文字任务（找变量，或 AI 改写的一版）：草稿上一个普通文字节点，请求先写进节点再提交（同出图、写脚本的恢复规则）。
+ * 带 sceneTake 不带 sceneDirector，不算编导的版本，编导那一页看不到它。
+ */
+export function addTakeNode(doc: IpProjectDoc, input: { request: StudioRunRequest; title: string;
+  take: NonNullable<StudioNodeMetadata["sceneTake"]> }): { doc: IpProjectDoc; nodeId: string } {
+  const nodes = doc.nodes as CanvasNodeData[];
+  const target = makeStudioNode("text");
+  const node: CanvasNodeData = { ...target, id: input.request.nodeId ?? target.id, title: input.title, position: { x: 1700, y: rowBottom(nodes) }, width: 420, height: 320,
+    // 正文先放交出去的脚本：改稿结果只在正文没被改过时写回（applyStudioRunToDocument），和编导改稿同一套。
+    metadata: { ...target.metadata, content: input.request.textEdit?.content ?? "", status: "loading", studio: { ...target.metadata!.studio!, request: input.request, sceneTake: input.take } } };
+  return { doc: { ...doc, nodes: [...nodes, node] }, nodeId: node.id };
+}
+
 /** 编导写过的每一版，按先后。 */
 export function scriptNodes(doc: IpProjectDoc): CanvasNodeData[] {
   return (doc.nodes as CanvasNodeData[]).filter(n => n.type === CanvasNodeType.Text && n.metadata?.studio?.sceneDirector)

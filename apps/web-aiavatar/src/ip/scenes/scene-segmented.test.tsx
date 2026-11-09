@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // AI 视频页的长视频（docs/studio-segmented-video.md）：拖到单段上限以上，点一次「生成视频」就做到成片，不交给创作助手。
 // 服务端用一份内存草稿库；价格、提交和执行记录是假的，断言页面做的事：先记请求再提交、结果不明时能查原任务、进度和成片。
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -97,13 +97,13 @@ async function open() {
 const go = () => screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement;
 const records = () => store.get("IPP-V")!.doc.sceneVideoSubmissions ?? [];
 
-test.each([false, true])('failed Fast task: re-edit retains the prompt and switching models keeps it (adopted script: %s)', async adopted => {
+// 2026-11-09：「重新编辑」并进「视频裂变」的「自己改」，放回同一份草稿（新视频和原来的在同一批），不再复制成新草稿。
+test.each([false, true])('failed Fast task: 自己改 retains the prompt in the same draft and switching models keeps it (adopted script: %s)', async adopted => {
   const prompt = '第1镜（0–5秒）：产品特写。旁白说：「这是我写好的脚本。」';
   const state = { text: adopted ? '' : prompt, options: {}, duration: 15, ratio: '9:16', tier: '768p',
     ...(adopted ? { edit: { scriptId: 'script-from-original-draft', prompt } } : {}) };
   longDraft();
   api.videoModels.mockResolvedValue([{ ...H3, endpointId: 'ep-fast', name: 'Seedance Fast' }, { ...H3, isDefault: false }]);
-  api.createProject.mockImplementation(async (body: any) => put({ id: 'IPP-REEDIT', ...body }));
   const input = { nodes: [productNode], sceneInputs: { images: ['product.jpg'], character: null, voice: null, video: null },
     sceneVideoModel: 'ep-fast', sceneVideoState: state };
   acceptedTasks.set('PEX-fast-failed', { id: 'PEX-fast-failed', projectId: 'IPP-V', sceneId: 'ecom-talking', title: 'Fast 失败的原任务', kind: 'direct',
@@ -111,18 +111,22 @@ test.each([false, true])('failed Fast task: re-edit retains the prompt and switc
   api.getExecution.mockResolvedValue(execution('needs_user', [step('video', 'video', 'failed')], { id: 'PEX-fast-failed' }));
   window.history.replaceState(null, '', '/video?scene=ecom-talking&draft=IPP-V&task=PEX-fast-failed');
   await act(async () => { render(<SceneVideoStudio/>); });
-  fireEvent.click(await screen.findByRole('button', { name: '重新编辑' }));
+  fireEvent.click(await screen.findByRole('button', { name: '视频裂变' }));
+  fireEvent.click(within(screen.getByRole('dialog', { name: '视频裂变' })).getByRole('radio', { name: /自己改/ }));
+  await act(async () => { fireEvent.click(within(screen.getByRole('dialog', { name: '视频裂变' })).getByRole('button', { name: '去修改' })); });
   await waitFor(() => expect(screen.getByRole('textbox', { name: /想做的视频|视频脚本/ }).textContent).toBe(prompt));
+  expect(screen.queryByRole('dialog', { name: '视频裂变' })).toBeNull();
   expect(document.querySelector('.scene-video-studio')?.getAttribute('data-video-view')).toBe('compose');
   if (adopted) expect(screen.getByRole('textbox', { name: '视频脚本' })).toBeTruthy();
   expect(screen.getByRole('combobox', { name: '视频模型' })).toHaveProperty('value', 'ep-fast');
   fireEvent.change(screen.getByRole('combobox', { name: '视频模型' }), { target: { value: 'ep-h3' } });
   expect(screen.getByRole('textbox', { name: /想做的视频|视频脚本/ }).textContent).toBe(prompt);
-  await waitFor(() => expect(store.get('IPP-REEDIT')!.doc.sceneVideoModel).toBe('ep-h3'));
+  await waitFor(() => expect(store.get('IPP-V')!.doc.sceneVideoModel).toBe('ep-h3'));
+  expect(api.createProject).not.toHaveBeenCalled();
   expect(api.start).not.toHaveBeenCalled();
   expect(api.submit).not.toHaveBeenCalled();
   cleanup();
-  window.history.replaceState(null, '', '/video?scene=ecom-talking&draft=IPP-REEDIT');
+  window.history.replaceState(null, '', '/video?scene=ecom-talking&draft=IPP-V');
   await act(async () => { render(<SceneVideoStudio/>); });
   await waitFor(() => expect(screen.getByRole('textbox', { name: /想做的视频|视频脚本/ }).textContent).toBe(prompt));
   expect(screen.getByRole('combobox', { name: '视频模型' })).toHaveProperty('value', 'ep-h3');
@@ -329,4 +333,83 @@ test("a stopped director is shown as stopped, and its returned status is applied
   await screen.findByText("创作已停止");
   expect(document.querySelector(".scene-script-card.is-stopped")).toBeTruthy();
   expect(document.querySelector(".scene-script-state.is-failed")).toBeNull();
+});
+
+// 2026-11-09 用户：打开历史任务要看得出当时选的场景和模型；同一份脚本想再出几条，不用重新编辑。
+const openOrig = async (text = '原来的要求', hasScript = false) => {
+  longDraft();
+  const input = { nodes: [productNode], sceneInputs: { images: ['product.jpg'], character: null, voice: null, video: null }, sceneVideoModel: 'ep-h3',
+    sceneVideoState: { text: hasScript ? '' : text, duration: 40, ratio: '9:16', tier: '768p', options: {}, ...(hasScript ? { edit: { scriptId: 'script-1', prompt: text } } : {}) } };
+  const configuration = { clientRequestId: 'orig', sceneId: 'ecom-talking', text, hasScript, duration: 40, ratio: '9:16', model: 'ep-h3', tier: '768p', optimize: false,
+    materials: [{ nodeId: 'product', title: '商品图 1', slot: 'image' }], budgetCap: 1, billing: { mode: 'personal' } };
+  acceptedTasks.set('PEX-orig', { id: 'PEX-orig', projectId: 'IPP-V', sceneId: 'ecom-talking', title: '口播带货 · 原来的要求', kind: 'segmented', createdAt: '2026-11-06', input,
+    request: { clientRequestId: 'orig', kind: 'segmented', sceneId: 'ecom-talking', title: '口播带货 · 原来的要求', configuration, budgetCap: 1, billing: { mode: 'personal' }, input } });
+  api.getExecution.mockResolvedValue(execution('done', [step('film', 'assemble', 'done')], { id: 'PEX-orig' }));
+  window.history.replaceState(null, '', '/video?scene=ecom-talking&draft=IPP-V&task=PEX-orig');
+  await act(async () => { render(<SceneVideoStudio/>); });
+  return screen.findByRole('region', { name: '本次设置' });
+};
+const more = () => screen.getByRole('dialog', { name: '视频裂变' });
+test('an opened task shows its scene and model, and 视频裂变 submits the same request as new tasks', async () => {
+  const settings = await openOrig();
+  expect(within(settings).getByRole('button', { name: '切换场景，当前：口播带货' })).toBeTruthy();
+  await waitFor(() => expect(within(settings).getByText('模型').nextElementSibling?.textContent).toBe('H3'));
+  fireEvent.click(within(settings).getByRole('button', { name: '视频裂变' }));
+  fireEvent.click(within(more()).getByRole('button', { name: '2 条' }));
+  await act(async () => { fireEvent.click(within(more()).getByRole('button', { name: /生成 2 条/ })); });
+  await waitFor(() => expect(api.start).toHaveBeenCalledTimes(2));
+  const sent = api.start.mock.calls.map(call => call[1]);
+  expect(new Set(sent.map(c => c.clientRequestId)).size).toBe(2);
+  for (const c of sent) expect(c).toMatchObject({ text: '原来的要求', model: 'ep-h3', duration: 40, budgetCap: PRICE.estimated * 3 });
+  expect(sent.some(c => c.clientRequestId === 'orig')).toBe(false);
+  await waitFor(() => expect(store.get('IPP-V')!.doc.sceneVideoSubmissions ?? []).toEqual([]));
+  expect(store.get('IPP-V')!.doc.sceneVideoTasks).toContain('PEX-1');
+  // 新任务记下从哪条来、怎么来的（结果区按它标出「AI 改写」「换变量」）。
+  expect(acceptedTasks.get('PEX-1').input.take).toEqual({ of: 'PEX-orig', mode: 'same' });
+  // 都交上去了，弹窗关掉；原任务还在这页上，没有被换成编辑器。
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: '视频裂变' })).toBeNull());
+  expect(screen.getByRole('region', { name: '本次设置' })).toBeTruthy();
+  expect(window.location.search).toContain('task=PEX-orig');
+});
+
+test('视频裂变 · AI 改写: each version is a director rewrite of the submitted script, kept apart from the director versions', async () => {
+  const script = '一、剧情概述：宝妈在厨房里试用。';
+  const sentRuns = new Map<string, any>();
+  api.submit.mockImplementation(async (_id: string, request: any) => { sentRuns.set(`run-${request.nodeId}`, request); return { id: `run-${request.nodeId}`, status: 'running', inputs: request, output: {} }; });
+  api.readRun.mockImplementation(async (id: string) => ({ id, status: 'done', inputs: sentRuns.get(id),
+    output: { text: `改写稿 ${id.slice(-4)}`, textRevision: { summary: '换了场景', content: `改写稿 ${id.slice(-4)}` } } }));
+  const settings = await openOrig(script, true);
+  fireEvent.click(within(settings).getByRole('button', { name: '视频裂变' }));
+  fireEvent.click(within(more()).getByRole('radio', { name: /AI 改写/ }));
+  await act(async () => { fireEvent.click(within(more()).getByRole('button', { name: /写 2 版脚本/ })); });
+  await waitFor(() => expect(api.submit).toHaveBeenCalledTimes(2));
+  const requests = api.submit.mock.calls.map(call => call[1]);
+  requests.forEach((r, i) => expect(r).toMatchObject({ operation: 'text', textEdit: { content: script }, model: 'text', maxCost: 21,
+    scene: { kind: 'video-script', sceneId: 'ecom-talking', duration: 40, ratio: '9:16', visual: false, variant: { index: i + 1, total: 2, changes: [] } } }));
+  expect(requests[0].readVisuals).toBeUndefined();
+  const doc = () => store.get('IPP-V')!.doc;
+  const takeRows = () => (doc().nodes as any[]).filter(n => n.metadata?.studio?.sceneTake?.kind === 'rewrite');
+  expect(takeRows()).toHaveLength(2);
+  expect(takeRows().every(n => !n.metadata.studio.sceneDirector)).toBe(true);
+  // 写好之后能看，再点生成；交出去的是改写稿。
+  await waitFor(() => expect(within(more()).getByRole('button', { name: /生成 2 条/ })).toBeTruthy(), { timeout: 4000 });
+  await act(async () => { fireEvent.click(within(more()).getByRole('button', { name: /生成 2 条/ })); });
+  await waitFor(() => expect(api.start).toHaveBeenCalledTimes(2));
+  const texts = api.start.mock.calls.map(call => call[1].text);
+  expect(texts.every(t => t.startsWith('改写稿'))).toBe(true);
+  expect(acceptedTasks.get('PEX-1').input.take).toMatchObject({ of: 'PEX-orig', mode: 'rewrite' });
+});
+
+test('视频裂变 · 找变量 asks only for the script and does not attach pictures', async () => {
+  api.submit.mockResolvedValue({ id: 'run-vars', status: 'running', output: {} });
+  api.readRun.mockResolvedValue({ id: 'run-vars', status: 'running', output: {} });
+  const settings = await openOrig('宝妈在厨房里试用', true);
+  fireEvent.click(within(settings).getByRole('button', { name: '视频裂变' }));
+  fireEvent.click(within(more()).getByRole('radio', { name: /换变量/ }));
+  await act(async () => { fireEvent.click(within(more()).getByRole('button', { name: '找变量' })); });
+  await waitFor(() => expect(api.submit).toHaveBeenCalledOnce());
+  expect(api.submit.mock.calls[0][1]).toMatchObject({ operation: 'text', textEdit: { content: '宝妈在厨房里试用' },
+    scene: { kind: 'video-variables', sceneId: 'ecom-talking', duration: 40, ratio: '9:16' } });
+  expect(api.submit.mock.calls[0][1].contextNodeIds).toBeUndefined();
+  expect(more().textContent).toContain('正在从脚本里找');
 });

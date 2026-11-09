@@ -1745,6 +1745,7 @@ Studio 可展示的正文直接交付；不能安全整理为方案、素材引�
    - 编导每写一版 = 草稿画布上一个文字节点 + 一个普通文字任务（`operation=text`，`textEdit.content` 是上一版正文，第一版为空；`contextNodeIds` 是素材图节点，文字模型声明能看图时带 `readVisuals`）。请求先写进节点再提交，`maxCost` 是文字模型的按量上限，按实际用量结算。文字任务可以带 `readVisuals`，模型不能看图 400 `STUDIO_VISION_UNAVAILABLE`。
    - 「用这个脚本生成」后，用户在生成模式可再改脚本、选模型 / 清晰度 / 时长 / 画面；素材怎么交给模型只在 `scene-video-plan.ts` 判：能全能参考就按编号顺序交图和声音（超出上限的写明用不上），只认首帧的用第一张图，都不行就只按脚本出并说明。会改写描述的模型（H3）带 `rewrite: auto`。提交前照常走价格确认弹窗；视频节点连着脚本和素材。
    - 爆款复刻（要先拉片）和比所选模型更长的片子交给画布里的创作助手（开始节点带 `studioSkill`，打开画布自动发出），本页不扣积分。
+   - **视频裂变（2026-11-09，本地未发布）**：从一条已提交的任务再出 1–4 条，每条是独立任务、新请求编号、单独计费，原任务和已有视频不动；新任务进同一份草稿，`input.take={of,mode,changes?}` 记从哪条来、怎么来的。原样 = 原请求再交。换变量 = 先交一个找变量的文字任务（`scene.kind=video-variables`，只读 `textEdit.content`，不得带 `readVisuals` 或 `variant`，否则 400 `STUDIO_INPUT_INVALID`；环节 `stage-scene-variables`，正文每行「名称｜原文｜替换1｜替换2｜替换3」；按实际用量结算，结果不进资产库），页面只采用原文确实出现在脚本里的那几行，按每条抽到的组合替换原文后提交，不调 AI 改脚本。AI 改写 = 每条一个编导改稿任务，`scene.variant={index,total(1–8),changes(≤8，每项不超过 80 字)}`，当前脚本必须有，版本号或变量不完整 400 `STUDIO_SCENE_INPUT_INVALID`；卖点、价格数字、素材职责、时长和镜头数不变；写好由用户确认后才提交视频。爆款复刻只能原样再来；没有编导脚本（`configuration.hasScript=false`）的不给 AI 改写。
 4. **场景页的生成仍走原链路**：图片和视频都先把带 `clientRequestId` 的请求写进草稿画布再提交 `studio-runs`，受理后只读运行记录；失败原地用新编号重交，提交结果不确定时「确认原任务」。计费、报价确认、退款规则都不变。
 5. **草稿按 `sceneId` 认**：场景页建的画布在 `ip_project.scene_id`（V72）记来源场景，「最近」按它列，改名不影响；`sceneId` 必须在场景目录里（含下架的），否则 400 `STUDIO_SCENE_INPUT_INVALID`。
 6. **视频子任务结束立即推进制作计划**：Studio 分区的视频任务到终态时发 `MaterialVideoJobEnded`，提交后叫醒该用户仍在跟踪的计划；叫不醒只是退回 60 秒巡检，不影响结算。

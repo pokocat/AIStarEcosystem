@@ -1,3 +1,4 @@
+import type { StudioTakeChange } from "./ip-studio-scenes";
 import type { EnterpriseBillingSelection } from "./enterprise";
 import type { VideoStudioMode, VideoStudioReferenceInput } from "./video-studio";
 /** Unified Studio operations. IpRun remains the single execution record. */
@@ -322,6 +323,11 @@ export interface StudioNodeMetadata {
     options?: Record<string, string>;
     /** 写这一版时按哪个视频模型、交给它哪几张图（文件 key，按图1、图2 的顺序）写的：出片时换了就提示让编导按新的改一版。 */
     videoModel?: string; refs?: string[] };
+  /**
+   * AI 视频页「视频裂变」给某条任务（of = 任务编号）找的变量（kind=variables，正文是变量清单）或 AI 改写的一版脚本（kind=rewrite，正文是脚本）。
+   * 和编导的版本分开放，不出现在编导那一页；batch 是同一次操作的编号，每次重新写换一个。
+   */
+  sceneTake?: { of: string; kind: "variables" | "rewrite"; batch: string; at: string; index?: number; total?: number; changes?: StudioTakeChange[] };
   /** AI 图片页这一次出图用的条件（场景、补充要求、改过的描述、选项、模型和规格；参考图看请求里的 references）。「用这次的设置再做」按它放回，不把拼好的整段话当描述。 */
   sceneImage?: { sceneId: string; supplement: string; custom?: string; options: Record<string, string>; model?: string; ratio: string; size?: string; count: number; refCounts?: number[] };
   recreation?: { mode?:"segments"; document?:boolean; materializedSegmentNos?:number[]; materializedAudioSourceKey?:string; resumeRunId?:string; study?:StudioFilmStudy; materializedRunId?:string; sourceNodeId: string; sourceStorageKey: string; sourceTitle: string; report?: StudioRecreationReport };

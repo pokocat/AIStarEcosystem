@@ -32,6 +32,8 @@ import java.util.*;
 /** Studio is an orchestration surface; IpRun and existing assets remain authoritative. */
 @Service
 public class StudioWorkflowService {
+    /** 「视频裂变」找变量用的场景输入种类（见 StudioSceneCatalog#sceneVariables）。 */
+    static final String SCENE_VARIABLES="video-variables";
     private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(StudioWorkflowService.class);
     @org.springframework.beans.factory.annotation.Autowired
     private com.aistareco.aep.enterprise.service.EnterpriseBillingService enterpriseBilling;
@@ -156,6 +158,9 @@ public class StudioWorkflowService {
         boolean sceneScript=request.scene()!=null;
         if(sceneScript&&(!"text".equals(request.operation())||request.textEdit()==null||request.skillKey()!=null||executionBinding!=null||sceneCatalog==null))
             throw bad("STUDIO_INPUT_INVALID","场景脚本只能用于普通文本节点的改稿");
+        // 找变量只读脚本：不看图，也不能带改写版本。
+        if(sceneScript&&SCENE_VARIABLES.equals(request.scene().kind())&&(Boolean.TRUE.equals(request.readVisuals())||request.scene().variant()!=null))
+            throw bad("STUDIO_INPUT_INVALID","找变量只读脚本");
         if (!"assemble".equals(request.operation()) && !check && !sceneScript
                 && !("video".equals(request.operation()) && request.video() != null) && !configuredImage)
             requireText(request.prompt(), 16000, "创作内容");
@@ -363,12 +368,16 @@ public class StudioWorkflowService {
             }
             if(sceneScript) {
                 // 编导：system / user 都按提示词库的环节拼，原来的通用助手模板和改稿句不用；受理时冻结版本（§3.4）。
-                var frozen=sceneCatalog.freezeSceneScript(request.scene().sceneId());
-                var assembled=sceneCatalog.sceneScript(request.scene(),request.textEdit().content(),Boolean.TRUE.equals(request.readVisuals()),frozen);
+                // 「视频裂变」的找变量也走这里，只是换成自己的环节；结果是给页面用的变量清单，不收进资产库（sceneVariables）。
+                boolean findVariables=SCENE_VARIABLES.equals(request.scene().kind());
+                var frozen=findVariables?sceneCatalog.freezeSceneVariables(request.scene().sceneId()):sceneCatalog.freezeSceneScript(request.scene().sceneId());
+                var assembled=findVariables?sceneCatalog.sceneVariables(request.scene(),request.textEdit().content(),frozen)
+                        :sceneCatalog.sceneScript(request.scene(),request.textEdit().content(),Boolean.TRUE.equals(request.readVisuals()),frozen);
                 systemPrompt=assembled.system();creativePrompt=assembled.user();
                 execution.put("systemPrompt",systemPrompt);
+                if(findVariables)execution.put("sceneVariables",true);
                 ObjectNode promptRecord=execution.putObject("prompt");
-                promptRecord.put("key","stage-scene-script");
+                promptRecord.put("key",findVariables?"stage-scene-variables":"stage-scene-script");
                 promptRecord.set("versions",com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.frozenNode(mapper,frozen));
                 com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.appendCall(promptRecord,assembled.call(mapper,1,null));
                 sceneParams=assembled.params();
