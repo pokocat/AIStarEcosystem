@@ -238,7 +238,7 @@
 
 ### 2026-10-25 · 图片系列与分辨率路由（代码已生产发布）
 
-- [ ] **补齐三个系列的正式配置和真实出图验收**（2026-10-25 进展：GPT Image 2 与 GPT Image 2.5〔flare〕的 1K/2K/4K 已配置上线，售价 30/30/40、35/35/45 旧积分，见 `docs/releases/studio-image-tiers-config-20261025.md`；仍缺 sunburst 报价与配置、4K 方图等其他画幅、各档真实出图尺寸验收，界面名「GPT Image 2 / 2.5」在 main `384fb9bb` 待发版）：代码已支持 GPT Image 2 / Flare / Sunburst 按 1K、2K、4K 路由与冻结报价；生产目前只有 GPT Image 2 的 1K/2K、30 积分/张。需核实并配置其余供应商型号、合法输出规格、场景开放及运营确认售价，再逐系列/档位核对前端选择、报价、供应商原图尺寸和唯一积分结算；禁止把代码发布当作真实出图已验收。证据见 `docs/releases/studio-image-resolution-release-20261025.md`。
+- [ ] **补齐三个系列的正式配置和真实出图验收**（2026-11-09 核实：GPT Image 2 / GPT Image 2.5〔flare〕的 1K/2K/4K 四个接入点已切换 SuperAIToken，保留原售价；四档已真实返回并下载 URL 图片，2K 为 1152×2048、4K 为 2160×3840。生产旧 JSON 参考图请求被 `unexpected_image_input` 拒绝后统一校正为原生 edits。仍缺 Sunburst 运营报价与配置、4K 方图等其他画幅验收）：继续逐系列核对规格、前端选择与唯一积分结算，不能把代码发布当作所有画幅已实测。现行证据见 `docs/releases/superaitoken-gpt-image-url-production-20261109.md`。
 
 - [ ] **全部内置图片/视频生成流程顺畅与内容质量**（2026-10-30 审查；2026-10-31 六批已生产发布，见 `docs/releases/studio-scene-flow-release-20261031.md`，剩下成片付费验收与线上配方模板走查）：用户明确同城仅为举例，范围为全部 17 图片/21 视频场景及内置模板接续。**实施顺序与 PR 切分以 [独立复核与整体方案](docs/audits/studio-built-in-creation-flow-plan-2026-10-30.md) 为准**；证据见 [全量流程审查](docs/audits/studio-built-in-creation-flow-review-2026-10-30.md) 与 [提示词证据](docs/audits/studio-scene-prompt-review-2026-10-30.md)。
   - [x] ~~PR-1 创作条件存进草稿~~ **2026-10-31 已生产发布 `20261031-studio-scene-flow`**：`doc.sceneImageState` / `sceneVideoState` + 出图条件快照 + 编导选项 + 成功视频再做 + 换场景同名带素材 + 比例 / 张数 / 时长不悄悄换；`scene-draft-state.test.tsx` 11 条（10 条在旧代码上红）。见 `docs/studio-scene-creation.md` §15。

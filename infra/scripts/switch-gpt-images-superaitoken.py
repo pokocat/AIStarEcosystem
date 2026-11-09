@@ -35,7 +35,7 @@ PRESERVE_LIMITS = (
 
 
 def endpoint_patch(endpoint):
-    """Keep endpoint identity, model family, pricing, input protocol and limits."""
+    """Keep endpoint identity, model family, pricing and limits; use native edits for references."""
     model = endpoint["model"]
     if model not in MODELS:
         raise ValueError("Unmapped GPT Image model: " + model)
@@ -45,7 +45,11 @@ def endpoint_patch(endpoint):
     wire = spec["wire"]
     wire.update(resultMode="sync-url", outputPointer="/data/0/url")
     wire.pop("outputHosts", None)  # Result URLs are downloaded without a host allowlist.
-    wire["submitTemplate"]["model"] = "${model}"
+    # Generations rejects image inputs with unexpected_image_input. With references
+    # the client sends ordered files to edits; without references it sends JSON to generations.
+    wire.update(inputMode="multipart", submitPath="/images/generations",
+                referenceSubmitPath="/images/edits", modelQueryParam="",
+                submitTemplate={"model": "${model}", "prompt": "${prompt}"})
     # This exact portrait size was generated and downloaded on 2026-11-09.
     # Restoring it lets the director keep GPT Image 2 at its existing 2K price.
     if model == "gpt-image-2-1k-pic" and not any(

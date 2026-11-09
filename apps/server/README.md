@@ -2,7 +2,7 @@
 
 ### 2026-11-09 · GPT Image URL 结果下载
 
-`JusuanImageClient` 对供应商图片结果直接下载返回的 HTTP / HTTPS URL，支持跨域、非标准端口和最多 10 次重定向；不再应用旧 `wire.outputHosts` 或网络地址过滤。每跳都不发送供应商 Key，下载超时、大小和媒体有效性检查保留。参考图输入与端点地址校验不变。既有 `sync-url` / `/data/0/url` 配置可完成 SuperAIToken 的 GPT Image 2 / 2.5 接入，完整型号从端点 `model` 取，Flare 的多参考图继续走 multipart `/images/edits`。
+`JusuanImageClient` 对供应商图片结果直接下载返回的 HTTP / HTTPS URL，支持跨域、非标准端口和最多 10 次重定向；不再应用旧 `wire.outputHosts` 或网络地址过滤。每跳都不发送供应商 Key，下载超时、大小和媒体有效性检查保留。参考图输入与端点地址校验不变。既有 `sync-url` / `/data/0/url` 配置可完成 SuperAIToken 的 GPT Image 2 / 2.5 接入，完整型号从端点 `model` 取。四个 GPT 接入点有参考图时均走 multipart `/images/edits`，没有参考图时仍用 JSON `/images/generations`；文生图不带 `images` 字段。
 
 生产配置通过 `infra/scripts/switch-gpt-images-superaitoken.py` 的签名管理命令更新并加密保存 Key；脚本先校验所有型号对当前 Key 可见，保留端点 ID、费用、额度和参考图协议，备份后切换 URL 返回并恢复 2K 竖图。分镜按作品比例选原接入点的最大尺寸，覆盖 9:16 / 16:9 / 1:1。发布证据见 [本次记录](../../docs/releases/superaitoken-gpt-image-url-production-20261109.md)。
 
