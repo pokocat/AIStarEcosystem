@@ -161,9 +161,7 @@ public class StudioTaskHistoryService {
     private Item dapItem(DapJob j, Names names) {
         String status = j.getStatus();
         Object breakdown = j.getResult() == null ? null : j.getResult().get("billingBreakdown");
-        Credits credits = breakdown != null
-                ? credits(om.valueToTree(breakdown), j.getCost(), status)
-                : credits(null, j.getCost(), status);
+        Credits credits = dapCredits(breakdown == null ? null : om.valueToTree(breakdown), j.getCost(), status);
         Payer payer = new Payer("personal", null);
         Object billing = j.getPayload() == null ? null : j.getPayload().get("_billing");
         if (billing instanceof Map<?, ?> m && "enterprise".equals(m.get("mode")) && m.get("enterpriseId") instanceof String eid)
@@ -173,6 +171,27 @@ public class StudioTaskHistoryService {
                 status, j.getPct(), null, iso(j.getCreatedAt()), iso(j.getFinishedAt()), credits, payer,
                 null, "failed".equals(status) ? j.getErrorMessage() : null,
                 j.getAvatarId() == null ? "/studio#/library" : "/studio#/avatar/" + j.getAvatarId());
+    }
+
+    /**
+     * 数字人任务的积分。不套用视频任务的「cost 减明细」差额规则：数字人的 cost 是本次冻结上限，不是消费额。
+     * <ul>
+     *   <li>已结束（done / failed）：有明细就照明细；没有明细的旧任务，done 按全额消费，failed 按已全额退回
+     *       （旧计费路径失败时释放冻结但不清零 cost，Codex 复核 2026-11-09）。</li>
+     *   <li>进行中（含失败后重试）：明细是上一次尝试结算的，照它算已消费 / 已退回；本次冻结的 cost 全部算待结算。</li>
+     * </ul>
+     */
+    static Credits dapCredits(JsonNode b, long rawCost, String status) {
+        long cost = Math.max(0, rawCost);
+        boolean hasBreakdown = b != null && !b.isMissingNode() && !b.isNull();
+        long scoped = hasBreakdown ? b.path("spent").path("scopedCredits").asLong() : 0;
+        long spent = hasBreakdown ? scoped + b.path("spent").path("walletCredits").asLong() : 0;
+        long pending = hasBreakdown ? b.path("pending").path("scopedCredits").asLong() + b.path("pending").path("walletCredits").asLong() : 0;
+        long released = hasBreakdown ? b.path("released").path("scopedCredits").asLong() + b.path("released").path("walletCredits").asLong() : 0;
+        boolean terminal = "done".equals(status) || "failed".equals(status);
+        if (!terminal) return new Credits(spent, scoped, cost, released);
+        if (hasBreakdown) return new Credits(spent, scoped, pending, released);
+        return "done".equals(status) ? new Credits(cost, 0, 0, 0) : new Credits(0, 0, 0, cost);
     }
 
     /** 读 toRunDto 已算好的 breakdown；没有（旧任务）时按 cost 和状态归类。 */

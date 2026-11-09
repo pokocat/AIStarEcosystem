@@ -31,7 +31,7 @@ class StudioMediaImportServiceTest {
         assertEquals("image/png",result.mimeType());assertEquals(20,result.width());assertEquals("假的名字.png",result.fileName());
         var order=inOrder(guard,storage,quota);order.verify(guard,atLeastOnce()).checkUpload("u",(long)bytes.size());
         order.verify(storage).store(any(),eq("ipstudio/source"),eq("u"),eq("png"),eq("image/png"));
-        order.verify(quota).record(eq("aiavatar"),eq("u"),eq("画布附件"),isNull(),eq(result.key()),eq((long)bytes.size()));
+        verify(quota,never()).record(anyString(),anyString(),anyString(),any(),anyString(),anyLong());
     }
     @Test void declaredImageContainingVideoIsRejectedWithoutStoring() {
         assertThrows(BusinessException.class,()->service.upload("u",file(mp4()),"image"));verifyNoInteractions(storage,quota,ffmpeg);

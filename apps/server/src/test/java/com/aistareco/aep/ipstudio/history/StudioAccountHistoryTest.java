@@ -52,10 +52,28 @@ class StudioAccountHistoryTest {
     void digitalHumanJobsUseTheirRecordedBreakdownEvenWhenFailed() {
         // 文本成功、媒体失败：文本费用照扣，breakdown 里有；不能因为状态是 failed 就显示 0（Codex 评审 2026-11-09）
         var b = breakdown(5, 0, 0, 40).path("billingBreakdown");
-        var c = StudioTaskHistoryService.credits(b, 5, "failed");
+        var c = StudioTaskHistoryService.dapCredits(b, 45, "failed");
         assertThat(c.spent()).isEqualTo(5);
         assertThat(c.released()).isEqualTo(40);
-        assertThat(StudioTaskHistoryService.credits(null, 0, "failed").spent()).isZero();
+    }
+
+    @Test
+    void oldDigitalHumanJobsWithoutABreakdownCountFailuresAsReleased() {
+        // 旧计费路径失败时释放了冻结但不清零 cost：按已退回算，不能算成全额消费（Codex 复核 2026-11-09）
+        var failed = StudioTaskHistoryService.dapCredits(null, 40, "failed");
+        assertThat(failed.spent()).isZero();
+        assertThat(failed.released()).isEqualTo(40);
+        assertThat(StudioTaskHistoryService.dapCredits(null, 40, "done").spent()).isEqualTo(40);
+    }
+
+    @Test
+    void retriedDigitalHumanJobsShowTheNewHoldAsPendingNotSpent() {
+        // 上次失败已全额退回、这次重新冻结 40：已消费 0，待结算 40
+        var b = breakdown(0, 0, 0, 40).path("billingBreakdown");
+        var c = StudioTaskHistoryService.dapCredits(b, 40, "running");
+        assertThat(c.spent()).isZero();
+        assertThat(c.pending()).isEqualTo(40);
+        assertThat(c.released()).isEqualTo(40);
     }
 
     @Test

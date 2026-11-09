@@ -126,7 +126,7 @@ public class StudioMediaImportService {
         if (storageGuard != null) storageGuard.checkUpload(user, bytes.length);
         // Existing owned source namespace; signed URLs are returned only on the wire.
         var stored = storage.store(bytes, "ipstudio/source", user, format.ext(), format.mime());
-        quota.record("aiavatar", user, "画布附件", null, stored.key(), stored.bytes());
+        // 用量由 FileStorageService 在写入后统一记（「上传的素材」），这里不再另记一笔：两处同时写同一个 key 会记重（Codex 复核 2026-11-09）。
         String name = file.getOriginalFilename() == null ? "画布附件" : file.getOriginalFilename().replace('\\', '/');
         name = name.substring(name.lastIndexOf('/') + 1).replaceAll("[\\p{Cntrl}]", "").strip();
         if (name.isBlank()) name = "画布附件";
