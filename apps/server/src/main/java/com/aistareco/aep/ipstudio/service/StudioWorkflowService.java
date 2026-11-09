@@ -905,7 +905,7 @@ public class StudioWorkflowService {
         var operations=constraints.putArray("operations");skill.stageOperations(stage).forEach(operations::add);
         constraints.put("maxSteps",skill.maxSteps()).put("maxSegments",skill.maxSegments()).put("maxSourceSec",skill.maxSourceSec()).put("maxSegmentSec",skill.maxSegmentSec());
         var checks=constraints.putArray("checks");skill.checks().forEach(checks::add);
-        constraints.put("settings","每步 settings 按操作填写：recreation{sourceNodeId,mode:\"segments\",maxSegmentSec:\"model\"|秒数,videoModel}；image{count:1|2|4,aspectRatio?:\"9:16\"|\"16:9\"|\"1:1\"|\"3:4\"（画幅，按技能默认填）,size?:\"宽x高\"（只在用户给了像素尺寸时填）,referenceBindings[]}；video{video:{mode,resolutionTier,seed?},durationSec,aspectRatio,count:1|2|4,referenceBindings[]}；check{targetStepId,checkIds[],candidateIndex?}；assemble{clipOrder:[{stepId,candidateIndex?}],audioStrategy:\"generated\"|\"source-audio\"}；text{purpose:\"script\"|\"prompt-revision\"|\"plan-compile\"|\"note\",editTarget?}。referenceBindings 每项 {stepId 或 nodeId 二选一,role,order}。plan-compile 只在分析阶段用于编排制作计划。");
+        constraints.put("settings","每步 settings 按操作填写：recreation{sourceNodeId,mode:\"segments\",maxSegmentSec:\"model\"|秒数,videoModel}；image{count:1|2|4,aspectRatio?:\"9:16\"|\"16:9\"|\"1:1\"|\"3:4\"（画幅，按技能默认填）,size?:\"宽x高\"（只在用户给了像素尺寸时填）,referenceBindings[],model?}；video{model,video:{mode,resolutionTier,seed?},durationSec,aspectRatio,count:1|2|4,referenceBindings[]}；check{targetStepId,checkIds[],candidateIndex?}；assemble{clipOrder:[{stepId,candidateIndex?}],audioStrategy:\"generated\"|\"source-audio\"}；text{purpose:\"script\"|\"prompt-revision\"|\"plan-compile\"|\"note\",editTarget?}。referenceBindings 每项 {stepId 或 nodeId 二选一,role,order}。plan-compile 只在分析阶段用于编排制作计划。");
         var allowed=new java.util.HashSet<>(skill.stageOperations(stage));
         String directGuide=(skill.direct()?"这个方法没有分析阶段：直接写制作步骤，不写 plan-compile，没有真实取舍时 approaches 只写一个推荐方案或省略。":"")
                 +"制作阶段只写本阶段允许的操作："+String.join("、",skill.stageOperations(stage))+"。"
@@ -919,7 +919,7 @@ public class StudioWorkflowService {
                 :directGuide);
         constraints.put("bindingRoles","referenceBindings 的 role 只能取这些值：图片步骤 "+String.join(" / ",new java.util.TreeSet<>(StudioPlanValidator.IMAGE_BINDING_ROLES))
                 +"；视频步骤 "+String.join(" / ",new java.util.TreeSet<>(StudioPlanValidator.BINDING_ROLES))+"（原片片段用 reference-video 或 clip）。order 从 0 开始，同一步里不重复。");
-        constraints.put("models","recreation.videoModel 必须原样复制「可用模型与合同」里 videoModels[].endpointId 的值，不能写模型名、别名或自己缩写。");
+        constraints.put("models","recreation.videoModel 与视频步骤 settings.model 必须原样复制「可用模型与合同」里 videoModels[].endpointId 的值，不能写模型名、别名或自己缩写。settings.model 与 settings.video 同级；settings.video 只放模式、清晰度、随机种子。视频模式、resolutionTier、画幅和时长必须来自所选模型同一份合同，不能混用其他模型的规格；未指定模型时按 isDefault 的合同填写。");
         constraints.put("targets","targetNodeId 只填素材清单里为这一步准备、还没有画面或正文的对象 id，类型与这一步的结果一致（image 填图片对象、video 填视频对象、写稿的 text 填文字对象）；check、assemble、recreation、plan-compile 和改稿的步骤不填。");
         constraints.put("references","referenceNodeIds 只能填素材清单里的画布对象 id，不能填步骤编号；要用更早步骤的产物，写进 dependsOn，图片和视频步骤再用 settings.referenceBindings 的 stepId 指定。素材清单里的对象（包括分析阶段产出的分段片段）在 referenceBindings 里一律写 nodeId，stepId 只填本计划里更早的步骤编号。");
         return constraints;

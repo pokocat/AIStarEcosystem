@@ -14,7 +14,8 @@ export interface StudioTemplateInput {
 }
 export interface StudioTemplateVideo {
   mode: 't2v' | 'i2v' | 'first_last_frame_video' | 'universal_reference_video';
-  resolutionTier: '768p' | '544p';
+  /** Must be one of the selected model's contract.tiers. */
+  resolutionTier: string;
   seed?: number;
 }
 export interface StudioTemplateStep {

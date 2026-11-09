@@ -37,8 +37,8 @@ export interface StudioProductionApproach {
 export interface StudioStepReferenceBinding { stepId?: string; nodeId?: string; role: "character" | "scene" | "product" | "frame" | "clip" | "reference-image" | "reference-video" | "reference-audio"; order: number }
 export type StudioSkillStepSettings =
   | { operation: "recreation"; sourceNodeId: string; mode: "segments"; maxSegmentSec: number | "model"; videoModel: string }
-  | { operation: "image"; size?: string; aspectRatio?: string; count: 1 | 2 | 4; referenceBindings: StudioStepReferenceBinding[] }
-  | { operation: "video"; video: StudioVideoSettings; durationSec: number; aspectRatio: string; count: 1 | 2 | 4; referenceBindings: StudioStepReferenceBinding[] }
+  | { operation: "image"; model?: string; size?: string; aspectRatio?: string; count: 1 | 2 | 4; referenceBindings: StudioStepReferenceBinding[] }
+  | { operation: "video"; model?: string; video: StudioVideoSettings; durationSec: number; aspectRatio: string; count: 1 | 2 | 4; referenceBindings: StudioStepReferenceBinding[] }
   | { operation: "check"; targetStepId: string; targetRunId?: string; candidateIndex?: number; checkIds: string[] }
   | { operation: "assemble"; clipOrder: { stepId: string; runId?: string; candidateIndex?: number }[]; audioStrategy: "generated" | "source-audio" | "none" }
   | { operation: "text"; purpose: "script" | "prompt-revision" | "plan-compile" | "note"; editTarget?: { nodeId: string; field: "content" | "prompt" | "script"; snapshot: string } };
