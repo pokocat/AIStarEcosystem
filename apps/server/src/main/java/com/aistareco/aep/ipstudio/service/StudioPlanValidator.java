@@ -252,6 +252,7 @@ public final class StudioPlanValidator {
                         .put("videoModel",text(raw.path("videoModel"),64,true,label+"视频模型"));
             }
             case "image" -> {
+                preserveModel(out,raw,null,label);
                 out.put("count",count(raw.path("count"),label));
                 // Skills speak in 画幅 (「海报 9:16」), so an image step carries aspectRatio like a video step; size stays an
                 // exact pixel override. A ratio written into size (「size: "9:16"」, real model 2026-10-20) is read as the
@@ -277,6 +278,7 @@ public final class StudioPlanValidator {
             case "video" -> {
                 JsonNode video=raw.path("video");
                 if(!video.isObject())invalid(label+"缺少视频参数");
+                preserveModel(out,raw,video,label);
                 // Storage keys are bound through referenceBindings; the model can never name a key directly.
                 var settings=out.putObject("video").put("mode",text(video.path("mode"),32,true,label+"视频模式"))
                         .put("resolutionTier",text(video.path("resolutionTier"),32,true,label+"清晰度"));
@@ -342,6 +344,20 @@ public final class StudioPlanValidator {
             default -> throw BusinessException.badRequest("STUDIO_SKILL_OPERATION_NOT_ALLOWED",label+"的操作不在当前阶段允许的范围内");
         }
         return out;
+    }
+
+    /** One model field for quoting and execution. Real planners also place it inside video{} (2026-11-09).
+     * Never discard an explicit choice and silently price the default model instead. Endpoint availability and
+     * resolution/mode limits remain owned by the existing scene policy and video contract services. */
+    private static void preserveModel(ObjectNode out,JsonNode raw,JsonNode video,String label) {
+        String model=optionalModel(raw.path("model"),label);
+        String nested=video==null?null:optionalModel(video.path("model"),label);
+        if(model!=null&&nested!=null&&!model.equals(nested))invalid(label+"的视频模型设置不一致，请重新选择");
+        if(model!=null||nested!=null)out.put("model",model!=null?model:nested);
+    }
+    private static String optionalModel(JsonNode value,String label) {
+        if(value.isMissingNode()||value.isNull())return null;
+        return text(value,64,true,label+"模型").strip();
     }
 
     private static ArrayNode bindings(JsonNode raw,Set<String> roles,Set<String> allowed,Map<String,String> earlier,Set<String> dependencies,String label) {

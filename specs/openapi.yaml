@@ -791,7 +791,7 @@ components:
       required: [mode, resolutionTier]
       properties:
         mode: { type: string, enum: [t2v, i2v, first_last_frame_video, universal_reference_video] }
-        resolutionTier: { type: string, enum: [544p, 768p] }
+        resolutionTier: { type: string, description: 须是所选模型 contract.tiers 中的标识 }
         seed: { type: integer, minimum: 0, nullable: true }
         firstFrameKey: { type: string, nullable: true }
         lastFrameKey: { type: string, nullable: true }
@@ -5128,7 +5128,7 @@ components:
                 required: [mode, resolutionTier]
                 properties:
                   mode: { type: string, enum: [t2v, i2v, first_last_frame_video, universal_reference_video] }
-                  resolutionTier: { type: string, enum: [768p, 544p] }
+                  resolutionTier: { type: string, description: 须是所选模型 contract.tiers 中的标识 }
                   seed: { type: integer, minimum: 0, maximum: 2147483647 }
     StudioTemplateVersion:
       type: object
