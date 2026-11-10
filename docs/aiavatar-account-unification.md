@@ -80,7 +80,7 @@ v0.230 · 2026-10-10。目标是让桌面账号管理和画布属于同一个产
 | 设置 | `/me/settings` | 设置与安全 |
 
 **合并掉的页面**：
-- 生成原文 `/model-results` → 任务历史里的抽屉（`account-model-results.tsx`）。V80 给 `ai_model_usage_record` 加 `task_id`，任务执行时从 `AiModelUsageContext` 记下 IpRun / DapJob 的 id；任务历史接口的 `hasModelResult` 标出哪些任务有原文，`GET /api/me/model-results?taskId=` 按任务取。V80 之前的原文没有任务编号，只能在「全部原文」里按时间看，所以这个入口要留着（模型原文保留规则，AGENTS.md 开头）。
+- 生成原文 `/model-results` → 任务历史里的抽屉（`account-model-results.tsx`）。V80（Java 迁移：表由 Hibernate 建，空库跳过）给 `ai_model_usage_record` 加 `task_id`，任务执行时从 `AiModelUsageContext` 记下 IpRun / DapJob 的 id；任务历史接口的 `hasModelResult` 标出哪些任务有原文，`GET /api/me/model-results?taskId=` 按任务取。V80 之前的原文没有任务编号，只能在「全部原文」里按时间看，所以这个入口要留着（模型原文保留规则，AGENTS.md 开头）。
 - 邀请朋友 `/invitations` → 电脑版是总览上的卡片 + 邀请记录抽屉（`/me/invitations` 打开总览并展开抽屉），手机版 `/me/invitations` 是一整页。逻辑仍在 `ip/invitation-workspace.tsx`（`useInvitations` + 链接 / 记录两个组件），不以本产品开通为条件。
 - 授权中心 `/licenses` → 「授权」的两个子标签。原来真人证书在授权中心和真人授权素材两处都列，现在按真人 / IP 分开，不重复。
 - 我的名片 `/cards` → `/assets/cards`（名片按人物发布，归资产）。
