@@ -137,20 +137,20 @@ test("recharge application reports pending processing and reloads authoritative 
 test("disabled feature exposes no controls and does not request enterprise APIs", () => {
   vi.stubEnv("NEXT_PUBLIC_ENTERPRISE_ENABLED", "0");
   render(<EnterpriseWorkspace/>);
-  expect(screen.getByText(/企业管理尚未开放/)).toBeDefined();
+  expect(screen.getByText(/企业功能尚未开放/)).toBeDefined();
   expect(api.mine).not.toHaveBeenCalled();
 });
 
 
 test("refresh preserves the complete old snapshot on failure and never mixes enterprises", async () => {
   render(<EnterpriseWorkspace/>);
-  await screen.findByText("创作企业 · 主账号");
+  await screen.findByText("创作企业");
   api.mine.mockResolvedValue([{ ...ownerContext, enterprise: { id: "new-team", name: "另一家企业" } }]);
   api.wallet.mockRejectedValueOnce(new Error("余额刷新失败"));
   fireEvent.click(screen.getByRole("button", { name: "刷新企业数据" }));
   await screen.findByText(/余额刷新失败/);
-  expect(screen.getByText("创作企业 · 主账号")).toBeDefined();
-  expect(screen.queryByText("另一家企业 · 主账号")).toBeNull();
+  expect(screen.getByText("创作企业")).toBeDefined();
+  expect(screen.queryByText("另一家企业")).toBeNull();
   expect(screen.getByText("张三")).toBeDefined();
 });
 

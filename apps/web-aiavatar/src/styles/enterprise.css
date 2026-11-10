@@ -123,3 +123,9 @@ html:not([data-layout="desktop"]) .studio-credit-actions .ant-btn { min-height: 
 
 .enterprise-own-balances .enterprise-deposit-button { margin-top: 12px; align-self: flex-start; }
 html[data-layout="mobile"] .enterprise-deposit-button { min-height: 44px; }
+
+/* 账号区「企业」标签里的页头（2026-11-10） */
+.enterprise-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.enterprise-head > div { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.enterprise-head strong { overflow: hidden; font-size: 16px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.enterprise-head small { color: var(--ip-muted); font-size: 12px; }

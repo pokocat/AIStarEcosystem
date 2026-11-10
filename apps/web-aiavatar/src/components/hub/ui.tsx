@@ -116,7 +116,7 @@ const TABS = [
   { href: "/video", label: "AI 视频", icon: Video, match: (p: string) => p.startsWith("/video") },
   { create: true as const, href: "/create", label: "创作" },
   { href: "/image", label: "AI 图片", icon: ImageIcon, match: (p: string) => p.startsWith("/image") },
-  { href: "/me", label: "我的", icon: UserRound, match: (p: string) => p.startsWith("/me") || p.startsWith("/licenses") || p.startsWith("/projects") || p.startsWith("/assets") || p.startsWith("/director") },
+  { href: "/me", label: "我的", icon: UserRound, match: (p: string) => p.startsWith("/me") || p.startsWith("/projects") || p.startsWith("/assets") || p.startsWith("/director") },
 ];
 
 /**

@@ -111,7 +111,7 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
       if (thenPublish) {
         await CardApi.publish(id);
         say("已发布，可分享链接");
-        router.push("/cards");
+        router.push("/assets/cards");
         return;
       }
       say("已保存");
@@ -140,7 +140,7 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
 
   return (
     <HubScreen tabBar={false} width="form">
-      <NavBar back="/cards" title="编辑名片" />
+      <NavBar back="/assets/cards" title="编辑名片" />
 
       {state.s === "loading" && <LoadingBlock />}
 

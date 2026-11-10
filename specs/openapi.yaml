@@ -9800,10 +9800,11 @@ paths:
     get:
       tags: [ai-models]
       operationId: listMyModelResults
-      summary: 分页读取本人当前产品的生成原文记录，按创建时间倒序，每页二十条
+      summary: 分页读取本人当前产品的生成原文记录，按创建时间倒序，每页二十条；带 taskId 时只返回这个任务的原文，按调用先后排
       parameters:
         - { in: header, name: X-App-Code, required: true, schema: { type: string } }
         - { in: query, name: page, schema: { type: integer, minimum: 0, default: 0 } }
+        - { in: query, name: taskId, schema: { type: string }, description: '任务编号（IpRun / DapJob 的 id）；V80 起的调用才带任务编号' }
       responses:
         '200': { description: success/data 数组，条目含 id、model、purpose、createdAt；不含全文、提示词或凭据 }
         '401': { description: 未登录 }
@@ -15199,7 +15200,7 @@ paths:
         - { in: query, name: days, description: 0 为全部时间, schema: { type: integer, minimum: 0, maximum: 3650, default: 30 } }
         - { in: query, name: page, schema: { type: integer, minimum: 0, default: 0 } }
       responses:
-        '200': { description: 'ApiResponse<StudioTaskHistoryPage>; items, page, hasMore, summary' }
+        '200': { description: 'ApiResponse<StudioTaskHistoryPage>; items, page, hasMore, summary；item.hasModelResult 表示这条任务保留了模型原文' }
         '400': { description: TASK_HISTORY_INVALID / TASK_HISTORY_TOO_DEEP }
   /v1/ip-studio/storage:
     get:
