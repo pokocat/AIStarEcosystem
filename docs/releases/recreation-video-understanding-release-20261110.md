@@ -24,7 +24,7 @@
 - 2026-11-10 15:27（北京时间）：账号中心 200；线上有 1 张图在生成、1 条视频在提交，等两者结束（剩 2 条已在厂商生成中的视频，重启后接着查）再发。
 - studio-admin `20261110-recreation-197b6cfc-admin` 先发，未重启共享服务。
 - server + web-aiavatar `20261110-recreation-197b6cfc`：`deploy-release.sh` 退出码 0，`verify ALL GREEN`；V79 15:28:46 执行成功，`ai_app_binding.purpose` 枚举含 `DAP_VIDEO_UNDERSTAND`。
-- 重启前 37 秒有一条视频失败（`mvj_f5280b46ee15`），原因是聚算 H3 个人素材空间满（409 `personal_asset_quota_exceeded`），积分已退回，和本次发布无关，但会影响之后所有带参考素材的 H3 出片，见 TODO。
+- 重启前 37 秒有一条视频失败（`mvj_f5280b46ee15`），原因是聚算 H3 个人素材空间满（409 `personal_asset_quota_exceeded`），积分已退回，和本次发布无关，但会影响之后所有带参考素材的 H3 出片，见 TODO。当天用户在聚算后台清理了空间，再上传新图已返回 201。
 
 ## 配置
 
