@@ -11,8 +11,8 @@
 
 ## 画布删除与付款弹窗的预计（2026-11-10 用户反馈）
 
-- [x] ~~**付款弹窗把授权上限当「本次预计」，还据此判积分不足**~~ **2026-11-10 本地修复，未发布**：AI 视频页 36 秒长视频按钮写「约 2,208 积分」，弹窗写「本次预计 8,274 积分」（标准价 × 3 的授权上限），7,893 积分被判个人积分不足；受理时并不冻结上限，每一步做的时候才扣。现在视频任务、长视频、裂变和对话确认卡都把按钮 / 卡片上的预计（`expectedCost`）和上限（`costCap`）分开传，弹窗只写预计、余额只跟预计比，上限放悬停提示（`ip/studio-billing-dialog.tsx`、`canvas-bridge/studio-billing.ts`）。测试 `studio-billing-dialog.test.tsx`。
-- [x] ~~**画布删不掉**~~ **2026-11-10 本地完成，未发布**：原来只有项目页卡片「⋯」里能一次删一张，弹窗还写「删除后无法恢复」（实际进回收站）。现在项目页卡片上直接有删除、可「选择」后批量删；AI 视频页「最近任务」与草稿、AI 图片页「最近」、画布页「⋯」都能删，共用 `ip/studio-canvas-delete.tsx`。服务端普通删除也核对在途（409 `IP_PROJECT_BUSY`，`StudioTrashService.canvasRemoveBlockReason`），停在「需处理」或暂停的制作计划可以删。测试 `StudioTrashAndGuardTest#ordinaryDeleteRefusesOnlyWhileSomethingIsStillGenerating`。
+- [x] ~~**付款弹窗把授权上限当「本次预计」，还据此判积分不足**~~ **2026-11-10 已生产发布 `20261110-official-avatars-3992f750`**：AI 视频页 36 秒长视频按钮写「约 2,208 积分」，弹窗写「本次预计 8,274 积分」（标准价 × 3 的授权上限），7,893 积分被判个人积分不足；受理时并不冻结上限，每一步做的时候才扣。现在视频任务、长视频、裂变和对话确认卡都把按钮 / 卡片上的预计（`expectedCost`）和上限（`costCap`）分开传，弹窗只写预计、余额只跟预计比，上限放悬停提示（`ip/studio-billing-dialog.tsx`、`canvas-bridge/studio-billing.ts`）。测试 `studio-billing-dialog.test.tsx`。
+- [x] ~~**画布删不掉**~~ **2026-11-10 已生产发布 `20261110-official-avatars-3992f750`**：原来只有项目页卡片「⋯」里能一次删一张，弹窗还写「删除后无法恢复」（实际进回收站）。现在项目页卡片上直接有删除、可「选择」后批量删；AI 视频页「最近任务」与草稿、AI 图片页「最近」、画布页「⋯」都能删，共用 `ip/studio-canvas-delete.tsx`。服务端普通删除也核对在途（409 `IP_PROJECT_BUSY`，`StudioTrashService.canvasRemoveBlockReason`），停在「需处理」或暂停的制作计划可以删。测试 `StudioTrashAndGuardTest#ordinaryDeleteRefusesOnlyWhileSomethingIsStillGenerating`。
 - [ ] **创作页（`/create`）最近画布那一排还不能删**：要删得去项目页或画布页。
 - [ ] **文字任务的付款弹窗**仍按冻结上限判余额（见下文「付款弹窗」那条），这次没动。
 
