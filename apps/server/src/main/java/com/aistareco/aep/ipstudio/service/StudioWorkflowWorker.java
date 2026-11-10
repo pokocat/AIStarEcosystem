@@ -453,6 +453,14 @@ public class StudioWorkflowWorker {
                     log.warn("[studio-workflow] shot frame failed run={} shot={} at={} reason={}",id,i+1,at,failed.toString());
                 }
             }
+            // 原片里重复用的画面（某一镜推到头的近景就是后面某一镜的开场）：写分镜脚本时用来写「推到这里就是图N」。
+            // 认不出来只是少一句提示，不挡拉片。
+            try {
+                int same=StudioVideoBreakdown.markSameFrames(original,breakdown,frames);
+                if(same>0)log.info("[studio-workflow] same frames marked run={} count={}",id,same);
+            } catch(Exception failed) {
+                log.warn("[studio-workflow] same-frame detection failed run={} reason={}",id,failed.toString());
+            }
             var units=StudioVideoBreakdown.units(breakdown,max,min,maxUnits);
             var segments=study.putArray("segments");
             for(var unit:units) {

@@ -220,13 +220,14 @@ public final class StudioPromptCallPoints {
         StudioPromptStages.register(new StudioPromptStages.Stage(RECREATION_KEYFRAME_CHECK, StudioPromptEntry.MESSAGE, "爆款复刻 · 开场画面检查要点",
                 vars(), Set.of(), Map.of(), Map.of()).withoutBase());
         StudioPromptStages.register(new StudioPromptStages.Stage(RECREATION_VIDEO_CHECK, StudioPromptEntry.MESSAGE, "爆款复刻 · 每段成片检查要点",
-                vars("hasRefs", "这段有参考图", "keyframes", "这段的开场画面：[{shot（全片镜号）, at（这段里约第几秒起）, label（图N）}]"), Set.of(), Map.of(),
+                vars("hasRefs", "这段有参考图", "keyframes", "这段的开场画面：[{shot（全片镜号）, at（这段里约第几秒起）, label（图N）}]",
+                        "sameFrames", "这段里重复用的画面：[{shot, at, of（是哪一镜的开场）, label}]", "refs", "这段交给视频模型的图：[{label, what（开场画面 / 哪份素材）}]"), Set.of(), Map.of(),
                 Map.of("hasRefs", true, "keyframes", List.of(Map.of("shot", 2, "at", "1.8", "label", "图2")))).withoutBase());
         StudioPromptStages.register(new StudioPromptStages.Stage(RECREATION_REDO_NOTE, StudioPromptEntry.IMAGE_MODEL, "爆款复刻 · 开场画面重出说明",
                 vars("fix", "上一版没通过检查的问题"), Set.of("fix"), Map.of(), Map.of("fix", "人物还戴着原片的贝雷帽")).withoutBase());
         StudioPromptStages.register(stage(RECREATION_COMPILE, StudioPromptEntry.LLM, "爆款复刻 · 写每段视频提示词",
                 vars("requirement", "用户写的要求", "materials", "替换素材：[{label, title, slot}]", "breakdown", "拉片文档（Markdown）",
-                        "units", "分段：[{no, range（原片时间）, seconds（生成秒数）, shots（这段的分镜表）, refs:[{label, what}]}]"),
+                        "units", "分段：[{no, range（原片时间）, seconds（生成秒数）, shots（这段的分镜表）, refs:[{label, what}], keyframes:[{shot, label, detail}], sameFrames:[{shot, at, of, label}]（这一镜 at 秒的画面就是第 of 镜的开场画面）}]"),
                 Set.of("breakdown", "units"), formats("output", StudioPromptFormats.RECREATION_COMPILE_OUTPUT), compile));
     }
 

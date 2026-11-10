@@ -75,15 +75,19 @@ class StudioRecreationRealPrepareTest {
         var frames=film.putArray("frames");
         for(int i=0;i<breakdown.path("shots").size();i++) {
             JsonNode shot=breakdown.path("shots").get(i);
-            double at=shot.path("detail").path("frameAt").asDouble(Double.NaN);
-            Path f=StudioVideoBreakdown.frame(video,frameDir,i+1,Double.isFinite(at)?at:StudioVideoBreakdown.frameTime(breakdown,i,Double.NaN));
+            // 和 worker 一样：细读给的时刻对齐真实切镜、只在开头 0.4 秒里取
+            double at=shot.path("detail").path("frameAt").asDouble(StudioVideoBreakdown.frameTime(breakdown,i,Double.NaN));
+            Path f=StudioVideoBreakdown.frame(video,frameDir,i+1,at);
             frames.addObject().put("shot",i+1).put("at",at).put("storageKey",f.toString());
         }
+        // 原片里重复用的画面（某一镜推到头 = 另一镜的开场）
+        log.put("sameFrames",StudioVideoBreakdown.markSameFrames(video,breakdown,frames));
         for(var u:units)segments.addObject().put("no",u.no()).put("title",u.title()).put("startSec",u.startSec()).put("endSec",u.endSec())
                 .put("firstShot",u.firstShot()).put("lastShot",u.lastShot()).put("storageKey","clip-"+u.no()).put("durationSec",u.length());
         List<StudioRecreationTaskPlan.Material> materials=new ArrayList<>();Map<String,String> titles=new LinkedHashMap<>();
         for(String m:env("STUDIO_REAL_MATERIALS","").split(";"))if(!m.isBlank()){String[] p=m.split("\\|");materials.add(new StudioRecreationTaskPlan.Material(p[0],p[1],p[2]));titles.put(p[0],p[1]);}
         var task=StudioRecreationTaskPlan.prepare(film,materials,"ai-jusuan-minimax-h3",contract,"768p","9:16",null,"F-",Math.max(0,28-units.size()*2-1),requirement);
+        task.put("maxSteps",28);
         var compilePrompt=StudioPromptAssembler.classpath().assemble(StudioPromptAssembler.Call.of(StudioPromptCallPoints.RECREATION_COMPILE,
                 StudioRecreationTaskPlan.variables(task,breakdown,requirement),null,null));
         var compiled=post(textBase,System.getenv("STUDIO_REAL_TEXT_KEY"),textBody(compilePrompt.system(),compilePrompt.user(),.5),true);
@@ -150,6 +154,28 @@ class StudioRecreationRealPrepareTest {
             item.put("rewriteUsable",usable).put("prompt",finalPrompt);
         }
         for(JsonNode step:validated.path("steps"))if("assemble".equals(step.path("operation").asText()))out.set("captions",step.path("settings").path("captions"));
+        // 检查步骤：和执行器一样，带上被检查那一步的提示词（逐镜对照的放到 6000 字）和那一步交给生成模型的图片，编号照图片顺序数
+        var checks=out.putArray("checks");
+        for(JsonNode step:validated.path("steps")) {
+            if(!"check".equals(step.path("operation").asText()))continue;
+            JsonNode settings=step.path("settings");JsonNode target=null;
+            for(JsonNode s:validated.path("steps"))if(s.path("id").asText().equals(settings.path("targetStepId").asText()))target=s;
+            boolean detailed=settings.hasNonNull("sampling")||settings.path("compareReferences").asBoolean(false);
+            ObjectNode c=checks.addObject().put("id",step.path("id").asText()).put("target",settings.path("targetStepId").asText())
+                    .put("prompt",com.aistareco.aep.ipstudio.execution.StudioPlanSteps.checkTarget(validated,"remake",target,step.path("prompt").asText(""),
+                            detailed?com.aistareco.aep.ipstudio.execution.StudioPlanSteps.CHECK_TARGET_DETAILED:com.aistareco.aep.ipstudio.execution.StudioPlanSteps.CHECK_TARGET_CHARS));
+            if(settings.hasNonNull("sampling"))c.put("sampling",settings.path("sampling").asText());
+            if(settings.has("optionalRank"))c.put("optionalRank",settings.path("optionalRank").asInt());
+            c.set("checkIds",settings.path("checkIds"));
+            var refs=c.putArray("references");int n=0;
+            List<JsonNode> bs=new ArrayList<>();if(target!=null)target.path("settings").path("referenceBindings").forEach(bs::add);
+            bs.sort(Comparator.comparingInt(b->b.path("order").asInt()));
+            for(JsonNode b:bs) {
+                if(Set.of("reference-video","clip","reference-audio").contains(b.path("role").asText()))continue;
+                String id=b.hasNonNull("stepId")?"step:"+b.path("stepId").asText():b.path("nodeId").asText();
+                refs.addObject().put("label","图"+(++n)).put("key",id.startsWith("F-")?framePath.get(Integer.parseInt(id.substring(2))):id);
+            }
+        }
         Files.writeString(Path.of(System.getenv("STUDIO_REAL_OUT")),om.writerWithDefaultPrettyPrinter().writeValueAsString(out));
         assertTrue(steps.size()>=1);
     }

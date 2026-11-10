@@ -106,6 +106,17 @@ public final class StudioRecreationTaskPlan {
                     n++;
                 }
             }
+            // 这段里重复用的画面：某一镜推到某一刻的画面，就是这段另一镜的开场画面（StudioVideoBreakdown.markSameFrames）。
+            // 那张开场画面在这段的参考图里，写提示词时就能写「推到这里就是图N」；不在这段的（别的段、没做开场画面的）不提。
+            Map<Integer,String> labelOf=new HashMap<>();
+            for(JsonNode k:keyframes)labelOf.put(k.path("shot").asInt(),k.path("label").asText());
+            var same=unit.putArray("sameFrames");
+            for(int i=segment.path("firstShot").asInt();i<=segment.path("lastShot").asInt()&&i<shots.size();i++)
+                for(JsonNode e:shots.get(i).path("sameFrames")) {
+                    int of=e.path("shot").asInt();double at=e.path("at").asDouble(Double.NaN);
+                    if(!labelOf.containsKey(of)||of==i+1||!Double.isFinite(at)||at<start||at>end)continue;
+                    same.addObject().put("shot",i+1).put("atSec",round(at-start)).put("of",of).put("label",labelOf.get(of));
+                }
         }
         if(units.isEmpty())throw BusinessException.badRequest("STUDIO_RECREATION_NO_SEGMENTS","拉片没有得到可用的分段，请重新开始");
         return task;
@@ -161,6 +172,7 @@ public final class StudioRecreationTaskPlan {
             unit.put("range",StudioVideoBreakdown.range(u.path("startSec").asDouble(),u.path("endSec").asDouble()));
             unit.put("seconds",u.path("seconds").asInt());unit.put("refs",refs);
             unit.put("hasKeyframes",!keyframes.isEmpty());unit.put("keyframes",keyframes);
+            unit.put("sameFrames",sameFrames(u));
             unit.put("shots",StudioVideoBreakdown.shotTable(breakdown,u.path("firstShot").asInt(),u.path("lastShot").asInt(),u.path("startSec").asDouble(),
                     u.path("startSec").asDouble(),u.path("endSec").asDouble()));
             units.add(unit);
@@ -384,7 +396,24 @@ public final class StudioRecreationTaskPlan {
             shots.add(Map.of("shot",k.path("shot").asInt(),"at",StudioVideoBreakdown.fmt(k.path("atSec").asDouble()),"label",k.path("label").asText()));
         Map<String,Object> vars=new LinkedHashMap<>();
         vars.put("hasRefs",unit.path("refs").size()>0);vars.put("keyframes",shots);
+        vars.put("sameFrames",keyframes?sameFrames(unit):List.of());
+        // 每张参考图是什么（开场画面 / 哪份替换素材）：只给编号时，检查模型对不上「替换素材 1」是图几，把换对了的菜也判成没换
+        // （2026-11-10 美食那条真跑：图9 就是替换素材 1，它说「未提供替换素材 1、2、3」）
+        List<Map<String,Object>> refs=new ArrayList<>();
+        for(JsonNode r:unit.path("refs")) {
+            if(r.hasNonNull("stepId")&&!keyframes)continue;
+            if(!"reference-audio".equals(r.path("role").asText()))refs.add(Map.of("label",r.path("label").asText(),"what",r.path("what").asText("")));
+        }
+        vars.put("refs",refs);
         return library.render(com.aistareco.aep.ipstudio.prompt.StudioPromptCallPoints.RECREATION_VIDEO_CHECK,vars).strip();
+    }
+
+    /** 一段里重复用的画面，给提示词库的变量：{@code [{shot, at（这段里约第几秒）, of（是哪一镜的开场）, label（图N）}]}。 */
+    static List<Map<String,Object>> sameFrames(JsonNode unit) {
+        List<Map<String,Object>> out=new ArrayList<>();
+        for(JsonNode s:unit.path("sameFrames"))out.add(Map.of("shot",s.path("shot").asInt(),"at",StudioVideoBreakdown.fmt(s.path("atSec").asDouble()),
+                "of",s.path("of").asInt(),"label",s.path("label").asText()));
+        return out;
     }
 
     /** 写提示词的模型按名称点的素材（「」、空格、大小写不计），只认这次的素材，重复的只算一次。 */

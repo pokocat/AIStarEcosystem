@@ -361,13 +361,17 @@ public final class StudioVideoBreakdown {
         return no-1>=w.from()&&no-1<=w.to()?no-1:-1;
     }
 
-    /** 截开场画面时，只在镜头开头这么长的时间里取：开场构图才是要保住的（推镜、捏合这类镜头，中段已经是近景了）。 */
-    static final double FRAME_WINDOW_SEC=.4;
+    /**
+     * 截开场画面时，只在镜头开头这么长的时间里取：开场构图才是要保住的。原先放到 0.4 秒，美食那条第 7 镜模型挑了切镜后 0.2 秒，
+     * 镜头已经推到中景，截下来的图和细读写的「远景两指捏着」对不上，出图两次都画错（2026-11-10 真跑）。逐帧看，切镜后 0.1 秒内
+     * 还是开场的构图，0.17 秒起就在推了；切镜后头两帧的模糊不重，出图时会重画。
+     */
+    static final double FRAME_WINDOW_SEC=.12;
 
     /**
      * 截开场画面的时刻（原片秒数）。镜头的开始先对到代码测出的真实切镜点（±0.5 秒内有就用它，模型给的时间常差零点几秒，
      * 2026-11-10 真跑第 2 镜截到了上一镜），再只在开头 {@link #FRAME_WINDOW_SEC} 秒里取：模型选的时刻在这之内就用，
-     * 不在就取开头稍后一点（避开切镜那一帧的模糊）。
+     * 不在就取切镜后约 0.06 秒（第二帧，避开切镜那一帧）。
      */
     public static double frameTime(JsonNode breakdown,int index,double at) {
         JsonNode shot=breakdown.path("shots").get(index);
@@ -377,7 +381,7 @@ public final class StudioVideoBreakdown {
             for(JsonNode c:breakdown.path("cuts")){double d=Math.abs(c.asDouble()-start);if(d<=gap){gap=d;opening=c.asDouble();}}
         }
         double lo=Math.min(end,opening+.03),hi=Math.max(lo,Math.min(end-.05,opening+FRAME_WINDOW_SEC));
-        if(!Double.isFinite(at)||at<lo||at>hi)at=Math.min(hi,lo+.09);
+        if(!Double.isFinite(at)||at<lo||at>hi)at=Math.min(hi,lo+.03);
         return at;
     }
 
@@ -388,6 +392,87 @@ public final class StudioVideoBreakdown {
                 "-vf","scale='if(gt(iw,ih),min(1280,iw),-2)':'if(gt(iw,ih),-2,min(1280,ih))'","-q:v","2",out.toString()),false);
         if(!Files.exists(out)||Files.size(out)==0)throw new IllegalStateException("Video breakdown frame failed shot="+shotNo);
         return out;
+    }
+
+    /** 比画面用的小图：16×28 灰度。 */
+    static final int SIGNATURE_W=16,SIGNATURE_H=28;
+    /**
+     * 两帧算「同一段画面」的距离上限（小图减去均值后的均方根，0–255）。美食那条复用的近景是 6–8，
+     * 不相干的镜头都在 22 以上（2026-11-10 用原片实测）。
+     */
+    static final double SAME_FRAME_MAX=12;
+    /**
+     * 开场画面至少要有这么多明暗变化（小图的标准差）才拿去比：纯色、黑屏、白墙减去均值后都是一片平，和谁比都「一样」
+     * （测试里的红屏和蓝屏距离是 0）。两帧的整体亮度也不能差太多（{@link #SAME_FRAME_MEAN_GAP}）。
+     */
+    static final double SAME_FRAME_MIN_TEXTURE=10,SAME_FRAME_MEAN_GAP=25;
+    static final int SAME_FRAME_FPS=30;
+
+    /**
+     * 原片里重复出现的画面：每个镜头的开场画面，在别的镜头里哪一刻出现过。找到的记在出现的那一镜上：
+     * {@code shots[i].sameFrames=[{at, shot}]}，意思是第 i+1 镜在原片 at 秒的画面就是第 shot 镜的开场画面。
+     *
+     * <p>美食那条的第 4、5、6 镜就是第 1、3、2 镜推到头时的近景（原片把同一段素材剪了两次）。写分镜脚本时告诉模型
+     * 「这一镜推到这里就是图N」，第 4 镜的开场画面兼作第 1 镜推到头的画面，不用多出图；此前视频模型推近后常常落到别的场景、
+     * 别的菜上（2026-11-10 评审）。紧挨着的下一镜出现在这一镜最后 0.5 秒里是正常的接戏，不记。每次重算，不沿用旧结果。
+     *
+     * @param frames 拉片截下的开场画面 {@code [{shot, at}]}（at 是原片秒数）
+     * @return 记下了几处
+     */
+    public static int markSameFrames(Path original,ObjectNode breakdown,JsonNode frames) throws Exception {
+        JsonNode shots=breakdown.path("shots");
+        for(JsonNode s:shots)if(s instanceof ObjectNode o)o.remove("sameFrames");
+        if(frames==null||!frames.isArray()||frames.isEmpty()||shots.size()<2)return 0;
+        int size=SIGNATURE_W*SIGNATURE_H;
+        // 每秒 30 帧：推拉很快的镜头里，和开场画面对得上的那一帧只停一瞬；每秒 10 帧会错过（美食那条第 4 镜在 5.92 秒截的能对上、
+        // 5.9 秒截的就对不上，距离从 7 变成 32；30 帧时不管在哪一刻截都是 7–8，2026-11-10 实测）
+        byte[] dense=bytes(List.of("ffmpeg","-v","error","-nostdin","-i",original.toString(),"-an",
+                "-vf","fps="+SAME_FRAME_FPS+",scale="+SIGNATURE_W+":"+SIGNATURE_H+",format=gray","-f","rawvideo","-"));
+        int count=dense.length/size,marked=0;
+        for(JsonNode f:frames) {
+            int source=f.path("shot").asInt()-1;
+            if(source<0||source>=shots.size()||!f.path("at").isNumber())continue;
+            byte[] opening=bytes(List.of("ffmpeg","-v","error","-nostdin","-ss",fmt3(f.path("at").asDouble()),"-i",original.toString(),"-frames:v","1",
+                    "-vf","scale="+SIGNATURE_W+":"+SIGNATURE_H+",format=gray","-f","rawvideo","-"));
+            if(opening.length<size)continue;
+            double[] look=stats(opening,0,size);
+            if(look[1]<SAME_FRAME_MIN_TEXTURE)continue;
+            int bestShot=-1;double best=Double.MAX_VALUE,bestAt=0;
+            for(int i=0;i<shots.size();i++) {
+                if(i==source)continue;
+                double lo=shots.get(i).path("start").asDouble()+.05,hi=shots.get(i).path("end").asDouble()-.05;
+                if(i==source-1)hi=Math.min(hi,shots.get(i).path("end").asDouble()-.5);
+                for(int k=(int)Math.ceil(lo*SAME_FRAME_FPS);k<=Math.floor(hi*SAME_FRAME_FPS)&&k<count;k++) {
+                    if(Math.abs(stats(dense,k*size,size)[0]-look[0])>SAME_FRAME_MEAN_GAP)continue;
+                    double d=distance(opening,0,dense,k*size,size);
+                    if(d<best){best=d;bestShot=i;bestAt=k/(double)SAME_FRAME_FPS;}
+                }
+            }
+            if(bestShot<0||best>SAME_FRAME_MAX)continue;
+            ((ObjectNode)shots.get(bestShot)).withArray("sameFrames").addObject().put("at",round(bestAt)).put("shot",source+1);
+            marked++;
+        }
+        return marked;
+    }
+
+    /** 小图的平均亮度和标准差。 */
+    static double[] stats(byte[] a,int offset,int size) {
+        double mean=0;
+        for(int i=0;i<size;i++)mean+=a[offset+i]&0xff;
+        mean/=size;
+        double sum=0;
+        for(int i=0;i<size;i++){double d=(a[offset+i]&0xff)-mean;sum+=d*d;}
+        return new double[]{mean,Math.sqrt(sum/size)};
+    }
+
+    /** 两张小图减去各自均值后的均方根距离（亮度整体变了也认得出同一段画面）。 */
+    static double distance(byte[] a,int offsetA,byte[] b,int offsetB,int size) {
+        double meanA=0,meanB=0;
+        for(int i=0;i<size;i++){meanA+=a[offsetA+i]&0xff;meanB+=b[offsetB+i]&0xff;}
+        meanA/=size;meanB/=size;
+        double sum=0;
+        for(int i=0;i<size;i++){double d=((a[offsetA+i]&0xff)-meanA)-((b[offsetB+i]&0xff)-meanB);sum+=d*d;}
+        return Math.sqrt(sum/size);
     }
 
     /** 一个镜头细读结果的文字（给写提示词的模型看；没有细读就是空）。 */
@@ -514,4 +599,17 @@ public final class StudioVideoBreakdown {
         } finally {if(process.isAlive())process.destroyForcibly();}
     }
     private static String tail(String value){return value.length()<=400?value:value.substring(value.length()-400);}
+
+    /** 跑一个 ffmpeg，返回它写到标准输出的字节（小图的原始像素）。 */
+    private static byte[] bytes(List<String> command) throws Exception {
+        Process process=StudioHypitMedia.configureMediaRuntime(new ProcessBuilder(command)).redirectError(ProcessBuilder.Redirect.DISCARD).start();
+        ByteArrayOutputStream out=new ByteArrayOutputStream();
+        Thread reader=new Thread(()->{try{process.getInputStream().transferTo(out);}catch(Exception ignored){}});reader.start();
+        try {
+            if(!process.waitFor(180,TimeUnit.SECONDS))throw new IllegalStateException("Video breakdown media timeout");
+            reader.join(5000);
+            if(process.exitValue()!=0)throw new IllegalStateException("Video breakdown media failed");
+            return out.toByteArray();
+        } finally {if(process.isAlive())process.destroyForcibly();}
+    }
 }

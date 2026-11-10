@@ -126,6 +126,34 @@ class StudioRecreationTaskPlanTest {
     }
 
     /**
+     * 原片里重复用的画面（美食那条第 4～6 镜就是第 1、3、2 镜推到头时的近景）：那张开场画面在这段的参考图里，
+     * 写提示词和检查时都告诉模型「第 1 镜推到这里就是图2」；指向别的段、没做开场画面的不提。
+     */
+    @Test
+    void aShotThatPushesIntoAnotherShotsOpeningIsToldWhichImageItBecomes() throws Exception {
+        ObjectNode film=(ObjectNode)film();
+        var shots=(com.fasterxml.jackson.databind.node.ArrayNode)film.path("breakdown").path("shots");
+        ((ObjectNode)shots.get(2)).put("visual","抖音号 78699247005 的账号页");
+        var same=((ObjectNode)shots.get(0)).putArray("sameFrames");
+        same.addObject().put("at",3.4).put("shot",2);
+        same.addObject().put("at",4.0).put("shot",3);
+        var frames=film.putArray("frames");
+        for(int n=1;n<=3;n++)frames.addObject().put("shot",n).put("at",n).put("storageKey","ipstudio_gen/u/frame-"+n+".jpg");
+        var task=StudioRecreationTaskPlan.prepare(film,materials(),"ai-h3",h3(),"768p","9:16",null,"PEX-a-study-f",20,"人物换成小美");
+        var unit=task.path("units").get(0);
+        assertEquals(1,unit.path("sameFrames").size(),"第 3 镜是账号页、在另一段，不提");
+        assertEquals(1,unit.path("sameFrames").get(0).path("shot").asInt());
+        assertEquals(2,unit.path("sameFrames").get(0).path("of").asInt());
+        assertEquals("图2",unit.path("sameFrames").get(0).path("label").asText(),"第 2 镜的开场画面在这段排第二");
+        assertEquals(3.4,unit.path("sameFrames").get(0).path("atSec").asDouble(),1e-9);
+        String compile=StudioRecreationTaskPlan.LIBRARY.render(StudioPromptCallPoints.RECREATION_COMPILE,
+                StudioRecreationTaskPlan.variables(task,film.path("breakdown"),"人物换成小美"));
+        assertTrue(compile.contains("同一段画面：第1镜约 3.4 秒时的画面，就是第2镜的开场画面图2"),compile);
+        assertTrue(StudioRecreationTaskPlan.videoCheck(StudioRecreationTaskPlan.LIBRARY,unit,true).contains("第 1 镜（约 3.4 秒）：推到的画面是不是和图2一致"));
+        assertTrue(task.path("units").get(1).path("sameFrames").isEmpty());
+    }
+
+    /**
      * 2026-11-10 美食那条：「手指捏住远处很小的人、再一下冲到眼前」靠文字写不出来。每个镜头的开场截图先改成用户的人和物，
      * 视频模型从这张图开始拍；开场画面排在参考图最前面，素材接在后面，账号片尾不做。
      */
@@ -204,24 +232,25 @@ class StudioRecreationTaskPlanTest {
     }
 
     /**
-     * 检查要点和重出说明从代码挪进提示词库（2026-11-10 审查）。和挪之前代码里写的逐字一致。
+     * 每段成片的检查要点和重出说明从代码挪进提示词库（2026-11-10 审查），和挪之前代码里写的逐字一致。
      */
     @Test void checkTextsComeFromThePromptLibraryUnchanged() {
-        assertEquals("要检查的是一张改好的镜头开场画面。图1 是原片这一镜的截图，其余的图是用户的素材。逐项看："
-                +"要换的人和物有没有换成素材里的样子，脸、发型、衣服照素材（subject-replaced）；"
-                +"有没有留着原片人物的帽子、衣服、配饰，画面上有没有水印、账号和文字（old-subject-residue）；"
-                +"人和物的位置、离镜头的远近、在画面里的大小是不是和图1 一致，远处的人没有被画大、拉近，前景的手和手势还在（scene-and-action）。"
-                +"目标说明里写了保持原样的人和物不算残留。不对的地方在 suggestion 里写清这张图要怎么改。",
-                StudioRecreationTaskPlan.LIBRARY.render(StudioPromptCallPoints.RECREATION_KEYFRAME_CHECK,Map.of()).strip());
+        // 开场画面的检查要点 2026-11-10 真跑后改过（第 2 版：静止画面不判镜头运动、图1 里没有的不要求），不再和挪之前的一样
         String rest="- 每个镜头里要换的人和商品，是不是提示词这一镜点名的那张图里的样子；镜头推近或切近后手里拿的、桌上摆的，是不是这一镜点名的那一件，不能是别的镜头的那一件（subject-replaced）。\n"
                 +"- 同一个人在各个镜头里是不是同一张脸、同一个发型、同一身衣服，有没有留着原片人物的帽子、衣服和配饰，画面里有没有水印和多余的文字（character-consistency、old-subject-residue）。\n"
                 +"- 提示词每一镜写的动作、镜头运动和结束画面有没有做出来，镜头的先后顺序对不对（scene-and-action）。\n"
                 +"哪一镜不对，suggestion 里一行写一镜，直接写这一镜应该是什么画面，格式「第N镜：……」（例如「第3镜：推近后女生手里端的是图3 的炒饭」），不写「建议」「请修改」「重新生成」这类话。";
-        var unit=om.createObjectNode();unit.putArray("refs").addObject().put("label","图1");
+        var unit=om.createObjectNode();var unitRefs=unit.putArray("refs");
+        unitRefs.addObject().put("label","图1").put("stepId","k2").put("role","reference-image").put("what","第 2 镜改好的开场画面（这一镜从这张图开始拍）");
+        unitRefs.addObject().put("label","图2").put("nodeId","m1").put("role","reference-image").put("what","替换素材 1（替换素材）");
+        unitRefs.addObject().put("label","音频1").put("nodeId","v").put("role","reference-audio").put("what","声音（说话的声音）");
         unit.putArray("keyframes").addObject().put("shot",2).put("atSec",1.8).put("label","图1");
-        assertEquals("对照上面的提示词，逐个镜头检查成片，人和物对照参考图：\n- 第 2 镜（约 1.8 秒起）：开头的画面是不是和图1一致（人和物的位置、远近、大小，前景的手）。\n"+rest,
-                StudioRecreationTaskPlan.videoCheck(StudioRecreationTaskPlan.LIBRARY,unit,true));
-        assertEquals("对照上面的提示词，逐个镜头检查成片：\n"+rest,StudioRecreationTaskPlan.videoCheck(StudioRecreationTaskPlan.LIBRARY,om.createObjectNode(),false));
+        // 2026-11-10 真跑后加了「参考图分别是」：只给编号时检查模型对不上「替换素材 1」是图几，把换对了的菜也判成没换
+        String detailed=StudioRecreationTaskPlan.videoCheck(StudioRecreationTaskPlan.LIBRARY,unit,true);
+        assertTrue(detailed.contains("- 图1：第 2 镜改好的开场画面（这一镜从这张图开始拍）\n- 图2：替换素材 1（替换素材）\n"),detailed);
+        assertFalse(detailed.contains("音频1"),"声音不是图，不列");
+        assertTrue(detailed.contains("- 第 2 镜（约 1.8 秒起）：开头的画面是不是和图1一致（人和物的位置、远近、大小，前景的手）。\n"+rest),detailed);
+        assertEquals("对照上面的提示词，逐个镜头检查成片：\n"+rest,StudioRecreationTaskPlan.videoCheck(StudioRecreationTaskPlan.LIBRARY,om.createObjectNode(),false),"没有参考图时和挪之前一样");
         assertEquals("上一版没有做到的，这一版改掉：人物还戴着原片的贝雷帽",
                 StudioRecreationTaskPlan.LIBRARY.render(StudioPromptCallPoints.RECREATION_REDO_NOTE,Map.of("fix","人物还戴着原片的贝雷帽")).strip());
     }
