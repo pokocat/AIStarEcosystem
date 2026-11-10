@@ -1,10 +1,10 @@
 # 待办与已知问题
 
-## AI 编导爆款化（2026-11-09，分支 `dev/scene-script-best-practice`，未发布）
+## AI 编导爆款化（2026-11-09；2026-11-10 已生产发布 `20261110-scene-script-cbbfa030`）
 
 记录见 [`docs/audits/studio-scene-script-viral-tuning-2026-11.md`](docs/audits/studio-scene-script-viral-tuning-2026-11.md)。
 
-- [ ] **发布前查后台有没有改过这些提示词条目**：`base`、`stage-scene-script`、`stage-segmented-script`、`stage-scene-handoff`、`stage-dialogue`、`stage-skill-plan`，以及改过的视频场景条目和 `reference-video-recreation`、`script-writing` 两个做法。后台发布过的以后台为准，仓库文件不会覆盖。新增的 `method-commerce / -local / -drama / -brand / -ip` 是新条目，会直接生效。
+- [x] ~~**发布前查后台有没有改过这些提示词条目**~~ **2026-11-10 已核对**：线上 `ip_skill_version` 没有非种子来源的版本，发布后全部按仓库文件自动换新版（`stage-scene-script` v5、`base` v3，五个方法层 v1）。原描述：`base`、`stage-scene-script`、`stage-segmented-script`、`stage-scene-handoff`、`stage-dialogue`、`stage-skill-plan`，以及改过的视频场景条目和 `reference-video-recreation`、`script-writing` 两个做法。后台发布过的以后台为准，仓库文件不会覆盖。新增的 `method-commerce / -local / -drama / -brand / -ip` 是新条目，会直接生效。
 - [ ] **成片对比**（付费，需用户定预算）：用 11-09 客户的 15 条用例挑电商、到店、剧情各两条，新旧脚本各出一条，Seedance 和 H3 各跑一遍，看成片的 AI 感、念稿感和多出来的东西。
 - [ ] **发给视频模型时只挑和画面有关的段落**（分层）：第一段剧情概述、每镜「这一镜的作用」只给人看；第二段压成一行图号对照；第六段压成最后一行约束。H3 也先挑段落再改写，减少超长。认不出六段结构就原样发出。
 - [ ] **剧情类表演细节**：固定 terra 时已全胜，但线上 Sonnet 写的剧情（手部动作、配乐转折）仍比 terra 细，可以再给剧情类补一个表演写法的例子。
