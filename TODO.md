@@ -6,7 +6,7 @@
 
 - [x] ~~**发布前查后台有没有改过这些提示词条目**~~ **2026-11-10 已核对**：线上 `ip_skill_version` 没有非种子来源的版本，发布后全部按仓库文件自动换新版（`stage-scene-script` v5、`base` v3，五个方法层 v1）。原描述：`base`、`stage-scene-script`、`stage-segmented-script`、`stage-scene-handoff`、`stage-dialogue`、`stage-skill-plan`，以及改过的视频场景条目和 `reference-video-recreation`、`script-writing` 两个做法。后台发布过的以后台为准，仓库文件不会覆盖。新增的 `method-commerce / -local / -drama / -brand / -ip` 是新条目，会直接生效。
 - [ ] **成片对比**（付费，需用户定预算）：用 11-09 客户的 15 条用例挑电商、到店、剧情各两条，新旧脚本各出一条，Seedance 和 H3 各跑一遍，看成片的 AI 感、念稿感和多出来的东西。
-- [x] ~~**发给视频模型时只挑和画面有关的段落**（分层）~~ **2026-11-10 本地实现，未发布**：`scene-script-layers.ts` 一处判断，AI 视频页直接生成、视频裂变、H3 优化都用挑过的内容，编辑框灰字标「仅参考」，见 `docs/studio-scene-creation.md` 末节。画布连线和创作助手出的视频仍按原文；整份与挑过的成片效果对比并入上面的「成片对比」。
+- [x] ~~**发给视频模型时只挑和画面有关的段落**（分层）~~ **2026-11-10 本地实现，未发布**：`scene-script-layers.ts` 一处判断，AI 视频页直接生成、视频裂变、H3 优化都用挑过的内容，编辑框灰字标「仅参考」，见 `docs/studio-scene-creation.md` 末节。画布连线出视频也挑（创作助手的格式没有六段结构，原样发）；整份与挑过的成片效果对比并入上面的「成片对比」。
 - [ ] **剧情类表演细节**：固定 terra 时已全胜，但线上 Sonnet 写的剧情（手部动作、配乐转折）仍比 terra 细，可以再给剧情类补一个表演写法的例子。
 
 ## AI 编导建议（2026-11-09）

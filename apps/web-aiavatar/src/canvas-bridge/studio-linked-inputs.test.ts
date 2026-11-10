@@ -28,6 +28,16 @@ describe('linked canvas creation and inputs',()=>{
     expect(withStudioLinkedText(script,'video',[text,other],[edge('story'),edge('notes')])).toBe(`${script}\n\n【引用文本：卖点】\n才9块9一斤`);
     expect(withStudioLinkedText('推进镜头','video',[text,twin],[edge('story'),edge('twin')])).toBe(`推进镜头\n\n【引用文本：视频脚本】\n${script}`);
   });
+  it('a linked six-part director script sends only the parts about the picture when making a video (2026-11-10)',()=>{
+    const script='一、剧情概述：宝妈试用。\n五、镜头时间轴：\n第1镜（0–4 秒）这一镜的作用：截停\n宝妈说：「三秒卸干净。」';
+    const text={...source,id:'story',type:CanvasNodeType.Text,title:'视频脚本',metadata:{content:script}};
+    const edges=[{id:'e',fromNodeId:'story',toNodeId:'video'}];
+    expect(withStudioLinkedText('照脚本拍','video',[text],edges,undefined,true)).toBe('照脚本拍\n\n【引用文本：视频脚本】\n第1镜（0–4 秒）\n宝妈说：「三秒卸干净。」');
+    // 出图、写文字仍引用全文；认不出六段结构的文字出视频也原样引用。
+    expect(withStudioLinkedText('照脚本拍','video',[text],edges)).toBe(`照脚本拍\n\n【引用文本：视频脚本】\n${script}`);
+    const plain={...text,metadata:{content:'第1镜：博主停下。'}};
+    expect(withStudioLinkedText('拍','video',[plain],edges,undefined,true)).toBe('拍\n\n【引用文本：视频脚本】\n第1镜：博主停下。');
+  });
   it('expands the resources of a linked group without duplicating a separately linked member',()=>{
     const group={...source,id:'group',type:CanvasNodeType.Group},member={...source,metadata:{...source.metadata,groupId:'group'}};
     expect(studioLinkedNodes('video',[group,member],[{id:'group-edge',fromNodeId:'group',toNodeId:'video'},{id:'member-edge',fromNodeId:'source',toNodeId:'video'}])).toEqual([member]);
