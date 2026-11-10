@@ -426,6 +426,7 @@
 
 - [ ] **剧本面板的模型选择器显示值不看 fixed 模式**：`studio-workspace.tsx` 剧本设置里 `<Select value=…>` 自己又写了一遍「用户选的 ?? 默认 ?? 第一个」，不经 `studioChosenTextModel`（`canvas-bridge/studio-text-model.ts`，这次已把另外两份收成它），fixed 模式下可能显示用户旧选的模型、提交却用默认模型（§8.0.1 ④）。改成调用 `studioChosenTextModel` 会改变显示，需要单独确认后再改。
 - [ ] **`studioComposerTake` 与对话框写在同一个 .tsx 里**：node 测试引用它会连带加载 antd（多约 6 秒），现在测试里 mock 了 antd 顶着；把这个纯函数挪到 `canvas-bridge/` 就能去掉 mock。
+- [ ] **CI 偶发失败：`studio-effect-library.test.tsx` 的「slow selection cannot be cancelled or submitted twice…」**（2026-11-10 PR #186 第一次跑红，`expected true to be false`：请求被拒后断言按钮已恢复可点，但状态还没更新）。同一提交本机连跑 10 遍全过、CI 重跑通过，改动与它无关。疑似 `reject()` 后只等了 `findByRole('alert')` 就同步断言 `disabled`，应改成 `waitFor` 等按钮恢复。再红就按这条修，不再重跑。
 - [ ] **`studio-video-prompt-wiring.test.ts` 第 3 条只读 `canvas/pages/canvas/project.tsx`**：那个页面全仓无人引用，Studio 打不开；随页面一起处置（删页面时删这条）。
 
 ### 2026-10-20 · H3 视频台词被厂商改写删掉、首尾帧只写在文字里（本地实现，未发布；说明见 `docs/ip-studio-video-modes.md` 末节）
