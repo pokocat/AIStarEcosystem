@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 「视频裂变」弹窗（2026-11-09 用户要求）：重新编辑和再次生成合成一个入口；多条可以原样、换变量（不调 AI）、AI 改写。
+// 「视频裂变」弹窗（2026-11-09 用户要求）：多条可以原样、换变量（不调 AI）、AI 改写。2026-11-10 起「自己改」拿出去成了设置区的「重新生成」。
 // 弹窗只负责选和看，断言它交给页面的东西：几条、每条换了什么、脚本换成什么。
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
@@ -23,7 +23,7 @@ const VARS = node('vars', 'variables', { content: '人物身份｜宝妈｜上�
 
 function show(props: Partial<Parameters<typeof VideoMoreDialog>[0]> = {}) {
   const calls = { onClose: vi.fn(), onFind: vi.fn().mockResolvedValue(undefined), onWrite: vi.fn().mockResolvedValue(undefined),
-    onGenerate: vi.fn().mockResolvedValue(true), onEdit: vi.fn(), onConfirm: vi.fn() };
+    onGenerate: vi.fn().mockResolvedValue(true), onConfirm: vi.fn() };
   const all = { task: task(), modelName: 'H3', free: true, busy: false, nodes: [], ...calls, ...props };
   const view = render(<VideoMoreDialog {...all}/>);
   return { ...calls, ...props, view, rerender: (next: Partial<typeof all>) => view.rerender(<VideoMoreDialog {...all} {...next}/>) } as typeof calls & { rerender: (next: Partial<typeof all>) => void };
@@ -130,15 +130,13 @@ test('AI 改写 also works without variables: the director changes things itself
   expect(s.onWrite).toHaveBeenCalledWith([[], []]);
 });
 
-test('自己改 puts the settings back for editing', () => {
-  const s = show();
-  way('自己改');
-  expect(within(dialog()).queryByRole('tablist')).toBeNull();
-  fireEvent.click(within(dialog()).getByRole('button', { name: '去修改' }));
-  expect(s.onEdit).toHaveBeenCalledOnce();
+// 2026-11-10 用户：裂变里不再有「自己改」，放回编辑页是设置区单独的「重新生成」。
+test('the dialog offers only ways that make new takes', () => {
+  show();
+  expect(within(dialog()).getAllByRole('radio').map(r => r.textContent)).toEqual([expect.stringContaining('原样'), expect.stringContaining('换变量'), expect.stringContaining('AI 改写')]);
 });
 
-test('a copy of a reference video can only be made again as is, and an old task without a record can only be edited', () => {
+test('a copy of a reference video can only be made again as is, and an old task without a record cannot make takes', () => {
   show({ task: task({ kind: 'recreation' }) });
   way('换变量');
   expect((within(dialog()).getByRole('button', { name: /生成 2 条/ }) as HTMLButtonElement).disabled).toBe(true);
@@ -146,7 +144,7 @@ test('a copy of a reference video can only be made again as is, and an old task 
   cleanup();
   const old = { ...task(), request: undefined } as StudioVideoTask;
   show({ task: old });
-  expect(within(dialog()).getByRole('radio', { name: /自己改/ }).getAttribute('aria-checked')).toBe('true');
+  expect((within(dialog()).getByRole('button', { name: /生成 2 条/ }) as HTMLButtonElement).disabled).toBe(true);
 });
 
 test('a script that has no AI-director version cannot be rewritten by AI', () => {
@@ -161,7 +159,7 @@ test('arrow keys move between the ways and between the takes', () => {
   expect(within(dialog()).getByRole('radio', { name: /换变量/ }).getAttribute('aria-checked')).toBe('true');
   fireEvent.keyDown(within(dialog()).getByRole('radiogroup'), { key: 'ArrowUp' });
   fireEvent.keyDown(within(dialog()).getByRole('radiogroup'), { key: 'ArrowUp' });
-  expect(within(dialog()).getByRole('radio', { name: /自己改/ }).getAttribute('aria-checked')).toBe('true');
+  expect(within(dialog()).getByRole('radio', { name: /AI 改写/ }).getAttribute('aria-checked')).toBe('true');
   fireEvent.keyDown(within(dialog()).getByRole('radiogroup'), { key: 'ArrowDown' });
   fireEvent.keyDown(within(dialog()).getByRole('tablist'), { key: 'ArrowRight' });
   expect(within(dialog()).getByRole('tab', { name: /第 2 条/ }).getAttribute('aria-selected')).toBe('true');

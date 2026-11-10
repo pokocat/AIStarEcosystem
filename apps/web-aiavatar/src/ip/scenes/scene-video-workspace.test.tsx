@@ -36,34 +36,38 @@ test('a late response from a previously selected task cannot replace the new sel
   await act(async () => { oldResolve(task('PEX-old')); await old; });
   expect(props.onSelect).not.toHaveBeenCalledWith(expect.objectContaining({ id: 'PEX-old' }));
 });
-test('historical inputs are read-only; more takes and edits go through one entry', () => {
-  const more = vi.fn(), failed = task('PEX-one'); failed.execution!.status = 'needs_user';
-  render(<VideoTaskSettings task={failed} head={null} onMore={more}/>);
+test('historical inputs are read-only; 重新生成 puts them back and 裂变生成 makes new takes', () => {
+  const more = vi.fn(), edit = vi.fn(), failed = take('PEX-one', '2026-11-06T00:00:00Z', 'a'); failed.execution!.status = 'needs_user';
+  render(<VideoTaskSettings task={failed} head={null} onMore={more} onEdit={edit}/>);
   expect(screen.getByText('保留这一版要求')).toBeTruthy(); expect(screen.queryByRole('textbox')).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: '视频裂变' })); expect(more).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole('button', { name: '裂变生成' })); expect(more).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole('button', { name: '重新生成' })); expect(edit).toHaveBeenCalledOnce();
 });
-// 2026-11-09 用户：「重新编辑」和「再次生成」合成一个入口。
-test.each(['running', 'done', 'needs_user', 'partial', 'paused', 'canceled'] as const)('%s keeps exactly one 视频裂变 action in the settings footer', async status => {
-  const saved = task('PEX-edit'); saved.execution!.status = status;
+// 2026-11-10 用户：底部是两个按钮，「重新生成」原样回到编辑页，「裂变生成」开视频裂变（取代 11-09 合成一个入口）。
+test.each(['running', 'done', 'needs_user', 'partial', 'paused', 'canceled'] as const)('%s keeps one 重新生成 and one 裂变生成 in the settings footer', async status => {
+  const saved = take('PEX-edit', '2026-11-06T00:00:00Z', 'a'); saved.execution!.status = status;
   if (status === 'done') saved.run = { id: 'IPR-final', status: 'done', output: { storageKey: 'final.mp4' } } as StudioVideoTask['run'];
   api.get.mockResolvedValue(saved);
-  const more = vi.fn();
-  await act(async () => { render(<><VideoTaskSettings task={saved} head={null} onMore={more}/><SceneVideoWorkspace {...props} taskId={saved.id} selected={saved}/></>); });
+  const more = vi.fn(), edit = vi.fn();
+  await act(async () => { render(<><VideoTaskSettings task={saved} head={null} onMore={more} onEdit={edit}/><SceneVideoWorkspace {...props} taskId={saved.id} selected={saved}/></>); });
   const settings = screen.getByRole('region', { name: '本次设置' });
-  const button = within(settings).getByRole('button', { name: '视频裂变' });
+  const button = within(settings).getByRole('button', { name: '裂变生成' });
   expect(button.closest('footer')?.parentElement).toBe(settings);
   if (status === 'done') await screen.findByRole('button', { name: '下载视频' });
-  expect(screen.getAllByRole('button', { name: '视频裂变' })).toHaveLength(1);
-  expect(screen.queryByRole('button', { name: '重新编辑' })).toBeNull();
+  expect(screen.getAllByRole('button', { name: '裂变生成' })).toHaveLength(1);
+  expect(screen.getAllByRole('button', { name: '重新生成' })).toHaveLength(1);
+  expect(screen.queryByRole('button', { name: '视频裂变' })).toBeNull();
   fireEvent.click(button); expect(more).toHaveBeenCalledOnce();
 });
-test('the settings panel hides empty rows and only offers 视频裂变 when something was saved', () => {
+test('the settings panel hides empty rows and only offers what was saved', () => {
+  // 只有设置、没有提交记录：能放回编辑页，裂变不了
   const noSpecs = task('PEX-one'); noSpecs.input = { nodes: [], sceneVideoState: { text: '要求', options: {} } } as never;
-  const mounted = render(<VideoTaskSettings task={noSpecs} head={null} onMore={vi.fn()}/>);
-  expect(screen.getByRole('button', { name: '视频裂变' })).toBeTruthy();
+  const mounted = render(<VideoTaskSettings task={noSpecs} head={null} onMore={vi.fn()} onEdit={vi.fn()}/>);
+  expect(screen.getByRole('button', { name: '重新生成' })).toBeTruthy(); expect(screen.queryByRole('button', { name: '裂变生成' })).toBeNull();
   noSpecs.input = undefined;
-  mounted.rerender(<VideoTaskSettings task={noSpecs} head={null} onMore={vi.fn()}/>);
-  expect(screen.queryByRole('button', { name: '视频裂变' })).toBeNull(); expect(screen.queryByText('清晰度')).toBeNull(); expect(screen.queryByText(/— 秒/)).toBeNull();
+  mounted.rerender(<VideoTaskSettings task={noSpecs} head={null} onMore={vi.fn()} onEdit={vi.fn()}/>);
+  expect(screen.queryByRole('button', { name: '重新生成' })).toBeNull(); expect(screen.queryByRole('button', { name: '裂变生成' })).toBeNull();
+  expect(screen.queryByText('清晰度')).toBeNull(); expect(screen.queryByText(/— 秒/)).toBeNull();
 });
 test('completed steps stay complete while only the failed step retries', () => {
   const saved = task('PEX-one', 'segmented'); saved.execution!.steps.unshift({ ...saved.execution!.steps[0], id: 'script', operation: 'text', status: 'done' });
@@ -245,13 +249,13 @@ test('recent tasks can be listed by batch or one by one by time, and the choice 
   await waitFor(() => expect(screen.getByRole('button', { name: '按时间' }).getAttribute('aria-pressed')).toBe('true'));
   localStorage.clear();
 });
-test('a single task shows no strip, and the settings name the model and open 视频裂变', async () => {
+test('a single task shows no strip, and the settings name the model and open 裂变生成', async () => {
   const one = take('PEX-only', '2026-11-09T01:00:00Z', 'a');
   const more = vi.fn();
   render(<VideoTaskSettings task={one} head={<header>口播带货</header>} modelName="Seedance 2.0" onMore={more}/>);
   expect(screen.getByText('口播带货')).toBeTruthy();
   expect(screen.getByText('模型').nextElementSibling?.textContent).toBe('Seedance 2.0');
-  fireEvent.click(screen.getByRole('button', { name: '视频裂变' }));
+  fireEvent.click(screen.getByRole('button', { name: '裂变生成' }));
   expect(more).toHaveBeenCalledOnce();
   expect(screen.queryByRole('region', { name: '本批视频' })).toBeNull();
 });

@@ -996,7 +996,8 @@ export function SceneVideoStudio() {
     } finally { setBusy(false); }
   };
   /**
-   * 自己改：把这条任务的设置放回同一份草稿的编辑页（素材、脚本、规格、模型）。改完生成的新视频和它在同一组；已有任务和视频都不动。
+   * 重新生成（设置区按钮，2026-11-10 起；原来是视频裂变里的「自己改」）：把这条任务的设置原样放回同一份草稿的编辑页（素材、脚本、规格、模型）。
+   * 直接点「生成视频」或改完再生成，新视频和它在同一组；已有任务和视频都不动。
    * 草稿里没有的素材节点按快照补回来（签名地址现签）。
    */
   const editTask = async (task: StudioVideoTask) => {
@@ -1018,8 +1019,8 @@ export function SceneVideoStudio() {
       // writeSceneQuery 在同一份草稿里会留着 task（只带 task 的链接要能打开），这里是离开任务，地址直接换掉。
       window.history.replaceState(null, '', `/video?scene=${encodeURIComponent(task.sceneId)}&draft=${encodeURIComponent(task.projectId)}`);
       await openDraft(task.projectId); setView('compose'); setMobileView('compose');
-      setNote({ text: '已放回这条视频的设置。改完点「生成视频」，新视频和它在同一批。' });
-    } catch (error) { showFailure({ action: '修改后生成', error }); }
+      setNote({ text: '已放回这条视频的设置，新视频和它在同一批。' });
+    } catch (error) { showFailure({ action: '重新生成', error }); }
     finally { setBusy(false); }
   };
   const confirmTake = async (projectId: string, request: StudioVideoTaskCreate) => {
@@ -1222,7 +1223,7 @@ export function SceneVideoStudio() {
 
     {taskOpen ? <VideoTaskSettings task={selectedTask!} head={composerHead(taskScene ?? scene, id => { const next = findVideoScene(catalog, id); if (next) reset(next); })}
         modelName={taskModelName(selectedTask!)} busy={busy}
-        onMore={() => setMoreFor(selectedTask!.id)}
+        onMore={() => setMoreFor(selectedTask!.id)} onEdit={() => void editTask(selectedTask!)}
         pending={draft?.id === selectedTask!.projectId ? draft.doc.sceneVideoSubmissions ?? [] : []} onConfirm={request => void confirmTake(selectedTask!.projectId, request)}/>
       : <section className="scene-card scene-video-composer" aria-label={view === "director" ? "AI 编导" : "写一条视频"}>
       {composerHead(scene, onPick)}
@@ -1353,7 +1354,7 @@ export function SceneVideoStudio() {
       free={!!caps?.mock} busy={busy} textBlocker={!caps ? '正在加载模型…' : !caps.mock && !textModel?.tokenPricing ? 'AI 编导暂时不可用，请联系平台处理。' : undefined}
       nodes={draft?.id === selectedTask!.projectId ? draft.doc.nodes as CanvasNodeData[] : []}
       onClose={() => setMoreFor(undefined)} onFind={() => findTakeVariables(selectedTask!)} onWrite={changes => writeTakeScripts(selectedTask!, changes)}
-      onGenerate={(takes, estimate) => generateTakes(selectedTask!, takes, estimate)} onEdit={() => void editTask(selectedTask!)} onConfirm={node => void confirmOriginal(node)}/>}
+      onGenerate={(takes, estimate) => generateTakes(selectedTask!, takes, estimate)} onConfirm={node => void confirmOriginal(node)}/>}
     <HubTabBar/>
   </main>;
 }
