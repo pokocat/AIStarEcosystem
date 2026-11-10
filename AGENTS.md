@@ -792,6 +792,7 @@ v0.197：web-drama 所有弹窗在 375 宽下右边都被裁掉一截，四个�
 - 做法：独立事务里刚写的东西，要在外层返回前读出来，就也在新事务里读（`newTx.execute(tx -> repo.find...)`），或者直接用写入时拿到的对象。
 - 判据：本地正常、线上「第一次点没反应，第二次报已在进行」→ 先怀疑事务快照，不是前端状态。
 - 反过来的坑（2026-10-28 导演台删除，独立复核复现）：**持着行锁时不要再开 `REQUIRES_NEW` 去读**。外层连接和锁都不放，内层再要一条连接；并发 N 个请求就占 N 条等 N 条，连接池 3 条时全部 `CannotCreateTransactionException`（active=3 / idle=0），池子 20 只是阈值更高。要在锁内读到最新提交，就在同一事务里用读已提交（`@Transactional(isolation = READ_COMMITTED)`，Spring 对已参与的外层事务不改隔离级别）并只查标量列；回归 `DirectorDeletePoolTest`（小连接池 + 占满后并发）。
+- 读路径也中过（2026-11-10 线上事故）：`DirectorService.get` 持着作品行锁，`view()` 却在 REQUIRES_NEW 里读任务列表（正是为上面 10-24 那条加的）。一个账号 10 秒内对同一部作品发了 125 个读取，等锁的请求占满 20 条连接，持锁的那个等不到第二条，读作品连续 500 约 4 分钟，全站接口跟着失败。现在调用 `view` 的入口都声明读已提交、任务列表在同一事务里读（回归 `DirectorReadPoolTest`），前端轮询等上一次返回再发（`useDirectorPoll`）。所以第一条「也在新事务里读」只适用于没持锁的地方；持锁时用读已提交，新增调用 `view` 的入口也要声明。读作品时的回投也不许在锁内提交任务（改写完成接着出视频、改写不合格重试）：锁内只记意图（`followUps`），锁放开后再按原请求编号提交，`submitTx` 在回投路径上会直接抛错。
 - 同一类（2026-10-25）：`@Transactional(readOnly = true)` 里调 `SELECT … FOR UPDATE`（导演台 `locked()`），MySQL 直接报 `Cannot execute statement in a READ ONLY transaction`，H2 照常执行。只读接口用不加锁的读（`DirectorService.owned()`）。导演台的视频报价、推荐预算、上传声音样本都因此在线上 500。
 
 **⑰ `HttpRequest.timeout` 只管到响应头，不管正文。**

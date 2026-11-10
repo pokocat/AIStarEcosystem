@@ -107,22 +107,31 @@ test("reloading a work that is still in the trash says so", async () => {
   expect(await screen.findByText(/仍未找到此作品/)).toBeTruthy();
 });
 
-/** 同一部作品：新的读取先成功，更早发出的那次 404 后到 —— 不能把页面打回「已删除」，也不能清掉草稿。 */
+/**
+ * 同一部作品：新的读取先成功，更早发出的那次 404 后到 —— 不能把页面打回「已删除」，也不能清掉草稿。
+ * 轮询自己不再叠请求（director-poll.test.tsx），两次读取重叠只剩「轮询还没回来时，保存冲突触发了刷新」这一类。
+ */
 test("an older read that 404s after a newer read succeeded does not mark the same work deleted", async () => {
   const { useDraft, hasDrafts, clearDrafts } = await import("./director-shared");
+  const { ApiError } = await import("@ai-star-eco/api-client");
   Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+  vi.mocked(DirectorApi.patchWork).mockRejectedValue(new ApiError({ code: "DIRECTOR_WORK_CONFLICT", message: "作品已在其他页面修改" }, 409));
   const running = { ...work(), tasks: [{ id: "r", target: "script", status: "running" as const, stage: null, cost: 0, errorMessage: null, createdAt: "2026-10-26T00:00:00Z" }] };
   let rejectOld!: (e: unknown) => void;
   vi.mocked(DirectorApi.getWork)
     .mockResolvedValueOnce(running)                                                         // 打开
-    .mockImplementationOnce(() => new Promise((_resolve, r) => { rejectOld = r; }))         // 较早的一次读取，迟迟不回
-    .mockResolvedValueOnce({ ...running, revision: 2 });                                    // 较新的一次，先回来
+    .mockImplementationOnce(() => new Promise((_resolve, r) => { rejectOld = r; }))         // 较早的一次读取（轮询），迟迟不回
+    .mockResolvedValueOnce({ ...running, revision: 2 });                                    // 较新的一次（冲突后刷新），先回来
   function DraftProbe() { const [value, setValue] = useDraft("w:content", ""); return <input aria-label="草稿" value={value} onChange={e => setValue(e.target.value)}/>; }
   render(<><DirectorWorkbench id="w"/><DraftProbe/></>);
   await screen.findByRole("textbox", { name: "作品名" });
   fireEvent.change(screen.getByRole("textbox", { name: "草稿" }), { target: { value: "没保存的正文" } });
   await act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
-  await act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
+  await waitFor(() => expect(DirectorApi.getWork).toHaveBeenCalledTimes(2));
+  await settleEffects();
+  const title = screen.getByRole("textbox", { name: "作品名" });
+  fireEvent.change(title, { target: { value: "改个名字" } });
+  fireEvent.blur(title);
   await waitFor(() => expect(DirectorApi.getWork).toHaveBeenCalledTimes(3));
   await act(async () => { rejectOld(await gone("w")); });
   expect(screen.queryByText("作品已删除或不存在")).toBeNull();

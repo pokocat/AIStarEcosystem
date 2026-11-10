@@ -9,6 +9,7 @@ import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { isProductNotEnrolledError } from "@ai-star-eco/api-client";
 import { DirectorApi } from "../api";
 import { goneWorkId, isStaleGone } from "../api/director";
+import { useDirectorPoll } from "./director-poll";
 import { DirectorScript } from "./director-script";
 import { DirectorAssets } from "./director-assets";
 import { DirectorProducts } from "./director-products";
@@ -152,8 +153,11 @@ export function DirectorWorkbench({ id }: { id: string }) {
   // 只认最新一次读取的结果：作品在回收站恢复后，新的读取先成功、更早发出的那次 404 后到，不能再把页面打回「已删除」、清掉草稿。
   // 读成功就不再是「已删除」：在回收站恢复后，这一页点「重新加载」就回来了。
   const loadSeq = useRef(0);
+  // 正在进行的读取数：轮询见到有读取在途就跳过这一次（见 useDirectorPoll）。
+  const loading = useRef(0);
   const load = useCallback(async (): Promise<"ok" | "gone" | "error" | "stale"> => {
     const seq = ++loadSeq.current;
+    loading.current++;
     try {
       const next = await DirectorApi.getWork(id);
       if (!mounted.current || seq !== loadSeq.current) return "stale";
@@ -165,7 +169,7 @@ export function DirectorWorkbench({ id }: { id: string }) {
       if (isProductNotEnrolledError(e)) { setNotEnrolled(true); return "error"; }
       setLoadError(errorText(e));
       return "error";
-    }
+    } finally { loading.current--; }
   }, [apply, id, markGone]);
 
   // 「已删除」页上的「重新加载」：防连点；还是找不到、或网络失败，都在这一页上说出来。
@@ -201,15 +205,9 @@ export function DirectorWorkbench({ id }: { id: string }) {
     return () => window.removeEventListener("beforeunload", warn);
   }, [id]);
 
-  // 有任务在跑或一键制作在进行时轮询；页面隐藏时不轮询，回来立刻刷新一次。
+  // 有任务在跑或一键制作在进行时轮询；页面隐藏时不轮询，回来立刻刷新一次。上一次读取返回后才排下一次，不叠请求。
   const active = !gone && !!work && (work.tasks.some(t => t.status === "running"||t.status==="stopping") || work.pipeline?.status === "running");
-  useEffect(() => {
-    if (!active) return;
-    const timer = window.setInterval(() => { if (document.visibilityState === "visible") void load(); }, 2500);
-    const onVisible = () => { if (document.visibilityState === "visible") void load(); };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", onVisible); };
-  }, [active, load]);
+  useDirectorPoll(active, load, () => loading.current > 0);
 
   useEffect(() => {
     if (!work) return;
