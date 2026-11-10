@@ -265,6 +265,10 @@ export interface StudioAdoptResult {
 }
 export interface StudioIpAsset extends Omit<StudioAdoptResult,"ipId"> {
   librarySource?: "mine" | "official";
+  /** 官方形象的使用方式：free 免费，可直接用于生成；license 需授权，暂不能选。我的 IP 没有这一项。 */
+  access?: "free" | "license" | null;
+  /** 官方形象分类（pro / life / ugc / community），选择框按它筛选。 */
+  category?: string | null;
   ipId?: string | null;
   name: string;
   url: string;

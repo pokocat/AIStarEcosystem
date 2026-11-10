@@ -210,6 +210,8 @@ public class DapCatalogService {
         m.put("imageUrl", base + "-1.jpg");
         // 正面半身（front-half）= 定妆主图（-1）；右侧脸 / 左侧脸为另两个机位。
         m.put("shotImages", Map.of("front-half", base + "-1.jpg", "right", base + "-2.jpg", "left", base + "-3.jpg"));
+        // 内置 10 个都是免费的（2026-11-10 定）。这份只在还没入库时展示用，入库后以 dap_public_avatar 为准。
+        m.put("access", "free");
         return m;
     }
 

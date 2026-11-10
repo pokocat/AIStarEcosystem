@@ -61,6 +61,7 @@ beforeEach(() => {
 test('old asset links land on the new categories', () => {
   expect(hubTab('ips')).toBe('people'); expect(hubTab('authorized')).toBe('people'); expect(hubTab('objects')).toBe('people');
   expect(hubTab('materials')).toBe('all'); expect(hubTab('voices')).toBe('audio');
+  expect(hubTab('discover')).toBe('official'); expect(hubTab('official')).toBe('official');
   expect(hubTab('video')).toBe('video'); expect(hubTab(null)).toBe('all'); expect(hubTab('nope')).toBe('all');
 });
 

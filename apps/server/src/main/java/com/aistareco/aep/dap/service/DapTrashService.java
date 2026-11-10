@@ -173,6 +173,8 @@ public class DapTrashService {
 
         int filesDeleted = 0;
         for (String k : keys) {
+            // 官方形象图是所有人共用的（另存为、发布画布人物都会直接引用它），用户删自己的数字人不能删它。
+            if (isOfficialImage(k)) continue;
             try {
                 storage.delete(k);
                 filesDeleted++;
@@ -181,6 +183,15 @@ public class DapTrashService {
             }
         }
         log.info("[dap-trash] hard-deleted avatar={} owner={} files={}/{}", id, a.getOwnerUserId(), filesDeleted, keys.size());
+    }
+
+    /** 官方形象分类（dap_plaza/，可能带 OSS 前缀段）下的文件。只有运营上传和内置入库会写这个分类。 */
+    private boolean isOfficialImage(String key) {
+        String probe = storage.allocateKey(DapPublicAvatarService.CATEGORY, null, "probe.png");
+        if (probe == null || probe.indexOf('/') < 0) return false;
+        String prefix = probe.substring(0, probe.indexOf('/') + 1);
+        int slash = key.indexOf('/');
+        return key.startsWith(prefix) || slash > 0 && key.startsWith(prefix, slash + 1);
     }
 
     private static void addKey(Set<String> keys, String k) {

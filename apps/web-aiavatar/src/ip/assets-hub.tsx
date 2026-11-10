@@ -3,6 +3,7 @@ import { IMAGE_UPLOAD_ACCEPT } from '@ai-star-eco/api-client/image-upload-policy
 // 「资产」页（2026-10-31 改版，设计稿「资产（新）」一排）：
 // 按类型分（全部 / 图片 / 视频 / 音频 / 人物 / 场景 / 道具），其余分组交给左边的「资产库」（就是原来的文件夹）。
 // 2026-11-07：导演台的场景、道具有图后自动进库，这里加两个分类；来自哪部作品、哪张画布是单独的筛选（地址参数 from）。
+// 2026-11-10：「官方形象」从原「发现」页搬来，是平台提供的人物，不在任何资产库里，所以这个标签不显示左边的资产库。
 // 「AI 生成」是自带的库：各处做出来、还没放进别的库的东西都在这里，移到别的库就从这里走掉。
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -26,6 +27,7 @@ import { confirmAssetDelete } from './assets-delete';
 import { AudioRecorderDialog } from './audio-recorder-dialog';
 import { AI_LIBRARY, ASSETS_DESCRIPTION, libraryQuery, materialOrigin, sourceLabel } from './assets-hub-shared';
 import { AssetsObjects } from './assets-objects';
+import { AssetsOfficial } from './assets-official';
 import { AssetsPeople } from './assets-people';
 import { LibrarySaveDialog, type LibrarySaveImage } from './library-save-dialog';
 import { LibrarySourceSelect } from './library-source-select';
@@ -34,13 +36,13 @@ import { StudioErrorNotice, useStudioApp, useStudioErrorState } from './studio-e
 import { studioOverlayContainer } from './studio-overlay';
 import { StudioPage } from './studio-page';
 
-export type HubTab = 'all' | 'image' | 'video' | 'audio' | 'people' | 'scene' | 'prop';
+export type HubTab = 'all' | 'image' | 'video' | 'audio' | 'people' | 'scene' | 'prop' | 'official';
 export const HUB_TABS: { value: HubTab; label: string }[] = [
   { value: 'all', label: '全部' }, { value: 'image', label: '图片' }, { value: 'video', label: '视频' },
-  { value: 'audio', label: '音频' }, { value: 'people', label: '人物' }, { value: 'scene', label: '场景' }, { value: 'prop', label: '道具' },
+  { value: 'audio', label: '音频' }, { value: 'people', label: '人物' }, { value: 'scene', label: '场景' }, { value: 'prop', label: '道具' }, { value: 'official', label: '官方形象' },
 ];
 // 旧链接（我的 IP / 创作素材 / 生成与上传 / 声音 / 授权形象）落到新分类上。
-const LEGACY_TABS: Record<string, HubTab> = { ips: 'people', objects: 'people', authorized: 'people', materials: 'all', voices: 'audio' };
+const LEGACY_TABS: Record<string, HubTab> = { discover: 'official', ips: 'people', objects: 'people', authorized: 'people', materials: 'all', voices: 'audio' };
 export function hubTab(raw: string | null): HubTab {
   if (HUB_TABS.some(t => t.value === raw)) return raw as HubTab;
   return (raw && LEGACY_TABS[raw]) || 'all';
@@ -51,7 +53,7 @@ const SOURCES = [
   { key: 'upload', label: '我上传的' }, { key: 'canvas', label: '从画布保存' },
 ];
 const TYPE_LABEL = { image: '图片', video: '视频', audio: '音频', text: '文字' } as const;
-type FileTab = Exclude<HubTab, 'people' | 'scene' | 'prop'>;
+type FileTab = Exclude<HubTab, 'people' | 'scene' | 'prop' | 'official'>;
 const ACCEPT: Record<FileTab, string> = {
   all: `${IMAGE_UPLOAD_ACCEPT},.mp4,.mp3,.wav,.m4a,.md,.txt`, image: IMAGE_UPLOAD_ACCEPT, video: '.mp4', audio: '.mp3,.wav,.m4a',
 };
@@ -91,9 +93,9 @@ export function AssetsHub() {
           {HUB_TABS.map(t => <button key={t.value} type="button" role="tab" aria-selected={tab === t.value} onClick={() => go({ tab: t.value })}>{t.label}</button>)}
         </div>
         <div className="assets-hub-body">
-          <LibraryNav folders={folders} value={current} error={folderError} onRetry={() => setFolderRevision(n => n + 1)} onChange={id => go({ library: id })} onChanged={() => setFolderRevision(n => n + 1)}/>
+          {tab !== 'official' && <LibraryNav folders={folders} value={current} error={folderError} onRetry={() => setFolderRevision(n => n + 1)} onChange={id => go({ library: id })} onChanged={() => setFolderRevision(n => n + 1)}/>}
           <section className="assets-hub-main" aria-label={HUB_TABS.find(t => t.value === tab)?.label}>
-            {!ready ? null : tab === 'people'
+            {tab === 'official' ? <AssetsOfficial/> : !ready ? null : tab === 'people'
               ? <AssetsPeople library={current} folders={folders} from={from} onFromChange={id => go({ from: id })}/>
               : tab === 'scene' || tab === 'prop'
               ? <AssetsObjects key={tab} kind={tab} library={current} folders={folders} from={from} onFromChange={id => go({ from: id })} onShowAll={() => go({ library: 'all' })}/>

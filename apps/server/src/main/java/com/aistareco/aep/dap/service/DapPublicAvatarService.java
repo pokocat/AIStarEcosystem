@@ -42,6 +42,36 @@ public class DapPublicAvatarService {
         return repo.findById(id).map(this::toWire).orElse(null);
     }
 
+    /** 形象图的存储分类。运营上传与内置入库都写这里，生成链只认这个分类下的官方形象图。 */
+    public static final String CATEGORY = "dap/plaza";
+
+    /**
+     * 这张图能不能被这个用户拿去生成（画布 / AI 图片 / AI 视频的素材归属闸调用）。
+     *
+     * <p>只认本表里登记过的官方形象图，而且必须在 {@link #CATEGORY} 分类下 —— 运营后台能手填 key，
+     * 不限分类的话，把别人的私有图片 key 填进来再标免费，就等于把那张图开放给所有人。
+     * 需授权的形象暂未开放授权，一律不放行；以后有授权记录了，在这里按 userId 查。
+     */
+    public boolean usableImageKey(String userId, String key) {
+        if (userId == null || key == null || key.isBlank()) return false;
+        String prefix = categoryPrefix();
+        if (prefix == null || !(key.startsWith(prefix) || key.indexOf('/') > 0 && key.startsWith(prefix, key.indexOf('/') + 1))) return false;
+        return repo.findByImageKey(key).stream().anyMatch(a -> DapPublicAvatar.ACCESS_FREE.equals(a.accessOrDefault()));
+    }
+
+    private String categoryPrefix() {
+        String probe = storage.allocateKey(CATEGORY, null, "probe.png");
+        if (probe == null) return null;
+        int slash = probe.indexOf('/');
+        return slash < 0 ? null : probe.substring(0, slash + 1);
+    }
+
+    static String normalizeAccess(String raw) {
+        String v = raw.trim().toLowerCase(java.util.Locale.ROOT);
+        if (DapPublicAvatar.ACCESS_FREE.equals(v) || DapPublicAvatar.ACCESS_LICENSE.equals(v)) return v;
+        throw BusinessException.badRequest("DAP_PUBLIC_ACCESS_INVALID", "请选择免费或需授权");
+    }
+
     public DapPublicAvatar findEntity(String id) {
         return repo.findById(id).orElse(null);
     }
@@ -73,6 +103,7 @@ public class DapPublicAvatarService {
         m.put("deriv", Map.of());
         if (a.getFrontKey() != null) m.put("imageUrl", storage.signedUrl(a.getFrontKey()));
         m.put("shotImages", shots);
+        m.put("access", a.accessOrDefault());
         m.put("managed", true);   // 前端据此对运营开放编辑 / 删除（内置 10 个无此标记）
         return m;
     }
@@ -131,6 +162,7 @@ public class DapPublicAvatarService {
         if (req.palette() != null) a.setPalette(req.palette());
         if (req.fav() != null) a.setFav(req.fav());
         if (req.sortOrder() != null) a.setSortOrder(req.sortOrder());
+        if (req.access() != null) a.setAccess(normalizeAccess(req.access()));
         if (req.frontKey() != null && !req.frontKey().isBlank()) a.setFrontKey(req.frontKey().trim());
         if (req.rightKey() != null) a.setRightKey(req.rightKey().isBlank() ? null : req.rightKey().trim());
         if (req.leftKey() != null) a.setLeftKey(req.leftKey().isBlank() ? null : req.leftKey().trim());
@@ -175,7 +207,7 @@ public class DapPublicAvatarService {
         if (ct == null || !ct.startsWith("image/")) {
             throw BusinessException.badRequest("DAP_UPLOAD_NOT_IMAGE", "仅支持上传图片");
         }
-        FileStorageService.StoredFile stored = storage.store(file, "dap/plaza", null);
+        FileStorageService.StoredFile stored = storage.store(file, CATEGORY, null);
         Map<String, String> out = new LinkedHashMap<>();
         out.put("key", stored.key());
         out.put("url", stored.signedUrl() != null ? stored.signedUrl() : stored.url());

@@ -68,7 +68,7 @@ function MeMobile({ name, phone, demo, identity, onLogout }: { name: string; pho
       <MeRow href="/assets" icon={Layers} title="资产" sub="人物、声音与创作素材" />
       <MeRow href="/assets/cards" icon={IdCard} title="我的名片" sub="按人物发布的数字名片" />
       <MeRow href="/director" icon={Clapperboard} title="短剧导演台" sub="写剧本、拆分镜、生成视频" />
-      <MeRow href="/discover" icon={Compass} title="发现" sub="官方可授权的形象" />
+      <MeRow href="/assets?tab=official" icon={Compass} title="官方形象" sub="平台提供的人物形象，免费的可直接使用" />
     </nav>
     {/* 2026-11-10：和电脑版账号区同一套分组（总览之外的 6 个标签），见设计稿「账号区（三）」。 */}
     <nav className="studio-me-group" aria-label="账号">

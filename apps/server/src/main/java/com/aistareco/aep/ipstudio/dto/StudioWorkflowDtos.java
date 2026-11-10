@@ -187,7 +187,15 @@ public final class StudioWorkflowDtos {
     }
     public record AdoptResult(String ipId, String avatarId, int version, String storageKey, String lookId) {}
     public record IpAsset(String ipId, String avatarId, int version, String storageKey, String name, String url, boolean current, String lookId,
-                          String characterName,String path,String assetRole,String description,Map<String,String> attributes,String librarySource) {
+                          String characterName,String path,String assetRole,String description,Map<String,String> attributes,String librarySource,
+                          /** 官方形象的使用方式：free 免费可用于生成 / license 需授权（不能选）；我的 IP 为 null。 */
+                          String access,
+                          /** 官方形象分类（pro / life / ugc / community），供选择框筛选；其余为 null。 */
+                          String category) {
+        public IpAsset(String ipId,String avatarId,int version,String storageKey,String name,String url,boolean current,String lookId,
+                       String characterName,String path,String assetRole,String description,Map<String,String> attributes,String librarySource) {
+            this(ipId,avatarId,version,storageKey,name,url,current,lookId,characterName,path,assetRole,description,attributes,librarySource,null,null);
+        }
         public IpAsset(String ipId,String avatarId,int version,String storageKey,String name,String url,boolean current,String lookId,
                        String characterName,String path,String assetRole,String description,Map<String,String> attributes) {
             this(ipId,avatarId,version,storageKey,name,url,current,lookId,characterName,path,assetRole,description,attributes,"mine");

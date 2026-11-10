@@ -1190,7 +1190,7 @@ function mockPlazaFrom(body: PlazaUpsert, base: any | null, id?: string): any {
 }
 
 export const PlazaAdminApi = {
-  /** 运营公开数字人列表（仅 DB managed 项；内置 10 个不在此列）。 */
+  /** 运营公开数字人列表（dap_public_avatar；2026-11-10 起内置 10 个也入库，带 access 使用方式）。 */
   list: (): Promise<any[]> => {
     if (USE_MOCK) return mock(mockPublicExtra.slice());
     return apiFetch(`/admin/avatars`);
