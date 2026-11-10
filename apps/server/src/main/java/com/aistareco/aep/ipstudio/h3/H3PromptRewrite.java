@@ -228,9 +228,10 @@ public final class H3PromptRewrite {
      * 模型常把台词写成「博主说：“……”」（2026-11-04 线上手表脚本，要求写「」也照样），只认「」就一句都认不出，台词改由改写模型写，
      * 原话可能被改。这里统一成「」；只动「说：」后面紧跟的这对引号，画面描述里引用的话不碰。
      * Sonnet 用半角标点（「第1镜(0–3 秒)」「小夏说:「…」」，2026-11-04），镜头和台词同样认不出，一起统一成全角。
+     * terra 反过来把数字和字母写成全角（「第１镜（０—４秒）」「ＳＡＭＩＡ」，2026-11-09 线上 8 篇里 6 篇），{@code \\d} 认不出，先换回半角。
      */
     public static String normalizeSpeechQuotes(String zh) {
-        String out = ASCII_SHOT.matcher(zh).replaceAll(m -> Matcher.quoteReplacement("第" + m.group(1) + "镜（" + m.group(2) + "）"));
+        String out = ASCII_SHOT.matcher(halfWidthAlnum(zh)).replaceAll(m -> Matcher.quoteReplacement("第" + m.group(1) + "镜（" + m.group(2) + "）"));
         out = ASCII_SPEECH.matcher(out).replaceAll("说：");
         return CURLY_SPEECH.matcher(out).replaceAll(m -> Matcher.quoteReplacement("说：「" + m.group(1) + "」"));
     }
@@ -327,14 +328,26 @@ public final class H3PromptRewrite {
         return out;
     }
 
-    private static final Pattern SHOT_HEAD = Pattern.compile("第(\\d+)镜（\\s*(\\d+(?:\\.\\d+)?)\\s*(?:秒|[–\\-~～至到])");
+    private static final Pattern SHOT_HEAD = Pattern.compile("第(\\d+)镜（\\s*(\\d+(?:\\.\\d+)?)\\s*(?:秒|[–—\\-~～至到])");
+
+    /** 全角数字和英文字母换成半角（标点不动）：模型写的「８９元」「ＳＡＭＩＡ」和客户给的「89元」「SAMIA」是同一个东西。 */
+    public static String halfWidthAlnum(String s) {
+        if (s == null) return null;
+        StringBuilder b = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            boolean alnum = c >= '０' && c <= '９' || c >= 'Ａ' && c <= 'Ｚ' || c >= 'ａ' && c <= 'ｚ';
+            b.append(alnum ? (char) (c - 0xFEE0) : c);
+        }
+        return b.toString();
+    }
 
     /**
      * 原文自己分了镜头（「第1镜（0–3 秒）」「第2镜（3 秒切）」）时的镜头开始时间；没分、或编号不连续、时间不递增、超出总时长时返回 null，
      * 由模型自己定镜头。创作助手照导演台的格式写，就走这里。
      */
     public static List<Double> shotStarts(String zh, int seconds) {
-        Matcher m = SHOT_HEAD.matcher(zh);
+        Matcher m = SHOT_HEAD.matcher(halfWidthAlnum(zh));
         List<Double> starts = new ArrayList<>();
         while (m.find()) {
             if (Integer.parseInt(m.group(1)) != starts.size() + 1) return null;

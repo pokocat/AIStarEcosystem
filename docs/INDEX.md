@@ -490,6 +490,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [AI 导演台本地验收记录](audits/ai-director-local-acceptance-20261022.md) — 独立 UI 实测真值：测试响应全流程、Agnes 真实剧本／分集／资产／分镜首帧、局部重试修复；真实视频受厂商队列阻塞；实现状态见[总方案 §14](ai-director-plan.md)；last-reviewed: 2026-10-23。
 - [导演台视频提示词对比实测（H3）](audits/director-h3-video-prompt-ab-2026-10.md) — 《敦煌飞仙》两段共 9 条对比：旧写法穿模 / 宫格上屏；台词多时中文正文吞台词、念出提示词，官方 skill 英文版完整；据此提交前按官方 skill 改写，真模型试跑 7/7 合格；2026-10-27 推到 Studio 画布与创作助手、检查改为只提示不拦人（§8）；last-reviewed: 2026-10-27。
 - [导演台 H3 优化稿超长与中文提示词被念出（cl45）](audits/director-h3-cl45-prompt-review-2026-10.md) — 优化稿 8198 字符按段拆分、成片频谱与转写（末尾多出的人声对上「没有声音参考」）、第三镜别名没认出；据此改中文模板第 4 版、出镜认别名、篇幅预算、重新优化与用稿记录；last-reviewed: 2026-10-31。
+- [AI 视频编导提示词爆款化调优](audits/studio-scene-script-viral-tuning-2026-11.md) — 用 11-09 客户 15 条真实编导请求和 terra 逐轮调提示词：行业流程交给 AI、去掉功效夸大限制、五组场景爆款经验、台词要有人设；固定 terra 盲评 15:0；顺带修复全角数字让 H3 认不出镜头；last-reviewed: 2026-11-09。
 - [马记大排档 H3 字符预算真实模型验证](audits/maji-h3-character-budget-real-model-20261107.md) — 同一原稿、同一真实模型，两份最终稿 5813 / 5680 字符，台词、镜头与六份素材完整；第三次连接中断未计通过（last-reviewed: 2026-11-07）。
 - [PC 站界面文案优化记录](audits/pc-ui-copy-review-2026-11.md) — web-aiavatar 桌面形态逐页改动表（位置、原文、改为）、全站统一叫法、用户定下的 12 件事和结果；品牌标语改为「一个 IP，无限可能」；没改的存量见 TODO；last-reviewed: 2026-11-06。
 

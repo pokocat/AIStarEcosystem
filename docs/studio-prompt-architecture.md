@@ -469,7 +469,7 @@ Studio 的 10 个键迁完后，`PromptService` 不再为 Studio 解析它们；
 ### 9.8 这次先不做
 
 - **转交给助手的那段话**（`StudioSceneCatalog.videoBrief`）和「出视频」做法里的视频提示词格式，先不换成五段式，等编导评测通过后再同步。注意走这条路的不只是爆款复刻：超过所选模型单段上限的长视频也转交给助手（`scene-video-studio.tsx` 的 `long → toAssistant`），所以这是第二优先。
-- **五组行业内容方法**（电商带货经验等）：原文没有，第一版 `{{method}}` 为空，先看 21 个场景范式够不够，不够再写。
+- **五组行业内容方法**（电商带货经验等）：原文没有，第一版 `{{method}}` 为空，先看 21 个场景范式够不够，不够再写。**2026-11-09 已写**：`methods/method-commerce / -local / -drama / -brand / -ip`，按场景分组（`scenes.json` 的 `group`）拼进编导和分段脚本，内容是各类视频的爆款经验，不按行业写死流程；依据和盲评见 `docs/audits/studio-scene-script-viral-tuning-2026-11.md`。
 - **图片场景**：不套五段式，原文也明确不做；图片场景的精调另见审计文档 §4.6.6。
 - **改稿并发保护**（参考站的 `expected_script_message_id`）、**脚本里氛围短语的零成本核对**：属于接口和页面检查，不在提示词层，按审计文档的计划做。
 

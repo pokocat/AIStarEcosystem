@@ -349,6 +349,9 @@ class H3PromptRewriteTest {
         assertNull(H3PromptRewrite.shotStarts("第1镜（2–3 秒）：a。", 10), "不从 0 开始");
         assertNull(H3PromptRewrite.shotStarts("第2镜（0–3 秒）：a。", 10), "编号不连续");
         assertNull(H3PromptRewrite.shotStarts("一个女孩在跳舞。", 10));
+        // 2026-11-09 线上 terra：数字写成全角、起止之间用长破折号
+        assertEquals(List.of(0.0, 4.0), H3PromptRewrite.shotStarts("第１镜（０—４秒）：a。第２镜（４—８秒）：b。", 15));
+        assertEquals("第1镜（0—4秒）SAMIA 89", H3PromptRewrite.normalizeSpeechQuotes("第１镜（０—４秒）ＳＡＭＩＡ ８９"));
     }
 
     @Test
