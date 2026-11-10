@@ -61,11 +61,14 @@ public class AistarRehearsalRestore {
         return '"'+s+'"';
     }
     static byte[] normalize(byte[] raw,String typ,String key,boolean source)throws Exception {
+        return normalize(raw,typ,key,source,null);
+    }
+    static byte[] normalize(byte[] raw,String typ,String key,boolean source,String rowId)throws Exception {
         if(raw==null)return null;
         if(typ.equals("timestamp with time zone")){
             var local=LocalDateTime.parse(new String(raw,java.nio.charset.StandardCharsets.UTF_8).replace(' ','T'));
             if(source && !temporalPlan.has(key))throw new IllegalStateException("Missing temporal plan: "+key);
-            String zone=source?temporalPlan.get(key).asText():"UTC";
+            String zone=source?AistarTemporalPolicy.sourceZone(temporalPlan,key,rowId,new String(raw,java.nio.charset.StandardCharsets.UTF_8)):"UTC";
             return fmt.format(local.atZone(ZoneId.of(zone)).withZoneSameInstant(ZoneOffset.UTC)).getBytes(java.nio.charset.StandardCharsets.UTF_8);
         }
         if(Set.of("numeric","bigint","integer","smallint").contains(typ))return new BigDecimal(new String(raw,java.nio.charset.StandardCharsets.UTF_8)).stripTrailingZeros().toPlainString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
@@ -223,9 +226,11 @@ public class AistarRehearsalRestore {
                         if(row.get("values").size()!=cols.size())throw new IllegalStateException("Row width mismatch");
                         var values=new ArrayList<byte[]>();
                         var copied=new ArrayList<String>();
+                        // Only the mixed-writer library timestamps need an audited row identity.
+                        String rowId=t.equals("video_asset_library")?new String(HexFormat.of().parseHex(row.path("values").get(cols.indexOf("id")).asText()),java.nio.charset.StandardCharsets.UTF_8):null;
                         for(int i=0;i<cols.size();i++){
                             var v=row.get("values").get(i);
-                            byte[] b=normalize(v.isNull()?null:HexFormat.of().parseHex(v.asText()),pg.get(t).get(cols.get(i)),t+"."+cols.get(i),true);
+                            byte[] b=normalize(v.isNull()?null:HexFormat.of().parseHex(v.asText()),pg.get(t).get(cols.get(i)),t+"."+cols.get(i),true,rowId);
                             values.add(b);
                             copied.add(copyValue(b,pg.get(t).get(cols.get(i))));
                         }

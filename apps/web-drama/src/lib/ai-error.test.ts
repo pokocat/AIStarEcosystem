@@ -36,7 +36,8 @@ describe("aiErrorMessage", () => {
       expect(out, code).not.toContain("raw-upstream-text");
       expect(out, code).not.toContain(code);
       expect(out, code).not.toContain("HTTP 503");
-      expect(out, code).toContain("ABCDEF234567");
+      // main gives known codes actionable copy and strips support IDs; only technical fallbacks keep them.
+      expect(out, code).not.toContain("ABCDEF234567");
     }
   });
 

@@ -16,4 +16,5 @@ with tempfile.TemporaryDirectory(prefix='migration-tool-',dir=server/'target') a
  javac=str(Path(os.environ['JAVA_HOME'])/'bin/javac') if os.environ.get('JAVA_HOME') else 'javac'
  subprocess.run([javac,'-cp',str(folder/'classes')+os.pathsep+str(folder/'*'),'-d',str(dest),*[str(p) for p in sources]],check=True)
  subprocess.run(['java','-cp',str(dest)+os.pathsep+str(folder/'*'),'AistarCutoverGuard','--self-test'],check=True)
+ subprocess.run(['java','-cp',str(dest)+os.pathsep+str(folder/'*'),'AistarTemporalPolicy','--self-test'],check=True)
  print('Compiled',len(sources),'migration helpers; production remains gated by an explicit window and freeze permit')

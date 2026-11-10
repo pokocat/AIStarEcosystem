@@ -330,8 +330,36 @@
   "template_scripts.created_at": "UTC",
   "template_scripts.published_at": "UTC",
   "user_bot_read_state.last_read_at": "UTC",
-  "video_asset_library.created_at": "UTC",
-  "video_asset_library.updated_at": "UTC",
+  "video_asset_library.created_at": {
+    "mode": "reviewed-library-row-values",
+    "rows": {
+      "ark-bingbing": {
+        "raw": "2026-11-09 05:14:19.622794",
+        "zone": "UTC",
+        "evidence": "JPA Instant create"
+      },
+      "onetoken-main": {
+        "raw": "2026-11-08 01:07:04.486890",
+        "zone": "Asia/Shanghai",
+        "evidence": "V75 CURRENT_TIMESTAMP seed, equals installed migration clock"
+      }
+    }
+  },
+  "video_asset_library.updated_at": {
+    "mode": "reviewed-library-row-values",
+    "rows": {
+      "ark-bingbing": {
+        "raw": "2026-11-10 17:41:48.888863",
+        "zone": "Asia/Shanghai",
+        "evidence": "ArkPortraitLibrary JDBC setTimestamp reserveUpload; source CST session"
+      },
+      "onetoken-main": {
+        "raw": "2026-11-08 01:07:04.486890",
+        "zone": "Asia/Shanghai",
+        "evidence": "V75 CURRENT_TIMESTAMP seed, equals installed migration clock"
+      }
+    }
+  },
   "video_asset_person.created_at": "UTC",
   "video_asset_person.expires_at": "UTC",
   "video_asset_person.updated_at": "UTC",

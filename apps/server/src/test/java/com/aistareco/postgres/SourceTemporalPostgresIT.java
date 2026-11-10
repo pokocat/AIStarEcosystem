@@ -34,7 +34,23 @@ class SourceTemporalPostgresIT {
                     session.doWork(c->{
                         try(var statement=c.createStatement();var rs=statement.executeQuery("select created_at from video_asset_library")) {
                             rs.next();assertThat(LocalDateTime.parse(rs.getString(1).replace(' ','T')).toInstant(ZoneOffset.UTC)).isEqualTo(instant);
-                            result.put("video_asset_library.created_at","UTC");result.put("video_asset_library.updated_at","UTC");
+                            result.put("video_asset_library.jpa_instant","UTC");
+                        }
+                        // The live library also has DATETIME values from SQL seeding and raw JDBC.
+                        // Prove those writers differ from the JPA Instant path in the same column.
+                        try(var statement=c.createStatement()) {
+                            statement.execute("INSERT INTO video_asset_library(id,name,adapter,config_json,created_at,updated_at) VALUES('clock-seed','Synthetic','onetoken','{}',CURRENT_TIMESTAMP(6),CURRENT_TIMESTAMP(6))");
+                            try(var rs=statement.executeQuery("SELECT TIMESTAMPDIFF(SECOND,UTC_TIMESTAMP(6),created_at) FROM video_asset_library WHERE id='clock-seed'")) {
+                                rs.next();assertThat(rs.getLong(1)).isBetween(28799L,28800L);
+                            }
+                            result.put("video_asset_library.sql_seed","Asia/Shanghai");
+                        }
+                        try(var statement=c.prepareStatement("UPDATE video_asset_library SET updated_at=? WHERE id='clock-library'")) {
+                            statement.setTimestamp(1,java.sql.Timestamp.from(instant));statement.executeUpdate();
+                        }
+                        try(var statement=c.createStatement();var rs=statement.executeQuery("SELECT updated_at FROM video_asset_library WHERE id='clock-library'")) {
+                            rs.next();assertThat(LocalDateTime.parse(rs.getString(1).replace(' ','T')).atZone(ZoneId.of("Asia/Shanghai")).toInstant()).isEqualTo(instant);
+                            result.put("video_asset_library.jdbc_updated_at","Asia/Shanghai");
                         }
                         // MySQL TIMESTAMP values are serialized by the exporter after SET time_zone=UTC.
                         // Unlike DATETIME, the text changes with the SQL session timezone.
