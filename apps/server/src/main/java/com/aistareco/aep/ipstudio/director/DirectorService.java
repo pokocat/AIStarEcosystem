@@ -29,6 +29,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -83,6 +84,8 @@ public class DirectorService {
     private final com.aistareco.aep.ipstudio.service.IpLibraryService library;
     private final ObjectMapper om;
     private final TransactionTemplate newTx;
+    /** 读已提交的普通事务：给不在事务里的入口（stopTask）读作品用，见 {@link #view} 的说明。 */
+    private final TransactionTemplate committedTx;
 
     public DirectorService(DirectorWorkRepository works, IpRunRepository runs, IpProjectService projects, IpRunService imageRuns,
                            StudioWorkflowService textRuns, StudioWorkflowWorker workflowWorker, StudioVideoService videoModels,
@@ -100,6 +103,8 @@ public class DirectorService {
         this.storage = storage; this.studioProps = studioProps; this.library = library; this.om = om;
         this.newTx = new TransactionTemplate(txManager);
         this.newTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.committedTx = new TransactionTemplate(txManager);
+        this.committedTx.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
     }
 
     // ── 作品 ────────────────────────────────────────────────────────────────
@@ -109,7 +114,7 @@ public class DirectorService {
         public CreateRequest(String title, String idea, String script, String style) { this(title, idea, script, style, null); }
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public JsonNode create(String userId, CreateRequest req) {
         if (works.findByOwnerUserIdAndDeletedAtIsNullOrderByUpdatedAtDesc(userId).size() >= MAX_WORKS)
             throw BusinessException.badRequest("DIRECTOR_WORK_LIMIT", "作品数量已达上限，请先删除不需要的作品");
@@ -187,8 +192,13 @@ public class DirectorService {
         return out;
     }
 
-    /** 读作品：先把已完成的任务结果回投，再出 wire。 */
-    @Transactional
+    /**
+     * 读作品：先把已完成的任务结果回投，再出 wire。
+     * 持着作品行锁，所以整段只用这一条连接（任务列表也在本事务里读，见 {@link #view}）：
+     * 2026-11-10 线上一个账号 10 秒内对同一部作品发了 125 个读取，持锁的那个在锁内另开事务读任务、等不到第二条连接，
+     * 其余的占着连接等锁，连接池被占满，全站接口跟着 500（§8.0.1 ⑯）。
+     */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public JsonNode get(String userId, String id) {
         DirectorWork w = locked(userId, id);
         ObjectNode c = read(w);
@@ -208,12 +218,12 @@ public class DirectorService {
                 throw invalid("这项任务不能在这里停止");
         });
         workflowWorker.stopDirectorTask(runId);
-        return newTx.execute(tx->get(userId,id));
+        return committedTx.execute(tx->get(userId,id));
     }
 
     public record PatchRequest(String title, String idea, String draft, Long draftRev, JsonNode settings) {}
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public JsonNode patch(String userId, String id, PatchRequest req) {
         DirectorWork w = locked(userId, id);
         ObjectNode c = read(w);
@@ -300,7 +310,7 @@ public class DirectorService {
      * </ul>
      * 作品 JSON、任务记录、资产库和账本都不动，不退款、不重提。
      */
-    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public void delete(String userId, String id) {
         DirectorWork w = works.lockById(id).orElse(null);
         if (w == null || !w.getOwnerUserId().equals(userId)) throw BusinessException.notFound("DIRECTOR_WORK_NOT_FOUND", "作品不存在");
@@ -330,10 +340,10 @@ public class DirectorService {
      *   <li>作品没被删除（重复恢复、超时重试）：直接成功、什么都不写，不打断正在跑的任务；</li>
      *   <li>不存在或不是本人的：404，不泄漏归属。</li>
      *   <li>恢复不占新建额度：{@code MAX_WORKS} 只拦新建（{@link #create} 原样保留）。恢复的是用户自己原有的作品；
-     *       要让上限在并发下严格成立，新建和恢复得先锁同一用户行，而 create 持锁时还会经 view 另开连接，
-     *       正是 2026-10-28 复核的连接池饥饿形态，所以不在恢复上放一个并发可绕过的数量闸。</li>
+     *       要让上限在并发下严格成立，新建和恢复得先锁同一用户行，持锁的写法稍有不慎就是 2026-10-28 复核的连接池饥饿形态
+     *       （create 当时还会经 view 另开连接，2026-11-10 起 view 在同一连接里读），所以不在恢复上放一个并发可绕过的数量闸。</li>
      * </ul>
-     * 只在本事务、本连接里读写，不调 {@link #view}（它会另开事务读任务列表）。
+     * 只在本事务、本连接里读写，不调 {@link #view}（它只在读已提交的事务里才用同一连接读任务列表，本方法不是）。
      */
     @Transactional
     public void restore(String userId, String id) {
@@ -428,7 +438,7 @@ public class DirectorService {
 
     public record EditRequest(String op, String targetId, Long rev, JsonNode data) {}
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public JsonNode edit(String userId, String id, EditRequest req) {
         DirectorWork w = locked(userId, id);
         ObjectNode c = read(w);
@@ -832,7 +842,7 @@ public class DirectorService {
     public record TaskRequest(String type, String targetId, String clientRequestId, JsonNode options,
                               BillingSelection billing, Long maxCost) {}
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public JsonNode task(String userId, String id, TaskRequest req) {
         DirectorWork w = locked(userId, id);
         ObjectNode c = read(w);
@@ -3306,7 +3316,7 @@ public class DirectorService {
     /** auto=true：全自动，资产清单、参考图、分镜图、片段视频都不停下来等确认（预算仍是硬上限）。 */
     public record PipelineRequest(String action, String scope, String episodeId, String target, Long budget, BillingSelection billing, Boolean auto) {}
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public JsonNode pipeline(String userId, String id, PipelineRequest req) {
         DirectorWork w = locked(userId, id);
         ObjectNode c = read(w);
@@ -4114,9 +4124,7 @@ public class DirectorService {
         v.put("id", w.getId()).put("title", w.getTitle()).put("revision", w.getRevision())
                 .put("createdAt", w.getCreatedAt().toString()).put("updatedAt", w.getUpdatedAt().toString());
         ArrayNode tasks = v.putArray("tasks");
-        // 在新事务里读：本次请求刚在独立事务里建的任务，MySQL 可重复读下外层事务的快照看不到，
-        // 页面会以为没在生成、也不轮询（2026-10-24 线上：点「生成剧本」没反应，再点报「该项生成中」）。
-        List<IpRun> mine = newTx.execute(tx -> runs.findByProjectIdOrderByCreatedAtDesc(w.getId()));
+        List<IpRun> mine = recentRuns(w.getId());
         for (IpRun r : mine.subList(0, Math.min(40, mine.size()))) {
             tasks.addObject().put("id", r.getId()).put("target", r.getNodeId()).put("status",IpRun.STATUS_RUNNING.equals(r.getStatus())&&r.isCancelRequested()&&"studio-director".equals(r.getKind())?"stopping":r.getStatus())
                     .put("canStop",IpRun.STATUS_RUNNING.equals(r.getStatus())&&!r.isCancelRequested()&&"studio-director".equals(r.getKind()))
@@ -4164,6 +4172,21 @@ public class DirectorService {
         Map<String, String> signed = sign(userId, keys);
         attachUrls(v, signed);
         return v;
+    }
+
+    /**
+     * 出 wire 的任务列表。要看得到本次请求刚在独立事务里建的任务：MySQL 可重复读下外层事务的快照看不到它，
+     * 页面会以为没在生成、也不轮询（2026-10-24 线上：点「生成剧本」没反应，再点报「该项生成中」）。
+     * <p>调用 view 的入口都在读已提交的事务里（每条查询读最新提交），所以就在本事务、本连接里读。
+     * 不能再像以前那样另开 REQUIRES_NEW：调用方持着作品行锁，锁内要第二条连接，并发读取时连接池会被占满
+     * （2026-11-10 线上事故，§8.0.1 ⑯）。万一有新入口没声明读已提交，退回旧做法保证看得到新任务，并打 WARN 提示补上。
+     */
+    private List<IpRun> recentRuns(String workId) {
+        if (!TransactionSynchronizationManager.isActualTransactionActive()
+                || Integer.valueOf(java.sql.Connection.TRANSACTION_READ_COMMITTED).equals(TransactionSynchronizationManager.getCurrentTransactionIsolationLevel()))
+            return runs.findByProjectIdOrderByCreatedAtDesc(workId);
+        log.warn("[director] view 在非读已提交事务里调用，任务列表改在新事务里读，请给入口加 isolation = READ_COMMITTED work={}", workId);
+        return newTx.execute(tx -> runs.findByProjectIdOrderByCreatedAtDesc(workId));
     }
 
     private void collectKeys(JsonNode n, List<String> keys) {
