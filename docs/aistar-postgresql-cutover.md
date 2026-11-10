@@ -2,7 +2,7 @@
 
 ## 2026-11-10 主线同步：195 表候选（优先于下文历史回执）
 
-本轮从 main `6b3850564c88a58c6fc508d37083fb52852b510c` 同步新增 191 个提交。旧生产只读核查时间为 UTC 2026-11-10 09:23，业务表已从 192 增至 195；旧的 192 表、V77、运行镜像及双机滚动回执仅作历史记录，不能授权当前版本正式激活。生产仍为旧 MySQL，本轮不停止服务、正式导入或切路由。
+本轮从 main `013c801ade17721a8baf33ceef878212b122cb89` 同步新增 192 个提交。旧生产只读核查时间为 UTC 2026-11-10 09:23，业务表已从 192 增至 195；旧的 192 表、V77、运行镜像及双机滚动回执仅作历史记录，不能授权当前版本正式激活。生产仍为旧 MySQL，本轮不停止服务、正式导入或切路由。
 
 - PG 新增独立 `V78__video_asset_libraries.sql`，V74–V77 字节保持原样。新增 `video_asset_library`、`video_asset_person`、`video_asset_portrait`，补齐 `ai_model_providers.asset_library_id/chat_reasoning_effort`，扩展两张模型绑定表的用途白名单，保留其余枚举约束；不运行 MySQL V75 的配置种子，不重建供应商凭据。
 - 新增 8 个时间字段纳入时区计划。人像六列为 TIMESTAMP，导出 SQL session UTC 后按 UTC 解释；素材库两列 DATETIME 有混合写入：JPA Instant 为 UTC，V75 CURRENT_TIMESTAMP 种子和 JDBC 上传限流为 Asia/Shanghai。`AistarTemporalPolicy` 按库行 ID、精确源时间原值和已核对的写入证据转换，未知行/原值变化/缺证据拒绝导入。当前行值只适用于本轮审计，最终冻结后必须重新核对并签定 plan 摘要，不得推断或统一减8小时。ID、owner、OSS key、callback hash 保持精确比较，加密 token/link/credential 原字节保留。
