@@ -28,10 +28,23 @@ class ModelOutputArchiveIntegrationTest {
   records.saveAndFlush(row);
   String text="长篇原文\\q\n<script>不可执行</script>".repeat(4000);
   usage.preserveOutput("archive-request",text,"length");
-  assertEquals(1,controller.list(()->"owner","aiavatar",0).data().size());
+  assertEquals(1,controller.list(()->"owner","aiavatar",0,null).data().size());
   assertEquals(text,controller.detail(()->"owner","aiavatar",row.getId()).data().content());
-  assertTrue(controller.list(()->"other","aiavatar",0).data().isEmpty());
-  assertTrue(controller.list(()->"owner","drama",0).data().isEmpty());
+  assertTrue(controller.list(()->"other","aiavatar",0,null).data().isEmpty());
+  assertTrue(controller.list(()->"owner","drama",0,null).data().isEmpty());
   assertThrows(BusinessException.class,()->controller.detail(()->"other","aiavatar",row.getId()));
+ }
+
+ /** V80：任务执行时的调用记下任务编号，任务历史按它找到原文；别的任务、别的账号看不到。用单独的账号，不与上一条用例的计数互相影响。 */
+ @Test void outputRecordedInsideATaskIsFoundByThatTaskOnly() {
+  try (var task=com.aistareco.aep.service.AiModelUsageContext.bind("task-owner","aiavatar","IPR-task-1")) {
+   usage.recordObserved("ep-1","Test model","m","DAP_PERSONA",1L,1L,2L,true,"task-request",null,null,null,null);
+  }
+  usage.preserveOutput("task-request","第一镜：开场","stop");
+  assertEquals("IPR-task-1",records.findFirstByRequestIdOrderByCreatedAtDesc("task-request").orElseThrow().getTaskId());
+  assertEquals(1,controller.list(()->"task-owner","aiavatar",0,"IPR-task-1").data().size());
+  assertTrue(controller.list(()->"task-owner","aiavatar",0,"IPR-task-2").data().isEmpty());
+  assertTrue(controller.list(()->"other","aiavatar",0,"IPR-task-1").data().isEmpty());
+  assertEquals(java.util.List.of("IPR-task-1"),records.tasksWithPreserved("task-owner","aiavatar",java.util.List.of("IPR-task-1","IPR-task-2"),"%\"preservedContent\"%"));
  }
 }

@@ -573,7 +573,7 @@ src/main/java/com/aistareco/aep/
 | `template_scripts` | 模板脚本（双模 text / video_ref；同 templateId 仅一条 PUBLISHED；JSON 列容纳 persona/scenes/variables/engineAdapters/durationVariants/postProcess/safety/referenceClip 等） |
 | `ai_model_providers` | **AI 模型接入端点**（v0.41，实体 `AiModelEndpoint`）：固定 {上游密钥 + 单模型 + 地址}，含外部 API Token（`key_*`/`owner_user_id`/usage 列）；上游 apiKey 列存 AES-GCM 密文，Token 存 bcrypt，均永不明文返回。旧 `purposes`/`priority` 列弃用 |
 | `ai_app_binding` | v0.41：AI 应用（`AiModelPurpose` 作主键）→ 端点（`endpoint_id`）绑定，一用途一端点、无兜底 |
-| `ai_model_usage_record` | 大模型调用用量流水（v0.41；每次成功 chat 落一行，记端点/model/purpose + prompt/completion/total tokens；只追加，供 admin 用量统计聚合） |
+| `ai_model_usage_record` | 大模型调用用量流水（v0.41；每次成功 chat 落一行，记端点/model/purpose + prompt/completion/total tokens；只追加，供 admin 用量统计聚合）。V80（2026-11-10）加 `task_id`：发起调用的任务（IpRun / DapJob id，来自 `AiModelUsageContext`），账号任务历史据此「查看原文」 |
 | `llm_api_keys` | **历史弃用表（v0.41）**：外部 Token 已收敛到 `ai_model_providers.key_*`；当前代码不再映射、不再验证回退 |
 | `agent_bot_providers` | Agent 平台 bot 配置（Coze 等；token 列存 AES-GCM 密文；sceneKey 唯一，绑定业务功能如形象锻造） |
 | `user_bot_read_state` | per-user-per-bot lastReadAt（驱动消息首页未读 dot 与 chat 已读机制） |

@@ -24,9 +24,12 @@ test("我的 lists the places the phone tab bar leaves out, and uses the flat ta
   expect(main).toBeTruthy();
   const create = within(screen.getByRole("navigation", { name: "创作" }));
   expect(create.getAllByRole("link").map(a => a.getAttribute("href")))
-    .toEqual(["/templates", "/projects", "/assets", "/director", "/discover"]);
+    .toEqual(["/templates", "/projects", "/assets", "/assets/cards", "/director", "/discover"]);
+  // 2026-11-10：账号这一组和电脑版的标签一一对应，地址都在 /me 下面（企业只在开通企业功能时出现）。
+  expect(within(screen.getByRole("navigation", { name: "账号" })).getAllByRole("link").map(a => a.getAttribute("href")))
+    .toEqual(["/me/tasks", "/me/credits", "/me/storage", "/me/authorization", "/me/settings"]);
   // 手机上原来哪儿都看不到余额：个人卡上写可用积分，点了去积分页。
-  expect(screen.getByRole("link", { name: "可用积分 1,280，查看积分" })).toBeTruthy();
+  expect(screen.getByRole("link", { name: "可用积分 1,280，查看积分" }).getAttribute("href")).toBe("/me/credits");
   expect(screen.getByRole("button", { name: /切换到电脑版/ })).toBeTruthy();
   expect(screen.getByRole("button", { name: "退出登录" })).toBeTruthy();
   expect(main.querySelector(".studio-tabbar")).toBeTruthy();

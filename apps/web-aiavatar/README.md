@@ -1340,3 +1340,7 @@ AI 编导修改建议随该轮模型回复返回、随脚本节点保存；最�
 
 电脑版「我的账号」和 `/studio#/membership|tasks|storage|realmaterials|trash|settings` 换成新版页面（`src/account/*`，外壳 `shell/account-workspace.tsx`）：账号卡 + 页内标签，去掉第二列账号菜单；「任务中心」改为「任务历史」并写出每条消耗的积分；存储用量合并数字资产与 IP Studio 文件；回收站加入导演台作品和画布；设置与账号与安全合并，账号相关的修改跳账号中心。说明见 `docs/aiavatar-account-unification.md` 末节。
 
+
+### 2026-11-10 · 账号区合并页面与统一路由（已生产发布 `20261110-account-ia-f27ed14c`）
+
+账号区从 13 个入口合成 7 个标签：总览、任务历史、积分、存储、授权、企业、设置，地址统一到 `/me/*`（`src/app/me/*` → `src/account/account-page.tsx`）。生成原文并进任务历史的抽屉（V80 按任务关联），邀请朋友放到总览（记录在抽屉），回收站并入「存储」，授权中心和真人授权素材并入「授权」，我的名片移到 `/assets/cards`。旧地址自动跳转（`/studio` 页处理旧哈希，`next.config.mjs` 处理旧路径）。任务历史和企业消费流水不再写「已退回」。详情见 `docs/aiavatar-account-unification.md` 末节。

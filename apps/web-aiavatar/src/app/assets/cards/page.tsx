@@ -135,7 +135,7 @@ export default function MyCardsPage() {
       {state.s === "error" && (
         <div style={{ margin: "12px 16px 0" }}>
           <Card>
-            <EmptyState text={state.message} actionHref="/cards" actionLabel="重试" />
+            <EmptyState text={state.message} actionHref="/assets/cards" actionLabel="重试" />
           </Card>
         </div>
       )}
@@ -238,7 +238,7 @@ export default function MyCardsPage() {
                 </span>
               )}
               <a
-                href={`/cards/${encodeURIComponent(row.id)}/edit`}
+                href={`/assets/cards/${encodeURIComponent(row.id)}/edit`}
                 style={{
                   flex: 1, minWidth: 0, height: 40, borderRadius: "var(--r-md)",
                   border: "1px solid var(--line-2)", background: "var(--surface)", color: "var(--ink)",

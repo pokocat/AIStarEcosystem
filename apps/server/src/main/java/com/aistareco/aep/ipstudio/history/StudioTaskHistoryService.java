@@ -46,7 +46,13 @@ public class StudioTaskHistoryService {
     public record Payer(String type, String name) {}
     public record Item(String id, String source, String sourceId, String sourceTitle, String type, String kind, String title,
                        String status, int pct, Integer queuePosition, String createdAt, String finishedAt,
-                       Credits credits, Payer payer, String errorCode, String errorMessage, String href) {}
+                       Credits credits, Payer payer, String errorCode, String errorMessage, String href,
+                       boolean hasModelResult) {
+        Item withModelResult(boolean value) {
+            return value == hasModelResult ? this : new Item(id, source, sourceId, sourceTitle, type, kind, title, status, pct, queuePosition,
+                    createdAt, finishedAt, credits, payer, errorCode, errorMessage, href, value);
+        }
+    }
     public record Summary(long spent, long scopedSpent, long released, long count, long running, boolean partial) {}
     public record Page(List<Item> items, int page, boolean hasMore, Summary summary) {}
 
@@ -56,14 +62,16 @@ public class StudioTaskHistoryService {
     private final DirectorWorkRepository works;
     private final EnterpriseRepository enterprises;
     private final IpProjectService projectService;
+    private final com.aistareco.aep.repository.AiModelUsageRecordRepository usageRecords;
 
     private final com.fasterxml.jackson.databind.ObjectMapper om;
 
     public StudioTaskHistoryService(IpRunRepository runs, DapJobRepository dapJobs, IpProjectRepository projects,
                                     DirectorWorkRepository works, EnterpriseRepository enterprises, IpProjectService projectService,
+                                    com.aistareco.aep.repository.AiModelUsageRecordRepository usageRecords,
                                     com.fasterxml.jackson.databind.ObjectMapper om) {
         this.runs = runs; this.dapJobs = dapJobs; this.projects = projects; this.works = works;
-        this.enterprises = enterprises; this.projectService = projectService; this.om = om;
+        this.enterprises = enterprises; this.projectService = projectService; this.usageRecords = usageRecords; this.om = om;
     }
 
     /**
@@ -99,7 +107,7 @@ public class StudioTaskHistoryService {
         }
         int start = Math.min(matched.size(), p * PAGE_SIZE);
         int end = Math.min(matched.size(), start + PAGE_SIZE);
-        List<Item> items = new ArrayList<>(matched.subList(start, end));
+        List<Item> items = withModelResults(user, matched.subList(start, end));
 
         // 汇总只看时间窗和类型，不看状态筛选：「近 30 天消耗」不因为切到「失败」而变。
         List<Row> window = rows(user, from, t, List.copyOf(STATUSES), SUMMARY_LIMIT + 1);
@@ -112,6 +120,18 @@ public class StudioTaskHistoryService {
         }
         return new Page(items, p, matched.size() > end, new Summary(spent, scoped, released, Math.min(window.size(), SUMMARY_LIMIT), running, partial));
     }
+
+    /** 标出这一页里哪些任务保留了模型原文（V80 起用量记录带任务编号，更早的记录在「全部原文」里看）。 */
+    private List<Item> withModelResults(String user, List<Item> page) {
+        if (page.isEmpty()) return new ArrayList<>();
+        java.util.Set<String> has = new java.util.HashSet<>(usageRecords.tasksWithPreserved(user, APP_CODE,
+                page.stream().map(Item::id).toList(), PRESERVED_PATTERN));
+        return new ArrayList<>(page.stream().map(it -> it.withModelResult(has.contains(it.id()))).toList());
+    }
+
+    /** 与 {@code ModelResultsController} 同一个判断：响应里写过 preservedContent 的才算有原文。 */
+    static final String PRESERVED_PATTERN = "%\"preservedContent\"%";
+    static final String APP_CODE = "aiavatar";
 
     /** 两个来源各取前 want 条，按时间合并后截断。 */
     private List<Row> rows(String user, Instant from, String type, List<String> statuses, int want) {
@@ -151,7 +171,7 @@ public class StudioTaskHistoryService {
         Integer queue = dto.queue() == null ? null : (int) dto.queue().position();
         return new Item(r.getId(), director ? "director" : "canvas", r.getProjectId(), sourceTitle, type, r.getKind(),
                 title(r.getKind(), director), dto.status(), dto.pct(), queue, dto.createdAt(), dto.finishedAt(),
-                credits(dto), payer, dto.errorCode(), dto.errorMessage(), href);
+                credits(dto), payer, dto.errorCode(), dto.errorMessage(), href, false);
     }
 
     /**
@@ -170,7 +190,7 @@ public class StudioTaskHistoryService {
         return new Item(j.getId(), "digital-human", j.getAvatarId(), j.getCharName(), "digital-human", j.getType(), title,
                 status, j.getPct(), null, iso(j.getCreatedAt()), iso(j.getFinishedAt()), credits, payer,
                 null, "failed".equals(status) ? j.getErrorMessage() : null,
-                j.getAvatarId() == null ? "/studio#/library" : "/studio#/avatar/" + j.getAvatarId());
+                j.getAvatarId() == null ? "/studio#/library" : "/studio#/avatar/" + j.getAvatarId(), false);
     }
 
     /**

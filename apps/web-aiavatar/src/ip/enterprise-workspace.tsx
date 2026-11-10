@@ -1,13 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { Alert, Button, Checkbox, ConfigProvider, Empty, Input, InputNumber, Modal, Pagination, Skeleton, Table, Tag } from "antd";
 import { ArrowDownLeft, ArrowUpRight, RefreshCw } from "lucide-react";
 import type { EnterpriseContext, EnterpriseMemberBalance, EnterprisePointsPreview, EnterpriseRechargeOrder, EnterpriseWalletSummary } from "@ai-star-eco/types/enterprise";
 import { EnterpriseApi } from "@/canvas-bridge/enterprise-api";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
-import { StudioPage, StudioPageFilters } from "./studio-page";
+import { StudioPageFilters } from "./studio-page";
 import { normalizeStudioError, reportStudioError } from "./studio-errors";
 import { studioOverlayContainer } from "./studio-overlay";
 import { EnterpriseManagement } from "./enterprise-management";
@@ -29,7 +28,7 @@ const requestId = () => crypto.randomUUID();
 
 /** Financial forms inherit StudioPage and Ant Design controls; account and asset ownership stay separate. */
 export function EnterpriseWorkspace() {
-  if (process.env.NEXT_PUBLIC_ENTERPRISE_ENABLED !== "1") return <StudioPage title="企业管理" description="管理企业积分、成员分配与充值记录。" className="enterprise-workspace" actions={<Link className="ip-brand-secondary" href="/me">我的账号</Link>}><Alert type="info" showIcon title="企业管理尚未开放" description="请联系平台确认开通安排。"/></StudioPage>;
+  if (process.env.NEXT_PUBLIC_ENTERPRISE_ENABLED !== "1") return <section className="enterprise-workspace"><Alert type="info" showIcon title="企业功能尚未开放" description="请联系平台确认开通安排。"/></section>;
   return <EnterpriseWorkspaceEnabled/>;
 }
 
@@ -154,7 +153,11 @@ function EnterpriseWorkspaceEnabled() {
 
   if (authState === "no-platform") return <PlatformGateScreen />;
   return <ConfigProvider theme={{ token: { colorPrimary: "#192229", borderRadius: 8, controlHeight: 40, controlHeightSM: 32, fontFamily: "var(--ip-ui, sans-serif)" }, components: { Table: { rowSelectedBg: "#eeefef", rowSelectedHoverBg: "#e5e7e8" } } }}>
-    <StudioPage title="企业管理" description={context ? `${context.enterprise.name} · ${roleName[context.member.role]}` : "管理企业积分、成员分配与充值记录。"} className="enterprise-workspace" actions={<><Link className="ip-brand-secondary" href="/me">我的账号</Link><button type="button" className="ip-brand-secondary enterprise-refresh" aria-label="刷新企业数据" aria-busy={loading} disabled={loading || busy || authState !== "ok"} onClick={() => { void load(); setRefreshKey(value => value + 1); }}><RefreshCw size={15} aria-hidden="true"/>{loading ? "刷新中…" : "刷新"}</button></>}>
+    {/* 2026-11-10 起放在账号区「企业」标签里（/me/enterprise），页头只留企业名称和刷新。 */}
+    <section className="enterprise-workspace" data-studio-overlay-root>
+      <header className="enterprise-head"><div><strong>{context ? context.enterprise.name : "企业"}</strong>{context && <small>你是{roleName[context.member.role]}</small>}</div>
+        <button type="button" className="account-button enterprise-refresh" aria-label="刷新企业数据" aria-busy={loading} disabled={loading || busy || authState !== "ok"} onClick={() => { void load(); setRefreshKey(value => value + 1); }}><RefreshCw size={14} aria-hidden="true"/>{loading ? "刷新中…" : "刷新"}</button>
+      </header>
       {error && context && <Alert type="error" showIcon title="企业数据刷新失败，当前显示的是上次加载的内容" description={error}/>}
       {success && <Alert type="success" showIcon title={success} closable onClose={() => setSuccess("")} />}
       {error && !context ? <Alert type="error" showIcon title="企业数据加载失败" description={error} action={<Button size="small" onClick={() => void load()}>重试</Button>} /> : (loading && !context) || authState !== "ok" ? <Skeleton active paragraph={{ rows: 8 }} /> : !context ? <section className="enterprise-empty">
@@ -172,7 +175,7 @@ function EnterpriseWorkspaceEnabled() {
         {!wallet && myBalance && <section className="enterprise-balances" aria-label="我的企业积分"><div><span>我的可用企业积分</span><strong>{number(myBalance.totalBalance)}</strong><small>企业分配，可由企业回收</small></div><div><span>我的冻结积分</span><strong>{number(myBalance.pendingBalance)}</strong><small>进行中的任务占用，不可回收</small></div></section>}
         <StudioPageFilters label="企业管理分类" value={tab} onChange={setTab} items={tabs} />
         {["team", "policy", "lifecycle"].includes(tab) ? <EnterpriseManagement context={context} section={tab as "team" | "policy" | "lifecycle"} onChanged={load} refreshKey={refreshKey} /> : ["transfers", "usage", "audit"].includes(tab) ? <EnterpriseReports context={context} kind={tab as "transfers" | "usage" | "audit"} refreshKey={refreshKey} /> : tab === "members" ? <section aria-label="成员企业积分">
-          <div className="enterprise-section-heading"><div><h2>{canManage ? "积分分配与回收" : canReadTeam ? "成员企业积分" : "企业积分"}</h2><p>回收仅针对可用余额，冻结积分仍用于原任务结算。</p></div>{canRequest && <Button onClick={() => { setRechargeOpen(true); setActionError(""); }}>申请充值</Button>}</div>
+          <div className="enterprise-section-heading"><div><h2>{canManage ? "积分分配与回收" : canReadTeam ? "成员企业积分" : "企业积分"}</h2><p>只回收可用积分，进行中任务占用的冻结积分不回收。</p></div>{canRequest && <Button onClick={() => { setRechargeOpen(true); setActionError(""); }}>申请充值</Button>}</div>
           {canManage && <div className="enterprise-batch-bar"><span aria-live="polite">{selected.length ? `已选择 ${selected.length} 人` : "勾选成员，可单人或批量操作"}</span><div><Button type="primary" icon={<ArrowUpRight size={15}/>} disabled={!selected.length || busy || selectedMembers.some(member => member.status !== "active")} onClick={() => openTransfer("allocate")}>分配积分</Button><Button icon={<ArrowDownLeft size={15}/>} disabled={!selected.length || busy} onClick={() => openTransfer("reclaim")}>回收积分</Button>{selected.length > 0 && <Button type="text" disabled={busy} onClick={() => setSelected([])}>清除选择</Button>}</div></div>}
           {canManage && selectedMembers.some(member => member.status !== "active") && <p className="enterprise-selection-hint">所选成员包含已停用成员，可回收积分；恢复后才能继续分配。</p>}
           <Table<EnterpriseMemberBalance> className="enterprise-member-table" rowKey="memberId" dataSource={members} pagination={false} scroll={{ x: 660 }} locale={{ emptyText: "暂无成员积分记录" }} rowSelection={canManage ? { selectedRowKeys: selected, onChange: keys => setSelected(keys.map(String)), getCheckboxProps: member => ({ disabled: !eligible(member), "aria-label": `选择${member.displayName}` }) } : undefined} columns={[
@@ -204,7 +207,7 @@ function EnterpriseWorkspaceEnabled() {
           <label htmlFor="enterprise-transfer-amount">{direction === "deposit" ? "转入积分" : `每人${direction === "allocate" ? "分配" : "回收"}积分`}</label>
           <InputNumber id="enterprise-transfer-amount" value={amount} precision={0} min={1} max={Number.MAX_SAFE_INTEGER} disabled={busy || reclaimAll} onChange={value => setAmount(value)} placeholder="输入正整数" style={{ width: "100%" }} />
           {direction === "reclaim" && <Checkbox checked={reclaimAll} disabled={busy} onChange={e => setReclaimAll(e.target.checked)}>回收所选成员全部可用企业积分</Checkbox>}
-          <p>{direction === "deposit" ? `从我的个人账户转入「${context?.enterprise.name || "当前企业"}」。转入后归企业，可分配给成员。` : "提交前将核对每人余额与本次总额，全部成功或全部不执行。不会动用你的个人积分。"}</p>
+          <p>{direction === "deposit" ? `从我的个人账户转入「${context?.enterprise.name || "当前企业"}」。转入后归企业，可分配给成员。` : "所选成员一起成功或一起不执行，不会动用你的个人积分。"}</p>
         </> : <>
           <p>{direction === "deposit" ? "本次转入 " : `本次共 ${draft.preview.memberCount} 人，合计 `}<strong>{number(draft.preview.totalAmount)} 积分</strong>。</p>
           <p>企业待分配积分：{number(draft.preview.rootAvailableBefore)} → {number(draft.preview.rootAvailableAfter)}</p>
@@ -219,6 +222,6 @@ function EnterpriseWorkspaceEnabled() {
       <Modal open={rechargeOpen} title="申请企业充值" getContainer={studioOverlayContainer} onCancel={() => { if (!busy) setRechargeOpen(false); }} mask={{ closable: !busy }} closable={!busy} okText="提交申请" cancelText="取消" confirmLoading={busy} okButtonProps={{ disabled: !note.trim() }} onOk={() => void requestRecharge()}>
         <div className="enterprise-transfer-form"><p>申请将提交至平台财务，核准后积分进入「企业待分配积分」。</p><label htmlFor="enterprise-recharge-note">充值说明</label><Input.TextArea id="enterprise-recharge-note" value={note} maxLength={500} showCount rows={4} disabled={busy} placeholder="填写联系人、预计充值金额或收款沟通信息" onChange={e => { setNote(e.target.value); rechargeKey.current = undefined; }} />{actionError && <Alert type="error" showIcon title={actionError} />}</div>
       </Modal>
-    </StudioPage>
+    </section>
   </ConfigProvider>;
 }

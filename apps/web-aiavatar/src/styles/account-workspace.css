@@ -132,7 +132,7 @@ a.account-row:hover { background: #fafbfd; }
 .account-tr + .account-tr { box-shadow: inset 0 1px 0 var(--sn-line-2); }
 .account-tr.is-head { padding-block: 10px; background: #fafbfd; color: var(--ip-muted); font-size: 12px; }
 .account-orders .account-tr { grid-template-columns: minmax(180px, 1.4fr) minmax(150px, 1.2fr) 100px 90px 90px 160px; min-width: 860px; }
-.account-tasks .account-tr { grid-template-columns: minmax(260px, 2.4fr) 156px minmax(150px, 1.2fr) 120px 112px 76px; min-width: 960px; }
+.account-tasks .account-tr { grid-template-columns: minmax(260px, 2.4fr) 156px minmax(150px, 1.2fr) 120px 112px 96px; min-width: 980px; }
 .account-code { overflow: hidden; color: var(--sn-text-2); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .account-right { text-align: right; }
 .account-ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -150,8 +150,10 @@ html:not([data-layout="desktop"]) .account-kpi b { font-size: 18px; }
 .account-filters > div { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .account-task { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .account-task > div { min-width: 0; }
-.account-task strong, .account-task small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.account-task strong { font-size: 13.5px; font-weight: 500; }
+.account-task strong, .account-task small, .account-task-link { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-task strong, .account-task-link { font-size: 13.5px; font-weight: 500; }
+.account-page a.account-task-link { color: var(--ip-ink); text-decoration: none; }
+.account-page a.account-task-link:hover { color: #4650cf; }
 .account-task small { color: var(--ip-muted); font-size: 12px; }
 .account-task-status { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .account-task-status > div { display: flex; align-items: center; gap: 8px; }
@@ -237,3 +239,21 @@ html[data-layout="desktop"] .account-legacy-content .m-body { padding-inline: 24
 html[data-layout="desktop"] .account-legacy-content .wx-tabbar { display: none; }
 html[data-layout="desktop"] .account-legacy-content .m-card { box-shadow: none; border-radius: var(--r-md); }
 html[data-layout="desktop"] .account-workspace :focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+
+/* 原文抽屉（任务历史的「查看原文」「全部原文」，2026-11-10） */
+.account-drawer .ant-drawer-body { padding: 18px 24px 24px; }
+.account-drawer-back { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.account-drawer button.account-row { width: 100%; border: 0; background: #fff; font: inherit; text-align: left; cursor: pointer; }
+.account-drawer button.account-row + button.account-row { box-shadow: inset 0 1px 0 var(--sn-line-2); }
+.account-drawer button.account-row:hover { background: #fafbfd; }
+.account-pager { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 12px; color: var(--ip-muted); font-size: 12.5px; }
+.account-raw-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; font-size: 12.5px; }
+.account-raw-note { margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; background: #fcf3e2; color: #8a5a10; font-size: 12.5px; }
+.account-raw-text { margin: 0; padding: 16px 18px; border-radius: 14px; background: #f7f8fa; color: var(--ip-ink); font-family: inherit; font-size: 13px; line-height: 1.85; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* 「存储」「授权」的子标签（2026-11-10） */
+.account-subtabs { display: inline-flex; max-width: 100%; gap: 2px; margin: -6px 0 20px; padding: 3px; border-radius: 11px; background: var(--ip-soft); overflow-x: auto; }
+.account-subtabs::-webkit-scrollbar { display: none; }
+.account-page .account-subtabs a { flex-shrink: 0; display: inline-flex; align-items: center; height: 32px; padding: 0 14px; border-radius: 9px; color: var(--ip-muted); font-size: 12.5px; text-decoration: none; white-space: nowrap; }
+.account-page .account-subtabs a[aria-current="page"] { background: #ffffff; box-shadow: 0 1px 2px rgba(23, 32, 42, .08); color: var(--ip-ink); font-weight: 500; }
+html:not([data-layout="desktop"]) .account-subtabs { margin: 4px 0 14px; }

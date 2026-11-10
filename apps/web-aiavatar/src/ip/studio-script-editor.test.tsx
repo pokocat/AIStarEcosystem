@@ -50,7 +50,9 @@ test('blank nodes open the full document framework; saving updates the same node
  fireEvent.click(screen.getByRole('button',{name:'保存剧本'}));await waitFor(()=>expect(api.commit).toHaveBeenCalledOnce());expect(snapshot.id).toBe('script');expect(snapshot.position).toEqual(original.position);expect(snapshot.metadata?.studio?.request).toEqual(accepted);
 });
 test('save errors retain the editor and latest local draft instead of closing it',async()=>{
- api.commit.mockRejectedValue(new Error('保存冲突'));render(<Host/>);fireEvent.change(screen.getByRole('textbox',{name:'剧本文档'}),{target:{value:document+'\n手动补充。'}});fireEvent.click(screen.getByRole('button',{name:'返回画布'}));await waitFor(()=>expect(api.error).toHaveBeenCalledWith('保存冲突'));expect(api.close).not.toHaveBeenCalled();expect(snapshot.metadata?.studio?.scriptEditor?.draft).toContain('手动补充');expect(screen.getByText(/保存失败，草稿保留/)).toBeDefined();expect(screen.queryByText(/^已保存到画布/)).toBeNull();
+ api.commit.mockRejectedValue(new Error('保存冲突'));render(<Host/>);fireEvent.change(screen.getByRole('textbox',{name:'剧本文档'}),{target:{value:document+'\n手动补充。'}});fireEvent.click(screen.getByRole('button',{name:'返回画布'}));await waitFor(()=>expect(api.error).toHaveBeenCalledWith('保存冲突'));expect(api.close).not.toHaveBeenCalled();expect(snapshot.metadata?.studio?.scriptEditor?.draft).toContain('手动补充');
+ // 报错先上报、状态行下一次渲染才变：CI 负载高时 getByText 会抢在它前面（2026-11-10 PR #189 偶发失败），所以等它出现。
+ expect(await screen.findByText(/保存失败，草稿保留/)).toBeDefined();expect(screen.queryByText(/^已保存到画布/)).toBeNull();
 });
 test('AI produces a persisted proposal with quote and bounded history, and only explicit adoption changes the draft',async()=>{
  render(<Host/>);await send();await screen.findByText('AI 建议版本 · 尚未采纳');expect(api.submit.mock.calls[0][1]).toMatchObject({nodeId:'script',operation:'assistant',scriptEdit:{markdown:document},maxCost:21,model:'text'});expect(api.save.mock.invocationCallOrder[0]).toBeLessThan(api.submit.mock.invocationCallOrder[0]);expect(snapshot.metadata?.studio?.scriptMarkdown).toBe(document);expect(snapshot.metadata?.studio?.scriptEditor?.draft).toBe(document);

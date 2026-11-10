@@ -46,7 +46,7 @@ html[data-layout="desktop"] .desktop-rail .desktop-credit-link svg { display: no
 .desktop-rail .desktop-rail-account .ip-brand-button { min-height: 32px; padding: 6px 10px; font-size: 12px; }
 
 /* ── 改版后的设计语言（只给改过的页面和导航栏）：白底、冷色细线、13px 正文、细图标、渐变主按钮、浅紫 AI 按钮 ──── */
-.ip-brand-surface.studio-next-page, .desktop-top-bar.desktop-rail.ip-brand-surface, .ip-brand-surface.scene-studio {
+.ip-brand-surface.studio-next-page, .desktop-top-bar.desktop-rail.ip-brand-surface, .ip-brand-surface.scene-studio, .account-drawer {
   --ip-bg: #ffffff; --ip-paper: #ffffff; --ip-soft: #f3f4f6; --ip-ink: #17202a; --ip-muted: #5b6572; --ip-line: #eceef1; --ip-selected: #f1f2f4;
   --ip-gold: #8a5a10; --ip-gold-soft: #fcf3e2; --ip-green: #2f6b4f; --ip-green-soft: #e9f4ed; --ip-error: #ad3449; --ip-error-soft: #fcedef;
   --sn-text-2: #3d4651; --sn-field: #e3e6ea; --sn-line-2: #f0f1f3;

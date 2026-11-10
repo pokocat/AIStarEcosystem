@@ -283,7 +283,7 @@ export function DirectorWorkbench({ id }: { id: string }) {
       </section>
       {assistant.open && <DirectorAssistantPanel work={work} apply={apply} tab={tab === "products" ? "script" : tab} episodeId={episodeId} openSettings={props.openSettings}/>}
     </div>
-  <p className="director-foot-link"><Link href="/model-results">查看生成原文</Link></p>
+  <p className="director-foot-link"><Link href="/me/tasks?raw=all">查看生成原文</Link></p>
   </main></BriefProvider></AssistantProvider>;
 }
 
@@ -329,7 +329,7 @@ function DirectorHeader({ work, apply, setError, startPipeline, oneClick, status
     {status}
     <span className="director-spacer"/>
     {work.pricing.mock && <span className="director-mock-tag" title="剧本、图片和视频均为固定样例，不调用模型，不消耗积分。">测试模式</span>}
-    <Link href="/model-results" className="director-settings-chip director-results-link" title="查看模型返回的原始内容">生成原文</Link>
+    <Link href="/me/tasks?raw=all" className="director-settings-chip director-results-link" title="查看模型返回的原始内容">生成原文</Link>
     <button type="button" className="director-settings-chip" onClick={() => setOpen(o => !o)} aria-expanded={open} title={`${settings.style} · ${settings.aspectRatio}`}>
       <Settings2 size={15}/><span>{settings.style} · {settings.aspectRatio}</span>
     </button>

@@ -5,10 +5,11 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { ModelBillingApi } from "@ai-star-eco/api-client";
 import { USE_MOCK, useIdentity, type MeIdentity } from "@/proto/api";
-import { ACCOUNT_PAGES, accountPageKey, STUDIO_NAVIGATION_EVENT } from "./account-navigation";
+import { STUDIO_NAVIGATION_EVENT, visibleAccountPages } from "./account-navigation";
 import { useLayoutMode } from "./layout-mode";
 import { AccountAvatar } from "./account-avatar";
 import { useWalletBalance } from "./wallet-balance";
@@ -57,37 +58,34 @@ function AccountHero({ identity, active }: { identity: MeIdentity | null | undef
     <div className="account-hero-balance">
       <div><small>可用积分</small><strong>{credit}</strong></div>
       {grants !== undefined && grants > 0 && <div><small>模型赠款</small><strong className="is-grant">{number.format(grants)}</strong></div>}
-      {active !== "membership" && <Link className="account-go" href="/studio#/membership">充值</Link>}
+      {active !== "credits" && <Link className="account-go" href="/me/credits">充值</Link>}
     </div>
   </section>;
 }
 
 /**
- * 账号区页面的外壳。{@code active} 是当前标签；不在标签里的页面（邀请朋友）不传，标签都不高亮。
+ * 账号区页面的外壳。{@code active} 是当前标签；{@code subTabs} 是「存储」「授权」这类页内子标签，按当前地址高亮。
  * 手机版只给返回栏，返回「我的」。
  */
-export function AccountShell({ active, title, children }: { active?: string; title: string; children: ReactNode }) {
+export function AccountShell({ active, title, subTabs, children }: {
+  active?: string; title: string; subTabs?: readonly { href: string; label: string }[]; children: ReactNode;
+}) {
   const layout = useLayoutMode();
   const identity = useIdentity();
+  const pathname = usePathname();
   return <main className="ip-brand-surface studio-next-page account-page">
     {layout === "desktop" ? <>
       <AccountHero identity={identity} active={active} />
       <nav className="account-tabs" aria-label="账号">
-        {ACCOUNT_PAGES.map(page => <a key={page.key} href={page.href} aria-current={active === page.key ? "page" : undefined}>{page.label}</a>)}
+        {visibleAccountPages().map(page => <Link key={page.key} href={page.href} aria-current={active === page.key ? "page" : undefined}>{page.label}</Link>)}
       </nav>
     </> : <header className="account-mobile-bar">
       <Link href="/me" aria-label="返回"><ChevronLeft size={20} strokeWidth={1.6} /></Link>
       <h1>{title}</h1><span />
     </header>}
+    {subTabs && <nav className="account-subtabs" aria-label={title}>
+      {subTabs.map(tab => <Link key={tab.href} href={tab.href} aria-current={pathname === tab.href ? "page" : undefined}>{tab.label}</Link>)}
+    </nav>}
     {children}
   </main>;
 }
-
-/** 旧调用方（邀请页）仍用这个名字；activePage 不是标签时不高亮任何标签。 */
-export function AccountWorkspace({ children, tool = false, activePage }: { children: ReactNode; tool?: boolean; activePage?: string }) {
-  const hash = useStudioHash();
-  const active = activePage ?? (tool ? accountPageKey(hash) : "me");
-  const title = ACCOUNT_PAGES.find(page => page.key === active)?.label ?? (activePage === "invitations" ? "邀请朋友" : "我的账号");
-  return <AccountShell active={active} title={title}>{children}</AccountShell>;
-}
-

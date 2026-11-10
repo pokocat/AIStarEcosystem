@@ -60,7 +60,7 @@ test("successful join clears the bearer only after persistence and offers the fi
   state.token = "token"; state.accept.mockResolvedValue({ enterprise: { id: "enterprise" } });
   render(<EnterpriseInvitationLanding/>); fireEvent.click(await screen.findByRole("button", { name: "加入企业" }));
   await screen.findByText("已加入企业"); expect(window.location.hash).toBe("");
-  expect(screen.getByRole("link", { name: "进入企业管理" }).getAttribute("href")).toBe("/enterprise");
+  expect(screen.getByRole("link", { name: "进入企业管理" }).getAttribute("href")).toBe("/me/enterprise");
 });
 test("existing membership in another enterprise is visible and never auto-switched", async () => {
   state.token = "token"; state.mine.mockResolvedValue([{ enterprise: { id: "other", name: "原公司" }, member: { status: "active" } }]);
