@@ -3,7 +3,12 @@ import type { IpModels } from "./api";
 import type { EnterpriseBillingSelection } from "@ai-star-eco/types/enterprise";
 
 export type StudioBillingRequest = { clientRequestId?: string; billing?: EnterpriseBillingSelection | null; model?: string; maxCost?: number; operation?: string; modelBilling?: import('@ai-star-eco/types/model-billing').ModelBillingApproval };
-export type StudioBillingDetails = { operation?: string; expectedCost?: number; textUsage?: boolean; model?: string; libraryObjectId?: string; nodeId?: string; modelQuote?: boolean } & StudioShortageOptions;
+/**
+ * expectedCost：这次大概会花多少，和页面按钮上写的是同一个数；余额只跟它比。
+ * costCap：多步任务（长视频、爆款复刻、连续制作）用户授权的上限（通常是预计的 3 倍，留给自动重做），受理时不冻结，
+ * 每一步做的时候才扣。只放悬停提示，不拿来判余额（2026-11-10：7,893 积分做约 2,208 的长视频，被上限 8,274 拦成「积分不足」）。
+ */
+export type StudioBillingDetails = { operation?: string; expectedCost?: number; costCap?: number; textUsage?: boolean; model?: string; libraryObjectId?: string; nodeId?: string; modelQuote?: boolean } & StudioShortageOptions;
 /** 积分不足提示框要用的：页面能换成哪些模型、能不能接着生成。不给就只说明情况，不提供直接换模型。 */
 export type StudioShortageOptions = { modelChoices?: import('@/ip/studio-credit-shortage').StudioModelChoice[]; canRetry?: boolean };
 /** 出图、出视频的入口不能直接换模型时的说明。 */

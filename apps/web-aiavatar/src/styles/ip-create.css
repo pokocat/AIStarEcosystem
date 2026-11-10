@@ -104,3 +104,25 @@ html[data-layout="mobile"] .studio-gallery-controls { flex-wrap: wrap; width: 10
 html[data-layout="mobile"] .studio-quick-start { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 html[data-layout="mobile"] .studio-project-grid:not(.studio-project-list) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (prefers-reduced-motion: reduce) { .studio-gallery-spinner { animation: none; } }
+
+/* 删除画布（2026-11-10）：卡片右上角的删除在悬停或键盘聚焦时出现，触屏上常显；「选择」后整张卡可点选，一起删。 */
+.studio-gallery-delete p.studio-gallery-action-error { color: var(--ip-error); }
+.studio-gallery-delete a { color: var(--ip-ink); text-decoration: underline; text-underline-offset: 3px; margin: 0 2px; }
+.ip-brand-button.is-danger { background: var(--ip-error); }
+.ip-brand-button.is-danger:not(:disabled):hover { background: #8d2f3a; }
+.ip-brand-secondary.is-danger { color: var(--ip-error); border-color: #efc9ce; }
+.ip-brand-secondary.is-danger:disabled { opacity: .5; cursor: not-allowed; }
+.studio-project-delete { position: absolute; top: 8px; right: 8px; z-index: 2; display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 7px;
+  background: rgba(255,255,255,.92); color: var(--ip-error); box-shadow: 0 1px 4px #19222924; cursor: pointer; opacity: 0; transition: opacity 140ms var(--ip-ease); }
+.studio-project-card:hover .studio-project-delete,.studio-project-delete:focus-visible { opacity: 1; }
+@media (hover: none) { .studio-project-delete { opacity: 1; } }
+.studio-project-list .studio-project-delete { position: static; opacity: 1; box-shadow: none; background: transparent; margin-left: 4px; align-self: center; order: 9; }
+.studio-project-select { margin-left: 4px; }
+.studio-project-selection { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 0 0 14px; padding: 10px 14px; border: 1px solid var(--ip-line); border-radius: 9px; background: var(--ip-soft); font-size: 13px; }
+.studio-project-selection>span { color: var(--ip-ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.studio-project-selection .ip-brand-text-button { min-height: 32px; padding: 4px 6px; font-size: 13px; }
+.studio-project-selection .is-danger { margin-left: auto; }
+.studio-project-pick { position: absolute; inset: 0; z-index: 4; border: 0; border-radius: 9px; background: transparent; cursor: pointer; }
+.studio-project-pick span { position: absolute; top: 10px; left: 10px; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; border: 1.5px solid #9aa3ab; background: #fff; color: #fff; box-shadow: 0 1px 3px #1922291f; }
+.studio-project-pick[aria-pressed="true"] span { background: var(--ip-ink); border-color: var(--ip-ink); }
+.studio-projects-page .studio-project-card.is-picked { border-color: var(--ip-ink); box-shadow: 0 0 0 1px var(--ip-ink); }

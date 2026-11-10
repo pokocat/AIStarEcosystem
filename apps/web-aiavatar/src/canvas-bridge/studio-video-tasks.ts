@@ -9,15 +9,16 @@ export const videoTasks = (page = 0) => apiFetch<StudioVideoTaskPage>('/v1/ip-st
 export const videoTask = (id: string) => apiFetch<StudioVideoTask>(`/v1/ip-studio/video-tasks/${encodeURIComponent(id)}`);
 export const videoTaskPrice = (query: Record<string, string | number | boolean | undefined>, signal?: AbortSignal) =>
   apiFetch<StudioVideoTaskQuote>('/v1/ip-studio/studio/video-task-price', { query, signal });
-export async function prepareVideoTask(projectId: string, input: StudioVideoTaskCreate) {
-  const body = input.billing ? input : await withStudioBilling(projectId, input, { expectedCost: input.budgetCap });
+/** estimate：页面上给用户看的预计花费（按钮上那个数）；budgetCap 是授权上限，只放悬停提示，不拿来判余额。 */
+export async function prepareVideoTask(projectId: string, input: StudioVideoTaskCreate, estimate: number | undefined) {
+  const body = input.billing ? input : await withStudioBilling(projectId, input, { expectedCost: estimate, costCap: input.budgetCap });
   if (body.configuration) body.configuration = { ...body.configuration, billing: body.billing };
   if (body.video) body.video = { ...body.video, billing: body.billing };
   return body;
 }
-export async function startVideoTask(projectId: string, input: StudioVideoTaskCreate) {
+export async function startVideoTask(projectId: string, input: StudioVideoTaskCreate, estimate?: number) {
   if (input.video) await ensureStudioVideoPortraits(input.video);
-  const body = await prepareVideoTask(projectId, input);
+  const body = await prepareVideoTask(projectId, input, estimate);
   return apiFetch<StudioVideoTask>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/video-tasks`, { method: "POST", body });
 }
 export const videoTaskStatus = (task: StudioVideoTask) => task.execution?.status ?? task.run?.status ?? 'running';

@@ -443,7 +443,7 @@ export function useStudioDialogueSession({ projectId, open, autoload = false }: 
         // A card the running analysis posted (a budget raise, a revised plan) confirms that same execution, not a new one.
         : block.executionId ? { executionId: block.executionId, expectedRevision: plan.revision } : {}) };
     let execution: StudioPlanExecution;
-    try { execution = await createStudioPlanExecution(at.projectId, request); }
+    try { execution = await createStudioPlanExecution(at.projectId, request, block.estimatedCost ?? block.quotedCost); }
     catch (error) {
       if (definitelyRefused(error)) throw error;
       // Not a definite refusal: the execution may have started, and its nodes arrive on this conversation's stream. The guard

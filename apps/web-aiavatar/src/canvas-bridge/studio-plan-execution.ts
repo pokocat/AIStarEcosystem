@@ -30,9 +30,10 @@ import { mockExecutionAccept, mockExecutionControl, mockExecutionCreate, mockExe
 
 // ── API ────────────────────────────────────────────────────────────────────
 
-export async function createStudioPlanExecution(projectId: string, request: StudioPlanExecutionCreateRequest): Promise<StudioPlanExecution> {
+/** estimate：确认卡上写的预计花费；budgetCap 是授权上限，只放悬停提示，不拿来判余额。 */
+export async function createStudioPlanExecution(projectId: string, request: StudioPlanExecutionCreateRequest, estimate?: number): Promise<StudioPlanExecution> {
   if (USE_MOCK) return mockExecutionCreate(projectId, request);
-  const body = request.billing ? request : await withStudioBilling(projectId, request, { expectedCost: request.budgetCap });
+  const body = request.billing ? request : await withStudioBilling(projectId, request, { expectedCost: estimate, costCap: request.budgetCap });
   return apiFetch<StudioPlanExecution>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/plan-executions`, { method: "POST", body });
 }
 export async function getStudioPlanExecution(projectId: string, executionId: string): Promise<StudioPlanExecution> {
