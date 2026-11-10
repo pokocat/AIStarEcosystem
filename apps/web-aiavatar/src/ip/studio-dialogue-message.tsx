@@ -208,7 +208,7 @@ export function StudioDialogueMessageView(props: MessageProps) {
     {/* The chain ran out of credits (docs/ip-studio-dialogue-no-continue.md §9): the same top-up pages as the wallet badge
         and the enterprise workspace, in a new tab so the canvas stays open. */}
     {message.role === 'system' && message.notice && <p className="studio-dialogue-notice">
-      <a className="studio-dialogue-recharge" href={message.notice === 'recharge-enterprise' ? '/enterprise' : '/studio#/membership'} target="_blank" rel="noopener">
+      <a className="studio-dialogue-recharge" href={message.notice === 'recharge-enterprise' ? '/me/enterprise' : '/me/credits'} target="_blank" rel="noopener">
         {message.notice === 'recharge-enterprise' ? '申请企业充值' : '充值'}</a></p>}
     {user && !!refs.length && <p className="studio-dialogue-refs">{refs.map(id => <span key={id} title={nodes.find(n => n.id === id)?.title}>{nodes.find(n => n.id === id)?.title || '已删除的节点'}</span>)}</p>}
     {user && queueState && <StudioDialogueQueueMark state={queueState}/>}

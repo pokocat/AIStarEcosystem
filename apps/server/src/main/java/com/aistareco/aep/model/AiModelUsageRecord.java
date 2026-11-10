@@ -26,7 +26,8 @@ import java.time.Instant;
         @Index(name = "idx_aiusage_provider", columnList = "provider_id"),
         @Index(name = "idx_aiusage_user", columnList = "user_id"),
         @Index(name = "idx_aiusage_tenant", columnList = "tenant_id"),
-        @Index(name = "idx_aiusage_app", columnList = "app_code")
+        @Index(name = "idx_aiusage_app", columnList = "app_code"),
+        @Index(name = "idx_aiusage_task", columnList = "task_id")
 })
 public class AiModelUsageRecord {
 
@@ -59,6 +60,10 @@ public class AiModelUsageRecord {
     /** 平台生成或上游透传的请求追踪号，用于跨日志、账本、调用流水排障。 */
     @Column(name = "request_id", length = 96)
     private String requestId;
+
+    /** 发起这次调用的任务（IpRun / DapJob 的 id），来自 {@code AiModelUsageContext}；没有任务上下文的调用为空。V80。 */
+    @Column(name = "task_id", length = 64)
+    private String taskId;
 
     /** 上游服务商返回的调用 id。可空：部分国产兼容端点不返回。 */
     @Column(name = "upstream_id", length = 128)

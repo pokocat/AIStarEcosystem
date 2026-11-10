@@ -4,20 +4,27 @@ import { accountPageKey, studioEntryDestination, studioReturnPath, studioWithRet
 // v0.230 入口迁移：每一行都是一条要保留的深链。
 describe('unified account navigation', () => {
   it('replaces bare root entries with their new destinations', () => {
-    for (const [hash, destination] of [['','/projects'], ['#studio','/projects'], ['#/studio','/projects'], ['#/home','/dashboard'], ['#/library','/assets'], ['#/me','/me'], ['#/licenses','/licenses']]) {
+    for (const [hash, destination] of [['','/projects'], ['#studio','/projects'], ['#/studio','/projects'], ['#/home','/dashboard'], ['#/library','/assets'], ['#/me','/me']]) {
       expect(studioEntryDestination(hash), hash).toBe(destination);
     }
   });
-  it('preserves stateful or account links and creation entries', () => {
-    for (const hash of ['#/tasks','#/settings','#/membership','#/avatar/DH-1/voice','#/create/real','#/real-auth/session-1']) {
+  // 2026-11-10：账号区统一到 /me 下面，旧工作室里的账号页哈希一律转到新地址。
+  it('sends legacy account hashes to the new /me routes', () => {
+    for (const [hash, destination] of [
+      ['#/membership', '/me/credits'], ['#/tasks', '/me/tasks'], ['#/storage', '/me/storage'], ['#/trash', '/me/storage/trash'],
+      ['#/realmaterials', '/me/authorization'], ['#/licenses', '/me/authorization/ip'], ['#/settings', '/me/settings'], ['#/security', '/me/settings'],
+    ]) expect(studioEntryDestination(hash), hash).toBe(destination);
+  });
+  it('preserves stateful asset links and creation entries', () => {
+    for (const hash of ['#/avatar/DH-1/voice','#/create/real','#/real-auth/session-1']) {
       expect(studioEntryDestination(hash), hash).toBeUndefined();
     }
     for (const search of ['?start=real','?start=ai','?start=sheet','?start=compose','?create=1']) {
       expect(studioEntryDestination('', search), search).toBeUndefined();
     }
   });
-  it('matches security to settings and leaves asset flows outside account selection', () => {
-    expect(accountPageKey('#/security')).toBe('settings');
+  it('recognises legacy account hashes so the old studio does not take them over', () => {
+    expect(accountPageKey('#/security')).toBe('security');
     expect(accountPageKey('#/membership')).toBe('membership');
     expect(accountPageKey('#/avatar/DH-1/voice')).toBeUndefined();
   });

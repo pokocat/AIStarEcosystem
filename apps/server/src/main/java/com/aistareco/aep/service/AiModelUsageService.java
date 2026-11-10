@@ -308,6 +308,7 @@ public class AiModelUsageService {
                     .tenantId(normalizedTenantId)
                     .appCode(normalizedAppCode)
                     .requestId(truncate(blankToNull(requestId), 96))
+                    .taskId(currentTaskId())
                     .upstreamId(truncate(blankToNull(upstreamId), 128))
                     .latencyMs(latencyMs != null && latencyMs >= 0 ? latencyMs : null)
                     .errorCode(truncate(blankToNull(errorCode), 64))
@@ -336,6 +337,11 @@ public class AiModelUsageService {
         } catch (Exception e) {
             log.warn("[ai-usage] 记录用量失败 provider={} model={}: {}", providerName, model, e.toString());
         }
+    }
+
+    private static String currentTaskId() {
+        var task = AiModelUsageContext.current();
+        return task == null ? null : truncate(blankToNull(task.taskId()), 64);
     }
 
     /** 全局用量报表（最近 days 天，缺省/越界回落到 30，封顶 365）。 */

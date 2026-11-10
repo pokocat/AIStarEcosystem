@@ -60,7 +60,7 @@ test("route changes refresh without duplicate in-flight requests or hidden deskt
   act(() => window.dispatchEvent(new Event("focus")));
   expect(api.balance).toHaveBeenCalledTimes(1);
   await act(async () => { resolve({ totalBalance: 50 }); });
-  rerender({ route: "/studio#/membership", desktop: true });
+  rerender({ route: "/me/credits", desktop: true });
   await settle();
   expect(result.current.balance).toBe(25);
   rerender({ route: "/me", desktop: false });

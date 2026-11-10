@@ -19,6 +19,12 @@ public interface AiModelUsageRecordRepository extends JpaRepository<AiModelUsage
     interface PreservedSummary { String getId(); String getProviderName(); String getPurpose(); Instant getCreatedAt(); }
     @Query("select r.id as id,r.providerName as providerName,r.purpose as purpose,r.createdAt as createdAt from AiModelUsageRecord r where r.userId=:userId and r.appCode=:appCode and r.responseBodyJson like :pattern order by r.createdAt desc")
     List<PreservedSummary> preserved(@Param("userId") String userId,@Param("appCode") String appCode,@Param("pattern") String pattern,Pageable page);
+    /** 某个任务保留下来的原文，按调用先后排（对话一轮会调用多次）。 */
+    @Query("select r.id as id,r.providerName as providerName,r.purpose as purpose,r.createdAt as createdAt from AiModelUsageRecord r where r.userId=:userId and r.appCode=:appCode and r.taskId=:taskId and r.responseBodyJson like :pattern order by r.createdAt asc")
+    List<PreservedSummary> preservedOfTask(@Param("userId") String userId,@Param("appCode") String appCode,@Param("taskId") String taskId,@Param("pattern") String pattern,Pageable page);
+    /** 一页任务里哪些有保留的原文。 */
+    @Query("select distinct r.taskId from AiModelUsageRecord r where r.userId=:userId and r.appCode=:appCode and r.taskId in :taskIds and r.responseBodyJson like :pattern")
+    List<String> tasksWithPreserved(@Param("userId") String userId,@Param("appCode") String appCode,@Param("taskIds") java.util.Collection<String> taskIds,@Param("pattern") String pattern);
 
     boolean existsByProviderIdAndPurposeAndRequestIdAndSuccessTrue(String providerId, String purpose, String requestId);
 

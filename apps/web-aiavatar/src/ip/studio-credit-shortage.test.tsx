@@ -182,7 +182,7 @@ test("recharge opens in a new tab; coming back with enough credits offers to car
   const onChoice = vi.fn();
   render(<StudioCreditShortageDialog input={{ quote, modelChoices: choices, canRetry: true }} onChoice={onChoice}/>);
   const recharge = await screen.findByRole("link", { name: "充值" });
-  expect(recharge.getAttribute("href")).toBe("/studio#/membership");
+  expect(recharge.getAttribute("href")).toBe("/me/credits");
   expect(recharge.getAttribute("target")).toBe("_blank");
   fireEvent.click(recharge);
   expect(screen.getByRole("button", { name: "刷新余额" })).toBeTruthy();
@@ -212,7 +212,7 @@ test("an enterprise payer reads the enterprise wallet and grants and is sent to 
   expect(api.balance).not.toHaveBeenCalled();
   // 月度赠送只进个人账户，企业付款不用去领。
   expect(api.account).not.toHaveBeenCalled();
-  expect(screen.getByRole("link", { name: "查看企业积分" }).getAttribute("href")).toBe("/enterprise");
+  expect(screen.getByRole("link", { name: "查看企业积分" }).getAttribute("href")).toBe("/me/enterprise");
   // 这个入口不能直接换模型：只列出来，说明去哪里换，没有「改用」。
   expect(screen.queryByRole("button", { name: /^改用/ })).toBeNull();
 });
@@ -259,7 +259,7 @@ test("a payer chosen once in an enterprise is not guessed: no balance is read an
   expect(api.balance).not.toHaveBeenCalled();
   expect(api.account).not.toHaveBeenCalled();
   expect(api.grants).not.toHaveBeenCalled();
-  expect(screen.getByRole("link", { name: "查看企业积分" }).getAttribute("href")).toBe("/enterprise");
+  expect(screen.getByRole("link", { name: "查看企业积分" }).getAttribute("href")).toBe("/me/enterprise");
   expect(screen.getByRole("link", { name: "充值" })).toBeTruthy();
 });
 
