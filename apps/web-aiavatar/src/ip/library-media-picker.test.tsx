@@ -26,6 +26,7 @@ vi.mock('antd', () => ({
   Button: ({ icon, loading, type, size, ...p }: any) => <button {...p}>{icon}{p.children}</button>,
   Input: ({ prefix, allowClear, ...p }: any) => <input {...p}/>,
   Skeleton: () => <p>正在读取</p>,
+  Select: ({ options, value, onChange, getPopupContainer, popupMatchSelectWidth, ...p }: any) => <select {...p} value={value} onChange={e => onChange(e.target.value)}>{options.map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>,
   ConfigProvider: ({ children }: any) => children,
   Modal: ({ open, title, children }: any) => open ? <div role="dialog" aria-label={title}>{children}</div> : null,
 }));
@@ -84,7 +85,7 @@ test('the 人物 tab of an image slot lists roles that have a picture, with thei
   await waitFor(() => expect(onAssets.mock.calls[0][0][0].metadata.libraryReference).toMatchObject({ objectId: 'o1', versionId: 'v1' }));
 });
 
-test('existing IP main, history and three-view images are independently selectable and searchable; official source keys stay out', async () => {
+test('existing IP main, history and three-view images are independently selectable and searchable; official ones are not mixed into 人物', async () => {
   const main = { avatarId: 'avatar-1', version: 2, current: true, name: '潮玩个人IP', characterName: '潮玩个人IP', url: 'https://cdn/main', storageKey: 'ip/main', assetRole: 'main' };
   api.ips.mockResolvedValue([main,
     { ...main, current: false, version: 1, assetRole: 'history', storageKey: 'ip/old', url: 'https://cdn/old' },
@@ -169,7 +170,7 @@ test('an upload never pushes the selection past max', async () => {
   fireEvent.change(screen.getByLabelText('选择要上传到资产库的文件'), { target: { files: [new File(['x'], '新图.png', { type: 'image/png' })] } });
   await waitFor(() => expect(screen.getByRole('button', { name: '选择 新图' })).toBeDefined());
   expect(screen.getByRole('button', { name: '选择 新图' }).getAttribute('aria-pressed')).toBe('false');
-  expect(screen.getByText('已选 2 个')).toBeDefined();
+  expect(screen.getByText('已选 2/2')).toBeDefined();
 });
 
 test('recording in an audio slot is stored in the current library and selected for use', async () => {
@@ -191,4 +192,32 @@ test('the existing file-upload button remains available while library data is lo
   render(<LibraryMediaPicker open mediaType="audio" upload onClose={vi.fn()} onAssets={vi.fn()}/>);
   expect((screen.getByRole('button', { name: '上传', exact: true }) as HTMLButtonElement).disabled).toBe(false);
   expect((screen.getByRole('button', { name: '录音', exact: true }) as HTMLButtonElement).disabled).toBe(true);
+});
+
+test('官方形象 is its own source: free images can be used, licensed ones are shown but locked, and categories filter', async () => {
+  const free = { avatarId: 'official:PA-01', version: 1, current: true, name: 'Annie 安妮', characterName: 'Annie 安妮', url: 'https://cdn/annie', storageKey: 'dap_plaza/annie.jpg',
+    assetRole: 'main', librarySource: 'official', access: 'free', category: 'pro', description: '商务主持' };
+  api.ips.mockResolvedValue([free,
+    { ...free, current: false, lookId: 'right', name: '右侧脸', assetRole: 'side', storageKey: 'dap_plaza/annie-r.jpg', url: 'https://cdn/annie-r' },
+    { ...free, avatarId: 'official:PA-x', name: '签约艺人', characterName: '签约艺人', access: 'license', category: 'life', storageKey: 'dap_plaza/x.jpg', url: 'https://cdn/x' },
+    { avatarId: 'mine-1', version: 1, current: true, name: '我的人物', characterName: '我的人物', url: 'https://cdn/m', storageKey: 'ip/m', assetRole: 'main' },
+  ]);
+  const onAssets = vi.fn().mockResolvedValue(undefined);
+  render(<LibraryMediaPicker open mediaType="image" max={3} onClose={vi.fn()} onAssets={onAssets}/>);
+  fireEvent.click(await screen.findByRole('tab', { name: '官方形象' }));
+  const locked = await screen.findByRole('button', { name: '选择 签约艺人 · 主形象' });
+  expect((locked as HTMLButtonElement).disabled).toBe(true);
+  expect(locked.textContent).toContain('需授权，暂不能使用');
+  expect(screen.queryByRole('button', { name: /我的人物/ })).toBeNull();
+  expect(screen.queryByRole('navigation', { name: '资产库' })).toBeNull();
+  fireEvent.change(screen.getByRole('combobox', { name: '按分类筛选官方形象' }), { target: { value: 'pro' } });
+  fireEvent.click(await screen.findByRole('button', { name: '选择 Annie 安妮 · 主形象' }));
+  expect(screen.queryByRole('button', { name: /签约艺人/ })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '选择 Annie 安妮 · 右侧脸' }));
+  expect(screen.getByText('已选 2/3')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '使用' }));
+  await waitFor(() => expect(onAssets).toHaveBeenCalledWith([
+    expect.objectContaining({ data: expect.objectContaining({ storageKey: 'dap_plaza/annie.jpg' }) }),
+    expect.objectContaining({ data: expect.objectContaining({ storageKey: 'dap_plaza/annie-r.jpg' }) }),
+  ]));
 });

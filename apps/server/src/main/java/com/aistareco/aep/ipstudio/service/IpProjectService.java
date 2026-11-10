@@ -431,7 +431,9 @@ public class IpProjectService {
         // 刷新之后 content 是空的、视频就此消失（v0.180 线上实测，日志里每次加载都刷两条
         // 「文档里出现非本人资产 key」）。这里改成按 jobId 回查任务的真实归属 ——
         // 不是放宽，是换成一个真的能判归属的办法：owner 必须是本人、分区必须是 ipstudio。
-        return ownsVideoKey(userId, k) || studioAssets != null && studioAssets.owns(userId,k);
+        // 官方形象：免费的那几张图所有登录用户都能拿去生成（2026-11-10）。只认登记在 dap_public_avatar 里、
+        // dap_plaza 分类下的图；需授权的不放行。判断在 DapPublicAvatarService#usableImageKey 一处。
+        return ownsVideoKey(userId, k) || studioAssets != null && (studioAssets.officialUsable(userId, k) || studioAssets.owns(userId,k));
     }
 
     /**

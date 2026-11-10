@@ -86,9 +86,13 @@ public class DapAvatarController {
                                      @RequestParam(required = false) Boolean fav,
                                      @RequestParam(required = false) String q) {
         if ("public".equals(scope)) {
-            // 数字人广场 = 内置 10 个静态样板 + 运营上传的 DB 公开数字人（合并）
-            List<Map<String, Object>> merged = new java.util.ArrayList<>(catalog.publicAvatars());
-            merged.addAll(publicAvatars.listPublicWire());
+            // 官方形象 = dap_public_avatar（内置 10 个启动时入库，见 DapBuiltinPublicAvatarSeeder）。
+            // 内置的还没入库（入库失败 / test profile）时补上目录里的那份，只能看、不能用于生成。
+            List<Map<String, Object>> stored = publicAvatars.listPublicWire();
+            java.util.Set<Object> ids = new java.util.HashSet<>();
+            stored.forEach(a -> ids.add(a.get("id")));
+            List<Map<String, Object>> merged = new java.util.ArrayList<>(stored);
+            catalog.publicAvatars().stream().filter(a -> !ids.contains(a.get("id"))).forEach(merged::add);
             return ApiResponse.of(merged);
         }
         return ApiResponse.of(avatarService.list(uid(principal), path, status, fav, q));
@@ -103,8 +107,8 @@ public class DapAvatarController {
     public ApiResponse<?> get(Principal principal, @PathVariable String id) {
         // 数字人广场公开形象（PA-*）只读，来自目录 / 运营 DB 而非用户库 —— 支持详情永久链接 / 刷新冷还原。
         if (id != null && id.startsWith("PA-")) {
-            Map<String, Object> pub = catalog.publicAvatar(id);
-            if (pub == null) pub = publicAvatars.findWire(id);
+            Map<String, Object> pub = publicAvatars.findWire(id);
+            if (pub == null) pub = catalog.publicAvatar(id);
             if (pub != null) return ApiResponse.of(pub);
         }
         return ApiResponse.of(avatarService.get(uid(principal), id));

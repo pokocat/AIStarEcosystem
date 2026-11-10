@@ -17,14 +17,14 @@ import MePage from "./page";
 
 afterEach(cleanup);
 
-// 2026-11-02：手机「我的」和 AI 视频、AI 图片同一套样子。底栏没有项目、资产、导演台和发现，从这里进。
+// 2026-11-02：手机「我的」和 AI 视频、AI 图片同一套样子。底栏没有项目、资产、导演台和官方形象，从这里进。
 test("我的 lists the places the phone tab bar leaves out, and uses the flat tab bar", () => {
   render(<MePage/>);
   const main = document.querySelector("main.studio-me") as HTMLElement;
   expect(main).toBeTruthy();
   const create = within(screen.getByRole("navigation", { name: "创作" }));
   expect(create.getAllByRole("link").map(a => a.getAttribute("href")))
-    .toEqual(["/templates", "/projects", "/assets", "/assets/cards", "/director", "/discover"]);
+    .toEqual(["/templates", "/projects", "/assets", "/assets/cards", "/director", "/assets?tab=official"]);
   // 2026-11-10：账号这一组和电脑版的标签一一对应，地址都在 /me 下面（企业只在开通企业功能时出现）。
   expect(within(screen.getByRole("navigation", { name: "账号" })).getAllByRole("link").map(a => a.getAttribute("href")))
     .toEqual(["/me/tasks", "/me/credits", "/me/storage", "/me/authorization", "/me/settings"]);

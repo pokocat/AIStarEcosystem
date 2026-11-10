@@ -24,7 +24,8 @@ import java.util.Map;
  * web-aiavatar 内嵌后台「新增公开数字人」上传的形象，图存 OSS（§4.7，存 storage key，URL 由
  * DTO 出 wire 时经 FileStorageService 派生）。两者在 GET /api/v1/avatars?scope=public 合并返回。
  *
- * <p>id 以 "PA-" 前缀（前端据此判定只读 / 另存为），与内置 PA-01..PA-10 不冲突（本表用 PA-<hex>）。
+ * <p>id 以 "PA-" 前缀（前端据此判定只读 / 另存为）。运营新增的用 PA-<hex>；内置 PA-01..PA-10 自 2026-11-10 起
+ * 由 {@code DapBuiltinPublicAvatarSeeder} 把图存进存储后也写进本表，本表因此是官方形象的唯一来源。
  */
 @Entity
 @Table(name = "dap_public_avatar", indexes = {
@@ -94,6 +95,23 @@ public class DapPublicAvatar {
     private String leftKey;
 
     private boolean fav;
+
+    /**
+     * 使用方式：{@code free} 免费，任何登录用户都能把形象图用于生成；{@code license} 需授权（默认）。
+     * 需授权的形象暂未开放授权，生成链一律不放行（V81，2026-11-10）。以后接授权记录时在
+     * {@code DapPublicAvatarService#usableImageKey} 里加判断，这里不再加别的状态。
+     */
+    @Column(length = 16)
+    @Builder.Default
+    private String access = ACCESS_LICENSE;
+
+    public static final String ACCESS_FREE = "free";
+    public static final String ACCESS_LICENSE = "license";
+
+    /** 旧行（V81 之前写的）没有值，按需授权处理。 */
+    public String accessOrDefault() {
+        return ACCESS_FREE.equals(access) ? ACCESS_FREE : ACCESS_LICENSE;
+    }
 
     /** 排序权重（小在前）。 */
     private int sortOrder;

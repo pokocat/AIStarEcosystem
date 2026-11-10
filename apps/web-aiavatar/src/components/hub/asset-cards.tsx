@@ -106,39 +106,3 @@ export function StarGrantCard({ g }: { g: StarGrant }) {
  * 仍然用 cover 而不是 contain：素材本来就是竖幅人像，3:4 只会切掉上下少许留白；
  * contain 会在两侧留出灰边，反而更难看。
  */
-export function OfficialCard({ c, ratio = "3 / 4" }: { c: Avatar; ratio?: string }) {
-  return (
-    <Link href={`/market/${c.id}`} style={{ textDecoration: "none", color: "inherit", display: "block" }}>
-      <div
-        style={{
-          position: "relative",
-          aspectRatio: ratio,
-          borderRadius: 18,
-          overflow: "hidden",
-          background: `linear-gradient(160deg, hsl(${c.hue ?? 200} 55% 82%), hsl(${c.hue ?? 200} 48% 66%))`,
-        }}
-      >
-        {c.imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={c.imageUrl} alt={c.name} loading="lazy" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
-        ) : (
-          <span style={{ position: "absolute", top: 30, left: "50%", transform: "translateX(-50%)", fontFamily: "var(--font-serif)", fontSize: 62, color: "rgba(255,255,255,.85)" }}>
-            {(c.name || "?").trim().slice(0, 1)}
-          </span>
-        )}
-        <span style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(12,20,34,0) 48%, rgba(12,20,34,.74))" }} />
-        <span style={{ position: "absolute", top: 10, right: 10, height: 19, padding: "0 7px", display: "inline-flex", alignItems: "center", borderRadius: 999, background: "rgba(255,255,255,.9)", color: "var(--primary-700)", fontSize: 9, fontWeight: 800 }}>
-          可授权
-        </span>
-        <div style={{ position: "absolute", left: 12, right: 12, bottom: 12, display: "flex", flexDirection: "column", gap: 3 }}>
-          <span style={{ fontFamily: "var(--font-serif)", fontSize: 17.5, fontWeight: 600, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {c.name}
-          </span>
-          <span style={{ fontSize: 11, color: "rgba(255,255,255,.82)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {c.archetype}
-          </span>
-        </div>
-      </div>
-    </Link>
-  );
-}

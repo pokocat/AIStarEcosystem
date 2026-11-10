@@ -1858,6 +1858,9 @@ components:
         assetRole: { type: string, enum: [main, history, sheet, portrait, three-view, front, side, back, expression, detail, look] }
         description: { type: string, nullable: true }
         attributes: { type: object, additionalProperties: { type: string }, description: '既有人物 def 中的文本属性，未填写的属性不推测。' }
+        librarySource: { type: string, enum: [mine, official], description: 'mine 本人人物；official 官方形象（dap_public_avatar 与官方模板快照）。' }
+        access: { type: string, enum: [free, license], nullable: true, description: '官方形象的使用方式（2026-11-10）：free 可直接用于生成；license 需授权，暂未开放授权，生成链不放行。本人人物为空。' }
+        category: { type: string, nullable: true, description: '官方形象分类（pro / life / ugc / community），供选择框筛选。' }
     StudioScript:
       type: object
       required: [title, outline, characters, scenes, props, episodes, shots]
@@ -13810,7 +13813,7 @@ paths:
         "404":
           description: 名片不存在或已取消发布（CARD_NOT_FOUND）
   /v1/avatars:
-    get:  { tags: [dap], operationId: dapListAvatars, description: scope=mine|public + path/status/fav/q 过滤, responses: { '200': { description: ok } } }
+    get:  { tags: [dap], operationId: dapListAvatars, description: 'scope=mine|public + path/status/fav/q 过滤。public 为官方形象（dap_public_avatar；内置 10 个启动时入库），每项带 access=free|license。', responses: { '200': { description: ok } } }
     post: { tags: [dap], operationId: dapCreateAvatar, responses: { '200': { description: ok } } }
   /v1/avatars/{id}:
     get:    { tags: [dap], operationId: dapGetAvatar, responses: { '200': { description: ok } } }
@@ -13836,7 +13839,7 @@ paths:
     post: { tags: [dap], operationId: dapSaveAsFromPublic, summary: '数字人广场「另存为我的数字人」：复制只读公开数字人(PA-*)为可编辑数字人', responses: { '200': { description: ok } } }
   /v1/admin/avatars:
     get:  { tags: [dap], operationId: dapAdminListPublicAvatars, summary: '数字人广场 · 运营公开数字人列表（OPERATOR/SUPER_ADMIN）', responses: { '200': { description: ok } } }
-    post: { tags: [dap], operationId: dapAdminCreatePublicAvatar, summary: '数字人广场 · 运营新增公开数字人', responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapAdminCreatePublicAvatar, summary: '数字人广场 · 运营新增公开数字人', description: '请求可带 access=free|license（不传为 license 需授权，非法值 400 DAP_PUBLIC_ACCESS_INVALID）；编辑不传保持原值。', responses: { '200': { description: ok } } }
   /v1/admin/avatars/{id}:
     put:    { tags: [dap], operationId: dapAdminUpdatePublicAvatar, summary: '数字人广场 · 运营编辑公开数字人', responses: { '200': { description: ok } } }
     delete: { tags: [dap], operationId: dapAdminDeletePublicAvatar, summary: '数字人广场 · 运营下架公开数字人', responses: { '200': { description: ok } } }
@@ -14923,7 +14926,7 @@ paths:
     get:
       tags: [ipstudio]
       operationId: studioIpAssets
-      description: '本人未删除人物的主形象、历史版本与完成造型。以 characterName/avatarId 汇总人物，返回已填写属性与明确 assetRole（旧未分类造型为 look），不推测图片内容。稳定 ipId/avatarId/version/storageKey、可选 lookId，url 为出 wire 时重签；旧未关联 IP 人物仍能明确关联。'
+      description: '本人未删除人物的主形象、历史版本与完成造型，后接官方形象（librarySource=official，带 access / category；需授权的也列出，由前端标为不能选）。以 characterName/avatarId 汇总人物，返回已填写属性与明确 assetRole（旧未分类造型为 look），不推测图片内容。稳定 ipId/avatarId/version/storageKey、可选 lookId，url 为出 wire 时重签；旧未关联 IP 人物仍能明确关联。'
       responses:
         '200': { description: 'ApiResponse<StudioIpAsset[]>', content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/StudioIpAsset' } } } } }
   /v1/ip-studio/studio/performers/{avatarId}/looks/{lookId}/role:

@@ -1,4 +1,4 @@
-// 资产 Tab：我的资产库（官方名录在 /discover）。
+// 资产 Tab：我的资产库；官方形象在 ?tab=official。
 import { Suspense } from 'react';
 import { AssetsLibrary, AssetsLoading } from "@/components/hub/assets-library";
 

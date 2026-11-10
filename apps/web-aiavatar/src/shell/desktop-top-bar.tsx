@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, Compass, Gem, ListChecks, LogOut, Settings, Smartphone, UserRound } from "lucide-react";
+import { Building2, Gem, ListChecks, LogOut, Settings, Smartphone, UserRound } from "lucide-react";
 import { auth, USE_MOCK, useIdentity } from "@/proto/api";
 import { setLayout } from "./layout-mode";
 import { useStudioHash } from "./account-workspace";
@@ -49,7 +49,6 @@ export function DesktopTopBar({ publicMode = false }: { publicMode?: boolean }) 
     <Link href="/me/credits"><Gem size={16} />积分</Link>
     {process.env.NEXT_PUBLIC_ENTERPRISE_ENABLED === "1" && <Link href="/me/enterprise"><Building2 size={16} />企业</Link>}
     <Link href="/me/settings"><Settings size={16} />设置</Link>
-    <Link href="/discover"><Compass size={16} />发现</Link>
     <button onClick={() => setLayout("mobile")}><Smartphone size={16} />切换到手机版</button>
     <button onClick={() => auth.logout()}><LogOut size={16} />退出登录</button>
   </div></details>;

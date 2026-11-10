@@ -1,5 +1,14 @@
 # 待办与已知问题
 
+## 官方形象（2026-11-10，本地未发布；说明见 `apps/web-aiavatar/README.md` 同日版本日志）
+
+- [ ] 需授权的官方形象接授权流程：现在「申请授权」只说明暂未开放（`src/ip/official-avatars.tsx` 的 `OfficialLicenseButton`），生成链对 `access=license` 一律不放行（`DapPublicAvatarService#usableImageKey`）。做签约艺人 / IP 市场时，按授权记录在这两处放开，参照明星形象授权（`AssetApi.starGrants`）的记录与展示方式。
+- [ ] 运营改「免费 / 需授权」还没有界面：接口 `POST|PUT /api/v1/admin/avatars` 已收 `access`，旧的内嵌后台（`proto/screen-library.tsx`）没有这个开关；后台搬到 studio-admin 时一起加。
+- [ ] 分类目前沿用内置的四类（pro / life / ugc / community，界面叫商务专业 / 生活方式 / 内容创作 / 潮流娱乐）。用户参考图里是按人群分（都市蓝领、精致妈妈、小镇青年…），官方形象多起来后再定分类表，放到后台可配。
+- [ ] 导演台「关联已有资产」和创作助手的引用框还不能选官方形象（只做了画布人物库与 AI 图片 / AI 视频的素材选择框）。
+- [ ] 走查时 AI 图片页新开、还没有草稿时第一次从选择框选图，框关了但素材位没放上（重选一次正常）。疑似 `scene-image-studio.tsx` 的 `onPage(pickTicket.current)` 在建草稿时丢掉了这次选择，与图片来源无关；没查实，也没试自己资产的图是否同样如此。
+- [ ] 火山方舟（Seedance）视频对人像图走真人核验（`ArkPortraitLibrary`）；官方形象是 AI 原创但很像真人，用它出片时会不会被要求核验，上线前要真跑一次。
+
 ## 画布删除与付款弹窗的预计（2026-11-10 用户反馈）
 
 - [x] ~~**付款弹窗把授权上限当「本次预计」，还据此判积分不足**~~ **2026-11-10 本地修复，未发布**：AI 视频页 36 秒长视频按钮写「约 2,208 积分」，弹窗写「本次预计 8,274 积分」（标准价 × 3 的授权上限），7,893 积分被判个人积分不足；受理时并不冻结上限，每一步做的时候才扣。现在视频任务、长视频、裂变和对话确认卡都把按钮 / 卡片上的预计（`expectedCost`）和上限（`costCap`）分开传，弹窗只写预计、余额只跟预计比，上限放悬停提示（`ip/studio-billing-dialog.tsx`、`canvas-bridge/studio-billing.ts`）。测试 `studio-billing-dialog.test.tsx`。
