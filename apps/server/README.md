@@ -1304,6 +1304,20 @@ capabilities 的文本模型新增 `dialogueTokenPricing`，普通文本仍用 `
 - 无迁移、无接口路径变化（`StudioVideoSettings.rewrite` 新字段、导演台 `options.promptChoice`）。依据与真模型试跑见 `docs/audits/director-h3-video-prompt-ab-2026-10.md` §6–7。
 - 2026-10-31（本地未发布）：中文模板第 4 版去掉写给系统的话（`DirectorPrompts.videoPrompt`，第 3 版冻结为 `videoPromptV3`）；出镜判断 `castOfShot` 认别名、分不清时不写强约束（旧 `castOf` 冻结给第 2、3 版）；`H3PromptRewrite` 加篇幅预算 `LENGTH_REF / LENGTH_BASE` 与规则修订号 `RULES`（进任务输入、不进指纹），超长时 `trimFullyPreserved` 只精简 fully_preserved 行；全能参考稿漏写的参考素材按 meta `references`（交给模型的素材清单）补回一行定义和一行保留说明；导演台 meta 带 `storyboardPicture`，分镜图的保留关系固定为 `fully_preserved`；导演台新任务类型 `video-prompt`（`DirectorService.reoptimize`，只出稿、`taskMeta.draftOnly`）；视频候选固定记 `promptUsed / promptReason / draftState / rewriteRunId / rewriteCost`，`videoPromptEn` 加 `cost`。取证见 `docs/audits/director-h3-cl45-prompt-review-2026-10.md`。
 
+### 导演台作品排队与续接提交（2026-11-10，本地未发布）
+
+作品的读写都给 `director_work` 行加 `SELECT … FOR UPDATE`，锁内还有地方要第二条连接（任务提交走独立事务）。为了不让「占着连接等行锁」的请求把连接池占满（2026-11-10 线上事故），`DirectorService` 的入口（get / patch / edit / task / pipeline / delete / restore / stopTask / tick、续接写回）和 `StudioTrashService.purgeWork` 先在进程内按作品 id 排队（`DirectorWorkLocks`），拿到之后才开事务；行锁照留。
+
+| 配置 | 默认 | 说明 |
+|---|---|---|
+| `aep.director.work-lock.timeout-ms` | `15000` | 等作品锁的上限，超时回 503 `DIRECTOR_WORK_LOCK_TIMEOUT`（「作品正在处理，请稍后重试」）。比 Hikari 取连接（30 秒）和 MySQL 锁等待（50 秒）短；前端轮询碰到按暂时性失败处理，不提示。 |
+| `aep.director.work-lock.max-concurrent` | `0`（关） | 同时持有作品锁的请求上限。设为连接池一半以下时，不同作品同时各要第二条连接也凑不满连接池；代价是导演台整体并发被限住。 |
+| `aep.director.follow-up-retry-ms` | `120000` | 回投时的续接（改写完成接着出视频、改写不合格重试）没写回作品时，隔多久重新安排。 |
+
+续接提交：锁内只把意图记进作品 JSON（`followUps`，片段上放 `submit:` 占位，一键制作里 `pendingSubmits` 占预算），本事务提交后由单独一个后台线程按原请求编号提交，再用短事务写回；提交前先按请求编号查是否已受理（已受理的照实写回，不当成取消），再核对一键制作和片段是否还在。续接建出的任务在写回之前不回投。
+
+**只保证单实例。** 上多实例之前，锁内的任务提交必须改成锁内只记意图、锁外提交（见 TODO.md）。
+
 ### 导演台图片模型能力过滤（2026-10-26，已生产发布 `20261026-director-image-viewer`）
 
 `DirectorService.IMAGE_RATIOS` = 1:1 / 16:9 / 9:16（道具 / 角色场景 / 分镜三种画幅）。`imageSelections()` 只把出图规格三种都有的场景候选列为可新选，`missingRatios(endpoint)` 是唯一判断（按 `AiImageRequestSpec.ratios()`，不按型号名；无规格返回空，规格读不出来当作全缺）。`patch` 只校验改动后的 `imageModel`，原值照存；`imageSelection(c)` 解析实际会用的模型（存着的或默认，不过滤），`directorPrices`、`estimate`、一键连跑 `Step` 与 `image()` 都读它，停用时以导演台文案重抛 `ENDPOINT_NOT_ALLOWED`。`sizeFor` 只在这个接入点里取同比例最大一档，出不了按资产类型抛 `STUDIO_IMAGE_SIZE_UNSUPPORTED`（在建任务、冻结前）。`view` 新增 `imageModelState`。无迁移、无配置变更；规则见 `specs/BUSINESS_RULES.md` 与导演台方案「2026-10-26」。

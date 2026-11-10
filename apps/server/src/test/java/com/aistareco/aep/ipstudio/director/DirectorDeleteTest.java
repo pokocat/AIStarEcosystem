@@ -246,11 +246,12 @@ class DirectorDeleteTest {
         try {
             CountDownLatch deleting = new CountDownLatch(1);
             TransactionTemplate outer = new TransactionTemplate(tx);
-            Future<?> del = pool.submit(() -> outer.executeWithoutResult(s -> {
-                director.delete(u, id);
+            // 删除拿着作品锁、持着行锁停一会再提交（先拿进程内的作品锁再开事务，同真实入口）
+            Future<?> del = pool.submit(() -> director.workLocks().runWithWork(id, () -> outer.executeWithoutResult(s -> {
+                director.deleteInTx(u, id);
                 deleting.countDown();
                 try { Thread.sleep(400); } catch (InterruptedException ex) { Thread.currentThread().interrupt(); }
-            }));
+            })));
             assertTrue(deleting.await(10, TimeUnit.SECONDS));
             Future<Throwable> resume = pool.submit(() -> {
                 try { director.pipeline(u, id, new DirectorService.PipelineRequest("resume", null, null, null, null, null, null)); return null; }

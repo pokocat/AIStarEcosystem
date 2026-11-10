@@ -22,6 +22,9 @@ import { AiMark } from "../studio-ai-icon";
 import { BriefProvider } from "./director-brief";
 import { AssistantProvider, DirectorAssistantPanel, useAssistant, useAssistantController } from "./director-assistant";
 
+/** 服务端同一部作品的请求排队超时（DirectorWorkLocks），暂时性的。 */
+const WORK_LOCK_TIMEOUT = "DIRECTOR_WORK_LOCK_TIMEOUT";
+
 export type Tab = "script" | "assets" | "products" | "storyboard";
 const GO_LABEL: Record<Tab, string> = { script: "前往剧本", assets: "前往资产", products: "前往商品", storyboard: "前往分镜" };
 export type WorkbenchProps = {
@@ -155,6 +158,8 @@ export function DirectorWorkbench({ id }: { id: string }) {
   const loadSeq = useRef(0);
   // 正在进行的读取数：轮询见到有读取在途就跳过这一次（见 useDirectorPoll）。
   const loading = useRef(0);
+  // 读到过作品之后，「作品正在处理」（服务端排队等作品锁超时）只算这一次没读到，下次轮询再读，不提示。
+  const loadedOnce = useRef(false);
   const load = useCallback(async (): Promise<"ok" | "gone" | "error" | "stale"> => {
     const seq = ++loadSeq.current;
     loading.current++;
@@ -162,11 +167,13 @@ export function DirectorWorkbench({ id }: { id: string }) {
       const next = await DirectorApi.getWork(id);
       if (!mounted.current || seq !== loadSeq.current) return "stale";
       apply(next); setLoadError(""); setGone(false);
+      loadedOnce.current = true;
       return "ok";
     } catch (e) {
       if (!mounted.current || seq !== loadSeq.current) return "stale";
       if (isWorkGone(e) && !isStaleGone(e)) { markGone(); return "gone"; } // getWork 只会是本作品的 404；恢复前发出的不算
       if (isProductNotEnrolledError(e)) { setNotEnrolled(true); return "error"; }
+      if (loadedOnce.current && normalizeStudioError(e).code === WORK_LOCK_TIMEOUT) return "error";
       setLoadError(errorText(e));
       return "error";
     } finally { loading.current--; }
