@@ -694,6 +694,6 @@ Studio 任务列表可查看模型赠款/普通积分的已消费、冻结中和
 
 Fast / Mini 的生产 API Key 已切换；官方库 `bingbing` 已真实验证虚拟样本入库 Active 与本人 H5 会话。官方素材库 `ark-bingbing` 已绑定 Fast / Mini，V78 和页面已随 `20261109-ark-portraits-137b5754` 发布。生成前在积分冻结前检查引用，需要处理时在当前页弹窗，复用 Ant Design 控件；用户明确确认真人或虚拟声明后入库，Active 后继续原操作。官方明确拒绝且尚无供应商任务号时，保留原任务及冻结最多 30 分钟，审核后恢复同一任务，不二次冻结；超时释放。已有供应商任务继续对账。本人刷脸、真人一致性审核和真人成片尚未实测。真源：[视频素材库](../../docs/video-asset-library.md)。
 
-## 账号区：7 个标签（2026-11-10，本地未发布）
+## 账号区：7 个标签（2026-11-10，已生产发布 `20261110-account-ia-f27ed14c`）
 
 总览 `/me`、任务历史 `/me/tasks`、积分 `/me/credits`、存储 `/me/storage`（用量 / 回收站）、授权 `/me/authorization`（真人授权 / IP 授权登记 / 明星形象授权）、企业 `/me/enterprise`（开通企业功能时显示）、设置 `/me/settings`。生成原文不单独成页，在任务历史里「查看原文」；邀请朋友在总览；我的名片在资产 `/assets/cards`。本节替代上文提到的 `/invitations`、`/licenses`、`/cards`、`/model-results` 和「会员与积分」等旧入口；旧地址自动跳转。真源 `docs/aiavatar-account-unification.md` 末节。

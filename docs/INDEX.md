@@ -477,6 +477,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [声音参考格式修复发布](releases/voice-reference-format-release-20261104.md) — server；短 M4A 等声音自动转 WAV，报错说明素材类型和可用格式；真实出片未验证（last-reviewed: 2026-11-04）
 - [资产页删除发布](releases/asset-library-delete-release-20261110.md) — web-aiavatar；资产页单个与批量删除，只从资产库移除、不动画布和作品（last-reviewed: 2026-11-10）
 - [编导脚本出片分层发布](releases/scene-script-layers-release-20261110.md) — server + web-aiavatar；六段脚本出片只发和画面有关的部分，编辑框标「仅参考」，参考素材受理时就核对（last-reviewed: 2026-11-10）
+- [账号区合并与统一路由发布](releases/account-ia-release-20261110.md) — server + web-aiavatar；账号区 7 个标签统一到 /me，原文按任务查看（V80），旧地址 308（last-reviewed: 2026-11-10）
 - [爆款复刻视频理解发布](releases/recreation-video-understanding-release-20261110.md) — server + web-aiavatar + studio-admin；拉片直接看视频（火山 Seed 2.0 Lite，接入点 ai-1583b53c-52e），视频页复刻方案由代码拼，V79（last-reviewed: 2026-11-10）
 - [AI 编导提示词爆款化发布](releases/scene-script-viral-release-20261110.md) — server + web-aiavatar；五个视频类型方法层、镜头约 4 秒、台词有人设、去掉功效夸大限制、全角数字镜头修复（last-reviewed: 2026-11-10）
 - [账号区新版页面发布](releases/studio-account-pages-release-20261109.md) — server + web-aiavatar；任务历史带积分明细、存储用量合并口径并补记历史文件、画布回收站可恢复和彻底删除、设置与安全合并；存储上限与到期清理开关默认关（last-reviewed: 2026-11-09）
