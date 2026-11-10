@@ -1627,7 +1627,13 @@ public class DirectorService {
 
     private Rewrite rewrite(ObjectNode c, JsonNode clip) {
         List<String> known = new ArrayList<>(List.of("旁白"));
-        for (JsonNode a : c.path("assets")) if ("character".equals(a.path("kind").asText())) known.add(a.path("name").asText());
+        Map<String, String> alias = new HashMap<>();
+        for (JsonNode a : c.path("assets")) if ("character".equals(a.path("kind").asText())) {
+            String name = a.path("name").asText();
+            known.add(name);
+            a.path("aliases").forEach(x -> { if (!x.asText().isBlank() && !x.asText().equals(name)) alias.putIfAbsent(x.asText().strip(), name); });
+        }
+        known.forEach(alias::remove); // 别名和另一个角色的本名相同时，按本名认
         int shots = Math.min(clip.path("shots").size(), DirectorPrompts.MAX_SHOTS);
         boolean grid = DirectorPrompts.boardLayout(clip.path("shots").size())[0] == 2;
         // 参考素材清单与提交顺序一致（videoInput）：图1 分镜图，资产按角色 → 场景 → 道具，音频按说话人第一次开口的顺序。
@@ -1655,14 +1661,22 @@ public class DirectorService {
         for (JsonNode a : speakers(c, clip)) if (a.path("voice").path("key").isTextual())
             refs.add("<Audio " + (++audios) + ">: voice sample of 「" + a.path("name").asText() + "」; use only its timbre and delivery.");
         String zh = clip.path("videoPrompt").asText();
-        H3PromptRewrite.Source src = H3PromptRewrite.source(zh, known);
+        boolean custom = clip.path("videoPromptCustom").asBoolean(false);
+        H3PromptRewrite.Source src = H3PromptRewrite.source(zh, known, alias);
+        // 模板在没有台词时写「这一段没有对白。」；用户后来自己加了台词却没删这句，两句互相矛盾，交给改写模型前去掉（2026-11-10 线上）。
+        if (custom && zh.contains(DirectorPrompts.NO_DIALOGUE) && (!src.lines().isEmpty() || H3PromptRewrite.unrecognizedSpeech(src.text()))) {
+            zh = zh.replace(DirectorPrompts.NO_DIALOGUE + "\n", "").replace(DirectorPrompts.NO_DIALOGUE, "");
+            src = H3PromptRewrite.source(zh, known, alias);
+        }
         List<String> planned = new ArrayList<>();
         for (JsonNode s : clip.path("shots")) for (JsonNode l : s.path("dialogue")) planned.add(l.path("text").asText());
         // 台词由代码按原文填回去，前提是认得全：自动生成的提示词逐句核对原文（台词里的引号没配上会少认半句，句数还对得上），
-        // 用户改写过的核对句数与引号是否成对。认不全就改由模型照官方写法自己写台词、逐句核对后给提示（不再拒绝，2026-10-26 用户定）。
-        boolean custom = clip.path("videoPromptCustom").asBoolean(false), legacy = !src.text().contains("说：{{");
+        // 用户改写过的按原文核对：引号成对、正文里没有认不出的台词、每句都在某一镜里（H3PromptRewrite#complete）。
+        // 分镜里没有台词不等于用户没写台词：2026-11-10 线上客户在没有台词的镜头里自己加了一句，旧判断只看「认出来几句 ≥ 分镜里几句」，
+        // 0 ≥ 0 就当成全认出，对改写模型说每一镜都没有台词，台词被删掉。
+        // 认不全就改由模型照官方写法自己写台词、逐句核对后给提示（不再拒绝，2026-10-26 用户定）。
         boolean codeLines = src.lines().size() >= planned.size()
-                && (custom ? src.lines().isEmpty() || H3PromptRewrite.quotesBalanced(src.text(), legacy)
+                && (custom ? H3PromptRewrite.complete(src, true)
                            : src.lines().stream().map(H3PromptRewrite.Line::text).toList().equals(planned));
         if (!codeLines) src = new H3PromptRewrite.Source(zh, List.of());
         List<Double> starts = new ArrayList<>();

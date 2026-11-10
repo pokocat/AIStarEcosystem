@@ -784,7 +784,7 @@ public final class DirectorPrompts {
             t = end;
         }
         StringBuilder sound = new StringBuilder();
-        if (!anyLine) sound.append("这一段没有对白。\n");
+        if (!anyLine) sound.append(NO_DIALOGUE).append('\n');
         for (VoiceRef v : voices) sound.append("声音参考：").append(v.name()).append("的音色、口音照").append(v.label()).append("。\n");
         voiceDescs.forEach((name, desc) -> sound.append(name).append("的音色：").append(desc).append("\n"));
         // 没内容就不写这一段：空标题也是一句可能被 H3 念出来的中文（cl45 第 4 版试跑时发现）。
@@ -792,6 +792,9 @@ public final class DirectorPrompts {
         b.append("\n【配乐】\n无");
         return b.toString();
     }
+
+    /** 没有台词的片段在【声音】里写的那句；用户改写时自己加了台词，改写前会去掉它（DirectorService#rewrite）。 */
+    static final String NO_DIALOGUE = "这一段没有对白。";
 
     /** 一镜里的出镜判断：{@code on} 明确在画面里，{@code unsure} 点了名但分不清画内画外（带画外线索词，或一个称呼对上几个人）。 */
     public record Cast(List<String> on, List<String> unsure) {}

@@ -14,6 +14,7 @@ import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -54,8 +55,9 @@ public final class H3PromptRewrite {
      * 2026-10-31：加篇幅预算。《扣钱》cl45 的优化稿 8198 字符，主体说明 2403、保留说明 1551，五个资产的中文描述被逐条翻译又列了一遍。
      * 2026-11-07：最终稿目标 6000 字符，字符预算优先于英文词数；马记大排档真实模型两份稿均低于 6000。
      * 2026-11-07：写明模型看不到素材。线上 Sonnet 对「把@图1 衣着穿在模特身上」这类短要求 10 次拒绝 7 次（「看不到附件」），关思考的 DeepSeek 则直接编人物和背景。
+     * 2026-11-10：认台词放宽（“”、半角冒号、不写冒号）、说话人按上下文认；还有认不出的台词时改由模型写，不再对模型说「这一镜没有台词」。
      */
-    public static final String RULES = "2026-11-07-character-budget";
+    public static final String RULES = "2026-11-10-unrecognized-speech";
     /** 镜头由模型定时（画布上的提示词没分镜头）最多这么多镜。 */
     public static final int MAX_FREE_SHOTS = 8;
 
@@ -95,8 +97,12 @@ public final class H3PromptRewrite {
     public record Request(Mode mode, int seconds, List<String> references, Source source, boolean codeLines,
                           Integer shots, List<Double> starts, String language, boolean storyboard) {}
 
-    /** 模板写法：「林小雅说：「…」」「旁白在画外说：「…」」。只匹配到开引号，台词到配对的收引号为止（见 {@link #closing}）。 */
-    private static final Pattern LINE = Pattern.compile("([^\\s，。：；！？、「」“”（）()]{1,24}?)(在画外)?说：「");
+    /**
+     * 模板写法：「林小雅说：「…」」「旁白在画外说：「…」」。只匹配到开引号，台词到配对的收引号为止（见 {@link #closing}）。
+     * 用户改写时常用中文双引号、半角冒号或不写冒号（「静儿咂了下嘴说：“味道还是不行”」，2026-11-10 线上），同样认：
+     * 第 3 组是「说」和引号之间的冒号与空白，换成占位时统一写成「说：」；第 4 组是开引号。
+     */
+    private static final Pattern LINE = Pattern.compile("([^\\s，。：；！？、「」“”『』\"（）()]{1,24}?)(在画外)?说(\\s*[：:]?\\s*)([「“『\"])");
     /** 2026-10-26 之前的导演台模板（用户改写过、还留着旧格式的提示词）：「第2镜 · @林小雅 · “…”」。 */
     private static final Pattern LEGACY_LINE = Pattern.compile("@([^\\s·]{1,24}) · “");
     private static final Pattern PLACEHOLDER = Pattern.compile("\\{\\{(L\\d+)}}");
@@ -241,22 +247,35 @@ public final class H3PromptRewrite {
      * 说话人编号按第一次开口的顺序分配，旁白也算一个说话人。
      */
     public static Source source(String zh, List<String> knownNames) {
+        return source(zh, knownNames, Map.of());
+    }
+
+    /**
+     * 同上；{@code canonical} 是别名 → 名字（「老板」→「餐馆老板」），别名开口的台词归到本名，编号与本名一致。
+     * 「说」前面不是名字（「咂了下嘴说」「笑着说」）时按上下文认说话人，见 {@link #speaker}。
+     */
+    public static Source source(String zh, List<String> knownNames, Map<String, String> canonical) {
         List<String> names = new ArrayList<>(knownNames);
+        names.addAll(canonical.keySet());
         names.sort(Comparator.comparingInt(String::length).reversed());
         List<Line> lines = new ArrayList<>();
         Map<String, String> sids = new LinkedHashMap<>();
         StringBuilder out = new StringBuilder();
+        // 旧格式（台词写在「@名字 · “…”」里）直接按旧格式认：台词里的「他说“别走”」不能被当成新写法的一句台词。
+        boolean legacyFormat = !zh.contains("说：「") && LEGACY_LINE.matcher(zh).find();
         Matcher m = LINE.matcher(zh);
-        int last = 0, pos = 0;
+        int last = 0, pos = legacyFormat ? zh.length() : 0;
         while (pos < zh.length() && m.find(pos)) {
-            int open = m.end(), end = closing(zh, open, '「', '」');
+            char q = m.group(4).charAt(0);
+            int open = m.end(), end = closing(zh, open, q, CLOSE_QUOTE.get(q));
             pos = end < 0 ? open : end + 1;
             if (end < 0) continue; // 引号没配上：不算台词，句数核对会拦下
-            String speaker = known(m.group(1), names);
+            String before = out + zh.substring(last, m.start());
+            String speaker = speaker(m.group(1), before, after(zh, end + 1), names, canonical);
             String id = "L" + (lines.size() + 1);
             String sid = sids.computeIfAbsent(speaker, k -> "S" + (sids.size() + 1));
             lines.add(new Line(id, speaker, sid, zh.substring(open, end), m.group(2) != null));
-            out.append(zh, last, open - 1).append("{{").append(id).append("}}");
+            out.append(zh, last, m.start(3)).append("：{{").append(id).append("}}");
             last = end + 1;
         }
         out.append(zh.substring(last));
@@ -268,7 +287,7 @@ public final class H3PromptRewrite {
             int open = m.end(), end = closing(zh, open, '“', '”');
             pos = end < 0 ? open : end + 1;
             if (end < 0) continue;
-            String speaker = known(m.group(1), names);
+            String speaker = canon(known(m.group(1), names), canonical);
             String id = "L" + (lines.size() + 1);
             String sid = sids.computeIfAbsent(speaker, k -> "S" + (sids.size() + 1));
             lines.add(new Line(id, speaker, sid, zh.substring(open, end), "旁白".equals(speaker)));
@@ -295,10 +314,54 @@ public final class H3PromptRewrite {
     }
 
     /**
+     * 认完台词后的正文里还像有人在说话：认不出的台词还在里面。2026-11-10 线上：客户在原本没有台词的镜头里写了
+     * 「咂了下嘴说：不好吃，」（没加引号），一句都没认出，代码却按「全认出来了」处理，对改写模型说这一镜没有台词，模型照做删掉了。
+     * <ul>
+     *   <li>全文都算：「说：」后面不是已认出的占位；「说」后面直接跟引号（引号没配上）；「问：」「喊道：」这类说话动词带冒号或引号；
+     *       「台词：」「旁白：」这类标签；「名字：「…」」冒号后紧跟引号。</li>
+     *   <li>只在一句台词都没认出的那一镜里算：别的「说」（「她开口说一句话」「说味道还是不行」）。认出了台词的镜头里，
+     *       分镜动作常写「话说到一半」「说出自己的判断」「一口气说完」，描述的就是那句已认出的台词（2026-11-10 线上 cl208）。</li>
+     * </ul>
+     * 「据说 / 听说 / 传说 / 小说 / 说明 / 说服 / 说法」和旧版模板的「只说… / 说的是…」不算。宁可多判：多判只是改由模型照原文写台词、
+     * 逐句核对，少判就是台词被删。
+     */
+    public static boolean unrecognizedSpeech(String text) {
+        if (SAY_COLON.matcher(text).find() || SAY_QUOTE.matcher(text).find() || SPEECH_VERB.matcher(text).find()
+                || SPEECH_TAG.matcher(text).find() || COLON_QUOTE.matcher(text).find()) return true;
+        Map<Integer, String> shots = shotTexts(text);
+        if (shots.isEmpty()) return !PLACEHOLDER.matcher(text).find() && LEFTOVER_SAY.matcher(text).find();
+        for (String body : shots.values()) if (!PLACEHOLDER.matcher(body).find() && LEFTOVER_SAY.matcher(body).find()) return true;
+        return false;
+    }
+
+    private static final String NOT_SAY = "(?<![据听传小只])说";
+    private static final Pattern SAY_COLON = Pattern.compile(NOT_SAY + "\\s*[：:](?!\\{\\{L\\d+}})");
+    private static final Pattern SAY_QUOTE = Pattern.compile(NOT_SAY + "\\s*[「“『\"]");
+    private static final Pattern LEFTOVER_SAY = Pattern.compile(NOT_SAY + "(?![明服法的]|：\\{\\{L\\d+}})");
+    private static final Pattern SPEECH_VERB = Pattern.compile("(问|问道|答|答道|回答|喊|喊道|叫道|嚷|嚷道|念道|吼|吼道|骂|骂道|嘀咕|嘟囔|喃喃|低语|开口|笑道)\\s*[：:「“『\"]");
+    private static final Pattern SPEECH_TAG = Pattern.compile("(^|[\\s。！？!?；;，,…」』”）)\\]】])(台词|对白|旁白|独白|内心独白|画外音|心声|OS|VO)\\s*[：:]");
+    private static final Pattern COLON_QUOTE = Pattern.compile("[：:]\\s*[「“『\"]");
+
+    /**
+     * 台词都认出来了，可以由代码填（{@code codeLines}）：引号成对、正文里没有认不出的台词；镜头固定时每句都落在某一镜里
+     * （不在任何一镜的台词，没法告诉模型放哪一镜，「这一镜没有台词」就是错的）。
+     */
+    public static boolean complete(Source src, boolean fixedShots) {
+        String t = src.text();
+        if (!src.lines().isEmpty() && !quotesBalanced(t, !t.contains("说：{{"))) return false;
+        if (unrecognizedSpeech(t)) return false;
+        if (!fixedShots || src.lines().isEmpty()) return true;
+        Set<String> placed = new HashSet<>();
+        linesByShot(t).values().forEach(ids -> ids.forEach(id -> placed.add(id.substring(2, id.length() - 2))));
+        return src.lines().stream().allMatch(l -> placed.contains(l.id()));
+    }
+
+    /**
      * 开引号之后配对的收引号位置，台词里可以再套一层同样的引号（「他喊「别走」，然后离开。」）；配不上返回 -1。
      * 2026-10-26 评审：原来用非贪婪的「(.+?)」」，这样的台词只认出「他喊「别走」，剩下半句进了交给模型的正文。
      */
     static int closing(String s, int from, char open, char close) {
+        if (open == close) return s.indexOf(close, from); // 半角双引号不分开闭，不能套
         int depth = 1;
         for (int i = from; i < s.length(); i++) {
             char ch = s.charAt(i);
@@ -308,18 +371,85 @@ public final class H3PromptRewrite {
         return -1;
     }
 
+    private static final Map<Character, Character> CLOSE_QUOTE = Map.of('「', '」', '“', '”', '『', '』', '"', '"');
+
     private static String known(String captured, List<String> namesLongestFirst) {
         for (String n : namesLongestFirst) if (!n.isBlank() && captured.endsWith(n)) return n;
         return captured;
+    }
+
+    private static String canon(String term, Map<String, String> canonical) {
+        return canonical.getOrDefault(term, term);
+    }
+
+    /** 名字前面紧挨着这些字时是听的人：「林小雅对静儿说」开口的是林小雅。 */
+    private static final String ADDRESSEE = "对跟和向朝冲给与";
+    /**
+     * 「说」前面这一截像动作而不是人名：「咂了下嘴」「笑着」「低声」「转身」。只有像动作时才往前找说话人，
+     * 「店小二说」里的「店小二」可能就是没建成资产的人，不能拿上一句提到的人顶替。
+     */
+    private static final Pattern ACTION = Pattern.compile("[了着过地嘴头声身眼笑哭叹摇咂皱撇抿]|口气|点头|转|抬|低|轻轻|小声|大声|边|然后|接着|随即|又|便|就|一下");
+
+    /**
+     * 一句台词的说话人。依次：「说」前面这一截里的名字（结尾就是名字时取它；有几个时取第一个，「X的Y说」取 Y，
+     * 前面紧挨「对 / 跟 / 向…」的是听的人，不算）；这一截像动作时，同一句前文里第一个出现的人（「静儿用勺尖蘸了一点，咂了下嘴说」）；
+     * 再找不到就看这一镜（这一行）是不是只提到一个人。都不行就照原样用这一截，由调用方决定要不要交给模型写。
+     * 旁白不参与上下文推断：它不在画面里。前文里已认出的台词是占位，不会把台词里提到的名字当成说话人。
+     */
+    static String speaker(String captured, String before, String after, List<String> namesLongestFirst, Map<String, String> canonical) {
+        List<int[]> own = mentions(captured, namesLongestFirst);
+        own.removeIf(x -> x[0] > 0 && ADDRESSEE.indexOf(captured.charAt(x[0] - 1)) >= 0);
+        if (!own.isEmpty()) {
+            int[] lastHit = own.get(own.size() - 1);
+            boolean ofLast = own.size() > 1 && lastHit[0] + lastHit[1] == captured.length() && lastHit[0] > 0 && captured.charAt(lastHit[0] - 1) == '的';
+            int[] pick = ofLast ? lastHit : own.get(0);
+            return canon(captured.substring(pick[0], pick[0] + pick[1]), canonical);
+        }
+        if (!ACTION.matcher(captured).find()) return captured;
+        List<String> people = namesLongestFirst.stream().filter(n -> !"旁白".equals(canon(n, canonical))).toList();
+        int from = Math.max(Math.max(before.lastIndexOf('。'), before.lastIndexOf('！')), Math.max(before.lastIndexOf('？'), before.lastIndexOf('\n')));
+        from = Math.max(from, Math.max(before.lastIndexOf('：'), before.lastIndexOf('；')));
+        String sentence = before.substring(from + 1);
+        List<int[]> ctx = mentions(sentence, people);
+        ctx.removeIf(x -> x[0] > 0 && ADDRESSEE.indexOf(sentence.charAt(x[0] - 1)) >= 0);
+        if (!ctx.isEmpty()) return canon(sentence.substring(ctx.get(0)[0], ctx.get(0)[0] + ctx.get(0)[1]), canonical);
+        String line = before.substring(before.lastIndexOf('\n') + 1) + after;
+        Set<String> who = new LinkedHashSet<>();
+        for (int[] x : mentions(line, people)) who.add(canon(line.substring(x[0], x[0] + x[1]), canonical));
+        return who.size() == 1 ? who.iterator().next() : captured;
+    }
+
+    /** 文字里出现的名字（长的先认，认过的字不再参与匹配），按位置排：每项是 {起点, 长度}。 */
+    private static List<int[]> mentions(String text, List<String> namesLongestFirst) {
+        char[] left = text.toCharArray();
+        List<int[]> hits = new ArrayList<>();
+        for (String n : namesLongestFirst) {
+            if (n.isBlank()) continue;
+            String s = new String(left);
+            for (int at = s.indexOf(n); at >= 0; at = s.indexOf(n, at + n.length())) {
+                hits.add(new int[]{at, n.length()});
+                for (int k = at; k < at + n.length(); k++) left[k] = '\u0000';
+            }
+        }
+        hits.sort(Comparator.comparingInt(x -> x[0]));
+        return hits;
+    }
+
+    /** 台词收引号之后到行尾，去掉其中的引号内容（后面别的台词里提到的名字不算这一镜的人）。 */
+    private static String after(String zh, int from) {
+        int nl = zh.indexOf('\n', from);
+        String rest = zh.substring(Math.min(from, zh.length()), nl < 0 ? zh.length() : nl);
+        return rest.replaceAll("「[^」]*」|“[^”]*”|『[^』]*』", "");
     }
 
     /** 中文原文里每一镜（「第N镜（」或旧语音轨「第N镜 · 」开头的一段）有哪几个台词占位；不按这个格式写的原文返回空。 */
     public static Map<Integer, List<String>> linesByShot(String source) {
         Map<Integer, List<String>> out = new LinkedHashMap<>();
         // 「第N镜（」是新格式的画面段；「第N镜 · 」是旧格式语音轨里每句台词的开头，台词集中在末尾时按它归到各自的镜头。
-        Matcher shot = Pattern.compile("第(\\d+)镜(?:（| · )").matcher(source);
+        // 用户改写时也会写成半角括号、全角数字（「第3镜(8 秒切)」「第３镜（」），同样算镜头开头。
+        Matcher shot = SHOT_MARK.matcher(source);
         List<int[]> marks = new ArrayList<>();
-        while (shot.find()) marks.add(new int[]{Integer.parseInt(shot.group(1)), shot.start()});
+        while (shot.find()) marks.add(new int[]{Integer.parseInt(halfWidthAlnum(shot.group(1))), shot.start()});
         for (int k = 0; k < marks.size(); k++) {
             int end = k + 1 < marks.size() ? marks.get(k + 1)[1] : source.length();
             Matcher m = PLACEHOLDER.matcher(source.substring(marks.get(k)[1], end));
@@ -328,6 +458,7 @@ public final class H3PromptRewrite {
         return out;
     }
 
+    private static final Pattern SHOT_MARK = Pattern.compile("第([0-9０-９]+)镜\\s*(?:[（(]| · )");
     private static final Pattern SHOT_HEAD = Pattern.compile("第(\\d+)镜（\\s*(\\d+(?:\\.\\d+)?)\\s*(?:秒|[–—\\-~～至到])");
 
     /** 全角数字和英文字母换成半角（标点不动）：模型写的「８９元」「ＳＡＭＩＡ」和客户给的「89元」「SAMIA」是同一个东西。 */
@@ -467,14 +598,46 @@ public final class H3PromptRewrite {
         for (Line l : r.source().lines()) {
             ObjectNode x = ls.addObject().put("id", l.id()).put("sid", l.sid()).put("text", l.text());
             if (shotOf.containsKey(l.id())) x.put("shot", shotOf.get(l.id()));
+            if (l.offscreen()) x.put("offscreen", true);
+        }
+        // 原文写明「画面里只有某某」的镜头：这一镜有人开口时，优化稿写「她不说话」就是矛盾（见 checkSilence）。
+        if (fixed) {
+            ArrayNode solo = meta.putArray("soloShots");
+            shotTexts(r.source().text()).forEach((shot, body) -> { if (body.contains("画面里只有")) solo.add(shot); });
         }
         // 模型写台词时，核对用原文里看着像台词的句子（与前端「台词提醒」同一套认法）。
         if (!r.codeLines()) {
             ArrayNode spoken = meta.putArray("spoken");
-            for (String[] line : spokenLines(ownText(r.source().text()))) spoken.addObject().put("speaker", line[0]).put("text", line[1]);
+            for (String[] line : spokenLines(withoutTemplateSections(ownText(r.source().text())))) {
+                ObjectNode x = spoken.addObject().put("speaker", line[0]).put("text", line[1]);
+                if (!line[2].isEmpty()) x.put("unquoted", true);
+            }
             if (r.source().text().contains(QUOTE_HEAD)) meta.put("quotedText", true);
         }
         return meta;
+    }
+
+    /** 中文原文里每一镜的那一段（与 {@link #linesByShot} 同样切）。 */
+    static Map<Integer, String> shotTexts(String source) {
+        Map<Integer, String> out = new LinkedHashMap<>();
+        Matcher shot = SHOT_MARK.matcher(source);
+        List<int[]> marks = new ArrayList<>();
+        while (shot.find()) marks.add(new int[]{Integer.parseInt(halfWidthAlnum(shot.group(1))), shot.start()});
+        for (int k = 0; k < marks.size(); k++) {
+            int end = k + 1 < marks.size() ? marks.get(k + 1)[1] : source.length();
+            out.merge(marks.get(k)[0], source.substring(marks.get(k)[1], end), String::concat);
+        }
+        return out;
+    }
+
+    private static final Pattern TEMPLATE_SECTION = Pattern.compile("【(人物|分镜参考)】[^【]*");
+
+    /**
+     * 导演台模板的【人物】【分镜参考】两段是素材说明，「静儿：长相、发型和衣服照参考图2。」形状像「名字：台词」，
+     * 不当台词核对（否则每个改写过提示词的片段都会多出一条「原文台词没有出现」）。
+     */
+    static String withoutTemplateSections(String text) {
+        return TEMPLATE_SECTION.matcher(text).replaceAll("");
     }
 
     /** 任务输入里的台词（填占位用）。 */
@@ -599,6 +762,7 @@ public final class H3PromptRewrite {
             defs = outside[0]; summary = outside[1]; retention = outside[2]; style = outside[3]; sound = outside[4]; music = outside[5];
             placeLines(meta, bodies, warnings);
         } else checkSpoken(meta, bodies, warnings);
+        checkSilence(meta, bodies, warnings, codeLines);
         // 整份写成了中文：汉字删完几乎不剩，不能当优化稿，否则自动模式会拿残缺稿出片（2026-11-07 OneToken 上的 DeepSeek，约十次一次）。
         int keptChars = defs.length() + summary.length() + retention.length() + style.length() + bodies.stream().mapToInt(String::length).sum();
         if (strayHan[0] > MAX_STRAY_HAN && keptChars < strayHan[0] * 2) throw bad("优化稿没有写成英文");
@@ -744,9 +908,11 @@ public final class H3PromptRewrite {
             }
         }
         List<String> wanted = new ArrayList<>(), wantedRaw = new ArrayList<>();
+        List<Boolean> loose = new ArrayList<>();
         for (JsonNode line : meta.path("spoken")) if (!squash(line.path("text").asText()).isEmpty()) {
             wantedRaw.add(line.path("text").asText());
             wanted.add(squash(line.path("text").asText()));
+            loose.add(line.path("unquoted").asBoolean(false));
         }
         if (String.join("", said).equals(String.join("", wanted))) return; // 一字不差（拆句、合句都算）
         // 按顺序配对：每句原文台词在后面的 <d> 里找连着的一句或几句正好拼成它，配上的就用掉；
@@ -756,6 +922,14 @@ public final class H3PromptRewrite {
         int from = 0;
         for (int i = 0; i < wanted.size(); i++) {
             int[] hit = consecutive(said, from, wanted.get(i));
+            // 没加引号的台词到哪里为止说不准：「说：不好吃，转身去够辣椒面」里说的是「不好吃」，按逗号前的几截（长的先试）也算对上。
+            if (hit == null && loose.get(i)) {
+                String[] parts = wantedRaw.get(i).split("[，,、；;…—]+");
+                for (int k = parts.length - 1; k >= 1 && hit == null; k--) {
+                    String head = squash(String.join("", java.util.Arrays.copyOfRange(parts, 0, k)));
+                    if (!head.isEmpty()) hit = consecutive(said, from, head);
+                }
+            }
             if (hit == null) {
                 unmatched.add(wanted.get(i));
                 warnings.add("原文台词「" + excerpt(wantedRaw.get(i)) + "」在优化稿里没有原样出现，可能被改了或漏了");
@@ -772,6 +946,73 @@ public final class H3PromptRewrite {
             if (used[i] || unmatched.stream().anyMatch(w -> w.contains(one))) continue;
             warnings.add("优化稿多了一句原文没有的台词「" + excerpt(saidRaw.get(i)) + "」");
         }
+    }
+
+    /** 整镜没有人说话的说法：「No speech is audible.」「There is no dialogue.」。 */
+    private static final Pattern NO_SPEECH = Pattern.compile(
+            "\\b(no (speech|dialogue|dialog|one speaks|spoken (words?|lines?)|(words?|lines?) (is|are) spoken)|nobody speaks|no-one speaks"
+            + "|without (any )?(speech|dialogue)|speech is not audible)\\b", Pattern.CASE_INSENSITIVE);
+    /** 某个人不开口的说法：「She does not speak.」「He remains silent.」。 */
+    private static final Pattern SUBJECT_SILENT = Pattern.compile(
+            "\\b((does not|doesn't|do not|don't|never) (speak|talk|say a word)|says? nothing|without (speaking|a word|saying a word)"
+            + "|(remains?|stays?|keeps?) (silent|quiet|mute))\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern VOICEOVER = Pattern.compile("off-screen|offscreen|voice-?over|narrat", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * 按原文核对「有台词」和「没人说话」没有写在同一镜里。2026-11-10 线上：客户在第 3 镜加了「味道还是不行」，优化稿第 3 镜却写
+     * 「No speech is audible.」，视频里她一句没说。台词由代码填时这一镜有没有台词看占位，模型写时看 {@code <d>}。
+     * 整镜「没有对白」的句子与原文矛盾，删掉并提示；原文写明「画面里只有某某」、这一镜又是画面里的人开口时，「她不说话」只提示
+     * （多人镜头里写听的人不说话是对的，分不清就不动）。
+     */
+    private static void checkSilence(JsonNode meta, List<String> bodies, Set<String> warnings, boolean codeLines) {
+        Map<String, Boolean> offscreen = new HashMap<>();
+        meta.path("lines").forEach(l -> offscreen.put(l.path("id").asText(), l.path("offscreen").asBoolean(false)));
+        Set<Integer> solo = new HashSet<>();
+        meta.path("soloShots").forEach(x -> solo.add(x.asInt()));
+        for (int i = 0; i < bodies.size(); i++) {
+            String body = bodies.get(i);
+            Matcher ph = PLACEHOLDER.matcher(body);
+            boolean spoken = false, onScreen = false;
+            while (ph.find()) { spoken = true; onScreen |= !offscreen.getOrDefault(ph.group(1), false); }
+            if (!codeLines && SPOKEN.matcher(body).find()) { spoken = true; onScreen = !VOICEOVER.matcher(body).find(); }
+            if (!spoken) continue;
+            StringBuilder kept = new StringBuilder();
+            boolean dropped = false;
+            for (String sentence : sentences(body)) {
+                boolean carriesLine = PLACEHOLDER.matcher(sentence).find() || SPOKEN.matcher(sentence).find();
+                if (!carriesLine && NO_SPEECH.matcher(sentence).find()) { dropped = true; continue; }
+                kept.append(sentence);
+            }
+            if (dropped) {
+                bodies.set(i, kept.toString().strip());
+                warnings.add("第 " + (i + 1) + " 镜有台词，优化稿却写了没有对白，已删掉这句");
+            }
+            String narration = SPOKEN.matcher(PLACEHOLDER.matcher(bodies.get(i)).replaceAll("")).replaceAll("");
+            if (onScreen && solo.contains(i + 1) && SUBJECT_SILENT.matcher(narration).find())
+                warnings.add("第 " + (i + 1) + " 镜有台词，优化稿却写了人物不说话，可能与台词冲突");
+        }
+    }
+
+    /**
+     * 英文按句切开（句号、问号、感叹号后面跟空白或到结尾才算一句结束，「00:04.000」「1.5 m」不切），拼回去与原文一字不差。
+     * 台词（占位或 {@code <d>…</d>}）后面跟空白也算一句结束：模型常写「says: {{L1}} No speech is audible.」，台词后面不打句号。
+     */
+    static List<String> sentences(String text) {
+        List<String> out = new ArrayList<>();
+        int start = 0;
+        for (int i = 0; i < text.length(); i++) {
+            char ch = text.charAt(i);
+            boolean closes = ".!?".indexOf(ch) >= 0 || text.startsWith("}}", i - 1) || text.startsWith("</d>", i - 3);
+            boolean end = ch == '\n' || closes && (i + 1 == text.length() || Character.isWhitespace(text.charAt(i + 1)));
+            if (!end) continue;
+            int j = i + 1;
+            while (j < text.length() && Character.isWhitespace(text.charAt(j))) j++;
+            out.add(text.substring(start, j));
+            start = j;
+            i = j - 1;
+        }
+        if (start < text.length()) out.add(text.substring(start));
+        return out;
     }
 
     /** 从 {@code from} 往后，连着的一句或几句 {@code <d>} 正好拼成这句台词：返回首尾下标，找不到返回 null。 */
@@ -828,7 +1069,7 @@ public final class H3PromptRewrite {
     private static final Pattern SPEECH_LABEL_TEXT = Pattern.compile("(^|[\\s。！？!?；;，,…」』”）)\\]】])([^\\s：:，,。！？!?；;、“”\"「」『』（）()【】\\[\\]<>]{1,12})(?:[（(][^）)\\n]{0,16}[）)])?\\s*[：:](?!\\d)");
     private static final Map<Character, Character> OPEN_QUOTE = Map.of('“', '”', '「', '」', '『', '』', '"', '"');
 
-    /** 「名字：台词」「名字说：“台词”」「台词：……」。引号里的整段算一句，没引号的到第一个句号为止。返回 [说话人, 台词]。 */
+    /** 「名字：台词」「名字说：“台词”」「台词：……」。引号里的整段算一句，没引号的到第一个句号为止。返回 [说话人, 台词, 没加引号时非空]。 */
     static List<String[]> spokenLines(String prompt) {
         Matcher m = SPEECH_LABEL_TEXT.matcher(prompt);
         List<int[]> labels = new ArrayList<>();
@@ -849,7 +1090,8 @@ public final class H3PromptRewrite {
                 body = stop < 0 ? body.substring(1) : body.substring(1, stop);
             } else body = body.split("[。\\n]")[0];
             String text = body.strip();
-            if (squash(text).codePointCount(0, squash(text).length()) >= 2) out.add(new String[]{speaker, text});
+            // 第三项非空表示没加引号：到哪里为止说不准（「说：不好吃，转身去够辣椒面」），核对时按逗号前的几截也算对上。
+            if (squash(text).codePointCount(0, squash(text).length()) >= 2) out.add(new String[]{speaker, text, close == null ? "unquoted" : ""});
         }
         return out;
     }
