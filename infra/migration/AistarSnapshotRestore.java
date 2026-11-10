@@ -190,7 +190,7 @@ public class AistarSnapshotRestore {
             }
             try(var s=c.createStatement();var rs=s.executeQuery("select current_database(),current_user,(select version from flyway_schema_history where success order by installed_rank desc limit 1)")){
                 rs.next();
-                if(!db.equals(rs.getString(1))||!role.equals(rs.getString(2))||!"78".equals(rs.getString(3)))throw new IllegalStateException("DB role/version mismatch");
+                if(!db.equals(rs.getString(1))||!role.equals(rs.getString(2))||!"79".equals(rs.getString(3)))throw new IllegalStateException("DB role/version mismatch");
             }
             try(var s=c.createStatement();var rs=s.executeQuery("select table_name,column_name,data_type from information_schema.columns where table_schema='public' and table_name<>'flyway_schema_history' order by table_name,ordinal_position")){
                 while(rs.next())pg.computeIfAbsent(rs.getString(1),x->new LinkedHashMap<>()).put(rs.getString(2),rs.getString(3));

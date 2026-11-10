@@ -47,8 +47,8 @@ class StoragePostgresIT {
         assertThat(jdbc.queryForObject("SELECT data_type FROM information_schema.columns WHERE table_name='aep_enterprise_members' AND column_name='billing_default'",String.class)).isEqualTo("character varying");
     }
     @Test void copiedOfficialAvatarAccessAndUsageTaskLookupPreserveSourceValues() {
-        jdbc.update("INSERT INTO dap_public_avatar(id,name,access) VALUES('pg-licensed-avatar','Synthetic','license')");
-        jdbc.update("INSERT INTO dap_public_avatar(id,name,access) VALUES('pg-free-avatar','Synthetic','free')");
+        jdbc.update("INSERT INTO dap_public_avatar(id,name,access,fav,hue,sort_order) VALUES('pg-licensed-avatar','Synthetic','license',false,0,0)");
+        jdbc.update("INSERT INTO dap_public_avatar(id,name,access,fav,hue,sort_order) VALUES('pg-free-avatar','Synthetic','free',false,0,0)");
         new TransactionTemplate(manager).executeWithoutResult(tx->{
             assertThat(em.find(com.aistareco.aep.dap.model.DapPublicAvatar.class,"pg-licensed-avatar").getAccess()).isEqualTo("license");
             assertThat(em.find(com.aistareco.aep.dap.model.DapPublicAvatar.class,"pg-free-avatar").getAccess()).isEqualTo("free");

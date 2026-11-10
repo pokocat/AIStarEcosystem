@@ -28,7 +28,7 @@ public class AistarFinancialAudit {
         try(var c=DriverManager.getConnection(url,role,config.get("rds_roles").get(role).asText())) {
             proof.put("driver_version",c.getMetaData().getDriverVersion());
             c.setReadOnly(true);c.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);c.setAutoCommit(false);
-            try(var st=c.createStatement()) {st.execute("set time zone 'UTC'");try(var rs=st.executeQuery("select current_database(),current_user,(select version from flyway_schema_history where success order by installed_rank desc limit 1)")){rs.next();if(!db.equals(rs.getString(1))||!role.equals(rs.getString(2))||!"78".equals(rs.getString(3)))throw new IllegalStateException("Database/role/version mismatch");}}
+            try(var st=c.createStatement()) {st.execute("set time zone 'UTC'");try(var rs=st.executeQuery("select current_database(),current_user,(select version from flyway_schema_history where success order by installed_rank desc limit 1)")){rs.next();if(!db.equals(rs.getString(1))||!role.equals(rs.getString(2))||!"79".equals(rs.getString(3)))throw new IllegalStateException("Database/role/version mismatch");}}
             var counts=new TreeMap<String,Long>();for(var entry:queries.entrySet())try(var st=c.createStatement();var rs=st.executeQuery(entry.getValue())){rs.next();counts.put(entry.getKey(),rs.getLong(1));}
             proof.put("violation_counts",counts);
             try(var st=c.createStatement();var rs=st.executeQuery("select table_name,column_name,data_type from information_schema.columns where table_schema='public' and table_name<>'flyway_schema_history' order by table_name,ordinal_position")) {
