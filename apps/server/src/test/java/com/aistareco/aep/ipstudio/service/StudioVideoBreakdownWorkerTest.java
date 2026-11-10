@@ -42,16 +42,23 @@ class StudioVideoBreakdownWorkerTest {
         when(models.resolveAcceptedEndpoint(AiModelPurpose.DAP_VIDEO_UNDERSTAND,"lite","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
         String answer="{\"summary\":\"红到蓝\",\"shots\":[{\"start\":0,\"end\":3,\"visual\":\"红\",\"dialogue\":[{\"who\":\"P1\",\"text\":\"你好\"}]},{\"start\":3,\"end\":6,\"visual\":\"蓝\"}],"
                 +"\"parts\":[{\"name\":\"钩子\",\"start\":0,\"end\":6}],\"remake\":{\"keep\":[\"节奏\"]}}";
+        // 第二遍逐镜细读：两个镜头都在一个 6 秒窗口里，一次调用；frameAt 写成了小段里的秒数（2026-11-10 真跑见过）
+        String detail="{\"shots\":[{\"no\":1,\"layout\":\"女生在远处，只有手指大小\",\"trick\":\"手指捏住远处的人\",\"frameAt\":0.2},"
+                +"{\"no\":2,\"scene\":\"蓝色房间\",\"frameAt\":3.4}]}";
         when(models.invokeChatOnEndpoint(eq(endpoint),eq(AiModelPurpose.DAP_VIDEO_UNDERSTAND),anyList(),anyMap()))
-                .thenReturn(new AiModelInvocationService.AiModelResponse(answer,"stop",3000L,"seed-lite","seed-lite",2500L,500L));
+                .thenReturn(new AiModelInvocationService.AiModelResponse(answer,"stop",3000L,"seed-lite","seed-lite",2500L,500L))
+                .thenReturn(new AiModelInvocationService.AiModelResponse(detail,"stop",1200L,"seed-lite","seed-lite",1000L,200L));
         var worker=new StudioWorkflowWorker(runs,mock(StudioFixtureProvider.class),storage,models,mock(com.aistareco.aep.service.DramaAssembleService.class),credits,json,tx,mock(com.aistareco.aep.dap.service.DapAssetService.class));
         org.springframework.test.util.ReflectionTestUtils.setField(worker,"hypitMedia",new StudioHypitMedia("node"));
         worker.runBlocking("r");
 
         assertEquals("done",run.getStatus());
         var messages=org.mockito.ArgumentCaptor.forClass(List.class);
-        verify(models,times(1)).invokeChatOnEndpoint(eq(endpoint),eq(AiModelPurpose.DAP_VIDEO_UNDERSTAND),messages.capture(),anyMap());
-        var user=(Map<?,?>)messages.getValue().get(1);
+        verify(models,times(2)).invokeChatOnEndpoint(eq(endpoint),eq(AiModelPurpose.DAP_VIDEO_UNDERSTAND),messages.capture(),anyMap());
+        var user=(Map<?,?>)messages.getAllValues().get(0).get(1);
+        var detailUser=(Map<?,?>)messages.getAllValues().get(1).get(1);
+        var detailVideo=(Map<?,?>)((Map<?,?>)((List<?>)detailUser.get("content")).get(0)).get("video_url");
+        assertEquals(StudioVideoBreakdown.DETAIL_FPS,detailVideo.get("fps"),"第二遍每秒 5 帧细看");
         assertEquals("video_url",((Map<?,?>)((List<?>)user.get("content")).get(0)).get("type"),"交给模型的是视频本身，不是截图");
         String userText=String.valueOf(((Map<?,?>)((List<?>)user.get("content")).get(1)).get("text"));
         assertTrue(userText.contains("3"),"真实切镜点交给了模型："+userText);
@@ -63,7 +70,15 @@ class StudioVideoBreakdownWorkerTest {
         assertEquals(1,film.path("segments").size(),"6 秒一段");
         assertEquals("stored-mp4",film.path("segments").get(0).path("storageKey").asText());
         assertTrue(output.path("text").asText().contains("P1：你好"));
-        assertEquals(2500,output.path("billing").path("inputTokens").asInt());
+        var shots=film.path("breakdown").path("shots");
+        assertEquals("女生在远处，只有手指大小",shots.get(0).path("detail").path("layout").asText());
+        assertEquals("手指捏住远处的人",shots.get(0).path("detail").path("trick").asText());
+        assertEquals(3.4,shots.get(1).path("detail").path("frameAt").asDouble(),"原片秒数照用");
+        assertTrue(film.path("breakdown").path("detailDone").asBoolean());
+        assertEquals(2,film.path("frames").size(),"每个镜头截一张开场画面");
+        assertEquals("stored-jpg",film.path("frames").get(0).path("storageKey").asText());
+        assertTrue(output.path("text").asText().contains("逐镜细读"));
+        assertEquals(3500,output.path("billing").path("inputTokens").asInt(),"两次调用的用量一起结算");
         verify(credits,times(1)).commitHold(anyString(),eq("r"),anyLong(),anyString(),any());
     }
 }

@@ -11,6 +11,38 @@ import static org.junit.jupiter.api.Assertions.*;
 class StudioVideoBreakdownTest {
     final ObjectMapper om=new ObjectMapper();
 
+    /** 2026-11-10 美食那条真跑：5 镜的窗口只回了 2 镜，把第 7、8 镜写在了「第 4、5 镜」名下。按开始时间对，不只认镜号。 */
+    @Test
+    void shotDetailsAreMatchedByStartTimeNotJustByNumber() throws Exception {
+        var b=StudioVideoBreakdown.normalize(om.readTree("""
+            {"shots":[{"start":0,"end":5.7,"visual":"捏合"},{"start":5.7,"end":6.4,"visual":"近景"},{"start":6.4,"end":6.7,"visual":"近景"},
+                      {"start":6.7,"end":7.6,"visual":"近景"},{"start":7.6,"end":9.4,"visual":"酒墙捏合"},{"start":9.4,"end":11.2,"visual":"白墙捏合"}]}"""),11.2,List.of());
+        var windows=StudioVideoBreakdown.windows(b);
+        assertEquals(2,windows.size());
+        var w=windows.get(1);
+        assertEquals(1,w.from());assertEquals(5,w.to());
+        int merged=StudioVideoBreakdown.mergeDetails(b,w,om.readTree("""
+            {"shots":[{"no":4,"start":7.6,"layout":"酒墙前远处的女生"},{"no":5,"start":3.7,"layout":"白墙前远处的女生","frameAt":3.8}]}"""));
+        assertEquals(2,merged);
+        assertEquals("酒墙前远处的女生",b.path("shots").get(4).path("detail").path("layout").asText(),"按时间对到第 5 镜（下标 4），不是第 4 镜");
+        assertEquals("白墙前远处的女生",b.path("shots").get(5).path("detail").path("layout").asText(),"小段里的秒数换算回原片");
+        assertEquals(9.5,b.path("shots").get(5).path("detail").path("frameAt").asDouble(),1e-9,"frameAt 也换算回原片，在镜头开头 0.4 秒内");
+        assertEquals(7.72,b.path("shots").get(4).path("detail").path("frameAt").asDouble(),1e-9,"没给时取开头稍后一点");
+        assertFalse(b.path("shots").get(3).has("detail"));
+        assertTrue(StudioVideoBreakdown.report(b).contains("逐镜细读"));
+    }
+
+    /** 开场画面要截在镜头开头：先对到真实切镜点，模型挑在中段（已推成近景）的不用。 */
+    @Test
+    void openingFramesSnapToRealCutsAndStayInTheOpening() throws Exception {
+        var b=StudioVideoBreakdown.normalize(om.readTree("""
+            {"shots":[{"start":0,"end":1.8,"visual":"捏合"},{"start":1.8,"end":3.7,"visual":"捏合"},{"start":3.7,"end":6,"visual":"捏合"}]}"""),6,List.of(2.033,3.7));
+        assertEquals(2.153,StudioVideoBreakdown.frameTime(b,1,2.0),1e-9,"模型说 2.0 秒，可真实切镜在 2.033，截在切镜之后");
+        assertEquals(3.82,StudioVideoBreakdown.frameTime(b,2,5.0),1e-9,"挑在中段的不用");
+        assertEquals(3.9,StudioVideoBreakdown.frameTime(b,2,3.9),1e-9,"开头 0.4 秒内的照用");
+        assertEquals(.12,StudioVideoBreakdown.frameTime(b,0,Double.NaN),1e-9);
+    }
+
     @Test
     void scdetLogBecomesCutsMergedAndAwayFromTheEnds() {
         String log="[scdet @ 0x1] lavfi.scd.score: 30.1, lavfi.scd.time: 0.1\n"

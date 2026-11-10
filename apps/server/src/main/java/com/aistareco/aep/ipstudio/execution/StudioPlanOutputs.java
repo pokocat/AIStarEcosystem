@@ -159,6 +159,8 @@ public class StudioPlanOutputs {
      * filled, §6.1, read from the run even before the client saved the result into it), else an owned canvas media node.
      */
     public String resolveNodeKey(IpPlanExecution execution,JsonNode steps,JsonNode doc,String nodeId) {
+        String frame=frameKey(execution,steps,nodeId);
+        if(frame!=null)return frame;
         for(JsonNode node:outputNodes(execution,steps)) {
             if(!nodeId.equals(node.path("nodeId").asText()))continue;
             var dto=run(execution.getOwnerUserId(),execution.getProjectId(),node.path("runId").asText()).orElseThrow(StudioPlanOutputs::missing);
@@ -176,6 +178,23 @@ public class StudioPlanOutputs {
         String key=node==null?null:IpDocs.primaryStorageKey(node);
         if(key==null)throw BusinessException.badRequest("STUDIO_CONTEXT_NOT_FOUND","计划引用的画布素材已不存在或还没有可用文件，请检查后重新规划");
         return projects.requireOwnedAssetKey(execution.getOwnerUserId(),key);
+    }
+
+    /** 拉片截下的镜头开场画面（{@link StudioPlanExecutionIds#frameNodeId}）；不是这种编号返回 null，是这种编号但取不到文件就报缺产物。 */
+    String frameKey(IpPlanExecution execution,JsonNode steps,String nodeId) {
+        for(JsonNode step:steps) {
+            if(!"recreation".equals(step.path("operation").asText()))continue;
+            String prefix=StudioPlanExecutionIds.nodeId(execution.getId(),step.path("stage").asText(),step.path("id").asText())+"-f";
+            if(!nodeId.startsWith(prefix))continue;
+            int shot;
+            try{shot=Integer.parseInt(nodeId.substring(prefix.length()));}catch(NumberFormatException notFrame){continue;}
+            String runId=chosenRun(execution.getOwnerUserId(),execution.getProjectId(),step).orElseThrow(StudioPlanOutputs::missing);
+            var dto=run(execution.getOwnerUserId(),execution.getProjectId(),runId).orElseThrow(StudioPlanOutputs::missing);
+            for(JsonNode f:dto.output()==null?mapper.createArrayNode():dto.output().path("filmStudy").path("frames"))
+                if(f.path("shot").asInt()==shot&&f.hasNonNull("storageKey"))return f.path("storageKey").asText();
+            throw missing();
+        }
+        return null;
     }
 
     /** Extracted source audio of the analysis film study (status ready), for assemble with the original soundtrack. */

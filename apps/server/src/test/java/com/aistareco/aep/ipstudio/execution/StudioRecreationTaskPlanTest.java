@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.stream.StreamSupport;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -73,11 +74,15 @@ class StudioRecreationTaskPlanTest {
         var plan=StudioRecreationTaskPlan.build(task,answer);
         Set<String> allowed=new HashSet<>(List.of("clip-1","clip-2","cup","girl"));
         var validated=StudioPlanValidator.validateSkillPlan(plan,rules(),"production",allowed);
-        assertEquals(3,validated.path("steps").size());
+        assertEquals(5,validated.path("steps").size(),"每段一个视频加一个检查，最后合成");
         var v1=validated.path("steps").get(0).path("settings");
         assertEquals("ai-h3",v1.path("model").asText());
         assertEquals("768p",v1.path("video").path("resolutionTier").asText());
-        var assemble=validated.path("steps").get(2).path("settings");
+        assertEquals("check",validated.path("steps").get(1).path("operation").asText());
+        assertEquals("v1",validated.path("steps").get(1).path("settings").path("targetStepId").asText());
+        var final_=validated.path("steps").get(4);
+        assertEquals(List.of("v1","c1","v2","c2"),StreamSupport.stream(final_.path("dependsOn").spliterator(),false).map(JsonNode::asText).toList(),"合成等每段的视频和检查都结束");
+        var assemble=final_.path("settings");
         assertEquals(2,assemble.path("clipOrder").size());
         assertEquals(12+1.0,assemble.path("captions").get(1).path("start").asDouble(),"第二段的字幕按成片时间顺延");
     }
@@ -90,7 +95,7 @@ class StudioRecreationTaskPlanTest {
             {"units":[{"no":1,"prompt":"第1镜","captions":[{"start":0,"end":12,"text":"我刷到的带货直播"}]},
                       {"no":2,"prompt":"第1镜","captions":[{"start":0,"end":4,"text":"我刷到的带货直播"},
                         {"start":4,"end":7,"text":"抖音号:78699247005\\n抖音搜索 小尼的奇妙日记"},{"start":5,"end":7,"text":"来抖音 发现更多创作者"}]}]}""");
-        var captions=StudioRecreationTaskPlan.build(task,answer).path("steps").get(2).path("settings").path("captions");
+        var captions=finalStep(StudioRecreationTaskPlan.build(task,answer)).path("settings").path("captions");
         assertEquals(1,captions.size(),captions.toString());
         assertEquals("我刷到的带货直播",captions.get(0).path("text").asText());
         assertEquals(0.0,captions.get(0).path("start").asDouble());
@@ -119,9 +124,61 @@ class StudioRecreationTaskPlanTest {
         for(JsonNode u:task.path("units"))assertEquals(0,u.path("refs").size());
     }
 
+    /**
+     * 2026-11-10 美食那条：「手指捏住远处很小的人、再一下冲到眼前」靠文字写不出来。每个镜头的开场截图先改成用户的人和物，
+     * 视频模型从这张图开始拍；开场画面排在参考图最前面，素材接在后面，账号片尾不做。
+     */
+    @Test
+    void eachShotGetsARebuiltOpeningFrameBeforeTheVideo() throws Exception {
+        ObjectNode film=(ObjectNode)film();
+        var shots=(com.fasterxml.jackson.databind.node.ArrayNode)film.path("breakdown").path("shots");
+        ((ObjectNode)shots.get(0)).putObject("detail").put("layout","女生在远处，只有手指大小").put("trick","手指捏住远处的女生").put("frameAt",.2);
+        ((ObjectNode)shots.get(2)).put("visual","抖音号 78699247005 的账号页");
+        var frames=film.putArray("frames");
+        for(int n=1;n<=3;n++)frames.addObject().put("shot",n).put("at",n).put("storageKey","ipstudio_gen/u/frame-"+n+".jpg");
+        var task=StudioRecreationTaskPlan.prepare(film,materials(),"ai-h3",h3(),"768p","9:16",null,"PEX-a-study-f",20,"人物换成小美，杯子换成保温杯");
+        var first=task.path("units").get(0);
+        assertEquals(2,first.path("keyframes").size(),"第 1、2 镜做开场画面");
+        assertEquals("k1",first.path("refs").get(0).path("stepId").asText());
+        assertEquals("图1",first.path("refs").get(0).path("label").asText(),"开场画面排在最前面");
+        assertEquals("girl",first.path("refs").get(2).path("nodeId").asText(),"素材接在开场画面后面");
+        assertEquals("图3",first.path("refs").get(2).path("label").asText());
+        assertEquals(0,task.path("units").get(1).path("keyframes").size(),"原作者的账号页不做开场画面");
+
+        JsonNode answer=om.readTree("""
+            {"units":[{"no":1,"prompt":"第1镜：从图1开始拍","keyframes":[{"shot":1,"materials":["「小美」","不存在的素材"],"instruction":"只换人，保持很小"}]},
+                      {"no":2,"prompt":"第1镜：收尾画面"}]}""");
+        List<Map<String,Object>> asked=new ArrayList<>();
+        var plan=StudioRecreationTaskPlan.build(task,answer,vars->{asked.add(vars);return "开场画面："+vars.get("instruction");});
+        List<String> ids=new ArrayList<>();plan.path("steps").forEach(st->ids.add(st.path("id").asText()));
+        assertEquals(List.of("k1","k2","v1","c1","v2","c2","final"),ids);
+        var k1=plan.path("steps").get(0);
+        assertEquals("image",k1.path("operation").asText());
+        assertEquals("PEX-a-study-f1",k1.path("settings").path("referenceBindings").get(0).path("nodeId").asText(),"以原片截图为构图基准");
+        assertEquals("girl",k1.path("settings").path("referenceBindings").get(1).path("nodeId").asText(),"按名称找到了素材，不存在的不算");
+        assertEquals(2,k1.path("settings").path("referenceBindings").size());
+        assertEquals("女生在远处，只有手指大小",asked.get(0).get("layout"));
+        assertEquals("开场画面：只换人，保持很小",k1.path("prompt").asText());
+        assertEquals(1,plan.path("steps").get(1).path("settings").path("referenceBindings").size(),"没写要求的镜头只带原片截图");
+        assertEquals("开场画面：人物换成小美，杯子换成保温杯",plan.path("steps").get(1).path("prompt").asText(),"没写要求时用用户的原话");
+        var v1=plan.path("steps").get(2);
+        assertEquals(List.of("k1","k2"),StreamSupport.stream(v1.path("dependsOn").spliterator(),false).map(JsonNode::asText).toList());
+        assertEquals("k1",v1.path("settings").path("referenceBindings").get(0).path("stepId").asText());
+        assertEquals("keyframe-rebuild",v1.path("strategy").path("method").asText());
+
+        Set<String> allowed=new HashSet<>(List.of("cup","girl","PEX-a-study-f1","PEX-a-study-f2"));
+        var validated=StudioPlanValidator.validateSkillPlan(plan,rules(),"production",allowed);
+        assertEquals(7,validated.path("steps").size(),"出图、视频、检查、合成都在复刻方法允许的范围里");
+    }
+
     static com.aistareco.aep.ipstudio.execution.StudioSkillRules.Rules rules() throws Exception {
         try(var in=StudioRecreationTaskPlanTest.class.getResourceAsStream("/studio/skills/reference-video-recreation.md")) {
             return StudioSkillRules.rules(StudioSkillCatalog.parse(new String(in.readAllBytes(),StandardCharsets.UTF_8)));
         }
+    }
+
+    private static JsonNode finalStep(JsonNode plan) {
+        for(JsonNode step:plan.path("steps"))if("final".equals(step.path("id").asText()))return step;
+        throw new AssertionError("no final step: "+plan);
     }
 }

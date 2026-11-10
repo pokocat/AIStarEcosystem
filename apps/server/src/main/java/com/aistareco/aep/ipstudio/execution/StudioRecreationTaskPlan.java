@@ -36,11 +36,22 @@ public final class StudioRecreationTaskPlan {
      */
     public static ObjectNode prepare(JsonNode film,List<Material> materials,String model,
                                      VideoStudioContract contract,String tier,String ratio,Boolean optimize) {
+        return prepare(film,materials,model,contract,tier,ratio,optimize,null,0,"");
+    }
+
+    /**
+     * @param framePrefix 拉片截下的镜头开场画面的节点编号前缀（{@code StudioPlanExecutionIds.frameNodeId} 去掉镜号）；null 不做开场画面
+     * @param maxKeyframes 整条片最多做几张开场画面（技能的步数上限减去视频、检查和合成步骤）
+     */
+    public static ObjectNode prepare(JsonNode film,List<Material> materials,String model,
+                                     VideoStudioContract contract,String tier,String ratio,Boolean optimize,
+                                     String framePrefix,int maxKeyframes,String requirement) {
         if(contract==null)throw unavailable("所选视频模型不可用，请换一个模型");
-        VideoStudioModeSpec mode=mode(contract,materials!=null&&!materials.isEmpty());
+        VideoStudioModeSpec mode=mode(contract,materials!=null&&!materials.isEmpty()||framePrefix!=null&&film.path("frames").size()>0);
         String chosenTier=contract.tiers().stream().anyMatch(t->t.tier().equals(tier))?tier:contract.tiers().get(0).tier();
         ObjectNode task=OM.createObjectNode().put("model",model).put("mode",mode.mode()).put("tier",chosenTier).put("ratio",ratio==null?"9:16":ratio);
         if(optimize!=null)task.put("optimize",optimize);
+        task.put("requirement",requirement==null?"":requirement.strip());
         var refs=mode.references();
         // 素材顺序：人物在前（同一个人的图集中在一起），再商品 / 场景图，最后声音。
         List<Material> people=new ArrayList<>(),images=new ArrayList<>(),voices=new ArrayList<>();
@@ -48,6 +59,10 @@ public final class StudioRecreationTaskPlan {
         List<Material> pictures=new ArrayList<>(people);pictures.addAll(images);
         var materialArray=task.putArray("materials");
         for(Material m:materials)materialArray.addObject().put("nodeId",m.nodeId()).put("title",blank(m.title())?"素材":m.title()).put("slot",slotLabel(m.slot()));
+        JsonNode shots=film.path("breakdown").path("shots");
+        Set<Integer> framed=new HashSet<>();
+        if(framePrefix!=null&&refs!=null&&refs.image()!=null)for(JsonNode f:film.path("frames"))if(f.hasNonNull("storageKey"))framed.add(f.path("shot").asInt());
+        int keyframesLeft=Math.max(0,maxKeyframes);
         var units=task.putArray("units");
         double offset=0;
         for(JsonNode segment:film.path("segments")) {
@@ -58,10 +73,23 @@ public final class StudioRecreationTaskPlan {
                     .put("seconds",seconds).put("offsetSec",offset).put("firstShot",segment.path("firstShot").asInt()).put("lastShot",segment.path("lastShot").asInt());
             offset+=seconds;
             var bindings=unit.putArray("refs");int order=0;
+            var keyframes=unit.putArray("keyframes");
             if(refs!=null) {
                 int imageLimit=refs.image()==null?0:refs.image().maxCount();
                 int total=refs.maxTotal()>0?refs.maxTotal():Integer.MAX_VALUE;
                 int n=1;
+                // 开场画面在前：原片每个镜头的开场截图改成用户的人物和商品，视频模型从这张图开始拍（2026-11-10 美食那条实测，
+                // 「手指捏住远处很小的人」这类借位靠文字写不出来，靠图就摆出来了）。放不下时，有视觉把戏的镜头和长镜头优先。
+                for(int shot:keyframeShots(shots,segment,framed,Math.min(Math.min(imageLimit,total),keyframesLeft))) {
+                    JsonNode s=shots.get(shot-1);
+                    String label="图"+n,stepId="k"+shot;
+                    keyframes.addObject().put("shot",shot).put("label",label).put("stepId",stepId).put("frameNodeId",framePrefix+shot)
+                            .put("layout",s.path("detail").path("layout").asText("")).put("trick",s.path("detail").path("trick").asText(""))
+                            .put("detail",StudioVideoBreakdown.detailText(s));
+                    bindings.addObject().put("stepId",stepId).put("role","reference-image").put("order",order++).put("label",label)
+                            .put("what","第 "+shot+" 镜改好的开场画面（这一镜从这张图开始拍）");
+                    n++;keyframesLeft--;
+                }
                 for(Material m:pictures) {
                     if(n>imageLimit||order>=total)break;
                     bindings.addObject().put("nodeId",m.nodeId()).put("role","character".equals(m.slot())?"character":"reference-image").put("order",order++)
@@ -81,6 +109,33 @@ public final class StudioRecreationTaskPlan {
         return task;
     }
 
+    /**
+     * 这段里做开场画面的镜头（镜号从 1 起，按时间排）：截到了画面、不是原作者的账号片尾。超过 {@code limit} 张时，
+     * 细读写了视觉把戏的镜头优先，其次是长的镜头。
+     */
+    static List<Integer> keyframeShots(JsonNode shots,JsonNode segment,Set<Integer> framed,int limit) {
+        if(limit<=0||framed.isEmpty())return List.of();
+        List<Integer> candidates=new ArrayList<>();
+        for(int i=segment.path("firstShot").asInt();i<=segment.path("lastShot").asInt()&&i<shots.size();i++) {
+            JsonNode s=shots.get(i);
+            if(!framed.contains(i+1)||accountCard(s))continue;
+            candidates.add(i+1);
+        }
+        if(candidates.size()>limit) {
+            List<Integer> ranked=new ArrayList<>(candidates);
+            ranked.sort(Comparator.<Integer>comparingInt(no->shots.get(no-1).path("detail").path("trick").asText("").isBlank()?1:0)
+                    .thenComparingDouble(no->-(shots.get(no-1).path("end").asDouble()-shots.get(no-1).path("start").asDouble())));
+            Set<Integer> kept=new HashSet<>(ranked.subList(0,limit));
+            candidates.removeIf(no->!kept.contains(no));
+        }
+        return candidates;
+    }
+
+    /** 原作者的账号页、平台片尾这类镜头不做开场画面（复刻时它换成收尾画面，ORIGINAL_ACCOUNT 同一条规则）。 */
+    static boolean accountCard(JsonNode shot) {
+        return ORIGINAL_ACCOUNT.matcher(shot.path("visual").asText("")+" "+shot.path("caption").asText("")).find();
+    }
+
     /** 交给模型（stage-recreation-compile）的变量。 */
     public static Map<String,Object> variables(JsonNode task,JsonNode breakdown,String requirement) {
         Map<String,Object> out=new LinkedHashMap<>();
@@ -96,10 +151,17 @@ public final class StudioRecreationTaskPlan {
             List<Map<String,Object>> refs=new ArrayList<>();
             for(JsonNode r:u.path("refs"))refs.add(Map.of("label",r.path("label").asText(),"what",r.path("what").asText()));
             if(refs.isEmpty())refs.add(Map.of("label","（无）","what","这段没有参考素材，只按文字描述拍"));
-            units.add(Map.of("no",u.path("no").asInt(),"range",StudioVideoBreakdown.range(u.path("startSec").asDouble(),u.path("endSec").asDouble()),
-                    "seconds",u.path("seconds").asInt(),"refs",refs,
-                    "shots",StudioVideoBreakdown.shotTable(breakdown,u.path("firstShot").asInt(),u.path("lastShot").asInt(),u.path("startSec").asDouble(),
-                            u.path("startSec").asDouble(),u.path("endSec").asDouble())));
+            List<Map<String,Object>> keyframes=new ArrayList<>();
+            for(JsonNode k:u.path("keyframes"))keyframes.add(Map.of("shot",k.path("shot").asInt(),"label",k.path("label").asText(),
+                    "detail",k.path("detail").asText("").isBlank()?"":"原片这一镜："+k.path("detail").asText()));
+            Map<String,Object> unit=new LinkedHashMap<>();
+            unit.put("no",u.path("no").asInt());
+            unit.put("range",StudioVideoBreakdown.range(u.path("startSec").asDouble(),u.path("endSec").asDouble()));
+            unit.put("seconds",u.path("seconds").asInt());unit.put("refs",refs);
+            unit.put("hasKeyframes",!keyframes.isEmpty());unit.put("keyframes",keyframes);
+            unit.put("shots",StudioVideoBreakdown.shotTable(breakdown,u.path("firstShot").asInt(),u.path("lastShot").asInt(),u.path("startSec").asDouble(),
+                    u.path("startSec").asDouble(),u.path("endSec").asDouble()));
+            units.add(unit);
         }
         out.put("units",units);
         return out;
@@ -117,7 +179,16 @@ public final class StudioRecreationTaskPlan {
     static final java.util.regex.Pattern ORIGINAL_ACCOUNT=java.util.regex.Pattern.compile(
             "(抖音|快手|小红书|视频号|B站|b站|微博|微信)\\s*(号|搜索|ID|id)|来(抖音|快手|小红书)|[0-9]{7,}|@\\S");
 
-    public static ObjectNode build(JsonNode task,JsonNode answer) {
+    public static ObjectNode build(JsonNode task,JsonNode answer) {return build(task,answer,null);}
+
+    /** 检查每段成片时看的几项（技能 reference-video-recreation 的 checks 里挑的）。 */
+    static final List<String> CHECK_IDS=List.of("subject-replaced","old-subject-residue","character-consistency","scene-and-action");
+
+    /**
+     * @param keyframePrompt 开场画面的出图描述（提示词库 stage-recreation-keyframe，变量 layout / trick / refs / instruction）；
+     *                       null 时不做开场画面（老调用和测试）
+     */
+    public static ObjectNode build(JsonNode task,JsonNode answer,java.util.function.Function<Map<String,Object>,String> keyframePrompt) {
         Map<Integer,JsonNode> written=new HashMap<>();
         for(JsonNode u:answer.path("units"))if(u.path("prompt").isTextual()&&!u.path("prompt").asText().isBlank())written.putIfAbsent(u.path("no").asInt(),u);
         ObjectNode plan=OM.createObjectNode();
@@ -139,16 +210,64 @@ public final class StudioRecreationTaskPlan {
             if(w==null)throw BusinessException.wrapped(org.springframework.http.HttpStatus.BAD_GATEWAY,"AI_BAD_OUTPUT","模型没有写完每一段的提示词，这次没有完成。请重试",
                     "missing unit "+no+" of "+task.path("units").size());
             String id="v"+no;
+            // 开场画面：每张一个出图步骤，以原片这一镜的截图为构图基准，参照写提示词的模型挑的素材
+            boolean makeKeyframes=keyframePrompt!=null&&u.path("keyframes").size()>0;
+            List<String> keyframeSteps=new ArrayList<>();
+            if(makeKeyframes) {
+                Map<Integer,JsonNode> asked=new HashMap<>();
+                for(JsonNode k:w.path("keyframes"))asked.putIfAbsent(k.path("shot").asInt(),k);
+                for(JsonNode k:u.path("keyframes")) {
+                    int shot=k.path("shot").asInt();
+                    JsonNode a=asked.get(shot);
+                    String instruction=a==null?"":a.path("instruction").asText("").strip();
+                    if(instruction.isBlank())instruction=blank(task.path("requirement").asText(""))?"把画面里要换的人和物换成参考图里的样子，其它保持原样":task.path("requirement").asText().strip();
+                    ObjectNode image=steps.addObject().put("id",k.path("stepId").asText()).put("operation","image").put("title","第 "+shot+" 镜开场画面").put("execution","auto");
+                    image.putObject("strategy").put("approachId","remake").put("method","keyframe-rebuild").put("reason","原片第 "+shot+" 镜");
+                    image.putArray("dependsOn");image.putArray("referenceNodeIds");
+                    ObjectNode imageSettings=image.putObject("settings").put("operation","image").put("aspectRatio",task.path("ratio").asText()).put("count",1);
+                    var imageBindings=imageSettings.putArray("referenceBindings");
+                    imageBindings.addObject().put("nodeId",k.path("frameNodeId").asText()).put("role","reference-image").put("order",1);
+                    List<Map<String,Object>> refs=new ArrayList<>();
+                    int order=2;
+                    for(JsonNode m:materialsNamed(task,a==null?null:a.path("materials"))) {
+                        if(order>5)break;
+                        imageBindings.addObject().put("nodeId",m.path("nodeId").asText()).put("role","reference-image").put("order",order);
+                        refs.add(Map.of("label","图"+order,"what",m.path("title").asText()+"（"+m.path("slot").asText()+"）"));
+                        order++;
+                    }
+                    Map<String,Object> vars=new LinkedHashMap<>();
+                    vars.put("layout",k.path("layout").asText(""));vars.put("trick",k.path("trick").asText(""));
+                    vars.put("refs",refs);vars.put("instruction",instruction.length()>600?instruction.substring(0,600):instruction);
+                    image.put("prompt",keyframePrompt.apply(vars).strip());
+                    keyframeSteps.add(k.path("stepId").asText());
+                }
+            }
             ObjectNode step=steps.addObject().put("id",id).put("operation","video").put("title",text(w.path("title"),u.path("title").asText("第 "+no+" 段"),60))
                     .put("prompt",w.path("prompt").asText().strip()).put("execution","auto");
-            step.putObject("strategy").put("approachId","remake").put("method","remake-subject").put("reason","原片第 "+no+" 段");
-            step.putArray("dependsOn");step.putArray("referenceNodeIds");
+            step.putObject("strategy").put("approachId","remake").put("method",makeKeyframes?"keyframe-rebuild":"remake-subject").put("reason","原片第 "+no+" 段");
+            var depends=step.putArray("dependsOn");keyframeSteps.forEach(depends::add);
+            step.putArray("referenceNodeIds");
             ObjectNode settings=step.putObject("settings").put("operation","video").put("model",task.path("model").asText());
             settings.putObject("video").put("mode",task.path("mode").asText()).put("resolutionTier",task.path("tier").asText());
             settings.put("durationSec",u.path("seconds").asInt()).put("aspectRatio",task.path("ratio").asText()).put("count",1);
             var bindings=settings.putArray("referenceBindings");
-            for(JsonNode r:u.path("refs"))bindings.addObject().put("nodeId",r.path("nodeId").asText()).put("role",r.path("role").asText()).put("order",r.path("order").asInt());
+            for(JsonNode r:u.path("refs")) {
+                if(r.hasNonNull("stepId")) {
+                    if(!makeKeyframes)continue;
+                    bindings.addObject().put("stepId",r.path("stepId").asText()).put("role",r.path("role").asText()).put("order",r.path("order").asInt());
+                } else bindings.addObject().put("nodeId",r.path("nodeId").asText()).put("role",r.path("role").asText()).put("order",r.path("order").asInt());
+            }
             clipOrder.addObject().put("stepId",id);
+            // 出片后自动看一遍：替换的人和物有没有当主体出现、原片的动作和看点做出来没有（不合格自动重出一次，StudioSegmentedRun）
+            {
+                ObjectNode check=steps.addObject().put("id","c"+no).put("operation","check").put("title",text(w.path("title"),u.path("title").asText("第 "+no+" 段"),50)+" · 检查")
+                        .put("prompt","对照这段的提示词检查成片：用户要换的人和商品有没有换成参考素材里的样子、在对应的镜头里是不是画面主体；原片的动作、构图和看点有没有做出来；画面里有没有水印和多余的文字。")
+                        .put("execution","auto");
+                check.putObject("strategy").put("approachId","remake").put("method",makeKeyframes?"keyframe-rebuild":"remake-subject").put("reason","检查第 "+no+" 段");
+                check.putArray("dependsOn").add(id);check.putArray("referenceNodeIds");
+                ObjectNode checkSettings=check.putObject("settings").put("operation","check").put("targetStepId",id);
+                var ids=checkSettings.putArray("checkIds");CHECK_IDS.forEach(ids::add);
+            }
             // 字幕：这段生成的秒数内、时间按成片算；越界的截掉，重叠的顺延。
             double offset=u.path("offsetSec").asDouble(),seconds=u.path("seconds").asDouble();
             for(JsonNode c:w.path("captions")) {
@@ -166,9 +285,12 @@ public final class StudioRecreationTaskPlan {
                 last=end;
             }
         }
-        if(steps.size()>1||!captions.isEmpty()) {
+        if(clipOrder.size()>1||!captions.isEmpty()) {
             ObjectNode assemble=steps.addObject().put("id","final").put("operation","assemble").put("title","合成成片").put("prompt","按原片顺序合成").put("execution","auto");
-            assemble.putArray("dependsOn");assemble.putArray("referenceNodeIds");
+            // 等每段的视频和检查（含不合格后的重出）都结束再合成
+            var waits=assemble.putArray("dependsOn");
+            for(JsonNode st:steps)if(!st.path("id").asText().equals("final")&&List.of("video","check").contains(st.path("operation").asText()))waits.add(st.path("id").asText());
+            assemble.putArray("referenceNodeIds");
             ObjectNode settings=assemble.putObject("settings").put("operation","assemble").put("audioStrategy","generated");
             settings.set("clipOrder",clipOrder);
             if(!captions.isEmpty())settings.set("captions",captions);
@@ -176,6 +298,23 @@ public final class StudioRecreationTaskPlan {
         plan.putArray("questions");
         return plan;
     }
+
+    /** 写提示词的模型按名称点的素材（「」、空格、大小写不计），只认这次的素材，重复的只算一次。 */
+    static List<JsonNode> materialsNamed(JsonNode task,JsonNode names) {
+        List<JsonNode> out=new ArrayList<>();
+        if(names==null||!names.isArray())return out;
+        Set<String> seen=new HashSet<>();
+        for(JsonNode n:names) {
+            String wanted=normalizeName(n.asText(""));
+            if(wanted.isEmpty())continue;
+            for(JsonNode m:task.path("materials")) {
+                if("声音".equals(m.path("slot").asText()))continue;
+                if(normalizeName(m.path("title").asText("")).equals(wanted)&&seen.add(m.path("nodeId").asText()))out.add(m);
+            }
+        }
+        return out;
+    }
+    private static String normalizeName(String v){return v.replaceAll("[「」『』\"“”\\s]","").toLowerCase(Locale.ROOT);}
 
     /** 有参考的模式优先（全能参考）；没有就用不需要首尾帧的模式，只按文字出片。 */
     static VideoStudioModeSpec mode(VideoStudioContract contract,boolean hasMaterials) {
