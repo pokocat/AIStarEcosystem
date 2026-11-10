@@ -594,7 +594,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     try {if(operation==="script"&&!rewriteScope)requestPrompt=studioScriptInput(prompt,scriptMode,scriptSourceNodeId,nodesRef.current);
       // Storyboard keeps the document in its preview; the actual request snapshots it at submission.
       if(storyboardNodeId===originId&&origin?.metadata?.studio?.script&&(operation==="script"||operation==="storyboard"))requestPrompt=studioScriptPrompt(origin.metadata.studio.script,requestPrompt);
-      requestPrompt=withStudioLinkedText(requestPrompt,originId,nodesRef.current,connectionsRef.current,operation==='script'&&scriptMode==='adapt'?scriptSourceNodeId:undefined);
+      requestPrompt=withStudioLinkedText(requestPrompt,originId,nodesRef.current,connectionsRef.current,operation==='script'&&scriptMode==='adapt'?scriptSourceNodeId:undefined,operation==='video');
       const promptLimit=promptMaxChars;
       const promptLength=nativeVideo||imagePromptMaxChars!=null?Array.from(requestPrompt).length:requestPrompt.length;
       if(promptLength>promptLimit)throw new Error(`创作要求与引用文本合计超过 ${promptLimit} 字，请减少引用内容`);}
@@ -947,7 +947,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const videoBatchCounts=nativeVideo?.batchCounts?.length?nativeVideo.batchCounts:legacyBatchCounts;
   const promptMaxChars=nativeVideo?nativeVideo.contract.promptMaxChars:imagePromptMaxChars??16000;
   // Same text and same counting as submit: linked text goes to the model too, so it counts before the button is pressed.
-  const limitedPrompt=operation==="image"||operation==="video"?withStudioLinkedText(prompt,originId,nodes,connections):prompt;
+  const limitedPrompt=operation==="image"||operation==="video"?withStudioLinkedText(prompt,originId,nodes,connections,undefined,operation==="video"):prompt;
   const promptChars=nativeVideo||imagePromptMaxChars!=null?Array.from(limitedPrompt).length:limitedPrompt.length;
   const promptTooLong=promptChars>promptMaxChars;
   const longerPromptModel=promptTooLong?studioLongerPromptModel(candidates.filter(m=>m.endpointId!==chosenModel?.endpointId).map(m=>({endpointId:m.endpointId,name:m.name,

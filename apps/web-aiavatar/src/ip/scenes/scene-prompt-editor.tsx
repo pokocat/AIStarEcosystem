@@ -9,11 +9,14 @@ import { createPortal } from "react-dom";
 import { ImageIcon } from "lucide-react";
 import { EditorContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor, type NodeViewProps } from "@tiptap/react";
 import { Node, type Editor, type JSONContent } from "@tiptap/core";
-import { Plugin } from "@tiptap/pm/state";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import type { Node as PmNode } from "@tiptap/pm/model";
 import StarterKit from "@tiptap/starter-kit";
 import { SignedImage } from "@/canvas-bridge/signed-image";
 import { ImageLightbox } from "../image-lightbox";
 import { splitPromptRefs } from "./scene-prompt-refs";
+import type { SceneScriptHidden } from "./scene-script-layers";
 
 /** 第 index 张交给视频模型的图（从 1 开始）。 */
 export type ScenePromptRef = { index: number; title: string; url?: string; storageKey?: string;
@@ -31,6 +34,43 @@ function toDoc(text: string, count: number): JSONContent {
   }) };
 }
 const toText = (editor: Editor) => editor.getText({ blockSeparator: "\n" });
+
+/** 一行文字里第 offset 个字在文档里的位置：标签按它的原文（「图1」两个字）算，和挑段落时用的纯文本对得上。 */
+function posAt(para: PmNode, start: number, offset: number): number {
+  let chars = 0, pos = start;
+  for (let i = 0; i < para.childCount; i++) {
+    const child = para.child(i);
+    const size = child.isText ? child.text!.length : String(child.attrs.raw ?? "").length;
+    if (chars + size >= offset) return child.isText ? pos + (offset - chars) : pos + (offset > chars ? 1 : 0);
+    chars += size; pos += child.nodeSize;
+  }
+  return pos;
+}
+
+const hiddenKey = new PluginKey("sceneHidden");
+/** 不发给视频模型的内容：灰字；整段不发的那段在第一行末尾标「仅参考」（scene-script-layers.ts 决定是哪些）。 */
+function hiddenPlugin(current: () => SceneScriptHidden[] | undefined) {
+  return new Plugin({ key: hiddenKey, props: { decorations(state) {
+    const spans = current();
+    if (!spans?.length) return DecorationSet.empty;
+    const lines: { node: PmNode; start: number }[] = [];
+    state.doc.forEach((node, offset) => lines.push({ node, start: offset + 1 }));
+    const out: Decoration[] = [];
+    for (const h of spans) {
+      const line = lines[h.line];
+      if (!line) continue;
+      const from = posAt(line.node, line.start, h.from), to = posAt(line.node, line.start, h.to);
+      if (to > from) out.push(Decoration.inline(from, to, { class: "scene-prompt-reference-only", title: "这部分不发给视频模型" }));
+      if (h.tag) out.push(Decoration.widget(line.start + line.node.content.size, () => {
+        const tag = document.createElement("span");
+        tag.className = "scene-prompt-reference-tag"; tag.textContent = "仅参考"; tag.title = "这一段不发给视频模型";
+        tag.contentEditable = "false";
+        return tag;
+      }, { side: 1, key: `ref-tag-${h.line}` }));
+    }
+    return DecorationSet.create(state.doc, out);
+  } } });
+}
 
 const SceneRef = Node.create<{ count: () => number }>({
   name: "sceneRef", group: "inline", inline: true, atom: true, selectable: false, draggable: false,
@@ -113,8 +153,10 @@ function mentionAt(editor: Editor): Mention | undefined {
 
 const matchesMention = (r: ScenePromptRef, query: string) => !query || `图${r.index}`.includes(query) || r.title.includes(query) || !!r.detail?.includes(query);
 
-export function ScenePromptEditor({ value, onChange, refs, ariaLabel, placeholder, onEnter, lead, ref }: {
+export function ScenePromptEditor({ value, onChange, refs, ariaLabel, placeholder, onEnter, lead, hidden, ref }: {
   value: string; onChange: (value: string) => void; refs: ScenePromptRef[]; ariaLabel: string; placeholder?: string;
+  /** 不发给视频模型的内容（AI 编导的六段脚本），显示成灰字并标「仅参考」。 */
+  hidden?: SceneScriptHidden[];
   /** 文字前面不可编辑的标签（「技能：服装上身」）。 */
   lead?: string;
   /** 给了就是 Enter 发送、Shift+Enter 换行（输入法拼写中的回车不算）；不给就是 Enter 换行。 */
@@ -122,6 +164,8 @@ export function ScenePromptEditor({ value, onChange, refs, ariaLabel, placeholde
 }) {
   const count = useRef(refs.length);
   count.current = refs.length;
+  const hiddenNow = useRef(hidden);
+  hiddenNow.current = hidden;
   const last = useRef(value), change = useRef(onChange);
   change.current = onChange;
   const enter = useRef(onEnter);
@@ -140,6 +184,7 @@ export function ScenePromptEditor({ value, onChange, refs, ariaLabel, placeholde
         underline: false, trailingNode: false }),
       SceneRef.configure({ count: () => count.current }),
     ],
+    onCreate: ({ editor }) => { editor.registerPlugin(hiddenPlugin(() => hiddenNow.current)); },
     content: toDoc(value, refs.length),
     editorProps: { attributes: { role: "textbox", "aria-label": ariaLabel, "aria-multiline": "true", spellcheck: "false", class: "scene-prompt-editor" },
       handleKeyDown: (_view, event) => {
@@ -188,6 +233,11 @@ export function ScenePromptEditor({ value, onChange, refs, ariaLabel, placeholde
     last.current = value; shownCount.current = refs.length;
     editor.commands.setContent(toDoc(value, refs.length), { emitUpdate: false });
   }, [editor, value, refs.length]);
+  // 文字一变挑出来的段落就变：让编辑器重画标注（只换装饰，不动内容）。
+  const hiddenSig = JSON.stringify(hidden ?? []);
+  useEffect(() => {
+    if (editor && !editor.isDestroyed) editor.view.dispatch(editor.state.tr.setMeta(hiddenKey, hiddenSig));
+  }, [editor, hiddenSig]);
   useImperativeHandle(ref, () => ({
     focus(at = "end", options) {
       if (!editor) return;

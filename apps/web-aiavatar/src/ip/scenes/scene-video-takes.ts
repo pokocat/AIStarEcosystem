@@ -1,6 +1,7 @@
 import type { StudioVideoTakeInfo, StudioVideoTask, StudioVideoTaskCreate } from '@ai-star-eco/types/ip-studio-video-task';
 import type { StudioTakeChange } from '@ai-star-eco/types/ip-studio-scenes';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
+import { sceneVideoPrompt } from './scene-script-layers';
 
 /**
  * 视频裂变（2026-11-09 用户要求，参考带货子应用的「派生变体」）：从一条已提交的任务再出几条，每条是独立的任务、各自扣费。
@@ -113,7 +114,8 @@ export function takeRequest(base: StudioVideoTaskCreate, clientRequestId: string
   if (rest.video) {
     // 报价批准（modelBilling）属于原来那次报价，不能带到新任务上。
     const { billing: _videoBilling, modelBilling: _approval, ...video } = rest.video;
-    next.video = { ...video, clientRequestId: videoRequestId, ...(text !== undefined ? { prompt: text } : {}) };
+    // 发给模型的是挑过段落的脚本（与「生成视频」同一个函数）；configuration.text 留完整脚本，再改写、再换变量都在它上面改。
+    next.video = { ...video, clientRequestId: videoRequestId, ...(text !== undefined ? { prompt: sceneVideoPrompt(text) } : {}) };
   }
   const state = rest.input.sceneVideoState;
   if (text === undefined || !state) next.input = { ...rest.input, take: change.take };
