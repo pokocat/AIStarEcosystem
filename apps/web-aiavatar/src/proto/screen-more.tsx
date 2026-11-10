@@ -377,7 +377,7 @@ function MVoiceClone({ ctx, avatarId }) {
           hMM('h2', { style: { fontSize: 22, marginBottom: 8 } }, '声线已保存'),
           hMM('p', { style: { fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.55, marginBottom: 22 } },
             '已保存「' + ((voice && voice.name) || '我的声音') + '」' + (avatarId ? '，并绑定到当前数字人。' : '，可在声音工作室绑定到数字人。'),
-            hMM('br', null), '配音 TTS 合成能力上线后即可直接使用；当前试听为原始采样。'),
+            hMM('br', null), '配音合成功能上线后可直接使用。当前试听为原始音频。'),
           hMM('div', { style: { display: 'flex', gap: 10, justifyContent: 'center', marginBottom: 26 } },
             [['时长', (voice && voice.dur) || '00:' + String(VOICE_SECONDS).padStart(2, '0')], ['类型', '克隆声线'], ['存档', '已加密']].map(([k, v]) =>
               hMM('div', { key: k, style: { padding: '11px 16px', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', boxShadow: 'var(--sh-1)' } },

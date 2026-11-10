@@ -20,7 +20,7 @@ public class StudioTemplateController {
     public StudioTemplateController(StudioTemplateService service,InAppOperatorGuard guard,StudioTemplateExecutionService execution,StudioTemplatePackageService packages,StudioTemplateMetricsService metrics){this.service=service;this.guard=guard;this.execution=execution;this.packages=packages;this.metrics=metrics;}
     @PostMapping("/projects/{id}/template-versions")
     public ApiResponse<Version> publish(Principal principal,Authentication auth,@PathVariable String id,@RequestBody PublishRequest request) {
-        if("official".equals(request.visibility()))guard.require(auth,"只有平台运营能发布官方模板");
+        if("official".equals(request.visibility()))guard.require(auth,"仅平台运营可发布官方模板");
         return ApiResponse.of(service.publish(principal.getName(),id,request));
     }
     @GetMapping("/template-versions/{versionId}")

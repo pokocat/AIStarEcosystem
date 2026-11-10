@@ -10,6 +10,24 @@ import java.util.Optional;
 
 @Repository
 public interface IpRunRepository extends JpaRepository<IpRun, String> {
+    org.springframework.data.domain.Page<IpRun> findByOwnerUserIdAndKindOrderByCreatedAtDesc(String ownerUserId,String kind,org.springframework.data.domain.Pageable pageable);
+
+    /** 账号「任务历史」：本人在时间窗内、指定几种 kind 的运行，新的在前（同一时刻按 id 再排，翻页不重不漏）。 */
+    @org.springframework.data.jpa.repository.Query("select r from IpRun r where r.ownerUserId = :owner and r.createdAt >= :from and r.kind in :kinds and r.status in :statuses order by r.createdAt desc, r.id desc")
+    List<IpRun> historyIn(@org.springframework.data.repository.query.Param("owner") String owner,
+                          @org.springframework.data.repository.query.Param("from") Instant from,
+                          @org.springframework.data.repository.query.Param("kinds") java.util.Collection<String> kinds,
+                          @org.springframework.data.repository.query.Param("statuses") java.util.Collection<String> statuses,
+                          org.springframework.data.domain.Pageable pageable);
+
+    /** 同上，按 kind 前缀取、排除给定的几种（「全部」与「文字」两类用）。 */
+    @org.springframework.data.jpa.repository.Query("select r from IpRun r where r.ownerUserId = :owner and r.createdAt >= :from and r.kind like :prefix and r.kind not in :excluded and r.status in :statuses order by r.createdAt desc, r.id desc")
+    List<IpRun> historyLike(@org.springframework.data.repository.query.Param("owner") String owner,
+                            @org.springframework.data.repository.query.Param("from") Instant from,
+                            @org.springframework.data.repository.query.Param("prefix") String prefix,
+                            @org.springframework.data.repository.query.Param("excluded") java.util.Collection<String> excluded,
+                            @org.springframework.data.repository.query.Param("statuses") java.util.Collection<String> statuses,
+                            org.springframework.data.domain.Pageable pageable);
     @org.springframework.data.jpa.repository.Query("select r from IpRun r where r.status in ('done','failed') and not exists (select x from IpLibraryRecord x where x.id=concat('ILC-',r.id)) order by r.createdAt")
     List<IpRun> uncollectedLibraryRuns(org.springframework.data.domain.Pageable pageable);
 

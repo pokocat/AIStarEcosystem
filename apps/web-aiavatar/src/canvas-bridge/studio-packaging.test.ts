@@ -6,7 +6,7 @@ describe("explicit timed captions",()=>{
     expect(parseStudioCaptions("0-1.5：新创意\n1.5-3: 'text';[v]" )).toEqual([{start:0,end:1.5,text:"新创意"},{start:1.5,end:3,text:"'text';[v]"}]);
   });
   it("rejects overlapping, reverse and excessive timings",()=>{
-    for(const text of ["0-3: 一\n2-4: 二","2-1: 逆序","0-601: 太长","没有时间: 字幕",Array.from({length:25},(_,i)=>`${i}-${i+1}: 字幕`).join("\n")])expect(()=>parseStudioCaptions(text)).toThrow();
+    for(const text of ["0-3: 一\n2-4: 二","2-1: 逆序","0-601: 太长","没有时间: 字幕",Array.from({length:201},(_,i)=>`${i}-${i+1}: 字幕`).join("\n")])expect(()=>parseStudioCaptions(text)).toThrow();
   });
 });
 

@@ -16,11 +16,13 @@ import { readRun, type IpModels } from "@/canvas-bridge/api";
 import { submitStudioRun } from "@/canvas-bridge/studio-api";
 import { saveStudioDocument } from "@/canvas-bridge/studio-save";
 import { placeStudioNode } from "@/canvas-bridge/flow-document";
+import { StudioDurationControl } from "./studio-duration-control";
+import { studioDurationIssue, studioDurationLimits } from "@/canvas-bridge/studio-composer-spec";
 
 type Props={projectId:string;nodes:CanvasNodeData[];shots:CanvasNodeData[];setNodes:Dispatch<SetStateAction<CanvasNodeData[]>>;setConnections:Dispatch<SetStateAction<CanvasConnection[]>>;
   models:IpModels;capabilities?:StudioCapabilities;open:boolean;initialNodeId?:string;onClose:()=>void;ratio:string;episodeNo?:number};
 export function StudioBatchPanel({projectId,nodes,shots,setNodes,setConnections,models,capabilities,open,initialNodeId,onClose,ratio,episodeNo}:Props) {
-  const {message}=useStudioApp();const [selected,setSelected]=useState<string[]>([]),[kind,setKind]=useState<"frames"|"clips"|"work">("work"),[duration,setDuration]=useState(5),[plan,setPlan]=useState<StudioBatch>(),[busy,setBusy]=useState(false),[error,setError]=useStudioErrorState(),[runMap,setRunMap]=useState<Record<string,IpRun>>({}),[activeId,setActiveId]=useState<string>();
+  const {message}=useStudioApp();const [selected,setSelected]=useState<string[]>([]),[kind,setKind]=useState<"frames"|"clips"|"work">("work"),[chosenDuration,setChosenDuration]=useState<number>(),[plan,setPlan]=useState<StudioBatch>(),[busy,setBusy]=useState(false),[error,setError]=useStudioErrorState(),[runMap,setRunMap]=useState<Record<string,IpRun>>({}),[activeId,setActiveId]=useState<string>();
   const [imageModel,setImageModel]=useState<string>(),[videoModel,setVideoModel]=useState<string>(),[batchRatio,setBatchRatio]=useState(ratio);
   const stop=useRef(false),live=useRef({nodes,projectId});live.current={nodes,projectId};const mounted=useRef(true);
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;stop.current=true;};},[]);
@@ -48,7 +50,7 @@ export function StudioBatchPanel({projectId,nodes,shots,setNodes,setConnections,
         let run=step.runId?await readRun(step.runId):undefined;
         if(run?.status==="done")continue;
         if(run?.status==="failed") {
-          if(!retryFailed)throw new Error("有镜头生成失败。检查错误后，可只重试失败步骤。");
+          if(!retryFailed)throw new Error("部分镜头生成失败。查看错误后，可仅重试失败步骤。");
           step.request=undefined;step.runId=undefined;
         }
         if(!step.request)step.request=studioBatchRequest(step,approved,live.current.nodes);
@@ -83,18 +85,22 @@ export function StudioBatchPanel({projectId,nodes,shots,setNodes,setConnections,
   };
   const allDone=!!batch?.steps.length&&batch.steps.every(s=>runMap[s.id]?.status==="done");
   const video=videoModel?models.video.find(m=>m.endpointId===videoModel):models.video.find(m=>m.isDefault)||models.video[0];
-  const durations=capabilities?.mock?[8]:[5,6,8,10,12,15].filter(v=>(!video?.capability?.minDurationSec||v>=video.capability.minDurationSec)&&(!video?.capability?.maxDurationSec||v<=video.capability.maxDurationSec));
-  useEffect(()=>{if(durations.length&&!durations.includes(duration))setDuration(durations[0]);},[video?.endpointId,capabilities?.mock]);
-  return <StudioFloatingPanel title="连续制作" utility open={open} onClose={()=>{stop.current=true;onClose();}} footer={batch?<div className="studio-row-actions"><Button icon={allDone?undefined:<StudioAiIcon/>} title={allDone?undefined:"AI 处理，会消耗积分"} type="primary" loading={busy} disabled={allDone} onClick={()=>void execute()}>{allDone?"计划已完成":current?"继续已确认计划":"确认费用并开始"}</Button><Button disabled={!busy} onClick={()=>{stop.current=true;setError("已请求暂停，当前任务完成后停止后续提交。");}}>暂停后续制作</Button>
-          {batch.steps.some(s=>runMap[s.id]?.status==="failed")&&<Button icon={<StudioAiIcon/>} title="AI 处理，会消耗积分" disabled={busy} onClick={()=>void execute(true)}>只重试失败步骤并继续</Button>}</div>:null} width={660}>
-    <div className="studio-batch-panel"><p>确认所选镜头、模型与费用后按顺序执行。暂停会停止后续提交，已经受理的任务仍会完成。刷新后请从保存的计划继续。</p>
+  const durationLimits=studioDurationLimits(video?{min:video.capability?.minDurationSec,max:video.capability?.maxDurationSec}:undefined,capabilities?.mock);
+  // Until the user picks a length the default follows the model. A length they picked stays across model changes and any
+  // conflict is shown with an explicit fix.
+  const duration=capabilities?.mock?8:chosenDuration??(durationLimits.min!=null&&durationLimits.max!=null?Math.min(durationLimits.max,Math.max(durationLimits.min,5)):5);
+  const durationIssue=kind!=="frames"?studioDurationIssue(duration,durationLimits):undefined;
+  return <StudioFloatingPanel title="连续制作" utility open={open} onClose={()=>{stop.current=true;onClose();}} footer={batch?<div className="studio-row-actions"><Button icon={allDone?undefined:<StudioAiIcon/>} title={allDone?undefined:"AI 处理，将消耗积分"} type="primary" loading={busy} disabled={allDone} onClick={()=>void execute()}>{allDone?"计划已完成":current?"继续已确认计划":"确认费用并开始"}</Button><Button disabled={!busy} onClick={()=>{stop.current=true;setError("已请求暂停，当前任务完成后停止后续提交。");}}>暂停后续制作</Button>
+          {batch.steps.some(s=>runMap[s.id]?.status==="failed")&&<Button icon={<StudioAiIcon/>} title="AI 处理，将消耗积分" disabled={busy} onClick={()=>void execute(true)}>重试失败步骤并继续</Button>}</div>:null} width={660}>
+    <div className="studio-batch-panel"><p>确认所选镜头、模型与费用后按顺序执行。暂停会停止后续提交，已提交的任务仍会完成。刷新后请从保存的计划继续。</p>
       <Select aria-label="已保存的制作计划" placeholder="新制作计划" allowClear value={activeId} disabled={busy} onChange={id=>{setActiveId(id);setPlan(undefined);setError("");}} options={saved.map(n=>({value:n.id,label:n.title}))}/>
       {!current&&<><Select aria-label="连续制作范围" value={kind} onChange={v=>{setKind(v);setPlan(undefined);}} options={[{value:"frames",label:"生成所选首帧"},{value:"clips",label:"补首帧并生成视频"},{value:"work",label:"补首帧、视频并合成"}]}/>
         {!capabilities?.mock&&<div className="studio-settings-grid"><label>图片模型<Select aria-label="连续制作图片模型" value={imageModel||models.image.find(m=>m.isDefault)?.endpointId||models.image[0]?.endpointId} onChange={v=>{setImageModel(v);setPlan(undefined);}} options={models.image.map(m=>({value:m.endpointId,label:m.name}))}/></label>{kind!=="frames"&&<label>视频模型<Select aria-label="连续制作视频模型" value={videoModel||video?.endpointId} onChange={v=>{setVideoModel(v);setPlan(undefined);}} options={models.video.map(m=>({value:m.endpointId,label:m.name}))}/></label>}</div>}
         <label>画幅<Select aria-label="连续制作画幅" value={batchRatio} onChange={v=>{setBatchRatio(v);setPlan(undefined);}} options={["9:16","16:9","1:1"].map(v=>({value:v,label:v}))}/></label>
-        {kind!=="frames"&&<Select aria-label="连续制作片段时长" value={duration} onChange={v=>{setDuration(v);setPlan(undefined);}} options={durations.map(v=>({value:v,label:`每镜 ${v} 秒`}))}/>}
+        {kind!=="frames"&&<StudioDurationControl label="每镜时长" value={duration} onChange={v=>{setChosenDuration(v);setPlan(undefined);}} {...durationLimits}/>}
+        {durationIssue&&<p role="alert">{durationIssue.message}<Button type="link" size="small" onClick={()=>{setChosenDuration(durationIssue.fix);setPlan(undefined);}}>改为 {durationIssue.fix} 秒</Button></p>}
         <div className="studio-batch-shots">{shots.map(n=><Checkbox key={n.id} checked={selected.includes(n.id)} onChange={e=>{setSelected(ids=>e.target.checked?[...ids,n.id]:ids.filter(id=>id!==n.id));setPlan(undefined);}}>{n.title}</Checkbox>)}</div>
-        <Button onClick={prepare} disabled={busy||!selected.length||!capabilities}>查看制作计划与费用</Button></>}
+        <Button onClick={prepare} disabled={busy||!selected.length||!capabilities||!!durationIssue}>查看制作计划与费用</Button></>}
       {batch&&<><p className="studio-quote">共 {batch.steps.length} 步 · 最多 {batch.approvedCost} 积分 · {batch.aspectRatio}</p><p>图片模型：{models.image.find(m=>m.endpointId===batch.imageModel)?.name||"测试响应"}；视频模型：{models.video.find(m=>m.endpointId===batch.videoModel)?.name||"测试响应"}</p>
         <ol className="studio-batch-steps">{batch.steps.map(s=><li key={s.id}><strong>{s.title}</strong><span>{s.maxCost} 积分 · {runMap[s.id]?.status==="done"?"已完成":runMap[s.id]?.status==="failed"?"失败":runMap[s.id]?.status==="running"?studioTaskLabel(runMap[s.id]):s.request?"待确认原任务":"待执行"}</span></li>)}</ol>
 </>}

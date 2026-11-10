@@ -12,7 +12,7 @@ import { prepareImageForUpload } from '@ai-star-eco/api-client/image-upload';
 // 签名有 TTL，所以还有个 resolveImageUrl 负责过期后重新换一张。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { fetchAssetBlob, signKeys, uploadImage as uploadToOss } from "./api";
+import { fetchAssetBlob, signKeys, uploadImage as uploadToOss, type CanvasImageOrigin } from "./api";
 
 export type UploadedImage = {
   url: string;
@@ -51,7 +51,7 @@ async function measure(blob: Blob): Promise<{ width: number; height: number }> {
 async function toBlob(input: string | Blob): Promise<Blob> {
   if (typeof input !== "string") return input;
   const res = await fetch(input);
-  if (!res.ok) throw new Error(`读取图片失败（${res.status}）`);
+  if (!res.ok) throw new Error(`图片加载失败（${res.status}）`);
   return res.blob();
 }
 
@@ -68,7 +68,7 @@ export function rememberUploaded(url: string, record: UploadedImage) {
 }
 
 /** 上传一张图到 OSS。入参可以是 Blob，也可以是 dataURL / 远程地址。 */
-export async function uploadImage(input: string | Blob, _options?: ImageReadOptions): Promise<UploadedImage> {
+export async function uploadImage(input: string | Blob, _options?: ImageReadOptions, origin?: CanvasImageOrigin): Promise<UploadedImage> {
   if (typeof input === "string") {
     const known = alreadyUploaded.get(input);
     if (known) return known;   // 服务端刚生成的图，别再传一遍
@@ -77,7 +77,8 @@ export async function uploadImage(input: string | Blob, _options?: ImageReadOpti
   const blob = await prepareImageForUpload(original instanceof File ? original : new File([original], `canvas.${original.type.split("/")[1] || "png"}`, { type: original.type }));
   const { width, height } = await measure(blob);
   const ext = (blob.type.split("/")[1] || "png").replace("jpeg", "jpg");
-  const res = await uploadToOss(blob, `canvas-${Date.now()}.${ext}`);
+  const fileName = `canvas-${Date.now()}.${ext}`;
+  const res = await (origin ? uploadToOss(blob, fileName, origin) : uploadToOss(blob, fileName));
   remember(res.key, res.url);
   return {
     url: res.url,
@@ -113,7 +114,7 @@ export async function refreshImageUrl(storageKey: string): Promise<string> {
   signedCache.delete(storageKey);
   const map = await signKeys([storageKey]);
   const url = map[storageKey];
-  if (!url) throw new Error("图片地址暂时无法读取");
+  if (!url) throw new Error("图片加载失败，请重试");
   return remember(storageKey, url);
 }
 
@@ -157,12 +158,12 @@ export async function imageToDataUrl(
 ): Promise<string> {
   if (image.dataUrl) return image.dataUrl;
   const src = image.storageKey ? await resolveImageUrl(image.storageKey, image.url ?? "") : image.url;
-  if (!src) throw new Error("这张图读不出来");
+  if (!src) throw new Error("图片加载失败，请重试");
   const blob = await toBlob(src);
   return await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error("图片读取失败"));
+    reader.onerror = () => reject(new Error("图片加载失败，请重试"));
     reader.readAsDataURL(blob);
   });
 }

@@ -7,7 +7,6 @@ import "../styles/globals.css";
 // 不含 Tailwind preflight，因此对移动端外壳零影响（见该文件头注释）。
 import "../styles/ip-desktop.css";
 import "../styles/ip-studio-workflow.css";
-import "../styles/studio-home.css";
 // Load graph styles before its dynamic chunk mounts, including after a development hot update.
 import "@xyflow/react/dist/style.css";
 import "../styles/studio-flow.css";
@@ -28,6 +27,7 @@ import "../styles/control-focus.css";
 import "../styles/studio-select.css";
 import "../styles/director.css";
 import "../styles/studio-scenes.css";
+import "../styles/studio-video-workspace.css";
 import "../styles/studio-home-scenes.css";
 import "../styles/inspiration.css";
 import "../styles/studio-next-pages.css";
@@ -37,7 +37,6 @@ import { TestAccountBanner } from "@/shell/test-account-banner";
 import { AppChrome } from "@/shell/app-chrome";
 import { AntdTheme } from "@/shell/antd-theme";
 import { LAYOUT_BOOT_SCRIPT } from "@/shell/layout-mode";
-import { UI_BOOT_SCRIPT } from "@/shell/ui-version";
 
 export const metadata: Metadata = {
   title: "IP Studio · 声量引擎旗下",
@@ -87,8 +86,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             放 <body> 里则干净无报错 —— 我一度被**上一次改动残留在控制台里的旧报错**
             误导，以为放 body 也不行。§8.0.1 ②：先确认信号本身成立，再据它改代码。 */}
         <script dangerouslySetInnerHTML={{ __html: LAYOUT_BOOT_SCRIPT }} />
-        {/* 新版 / 旧版同理：新版的页面边距靠 <html data-ui> 定，首帧之前写好（见 shell/ui-version.ts）。 */}
-        <script dangerouslySetInnerHTML={{ __html: UI_BOOT_SCRIPT }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="stylesheet" href={FONTS_HREF} />

@@ -1,0 +1,27 @@
+[verify] public endpoints (https://aistar.aibuzz.cn)
+  ✓ / -> 200
+  ✓ /login -> 200
+  ✓ /video -> 200
+  ✓ /api/config -> 200
+[verify] public subdomains
+  ✓ https://aistar.aibuzz.cn/projects -> 200
+[verify] remote services
+  ✓ mysqld active
+  ✓ nginx active
+  ✓ docker active
+  ✓ aistareco-server active
+  ✓ aistareco-web-music active
+  ✓ aistareco-web-drama active
+  ✓ aistareco-web-celebrity active
+  ✓ aistareco-web-aiavatar active
+  ✓ aistareco-web-star active
+  ✓ aistareco-web-incubator active
+  ✓ aistareco-admin active
+  ✓ aistareco-sau-service active
+  ✓ server local API ok
+  ✓ CJK fonts ok (Noto Sans CJK SC,Noto Sans CJK SC Light)
+  ✓ sau-service /healthz ok
+  ✓ nginx -t ok
+
+[verify] ALL GREEN
+[deploy-release] release deployed: 20261108-studio-voice-accent-7be9bb8a (web-aiavatar)

@@ -79,7 +79,7 @@ export function SceneSwitch({ scene, groups, top, onPick, onAll }: {
   useEffect(() => { if (!open) setGroup(own); }, [open, own]);
   const items = groups.find(g => g.id === group)?.items ?? [];
   return <div className="scene-switch">
-    <button type="button" className="scene-switch-button" aria-haspopup="dialog" aria-expanded={open} aria-label={`换场景，当前：${scene.title}`} title="换场景" onClick={() => setOpen(v => !v)}>
+    <button type="button" className="scene-switch-button" aria-haspopup="dialog" aria-expanded={open} aria-label={`切换场景，当前：${scene.title}`} title="切换场景" onClick={() => setOpen(v => !v)}>
       <SceneThumb id={scene.id} title={scene.title} cover={scene.coverUrl} size={40}/>
       <span><strong>{scene.title}<ChevronDown size={14} strokeWidth={1.6}/></strong><small>{scene.description}</small></span>
     </button>
@@ -98,7 +98,7 @@ export function SceneSwitch({ scene, groups, top, onPick, onAll }: {
 function SwitchPanel({ children, onClose }: { children: ReactNode; onClose: () => void }) {
   const panel = useRef<HTMLDivElement>(null);
   useScenePopover(panel, onClose);
-  return <div ref={panel} className="scene-switch-panel" role="dialog" aria-label="换场景">{children}</div>;
+  return <div ref={panel} className="scene-switch-panel" role="dialog" aria-label="切换场景">{children}</div>;
 }
 
 /**
@@ -206,22 +206,22 @@ export function SceneRecent({ drafts, loading, error, onRetry, current, onOpen, 
   icon?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  // 读失败不能显示成「做过的会出现在这里」：用户会以为草稿没了（2026-10-30 线上复核）。
+  // 读失败不能显示成「暂无草稿」：用户会以为草稿没了（2026-10-30 线上复核）。
   const failed = !loading && !!error;
   return <div className="scene-recent-host">
     <button type="button" className={icon ? "scene-icon-button is-large" : "scene-text-button"} aria-haspopup="dialog" aria-expanded={open} aria-label={icon ? "最近" : undefined}
       onClick={() => setOpen(v => !v)}><History size={icon ? 19 : 14} strokeWidth={1.4}/>{!icon && "最近"}</button>
     {open && <RecentPanel onClose={() => setOpen(false)}>
       <header><strong>最近</strong><Link href={allHref}>全部<ChevronRight size={13}/></Link></header>
-      {failed && <div className="scene-recent-empty is-error" role="alert"><span>{drafts.length ? "没读到最新的草稿" : "最近的草稿没读到"}</span>
+      {failed && <div className="scene-recent-empty is-error" role="alert"><span>{drafts.length ? "最新草稿加载失败" : "草稿加载失败"}</span>
         {onRetry && <button type="button" onClick={onRetry}>重试</button>}<StudioErrorNotice error={error} label="详情"/></div>}
-      {loading && !drafts.length ? <p className="scene-recent-empty"><Loader2 size={15} className="studio-gallery-spinner"/>正在读取</p>
+      {loading && !drafts.length ? <p className="scene-recent-empty"><Loader2 size={15} className="studio-gallery-spinner"/>正在加载草稿…</p>
         : failed && !drafts.length ? null
         : drafts.length ? <ul>{drafts.slice(0, 12).map(d => <li key={d.id}><button type="button" aria-current={d.id === current ? "true" : undefined} onClick={() => { setOpen(false); onOpen(d.id); }} title={d.name}>
           <span className="scene-recent-cover">{d.coverUrl ? <img src={d.coverUrl} alt="" loading="lazy"/> : <Pencil size={16} strokeWidth={1.4} aria-hidden="true"/>}</span>
           <span><strong>{d.name.replace(/ · AI (图片|视频)$/, "")}</strong><small>{formatDateTime(d.updatedAt)}</small></span>
         </button></li>)}</ul>
-        : <p className="scene-recent-empty">做过的会出现在这里</p>}
+        : <p className="scene-recent-empty">暂无草稿。</p>}
     </RecentPanel>}
   </div>;
 }
@@ -237,10 +237,9 @@ export function SceneEmpty({ title, note }: { title: string; note: ReactNode }) 
 }
 
 /** 场景的做法拆成几条（「开头…，中间…，结尾…」按逗号分号断开），只有一句时不拆。 */
-export const sceneSteps = (structure?: string | null) => (structure ?? "").split(/[，；。]/).map(s => s.trim()).filter(Boolean);
-
 /**
- * 示例：左边一张大图（运营传了参考示例就轮播示例，没传放封面），右边场景名、一句说明、做法几条。都是示意，不是用户的作品。
+ * 示例：左边一张大图（运营传了参考示例就轮播示例，没传放封面），右边场景名和一句说明。都是示意，不是用户的作品。
+ * 不再列「做法」：那是写给模型的拍法，按标点切开后像「拿到客户的商品和卖点后」这样的半句话（2026-11-07 用户：有图就够了）。
  */
 /** 前后对比图：图上不压字，「素材 / 示例效果」放在图上方；点开看大图。 */
 export function SceneDemoFigure({ src, title, example, onError }: { src: string; title: string; example?: string | null; onError?: () => void }) {
@@ -255,8 +254,8 @@ export function SceneDemoFigure({ src, title, example, onError }: { src: string;
   </figure>;
 }
 
-export function SceneExample({ id, title, group, note, steps = [], cover, examples, ratio = "9:16", demo, example, onUseExample }: {
-  id: string; title: string; group?: string; note: ReactNode; steps?: string[]; cover?: string | null; examples?: StudioSceneMedia[] | null; ratio?: string;
+export function SceneExample({ id, title, group, note, cover, examples, ratio = "9:16", demo, example, onUseExample }: {
+  id: string; title: string; group?: string; note: ReactNode; cover?: string | null; examples?: StudioSceneMedia[] | null; ratio?: string;
   /** 随包的前后对比图。运营配了示例或封面时用运营的；文件不存在（运营新加的场景）时退回封面。 */
   demo?: string;
   /** 补充要求的例句，和对比图对应。 */
@@ -293,13 +292,12 @@ export function SceneExample({ id, title, group, note, steps = [], cover, exampl
       {group && <span className="scene-example-group">{group}</span>}
       <h2>{title}</h2>
       <p>{note}</p>
-      {steps.length > 1 && <ol>{steps.map((step, i) => <li key={i}><span>{String(i + 1).padStart(2, "0")}</span>{step}</li>)}</ol>}
     </div>
   </div>;
 }
 
 export function SceneNoModel({ kind }: { kind: "图片" | "视频" }) {
-  return <p className="scene-note" role="status"><FileImage size={15} aria-hidden="true"/>后台还没有配置可用的{kind}模型，暂时不能生成。请联系管理员在「AI 模型」里开通。</p>;
+  return <p className="scene-note" role="status"><FileImage size={15} aria-hidden="true"/>暂无可用的{kind}模型，无法生成。请联系平台开通。</p>;
 }
 
 /** 拼话被拒（缺图、缺那句话）是给用户的提示，不是故障：去掉追查号再就地显示，追查号留给悬停提示。 */
@@ -311,10 +309,10 @@ export function sceneHintText(error: unknown, fallback: string): string {
  * 失败原因说人话：模型那边限流、排满时，厂商原话（「实名认证以获取更高 rpm」「video queue is full」之类）对老板没有意义，
  * 原话和追查号留在悬停提示里；其余原因去掉追查号再显示。
  */
-export function sceneFailureText(code?: string, details?: string, thing = "图"): string {
-  if (code && /_429$|RATE_LIMIT|TOO_MANY/.test(code)) return `模型那边请求太多，稍等一分钟再点「重新生成」；没出来的${thing}不扣积分`;
-  if (code && /QUEUE_FULL/.test(code)) return `模型那边正在排满，过几分钟再点「重新生成」；没出来的${thing}不扣积分`;
-  return details?.replace(/ · 追查号 \S+$/, "") || `生成失败，没出来的${thing}不扣积分`;
+export function sceneFailureText(code?: string, details?: string, thing = "图片"): string {
+  if (code && /_429$|RATE_LIMIT|TOO_MANY/.test(code)) return `生成服务请求过多，请稍后点击「重新生成」。未生成的${thing}不扣积分。`;
+  if (code && /QUEUE_FULL/.test(code)) return `生成服务繁忙，请稍后点击「重新生成」。未生成的${thing}不扣积分。`;
+  return details?.replace(/ · 追查号 \S+$/, "") || `生成失败，未生成的${thing}不扣积分。请点击「重新生成」。`;
 }
 
 /**
@@ -344,7 +342,7 @@ export function sceneOptionValues(groups: StudioSceneOptionGroup[] | null | unde
  */
 export function SceneViewer({ url, storageKey, name, onDownload, onClose, actions }: {
   url: string; storageKey?: string; name: string; onDownload: () => void; onClose: () => void;
-  /** 这张图接着做什么（当参考图、做成视频）：放在下载前面。 */
+  /** 这张图接着做什么（用作参考图、做成视频）：放在下载前面。 */
   actions?: ReactNode;
 }) {
   useEffect(() => {

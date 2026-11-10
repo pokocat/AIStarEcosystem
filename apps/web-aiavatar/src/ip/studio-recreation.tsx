@@ -103,10 +103,10 @@ export function StudioRecreation({actions,mode,projectId,initialNodeId,nodes,cap
  return <StudioFloatingPanel open title={segments?"视频拉片":"解析视频"} anchorId={targetId||sourceId} width={420} onClose={onClose} closable={!busy&&!importing} className="studio-recreation is-setup"
    footer={<>
      <div className="studio-generation-toolbar"><StudioModelPicker label="复刻分析模型" value={selected?.endpointId} disabled={busy||pending||fixed||options.filter(m=>fixed||m.supportsVision).length<=1} onChange={setModel} options={options.filter(m=>fixed||m.supportsVision).map(m=>({value:m.endpointId,label:m.name,disabled:!m.supportsVision}))}/>
-       <StudioSettingsPopover label="分析参数" summary={focus.trim()?'已添加分析重点':'分析重点'} disabled={busy||pending}><div className="studio-director-form studio-parameter-form"><label>分析重点（选填）<Input.TextArea aria-label="复刻分析重点" value={focus} disabled={busy||pending} onChange={e=>setFocus(e.target.value)} maxLength={2000} autoSize={{minRows:2,maxRows:3}} placeholder="例如：重点分析氛围、动作推进和结尾反转"/></label>     {!allowed&&<p role="status">{capabilities?.mock?'解析需要真实视频分析，请关闭测试响应。':'尚无可用的视频画面分析模型，请检查模型能力及积分售价配置。'}</p>}
-     <p className="studio-recreation-boundary">支持 60 秒、128 MB 内的 MP4。优先读取明显画面变化前后的画面，并在较长片段中补帧；时间点为近似定位。有音轨时自动提取原声，不转写字幕。</p></div></StudioSettingsPopover></div>
+       <StudioSettingsPopover label="分析参数" summary={focus.trim()?'已添加分析重点':'分析重点'} disabled={busy||pending}><div className="studio-director-form studio-parameter-form"><label>分析重点（选填）<Input.TextArea aria-label="复刻分析重点" value={focus} disabled={busy||pending} onChange={e=>setFocus(e.target.value)} maxLength={2000} autoSize={{minRows:2,maxRows:3}} placeholder="例如：重点分析氛围、动作推进和结尾反转"/></label>     {!allowed&&<p role="status">{capabilities?.mock?'解析需要真实视频分析，请关闭测试响应。':'暂无可用的视频分析模型，请联系管理员配置。'}</p>}
+     <p className="studio-recreation-boundary">支持 60 秒、128 MB 内的 MP4。有音轨时自动提取原声，不转写字幕。</p></div></StudioSettingsPopover></div>
      <span>{pending?studioTaskLabel(target?.metadata?.studio?.task):'按实际用量消耗积分'}</span>
-     {pending?<Button loading={busy} onClick={()=>void submit(true)}>{known?'刷新任务':'确认原任务'}</Button>:<Button type="primary" icon={<StudioAiIcon/>} disabled={!source||!allowed||importing||!!imported.current} loading={busy} onClick={()=>void submit()} title="AI 分析，会消耗积分">{target?.metadata?.status==='error'?segments?'继续拉片':'重新解析':segments?'开始拉片':'开始解析'}</Button>}
+     {pending?<Button loading={busy} onClick={()=>void submit(true)}>{known?'刷新任务':'确认原任务'}</Button>:<Button type="primary" icon={<StudioAiIcon/>} disabled={!source||!allowed||importing||!!imported.current} loading={busy} onClick={()=>void submit()} title="AI 分析，将消耗积分">{target?.metadata?.status==='error'?segments?'继续拉片':'重新解析':segments?'开始拉片':'开始解析'}</Button>}
    </>}>
    {actions}
    {error&&<StudioErrorNotice error={error}/>}
@@ -117,7 +117,7 @@ export function StudioRecreation({actions,mode,projectId,initialNodeId,nodes,cap
      {!sourceBound&&!targetId&&<><input ref={upload} type="file" accept="video/mp4,.mp4" hidden onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file)void importVideo(file);}}/><Button disabled={busy||pending} loading={importing} icon={<Upload size={15}/>} onClick={()=>upload.current?.click()}>上传参考视频</Button></>}
      {imported.current&&<Button onClick={()=>void save().then(()=>{imported.current=undefined;setError('');}).catch(setError)}>重试保存视频</Button>}
      {source&&<details className="studio-recreation-source-preview"><summary>预览原片</summary><div className="studio-recreation-preview"><SignedVideo src={source.metadata?.content} storageKey={source.metadata?.storageKey} controls preload="none"/></div></details>}
-     {sourceUnavailable&&<p role="alert">原参考视频已删除或替换。请从新的视频重新进入解析。</p>}
+     {sourceUnavailable&&<p role="alert">原参考视频已删除或替换，请选择新的视频重新解析。</p>}
 
    </>
  </StudioFloatingPanel>;

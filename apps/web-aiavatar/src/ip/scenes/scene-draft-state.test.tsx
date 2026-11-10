@@ -71,7 +71,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); window.history.replaceState(null, "", "/"); });
 
-const continueLink = () => screen.queryByRole("link", { name: "在画布中继续" })?.getAttribute("href");
+const continueLink = () => screen.queryByRole("link", { name: "在画布上查看" })?.getAttribute("href");
 const heading = () => document.querySelector(".scene-composer-head strong")?.textContent;
 const pressed = (group: string, name: string) => within(optionGroup(group)).getByRole("button", { name }).getAttribute("aria-pressed");
 const videoSpec = () => screen.getByRole("button", { name: /^视频规格：/ }).textContent;
@@ -81,6 +81,36 @@ async function open(Page: typeof SceneImageStudio, url: string) {
   window.history.replaceState(null, "", url);
   await act(async () => { render(<Page/>); });
 }
+
+test("group buy: store, product and environment slots coexist and their images survive reopening", async () => {
+  await open(SceneVideoStudio, "/video?scene=local-groupbuy");
+  const product = await screen.findByRole("button", { name: "添加产品图片" });
+  const materials = screen.getByRole("group", { name: "素材" });
+  expect(within(materials).getByRole("button", { name: "添加产品图片" })).toBe(product);
+  expect(within(materials).getByRole("button", { name: "添加环境图片" }).parentElement?.className).toBe("scene-media");
+  expect(product.parentElement?.className).toBe("scene-media");
+  const storePhoto = within(materials).getByRole("button", { name: "从资产库选择门店照片" });
+  expect(storePhoto.parentElement?.className).toBe("scene-media");
+  expect(screen.queryByRole("group", { name: "图片上传建议" })).toBeNull();
+  fireEvent.click(storePhoto);
+  expect(screen.getByRole("dialog", { name: "选择门店照片" })).toBeTruthy();
+  await confirmLibrary();
+  await waitFor(() => expect(store.get("IPP-A")?.doc.sceneInputs?.images).toEqual(["ipstudio/source/u/p.jpg"]));
+  setLibrarySource(async () => ({ key: "ipstudio/source/u/product.jpg", url: "blob:product", fileName: "产品.jpg" }));
+  fireEvent.click(screen.getByRole("button", { name: "添加产品图片" }));
+  expect(screen.getByRole("dialog", { name: "选择产品图片" })).toBeTruthy();
+  await confirmLibrary();
+  await waitFor(() => expect(store.get("IPP-A")?.doc.sceneInputs?.images).toEqual(["ipstudio/source/u/p.jpg", "ipstudio/source/u/product.jpg"]));
+  setLibrarySource(async () => ({ key: "ipstudio/source/u/store.jpg", url: "blob:store", fileName: "店内环境.jpg" }));
+  fireEvent.click(screen.getByRole("button", { name: "添加环境图片" }));
+  expect(screen.getByRole("dialog", { name: "选择环境图片" })).toBeTruthy();
+  await confirmLibrary();
+  await waitFor(() => expect(store.get("IPP-A")?.doc.sceneInputs?.images).toEqual(["ipstudio/source/u/p.jpg", "ipstudio/source/u/product.jpg", "ipstudio/source/u/store.jpg"]));
+  cleanup();
+  await open(SceneVideoStudio, "/video?scene=local-groupbuy&draft=IPP-A");
+  await waitFor(() => expect(screen.getByRole("button", { name: "移除门店照片 3" })).toBeTruthy());
+  expect(api.submit).not.toHaveBeenCalled();
+});
 
 // ── AI 图片 ───────────────────────────────────────────────────────────────
 async function generateWhiteBackground() {
@@ -128,12 +158,12 @@ test("image: 「重新编辑」 says what it put back, moves the cursor to the i
   fireEvent.click(within(optionGroup("出图方式")).getByRole("button", { name: "正面主图" }));
   fillField(screen.getByRole("textbox", { name: "补充要求" }), "换个说法");
   fireEvent.click(await screen.findByRole("button", { name: "重新编辑" }));
-  expect(screen.getByText(/这次的设置放回来了，改好再生成/)).toBeTruthy();
+  expect(screen.getByText(/已恢复此次的设置/)).toBeTruthy();
   await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "补充要求" })));
   fireEvent.click(screen.getByRole("button", { name: "撤销" }));
   expect(text("补充要求")).toBe("换个说法");
   expect(pressed("出图方式", "正面主图")).toBe("true");
-  expect(screen.queryByText(/放回来了/)).toBeNull();
+  expect(screen.queryByText(/已恢复此次的设置/)).toBeNull();
 });
 
 test("image: switching scenes from the list leaves the open draft, and coming back reopens it", async () => {
@@ -160,7 +190,7 @@ test("image: switching scenes carries a photo only into a slot with the same nam
   await waitFor(() => expect(heading()).toBe("服装上身"));
   // 模特还是模特；人脸不会被当成服装（以前按位置带）。
   expect((screen.getByRole("img", { name: "模特" }) as HTMLImageElement).src).toContain("blob:model");
-  expect(screen.getByRole("button", { name: "从资产库选上身/全身装" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "从资产库选择上身/全身装" })).toBeTruthy();
 });
 
 test("image: just opening an old draft saves nothing, so it does not jump to the top of 最近", async () => {
@@ -191,7 +221,7 @@ test("image: when the model cannot make the scene's ratio the page says what it 
   api.fetchModels.mockResolvedValue({ image: [{ endpointId: "ep-img", name: "图片模型", isDefault: true, creditCost: 8, billingUnit: "per_call",
     capability: { imageRatios: ["1:1"], imageSizes: [], imageBatchCounts: [1] } }], video: [] });
   await open(SceneImageStudio, "/image?scene=face-turnaround");
-  expect(await screen.findByText("这个模型出不了 16:9，会按 1:1 出")).toBeTruthy();
+  expect(await screen.findByText("当前模型不支持 16:9，将按 1:1 生成。")).toBeTruthy();
 });
 
 test("image: an old draft's three one-photo slots open as one slot of two photos, numbered as the model sees them", async () => {
@@ -200,7 +230,7 @@ test("image: an old draft's three one-photo slots open as one slot of two photos
     sceneImageState: { sceneId: "face-turnaround", supplement: "", options: {}, slots: [{ key: "a.jpg", name: "正脸" }, null, { key: "c.jpg", name: "侧脸" }], count: 1 } } });
   await open(SceneImageStudio, "/image?scene=face-turnaround&draft=IPP-3");
   await screen.findAllByRole("img", { name: "人脸" });
-  expect(screen.getByText("「人脸」最多可放 3 张，放同一个人的不同角度或表情，结果更接近本人。")).toBeTruthy();
+  expect(screen.getByText(/^「人脸」最多可添加 3 张/)).toBeTruthy();
   expect([...document.querySelectorAll(".scene-ref-index")].map(n => n.textContent)).toEqual(["图1", "图2"]);
   api.composeScene.mockResolvedValue({ text: "描述", skill: null });
   fireEvent.click(screen.getByRole("button", { name: "生成图片" }));
@@ -212,9 +242,9 @@ test("image: outfit takes a model plus tops or a bottom, needs one of them, and 
     .mockResolvedValueOnce({ key: "pants.jpg", url: "blob:pants", fileName: "pants.jpg" });
   await open(SceneImageStudio, "/image?scene=outfit-on-model");
   await pickFromLibrary("模特");
-  expect(await screen.findByText("先放上身/全身装或下装")).toBeTruthy();
+  expect(await screen.findByText("请添加上身/全身装或下装")).toBeTruthy();
   await pickFromLibrary("下装");
-  expect(screen.queryByText("先放上身/全身装或下装")).toBeNull();
+  expect(screen.queryByText("请添加上身/全身装或下装")).toBeNull();
   // 上装空着不占号：下装是图2。
   expect([...document.querySelectorAll(".scene-ref-index")].map(n => n.textContent)).toEqual(["图1", "图2"]);
   api.composeScene.mockResolvedValue({ text: "描述", skill: null });
@@ -239,7 +269,7 @@ test("image: a model that can't take that many photos says so before anything is
     sceneImageState: { sceneId: "face-turnaround", supplement: "", options: {}, slots: [{ key: "a.jpg", name: "正脸" }, { key: "b.jpg", name: "侧脸" }, null], count: 1 } } });
   await open(SceneImageStudio, "/image?scene=face-turnaround&draft=IPP-4");
   await screen.findAllByRole("img", { name: "人脸" });
-  expect(((await screen.findByRole("button", { name: "生成图片" })) as HTMLButtonElement).title).toBe("当前模型最多用 1 张参考图，已放 2 张");
+  expect(((await screen.findByRole("button", { name: "生成图片" })) as HTMLButtonElement).title).toBe("当前模型最多使用 1 张参考图，已添加 2 张");
   expect(api.composeScene).not.toHaveBeenCalled();
 });
 
@@ -280,13 +310,13 @@ test("video: revising a script after reopening the draft keeps the options and t
   put({ id: "IPP-V", name: "v", sceneId: "ecom-talking", doc });
   api.composeScene.mockResolvedValue({ text: "改脚本" });
   await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
-  // 打开写过脚本的草稿先看到编导那一页；选项在编辑框那一页的规格里。
-  fireEvent.click((await screen.findAllByRole("button", { name: "回到编辑" }))[0]);
+  // 打开写过脚本的草稿先看到对话，采用后进入可直接编辑脚本的页面。
+  fireEvent.click(await screen.findByRole("button", { name: "采用脚本" }));
   await waitFor(() => expect(pressed("出镜方式", "只拍商品")).toBe("true"));
   expect(pressed("语气", "专业讲解")).toBe("true");
-  fireEvent.click(screen.getByRole("button", { name: "AI 编导" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "想改哪里" }), { target: { value: "口语一点" } });
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "让编导改" })); });
+  fireEvent.click(screen.getByRole("button", { name: "AI 改写" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "修改意见" }), { target: { value: "口语一点" } });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "发送修改意见" })); });
   // 以前重开草稿后选项回到默认值（真人讲解、像朋友推荐），改出来的那版拍法就变了。
   await waitFor(() => expect(api.submit).toHaveBeenCalled());
   expect(api.submit.mock.calls.at(-1)![1].scene).toMatchObject({ kind: "video-script", revision: "口语一点", language: "英文",
@@ -306,9 +336,9 @@ test("video: leaving a draft for another scene and coming back reopens that draf
   pickScene("门店发现");
   await waitFor(() => expect(heading()).toBe("门店发现"));
   expect(screen.queryByRole("button", { name: "移除商品图 1" })).toBeNull();
-  expect(screen.getByText("商品图在「门店发现」用不上，先收起来了，回「促销转化」还在")).toBeTruthy();
+  expect(screen.getByText(/不使用商品图，返回「促销转化」时会恢复/)).toBeTruthy();
   // 说明是灰字单独一行，不占卡点那行：卡点照样说缺什么。
-  expect([...document.querySelectorAll(".scene-hint")].map(p => p.textContent)).toEqual(expect.arrayContaining(["先放门店照片", expect.stringContaining("先收起来了")]));
+  expect([...document.querySelectorAll(".scene-hint")].map(p => p.textContent)).toEqual(expect.arrayContaining(["请添加门店照片", expect.stringContaining("时会恢复")]));
   // 回到促销转化：刚才没发的素材还在。
   pickScene("促销转化");
   await waitFor(() => expect(heading()).toBe("促销转化"));
@@ -346,5 +376,9 @@ test("video: a duration this model cannot make is named, not quietly changed", a
     sceneVideoState: { text: "", options: {}, duration: 15, ratio: "9:16" } } });
   await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
   fireEvent.change(await screen.findByRole("combobox", { name: "视频模型" }), { target: { value: "ep-short" } });
-  expect(await screen.findByText(/这个模型单段最长 10 秒，15 秒分 2 段（10 \+ 5）/)).toBeTruthy();
+  // 按钮下不再重复；怎么分段写在时长设置里。
+  await waitFor(() => expect(videoSpec()).toContain("15 秒"));
+  expect(screen.queryByText(/当前模型单段最长/)).toBeNull();
+  openSpec();
+  expect(await screen.findByText(/将分 2 段生成后拼接：10 \+ 5 秒/)).toBeTruthy();
 });

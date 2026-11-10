@@ -57,7 +57,7 @@ public class EnterprisePointsService {
         Enterprise enterprise=lock(enterpriseId);requireActor(actor,enterprise,direction);
         if(request==null)throw invalid("请先预览积分变动");
         String key=EnterpriseService.text(request.clientRequestId(),64);
-        if(key.startsWith("finance:")||key.startsWith("system:"))throw invalid("请求编号使用了系统保留前缀");
+        if(key.startsWith("finance:")||key.startsWith("system:"))throw invalid("请求已失效，请刷新页面后重试");
         String confirmation=EnterpriseService.text(request.confirmationFingerprint(),64);
         var items=normalize(direction,request.items());
         String bodyFingerprint=hash(List.of(actor,enterpriseId,direction,items,confirmation));
@@ -65,7 +65,7 @@ public class EnterprisePointsService {
         var existing=batches.findByEnterpriseIdAndClientRequestId(enterpriseId,key);
         if(existing.isPresent()) {
             if(!actor.equals(existing.get().getActorUserId()) || !bodyFingerprint.equals(existing.get().getFingerprint()))
-                throw conflict("ENTERPRISE_REQUEST_CONFLICT","同一请求不能更改积分操作");
+                throw conflict("ENTERPRISE_REQUEST_CONFLICT","请求已失效，请刷新页面后重试");
             return dto(existing.get());
         }
         Snapshot snapshot=snapshot(actor,enterprise,direction,items);
@@ -194,9 +194,9 @@ public class EnterprisePointsService {
     }
     private Enterprise lock(String enterpriseId) {
         var e=enterprises.lockById(enterpriseId)
-                .orElseThrow(()->EnterpriseAccessService.denied("ENTERPRISE_ACCESS_DENIED","企业不可使用"));
+                .orElseThrow(()->EnterpriseAccessService.denied("ENTERPRISE_ACCESS_DENIED","该企业已关闭或暂不可用"));
         em.refresh(e,LockModeType.PESSIMISTIC_WRITE);
-        if(!"active".equals(e.getStatus()))throw EnterpriseAccessService.denied("ENTERPRISE_ACCESS_DENIED","企业不可使用");
+        if(!"active".equals(e.getStatus()))throw EnterpriseAccessService.denied("ENTERPRISE_ACCESS_DENIED","该企业已关闭或暂不可用");
         return e;
     }
     private void requireActor(String actor,Enterprise enterprise,String direction) {

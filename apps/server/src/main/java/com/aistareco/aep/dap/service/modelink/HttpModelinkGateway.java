@@ -195,7 +195,7 @@ public class HttpModelinkGateway implements ModelinkGateway {
                 // 分组非终态或组内非空 → 现在删不掉（下轮回收器再试）。给可识别的错误码而不是笼统 502。
                 log.warn("[dap-modelink] group not deletable {} body={}", path, clamp(resp.body(), 300));
                 throw BusinessException.wrapped(HttpStatus.CONFLICT, "DAP_MODELINK_GROUP_NOT_DELETABLE",
-                        ProviderErrorMessage.append(resp.body(),"该素材分组当前不可删除（未到终态或组内仍有素材）"),
+                        ProviderErrorMessage.append(resp.body(),"该素材分组仍在处理中或仍有素材，暂时无法删除"),
                         "modelink DELETE " + path + " status=409 body=" + clamp(resp.body(), 600));
             }
             if (sc >= 400) {
@@ -223,7 +223,7 @@ public class HttpModelinkGateway implements ModelinkGateway {
         Target t = resolveTarget();
         if (t == null) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "DAP_MODELINK_NOT_CONFIGURED",
-                    "未配置素材合规服务：请在管理后台「AI 应用绑定」把用途「数字资产 · 真人素材与授权」绑定七牛 modelink 端点");
+                    "素材合规服务暂不可用，请联系平台处理", null, "未配置素材合规服务：请在管理后台「AI 应用绑定」把用途「数字资产 · 真人素材与授权」绑定七牛 modelink 端点");
         }
         return t;
     }

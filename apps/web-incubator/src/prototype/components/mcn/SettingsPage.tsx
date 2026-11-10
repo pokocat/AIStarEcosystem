@@ -7,24 +7,13 @@ import {
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { motion } from "motion/react";
-import { useTheme, themeConfig } from "../ThemeProvider";
-import { ThemeSwitcher } from "../ThemeSwitcher";
+import { ColorModeToggle } from "../ColorModeToggle";
 import type { Lang } from "../../translations";
+import { tabsOf } from "./consoleNav";
+import { PermissionMatrix } from "./PermissionMatrix";
+import { BillingCenter } from "../billing/BillingCenter";
 
-interface SettingsSection {
-  id: string;
-  icon: any;
-  label: { zh: string; en: string };
-}
-
-const SECTIONS: SettingsSection[] = [
-  { id: 'profile', icon: User, label: { zh: '个人资料', en: 'Profile' } },
-  { id: 'account', icon: Key, label: { zh: '账号安全', en: 'Account Security' } },
-  { id: 'notification', icon: Bell, label: { zh: '通知设置', en: 'Notifications' } },
-  { id: 'appearance', icon: Palette, label: { zh: '外观与语言', en: 'Appearance' } },
-  { id: 'billing', icon: CreditCard, label: { zh: '订阅与账单', en: 'Billing' } },
-  { id: 'data', icon: Download, label: { zh: '数据管理', en: 'Data Management' } },
-];
+const SECTIONS = tabsOf('settings');
 
 const Toggle = ({ checked, onChange }: { checked: boolean; onChange: () => void }) => (
   <button onClick={onChange}
@@ -33,10 +22,9 @@ const Toggle = ({ checked, onChange }: { checked: boolean; onChange: () => void 
   </button>
 );
 
-export const SettingsPage = ({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) => {
+export const SettingsPage = ({ lang, setLang, initialTab }: { lang: Lang; setLang: (l: Lang) => void; initialTab?: string }) => {
   const zh = lang === 'zh';
-  const { theme } = useTheme();
-  const [section, setSection] = useState('profile');
+  const [section, setSection] = useState(() => (initialTab && SECTIONS.some(t => t.id === initialTab) ? initialTab : 'profile'));
   const [saved, setSaved] = useState(false);
 
   // Mock form data
@@ -51,12 +39,6 @@ export const SettingsPage = ({ lang, setLang }: { lang: Lang; setLang: (l: Lang)
     email: true, push: true, sms: false,
     newFan: true, revenue: true, contentReview: true, systemUpdate: false, marketing: false,
   });
-
-  const [plans] = useState([
-    { name: 'Free', zh: '免费版', price: '¥0', features: ['3个AI艺人', '基础工坊', '5GB存储'], current: false },
-    { name: 'Pro', zh: '专业版', price: '¥299/月', features: ['20个AI艺人', '全功能工坊', '100GB存储', '优先AI算力'], current: true },
-    { name: 'Enterprise', zh: '企业版', price: '¥999/月', features: ['无限AI艺人', 'API访问', '1TB存储', '专属客服', '白标方案'], current: false },
-  ]);
 
   const handleSave = () => {
     setSaved(true);
@@ -83,7 +65,7 @@ export const SettingsPage = ({ lang, setLang }: { lang: Lang; setLang: (l: Lang)
                     section === s.id ? 'bg-cyan-500/10 text-cyan-400' : 'text-gray-400 hover:bg-white/5 hover:text-white'
                   }`}>
                   <SIcon className="w-4 h-4" />
-                  <span className="font-medium">{zh ? s.label.zh : s.label.en}</span>
+                  <span className="font-medium">{zh ? s.zh : s.en}</span>
                 </button>
               );
             })}
@@ -211,8 +193,9 @@ export const SettingsPage = ({ lang, setLang }: { lang: Lang; setLang: (l: Lang)
               <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6 space-y-6">
                 <h3 className="text-lg font-bold" style={{ fontFamily: "var(--font-display)" }}>{zh ? '外观' : 'Appearance'}</h3>
                 <div>
-                  <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">{zh ? '主题' : 'Theme'}</div>
-                  <ThemeSwitcher lang={lang} />
+                  <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">{zh ? '界面底色' : 'Colour mode'}</div>
+                  <ColorModeToggle lang={zh ? 'zh' : 'en'} variant="segmented" />
+                  <p className="mt-2 text-xs text-gray-500">{zh ? '暗色沿用 AI 艺人孵化首页的风格；全系统同步切换，下次打开保持你的选择。' : 'Dark follows the AI artist homepage; applies everywhere and is remembered.'}</p>
                 </div>
                 <div>
                   <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">{zh ? '字体' : 'Font'}</div>
@@ -227,48 +210,11 @@ export const SettingsPage = ({ lang, setLang }: { lang: Lang; setLang: (l: Lang)
               </div>
             )}
 
+            {/* Team & roles */}
+            {section === 'team' && <PermissionMatrix lang={lang} />}
+
             {/* Billing */}
-            {section === 'billing' && (
-              <div className="space-y-4">
-                <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
-                  <h3 className="text-lg font-bold mb-4" style={{ fontFamily: "var(--font-display)" }}>{zh ? '订阅计划' : 'Subscription Plans'}</h3>
-                  <div className="grid sm:grid-cols-3 gap-4">
-                    {plans.map((plan, i) => (
-                      <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * .08 }}
-                        className={`rounded-xl p-5 border transition ${plan.current ? 'bg-cyan-500/5 border-cyan-500/30' : 'bg-black/20 border-white/5 hover:border-white/15'}`}>
-                        {plan.current && <Badge className="text-[10px] bg-cyan-500/10 text-cyan-400 border-0 mb-2">{zh ? '当前计划' : 'Current'}</Badge>}
-                        <div className="text-sm font-bold mb-1">{zh ? plan.zh : plan.name}</div>
-                        <div className="text-xl font-extrabold mb-3" style={{ fontFamily: "var(--font-display)" }}>{plan.price}</div>
-                        <div className="space-y-1.5">
-                          {plan.features.map((f, j) => (
-                            <div key={j} className="text-xs text-gray-400 flex items-center gap-1.5"><Check className="w-3 h-3 text-cyan-400" /> {f}</div>
-                          ))}
-                        </div>
-                        {!plan.current && (
-                          <Button variant="outline" size="sm" className="w-full mt-4 border-white/10 text-gray-400 text-xs">{zh ? '升级' : 'Upgrade'}</Button>
-                        )}
-                      </motion.div>
-                    ))}
-                  </div>
-                </div>
-                <div className="bg-gray-900/50 border border-white/5 rounded-xl p-6">
-                  <h3 className="text-sm font-bold mb-3">{zh ? '账单历史' : 'Billing History'}</h3>
-                  <div className="space-y-2">
-                    {[
-                      { date: '2025-04-01', desc: 'Pro Plan — April', amount: '¥299' },
-                      { date: '2025-03-01', desc: 'Pro Plan — March', amount: '¥299' },
-                      { date: '2025-02-15', desc: 'AI算力加购 50h', amount: '¥99' },
-                      { date: '2025-02-01', desc: 'Pro Plan — February', amount: '¥299' },
-                    ].map((b, i) => (
-                      <div key={i} className="flex items-center justify-between p-3 rounded-lg border border-white/5 text-xs">
-                        <div><span className="text-gray-500">{b.date}</span> <span className="text-white ml-2">{b.desc}</span></div>
-                        <span className="text-cyan-400 font-semibold">{b.amount}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
+            {section === 'billing' && <BillingCenter lang={lang} />}
 
             {/* Data Management */}
             {section === 'data' && (

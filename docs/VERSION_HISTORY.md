@@ -4,6 +4,22 @@
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
 
+### 资产库：导演台有图自动进库、按来源找 · 2026-11-07（已生产发布 `20261108-asset-library-f63970b5f`）
+
+`IpLibraryDirectorSync` 后台对账，把导演台有图的角色、场景、道具建成资产库的卡（同名不合并、已关联的追加到原卡、主图跟随采用版本直到用户自己选、删掉的不补回），存量作品走同一条路；分镜图、片段视频、整集成片和上传的图进文件层并起能认的名字。新增 `GET /library/sources`、`POST /library/objects/from-media`，素材和对象可按 `projectId` 筛选。资产页加场景、道具分类和来源筛选，导演台显示「已在资产库」，画布和资产页可以把图存为角色、场景、道具，裁剪、拆图、抽帧结果进库。无迁移。方案见 `docs/ip-studio-personal-asset-library-plan.md` 末节。
+
+### 下线 Studio 旧版界面 · 2026-11-07（随 `20261108-asset-library-f63970b5f` 上线；仅 web-aiavatar）
+
+去掉「体验新版 / 返回旧版」和 `?ui=` 开关，登录后左侧导航、新首页、新资产页、新手机底栏和新「我的」成为唯一界面，真值 `<html data-ui>` 与 `shell/ui-version.ts` 删除。旧首页、旧资产页、旧导航、旧手机底栏连同只给它们用的样式和图片一并删除。旧链接照常：`/ips`、`/scenes`、`/assets?tab=ips|objects|materials|voices|authorized` 都落到对应页面。手机「发现」从底栏移到「我的」。`/studio`（老工作室：会员、任务、声音等）不归这个开关管，没有改动。无接口和迁移变更。
+
+### Studio 后台模型配置 · 2026-11-07（本地，未发布）
+
+`studio-admin` 新增 `/models`（模型接入、IP Studio 模型、功能与售价），替代统一后台和 `apps/admin` 的 LLM API 页，接口 `POST /api/admin/studio/model-config/command`，无迁移。规格当不透明 JSON，没改不发，服务端拒收不认识的规格字段；见 `docs/platform-model-management.md`。素材库绑定等 `dev/video-asset-library` 合入后补。
+
+### AI 艺人孵化演示同步设计方第二版 · 2026-11-07
+
+`apps/web-incubator` 同步设计方 11-05 的第二版压缩包，以第一版为基准三方合并，保留语言固定中文、去原生弹窗、手机宽度、地址栏同步和运营后台入口。工作台导航重排为七组加页签，新增总览、AI 图片、AI 视频，导演台支持多项目和画布 / 流程两种浏览，批量工具重做，默认暗色可切亮色。残留的三位真实艺人换成虚拟，演示图增加到 177 张。修了设计包暗色样式把弹窗反转成浅底白字、琥珀按钮白字的问题。发布记录见 `docs/releases/web-incubator-v2-release-20261107.md`。
+
 ### AI 艺人孵化全端演示 · 2026-11-06（`incubator.aibuzz.cn`）
 
 新应用 `apps/web-incubator`（3020）：设计方的 Figma Make 原型整体搬入 `src/prototype/`（入口用到的 131 个文件，约 5 万行），含落地页、生态创业者工作台、明星端、品牌端、运营后台、粉丝端和两个小程序。纯前端示例数据，不调接口、不扣积分，无后端、迁移和契约改动；不替代 web-star / admin / web-celebrity。原型里的真实艺人和作品已换成虚拟。语言固定中文，英文分支留在源码里。相对原型的全部改动和已知问题见该应用 README。
@@ -4909,3 +4925,7 @@ AiAvatar 模板统一为只读画布预览，浏览不产生草稿；明确“�
 ### 2026-10-10 · IP Studio 品牌更新上线
 
 品牌为「IP Studio · 声量引擎旗下」，slogan 为「让灵感成形，让 IP 出圈」。沿用旧数字人多面体侧脸 icon 的蓝灰、深墨配色版本，更新首页、共享导航、登录品牌、favicon 与 Apple 图标，手机简介补齐句间标点。前端代码 `fb4502a2`，发布包 `20261010172357-fb4502a2`；四门、548 项前端测试和生产构建通过，线上首页、21 项资源 SHA256、BUILD_ID 与服务状态一致，桌面与手机模拟视图及线上首页视觉通过。无后端发布或收费操作。详见 [发布记录](releases/ip-studio-ui-release-20261010.md)。
+
+### 2026-11-06 · 导演台带货短剧（功能分支，未发布）
+
+每部作品一个「带货短剧」开关；打开后多一个「商品」工作区和商品库（个人资产库 `kind=product`，无迁移、无新路径）。商品写进剧本（编剧规则或创作助手的修改建议），提取资产时对上商品不变成道具，写分镜时关联到片段，商品图作为分镜图和视频的参考图。真源 `docs/ai-director-commerce-plan.md`，规则 `specs/BUSINESS_RULES.md`「导演台带货短剧」。

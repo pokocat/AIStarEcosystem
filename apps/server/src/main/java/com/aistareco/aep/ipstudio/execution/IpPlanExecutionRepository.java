@@ -13,6 +13,7 @@ import java.util.Optional;
 /** Lease and status changes are conditional updates; the caller learns from the row count whether it won. */
 @Repository
 public interface IpPlanExecutionRepository extends JpaRepository<IpPlanExecution,String> {
+    org.springframework.data.domain.Page<IpPlanExecution> findByOwnerUserIdOrderByCreatedAtDesc(String ownerUserId,org.springframework.data.domain.Pageable pageable);
     @org.springframework.data.jpa.repository.Query("select x from IpPlanExecution x where x.ownerUserId = ?1 and trim(trailing from x.clientRequestId) = trim(trailing from ?2)")
     Optional<IpPlanExecution> findByOwnerUserIdAndClientRequestId(String ownerUserId,String clientRequestId);
     List<IpPlanExecution> findByProjectIdAndStatusIn(String projectId,Collection<String> statuses);

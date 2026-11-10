@@ -32,7 +32,7 @@ export default function CardPublicPage({ params }: { params: Promise<{ slug: str
       })
       .catch((e: unknown) => {
         if (!alive) return;
-        setLoad({ state: "error", message: e instanceof Error ? e.message : "名片打不开了" });
+        setLoad({ state: "error", message: e instanceof Error ? e.message : "名片加载失败" });
       });
     return () => {
       alive = false;
@@ -44,11 +44,11 @@ export default function CardPublicPage({ params }: { params: Promise<{ slug: str
 
   return (
     <Notice
-      title={load.state === "missing" ? "这张名片不存在" : "名片暂时打不开"}
+      title={load.state === "missing" ? "这张名片不存在" : "名片加载失败"}
       body={
         load.state === "missing"
-          ? "链接可能已经失效，或者名片主人取消了发布。找他要一张新的吧。"
-          : `${load.message}。稍后再试，或者直接联系名片主人。`
+          ? "链接可能已失效，或名片已取消发布。请联系名片主人获取新链接。"
+          : `${load.message}。请稍后重试，或联系名片主人。`
       }
     />
   );
@@ -66,7 +66,7 @@ function Placeholder() {
       <div className="m-skel" style={{ height: 92, marginTop: 16, borderRadius: 2 }} />
       <div className="m-skel" style={{ height: 46, marginTop: 12, borderRadius: 2 }} />
       <span className="mono" style={{ marginTop: 14, textAlign: "center", fontSize: 10, letterSpacing: ".1em", color: "var(--ink-4)" }}>
-        正在打开名片
+        正在加载名片…
       </span>
     </div>
   );

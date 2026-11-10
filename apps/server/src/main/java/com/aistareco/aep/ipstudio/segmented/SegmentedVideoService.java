@@ -64,16 +64,21 @@ public class SegmentedVideoService {
 
     /** 页面上的价：只按段数、张数算，不碰素材文件。 */
     public SegmentedVideoPrice price(String userId, String model, String tier, int duration, String ratio, int images, boolean character, boolean voice, boolean optimize) {
+        return price(userId, model, tier, duration, ratio, images, character, voice, optimize, null);
+    }
+
+    @Transactional(readOnly = true)
+    public SegmentedVideoPrice price(String userId, String model, String tier, int duration, String ratio, int images, boolean character, boolean voice, boolean optimize, BillingSelection billing) {
         List<SegmentedMaterial> materials = new ArrayList<>();
         for (int i = 0; i < Math.min(images, 12); i++) materials.add(new SegmentedMaterial("m" + i, "素材", "image"));
         if (character) materials.add(new SegmentedMaterial("character", "出镜人物", "character"));
         if (voice) materials.add(new SegmentedMaterial("voice", "声音", "voice"));
-        return summarize(userId, build(userId, model, tier, duration, ratio, optimize, materials));
+        return summarize(userId, build(userId, model, tier, duration, ratio, optimize, materials), billing);
     }
 
     @Transactional
     public PlanExecution start(String userId, String projectId, SegmentedVideoRequest req) {
-        if (req == null || req.clientRequestId() == null || !req.clientRequestId().matches("[A-Za-z0-9_-]{1,64}")) throw invalid("请求编号无效");
+        if (req == null || req.clientRequestId() == null || !req.clientRequestId().matches("[A-Za-z0-9_-]{1,64}")) throw invalid("请求已失效，请刷新页面后重试");
         if (req.sceneId() == null || req.sceneId().isBlank()) throw invalid("请选择场景");
         if (req.text() != null && req.text().length() > 16000) throw invalid("要求最多 16000 字");
         int duration = req.duration() == null ? 0 : req.duration();
@@ -82,17 +87,17 @@ public class SegmentedVideoService {
         var project = projects.required(userId, projectId);
         JsonNode doc = projects.readDoc(project);
         for (SegmentedMaterial m : materials) {
-            if (!Set.of("image", "character", "voice").contains(String.valueOf(m.slot()))) throw invalid("素材类型不对");
+            if (!Set.of("image", "character", "voice").contains(String.valueOf(m.slot()))) throw invalid("素材类型不正确");
             JsonNode node = m.nodeId() == null ? null : IpDocs.node(doc, m.nodeId());
             String key = node == null ? null : IpDocs.primaryStorageKey(node);
-            if (key == null) throw invalid("「" + m.title() + "」不在这张画布上了，请重新放一次");
+            if (key == null) throw invalid("「" + m.title() + "」已不在画布上，请重新添加");
             projects.requireOwnedAssetKey(userId, key);
         }
         boolean optimize = !Boolean.FALSE.equals(req.optimize());
         Built built = build(userId, req.model(), req.tier(), duration, ratio, optimize, materials);
         SegmentedVideoPrice price = summarize(userId, built);
         if (req.budgetCap() == null || req.budgetCap() < price.cap())
-            throw new BusinessException(HttpStatus.CONFLICT, "STUDIO_PRICE_CHANGED", "价格有变化，这条最多要 " + price.cap() + " 积分。请看一眼新价格再点一次",
+            throw new BusinessException(HttpStatus.CONFLICT, "STUDIO_PRICE_CHANGED", "价格已变化，请确认新价格后重试",
                     Map.of("cap", price.cap()));
         // 脚本步骤的输入：素材按写脚本时的编号（场景图在前，出镜人物在后）。
         List<String> imageTitles = materials.stream().filter(m -> "image".equals(m.slot())).map(SegmentedMaterial::title).toList();
@@ -123,12 +128,12 @@ public class SegmentedVideoService {
 
     private Built build(String userId, String requested, String tier, int duration, String ratio, boolean optimize, List<SegmentedMaterial> materials) {
         if (fixtures.enabled()) throw invalid("测试响应不支持长视频，请关闭测试响应");
-        if (duration < 1 || duration > MAX_TOTAL_SECONDS) throw invalid("视频时长要在 " + MAX_TOTAL_SECONDS + " 秒以内");
+        if (duration < 1 || duration > MAX_TOTAL_SECONDS) throw invalid("视频时长不能超过 " + MAX_TOTAL_SECONDS + " 秒");
         VideoStudioModel model = model(requested);
         var contract = model.contract();
         VideoStudioModeSpec reference = contract.modes().stream().filter(m -> m.references() != null && !m.needsFirstFrame() && !m.needsLastFrame()).findFirst().orElse(null);
         VideoStudioModeSpec first = contract.modes().stream().filter(m -> m.needsFirstFrame() && !m.needsLastFrame() && m.references() == null).findFirst().orElse(null);
-        if (reference == null && first == null) throw new BusinessException(HttpStatus.BAD_REQUEST, "STUDIO_VIDEO_MODE_UNAVAILABLE", "「" + model.name() + "」用不了分镜图，做不了长视频。请换一个视频模型");
+        if (reference == null && first == null) throw new BusinessException(HttpStatus.BAD_REQUEST, "STUDIO_VIDEO_MODE_UNAVAILABLE", "「" + model.name() + "」不支持分镜图，无法生成长视频。请更换视频模型");
         String mode = reference != null ? REFERENCE_MODE : FRAME_MODE;
         String usedTier = contract.tiers().stream().filter(t -> t.canvases().stream().anyMatch(c -> ratio.equals(c.aspectRatio())))
                 .map(t -> t.tier()).filter(t -> tier == null || tier.equals(t)).findFirst()
@@ -137,10 +142,10 @@ public class SegmentedVideoService {
         try {
             segments = SegmentedPlan.segments(duration, contract.minSeconds(), contract.maxSeconds(), FRAME_MODE.equals(mode));
         } catch (IllegalArgumentException e) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "STUDIO_VIDEO_MODEL_UNAVAILABLE", "所选视频模型还没有可用的时长规格，请换一个模型");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "STUDIO_VIDEO_MODEL_UNAVAILABLE", "所选视频模型暂不可用，请更换模型");
         }
         if (segments.size() > SegmentedPlan.MAX_SEGMENTS)
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "STUDIO_SEGMENTS_TOO_MANY", "「" + model.name() + "」单段最长 " + contract.maxSeconds() + " 秒，" + duration + " 秒要分 " + segments.size() + " 段，太多了。请缩短时长或换单段更长的模型");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "STUDIO_SEGMENTS_TOO_MANY", "「" + model.name() + "」单段最长 " + contract.maxSeconds() + " 秒，" + duration + " 秒需要分 " + segments.size() + " 段，超出上限。请缩短时长或更换单段更长的模型");
 
         var image = scenePolicies.resolve("studio", "image", scenePolicies.directorImageDefault().orElse(null), pricing.ipImage()).resolved().endpoint();
         var imageSpec = AiImageRequestSpec.read(image.getImageRequestSpecJson());
@@ -160,7 +165,7 @@ public class SegmentedVideoService {
                 .put("summary", "按 " + segments.size() + " 段做到成片");
         ArrayNode steps = plan.putArray("steps");
         text(steps, "script", "写分镜脚本", "按要求写分段的分镜脚本", "script", List.of());
-        text(steps, "review", "审核脚本", "开拍前审一遍分镜脚本", "review", List.of("script"));
+        text(steps, "review", "审核脚本", "生成前检查分镜脚本", "review", List.of("script"));
         List<String> videoIds = new ArrayList<>();
         String firstGate = null;
         for (var seg : segments) {
@@ -206,7 +211,7 @@ public class SegmentedVideoService {
     }
 
     private void board(ArrayNode steps, String id, String title, int segment, int part, List<SegmentedMaterial> pictures, String prior, int imageMax, String size, String ratio, String model, List<String> deps) {
-        ObjectNode settings = (ObjectNode) step(steps, id, "image", title, "按分镜脚本出分镜图", deps).path("settings");
+        ObjectNode settings = (ObjectNode) step(steps, id, "image", title, "按分镜脚本生成分镜图", deps).path("settings");
         settings.put("size", size).put("aspectRatio", ratio).put("count", 1).put("model", model);
         settings.putObject("segmented").put("kind", "board").put("segment", segment).put("part", part);
         ArrayNode bindings = settings.putArray("referenceBindings");
@@ -227,7 +232,7 @@ public class SegmentedVideoService {
     private void video(ArrayNode steps, SegmentedPlan.Segment seg, VideoStudioModel model, String mode, VideoStudioModeSpec reference, String tier, String ratio, boolean optimize,
                        List<SegmentedMaterial> pictures, SegmentedMaterial voice, int audioRefs, List<String> deps) {
         int k = seg.no();
-        ObjectNode settings = (ObjectNode) step(steps, "v" + k, "video", "第 " + k + " 段视频", "按分镜脚本出片", deps).path("settings");
+        ObjectNode settings = (ObjectNode) step(steps, "v" + k, "video", "第 " + k + " 段视频", "按分镜脚本生成视频", deps).path("settings");
         settings.put("durationSec", seg.seconds()).put("aspectRatio", ratio).put("count", 1);
         // 不能按 id 选的模型就是默认那个：不写，提交时走默认（同 AI 视频页的短片）。
         if (model.selectableById()) settings.put("model", model.endpointId());
@@ -272,7 +277,7 @@ public class SegmentedVideoService {
         var models = videos.models();
         var chosen = models.stream().filter(m -> requested == null ? m.isDefault() : requested.equals(m.endpointId())).findFirst()
                 .orElse(requested == null && !models.isEmpty() ? models.get(0) : null);
-        if (chosen == null || chosen.contract() == null) throw new BusinessException(HttpStatus.BAD_REQUEST, "STUDIO_VIDEO_MODEL_UNAVAILABLE", "所选视频模型暂不可用，请换一个模型");
+        if (chosen == null || chosen.contract() == null) throw new BusinessException(HttpStatus.BAD_REQUEST, "STUDIO_VIDEO_MODEL_UNAVAILABLE", "所选视频模型暂不可用，请更换模型");
         return chosen;
     }
 
@@ -282,7 +287,7 @@ public class SegmentedVideoService {
         if (spec == null) return fallback;
         return spec.outputs().stream().filter(o -> ratio.equals(o.aspectRatio())).map(AiImageRequestSpec.Output::canvasSize)
                 .max(Comparator.comparingLong(SegmentedVideoService::pixels))
-                .orElseThrow(() -> new BusinessException(HttpStatus.BAD_REQUEST, "STUDIO_IMAGE_SIZE_UNSUPPORTED", "默认图片模型「" + name + "」出不了 " + ratio + " 的分镜图，请换一个画面比例"));
+                .orElseThrow(() -> new BusinessException(HttpStatus.BAD_REQUEST, "STUDIO_IMAGE_SIZE_UNSUPPORTED", "默认图片模型「" + name + "」不支持生成 " + ratio + " 的分镜图，请更换画面比例"));
     }
 
     private static long pixels(String size) {
@@ -291,7 +296,12 @@ public class SegmentedVideoService {
     }
 
     private SegmentedVideoPrice summarize(String userId, Built built) {
-        long video = 0, board = 0, text = 0, redo = 0;
+        return summarize(userId, built, null);
+    }
+
+    private SegmentedVideoPrice summarize(String userId, Built built, BillingSelection billing) {
+        long video = 0, board = 0, text = 0, redo = 0, discountedVideo = 0;
+        Set<String> discountNames = new LinkedHashSet<>();
         int boards = 0;
         for (JsonNode step : built.plan().path("steps")) {
             long cost = step.path("quotedCost").asLong();
@@ -299,13 +309,20 @@ public class SegmentedVideoService {
                 case "image" -> { board += cost; boards++; redo += cost; }
                 case "check" -> { text += cost; redo += cost; }
                 // 视频价只算视频：H3 先改写提示词的冻结上限归到文字那边，页面才不会把它算两遍。
-                case "video" -> { long only = quoter.videoOnly(userId, step); video += only; text += cost - only; }
+                case "video" -> {
+                    long only = quoter.videoOnly(userId, step); video += only; text += cost - only;
+                    if (billing != null) {
+                        var quote = quoter.videoPrice(userId, step, billing);
+                        discountedVideo = Math.addExact(discountedVideo, quote.payableCredits());
+                        if (quote.discountCredits() > 0 && quote.discountName() != null) discountNames.add(quote.discountName());
+                    }
+                }
                 default -> text += cost;
             }
         }
         List<Integer> segments = built.segments().stream().map(SegmentedPlan.Segment::seconds).toList();
         long estimated = built.plan().path("budget").path("estimated").asLong();
-        return new SegmentedVideoPrice(segments, boards, built.review(), video, board, text, estimated, Math.addExact(estimated, redo));
+        return new SegmentedVideoPrice(segments, boards, built.review(), video, board, text, estimated, Math.multiplyExact(estimated, 3), billing == null ? null : discountedVideo, discountNames.isEmpty() ? null : String.join("、", discountNames));
     }
 
     private static BusinessException invalid(String message) {

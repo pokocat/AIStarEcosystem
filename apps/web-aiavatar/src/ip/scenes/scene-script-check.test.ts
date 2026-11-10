@@ -57,3 +57,8 @@ describe("overlongShots", () => {
     expect(overlongShots("随便写的一段提示词")).toEqual([]);
   });
 });
+
+test("全角数字和长破折号也能认出镜头和价格（2026-11-09 线上 terra）", () => {
+  expect(overlongShots("第１镜（０—２秒）\n博主说：「这一句台词很长很长很长很长很长很长」")).toEqual([{ no: 1, seconds: 2, chars: 17 }]);
+  expect(missingFigures(["原价18元，现价9.9元"], "博主说：「原价１８，现在只要９.９」")).toEqual([]);
+});

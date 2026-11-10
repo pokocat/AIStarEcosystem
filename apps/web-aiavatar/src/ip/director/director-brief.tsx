@@ -8,6 +8,7 @@
 // 每次发送都按 director-pending 记下原请求：刷新、断网后按同一编号恢复，不重复受理、不重复扣费。
 // ────────────────────────────────────────────────────────────────────────
 
+import { runDirectorTask } from "./director-generation";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUp, Check, ChevronRight, Loader2, MessageSquare, PenLine, RotateCcw, Sparkles } from "lucide-react";
 import type { DirectorBrief, DirectorBriefMessage, DirectorFormat, DirectorTaskType, DirectorWork } from "@ai-star-eco/types";
@@ -97,7 +98,7 @@ function useBriefController(work: DirectorWork, apply: (w: DirectorWork) => void
         writePending(key, req);
       }
       setPendingState(req);
-      apply(await deliver(key, req, b => DirectorApi.runTask(work.id, b), received(req.body)));
+      apply(await deliver(key, req, b => runDirectorTask(work, apply, b), received(req.body)));
       setPendingState(null);
       return true;
     } catch (e) {
@@ -125,7 +126,7 @@ function useBriefController(work: DirectorWork, apply: (w: DirectorWork) => void
     catch (e) { setError(errorText(e)); return false; }
   };
 
-  const blocked = "上一条还没确认是否送达，请先点「按原请求重新发送」或「不发了」。";
+  const blocked = "上一条消息的送达状态尚未确认，请点击「按原请求重新发送」或「放弃发送」。";
   const busy = sending || !!asking || !!writing;
   /** 确认基本要素。第一次确认后 AI 接着问；之后再改只保存，不另开一轮。 */
   const confirm = async () => {
@@ -205,7 +206,7 @@ function BriefDeskBody({ openSettings, onPaste }: { openSettings?: () => void; o
   return <section className="director-panel director-brief-desk" aria-label="写剧本前的准备">
     <header className="director-brief-head"><div>
       <h3><Sparkles size={16}/>写剧本前的准备</h3>
-      <p>{!hasIdea ? "和全能创作助手说说你想拍什么。已有剧本可以直接粘贴或上传。" : ready ? "信息已足够，可以生成剧本。" : "在全能创作助手里确认这些内容，也可以直接生成。"}</p>
+      <p>{!hasIdea ? "在全能创作助手中描述你想拍的故事。已有剧本可直接粘贴或上传。" : ready ? "信息已足够，可以生成剧本。" : "请在全能创作助手中确认以下内容，也可直接生成。"}</p>
     </div></header>
     {hasIdea && <dl className="director-brief-facts">
       <div><dt>想法</dt><dd>{work.idea}</dd></div>
@@ -214,10 +215,10 @@ function BriefDeskBody({ openSettings, onPaste }: { openSettings?: () => void; o
       <div><dt>画面</dt><dd>{work.settings.style} · {work.settings.aspectRatio}{openSettings && <button type="button" className="ip-brand-text-button" onClick={openSettings}>修改</button>}</dd></div>
       {ready && brief.summary && <div><dt>创作要求</dt><dd className="director-brief-summary">{brief.summary}</dd></div>}
     </dl>}
-    {format.episodes > 3 && hasIdea && <p className="director-muted">集数较多时，先写全剧大纲和前几集，后面的集可以继续写。</p>}
+    {format.episodes > 3 && hasIdea && <p className="director-muted">集数较多时，将先写全剧大纲和前几集，其余各集可继续写。</p>}
     <div className="director-actions">
       {hasIdea && <button type="button" className={ready ? "ip-brand-button" : "ip-brand-secondary"} disabled={b.busy} onClick={() => void b.generate(!ready)}
-        title={ready ? undefined : "按你的想法和已经回答的内容生成，没说的由 AI 补齐"}>{b.sending ? <Loader2 size={15} className="ip-loading-icon"/> : <Sparkles size={15}/>}{ready ? "生成剧本" : "跳过问答，生成剧本"}</button>}
+        title={ready ? undefined : "根据你的想法和已回答的内容生成，未提及的部分由 AI 补充"}>{b.sending ? <Loader2 size={15} className="ip-loading-icon"/> : <Sparkles size={15}/>}{ready ? "生成剧本" : "跳过问答，生成剧本"}</button>}
       {hasIdea && <span className="director-cost">{work.pricing.mock ? costText(0, true) : "按实际用量结算"}</span>}
       {ctl && !ctl.open && <button type="button" className="ip-brand-button" onClick={() => ctl.setOpen(true)}><MessageSquare size={15}/>打开创作助手</button>}
       <span className="director-spacer"/>
@@ -249,11 +250,11 @@ function BriefEssentials({ openSettings }: { openSettings?: () => void }) {
   const setKind = (kind: DirectorFormat["kind"]) => { setCustom(""); b.setFormat(DEFAULTS[kind]); };
   const episodes = f.kind === "single" ? [] : EPISODE_CHOICES[f.kind];
   return <div className="director-msg is-ai director-brief-essentials" role="group" aria-label="基本要素">
-    <p>先确认这部作品的基本要素。</p>
+    <p>请确认作品的基本要素。</p>
     <Choice label="形式" options={KINDS.map(k => k.key)} value={f.kind} onChange={setKind} text={k => KINDS.find(x => x.key === k)!.label}/>
     {f.kind !== "single" && <div className="director-field"><span>集数</span><div className="director-chips" role="group" aria-label="集数">
       {episodes.map(n => <button key={n} type="button" aria-pressed={f.episodes === n && !custom} onClick={() => { setCustom(""); b.setFormat({ ...f, episodes: n }); }}>{n} 集</button>)}
-      <input aria-label="自定义集数" inputMode="numeric" placeholder="其它" value={custom || (episodes.includes(f.episodes) ? "" : String(f.episodes))}
+      <input aria-label="自定义集数" inputMode="numeric" placeholder="其他" value={custom || (episodes.includes(f.episodes) ? "" : String(f.episodes))}
         onChange={e => { const v = e.target.value.replace(/\D/g, "").slice(0, 3); setCustom(v); const n = Number(v); if (n >= 1 && n <= 200) b.setFormat({ ...f, episodes: n }); }}/>
     </div></div>}
     <Choice label={f.kind === "single" ? "时长" : "每集时长"} options={SECOND_CHOICES[f.kind]} value={f.seconds} onChange={s => b.setFormat({ ...f, seconds: s })} text={secondsText}/>
@@ -269,8 +270,8 @@ function BriefEssentials({ openSettings }: { openSettings?: () => void }) {
 function BriefMessageView({ m, active }: { m: DirectorBriefMessage; active: boolean }) {
   const b = useBrief()!;
   if (m.role === "user") return <div className="director-msg is-user"><p>{m.text}</p></div>;
-  if (m.status === "pending") return <div className="director-msg is-ai is-pending" role="status"><Loader2 size={14} className="ip-loading-icon"/><span>AI 正在看你的想法</span></div>;
-  if (m.status === "failed") return <div className="director-msg is-ai is-failed" role="alert"><p>{m.error || "这一轮没有回复成功"}</p><small>可以再发一次，或者直接生成剧本。</small></div>;
+  if (m.status === "pending") return <div className="director-msg is-ai is-pending" role="status"><Loader2 size={14} className="ip-loading-icon"/><span>AI 正在分析你的想法</span></div>;
+  if (m.status === "failed") return <div className="director-msg is-ai is-failed" role="alert"><p>{m.error || "本轮回复失败"}</p><small>可重新发送，或直接生成剧本。</small></div>;
   return <div className="director-msg is-ai">
     {m.text && <p>{m.text}</p>}
     {(m.questions ?? []).map((q, i) => <div key={i} className="director-brief-q">
@@ -295,7 +296,7 @@ export function BriefThread({ openSettings }: { openSettings?: () => void }) {
   const send = () => { if (hasIdea) void b.answer(); else void b.saveIdea(); };
   return <>
     <div className="director-assistant-list" ref={list} aria-live="polite">
-      {!hasIdea ? <div className="director-msg is-ai"><p>先说说你想拍什么，一句话就可以。</p></div> : <>
+      {!hasIdea ? <div className="director-msg is-ai"><p>请用一句话描述你想拍的故事。</p></div> : <>
         <div className="director-msg is-user"><p>{work.idea}</p></div>
         <BriefEssentials openSettings={openSettings}/>
         {brief.messages.map(m => <BriefMessageView key={m.id} m={m} active={m.id === lastAi?.id && openQuestions.length > 0}/>)}
@@ -312,12 +313,12 @@ export function BriefThread({ openSettings }: { openSettings?: () => void }) {
     {b.pending && b.error && <div className="director-warn director-brief-notice" role="alert">
       <span>{b.error}</span>
       <button type="button" disabled={b.sending} onClick={b.resend}><RotateCcw size={13}/>按原请求重新发送</button>
-      <button type="button" disabled={b.sending} onClick={b.dropPending}>不发了</button>
+      <button type="button" disabled={b.sending} onClick={b.dropPending}>放弃发送</button>
     </div>}
     {!b.pending && b.error && <div className="director-assistant-error" role="alert">{b.error}<button type="button" onClick={b.clearError}>关闭</button></div>}
     {(!hasIdea || b.confirmed || brief.messages.length > 0) && <div className="director-brief-composer">
       <textarea rows={2} maxLength={2000} aria-label={hasIdea ? "回答或补充" : "你的想法"} value={b.text} onChange={e => b.setText(e.target.value)} disabled={!!b.writing}
-        placeholder={!hasIdea ? "例如：凌晨的快递分拣站，夜班分拣员发现一个寄给十年后自己的包裹" : openQuestions.length ? "点上面的选项，或直接写。说「你决定」就开始写剧本" : "补充你的想法，或者说「直接写」"}
+        placeholder={!hasIdea ? "例如：凌晨的快递分拣站，夜班分拣员发现一个寄给十年后自己的包裹" : openQuestions.length ? "选择上方选项，或输入你的想法。输入「你决定」将直接开始写剧本" : "补充你的想法，或输入「直接写」"}
         onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}/>
       <button type="button" className="director-assistant-send" aria-label="发送" disabled={b.busy || !canSend} onClick={send}>
         {b.sending ? <Loader2 size={16} className="ip-loading-icon"/> : <ArrowUp size={16}/>}</button>
@@ -349,12 +350,12 @@ export function ScriptMore({ work, apply, setError }: { work: DirectorWork; appl
   const start = useCallback(() => void run("more", async () => {
     const cost = work.pricing.textMax;
     const billing = await chooseDirectorBilling("script", cost);
-    apply(await DirectorApi.runTask(work.id, { type: "script-more", clientRequestId: newRequestId(), options: {}, billing, maxCost: cost }));
+    apply(await runDirectorTask(work, apply, { type: "script-more", clientRequestId: newRequestId(), options: {}, billing, maxCost: cost }));
   }, failed(setError, "继续写剧本")), [work.id, work.pricing.textMax]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!p || p.written >= p.total) return null;
   const from = p.written + 1, to = p.nextTo ?? from;
   const range = to > from ? `第 ${from}–${to} 集` : `第 ${from} 集`;
-  if (running) return <AiWorking compact title={`AI 正在写${range}`} task={running} detail="按全剧大纲继续写，完成后接在已有内容后面。"/>;
+  if (running) return <AiWorking compact title={`AI 正在写${range}`} task={running} detail="按全剧大纲继续写，完成后追加在已有内容之后。"/>;
   return <div className="director-script-more" role="group" aria-label="继续写剧本">
     <span>全剧 {p.total} 集，已写 {p.written} 集</span>
     <button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={start}>{busy ? <Loader2 size={15} className="ip-loading-icon"/> : <PenLine size={15}/>}继续写{range}</button>

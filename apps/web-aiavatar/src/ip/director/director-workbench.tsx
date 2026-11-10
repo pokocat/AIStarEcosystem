@@ -1,8 +1,9 @@
 "use client";
 
+import { withSavedDirectorDrafts } from "./director-generation";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, Clapperboard, FileText, Loader2, Pause, Play, Settings2, Shapes, Sparkles, Square, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, Clapperboard, FileText, Loader2, Pause, Play, Settings2, Shapes, ShoppingBag, Sparkles, Square, X } from "lucide-react";
 import type { DirectorPipeline, DirectorPipelineEstimate, DirectorPipelineTarget, DirectorWork } from "@ai-star-eco/types";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { isProductNotEnrolledError } from "@ai-star-eco/api-client";
@@ -10,17 +11,18 @@ import { DirectorApi } from "../api";
 import { goneWorkId, isStaleGone } from "../api/director";
 import { DirectorScript } from "./director-script";
 import { DirectorAssets } from "./director-assets";
+import { DirectorProducts } from "./director-products";
 import { DirectorStoryboard } from "./director-storyboard";
 import { ExtractReview } from "./director-extract";
 import { SettingsPanel } from "./director-settings";
-import { InlineError, STALE_GONE_MESSAGE, chooseDirectorBilling, clearDrafts, isWorkGone, onWorkGone, costText, errorText, failed, hasDrafts, secRange, useBusy, useEscape, dialogFocus, type DirectorFail } from "./director-shared";
+import { exportIsStale, InlineError, STALE_GONE_MESSAGE, chooseDirectorBilling, clearDrafts, isWorkGone, onWorkGone, costText, errorText, failed, hasDrafts, secRange, useBusy, useEscape, dialogFocus, type DirectorFail, runningTask } from "./director-shared";
 import { normalizeStudioError, useStudioFailure } from "../studio-errors";
 import { AiMark } from "../studio-ai-icon";
 import { BriefProvider } from "./director-brief";
 import { AssistantProvider, DirectorAssistantPanel, useAssistant, useAssistantController } from "./director-assistant";
 
-export type Tab = "script" | "assets" | "storyboard";
-const GO_LABEL: Record<Tab, string> = { script: "前往剧本", assets: "前往资产", storyboard: "前往分镜" };
+export type Tab = "script" | "assets" | "products" | "storyboard";
+const GO_LABEL: Record<Tab, string> = { script: "前往剧本", assets: "前往资产", products: "前往商品", storyboard: "前往分镜" };
 export type WorkbenchProps = {
   work: DirectorWork;
   episodeId: string | null;
@@ -44,54 +46,59 @@ export type WorkbenchProps = {
 export type ClipFocus = { clipId: string; assetId?: string; open: "assets" | "editor"; at: number };
 
 /** 下一步提示：按作品现状告诉用户该做什么，按钮直接带到对应位置。 */
-type NextStep = { text: string; tab: Tab; running?: true; alsoOn?: Tab[] };
+type NextStep = { text: string; tab: Tab; tone: "info" | "warning" | "success" | "running"; alsoOn?: Tab[] };
 function nextStep(work: DirectorWork, episodeId: string | null): NextStep | null {
   // AI 正在做的文字任务优先说出来：不然生成中还写着「下一步：生成剧本」，像是没开始。
   const running = work.tasks.filter(t => t.status === "running").map(t => t.target);
-  if (running.includes("script")) return { text: "AI 正在写剧本，完成后自动显示", tab: "script", running: true };
-  if (running.includes("script-more")) return { text: "AI 正在继续写剧本", tab: "script", running: true };
-  if (running.includes("split")) return { text: "AI 拆分中", tab: "script", running: true };
-  if (running.some(t => t.startsWith("extract"))) return { text: "AI 正在提取全剧资产", tab: "script", running: true };
+  if (running.includes("script")) return { text: "AI 正在写剧本，完成后自动显示", tab: "script", tone: "running" };
+  if (running.includes("script-more")) return { text: "AI 正在继续写剧本", tab: "script", tone: "running" };
+  if (running.includes("split")) return { text: "AI 拆分中", tab: "script", tone: "running" };
+  if (running.some(t => t.startsWith("extract"))) return { text: "AI 正在提取全剧资产", tab: "script", tone: "running" };
   const planning = running.find(t => t.startsWith("plan:"));
-  if (planning) { const ep = work.episodes.find(e => `plan:${e.id}` === planning); return { text: `AI 正在写${ep ? `第 ${ep.no} 集` : ""}分镜脚本`, tab: "storyboard", running: true }; }
+  if (planning) { const ep = work.episodes.find(e => `plan:${e.id}` === planning); return { text: `AI 正在写${ep ? `第 ${ep.no} 集` : ""}分镜脚本`, tab: "storyboard", tone: "running" }; }
   const reshooting = running.find(t => t.startsWith("reshoot:"));
   if (reshooting) {
     const id = reshooting.slice(8), ep = work.episodes.find(e => e.id === id), clip = work.clips.find(c => c.id === id);
-    return { text: `AI 正在重写${ep ? `第 ${ep.no} 集` : clip ? `片段 ${clip.order} 的` : ""}分镜脚本`, tab: "storyboard", running: true };
+    return { text: `AI 正在重写${ep ? `第 ${ep.no} 集` : clip ? `片段 ${clip.order} 的` : ""}分镜脚本`, tab: "storyboard", tone: "running" };
   }
-  if (running.includes("brief")) return { text: "AI 正在看你的想法", tab: "script", running: true };
-  if (!work.draft.trim() && work.episodes.length === 0) return { text: !work.idea.trim() ? "第一步：说说你的想法，或粘贴剧本"
-    : work.brief?.status === "ready" ? "下一步：信息够了，生成剧本" : work.settings.format ? "下一步：回答 AI 的问题，或直接生成剧本" : "下一步：确认形式和集数", tab: "script" };
-  if (work.pendingSplit) return { text: `分成 ${work.pendingSplit.episodes.length} 集，确认后生效`, tab: "script" };
-  if (work.episodes.length === 0) return { text: "下一步：拆分剧本，或作为一集", tab: "script" };
+  if (running.includes("brief")) return { text: "AI 正在分析你的想法", tab: "script", tone: "running" };
+  // 带货短剧：还没写剧本、也没加商品时，先加商品，剧本才写得进去。
+  if (work.settings.commerce && !work.draft.trim() && !work.episodes.length && !work.assets.some(a => a.kind === "product")) return { tone: "info", text: "下一步：添加要植入的商品", tab: "products" };
+  if (!work.draft.trim() && work.episodes.length === 0) return { tone: "info", text: !work.idea.trim() ? "第一步：描述你的想法，或粘贴剧本"
+    : work.brief?.status === "ready" ? "下一步：生成剧本" : work.settings.format ? "下一步：回答 AI 的问题，或直接生成剧本" : "下一步：确认形式和集数", tab: "script" };
+  if (work.pendingSplit) return { tone: "info", text: `分成 ${work.pendingSplit.episodes.length} 集，确认后生效`, tab: "script" };
+  if (work.episodes.length === 0) return { tone: "info", text: "下一步：拆分剧本，或作为一集", tab: "script" };
   const ep = work.episodes.find(e => e.id === episodeId) ?? work.episodes[0];
-  if (!ep.extracted && !work.assets.some(a => a.episodeIds.includes(ep.id))) return { text: "下一步：提取全剧资产", tab: "script", alsoOn: ["assets"] };
+  if (!ep.extracted && !work.assets.some(a => a.episodeIds.includes(ep.id))) return { tone: "info", text: "下一步：提取全剧资产", tab: "script", alsoOn: ["assets"] };
   const clips = work.clips.filter(c => c.episodeId === ep.id);
-  if (clips.length === 0) return { text: `下一步：写第 ${ep.no} 集分镜脚本`, tab: "storyboard" };
+  if (clips.length === 0) return { tone: "info", text: `下一步：写第 ${ep.no} 集分镜脚本`, tab: "storyboard" };
   const used = new Set(clips.flatMap(c => c.assetIds));
   const needImage = work.assets.filter(a => used.has(a.id) && !a.image.adoptedId);
-  if (needImage.length) return { text: `缺少 ${needImage.length} 张资产图：${needImage.slice(0, 3).map(a => a.name).join("、")}`, tab: "assets" };
+  if (needImage.length) return { tone: "warning", text: `缺少 ${needImage.length} 张资产图：${needImage.slice(0, 3).map(a => a.name).join("、")}`, tab: "assets" };
   const unconfirmed = work.assets.filter(a => used.has(a.id) && a.image.adoptedBy === "auto");
-  if (unconfirmed.length) return { text: `${unconfirmed.length} 张资产图待确认`, tab: "assets" };
+  if (unconfirmed.length) return { tone: "warning", text: `${unconfirmed.length} 张资产图待确认`, tab: "assets" };
   const fix = clips.filter(c => c.issues.length);
-  if (fix.length) return { text: `${fix.length} 个片段需修改后才能生成分镜图`, tab: "storyboard" };
+  if (fix.length) return { tone: "warning", text: `${fix.length} 个片段需修改后才能生成分镜图`, tab: "storyboard" };
   const noBoard = clips.filter(c => !c.board.adoptedId);
-  if (noBoard.length) return { text: `下一步：生成 ${noBoard.length} 张分镜图`, tab: "storyboard" };
+  if (noBoard.length) return { tone: "info", text: `下一步：生成 ${noBoard.length} 张分镜图`, tab: "storyboard" };
   const oldRefs = work.assets.filter(a => used.has(a.id) && a.image.adoptedCheck === "outdated");
-  if (oldRefs.length) return { text: `${oldRefs.map(a => a.name).join("、")} 的资产图需更新`, tab: "assets" };
+  if (oldRefs.length) return { tone: "warning", text: `${oldRefs.map(a => a.name).join("、")} 的资产图需更新`, tab: "assets" };
   const oldBoards = clips.filter(c => c.board.adoptedCheck === "outdated");
-  if (oldBoards.length) return { text: `${oldBoards.map(c => `片段 ${c.order}`).join("、")} 的分镜图需更新`, tab: "storyboard" };
+  if (oldBoards.length) return { tone: "warning", text: `${oldBoards.map(c => `片段 ${c.order}`).join("、")} 的分镜图需更新`, tab: "storyboard" };
   const autoBoard = clips.filter(c => c.board.adoptedBy === "auto");
-  if (autoBoard.length) return { text: `${autoBoard.length} 张分镜图待确认`, tab: "storyboard" };
-  if (clips.some(c => c.video.pending?.length)) return { text: "片段视频生成中，完成后自动出现在片段卡", tab: "storyboard" };
+  if (autoBoard.length) return { tone: "warning", text: `${autoBoard.length} 张分镜图待确认`, tab: "storyboard" };
+  if (clips.some(c => c.video.pending?.length)) return { tone: "running", text: "片段视频生成中，完成后将显示在片段卡上", tab: "storyboard" };
   const noVideo = clips.filter(c => !c.video.adoptedId);
-  if (noVideo.length) return { text: `下一步：生成 ${noVideo.length} 条片段视频`, tab: "storyboard" };
+  if (noVideo.length) return { tone: "info", text: `下一步：生成 ${noVideo.length} 条片段视频`, tab: "storyboard" };
   const oldVideos = clips.filter(c => c.video.adoptedId && c.video.adoptedCheck === "outdated");
-  if (oldVideos.length) return { text: `${oldVideos.map(c => `片段 ${c.order}`).join("、")} 的视频需更新`, tab: "storyboard" };
+  if (oldVideos.length) return { tone: "warning", text: `${oldVideos.map(c => `片段 ${c.order}`).join("、")} 的视频需更新`, tab: "storyboard" };
   const autoVideo = clips.filter(c => c.video.adoptedBy === "auto");
-  if (autoVideo.length) return { text: `${autoVideo.length} 条片段视频待确认`, tab: "storyboard" };
-  if (!(work.exports ?? []).some(e => e.episodeId === ep.id && e.status === "done")) return { text: `第 ${ep.no} 集视频已确认，可预览或导出`, tab: "storyboard" };
-  return { text: `第 ${ep.no} 集已导出。更换片段视频后需重新导出`, tab: "storyboard" };
+  if (autoVideo.length) return { tone: "warning", text: `${autoVideo.length} 条片段视频待确认`, tab: "storyboard" };
+  if (runningTask(work, `export:${ep.id}`)) return { tone: "running", text: `第 ${ep.no} 集导出中，完成后可以观看和下载`, tab: "storyboard" };
+  const lastExport = (work.exports ?? []).filter(e => e.episodeId === ep.id && e.status === "done").sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  if (!lastExport) return { tone: "success", text: `第 ${ep.no} 集视频已确认，可预览或导出`, tab: "storyboard" };
+  if (exportIsStale(lastExport, clips)) return { tone: "warning", text: `片段有变动，第 ${ep.no} 集需要重新导出`, tab: "storyboard" };
+  return { tone: "success", text: `第 ${ep.no} 集已导出。更换片段视频后需重新导出`, tab: "storyboard" };
 }
 
 /**
@@ -101,11 +108,11 @@ function nextStep(work: DirectorWork, episodeId: string | null): NextStep | null
  */
 export function nextStepShown(step: NextStep | null, tab: Tab) {
   if (!step) return false;
-  if (step.running) return true;
+  if (step.tone === "running") return true;
   return step.tab !== tab && !step.alsoOn?.includes(tab) && !(tab === "script" && step.tab === "script");
 }
 /** Plain confirmations fade on their own; warnings (a result not used, something to redo) stay until closed. */
-const PASSING_NOTICE = /^(已写到第 \d+ 集，共 \d+ 集|全部 \d+ 集都写好了|已分成 \d+ 集|资产已保存(，新增 \d+ 项)?|设定资料已并入第 1 集开头)$/;
+const PASSING_NOTICE = /^(已写到第 \d+ 集，共 \d+ 集|全部 \d+ 集都写好了|已分成 \d+ 集|资产已保存(，新增 \d+ 项)?|设定资料已并入第 1 集开头|第 \d+ 集已导出，可以观看和下载。)$/;
 
 export function DirectorWorkbench({ id }: { id: string }) {
   const auth = useRequireAuth();
@@ -122,7 +129,8 @@ export function DirectorWorkbench({ id }: { id: string }) {
   const [starting, setStarting] = useState(false);
   const reviewedRun = useRef<string | null>(null);
   // 换工作区时清掉上一处的报错：它说的是别处的事，留着会误导（2026-10-24 资产已入库，顶部还挂着「请先提取资产」）。
-  const assistant = useAssistantController({ work, apply: next => apply(next), tab, episodeId, goTab: setTab, pickEpisode: setEpisodeId });
+  // 商品页上和助手说的基本是「把商品写进剧本」，默认对象和剧本页一样。
+  const assistant = useAssistantController({ work, apply: next => apply(next), tab: tab === "products" ? "script" : tab, episodeId, goTab: setTab, pickEpisode: setEpisodeId });
 
   const apply = useCallback((next: DirectorWork) => {
     if (next.revision < revision.current) return;
@@ -168,7 +176,7 @@ export function DirectorWorkbench({ id }: { id: string }) {
     const outcome = await load();
     if (!mounted.current) return;
     setReloading(false);
-    if (outcome === "gone") setLoadError("还是找不到这部作品。请先在回收站恢复，再重新加载。");
+    if (outcome === "gone") setLoadError("仍未找到此作品。请在回收站恢复后重新加载。");
   };
 
   useEffect(() => { if (auth === "ok") void load(); }, [auth, load]);
@@ -210,6 +218,10 @@ export function DirectorWorkbench({ id }: { id: string }) {
     if (!initialTab.current) { initialTab.current = true; const step = nextStep(work, work.episodes[0]?.id ?? null); if (step) setTab(step.tab); }
   }, [work, episodeId]);
 
+  // 带货短剧开关关了，商品工作区就不出现了。
+  const commerce = !!work?.settings.commerce;
+  useEffect(() => { if (!commerce) setTab(t => t === "products" ? "script" : t); }, [commerce]);
+
   // 提取结果一回来就弹出确认；关掉后这一份不再自动弹，可从状态线或资产页再打开。
   const pendingRun = work?.pendingExtract?.runId ?? null;
   useEffect(() => {
@@ -219,11 +231,11 @@ export function DirectorWorkbench({ id }: { id: string }) {
 
   if (auth === "no-platform" || notEnrolled) return <PlatformGateScreen/>;
   if (gone) return <main className="ip-brand-surface director-shell"><div className="director-loading director-gone" role="alert">
-    <h2>作品已删除或不存在</h2><p>可能已在其他页面删除。删除的作品在回收站里，恢复后点「重新加载」。</p>
+    <h2>作品已删除或不存在</h2><p>可能已在其他页面删除。删除的作品可在回收站恢复，恢复后点击「重新加载」。</p>
     <div className="director-gone-actions"><Link href="/director" className="ip-brand-button">返回作品列表</Link><Link href="/director/trash" className="ip-brand-secondary">打开回收站</Link>
       <button type="button" className="ip-brand-secondary" disabled={reloading} onClick={() => void reloadGone()}>{reloading ? <><Loader2 size={15} className="ip-loading-icon"/>重新加载中</> : "重新加载"}</button></div>
     <InlineError message={loadError}/></div></main>;
-  if (!work) return <main className="ip-brand-surface director-shell"><div className="director-loading">{loadError ? <><InlineError message={loadError}/><button className="ip-brand-secondary" onClick={() => void load()}>重新加载</button><Link href="/director">返回作品列表</Link></> : <><Loader2 size={22} className="ip-loading-icon"/>加载中…</>}</div></main>;
+  if (!work) return <main className="ip-brand-surface director-shell"><div className="director-loading">{loadError ? <><InlineError message={loadError}/><button className="ip-brand-secondary" onClick={() => void load()}>重新加载</button><Link href="/director">返回作品列表</Link></> : <><Loader2 size={22} className="ip-loading-icon"/>正在加载作品…</>}</div></main>;
 
   const switchTab = (next: Tab) => setTab(next);
   const focusClip = (target: Omit<ClipFocus, "at">) => {
@@ -234,7 +246,7 @@ export function DirectorWorkbench({ id }: { id: string }) {
   const props: WorkbenchProps = { work, episodeId, apply, setError, goTab: switchTab, focusClip, focus, reviewExtract: () => setReviewing(true), openSettings: () => { window.scrollTo({ top: 0, behavior: "smooth" }); setSettingsOpen(true); }, pickEpisode: setEpisodeId, startPipeline: () => setStarting(true) };
   const step = nextStep(work, episodeId);
   const counts = {
-    assets: work.assets.filter(a => a.image.adoptedBy === "auto" || !a.image.adoptedId).length,
+    assets: work.assets.filter(a => a.kind !== "product" && (a.image.adoptedBy === "auto" || !a.image.adoptedId)).length,
     storyboard: work.clips.filter(c => c.episodeId === episodeId && (c.issues.length || c.board.adoptedBy === "auto" || c.video.adoptedBy === "auto"
       || c.board.adoptedCheck === "outdated" || c.video.adoptedCheck === "outdated")).length,
   };
@@ -247,35 +259,37 @@ export function DirectorWorkbench({ id }: { id: string }) {
         : step && nextStepShown(step, tab) && <StatusChip key={step.text} step={step} tab={tab} onGo={switchTab}/>}
       <StopTextTasks {...props}/>
     </>}/>
-    <p style={{padding:"0 24px"}}><Link href="/model-results">查看生成原文</Link></p>
     {reviewing && work.pendingExtract && <ExtractReview key={work.pendingExtract.runId} work={work} apply={apply} onClose={() => setReviewing(false)}/>}
-    {live ? <PipelineBar {...props}/> : work.pipeline && <div className="director-status"><PipelineBar {...props}/></div>}
+    {live ? <PipelineBar {...props}/> : work.pipeline && <div className="director-status"><PipelineBar {...props} doneText={step?.text}/></div>}
     {starting && <StartPipeline work={work} episodeId={episodeId} apply={apply} setError={setError} goTab={switchTab} onClose={() => setStarting(false)}/>}
     {work.notice && <DirectorNoticeToast key={work.notice.message} work={work} apply={apply} setError={setError}/>}
     <div className={`director-body ${assistant.open ? "has-assistant" : ""}`}>
       <nav className="director-nav" role="tablist" aria-label="工作区" aria-orientation="vertical">
-        {([["script", "剧本", FileText], ["assets", "资产", Shapes], ["storyboard", "分镜", Clapperboard]] as const).map(([key, label, Icon]) =>
+        {([["script", "剧本", FileText], ["assets", "资产", Shapes], ...(commerce ? [["products", "商品", ShoppingBag]] as const : []), ["storyboard", "分镜", Clapperboard]] as const).map(([key, label, Icon]) =>
           <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => switchTab(key)}>
             <Icon size={18}/><span>{label}</span>
-            {key !== "script" && counts[key] > 0 && <small aria-label={`${counts[key]} 项待处理`}>{counts[key]}</small>}</button>)}
+            {(key === "assets" || key === "storyboard") && counts[key] > 0 && <small aria-label={`${counts[key]} 项待处理`}>{counts[key]}</small>}</button>)}
       </nav>
       <section className="director-main">
         {tab === "script" && <DirectorScript {...props}/>}
         {tab === "assets" && <DirectorAssets {...props}/>}
+        {tab === "products" && commerce && <DirectorProducts {...props}/>}
         {tab === "storyboard" && <DirectorStoryboard {...props}/>}
       </section>
-      {assistant.open && <DirectorAssistantPanel work={work} apply={apply} tab={tab} episodeId={episodeId} openSettings={props.openSettings}/>}
+      {assistant.open && <DirectorAssistantPanel work={work} apply={apply} tab={tab === "products" ? "script" : tab} episodeId={episodeId} openSettings={props.openSettings}/>}
     </div>
+  <p className="director-foot-link"><Link href="/model-results">查看生成原文</Link></p>
   </main></BriefProvider></AssistantProvider>;
 }
 
 /** 标题后面的状态：AI 在做什么，或下一步做什么。下一步在别的工作区时点它直接过去。 */
-function StatusChip({ step, tab, onGo }: { step: NextStep; tab: Tab; onGo: (tab: Tab) => void }) {
-  if (step.running) return <span className="director-status-chip is-running" role="status" title={step.text}><i className="director-chip-dot" aria-hidden/><span>{step.text}</span></span>;
-  const body = <><Sparkles size={13}/><span>{step.text}</span></>;
+export function StatusChip({ step, tab, onGo }: { step: NextStep; tab: Tab; onGo: (tab: Tab) => void }) {
+  if (step.tone === "running") return <span className="director-status-chip is-running" role="status" title={step.text}><i className="director-chip-dot" aria-hidden/><span>{step.text}</span></span>;
+  const className = `director-status-chip ${step.tone === "warning" ? "is-warn" : step.tone === "success" ? "is-success" : "is-next"}`;
+  const body = <>{step.tone === "warning" ? <AlertTriangle size={13}/> : step.tone === "success" ? <Check size={13}/> : <Sparkles size={13}/>}<span>{step.text}</span></>;
   return step.tab === tab
-    ? <span className="director-status-chip is-next" role="status" title={step.text}>{body}</span>
-    : <button type="button" className="director-status-chip is-next" title={`${step.text}。${GO_LABEL[step.tab]}`} onClick={() => onGo(step.tab)}>{body}<ArrowRight size={13} className="director-chip-go"/></button>;
+    ? <span className={className} role="status" title={step.text}>{body}</span>
+    : <button type="button" className={className} title={`${step.text}。${GO_LABEL[step.tab]}`} onClick={() => onGo(step.tab)}>{body}<ArrowRight size={13} className="director-chip-go"/></button>;
 }
 
 function StopTextTasks({work,apply,setError}:WorkbenchProps) {
@@ -283,8 +297,8 @@ function StopTextTasks({work,apply,setError}:WorkbenchProps) {
   const tasks=work.tasks.filter(task=>task.status==="running"&&task.canStop);
   const settling=work.tasks.some(task=>task.status==="stopping");
   if(!tasks.length&&!settling)return null;
-  const label=(target:string)=>target==="script"?"写剧本":target==="script-more"?"写剧本":target==="split"?"拆分集":target.startsWith("extract")?"提取资产":target.startsWith("plan:")?"规划分镜":target.startsWith("reshoot:")?"重写分镜脚本":"本次创作";
-  const explain=settling?"已停止后续处理，已提交模型的请求仍在等待用量结算。可另行确认生成，原请求按实际用量计费。":"停止后已有内容会保留；已提交模型的请求仍按实际用量计费。";
+  const label=(target:string)=>target==="script"?"写剧本":target==="script-more"?"写剧本":target==="split"?"拆分集":target.startsWith("extract")?"提取资产":target.startsWith("plan:")?"写分镜脚本":target.startsWith("reshoot:")?"重写分镜脚本":"本次创作";
+  const explain=settling?"已停止。已提交给模型的请求按实际用量计费。":"停止后已有内容将保留；已提交给模型的请求仍按实际用量计费。";
   return <>
     {settling&&<span className="director-status-chip is-running" role="status" title={explain}><i className="director-chip-dot" aria-hidden/><span>已停止，等待用量结算</span></span>}
     {tasks.map(task=><button key={task.id} type="button" className="director-chip-stop" title={explain} disabled={!!busy}
@@ -300,7 +314,7 @@ function DirectorHeader({ work, apply, setError, startPipeline, oneClick, status
   const saveTitle = () => {
     const t = title.trim();
     if (!t || t === work.title) { setTitle(work.title); return; }
-    void run("title", async () => apply(await DirectorApi.patchWork(work.id, { title: t })), (m, e) => { setTitle(work.title); setError({ action: "修改作品名", error: e ?? m, next: "名字已恢复成原来的，可以重新输入后再试。" }); });
+    void run("title", async () => apply(await DirectorApi.patchWork(work.id, { title: t })), (m, e) => { setTitle(work.title); setError({ action: "修改作品名", error: e ?? m, next: "作品名已恢复为原名称，请重新输入后重试。" }); });
   };
   const settings = work.settings;
   return <header className="director-header">
@@ -309,7 +323,8 @@ function DirectorHeader({ work, apply, setError, startPipeline, oneClick, status
       onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} disabled={busy === "title"}/>
     {status}
     <span className="director-spacer"/>
-    {work.pricing.mock && <span className="director-mock-tag" title="剧本、图片和视频均为固定样例，不调用模型，不扣积分。">测试模式</span>}
+    {work.pricing.mock && <span className="director-mock-tag" title="剧本、图片和视频均为固定样例，不调用模型，不消耗积分。">测试模式</span>}
+    <Link href="/model-results" className="director-settings-chip director-results-link" title="查看模型返回的原始内容">生成原文</Link>
     <button type="button" className="director-settings-chip" onClick={() => setOpen(o => !o)} aria-expanded={open} title={`${settings.style} · ${settings.aspectRatio}`}>
       <Settings2 size={15}/><span>{settings.style} · {settings.aspectRatio}</span>
     </button>
@@ -335,9 +350,9 @@ function AssistantToggle({ work }: { work: DirectorWork }) {
 // ── 一键制作 ────────────────────────────────────────────────────────────────
 
 const TARGETS: Array<{ key: DirectorPipelineTarget; label: string; note: string }> = [
-  { key: "film", label: "成片", note: "从剧本一路做到每集的成片：拆分集、提取资产、写分镜脚本、出资产图和分镜图、生成片段视频，最后导出整集。" },
-  { key: "board", label: "分镜图", note: "做到资产图和分镜图为止，不生成视频。" },
-  { key: "plan", label: "分镜脚本", note: "只做文字：拆分集、提取资产、写分镜脚本（每段的镜头、分镜图提示词和视频提示词），不出图。" },
+  { key: "film", label: "成片", note: "从剧本制作到每集成片：拆分集、提取资产、写分镜脚本、生成资产图和分镜图、生成片段视频，最后导出整集。" },
+  { key: "board", label: "分镜图", note: "制作到资产图和分镜图为止，不生成视频。" },
+  { key: "plan", label: "分镜脚本", note: "只处理文字：拆分集、提取资产、写分镜脚本（每段的镜头、分镜图提示词和视频提示词），不生成图片。" },
 ];
 
 const PIPELINE_ACTIONS: Record<string, string> = {
@@ -347,12 +362,12 @@ const PIPELINE_ACTIONS: Record<string, string> = {
 
 /** 一键制作 is a shortcut, always in the header; the step-by-step route stays on the script page. */
 function OneClickButton({ startPipeline }: Pick<WorkbenchProps, "startPipeline">) {
-  return <button type="button" className="ip-brand-secondary director-oneclick" title="快捷方式：从剧本一路自动做到成片（也可以只做到分镜脚本或分镜图），后台执行，关掉页面不中断。想逐步检查每一步，就按剧本页的步骤来。" onClick={startPipeline}><Sparkles size={15}/>一键制作<em className="director-shortcut-tag">快捷</em></button>;
+  return <button type="button" className="ip-brand-secondary director-oneclick" title="从剧本自动制作到成片，在后台执行，关闭页面不影响进行。" onClick={startPipeline}><Sparkles size={15}/>一键制作<em className="director-shortcut-tag">快捷</em></button>;
 }
 
 function DirectorNoticeToast({ work, apply, setError }: Pick<WorkbenchProps, "work" | "apply" | "setError">) {
   const message = work.notice?.message ?? "";
-  const dismiss = useCallback(() => void DirectorApi.edit(work.id, "notice.dismiss", null, null).then(apply).catch(e => setError({ action: "关闭这条提示", error: e })), [work.id, apply, setError]);
+  const dismiss = useCallback(() => void DirectorApi.edit(work.id, "notice.dismiss", null, null).then(apply).catch(e => setError({ action: "关闭此提示", error: e })), [work.id, apply, setError]);
   const passing = PASSING_NOTICE.test(message);
   const [held, setHeld] = useState(false);
   useEffect(() => {
@@ -365,18 +380,20 @@ function DirectorNoticeToast({ work, apply, setError }: Pick<WorkbenchProps, "wo
     <span>{message}</span><button type="button" onClick={dismiss}>关闭</button></div>;
 }
 
-function PipelineBar({ work, apply, setError, goTab, reviewExtract }: WorkbenchProps) {
+function PipelineBar({ work, apply, setError, goTab, reviewExtract, doneText }: WorkbenchProps & { doneText?: string }) {
   const p = work.pipeline;
   const { busy, run } = useBusy();
   const act = (action: "pause" | "resume" | "retry" | "confirm-assets" | "confirm-boards" | "confirm-videos" | "stop" | "dismiss", budget?: number) =>
-    void run(action, async () => apply(await DirectorApi.pipeline(work.id, { action, budget })), failed(setError, PIPELINE_ACTIONS[action]));
+    void run(action, async () => apply(await (["pause", "stop", "dismiss"].includes(action)
+      ? DirectorApi.pipeline(work.id, { action, budget })
+      : withSavedDirectorDrafts(work, apply, saved => DirectorApi.pipeline(saved.id, { action, budget })))), failed(setError, PIPELINE_ACTIONS[action]));
   const live = p && ["running", "waiting", "paused"].includes(p.status);
   if (!p) return null;
   return <>
     <div className={`director-pipeline is-${p.status}`}>
       {!live && <>
-        {p && <span className="director-pipeline-hint"><PipelineSummary p={p}/></span>}
-        {p && <button type="button" className="ip-brand-text-button" onClick={() => act("dismiss")}>收起</button>}
+        {p && <span className="director-pipeline-hint"><PipelineSummary p={p} doneText={doneText}/></span>}
+        {p && <button type="button" className="ip-brand-text-button" onClick={() => act("dismiss")}>关闭</button>}
       </>}
       {live && p && <>
         <PipelineSummary p={p}/>
@@ -403,11 +420,12 @@ function PipelineBar({ work, apply, setError, goTab, reviewExtract }: WorkbenchP
   </>;
 }
 
-function PipelineSummary({ p }: { p: DirectorPipeline }) {
-  const label = { running: "制作中", waiting: "待处理", paused: "已暂停", done: "已完成", failed: "未完成", stopped: "已停止" }[p.status];
+/** doneText：制作结束后，后面又做了什么（确认、导出）这条结束语不知道，按现在的状态说下一步。 */
+function PipelineSummary({ p, doneText }: { p: DirectorPipeline; doneText?: string }) {
+  const label = { running: "制作中", waiting: "待处理", paused: "已暂停", done: "一键制作已完成", failed: "未完成", stopped: "已停止" }[p.status];
   return <span className="director-pipeline-summary">
     {p.status === "running" && <Loader2 size={14} className="ip-loading-icon"/>}
-    <b>{label}</b><span>{p.message}</span><small>已用 {p.spent.toLocaleString("zh-CN")} / 预算 {p.budget.toLocaleString("zh-CN")} 积分</small>
+    <b>{label}</b><span>{p.status === "done" && doneText ? doneText : p.message}</span><small>已用 {p.spent.toLocaleString("zh-CN")} / 预算 {p.budget.toLocaleString("zh-CN")} 积分</small>
   </span>;
 }
 
@@ -445,12 +463,12 @@ export function StartPipeline({ work, episodeId, apply, setError, goTab, onClose
   const tooLow = !!est && custom !== null && budget < est.total;
   // 只做到分镜脚本、范围里每集都写好了：估算里一次文字生成都没有，开始也什么都不会做。先说清楚，给出去哪重写。
   const scriptsDone = target === "plan" && !!est && est.text.count === 0 && work.episodes.length > 0;
-  const scopeName = effectiveScope === "episode" ? `第 ${ep?.no} 集` : work.episodes.length > 1 ? `全部 ${work.episodes.length} 集` : "这一集";
-  const doneNote = nothing || (scriptsDone ? `${scopeName}的分镜脚本都已写好。一键制作只补还没做的步骤，不会重写已有的分镜脚本；要重写，请到「分镜」点「重写分镜脚本」（整集），或在片段上点「重写」（单段）。` : "");
+  const scopeName = effectiveScope === "episode" ? `第 ${ep?.no} 集` : work.episodes.length > 1 ? `全部 ${work.episodes.length} 集` : "本集";
+  const doneNote = nothing || (scriptsDone ? `${scopeName}的分镜脚本均已写好。一键制作只补充未完成的步骤；如需重写，请在「分镜」点击「重写分镜脚本」。` : "");
   const start = () => void run("start", async () => {
     const billing = await chooseDirectorBilling("script", budget);
     try {
-      apply(await DirectorApi.pipeline(work.id, { action: "start", scope: effectiveScope, episodeId: effectiveScope === "episode" ? ep?.id ?? null : null, target, budget, billing, auto }));
+      apply(await withSavedDirectorDrafts(work, apply, saved => DirectorApi.pipeline(saved.id, { action: "start", scope: effectiveScope, episodeId: effectiveScope === "episode" ? ep?.id ?? null : null, target, budget, billing, auto })));
     } catch (e) {
       const err = normalizeStudioError(e);
       if (err.code === "DIRECTOR_PIPELINE_NOTHING_TO_DO") { setNothing(err.message); setLocalError(""); return; }
@@ -464,16 +482,16 @@ export function StartPipeline({ work, episodeId, apply, setError, goTab, onClose
   return <div className="director-dialog-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && onClose()}>
     <div className="director-dialog director-start-dialog" role="dialog" aria-modal="true" aria-labelledby="director-start-title" ref={dialogFocus} tabIndex={-1}>
       <header><h2 id="director-start-title">一键制作</h2><button type="button" aria-label="关闭" onClick={onClose}><X size={18}/></button></header>
-      <p className="director-shortcut-note">这是快捷方式，后面几步会连着自动做完。想每一步先看再改，就关掉这个窗口，在剧本页按步骤来。</p>
-      <div className="director-field"><span>做到哪一步</span><div className="director-segmented">
+      <p className="director-shortcut-note">将自动连续完成后续步骤。如需逐步检查和修改，请关闭此窗口，按剧本页的步骤操作。</p>
+      <div className="director-field"><span>制作到</span><div className="director-segmented">
         {TARGETS.map(t => <button key={t.key} type="button" aria-pressed={target === t.key} onClick={() => { setTarget(t.key); setCustom(null); }}>{t.label}</button>)}</div>
-        <small>{note}已经做好的不重做，已有内容不覆盖。</small></div>
+        <small>{note}已完成的步骤不重复执行，已有内容不会被覆盖。</small></div>
       {multi && <div className="director-field"><span>范围</span><div className="director-segmented">
         <button type="button" aria-pressed={scope === "work"} onClick={() => { setScope("work"); setCustom(null); }}>全部 {work.episodes.length} 集</button>
-        <button type="button" aria-pressed={scope === "episode"} onClick={() => { setScope("episode"); setCustom(null); }}>只做第 {ep?.no} 集</button></div></div>}
+        <button type="button" aria-pressed={scope === "episode"} onClick={() => { setScope("episode"); setCustom(null); }}>仅第 {ep?.no} 集</button></div></div>}
       {target !== "plan" && <label className="director-check">
         <input type="checkbox" checked={!auto} onChange={e => setAuto(!e.target.checked)}/>
-        <span><b>关键步骤停下来让我确认</b><small>资产清单、资产图、分镜图{target === "film" ? "、片段视频" : ""}出来后先等你看过再继续。不勾就全自动，做完再看。</small></span>
+        <span><b>关键步骤暂停等我确认</b><small>资产清单、资产图、分镜图{target === "film" ? "、片段视频" : ""}生成后暂停，确认后继续。不勾选则全自动完成。</small></span>
       </label>}
       {!doneNote && <section className="director-budget-card" aria-label="预算">
         <header><span>推荐预算</span>{est && <b>{mock ? "测试模式，免费" : `${est.recommended.toLocaleString("zh-CN")} 积分`}</b>}{!est && !estError && <Loader2 size={15} className="ip-loading-icon"/>}</header>
@@ -484,10 +502,10 @@ export function StartPipeline({ work, episodeId, apply, setError, goTab, onClose
             {target !== "plan" && <li><span>图片 {est.images.count} 张</span><em>{costText(est.images.credits, mock)}</em></li>}
             {est.videos.included && <li><span>片段视频 {est.videos.clips} 段，约 {est.videos.seconds} 秒</span><em>{est.videos.error ? "暂时无法估算" : costText(est.videos.credits, mock)}</em></li>}
           </ul>
-          <small>{est.rough ? "还没规划的部分按默认篇幅估算（每集约 75 秒）。" : ""}推荐值比估算多留约 15% 余量；用到上限会暂停，不会超支，没用完的不扣。{est.videos.error ? ` 视频：${est.videos.error}` : ""}</small>
+          <small>{est.rough ? "尚未规划的部分按默认篇幅估算（每集约 75 秒）。" : ""}推荐预算在估算基础上预留约 15% 余量；达到上限会暂停，不会超支，未用完的部分不扣除。{est.videos.error ? ` 视频：${est.videos.error}` : ""}</small>
           {custom === null ? <button type="button" className="ip-brand-text-button director-self-start" onClick={() => setCustom(String(est.recommended))}>调整预算</button> :
             <label className="director-field"><span>预算上限（积分）</span><input inputMode="numeric" value={custom} autoFocus onChange={e => setCustom(e.target.value.replace(/\D/g, ""))}/>
-              {tooLow && <small className="director-cost is-error">低于估算的 {est.total.toLocaleString("zh-CN")} 积分，做到一半会暂停。</small>}</label>}
+              {tooLow && <small className="director-cost is-error">低于估算的 {est.total.toLocaleString("zh-CN")} 积分，制作中途会暂停。</small>}</label>}
         </>}
       </section>}
       {doneNote && <div className="director-warn" role="status"><span>{doneNote}</span></div>}

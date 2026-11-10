@@ -9,6 +9,9 @@ import type { CanvasNodeData } from '@/canvas/types/canvas';
 import type { IpRun } from '@ai-star-eco/types/ip-studio';
 // 子路径引入：错误整理是纯函数，不跟着包根走（测试常把包根整个 mock 掉，少了这个导出就会在报错时再抛一次，错误永远显示不出来）。
 import { publicModelErrorMessage, isProviderModelError, isCustomerWalletError } from '@ai-star-eco/api-client/public-model-error';
+import { PortraitReviewHost } from './portrait-review-host';
+import { observePortraitReviews } from './portrait-review-events';
+import { isStudioCreditShortage } from '@/canvas-bridge/studio-billing-cancel';
 
 export type StudioError = { code: string; message: string; logId?: string; taskId?: string; clientMessageId?: string };
 type ErrorInput = unknown;
@@ -33,6 +36,7 @@ export function userFacingError(code: string | undefined, message: string | unde
   return { code, message: message === undefined ? undefined : publicModelErrorMessage(message, code) };
 }
 
+const NETWORK_MESSAGE = '网络连接中断，未收到服务器响应。';
 /** Read structured errors and the older server's message suffix without inventing a log ID. */
 export function normalizeStudioError(input: ErrorInput, fallback = '操作未完成，请重试'): StudioError {
   if (typeof input === 'string' && remembered.has(input)) return remembered.get(input)!;
@@ -43,9 +47,13 @@ export function normalizeStudioError(input: ErrorInput, fallback = '操作未完
   const logId = typeof value.logId === 'string' ? value.logId : typeof details.logId === 'string' ? details.logId : suffix && /^[A-HJ-NP-Z2-9]{12}$/.test(suffix[1]) ? suffix[1] : undefined;
   const visible = userFacingError(typeof value.errorCode === 'string' ? value.errorCode : typeof value.code === 'string' ? value.code : undefined,
     suffix ? raw.slice(0, suffix.index).trim() || fallback : raw);
+  const network = input instanceof TypeError && /fetch|network|load failed/i.test(raw);
+  // 没有错误码的英文是浏览器或代码抛的（Failed to fetch、Cannot read properties…）：用户看不懂也做不了什么，换成引导重试的话，原文只进控制台。
+  const unreadable = !visible.code && !!visible.message && !/\p{Script=Han}/u.test(visible.message);
+  if (unreadable) console.warn('[studio-error]', raw);
   const result = {
-    code: visible.code ?? (input instanceof TypeError && /fetch|network|load failed/i.test(raw) ? 'NETWORK_ERROR' : 'CLIENT_ERROR'),
-    message: visible.message ?? fallback,
+    code: visible.code ?? (network ? 'NETWORK_ERROR' : 'CLIENT_ERROR'),
+    message: unreadable ? (network ? NETWORK_MESSAGE : fallback) : visible.message ?? fallback,
     logId,
     taskId: typeof value.taskId === 'string' ? value.taskId : typeof value.runId === 'string' ? value.runId : undefined,
     ...(typeof value.clientMessageId === 'string' ? { clientMessageId: value.clientMessageId } : {}),
@@ -103,7 +111,7 @@ function controlAction(control: Element, dialog: Element | null): string {
   const label = tidy(control.getAttribute('aria-label') || (control as HTMLElement).innerText || control.textContent || control.getAttribute('title') || (control as HTMLInputElement).value || '');
   // 「确定」「确认删除」「确认分配 100 积分」这类确认按钮，说做什么的是弹窗标题（「删除画布」「分配企业积分」）。
   if ((!label || GENERIC.test(label) || /^确认./.test(label)) && dialogTitle(dialog)) return clip(dialogTitle(dialog));
-  return label ? `「${clip(label)}」` : '这次操作';
+  return label ? `「${clip(label)}」` : '本次操作';
 }
 
 /** 记一次用户操作（测试也用它模拟点击）。点在错误弹窗 / 提示自己身上的不算。 */
@@ -158,6 +166,8 @@ function takeActivation() {
 export function reportStudioError(input: ErrorInput, options: { once?: string; fallback?: string; action?: string; next?: ReactNode; background?: boolean; details?: boolean; infer?: boolean } = {}) {
   const error = normalizeStudioError(input, options.fallback);
   if (error.code === "IP_RUN_CANCELLED") return error;
+  // 用户自己取消付款或关掉积分不足提示框，什么都没提交，不算错误。
+  if (error.code === "STUDIO_BILLING_CANCELLED" || error.code === "STUDIO_PORTRAIT_REVIEW_DEFERRED") return error;
   // 画布的保存冲突由顶栏的冲突弹窗负责（canvas-conflict-dialog.tsx）。冲突之后每一条经过
   // saveStudioDocument 的保存都会再抛一次它 —— 助手面板的自动保存、任务轮询回写、脚本编辑器……
   // 逐条弹通知就是用户说的「页面一直在报错」。这里只回传给调用方做内联状态，不弹。
@@ -186,6 +196,8 @@ export const studioRunError = (run: IpRun) => {
 export const studioNodeError = (node: CanvasNodeData) => ({ code: node.metadata?.studio?.task?.errorCode || node.metadata?.errorCode || 'STUDIO_RUN_FAILED', message: node.metadata?.studio?.task?.errorMessage || node.metadata?.errorDetails || '生成失败，请查看任务', logId: node.metadata?.studio?.task?.logId || node.metadata?.errorLogId, taskId: node.metadata?.studio?.runId || node.metadata?.runId });
 /** 生成任务（轮询得知）失败：后台状态，右上角提示一次，画布节点上有「查看错误详情」。 */
 export function reportStudioRunFailures(run: IpRun) {
+  observePortraitReviews(run.output?.assetReviews);
+  if (run.errorCode === 'VIDEO_ASSET_NEEDS_REVIEW') return;
   if (run.status === 'failed' || (run.status === 'running' && (run.errorCode || run.errorMessage))) reportStudioError(studioRunError(run), {once: `run:${run.id}`});
   if (run.status === 'done') for (const candidate of run.output.videoCandidates || []) {
     if (candidate.status === 'failed') reportStudioError({code: candidate.errorCode || 'STUDIO_VIDEO_FAILED', message: candidate.errorMessage || '本条视频生成失败，其他候选仍可采用', logId: candidate.logId, taskId: candidate.jobId}, {once: `video:${candidate.jobId}`});
@@ -232,24 +244,31 @@ export type StudioFailure = {
   next?: ReactNode;
   /** 原因下面的补充内容（只放真实数据，如引用它的片段和前往入口）；拿到 close 可以先关弹窗再跳转。 */
   extra?: ReactNode | ((close: () => void) => ReactNode);
+  /** 积分不足时提示框的付款账户（知道就给，不给按默认账户）和去哪里换模型（出图、出视频才给）。 */
+  shortage?: Pick<import('./studio-credit-shortage').StudioCreditShortageInput, 'billing' | 'grantHint'>;
 };
 
 /** 冲突类错误：这句总排在下一步的最前面。调用方刷新过页面才说「已经刷新」，否则请用户刷新。 */
+const CHANGEABLE_REASON = /参考|素材|尺寸|分辨率|比例|时长|格式|大小|审核|违规|敏感|提示词|文案|字数|人脸|真人|下架/;
 const isConflict = (code: string) => /_CONFLICT$|_STALE$|_EXPIRED$/.test(code);
 const conflictNext = (refreshed: boolean) => refreshed ? '此内容已在其他地方修改，页面已更新为最新内容。' : '此内容已在其他地方修改，请刷新页面查看最新内容。';
 
 /** 按错误码给的通用下一步。调用方知道得更具体时自己写 next。 */
 export function failureNext(code: string, refreshed = false, reason = ''): string {
+  // 制作状态变了或这一步不能重试，不是别处改了内容；原因里已经写了具体情况。
+  if (code === 'STUDIO_PLAN_STALE') return '请刷新页面后重试。多次失败时，可复制「错误详情」反馈给我们。';
   if (isConflict(code)) return `${conflictNext(refreshed)}如有需要，请修改后重试。`;
   if (code === 'STUDIO_PRICE_CHANGED') return '价格已更新，请刷新页面后重新确认。';
-  if (code === 'STUDIO_USAGE_PENDING') return '本次用量正在核对，请先查看原任务状态。如需协助，可复制「错误详情」反馈给我们。';
+  if (code === 'STUDIO_USAGE_PENDING') return '本次用量正在核对，请查看原任务状态。如需协助，可复制「错误详情」反馈给我们。';
+  if (code === 'VIDEO_ASSET_NEEDS_REVIEW') return '请在当前核验窗口处理参考人像，审核通过后继续生成。';
   if (code === 'VIDEO_MODEL_RETIRED') return '请更换可用的视频模型后重新生成。';
   if (code === 'VIDEO_REFERENCE_PERSON_RESTRICTED' || /未通过内容审核/.test(reason)) return '请根据上述原因检查描述和参考素材，调整后重新生成。原因不明确时，可复制「错误详情」反馈给我们。';
   // Provider codes can contain BALANCE/INSUFFICIENT/NOT_FOUND; none proves the customer's wallet or work is at fault.
-  if (isProviderModelError(code)) return '请根据上述原因处理。原因不明确或多次出现时，可复制「错误详情」反馈给我们。';
+  // 原因说到了用户能改的东西才让用户改，其余（模型或服务方的问题）就是重试。
+  if (isProviderModelError(code)) return CHANGEABLE_REASON.test(reason) ? '请根据上述原因调整后重试。多次失败时，可复制「错误详情」反馈给我们。' : '请重试。多次失败时，可复制「错误详情」反馈给我们。';
   if (/_NOT_FOUND$/.test(code)) return '此内容已不存在，可能已在其他地方删除。请刷新页面查看最新内容。';
   if (/_RUNNING$/.test(code)) return '请等待进行中的操作完成后重试。';
-  if (code === 'NETWORK_ERROR') return '请检查网络并刷新页面，确认操作是否已生效后再决定是否重试。';
+  if (code === 'NETWORK_ERROR') return '请检查网络并刷新页面，确认操作是否已生效后决定是否重试。';
   if (isCustomerWalletError(code)) return '请按上述积分提示处理后重试。';
   return '请稍后重试。多次失败时，可复制「错误详情」反馈给我们。';
 }
@@ -264,7 +283,13 @@ const deciding = new Set<string>();
 /** 打开错误弹窗。同一个操作的同一个错误还开着时不再弹第二个（连点、轮询重复报错）。 */
 export function openStudioFailure(modal: ModalApi, failure: StudioFailure) {
   const error = normalizeStudioError(failure.error);
-  if (error.code === 'IP_RUN_CANCELLED') return error;
+  if (error.code === 'IP_RUN_CANCELLED' || error.code === 'STUDIO_BILLING_CANCELLED' || error.code === 'STUDIO_PORTRAIT_REVIEW_DEFERRED') return error;
+  // 积分不足不当错误弹：说清差多少，给能换的模型和充值入口（「查看错误详情」照旧看详情）。
+  if (!failure.title && isStudioCreditShortage(error)) {
+    recentDialogs.set(keyOf(error), Date.now());
+    void import('./studio-credit-shortage').then(({ askStudioCreditShortage }) => askStudioCreditShortage({ reason: error.message, ...failure.shortage }));
+    return error;
+  }
   // 同一个错误（不论从哪条路报上来）开着时不再弹第二个：页面内联提示与统一出口可能各报一次。
   const key = failure.title ? `details|${keyOf(error)}` : `${error.code}|${error.message}|${error.logId ?? ''}`;
   if (openFailures.has(key)) return error;
@@ -277,7 +302,7 @@ export function openStudioFailure(modal: ModalApi, failure: StudioFailure) {
   instance = modal.error({
     title: failure.title ?? `${failure.action}${/[0-9A-Za-z]$/.test(failure.action) ? ' ' : ''}没有完成`,
     content: <div className="studio-failure">
-      <section><h4>原因</h4><p>{error.code === 'NETWORK_ERROR' ? '网络连接中断，未收到服务器响应。' : error.message}</p></section>
+      <section><h4>原因</h4><p>{error.code === 'NETWORK_ERROR' ? NETWORK_MESSAGE : error.message}</p></section>
       {extra}
       <section><h4>下一步</h4><div>{failure.next === undefined ? failureNext(error.code, failure.refreshed, error.message) : isConflict(error.code) ? <><p>{conflictNext(!!failure.refreshed)}</p>{failure.next}</> : failure.next}</div></section>
       <details className="studio-failure-details" open={!!failure.title}><summary>错误详情</summary><ErrorDetails error={error}/></details>
@@ -322,7 +347,7 @@ export function StudioNotifications() {
         window.setTimeout(() => {
           deciding.delete(key);
           if (shownInOpenDialog(error.message)) recentDialogs.set(key, Date.now());
-          else openStudioFailure(modal, { action: meta.action || '这次操作', error, next: meta.next });
+          else openStudioFailure(modal, { action: meta.action || '本次操作', error, next: meta.next });
         }, 120);
         return;
       }
@@ -332,7 +357,7 @@ export function StudioNotifications() {
     };
     return subscribeStudioErrors(show);
   }, [api, modal]);
-  return <ConfigProvider theme={{ components: { Notification: { width: 'min(440px, calc(100vw - 48px))' } }, token: { colorPrimary: '#192229', borderRadius: 13, fontFamily: 'var(--ip-font-sans, sans-serif)' } }}>{holder}{modalHolder}</ConfigProvider>;
+  return <ConfigProvider theme={{ components: { Notification: { width: 'min(440px, calc(100vw - 48px))' } }, token: { colorPrimary: '#192229', borderRadius: 13, fontFamily: 'var(--ip-font-sans, sans-serif)' } }}>{holder}{modalHolder}<PortraitReviewHost /></ConfigProvider>;
 }
 
 /** Preserve success feedback; every action error goes to the shared error exit (a dialog for the action the user just took). */

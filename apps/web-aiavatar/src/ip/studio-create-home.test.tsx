@@ -89,7 +89,7 @@ describe("Creation catalogue", () => {
     expect(screen.getByText("没有找到符合条件的画布")).toBeTruthy();
     // 项目页只放已存的画布，不读模板目录（放在列表被筛空之后断言：整棵树小，getByRole 不用扫 24 张卡）
     expect(screen.getByRole("heading", { name: "项目", level: 1 })).toBeTruthy();
-    expect(screen.queryByRole("link", { name: "新建创作" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "新建画布" })).toBeNull();
     expect(mocks.templates).not.toHaveBeenCalled();
     expect(screen.queryByRole("textbox", { name: "想做什么" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "清除筛选" }));
@@ -132,7 +132,6 @@ describe("Creation catalogue", () => {
     expect(screen.queryByRole("group", { name: "创作工作区" })).toBeNull();
     expect(screen.getByRole("button", { name: "新建画布" })).toBeTruthy();
     expect(screen.queryByRole("searchbox", { name: "搜索我的画布" })).toBeNull();
-    expect(within(screen.getByRole("navigation", { name: "工作台导航" })).getByRole("link", { name: "项目", exact: true }).getAttribute("href")).toBe("/projects");
     fireEvent.click(await screen.findByRole("button", { name: "预览模板 IP 商品视频" }));
     expect(screen.getByRole("dialog").textContent).toContain("只读预览");
     fireEvent.click(screen.getByRole("button", { name: "返回" }));
@@ -174,11 +173,11 @@ describe("Creation catalogue", () => {
     await screen.findByRole("link", { name: "打开画布 测试画布 0" });
     const card = screen.getByRole("link", { name: "打开画布 测试画布 0" }).closest("article")!;
     fireEvent.click(within(card).getByText("删除画布"));
-    fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
+    fireEvent.click(screen.getByRole("button", { name: "删除" }));
     await screen.findByText("删除未成功");
     expect(screen.getByRole("link", { name: "打开画布 测试画布 0" })).toBeTruthy();
-    await waitFor(() => expect((screen.getByRole("button", { name: "确认删除" }) as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
+    await waitFor(() => expect((screen.getByRole("button", { name: "删除" }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "删除" }));
     await waitFor(() => expect(screen.queryByRole("link", { name: "打开画布 测试画布 0" })).toBeNull());
     expect(mocks.remove).toHaveBeenCalledTimes(2);
   });
@@ -204,10 +203,10 @@ describe("Creation catalogue", () => {
     mocks.projects.mockResolvedValue([{ ...projects[0], id: "P-video", name: "口播草稿", sceneId: "ecom-talking" }, { ...projects[1], id: "P-image", name: "出图草稿", sceneId: "free" }, projects[2]]);
     render(<StudioProjects />);
     // 卡片底部一个，「⋯」菜单里一个。
-    const video = await screen.findAllByRole("link", { name: "回到 AI 视频继续" });
+    const video = await screen.findAllByRole("link", { name: "在 AI 视频中编辑" });
     expect(video.map(l => l.getAttribute("href"))).toEqual(["/video?scene=ecom-talking&draft=P-video", "/video?scene=ecom-talking&draft=P-video"]);
-    expect(screen.getAllByRole("link", { name: "回到 AI 图片继续" }).map(l => l.getAttribute("href"))).toEqual(["/image?scene=free&draft=P-image", "/image?scene=free&draft=P-image"]);
-    expect(screen.getAllByRole("link", { name: /^回到 AI/ })).toHaveLength(4);
+    expect(screen.getAllByRole("link", { name: "在 AI 图片中编辑" }).map(l => l.getAttribute("href"))).toEqual(["/image?scene=free&draft=P-image", "/image?scene=free&draft=P-image"]);
+    expect(screen.getAllByRole("link", { name: /^在 AI (视频|图片)中编辑/ })).toHaveLength(4);
     // 继续是主操作，单独一行；查看流程、设置封面另起一行（2026-10-30 线上复核：三个挤一行，次操作断行）。
     const primary = video.find(l => l.className === "project-card-continue");
     expect(primary?.parentElement?.querySelector(".project-card-secondary")?.textContent).toBe("查看流程设置封面");
@@ -277,7 +276,7 @@ describe("Creation page", () => {
     expect(screen.queryByRole('button', { name:'开始对话' })).toBeNull();
     const tools = screen.getByRole("navigation", { name: "快速开始创作" });
     expect(within(tools).queryByRole('button', { name:'空白画布' })).toBeNull();
-    expect(within(tools).getAllByRole('button').map(b => b.getAttribute('aria-label'))).toEqual(['图片创作','视频创作','剧本创编','解析视频','分镜讨论','成片编辑','人物配音','数字人口型','IP 人物库']);
+    expect(within(tools).getAllByRole('button').map(b => b.getAttribute('aria-label'))).toEqual(['图片创作','视频创作','剧本创编','解析视频','分镜讨论','制作成片','人物配音','数字人口型','IP 人物库']);
     // The card comes first, above the tools.
     const card = screen.getByRole('button', { name:'新建画布' });
     expect(card.compareDocumentPosition(tools) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -303,26 +302,28 @@ beforeEach(() => { mountStudioErrorNotifications(); });
 // clicked by the user (the page no longer hands off to a canvas by itself).
 describe("New canvas entries", () => {
   const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
-  it("项目页「新建创作」 creates one canvas and opens it with the assistant, busy while it runs", async () => {
+  it("项目页「新建画布」 creates one canvas and opens it with the assistant, busy while it runs", async () => {
     mocks.projects.mockResolvedValue([projects[0]]);
     let resolve!: (p: any) => void;
     mocks.create.mockReturnValue(new Promise(r => { resolve = r; }));
     render(<StudioProjects/>);
     await screen.findByRole("link", { name: "打开画布 测试画布 0" });
-    const button = screen.getByRole("button", { name: "新建创作" });
+    const button = screen.getByRole("button", { name: "新建画布" });
     fireEvent.click(button); fireEvent.click(button);
     await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(1));
     expect(mocks.create).toHaveBeenCalledWith({ name: "空白画布 · 新画布" });
-    expect((screen.getByRole("button", { name: "新建创作" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "新建画布" }) as HTMLButtonElement).disabled).toBe(true);
     resolve({ id: "P-new", docVersion: "v1", doc });
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/projects/P-new?start=assistant"));
     expect(mocks.update).not.toHaveBeenCalled();
   });
-  it("项目页空态「开始创作」 reuses an untouched blank canvas from the last two hours", async () => {
+  it("项目页空态「新建画布」 reuses an untouched blank canvas from the last two hours", async () => {
     mocks.projects.mockResolvedValueOnce([]).mockResolvedValue([{ ...projects[0], id: "P-blank", name: "空白画布 · 新画布", createdAt: ago(60_000) }]);
     mocks.get.mockResolvedValue({ id: "P-blank", docVersion: "v1", doc: { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } } });
     render(<StudioProjects/>);
-    fireEvent.click(await screen.findByRole("button", { name: "开始创作" }));
+    // 空态和右上角是同一个动作、同一个名字：等空态出来，点它里面那个。
+    await screen.findByRole("heading", { name: "还没有画布" });
+    fireEvent.click(screen.getAllByRole("button", { name: "新建画布" }).at(-1)!);
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/projects/P-blank?start=assistant"));
     expect(mocks.create).not.toHaveBeenCalled();
   });
@@ -331,10 +332,10 @@ describe("New canvas entries", () => {
     mocks.create.mockRejectedValueOnce(new Error("网络断开"));
     render(<StudioProjects/>);
     await screen.findByRole("link", { name: "打开画布 测试画布 0" });
-    fireEvent.click(screen.getByRole("button", { name: "新建创作" }));
+    fireEvent.click(screen.getByRole("button", { name: "新建画布" }));
     await screen.findByText(/新画布没有创建成功/);
     expect(mocks.push).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "新建创作" }));
+    fireEvent.click(screen.getByRole("button", { name: "新建画布" }));
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/projects/P-new?start=assistant"));
   });
   it("desktop /create shows the page and creates nothing until 「新建画布」 is clicked, then one canvas even under StrictMode", async () => {

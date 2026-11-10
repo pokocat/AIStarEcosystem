@@ -18,6 +18,11 @@ public final class StudioPromptFormats {
     public static final String FILM_PLAN_OUTPUT = "仅输出JSON：{\"segments\":[{\"endSec\":3.8,\"title\":\"环境铺垫\"}]}。只给每段在原片中的结束秒数，最后一段结束于原片结尾。";
     public static final String FILM_SEGMENT_OUTPUT = "只输出Markdown正文，章节为：## 镜头构造（表格：原片时间、画面骨架、摄影机、调度构图与焦点）；## 段落表达（叙事要素、视觉变化、剪辑节奏、声音）；## 视频生成 Prompt（成片规格、主体一致性、场景美术、镜头序列、摄影机、光色材质、节奏、生成约束）。";
 
+    /** 拉片 v2（StudioVideoBreakdown.normalize 按这个结构读，改了要一起改）。 */
+    public static final String VIDEO_BREAKDOWN_OUTPUT = "只输出一个 JSON 对象，不要任何其他文字：\n{\n \"summary\":\"一句话：这条视频讲了什么、靠什么抓人\",\n \"type\":\"视频类型，如 剧情口播 / 探店 / 产品展示 / 直播切片 / 混剪 / 变装\",\n \"people\":[{\"id\":\"P1\",\"who\":\"身份和外观（性别、年龄感、发型、衣着）\",\"role\":\"主角/配角/路人\",\"speaks\":true}],\n \"products\":[{\"id\":\"G1\",\"what\":\"商品或关键物件的外观\",\"role\":\"主推/道具\"}],\n \"parts\":[{\"name\":\"钩子/铺垫/冲突/反转/实证/收尾等\",\"start\":0.0,\"end\":3.2,\"purpose\":\"这一段在干什么\"}],\n \"shots\":[{\"start\":0.0,\"end\":1.8,\"size\":\"景别：大特写/特写/近景/中景/全景/远景\",\"camera\":\"机位与运镜：固定/推/拉/摇/跟/手持，俯拍/平视/仰拍/自拍\",\"visual\":\"画面里发生了什么，谁在哪、在做什么、手里拿什么\",\"people\":[\"P1\"],\"products\":[\"G1\"],\"dialogue\":[{\"who\":\"P1\",\"at\":0.4,\"text\":\"逐字原话\"}],\"caption\":\"画面上烧录的字幕或花字原文，没有写空字符串\",\"sound\":\"这一镜的声音：人声/音效/音乐变化\",\"transition\":\"进入下一镜的方式：硬切/叠化/闪白/甩镜等\"}],\n \"music\":\"背景音乐风格、从几秒开始、在哪里变化，没有就写 无\",\n \"highlights\":[\"为什么能火的要点\"],\n \"remake\":{\"keep\":[\"复刻时必须保留的东西\"],\"change\":[\"原来是 X → 换成你的 Y\"],\"risks\":[\"复刻难点\"]}\n}";
+    /** 爆款复刻每段的视频提示词（StudioRecreationTaskPlan.prompts 按这个结构读，改了要一起改）。 */
+    public static final String RECREATION_COMPILE_OUTPUT = "只输出一个 JSON 对象，不要任何其他文字：\n{\"summary\":\"一句话说这条复刻怎么拍\",\"keep\":[\"保留原片的什么\"],\"change\":[\"换掉了什么\"],\"units\":[{\"no\":1,\"title\":\"这段的短标题\",\"prompt\":\"这段的视频提示词\",\"captions\":[{\"start\":0.0,\"end\":1.5,\"text\":\"这段画面上要加的字幕\"}]}]}\nunits 每段一项，no 和上面分段的编号一致，不能少段。captions 没有就写 []。";
+
     // 导演台（第 4 步，§8 #17–#19）
     public static final String DIRECTOR_SCRIPT_OUTPUT = "输出 JSON：{\"title\":\"剧名\",\"logline\":\"一句话核心卖点\",\"outline\":{\"world\":\"…\",\"characters\":[{\"name\":\"…\",\"age\":\"…\",\"identity\":\"…\",\"secret\":\"…\",\"flaw\":\"…\",\"arc\":\"…\"}],\"plot\":\"…\",\"reversals\":\"…\",\"theme\":\"…\"},\"content\":\"完整剧本正文\"}";
     public static final String DIRECTOR_SCRIPT_MORE_OUTPUT = "输出 JSON：{\"content\":\"这次写的剧本正文，每集用「# 第N集 集名」做标题\"}";

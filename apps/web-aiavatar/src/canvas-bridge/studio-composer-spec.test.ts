@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { mergeStudioSpec, studioDurationIssue, studioFrameCropNotice, studioPromptSpec, studioSpecConflict, studioSpecConflictText, studioSpecVideoDraft } from './studio-composer-spec';
+import { mergeStudioSpec, studioDurationIssue, studioDurationLimits, studioFrameCropNotice, studioPromptSpec, studioSpecConflict, studioSpecConflictText, studioSpecVideoDraft } from './studio-composer-spec';
 
 // IPR-fde32da6c2cc4664974f (2026-10-20): the description as submitted, with the settings it was sent with.
 const INCIDENT = '用我给你的人物和客厅图片来做视频，画幅 16:9，低饱和冷色调。\n\n镜 1（中景）：固定中全景，两人分坐在沙发两侧。无台词，仅安静底噪。时长 4 秒。';
@@ -55,4 +55,18 @@ describe('a first frame of another shape', () => {
     expect(studioFrameCropNotice({ width: 768, height: 1344 }, '9:16', ['9:16'])).toBeUndefined();
     expect(studioFrameCropNotice(undefined, '9:16', ['9:16'])).toBeUndefined();
   });
+});
+
+test('duration limits follow what the model states and only fill in what it does not', () => {
+  expect(studioDurationLimits({ min: 5, max: 60 })).toMatchObject({ min: 5, max: 60 });
+  // Max-only endpoints (older Agnes, a candidate limit on a generic protocol) accept any whole second under the limit.
+  const maxOnly = studioDurationLimits({ max: 18 });
+  expect(maxOnly).toMatchObject({ min: 4, max: 18 });
+  expect(studioDurationIssue(7, maxOnly)).toBeUndefined();
+  expect(studioDurationLimits({})).toMatchObject({ min: 4, max: 30 });
+  // Zero means not configured on the server.
+  expect(studioDurationLimits({ min: 0, max: 0 })).toMatchObject({ min: 4, max: 30 });
+  expect(studioDurationLimits({ min: 5, max: 60 }, true)).toEqual({ options: [8] });
+  // No model yet: nothing to offer or refuse.
+  expect(studioDurationIssue(45, studioDurationLimits(undefined))).toBeUndefined();
 });

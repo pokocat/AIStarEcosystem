@@ -59,6 +59,8 @@ class JusuanImageClientTest {
                 Map.entry(429,"{\"error\":{\"code\":\"rate_limit_exceeded\",\"message\":\"slow down\"}}"),
                 Map.entry(429,"<html>Too Many Requests</html>"),
                 Map.entry(503,"{\"error\":{\"message\":\"当前分组上游负载已饱和，请稍后再试\"}}"),
+                // 2026-11-04 线上原话：网关挑不出通道，请求没有送到模型，一定没受理。
+                Map.entry(503,"{\"error\":{\"code\":\"model_not_found\",\"message\":\"No available channel for model gpt-image-2-1k-pic under group gpt-image-2.5 (distributor) (request id: 20261104123456789)\",\"type\":\"new_api_error\"}}"),
                 Map.entry(500,"{\"error\":{\"message\":\"concurrency limit exceeded\"}}"))) {
             reset(upstream);
             var error=submitAnswered(refusal.getKey(),refusal.getValue());
@@ -76,7 +78,12 @@ class JusuanImageClientTest {
         reset(upstream);
         assertInstanceOf(JusuanImageClient.Pending.class,submitAnswered(504,"<html>gateway timeout</html>"));
         reset(upstream);
-        assertInstanceOf(JusuanImageClient.Pending.class,submitAnswered(503,"{\"error\":{\"code\":\"model_not_found\",\"message\":\"No available channel\"}}"));
+        assertInstanceOf(JusuanImageClient.Pending.class,submitAnswered(503,"<html>service unavailable</html>"));
+        // 「没有可用通道」只在 503 才算明确拒绝；别的状态码里出现同样的字，不能当成可以重交。
+        assertTrue(JusuanImageClient.refusedForLoad(503,"{\"error\":{\"message\":\"No available channel for model x\"}}"));
+        assertFalse(JusuanImageClient.refusedForLoad(500,"{\"error\":{\"message\":\"No available channel for model x\"}}"));
+        assertFalse(JusuanImageClient.refusedForLoad(200,"{\"revised_prompt\":\"a sign saying no available channel\"}"));
+        assertFalse(JusuanImageClient.refusedForLoad(503,"{\"error\":{\"code\":\"insufficient_user_quota\",\"message\":\"No available channel, 额度不足\"}}"));
     }
     @Test void moderationRejectionReturnsProviderReasonWithoutRetryingDurableSubmission() throws Exception {
         String reason="生成的图片可能违反了关于青少年与儿童形象适当描绘的防护限制";
@@ -88,13 +95,12 @@ class JusuanImageClientTest {
         assertEquals("content_moderation",details.get("category"));
         assertEquals("output",details.get("target"));
         assertEquals(error.getMessage(),details.get("reason"));
-        assertTrue(error.getMessage().startsWith("生成结果未通过内容审核"));
         assertTrue(error.getMessage().contains("未成年人"));
         assertEquals(400,((ProviderResponseDiagnostics)error.getSuppressed()[0]).status());
         verify(upstream,times(1)).sendJson(any(),any());
     }
     @Test void otherJsonRejectionsExposeSanitizedBoundedReason() throws Exception {
-        String reason="invalid parameter; token=private-token; https://private.example/file?signature=secret; sk-testsecret "+"字".repeat(450);
+        String reason="invalid parameter; token=private-token; https://private.example/file?signature=secret; sk-testsecret "+"尺寸".repeat(225);
         var error=rejectedResponse(400,mapper.createObjectNode().put("message",reason).toString(),false);
         var details=(Map<?,?>)error.getDetails();String safe=(String)details.get("reason");
         assertEquals("provider_rejection",details.get("category"));
@@ -140,7 +146,6 @@ class JusuanImageClientTest {
         assertEquals("content_moderation",((Map<?,?>)error.getDetails()).get("category"));
         assertEquals("reference_image",((Map<?,?>)error.getDetails()).get("target"));
         assertEquals(error.getMessage(),((Map<?,?>)error.getDetails()).get("reason"));
-        assertTrue(error.getMessage().startsWith("参考图片未通过内容审核"));
         verify(upstream,times(2)).sendJson(any(),any());verifyNoInteractions(http);
     }
     private JusuanImageClient.ProviderRejected rejectedResponse(int status,String body,boolean durable) {
@@ -153,7 +158,6 @@ class JusuanImageClientTest {
         String body="{\"error\":{\"message\":\"非常抱歉，该提示可能违反了关于暴力内容的防护限制。如果你认为此判断有误，请重试或修改提示语。\",\"type\":\"invalid_request_error\",\"param\":\"\",\"code\":\"content_policy_violation\"}}";
         var error=rejectedResponse(400,body,true);
         assertEquals("unknown",((Map<?,?>)error.getDetails()).get("target"));
-        assertTrue(error.getMessage().contains("未说明触发对象"));
         assertFalse(error.getMessage().contains("该提示"));
         assertTrue(((ProviderResponseDiagnostics)error.getSuppressed()[0]).responseBody().contains("该提示可能违反"));
         verify(upstream,times(1)).sendJson(any(),any());
@@ -172,11 +176,11 @@ class JusuanImageClientTest {
         when(upstream.sendJson(any(),any())).thenReturn(response);
         if(synchronous) {
             var error=assertThrows(JusuanImageClient.ProviderRejected.class,()->client.generate("ep","image","1024x1024",List.of(),"request","owner",s->{},null,null,null,state->{}));
-            assertTrue(error.getMessage().startsWith("参考图片未通过内容审核"));
+            assertEquals("reference_image",((Map<?,?>)error.getDetails()).get("target"));
         } else {
             var pending=assertThrows(JusuanImageClient.Pending.class,()->client.generate("ep","image","1024x1024",List.of(),"request","owner",s->{},null,null,null,state->{}));
             assertEquals("STUDIO_IMAGE_SUBMISSION_UNKNOWN",pending.code());
-            assertTrue(pending.getMessage().contains("参考图片未通过内容审核"));
+            assertTrue(pending.getMessage().contains(new com.aistareco.aep.service.ai.ProviderContentModeration.Finding("","reference_image","").message()),pending.getMessage());
         }
         verify(upstream,times(1)).sendJson(any(),any());
     }
@@ -395,7 +399,7 @@ class JusuanImageClientTest {
         var response=json("{\"data\":[{\"b64_json\":\""+encoded+"\"}]}");
         when(upstream.sendJson(any(),any())).thenReturn(response);
         var error=assertThrows(BusinessException.class,()->client.generate("ep","x","3840x2160",List.of(),"limit","owner",s->{}));
-        assertTrue(error.getMessage().contains("超过端点配置的大小上限"));
+        assertEquals("STUDIO_IMAGE_PROVIDER_FAILED",error.getCode());
         verify(upstream,times(1)).sendJson(any(),any());
     }
     @Test void malformedImageResponseKeepsSafeParserDiagnosticsAndNeverResubmits() {
@@ -447,14 +451,36 @@ class JusuanImageClientTest {
         assertTrue(request.getValue().headers().firstValue("Authorization").isEmpty());
         verify(upstream,times(1)).sendJson(any(),any());
     }
-    @Test void configuredOutputHostsStillBindTheFallbackUrl() {
+    @Test void resultDownloadsIgnoreLegacyHostAllowlistAndAcceptHttpWithCustomPort() throws Exception {
         base64Endpoint("[\"cdn.supplier.example\"]");
-        var reply=json("{\"data\":[{\"url\":\"https://8.8.4.4/images/result\"}]}");
+        var reply=json("{\"data\":[{\"url\":\"http://23.146.144.189:3001/images/result\"}]}");
         when(upstream.sendJson(any(),any())).thenReturn(reply);
-        var error=assertThrows(JusuanImageClient.ProviderRejected.class,
-                ()->client.generate("ep","x","1x1",List.of(),"host-gate","owner",s->{},null,null,null,state->{}));
-        assertTrue(error.getMessage().contains("域名"));
-        verifyNoInteractions(http);
+        byte[] bytes=Base64.getDecoder().decode(PNG_1X1);
+        var downloaded=mock(HttpResponse.class);
+        when(downloaded.statusCode()).thenReturn(200);when(downloaded.body()).thenReturn(new ByteArrayInputStream(bytes));
+        when(http.send(any(),any())).thenReturn(downloaded);
+        assertArrayEquals(bytes,client.generate("ep","x","1x1",List.of(),"any-result-url","owner",s->{}));
+        var request=org.mockito.ArgumentCaptor.forClass(HttpRequest.class);
+        verify(http).send(request.capture(),any());
+        assertEquals("http://23.146.144.189:3001/images/result",request.getValue().uri().toString());
+        assertTrue(request.getValue().headers().firstValue("Authorization").isEmpty());
+    }
+    @Test void resultDownloadsFollowReturnedRedirectsWithoutSendingSupplierCredentials() throws Exception {
+        base64Endpoint(null);
+        var reply=json("{\"data\":[{\"url\":\"https://cdn.supplier.example/image\"}]}");
+        when(upstream.sendJson(any(),any())).thenReturn(reply);
+        var redirect=mock(HttpResponse.class);
+        when(redirect.statusCode()).thenReturn(302);when(redirect.body()).thenReturn(new ByteArrayInputStream(new byte[0]));
+        when(redirect.headers()).thenReturn(HttpHeaders.of(Map.of("Location",List.of("http://23.146.144.189:3001/result.png")),(k,v)->true));
+        byte[] bytes=Base64.getDecoder().decode(PNG_1X1);
+        var downloaded=mock(HttpResponse.class);
+        when(downloaded.statusCode()).thenReturn(200);when(downloaded.body()).thenReturn(new ByteArrayInputStream(bytes));
+        when(http.send(any(),any())).thenReturn(redirect,downloaded);
+        assertArrayEquals(bytes,client.generate("ep","x","1x1",List.of(),"redirect-result","owner",s->{}));
+        var requests=org.mockito.ArgumentCaptor.forClass(HttpRequest.class);
+        verify(http,times(2)).send(requests.capture(),any());
+        assertEquals("http://23.146.144.189:3001/result.png",requests.getAllValues().get(1).uri().toString());
+        requests.getAllValues().forEach(r->assertTrue(r.headers().firstValue("Authorization").isEmpty()));
     }
     @Test void finishedReplyWithoutAnyImageIsAKnownFailureNotAnUnknownSubmission() {
         base64Endpoint(null);
@@ -598,7 +624,7 @@ class JusuanImageClientTest {
             assertTrue(request.getValue().headers().firstValue("Authorization").isEmpty());
         }finally{Files.deleteIfExists(image);}
     }
-    @Test void privateResultUrlIsRejectedEvenIfListedByEndpoint() {
+    @Test void supplierResultUrlHasNoNetworkAddressFilter() throws Exception {
         var ep=endpoint("image-model");
         ep.setImageRequestSpecJson("""
                 {"promptMaxChars":1000,"minReferenceImages":0,"maxReferenceImages":0,"referenceField":"none",
@@ -609,9 +635,12 @@ class JusuanImageClientTest {
                 .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
         var reply=json("{\"url\":\"https://127.0.0.1/private.png\"}");
         when(upstream.sendJson(any(),any())).thenReturn(reply);
-        assertEquals("STUDIO_IMAGE_PROVIDER_FAILED",assertThrows(BusinessException.class,
-                ()->client.generate("ep","portrait","1024x1024",List.of(),"private-run","owner",stage->{})).getCode());
-        verifyNoInteractions(http);
+        byte[] bytes=Base64.getDecoder().decode(PNG_1X1);
+        var downloaded=mock(HttpResponse.class);
+        when(downloaded.statusCode()).thenReturn(200);when(downloaded.body()).thenReturn(new ByteArrayInputStream(bytes));
+        when(http.send(any(),any())).thenReturn(downloaded);
+        assertArrayEquals(bytes,client.generate("ep","portrait","1024x1024",List.of(),"returned-url","owner",stage->{}));
+        verify(http).send(any(),any());
     }
     @Test void durableAcceptedJobResumesOriginalIdAndBodyAfterPollOutageWithoutReposting() throws Exception {
         var ep=endpoint("ernie-Image");when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));

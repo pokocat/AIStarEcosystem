@@ -92,7 +92,7 @@ export function useLoginNext(): string {
 }
 
 /**
- * 平台门禁引导屏：账号已登录但没开通「数字资产」子产品时展示，
+ * 平台门禁引导屏：账号已登录但没开通 IP Studio（子产品码 aiavatar）时展示，
  * 避免让人对着空货架猜发生了什么。v0.149 起复用共享的开通门（激活码就地开通）。
  */
 export function PlatformGateScreen() {
@@ -101,7 +101,7 @@ export function PlatformGateScreen() {
     <div style={{ maxWidth: 480, margin: "0 auto" }}>
       <EnrollmentGate
         product="aiavatar"
-        productLabel="数字资产"
+        productLabel="IP Studio"
         // 本 app 没挂共享 AuthProvider，开通成功后整页重载最直接：
         // 重载会重跑 useRequireAuth 的 enrollments 检查并放行。
         onActivated={() => window.location.reload()}

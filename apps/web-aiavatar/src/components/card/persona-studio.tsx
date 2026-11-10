@@ -84,7 +84,7 @@ export function PersonaStudio({
       if (turn.ready && turn.draft) setDraft(turn.draft);
     } catch (e) {
       // 如实说是哪一步不成 —— 未配置模型 / 调用失败，用户与运维要能据此行动
-      setErr(reportStudioError(e, { fallback: "聊不通，稍后再试" }).message);
+      setErr(reportStudioError(e, { fallback: "人设对话失败，请重试。" }).message);
     } finally {
       setBusy(false);
     }
@@ -111,7 +111,7 @@ export function PersonaStudio({
     setDraft(null);
     // 说实话：这里只是填进了表单，**还没存**。说「已经写进名片了」是骗人的 ——
     // 用户据此直接离开，聊了半天的东西就没了。
-    setMsgs((m) => [...m, { role: "assistant", content: "已经填进上面的表单了（记得点页面底部的保存）。要不要按这个人设，把「一句话 / 能提供 / 在找」也顺一遍？" }]);
+    setMsgs((m) => [...m, { role: "assistant", content: "已填入上方表单，请点击页面底部的「保存草稿」保存。如需按此人设改写「一句话 / 能提供 / 在找」，可点击「按人设改写名片文案」。" }]);
   };
 
   const doRewrite = async () => {
@@ -125,7 +125,7 @@ export function PersonaStudio({
       });
       setRewrite(r);
     } catch (e) {
-      setErr(reportStudioError(e, { fallback: "改写没成功，稍后再试" }).message);
+      setErr(reportStudioError(e, { fallback: "改写失败，请重试。" }).message);
     } finally {
       setBusy(false);
     }
@@ -155,33 +155,33 @@ export function PersonaStudio({
           <Row label="一句话人设">
             <input
               value={persona.essence}
-              placeholder="这个人骨子里是谁"
+              placeholder="例如：做事较真、说到做到的实干派"
               onChange={(e) => setPersona((p) => ({ ...p, essence: e.target.value }))}
               style={INPUT}
             />
           </Row>
-          <Row label="价值观" hint="一行一条。这些是访客在名片上看得到的。">
+          <Row label="价值观" hint="每行一条，访客可在名片上看到。">
             <LinesInput
-              value={persona.values} rows={3} placeholder="一行一条"
+              value={persona.values} rows={3} placeholder="每行一条"
               onCommit={(v) => setPersona((p) => ({ ...p, values: v }))}
             />
           </Row>
-          <Row label="性格特征" hint="逗号或换行分隔。">
+          <Row label="性格特征" hint="输入后按回车添加。">
             <ChipEditor
               items={persona.traits}
               onChange={(v) => setPersona((p) => ({ ...p, traits: v }))}
-              placeholder="加一个特征"
+              placeholder="添加特征"
             />
           </Row>
-          <Row label="说话方式" hint="「按人设改写文案」按这一条来写；将来数字人开口也按它。">
+          <Row label="说话方式" hint="「按人设改写名片文案」时参照此项。">
             <input
               value={persona.voice.tone}
-              placeholder="例：句子短，先给结论，不铺垫"
+              placeholder="例如：句子简短，先说结论"
               onChange={(e) => setPersona((p) => ({ ...p, voice: { ...p.voice, tone: e.target.value } }))}
               style={INPUT}
             />
           </Row>
-          <Row label="不说这类话" hint="一行一条。改写时会避开。">
+          <Row label="不说这类话" hint="每行一条，改写时会避开。">
             <LinesInput
               value={persona.voice.avoid} rows={2} placeholder="例：赋能、闭环、生态位"
               onCommit={(v) => setPersona((p) => ({ ...p, voice: { ...p.voice, avoid: v } }))}
@@ -190,7 +190,7 @@ export function PersonaStudio({
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <Btn onClick={() => setOpen((v) => !v)} icon={<Bot size={14} />}>
-              {open ? "收起对话" : "接着聊，改改人设"}
+              {open ? "收起对话" : "继续对话"}
             </Btn>
             <Btn onClick={() => void doRewrite()} busy={busy} primary icon={<Wand2 size={14} />}>
               按人设改写名片文案
@@ -208,8 +208,8 @@ export function PersonaStudio({
             <Sparkles size={16} style={{ color: "var(--primary)" }} /> 把「你是谁」说清楚
           </span>
           <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.8, color: "var(--ink-2)" }}>
-            名片上现在写的是你**做过什么**。但见了面真正被记住的，是你在意什么、说话什么调子。
-            跟顾问聊几句 —— 它问的都是具体的小事，你照实说就行，价值观和性格由它替你提炼。
+            名片目前展示的是你做过什么。
+            与顾问对话几轮，它会从你的回答中提炼价值观、性格和说话风格。
           </p>
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
             {OPENERS.map((o) => (
@@ -236,13 +236,13 @@ export function PersonaStudio({
           <div style={{ maxHeight: 320, overflowY: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
             {msgs.length === 0 && (
               <p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.7 }}>
-                随便从哪句开始都行。顾问会一次问一个具体的问题。
+                可从任意话题开始，顾问每次会问一个具体问题。
               </p>
             )}
             {msgs.map((m, i) => <Bubble key={i} role={m.role} text={m.content} />)}
             {busy && (
               <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12.5, color: "var(--ink-3)" }}>
-                <Loader2 size={13} className="spin" /> 想一下…
+                <Loader2 size={13} className="spin" /> 正在思考…
               </span>
             )}
             <div ref={endRef} />
@@ -253,7 +253,7 @@ export function PersonaStudio({
           <div style={{ display: "flex", gap: 8, padding: 12, borderTop: "1px solid var(--line)" }}>
             <input
               value={input}
-              placeholder="照实说就行"
+              placeholder="输入你的回答"
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) void send(input); }}
               style={{ ...INPUT, flex: 1 }}
@@ -275,8 +275,8 @@ export function PersonaStudio({
           )}
           <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
             <Btn onClick={adoptRewrite} primary icon={<Check size={14} />}>采用</Btn>
-            <Btn onClick={() => setRewrite(null)} icon={<X size={14} />}>不用</Btn>
-            <Btn onClick={() => void doRewrite()} busy={busy} icon={<RefreshCw size={14} />}>换一版</Btn>
+            <Btn onClick={() => setRewrite(null)} icon={<X size={14} />}>不采用</Btn>
+            <Btn onClick={() => void doRewrite()} busy={busy} icon={<RefreshCw size={14} />}>重新改写</Btn>
           </div>
         </div>
       )}
@@ -366,15 +366,15 @@ function Bubble({ role, text }: { role: "user" | "assistant"; text: string }) {
 function DraftCard({ draft, onAdopt, onKeepTalking }: { draft: Draft; onAdopt: () => void; onKeepTalking: () => void }) {
   return (
     <div style={{ borderTop: "1px solid var(--line)", padding: 14, background: "var(--surface-2)" }}>
-      <span style={{ fontSize: 12.5, fontWeight: 800, display: "block", marginBottom: 9 }}>聊出来的人设</span>
+      <span style={{ fontSize: 12.5, fontWeight: 800, display: "block", marginBottom: 9 }}>人设草稿</span>
       <Preview label="一句话" value={draft.essence} />
       <Preview label="价值观" value={(Array.isArray(draft.values) ? draft.values : []).join("　·　")} />
       <Preview label="性格" value={(Array.isArray(draft.traits) ? draft.traits : []).join("　·　")} />
       <Preview label="说话方式" value={draft.voice?.tone ?? ""} />
       {Array.isArray(draft.voice?.avoid) && draft.voice.avoid.length ? <Preview label="不说" value={draft.voice.avoid.join("　·　")} /> : null}
       <div style={{ display: "flex", gap: 8, marginTop: 11 }}>
-        <Btn onClick={onAdopt} primary icon={<Check size={14} />}>就它了</Btn>
-        <Btn onClick={onKeepTalking}>再聊聊</Btn>
+        <Btn onClick={onAdopt} primary icon={<Check size={14} />}>采用</Btn>
+        <Btn onClick={onKeepTalking}>继续对话</Btn>
       </div>
     </div>
   );

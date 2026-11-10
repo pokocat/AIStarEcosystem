@@ -125,10 +125,10 @@ public class DapAvatarRefResolver {
         DapAvatar avatar = avatarRepo.findByIdAndOwnerUserId(dapAvatarId, userId)
                 .orElseThrow(() -> BusinessException.notFound("DAP_AVATAR_NOT_FOUND", "数字人不存在或无权访问"));
         if (avatar.getDeletedAt() != null) {
-            throw BusinessException.badRequest("DAP_AVATAR_TRASHED", "该数字人已在回收站，请先在 AiAvatar 中恢复");
+            throw BusinessException.badRequest("DAP_AVATAR_TRASHED", "该数字人已在回收站，请在回收站中恢复后使用");
         }
         if (avatar.getImageKey() == null || avatar.getImageKey().isBlank()) {
-            throw BusinessException.badRequest("DAP_AVATAR_NO_IMAGE", "该数字人还没有定妆照，请先在 AiAvatar 完成形象生成");
+            throw BusinessException.badRequest("DAP_AVATAR_NO_IMAGE", "该数字人还没有定妆照，请完成形象生成后使用");
         }
         return avatar;
     }
@@ -162,7 +162,7 @@ public class DapAvatarRefResolver {
             return;
         }
         throw BusinessException.badRequest("DAP_DISPLAY_REF_INVALID",
-                "展示图指针格式应为 look:<id> / deriv:<id> / variant:<idx> / shot:<name>");
+                "所选展示图无效，请重新选择");
     }
 
     /** 动态形象解析结果：视频地址 + 封面（都可能为 null）。 */

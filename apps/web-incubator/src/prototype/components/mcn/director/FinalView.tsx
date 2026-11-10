@@ -63,7 +63,7 @@ export const FinalView = ({ lang, mode, nodes, ratio, styleLabel, deliverables, 
             </div>
             <button type="button" onClick={onRender} disabled={busy || !output}
               className="mt-4 w-full h-10 rounded-xl text-sm font-semibold inline-flex items-center justify-center gap-2 disabled:opacity-50"
-              style={{ background: done ? '#ecfeff' : 'linear-gradient(90deg, #06b6d4, #8b5cf6)', color: done ? '#0e7490' : '#fff' }}>
+              style={{ background: done ? '#ecfeff' : 'linear-gradient(90deg, #0891b2, #7c3aed)', color: done ? '#0e7490' : '#fff' }}>
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Clapperboard className="w-4 h-4" />}
               {busy ? (zh ? '合成中，会自动补齐未完成的片段…' : 'Rendering, filling in missing parts…') : done ? (zh ? '重新合成' : 'Re-render') : mode === 'music' ? (zh ? '混音并制作交付' : 'Mix & deliver') : (zh ? '合成成片' : 'Render final cut')}
             </button>

@@ -34,12 +34,12 @@ export function StudioProjects() {
   const { catalog: scenes } = useSceneCatalog(ready);
   const sceneHome = (p: IpProjectSummary) => {
     const kind = !p.sceneId || !scenes ? undefined : scenes.video.some(s => s.id === p.sceneId) ? "video" : scenes.image.some(s => s.id === p.sceneId) ? "image" : undefined;
-    return kind && { href: `/${kind}?scene=${encodeURIComponent(p.sceneId!)}&draft=${encodeURIComponent(p.id)}`, label: kind === "video" ? "回到 AI 视频继续" : "回到 AI 图片继续" };
+    return kind && { href: `/${kind}?scene=${encodeURIComponent(p.sceneId!)}&draft=${encodeURIComponent(p.id)}`, label: kind === "video" ? "在 AI 视频中编辑" : "在 AI 图片中编辑" };
   };
   const projects = useStudioList(IpStudioApi.listProjects, ready);
   // AI 导演台 works are made on their own page; the projects page points at the latest few so nothing seems missing.
   const works = useStudioList(DirectorApi.listWorks, ready);
-  // 「新建创作」 opens a new canvas directly (docs/ip-studio-new-canvas-and-threads.md §2.2), no stop at /create.
+  // 「新建画布」 opens a new canvas directly (docs/ip-studio-new-canvas-and-threads.md §2.2), no stop at /create.
   const newCanvas = useStartNewCanvas();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<"all" | "draft" | "published">("all");
@@ -80,10 +80,10 @@ export function StudioProjects() {
 
   if (authState === "no-platform" || projects.notEnrolled || newCanvas.notEnrolled) return <PlatformGateScreen/>;
   const newCanvasButton = (className: string, label: ReactNode) => <button type="button" className={className} aria-busy={newCanvas.creating} disabled={newCanvas.creating} onClick={() => void newCanvas.start()}>{label}</button>;
-  if (!ready) return <StudioPage title="项目" description="管理画布，接续每一次创作。" nextDescription="每张画布都在这里，点开可继续编辑"><GalleryState loading/></StudioPage>;
+  if (!ready) return <StudioPage title="项目" description="点击画布继续编辑"><GalleryState loading/></StudioPage>;
 
-  return <StudioPage title="项目" description="管理画布，接续每一次创作。" nextDescription="每张画布都在这里，点开可继续编辑" contentRef={surface} className="studio-gallery-page studio-projects-page" actions={newCanvasButton("ip-brand-button", <>{newCanvas.creating ? <Loader2 size={16} className="studio-gallery-spinner" aria-hidden="true"/> : <Plus size={16} aria-hidden="true"/>}新建创作</>)}>
-    {newCanvas.error !== undefined && <div className="studio-gallery-action-error"><StudioErrorNotice error={newCanvas.error}/><span> · 新画布没有创建成功，可以再点一次「新建创作」。</span></div>}
+  return <StudioPage title="项目" description="点击画布继续编辑" contentRef={surface} className="studio-gallery-page studio-projects-page" actions={newCanvasButton("ip-brand-button", <>{newCanvas.creating ? <Loader2 size={16} className="studio-gallery-spinner" aria-hidden="true"/> : <Plus size={16} aria-hidden="true"/>}新建画布</>)}>
+    {newCanvas.error !== undefined && <div className="studio-gallery-action-error"><StudioErrorNotice error={newCanvas.error}/><span> · 新画布没有创建成功，请重试。</span></div>}
     <section className="studio-gallery-panel studio-canvas-catalogue" aria-label="我的画布">
       <div className="studio-page-toolbar studio-gallery-controls">
         <GallerySearch label="搜索我的画布" placeholder="搜索画布名称…" value={query} onChange={v => { setQuery(v); setPage(1); }} />
@@ -93,9 +93,9 @@ export function StudioProjects() {
         <div className="studio-gallery-view" role="group" aria-label="画布显示方式"><button type="button" aria-label="网格视图" aria-pressed={view === "grid"} onClick={() => setView("grid")}><LayoutGrid size={18} /></button><button type="button" aria-label="列表视图" aria-pressed={view === "list"} onClick={() => setView("list")}><List size={19} /></button></div>
         <button type="button" className="studio-page-refresh" aria-label="刷新画布" disabled={projects.loading} onClick={() => { projects.reload(); refreshPreviews(); }}><RefreshCw size={16}/></button>
       </div>
-      <div className="studio-page-result" aria-live="polite">{projects.loading ? '正在读取画布…' : projects.error ? '暂时无法读取画布' : `${filtered.length} 张${query.trim() || status !== 'all' || type !== 'all' ? '匹配' : ''}画布`}</div>
+      <div className="studio-page-result" aria-live="polite">{projects.loading ? '正在加载画布…' : projects.error ? '画布加载失败' : `${filtered.length} 张${query.trim() || status !== 'all' || type !== 'all' ? '匹配' : ''}画布`}</div>
       {projects.error ? <GalleryState error={projects.error} retry={projects.reload} /> : projects.loading ? <GalleryState loading /> : <>
-        {!filtered.length && <div className="studio-gallery-empty"><Layers size={24} /><h3>{projects.data.length ? "没有找到符合条件的画布" : "从第一张画布开始"}</h3><p>{projects.data.length ? "换个关键词，或清除当前筛选。" : "开始一次创作，画布会保存在这里。"}</p>{projects.data.length > 0 ? <button type="button" className="ip-brand-text-button" onClick={() => { setQuery(""); setStatus("all"); setPage(1); }}>清除筛选</button> : newCanvasButton("ip-brand-text-button", <>开始创作 {newCanvas.creating ? <Loader2 size={15} className="studio-gallery-spinner" aria-hidden="true"/> : <ArrowRight size={15} aria-hidden="true"/>}</>)}</div>}
+        {!filtered.length && <div className="studio-gallery-empty"><Layers size={24} /><h3>{projects.data.length ? "没有找到符合条件的画布" : "还没有画布"}</h3><p>{projects.data.length ? "请更换关键词，或清除筛选。" : "新建的画布会保存在这里。"}</p>{projects.data.length > 0 ? <button type="button" className="ip-brand-text-button" onClick={() => { setQuery(""); setStatus("all"); setPage(1); }}>清除筛选</button> : newCanvasButton("ip-brand-text-button", <>新建画布 {newCanvas.creating ? <Loader2 size={15} className="studio-gallery-spinner" aria-hidden="true"/> : <ArrowRight size={15} aria-hidden="true"/>}</>)}</div>}
         <div className={`studio-project-grid studio-project-${view}`}>{visible.map(project => {
           const preview = previews[`${project.id}:${project.updatedAt}`];
           const content = preview?.doc ? projectPreview(preview.doc) : undefined;
@@ -103,7 +103,7 @@ export function StudioProjects() {
           return <article className="studio-project-card" key={project.id}>
             <Link href={`/projects/${project.id}`} className="studio-project-open" aria-label={`打开画布 ${project.name}`}><div className="studio-gallery-preview">
               <ProjectCardPreview key={`${project.id}:${project.updatedAt}:${previewRevision}`} coverUrl={project.coverUrl} preview={content} doc={preview?.doc} loading={!preview} error={preview?.error}/>
-            </div><div className="project-card-copy"><h3 title={project.name}>{project.name}</h3><p className="project-card-summary">{content ? content.counts || (content.empty ? "空白画布" : `${content.steps.length} 个创作节点`) : preview?.error ? "内容摘要暂不可用" : "正在读取内容…"}</p></div></Link>
+            </div><div className="project-card-copy"><h3 title={project.name}>{project.name}</h3><p className="project-card-summary">{content ? content.counts || (content.empty ? "空白画布" : `${content.steps.length} 个创作节点`) : preview?.error ? "内容摘要暂不可用" : "正在加载内容…"}</p></div></Link>
             <div className="studio-project-info"><div><span className={`studio-project-status is-${project.status}`}><i />{project.status === "published" ? "已发布" : "草稿"}</span><time title="最近编辑时间" dateTime={project.updatedAt}>{formatDateTime(project.updatedAt)}</time></div>
               <details className="studio-project-menu"><summary aria-label={`画布 ${project.name} 的更多操作`}><MoreHorizontal size={18} /></summary><div><Link href={`/projects/${project.id}`}><ArrowRight size={15} />打开画布</Link>{back && <Link href={back.href}><Undo2 size={15} />{back.label}</Link>}<button type="button" onClick={e => { e.currentTarget.closest("details")?.removeAttribute("open"); openInspector(project, "cover"); }}><Image size={15}/>设置封面</button><button type="button" className="project-delete-action" onClick={e => { e.currentTarget.closest("details")?.removeAttribute("open"); setDeleteError(""); setPendingDelete(project); }}><Trash2 size={15} />删除画布</button></div></details>
             </div>
@@ -129,8 +129,8 @@ export function StudioProjects() {
       {inspectDoc ? <><CanvasThumb doc={inspectDoc} height={260}/><p className="project-preview-caption">{inspectDoc.nodes.length} 个节点 · {inspectDoc.connections.length} 条连线</p><Link className="ip-brand-button" href={`/projects/${inspecting?.project.id}`}>打开画布<ArrowRight size={15}/></Link></> : <GalleryState loading={!previews[`${inspecting?.project.id}:${inspecting?.project.updatedAt}`]?.error} error={previews[`${inspecting?.project.id}:${inspecting?.project.updatedAt}`]?.error} retry={refreshPreviews}/>}
     </Modal>
 
-    <Modal open={!!pendingDelete} title="删除画布" footer={null} onCancel={() => { if (!deleting) setPendingDelete(undefined); }} closable={!deleting} keyboard={!deleting} mask={{ closable: !deleting }} getContainer={() => surface.current || document.body} className="ip-management-editor studio-gallery-delete" centered>
-      <p>确认删除「{pendingDelete?.name}」？画布内的节点和连线将一并删除，此操作无法撤销。</p>{deleteError && <p className="studio-gallery-action-error"><StudioErrorNotice error={deleteError}/></p>}<div className="studio-gallery-delete-actions"><button type="button" className="ip-brand-secondary" disabled={deleting} onClick={() => setPendingDelete(undefined)}>取消</button><button type="button" className="ip-brand-button" disabled={deleting} onClick={() => void remove()}>{deleting && <Loader2 size={16} className="studio-gallery-spinner" />}{deleting ? "正在删除…" : "确认删除"}</button></div>
+    <Modal open={!!pendingDelete} title="删除这张画布？" footer={null} onCancel={() => { if (!deleting) setPendingDelete(undefined); }} closable={!deleting} keyboard={!deleting} mask={{ closable: !deleting }} getContainer={() => surface.current || document.body} className="ip-management-editor studio-gallery-delete" centered>
+      <p>「{pendingDelete?.name}」中的节点和连线将一并删除，删除后无法恢复。</p>{deleteError && <p className="studio-gallery-action-error"><StudioErrorNotice error={deleteError}/></p>}<div className="studio-gallery-delete-actions"><button type="button" className="ip-brand-secondary" disabled={deleting} onClick={() => setPendingDelete(undefined)}>取消</button><button type="button" className="ip-brand-button" disabled={deleting} onClick={() => void remove()}>{deleting && <Loader2 size={16} className="studio-gallery-spinner" />}{deleting ? "正在删除…" : "删除"}</button></div>
     </Modal>
   </StudioPage>;
 }

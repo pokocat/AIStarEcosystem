@@ -14,6 +14,8 @@ export type CanvasProject = {
     updatedAt: string;
     // Local integration: assistant history is separate from the vendor canvas graph.
     assistantConversations?: CanvasNodeData[];
+    // Local integration: retain scene-page fields when the vendor canvas saves the shared document.
+    documentFields?: Record<string, unknown>;
     nodes: CanvasNodeData[];
     connections: CanvasConnection[];
     chatSessions: CanvasAssistantSession[];
@@ -78,6 +80,7 @@ export const useCanvasStore = create<CanvasStore>()(
                     createdAt: source.createdAt || now,
                     updatedAt: now,
                     assistantConversations: source.assistantConversations || [],
+                    documentFields: source.documentFields,
                     nodes: source.nodes || [],
                     connections: source.connections || [],
                     chatSessions: source.chatSessions || [],

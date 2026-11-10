@@ -7,7 +7,7 @@ import type { LibraryFolder, LibraryObject, LibraryObjectKind } from '@ai-star-e
 import { mainLibraryVersion } from '@/canvas-bridge/asset-library';
 import { SignedImage } from '@/canvas-bridge/signed-image';
 
-const kinds = { character: '角色', scene: '场景', prop: '道具' };
+const kinds = { character: '角色', scene: '场景', prop: '道具', product: '商品' };
 
 /** Saved objects are the primary content, including objects that have no image yet. */
 export function LibraryScriptAssets({ assets, folders, onEdit, onExtract }: {
@@ -44,7 +44,7 @@ export function LibraryScriptAssets({ assets, folders, onEdit, onExtract }: {
           <div className="script-asset-meta"><span>{kinds[asset.kind]}</span><span>{status}</span></div>
           <h4>{asset.name}</h4>
           <p className="script-asset-description">{asset.description || '尚未填写描述'}</p>
-          <div className="script-asset-footer"><span>{folders.find(folder => folder.id === asset.folderId)?.name || (asset.folderId ? '文件夹名称暂不可用' : '未分类')}</span><Button size="small" onClick={() => onEdit([asset])} aria-label={`编辑与配图 ${asset.name}`}>编辑与配图</Button></div>
+          <div className="script-asset-footer"><span>{folders.find(folder => folder.id === asset.folderId)?.name || (asset.folderId ? '未知文件夹' : '未分类')}</span><Button size="small" onClick={() => onEdit([asset])} aria-label={`编辑与配图 ${asset.name}`}>编辑与配图</Button></div>
         </div>
       </article>;
     })}</div> : <div className="script-assets-empty script-assets-empty-filter"><p>本剧还没有{kinds[kind as LibraryObjectKind]}资产。</p><Button onClick={() => setKind('all')}>查看全部资产</Button></div>}

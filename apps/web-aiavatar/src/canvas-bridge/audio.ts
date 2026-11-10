@@ -6,9 +6,9 @@
 import type { UploadedFile } from "./file-storage";
 
 export async function requestAudioGeneration(..._args: unknown[]): Promise<Blob> {
-  throw new Error("语音生成还没开通");
+  throw new Error("暂不支持语音生成");
 }
 
 export async function storeGeneratedAudio(..._args: unknown[]): Promise<UploadedFile> {
-  throw new Error("语音生成还没开通");
+  throw new Error("暂不支持语音生成");
 }

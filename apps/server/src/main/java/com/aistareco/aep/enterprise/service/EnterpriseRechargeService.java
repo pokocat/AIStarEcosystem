@@ -127,7 +127,7 @@ public class EnterpriseRechargeService {
         }
         requirePaid(order);var locked=lockWallets(order.getEnterpriseId());var preview=preview(order,locked);
         if(!preview.previewToken().equals(token))throw conflict("可退积分或金额已变化，请重新核对");
-        if(preview.pendingCredits()>0)throw conflict("原充值积分仍有在途任务，请等待任务结算后重新核对退款");
+        if(preview.pendingCredits()>0)throw conflict("原充值积分仍有进行中的任务，请等待任务结算后重新核对退款");
         if(preview.reclaimableCredits()<=0||preview.refundPriceCents()<=0)throw conflict("没有可退的原订单积分或现金金额");
         claimReceipt(order,"out",receipt);
         var root=locked.get(order.getTargetWalletId());requireTarget(order,root);
@@ -229,7 +229,11 @@ public class EnterpriseRechargeService {
         String id=direction+":"+hash(normalizeReceipt(reference));var prior=receipts.findById(id);
         if(prior.isPresent()){if(order.getId().equals(prior.get().getOrderId()))return;throw new BusinessException(HttpStatus.CONFLICT,"ENTERPRISE_RECEIPT_REVIEW_REQUIRED","收付款凭据已登记，请财务核对原订单");}
         var receipt=new EnterpriseCashReceipt();receipt.setId(id);receipt.setOrderId(order.getId());receipt.setDirection(direction);receipt.setReceiptReference(reference);receipt.setCreatedAt(Instant.now());
-        try{receipts.saveAndFlush(receipt);}catch(org.springframework.dao.DataIntegrityViolationException ex){throw new BusinessException(HttpStatus.CONFLICT,"ENTERPRISE_RECEIPT_REVIEW_REQUIRED","收付款凭据已登记，请财务核对原订单");}
+        // 只插入，不用 saveAndFlush：主键是固定的，saveAndFlush 会走合并。读已提交时（H2、PostgreSQL 默认）能读到别人
+        // 刚提交的同一张凭据，合并就变成更新，把它改成本订单、再入一次账，不会报错（2026-11-08 测试复现）。
+        // 插入撞主键才是防重的依据；em 不经过 Spring Data 的异常翻译，这里直接认 Hibernate 的约束冲突。
+        try{em.persist(receipt);em.flush();}
+        catch(jakarta.persistence.EntityExistsException|org.hibernate.exception.ConstraintViolationException|org.springframework.dao.DataIntegrityViolationException ex){throw new BusinessException(HttpStatus.CONFLICT,"ENTERPRISE_RECEIPT_REVIEW_REQUIRED","收付款凭据已登记，请财务核对原订单");}
     }
     private void audit(String actor,String enterpriseId,String action,String target,String summary){var a=new EnterpriseAudit();a.setId(UUID.randomUUID().toString());a.setEnterpriseId(enterpriseId);a.setActorUserId(actor);a.setAction(action);a.setTargetId(target);a.setSummary(summary);a.setCreatedAt(Instant.now());audits.save(a);}
     private static String normalizeReceipt(String value){return value.trim().replaceAll("\\s+"," ").toLowerCase(Locale.ROOT);}

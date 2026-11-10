@@ -11,9 +11,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronRight, House, Image as ImageIcon, Plus, SquareDashedMousePointer, UserRound, Video, X } from "lucide-react";
 import { dialogFocus } from "@/ip/dialog-focus";
-import { useUiVersion } from "@/shell/ui-version";
-import { AccountAvatar } from "@/shell/account-avatar";
-import { useIdentity } from "@/proto/api";
 
 type CSS = React.CSSProperties;
 
@@ -109,26 +106,12 @@ const iconBtnStyle: CSS = {
 
 // ── 底部 Tab ─────────────────────────────────────────────────
 
-// 复用老版 5 tab 的视觉（.wx-tabbar / .wx-tab / .wx-fab，含中间凸起创建键）。
-// 落点 = 2026-09-01 定案的完整 5 Tab；/studio 内嵌时隐藏其自带 tab 栏。
-//
-// replace 而非 push：Tab 之间切换不进历史栈，返回键因此不会在 Tab 间来回走
-// （旧版从任一 Tab 返回都退回「我的」就是 push 造成的）。二级页仍用 push。
-const TABS = [
-  // 根目录 `/` 是公开落地页（v0.191），登录后的门户在 /dashboard
-  { href: "/dashboard", label: "首页", icon: HomeIcon, match: (p: string) => p === "/dashboard" },
-  { href: "/discover", label: "发现", icon: CompassIcon, match: (p: string) => p.startsWith("/discover") || p.startsWith("/market") || p.startsWith("/stars") },
-  { fab: true as const, href: "/create", label: "创作" },
-  { href: "/assets", label: "资产", icon: LayersIcon, match: (p: string) => p.startsWith("/assets") || p === "/ips" },
-  { href: "/me", label: "我的", icon: UserIcon, match: (p: string) => p.startsWith("/me") || p.startsWith("/licenses") },
-];
+// replace 而非 push：Tab 之间切换不进历史栈，返回键因此不会在 Tab 间来回走。二级页仍用 push。
 /**
- * 新版手机底栏：场景创作（AI 视频 / AI 图片）放到底栏上，和电脑左栏同一批入口；项目、资产在「我的」里。
- * 2026-10-30 线上走查：新版手机底栏还是旧的那一排，AI 视频、AI 图片从底栏到不了。
- * 样子照设计稿「AI 视频与图片页重设计」的两张手机稿（2026-11-02）：白底细线、细图标，「创作」是栏里的墨色小方块，
- * 不再是凸出栏外的大圆钮。原来新版各页各自把旧底栏染成墨色，首页和「我的」没染到，同一个底栏有两种样子。
+ * 手机底栏：场景创作（AI 视频 / AI 图片）放到底栏上，和电脑左栏同一批入口；项目、资产在「我的」里。
+ * 样子照设计稿「AI 视频与图片页重设计」的两张手机稿（2026-11-02）：白底细线、细图标，「创作」是栏里的墨色小方块。
  */
-const NEXT_TABS = [
+const TABS = [
   { href: "/dashboard", label: "首页", icon: House, match: (p: string) => p === "/dashboard" },
   { href: "/video", label: "AI 视频", icon: Video, match: (p: string) => p.startsWith("/video") },
   { create: true as const, href: "/create", label: "创作" },
@@ -140,8 +123,8 @@ const NEXT_TABS = [
  * 「创作」先选做什么，再进去（2026-11-02 用户定）：原来直接进画布，而手机上最常用的是 AI 视频和 AI 图片，画布在手机上最难用。
  */
 const CREATE_CHOICES = [
-  { href: "/video", label: "AI 视频", sub: "选个场景，编导先写分镜再出片", icon: Video, match: (p: string) => p.startsWith("/video") },
-  { href: "/image", label: "AI 图片", sub: "选个场景，补一句要求就出图", icon: ImageIcon, match: (p: string) => p.startsWith("/image") },
+  { href: "/video", label: "AI 视频", sub: "选择场景，编导写好分镜后生成视频", icon: Video, match: (p: string) => p.startsWith("/video") },
+  { href: "/image", label: "AI 图片", sub: "选择场景，填写要求后生成图片", icon: ImageIcon, match: (p: string) => p.startsWith("/image") },
   { href: "/create", label: "画布", sub: "素材和结果摆在一起，自由组合", icon: SquareDashedMousePointer, match: (p: string) => p === "/create" },
 ];
 
@@ -178,12 +161,14 @@ function CreateSheet({ pathname, onClose }: { pathname: string; onClose: () => v
   );
 }
 
-function NextTabBar({ pathname, createOn }: { pathname: string; createOn: boolean }) {
+export function HubTabBar() {
+  const pathname = usePathname() || "/";
+  const createOn = pathname.startsWith("/create") || pathname.startsWith("/studio");
   const [creating, setCreating] = useState(false);
   const close = useCallback(() => setCreating(false), []);
   return (
     <nav className="hub-tabbar studio-tabbar" aria-label="底部导航">
-      {NEXT_TABS.map((t) => {
+      {TABS.map((t) => {
         if ("create" in t) return <button key={t.href} type="button" className={"studio-tab is-create" + (createOn ? " is-on" : "")} aria-haspopup="dialog" aria-expanded={creating} onClick={() => setCreating(true)}>
           <span className="studio-tab-create" aria-hidden><Plus size={16} strokeWidth={1.8} /></span>
           <span className="lbl">{t.label}</span>
@@ -195,41 +180,6 @@ function NextTabBar({ pathname, createOn }: { pathname: string; createOn: boolea
         </Link>;
       })}
       {creating && <CreateSheet pathname={pathname} onClose={close} />}
-    </nav>
-  );
-}
-
-export function HubTabBar() {
-  const pathname = usePathname() || "/";
-  const identity = useIdentity();
-  const next = useUiVersion() === "next";
-  const createOn = pathname.startsWith("/create") || pathname.startsWith("/studio");
-  if (next) return <NextTabBar pathname={pathname} createOn={createOn} />;
-  return (
-    <nav className="wx-tabbar hub-tabbar">
-      {TABS.map((t) =>
-        "fab" in t ? (
-          <div key="create" className="wx-fab-slot">
-            <Link className={"wx-fab" + (createOn ? " on" : "")} href={t.href} replace aria-label="创作">
-              <span className="fab-visual" aria-hidden>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img className="fab-art" src="/generated/create-entry/fab-create.jpg" alt="" draggable={false} loading="lazy" decoding="async" />
-                <span className="fab-veil" />
-              </span>
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              <span className="fab-lbl">{t.label}</span>
-            </Link>
-          </div>
-        ) : (
-          <Link key={t.href} href={t.href} replace className={"wx-tab" + (t.match(pathname) ? " on" : "")}>
-            {t.href === "/me" ? <AccountAvatar identity={identity} size={24} /> : t.icon({ strong: t.match(pathname) })}
-            <span className="lbl">{t.label}</span>
-          </Link>
-        ),
-      )}
     </nav>
   );
 }
@@ -549,42 +499,6 @@ function svgProps(strong?: boolean) {
     strokeLinecap: "round" as const,
     strokeLinejoin: "round" as const,
   };
-}
-
-function HomeIcon({ strong }: { strong?: boolean }) {
-  return (
-    <svg {...svgProps(strong)}>
-      <path d="M3 10.5 12 3l9 7.5" />
-      <path d="M5.5 9.6V20h13V9.6" />
-    </svg>
-  );
-}
-
-function CompassIcon({ strong }: { strong?: boolean }) {
-  return (
-    <svg {...svgProps(strong)}>
-      <circle cx="12" cy="12" r="9" />
-      <polygon points="15.6 8.4 13.4 13.4 8.4 15.6 10.6 10.6 15.6 8.4" />
-    </svg>
-  );
-}
-
-function LayersIcon({ strong }: { strong?: boolean }) {
-  return (
-    <svg {...svgProps(strong)}>
-      <polygon points="12 2 22 8 12 14 2 8 12 2" />
-      <polyline points="2 13 12 19 22 13" />
-    </svg>
-  );
-}
-
-function UserIcon({ strong }: { strong?: boolean }) {
-  return (
-    <svg {...svgProps(strong)}>
-      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-      <circle cx="12" cy="7" r="4" />
-    </svg>
-  );
 }
 
 export function Chevron({ dir = "right" }: { dir?: "right" | "left" }) {

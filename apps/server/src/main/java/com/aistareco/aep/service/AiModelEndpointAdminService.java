@@ -33,6 +33,8 @@ import java.net.URI;
 @Transactional
 public class AiModelEndpointAdminService {
     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.repository.AiGenerationQueueRepository generationQueue;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.aistareco.aep.service.materialvideo.VideoAssetPreparer assetPreparer;
 
     private static final ObjectMapper OM = new ObjectMapper();
 
@@ -133,8 +135,10 @@ public class AiModelEndpointAdminService {
                 .chatMaxOutputTokens(req.chatMaxOutputTokens() != null && req.chatMaxOutputTokens() > 0 ? req.chatMaxOutputTokens() : null)
                 .chatSupportsTools(req.chatSupportsTools())
                 .chatSupportsStreaming(req.chatSupportsStreaming())
+                .chatReasoningEffort(com.aistareco.aep.model.AiChatReasoningEffort.normalize(req.chatReasoningEffort()))
                 .imageRequestSpecJson(req.imageRequestSpec() == null ? null : req.imageRequestSpec().json())
                 .videoRequestSpecJson(req.videoRequestSpec() == null ? null : req.videoRequestSpec().json())
+                .assetLibraryId(blankToNull(req.assetLibraryId()))
                 .concurrencyLimit(req.concurrencyLimit() != null && req.concurrencyLimit() > 0 ? req.concurrencyLimit() : null)
                 .rpmLimit(req.rpmLimit() != null && req.rpmLimit() > 0 ? req.rpmLimit() : null)
                 .tpmLimit(req.tpmLimit() != null && req.tpmLimit() > 0 ? req.tpmLimit() : null)
@@ -166,6 +170,12 @@ public class AiModelEndpointAdminService {
         boolean supplierChanged=(req.providerType()!=null && AiModelProviderType.fromWire(req.providerType())!=entity.getProviderType())
                 || (req.baseUrl()!=null && !req.baseUrl().equals(entity.getBaseUrl()))
                 || (req.model()!=null && !req.model().equals(entity.getModel()));
+        // 素材库属于供应商账号：换型号不影响；换地址或供应商类型可能换了账号，要明确说保留还是解除，不能悄悄改回签名链接。
+        boolean accountChanged=(req.providerType()!=null && AiModelProviderType.fromWire(req.providerType())!=entity.getProviderType())
+                || (req.baseUrl()!=null && !req.baseUrl().equals(entity.getBaseUrl()));
+        boolean videoSpecGone=Boolean.TRUE.equals(req.clearVideoRequestSpec()) || (supplierChanged && req.videoRequestSpec()==null);
+        if (accountChanged && !videoSpecGone && req.assetLibraryId()==null && entity.getAssetLibraryId()!=null)
+            throw BusinessException.badRequest("VIDEO_ASSET_LIBRARY_INVALID","这个模型绑定了素材库，更换地址或供应商类型时要明确保留或解除绑定");
         if (req.concurrencyLimit() != null) entity.setConcurrencyLimit(req.concurrencyLimit() == 0 ? null : req.concurrencyLimit());
         if (req.name() != null) entity.setName(req.name());
         if (req.providerType() != null) entity.setProviderType(AiModelProviderType.fromWire(req.providerType()));
@@ -174,6 +184,8 @@ public class AiModelEndpointAdminService {
             entity.setUpstreamApiKeyEncrypted(AepCryptoUtil.encrypt(req.apiKey()));
         }
         if (req.apiVersion() != null) entity.setApiVersion(req.apiVersion());
+        // A setting verified for the old supplier/model must not silently follow a supplier/model switch.
+        if (supplierChanged && req.chatReasoningEffort() == null) entity.setChatReasoningEffort(null);
         if (req.model() != null) entity.setModel(req.model());
         if (supplierChanged && req.imageRequestSpec()==null) entity.setImageRequestSpecJson(null);
         if (supplierChanged && req.videoRequestSpec()==null) entity.setVideoRequestSpecJson(null);
@@ -187,10 +199,15 @@ public class AiModelEndpointAdminService {
         if (req.chatMaxOutputTokens() != null) entity.setChatMaxOutputTokens(req.chatMaxOutputTokens() == 0 ? null : req.chatMaxOutputTokens());
         if (req.chatSupportsTools() != null) entity.setChatSupportsTools(req.chatSupportsTools());
         if (req.chatSupportsStreaming() != null) entity.setChatSupportsStreaming(req.chatSupportsStreaming());
+        if (req.chatReasoningEffort() != null)
+            entity.setChatReasoningEffort(com.aistareco.aep.model.AiChatReasoningEffort.normalize(req.chatReasoningEffort()));
         if (req.imageRequestSpec() != null) entity.setImageRequestSpecJson(req.imageRequestSpec().json());
         if (Boolean.TRUE.equals(req.clearImageRequestSpec())) entity.setImageRequestSpecJson(null);
         if (req.videoRequestSpec() != null) entity.setVideoRequestSpecJson(req.videoRequestSpec().json());
         if (Boolean.TRUE.equals(req.clearVideoRequestSpec())) entity.setVideoRequestSpecJson(null);
+        // 视频规格没了，素材库也用不了了；其余情况不带这个字段就是不改。
+        if (videoSpecGone && req.assetLibraryId()==null) entity.setAssetLibraryId(null);
+        if (req.assetLibraryId() != null) entity.setAssetLibraryId(blankToNull(req.assetLibraryId()));
         entity.setRpmLimit(req.rpmLimit() != null && req.rpmLimit() > 0 ? req.rpmLimit() : null);
         entity.setTpmLimit(req.tpmLimit() != null && req.tpmLimit() > 0 ? req.tpmLimit() : null);
         entity.setDailyTokenQuota(req.dailyTokenQuota() != null && req.dailyTokenQuota() > 0 ? req.dailyTokenQuota() : null);
@@ -216,8 +233,14 @@ public class AiModelEndpointAdminService {
         return AiModelEndpointDto.from(repo.save(entity));
     }
 
-    private static void requireConfiguredVideoModel(AiModelEndpoint endpoint) {
+    private void requireConfiguredVideoModel(AiModelEndpoint endpoint) {
         AiVideoRequestSpec spec = AiVideoRequestSpec.read(endpoint.getVideoRequestSpecJson());
+        if (endpoint.getAssetLibraryId() != null) {
+            // 聚算有自己的上传协议，不走素材库配置；没有规格的端点不知道怎么发凭据。配上去也不会生效，不能让它看起来开着。
+            if (spec == null || "jusuan-media".equals(spec.adapter()))
+                throw BusinessException.badRequest("VIDEO_ASSET_LIBRARY_INVALID", "这个模型的请求方式不支持素材库");
+            if (assetPreparer != null) assetPreparer.requireUsable(endpoint.getAssetLibraryId());
+        }
         if (spec != null && spec.requiresModelIdentifier()
                 && (endpoint.getModel() == null || endpoint.getModel().isBlank())) {
             throw BusinessException.badRequest("VIDEO_REQUEST_SPEC_INVALID", "视频端点需要填写模型标识");
@@ -247,11 +270,11 @@ public class AiModelEndpointAdminService {
         repo.lockById(id);
         if(generationQueue!=null && (generationQueue.countByEndpointIdAndState(id,"waiting")+
                 generationQueue.countByEndpointIdAndState(id,"running")>0))
-            throw BusinessException.badRequest("ENDPOINT_HAS_ACTIVE_GENERATIONS","此端点还有生成或排队任务，请等任务结束后再删除");
+            throw BusinessException.badRequest("ENDPOINT_HAS_ACTIVE_GENERATIONS","这个模型还有生成或排队中的任务，请等任务结束后再删除");
         long bound = bindingRepo.countByEndpointId(id);
         if (bound > 0) {
             throw new BusinessException(HttpStatus.CONFLICT, "ENDPOINT_IN_USE",
-                    "该端点还有 " + bound + " 个 AI 应用绑定，请先在「AI 应用绑定」改绑或解绑后再删除。");
+                    "这个模型还是 " + bound + " 项能力的默认模型，请先在「功能与售价」改掉默认模型再删除。");
         }
         repo.deleteById(id);
     }

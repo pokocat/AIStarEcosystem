@@ -1,5 +1,19 @@
 # PostgreSQL 18 适配与迁移边界
 
+## 2026-11-10 主线同步：195 表候选（优先于下文历史回执）
+
+本轮从 main `6b3850564c88a58c6fc508d37083fb52852b510c` 同步新增 191 个提交。旧生产只读核查时间为 UTC 2026-11-10 09:23，业务表已从 192 增至 195；旧的 192 表、V77、运行镜像及双机滚动回执仅作历史记录，不能授权当前版本正式激活。生产仍为旧 MySQL，本轮不停止服务、正式导入或切路由。
+
+- PG 新增独立 `V78__video_asset_libraries.sql`，V74–V77 字节保持原样。新增 `video_asset_library`、`video_asset_person`、`video_asset_portrait`，补齐 `ai_model_providers.asset_library_id/chat_reasoning_effort`，扩展两张模型绑定表的用途白名单，保留其余枚举约束；不运行 MySQL V75 的配置种子，不重建供应商凭据。
+- 素材库 JPA Instant 两列和人像 JDBC TIMESTAMP 六列共 8 个新增时间字段纳入逐列时区计划。MySQL 快照导出显式设置 SQL session UTC，人像 TIMESTAMP 文本按 UTC 解释；不能套用 JVM Asia/Shanghai 直接平移。ID、owner、OSS key、callback hash 保持精确比较，加密 token/link/credential 原字节保留。
+- 导出、正式/隔离恢复、授权、资金审计、运行克隆与激活工具固定 195 表 / Flyway 78；旧 192/V77 permit 或 receipt 均拒绝。数据库 advisory lock 的固定键 `(1810577,192)` 保持不变，避免不同版本并行导入。
+- 持久任务排空从 10 类增至 12 类：新增未到期的 `video_asset_person.verifying` 和 `video_asset_portrait.uploading/processing`。正式停 unit 前再次读取真实 SQL；缺字段、非零、未知、过期均拒绝。资金守恒仍为原 10 项，不能与 12 类排空混淆。
+- CI 保留 main 的受影响范围、三后端分片与前端矩阵；三片全部成功后单独执行 PG18 实库测试、迁移工具编译和拒绝门禁。稳定 backend/CI 汇总必须依赖 PG 门禁成功；CI JAR 绑定当前 SHA、源码树、摘要和 195/V78 契约。
+- 后续构建/测试优先 Mini 的 devq remote；本轮同步遇到 Mini 磁盘已满，任务尚未启动，不计通过，也不清理其他聊天缓存。GitHub CI 承接本轮完整验证，最终状态以本轮 receipt 为准。
+
+下一轮云端演练必须使用本轮 CI 的同一 JAR/工具重建镜像，重新生成 195 表新鲜只读快照，先核查旧演练资源再以隔离库/schema 演练。不得覆盖非空演练库、复用旧的 192 表 receipt、启用正式 API/后台或修改正常 Host/DNS。A/B 仍按 API 无后台、A 单活后台/SAU、ALB A100/B0；原账号杭州 aiartist OSS 原 key/前缀/签名地址继续使用，私有快照和归档仅走 SSH。
+
+
 本阶段完成隔离代码、本地 PostgreSQL18.0 门禁和真实阿里云 RDS18.6 恢复/双机 API/受保护 ALB 演练。AIStar 生产仍为旧 MySQL，没有切流或停服；云端只使用独立演练库与角色。测试镜像固定 `postgres:18.0-alpine`，云端验收另有独立证据。
 
 ## 代码与配置

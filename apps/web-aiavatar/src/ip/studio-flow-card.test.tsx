@@ -60,7 +60,7 @@ test('an empty video offers upload without starting generation and hides mutatio
   expect(commands).toEqual([{action:'upload-video',nodeId:'source'}]);
   expect(screen.getByRole('button',{name:'生成视频'})).toBeDefined();
   view.rerender(<StudioFlowCard {...({data:{document:node,uploading:true},selected:true} as any)}/>);
-  expect(screen.getByRole('button',{name:'上传处理中…'})).toHaveProperty('disabled',true);
+  expect(screen.getByRole('button',{name:'上传中…'})).toHaveProperty('disabled',true);
   view.rerender(<StudioFlowCard {...({data:{document:node,readOnly:true},selected:false} as any)}/>);
   expect(screen.queryByRole('button',{name:'上传视频'})).toBeNull();
   window.removeEventListener('studio-command',listener);

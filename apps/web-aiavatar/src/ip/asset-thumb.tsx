@@ -28,7 +28,7 @@ export function AssetThumb({ kind, src, storageKey }: { kind: 'image' | 'video';
     renewed.current = true;
     void renew(storageKey);
   };
-  if (failed || (!url && !storageKey)) return <span className="asset-thumb-missing" role="img" aria-label={kind === 'video' ? '视频暂时读不到' : '图片暂时读不到'}>{kind === 'video' ? <Film size={26} strokeWidth={1.3}/> : <ImageOff size={26} strokeWidth={1.3}/>}</span>;
+  if (failed || (!url && !storageKey)) return <span className="asset-thumb-missing" role="img" aria-label={kind === 'video' ? '视频加载失败' : '图片加载失败'}>{kind === 'video' ? <Film size={26} strokeWidth={1.3}/> : <ImageOff size={26} strokeWidth={1.3}/>}</span>;
   if (!url) return <span className="asset-thumb-missing" aria-hidden="true"/>;
   return kind === 'video'
     ? <video src={url} muted playsInline preload="metadata" onError={onError}/>

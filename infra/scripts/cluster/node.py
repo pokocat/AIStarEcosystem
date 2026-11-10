@@ -20,7 +20,7 @@ def configuration(mode):
   marker=ROOT/'production-activated.json';require(marker.is_file(),'AIStar生产尚未迁移；拒绝滚动或激活')
   active=json.loads(marker.read_text());require(re.fullmatch('[A-Za-z0-9_-]+[.]json',active.get('receipt','')) is not None,'正式凭证必须是受保护目录内的普通文件名');receipt=pathlib.Path('/opt/aistar-migration/preparation')/active['receipt']
   require(sha(receipt)==active['receipt_sha256'],'正式导入凭证变化')
-  proof=json.loads(receipt.read_text());contract=json.loads(pathlib.Path('/etc/aistar/deployment-contract.json').read_text());require(proof.get('source_artifact_sha256')==contract.get('source_artifact_sha256') and proof.get('source_critical_environment_sha256')==contract.get('source_critical_environment_sha256'),'源包或业务密钥配置已漂移，须重新准备');require(proof.get('production') is True and proof.get('database')=='aistar_prod' and proof.get('source_frozen') is True and proof.get('verified_tables')==192 and all(x.get('matched') for x in proof['tables'].values()),'正式导入未完成')
+  proof=json.loads(receipt.read_text());contract=json.loads(pathlib.Path('/etc/aistar/deployment-contract.json').read_text());require(proof.get('source_artifact_sha256')==contract.get('source_artifact_sha256') and proof.get('source_critical_environment_sha256')==contract.get('source_critical_environment_sha256'),'源包或业务密钥配置已漂移，须重新准备');require(proof.get('production') is True and proof.get('database')=='aistar_prod' and proof.get('source_frozen') is True and proof.get('verified_tables')==195 and all(x.get('matched') for x in proof['tables'].values()),'正式导入未完成')
  return config,expected
 
 def environment(mode,expected):

@@ -66,7 +66,7 @@ test("ordinary member cannot invoke administrator controls and can accept incomi
 test("model policy selects human model names and sends endpoint ids with version", async () => {
   render(<EnterpriseManagement context={owner} section="policy" onChanged={vi.fn().mockResolvedValue(undefined)}/>);
   expect(await screen.findByRole("option", { name: "图片 · 人像图片" })).toBeDefined(); expect(screen.getByRole("option", { name: "文本 · 创作文本" })).toBeDefined();
-  fireEvent.change(screen.getByLabelText("每位成员最多在途任务数"), { target: { value: "5" } }); fireEvent.click(screen.getByRole("button", { name: "保存生成设置" }));
+  fireEvent.change(screen.getByLabelText("每位成员同时进行的任务上限"), { target: { value: "5" } }); fireEvent.click(screen.getByRole("button", { name: "保存生成设置" }));
   await waitFor(() => expect(api.updatePolicy).toHaveBeenCalledWith("team", { allowedEndpointIds: ["image-id"], maxActiveJobs: 5, version: 2 }));
 });
 
@@ -90,7 +90,7 @@ test("switching a restricted policy back to every model drops the chosen list", 
 test("close with unresolved funds shows blockers and cannot submit", async () => {
   api.previewLifecycle.mockResolvedValue({ availableCredits: 100, pendingCredits: 20, activeJobs: 1, cancellableJobs: 0, acceptedJobs: 1, canProceed: false, blockers: ["请先处理剩余企业积分"], confirmationFingerprint: "blocked" });
   render(<EnterpriseManagement context={owner} section="lifecycle" onChanged={vi.fn().mockResolvedValue(undefined)}/>);
-  fireEvent.click(await screen.findByRole("button", { name: "核对关闭企业条件" })); const dialog = await screen.findByRole("dialog", { name: "关闭企业" });
+  fireEvent.click(await screen.findByRole("button", { name: "关闭企业" })); const dialog = await screen.findByRole("dialog", { name: "关闭企业" });
   expect(within(dialog).getByText(/请先处理剩余企业积分/)).toBeDefined(); expect(within(dialog).getByRole("button", { name: "确认关闭企业" }).hasAttribute("disabled")).toBe(true); expect(api.lifecycle).not.toHaveBeenCalled();
 });
 
@@ -98,7 +98,7 @@ test("group invitation creates a shareable 90-day link and stays visible until e
   const token = "a".repeat(43);
   api.invite.mockResolvedValue({ invitation: { id: "invite", expiresAt: "2027-01-15T08:00:00Z" }, token }); const changed = vi.fn().mockResolvedValue(undefined);
   render(<EnterpriseManagement context={owner} section="team" onChanged={changed}/>);
-  fireEvent.click(await screen.findByRole("button", { name: "创建分享链接" }));
+  fireEvent.click(await screen.findByRole("button", { name: "创建邀请链接" }));
   const dialog = await screen.findByRole("dialog", { name: "分享企业邀请" });
   expect(api.invite).toHaveBeenCalledWith("team", { clientRequestId: expect.any(String), validDays: 90 });
   expect((within(dialog).getByLabelText("企业邀请链接") as HTMLTextAreaElement).value).toContain(`/enterprise/invite#token=${token}`); expect(changed).not.toHaveBeenCalled();
@@ -109,7 +109,7 @@ test("group invitation creates a shareable 90-day link and stays visible until e
 async function invitationDialog() {
   api.invite.mockResolvedValue({invitation:{id:"invite",expiresAt:"2027-01-15T08:00:00Z"},token:"c".repeat(43)});
   render(<EnterpriseManagement context={owner} section="team" onChanged={vi.fn().mockResolvedValue(undefined)}/>);
-  fireEvent.click(await screen.findByRole("button",{name:"创建分享链接"}));
+  fireEvent.click(await screen.findByRole("button",{name:"创建邀请链接"}));
   return screen.findByRole("dialog",{name:"分享企业邀请"});
 }
 

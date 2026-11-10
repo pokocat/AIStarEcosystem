@@ -33,7 +33,7 @@ public record AiImageRequestSpec(int promptMaxChars, int minReferenceImages, int
                        Integer maxPollAttempts, Integer pollIntervalMillis,
                        Integer requestTimeoutMillis,
                        String inputMode, String resultMode, String outputPointer,
-                       List<String> outputHosts,
+                       List<String> outputHosts, // Legacy metadata, no longer restricts result downloads (2026-11-09).
                        // Checks only: a usable image of another size is delivered and logged, never rejected (2026-10-30).
                        String referenceSubmitPath, Boolean requireExactOutputSize) {}
 
@@ -54,6 +54,8 @@ public record AiImageRequestSpec(int promptMaxChars, int minReferenceImages, int
             spec.validate();
             return spec;
         } catch(BusinessException e) {throw e;
+        } catch(com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException e) {
+            throw BusinessException.badRequest("IMAGE_REQUEST_SPEC_INVALID","图片规格里有不认识的字段："+e.getPropertyName());
         } catch(Exception e) {throw invalid();}
     }
 

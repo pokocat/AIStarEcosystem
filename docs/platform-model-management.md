@@ -1,5 +1,26 @@
 # 平台后台模型管理接入
 
+## 2026-11-07：页面搬到 Studio 后台
+
+统一后台 `aibuzz-platform`（`ops.aibuzz.cn`）不再使用。模型配置页在 `apps/web-aiavatar/studio-admin` 的 `/models`，三个页签：
+
+| 页签 | 能做什么 | 用到的命令 |
+|---|---|---|
+| 模型接入 | 按服务商看模型；新增、编辑、启停、删除、测试连接、读取模型目录；能力与规格、运行限制、开放范围、计费与成本、使用情况 | `endpoints` `presets` `modelAccessCatalog` `endpointSave` `endpointDelete` `endpointCosts` `modelAccessSave` `endpointTest` `endpointFetchModels` `endpointProbe` |
+| IP Studio 模型 | 剧本和图片的可选模型、默认模型、积分价；导演台默认图片模型；视频默认模型和按秒价 | `sceneCatalog` `scenePolicySave` `sceneCandidatePrepare` `directorImageDefault` `directorImageDefaultSave` `studioVideoGroup` `studioVideoGroupSave` `functionCandidatePriceSave` |
+| 功能与售价 | 58 个功能各用哪个模型、卖多少；可选模型的能力；动作价、配置价、引擎价、配音口型价、视频价格表 | `functionCatalog` `functionPricingCatalog` `functionDefaultSave` `functionCandidatePrepare` `functionCandidatePriceSave` `functionActionPriceSave` `functionConfigPriceSave` `functionSupplierPointPriceSave` `functionEnginePriceSave` `videoPricesSave` |
+
+接口是 `POST /api/admin/studio/model-config/command`（`AdminStudioModelConfigController`），用后台登录态，命令和下面的签名通道是同一份（`ModelManagementService`），只是白名单更窄：提示词、Agent 不在这个入口。签名通道 `/api/service/model-management/v1/command` 先留着，下线前要确认没有别的调用方（用户窄命令也在这条通道上）。
+
+保存规则见 `specs/BUSINESS_RULES.md`「Studio 后台模型配置」。有两处容易踩：
+
+- **`endpointSave` 不是「只传的字段才改」。** `rpmLimit`、`tpmLimit`、`dailyTokenQuota`、`dailyCostQuotaMicros`、`alertFailureRatePct` 没传就会清空。用签名命令改模型时同样要带上。
+- **改 `baseUrl`、`model` 或 `providerType` 而不带规格，规格会被清掉。**
+
+页面还没有的：素材库绑定（`assetLibraryId`，服务端已支持；已绑定素材库的模型换基础地址或供应商类型时要明确保留或解除，页面没有这一项，保存会被拒，要走签名命令）；`apps/admin` LLM API 页里的用量统计、请求日志、生成告警和对账。见 `TODO.md`。
+
+设计上参考了 AID Studio 后台（左侧服务商、右侧模型表、编辑面板分页签、行内启停和测试）。没有照搬它把密钥放在服务商上的做法：我们的密钥存在每个模型上，改成服务商一层要改库和调用链路。
+
 ## 2026-10-13 本地补充：草稿端点检测与视频规格
 
 Studio 视频模型目录返回 `supportsPromptOptimization`，由端点当前视频协议的实际优化支持决定。当前 Seedance 直接生成；前端不显示智能优化选项，优化接口在冻结积分和建任务前拒绝误调用。支持该能力的聚算视频端点沿用用户本机的优化偏好。
@@ -65,3 +86,27 @@ V49 成功新增可空供应商计量字段；JAR SHA256 `fcb138dd5e6f6e90935f5a
 ## 2026-10-10 第一批管理功能生产发布
 
 用户授权提交部署后，用户窄命令与模型操作通道已随 `76debecff` 推送至 `codex/unified-ip-studio`，只部署 server，发布 `20261011040736-76debecf`。Platform 运行 `bf96d698137bdf40a13073928070aeffa4df7627`，入口仍为 ops.aibuzz.cn。保留原生产身份与测试账号清理修复，没有新增业务表或迁移。平台权限与原 Java 签名分别校验；匿名用户命令 401。线上浏览器已验证原用户分页/档案、15 个端点、概览与调用记录读取；没有生产用户状态变更、价格变更或供应商调用。定向 Java 13 个用例通过，线上 JAR 与本地产物 SHA256 一致。完整发布记录在 aibuzz-platform 的 `docs/reviews/2026-10-10-admin-production-release.md`。
+
+## 视频端点的素材库（2026-11-07）
+
+素材库单独成表（`video_asset_library`），一个素材库对应一个供应商账号，同一账号下的模型共用，同一张图不用传两次。方案见 [video-asset-library.md](video-asset-library.md)。
+
+模型用 `endpointSave` 的 `assetLibraryId` 指向素材库，素材就先传上去换引用，请求里不再有我方签名地址：
+
+```json
+"assetLibraryId": "onetoken-main"
+```
+
+- 不带这个字段是不改，传空字符串是清除（素材改回给签名链接），不用回滚代码。
+- 素材库属于供应商账号，换型号不影响绑定。换基础地址或供应商类型时要明确带上这个字段（保留或清除），不带会报 400 `VIDEO_ASSET_LIBRARY_INVALID`，避免悄悄改回签名链接。清除视频规格时绑定一起清除。
+- 库不存在或配置无效报 503 `VIDEO_ASSET_LIBRARY_NOT_CONFIGURED`。聚算（`jusuan-media`）有自己的上传协议，没有视频规格的端点不知道怎么发凭据，这两种配了报 400 `VIDEO_ASSET_LIBRARY_INVALID`。
+
+现在只有 OneToken 一个适配器，上传地址和响应字段的位置在 `config_json`：
+
+```json
+{"uploadPath": "/api/v3/video/assets", "fileField": "file", "ref": "/ref", "status": "/status", "ready": ["Active"], "expiresAt": "/expires_at"}
+```
+
+`uploadPath` 接在模型的基础地址后，`ref`、`status`、`expiresAt` 是响应里的 JSON Pointer，`status` 和 `ready` 要么都写要么都不写。
+
+**视频规格里的 `inputAssets` 不再生效。** 配置搬到上面的表（V75）后，新版读规格时忽略这个字段，已存的规格和已受理任务的快照照常能读。线上两条 OneToken 规格里的旧字段没有删：回滚到 `20261107-onetoken-assets` 至 V75 之前的版本时，旧版还靠它走素材库，不用改配置。用新版 `endpointSave` 保存视频规格后这个字段会消失，这之后回滚到旧版，这条模型会改回给签名链接。回滚到 `20261107-onetoken-assets` 更早的版本的步骤见 [发布记录](releases/onetoken-assets-release-20261107.md)。

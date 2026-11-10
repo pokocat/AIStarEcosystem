@@ -63,7 +63,7 @@ export function SectionedScript({ value, onChange, label, readOnly, disabled, ar
   const delta = active && !stale ? active.text.length - active.origLen : 0;
   const n = (x: number) => x.toLocaleString("zh-CN");
   return <div className="director-sections" role="group" aria-label={label}>
-    <p className="director-sections-head">正文共 {n(value.length)} 字，放进一个编辑框会卡，分成 {sections.length} 段显示。点一段展开编辑，改完收起。</p>
+    <p className="director-sections-head">正文共 {n(value.length)} 字，已分为 {sections.length} 段显示。点击某一段展开编辑。</p>
     {sections.map((s, i) => {
       const shift = active && i > active.index ? delta : 0;
       const from = s.start + shift + 1, to = (i === active?.index ? s.start + active.text.length : s.end + shift);
@@ -84,8 +84,8 @@ export function SectionedScript({ value, onChange, label, readOnly, disabled, ar
 /** 新建作品、粘贴剧本这些地方放不下长正文时的摘要：字数和开头一段；创建后在工作台按段编辑。 */
 export function LongTextCard({ text, onClear, what = "创建后在工作台按段编辑" }: { text: string; onClear?: () => void; what?: string }) {
   return <div className="director-long-card" role="group" aria-label="长正文">
-    <div><b>正文 {text.length.toLocaleString("zh-CN")} 字</b><small>太长，不在这里逐字编辑，{what}。整份都会保存，不截断。</small>
-      {onClear && <button type="button" className="ip-brand-text-button" onClick={onClear}>清空，重新输入</button>}</div>
+    <div><b>正文 {text.length.toLocaleString("zh-CN")} 字</b><small>篇幅较长，此处不逐字编辑，{what}。全文将完整保存，不截断。</small>
+      {onClear && <button type="button" className="ip-brand-text-button" onClick={onClear}>清空</button>}</div>
     <pre aria-label="正文开头">{text.slice(0, 1500)}{text.length > 1500 ? "\n……" : ""}</pre>
   </div>;
 }

@@ -44,6 +44,11 @@ public class DeploymentRuntime {
         // Autonomous plans can be between child runs while all child-job counters are zero.
         Long plans=jdbc.queryForObject("SELECT count(*) FROM ip_plan_execution WHERE status IS NULL OR lower(status) = 'running'",Long.class);
         pending.put("ip_plan_execution",plans==null?-1:plans);
+        // Vendor callbacks and accepted asset reviews must finish before switching databases.
+        Long persons=jdbc.queryForObject("SELECT count(*) FROM video_asset_person WHERE status IS NULL OR (lower(status)='verifying' AND expires_at>CURRENT_TIMESTAMP)",Long.class);
+        pending.put("video_asset_person",persons==null?-1:persons);
+        Long portraits=jdbc.queryForObject("SELECT count(*) FROM video_asset_portrait WHERE status IS NULL OR lower(status) IN ('uploading','processing')",Long.class);
+        pending.put("video_asset_portrait",portraits==null?-1:portraits);
         boolean drained=quiescing.get()&&requests.get()==0&&active==0&&queued==0&&scheduledActive==0&&pending.values().stream().allMatch(v->v==0);
         return Map.of("quiescing",quiescing.get(),"in_flight",requests.get(),"executor_active",active,"executor_queued",queued,"scheduled_active",scheduledActive,"pending_work",pending,"drained",drained);
     }

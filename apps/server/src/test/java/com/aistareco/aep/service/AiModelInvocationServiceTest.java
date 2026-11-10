@@ -218,6 +218,20 @@ class AiModelInvocationServiceTest {
         assertEquals(256, ((Number) sent.get("max_tokens")).intValue());
         assertTrue(sent.get("messages") instanceof List<?>);
         assertEquals(2, ((List<?>) sent.get("messages")).size());
+        assertFalse(sent.containsKey("reasoning_effort"), "Unconfigured endpoints retain the provider default");
+    }
+
+    @Test
+    void reasoningSettingCannotBeAppliedToADifferentModel() throws Exception {
+        StubServer server = stub(200, CHAT_OK);
+        var ep = endpoint("reasoning", server.baseUrl(), AiModelProviderType.OPENAI_COMPATIBLE,
+                "claude-sonnet-5-5", "test-key", true);
+        ep.setChatReasoningEffort("low");
+        var error = assertThrows(BusinessException.class, () -> boundSvc(AiModelPurpose.DAP_PERSONA, ep)
+                .invokeChatOnEndpoint(ep, AiModelPurpose.DAP_PERSONA,
+                        List.of(Map.of("role", "user", "content", "写剧本")), Map.of("model", "another-model")));
+        assertEquals("MODEL_MISMATCH_FOR_ENDPOINT", error.getCode());
+        assertTrue(server.requests.isEmpty());
     }
 
     @Test
@@ -425,7 +439,7 @@ class AiModelInvocationServiceTest {
         var error=assertThrows(BusinessException.class,()->boundSvc(AiModelPurpose.GENERAL,ep)
                 .invokeChat(AiModelPurpose.GENERAL,List.of(Map.of("role","user","content","describe this image")),null));
         assertEquals("AI_CALL_FAILED",error.getCode());
-        assertTrue(error.getMessage().startsWith("参考图片未通过内容审核"));
+        assertTrue(error.getMessage().startsWith(new com.aistareco.aep.service.ai.ProviderContentModeration.Finding("","reference_image","").message()),error.getMessage());
         assertFalse(error.getMessage().contains("change your prompt"));
         assertEquals(1,bad.requests.size());
     }

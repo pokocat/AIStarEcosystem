@@ -38,17 +38,17 @@ export function DirectorTrash() {
   };
 
   if (auth === "no-platform" || trash.notEnrolled) return <PlatformGateScreen/>;
-  return <StudioPage title="回收站" description="删除的作品在这里，可以恢复" className="director-page director-trash-page"
+  return <StudioPage title="回收站" description="已删除的作品，可在此恢复" className="director-page director-trash-page"
     actions={<Link href="/director" className="ip-brand-secondary director-trash-back"><ArrowLeft size={16}/>返回作品列表</Link>}>
     {restored && <div className="director-notice director-trash-restored" role="status">
-      <span>「{restored.title}」已恢复到作品列表，制作保持停止，需要时再开始。</span>
+      <span>「{restored.title}」已恢复到作品列表。如需继续制作，请重新开始。</span>
       <Link href={`/director/${encodeURIComponent(restored.id)}`}>打开作品</Link>
     </div>}
     {auth !== "ok" || trash.loading ? <GalleryState loading/> : trash.error ? <GalleryState error={trash.error} retry={trash.reload}/> :
       trash.data.length === 0 ? <div className="director-empty">
         <RotateCcw size={28}/>
-        <h2>回收站是空的</h2>
-        <p>删除的作品会放在这里，可以随时恢复。</p>
+        <h2>回收站暂无作品</h2>
+        <p>删除的作品会保留在这里，可随时恢复。</p>
         <Link href="/director" className="ip-brand-button">返回作品列表</Link>
       </div> :
       <>

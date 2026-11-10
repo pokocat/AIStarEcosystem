@@ -50,7 +50,7 @@ public class StudioPlanExecutionBridge implements StudioExecutionGate {
     @Transactional
     public RunRequest authorizeChild(String userId,String projectId,String executionId,String stage,RunRequest request) {
         if(request==null||request.clientRequestId()==null||request.clientRequestId().isBlank()||request.clientRequestId().length()>64)
-            throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请求编号无效");
+            throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请求已失效，请刷新页面后重试");
         var e=executions.lockById(executionId).filter(x->userId.equals(x.getOwnerUserId())&&projectId.equals(x.getProjectId()))
                 .orElseThrow(StudioPlanExecutionService::notFound);
         if(!IpPlanExecution.RUNNING.equals(e.getStatus()))throw StudioPlanExecutionService.stale("这次制作已暂停或结束，不能再提交新的任务");

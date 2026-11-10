@@ -470,7 +470,7 @@ describe("等补存落地也要有上限", () => {
       expect(second.result.current.state).toBe("loading");   // 先等
       await act(async () => { await vi.advanceTimersByTimeAsync(8100); });
       expect(second.result.current.state).toBe("error");     // 等超了如实报错
-      expect(second.result.current.error).toMatch(/还在保存中/);
+      expect(second.result.current.error).toMatch(/仍在保存中/);
       expect(getProjectMock).toHaveBeenCalledTimes(1);       // 没有去读那份已知是旧的文档
       second.unmount();
     } finally {
@@ -498,6 +498,26 @@ it('loads legacy conversation nodes into separate history and persists history-o
 // 真实形状：A 存了，B 的下一次保存撞 409 → 进冲突态；此前 B 只有一个不能点的徽标，
 // 而冲突之后每一条经过保存的操作都再报一次同一句话。
 // ─────────────────────────────────────────────────────────────────────────────
+it('preserves scene jobs, selected materials and settings through a canvas save', async () => {
+  const sceneFields = {
+    sceneSegmented: [{ executionId: 'PEX-paid', clientRequestId: 'paid-request', request: { duration: 24 } }],
+    sceneInputs: { images: ['product.png'], character: 'person.png', voice: null, video: null },
+    sceneVideoState: { duration: 24, ratio: '16:9', text: '原来的要求' },
+    sceneVideoModel: 'chosen-model', sceneImageState: { supplement: '图片条件' },
+    futureSceneField: { keep: true },
+  };
+  getProjectMock.mockResolvedValue({ id: 'IPP-scene', name: '场景种草', doc: { ...serverDoc, ...sceneFields }, docVersion: 'original' });
+  const view = renderHook(() => useProjectSync('IPP-scene'));
+  await until(() => expect(view.result.current.state).toBe('ready'));
+  act(() => useCanvasStore.getState().renameProject('IPP-scene', '新标题'));
+  await act(async () => { await view.result.current.saveNow(); });
+  const payload = updateProjectMock.mock.calls.at(-1)![1];
+  expect(payload.doc).toMatchObject(sceneFields);
+  expect(payload.doc.nodes).toEqual(serverDoc.nodes);
+  expect(payload.name).toBe('新标题');
+  view.unmount();
+});
+
 describe("别的标签页存了新版", () => {
   const otherTab = (docVersion: string) => receiveRemoteSave({ projectId: "IPP-1", docVersion, tabId: "tab-other" });
   const theirs = { ...serverDoc, nodes: [{ ...serverDoc.nodes[0]!, id: "n-theirs" }] };
@@ -615,7 +635,7 @@ describe("撞上冲突之后的三条出路", () => {
     updateProjectMock.mockResolvedValueOnce({ docVersion: "c1" });
     getProjectMock.mockResolvedValueOnce({ id: "IPP-1", name: "A", doc: theirs, docVersion: "v2" });
     await act(async () => { await expect(result.current.resolveConflict("save-copy")).resolves.toEqual({ outcome: "resolved", copyId: "IPP-copy" }); });
-    expect(createProjectMock).toHaveBeenCalledWith({ name: "A · 另一份" });
+    expect(createProjectMock).toHaveBeenCalledWith({ name: "A · 副本" });
     expect(updateProjectMock).toHaveBeenCalledTimes(1);
     expect(updateProjectMock.mock.calls[0]![0]).toBe("IPP-copy");
     expect(updateProjectMock.mock.calls[0]![1]).toMatchObject({ doc: { nodes: [{ id: "n-mine" }] } });

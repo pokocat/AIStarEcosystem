@@ -53,10 +53,8 @@ public class StudioVideoService {
         var last=alignFrame(userId,v.lastFrameKey(),request.aspectRatio());
         if(first.adjusted()!=null)adjustments.set("firstFrameAdjusted",first.adjusted());
         if(last.adjusted()!=null)adjustments.set("lastFrameAdjusted",last.adjusted());
-        VideoStudioModel model=models().stream().filter(m->endpointId.equals(m.endpointId())).findFirst()
-                .orElseThrow(()->invalid("所选模型不支持该视频模式"));
-        VideoStudioModeSpec modeSpec=model.contract().modes().stream().filter(m->m.mode().equals(v.mode()))
-                .findFirst().orElseThrow(()->invalid("所选模型不支持该视频模式"));
+        VideoStudioModel model=videoModel(endpointId);
+        VideoStudioModeSpec modeSpec=modeSpec(model,v.mode());
         // 「按原文生成」只对出片前会改写描述的模型有意义（同视频生成区的「智能优化」能力判定）；别的模型带着它就明确拒绝。
         if(v.optimizePrompt()!=null && !model.supportsPromptOptimization())
             throw BusinessException.badRequest("STUDIO_VIDEO_OPTION_UNSUPPORTED","所选视频模型不会改写描述，不需要选择「按原文生成」");
@@ -105,7 +103,7 @@ public class StudioVideoService {
         catch(Exception e) {
             log.warn("[studio-video] frame crop failed user={} key={} ratio={} reason={}",userId,owned,aspectRatio,e.toString());
             throw BusinessException.badRequest("STUDIO_VIDEO_FRAME_CROP_FAILED",
-                    "首帧图读不出来，没法按 "+aspectRatio.strip()+" 裁剪。请换一张 PNG 或 JPG 图片，或把画幅改成和首帧图一致");
+                    "首帧图无法读取，无法按 "+aspectRatio.strip()+" 裁剪。请更换 PNG 或 JPG 图片，或将画幅改为与首帧图一致");
         }
     }
     private byte[] decodeWithFfmpeg(java.nio.file.Path source) throws java.io.IOException {
@@ -136,6 +134,26 @@ public class StudioVideoService {
         return price(model(requested),video.mode(),video.resolutionTier(),aspectRatio,seconds,images,clips,audios).credits();
     }
     public long quote(String userId,IpRunService.IpVideoRequest request) {return quotePreparation(userId,request).credits();}
+    /**
+     * 报价，同时按所选模型的规则核对每份素材（格式、大小、参考视频和声音的时长）—— 和出片时 {@link #prepare} 同一套 {@link #requireMedia}。
+     * 先优化提示词再出片的那一行在受理时用它：素材不合规当场报错，不等优化做完、交给视频时才发现（参考视频超过 15 秒那次用户白等了约 30 秒）。
+     */
+    public long quoteChecked(String userId,IpRunService.IpVideoRequest request) {
+        var v=request.video();
+        String endpointId=model(request.model());
+        VideoStudioModeSpec modeSpec=modeSpec(videoModel(endpointId),v.mode());
+        var nativeRequest=new VideoStudioJobRequest(endpointId,v.mode(),request.prompt(),v.resolutionTier(),
+                request.aspectRatio(),request.durationSec(),v.seed(),v.firstFrameKey(),v.lastFrameKey(),prepareAudioReferences(userId,v.references()),null,null,null,null);
+        return videos.prepareCanvas(userId,nativeRequest,(type,key,frame)->requireMedia(userId,type,key,frame,modeSpec),"studio").credits();
+    }
+    private VideoStudioModel videoModel(String endpointId) {
+        return models().stream().filter(m->endpointId.equals(m.endpointId())).findFirst()
+                .orElseThrow(()->invalid("所选模型不支持该视频模式"));
+    }
+    private static VideoStudioModeSpec modeSpec(VideoStudioModel model,String mode) {
+        return model.contract().modes().stream().filter(m->m.mode().equals(mode))
+                .findFirst().orElseThrow(()->invalid("所选模型不支持该视频模式"));
+    }
     public VideoStudioService.CanvasPreparation quotePreparation(String userId,IpRunService.IpVideoRequest request) {
         var v=request.video();
         var nativeRequest=new VideoStudioJobRequest(model(request.model()),v.mode(),request.prompt(),v.resolutionTier(),
@@ -176,7 +194,7 @@ public class StudioVideoService {
             if(!"image".equals(type)) {
                 var probe=ffmpeg.probeMedia(path.toFile());
                 if(!probe.readable() || "video".equals(type)&&!probe.hasVideo() || "audio".equals(type)&&!probe.hasAudio())
-                    throw invalid(label+"读不出来，请重新选择");
+                    throw invalid(label+"无法读取，请重新选择");
                 if((media.minDurationSec()!=null || media.maxDurationSec()!=null)
                         && (probe.durationSec()<=0
                         || media.minDurationSec()!=null && probe.durationSec()<media.minDurationSec()

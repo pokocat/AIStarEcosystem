@@ -67,7 +67,7 @@ const LINKED_EXECUTIONS = 5;
  * Why 「新对话」 and 「历史对话」 wait: the canvas gets its nodes from the current conversation's event stream, so leaving
  * while a reply or an execution is still going would drop nodes that have not arrived yet.
  */
-export const DIALOGUE_THREAD_BUSY = '这段对话还在进行，等它做完或先停止';
+export const DIALOGUE_THREAD_BUSY = '当前对话进行中，完成或停止后可切换';
 /**
  * A reply is streaming, an execution is running / paused / waiting, a message is still on its way, or a card was just
  * confirmed and the execution it started has not been read yet (typed 「可以」: the reply ends before the execution is
@@ -76,9 +76,9 @@ export const DIALOGUE_THREAD_BUSY = '这段对话还在进行，等它做完或�
 export const dialogueThreadBusy = (store: DialogueStore) => !!store.activeTurnId || executionActive(store.execution) || store.outbox.some(o => o.state === 'sending')
   || !!store.awaitingExecutionId;
 /** Why a confirmation card waits: the panel is moving to another conversation, and the card belongs to the one it leaves. */
-export const DIALOGUE_SWITCHING = '正在切换对话，请稍等';
+export const DIALOGUE_SWITCHING = '正在切换对话…';
 /** Why the conversation still waits after a confirmation's answer was lost: it is being sent again until the answer is known. */
-export const DIALOGUE_VERIFYING = '正在核对确认结果，请稍等';
+export const DIALOGUE_VERIFYING = '正在核对确认结果…';
 /** Backoff between resends of a confirmation whose answer was lost: 2s, 4s, 8s… up to 30s. Tests shorten it. */
 export const dialogueVerifyTiming = { firstMs: 2000, maxMs: 30000 };
 const verifyDelay = (attempt: number) => Math.min(dialogueVerifyTiming.firstMs * 2 ** (attempt - 1), dialogueVerifyTiming.maxMs);
@@ -261,7 +261,7 @@ export function useStudioDialogueSession({ projectId, open, autoload = false }: 
 
   const post = useCallback(async (clientMessageId: string, input: DialogueSendInput): Promise<DialogueSendOutcome> => {
     const s = ref.current, at = scope();
-    if (!s.thread) return { state: 'rejected', error: new Error('对话还没准备好，请稍后再发') };
+    if (!s.thread) return { state: 'rejected', error: new Error('正在加载对话，请稍后发送') };
     const revision = [...s.messages].reverse().flatMap(m => m.blocks).find(b => b.type === 'plan');
     // The outcome is still reported; the store is only touched while this conversation is the one shown.
     const apply = (action: DialogueAction) => { if (stillShown(at)) dispatch(action); };
@@ -411,7 +411,7 @@ export function useStudioDialogueSession({ projectId, open, autoload = false }: 
     try {
       for (let attempt = 1; ; attempt++) {
         await pause(verifyDelay(attempt));
-        if (!alive.current || project.current !== at.projectId || generation.current !== at.generation) throw new Error('已离开这段对话，确认结果没有核对完');
+        if (!alive.current || project.current !== at.projectId || generation.current !== at.generation) throw new Error('已离开此对话，确认结果尚未核对完成');
         try { return await createStudioPlanExecution(at.projectId, request); }
         catch (error) { if (definitelyRefused(error)) throw error; }
       }
@@ -427,7 +427,7 @@ export function useStudioDialogueSession({ projectId, open, autoload = false }: 
     if (prepare) await prepare();
     const s = ref.current;
     const plan = planForApproval(s, block);
-    if (!plan) throw new Error('找不到这次报价对应的方案，请刷新后重试');
+    if (!plan) throw new Error('找不到此报价对应的方案，请刷新后重试');
     // Same card and same caps → same request key, so a retry after a lost response is idempotent.
     const key = `${block.approvalId}:${caps.budgetCap}:${caps.autoFixCap}`;
     const clientRequestId = approvalKeys.current.get(key) || nanoid();

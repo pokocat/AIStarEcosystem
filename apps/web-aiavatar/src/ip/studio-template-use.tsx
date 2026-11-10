@@ -62,7 +62,7 @@ export function StudioTemplateUse({ template, onClose, onCreated }: { template: 
     <div className="studio-template-dialog-body">
       <div className="studio-template-dialog-media">
         {loadError ? <div className="studio-error-recovery"><StudioErrorNotice error={loadError}/><Button onClick={() => setRetry(n => n + 1)}>重新加载</Button></div>
-          : canvas ? (doc ? <PreviewCanvas doc={doc} onInspectingChange={setInspecting}/> : <div className="studio-template-preview-loading" role="status"><Spin size="small"/><span>正在读取内容…</span></div>)
+          : canvas ? (doc ? <PreviewCanvas doc={doc} onInspectingChange={setInspecting}/> : <div className="studio-template-preview-loading" role="status"><Spin size="small"/><span>正在加载内容…</span></div>)
           : media?.video ? <video key={media.video} ref={el => { if (el) el.muted = true; }} src={media.video} poster={media.poster} controls autoPlay muted loop playsInline aria-label={`${template.name} 的示例效果`} onError={() => setMediaFailed(true)}/>
           : <img src={media?.image} alt={`${template.name} 的示例效果`} onError={() => setMediaFailed(true)}/>}
         {media && doc && !loadError && <button type="button" className="studio-template-dialog-toggle" onClick={() => setShowCanvas(on => !on)}>{showCanvas ? <><Play size={14} aria-hidden="true"/>查看效果</> : <><LayoutTemplate size={14} aria-hidden="true"/>查看画布</>}</button>}
@@ -72,12 +72,12 @@ export function StudioTemplateUse({ template, onClose, onCreated }: { template: 
           <small>{meta}</small>
           <h2>{template.name}</h2>
           {template.summary && <p>{template.summary}</p>}
-          {doc && <section aria-label="需要准备"><h3>需要准备</h3><p>{needs.length ? needs.map(n => `${n.label}${n.optional ? '（选填）' : ''}`).join('、') : '不用准备素材，可以直接生成。'}</p></section>}
+          {doc && <section aria-label="需要准备"><h3>需要准备</h3><p>{needs.length ? needs.map(n => `${n.label}${n.optional ? '（选填）' : ''}`).join('、') : '无需准备素材，可直接生成。'}</p></section>}
           {kind === 'canvas' && steps.length > 0 && <section aria-label="创作步骤"><h3>创作步骤</h3><ol className="studio-template-dialog-steps">{steps.map((step, i) => <li key={`${step}-${i}`}>{step}</li>)}</ol></section>}
         </div>
         <footer>
           {error && <StudioErrorNotice error={error}/>}
-          <small>新建一张你的画布{templatePrompt(doc) ? '，提示词已填好' : ''}。不扣积分，生成前会显示所需积分。</small>
+          <small>将新建一张画布{templatePrompt(doc) ? '，并填好提示词' : ''}。此操作不消耗积分，生成前将显示所需积分。</small>
           <Button type="primary" block size="large" loading={busy} disabled={!doc || busy} onClick={() => void saveCopy()}>做同款</Button>
         </footer>
       </div>

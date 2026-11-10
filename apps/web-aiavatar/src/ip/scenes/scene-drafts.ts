@@ -7,7 +7,7 @@ import { IpStudioApi } from "../api";
 
 /**
  * 场景页的「草稿」就是一张普通画布：参考图、出图节点和结果都按画布的格式写进文档，
- * 所以随时可以「在画布中继续」，任务恢复、确认原任务也和画布同一套。
+ * 所以随时可以「在画布中查看」，任务恢复、确认原任务也和画布同一套。
  */
 
 export type SceneUpload = { key: string; url: string; name: string };
@@ -127,7 +127,7 @@ export function rejectedNextStep(error: unknown): string {
   const code = String(e?.code ?? "");
   const action = e?.status === 402 || /INSUFFICIENT/.test(code) ? "请充值或调整生成设置后重试。"
     : code === "STUDIO_PRICE_CHANGED" ? "价格已更新，请确认新价格后重试。"
-    : ["AI_NOT_CONFIGURED", "PROMPT_NOT_CONFIGURED", "ENDPOINT_NOT_ALLOWED"].includes(code) ? "请换一个模型或稍后重试。"
+    : ["AI_NOT_CONFIGURED", "PROMPT_NOT_CONFIGURED", "ENDPOINT_NOT_ALLOWED"].includes(code) ? "请更换模型或稍后重试。"
     : "请按上述原因调整后重试。";
   return `${action}本次未扣积分。`;
 }
@@ -152,7 +152,7 @@ export function rowUploads(doc: IpProjectDoc, row: CanvasNodeData): (SceneUpload
 
 /**
  * 编导写一版脚本（AI 视频页）：画布上一个普通文字节点，任务是普通的文字任务（textEdit 是上一版脚本，第一次为空）。
- * 素材连进来、上一版连到下一版，「在画布中继续」看得到每一版看了哪些图；请求先写进节点再提交，和出图同一套恢复规则。
+ * 素材连进来、上一版连到下一版，「在画布中查看」看得到每一版看了哪些图；请求先写进节点再提交，和出图同一套恢复规则。
  */
 export function addScriptNode(doc: IpProjectDoc, input: {
   ask: string; revision: boolean; prompt: string; materialIds: string[]; imageIds: string[];
@@ -180,6 +180,20 @@ export function addScriptNode(doc: IpProjectDoc, input: {
   return { doc: { ...doc, nodes: [...nodes, node], connections }, request, nodeId: node.id };
 }
 
+/**
+ * 「视频裂变」的一次文字任务（找变量，或 AI 改写的一版）：草稿上一个普通文字节点，请求先写进节点再提交（同出图、写脚本的恢复规则）。
+ * 带 sceneTake 不带 sceneDirector，不算编导的版本，编导那一页看不到它。
+ */
+export function addTakeNode(doc: IpProjectDoc, input: { request: StudioRunRequest; title: string;
+  take: NonNullable<StudioNodeMetadata["sceneTake"]> }): { doc: IpProjectDoc; nodeId: string } {
+  const nodes = doc.nodes as CanvasNodeData[];
+  const target = makeStudioNode("text");
+  const node: CanvasNodeData = { ...target, id: input.request.nodeId ?? target.id, title: input.title, position: { x: 1700, y: rowBottom(nodes) }, width: 420, height: 320,
+    // 正文先放交出去的脚本：改稿结果只在正文没被改过时写回（applyStudioRunToDocument），和编导改稿同一套。
+    metadata: { ...target.metadata, content: input.request.textEdit?.content ?? "", status: "loading", studio: { ...target.metadata!.studio!, request: input.request, sceneTake: input.take } } };
+  return { doc: { ...doc, nodes: [...nodes, node] }, nodeId: node.id };
+}
+
 /** 编导写过的每一版，按先后。 */
 export function scriptNodes(doc: IpProjectDoc): CanvasNodeData[] {
   return (doc.nodes as CanvasNodeData[]).filter(n => n.type === CanvasNodeType.Text && n.metadata?.studio?.sceneDirector)
@@ -190,6 +204,8 @@ export function scriptNodes(doc: IpProjectDoc): CanvasNodeData[] {
 export function addVideoRow(doc: IpProjectDoc, input: {
   title: string; prompt: string; scriptId?: string; refIds: string[]; video: StudioVideoSettings;
   durationSec: number; aspectRatio: string; model?: string; maxCost?: number;
+  /** 编辑框里的完整脚本；prompt 是从它挑出来发给模型的（scene-script-layers.ts）。「修改后生成」放回的是它。 */
+  script?: string;
 }): { doc: IpProjectDoc; request: StudioRunRequest; nodeId: string } {
   const nodes = doc.nodes as CanvasNodeData[];
   const script = nodes.find(n => n.id === input.scriptId);
@@ -201,7 +217,8 @@ export function addVideoRow(doc: IpProjectDoc, input: {
   const x = script ? script.position.x + script.width + 90 : 1100;
   const y = rows.length ? Math.max(...rows.map(r => r.position.y + r.height)) + 60 : script?.position.y ?? 120;
   const node: CanvasNodeData = { ...target, title: input.title, position: { x, y },
-    metadata: { ...target.metadata, prompt: input.prompt, status: "loading", studio: { ...target.metadata!.studio!, request } } };
+    metadata: { ...target.metadata, prompt: input.prompt, status: "loading",
+      studio: { ...target.metadata!.studio!, request, ...(input.script && input.script !== input.prompt ? { sceneScript: input.script } : {}) } } };
   const connections: CanvasConnection[] = [...(doc.connections as CanvasConnection[]),
     ...[...(script ? [script.id] : []), ...input.refIds].map(from => ({ id: nanoid(), fromNodeId: from, toNodeId: node.id }))];
   return { doc: { ...doc, nodes: [...nodes, node], connections }, request, nodeId: node.id };
@@ -353,4 +370,22 @@ export function openedVideoState(doc: IpProjectDoc, defaults: { language: string
   return { text: state.text, options: state.options, language: state.language ?? defaults.language, ...(state.tier ? { tier: state.tier } : {}),
     duration: state.duration ?? turn?.duration ?? defaults.duration, ratio: state.ratio ?? turn?.ratio ?? defaults.ratio,
     optimize: state.optimize ?? true, ...(edit ? { edit } : {}) };
+}
+
+/**
+ * 视频任务只快照素材节点，采用的脚本另存于 sceneVideoState.edit。重新编辑时要把这份脚本一起恢复，
+ * 否则 openedVideoState 会因找不到原脚本节点丢掉 edit，页面只剩空的 text（2026-11-07 反馈 8）。
+ * 这是恢复已有正文，不创建模型请求，也不带原任务的 runId / request / 计费状态。
+ */
+export function restoreVideoTaskScript(doc: IpProjectDoc): IpProjectDoc {
+  const state = doc.sceneVideoState, edit = state?.edit;
+  if (!edit?.scriptId || scriptNodes(doc).some(n => n.id === edit.scriptId)) return doc;
+  const node = makeStudioNode("text");
+  const restored: CanvasNodeData = { ...node, id: edit.scriptId, title: "视频脚本", position: { x: 520, y: rowBottom(doc.nodes as CanvasNodeData[]) },
+    metadata: { content: edit.prompt, status: "success", studio: { kind: "text", sceneDirector: {
+      ask: "", revision: false, duration: state.duration ?? 15, ratio: state.ratio ?? "9:16", language: state.language ?? "中文",
+      // 快照没有保留当时编导实际看过的图片，不把当前素材冒充脚本的看图记录。
+      options: state.options, at: new Date().toISOString(),
+    } } } };
+  return { ...doc, nodes: [...doc.nodes, restored] };
 }

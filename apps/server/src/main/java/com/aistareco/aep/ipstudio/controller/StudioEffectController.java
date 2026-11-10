@@ -15,7 +15,7 @@ public class StudioEffectController {
     public StudioEffectController(StudioEffectService service,InAppOperatorGuard guard){this.service=service;this.guard=guard;}
     @GetMapping public ApiResponse<List<Effect>> list(Principal principal){return ApiResponse.of(service.list(principal.getName()));}
     @PostMapping public ApiResponse<Effect> publish(Principal principal,Authentication auth,@RequestBody Publish request){
-        if(request!=null && "official".equals(request.visibility()))guard.requireSuperAdmin(auth,"只有超级管理员能发布官方特效");
+        if(request!=null && "official".equals(request.visibility()))guard.requireSuperAdmin(auth,"仅超级管理员可发布官方特效");
         return ApiResponse.of(service.publish(principal.getName(),request));
     }
     @PutMapping("/{id}/favorite") public ApiResponse<Effect> favorite(Principal principal,@PathVariable String id,@RequestBody Favorite request){return ApiResponse.of(service.favorite(principal.getName(),id,request.favorite()));}

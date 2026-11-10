@@ -64,7 +64,7 @@ public class FeishuModelAlerts {
                     messageId=client.send(id,(String)row.get("message_text"));
                     db.update("UPDATE model_alert_delivery SET message_id=? WHERE id=?",messageId,id);
                 }
-                if(config.isUrgent())client.urgent(messageId);
+                if(config.urgencyEnabled()&&messageId.startsWith("om_"))client.urgent(messageId);
                 db.update("UPDATE model_alert_delivery SET state='sent',sent_at=?,last_error=NULL WHERE id=?",Timestamp.from(Instant.now()),id);
             } catch(Exception error) {
                 // Only our fixed diagnostic strings leave this boundary; never print SDK/request objects with credentials.

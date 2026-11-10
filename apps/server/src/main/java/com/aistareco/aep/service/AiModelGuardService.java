@@ -75,6 +75,8 @@ public class AiModelGuardService {
                 if(message.get("content") instanceof List<?> parts) {
                     for(Object part:parts) {
                         if(part instanceof Map<?,?> map && "image_url".equals(map.get("type")))visualTokens+=8192L;
+                        // 拉片整条视频（StudioVideoBreakdown，60 秒以内、每秒 2 帧带声音）实测约 2 万输入 Token
+                        else if(part instanceof Map<?,?> map && "video_url".equals(map.get("type")))visualTokens+=24000L;
                         else if(part instanceof Map<?,?> map)chars+=lengthOf(map.get("text"));
                         else chars+=lengthOf(part);
                     }
@@ -111,7 +113,7 @@ public class AiModelGuardService {
         long used = usageRepo.sumTotalTokensByProviderSince(endpoint.getId(), todayStart());
         if (used + estimatedTokens > quota) {
             throw new BusinessException(HttpStatus.PAYMENT_REQUIRED, "LLM_DAILY_TOKEN_QUOTA_EXCEEDED",
-                    "该模型今日额度已用完，请联系管理员调整配额");
+                    "该模型今日用量已达上限，请明天再试或选择其他模型");
         }
     }
 
@@ -122,7 +124,7 @@ public class AiModelGuardService {
         long estimatedCost = estimateCostMicros(endpoint, estimate);
         if (used + estimatedCost > quota) {
             throw new BusinessException(HttpStatus.PAYMENT_REQUIRED, "LLM_DAILY_COST_QUOTA_EXCEEDED",
-                    "该模型今日成本额度已用完，请联系管理员调整配额");
+                    "该模型今日用量已达上限，请明天再试或选择其他模型");
         }
     }
 

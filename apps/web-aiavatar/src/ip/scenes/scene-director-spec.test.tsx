@@ -11,7 +11,7 @@ import type { IpProject, IpProjectDoc } from "@ai-star-eco/types";
 const SCENES = JSON.parse(readFileSync(join(__dirname, "../../../../server/src/main/resources/ipstudio/scenes.json"), "utf8"));
 
 const api = vi.hoisted(() => ({
-  push: vi.fn(), failure: vi.fn(),
+  push: vi.fn(), failure: vi.fn(), taskStart: vi.fn(), taskGet: vi.fn(),
   uploadImage: vi.fn(), listProjects: vi.fn(), createProject: vi.fn(), updateProject: vi.fn(), getProject: vi.fn(), listScenes: vi.fn(), composeScene: vi.fn(),
   fetchModels: vi.fn(), readRun: vi.fn(), cancelRun: vi.fn(), capabilities: vi.fn(), submit: vi.fn(), importMedia: vi.fn(), videoModels: vi.fn(), signKeys: vi.fn(),
 }));
@@ -24,6 +24,11 @@ vi.mock("../api", () => ({ IpStudioApi: { uploadImage: api.uploadImage, listProj
   listScenes: api.listScenes, composeScene: api.composeScene } }));
 vi.mock("@/canvas-bridge/api", () => ({ fetchModels: api.fetchModels, readRun: api.readRun, cancelRun: api.cancelRun, fetchStudioVideoModels: api.videoModels, signKeys: api.signKeys }));
 vi.mock("@/canvas-bridge/studio-api", () => ({ studioCapabilities: api.capabilities, submitStudioRun: api.submit, importStudioMedia: api.importMedia }));
+vi.mock("@/canvas-bridge/studio-video-tasks", async original => ({ ...await original<any>(),
+  videoTasks: async () => ({ items: [], page: 0, hasMore: false }), videoTask: api.taskGet,
+  videoTaskPrice: async (q: any) => ({ estimated: q.duration * 40, cap: q.duration * 120, segments: [q.duration], boards: 0 }),
+  prepareVideoTask: async (_id: string, request: any) => request, startVideoTask: api.taskStart,
+}));
 vi.mock("@/canvas-bridge/studio-image-file", () => ({ prepareStudioImageUpload: async (f: File) => f }));
 vi.mock("../studio-errors", async importOriginal => ({ ...(await importOriginal<typeof import("../studio-errors")>()), useStudioFailure: () => api.failure, studioErrorMetadata: () => ({}) }));
 vi.mock("../library-reference-picker", () => import("./scene-test-picker"));
@@ -48,6 +53,13 @@ const saves = (id: string) => api.updateProject.mock.calls.filter(c => c[0] === 
 
 beforeEach(() => {
   store.clear();
+  api.taskStart.mockImplementation(async (projectId: string, request: any) => {
+    if (request.kind === 'direct') await api.submit(projectId, request.video);
+    const task = { id: 'PEX-task', projectId, ...request, request, createdAt: '2026-11-06',
+      execution: { id: 'PEX-task', projectId, stage: 'production', status: 'running', budgets: [],
+        steps: [{ id: 'video', title: '生成视频', operation: 'video', status: 'running', stage: 'production', attempt: 1, runIds: [], dependsOn: [] }], updatedAt: '2026-11-06' } };
+    api.taskGet.mockResolvedValue(task); return task;
+  });
   api.listScenes.mockResolvedValue(SCENES);
   api.listProjects.mockImplementation(async () => [...store.values()].map(p => ({ id: p.id, name: p.name, sceneId: p.sceneId, updatedAt: p.updatedAt, createdAt: p.createdAt })));
   api.getProject.mockImplementation(async (id: string) => structuredClone(store.get(id)));
@@ -67,7 +79,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); window.history.replaceState(null, "", "/"); });
 
-const continueLink = () => screen.queryByRole("link", { name: "在画布中继续" })?.getAttribute("href");
+const continueLink = () => screen.queryByRole("link", { name: "在画布上查看" })?.getAttribute("href");
 const heading = () => document.querySelector(".scene-composer-head strong")?.textContent;
 const pressed = (group: string, name: string) => within(screen.getByRole("group", { name: group })).getByRole("button", { name }).getAttribute("aria-pressed");
 const text = fieldText;
@@ -90,12 +102,63 @@ const H3 = { endpointId: "ep-h3", name: "H3", isDefault: true, selectableById: t
 const productNode = { id: "product", type: "image", title: "商品图 1", position: { x: 100, y: 400 }, width: 100, height: 100,
   metadata: { storageKey: "product.jpg", content: "https://cdn/product.jpg", origin: "upload", mimeType: "image/jpeg", status: "success" } };
 /** 编导写好的一版脚本（照 addScriptNode 的形状），写的时候选了「只拍商品、专业讲解」。 */
-function withScript(doc: IpProjectDoc) {
+const MODEL_SUGGESTIONS = [
+  { label: "先拍精华质地", instruction: "先用精华质地特写开场，再切到洗手台，保留原有信息。" },
+  { label: "改成护肤独白", instruction: "把台词改成护肤时的自然独白，减少讲解感。" },
+  { label: "强调使用动作", instruction: "重点拍清取用和涂抹动作，不新增功效。" },
+];
+function withScript(doc: IpProjectDoc, suggestions: unknown = MODEL_SUGGESTIONS) {
   const made = addScriptNode(doc, { ask: "保湿精华", revision: false, prompt: "写脚本", materialIds: ["product"], imageIds: ["product"],
     duration: 15, ratio: "9:16", language: "英文", options: { presenter: "product", tone: "expert" } });
-  return { id: made.nodeId, doc: patchNode(made.doc, made.nodeId, n => ({ ...n, metadata: { ...n.metadata, status: "success", content: "第1镜（0–5 秒）：精华放在洗手台上" } })) };
+  return { id: made.nodeId, doc: patchNode(made.doc, made.nodeId, n => ({ ...n, metadata: { ...n.metadata, status: "success", content: "第1镜（0–5 秒）：精华放在洗手台上", studio: { ...n.metadata!.studio!, sceneDirector: { ...n.metadata!.studio!.sceneDirector!, suggestions: suggestions as never } } } })) };
 }
 beforeEach(() => { api.videoModels.mockResolvedValue([H3]); });
+
+test.each(MODEL_SUGGESTIONS.map(s => [s.label, s.instruction]))('编导建议“%s”只填入修改意见并聚焦，不提交任务或改写原脚本', async (label, value) => {
+  const { doc } = withScript({ ...EMPTY, nodes: [productNode] as never });
+  put({ id: "IPP-V", name: "v", sceneId: "ecom-talking", doc });
+  await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
+  const suggestions = await screen.findByRole("group", { name: "脚本修改建议" });
+  const field = screen.getByRole("textbox", { name: "修改意见" }) as HTMLTextAreaElement;
+  fireEvent.change(field, { target: { value: "之前没发的内容" } });
+  fireEvent.click(within(suggestions).getByRole("button", { name: label }));
+  expect(field.tagName).toBe("TEXTAREA"); expect(field.value).toBe(value); expect(document.activeElement).toBe(field);
+  expect(screen.queryByRole("button", { name: "返回编辑" })).toBeNull();
+  expect(api.submit).not.toHaveBeenCalled(); expect(api.composeScene).not.toHaveBeenCalled();
+  expect(document.querySelector(".scene-script-text")?.textContent).toBe("第1镜（0–5 秒）：精华放在洗手台上");
+  fireEvent.change(field, { target: { value: `${value} 保留第一句台词。` } });
+  expect(within(suggestions).getByRole("button", { name: label }).getAttribute("aria-pressed")).toBe("false");
+  expect(api.submit).not.toHaveBeenCalled();
+});
+
+test("修改建议可手动修改后发送；换行和中文输入法回车不提交，新一轮保留原回复并隐藏旧建议", async () => {
+  const { doc } = withScript({ ...EMPTY, nodes: [productNode] as never });
+  put({ id: "IPP-V", name: "v", sceneId: "ecom-talking", doc });
+  await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
+  fireEvent.click(await screen.findByRole("button", { name: "改成护肤独白" }));
+  const field = screen.getByRole("textbox", { name: "修改意见" });
+  const revision = "台词自然一点。\n保留第一句台词。";
+  fireEvent.change(field, { target: { value: revision } });
+  fireEvent.keyDown(field, { key: "Enter", shiftKey: true });
+  fireEvent.keyDown(field, { key: "Enter", isComposing: true });
+  fireEvent.keyDown(field, { key: "Enter", keyCode: 229 });
+  expect(api.submit).not.toHaveBeenCalled();
+  await act(async () => { fireEvent.keyDown(field, { key: "Enter" }); });
+  await waitFor(() => expect(api.submit).toHaveBeenCalledTimes(1));
+  expect(api.submit.mock.calls[0][1].scene).toMatchObject({ kind: "video-script", revision });
+  expect(document.querySelectorAll(".scene-director-turn")).toHaveLength(2);
+  expect(document.querySelector(".scene-script-text")?.textContent).toBe("第1镜（0–5 秒）：精华放在洗手台上");
+  expect(screen.queryByRole("group", { name: "脚本修改建议" })).toBeNull();
+});
+
+test.each([undefined, [], [{ label: "超出八个字的按钮文字", instruction: "调整" }], [{ label: "短按钮", instruction: "字".repeat(81) }]])("旧回复或不合格建议不使用固定兜底，正文仍可采用：%j", async (suggestions) => {
+  const made = withScript({ ...EMPTY, nodes: [productNode] as never }, suggestions ?? []);
+  put({ id: "IPP-V", name: "v", sceneId: "ecom-talking", doc: made.doc });
+  await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
+  await screen.findByRole("button", { name: "采用脚本" });
+  expect(screen.queryByRole("group", { name: "脚本修改建议" })).toBeNull();
+  expect(document.querySelector(".scene-script-text")?.textContent).toBe("第1镜（0–5 秒）：精华放在洗手台上");
+});
 
 /** 只能按文字出、4 秒（照本地 Agnes Video 2.5 Flash 的形状）。 */
 const TEXT_ONLY = { ...H3, endpointId: "ep-text", name: "文字出片", isDefault: false,
@@ -110,7 +173,7 @@ test("video: with a text-only video model the director gets no numbered pictures
   await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
   fillField(await screen.findByRole("textbox", { name: "想做的视频" }), "保湿面霜");
   fireEvent.click(screen.getByRole("button", { name: "AI 编导" }));
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "让编导写" })); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "生成脚本" })); });
   // 场景输入随请求提交，服务端按提示词库拼话（docs/studio-prompt-architecture.md §5.1）。
   await waitFor(() => expect(api.submit).toHaveBeenCalled());
   expect(api.composeScene).not.toHaveBeenCalled();
@@ -128,10 +191,10 @@ test("video: when the settings no longer match what the script was written for, 
   await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
   fireEvent.click(await screen.findByRole("button", { name: "采用脚本" }));
   // 时长还是 15 秒：不提示。
-  expect(screen.queryByRole("button", { name: /让编导照现在的改一版/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: /按当前设置修改脚本/ })).toBeNull();
   setDuration(10);
-  expect(screen.getByText(/这版脚本是照 15 秒写的，现在要出 10 秒/)).toBeTruthy();
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: /让编导照现在的改一版/ })); });
+  expect(screen.getByText(/此脚本按 15 秒撰写，当前为 10 秒/)).toBeTruthy();
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: /按当前设置修改脚本/ })); });
   await waitFor(() => expect(api.submit).toHaveBeenCalled());
   // 设置变了什么交给服务端的编导模板说成一句话，页面不再自己拼「按现在的设置重新排镜头」。
   expect(api.submit.mock.calls[0][1].scene).toMatchObject({ kind: "video-script", duration: 10, settingsChanged: expect.stringContaining("这版脚本是照 15 秒写的，现在要出 10 秒") });
@@ -147,11 +210,11 @@ test("video: 图1 in a script shows as the picture's chip on the card and in the
   const doc = patchNode(made.doc, made.nodeId, n => ({ ...n, metadata: { ...n.metadata, status: "success", content: "第1镜（0–5 秒）：手拿图1转一圈" } }));
   put({ id: "IPP-V", name: "v", sceneId: "ecom-talking", doc });
   await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
-  const chip = await screen.findByRole("button", { name: "图1：商品图 1，看大图" });
+  const chip = await screen.findByRole("button", { name: "图1：商品图 1，查看大图" });
   expect(chip.closest(".scene-script-card")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "采用脚本" }));
   const box = await screen.findByRole("textbox", { name: "视频脚本" });
-  await waitFor(() => expect(within(box).getByRole("button", { name: "图1：商品图 1，看大图" })).toBeTruthy());
+  await waitFor(() => expect(within(box).getByRole("button", { name: "图1：商品图 1，查看大图" })).toBeTruthy());
   expect(text("视频脚本")).toBe("第1镜（0–5 秒）：手拿图1转一圈");
 });
 
@@ -161,12 +224,12 @@ test("video: the director page shows the chosen materials and the spec; after ch
   put({ id: "IPP-V", name: "v", sceneId: "ecom-talking", doc });
   api.composeScene.mockResolvedValue({ text: "改脚本" });
   await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
-  const box = (await screen.findByRole("textbox", { name: "想改哪里" })).closest("form")!;
+  const box = (await screen.findByRole("textbox", { name: "修改意见" })).closest("form")!;
   // 素材和规格都在编导的输入框里：放好的商品图、还能再加、时长。
   expect(within(box).getByRole("button", { name: "移除商品图 1" })).toBeTruthy();
-  expect(within(box).getByRole("button", { name: "从资产库选商品图" })).toBeTruthy();
+  expect(within(box).getByRole("button", { name: "从资产库选择商品图" })).toBeTruthy();
   expect(within(box).getByRole("button", { name: /^视频规格：英文，15 秒/ })).toBeTruthy();
-  const sendButton = within(box).getByRole("button", { name: "让编导改" }) as HTMLButtonElement;
+  const sendButton = within(box).getByRole("button", { name: "发送修改意见" }) as HTMLButtonElement;
   expect(sendButton.disabled).toBe(true);
   setDuration(10);
   expect(within(box).getByRole("button", { name: /^视频规格：英文，10 秒/ })).toBeTruthy();
@@ -183,7 +246,7 @@ test("video: a typed change on the director page also hands over the new length"
   put({ id: "IPP-V", name: "v", sceneId: "ecom-talking", doc });
   api.composeScene.mockResolvedValue({ text: "改脚本" });
   await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
-  const input = await screen.findByRole("textbox", { name: "想改哪里" });
+  const input = await screen.findByRole("textbox", { name: "修改意见" });
   setDuration(10);
   fireEvent.change(input, { target: { value: "开头更抓人" } });
   await act(async () => { fireEvent.submit(input.closest("form")!); });
@@ -209,22 +272,22 @@ test("video: the scene's facts are chips that start a line in the input", async 
   fillField(screen.getByRole("textbox", { name: "想做的视频" }), "店名和位置：巷里火锅，万达东门");
   fireEvent.click(chips.getByRole("button", { name: "团购价" }));
   expect(text("想做的视频")).toBe("店名和位置：巷里火锅，万达东门\n团购价：");
-  // 选填的标着「有就写」。
-  expect(chips.getByRole("button", { name: /原价有就写/ })).toBeTruthy();
+  // 选填的标着「选填」。
+  expect(chips.getByRole("button", { name: /原价选填/ })).toBeTruthy();
 });
 
 test("video: a script that says what is still missing shows it, drops that line when used, and cannot be generated while 【待补】 is left", async () => {
   put({ id: "IPP-G", name: "g", sceneId: "local-groupbuy", doc: withGroupbuyScript("还缺：怎么买。\n第1镜（0–5 秒）：门头。旁白说：「万达东门巷里火锅，双人餐九十九。」\n第2镜（5–10 秒）：套餐。旁白说：「点【待补：购买入口】下单。」") });
   await open(SceneVideoStudio, "/video?scene=local-groupbuy&draft=IPP-G");
-  expect(await screen.findByText("还缺购买入口。在下面写上发给编导，会补进脚本。")).toBeTruthy();
+  expect(await screen.findByText(/^还缺购买入口。/)).toBeTruthy();
   // 留空的地方标出来。
   expect(document.querySelector("mark.scene-script-blank")?.textContent).toBe("【待补：购买入口】");
   // 原价 158 用户写了、脚本里没有：灰字提醒，不拦。
-  expect(screen.getByText("你写的 158 脚本里没用上，要加的话跟编导说一声。")).toBeTruthy();
+  expect(screen.getByText(/你填写的 158 未出现在脚本中/)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "采用脚本" }));
   expect(text("视频脚本").startsWith("第1镜")).toBe(true);
   const go = screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement;
-  await waitFor(() => expect(screen.getByText("还有没填的：购买入口。在上面换成实际内容，用不上的直接删掉。")).toBeTruthy());
+  await waitFor(() => expect(screen.getByText(/待补充的内容：购买入口/)).toBeTruthy());
   expect(go.disabled).toBe(true);
   fillField(screen.getByRole("textbox", { name: "视频脚本" }), text("视频脚本").replace("【待补：购买入口】", "本视频团购"));
   await waitFor(() => expect(go.disabled).toBe(false));
@@ -233,17 +296,17 @@ test("video: a script that says what is still missing shows it, drops that line 
 test("video: a 还缺 line with no 【待补】 left in the script is shown as a soft note, not a blocker", async () => {
   put({ id: "IPP-G", name: "g", sceneId: "local-groupbuy", doc: withGroupbuyScript("第1镜（0–2 秒）：门头。旁白说：「巷里火锅，双人餐九十九，原价一百五十八。」\n\n还缺：火锅店的名字。") });
   await open(SceneVideoStudio, "/video?scene=local-groupbuy&draft=IPP-G");
-  expect(await screen.findByText("编导觉得可能还缺火锅店的名字，写过了就不用管。")).toBeTruthy();
+  expect(await screen.findByText(/可能还缺火锅店的名字/)).toBeTruthy();
   expect(document.querySelector(".scene-script-missing")).toBeNull();
 });
 
-test("video: blanks for facts marked 有就写 do not count as missing; after a script only the blank facts are offered as chips", async () => {
+test("video: blanks for optional facts do not count as missing; after a script only the blank facts are offered as chips", async () => {
   put({ id: "IPP-G", name: "g", sceneId: "local-groupbuy", doc: withGroupbuyScript("第1镜（0–2 秒）：门头。旁白说：「双人餐九十九，原价【待补：原价】。」") });
   await open(SceneVideoStudio, "/video?scene=local-groupbuy&draft=IPP-G");
-  expect(await screen.findByText("原价没有就不用写，出片前把脚本里标着的那几处删掉就行。")).toBeTruthy();
+  expect(await screen.findByText(/^原价为选填/)).toBeTruthy();
   expect(document.querySelector(".scene-script-missing")).toBeNull();
-  // 打开写过脚本的草稿先看到编导写的那版；回到编辑框，只给脚本里还空着的那几条。
-  fireEvent.click(screen.getAllByRole("button", { name: "回到编辑" })[0]);
+  // 采用脚本后进入编辑框，只给脚本里还空着的那几条。
+  fireEvent.click(screen.getByRole("button", { name: "采用脚本" }));
   const chips = within(screen.getByRole("group", { name: "要写清楚的信息" }));
-  expect(chips.getAllByRole("button").map(b => b.textContent)).toEqual(["原价有就写"]);
+  expect(chips.getAllByRole("button").map(b => b.textContent)).toEqual(["原价选填"]);
 });

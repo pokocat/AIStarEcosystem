@@ -216,8 +216,8 @@ test('confirming production posts the execution, approach, plan revision, approv
   api.getConversation.mockResolvedValue({ ...emptyState, latestSeq: 3, messages: [planMessage([planBlock, approvalBlock])] });
   api.createExecution.mockResolvedValue({ id: 'e1', projectId: 'p', skillKey: 'k', skillVersion: 1, stage: 'production', planRunId: 'plan-2', planRevision: 2, planFingerprint: 'f2', status: 'running', steps: [], budgets: [], startedAt: at, deadlineAt: at, updatedAt: at });
   await ready();
-  // 「先改改」 only focuses the composer.
-  fireEvent.click(screen.getByRole('button', { name: '先改改' }));
+  // 「修改方案」 only focuses the composer.
+  fireEvent.click(screen.getByRole('button', { name: '修改方案' }));
   expect(document.activeElement).toBe(composer());
   expect(api.createExecution).not.toHaveBeenCalled();
   // The plan quoted with the card rides on it: one card, no separate 「制作计划」.
@@ -245,7 +245,7 @@ test('confirming production posts the execution, approach, plan revision, approv
   // The production strip keeps its own 停止; the composer's (a reply in progress) is gone.
   expect(screen.getAllByRole('button', { name: '停止' }).filter(b => !b.closest('[aria-label="制作进度"]'))).toHaveLength(0);
   expect(screen.queryByText('正在准备回复')).toBeNull();
-  expect(screen.getAllByLabelText('Studio 的回复')).toHaveLength(1);
+  expect(screen.getAllByLabelText('IP Studio 的回复')).toHaveLength(1);
 });
 
 test('analysis is created without an execution; replaced and expired cards cannot be approved', async () => {
@@ -256,7 +256,7 @@ test('analysis is created without an execution; replaced and expired cards canno
   api.createExecution.mockResolvedValue({ id: 'e9', projectId: 'p', skillKey: 'k', skillVersion: 1, stage: 'analysis', planRunId: 'plan-1', planRevision: 1, planFingerprint: 'f1', status: 'running', steps: [], budgets: [], startedAt: at, deadlineAt: at, updatedAt: at });
   await ready();
   expect(screen.queryAllByRole('button', { name: '开始制作' })).toHaveLength(0);
-  expect(screen.getByText('已有新的报价，见下方')).toBeDefined();
+  expect(screen.getByText('已有新报价，请查看下方。')).toBeDefined();
   expect(screen.getByText('报价已过期')).toBeDefined();
   fireEvent.click(screen.getByRole('button', { name: '开始分析' }));
   await waitFor(() => expect(api.createExecution).toHaveBeenCalledOnce());
@@ -364,7 +364,7 @@ test('a text proposal is adopted only while the node still holds the text it was
   await waitFor(() => expect(screen.getAllByLabelText('修改建议')).toHaveLength(2));
   act(() => setCanvas(list => list.map(n => n.id === 't' ? { ...n, metadata: { ...n.metadata, content: '我刚手改的台词' } } : n)));
   const second = screen.getAllByLabelText('修改建议')[1];
-  expect(within(second).getByText('你改过这段内容，这份修改稿不再适用')).toBeDefined();
+  expect(within(second).getByText('此内容已被修改，修改稿不再适用')).toBeDefined();
   expect((within(second).getByRole('button', { name: '采用' }) as HTMLButtonElement).disabled).toBe(true);
   expect(canvas.find(n => n.id === 't')?.metadata?.content).toBe('我刚手改的台词');
 });
@@ -427,7 +427,7 @@ test('a tool the turn never closed stops spinning when the turn fails', async ()
   emit(ev('tool.started', { toolCallId: 'x', toolName: 'read_canvas', title: '查看画布' }), ev('turn.done', { reason: 'failed', messageId: 'm1' }));
   const card = screen.getByLabelText('工作记录：查看画布');
   expect(card.getAttribute('data-status')).toBe('failed');
-  expect(within(card).getByText('没有完成')).toBeDefined();
+  expect(within(card).getByText('失败')).toBeDefined();
   expect(within(card).queryByText(/进行中/)).toBeNull();
   expect(screen.queryByText('正在思考')).toBeNull();
 });
@@ -450,11 +450,11 @@ test('「从这里重新开始」 branches from that message and shows the new t
   fireEvent.click(screen.getByRole('button', { name: '从这里重新开始' }));
   await waitFor(() => expect(screen.getByText('分支里的回复')).toBeDefined());
   expect(api.branch.mock.calls[0]).toEqual(['p', 'th', { clientRequestId: expect.any(String), fromMessageId: 'm2' }]);
-  expect(screen.getByText(/这是从一条消息新开的对话/)).toBeDefined();
+  expect(screen.getByText(/此对话从一条消息重新开始/)).toBeDefined();
   await waitFor(() => expect(streams.at(-1)!.threadId).toBe('th2'));
 });
 
-test('「就用这版」 on a check node records the inspected run on its own step; 「重做这一段」 opens the regenerate composer', async () => {
+test('「采用此版本」 on a check node records the inspected run on its own step; 「重新生成」 opens the regenerate composer', async () => {
   const segment = { ...character, id: 'seg', type: 'video', title: '第 1 段', metadata: { storageKey: 'k/v1', studio: { kind: 'shot', execution: { executionId: 'e1', stepId: 'v1', runId: 'run-v1' } } } } as CanvasNodeData;
   const check = { ...text, id: 'chk', title: '第 1 段 · 检查', metadata: { status: 'success', studio: { kind: 'check', parentNodeId: 'seg', execution: { executionId: 'e1', stepId: 'c1', runId: 'run-c1' },
     check: { status: 'unknown', targetRunId: 'run-v1', items: [] } } } } as CanvasNodeData;
@@ -650,13 +650,13 @@ test('a shortfall card asks for one number, the new cap (the proposed one by def
   await ready();
   const [old, current] = screen.getAllByLabelText('确认制作');
   expect(within(old).getByText('已更新')).toBeDefined();
-  expect(within(old).getByText('已有新的报价，见下方')).toBeDefined();
+  expect(within(old).getByText('已有新报价，请查看下方。')).toBeDefined();
   expect(within(old).queryByText('第 1 段视频')).toBeNull();
   expect(within(old).queryByRole('button', { name: '开始制作' })).toBeNull();
   expect(within(current).getByText('积分超出上限，还差 30 积分')).toBeDefined();
   // One input (no separate redo allowance), defaulting to the cap the card proposes (the approved cap plus the shortfall).
   expect(within(current).getAllByRole('spinbutton')).toHaveLength(1);
-  const cap = within(current).getByLabelText('新的上限') as HTMLInputElement;
+  const cap = within(current).getByLabelText('新上限') as HTMLInputElement;
   expect(cap.value).toBe('150');
   expect(within(current).queryByText('50')).toBeNull();
   expect(current.textContent).not.toMatch(/预留|超过会停下来|重做额度/);
@@ -712,8 +712,8 @@ test('a production card without an execution starts a new one: no executionId, r
 // label is the only place the method shows; nothing under the composer shows or changes the skill or the reply model.
 const modeLabel = () => screen.getAllByRole('button').find(b => b.getAttribute('aria-controls') === 'studio-assistant-guide')!;
 const openGuide = () => fireEvent.click(modeLabel());
-const AUTO_TITLE = '按你说的话自动选择做法。';
-const skillTitle = (name: string) => `现在按「${name}」做。按你说的话自动选择；有制作在进行时保持不变，想换做法可以开一段新对话。`;
+const AUTO_TITLE = '会按你说的内容自动选择做法。';
+const skillTitle = (name: string) => `现在按「${name}」做。会按你说的内容自动选择做法。`;
 
 test('the input toolbar only picks the reply model: a typed message carries no skillKey, the header label says how the method is chosen', async () => {
   api.skills.mockResolvedValue([recreation, seeding, skill('old', '旧技能', { status: 'withdrawn' })]);
@@ -729,7 +729,7 @@ test('the input toolbar only picks the reply model: a typed message carries no s
   expect(modeLabel().textContent).toBe('全能创作');
   expect(modeLabel().title).toBe(AUTO_TITLE);
   openGuide();
-  expect(screen.getByText('全能创作：按你说的话和素材自动选择做法。')).toBeDefined();
+  expect(screen.getByText('全能创作：会按你说的内容和素材自动选择做法。')).toBeDefined();
   fireEvent.change(composer(), { target: { value: '做一条种草视频' } });
   fireEvent.click(sendButton());
   await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
@@ -777,7 +777,7 @@ test('400 STUDIO_SKILL_REQUIRED names the skills that fit, keeps the draft, and 
   fireEvent.change(composer(), { target: { value: '照着这条复刻一条口播' } });
   fireEvent.click(sendButton());
   // A question, not a failure: shown inline, never as an error notification.
-  await screen.findByText('「短视频复刻」和「口播种草」都能做，选一个就按它发送');
+  await screen.findByText('「短视频复刻」和「口播种草」都适用，请选择一种做法后发送');
   expect(screen.queryByRole('alert')).toBeNull();
   expect(composer().value).toBe('照着这条复刻一条口播');
   expect(api.reloadSkills).toHaveBeenCalled();
@@ -797,7 +797,7 @@ const summaryMessage: StudioDialogueMessage = { id: 'm-sum', threadId: 'th', seq
   clientMessageId: 'exec-summary-X1', suggestions: ['改成横屏'] };
 const draftRun = (over: Partial<IpRun> = {}): IpRun => ({ id: 'IPR-d', projectId: 'p', nodeId: 'X1', kind: 'studio-text', status: 'running', stage: 'queued', pct: 0, cost: 0, inputs: {}, output: {}, createdAt: at, ...over });
 
-test('operators get 「把这次制作整理成技能草稿」 under a completion summary: cost confirmed, one request key, the draft waits for an admin', async () => {
+test('operators get 「整理成技能草稿」 under a completion summary: cost confirmed, one request key, the draft waits for an admin', async () => {
   const { SKILL_DRAFT_POLL_MS } = await import('./studio-dialogue-skill-draft');
   SKILL_DRAFT_POLL_MS.value = 5;
   api.role = 'operator';
@@ -808,16 +808,17 @@ test('operators get 「把这次制作整理成技能草稿」 under a completio
     : Promise.reject(new Error('没有这次运行')));
   await ready();
   const action = within(screen.getByRole('group', { name: '整理成技能草稿' }));
-  fireEvent.click(action.getByRole('button', { name: '把这次制作整理成技能草稿' }));
-  expect(api.confirm.mock.calls[0][0].content).toContain('最多 21 积分');
+  fireEvent.click(action.getByRole('button', { name: '整理成技能草稿' }));
+  expect(api.confirm.mock.calls[0][0].content).toContain('按实际用量结算');
+  expect(api.confirm.mock.calls[0][0].content).not.toContain('21');
   expect(api.confirm.mock.calls[0][0].content).toContain('管理员在后台审阅');
   await waitFor(() => expect(api.draft).toHaveBeenCalledOnce());
   expect(api.draft.mock.calls[0][0]).toBe('p');
   expect(api.draft.mock.calls[0][1]).toMatchObject({ executionId: 'X1', maxCost: 21 });
   expect(api.draft.mock.calls[0][1].clientRequestId).toEqual(expect.any(String));
-  await waitFor(() => expect(screen.getByText(/已存成技能草稿 v3，去掉了 2 处素材引用/)).toBeDefined());
-  expect(screen.getByText(/要管理员在后台审阅、发布后才会生效/)).toBeDefined();
-  expect(screen.queryByRole('button', { name: '把这次制作整理成技能草稿' })).toBeNull();
+  await waitFor(() => expect(screen.getByText(/已保存为技能草稿 v3，已移除 2 处素材引用/)).toBeDefined());
+  expect(screen.getByText(/需管理员在后台审阅并发布后生效/)).toBeDefined();
+  expect(screen.queryByRole('button', { name: '整理成技能草稿' })).toBeNull();
   SKILL_DRAFT_POLL_MS.value = 1500;
 });
 
@@ -830,20 +831,20 @@ test('the draft entry is only for operators, only under a summary of finished wo
   emit(ev('turn.done', { reason: 'completed', messageId: 'm-sum', suggestions: ['改成横屏'] }, { turnId: 'EXS-1' }));
   expect(screen.getAllByRole('group', { name: '接下来可以' })).toHaveLength(1);
   expect(within(screen.getByRole('group', { name: '接下来可以' })).getAllByRole('button')).toHaveLength(1);
-  expect(screen.queryByRole('button', { name: '把这次制作整理成技能草稿' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '整理成技能草稿' })).toBeNull();
   view.unmount();
 
   api.role = 'super_admin';
   api.getConversation.mockResolvedValue({ ...emptyState, latestSeq: 4, messages: [{ ...summaryMessage, clientMessageId: 'c-1' }] });
   const plain = await ready();
-  expect(screen.queryByRole('button', { name: '把这次制作整理成技能草稿' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '整理成技能草稿' })).toBeNull();
   plain.unmount();
 
   api.getConversation.mockResolvedValue({ ...emptyState, latestSeq: 4, messages: [summaryMessage] });
   api.draft.mockRejectedValueOnce(new ApiError({ code: 'STUDIO_SKILL_DRAFT_FORBIDDEN', message: '没有权限' }, 403));
   await ready();
-  fireEvent.click(screen.getByRole('button', { name: '把这次制作整理成技能草稿' }));
-  await waitFor(() => expect(screen.getByText('只有运营账号可以把制作整理成技能草稿。')).toBeDefined());
+  fireEvent.click(screen.getByRole('button', { name: '整理成技能草稿' }));
+  await waitFor(() => expect(screen.getByText('仅运营账号可整理技能草稿。')).toBeDefined());
 });
 
 
@@ -895,15 +896,15 @@ test('an empty conversation opens on four cards and what the canvas holds; with 
   expect(screen.getByRole('heading', { name: '想做点什么？' })).toBeDefined();
   expect(screen.getByText('画布上有')).toBeDefined();
   // Icon, title, what you get, one small line of what it needs.
-  expect(card('制作个人 IP').textContent).toBe('制作个人 IP真人照片变成数字形象，出多角度设定图需要：1–3 张照片');
-  expect(card('写剧本').textContent).toBe('写剧本一句梗概写成能拍的分场剧本需要：一句梗概');
-  expect(card('做个短视频').textContent).toBe('做个短视频一句描述出视频，也可以从一张图动起来需要：画面描述');
-  expect(card('复刻视频').textContent).toBe('复刻视频照爆款的节奏和镜头，换成你的商品或人物需要：参考视频 + 你的素材');
+  expect(card('制作个人 IP').textContent).toBe('制作个人 IP用真人照片生成数字形象和多角度设定图需要：1–3 张照片');
+  expect(card('写剧本').textContent).toBe('写剧本根据一句梗概写出可拍摄的分场剧本需要：一句梗概');
+  expect(card('生成短视频').textContent).toBe('生成短视频根据描述生成视频，也可以用一张图作首帧需要：画面描述');
+  expect(card('复刻视频').textContent).toBe('复刻视频按爆款视频的节奏和镜头，换成你的商品或人物需要：参考视频 + 你的素材');
   expect(document.body.textContent).not.toMatch(/要准备|会得到|选一件事开始|第一次用|做一张图|写一段文字/);
   // The guide opens from the skill label: three steps and one line about the current skill, nothing about credits or attachments.
   openGuide();
   const guide = screen.getByRole('region', { name: '使用说明' });
-  expect(within(guide).getByText('全能创作：按你说的话和素材自动选择做法。')).toBeDefined();
+  expect(within(guide).getByText('全能创作：会按你说的内容和素材自动选择做法。')).toBeDefined();
   expect(guide.textContent).not.toMatch(/附件|上限|整张画布/);
   // Each step is a two-column grid (number + text). A bare text node beside <strong> becomes a third grid item and
   // drops into the 24px number column, one character per line; title and text must share one element.
@@ -915,7 +916,7 @@ test('an empty conversation opens on four cards and what the canvas holds; with 
   fireEvent.click(screen.getByRole('button', { name: '1 张图片' }));
   expect(screen.getByLabelText('本次引用').textContent).toContain('角色 A');
   expect((screen.getByRole('button', { name: '1 张图片' }) as HTMLButtonElement).getAttribute('aria-pressed')).toBe('true');
-  for (const title of ['修改节点内容', '优化节点提示词', '复刻一条短视频', '搭一套创作流程']) expect(card(title)).toBeDefined();
+  for (const title of ['修改节点内容', '优化节点提示词', '复刻一条短视频', '搭建创作流程']) expect(card(title)).toBeDefined();
   expect(screen.queryByRole('button', { name: /^制作个人 IP/ })).toBeNull();
 });
 
@@ -926,7 +927,7 @@ test('制作个人 IP picks the only photo, writes the default sentence, follows
   const form = starterForm('制作个人 IP');
   expect(screen.queryByRole('heading', { name: '想做点什么？' })).toBeNull();
   expect(within(form).getByRole('group', { name: '你的照片' }).textContent).toContain('角色 A');
-  expect(within(form).getByText('正脸清晰、光线均匀、只有一个人，效果最好。只用本人或已获授权的照片。')).toBeDefined();
+  expect(within(form).getByText('建议使用正脸清晰、光线均匀的单人照片。仅限本人或已获授权的照片。')).toBeDefined();
   expect(composer().value).toBe(IP_DEFAULT(' @角色 A '));
   expect(within(form).getByRole('region', { name: '完整提示词正文' }).textContent).toBe(composer().value);
   expect(form.querySelector('details')?.open).toBe(true);
@@ -968,7 +969,7 @@ test('个人 IP scene ratio follows the selection, and hand edits survive until 
   expect(composer().value).toBe(edited);
   expect(within(form).getByRole('region', { name: '完整提示词正文' }).textContent).toBe(edited);
   expect(within(form).queryByRole('group', { name: '画幅' })).toBeNull();
-  expect(within(form).getByRole('note', { name: '提示词说明' }).textContent).toContain('你已手动修改提示词');
+  expect(within(form).getByRole('note', { name: '提示词说明' }).textContent).toContain('提示词已手动修改');
   fireEvent.click(within(form).getByRole('button', { name: '按选项重写' }));
   expect(composer().value).toContain('画幅比例：1:1。风格：未来科技元宇宙风。');
   expect(composer().value).not.toMatch(/16:9|深绿色/);
@@ -981,17 +982,17 @@ test('a card holds the send until its material is there; 「从画布选」 pick
   fireEvent.click(card('制作个人 IP'));
   const form = starterForm('制作个人 IP');
   // Two photos on the canvas: none is picked for the user.
-  expect(within(form).getByText('还缺')).toBeDefined();
+  expect(within(form).getByText('待补充')).toBeDefined();
   expect(composer().value).toBe(IP_DEFAULT('我的照片'));
   expect(sendButton().disabled).toBe(true);
-  expect(screen.getByText('还差照片')).toBeDefined();
+  expect(screen.getByText('请添加照片')).toBeDefined();
   fireEvent.click(within(form).getByRole('button', { name: '从画布选' }));
   fireEvent.click(screen.getByRole('option', { name: /角色 B/ }));
   expect(composer().value).toBe(IP_DEFAULT(' @角色 B '));
   expect(sendButton().disabled).toBe(false);
   expect(screen.queryByRole('button', { name: '按选项重写' })).toBeNull();
   // Taking it out of the slot takes it out of the message and the sentence.
-  fireEvent.click(within(form).getByRole('button', { name: '去掉 角色 B' }));
+  fireEvent.click(within(form).getByRole('button', { name: '移除 角色 B' }));
   expect(composer().value).toBe(IP_DEFAULT('我的照片'));
   expect(screen.getByLabelText('本次引用').textContent).not.toContain('角色 B');
   expect(sendButton().disabled).toBe(true);
@@ -1007,11 +1008,11 @@ test('写剧本: the synopsis feeds the sentence; a hand edit stops the options,
   await waitFor(() => expect(modeLabel().textContent).toBe('写剧本与文案'));
   expect(composer().value).toBe('写一个 60 秒的短剧剧本。有反转，分场写清画面、台词和时长。');
   expect(sendButton().disabled).toBe(true);
-  expect(screen.getByText('先写一句梗概')).toBeDefined();
+  expect(screen.getByText('请填写梗概')).toBeDefined();
   // The line says it is missing too (on a phone the reason beside the send button has no room).
-  expect(within(form).getByText('还缺')).toBeDefined();
+  expect(within(form).getByText('待补充')).toBeDefined();
   fireEvent.change(synopsis, { target: { value: '外卖员送错一单，意外救了老板的女儿' } });
-  expect(within(form).queryByText('还缺')).toBeNull();
+  expect(within(form).queryByText('待补充')).toBeNull();
   fireEvent.click(within(form).getByRole('button', { name: '3 分钟' }));
   expect(composer().value).toBe('写一个 3 分钟的短剧剧本：外卖员送错一单，意外救了老板的女儿。有反转，分场写清画面、台词和时长。');
   // The user's own words win from here.
@@ -1031,11 +1032,11 @@ test('写剧本: the synopsis feeds the sentence; a hand edit stops the options,
   expect(api.post.mock.calls[0][2]).toMatchObject({ text: '写个三分钟的搞笑短剧，主角是外卖员', skillKey: 'script-writing' });
 });
 
-test('做个短视频: the first frame is not picked for the user; frame and camera join the sentence only when chosen; Enter in the line sends', async () => {
+test('生成短视频: the first frame is not picked for the user; frame and camera join the sentence only when chosen; Enter in the line sends', async () => {
   api.skills.mockResolvedValue(starterSkills());
   await ready();
-  fireEvent.click(card('做个短视频'));
-  const form = starterForm('做个短视频');
+  fireEvent.click(card('生成短视频'));
+  const form = starterForm('生成短视频');
   await waitFor(() => expect(modeLabel().textContent).toBe('出视频'));
   // The one image on the canvas would turn this into an image-to-video: an optional slot stays empty until chosen.
   expect(within(form).getByRole('group', { name: '首帧图' }).textContent).toContain('选填');
@@ -1061,7 +1062,7 @@ test('复刻视频 picks the only video and the only image, and sends them with 
   expect(composer().value).toBe('照 @带货样片 的拍法，把里面的商品或人物换成 @角色 A，保留节奏和镜头。');
   await waitFor(() => expect(modeLabel().textContent).toBe('参考视频复刻'));
   fireEvent.click(within(form).getByRole('button', { name: '只保留节奏' }));
-  fireEvent.change(within(form).getByLabelText('要讲的卖点'), { target: { value: '保温 12 小时' } });
+  fireEvent.change(within(form).getByLabelText('卖点'), { target: { value: '保温 12 小时' } });
   expect(composer().value).toBe('照 @带货样片 的拍法，把里面的商品或人物换成 @角色 A，只保留节奏，口播改成介绍：保温 12 小时。');
   fireEvent.click(sendButton());
   await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
@@ -1069,14 +1070,14 @@ test('复刻视频 picks the only video and the only image, and sends them with 
   await waitFor(() => expect(screen.queryByRole('region', { name: '复刻视频' })).toBeNull());
 });
 
-test('「换一个」 goes back to the four cards as before: the card\'s sentence, skill and picks leave the message', async () => {
+test('「返回」 goes back to the four cards as before: the card\'s sentence, skill and picks leave the message', async () => {
   api.skills.mockResolvedValue(starterSkills());
   await ready();
   fireEvent.click(card('制作个人 IP'));
   await waitFor(() => expect(modeLabel().textContent).toBe('出图'));
   expect(composer().value).toBe(IP_DEFAULT(' @角色 A '));
   expect(screen.getByLabelText('本次引用').textContent).toContain('角色 A');
-  fireEvent.click(screen.getByRole('button', { name: '换一个' }));
+  fireEvent.click(screen.getByRole('button', { name: '返回' }));
   expect(composer().value).toBe('');
   expect(modeLabel().textContent).toBe('全能创作');
   expect(screen.getByLabelText('本次引用').textContent).toBe('');
@@ -1096,13 +1097,13 @@ test('a card never writes over words already in the composer', async () => {
   // Written by hand, only material could still hold the message back, and 写剧本 needs none.
   expect(sendButton().disabled).toBe(false);
   // Going back leaves the user's words where they are.
-  fireEvent.click(screen.getByRole('button', { name: '换一个' }));
+  fireEvent.click(screen.getByRole('button', { name: '返回' }));
   expect(composer().value).toBe('我自己想的一句');
 });
 
 test('with a node referenced, 「复刻一条短视频」 opens the 复刻视频 card around it', async () => {
   await ready(<Host initial={[character, text, clip]} selectedIds={['clip']}/>);
-  for (const title of ['修改节点内容', '优化节点提示词', '复刻一条短视频', '搭一套创作流程']) expect(card(title)).toBeDefined();
+  for (const title of ['修改节点内容', '优化节点提示词', '复刻一条短视频', '搭建创作流程']) expect(card(title)).toBeDefined();
   fireEvent.click(card('复刻一条短视频'));
   expect(starterForm('复刻视频')).toBeDefined();
   expect(composer().value).toBe('照 @带货样片 的拍法，把里面的商品或人物换成 @角色 A，保留节奏和镜头。');
@@ -1275,7 +1276,7 @@ test('「放进画布」 turns a finished reply into a text node once, and shows
   // Placed: the action now shows where it is instead of offering to place it again.
   expect(screen.queryByRole('button', { name: '放进画布' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '在画布上查看' }));
-  await waitFor(() => expect(api.success).toHaveBeenLastCalledWith('画布上已经有这段文字'));
+  await waitFor(() => expect(api.success).toHaveBeenLastCalledWith('画布上已有这段文字'));
   expect(latest.filter(n => n.metadata?.content === longReply)).toHaveLength(1);
 });
 
@@ -1284,7 +1285,7 @@ test('older replies show their raw action blocks folded, not as the assistant ta
   await ready();
   const reply = await screen.findByText('我先看看画布。');
   expect(reply.textContent).not.toContain('<tool_call>');
-  const raw = screen.getByText('这一轮没有执行的操作原文').closest('details') as HTMLDetailsElement;
+  const raw = screen.getByText('本轮未执行的操作原文').closest('details') as HTMLDetailsElement;
   expect(raw.open).toBe(false);
   expect(raw.textContent).toContain('read_canvas');
   expect(screen.queryByRole('button', { name: '放进画布' })).toBeNull();
@@ -1297,7 +1298,7 @@ test('a homepage brief that copies a reference video opens 复刻视频 with the
   const form = await screen.findByRole('region', { name: '复刻视频' });
   expect(composer().value).toBe('照这条视频的拍法，把里面的商品换成我的');
   expect(sendButton().disabled).toBe(true);
-  expect(screen.getByText('还差参考视频')).toBeDefined();
+  expect(screen.getByText('请添加参考视频')).toBeDefined();
   expect(within(form).getByRole('button', { name: '按选项重写' })).toBeDefined();
   // The address loses its send flag: the brief waits for the user.
   expect(onAutoSent).toHaveBeenCalled();
@@ -1386,7 +1387,7 @@ test('a plan and its card in one reply are one card: what will be made, one pric
   expect(within(card).getAllByText(/^\d+$/).map(e => e.textContent)).toEqual(['30']);
   expect(card.textContent).not.toMatch(/上限|预留|过期|直接回复|可以也行|第 1 版|按技能|等你确认|按实际用量/);
   await waitFor(() => expect(within(card).getByRole('heading', { name: '确认制作' }).getAttribute('title')).toBe('按技能：出图 v1'));
-  expect(within(card).getAllByRole('button').map(b => b.textContent)).toEqual(['收起', '开始制作', '先改改']);
+  expect(within(card).getAllByRole('button').map(b => b.textContent)).toEqual(['收起', '开始制作', '修改方案']);
   fireEvent.click(within(card).getByRole('button', { name: '开始制作' }));
   await waitFor(() => expect(api.createExecution).toHaveBeenCalledOnce());
   expect(api.createExecution.mock.calls[0][1]).toMatchObject({ approvalId: 'a-img', budgetCap: 40, autoFixCap: 0 });
@@ -1404,11 +1405,11 @@ test('several approaches show title, summary and what is kept or changed, never 
   expect(within(merged).getAllByText('保留：').length).toBeGreaterThan(0);
   expect(merged.textContent).not.toMatch(/判断过程|取舍/);
   expect(within(merged).getByRole('button', { name: '改用这个做法' })).toBeDefined();
-  // Several steps: an ordered list, each description folded under 「查看描述」 (empty descriptions have none).
+  // Several steps: an ordered list, each description folded under 「查看提示词」 (empty descriptions have none).
   expect(within(merged).getAllByRole('listitem').map(li => li.querySelector('strong')?.textContent)).toEqual(['第 1 段视频', '第 2 段视频']);
   // A card whose plan is not in this reply lists its own scope; its plan never arrived, so it cannot start yet.
   expect(within(single).getByText('只在单独的卡上出现')).toBeDefined();
-  expect(within(single).getByText('方案还没到，稍等一下')).toBeDefined();
+  expect(within(single).getByText('正在加载方案…')).toBeDefined();
   expect((within(single).getByRole('button', { name: '开始制作' }) as HTMLButtonElement).disabled).toBe(true);
 });
 
@@ -1440,7 +1441,7 @@ test('「放进画布」 is not offered under a closing summary or a reply whose
     { id: 's4', threadId: 'th', seq: 4, role: 'assistant', turnId: 't4', status: 'done', text: long('初稿：'), blocks: [tool('z', 'view_images', undefined, 2)], billing, createdAt: at },
   ] } as StudioDialogueState);
   await ready();
-  const replies = screen.getAllByLabelText('Studio 的回复');
+  const replies = screen.getAllByLabelText('IP Studio 的回复');
   for (const r of replies.slice(0, 3)) expect(within(r).queryByRole('button', { name: '放进画布' })).toBeNull();
   const last = replies[3];
   expect(within(last).getByRole('button', { name: '放进画布' })).toBeDefined();

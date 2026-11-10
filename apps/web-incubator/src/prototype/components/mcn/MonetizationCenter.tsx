@@ -1,67 +1,26 @@
 /**
- * 变现中心 - 整合变现项目和收益管理
+ * 变现中心 — 变现项目、品牌商务、收益概览、分成结算与佣金配置
  */
 
-import React, { useState } from 'react';
-import { Wallet, ShoppingBag, TrendingUp, Coins, Package } from 'lucide-react';
+import React from 'react';
 import { motion } from 'motion/react';
 import type { Lang } from '../../translations';
 import { FinancePage } from './FinancePage';
-import { MOCK_ARTISTS } from './ArtistTypes';
+import { BrandAgencyCenter } from './BrandAgencyCenter';
+import { RevenueSplitTool } from './RevenueSplitTool';
+import { MCNCommissionTool } from './MCNCommissionTool';
+import type { Artist } from './ArtistTypes';
+import { HubShell, useHubTab } from './HubShell';
 
-type TabId = 'projects' | 'revenue';
-
-export const MonetizationCenter = ({ lang }: { lang: Lang }) => {
+export const MonetizationCenter = ({ lang, activeArtist, initialTab }: { lang: Lang; activeArtist: Artist; initialTab?: string }) => {
   const zh = lang === 'zh';
-  const [activeTab, setActiveTab] = useState<TabId>('projects');
-
-  const tabs = [
-    { id: 'projects' as const, icon: ShoppingBag, labelZh: '变现项目', labelEn: 'Projects', color: '#06b6d4' },
-    { id: 'revenue' as const, icon: TrendingUp, labelZh: '收益概览', labelEn: 'Revenue', color: '#22c55e' },
-  ];
+  const [activeTab, setActiveTab] = useHubTab('monetization_center', initialTab);
 
   return (
-    <div className="h-full flex flex-col bg-black">
-      {/* Header */}
-      <div className="shrink-0 border-b border-white/5 bg-gray-900/30 backdrop-blur-xl px-6 py-4">
-        <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-cyan-400 to-green-400 bg-clip-text text-transparent mb-4"
-          style={{ fontFamily: 'var(--font-display)' }}>
-          {zh ? '变现中心' : 'Monetization Center'}
-        </h1>
-
-        {/* Tabs */}
-        <div className="flex items-center gap-2">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`relative flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  isActive ? 'bg-white/10 text-white' : 'text-gray-400 hover:text-white hover:bg-white/5'
-                }`}
-                style={isActive ? { boxShadow: `0 0 20px ${tab.color}40`, border: `1px solid ${tab.color}30` } : undefined}
-              >
-                <Icon className="w-4 h-4" style={{ color: isActive ? tab.color : undefined }} />
-                <span>{zh ? tab.labelZh : tab.labelEn}</span>
-                {isActive && (
-                  <motion.div
-                    layoutId="activeMonetizationTab"
-                    className="absolute inset-0 rounded-xl -z-10 bg-white/5"
-                    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                  />
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-hidden">
+    <HubShell lang={lang} pageId="monetization_center" active={activeTab} onChange={setActiveTab}>
+      <div>
         {activeTab === 'projects' && (
-          <div className="h-full overflow-y-auto p-6">
+          <div className="p-1 md:p-2">
             <div className="max-w-6xl mx-auto space-y-6">
               <div>
                 <h2 className="text-lg font-bold text-white mb-2">{zh ? '活跃变现项目' : 'Active Projects'}</h2>
@@ -99,8 +58,11 @@ export const MonetizationCenter = ({ lang }: { lang: Lang }) => {
             </div>
           </div>
         )}
-        {activeTab === 'revenue' && <FinancePage lang={lang} activeArtist={MOCK_ARTISTS[0]} />}
+        {activeTab === 'brand' && <BrandAgencyCenter lang={lang} />}
+        {activeTab === 'revenue' && <FinancePage lang={lang} activeArtist={activeArtist} />}
+        {activeTab === 'split' && <RevenueSplitTool lang={lang} />}
+        {activeTab === 'commission' && <MCNCommissionTool lang={lang} />}
       </div>
-    </div>
+    </HubShell>
   );
 };

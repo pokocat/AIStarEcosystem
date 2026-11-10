@@ -148,7 +148,7 @@ public class DapJobService {
         log.warn("[dap-job] blocked reason=engine-not-configured allowPlaceholder=false");
         throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
                 "DAP_ENGINE_NOT_CONFIGURED",
-                "生成引擎未配置：请在管理后台「AI 模型与 Key + AI 应用绑定」为数字人用途（人设/图片/视频）绑定端点");
+                "生成服务暂不可用，请联系平台处理", null, "生成引擎未配置：请在管理后台「AI 模型与 Key + AI 应用绑定」为数字人用途（人设/图片/视频）绑定端点");
     }
 
     // ── 查询 ──────────────────────────────────────────────────

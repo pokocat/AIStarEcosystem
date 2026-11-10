@@ -3,7 +3,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { LibraryMediaPicker } from './library-media-picker';
 
-const api = vi.hoisted(() => ({ folders: vi.fn(), canvasFolder: vi.fn(), materials: vi.fn(), objects: vi.fn(), upload: vi.fn() }));
+const api = vi.hoisted(() => ({ folders: vi.fn(), canvasFolder: vi.fn(), materials: vi.fn(), objects: vi.fn(), upload: vi.fn(), ips: vi.fn() }));
+vi.mock('@/canvas-bridge/studio-api', () => ({ listStudioIpAssets: api.ips }));
 vi.mock('./audio-recorder-dialog', () => ({ AudioRecorderDialog: ({ open, onSave, onClose }: any) => open ? <button onClick={async () => { await onSave(new File(['wav'], '旁白.wav', { type: 'audio/wav' })); onClose(); }}>保存测试录音</button> : null }));
 vi.mock('./studio-errors', async () => {
   const { useCallback, useState } = await import('react');
@@ -39,6 +40,7 @@ beforeEach(() => {
   api.canvasFolder.mockResolvedValue({ folderId: '' });
   api.materials.mockResolvedValue(page([]));
   api.objects.mockResolvedValue(page([]));
+  api.ips.mockResolvedValue([]);
 });
 
 test('opens the library used last time, marks it, and remembers the one the user picked from', async () => {
@@ -47,8 +49,8 @@ test('opens the library used last time, marks it, and remembers the one the user
   const onAssets = vi.fn().mockResolvedValue(undefined), onClose = vi.fn();
   render(<LibraryMediaPicker open mediaType="image" onClose={onClose} onAssets={onAssets}/>);
   await waitFor(() => expect(api.materials).toHaveBeenCalledWith(expect.objectContaining({ folder: 'f1', source: 'all', kind: 'image', page: 0 })));
-  expect(screen.getByRole('button', { name: /保湿精华.*上次用的/ }).getAttribute('aria-current')).toBe('true');
-  fireEvent.click(await screen.findByRole('button', { name: '选 主图' }));
+  expect(screen.getByRole('button', { name: /保湿精华.*上次使用/ }).getAttribute('aria-current')).toBe('true');
+  fireEvent.click(await screen.findByRole('button', { name: '选择 主图' }));
   fireEvent.click(screen.getByRole('button', { name: /巷里火锅/ }));
   await waitFor(() => expect(api.materials).toHaveBeenLastCalledWith(expect.objectContaining({ folder: 'f2' })));
   fireEvent.click(screen.getByRole('button', { name: '使用' }));
@@ -76,10 +78,70 @@ test('the 人物 tab of an image slot lists roles that have a picture, with thei
   render(<LibraryMediaPicker open mediaType="image" onClose={vi.fn()} onAssets={onAssets}/>);
   fireEvent.click(await screen.findByRole('tab', { name: '人物' }));
   await waitFor(() => expect(api.objects).toHaveBeenCalledWith(expect.objectContaining({ kind: 'character', folder: 'all' })));
-  fireEvent.click(await screen.findByRole('button', { name: '选 林夏' }));
-  expect(screen.queryByRole('button', { name: '选 没图的' })).toBeNull();
+  fireEvent.click(await screen.findByRole('button', { name: '选择 林夏' }));
+  expect(screen.queryByRole('button', { name: '选择 没图的' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '使用' }));
   await waitFor(() => expect(onAssets.mock.calls[0][0][0].metadata.libraryReference).toMatchObject({ objectId: 'o1', versionId: 'v1' }));
+});
+
+test('existing IP main, history and three-view images are independently selectable and searchable; official source keys stay out', async () => {
+  const main = { avatarId: 'avatar-1', version: 2, current: true, name: '潮玩个人IP', characterName: '潮玩个人IP', url: 'https://cdn/main', storageKey: 'ip/main', assetRole: 'main' };
+  api.ips.mockResolvedValue([main,
+    { ...main, current: false, version: 1, assetRole: 'history', storageKey: 'ip/old', url: 'https://cdn/old' },
+    { ...main, current: false, lookId: 'look-3v', name: '人物三视图', assetRole: 'three-view', storageKey: 'ip/three', url: 'https://cdn/three' },
+    { ...main, avatarId: 'official:1', librarySource: 'official', name: '官方人物' },
+  ]);
+  const onAssets = vi.fn().mockResolvedValue(undefined);
+  render(<LibraryMediaPicker open mediaType="image" onClose={vi.fn()} onAssets={onAssets}/>);
+  fireEvent.click(await screen.findByRole('tab', { name: '人物' }));
+  expect(await screen.findByRole('button', { name: '选择 潮玩个人IP · 主形象' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '选择 潮玩个人IP · 历史版本 v1' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: /选择 官方人物/ })).toBeNull();
+  fireEvent.change(screen.getByRole('textbox', { name: '搜索资产' }), { target: { value: '三视图' } });
+  fireEvent.click(await screen.findByRole('button', { name: '选择 潮玩个人IP · 人物三视图' }));
+  expect(screen.queryByRole('button', { name: '选择 潮玩个人IP · 主形象' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '使用' }));
+  await waitFor(() => expect(onAssets).toHaveBeenCalledWith([expect.objectContaining({
+    data: expect.objectContaining({ storageKey: 'ip/three', dataUrl: 'https://cdn/three' }),
+    metadata: expect.objectContaining({ ipReference: expect.objectContaining({ avatarId: 'avatar-1', lookId: 'look-3v', version: 2 }) }),
+  })]));
+});
+
+test('a role offers every image version and using the secondary view retains its exact version', async () => {
+  api.objects.mockResolvedValue(page([{ id: 'o1', kind: 'character', name: '林夏', description: '', prompt: '', mainVersionId: 'front', sources: [], createdAt: '', updatedAt: '',
+    versions: [{ id: 'front', storageKey: 'role/front', url: 'https://cdn/front' }, { id: 'side', storageKey: 'role/side', url: 'https://cdn/side' }] }]));
+  const onAssets = vi.fn().mockResolvedValue(undefined);
+  render(<LibraryMediaPicker open mediaType="image" max={2} onClose={vi.fn()} onAssets={onAssets}/>);
+  fireEvent.click(await screen.findByRole('tab', { name: '人物' }));
+  fireEvent.click(await screen.findByRole('button', { name: '选择 林夏 · 图片 1（主图）' }));
+  fireEvent.click(screen.getByRole('button', { name: '选择 林夏 · 图片 2' }));
+  fireEvent.click(screen.getByRole('button', { name: '使用' }));
+  await waitFor(() => expect(onAssets).toHaveBeenCalled());
+  expect(onAssets.mock.calls[0][0].map((a: any) => a.data.storageKey)).toEqual(['role/front', 'role/side']);
+  expect(onAssets.mock.calls[0][0][1].metadata.libraryReference.versionId).toBe('side');
+});
+
+test('the generated-file library guides to all people, while a named folder keeps its own boundary', async () => {
+  render(<LibraryMediaPicker open mediaType="image" onClose={vi.fn()} onAssets={vi.fn()}/>);
+  fireEvent.click(await screen.findByRole('tab', { name: '人物' }));
+  await waitFor(() => expect(api.ips).toHaveBeenCalledTimes(1));
+  fireEvent.click(screen.getByRole('button', { name: 'AI 生成', exact: true }));
+  fireEvent.click(await screen.findByRole('button', { name: '查看全部人物' }));
+  await waitFor(() => expect(api.ips).toHaveBeenCalledTimes(2));
+  fireEvent.click(screen.getByRole('button', { name: '巷里火锅', exact: true }));
+  await waitFor(() => expect(api.objects).toHaveBeenLastCalledWith(expect.objectContaining({ folder: 'f2' })));
+  expect(api.ips).toHaveBeenCalledTimes(2);
+});
+
+test('an IP load failure reports an error rather than claiming that the user has no people', async () => {
+  api.ips.mockRejectedValue(new Error('IP 加载失败'));
+  render(<LibraryMediaPicker open mediaType="image" onClose={vi.fn()} onAssets={vi.fn()}/>);
+  fireEvent.click(await screen.findByRole('tab', { name: '人物' }));
+  expect((await screen.findByRole('alert')).textContent).toBe('IP 加载失败');
+  expect(screen.queryByText('暂无带图的人物。')).toBeNull();
+  api.ips.mockResolvedValue([]);
+  fireEvent.click(screen.getByRole('button', { name: '重试' }));
+  await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
 });
 
 test('an upload goes into the open library and comes back selected; 新建人物 asks for photos only', async () => {
@@ -89,11 +151,11 @@ test('an upload goes into the open library and comes back selected; 新建人物
   render(<LibraryMediaPicker open mediaType="image" upload people={false} onClose={vi.fn()} onAssets={vi.fn()}/>);
   expect(screen.queryByRole('tab', { name: '人物' })).toBeNull();
   await waitFor(() => expect(api.materials).toHaveBeenCalledWith(expect.objectContaining({ folder: 'f1' })));
-  expect(screen.getByRole('button', { name: /上传到这个库/ })).toBeDefined();
+  expect(screen.getByRole('button', { name: /上传到此资产库/ })).toBeDefined();
   const file = new File(['x'], '新图.png', { type: 'image/png' });
   fireEvent.change(screen.getByLabelText('选择要上传到资产库的文件'), { target: { files: [file] } });
   await waitFor(() => expect(api.upload).toHaveBeenCalledWith(file, 'image', 'f1'));
-  await waitFor(() => expect(screen.getByRole('button', { name: '选 新图' }).getAttribute('aria-pressed')).toBe('true'));
+  await waitFor(() => expect(screen.getByRole('button', { name: '选择 新图' }).getAttribute('aria-pressed')).toBe('true'));
   expect(screen.getByText('已选：新图')).toBeDefined();
 });
 
@@ -102,11 +164,11 @@ test('an upload never pushes the selection past max', async () => {
   api.upload.mockResolvedValue({ key: 'k/新图' });
   api.materials.mockResolvedValueOnce(page([image('a', 'f1'), image('b', 'f1')])).mockResolvedValue(page([image('a', 'f1'), image('b', 'f1'), image('新图', 'f1')]));
   render(<LibraryMediaPicker open mediaType="image" upload max={2} onClose={vi.fn()} onAssets={vi.fn()}/>);
-  fireEvent.click(await screen.findByRole('button', { name: '选 a' }));
-  fireEvent.click(screen.getByRole('button', { name: '选 b' }));
+  fireEvent.click(await screen.findByRole('button', { name: '选择 a' }));
+  fireEvent.click(screen.getByRole('button', { name: '选择 b' }));
   fireEvent.change(screen.getByLabelText('选择要上传到资产库的文件'), { target: { files: [new File(['x'], '新图.png', { type: 'image/png' })] } });
-  await waitFor(() => expect(screen.getByRole('button', { name: '选 新图' })).toBeDefined());
-  expect(screen.getByRole('button', { name: '选 新图' }).getAttribute('aria-pressed')).toBe('false');
+  await waitFor(() => expect(screen.getByRole('button', { name: '选择 新图' })).toBeDefined());
+  expect(screen.getByRole('button', { name: '选择 新图' }).getAttribute('aria-pressed')).toBe('false');
   expect(screen.getByText('已选 2 个')).toBeDefined();
 });
 
@@ -120,7 +182,7 @@ test('recording in an audio slot is stored in the current library and selected f
   fireEvent.click(screen.getByRole('button', { name: '录音' }));
   fireEvent.click(screen.getByRole('button', { name: '保存测试录音' }));
   await waitFor(() => expect(api.upload).toHaveBeenCalledWith(expect.objectContaining({ name: '旁白.wav' }), 'audio', 'f2'));
-  await waitFor(() => expect(screen.getByRole('button', { name: '选 旁白' }).getAttribute('aria-pressed')).toBe('true'));
+  await waitFor(() => expect(screen.getByRole('button', { name: '选择 旁白' }).getAttribute('aria-pressed')).toBe('true'));
   expect(screen.getByText('已选：旁白')).toBeDefined();
 });
 

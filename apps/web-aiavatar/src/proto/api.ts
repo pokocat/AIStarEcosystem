@@ -544,8 +544,11 @@ export function useIdentity(): MeIdentity | null {
       meListeners.delete(run);
     };
   }, []);
-  return id;
+  // 水合那一帧和服务端一样按没拿到身份画：Suspense 里的内容可能晚于 /api/me 才水合，直接用缓存会水合失败、整棵树重建。
+  const hydrated = React.useSyncExternalStore(noSubscribe, () => true, () => false);
+  return hydrated || USE_MOCK ? id : null;
 }
+const noSubscribe = () => () => {};
 
 // ── UI 字典（展示配置，同步再导出）────────────────────────────
 
@@ -922,8 +925,8 @@ export const AvatarApi = {
       const n = c?.versions || 3;
       return mock([
         { v: `v${n}`, t: c?.updated || nowStamp(), note: "完成创建 · 锁定标准图集", kind: "archive", cur: true },
-        { v: `v${Math.max(1, n - 1)}`, t: "今天 11:20", note: "定稿确认 · 5 张标准图", kind: "finalize", cur: false },
-        { v: "v1", t: "昨天 15:30", note: "初始选稿", kind: "init", cur: false },
+        { v: `v${Math.max(1, n - 1)}`, t: "2026-08-30 11:20:00", note: "定稿确认 · 5 张标准图", kind: "finalize", cur: false },
+        { v: "v1", t: "2026-08-29 15:30:00", note: "初始选稿", kind: "init", cur: false },
       ]);
     }
     return apiFetch(`/avatars/${id}/versions`);

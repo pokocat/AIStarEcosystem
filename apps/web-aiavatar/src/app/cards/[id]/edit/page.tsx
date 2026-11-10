@@ -75,7 +75,7 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
             .catch(() => setVideos([]));
         }
       })
-      .catch((e: unknown) => setState({ s: "error", message: e instanceof Error ? e.message : "名片读不出来" }));
+      .catch((e: unknown) => setState({ s: "error", message: e instanceof Error ? e.message : "名片加载失败，请稍后刷新重试。" }));
   }, [id, ready]);
 
   const say = (t: string) => { setNote(t); setTimeout(() => setNote(null), 2200); };
@@ -100,7 +100,7 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
 
   const save = async (thenPublish: boolean) => {
     if (state.s !== "ok") return;
-    if (!state.doc.name.trim()) return say("先填个名字");
+    if (!state.doc.name.trim()) return say("请填写名字");
     setSaving(true);
     try {
       await CardApi.save(id, { doc: state.doc });
@@ -110,13 +110,13 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
       setDirty(false);
       if (thenPublish) {
         await CardApi.publish(id);
-        say("已发布，链接可以递出去了");
+        say("已发布，可分享链接");
         router.push("/cards");
         return;
       }
       say("已保存");
     } catch (e) {
-      say(e instanceof Error ? e.message : "保存没成功");
+      say(e instanceof Error ? e.message : "保存失败，请重试。");
     } finally {
       setSaving(false);
     }
@@ -156,8 +156,8 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
             <Card pad={14}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, lineHeight: 1.7, color: "var(--ink-2)" }}>
-                  形象和造型已经从数字资产带过来了，访客能在名片上点着换装看。
-                  下面这些是机器猜不出来的。
+                  形象和造型已从数字资产带入，访客可在名片上切换查看。
+                  请补充以下信息。
                 </span>
                 <RegNo size={10.5}>{state.doc.regNo}</RegNo>
               </div>
@@ -172,7 +172,7 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
               <div style={{ margin: "0 16px" }}>
                 <Card pad={14}>
                   <div style={{ fontSize: 12.5, lineHeight: 1.7, color: "var(--ink-2)", paddingBottom: 10 }}>
-                    名片打开时第一眼看到的东西。选图片时访客可以点着换装扮和表情；选视频会自动播一遍，播完可以重播。
+                    访客打开名片时首先看到的内容。选择图片时，访客可切换装扮和表情；选择视频时自动播放一次，可重播。
                   </div>
                   <div style={{ display: "flex", gap: 8, paddingBottom: videoPicked ? 10 : 0 }}>
                     <HeroChoice
@@ -236,14 +236,14 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
           <div style={{ margin: "0 16px" }}>
             <Card pad={14}>
               <FieldRow label="名字" required>
-                <Input value={state.doc.name} placeholder="对外用的名字"
+                <Input value={state.doc.name} placeholder="对外显示的名字"
                   onChange={(v) => patch((d) => ({ ...d, name: v }))} />
               </FieldRow>
-              <FieldRow label="字标" hint="名片顶部那排大写拉丁字母。留空就不显示。">
+              <FieldRow label="字标" hint="名片顶部的大写拉丁字母，留空则不显示。">
                 <Input value={state.doc.latin} placeholder="BINGFENG"
                   onChange={(v) => patch((d) => ({ ...d, latin: v.toUpperCase() }))} />
               </FieldRow>
-              <FieldRow label="一句话" hint="见客户时你最想让对方记住的一句。可以换行分两行。">
+              <FieldRow label="一句话" hint="最希望对方记住的一句话，可换行分两行。">
                 <Textarea value={state.doc.headline} rows={2} placeholder={"帮连锁品牌\n把门店生意做到线上"}
                   onChange={(v) => patch((d) => ({ ...d, headline: v }))} />
               </FieldRow>
@@ -289,11 +289,11 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
           <div style={{ margin: "0 16px" }}>
             <Card pad={14}>
               <FieldRow label="能提供" hint="首屏只显示第一条。">
-                <Textarea value={state.doc.offer.give.join("\n")} rows={3} placeholder="一行一条"
+                <Textarea value={state.doc.offer.give.join("\n")} rows={3} placeholder="每行一条"
                   onChange={(v) => patch((d) => ({ ...d, offer: { ...d.offer, give: splitLines(v) } }))} />
               </FieldRow>
               <FieldRow label="在找" last>
-                <Textarea value={state.doc.offer.want.join("\n")} rows={3} placeholder="一行一条"
+                <Textarea value={state.doc.offer.want.join("\n")} rows={3} placeholder="每行一条"
                   onChange={(v) => patch((d) => ({ ...d, offer: { ...d.offer, want: splitLines(v) } }))} />
               </FieldRow>
             </Card>
@@ -315,14 +315,14 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
                   ).padStart(2, "0"),
                   title: "", desc: "", tone: "var(--primary)",
                 })}
-                addLabel="加一个作品"
+                addLabel="添加作品"
                 render={(w, set) => (
                   <>
                     <FieldRow label="标题">
-                      <Input value={w.title} placeholder="做了什么" onChange={(v) => set({ ...w, title: v })} />
+                      <Input value={w.title} placeholder="作品名称" onChange={(v) => set({ ...w, title: v })} />
                     </FieldRow>
                     <FieldRow label="说明" last>
-                      <Textarea value={w.desc} rows={2} placeholder="一两句说清楚它解决了什么"
+                      <Textarea value={w.desc} rows={2} placeholder="用一两句话说明它解决的问题"
                         onChange={(v) => set({ ...w, desc: v })} />
                     </FieldRow>
                   </>
@@ -338,20 +338,20 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
                 <Input value={state.doc.company.name} placeholder="公司全称"
                   onChange={(v) => patch((d) => ({ ...d, company: { ...d.company, name: v } }))} />
               </FieldRow>
-              <FieldRow label="一行简介" hint="行业 · 规模 · 成立年份这类。">
+              <FieldRow label="一行简介" hint="例如行业、规模、成立年份。">
                 <Input value={state.doc.company.meta} placeholder="连锁零售数字化 · 2019 年创立"
                   onChange={(v) => patch((d) => ({ ...d, company: { ...d.company, meta: v } }))} />
               </FieldRow>
               <FieldRow label="介绍">
-                <Textarea value={state.doc.company.intro} rows={3} placeholder="在做什么、服务谁"
+                <Textarea value={state.doc.company.intro} rows={3} placeholder="公司业务和服务对象"
                   onChange={(v) => patch((d) => ({ ...d, company: { ...d.company, intro: v } }))} />
               </FieldRow>
-              <FieldRow label="关键数字" hint="名片上并排显示的那几个数（客户数、门店数、服务年限…）。">
+              <FieldRow label="关键数字" hint="名片上并排显示的数字，例如客户数、门店数、服务年限。">
                 <ListEditor
                   items={state.doc.company.stats}
                   onChange={(stats) => patch((d) => ({ ...d, company: { ...d.company, stats } }))}
                   blank={() => ({ value: "", label: "" })}
-                  addLabel="加一个数字"
+                  addLabel="添加数字"
                   render={(st, set) => (
                     <>
                       <FieldRow label="数值">
@@ -364,18 +364,18 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
                   )}
                 />
               </FieldRow>
-              <FieldRow label="大事记" last hint="按时间排。名片上是一条竖线串起来的。">
+              <FieldRow label="大事记" last hint="按时间排列，名片上以时间轴展示。">
                 <ListEditor
                   items={state.doc.company.milestones}
                   onChange={(milestones) => patch((d) => ({ ...d, company: { ...d.company, milestones } }))}
                   blank={() => ({ year: "", text: "" })}
-                  addLabel="加一条"
+                  addLabel="添加"
                   render={(ms, set) => (
                     <>
                       <FieldRow label="年份">
                         <Input value={ms.year} placeholder="2019" onChange={(v) => set({ ...ms, year: v })} />
                       </FieldRow>
-                      <FieldRow label="发生了什么" last>
+                      <FieldRow label="事件" last>
                         <Input value={ms.text} placeholder="公司成立，第一家门店上线" onChange={(v) => set({ ...ms, text: v })} />
                       </FieldRow>
                     </>
@@ -392,7 +392,7 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
                 items={state.doc.media}
                 onChange={(media) => patch((d) => ({ ...d, media }))}
                 blank={() => ({ kind: "article" as const, title: "", meta: "" })}
-                addLabel="加一条"
+                addLabel="添加"
                 render={(m, set) => (
                   <>
                     <FieldRow label="类型">
@@ -416,7 +416,7 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
                       <Input value={m.title} placeholder="标题" onChange={(v) => set({ ...m, title: v })} />
                     </FieldRow>
                     <FieldRow label="说明" last>
-                      <Input value={m.meta} placeholder="来源 · 时长 / 篇幅" onChange={(v) => set({ ...m, meta: v })} />
+                      <Input value={m.meta} placeholder="来源、时长或篇幅" onChange={(v) => set({ ...m, meta: v })} />
                     </FieldRow>
                   </>
                 )}
@@ -431,14 +431,14 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
                 items={state.doc.resume}
                 onChange={(resume) => patch((d) => ({ ...d, resume }))}
                 blank={() => ({ title: "", period: "" })}
-                addLabel="加一段经历"
+                addLabel="添加经历"
                 render={(r, set) => (
                   <>
                     <FieldRow label="职位 / 身份">
                       <Input value={r.title} placeholder="某某科技 · 产品负责人" onChange={(v) => set({ ...r, title: v })} />
                     </FieldRow>
                     <FieldRow label="时间" last>
-                      <Input value={r.period} placeholder="2019 — 至今" onChange={(v) => set({ ...r, period: v })} />
+                      <Input value={r.period} placeholder="例如：2019 年至今" onChange={(v) => set({ ...r, period: v })} />
                     </FieldRow>
                   </>
                 )}
@@ -448,7 +448,7 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
 
           {dirty && (
             <p style={{ margin: "16px 16px 0", fontSize: 12, color: "var(--warn, #B26B00)", lineHeight: 1.7 }}>
-              有改动还没保存 —— 包括人设那块「采用」进来的内容。
+              有未保存的修改，包括人设中已采用的内容。
             </p>
           )}
 
@@ -465,7 +465,7 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
             </button>
             <button
               type="button" disabled={saving || !canPublish} onClick={() => void save(true)}
-              title={canPublish ? undefined : `还差：${missing.join(" · ")}`}
+              title={canPublish ? undefined : `请填写：${missing.join("、")}`}
               style={{
                 flex: 1.3, height: 46, borderRadius: "var(--r-md)", border: "none",
                 background: "var(--ink)", color: "#fff", fontFamily: "inherit",
@@ -482,8 +482,8 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
             {/* 缺什么就在点之前说。服务端发布时硬校验 name + title，
                 等点了才报错的话，用户已经填完一整页了。 */}
             {canPublish
-              ? "发布后这张名片就能被任何拿到链接的人打开，不需要注册。随时可以取消发布。"
-              : `还差 ${missing.join(" 和 ")} 才能发布，草稿可先保存。`}
+              ? "发布后，任何人可通过链接打开此名片，无需注册。可随时取消发布。"
+              : `请填写${missing.join("和")}后发布，草稿可先保存。`}
           </div>
         </>
       )}

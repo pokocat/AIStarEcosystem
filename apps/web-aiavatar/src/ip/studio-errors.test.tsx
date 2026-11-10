@@ -4,21 +4,54 @@ import { beforeEach, afterEach, it, expect, vi } from 'vitest';
 import { ApiError } from '@ai-star-eco/api-client/client';
 import { StudioNotifications, StudioErrorNotice, messageDeliveryError, normalizeStudioError, studioErrorText, reportStudioError, reportStudioRunFailures, studioRunError, forgetStudioActivation, failureNext } from './studio-errors';
 const api = vi.hoisted(() => ({ error: vi.fn() }));
+const shortage = vi.hoisted(() => ({ ask: vi.fn() }));
+vi.mock('./studio-credit-shortage', () => ({ askStudioCreditShortage: shortage.ask }));
 // 错误弹窗：记下每次打开的配置；destroy 时照 antd 调 afterClose（释放「同一个错误不弹第二个」）。
 const modal = vi.hoisted(() => {
   const open: Array<{ afterClose?: () => void }> = [];
   return { open, error: vi.fn((config: { afterClose?: () => void }) => { open.push(config); return { destroy: () => config.afterClose?.() }; }) };
 });
 vi.mock('antd', () => ({ notification: { useNotification: () => [api, null] }, Modal: Object.assign(() => null, { useModal: () => [modal, null], error: modal.error }), ConfigProvider: ({children}: any) => children, Button: ({icon, children, ...props}: any) => <button {...props}>{children}</button>, App: { useApp: () => ({message: {}}) } }));
-beforeEach(() => { api.error.mockReset(); modal.error.mockClear(); forgetStudioActivation(); });
+beforeEach(() => { api.error.mockReset(); modal.error.mockClear(); shortage.ask.mockReset(); forgetStudioActivation(); });
 afterEach(() => { cleanup(); for (const config of modal.open.splice(0)) config.afterClose?.(); });
 const titles = () => modal.error.mock.calls.map(([config]) => (config as { title: string }).title);
+it('turns a credit refusal into the shortage dialog, leaves its details readable and never reports a cancelled payment', async () => {
+  const refused = { code: 'PAYMENT_REQUIRED', message: '积分余额不足，本次操作需 8，当前可用 0' };
+  render(<StudioNotifications/>);
+  reportStudioError(refused, { action: '生成配音' });
+  await waitFor(() => expect(shortage.ask).toHaveBeenCalledWith(expect.objectContaining({ reason: refused.message })));
+  expect(modal.error).not.toHaveBeenCalled();
+  reportStudioError(refused, { details: true });
+  await waitFor(() => expect(titles()).toEqual(['错误详情']));
+  // 提现、企业回收也是 402，但充值和换模型帮不上忙：照旧错误弹窗。
+  reportStudioError({ code: 'PAYMENT_REQUIRED', message: '可用企业积分不足，冻结积分不可回收' }, { action: '回收积分' });
+  await waitFor(() => expect(modal.error).toHaveBeenCalledTimes(2));
+  shortage.ask.mockClear();
+  reportStudioError({ code: 'STUDIO_BILLING_CANCELLED', message: '本次生成已取消，未提交任务。' }, { action: '生成图片' });
+  await new Promise(resolve => setTimeout(resolve, 150));
+  expect(modal.error).toHaveBeenCalledTimes(2);
+  expect(shortage.ask).not.toHaveBeenCalled();
+});
 it('does not send customers to recharge or delete work for supplier errors', () => {
   expect(failureNext('CLIP_ENGINE_BALANCE_INSUFFICIENT')).not.toContain('充值');
   expect(failureNext('CLIP_ENGINE_SPEAKER_NOT_FOUND')).not.toContain('删掉');
   expect(failureNext('STUDIO_USAGE_PENDING')).toContain('原任务状态');
   expect(failureNext('STUDIO_PAYMENT_REQUIRED')).toContain('积分提示');
   expect(failureNext('VIDEO_MODEL_RETIRED')).toContain('更换');
+});
+it('guides an unrecognized failure to a retry and only asks to change something when the reason names it', () => {
+  expect(failureNext('VIDEO_PROVIDER_INTERNAL')).toBe('请重试。多次失败时，可复制「错误详情」反馈给我们。');
+  expect(failureNext('STUDIO_IMAGE_PROVIDER_FAILED', false, '参考图尺寸过小')).toContain('调整后重试');
+  expect(failureNext('SOMETHING_NEW')).toContain('重试');
+  expect(failureNext('STUDIO_PLAN_STALE')).not.toContain('其他地方修改');
+  expect(failureNext('STUDIO_PLAN_STEP_RUNNING')).toContain('等待');
+});
+it('never shows a browser or code exception in English', () => {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  expect(normalizeStudioError(new Error('Cannot read properties of undefined'))).toMatchObject({ code: 'CLIENT_ERROR', message: '操作未完成，请重试' });
+  expect(normalizeStudioError(new TypeError('Failed to fetch'))).toMatchObject({ code: 'NETWORK_ERROR', message: '网络连接中断，未收到服务器响应。' });
+  expect(normalizeStudioError(new Error('图片不可用')).message).toBe('图片不可用');
+  warn.mockRestore();
 });
 it('shows corrected cause and input guidance together for the original moderation alert', async () => {
   render(<StudioNotifications/>);

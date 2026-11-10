@@ -202,14 +202,13 @@ class DirectorImageModelTest {
         assertEquals(55L, lastSubmitted().maxCost());
     }
 
-    @Test void propOnAModelWithoutSquareSizesIsRefusedBeforeAnythingIsSubmitted() throws Exception {
+    @Test void propOnAModelWithoutSquareSizesIsRefusedBeforeSubmittingAndDoesNotTellTheUserToChangeTheAspect() throws Exception {
         storedImageModel("image-4k");
         asset("p1", "prop", "修复编号工作本");
         var e = assertThrows(BusinessException.class, () -> generate("asset-image", "p1", 55));
         assertEquals("STUDIO_IMAGE_SIZE_UNSUPPORTED", e.getCode());
         assertEquals(HttpStatus.BAD_REQUEST, e.getStatus());
-        assertTrue(e.getMessage().startsWith("作品设置里选的图片模型「GPT Image 2 4K」不能出 1:1 方图"), e.getMessage());
-        assertTrue(e.getMessage().contains("换一个能出方图的图片模型"), e.getMessage());
+        assertTrue(e.getMessage().contains("GPT Image 2 4K") && e.getMessage().contains("1:1"), e.getMessage());
         assertFalse(e.getMessage().contains("画幅"), "道具不读作品画幅，不能让用户去改它：" + e.getMessage());
         assertEquals("prop", ((Map<?, ?>) e.getDetails()).get("kind"));
         verifyNoInteractions(images);
@@ -237,7 +236,7 @@ class DirectorImageModelTest {
         var e = assertThrows(BusinessException.class, () -> service.task("u1", work.getId(),
                 new DirectorService.TaskRequest("board", "k1", "req-board-square", null, null, 55L)));
         assertEquals("STUDIO_IMAGE_SIZE_UNSUPPORTED", e.getCode());
-        assertTrue(e.getMessage().contains("分镜图跟作品画幅走。请在作品设置里换一个画幅，或换一个图片模型"), e.getMessage());
+        assertTrue(e.getMessage().contains("画幅"), "分镜图跟随作品画幅，要告诉用户可以改画幅：" + e.getMessage());
         verify(images, times(1)).generateForDirector(any(), any(), any());
     }
 
@@ -265,7 +264,7 @@ class DirectorImageModelTest {
         asset("c1", "character", "林夏");
         var e = assertThrows(BusinessException.class, () -> generate("asset-image", "p1", 55));
         assertEquals("STUDIO_IMAGE_SIZE_UNSUPPORTED", e.getCode());
-        assertTrue(e.getMessage().startsWith("默认图片模型「GPT Image 2 4K」不能出 1:1 方图"), e.getMessage());
+        assertTrue(e.getMessage().contains("GPT Image 2 4K") && e.getMessage().contains("1:1"), e.getMessage());
         verifyNoInteractions(images);
         generate("asset-image", "c1", 55);
         assertEquals("image-4k", lastSubmitted().model());
@@ -283,8 +282,94 @@ class DirectorImageModelTest {
         var e = assertThrows(BusinessException.class, () -> generate("asset-image", "c1", 16));
         assertEquals("ENDPOINT_NOT_ALLOWED", e.getCode());
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, e.getStatus());
-        assertTrue(e.getMessage().contains("作品设置里选的图片模型已停用或不再开放"), e.getMessage());
         verifyNoInteractions(images);
+    }
+
+    private void gptTwoPolicy(boolean withFourK) {
+        var low = selection("gpt-low", "GPT Image 2", 16, true,
+                new String[][]{{"2048x2048","1:1"},{"2048x1152","16:9"}});
+        low.resolved().endpoint().setModel("gpt-image-2-1k-pic");
+        var high = selection("gpt-high", "GPT Image 2 4K", 55, false, FOUR_K);
+        high.resolved().endpoint().setModel("gpt-image-2-4k-pic");
+        var unrelated = selection("seedream", "Seedream 4.5", 16, false, STANDARD);
+        List<AiAppSceneModelPolicyService.Selection> available = withFourK ? List.of(low, high, unrelated) : List.of(low, unrelated);
+        when(policy.available(eq("studio"), eq("image"), anyLong())).thenReturn(available);
+        when(policy.resolve(eq("studio"), eq("image"), nullable(String.class), anyLong())).thenReturn(low);
+    }
+
+    private void boardClip() throws Exception {
+        edit(c -> {
+            c.withArray("episodes").addObject().put("id", "ep1").put("no", 1).put("extracted", true);
+            ObjectNode clip = c.withArray("clips").addObject().put("id", "k1").put("episodeId", "ep1").put("order", 1).put("rev", 1)
+                    .put("boardPrompt", "雨夜老宅门口");
+            clip.putArray("issues"); clip.putArray("assetIds");
+            clip.putArray("shots").addObject().put("durationSec", 3).put("size", "中景").put("action", "她推开门").putArray("dialogue");
+            clip.putObject("board").putArray("candidates");
+            ObjectNode video = clip.putObject("video"); video.putArray("candidates"); video.putArray("pending");
+        });
+    }
+
+    @Test void defaultGptTwoUsesFourKForVerticalBoardsWhileAssetsKeepTheirEndpointAndPrice() throws Exception {
+        gptTwoPolicy(true); boardClip();
+        var view = patch(om.createObjectNode());
+        assertEquals(16, view.path("pricing").path("image").asLong());
+        assertEquals(55, view.path("pricing").path("boardImage").asLong());
+        assertEquals("gpt-high", view.path("boardImage").path("endpointId").asText());
+        assertEquals("2160x3840", view.path("boardImage").path("size").asText());
+        generate("board", "k1", 55);
+        assertEquals("gpt-high", lastSubmitted().model());
+        assertEquals("2160x3840", lastSubmitted().size());
+        assertEquals(55L, lastSubmitted().maxCost());
+        asset("p1", "prop", "手机"); generate("asset-image", "p1", 16);
+        assertEquals("gpt-low", lastSubmitted().model());
+        assertEquals("2048x2048", lastSubmitted().size());
+        assertEquals(16L, lastSubmitted().maxCost());
+    }
+
+    @Test void wideBoardsKeepDefaultGptTwoAtItsOriginalPrice() throws Exception {
+        gptTwoPolicy(true); boardClip();
+        var view = patch(om.createObjectNode().put("aspectRatio", "16:9"));
+        assertEquals(16, view.path("pricing").path("boardImage").asLong());
+        generate("board", "k1", 16);
+        assertEquals("gpt-low", lastSubmitted().model());
+        assertEquals("2048x1152", lastSubmitted().size());
+    }
+
+    @Test void missingSameFamilyRouteDoesNotSwitchToSeedreamOrSubmitAnUnsupportedBoard() throws Exception {
+        gptTwoPolicy(false); boardClip();
+        var view = patch(om.createObjectNode());
+        assertTrue(view.path("boardImage").hasNonNull("error"));
+        assertEquals("STUDIO_IMAGE_SIZE_UNSUPPORTED", assertThrows(BusinessException.class, () -> generate("board", "k1", 16)).getCode());
+        verifyNoInteractions(images);
+    }
+
+    @Test void explicitImageEndpointIsNotSilentlyReplacedForBoards() throws Exception {
+        gptTwoPolicy(true); boardClip(); storedImageModel("gpt-low");
+        assertEquals("STUDIO_IMAGE_SIZE_UNSUPPORTED", assertThrows(BusinessException.class, () -> generate("board", "k1", 16)).getCode());
+        verifyNoInteractions(images);
+    }
+
+    @Test void estimateSeparatesAssetAndBoardPrices() throws Exception {
+        gptTwoPolicy(true); boardClip(); asset("p1", "prop", "手机");
+        var estimate = service.estimate("u1", work.getId(), new DirectorService.EstimateRequest("work", null, "board"));
+        assertEquals(2, estimate.path("images").path("count").asInt());
+        assertEquals(71, estimate.path("images").path("credits").asLong());
+    }
+
+    @Test void restoredGptTwoPortraitFollowsEveryWorkAspectAtItsExistingPrice() throws Exception {
+        gptTwoPolicy(true); boardClip();
+        var low=policy.resolve("studio","image",null,16).resolved().endpoint();
+        low.setImageRequestSpecJson(selection("gpt-low","GPT Image 2",16,true,STANDARD)
+                .resolved().endpoint().getImageRequestSpecJson());
+        for(var ratio:Map.of("9:16","1152x2048","16:9","2048x1152","1:1","2048x2048").entrySet()) {
+            edit(c->((ObjectNode)c.path("settings")).put("aspectRatio",ratio.getKey()));
+            service.task("u1",work.getId(),new DirectorService.TaskRequest("board","k1","restored-"+ratio.getKey(),null,null,16L));
+            assertEquals("gpt-low",lastSubmitted().model());
+            assertEquals(ratio.getValue(),lastSubmitted().size());
+            assertEquals(16L,lastSubmitted().maxCost());
+            var view=service.get("u1",work.getId());
+            assertEquals(16,view.path("pricing").path("boardImage").asLong());
+        }
     }
 
     @Test void batchOnAModelWithoutSquareSizesSubmitsOnlyTheAssetsItCanMake() throws Exception {

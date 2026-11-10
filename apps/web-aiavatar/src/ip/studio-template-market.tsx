@@ -88,7 +88,7 @@ export function StudioTemplateMarket() {
               {toggle && <button type="button" disabled={changing !== undefined} onClick={() => void changeAvailability(t)}>{changing === t.id && <Loader2 size={13} className="studio-gallery-spinner" />}{t.enabled === false ? '重新启用' : '停用模板'}</button>}
             </>;
           }}/>
-        : <GalleryState><LayoutTemplate size={28} /><h3>{query ? `没有找到匹配的${noun}` : tab === "personal" ? "还没有个人模板" : isCases ? "案例正在准备中" : "暂无官方模板"}</h3><p>{query ? "换个关键词再搜。" : tab === "personal" ? "在个人画布中选择“发布为模板”，以后就可以从同一流程开始创作。" : "可以先从空白画布开始创作。"}</p>{query ? <button type="button" className="ip-brand-secondary" onClick={() => setQuery("")}>清除搜索</button> : <Link className="ip-brand-secondary" href="/create">去创作 <ArrowRight size={15} /></Link>}</GalleryState>}
+        : <GalleryState><LayoutTemplate size={28} /><h3>{query ? `没有找到匹配的${noun}` : tab === "personal" ? "还没有个人模板" : isCases ? "暂无案例" : "暂无官方模板"}</h3><p>{query ? "请更换关键词后重试。" : tab === "personal" ? "在画布右上角「⋯」中选择「保存为模板」，之后可从同一流程开始创作。" : "可从空白画布开始创作。"}</p>{query ? <button type="button" className="ip-brand-secondary" onClick={() => setQuery("")}>清除搜索</button> : <Link className="ip-brand-secondary" href="/create">开始创作 <ArrowRight size={15} /></Link>}</GalleryState>}
     </section>
   </StudioPage>;
 }

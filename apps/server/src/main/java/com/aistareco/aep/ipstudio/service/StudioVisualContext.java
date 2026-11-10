@@ -30,6 +30,15 @@ public final class StudioVisualContext {
         return false;
     }
 
+    /** 端点所选模型能直接读视频（models_json 里 supportsVideo，管理员声明，不按模型名猜）。 */
+    public static boolean supportsVideo(AiModelEndpoint endpoint) {
+        if(endpoint==null || endpoint.getModelsJson()==null)return false;
+        try {for(JsonNode model:OM.readTree(endpoint.getModelsJson()))
+            if(Objects.equals(endpoint.getModel(),model.path("id").asText()) && model.path("supportsVideo").asBoolean(false))return true;
+        }catch(Exception ignored){}
+        return false;
+    }
+
     public static ArrayNode snapshot(JsonNode doc,List<String> nodeIds,IpProjectService projects,String owner) {
         ArrayNode result=OM.createArrayNode();int frames=0;
         for(String id:new LinkedHashSet<>(nodeIds==null?List.<String>of():nodeIds)) {

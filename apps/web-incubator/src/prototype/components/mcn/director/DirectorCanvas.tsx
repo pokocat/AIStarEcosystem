@@ -22,6 +22,10 @@ interface Props {
   reserveRight?: number;
   mode: ProjectMode;
   deliverables: string[];
+  /** Node the AI is working on: gets a pulsing ring. */
+  activeId?: string;
+  /** Glide the view to centre this node (a new `n` re-triggers). */
+  focus?: { id: string; n: number } | null;
 }
 
 export type AddKind = 'text' | 'image' | 'video' | 'audio';
@@ -215,7 +219,7 @@ const RailButton = ({ icon: Icon, label, active, onClick, ariaExpanded, iconOnly
   </button>
 );
 
-export const DirectorCanvas = ({ lang, nodes, edges, selectedId, fitSignal, onSelect, onMove, onGenerate, onRender, onAdd, onUpload, onTidy, onTemplates, reserveRight = 0, mode, deliverables }: Props) => {
+export const DirectorCanvas = ({ lang, nodes, edges, selectedId, fitSignal, onSelect, onMove, onGenerate, onRender, onAdd, onUpload, onTidy, onTemplates, reserveRight = 0, mode, deliverables, activeId, focus }: Props) => {
   const zh = lang === 'zh';
   const ref = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -274,6 +278,21 @@ export const DirectorCanvas = ({ lang, nodes, edges, selectedId, fitSignal, onSe
   const fitRef = useRef(fit);
   fitRef.current = fit;
   useEffect(() => { const t = window.setTimeout(() => fitRef.current(), 30); return () => window.clearTimeout(t); }, [fitSignal]);
+  // Follow: glide to the node without changing the zoom.
+  const [glide, setGlide] = useState(false);
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+  useEffect(() => {
+    const el = ref.current;
+    const n = focus && nodesRef.current.find(x => x.id === focus.id);
+    if (!el || !n) return;
+    const rect = el.getBoundingClientRect();
+    const width = rect.width - (window.innerWidth >= 1024 ? reserveRight : 0);
+    setGlide(true);
+    setView(v => ({ ...v, x: width / 2 - (n.x + NODE_W / 2) * v.k, y: rect.height / 2 - (n.y + NODE_H[n.kind] / 2) * v.k }));
+    const t = window.setTimeout(() => setGlide(false), 520);
+    return () => window.clearTimeout(t);
+  }, [focus?.n]); // eslint-disable-line react-hooks/exhaustive-deps
   // Re-fit once the rail switches between compact and full width.
   useEffect(() => { const t = window.setTimeout(() => fitRef.current(), 30); return () => window.clearTimeout(t); }, [narrow]);
 
@@ -365,9 +384,9 @@ export const DirectorCanvas = ({ lang, nodes, edges, selectedId, fitSignal, onSe
     <div ref={ref} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endDrag} onPointerCancel={endDrag} onDoubleClick={onDoubleClick}
       onPointerEnter={() => { hovering.current = true; }} onPointerLeave={() => { hovering.current = false; setSpaceHeld(false); }}
       className={`relative h-full w-full overflow-hidden select-none touch-none ${cursor}`}
-      style={{ background: '#f5f6fa', backgroundImage: 'radial-gradient(#d3d7e3 1px, transparent 1px)', backgroundSize: `${20 * view.k}px ${20 * view.k}px`, backgroundPosition: `${view.x}px ${view.y}px` }}>
+      style={{ background: 'var(--canvas-bg)', backgroundImage: 'radial-gradient(var(--canvas-dot) 1px, transparent 1px)', backgroundSize: `${20 * view.k}px ${20 * view.k}px`, backgroundPosition: `${view.x}px ${view.y}px` }}>
       <style>{'@keyframes director-dash{to{stroke-dashoffset:-24}}.director-flow{animation:director-dash .8s linear infinite}'}</style>
-      <div className="absolute left-0 top-0 origin-top-left" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }}>
+      <div className="absolute left-0 top-0 origin-top-left" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})`, transition: glide ? 'transform .5s cubic-bezier(.2,.7,.2,1)' : undefined }}>
         <svg className="absolute left-0 top-0 overflow-visible pointer-events-none" width="1" height="1">
           {edges.map(edge => {
             const a = byId.get(edge.from), b = byId.get(edge.to);
@@ -403,6 +422,10 @@ export const DirectorCanvas = ({ lang, nodes, edges, selectedId, fitSignal, onSe
                 <StatusBadge node={node} zh={zh} />
               </div>
               <NodeBody node={node} nodes={nodes} lang={lang} mode={mode} deliverables={deliverables} playing={playingId === node.id} onTogglePlay={togglePlay} onGenerate={onGenerate} onRender={onRender} />
+              {node.id === activeId && (
+                <motion.span aria-hidden className="pointer-events-none absolute -inset-1.5 rounded-[20px] border-2" style={{ borderColor: meta.color }}
+                  animate={{ opacity: [0.9, 0.25, 0.9], scale: [1, 1.015, 1] }} transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }} />
+              )}
             </motion.div>
           );
         })}
@@ -417,7 +440,7 @@ export const DirectorCanvas = ({ lang, nodes, edges, selectedId, fitSignal, onSe
           onClick={e => { if (menu) { setMenu(null); return; } const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); openMenuAt(r.right + 8, r.top, viewCenter()); }}
           aria-label={zh ? '添加' : 'Add'} title={narrow ? (zh ? '添加' : 'Add') : undefined}
           className={`w-full h-9 rounded-xl inline-flex items-center gap-2 text-xs font-semibold transition ${narrow ? 'justify-center' : 'px-2.5'}`}
-          style={{ background: 'linear-gradient(90deg, #06b6d4, #8b5cf6)', color: '#fff' }}>
+          style={{ background: 'linear-gradient(90deg, #0891b2, #7c3aed)', color: '#fff' }}>
           <Plus className="w-4 h-4" />{!narrow && (zh ? '添加' : 'Add')}
         </button>
         <RailButton iconOnly={narrow} icon={LayoutTemplate} label={zh ? '模板' : 'Templates'} onClick={onTemplates} />

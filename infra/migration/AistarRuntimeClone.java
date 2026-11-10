@@ -23,7 +23,7 @@ public class AistarRuntimeClone {
         try(var source=DriverManager.getConnection(base,role,password);var dest=DriverManager.getConnection(base+"&currentSchema="+schema,role,password)) {
             source.setReadOnly(true);source.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);source.setAutoCommit(false);dest.setAutoCommit(false);
             try(var s=source.createStatement();var rs=s.executeQuery("select table_name from information_schema.tables where table_schema='public' and table_type='BASE TABLE' and table_name<>'flyway_schema_history' order by table_name")){while(rs.next())AistarRehearsalRestore.pg.put(rs.getString(1),new LinkedHashMap<>());}
-            if(AistarRehearsalRestore.pg.size()!=192)throw new IllegalStateException("Incomplete source");
+            if(AistarRehearsalRestore.pg.size()!=195)throw new IllegalStateException("Incomplete source");
             long copied=0;
             for(String table:AistarRehearsalRestore.order(source)) {
                 String quoted=AistarRehearsalRestore.q(table);var out=source.unwrap(PGConnection.class).getCopyAPI().copyOut("COPY public."+quoted+" TO STDOUT");var in=dest.unwrap(PGConnection.class).getCopyAPI().copyIn("COPY "+schema+"."+quoted+" FROM STDIN");byte[] block;
@@ -34,7 +34,7 @@ public class AistarRuntimeClone {
             try(var s=dest.prepareStatement("insert into "+schema+".admin_users(id,username,password_hash,role,status,display_name) values (?,?,?,'SUPER_ADMIN','ACTIVE','Migration acceptance')")) {s.setString(1,"migration-rehearsal-admin");s.setString(2,username);s.setString(3,new BCryptPasswordEncoder().encode(raw));s.executeUpdate();}
             dest.commit();source.rollback();
             Files.writeString(ROOT.resolve("runtime-test-credentials.json"),json.writeValueAsString(Map.of("username",username,"password",raw)));Files.setPosixFilePermissions(ROOT.resolve("runtime-test-credentials.json"),java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"));
-            Files.writeString(ROOT.resolve("runtime-clone.json"),json.writeValueAsString(Map.of("schema",schema,"copied_tables",192,"copied_rows",copied,"synthetic_admin_added",true,"production_changed",false)));System.out.println("Created isolated API lab from verified snapshot; no existing schema overwritten");
+            Files.writeString(ROOT.resolve("runtime-clone.json"),json.writeValueAsString(Map.of("schema",schema,"copied_tables",195,"copied_rows",copied,"synthetic_admin_added",true,"production_changed",false)));System.out.println("Created isolated API lab from verified snapshot; no existing schema overwritten");
         }
     }
 }

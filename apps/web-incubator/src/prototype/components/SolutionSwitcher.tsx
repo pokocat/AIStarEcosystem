@@ -72,7 +72,7 @@ export const SolutionSwitcher = ({ value, lang, onChange }: Props) => {
   };
 
   return (
-    <div className="homepage-dark">
+    <div className="keep-dark">
       <button
         onClick={() => setOpen(current => !current)}
         aria-expanded={open}

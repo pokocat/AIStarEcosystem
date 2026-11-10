@@ -13,11 +13,15 @@
 
 后台「AI 模型与用量」顶部显示“生成异常告警”。`GET /api/admin/ai-generation-attention?page=0` 仅 SUPER_ADMIN/OPERATOR 可读，每页20条，保留原任务、端点、错误、追查号。列表由原记录投影，不改任务或积分。原始供应商请求在请求日志中，完整错误追查仅超管可读。
 
-## 飞书应用机器人
+## 飞书机器人
 
-采用飞书应用机器人，向配置的群发送普通文本告警。2026-10-28 起生产关闭应用内加急，代码与 env 示例也默认关闭（`AEP_FEISHU_ALERT_URGENT=false`）。Webhook 自定义机器人不适用。只有显式开启加急时才要求 `im:message.urgent:app_send`（或等价 `im:message.urgent`）权限；机器人与接收人均须在群内。
+支持 Webhook 自定义机器人和应用机器人，任务告警、额度告警共用同一配置。设置 `AEP_FEISHU_ALERT_WEBHOOK` 时优先使用 Webhook，无需应用凭据、群 ID 或接收人 ID；地址只允许 `https://open.feishu.cn/open-apis/bot/v2/hook/<标识>`，无效时停止投递，不回落旧群。Webhook 模式只发普通文本，忽略加急开关。正文超出飞书 20 KB 请求限制时按实际 JSON 字节数截断，保留截断说明与后台入口。协议见[飞书自定义机器人指南](https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot)。
 
-环境变量见 `infra/env/server.env.example`：`AEP_FEISHU_ALERTS_ENABLED`、`AEP_FEISHU_APP_ID`、`AEP_FEISHU_APP_SECRET`、`AEP_FEISHU_ALERT_CHAT_ID`、`AEP_FEISHU_ALERT_USER_ID`、`AEP_FEISHU_ALERT_URGENT`。密钥仅安装在服务器受限 env 文件，不写 Git、聊天或日志。默认禁用；配置完整才入队/发送。
+Webhook 留空时沿用应用机器人。2026-10-28 起生产关闭应用内加急，代码与 env 示例也默认关闭（`AEP_FEISHU_ALERT_URGENT=false`）。只有应用机器人显式开启加急时才要求 `im:message.urgent:app_send`（或等价 `im:message.urgent`）权限；机器人与接收人均须在群内。
+
+环境变量见 `infra/env/server.env.example`：`AEP_FEISHU_ALERTS_ENABLED`、`AEP_FEISHU_ALERT_WEBHOOK`、`AEP_FEISHU_APP_ID`、`AEP_FEISHU_APP_SECRET`、`AEP_FEISHU_ALERT_CHAT_ID`、`AEP_FEISHU_ALERT_USER_ID`、`AEP_FEISHU_ALERT_URGENT`。Webhook 完整地址也是密钥，只安装在受限 env 文件，不写 Git 或日志。默认禁用；配置完整才入队/发送。
+
+Webhook 的 HTTP 200 且业务 `code=0` 才算成功；它不返回飞书 `message_id`，现有投递表的 `message_id` 存 `webhook:<投递记录ID>` 作为本地成功回执，不用于加急。入库去重、数据库租约和最多五次重试不变；Webhook 没有应用机器人的 UUID 去重保障，请求已送达但响应丢失时重试可能重复通知。已经有成功回执的通知不会因切换渠道重新发送。此支持已于 2026-11-07 随 server 上线，同日 09:56:40 PST 将生产配置切换至用户指定的新 Webhook 并重启生效；运行配置与健康检查通过，尚未观察到切换后的真实通知投递。见[配置发布记录](../releases/model-alert-webhook-config-release-20261107.md)。
 
 V64 新增 `model_alert_delivery`，仅记录通知投递：同任务+错误码生成稳定 UUID 主键去重，飞书发送复用该 UUID。独立调度线程每10秒取一条、数据库60秒租约防抢占；HTTP单次5秒超时。发送成功先持久化 message_id，加急失败只重试已有消息；最多5次、30/60/120/240秒退避，最终失败留下状态与脱敏错误。通知异常不得回滚任务失败/退款，或拖住生成调度。
 

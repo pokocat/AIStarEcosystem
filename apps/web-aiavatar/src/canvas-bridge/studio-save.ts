@@ -12,6 +12,6 @@ export async function saveStudioDocument(projectId: string) {
   // 冲突带上错误码：顶栏的冲突弹窗已经在说这件事了，通知层据此**不再弹**（见 studio-errors.tsx）。
   // 以前每一条经过这里的保存（助手面板的自动保存、任务轮询回写…）都弹同一句话，
   // 用户看到的就是「页面一直在报错」。
-  if (result === "conflict") throw Object.assign(new Error("这张画布在别处被改过了，先处理顶栏里的保存冲突，再继续创作"), { code: "IP_PROJECT_STALE" });
-  if (result !== "saved" && result !== "nothing-to-save") throw new Error("画布保存失败，请先重试保存");
+  if (result === "conflict") throw Object.assign(new Error("此画布已在其他窗口修改，请处理顶栏的保存冲突后继续创作"), { code: "IP_PROJECT_STALE" });
+  if (result !== "saved" && result !== "nothing-to-save") throw new Error("画布保存失败，请重试保存");
 }

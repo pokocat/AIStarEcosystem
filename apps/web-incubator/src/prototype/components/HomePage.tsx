@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { ColorModeToggle } from './ColorModeToggle';
 import {
   Sparkles, ArrowRight, Globe as GlobeIcon, Layers, Music, Users, Zap,
   Rocket, Crown, TrendingUp, Shield, Play, Star, ChevronRight, Cpu,
@@ -173,7 +174,7 @@ export const HomePage = ({ onEnter, onHome, lang, setLang }: { onEnter: () => vo
   }, [wordIdx, lang]);
 
   return (
-    <div className="homepage-dark min-h-screen bg-black text-white relative overflow-x-hidden" style={{ fontFamily: "var(--font-sans, 'Inter', sans-serif)" }}>
+    <div className="min-h-screen bg-black text-white relative overflow-x-hidden" style={{ fontFamily: "var(--font-sans, 'Inter', sans-serif)" }}>
       <ParticleBackground />
 
       {/* ===== STICKY NAV ===== */}
@@ -198,6 +199,7 @@ export const HomePage = ({ onEnter, onHome, lang, setLang }: { onEnter: () => vo
               <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-cyan-400 group-hover:w-full transition-all duration-300" />
             </a>
           ))}
+          <ColorModeToggle lang={zh ? 'zh' : 'en'} className="text-gray-300 hover:bg-white/10" />
           <Button onClick={onEnter} size="sm" className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:opacity-90">{t.nav.enter}</Button>
         </div>
         {/* Mobile hamburger */}
@@ -456,9 +458,9 @@ export const HomePage = ({ onEnter, onHome, lang, setLang }: { onEnter: () => vo
                         <div
                           className="h-full min-h-[174px] rounded-xl p-4 overflow-hidden relative"
                           style={{
-                            background: 'linear-gradient(145deg, rgba(8,18,30,.96), rgba(3,8,16,.94))',
+                            background: 'var(--hub-node-bg)',
                             border: `1px solid ${step.color}30`,
-                            boxShadow: `inset 0 1px 0 rgba(255,255,255,.04), 0 12px 30px rgba(0,0,0,.24)`,
+                            boxShadow: 'var(--hub-node-shadow)',
                           }}
                         >
                           <div className="absolute inset-x-0 top-0 h-px" style={{ background: `linear-gradient(90deg, transparent, ${step.color}90, transparent)` }} />
@@ -472,15 +474,15 @@ export const HomePage = ({ onEnter, onHome, lang, setLang }: { onEnter: () => vo
                           <div className="w-9 h-9 rounded-lg border flex items-center justify-center mb-3" style={{ color: step.color, borderColor: `${step.color}35`, background: `${step.color}12` }}>
                             <StepIcon className="w-4 h-4" />
                           </div>
-                          <div className="text-sm font-semibold tracking-tight" style={{ color: '#f8fafc' }}>{zh ? step.zh : step.en}</div>
-                          <div className="text-xs mt-1" style={{ color: '#94a3b8' }}>{zh ? step.metaZh : step.metaEn}</div>
+                          <div className="text-sm font-semibold tracking-tight" style={{ color: 'var(--hub-node-ink)' }}>{zh ? step.zh : step.en}</div>
+                          <div className="text-xs mt-1" style={{ color: 'var(--hub-node-sub)' }}>{zh ? step.metaZh : step.metaEn}</div>
                           <div className="absolute left-4 right-4 bottom-3 h-px bg-white/5 overflow-hidden">
                             <motion.div className="h-full" style={{ background: step.color }} initial={{ width: 0 }} whileInView={{ width: `${72 + i * 8}%` }} viewport={{ once: true }} transition={{ duration: .8, delay: .3 + i * .12 }} />
                           </div>
                         </div>
                         {i < 3 && (
                           <div className="hidden lg:flex absolute -right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 items-center justify-center rounded-full z-20"
-                            style={{ background: '#07111d', border: '1px solid rgba(34,211,238,.3)' }}>
+                            style={{ background: 'var(--hub-chevron-bg)', border: '1px solid rgba(34,211,238,.3)' }}>
                             <ChevronRight className="w-3 h-3 text-cyan-300" />
                           </div>
                         )}

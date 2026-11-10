@@ -1,0 +1,27 @@
+{
+  "rules": "2026-11-06-character-budget",
+  "model": "deepseek-v4.1-flash",
+  "temperature": 0.6,
+  "maxTokens": 20000,
+  "supplierRequests": 3,
+  "completedResponses": 2,
+  "disconnectedRequests": 1,
+  "sourceUserSha256": "0840310d6a7e2462a927c05a578da587f1c0183ff9586fef4655e2d9205ed0c2",
+  "systemSha256": "378f96e430d37b3b4a08510b0121dce81a1f3f4c149aebb7e6a038ab6a538502",
+  "samples": [
+    {
+      "sample": 1,
+      "characters": 5813,
+      "passed": true,
+      "exactDialogueOrder": true,
+      "promptSha256": "491f525ef63594d2a8001b72de2aa6a8d8665262cf3876aa21e5b7bc90a01665"
+    },
+    {
+      "sample": 2,
+      "characters": 5680,
+      "passed": true,
+      "exactDialogueOrder": true,
+      "promptSha256": "36b67aaaddb486f54f97c8d7e07ddc199434991a031d3c6826ed001fefe5b201"
+    }
+  ]
+}

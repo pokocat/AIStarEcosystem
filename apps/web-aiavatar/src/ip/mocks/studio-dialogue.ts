@@ -139,7 +139,7 @@ function pickSkill(projectId: string, p: MockProject, t: MockThread, request: St
   const current = mockSkill(t.thread.skillKey);
   if (request.skillKey) {
     const chosen = current?.key === request.skillKey ? current : activeSkill(request.skillKey);
-    if (!chosen) throw new ApiError({ code: "STUDIO_SKILL_NOT_FOUND", message: "这个技能已经停用了，换一个再发" }, 404);
+    if (!chosen) throw new ApiError({ code: "STUDIO_SKILL_NOT_FOUND", message: "该技能已停用，请选择其他做法" }, 404);
     return chosen;
   }
   const nodes = mockStore().projects.get(projectId)?.doc.nodes || [];
@@ -398,7 +398,7 @@ function analysisTurn(projectId: string, p: MockProject, t: MockThread) {
     ...say(t, messageId, "b2", "拉片好了：前段交代场景，后段靠水杯做反转。"),
     { run: () => emit(t, "plan.proposed", { messageId, block: plan }) },
     { run: () => {
-      updateExecution(p, x => ({ ...x, status: "needs_user", needsUserReason: "等你确认制作方案" }));
+      updateExecution(p, x => ({ ...x, status: "needs_user", needsUserReason: "待确认制作方案" }));
       emit(t, "approval.required", { messageId, block: { type: "approval", approvalId: "mock-approval-production", stage: "production", planFingerprint: fingerprint,
         scope: ["第 1 段视频", "第 2 段视频", "检查第 1 段", "合成成片"], quotedCost: 82, budgetCap: 122, autoFixCap: 40, status: "pending", executionId: e.id,
         expiresAt: new Date(Date.now() + 30 * 60_000).toISOString() } });
@@ -412,10 +412,10 @@ function productionTurn(projectId: string, p: MockProject, t: MockThread) {
   const video = (no: number): Step[] => {
     const tool = nextId("tool");
     return [
-      { waitsForExecution: true, run: () => { setStep(p, `v${no}`, "running", `${e.id}-run-v${no}`); emit(t, "tool.started", { toolCallId: tool, toolName: "video", title: `制作第 ${no} 段`, safeInputSummary: "5 秒 · 竖屏 · 参考原片动作", childRunId: `${e.id}-run-v${no}` }, e.id); budget(p, t, (no - 1) * 40, 40, "quote"); } },
-      { waitsForExecution: true, delay: mockDialogueTiming.tickMs * 6, run: () => emit(t, "tool.progress", { toolCallId: tool, toolName: "video", progress: "已提交，等待出片" }, e.id) },
+      { waitsForExecution: true, run: () => { setStep(p, `v${no}`, "running", `${e.id}-run-v${no}`); emit(t, "tool.started", { toolCallId: tool, toolName: "video", title: `生成第 ${no} 段`, safeInputSummary: "5 秒 · 竖屏 · 参考原片动作", childRunId: `${e.id}-run-v${no}` }, e.id); budget(p, t, (no - 1) * 40, 40, "quote"); } },
+      { waitsForExecution: true, delay: mockDialogueTiming.tickMs * 6, run: () => emit(t, "tool.progress", { toolCallId: tool, toolName: "video", progress: "已提交，等待生成" }, e.id) },
       { waitsForExecution: true, delay: mockDialogueTiming.tickMs * 8, run: () => {
-        emit(t, "tool.finished", { toolCallId: tool, toolName: "video", status: "done", result: { summary: `第 ${no} 段出片 1 条`, nodeIds: [stepNodeId(e.id, { id: `v${no}`, stage: "production" })] }, creditsActual: 40, settling: false }, e.id);
+        emit(t, "tool.finished", { toolCallId: tool, toolName: "video", status: "done", result: { summary: `第 ${no} 段已生成 1 条`, nodeIds: [stepNodeId(e.id, { id: `v${no}`, stage: "production" })] }, creditsActual: 40, settling: false }, e.id);
         finishStep(projectId, p, t, `v${no}`, {}); budget(p, t, no * 40, 0, "actual");
       } },
     ];
@@ -850,7 +850,7 @@ export function mockExecutionCreate(projectId: string, request: StudioPlanExecut
   }
   if (!request.executionId) return directExecutionCreate(projectId, p, t, request);
   const e = p.execution;
-  if (!e || e.id !== request.executionId) throw Object.assign(new Error("分析还没有完成，请先确认分析"), { code: "STUDIO_PLAN_STALE" });
+  if (!e || e.id !== request.executionId) throw Object.assign(new Error("分析尚未完成，完成后可确认制作"), { code: "STUDIO_PLAN_STALE" });
   if (e.stage === "production") return later(e);
   p.execution = { ...e, stage: "production", status: "running", planRunId: request.planRunId, planRevision: request.expectedRevision ?? 2, planFingerprint: request.planFingerprint, needsUserReason: undefined,
     steps: [...e.steps, ...withNodeIds(e.id, [step("v1", "第 1 段视频", "video", "production", 40), step("v2", "第 2 段视频", "video", "production", 40), step("c1", "检查第 1 段", "check", "production", 2, ["v1"]), step("m1", "合成成片", "assemble", "production", 0, ["v1", "v2"])])],
@@ -871,8 +871,8 @@ function directExecutionCreate(projectId: string, p: MockProject, t: MockThread,
   const plan = t.view.messages.flatMap(m => m.blocks).filter((b): b is Extract<StudioMessageBlock, { type: "plan" }> => b.type === "plan" && b.planRunId === request.planRunId).at(-1);
   const skill = mockSkill(plan?.plan.skillKey);
   // Thrown, like the other refusals here, so the typed 「可以」 path (naturalApproval) can catch it.
-  if (!plan || !skill || !mockSkillIsDirect(skill)) throw new ApiError({ code: "STUDIO_INPUT_INVALID", message: "这个方案要先确认分析，再确认制作" }, 400);
-  if (workingExecution(p)) throw new ApiError({ code: "STUDIO_INPUT_INVALID", message: "上一次制作还没结束，结束后再开始新的" }, 400);
+  if (!plan || !skill || !mockSkillIsDirect(skill)) throw new ApiError({ code: "STUDIO_INPUT_INVALID", message: "此方案需确认分析后再确认制作" }, 400);
+  if (workingExecution(p)) throw new ApiError({ code: "STUDIO_INPUT_INVALID", message: "上一次制作尚未结束，结束后可开始新制作" }, 400);
   const id = nextId("exec"), at = now();
   const bound = mockBindTargets(plan.plan.steps, mockStore().projects.get(projectId)?.doc.nodes || [], assistantNodeIds(t));
   for (const x of plan.plan.steps) stepRequests.set(`${id}:${x.id}`, { prompt: x.prompt, ...(x.settings && "aspectRatio" in x.settings && x.settings.aspectRatio ? { aspectRatio: x.settings.aspectRatio } : {}) });
@@ -957,13 +957,13 @@ export function mockSegmentedStart(projectId: string, request: StudioSegmentedVi
 
 export function mockExecutionGet(projectId: string, executionId: string): Promise<StudioPlanExecution> {
   const e = project(projectId).execution;
-  if (!e || e.id !== executionId) throw Object.assign(new Error("找不到这次制作"), { code: "STUDIO_PLAN_EXECUTION_NOT_FOUND" });
+  if (!e || e.id !== executionId) throw Object.assign(new Error("找不到本次制作"), { code: "STUDIO_PLAN_EXECUTION_NOT_FOUND" });
   return later(e, 60);
 }
 
 export function mockExecutionControl(projectId: string, executionId: string, action: "pause" | "resume" | "cancel"): Promise<StudioPlanExecution> {
   const p = project(projectId), e = p.execution;
-  if (!e || e.id !== executionId) throw Object.assign(new Error("找不到这次制作"), { code: "STUDIO_PLAN_EXECUTION_NOT_FOUND" });
+  if (!e || e.id !== executionId) throw Object.assign(new Error("找不到本次制作"), { code: "STUDIO_PLAN_EXECUTION_NOT_FOUND" });
   if (action === "cancel") {
     const t = thread(p, p.currentThreadId);
     if (t.running) { t.generation++; t.running = false; }
@@ -975,7 +975,7 @@ export function mockExecutionControl(projectId: string, executionId: string, act
 
 export function mockExecutionAccept(projectId: string, executionId: string, stepId: string, request: StudioPlanExecutionAcceptRequest): Promise<StudioPlanExecution> {
   const p = project(projectId);
-  if (!p.execution || p.execution.id !== executionId) throw Object.assign(new Error("找不到这次制作"), { code: "STUDIO_PLAN_EXECUTION_NOT_FOUND" });
+  if (!p.execution || p.execution.id !== executionId) throw Object.assign(new Error("找不到本次制作"), { code: "STUDIO_PLAN_EXECUTION_NOT_FOUND" });
   updateExecution(p, x => ({ ...x, steps: x.steps.map(s => s.id === stepId ? { ...s, acceptedRunId: request.runId, acceptedCandidateIndex: request.candidateIndex } : s) }));
   return later(p.execution!);
 }
@@ -1033,8 +1033,8 @@ export async function mockCreateSkillDraft(projectId: string, request: StudioSki
   if (known) return later(mockReadRun(known), 60);
   const p = project(projectId);
   const e = p.execution?.id === request.executionId ? p.execution : undefined;
-  if (!e) throw new ApiError({ code: "STUDIO_PLAN_EXECUTION_NOT_FOUND", message: "找不到这次制作，刷新后再试" }, 404);
-  if (!["done", "partial"].includes(e.status)) throw new ApiError({ code: "STUDIO_INPUT_INVALID", message: "这次制作还没做完，做完再整理" }, 400);
+  if (!e) throw new ApiError({ code: "STUDIO_PLAN_EXECUTION_NOT_FOUND", message: "找不到本次制作，请刷新后重试" }, 404);
+  if (!["done", "partial"].includes(e.status)) throw new ApiError({ code: "STUDIO_INPUT_INVALID", message: "本次制作尚未完成，完成后可整理" }, 400);
   const skill = MOCK_STUDIO_SKILLS.find(s => s.key === e.skillKey) || MOCK_STUDIO_SKILLS[0];
   const skillDraft: StudioSkillDraftOutput = { skillKey: skill.key, version: skill.version + 1, baseVersion: skill.version, changeNote: "口播段只换手里的商品，合并 2 秒内的碎段", strippedReferences: 3 };
   const at = now(), id = nextId("IPR-draft");

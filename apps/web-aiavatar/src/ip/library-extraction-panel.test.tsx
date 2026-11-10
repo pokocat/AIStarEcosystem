@@ -28,7 +28,7 @@ afterEach(()=>{cleanup();vi.unstubAllGlobals();});
 beforeEach(()=>{vi.resetAllMocks();vi.stubGlobal('crypto',webcrypto);api.folders.mockResolvedValue([{id:'folder',name:'梵高'}]);api.preference.mockResolvedValue({folderId:''});api.objects.mockResolvedValue({items:[],hasMore:false,total:0,page:0});api.task.mockResolvedValue(undefined);api.save.mockResolvedValue([]);api.extract.mockImplementation(async(_:string,r:any)=>r.analyze?done:seed);});
 test('text extraction hides flat pricing, marks the paid action and reports actual settled credits',async()=>{
  render(<LibraryExtractionPanel {...props as any}/>);
- const analyze=await screen.findByRole('button',{name:'从正文分析提取'});
+ const analyze=await screen.findByRole('button',{name:'提取资产 · 按实际用量结算'});
  await waitFor(()=>expect(analyze.disabled).toBe(false));
  expect(analyze.querySelector('[data-ai-action]')).not.toBeNull();
  expect(screen.queryByText(/2 积分|21 积分|Token|冻结/)).toBeNull();
@@ -40,7 +40,7 @@ test('text extraction hides flat pricing, marks the paid action and reports actu
 test('a rejected price clears the unaccepted request so the next click can use current pricing',async()=>{
  api.extract.mockImplementation(async(_:string,r:any)=>{if(!r.analyze)return seed;throw new ApiError({code:'STUDIO_PRICE_CHANGED',message:'计费配置已更新'},409);});
  render(<LibraryExtractionPanel {...props as any}/>);
- const analyze=await screen.findByRole('button',{name:'从正文分析提取'});
+ const analyze=await screen.findByRole('button',{name:'提取资产 · 按实际用量结算'});
  await waitFor(()=>expect(analyze.disabled).toBe(false));fireEvent.click(analyze);
  await screen.findByRole('alert');expect(api.task).toHaveBeenLastCalledWith(undefined);
  const first=api.extract.mock.calls.find((c:any)=>c[1].analyze)?.[1];
@@ -79,7 +79,7 @@ test('a genuinely changed document never relabels old extraction results with th
 test('newly accepted extraction persists the returned fingerprint after the document is saved',async()=>{
  api.extract.mockImplementation(async(_:string,r:any)=>r.analyze?{...done,sourceHash:'accepted-after-save'}:seed);
  render(<LibraryExtractionPanel {...props as any}/>);
- const analyze=await screen.findByRole('button',{name:'从正文分析提取'});
+ const analyze=await screen.findByRole('button',{name:'提取资产 · 按实际用量结算'});
  await waitFor(()=>expect(analyze.disabled).toBe(false));fireEvent.click(analyze);
  await screen.findByText('已消耗 4 积分');
  expect(api.task).toHaveBeenLastCalledWith(expect.objectContaining({runId:'run',sourceHash:'accepted-after-save'}));
@@ -93,7 +93,7 @@ test('saved assets appear on opening without clicking an improve button or rerun
  expect(screen.getByText('1 项资产已保存')).toBeDefined();
  expect(screen.getByText('1 项尚未配图，文字设定已可用于创作。')).toBeDefined();
  expect(screen.getByText('梵高')).toBeDefined();
- expect(screen.queryByRole('button',{name:'从正文分析提取'})).toBeNull();
+ expect(screen.queryByRole('button',{name:'提取资产 · 按实际用量结算'})).toBeNull();
  expect(screen.queryByRole('button',{name:/完善本剧已有资产/})).toBeNull();
  expect(api.extract.mock.calls.some((c:any)=>c[1].analyze)).toBe(false);
  fireEvent.click(screen.getByRole('tab',{name:'提取与核对'}));
@@ -142,9 +142,9 @@ test.each(['folders','preference'] as const)('a failed optional %s request keeps
  render(<LibraryExtractionPanel {...props as any}/>);
  expect(await screen.findByRole('article',{name:'已保存资产 文森特·梵高'})).toBeDefined();
  expect(await screen.findByRole('alert')).toBeDefined();
- expect(screen.getByRole('button',{name:'重新读取'})).toBeDefined();
- expect(screen.queryByText('素材暂时无法读取')).toBeNull();
- if(resource==='folders')expect(screen.getByText('文件夹名称暂不可用')).toBeDefined();
+ expect(screen.getByRole('button',{name:'重试'})).toBeDefined();
+ expect(screen.queryByText('素材加载失败')).toBeNull();
+ if(resource==='folders')expect(screen.getByText('未知文件夹')).toBeDefined();
 });
 test('a cancelled StrictMode initialization does not duplicate the recovery message',async()=>{
  api.objects.mockImplementation(async(q:any)=>({items:q?.projectId?[savedAsset()]:[],hasMore:false,total:1,page:0}));
@@ -152,7 +152,7 @@ test('a cancelled StrictMode initialization does not duplicate the recovery mess
  render(<StrictMode><LibraryExtractionPanel {...props as any}/></StrictMode>);
  await screen.findByRole('article',{name:'已保存资产 文森特·梵高'});
  const alert=await screen.findByRole('alert');
- expect(alert.textContent?.split('文件夹名称暂时无法读取').length).toBe(2);
+ expect(alert.textContent?.split('文件夹加载失败').length).toBe(2);
 });
 
 beforeEach(() => { mountStudioErrorNotifications(); });

@@ -58,7 +58,7 @@ function LicenseCard({ l }: { l: License }) {
     <Card pad={16} style={{ display: "flex", flexDirection: "column", gap: 0 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
         <RegNo size={10}>{`LICENSE · ${l.id}`}</RegNo>
-        {needsSupplement ? <Badge tone="warn" dot>待补确认</Badge> : <Badge tone={st.tone} dot>{st.label}</Badge>}
+        {needsSupplement ? <Badge tone="warn" dot>待补充确认</Badge> : <Badge tone={st.tone} dot>{st.label}</Badge>}
       </div>
       <span style={{ fontFamily: "var(--font-serif)", fontSize: 19, fontWeight: 600, marginBottom: 10 }}>{l.subject}</span>
       <div style={{ borderTop: "1px dashed var(--line-2)", paddingTop: 11, display: "flex", flexDirection: "column", gap: 7 }}>
@@ -73,7 +73,7 @@ function LicenseCard({ l }: { l: License }) {
         <div style={{ display: "flex", gap: 10, fontSize: 12 }}>
           <span style={{ flexShrink: 0, width: 62, color: "var(--ink-3)" }}>核验方式</span>
           <span style={{ fontWeight: 600 }}>
-            {l.verifyMethod === "liveness" ? "平台协议确认 + 本人刷脸核验" : "书面授权登记"}
+            {l.verifyMethod === "liveness" ? "平台协议确认、本人刷脸核验" : "书面授权登记"}
           </span>
         </div>
       </div>
@@ -82,7 +82,7 @@ function LicenseCard({ l }: { l: License }) {
           href={studioHref("#/licenses")}
           style={{ fontSize: 12.5, fontWeight: 700, color: "var(--primary-700)", textDecoration: "none" }}
         >
-          {needsSupplement ? "去补确认 ›" : "查看证书 ›"}
+          {needsSupplement ? "补充确认 ›" : "查看证书 ›"}
         </a>
         <span className="mono" style={{ fontSize: 10, color: "var(--ink-4)" }}>登记于 {l.signed}</span>
       </div>
@@ -148,14 +148,14 @@ export default function LicensesPage() {
               </Card>
             ) : grants.data.length === 0 ? (
               <Card>
-                <EmptyState text="还没有授权给你的明星形象。到 AI 明星带货里挑选明星并发起授权申请，通过后会出现在这里" />
+                <EmptyState text="还没有明星形象授权。在 AI 明星带货中选择明星并申请授权，审批通过后将显示在这里。" />
               </Card>
             ) : (
               grants.data.map((g) => <GrantCard key={g.id} g={g} />)
             )}
           </div>
           <div style={{ margin: "16px 24px 0", textAlign: "center", fontSize: 11.5, color: "var(--ink-4)", lineHeight: 1.6 }}>
-            明星授权的申请与审批在带货线和「明星工作台」完成，这里只看结果和授权内容。
+            明星授权在 AI 明星带货和「明星工作台」中申请和审批，此处仅展示授权结果。
           </div>
         </>
       ) : (
@@ -170,9 +170,9 @@ export default function LicensesPage() {
             ) : licenses.data.length === 0 ? (
               <Card>
                 <EmptyState
-                  text="还没有授权记录。真人数字人完成协议确认与刷脸核验后，证书会出现在这里"
+                  text="还没有授权记录。真人数字人完成协议确认和刷脸核验后，证书将显示在这里。"
                   actionHref={studioHref("#/realmaterials")}
-                  actionLabel="去真人授权"
+                  actionLabel="发起真人授权"
                 />
               </Card>
             ) : (

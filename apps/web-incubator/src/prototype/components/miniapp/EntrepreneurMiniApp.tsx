@@ -80,7 +80,7 @@ const PRODUCTS: Product[] = [
   },
   {
     id: 'p3', name: '潮流眼影盘', nameEn: 'Trendy Eyeshadow',
-    brand: 'ColorPop', image: '/images/product-eyeshadow.webp',
+    brand: 'ColorBurst', image: '/images/product-eyeshadow.webp',
     commission: 15, price: '¥189', quota: 20, takenQuota: 3,
     bonus: '首单双佣', bonusEn: '2x first order', status: 'available',
     platforms: ['小红书', '视频号', '抖音'],

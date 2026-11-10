@@ -156,7 +156,7 @@ describe("rejectedNextStep", () => {
   it("names a next step that fits the refusal", () => {
     expect(rejectedNextStep({ status: 402, code: "MODEL_CREDITS_INSUFFICIENT" })).toBe("请充值或调整生成设置后重试。本次未扣积分。");
     expect(rejectedNextStep({ status: 409, code: "STUDIO_PRICE_CHANGED" })).toBe("价格已更新，请确认新价格后重试。本次未扣积分。");
-    expect(rejectedNextStep({ status: 503, code: "ENDPOINT_NOT_ALLOWED" })).toBe("请换一个模型或稍后重试。本次未扣积分。");
+    expect(rejectedNextStep({ status: 503, code: "ENDPOINT_NOT_ALLOWED" })).toBe("请更换模型或稍后重试。本次未扣积分。");
     expect(rejectedNextStep({ status: 400, code: "STUDIO_VIDEO_ASSET_INVALID" })).toBe("请按上述原因调整后重试。本次未扣积分。");
   });
 });

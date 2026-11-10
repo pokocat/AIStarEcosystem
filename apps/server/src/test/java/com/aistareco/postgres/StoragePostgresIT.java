@@ -41,8 +41,8 @@ class StoragePostgresIT {
     @Autowired com.aistareco.aep.repository.LicenseBatchRepository batches;
     @Autowired com.aistareco.aep.repository.SellingChannelRepository channels;
     @Test void emptySchemaValidatesAllEntitiesWithoutLegacyMigrations() {
-        assertThat(jdbc.queryForList("SELECT version FROM flyway_schema_history WHERE success=true",String.class)).containsExactly("74", "75", "76", "77");
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'",Integer.class)).isEqualTo(193);
+        assertThat(jdbc.queryForList("SELECT version FROM flyway_schema_history WHERE success=true",String.class)).containsExactly("74", "75", "76", "77", "78");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'",Integer.class)).isEqualTo(196);
         assertThat(jdbc.queryForObject("SELECT data_type FROM information_schema.columns WHERE table_name='card_profile' AND column_name='payload_json'",String.class)).isEqualTo("text");
         assertThat(jdbc.queryForObject("SELECT data_type FROM information_schema.columns WHERE table_name='aep_enterprise_members' AND column_name='billing_default'",String.class)).isEqualTo("character varying");
     }
@@ -79,6 +79,58 @@ class StoragePostgresIT {
             assertThat(jdbc.queryForObject("SELECT source_key FROM material_video_input_asset WHERE id='shared-voice'",String.class)).isEqualTo("owned/voice.wav");
             assertThat(jdbc.queryForObject("SELECT expires_at FROM material_video_input_asset WHERE id='shared-voice'",java.sql.Timestamp.class).toInstant()).isEqualTo(Instant.parse("2027-01-02T01:02:03Z"));
         } finally {executor.shutdownNow();}
+    }
+    @Test void newTranscriptionAndVideoUnderstandingBindingsAcceptBothTablesButStillRejectUnknownPurposes() {
+        for(String purpose:java.util.List.of("DAP_TRANSCRIBE","DAP_VIDEO_UNDERSTAND")) {
+            jdbc.update("INSERT INTO ai_app_binding(purpose,endpoint_id,updated_at) VALUES(?,?,CURRENT_TIMESTAMP)",purpose,"synthetic-endpoint");
+            jdbc.update("INSERT INTO ai_app_endpoint_candidate(id,purpose,endpoint_id,created_at,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)","pg-"+purpose,purpose,"synthetic-endpoint");
+            new TransactionTemplate(manager).executeWithoutResult(s->{
+                assertThat(em.find(com.aistareco.aep.model.AiAppBinding.class,com.aistareco.aep.model.AiModelPurpose.valueOf(purpose)).getEndpointId()).isEqualTo("synthetic-endpoint");
+            });
+        }
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->jdbc.update("INSERT INTO ai_app_binding(purpose,endpoint_id,updated_at) VALUES('UNKNOWN_PURPOSE','synthetic',CURRENT_TIMESTAMP)"))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->jdbc.update("INSERT INTO ai_app_endpoint_candidate(id,purpose,endpoint_id,created_at,updated_at) VALUES('pg-invalid','UNKNOWN_PURPOSE','synthetic',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)"))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+    }
+    @Test void newLibrariesPortraitsAndProviderFieldsPreserveImportedBytesAndUtcInstants() {
+        Instant instant=Instant.parse("2026-11-10T03:04:05.123456Z");
+        String text="中文😀素材库".repeat(20000);
+        String encrypted="synthetic-encrypted-value\nwith-exact-bytes";
+        var tx=new TransactionTemplate(manager);
+        tx.executeWithoutResult(s->{
+            var record=new com.aistareco.aep.service.materialvideo.VideoAssetLibraryRecord();
+            record.setId("PG-Library");record.setName("素材库");record.setAdapter("ark");
+            record.setConfigJson("{\"description\":\""+text+"\"}");record.setCredentialEncrypted(encrypted);
+            record.setCreatedAt(instant);record.setUpdatedAt(instant);em.persist(record);em.flush();em.clear();
+            var stored=em.find(com.aistareco.aep.service.materialvideo.VideoAssetLibraryRecord.class,"PG-Library");
+            assertThat(stored.getConfigJson()).isEqualTo(record.getConfigJson());
+            assertThat(stored.getCredentialEncrypted()).isEqualTo(encrypted);
+            assertThat(stored.getCreatedAt()).isEqualTo(instant);
+        });
+        var time=java.sql.Timestamp.from(instant);
+        jdbc.update("INSERT INTO video_asset_person(id,owner_user_id,library_id,name,status,token_encrypted,link_encrypted,callback_hash,agreement_version,agreement_text,expires_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "PG-Person","Exact-Owner","PG-Library","人物","verifying",encrypted,encrypted,"synthetic-hash","test-v1",text,time,time,time);
+        jdbc.update("INSERT INTO video_asset_portrait(id,owner_user_id,library_id,source_key,media_type,label,status,person_id,declared_at,declaration_text,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                "PG-Portrait","Exact-Owner","PG-Library","owned/Exact-Key.PNG","image","人像","needs_review","PG-Person",time,text,time,time);
+        assertThat(jdbc.queryForObject("SELECT token_encrypted FROM video_asset_person WHERE id='PG-Person'",String.class)).isEqualTo(encrypted);
+        assertThat(jdbc.queryForObject("SELECT agreement_text FROM video_asset_person WHERE id='PG-Person'",String.class)).isEqualTo(text);
+        assertThat(jdbc.queryForObject("SELECT expires_at FROM video_asset_person WHERE id='PG-Person'",java.sql.Timestamp.class).toInstant()).isEqualTo(instant);
+        assertThat(jdbc.queryForObject("SELECT declared_at FROM video_asset_portrait WHERE id='PG-Portrait'",java.sql.Timestamp.class).toInstant()).isEqualTo(instant);
+        assertThat(jdbc.queryForObject("SELECT source_key FROM video_asset_portrait WHERE id='PG-Portrait'",String.class)).isEqualTo("owned/Exact-Key.PNG");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM video_asset_portrait WHERE owner_user_id='exact-owner'",Integer.class)).isZero();
+        tx.executeWithoutResult(s->{
+            var endpoint=com.aistareco.aep.model.AiModelEndpoint.builder().id("pg-new-provider").name("Synthetic")
+                    .providerType(com.aistareco.aep.model.AiModelProviderType.CUSTOM).baseUrl("https://invalid.example")
+                    .upstreamApiKeyEncrypted(encrypted).assetLibraryId("PG-Library").chatReasoningEffort("high").build();
+            em.persist(endpoint);em.flush();em.clear();
+            assertThat(em.find(com.aistareco.aep.model.AiModelEndpoint.class,"pg-new-provider").getAssetLibraryId()).isEqualTo("PG-Library");
+        });
+        assertThat(jdbc.queryForObject("SELECT asset_library_id FROM ai_model_providers WHERE id='pg-new-provider'",String.class)).isEqualTo("PG-Library");
+        assertThat(jdbc.queryForObject("SELECT chat_reasoning_effort FROM ai_model_providers WHERE id='pg-new-provider'",String.class)).isEqualTo("high");
+        assets.remember("forget-on-pg","owned/forget.wav","synthetic-asset",instant);
+        assets.forget("forget-on-pg");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM material_video_input_asset WHERE id='forget-on-pg'",Integer.class)).isZero();
     }
     @Test void legacyStartupBackfillsPreserveImportedAuthorizationAndChannel() {
         jdbc.update("INSERT INTO aep_users(id,username,platforms,email_verified,phone_verified) VALUES(?,?,?,false,false)",

@@ -73,7 +73,7 @@ export function StudioStoryboard({ nodes, connections, selectedNodeId, changing,
       {(metadata?.status === 'loading' || metadata?.status === 'error') && metadata.content && <span role="status">{studioStoryboardStatus(node)}</span>}</div>;
   };
   return <div className="studio-storyboard">
-    {!selected && <div className="studio-storyboard-intro"><p>查看画布中的全部节点，点击继续创作。</p><div>
+    {!selected && <div className="studio-storyboard-intro"><p>点击节点继续创作。</p><div>
       {nodes.some(n => n.type === CanvasNodeType.Image && n.metadata?.studio?.shot) && <button type="button" onClick={onBatch}>连续制作镜头</button>}
       <button type="button" onClick={onCreateScript}><Plus size={16}/>新建剧本</button></div></div>}
     <div className={selected ? 'studio-storyboard-detail-layout' : 'studio-storyboard-columns'} data-expanded={visibleGroups.length === 1}>

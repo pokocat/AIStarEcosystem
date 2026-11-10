@@ -32,6 +32,10 @@ import java.util.regex.Pattern;
  */
 @Service
 public class StudioPlanExecutionService {
+    /** A text step whose model output could not be parsed; only the original text was kept. */
+    static final String RAW_ONLY_CODE="STUDIO_RAW_ONLY";
+    @org.springframework.beans.factory.annotation.Autowired
+    private StudioPlanQuoter quoter;
     private static final Logger log=LoggerFactory.getLogger(StudioPlanExecutionService.class);
     private static final Pattern REQUEST_ID=Pattern.compile("[A-Za-z0-9_-]{1,64}");
     private static final List<String> ACTIVE=List.of(IpPlanExecution.RUNNING,IpPlanExecution.PAUSED,IpPlanExecution.NEEDS_USER);
@@ -75,7 +79,7 @@ public class StudioPlanExecutionService {
     @Transactional
     public PlanExecution confirmNatural(String userId,String projectId,NaturalApproval approval) {
         if(approval==null||approval.clientRequestId()==null||!REQUEST_ID.matcher(approval.clientRequestId()).matches())
-            throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请求编号无效");
+            throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请求已失效，请刷新页面后重试");
         projects.requiredForUpdate(userId,projectId);
         // A repeated tool call with the same approval is a replay: the card is already approved, the result is the same.
         var replay=executions.findByOwnerUserIdAndClientRequestId(userId,approval.clientRequestId()).filter(x->projectId.equals(x.getProjectId())).orElse(null);
@@ -122,7 +126,7 @@ public class StudioPlanExecutionService {
         if(!StudioSkillRules.STAGES.contains(req.stage()))throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请先开始分析，再在同一次制作里确认制作阶段");
         // A production detached by a method switch (不锁方法) only finishes what it generates: it does not hold the canvas.
         var busy=executions.findByProjectIdAndStatusIn(projectId,ACTIVE).stream().filter(e->!detached(e)).toList();
-        if(!busy.isEmpty())throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PLAN_EXECUTION_BUSY","这张画布已经有一项连续制作在进行，请先结束它",
+        if(!busy.isEmpty())throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PLAN_EXECUTION_BUSY","这张画布已有进行中的连续制作，请先结束",
                 mapper.createObjectNode().put("executionId",busy.get(0).getId()));
         // A new execution starts in its skill's first stage: analysis for the reference-video skill, production for a
         // production-only skill (原创创作 has nothing to study first). Starting anywhere else is the old stage-order error.
@@ -176,35 +180,44 @@ public class StudioPlanExecutionService {
     @Transactional
     public PlanExecution startSegmented(String userId,String projectId,String clientRequestId,ObjectNode plan,ObjectNode segmented,List<String> materials,
                                         StudioSkillRules.Rules rules,long budgetCap,long autoFixCap,BillingSelection rawBilling,JsonNode identity) {
+        return startVideoTask(userId,projectId,clientRequestId,plan,segmented,null,materials,rules,budgetCap,autoFixCap,rawBilling,identity);
+    }
+
+    /** Scene-page authorization: the saved task owns the input and budget; no mounted canvas or dialogue is needed. */
+    @Transactional
+    public PlanExecution startVideoTask(String userId,String projectId,String clientRequestId,ObjectNode plan,ObjectNode segmented,ObjectNode videoTask,List<String> materials,
+                                        StudioSkillRules.Rules rules,long budgetCap,long autoFixCap,BillingSelection rawBilling,JsonNode identity) {
+        String stage=plan.path("stage").asText("production");
         String fingerprint=StudioPlanExecutionIds.sha256(canonical(identity).toString());
         BillingSelection billing=EnterpriseBillingService.normalize(rawBilling);
         projects.requiredForUpdate(userId,projectId);
         var prior=executions.findByOwnerUserIdAndClientRequestId(userId,clientRequestId).orElse(null);
         if(prior!=null) {
-            String stored=PlanState.parse(mapper,prior.getBudgetJson()).path("production").path("requestFingerprint").asText("");
+            String stored=PlanState.parse(mapper,prior.getBudgetJson()).path(stage).path("requestFingerprint").asText("");
             if(!projectId.equals(prior.getProjectId())||!fingerprint.equals(stored))throw changed();
             return toDto(prior);
         }
         var busy=executions.findByProjectIdAndStatusIn(projectId,ACTIVE).stream().filter(e->!detached(e)).toList();
-        if(!busy.isEmpty())throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PLAN_EXECUTION_BUSY","这张画布已经有一项连续制作在进行，请先结束它",
+        if(!busy.isEmpty())throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PLAN_EXECUTION_BUSY","这张画布已有进行中的连续制作，请先结束",
                 mapper.createObjectNode().put("executionId",busy.get(0).getId()));
         String id="PEX-"+UUID.randomUUID().toString().replace("-","").substring(0,20);
         String planRunId="SEG-"+UUID.randomUUID().toString().replace("-","").substring(0,20);
         Instant now=Instant.now();
         ObjectNode state=mapper.createObjectNode();
         state.set("skill",StudioSkillRules.snapshot(rules));
-        state.set("segmented",segmented);
+        if(segmented!=null)state.set("segmented",segmented);
+        if(videoTask!=null)state.set("videoTask",videoTask);
         ArrayNode canvas=state.putArray("canvasContextIds");
         materials.forEach(canvas::add);
         ArrayNode steps=state.putArray("steps");
         var loaded=new LoadedPlan(planRunId,plan,rules,materials,1,null);
-        appendSteps(steps,loaded,"production");
+        appendSteps(steps,loaded,stage);
         String planFingerprint=plan.path("fingerprint").asText();
-        var req=new PlanExecutionCreateRequest(clientRequestId,"production",planRunId,planFingerprint,null,budgetCap,autoFixCap,billing,null,1,null,null);
+        var req=new PlanExecutionCreateRequest(clientRequestId,stage,planRunId,planFingerprint,null,budgetCap,autoFixCap,billing,null,1,null,null);
         ObjectNode budget=mapper.createObjectNode();
-        budget.set("production",stageBudget(req,fingerprint,loaded,1,plan.path("budget").path("estimated").asLong(),now));
+        budget.set(stage,stageBudget(req,fingerprint,loaded,1,plan.path("budget").path("estimated").asLong(),now));
         var row=IpPlanExecution.builder().id(id).projectId(projectId).ownerUserId(userId).threadId(null)
-                .skillKey(rules.key()).skillVersion(rules.version()).stage("production")
+                .skillKey(rules.key()).skillVersion(rules.version()).stage(stage)
                 .planRunId(planRunId).planRevision(1).planFingerprint(planFingerprint)
                 .status(IpPlanExecution.RUNNING).stepsJson(write(state)).budgetJson(write(budget)).billingJson(write(billingSnapshot(userId,billing,now)))
                 .clientRequestId(clientRequestId).startedAt(now).deadlineAt(now.plus(StudioPlanExecutor.SEGMENTED_WINDOW))
@@ -212,6 +225,39 @@ public class StudioPlanExecutionService {
         executions.saveAndFlush(row);
         wakeAfterCommit(id);
         return toDto(row);
+    }
+
+    /** Advance a scene recreation under the one cap approved before analysis. Called under the executor row lock. */
+    void confirmVideoProduction(IpPlanExecution e,ObjectNode state,ObjectNode budget,String runId) {
+        var loaded=nativePlan(e.getOwnerUserId(),e.getProjectId(),runId);
+        if(loaded==null||!"production".equals(loaded.plan().path("stage").asText()))throw stale("没有可执行的制作安排，请在画布上查看分析结果");
+        ObjectNode plan=loaded.plan().deepCopy();
+        JsonNode config=state.path("videoTask").path("request").path("configuration");
+        int seconds=0;
+        for(JsonNode raw:plan.path("steps")) {
+            ObjectNode step=(ObjectNode)raw;step.put("execution","auto");
+            if("video".equals(step.path("operation").asText())) {
+                ObjectNode settings=(ObjectNode)step.path("settings");
+                if(config.hasNonNull("model"))settings.put("model",config.path("model").asText());
+                settings.put("aspectRatio",config.path("ratio").asText("9:16"));
+                ((ObjectNode)settings.path("video")).put("resolutionTier",config.path("tier").asText());
+                seconds+=settings.path("durationSec").asInt();
+            }
+        }
+        if(seconds==0||Math.abs(seconds-config.path("duration").asInt())>1)throw stale("分镜时长与本次设置不一致，请在画布上查看后调整");
+        quoter.quote(e.getOwnerUserId(),plan);
+        long spent=budget.path("analysis").path("spent").asLong();
+        long remaining=budget.path("analysis").path("approvedCap").asLong()-spent;
+        long quoted=plan.path("budget").path("estimated").asLong();
+        if(Math.multiplyExact(quoted,3)>remaining)throw stale("分析已完成，制作费用超出上限，请在画布上查看方案后调整");
+        var normalized=new LoadedPlan(runId,plan,loaded.rules(),loaded.contextNodeIds(),loaded.revision(),null);
+        appendSteps((ArrayNode)state.withArray("steps"),normalized,"production");
+        state.set("canvasContextIds",mapper.valueToTree(loaded.contextNodeIds()));
+        ((ObjectNode)budget.path("analysis")).put("approvedCap",spent).put("autoFixCap",0);
+        budget.putObject("production").put("approvedCap",remaining).put("autoFixCap",remaining-quoted).put("spent",0).put("inFlight",0)
+                .put("requestFingerprint",budget.path("analysis").path("requestFingerprint").asText());
+        e.setStage("production");e.setPlanRunId(runId);e.setPlanRevision(loaded.revision());
+        e.setPlanFingerprint(StudioPlanValidator.fingerprint(plan));e.setStatus(IpPlanExecution.RUNNING);state.remove("needsUserReason");
     }
 
     private PlanExecution confirmStage(String userId,String projectId,PlanExecutionCreateRequest req,String fingerprint,BillingSelection billing,boolean byMessage) {
@@ -225,7 +271,7 @@ public class StudioPlanExecutionService {
         }
         JsonNode fixed=PlanState.parse(mapper,e.getBillingJson());
         if(!fixed.path("mode").asText().equals(billing.mode())||!Objects.equals(fixed.path("enterpriseId").asText(null),billing.enterpriseId()))
-            throw new BusinessException(HttpStatus.CONFLICT,"BILLING_SELECTION_CONFLICT","付款账户与这次制作已确认的不一致；要换付款人，请结束这次制作后重新开始");
+            throw new BusinessException(HttpStatus.CONFLICT,"BILLING_SELECTION_CONFLICT","付款账户与本次制作已确认的不一致。如需更换付款账户，请结束本次制作后重新开始");
         if(!IpPlanExecution.active(e.getStatus()))throw stale("这次制作已结束，请重新开始");
         ObjectNode state=PlanState.parse(mapper,e.getStepsJson());
         Instant now=Instant.now();
@@ -236,7 +282,7 @@ public class StudioPlanExecutionService {
             // Same plan: only the approved cap moves (e.g. after a shortfall).
             ObjectNode current=(ObjectNode)budget.path(req.stage());
             long committed=current.path("spent").asLong()+current.path("inFlight").asLong();
-            if(req.budgetCap()<committed)throw BusinessException.badRequest("STUDIO_INPUT_INVALID","上限不能低于已花费和在途的 "+committed+" 积分");
+            if(req.budgetCap()<committed)throw BusinessException.badRequest("STUDIO_INPUT_INVALID","上限不能低于已花费和进行中的 "+committed+" 积分");
             Confirmation raise=confirm(userId,projectId,req,billing,null,byMessage);
             if(raise.threadId()!=null&&e.getThreadId()!=null&&!raise.threadId().equals(e.getThreadId()))throw stale("这条确认来自另一段对话");
             current.put("approvedCap",req.budgetCap()).put("autoFixCap",req.autoFixCap()).put("clientRequestId",req.clientRequestId())
@@ -455,10 +501,10 @@ public class StudioPlanExecutionService {
         boolean generating=e.getInFlight()>0||generating(state);
         if(!generating) {
             e.setStatus(IpPlanExecution.CANCELED);e.setFinishedAt(now);
-            state.put("needsUserReason","换成了另一种做法，这次制作到此结束；已经做好的留在画布上。").put("summaryPosted",true);
+            state.put("needsUserReason","已更换做法，本次制作结束。已完成的内容保留在画布上。").put("summaryPosted",true);
         } else {
             e.setStatus(IpPlanExecution.PAUSED);
-            state.put("needsUserReason","换成了另一种做法：已经在生成的会做完并放进画布，后面的步骤不再提交。");
+            state.put("needsUserReason","已更换做法：生成中的内容完成后会放进画布，后续步骤不再提交。");
             if(e.getThreadId()!=null)state.put("detachedThreadId",e.getThreadId());
             state.put("detachedAt",now.toString());
             e.setThreadId(null);
@@ -493,7 +539,7 @@ public class StudioPlanExecutionService {
 
     private PlanExecution control(String userId,String projectId,String executionId,PlanExecutionControlRequest req,String action) {
         if(req==null||req.clientRequestId()==null||req.clientRequestId().isBlank()||req.clientRequestId().length()>64)
-            throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请求编号无效");
+            throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请求已失效，请刷新页面后重试");
         projects.required(userId,projectId);
         var e=lockOwned(userId,projectId,executionId);
         ObjectNode budget=PlanState.parse(mapper,e.getBudgetJson());
@@ -508,25 +554,30 @@ public class StudioPlanExecutionService {
             case "pause" -> {
                 if(IpPlanExecution.PAUSED.equals(e.getStatus()))break;
                 if(!Set.of(IpPlanExecution.RUNNING,IpPlanExecution.NEEDS_USER).contains(e.getStatus()))throw stale("这次制作已结束，不能暂停");
-                e.setStatus(IpPlanExecution.PAUSED);state.put("needsUserReason","已暂停：不会再提交新的步骤，已受理的任务会继续完成和结算。");
+                e.setStatus(IpPlanExecution.PAUSED);state.put("needsUserReason","已暂停：不再提交新的步骤，已提交的任务会继续完成并结算。");
             }
             case "cancel" -> {
                 if(IpPlanExecution.CANCELED.equals(e.getStatus()))break;
                 if(!IpPlanExecution.active(e.getStatus()))throw stale("这次制作已结束");
                 e.setStatus(IpPlanExecution.CANCELED);e.setFinishedAt(now);unbindThreadAfterCommit(e.getThreadId(),e.getId());
-                state.put("needsUserReason","已停止：不会再提交新的步骤；还在排队的任务会取消，已交给生成引擎的任务按原链完成和结算。");
+                state.put("needsUserReason","已停止：不再提交新的步骤。排队中的任务将取消，已提交的任务会继续完成并结算。");
             }
             case "resume" -> {
                 if(IpPlanExecution.RUNNING.equals(e.getStatus()))break;
                 if(!Set.of(IpPlanExecution.PAUSED,IpPlanExecution.NEEDS_USER).contains(e.getStatus()))throw stale("这次制作已结束，不能继续");
-                if("analysis".equals(e.getStage())&&stageFinished(state,"analysis"))throw stale("分析已经完成，请确认制作方案和预算后开始制作");
+                if("analysis".equals(e.getStage())&&stageFinished(state,"analysis")&&!state.has("videoTask"))throw stale("分析已经完成，请确认制作方案和预算后开始制作");
                 skills.requireActive(e.getSkillKey());
                 ObjectNode next=state.deepCopy();
+                if(next.has("videoTask"))adoptVideoRepairs(userId,projectId,e,next);
                 if(!added.isEmpty())addMaterials(userId,projectId,next,e.getStage(),added);
                 for(JsonNode raw:PlanState.stageSteps(next,e.getStage())) {
                     ObjectNode step=(ObjectNode)raw;
                     switch(step.path("status").asText()) {
-                        case "needs_user" -> {step.put("status","pending").put("confirmed",true);step.remove("reason");}
+                        case "needs_user" -> {
+                            // 解析不了的原文留着也没用：重新发一次（新请求编号），否则下一轮又读回同一条，点继续等于没点。
+                            if(next.has("videoTask")&&RAW_ONLY_CODE.equals(step.path("errorCode").asText()))StudioSegmentedRun.again(step);
+                            else {step.put("status","pending").put("confirmed",true);step.remove("reason");}
+                        }
                         // Only the user's explicit continue starts a new attempt (new request identity).
                         case "failed" -> {
                             // Named objects the user did not add are left out of the next plan (StudioPlanExecutor#compile).
@@ -563,6 +614,43 @@ public class StudioPlanExecutionService {
      * 「加入这次制作，重新编排」: only objects a stopped step of this stage named outside the materials and still on the
      * canvas, and the materials stay within the request cap. Nothing else widens an execution's materials.
      */
+    /** Explicit continue can adopt a successful repair on the same canvas node; browsing alone never does this. */
+    private void adoptVideoRepairs(String userId,String projectId,IpPlanExecution e,ObjectNode state) {
+        JsonNode doc=projects.readDoc(projects.required(userId,projectId));
+        for(JsonNode raw:PlanState.stageSteps(state,e.getStage())) {
+            ObjectNode step=(ObjectNode)raw;
+            if(!Set.of("failed","needs_user").contains(step.path("status").asText()))continue;
+            String nodeId=StudioPlanExecutionIds.stepNodeId(e.getId(),step);
+            JsonNode node=com.aistareco.aep.ipstudio.service.IpDocs.node(doc,nodeId);
+            String repaired=node==null?null:node.path("metadata").path("studio").path("runId").asText(null);
+            var nativeRun=repaired==null?null:projects.ownedRun(userId,projectId,repaired).filter(r->nodeId.equals(r.getNodeId())&&"done".equals(r.getStatus())).orElse(null);
+            if(nativeRun!=null) {
+                var dto=projects.toRunDto(nativeRun);
+                if(dto.output()!=null&&!dto.output().path("rawOnly").asBoolean(false)) {
+                    boolean present=false;for(JsonNode old:step.path("runIds"))present|=repaired.equals(old.asText());
+                    if(!present)step.withArray("runIds").add(repaired);
+                    step.put("acceptedRunId",repaired).put("status","done");step.remove(List.of("reason","errorCode","notBefore"));
+                    continue;
+                }
+            }
+            String code=step.path("errorCode").asText("");
+            // A receipt we never got is settled as failed and refunded (docs/runbooks/model-task-alerts.md), and the user may
+            // retry it. 2026-11-07: this refused every such retry, 7 times in 40 minutes while the image supplier was down, with
+            // a request to confirm a task that had already ended. Only a task still in progress must not get a second attempt.
+            if((code.contains("UNKNOWN")||code.contains("RECONCILIATION"))&&stepStillRunning(userId,projectId,step))
+                throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"STUDIO_PLAN_STEP_RUNNING","这一步正在生成，请等待完成后重试。");
+            if(step.path("attempt").asInt(1)>=3)throw stale("此步骤已尝试 3 次，请在画布上修复后继续生成");
+        }
+    }
+
+    private boolean stepStillRunning(String userId,String projectId,JsonNode step) {
+        for(JsonNode id:step.path("runIds")) {
+            var run=projects.ownedRun(userId,projectId,id.asText()).orElse(null);
+            if(run!=null&&!Set.of("done","failed").contains(projects.toRunDto(run).status()))return true;
+        }
+        return false;
+    }
+
     private void addMaterials(String userId,String projectId,ObjectNode state,String stage,List<String> added) {
         Set<String> named=new HashSet<>();
         for(JsonNode step:PlanState.stageSteps(state,stage))
@@ -720,7 +808,7 @@ public class StudioPlanExecutionService {
             if(!allowed.contains(step.path("operation").asText()))
                 throw BusinessException.wrapped(HttpStatus.BAD_REQUEST,"STUDIO_SKILL_OPERATION_NOT_ALLOWED","这份方案还没准备好，我会按你要做的内容重新整理。",
                         "plan step operation "+step.path("operation").asText()+" not allowed in "+loaded.rules().key()+"/"+stage);
-            if(!step.path("quotedCost").canConvertToLong())throw stale("计划还没有服务端报价，暂时不能确认");
+            if(!step.path("quotedCost").canConvertToLong())throw stale("计划尚未报价，暂时无法确认");
         }
         return loaded;
     }
@@ -754,7 +842,7 @@ public class StudioPlanExecutionService {
         long shortfall=spent+inFlight+quoted-cap;
         var details=new ObjectMapper().createObjectNode().put("stage",stage).put("spent",spent).put("inFlight",inFlight)
                 .put("quotedCost",quoted).put("approvedCap",cap).put("shortfall",shortfall);
-        return new BusinessException(HttpStatus.PAYMENT_REQUIRED,"STUDIO_PLAN_BUDGET_EXCEEDED","预算不够，还差 "+shortfall+" 积分。可以追加预算或缩小计划后再继续",details);
+        return new BusinessException(HttpStatus.PAYMENT_REQUIRED,"STUDIO_PLAN_BUDGET_EXCEEDED","预算不足，还差 "+shortfall+" 积分。请追加预算或缩小计划后继续",details);
     }
 
     private void appendSteps(ArrayNode steps,LoadedPlan loaded,String stage) {
@@ -830,7 +918,7 @@ public class StudioPlanExecutionService {
     }
 
     private void validate(PlanExecutionCreateRequest req) {
-        if(req==null||req.clientRequestId()==null||!REQUEST_ID.matcher(req.clientRequestId()).matches())throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请求编号无效");
+        if(req==null||req.clientRequestId()==null||!REQUEST_ID.matcher(req.clientRequestId()).matches())throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请求已失效，请刷新页面后重试");
         if(!StudioSkillRules.STAGES.contains(req.stage()))throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请选择分析或制作阶段");
         for(String value:Arrays.asList(req.planRunId(),req.planFingerprint()))
             if(value==null||value.isBlank()||value.length()>64)throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请选择要执行的计划");
@@ -889,7 +977,7 @@ public class StudioPlanExecutionService {
                     depends,step.path("status").asText(),runIds,step.path("attempt").asInt(1),step.path("quotedCost").asLong(),
                     step.hasNonNull("maxCost")?step.path("maxCost").asLong():null,step.path("acceptedRunId").asText(null),
                     step.hasNonNull("acceptedCandidateIndex")?step.path("acceptedCandidateIndex").asInt():null,
-                    StudioPlanExecutionIds.stepNodeId(e.getId(),step),step.path("reason").asText(null),materials(step)));
+                    StudioPlanExecutionIds.stepNodeId(e.getId(),step),step.path("reason").asText(null),materials(step),step.path("errorCode").asText(null)));
         }
         List<PlanExecutionBudget> budgets=new ArrayList<>();
         for(String stage:List.of("analysis","production")) {
@@ -925,5 +1013,5 @@ public class StudioPlanExecutionService {
     private String write(Object value){try{return mapper.writeValueAsString(value);}catch(Exception e){throw new IllegalStateException(e);}}
     static BusinessException notFound(){return new BusinessException(HttpStatus.NOT_FOUND,"STUDIO_PLAN_EXECUTION_NOT_FOUND","这次连续制作不存在或已删除");}
     static BusinessException stale(String message){return new BusinessException(HttpStatus.CONFLICT,"STUDIO_PLAN_STALE",message);}
-    static BusinessException changed(){return new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","同一请求的内容已改变，请刷新后重新提交");}
+    static BusinessException changed(){return new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","请求已失效，请刷新页面后重试");}
 }

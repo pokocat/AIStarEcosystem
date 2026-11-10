@@ -23,7 +23,7 @@ const instance={source:{version:1,name:'pack'},project:{name:'my character',doc:
 let state:StudioTemplateExecution;
 afterEach(cleanup);
 beforeEach(()=>{vi.clearAllMocks();state={versionId:'v1',version:1,complete:false,steps:[{id:'main',nodeId:'m',title:'main',outputRole:'main',status:'ready',requiresAdoption:true,cost:8,accepted:false},{id:'side',nodeId:'s',title:'side',outputRole:'side',status:'waiting_dependency',requiresAdoption:false,cost:8,accepted:false}]};vi.mocked(api.readTemplateInstance).mockResolvedValue(instance);vi.mocked(api.readTemplateExecution).mockImplementation(async()=>state);});
-async function open(){render(<StudioTemplateSource projectId="p"/>);await waitFor(()=>expect(screen.getByRole('button',{name:'模板 v1 · 制作计划'})).toBeDefined());fireEvent.click(screen.getByRole('button',{name:'模板 v1 · 制作计划'}));await waitFor(()=>expect(screen.getByText('main · 可以生成')).toBeDefined());}
+async function open(){render(<StudioTemplateSource projectId="p"/>);await waitFor(()=>expect(screen.getByRole('button',{name:'模板 v1 · 制作计划'})).toBeDefined());fireEvent.click(screen.getByRole('button',{name:'模板 v1 · 制作计划'}));await waitFor(()=>expect(screen.getByText('main · 待生成')).toBeDefined());}
 test('opening a saved template canvas recovers its completed result while the plan stays closed',async()=>{
   state={...state,steps:[{...state.steps[0],status:'done',accepted:true,storageKey:'owned/main.png',run:{id:'original-run',status:'done'} as any}]};
   render(<StudioTemplateSource projectId="p"/>);
@@ -32,26 +32,32 @@ test('opening a saved template canvas recovers its completed result while the pl
   expect(api.executeTemplateStep).not.toHaveBeenCalled();
 });
 test('unconfirmed dependencies are disabled and a fresh quote is required before native submission',async()=>{
-  await open();expect(screen.getAllByRole('button',{name:'生成此步骤 · 8 积分'})[1].disabled).toBe(true);expect(api.executeTemplateStep).not.toHaveBeenCalled();
-  state={...state,steps:[{...state.steps[0],cost:10},state.steps[1]]};fireEvent.click(screen.getAllByRole('button',{name:'生成此步骤 · 8 积分'})[0]);
-  await waitFor(()=>expect(screen.getByRole('button',{name:'确认 10 积分并提交'})).toBeDefined());expect(api.executeTemplateStep).not.toHaveBeenCalled();
-  vi.mocked(api.executeTemplateStep).mockResolvedValue({id:'run'} as any);fireEvent.click(screen.getByRole('button',{name:'确认 10 积分并提交'}));await waitFor(()=>expect(api.executeTemplateStep).toHaveBeenCalled());
+  await open();expect(screen.getAllByRole('button',{name:'生成图片 · 8 积分'})[1].disabled).toBe(true);expect(api.executeTemplateStep).not.toHaveBeenCalled();
+  state={...state,steps:[{...state.steps[0],cost:10},state.steps[1]]};fireEvent.click(screen.getAllByRole('button',{name:'生成图片 · 8 积分'})[0]);
+  await waitFor(()=>expect(screen.getByRole('button',{name:'确认生成 · 10 积分'})).toBeDefined());expect(api.executeTemplateStep).not.toHaveBeenCalled();
+  vi.mocked(api.executeTemplateStep).mockResolvedValue({id:'run'} as any);fireEvent.click(screen.getByRole('button',{name:'确认生成 · 10 积分'}));await waitFor(()=>expect(api.executeTemplateStep).toHaveBeenCalled());
   expect(api.executeTemplateStep).toHaveBeenCalledWith('p','main',{clientRequestId:expect.any(String),maxCost:10,replaceRunId:undefined,prompt:'main instruction'});
 });
 test('an uncertain submit retains its request id for a recovery click',async()=>{
-  await open();vi.mocked(api.executeTemplateStep).mockRejectedValue(new Error('网络暂不可用'));fireEvent.click(screen.getAllByRole('button',{name:'生成此步骤 · 8 积分'})[0]);await waitFor(()=>expect(screen.getByRole('button',{name:'确认 8 积分并提交'})).toBeDefined());
-  fireEvent.click(screen.getByRole('button',{name:'确认 8 积分并提交'}));await waitFor(()=>expect(screen.getAllByText('网络暂不可用').length).toBeGreaterThan(0));const first=vi.mocked(api.executeTemplateStep).mock.calls[0][2];
-  expect((screen.getByRole('textbox',{name:'本次图片指令'}) as HTMLTextAreaElement).disabled).toBe(true);
+  await open();vi.mocked(api.executeTemplateStep).mockRejectedValue(new Error('网络暂不可用'));fireEvent.click(screen.getAllByRole('button',{name:'生成图片 · 8 积分'})[0]);await waitFor(()=>expect(screen.getByRole('button',{name:'确认生成 · 8 积分'})).toBeDefined());
+  fireEvent.click(screen.getByRole('button',{name:'确认生成 · 8 积分'}));await waitFor(()=>expect(screen.getAllByText('网络暂不可用').length).toBeGreaterThan(0));const first=vi.mocked(api.executeTemplateStep).mock.calls[0][2];
+  expect((screen.getByRole('textbox',{name:'本次图片提示词'}) as HTMLTextAreaElement).disabled).toBe(true);
   // 报错文字在测试的通知根里渲染（studio-notification-harness 是另一个 render），可能比组件解除「提交中」先出来；
   // 按钮还在 loading（这里的 antd 替身把它画成 disabled）时点击会被吞掉。2026-10-30 CI（#143）就挂在这里，所以先等按钮恢复再点。
-  await waitFor(()=>expect((screen.getByRole('button',{name:'确认 8 积分并提交'}) as HTMLButtonElement).disabled).toBe(false));
-  fireEvent.click(screen.getByRole('button',{name:'确认 8 积分并提交'}));await waitFor(()=>expect(api.executeTemplateStep).toHaveBeenCalledTimes(2));expect(vi.mocked(api.executeTemplateStep).mock.calls[1][2]).toEqual(first);
+  await waitFor(()=>expect((screen.getByRole('button',{name:'确认生成 · 8 积分'}) as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(screen.getByRole('button',{name:'确认生成 · 8 积分'}));await waitFor(()=>expect(api.executeTemplateStep).toHaveBeenCalledTimes(2));expect(vi.mocked(api.executeTemplateStep).mock.calls[1][2]).toEqual(first);
 });
 test('video results preview and adopt as videos, with no character archive or image-package entry',async()=>{
   state={...state,steps:[{id:'video',nodeId:'v',title:'商品视频',operation:'video',outputRole:'video',status:'waiting_adoption',requiresAdoption:true,cost:20,accepted:false,storageKey:'own/video.mp4',url:'video-url',run:{id:'video-run',status:'done',inputs:{prompt:'video direction'}} as any}]};
+  // 模板说明先返回、制作计划后返回时，入口已经出现，但视频还没有加载。CI 上不能依赖两次请求恰好同帧完成。
+  let release!:(result:StudioTemplateExecution)=>void;
+  const pending=new Promise<StudioTemplateExecution>(resolve=>{release=resolve;});
+  vi.mocked(api.readTemplateExecution).mockReturnValue(pending);
   vi.mocked(api.readTemplateInstance).mockResolvedValue({...instance,plan:{...instance.plan,imageCount:0,videoCount:1,totalCost:20}});
   render(<StudioTemplateSource projectId="p"/>);await waitFor(()=>expect(screen.getByRole('button',{name:'模板 v1 · 制作计划'})).toBeDefined());fireEvent.click(screen.getByRole('button',{name:'模板 v1 · 制作计划'}));
-  expect(screen.getByLabelText('商品视频结果').tagName).toBe('VIDEO');expect(screen.queryByRole('button',{name:'归档到 IP'})).toBeNull();expect((screen.getByRole('button',{name:'排版并下载资产包'}) as HTMLButtonElement).disabled).toBe(true);expect((screen.getByRole('button',{name:'整理成片'}) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.queryByLabelText('商品视频结果')).toBeNull();
+  void Promise.resolve().then(()=>release(state));
+  expect((await screen.findByLabelText('商品视频结果')).tagName).toBe('VIDEO');expect(screen.queryByRole('button',{name:'归档到 IP'})).toBeNull();expect((screen.getByRole('button',{name:'排版并下载资产包'}) as HTMLButtonElement).disabled).toBe(true);expect((screen.getByRole('button',{name:'整理成片'}) as HTMLButtonElement).disabled).toBe(true);
   vi.mocked(api.acceptTemplateStep).mockResolvedValue({...state,steps:[{...state.steps[0],status:'done',accepted:true}]});fireEvent.click(screen.getByRole('button',{name:'采用此视频'}));
   await waitFor(()=>expect(api.acceptTemplateStep).toHaveBeenCalledWith('p','video',{runId:'video-run',storageKey:'own/video.mp4',accepted:true}));expect(api.executeTemplateStep).not.toHaveBeenCalled();
   await waitFor(()=>expect((screen.getByRole('button',{name:'整理成片'}) as HTMLButtonElement).disabled).toBe(false));

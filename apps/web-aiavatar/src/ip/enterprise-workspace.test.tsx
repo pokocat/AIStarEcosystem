@@ -121,7 +121,7 @@ test("a recharge requester can read own applications without team financial acce
   fireEvent.click(await screen.findByRole("button", { name: "我的充值申请" }));
   expect(api.recharges).toHaveBeenCalledWith("enterprise", 0, 20);
   expect(api.wallet).not.toHaveBeenCalled();
-  expect(screen.getByText("这里仅展示你发起的申请，核准后积分进入企业待分配余额。")).toBeDefined();
+  expect(screen.getByRole("heading", { name: "我的充值申请" })).toBeDefined();
 });
 
 test("recharge application reports pending processing and reloads authoritative data", async () => {
@@ -148,7 +148,7 @@ test("refresh preserves the complete old snapshot on failure and never mixes ent
   api.mine.mockResolvedValue([{ ...ownerContext, enterprise: { id: "new-team", name: "另一家企业" } }]);
   api.wallet.mockRejectedValueOnce(new Error("余额刷新失败"));
   fireEvent.click(screen.getByRole("button", { name: "刷新企业数据" }));
-  await screen.findByText(/数据刷新失败，当前显示上次读取的内容/);
+  await screen.findByText(/余额刷新失败/);
   expect(screen.getByText("创作企业 · 主账号")).toBeDefined();
   expect(screen.queryByText("另一家企业 · 主账号")).toBeNull();
   expect(screen.getByText("张三")).toBeDefined();

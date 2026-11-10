@@ -23,13 +23,33 @@ class SourceTemporalPostgresIT {
                 .applySetting("hibernate.auto_quote_keyword",true)
                 .applySetting("hibernate.physical_naming_strategy","org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy").build();
             Instant instant=Instant.parse("2026-01-02T03:04:05.123456Z");var result=new TreeMap<String,String>();
-            try(var factory=new MetadataSources(registry).addAnnotatedClass(ClipTemplate.class).addAnnotatedClass(DramaCharacter.class).buildMetadata().buildSessionFactory()) {
+            try(var factory=new MetadataSources(registry).addAnnotatedClass(ClipTemplate.class).addAnnotatedClass(DramaCharacter.class).addAnnotatedClass(com.aistareco.aep.service.materialvideo.VideoAssetLibraryRecord.class).buildMetadata().buildSessionFactory()) {
                 try(var session=factory.openSession()) {
                     var tx=session.beginTransaction();session.persist(ClipTemplate.builder().id("clock-instant").name("Synthetic").industry("test").themeKey("test").description("test").scriptSkeletonJson(Map.of("synthetic",true)).createdAt(instant).build());
+                    var library=new com.aistareco.aep.service.materialvideo.VideoAssetLibraryRecord();
+                    library.setId("clock-library");library.setName("Synthetic");library.setAdapter("ark");library.setConfigJson("{}");library.setCreatedAt(instant);library.setUpdatedAt(instant);session.persist(library);
                     session.persist(DramaCharacter.builder().id("clock-offset").projectId("synthetic").ownerUserId("synthetic").createdAt(instant.atOffset(ZoneOffset.ofHours(8))).build());tx.commit();
                     session.clear();assertThat(session.find(ClipTemplate.class,"clock-instant").getCreatedAt()).isEqualTo(instant);
                     assertThat(session.find(DramaCharacter.class,"clock-offset").getCreatedAt().toInstant()).isEqualTo(instant);
                     session.doWork(c->{
+                        try(var statement=c.createStatement();var rs=statement.executeQuery("select created_at from video_asset_library")) {
+                            rs.next();assertThat(LocalDateTime.parse(rs.getString(1).replace(' ','T')).toInstant(ZoneOffset.UTC)).isEqualTo(instant);
+                            result.put("video_asset_library.created_at","UTC");result.put("video_asset_library.updated_at","UTC");
+                        }
+                        // MySQL TIMESTAMP values are serialized by the exporter after SET time_zone=UTC.
+                        // Unlike DATETIME, the text changes with the SQL session timezone.
+                        try(var statement=c.createStatement()) {
+                            statement.execute("CREATE TEMPORARY TABLE portrait_export_clock(created_at TIMESTAMP NOT NULL)");
+                            statement.execute("SET SESSION time_zone='+08:00'");
+                            statement.execute("INSERT INTO portrait_export_clock VALUES('2026-01-02 11:04:05')");
+                            statement.execute("SET SESSION time_zone='+00:00'");
+                            try(var rs=statement.executeQuery("SELECT created_at FROM portrait_export_clock")) {
+                                rs.next();assertThat(LocalDateTime.parse(rs.getString(1).replace(' ','T')).toInstant(ZoneOffset.UTC)).isEqualTo(instant.truncatedTo(java.time.temporal.ChronoUnit.SECONDS));
+                            }
+                            result.put("video_asset_person_and_portrait.timestamp_export","UTC");
+                            statement.execute("SET SESSION time_zone='+08:00'");
+                        }
+
                         for(var item:Map.of("java.time.Instant","clip_template","java.time.OffsetDateTime","drama_character").entrySet()) {
                             try(var statement=c.createStatement();var rs=statement.executeQuery("select created_at from "+item.getValue())) {
                                 rs.next();String raw=rs.getString(1);LocalDateTime wall=LocalDateTime.parse(raw.replace(' ','T'));

@@ -252,6 +252,7 @@ public final class StudioPlanValidator {
                         .put("videoModel",text(raw.path("videoModel"),64,true,label+"视频模型"));
             }
             case "image" -> {
+                preserveModel(out,raw,null,label);
                 out.put("count",count(raw.path("count"),label));
                 // Skills speak in 画幅 (「海报 9:16」), so an image step carries aspectRatio like a video step; size stays an
                 // exact pixel override. A ratio written into size (「size: "9:16"」, real model 2026-10-20) is read as the
@@ -277,6 +278,7 @@ public final class StudioPlanValidator {
             case "video" -> {
                 JsonNode video=raw.path("video");
                 if(!video.isObject())invalid(label+"缺少视频参数");
+                preserveModel(out,raw,video,label);
                 // Storage keys are bound through referenceBindings; the model can never name a key directly.
                 var settings=out.putObject("video").put("mode",text(video.path("mode"),32,true,label+"视频模式"))
                         .put("resolutionTier",text(video.path("resolutionTier"),32,true,label+"清晰度"));
@@ -322,6 +324,18 @@ public final class StudioPlanValidator {
                 if("none".equals(audio))invalid(label+"暂不支持去掉音轨的合成，请保留片段声音或使用原片音轨");
                 if(!Set.of("generated","source-audio").contains(audio))invalid(label+"的音频处理方式不正确");
                 out.put("audioStrategy",audio);
+                // 成片上的字幕（爆款复刻：原片靠字幕讲的内容，合成时加上，不让视频模型画字）。时间按成片算，不重叠。
+                if(raw.hasNonNull("captions")) {
+                    JsonNode captions=raw.path("captions");
+                    if(!captions.isArray()||captions.size()>60)invalid(label+"的字幕最多 60 条");
+                    var list=out.putArray("captions");double last=0;
+                    for(JsonNode c:captions) {
+                        double start=c.path("start").asDouble(Double.NaN),end=c.path("end").asDouble(Double.NaN);
+                        if(!Double.isFinite(start)||!Double.isFinite(end)||start<last-1e-6||end<=start||end>600)invalid(label+"的字幕时间不正确");
+                        list.addObject().put("start",start).put("end",end).put("text",text(c.path("text"),160,true,label+"字幕"));
+                        last=end;
+                    }
+                }
             }
             case "text" -> {
                 String purpose=raw.path("purpose").asText("");
@@ -342,6 +356,20 @@ public final class StudioPlanValidator {
             default -> throw BusinessException.badRequest("STUDIO_SKILL_OPERATION_NOT_ALLOWED",label+"的操作不在当前阶段允许的范围内");
         }
         return out;
+    }
+
+    /** One model field for quoting and execution. Real planners also place it inside video{} (2026-11-09).
+     * Never discard an explicit choice and silently price the default model instead. Endpoint availability and
+     * resolution/mode limits remain owned by the existing scene policy and video contract services. */
+    private static void preserveModel(ObjectNode out,JsonNode raw,JsonNode video,String label) {
+        String model=optionalModel(raw.path("model"),label);
+        String nested=video==null?null:optionalModel(video.path("model"),label);
+        if(model!=null&&nested!=null&&!model.equals(nested))invalid(label+"的视频模型设置不一致，请重新选择");
+        if(model!=null||nested!=null)out.put("model",model!=null?model:nested);
+    }
+    private static String optionalModel(JsonNode value,String label) {
+        if(value.isMissingNode()||value.isNull())return null;
+        return text(value,64,true,label+"模型").strip();
     }
 
     private static ArrayNode bindings(JsonNode raw,Set<String> roles,Set<String> allowed,Map<String,String> earlier,Set<String> dependencies,String label) {

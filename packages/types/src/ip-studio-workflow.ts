@@ -1,5 +1,8 @@
+import type { StudioTakeChange } from "./ip-studio-scenes";
 import type { EnterpriseBillingSelection } from "./enterprise";
 import type { VideoStudioMode, VideoStudioReferenceInput } from "./video-studio";
+/** Optional model-generated script follow-ups; limits count Unicode code points. */
+export interface StudioScriptSuggestion { label: string; instruction: string }
 /** Unified Studio operations. IpRun remains the single execution record. */
 export interface StudioVideoSettings {
   mode: VideoStudioMode;
@@ -37,8 +40,8 @@ export interface StudioProductionApproach {
 export interface StudioStepReferenceBinding { stepId?: string; nodeId?: string; role: "character" | "scene" | "product" | "frame" | "clip" | "reference-image" | "reference-video" | "reference-audio"; order: number }
 export type StudioSkillStepSettings =
   | { operation: "recreation"; sourceNodeId: string; mode: "segments"; maxSegmentSec: number | "model"; videoModel: string }
-  | { operation: "image"; size?: string; aspectRatio?: string; count: 1 | 2 | 4; referenceBindings: StudioStepReferenceBinding[] }
-  | { operation: "video"; video: StudioVideoSettings; durationSec: number; aspectRatio: string; count: 1 | 2 | 4; referenceBindings: StudioStepReferenceBinding[] }
+  | { operation: "image"; model?: string; size?: string; aspectRatio?: string; count: 1 | 2 | 4; referenceBindings: StudioStepReferenceBinding[] }
+  | { operation: "video"; model?: string; video: StudioVideoSettings; durationSec: number; aspectRatio: string; count: 1 | 2 | 4; referenceBindings: StudioStepReferenceBinding[] }
   | { operation: "check"; targetStepId: string; targetRunId?: string; candidateIndex?: number; checkIds: string[] }
   | { operation: "assemble"; clipOrder: { stepId: string; runId?: string; candidateIndex?: number }[]; audioStrategy: "generated" | "source-audio" | "none" }
   | { operation: "text"; purpose: "script" | "prompt-revision" | "plan-compile" | "note"; editTarget?: { nodeId: string; field: "content" | "prompt" | "script"; snapshot: string } };
@@ -139,7 +142,23 @@ export interface StudioRunRequest {
   scene?: import('./ip-studio-scenes').StudioSceneComposeRequest;
 }
 
-export interface StudioPackaging { brand?:string;title?:string;cta?:string;captions?:{start:number;end:number;text:string}[];voiceoverStorageKey?:string }
+export type StudioQuality = "720p" | "1080p";
+/** auto = 合成时自动生成；manual = 用户自己填写时间和文字；off = 不加。 */
+export type StudioCaptionMode = "auto" | "manual" | "off";
+export interface StudioPackaging {
+  brand?:string;title?:string;cta?:string;captions?:{start:number;end:number;text:string}[];voiceoverStorageKey?:string;
+  /** 合成阶段自动生成字幕（手写的 captions 优先）。 */
+  autoCaptions?:boolean;
+  /** 背景音乐，说话时自动压低。 */
+  musicStorageKey?:string;
+  /** 缺省跟随片段。 */
+  quality?:StudioQuality;
+}
+/**
+ * 合成结果带回来的字幕。status：recognized = 时间来自语音识别；estimated = 有台词，时间按镜头估算；manual = 手写；
+ * no_lines = 没有台词；no_speech = 没听到人声；unavailable = 语音识别不可用，这次没加。
+ */
+export interface StudioCaptionResult { status:"recognized"|"estimated"|"manual"|"no_lines"|"no_speech"|"unavailable"; cues:{start:number;end:number;text:string}[] }
 /** Editable work settings live in the canvas document, separately from accepted requests. */
 export interface StudioWorkDraft {
   aspectRatio: string;
@@ -149,6 +168,10 @@ export interface StudioWorkDraft {
   cta: string;
   captionText: string;
   voiceoverStorageKey?: string;
+  /** 老画布没有这个字段：填过字幕的按手写，其余按自动（见 studioCaptionMode）。 */
+  captionMode?: StudioCaptionMode;
+  musicStorageKey?: string;
+  quality?: StudioQuality;
   /** 高级编辑（Twick）的工程；有它时成片以它为准。素材只存 storageKey，打开时再取。 */
   advanced?: StudioAdvancedEdit;
 }
@@ -157,6 +180,12 @@ export interface StudioAdvancedEdit {
   engine: "twick";
   savedAt: string;
   project: { tracks: unknown[]; version: number; [key: string]: unknown };
+  /** 这份工程的画面尺寸（元素坐标都按它算）；2026-11-07 之前的工程没有，是 720 档。 */
+  size?: { width: number; height: number };
+  /** 时间线上没有字幕时，导出时自动生成。 */
+  autoCaptions?: boolean;
+  /** 背景音乐：循环铺满全片，人物说话时自动压低，和一键成片同一套处理。 */
+  musicStorageKey?: string;
 }
 /**
  * 交给服务端合成的剪辑清单（由高级编辑的工程转出来，时间单位秒）。
@@ -169,9 +198,20 @@ export interface StudioEditTimeline {
   audios: StudioEditMedia[];
   texts: StudioEditText[];
   captions: StudioEditCaption[];
+  /** 画中画和贴图。 */
+  overlays?: StudioEditOverlay[];
+  /** 时间线上没有字幕时，导出时自动生成。 */
+  autoCaptions?: boolean;
+  /** 背景音乐：循环铺满全片，人物说话时自动压低，和一键成片同一套处理。 */
+  musicStorageKey?: string;
 }
-/** start / end 是在成片里的位置；from 是从素材的第几秒开始取；volume 0–2。 */
-export interface StudioEditMedia { storageKey: string; start: number; end: number; from: number; volume: number }
+/**
+ * start / end 是在成片里的位置；from 是从素材的第几秒开始取；volume 0–2。
+ * speed 播放速度（缺省 1）；fadeIn / fadeOut 开头、结尾淡入淡出的秒数；look 调色预设（saturated | bright | black_white | warm | cool）。
+ */
+export interface StudioEditMedia { storageKey: string; start: number; end: number; from: number; volume: number; speed?: number; fadeIn?: number; fadeOut?: number; look?: string }
+/** 画中画（video）或贴图（image）：x / y 是相对画面中心的偏移（像素），width / height 是显示尺寸。 */
+export interface StudioEditOverlay { kind: "video" | "image"; storageKey: string; start: number; end: number; from?: number; x: number; y: number; width: number; height: number; volume?: number; speed?: number }
 /** x / y 是相对画面中心的偏移（像素）；color 为 #RRGGBB。 */
 export interface StudioEditText { text: string; start: number; end: number; x: number; y: number; fontSize: number; color: string }
 export interface StudioEditCaption { text: string; start: number; end: number }
@@ -201,6 +241,8 @@ export interface StudioCapabilities {
   videoCost: number | null;
   imageModelMode?: "fixed" | "selectable";
   textModelMode?: "fixed" | "selectable";
+  /** 语音识别已开通：自动字幕能从声音生成。没开通时一键成片合成前就说明。 */
+  captionRecognition?: boolean;
   textModels?: { endpointId: string; name: string; isDefault: boolean; supportsVision?: boolean; supportsTools?: boolean; supportsStreaming?: boolean; creditCost?: number; tokenPricing?:StudioTokenPricing; dialogueTokenPricing?:StudioTokenPricing }[];
 }
 export interface StudioAdoptRequest {
@@ -256,6 +298,10 @@ export interface StudioNodeMetadata {
   task?: { status: "running" | "done" | "failed"; stage: string; pct: number; errorCode?: string; errorMessage?: string; logId?: string;
     queue?: import('./ai-model-concurrency').AiGenerationQueuePosition | null };
   workDraft?: StudioWorkDraft;
+  /** 合成时自动生成的字幕：结果说明用它，打开高级编辑时放到时间线上。 */
+  captions?: StudioCaptionResult;
+  /** 成片节点：提交导出的时间，用来在「已导出的成片」里分清哪条最新。 */
+  exportedAt?: string;
   speechDraft?: Omit<StudioSpeechRequest,'clientRequestId'|'nodeId'|'maxCost'>;
   /**
    * Settings the assistant wrote for this image / video draft (create_nodes / update_nodes): what the user said in the
@@ -271,6 +317,11 @@ export interface StudioNodeMetadata {
     video: { mode: VideoStudioMode; tier: string; seed?: number; firstId?: string; lastId?: string } };
   sourceRange?: {startSec:number;endSec:number;storageKey:string};
   /**
+   * AI 视频页按脚本出的视频：编辑框里的完整脚本。发给模型的 request.prompt 是从它挑出来的
+   * （apps/web-aiavatar/src/ip/scenes/scene-script-layers.ts，去掉只给人看的段落）；「修改后生成」放回的是它。没挑过时不写。
+   */
+  sceneScript?: string;
+  /**
    * AI 视频页「编导」的一轮（docs/studio-scene-creation.md §8）：用户这句话（没写就是空串）、是不是在改上一版，
    * 以及写这版脚本时的时长 / 画面 / 语言。脚本正文就是节点 content，任务和计费是这个节点上普通的文字任务。
    */
@@ -278,7 +329,14 @@ export interface StudioNodeMetadata {
     /** 写这一版时选的场景选项（出镜方式、语气…）：改稿沿用它，不回到默认值。2026-10-30 之前写的版本没有。 */
     options?: Record<string, string>;
     /** 写这一版时按哪个视频模型、交给它哪几张图（文件 key，按图1、图2 的顺序）写的：出片时换了就提示让编导按新的改一版。 */
-    videoModel?: string; refs?: string[] };
+    videoModel?: string; refs?: string[];
+    /** Suggestions from this reply only: at most 3, label <=8, instruction <=80 code points. */
+    suggestions?: StudioScriptSuggestion[] };
+  /**
+   * AI 视频页「视频裂变」给某条任务（of = 任务编号）找的变量（kind=variables，正文是变量清单）或 AI 改写的一版脚本（kind=rewrite，正文是脚本）。
+   * 和编导的版本分开放，不出现在编导那一页；batch 是同一次操作的编号，每次重新写换一个。
+   */
+  sceneTake?: { of: string; kind: "variables" | "rewrite"; batch: string; at: string; index?: number; total?: number; changes?: StudioTakeChange[] };
   /** AI 图片页这一次出图用的条件（场景、补充要求、改过的描述、选项、模型和规格；参考图看请求里的 references）。「用这次的设置再做」按它放回，不把拼好的整段话当描述。 */
   sceneImage?: { sceneId: string; supplement: string; custom?: string; options: Record<string, string>; model?: string; ratio: string; size?: string; count: number; refCounts?: number[] };
   recreation?: { mode?:"segments"; document?:boolean; materializedSegmentNos?:number[]; materializedAudioSourceKey?:string; resumeRunId?:string; study?:StudioFilmStudy; materializedRunId?:string; sourceNodeId: string; sourceStorageKey: string; sourceTitle: string; report?: StudioRecreationReport };
@@ -293,11 +351,13 @@ export interface StudioNodeMetadata {
   /** Display projection of the latest native check run on this node. */
   check?: StudioCheckResult;
   speechRequest?: StudioSpeechRequest;
+  /** 上传时就说明白的用途：music 只出现在背景音乐的选择里，不进「人物声音」。 */
+  audioRole?: "music";
   voiceProfile?: StudioVoiceProfile;
   lipSyncRequest?: StudioLipSyncRequest;
   lipSyncNormalized?: boolean;
   /** 智能优化的结果有提示（或没优化成），等用户选用优化稿还是原文生成；再次生成后清掉。 */
-  promptReview?: { runId: string; failed?: boolean; message?: string; /** 当时的生成输入（studioVideoInputKey）：卡片上的文字、素材、时长、画幅、模型变了就不再显示这次的选择 */ inputKey?: string } & Partial<StudioVideoPromptOptimization>;
+  promptReview?: { runId: string; failed?: boolean; message?: string; /** 模型回了内容但不是优化稿（如回复看不到素材）：text 是它的原话，不能当优化稿发给视频模型。 */ notRewritten?: boolean; /** 当时的生成输入（studioVideoInputKey）：卡片上的文字、素材、时长、画幅、模型变了就不再显示这次的选择 */ inputKey?: string } & Partial<StudioVideoPromptOptimization>;
   /** 上次是在「用优化稿 / 用原文」里选的（请求里没有 rewrite）：智能优化开关仍算开着。 */
   promptChoice?: "optimized" | "original";
   settings?: StudioScriptSettings;
@@ -530,7 +590,7 @@ export type StudioPlanExecutionStepStatus = "pending" | "submitted" | "running" 
 export interface StudioPlanExecutionStep { id: string; title: string; operation: StudioPlanOperation; stage: StudioPlanStage; dependsOn: string[]; status: StudioPlanExecutionStepStatus;
   runIds: string[]; attempt: number; quotedCost: number; maxCost?: number; acceptedRunId?: string; acceptedCandidateIndex?: number;
   /** The canvas node this step's result goes to: the prepared object it was bound to at confirmation, else its own output node. */
-  nodeId?: string; reason?: string;
+  nodeId?: string; reason?: string; errorCode?: string;
   /** A stopped plan-compile step: canvas objects its plan used that this execution does not carry (the user adds them or re-plans without). */
   materials?: StudioPlanExecutionMaterial[] }
 /** A canvas object a stopped step named outside the execution's materials; `onCanvas: false` once it was deleted. */
@@ -563,7 +623,7 @@ export interface StudioSegmentedVideoRequest {
   budgetCap: number; billing?: EnterpriseBillingSelection;
 }
 /** 按钮旁的价。cap 比 estimated 多的是分镜图不合格时重出一次的余量；textCost 是脚本、审核和提示词优化的冻结上限，按实际用量结算。 */
-export interface StudioSegmentedVideoPrice { segments: number[]; boards: number; boardReview: boolean; videoCost: number; boardCost: number; textCost: number; estimated: number; cap: number }
+export interface StudioSegmentedVideoPrice { segments: number[]; boards: number; boardReview: boolean; videoCost: number; boardCost: number; textCost: number; estimated: number; cap: number; discountedVideoCost?: number | null; videoDiscountName?: string | null }
 /** 草稿里记的一条长视频。先记下请求再提交；没有 executionId 说明提交结果没确认，同一个请求编号再交一次会拿回原来那次。 */
 export interface StudioSceneSegmentedRecord { clientRequestId: string; at: string; title: string; request: StudioSegmentedVideoRequest; executionId?: string }
 

@@ -27,6 +27,15 @@
 脚本不操作 Studio 的产品库、开通或积分。Studio 前端与后端配置见
 [`apps/web-aiavatar/README.md`](../apps/web-aiavatar/README.md#studio-统一登录2026-10-10)。
 
+## IP Studio 账号区可选开关（2026-11-09，默认都关）
+
+| 变量 | 默认 | 作用 |
+|---|---|---|
+| `AEP_IPSTUDIO_STORAGE_ENFORCE`（`aep.ipstudio.storage-enforce`） | `false` | 上传前按账号存储上限检查，超出返回 402 `STORAGE_QUOTA_EXCEEDED`；生成不拦。打开前先在后台配 `storage.quota_mb.aiavatar` 和存储空间套餐。 |
+| `AEP_IPSTUDIO_TRASH_RETENTION_DAYS`（`aep.ipstudio.trash-retention-days`） | `0` | 画布、导演台作品在回收站保留的天数，到期每天 04:20 自动彻底删除（只删画布 / 作品本身，生成记录和文件保留）；0 = 不自动清理。 |
+
+不配置就是现有行为。规则见 `specs/BUSINESS_RULES.md`「账号区任务历史、存储用量与画布回收站」。
+
 ## `clip` 军师预发隔离实例（2026-08-11）
 
 军师「快出片」预发不复用 AIStar 生产实例：`aistareco-clip-preprod` 仅监听 `127.0.0.1:8081`，工作目录 `/opt/aistareco-clip-preprod/server`，运行时机密在 `/etc/aistareco/clip-preprod.env`（0600）。军师预发 BFF 从同机 `http://127.0.0.1:8081` 回源；公网只通过 `wxapi.aibuzz.cn/clip_preprod/cdn/` 与 `/files/` 读取作品，不公开 AIStar API。
@@ -858,3 +867,7 @@ AIStar运行镜像必须同时固定官方Java与Node镜像digest；Studio仿片
 容器路径与本地文件：源环境已有AEP_STUDIO_RECREATION_MEDIA_BIN=/opt/ai-star-eco/hypit-runtime/bin，不能原样继承到镜像；新模板明确使用/usr/bin，并固定Node=/usr/local/bin/node。FileStorageService实际配置键是AEP_STORAGE_LOCAL_DIR，挂载/app/work为UID10001可写；AEP_FILE_STORAGE_ROOT不是有效替代。源file-storage约4GB，保留完整预同步副本并校验，正式停写后补增量；不能仅因已接OSS而假定本地目录可删除。预同步不是冻结数据，禁止据此清理旧服务文件。
 
 迁移文件中转只能使用独立私有Bucket，先以无敏感信息的canary验证匿名Range GET为403；仅设置object private ACL不足以证明Bucket策略未放行。禁止把数据库导出、文件归档或含业务信息的中转包放入现有公开素材Bucket。分发OCI归档时校验归档SHA256、配置摘要和RootFS摘要；Podman导出重新压缩可能改变引擎显示的manifest digest，不能据此跳过内容校验。
+
+## GPT Image 渠道配置发布（2026-11-09）
+
+`scripts/switch-gpt-images-superaitoken.py` 在生产主机运行，默认只读计划；通过 stdin 接收 `{"apiKey":"..."}`，不把 Key 放进参数、仓库或环境模板。`--apply --backup-dir <新的私有绝对目录>` 才执行：拉取当前 Key 的模型目录、确认对应型号、备份原端点（Key 仅保留原密文）、按签名 `endpointSave` 逐条保存并回读核验，核对场景售价配置未变。先合入 main 并部署支持新下载规则的 server，再切换配置；前端无需重建。备份目录的 `rollback.sql` 仅恢复受影响端点的名称、地址、型号、密文 Key 和图片规格，不修改用户作品、售价或账本。发布前避免覆盖运行中的同路径计划与备份目录，回滚后回读端点及场景配置。

@@ -17,6 +17,27 @@ describe('linked canvas creation and inputs',()=>{
     expect(withStudioLinkedText('推进镜头','video',nodes,[])).toBe('推进镜头');
     expect(withStudioLinkedText('改编','video',nodes,edges,'story')).toBe('改编');
   });
+  it('does not quote text the prompt already contains, ignoring whitespace',()=>{
+    const script='第1镜：博主停下。\n博主说：「这股香味。」';
+    const text={...source,id:'story',type:CanvasNodeType.Text,title:'视频脚本',metadata:{content:script}};
+    const other={...source,id:'notes',type:CanvasNodeType.Text,title:'卖点',metadata:{content:'才9块9一斤'}};
+    const twin={...source,id:'twin',type:CanvasNodeType.Text,title:'脚本副本',metadata:{content:script}};
+    const edge=(from:string)=>({id:from,fromNodeId:from,toNodeId:'video'});
+    expect(withStudioLinkedText(script,'video',[text],[edge('story')])).toBe(script);
+    expect(withStudioLinkedText(script.replace('\n','\n\n'),'video',[text],[edge('story')])).toBe(script.replace('\n','\n\n'));
+    expect(withStudioLinkedText(script,'video',[text,other],[edge('story'),edge('notes')])).toBe(`${script}\n\n【引用文本：卖点】\n才9块9一斤`);
+    expect(withStudioLinkedText('推进镜头','video',[text,twin],[edge('story'),edge('twin')])).toBe(`推进镜头\n\n【引用文本：视频脚本】\n${script}`);
+  });
+  it('a linked six-part director script sends only the parts about the picture when making a video (2026-11-10)',()=>{
+    const script='一、剧情概述：宝妈试用。\n五、镜头时间轴：\n第1镜（0–4 秒）这一镜的作用：截停\n宝妈说：「三秒卸干净。」';
+    const text={...source,id:'story',type:CanvasNodeType.Text,title:'视频脚本',metadata:{content:script}};
+    const edges=[{id:'e',fromNodeId:'story',toNodeId:'video'}];
+    expect(withStudioLinkedText('照脚本拍','video',[text],edges,undefined,true)).toBe('照脚本拍\n\n【引用文本：视频脚本】\n第1镜（0–4 秒）\n宝妈说：「三秒卸干净。」');
+    // 出图、写文字仍引用全文；认不出六段结构的文字出视频也原样引用。
+    expect(withStudioLinkedText('照脚本拍','video',[text],edges)).toBe(`照脚本拍\n\n【引用文本：视频脚本】\n${script}`);
+    const plain={...text,metadata:{content:'第1镜：博主停下。'}};
+    expect(withStudioLinkedText('拍','video',[plain],edges,undefined,true)).toBe('拍\n\n【引用文本：视频脚本】\n第1镜：博主停下。');
+  });
   it('expands the resources of a linked group without duplicating a separately linked member',()=>{
     const group={...source,id:'group',type:CanvasNodeType.Group},member={...source,metadata:{...source.metadata,groupId:'group'}};
     expect(studioLinkedNodes('video',[group,member],[{id:'group-edge',fromNodeId:'group',toNodeId:'video'},{id:'member-edge',fromNodeId:'source',toNodeId:'video'}])).toEqual([member]);
@@ -27,9 +48,9 @@ it('checks missing template inputs only on the connected generation, and reads c
   const image={...source,metadata:{studio:{kind:'shot' as const,templateInput:{required:true,label:'商品参考'}}}};
   const text={...source,id:'brief',type:CanvasNodeType.Text,metadata:{studio:{kind:'script' as const,templateInput:{required:true,label:'创作要求'},scriptEditor:{draft:'',turns:[]}}}};
   const edges=[{id:'i',fromNodeId:image.id,toNodeId:'target'},{id:'t',fromNodeId:text.id,toNodeId:'target'}];
-  expect(studioLinkedInputError('target',[image,text],edges)).toBe('请先为「商品参考」添加或生成图片');
+  expect(studioLinkedInputError('target',[image,text],edges)).toBe('请为「商品参考」添加或生成图片');
   image.metadata={...image.metadata,storageKey:'my-product'} as any;
-  expect(studioLinkedInputError('target',[image,text],edges)).toBe('请先填写「创作要求」');
+  expect(studioLinkedInputError('target',[image,text],edges)).toBe('请填写「创作要求」');
   text.metadata.studio.scriptEditor.draft='新的商品卖点';
   expect(studioLinkedInputError('target',[image,text],edges)).toBeUndefined();
   expect(withStudioLinkedText('展示商品','target',[image,text],edges)).toContain('新的商品卖点');
@@ -46,5 +67,5 @@ it('an optional image slot stays out of the way while empty and counts once it h
   expect(studioLinkedNodes('target',[filled,target],edges).map(n=>n.id)).toEqual(['slot']);
   // The same empty slot without the optional mark is a required input, as before.
   const required={...slot,metadata:{status:'idle'}};
-  expect(studioLinkedInputError('target',[required,target],edges)).toBe('请先为「我的商品图」添加或生成图片');
+  expect(studioLinkedInputError('target',[required,target],edges)).toBe('请为「我的商品图」添加或生成图片');
 });

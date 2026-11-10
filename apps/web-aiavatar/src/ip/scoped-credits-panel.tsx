@@ -27,7 +27,7 @@ function ScopedCreditsBody({ enterpriseId }: { enterpriseId?: string }) {
     ModelBillingApi.myGrants({ enterpriseId, page, size: 10 }).then(result => {
       if (!current) return;
       setRows(result.data); setHasNext(result.pagination.hasNext);
-    }).catch(() => { if (current) setError("暂时读不到模型赠款，请重试。"); })
+    }).catch(() => { if (current) setError("模型赠款加载失败，请稍后刷新重试。"); })
       .finally(() => { if (current) setLoading(false); });
     return () => { current = false; };
   }, [enterpriseId, page, refresh]);
@@ -39,7 +39,7 @@ function ScopedCreditsBody({ enterpriseId }: { enterpriseId?: string }) {
       <button type="button" className="ip-brand-secondary is-compact" disabled={loading} onClick={() => setRefresh(value => value + 1)}><RefreshCw size={13} aria-hidden="true" className={loading ? "ip-loading-icon" : undefined} />刷新</button>
     </div>
     <p style={{ color: "var(--ink-3, #666)", fontSize: 12, margin: "8px 0 14px" }}>仅用于指定模型，单独抵扣，不计入上方通用积分。</p>
-    {loading ? <p role="status">正在读取额度…</p> : error ? <p role="alert">{error}</p> : rows.length === 0 ? <p style={{ color: "var(--ink-3, #666)", fontSize: 13 }}>还没有模型赠款。</p> :
+    {loading ? <p role="status">正在加载额度…</p> : error ? <p role="alert">{error}</p> : rows.length === 0 ? <p style={{ color: "var(--ink-3, #666)", fontSize: 13 }}>还没有模型赠款。</p> :
       <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
         {rows.map(grant => {
           const expired = Date.parse(grant.expiresAt) <= Date.now();

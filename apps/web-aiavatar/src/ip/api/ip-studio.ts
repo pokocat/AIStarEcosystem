@@ -1,3 +1,4 @@
+import { observePortraitReviews } from '../portrait-review-events';
 import { prepareImageForUpload } from '@ai-star-eco/api-client/image-upload';
 import { legacyImageBillingDetails, withStudioBilling, invalidateStudioModelQuote } from "@/canvas-bridge/studio-billing";
 // ─────────────────────────────────────────────────────────────────────────────
@@ -100,7 +101,7 @@ export async function createProject(payload: IpCreateProjectRequest): Promise<Ip
 export async function getProject(id: string): Promise<IpProject> {
   if (USE_MOCK) {
     const project = mockStore().projects.get(id);
-    if (!project) throw new Error("这张画布不存在，或者已经删了");
+    if (!project) throw new Error("画布不存在或已删除");
     // 样例三的「离开期间已做完」要在首次打开画布时就能恢复产物：先让对话 mock 登记那次制作的 run，
     // 再把项目（含 runs）交给工作台；否则要等打开创作助手才会 seed（Codex 复验 R2-03）。
     if (id === MOCK_CLOSED_EXECUTION_PROJECT_ID) (await import("@/ip/mocks/studio-dialogue")).mockEnsureClosedProjectSeeded(id);
@@ -112,13 +113,13 @@ export async function getProject(id: string): Promise<IpProject> {
 export async function updateProject(id: string, payload: IpUpdateProjectRequest): Promise<IpProject> {
   if (USE_MOCK) {
     const project = mockStore().projects.get(id);
-    if (!project) throw new Error("这张画布不存在，或者已经删了");
+    if (!project) throw new Error("画布不存在或已删除");
     if (payload.coverStorageKey !== undefined) {
       const images = project.doc.nodes.filter(n => n.type === "image").flatMap(n => [
         { storageKey: n.metadata?.storageKey, content: n.metadata?.url || n.metadata?.content }, ...(n.metadata?.images || []),
       ]);
       const image = payload.coverStorageKey ? images.find(i => i.storageKey === payload.coverStorageKey) : images[0];
-      if (payload.coverStorageKey && !image) throw new Error("请选择这张画布中的图片");
+      if (payload.coverStorageKey && !image) throw new Error("请选择此画布中的图片");
       project.coverUrl = image?.content;
     }
     if (payload.name !== undefined) project.name = payload.name;
@@ -144,7 +145,7 @@ export async function runNode(id: string, nodeId: string, doc?: IpProjectDoc): P
   if (USE_MOCK) {
     const project = mockStore().projects.get(id);
     const effective = doc ?? project?.doc;
-    if (!effective) throw new Error("这张画布不存在，或者已经删了");
+    if (!effective) throw new Error("画布不存在或已删除");
     return mockDelay(mockStartRun(id, nodeId, effective), 220);
   }
   const details = await legacyImageBillingDetails(doc, nodeId);
@@ -155,7 +156,7 @@ export async function runNode(id: string, nodeId: string, doc?: IpProjectDoc): P
 
 export async function getRun(id: string): Promise<IpRun> {
   if (USE_MOCK) return mockDelay(mockReadRun(id), 60);
-  return apiFetch<IpRun>(`/v1/ip-studio/runs/${id}`);
+  const run=await apiFetch<IpRun>(`/v1/ip-studio/runs/${id}`); observePortraitReviews(run.output?.assetReviews); return run;
 }
 
 export async function cancelRun(id: string): Promise<IpRun> {
@@ -177,11 +178,11 @@ export async function awaitRun(
 ): Promise<IpRun> {
   const deadline = Date.now() + POLL_TIMEOUT_MS;
   for (;;) {
-    if (opts?.signal?.aborted) throw new Error("已停止等待这次生成");
+    if (opts?.signal?.aborted) throw new Error("已停止等待本次生成");
     const run = await getRun(runId);
     onTick?.(run);
     if (run.status !== "running") return run;
-    if (Date.now() > deadline) throw new Error("等了 10 分钟还没出结果，先去做别的，回头再来看这张画布");
+    if (Date.now() > deadline) throw new Error("等待超过 10 分钟仍未完成，可稍后打开此画布查看结果");
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
   }
 }
@@ -191,8 +192,8 @@ export async function awaitRun(
 export async function publishProject(id: string, payload: IpPublishRequest): Promise<IpPublishResult> {
   if (USE_MOCK) {
     const project = mockStore().projects.get(id);
-    if (!project) throw new Error("这张画布不存在，或者已经删了");
-    if (project.status === "published") throw new Error("这张画布已经发布过了");
+    if (!project) throw new Error("画布不存在或已删除");
+    if (project.status === "published") throw new Error("此画布已发布");
     const avatarId = `DH-${2100 + mockStore().projects.size}`;
     project.status = "published";
     project.publishedAvatarId = avatarId;
@@ -292,7 +293,7 @@ export async function fetchAssetBlob(storageKey: string): Promise<Blob> {
   const res = await fetch(assetContentUrl(storageKey), {
     headers: getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {},
   });
-  if (!res.ok) throw new Error(`取素材失败 HTTP ${res.status}`);
+  if (!res.ok) throw new Error('素材加载失败，请重试。');
   return res.blob();
 }
 

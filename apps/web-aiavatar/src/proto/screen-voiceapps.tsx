@@ -137,7 +137,7 @@ function MVoice({ ctx }) {
           ? hMV('div', { style: { textAlign: 'center', padding: '36px 18px', border: '1.5px dashed var(--line-3)', borderRadius: 'var(--r-xl)', background: 'var(--surface)' } },
               hMV('div', { style: { width: 50, height: 50, borderRadius: 15, margin: '0 auto 13px', display: 'grid', placeItems: 'center', background: 'var(--primary-soft)', color: 'var(--primary)' } }, hMV(Icons.mic, { size: 23 })),
               hMV('div', { style: { fontSize: 14.5, fontWeight: 700, marginBottom: 5 } }, '还没有专属声线'),
-              hMV('p', { style: { fontSize: 12.5, color: 'var(--ink-3)', margin: '0 0 16px', lineHeight: 1.5 } }, '录 ' + 10 + ' 秒即可克隆你的声音'),
+              hMV('p', { style: { fontSize: 12.5, color: 'var(--ink-3)', margin: '0 0 16px', lineHeight: 1.5 } }, '录制 ' + 10 + ' 秒音频，克隆你的声音'),
               hMV(UI.Button, { variant: 'primary', icon: Icons.mic, onClick: () => ctx.go('voiceclone') }, '去克隆'))
           : hMV('div', { className: 'm-stagger', style: { display: 'flex', flexDirection: 'column', gap: 11 } },
               myVoices.map(v => hMV(VoiceRowM, { key: v.id, v, playing: playing === v.id, onPlay, chars })))));

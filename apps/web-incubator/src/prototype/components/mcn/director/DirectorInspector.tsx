@@ -1,5 +1,6 @@
 import React from 'react';
-import { Clapperboard, Film, Music, Trash2, Wand2 } from 'lucide-react';
+import { Clapperboard, Film, Music, Trash2, Wand2, Zap } from 'lucide-react';
+import { nodeCost } from './pricing';
 import type { Lang } from '../../../translations';
 import {
   CAMERA_MOVES, GENRES, KIND_META, MOODS, RATIOS, SHOT_SIZES, STYLES, VOICE_STYLES, fmtDuration, isGeneratable,
@@ -23,6 +24,8 @@ interface Props {
   onGenerate: (id: string) => void;
   onGenerateAll: () => void;
   onDelete: (id: string) => void;
+  /** Shots: open the AI 视频 / AI 图片 generator for this shot. */
+  onQuickGen?: (id: string) => void;
   className?: string;
 }
 
@@ -51,7 +54,7 @@ const Slider = ({ label, value, min, max, step = 1, color, format, onChange }: {
 );
 
 export const DirectorInspector = (props: Props) => {
-  const { lang, nodes, selected, mode, template, formats, deliverables, style, ratio, onToggleFormat, onStyle, onRatio, onChange, onGenerate, onGenerateAll, onDelete, className = '' } = props;
+  const { lang, nodes, selected, mode, template, formats, deliverables, style, ratio, onToggleFormat, onStyle, onRatio, onChange, onGenerate, onGenerateAll, onDelete, onQuickGen, className = '' } = props;
   const zh = lang === 'zh';
   const parts = nodes.filter(isGeneratable);
   const pending = parts.filter(n => n.status === 'idle').length;
@@ -90,7 +93,7 @@ export const DirectorInspector = (props: Props) => {
         )}
         <button type="button" onClick={onGenerateAll} disabled={!pending}
           className="w-full h-10 rounded-xl text-sm font-semibold inline-flex items-center justify-center gap-2 disabled:opacity-50"
-          style={{ background: 'linear-gradient(90deg, #06b6d4, #8b5cf6)', color: '#fff' }}>
+          style={{ background: 'linear-gradient(90deg, #0891b2, #7c3aed)', color: '#fff' }}>
           <Wand2 className="w-4 h-4" />{pending ? (zh ? `生成全部（${pending}）` : `Generate all (${pending})`) : (zh ? '全部内容已就绪' : 'Everything ready')}
         </button>
       </section>
@@ -152,8 +155,14 @@ export const DirectorInspector = (props: Props) => {
           <button type="button" onClick={() => onGenerate(selected.id)} disabled={selected.status === 'generating'}
             className="w-full h-10 rounded-xl text-sm font-semibold inline-flex items-center justify-center gap-2 disabled:opacity-60"
             style={{ background: meta.color, color: '#fff' }}>
-            <Wand2 className="w-4 h-4" />{regenLabel}
+            <Wand2 className="w-4 h-4" />{regenLabel}{nodeCost(selected) > 0 && selected.status !== 'generating' && <span className="text-xs font-normal" style={{ color: 'rgba(255,255,255,.75)' }}>⬡{nodeCost(selected)}</span>}
           </button>
+          {selected.kind === 'shot' && onQuickGen && (
+            <button type="button" onClick={() => onQuickGen(selected.id)} disabled={selected.status === 'generating'}
+              className="mt-2 w-full h-9 rounded-xl border border-gray-200 bg-white text-xs font-medium text-gray-700 hover:bg-gray-50 inline-flex items-center justify-center gap-1.5 disabled:opacity-60">
+              <Zap className="w-3.5 h-3.5 text-violet-600" />{zh ? '快速生成 · 挑场景出图或视频' : 'Quick gen · pick a scene'}
+            </button>
+          )}
         </div>
       )}
       {selected.kind === 'output' && (

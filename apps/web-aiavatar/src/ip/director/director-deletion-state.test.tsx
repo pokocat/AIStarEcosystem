@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { DirectorWork } from "@ai-star-eco/types";
-import { DirectorWorkbench } from "./director-workbench";
+import { DirectorWorkbench, StatusChip, nextStepShown } from "./director-workbench";
 import { DirectorApi } from "../api";
 
 const failure = vi.hoisted(() => ({ show: vi.fn() }));
@@ -15,6 +15,10 @@ vi.mock("./director-script", () => ({ DirectorScript: () => null }));
 vi.mock("./director-assets", () => ({ DirectorAssets: () => null }));
 vi.mock("./director-storyboard", () => ({ DirectorStoryboard: () => null }));
 vi.mock("./director-extract", () => ({ ExtractReview: () => null }));
+
+// 页面首次渲染后，把作品名同步进输入框的 effect 可能还没跑，排到输入之后执行就会把刚输入的名字改回去，失焦时当成没改、不保存。
+// CI 2026-11-07 失败时输入框是原名、patchWork 没被调用，据此判断，没有单独复现。真人来不及在这几毫秒里输入。
+const settleEffects = () => act(async () => {});
 
 function work(mode: "fixed" | "selectable" = "selectable"): DirectorWork {
   return {
@@ -50,6 +54,7 @@ test("when any request finds this work deleted, the page stops showing editable 
   const title = await screen.findByRole("textbox", { name: "作品名" });
   fireEvent.change(screen.getByRole("textbox", { name: "草稿" }), { target: { value: "没保存的正文" } });
   expect(hasDrafts("w:")).toBe(true);
+  await settleEffects();
   fireEvent.change(title, { target: { value: "改个名字" } });
   fireEvent.blur(title);
   expect(await screen.findByText("作品已删除或不存在")).toBeTruthy();
@@ -99,7 +104,7 @@ test("reloading a work that is still in the trash says so", async () => {
   vi.mocked(DirectorApi.getWork).mockRejectedValue(await gone("w"));
   render(<DirectorWorkbench id="w"/>);
   fireEvent.click(await screen.findByRole("button", { name: "重新加载" }));
-  expect(await screen.findByText(/还是找不到这部作品/)).toBeTruthy();
+  expect(await screen.findByText(/仍未找到此作品/)).toBeTruthy();
 });
 
 /** 同一部作品：新的读取先成功，更早发出的那次 404 后到 —— 不能把页面打回「已删除」，也不能清掉草稿。 */
@@ -135,6 +140,7 @@ test("a late 404 for the previous work leaves the current work editable and keep
     scopeToWork(id, new Promise<DirectorWork>((_resolve, reject) => { rejectOld = reject; }))));
   const oldPage = render(<DirectorWorkbench id="old"/>);
   const oldTitle = await screen.findByRole("textbox", { name: "作品名" });
+  await settleEffects();
   fireEvent.change(oldTitle, { target: { value: "保存旧作品" } });
   fireEvent.blur(oldTitle);
   await waitFor(() => expect(rejectOld).toBeTypeOf("function"));
@@ -159,6 +165,7 @@ test("a 404 that cannot be attributed to a work only shows its message", async (
   vi.mocked(DirectorApi.patchWork).mockRejectedValue(new ApiError({ code: "DIRECTOR_WORK_NOT_FOUND", message: "作品不存在" }, 404));
   render(<DirectorWorkbench id="w"/>);
   const title = await screen.findByRole("textbox", { name: "作品名" });
+  await settleEffects();
   fireEvent.change(title, { target: { value: "改个名字" } });
   fireEvent.blur(title);
   await waitFor(() => expect(failure.show).toHaveBeenCalled());
@@ -199,6 +206,7 @@ async function restoredScenario(id: string) {
   render(<><DirectorWorkbench id={id}/><DraftProbe/></>);
   const rename = async (to: string) => {
     const title = await screen.findByRole("textbox", { name: "作品名" });
+    await settleEffects();
     fireEvent.change(title, { target: { value: to } });
     fireEvent.blur(title);
     await waitFor(() => expect(pending.length).toBeGreaterThan(0));
@@ -236,4 +244,26 @@ test("after the restore, a new request that really gets 404 still marks the work
   await act(async () => { s.pending[0](s.notFound()); }); // 作品又被删了
   expect(await screen.findByText("作品已删除或不存在")).toBeTruthy();
   expect(hasDrafts("fresh-w:")).toBe(false);
+});
+
+// Status colors follow the semantic type, independently of the text content.
+test.each([
+  ["info", "is-next"],
+  ["warning", "is-warn"],
+  ["success", "is-success"],
+  ["running", "is-running"],
+] as const)("header feedback uses the %s style and preserves navigation/running behavior", (tone, className) => {
+  const onGo = vi.fn();
+  const step = { text: "状态说明", tone, tab: "assets" as const };
+  const { container } = render(<StatusChip step={step} tab="storyboard" onGo={onGo}/>);
+  const chip = container.querySelector(".director-status-chip")!;
+  expect(chip.classList.contains(className)).toBe(true);
+  expect(nextStepShown(step, "assets")).toBe(tone === "running");
+  if (tone === "running") {
+    expect(chip.getAttribute("role")).toBe("status");
+    expect(screen.queryByRole("button")).toBeNull();
+  } else {
+    fireEvent.click(screen.getByRole("button"));
+    expect(onGo).toHaveBeenCalledWith("assets");
+  }
 });

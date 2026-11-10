@@ -1,0 +1,102 @@
+{
+ "promptMaxChars": 16000,
+ "minReferenceImages": 0,
+ "maxReferenceImages": 14,
+ "referenceField": "multiple",
+ "outputs": [
+  {
+   "canvasSize": "2048x2048",
+   "aspectRatio": "1:1",
+   "providerFields": {
+    "size": "2048x2048",
+    "response_format": "url",
+    "watermark": false,
+    "sequential_image_generation": "disabled"
+   }
+  },
+  {
+   "canvasSize": "2560x1440",
+   "aspectRatio": "16:9",
+   "providerFields": {
+    "size": "2560x1440",
+    "response_format": "url",
+    "watermark": false,
+    "sequential_image_generation": "disabled"
+   }
+  },
+  {
+   "canvasSize": "1440x2560",
+   "aspectRatio": "9:16",
+   "providerFields": {
+    "size": "1440x2560",
+    "response_format": "url",
+    "watermark": false,
+    "sequential_image_generation": "disabled"
+   }
+  },
+  {
+   "canvasSize": "2304x1728",
+   "aspectRatio": "4:3",
+   "providerFields": {
+    "size": "2304x1728",
+    "response_format": "url",
+    "watermark": false,
+    "sequential_image_generation": "disabled"
+   }
+  },
+  {
+   "canvasSize": "1728x2304",
+   "aspectRatio": "3:4",
+   "providerFields": {
+    "size": "1728x2304",
+    "response_format": "url",
+    "watermark": false,
+    "sequential_image_generation": "disabled"
+   }
+  },
+  {
+   "canvasSize": "2496x1664",
+   "aspectRatio": "3:2",
+   "providerFields": {
+    "size": "2496x1664",
+    "response_format": "url",
+    "watermark": false,
+    "sequential_image_generation": "disabled"
+   }
+  },
+  {
+   "canvasSize": "1664x2496",
+   "aspectRatio": "2:3",
+   "providerFields": {
+    "size": "1664x2496",
+    "response_format": "url",
+    "watermark": false,
+    "sequential_image_generation": "disabled"
+   }
+  }
+ ],
+ "wire": {
+  "submitPath": "/images/generations",
+  "modelQueryParam": "",
+  "submitTemplate": {
+   "model": "${model}",
+   "prompt": "${prompt}",
+   "image": "${referenceUrls}"
+  },
+  "maxReferenceBytes": 10485760,
+  "maxOutputBytes": 67108864,
+  "requestTimeoutMillis": 300000,
+  "inputMode": "url",
+  "resultMode": "sync-url",
+  "outputPointer": "/data/0/url",
+  "outputHosts": [
+   "ark-content-generation-v2-cn-beijing.tos-cn-beijing.volces.com"
+  ],
+  "requireExactOutputSize": true
+ },
+ "batchCounts": [
+  1,
+  2,
+  4
+ ]
+}

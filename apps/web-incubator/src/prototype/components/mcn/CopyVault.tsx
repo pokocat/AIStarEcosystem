@@ -25,13 +25,13 @@ interface CopyItem {
 
 const MOCK_COPIES: CopyItem[] = [
   {
-    id: 'cp1', title: '宋一鸣×极速数码618主推文案-V3', type: 'script', partnerScope: '宋一鸣',
+    id: 'cp1', title: '沈亦舟×极速数码618主推文案-V3', type: 'script', partnerScope: '沈亦舟',
     content: '姐妹们，今天给大家带来一个我自己用了三个月的手机，性能真的绝了！618期间限时优惠，比官网便宜800元，而且还有赠品...',
     stage: 'approved', platformScope: ['DY', 'KS'], productScope: '极速数码旗舰手机X12',
     validFrom: '2025-06-01', validTo: '2025-07-31', version: 3, author: '运营小王', createdAt: '2025-05-20',
     comments: [
       { stage: '运营初审', author: '运营小王', text: '整体方向OK，已去掉极限词', time: '2025-05-21 14:30', passed: true },
-      { stage: '合作方复审', author: '宋一鸣团队', text: '口吻符合人设，无异议', time: '2025-05-22 10:00', passed: true },
+      { stage: '合作方复审', author: '沈亦舟团队', text: '口吻符合人设，无异议', time: '2025-05-22 10:00', passed: true },
       { stage: '法务终审', author: '法务张', text: '无违规用词，已通过', time: '2025-05-22 16:45', passed: true },
     ],
     riskFlags: [],
@@ -58,7 +58,7 @@ const MOCK_COPIES: CopyItem[] = [
     riskFlags: [],
   },
   {
-    id: 'cp4', title: '宋一鸣商品卖点文案-数码周', type: 'selling_point', partnerScope: '宋一鸣',
+    id: 'cp4', title: '沈亦舟商品卖点文案-数码周', type: 'selling_point', partnerScope: '沈亦舟',
     content: '全球首发！最强拍照旗舰！史上最低价！三重大礼包免费送！',
     stage: 'rejected', platformScope: ['DY'], productScope: '极速数码旗舰手机',
     validFrom: '2025-06-10', validTo: '2025-06-18', version: 1, author: '运营小赵', createdAt: '2025-06-05',

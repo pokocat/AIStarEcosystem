@@ -1,5 +1,5 @@
 /** Supplier operating information is not a customer error reason. Actual customer credit errors are preserved. */
-export const MODEL_SERVICE_UNAVAILABLE = '生成服务暂时不可用，请稍后再试或联系平台处理。';
+export const MODEL_SERVICE_UNAVAILABLE = '生成服务暂时不可用，请稍后重试。';
 const ACCOUNT = /余额|额度|配额|预扣|扣费|计费|费率|定价|成本|充值|单价|收费|账户权益|账户欠费|balance|quota|billing|credits?|pricing|payment|\b(?:costs?|budgets?|fees?|funds?)\b|insufficient[_ -]?funds|(?:USD|CNY|RMB|[¥￥$])\s*[0-9]/i;
 const PRIVATE = /预扣费|用户剩余额度|供应商.{0,12}(?:余额|额度|账户)|服务方.{0,12}(?:余额|额度|账户)|(?:api[_ -]?key|authorization|secret|credential)\s*[:=]|invalid api[ _-]?key|incorrect api[ _-]?key|鉴权失败|密钥无效|无可用渠道|no available channel|Bearer\s+|https?:\/\/|渠道.{0,12}(?:余额|额度|密钥)|Traceback|java\.[a-z]+\.|at com\./i;
 const CONTEXT = /上游|供应商|服务方|生成服务|模型服务|模型端|数字人服务|引擎|provider|upstream|channel/i;
@@ -33,7 +33,14 @@ function historicalModeration(message: string): string {
 }
 
 // Companion to PublicModelErrorPolicy.reworded: old records and canvas documents still hold these. Keep the two in step.
-const UNREADABLE = '生成服务未能完成这次请求，请稍后再试或换一个模型。';
+const UNREADABLE = '生成服务未能完成本次请求，请重试或更换模型。';
+const OLD_UNAVAILABLE = '生成服务暂时不可用，请稍后再试或联系平台处理。', OLD_UNREADABLE = '生成服务未能完成这次请求，请稍后再试或换一个模型。';
+// 模型在聊天而不是生成（2026-11-07：「我目前无法在此对话中直接生成图片，但可以帮你……」）；厂商接口的说法（「当前生图模式不接受参考图或蒙版，请使用图片编辑接口」）。用户都做不了什么。
+const CHAT_REPLY = /我目前|我无法|我不能|我可以|在此对话|帮你|帮您|\bI(?:'m| am) (?:sorry|unable)\b|\bI (?:can't|cannot)\b|\bas an ai\b/i;
+const SUPPLIER_LOGIC = /生图模式|蒙版|接口|入参|请求体|字段|继续查询|查询此任务|重复创建/;
+const IDENTIFIER = /^[A-Za-z0-9_.:-]+$/;
+// 旧记录的句子前面带着我们自己的错误码：VIDEO_MIRROR_FAILED：……
+const CODE_PREFIX = /^[A-Z][A-Z0-9_]{5,}[:：]/;
 const SUBMISSION_FAILED = '生成服务没有返回结果，这次生成失败。未完成部分的积分已退回，可以重新生成。';
 const TECHNICAL = /map\[|[{}]|幂等|idempot|\bapi\b|token plan|exception\b|\b(?:http|status)\s*[:=]?\s*\d{3}\b|\b[a-z]+_[a-z_]+\b/i;
 // 存下来的句子可能是我们自己写的中文（提到「API Key」「HTTP 404」都正常），只认绝不会是我们写的结构。
@@ -55,9 +62,10 @@ function reworded(message: string): string {
   if (body.startsWith('生成服务没有返回有效的任务信息')) return SUBMISSION_FAILED + suffix;
   const known = translated(body);
   if (known) return known + suffix;
-  const cleaned = body.replace(/[（(](?:上游 ?|HTTP )\d{3}[)）]/g, '').replace('被上游拒收', '被生成服务拒绝').replace('上游原因', '原因');
-  if (!/\p{Script=Han}/u.test(cleaned)) return TECHNICAL.test(cleaned) || NO_INFORMATION.test(cleaned) ? UNREADABLE + suffix : `${UNREADABLE.replace(/。$/, '')}（服务方提示：${cleaned}）${suffix}`;
-  if (DUMP.test(cleaned)) return UNREADABLE + suffix;
+  const cleaned = body.replace(/[（(](?:上游 ?|HTTP )\d{3}[)）]/g, '').replace('被上游拒收', '被生成服务拒绝').replace('上游原因', '原因')
+    .replace(OLD_UNAVAILABLE, MODEL_SERVICE_UNAVAILABLE).replace(OLD_UNREADABLE, UNREADABLE);
+  if (!/\p{Script=Han}/u.test(cleaned)) return TECHNICAL.test(cleaned) || NO_INFORMATION.test(cleaned) || IDENTIFIER.test(cleaned) || CHAT_REPLY.test(cleaned) || SUPPLIER_LOGIC.test(cleaned) ? UNREADABLE + suffix : `${UNREADABLE.replace(/。$/, '')}（服务方提示：${cleaned}）${suffix}`;
+  if (DUMP.test(cleaned) || CHAT_REPLY.test(cleaned) || SUPPLIER_LOGIC.test(cleaned)) return UNREADABLE + suffix;
   return cleaned === body ? message : cleaned + suffix;
 }
 
@@ -66,7 +74,7 @@ export function publicModelErrorMessage(message: string, code?: string): string 
   const privateAccount = !WALLET.test(code || '') && (COST.test(message) || (CODE.test(code || '') || CONTEXT.test(message)) && ACCOUNT.test(message));
   if (!PRIVATE.test(message) && !privateAccount) {
     const moderated = historicalModeration(message);
-    return !WALLET.test(code || '') && (CODE.test(code || '') || CONTEXT.test(moderated)) ? reworded(moderated) : moderated;
+    return !WALLET.test(code || '') && (CODE.test(code || '') || CONTEXT.test(moderated) || CODE_PREFIX.test(moderated)) ? reworded(moderated) : moderated;
   }
   const trace = message.match(TRACE)?.[1];
   return MODEL_SERVICE_UNAVAILABLE + (trace ? ` · 追查号 ${trace}` : '');

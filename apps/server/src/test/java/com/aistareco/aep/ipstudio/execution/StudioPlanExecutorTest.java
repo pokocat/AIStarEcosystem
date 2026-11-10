@@ -133,6 +133,59 @@ class StudioPlanExecutorTest {
     JsonNode step(String id) throws Exception {for(JsonNode s:state().path("steps"))if(id.equals(s.path("id").asText()))return s;return null;}
     JsonNode budget() throws Exception {return om.readTree(row.getBudgetJson()).path("production");}
 
+    private void videoPageRetries() throws Exception {
+        ObjectNode state=om.readValue(row.getStepsJson(),ObjectNode.class);state.putObject("videoTask").put("kind","direct");row.setStepsJson(state.toString());
+        var helper=new StudioSegmentedRun(new StudioPlanOutputs(runRepository,projects,om),om);
+        org.springframework.test.util.ReflectionTestUtils.setField(helper,"retryDelay",java.time.Duration.ZERO);
+        @SuppressWarnings("unchecked") ObjectProvider<StudioSegmentedRun> provider=mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(helper);when(provider.getObject()).thenReturn(helper);
+        org.springframework.test.util.ReflectionTestUtils.setField(executor,"segmented",provider);
+        onSubmit=request->"IPR-"+request.clientRequestId();
+    }
+
+    @Test void videoPageRetriesOnlyTheFailedStepThreeTimesAcrossWakes() throws Exception {
+        execution("running",300,videoStep("v1",40),videoStep("v2",40,"v1"));videoPageRetries();
+        for(int attempt=1;attempt<=3;attempt++) {
+            executor.advance("PEX-1");
+            assertEquals(attempt,submitted.size());
+            String id="IPR-"+submitted.get(attempt-1).clientRequestId();
+            dtos.put(id,dto(id,"failed",0,null));
+        }
+        executor.advance("PEX-1");executor.advance("PEX-1");
+        assertEquals(3,submitted.size());assertEquals("needs_user",row.getStatus());
+        assertEquals(3,step("v1").path("attempt").asInt());assertEquals("pending",step("v2").path("status").asText());
+        assertEquals(3,submitted.stream().map(RunRequest::clientRequestId).distinct().count());
+        assertTrue(om.readTree(row.getStepsJson()).path("needsUserReason").asText().contains("已尝试 3 次"));
+    }
+
+    @Test void videoPageUnreadableCheckDoesNotStopTheTask() throws Exception {
+        var video=videoStep("v1",40).put("status","done");((com.fasterxml.jackson.databind.node.ArrayNode)video.path("runIds")).add("IPR-v");
+        var check=checkStep("c1","v1",1).put("status","running");((com.fasterxml.jackson.databind.node.ArrayNode)check.path("runIds")).add("IPR-c");
+        execution("running",300,video,check);videoPageRetries();
+        dtos.put("IPR-v",dto("IPR-v","done",40,videoOutput("first.mp4")));
+        dtos.put("IPR-c",dto("IPR-c","done",1,om.createObjectNode().put("rawOnly",true).put("text","读不懂")));
+        executor.advance("PEX-1");
+        assertEquals("done",step("c1").path("status").asText());assertEquals("unknown",step("c1").path("checkStatus").asText());
+        assertNotEquals("needs_user",row.getStatus());
+    }
+
+    @Test void videoPageDoesNotRetryAnUnknownAcceptedResult() throws Exception {
+        execution("running",300,videoStep("v1",40));videoPageRetries();executor.advance("PEX-1");
+        String id="IPR-"+submitted.get(0).clientRequestId();
+        dtos.put(id,new IpRunDto(id,"p","n","studio-video","failed","failed",0,0,"VIDEO_SUBMISSION_UNKNOWN","结果暂未确认",om.createObjectNode(),om.createObjectNode(),Instant.now().toString(),null,null));
+        for(int i=0;i<4;i++)executor.advance("PEX-1");
+        assertEquals(1,submitted.size());assertEquals("needs_user",row.getStatus());assertEquals(1,step("v1").path("attempt").asInt());
+    }
+
+    @Test void videoPageKeepsSuccessfulPrerequisitesWhenTheNextStepRetries() throws Exception {
+        execution("running",300,videoStep("v1",40),videoStep("v2",40,"v1"));videoPageRetries();executor.advance("PEX-1");
+        String first="IPR-"+submitted.get(0).clientRequestId();dtos.put(first,dto(first,"done",40,videoOutput("first.mp4")));
+        executor.advance("PEX-1");
+        String second="IPR-"+submitted.get(1).clientRequestId();dtos.put(second,dto(second,"failed",0,null));executor.advance("PEX-1");
+        assertEquals(3,submitted.size());assertEquals("done",step("v1").path("status").asText());
+        assertEquals(1,submitted.stream().filter(r->r.nodeId().endsWith("v1")).count());assertEquals(40,budget().path("spent").asLong());
+    }
+
     @Test void retainedUnstructuredResultStopsDependentPaidSubmissions() throws Exception {
         execution("running",80,videoStep("v1",40),videoStep("v2",40,"v1"));
         executor.advance("PEX-1");

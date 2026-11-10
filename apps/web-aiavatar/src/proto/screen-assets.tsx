@@ -243,7 +243,7 @@ function MAssetLibrary({ ctx }) {
         sectionHead("ip", counts.ip, () => setCat("ip")),
         fIps.length === 0
           ? hA(EmptyBlock, { compact: true, icon: Icons.gem, title: "还没有 IP",
-              desc: "IP 是容器 —— 把人物 / 场景 / 产品收拢成一个可授权的整体",
+              desc: "将人物、场景和产品归入同一个 IP，作为整体授权。",
               action: "新建 IP", onAction: () => create.start({ kind: "ip", path: 0 }) })
           : hA("div", { style: { display: "flex", flexDirection: "column", gap: 8 } },
               fIps.slice(0, 3).map((x: any) => hA(IpRow, { key: x.id, ip: x, onOpen: ctx.openIp })))),

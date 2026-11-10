@@ -2,7 +2,7 @@
 """Future-window only: freeze just the old AIStar unit after independent drain evidence."""
 import argparse,datetime,hashlib,json,os,pathlib,re,stat,subprocess,time,urllib.parse
 ROOT=pathlib.Path('/opt/aistar-source-migration')
-PENDING_WORK=('ip_run', 'material_video_job', 'aep_publish_jobs', 'clip_render_job', 'clip_shot_job', 'music_gen_job', 'video_studio_prompt_optimization', 'ai_generation_queue', 'ip_dialogue_message', 'ip_plan_execution')
+PENDING_WORK=('ip_run', 'material_video_job', 'aep_publish_jobs', 'clip_render_job', 'clip_shot_job', 'music_gen_job', 'video_studio_prompt_optimization', 'ai_generation_queue', 'ip_dialogue_message', 'ip_plan_execution', 'video_asset_person', 'video_asset_portrait')
 def check_pending(plan,now):
  pending=plan.get('pending_work')
  if not isinstance(pending,dict) or not set(PENDING_WORK).issubset(pending) or any(type(v) is not int or v!=0 for v in pending.values()):raise RuntimeError('在途工作证明不完整或非零（含连续制作计划）')
@@ -39,10 +39,12 @@ def main():
  critical={k:v for k,v in env.items() if any(x in k for x in ['AES','JWT','ENCRYPT','AEP_ID_','WECHAT','PAYMENT','AEP_SECRET_KEY','AEP_INTERNAL_SECRET','AEP_CDN_'])}
  if hashlib.sha256(json.dumps(critical,sort_keys=True,separators=(',',':')).encode()).hexdigest()!=plan.get('source_critical_environment_sha256'):raise RuntimeError('源加密/身份/支付配置变化，未停写')
  # Re-read actual source work immediately before freeze, after artifact/schema/config checks.
- counts={table:"(SELECT COUNT(*) FROM `"+table+"` WHERE status IS NULL OR lower(status) NOT IN ('done','failed','cancelled','canceled','succeeded','completed','success'))" for table in PENDING_WORK if table not in ('ai_generation_queue','ip_dialogue_message','ip_plan_execution')}
+ counts={table:"(SELECT COUNT(*) FROM `"+table+"` WHERE status IS NULL OR lower(status) NOT IN ('done','failed','cancelled','canceled','succeeded','completed','success'))" for table in PENDING_WORK if table not in ('ai_generation_queue','ip_dialogue_message','ip_plan_execution','video_asset_person','video_asset_portrait')}
  counts['ai_generation_queue']="(SELECT COUNT(*) FROM ai_generation_queue WHERE state IS NULL OR lower(state) NOT IN ('finished','failed','cancelled','canceled'))"
  counts['ip_dialogue_message']="(SELECT COUNT(*) FROM ip_dialogue_message WHERE lower(status) IN ('running','streaming','generating'))"
  counts['ip_plan_execution']="(SELECT COUNT(*) FROM ip_plan_execution WHERE status IS NULL OR lower(status)='running')"
+ counts['video_asset_person']="(SELECT COUNT(*) FROM video_asset_person WHERE status IS NULL OR (lower(status)='verifying' AND expires_at>CURRENT_TIMESTAMP))"
+ counts['video_asset_portrait']="(SELECT COUNT(*) FROM video_asset_portrait WHERE status IS NULL OR lower(status) IN ('uploading','processing'))"
  sql="SELECT JSON_OBJECT("+','.join("'"+k+"',"+counts[k] for k in PENDING_WORK)+")"
  fresh=subprocess.run(['mysql','--protocol=TCP','-h',url.hostname,'-P',str(url.port or 3306),'-u',env.get('DB_USERNAME',env.get('SPRING_DATASOURCE_USERNAME','')),'--batch','--raw','--skip-column-names','--default-character-set=utf8mb4','aistareco','-e',sql],env=checkenv,stdout=subprocess.PIPE,stderr=subprocess.PIPE,universal_newlines=True)
  if fresh.returncode:raise RuntimeError('源在途工作即时只读查询失败，未停写')

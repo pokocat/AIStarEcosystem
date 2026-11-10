@@ -18,8 +18,8 @@ function ParentThread({ store, nodes, handlers, readThread }: { store: DialogueS
     setMessages(cut ? list.filter(m => m.seq <= cut.seq) : list);
   }).catch(setError); };
   return <details className="studio-dialogue-branch" onToggle={e => { if (e.currentTarget.open) load(); }}>
-    <summary>这是从一条消息新开的对话，原来的对话保持不变。查看原来的对话</summary>
-    {!messages && !error && <p className="studio-dialogue-note" role="status">正在读取</p>}
+    <summary>此对话从一条消息重新开始，原对话保持不变。查看原对话</summary>
+    {!messages && !error && <p className="studio-dialogue-note" role="status">正在加载…</p>}
     {error && <p className="studio-assistant-error"><span>{error}</span> <StudioErrorNotice error={error} autoReport={false} label="查看详情"/></p>}
     {messages?.map(m => <StudioDialogueMessageView key={m.id} message={m} nodes={nodes} readOnly shortfalls={{}} handlers={handlers}/>)}
   </details>;
@@ -63,7 +63,7 @@ export function StudioDialogueTimeline({ store, nodes, handlers, onRetry, onLoad
     try { await onLoadOlder(); } catch (e) { setError(e); } finally { setLoadingOlder(false); }
   };
   return <div ref={root} className="studio-dialogue-timeline" role="log" aria-label="创作对话记录">
-    {store.hasOlder && <button type="button" className="studio-dialogue-link" disabled={loadingOlder} onClick={() => void older()}>{loadingOlder ? '正在读取' : '查看更早的消息'}</button>}
+    {store.hasOlder && <button type="button" className="studio-dialogue-link" disabled={loadingOlder} onClick={() => void older()}>{loadingOlder ? '正在加载…' : '查看更早的消息'}</button>}
     {error && <p className="studio-assistant-error"><span>{error}</span> <StudioErrorNotice error={error} autoReport={false} label="查看详情"/></p>}
     <ParentThread store={store} nodes={nodes} handlers={handlers} readThread={readThread}/>
     {entries.map(({ message: m, item }) => m ? <StudioDialogueMessageView key={m.id} message={m} layout={store.layouts[m.id]} nodes={nodes} shortfalls={store.shortfalls} queueState={messageQueueState(store, m)}
@@ -74,8 +74,8 @@ export function StudioDialogueTimeline({ store, nodes, handlers, onRetry, onLoad
       <small className="studio-dialogue-author">你</small>
       <p className="studio-dialogue-text">{item.text}</p>
       {item.state === 'sending' ? <StudioDialogueQueueMark state="sending"/>
-        : <small className="studio-dialogue-queue is-failed" role="status">没有确认送达{item.error ? `：${item.error}` : ''}
-          <button type="button" className="studio-dialogue-link" title="重新发送这条消息，不会重复" onClick={() => onRetry(item.clientMessageId)}>重新发送</button></small>}
+        : <small className="studio-dialogue-queue is-failed" role="status">未确认送达{item.error ? `：${item.error}` : ''}
+          <button type="button" className="studio-dialogue-link" title="重新发送此消息，不会重复发送" onClick={() => onRetry(item.clientMessageId)}>重新发送</button></small>}
     </article>)}
     {activity && !activityHost && <div className="studio-dialogue-message is-assistant is-pending"><StudioDialogueActivity activity={activity}/></div>}
     {!last && progress}

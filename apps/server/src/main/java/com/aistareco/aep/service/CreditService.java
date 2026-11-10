@@ -336,7 +336,7 @@ public class CreditService {
             // v2 M2：REFUND（积分面退款）已弃用（改走 releaseHold 退原桶）；保留分支兜底，同样落 gift 桶，绝不进 recharge。
             case REFUND -> wallet.setGiftBalance(wallet.getGiftBalance() + amount);
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "creditAccount 不支持的入账类型：" + entryType);
+                    "不支持的入账类型");
         }
 
         wallet.setTotalBalance(newBalance);
@@ -430,7 +430,7 @@ public class CreditService {
         }
         if (userId == null || userId.isBlank() || referenceType == null || referenceType.isBlank()
                 || referenceId == null || referenceId.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "hold 缺少 userId / referenceType / referenceId");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "冻结参数无效");
         }
 
         // 幂等检查必须在拿到钱包行锁之后做（而不是之前）：并发重复请求（同 userId，同 referenceId，
@@ -547,7 +547,7 @@ public class CreditService {
         if (remaining != 0) {
             // 余额足但桶分布算错 — 防御性兜底，理论不应触发
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                    "hold 桶分布异常: amount=" + amount + " 剩余=" + remaining);
+                    "积分冻结失败，请重试");
         }
 
         wallet.setGiftBalance(wallet.getGiftBalance() - fromGift);
@@ -600,20 +600,20 @@ public class CreditService {
     public LedgerEntryDto commitHold(String referenceType, String referenceId,
                                       long amount, String description, ModelBillingMath.Usage cumulativeUsage) {
         if (amount <= 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "commit 金额必须为正数");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "结算积分必须为正数");
         }
         lockReferencedWallet(referenceType, referenceId);
         CreditHold hold = holdRepo.findByReferenceTypeAndReferenceIdForUpdate(referenceType, referenceId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "未找到对应的 hold: " + referenceType + ":" + referenceId));
+                        "未找到对应的冻结记录"));
         refreshLocked(hold);
         if (hold.getStatus() != CreditHold.Status.ACTIVE) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "hold 已是终态 (" + hold.getStatus() + ")，无法 commit");
+                    "冻结记录已结束，无法结算");
         }
         if (amount > hold.getRemainingAmount()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "commit 金额 " + amount + " 超过剩余 hold " + hold.getRemainingAmount());
+                    "结算积分超过剩余冻结积分");
         }
 
         Wallet wallet = requiredWalletForUpdate(hold.getWalletId());

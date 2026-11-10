@@ -34,7 +34,7 @@ const Tag = ({ children, tone }: { children: React.ReactNode; tone: 'green' | 'a
 
 const AIButton = ({ onClick, label }: { onClick: () => void; label: string }) => (
   <button type="button" onClick={onClick} aria-label={label} title={label}
-    className="w-7 h-7 rounded-full inline-flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #06b6d4, #8b5cf6)', color: '#fff' }}>
+    className="w-7 h-7 rounded-full inline-flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #0891b2, #7c3aed)', color: '#fff' }}>
     <Sparkles className="w-3.5 h-3.5" />
   </button>
 );
@@ -134,7 +134,7 @@ export const ScriptView = (p: Props) => {
         <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center">
           <div className="text-sm font-semibold text-gray-900">{zh ? '还没有剧本' : 'No script yet'}</div>
           <p className="text-xs text-gray-500 mt-1">{zh ? '先写一句故事大纲，再让 AI 导演写成分场剧本。' : 'Write a logline, then let the AI director turn it into scenes.'}</p>
-          <button type="button" onClick={p.onRewrite} className="mt-4 h-9 px-4 rounded-lg text-xs font-semibold" style={{ background: 'linear-gradient(90deg, #06b6d4, #8b5cf6)', color: '#fff' }}>{zh ? 'AI 写剧本' : 'Write with AI'}</button>
+          <button type="button" onClick={p.onRewrite} className="mt-4 h-9 px-4 rounded-lg text-xs font-semibold" style={{ background: 'linear-gradient(90deg, #0891b2, #7c3aed)', color: '#fff' }}>{zh ? 'AI 写剧本' : 'Write with AI'}</button>
         </div>
       ) : (
         episodes.map((ep, idx) => {
@@ -167,7 +167,7 @@ export const ScriptView = (p: Props) => {
                   {ep.status === 'idle' && !ep.body ? (
                     <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center">
                       <p className="text-xs text-gray-500">{zh ? '这一集还没写。' : 'This episode is not written yet.'}</p>
-                      <button type="button" onClick={() => p.onContinue(ep.id)} className="mt-3 h-8 px-3 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5" style={{ background: 'linear-gradient(90deg, #06b6d4, #8b5cf6)', color: '#fff' }}><Sparkles className="w-3.5 h-3.5" />{zh ? 'AI 续写' : 'Continue with AI'}</button>
+                      <button type="button" onClick={() => p.onContinue(ep.id)} className="mt-3 h-8 px-3 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5" style={{ background: 'linear-gradient(90deg, #0891b2, #7c3aed)', color: '#fff' }}><Sparkles className="w-3.5 h-3.5" />{zh ? 'AI 续写' : 'Continue with AI'}</button>
                     </div>
                   ) : (
                     <textarea value={ep.body} onChange={e => p.onEpisode(ep.id, { body: e.target.value })} rows={14} disabled={ep.status === 'generating'}

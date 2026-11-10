@@ -1,383 +1,275 @@
 /**
- * BatchMixStudio — 混剪批量生产台
- * P1 新增页面：模板管理 + 素材矩阵组合 + 批量渲染 + 一键入发布池
+ * 混剪批量 — 选模板 → 填素材槽（可直接用 AI 图片 / AI 视频生成的素材）→ 设变体策略 → 批量渲染，
+ * 渲染完勾选变体送入 发布中心 › 发布池。去重策略越多，变体之间越不相似，越容易过平台查重。
  */
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import {
-  Layers, Play, Plus, Search, CheckCircle2, Clock, Zap,
-  Video, Image, Music, ChevronRight, BarChart3, Upload,
-  RefreshCw, Eye, Copy, Trash2, Settings, FileText,
-  Grid3X3, List, ArrowRight
-} from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Check as CheckIcon, Film, Layers, Music, Send, Shuffle, Sparkles, Type } from 'lucide-react';
 import type { Lang } from '../../translations';
+import type { Artist } from './ArtistTypes';
+import { FRAME_POOL } from './director/directorData';
+import { addToPool, primeTimeSlot } from './publishPoolStore';
+import { spend, useQuickGen } from './quickgen/quickgenStore';
+import {
+  Bar, Card, Check, Chips, Composer, Empty, Field, Pill, RunButton, SectionHead, SmallButton, Stats, ToolLayout,
+  progressOf, today, uid, useNow, useStoredList, useToast, type Timed,
+} from './batch/kit';
 
-type TemplateType = 'product_review' | 'lifestyle' | 'tutorial' | 'highlight' | 'story';
-type RenderStatus = 'pending' | 'rendering' | 'done' | 'failed';
-
-interface MixTemplate {
-  id: string; name: string; type: TemplateType; duration: string;
-  platforms: string[]; slots: number; description: string;
-  usageCount: number; successRate: number; color: string;
+type LT = { zh: string; en: string };
+type SlotKind = 'visual' | 'audio' | 'text';
+interface Slot { id: string; label: LT; kind: SlotKind; optional?: boolean }
+interface Template { id: string; name: LT; flow: LT; length: string; color: string; slots: Slot[] }
+interface Fill { label: string; image?: string }
+interface Variant { id: string; image: string; label: string; selected?: boolean; pooled?: boolean }
+interface MixTask extends Timed {
+  id: string; template: string; title: string; count: number; platform: string; options: string[]; similarity: number;
+  cost: number; date: string; variants: Variant[];
 }
 
-interface BatchTask {
-  id: string; name: string; templateId: string; templateName: string;
-  totalCount: number; completedCount: number; failedCount: number;
-  status: RenderStatus; startedAt: string; estimatedDone: string | null;
-  partnerName: string;
-}
-
-interface MixSlot {
-  id: string; label: string; type: 'video' | 'image' | 'text' | 'audio';
-  filled: boolean; content?: string;
-}
-
-const MOCK_TEMPLATES: MixTemplate[] = [
-  {
-    id: 'mt1', name: '产品测评标准模板', type: 'product_review', duration: '0:45-1:20',
-    platforms: ['DY', 'KS', 'XHS'], slots: 6, color: '#06b6d4',
-    description: '开箱展示 → 功能讲解 → 使用感受 → 购买引导',
-    usageCount: 234, successRate: 92,
-  },
-  {
-    id: 'mt2', name: '生活方式情景混剪', type: 'lifestyle', duration: '1:00-2:00',
-    platforms: ['XHS', 'DY'], slots: 8, color: '#ec4899',
-    description: '日常场景拼接 + 产品自然植入 + BGM节奏感',
-    usageCount: 156, successRate: 88,
-  },
-  {
-    id: 'mt3', name: '教程步骤分解', type: 'tutorial', duration: '2:00-4:00',
-    platforms: ['DY', 'BL'], slots: 10, color: '#f59e0b',
-    description: '步骤拆分 + 字幕引导 + 重点放大 + 成果展示',
-    usageCount: 89, successRate: 94,
-  },
-  {
-    id: 'mt4', name: '精彩片段集锦', type: 'highlight', duration: '0:30-0:60',
-    platforms: ['DY', 'KS', 'XHS', 'VCH'], slots: 5, color: '#a855f7',
-    description: '直播/活动高光 + 节奏剪切 + 动感配乐',
-    usageCount: 412, successRate: 90,
-  },
-  {
-    id: 'mt5', name: '故事线条漫', type: 'story', duration: '0:15-0:30',
-    platforms: ['DY', 'XHS'], slots: 4, color: '#10b981',
-    description: '短故事结构 + 悬念设置 + 情感共鸣',
-    usageCount: 67, successRate: 85,
-  },
+const L = (zh: string, en: string): LT => ({ zh, en });
+const PRICE_PER_VARIANT = 10;
+const S = (id: string, zh: string, en: string, kind: SlotKind = 'visual', optional = false): Slot => ({ id, label: L(zh, en), kind, optional });
+const TEMPLATES: Template[] = [
+  { id: 'review', name: L('产品测评', 'Product review'), flow: L('开箱 → 功能讲解 → 使用感受 → 购买引导', 'Unbox → features → experience → CTA'), length: '0:45–1:20', color: '#0891b2',
+    slots: [S('open', '开场片段', 'Opening'), S('product', '产品展示', 'Product'), S('demo', '功能演示', 'Demo'), S('cta', '结尾引导', 'CTA'), S('voice', '口播文案', 'Voice-over', 'text'), S('bgm', '背景音乐', 'Music', 'audio', true)] },
+  { id: 'lifestyle', name: L('生活方式', 'Lifestyle'), flow: L('日常场景拼接 + 产品自然植入 + 节奏 BGM', 'Daily scenes + natural placement + rhythm'), length: '1:00–2:00', color: '#db2777',
+    slots: [S('a', '场景一', 'Scene 1'), S('b', '场景二', 'Scene 2'), S('c', '场景三', 'Scene 3'), S('product', '产品特写', 'Product close-up'), S('bgm', '背景音乐', 'Music', 'audio')] },
+  { id: 'highlight', name: L('高光集锦', 'Highlights'), flow: L('直播 / 活动高光 + 节奏剪切 + 动感配乐', 'Live highlights + rhythmic cuts + upbeat music'), length: '0:30–0:60', color: '#7c3aed',
+    slots: [S('a', '高光一', 'Highlight 1'), S('b', '高光二', 'Highlight 2'), S('c', '高光三', 'Highlight 3'), S('bgm', '背景音乐', 'Music', 'audio')] },
+  { id: 'tutorial', name: L('教程分解', 'Tutorial'), flow: L('步骤拆分 + 字幕引导 + 重点放大 + 成果展示', 'Steps + captions + zoom-ins + result'), length: '2:00–4:00', color: '#d97706',
+    slots: [S('s1', '步骤一', 'Step 1'), S('s2', '步骤二', 'Step 2'), S('s3', '步骤三', 'Step 3'), S('result', '成果展示', 'Result'), S('voice', '讲解文案', 'Script', 'text')] },
+  { id: 'story', name: L('故事短片', 'Story short'), flow: L('短故事结构 + 悬念设置 + 情感共鸣', 'Short arc + suspense + emotion'), length: '0:15–0:30', color: '#059669',
+    slots: [S('hook', '悬念开场', 'Hook'), S('turn', '情节转折', 'Turn'), S('end', '情感收尾', 'Ending'), S('voice', '旁白', 'Narration', 'text', true)] },
 ];
-
-const MOCK_TASKS: BatchTask[] = [
-  {
-    id: 'bt1', name: '宋一鸣×极速数码-产品测评-9月矩阵', templateId: 'mt1', templateName: '产品测评标准模板',
-    totalCount: 20, completedCount: 18, failedCount: 1, status: 'rendering',
-    startedAt: '2025-09-11 10:00', estimatedDone: '2025-09-11 12:30', partnerName: '宋一鸣',
-  },
-  {
-    id: 'bt2', name: '林音宝护肤精华-生活情景-8月批次', templateId: 'mt2', templateName: '生活方式情景混剪',
-    totalCount: 15, completedCount: 15, failedCount: 0, status: 'done',
-    startedAt: '2025-08-25 14:00', estimatedDone: '2025-08-25 16:00', partnerName: '林音宝',
-  },
-  {
-    id: 'bt3', name: '清洁卫士-精彩集锦-全平台', templateId: 'mt4', templateName: '精彩片段集锦',
-    totalCount: 30, completedCount: 0, failedCount: 0, status: 'pending',
-    startedAt: '-', estimatedDone: null, partnerName: '清洁卫士品牌方',
-  },
+const OPTIONS = [
+  { id: 'bgm', icon: Music, label: L('换 BGM', 'Swap music'), sub: L('每条用不同配乐', 'Different track per variant') },
+  { id: 'caption', icon: Type, label: L('换字幕样式', 'Caption styles'), sub: L('字体、颜色、位置轮换', 'Rotate font, colour, position') },
+  { id: 'order', icon: Shuffle, label: L('打乱片段顺序', 'Shuffle segments'), sub: L('中段片段随机重排', 'Reorder the middle segments') },
+  { id: 'cover', icon: Sparkles, label: L('换封面标题', 'Cover titles'), sub: L('自动生成多版封面文案', 'Generate several cover lines') },
 ];
+const BGMS = [L('轻快电子', 'Light electro'), L('温暖吉他', 'Warm guitar'), L('动感鼓点', 'Punchy drums'), L('城市夜晚', 'City night')];
+const PLATFORMS: Array<[string, string]> = [['DY', '抖音'], ['KS', '快手'], ['XHS', '小红书'], ['VCH', '视频号']];
 
-const TYPE_CFG: Record<TemplateType, { zh: string; en: string }> = {
-  product_review: { zh: '产品测评', en: 'Product Review' },
-  lifestyle:      { zh: '生活方式', en: 'Lifestyle' },
-  tutorial:       { zh: '教程', en: 'Tutorial' },
-  highlight:      { zh: '精彩集锦', en: 'Highlights' },
-  story:          { zh: '故事线', en: 'Story' },
-};
+/** Lower is better: every de-dup option makes variants less alike. */
+const similarityFor = (options: string[]) => Math.max(12, 62 - options.length * 13);
 
-const RENDER_STATUS_CFG: Record<RenderStatus, { zh: string; color: string; bg: string; border: string }> = {
-  pending:   { zh: '待渲染', color: 'text-gray-400', bg: 'bg-gray-500/10', border: 'border-gray-500/20' },
-  rendering: { zh: '渲染中', color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/25' },
-  done:      { zh: '已完成', color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/25' },
-  failed:    { zh: '失败', color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/25' },
-};
-
-interface Props { lang: Lang; }
-
-export const BatchMixStudio = ({ lang }: Props) => {
+export const BatchMixStudio = ({ lang, activeArtist, onOpenPublish }: { lang: Lang; activeArtist: Artist; onOpenPublish?: () => void }) => {
   const zh = lang === 'zh';
-  const [tab, setTab] = useState<'templates' | 'tasks' | 'new'>('templates');
-  const [selectedTemplate, setSelectedTemplate] = useState<MixTemplate | null>(null);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const t = (v: LT) => (zh ? v.zh : v.en);
+  const name = activeArtist.name;
+  const { gens } = useQuickGen();
+  // Visual material: AI 图片 / AI 视频 results first, then sample footage.
+  const library = useMemo(() => [
+    ...gens.filter(g => g.status === 'done').map(g => ({ label: g.title, image: g.images[0], ai: true })),
+    ...FRAME_POOL.map((image, i) => ({ label: zh ? `${name} 素材 ${i + 1}` : `${name} clip ${i + 1}`, image, ai: false })),
+  ].slice(0, 18), [gens, name, zh]);
+  const texts = [L(`${name} 新品口播`, `${name} launch talk`), L(`${name} 日常分享`, `${name} daily share`), L(`${name} 使用心得`, `${name} review notes`)];
 
-  const stats = [
-    { label: zh ? '可用模板' : 'Templates', value: MOCK_TEMPLATES.length, color: 'text-purple-400' },
-    { label: zh ? '渲染中' : 'Rendering', value: MOCK_TASKS.filter(t => t.status === 'rendering').length, color: 'text-blue-400' },
-    { label: zh ? '今日完成' : "Today's Done", value: 18, color: 'text-emerald-400' },
-    { label: zh ? '待入发布池' : 'Pool Ready', value: 15, color: 'text-cyan-400' },
-  ];
+  const [tasks, setTasks] = useStoredList<MixTask>(`ai_batch_mix_v1:${activeArtist.id}`, () => []);
+  const [templateId, setTemplateId] = useState('review');
+  const template = TEMPLATES.find(x => x.id === templateId)!;
+  const [fills, setFills] = useState<Record<string, Fill>>({});
+  const [picking, setPicking] = useState<string | null>(null);
+  const [count, setCount] = useState(20);
+  const [platform, setPlatform] = useState('DY');
+  const [options, setOptions] = useState<string[]>(['bgm', 'caption', 'order']);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [toast, say] = useToast();
 
-  // Slots for new task wizard (mock)
-  const SLOTS: MixSlot[] = [
-    { id: 's1', label: zh ? '开场片段 (0-5s)' : 'Intro (0-5s)', type: 'video', filled: true, content: '宋一鸣618-Clip-01.mp4' },
-    { id: 's2', label: zh ? '产品展示 (5-20s)' : 'Product (5-20s)', type: 'video', filled: true, content: '极速数码X12-产品展示.mp4' },
-    { id: 's3', label: zh ? '口播文案' : 'Script Copy', type: 'text', filled: true, content: '宋一鸣×极速数码618主推文案-V3' },
-    { id: 's4', label: zh ? '功能演示 (20-35s)' : 'Demo (20-35s)', type: 'video', filled: false },
-    { id: 's5', label: zh ? '背景音乐' : 'BGM', type: 'audio', filled: true, content: '清洁卫士背景音乐授权包' },
-    { id: 's6', label: zh ? '结尾引导 (35-45s)' : 'CTA (35-45s)', type: 'image', filled: false },
-  ];
+  const running = tasks.some(x => progressOf(x, Date.now()) < 100);
+  const now = useNow(running);
+  const selected = tasks.find(x => x.id === selectedId) ?? tasks[0] ?? null;
+  const missing = template.slots.filter(s => !s.optional && !fills[`${template.id}:${s.id}`]);
+  const similarity = similarityFor(options);
+  const cost = count * PRICE_PER_VARIANT;
 
-  return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-            {zh ? '混剪批量生产台' : 'Batch Mix Studio'}
-          </h1>
-          <p className="text-xs text-gray-500 mt-1">{zh ? '模板驱动 · 素材矩阵组合 · 批量渲染 · 一键入发布池' : 'Template-driven · Asset matrix · Batch render · Pool push'}</p>
-        </div>
-        <button onClick={() => setTab('new')}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-orange-500/10 border border-orange-500/30 text-orange-400 hover:bg-orange-500/20 transition">
-          <Plus className="w-3.5 h-3.5" />
-          {zh ? '新建批量任务' : 'New Batch Task'}
-        </button>
-      </div>
+  const pickTemplate = (id: string) => { setTemplateId(id); setPicking(null); };
+  const fill = (slot: Slot, f: Fill) => { setFills(x => ({ ...x, [`${template.id}:${slot.id}`]: f })); setPicking(null); };
+  // Fill every empty slot in one go from the library, BGM and copy lists.
+  const autofill = () => {
+    let vi = 0;
+    const next = { ...fills };
+    template.slots.forEach((s, i) => {
+      const key = `${template.id}:${s.id}`;
+      if (next[key]) return;
+      next[key] = s.kind === 'visual' ? library[vi++ % library.length] : s.kind === 'audio' ? { label: t(BGMS[i % BGMS.length]) } : { label: t(texts[0]) };
+    });
+    setFills(next);
+  };
 
-      {/* Stats */}
-      <div className="grid grid-cols-4 gap-3">
-        {stats.map((s, i) => (
-          <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-            className="bg-gray-900/50 border border-white/5 rounded-xl p-4">
-            <div className="text-[10px] text-gray-500 mb-1">{s.label}</div>
-            <div className={`text-2xl font-black ${s.color}`} style={{ fontFamily: 'var(--font-display)' }}>{s.value}</div>
-          </motion.div>
-        ))}
-      </div>
+  const start = () => {
+    if (missing.length || !spend(cost)) return;
+    const visuals = template.slots.filter(s => s.kind === 'visual').map(s => fills[`${template.id}:${s.id}`]?.image).filter((x): x is string => !!x);
+    const task: MixTask = {
+      id: uid('mix'), template: template.id, title: `${name} · ${t(template.name)} · ${PLATFORMS.find(p => p[0] === platform)?.[1] ?? platform}`,
+      count, platform, options, similarity, cost, date: today(), startedAt: Date.now(), durationMs: 3500 + count * 180,
+      variants: Array.from({ length: count }, (_, i) => ({
+        id: uid('v'), image: visuals[i % Math.max(1, visuals.length)] ?? FRAME_POOL[i % FRAME_POOL.length],
+        label: [`#${String(i + 1).padStart(2, '0')}`, options.includes('bgm') ? t(BGMS[i % BGMS.length]) : '', options.includes('caption') ? `${zh ? '字幕' : 'Caps'} ${'ABC'[i % 3]}` : ''].filter(Boolean).join(' · '),
+      })),
+    };
+    setTasks(list => [task, ...list]);
+    setSelectedId(task.id);
+    say(zh ? `开始批量渲染 ${count} 条` : `Rendering ${count} variants`);
+  };
 
-      {/* Tabs */}
-      <div className="flex gap-2 border-b border-white/5">
-        {([['templates', zh ? '模板库' : 'Templates'], ['tasks', zh ? '批量任务' : 'Batch Tasks'], ['new', zh ? '新建任务' : 'New Task']] as const).map(([t, label]) => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`px-4 py-2 text-xs font-semibold border-b-2 transition ${tab === t ? 'border-orange-400 text-orange-400' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>
-            {label}
-          </button>
-        ))}
-      </div>
+  const patchVariants = (taskId: string, fn: (v: Variant) => Variant) => setTasks(list => list.map(x => (x.id === taskId ? { ...x, variants: x.variants.map(fn) } : x)));
+  const pool = (task: MixTask) => {
+    const chosen = task.variants.filter(v => v.selected && !v.pooled);
+    chosen.forEach(v => addToPool({
+      id: v.id, type: 'mix', title: `${task.title} ${v.label.split(' · ')[0]}`, partnerName: name, platform: task.platform, account: `@${name}`, status: 'pending_review',
+      scheduledAt: primeTimeSlot(1), preCheck: { auth: true, watermark: true, quality: true }, duration: TEMPLATES.find(x => x.id === task.template)?.length.split('–')[0] ?? '0:30',
+      thumbColor: '#f97316', thumbImage: v.image, formats: ['9:16'],
+    }));
+    patchVariants(task.id, v => (v.selected && !v.pooled ? { ...v, pooled: true, selected: false } : v));
+    say(zh ? `${chosen.length} 条变体已送入发布池` : `${chosen.length} variants sent to the pool`);
+  };
 
-      {/* Templates tab */}
-      {tab === 'templates' && (
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex gap-1">
-              <button onClick={() => setViewMode('grid')} className={`p-2 rounded-lg transition ${viewMode === 'grid' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'}`}><Grid3X3 className="w-3.5 h-3.5" /></button>
-              <button onClick={() => setViewMode('list')} className={`p-2 rounded-lg transition ${viewMode === 'list' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'}`}><List className="w-3.5 h-3.5" /></button>
-            </div>
-            <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-semibold bg-white/5 border border-white/10 text-gray-300 hover:border-white/20 transition">
-              <Plus className="w-3 h-3" />{zh ? '创建模板' : 'Create Template'}
+  const stats = useMemo(() => {
+    const done = tasks.filter(x => progressOf(x, now) >= 100);
+    return {
+      running: tasks.length - done.length,
+      today: done.filter(x => x.date === today()).reduce((a, x) => a + x.count, 0),
+      similarity: done.length ? Math.round(done.reduce((a, x) => a + x.similarity, 0) / done.length) : null,
+      pooled: done.reduce((a, x) => a + x.variants.filter(v => v.pooled).length, 0),
+    };
+  }, [tasks, now]);
+
+  const composer = (
+    <Composer icon={Layers} color="#ea580c" title={zh ? '新建混剪批次' : 'New mix batch'} desc={zh ? `为 ${name} 批量出片，素材可直接用 AI 生成的结果` : `Batch videos for ${name}; use AI results as material`}
+      footer={<RunButton zh={zh} label={zh ? `批量渲染 ${count} 条` : `Render ${count}`} cost={cost} blocked={missing.length ? (zh ? `还差 ${missing.length} 个素材槽` : `${missing.length} slots empty`) : null} onClick={start} />}>
+      <Field label={zh ? '模板' : 'Template'}>
+        <div className="space-y-1.5">
+          {TEMPLATES.map(x => (
+            <button key={x.id} type="button" onClick={() => pickTemplate(x.id)} aria-pressed={x.id === templateId}
+              className={`flex w-full items-start gap-2.5 rounded-xl border px-3 py-2 text-left transition ${x.id === templateId ? 'border-violet-300 bg-violet-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+              <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: x.color }} />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center justify-between gap-2 text-[13px] text-gray-900">{t(x.name)}<span className="text-[11px] text-gray-400">{x.length}</span></span>
+                <span className="block truncate text-[11px] text-gray-500">{t(x.flow)}</span>
+              </span>
             </button>
-          </div>
-
-          <div className={viewMode === 'grid' ? 'grid md:grid-cols-2 xl:grid-cols-3 gap-3' : 'space-y-3'}>
-            {MOCK_TEMPLATES.map((tmpl, i) => (
-              <motion.div key={tmpl.id} initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.05 }}
-                onClick={() => setSelectedTemplate(selectedTemplate?.id === tmpl.id ? null : tmpl)}
-                className={`bg-gray-900/50 border rounded-xl p-4 cursor-pointer transition ${selectedTemplate?.id === tmpl.id ? 'border-orange-500/35 bg-orange-500/3' : 'border-white/5 hover:border-white/15'}`}>
-                <div className="flex items-start gap-3 mb-3">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                    style={{ background: `${tmpl.color}15`, border: `1px solid ${tmpl.color}30` }}>
-                    <Layers className="w-5 h-5" style={{ color: tmpl.color }} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-bold text-white">{tmpl.name}</div>
-                    <div className="text-[10px] text-gray-500 mt-0.5">{zh ? TYPE_CFG[tmpl.type].zh : TYPE_CFG[tmpl.type].en} · {tmpl.duration}</div>
-                  </div>
-                </div>
-
-                <p className="text-[10px] text-gray-500 mb-3 leading-relaxed">{tmpl.description}</p>
-
-                <div className="flex flex-wrap gap-1 mb-3">
-                  {tmpl.platforms.map(p => (
-                    <span key={p} className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 border border-white/8 text-gray-400">{p}</span>
-                  ))}
-                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 border border-white/8 text-gray-400">{tmpl.slots} {zh ? '素材槽' : 'slots'}</span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 text-center">
-                  <div className="bg-black/20 rounded-lg p-2">
-                    <div className="text-xs font-bold text-white">{tmpl.usageCount}</div>
-                    <div className="text-[9px] text-gray-600">{zh ? '使用次数' : 'Uses'}</div>
-                  </div>
-                  <div className="bg-black/20 rounded-lg p-2">
-                    <div className={`text-xs font-bold ${tmpl.successRate >= 90 ? 'text-emerald-400' : 'text-amber-400'}`}>{tmpl.successRate}%</div>
-                    <div className="text-[9px] text-gray-600">{zh ? '成功率' : 'Success'}</div>
-                  </div>
-                </div>
-
-                <AnimatePresence>
-                  {selectedTemplate?.id === tmpl.id && (
-                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                      className="mt-3 pt-3 border-t border-white/5">
-                      <button onClick={() => setTab('new')}
-                        className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold bg-orange-500/10 border border-orange-500/25 text-orange-400 hover:bg-orange-500/20 transition">
-                        <Zap className="w-3.5 h-3.5" />{zh ? '使用此模板新建任务' : 'Use Template'}
-                        <ArrowRight className="w-3 h-3" />
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </motion.div>
-            ))}
-          </div>
+          ))}
         </div>
-      )}
-
-      {/* Tasks tab */}
-      {tab === 'tasks' && (
-        <div className="space-y-3">
-          {MOCK_TASKS.map((task, i) => {
-            const rCfg = RENDER_STATUS_CFG[task.status];
-            const pct = task.totalCount > 0 ? Math.round((task.completedCount / task.totalCount) * 100) : 0;
+      </Field>
+      <Field label={zh ? '素材槽' : 'Slots'} right={<button type="button" onClick={autofill} className="text-[11px] font-medium text-violet-700 hover:underline">{zh ? '一键填充' : 'Auto-fill'}</button>}>
+        <div className="space-y-1.5">
+          {template.slots.map(s => {
+            const key = `${template.id}:${s.id}`;
+            const f = fills[key];
+            const open = picking === key;
             return (
-              <motion.div key={task.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}
-                className="bg-gray-900/50 border border-white/5 rounded-xl p-4 hover:border-white/12 transition">
-                <div className="flex items-start gap-4">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${rCfg.bg} ${rCfg.border} border`}>
-                    {task.status === 'rendering' ? <RefreshCw className={`w-5 h-5 ${rCfg.color} animate-spin`} /> :
-                     task.status === 'done' ? <CheckCircle2 className={`w-5 h-5 ${rCfg.color}`} /> :
-                     <Clock className={`w-5 h-5 ${rCfg.color}`} />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-bold text-white truncate">{task.name}</span>
-                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-md border shrink-0 ${rCfg.bg} ${rCfg.color} ${rCfg.border}`}>
-                        {zh ? rCfg.zh : task.status}
-                      </span>
-                    </div>
-                    <div className="text-[10px] text-gray-500 mb-2">{task.templateName} · {task.partnerName}</div>
-                    {task.status !== 'pending' && (
-                      <>
-                        <div className="flex items-center justify-between text-[10px] text-gray-500 mb-1">
-                          <span>{task.completedCount}/{task.totalCount} {zh ? '完成' : 'done'}</span>
-                          {task.failedCount > 0 && <span className="text-red-400">{task.failedCount} {zh ? '失败' : 'failed'}</span>}
-                          <span>{pct}%</span>
-                        </div>
-                        <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-                          <div className={`h-full rounded-full transition-all ${task.status === 'done' ? 'bg-emerald-500' : 'bg-orange-500'}`}
-                            style={{ width: `${pct}%` }} />
-                        </div>
-                      </>
+              <div key={key} className={`rounded-xl border ${open ? 'border-violet-300' : 'border-gray-200'}`}>
+                <button type="button" onClick={() => setPicking(open ? null : key)} aria-expanded={open} className="flex w-full items-center gap-2.5 px-2.5 py-2 text-left">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-lg bg-slate-100 text-slate-400">
+                    {f?.image ? <img src={f.image} alt="" className="h-full w-full object-cover" /> : s.kind === 'audio' ? <Music className="h-4 w-4" /> : s.kind === 'text' ? <Type className="h-4 w-4" /> : <Film className="h-4 w-4" />}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[12px] font-medium text-gray-800">{t(s.label)}{s.optional && <span className="ml-1 font-normal text-gray-400">{zh ? '可选' : 'optional'}</span>}</span>
+                    <span className={`block truncate text-[11px] ${f ? 'text-gray-600' : 'text-gray-400'}`}>{f?.label ?? (zh ? '点击选择' : 'Choose')}</span>
+                  </span>
+                  {f && <CheckIcon className="h-4 w-4 shrink-0 text-emerald-600" />}
+                </button>
+                {open && (
+                  <div className="border-t border-gray-100 p-2">
+                    {s.kind === 'visual' ? (
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {library.map((m, i) => (
+                          <button key={i} type="button" onClick={() => fill(s, m)} title={m.label} className="relative aspect-square overflow-hidden rounded-lg">
+                            <img src={m.image} alt="" loading="lazy" className="h-full w-full object-cover" />
+                            {m.ai && <span className="absolute left-1 top-1 rounded px-1 text-[9px] font-medium" style={{ background: 'rgba(124,58,237,.9)', color: '#ffffff' }}>AI</span>}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        {(s.kind === 'audio' ? BGMS : texts).map(x => (
+                          <button key={x.en} type="button" onClick={() => fill(s, { label: t(x) })} className="w-full rounded-lg px-2.5 py-1.5 text-left text-[12px] text-gray-700 hover:bg-gray-50">{t(x)}</button>
+                        ))}
+                      </div>
                     )}
                   </div>
-                  <div className="flex gap-2 shrink-0">
-                    {task.status === 'done' && (
-                      <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold bg-cyan-500/10 border border-cyan-500/25 text-cyan-400 hover:bg-cyan-500/20 transition">
-                        <Zap className="w-3 h-3" />{zh ? '批量入池' : 'Push to Pool'}
-                      </button>
-                    )}
-                    {task.status === 'pending' && (
-                      <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold bg-orange-500/10 border border-orange-500/25 text-orange-400 hover:bg-orange-500/20 transition">
-                        <Play className="w-3 h-3" />{zh ? '开始渲染' : 'Start Render'}
-                      </button>
-                    )}
-                    <button className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition">
-                      <Eye className="w-3.5 h-3.5 text-gray-400" />
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
+                )}
+              </div>
             );
           })}
         </div>
-      )}
+      </Field>
+      <Field label={zh ? '去重策略' : 'De-dup'} right={<span className={`text-[11px] font-medium ${similarity <= 25 ? 'text-emerald-600' : 'text-amber-600'}`}>{zh ? `预计相似度 ${similarity}%` : `≈${similarity}% similar`}</span>}>
+        {OPTIONS.map(o => <Check key={o.id} checked={options.includes(o.id)} onChange={on => setOptions(x => (on ? [...x, o.id] : x.filter(y => y !== o.id)))} label={t(o.label)} sub={t(o.sub)} />)}
+        {similarity > 25 && <p className="mt-1 text-[11px] text-amber-700">{zh ? '相似度偏高，同一平台批量发布可能被判重复，建议至少勾选 3 项' : 'High similarity may be flagged as duplicates; pick at least 3'}</p>}
+      </Field>
+      <Field label={zh ? '数量' : 'Count'}><Chips options={[[10, '10'], [20, '20'], [50, '50']]} value={count} onChange={setCount} /></Field>
+      <Field label={zh ? '发布平台' : 'Platform'}><Chips options={PLATFORMS.map(([id, zhName]) => [id, zh ? zhName : id] as [string, string])} value={platform} onChange={setPlatform} /></Field>
+    </Composer>
+  );
 
-      {/* New task tab */}
-      {tab === 'new' && (
-        <div className="grid lg:grid-cols-[280px_1fr] gap-4">
-          {/* Left: template selector */}
-          <div className="bg-gray-900/50 border border-white/5 rounded-xl p-4">
-            <div className="text-[10px] text-gray-600 uppercase tracking-wider mb-3">{zh ? '选择模板' : 'Select Template'}</div>
-            <div className="space-y-2">
-              {MOCK_TEMPLATES.map(tmpl => (
-                <button key={tmpl.id} onClick={() => setSelectedTemplate(tmpl)}
-                  className={`w-full text-left flex items-center gap-2.5 p-2.5 rounded-xl border transition ${selectedTemplate?.id === tmpl.id ? 'bg-orange-500/8 border-orange-500/25' : 'bg-black/20 border-white/5 hover:border-white/15'}`}>
-                  <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
-                    style={{ background: `${tmpl.color}20` }}>
-                    <Layers className="w-3.5 h-3.5" style={{ color: tmpl.color }} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[10px] font-semibold text-white truncate">{tmpl.name}</div>
-                    <div className="text-[9px] text-gray-600">{tmpl.duration} · {tmpl.slots}{zh ? '个槽' : ' slots'}</div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Right: slot filler */}
-          <div className="bg-gray-900/50 border border-white/5 rounded-xl flex flex-col">
-            <div className="p-4 border-b border-white/5">
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-sm font-bold text-white">{selectedTemplate?.name || (zh ? '请先选择模板' : 'Select a template')}</div>
-                {selectedTemplate && (
-                  <span className="text-[10px] text-gray-500">{SLOTS.filter(s => s.filled).length}/{SLOTS.length} {zh ? '槽已填充' : 'slots filled'}</span>
-                )}
-              </div>
-              <div>
-                <label className="text-[10px] text-gray-600 uppercase tracking-wider block mb-1">{zh ? '任务名称' : 'Task Name'}</label>
-                <input placeholder={zh ? '输入批量任务名称...' : 'Enter batch task name...'}
-                  className="w-full bg-black/30 border border-white/8 rounded-lg px-3 py-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-orange-500/40 transition" />
-              </div>
-            </div>
-
-            {selectedTemplate ? (
-              <div className="flex-1 p-4 space-y-2 overflow-y-auto">
-                <div className="text-[10px] text-gray-600 uppercase tracking-wider mb-3">{zh ? '素材槽填充' : 'Slot Configuration'}</div>
-                {SLOTS.map((slot, si) => {
-                  const SlotIcon = slot.type === 'video' ? Video : slot.type === 'image' ? Image : slot.type === 'audio' ? Music : FileText;
-                  return (
-                    <div key={slot.id} className={`flex items-center gap-3 p-3 rounded-xl border transition ${slot.filled ? 'bg-emerald-500/3 border-emerald-500/15' : 'bg-black/20 border-dashed border-white/15 hover:border-orange-500/30 cursor-pointer'}`}>
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${slot.filled ? 'bg-emerald-500/10' : 'bg-white/5'}`}>
-                        <SlotIcon className={`w-4 h-4 ${slot.filled ? 'text-emerald-400' : 'text-gray-600'}`} />
+  return (
+    <ToolLayout composer={composer}>
+      <Stats items={[
+        { label: zh ? '渲染中批次' : 'Rendering', value: stats.running, tone: '#6d28d9' },
+        { label: zh ? '今日产出' : 'Made today', value: stats.today },
+        { label: zh ? '平均相似度' : 'Avg. similarity', value: stats.similarity === null ? '-' : `${stats.similarity}%`, tone: '#047857' },
+        { label: zh ? '已入发布池' : 'In pool', value: stats.pooled, tone: '#ea580c' },
+      ]} />
+      {tasks.length === 0 ? (
+        <Card><Empty icon={Layers} title={zh ? '还没有混剪批次' : 'No batches yet'} desc={zh ? '在左侧选模板、填素材槽（可点「一键填充」），开始第一批' : 'Pick a template and fill the slots (or Auto-fill) to start'} /></Card>
+      ) : (
+        <>
+          <Card>
+            <SectionHead title={zh ? '批次' : 'Batches'} />
+            <ul className="px-2 pb-2">
+              {tasks.map(x => {
+                const pct = progressOf(x, now);
+                const pooled = x.variants.filter(v => v.pooled).length;
+                return (
+                  <li key={x.id}>
+                    <button type="button" onClick={() => setSelectedId(x.id)}
+                      className={`flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-left transition ${x.id === selected?.id ? 'bg-violet-50' : 'hover:bg-gray-50'}`}>
+                      <img src={x.variants[0]?.image} alt="" className="h-11 w-11 shrink-0 rounded-lg object-cover" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-medium text-gray-900">{x.title}</span>
+                        {pct < 100 ? <span className="mt-1.5 block w-48"><Bar pct={pct} /></span>
+                          : <span className="block text-[11px] text-gray-500">{x.count}{zh ? ' 条' : ''} · {zh ? '相似度' : 'similarity'} {x.similarity}% · ⬡{x.cost} · {x.date}</span>}
+                      </span>
+                      {pct < 100 ? <Pill tone="running">{zh ? '渲染中' : 'Rendering'} {pct}%</Pill> : pooled ? <Pill tone="done">{zh ? `已入池 ${pooled}` : `${pooled} pooled`}</Pill> : <Pill tone="review">{zh ? '待挑选' : 'To review'}</Pill>}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
+          {selected && progressOf(selected, now) >= 100 && (() => {
+            const picked = selected.variants.filter(v => v.selected && !v.pooled).length;
+            const open = selected.variants.filter(v => !v.pooled);
+            return (
+              <Card>
+                <SectionHead title={selected.title} sub={zh ? '勾选要发布的变体，一起送入发布池' : 'Tick the variants to publish'}
+                  right={<div className="flex flex-wrap gap-1.5">
+                    <SmallButton disabled={!open.length} onClick={() => patchVariants(selected.id, v => (v.pooled ? v : { ...v, selected: picked < open.length }))}>{picked < open.length ? (zh ? '全选' : 'Select all') : (zh ? '取消全选' : 'Clear')}</SmallButton>
+                    {selected.variants.some(v => v.pooled) && onOpenPublish && <SmallButton onClick={onOpenPublish}>{zh ? '去发布池' : 'Open pool'}</SmallButton>}
+                    <SmallButton primary disabled={!picked} onClick={() => pool(selected)}><Send className="h-3.5 w-3.5" />{zh ? `送入发布池 ${picked}` : `Send ${picked}`}</SmallButton>
+                  </div>} />
+                <div className="grid grid-cols-3 gap-2 px-4 pb-4 sm:grid-cols-4 xl:grid-cols-6">
+                  {selected.variants.map(v => (
+                    <button key={v.id} type="button" disabled={v.pooled} onClick={() => patchVariants(selected.id, x => (x.id === v.id ? { ...x, selected: !x.selected } : x))} aria-pressed={!!v.selected}
+                      className={`group overflow-hidden rounded-xl border text-left transition disabled:cursor-default ${v.selected ? 'border-violet-400 ring-2 ring-violet-200' : 'border-gray-200 hover:border-violet-300'}`}>
+                      <div className="relative aspect-[3/4] bg-slate-100">
+                        <img src={v.image} alt="" loading="lazy" className="h-full w-full object-cover" />
+                        <span className={`absolute right-1.5 top-1.5 grid h-5 w-5 place-items-center rounded-md border ${v.selected ? 'border-violet-600 bg-violet-600' : 'border-white/80 bg-black/20'}`} style={{ color: '#ffffff' }}>
+                          {(v.selected || v.pooled) && <CheckIcon className="h-3.5 w-3.5" />}
+                        </span>
+                        {v.pooled && <span className="absolute inset-x-1.5 bottom-1.5 rounded px-1.5 py-0.5 text-center text-[10px]" style={{ background: 'rgba(4,120,87,.9)', color: '#ffffff' }}>{zh ? '已入池' : 'In pool'}</span>}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[10px] text-gray-500 mb-0.5">{slot.label}</div>
-                        {slot.filled ? (
-                          <div className="text-xs text-white truncate">{slot.content}</div>
-                        ) : (
-                          <div className="text-[10px] text-gray-700">{zh ? '点击从资产库选取...' : 'Click to pick from vault...'}</div>
-                        )}
-                      </div>
-                      {slot.filled ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      ) : (
-                        <Plus className="w-4 h-4 text-gray-600 shrink-0" />
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="flex-1 flex items-center justify-center text-gray-600 text-sm">
-                {zh ? '选择模板后配置素材槽' : 'Select a template to configure slots'}
-              </div>
-            )}
-
-            {selectedTemplate && (
-              <div className="p-4 border-t border-white/5">
-                <div className="flex items-center gap-2 mb-3">
-                  <label className="text-[10px] text-gray-600 uppercase tracking-wider">{zh ? '批量数量：' : 'Batch Count:'}</label>
-                  <div className="flex gap-1">
-                    {[10, 20, 50, 100].map(n => (
-                      <button key={n} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition ${n === 20 ? 'bg-orange-500/15 text-orange-400 border-orange-500/25' : 'bg-white/5 text-gray-500 border-white/8 hover:border-white/20'}`}>{n}</button>
-                    ))}
-                  </div>
+                      <div className="truncate px-2 py-1.5 text-[11px] text-gray-600">{v.label}</div>
+                    </button>
+                  ))}
                 </div>
-                <button className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold bg-orange-500/15 border border-orange-500/30 text-orange-400 hover:bg-orange-500/25 transition">
-                  <Zap className="w-4 h-4" />{zh ? '开始批量渲染 (20个)' : 'Start Batch Render (20)'}
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
+              </Card>
+            );
+          })()}
+        </>
       )}
-    </div>
+      {toast}
+    </ToolLayout>
   );
 };

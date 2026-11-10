@@ -53,7 +53,7 @@ test('drawing an area takes in the circled nodes, opens its name, and hands the 
   const { container } = render(<StudioFlowCanvas projectId="p"/>);
   fireEvent.click(screen.getByRole('button', { name: '圈选分组' }));
   expect(screen.getByRole('button', { name: '圈选分组' }).getAttribute('aria-pressed')).toBe('true');
-  expect(screen.getByRole('status').textContent).toContain('按住拖动，圈出一块区域');
+  expect(screen.getByRole('status').textContent).toContain('按住拖动，圈选区域');
   // While dragging, React Flow neither pans, box-selects nor drags nodes.
   expect(flowProps.current).toMatchObject({ panOnDrag: false, selectionOnDrag: false, nodesDraggable: false });
 

@@ -110,7 +110,7 @@ public class StudioWorkflowWorker {
                         if(system.isBlank() || user.isBlank()) throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"PROMPT_NOT_CONFIGURED","剧本提示词未配置");
                         String endpointId=input.path("_exec").path("endpointId").asText(null);
                         var purpose=textPurpose(input);
-                        var endpoint=models.resolveAcceptedEndpoint(purpose,endpointId,"studio").orElseThrow(()->new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","创作模型已停用或不再是默认模型，请联系管理员"));
+                        var endpoint=models.resolveAcceptedEndpoint(purpose,endpointId,"studio").orElseThrow(()->new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","当前创作模型已停用，请联系平台处理"));
                         StudioTokenBilling.requireRoute(input,endpoint.endpoint());
                         JsonNode visual=input.path("_exec").path("visualContext");
                         Object userContent=user;
@@ -122,7 +122,7 @@ public class StudioWorkflowWorker {
                             if(!progress(id,20,"recreation.frames"))return;
                             var study=StudioRecreation.study(input.path("_exec").path("recreationSource"),storage,hypitMedia);recreationStudy=study;
                             if(!checkpointRecreation(id,input.path("_exec").path("recreationSource")))return;
-                            if(finalTokens<4096)throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_RECREATION_TOKEN_BUDGET","全片拆解需要至少4096输出Token预算，请调整模型配置");
+                            if(finalTokens<4096)throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_RECREATION_TOKEN_BUDGET","当前模型不支持全片拆解，请联系平台处理");
                             int pageBudget=Math.min(512,Math.max(128,(finalTokens-3072)/study.pages().size()));
                             finalTokens-=pageBudget*study.pages().size();
                             var observations=mapper.createArrayNode();
@@ -134,7 +134,7 @@ public class StudioWorkflowWorker {
                                 var observed=recreationChat(id,endpoint.endpoint(),tokenRate,consumed,observe.system(),
                                         List.of(Map.of("type","text","text",observe.user()),study.pages().get(page)),pageBudget,.1,java.util.stream.IntStream.range(first-1,last).boxed().toList(),
                                         input.path("_exec").path("recreationSource"),recreationFallback,output,input);
-                                if("length".equals(observed.finishReason()))throw new BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,"AI_BAD_OUTPUT","片段读取结果被截断，请调整模型输出配置");
+                                if("length".equals(observed.finishReason()))throw new BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,"AI_BAD_OUTPUT","片段读取结果不完整，请重试");
                                 consumed=consumeUsage(observed,consumed,tokenRate);
                                 observations.addObject().put("firstFrame",first).put("lastFrame",last).set("facts",StudioRecreation.observation(observed.content(),first,last));
                             }
@@ -177,20 +177,24 @@ public class StudioWorkflowWorker {
                         if("director".equals(operation)&&java.util.Set.of("script","script-more").contains(input.path("_director").path("task").asText())
                                 && endpoint.endpoint().getProviderType()==AiModelProviderType.DEEPSEEK)
                             chatOptions.put("thinking",Map.of("type","disabled"));
-                        reply=models.invokeChatOnEndpoint(endpoint.endpoint(),purpose,List.of(Map.of("role","system","content",system),
-                                Map.of("role","user","content",userContent)),chatOptions);
+                        var messages=List.of(Map.of("role","system","content",(Object)system), Map.of("role","user","content",userContent));
+                        reply=isSceneDirector(input)
+                                ?models.invokeChatCancellable(endpoint.endpoint(),purpose,messages,chatOptions,()->runs.findById(id).map(IpRun::isCancelRequested).orElse(true))
+                                :models.invokeChatOnEndpoint(endpoint.endpoint(),purpose,messages,chatOptions);
                         }
                         lastReply=reply;
+                        if(!StudioModelOutput.present(reply))throw AiModelInvocationService.emptyOutputFailure();
                         if(StudioModelOutput.present(reply)){output.set("rawResponse",StudioModelOutput.capture(mapper,reply));checkpointModelOutput(id,reply);}
-                        if("director".equals(operation)&&tokenRate!=null) {
+                        if(("director".equals(operation)||isSceneDirector(input))&&tokenRate!=null) {
                             consumed=consumeUsage(reply,consumed,tokenRate);
                             output.putObject("billing").put("inputTokens",consumed[0]).put("outputTokens",consumed[1])
                                     .put("credits",tokenRate.settle(consumed[0],consumed[1]))
                                     .put("inputCreditsPerK",tokenRate.inputCreditsPerK()).put("outputCreditsPerK",tokenRate.outputCreditsPerK());
+                            if(reply.usageEstimated())output.withObject("/billing").put("usageEstimated",true);
                             directorReceipt=mapper.createObjectNode();directorReceipt.set("billing",output.path("billing").deepCopy());
                             if(runs.findById(id).map(IpRun::isCancelRequested).orElse(false)){finish(id,output,null);return;}
                         }
-                        if("length".equals(reply.finishReason()))output.withArray("warnings").add("模型回复因输出额度停止，已保留返回内容");
+                        if("length".equals(reply.finishReason()))output.withArray("warnings").add("模型输出已达上限，已保留返回内容");
                         try {script=ModelJson.parse(mapper,reply.content());}
                         catch(com.fasterxml.jackson.core.JsonProcessingException malformed) {
                             var failure=BusinessException.wrapped(org.springframework.http.HttpStatus.BAD_GATEWAY,"AI_BAD_OUTPUT",
@@ -198,7 +202,7 @@ public class StudioWorkflowWorker {
                                     "Invalid model JSON: "+malformed.getOriginalMessage());
                             failure.initCause(malformed);throw failure;
                         }
-                        if(tokenRate!=null&&!"director".equals(operation)) {
+                        if(tokenRate!=null&&!"director".equals(operation)&&!isSceneDirector(input)) {
                             consumed=consumeUsage(reply,consumed,tokenRate);
                             long actual=tokenRate.settle(consumed[0],consumed[1]);
                             output.putObject("billing").put("inputTokens",consumed[0]).put("outputTokens",consumed[1])
@@ -247,6 +251,7 @@ public class StudioWorkflowWorker {
                         if(mock)script=mapper.createObjectNode().put("summary","测试响应：保留原文，不调用真实模型。")
                                 .put("content",input.path("textEdit").path("content").asText().isBlank()?"测试文本样例":input.path("textEdit").path("content").asText());
                         StudioTextRevision.validateOutput(script);
+                        if("video-script".equals(input.path("scene").path("kind").asText())) StudioTextRevision.normalizeSceneSuggestions(script);
                         output.set("textRevision",script);output.put("text",script.path("content").asText());
                     } else if("assistant".equals(operation)) {
                         if(input.hasNonNull("scriptEdit")) {
@@ -287,6 +292,10 @@ public class StudioWorkflowWorker {
                             ?assembly.renderStudioEdit(run.getOwnerUserId(),run.getProjectId(),mapper.treeToValue(input.path("edit"),com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.EditTimeline.class))
                             :assembly.assembleStudioKeys(run.getOwnerUserId(),run.getProjectId(),keys,input.path("aspectRatio").asText("9:16"),input.hasNonNull("packaging")?mapper.treeToValue(input.path("packaging"),com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.Packaging.class):null);
                     output.put("storageKey",file.key());output.put("durationSec",file.durationSec());
+                    if(file.captionStatus()!=null) {
+                        var captions=output.putObject("captions");captions.put("status",file.captionStatus());
+                        captions.set("cues",mapper.valueToTree(file.captions()==null?List.of():file.captions()));
+                    }
                 }
                 default -> throw new IllegalArgumentException("Unknown Studio operation");
             }
@@ -322,7 +331,8 @@ public class StudioWorkflowWorker {
 
     private void filmStudy(String id,IpRun run,JsonNode input,ObjectNode output) throws Exception {
         var exec=input.path("_exec");
-        var endpoint=models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA,exec.path("endpointId").asText(null),"studio").orElseThrow(()->new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","创作模型已停用或不再是默认模型，请联系管理员"));
+        if(exec.path("videoUnderstand").asBoolean(false)){videoBreakdown(id,run,input,output);return;}
+        var endpoint=models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA,exec.path("endpointId").asText(null),"studio").orElseThrow(()->new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","当前创作模型已停用，请联系平台处理"));
         if(!StudioVisualContext.supportsVision(endpoint.endpoint()))throw BusinessException.badRequest("STUDIO_VISION_UNAVAILABLE","所选模型不能读取画面");
         if(!progress(id,15,"recreation.frames"))return;
         var source=exec.path("recreationSource");var evidence=StudioRecreation.study(source,storage,hypitMedia);
@@ -342,6 +352,82 @@ public class StudioWorkflowWorker {
         output.putObject("billing").put("inputTokens",used[0][0]).put("outputTokens",used[0][1]).put("credits",rate.settle(used[0][0],used[0][1])).put("inputCreditsPerK",rate.inputCreditsPerK()).put("outputCreditsPerK",rate.outputCreditsPerK());
         finish(id,output,null);
     }
+    /**
+     * 拉片 v2：整条视频交给能看视频的模型，一次写出逐镜拆解（StudioVideoBreakdown）。受理时已确认端点声明了 supportsVideo、
+     * 定了价，这里再按受理时的端点快照取；续跑时有拆解就不再调模型，只补没切好的片段。按真实用量一次结算。
+     */
+    private void videoBreakdown(String id,IpRun run,JsonNode input,ObjectNode output) throws Exception {
+        var exec=input.path("_exec");
+        var endpoint=models.resolveAcceptedEndpoint(AiModelPurpose.DAP_VIDEO_UNDERSTAND,exec.path("endpointId").asText(null),"studio")
+                .orElseThrow(()->new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","视频理解模型已停用，请联系平台处理"));
+        if(!StudioVisualContext.supportsVideo(endpoint.endpoint()))throw BusinessException.badRequest("STUDIO_VIDEO_UNDERSTAND_UNAVAILABLE","所选模型不能直接读取视频，请联系平台处理");
+        StudioTokenBilling.requireRoute(input,endpoint.endpoint());
+        var rate=mapper.treeToValue(exec.path("tokenPricing"),AiChatTokenPricing.Rate.class);long[] used={0,0};
+        var source=exec.path("recreationSource");double duration=source.path("durationSec").asDouble();
+        var capNode=exec.path("segmentCap");
+        double max=capNode.path("maxSegmentSec").asDouble(15),min=capNode.path("contract").path("minSeconds").asDouble(0);
+        int maxUnits=capNode.path("maxSegments").asInt(8);
+        JsonNode resume=exec.path("resumeFilmStudy");
+        ObjectNode study=mapper.createObjectNode();study.set("source",source.deepCopy());((ObjectNode)study.path("source")).put("audioAnalyzed",true);study.put("strategy",StudioVideoBreakdown.STRATEGY);
+        java.nio.file.Path directory=java.nio.file.Files.createTempDirectory("studio-breakdown-");
+        try {
+            java.nio.file.Path original=storage.openForRead(source.path("storageKey").asText());
+            ObjectNode breakdown;
+            if(resume.path("breakdown").isObject()&&StudioVideoBreakdown.STRATEGY.equals(resume.path("strategy").asText())) {
+                breakdown=(ObjectNode)resume.path("breakdown").deepCopy();
+            } else {
+                if(!progress(id,15,"recreation.video"))return;
+                var media=StudioVideoBreakdown.prepare(original,directory,duration);
+                var prompt=recreationStage(input,com.aistareco.aep.ipstudio.prompt.StudioPromptCallPoints.VIDEO_BREAKDOWN,
+                        Map.of("duration",StudioVideoBreakdown.fmt(duration),"cuts",StudioVideoBreakdown.cutsText(media.cuts()),"focus",input.path("prompt").asText("").strip()),null);
+                if(!progress(id,25,"recreation.watch"))return;
+                if(enterpriseBilling!=null)enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,id,endpoint.endpoint().getId());
+                var params=new HashMap<String,Object>();params.put("timeout_seconds",300);params.put("temperature",.2);
+                params.put("max_tokens",Math.min(exec.path("maxTokens").asInt(16000),rate==null?16000:rate.maxOutputTokens()));
+                params.put("response_format",Map.of("type","json_object"));
+                markModelDispatched(id);
+                var reply=models.invokeChatOnEndpoint(endpoint.endpoint(),AiModelPurpose.DAP_VIDEO_UNDERSTAND,List.of(
+                        Map.of("role","system","content",prompt.system()),
+                        Map.of("role","user","content",List.of(StudioVideoBreakdown.videoPart(media.proxy()),Map.of("type","text","text",prompt.user())))),params);
+                checkpointModelOutput(id,reply);
+                long[] total=consumeUsage(reply,used,rate);used[0]=total[0];used[1]=total[1];
+                if("length".equals(reply.finishReason()))throw BusinessException.badRequest("AI_BAD_OUTPUT","模型返回的拆解被截断，这次没有完成。请重试");
+                JsonNode parsed;
+                try{parsed=ModelJson.parse(mapper,reply.content());}
+                catch(Exception invalid){throw BusinessException.wrapped(org.springframework.http.HttpStatus.BAD_GATEWAY,"AI_BAD_OUTPUT","模型返回的拆解格式有误，这次没有完成。请重试",invalid.toString());}
+                breakdown=StudioVideoBreakdown.normalize(parsed,duration,media.cuts());
+            }
+            study.set("breakdown",breakdown);
+            var units=StudioVideoBreakdown.units(breakdown,max,min,maxUnits);
+            var segments=study.putArray("segments");
+            for(var unit:units) {
+                ObjectNode segment=segments.addObject().put("no",unit.no()).put("title",unit.title()).put("startSec",unit.startSec()).put("endSec",unit.endSec())
+                        .put("firstShot",unit.firstShot()).put("lastShot",unit.lastShot()).put("status","pending");
+                // 续跑：同一段（时间一致）已经切好的片段原样留用
+                for(JsonNode old:resume.path("segments"))if(old.path("no").asInt()==unit.no()&&Math.abs(old.path("startSec").asDouble()-unit.startSec())<1e-3
+                        &&Math.abs(old.path("endSec").asDouble()-unit.endSec())<1e-3&&old.hasNonNull("storageKey")) {
+                    for(String f:List.of("storageKey","durationSec","width","height","coverStorageKey"))if(old.has(f))segment.set(f,old.get(f));
+                }
+                segment.put("markdown",StudioVideoBreakdown.unitMarkdown(breakdown,unit));
+            }
+            if(!checkpointFilmStudy(id,40,"film.plan",study,output.path("sourceAudio")))return;
+            for(int i=0;i<segments.size();i++) {
+                ObjectNode segment=(ObjectNode)segments.get(i);
+                if(!segment.hasNonNull("storageKey")) {
+                    if(!checkpointFilmStudy(id,45+i*50/segments.size(),"film.cut",study,output.path("sourceAudio")))return;
+                    try{StudioFilmStudy.cut(original,directory,segment,storage,run.getOwnerUserId());}
+                    catch(Exception error){segment.put("error","这段原片没有切好，可以重试");checkpointFilmStudy(id,45+i*50/segments.size(),"film.cut",study,output.path("sourceAudio"));throw error;}
+                }
+                segment.put("status","done");
+            }
+            output.set("filmStudy",study);output.put("text",StudioVideoBreakdown.report(breakdown));
+            output.putObject("billing").put("inputTokens",used[0]).put("outputTokens",used[1]).put("credits",rate.settle(used[0],used[1]))
+                    .put("inputCreditsPerK",rate.inputCreditsPerK()).put("outputCreditsPerK",rate.outputCreditsPerK());
+            finish(id,output,null);
+        } finally {
+            try(var paths=java.nio.file.Files.walk(directory)){for(java.nio.file.Path path:paths.sorted(java.util.Comparator.reverseOrder()).toList())java.nio.file.Files.deleteIfExists(path);}catch(Exception ignored){}
+        }
+    }
     private StudioFilmStudy.Chat studioChat(String id,com.aistareco.aep.model.AiModelEndpoint endpoint,
             AiChatTokenPricing.Rate rate,long[][] used,String focus,String focusLine,double temperature,AiModelInvocationService.AiModelResponse[] last) {
         return new StudioFilmStudy.Chat() {
@@ -358,7 +444,7 @@ public class StudioWorkflowWorker {
             private String call(String system,List<Map<String,Object>> parts,int tokens,boolean json,boolean withFocus) throws Exception {
                 if(enterpriseBilling!=null)enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,id,endpoint.getId());
                 if(remainingOutputTokens()<64||(rate!=null&&used[0][0]>=rate.maxInputTokens()))
-                    throw BusinessException.badRequest("AI_USAGE_LIMIT","本次Token预算已用完，请调整后台预算");
+                    throw BusinessException.badRequest("AI_USAGE_LIMIT","本次用量已达上限，请缩短内容后重试");
                 var params=new HashMap<String,Object>();params.put("timeout_seconds",300);
                 params.put("max_tokens",Math.min(tokens,remainingOutputTokens()));params.put("temperature",temperature);
                 if(json)params.put("response_format",Map.of("type","json_object"));
@@ -436,28 +522,42 @@ public class StudioWorkflowWorker {
             String endpointId=input.path("_exec").path("endpointId").asText(null);
             var purpose=textPurpose(input);
             var endpoint=models.resolveAcceptedEndpoint(purpose,endpointId,"studio").orElseThrow(()->new BusinessException(
-                    org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","提示词优化用的文本模型已停用，可以关闭智能优化按原文生成"));
+                    org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","提示词优化暂不可用，可关闭「智能优化」按原文生成"));
             StudioTokenBilling.requireRoute(input,endpoint.endpoint());
             var rate=mapper.treeToValue(input.path("_exec").path("tokenPricing"),AiChatTokenPricing.Rate.class);
             if(enterpriseBilling!=null)enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,id,endpoint.endpoint().getId());
-            markModelDispatched(id);
+            String system=input.path("_exec").path("systemPrompt").asText();
             var options=new LinkedHashMap<String,Object>();
             options.put("timeout_seconds",300);
             options.put("response_format",Map.of("type","json_object"));
             options.put("temperature",input.path("_exec").path("temperature").asDouble(0.6));
             options.put("max_tokens",input.path("_exec").path("maxTokens").asInt(rate.maxOutputTokens()));
-            reply=models.invokeChatOnEndpoint(endpoint.endpoint(),purpose,List.of(
-                    Map.of("role","system","content",input.path("_exec").path("systemPrompt").asText()),
-                    Map.of("role","user","content",input.path("_exec").path("userPrompt").asText())),options);
-            if(StudioModelOutput.present(reply)){output.set("rawResponse",StudioModelOutput.capture(mapper,reply));checkpointModelOutput(id,reply);}
-            long[] used=consumeUsage(reply,new long[]{0,0},rate);
-            output.putObject("billing").put("inputTokens",used[0]).put("outputTokens",used[1]).put("credits",rate.settle(used[0],used[1]))
-                    .put("inputCreditsPerK",rate.inputCreditsPerK()).put("outputCreditsPerK",rate.outputCreditsPerK());
-            if("length".equals(reply.finishReason()))output.withArray("warnings").add("模型因输出额度停止，原文已保留");
-            JsonNode script;
-            try {script=ModelJson.parse(mapper,reply.content());}
-            catch(com.fasterxml.jackson.core.JsonProcessingException malformed){throw com.aistareco.aep.ipstudio.h3.H3PromptRewrite.bad("没有返回 JSON");}
-            result=com.aistareco.aep.ipstudio.h3.H3PromptRewrite.validate(mapper,meta,script);
+            long[] used={0,0};
+            // 模型偶尔不按约定回（没读到写法说明、写成中文、不是 JSON）：同样的请求再试一次，用量累计结算。截断不重试，再来一次也一样。
+            for(int attempt=1;;attempt++) {
+                failure=null;result=null;
+                markModelDispatched(id);
+                reply=models.invokeChatOnEndpoint(endpoint.endpoint(),purpose,List.of(
+                        Map.of("role","system","content",system),
+                        Map.of("role","user","content",input.path("_exec").path("userPrompt").asText())),options);
+                if(StudioModelOutput.present(reply)){output.set("rawResponse",StudioModelOutput.capture(mapper,reply));checkpointModelOutput(id,reply);}
+                used=consumeUsage(reply,used,rate);
+                output.putObject("billing").put("inputTokens",used[0]).put("outputTokens",used[1]).put("credits",rate.settle(used[0],used[1]))
+                        .put("inputCreditsPerK",rate.inputCreditsPerK()).put("outputCreditsPerK",rate.outputCreditsPerK());
+                boolean truncated="length".equals(reply.finishReason());
+                if(truncated&&attempt==1)output.withArray("warnings").add("模型输出已达上限，原文已保留");
+                try {
+                    if(systemPromptUnread(reply,system))throw com.aistareco.aep.ipstudio.h3.H3PromptRewrite.bad("模型没有读到写法说明");
+                    JsonNode script;
+                    try {script=ModelJson.parse(mapper,reply.content());}
+                    catch(com.fasterxml.jackson.core.JsonProcessingException malformed){throw com.aistareco.aep.ipstudio.h3.H3PromptRewrite.bad("模型返回格式有误");}
+                    result=com.aistareco.aep.ipstudio.h3.H3PromptRewrite.validate(mapper,meta,script);
+                    break;
+                } catch(BusinessException offContract) {
+                    if(attempt>=2||truncated||!"AI_BAD_OUTPUT".equals(offContract.getCode())||cancelRequested(id))throw offContract;
+                    log.warn("[studio] video prompt rewrite off contract, retrying id={} promptTokens={} reason={}",id,reply.promptTokens(),offContract.getMessage());
+                }
+            }
         } catch(Exception e) {
             failure=e;
             if(reply!=null)reply.attachDiagnostics(e);
@@ -467,7 +567,7 @@ public class StudioWorkflowWorker {
             output.put("rawOnly",true).put("text",reply.content());
             output.withArray("warnings").add("优化原文已保留，自动整理未完成");
             if(!output.has("billing")){output.put("billingUnknown",true);output.putObject("billing").put("credits",0);}
-            if(review){output.put("needsChoice",true);output.putObject("videoPrompt").put("text",reply.content()).put("usable",false).putArray("warnings").add("请核对原文，或按原始描述生成");finish(id,output,null);return;}
+            if(review){output.put("needsChoice",true);output.putObject("videoPrompt").put("text",reply.content()).put("usable",false).putArray("warnings").add("模型没有返回可用的优化稿，可以重新优化，或按原文生成");finish(id,output,null);return;}
         }
         String language=meta.path("language").asText("Chinese");
         boolean usable=result!=null&&result.path("usable").asBoolean(true);
@@ -486,7 +586,7 @@ public class StudioWorkflowWorker {
         }
         String prompt=usable?output.path("videoPrompt").path("text").asText():input.path("prompt").asText("");
         if(!usable) {
-            output.withArray("videoPromptNotes").add(failure!=null?"提示词优化没成功，已按原文生成":"优化稿超过 "
+            output.withArray("videoPromptNotes").add(failure!=null?"提示词优化失败，已按原文生成":"优化稿超过 "
                     +com.aistareco.aep.ipstudio.h3.H3PromptRewrite.MAX_PROMPT_CHARS+" 字符，已按原文生成");
             // 没改成不收这一步的费用；模型确实回了内容但不能用的，按实际用量结算（视频照常出）。
             if(!output.has("billing"))output.putObject("billing").put("inputTokens",0).put("outputTokens",0).put("credits",0);
@@ -496,6 +596,17 @@ public class StudioWorkflowWorker {
         try {handOver(id,input,prompt,output);}
         catch(Exception e) {log.warn("[studio] video submit after prompt rewrite failed id={}",id,e);finish(id,output,e);return;}
         afterTerminal(id);
+    }
+
+    /**
+     * 计费输入比写法说明本身少得多：这次回复没有读到系统提示词。一个 Token 不可能对应 50 个字符，所以这条线两边都留足了余量
+     * （说明约 4.4 万字符、1 万 Token；2026-11-07 OneToken 上的 DeepSeek 约十次一次只计 280 Token，内容也不按约定写，校验未必看得出）。
+     */
+    static boolean systemPromptUnread(AiModelInvocationService.AiModelResponse reply,String system) {
+        return reply.promptTokens()!=null&&reply.promptTokens()>0&&reply.promptTokens()*50<system.length();
+    }
+    private boolean cancelRequested(String id) {
+        return runs.findById(id).map(IpRun::isCancelRequested).orElse(true);
     }
 
     /**
@@ -563,7 +674,7 @@ public class StudioWorkflowWorker {
     }
     private static long[] consumeUsage(AiModelInvocationService.AiModelResponse reply,long[] previous,AiChatTokenPricing.Rate rate) {
         if(rate==null)return previous;
-        if(reply.promptTokens()==null||reply.completionTokens()==null)throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"AI_USAGE_MISSING","模型未返回有效Token用量，本次未扣积分");
+        if(reply.promptTokens()==null||reply.completionTokens()==null)throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"AI_USAGE_MISSING","生成服务未返回用量信息，本次未扣积分，请重试");
         long[] total={Math.addExact(previous[0],reply.promptTokens()),Math.addExact(previous[1],reply.completionTokens())};
         rate.settle(total[0],total[1]);return total;
     }
@@ -614,7 +725,7 @@ public class StudioWorkflowWorker {
         return Boolean.TRUE.equals(transactions.execute(tx->{
             IpRun run=billingLockedRun(id).orElse(null);
             if(run==null || !IpRun.STATUS_RUNNING.equals(run.getStatus()) || run.getHeartbeatAt()==null || !run.getHeartbeatAt().isBefore(cutoff)) return false;
-            terminal(run,null,new BusinessException(org.springframework.http.HttpStatus.REQUEST_TIMEOUT,"IP_RUN_TIMEOUT","创作超时，冻结积分已释放，可重新生成"));
+            terminal(run,null,new BusinessException(org.springframework.http.HttpStatus.REQUEST_TIMEOUT,"IP_RUN_TIMEOUT","创作超时，冻结积分已退回，可重新生成"));
             return true;
         }));
     }
@@ -681,6 +792,8 @@ public class StudioWorkflowWorker {
         var rules=com.aistareco.aep.ipstudio.execution.StudioSkillRules.fromSnapshot(exec.path("skill"));
         String stage=exec.path("planStage").asText();
         List<String> allowed=new ArrayList<>();exec.path("allowedNodeIds").forEach(v->allowed.add(v.asText()));
+        // 视频页的爆款复刻：模型只写了每段提示词，方案由代码按受理时冻结的分段和素材拼（StudioRecreationTaskPlan）
+        if(exec.path("recreationTask").isObject())answer=com.aistareco.aep.ipstudio.execution.StudioRecreationTaskPlan.build(exec.path("recreationTask"),answer);
         ObjectNode plan;
         // The validator's reason (「第 N 步…」, stage words) reaches the user as a step's reason: plain words there, the
         // reason itself in the internal detail and the log (不锁方法 2026-10-23).
@@ -738,8 +851,8 @@ public class StudioWorkflowWorker {
     private void markModelDispatched(String id) {
         var allowed=transactions.execute(tx->{
             var run=billingLockedRun(id).orElseThrow();
-            if(!"studio-director".equals(run.getKind()))return true;
             if(!IpRun.STATUS_RUNNING.equals(run.getStatus())||run.isCancelRequested())return false;
+            if(!"studio-director".equals(run.getKind()))return true;
             try {
                 ObjectNode input=(ObjectNode)mapper.readTree(run.getInputJson());
                 input.withObject("/_exec").put("modelDispatchedAt",Instant.now().toString());
@@ -752,6 +865,9 @@ public class StudioWorkflowWorker {
             if(StudioTokenBilling.applies(mapper.readTree(run.getInputJson())))credits.markModelDispatched(IpRunService.REF_TYPE,id);
         } catch(com.fasterxml.jackson.core.JsonProcessingException invalid) {throw new IllegalStateException(invalid);}
     }
+    private static boolean isSceneDirector(JsonNode input) {
+        return "text".equals(input.path("operation").asText()) && "video-script".equals(input.path("scene").path("kind").asText());
+    }
     private boolean directorDispatched(IpRun run) {
         if(!"studio-director".equals(run.getKind()))return false;
         try {
@@ -763,7 +879,7 @@ public class StudioWorkflowWorker {
         long reserved=run.getCost();
         run.setCancelRequested(true);
         run.setStatus(IpRun.STATUS_FAILED);run.setStage("settlement.pending");
-        run.setErrorCode("STUDIO_USAGE_PENDING");run.setErrorMessage("创作已停止，模型费用待核对，冻结积分暂未释放");
+        run.setErrorCode("STUDIO_USAGE_PENDING");run.setErrorMessage("创作已停止，模型费用待核对，冻结积分暂未退回");
         run.setCost(0);run.setFinishedAt(Instant.now());run.setHeartbeatAt(Instant.now());
         ObjectNode output=mapper.createObjectNode();output.putObject("billing").put("state","pending").put("reservedCredits",reserved);
         try {run.setOutputJson(mapper.writeValueAsString(output));}catch(Exception invalid){throw new IllegalStateException(invalid);}
@@ -817,7 +933,7 @@ public class StudioWorkflowWorker {
                 } catch(com.fasterxml.jackson.core.JsonProcessingException e) {throw new IllegalStateException(e);}
             }
             run.setStatus(cancelled?IpRun.STATUS_FAILED:IpRun.STATUS_DONE);run.setStage(cancelled?"failed":"done");run.setPct(100);
-            if(cancelled){run.setErrorCode("IP_RUN_CANCELLED");run.setErrorMessage("已停止创作，已按模型实际用量结算");}
+            if(cancelled){run.setErrorCode("IP_RUN_CANCELLED");run.setErrorMessage(output.path("billing").path("usageEstimated").asBoolean()?"已停止创作，已按生成的内容结算":"已停止创作，已按模型实际用量结算");}
         } else {
             if(directorDispatched(run)&&(cancelled||error instanceof BusinessException b&&"IP_RUN_TIMEOUT".equals(b.getCode()))) {
                 pendingDirectorUsage(run);return;

@@ -1,0 +1,20 @@
+[
+  {
+    "kind": "recreation",
+    "sameTask": true,
+    "unchangedExecution": true,
+    "status": "done"
+  },
+  {
+    "kind": "direct",
+    "sameTask": true,
+    "unchangedExecution": true,
+    "status": "done"
+  },
+  {
+    "kind": "segmented",
+    "sameTask": true,
+    "unchangedExecution": true,
+    "status": "done"
+  }
+]

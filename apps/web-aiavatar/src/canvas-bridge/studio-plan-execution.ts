@@ -273,19 +273,19 @@ export function projectStudioExecution(nodes: CanvasNodeData[], execution: Studi
     if (!bound || bound.executionId !== execution.id || node.metadata?.status !== 'loading') return node;
     const step = execution.steps.find(s => s.id === bound.stepId);
     if (!step) return node;
-    if (step.status === 'failed') { changed = true; return { ...node, metadata: { ...node.metadata, status: 'error' as const, errorDetails: step.reason || '这一段没有完成' } }; }
+    if (step.status === 'failed') { changed = true; return { ...node, metadata: { ...node.metadata, status: 'error' as const, errorDetails: step.reason || '生成失败' } }; }
     if ((step.status === 'done' || step.status === 'skipped') && (node.metadata?.storageKey || node.metadata?.content)) { changed = true; return { ...node, metadata: { ...node.metadata, status: 'success' as const } }; }
     return node;
   });
   return changed ? next : nodes;
 }
 
-/** The execution step whose run a check inspected (the accept target for 「就用这版」). */
+/** The execution step whose run a check inspected (the accept target for 「采用此版本」). */
 export function checkedStep(execution: StudioPlanExecution | undefined, targetRunId: string) {
   return execution?.steps.find(s => s.runIds.includes(targetRunId) || s.acceptedRunId === targetRunId);
 }
 
-/** 「就用这版」/「重做这一段」 from a check node; the dialogue panel owns the execution and handles it. */
+/** 「采用此版本」/「重新生成」 from a check node; the dialogue panel owns the execution and handles it. */
 export const STUDIO_CHECK_COMMAND = 'studio-check-command';
 export type StudioCheckCommand = { action: 'accept' | 'redo'; nodeId: string };
 export function dispatchStudioCheckCommand(detail: StudioCheckCommand) {

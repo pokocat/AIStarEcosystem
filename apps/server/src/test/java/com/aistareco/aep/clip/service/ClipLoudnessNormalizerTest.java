@@ -42,12 +42,13 @@ class ClipLoudnessNormalizerTest {
         BusinessException missing = assertThrows(BusinessException.class,
                 () -> ClipLoudnessNormalizer.parse("{}"));
         assertEquals("CLIP_OUTPUT_QUALITY_FAILED", missing.getCode());
-        assertTrue(missing.getMessage().contains("缺失"));
+        assertTrue(missing.getInternalDetail().contains("is missing"), missing.getInternalDetail());
 
         String silent = analysis().replace("\"-15.39\"", "\"-inf\"");
         BusinessException noAudio = assertThrows(BusinessException.class,
                 () -> ClipLoudnessNormalizer.parse(silent));
-        assertTrue(noAudio.getMessage().contains("没有可用声音"));
+        assertEquals("CLIP_OUTPUT_QUALITY_FAILED", noAudio.getCode());
+        assertTrue(noAudio.getInternalDetail().contains("-inf"), noAudio.getInternalDetail());
     }
 
     private static String analysis() {

@@ -113,7 +113,7 @@ public class IpProjectService {
     /** 属主隔离 + 软删过滤统一在这里，其它服务一律经此取项目。 */
     public IpProject required(String userId, String id) {
         return projectRepo.findByIdAndOwnerUserIdAndDeletedAtIsNull(id, userId)
-                .orElseThrow(() -> BusinessException.notFound("IP_PROJECT_NOT_FOUND", "这张画布不存在，或者已经删了"));
+                .orElseThrow(() -> BusinessException.notFound("IP_PROJECT_NOT_FOUND", "画布不存在或已删除"));
     }
 
     /**
@@ -122,7 +122,7 @@ public class IpProjectService {
      */
     public IpProject requiredForUpdate(String userId, String id) {
         return projectRepo.findByIdAndOwnerUserIdAndDeletedAtIsNullForUpdate(id, userId)
-                .orElseThrow(() -> BusinessException.notFound("IP_PROJECT_NOT_FOUND", "这张画布不存在，或者已经删了"));
+                .orElseThrow(() -> BusinessException.notFound("IP_PROJECT_NOT_FOUND", "画布不存在或已删除"));
     }
 
     public IpProjectDto detail(String userId, String id) {
@@ -138,11 +138,11 @@ public class IpProjectService {
         // 只查 catalog 的话，运营存的示例点开必报「内置工作流不存在」（目录列一套、建的时候查另一套）。
         IpTemplateDto tpl = templateId == null ? null
                 : templates.resolve(templateId, userId).orElseThrow(() ->
-                        BusinessException.badRequest("IP_TEMPLATE_NOT_FOUND", "工作流不存在或已下线：" + templateId));
+                        BusinessException.badRequest("IP_TEMPLATE_NOT_FOUND", "模板不存在或已下线"));
 
         String sceneId = req == null ? null : trimToNull(req.sceneId());
         if (sceneId != null && scenes != null && scenes.image(sceneId).isEmpty() && scenes.video(sceneId).isEmpty())
-            throw BusinessException.badRequest("STUDIO_SCENE_INPUT_INVALID", "这个场景不存在，请刷新后重选");
+            throw BusinessException.badRequest("STUDIO_SCENE_INPUT_INVALID", "该场景已下架，请刷新后重新选择");
         String name = req == null ? null : trimToNull(req.name());
         if (name == null) name = tpl != null ? tpl.name() : "未命名画布";
         if (name.length() > 128) name = name.substring(0, 128);
@@ -206,7 +206,7 @@ public class IpProjectService {
             long bytes = json.getBytes(StandardCharsets.UTF_8).length;
             if (bytes > props.getDocMaxBytes()) {
                 throw BusinessException.badRequest("IP_DOC_TOO_LARGE",
-                        "画布数据过大（" + (bytes / 1024) + "KB），请精简节点或参考图后重试");
+                        "画布内容过大（" + (bytes / 1024) + " KB），请删除部分节点或参考图后重试");
             }
             p.setDocJson(json);
         }
@@ -259,6 +259,28 @@ public class IpProjectService {
         projectRepo.save(p);
     }
 
+    /** 已删除的画布（删除只是打标记，内容和文件都还在）。只读名字和删除时间，不读画布文档。 */
+    public record TrashedCanvas(String id, String name, String deletedAt) {}
+
+    public List<TrashedCanvas> trash(String userId) {
+        List<TrashedCanvas> out = new ArrayList<>();
+        for (Object[] row : projectRepo.trashedOf(userId))
+            out.add(new TrashedCanvas((String) row[0], (String) row[1], row[2] == null ? null : row[2].toString()));
+        return out;
+    }
+
+    /** 恢复已删除的画布：原 ID、原内容。没删除时直接成功；不是本人的按不存在处理。 */
+    @Transactional
+    public void restore(String userId, String id) {
+        // 与彻底删除（StudioTrashService.purgeCanvas）抢同一把行锁：否则恢复成功后仍可能被并发的彻底删除删掉。
+        IpProject p = projectRepo.lockById(id).filter(x -> userId.equals(x.getOwnerUserId()))
+                .orElseThrow(() -> BusinessException.notFound("IP_PROJECT_NOT_FOUND", "这张画布不存在"));
+        if (p.getDeletedAt() == null) return;
+        p.setDeletedAt(null);
+        p.setUpdatedAt(Instant.now());
+        projectRepo.save(p);
+    }
+
     void save(IpProject p) {
         p.setUpdatedAt(Instant.now());
         projectRepo.save(p);
@@ -268,7 +290,15 @@ public class IpProjectService {
 
     /** 照片 / 参考图上传：只收 jpg/png、≤ 字节上限且最长边 ≤ 像素上限；产物 key 由客户端写进 doc。 */
     public IpUploadResultDto upload(String userId, MultipartFile file) {
+        if (storageGuard != null && file != null) storageGuard.checkUpload(userId, file.getSize());
         return uploadImage(file, CATEGORY_SOURCE, userId);
+    }
+
+    /** 存储上限检查（开关默认关，见 StudioStorageGuard）。setter 注入，避免改动既有构造参数。 */
+    private com.aistareco.aep.ipstudio.history.StudioStorageGuard storageGuard;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setStorageGuard(@org.springframework.context.annotation.Lazy com.aistareco.aep.ipstudio.history.StudioStorageGuard storageGuard) {
+        this.storageGuard = storageGuard;
     }
 
     /** Reuse the exact same image validation for canvas media and independent covers. */
@@ -278,7 +308,7 @@ public class IpProjectService {
         }
         if (file.getSize() > props.getUploadMaxBytes()) {
             throw BusinessException.badRequest("IP_UPLOAD_INVALID",
-                    "图片超过 " + (props.getUploadMaxBytes() / 1024 / 1024) + "MB 上限，请压缩后重试");
+                    "图片超过 " + (props.getUploadMaxBytes() / 1024 / 1024) + " MB 上限，请压缩后重试");
         }
         String original = file.getOriginalFilename();
         String ext = extOf(original);
@@ -446,7 +476,7 @@ public class IpProjectService {
         try {
             path = storage.openForRead(key);
         } catch (Exception e) {
-            throw BusinessException.notFound("IP_ASSET_NOT_FOUND", "这个素材取不到了，可能已被清理");
+            throw BusinessException.notFound("IP_ASSET_NOT_FOUND", "素材已不可用，可能已被清理");
         }
         byte[] head = new byte[16];
         try (java.io.InputStream in = java.nio.file.Files.newInputStream(path)) {
@@ -648,9 +678,10 @@ public class IpProjectService {
             String key=done?storage.keyOfStoredUrl(job.getVideoUrl()):null;
             if(done && key==null) {done=false;failed=true;}
             boolean review=!done&&!failed&&"VIDEO_SUBMISSION_UNKNOWN".equals(job.getErrorCode());
+            boolean portrait=!done&&!failed&&com.aistareco.aep.service.materialvideo.ArkPortraitLibrary.REVIEW_CODE.equals(job.getErrorCode());
             boolean recovering=!done&&!failed&&"VIDEO_RECONCILIATION_PENDING".equals(job.getErrorCode());
-            String pending=review?"生成服务响应异常，受理结果待核对。请联系运营核对原任务，请勿重复生成；冻结积分待核实后结算。"
-                    :recovering?MaterialVideoJobService.STILL_PROCESSING:null;
+            String pending=review?"生成服务响应异常，提交结果待核对。请联系平台核对原任务，请勿重复生成；冻结积分将在核实后结算。"
+                    :portrait?com.aistareco.aep.service.materialvideo.ArkPortraitLibrary.REVIEW_MESSAGE:recovering?MaterialVideoJobService.STILL_PROCESSING:null;
             if(review && job.getErrorMessage()!=null && !job.getErrorMessage().isBlank())pending=job.getErrorMessage();
             // Older pending jobs stored longer wording; the user sees the one sentence, the 追查号 is kept for error details.
             if(recovering && job.getErrorMessage()!=null) {
@@ -661,10 +692,14 @@ public class IpProjectService {
             var candidate=candidates.addObject().put("index",index).put("jobId",id)
                     .put("status",done?"done":failed?"failed":"running").put("pct",done||failed?100:job.getProgress())
                     .put("durationSec",job.getDurationSec());
+            if(portrait) {
+                if(!output.has("assetReviews"))output.putArray("assetReviews");
+                ((com.fasterxml.jackson.databind.node.ArrayNode)output.path("assetReviews")).addObject().put("jobId",id).put("reviewId",parseOrEmptyObject(job.getPayloadJson()).path("portrait_review_id").asText());
+            }
             if(pending!=null) {
                 candidate.put("errorCode",job.getErrorCode()).put("errorMessage",pending);
                 // Any uncertain item must remain visible even when other batch items are progressing or done.
-                if(pendingCode==null||review) {pendingCode=job.getErrorCode();pendingMessage=pending;}
+                if(pendingCode==null||review||portrait) {pendingCode=job.getErrorCode();pendingMessage=pending;}
             }
             // 厂商出片前改写提示词的结果（只读；受理后才知道，只用来解释成片与原文的差异）。
             var rewrite=com.aistareco.aep.service.materialvideo.VideoPromptRewrite.wire(om,job.getVariantConfigJson(),job.getPayloadJson());
@@ -698,7 +733,7 @@ public class IpProjectService {
         boolean allFailed=!active&&successes==0;
         String stage=active?(allQueued?"endpoint.queued":"视频生成中")
                 :allFailed?"视频生成失败":successes<ids.size()?"部分视频生成失败":"视频生成完成";
-        if(pendingCode!=null)stage="VIDEO_SUBMISSION_UNKNOWN".equals(pendingCode)?"video.submission_unknown":"video.recovering";
+        if(pendingCode!=null)stage="VIDEO_SUBMISSION_UNKNOWN".equals(pendingCode)?"video.submission_unknown":com.aistareco.aep.service.materialvideo.ArkPortraitLibrary.REVIEW_CODE.equals(pendingCode)?"video.asset_review":"video.recovering";
         var billing=modelCharges==null?null:modelCharges.breakdown(MaterialVideoJobService.CREDIT_REF_TYPE,ids);
         if(billing!=null){output.set("billingBreakdown",om.valueToTree(billing));cost=billing.displayedCost();}
         // 先改写提示词再出片的那一行（StudioWorkflowService#submitVideoRewrite）：改写按实际用量的花费算在一起（有模型明细时用明细的显示金额），
@@ -774,7 +809,7 @@ public class IpProjectService {
     public String candidateKeyOf(String userId, String projectId, String runId, int index) {
         IpRun run = ownedRun(userId, projectId, runId).orElseThrow(() ->
                 BusinessException.notFound("IP_RUN_NOT_FOUND",
-                        "选中的那次生成不存在或不属于本项目，请重新生成并选图"));
+                        "所选生成结果不存在或不属于此画布，请重新生成并选择图片"));
         JsonNode arr = parseOrEmptyObject(run.getOutputJson()).path("candidates");
         if (!arr.isArray() || arr.isEmpty()) return null;
         int i = Math.max(0, Math.min(arr.size() - 1, index));
@@ -800,7 +835,7 @@ public class IpProjectService {
         // 调用方分不清是超限、非法 key 还是存储故障 —— 而且被丢掉的那些根本没过归属闸。
         if (keys.size() > MAX_SIGN_KEYS) {
             throw BusinessException.badRequest("IP_SIGN_TOO_MANY",
-                    "一次最多重签 " + MAX_SIGN_KEYS + " 张图，请分批");
+                    "一次最多刷新 " + MAX_SIGN_KEYS + " 张图片，请分批操作");
         }
         for (String raw : keys) {
             String key = requireOwnedAssetKey(userId, raw);
@@ -841,7 +876,7 @@ public class IpProjectService {
         if (baseDocVersion == null || baseDocVersion.isBlank()) return;
         if (!baseDocVersion.equals(docVersion(p.getDocJson()))) {
             throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT, "IP_PROJECT_STALE",
-                    "这张画布已经有一份更新的内容了。现在保存会把那份覆盖掉，刷新一下再改。");
+                    "这张画布已有更新的版本，继续保存将覆盖该版本。请刷新后再修改");
         }
     }
 
@@ -971,7 +1006,7 @@ public class IpProjectService {
         try {
             return om.writeValueAsString(doc);
         } catch (Exception e) {
-            throw BusinessException.badRequest("IP_DOC_INVALID", "画布数据无法序列化");
+            throw BusinessException.badRequest("IP_DOC_INVALID", "画布内容保存失败，请重试");
         }
     }
 

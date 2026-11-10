@@ -165,12 +165,12 @@ public class AistarRehearsalRestore {
             }
             try(var s=c.createStatement();var rs=s.executeQuery("select current_database(),current_user,(select version from flyway_schema_history where success order by installed_rank desc limit 1)")){
                 rs.next();
-                if(!db.equals(rs.getString(1))||!role.equals(rs.getString(2))||!"77".equals(rs.getString(3)))throw new IllegalStateException("DB role/version mismatch");
+                if(!db.equals(rs.getString(1))||!role.equals(rs.getString(2))||!"78".equals(rs.getString(3)))throw new IllegalStateException("DB role/version mismatch");
             }
             try(var s=c.createStatement();var rs=s.executeQuery("select table_name,column_name,data_type from information_schema.columns where table_schema='public' and table_name<>'flyway_schema_history' order by table_name,ordinal_position")){
                 while(rs.next())pg.computeIfAbsent(rs.getString(1),x->new LinkedHashMap<>()).put(rs.getString(2),rs.getString(3));
             }
-            if(pg.size()!=192)throw new IllegalStateException("Expected 192 business tables");
+            if(pg.size()!=195)throw new IllegalStateException("Expected 195 business tables");
             for(String t:pg.keySet())try(var s=c.createStatement();var rs=s.executeQuery("select count(*) from "+q(t))){
                 rs.next();
                 if(rs.getLong(1)!=0)throw new IllegalStateException("Target contains data: refuse overwrite");
@@ -284,7 +284,7 @@ public class AistarRehearsalRestore {
                 receipt.put("total_seconds",(System.nanoTime()-start)/1e9);
                 Files.writeString(receiptPath,json.writerWithDefaultPrettyPrinter().writeValueAsString(receipt));
                 Files.setPosixFilePermissions(receiptPath,permissions);
-                System.out.println("Verified and committed all 192 tables; receipts contain no row values");
+                System.out.println("Verified and committed all 195 tables; receipts contain no row values");
             }
             catch(Exception e){
                 c.rollback();

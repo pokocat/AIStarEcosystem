@@ -7,7 +7,8 @@ import java.time.Instant;
 public class MaterialVideoInputAssetWriterImpl implements MaterialVideoInputAssetWriter {
     private final EntityManager entityManager;
     public MaterialVideoInputAssetWriterImpl(EntityManager entityManager) {this.entityManager=entityManager;}
-    @Override public void remember(String id,String source,String asset,Instant expiry) {
+    @Override @org.springframework.transaction.annotation.Transactional
+    public void remember(String id,String source,String asset,Instant expiry) {
         entityManager.unwrap(Session.class).doWork(connection -> {
             boolean postgres="PostgreSQL".equals(connection.getMetaData().getDatabaseProductName());
             String sql="INSERT INTO material_video_input_asset (id,source_key,asset_id,expires_at) VALUES (?,?,?,?) "

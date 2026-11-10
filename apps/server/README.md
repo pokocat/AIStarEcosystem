@@ -1,5 +1,11 @@
 # AI Star Eco Server
 
+### 2026-11-09 · GPT Image URL 结果下载
+
+`JusuanImageClient` 对供应商图片结果直接下载返回的 HTTP / HTTPS URL，支持跨域、非标准端口和最多 10 次重定向；不再应用旧 `wire.outputHosts` 或网络地址过滤。每跳都不发送供应商 Key，下载超时、大小和媒体有效性检查保留。参考图输入与端点地址校验不变。既有 `sync-url` / `/data/0/url` 配置可完成 SuperAIToken 的 GPT Image 2 / 2.5 接入，完整型号从端点 `model` 取。四个 GPT 接入点有参考图时均走 multipart `/images/edits`，没有参考图时仍用 JSON `/images/generations`；文生图不带 `images` 字段。
+
+生产配置通过 `infra/scripts/switch-gpt-images-superaitoken.py` 的签名管理命令更新并加密保存 Key；脚本先校验所有型号对当前 Key 可见，保留端点 ID、费用、额度和参考图协议，备份后切换 URL 返回并恢复 2K 竖图。分镜按作品比例选原接入点的最大尺寸，覆盖 9:16 / 16:9 / 1:1。发布证据见 [本次记录](../../docs/releases/superaitoken-gpt-image-url-production-20261109.md)。
+
 > 阿里云 **ECS + RDS + OSS** 部署的完整版本化基础设施在 [`../../infra/`](../../infra/README.md)。
 > 新机器从零拉起、env / nginx / systemd / RDS / OSS 模板、deploy 脚本均在该目录。
 
@@ -434,6 +440,7 @@ src/main/java/com/aistareco/aep/
 ## 数据模型
 
 - **`material_video_input_asset`（V71，2026-10-29）**：角色声音的聚算输入回执；按端点、地址、模型、凭据及来源 key 散列隔离，保存 `source_key` / `asset_id` / `expires_at`，不保存密钥和签名 URL。人物长期绑定仍存我方 key；保存音色和生成 worker 共用上传路径，仅在厂商有效期前复用，过期从原样本重新上传。上传使用可写事务，避免个人素材库持用户行锁时触发 MySQL 只读事务 500。
+- **视频素材库（2026-11-07，V75，方案见 `docs/video-asset-library.md`）**：`video_asset_library` 一个素材库对应一个供应商账号，`ai_model_providers.asset_library_id` 指明模型属于哪个库。提交前由 `VideoAssetPreparer` 把素材换成引用，渠道差异在 `VideoAssetLibrary` 的实现里，现在只有 `OneTokenAssetLibrary`（`POST /api/v3/video/assets`，`onetoken-main`）：首帧、尾帧和全部参考都先上传换 `asset://ota-…`。回执仍存 `material_video_input_asset`，散列范围是素材库、地址、凭据和素材 key，不分型号，所以 2.0 和 2.5 共用；离过期不足 30 分钟就重传（厂商默认 6 小时）。厂商拒绝说引用失效（`content[n].image_url: asset not found`）时作废回执、重传一次再提交。上传不包在数据库事务里，避免等待限流时占着连接。规格里旧的 `inputAssets` 字段新版读的时候忽略，已存的规格和已受理任务的快照照常能读。
 
 - **`director_work`（V65，AI 导演台）**：作品一行，`content_json` 存剧本 / 分集 / 资产使用 / 片段与镜头 / 采用指针（只存存储 key），`revision` 作品级修订、`active` 供后台调度扫描。生成任务复用 `ip_run`，新增 `host_type`（NULL = 画布，`director` = 导演作品，`project_id` 存作品 id）。接口 `/api/v1/ip-studio/director/**`。
   2026-11-04（无迁移）：`content_json` 的资产加 `forms[]`、`views`，片段加 `assetForms`，镜头加 `sceneView`；任务节点 `form:<形态id>`、`views:<场景id>`。
@@ -503,6 +510,14 @@ src/main/java/com/aistareco/aep/
 | `dap_asset_usage` | **v0.104** 引用台账（驱动详情页「APPLIED TO · 已用于」；同一对 资产→用处 重复引用累加 `times` 不新增行） |
 | `dap_material_group` | **v0.105** 素材分组（MG-xxxx；七牛 modelink asset-group 本地镜像。`kind=liveness_face` 即真人授权刷脸会话，状态 preparing→awaiting_auth→validating→active/failed；`callbackToken` 唯一，是无 JWT 回跳端点的防伪 state；`validateCalledAt` 是一次性凭证 byted_token 的幂等闸；**v0.105-补丁** `kind=aigc` 启用为「数字人专属 aigc 分组」的账号级共享单例行（owner=`__platform__`，`callbackToken` 改承载去重键 `aigc:<model>`）；`recycledAt` = 上游分组已删、配额已还的时间〔本地行保留作审计；账号级只有 3 分组配额，failed 组超期回收、active 组永不删〕） |
 | `dap_material` | **v0.105** 送审素材（MAT-xxxx；modelink asset 本地镜像。`sourceKey` 是 §4.7.4 真值，送审时才派生签名 URL；状态 pending→reviewing→approved/failed；`refType=capture` 挂 liveness 分组、`refType=avatar` 走平台 aigc 默认组） |
+
+### 账号区接口（2026-11-09，已生产发布 `20261109-account-pages-e978bfce`）
+
+- `GET /api/v1/ip-studio/task-history`（`ipstudio/history/StudioTaskHistoryService`）：本人 IpRun + DapJob 合并的任务历史，每条带积分明细（复用 `toRunDto` 的 breakdown）与时间窗汇总。
+- `GET /api/v1/ip-studio/storage`（`StudioStorageService`）：数字资产文件 + 通用存储统计（app=aiavatar / studio）合并的存储用量；`FileStorageService` 写 `ipstudio/gen`、`ipstudio/source` 时记一笔。
+- `GET /api/v1/ip-studio/projects/trash`、`POST /api/v1/ip-studio/projects/{id}/restore`：画布回收站列表与恢复。
+
+规则见 `specs/BUSINESS_RULES.md`「账号区任务历史、存储用量与画布回收站」。无迁移。
 
 ### AI IP 工作台域（ip_*，v0.151；迁移 V27）
 
@@ -1022,7 +1037,7 @@ V54 为图片模型端点新增 `image_request_spec_json`：每个端点保存�
 
 按用户确认，新增配音、口型同步暂以 1 聚算积分 = 1 平台积分，加 50% 溢价；人民币换算后续统一调整。配置 `ipstudio.supplier-point-pricing` 分开保存供应商每秒积分、换算比例和溢价，不混用端点的人民币微元字段。先对供应商计费秒数向上取整，再对整笔平台积分向上取整，避免每秒取整造成额外溢价。生产确认成本前不开放模型，旧验收单价不作为正式售价。
 
-配音按正文 Unicode 字符数 + 10 秒（上限 600 秒）确定并显示预冻结上限，生成完成按实际音频时长结算、退回剩余冻结；这是一笔消费上限，不是时长预测。极端慢速音频超出上限则明确失败并释放冻结，不追加扣费。口型同步按已解码驱动音频时长报价。任务保存完整定价快照，重启恢复、同键重放和后台调价不改变原请求；已受理旧任务保留旧快照兼容。
+配音按正文 Unicode 字符数 + 10 秒（上限 600 秒）确定预冻结上限（界面只显示单价，不显示上限，2026-11-06 起），生成完成按实际音频时长结算、退回剩余冻结；这是一笔消费上限，不是时长预测。极端慢速音频超出上限则明确失败并释放冻结，不追加扣费。口型同步按已解码驱动音频时长报价。任务保存完整定价快照，重启恢复、同键重放和后台调价不改变原请求；已受理旧任务保留旧快照兼容。
 
 正式发布覆盖后端、AiAvatar 和管理后台；保留个人画布发布模板，整画布分享仍暂缓。发布前已完成生产数据库/旧服务备份，隔离 MySQL 8.0.46 上 V39→V48 九项迁移与重复启动零迁移检查；正式部署与线上验收事实记录在 `docs/releases/ip-studio-production-release.md`。
 
@@ -1094,6 +1109,10 @@ V51 为 `material_video_job` 增加可空 `error_code VARCHAR(64)`，和原 `err
 边界与验收见 `docs/releases/studio-workspace-refactor-validation.md`；无迁移改动。
 
 2026-10-17 后端与 AiAvatar 已发布 `81778bef`，V58 零新增迁移、两模板实际落库通过；见 [生产记录](../../docs/releases/studio-workspace-production-release-20261017.md)。
+
+## Studio 拉片 v2：直接看视频（2026-11-09，本地未发布）
+
+后台用途 `DAP_VIDEO_UNDERSTAND`（V79 只扩枚举）绑定了在 `models_json` 声明 `supportsVideo`、`ai.chat-token-pricing` 已定价的模型时，拉片（`recreation / segments`）把整条视频（画面 + 声音）交给它：`StudioVideoBreakdown` 压代理视频、用 ffmpeg `scdet` 测切镜点，提示词 `stage-video-breakdown`，输出 `filmStudy.breakdown`（逐镜台词、字幕、段落、爆点、复刻要点，`strategy=video-understanding-v1`），再按视频模型时长在镜头边界分段裁切。AI 视频页复刻的「写分镜脚本」由 `execution/StudioRecreationTaskPlan` 拼方案（冻结在 `_exec.recreationTask`），模型只写每段提示词和字幕（`stage-recreation-compile`），`assemble.settings.captions` 合成时叠字幕。没绑定时照旧抽帧读图、模型写方案。真实联调 `StudioVideoBreakdownRealTest`（设 `STUDIO_BREAKDOWN_E2E_VIDEO` 才跑）。真源 `docs/ip-studio-recreation.md` 第一节。
 
 ## Studio 拉片原声提取（2026-10-17，已发布f8d8cf1b）
 
@@ -1351,6 +1370,7 @@ Studio 图片报价为 `POST /api/v1/ip-studio/projects/{id}/{image-quote|studio
 
 - **场景目录唯一真源**：`ipstudio/scene/StudioSceneCatalog`。运营在后台改过就读平台配置 `studio.scene-catalog`（按配置版本缓存；读不出来用随包那份并打 ERROR），否则用随包的 `src/main/resources/ipstudio/scenes.json`（启动时校验，写错不启动）。
 - 后台 `AdminStudioSceneController`（`/api/admin/studio/scenes`，SUPER_ADMIN / OPERATOR；页面在 Studio 运营后台 `studio-admin` 的 `/scenes`）：GET 整份（含下架、带签名预览）；PUT 整份保存带 `baseVersion`（别人先存过 409 `STUDIO_SCENE_CATALOG_STALE`，不合格 400 `STUDIO_SCENE_CATALOG_INVALID`，与随包同一套 `validate`；签名地址不入库）；DELETE 恢复随包；`POST /media` 传封面 / 示例（按字节判 JPG / PNG / WEBP ≤10MB 或 MP4 ≤50MB，存到 `ipstudio/scene` 分类，目录只认这个前缀下的 key）。`PlatformConfigService.upsert` 改这个 key 也过同一道校验。
+- 后台 `AdminStudioModelConfigController`（`POST /api/admin/studio/model-config/command`，SUPER_ADMIN / OPERATOR；页面在 Studio 运营后台 `/models`）：按白名单执行 `ModelManagementService` 的命令，审计 `appCode=studio-admin`，见 `docs/platform-model-management.md`。
 - `GET /api/v1/ip-studio/scenes`：只下发上架的场景，封面 / 示例签名，key 与上下架标记不下发。`POST /api/v1/ip-studio/scenes/compose`：出图描述（场景描述 + 补充要求）、交给助手的话 + `skillKey`，或 `video-script`（AI 视频页编导写脚本的要求，图按交给模型的顺序编号，可带 `revision` 改稿），纯计算不扣费，缺必填素材 400 `STUDIO_SCENE_INPUT_INVALID`。
 - 目录里每个场景可带选项组 `options`（最多 4 组、各有默认值），`compose` 收 `options` 把选中项拼成一句；首页卡片 `homeGoals` 经公开只读 `GET /api/v1/ip-studio/scenes/home` 下发（`AepSecurityConfig` 放行 + `ProductRouteTable.PUBLIC_GETS` 登记，`StudioSceneSecurityTest` 守着匿名可读、目录与后台不可读）。
 - 文字任务（`operation=text`）现在可以带 `readVisuals` 读引用的图（编导看商品图写脚本）；模型没声明看图能力 400 `STUDIO_VISION_UNAVAILABLE`。
@@ -1404,3 +1424,23 @@ AIStar运行镜像必须同时固定官方Java与Node镜像digest；Studio仿片
 回环 `/internal/deployment` 需要独立强令牌 `AEP_DEPLOYMENT_TOKEN`，Nginx必须拒绝该路径。POST 取消未来调度，不中断运行任务；GET 同时检查请求（含异步）、线程池和持久任务。证据不可用返回503，不当作空闲。正式API双机后台关闭，后台单活独立运行。导入/发布门禁见 [PostgreSQL SOP](../../docs/aistar-postgresql-cutover.md)。
 
 postgres双机的`AEP_STORAGE_REQUIRE_DURABLE_UPLOADS`默认true：混剪素材/预置/官方素材与成片须持久化OSS后才保存确认，读不到本地文件时按已授权资产的cdnKey回源。缓存原子落盘，旧静态素材URL支持Range；本地目录和旧绝对路径映射见迁移SOP，不能只拷贝file-storage。
+
+### Studio 视频页任务（2026-11-06，本地实现，未发布）
+
+`StudioVideoTaskService` 复用原生执行表与模型生成链，对普通视频、分段长视频与复刻提供统一报价、受理、列表和详情。元数据保存在 `ip_plan_execution.steps_json.videoTask`，无新表或独立计费账本；旧任务通过只读投影兼容。复刻分析完成后在已批准的总费用上限内动态接续制作。新视频页步骤总共最多自动尝试三次；不明受理和原文保留不能触发盲目重做。画布修复成功后，明确继续可采纳同一输出节点的本人成功任务，并保留已有成功步骤。契约见 OpenAPI 的 `video-tasks` 与 `specs/BUSINESS_RULES.md`。
+
+### 成片自动字幕与声音（2026-11-07，本地未发布）
+
+真源 `docs/studio-final-cut.md`。合成最后一道是 `StudioPackagingService.finish`：叠字幕和品牌文字、统一响度、混背景音乐，画面没变化时视频流直接复制。字幕来源由 `StudioCaptionService` 决定，对时和排版在纯函数 `StudioCaptionAligner`。语音识别用途 `DAP_TRANSCRIBE`（V76 只扩枚举），接口兼容 `POST {base}/audio/transcriptions`、返回带 `segments` 的 `verbose_json`；未绑定时导演台按镜头时间估算，一键成片不加字幕并如实说明，`GET capabilities` 的 `captionRecognition` 告诉前端能不能识别。真语音联调：设 `STUDIO_ASR_E2E_URL` 和 `STUDIO_ASR_E2E_DIR` 跑 `StudioCaptionSpeechE2ETest`。
+
+### 端点思考强度（2026-11-07）
+
+后台模型端点 API 的 `chatReasoningEffort` 是此供应商与固定型号的请求配置（V77 新增可空列 `ai_model_providers.chat_reasoning_effort`），普通聊天、流式收齐与编导 turn 共用，以 `reasoning_effort` 发送并进入既有用量记录的脱敏请求。空值不发送、保持供应商默认；PUT 省略保留、空字符串清空。更换供应商类型、地址或固定型号时，未显式重设就清空，不能把旧型号的验证结论套到新型号。该配置不能被业务 options 覆盖，也不等于关闭思考；不推断别的模型支持同一参数。管理端只接受 none/minimal/low/medium/high/xhigh/max，真实支持须实测确认。
+
+## Seedance 官方人像素材（2026-11-09，已发布）
+
+Fast / Mini 的生产 API Key 已切换；官方库 `bingbing` 已真实验证虚拟样本入库 Active 与本人 H5 会话。官方素材库 `ark-bingbing` 已绑定 Fast / Mini，V78 和页面已随 `20261109-ark-portraits-137b5754` 发布。生成前在积分冻结前检查引用，需要处理时在当前页弹窗，复用 Ant Design 控件；用户明确确认真人或虚拟声明后入库，Active 后继续原操作。官方明确拒绝且尚无供应商任务号时，保留原任务及冻结最多 30 分钟，审核后恢复同一任务，不二次冻结；超时释放。已有供应商任务继续对账。本人刷脸、真人一致性审核和真人成片尚未实测。真源：[视频素材库](../../docs/video-asset-library.md)。
+
+### AI 视频编导修改建议（2026-11-09）
+
+场景文字任务（scene.kind=video-script）的 textRevision 可返回 suggestions:[{label,instruction}]，与脚本同次调用生成。独立过滤空值、错类型、控制字符、重复和超长项，最多保留 3 条，label 最多 8、instruction 最多 80 个 Unicode code point。建议异常不影响脚本，完整模型原文仍在既有任务和用量记录中保留。通用画布文字与分段脚本契约不变。发布须核对 stage-scene-script 实际生效版本。

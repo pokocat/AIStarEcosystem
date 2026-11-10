@@ -91,7 +91,7 @@ describe("出错要说清楚，不能装作成功", () => {
 
   it("画布还没打开就点生成，给一句人话而不是崩掉", async () => {
     currentProjectIdMock.mockReturnValue(null);
-    await expect(requestEdit(cfg, "还没打开", [])).rejects.toThrow(/画布还没打开/);
+    await expect(requestEdit(cfg, "还没打开", [])).rejects.toThrow(/画布尚未打开/);
   });
 });
 
@@ -123,7 +123,7 @@ describe("运行结果的字段名必须跟服务端一致", () => {
     readRunMock.mockResolvedValue({ id: "IPR-2", status: "done", output: { candidates: [] } });
 
     const err = await requestGeneration({ ...cfg, count: "1" }, "画一个").catch((e: Error) => e);
-    expect((err as Error).message).toMatch(/没有返回图片/);
+    expect((err as Error).message).toMatch(/未返回图片/);
     expect((err as Error).message).toContain("IPR-2");
     expect((err as Error).message).not.toContain("已退回");
   });

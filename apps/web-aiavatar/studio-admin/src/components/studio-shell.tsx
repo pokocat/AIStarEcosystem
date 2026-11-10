@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { BarChart3, ChevronRight, LayoutTemplate, LogOut, Radar, SlidersHorizontal, Sparkles } from "lucide-react";
+import { BarChart3, Boxes, ChevronRight, LayoutTemplate, LogOut, Radar, SlidersHorizontal, Sparkles } from "lucide-react";
 import { Badge } from "@ai-star-eco/ui/ui/badge";
 import { Button } from "@ai-star-eco/ui/ui/button";
 import {
@@ -14,7 +14,10 @@ import {
 import { AuthApi, type AdminIdentity } from "@/lib/api";
 import { studioAdminPath } from "@/lib/app-path";
 
-export type StudioModule = "business" | "technology" | "suppliers" | "scenes";
+export type StudioModule = "business" | "technology" | "suppliers" | "scenes" | "models";
+
+/** 这两个模块能改配置，其余是只读看板。 */
+const isConfigModule = (module: StudioModule) => module === "scenes" || module === "models";
 
 const MODULES = [
   { id: "business" as const, href: "/business", label: "经营分析", icon: BarChart3 },
@@ -27,6 +30,7 @@ const MODULE_META: Record<StudioModule, { group: string; title: string; tabs: Ar
   technology: { group: "技术监控", title: "生成与稳定性", tabs: [{ id: "models", label: "模型运行" }, { id: "quality", label: "失败与耗时" }, { id: "release", label: "发布与告警" }] },
   suppliers: { group: "供应商分析", title: "供应商性能", tabs: [{ id: "overview", label: "性能概览" }, { id: "details", label: "任务明细" }] },
   scenes: { group: "运营配置", title: "场景模板", tabs: [] },
+  models: { group: "运营配置", title: "模型配置", tabs: [{ id: "access", label: "模型接入" }, { id: "studio", label: "IP Studio 模型" }, { id: "functions", label: "功能与售价" }] },
 };
 
 function moduleHref(href: string, search: URLSearchParams) {
@@ -48,7 +52,7 @@ function StudioNavigation({ module, identity, logout }: { module: StudioModule; 
           <span className="flex size-10 items-center justify-center rounded-lg bg-[#4f6692] text-white shadow-sm"><Sparkles className="size-5" /></span>
           <span className="min-w-0"><span className="block text-[15px] font-bold tracking-tight text-slate-950">Studio Ops</span><span className="block text-xs text-slate-500">积分与生成运营台</span></span>
         </Link>
-        {module !== "scenes" && <Badge variant="outline" className={`w-full justify-center py-1 ${search.get("demo") === "1" ? "border-[#d9d1de] bg-[#f1edf3] text-[#74667f]" : "border-slate-200 bg-slate-50 text-slate-600"}`}>{search.get("demo") === "1" ? "本地演示数据 · 只读" : "看板只读"}</Badge>}
+        {!isConfigModule(module) && <Badge variant="outline" className={`w-full justify-center py-1 ${search.get("demo") === "1" ? "border-[#d9d1de] bg-[#f1edf3] text-[#74667f]" : "border-slate-200 bg-slate-50 text-slate-600"}`}>{search.get("demo") === "1" ? "本地演示数据 · 只读" : "看板只读"}</Badge>}
       </SidebarHeader>
       <SidebarSeparator />
       <SidebarContent className="px-2 py-3">
@@ -61,7 +65,7 @@ function StudioNavigation({ module, identity, logout }: { module: StudioModule; 
         </SidebarGroup>
         <SidebarGroup>
           <SidebarGroupLabel className="px-2 text-[11px] font-semibold uppercase tracking-[.12em] text-slate-400">运营配置</SidebarGroupLabel>
-          <SidebarGroupContent><SidebarMenu><SidebarMenuItem><SidebarMenuButton asChild isActive={module === "scenes"} tooltip="场景模板" className="h-10 rounded-lg px-3 data-[active=true]:font-semibold"><Link href={moduleHref("/scenes", search)} onClick={() => setOpenMobile(false)} aria-current={module === "scenes" ? "page" : undefined}><LayoutTemplate /><span>场景模板</span><ChevronRight className="ml-auto size-3.5 opacity-35" /></Link></SidebarMenuButton></SidebarMenuItem></SidebarMenu></SidebarGroupContent>
+          <SidebarGroupContent><SidebarMenu><SidebarMenuItem><SidebarMenuButton asChild isActive={module === "scenes"} tooltip="场景模板" className="h-10 rounded-lg px-3 data-[active=true]:font-semibold"><Link href={moduleHref("/scenes", search)} onClick={() => setOpenMobile(false)} aria-current={module === "scenes" ? "page" : undefined}><LayoutTemplate /><span>场景模板</span><ChevronRight className="ml-auto size-3.5 opacity-35" /></Link></SidebarMenuButton></SidebarMenuItem><SidebarMenuItem><SidebarMenuButton asChild isActive={module === "models"} tooltip="模型配置" className="h-10 rounded-lg px-3 data-[active=true]:font-semibold"><Link href="/models" onClick={() => setOpenMobile(false)} aria-current={module === "models" ? "page" : undefined}><Boxes /><span>模型配置</span><ChevronRight className="ml-auto size-3.5 opacity-35" /></Link></SidebarMenuButton></SidebarMenuItem></SidebarMenu></SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="p-3"><div className="rounded-xl border bg-slate-50 p-3"><div className="flex items-center gap-2"><span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-bold text-slate-700">{(identity?.displayName || identity?.username || "管").slice(0, 1)}</span><div className="min-w-0 flex-1"><div className="truncate text-sm font-semibold">{identity?.displayName || "管理员"}</div><div className="truncate text-[11px] text-slate-500">{identity?.role || "权限校验中"}</div></div><Button variant="ghost" size="icon" className="size-8 text-slate-500" onClick={logout} aria-label="退出登录"><LogOut className="size-4" /></Button></div></div></SidebarFooter>
@@ -101,7 +105,7 @@ export function StudioShell({ children, module }: { children: React.ReactNode; m
               <p className="truncate text-[11px] text-slate-400">Studio Ops / {meta.group}</p>
               <h1 className="truncate text-sm font-semibold text-slate-900">{meta.title}</h1>
             </div>
-            {module !== "scenes" && <Badge variant="outline" className="hidden border-slate-200 bg-slate-50 text-slate-600 sm:flex">只读查询</Badge>}
+            {!isConfigModule(module) && <Badge variant="outline" className="hidden border-slate-200 bg-slate-50 text-slate-600 sm:flex">只读查询</Badge>}
           </div>
           {meta.tabs.length > 0 && (
             <nav aria-label={`${meta.group}子页面`} className="overflow-x-auto border-t px-4 md:px-5">

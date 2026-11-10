@@ -21,7 +21,7 @@ public final class StudioTokenBilling {
     public static ModelChargeContext plan(AiModelEndpoint endpoint, AiChatTokenPricing.Rate rate) {
         if (endpoint == null || rate == null) return ModelChargeContext.NONE; // Fixtures and non-model assembly.
         if (rate.maxCost() <= 0) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,
-                "MODEL_PRICE_NOT_CONFIGURED", "请先配置文本模型标准售价。想免费送用户体验，请发放模型赠款");
+                "MODEL_PRICE_NOT_CONFIGURED", "此模型暂未定价，请选择其他模型");
         return ModelChargeContext.forCredits(endpoint,rate.maxCost());
     }
 
@@ -42,18 +42,18 @@ public final class StudioTokenBilling {
         if (!Objects.equals(target.path("endpointId").asText(null), endpoint.getId())
                 || !Objects.equals(target.path("providerModel").asText(null), ModelBillingTarget.providerModelOf(endpoint))
                 || !Objects.equals(execution.path("modelChargeBaseUrl").asText(null), endpoint.getBaseUrl()))
-            throw new BusinessException(HttpStatus.CONFLICT, "MODEL_BILLING_ROUTE_CHANGED", "文本模型渠道已变更，请重新确认后再生成");
+            throw new BusinessException(HttpStatus.CONFLICT, "MODEL_BILLING_ROUTE_CHANGED", "文本模型已更新，请重新确认后生成");
     }
 
     public static ModelBillingMath.Usage usage(long inputTokens, long outputTokens) {
-        if (inputTokens < 0 || outputTokens < 0) throw BusinessException.badRequest("AI_USAGE_INVALID", "模型 Token 用量无效");
+        if (inputTokens < 0 || outputTokens < 0) throw BusinessException.badRequest("AI_USAGE_INVALID", "生成服务返回的用量信息无效，请重试");
         return new ModelBillingMath.Usage(BigDecimal.valueOf(inputTokens, 3), BigDecimal.valueOf(outputTokens, 3));
     }
 
     public static ModelBillingMath.Usage measured(JsonNode output) {
         JsonNode billing = output.path("billing");
         if (!billing.path("inputTokens").isIntegralNumber() || !billing.path("outputTokens").isIntegralNumber())
-            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_USAGE_MISSING", "模型未返回有效 Token 用量，本次未扣积分");
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_USAGE_MISSING", "生成服务未返回用量信息，本次未扣积分，请重试");
         return usage(billing.path("inputTokens").longValue(), billing.path("outputTokens").longValue());
     }
 }

@@ -28,24 +28,24 @@ public class AistarFinancialAudit {
         try(var c=DriverManager.getConnection(url,role,config.get("rds_roles").get(role).asText())) {
             proof.put("driver_version",c.getMetaData().getDriverVersion());
             c.setReadOnly(true);c.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);c.setAutoCommit(false);
-            try(var st=c.createStatement()) {st.execute("set time zone 'UTC'");try(var rs=st.executeQuery("select current_database(),current_user,(select version from flyway_schema_history where success order by installed_rank desc limit 1)")){rs.next();if(!db.equals(rs.getString(1))||!role.equals(rs.getString(2))||!"77".equals(rs.getString(3)))throw new IllegalStateException("Database/role/version mismatch");}}
+            try(var st=c.createStatement()) {st.execute("set time zone 'UTC'");try(var rs=st.executeQuery("select current_database(),current_user,(select version from flyway_schema_history where success order by installed_rank desc limit 1)")){rs.next();if(!db.equals(rs.getString(1))||!role.equals(rs.getString(2))||!"78".equals(rs.getString(3)))throw new IllegalStateException("Database/role/version mismatch");}}
             var counts=new TreeMap<String,Long>();for(var entry:queries.entrySet())try(var st=c.createStatement();var rs=st.executeQuery(entry.getValue())){rs.next();counts.put(entry.getKey(),rs.getLong(1));}
             proof.put("violation_counts",counts);
             try(var st=c.createStatement();var rs=st.executeQuery("select table_name,column_name,data_type from information_schema.columns where table_schema='public' and table_name<>'flyway_schema_history' order by table_name,ordinal_position")) {
                 while(rs.next())AistarRehearsalRestore.pg.computeIfAbsent(rs.getString(1),x->new LinkedHashMap<>()).put(rs.getString(2),rs.getString(3));
             }
-            if(AistarRehearsalRestore.pg.size()!=192||original.get("verified_tables").asInt()!=192)throw new IllegalStateException("Table coverage mismatch");
+            if(AistarRehearsalRestore.pg.size()!=195||original.get("verified_tables").asInt()!=195)throw new IllegalStateException("Table coverage mismatch");
             for(String table:AistarRehearsalRestore.pg.keySet()) {
                 var cols=new ArrayList<String>();for(var col:order.get(table))cols.add(col.asText());
                 if(!new HashSet<>(cols).equals(AistarRehearsalRestore.pg.get(table).keySet()))throw new IllegalStateException("Column coverage mismatch");
                 AistarRehearsalRestore.columns.put(table,cols);
                 var actual=AistarRehearsalRestore.fingerprint(c,table).receipt();var expected=original.get("tables").get(table);
-                for(String key:List.of("rows","sum_sha256","xor_sha256"))if(!String.valueOf(actual.get(key)).equals(expected.get(key).asText()))throw new IllegalStateException("Fingerprint mismatch after V77: "+table);
+                for(String key:List.of("rows","sum_sha256","xor_sha256"))if(!String.valueOf(actual.get(key)).equals(expected.get(key).asText()))throw new IllegalStateException("Fingerprint mismatch after V78: "+table);
             }
             try(var st=c.createStatement();var rs=st.executeQuery("select pg_database_size(current_database())")){rs.next();proof.put("database_bytes",rs.getLong(1));}
             c.rollback();
         }
-        proof.put("verified_tables",192);proof.put("all_fingerprints_match_after_v77",true);proof.put("read_only",true);proof.put("production_changed",false);proof.put("snapshot_sha256",original.get("snapshot_sha256").asText());
-        Files.writeString(ROOT.resolve("financial-verification.json"),json.writerWithDefaultPrettyPrinter().writeValueAsString(proof));System.out.println("Read-only 192-table fingerprints and financial invariants verified");
+        proof.put("verified_tables",195);proof.put("all_fingerprints_match_after_v78",true);proof.put("read_only",true);proof.put("production_changed",false);proof.put("snapshot_sha256",original.get("snapshot_sha256").asText());
+        Files.writeString(ROOT.resolve("financial-verification.json"),json.writerWithDefaultPrettyPrinter().writeValueAsString(proof));System.out.println("Read-only 195-table fingerprints and financial invariants verified");
     }
 }

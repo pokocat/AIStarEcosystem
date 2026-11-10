@@ -132,7 +132,7 @@ public class CardPersonaService {
     private void requireEngine() {
         if (!invocation.hasEndpointFor(AiModelPurpose.DAP_PERSONA, "aiavatar")) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
-                    "人设对话还没接入大模型：请在管理后台把「数字人 · 人设/翻译」用途绑定一个模型端点后再试。");
+                    "人设对话暂不可用，请联系平台处理", null, "人设对话未绑定模型：请在管理后台把「数字人 · 人设/翻译」用途绑定一个模型端点");
         }
     }
 
@@ -140,7 +140,7 @@ public class CardPersonaService {
         PromptService.ResolvedPrompt p = promptService.resolve(key);
         if ("code".equals(p.origin())) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED",
-                    "人设提示词尚未配置（promptKey=" + key + "），请在管理后台补全后再试。");
+                    "人设对话暂不可用，请联系平台处理", null, "人设提示词尚未配置（promptKey=" + key + "），请在管理后台补全");
         }
         return p;
     }
@@ -160,11 +160,11 @@ public class CardPersonaService {
             throw e;
         } catch (Exception e) {
             log.warn("[card-persona] 调用失败", e);
-            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "人设对话调用失败，请稍后重试。");
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "人设对话失败，请稍后重试");
         }
         JsonNode root = tryReadJson(res.content());
         if (root == null) {
-            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "AI 返回的内容无法解析，请重试。");
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "AI 返回的内容无法解析，请重试");
         }
         return root;
     }
@@ -181,14 +181,14 @@ public class CardPersonaService {
     private static JsonNode requireShape(JsonNode root, Shape shape) {
         if (root == null || !root.isObject()) {
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT",
-                    "AI 返回的" + shape.what() + "结果格式不对，请重试。");
+                    "AI 返回的" + shape.what() + "结果格式有误，请重试");
         }
         ObjectNode o = (ObjectNode) root;
         for (String k : shape.requiredText()) {
             JsonNode v = o.get(k);
             if (v == null || !v.isTextual() || v.asText().isBlank()) {
                 throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT",
-                        "AI 返回的" + shape.what() + "结果缺了「" + k + "」，请重试。");
+                        "AI 返回的" + shape.what() + "结果不完整，请重试");
             }
         }
         for (String k : shape.requiredArray()) normalizeArray(o, k);

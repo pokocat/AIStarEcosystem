@@ -1,32 +1,45 @@
 package com.aistareco.aep.service.materialvideo;
 
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.function.Supplier;
 
-/** Reuse audio receipts only within the same endpoint, credential, model and source key, before supplier expiry. */
+/** Reuse supplier receipts only within the same endpoint, credential, model and source key, before supplier expiry. */
 @Service
 public class MaterialVideoInputAssets {
     public record Receipt(String assetId, Instant expiresAt) {}
     private final MaterialVideoInputAssetRepository repo;
     public MaterialVideoInputAssets(MaterialVideoInputAssetRepository repo) { this.repo = repo; }
 
-    @Transactional
     public Receipt resolve(String endpoint, String baseUrl, String model, String credential, String key,
                            Supplier<Receipt> upload) {
+        return resolve(endpoint, baseUrl, model, credential, key, Duration.ofSeconds(60), upload);
+    }
+
+    /**
+     * Deliberately not transactional: an upload can take a minute and must not hold a database connection.
+     * @param minRemaining a receipt closer to expiry than this is uploaded again
+     */
+    public Receipt resolve(String endpoint, String baseUrl, String model, String credential, String key,
+                           Duration minRemaining, Supplier<Receipt> upload) {
         // Hash the credential as part of the scope, never persist it. Length prefixes avoid ambiguous tuples.
         String id = digest(endpoint, baseUrl, model, credential, key);
         var prior = repo.receipt(id);
-        if (!prior.isEmpty() && prior.get(0)[1] instanceof Instant expiry && expiry.isAfter(Instant.now().plusSeconds(60)))
+        if (!prior.isEmpty() && prior.get(0)[1] instanceof Instant expiry && expiry.isAfter(Instant.now().plus(minRemaining)))
             return new Receipt((String)prior.get(0)[0], expiry);
         Receipt result = upload.get(); // Failed uploads cannot replace the last successful receipt.
         repo.remember(id, key, result.assetId(), result.expiresAt());
         // Missing expiresAt is unknown, not permanent. Such receipts are used once and uploaded again next time.
         return result;
+    }
+
+    /** The supplier says this reference is gone even though the receipt has not expired. The next resolve uploads again. */
+    public void forget(String endpoint, String baseUrl, String model, String credential, String key) {
+        repo.forget(digest(endpoint, baseUrl, model, credential, key));
     }
 
     private static String digest(String... parts) {

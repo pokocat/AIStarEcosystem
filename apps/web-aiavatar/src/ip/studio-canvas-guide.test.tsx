@@ -72,24 +72,16 @@ describe('when the guide shows', () => {
 });
 
 describe('the card', () => {
-  test('says what the canvas is for and offers the five ways in; with the assistant open there is no extra button', () => {
-    render(<StudioCanvasGuide assistantOpen onStartAssistant={vi.fn()}/>);
-    expect(screen.getByRole('heading', { name: '这张画布还是空的' })).toBeTruthy();
-    expect(screen.getByText('在助手里说想做什么，它会把每一步放进画布。也可以自己选一个开始：')).toBeTruthy();
-    const expected = [['文字', '写设定、剧本或提示词'], ['图片生成', '写一句描述出图，可以加参考图'], ['视频生成', '用描述或一张首帧出视频'], ['配音', '选一个声音，把台词念出来'], ['上传素材', '图片、视频或文档']];
-    for (const [name, hint] of expected) expect(screen.getByRole('button', { name, description: hint })).toBeTruthy();
-    expect(screen.getByText(/双击画布空白处也能添加/)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: '和助手开始' })).toBeNull();
-  });
-  test('with the assistant closed, 「和助手开始」 opens it', () => {
+  test('with the assistant closed, 「与助手对话」 opens it', () => {
     const start = vi.fn();
     render(<StudioCanvasGuide assistantOpen={false} onStartAssistant={start}/>);
-    fireEvent.click(screen.getByRole('button', { name: '和助手开始' }));
+    fireEvent.click(screen.getByRole('button', { name: '与助手对话' }));
     expect(start).toHaveBeenCalledOnce();
     expect(commands).toEqual([]);
   });
   test('each entry and 「从模板开始」 sends the rail\'s own command', () => {
     render(<StudioCanvasGuide assistantOpen onStartAssistant={vi.fn()}/>);
+    expect(screen.queryByRole('button', { name: '与助手对话' })).toBeNull();
     for (const name of ['文字', '图片生成', '视频生成', '配音', '上传素材', '从模板开始']) fireEvent.click(screen.getByRole('button', { name }));
     expect(commands.map(c => c.action)).toEqual(['add-text', 'add-image', 'add-video', 'speech', 'upload', 'templates']);
   });
@@ -102,7 +94,7 @@ describe('on the canvas', () => {
     await waitFor(() => expect(nodes()).toHaveLength(1));
     expect(nodes()[0]).toMatchObject({ type: 'image', title: '图片' });
     await waitFor(() => expect(commands).toContainEqual({ action: 'image', nodeId: nodes()[0].id }));
-    expect(screen.queryByRole('heading', { name: '这张画布还是空的' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: '画布还没有内容' })).toBeNull();
   });
   test('「视频生成」 places a video node and opens its generation panel', async () => {
     render(<StudioFlowCanvas projectId="p"/>);

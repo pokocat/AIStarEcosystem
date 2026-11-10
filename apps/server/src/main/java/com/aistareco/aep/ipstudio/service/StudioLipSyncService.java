@@ -77,7 +77,7 @@ public class StudioLipSyncService {
         if(prior!=null) {
             StudioRunBilling.requireSamePayer(prior,request.billing());
             if(!"studio-lip-sync".equals(prior.getKind())||!fingerprint.equals(prior.getInputFingerprint()))
-                throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","同一口型请求的素材已改变，请重新提交");
+                throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","请求已失效，请刷新页面后重试");
             return projects.toRunDto(prior);
         }
         var p=preflight(user,new LipSyncInput(request.model(),request.videoStorageKey(),request.audioStorageKey()));var price=quote(p);
@@ -104,7 +104,7 @@ public class StudioLipSyncService {
     public IpRunDto extract(String user,String projectId,String runId) throws Exception {
         projects.required(user,projectId);
         var run=runs.lockById(runId).orElseThrow(()->bad("口型任务不存在"));
-        if(!user.equals(run.getOwnerUserId())||!projectId.equals(run.getProjectId()))throw bad("口型任务不属于当前项目");
+        if(!user.equals(run.getOwnerUserId())||!projectId.equals(run.getProjectId()))throw bad("口型任务不属于当前画布");
         if(!"studio-lip-sync".equals(run.getKind())||!IpRun.STATUS_DONE.equals(run.getStatus()))throw bad("请等待口型任务完成");
         ObjectNode output=(ObjectNode)mapper.readTree(run.getOutputJson());
         if(output.path("lipSyncNormalized").asBoolean())return projects.toRunDto(run);

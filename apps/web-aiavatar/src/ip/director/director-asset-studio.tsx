@@ -1,14 +1,17 @@
 "use client";
+import { runDirectorTask } from "./director-generation";
 import { IMAGE_UPLOAD_ACCEPT } from '@ai-star-eco/api-client/image-upload-policy';
 
+import Link from "next/link";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { ArrowLeft, Check, ChevronRight, ImageIcon, Library, Loader2, Plus, RefreshCw, Trash2, Upload, Wand2, X } from "lucide-react";
 import type { DirectorAsset, DirectorAssetForm, DirectorEpisode, DirectorMediaSlot, DirectorSceneView, DirectorTaskType, DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi, IpStudioApi } from "../api";
 import { useStudioApp } from "../studio-errors";
 import { LibraryReferencePicker } from "../library-reference-picker";
+import { assetsHref } from "../assets-hub-shared";
 import type { WorkbenchProps } from "./director-workbench";
-import { Field, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, assetRefs, chooseDirectorBilling, clearDrafts, costText, dialogFocus, failed, hasDrafts, kindLabel, newRequestId, runningTask, useBusy, useDraft, useEscape, ZoomableImage, type AssetRef } from "./director-shared";
+import { DIRECTOR_MEDIA_SHORTAGE, Field, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, assetRefs, chooseDirectorBilling, clearDrafts, costText, dialogFocus, failed, hasDrafts, kindLabel, newRequestId, runningTask, saveDrafts, useBusy, useDraft, useEscape, ZoomableImage, type AssetRef } from "./director-shared";
 import { VoicePanel } from "./director-voice";
 import { AiField } from "./director-assistant";
 
@@ -21,7 +24,7 @@ type Variant = { type: "all" } | { type: "main" } | { type: "form"; id: string }
 const IMAGE_ACCEPT = IMAGE_UPLOAD_ACCEPT;
 /** Camera originals are prepared by IpStudioApi.uploadImage; do not reject before conversion. */
 export function imageProblem(f: File) {
-  return f.size ? "" : "图片是空的，请重新选择";
+  return f.size ? "" : "图片文件为空，请重新选择";
 }
 
 /** 隐藏的文件选择框：选好后交给 onFile，清空 value 让同一张图能再选一次。 */
@@ -32,8 +35,8 @@ export function ImageInput({ input, onFile, label }: { input: RefObject<HTMLInpu
 
 /** 一张图在资产里的两种用法，说法全页一致。 */
 export const IMAGE_USES = {
-  asset: { label: "直接作为资产图", note: "分镜图和视频直接用这张，不用 AI 生成、不扣积分" },
-  ref: { label: "作为参考图", note: "以后生成资产图时让 AI 参照它，现在不生成、不扣积分" },
+  asset: { label: "直接作为资产图", note: "分镜图和视频将直接使用此图，不经 AI 生成，不消耗积分" },
+  ref: { label: "作为参考图", note: "生成资产图时由 AI 参照此图，上传时不生成，不消耗积分" },
 } as const;
 
 /** 资产被哪些片段用着：每个片段一行，「前往」跳到那个片段。错误弹窗和资产详情共用。 */
@@ -118,55 +121,56 @@ function AssetWorkspace({ work, asset, apply, setError, focusClip, onClose }: Wo
   const task = (type: DirectorTaskType, targetId: string, action: string) => void run("gen", async () => {
     const cost = work.pricing.image;
     const billing = await chooseDirectorBilling("image", cost);
-    apply(await DirectorApi.runTask(work.id, { type, targetId, clientRequestId: newRequestId(), billing, maxCost: cost }));
-  }, failed(setError, action));
+    apply(await runDirectorTask(work, apply, { type, targetId, clientRequestId: newRequestId(), billing, maxCost: cost }));
+  }, failed(setError, action, undefined, undefined, DIRECTOR_MEDIA_SHORTAGE));
   const generate = () => active.type === "main" ? task("asset-image", asset.id, `生成「${asset.name}」的资产图`)
     : active.type === "form" ? task("form-image", active.id, `生成「${label}」的形态图`)
     : task("scene-views", asset.id, `生成「${asset.name}」的四视图`);
   const adoptVersion = (id: string) => void run("adopt", async () => apply(active.type === "main" ? await DirectorApi.edit(work.id, "asset.adopt", asset.id, null, { candidateId: id })
     : active.type === "form" ? await DirectorApi.edit(work.id, "form.adopt", active.id, null, { candidateId: id })
-    : await DirectorApi.edit(work.id, "view.adopt", asset.id, null, { view: active.view, candidateId: id })), failed(setError, `换用「${label}」的这版图`));
+    : await DirectorApi.edit(work.id, "view.adopt", asset.id, null, { view: active.view, candidateId: id })), failed(setError, `切换「${label}」的图片版本`));
   // 直接上传作为资产图：不生成、不扣积分。已有资产图时先说清会替换、原来的留在历史里，再上传。
   const upload = (f: File) => {
     const problem = imageProblem(f);
-    if (problem) { setError({ action: `上传「${asset.name}」的资产图`, error: problem, next: "资产图没有变。" }); return; }
+    if (problem) { setError({ action: `上传「${asset.name}」的资产图`, error: problem, next: "资产图未更改。" }); return; }
     const send = () => void run("upload", async () => {
       const result = await IpStudioApi.uploadImage(f);
       apply(await DirectorApi.edit(work.id, "asset.upload", asset.id, null, { key: result.key }));
-    }, failed(setError, `上传「${asset.name}」的资产图`, "资产图没有变。换一张 PNG 或 JPG 图片再试。"));
+    }, failed(setError, `上传「${asset.name}」的资产图`, "资产图未更改，请更换 PNG 或 JPG 图片后重试。"));
     if (!asset.image.adoptedId) return send();
     modal.confirm({ title: `用这张图替换「${asset.name}」的资产图？`, okText: "替换", cancelText: "取消", onOk: send,
-      content: <div className="director-batch-confirm"><p>原来的资产图留在历史版本里，随时可以点回去。</p>
-        {refs.length > 0 && <p className="director-muted">已经生成的分镜图和视频不会自动重做，会标为「需更新」。</p>}</div> });
+      content: <div className="director-batch-confirm"><p>原资产图保留在历史版本中，可随时切换回来。</p>
+        {refs.length > 0 && <p className="director-muted">已生成的分镜图和视频不会自动重新生成，将标记为「需更新」。</p>}</div> });
   };
   const uploadVariant = (f: File) => {
     const problem = imageProblem(f);
-    if (problem) { setError({ action: `上传「${label}」的图`, error: problem, next: "图没有变。" }); return; }
+    if (problem) { setError({ action: `上传「${label}」的图`, error: problem, next: "图片未更改。" }); return; }
     void run("upload", async () => {
       const result = await IpStudioApi.uploadImage(f);
       apply(active.type === "form" ? await DirectorApi.edit(work.id, "form.upload", active.id, null, { key: result.key })
         : await DirectorApi.edit(work.id, "view.upload", asset.id, null, { view: (active as { view: DirectorSceneView }).view, key: result.key }));
-    }, failed(setError, `上传「${label}」的图`, "图没有变。换一张 PNG 或 JPG 图片再试。"));
+    }, failed(setError, `上传「${label}」的图`, "图片未更改，请更换 PNG 或 JPG 图片后重试。"));
   };
   const save = () => void run("save", async () => {
     const data: Record<string, unknown> = { name, description };
     if (prompt !== asset.prompt) data.prompt = prompt;
     if (episodesEdited) data.episodeIds = episodeIds;
-    const next = await DirectorApi.edit(work.id, "asset.update", asset.id, asset.rev, data);
-    clearDrafts(prefix); apply(next);
+    const saved = { [prefix + "name"]: name, [prefix + "description"]: description, [prefix + "prompt"]: prompt, [prefix + "episodeIds"]: episodeIds };
+    const next = await saveDrafts(saved, () => DirectorApi.edit(work.id, "asset.update", asset.id, asset.rev, data));
+    apply(next);
     setEditing(false);
-  }, failed(setError, `保存「${asset.name}」的修改`, "改过的内容还在编辑框里，按原因调整后再点「保存」。"));
+  }, failed(setError, `保存「${asset.name}」的修改`, "修改内容已保留，请按原因调整后点击「保存」。"));
   const resetPrompt = () => void run("reset", async () => apply(await DirectorApi.edit(work.id, "asset.update", asset.id, asset.rev, { resetPrompt: true })), failed(setError, `恢复「${asset.name}」的自动提示词`));
   // 还被片段用着就不能删：先说清是哪些片段、怎么解除，不发删除请求；本地数据过时时服务端照样拒绝，弹同一个弹窗。
   const blocked = (list: AssetRef[], error?: unknown) => setError({
     action: `删除「${asset.name}」`,
-    error: error ?? { code: "DIRECTOR_ASSET_IN_USE", message: `「${asset.name}」还用在 ${list.length} 个片段里，资产没有删除。` },
+    error: error ?? { code: "DIRECTOR_ASSET_IN_USE", message: `「${asset.name}」仍被 ${list.length} 个片段使用，资产未删除。` },
     extra: close => <AssetRefList refs={list} onGo={r => { close(); focusClip({ clipId: r.clipId, assetId: asset.id, open: r.linked ? "assets" : "editor" }); }}/>,
-    next: <>{list.some(r => r.linked) && <p>点片段旁的「前往」，在打开的「关联资产」里点「{asset.name}」后面的「解除关联」。</p>}
-      {list.some(r => !r.linked) && <p>只在台词里出现的，在打开的「编辑镜头」里把这些台词的说话人换掉并保存。</p>}
-      <p>都处理完后回到这里再删除。</p></>,
+    next: <>{list.some(r => r.linked) && <p>点击片段旁的「前往」，在打开的「关联资产」中点击「{asset.name}」旁的「解除关联」。</p>}
+      {list.some(r => !r.linked) && <p>仅在台词中出现的，请在打开的「编辑镜头」中更换这些台词的说话人并保存。</p>}
+      <p>处理完成后，返回此处删除。</p></>,
   });
-  const remove = () => refs.length ? blocked(refs) : modal.confirm({ title: `删除「${asset.name}」？`, content: "它的资产图版本会一起删除，不能恢复。", okText: "删除", okButtonProps: { danger: true }, cancelText: "取消",
+  const remove = () => refs.length ? blocked(refs) : modal.confirm({ title: `删除「${asset.name}」？`, content: "其资产图的所有版本将一并删除，删除后无法恢复。", okText: "删除", okButtonProps: { danger: true }, cancelText: "取消",
     onOk: () => run("delete", async () => apply(await DirectorApi.edit(work.id, "asset.delete", asset.id, null)), (message, e) => {
       const fromServer = (e as { code?: string; details?: { clips?: AssetRef[] } } | undefined);
       if (fromServer?.code === "DIRECTOR_ASSET_IN_USE") blocked(fromServer.details?.clips?.length ? fromServer.details.clips : refs, e);
@@ -178,7 +182,7 @@ function AssetWorkspace({ work, asset, apply, setError, focusClip, onClose }: Wo
   const viewShots = (view: DirectorSceneView) => work.clips.filter(c => c.assetIds.includes(asset.id)).reduce((n, c) => n + c.shots.filter(s => s.sceneView === view).length, 0);
   const viewCount = (mainImage ? 1 : 0) + SCENE_VIEWS.filter(v => asset.views?.[v.key]?.adoptedId).length;
   const emptyNote = audioOnly ? "仅声音出场，无需资产图" : active.type === "main" ? "暂无资产图"
-    : active.type === "form" ? (mainImage ? "这个形态还没有图" : "先生成主形象，形态照着它画") : (mainImage ? "这个视角还没有图" : "先生成主视图，其他视角照着它画");
+    : active.type === "form" ? (mainImage ? "此形态暂无图片" : "请先生成主形象，形态图将以其为参考") : (mainImage ? "此视角暂无图片" : "请先生成主视图，其他视角将以其为参考");
 
   return <div className="director-studio-body">
     <section className="director-studio-stage" aria-label={overview ? "全部视角" : mainActive ? "资产图" : `${label}的图`}>
@@ -187,13 +191,13 @@ function AssetWorkspace({ work, asset, apply, setError, focusClip, onClose }: Wo
         <button type="button" role="tab" aria-selected={!overview && mainActive} onClick={() => setVariant({ type: "main" })}>{asset.kind === "scene" ? "主视" : "主形象"}{asset.kind === "scene" && runningTask(work, `asset:${asset.id}`) && <Loader2 size={12} className="ip-loading-icon"/>}</button>
         {asset.kind === "character" && asset.forms?.map(f => {
           const used = formClips(f.id);
-          return <button key={f.id} type="button" role="tab" aria-selected={active.type === "form" && active.id === f.id} title={used ? `${used} 个片段用这个形态` : "还没有片段用这个形态"} onClick={() => setVariant({ type: "form", id: f.id })}>
+          return <button key={f.id} type="button" role="tab" aria-selected={active.type === "form" && active.id === f.id} title={used ? `${used} 个片段使用此形态` : "暂无片段使用此形态"} onClick={() => setVariant({ type: "form", id: f.id })}>
             {f.name}{used > 0 && <small>{used}</small>}{runningTask(work, `form:${f.id}`) && <Loader2 size={12} className="ip-loading-icon"/>}</button>;
         })}
         {asset.kind === "character" && <button type="button" className="director-studio-tab-add" onClick={() => setAddingForm(true)}><Plus size={13}/>添加形态</button>}
         {asset.kind === "scene" && SCENE_VIEWS.map(v => {
           const used = viewShots(v.key);
-          return <button key={v.key} type="button" role="tab" aria-selected={!overview && active.type === "view" && active.view === v.key} title={used ? `${used} 个镜头用这个视角` : "还没有镜头用这个视角"} onClick={() => setVariant({ type: "view", view: v.key })}>
+          return <button key={v.key} type="button" role="tab" aria-selected={!overview && active.type === "view" && active.view === v.key} title={used ? `${used} 个镜头使用此视角` : "暂无镜头使用此视角"} onClick={() => setVariant({ type: "view", view: v.key })}>
             {v.label}{used > 0 && <small>{used}</small>}{viewsGenerating && <Loader2 size={12} className="ip-loading-icon"/>}</button>;
         })}
       </div>}
@@ -205,13 +209,13 @@ function AssetWorkspace({ work, asset, apply, setError, focusClip, onClose }: Wo
             {slot.adoptedBy === "auto" && <span className="director-tag is-warn">待确认</span>}
             {slot.adoptedCheck === "outdated" && <span className="director-tag is-warn">需更新</span>}
             {current?.mock && <span className="director-tag">测试图</span>}
-            {current && !current.mock && current.source !== "generated" && <span className="director-tag is-source">{current.source === "upload" ? "自己上传" : "资产库"}</span>}
+            {current && !current.mock && current.source !== "generated" && <span className="director-tag is-source">{current.source === "upload" ? "已上传" : "资产库"}</span>}
           </div>
         </div>
         <div className="director-studio-history" aria-label="生成记录" role="group">
           <h5>生成记录{slot.candidates.length > 0 && <small>{slot.candidates.length}</small>}</h5>
           {slot.candidates.length > 1 || slot.candidates.some(m => m.stale) ? <VersionStrip slot={slot} label={label} disabled={!!busy} onAdopt={adoptVersion}/>
-            : <p>{slot.candidates.length ? "再生成或上传一版后，可以在这里切换。" : "生成或上传后，每一版都留在这里。"}</p>}
+            : <p>{slot.candidates.length ? "生成或上传新版本后，可在此切换。" : "生成或上传后，各版本保留在此。"}</p>}
         </div>
       </>}
       {!audioOnly && <div className="director-studio-actions">
@@ -223,7 +227,7 @@ function AssetWorkspace({ work, asset, apply, setError, focusClip, onClose }: Wo
           <button type="button" className={slot.adoptedId ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy || !!generating || (active.type !== "main" && !mainImage)} onClick={generate}
             title={active.type === "view" ? "以主视图为准，一次生成反打、左立面、右立面三张" : undefined}>
             <Wand2 size={14}/>{generating ? "生成中" : active.type === "view" ? (anyView ? "重新生成三个视角" : "生成三个视角") : slot.candidates.length ? "重新生成" : active.type === "form" ? "生成形态图" : overview ? "生成主视图" : "生成资产图"}</button>
-          {mainActive && <button type="button" className="ip-brand-secondary" disabled={!!busy || !!generating} onClick={() => setPicking(true)} title="这项资产就是资产库里已有的那一项，直接用它的图"><Library size={14}/>关联已有资产</button>}
+          {mainActive && <button type="button" className="ip-brand-secondary" disabled={!!busy || !!generating} onClick={() => setPicking(true)} title="使用资产库中同一项资产的图片作为资产图"><Library size={14}/>关联已有资产</button>}
           {mainActive ? <button type="button" className="ip-brand-secondary" disabled={!!busy || !!generating} onClick={() => file.current?.click()} title={IMAGE_USES.asset.note}><Upload size={14}/>直接上传作为资产图</button>
             : !overview && <button type="button" className="ip-brand-secondary" disabled={!!busy || !!generating} onClick={() => variantFile.current?.click()}><Upload size={14}/>上传图片</button>}
           <span className="director-spacer"/>
@@ -236,7 +240,8 @@ function AssetWorkspace({ work, asset, apply, setError, focusClip, onClose }: Wo
       {!editing ? <header className="director-asset-head">
         <div className="director-asset-title">
           <h4 title={asset.name}><span className="director-kind">{kindLabel[asset.kind]}</span>{asset.name}</h4>
-          <small>{[appears, asset.libraryObjectId ? "已关联资产库" : "", asset.aliases.length ? `别名：${asset.aliases.join("、")}` : ""].filter(Boolean).join(" · ")}</small>
+          <small>{[appears, asset.aliases.length ? `别名：${asset.aliases.join("、")}` : ""].filter(Boolean).join(" · ")}</small>
+          {(asset.libraryEntryId || asset.libraryObjectId) && <Link className="director-library-link" href={assetsHref(asset.kind === "product" ? "prop" : asset.kind, work.id)}>{asset.libraryObjectId ? "已关联资产库" : "已在资产库"}</Link>}
         </div>
         <div className="director-asset-head-actions">
           <button type="button" className="ip-brand-text-button" onClick={() => setEditing(true)}>编辑</button>
@@ -247,7 +252,7 @@ function AssetWorkspace({ work, asset, apply, setError, focusClip, onClose }: Wo
         <Field label="外观与设定" hint="修改描述后，出图提示词同步更新（单独编辑过的除外）"><textarea rows={4} maxLength={2000} value={description} onChange={e => setDescription(e.target.value)}/></Field>
         <Field label="出图提示词"><textarea className="director-prompt" rows={6} maxLength={4000} value={prompt} onChange={e => setPrompt(e.target.value)}/></Field>
         <div className="director-field"><span>出现在</span><EpisodePicker episodes={work.episodes} value={episodeIds} onChange={setEpisodeIds}/>
-          {!episodeIds.length && <small>{episodesEdited ? "至少选一集" : "还没指定出现的集，不改也能保存"}</small>}</div>
+          {!episodeIds.length && <small>{episodesEdited ? "至少选择一集" : "尚未指定出现的集，可直接保存"}</small>}</div>
         <div className="director-card-actions">
           <button type="button" className="ip-brand-button" disabled={!!busy || (episodesEdited && !episodeIds.length)} onClick={save}>保存</button>
           <button type="button" className="ip-brand-secondary" onClick={() => { setEditing(false); clearDrafts(prefix); }}><X size={14}/>取消</button>
@@ -255,15 +260,15 @@ function AssetWorkspace({ work, asset, apply, setError, focusClip, onClose }: Wo
       </>}
       {/* 一项资产一个入口：有资产图就带上图讨论（能改外观、提示词、音色，也能按这张图出新版本），没有图只改文字。 */}
       {!editing && <AiField scope={adopted(asset.image) && !audioOnly ? { kind: "image", assetId: asset.id } : { kind: "asset", assetId: asset.id }} what={adopted(asset.image) && !audioOnly ? `「${asset.name}」和它的资产图` : `「${asset.name}」`} onAsked={onClose}
-        hint={adopted(asset.image) && !audioOnly ? "完善外观设定、出图提示词或音色，也能说说资产图哪里要改；生成新版本前会说清费用，原图保留" : "完善外观设定、出图提示词或音色，比如「更疲惫但别显老」"}>
+        hint={adopted(asset.image) && !audioOnly ? "可完善外观设定、出图提示词或音色，也可说明资产图需修改之处；生成新版本前会显示费用，原图保留" : "可完善外观设定、出图提示词或音色，例如「更疲惫但别显老」"}>
         <p className="director-asset-desc director-ai-field-body">{asset.description || "暂无描述"}</p>
       </AiField>}
       {addingForm && <FormEditor work={work} asset={asset} apply={apply} setError={setError} onClose={() => setAddingForm(false)} onCreated={id => setVariant({ type: "form", id })}/>}
       {!editing && form && <FormEditor key={form.id} work={work} asset={asset} form={form} apply={apply} setError={setError}/>}
       {!editing && <section className="director-sheet-section director-asset-refs" aria-label="用在哪些片段">
-        <h5>用在哪些片段<small>{refs.length ? `${refs.length} 个` : "没有片段在用"}</small></h5>
+        <h5>用在哪些片段<small>{refs.length ? `${refs.length} 个` : "暂无片段使用"}</small></h5>
         {refs.length > 0 && <AssetRefList refs={refs} onGo={r => focusClip({ clipId: r.clipId, assetId: asset.id, open: r.linked ? "assets" : "editor" })}/>}
-        {refs.length > 0 && <small className="director-muted">要删除这项资产，先在这些片段里解除关联（「前往」后在「关联资产」里操作）。</small>}
+        {refs.length > 0 && <small className="director-muted">如需删除此资产，请先在这些片段中解除关联（点击「前往」，在「关联资产」中操作）。</small>}
       </section>}
       {!editing && !audioOnly && (mainActive || overview) && <section className="director-sheet-section" aria-label="出图提示词">
         <button type="button" className="director-disclosure" aria-expanded={showPrompt} onClick={() => setShowPrompt(s => !s)}>
@@ -289,8 +294,8 @@ function SceneViewsOverview({ work, asset, onPick, shots }: { work: DirectorWork
   const tile = (slot: DirectorMediaSlot, name: string, busy: boolean, used: number, pick: Variant, main?: boolean) => {
     const img = adopted(slot);
     const count = [used ? `${used} 镜` : "", slot.candidates.length > 1 ? `${slot.candidates.length} 版` : ""].filter(Boolean).join(" · ");
-    return <button key={name} type="button" className={`director-view-tile${main ? " is-main" : ""}`} aria-label={`查看${name}`} title="查看大图和这个视角的生成记录" onClick={() => onPick(pick)}>
-      {img?.url ? <img src={img.url} alt=""/> : <span className="director-view-empty"><ImageIcon size={main ? 26 : 18}/>{main && "还没有主视图"}</span>}
+    return <button key={name} type="button" className={`director-view-tile${main ? " is-main" : ""}`} aria-label={`查看${name}`} title="查看大图和此视角的生成记录" onClick={() => onPick(pick)}>
+      {img?.url ? <img src={img.url} alt=""/> : <span className="director-view-empty"><ImageIcon size={main ? 26 : 18}/>{main && "暂无主视图"}</span>}
       {busy && <span className="director-asset-overlay"><Spinner label="生成中"/></span>}
       <span className="director-studio-tags">
         {slot.adoptedBy === "auto" && <span className="director-tag is-warn">待确认</span>}
@@ -308,33 +313,35 @@ function SceneViewsOverview({ work, asset, onPick, shots }: { work: DirectorWork
 
 /** 新建或修改一个形态：名字和「和平时不一样的地方」。不传 form 是新建。 */
 function FormEditor({ work, asset, form, apply, setError, onClose, onCreated }: Pick<WorkbenchProps, "work" | "apply" | "setError"> & { asset: DirectorAsset; form?: DirectorAssetForm; onClose?: () => void; onCreated?: (id: string) => void }) {
-  const [name, setName] = useState(form?.name ?? "");
-  const [description, setDescription] = useState(form?.description ?? "");
+  const prefix = `${work.id}:form:${form?.id ?? `new:${asset.id}`}:`;
+  const [name, setName] = useDraft(prefix + "name", form?.name ?? "");
+  const [description, setDescription] = useDraft(prefix + "description", form?.description ?? "");
   const { busy, run } = useBusy();
   const { modal } = useStudioApp();
   const dirty = !form || name !== form.name || description !== form.description;
   const save = () => void run("form", async () => {
-    if (form) { apply(await DirectorApi.edit(work.id, "form.update", form.id, null, { name, description })); return; }
-    const next = await DirectorApi.edit(work.id, "form.create", asset.id, null, { name, description });
+    const saved = { [prefix + "name"]: name, [prefix + "description"]: description };
+    if (form) { apply(await saveDrafts(saved, () => DirectorApi.edit(work.id, "form.update", form.id, null, { name, description }))); return; }
+    const next = await saveDrafts(saved, () => DirectorApi.edit(work.id, "form.create", asset.id, null, { name, description }));
     apply(next);
     const created = next.assets.find(a => a.id === asset.id)?.forms?.find(f => f.name === name.trim());
     if (created) onCreated?.(created.id);
     onClose?.();
-  }, failed(setError, form ? `保存形态「${name}」` : `添加形态「${name}」`, "填好的内容还在，按原因修改后再保存。"));
+  }, failed(setError, form ? `保存形态「${name}」` : `添加形态「${name}」`, "已填写的内容已保留，请按原因修改后保存。"));
   const remove = () => {
     if (!form) return;
     const used = work.clips.filter(c => c.assetForms?.[asset.id] === form.id).length;
     modal.confirm({ title: `删除形态「${form.name}」？`, okText: "删除", okButtonProps: { danger: true }, cancelText: "取消",
-      content: used ? `有 ${used} 个片段在用它，删除后这些片段回到主形象，已有的分镜图和视频会标为「需更新」。` : "它的图会一起删除，不能恢复。",
+      content: used ? `有 ${used} 个片段正在使用此形态。删除后这些片段将改用主形象，已有的分镜图和视频将标记为「需更新」。` : "其图片将一并删除，删除后无法恢复。",
       onOk: () => run("form", async () => apply(await DirectorApi.edit(work.id, "form.delete", form.id, null)), failed(setError, `删除形态「${form.name}」`)) });
   };
   return <section className="director-sheet-section director-form-editor" aria-label={form ? `形态「${form.name}」` : "添加形态"}>
-    <h5>{form ? "这个形态" : "添加形态"}<small>换装、受伤、变身时用，不用另建一个角色</small></h5>
+    <h5>{form ? "此形态" : "添加形态"}<small>用于换装、受伤、变身等，无需另建角色</small></h5>
     <Field label="名称"><input value={name} maxLength={20} placeholder="例如：半妖态、婚礼礼服" onChange={e => setName(e.target.value)}/></Field>
     <Field label="和平时不一样的地方"><textarea rows={3} maxLength={1000} placeholder="例如：白色长裙换成染血的盔甲，左脸有一道新伤" value={description} onChange={e => setDescription(e.target.value)}/></Field>
     <div className="director-card-actions">
       <button type="button" className="ip-brand-button" disabled={!!busy || !name.trim() || !dirty} onClick={save}>{form ? "保存" : "添加"}</button>
-      {onClose && <button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={onClose}>取消</button>}
+      {onClose && <button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={() => { clearDrafts(prefix); onClose(); }}>取消</button>}
       {form && <button type="button" className="ip-brand-text-button director-danger" disabled={!!busy} onClick={remove}>删除形态</button>}
     </div>
   </section>;
@@ -351,21 +358,21 @@ function AssetReference({ work, asset, apply, setError, disabled }: Pick<Workben
   const takes = asset.kind === "character" ? "长相" : "外观";
   const upload = (f: File) => {
     const problem = imageProblem(f);
-    if (problem) { setError({ action: `上传「${asset.name}」的参考图`, error: problem, next: "参考图没有变。" }); return; }
+    if (problem) { setError({ action: `上传「${asset.name}」的参考图`, error: problem, next: "参考图未更改。" }); return; }
     void run("ref", async () => {
       const result = await IpStudioApi.uploadImage(f);
       apply(await DirectorApi.edit(work.id, "asset.setRef", asset.id, null, { key: result.key }));
-    }, failed(setError, `上传「${asset.name}」的参考图`, "参考图没有变。换一张 PNG 或 JPG 图片再试。"));
+    }, failed(setError, `上传「${asset.name}」的参考图`, "参考图未更改，请更换 PNG 或 JPG 图片后重试。"));
   };
   const clear = () => void run("ref", async () => apply(await DirectorApi.edit(work.id, "asset.clearRef", asset.id, null)), failed(setError, `移除「${asset.name}」的参考图`));
   return <section className="director-sheet-section" aria-label="参考图">
-    <h5>参考图<small>{ref ? "已设置" : "可选"}</small></h5>
+    <h5>参考图<small>{ref ? "已设置" : "选填"}</small></h5>
     <div className="director-ref">
       {ref?.url ? <img src={ref.url} alt={`${asset.name}的参考图`}/> : <span className="director-ref-empty"><ImageIcon size={16}/></span>}
       <div className="director-ref-text">
-        <strong>{busy ? "正在上传参考图…" : ref ? `生成资产图时照着它画${takes}` : `生成资产图时让 AI 参照一张图（取${takes}）`}</strong>
-        <small>{ref ? (asset.image.adoptedId ? "不会替换当前资产图。要按它出新图，点上面的「重新生成」。" : "现在不生成。点上面的「生成资产图」时会照着它画。")
-          : "上传不会替换当前资产图，也不会自动生成、不扣积分。"}</small>
+        <strong>{busy ? "正在上传参考图…" : ref ? `生成资产图时参照其${takes}` : `生成资产图时由 AI 参照一张图（取${takes}）`}</strong>
+        <small>{ref ? (asset.image.adoptedId ? "不会替换当前资产图，点击「重新生成」时将参照此图。" : "点击「生成资产图」时将参照此图。")
+          : "不会替换当前资产图，不消耗积分。"}</small>
       </div>
       <div className="director-ref-actions">
         <button type="button" className="ip-brand-secondary" disabled={disabled || !!busy} onClick={() => file.current?.click()}><Upload size={14}/>{ref ? "更换参考图" : "上传作为参考图"}</button>
@@ -378,9 +385,10 @@ function AssetReference({ work, asset, apply, setError, disabled }: Pick<Workben
 
 /** 关联已有资产：只交资产库对象 id 和选定版本，图和描述由服务端按本人资产库读；所选版本的图直接作为资产图。 */
 function LinkLibrary({ work, asset, apply, open, onClose }: { work: DirectorWork; asset: DirectorAsset; apply: WorkbenchProps["apply"]; open: boolean; onClose: () => void }) {
-  return <LibraryReferencePicker open={open} objectsOnly max={1} query={asset.name} onClose={onClose}
+  return <LibraryReferencePicker open={open} objectsOnly objectKind={asset.kind} max={1} query={asset.name} onClose={onClose}
+    excludeObject={o => o.sources.some(s => s.origin === "director" && s.projectId === work.id && s.nodeId === asset.id)}
     title={`「${asset.name}」关联已有资产`} confirmLabel="关联"
-    intro={`选资产库里的同一个${kindLabel[asset.kind]}，它选中版本的图直接作为资产图，分镜图和视频照着它画。名字保留剧本里的叫法。`}
+    intro={`从资产库选择同一个${kindLabel[asset.kind]}，所选版本的图片将直接作为资产图，用于生成分镜图和视频。名称保留剧本中的叫法。`}
     onAssets={async picked => {
       const ref = picked[0]?.metadata?.libraryReference as { objectId: string; versionId?: string } | undefined;
       if (!ref) return;

@@ -17,10 +17,11 @@ test('preview persists first and publication requires a separate explicit click 
 });
 test('failed save does not preview or publish and a retry preserves the exact source',async()=>{
  api.save.mockRejectedValueOnce(new Error('save failed'));render(<StudioConversationShare projectId="p" nodeId="n" disabled={false}/>);fireEvent.click(screen.getByRole('button',{name:'分享对话'}));await screen.findByRole('alert');expect(api.preview).not.toHaveBeenCalled();expect(api.create).not.toHaveBeenCalled();
- fireEvent.click(screen.getByRole('button',{name:'重新预览'}));await screen.findByText('先制作人物设定，再规划镜头');expect(api.preview).toHaveBeenCalledWith('p','n');
+ // 错误通知和弹窗是两个 React 根，先后提交：看到通知时按钮可能还禁用着，点了等于没点（CI 负载高时出现）。
+ const retry=screen.getByRole('button',{name:'重新预览'}) as HTMLButtonElement;await waitFor(()=>expect(retry.disabled).toBe(false));fireEvent.click(retry);await screen.findByText('先制作人物设定，再规划镜头');expect(api.preview).toHaveBeenCalledWith('p','n');
 });
 test('new or locked conversations cannot open sharing',()=>{
- render(<StudioConversationShare projectId="p" disabled/>);expect((screen.getByRole('button',{name:'分享对话'}) as HTMLButtonElement).disabled).toBe(true);expect(api.preview).not.toHaveBeenCalled();
+ render(<StudioConversationShare projectId="p" disabled/>);expect((screen.getByRole('button',{name:'分享对话'}) as HTMLButtonElement).disabled).toBe(true);expect(screen.getByText('完成一轮对话后可分享')).toBeDefined();expect(api.preview).not.toHaveBeenCalled();
 });
 
 beforeEach(() => { mountStudioErrorNotifications(); });

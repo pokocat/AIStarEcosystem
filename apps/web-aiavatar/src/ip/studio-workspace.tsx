@@ -1,5 +1,5 @@
 "use client";
-import { isStudioBillingCancelled } from '@/canvas-bridge/studio-billing-cancel';
+import { isStudioBillingCancelled, studioCreditShortageChoice } from '@/canvas-bridge/studio-billing-cancel';
 import {filmStudyConnections} from '@/canvas-bridge/studio-film-study';
 import { StudioErrorNotice, reportStudioError, reportStudioRunFailures, studioRunError, studioNodeError, studioErrorMetadata, normalizeStudioError, useStudioApp, useStudioErrorState } from './studio-errors';
 import { StudioRecreation } from "./studio-recreation";
@@ -12,7 +12,7 @@ import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
 import { placeStudioNode } from "@/canvas-bridge/flow-document";
 import { App, Button, Checkbox, Dropdown, Input, Modal, Popover, Select } from "antd";
 import { ApiError } from "@ai-star-eco/api-client";
-import { ArrowUp, ArrowLeftRight, BookOpen, Camera, Clapperboard, Download, Ellipsis, FileText, ImagePlus, Play, RotateCcw, SquareCheckBig, Upload, UserRound, X } from "lucide-react";
+import { ArrowUp, ArrowLeftRight, BookOpen, Camera, Clapperboard, Download, Ellipsis, FileText, ImagePlus, Play, RotateCcw, SquareCheckBig, Upload, UserRound, X, Library } from "lucide-react";
 import { nanoid } from "nanoid";
 import { LibraryExtractionPanel } from "./library-extraction-panel";
 import { LibraryReferencePicker } from "./library-reference-picker";
@@ -23,7 +23,7 @@ import type { IpRun } from "@ai-star-eco/types";
 import type { StudioCapabilities, StudioIpAsset, StudioIpAssetRole, StudioVoiceProfile, StudioOperation, StudioReference, StudioRunRequest, StudioScript, StudioScriptSettings, StudioPlan, StudioNodeMetadata } from "@ai-star-eco/types/ip-studio-workflow";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "@/canvas/types/canvas";
 import { applyStudioRun, applyStudioRunToDocument, makeStudioNode, retainStudioMediaVersions, adoptStudioTake, studioGenerationPending, dispatchStudioCommand } from "@/canvas-bridge/studio-nodes";
-import { adoptStudioImage, listStudioIpAssets, listStudioIps, readStudioProject, studioCapabilities, submitStudioRun } from "@/canvas-bridge/studio-api";
+import { importStudioMedia, adoptStudioImage, listStudioIpAssets, listStudioIps, readStudioProject, studioCapabilities, submitStudioRun } from "@/canvas-bridge/studio-api";
 import { markStudioDescendants, reorderStudioClips, studioNodeEpisode, studioNodeReferences, studioScriptPrompt, studioScriptInput, studioShotNodes } from "@/canvas-bridge/studio-script";
 import { readRun, cancelRun, fetchModels, fetchStudioVideoModels, type IpModels } from "@/canvas-bridge/api";
 import { studioQueueNotice, studioTaskLabel, studioTaskQueued } from '@/canvas-bridge/studio-task-status';
@@ -38,7 +38,7 @@ import { StudioDurationControl } from "./studio-duration-control";
 import { studioVideoModeName } from "@/canvas-bridge/studio-video";
 import { StudioFrameIntentDialog, StudioVideoRewriteDetail, type StudioFrameIntentChoice } from "./studio-video-prompt-notes";
 import { studioFrameIntent, studioFrameTarget, type StudioFrameIntent } from "@/canvas-bridge/studio-video-prompt";
-import { studioDurationIssue, studioSpecConflict, studioSpecConflictText, studioSpecVideoDraft, type StudioSpecConflict } from "@/canvas-bridge/studio-composer-spec";
+import { studioDurationIssue, studioDurationLimits, studioSpecConflict, studioSpecConflictText, studioSpecVideoDraft, type StudioSpecConflict } from "@/canvas-bridge/studio-composer-spec";
 import { StudioFrameCropHint } from "./studio-frame-crop-hint";
 import { studioFailedWithoutMedia, studioUnusableModel } from "@/canvas-bridge/studio-node-failure";
 import { studioNodeCommand } from './studio-node-command';
@@ -52,7 +52,8 @@ import { computeVideoSize } from "@/canvas/lib/media-size";
 import { saveStudioDocument } from "@/canvas-bridge/studio-save";
 import { downloadMedia } from "@/canvas-bridge/download-media";
 import { SignedImage } from "@/canvas-bridge/signed-image";
-import { parseStudioCaptions, studioWorkDraft, updateStudioWorkDraft } from "@/canvas-bridge/studio-packaging";
+import { studioPackagingOf, studioWorkDraft, updateStudioWorkDraft } from "@/canvas-bridge/studio-packaging";
+import { toEditTimeline } from "@/canvas-bridge/studio-edit-timeline";
 import { StudioScriptSettingsForm } from "./studio-script-settings";
 import { StudioScriptEditor } from "./studio-script-editor";
 import { StudioDocumentEditor } from "./studio-document-editor";
@@ -73,7 +74,7 @@ import { StudioWorkEditor } from "./studio-work-editor";
 import dynamic from "next/dynamic";
 import { createPortal } from "react-dom";
 import { useLayoutMode } from "@/shell/layout-mode";
-import type { StudioAdvancedEdit, StudioEditTimeline } from "@ai-star-eco/types/ip-studio-workflow";
+import type { StudioAdvancedEdit, StudioEditTimeline, StudioPackaging } from "@ai-star-eco/types/ip-studio-workflow";
 import { studioClipEpisode, studioClipIncluded, studioSourceClipIds } from "@/canvas-bridge/studio-work-clips";
 import { StudioIpLibrary } from "./studio-ip-library";
 import { StudioMaterialLibrary } from './studio-material-library';
@@ -83,6 +84,7 @@ import { StudioCanvasGuide, studioCanvasGuideVisible } from "./studio-canvas-gui
 import { IpStudioApi } from "./api";
 import { studioLinkedInputError, studioLinkedNodes, studioLinkedText, withStudioLinkedText } from '@/canvas-bridge/studio-linked-inputs';
 import { StudioStoryboard } from './studio-storyboard';
+import { LibrarySaveDialog } from './library-save-dialog';
 import { updateStudioStoryboardShot } from '@/canvas-bridge/studio-storyboard';
 
 type Props = { projectId: string; nodes: CanvasNodeData[]; connections:CanvasConnection[]; selectedNodeIds: Set<string>;
@@ -93,7 +95,7 @@ const containers = () => document.querySelector<HTMLElement>(".ip-surface") || d
 // 高级编辑（Twick）只有点开才下载：它带着播放器、时间线和导出引擎，体积不小。
 const StudioAdvancedEditor = dynamic(() => import("./studio-advanced-editor").then(m => m.StudioAdvancedEditor), { ssr: false,
   loading: () => <div className="studio-advanced-shell studio-advanced-loading" role="status">正在打开高级编辑…</div> });
-const labels = { recreation: "解析视频", text: "AI 修改文本", script: "创作剧本", storyboard: "拆分镜头", image: "生成图片", video: "生成视频", assemble: "合成作品", assistant: "导演对话" };
+const labels = { recreation: "解析视频", text: "AI 修改文本", script: "创作剧本", storyboard: "拆分镜头", image: "生成图片", video: "生成视频", assemble: "导出成片", assistant: "导演对话" };
 const legacyBatchCounts=[1,2,4];
 function imageRatioLabel(ratio:string){
   const [width,height]=ratio.split(":").map(Number);
@@ -208,6 +210,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const [lipOriginId,setLipOriginId]=useState<string>();
   const openLipSync=(node?:CanvasNodeData)=>{setLipOriginId(node?.id);setDirector(false);setLipSyncOpen(true);onClosePanel();};
   const [voiceAdoptId,setVoiceAdoptId]=useState<string>();
+  const [librarySaveId,setLibrarySaveId]=useState<string>();
   const [speechOpen,setSpeechOpen]=useState(false);
   const [speechOriginId,setSpeechOriginId]=useState<string>(),[speechSaving,setSpeechSaving]=useState(false);
   const [settings,setSettings]=useState<StudioScriptSettings>({genre:"都市治愈",episodeCount:1,episodeDurationSec:30});
@@ -264,7 +267,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const patch = useCallback((id: string, update: (node: CanvasNodeData) => CanvasNodeData) => setNodes(current => current.map(n => n.id === id ? update(n) : n)), [setNodes]);
   const workEpisode=episodeFilter==='all'?undefined:episodeFilter;
   const workDraft=studioWorkDraft(nodes,workEpisode);
-  const {packagingEnabled,brand,title:workTitle,cta,captionText,voiceoverStorageKey:voiceoverKey}=workDraft;
+  const {packagingEnabled,brand,title:workTitle,cta,voiceoverStorageKey:voiceoverKey}=workDraft;
   const changeWorkDraft=(changes:Partial<typeof workDraft>)=>{const id=nanoid();setNodes(current=>updateStudioWorkDraft(current,changes,id,workEpisode));};
   const saveWork=async(nextMode?:typeof mode)=>{
     if(workSaving)return;setWorkSaving(true);
@@ -535,6 +538,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       const { action: requestedAction, nodeId } = (event as CustomEvent<{ action: string; nodeId?: string }>).detail;
       // Keep the current draft visible if the native file picker is cancelled.
       if (requestedAction === 'upload-image' || requestedAction === 'upload-video') return;
+      // 存为资产是一个小弹窗，不关掉正在用的面板。
+      if (requestedAction === 'library-save') { setLibrarySaveId(nodeId); return; }
       // A newly added Flow node is already in the document store before React updates these props.
       const node = nodesRef.current.find(n => n.id === nodeId)
         || useCanvasStore.getState().projects.find(p=>p.id===projectId)?.nodes.find(n=>n.id===nodeId);
@@ -560,7 +565,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       else if(action==="work"||action==='editor'&&node?.metadata?.studio?.workDraft) {if(node?.metadata?.studio?.workDraft)setEpisodeFilter(node.metadata.studio.episodeNo??'all');setMode("work");onClosePanel();}
       else if(action==="script-preview"&&node?.metadata?.studio?.script){setScriptPreviewId(nodeId);onClosePanel();}
       else if (action === "editor") {
-        if(node?.metadata?.status==='loading'&&node.metadata.studio?.request){setTaskList(true);onClosePanel();message.info('原剧本正在生成，请等待完成后编辑');return;}
+        if(node?.metadata?.status==='loading'&&node.metadata.studio?.request){setTaskList(true);onClosePanel();message.info('原剧本生成中，请等待完成后编辑');return;}
         setEditorId(nodeId);onClosePanel();
       }
       else if (action === "split" && node) splitScript(node);
@@ -589,7 +594,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     try {if(operation==="script"&&!rewriteScope)requestPrompt=studioScriptInput(prompt,scriptMode,scriptSourceNodeId,nodesRef.current);
       // Storyboard keeps the document in its preview; the actual request snapshots it at submission.
       if(storyboardNodeId===originId&&origin?.metadata?.studio?.script&&(operation==="script"||operation==="storyboard"))requestPrompt=studioScriptPrompt(origin.metadata.studio.script,requestPrompt);
-      requestPrompt=withStudioLinkedText(requestPrompt,originId,nodesRef.current,connectionsRef.current,operation==='script'&&scriptMode==='adapt'?scriptSourceNodeId:undefined);
+      requestPrompt=withStudioLinkedText(requestPrompt,originId,nodesRef.current,connectionsRef.current,operation==='script'&&scriptMode==='adapt'?scriptSourceNodeId:undefined,operation==='video');
       const promptLimit=promptMaxChars;
       const promptLength=nativeVideo||imagePromptMaxChars!=null?Array.from(requestPrompt).length:requestPrompt.length;
       if(promptLength>promptLimit)throw new Error(`创作要求与引用文本合计超过 ${promptLimit} 字，请减少引用内容`);}
@@ -604,7 +609,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       if(choice==="adopt"){
         if(conflict.aspectRatio)changeComposerRatio(conflict.aspectRatio.said);
         if(conflict.durationSec)setDuration(conflict.durationSec.said);
-        message.info("已按描述改好设置，请确认费用后再生成。");
+        message.info("已按描述更新设置，请确认费用后生成。");
         return;
       }
       specConflictAnswered.current.add(conflictKey);
@@ -648,13 +653,20 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       await saveStudioDocument(projectId);
       if(epoch.current!==submissionEpoch)return;
       posted=true;
-      const run = await submitStudioRun(projectId, request);
+      const run = await submitStudioRun(projectId, request, {modelChoices:shortageModelChoices(),canRetry:true});
       if(epoch.current!==submissionEpoch)return;
       setNodes(nodes => applyStudioRunToDocument(nodes,connectionsRef.current,target.id,run)); if(panelSession.current===session){if(mode==="storyboard")setStoryboardNodeId(target.id);else setDirector(false);} void watch(run,target.id);
     } catch (e) {
       if(epoch.current!==submissionEpoch)return;
       if(isStudioBillingCancelled(e)) {
         patch(target.id,n=>({...n,metadata:{...retainedTarget.metadata,prompt:requestPrompt}}));
+        const shortage=studioCreditShortageChoice(e);
+        if(shortage?.kind==="switch-model"){
+          changeGenerationModel(shortage.endpointId);
+          if(shortage.changes)message.info(`已改用「${shortage.name}」，${shortage.changes}。确认后再生成。`);
+          else regenerate.current={model:shortage.endpointId,choice};
+        }
+        else if(shortage?.kind==="retry")regenerate.current={choice};
         return;
       }
       message.error(e);
@@ -690,7 +702,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     // with the prompt, references and settings kept. Three 640-credit holds on a retired model were three failures.
     const offered=node.type===CanvasNodeType.Video?models.video:node.type===CanvasNodeType.Image?models.image:undefined;
     if(node.metadata?.status==="error"&&(request.operation==="image"||request.operation==="video")&&studioUnusableModel(node,offered?.length?offered.flatMap(m=>[m.endpointId,...(m.legacyEndpointIds||[])]):undefined)){
-      message.info("上次用的模型已不可用，请换一个模型再生成。");openDirector(request.operation,node);return;
+      message.info("上次使用的模型已不可用，请更换模型后生成。");openDirector(request.operation,node);return;
     }
     setBusy(true);
     const submissionEpoch=epoch.current;
@@ -704,12 +716,19 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       if(epoch.current!==submissionEpoch)return;
       posted=true;
       const originalRunId=next===request?node.metadata?.studio?.runId:undefined;
-      const run = originalRunId?await readRun(originalRunId):await submitStudioRun(projectId,next);
+      // 打开创作面板的那些模型由面板决定；这里没有面板，只给换模型的入口，换了就打开面板让用户确认设置。
+      const run = originalRunId?await readRun(originalRunId):await submitStudioRun(projectId,next,{modelChoices:next.operation==="image"||next.operation==="video"?models[next.operation].filter(m=>!goneModels.has(m.endpointId)).map(m=>({endpointId:m.endpointId,name:m.name,legacyEndpointIds:m.legacyEndpointIds})):undefined});
       if(epoch.current!==submissionEpoch)return;
       patch(node.id,n=>applyStudioRun(n,run));void watch(run,node.id);
     } catch(e) {
       if(epoch.current!==submissionEpoch)return;
-      if(isStudioBillingCancelled(e)){patch(node.id,n=>({...n,metadata:node.metadata}));return;}
+      if(isStudioBillingCancelled(e)){
+        const shortage=studioCreditShortageChoice(e);
+        // 确认原任务时积分不足：这条没有受理，不用再确认，转成可以重新生成的失败记录。
+        patch(node.id,n=>({...n,metadata:shortage&&confirmingPendingRequest?{...node.metadata,status:"error",errorDetails:"积分不足，未提交"}:node.metadata}));
+        if(shortage?.kind==="switch-model"&&(request.operation==="image"||request.operation==="video")){openDirector(request.operation,node);setModel(shortage.endpointId);}
+        return;
+      }
       // A failed local save cannot reject an earlier possibly accepted request.
       const rejected=!posted ? !confirmingPendingRequest : !confirmingKnownRun&&e instanceof ApiError && typeof e.status==="number"&&e.status>=400&&e.status<500&&e.status!==408;
       patch(node.id,n=>({...n,metadata:{...n.metadata,...studioErrorMetadata(e),status:rejected?"error":"loading",errorDetails:e instanceof Error?e.message:"任务未确认，请确认原任务"}}));
@@ -776,7 +795,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   /** 一键成片：按勾选的片段顺序拼。带着 edit（高级编辑的时间线）时按时间线合成，品牌文字和字幕已经在时间线里。返回是否已提交。 */
   const assemble = async (edit?: StudioEditTimeline): Promise<boolean> => {
     if(!edit&&workVoiceMissing){message.error('原配音已移出画布，请重新选择配音或保留原音轨');return false;}
-    if(!edit&&packagingEnabled){try{parseStudioCaptions(captionText);if(!brand.trim()&&!workTitle.trim()&&!cta.trim()&&!captionText.trim())throw new Error("请填写品牌文字或字幕");}catch(e){message.error(e);return false;}}
+    let oneClickPackaging:StudioPackaging|undefined;
+    if(!edit){try{if(packagingEnabled&&!brand.trim()&&!workTitle.trim()&&!cta.trim())throw new Error("请填写品牌、标题或结尾提示，或取消添加文字");oneClickPackaging=studioPackagingOf(workDraft,capabilities?.captionRecognition);}catch(e){message.error(e);return false;}}
     const editKeys=edit?[...new Set(edit.clips.map(c=>c.storageKey))]:[];
     const editAudioKeys=edit?new Set(edit.audios.map(a=>a.storageKey)):new Set<string>();
     const selectedClips = edit ? editKeys.flatMap(key=>nodes.find(n=>n.metadata?.storageKey===key&&n.metadata.studio?.kind!=='work')??[]) : clips.filter(n => studioClipIncluded(n,sourceClipIds));
@@ -787,10 +807,10 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       episodeNo:episodeFilter==="all"?undefined:episodeFilter,aspectRatio:workDraft.aspectRatio,
       ...(edit?{references:editKeys.map(storageKey=>({storageKey,role:"clip" as const})),edit}
         :{references:selectedClips.map(n => ({storageKey:n.metadata!.storageKey!,role:"clip" as const,ipId:n.metadata?.studio?.references?.find(r=>r.ipId)?.ipId})),
-          ...((packagingEnabled||voiceoverKey)?{packaging:{...(packagingEnabled?{brand:brand.trim(),title:workTitle.trim(),cta:cta.trim(),captions:parseStudioCaptions(captionText)}:{}),voiceoverStorageKey:voiceoverKey}}:{})}) };
-    target.metadata={...target.metadata,status:"loading",studio:{kind:"work",request,references:request.references,episodeNo:request.episodeNo}};addNode(target);
+          ...(oneClickPackaging?{packaging:oneClickPackaging}:{})}) };
+    target.metadata={...target.metadata,status:"loading",studio:{kind:"work",request,references:request.references,episodeNo:request.episodeNo,exportedAt:new Date().toISOString()}};addNode(target);
     const voiceNodes=edit?nodes.filter(n=>n.type===CanvasNodeType.Audio&&n.metadata?.storageKey&&editAudioKeys.has(n.metadata.storageKey))
-      :voiceoverKey?nodes.filter(n=>n.type===CanvasNodeType.Audio&&n.metadata?.storageKey===voiceoverKey).slice(0,1):[];
+      :nodes.filter(n=>n.type===CanvasNodeType.Audio&&n.metadata?.storageKey&&(n.metadata.storageKey===voiceoverKey||n.metadata.storageKey===workDraft.musicStorageKey));
     setConnections(current => [...current,...[...selectedClips,...voiceNodes].map(n=>({id:nanoid(),fromNodeId:n.id,toNodeId:target.id}))]);
     try {
       await saveStudioDocument(projectId);if(epoch.current!==submissionEpoch)return false;
@@ -800,7 +820,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     } catch(e){
       if(epoch.current!==submissionEpoch)return false;
       const rejected=!posted||e instanceof ApiError&&typeof e.status==="number"&&e.status>=400&&e.status<500&&e.status!==408;
-      patch(target.id,n=>({...n,metadata:{...n.metadata,...studioErrorMetadata(e),status:rejected?"error":"loading",errorDetails:e instanceof Error?e.message:"合成提交未确认，请确认原任务"}}));
+      patch(target.id,n=>({...n,metadata:{...n.metadata,...studioErrorMetadata(e),status:rejected?"error":"loading",errorDetails:e instanceof Error?e.message:"导出提交未确认，请确认原任务"}}));
       message.error(e);
       return !rejected;
     } finally{if(epoch.current===submissionEpoch)setBusy(false);}
@@ -808,13 +828,39 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const moveClip = (from: number, to: number) => setNodes(current => reorderStudioClips(current, clips.map(n=>n.id), from, to));
   const [advancedOpen,setAdvancedOpen]=useState(false);
   const layout=useLayoutMode();
-  const advancedLibrary=useMemo(()=>nodes.filter(n=>(n.type===CanvasNodeType.Video||n.type===CanvasNodeType.Audio)&&n.metadata?.storageKey&&n.metadata.status==='success'&&n.metadata.studio?.kind!=='work'&&!n.metadata.studio?.workDraft),[nodes]);
-  const saveAdvanced=(advanced:StudioAdvancedEdit)=>{changeWorkDraft({advanced});void saveStudioDocument(projectId).catch(e=>message.error(e));};
+  const advancedLibrary=useMemo(()=>nodes.filter(n=>(n.type===CanvasNodeType.Video||n.type===CanvasNodeType.Audio||n.type===CanvasNodeType.Image)&&n.metadata?.storageKey&&n.metadata.status==='success'&&n.metadata.studio?.kind!=='work'&&!n.metadata.studio?.workDraft),[nodes]);
+  // 导出过一次、片段没变：自动字幕已经有了，打开高级编辑时直接放到时间线上，只改个别句子就行。
+  const advancedCaptions=useMemo(()=>{
+    const selected=clips.filter(n=>studioClipIncluded(n,sourceClipIds)).map(n=>n.metadata?.storageKey);
+    return [...work].reverse().find(n=>{
+      const refs=n.metadata?.studio?.request?.references?.map(r=>r.storageKey);
+      return !n.metadata?.studio?.request?.edit&&n.metadata?.studio?.captions?.cues?.length&&refs?.length===selected.length&&refs.every((key,i)=>key===selected[i]);
+    })?.metadata?.studio?.captions?.cues;
+  },[work,clips,sourceClipIds]);
+  const saveAdvanced=async(advanced:StudioAdvancedEdit)=>{changeWorkDraft({advanced});await saveStudioDocument(projectId);};
+  // 一键成片里直接传背景音乐：进画布成为音频节点（素材都在画布上），并选中它。
+  const uploadWorkMusic=async(file:File)=>{
+    const imported=await importStudioMedia(projectId,file,'audio');
+    const music=attachmentNode({kind:'audio',url:imported.url,storageKey:imported.key,title:imported.fileName||file.name,mimeType:imported.mimeType},nodes);
+    addNode({...music,metadata:{...music.metadata,origin:'upload' as const,durationMs:imported.durationSec?Math.round(imported.durationSec*1000):undefined,studio:{kind:'audio' as const,audioRole:'music' as const}}});
+    changeWorkDraft({musicStorageKey:imported.key});
+    return {key:imported.key,name:imported.fileName||file.name};
+  };
   const exportAdvanced=async(edit:StudioEditTimeline,advanced:StudioAdvancedEdit)=>{
-    if(busy){message.error('还有一项操作在提交，稍等一下再导出');return false;}
+    if(busy){message.error('有操作正在提交，请稍后导出');return false;}
     changeWorkDraft({advanced});return assemble(edit);
   };
-  const dropAdvanced=()=>modal.confirm({title:'改回一键成片？',content:'高级编辑里的剪辑（裁剪、文字、音轨等）会丢掉，已经导出的作品不受影响。',okText:'改回一键成片',cancelText:'取消',okButtonProps:{danger:true},
+  // 存过高级编辑后，不用再进编辑室（要重新加载全部素材）：直接按存档导出。清单是纯数据，不需要 Twick。
+  const exportSavedAdvanced=()=>{
+    const saved=workDraft.advanced;
+    if(!saved)return;
+    const size=saved.size||(workDraft.aspectRatio==='16:9'?{width:1280,height:720}:{width:720,height:1280});
+    const edit=toEditTimeline(saved.project as unknown as Parameters<typeof toEditTimeline>[0],size,{autoCaptions:saved.autoCaptions,musicStorageKey:workDraft.musicStorageKey});
+    if(!edit.clips.length){message.error('高级编辑中至少需要一段视频，请继续高级编辑或放弃修改');return;}
+    if(busy){message.error('有操作正在提交，请稍后导出');return;}
+    void assemble(edit);
+  };
+  const dropAdvanced=()=>modal.confirm({title:'放弃高级编辑的修改？',content:'剪辑、文字、音频等修改将被清除，片段和设置恢复到高级编辑之前的样子。已导出的成片不受影响。',okText:'放弃修改',cancelText:'取消',okButtonProps:{danger:true},
     onOk:()=>changeWorkDraft({advanced:undefined})});
   const includeClip = (id: string, includeInWork: boolean) => patch(id,n => ({...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,includeInWork}}}));
   const loadIpAssets = () => {
@@ -883,7 +929,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   // The node's last model cannot be used again: say which one the composer uses instead, before anything is paid.
   const lastRequestModel=(operation==="image"||operation==="video")?nodes.find(n=>n.id===originId)?.metadata?.studio?.request?.model:undefined;
   const replacedModelNotice=lastRequestModel&&chosenModel&&lastRequestModel!==chosenModel.endpointId&&model===lastRequestModel&&!candidates.some(m=>modelMatches(m,lastRequestModel))
-    ?`上次用的模型已不可用，这次改用「${chosenModel.name}」，费用以下方为准。`:undefined;
+    ?`上次使用的模型已不可用，已改用「${chosenModel.name}」，费用以下方为准。`:undefined;
   const chosenTextModel=studioChosenTextModel(capabilities,model);
   const imagePromptMaxChars=operation==="image"?chosenModel?.capability?.imagePromptMaxChars??null:null;
   const imageBatchCounts=chosenModel?.capability?.imageBatchCounts?.length?chosenModel.capability.imageBatchCounts:legacyBatchCounts;
@@ -901,7 +947,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const videoBatchCounts=nativeVideo?.batchCounts?.length?nativeVideo.batchCounts:legacyBatchCounts;
   const promptMaxChars=nativeVideo?nativeVideo.contract.promptMaxChars:imagePromptMaxChars??16000;
   // Same text and same counting as submit: linked text goes to the model too, so it counts before the button is pressed.
-  const limitedPrompt=operation==="image"||operation==="video"?withStudioLinkedText(prompt,originId,nodes,connections):prompt;
+  const limitedPrompt=operation==="image"||operation==="video"?withStudioLinkedText(prompt,originId,nodes,connections,undefined,operation==="video"):prompt;
   const promptChars=nativeVideo||imagePromptMaxChars!=null?Array.from(limitedPrompt).length:limitedPrompt.length;
   const promptTooLong=promptChars>promptMaxChars;
   const longerPromptModel=promptTooLong?studioLongerPromptModel(candidates.filter(m=>m.endpointId!==chosenModel?.endpointId).map(m=>({endpointId:m.endpointId,name:m.name,
@@ -944,7 +990,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     priorVideoReferences.current={origin:originId,references:videoPromptReferences};
   },[director,operation,originId,JSON.stringify(videoPromptReferences.map(r=>[r.nodeId,r.label]))]);
   const removedVideoMention=operation==="video"&&prompt.includes('[已移除参考：');
-  const legacyVideoError=operation==="video"&&!nativeVideo&&(referenceIds.length>1||referenceIds.some(id=>nodes.find(n=>n.id===id)?.type!==CanvasNodeType.Image))?"这个模型只支持一张首帧图，请移除多余素材或切回支持首尾帧 / 全能参考的模型":undefined;
+  const legacyVideoError=operation==="video"&&!nativeVideo&&(referenceIds.length>1||referenceIds.some(id=>nodes.find(n=>n.id===id)?.type!==CanvasNodeType.Image))?"当前模型只支持一张首帧图，请移除多余素材，或改用支持首尾帧 / 全能参考的模型":undefined;
   const imageIds=new Set(nodes.filter(n=>n.type===CanvasNodeType.Image&&n.metadata?.storageKey).map(n=>n.id));
   const changeVideoDraft=(next:StudioVideoDraft)=>{
     const selection=changeStudioVideoDraft(videoDraft,next,referenceIds,imageIds);
@@ -967,6 +1013,38 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     setVideoDraft(draft=>adaptStudioVideoReferences(nativeVideo,draft,ids,nodesRef.current,manualVideoModes.current.get(originId||'')));
     setReferenceIds(ids);
   };
+  // 积分不足提示框里选了「改用」或「继续生成」：等模型换好、上一次提交收尾后，按面板现在的设置再提交一次（要花钱的话还有费用确认）。
+  const regenerate=useRef<{model?:string;choice?:Parameters<typeof submit>[0]}>(undefined);
+  useEffect(()=>{
+    const next=regenerate.current;
+    if(!next||busy||(next.model&&chosenModel?.endpointId!==next.model))return;
+    regenerate.current=undefined;
+    void submit(next.choice);
+  });
+  /**
+   * 积分不足时能换的模型，标准价按面板现在的数量、清晰度和时长算。换过去比例、数量、时长不一定还在（面板会退到第一项）：
+   * 会变的写进 changes，用户看过再生成；做不了现在的组合就算不出价，写明要调整。
+   */
+  const shortageModelChoices=()=>operation==="image"||operation==="video"?candidates.map(m=>{
+    const native=operation==="video"?nativeVideoModels.find(x=>x.endpointId===m.endpointId):undefined;
+    // 和 selectedImageSize 同一条规则：换过去报的价、写的变化，才是真正会提交的规格。
+    const resolution=studioImageResolution(selectedImageSize);
+    const nextSizes=operation==="image"?m.capability?.imageSizes?.filter(output=>output.aspectRatio===ratio)||[]:[];
+    const nextSize=nextSizes.some(output=>output.size===imageSize)?imageSize:nextSizes[0]?.size;
+    const unit=operation==="image"?m.imageResolutionCosts?.[studioImageResolution(nextSize)||""]??m.creditCost
+      :native?(videoSettings?studioVideoQuote(native,videoSettings,duration):null):m.creditCost*(m.billingUnit==="per_second"?duration:1);
+    const ratios=operation==="image"?m.capability?.imageRatios:m.capability?.videoRatios;
+    const counts=operation==="image"?m.capability?.imageBatchCounts:native?.batchCounts;
+    const count=operation==="image"?imageCount:videoCount;
+    const minSec=m.capability?.minDurationSec,maxSec=m.capability?.maxDurationSec;
+    // 比例面板不会自动改（不支持时生成按钮不可点），只能说要重新选；数量和清晰度面板会自动退到第一项。
+    const changes=[ratios?.length&&!ratios.includes(ratio)&&`不支持 ${ratio} 比例，需要重新选择`,counts?.length&&!counts.includes(count)&&`数量将改为 ${counts[0]}`,
+      nextSize&&studioImageResolution(nextSize)!==resolution&&`清晰度将改为 ${studioImageSizeLabel(nextSize)}`,
+      operation==="video"&&!native&&(minSec&&duration<minSec||maxSec&&duration>maxSec)&&`时长需要调整`,operation==="video"&&native&&unit==null&&"当前设置不支持，需要调整"].filter(Boolean).join("，");
+    return {endpointId:m.endpointId,name:m.name,legacyEndpointIds:m.legacyEndpointIds,changes,quotePatch:nextSize?{size:nextSize}:undefined,cost:unit==null?null:unit*(counts?.length&&!counts.includes(count)?counts[0]:count),
+      // 优化描述是另一笔文字任务，不含在视频报价里。
+      extraCharge:native?.supportsPromptOptimization?"优化提示词按实际用量另计":undefined};
+  }):undefined;
   const changeGenerationModel=(next:string)=>{
     const nextNative=nativeVideoModels.some(m=>m.endpointId===next)&&!capabilities?.mock;
     if(nativeVideo&&!nextNative)setReferenceIds(studioVideoSelectionIds(videoDraft,referenceIds));
@@ -1014,11 +1092,12 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const videoAssets=studioVideoSelectionIds(videoDraft,referenceIds)
     .map(id=>{const n=nodes.find(node=>node.id===id);return {storageKey:n?.metadata?.storageKey,mediaType:n?.type===CanvasNodeType.Video?"video" as const:n?.type===CanvasNodeType.Audio?"audio" as const:"image" as const};});
   let videoSettings:StudioRunRequest["video"],videoValidationError:string|undefined;
-  if(nativeVideo)try {if(!nativeModeSpec)throw new Error("这个模型不支持所选视频模式，请重新选择");videoSettings=studioVideoSettings(videoDraft.mode,videoDraft.tier,videoAssets,videoDraft.seed,nativeModeSpec,studioVideoPromptMode(nativeVideo.supportsPromptOptimization,videoDraft.keepPrompt));videoValidationError=studioVideoError(nativeVideo,videoSettings,prompt,ratio,duration);}catch(e){videoValidationError=e instanceof Error?e.message:"请确认视频参考素材";}
-  const durationOptions=capabilities?.mock?[8]:nativeVideo?[]:[5,6,8,10,12,15].filter(v=>(!chosenModel?.capability?.minDurationSec||v>=chosenModel.capability.minDurationSec)&&(!chosenModel?.capability?.maxDurationSec||v<=chosenModel.capability.maxDurationSec));
+  if(nativeVideo)try {if(!nativeModeSpec)throw new Error("当前模型不支持所选视频模式，请重新选择");videoSettings=studioVideoSettings(videoDraft.mode,videoDraft.tier,videoAssets,videoDraft.seed,nativeModeSpec,studioVideoPromptMode(nativeVideo.supportsPromptOptimization,videoDraft.keepPrompt));videoValidationError=studioVideoError(nativeVideo,videoSettings,prompt,ratio,duration);}catch(e){videoValidationError=e instanceof Error?e.message:"请确认视频参考素材";}
+  // The /models capability also carries effective bounds for non-native video endpoints.
+  const durationLimits=studioDurationLimits(nativeVideo?{min:nativeVideo.contract.minSeconds,max:nativeVideo.contract.maxSeconds}:chosenModel?{min:chosenModel.capability?.minDurationSec,max:chosenModel.capability?.maxDurationSec}:undefined,capabilities?.mock);
   // A duration the chosen model cannot do is shown with a one-press fix; it is never clamped behind the user's back
   // (4 秒 said in the conversation used to become the model's minimum or the first preset without a word).
-  const durationIssue=operation==="video"?studioDurationIssue(duration,nativeVideo?{min:nativeVideo.contract.minSeconds,max:nativeVideo.contract.maxSeconds}:{options:durationOptions}):undefined;
+  const durationIssue=operation==="video"?studioDurationIssue(duration,durationLimits):undefined;
   const videoUnitQuote=nativeVideo?studioVideoQuote(nativeVideo,videoSettings||{mode:videoDraft.mode,resolutionTier:videoDraft.tier},duration):chosenModel?chosenModel.creditCost*(chosenModel.billingUnit==="per_second"?duration:1):null;
   const imageUnitCost=chosenModel?.imageResolutionCosts?.[studioImageResolution(selectedImageSize)||""]??chosenModel?.creditCost??capabilities?.imageCost??0;
   const quote=capabilities?.mock?0:operation==="image"?(imageUnitCost*imageCount):operation==="video"?
@@ -1064,7 +1143,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     const modelGone=!!studio?.request&&!!studioUnusableModel(selected,offeredForSelected?.length?offeredForSelected.map(m=>m.endpointId):undefined);
     if(meta?.status==="error" && modelGone && (studio?.request?.operation==="image"||studio?.request?.operation==="video"))
       add("retry",<button type="button" disabled={busy} onClick={()=>openDirector(studio!.request!.operation as "image"|"video",selected)}><RotateCcw size={15}/>换模型重试</button>);
-    else if(meta?.status==="error" && (studio?.request||studio?.speechRequest||studio?.lipSyncRequest)) add("retry",<button title="AI 处理，会消耗积分" type="button" disabled={busy} onClick={()=>void retry(selected)}><StudioAiIcon/>重新生成</button>);
+    else if(meta?.status==="error" && (studio?.request||studio?.speechRequest||studio?.lipSyncRequest)) add("retry",<button title="AI 处理，将消耗积分" type="button" disabled={busy} onClick={()=>void retry(selected)}><StudioAiIcon/>重新生成</button>);
     if(selected.type===CanvasNodeType.Image){
       if(!failedDraft) add("image",<button data-studio-command="image" type="button" onClick={() => {
           openDirector("image",selected);
@@ -1103,7 +1182,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         if(busy||!selected.metadata?.studio?.runId)return;setBusy(true);const token=epoch.current;
         try{const run=await extractStudioLipSync(projectId,selected.metadata.studio.runId);if(epoch.current!==token)return;
           patch(selected.id,n=>applyStudioRun(n,run));setRuns(current=>[run,...current.filter(r=>r.id!==run.id)]);await saveStudioDocument(projectId);
-          message.success("口型片段已提取，原始对照视频保留在版本中；未再次扣积分");}
+          message.success("口型片段已提取，未额外扣除积分。");}
         catch(e){if(epoch.current===token)message.error(e);}
         finally{if(epoch.current===token)setBusy(false);}
       })()}>提取口型片段 · 免费</button>);
@@ -1113,6 +1192,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       }}>采用口型片段</button>);
     if(selected.type===CanvasNodeType.Audio && studio?.speechRequest && studio?.runId && meta?.status==="success") add("voice",<button type="button" onClick={()=>setVoiceAdoptId(selected.id)}>设为人物声音</button>);
     if(selected.type===CanvasNodeType.Audio && meta?.content) add("download-audio",<button type="button" onClick={()=>void downloadMedia(selected.metadata!.content!,selected.title,selected.metadata?.mimeType,selected.metadata?.storageKey).catch(e=>message.error(e))}><Download size={15}/>下载配音</button>);
+    if(selected.type===CanvasNodeType.Image&&meta?.storageKey) add("library-save",<button type="button" onClick={()=>dispatchStudioCommand("library-save",selected.id)}><Library size={15}/>存为角色、场景或道具</button>);
     if((selected.type===CanvasNodeType.Image||selected.type===CanvasNodeType.Video)&&meta?.storageKey&&meta.content) add("download",<button type="button" onClick={()=>void downloadMedia(selected.metadata!.content!,selected.title,selected.metadata?.mimeType,selected.metadata!.storageKey).catch(e=>message.error(e))}><Download size={15}/>{selected.type===CanvasNodeType.Image?"下载图片":"下载视频"}</button>);
     if(selectedTakes && selectedTakes.length>1){
       add("compare",<button type="button" onClick={()=>setTakePicker(selected.id)}>比较版本</button>);
@@ -1123,7 +1203,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     const shown=contextItems.filter(a=>!excluded.includes(a.key)),inlineKeys=["download","download-audio"];
     const contextInline=shown.filter(a=>inlineKeys.includes(a.key)),contextMore=shown.filter(a=>!inlineKeys.includes(a.key));
     return <div className="studio-node-editor-actions" aria-label="节点编辑操作">
-      <button type="button" className="studio-ask-assistant" title="把这个节点带进对话，让助手修改或继续制作" onClick={()=>dispatchStudioCommand('assistant',selected.id)}><AiMark size={13}/>问助手</button>
+      <button type="button" className="studio-ask-assistant" title="将此节点加入对话，由助手修改或继续制作" onClick={()=>dispatchStudioCommand('assistant',selected.id)}><AiMark size={13}/>问助手</button>
       {contextInline.map(a=><Fragment key={a.key}>{a.node}</Fragment>)}
       {!!contextMore.length&&<Popover trigger="click" placement="bottomLeft" arrow={false} open={contextMoreOpen===selected.id} onOpenChange={open=>setContextMoreOpen(open?selected.id:undefined)} getPopupContainer={containers}
         content={<div className="studio-context-more" role="group" aria-label="更多操作" onClick={e=>{if((e.target as HTMLElement).closest('button'))setContextMoreOpen(undefined);}}>{contextMore.map(a=><Fragment key={a.key}>{a.node}</Fragment>)}</div>}>
@@ -1153,19 +1233,19 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         {imageRatioUnsupported&&<p role="status">当前模型不支持 {ratio}，请选择可用比例。</p>}
         {operation==="image"&&<StudioChoiceGroup<number> compact label="生成数量" ariaLabel="候选数量" value={imageCount} onChange={setImageCount} options={imageBatchCounts.map(value=>({value,label:`${value} 张`}))}/>}
         {operation==="video"&&<StudioChoiceGroup<number> compact label="生成数量" ariaLabel="视频候选数量" value={videoCount} onChange={setVideoCount} options={videoBatchCounts.map(value=>({value,label:`${value} 条`}))}/>}
-        {operation==="video"&&<StudioDurationControl value={duration} onChange={setDuration} min={nativeVideo?.contract.minSeconds} max={nativeVideo?.contract.maxSeconds} options={durationOptions}/>}
+        {operation==="video"&&<StudioDurationControl value={duration} onChange={setDuration} {...durationLimits}/>}
         {nativeVideo&&<StudioVideoSeedControl seed={videoDraft.seed} max={nativeVideo.contract.seedMax} count={videoCount} onChange={seed=>changeVideoDraft({...videoDraft,seed})}/>}
         {nativeVideo&&videoValidationError&&!promptTooLong&&<p role="status">{videoValidationError}</p>}
         {legacyVideoError&&<p role="status">{legacyVideoError}</p>}
         {operation==="script" && <Checkbox checked={pasteScript} onChange={e=>setPasteScript(e.target.checked)}>直接保存已有剧本</Checkbox>}
-        {operation==="script"&&rewriteScope&&<p>此次只改写{rewriteScope.field==="outline"?"大纲":`第 ${rewriteScope.episodeNo} 集正文`}，结果生成新剧本，其他内容保留。</p>}
+        {operation==="script"&&rewriteScope&&<p>本次仅改写{rewriteScope.field==="outline"?"大纲":`第 ${rewriteScope.episodeNo} 集正文`}，结果生成新剧本，其他内容保留。</p>}
 
 
   </div>;
   // The duration problem sits next to the send button with its fix (ratio / mode / material problems already show
   // under the description); it must not hide inside the collapsed 「创作参数」 popover.
   const composerBlocker=operation==="video"&&!directorPending&&durationIssue
-    ?<p className="studio-composer-validation studio-composer-blocker" role="alert">{durationIssue.message}<Button type="link" size="small" onClick={()=>setDuration(durationIssue.fix)}>改成 {durationIssue.fix} 秒</Button></p>:null;
+    ?<p className="studio-composer-validation studio-composer-blocker" role="alert">{durationIssue.message}<Button type="link" size="small" onClick={()=>setDuration(durationIssue.fix)}>改为 {durationIssue.fix} 秒</Button></p>:null;
   // §6.2: the frame actually sent (native: the first frame the mode takes; one-frame models: the first picture) and the
   // ratios the chosen model can make; a different shape is cropped around its centre by the server, never stretched.
   const cropFrame=operation!=="video"||directorPending?undefined:nativeVideo
@@ -1198,7 +1278,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       <StudioSettingsPopover label="创作参数" summary={composerParameterSummary} open={composerSettingsOpen} onOpenChange={setComposerSettingsOpen} disabled={busy||directorSaving||!!directorPending}>{composerParameterContent}</StudioSettingsPopover>
       {nativeVideo?.supportsPromptOptimization&&<StudioPromptOptimizeToggle on={!videoDraft.keepPrompt} disabled={busy||directorSaving||!!directorPending} onChange={on=>setVideoDraft(draft=>({...draft,keepPrompt:!on}))}/>}
       </div>
-{replacedModelNotice&&!directorPending&&<p className="studio-composer-validation" role="status">{replacedModelNotice}</p>}{composerBlocker}{frameCropHint}<div className="studio-creator-footer">{(!["text","script","storyboard"].includes(operation)||pasteScript&&operation==="script"||capabilities?.mock||quote==null)&&<p className="studio-quote" title={operation==="video"&&videoUnitQuote!=null?`${videoCount} 条，每条 ${videoUnitQuote} 积分`:undefined}>{pasteScript&&operation==="script"?"保存剧本 · 免费":capabilities?.mock?"测试响应 · 免费":["text","script","storyboard"].includes(operation)?(quote==null?"模型计费未配置":""):quote==null?"模型未配置，暂不可生成":videoSettings?.rewrite?`${quote} 积分 · 优化另需少量积分`:`${quote} 积分`}</p>}{directorPending?<><p role="status">{directorPending.metadata?.studio?.runId?studioTaskLabel(directorPending.metadata.studio.task):busy?"正在提交任务，请稍候。":"提交结果尚未确认，请确认原任务。"}</p><Button type="primary" loading={busy} onClick={()=>{if(directorPending.metadata?.studio?.runId){setDirector(false);setTaskList(true);}else void retry(directorPending);}}>{directorPending.metadata?.studio?.runId?"查看原任务":"确认原任务"}</Button></>:<Button type="primary" className={operation==="image"||operation==="video"?"studio-composer-send":undefined} aria-label={operation==="image"||operation==="video"?labels[operation]:undefined} icon={operation==="image"||operation==="video"?<ArrowUp size={20}/>:pasteScript&&operation==="script"?undefined:<StudioAiIcon/>} title={pasteScript&&operation==="script"?undefined:"AI 处理，会消耗积分"} loading={busy||directorSaving} disabled={!(pasteScript&&operation==="script")&&quote==null||(!prompt.trim()&&!(operation==="video"&&nativeVideo&&nativeModeSpec?.promptRequired===false))||!capabilities||removedVideoMention||!!legacyVideoError||!!durationIssue||imageRatioUnsupported||!!nativeVideo&&!!videoValidationError||missingPlanRefs.length>0&&!referenceIds.length||promptTooLong||!capabilities.mock&&(operation==="image"||operation==="video")&&!chosenModel} onClick={() => void (pasteScript&&operation==="script"?importScript():submit())}>{operation==="image"||operation==="video"?null:pasteScript&&operation==="script"?"保存并编辑剧本":labels[operation]}</Button>}</div></>}>
+{replacedModelNotice&&!directorPending&&<p className="studio-composer-validation" role="status">{replacedModelNotice}</p>}{composerBlocker}{frameCropHint}<div className="studio-creator-footer">{(!["text","script","storyboard"].includes(operation)||pasteScript&&operation==="script"||capabilities?.mock||quote==null)&&<p className="studio-quote" title={operation==="video"&&videoUnitQuote!=null?`${videoCount} 条，每条 ${videoUnitQuote} 积分`:undefined}>{pasteScript&&operation==="script"?"保存剧本 · 免费":capabilities?.mock?"测试响应 · 免费":["text","script","storyboard"].includes(operation)?(quote==null?"模型暂不可用":""):quote==null?"模型未配置，暂不可生成":videoSettings?.rewrite?`${quote} 积分。优化提示词按实际用量另计。`:`${quote} 积分`}</p>}{directorPending?<><p role="status">{directorPending.metadata?.studio?.runId?studioTaskLabel(directorPending.metadata.studio.task):busy?"正在提交任务，请稍候。":"提交结果尚未确认，请确认原任务。"}</p><Button type="primary" loading={busy} onClick={()=>{if(directorPending.metadata?.studio?.runId){setDirector(false);setTaskList(true);}else void retry(directorPending);}}>{directorPending.metadata?.studio?.runId?"查看原任务":"确认原任务"}</Button></>:<Button type="primary" className={operation==="image"||operation==="video"?"studio-composer-send":undefined} aria-label={operation==="image"||operation==="video"?labels[operation]:undefined} icon={operation==="image"||operation==="video"?<ArrowUp size={20}/>:pasteScript&&operation==="script"?undefined:<StudioAiIcon/>} title={pasteScript&&operation==="script"?undefined:"AI 处理，将消耗积分"} loading={busy||directorSaving} disabled={!(pasteScript&&operation==="script")&&quote==null||(!prompt.trim()&&!(operation==="video"&&nativeVideo&&nativeModeSpec?.promptRequired===false))||!capabilities||removedVideoMention||!!legacyVideoError||!!durationIssue||imageRatioUnsupported||!!nativeVideo&&!!videoValidationError||missingPlanRefs.length>0&&!referenceIds.length||promptTooLong||!capabilities.mock&&(operation==="image"||operation==="video")&&!chosenModel} onClick={() => void (pasteScript&&operation==="script"?importScript():submit())}>{operation==="image"||operation==="video"?null:pasteScript&&operation==="script"?"保存并编辑剧本":labels[operation]}</Button>}</div></>}>
       <div className="studio-composer-actions" role="group" aria-label="编辑操作">{nodeActions(originId,["confirm",...(operation==="image"&&directorOrigin?.metadata?.studio?.libraryAssetRole!=="sheet"?["image"]:[]),...(operation==="video"?["video"]:[])])}
       {referenceComposer&&<>{nativeVideo?<StudioReferencePicker openRequest={referencePickerRequest} nodes={nodes.filter(n=>n.id!==originId)} ids={referenceIds} onChange={ids=>setReferenceIds(ids)}
           accepts={ids=>nativeVideo.contract.modes.some(spec=>studioVideoAcceptsReferences(spec,ids,nodes))}
@@ -1211,7 +1291,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         {nativeVideo&&<StudioReferenceStrip nodes={nodes} ids={studioVideoSelectionIds(videoDraft,referenceIds)} draft={videoDraft} spec={nativeModeSpec} onRemove={removeComposerReference}/>}
         {nativeModeSpec?.needsLastFrame&&videoDraft.firstId&&videoDraft.lastId&&<button type="button" className="studio-frame-swap" onClick={()=>changeVideoDraft({...videoDraft,firstId:videoDraft.lastId,lastId:videoDraft.firstId})}><ArrowLeftRight size={13}/>交换首尾帧</button>}
       </div>
-      {pickingReferences&&<p className="studio-reference-pick-note" role="status">点击画布素材添加参考，完成后点击“完成参考选择”。</p>}
+      {pickingReferences&&<p className="studio-reference-pick-note" role="status">点击画布素材添加参考，完成后点击「完成参考选择」。</p>}
         {operation==="video"?<div className="studio-prompt-field"><span>创作要求</span><StudioMotionPrompt onLibraryRequest={openLibrary} videoModel={chosenModel?.endpointId} effectPreviews={nodes.filter(n=>n.type===CanvasNodeType.Image&&n.metadata?.storageKey).map(n=>({storageKey:n.metadata!.storageKey!,name:n.title}))} ariaLabel="创作要求" references={videoPromptReferences} value={prompt} onChange={setPrompt} disabled={busy} className="studio-motion-drawer-editor" placeholder="描述画面或动作，输入 @ 引用素材"/></div>:<label>创作要求<StudioAssetMentionInput nodes={nodes} onLibraryRequest={openLibrary} onCanvasReference={id=>setReferenceIds(ids=>[...new Set([...ids,id])])} placeholder={operation==="script"?"描述故事、人物、风格和目标时长，也可以粘贴已有剧本":"描述希望生成的画面或动作"} value={prompt} onChange={setPrompt}/></label>}
         {/* 放在正文、提示词下面：放进底栏会和模型、参数、开关挤在一行把它们盖住（2026-10-27 浏览器验收） */}
         {promptReviewPanel}
@@ -1236,7 +1316,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     {/* 设计稿 Main 画板：分段控件只有文字。 */}
     <nav className="studio-view-switch" aria-label="创作视图">{([["canvas","画布"],["storyboard","故事板"],["work","成片"]] as const).map(([value,label]) =>
       <button type="button" key={value} aria-pressed={mode===value} disabled={workSaving||directorSaving||busy} onClick={() => void switchView(value)}>{label}</button>)}</nav>
-    {!assistantOpen&&<button type="button" className="studio-ai-orb" aria-label="打开创作助手" title="和助手说一句，它会把每一步放进画布" onClick={()=>dispatchStudioCommand("assistant",selected?.id)}><AiMark size={18}/></button>}
+    {!assistantOpen&&<button type="button" className="studio-ai-orb" aria-label="打开创作助手" title="描述需求，助手会把每一步放进画布" onClick={()=>dispatchStudioCommand("assistant",selected?.id)}><AiMark size={18}/></button>}
     <button type="button" className="studio-tasks-launch" onClick={()=>setTaskList(v=>!v)} aria-label={activeRunCount?`查看创作任务，${activeRunCount} 个进行中`:"查看创作任务"} title="创作任务" aria-pressed={taskList}><SquareCheckBig size={19} strokeWidth={1.75}/>{activeRunCount>0&&<span className="studio-tasks-count" aria-hidden="true">{activeRunCount}</span>}</button>
     {recreationOpen&&<StudioRecreation key={`${projectId}:${recreationId||'new'}`} projectId={projectId} initialNodeId={recreationId} nodes={nodes} capabilities={capabilities} setNodes={setNodes} setConnections={setConnections}
       actions={nodeActions(recreationId,["recreation-doc","analyze","film"])} mode={recreationMode} onClose={()=>setRecreationOpen(false)} onFocus={onFocusNode} onRun={(run,id)=>void watch(run,id)}/>}
@@ -1247,8 +1327,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       &&<StudioCanvasGuide assistantOpen={assistantOpen} onStartAssistant={()=>{setAssistantNodeId(undefined);setAssistantOpen(true);onClosePanel();}}/>}
     {/* Node actions live inside editors only; selection and right-click never mount an extra floating toolbar. */}
     {textEditingNodeId && mode==="canvas" && renderTextEditor?.(nodeActions(textEditingNodeId))}
-    {mode!=="canvas" && <section className={`studio-focused-view${mode==="storyboard"?" studio-storyboard-view":""}`} aria-label={mode==="storyboard"?"故事板":"成片编辑器"}>
-      <header><h2>{mode==="storyboard"?"故事板":"成片编辑器"}</h2><button type="button" aria-label="返回画布" disabled={workSaving||directorSaving||storyboardChanging||busy} onClick={() => void switchView("canvas")}><X size={18}/></button></header>
+    {mode!=="canvas" && <section className={`studio-focused-view${mode==="storyboard"?" studio-storyboard-view":""}`} aria-label={mode==="storyboard"?"故事板":"制作成片"}>
+      <header><h2>{mode==="storyboard"?"故事板":"制作成片"}</h2><button type="button" aria-label="返回画布" disabled={workSaving||directorSaving||storyboardChanging||busy} onClick={() => void switchView("canvas")}><X size={18}/></button></header>
       {mode==="work"&&(episodeNumbers.length>1||episodeFilter!=="all")&&<div className="studio-episode-nav"><Select aria-label="当前分集" value={episodeFilter} onChange={setEpisodeFilter} options={[{value:"all",label:"全部分集"},...episodeNumbers.map(no=>({value:no,label:`第 ${no} 集`}))]}/></div>}
       {mode==="storyboard" ? <StudioStoryboard nodes={nodes} connections={connections}
         selectedNodeId={storyboardNodeId} changing={storyboardChanging||directorSaving||busy}
@@ -1271,14 +1351,17 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
           draft={workDraft} onDraftChange={changeWorkDraft} onIncludeClip={includeClip} onMoveClip={moveClip} works={work}
           renderNodeActions={node=>nodeActions(node.id,["work","download"])}
           busy={busy} locked={workSaving} mock={capabilities?.mock} onAssemble={() => void assemble()}
-          onDownload={node => void downloadMedia(node.metadata!.content!,node.title,"video/mp4",node.metadata!.storageKey).catch(e => message.error(e))}
+          onDownload={node => downloadMedia(node.metadata!.content!,node.title,"video/mp4",node.metadata!.storageKey).catch(e => {message.error(e);throw e;})}
           onAddClips={() => setMode("canvas")} onCreateVideo={() => openDirector("video")} onOpenStoryboard={() => setMode("storyboard")}
           onMakeVoice={() => {setMode("canvas");openSpeech();}}
-          advancedAvailable={layout!=="mobile"} onOpenAdvanced={() => setAdvancedOpen(true)} onDropAdvanced={dropAdvanced}/>}
+          advancedAvailable={layout!=="mobile"} onOpenAdvanced={() => setAdvancedOpen(true)} onDropAdvanced={dropAdvanced} onExportAdvanced={exportSavedAdvanced}
+          captionRecognition={capabilities?.captionRecognition} onUploadMusic={uploadWorkMusic}/>}
     </section>}
     {mode!=="storyboard"&&directorPanel}
-    {advancedOpen&&mode==="work"&&createPortal(<StudioAdvancedEditor projectId={projectId} title={workTitle.trim()||"成片"} draft={workDraft} library={advancedLibrary}
+    {advancedOpen&&mode==="work"&&createPortal(<StudioAdvancedEditor projectId={projectId} title={workTitle.trim()||"成片"} draft={workDraft} library={advancedLibrary} seedCaptions={advancedCaptions}
       clips={clips.filter(n=>studioClipIncluded(n,sourceClipIds))} voice={voiceoverKey?nodes.find(n=>n.type===CanvasNodeType.Audio&&n.metadata?.storageKey===voiceoverKey):undefined}
+      music={workDraft.musicStorageKey?nodes.find(n=>n.type===CanvasNodeType.Audio&&n.metadata?.storageKey===workDraft.musicStorageKey):undefined} onMusicChange={musicStorageKey=>changeWorkDraft({musicStorageKey})} onUploadMusic={uploadWorkMusic}
+      captionRecognition={capabilities?.captionRecognition}
       onSave={saveAdvanced} onExport={exportAdvanced} onClose={()=>setAdvancedOpen(false)}/>,document.body)}
     <StudioFloatingPanel title="剧本" anchorId={scriptPreviewId} open={!!scriptPreviewId&&!editorId} onClose={()=>setScriptPreviewId(undefined)} footer={<Button type="primary" onClick={()=>{setEditorId(scriptPreviewId);}}>展开剧本编辑器</Button>}>
       {nodeActions(scriptPreviewId,["editor"])}
@@ -1305,8 +1388,9 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     <StudioTemplateLibrary open={templateLibraryOpen} scope={templateScope} nodes={nodes} onClose={()=>setTemplateLibraryOpen(false)}/>
     <StudioLipSync actions={nodeActions(lipOriginId,["lip"])} open={lipSyncOpen} onClose={()=>setLipSyncOpen(false)} projectId={projectId} nodes={nodes} initialNodeId={lipOriginId} busy={busy} onSubmit={createLipSync}/>
     <StudioSpeech actions={nodeActions(speechOriginId,["confirm"])} anchorId={speechOriginId} key={speechOriginId} initialDraft={speechOrigin?.metadata?.studio?.speechDraft} onDraft={updateSpeechDraft} initialVoiceId={speechOrigin?.metadata?.studio?.speechRequest?.voiceId||speechOrigin?.metadata?.studio?.voiceProfile?.voiceId} initialAvatarId={speechOrigin?.metadata?.studio?.speechRequest?.avatarId||speechOrigin?.metadata?.studio?.voiceProfile?.avatarId||speechOrigin?.metadata?.studio?.references?.find(r=>r.avatarId)?.avatarId||speechAvatarId} open={speechOpen} onClose={()=>void closeSpeech()} initialText={speechOrigin?.metadata?.studio?.speechRequest?.text||speechOrigin?.metadata?.prompt||""} busy={busy||speechSaving} pending={studioGenerationPending(speechOrigin)?{confirmed:!!speechOrigin?.metadata?.studio?.runId}:undefined} onConfirm={()=>{if(speechOrigin?.metadata?.studio?.runId){setSpeechOpen(false);setTaskList(true);}else if(speechOrigin)void retry(speechOrigin);}} onSubmit={createSpeech}/>
+    {(()=>{const image=nodes.find(n=>n.id===librarySaveId),key=image?.metadata?.storageKey;return <LibrarySaveDialog image={image&&key?{storageKey:key,src:image.metadata?.content,title:image.title,projectId,nodeId:image.id}:undefined} onClose={()=>setLibrarySaveId(undefined)}/>;})()}
     {(()=>{const audio=nodes.find(n=>n.id===voiceAdoptId);return <StudioVoiceAdopt open={!!voiceAdoptId} projectId={projectId} runId={audio?.metadata?.studio?.runId} title={audio?.metadata?.studio?.voiceProfile?.name||audio?.title} initialAvatarId={audio?.metadata?.studio?.voiceProfile?.avatarId||audio?.metadata?.studio?.speechRequest?.avatarId} audioUrl={audio?.metadata?.content} audioKey={audio?.metadata?.storageKey} onClose={()=>setVoiceAdoptId(undefined)} onAdopt={async profile=>{
-      if(!audio)return;const {demoUrl: _demoUrl,...snapshot}=profile;patch(audio.id,n=>({...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,voiceProfile:snapshot}}}));await saveStudioDocument(projectId);message.success(`已保存 ${profile.name} · v${profile.version}；未再次扣积分`);
+      if(!audio)return;const {demoUrl: _demoUrl,...snapshot}=profile;patch(audio.id,n=>({...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,voiceProfile:snapshot}}}));await saveStudioDocument(projectId);message.success(`已保存 ${profile.name} · v${profile.version}，未额外扣除积分`);
     }}/>;})()}
     <StudioAssistant projectId={projectId} conversations={conversations} setConversations={setConversations} nodes={nodes} setNodes={setNodes} setConnections={setConnections} connections={connections} capabilities={capabilities} open={assistantOpen} restorePending={executionRestorePending} initialNodeId={assistantNodeId} initialMode={entryAssistantMode} initialPrompt={[...nodes,...conversations].find(n=>n.id===assistantNodeId)?.metadata?.studioStart==='assistant'?entryBrief:undefined} autoSend={entryAutoSend} onAutoSent={autoSentDone} initialStarter={entryStarter} onClose={()=>{setAssistantOpen(false);setEntryAssistantMode(undefined);setEntryAutoSend(false);setEntryStarter(undefined);}} selectedIds={[...selectedNodeIds]} onUseStep={usePlanStep}/>
     <StudioBatchPanel projectId={projectId} nodes={nodes} shots={shots} setNodes={setNodes} setConnections={setConnections} models={models} capabilities={capabilities} open={batchOpen} initialNodeId={batchNodeId} onClose={()=>setBatchOpen(false)} ratio={ratio} episodeNo={episodeFilter==="all"?undefined:episodeFilter}/>
@@ -1348,15 +1432,15 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         }).catch(e=>message.error(e));}}/>
     </StudioFloatingPanel>
     <Modal title="本次创作输入" open={!!runDetail} onCancel={()=>setRunDetail(undefined)} footer={null} width={720} getContainer={containers}>
-      {runDetail&&<div className="studio-director-form"><p>{runDetail.output.mock||Boolean((runDetail.inputs as unknown as {mock?:boolean}).mock)?"测试响应：使用已有样例，本次未向模型发送请求。":"此处保留提交时的输入快照。"}</p>
-        {runDetail.kind==="studio-lip-sync"?<p>本次采用人物视频与配音驱动，具体素材和时长保存在下方快照中。</p>:<label>{runDetail.kind==="studio-audio"?"配音文案":"创作要求"}<Input.TextArea readOnly rows={8} value={(runDetail.inputs as unknown as {text?:string}).text||(runDetail.inputs as unknown as {prompt?:string}).prompt||""}/></label>}
+      {runDetail&&<div className="studio-director-form"><p>{runDetail.output.mock||Boolean((runDetail.inputs as unknown as {mock?:boolean}).mock)?"测试响应：使用已有样例，本次未向模型发送请求。":"此处显示提交时的内容。"}</p>
+        {runDetail.kind==="studio-lip-sync"?<p>本次由人物视频和配音生成，素材和时长见下方。</p>:<label>{runDetail.kind==="studio-audio"?"配音文案":"创作要求"}<Input.TextArea readOnly rows={8} value={(runDetail.inputs as unknown as {text?:string}).text||(runDetail.inputs as unknown as {prompt?:string}).prompt||""}/></label>}
         {runDetail.kind==="studio-video"&&<StudioVideoRewriteDetail run={runDetail}/>}
         <details><summary>查看参考、版本与参数快照</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",fontSize:12}}>{JSON.stringify(runDetail.inputs,null,2)}</pre></details></div>}
     </Modal>
     <Modal open={!!specConflict} title="描述和设置不一致" getContainer={containers} width={440} onCancel={()=>specConflict?.resolve("cancel")}
-      footer={[<Button key="keep" onClick={()=>specConflict?.resolve("keep")}>按当前设置生成</Button>,<Button key="adopt" type="primary" onClick={()=>specConflict?.resolve("adopt")}>按描述改设置</Button>]}>
-      {specConflict&&<div className="studio-director-form"><p>描述里写的是 {studioSpecConflictText(specConflict.conflict).said}，现在的设置是 {studioSpecConflictText(specConflict.conflict).set}。</p>
-        <p>模型按设置出片，描述里的规格不会自动生效。改设置后费用可能变化，会先给你看新的费用。</p></div>}
+      footer={[<Button key="keep" onClick={()=>specConflict?.resolve("keep")}>按当前设置生成</Button>,<Button key="adopt" type="primary" onClick={()=>specConflict?.resolve("adopt")}>按描述修改设置</Button>]}>
+      {specConflict&&<div className="studio-director-form"><p>描述中写的是 {studioSpecConflictText(specConflict.conflict).said}，当前设置是 {studioSpecConflictText(specConflict.conflict).set}。</p>
+        <p>模型按设置生成视频，描述中的规格不会自动生效。</p></div>}
     </Modal>
     <StudioFrameIntentDialog intent={frameIntent?.intent} model={nativeVideo} getContainer={containers}
       onClosed={()=>{if(!focusFrameSlot.current)return;focusFrameSlot.current=false;

@@ -26,7 +26,7 @@ public class EnterpriseAccessService {
     public void requireUser(String userId) {
         AepUser user=users.findById(userId).orElseThrow(()->denied("ENTERPRISE_ACCESS_DENIED","请先登录"));
         if(user.getStatus()!=AepUser.UserStatus.ACTIVE) throw denied("ACCOUNT_STATE_INVALID","账号当前不可使用");
-        if(!enrollment.isActive(userId,"aiavatar")) throw denied("PRODUCT_NOT_ENROLLED","请先开通数字资产平台");
+        if(!enrollment.isActive(userId,"aiavatar")) throw denied("PRODUCT_NOT_ENROLLED","请先开通 IP Studio");
     }
     public EnterpriseMember member(String userId,String enterpriseId) {
         requireUser(userId);

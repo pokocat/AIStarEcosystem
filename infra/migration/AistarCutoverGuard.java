@@ -10,7 +10,7 @@ import java.util.*;
 public final class AistarCutoverGuard {
     static final ObjectMapper JSON=new ObjectMapper();
     static final String HOST="pgm-bp1gp4819mbs30z3.pg.rds.aliyuncs.com";
-    static final List<String> PENDING_WORK=List.of("ip_run","material_video_job","aep_publish_jobs","clip_render_job","clip_shot_job","music_gen_job","video_studio_prompt_optimization","ai_generation_queue","ip_dialogue_message","ip_plan_execution");
+    static final List<String> PENDING_WORK=List.of("ip_run","material_video_job","aep_publish_jobs","clip_render_job","clip_shot_job","music_gen_job","video_studio_prompt_optimization","ai_generation_queue","ip_dialogue_message","ip_plan_execution","video_asset_person","video_asset_portrait");
     static void require(boolean value,String message) { if(!value)throw new IllegalStateException(message); }
     static void privateFile(Path p)throws Exception {
         require(!Files.isSymbolicLink(p)&&Files.isRegularFile(p),"Private regular file required");
@@ -24,7 +24,7 @@ public final class AistarCutoverGuard {
         require(p.path("rds_host").asText().equals(HOST),"Wrong RDS endpoint");
         require(p.path("database").asText().equals(production?"aistar_prod":"aistar_cutover_drill"),"Database scope mismatch");
         require(p.path("role").asText().equals(production?"aistar_migrator":"aistar_rehearsal"),"Import role mismatch");
-        require(p.path("table_count").asInt()==192&&p.path("flyway_version").asText().equals("77"),"Unreviewed schema contract");
+        require(p.path("table_count").asInt()==195&&p.path("flyway_version").asText().equals("78"),"Unreviewed schema contract");
         for(String field:List.of("snapshot_sha256","source_artifact_sha256","source_schema_sha256","temporal_plan_sha256","source_critical_environment_sha256"))require(p.path(field).asText().matches("[a-f0-9]{64}"),"Missing immutable identity: "+field);
         if(production) {
             require(p.path("production_authorized").asBoolean(false),"No explicitly authorized production window");
@@ -42,7 +42,7 @@ public final class AistarCutoverGuard {
     public static void checkSnapshot(String mode,JsonNode permit,JsonNode meta,Instant now) {
         checkMode(mode,permit,now);
         require(meta!=null&&meta.path("type").asText().equals("snapshot_metadata")&&meta.path("database").asText().equals("aistareco"),"Wrong source metadata");
-        require(meta.path("table_count").asInt()==192,"Source schema count changed");
+        require(meta.path("table_count").asInt()==195,"Source schema count changed");
         for(String field:List.of("source_artifact_sha256","source_schema_sha256"))require(meta.path(field).asText().equals(permit.path(field).asText()),"Source drift: "+field);
         require(meta.path("source_jvm_timezone").asText().equals("Asia/Shanghai")&&meta.path("source_jdbc_timezone").asText().equals("Asia/Shanghai"),"Source temporal contract changed");
         Instant capture=Instant.parse(meta.path("captured_utc").asText());require(!capture.isAfter(now.plusSeconds(2)),"Future snapshot");
@@ -62,18 +62,25 @@ public final class AistarCutoverGuard {
         require(expected.equals(actual),"Migration set or bytes changed");
     }
     static ObjectNode permit() {
-        ObjectNode p=JSON.createObjectNode();p.put("format","aistar-import-permit-v1");p.put("rds_host",HOST);p.put("database","aistar_prod");p.put("role","aistar_migrator");p.put("table_count",192);p.put("flyway_version","77");
+        ObjectNode p=JSON.createObjectNode();p.put("format","aistar-import-permit-v1");p.put("rds_host",HOST);p.put("database","aistar_prod");p.put("role","aistar_migrator");p.put("table_count",195);p.put("flyway_version","78");
         for(String field:List.of("snapshot_sha256","source_artifact_sha256","source_schema_sha256","temporal_plan_sha256","source_critical_environment_sha256"))p.put(field,"a".repeat(64));
         p.put("production_authorized",true);p.put("window_start_utc","2026-01-01T01:00:00Z");p.put("window_end_utc","2026-01-01T03:00:00Z");p.put("source_unit","aistareco-server");p.put("source_pid_after_freeze",0);p.put("write_gate_closed",true);p.put("source_background_stopped",true);p.put("sau_idle",true);p.put("sms_lock_quarantine_complete",true);ObjectNode work=p.putObject("pending_work");PENDING_WORK.forEach(name->work.put(name,0));p.put("source_freeze_utc","2026-01-01T01:05:00Z");return p;
     }
     public static void main(String[] args) {
-        require(Arrays.equals(args,new String[]{"--self-test"}),"Only offline guard self-test is exposed");Instant now=Instant.parse("2026-01-01T01:10:00Z");ObjectNode p=permit();ObjectNode m=JSON.createObjectNode();m.put("type","snapshot_metadata");m.put("database","aistareco");m.put("table_count",192);m.put("source_artifact_sha256","a".repeat(64));m.put("source_schema_sha256","a".repeat(64));m.put("source_jvm_timezone","Asia/Shanghai");m.put("source_jdbc_timezone","Asia/Shanghai");m.put("captured_utc","2026-01-01T01:06:00Z");m.put("source_frozen",true);m.put("source_freeze_utc",p.path("source_freeze_utc").asText());checkSnapshot("production",p,m,now);int checked=1;
+        require(Arrays.equals(args,new String[]{"--self-test"}),"Only offline guard self-test is exposed");Instant now=Instant.parse("2026-01-01T01:10:00Z");ObjectNode p=permit();ObjectNode m=JSON.createObjectNode();m.put("type","snapshot_metadata");m.put("database","aistareco");m.put("table_count",195);m.put("source_artifact_sha256","a".repeat(64));m.put("source_schema_sha256","a".repeat(64));m.put("source_jvm_timezone","Asia/Shanghai");m.put("source_jdbc_timezone","Asia/Shanghai");m.put("captured_utc","2026-01-01T01:06:00Z");m.put("source_frozen",true);m.put("source_freeze_utc",p.path("source_freeze_utc").asText());checkSnapshot("production",p,m,now);int checked=1;
         for(String field:List.of("production_authorized","write_gate_closed","source_background_stopped","sau_idle","sms_lock_quarantine_complete")) { ObjectNode bad=p.deepCopy();bad.put(field,false);refused(()->checkSnapshot("production",bad,m,now));checked++; }
         for(String field:List.of("database","role","rds_host","source_unit","source_artifact_sha256","source_schema_sha256")) { ObjectNode bad=p.deepCopy();bad.put(field,"wrong");refused(()->checkSnapshot("production",bad,m,now));checked++; }
         ObjectNode bad=p.deepCopy();bad.put("source_pid_after_freeze",123);refused(()->checkSnapshot("production",bad,m,now));checked++;
         ObjectNode busy=p.deepCopy();((ObjectNode)busy.path("pending_work")).put("generation",1);refused(()->checkSnapshot("production",busy,m,now));checked++;
         ObjectNode missing=p.deepCopy();((ObjectNode)missing.path("pending_work")).remove("ip_plan_execution");refused(()->checkSnapshot("production",missing,m,now));checked++;
         ObjectNode plans=p.deepCopy();((ObjectNode)plans.path("pending_work")).put("ip_plan_execution",1);refused(()->checkSnapshot("production",plans,m,now));checked++;
+        ObjectNode stalePermit=p.deepCopy();stalePermit.put("table_count",192);refused(()->checkSnapshot("production",stalePermit,m,now));checked++;
+        ObjectNode staleVersion=p.deepCopy();staleVersion.put("flyway_version","77");refused(()->checkSnapshot("production",staleVersion,m,now));checked++;
+        ObjectNode staleSource=m.deepCopy();staleSource.put("table_count",192);refused(()->checkSnapshot("production",p,staleSource,now));checked++;
+        for(String table:List.of("video_asset_person","video_asset_portrait")) {
+            ObjectNode incomplete=p.deepCopy();((ObjectNode)incomplete.path("pending_work")).remove(table);refused(()->checkSnapshot("production",incomplete,m,now));checked++;
+            ObjectNode reviewing=p.deepCopy();((ObjectNode)reviewing.path("pending_work")).put(table,1);refused(()->checkSnapshot("production",reviewing,m,now));checked++;
+        }
         ObjectNode live=m.deepCopy();live.put("source_frozen",false);refused(()->checkSnapshot("production",p,live,now));checked++;
         refused(()->checkSnapshot("production",p,m,now.minusSeconds(3600)));checked++;
         refused(()->checkSnapshot("production",p,m,now.plusSeconds(1800)));checked++;

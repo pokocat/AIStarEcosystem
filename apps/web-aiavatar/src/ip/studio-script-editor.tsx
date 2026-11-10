@@ -1,4 +1,5 @@
 "use client";
+import { isStudioBillingCancelled } from '@/canvas-bridge/studio-billing-cancel';
 import { StudioErrorNotice, useStudioApp, useStudioErrorState } from './studio-errors';
 import { StudioAiIcon } from "./studio-ai-icon";
 import { useEffect, useRef, useState } from 'react';
@@ -21,7 +22,7 @@ type Props={projectId:string;node:CanvasNodeData;capabilities?:StudioCapabilitie
   onState:(state:EditorState)=>void;
   onCommit:(markdown:string,script:StudioScript)=>Promise<void>;onClose:()=>void;
   onStoryboard:(episodeNo:number)=>void;onExtract:()=>void|Promise<void>};
-const rejectedCodes=new Set(['AI_TOKEN_PRICE_NOT_CONFIGURED','AI_TOKEN_PRICE_INVALID','STUDIO_INPUT_INVALID','STUDIO_MODE_INVALID','STUDIO_HISTORY_LIMIT','STUDIO_HISTORY_INVALID','STUDIO_PRICE_CHANGED','ENDPOINT_NOT_ALLOWED','PROMPT_NOT_CONFIGURED','STUDIO_CONTEXT_LIMIT']);
+const rejectedCodes=new Set(['STUDIO_BILLING_CANCELLED','AI_TOKEN_PRICE_NOT_CONFIGURED','AI_TOKEN_PRICE_INVALID','STUDIO_INPUT_INVALID','STUDIO_MODE_INVALID','STUDIO_HISTORY_LIMIT','STUDIO_HISTORY_INVALID','STUDIO_PRICE_CHANGED','ENDPOINT_NOT_ALLOWED','PROMPT_NOT_CONFIGURED','STUDIO_CONTEXT_LIMIT']);
 const container=()=>document.querySelector<HTMLElement>('.ip-surface')||document.body;
 
 /** A focused document task. Its chat produces proposals, never a second script canvas node. */
@@ -83,8 +84,9 @@ export function StudioScriptEditor({projectId,node,capabilities,onState,onCommit
     }catch(e){
       const text=e instanceof Error?e.message:'对话未完成';
       if(!accepted&&(!posted||e instanceof ApiError&&rejectedCodes.has(e.code))) {
-        patch({pending:undefined,chatDraft:snapshot.request.prompt,error:text,turns:live.current.turns.at(-1)?.role==='user'?live.current.turns.slice(0,-1):live.current.turns});
-      } else patch({error:accepted?'改稿任务已受理，请确认原任务继续获取结果':'提交结果尚未确认，请确认原任务，避免重复提交'});
+        // 取消付款或积分不足（提示框已经说清了）：没有提交，要求放回输入框，不再显示成错误。
+        patch({pending:undefined,chatDraft:snapshot.request.prompt,error:isStudioBillingCancelled(e)?undefined:text,turns:live.current.turns.at(-1)?.role==='user'?live.current.turns.slice(0,-1):live.current.turns});
+      } else patch({error:accepted?'改稿任务已提交，请确认原任务继续获取结果':'提交结果尚未确认，请确认原任务，避免重复提交'});
       try{await saveStudioDocument(projectId);}catch{patch({error:`${live.current.error||text}。对话状态尚未保存，请重试保存`});}
       if(alive.current)message.error(e);
     }finally{inFlight.current=false;if(alive.current)setBusy(false);}
@@ -92,7 +94,7 @@ export function StudioScriptEditor({projectId,node,capabilities,onState,onCommit
   const send=async()=>{
     if(inFlight.current||live.current.pending||!live.current.chatDraft?.trim()||!capabilities)return;
     const invalid=scriptMarkdownError(live.current.draft??'');if(invalid){patch({error:invalid});return;}
-    if(live.current.proposal){patch({error:'请先采纳或放弃当前 AI 版本，再继续改稿'});return;}
+    if(live.current.proposal){patch({error:'请采纳或放弃当前 AI 版本后继续改稿'});return;}
     const snapshot={baseMarkdown:live.current.draft??'',request:{clientRequestId:nanoid(),nodeId:node.id,operation:'assistant' as const,mode:'general' as const,prompt:live.current.chatDraft.trim(),scriptEdit:{markdown:live.current.draft??''},model,maxCost:cost,history:live.current.turns.slice(-14).map(t=>({role:t.role,content:t.content.slice(0,4000)}))}};
     patch({pending:snapshot,chatDraft:'',turns:[...live.current.turns,{role:'user' as const,content:snapshot.request.prompt}].slice(-16)});
     await reconcile(snapshot,true);
@@ -137,19 +139,19 @@ export function StudioScriptEditor({projectId,node,capabilities,onState,onCommit
         {assistantOpen&&<aside className="studio-script-assistant" aria-label="剧本 AI 对话">
           <header className="studio-script-chat-header"><strong>AI 对话</strong><Button type="text" aria-label="关闭 AI 对话" icon={<X size={16}/>} onClick={()=>setAssistantOpen(false)}/></header>
           <div className="studio-script-chat" role="log" aria-label="改稿对话记录" aria-live="polite">
-            {!state.turns.length&&<div className="studio-script-chat-welcome"><Sparkles size={22}/><h2>继续打磨你的故事</h2><p>说说你的想法，AI 会基于当前剧本给出修改稿，由你决定是否采纳。</p><Button type="text" onClick={()=>patch({chatDraft:'按照现有框架完善故事大纲、人物小传和第 1 集正文，突出主角的目标与开场冲突。'})}>完善故事与人物</Button><Button type="text" onClick={()=>patch({chatDraft:'保留其他内容，只把第 1 集的对白改得更自然，并加强结尾的悬念。'})}>让对白更自然</Button></div>}
+            {!state.turns.length&&<div className="studio-script-chat-welcome"><Sparkles size={22}/><h2>继续打磨你的故事</h2><p>输入修改想法，AI 将基于当前剧本给出修改稿，由你决定是否采纳。</p><Button type="text" onClick={()=>patch({chatDraft:'按照现有框架完善故事大纲、人物小传和第 1 集正文，突出主角的目标与开场冲突。'})}>完善故事与人物</Button><Button type="text" onClick={()=>patch({chatDraft:'保留其他内容，只把第 1 集的对白改得更自然，并加强结尾的悬念。'})}>让对白更自然</Button></div>}
             {state.turns.map((turn,i)=><div key={i} className={`studio-script-chat-turn ${turn.role}`}><small>{turn.role==='user'?'你':'Studio'}</small><p>{turn.content}</p>{turn.billing&&<small>已消耗 {turn.billing.credits} 积分</small>}</div>)}
             {busy&&<p className="studio-script-chat-progress" role="status">{status||'正在提交改稿任务…'}</p>}
             {state.error&&<StudioErrorNotice error={state.error}/>}
-            {pending&&!busy&&<Button onClick={()=>void reconcile(pending,true)}>确认原改稿任务</Button>}
-            {proposal&&<div className="studio-script-proposal-actions"><p>{proposal.baseMarkdown===markdown?'修改稿已准备好，可在正文区预览。':'正文在等待回复时有了新修改，请先比较两个版本。'}</p><Button onClick={()=>setPreviewProposal(true)}>预览修改稿</Button><Button type="primary" disabled={proposal.baseMarkdown!==markdown} onClick={adopt}>采纳修改</Button>{proposal.baseMarkdown!==markdown&&<Button onClick={forceAdopt}>用 AI 版本替换当前稿</Button>}<Button onClick={()=>{patch({proposal:undefined,error:undefined});setPreviewProposal(false);}}>保留当前稿</Button></div>}
+            {pending&&!busy&&<Button onClick={()=>void reconcile(pending,true)}>确认原任务</Button>}
+            {proposal&&<div className="studio-script-proposal-actions"><p>{proposal.baseMarkdown===markdown?'修改稿已准备好，可在正文区预览。':'等待回复期间正文有新的修改，请比较两个版本。'}</p><Button onClick={()=>setPreviewProposal(true)}>预览修改稿</Button><Button type="primary" disabled={proposal.baseMarkdown!==markdown} onClick={adopt}>采纳修改</Button>{proposal.baseMarkdown!==markdown&&<Button onClick={forceAdopt}>用 AI 版本替换当前稿</Button>}<Button onClick={()=>{patch({proposal:undefined,error:undefined});setPreviewProposal(false);}}>保留当前稿</Button></div>}
           </div>
           <div className="studio-script-chat-composer">
             <div className="studio-script-chat-input">
               <Input.TextArea aria-label="剧本改稿要求" placeholder="输入你的剧本想法或修改要求…" value={state.chatDraft||''} maxLength={4000} autoSize={{minRows:3,maxRows:6}} disabled={!!pending||busy} onChange={e=>patch({chatDraft:e.target.value})} onKeyDown={e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'&&!e.nativeEvent.isComposing){e.preventDefault();void send();}}}/>
               <div className="studio-script-chat-controls">
-                <Select aria-label="剧本改稿模型" variant="borderless" value={model} title={selectedModel?.name} disabled={!!pending||busy||capabilities?.textModelMode==="fixed"||(capabilities?.textModels?.length||0)<=1} placeholder="尚未配置文本模型" options={capabilities?.textModels?.map(m=>({value:m.endpointId,label:m.name}))} onChange={value=>patch({model:value})}/>
-                {pending?.runId&&busy?<Button className="studio-script-send" aria-label="停止改稿" title="停止改稿" icon={<Square size={15}/>} onClick={async()=>{try{await cancelRun(pending.runId!);message.info('已请求停止改稿，原稿保留');}catch(e){message.error(e);}}}/>:<Button className="studio-script-send" type="primary" aria-label="发送改稿要求" title="AI 处理，会消耗积分" icon={<StudioAiIcon/>} loading={busy} disabled={!state.chatDraft?.trim()||!!pending||!!proposal||!!error||!capabilities||cost===undefined} onClick={()=>void send()}/>}
+                <Select aria-label="剧本改稿模型" variant="borderless" value={model} title={selectedModel?.name} disabled={!!pending||busy||capabilities?.textModelMode==="fixed"||(capabilities?.textModels?.length||0)<=1} placeholder="暂无可用文本模型" options={capabilities?.textModels?.map(m=>({value:m.endpointId,label:m.name}))} onChange={value=>patch({model:value})}/>
+                {pending?.runId&&busy?<Button className="studio-script-send" aria-label="停止改稿" title="停止改稿" icon={<Square size={15}/>} onClick={async()=>{try{await cancelRun(pending.runId!);message.info('已请求停止改稿，原稿保留');}catch(e){message.error(e);}}}/>:<Button className="studio-script-send" type="primary" aria-label="发送改稿要求" title="AI 处理，将消耗积分" icon={<StudioAiIcon/>} loading={busy} disabled={!state.chatDraft?.trim()||!!pending||!!proposal||!!error||!capabilities||cost===undefined} onClick={()=>void send()}/>}
               </div>
             </div>
           </div>

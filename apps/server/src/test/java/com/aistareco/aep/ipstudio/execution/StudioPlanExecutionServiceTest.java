@@ -112,6 +112,32 @@ class StudioPlanExecutionServiceTest {
 
     /** A native planning run with a normalized, quoted, fingerprinted plan. */
     /** A plan run that is also the thread's current plan, with its pending card on assistant message {@code msg-<runId>}. */
+    @Test void sceneRecreationContinuesIntoProductionUnderTheOriginalTotalCap() throws Exception {
+        planRun("compiled","production",PRODUCTION,40);
+        var quote=mock(StudioPlanQuoter.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"quoter",quote);
+        ObjectNode state=om.createObjectNode();state.putArray("steps");
+        state.putObject("videoTask").putObject("request").putObject("configuration").put("duration",12).put("ratio","9:16").put("model","ep-h3").put("tier","768p");
+        ObjectNode budget=om.createObjectNode();budget.putObject("analysis").put("approvedCap",200).put("spent",10).put("requestFingerprint","original");
+        var row=IpPlanExecution.builder().id("PEX-scene").projectId("p").ownerUserId("u").stage("analysis").status("running").build();
+        service.confirmVideoProduction(row,state,budget,"compiled");
+        assertEquals("production",row.getStage());assertEquals("running",row.getStatus());
+        assertEquals(10,budget.path("analysis").path("approvedCap").asLong());assertEquals(190,budget.path("production").path("approvedCap").asLong());
+        assertFalse(state.path("steps").isEmpty());verify(quote).quote(eq("u"),any());
+        assertTrue(cards.approved.isEmpty(),"the scene-page cap, not a fabricated dialogue approval, authorized this production");
+    }
+
+    @Test void sceneRecreationStopsBeforeProductionThatExceedsTheConfirmedTotalCap() throws Exception {
+        planRun("compiled","production",PRODUCTION,40);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"quoter",mock(StudioPlanQuoter.class));
+        ObjectNode state=om.createObjectNode();state.putArray("steps");
+        state.putObject("videoTask").putObject("request").putObject("configuration").put("duration",12).put("ratio","9:16").put("model","ep-h3").put("tier","768p");
+        ObjectNode budget=om.createObjectNode();budget.putObject("analysis").put("approvedCap",100).put("spent",10);
+        var row=IpPlanExecution.builder().id("PEX-scene").projectId("p").ownerUserId("u").stage("analysis").status("running").build();
+        assertThrows(BusinessException.class,()->service.confirmVideoProduction(row,state,budget,"compiled"));
+        assertEquals("analysis",row.getStage());assertTrue(state.path("steps").isEmpty());assertFalse(budget.has("production"));
+    }
+
     String currentPlan(String id,String stage,String raw,long... quotes) throws Exception {
         String fp=planRun(id,stage,raw,quotes);
         cards.currentFingerprint=fp;cards.currentRunId=id;
@@ -420,7 +446,7 @@ class StudioPlanExecutionServiceTest {
         String revised=currentPlan("IPR-c","production",PRODUCTION.replace("开播","开播，换个人物"),40,5);
         cards.put("msg-more","APV-more","production",revised,45,200);
         var e=assertThrows(BusinessException.class,()->service.create("u","p",new PlanExecutionCreateRequest("c-run","production","IPR-c",revised,"rewrite",200L,0L,null,id,3,"APV-more","msg-more")));
-        assertEquals("STUDIO_PLAN_STALE",e.getCode());assertTrue(e.getMessage().contains("还在生成中"));
+        assertEquals("STUDIO_PLAN_STALE",e.getCode());
         assertEquals("IPR-b",rows.get(id).getPlanRunId(),"nothing changed");
     }
 
@@ -718,4 +744,55 @@ class StudioPlanExecutionServiceTest {
         assertEquals(List.of("sheet","gone"),compile.path("excludedMaterials").findValuesAsText("nodeId"));
         assertFalse(canvasContext(id).contains("sheet"));
     }
+    @Test void videoPageCannotStartAFourthAttemptByClickingContinue() throws Exception {
+        String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
+        var created=service.create("u","p",analysisRequest(fp,30));
+        var row=rows.get(created.id());
+        var state=(ObjectNode)om.readTree(row.getStepsJson());state.putObject("videoTask").put("kind","recreation");
+        ((ObjectNode)state.path("steps").get(0)).put("status","failed").put("attempt",3).put("errorCode","AI_CALL_FAILED");
+        row.setStepsJson(state.toString());row.setStatus("needs_user");canvasWith("src");
+        assertEquals("STUDIO_PLAN_STALE",assertThrows(BusinessException.class,()->service.resume("u","p",created.id(),new PlanExecutionControlRequest("retry-four",null))).getCode());
+        assertEquals("needs_user",row.getStatus());
+        assertEquals(3,om.readTree(row.getStepsJson()).path("steps").get(0).path("attempt").asInt());
+        // 同一步只差次数：还没到 3 次就能继续，所以上面拦下它的就是次数这一条。
+        ((ObjectNode)state.path("steps").get(0)).put("attempt",2);row.setStepsJson(state.toString());
+        service.resume("u","p",created.id(),new PlanExecutionControlRequest("retry-third",null));
+        assertEquals("running",row.getStatus());
+    }
+
+    @Test void videoPageRegeneratesUnusableModelOutputWithANewRequestWhenTheUserContinues() throws Exception {
+        String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
+        var created=service.create("u","p",analysisRequest(fp,30));
+        var row=rows.get(created.id());var state=(ObjectNode)om.readTree(row.getStepsJson());state.putObject("videoTask");
+        var step=(ObjectNode)state.path("steps").get(0);
+        step.put("status","needs_user").put("errorCode",StudioPlanExecutionService.RAW_ONLY_CODE).put("reason","这一步的结果无法读取，已完成的内容不受影响。");
+        step.putArray("runIds").add("IPR-raw");
+        row.setStepsJson(state.toString());row.setStatus("needs_user");canvasWith("src");
+        service.resume("u","p",created.id(),new PlanExecutionControlRequest("regenerate",null));
+        JsonNode after=om.readTree(row.getStepsJson()).path("steps").get(0);
+        assertEquals("running",row.getStatus());assertEquals("pending",after.path("status").asText());assertEquals(2,after.path("attempt").asInt());
+        assertEquals(0,after.path("runIds").size());assertEquals("IPR-raw",after.path("previousRunIds").get(0).asText());assertFalse(after.has("errorCode"));
+    }
+
+    /** 2026-11-07：这种任务已经按失败结束并退了积分，重试却被「请先确认原任务」挡住，40 分钟内 7 次。只有还在进行中的才不能重试。 */
+    @Test void videoPageRetriesAFailedTaskWhoseReceiptNeverCameButNotOneStillRunning() throws Exception {
+        String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
+        var created=service.create("u","p",analysisRequest(fp,30));
+        var row=rows.get(created.id());var state=(ObjectNode)om.readTree(row.getStepsJson());state.putObject("videoTask");
+        var step=(ObjectNode)state.path("steps").get(0);
+        step.put("status","failed").put("errorCode","STUDIO_IMAGE_SUBMISSION_UNKNOWN");step.putArray("runIds").add("IPR-unknown");
+        row.setStepsJson(state.toString());row.setStatus("needs_user");canvasWith("src");
+        var run=com.aistareco.aep.ipstudio.model.IpRun.builder().id("IPR-unknown").projectId("p").ownerUserId("u").nodeId("n").kind("generate").status("running").build();
+        runs.put("IPR-unknown",run);
+        java.util.function.Function<String,IpRunDto> dto=status->new IpRunDto("IPR-unknown","p","n","generate",status,status,10,0,null,null,om.createObjectNode(),om.createObjectNode(),Instant.now().toString(),null,null);
+        when(projects.toRunDto(run)).thenReturn(dto.apply("running"));
+        assertEquals("STUDIO_PLAN_STEP_RUNNING",assertThrows(BusinessException.class,()->service.resume("u","p",created.id(),new PlanExecutionControlRequest("retry-running",null))).getCode());
+        assertEquals("needs_user",row.getStatus());
+        when(projects.toRunDto(run)).thenReturn(dto.apply("failed"));
+        service.resume("u","p",created.id(),new PlanExecutionControlRequest("retry-ended",null));
+        assertEquals("running",row.getStatus());
+        JsonNode after=om.readTree(row.getStepsJson()).path("steps").get(0);
+        assertEquals("pending",after.path("status").asText());assertEquals(2,after.path("attempt").asInt());assertFalse(after.has("errorCode"));
+    }
+
 }

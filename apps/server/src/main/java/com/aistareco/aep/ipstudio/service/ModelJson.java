@@ -15,7 +15,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Only local syntax repairs are allowed: stray escapes before Han characters (2026-10-25 Qwen returned
  * {@code \远处}), literal line breaks/tabs inside strings, trailing commas after complete values, and missing final
- * closing brackets. No values, quotes, commas between values, or missing string contents are invented. Callers preserve the original response before parsing. A length finish reason is a warning;
+ * closing brackets. Paired literal quotes inside a string value may be escaped when they cannot terminate that value.
+ * No values, quotes, commas between values, or missing string contents are invented. Callers preserve the original response before parsing. A length finish reason is a warning;
  * valid structured content may still be read, while incomplete content remains available as original text.
  */
 public final class ModelJson {
@@ -45,6 +46,14 @@ public final class ModelJson {
                     return result;
                 } catch (JsonProcessingException ignored) { /* report the original failure with its source location */ }
             }
+            String quoted = escapePairedValueQuotes(body);
+            if (quoted != null) {
+                try {
+                    JsonNode result = readSingle(mapper, repairSyntax(quoted));
+                    log.info("[model-json] recovered paired value quotes chars={}", text.length());
+                    return result;
+                } catch (JsonProcessingException ignored) { /* incomplete/ambiguous structure still fails */ }
+            }
             throw direct;
         }
     }
@@ -53,6 +62,62 @@ public final class ModelJson {
     private static JsonNode readSingle(ObjectMapper mapper, String text) throws JsonProcessingException {
         return mapper.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
                 .with(JsonParser.Feature.STRICT_DUPLICATE_DETECTION).readTree(text);
+    }
+
+    /**
+     * A model may write: {"summary":"他说"又来了"。"}. Escape only paired quotes in values, preserving the
+     * decoded words and quotes. Keys, missing separators, unmatched quotes and missing content are never guessed.
+     * The entire repaired document must still pass the strict reader and the caller's business validation.
+     */
+    private static String escapePairedValueQuotes(String text) {
+        var out = new StringBuilder(text.length());
+        var containers = new java.util.ArrayDeque<Character>();
+        char previous = 0;
+        boolean changed = false;
+        for (int i = 0; i < text.length(); i++) {
+            char ch = text.charAt(i);
+            if (ch == '"') {
+                boolean key = !containers.isEmpty() && containers.peek() == '{' && (previous == '{' || previous == ',');
+                boolean value = previous == ':' || !containers.isEmpty() && containers.peek() == '[' && (previous == '[' || previous == ',');
+                if (!key && !value) return null;
+                out.append(ch);
+                int escapedQuotes = 0;
+                boolean closed = false;
+                while (++i < text.length()) {
+                    char current = text.charAt(i);
+                    if (current == '\\') {
+                        if (i + 1 == text.length()) return null;
+                        out.append(current).append(text.charAt(++i));
+                    } else if (current == '"') {
+                        int next = i + 1;
+                        while (next < text.length() && Character.isWhitespace(text.charAt(next))) next++;
+                        char after = next < text.length() ? text.charAt(next) : 0;
+                        if (key) {
+                            if (after != ':') return null;
+                            out.append(current); closed = true; break;
+                        }
+                        if (after == 0 || after == ',' || after == '}' || after == ']') {
+                            if (escapedQuotes % 2 != 0) return null;
+                            out.append(current); closed = true; break;
+                        }
+                        // A neighboring quote/colon can be a key or a missing comma. Do not merge fields into text.
+                        if (after == '"' || after == ':' || after == '{' || after == '[' || after == '\\') return null;
+                        out.append('\\').append(current); escapedQuotes++; changed = true;
+                    } else out.append(current);
+                }
+                if (!closed) return null;
+                previous = '"';
+                continue;
+            }
+            out.append(ch);
+            if (Character.isWhitespace(ch)) continue;
+            if (ch == '{' || ch == '[') containers.push(ch);
+            else if (ch == '}' || ch == ']') {
+                if (containers.isEmpty() || containers.pop() != (ch == '}' ? '{' : '[')) return null;
+            }
+            previous = ch;
+        }
+        return changed ? out.toString() : null;
     }
 
     /** Unwrap one object surrounded by prose, never a nested object from a broken array or incomplete outer object. */

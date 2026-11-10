@@ -31,8 +31,8 @@ export class StudioFrameError extends Error {}
 function wait(video: HTMLVideoElement, event: 'loadedmetadata' | 'loadeddata' | 'seeked', timeoutMs: number) {
   return new Promise<void>((resolve, reject) => {
     const done = (fn: () => void) => () => { clearTimeout(timer); video.removeEventListener(event, ok); video.removeEventListener('error', fail); fn(); };
-    const ok = done(resolve), fail = done(() => reject(new StudioFrameError('这条视频无法在浏览器里读取，请换一条 MP4 再试')));
-    const timer = setTimeout(done(() => reject(new StudioFrameError('读取视频超时，请重试'))), timeoutMs);
+    const ok = done(resolve), fail = done(() => reject(new StudioFrameError('浏览器无法加载此视频，请更换 MP4 视频后重试')));
+    const timer = setTimeout(done(() => reject(new StudioFrameError('视频加载超时，请重试'))), timeoutMs);
     video.addEventListener(event, ok); video.addEventListener('error', fail);
   });
 }
@@ -67,17 +67,17 @@ export async function captureStudioVideoFrame(clip: Blob, position: StudioFrameP
     const time = frameSeekTime(position, video.duration, currentTime);
     if (time > 0) { const seeked = wait(video, 'seeked', timeoutMs); video.currentTime = time; await seeked; }
     await frameReady(video, timeoutMs);
-    if (!video.videoWidth || !video.videoHeight) throw new StudioFrameError('这条视频没有画面，无法截取');
+    if (!video.videoWidth || !video.videoHeight) throw new StudioFrameError('此视频没有画面，无法截取');
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth; canvas.height = video.videoHeight;
     const context = canvas.getContext('2d');
-    if (!context) throw new StudioFrameError('浏览器不支持截取画面，请换个浏览器再试');
+    if (!context) throw new StudioFrameError('当前浏览器不支持截取画面，请更换浏览器后重试');
     // Local walkthrough 2026-10-21: the first 截尾帧 after loading came out all black although `seeked` had fired; the same
     // frame drawn again a moment later was fine. A black draw is retried a few times; a clip that really is black there
     // (a fade-out) still ends up black, only a second later.
     for (let attempt = 0; attempt < 3 && looksBlack(video); attempt++) await new Promise(resolve => setTimeout(resolve, 250));
     context.drawImage(video, 0, 0);
-    return await new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new StudioFrameError('没能截出画面，请重试')), 'image/jpeg', 0.92));
+    return await new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new StudioFrameError('截取画面失败，请重试')), 'image/jpeg', 0.92));
   } finally {
     video.removeAttribute('src'); video.load(); URL.revokeObjectURL(url);
   }

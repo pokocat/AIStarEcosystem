@@ -206,7 +206,20 @@ async function saveSkill(detail, brief) {
 
 async function rebuildIndexes(categories, briefs, localIds) {
   const localSet = new Set(localIds);
-  const inCat = (c) => briefs.filter((s) => localSet.has(s.skill_id) && (s._cat === c.id || (s.attrs?.category_ids ?? []).includes(c.id)));
+  // API 目录（v3）里没有、但本地已入库的 skill（早期 v2 目录下载的），从本地 json 补出名称与分类，
+  // 否则重建索引会把这些 skill 从 manifest 里丢掉。
+  const briefSet = new Set(briefs.map((s) => s.skill_id));
+  const localOnly = localIds
+    .filter((id) => !briefSet.has(id))
+    .map((id) => {
+      try {
+        const j = readJson(join(byId, `${id}.json`));
+        return { skill_id: id, skill_name: j.skill_name, attrs: j.attrs };
+      } catch { return null; }
+    })
+    .filter(Boolean);
+  const allBriefs = [...briefs, ...localOnly];
+  const inCat = (c) => allBriefs.filter((s) => localSet.has(s.skill_id) && (s._cat === c.id || (s.attrs?.category_ids ?? []).includes(c.id)));
   const manifest = {
     source_page: "https://www.flova.ai/zh-CN/skill/",
     api_base: GET_BASE,
@@ -238,7 +251,7 @@ async function rebuildIndexes(categories, briefs, localIds) {
     "Source: https://www.flova.ai/zh-CN/skill/",
     `Downloaded at: ${new Date().toISOString()}`,
     `Tabs: ${categories.length}`,
-    `Tab items: ${briefs.filter((s) => localSet.has(s.skill_id)).length}`,
+    `Tab items: ${allBriefs.filter((s) => localSet.has(s.skill_id)).length}`,
     `Unique skills: ${localIds.length}`,
     "",
   ];

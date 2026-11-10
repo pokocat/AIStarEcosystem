@@ -101,6 +101,46 @@ class DirectorH3VideoFlowTest {
 
     private ObjectNode clip() { return (ObjectNode) c.path("clips").get(0); }
 
+    @Test void videoImageNumbersIncludeTheBoardAndMatchTheSubmittedRequest() {
+        JsonNode refs = service.imageReferences(c, clip(), true, false);
+        assertEquals("图1", refs.get(0).path("label").asText());
+        assertEquals("k/board.png", refs.get(0).path("key").asText());
+        assertEquals("图2", refs.get(1).path("label").asText());
+        assertEquals("陈默", refs.get(1).path("name").asText());
+        assertEquals("图3", refs.get(2).path("label").asText());
+        service.dispatch("u1", w, c, "video", "cl1", "refs-video", om.createObjectNode().put("promptChoice", "original"), null, null, 600L);
+        ArgumentCaptor<IpRunService.IpVideoRequest> req = ArgumentCaptor.forClass(IpRunService.IpVideoRequest.class);
+        verify(imageRuns).generateVideoForDirector(eq("u1"), eq("DW-1"), eq("video:cl1"), req.capture());
+        assertEquals(refs.size(), req.getValue().video().references().size());
+        for (int i = 0; i < refs.size(); i++) assertEquals(refs.get(i).path("key").asText(), req.getValue().video().references().get(i).key());
+    }
+
+    @Test void switchingTheFormMarksAVideoMadeWithTheMainImageOutdated() {
+        String prompt = clip().path("videoPrompt").asText();
+        ObjectNode video = (ObjectNode) clip().path("video");
+        ObjectNode m = video.withArray("candidates").addObject().put("id", "v1").put("key", "k/v.mp4").put("source", "generated").put("prompt", prompt)
+                .put("fingerprint", DirectorService.hash(prompt + "|12|9:16|ep-h3|k/board.png|k/chen.png|k/zhao.png"));
+        var refs = m.putArray("refs");
+        for (String key : List.of("k/board.png", "k/chen.png", "k/zhao.png")) refs.addObject().put("label", "图" + (refs.size() + 1)).put("key", key);
+        video.put("adoptedId", "v1").put("adoptedBy", "user");
+        service.refresh(c);
+        assertEquals("current", video.path("adoptedCheck").asText(), "没换图：旧算法的版本仍是当前版本");
+        ObjectNode chen = (ObjectNode) c.path("assets").get(0);
+        ObjectNode form = chen.putArray("forms").addObject().put("id", "f1").put("name", "受伤");
+        form.putObject("image").put("adoptedId", "fm").put("adoptedBy", "user").putArray("candidates").addObject().put("id", "fm").put("key", "k/chen-hurt.png").put("source", "upload");
+        clip().putObject("assetForms").put("as4", "f1");
+        service.refresh(c);
+        assertEquals("outdated", video.path("adoptedCheck").asText());
+        assertEquals("分镜图或参考图已更换", video.path("staleReasons").get(0).asText());
+    }
+
+    @Test void firstFramePreviewContainsOnlyTheBoard() {
+        JsonNode refs = service.imageReferences(c, clip(), true, true);
+        assertEquals(1, refs.size());
+        assertEquals("首帧", refs.get(0).path("label").asText());
+        assertEquals("k/board.png", refs.get(0).path("key").asText());
+    }
+
     /** 模型按约定写回的 JSON：每句台词只留占位。 */
     private ObjectNode modelOutput() {
         ObjectNode o = om.createObjectNode().put("subject_definitions", "<Subject 1> is Chen Mo in <Picture 2>. <Subject 2> is Lao Zhao in <Picture 3>.")
@@ -217,7 +257,7 @@ class DirectorH3VideoFlowTest {
         service.refresh(c);
         finishRewrite(meta);
         verify(imageRuns, never()).generateVideoForDirector(any(), any(), any(), any());
-        assertTrue(clip().path("video").path("error").path("message").asText().contains("改写期间"), clip().path("video").toString());
+        assertFalse(clip().path("video").path("error").path("message").asText().isBlank(), clip().path("video").toString());
         assertEquals("needed", clip().path("videoPromptRewrite").asText(), "画面改了要重新改写");
     }
 
@@ -228,7 +268,7 @@ class DirectorH3VideoFlowTest {
         service.refresh(c);
         finishRewrite(meta);
         verify(imageRuns, never()).generateVideoForDirector(any(), any(), any(), any());
-        assertTrue(clip().path("video").path("error").path("message").asText().contains("改写期间"), "确认价格时的内容变了，不替用户提交");
+        assertFalse(clip().path("video").path("error").path("message").asText().isBlank(), "确认价格时的内容变了，不替用户提交");
         assertEquals("ready", clip().path("videoPromptRewrite").asText(), "只改台词不用重新改写");
 
         // 用户再点一次：直接按新台词提交，不再改写
@@ -250,7 +290,7 @@ class DirectorH3VideoFlowTest {
         service.refresh(c);
         finishRewrite(meta);
         verify(imageRuns, never()).generateVideoForDirector(any(), any(), any(), any());
-        assertTrue(clip().path("video").path("error").path("message").asText().contains("参考素材"), clip().path("video").toString());
+        assertFalse(clip().path("video").path("error").path("message").asText().isBlank(), clip().path("video").toString());
     }
 
     @Test

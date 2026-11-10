@@ -11,5 +11,11 @@ public record AiModelEntryDto(
         String id,
         String label,
         Integer contextWindow,
-        Boolean supportsVision
-) {}
+        Boolean supportsVision,
+        /** 能直接读视频（拉片 v2，StudioVisualContext.supportsVideo）。 */
+        Boolean supportsVideo
+) {
+    public AiModelEntryDto(String id, String label, Integer contextWindow, Boolean supportsVision) {
+        this(id, label, contextWindow, supportsVision, null);
+    }
+}

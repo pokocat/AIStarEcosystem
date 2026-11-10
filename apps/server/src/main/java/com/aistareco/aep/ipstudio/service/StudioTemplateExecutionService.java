@@ -34,33 +34,33 @@ public class StudioTemplateExecutionService {
     @Transactional
     public IpRunDto execute(String owner,String projectId,String stepId,ExecuteRequest req) {
         var project=projects.requiredForUpdate(owner,projectId);
-        if(req==null || req.clientRequestId()==null || !req.clientRequestId().matches("[a-zA-Z0-9_-]{1,64}"))throw bad("STUDIO_TEMPLATE_REQUEST_INVALID","请求编号无效");
+        if(req==null || req.clientRequestId()==null || !req.clientRequestId().matches("[a-zA-Z0-9_-]{1,64}"))throw bad("STUDIO_TEMPLATE_REQUEST_INVALID","请求已失效，请刷新页面后重试");
         if(req.maxCost()==null || req.maxCost()<0)throw bad("STUDIO_TEMPLATE_COST_REQUIRED","请先确认本步骤的费用上限");
         var instance=templates.instance(owner,projectId);var step=step(instance,stepId);var snapshot=snapshot(project);
         var history=(ObjectNode)snapshot.withObject("/templateRequests");
         var prior=history.get(req.clientRequestId());
         if(prior!=null) {
-            if(!stepId.equals(prior.path("stepId").asText()))throw bad("STUDIO_REQUEST_CHANGED","请求已用于另一个步骤");
+            if(!stepId.equals(prior.path("stepId").asText()))throw bad("STUDIO_REQUEST_CHANGED","请求已失效，请刷新页面后重试");
             // JSON parsing narrows a small Long to IntNode; compare serialized values, not Jackson numeric node classes.
-            if(!canonical(mapper.valueToTree(req)).toString().equals(canonical(prior.path("request")).toString()))throw conflict("STUDIO_REQUEST_CHANGED","同一请求内容已改变，请查询原任务");
+            if(!canonical(mapper.valueToTree(req)).toString().equals(canonical(prior.path("request")).toString()))throw conflict("STUDIO_REQUEST_CHANGED","请求已失效，请刷新页面后重试");
             return run(owner,projectId,prior.path("runId").asText());
         }
         var execution=(ObjectNode)snapshot.withObject("/execution");var current=execution.path(stepId);
         if(current.hasNonNull("runId")) {
             var old=run(owner,projectId,current.path("runId").asText());
-            if("running".equals(old.status()))throw conflict("STUDIO_TEMPLATE_RUNNING","此步骤已受理，请查询原任务");
+            if("running".equals(old.status()))throw conflict("STUDIO_TEMPLATE_RUNNING","此步骤已提交，请等待生成结果");
             if(!old.id().equals(req.replaceRunId()))throw conflict("STUDIO_TEMPLATE_REPLACE_REQUIRED","请明确确认只重做这个步骤");
         } else if(req.replaceRunId()!=null)throw conflict("STUDIO_TEMPLATE_REPLACE_CHANGED","任务已变化，请刷新");
         List<Reference> refs=references(owner,projectId,instance,step,snapshot,true);
         Map<String,Value> values=values(snapshot);
         String prompt=req.prompt()==null?StudioTemplateService.render(step.prompt(),values,"video".equals(step.operation())):req.prompt().trim();
         if(!"video".equals(step.operation()) && (prompt.isBlank() || prompt.length()>16000))
-            throw bad("STUDIO_TEMPLATE_PROMPT_INVALID","创作指令应为 1 到 16000 字");
+            throw bad("STUDIO_TEMPLATE_PROMPT_INVALID","提示词应为 1 到 16000 字");
         String model=instance.plan().model();VideoSettings video=null;
         if("video".equals(step.operation())) {
             var quote=videos.quote(owner,step,instance.plan().videoModel(),prompt);model=quote.model();IpRunService.requireApprovedCost(req.maxCost(),quote.cost());
             if(quote.nativeMode())video=videos.settings(step,refs.stream().map(Reference::storageKey).toList(),model);
-            else if(prompt.isBlank())throw bad("STUDIO_TEMPLATE_PROMPT_INVALID","请填写创作指令");
+            else if(prompt.isBlank())throw bad("STUDIO_TEMPLATE_PROMPT_INVALID","请填写提示词");
         } else {
             var compiled=images.compileExplicit(owner,new IpRunService.IpGenerateRequest(null,prompt,refs.stream().map(Reference::storageKey).toList(),1,step.size(),model));
             images.preflight(compiled);IpRunService.requireApprovedCost(req.maxCost(),compiled.unitCost());

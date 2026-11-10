@@ -33,7 +33,7 @@ public class StudioVoiceService {
         projects.requiredForUpdate(owner,projectId);
         if(request==null||blank(request.runId())||blank(request.avatarId())||blank(request.name())||request.name().trim().length()>64)throw bad("STUDIO_VOICE_INPUT_INVALID","请选择人物并填写声音名称（最多 64 字）");
         var run=runs.findByIdAndOwnerUserId(request.runId(),owner).filter(r->projectId.equals(r.getProjectId())&&"studio-audio".equals(r.getKind())&&IpRun.STATUS_DONE.equals(r.getStatus()))
-                .orElseThrow(()->bad("STUDIO_VOICE_SOURCE_INVALID","请使用当前项目已完成的真实配音"));
+                .orElseThrow(()->bad("STUDIO_VOICE_SOURCE_INVALID","请使用当前画布已完成的配音"));
         var avatar=requiredAvatar(owner,request.avatarId(),true);
         var existing=voices.findByOwnerUserIdAndAvatarIdAndSourceRunId(owner,avatar.getId(),run.getId()).orElse(null);
         // A replay returns its original version and cannot revert a more recent default.
@@ -42,7 +42,7 @@ public class StudioVoiceService {
         JsonNode input=read(run.getInputJson()),output=read(run.getOutputJson());
         String speaker=input.path("speaker").asText(),key=output.path("storageKey").asText();double duration=output.path("durationSec").asDouble();
         if(blank(speaker)||blank(key)||!output.path("mimeType").asText().startsWith("audio/")||!Double.isFinite(duration)||duration<=0)throw bad("STUDIO_VOICE_SOURCE_INVALID","配音缺少可试听的真实音频");
-        long bytes;try{bytes=Files.size(storage.openForRead(key));}catch(Exception e){throw bad("STUDIO_VOICE_SOURCE_INVALID","配音文件暂时不可读取，请稍后重试");}
+        long bytes;try{bytes=Files.size(storage.openForRead(key));}catch(Exception e){throw bad("STUDIO_VOICE_SOURCE_INVALID","配音文件加载失败，请稍后重试");}
         if(bytes<=0)throw bad("STUDIO_VOICE_SOURCE_INVALID","配音文件为空");
         int seconds=(int)Math.ceil(duration);
         var voice=DapVoice.builder().id("VC-"+UUID.randomUUID().toString().replace("-","").substring(0,20)).ownerUserId(owner).avatarId(avatar.getId())

@@ -3,14 +3,19 @@
 import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
 import type { ReactNode, TextareaHTMLAttributes } from "react";
 import { Check, Loader2, Maximize2, Sparkles, X } from "lucide-react";
-import type { DirectorAsset, DirectorMedia, DirectorMediaSlot, DirectorTask, DirectorWork } from "@ai-star-eco/types";
+import type { DirectorAsset, DirectorClip, DirectorExport, DirectorMedia, DirectorMediaSlot, DirectorTask, DirectorWork } from "@ai-star-eco/types";
 import type { EnterpriseBillingSelection } from "@ai-star-eco/types/enterprise";
 import { normalizeStudioError, type StudioFailure } from "../studio-errors";
 import { publicModelErrorMessage } from "@ai-star-eco/api-client/public-model-error";
 import { ApiError } from "@ai-star-eco/api-client";
 import { goneWorkId, isStaleGone } from "../api/director";
 
-export const kindLabel: Record<DirectorAsset["kind"], string> = { character: "角色", scene: "场景", prop: "道具" };
+export const kindLabel: Record<DirectorAsset["kind"], string> = { character: "角色", scene: "场景", prop: "道具", product: "商品" };
+
+/** 角色、场景、道具。商品在「商品」工作区单独管，资产的数量和「有没有资产」都不算它。 */
+export function storyAssets(work: Pick<DirectorWork, "assets">) {
+  return work.assets.filter(a => a.kind !== "product");
+}
 
 export function newRequestId() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID().replace(/-/g, "").slice(0, 32) : `${Date.now()}${Math.random().toString(16).slice(2, 10)}`;
@@ -33,7 +38,7 @@ export function onWorkGone(listener: (workId: string) => void) {
 }
 
 /** 作品删除期间发出、恢复之后才回来的请求：没有生效，但作品在。 */
-export const STALE_GONE_MESSAGE = "这次操作是在作品删除期间发出的，没有生效。作品现在已恢复，请重新操作。";
+export const STALE_GONE_MESSAGE = "此操作在作品删除期间发出，未生效。作品现已恢复，请重新操作。";
 
 /** 导演台所有失败都经过这里拿文案，所以「作品已删除」也在这里通知。归属不明的 404 不通知，只显示文案。 */
 export function errorText(e: unknown) {
@@ -75,9 +80,11 @@ export type DirectorFail = (failure: string | StudioFailure) => void;
  * useBusy 的 onError：带上「哪个操作」交给工作台弹错误弹窗。
  * 已经打开的操作弹窗、编辑区里的失败不用它，照旧在那个位置就地显示。
  */
-export function failed(fail: DirectorFail, action: string, next?: StudioFailure["next"], extra?: StudioFailure["extra"]) {
-  return (message: string, raw?: unknown) => fail({ action, error: raw ?? message, next, extra });
+export function failed(fail: DirectorFail, action: string, next?: StudioFailure["next"], extra?: StudioFailure["extra"], shortage?: StudioFailure["shortage"]) {
+  return (message: string, raw?: unknown) => fail({ action, error: raw ?? message, next, extra, shortage });
 }
+/** 出图、出视频积分不足时：模型在作品设置里换。 */
+export const DIRECTOR_MEDIA_SHORTAGE = { grantHint: "可在「作品设置」中改用这些模型。" };
 
 /** 资产被哪些片段用着（关联资产，或台词说话人），和服务端 asset.delete 的判断一致。 */
 export type AssetRef = { clipId: string; episodeId: string; episodeNo: number; order: number; title: string; linked: boolean; lines: number };
@@ -116,13 +123,17 @@ export function Spinner({ label }: { label: string }) {
 }
 
 /** 从任务开始算的已用时间，每秒走一次；时间来自服务端任务的 createdAt，不编进度。 */
-function useElapsed(since?: string | null) {
+export function useElapsedSeconds(since?: string | null) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const t = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(t); }, []);
   const start = since ? Date.parse(since) : NaN;
   if (!Number.isFinite(start)) return null;
-  const sec = Math.max(0, Math.floor((now - start) / 1000));
-  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+  return Math.max(0, Math.floor((now - start) / 1000));
+}
+
+function useElapsed(since?: string | null) {
+  const sec = useElapsedSeconds(since);
+  return sec === null ? null : `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
 }
 
 /** AI 正在写：一块会动的卡片，说清在做什么、已经多久、关掉页面也不停。只写真实信息，没有假进度。 */
@@ -133,7 +144,7 @@ export function AiWorking({ title, detail, task, compact }: { title: string; det
     <div className="director-ai-copy">
       <b>{title}<i className="director-ai-dots" aria-hidden><span/><span/><span/></i></b>
       {detail && <p>{detail}</p>}
-      <small>{elapsed ? `已用时 ${elapsed} · ` : ""}可以关闭页面，后台继续，完成后自动显示</small>
+      <small>{elapsed ? `已用时 ${elapsed} · ` : ""}可离开此页面，后台将继续处理，完成后自动显示</small>
     </div>
     {!compact && <div className="director-ai-lines" aria-hidden><span/><span/><span/><span/></div>}
   </div>;
@@ -283,4 +294,9 @@ export function OutdatedNote({ slot, what, onRegenerate, disabled }: { slot: Dir
   </div>;
   if (slot.adoptedCheck === "unknown") return <div className="director-outdated is-unknown" role="status"><span>这{what}缺少生成记录，无法核对是否与当前设置一致。</span></div>;
   return null;
+}
+
+/** 导出之后片段的视频或顺序变了：已导出的成片不是最新版本。 */
+export function exportIsStale(e: Pick<DirectorExport, "status" | "clips">, clips: DirectorClip[]) {
+  return e.status === "done" && (e.clips.length !== clips.length || e.clips.some(x => clips.find(c => c.id === x.clipId)?.video.adoptedId !== x.candidateId));
 }

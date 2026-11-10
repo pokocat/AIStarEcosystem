@@ -9,9 +9,9 @@ export function studioBatchSnapshot(node:CanvasNodeData):string {
   return JSON.stringify({shot:node.metadata?.studio?.shot,prompt:node.metadata?.prompt,references:node.metadata?.studio?.references});
 }
 export function createStudioBatch(shots:CanvasNodeData[],kind:"frames"|"clips"|"work",models:IpModels,cap:StudioCapabilities,ratio:string,duration:number,episodeNo?:number,selection?:{imageModel?:string;videoModel?:string}):StudioBatch {
-  if(!shots.length||shots.length>12)throw new Error("请选择 1 到 12 个镜头");
+  if(!shots.length||shots.length>12)throw new Error("请选择 1–12 个镜头");
   const image=cap.imageModelMode==="fixed"?models.image.find(m=>m.isDefault):selection?.imageModel?models.image.find(m=>m.endpointId===selection.imageModel):models.image.find(m=>m.isDefault)||models.image[0],video=selection?.videoModel?models.video.find(m=>m.endpointId===selection.videoModel):models.video.find(m=>m.isDefault)||models.video[0];
-  if(!cap.mock&&((kind==="frames"||shots.some(n=>!n.metadata?.storageKey))&&!image || kind!=="frames"&&!video))throw new Error("生成模型尚未配置");
+  if(!cap.mock&&((kind==="frames"||shots.some(n=>!n.metadata?.storageKey))&&!image || kind!=="frames"&&!video))throw new Error("生成模型暂不可用");
   const steps:StudioBatchStep[]=[];
   for(const shot of shots) {
     const base={sourceNodeId:shot.id,sourceSnapshot:studioBatchSnapshot(shot)};

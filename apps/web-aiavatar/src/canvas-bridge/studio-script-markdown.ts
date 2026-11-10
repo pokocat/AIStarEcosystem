@@ -41,7 +41,7 @@ export function scriptMarkdownError(markdown:string) {
   const end=headings.find(h=>h.level<=2&&h.start>section.start)?.start??markdown.length;
   const episodeHeadings=headings.filter(h=>h.level===3&&h.start>section.start&&h.start<end);
   const numbers=episodeHeadings.map(h=>h.title.match(/^第\s*(\d+)\s*集(?:\s*[·：:—-]\s*(.*))?$/)?.[1]);
-  if(!numbers.length||numbers.some(n=>!n||Number(n)<1||Number(n)>50)||new Set(numbers.map(Number)).size!==numbers.length)return '分集请使用“分集 / 人物标题”样式，名称如“第 1 集 · 标题”，集号需唯一且在 1–50 之间';
+  if(!numbers.length||numbers.some(n=>!n||Number(n)<1||Number(n)>50)||new Set(numbers.map(Number)).size!==numbers.length)return '分集请使用「分集 / 人物标题」样式，名称如「第 1 集 · 标题」，集号需唯一且在 1–50 之间';
   return undefined;
 }
 
@@ -65,7 +65,7 @@ export function markdownToScript(markdown:string,previous?:StudioScript):StudioS
 }
 
 export function applyScriptProposal(current:string,proposal:{markdown:string;baseMarkdown:string}) {
-  if(current!==proposal.baseMarkdown)return {error:'AI 回复期间正文已修改。请先比较差异，再明确采用 AI 版本。'};
+  if(current!==proposal.baseMarkdown)return {error:'AI 回复期间正文已修改，请比较差异后确认是否采用 AI 版本。'};
   const error=scriptMarkdownError(proposal.markdown);
   return error?{error}:{markdown:proposal.markdown};
 }

@@ -1,8 +1,8 @@
 "use client";
 // ============================================================
-// 资产名片（M1 · 动态杂志版，设计文档 §1.5）：角色主页，不是资料表单。
+// 资产详情（M1 · 动态杂志版，设计文档 §1.5）：角色主页，不是资料表单。
 //   上：巨型拉丁名做背景层 + 主视觉（有循环视频就播视频，否则定妆图）+ 资料表
-//   中：「换一个样子看看」——动作 / 表情 / 视角 / 声音 / 换装，点了换主视觉；
+//   中：「切换形象」——动作 / 表情 / 视角 / 声音 / 换装，点了换主视觉；
 //       消费的都是已有衍生物（运镜短视频 / 表情图集 / 标准图集 / 换装变体）
 //   下：授权证书、还差几项、被用在哪
 // 数据全部来自既有端点，缺什么就显示缺什么，不编造（设计文档 §3.3）。
@@ -65,17 +65,17 @@ function gaps(c: Avatar): { done: number; total: number; items: { text: string; 
   if (shotDone >= DATA.SHOTS.length) done += 1;
   else
     items.push({
-      text: `补齐标准图：还差 ${DATA.SHOTS.length - shotDone} 张，补完正面 / 侧面 / 全身出图会是同一张脸`,
+      text: `补齐标准图：还差 ${DATA.SHOTS.length - shotDone} 张，补齐后正面、侧面、全身图保持同一张脸`,
       href: studioHref(`#/avatar/${c.id}/looks`),
     });
   // 按真正缺的那一类给文案，不再一律说"补服装"
   const derivGapCopy: Record<string, string> = {
-    atlas: "补多角度图集：转到侧面还是同一张脸",
-    expr: "补一组表情：出片时不会从头到尾一个表情",
-    scene: "补几张场景图：换背景不用每次重新生成",
-    ward: "补一套换装：换场景时衣服不会变来变去",
-    d3: "补 3D 模型：可以换任意角度重新出图",
-    video: "补一段运镜视频：名片首图就能动起来",
+    atlas: "补充多角度图集：侧面角度也保持同一张脸",
+    expr: "补充表情图：生成视频时表情更丰富",
+    scene: "补充场景图：更换背景时无需重新生成",
+    ward: "补充换装：切换场景时服装保持一致",
+    d3: "补充 3D 模型：可从任意角度生成图片",
+    video: "补充运镜视频：名片首图可动态展示",
   };
   const derivMissing = DATA.DERIVS.filter((d) => c.deriv?.[d.key] !== "done");
   if (derivMissing.length === 0) done += 1;
@@ -85,9 +85,9 @@ function gaps(c: Avatar): { done: number; total: number; items: { text: string; 
       href: studioHref(`#/avatar/${c.id}/${derivMissing[0].key}`),
     });
   if (c.voiceName) done += 1;
-  else items.push({ text: "绑一个声音：视频里就用这个声线说话", href: studioHref(`#/avatar/${c.id}/voice`) });
+  else items.push({ text: "绑定声音：视频将使用此声音配音", href: studioHref(`#/avatar/${c.id}/voice`) });
   if (c.def?.设定语) done += 1;
-  else items.push({ text: "写两句人设：AI 写台词时知道这个角色该怎么说话", href: studioHref(`#/avatar/${c.id}`) });
+  else items.push({ text: "填写人设：AI 写台词时会参照角色的说话方式", href: studioHref(`#/avatar/${c.id}`) });
   return { done, total: 4, items };
 }
 
@@ -175,7 +175,7 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
   if (avatar.loading && !c) {
     return (
       <HubScreen>
-        <NavBar back="/assets" title="资产名片" />
+        <NavBar back="/assets" title="资产详情" />
         <LoadingBlock />
       </HubScreen>
     );
@@ -183,9 +183,9 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
   if (!c || !c.id) {
     return (
       <HubScreen>
-        <NavBar back="/assets" title="资产名片" />
+        <NavBar back="/assets" title="资产详情" />
         <Card style={{ margin: "12px 16px 0" }}>
-          <EmptyState text={avatar.error || "没有找到这个资产"} actionHref="/assets" actionLabel="回资产货架" />
+          <EmptyState text={avatar.error || "没有找到这个资产"} actionHref="/assets" actionLabel="返回资产" />
         </Card>
       </HubScreen>
     );
@@ -196,7 +196,7 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
   const license = licenses.data.find((l) => l.char === c.id) || null;
   const usedIn = [
     ...refs.data.map((r) => ({ key: `ref-${r.app}-${r.ipId}`, tag: APP_LABEL[r.app] || r.app, title: `艺人「${r.ipName}」的形象`, when: formatDateTime(r.importedAt), href: undefined as string | undefined })),
-    ...compositions.data.filter((cp) => cp.avatarId === c.id).map((cp) => ({ key: `cp-${cp.id}`, tag: "合成", title: "合成出片", when: cp.created, href: undefined as string | undefined })),
+    ...compositions.data.filter((cp) => cp.avatarId === c.id).map((cp) => ({ key: `cp-${cp.id}`, tag: "合成", title: "合成视频", when: cp.created, href: undefined as string | undefined })),
     ...cards.data.map((cd) => ({
       key: `card-${cd.id}`,
       tag: "名片",
@@ -271,27 +271,27 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
         </div>
       </div>
 
-      {/* ── 换一个样子看看（紧跟主视觉，保证一屏内既能看预览又能点切换）── */}
+      {/* ── 切换形象（紧跟主视觉，保证一屏内既能看预览又能点切换）── */}
       <div style={{ padding: "12px 16px 0" }}>
         {derivs.loading ? (
-          <LoadingBlock label="素材加载中" />
+          <LoadingBlock label="正在加载素材…" />
         ) : derivs.error && groups.length === 0 ? (
           <Card>
-            <EmptyState text={`素材加载失败：${derivs.error}`} />
+            <EmptyState text="素材加载失败，请稍后刷新重试。" />
           </Card>
         ) : groups.length === 0 ? (
           <Card>
-            <EmptyState text="还没有可切换的素材。生成表情、换装或运镜视频后，这里就能换着看" actionHref={studioHref(`#/avatar/${c.id}`)} actionLabel="去生成" />
+            <EmptyState text="还没有可切换的素材。生成表情、换装或运镜视频后，可在此切换查看。" actionHref={studioHref(`#/avatar/${c.id}`)} actionLabel="生成素材" />
           </Card>
         ) : (
           <>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-              <span style={{ fontSize: 14.5, fontWeight: 800 }}>换一个样子看看</span>
-              <span className="mono" style={{ fontSize: 10, color: "var(--ink-4)" }}>点一下切换</span>
+              <span style={{ fontSize: 14.5, fontWeight: 800 }}>切换形象</span>
+              <span className="mono" style={{ fontSize: 10, color: "var(--ink-4)" }}>点击切换</span>
             </div>
             {derivs.error && (
               <div style={{ marginBottom: 10, fontSize: 11.5, color: "var(--err)" }}>
-                其余素材加载失败：{derivs.error}
+                部分素材加载失败，请稍后刷新重试。
               </div>
             )}
             <div style={{ display: "flex", gap: 20, borderBottom: "1px solid var(--line)", marginBottom: 12 }}>
@@ -349,7 +349,7 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
                 <span style={{ fontSize: 13, fontWeight: 700 }}>已绑定声音</span>
                 <span style={{ fontSize: 11.5, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.voiceName}</span>
               </div>
-              <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--primary-700)", flexShrink: 0 }}>换一个 ›</span>
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--primary-700)", flexShrink: 0 }}>更换 ›</span>
             </div>
           </Link>
         )}
@@ -381,9 +381,9 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
         <div style={{ margin: "18px 16px 0" }}>
           <Card style={{ boxShadow: "none" }}>
             {licenses.loading ? (
-              <span style={{ fontSize: 12, color: "var(--ink-3)" }}>授权状态加载中…</span>
+              <span style={{ fontSize: 12, color: "var(--ink-3)" }}>正在加载授权状态…</span>
             ) : (
-              <span style={{ fontSize: 12, color: "var(--err)" }}>授权状态加载失败：{licenses.error}</span>
+              <span style={{ fontSize: 12, color: "var(--err)" }}>授权状态加载失败，请稍后刷新重试。</span>
             )}
           </Card>
         </div>
@@ -401,12 +401,12 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
                 <span style={{ fontSize: 11.5, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {license?.status === "active"
                     ? license.verifyMethod === "liveness" ? "平台协议已确认 · 本人刷脸核验通过" : "书面授权登记"
-                    : "确认平台协议 + 本人刷脸后才能出片"}
+                    : "确认平台协议并完成本人刷脸后，可生成视频"}
                 </span>
                 {license?.period && <span className="mono" style={{ fontSize: 10, color: "var(--ink-3)" }}>{license.period}</span>}
               </div>
               <span style={{ flexShrink: 0, fontSize: 12, fontWeight: 700, color: license?.status === "active" ? "var(--primary-700)" : "var(--warn)" }}>
-                {license?.status === "active" ? "查看证书 ›" : "去完成 ›"}
+                {license?.status === "active" ? "查看证书 ›" : "完成授权 ›"}
               </span>
             </Card>
           </Link>
@@ -429,7 +429,7 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
                 <Link key={it.text} href={it.href} style={{ display: "flex", alignItems: "center", gap: 9, textDecoration: "none", color: "inherit" }}>
                   <span style={{ width: 18, height: 18, borderRadius: 999, border: "1.5px dashed var(--line-3)", flexShrink: 0 }} />
                   <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600 }}>{it.text}</span>
-                  <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--primary-700)", flexShrink: 0 }}>去补 ›</span>
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--primary-700)", flexShrink: 0 }}>补充 ›</span>
                 </Link>
               ))}
             </div>
@@ -446,12 +446,12 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
 
       {/* ── 被用在哪 ───────────────────────────────── */}
       <div style={{ margin: "18px 16px 0" }}>
-        <SectionHeader title="被用在哪" count={usageKnown ? usedIn.length : undefined} />
+        <SectionHeader title="使用记录" count={usageKnown ? usedIn.length : undefined} />
         {!usageKnown ? (
-          <Card>{refs.loading || compositions.loading ? <LoadingBlock label="使用记录加载中" /> : <EmptyState text={`使用记录加载失败：${refs.error || compositions.error || cards.error}`} />}</Card>
+          <Card>{refs.loading || compositions.loading ? <LoadingBlock label="正在加载使用记录…" /> : <EmptyState text="使用记录加载失败，请稍后刷新重试。" />}</Card>
         ) : usedIn.length === 0 ? (
           <Card>
-            <EmptyState text="还没有被使用的记录，出一条片就有了" actionHref={studioHref(`#/avatar/${c.id}`)} actionLabel="去创作" />
+            <EmptyState text="暂无使用记录。" actionHref={studioHref(`#/avatar/${c.id}`)} actionLabel="开始创作" />
           </Card>
         ) : (
           <Card pad={0}>
@@ -467,7 +467,7 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
       <div style={{ margin: "18px 16px 0" }}>
         <Link href={studioHref(`#/avatar/${c.id}`)} style={{ textDecoration: "none", display: "block" }}>
           <div style={{ height: 48, borderRadius: "var(--r-md)", background: "var(--grad)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14.5, fontWeight: 800, boxShadow: "0 8px 20px rgba(18,179,222,.3)" }}>
-            去工作室创作
+            开始创作
           </div>
         </Link>
       </div>
@@ -476,7 +476,7 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
 }
 
 /**
- * 「做成数字名片」—— 已经有名片就给入口，没有就给建卡按钮。
+ * 「创建数字名片」—— 已经有名片就给入口，没有就给建卡按钮。
  *
  * 建出来的是草稿：名字和整柜造型由服务端从形象带过来，用户只剩联系方式要填，
  * 所以建完直接送去编辑页，不让他自己找。
@@ -494,7 +494,7 @@ function MakeCardCard({ avatarId, cards }: { avatarId: string; cards: AsyncState
       router.push(`/cards/${encodeURIComponent(card.id)}/edit`);
     } catch (e) {
       // 同时交给统一错误出口：刚点的「建卡」没做成弹错误弹窗，按钮下这行照旧留着
-      setErr(reportStudioError(e, { fallback: "建卡没成功，稍后再试" }).message);
+      setErr(reportStudioError(e, { fallback: "名片创建失败，请重试。" }).message);
       setBusy(false);
     }
   };
@@ -506,8 +506,8 @@ function MakeCardCard({ avatarId, cards }: { avatarId: string; cards: AsyncState
       <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 6 }}>数字名片</div>
       <div style={{ fontSize: 12.5, lineHeight: 1.7, color: "var(--ink-2)", marginBottom: 12 }}>
         {existing
-          ? "这个形象已经有名片了。访客打开就能点着切换装扮和表情。"
-          : "把这个形象做成一张名片：名字和它的整柜造型自动带过去，访客能点着换装看，你只要再填联系方式。"}
+          ? "此形象已有名片，访客打开后可切换查看装扮和表情。"
+          : "用此形象创建名片：名字和全部造型自动带入，访客可切换查看造型，你只需填写联系方式。"}
       </div>
       {existing ? (
         <Link
@@ -518,7 +518,7 @@ function MakeCardCard({ avatarId, cards }: { avatarId: string; cards: AsyncState
             fontSize: 14, fontWeight: 700, textDecoration: "none",
           }}
         >
-          去编辑名片
+          编辑名片
         </Link>
       ) : (
         <button
@@ -532,7 +532,7 @@ function MakeCardCard({ avatarId, cards }: { avatarId: string; cards: AsyncState
             opacity: busy || cards.loading ? .6 : 1,
           }}
         >
-          {busy ? "建卡中" : "做成数字名片"}
+          {busy ? "创建中" : "创建数字名片"}
         </button>
       )}
       {err && (

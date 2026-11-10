@@ -90,6 +90,8 @@ export interface ClipTemplate {
   tailAssetId?: string | null;
   tailPreviewUrl?: string | null;
   tailVideoUrl?: string | null;
+  sourceProjectId?: string | null;
+  createdBy?: string | null;
 }
 
 export interface ClipProject {
@@ -126,6 +128,7 @@ export interface ClipRenderResult { jobId: string; projectId: string; status: Cl
 export interface ClipJob {
   id: string; projectId: string; status: ClipRenderStatus; stage: string; progress: number;
   workId?: string | null; errorMessage?: string | null; mock: boolean; updatedAt: string;
+  segments: Array<{ no: number; role: ClipSegmentRole; status: string; errorCode?: string | null }>;
 }
 
 /** 素材库存储占用。预置素材由平台提供，不计入用户配额。 */
@@ -165,6 +168,8 @@ export interface ClipAvatarView {
   engine?: string | null; presetAvailable: boolean;
   linkedVoiceId?: string | null;
   linkedVoiceName?: string | null;
+  demoVideoUrl?: string | null;
+  demoAudioUrl?: string | null;
 }
 
 export interface ClipVoiceView {
@@ -174,6 +179,7 @@ export interface ClipVoiceView {
   source?: "video" | "dedicated" | null;
   trainedText?: string | null;
   progress: number;
+  demoAudioUrl?: string | null;
 }
 
 export type ClipCloneKind = "avatar" | "voice" | "avatarImage";

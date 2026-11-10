@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { IpHome } from './ip-home';
 
 const api = vi.hoisted(() => ({ authed: false, create: vi.fn(), push: vi.fn(), newCanvas: vi.fn(), projects: vi.fn(async (): Promise<unknown[]> => []),
@@ -17,9 +17,7 @@ vi.mock('@/shell/desktop-top-bar', () => ({ DesktopTopBar: () => <header aria-la
 vi.mock('@/ip/api', () => ({ IpStudioApi: { listProjects: api.projects, listTemplates: api.templates, listDemoExamples: api.examples, sceneHomeCards: api.cards } }));
 vi.mock('@/ip/studio-entry', () => ({ createStudioEntry: api.create, studioEntryHref: vi.fn(), startNewCanvas: api.newCanvas }));
 vi.mock('@/ip/studio-template-use', () => ({ StudioTemplateUse: ({ template }: { template: { name: string } }) => <div role="dialog" aria-label={`预览 ${template.name}`}/> }));
-// 这个文件测新版首页（`?ui=new` 之后）；默认的旧版首页见 ip-home-classic.test.tsx。
-beforeEach(() => { document.documentElement.setAttribute('data-ui', 'next'); });
-afterEach(() => { cleanup(); vi.clearAllMocks(); document.documentElement.removeAttribute('data-ui'); });
+afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 test('a signed-out visitor who starts a conversation is sent to sign in; nothing is created', async () => {
   api.authed = false;
@@ -114,7 +112,7 @@ test('灵感 lists templates and examples on Home, filters by content and opens 
   expect(screen.getByRole('link', { name: /更多灵感/ }).getAttribute('href')).toBe('/templates');
 });
 
-// 新版登录后 / 和 /dashboard 同一个首页：导航由外壳给（左侧一列），首页自己不再画公开顶栏；首屏只有一个一级标题（标语，2026-11-03 起不断言具体文字）。
+// 登录后 / 和 /dashboard 同一个首页：导航由外壳给（左侧一列），首页自己不再画公开顶栏；首屏只有一个一级标题（标语，2026-11-03 起不断言具体文字）。
 test('signed in, the home draws no public top bar of its own; signed out it does; the hero has a single page title', async () => {
   api.authed = true;
   const view = render(<IpHome/>);

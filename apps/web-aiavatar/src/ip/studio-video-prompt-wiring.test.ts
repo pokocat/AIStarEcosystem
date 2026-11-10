@@ -17,7 +17,6 @@ test("the composer, the run input view and the dialog are mounted", () => {
   expect(workspace).toMatch(/nativeVideo\?\.supportsPromptOptimization&&<StudioPromptOptimizeToggle on=\{!videoDraft\.keepPrompt\}/);
   expect(workspace).not.toMatch(/\{frameCropHint\}\{promptReviewPanel\}/);
   expect(workspace).toMatch(/onChange=\{setPrompt\}\/><\/label>\}\s*\{\/\*[^*]*\*\/\}\s*\{promptReviewPanel\}/);
-  expect(read("ip/studio-flow-canvas.tsx")).toContain("优化稿有需要留意的地方，选好再出片");
   expect(read("ip/studio-task-list.tsx")).not.toContain("studioRunRewrites(run)");
 });
 
@@ -28,15 +27,7 @@ test("the frame question is asked before saving the document or submitting, and 
   expect(asked).toBeGreaterThan(0);
   expect(asked).toBeLessThan(submit.indexOf("setBusy(true)"));
   expect(asked).toBeLessThan(submit.indexOf("await saveStudioDocument(projectId)"));
-  expect(asked).toBeLessThan(submit.indexOf("await submitStudioRun(projectId, request)"));
+  expect(asked).toBeLessThan(submit.indexOf("await submitStudioRun(projectId, request,"));
   expect(submit).toMatch(/if\(choice==="cancel"\)return;\s*if\(choice==="bind"\)\{bindFramesFor\(intent\);return;\}/);
   expect(workspace).toContain("studioVideoSettings(videoDraft.mode,videoDraft.tier,videoAssets,videoDraft.seed,nativeModeSpec,studioVideoPromptMode(nativeVideo.supportsPromptOptimization,videoDraft.keepPrompt))");
-});
-
-// Supplementary to the behaviour tests in canvas-bridge/video.test.ts: the vendored node panel (not routed in Studio
-// today) hands the bridge the node's saved choice and a way to ask, so it cannot fall back to the vendor rewrite.
-test("the node panel passes the saved text choice and the frame question to the shared bridge", () => {
-  const page = read("canvas/pages/canvas/project.tsx");
-  expect(page).toContain("keepPrompt:studioVideoKeepPrompt(node),");
-  expect(page).toMatch(/confirmFrames:\(intent,model\)=>confirmStudioFrames\(modal,intent,model,/);
 });

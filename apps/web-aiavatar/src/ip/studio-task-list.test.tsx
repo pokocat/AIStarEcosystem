@@ -45,7 +45,7 @@ test('history conversations open the assistant and partial jobs show the specifi
   const props = { ...makeProps(), runs: [run('partial', 'done', { stage: '部分视频生成失败', output: { videoCandidates: [{ status: 'failed', errorMessage: '供应商任务失败' }] } })], nodes: [{ ...makeProps().nodes[0], metadata: { studio: { conversation: {}, runId: 'partial' } } }] as never }; render(<StudioTaskList {...props}/>);
   expect(screen.getByText('部分完成')).toBeDefined(); expect(screen.getByText('供应商任务失败')).toBeDefined();
   fireEvent.click(screen.getByRole('button', { name: '打开对话' })); expect(props.onLocate).toHaveBeenCalledOnce();
-  fireEvent.click(screen.getByRole('button', { name: '进行中0' })); expect(screen.getByText('当前没有进行中的任务')).toBeDefined();
+  fireEvent.click(screen.getByRole('button', { name: '进行中0' })); expect(screen.getByText('暂无进行中的任务')).toBeDefined();
 });
 
 test('failed assistant tasks offer reopening the conversation without a misleading automatic regeneration action', () => {
@@ -78,7 +78,7 @@ test('refreshes the original running task once, reports completion, and never re
   fireEvent.click(screen.getByRole('button',{name:'刷新结果'}));
   fireEvent.click(screen.getByRole('button',{name:'正在刷新…'}));
   expect(onRefresh).toHaveBeenCalledExactlyOnceWith(props.runs[0]);
-  finish();await screen.findByText('已读取最新状态，未重新生成或扣费。');
+  finish();await screen.findByText('已更新为最新状态，未重新生成或扣费。');
   expect(props.onRetry).not.toHaveBeenCalled();expect(props.onCancel).not.toHaveBeenCalled();
 });
 

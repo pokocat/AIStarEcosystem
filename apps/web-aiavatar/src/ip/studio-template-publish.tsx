@@ -29,17 +29,17 @@ export function StudioTemplatePublish({projectId,canPublishOfficial,saveNow,onCl
         const item:IpTemplate={id:version.templateId,name:name.trim(),summary:summary.trim(),visibility,mine:true,enabled:true,versionId:version.id,version:version.version,doc:version.doc,lookCount:0,estimatedCredits:0};
         return current.some(t=>t.id===item.id)?current.map(t=>t.id===item.id?item:t):[...current,item];
       });
-      setTarget(version.templateId);setDone(`已保存完整画布：${version.doc.nodes.length} 个节点。${visibility==='official'?'所有用户':'你'}可以从画布模板中查看。`);
+      setTarget(version.templateId);setDone(`已保存为模板（${version.doc.nodes.length} 个节点）。${visibility==='official'?'所有用户':'你'}可在「模板」中查看。`);
     }catch(e){setError(e);}finally{inFlight.current=false;setBusy(false);}
   };
-  return <Modal open title="保存画布模板" getContainer={studioOverlayContainer} onCancel={()=>{if(!busy)onClose();}} width={560} mask={{closable:!busy}} keyboard={!busy} closable={!busy}
-    footer={<><Button disabled={busy} onClick={onClose}>{done?'完成':'取消'}</Button><Button type="primary" loading={busy} disabled={!doc||!name.trim()||!nodes.length||!!done} onClick={()=>void save()}>保存完整画布</Button></>}>
+  return <Modal open title="保存为模板" getContainer={studioOverlayContainer} onCancel={()=>{if(!busy)onClose();}} width={560} mask={{closable:!busy}} keyboard={!busy} closable={!busy}
+    footer={<><Button disabled={busy} onClick={onClose}>{done?'完成':'取消'}</Button><Button type="primary" loading={busy} disabled={!doc||!name.trim()||!nodes.length||!!done} onClick={()=>void save()}>保存模板</Button></>}>
     <div className="studio-template-form">
-      <p>保留全部节点、文字、连线和已生成的图片、视频。别人打开后就能看到这张画布。</p>
+      <p>将保留全部节点、文字、连线及已生成的图片和视频。</p>
       {doc&&<p className="studio-template-snapshot-summary">{nodes.length} 个节点 · {nodes.filter(n=>n.type==='image'&&n.metadata?.storageKey).length} 张图片 · {nodes.filter(n=>n.type==='video'&&n.metadata?.storageKey).length} 个视频</p>}
       <label>模板名称<Input disabled={busy} value={name} onChange={e=>{setName(e.target.value);setDone('');}} maxLength={128}/></label>
       <label>说明（选填）<Input.TextArea disabled={busy} value={summary} onChange={e=>{setSummary(e.target.value);setDone('');}} maxLength={1024} rows={2}/></label>
-      {canPublishOfficial&&<label>谁可以看到<Select disabled={busy||!!target} value={visibility} options={[{value:'personal',label:'仅自己'},{value:'official',label:'所有用户（官方模板）'}]} onChange={v=>{setVisibility(v);setDone('');}}/></label>}
+      {canPublishOfficial&&<label>可见范围<Select disabled={busy||!!target} value={visibility} options={[{value:'personal',label:'仅自己'},{value:'official',label:'所有用户（官方模板）'}]} onChange={v=>{setVisibility(v);setDone('');}}/></label>}
       <label>保存位置<Select disabled={busy} allowClear placeholder="新建模板" value={target} options={templates.filter(t=>t.visibility===visibility).map(t=>({value:t.id,label:`更新「${t.name}」`}))} onChange={v=>{setTarget(v);setDone('');}}/></label>
       {error&&<StudioErrorNotice error={error}/>} {done&&<Alert type="success" title={done} showIcon/>}
     </div>

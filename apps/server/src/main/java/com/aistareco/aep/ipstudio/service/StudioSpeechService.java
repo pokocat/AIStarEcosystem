@@ -64,7 +64,7 @@ public class StudioSpeechService {
         if(prior!=null) {
             StudioRunBilling.requireSamePayer(prior,request.billing());
             if(!"studio-audio".equals(prior.getKind()) || !fingerprint.equals(prior.getInputFingerprint()))
-                throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","同一配音请求的内容已改变，请重新提交");
+                throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","请求已失效，请刷新页面后重试");
             return projects.toRunDto(prior);
         }
         com.aistareco.aep.dap.model.DapVoice profile=null;

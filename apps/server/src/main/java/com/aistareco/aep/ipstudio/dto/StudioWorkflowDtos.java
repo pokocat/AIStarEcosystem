@@ -131,12 +131,34 @@ public final class StudioWorkflowDtos {
      * 成片高级编辑的时间线（2026-10-19）：前端把编辑器里的工程压成这几样交给服务端用 FFmpeg 合成。
      * 时间都是成片里的秒；from 是素材里的起点（掐头）；x / y 是相对画面中心的像素偏移。
      */
-    public record EditTimeline(Integer width, Integer height, List<EditMedia> clips, List<EditMedia> audios, List<EditText> texts, List<EditCaption> captions) {}
-    public record EditMedia(String storageKey, Double start, Double end, Double from, Double volume) {}
+    public record EditTimeline(Integer width, Integer height, List<EditMedia> clips, List<EditMedia> audios, List<EditText> texts, List<EditCaption> captions,
+                               List<EditOverlay> overlays, Boolean autoCaptions, String musicStorageKey) {
+        public EditTimeline(Integer width, Integer height, List<EditMedia> clips, List<EditMedia> audios, List<EditText> texts, List<EditCaption> captions) {
+            this(width, height, clips, audios, texts, captions, null, null, null);
+        }
+        public EditTimeline(Integer width, Integer height, List<EditMedia> clips, List<EditMedia> audios, List<EditText> texts, List<EditCaption> captions, List<EditOverlay> overlays, Boolean autoCaptions) {
+            this(width, height, clips, audios, texts, captions, overlays, autoCaptions, null);
+        }
+    }
+    /** speed：播放速度（0.5–2，缺省 1）；fadeIn / fadeOut：开头、结尾淡入淡出的秒数；look：调色预设（见 StudioEditGraph.LOOKS）。 */
+    public record EditMedia(String storageKey, Double start, Double end, Double from, Double volume, Double speed, Double fadeIn, Double fadeOut, String look) {
+        public EditMedia(String storageKey, Double start, Double end, Double from, Double volume) { this(storageKey, start, end, from, volume, null, null, null, null); }
+    }
+    /** 画中画或贴图：kind = video | image；x / y 是相对画面中心的偏移（像素），width / height 是显示尺寸。 */
+    public record EditOverlay(String kind, String storageKey, Double start, Double end, Double from, Double x, Double y, Double width, Double height, Double volume, Double speed) {}
     public record EditText(String text, Double start, Double end, Double x, Double y, Integer fontSize, String color) {}
     public record EditCaption(String text, Double start, Double end) {}
-    public record Packaging(String brand,String title,String cta,List<Caption> captions,String voiceoverStorageKey) {
+    /** 已知台词（导演台等）：start / end 是这句话在片段里的预计时间（秒），实际时间由语音识别校正。 */
+    public record KnownLine(String text,Double start,Double end) {}
+    public record KnownClip(Double plannedSec,List<KnownLine> lines) {}
+    /**
+     * 成片包装。autoCaptions = true 且没有手写 captions 时，合成阶段自动生成字幕（有 knownClips 用已知台词，否则从声音识别）；
+     * musicStorageKey：背景音乐，说话时自动压低；quality：720p | 1080p，缺省跟随片段。
+     */
+    public record Packaging(String brand,String title,String cta,List<Caption> captions,String voiceoverStorageKey,
+                            Boolean autoCaptions,List<KnownClip> knownClips,String musicStorageKey,String quality) {
         public Packaging(String brand,String title,String cta,List<Caption> captions){this(brand,title,cta,captions,null);}
+        public Packaging(String brand,String title,String cta,List<Caption> captions,String voiceoverStorageKey){this(brand,title,cta,captions,voiceoverStorageKey,null,null,null,null);}
     }
     public record ScriptSettings(String genre,String audience,String era,String core,String style,Integer episodeCount,Integer episodeDurationSec,
                                  List<String> fusionGenres,String characterBrief,String structure) {}
@@ -152,7 +174,11 @@ public final class StudioWorkflowDtos {
         }
         public TextModel(String endpointId,String name,boolean isDefault,boolean supportsVision,Long creditCost){this(endpointId,name,isDefault,supportsVision,creditCost,null);}
     }
-    public record Capabilities(boolean mock, List<String> operations, long imageCost, long textCost, Long videoCost,List<TextModel> textModels,String textModelMode,String imageModelMode) {}
+    public record Capabilities(boolean mock, List<String> operations, long imageCost, long textCost, Long videoCost,List<TextModel> textModels,String textModelMode,String imageModelMode,boolean captionRecognition) {
+        public Capabilities(boolean mock, List<String> operations, long imageCost, long textCost, Long videoCost,List<TextModel> textModels,String textModelMode,String imageModelMode) {
+            this(mock,operations,imageCost,textCost,videoCost,textModels,textModelMode,imageModelMode,false);
+        }
+    }
     public record AdoptRequest(String nodeId, String storageKey, String name, String ipId, String avatarId,
                                String description, String intent, String assetRole) {
         public AdoptRequest(String nodeId,String storageKey,String name,String ipId,String avatarId,String description,String intent) {

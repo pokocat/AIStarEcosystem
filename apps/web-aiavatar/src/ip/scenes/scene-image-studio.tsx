@@ -10,7 +10,7 @@ import type { StudioCapabilities } from "@ai-star-eco/types/ip-studio-workflow";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { cancelRun, fetchModels, readRun, signKeys, type IpModelOption } from "@/canvas-bridge/api";
 import { studioCapabilities, submitStudioRun } from "@/canvas-bridge/studio-api";
-import { isStudioBillingCancelled } from "@/canvas-bridge/studio-billing-cancel";
+import { isStudioBillingCancelled, studioCreditShortageChoice } from "@/canvas-bridge/studio-billing-cancel";
 import { downloadMedia } from "@/canvas-bridge/download-media";
 import type { CanvasNodeData } from "@/canvas/types/canvas";
 import { IpStudioApi } from "../api";
@@ -23,7 +23,6 @@ import { HubTabBar } from "@/components/hub/ui";
 import { FREE_SCENE_ID, findImageScene, sceneDemo, useSceneCatalog, type ImageScene } from "./scene-catalog";
 import { useSceneDraftStore, useSceneStateSave } from "./scene-draft-store";
 import { useSceneQuery, writeSceneQuery } from "./scene-query";
-import { UiVersionSwitch } from "@/shell/ui-version-switch";
 import { addImageRow, applyRun, createSceneDraft, groupUploads, imageRows, listSceneDrafts, openedImageState, patchNode, resubmitRow, rowUploads, rejectedNextStep, splitByCounts, submissionRejected, type SceneUpload } from "./scene-drafts";
 import { ScenePromptEditor, type ScenePromptEditorHandle, type ScenePromptRef } from "./scene-prompt-editor";
 import { remapPromptRefs } from "./scene-prompt-refs";
@@ -111,7 +110,7 @@ export function SceneImageStudio() {
         : next.refs.map(r => { const j = from?.refs.findIndex(x => x.label === r.label) ?? -1; return j >= 0 ? (now.slots[j] ?? []).slice(0, r.max ?? 1) : []; });
       setSlots(carried);
       const left = !sent && from ? from.refs.filter((r, i) => now.slots[i]?.length && !next.refs.some(x => x.label === r.label)).map(r => `「${r.label}」`) : [];
-      if (left.length) setNote({ text: `${left.join("")}在这里用不上，先收起来了，回「${from!.title}」还在` });
+      if (left.length) setNote({ text: `此场景不使用${left.join("、")}，返回「${from!.title}」时会恢复。` });
     }
     writeQuery(next.id, draftRef.current?.id);
   }, []);
@@ -179,7 +178,7 @@ export function SceneImageStudio() {
     if (!ready) return;
     let active = true;
     void Promise.all([fetchModels(), studioCapabilities()]).then(([m, c]) => { if (active) { setModels(m.image); setCaps(c); } })
-      .catch(e => { if (active) { setModels([]); showFailure({ action: "读取图片模型", error: e }); } });
+      .catch(e => { if (active) { setModels([]); showFailure({ action: "加载图片模型", error: e }); } });
     return () => { active = false; };
   }, [ready, showFailure]);
 
@@ -223,6 +222,27 @@ export function SceneImageStudio() {
   const usedCount = counts.includes(count) ? count : counts[0];
   const unit = chosen?.imageResolutionCosts?.[studioImageResolution(usedSize) || ""] ?? chosen?.creditCost ?? caps?.imageCost ?? 0;
   const quote = caps?.mock ? 0 : unit * usedCount;
+  /**
+   * 积分不足时能换的模型。换过去比例、张数、清晰度不一定还在（页面会退到第一项）：算出换过去实际的设置和价格，
+   * 会变的写进 changes，用户看过再生成，不悄悄换规格、把赠款花在别的东西上。
+   */
+  const modelChoices = caps?.imageModelMode === "fixed" ? [] : candidates.map(m => {
+    const nextRatios = m.capability?.imageRatios?.length ? m.capability.imageRatios : FALLBACK_RATIOS;
+    const nextRatio = nextRatios.includes(usedRatio) ? usedRatio : nextRatios[0];
+    const nextCounts = m.capability?.imageBatchCounts?.filter(c => [1, 2, 4].includes(c)).length ? m.capability.imageBatchCounts!.filter(c => [1, 2, 4].includes(c)) : [1, 2, 4];
+    const nextCount = nextCounts.includes(usedCount) ? usedCount : nextCounts[0];
+    const nextSizes = m.capability?.imageSizes?.filter(s => s.aspectRatio === nextRatio) ?? [];
+    const resolution = studioImageResolution(usedSize);
+    // 和上面 usedSize 同一条规则：换过去报的价、写的变化，才是真正会提交的规格。
+    const nextSize = nextSizes.some(s => s.size === size) ? size : nextSizes[0]?.size;
+    const maxImages = m.capability?.maxRefImages;
+    const used = slots.reduce((sum, slot) => sum + slot.length, 0);
+    const changes = [nextRatio !== usedRatio && `比例将改为 ${nextRatio}`, nextCount !== usedCount && `张数将改为 ${nextCount}`,
+      nextSize && studioImageResolution(nextSize) !== resolution && `清晰度将改为 ${studioImageSizeLabel(nextSize)}`,
+      maxImages != null && used > maxImages && `最多使用 ${maxImages} 张参考图`].filter(Boolean).join("，");
+    return { endpointId: m.endpointId, name: m.name, legacyEndpointIds: m.legacyEndpointIds, changes, quotePatch: nextSize ? { size: nextSize } : undefined,
+      cost: (m.imageResolutionCosts?.[studioImageResolution(nextSize) || ""] ?? m.creditCost) * nextCount };
+  });
   const maxChars = chosen?.capability?.imagePromptMaxChars || 2000;
   const isFree = scene?.id === FREE_SCENE_ID;
   const demoGone = !!scene && demoMissing === scene.id;
@@ -247,10 +267,10 @@ export function SceneImageStudio() {
     let n = 0;
     return (scene?.refs ?? []).flatMap((r, i) => (slots[i] ?? []).map(u => ({ index: ++n, title: r.label, url: u.url, storageKey: u.key, detail: u.name })));
   }, [scene, slots]);
-  const blocker = !scene ? "正在读取场景…" : !models ? "正在读取模型…" : !caps?.mock && !chosen ? "还没有可用的图片模型"
-    : missing >= 0 ? `先放${scene.refs[missing].label}` : anyMissing ? `先放${anyMissing}` : isFree && !supplement.trim() ? "写一句想要的画面"
-    : tooManyRefs ? (maxRefs ? `当前模型最多用 ${maxRefs} 张参考图，已放 ${filledCount} 张` : "当前模型不能用参考图，请换一个模型")
-    : ownText.length > ownLimit ? `最多 ${ownLimit} 字` : "";
+  const blocker = !scene ? "正在加载场景…" : !models ? "正在加载模型…" : !caps?.mock && !chosen ? "暂无可用的图片模型"
+    : missing >= 0 ? `请添加${scene.refs[missing].label}` : anyMissing ? `请添加${anyMissing}` : isFree && !supplement.trim() ? "请描述想要的画面"
+    : tooManyRefs ? (maxRefs ? `当前模型最多使用 ${maxRefs} 张参考图，已添加 ${filledCount} 张` : "当前模型不支持参考图，请更换模型")
+    : ownText.length > ownLimit ? `超出 ${ownLimit} 字上限，请删减` : "";
 
   // 页面上的条件写进草稿（有草稿时），刷新、再打开都还是这些。想要的比例 / 张数原样记，不记被换掉之后的。
   const imageState = useMemo<StudioSceneImageState>(() => ({ sceneId: scene?.id ?? FREE_SCENE_ID, supplement, ...(custom !== undefined ? { custom } : {}), options: picked,
@@ -258,8 +278,8 @@ export function SceneImageStudio() {
     ...(modelId ? { model: modelId } : {}), ratio, ...(size ? { size } : {}), count }), [scene, supplement, custom, picked, slots, modelId, ratio, size, count]);
   useSceneStateSave("sceneImageState", draft, imageState, persist, doc => openedImageState(doc, catalogRef.current, draft?.sceneId));
   // 模型不支持想要的比例 / 张数时照实说按什么出，不悄悄换（AGENTS「生成面板不许静默钳制」）。
-  const specNote = [ratio !== usedRatio ? `这个模型出不了 ${ratio}，会按 ${usedRatio} 出` : "",
-    count !== usedCount ? `一次出不了 ${count} 张，会出 ${usedCount} 张` : ""].filter(Boolean).join("，");
+  const specNote = [ratio !== usedRatio ? `当前模型不支持 ${ratio}，将按 ${usedRatio} 生成。` : "",
+    count !== usedCount ? `当前模型不支持一次生成 ${count} 张，将生成 ${usedCount} 张。` : ""].filter(Boolean).join("");
 
   /** 素材位只从资产库选（新文件在选择框里先传进资产库）：打开时记下是哪份草稿，选完时页面换了草稿就不放进来。 */
   const pickTicket = useRef(0);
@@ -286,7 +306,7 @@ export function SceneImageStudio() {
       const options = sceneOptionValues(scene.options, picked);
       prompt = (await IpStudioApi.composeScene({ kind: "image", sceneId: scene.id, text: supplement, ...(custom !== undefined ? { custom } : {}),
         refCounts: scene.refs.map((_, i) => slots[i]?.length ?? 0), ...(options ? { options } : {}) })).text;
-    } catch (e) { setHint(sceneHintText(e, "描述没准备好，请再点一次")); return; }
+    } catch (e) { setHint(sceneHintText(e, "描述准备失败，请重试。")); return; }
     const refs = scene.refs.flatMap((r, i) => (slots[i] ?? []).map(upload => ({ upload, label: r.label })));
     const model = caps?.mock ? undefined : chosen?.endpointId;
     // 这一次的条件另存一份（不是拼好的话）：「重新编辑」照它放回，选项和补充要求不会叠两遍。
@@ -315,7 +335,7 @@ export function SceneImageStudio() {
       await persist(doc => {
         if (typeof input === "string") {
           const again = resubmitRow(doc, input);
-          if (!again) throw new Error("这一行已经不在了，请重新生成");
+          if (!again) throw new Error("此生成记录已不存在，请重新生成。");
           request = again.request; nodeId = input;
           return again.doc;
         }
@@ -325,16 +345,47 @@ export function SceneImageStudio() {
       }, projectId);
       if (onPage(ticket, projectId)) { setSubmitting(nodeId); setTab("results"); }
       posted = true;
-      const run = await submitStudioRun(projectId, request!);
+      const run = await submitStudioRun(projectId, request!, { modelChoices, canRetry: typeof input !== "string" });
       await persist(doc => applyRun(doc, nodeId!, run), projectId);
     } catch (e) {
-      if (nodeId && isStudioBillingCancelled(e)) { await persist(doc => patchNode(doc, nodeId!, () => undefined), projectId).catch(() => undefined); return; }
+      const shortage = studioCreditShortageChoice(e);
+      // 提示框开着或撤销保存期间可能已经换了草稿（浏览器前进后退）：这一次的撤销照做，但用户的选择不作用到别的草稿上。
+      // 所以每次等完保存才判断。
+      const here = () => onPage(ticket, projectId);
+      // 重新生成那一行时积分不够：这一行本来就是失败记录，留着；换了模型就把那次的设置放回输入区。
+      if (nodeId && shortage && typeof input === "string") {
+        await persist(doc => patchNode(doc, nodeId!, n => ({ ...n, metadata: { ...n.metadata, status: "error", errorDetails: "已取消" } })), projectId).catch(() => undefined);
+        const row = draftRef.current && imageRows(draftRef.current.doc).find(n => n.id === nodeId);
+        if (here() && shortage.kind === "switch-model" && row) { reuse(row); setModelId(shortage.endpointId); }
+        return;
+      }
+      if (nodeId && isStudioBillingCancelled(e)) {
+        await persist(doc => patchNode(doc, nodeId!, () => undefined), projectId).catch(() => undefined);
+        if (here() && shortage?.kind === "switch-model") {
+          setModelId(shortage.endpointId);
+          if (shortage.changes) setNote({ text: `已改用「${shortage.name}」，${shortage.changes}。确认后点击「生成图片」。` });
+          else regenerate.current = { model: shortage.endpointId, ticket, projectId };
+        }
+        else if (here() && shortage?.kind === "retry") regenerate.current = { ticket, projectId };
+        return;
+      }
       const rejected = submissionRejected(e, posted);
       if (nodeId) await persist(doc => patchNode(doc, nodeId!, n => ({ ...n, metadata: { ...n.metadata, ...studioErrorMetadata(e),
-        status: rejected ? "error" : "loading", ...(rejected ? {} : { errorDetails: "提交结果没有确认，点「确认原任务」查一下，不会重复扣费" }) } })), projectId).catch(() => undefined);
-      showFailure({ action: "生成图片", error: e, next: rejected ? rejectedNextStep(e) : "这次提交可能已经被受理，点「确认原任务」查一下，不要直接重新生成。" });
+        status: rejected ? "error" : "loading", ...(rejected ? {} : { errorDetails: "提交结果待确认。点击「确认原任务」查询，不会重复扣费。" }) } })), projectId).catch(() => undefined);
+      showFailure({ action: "生成图片", error: e, next: rejected ? rejectedNextStep(e) : "本次提交可能已成功。请点击「确认原任务」查询，不要直接重新生成。" });
     } finally { setBusy(false); setSubmitting(undefined); }
   };
+
+  // 积分不足提示框里选了「改用」或「继续生成」：等模型换好、上一次提交收尾后再生成一次（要花钱的话还有费用确认）。
+  const regenerate = useRef<{ model?: string; ticket: number; projectId?: string }>(undefined);
+  useEffect(() => {
+    const next = regenerate.current;
+    if (!next || busy) return;
+    if (!onPage(next.ticket, next.projectId)) { regenerate.current = undefined; return; }
+    if (next.model && chosen?.endpointId !== next.model) return;
+    regenerate.current = undefined;
+    void generate();
+  });
 
   /** 同一个请求编号再交一次：服务端认得它，已受理就返回原任务，不会再扣一次。 */
   const confirmOriginal = async (row: CanvasNodeData) => {
@@ -344,7 +395,11 @@ export function SceneImageStudio() {
     try {
       const run = await submitStudioRun(project.id, request);
       await persist(doc => patchNode(applyRun(doc, row.id, run), row.id, n => ({ ...n, metadata: { ...n.metadata, status: "loading", errorDetails: undefined } })), project.id);
-    } catch (e) { showFailure({ action: "确认原任务", error: e }); }
+    } catch (e) {
+      // 积分不足提示框已经说清了：这条没有受理，不用再确认，转成可以重新生成的失败记录。
+      if (studioCreditShortageChoice(e)) await persist(doc => patchNode(doc, row.id, n => ({ ...n, metadata: { ...n.metadata, status: "error", errorDetails: "积分不足，未提交" } })), project.id).catch(() => undefined);
+      else showFailure({ action: "确认原任务", error: e });
+    }
     finally { setBusy(false); }
   };
 
@@ -372,9 +427,9 @@ export function SceneImageStudio() {
       ...(target.id === FREE_SCENE_ID ? { supplement: request.prompt } : { custom: request.prompt, supplement: "" }) });
     // 当时的模型现在没有了就照实说换成了哪个，不悄悄换（审查「不悄悄钳制」同一条）。
     const gone = snap?.model && !caps?.mock && candidates.length && !candidates.some(m => m.endpointId === snap.model)
-      ? `当时用的模型现在用不了，这次用「${(candidates.find(m => m.isDefault) ?? candidates[0]).name}」。` : "";
+      ? `原模型已不可用，本次改用「${(candidates.find(m => m.isDefault) ?? candidates[0]).name}」。` : "";
     setHint("");
-    setNote({ text: `${gone}这次的设置放回来了，改好再生成。`, undo: () => { put(before); setNote(undefined); } });
+    setNote({ text: `${gone}已恢复此次的设置，修改后可重新生成。`, undo: () => { put(before); setNote(undefined); } });
     // 输入区在页面上方（手机上在结果下面很远）：滚过去并把光标放进去，不然点了像没反应（2026-10-30 界面评审）。
     setTimeout(() => {
       document.querySelector(".scene-image-studio .scene-composer")?.scrollIntoView?.({ block: "start", behavior: "smooth" });
@@ -384,7 +439,7 @@ export function SceneImageStudio() {
 
   /**
    * 出的这张图接着用（2026-10-30 审查 G04：只能下载，想拿它当参考得下载再上传）。
-   * 当参考图：放进当前场景第一个空着的参考图位，都放满了就换掉第一张。做成视频：带着这张图去 AI 视频。
+   * 用作参考图：放进当前场景第一个空着的参考图位，都放满了就换掉第一张。做成视频：带着这张图去 AI 视频。
    */
   const putAsReference = (image: { url: string; key?: string; name: string }) => {
     if (!scene || !image.key) return;
@@ -393,7 +448,7 @@ export function SceneImageStudio() {
     const upload = { key: image.key, url: image.url, name: image.name };
     changeSlots(old => old.map((items, i) => i !== at ? items : empty >= 0 ? [...items, upload] : [...items.slice(0, -1), upload]));
     setViewing(undefined); setHint("");
-    setNote({ text: `放进「${scene.refs[at].label}」了${empty < 0 ? "，换掉了原来那张" : ""}。` });
+    setNote({ text: `已添加到「${scene.refs[at].label}」${empty < 0 ? "，替换了原图" : ""}。` });
     setTimeout(() => document.querySelector(".scene-image-studio .scene-composer")?.scrollIntoView?.({ block: "start", behavior: "smooth" }), 0);
   };
   const toVideo = (image: { key?: string }) => {
@@ -411,13 +466,13 @@ export function SceneImageStudio() {
     return first ? { url: first.url, key: first.key, name: `${row.title}-原图` } : undefined;
   };
   const followUps = (image: { url: string; key?: string; name: string }) => image.key ? <>
-    <button type="button" onClick={() => putAsReference(image)}><ImageUp size={16}/>当参考图</button>
+    <button type="button" onClick={() => putAsReference(image)}><ImageUp size={16}/>用作参考图</button>
     <button type="button" onClick={() => toVideo(image)}><Clapperboard size={16}/>做成视频</button></> : null;
 
   if (auth === "no-platform" || drafts.notEnrolled) return <PlatformGateScreen/>;
   const rows = draft ? imageRows(draft.doc) : [];
-  if (catalogError && !catalog) return <main className="ip-brand-surface scene-studio scene-image-studio"><div className="scene-loading">场景目录没读出来<button type="button" className="ip-brand-secondary" onClick={retryCatalog}>重新加载</button></div></main>;
-  if (!catalog || !scene) return <main className="ip-brand-surface scene-studio scene-image-studio"><div className="scene-loading"><Loader2 size={20} className="studio-gallery-spinner"/>正在读取场景</div></main>;
+  if (catalogError && !catalog) return <main className="ip-brand-surface scene-studio scene-image-studio"><div className="scene-loading">场景加载失败。<button type="button" className="ip-brand-secondary" onClick={retryCatalog}>重新加载</button></div></main>;
+  if (!catalog || !scene) return <main className="ip-brand-surface scene-studio scene-image-studio"><div className="scene-loading"><Loader2 size={20} className="studio-gallery-spinner"/>正在加载场景…</div></main>;
   const free = findImageScene(catalog, FREE_SCENE_ID);
   const listGroups = catalog.imageGroups.map(g => ({ id: g.id, title: g.title, items: catalog.image.filter(s => s.group === g.id && s.id !== FREE_SCENE_ID) }));
   const groupTitle = catalog.imageGroups.find(g => g.id === scene.group)?.title;
@@ -426,12 +481,12 @@ export function SceneImageStudio() {
   // 一排最多放得下几张：放得少时格子大一点。
   const tileCount = scene.refs.reduce((n, r, i) => n + (slots[i]?.length ?? 0) + ((slots[i]?.length ?? 0) < (r.max ?? 1) ? 1 : 0), 0);
   const capacity = scene.refs.reduce((n, r) => n + (r.max ?? 1), 0);
-  const multiNotes = scene.refs.filter(r => (r.max ?? 1) > 1 && r.hint).map(r => `「${r.label}」最多可放 ${r.max} 张，${r.hint}。`);
+  const multiNotes = scene.refs.filter(r => (r.max ?? 1) > 1 && r.hint).map(r => `「${r.label}」最多可添加 ${r.max} 张，${r.hint}。`);
 
   return <main className={`ip-brand-surface scene-studio scene-image-studio${pinned ? " has-drawer" : ""}`} data-studio-overlay-root>
     {(pinned || drawerOpen) && <SceneDrawer heading="AI 图片" groups={listGroups} top={free} current={scene.id} onPick={onPick} pinned={pinned} onPin={pin} onClose={() => setDrawerOpen(false)}/>}
 
-    <section className="scene-card scene-composer" aria-label="出图设置">
+    <section className="scene-card scene-composer" aria-label="图片生成设置">
       <header className="scene-composer-head">
         <SceneSwitch scene={scene} groups={listGroups} top={free && free.id !== scene.id ? free : undefined} onPick={onPick} onAll={() => { if (!pinned) setDrawerOpen(true); }}/>
         {mobile && <SceneRecent icon drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>}
@@ -441,7 +496,7 @@ export function SceneImageStudio() {
 
       <div className="scene-compose">
         <div className="scene-media-group">
-          {capacity > 1 && <small className="scene-media-count" aria-label={`已放 ${filledCount} 张，最多 ${capacity} 张`}>{filledCount} / {capacity}</small>}
+          {capacity > 1 && <small className="scene-media-count" aria-label={`已添加 ${filledCount} 张，最多 ${capacity} 张`}>{filledCount} / {capacity}</small>}
           <div className={`scene-media-row${tileCount <= 3 ? " is-large" : ""}`} role="group" aria-label="参考图">
             {scene.refs.map((ref, i) => {
               const items = slots[i] ?? [];
@@ -455,8 +510,8 @@ export function SceneImageStudio() {
                   <button type="button" className="scene-ref-remove" aria-label={`移除${ref.label}${items.length > 1 ? ` 第 ${j + 1} 张` : ""}`} onClick={() => changeSlots(old => old.map((g, k) => k === i ? g.filter((_, m) => m !== j) : g))}><X size={11} strokeWidth={1.8}/></button>
                 </div>)}
                 {items.length < limit && <div className="scene-media">
-                  <button type="button" className="scene-slot-add" aria-label={`从资产库选${ref.label}`} onClick={() => openPicker(i)}><SlotEmpty Icon={Icon} size={28}/></button>
-                  <span title={ref.label}>{ref.label}{items.length > 0 ? <small>{items.length} / {limit}</small> : !ref.required && someRequired && <small>可选</small>}</span>
+                  <button type="button" className="scene-slot-add" aria-label={`从资产库选择${ref.label}`} onClick={() => openPicker(i)}><SlotEmpty Icon={Icon} size={28}/></button>
+                  <span title={ref.label}>{ref.label}{items.length > 0 ? <small>{items.length} / {limit}</small> : !ref.required && someRequired && <small>选填</small>}</span>
                 </div>}
               </Fragment>;
             })}
@@ -468,12 +523,12 @@ export function SceneImageStudio() {
           {custom !== undefined
             ? <ScenePromptEditor ref={inputBox} ariaLabel="完整描述" value={custom} onChange={setCustom} refs={promptRefs} lead={isFree ? undefined : scene.title}/>
             : <ScenePromptEditor ref={inputBox} ariaLabel={isFree ? "想要的画面" : "补充要求"} value={supplement} onChange={setSupplement} refs={promptRefs} lead={isFree ? undefined : scene.title} placeholder={scene.hint}/>}
-          {custom !== undefined && <div className="scene-box-extra"><ScenePromptEditor ariaLabel="补充要求" value={supplement} onChange={setSupplement} refs={promptRefs} placeholder="还有要补充的，写在这里"/></div>}
+          {custom !== undefined && <div className="scene-box-extra"><ScenePromptEditor ariaLabel="补充要求" value={supplement} onChange={setSupplement} refs={promptRefs} placeholder="补充要求（选填）"/></div>}
           <footer>
             <small className={ownText.length > ownLimit ? "is-over" : undefined}>{ownText.length} / {ownLimit}</small>
             {!isFree && (custom === undefined
-              ? <button type="button" className="scene-text-button" title={scene.prompt} onClick={() => setCustom(scene.prompt)}><PencilLine size={13} strokeWidth={1.5}/>改完整描述</button>
-              : <button type="button" className="scene-text-button" onClick={() => setCustom(undefined)}><Undo2 size={13} strokeWidth={1.5}/>用回场景描述</button>)}
+              ? <button type="button" className="scene-text-button" title={scene.prompt} onClick={() => setCustom(scene.prompt)}><PencilLine size={13} strokeWidth={1.5}/>编辑完整描述</button>
+              : <button type="button" className="scene-text-button" onClick={() => setCustom(undefined)}><Undo2 size={13} strokeWidth={1.5}/>恢复场景描述</button>)}
           </footer>
         </div>
 
@@ -503,21 +558,20 @@ export function SceneImageStudio() {
 
     <section className="scene-card scene-results" aria-label="作品与示例">
       <header><SceneResultTabs tab={tab} onTab={setTab} count={rows.length} idBase="scene-image"/>
-        <span className="scene-results-actions">{draft && <Link className="scene-text-button" href={`/projects/${encodeURIComponent(draft.id)}`}><FolderOpen size={14} strokeWidth={1.4}/>在画布中继续</Link>}
-          {!mobile && <SceneRecent drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>}
-          <UiVersionSwitch inline/></span></header>
+        <span className="scene-results-actions">{draft && <Link className="scene-text-button" href={`/projects/${encodeURIComponent(draft.id)}`}><FolderOpen size={14} strokeWidth={1.4}/>在画布上查看</Link>}
+          {!mobile && <SceneRecent drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>}</span></header>
       <div id="scene-image-panel" className="scene-results-panel" role="tabpanel" aria-labelledby={`scene-image-tab-${tab}`}>
       {tab === "example" ? <SceneExample id={scene.id} title={scene.title} group={isFree ? undefined : groupTitle} cover={scene.coverUrl} examples={scene.examples} demo={sceneDemo(scene.id)} example={scene.example} onUseExample={useExample} ratio={scene.ratio}
-          note={isFree ? "放参考图，说说想要的画面。不知道怎么写，可以点上面的场景名换一个场景。" : scene.description}/>
-        : opening ? <div className="scene-loading"><Loader2 size={20} className="studio-gallery-spinner"/>正在打开草稿</div>
+          note={isFree ? "添加参考图并描述想要的画面。" : scene.description}/>
+        : opening ? <div className="scene-loading"><Loader2 size={20} className="studio-gallery-spinner"/>正在打开草稿…</div>
         : rows.length ? <ol className="scene-row-list">{rows.map(row => <ImageRow key={row.id} row={row} original={originalOf(row)} run={live[row.id]} busy={busy} submitting={submitting === row.id}
           onView={setViewing} onUse={putAsReference} onVideo={toVideo} onReuse={() => reuse(row)} onRetry={() => retry(row)} onConfirm={() => void confirmOriginal(row)}
           onStop={() => { const id = row.metadata?.studio?.runId; if (id) void cancelRun(id).catch(e => showFailure({ action: "停止生成", error: e })); }}/>)}</ol>
-        : <SceneEmpty title="还没有作品" note="放好参考图，点「生成图片」，做好的图会出现在这里。"/>}
+        : <SceneEmpty title="还没有作品" note="生成的图片将显示在这里。"/>}
       </div>
     </section>
 
-    {picking !== undefined && <div className="scene-picker-host"><LibraryReferencePicker open max={Math.max(1, (scene.refs[picking]?.max ?? 1) - (slots[picking]?.length ?? 0))} mediaType="image" upload title={`选${scene.refs[picking]?.label ?? "图片"}`} intro="从资产库里选；新图点「上传到资产库」，传完会自动选中。原文件不会被改动。"
+    {picking !== undefined && <div className="scene-picker-host"><LibraryReferencePicker open max={Math.max(1, (scene.refs[picking]?.max ?? 1) - (slots[picking]?.length ?? 0))} mediaType="image" upload title={`选择${scene.refs[picking]?.label ?? "图片"}`} intro="从资产库选择图片，也可上传新图片。"
       onClose={() => setPicking(undefined)} onAssets={async assets => {
         const images = assets.filter((a): a is IpImageAsset => a.kind === "image" && !!a.data.storageKey);
         if (!images.length) throw new Error("请选择一张带图片的资产");
@@ -550,7 +604,7 @@ function ImageRow({ row, original, run, busy, submitting, onView, onUse, onVideo
   const position = run?.queue?.position;
   // 图片阶段不显示百分比（不是真进度），只说在排队还是在生成。
   const failure = meta?.status === "error" ? sceneFailureText(meta.errorCode, meta.errorDetails) : undefined;
-  const state = loading ? (submitting && !accepted ? "正在提交" : !accepted ? "提交结果没有确认" : position && position > 0 ? `排队中，前面还有 ${position - 1} 个` : "生成中") : failure;
+  const state = loading ? (submitting && !accepted ? "提交中" : !accepted ? "结果待确认" : position && position > 0 ? `排队中 · 第 ${position} 位` : "生成中") : failure;
   const spec = [request?.aspectRatio, request?.count ? `${request.count} 张` : undefined].filter(Boolean).join(" · ");
   const ratio = (request?.aspectRatio ?? "1:1").replace(":", " / ");
   return <li className={`scene-row is-${meta?.status || "idle"}`}>
@@ -565,7 +619,7 @@ function ImageRow({ row, original, run, busy, submitting, onView, onUse, onVideo
         {request && <button type="button" onClick={onReuse}><PencilLine size={12} strokeWidth={1.5}/>重新编辑</button>}
       </span>
     </header>
-    {failure && <p className="scene-row-error" title={meta?.errorDetails !== failure ? `${meta?.errorDetails || ""}${meta?.errorLogId ? `（记录号 ${meta.errorLogId}）` : ""}` : undefined}>{failure}</p>}
+    {failure && <p className="scene-row-error" title={meta?.errorDetails !== failure ? `${meta?.errorDetails || ""}${meta?.errorLogId ? `（追查号 ${meta.errorLogId}）` : ""}` : undefined}>{failure}</p>}
     <div className="scene-row-images" style={{ "--tile-ratio": ratio } as CSSProperties}>
       {original && images.length > 0 && <button type="button" className="scene-row-original" onClick={() => onView(original)} aria-label="查看原图">
         <SignedImage src={original.url} storageKey={original.key} alt="原图" loading="lazy"/><span>原图</span></button>}
@@ -573,10 +627,10 @@ function ImageRow({ row, original, run, busy, submitting, onView, onUse, onVideo
         return <div key={image.id} className="scene-row-tile">
           <button type="button" className="scene-row-image" onClick={() => onView(item)} aria-label={`查看第 ${i + 1} 张`}>
             <SignedImage src={image.content} storageKey={image.storageKey} alt={`${row.title}第 ${i + 1} 张`} loading="lazy"/></button>
-          {/* 每张图上就能接着做：做成视频、当参考图、下载（悬停或聚焦时出现，手机上一直在）。 */}
+          {/* 每张图上就能接着做：做成视频、用作参考图、下载（悬停或聚焦时出现，手机上一直在）。 */}
           <span className="scene-row-tools">
             {image.storageKey && <button type="button" aria-label="做成视频" title="做成视频" onClick={() => onVideo({ key: image.storageKey })}><Clapperboard size={14} strokeWidth={1.5}/></button>}
-            {image.storageKey && <button type="button" aria-label="当参考图" title="当参考图" onClick={() => onUse(item)}><ImageUp size={14} strokeWidth={1.5}/></button>}
+            {image.storageKey && <button type="button" aria-label="用作参考图" title="用作参考图" onClick={() => onUse(item)}><ImageUp size={14} strokeWidth={1.5}/></button>}
             <button type="button" aria-label="下载" title="下载" onClick={() => void downloadMedia(item.url, row.title, undefined, item.key)}><Download size={14} strokeWidth={1.5}/></button>
           </span></div>; })}
       {loading && Array.from({ length: Math.max(0, (request?.count || 1) - images.length) }, (_, i) => <span key={`wait-${i}`} className="scene-row-placeholder"><AiMark size={18}/></span>)}

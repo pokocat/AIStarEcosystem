@@ -32,11 +32,34 @@ class MaterialVideoInputAssetsTest {
         assertEquals("a6", cache.resolve("other-ep", "base", "h3", "key-a", "owner/voice", upload).assetId());
         assertEquals(6, uploads.get());
     }
+    @Test void receiptCloserToExpiryThanTheCallerAllowsIsUploadedAgain() {
+        java.time.Duration thirtyMinutes = java.time.Duration.ofMinutes(30);
+        cache.resolve("ep", "base", "h3", "key", "image", thirtyMinutes,
+                () -> new MaterialVideoInputAssets.Receipt("soon", Instant.now().plusSeconds(600)));
+        assertEquals("soon", cache.resolve("ep", "base", "h3", "key", "image",
+                () -> new MaterialVideoInputAssets.Receipt("unused", Instant.now().plusSeconds(3600))).assetId());
+        assertEquals("fresh", cache.resolve("ep", "base", "h3", "key", "image", thirtyMinutes,
+                () -> new MaterialVideoInputAssets.Receipt("fresh", Instant.now().plusSeconds(3600))).assetId());
+    }
     @Test void expiredAndUnknownReceiptsAreRenewedAndFailureCannotReplaceThem() {
         cache.resolve("ep", "base", "h3", "key", "voice", () -> new MaterialVideoInputAssets.Receipt("old", Instant.now().minusSeconds(1)));
         assertThrows(IllegalStateException.class, () -> cache.resolve("ep", "base", "h3", "key", "voice", () -> { throw new IllegalStateException("supplier failed"); }));
         assertEquals("old", repo.findAll().get(0).getAssetId());
         cache.resolve("ep", "base", "h3", "key", "voice", () -> new MaterialVideoInputAssets.Receipt("unknown", null));
         assertEquals("renewed", cache.resolve("ep", "base", "h3", "key", "voice", () -> new MaterialVideoInputAssets.Receipt("renewed", Instant.now().plusSeconds(3600))).assetId());
+    }
+
+    @Test void forgettingARejectedReferenceRenewsOnlyItsOwnScope() {
+        cache.resolve("ep", "base", "h3", "key", "source",
+                () -> new MaterialVideoInputAssets.Receipt("rejected", Instant.now().plusSeconds(3600)));
+        cache.resolve("ep", "base", "h3", "other-key", "source",
+                () -> new MaterialVideoInputAssets.Receipt("other-account", Instant.now().plusSeconds(3600)));
+        cache.forget("ep", "base", "h3", "key", "source");
+
+        var restarted = new MaterialVideoInputAssets(repo);
+        assertEquals("fresh", restarted.resolve("ep", "base", "h3", "key", "source",
+                () -> new MaterialVideoInputAssets.Receipt("fresh", Instant.now().plusSeconds(3600))).assetId());
+        assertEquals("other-account", restarted.resolve("ep", "base", "h3", "other-key", "source",
+                () -> { throw new AssertionError("另一个凭据的回执不能被清除"); }).assetId());
     }
 }

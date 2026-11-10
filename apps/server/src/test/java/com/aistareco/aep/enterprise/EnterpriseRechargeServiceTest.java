@@ -49,6 +49,7 @@ class EnterpriseRechargeServiceTest {
     @Autowired EnterprisePointsBatchRepository batches;
     @Autowired EnterprisePointsTransferRepository transfers;
     @Autowired MockMvc mvc;
+    @SpyBean EnterpriseCashReceiptRepository receipts;
     private String person(){String id=UUID.randomUUID().toString();users.save(AepUser.builder().id(id).username(id).displayName("充值验收成员").status(AepUser.UserStatus.ACTIVE).kind(AepUser.AccountKind.PERSONAL).phoneVerified(true).createdAt(Instant.now()).build());enrollment.upsert(id,"aiavatar",EnrollmentStatus.ACTIVE,EnrollmentSource.ADMIN,null);return id;}
     private Context company(String owner){return enterprise.create(owner,new CreateRequest("充值验收企业",UUID.randomUUID().toString()));}
     private Context join(String owner,Context company,String member){var i=enterprise.invite(owner,company.enterprise().id(),new InvitationRequest(UUID.randomUUID().toString()));return enterprise.accept(member,new AcceptRequest(i.token()));}
@@ -87,7 +88,7 @@ class EnterpriseRechargeServiceTest {
         var wallet=member(c,user);credits.creditWallet(wallet.getId(),50,LedgerEntry.LedgerEntryType.GIFT,"test","g","赠送");credits.creditAccount(user,800,LedgerEntry.LedgerEntryType.RECHARGE,"test","p","个人");
         String ref=UUID.randomUUID().toString();credits.holdWallet(wallet.getId(),150,"enterprise-recharge-test",ref,"冻结",user,m.member().id(),"auth-"+ref, com.aistareco.aep.billing.service.ModelChargeContext.NONE);
         var preview=service.refundPreview(order.id());assertEquals(900,preview.reclaimableCredits());assertEquals(899,preview.refundPriceCents());assertEquals(500,preview.memberRecallCredits());assertEquals(100,preview.pendingCredits());
-        var failure=assertThrows(BusinessException.class,()->service.refund("finance",order.id(),refundRequest(preview)));assertTrue(failure.getMessage().contains("在途任务"));
+        var failure=assertThrows(BusinessException.class,()->service.refund("finance",order.id(),refundRequest(preview)));assertEquals("ENTERPRISE_RECHARGE_CONFLICT",failure.getCode());
         assertEquals(400,root(c).getTotalBalance());assertEquals(150,member(c,user).getPendingBalance());
         credits.releaseHold("enterprise-recharge-test",ref,"失败退回原来源");var fresh=service.refundPreview(order.id());assertEquals(1000,fresh.reclaimableCredits());assertEquals(0,fresh.pendingCredits());
         var input=refundRequest(fresh);var result=service.refund("finance",order.id(),input);assertEquals("refunded",result.status());assertEquals(1000,result.refundedCredits());assertEquals(999,result.refundedPriceCents());
@@ -141,6 +142,32 @@ class EnterpriseRechargeServiceTest {
         var a=new ConfirmRequest(UUID.randomUUID().toString(),100L,200L,receipt,null);var b=new ConfirmRequest(UUID.randomUUID().toString(),100L,200L,receipt,null);
         assertEquals(1,race(()->service.confirm("f1",oa.id(),a),()->service.confirm("f2",ob.id(),b)).stream().filter(Boolean::booleanValue).count());
         assertEquals(1200,root(c).getTotalBalance()+root(d).getTotalBalance());
+    }
+    /**
+     * 别的财务在本次读完「凭据未登记」之后，用同一张凭据确认了另一家企业并已提交。本次必须报冲突，
+     * 不能把那条凭据改成自己的订单再入一次账。H2 和 PostgreSQL 默认读已提交，读得到别人刚提交的行，
+     * 靠 saveAndFlush 的合并写入会悄悄变成更新（并发确认用例偶发失败就是这个原因）。这里把时机固定住，不靠运气。
+     */
+    @Test void aReceiptCommittedByAnotherConfirmationMeanwhileIsRejectedNotOverwritten()throws Exception {
+        String owner=person();var c=company(owner);var mine=request(owner,c);
+        String other=person();var d=company(other);var theirs=request(other,d);String receipt="window-"+UUID.randomUUID();
+        var fired=new java.util.concurrent.atomic.AtomicBoolean();
+        // 读的那一刻凭据还没登记（Spring Data 的接口代理上不能调真实方法，直接返回当时的结果）；另一家企业的确认在这之后提交。
+        doAnswer(call->{
+            if(fired.compareAndSet(false,true)) {
+                var pool=Executors.newSingleThreadExecutor();
+                try{pool.submit(()->service.confirm("f2",theirs.id(),new ConfirmRequest(UUID.randomUUID().toString(),100L,200L,receipt,null))).get(30,TimeUnit.SECONDS);}
+                finally{pool.shutdownNow();}
+            }
+            return Optional.empty();
+        }).when(receipts).findById(anyString());
+        var error=assertThrows(BusinessException.class,()->service.confirm("f1",mine.id(),new ConfirmRequest(UUID.randomUUID().toString(),100L,300L,receipt,null)));
+        assertEquals("ENTERPRISE_RECEIPT_REVIEW_REQUIRED",error.getCode());
+        assertEquals(RechargeOrder.Status.PENDING,orders.findById(mine.id()).orElseThrow().getStatus());
+        assertEquals(RechargeOrder.Status.PAID,orders.findById(theirs.id()).orElseThrow().getStatus());
+        assertEquals(0,root(c).getTotalBalance());assertEquals(200,root(d).getTotalBalance());
+        var claimed=receipts.findAll().stream().filter(r->receipt.equals(r.getReceiptReference())).toList();
+        assertEquals(1,claimed.size());assertEquals(theirs.id(),claimed.get(0).getOrderId());
     }
     @Test void concurrentRefundRecordsCashOnceAndDoesNotChangePersonalWallet()throws Exception {
         String owner=person();var c=company(owner);var order=paid(owner,c,999,1000);var request=refundRequest(service.refundPreview(order.id()));

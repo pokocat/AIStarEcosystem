@@ -7,7 +7,7 @@
 
 **Single sources of truth**
 
-Studio 官方画布模板发布（2026-11-04）：版本化 `template-versions` 发布允许 ACTIVE 的 OPERATOR / SUPER_ADMIN，前端用 `isOperatorRole` 展示「存为官方内容」及官方可见范围。只能发布本人画布、更新本人模板；普通用户只存个人模板。旧全局示例、模板封面、上下架和删除保持各自原权限，不通过扩大管理员角色实现模板发布。
+Studio 官方画布模板发布（2026-11-04）：版本化 `template-versions` 发布允许 ACTIVE 的 OPERATOR / SUPER_ADMIN，前端用 `isOperatorRole` 展示「保存为官方内容」及官方可见范围。只能发布本人画布、更新本人模板；普通用户只存个人模板。旧全局示例、模板封面、上下架和删除保持各自原权限，不通过扩大管理员角色实现模板发布。
 
 企业群发邀请（2026-10-17，已生产发布）：`EnterpriseService` 新建邀请默认 90 天、可选 365 天，可多人接受、可撤销；匿名只读 POST preview 只回企业名称/ID/有效期，accept 仍要求原产品开通及手机号。`/enterprise/invite#token=...` 注册/登录后加入，不传企业令牌到 ID 推荐关系。V59 只清理旧企业邀请和 accepted_by，不动成员/钱包/作品；旧单次逻辑不兼容。见 `docs/releases/ip-studio-enterprise-invitation-production-release-20261017.md`。后台 `/admin/platform/accounts` 的测试账号仅 SUPER_ADMIN 可管理；ID 独立 TEST_ 身份无手机号，通过两分钟一次性入口和正常 OIDC 进入 Studio。仅已验签的明确测试身份免真实手机要求，开通/RBAC/积分不变；线上已用两个独立身份验收同链接入企，未重测真实短信。约束见 `docs/test-accounts-plan.md`。
 
@@ -42,7 +42,7 @@ Studio 官方画布模板发布（2026-11-04）：版本化 `template-versions` 
 - `clip` 配音预览与段级状态红线（v0.150）：`POST|GET /api/me/clip/projects/{id}/tts-preview` 一个项目只存一份预览（表 `clip_tts_preview`，**新迁移 V26**；编号横跨 `resources/db/migration/*.sql` 与 `src/main/java/db/migration/*.java` 两处，已执行的一律不改）。`timelineHash = sha256(voiceId + 每镜 no/role/文案)`，POST 幂等（同哈希且上次非 failed 直接返回已有结果，failed 允许重排一次），GET 只认当前这版文案、旧一版一律 404 `CLIP_TTS_PREVIEW_NOT_FOUND`。合成粒度必须是 `ClipShotPlan.materialize` 的**镜头**，与出片 tts 阶段同一套切分 —— 预览听到的就是成片会用的那条音频，段编号也因此与段级状态天然对齐。音频先镜像我方存储再出**短期签名 URL**，库里只存 key，签名 URL 既不落库也不进日志。没有可用音色 / 引擎未配置 / 供应商失败 / 拿不到可镜像的音频，一律 `status:"failed"` + 明确 `errorCode`，禁止用空 URL 或静音占位冒充成功（静音 WAV 只在 `AEP_CLIP_FORCE_MOCK` 的确定性测试媒体下产生）。`credits` 恒为 0：Scheme A 下 clip 域不碰钻石账本，试听只花石榴 `validPoint`。`GET /api/me/clip/jobs/{id}` 的 `segments[{no,role,status,errorCode?}]` 是 `segmentJobsJson` 的**只读投影**，不得新增第二处真值；出片失败必须落到具体那一段（第一段没留下产物的那一段）并带 `errorCode`；worker 没写过状态时返回空数组，让调用方回落整体进度。`script/ai-rewrite` 的 `scope:"all"` 里 `text` 是**改写/生成指令**（一句话 brief，≤500 字），按模板骨架逐段生成、不改段数不改 role、不动结尾固定段；真模型仍未接入，非 mock 网关一律 503 `CLIP_SCRIPT_ENGINE_NOT_CONFIGURED`，不许拿模板句冒充生成结果。
 - `clip` 成片音频处理（v0.135；2026-11-05 用户改判）：最终音轨继续由 `ClipLoudnessNormalizer` 按 -16 LUFS / -2.5 dBTP 两遍测量/归一，给 AAC 编码回弹留余量；已经生成的成片不因亮度、响度、峰值阈值或测量失败被丢弃，记录实测建议。响度分析不可用时保留原成片。此条替代此前“质量指标不符即失败关闭”的约定，不能伪造正常指标或重新调用供应商。
 - `clip` 预发部署运维红线（2026-08-15）：军师宿主 `/tmp` 是最大 3.7GiB 的 tmpfs，`deploy-clip-preprod.sh` 上传的时间戳 JAR 必须由远端 `trap` 在成功/失败时删除，并在下次预检时兜底清理超过 60 分钟的同类残留；禁止把 `/tmp/aistareco-clip-*.jar` 留成随发布次数增长的 Shmem 占用。
-- 视频生成（v0.131）：聚算 JusuanHub `minimax-h3` 走独立媒体 Job 协议（`/media/generations` → `/jobs/{id}?model=minimax-h3` → 受保护 `/assets/{id}/content?model=minimax-h3` 镜像 OSS），Account API Key 的查询/下载必须携带模型作用域，不能按 GENERIC `/videos/generations` 调。端点 `billingMode=PER_SECOND` + 候选 `creditCostOverride=40` 表示 40 积分/秒，带货与短剧入口都必须在 hold 前按费率×时长展开；存量端点仍按次。**首帧参考图（i2v）v0.183 已接通**：聚算的图不给 URL —— 先 `POST {base}/v1/assets/input?model=<别名>`（multipart，字段名 `image`）换 `asset.assetId`，再把它放进 `createMediaGeneration` 的 `input_image_asset_id`，并把必填的 `generationMode` 从 `t2v` 改成 `i2v`。**尾帧 / 多参考图 / 544p / 六种画布 / seed 只在「视频生成区」开放（v0.199，分区 `video-studio`，真源 `docs/video-studio-plan.md`）**：入参只由 `VideoGenSpec.fromVariantConfigJson` 一处解析，`MaterialVideoJobService.submit` 的分区闸挡住别的分区夹带原生规格（首帧 key 只许 `ipstudio` / `video-studio` / `drama` —— 三处的 variant_config 都由服务端组装、写 key 前验过归属；带货素材运营的入口原样透传客户端的 variant_config，所以挡着；新增分区放行首帧前先确认它不透传）；**没有清晰度的老路径（画布 / 脚本视频 / 短剧）只按画面比例补齐**：2026-10-03 厂商把「只发 `orientation`」的竖屏默认改成了 3:4，老路径横竖两档改为也带 `aspectRatio` + `outputSizeCode`（取值同视频生成区，#120），1:1 仍只发 `orientation`（`square` 这个值厂商认，视频生成区 10-03 真厂商实测出了 768×768）；除此之外字段不变，其它产品线仍只有首帧，候选的 `supportsFirstLastFrame` 对它们照旧是 false。非聚算协议的首帧 key 经 `FileStorageService.upstreamFetchUrl`（签名优先）交给厂商，不再静默丢。调用方自己定价（item 带 `credit_cost`）的任务 payload 标 `caller_priced`，管理端对账按冻结价结算。视频生成区的价格是**我们自己定的**（平台配置 `celebrity.video-studio-pricing`，每格 = 配置 ?? 候选每秒价（>0 才算）?? 未定价 → 503 `VIDEO_STUDIO_PRICE_NOT_CONFIGURED`），不照搬厂商价；智能优化走厂商 `/media/prompt-optimizations`（同步但最长约 10 分钟，`Idempotency-Key` = `clientRequestId` = 我方记录 id，重试必须同键同正文），**状态迁移与积分结算必须在同一个事务里**，派发挂 `afterCommit`。上传失败一律抛（`VIDEO_REF_UPLOAD_FAILED`），**不静默退回 t2v** —— 用户接了参考图却出一条无关的片，比直接报错难排查得多（§8.0）。误判失败但已有 `externalTaskId` 的任务只能走管理端对账恢复，禁止重新提交。**成片封面**（v0.199.1）：厂商不给（聚算 H3 就不给）时 worker 从成片截一帧（`MaterialVideoCover`，best-effort，截不出不影响出片与结算），视频生成区的老任务启动时后台补（`MaterialVideoCoverBackfill`）。**H3 出片前默认改写提示词**（2026-10-20，本地未发布）：生成接口的 `optimizePrompt` 缺省开启、受理后才改写，改写结果在查询响应 `promptOptimization.effectivePrompt`；worker 存进 `payload_json.vendor_prompt`，解析 / 投影只在 `VideoPromptRewrite`。任务没有 `optimization_id` 不代表没被改写（那是视频生成区自己的「智能优化」）。Studio 关闭「智能优化」与视频生成区用了智能优化的生成发 `optimizePrompt:false`；写在描述里的「图1 / 尾帧」不会绑定图片。见 `docs/ip-studio-video-modes.md` 末节。
+- 视频生成（v0.131）：聚算 JusuanHub `minimax-h3` 走独立媒体 Job 协议（`/media/generations` → `/jobs/{id}?model=minimax-h3` → 受保护 `/assets/{id}/content?model=minimax-h3` 镜像 OSS），Account API Key 的查询/下载必须携带模型作用域，不能按 GENERIC `/videos/generations` 调。端点 `billingMode=PER_SECOND` + 候选 `creditCostOverride=40` 表示 40 积分/秒，带货与短剧入口都必须在 hold 前按费率×时长展开；存量端点仍按次。**首帧参考图（i2v）v0.183 已接通**：聚算的图不给 URL —— 先 `POST {base}/v1/assets/input?model=<别名>`（multipart，字段名 `image`）换 `asset.assetId`，再把它放进 `createMediaGeneration` 的 `input_image_asset_id`，并把必填的 `generationMode` 从 `t2v` 改成 `i2v`。**尾帧 / 多参考图 / 544p / 六种画布 / seed 只在「视频生成区」开放（v0.199，分区 `video-studio`，真源 `docs/video-studio-plan.md`）**：入参只由 `VideoGenSpec.fromVariantConfigJson` 一处解析，`MaterialVideoJobService.submit` 的分区闸挡住别的分区夹带原生规格（首帧 key 只许 `ipstudio` / `video-studio` / `drama` —— 三处的 variant_config 都由服务端组装、写 key 前验过归属；带货素材运营的入口原样透传客户端的 variant_config，所以挡着；新增分区放行首帧前先确认它不透传）；**没有清晰度的老路径（画布 / 脚本视频 / 短剧）只按画面比例补齐**：2026-10-03 厂商把「只发 `orientation`」的竖屏默认改成了 3:4，老路径横竖两档改为也带 `aspectRatio` + `outputSizeCode`（取值同视频生成区，#120），1:1 仍只发 `orientation`（`square` 这个值厂商认，视频生成区 10-03 真厂商实测出了 768×768）；除此之外字段不变，其它产品线仍只有首帧，候选的 `supportsFirstLastFrame` 对它们照旧是 false。非聚算协议的首帧 key 经 `FileStorageService.upstreamFetchUrl`（签名优先）交给厂商，不再静默丢。调用方自己定价（item 带 `credit_cost`）的任务 payload 标 `caller_priced`，管理端对账按冻结价结算。视频生成区的价格是**我们自己定的**（平台配置 `celebrity.video-studio-pricing`，每格 = 配置 ?? 候选每秒价（>0 才算）?? 未定价 → 503 `VIDEO_STUDIO_PRICE_NOT_CONFIGURED`），不照搬厂商价；智能优化走厂商 `/media/prompt-optimizations`（同步但最长约 10 分钟，`Idempotency-Key` = `clientRequestId` = 我方记录 id，重试必须同键同正文），**状态迁移与积分结算必须在同一个事务里**，派发挂 `afterCommit`。上传失败一律抛（`VIDEO_REF_UPLOAD_FAILED`），**不静默退回 t2v** —— 用户接了参考图却出一条无关的片，比直接报错难排查得多（§8.0）。误判失败但已有 `externalTaskId` 的任务只能走管理端对账恢复，禁止重新提交。**成片封面**（v0.199.1）：厂商不给（聚算 H3 就不给）时 worker 从成片截一帧（`MaterialVideoCover`，best-effort，截不出不影响出片与结算），视频生成区的老任务启动时后台补（`MaterialVideoCoverBackfill`）。**H3 出片前默认改写提示词**（2026-10-20，本地未发布）：生成接口的 `optimizePrompt` 缺省开启、受理后才改写，改写结果在查询响应 `promptOptimization.effectivePrompt`；worker 存进 `payload_json.vendor_prompt`，解析 / 投影只在 `VideoPromptRewrite`。任务没有 `optimization_id` 不代表没被改写（那是视频生成区自己的「智能优化」）。Studio 关闭「智能优化」与视频生成区用了智能优化的生成发 `optimizePrompt:false`；写在描述里的「图1 / 尾帧」不会绑定图片。见 `docs/ip-studio-video-modes.md` 末节。**视频素材库**（2026-11-07，真源 `docs/video-asset-library.md`）：提交前统一由 `VideoAssetPreparer` 按端点的 `asset_library_id`（V75，表 `video_asset_library`）把素材换成引用，渠道差异只写在 `VideoAssetLibrary` 的实现里，已接 OneToken 和火山官方；传不上去、库配置有误都让任务失败，不退回签名地址。规格里旧的 `inputAssets` 只为兼容保留读取，新代码别再用。它不保证真人照片通过审核；2026-11-09 `bingbing` 权限已验证、Fast / Mini 生产 API Key 已切换；官方素材库、V78、Ant Design 核验页与生成前检查/原地续接弹窗已随 `20261109-ark-portraits-137b5754` 发布，Fast / Mini 均绑定 `ark-bingbing`。原任务的明确拒绝可保留冻结最多 30 分钟后超时释放，已有供应商任务不重交。真人刷脸、一致性审核和成片未验收，不能当作生产支持真人已完成。
 
 ---
 
@@ -520,8 +520,8 @@ pnpm check:api-contract
 
 | 版本 | 日期 | 一句话 |
 |---|---|---|
-| **AI 艺人孵化全端演示** | 2026-11-06 已发布 `incubator.aibuzz.cn` | 新应用 `apps/web-incubator`（3020）：Figma Make 原型的落地页、创业者工作台、明星端、品牌端、运营后台、粉丝端、两个小程序整体搬入，纯前端示例数据；见 `apps/web-incubator/README.md` |
-| **场景化首页与 AI 图片 / AI 视频** | 2026-10-29；后端 2026-10-30 上线，前端正式站默认旧版，右上角「体验新版」/「回到旧版」切换（`shell/ui-version.ts`） | 参考茂隆掌柜 AI：登录后桌面改左侧导航栏；首页一句话开始 + 常用工具 + 「你想做什么？」+ 灵感搬到首页；`/image` 按场景一步出图（只显示场景标签 + 补充要求，草稿即画布），`/video` 照参考站「超级编导」：编导看素材写分镜脚本、可改稿，「用这个脚本生成」选模型时长确认后出片；两页场景、选项组和首页卡片由 Studio 运营后台（`studio-admin` 的「运营配置 · 场景模板」）配置（`studio.scene-catalog`）；见 `docs/studio-scene-creation.md` §8–§9 |
+| **AI 艺人孵化全端演示** | 2026-11-06 首发，2026-11-07 同步设计方第二版，`incubator.aibuzz.cn` | 新应用 `apps/web-incubator`（3020）：Figma Make 原型的落地页、创业者工作台、明星端、品牌端、运营后台、粉丝端、两个小程序整体搬入，纯前端示例数据，默认暗色；见 `apps/web-incubator/README.md` |
+| **场景化首页与 AI 图片 / AI 视频** | 2026-10-29；后端 2026-10-30 上线；2026-11-07 去掉新旧版切换，只留这一版（本地，未发布） | 参考茂隆掌柜 AI：登录后桌面改左侧导航栏；首页一句话开始 + 常用工具 + 「你想做什么？」+ 灵感搬到首页；`/image` 按场景一步出图（只显示场景标签 + 补充要求，草稿即画布），`/video` 照参考站「超级编导」：编导看素材写分镜脚本、可改稿，「用这个脚本生成」选模型时长确认后出片；两页场景、选项组和首页卡片由 Studio 运营后台（`studio-admin` 的「运营配置 · 场景模板」）配置（`studio.scene-catalog`）；见 `docs/studio-scene-creation.md` §8–§9 |
 | **新建画布与多段对话** | 2026-10-20，2026-10-21 已生产发布 `20261021-studio-new-canvas-threads` | 新建统一走 `startNewCanvas()` 直进画布、空画布中间给五个入口；助手加「新对话 / 历史对话」（三个接口，无迁移）；方案与确认卡合成一张、只说做什么花多少，完成总结一句话；见 `docs/ip-studio-new-canvas-and-threads.md` |
 | **对话意图直达** | 2026-10-20（已生产发布 `20261020-studio-dialogue-intents`） | Studio 助手按意图落到出图 / 写剧本与文案 / 出视频 / 复刻四个技能，直达技能一轮一张确认卡、平手不再 400、按任务换技能，见 `docs/ip-studio-dialogue-intents.md` |
 | **v0.207** | ✅ 本地，未发布 | Studio创作首页：主要功能直达、近期画布/模板、想法保存与原项目恢复；品牌保留，见 `docs/ip-studio-home.md` |
@@ -548,7 +548,7 @@ sau-service…），当依赖**未配置**或**调用失败**时，在生产 pro
    就不该跑」的硬依赖。
 2. **请求期明确报错**：对用户动作抛**带错误码**的 4xx/5xx（如 503 `AI_NOT_CONFIGURED` /
    `DAP_ENGINE_NOT_CONFIGURED`、502 `AI_CALL_FAILED`），且**不扣费、不落假数据**；
-   错误文案给出运维指引（去 admin 哪里配什么）。适用于按需使用的能力。
+   用户看到的文案写「XX 暂不可用，请联系平台处理」，运维指引（去 admin 哪里配什么）写进 `internalDetail`（2026-11-06 起，普通用户进不了后台）。适用于按需使用的能力。
 
 **降级仅允许 dev / 联调**，且必须同时满足四条件：
 (a) 显式开关（如 `aep.dap.allow-placeholder`），生产 profile 默认关闭；
@@ -589,6 +589,8 @@ sau-service…），当依赖**未配置**或**调用失败**时，在生产 pro
 | 演示数据 seeder | mysql 默认 `AEP_SEED_DEV_DATA_ENABLED=false` | dev 自动 seed |
 | music 形象锻造成片视频 | v0.60 已随形象锻造入口下线（债务以退役方式清除；遗留数据只读） | — |
 | Studio 对话 agent / 技能规划 / 原生检查（2026-10-18） | 文本端点未配按量售价 → 503 `AI_TOKEN_PRICE_NOT_CONFIGURED`；看图能力未声明 → `STUDIO_VISION_UNAVAILABLE`；技能不在架 → 404 `STUDIO_SKILL_NOT_FOUND`；端点未声明流式就一次给出完整正文、**禁止拆字假流式**；未声明工具调用走 JSON 动作协议、不换端点；检查缺依据判 `unknown` 不判通过；父 / 子 run 费用不重复相加；模型输出永不等于付款或执行授权；后台技能试跑未配端点 → 503、不产假计划；蒸馏草稿不看提示词 / 原话 / key 且不自动生效 | `StudioFixtureProvider` 测试响应（既有口径：零成本、`mock=true`，不冒充供应商流式） |
+| 成片自动字幕的语音识别（2026-11-07） | `DAP_TRANSCRIBE` 未绑定或调用失败：导演台有台词，字幕内容仍是台词原文，时间按镜头估算并在导出记录里如实说明（`estimated`）；一键成片没有已知台词，不加字幕并说明（`unavailable`）。**不编字幕内容**，成片照常合成，失败的上游原话进日志 | 无降级开关；真实语音联调见 `StudioCaptionSpeechE2ETest`（设 `STUDIO_ASR_E2E_URL` 才跑） |
+| 拉片直接看视频（2026-11-09） | `DAP_VIDEO_UNDERSTAND` 没绑定、模型没声明 `supportsVideo` 或没定价：拉片照旧抽帧读图（两条都是真实分析）。调用失败、输出解析不了：这一步失败、按实际用量结算，由制作计划重试，不拿截图结果或模板顶替 | 无降级开关；真实联调见 `StudioVideoBreakdownRealTest`（设 `STUDIO_BREAKDOWN_E2E_VIDEO` 才跑） |
 
 ### 8.0.1 排障与验证纪律（v0.184 起强制，2026-10-05 补到 13 条 —— 都是本仓真栽过、而且多数**栽过不止一次**的）
 
@@ -603,7 +605,7 @@ sau-service…），当依赖**未配置**或**调用失败**时，在生产 pro
   请求路径上才落进 `ErrorLog`；`@Async` worker / `@Scheduled` 里抛的异常到不了那儿，
   等于什么都没记（v0.184 就是这么丢的）。
 - **模型错误区分用户可操作原因与平台内部诊断**（2026-10-25 用户修正边界）：素材、尺寸、审核等可操作原因继续明确展示；供应商余额、预扣费、配额、费率/成本、密钥、签名链接与技术堆栈不得透传到客户端（包括错误详情、历史任务、导演作品和事件流）。`ProviderErrorMessage` 在源头过滤，`PublicModelErrorPolicy` / 公共 JSON 出口及前端兜底保护历史错误；原始证据仅留在有权限的后台日志/诊断中。客户真实的积分钱包不足提示和我方追查号保留，不把供应商额度不足引导成客户充值。不得以“脱敏后仍可读”为由保留内部经营信息；也不把全部可操作原因一律覆盖成通用提示。
-  **厂商原话不单独给用户看**（2026-11-04 用户要求报错说清楚）：能说准的英文原因由 `PublicModelErrorPolicy.translate` 翻成中文；普通英文句放在我方句子后面（「…（服务方提示：size must be one of 1024x1024）」）；Go/JSON 结构、字段名、幂等键、套餐名和「resource not found」这类没信息量的话一律不显示，用调用方写好的那句。界面文字不写「上游」和状态码，状态码留在日志和 `internalDetail`。**素材不合规尽量提交前判**（`VideoMediaMessages`：哪类素材、上限多少、现在多少），别等厂商拒绝。Review reject：新增面向用户的 `（上游 N）` / `（HTTP N）`（`git grep -n '（上游 "' -- apps/server/src/main` 应 0 命中）。
+  **厂商原话不单独给用户看**（2026-11-04 用户要求报错说清楚）：能说准的英文原因由 `PublicModelErrorPolicy.translate` 翻成中文；普通英文句放在我方句子后面（「…（服务方提示：size must be one of 1024x1024）」）；Go/JSON 结构、字段名、幂等键、套餐名和「resource not found」这类没信息量的话一律不显示，用调用方写好的那句。界面文字不写「上游」和状态码，状态码留在日志和 `internalDetail`。**未识别的错误一律走兜底**（2026-11-07 用户要求）：厂商的中文原话只有说到用户能改的东西（素材、尺寸、时长、审核…，`PublicModelErrorPolicy.ACTIONABLE`）才显示；模型聊天回复、厂商接口的说法、裸错误码、没说明原因的中文，一律换成调用方自己的句子，而那句话必须引导重试（「视频生成失败，未生成的视频不扣积分。请重新生成。」）。任务失败时错误码不能为空（`MaterialVideoWorker.GENERATION_FAILED_CODE`）；浏览器和代码抛的英文不显示（`normalizeStudioError`）。**素材不合规尽量提交前判**（`VideoMediaMessages`：哪类素材、上限多少、现在多少），别等厂商拒绝。Review reject：新增面向用户的 `（上游 N）` / `（HTTP N）`（`git grep -n '（上游 "' -- apps/server/src/main` 应 0 命中）。
   上游 HTTP 状态、明确拒绝 / 受理未知的分类、计费和重试策略仍按既有协议判断，不能因展示了上游消息就改判失败或重复付费提交。**按供应商原话分类（额度 / 配额 / 权益 / 鉴权…）一律读 `ProviderErrorMessage.diagnosticReason` / `diagnostic`，不读 `reason` / `message` / `sanitize`**：对外那份已经把这些词换成通用句，拿它判永远判不中（2026-10-25 起石榴「克隆权益不足」和七牛分组配额的分类就这样失效了四天，单测直接传原话所以没测到，10-29 修复）。响应体不是 JSON 时不外泄
   （别把网关的 HTML 错误页糊到界面上）。范式：`DapMultimodalClient#upstreamMessage`、
   `MaterialVideoModelClient#uploadFailureMessage`。
@@ -687,7 +689,9 @@ v0.163：前端手抄了一份 `IpRun`，把 `output` 写成 `outputs`，于是�
   2026-11-06（灵感库示例，线上 Sonnet 真跑）：两处本地全绿、线上第一次真对话就错。其一，`propose_plan` 按模型自己写的 `brief` 重新选方法，出图要求里引用了要印在图上的字，方法就被切到写作，确认卡变成花 110 积分写一段提示词。判据：**模型的转述不是用户的话**，能不能切走方法要看来源（`StudioSkillRouter.planningMethod`：转述不能切到写作，写作只由用户原话决定）。其二，`DialogueCanvasDigest.spec` 只读助手自己写的 `studio.spec`，用户和模板在节点上设的 `size` / `seconds` 模型看不见，16:9 的节点按默认 9:16 报价。判据：给模型的素材概要要读用户能改的那份设置，不只读模型自己写过的。这两处都要真模型才暴露：单测的 brief 是我们自己写的，正好不含这些词。
 
   2026-10-31 第七种（场景页编导，本地 Agnes 2.5 Flash）：要求写「第N镜（起–止 秒）」，模型把「起–止」原样抄进括号、第一镜从 0.5 秒开始，H3 解析器一镜都认不出；要求「第一行写还缺」，它写在了最后一行；「怎么买」的说明里列了几个选项，它挑一个当事实填了。判据补充：格式要给一个照抄就对的例子，不要给带占位词的模板；解析时位置放宽（哪一行都认），内容不放宽；说明文字里不要列可选值，模型会当成答案。真模型输出钉成回归用例（`H3PromptRewriteTest#aRealDirectorScriptFromAgnesIsParsed`）。
+  2026-11-07 第八种（H3 提示词优化，Sonnet 5.5）：只发文字、不发素材，官方写法又说「参考图说了算」，Sonnet 对短的改视频要求 10 次拒绝 7 次（「看不到附件」），关思考的 DeepSeek 则直接编人物和背景。判据补充：不给模型的东西要在约定里说清楚（看不到什么、不能怎么做），否则诚实的模型拒绝，不诚实的模型编造；约定改完后同样的请求四个模型 36 次全部写出，短要求里没有再编造。检查也要用已知正确的稿子试：提示数相同（三个模型都是 31 条）说明错在检查，不在模型；写全台词反而比丢光台词提示更多，说明检查方向反了。换接入方式要重测：同一个 DeepSeek，直连 18 次正常，经 OneToken 30 次里 5 次系统提示词没生效或转成工具调用。
   2026-11-05 长视频两处，都是假响应测不到、一真跑就出来的：计划报价用占位 key，带参考素材的视频步骤过不了文件归属校验（`StudioPlanSteps.QUOTE_NODE` 改成按张数算价，`StudioVideoService.planPrice`）；Agnes 3.0 Flash 把 `assets` 字段写了两遍，严格解析判失败、自动重试，而马上重试又撞限流（改成隔约一分钟）。判据补充：报价和提交要用真实服务走一遍，mock 掉 `workflow.quote` 的单测看不出来。
+  2026-11-07 语音识别（本机 Whisper 实测）：把台词当提示词传过去，模型以为已经说过，第一句整句不转写；段落起点粘在 0 秒，片头明明有 1.5 秒静音。所以已知台词一段一段识别、提示词只放语言说明，并用静音检测校正起止时间（`StudioCaptionService`）。这两点单测和假响应都测不出来。
   同类补充（2026-10-24，永久修复已合 main、普通 JAR 未发布；厂商响应 UTC 2026-10-25）：`finish=stop` 的剧本同时出现非法 `\远处` 和缺末尾 `}`。`ModelJson` 可组合恢复汉字前的多余反斜杠、字符串内原始换行 / 制表符、完整值后的尾逗号和末尾括号；合法转义保持原样。未知 ASCII 转义、残缺 Unicode 转义、半截字符串、缺值 / 缺分隔逗号、重复字段和多份 JSON 一律拒绝，不能从残缺数组里截一个对象冒充整份结果。恢复后仍走业务校验；`finish=length` 不进入修复。`StudioWorkflowWorker` 对不能修复的 JSON 保留原异常及上游诊断，以 `AI_BAD_OUTPUT` 明确提示「格式有误，无法自动恢复；本次未扣积分」，释放冻结、不自动重调模型。回归：`ModelJsonTest` / `StudioWorkflowWorkerJsonTest`。
   2026-10-25 UTC 已按用户要求无重启启用官方 JVM-Sandbox 1.4.0 临时模块（namespace `aep-json-20261024`，仅环回 `24769`）：只处理原 `ModelJson.parse` 的 Jackson 异常，正常返回不变，不能恢复则交原工作流按 `AI_BAD_OUTPUT` 退款。固定生产探针通过，PID / 启动时间 / JAR 均未变。临时模块不等同于永久严格解析规则；下次正常发布先卸载模块，再发布含永久修复的 main。见 `docs/runbooks/studio-json-jvm-sandbox.md` 和 `docs/releases/studio-json-jvm-sandbox-release-20261025.md`。
 
@@ -715,10 +719,18 @@ v0.192：`saveNow()` 明确返回 `saved / failed / conflict`（保存失败不�
 
 **⑩ 测试断言契约，不断言可视文案。**
 v0.194 改文案时 `IpDemoAdminTest` 红了 —— 它断言的是「示例不存在」这句话。文案本来就会
-改，错误码才是调用方依赖的东西。
-- 断错误码（`e.getCode()`）、断状态码、断结构；不断言可视文案。
+改，错误码才是调用方依赖的东西。2026-11-07 又一次：退款报错里「在途任务」改成「进行中的任务」，
+`EnterpriseRechargeServiceTest` 红了，发布被拖慢，而它没查出任何真问题。
+- 断错误码（`e.getCode()`）、断状态码、断结构（`getDetails()` / `getInternalDetail()`）；不断言可视文案。
+  同一个错误码有多条分支时，靠「同样的输入只差一处就能通过」证明走的是这条路径，不靠文案。
 - 例外：**文案本身就是被测行为**时才断（如 §8.0 要求「未配置时必须明确报错而不是产假
   数据」，那可以断关键词）。这种断言要在测试名里写清楚为什么。
+- 现状：2026-11-07 清理过 `apps/server/src/test`，服务端这类断言只剩下面这条 grep 的命中，都是留下有理由的
+  （大多是 `doesNotContain`：对外文案不得泄露供应商余额、不得把用户引向错误的操作）。新测试别再加；要加就在测试名写清为什么。
+  前端 `getByRole` 带 name 是按名字找控件去测行为，不归这条管。2026-11-07 补充：入口卡标题、介绍、空态说明和固定 CSS 色值 / 尺寸 / 选择器写法不作阻塞断言；保留技能映射、用户输入、素材限制、点击后请求与状态。布局与可读性改动按真实页面验收，不靠匹配 CSS 源码字符串。
+  ```bash
+  git grep -nE '(getMessage\(\)\)?\.(contains|doesNotContain|startsWith|endsWith)\(|hasMessage[A-Za-z]*\()"[^"]*[一-龥]' -- apps/server/src/test
+  ```
 
 **⑪ 同一个字段名在不同类型上语义不同，"一刀切"必错。**
 v0.192：模板剥素材时无条件删 `metadata.content` —— 图 / 视频 / 音频节点的 `content`
@@ -752,6 +764,7 @@ v0.197：web-drama 所有弹窗在 375 宽下右边都被裁掉一截，四个�
 - 已做：所有 vitest 项目（web-drama / web-aiavatar / packages/api-client）的 `setupFiles` 共用 `scripts/vitest/setup-storage.ts`：
   jsdom 环境把 Storage 换回 jsdom 自己的那份，node 环境把 Node 25 的空壳删掉（Node 22 的 node 环境里本来就没有），本机与 CI 一致；
   用到 localStorage 的测试文件在 `beforeEach` 里 `localStorage.clear()`。web-celebrity 的测试走 `node --test`、不碰 Storage，不受影响。
+- **5 秒超时的假失败**（2026-11-06）：`pnpm test:all` 同时跑全部项目，CI 上 admin 的 `studio-skills` 报过 `Test timed out in 5000ms`，负载高的本机上 admin、studio-admin、web-drama 也会出现；一条超时后，同文件后面的用例会接着报找不到元素，别当成多处问题。这几个项目已和 web-aiavatar 一样设 `maxWorkers: "50%"`、`testTimeout: 15_000`，新建 vitest 项目照抄。2026-11-07 起 PR CI 按 `scripts/ci/affected.mjs` 的 workspace 依赖关系选范围，每个 workspace 独立 runner，不再同机 `pnpm test:all`；Studio 完整测试用 Vitest 原生分两组，后端完整 `verify` 按当前源码发现的测试类分三组、按实测耗时均衡，组内单 fork 串行，并核对报告没有漏类；认证 / 布局改动追加附身浏览器验证，手动与每周定时仍全量。直推 main 不触发 CI。本机 / Mini 检查仍进 devq，链内串行。说明见 `docs/runbooks/ci-checks.md`。
 
 **⑭ 交互改完要按用户的真实路径走一遍，不是只看结构测试和截图。**
 2026-10-19 画布页改版：结构测试全绿、截图也对得上设计稿，用户一用就说「不顺畅」。端到端走一遍才发现五处一直坏着：
@@ -759,7 +772,7 @@ v0.197：web-drama 所有弹窗在 375 宽下右边都被裁掉一截，四个�
 在输入框里按 Esc 整个助手被关掉、画布上按 Esc 取消选中也顺手关掉停靠的助手；确认卡写「直接回复可以也行」而服务端不认「可以」（已改为服务端接受短肯定回复）；
 **「在画布上看」从来没移动过画布** —— 节点是受控的、带显式宽高，React Flow 的 `measured` 一直是空的，`useNodesInitialized()` 永远是 false，
 聚焦的 effect 一直卡在这个门上（所有「聚焦到某个节点」都一样）。这些单测都覆盖不到，因为测的是「挂上了没有」而不是「用起来对不对」。
-- 做法：改了对话、画布上的交互，就用无头浏览器（CDP）或浏览器面板把这条路径从头点到尾：输入 → 发送 → 确认 → 进行中插话 / 暂停 / 停止 → 在画布上看 → 关掉再打开 → 选中节点问助手；
+- 做法：改了对话、画布上的交互，就用无头浏览器（CDP）或浏览器面板把这条路径从头点到尾：输入 → 发送 → 确认 → 进行中插话 / 暂停 / 停止 → 在画布上查看 → 关掉再打开 → 选中节点问助手；
   每一步读 DOM 状态（焦点在哪、面板开没开、引用里有没有那个节点、节点是否在可见区域里），别只看最后一张截图。
 - 受控节点不要用 `useNodesInitialized()` 当门：`git grep -n useNodesInitialized -- apps/web-aiavatar/src` 应 0 命中。
 
@@ -813,6 +826,13 @@ v0.197：web-drama 所有弹窗在 375 宽下右边都被裁掉一截，四个�
         就 / 原样 / 回去这类语气词，按钮下面也不挂「回去接着看」这类去向说明。
       - 状态写「生成中 / 已完成 / 失败 / 排队中」，不写「正在拍 / 在做 / 没成 / 拍好了」；
         不必填的写「选填」，不写「不写也行」。
+      - 不能点的按钮，原因写在按钮旁边一行可见文字里，不只放悬停提示（2026-11-06 用户定）。
+      - **说明只写界面上看不出来、又会影响用户决定的事**（2026-11-07 用户点名「H3限时折扣，省 465 积分。优化提示词按实际用量另计。按实际完成的内容结算，本次上限 3,120 积分。」）。
+        不写按钮和标签已经说明的（划掉原价后再写省多少、「点击「生成图片」后，图片将显示在这里」）；不解释内部机制（解除冻结、读取抽帧方式、怎么锁版本）；
+        不写给用户宽心但不影响决定的话（「不影响个人积分」「原文件不会被修改」）；不写空泛的句子（「从这里起步」）。要留的费用说明只留一处：价格确定就只写价，
+        不确定才写上限（「按实际用量结算，最多 X 积分」）。真要留细节放悬停提示。
+        生成按钮上已经写了价（含「约」）时，按钮下连上限也不写，上限和明细只放价格的悬停提示（2026-11-07 用户点名 AI 视频页按钮下
+        「视频 527 积分，分镜图 32 积分，其余按实际用量结算，最多 5,094 积分。当前模型单段最长 15 秒，17 秒将分 2 段…」整段多余；分段只在时长设置里说）。
       - 说明文字：「通常需要几分钟。生成失败将全额退还积分。」，不写「可以先去干别的」
         「积分够了回来点开拍就行」。
       - **不归这条管的**：点了会作为用户消息发出的快捷答复（如「换个风格再出一张」）用用户的口吻；
@@ -825,8 +845,9 @@ v0.197：web-drama 所有弹窗在 375 宽下右边都被裁掉一截，四个�
       「出圈」是营销词。标语和首屏标题不用「让……」句式、不用「让 A，让 B」排比，不用打造、赋能、出圈、
       一站式；副标题只写能做什么，不重复愿景。产品名（IP Studio、AiAvatar）和品牌位「IP Studio · 声量引擎旗下」照旧。
     - **不动的**：§4.6 之外的专业术语。去 AI 味不等于把专业文本改口语。
-    - 改界面文字、整页或整站检查文案，用仓库里的 `ui-copy` skill（`.claude/skills/ui-copy/`）：按位置的规则、改写对照和扫描脚本
-      `python3 -I .claude/skills/ui-copy/scripts/scan_copy.py <目录>`。这里的规则改了，那份同 commit 一起改。
+    - 改界面文字、整页或整站检查文案，用通用技能 `wenan`（`~/.agents/skills/wenan/`，Claude Code、Codex 都能用）：按位置的规则、改写对照、扫描和页面检查脚本。
+      本仓的范围、统一叫法、不能动的文字和验证方法在 [`docs/wenan.md`](docs/wenan.md)。扫描：`python3 -I ~/.agents/skills/wenan/scripts/scan_copy.py <目录>`，加 `--review` 再列长句和宽心话。
+      新定的叫法加进那份文件的叫法表，扫描自动认；这里的规则改了，技能和那份文件一起改。
     - 长篇正文拿不准就调 `shuorenhua` skill（`/Users/donis/.claude/skills/shuorenhua`）。
     - **web-drama 有自己的术语表**（v0.197）：[`docs/drama-ux-copy-pass.md`](docs/drama-ux-copy-pass.md) §2，
       每个东西界面上只许一种叫法，「不再使用」列的旧词（提示词直出、直接出片、验收入片、立项、脑暴、配方、
@@ -835,6 +856,7 @@ v0.197：web-drama 所有弹窗在 375 宽下右边都被裁掉一截，四个�
       用户点名的那一条：**「提示词直出」看不懂**（「直出」是内部说法），现在叫「粘贴写好的脚本」。
       改 drama 界面文字前先查表；要新增叫法，先改表再改代码。
   - Review reject：新增/改动 UI 出现上述任一类 → reject。
+- **场景页（AI 图片 / AI 视频）的样式真值是 `studio-scenes.css` 的新版令牌**（白底、渐变主按钮、18px 卡片、13px 正文），不是 `DESIGN.md` 里的暖灰。2026-11-06 视频任务页以 `DESIGN.md` 为基准另写了一套，主按钮、圆角、字号都和图片页对不上；配置卡缩窄后规格和场景面板也被裁切。新增区块只写布局，不覆盖 `.scene-go` / `.scene-card`；2026-11-07 起不再用源码正则锁定 CSS 写法，改动时在 375px 与桌面真实页面检查裁切、规格面板和按钮可读性。同一次还有：深底链接写 `a.xxx`，单个 class 盖不过 `.ip-brand-surface a { color: inherit }`（失败页主按钮黑底黑字，验收截图里就看得到，复核仍判通过）。
 - **web-aiavatar 的 antd 颜色走全站主题**（2026-10-31）：`src/shell/antd-theme.tsx` 在根布局挂一次（主按钮 #202c42 白字、不能点的浅灰底灰字、两字按钮不加空格），新页面不用再包 ConfigProvider 配主色。别写压过 antd 按钮字色的样式（`ip-brand.css` 的 `color: inherit` 已排除 `.ant-btn`），也别用 `.容器 span {}` 这种会命中按钮里文字的后代选择器（资产选择框「使用」灰字蓝底就是这两条叠出来的）。
 - **shadcn 原语**：放在 `packages/ui/src/ui/`（共享包）；不要手改，要扩展用 wrapper
 - **`"use client"`**：新 client 组件保留
@@ -924,6 +946,9 @@ git grep -nE '"[^"]*(打造|赋能|助力|一站式|全方位|开启你的)[^"]*
 #     相对时间：前端应 0 命中；服务端 6 处存量（drama / notification / fan 线）待清
 git grep -nE '(分钟|小时|天)前"' -- 'apps/*/src/**' ':!*/mocks/*' ':!*.test.*' ':!*/proto/*' \
   ':!apps/server/*'
+#     多余的费用说明（§8「说明只写界面上看不出来…」）：前端应 0 命中
+git grep -nE "(本次上限|按实际完成的内容结算|不含冻结|在付款时抵扣|生成时选择付款账户|不含在视频费用|其余按实际用量结算|单段最长)" \
+  -- 'apps/web-aiavatar/src/**' ':!*.test.*' ':!*/mocks/*'
 #     按钮与状态的口语说法（§8「按钮和状态用标准叫法」）：前端应 0 命中。服务端不扫：
 #     那边是给模型的提示词、助手的对话回复和用户口吻的快捷答复（StudioExecutionSummary 的建议），不归这条管
 git grep -nE "[\"'>\`][^\"'<\`]*(先存着|不拍了|接着做|存成第|原样再试|再拍一版|先去干别的|没拍成|回去接着|回首页接着|拍好了|再出一张)" \
@@ -1135,7 +1160,7 @@ Studio 支持模型开放首尾帧、全能参考、清晰度、六种画幅及�
 
 ### Studio 场景化首页与 AI 图片 / AI 视频（2026-10-29，本地未发布）
 
-本节替代下面「七项导航」里的导航顺序：登录后桌面导航改为左侧一列「首页 / AI 视频 / AI 图片 / 画布 / 导演台 / 项目 / 资产 / 发行」（`DesktopTopBar` 非公开分支，`--desktop-bar-h` 在 body 上是 12px、左侧让出 `--desktop-rail-w`），公开落地页仍是顶栏；「灵感」搬到首页，`/templates` 归「首页」高亮；`/scenes` 转 `/video`。场景目录只在服务端一处：Studio 运营后台（`apps/web-aiavatar/studio-admin` 的 `/scenes`，**不放 `apps/admin`**；接口 `/api/admin/studio/scenes`，SUPER_ADMIN / OPERATOR，整份保存带版本号、同一套 `StudioSceneCatalog.validate`）改过就是平台配置 `studio.scene-catalog`，目录里还有每个场景的选项组（`options`，选中项由 `compose` 拼进描述 / 要求）和首页卡片（`homeGoals`，公开只读 `GET /api/v1/ip-studio/scenes/home`，只带显示字段），否则随包 `ipstudio/scenes.json`（`GET /api/v1/ip-studio/scenes` 只下发上架的，封面 / 示例只认 `ipstudio_scene/catalog/` 下后台上传的 key、出 wire 签名），出图描述和交给助手的话由 `POST /api/v1/ip-studio/scenes/compose` 拼（含每个视频场景的方法 `skillKey`），**前端不得另写场景数据或拼话**；草稿用 `ip_project.scene_id`（V72）认。图片场景的草稿就是一张画布，**先保存带 `clientRequestId` 的请求节点再提交 `studio-runs`**，之后只读运行记录，不确定时「确认原任务」用原请求编号重交；AI 视频照参考站「超级编导」：编导每一版脚本是草稿画布上的文字节点 + 普通文字任务（`compose` 的 `video-script`，`textEdit` 是上一版，能看图带 `readVisuals`——文字任务允许读图，规则在 `StudioTextRevision` 与提交校验同口径），「用这个脚本生成」后素材怎么交给模型只在 `scene-video-plan.ts` 判（全能参考 / 首帧 / 只按脚本，H3 带 `rewrite: auto`），视频节点同样先存请求再提交；爆款复刻和超出模型时长的片子才把拼好的话交给画布里的创作助手（`?start=assistant&send=1`，开始节点带 `studioSkill`），拼话固定禁止编价格 / 优惠、要成片不只要脚本，除「爆款复刻」外不得出现复刻类字眼（`StudioSceneCatalogTest` 守着）。Studio 视频任务到终态发 `MaterialVideoJobEnded`，即时推进制作计划。真源 `docs/studio-scene-creation.md`。
+本节替代下面「七项导航」里的导航顺序：登录后桌面导航改为左侧一列「首页 / AI 视频 / AI 图片 / 画布 / 导演台 / 项目 / 资产 / 发行」（`DesktopTopBar` 非公开分支，`--desktop-bar-h` 在 body 上是 12px、左侧让出 `--desktop-rail-w`），公开落地页仍是顶栏；「灵感」搬到首页，`/templates` 归「首页」高亮；`/scenes` 转 `/video`。场景目录只在服务端一处：Studio 运营后台（`apps/web-aiavatar/studio-admin` 的 `/scenes`，**不放 `apps/admin`**；接口 `/api/admin/studio/scenes`，SUPER_ADMIN / OPERATOR，整份保存带版本号、同一套 `StudioSceneCatalog.validate`）改过就是平台配置 `studio.scene-catalog`，目录里还有每个场景的选项组（`options`，选中项由 `compose` 拼进描述 / 要求）和首页卡片（`homeGoals`，公开只读 `GET /api/v1/ip-studio/scenes/home`，只带显示字段），否则随包 `ipstudio/scenes.json`（`GET /api/v1/ip-studio/scenes` 只下发上架的，封面 / 示例只认 `ipstudio_scene/catalog/` 下后台上传的 key、出 wire 签名），出图描述和交给助手的话由 `POST /api/v1/ip-studio/scenes/compose` 拼（含每个视频场景的方法 `skillKey`），**前端不得另写场景数据或拼话**；草稿用 `ip_project.scene_id`（V72）认。图片场景的草稿就是一张画布，**先保存带 `clientRequestId` 的请求节点再提交 `studio-runs`**，之后只读运行记录，不确定时「确认原任务」用原请求编号重交；AI 视频照参考站「超级编导」：编导每一版脚本是草稿画布上的文字节点 + 普通文字任务（`compose` 的 `video-script`，`textEdit` 是上一版，能看图带 `readVisuals`——文字任务允许读图，规则在 `StudioTextRevision` 与提交校验同口径），「用这个脚本生成」后素材怎么交给模型只在 `scene-video-plan.ts` 判（全能参考 / 首帧 / 只按脚本，H3 带 `rewrite: auto`），视频节点同样先存请求再提交；爆款复刻和超出模型时长的片子同样在本页受理后台任务（`video-tasks`，见 `docs/studio-video-workflow-redesign.md`）；此前交给创作助手的旧草稿仍能查看（`?start=assistant&send=1`，开始节点带 `studioSkill`），拼话固定禁止编价格 / 优惠、要成片不只要脚本，除「爆款复刻」外不得出现复刻类字眼（`StudioSceneCatalogTest` 守着）。Studio 视频任务到终态发 `MaterialVideoJobEnded`，即时推进制作计划。真源 `docs/studio-scene-creation.md`。
 
 ### Studio 七项导航与存量发行界面（2026-10-17，已生产发布）
 
@@ -1147,11 +1172,11 @@ Studio 支持模型开放首尾帧、全能参考、清晰度、六种画幅及�
 
 ### 创作助手改版 · 2026-10-18（2026-10-19 已生产发布 `20261018-studio-assistant-redesign`，仅 web-aiavatar）
 
-助手默认**停靠右侧、占满画布高度**（顶栏下到底部），宽 480、左边缘可拖到 400–760；「改成浮窗」是显式选择，浮窗也占满高度。停靠 / 浮窗和宽度是每个浏览器的记忆（`studio-floating:assistant`，`localStorage`，不是状态真值）。面板分三段：固定头（标题 + 当前技能 / 全能创作 chip + 演示标 + 使用说明）、**固定进度条**（`subheader`：制作进度 + 预算 + 暂停 / 停止，滚动对话不消失；每步可「在画布上看」，走 `studio-command: focus`）、独立滚动的对话区；输入区在底部，技能 / 模型是输入框下的 chip，不再藏在设置图标后（2026-10-21 起输入框下不再显示模型与技能，当前做法只在头部标签，见下「新建画布、多段对话与卡片精简」）；发送不可用的原因写在按钮旁边。
+助手默认**停靠右侧、占满画布高度**（顶栏下到底部），宽 480、左边缘可拖到 400–760；「改成浮窗」是显式选择，浮窗也占满高度。停靠 / 浮窗和宽度是每个浏览器的记忆（`studio-floating:assistant`，`localStorage`，不是状态真值）。面板分三段：固定头（标题 + 当前技能 / 全能创作 chip + 演示标 + 使用说明）、**固定进度条**（`subheader`：制作进度 + 预算 + 暂停 / 停止，滚动对话不消失；每步可「在画布上查看」，走 `studio-command: focus`）、独立滚动的对话区；输入区在底部，技能 / 模型是输入框下的 chip，不再藏在设置图标后（2026-10-21 起输入框下不再显示模型与技能，当前做法只在头部标签，见下「新建画布、多段对话与卡片精简」）；发送不可用的原因写在按钮旁边。
 
 开场不再是口号 + 填字按钮：「想做点什么？」+「画布上现在有 N 条视频 / N 张图片」（点一下整类引用）+ 三到四张任务卡（2026-10-20 起只有标题和一行说明，「第一次用？」链接已去掉，见下「新建画布、多段对话与卡片精简」）。点「复刻一条短视频」进**素材清单**（`studio-assistant-checklist.tsx`；2026-10-21 起并入四张填空卡里的「复刻视频」，文件已删，见下「新建画布、多段对话与卡片精简」）：唯一的视频自动引用、技能切到 `reference-video-recreation`、输入框预填带方括号空位的一句话；参考视频 / 替换素材 / 空位三项齐了才能发，缺什么就在按钮旁写什么，清单可一键跳过。清单纯前端引导，服务端路由与报价不变。
 
-回复下面的「放进画布」把回复建成一个普通文字节点（同样内容已在画布上就只定位过去），不依赖模型是否调用 `create_nodes`，哪些回复显示它见下「新建画布、多段对话与卡片精简」；早期回复正文里残留的 `<tool_call>` / `<<<studio-actions>>>` / `<studio-actions>` 原文折叠成「这一轮没有执行的操作原文」（`canvas-bridge/studio-reply-actions.ts`）。确认卡的现行样式见下「新建画布、多段对话与卡片精简」（2026-10-20 起不再有「调整上限」和「直接回复可以也行」）；打字确认仍走服务端 `StudioNaturalApprovals`（2026-10-19 起整句只由短肯定词组成的回复也算确认，演示模式 `mockSaysApprove` 同一套规则）。空线程不再自动滚到底（否则开场卡片被顶出视口）。结构测试：`studio-dialogue-wiring.test.ts` 钉死停靠默认、进度条、清单与使用说明都挂上了；交互在 `studio-assistant.test.tsx` 与 `studio-floating-panel.interaction.test.tsx`。手机端沿用全屏固定面板，停靠与拖宽不生效。
+回复下面的「放进画布」把回复建成一个普通文字节点（同样内容已在画布上就只定位过去），不依赖模型是否调用 `create_nodes`，哪些回复显示它见下「新建画布、多段对话与卡片精简」；早期回复正文里残留的 `<tool_call>` / `<<<studio-actions>>>` / `<studio-actions>` 原文折叠成「这一轮没有执行的操作原文」（`canvas-bridge/studio-reply-actions.ts`）。确认卡的现行样式见下「新建画布、多段对话与卡片精简」（2026-10-20 起不再有「调整上限」和「直接回复可以也行」）；打字确认仍走服务端 `StudioNaturalApprovals`（2026-10-19 起整句只由短肯定词组成的回复也算确认，演示模式 `mockSaysApprove` 同一套规则）。空线程不再自动滚到底（否则开场卡片被顶出视口）。接线测试 `studio-dialogue-wiring.test.ts` 仅核助手挂载、事件订阅与操作处理；停靠、进度、清单与说明的交互在 `studio-assistant.test.tsx` 与 `studio-floating-panel.interaction.test.tsx`。手机端沿用全屏固定面板，停靠与拖宽不生效。
 
 ### 对话优先的创作入口 · 2026-10-19（同日已生产发布 `20261019-studio-dialogue-first`，仅 web-aiavatar）
 
@@ -1163,15 +1188,15 @@ Studio 支持模型开放首尾帧、全能参考、清晰度、六种画幅及�
 
 照设计稿「画布页改版」实现，三条原则：**更少的按钮、一个焦点、AI 有自己的颜色**。顶栏只留返回 / 标题 / 保存状态 / 发布 / 积分，历史记录、上次发给模型、模板来源、存为模板收进「⋯」（`canvas-host.tsx`，antd Popover）。第二排工具条整条取消：画布 / 故事板 / 成片是画布上方居中的分段控件；素材库 / 画布模板进左栏；「AI 创作」按钮不再有，助手默认打开，关掉后右上角留一个 AI 圆钮（`.studio-ai-orb`）。左栏（`studio-flow-canvas.tsx`）按设计稿是**贴边通高的 56px 白色一列、只有图标**：平移、选择、「＋添加」（向右弹出：文字 / 图片 / 视频 / 声音 / 上传文件）、素材库、模板、查找、整理，创作任务在这列最底下（工作台渲染，桌面左栏 z 74 让它落在覆盖层 z 75 之上）。**没有「专项创作」**：商品 / 数字人视频模板在「模板」里，解析视频 / 拉片 / 口型同步在视频节点的「⋯」里，从资产库添加在「素材库 → 素材」里。复制 / 删除 / 更多节点操作只在右键菜单和多选条；撤销 / 重做 / 小地图在画布空白处右键（快捷键照旧），缩放条只有 − 百分比 + 适应。左栏通过 `studio-command`（`library` / `templates` / `speech`）叫工作台。
 
-AI 的视觉身份：`.ip-surface` 新增 `--ai / --ai-2 / --ai-gradient / --ai-soft / --ai-ink / --ai-ring / --ai-glow`（群青紫 #4F5BD5 → #8B6CF0），**只给 AI 做过 / 正在做的东西**：节点头部的 AI 记号（`studio.runId / execution / request / speechRequest / lipSyncRequest` 任一存在即 AI 做的；`status=loading` 显示「生成中」并呼吸一圈 `is-generating`）、助手刚放进画布的节点亮 2.4 秒（`is-fresh`，由 `studio-command: reveal` 触发）、助手头部的星形记号与底纹、发送按钮、进度条、技能 chip、「问助手」的渐变描边、任务角标。**画布页不再用麦黄**（2026-10-19 按用户要求统一）：AI 去做的事（发送、开始制作 / 开始分析、带 AI 记号的「生成…」、和助手开始）一律 AI 渐变，其它主操作（发布、确认发布、完成、存为个人副本、＋）一律深色 `--ink`，次要白底细边，危险红字浅粉边，选中与链接群青；要花多少积分靠卡片上的大数字和按钮旁的价格说清，不靠颜色。浮层主按钮按「里面有没有 `.studio-ai-icon`」自动分两色；四角星只代表 AI，别处不再用星形（实心四角星 `AiMark`，`studio-ai-icon.tsx`）。无后端 / API 改动。证据：`studio-dialogue-wiring.test.ts` 钉住顶栏「⋯」、左栏七项、无第二排、AI 记号与圆钮；演示模式在 1440 与 375 宽实测。
+AI 的视觉身份：`.ip-surface` 新增 `--ai / --ai-2 / --ai-gradient / --ai-soft / --ai-ink / --ai-ring / --ai-glow`（群青紫 #4F5BD5 → #8B6CF0），**只给 AI 做过 / 正在做的东西**：节点头部的 AI 记号（`studio.runId / execution / request / speechRequest / lipSyncRequest` 任一存在即 AI 做的；`status=loading` 显示「生成中」并呼吸一圈 `is-generating`）、助手刚放进画布的节点亮 2.4 秒（`is-fresh`，由 `studio-command: reveal` 触发）、助手头部的星形记号与底纹、发送按钮、进度条、技能 chip、「问助手」的渐变描边、任务角标。**画布页不再用麦黄**（2026-10-19 按用户要求统一）：AI 去做的事（发送、开始制作 / 开始分析、带 AI 记号的「生成…」、和助手开始）一律 AI 渐变，其它主操作（发布、确认发布、完成、存为个人副本、＋）一律深色 `--ink`，次要白底细边，危险红字浅粉边，选中与链接群青；要花多少积分靠卡片上的大数字和按钮旁的价格说清，不靠颜色。浮层主按钮按「里面有没有 `.studio-ai-icon`」自动分两色；四角星只代表 AI，别处不再用星形（实心四角星 `AiMark`，`studio-ai-icon.tsx`）。无后端 / API 改动。按钮布局、AI 记号和视觉样式以真实页面验收，不再通过源码字符串固定；演示模式在 1440 与 375 宽实测。
 
-**第二遍（照设计稿 Main 画板逐块补齐）**：第一遍只照批注文字收了外框，画出来的样子没逐块对照。补齐的是：顶栏「已保存」是标题旁一行灰字、右侧顺序 ⋯ / 积分 / 发布（插槽 `display:contents` + `order`）；视图切换只有文字、居中在左栏与助手之间；节点 AI 记号不再被 `.studio-flow-drag>span{flex:1}` 拉成长条，用户自己传的媒体标「你上传的」，生成中是 44px 渐变圆环 + 一行字；连线是灰色虚线（选中群青）；**选中节点的操作条在节点正下方、左对齐、按钮多宽就多宽**（`StudioFloatingPanel toolbar`），只放「问助手」+ 最多两个主操作（按 rank：任务状态 > 主生成 > 比较版本），其余进「⋯」（antd Popover）；助手头部是 26px 星标 + 标题 + 技能胶囊（点它展开使用说明，不再有单独的「?」）；进度条三行（`制作中 · 第 N 步，共 M 步` + 已用 / 上限 → 渐变条 → 当前一步 + 真实排队位次 + 暂停 停止），进行中 / 对话占用的积分明细在「已用」的提示里；**逐步清单在对话里**（`StudioDialogueSteps`，挂在最新一条回复里、建议之前），打勾 / 转圈 / 空圈 + 在画布上看；消息不写「你 / Studio」，你的话是靠右气泡。设计稿里两处**刻意不照做**：「约 2 分钟」（v0.221 规约不编 ETA，只写真实位次），每步「58 积分」（没有逐步实付数据）。
+**第二遍（照设计稿 Main 画板逐块补齐）**：第一遍只照批注文字收了外框，画出来的样子没逐块对照。补齐的是：顶栏「已保存」是标题旁一行灰字、右侧顺序 ⋯ / 积分 / 发布（插槽 `display:contents` + `order`）；视图切换只有文字、居中在左栏与助手之间；节点 AI 记号不再被 `.studio-flow-drag>span{flex:1}` 拉成长条，用户自己传的媒体标「你上传的」，生成中是 44px 渐变圆环 + 一行字；连线是灰色虚线（选中群青）；**选中节点的操作条在节点正下方、左对齐、按钮多宽就多宽**（`StudioFloatingPanel toolbar`），只放「问助手」+ 最多两个主操作（按 rank：任务状态 > 主生成 > 比较版本），其余进「⋯」（antd Popover）；助手头部是 26px 星标 + 标题 + 技能胶囊（点它展开使用说明，不再有单独的「?」）；进度条三行（`制作中 · 第 N 步，共 M 步` + 已用 / 上限 → 渐变条 → 当前一步 + 真实排队位次 + 暂停 停止），进行中 / 对话占用的积分明细在「已用」的提示里；**逐步清单在对话里**（`StudioDialogueSteps`，挂在最新一条回复里、建议之前），打勾 / 转圈 / 空圈 + 在画布上查看；消息不写「你 / Studio」，你的话是靠右气泡。设计稿里两处**刻意不照做**：「约 2 分钟」（v0.221 规约不编 ETA，只写真实位次），每步「58 积分」（没有逐步实付数据）。
 
 **第三遍（对话框与按钮区）**：并排截图对设计稿后补齐。按钮区的技能是无边框实心小胶囊「技能 · 名称」（有技能浅紫、自动浅灰、无下拉箭头），对话绑定技能后改为不可点的静态胶囊照样显示（2026-10-21 起输入框下不再显示模型与技能，当前做法只在头部标签，胶囊及其样式已删）；**antd 6 的 Select 是 `.ant-select-content` / `.ant-select-suffix`，旧的 `.ant-select-selector` 规则根本不生效**，chip 一直是白底描边带箭头就是这个原因。发送按钮始终是 AI 渐变、不能发时只变淡；输入框浅灰底细边，焦点时边框只略深。回复的顺序是正文 → 逐步清单 → 建议 → 一行小灰字（本轮积分、工作记录、从这里重新开始，`.studio-dialogue-meta`）；工具记录是无边框的一行；建议 30px 无图标；已确认的确认卡收成一行（`studio-dialogue-approval-done`，点开看做什么、报价和确认时间）；你的气泡里「已收到」在回复开始后消失（2026-10-21 起送达状态改为气泡底部靠右的小图标，悬停看文字：发送中转圈、已收到 ✓、排队中时钟、已应用双 ✓；发送失败仍是文字加「重新发送」）、「从这里重新开始」只在悬停或键盘聚焦时出现；停靠按钮是普通右侧面板图标；「停止」浅粉边。方案卡（制作计划）保持原样。输入框按设计稿逐像素再对一遍：发送键始终满色渐变（不能发时只换指针，原因写在旁边）；框里不再有费用说明那一行，「每轮回复最多 X 积分…」改到发送键的提示里（每轮实际花费仍在回复下面）；「技能 · 名称」的点两边留白、字重 500；占位字用 --ink-3。双击节点不做任何改动（保持原行为）。2026-10-20 起方案卡与确认卡合成一张、进度条只写「已用 N 积分」、每条回复下只一行合计积分、发送键提示只写「发送（Enter）」，见下「新建画布、多段对话与卡片精简」。
 
 **第四遍（对话交互，端到端走查）**：见 §8.0.1 ⑭。输入框 Enter 发送、Shift+Enter 换行（⌘/Ctrl+Enter 照旧）；「问助手」监听 `studio-command: assistant`，把节点加进这条消息的引用并把光标放进输入框（助手开着、关着、有没有草稿都一样）；
 Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离开输入框、不关面板，停靠的面板不响应焦点在画布上的 Esc，Antd 菜单 / 下拉 / 气泡自己的 Esc 在捕获阶段记下、面板不跟着关；
-「在画布上看」、助手放进新节点、整理和「适应全部节点」都按**可见区域**适配（`visibleFitPadding`：左栏、顶部、缩放条和停靠面板都让开），聚焦只等目标节点被 React Flow 认得；
+「在画布上查看」、助手放进新节点、整理和「适应全部节点」都按**可见区域**适配（`visibleFitPadding`：左栏、顶部、缩放条和停靠面板都让开），聚焦只等目标节点被 React Flow 认得；
 打字确认：服务端 `StudioNaturalApprovals` 增加「整句只由短肯定词组成」也放行（可以 / 好 / 行 / 嗯 / 对 / 是的…，逐段去掉句末语气词后判断；疑问、犹豫、改动照旧拒绝），对话提示词同步举例（`PromptTemplateSeeder.SEED_VERSION` 已 bump，否则线上不生效），确认卡上的这句提示 2026-10-20 起去掉、打字确认照旧（见下「新建画布、多段对话与卡片精简」）；演示模式 `mockSaysApprove` 同一套规则。**这一条要发 server**。
 
 **第五遍（对话的动静与快捷答复，2026-10-20 用户反馈，已生产发布 `20261020-studio-assistant-activity`（GIT_SHA `8b408533`），仅 web-aiavatar）**：进行中的状态只从事件流推出（`dialogueActivity`）：已受理没回话 →「正在思考」、正文流入 →「正在回复」（正文末尾闪光标）、工具跑完回合未结束 →「正在思考」；跑工具时由那条工作记录自己转圈并写「进行中 · 已用 N 秒」；回合结束、失败、停止即消失，不编思考内容、不编百分比。工作记录是左侧细竖线的一行过程记录（不是带框的按钮），只有右边的小箭头展开详情，失败直接写原因。问题选项、后续建议、「改用这个做法」单击就作为一条用户消息发出（同一条发送链路：先存画布、同 clientMessageId 重试），不带草稿的引用、不动输入框；发送中禁用，发出后问题按「之后有你的消息」判为已回答（`answeredAfter`，服务端不标）。回复下的「放进画布 / 从这里重新开始」是小图标按钮（读屏有名字、悬停有提示），最新一条常显、旧的悬停或键盘聚焦才出现、手机常显；带问题、方案或确认卡的回复不给「放进画布」，已在画布上的显示「在画布上查看」。
@@ -1208,13 +1233,13 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 ### 新建画布、多段对话与卡片精简 · 2026-10-20（2026-10-21 已生产发布 `20261021-studio-new-canvas-threads`；server + web-aiavatar）
 
 真源 [`docs/ip-studio-new-canvas-and-threads.md`](docs/ip-studio-new-canvas-and-threads.md)。上面「创作助手改版」「对话优先的创作入口」「画布页改版」里与此冲突的写法以本节为准。
-- **新建只有一条路**：所有「新建创作 / 新建画布 / 新建空白画布 / 创建空白画布」都调 `startNewCanvas()`（`src/ip/studio-entry.ts`；页面经 `use-start-new-canvas.ts` 加锁，连点、StrictMode 双跑只建一张），进 `/projects/{id}?start=assistant`，桌面助手停靠打开。最近一张仍叫「空白画布 · 新画布」、2 小时内建、没有节点也没有 `assistantConversations` 的画布直接复用，判断失败就新建。`/create`（「画布·自由创作」）桌面和手机同一个页面（2026-10-21 改判，已生产发布 `20261021-studio-create-page`，仅 web-aiavatar）：进来不建画布，最上面一行（2026-11-04 起）是小的「新建画布」卡片（点了才 `startNewCanvas()`）加最近的画布，横向滑动，「全部画布」进 `/projects?type=canvas`，下面是能力入口（不含「空白画布」）和模板；没有方式切换框，也没有 `StudioConversationStart`（首页已有）（`studio-creation-brief.tsx` 已删）。形态判断按 `useLayoutMode()`，不写媒体查询。
+- **新建只有一条路**：所有「新建画布 / 新建空白画布 / 创建空白画布」都调 `startNewCanvas()`（`src/ip/studio-entry.ts`；页面经 `use-start-new-canvas.ts` 加锁，连点、StrictMode 双跑只建一张），进 `/projects/{id}?start=assistant`，桌面助手停靠打开。最近一张仍叫「空白画布 · 新画布」、2 小时内建、没有节点也没有 `assistantConversations` 的画布直接复用，判断失败就新建。`/create`（「画布·自由创作」）桌面和手机同一个页面（2026-10-21 改判，已生产发布 `20261021-studio-create-page`，仅 web-aiavatar）：进来不建画布，最上面一行（2026-11-04 起）是小的「新建画布」卡片（点了才 `startNewCanvas()`）加最近的画布，横向滑动，「全部画布」进 `/projects?type=canvas`，下面是能力入口（不含「空白画布」）和模板；没有方式切换框，也没有 `StudioConversationStart`（首页已有）（`studio-creation-brief.tsx` 已删）。形态判断按 `useLayoutMode()`，不写媒体查询。
 - **空画布引导**（`studio-canvas-guide.tsx`）：无节点、画布视图、没有创作浮层打开时，在可见区域中间（让开左栏和 `--studio-docked-panel`）显示五个入口（文字 / 图片生成 / 视频生成 / 配音 / 上传素材）和「从模板开始」，一律发 `studio-command`，与左栏「＋添加」同一条路径，不另写建节点逻辑；外层 `pointer-events:none`，不挡拖动和双击。旧的「画布还是空的 / 和助手开始」空态已并入，不再有两套。
 - **多段对话**：`GET|POST /api/v1/ip-studio/projects/{id}/conversations`、只读的 `GET …/conversations/{threadId}` 与切换用的 `POST …/conversations/{threadId}/open`（`StudioDialogueController`），无迁移、不调模型、不扣费。**读和切换分开**：只有用户主动打开才 `markOpened`，重连 / 轮询 / 补拉 / 看原对话预览（`GET …/messages`）一律只读，否则后台请求会把服务端的当前对话改回去（评审修正）。前端所有线程归属的异步请求带 `{threadId, generation}`，回包对不上就丢弃；确认制作在途时不能切换，切换在途时不能确认。POST `{clientRequestId}` 同人同键幂等，本人在这张画布已有空闲空对话就复用并设为当前；列表 `StudioDialogueThreadSummary` 的 `lastActivityAt` 取最后一条消息与创建时间中较晚的，最多 50 段。前端 `studio-dialogue-threads.tsx`（助手头部「新对话 / 历史对话」）。**当前对话在回复或制作（含暂停）时不能新建也不能切换**：画布节点是前端按当前对话的事件流写进去的，切走会漏节点；服务端不拦。打字「可以」确认的那一轮，回复结束时执行还没读到：从确认卡变成已确认（事件或快照）到读到这份执行之前同样不能切换（`DialogueStore.awaitingExecutionId`，读失败按确认重发的退避重读，2026-10-21 `20261021-studio-restore-fix`）。
 - **卡片只回答做什么、花多少、按哪个按钮**：同一条回复里的方案 + 确认卡合成一张；不显示每步报价、上限、预留、过期时间、技能版本；上限输入只在预算不够（shortfall）时出现。打字「可以」仍能确认（`StudioNaturalApprovals` 不变），界面不再提示。`approaches[].rationale` / `tradeoffs` 永不显示（rationale 仍必填）。完成总结（`StudioExecutionSummary`）只一句结果 + 总花费，建议按实际产物给；「放进画布」不给完成总结、system 消息和本条已建 / 改过节点的回复，正文至少 80 字。
 - **提示词改了要升版**：`dap.ip_studio_skill_plan.md`、`dap.ip_studio_skill_dialogue.md`、`RequestApprovalTool` 的 `scope` 说明一起改，`PromptTemplateSeeder.SEED_VERSION` 升到 `v20-2026-10-20-concise-cards`，不升线上不生效；真模型尚未验证（§8.0.1 ⑦，见 TODO.md）。
-- **新对话的四张填空卡**（2026-10-21，真源 §5；仅 web-aiavatar）：空对话、没有引用节点时开场是「制作个人 IP / 写剧本 / 做个短视频 / 复刻视频」四张卡（`src/ip/studio-assistant-starters.tsx`：卡片配置、填空卡组件、拼句纯函数 `composeStarter`）。点开是素材位（「从画布选」走输入框的 @，「上传」走输入框的附件，画布上正好一个合适素材时只给必填位自动选上）、默认已选好的选项按钮和一两行文字位，实时拼成一句话写进输入框；**原复刻清单 `studio-assistant-checklist.tsx` 已并入并删除，别再留两套**。发送仍是输入框那一个按钮，缺必填素材不能发、原因写在按钮旁；发送**显式带技能**（`image-generation` / `script-writing` / `video-generation` / `reference-video-recreation`），不靠关键词路由。用户改过输入框后选项不再覆盖（出现「按选项重写」），点开卡片时输入框已有的字不覆盖；首页需要参考视频的原话照旧打开复刻卡、保留原话、不自动发（即使素材被自动选齐）。有引用节点时的那组卡不变。纯前端引导，服务端与报价不变；演示数据里的复刻技能已改成与服务端同名的 `reference-video-recreation`。
-- **输入框下只有 @ 和附件**（2026-10-21 用户反馈，仅 web-aiavatar）：2026-10-21 起输入框下不再显示模型与技能，当前做法只在头部标签（`studio-assistant-mode`，显示技能名或「全能创作」；悬停写怎么选：有技能时「现在按「X」做。按你说的话自动选择；有制作在进行时保持不变，想换做法可以开一段新对话。」，没有时「按你说的话自动选择做法。」；点它仍展开使用说明）。模型：线上只有一个对话模型，禁用的胶囊点不动，还让人以为做视频也用它，所以可选不可选都不显示；发送照旧带默认模型的 `maxCost`（可选场景且多于一个模型时才带 `model`），本浏览器以前存过的选择仍沿用，已下架就回落默认。技能：服务端每条消息按意图路由（`StudioSkillRouter`），「自动」下拉和绑定后点不动的静态胶囊都去掉；填空卡仍显式带 `skillKey`。400 `STUDIO_SKILL_REQUIRED`（路由已不再抛，处理保留）改成输入框上方几个做法按钮（`aria-label="选一种做法"`），点一个就以该技能重发草稿，不再有要去找的下拉。`studio-dialogue-wiring.test.ts` 钉住组件和样式里不再有 `<Select` / `studio-dialogue-chip`。
+- **新对话的四张填空卡**（2026-10-21，真源 §5；仅 web-aiavatar）：空对话、没有引用节点时开场是「制作个人 IP / 写剧本 / 生成短视频 / 复刻视频」四张卡（`src/ip/studio-assistant-starters.tsx`：卡片配置、填空卡组件、拼句纯函数 `composeStarter`）。点开是素材位（「从画布选」走输入框的 @，「上传」走输入框的附件，画布上正好一个合适素材时只给必填位自动选上）、默认已选好的选项按钮和一两行文字位，实时拼成一句话写进输入框；**原复刻清单 `studio-assistant-checklist.tsx` 已并入并删除，别再留两套**。发送仍是输入框那一个按钮，缺必填素材不能发、原因写在按钮旁；发送**显式带技能**（`image-generation` / `script-writing` / `video-generation` / `reference-video-recreation`），不靠关键词路由。用户改过输入框后选项不再覆盖（出现「按选项重写」），点开卡片时输入框已有的字不覆盖；首页需要参考视频的原话照旧打开复刻卡、保留原话、不自动发（即使素材被自动选齐）。有引用节点时的那组卡不变。纯前端引导，服务端与报价不变；演示数据里的复刻技能已改成与服务端同名的 `reference-video-recreation`。
+- **输入框下只有 @ 和附件**（2026-10-21 用户反馈，仅 web-aiavatar）：2026-10-21 起输入框下不再显示模型与技能，当前做法只在头部标签（`studio-assistant-mode`，显示技能名或「全能创作」；悬停写怎么选：有技能时「现在按「X」做。会按你说的内容自动选择做法。」，没有时「会按你说的内容自动选择做法。」；点它仍展开使用说明）。模型：线上只有一个对话模型，禁用的胶囊点不动，还让人以为做视频也用它，所以可选不可选都不显示；发送照旧带默认模型的 `maxCost`（可选场景且多于一个模型时才带 `model`），本浏览器以前存过的选择仍沿用，已下架就回落默认。技能：服务端每条消息按意图路由（`StudioSkillRouter`），「自动」下拉和绑定后点不动的静态胶囊都去掉；填空卡仍显式带 `skillKey`。400 `STUDIO_SKILL_REQUIRED`（路由已不再抛，处理保留）改成输入框上方几个做法按钮（`aria-label="选一种做法"`），点一个就以该技能重发草稿，不再有要去找的下拉。输入区由 `studio-assistant.test.tsx` 测实际交互，不再通过扫描 `<Select` 或样式 class 字样强制布局。
 - **结果落到助手准备的节点、首帧只裁不拉**（2026-10-21，真源 §6；server + web-aiavatar）：计划步骤可带 `targetNodeId`，确认时按已保存画布由 `StudioPlanValidator.bindTargets` 绑定（在画布上、类型对应、还空着、没被占用；模型没填时只在「本对话助手建的同类空对象唯一、同类步骤唯一」时自动绑定，有歧义不绑，不合格丢弃并写日志）；绑定后步骤 `nodeId` 就是那个对象，生成任务 `node_id`、`node.upsert`（`op=update`，保留标题 / 尺寸 / 规格 / 连线）、依赖连线、引用解析和恢复都用它，读步骤节点一律经 `StudioPlanExecutionIds.stepNodeId`，不再自己拼 `<执行>-p-<步骤>`。前端恢复（执行恢复与历史回放）按**结果是否已回填**判断，不按节点在不在：准备对象在画布上但空着（无媒体 / 文字 / 剧本、不在生成、无执行绑定，`nodeHoldsResult`）就补进去，与投影记录无关；不在画布上才看投影记录（删掉的不重建）；已绑定这一步的不覆盖（2026-10-21 `20261021-studio-restore-fix`）。每个结果节点带这一步实际发出的提示词（已有提示词不覆盖，照 keepText 作为可采纳建议）。图生视频首帧 / 尾帧比例与请求画幅差 2% 以上，`StudioVideoService.alignFrame` 先验归属再居中裁剪成本人派生图交给厂商，记 `_exec.firstFrameAdjusted`，裁不了就 400 `STUDIO_VIDEO_FRAME_CROP_FAILED`，不拉伸；生成面板就地提示「首帧图是 1:1，会按 9:16 居中裁剪」+「改成 1:1」（模型支持时），不挡发送。图片 / 视频结果落进节点时节点宽度不变、高度按产物比例（先按任务画幅，媒体加载后按真实尺寸，`studio.mediaFit` 标记一次性，`canvas-bridge/studio-media-fit.ts`）；卡片会记下所显示媒体的真实尺寸（`naturalWidth/Height`），素材清单因此能写出「1024×1024（1:1）」和草稿上的「设定 9:16、5 秒」。提示词 `SEED_VERSION` = `v23-2026-10-21-exec-target-node`。
 - **一轮对话尽量做完，步数只算对话回合**（2026-10-23 起与「Studio 对话去掉继续」一节冲突的部分以该节为准）（2026-10-21，server；线上 `IPR-472ed89b5c174a95808f` 在确认卡发出前一步被 8 次调用上限截停，那 8 次里有 3 次是看图、规划工具自己的调用）：`DialogueLoop.TurnBudget` 分两种调用，循环里调对话模型走 `beginStep()`（算一步，`MAX_DIALOGUE_STEPS = 16`），工具内部调用与历史摘要走 `beginSubCall()`（不算步，只计入总调用保险 `MAX_MODEL_CALLS = 40`）；两种都照样计入 Token 与用时。工具运行上限 `MAX_TOOL_CALLS = 24`。真正管花费的是每轮积分上限（`rate.maxCost` 换算的 Token 总额）和 `MAX_DURATION` 10 分钟，步数只防死循环。新增模型调用必须二选一，不许绕开 budget。连续两步给出完全相同的动作批次（工具名 + 规范化参数，`DialogueLoop.batchSignature`；只读的 `view_images` / `read_canvas` 也算，中间被判格式错误的那次不算隔开，用户插话算）就停，原因 `loop`，重复的那批不执行。因上限停下（steps / calls / tools / time / tokens / loop）的说明只一句（「这一轮步骤太多，先停在这里。」「这一轮用时到上限了…」「这一轮的用量到上限了…」「这一步重复了…」），不再教用户打字；回复上附快捷答复「继续」（`StudioDialogueTurnWorker.limitSuggestions`，存进回复的 `requestJson.suggestions` 并随 `turn.done` 下发，与完成总结同一套）。格式错误（protocol）的说明不变、不给「继续」。
 
@@ -1253,7 +1278,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 - **出图布光与肤色（2026-10-28，第一轮已随 `20261028-director-delete` 上线，第二轮本地未发布）：** 角色设定集、场景参考图、分镜图的提示词默认给演员打光、中性白平衡、按设定还原肤色（用户反馈 H3 成片脸黑发黄；要好看有气色，不是变白磨皮）。**布光是一段默认指导，不从描述里推断**（第二轮 review 后用户定，`DirectorPrompts.boardLighting`）：默认影视人像布光、适度补光、肤色自然有气色；风格写明的布光调色照风格，描述里明确写的剪影、暗面、特殊光色优先、只作用于写到的人物或区域。各格描述原样交给出图模型。**别再按关键词推断布光、追加「不补光」**：第一版把「自然色调」「不要逆光剪影」「低调地」都读反了，补正则也补不完；效果靠代表场景出图验证。改在 `DirectorPrompts`：原生图片协议只发导演台自己编的 `userPrompt`，改通用模板 `dap.ip_canvas_image` 不生效。视频提示词第 3 版让分镜图交代人物受光、肤色和色调，场景图只交代空间和光源位置，H3 改写的参考说明同改。**改出图或视频模板要升版本号（`IMAGE_PROMPT_FORMAT` 现为 3 / `VIDEO_PROMPT_FORMAT` 现为 3）并保留上线过的每一版**（出图 `legacyAssetPrompt` / `legacyBoardPrompt` 第 1 版、`assetPromptV2` / `boardPromptV2` 第 2 版；视频 `legacyVideoPrompt` / `videoPromptV2`），按候选记下的版本核对；改之前先查线上发布记录确认上一版有没有上线（第 2 版就是改到一半被另一个发布带上线的）：`refresh` 每次读作品都重编没手改的提示词，不这样做，所有已采用的图和视频都会被标成「需更新」。编剧和分镜规则同日改为服从题材（情绪幅度、爽剧打脸、治愈的亲密时刻）、人物顾虑服务主线、对白给正例、开场与制作可行性只作默认参考；台词放不下的处理按任务各写一次（写分镜脚本可顺延、重写不挪出本片段）；重写任务里【台词量】的上限、处理办法和输出前自检三处写同一个例外（用满时长和镜头数仍超出就保留原文），否则模型要在「全部保留」和「不达标请调整」之间二选一。**javac 会把 `static final String` 拼接常量内联进测试类**：改了 `SCRIPT` 等常量后测试比的还是旧值，先删 `target/test-classes` 下对应目录再跑。效果未实测，见 `docs/ai-director-plan.md` 末两节与 TODO。
 - **反转线只给反转烧脑调性和悬疑题材**（都市悬疑、民国谍战）：三层反转和「3 集一小高潮、6 集一中反转、结局大反转」在 `DirectorPrompts.REVERSAL`，其他题材只保留「反转必须有可回溯伏笔」。
 - **剧本页布局固定：** 标题行（保存 / 重新生成）→ 故事大纲 → 「下一步」→ 正文或分集列表，拆分前后同一个顺序。「下一步」里逐步做（推荐）和一键制作（快捷）并排，一键制作弹窗开头写明它是快捷方式。
-- **分镜片段卡（2026-10-25）：** 两栏，左边成片画面（有视频看视频、没有看分镜图，宽度随画幅：9:16 188px / 1:1 220px / 16:9 300px）+ 视频版本号 + 「关联资产」「分镜图」两个入口；右边说明、问题 / 节奏建议、视频提示词，最后一行是生成设置 + 按钮 + 价格（`ClipVideo`）。分镜图没好时按钮旁给「去生成分镜图」，不再单独占一行。
+- **分镜片段卡（2026-10-25）：** 两栏，左边成片画面（有视频看视频、没有看分镜图，宽度随画幅：9:16 188px / 1:1 220px / 16:9 300px）+ 视频版本号 + 「关联资产」「分镜图」两个入口；右边说明、问题 / 节奏建议、视频提示词，最后一行是生成设置 + 按钮 + 价格（`ClipVideo`）。分镜图没好时按钮旁给「生成分镜图」，不再单独占一行。
 - **资产页：** 工具栏有「生成全部参考图」（缺参考图、不是仅声音出场、没在生成的资产，确认后逐个提交，与分镜批量出分镜图同一套）；资产卡底部一行固定高度（状态 + 音色图标 + 主按钮，不换行）；详情抽屉分「头部（编辑 / 删除）→ 描述 → 参考图（形象参考、生成与费用、出图提示词）→ 角色音色」。切换工作区会清掉上一处的报错。
 - **分集（2026-10-25，本地未发布）：** 模型只给每集起点和正文起点 `bodyStart`，区间由程序构造，不会漏段或重叠（线上《食神》漏最后一段、《谁让这个睁眼瞎修仙的》前 252 段是设定资料，都曾被判 `AI_BAD_OUTPUT`）。剧本里标好「第N集」时程序直接按标题分、不扣积分（`DirectorPrompts.headingStarts`，服务端唯一一处）。结果先存 `pendingSplit` 预览确认；开头资料默认存为设定资料 `reference`，可改、可并入第 1 集，作为创作材料交给提取和规划，不进输入指纹。全自动一键制作按默认直接采用并在 notice 里说明，拆分失败作为一集继续；不全自动停在 `confirm-split`。`split.undo` 在出图 / 视频前可撤销拆分。原则是先让用户跑完流程：原文不丢、做了什么说清楚、能一键改回。
 - **一键制作默认做到成片**（`target=film`，2026-10-25 起；另有 `board` / `plan`，`video` 只供旧调用）：写剧本 → 拆分 → 提取资产 → 写分镜脚本 → 参考图 → 分镜图 → 片段视频 → 每集导出。`auto=true`（默认）全自动：资产清单原样入库，参考图 / 分镜图 / 片段视频自动确认；不勾全自动就在这四处（以及分集）停下等确认。整部作品也能做到视频。预算由 `POST pipeline/estimate` 推荐（与真提交同一套单价，视频在没分镜图时按模型价表和时长估，`StudioVideoService.estimate`），用户确认或调整。片段卡片只显示视频提示词，分镜图提示词在分镜图弹窗里。导演台出图尺寸按当前图片模型规格里该比例的尺寸选（同比例有几档取最大的），不写死。
@@ -1267,7 +1292,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 - **操作失败用错误弹窗、资产解除关联（2026-10-27，已生产发布 `20261027-studio-error-dialogs`，main `4a9b5f18`）：** 用户点了某个操作、它没做成（业务规则挡下、冲突、前置条件不够、请求失败），要弹错误弹窗：标题「X 没有完成」，写原因、下一步，可展开「错误详情」（错误码、logId、可复制），同一个错误开着时不重复弹。**不要再加只挂在页面上方的横幅**：手机上资产详情是全屏抽屉，横幅被整个挡住，用户点了删除什么都看不到（2026-10-27 用户反馈）。做法：全站报错都经 `reportStudioError`（`src/ip/studio-errors.tsx`），它记下用户最近一次按下的按钮 / 菜单项，之后报上来的第一个错误弹窗、标题用控件上的字（确认框的「确定」「确认删除」用弹窗标题），知道更准操作名的地方传 `action`；后台失败（自动保存、轮询、媒体加载、旧任务恢复）传 `background` 或 `once`，只右上角提示，轮询不会反复弹窗；打开着的弹窗已经就地写出这条错误就不叠弹窗。导演台用 `useStudioFailure`（`failed(setError, "操作名")`），冲突类先把作品刷新到最新再说「已经刷新」。新代码别绕开这个出口去用 antd `message.error` 或底部 toast。资产「被用着」包括台词说话人；片段「关联资产」抽屉里每项都有「解除关联」（`clip.unlinkAsset`，片段出分镜图或视频时 409 拒绝），资产详情列出「用在哪些片段」并能「前往」。共享整理错误的 `publicModelErrorMessage` 从子路径 `@ai-star-eco/api-client/public-model-error` 引入（包根常被测试整个 mock 掉）。验收见 `docs/releases/director-error-dialog-unlink-validation-20261027.md`。
 ### AI 导演台全能创作助手（2026-10-28；后端 2026-10-29 随 server `20261029-image-url-result-alerts` 上线，前端未发布）
 
-真源 `docs/ai-director-assistant.md`。工作台右侧可收起的助手（手机全屏），一部作品一份连续对话，剧本 / 资产 / 分镜共用；每条消息绑定一个对象（作品 / 某集 / 选中正文 / 本集分镜 / 片段镜头 / 分镜图或视频提示词 / 资产 / 参考图或分镜图），服务端核对并命名。一轮回复是导演台文字任务（节点 `assistant`，提示词与校验在 `DirectorAssistant`），计费、幂等、测试响应都走 `submitDirectorText`；不新增表、迁移和路径。建议只是建议：`assistant.apply` 写入前核对（剧本按逐字原文局部替换，定位规则前后端同一份；镜头比签名；用户改过的不覆盖，409 `DIRECTOR_PROPOSAL_STALE`），写入效果与手动修改相同、不触发生成，可撤销。图片的「生成新版本」是独立的 `asset-image` / `board` 任务，`baseOnCurrent` 把当前图追加为最后一张参考，不承诺局部精确修改、不自动替换采用版本。只有声明 `supportsVision` 的文字模型才交图。还没有剧本时剧本页默认是写剧本前的创意对话（节点 `brief`，最多 3 轮、每轮 ≤2 问，整句「你决定」直接写，「跳过」随时可用，剧本请求带上问答与整理要求）。剧本建议按锚点改具体一处（选区带位置、没选区要唯一），撤销找回那一处；发送前先保存眼前未保存的修改，请求记在浏览器、不确定时按原请求恢复（`director-pending.ts`）。分镜页左栏可看本集剧本，片段位置只用 `sourceQuote`（写分镜时模型摘抄的起始句，找得到才记）或台词逐字匹配，找不到就说明，不伪造。2026-10-28 本地接聚算 qwen38-27b 实测通过（记录见真源 §6）；写分镜脚本的起始句命中率与看图路径未实测（见 TODO）。内容旁的紫色入口和选中正文的「问 AI」弹出只针对这处内容的浮层对话（不展开侧边栏、不显示之前的对话，消息仍进同一份连续对话），顶栏「创作助手」才开侧边栏（2026-10-29）。
+真源 `docs/ai-director-assistant.md`。工作台右侧可收起的助手（手机全屏），一部作品一份连续对话，剧本 / 资产 / 分镜共用；每条消息绑定一个对象（作品 / 某集 / 选中正文 / 本集分镜 / 片段镜头 / 分镜图或视频提示词 / 资产 / 参考图或分镜图），服务端核对并命名。一轮回复是导演台文字任务（节点 `assistant`，提示词与校验在 `DirectorAssistant`），计费、幂等、测试响应都走 `submitDirectorText`；不新增表、迁移和路径。建议只是建议：`assistant.apply` 写入前核对（剧本按逐字原文局部替换，定位规则前后端同一份；镜头比签名；用户改过的不覆盖，409 `DIRECTOR_PROPOSAL_STALE`），写入效果与手动修改相同、不触发生成，可撤销。图片的「生成新版本」是独立的 `asset-image` / `board` 任务，`baseOnCurrent` 把当前图追加为最后一张参考，不承诺局部精确修改、不自动替换采用版本。只有声明 `supportsVision` 的文字模型才交图。还没有剧本时剧本页默认是写剧本前的创意对话（节点 `brief`，最多 3 轮、每轮 ≤2 问，整句「你决定」直接写，「跳过」随时可用，剧本请求带上问答与整理要求）。剧本建议按锚点改具体一处（选区带位置、没选区要唯一），撤销找回那一处；发送前先保存眼前未保存的修改，请求记在浏览器、不确定时按原请求恢复（`director-pending.ts`）。分镜页每集右侧的剧本图标可打开对应剧本（悬停显示提示，从下方滑出的浮层，查看别集不切换分镜，可收回；2026-11-07），片段位置只用 `sourceQuote`（写分镜时模型摘抄的起始句，找得到才记）或台词逐字匹配，找不到就说明，不伪造。2026-10-28 本地接聚算 qwen38-27b 实测通过（记录见真源 §6）；写分镜脚本的起始句命中率与看图路径未实测（见 TODO）。内容旁的紫色入口和选中正文的「问 AI」弹出只针对这处内容的浮层对话（不展开侧边栏、不显示之前的对话，消息仍进同一份连续对话），顶栏「创作助手」才开侧边栏（2026-10-29）。
 
 ### Studio 对话独立额度（2026-10-23 已生产发布）
 
@@ -1295,7 +1320,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 当前单实例 `systemctl restart` 会使用户读取/保存短暂 502；保护在途生成不等于 HTTP 无中断。发布必须同时记录重启窗口的公网 5xx 与恢复结果，不能把发布后 `verify ALL GREEN` 描述为发布期间无中断。无停机切流尚未实施，见 TODO 与 `docs/releases/studio-stage-continuation-release-20261023.md` 末节。
 
-2026-10-26 导演台补充：发布前必须检查 `ip_run` 的在途 `studio-director`，不能只查原生视频任务。同步文字调用没有可查询的外部任务号，重启后不得自动重新提交付费请求。本人作品可通过 `/director/works/{id}/tasks/{runId}/stop` 停止后续创作。**用户纠正：已提交模型有真实消耗，不能因停止全额退款。** 未提交才释放冻结；已提交则保留调用直到真实用量回执，按实际用量结算、仅退余量，停止后的内容不回投；用量不明必须 `STUDIO_USAGE_PENDING` 保留冻结待核对，不猜费用、不自动退款，hold sweeper 不得误释放。进程关闭中断同样按提交与用量处理。原生图片/视频/音频仍按各自受理和恢复规则处理。此前 `20261026-director-stop` 的全额释放行为已被用户否定；修正已发布为 `20261025-director-stop-usage`（main `6ff1835d`）。见 `docs/audits/director-script-stale-and-latency-20261026.md`。
+2026-10-26 导演台补充：发布前必须检查 `ip_run` 的在途 `studio-director`，不能只查原生视频任务。同步文字调用没有可查询的外部任务号，重启后不得自动重新提交付费请求。本人作品可通过 `/director/works/{id}/tasks/{runId}/stop` 停止后续创作。**用户纠正：已提交模型有真实消耗，不能因停止全额退款。** 未提交才释放冻结；已提交则保留调用直到真实用量回执，按实际用量结算、仅退余量，停止后的内容不回投；用量不明必须 `STUDIO_USAGE_PENDING` 保留冻结待核对，不猜费用、不自动退款，hold sweeper 不得误释放。进程关闭中断同样按提交与用量处理。原生图片/视频/音频仍按各自受理和恢复规则处理。AI 视频页编导的流式停止例外（2026-11-06 用户决定）：立刻断开并按已收到的内容估算结算，标 `usageEstimated`，规则见 `specs/BUSINESS_RULES.md`。此前 `20261026-director-stop` 的全额释放行为已被用户否定；修正已发布为 `20261025-director-stop-usage`（main `6ff1835d`）。见 `docs/audits/director-script-stale-and-latency-20261026.md`。
 
 
 ### Studio 读取、进度与保存恢复（2026-10-23，本地修复，未发布）
@@ -1319,7 +1344,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 ### H3 视频提示词优化 · 2026-10-27（已生产发布 `20261027-studio-h3-optimize`，main `384dfe31`；server + web-aiavatar）
 
 导演台的 H3 改写抽成全站共用的 `ipstudio/h3/H3PromptRewrite`（官方 skill 资源移到 `resources/h3-skill`），Studio 画布与创作助手出 H3 视频也先优化。**2026-10-27 修正：三处优化统一用后台独立用途 `DAP_VIDEO_PROMPT` 的绑定端点（初始绑定聚算 Qwen），不跟随用户文字模型或剧本默认模型；不可用时报错，不回落其它模型。估价、冻结、结算均按同一绑定端点与输出预算。**
-- **画布卡片上的「智能优化」**（`StudioPromptOptimizeToggle`，从参数弹层挪出来）：只对 H3 显示，默认开，开着是 AI 浅紫，关着旁边写「H3 建议开启，台词更完整」；价格后面写「优化另需少量积分」。
+- **画布卡片上的「智能优化」**（`StudioPromptOptimizeToggle`，从参数弹层挪出来）：只对 H3 显示，默认开，开着是 AI 浅紫，关着旁边写「H3 建议开启，台词更完整」；价格后面写「优化提示词按实际用量另计」（2026-11-06 起不写「少量」，没有数字支撑）。
   开着发 `video.rewrite="review"`，关着发 `optimizePrompt=false`（原文直发）。**厂商自己的改写不再用**。
 - **一行任务两段**：`StudioWorkflowService.submitVideoRewrite` 先预检视频并核对视频报价（制作计划按视频 + 改写上限合计），再冻结改写上限、建 `studio-video` 行；`StudioWorkflowWorker.rewriteVideo` 改写后 `handOver` 在同一个事务里先结算改写（企业在途上限）、再 `generateVideoBatch`，失败整体回滚、改写不扣费；只用模型赠款也照常改写（用户定：以效果为准，积分不够就取消）；
   任务号写进 `_exec.nativeVideoJobIds`，之后按视频任务投影（`videoBindingDto` 加上改写花费并带 `output.videoPrompt`）。改写中 stage `prompt.optimizing`（「正在优化提示词」）。
@@ -1327,6 +1352,10 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
   选择发一次普通视频请求（`optimizePrompt=false`，用优化稿时 prompt 是英文、节点上仍显示中文），记 `studio.promptChoice`，开关仍算开着。创作助手（auto）不停：能用就用，用不了按原文并写 `videoPromptNotes`。
 - **创作助手**：出视频 / 原创 / 复刻技能要求按导演台格式写中文（「第N镜（起–止 秒）：」「名字说：「原文」」），这样镜头固定、台词由代码填；制作计划的视频步骤 `ModeSpec.rewrite`，报价加改写冻结上限（`videoRewriteHold`）。
 - 规则见 `specs/BUSINESS_RULES.md`「H3 视频提示词改写」；测试 `H3PromptRewriteTest`、`StudioVideoRewriteWorkerTest`、`DirectorH3VideoFlowTest`、`studio-video-prompt-notes.test.tsx`。
+
+### H3 改写的素材说明与检查（2026-11-07）
+
+客户反馈「视频经常生成不出来」，查下来视频模型本身正常（H3 18/18），卡在出片前的优化：11-05 换 Sonnet 后，11-06 的 26 次优化只有 8 次接着出片。约定写明模型看不到素材（`H3PromptRewrite.contract`，导演台约定不动）；台词核对只看用户自己写的部分（`ownText`），引用文字不核对；连入文字已写在提示词里就不再引用（前端 `withStudioLinkedText`，服务端 `withoutRepeatedQuotes`，以前整份脚本两遍，代码还把「漏掉的」台词补回去，每句说两次）；模型回的不是优化稿时卡片写「提示词优化未完成」（前端按 `output.rawOnly` 判断），不当优化稿发出去。已返回正文仍按实际用量结算（2026-11-05 用户定的规则）。修完后真实重跑 36 次全部接着出片。同日切到 OneToken 的 `deepseek-v4.1-flash`（`ai-fc1064f7-9fc`，用户定）；这条通道有时不按约定回（没读到写法说明、写成中文、转成工具调用），`rewriteVideo` 会重试一次，两次都不行画布停下、自动模式退回原文（`20261107-h3-offcontract`）。真实 Key 由用户在后台粘贴。
 
 ### 导演台 H3 提示词：不写给系统的话（2026-10-31，本地未发布）
 
@@ -1338,7 +1367,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 ### Studio 方案素材范围跨轮（2026-10-24，已生产发布 `20261024-studio-plan-material-scope`）
 
-线上 `PEX-fc87e857…`：首轮点选的「三视图」隔两轮才出方案，确认后执行的素材名单里没有它，「编排制作计划」三次被拒、用户点「继续」撞同一个错。现在对话方案的素材范围只由 `StudioPlanMaterials.scope` 算（出方案那轮点选 → 方案 `materialNodeIds` → 步骤点名 → 同一对话更早用户消息的点选 / 附件；只留画布上还在的，≤16），两条加载路径共用，不放开校验、不加整张画布。越界报 `STUDIO_PLAN_MATERIAL_OUT_OF_SCOPE`（列出全部 id），执行停下时用画布标题说清是哪个素材，进度条给「在画布上看 / 加入这次制作，重新编排（`resume.addMaterialNodeIds`）/ 不用它，重新编排」，都只重跑编排、不重跑拉片。提示词要求分析方案写 `materialNodeIds`、替换人物时外观按设定图写、不沿用原片外观。`SEED_VERSION=v27-2026-10-24-plan-material-scope`。真源 `docs/ip-studio-dialogue-intents.md` 末节，规则 `specs/BUSINESS_RULES.md` Studio 对话第 32 条。未用真模型验证。
+线上 `PEX-fc87e857…`：首轮点选的「三视图」隔两轮才出方案，确认后执行的素材名单里没有它，「编排制作计划」三次被拒、用户点「继续」撞同一个错。现在对话方案的素材范围只由 `StudioPlanMaterials.scope` 算（出方案那轮点选 → 方案 `materialNodeIds` → 步骤点名 → 同一对话更早用户消息的点选 / 附件；只留画布上还在的，≤16），两条加载路径共用，不放开校验、不加整张画布。越界报 `STUDIO_PLAN_MATERIAL_OUT_OF_SCOPE`（列出全部 id），执行停下时用画布标题说清是哪个素材，进度条给「在画布上查看 / 加入并重新编排（`resume.addMaterialNodeIds`）/ 不使用并重新编排」，都只重跑编排、不重跑拉片。提示词要求分析方案写 `materialNodeIds`、替换人物时外观按设定图写、不沿用原片外观。`SEED_VERSION=v27-2026-10-24-plan-material-scope`。真源 `docs/ip-studio-dialogue-intents.md` 末节，规则 `specs/BUSINESS_RULES.md` Studio 对话第 32 条。未用真模型验证。
 
 ### 模型接入点赠款与折扣（2026-10-25，已生产发布 `20261025-model-grants`）
 
@@ -1365,7 +1394,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 ### 导演台角色声音参考（2026-10-29，本地实现，未发布）
 
-角色音频上传必须使用可写事务，自动入本人素材库会持用户行锁；只把作品查询换成无锁读仍不能修复 MySQL 只读事务 500。样本按真实字节及 ffprobe 校验（MP3 / WAV / M4A，2–15 秒、最多 15 MiB）。`asset.setVoice` 绑定前重验本人 key 与实测时长，当前为聚算全能参考模型时先上传取得回执，失败不替换原声音。人物保存我方 key，V71 `material_video_input_asset` 按端点、地址、模型、凭据及来源 key 隔离 assetId；保存音色与 worker 共用同一路径，距厂商有效期不足 60 秒或没有有效期就重新上传。浏览器绑定失败保留已上传样本重试，不重复上传或误用旧描述版本。不调用声音训练，不表示音色效果已验收。见 `docs/audits/director-voice-reference-validation-20261029.md`。
+角色音频上传必须使用可写事务，自动入本人素材库会持用户行锁；只把作品查询换成无锁读仍不能修复 MySQL 只读事务 500。样本按真实字节及 ffprobe 校验（MP3 / WAV / M4A，至少 2 秒、上传最多 25 MB；超过约 15 秒的部分自动截短，交给模型的样本不超过 15 MiB）。`asset.setVoice` 绑定前重验本人 key 与实测时长，当前为聚算全能参考模型时先上传取得回执，失败不替换原声音。人物保存我方 key，V71 `material_video_input_asset` 按端点、地址、模型、凭据及来源 key 隔离 assetId；保存音色与 worker 共用同一路径，距厂商有效期不足 60 秒或没有有效期就重新上传。浏览器绑定失败保留已上传样本重试，不重复上传或误用旧描述版本。不调用声音训练，不表示音色效果已验收。见 `docs/audits/director-voice-reference-validation-20261029.md`。
 
 ### 企业手机号添加成员 · 2026-10-29（本地实现，未发布）
 
@@ -1387,6 +1416,8 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 
 ## PostgreSQL 18 兼容路径（本地准备，未生产迁移）
+
+2026-11-10 当前候选优先：main 6b385056 同步后，源生产只读核查为195表。新增PG V78（三张素材库/人像表、模型两列、语音识别与视频理解用途约束），旧V74–V77不可改；所有恢复/激活固定195/V78。排空12类持久任务（含人像核验及素材上传/审核），账务仍10项；192表/V77及旧SHA镜像回执仅作历史。重跑PG实库及新制品双机隔离演练后才可申请正式窗口。原OSS不变，本轮不动生产。详见下列runbook最新节。
 
 后端新增 `postgres` 生产 profile、独立 `db/postgresql/V74__postgresql_baseline.sql`，只用 Flyway+validate，不执行旧 Java 迁移或运行期 DDL。旧 H2/MySQL 路径保留。细则与源库遗留结构差异见 `docs/runbooks/postgresql-18-migration.md`。新增 schema 变更同步两引擎新版本，不改已发布历史；真实 PG `-Ppostgres-test` 不得跳过。
 
@@ -1425,7 +1456,7 @@ AIStar运行镜像必须同时固定官方Java与Node镜像digest；Studio仿片
 
 ### 出图并发与默认模型（2026-11-05，待发布）
 
-Studio 工作线程默认 24，单个模型的上限看端点配置；图片调用有管到正文的总时限，端点的 `requestTimeoutMillis` 要比真实耗时长。提交时被明确拒绝（429 或说并发、限流、过载）算未受理，任务回队列重交，最多等 30 分钟（`STUDIO_IMAGE_PROVIDER_BUSY`）；额度用完、含糊的 5xx 不回队列。只做了图片。导演台默认图片模型单独配置（`ai.scene-default.studio.director-image`，命令 `directorImageDefaultSave`），AI 图片和画布仍用 `ai.scene-policy.studio.image` 的默认。见 `docs/ai-endpoint-generation-queue.md` 末两节。
+Studio 工作线程默认 24，单个模型的上限看端点配置；图片调用有管到正文的总时限，端点的 `requestTimeoutMillis` 要比真实耗时长。提交时被明确拒绝（429、说并发、限流、过载，或 503「没有可用通道」）算未受理，任务回队列重交，最多等 30 分钟（`STUDIO_IMAGE_PROVIDER_BUSY`）；额度用完、含糊的 5xx 不回队列。只做了图片。导演台默认图片模型单独配置（`ai.scene-default.studio.director-image`，命令 `directorImageDefaultSave`），AI 图片和画布仍用 `ai.scene-policy.studio.image` 的默认。见 `docs/ai-endpoint-generation-queue.md` 末两节。
 
 ### 导演台写剧本前的准备与示例图（2026-11-05，已生产发布 `20261105-director-brief-demos`，main `452c48117`；server + web-aiavatar + studio-admin）
 
@@ -1437,8 +1468,38 @@ Studio 工作线程默认 24，单个模型的上限看端点配置；图片调�
 
 ### 灵感库：开箱即用的官方示例（2026-11-06 已生产发布 `20261106-inspiration-wall`，main `50689b693`；34 个示例已上线）
 
-真源 `docs/studio-inspiration-library.md`。新版导航加「灵感」（`/templates`，默认案例，可筛视频 / 图片）。点开是弹窗不是全屏（`StudioTemplateUse`），预览不显示提示词（用户 2026-11-06 要求，只读画布点开节点也不显示，v0.232 那句「查看节点提示词」作废），点「做同款」才复制并进画布；首页和灵感页共用瀑布流（`InspirationWall`：按作品真实比例摆进最矮的一列、不裁图、滚动加载，新发布的在前，比日期，同一天的按运营排序）；`onCreated` 现在收的是地址（`studioTemplateCopyHref`），画布里有 `studioStart: 'assistant'` 的节点就打开助手并预填、绑定 `studioSkill`，只填不发。35 条示例的文字在 `scripts/inspiration/catalog.mjs`，用 `scripts/inspiration/publish.mjs` 经现有接口发布（超管令牌，不调模型）。**文字是我们自己写的，不收录 `resources/skills` 里第三方技能的原文。** 条目的约束由 `inspiration-catalog.test.ts` 守着：提示词不写比例时长、不写「做同款 / 复刻」、不出现第三方品牌和模型名。`publishFromProject` 发布实例时不再删文字节点的正文。
+真源 `docs/studio-inspiration-library.md`。新版导航加「灵感」（`/templates`，默认案例，可筛视频 / 图片）。点开是弹窗不是全屏（`StudioTemplateUse`），预览不显示提示词（用户 2026-11-06 要求，只读画布点开节点也不显示，v0.232 那句「查看节点提示词」作废），点「做同款」才复制并进画布；首页和灵感页共用瀑布流（`InspirationWall`：按作品真实比例摆进最矮的一列、不裁图、滚动加载，新发布的在前，比日期，同一天的按运营排序）；`onCreated` 现在收的是地址（`studioTemplateCopyHref`），画布里有 `studioStart: 'assistant'` 的节点就打开助手并预填、绑定 `studioSkill`，只填不发。35 条示例的文字在 `scripts/inspiration/catalog.mjs`，用 `scripts/inspiration/publish.mjs` 经现有接口发布（超管令牌，不调模型）。**文字是我们自己写的，不收录 `resources/skills` 里第三方技能的原文。** 条目的约束由 `inspiration-catalog.test.ts` 守着：提示词不写比例时长、不写「做同款 / 复刻」、不出现第三方品牌和模型名。`publishFromProject` 发布实例时不再删文字节点的正文。**画布原样展示生成链（2026-11-09，本地未发布）**：参考图连到生成节点「成片 / 成图」，提示词和结果在同一张卡上，和官方模板一样，不再有空的「我的版本」和孤立的「示例效果」；重新发布同一条示例时，它自己目录下的素材原样留用（`copyKey`），否则用户做同款的画布会裂图；线上用 `publish.mjs --rebuild` 按原素材重排，先发 server。
 
 ### AI 视频页的长视频（2026-11-06 已生产发布 `20261106-segmented-video-2`，main `f90dfab6d`；线上还没真跑过；Seedance 2.5 已配到 30 秒，也没有真实样本）
 
+**2026-11-06 页面切换后任务恢复（本地修复，未发布）**：画布保存必须原样保留它不编辑的场景字段（`CanvasProject.documentFields` → `project-sync`），不能用只有节点、连线、视口和对话的新对象覆盖文档。已丢 `sceneSegmented` 的草稿由 `segmentedRecords` 从原生脚本任务找回执行入口，只读原任务，不重新生成或扣费；AI 视频页和画布共用。线上已观察到真实长视频停在首张分镜图请求失败，完整出片仍未验收。见 `docs/studio-segmented-video.md`「页面切换后的任务恢复」。
+
+**2026-11-06 图片线上配置**：四个 GPT Image 2/2.5（含 4K）接入点并发上限已从 10 改为 30，请求超时均改为 30 分钟；Image 2 原为 10 分钟、2.5 原为 15 分钟。已受理请求仍用原快照，失败任务不自动重提。共享工作线程默认仍为 24，端点上限不等于实际同时运行数。见 `docs/releases/image-concurrency-timeout-config-20261106.md`。
+
+**2026-11-06 共享线程池调整（待发布）**：`IpStudioProperties.maxConcurrent` 默认从 24 改为 30，需要 server 重启；与 AI 视频任务入口恢复一起发布 server、web-aiavatar，选择无生成任务且无近期用户操作的空闲窗口，不自动恢复或重提失败任务。
+
 真源 `docs/studio-segmented-video.md`。时长超过所选模型单段上限时一键做到成片：写分段脚本 → 审脚本 → 分镜图（第 1 张之后都参考它）→ 审分镜图（不合格重出一次）→ 各段全能参考出片 → 合成。切段只在 `SegmentedPlan`，页面显示服务端算的。复用连续制作（`StudioPlanExecutor`），但没有对话和确认卡（`threadId` 为空），用户在页面上看价点生成就是确认；提示词做到那一步才编（`StudioSegmentedRun`），格式用导演台的。一键到底只对带 `segmented` 状态的执行生效，别的连续制作照旧停下来问。**导演台一段仍然最长 15 秒**（`DirectorService.MAX_CLIP_SECONDS`），模型放开到 30 秒只给这条流程。别的模型配到 15 秒以上，要先有这版服务端再改配置。真模型整条链没跑过，见 TODO。
+
+### 成片生产与编辑室分工（2026-11-07，本地未发布）
+
+真源 `docs/studio-final-cut.md`。用户定的边界：**自动字幕、音量统一这类基础能力属于视频生产阶段（导演台整集导出、一键成片），默认做好；编辑室（高级编辑）只放高级功能，不用来补基础操作。** 新增成片能力先判断属于哪边。Twick 负责编辑和预览，服务端 FFmpeg 负责导出（用户 2026-10-19 否掉 HTML / 无头浏览器导出）。界面按不懂技术的用户写：导出对话框只问字幕、背景音乐、清晰度三件事且都有默认值，一键成片分五步，属性不写术语。合成滤镜只用 FFmpeg 4.0 就有的（线上共享 ffmpeg 是 2018 版，所以没有 `xfade`）。`StudioPackagingService.finish` 是 Studio 成片的最后一道；所有字幕合成一路透明画面（ffconcat），别再一条字幕一路 `-loop 1` 输入。
+
+界面叫法统一成「导出」（导出成片、已导出的成片、导出中），页面叫「制作成片」；对话制作计划和 `/video` 进度里系统自动做的「合成成片」没改（TODO）。只打开编辑室没改动时返回不存档，否则一键成片的设置和导出按钮会被替换。Twick 把时间线存在全局表里、按 `contextId` 取：同一页再次打开必须用新 id，否则读到已释放的素材地址，预览一直转圈。
+
+**改 FFmpeg 滤镜要用旧版实跑**（2026-11-07 事故前查出）：线上共享的 ffmpeg 是 2018 版，本机 8.x 能跑的图在旧版可能直接失败。`loudnorm` 之后没有声道布局，`atrim` / `sidechaincompress` 报 `Cannot select channel layout`，成片整条出不来；单测和本机走查全绿。`loudnorm` 后必须跟 `aformat`。验证办法见 `docs/studio-final-cut.md`（Ubuntu 18.04 官方源的 3.4，用 `docker exec` 包装脚本放到 PATH 最前面跑真实渲染测试）。
+
+### Studio 后台模型配置（2026-11-07，本地未发布）
+
+`studio-admin` 的 `/models` 替代统一后台和 `apps/admin` 的 LLM API 页，接口 `/api/admin/studio/model-config/command` 复用 `ModelManagementService` 的命令（白名单在 `AdminStudioModelConfigController`）。规格一律当不透明 JSON：前端不解析、不用部分字段的表单重建，没改就不发，这样编辑器不认识的字段（如 `wire.requireExactOutputSize`）丢不了；服务端对发来的规格严格读取，不认识的字段报错而不是丢弃。`endpointSave` 没传五个限额会清空（`rpmLimit`、`tpmLimit`、`dailyTokenQuota`、`dailyCostQuotaMicros`、`alertFailureRatePct`），其余字段没传才是不改，保存规则集中在 `src/lib/model-config.ts`。规则见 `specs/BUSINESS_RULES.md`「Studio 后台模型配置」，页面说明和未搬部分见 `docs/platform-model-management.md`。
+
+### 资产库：有图自动进库（2026-11-07，已生产发布 `20261108-asset-library-f63970b5f`）
+
+真源 `docs/ip-studio-personal-asset-library-plan.md` 末节，规则 `specs/BUSINESS_RULES.md` 同日条目。资产库两层：文件（`ip_saved_asset`，生成成功自动收录）和角色、场景、道具（`ip_library_record` 的 `object`）。导演台有图的三类资产由 `IpLibraryDirectorSync` 后台对账建卡（`IpLibraryCollector`，`ILW-<作品>` 记作品更新时间），同名不合并，已关联的只把关联后的新图追加到原卡，主图跟采用版本直到用户自己选（`mainAssigned`），删掉的不补回，不写回作品。**先拿用户行锁再读**：MySQL 可重复读的快照在第一次普通读时才定，先读会覆盖用户刚保存的修改（`IpLibraryService.collect` 同序）。抛 `BusinessException` 的 `@Transactional` 调用不能在外层事务里 catch 着继续，会把事务标成回滚，所以对账前先用 `ownsAssetKey` 判。画布的图不自动建卡，用户点「存为角色、场景或道具」（`library-save-dialog.tsx`，`POST /library/objects/from-media`）。来源是筛选维度（`from` / `projectId`），不自动建文件夹。**新增产物入口时**：走 `IpRun` 的由归集收录，导演台作品里的由对账收录，其余要自己登记，且和产生文件的请求放在一起，不要在前端另发一个不等结果的请求（裁剪、抽帧见 `POST /projects/{id}/library/images`）；`/uploads` 不登记，因为蒙版这类中间图也走它。
+
+### 导演台带货短剧（2026-11-06，功能分支 `feat/director-commerce-drama`，未发布）
+
+真源 `docs/ai-director-commerce-plan.md`。每部作品一个开关 `settings.commerce`（默认关，新建作品和作品设置里），决定「商品」工作区出不出现。商品库是个人资产库的 `kind=product`，不是 `dap_product`（手机端老页面的另一张表）。商品在作品里是 `assets[]` 的一项 `kind=product`，所以片段关联、参考图、「需更新」、解除关联都走现有的资产路径，不要另写一套传图；参考图的唯一入口是 `visualAssets`，顺序 角色 → 场景 → 道具 → 商品。商品图只来自商品库，不走 `asset-image`。资产页和 `storyAssetCount` 不算商品：只有商品不算「已有资产」。开关关着或作品里没有商品时，`director-commerce-*` 不拼进提示词，提示词逐字不变（`DirectorPromptStageParityTest` 守着）；分镜图、视频提示词只在片段关联了商品时才多出内容，改这里要保证没关联商品的片段一个字不变，否则旧图全被标「需更新」。环节文件里的 `{{method}}` 是这条链的挂载点：后台改过这些环节的不会跟仓库文件更新，发布前要查（见 `TODO.md`）。已有剧本写进商品走创作助手的修改建议，不做覆盖全文的任务。本地用 Agnes 2.5 Flash 实测：第一版规则下把商品写成「掉漆」、漏写第二件、编了「三十多块钱」，所以规则里有「保持崭新」「不写随口的价格」「输出前逐件核对」；「掉漆」是编剧环节的示例带出来的，规则里写「不要掉漆」也一样会诱导，带货作品连这个词都不给（负面例子也会被弱模型照抄）。弱模型仍可能漏，页面上的「剧本里还没有写到」和「写进剧本」就是这种情况的补救；模型写到商品却忘了放进 `assetIds` 时，`linkMentionedProducts` 补上。
+
+### 爆款复刻：直接看视频的拉片，代码拼制作方案（2026-11-09，本地未发布）
+
+真源 `docs/ip-studio-recreation.md` 第一节。线上 11-07 至 11-09 视频页 12 条复刻只有 3 条出片，卡在模型自己写整份制作方案（清晰度写成别的模型的、一步塞几段原片、方案读不出来），拉片又只看截图不听声音。现在：拉片把整条视频（画面 + 声音）交给后台用途 `DAP_VIDEO_UNDERSTAND` 绑定的模型（`models_json` 声明 `supportsVideo`、`ai.chat-token-pricing` 定价，V79 只扩枚举；实测选火山方舟 `doubao-seed-2-0-lite`，它能听声音，2.1 Pro / Turbo 不收声音），一次写出逐镜台词、字幕、段落、爆点和复刻要点（`StudioVideoBreakdown`，提示词 `stage-video-breakdown`），代码用 ffmpeg `scdet` 给真实切镜点，并按视频模型时长只在镜头边界分段。视频页复刻的「写分镜脚本」改由 `StudioRecreationTaskPlan` 拼方案：分段、秒数、模型、清晰度、画幅、每段带哪张图都是代码定的（原片片段不交给视频模型：H3 带上原片就照抄原商品、水印和字幕，真实出片验证过），模型（`stage-recreation-compile`）只写每段提示词和字幕，拼完照常过 `validateSkillPlan`；字幕在合成时叠（`assemble.settings.captions`）。没绑定视频理解、或拉片没有 `breakdown` 时两处都走旧路。**新增复刻相关的方案字段，先想清楚是代码定还是模型写：凡是合同里能查到的（模型、清晰度、时长上下限、参考数量）一律代码定**。真实出片效果还没验证。

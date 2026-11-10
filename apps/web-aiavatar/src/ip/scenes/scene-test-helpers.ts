@@ -2,7 +2,7 @@ import { act, fireEvent, screen, within } from "@testing-library/react";
 
 /** 换场景：点场景名 →「全部场景」→ 在边栏里点那个场景（和用户的路径一样）。 */
 export function pickScene(title: string) {
-  fireEvent.click(screen.getByRole("button", { name: /^换场景，当前/ }));
+  fireEvent.click(screen.getByRole("button", { name: /^切换场景，当前/ }));
   fireEvent.click(screen.getByRole("button", { name: "全部场景" }));
   const drawer = within(screen.getByRole("dialog", { name: /^AI (视频|图片)场景$/ }));
   fireEvent.click(drawer.getByText(title, { selector: "strong" }).closest("button")!);
@@ -28,8 +28,8 @@ export function setDuration(seconds: number) {
 
 /** 点素材位打开资产库（不给名字就点第一个空位）。 */
 export async function openLibrary(label?: string) {
-  const button = label ? await screen.findByRole("button", { name: new RegExp(`^(从资产库选|更换)${label}$`) })
-    : (await screen.findAllByRole("button", { name: /^从资产库选/ }))[0];
+  const button = label ? await screen.findByRole("button", { name: new RegExp(`^(从资产库选择|更换)${label}$`) })
+    : (await screen.findAllByRole("button", { name: /^从资产库选择/ }))[0];
   await act(async () => { fireEvent.click(button); });
 }
 

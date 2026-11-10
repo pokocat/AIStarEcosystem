@@ -825,13 +825,20 @@ html[data-layout="mobile"] .ip-surface .studio-tasks-launch { left:12px; bottom:
 .studio-work-timeline button::before { right:0; background:var(--surface-3); }
 .studio-work-timeline button[aria-current]::before { background:var(--line-2); }
 .studio-work-timeline button span { background:var(--primary); }
-.studio-work-preview-note, .studio-work-solo { margin:0; font-size:12px; line-height:1.6; color:var(--ink-2); }
+.studio-work-preview-note, .studio-work-solo { margin:0; font-size:13px; line-height:1.6; color:var(--ink-2); }
 .studio-work-main { display:flex; flex-direction:column; gap:28px; min-width:0; }
 .studio-work-section { display:flex; flex-direction:column; align-items:flex-start; gap:12px; min-width:0; }
 .studio-work-section > * { max-width:100%; }
 .studio-work-section h3 { margin:0; font-size:15px; font-weight:650; }
+.studio-work-step-title { display:flex; align-items:center; gap:8px; }
+.studio-work-step { display:inline-grid; place-items:center; flex-shrink:0; width:22px; height:22px; border-radius:50%; background:var(--ink); color:#fff; font-size:12px; font-weight:600; font-variant-numeric:tabular-nums; }
+.studio-work-choices.ant-radio-group { display:flex; flex-direction:column; align-items:flex-start; gap:8px; }
+.studio-work-choices.is-row.ant-radio-group { flex-direction:row; flex-wrap:wrap; gap:8px 20px; }
+.studio-work-choices .ant-radio-wrapper { font-size:14px; line-height:1.6; margin-inline-end:0; }
+.studio-work-choices .ant-radio-wrapper small { margin-left:8px; color:var(--ink-2); font-size:13px; }
+.studio-work-note.is-warn { color:var(--warn, #9a6a00); }
 .studio-work-section-head { align-self:stretch; display:flex; align-items:flex-start; justify-content:space-between; gap:12px 16px; flex-wrap:wrap; }
-.studio-work-section-head p { margin:4px 0 0; font-size:12px; line-height:1.6; color:var(--ink-2); }
+.studio-work-section-head p { margin:4px 0 0; font-size:13px; line-height:1.6; color:var(--ink-2); }
 .studio-work-ratio { display:inline-flex; gap:2px; padding:3px; border:1px solid var(--line); border-radius:10px; background:var(--surface); }
 .studio-work-ratio button { min-height:32px; padding:0 12px; border:0; border-radius:7px; background:transparent; color:var(--ink-2); font:inherit; font-size:13px; white-space:nowrap; cursor:pointer; }
 .studio-work-ratio button[aria-pressed="true"] { background:var(--surface-3); color:var(--ink); font-weight:600; }
@@ -851,33 +858,48 @@ html[data-layout="mobile"] .ip-surface .studio-tasks-launch { left:12px; bottom:
 .studio-work-tag.is-generated { background:var(--ai-soft); color:var(--ai-ink); }
 .studio-work-tag.is-source { background:var(--warn-soft); color:var(--warn); }
 .studio-work-clip-body p { display:-webkit-box; margin:0; overflow:hidden; color:var(--ink-2); font-size:12px; line-height:1.55; overflow-wrap:anywhere; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
-.studio-work-clip-body small { font-size:12px; line-height:1.5; color:var(--ink-2); }
-.studio-work-clip-body small.is-warn { color:var(--warn); }
+.studio-work-clip-body small { font-size:13px; line-height:1.5; color:var(--ink-2); }
+.studio-work-clip-body small.is-warn { color:var(--warn); font-size:14px; }
 .studio-work-clip-tools { display:flex; flex-direction:column; align-items:flex-end; gap:8px; }
 .studio-work-clip-tools > span { display:flex; gap:6px; }
 .studio-work-clip-tools .ant-btn { width:32px; height:32px; padding:0; }
 .studio-work-clip-tools .ant-checkbox-wrapper { white-space:nowrap; }
 .studio-work-field { display:flex; flex-direction:column; gap:6px; width:100%; min-width:0; color:var(--ink-2); font-size:13px; }
 .studio-work-field-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+/* 选好的背景音乐：文件名、试听、移除放一行，看得出选了哪首、能听一下。 */
+.studio-work-music { display:flex; align-items:center; flex-wrap:wrap; gap:8px 10px; min-width:0; padding:8px 10px; border:1px solid var(--line, rgba(32,44,66,.14)); border-radius:8px; color:var(--ink); }
+.studio-work-music strong { flex:1 1 120px; min-width:0; overflow:hidden; font-size:14px; font-weight:500; text-overflow:ellipsis; white-space:nowrap; }
+.studio-work-music audio { flex:1 1 200px; min-width:0; height:36px; }
+/* 手动字幕：一行一条，时间和文字分开填。窄屏时时间在上、文字在下。 */
+.studio-work-caption-rows { display:flex; flex-direction:column; gap:8px; margin:0; padding:0; list-style:none; }
+.studio-work-caption-rows li { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:8px; }
+.studio-work-caption-time { display:inline-flex; align-items:center; gap:4px; color:var(--ink-2); font-size:13px; white-space:nowrap; }
+.studio-work-caption-time .ant-input { width:56px; padding-inline:6px; text-align:center; font-variant-numeric:tabular-nums; }
+@container studio-view (max-width:560px) { .studio-work-caption-rows li { grid-template-columns:minmax(0,1fr) auto; } .studio-work-caption-time { grid-column:1 / -1; } }
 .studio-work-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; width:100%; }
 .studio-work-section .ant-select, .studio-work-section audio { width:100%; max-width:440px; }
 .studio-work-section audio { height:36px; }
 .studio-work-voice { display:none; }
-.studio-work-note { margin:0; font-size:12px; line-height:1.6; color:var(--ink-2); }
+.studio-work-note { margin:0; font-size:14px; line-height:1.6; color:var(--ink-2); }
 .studio-work-note.is-error, .studio-work-actions > div > .is-error { color:var(--err); }
 .studio-work-link { display:inline-flex; align-items:center; gap:4px; margin-left:8px; padding:0; border:0; background:none; color:var(--primary); font:inherit; font-size:12px; white-space:nowrap; cursor:pointer; }
 .studio-work-link:disabled { color:var(--ink-3); cursor:not-allowed; }
 .studio-work-actions { position:sticky; bottom:-24px; z-index:2; align-self:stretch; display:flex; align-items:center; gap:16px; margin-top:-8px; padding:14px 0 18px; border-top:1px solid var(--line); background:var(--surface); }
 .studio-work-actions .ant-btn { flex-shrink:0; min-width:120px; height:40px; }
-.studio-work-actions > div { display:flex; flex-direction:column; gap:2px; min-width:0; }
-.studio-work-actions > div > strong { font-size:13px; font-weight:600; }
-.studio-work-actions > div > span { font-size:12px; line-height:1.5; color:var(--ink-2); }
+/* 导出是这一页的主操作：和全站主按钮同一个深色，比顶栏的发布不弱。 */
+.studio-work-actions .ant-btn-primary:not(:disabled), .studio-work-result > .ant-btn-primary:not(:disabled) { background:var(--ink); color:var(--surface); }
+.studio-work-actions .ant-btn-primary:hover:not(:disabled), .studio-work-result > .ant-btn-primary:hover:not(:disabled) { background:var(--ink); color:var(--surface); filter:brightness(1.25); }
+/* 按钮多或助手打开时，说明换到下一行，不要挤成一竖条。 */
+.studio-work-actions { flex-wrap:wrap; }
+.studio-work-actions > div { display:flex; flex:1 1 280px; flex-direction:column; gap:2px; min-width:0; }
+.studio-work-actions > div > strong { font-size:14px; font-weight:600; }
+.studio-work-actions > div > span { font-size:13px; line-height:1.5; color:var(--ink-2); }
 .studio-work-results { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:24px; margin-top:32px; padding-top:24px; border-top:1px solid var(--line); scroll-margin-top:16px; }
 .studio-work-results > h3 { grid-column:1 / -1; margin:0; font-size:15px; }
 .studio-work-result { display:flex; flex-direction:column; gap:10px; min-width:0; }
-.studio-work-result h4 { margin:0; overflow:hidden; font-size:13px; font-weight:600; text-overflow:ellipsis; white-space:nowrap; }
+.studio-work-result h4 { margin:0; overflow:hidden; font-size:14px; font-weight:600; text-overflow:ellipsis; white-space:nowrap; }
 .studio-work-result > video { width:100%; max-height:420px; border-radius:10px; background:#0d1018; }
-.studio-work-result > p { margin:0; font-size:12px; color:var(--ink-2); }
+.studio-work-result > p { margin:0; font-size:14px; color:var(--ink-2); }
 .studio-work-result > .ant-btn { align-self:flex-start; }
 @container studio-view (max-width: 760px) {
   .studio-work-editor, .studio-work-editor.is-landscape { grid-template-columns:minmax(0,1fr); gap:24px; }
@@ -986,7 +1008,7 @@ html[data-layout="mobile"] .ip-surface .studio-dialogue-threads { width:min(340p
 .ip-surface .studio-dialogue-execution-materials li>span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink); }
 .ip-surface .studio-dialogue-execution-materials li>small { color:var(--ink-3); font-size:12px; white-space:nowrap; }
 .ip-surface .studio-dialogue-execution-actions .ant-btn { height:28px; padding:0 10px; border-radius:8px; font-size:12px; }
-/* 对话里的逐步清单：打勾 / 转圈 / 空圈，右边「在画布上看」。 */
+/* 对话里的逐步清单：打勾 / 转圈 / 空圈，右边「在画布上查看」。 */
 .ip-surface .studio-dialogue-steps { margin:2px 0 0; padding:0; list-style:none; display:grid; gap:10px; }
 .ip-surface .studio-dialogue-steps li { display:grid; grid-template-columns:20px minmax(0, 1fr) auto; gap:10px; align-items:center; font-size:13px; min-width:0; }
 .ip-surface .studio-dialogue-step-title { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -1033,7 +1055,7 @@ html[data-layout="mobile"] .ip-surface .studio-dialogue-threads { width:min(340p
 .ip-surface .studio-assistant-panel .studio-dialogue-message.is-user { position:relative; }
 .ip-surface .studio-assistant-panel .studio-dialogue-message.is-user .studio-dialogue-meta { position:absolute; right:100%; bottom:2px; margin-right:4px; }
 html[data-layout="desktop"] .ip-surface .studio-assistant-panel .studio-dialogue-message.is-user:not(:hover):not(:focus-within) .studio-dialogue-message-actions { opacity:0; }
-/* 「在画布上看」是群青链接。 */
+/* 「在画布上查看」是群青链接。 */
 .ip-surface .studio-dialogue-steps .studio-dialogue-link { color:var(--primary); }
 .ip-surface .studio-dialogue-steps .studio-dialogue-link:hover:not(:disabled) { color:var(--primary-700); text-decoration:underline; }
 /* 停止：红字、浅粉边（危险动作，但不是一块红）。 */
@@ -1045,7 +1067,7 @@ html[data-layout="desktop"] .ip-surface .studio-assistant-panel .studio-dialogue
 .ip-surface .studio-dialogue-approval-done[open] { display:flex; flex-direction:column; gap:6px; }
 /* 确认卡与制作计划（2026-10-20，docs/ip-studio-new-canvas-and-threads.md §4.2）：一张卡只回答做什么、花多少、按哪个按钮。
    方案跟着报价来时画在确认卡里；每一步是标题、类型和要生成的描述（一步时三行，展开看全文；多步时收起，点开看）。
-   主按钮「开始制作 / 开始分析 / 提高上限并继续」是 AI 渐变（.studio-assistant-primary），「先改改」白底细边，状态标签灰底。 */
+   主按钮「开始制作 / 开始分析 / 提高上限并继续」是 AI 渐变（.studio-assistant-primary），「修改方案」白底细边，状态标签灰底。 */
 .ip-surface .studio-assistant-panel .studio-dialogue-plan-step { display:flex; flex-direction:column; gap:6px; min-width:0; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--surface-2); }
 .ip-surface .studio-assistant-panel :is(.studio-dialogue-plan-step, .studio-dialogue-plan-steps li)>header { display:flex; align-items:baseline; gap:8px; min-width:0; }
 .ip-surface .studio-assistant-panel :is(.studio-dialogue-plan-step, .studio-dialogue-plan-steps li)>header strong { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; font-weight:600; }
@@ -1121,7 +1143,7 @@ html[data-layout="desktop"] .ip-surface .studio-assistant-panel .studio-dialogue
 .studio-advanced-media li video { width:100%; aspect-ratio:9/16; max-height:120px; object-fit:cover; border-radius:6px; background:#000; pointer-events:none; }
 .studio-advanced-media li span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .studio-advanced-audio-icon { display:grid; place-items:center; height:48px; border-radius:6px; background:#232733; font-size:20px; }
-.studio-advanced-empty, .studio-advanced-hint { margin:8px 0 0; font-size:12px; line-height:1.6; color:#8b93a3; }
+.studio-advanced-empty, .studio-advanced-hint { margin:8px 0 0; font-size:13px; line-height:1.6; color:#a3aab8; }
 html[data-layout="mobile"] .studio-advanced-shell { display:none; }
 /* Twick 的画面区没有定高，内容一撑就把时间线挤出屏幕；让它吃满中间区域，播放器和时间线在里面分。 */
 .twick-scope .studio-advanced-body .canvas-container { height:100%; }
@@ -1136,3 +1158,80 @@ html[data-layout="mobile"] .studio-advanced-shell { display:none; }
 .studio-advanced-inspector .ant-slider-rail { background:#3a3f4b; }
 .studio-advanced-inspector .ant-slider:hover .ant-slider-rail { background:#4a5060; }
 .studio-advanced-shell .ant-btn:disabled { color:#6b7280; background:#1f232b; border-color:#2f3440; }
+.studio-advanced-switches { display:flex; flex-direction:column; gap:10px; font-size:13px; }
+.studio-advanced-switches label { display:flex; align-items:center; gap:8px; cursor:pointer; }
+.studio-advanced-media li { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.studio-advanced-media li button.studio-advanced-pip { flex-direction:row; align-items:center; justify-content:center; gap:4px; padding:3px 6px; font-size:12px; color:inherit; }
+.studio-advanced-media img { width:100%; aspect-ratio:1; object-fit:cover; border-radius:6px; }
+.studio-advanced-guide ol { margin:8px 0 0; padding-left:18px; display:flex; flex-direction:column; gap:8px; font-size:13px; line-height:1.6; color:#c9cfdb; list-style:decimal; }
+.studio-advanced-guide strong { font-weight:600; }
+/* Twick 打开已保存的工程时，预览上的转圈要等第一次播放才收起，画面其实已经好了：不显示，免得让人以为一直在加载。 */
+.studio-advanced-shell .twick-editor-loading-overlay { display:none !important; }
+.studio-advanced-warning .ant-btn { margin-left:12px; }
+.studio-advanced-all { display:inline-flex; align-items:center; align-self:flex-start; gap:4px; padding:0; border:0; background:transparent; color:#c9cfdb; font:inherit; font-size:13px; cursor:pointer; }
+.studio-advanced-all:hover { color:#fff; }
+.studio-advanced-gap { display:flex; flex-direction:column; align-items:flex-start; gap:8px; padding:10px 12px; border:1px solid #6b5a2c; border-radius:8px; background:rgba(214,170,70,.1); color:#f0dca8; font-size:13px; line-height:1.6; }
+.studio-advanced-gap p { margin:0; }
+.studio-advanced-gap .ant-btn-primary { background:#6b7cff; border-color:#6b7cff; color:#fff; }
+.studio-advanced-gap .ant-btn-primary:hover:not(:disabled) { background:#7f8eff; border-color:#7f8eff; color:#fff; }
+/* 右侧没选中时：这条成片的内容和设置。 */
+.studio-advanced-section { display:flex; flex-direction:column; gap:8px; padding-top:14px; border-top:1px solid #262a33; }
+.studio-advanced-section h4 { margin:0; font-size:13px; font-weight:600; color:#e7e9ee; }
+.studio-advanced-section p { margin:0; font-size:13px; line-height:1.6; color:#c9cfdb; }
+.studio-advanced-section small { font-size:12px; line-height:1.6; color:#9aa2b1; }
+.studio-advanced-section .studio-advanced-auto { display:flex; align-items:center; gap:8px; font-size:13px; color:#e7e9ee; cursor:pointer; }
+.studio-advanced-section .ant-btn { align-self:flex-start; }
+.studio-advanced-section details, details.studio-advanced-section { display:block; }
+details.studio-advanced-section summary { font-size:13px; font-weight:600; color:#e7e9ee; cursor:pointer; }
+.studio-advanced-rows { display:flex; flex-direction:column; gap:4px; margin:0; padding:0; list-style:none; }
+.studio-advanced-rows button { display:grid; grid-template-columns:auto minmax(0,1fr) auto 14px; align-items:center; gap:8px; width:100%; min-height:40px; padding:6px 8px; border:1px solid #2f3440; border-radius:8px; background:#1a1d24; color:#e7e9ee; font:inherit; font-size:13px; text-align:left; cursor:pointer; }
+.studio-advanced-rows button:hover { border-color:#6b7cff; }
+.studio-advanced-rows button:focus-visible { outline:2px solid #6b7cff; outline-offset:1px; }
+.studio-advanced-rows b { display:grid; place-items:center; min-width:20px; height:20px; padding:0 5px; border-radius:5px; background:#2a2f3a; font-size:12px; font-weight:600; white-space:nowrap; }
+.studio-advanced-rows span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.studio-advanced-rows em { font-style:normal; font-size:12px; color:#9aa2b1; white-space:nowrap; }
+.studio-advanced-rows svg { color:#6f7787; }
+/* 工具条自带的删除会留下空档（导出成黑屏）：只留右侧的删除，它会把后面的片段往前补。 */
+.studio-advanced-shell [title="Delete"], .studio-advanced-shell [title="删除"] { display:none !important; }
+.studio-advanced-loading { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; }
+.studio-advanced-loading p { margin:0; font-size:16px; }
+.studio-advanced-loading-actions { display:flex; gap:8px; }
+.studio-advanced-music .ant-btn { align-self:flex-start; }
+/* 编辑室返回时的询问：放在顶栏，不弹窗，不挡时间线。 */
+.studio-advanced-ask { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:8px; min-width:0; font-size:13px; color:#e7e9ee; }
+.studio-advanced-ask span { min-width:0; }
+/* 成片页的主操作是导出，顶栏的发布退后，免得两个深色按钮不知道点哪个。 */
+body:has(.studio-work-editor) .studio-host-publish { background:transparent !important; color:var(--ink) !important; box-shadow:inset 0 0 0 1px var(--line); }
+.studio-advanced-music { display:flex; flex-direction:column; gap:4px; margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid #2f3440; font-size:13px; color:#c9cfdb; }
+.studio-advanced-music p { display:flex; align-items:center; gap:6px; margin:0; min-width:0; line-height:1.6; }
+.studio-advanced-music p span { flex:1; min-width:0; overflow:hidden; color:#e7e9ee; text-overflow:ellipsis; white-space:nowrap; }
+.studio-advanced-music p button { flex-shrink:0; padding:2px 8px; border:1px solid #3a3f4b; border-radius:6px; background:transparent; color:inherit; font-size:12px; cursor:pointer; }
+.studio-advanced-music small { font-size:12px; line-height:1.6; color:#9aa2b1; }
+.studio-advanced-section.studio-advanced-music { margin:0; padding-bottom:0; border-bottom:0; gap:8px; }
+.studio-advanced-music audio { width:100%; height:32px; color-scheme:dark; }
+.studio-advanced-music .ant-btn-default, .studio-advanced-section .ant-btn-default { background:transparent; border-color:#3a3f4b; color:#e7e9ee; }
+.studio-advanced-music .ant-btn-default:hover:not(:disabled), .studio-advanced-section .ant-btn-default:hover:not(:disabled) { background:rgba(255,255,255,.08); border-color:#555c6b; color:#fff; }
+.studio-advanced-media li button.studio-advanced-pip[aria-pressed="true"] { border-color:#6b7cff; color:#fff; background:rgba(107,124,255,.22); }
+.studio-advanced-panel .studio-advanced-auto { display:flex; align-items:flex-start; gap:8px; margin-top:4px; font-size:12px; line-height:1.6; cursor:pointer; }
+.studio-advanced-shell .ant-switch:not(.ant-switch-checked) { background:#3a3f4b; }
+.studio-advanced-shell .ant-switch.ant-switch-checked { background:#6b7cff; }
+.studio-advanced-inspector .ant-radio-button-wrapper { background:#1f232c; border-color:#3a3f4b; color:#c9cfdb; }
+.studio-advanced-inspector .ant-radio-button-wrapper:not(:first-child)::before { background:#3a3f4b; }
+.studio-advanced-inspector .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled) { background:#6b7cff; border-color:#6b7cff; color:#fff; }
+/* 深色层上主次要分明：导出是主操作，保存和删除退后。 */
+.studio-advanced-bar .ant-btn-default { background:transparent; border-color:#3a3f4b; color:#e7e9ee; }
+.studio-advanced-bar .ant-btn-default:hover:not(:disabled) { background:rgba(255,255,255,.08); border-color:#555c6b; color:#fff; }
+.studio-advanced-bar .ant-btn-primary { background:#6b7cff; border-color:#6b7cff; color:#fff; }
+.studio-advanced-bar .ant-btn-primary:hover:not(:disabled) { background:#7f8eff; border-color:#7f8eff; color:#fff; }
+.studio-advanced-inspector .ant-btn-dangerous { background:transparent; border-color:#6b3a3f; color:#ff9aa2; }
+.studio-advanced-inspector .ant-btn-dangerous:hover:not(:disabled) { background:rgba(255,120,130,.1); border-color:#ff9aa2; color:#ffb4ba; }
+/* 存过高级编辑：左边不放原始片段的预览（和要导出的对不上），列出真正会导出的内容。 */
+.studio-work-saved { display:flex; flex-direction:column; gap:10px; min-width:0; padding:16px; border:1px solid var(--line); border-radius:12px; background:var(--surface); }
+.studio-work-saved h3 { margin:0; font-size:16px; font-weight:600; }
+.studio-work-saved > p { margin:0; font-size:14px; color:var(--ink-2,#4a5560); }
+.studio-work-saved ol { display:flex; flex-direction:column; gap:4px; margin:0; padding:0; list-style:none; }
+.studio-work-saved li { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:10px; min-height:40px; padding:6px 10px; border:1px solid var(--line); border-radius:8px; font-size:14px; }
+.studio-work-saved li b { display:grid; place-items:center; width:22px; height:22px; border-radius:6px; background:var(--ink); color:#fff; font-size:12px; font-weight:600; }
+.studio-work-saved li span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.studio-work-saved li em { font-style:normal; font-size:13px; color:var(--ink-3,#7a8590); white-space:nowrap; }
+.studio-work-result-time { display:block; margin-bottom:8px; font-size:13px; color:var(--ink-3,#7a8590); }

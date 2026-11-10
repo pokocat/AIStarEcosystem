@@ -1,0 +1,33 @@
+{
+  "library": {
+    "virtualGroupId": "group-20261109112741-sqzp2",
+    "projectName": "bingbing",
+    "name": "火山官方人像素材库",
+    "id": "ark-bingbing"
+  },
+  "endpoints": [
+    {
+      "id": "ai-1fb0d9ce-d74",
+      "name": "火山方舟 · Seedance 2.0 Fast",
+      "model": "doubao-seedance-2-0-fast-260128",
+      "enabled": true,
+      "assetLibraryId": "ark-bingbing",
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
+      "billingMode": "PER_SECOND",
+      "rpmLimit": null,
+      "concurrencyLimit": null
+    },
+    {
+      "id": "ai-d91e6ae3-6df",
+      "name": "火山方舟 · Seedance 2.0 Mini",
+      "model": "doubao-seedance-2-0-mini-260615",
+      "enabled": true,
+      "assetLibraryId": "ark-bingbing",
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
+      "billingMode": "PER_SECOND",
+      "rpmLimit": null,
+      "concurrencyLimit": null
+    }
+  ],
+  "otherEndpointsUnchanged": true
+}

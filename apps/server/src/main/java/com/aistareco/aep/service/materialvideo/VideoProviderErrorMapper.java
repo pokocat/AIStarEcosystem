@@ -20,6 +20,10 @@ final class VideoProviderErrorMapper {
     /** Stable code for a model the provider has retired; clients must not resubmit to the same model. */
     static final String VIDEO_MODEL_RETIRED = "VIDEO_MODEL_RETIRED";
     static final String VIDEO_REFERENCE_PERSON_RESTRICTED = "VIDEO_REFERENCE_PERSON_RESTRICTED";
+    /** The supplier failed an accepted task on its own side (2026-11-07 OneToken Seedance 2.0). A new attempt can work. */
+    static final String VIDEO_PROVIDER_INTERNAL = "VIDEO_PROVIDER_INTERNAL";
+    private static final MappedError PROVIDER_INTERNAL = new MappedError(VIDEO_PROVIDER_INTERNAL,
+            "模型服务临时出错，未生成的视频不扣积分。请重新生成。");
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Map<String, MappedError> SUBMIT_ERRORS = Map.of(
             "503:video_queue_full", new MappedError("VIDEO_PROVIDER_QUEUE_FULL",
@@ -29,10 +33,25 @@ final class VideoProviderErrorMapper {
             "400:model_delisted", new MappedError(VIDEO_MODEL_RETIRED,
                     "这个视频模型已被提供方下架，不能再用它生成，请换一个模型"),
             "400:inputimagesensitivecontentdetected.privacyinformation", new MappedError(VIDEO_REFERENCE_PERSON_RESTRICTED,
-                    "参考图片被模型识别为包含真人，当前模型不接受这类素材。请更换参考图片后再试，使用相同素材重试仍会失败")
+                    com.aistareco.aep.service.ai.PublicModelErrorPolicy.PERSON_RESTRICTED)
     );
 
     private VideoProviderErrorMapper() {}
+
+    /** A task the supplier reports as failed while polling. Anything not listed here gets the worker's generic retry sentence. */
+    static Optional<MappedError> poll(String responseBody) {
+        if (responseBody == null || responseBody.isBlank()) return Optional.empty();
+        try {
+            JsonNode body = JSON.readTree(responseBody);
+            if (body == null || !body.isObject()) return Optional.empty();
+            String code = body.path("error").path("code").asText(body.path("code").asText(""));
+            String category = body.path("error").path("category").asText("");
+            return "internalserviceerror".equals(code.trim().toLowerCase(Locale.ROOT)) || "internal".equals(category.trim().toLowerCase(Locale.ROOT))
+                    ? Optional.of(PROVIDER_INTERNAL) : Optional.empty();
+        } catch (Exception ignored) {
+            return Optional.empty();
+        }
+    }
 
     static Optional<MappedError> submit(int httpStatus, String responseBody) {
         if (responseBody == null || responseBody.isBlank()) return Optional.empty();

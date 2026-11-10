@@ -365,6 +365,7 @@ public class VideoStudioService {
         boolean referenceRules = modeSpec.references() != null;
         List<VideoGenSpec.Reference> references = new ArrayList<>();
         if (referenceRules) {
+            requireReferenceCounts(modeSpec.references(), imageRefs, videoRefs, audioRefs);
             for (int i = 0; i < imageRefs; i++) references.add(new VideoGenSpec.Reference(JusuanH3Contract.MEDIA_IMAGE, null));
             for (int i = 0; i < videoRefs; i++) references.add(new VideoGenSpec.Reference(JusuanH3Contract.MEDIA_VIDEO, null));
             for (int i = 0; i < audioRefs; i++) references.add(new VideoGenSpec.Reference(JusuanH3Contract.MEDIA_AUDIO, null));
@@ -662,9 +663,6 @@ public class VideoStudioService {
         VideoStudioReferenceRules rules = spec.references();
         if (refs.isEmpty() && rules.minVisual() > 0)
             throw inputInvalid(name + "至少要 " + rules.minVisual() + " 个参考图片或视频素材");
-        if (refs.size() > rules.maxTotal()) {
-            throw inputInvalid("参考素材最多 " + rules.maxTotal() + " 个，现在是 " + refs.size() + " 个");
-        }
         List<VideoGenSpec.Reference> out = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         int images = 0;
@@ -684,6 +682,18 @@ public class VideoStudioService {
             }
             out.add(new VideoGenSpec.Reference(r.mediaType(), key));
         }
+        requireReferenceCounts(rules, images, videos, audios);
+        if (images + videos < rules.minVisual())
+            throw inputInvalid("参考图片和视频合计至少要 " + rules.minVisual() + " 个");
+        return new Inputs(first, last, out);
+    }
+
+    /** Quote placeholders and real inputs must obey the same configured upper bounds. */
+    private static void requireReferenceCounts(VideoStudioReferenceRules rules, int images, int videos, int audios) {
+        int total = images + videos + audios;
+        if (total > rules.maxTotal()) {
+            throw inputInvalid("参考素材最多 " + rules.maxTotal() + " 个，现在是 " + total + " 个");
+        }
         if (images > rules.image().maxCount()) {
             throw inputInvalid("参考图片最多 " + rules.image().maxCount() + " 张，现在是 " + images + " 张");
         }
@@ -696,9 +706,6 @@ public class VideoStudioService {
         if (videos > 0 && images > rules.maxImagesWithVideo()) {
             throw inputInvalid("带了参考视频时，参考图片最多 " + rules.maxImagesWithVideo() + " 张，现在是 " + images + " 张");
         }
-        if (images + videos < rules.minVisual())
-            throw inputInvalid("参考图片和视频合计至少要 " + rules.minVisual() + " 个");
-        return new Inputs(first, last, out);
     }
 
     /** 每个 key 都得用得上：本人在本区上传的同类素材，或这次做同款的模板自带的同类素材（首帧 / 尾帧只能是图片）。 */

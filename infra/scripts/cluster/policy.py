@@ -4,7 +4,7 @@ class Refused(RuntimeError):pass
 RDS='pgm-bp1gp4819mbs30z3.pg.rds.aliyuncs.com'
 TAIR='r-bp182e1w8fk05cnbvr.redis.rds.aliyuncs.com'
 LEGACY={'47.98.162.120','8.136.36.175'}
-PENDING_WORK=('ip_run', 'material_video_job', 'aep_publish_jobs', 'clip_render_job', 'clip_shot_job', 'music_gen_job', 'video_studio_prompt_optimization', 'ai_generation_queue', 'ip_dialogue_message', 'ip_plan_execution')
+PENDING_WORK=('ip_run', 'material_video_job', 'aep_publish_jobs', 'clip_render_job', 'clip_shot_job', 'music_gen_job', 'video_studio_prompt_optimization', 'ai_generation_queue', 'ip_dialogue_message', 'ip_plan_execution', 'video_asset_person', 'video_asset_portrait')
 def require(ok,message):
  if not ok:raise Refused(message)
 def sha256(path):
@@ -54,7 +54,7 @@ def import_plan_guard(plan,mode,now=None,freeze_start=False):
  require(plan.get('format')=='aistar-import-permit-v1' and plan.get('rds_host')==RDS,'导入计划身份不符')
  require(plan.get('database')==('aistar_prod' if mode=='production' else 'aistar_cutover_drill'),'导入目标越界')
  require(plan.get('role')==('aistar_migrator' if mode=='production' else 'aistar_rehearsal'),'导入角色越界')
- require(plan.get('table_count')==192 and plan.get('flyway_version')=='77','结构契约未经核对')
+ require(plan.get('table_count')==195 and plan.get('flyway_version')=='78','结构契约未经核对')
  if mode=='drill':require(plan.get('purpose')=='aistar-cutover-drill','必须明确隔离演练用途');return
  require(plan.get('production_authorized') is True,'未单独确认正式维护窗口')
  start,end=utc(plan['window_start_utc']),utc(plan['window_end_utc'])

@@ -7,6 +7,7 @@
 // Material is covered elsewhere: the assistant's references become edges into the node (studio.spec), native video sends
 // every connected input and refuses a mode that cannot carry them, and the legacy path refuses more than one picture.
 import type { StudioNodeSpec } from "@ai-star-eco/types/ip-studio-workflow";
+import { videoSecondsBounds } from "@/canvas/lib/media-size";
 
 const RATIOS = new Set(["9:16", "16:9", "1:1", "3:4", "4:3", "2:3", "3:2", "21:9"]);
 const RATIO = /(?<![\d.])(21|16|9|4|3|2|1)\s*[:：]\s*(16|9|4|3|2|1)(?![\d.])/g;
@@ -40,6 +41,15 @@ export function studioSpecConflictText(conflict: StudioSpecConflict): { said: st
   const said = [conflict.aspectRatio?.said, conflict.durationSec ? `${conflict.durationSec.said} 秒` : undefined].filter(Boolean).join("、");
   const set = [conflict.aspectRatio?.set, conflict.durationSec ? `${conflict.durationSec.set} 秒` : undefined].filter(Boolean).join("、");
   return { said, set };
+}
+
+/**
+ * What the duration control offers and checks for the chosen model. Test responses have one fixed length. While no model
+ * is known nothing is offered or refused; the server still checks what is sent.
+ */
+export function studioDurationLimits(model: { min?: number | null; max?: number | null } | undefined, mock?: boolean): { min?: number; max?: number; options: number[] } {
+  if (mock) return { options: [8] };
+  return model ? { ...videoSecondsBounds(model), options: [] } : { options: [] };
 }
 
 /**

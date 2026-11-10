@@ -8,9 +8,9 @@
 |---|---|---|---|
 | 公开首页 | `/` | `src/components/landing/ip-home.tsx`，`ip-landing.tsx` 仅转出同一组件 | `.ip-brand-surface` |
 | 登录后桌面首页 | `/dashboard` | `src/app/dashboard/page.tsx` → `IpHome` | `.ip-brand-surface` |
-| 登录后移动首页 | `/dashboard` | 同一路由 → `HubHome` | 原移动 H5，见 `DESIGN-mobile.md` |
-| IP 管理 | `/ips` | `src/ip/ip-management.tsx`、`ip-management-data.ts` | `.ip-brand-surface`；编辑 Modal 为 `.ip-management-editor` |
-| 共享桌面顶栏 | 应用页；公开首页自带一份 | `src/shell/desktop-top-bar.tsx` | `.ip-brand-surface` |
+| 登录后移动首页 | `/dashboard` | 同一路由 → `IpHome` + `HubTabBar` | `.ip-brand-surface` |
+| 资产 | `/assets`；旧 `/ips` 转到「人物」 | `src/ip/assets-hub.tsx`、`assets-people.tsx` | `.ip-brand-surface` |
+| 桌面导航 | 登录后是左侧一列（`.desktop-rail`）；公开首页是顶栏（`publicMode`） | `src/shell/desktop-top-bar.tsx` | `.ip-brand-surface` |
 | 创作与个人画布列表 | `/create`；`/projects` 重定向到此 | `src/ip/studio-create-home.tsx`、`studio-gallery.tsx` | `.ip-brand-surface` |
 | 灵感 | `/templates` | `src/ip/studio-template-market.tsx`、`inspiration-wall.tsx`、`styles/inspiration.css` | `.ip-brand-surface`；作品墙用 16px 圆角和胶囊筛选，不走 DESIGN.md 的工作台圆角（作品是主角，2026-11-06 用户要求不要像管理工作台） |
 | 个人画布与模板预览 | `/projects/{id}` 及模板预览路由 | `src/ip/`、`src/canvas-bridge/`、`src/canvas/` | 共享浅色 `.ip-brand-surface`，旧组件由局部令牌适配 |
@@ -30,7 +30,7 @@
 
 ## 首页：人物、入口与真实近期画布
 
-公开 `/` 与登录后的桌面 `/dashboard` 使用同一个 `IpHome` 组成。主图铺满英雄区，人物留在右侧，左侧为两行中文衬线标题「让灵感成形 / 让 IP 出圈」、说明与深墨「开始创作」按钮。英雄区最小高度 610px，左侧内容宽 60%，标题沿用 `DESIGN.md` 的 display 规格；主 CTA 最小高 60px、最小宽 235px。
+公开 `/` 与登录后的桌面 `/dashboard` 使用同一个 `IpHome` 组成。主图铺满英雄区，人物留在右侧，左侧为中文衬线标题「一个 IP，无限可能」、说明与深墨「开始创作」按钮。英雄区最小高度 610px，左侧内容宽 60%，标题沿用 `DESIGN.md` 的 display 规格；主 CTA 最小高 60px、最小宽 235px。
 
 英雄区之后为四张创作方向图卡：「数字人形象 / AI 图片创作 / AI 视频生成 / 短剧创作」。更下方为三张灵感示意卡：「角色的日常 / 角色 × 世界观 / 从形象到短剧」。图区有文字说明和清楚的入口，不使用整张截图充当网页。
 
@@ -96,12 +96,7 @@
 
 ## 图片与字体
 
-首页实际图片真源为 OSS：
-
-- `media/ipstudio/landing/ip-canvas-hero-v3.png`：暖色摄影风格人物主图及人物示意裁切，保留自然皮肤、五官和发丝细节；右侧人物、左侧低对比留白，不使用插画或塑料皮肤质感。
-- `media/ipstudio/landing/ip-canvas-scenes-v2.png`：2×2 场景图集，CSS `background-size: 200% 200%` 按格定位；一格一图，人物与场景都不拉伸。
-
-旧 `character-atlas-v1.png` 与原三张重叠人物纸卡不再是新首页规范。新图片来自用户设计方向的创作示意，带相应 alt/aria-label 或区块说明；IP 管理只展示本人真实素材，并使用既有签名图片/音频组件处理短期地址。
+首页不用主视觉大图（2026-11-07 旧版首页下线，`ip-canvas-hero-v3`、`ip-canvas-scenes-v2` 不再使用，OSS 上的源图留作历史）。IP 管理只展示本人真实素材，并使用既有签名图片/音频组件处理短期地址。
 
 新增展示字体为 Noto Serif SC 官方可变 Unicode 分片（101 个 WOFF2、200–900）。字体对象、OFL 与清单位于 OSS `media/ipstudio/fonts/noto-serif-sc-v36/`；`src/styles/ip-display-font.css` 通过固定同源 `src/app/ip-fonts/noto-serif-sc/[file]/route.ts` 读取，保留 immutable 缓存与 basename 校验。字体失败及官方 Web 范围以外字符回退系统衬线，原有四种字体加载未重做。
 

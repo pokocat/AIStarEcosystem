@@ -41,11 +41,16 @@ public final class StudioPlanDtos {
 
     public record PlanExecutionStep(String id,String title,String operation,String stage,List<String> dependsOn,String status,
                                     List<String> runIds,int attempt,long quotedCost,Long maxCost,String acceptedRunId,
-                                    Integer acceptedCandidateIndex,String nodeId,String reason,List<PlanExecutionMaterial> materials) {
+                                    Integer acceptedCandidateIndex,String nodeId,String reason,List<PlanExecutionMaterial> materials,String errorCode) {
         public PlanExecutionStep(String id,String title,String operation,String stage,List<String> dependsOn,String status,
                                  List<String> runIds,int attempt,long quotedCost,Long maxCost,String acceptedRunId,
                                  Integer acceptedCandidateIndex,String nodeId,String reason) {
-            this(id,title,operation,stage,dependsOn,status,runIds,attempt,quotedCost,maxCost,acceptedRunId,acceptedCandidateIndex,nodeId,reason,null);
+            this(id,title,operation,stage,dependsOn,status,runIds,attempt,quotedCost,maxCost,acceptedRunId,acceptedCandidateIndex,nodeId,reason,null,null);
+        }
+        public PlanExecutionStep(String id,String title,String operation,String stage,List<String> dependsOn,String status,
+                                 List<String> runIds,int attempt,long quotedCost,Long maxCost,String acceptedRunId,
+                                 Integer acceptedCandidateIndex,String nodeId,String reason,List<PlanExecutionMaterial> materials) {
+            this(id,title,operation,stage,dependsOn,status,runIds,attempt,quotedCost,maxCost,acceptedRunId,acceptedCandidateIndex,nodeId,reason,materials,null);
         }
     }
     /** A canvas object a stopped step named outside this execution's materials; {@code onCanvas=false} once deleted. */

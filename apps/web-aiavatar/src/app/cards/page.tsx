@@ -74,7 +74,7 @@ export default function MyCardsPage() {
       .then((rows) => { if (seq.current === mine) setState({ s: "ok", rows }); })
       .catch((e: unknown) => {
         if (seq.current !== mine) return;
-        setState({ s: "error", message: e instanceof Error ? e.message : "名片列表没加载出来，刷新页面再试" });
+        setState({ s: "error", message: e instanceof Error ? e.message : "名片列表加载失败，请稍后刷新重试。" });
       });
   }, [ready]);
 
@@ -86,19 +86,19 @@ export default function MyCardsPage() {
   };
 
   const toggle = async (row: CardSummary) => {
-    if (USE_MOCK) return say("演示模式下不改状态");
+    if (USE_MOCK) return say("演示模式下无法修改发布状态");
     setBusy(row.id);
     try {
       if (row.status === "published") {
         await CardApi.unpublish(row.id);
-        say("已取消发布，链接立刻打不开了");
+        say("已取消发布，链接已失效");
       } else {
         await CardApi.publish(row.id);
-        say("已发布，链接可以递出去了");
+        say("已发布，可分享链接");
       }
       load();
     } catch (e) {
-      say(e instanceof Error ? e.message : "操作没成功");
+      say(e instanceof Error ? e.message : "操作失败，请重试。");
     } finally {
       setBusy(null);
     }
@@ -110,7 +110,7 @@ export default function MyCardsPage() {
       await navigator.clipboard.writeText(url);
       say("链接已复制");
     } catch {
-      say("复制没成功，长按地址栏手动复制");
+      say("复制失败，请手动复制卡片上的链接。");
     }
   };
 
@@ -124,8 +124,8 @@ export default function MyCardsPage() {
       <div style={{ margin: "6px 16px 0" }}>
         <Card pad={14}>
           <span style={{ fontSize: 12.5, lineHeight: 1.7, color: "var(--ink-2)" }}>
-            名片是数字资产的<b style={{ color: "var(--ink)" }}>对外发布面</b> —— 形象直接引用你的数字人，
-            换了形象名片自动跟着变。发布后拿到一条链接，见客户扫码就能打开，对方不用注册。
+            名片用于对外展示你的数字人，更换形象后名片同步更新。
+            发布后会生成一条链接，对方打开链接直接查看，无需注册。
           </span>
         </Card>
       </div>
@@ -144,9 +144,9 @@ export default function MyCardsPage() {
         <div style={{ margin: "12px 16px 0" }}>
           <Card>
             <EmptyState
-              text="还没有名片。打开一个数字人形象，在「数字名片」那一节点「做成数字名片」，名字和整柜造型会自动带过来，你只要再填联系方式。"
+              text="还没有名片。打开一个数字人形象，在「数字名片」中点击「创建数字名片」，名字和造型会自动带入，你只需填写联系方式。"
               actionHref="/assets"
-              actionLabel="去打开一个形象"
+              actionLabel="前往资产"
             />
           </Card>
         </div>
@@ -279,8 +279,8 @@ export default function MyCardsPage() {
 
       <div style={{ margin: "20px 24px 0", textAlign: "center", fontSize: 11.5, color: "var(--ink-4)", lineHeight: 1.7 }}>
         {USE_MOCK
-          ? "演示模式：这里只展示一张内置样例名片，改动不会保存。"
-          : "取消发布后链接立刻打不开；形象被删或授权撤销时，名片会回落到已缓存的图并通知你。"}
+          ? "演示模式：仅展示一张示例名片，修改不会保存。"
+          : "取消发布后链接立即失效。"}
       </div>
     </HubScreen>
   );

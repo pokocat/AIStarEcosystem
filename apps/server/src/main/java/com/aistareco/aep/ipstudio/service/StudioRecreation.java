@@ -161,6 +161,6 @@ public final class StudioRecreation {
     }
     private static String cell(JsonNode value){return value.asText().replace("|","\\|").replace("\r","").replace("\n","<br>");}
     private static void list(StringBuilder out,String title,JsonNode rows){out.append("\n## ").append(title).append("\n\n");for(JsonNode row:rows)out.append("- ").append(row.asText()).append('\n');}
-    private static BusinessException invalid(){return new BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,"AI_BAD_OUTPUT","拆解报告不完整或画面引用无效，请核对模型输出");}
+    private static BusinessException invalid(){return new BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,"AI_BAD_OUTPUT","拆解报告不完整，请重试");}
     private static BusinessException bad(String code,String message){return BusinessException.badRequest(code,message);}
 }

@@ -43,7 +43,7 @@ test("a failed upload stays open and never binds a missing sample", async () => 
   const close = vi.fn();
   vi.mocked(DirectorApi.uploadAudio).mockRejectedValue(new Error("音频内容无法读取，请换一段音频"));
   const { container } = render(<Host close={close}/>);
-  expect(screen.getByText(/至少 2 秒、最多 25 MB/)).toBeDefined();
+  expect(screen.getByText(/至少 2 秒，最大 25 MB/)).toBeDefined();
   expect(screen.getByText(/只截取前 14.9 秒交给模型/)).toBeDefined();
   fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [new File(["sample"], "声音.wav")] } });
   fireEvent.click(screen.getByRole("button", { name: "保存音色" }));

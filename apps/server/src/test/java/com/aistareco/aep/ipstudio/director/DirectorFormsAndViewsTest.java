@@ -134,6 +134,150 @@ class DirectorFormsAndViewsTest {
         return req.getValue();
     }
 
+    @Test void displayedReferenceNumbersMatchThePromptAndSubmittedImagesEvenWhenSceneWasLinkedFirst() throws Exception {
+        seed();
+        setSceneView("reverse");
+        adoptReverseView();
+        ObjectNode c = content();
+        ObjectNode clip = (ObjectNode) c.path("clips").get(0);
+        clip.putArray("assetIds").add(assetId("金山寺")).add(assetId("白素贞"));
+        work.setContentJson(c.toString());
+
+        JsonNode wire = service.get(USER, work.getId()).path("clips").get(0);
+        JsonNode refs = wire.path("boardRefs");
+        assertEquals(List.of("图1", "图2", "图3"), values(refs, "label"));
+        assertEquals(List.of("白素贞", "金山寺", "金山寺·反打"), values(refs, "name"));
+        assertTrue(wire.path("boardPrompt").asText().contains("图1 提供角色「白素贞」"));
+        assertTrue(wire.path("boardPrompt").asText().contains("图2 提供场景「金山寺」"));
+        service.task(USER, work.getId(), new DirectorService.TaskRequest("board", "k1", "refs-order", null, null, 16L));
+        assertEquals(submitted().refKeys(), values(refs, "key"));
+        assertFalse(content().path("clips").get(0).has("boardRefs"), "wire 投影不写回作品");
+        assertEquals(List.of(assetId("金山寺"), assetId("白素贞")), values(content().path("clips").get(0).path("assetIds"), null));
+    }
+
+    @Test void missingAnImageDoesNotMoveTheOtherReferenceNumbers() throws Exception {
+        seed();
+        ObjectNode c = content();
+        ((ObjectNode) c.path("assets").get(0).path("image")).putNull("adoptedId");
+        work.setContentJson(c.toString());
+        JsonNode refs = service.get(USER, work.getId()).path("clips").get(0).path("boardRefs");
+        assertEquals("图1", refs.get(0).path("label").asText());
+        assertTrue(refs.get(0).path("key").isNull());
+        assertEquals("图2", refs.get(1).path("label").asText());
+        assertEquals("u/si.png", refs.get(1).path("key").asText());
+    }
+
+    /** 片段当前的分镜图提示词（形态不进提示词，切换前后一样）。 */
+    private String boardPrompt() throws Exception {
+        return service.get(USER, work.getId()).path("clips").get(0).path("boardPrompt").asText();
+    }
+
+    /** 放一张已采用的分镜图：指纹按给定的 key 算（只传主图就是 2026-11-06 之前的算法），refs 记实际提交的图。 */
+    private void adoptBoard(String prompt, List<String> fingerprintKeys, List<String> refKeys) throws Exception {
+        ObjectNode c = content();
+        ObjectNode board = (ObjectNode) c.path("clips").get(0).path("board");
+        ObjectNode m = board.withArray("candidates").addObject().put("id", "b1").put("key", "u/board.png").put("source", "generated").put("prompt", prompt)
+                .put("fingerprint", DirectorService.hash(prompt + "|" + String.join("|", fingerprintKeys)));
+        var refs = m.putArray("refs");
+        for (int i = 0; i < refKeys.size(); i++) refs.addObject().put("label", "图" + (i + 1)).put("key", refKeys.get(i));
+        board.put("adoptedId", "b1").put("adoptedBy", "user");
+        work.setContentJson(c.toString());
+    }
+
+    private JsonNode wireBoard() throws Exception { return service.get(USER, work.getId()).path("clips").get(0).path("board"); }
+
+    /** 建一个有图的形态并返回 id；片段还没选用它。 */
+    private String formWithImage(String key) throws Exception {
+        JsonNode w = edit("form.create", assetId("白素贞"), "{\"name\":\"半妖态\",\"description\":\"下半身化作蛇尾\"}");
+        String formId = asset(w, "白素贞").path("forms").get(0).path("id").asText();
+        edit("form.upload", formId, "{\"key\":\"" + key + "\"}");
+        return formId;
+    }
+
+    private void chooseForm(String formId) throws Exception {
+        edit("clip.setForm", "k1", "{\"assetId\":\"" + assetId("白素贞") + "\",\"formId\":\"" + formId + "\"}");
+    }
+
+    @Test void switchingTheFormMarksABoardMadeWithTheMainImageOutdatedAndSwitchingBackRestoresIt() throws Exception {
+        seed();
+        adoptBoard(boardPrompt(), List.of("u/bai.png", "u/si.png"), List.of("u/bai.png", "u/si.png"));
+        assertEquals("current", wireBoard().path("adoptedCheck").asText());
+        String formId = formWithImage("u/bai-yao.png");
+        assertEquals("current", wireBoard().path("adoptedCheck").asText(), "建了形态但这一段没选，图没变");
+        chooseForm(formId);
+        JsonNode board = wireBoard();
+        assertEquals("outdated", board.path("adoptedCheck").asText());
+        assertEquals("参考图已更换", board.path("staleReasons").get(0).asText());
+        chooseForm("");
+        assertEquals("current", wireBoard().path("adoptedCheck").asText());
+    }
+
+    @Test void replacingTheChosenFormsImageMarksTheBoardOutdated() throws Exception {
+        seed();
+        String formId = formWithImage("u/bai-yao.png");
+        chooseForm(formId);
+        adoptBoard(boardPrompt(), List.of("u/bai-yao.png", "u/si.png"), List.of("u/bai-yao.png", "u/si.png"));
+        assertEquals("current", wireBoard().path("adoptedCheck").asText());
+        edit("form.upload", formId, "{\"key\":\"u/bai-yao-2.png\"}");
+        assertEquals("outdated", wireBoard().path("adoptedCheck").asText());
+    }
+
+    /** 这几张是旧算法下生成的、实际用的图也没变，不能因为算法换了就标「需更新」。 */
+    @Test void boardsMadeBeforeTheFingerprintChangeStayCurrentWhenTheirImagesAreUnchanged() throws Exception {
+        seed();
+        chooseForm(formWithImage("u/bai-yao.png"));
+        adoptBoard(boardPrompt(), List.of("u/bai.png", "u/si.png"), List.of("u/bai-yao.png", "u/si.png"));
+        assertEquals("current", wireBoard().path("adoptedCheck").asText(), "用形态生成的");
+    }
+
+    @Test void legacyBoardsWithAFormAndProductKeepTheProductInTheirFingerprint() throws Exception {
+        seed();
+        ObjectNode c = content();
+        ((ObjectNode) c.path("settings")).put("commerce", true);
+        ObjectNode product = ((ObjectNode) c.path("assets").get(0)).deepCopy();
+        product.put("id", "p1").put("kind", "product").put("name", "保温杯").put("description", "不锈钢保温杯");
+        ((ObjectNode) product.path("image").path("candidates").get(0)).put("key", "u/product.png");
+        c.withArray("assets").add(product);
+        ((ObjectNode) c.path("clips").get(0)).withArray("assetIds").add("p1");
+        work.setContentJson(c.toString());
+        chooseForm(formWithImage("u/bai-yao.png"));
+        adoptBoard(boardPrompt(), List.of("u/bai.png", "u/si.png", "u/product.png"), List.of("u/bai-yao.png", "u/si.png", "u/product.png"));
+        assertEquals("current", wireBoard().path("adoptedCheck").asText(), "旧指纹也包含商品，不能因合并形态修复而误标过期");
+        c = content();
+        ((ObjectNode) c.path("assets").get(2).path("image").path("candidates").get(0)).put("key", "u/product-new.png");
+        work.setContentJson(c.toString());
+        assertEquals("outdated", wireBoard().path("adoptedCheck").asText(), "商品图更换仍须提示更新");
+    }
+
+    @Test void boardsMadeBeforeTheFingerprintChangeWithASceneViewStayCurrent() throws Exception {
+        seed();
+        setSceneView("reverse");
+        adoptReverseView();
+        adoptBoard(boardPrompt(), List.of("u/bai.png", "u/si.png"), List.of("u/bai.png", "u/si.png", "u/si-reverse.png"));
+        assertEquals("current", wireBoard().path("adoptedCheck").asText(), "用视角图生成的");
+    }
+
+    @Test void aBoardRevisedFromItsCurrentImageIgnoresTheExtraReference() throws Exception {
+        seed();
+        adoptBoard(boardPrompt(), List.of("u/bai.png", "u/si.png"), List.of("u/bai.png", "u/si.png", "u/board-old.png"));
+        ObjectNode c = content();
+        ((ObjectNode) c.path("clips").get(0).path("board").path("candidates").get(0)).put("baseOn", "b0");
+        work.setContentJson(c.toString());
+        assertEquals("current", wireBoard().path("adoptedCheck").asText());
+    }
+
+    @Test void aBoardMadeWithAFormIsOutdatedOnceTheClipGoesBackToTheMainImage() throws Exception {
+        seed();
+        adoptBoard(boardPrompt(), List.of("u/bai.png", "u/si.png"), List.of("u/bai-yao.png", "u/si.png"));
+        assertEquals("outdated", wireBoard().path("adoptedCheck").asText());
+    }
+
+    private List<String> values(JsonNode refs, String field) {
+        List<String> values = new ArrayList<>();
+        for (JsonNode ref : refs) values.add(field == null ? ref.asText() : ref.path(field).asText());
+        return values;
+    }
+
     @Test void aClipWithAFormSendsTheFormImageButTheCharacterKeepsItsName() throws Exception {
         seed();
         JsonNode w = edit("form.create", assetId("白素贞"), "{\"name\":\"半妖态\",\"description\":\"下半身化作蛇尾\"}");
@@ -142,11 +286,14 @@ class DirectorFormsAndViewsTest {
 
         var missing = assertThrows(BusinessException.class, () -> service.task(USER, work.getId(), new DirectorService.TaskRequest("board", "k1", "b0", null, null, 16L)));
         assertEquals("DIRECTOR_REFERENCE_MISSING", missing.getCode());
-        assertTrue(missing.getMessage().contains("白素贞·半妖态"), "缺的是这个形态的图，要说清楚");
+        assertEquals(List.of("白素贞·半妖态"), ((java.util.Map<?, ?>) missing.getDetails()).get("names"), "缺的是这个形态的图，要说清楚");
 
         edit("form.upload", formId, "{\"key\":\"u/bai-yao.png\"}");
         service.task(USER, work.getId(), new DirectorService.TaskRequest("board", "k1", "b1", null, null, 16L));
         assertEquals(List.of("u/bai-yao.png", "u/si.png"), submitted().refKeys(), "主形象不再交给模型");
+        JsonNode refs = service.get(USER, work.getId()).path("clips").get(0).path("boardRefs");
+        assertEquals(submitted().refKeys(), values(refs, "key"));
+        assertEquals("白素贞·半妖态", refs.get(0).path("name").asText());
         String prompt = submitted().prompt();
         assertTrue(prompt.contains("「白素贞」"), prompt);
         assertFalse(prompt.contains("半妖态"), "说话人和画内画外都按角色名认，提示词不改名");
@@ -166,7 +313,7 @@ class DirectorFormsAndViewsTest {
     @Test void aFormNeedsTheMainImageFirstAndOnlyCharactersHaveForms() throws Exception {
         seed();
         var scene = assertThrows(BusinessException.class, () -> edit("form.create", assetId("金山寺"), "{\"name\":\"雪景\"}"));
-        assertTrue(scene.getMessage().contains("只有角色"));
+        assertEquals("DIRECTOR_INPUT_INVALID", scene.getCode());
         JsonNode w = edit("asset.create", null, "{\"kind\":\"character\",\"name\":\"小青\",\"description\":\"青衣\"}");
         JsonNode x = edit("form.create", asset(w, "小青").path("id").asText(), "{\"name\":\"剑客装\",\"description\":\"短打\"}");
         String formId = asset(x, "小青").path("forms").get(0).path("id").asText();
@@ -285,5 +432,25 @@ class DirectorFormsAndViewsTest {
 
     private static int corner(byte[] png) throws Exception {
         return ImageIO.read(new ByteArrayInputStream(png)).getRGB(1, 1);
+    }
+
+    /** 2026-11-07：待确认的视频不挡导出。对话框写明「将一并确认」，点了开始导出才带 confirmPending；不带仍按原规则拒绝。 */
+    @Test void exportConfirmsPendingVideosOnlyWhenAsked() throws Exception {
+        seed();
+        ObjectNode c = content();
+        ObjectNode video = (ObjectNode) c.path("clips").get(0).path("video");
+        video.put("adoptedId", "m1").put("adoptedBy", "auto").withArray("candidates").addObject().put("id", "m1").put("key", "u/clip.mp4").put("source", "generated");
+        work.setContentJson(c.toString());
+        BusinessException refused = assertThrows(BusinessException.class, () -> service.task(USER, work.getId(),
+                new DirectorService.TaskRequest("export", "e1", "r1", om.readTree("{\"captions\":false}"), null, null)));
+        assertEquals("DIRECTOR_EXPORT_UNCONFIRMED", refused.getCode());
+        org.springframework.transaction.support.TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.task(USER, work.getId(), new DirectorService.TaskRequest("export", "e1", "r2", om.readTree("{\"captions\":false,\"confirmPending\":true}"), null, null));
+        } finally {
+            org.springframework.transaction.support.TransactionSynchronizationManager.clearSynchronization();
+        }
+        assertEquals("user", content().path("clips").get(0).path("video").path("adoptedBy").asText());
+        assertEquals("running", content().path("exports").get(0).path("status").asText());
     }
 }

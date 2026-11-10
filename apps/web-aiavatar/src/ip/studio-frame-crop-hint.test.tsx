@@ -12,14 +12,15 @@ const frame = (w: number, h: number): CanvasNodeData => ({ id: 'f', type: 'image
 test('a square first frame for a 9:16 clip says it will be cropped and offers 1:1', () => {
   const onFix = vi.fn();
   render(<StudioFrameCropHint frame={frame(1024, 1024)} ratio="9:16" ratios={['9:16', '16:9', '1:1']} onFix={onFix}/>);
-  expect(screen.getByRole('status').textContent).toContain('首帧图是 1:1，会按 9:16 居中裁剪');
-  fireEvent.click(screen.getByRole('button', { name: '改成 1:1' }));
+  // The dimensions are data; the surrounding explanation is editable copy.
+  for (const ratio of ['1:1', '9:16']) expect(screen.getByRole('status').textContent).toContain(ratio);
+  fireEvent.click(screen.getByRole('button', { name: '改为 1:1' }));
   expect(onFix).toHaveBeenCalledWith('1:1');
 });
 
 test('no button when the model cannot make the frame’s shape, nothing when the shapes match', () => {
   const { rerender } = render(<StudioFrameCropHint frame={frame(1024, 1024)} ratio="9:16" ratios={['9:16', '16:9']} onFix={() => {}}/>);
-  expect(screen.getByRole('status').textContent).toContain('会按 9:16 居中裁剪');
+  expect(screen.getByRole('status').textContent).toContain('9:16');
   expect(screen.queryByRole('button')).toBeNull();
   rerender(<StudioFrameCropHint frame={frame(768, 1344)} ratio="9:16" ratios={['9:16']} onFix={() => {}}/>);
   expect(screen.queryByRole('status')).toBeNull();

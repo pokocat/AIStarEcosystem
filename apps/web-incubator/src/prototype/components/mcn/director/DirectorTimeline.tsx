@@ -76,7 +76,7 @@ export const DirectorTimeline = ({ lang, nodes, selectedId, onSelect, onFrame, p
           {shots.map((s, i) => (
             <button key={s.id} type="button" onClick={() => onSelect(s.id)} title={s.title}
               className="relative h-full rounded-md overflow-hidden text-left transition"
-              style={{ flexGrow: s.duration || 1, flexBasis: 0, background: s.image ? undefined : '#f3f4f6',
+              style={{ flexGrow: s.duration || 1, flexBasis: 0, background: s.image ? undefined : 'var(--surface-muted)',
                 boxShadow: s.id === selectedId ? `0 0 0 2px ${KIND_META.shot.color}` : 'inset 0 0 0 1px #e5e7eb' }}>
               {s.image && <img src={s.image} alt="" className="absolute inset-0 w-full h-full object-cover opacity-80" />}
               <span className="relative px-1.5 text-[10px] font-medium leading-9 truncate block" style={{ color: s.image ? '#fff' : '#6b7280', textShadow: s.image ? '0 1px 2px rgba(0,0,0,.6)' : undefined }}>{i + 1}. {s.title}</span>

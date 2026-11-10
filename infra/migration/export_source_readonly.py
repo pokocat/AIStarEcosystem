@@ -32,7 +32,7 @@ for line in query('select table_name,column_name,column_type from information_sc
  t,c,typ=line.split('\t');assert re.fullmatch('[a-z0-9_]+',t) and re.fullmatch('[a-z0-9_]+',c)
  if t=='flyway_schema_history':continue
  tables.setdefault(t,[]).append({'name':c,'type':typ})
-assert len(tables)==192,'Source table count changed; inspect new migrations first'
+assert len(tables)==195,'Source table count changed; inspect new migrations first'
 argv=[x.decode() for x in cmdline if x]
 artifact=pathlib.Path(argv[argv.index('-jar')+1]);source_artifact_sha256=hashlib.sha256(artifact.read_bytes()).hexdigest()
 source_schema=query("SELECT table_name,column_name,column_type,is_nullable,coalesce(column_default,'<NULL>'),extra FROM information_schema.columns WHERE table_schema=database() AND table_name<>'flyway_schema_history' ORDER BY table_name,ordinal_position")+'\n'

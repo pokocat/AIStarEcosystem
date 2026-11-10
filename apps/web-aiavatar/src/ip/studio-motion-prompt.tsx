@@ -49,7 +49,7 @@ export function StudioMotionPrompt({ disabled = false, videoModel, effectPreview
               <button key={motion.label} type="button" onClick={()=>{ editor.current?.insertCommand(motion); setOpen(false); }}>
                 <strong>{motion.label}</strong><span>{motion.text}</span>
               </button>)}</section>)}
-            {!matches.length && <p role="status">没有匹配的运镜，请换个关键词。</p>}
+            {!matches.length && <p role="status">暂无匹配的运镜，请更换关键词。</p>}
           </div>
         </div>}>
         <Button ref={trigger} disabled={disabled} type="text" size="small" aria-label="插入运镜指令" aria-expanded={open} onMouseDown={()=>editor.current?.rememberCaret()} icon={<Move size={14}/>}>运镜</Button>

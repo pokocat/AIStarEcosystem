@@ -11,6 +11,8 @@ vi.mock("@ai-star-eco/api-client", () => ({
   InvitationApi: { sendInvitationSms: state.send, InvitationPublicError: class extends Error { constructor(public code: string) { super(code); } } },
 }));
 vi.mock("@ai-star-eco/api-client/impersonation-session", () => ({ isImpersonating: () => state.impersonating }));
+// 页面经 @/lib/datetime 引 formatDateTime，它转自上面整个被 mock 掉的包根；这里换回真实实现，时间格式才测得到。
+vi.mock("@/lib/datetime", () => import("@ai-star-eco/api-client/format"));
 vi.mock("@ai-star-eco/landing/EnrollmentGate", () => ({ EnrollmentGate: ({ onActivated }: any) => <button onClick={onActivated}>完成产品开通</button> }));
 import { ApiError } from "@ai-star-eco/api-client";
 const bearer = "a".repeat(43);
@@ -30,6 +32,7 @@ function enterCredentials() {
 test("anonymous user sees real company and registers/logs in then accepts the enterprise invitation", async () => {
   render(<EnterpriseInvitationLanding/>);
   await screen.findByText("山海影像工作室"); await screen.findByLabelText("手机号");
+  expect(screen.getByText(/^邀请有效至 \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)).toBeDefined();
   expect(state.preview).toHaveBeenCalledWith(bearer, expect.any(AbortSignal));
   enterCredentials();
   fireEvent.submit(screen.getByRole("form", { name: "注册登录并加入企业" }));
@@ -57,7 +60,7 @@ test("successful join clears the bearer only after persistence and offers the fi
   state.token = "token"; state.accept.mockResolvedValue({ enterprise: { id: "enterprise" } });
   render(<EnterpriseInvitationLanding/>); fireEvent.click(await screen.findByRole("button", { name: "加入企业" }));
   await screen.findByText("已加入企业"); expect(window.location.hash).toBe("");
-  expect(screen.getByRole("link", { name: "进入企业" }).getAttribute("href")).toBe("/enterprise");
+  expect(screen.getByRole("link", { name: "进入企业管理" }).getAttribute("href")).toBe("/enterprise");
 });
 test("existing membership in another enterprise is visible and never auto-switched", async () => {
   state.token = "token"; state.mine.mockResolvedValue([{ enterprise: { id: "other", name: "原公司" }, member: { status: "active" } }]);
@@ -81,7 +84,7 @@ test("expired/revoked invitation blocks SMS registration; network errors can ret
   render(<EnterpriseInvitationLanding/>); await screen.findByText("这份邀请已失效");
   expect(screen.queryByLabelText("手机号")).toBeNull(); expect(state.send).not.toHaveBeenCalled();
   cleanup(); state.preview.mockRejectedValueOnce(new Error("offline"));
-  render(<EnterpriseInvitationLanding/>); fireEvent.click(await screen.findByRole("button", { name: "重新读取" }));
+  render(<EnterpriseInvitationLanding/>); fireEvent.click(await screen.findByRole("button", { name: "重试" }));
   await screen.findByLabelText("手机号");
 });
 test("missing token makes no preview call; impersonation never registers or joins", async () => {

@@ -96,6 +96,10 @@ public class AiModelEndpoint {
     @Column(name = "chat_supports_streaming")
     private Boolean chatSupportsStreaming;
 
+    /** Fixed supplier reasoning setting for this endpoint/model; null leaves the provider default. */
+    @Column(name = "chat_reasoning_effort", length = 16)
+    private String chatReasoningEffort;
+
     /** Legal image request limits and canvas-to-wire presets for this fixed supplier model. */
     @Column(name = "image_request_spec_json", length = org.hibernate.Length.LONG32)
     private String imageRequestSpecJson;
@@ -103,6 +107,10 @@ public class AiModelEndpoint {
     /** Editable video modes, dimensions and wire adapter for this fixed supplier model. */
     @Column(name = "video_request_spec_json", length = org.hibernate.Length.LONG32)
     private String videoRequestSpecJson;
+
+    /** 这个视频模型属于哪个素材库；空表示没有素材库。放列不放规格 JSON：规格解析很严格，加字段会挡住回滚。 */
+    @Column(name = "asset_library_id", length = 64)
+    private String assetLibraryId;
 
     /** 每分钟请求数限制；为空表示不限制。 */
     @Column(name = "rpm_limit")

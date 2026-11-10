@@ -50,7 +50,7 @@ public enum AiModelFailureCategory {
         if (containsAny(text, "content_filter", "content_policy", "safety", "sensitive", "moderation", "敏感", "安全")) {
             return CONTENT_POLICY;
         }
-        if (containsAny(text, "json", "parse", "malformed", "bad_response", "invalid response", "响应格式")) {
+        if (containsAny(text, "json", "parse", "malformed", "bad_response", "ai_empty_output", "invalid response", "响应格式")) {
             return BAD_RESPONSE;
         }
         if (containsAny(text, "unknownhost", "connectexception", "socketexception", "ssl", "network", "connection refused")) {

@@ -21,10 +21,10 @@ export async function publishWithLatestDoc<T>(
 ): Promise<T> {
   const outcome = await saveNow();
   if (outcome === "conflict") {
-    throw Object.assign(new Error("这张画布在别处被改过了。先点顶栏的「处理冲突」选一种处理方式，再发布。"), { code: "IP_PROJECT_STALE" });
+    throw Object.assign(new Error("此画布已在其他窗口修改。请点击顶栏「处理冲突」完成处理后发布。"), { code: "IP_PROJECT_STALE" });
   }
   if (outcome === "failed") {
-    throw new Error("画布还没保存上，发布会用到服务端上的旧内容。先点顶栏的「重试保存」，成功之后再发布。");
+    throw new Error("画布尚未保存，此时发布将使用上一次保存的内容。请点击顶栏「重试保存」，保存成功后发布。");
   }
   return publish();
 }

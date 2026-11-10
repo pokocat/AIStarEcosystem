@@ -22,14 +22,14 @@ export function StudioConversationShare({projectId,nodeId,disabled}:{projectId:s
   const change=async(revoke=false)=>{
     if(!nodeId||!preview||inFlight.current)return;inFlight.current=true;setBusy(true);setError('');setNotice('');
     try {
-      if(revoke&&preview.share){await revokeConversationShare(projectId,nodeId,preview.share.token);if(alive.current){setPreview({...preview,share:undefined});setNotice('已撤销，原链接无法再查看');}}
-      else {const share=await createConversationShare(projectId,nodeId,preview.snapshotHash);if(alive.current){setPreview({...preview,share});setNotice('分享链接已创建，可复制后发送');}}
+      if(revoke&&preview.share){await revokeConversationShare(projectId,nodeId,preview.share.token);if(alive.current){setPreview({...preview,share:undefined});setNotice('已撤销分享，原链接已失效');}}
+      else {const share=await createConversationShare(projectId,nodeId,preview.snapshotHash);if(alive.current){setPreview({...preview,share});setNotice('分享链接已创建');}}
     }catch(e){if(alive.current)setError(e);}
     finally{inFlight.current=false;if(alive.current)setBusy(false);}
   };
   const url=preview?.share?`${typeof window==='undefined'?'':window.location.origin}${preview.share.path}`:'';
   return <>
-    <Button aria-label="分享对话" title={disabled?'完成一轮对话后可分享':'预览并分享这次对话'} icon={<Share2 size={16}/>} disabled={disabled||!nodeId} onClick={()=>{setOpen(true);setPreview(undefined);void load();}}>分享</Button>
+    <span style={{display:'inline-flex',alignItems:'center',gap:8,minWidth:0}}>{disabled&&<small className="studio-dialogue-note">完成一轮对话后可分享</small>}<Button aria-label="分享对话" title={disabled?'完成一轮对话后可分享':'预览并分享此对话'} icon={<Share2 size={16}/>} disabled={disabled||!nodeId} onClick={()=>{setOpen(true);setPreview(undefined);void load();}}>分享</Button></span>
     <Modal title="分享对话" open={open} onCancel={()=>{if(!busy)setOpen(false);}} closable={!busy} maskClosable={!busy} getContainer={studioOverlayContainer} footer={null} width={680} style={{top:24}} styles={{body:{maxHeight:'calc(100dvh - 112px)',overflowY:'auto'}}}>
       <div className="studio-conversation-share">
         <p className="studio-helper-note">任何获得链接的人都可查看以下对话和创作建议。链接保存本次快照，不含画布图片、视频和音频，也不会自动同步后续消息。</p>

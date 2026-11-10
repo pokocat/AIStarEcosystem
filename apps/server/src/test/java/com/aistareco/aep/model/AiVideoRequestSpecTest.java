@@ -20,6 +20,21 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AiVideoRequestSpecTest {
+    private static VideoStudioContract t2vContract() {
+        return new VideoStudioContract(List.of(new VideoStudioModeSpec("t2v", false, false, null, null)),
+                List.of(new VideoStudioTier("720p", List.of(new VideoStudioCanvas("16:9", 1280, 720, "16:9@720")))),
+                4, 15, 2000, 4294967295L);
+    }
+    @Test void savedSpecsAndAcceptedJobSnapshotsWithTheOldLibraryFieldStillRead() {
+        // inputAssets 搬去了 video_asset_library。线上规格和已受理任务的快照里还有它，回滚也靠它，所以读的时候忽略、不报错。
+        var spec = new AiVideoRequestSpec("seedance", t2vContract(), "/tasks", "/tasks/{id}", Map.of());
+        String saved = spec.json();
+        assertFalse(saved.contains("inputAssets"), saved);
+        String old = saved.substring(0, saved.length() - 1) + ",\"inputAssets\":{\"uploadPath\":\"/assets\",\"fileField\":\"file\",\"ref\":\"/ref\"}}";
+        assertEquals(spec, AiVideoRequestSpec.read(old));
+        assertFalse(AiVideoRequestSpec.read(old).json().contains("inputAssets"));
+    }
+
     @Test void referenceMinimumMustBeReachableWithConfiguredLimits() {
         var image = new VideoStudioMediaLimit("image", 1, 1024, List.of("PNG"), null, null);
         var video = new VideoStudioMediaLimit("video", 1, 1024, List.of("MP4"), null, null);

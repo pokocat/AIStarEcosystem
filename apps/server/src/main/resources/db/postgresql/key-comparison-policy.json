@@ -3527,6 +3527,45 @@
       "reason": "IDs, credential hashes, request IDs and fixed enum keys remain exact; source bytes are preserved"
     },
     {
+      "table": "video_asset_library",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "Library/portrait/session IDs and owner references stay exact; encrypted credentials and source bytes are copied unchanged"
+    },
+    {
+      "table": "video_asset_person",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "Library/portrait/session IDs and owner references stay exact; encrypted credentials and source bytes are copied unchanged"
+    },
+    {
+      "table": "video_asset_portrait",
+      "index": "PRIMARY",
+      "columns": [
+        "id"
+      ],
+      "source_collations": {
+        "id": "utf8mb4_unicode_ci"
+      },
+      "policy": "opaque_exact",
+      "normalized_columns": [],
+      "reason": "Library/portrait/session IDs and owner references stay exact; encrypted credentials and source bytes are copied unchanged"
+    },
+    {
       "table": "video_studio_prompt_optimization",
       "index": "PRIMARY",
       "columns": [

@@ -31,8 +31,8 @@ export function studioUnusableModel(node: CanvasNodeData | undefined, offered?: 
 export function studioFailureReason(node: CanvasNodeData): string {
   const raw = node.metadata?.studio?.task?.errorMessage || node.metadata?.errorDetails || "";
   const plain = raw.replace(/https?:\/\/\S+/g, "").replace(/\s+/g, " ").trim();
-  if (STUDIO_MODEL_GONE_CODES.has(errorCode(node) || "")) return "这个模型已不可用，请换一个模型再生成";
-  if (!plain) return "没有生成出来，可以修改后重试";
+  if (STUDIO_MODEL_GONE_CODES.has(errorCode(node) || "")) return "此模型已不可用，请更换模型后重新生成";
+  if (!plain) return "生成失败，可修改后重试";
   const first = plain.split(/(?<=[。！？；])/)[0] || plain;
   return first.length > 60 ? `${first.slice(0, 59)}…` : first;
 }

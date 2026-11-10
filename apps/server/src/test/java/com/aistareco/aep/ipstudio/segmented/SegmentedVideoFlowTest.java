@@ -167,7 +167,7 @@ class SegmentedVideoFlowTest {
         executor.advance(row.getId());
     }
 
-    @Test void priceSaysHowManySegmentsAndAllowsOneBoardRedoInTheCap() {
+    @Test void priceSaysHowManySegmentsAndAllowsThreeAttemptsInTheCap() {
         var price = service.price("u", null, null, 46, "9:16", 0, false, false, true);
         assertEquals(List.of(15, 15, 11, 5), price.segments());
         assertEquals(4, price.boards());
@@ -175,7 +175,26 @@ class SegmentedVideoFlowTest {
         assertEquals(32, price.boardCost());
         // 脚本 + 审核 + 4 次检查按文字上限；上限再加每张分镜图和检查各一次。
         assertEquals(3600 + 32 + 70 * 6, price.estimated());
-        assertEquals(price.estimated() + 32 + 70 * 4, price.cap());
+        assertEquals(price.estimated() * 3, price.cap());
+    }
+
+    @Test void longVideoShowsTheSumOfEachSegmentsDiscountWithoutChangingTheApprovedCap() {
+        var billing = new com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection("enterprise", "team");
+        var quote = new com.aistareco.aep.billing.service.ModelChargeService.Quote(null, null, 900, 450, 450, 0, 450,
+                "H3限时折扣", "v1", List.of(), false, true, null, null, null);
+        when(workflow.quoteVideoPrice(eq("u"), eq("ep-video"), anyString(), anyString(), eq("9:16"), anyInt(), anyInt(), eq(0), eq(0), eq(billing))).thenReturn(quote);
+        var standard = service.price("u", "ep-video", "768p", 40, "9:16", 0, false, false, true);
+        var price = service.price("u", "ep-video", "768p", 40, "9:16", 0, false, false, true, billing);
+        assertEquals(List.of(15, 15, 10), price.segments());
+        assertEquals(2700, price.videoCost());
+        assertEquals(1350L, price.discountedVideoCost());
+        assertEquals("H3限时折扣", price.videoDiscountName());
+        assertEquals(standard.cap(), price.cap());
+        assertEquals(standard.estimated(), price.estimated());
+        verify(workflow, times(2)).quoteVideoPrice(eq("u"), eq("ep-video"), anyString(), eq("768p"), eq("9:16"), eq(15), anyInt(), eq(0), eq(0), eq(billing));
+        verify(workflow).quoteVideoPrice(eq("u"), eq("ep-video"), anyString(), eq("768p"), eq("9:16"), eq(10), anyInt(), eq(0), eq(0), eq(billing));
+        verify(workflow, never()).submit(anyString(), anyString(), any());
+        assertNull(row);
     }
 
     @Test void theVideoPriceDoesNotCountThePromptRewriteTwice() {
@@ -290,7 +309,7 @@ class SegmentedVideoFlowTest {
         assertEquals(IpPlanExecution.DONE, row.getStatus());
     }
 
-    @Test void aFailedReviewFallsBackToTheOriginalScriptAfterOneRetry() {
+    @Test void aFailedReviewFallsBackToTheOriginalScriptAfterThreeAttempts() {
         start(30);
         String id = row.getId();
         finish(last(), textOutput(script(4, 4)));
@@ -302,6 +321,9 @@ class SegmentedVideoFlowTest {
         assertEquals(review.nodeId(), retry.nodeId());
         assertNotEquals(review.clientRequestId(), retry.clientRequestId());
         fail(retry, "AI_CALL_FAILED");
+        executor.advance(id);
+        assertEquals("text", last().operation());
+        fail(last(), "AI_CALL_FAILED");
         executor.advance(id);
         assertEquals(IpPlanExecution.RUNNING, row.getStatus());
         assertEquals("image", last().operation());
@@ -325,7 +347,7 @@ class SegmentedVideoFlowTest {
         assertEquals(2, submitted.size());
     }
 
-    @Test void aVideoThatFailsIsRetriedOnceThenWaitsAndNoFilmIsMadeFromMissingSegments() {
+    @Test void aVideoThatFailsTriesThreeTimesThenWaitsWithoutAssemblingMissingSegments() {
         vision = false;
         start(30);
         String id = row.getId();
@@ -347,6 +369,10 @@ class SegmentedVideoFlowTest {
         assertEquals(clips.get(1).nodeId(), retry.nodeId());
         fail(retry, "STUDIO_VIDEO_FAILED");
         executor.advance(id);
+        assertEquals("video", last().operation());
+        assertNotEquals(retry.clientRequestId(), last().clientRequestId());
+        fail(last(), "STUDIO_VIDEO_FAILED");
+        executor.advance(id);
         assertEquals(IpPlanExecution.NEEDS_USER, row.getStatus());
         assertTrue(submitted.stream().noneMatch(r -> "assemble".equals(r.operation())));
         assertEquals("done", step("v1").path("status").asText());
@@ -356,7 +382,7 @@ class SegmentedVideoFlowTest {
         vision = false;
         var price = service.price("u", null, null, 30, "9:16", 0, false, false, true);
         assertFalse(price.boardReview());
-        assertEquals(price.estimated() + 16, price.cap());
+        assertEquals(price.estimated() * 3, price.cap());
     }
 
     @Test void refusedForGoodDoesNotRetry() {

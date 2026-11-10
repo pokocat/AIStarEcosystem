@@ -32,7 +32,7 @@ public final class H3StudioPrompt {
                 default -> refs.add("<Picture " + (++pictures) + ">: reference image" + named(doc, r.key()) + ".");
             }
         }
-        String zh = H3PromptRewrite.normalizeSpeechQuotes(prompt == null ? "" : prompt);
+        String zh = H3PromptRewrite.normalizeSpeechQuotes(H3PromptRewrite.withoutRepeatedQuotes(prompt == null ? "" : prompt));
         H3PromptRewrite.Source src = H3PromptRewrite.source(zh, List.of("旁白"));
         boolean codeLines = !src.lines().isEmpty() && H3PromptRewrite.quotesBalanced(src.text(), !src.text().contains("说：{{"));
         if (!codeLines) src = new H3PromptRewrite.Source(zh, List.of());

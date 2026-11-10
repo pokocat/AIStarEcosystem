@@ -310,17 +310,17 @@ public class DapRealAuthService {
      */
     @Transactional
     public String handleCallback(String state, String resultCode, String bytedToken) {
-        if (state == null || state.isBlank()) return page(false, "认证链接无效", "请重新打开数字资产平台发起本人确认。", null);
+        if (state == null || state.isBlank()) return page(false, "认证链接无效", "请重新打开 IP Studio 发起本人确认。", null);
         DapMaterialGroup g = groupRepo.findByCallbackToken(state).orElse(null);
         if (g == null) {
             log.warn("[dap-realauth] callback with unknown state（可能是过期或伪造链接）");
-            return page(false, "认证链接已失效", "请重新打开数字资产平台发起本人确认。", null);
+            return page(false, "认证链接已失效", "请重新打开 IP Studio 发起本人确认。", null);
         }
         boolean ok = "10000".equals(resultCode);
         if (isTerminal(g.getStatus()) || g.getValidateCalledAt() != null) {
             // 重复回调：不再消耗一次性凭证
             return page("failed".equals(g.getStatus()) ? false : ok,
-                    "结果已提交", "正在返回数字资产平台查看最终结果。", g.getId());
+                    "结果已提交", "正在返回 IP Studio 查看最终结果。", g.getId());
         }
         // 先占幂等闸再调上游：并发 / 重复回跳只会有一次回传
         g.setValidateCalledAt(Instant.now());
@@ -343,15 +343,15 @@ public class DapRealAuthService {
             g.setFailReason("认证结果回传失败：" + e.getMessage());
             g.setUpdatedAt(Instant.now());
             groupRepo.save(g);
-            return page(false, "提交失败", "本次结果未能送达，请返回数字资产平台重新发起。", g.getId());
+            return page(false, "提交失败", "本次结果未能送达，请返回 IP Studio 重新发起。", g.getId());
         }
         g.setStatus("validating");
         g.setUpdatedAt(Instant.now());
         groupRepo.save(g);
 
         return ok
-                ? page(true, "本人确认已提交", "正在返回数字资产平台核验最终状态。", g.getId())
-                : page(false, "本人确认未通过", "正在返回数字资产平台，你可以重新发起。", g.getId());
+                ? page(true, "本人确认已提交", "正在返回 IP Studio 核验最终状态。", g.getId())
+                : page(false, "本人确认未通过", "正在返回 IP Studio，你可以重新发起。", g.getId());
     }
 
     // ── helpers ───────────────────────────────────────────────
@@ -386,7 +386,7 @@ public class DapRealAuthService {
 
     private DapCapture requiredCapture(String userId, String captureId) {
         return captureRepo.findByIdAndOwnerUserId(captureId, userId)
-                .orElseThrow(() -> BusinessException.notFound("DAP_CAPTURE_NOT_FOUND", "捕获会话不存在或无权访问"));
+                .orElseThrow(() -> BusinessException.notFound("DAP_CAPTURE_NOT_FOUND", "拍摄记录不存在或无权访问"));
     }
 
     private String uniqueId() {
@@ -410,7 +410,7 @@ public class DapRealAuthService {
         String accent = ok ? "#1F9D55" : "#D6453C";
         String url = returnUrl(sessionId);
         String redirect = url == null ? "" : "<meta http-equiv=\"refresh\" content=\"1;url=%s\">".formatted(escHtml(url));
-        String back = url == null ? "" : "<a id=\"back\" href=\"%s\">返回数字资产平台</a>".formatted(escHtml(url));
+        String back = url == null ? "" : "<a id=\"back\" href=\"%s\">返回 IP Studio</a>".formatted(escHtml(url));
         return """
                 <!DOCTYPE html><html lang="zh"><head><meta charset="utf-8">
                 <meta name="viewport" content="width=device-width,initial-scale=1">

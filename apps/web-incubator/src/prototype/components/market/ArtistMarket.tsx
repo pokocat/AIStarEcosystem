@@ -1028,10 +1028,10 @@ const CELEBRITY_GRADES = [
 ];
 
 const CELEBRITY_LIST = [
-  { name: '陈屿', grade: 'A', tags: ['古装','谍战','正剧'], fans: '2,180万', gmv: '高潜力', score: 92, color: '#06b6d4', img: '/images/star-chen-yu.webp', signed: false },
-  { name: '顾然',  grade: 'S', tags: ['流量','品牌','音乐'], fans: '4,530万', gmv: '顶级',   score: 98, color: '#a855f7', img: '/images/star-gu-ran.webp', signed: true },
-  { name: '苏枝',  grade: 'A', tags: ['时尚','美妆','古装'], fans: '3,920万', gmv: '美妆TOP', score: 95, color: '#ec4899', img: '/images/star-su-zhi.webp', signed: false },
-  { name: '陆星野', grade: 'S', tags: ['运动','潮流','音乐'], fans: '5,010万', gmv: '顶级',   score: 99, color: '#f59e0b', img: '/images/star-lu-xingye.webp', signed: false },
+  { name: '陆承远', grade: 'A', tags: ['古装','谍战','正剧'], fans: '2,180万', gmv: '高潜力', score: 92, color: '#06b6d4', img: '/images/star-lu-chengyuan.webp', signed: false },
+  { name: '顾星辰',  grade: 'S', tags: ['流量','品牌','音乐'], fans: '4,530万', gmv: '顶级',   score: 98, color: '#a855f7', img: '/images/star-gu-xingchen.webp', signed: true },
+  { name: '苏念',  grade: 'A', tags: ['时尚','美妆','古装'], fans: '3,920万', gmv: '美妆TOP', score: 95, color: '#ec4899', img: '/images/star-su-nian.webp', signed: false },
+  { name: '江野', grade: 'S', tags: ['运动','潮流','音乐'], fans: '5,010万', gmv: '顶级',   score: 99, color: '#f59e0b', img: '/images/star-jiang-ye.webp', signed: false },
 ];
 
 const CelebrityResourceLibrary = ({ lang }: { lang: Lang }) => {

@@ -78,7 +78,7 @@ test('a draft whose model was retired offers 换模型重试 only, and the compo
  fireEvent.click(screen.getByRole('button',{name:'换模型重试'}));
  const panel=await screen.findByRole('dialog',{name:'生成视频'});
  await waitFor(()=>expect(within(panel).getByRole('button',{name:'生成模型'}).textContent).toContain('H3'));
- expect(within(panel).getByText(/上次用的模型已不可用，这次改用「H3」/)).toBeDefined();
+ expect(within(panel).getByText(/上次使用的模型已不可用，已改用「H3」/)).toBeDefined();
  expect(api.submit).not.toHaveBeenCalled();
 });
 test('retry never resubmits to a model the last failure proved gone',async()=>{
@@ -108,9 +108,9 @@ test('the assistant spec opens the composer at 16:9 / 4 秒; a duration the mode
  const panel=await screen.findByRole('dialog',{name:'生成视频'});
  await waitFor(()=>expect(snapshot[0].metadata?.studio?.composerDraft).toMatchObject({aspectRatio:'16:9',durationSec:4}));
  const blocker=within(panel).getByRole('alert');
- expect(blocker.textContent).toContain('没有 4 秒');
+ expect(blocker.textContent).toContain('现在设置的是 4 秒');
  expect((within(panel).getByRole('button',{name:'生成视频'}) as HTMLButtonElement).disabled).toBe(true);
- fireEvent.click(within(blocker).getByRole('button',{name:'改成 5 秒'}));
+ fireEvent.click(within(blocker).getByRole('button',{name:'改为 5 秒'}));
  await waitFor(()=>expect(snapshot[0].metadata?.studio?.composerDraft?.durationSec).toBe(5));
  expect(within(panel).queryByRole('alert')).toBeNull();
  // The description still says 4 秒: asked before paying, and keeping the settings sends exactly them.
@@ -129,7 +129,7 @@ test('a description that names another ratio is asked about; adopting it changes
  const panel=await screen.findByRole('dialog',{name:'生成视频'});
  fireEvent.click(within(panel).getByRole('button',{name:'生成视频'}));
  const ask=await screen.findByRole('dialog',{name:'描述和设置不一致'});
- fireEvent.click(within(ask).getByRole('button',{name:'按描述改设置'}));
+ fireEvent.click(within(ask).getByRole('button',{name:'按描述修改设置'}));
  await waitFor(()=>expect(snapshot[0].metadata?.studio?.composerDraft?.aspectRatio).toBe('16:9'));
  expect(api.submit).not.toHaveBeenCalled();
 });

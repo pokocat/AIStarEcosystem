@@ -21,6 +21,7 @@ import { StudioFloatingPanel } from './studio-floating-panel';
 
 export type StudioPendingFrame = { node: CanvasNodeData; connection: CanvasConnection };
 type Props = {
+  projectId?: string;
   nodes: CanvasNodeData[];
   pending: StudioPendingFrame[];
   onPendingChange: Dispatch<SetStateAction<StudioPendingFrame[]>>;
@@ -36,7 +37,7 @@ const MIN_HEIGHT = 140;
 const shapeHeight = (width: number, w?: number, h?: number) => w && h ? Math.max(MIN_HEIGHT, Math.round((width - STUDIO_CARD_BORDER_X) * h / w + STUDIO_CARD_CHROME)) : undefined;
 const busy = (node: CanvasNodeData) => node.metadata?.status === 'loading' || studioGenerationPending(node);
 
-export function StudioFlowVideoFrames({ nodes, pending, onPendingChange, onInsert, demo = USE_MOCK }: Props) {
+export function StudioFlowVideoFrames({ projectId, nodes, pending, onPendingChange, onInsert, demo = USE_MOCK }: Props) {
   const { message } = useStudioApp();
   const [sourceId, setSourceId] = useState<string>();
   const [position, setPosition] = useState<StudioFramePosition>('first');
@@ -52,7 +53,7 @@ export function StudioFlowVideoFrames({ nodes, pending, onPendingChange, onInser
       if (action !== 'video-frames') { setSourceId(undefined); return; }
       const node = nodesRef.current.find(n => n.id === nodeId);
       if (!node || node.type !== CanvasNodeType.Video || !node.metadata?.storageKey) { setSourceId(undefined); return; }
-      if (busy(node)) { message.info('视频正在生成，完成后再抽帧'); return; }
+      if (busy(node)) { message.info('视频生成中，完成后可抽帧'); return; }
       setPosition('first'); setSourceId(node.id);
     };
     window.addEventListener('studio-command', listener); return () => window.removeEventListener('studio-command', listener);
@@ -87,12 +88,13 @@ export function StudioFlowVideoFrames({ nodes, pending, onPendingChange, onInser
     void (async () => {
       let clip: Blob;
       try { clip = await fetchAssetBlob(storageKey); }
-      catch { drop(); message.error(new Error('无法读取这条视频，请重试')); return; }
+      catch { drop(); message.error(new Error('视频加载失败，请重试')); return; }
       let frame: Blob;
       try { frame = await captureStudioVideoFrame(clip, position, at); }
-      catch (e) { drop(); message.error(e instanceof StudioFrameError ? e : new Error('没能截出画面，请重试')); return; }
+      catch (e) { drop(); message.error(e instanceof StudioFrameError ? e : new Error('截取画面失败，请重试')); return; }
       try {
-        const image = await uploadImage(frame);
+        // 抽出来的帧随上传进资产库。
+        const image = await uploadImage(frame, undefined, projectId ? { projectId, nodeId: placeholder.id, title: placeholder.title } : undefined);
         const node: CanvasNodeData = { ...placeholder, height: shapeHeight(width, image.width, image.height) ?? placeholder.height,
           metadata: { ...imageMetadata(image), origin: 'derived' } };
         drop(); await onInsert([node], [entry.connection]);
@@ -102,13 +104,13 @@ export function StudioFlowVideoFrames({ nodes, pending, onPendingChange, onInser
   return <StudioFloatingPanel title="抽帧" open={!!source} anchorId={sourceId} width={400} onClose={close} className="studio-video-frames"
     footer={<div className="studio-video-frames-footer"><span>免费，不消耗积分</span><Button onClick={close}>取消</Button><Button type="primary" disabled={demo} onClick={submit}>提交</Button></div>}>
     <div className="studio-director-form">
-      <p>截取一帧画面，生成一张连着这条视频的图片。</p>
+      <p>截取一帧画面，生成一张与此视频相连的图片。</p>
       <div className="studio-video-frames-choice"><span id="studio-video-frames-label">帧选择</span>
         <Radio.Group aria-labelledby="studio-video-frames-label" optionType="button" value={position} onChange={e => setPosition(e.target.value)} options={[
           { value: 'first', label: '截首帧' }, { value: 'last', label: '截尾帧' }, { value: 'current', label: `截当前帧 ${formatFrameTime(time)}` },
         ]}/></div>
-      {position === 'current' && <p>当前帧是画布上这条视频播放到的位置，可以先拖动进度条再提交。</p>}
-      {demo && <p role="status">演示模式不能抽帧，连上服务后可用。</p>}
+      {position === 'current' && <p>当前帧为画布上此视频的播放位置，可拖动进度条调整。</p>}
+      {demo && <p role="status">演示模式不支持抽帧。</p>}
     </div>
   </StudioFloatingPanel>;
 }

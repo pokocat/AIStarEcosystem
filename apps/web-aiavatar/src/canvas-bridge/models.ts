@@ -124,8 +124,9 @@ function toChannelModels(list: IpModelOption[], capability: ChannelModel["capabi
     billingByEndpointId.set(m.endpointId,m.billingUnit||"per_call");
     if(capability==="image")imageBatchCountsByEndpointId.set(m.endpointId,
       m.capability?.imageBatchCounts?.length?m.capability.imageBatchCounts:[1,2,4]);
-    const min = m.capability?.minDurationSec ?? undefined;
-    const max = m.capability?.maxDurationSec ?? undefined;
+    // Zero means "not configured" on the server; it must not become a bound that refuses every length.
+    const min = m.capability?.minDurationSec || undefined;
+    const max = m.capability?.maxDurationSec || undefined;
     if (min != null || max != null) durationBoundsByEndpointId.set(m.endpointId, { min: min ?? undefined, max: max ?? undefined });
     const resolutions = m.capability?.videoResolutions ?? undefined;
     const ratios = m.capability?.videoRatios ?? undefined;

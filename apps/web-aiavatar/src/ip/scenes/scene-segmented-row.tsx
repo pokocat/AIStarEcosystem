@@ -4,12 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { Check, Download, Loader2, Pause, Play, RotateCcw, Square } from "lucide-react";
 import { nanoid } from "nanoid";
 import type { IpProjectDoc, IpRun } from "@ai-star-eco/types";
-import type { StudioPlanExecution, StudioSceneSegmentedRecord } from "@ai-star-eco/types/ip-studio-workflow";
+import type { StudioPlanExecution } from "@ai-star-eco/types/ip-studio-workflow";
 import type { CanvasNodeData } from "@/canvas/types/canvas";
 import { readRun, signKeys } from "@/canvas-bridge/api";
 import { downloadMedia } from "@/canvas-bridge/download-media";
 import { SignedVideo } from "@/canvas-bridge/signed-video";
-import { segmentedActive, segmentedPhases, segmentedResultStep } from "@/canvas-bridge/studio-segmented";
+import { segmentedActive, segmentedPhases, segmentedResultStep, type SegmentedRecord } from "@/canvas-bridge/studio-segmented";
 import { cancelStudioPlanExecution, executionRestoreUpserts, getStudioPlanExecution, missingExecutionNodes, pauseStudioPlanExecution, projectCanvasOps, readProjectedNodes,
   rememberProjectedNodes, resumeStudioPlanExecution, stepNodeId, stepRunCandidates } from "@/canvas-bridge/studio-plan-execution";
 
@@ -20,7 +20,7 @@ const POLL_MS = 5000, RETRY_MS = 15000;
  * 做好一步就把结果放进草稿画布（和画布打开时恢复是同一套投影，重复放不会多出节点）。
  */
 export function SegmentedRow({ record, projectId, doc, persist, busy, onConfirm, onFailure }: {
-  record: StudioSceneSegmentedRecord; projectId: string; doc: IpProjectDoc;
+  record: SegmentedRecord; projectId: string; doc: IpProjectDoc;
   persist: (mutate: (doc: IpProjectDoc) => IpProjectDoc, projectId?: string) => Promise<unknown>;
   busy: boolean; onConfirm: () => void; onFailure: (action: string, error: unknown) => void;
 }) {
@@ -92,25 +92,25 @@ export function SegmentedRow({ record, projectId, doc, persist, busy, onConfirm,
   const control = { clientRequestId: nanoid() };
 
   if (!executionId) return <li className="scene-row scene-video-row is-loading">
-    <div className="scene-row-meta"><strong>{record.title}</strong><span className="scene-row-state" role="status">提交结果没有确认</span></div>
-    <p className="scene-row-prompt">点「确认原任务」查一下，不会重复开始。</p>
+    <div className="scene-row-meta"><strong>{record.title}</strong><span className="scene-row-state" role="status">结果待确认</span></div>
+    <p className="scene-row-prompt">点击「确认原任务」查询，不会重复开始。</p>
     <div className="scene-row-actions"><button type="button" disabled={busy} onClick={onConfirm}><RotateCcw size={13}/>确认原任务</button></div>
   </li>;
 
   const phases = execution ? segmentedPhases(execution) : [];
   const spent = execution?.budgets.find(b => b.stage === "production")?.spent ?? 0;
   const status = execution?.status;
-  const text = !execution ? "正在读取进度"
-    : status === "running" ? "正在制作，可以离开这个页面，做好后回来看。"
-    : status === "paused" ? "已暂停，已经提交的任务会做完。"
-    : status === "needs_user" ? execution.needsUserReason || "需要你看一下"
+  const text = !execution ? "正在加载进度…"
+    : status === "running" ? "可离开此页面，制作将在后台继续。"
+    : status === "paused" ? "已暂停，已提交的步骤会继续完成。"
+    : status === "needs_user" ? execution.needsUserReason || "需要你处理，请在画布上查看。"
     : status === "done" ? "已完成"
-    : status === "canceled" ? "已停止，做好的部分在画布里。"
-    : execution.needsUserReason || "没有全部做完，做好的部分在画布里。";
+    : status === "canceled" ? "已停止，已完成的部分保留在画布上。"
+    : execution.needsUserReason || "未全部完成，已完成的部分保留在画布上。";
   return <li className={`scene-row scene-video-row scene-segmented-row is-${status || "loading"}`}>
     <div className="scene-row-meta"><strong>{record.title}</strong>
-      <span>{record.request.ratio === "16:9" ? "横屏" : "竖屏"}{record.request.tier ? ` · ${record.request.tier.toUpperCase()}` : ""}</span>
-      <span className="scene-row-state" role={status === "running" ? "status" : undefined}>{(status === "running" || !execution) && <Loader2 size={14} className="studio-gallery-spinner"/>}{status === "done" ? "已完成" : status === "running" ? "制作中" : !execution ? "读取中" : status === "paused" ? "已暂停" : status === "canceled" ? "已停止" : "已停下"}</span></div>
+      <span>{(record.request?.ratio ?? record.ratio) === "16:9" ? "横屏" : "竖屏"}{record.request?.tier ? ` · ${record.request.tier.toUpperCase()}` : ""}</span>
+      <span className="scene-row-state" role={status === "running" ? "status" : undefined}>{(status === "running" || !execution) && <Loader2 size={14} className="studio-gallery-spinner"/>}{status === "done" ? "已完成" : status === "running" ? "制作中" : !execution ? "加载中" : status === "paused" ? "已暂停" : status === "canceled" ? "已停止" : "未完成"}</span></div>
     {url ? <SignedVideo className="scene-video-player" src={url} storageKey={resultKey} controls playsInline preload="metadata" aria-label={record.title}/> : null}
     {status !== "done" && <p className={`scene-segmented-note${status === "needs_user" ? " is-waiting" : ""}`} role={status === "needs_user" ? "status" : undefined}>{text}</p>}
     {phases.length > 0 && status !== "done" && <ol className="scene-segmented-phases">{phases.map(p => <li key={p.key} className={`is-${p.state}`}>

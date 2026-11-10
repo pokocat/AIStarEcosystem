@@ -271,7 +271,7 @@ public class DapJobRunner {
             img = support.placeholderPortrait(a.getHue(), "占位 · 复刻", 768, 1024);
         }
         checkCancel(job);
-        progress(job, 80, "storage.persist", "落库…");
+        progress(job, 80, "storage.persist", "保存结果…");
         FileStorageService.StoredFile stored = storage.store(img, "dap/avatar", job.getOwnerUserId(), "png", "image/png");
         a.setImageKey(stored.key());
         a.setMock(!multimodal.isConfigured());
@@ -300,7 +300,7 @@ public class DapJobRunner {
             img = support.placeholderPortrait(a.getHue() + a.getVersions() * 7, "占位 · 迭代", 768, 1024);
         }
         checkCancel(job);
-        progress(job, 85, "storage.persist", "落库…");
+        progress(job, 85, "storage.persist", "保存结果…");
         FileStorageService.StoredFile stored = storage.store(img, "dap/avatar", job.getOwnerUserId(), "png", "image/png");
         a.setImageKey(stored.key());
         a.setImageBytes(a.getImageBytes() + stored.bytes());
@@ -349,7 +349,7 @@ public class DapJobRunner {
             return; // 无参数变化 → 不动图
         }
         checkCancel(job);
-        progress(job, 85, "storage.persist", "落库…");
+        progress(job, 85, "storage.persist", "保存结果…");
         FileStorageService.StoredFile stored = storage.store(img, "dap/avatar", job.getOwnerUserId(), "png", "image/png");
         a.setImageKey(stored.key());
         a.setImageBytes(a.getImageBytes() + stored.bytes());
@@ -387,7 +387,7 @@ public class DapJobRunner {
         } else {
             img = support.placeholderPortrait(a.getHue() + 24, "占位 · 造型", 768, 1024);
         }
-        progress(job, 85, "storage.persist", "落库…");
+        progress(job, 85, "storage.persist", "保存结果…");
         FileStorageService.StoredFile stored = storage.store(img, "dap/look", job.getOwnerUserId(), "png", "image/png");
         look.setImageKey(stored.key());
         look.setBytes(stored.bytes());
@@ -472,7 +472,7 @@ public class DapJobRunner {
         int i = 0;
         for (String[] s : shots) {
             checkCancel(job);
-            progress(job, 10 + i * 17, "atlas.image." + (i + 1), "出图 " + s[1] + "（" + (i + 1) + "/5）…");
+            progress(job, 10 + i * 17, "atlas.image." + (i + 1), "生成图片 " + s[1] + "（" + (i + 1) + "/5）…");
             byte[] img;
             if (multimodal.isConfigured()) {
                 String prompt = promptOf(PromptService.KEY_DAP_IMAGE_ATLAS, Map.of(
@@ -588,7 +588,7 @@ public class DapJobRunner {
             spec = "占位视频 · MP4";
         }
         checkCancel(job);
-        progress(job, 94, "storage.persist", "落库…");
+        progress(job, 94, "storage.persist", "保存结果…");
         FileStorageService.StoredFile stored = storage.store(mp4, "dap/video", job.getOwnerUserId(), "mp4", "video/mp4");
         int idx = derivRepo.findByAvatarIdAndDerivKeyOrderByIdxAsc(a.getId(), "video").size();
         derivRepo.save(DapDerivative.builder()

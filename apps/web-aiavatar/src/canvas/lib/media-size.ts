@@ -99,9 +99,15 @@ export function readMediaDimensions(size: string, scale: string, ratio: string) 
     return parsePixelSize(computed) || { width: 0, height: 0 };
 }
 
-export function clampVideoSeconds(value: string) {
-    const seconds = Math.floor(Number(value) || 6);
-    return String(Math.max(VIDEO_SECONDS_MIN, Math.min(VIDEO_SECONDS_MAX, seconds)));
+/**
+ * The seconds a video model can be asked for. A bound the server states wins; only a missing one falls back to the local
+ * default, so the default never narrows a model's contract. Zero means "not configured", as it does on the server.
+ */
+export function videoSecondsBounds(bounds?: { min?: number | null; max?: number | null }) {
+    const statedMin = bounds?.min && bounds.min > 0 ? bounds.min : undefined;
+    const statedMax = bounds?.max && bounds.max > 0 ? bounds.max : undefined;
+    const min = statedMin ?? Math.min(VIDEO_SECONDS_MIN, statedMax ?? VIDEO_SECONDS_MIN);
+    return { min, max: Math.max(min, statedMax ?? VIDEO_SECONDS_MAX) };
 }
 
 export function parseVideoResolution(value: string | undefined) {

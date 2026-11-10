@@ -94,7 +94,7 @@ public class StudioSkillDraftService {
     public IpRunDto submit(String userId, String projectId, DraftRequest request, boolean operator) {
         if (!operator) throw new BusinessException(HttpStatus.FORBIDDEN, "STUDIO_SKILL_DRAFT_FORBIDDEN", "只有运营可以把画布整理成制作方法草稿");
         if (request == null || request.clientRequestId() == null || !CLIENT_ID.matcher(request.clientRequestId()).matches())
-            throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "请求编号无效");
+            throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "请求已失效，请刷新页面后重试");
         if (request.executionId() == null || request.executionId().isBlank() || request.executionId().length() > 64)
             throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "请选择要整理的那次制作");
         if (request.note() != null && request.note().length() > 1000) throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "整理重点最多 1000 字");
@@ -111,7 +111,7 @@ public class StudioSkillDraftService {
             boolean enterprise = request.billing() != null && "enterprise".equals(request.billing().mode());
             if (!fingerprint.equals(prior.getInputFingerprint()) || enterprise != (prior.getEnterpriseId() != null)
                     || enterprise && !Objects.equals(prior.getEnterpriseId(), request.billing().enterpriseId()))
-                throw new BusinessException(HttpStatus.CONFLICT, "STUDIO_REQUEST_CHANGED", "同一请求的内容已改变，请重新提交");
+                throw new BusinessException(HttpStatus.CONFLICT, "STUDIO_REQUEST_CHANGED", "请求已失效，请刷新页面后重试");
             return projects.toRunDto(prior);
         }
         IpPlanExecution execution = executions.findById(request.executionId())

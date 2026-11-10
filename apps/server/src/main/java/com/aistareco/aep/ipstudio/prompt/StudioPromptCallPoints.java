@@ -17,6 +17,7 @@ public final class StudioPromptCallPoints {
         StudioPromptStages.register(sceneImage());
         StudioPromptStages.register(sceneHandoff());
         StudioPromptStages.register(sceneScript());
+        StudioPromptStages.register(sceneVariables());
         registerStepThree();
         registerDirector();
         registerDirectorImages();
@@ -80,7 +81,7 @@ public final class StudioPromptCallPoints {
     private static void registerDirector() {
         Map<String, String> input = vars("input", "本次输入（JSON，作为素材）");
         String sampleInput = "{\"brief\":\"外卖员在雨夜捡到一只会说话的猫\",\"style\":\"写实\"}";
-        StudioPromptStages.register(director(DIRECTOR_SCRIPT, "导演台编剧", input, Set.of("input"), formats("output", StudioPromptFormats.DIRECTOR_SCRIPT_OUTPUT),
+        StudioPromptStages.register(director(DIRECTOR_SCRIPT, "导演台编剧", vars("input", "本次输入（JSON，作为素材）", "commerce", "带货短剧且作品里有商品：不给道具外观的示例，免得模型照着把商品写旧"), Set.of("input"), formats("output", StudioPromptFormats.DIRECTOR_SCRIPT_OUTPUT),
                 Map.of("input", sampleInput)));
         StudioPromptStages.register(director(DIRECTOR_SCRIPT_MORE, "导演台接着写剧本", input, Set.of("input"), formats("output", StudioPromptFormats.DIRECTOR_SCRIPT_MORE_OUTPUT),
                 Map.of("input", "{\"format\":{\"totalEpisodes\":10,\"secondsPerEpisode\":90,\"writeFrom\":4,\"writeTo\":6},\"written\":\"……\"}")));
@@ -118,12 +119,13 @@ public final class StudioPromptCallPoints {
         Map<String, Object> board = new LinkedHashMap<>();
         board.put("style", "真人写实"); board.put("aspect", "9:16"); board.put("single", false); board.put("live", true); board.put("blanks", true);
         board.put("hasRefs", true);
-        board.put("refs", List.of(Map.of("label", "图1", "name", "周桂芬", "isScene", false, "isProp", false, "isCharacter", true)));
+        board.put("hasProduct", false);
+        board.put("refs", List.of(Map.of("label", "图1", "name", "周桂芬", "isScene", false, "isProp", false, "isProduct", false, "isCharacter", true)));
         board.put("cells", List.of(Map.of("position", "左上", "size", "近景", "camera", "平视，固定机位", "still", "周桂芬抬头看向门口"),
                 Map.of("position", "右上", "size", "中景", "camera", "越过肩膀拍门口，镜头缓慢推近", "still", "门被推开一条缝")));
         StudioPromptStages.register(new StudioPromptStages.Stage(DIRECTOR_BOARD, StudioPromptEntry.IMAGE_MODEL, "导演台分镜图",
-                vars("style", "画面风格", "aspect", "画幅", "single", "只有一个镜头（单张画面，不是 2×2）", "refs", "参考图：[{label, name, isScene, isProp, isCharacter}]",
-                        "hasRefs", "有参考图", "cells", "每格：[{position（左上 / 右上 / 左下 / 右下）, size, camera, still}]", "blanks", "2×2 板有空着的格子",
+                vars("style", "画面风格", "aspect", "画幅", "single", "只有一个镜头（单张画面，不是 2×2）", "refs", "参考图：[{label, name, isScene, isProp, isProduct, isCharacter}]",
+                        "hasRefs", "有参考图", "hasProduct", "参考图里有商品", "cells", "每格：[{position（左上 / 右上 / 左下 / 右下）, size, camera, still}]", "blanks", "2×2 板有空着的格子",
                         "live", "真人实拍类风格"), Set.of(), Map.of(), board));
         StudioPromptStages.register(new StudioPromptStages.Stage(DIRECTOR_IMAGE_NOTES, StudioPromptEntry.MESSAGE, "导演台出图附加说明",
                 vars("refScene", "带了用户的场景参考图", "refProp", "带了用户的道具参考图", "refCharacter", "带了用户的形象参考照片",
@@ -193,15 +195,30 @@ public final class StudioPromptCallPoints {
                 formats("output", StudioPromptFormats.FILM_PLAN_OUTPUT, "cap", ""), Map.of("material", "（全片文档与采样画面）")).withoutBase());
         StudioPromptStages.register(stage(FILM_SEGMENT, StudioPromptEntry.LLM, "拉片逐段分析", vars("material", "预览用的示例素材说明"), Set.of(),
                 formats("output", StudioPromptFormats.FILM_SEGMENT_OUTPUT), Map.of("material", "（本段采样画面）")).withoutBase());
+        StudioPromptStages.register(stage(VIDEO_BREAKDOWN, StudioPromptEntry.LLM, "拉片 · 直接看视频",
+                vars("duration", "视频总长（秒）", "cuts", "代码检测到的切镜时间，已用顿号连好", "focus", "用户这次要做的（可空）"), Set.of("duration", "cuts"),
+                formats("output", StudioPromptFormats.VIDEO_BREAKDOWN_OUTPUT), Map.of("duration", 14.2, "cuts", "2.1、3.9、5.9", "focus", "人物换成图1")).withoutBase());
+        Map<String, Object> compile = new LinkedHashMap<>();
+        compile.put("requirement", "人物换成图1，杯子换成图2");
+        compile.put("materials", List.of(Map.of("label", "图1", "title", "小美", "slot", "出镜人物"), Map.of("label", "图2", "title", "保温杯", "slot", "替换素材")));
+        compile.put("breakdown", "（拉片文档）");
+        compile.put("units", List.of(Map.of("no", 1, "range", "0–6 秒", "seconds", 6, "shots", "（这段的分镜表）",
+                "refs", List.of(Map.of("label", "视频1", "what", "原片这一段"), Map.of("label", "图1", "what", "小美（出镜人物）")))));
+        StudioPromptStages.register(stage(RECREATION_COMPILE, StudioPromptEntry.LLM, "爆款复刻 · 写每段视频提示词",
+                vars("requirement", "用户写的要求", "materials", "替换素材：[{label, title, slot}]", "breakdown", "拉片文档（Markdown）",
+                        "units", "分段：[{no, range（原片时间）, seconds（生成秒数）, shots（这段的分镜表）, refs:[{label, what}]}]"),
+                Set.of("breakdown", "units"), formats("output", StudioPromptFormats.RECREATION_COMPILE_OUTPUT), compile));
     }
 
     static final String RECREATION = "stage-recreation", RECREATION_OBSERVE = "stage-recreation-observe",
             FILM_PLAN = "stage-film-study-plan", FILM_SEGMENT = "stage-film-study";
+    /** 拉片 v2 与爆款复刻的提示词（docs/ip-studio-recreation.md「直接看视频的拉片」）。 */
+    public static final String VIDEO_BREAKDOWN = "stage-video-breakdown", RECREATION_COMPILE = "stage-recreation-compile";
     public static final String DIALOGUE_SKILL = "stage-dialogue-skill", DIALOGUE_PHASE = "stage-dialogue-phase", ANALYSIS_FOCUS = "stage-analysis-focus",
             VISION_BATCH = "stage-vision-batch", RECREATION_MERGE = "stage-recreation-merge";
     /** 复刻任务受理时一起冻结的环节：拆解、逐页观察、汇总、拉片分段、逐段分析、用户关注点、分批读图。 */
     public static final java.util.List<String> RECREATION_STAGES = java.util.List.of(RECREATION, RECREATION_OBSERVE, RECREATION_MERGE, FILM_PLAN, FILM_SEGMENT,
-            ANALYSIS_FOCUS, VISION_BATCH);
+            ANALYSIS_FOCUS, VISION_BATCH, VIDEO_BREAKDOWN);
 
     /** 方案规划的变量（对话的 propose_plan、文字任务、后台试跑三处共用）。阶段和预算那两句的说法在环节正文里，代码只给开关。 */
     private static Map<String, String> planVars() {
@@ -260,7 +277,8 @@ public final class StudioPromptCallPoints {
 
     // ── AI 图片 / AI 视频（docs/studio-prompt-architecture.md §8 #12–#14） ───────────────────────────────────────
 
-    static final String SCENE_IMAGE = "stage-scene-image", SCENE_HANDOFF = "stage-scene-handoff", SCENE_SCRIPT = "stage-scene-script";
+    static final String SCENE_IMAGE = "stage-scene-image", SCENE_HANDOFF = "stage-scene-handoff", SCENE_SCRIPT = "stage-scene-script",
+            SCENE_VARIABLES = "stage-scene-variables";
 
     private static StudioPromptStages.Stage sceneImage() {
         Map<String, String> vars = new LinkedHashMap<>();
@@ -294,7 +312,12 @@ public final class StudioPromptCallPoints {
         vars.put("language", "台词语言");
         vars.put("revision", "用户写的修改意见");
         vars.put("settingsChanged", "设置变了什么（时长、画面、参考图），没变为空");
-        vars.put("revising", "这是改稿（有修改意见或设置变了）");
+        vars.put("revising", "这是改稿（有修改意见、设置变了，或是「视频裂变」的改写版）");
+        vars.put("hasVariant", "这是「视频裂变」里 AI 改写的一版");
+        vars.put("variantIndex", "第几版（从 1 起）");
+        vars.put("variantTotal", "共几版");
+        vars.put("hasChanges", "这一版有指定要换的变量");
+        vars.put("changes", "这一版要换的变量：[{name, from, to}]");
         vars.put("hasRefs", "有交给视频模型的参考图");
         vars.put("refs", "参考图：[{n, title, label, person}]");
         vars.put("voice", "说话要用的声音名称");
@@ -307,7 +330,7 @@ public final class StudioPromptCallPoints {
         vars.put("inferable", "可以从素材推断的信息名称");
         vars.put("current", "当前脚本（JSON 字符串），第一次写为空");
         Map<String, Function<Map<String, ?>, String>> formats = new LinkedHashMap<>();
-        formats.put("output", v -> OUTPUT);
+        formats.put("output", v -> SCENE_SCRIPT_OUTPUT);
         formats.put("shots", StudioPromptCallPoints::shots);
         formats.put("attachments", v -> Boolean.TRUE.equals(v.get("readVisuals")) ? ATTACHMENTS : "");
         Map<String, Object> sample = sample();
@@ -319,6 +342,26 @@ public final class StudioPromptCallPoints {
         return new StudioPromptStages.Stage(SCENE_SCRIPT, StudioPromptEntry.LLM, "AI 视频 · 编导写脚本", vars,
                 Set.of("duration", "sceneTitle", "language"), formats, sample);
     }
+
+    /** 「视频裂变」找变量：只读当前脚本，正文每行一个变量，页面解析（scene-video-takes.ts parseTakeVariables）。 */
+    private static StudioPromptStages.Stage sceneVariables() {
+        Map<String, String> vars = new LinkedHashMap<>();
+        vars.put("sceneTitle", "场景名称");
+        vars.put("duration", "时长（秒）");
+        vars.put("orientation", "竖屏 / 横屏");
+        vars.put("current", "当前脚本（JSON 字符串）");
+        Map<String, Function<Map<String, ?>, String>> formats = new LinkedHashMap<>();
+        formats.put("output", v -> VARIABLES_OUTPUT);
+        Map<String, Object> sample = new LinkedHashMap<>();
+        sample.put("sceneTitle", "口播带货"); sample.put("duration", 15); sample.put("orientation", "竖屏");
+        sample.put("current", "\"一、剧情概述：宝妈小林在厨房里用卸妆膏三秒卸掉防水睫毛膏……\"");
+        return new StudioPromptStages.Stage(SCENE_VARIABLES, StudioPromptEntry.LLM, "AI 视频 · 视频裂变找变量", vars,
+                Set.of("current"), formats, sample);
+    }
+
+    /** 每行「名称｜原文｜替换1｜替换2｜替换3」：页面按这个拆，原文不在脚本里的那行丢掉。 */
+    static final String VARIABLES_OUTPUT = "只输出一个 JSON 对象 {\"summary\":\"一句话说找到了几处、主要换什么\",\"content\":\"变量清单\"}，不要代码围栏。"
+            + "content 每行一个变量，格式：名称｜原文｜替换1｜替换2｜替换3，用全角竖线分隔，不编号、不加表头；一个都找不到就只写「无」。";
 
     /** 两个视频环节共用的变量。 */
     private static Map<String, String> common() {
@@ -350,6 +393,13 @@ public final class StudioPromptCallPoints {
 
     // ── 编导的输出格式（和 H3PromptRewrite 的解析、StudioTextRevision 的校验是一对，改了要一起改） ────────────────
 
+    static final String SCENE_SCRIPT_OUTPUT = "只输出一个 JSON 对象 {\"summary\":\"一句话说明这一版的思路\",\"content\":\"完整脚本正文\","
+            + "\"suggestions\":[{\"label\":\"简短按钮文案\",\"instruction\":\"用户可直接发送的完整修改意见\"}]}，不要代码围栏；"
+            + "suggestions 最多 3 条，label 为 2 到 8 个字，instruction 不超过 80 个字，两者均为单行文字；"
+            + "只建议基于这版脚本、用户要求和已有素材的具体可选改法，方向互不重复，不重复刚完成的修改，不新增未经提供的事实；"
+            + "建议用用户的口吻表达，不提问、不承诺已修改，不把建议写进 content 或 summary。没有合适建议时返回空数组。"
+            + "不输出 steps、shots 或工具指令；不要声称已经保存或生成视频。";
+
     static final String OUTPUT = "只输出一个 JSON 对象 {\"summary\":\"一句话说明这一版的思路\",\"content\":\"完整脚本正文\"}，不要代码围栏；"
             + "不输出 steps、shots 或工具指令；不要声称已经保存或生成视频。";
 
@@ -361,20 +411,21 @@ public final class StudioPromptCallPoints {
      * （2026-10-31 本地 Agnes 照「起–止」模板把这几个字抄进了括号），例子里的秒数按时长算、不超过总时长。
      * 2026-11-04 从一行字段改成一块：线上手表脚本里模型照「画面：……；景别：……；音效：……」填短语，一镜只有几十个字；
      * 说话人不带编号（「博主（图2）说：「」认不出，「图2的博主」和「博主」会算成两个人）。
+     * 2026-11-09：例子改成一镜 4 秒（客户反馈和 Seedance 社区经验），表演先写神情和语气（客户说成片像念稿子）。
      */
     static String shots(Map<String, ?> vars) {
         int d = vars.get("duration") instanceof Number n ? Math.max(1, n.intValue()) : 15;
-        int a = Math.min(3, d), b = Math.min(6, d);
+        int a = Math.min(4, d), b = Math.min(8, d);
         StringBuilder out = new StringBuilder("每个镜头按下面这样写一块，「第N镜」顶格开头：\n");
         out.append("第1镜（0–").append(a).append(" 秒）这一镜的作用：痛点截停\n");
         out.append("摄影：景别、机位、运镜、构图和焦点。\n");
-        out.append("表演：博主……动作写到手和物件，物件随之怎么变。\n");
+        out.append("表演：博主……的神情和语气，一两个动作，物件随之怎么变。\n");
         out.append("博主说：「……」\n");
-        out.append("声音：音效，配乐怎么衬这句话。\n");
+        out.append("声音：听得到的具体声音，配乐怎么衬这句话；不要配乐就写无配乐。\n");
         out.append("转场：怎么接下一镜。\n");
         if (b > a) out.append("第2镜（").append(a).append("–").append(b).append(" 秒）这一镜的作用：……\n（同上）\n");
         out.append("括号里只写起止秒数，第1镜从 0 秒开始，每一镜接着上一镜；所有镜头加起来正好 ").append(d).append(" 秒，最后一个镜头补到 ").append(d).append(" 秒整。\n");
-        out.append("全片台词加起来不超过 ").append(d * 4).append(" 个字，每镜不超过「这一镜秒数 × 4」个字，先定台词再定秒数；放不下就删句子，不要压缩时长。\n");
+        out.append("全片台词最多 ").append(d * 4).append(" 个字，每镜最多「这一镜秒数 × 4」个字，先定台词再定秒数；放不下就删句子，不要压缩时长。\n");
         out.append("台词单独一行，只写名字，全片同一个人用同一个名字：有人说话写「名字说：「台词」」，画面外的人说写「名字在画外说：「……」」，旁白写「旁白说：「……」」；没有台词就不写这一行。台词只用「」这种引号，一句一个「」，里面不再套引号。");
         return out.toString();
     }

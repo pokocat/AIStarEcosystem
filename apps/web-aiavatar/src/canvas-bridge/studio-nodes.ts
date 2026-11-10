@@ -1,3 +1,4 @@
+import { studioScriptSuggestions } from "./studio-script-suggestions";
 import { materializeFilmStudy } from './studio-film-study';
 import { materializeRecreationAudio } from './studio-recreation-audio';
 import { materializeRecreation } from './studio-recreation-document';
@@ -11,7 +12,7 @@ import { markStudioMediaFit, runAspectRatio } from "./studio-media-fit";
 
 export function makeStudioNode(operation: StudioOperation, origin?: CanvasNodeData): CanvasNodeData {
   const type = operation === "image" ? CanvasNodeType.Image : ["video", "assemble"].includes(operation) ? CanvasNodeType.Video : CanvasNodeType.Text;
-  const title = operation==="video"&&origin?.metadata?.studio?.shot?`${origin.title} · 视频`:{ text: "文本", script: "新剧本", storyboard: "分镜草案", image: "形象图片", video: "视频片段", assemble: "合成作品", assistant: "导演对话", recreation: "全片创作拆解" }[operation];
+  const title = operation==="video"&&origin?.metadata?.studio?.shot?`${origin.title} · 视频`:{ text: "文本", script: "新剧本", storyboard: "分镜草案", image: "形象图片", video: "视频片段", assemble: "成片", assistant: "导演对话", recreation: "全片创作拆解" }[operation];
   const studio: StudioNodeMetadata = { kind: operation === "recreation" ? "recreation" : operation === "text" ? "text" : operation === "assistant" ? "assistant" : operation === "assemble" ? "work" : ["image", "video"].includes(operation) ? "shot" : "script", includeInWork: operation === "video", episodeNo:["image","video"].includes(operation)?studioNodeEpisode(origin):undefined,order:operation==="video"?origin?.metadata?.studio?.order:undefined };
   return { id: nanoid(), type, title, width: type === CanvasNodeType.Text ? 480 : 320, height: type === CanvasNodeType.Text ? 300 : 400,
     position: { x: origin ? origin.position.x + origin.width + 90 : 100, y: origin?.position.y ?? 120 },
@@ -51,6 +52,7 @@ export function applyStudioRun(node: CanvasNodeData, run: IpRun): CanvasNodeData
   metadata.studio = { ...metadata.studio!, runId: run.id, mock: run.output.mock,
     task: { status: run.status, stage: run.stage, pct: run.pct, errorCode:run.errorCode,errorMessage:run.errorMessage,logId:run.logId||run.output.logId, queue: run.status==='running'?run.queue:null } };
   if(run.output.lipSyncNormalized)metadata.studio.lipSyncNormalized=true;
+  if(run.output.captions)metadata.studio.captions=run.output.captions;
   if(metadata.studio.episodeNo===undefined)metadata.studio.episodeNo=studioNodeEpisode(node);
   if (run.output.videoCandidates?.length) {
     const incoming=run.output.videoCandidates.map(candidate=>({
@@ -79,7 +81,7 @@ export function applyStudioRun(node: CanvasNodeData, run: IpRun): CanvasNodeData
     if(metadata.studio.promptReview&&metadata.studio.promptReview.runId!==run.id)delete metadata.studio.promptReview;
     const inputs=run.inputs as {prompt?:string;video?:StudioVideoSettings;durationSec?:number;aspectRatio?:string;model?:string};
     const inputKey=studioVideoInputKey(inputs);
-    if(run.status==="done"&&run.output.needsChoice&&run.output.videoPrompt)metadata.studio.promptReview={runId:run.id,inputKey,...run.output.videoPrompt};
+    if(run.status==="done"&&run.output.needsChoice&&run.output.videoPrompt)metadata.studio.promptReview={runId:run.id,inputKey,...run.output.videoPrompt,...(run.output.rawOnly?{notRewritten:true}:{})};
     else if(inputs.video?.rewrite==="review"&&run.status==="failed"&&!run.output.videoCandidates?.length&&run.errorCode!=="IP_RUN_CANCELLED")
       metadata.studio.promptReview={runId:run.id,inputKey,failed:true,message:run.errorMessage,...(run.output.videoPrompt||{})};
     else if(metadata.studio.promptReview?.runId===run.id)delete metadata.studio.promptReview;
@@ -103,6 +105,7 @@ export function applyStudioRun(node: CanvasNodeData, run: IpRun): CanvasNodeData
       {role:"assistant" as const,content:run.output.textRevision.summary,...(run.output.billing?{billing:run.output.billing}:{})}].slice(-16)};
     if((metadata.content||"") === request.textEdit?.content) {
       metadata.content=run.output.textRevision.content;
+      if(metadata.studio.sceneDirector) metadata.studio.sceneDirector={...metadata.studio.sceneDirector, suggestions:studioScriptSuggestions(run.output.textRevision.suggestions)};
       delete metadata.studio.textEditor.proposal;
     } else {
       // A different tab/editor may have changed the body during the accepted request.

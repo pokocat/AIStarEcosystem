@@ -68,6 +68,11 @@ export function chineseNumber(text: string): number | undefined {
 }
 
 const FIGURE = /\d+(?:\.\d+)?/g;
+
+/** 全角数字和英文字母换成半角（标点不动）：terra 常把「89元」写成「８９元」（2026-11-09 线上），不换就认不出镜头和价格。 */
+export function halfWidthAlnum(text: string): string {
+  return text.replace(/[０-９Ａ-Ｚａ-ｚ]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xfee0));
+}
 /** 用户写的数字里算「业务信息」的：两位以上，或一位但后面跟着单位（9 折、2 人、3 份）。 */
 function figuresIn(text: string): string[] {
   const out: string[] = [];
@@ -80,8 +85,9 @@ function figuresIn(text: string): string[] {
 
 /** 脚本里出现的所有数字（阿拉伯数字和中文数字都算，台词里常写成「九十九」）。 */
 function numbersInScript(script: string): Set<string> {
+  script = halfWidthAlnum(script);
   // 镜头编号和时间（「第2镜（2–4 秒）」）不算：不然用户写的「2 人」会被它们顶上（2026-10-30 界面评审）。
-  script = script.replace(/第\s*\d+\s*镜/g, "").replace(/[（(]\s*[\d.]+\s*[–\-~～至到]\s*[\d.]+\s*秒\s*[）)]/g, "");
+  script = script.replace(/第\s*\d+\s*镜/g, "").replace(/[（(]\s*[\d.]+\s*[–—\-~～至到]\s*[\d.]+\s*秒\s*[）)]/g, "");
   const found = new Set<string>();
   for (const m of script.matchAll(FIGURE)) found.add(String(Number(m[0])));
   for (const m of script.matchAll(/[零〇一二两三四五六七八九十百千万]+(?:点[零〇一二两三四五六七八九]+)?/g)) {
@@ -102,7 +108,8 @@ export function missingFigures(given: string[], script: string): string[] {
  * 2026-11-04 线上手表脚本第 4 镜 3 秒写了 31 个字，视频模型要么念得飞快要么念不完，而这一点在出片前完全可以数出来。
  */
 export function overlongShots(script: string): { no: number; seconds: number; chars: number }[] {
-  const heads = [...script.matchAll(/第\s*(\d+)\s*镜\s*[（(]\s*([\d.]+)\s*[–\-~～至到]\s*([\d.]+)\s*秒/g)];
+  script = halfWidthAlnum(script);
+  const heads = [...script.matchAll(/第\s*(\d+)\s*镜\s*[（(]\s*([\d.]+)\s*[–—\-~～至到]\s*([\d.]+)\s*秒/g)];
   const out: { no: number; seconds: number; chars: number }[] = [];
   heads.forEach((h, i) => {
     const seconds = Number(h[3]) - Number(h[2]);

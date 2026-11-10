@@ -127,6 +127,9 @@ export interface IpProjectDoc {
   sceneVideoState?: StudioSceneVideoState;
   /** AI 视频页发起的长视频（新的在前）。进度和结果读 ip_plan_execution，这里只记是哪一次。 */
   sceneSegmented?: import("./ip-studio-workflow").StudioSceneSegmentedRecord[];
+  /** Only unconfirmed submissions. Accepted tasks are read from native executions, never from this document. */
+  sceneVideoSubmissions?: import("./ip-studio-video-task").StudioVideoTaskCreate[];
+  sceneVideoTasks?: string[];
   nodes: IpNode[];
   connections: IpConnection[];
   viewport: IpViewport;
@@ -150,6 +153,7 @@ export interface IpVideoCandidate {
   promptRewrite?: IpVideoPromptRewrite;
 }
 export interface IpRunOutput {
+  assetReviews?: import('./video-portrait-library').VideoPortraitReviewLink[];
   billingBreakdown?: import('./model-billing').ModelBillingBreakdown;
   /** Persisted async ErrorLog lookup ID, alongside partial output when applicable. */
   logId?: string;
@@ -163,8 +167,9 @@ export interface IpRunOutput {
   /** Native check run: verdicts on the target run's real media. */
   check?: import("./ip-studio-workflow").StudioCheckResult;
   sourceAudio?: import("./ip-studio-workflow").StudioSourceAudio;
+  captions?: import("./ip-studio-workflow").StudioCaptionResult;
   scriptRevision?: { markdown: string; summary: string };
-  textRevision?: { content: string; summary: string };
+  textRevision?: { content: string; summary: string; suggestions?: import("./ip-studio-workflow").StudioScriptSuggestion[] };
   shots?: import("./ip-studio-workflow").StudioShot[];
   storageKey?: string;
   url?: string;
@@ -187,6 +192,8 @@ export interface IpRunOutput {
   videoPromptNotes?: string[];
   /** 优化稿有提示，没有出片，等用户选用优化稿还是原文。 */
   needsChoice?: boolean;
+  /** 模型回了内容但整理不成约定的结构（如回复看不到素材）：保留原话，不当作优化稿或方案使用。 */
+  rawOnly?: boolean;
 }
 export interface IpRunInputs {
   /** Explicit Studio input wrapped by the native image pipeline. */

@@ -6,6 +6,7 @@ import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioModeSpec;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioMediaLimit;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioTier;
 import com.aistareco.common.BusinessException;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.net.URI;
@@ -14,7 +15,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** The editable video contract and wire adapter for one fixed supplier/model endpoint. */
+/**
+ * The editable video contract and wire adapter for one fixed supplier/model endpoint.
+ *
+ * <p>{@code inputAssets} used to hold the asset library config; it moved to {@code video_asset_library}. Saved specs and
+ * the snapshots on accepted jobs still carry it, and a rollback relies on it, so reading ignores it instead of failing.
+ */
+@JsonIgnoreProperties({"inputAssets"})
 public record AiVideoRequestSpec(String adapter, VideoStudioContract contract,
                                  String submitPath, String pollPathTemplate,
                                  Map<String, Object> requestFields, String modelsPath,
@@ -143,6 +150,8 @@ public record AiVideoRequestSpec(String adapter, VideoStudioContract contract,
             return spec;
         } catch (BusinessException e) {
             throw e;
+        } catch (com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException e) {
+            throw BusinessException.badRequest("VIDEO_REQUEST_SPEC_INVALID", "视频规格里有不认识的字段：" + e.getPropertyName());
         } catch (Exception e) {
             throw invalid();
         }

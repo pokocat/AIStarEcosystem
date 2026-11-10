@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { ApiError } from '@ai-star-eco/api-client/client';
 import { useState } from 'react';
 import { mountStudioErrorNotifications } from './testing/studio-notification-harness';
 
@@ -61,7 +62,12 @@ test('manual edits during an AI response disable ordinary adoption; explicit rep
  fireEvent.click(screen.getByRole('button',{name:'用 AI 版本替换当前稿'}));fireEvent.click(screen.getByRole('button',{name:'撤销采纳'}));expect(snapshot.metadata?.studio?.scriptEditor?.draft).toBe(edited);
 });
 test('an unknown submission result recovers with the original key and document despite later draft edits and reload',async()=>{
- api.submit.mockRejectedValueOnce(new TypeError('网络中断'));render(<Host/>);await send();(await screen.findAllByRole('alert'))[0];const pending=snapshot.metadata!.studio!.scriptEditor!.pending!;expect(pending.runId).toBeUndefined();const persisted=structuredClone(snapshot);cleanup();mountStudioErrorNotifications(api.error);render(<Host initial={persisted}/>);openAssistant();fireEvent.change(screen.getByRole('textbox',{name:'剧本文档'}),{target:{value:document+'\n后续手改。'}});fireEvent.click(screen.getByRole('button',{name:'确认原改稿任务'}));await waitFor(()=>expect(api.submit).toHaveBeenCalledTimes(2));expect(api.submit.mock.calls[1][1]).toEqual(pending.request);await screen.findByText('AI 建议版本 · 尚未采纳');expect(snapshot.metadata?.studio?.scriptEditor?.draft).toContain('后续手改');expect(snapshot.metadata?.studio?.request).toEqual(accepted);
+ api.submit.mockRejectedValueOnce(new TypeError('网络中断'));render(<Host/>);await send();(await screen.findAllByRole('alert'))[0];const pending=snapshot.metadata!.studio!.scriptEditor!.pending!;expect(pending.runId).toBeUndefined();const persisted=structuredClone(snapshot);cleanup();mountStudioErrorNotifications(api.error);render(<Host initial={persisted}/>);openAssistant();fireEvent.change(screen.getByRole('textbox',{name:'剧本文档'}),{target:{value:document+'\n后续手改。'}});fireEvent.click(screen.getByRole('button',{name:'确认原任务'}));await waitFor(()=>expect(api.submit).toHaveBeenCalledTimes(2));expect(api.submit.mock.calls[1][1]).toEqual(pending.request);await screen.findByText('AI 建议版本 · 尚未采纳');expect(snapshot.metadata?.studio?.scriptEditor?.draft).toContain('后续手改');expect(snapshot.metadata?.studio?.request).toEqual(accepted);
+});
+test('a credit shortage at submission means nothing was accepted: the request goes back in the box and nothing stays pending',async()=>{
+ api.submit.mockRejectedValueOnce(Object.assign(new ApiError({code:'STUDIO_BILLING_CANCELLED',message:'本次生成已取消，未提交任务。'},400),{creditShortage:{kind:'close'}}));render(<Host/>);await send();
+ await waitFor(()=>expect((composer() as HTMLTextAreaElement).value).toBe('加强第 1 集开场冲突，保留其他章节。'));
+ expect(snapshot.metadata!.studio!.scriptEditor!.pending).toBeUndefined();expect(snapshot.metadata!.studio!.scriptEditor!.error).toBeUndefined();
 });
 test('accepted jobs resume by run ID without submitting or charging another task',async()=>{
  const state:NonNullable<StudioNodeMetadata['scriptEditor']>={draft:document,turns:[{role:'user',content:'增强冲突'}],pending:{request:{...accepted,operation:'assistant',scriptEdit:{markdown:document}},baseMarkdown:document,runId:'revision-1'}};

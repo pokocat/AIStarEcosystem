@@ -60,7 +60,7 @@ public class EnterpriseFundRecoveryService {
         if(batches.findByEnterpriseIdAndClientRequestId(hold.getEnterpriseId(),key).isPresent())return;
         String actor=Objects.toString(hold.getActorUserId(),"system"),transferId=UUID.randomUUID().toString();
         var moved=credits.transferEnterpriseReleasedCredits(hold,root.getId(),gift,license,recharge,actor,transferId,"原成员任务未用积分退回企业");
-        record(hold.getEnterpriseId(),hold.getMembershipId(),actor,key,"原成员任务释放后归集："+hold.getReferenceType()+":"+hold.getReferenceId(),
+        record(hold.getEnterpriseId(),hold.getMembershipId(),actor,key,"原成员任务的未用积分已回收至企业",
                 hold.getWalletId(),root.getId(),amount,transferId,moved);
     }
     private void lockPair(Wallet a,Wallet b) {for(String id:List.of(a.getId(),b.getId()).stream().sorted().toList())wallets.findByIdForUpdate(id).ifPresent(w->em.refresh(w,LockModeType.PESSIMISTIC_WRITE));}

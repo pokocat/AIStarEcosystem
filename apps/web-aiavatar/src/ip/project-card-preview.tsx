@@ -19,7 +19,7 @@ export function ProjectCardPreview({ coverUrl, preview, doc, loading, error, ste
   if (videoUrl && !failed.includes(videoUrl)) return <HoverVideo src={videoUrl} poster={url} onError={() => setFailed(items => [...items, videoUrl])}/>;
   if (url) return <div className="project-content-cover"><img src={url} alt="" loading="lazy" decoding="async" onError={() => setFailed(items => [...items, url])}/></div>;
   if (content && (doc || !loading)) return <ProjectWordsCover content={content} stepsFirst={stepsFirst}/>;
-  if (loading) return <div className="project-content-placeholder" role="status"><Layers size={25}/><span>正在读取内容…</span></div>;
+  if (loading) return <div className="project-content-placeholder" role="status"><Layers size={25}/><span>正在加载内容…</span></div>;
   return <div className="project-content-placeholder"><ImageOff size={25}/><strong>{error || '预览暂不可用'}</strong><span>可打开画布，或刷新重试</span></div>;
 }
 

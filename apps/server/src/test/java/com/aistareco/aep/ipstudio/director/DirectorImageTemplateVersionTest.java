@@ -23,6 +23,8 @@ import static org.mockito.Mockito.when;
  */
 class DirectorImageTemplateVersionTest {
     private static final String ASSET = "stage-director-asset-image", BOARD = "stage-director-board";
+    /** 分镜图模板现在的版本：这里核对的是「按当时那一版生成的图」，不写死数字，模板正文改了不用改这个测试。 */
+    private static final int BOARD_NOW = DirectorPrompts.templateVersion(StudioPromptAssembler.classpath(), BOARD);
     private final ObjectMapper om = new ObjectMapper();
     private DirectorService service;
     private ObjectNode c;
@@ -88,7 +90,7 @@ class DirectorImageTemplateVersionTest {
         service.refresh(c);
         adoptAsset("as1", asset("as1").path("prompt").asText(), 1);
         adoptAsset("as2", asset("as2").path("prompt").asText(), null); // 模板进库之前生成的：第 3 版、没有版本号
-        adoptBoard(clip().path("boardPrompt").asText(), 1);
+        adoptBoard(clip().path("boardPrompt").asText(), BOARD_NOW);
         publishNewTemplates();
         service.refresh(c);
         assertTrue(clip().path("boardPrompt").asText().endsWith("新版本多一句。"), "提示词已经按新版本编");
@@ -103,13 +105,13 @@ class DirectorImageTemplateVersionTest {
         service.refresh(c);
         adoptAsset("as1", asset("as1").path("prompt").asText(), 1);
         adoptAsset("as2", asset("as2").path("prompt").asText(), 1);
-        adoptBoard(clip().path("boardPrompt").asText(), 1);
+        adoptBoard(clip().path("boardPrompt").asText(), BOARD_NOW);
         publishNewTemplates();
         asset("as1").put("description", "四十岁，寸头，灰色工装");
         ((ObjectNode) clip().path("shots").get(1)).put("still", "陈默把信塞进口袋");
         service.refresh(c);
         assertEquals("outdated", check(asset("as1").path("image")));
-        assertEquals("描述或出图提示词已修改", asset("as1").path("image").path("staleReasons").get(0).asText());
+        assertEquals("描述或提示词已修改", asset("as1").path("image").path("staleReasons").get(0).asText());
         assertEquals("current", check(asset("as2").path("image")));
         assertEquals("outdated", check(clip().path("board")));
         assertEquals("镜头、台词或提示词已修改", clip().path("board").path("staleReasons").get(0).asText());
@@ -121,7 +123,7 @@ class DirectorImageTemplateVersionTest {
         service.refresh(c);
         adoptAsset("as1", asset("as1").path("prompt").asText(), 2);
         adoptAsset("as2", asset("as2").path("prompt").asText(), 2);
-        adoptBoard(clip().path("boardPrompt").asText(), 2);
+        adoptBoard(clip().path("boardPrompt").asText(), BOARD_NOW + 1);
         service.refresh(c);
         assertEquals("current", check(asset("as1").path("image")));
         assertEquals("current", check(clip().path("board")));

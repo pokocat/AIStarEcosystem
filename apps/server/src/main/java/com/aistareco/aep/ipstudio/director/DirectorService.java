@@ -104,8 +104,9 @@ public class DirectorService {
 
     // ── 作品 ────────────────────────────────────────────────────────────────
 
-    public record CreateRequest(String title, String idea, String script, String style) {
-        public CreateRequest(String title, String idea, String script) { this(title, idea, script, null); }
+    public record CreateRequest(String title, String idea, String script, String style, Boolean commerce) {
+        public CreateRequest(String title, String idea, String script) { this(title, idea, script, null, null); }
+        public CreateRequest(String title, String idea, String script, String style) { this(title, idea, script, style, null); }
     }
 
     @Transactional
@@ -123,6 +124,7 @@ public class DirectorService {
         String style = req == null || req.style() == null ? "" : req.style().trim();
         if (style.length() > 30) throw invalid("风格为 1–30 字");
         c.putObject("settings").put("style", style.isEmpty() ? "真人写实" : style).put("aspectRatio", "9:16").put("language", "中文").putNull("videoModel").putNull("imageModel").putNull("textModel");
+        if (req != null && Boolean.TRUE.equals(req.commerce())) ((ObjectNode) c.path("settings")).put("commerce", true);
         c.putArray("episodes"); c.putArray("assets"); c.putArray("clips"); c.putArray("applied");
         c.putObject("taskMeta"); c.putNull("pipeline"); c.putNull("notice"); c.putNull("textError");
         if (!idea.isEmpty() && script.isEmpty()) briefStore(c);
@@ -165,10 +167,13 @@ public class DirectorService {
                 if (b != null) { boards++; if (cover == null) cover = b; }
                 if (adoptedKey(clip.path("video")) != null) videos++;
             }
+            // 还没有分镜图时用资产图作封面。商品图排最后：封面会裁切，商品一裁就看不全，也不能代表这部剧。
+            if (cover == null) for (JsonNode a : c.path("assets")) { if (isProduct(a)) continue; cover = adoptedKey(a.path("image")); if (cover != null) break; }
             if (cover == null) for (JsonNode a : c.path("assets")) { cover = adoptedKey(a.path("image")); if (cover != null) break; }
             if (cover != null) coverKeys.put(w.getId(), cover);
             ObjectNode s = om.createObjectNode().put("id", w.getId()).put("title", w.getTitle())
-                    .put("episodeCount", c.path("episodes").size()).put("assetCount", c.path("assets").size())
+                    .put("episodeCount", c.path("episodes").size()).put("assetCount", storyAssetCount(c))
+                    .put("commerce", commerceOn(c))
                     .put("clipCount", c.path("clips").size()).put("boardCount", boards).put("videoCount", videos)
                     .put("hasScript", !c.path("draft").asText().isBlank() || c.path("episodes").size() > 0)
                     .put("running", w.isActive()).put("updatedAt", w.getUpdatedAt().toString()).putNull("coverUrl");
@@ -242,6 +247,8 @@ public class DirectorService {
                 if (!List.of("9:16", "16:9", "1:1").contains(aspect)) throw invalid("画幅仅支持 9:16、16:9、1:1");
                 s.put("aspectRatio", aspect);
             }
+            // 带货短剧开关：关掉只是不再出现、不再写进新内容，作品里的商品和已关联的片段都不动（docs/ai-director-commerce-plan.md §8）。
+            if (in.hasNonNull("commerce")) s.put("commerce", in.path("commerce").asBoolean(false));
             if (in.has("format")) {
                 JsonNode f = in.path("format");
                 if (f.isNull()) s.remove("format");
@@ -302,7 +309,7 @@ public class DirectorService {
         JsonNode p = c.path("pipeline");
         String status = p.path("status").asText("");
         if (p.isObject() && "running".equals(status))
-            throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_WORK_BUSY", "一键制作正在进行，请先停止制作，等进行中的任务结束后再删除");
+            throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_WORK_BUSY", "一键制作进行中，请停止制作，并在进行中的任务结束后删除");
         String busy = inFlight(w, c);
         if (busy != null) throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_WORK_BUSY", busy);
         if (p.isObject() && Set.of("waiting", "paused").contains(status)) finish((ObjectNode) p, "stopped", "作品已删除，制作已停止");
@@ -363,6 +370,17 @@ public class DirectorService {
      * （冻结已释放，见 BUSINESS_RULES「模型任务异常状态与并发」）；还没结案的（排队、提交中、生成中、受理待核对、
      * 正在重新查询原任务）、查不到或不属本人的，都算没结束。
      */
+    /**
+     * 回收站「彻底删除」前的在途核对，与删除同一口径（{@link #inFlight}）：一键制作在跑、任务记录未结束、
+     * 绑定的视频任务未结束 / 受理待核对 / 查不到，都返回原因；没有在途返回 null。调用方须已持有作品行锁。
+     */
+    public String purgeBlockReason(DirectorWork w) {
+        ObjectNode c = read(w);
+        if ("running".equals(c.path("pipeline").path("status").asText(""))) return "一键制作进行中，请停止制作后再彻底删除";
+        String busy = inFlight(w, c);
+        return busy == null ? null : busy.replace("删除", "彻底删除");
+    }
+
     private String inFlight(DirectorWork w, ObjectNode c) {
         Set<String> jobIds = new LinkedHashSet<>();
         for (JsonNode clip : c.path("clips")) for (JsonNode pend : clip.path("video").path("pending"))
@@ -384,7 +402,7 @@ public class DirectorService {
             }
             if (VIDEO_JOB_TERMINAL.contains((String) job[1])) continue;
             if ("VIDEO_SUBMISSION_UNKNOWN".equals(job[2]) || "VIDEO_RECONCILIATION_PENDING".equals(job[2]))
-                return "片段视频的受理结果还在核对，核对完成后再删除";
+                return "片段视频的提交结果还在核对，核对完成后再删除";
             return "片段视频正在生成，任务结束后再删除";
         }
         return null;
@@ -519,6 +537,10 @@ public class DirectorService {
                 if (d.has("description")) a.put("description", limited(d.path("description").asText(), 2000, "描述"));
                 // 角色音色的文字描述：没有参考音频时视频按它配音，有参考音频时作补充。
                 if (d.has("voiceDesc")) a.put("voiceDesc", limited(d.path("voiceDesc").asText(), 200, "音色描述"));
+                if (d.has("placement")) {
+                    if (!isProduct(a)) throw invalid("仅商品可填写植入想法");
+                    a.put("placement", limited(d.path("placement").asText(), PLACEMENT_MAX, "植入想法"));
+                }
                 if (d.has("episodeIds")) a.set("episodeIds", episodeIds(c, d.path("episodeIds")));
                 if (d.path("resetPrompt").asBoolean(false)) a.put("promptCustom", false);
                 else if (d.has("prompt")) a.put("prompt", limited(d.path("prompt").asText(), 4000, "提示词")).put("promptCustom", true);
@@ -533,8 +555,8 @@ public class DirectorService {
                     ObjectNode details = om.createObjectNode().put("assetId", req.targetId()).put("name", a.path("name").asText());
                     details.set("clips", refs);
                     throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_ASSET_IN_USE",
-                            "「" + a.path("name").asText() + "」还用在 " + refs.size() + " 个片段里（" + String.join("、", where.subList(0, Math.min(5, where.size())))
-                                    + (where.size() > 5 ? " 等" : "") + "），先在这些片段里解除关联再删除", details);
+                            "「" + a.path("name").asText() + "」仍被 " + refs.size() + " 个片段使用（" + String.join("、", where.subList(0, Math.min(5, where.size())))
+                                    + (where.size() > 5 ? " 等" : "") + "），请在这些片段中解除关联后删除", details);
                 }
                 remove(c, "assets", req.targetId());
             }
@@ -549,6 +571,11 @@ public class DirectorService {
                 if (key == null) throw invalid("请先上传图片");
                 ObjectNode m = addCandidate(c, (ObjectNode) a.path("image"), key, null, "upload");
                 adopt(a, "image", m.path("id").asText());
+            }
+            case "product.add" -> {
+                // 把商品库的一项加进作品；已经加过就同步资料和图片。商品资料只由服务端按本人商品库读，不信客户端带的文字。
+                if (!commerceOn(c)) throw invalid("请先在作品设置里打开「带货短剧」");
+                addProduct(userId, c, library.object(userId, d.path("objectId").asText()), d);
             }
             case "asset.link" -> {
                 // 关联已有资产：这项资产就是个人资产库里的那一项。只收对象 id 和版本，图和描述由服务端按本人资产库读出来。
@@ -671,7 +698,15 @@ public class DirectorService {
                 bump(clip);
             }
             case "clip.delete" -> {
-                String epId = find(c, "clips", req.targetId(), "这个片段").path("episodeId").asText();
+                ObjectNode clip = find(c, "clips", req.targetId(), "这个片段");
+                String epId = clip.path("episodeId").asText();
+                // 生成中的片段不能删：结果回来时片段已经没了，已付费的产物没有地方落（判断同 clip.unlinkAsset）。
+                String label = "片段 " + clip.path("order").asInt();
+                Set<String> running = runningNodes(w);
+                if (clip.path("video").path("pending").size() > 0 || running.contains("video:" + clip.path("id").asText()) || running.contains(REWRITE_NODE + clip.path("id").asText()))
+                    throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", label + " 的视频正在生成，完成后再删除");
+                if (running.contains("board:" + clip.path("id").asText()))
+                    throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", label + " 的分镜图正在生成，完成后再删除");
                 remove(c, "clips", req.targetId());
                 renumber(c, epId);
             }
@@ -803,7 +838,7 @@ public class DirectorService {
         ObjectNode c = read(w);
         reconcile(w, c);
         if (req.clientRequestId() == null || req.clientRequestId().isBlank() || req.clientRequestId().length() > 48)
-            throw invalid("请求编号无效，请刷新后重试");
+            throw invalid("请求已失效，请刷新页面后重试");
         JsonNode o = req.options() == null ? om.createObjectNode() : req.options();
         if ("script".equals(req.type()) && o.hasNonNull("idea")) {
             if (o.path("idea").asText().length() > 2000) throw invalid("创意不超过 2000 字");
@@ -869,7 +904,9 @@ public class DirectorService {
                     in.set("format", scope);
                     meta.put("writeTo", scope.path("writeTo").asInt()).put("totalEpisodes", scope.path("totalEpisodes").asInt());
                 }
-                textPrompt = DirectorPrompts.script(prompts(), c.path("genre").asText(null), c.path("tone").asText(null), format.path("kind").asText(null), write(in));
+                boolean commerce = putProducts(in, c);
+                if (commerce) meta.set("products", productNames(c));
+                textPrompt = DirectorPrompts.script(prompts(), c.path("genre").asText(null), c.path("tone").asText(null), format.path("kind").asText(null), commerce, write(in));
             }
             case "script-more" -> {
                 requireScriptEditable(c, null);
@@ -884,7 +921,7 @@ public class DirectorService {
                 in.set("format", scope);
                 if (c.path("outline").isObject()) in.set("outline", c.path("outline"));
                 in.put("written", scriptTail(c)).put("style", c.path("settings").path("style").asText());
-                textPrompt = DirectorPrompts.scriptMore(prompts(), c.path("genre").asText(null), c.path("tone").asText(null), format.path("kind").asText(null), write(in));
+                textPrompt = DirectorPrompts.scriptMore(prompts(), c.path("genre").asText(null), c.path("tone").asText(null), format.path("kind").asText(null), putProducts(in, c), write(in));
             }
             case "split" -> {
                 requireScriptEditable(c, "draft");
@@ -950,12 +987,14 @@ public class DirectorService {
                     epHashes.addObject().put("id", ep.path("id").asText()).put("contentHash", hash(ep.path("content").asText()));
                 }
                 ArrayNode ex = in.putArray("existingAssets"), exIds = meta.putArray("existingIds");
-                for (JsonNode a : c.path("assets")) {
+                for (JsonNode a : promptAssets(c)) {
                     ex.addObject().put("id", a.path("id").asText()).put("kind", a.path("kind").asText()).put("name", a.path("name").asText())
                             .set("aliases", a.path("aliases"));
                     exIds.add(a.path("id").asText());
                 }
-                textPrompt = DirectorPrompts.extract(prompts(), write(in));
+                ArrayNode known = meta.putArray("productAssets");
+                products(c).forEach(a -> known.addObject().put("id", a.path("id").asText()).put("name", a.path("name").asText()));
+                textPrompt = DirectorPrompts.extract(prompts(), !products(c).isEmpty(), write(in));
             }
             case "plan" -> {
                 ObjectNode ep = find(c, "episodes", targetId, "这一集");
@@ -964,10 +1003,10 @@ public class DirectorService {
                 for (JsonNode clip : c.path("clips"))
                     if (targetId.equals(clip.path("episodeId").asText()) && hasMedia(clip))
                         throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_CLIPS_HAVE_MEDIA", "本集片段已有分镜图或视频，重写分镜脚本会丢掉这些内容。请先删除不需要的片段");
-                if (c.path("assets").isEmpty()) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_ASSETS_MISSING", "请先在「资产」中提取或添加角色、场景和道具");
+                if (storyAssetCount(c) == 0) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_ASSETS_MISSING", "请先在「资产」中提取或添加角色、场景和道具");
                 Limits lim = limits(c);
                 if (lim == null) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "DIRECTOR_VIDEO_MODEL_UNAVAILABLE",
-                        "暂无支持片段生成的视频模型，无法确定片段时长。请联系管理员开通");
+                        "暂无可用于片段生成的视频模型，请联系平台处理");
                 requireNoReshoot(w, c, targetId, null);
                 nodeId = "plan:" + targetId;
                 meta.put("episodeId", targetId).put("contentHash", hash(ep.path("content").asText()))
@@ -976,19 +1015,22 @@ public class DirectorService {
                         .put("episodeNo", ep.path("no").asInt()).put("content", ep.path("content").asText());
                 putBrief(in, c);
                 ArrayNode as = in.putArray("assets");
-                for (JsonNode a : c.path("assets")) {
+                List<String> plannable = new ArrayList<>();
+                for (JsonNode a : promptAssets(c)) {
+                    plannable.add(a.path("id").asText());
                     ObjectNode item = as.addObject().put("id", a.path("id").asText()).put("kind", a.path("kind").asText()).put("name", a.path("name").asText())
                             .put("description", a.path("description").asText());
+                    if (isProduct(a) && !a.path("placement").asText().isBlank()) item.put("placement", a.path("placement").asText());
                     if (a.path("forms").size() > 0) {
                         ArrayNode forms = item.putArray("forms");
                         a.path("forms").forEach(f -> forms.addObject().put("id", f.path("id").asText()).put("name", f.path("name").asText()).put("description", f.path("description").asText()));
                     }
                 }
-                meta.set("assetIds", om.valueToTree(ids(c.path("assets"))));
+                meta.set("assetIds", om.valueToTree(plannable));
                 List<String> chars = new ArrayList<>();
                 for (JsonNode a : c.path("assets")) if ("character".equals(a.path("kind").asText())) chars.add(a.path("id").asText());
                 meta.set("characterIds", om.valueToTree(chars));
-                textPrompt = DirectorPrompts.plan(prompts(), lim.min(), lim.max(), lim.maxShots(), write(in));
+                textPrompt = DirectorPrompts.plan(prompts(), lim.min(), lim.max(), lim.maxShots(), !products(c).isEmpty(), write(in));
             }
             case "reshoot" -> {
                 // 重写分镜脚本、保留片段划分：本集全部片段（options.clipIds 为空）或其中几个，只换镜头、标题、摘要、关联资产；
@@ -1006,10 +1048,10 @@ public class DirectorService {
                 }
                 boolean whole = targets.isEmpty();
                 if (whole) targets = epClips;
-                if (c.path("assets").isEmpty()) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_ASSETS_MISSING", "请先在「资产」中提取或添加角色、场景和道具");
+                if (storyAssetCount(c) == 0) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_ASSETS_MISSING", "请先在「资产」中提取或添加角色、场景和道具");
                 Limits lim = limits(c);
                 if (lim == null) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "DIRECTOR_VIDEO_MODEL_UNAVAILABLE",
-                        "暂无支持片段生成的视频模型，无法确定片段时长。请联系管理员开通");
+                        "暂无可用于片段生成的视频模型，请联系平台处理");
                 Set<String> running = runningNodes(w);
                 for (JsonNode clip : targets) {
                     String cid = clip.path("id").asText();
@@ -1032,9 +1074,12 @@ public class DirectorService {
                         .put("episodeNo", ep.path("no").asInt()).put("content", ep.path("content").asText());
                 putBrief(in, c);
                 ArrayNode as = in.putArray("assets");
-                for (JsonNode a : c.path("assets")) {
+                List<String> plannable = new ArrayList<>();
+                for (JsonNode a : promptAssets(c)) {
+                    plannable.add(a.path("id").asText());
                     ObjectNode item = as.addObject().put("id", a.path("id").asText()).put("kind", a.path("kind").asText()).put("name", a.path("name").asText())
                             .put("description", a.path("description").asText());
+                    if (isProduct(a) && !a.path("placement").asText().isBlank()) item.put("placement", a.path("placement").asText());
                     if (a.path("forms").size() > 0) {
                         ArrayNode forms = item.putArray("forms");
                         a.path("forms").forEach(f -> forms.addObject().put("id", f.path("id").asText()).put("name", f.path("name").asText()).put("description", f.path("description").asText()));
@@ -1061,14 +1106,15 @@ public class DirectorService {
                     }
                 }
                 in.set("rewriteIds", rewriteIds.deepCopy());
-                meta.set("assetIds", om.valueToTree(ids(c.path("assets"))));
+                meta.set("assetIds", om.valueToTree(plannable));
                 List<String> chars = new ArrayList<>();
                 for (JsonNode a : c.path("assets")) if ("character".equals(a.path("kind").asText())) chars.add(a.path("id").asText());
                 meta.set("characterIds", om.valueToTree(chars));
-                textPrompt = DirectorPrompts.reshoot(prompts(), lim.min(), lim.max(), lim.maxShots(), write(in));
+                textPrompt = DirectorPrompts.reshoot(prompts(), lim.min(), lim.max(), lim.maxShots(), !products(c).isEmpty(), write(in));
             }
             case "asset-image" -> {
                 ObjectNode a = find(c, "assets", targetId, "这个资产");
+                if (isProduct(a)) throw invalid("商品图来自商品库，无需生成，可在「商品」中更换");
                 String prompt = a.path("prompt").asText();
                 if (prompt.isBlank()) throw invalid("请先填写资产描述");
                 String refKey = assetRefKey(a);
@@ -1087,7 +1133,7 @@ public class DirectorService {
                 JsonNode a = formOwner(c, targetId);
                 String main = adoptedKey(a.path("image"));
                 if (main == null) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_MAIN_IMAGE_REQUIRED",
-                        "请先生成或上传「" + a.path("name").asText() + "」的主形象，形态照着它画");
+                        "请先生成或上传「" + a.path("name").asText() + "」的主形象，形态图将以它为参考");
                 prompts().requireStage(StudioPromptCallPoints.DIRECTOR_ASSET_IMAGE);
                 ObjectNode sheet = formSheet(a, form);
                 String prompt = DirectorPrompts.assetPrompt(prompts(), c.path("settings"), sheet, null);
@@ -1102,7 +1148,7 @@ public class DirectorService {
                 if (!"scene".equals(a.path("kind").asText())) throw invalid("只有场景可以生成四视图");
                 String main = adoptedKey(a.path("image"));
                 if (main == null) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_MAIN_IMAGE_REQUIRED",
-                        "请先生成或上传「" + a.path("name").asText() + "」的主视图，其他视角照着它画");
+                        "请先生成或上传「" + a.path("name").asText() + "」的主视图，其他视角将以它为参考");
                 prompts().requireStage(StudioPromptCallPoints.DIRECTOR_SCENE_VIEWS);
                 String prompt = DirectorPrompts.sceneViewsPrompt(prompts(), c.path("settings"), a, null);
                 List<Bound> refs = List.of(new Bound(targetId, a.path("name").asText() + "的主视图", "scene", main, "图1"));
@@ -1124,7 +1170,7 @@ public class DirectorService {
             }
             case "video" -> { return video(userId, w, c, find(c, "clips", targetId, "这个片段"), requestId, pipeline, billing, maxCost, o.path("promptChoice").asText(null)); }
             case "video-prompt" -> { return reoptimize(userId, w, c, find(c, "clips", targetId, "这个片段"), requestId, billing); }
-            case "export" -> { return export(userId, w, c, targetId, requestId); }
+            case "export" -> { return export(userId, w, c, targetId, requestId, o); }
             default -> throw invalid("不支持的生成");
         }
         requireIdle(w, nodeId);
@@ -1192,7 +1238,7 @@ public class DirectorService {
      */
     private List<JsonNode> visualAssets(ObjectNode c, JsonNode clip) {
         List<JsonNode> out = new ArrayList<>();
-        for (String kind : List.of("character", "scene", "prop"))
+        for (String kind : REF_KINDS)
             for (JsonNode idNode : clip.path("assetIds")) {
                 JsonNode a = findOrNull(c, "assets", idNode.asText());
                 if (a == null || !kind.equals(a.path("kind").asText()) || audioOnly(a)) continue;
@@ -1262,6 +1308,23 @@ public class DirectorService {
         return out;
     }
 
+    /** 页面图号与提示词、提交共用 visualAssets；只在 wire 上投影，不改作品的资产关联顺序。 */
+    ArrayNode imageReferences(ObjectNode c, JsonNode clip, boolean video, boolean frame) {
+        ArrayNode out = om.createArrayNode();
+        if (video) {
+            out.addObject().putNull("assetId").put("name", "分镜图").put("label", frame ? "首帧" : "图1")
+                    .put("key", adoptedKey(clip.path("board")));
+            if (frame) return out;
+        }
+        for (JsonNode a : visualAssets(c, clip)) {
+            String label = "图" + (out.size() + 1);
+            out.addObject().put("assetId", a.path("id").asText())
+                    .put("name", a.path("displayName").asText(a.path("name").asText()))
+                    .put("label", label).put("key", adoptedKey(a.path("image")));
+        }
+        return out;
+    }
+
     /** 「围绕当前图修改」：把当前采用的那张追加为最后一张参考图，返回它的版本 id。 */
     private String baseOnCurrent(JsonNode target, String slotName, String name, List<Bound> refs) {
         JsonNode slot = target.path(slotName);
@@ -1280,7 +1343,7 @@ public class DirectorService {
         String runId;
         if (fixtures.enabled()) runId = newTx.execute(tx -> fixtureMedia(userId, w.getId(), nodeId, requestId, "image", prompt));
         else runId = newTx.execute(tx -> imageRuns.generateForDirector(userId, w.getId(),
-                new IpRunService.IpGenerateRequest(nodeId, prompt, keys, 1, size, imageSelection(c).resolved().endpoint().getId(), maxCost, billing, requestId)).id());
+                new IpRunService.IpGenerateRequest(nodeId, prompt, keys, 1, size, (nodeId.startsWith("board:") ? boardImageSelection(c) : imageSelection(c)).resolved().endpoint().getId(), maxCost, billing, requestId)).id());
         ObjectNode m = om.createObjectNode().put("node", nodeId).put("prompt", prompt).put("fingerprint", fingerprint)
                 .put("promptFormat", DirectorPrompts.IMAGE_PROMPT_FORMAT);
         // 记下这次按出图模板哪一版编的：后台发了新版本，这张图仍按这一版核对，换模板本身不算「描述已修改」
@@ -1358,7 +1421,7 @@ public class DirectorService {
         if ("auto".equals(boardSlot.path("adoptedBy").asText())) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_BOARD_UNCONFIRMED", "请先确认分镜图");
         Limits lim = limits(c);
         if (lim == null) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "DIRECTOR_VIDEO_MODEL_UNAVAILABLE",
-                "暂无支持片段生成的视频模型，请联系管理员开通");
+                "暂无可用于片段生成的视频模型，请联系平台处理");
         String aspect = c.path("settings").path("aspectRatio").asText("9:16");
         if (!lim.aspects().isEmpty() && !lim.aspects().contains(aspect))
             throw invalid("视频模型「" + lim.name() + "」不支持 " + aspect + " 画幅，请在设置中更换画幅或模型");
@@ -1448,13 +1511,13 @@ public class DirectorService {
                     reason = "too_long";
                     notice(c, "「" + clip.path("title").asText() + "」的优化稿超过 " + H3PromptRewrite.MAX_PROMPT_CHARS + " 字符，已按原文生成");
                 }
-                else if (!usable) throw invalid("优化稿超过 " + H3PromptRewrite.MAX_PROMPT_CHARS + " 字符，H3 收不下。请重新优化，或按原文生成");
+                else if (!usable) throw invalid("优化稿超过 " + H3PromptRewrite.MAX_PROMPT_CHARS + " 字符，超出模型上限。请重新优化或按原文生成");
                 else if (!en.path("warnings").isEmpty() && pipeline == null && !"optimized".equals(chosen))
                     throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_PROMPT_REVIEW", "优化稿有需要留意的地方，请先选择用优化稿还是原文生成");
                 else sent = english(en, rw);
             }
             if (sent != null && sent.length() > H3PromptRewrite.MAX_PROMPT_CHARS)
-                throw invalid("台词加起来太长，发给视频模型的提示词超过 " + H3PromptRewrite.MAX_PROMPT_CHARS + " 字符。请缩短台词或拆分片段，或按原文生成");
+                throw invalid("台词过长，视频提示词超过 " + H3PromptRewrite.MAX_PROMPT_CHARS + " 字符。请缩短台词或拆分片段，或按原文生成");
         }
         ObjectNode m = om.createObjectNode().put("node", node).put("prompt", in.prompt()).put("fingerprint", in.fingerprint())
                 .put("promptFormat", DirectorPrompts.VIDEO_PROMPT_FORMAT);
@@ -1518,10 +1581,12 @@ public class DirectorService {
         int pictures = 1;
         for (JsonNode a : visualAssets(c, clip)) {
             pictures++;
-            String name = a.path("name").asText(), notes = a.path("description").asText().strip();
+            // 商品说明是卖点，不交给视频模型：可能被画成字幕，也不是外观依据。
+            String name = a.path("name").asText(), notes = isProduct(a) ? "" : a.path("description").asText().strip();
             String what = switch (a.path("kind").asText()) {
                 case "scene" -> "reference image of the location 「" + name + "」; use it for the layout and where the light sources are";
                 case "prop" -> "reference image of the prop 「" + name + "」";
+                case "product" -> "reference image of the product 「" + name + "」; keep its shape, colors, packaging and label exactly as shown";
                 default -> "character sheet of 「" + name + "」; every figure on the sheet is the same person";
             };
             refs.add("<Picture " + pictures + ">: " + what + "." + (notes.isEmpty() ? "" : " Written notes: " + notes));
@@ -1699,7 +1764,7 @@ public class DirectorService {
         ObjectNode clip = (ObjectNode) findOrNull(c, "clips", in.path("targetId").asText());
         if (clip == null) return false;
         log.info("[director] 提示词改写两次未成功，一键制作按原文提交 work={} clip={}", w.getId(), clip.path("id").asText());
-        notice(c, "「" + clip.path("title").asText() + "」的提示词优化没成功，已按原文生成");
+        notice(c, "「" + clip.path("title").asText() + "」的提示词优化失败，已按原文生成");
         chainVideo(w, c, clip, then, "original");
         return true;
     }
@@ -1778,7 +1843,7 @@ public class DirectorService {
                     if (key == null && job.path("video_url").isTextual()) key = storage.keyOfStoredUrl(job.path("video_url").asText());
                     pending.remove(i);
                     changed = true;
-                    if (key == null) { slot.set("error", om.createObjectNode().put("message", "视频已生成，文件读取失败。请联系管理员处理，勿重复生成。").put("at", Instant.now().toString())); continue; }
+                    if (key == null) { slot.set("error", om.createObjectNode().put("message", "视频已生成，但文件读取失败。请联系平台处理，请勿重复生成。").put("at", Instant.now().toString())); continue; }
                     addVideoCandidate(c, (ObjectNode) clipNode, key, null, entry.path("meta"), false);
                 } else if ("failed".equals(status)) {
                     pending.remove(i);
@@ -1824,7 +1889,8 @@ public class DirectorService {
 
     // ── 整集导出 ─────────────────────────────────────────────────────────────
 
-    private String export(String userId, DirectorWork w, ObjectNode c, String episodeId, String requestId) {
+    /** options：captions（默认带字幕）、quality（720p / 1080p，缺省跟随片段）、musicStorageKey（背景音乐）。 */
+    private String export(String userId, DirectorWork w, ObjectNode c, String episodeId, String requestId, JsonNode options) {
         ObjectNode ep = find(c, "episodes", episodeId, "这一集");
         List<JsonNode> clips = new ArrayList<>();
         for (JsonNode clip : c.path("clips")) if (episodeId.equals(clip.path("episodeId").asText())) clips.add(clip);
@@ -1842,17 +1908,35 @@ public class DirectorService {
         }
         if (!missing.isEmpty()) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_EXPORT_INCOMPLETE",
                 "缺少视频：" + String.join("、", missing) + "。整集导出需每个片段均有采用的视频");
-        if (!unconfirmed.isEmpty()) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_EXPORT_UNCONFIRMED",
+        // 导出对话框写明了「将一并确认」，用户点了开始导出才带 confirmPending；不带时仍按原规则拒绝。
+        boolean confirmPending = options != null && options.path("confirmPending").asBoolean(false);
+        if (!unconfirmed.isEmpty() && !confirmPending) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_EXPORT_UNCONFIRMED",
                 "待确认视频：" + String.join("、", unconfirmed) + "。确认后可导出");
         String node = "export:" + episodeId;
         requireIdle(w, node);
+        if (confirmPending) for (JsonNode clip : clips) if ("auto".equals(clip.path("video").path("adoptedBy").asText())) ((ObjectNode) clip.path("video")).put("adoptedBy", "user");
         ObjectNode input = om.createObjectNode().put("operation", "assemble").put("mock", fixtures.enabled())
                 .put("aspectRatio", c.path("settings").path("aspectRatio").asText("9:16"));
         ArrayNode references = input.putArray("references");
         keys.forEach(k -> references.addObject().put("role", "clip").put("storageKey", k));
+        boolean captions = options == null || options.path("captions").asBoolean(true);
+        String quality = options == null ? null : options.path("quality").asText(null);
+        if (quality != null && !Set.of("720p", "1080p").contains(quality)) throw invalid("清晰度只能选 720P 或 1080P");
+        String music = options == null ? null : options.path("musicStorageKey").asText(null);
+        if (music != null && !music.isBlank()) projects.requireOwnedAssetKey(userId, music); else music = null;
+        ObjectNode packaging = input.putObject("packaging").put("autoCaptions", captions);
+        if (quality != null) packaging.put("quality", quality);
+        if (music != null) packaging.put("musicStorageKey", music);
+        if (captions) packaging.set("knownClips", DirectorCaptions.knownClips(om, clips));
         String runId = newTx.execute(tx -> workflowRun(userId, w.getId(), node, requestId, "studio-assemble", input));
         ObjectNode entry = c.withArray("exports").addObject().put("id", runId).put("episodeId", episodeId).put("episodeNo", ep.path("no").asInt())
-                .put("status", "running").put("createdAt", Instant.now().toString());
+                .put("status", "running").put("createdAt", Instant.now().toString()).put("captions", captions);
+        if (quality != null) entry.put("quality", quality);
+        if (music != null) {
+            // 记下来，下次打开导出对话框不用重新上传。
+            String musicName = options.path("musicName").asText("背景音乐");
+            entry.put("musicStorageKey", music).put("musicName", musicName.length() > 120 ? musicName.substring(0, 120) : musicName);
+        }
         entry.putNull("key"); entry.putNull("durationSec"); entry.putNull("error");
         entry.set("clips", used);
         track(c, null, runId, om.createObjectNode().put("node", node));
@@ -1865,8 +1949,14 @@ public class DirectorService {
             ObjectNode entry = (ObjectNode) e;
             if (IpRun.STATUS_DONE.equals(run.getStatus()) && output.path("storageKey").isTextual()) {
                 entry.put("status", "done").put("key", output.path("storageKey").asText()).put("durationSec", output.path("durationSec").asDouble());
+                if (output.path("captions").path("status").isTextual()) {
+                    entry.put("captionStatus", output.path("captions").path("status").asText());
+                    entry.put("captionCount", output.path("captions").path("cues").size());
+                }
+                notice(c, "第 " + entry.path("episodeNo").asInt() + " 集已导出，可以观看和下载。");
             } else {
-                entry.put("status", "failed").put("error", run.getErrorMessage() == null ? "合成失败，请重试" : run.getErrorMessage());
+                entry.put("status", "failed").put("error", run.getErrorMessage() == null ? "导出失败，请重试" : run.getErrorMessage());
+                notice(c, "第 " + entry.path("episodeNo").asInt() + " 集导出失败，片段不受影响，可以重新导出。");
             }
         }
     }
@@ -1963,7 +2053,7 @@ public class DirectorService {
         }
         JsonNode output = parse(run.getOutputJson());
         if("length".equals(output.path("rawResponse").path("finishReason").asText()))
-            notice(c,"模型因输出额度停止，已保留返回内容，可能尚未写完；请核对后继续");
+            notice(c,"模型输出已达上限，已保留返回内容，可能尚未写完。请核对后继续");
         JsonNode meta = c.path("taskMeta").path(run.getId());
         if(output.path("rawOnly").asBoolean()) {
             notice(c,"模型返回内容已保留，可在生成原文中查看；请核对后再继续制作");
@@ -2104,11 +2194,14 @@ public class DirectorService {
                     it.set("episodeNos", a.path("episodeNos").isArray() ? a.path("episodeNos").deepCopy() : om.createArrayNode());
                     if (a.path("forms").size() > 0) it.set("forms", a.path("forms").deepCopy());
                     JsonNode match = matchAsset(c, a.path("existingId").asText(null), a.path("kind").asText(), a.path("name").asText());
+                    // 模型把商品当成道具提取了：按名称和别名对上商品，不新建一个道具。
+                    if (match == null && "prop".equals(a.path("kind").asText())) match = matchProduct(c, a.path("name").asText());
+                    if (match != null && isProduct(match)) it.put("kind", PRODUCT);
                     if (match == null) it.putNull("matchId"); else it.put("matchId", match.path("id").asText()).put("matchName", match.path("name").asText());
                 }
                 JsonNode batch = in.path("batch");
-                String batchNote = batch.isObject() ? "（这次读了第 " + batch.path("fromNo").asInt() + "–" + batch.path("toNo").asInt() + " 集，共 "
-                        + batch.path("total").asInt() + " 集；剩下的集再点一次提取）" : "";
+                String batchNote = batch.isObject() ? "（本次提取第 " + batch.path("fromNo").asInt() + "–" + batch.path("toNo").asInt() + " 集，共 "
+                        + batch.path("total").asInt() + " 集；其余各集请再次提取）" : "";
                 if (items.isEmpty()) { markExtracted(c, in.path("episodes")); notice(c, "未发现新的角色、场景或道具" + batchNote); return; }
                 ObjectNode pending = c.putObject("pendingExtract").put("runId", run.getId()).put("at", Instant.now().toString());
                 pending.set("items", items);
@@ -2177,6 +2270,7 @@ public class DirectorService {
         clip.set("assetIds", planned.path("assetIds").deepCopy());
         applyPlannedForms(c, clip, planned);
         setShots(c, clip, planned.path("shots"), false);
+        linkMentionedProducts(c, clip);
         clip.put("boardPromptCustom", false).put("videoPromptCustom", false);
         clip.putNull("pendingShots");
         bump(clip);
@@ -2206,6 +2300,7 @@ public class DirectorService {
             String quote = p.path("sourceQuote").asText("");
             if (!quote.isBlank() && DirectorAssistant.locate(ep.path("content").asText(), quote) != null) clip.put("sourceQuote", quote);
             setShots(c, clip, p.path("shots"), false);
+            linkMentionedProducts(c, clip);
             clips.add(clip);
         }
         renumber(c, epId);
@@ -2237,7 +2332,7 @@ public class DirectorService {
         ObjectNode b = briefStore(c);
         String clientId = req.clientRequestId();
         for (JsonNode m : b.path("messages")) if (clientId.equals(m.path("clientId").asText(null))) return; // 同一编号重发：已受理
-        if ("writing".equals(b.path("status").asText())) throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", "剧本正在写，请稍候");
+        if ("writing".equals(b.path("status").asText())) throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", "剧本生成中，请稍候");
         if (c.path("idea").asText().isBlank()) throw invalid("请先写下你的想法");
         String text = o.path("message").asText("").trim();
         if (text.length() > DirectorAssistant.MAX_MESSAGE) throw invalid("一次最多 " + DirectorAssistant.MAX_MESSAGE + " 字");
@@ -2264,10 +2359,11 @@ public class DirectorService {
         JsonNode format = c.path("settings").path("format");
         if (format.isObject()) material.set("format", scriptScope(format, 1));
         for (String f : List.of("genre", "tone")) if (!c.path(f).asText("").isBlank()) material.put("chosen" + (f.equals("genre") ? "Genre" : "Tone"), c.path(f).asText());
+        boolean commerce = putProducts(material, c);
         ObjectNode meta = om.createObjectNode().put("task", "brief").put("mustConclude", mustConclude);
         String messageId = "b" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         meta.put("messageId", messageId).put("round", rounds + 1).put("message", DirectorPrompts.clip(text, 400));
-        DirectorPrompts.Text textPrompt = DirectorAssistant.briefPrompt(prompts(), write(material), opening, text);
+        DirectorPrompts.Text textPrompt = DirectorAssistant.briefPrompt(prompts(), write(material), opening, text, commerce);
         meta.set("prompt", StudioPromptAssembler.record(om, textPrompt.assembled()));
         var run = newTx.execute(tx -> textRuns.submitDirectorText(userId, w.getId(), "brief", textPrompt.system(), textPrompt.user(), "u-" + clientId, meta,
                 textModel(c), req.billing(), req.maxCost()));
@@ -2443,7 +2539,7 @@ public class DirectorService {
         }
         ObjectNode store = assistantStore(c);
         ObjectNode thread = currentThread(store, o.path("threadId").asText(null));
-        if (thread.path("messages").size() >= MAX_THREAD_MESSAGES) throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_THREAD_FULL", "这段对话太长了，请开一段新对话");
+        if (thread.path("messages").size() >= MAX_THREAD_MESSAGES) throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_THREAD_FULL", "对话内容已达上限，请新建对话");
 
         String kind = scope.path("kind").asText();
         boolean hasScript = !c.path("draft").asText().isBlank() || c.path("episodes").size() > 0;
@@ -2461,8 +2557,11 @@ public class DirectorService {
         for (JsonNode ep : c.path("episodes")) eps.addObject().put("id", ep.path("id").asText()).put("no", ep.path("no").asInt())
                 .put("title", ep.path("title").asText()).put("summary", ep.path("summary").asText());
         ArrayNode as = material.putArray("assets");
-        for (JsonNode a : c.path("assets")) if (as.size() < 60) as.addObject().put("id", a.path("id").asText()).put("kind", a.path("kind").asText())
-                .put("name", a.path("name").asText()).put("description", DirectorPrompts.clip(a.path("description").asText(), 300));
+        for (JsonNode a : promptAssets(c)) if (as.size() < 60) {
+            ObjectNode item = as.addObject().put("id", a.path("id").asText()).put("kind", a.path("kind").asText())
+                    .put("name", a.path("name").asText()).put("description", DirectorPrompts.clip(a.path("description").asText(), 300));
+            if (isProduct(a) && !a.path("placement").asText().isBlank()) item.put("placement", a.path("placement").asText());
+        }
 
         ObjectNode focus = material.putObject("focus").put("kind", kind).put("label", scope.path("label").asText());
         String epId = scope.path("episodeId").asText(null);
@@ -2588,7 +2687,7 @@ public class DirectorService {
             meta.put("fixtureSample", "selection".equals(kind) ? scope.path("text").asText()
                     : sampleLine(scope.path("window").isObject() ? focus.path("content").asText() : scriptContent(c, targets.get(0).asText())));
         meta.put("messageId", messageId).put("visual", "image".equals(kind) ? (imageAttached ? "seen" : "prompt-only") : "");
-        DirectorPrompts.Text textPrompt = DirectorAssistant.prompt(prompts(), write(material), text);
+        DirectorPrompts.Text textPrompt = DirectorAssistant.prompt(prompts(), write(material), text, !products(c).isEmpty());
         meta.set("prompt", StudioPromptAssembler.record(om, textPrompt.assembled()));
         final ArrayNode fVisual = visual;
         var run = newTx.execute(tx -> textRuns.submitDirectorText(userId, w.getId(), "assistant", textPrompt.system(), textPrompt.user(), "u-" + clientId, meta,
@@ -2644,7 +2743,7 @@ public class DirectorService {
 
     private static BusinessException tooLongForModel(String what, int length, int budget, String next) {
         return new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_TEXT_TOO_LONG_FOR_MODEL",
-                what + "约 " + chars(length) + " 字，超过当前文本模型一次能读的约 " + chars(budget) + " 字，AI 会读不全，所以没有提交、没有扣积分。" + next,
+                what + "约 " + chars(length) + " 字，超过当前文本模型单次可读取的约 " + chars(budget) + " 字。本次未提交，未扣积分。" + next,
                 Map.of("chars", length, "budget", budget));
     }
 
@@ -2691,13 +2790,13 @@ public class DirectorService {
                 if ("selection".equals(kind)) {
                     String text = in.path("text").asText("");
                     if (text.isBlank()) throw invalid("请先选中一段正文");
-                    if (text.length() > DirectorAssistant.MAX_SELECTION) throw invalid("选中的正文太长，请少选一些（最多 " + DirectorAssistant.MAX_SELECTION + " 字）");
+                    if (text.length() > DirectorAssistant.MAX_SELECTION) throw invalid("选中的正文过长，最多 " + DirectorAssistant.MAX_SELECTION + " 字");
                     // 选区是具体位置，不只是文字：同样的话出现两处时，改的必须是用户选中的那一处。
                     // 前端发送前先保存正文，这里按保存后的正文核对位置。
                     String content = scriptContent(c, s.path("episodeId").asText());
                     int start = in.path("start").asInt(-1), end = in.path("end").asInt(-1);
                     if (start < 0 || end <= start || end > content.length() || !content.substring(start, end).equals(text))
-                        throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_SELECTION_CHANGED", "选中的正文和当前正文对不上，请重新选择要修改的段落");
+                        throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_SELECTION_CHANGED", "选中的内容与当前正文不一致，请重新选择");
                     s.put("text", text).put("start", start).put("end", end).put("label", s.path("label").asText() + " · 已选正文");
                 } else if (in.path("focusAt").isInt() && in.path("focusAt").asInt() > 0) {
                     // 光标位置：正文很长时助手读光标附近那一段。
@@ -3022,7 +3121,7 @@ public class DirectorService {
                 if (p.hasNonNull("description") && !a.path("description").asText().equals(b.path("description").asText()))
                     throw stale("「" + a.path("name").asText() + "」的外观设定在助手回复后又改过，这条建议没有写入");
                 if (p.hasNonNull("prompt") && a.path("promptCustom").asBoolean(false) && !a.path("prompt").asText().equals(b.path("prompt").asText()))
-                    throw stale("「" + a.path("name").asText() + "」的出图提示词在助手回复后又改过，这条建议没有写入");
+                    throw stale("「" + a.path("name").asText() + "」的提示词在助手回复后又改过，这条建议没有写入");
                 if (p.hasNonNull("voiceDesc") && !a.path("voiceDesc").asText("").equals(b.path("voiceDesc").asText("")))
                     throw stale("「" + a.path("name").asText() + "」的音色描述在助手回复后又改过，这条建议没有写入");
                 undo.put("description", a.path("description").asText()).put("prompt", a.path("prompt").asText())
@@ -3196,6 +3295,12 @@ public class DirectorService {
         return mediaImport.uploadReferenceAudio(userId, file);
     }
 
+    /** 导出成片用的背景音乐：和声音样本不同，长度不限制在几秒之内。 */
+    public StudioMediaImportService.MediaImportResult uploadMusic(String userId, String id, org.springframework.web.multipart.MultipartFile file) {
+        owned(userId, id);
+        return mediaImport.upload(userId, file, "audio");
+    }
+
     // ── 一键连跑 ─────────────────────────────────────────────────────────────
 
     /** auto=true：全自动，资产清单、参考图、分镜图、片段视频都不停下来等确认（预算仍是硬上限）。 */
@@ -3294,7 +3399,7 @@ public class DirectorService {
         List<JsonNode> eps = new ArrayList<>();
         for (JsonNode ep : c.path("episodes")) if (work || req.episodeId() == null || req.episodeId().equals(ep.path("id").asText())) eps.add(ep);
         if (!work && req.episodeId() == null && eps.size() > 1) eps = List.of(eps.get(0));
-        int text = 0, images = 0, clipsTotal = 0, seconds = 0, plannedVideos = 0;
+        int text = 0, images = 0, boardImages = 0, clipsTotal = 0, seconds = 0, plannedVideos = 0;
         Set<String> variantsCounted = new HashSet<>();
         long textCredits = 0, videoCredits = 0;
         boolean rough = false;
@@ -3312,12 +3417,12 @@ public class DirectorService {
             text += n; textCredits += (long) n * directorTextPrice(c, prices[0]);
             images += 6;                                      // 角色、场景、道具参考图
             clipsTotal = n * estClipsPerEp;
-            images += clipsTotal;                             // 分镜图
+            images += clipsTotal; boardImages += clipsTotal;   // 分镜图
         } else {
             if (eps.stream().anyMatch(e -> !e.path("extracted").asBoolean(false))) { text++; textCredits += directorTextPrice(c, prices[0]); }
             Set<String> epIds = new HashSet<>();
             eps.forEach(e -> epIds.add(e.path("id").asText()));
-            boolean assetsKnown = c.path("assets").size() > 0;
+            boolean assetsKnown = storyAssetCount(c) > 0;
             if (!assetsKnown) { rough = true; images += 6; }
             else for (JsonNode a : c.path("assets")) {
                 boolean inScope = work || a.path("episodeIds").isEmpty();
@@ -3326,9 +3431,9 @@ public class DirectorService {
             }
             for (JsonNode ep : eps) {
                 List<JsonNode> clips = clipsOf(c, List.of(ep));
-                if (clips.isEmpty()) { rough = true; text++; textCredits += directorTextPrice(c, prices[0]); clipsTotal += estClipsPerEp; images += estClipsPerEp; continue; }
+                if (clips.isEmpty()) { rough = true; text++; textCredits += directorTextPrice(c, prices[0]); clipsTotal += estClipsPerEp; images += estClipsPerEp; boardImages += estClipsPerEp; continue; }
                 for (JsonNode clip : clips) {
-                    if (clip.path("board").path("candidates").isEmpty()) images++;
+                    if (clip.path("board").path("candidates").isEmpty()) { images++; boardImages++; }
                     for (String need : neededVariants(c, clip)) if (variantsCounted.add(need)) images++;
                     if (!toVideo || clip.path("video").path("candidates").size() > 0) continue;
                     int sec = (int) Math.round(clip.path("durationSec").asDouble());
@@ -3347,8 +3452,8 @@ public class DirectorService {
             catch (BusinessException e) { videoError = e.getMessage(); }
         }
         if (toVideo && lim == null) videoError = "暂无可用视频模型，无法估算视频费用";
-        if ("plan".equals(target)) images = 0;
-        long imageCredits = (long) images * prices[1];
+        if ("plan".equals(target)) { images = 0; boardImages = 0; }
+        long imageCredits = (long) (images - boardImages) * prices[1] + (long) boardImages * boardImagePrice(c, prices[1]);
         long total = textCredits + imageCredits + (toVideo ? videoCredits : 0);
         long recommended = Math.max(10, (long) Math.ceil(total * 1.15 / 10.0) * 10);
         ObjectNode out = om.createObjectNode().put("target", target).put("rough", rough).put("total", total).put("recommended", recommended);
@@ -3427,7 +3532,7 @@ public class DirectorService {
                     if (!auto(p)) { finish(p, "failed", "拆分失败，请在「剧本」中重试或作为一集"); return; }
                     // 全自动不因拆分失败停下：原文完整地作为一集继续，之后可以撤销重新拆分。
                     asOneEpisode(w, c);
-                    notice(c, "没能自动拆分，已作为一集继续；可以在「剧本」中撤销拆分后重新拆分");
+                    notice(c, "自动拆分失败，已作为一集继续；可在「剧本」中撤销拆分后重新拆分");
                     p.put("stage", "split").put("message", "已作为一集，继续制作");
                     return;
                 }
@@ -3473,7 +3578,7 @@ public class DirectorService {
                     planFailed.add("第 " + ep.path("no").asInt() + " 集");
                 if (!planFailed.isEmpty()) {
                     p.put("status", "waiting").put("stage", "failed-items").put("message",
-                            String.join("、", planFailed) + "分镜脚本没写成。可点「重试失败项」，或在「分镜」中单独写");
+                            String.join("、", planFailed) + "分镜脚本生成失败。可点击「重试失败项」，或在「分镜」中单独生成");
                     return;
                 }
                 int planned = clipsOf(c, eps).size();
@@ -3660,7 +3765,8 @@ public class DirectorService {
             };
             if (busy.contains(node)) { p.put("stage", stage).put("message", stage); return true; }
             long estimate = "video".equals(type) ? videoQuote(userId, c, findOrNull(c, "clips", target))
-                    : "export".equals(type) ? 0 : Set.of("asset-image", "form-image", "scene-views", "board").contains(type) ? prices[1] : directorTextPrice(c, prices[0]);
+                    : "export".equals(type) ? 0 : "board".equals(type) ? boardImagePrice(c, prices[1])
+                    : Set.of("asset-image", "form-image", "scene-views").contains(type) ? prices[1] : directorTextPrice(c, prices[0]);
             // H3 视频先改写提示词：改写不进视频报价，但要占一键制作的预算。
             long reserve = "video".equals(type) ? rewriteReserve(c, findOrNull(c, "clips", target)) : 0;
             p.put("stage", stage).put("message", stage);
@@ -3694,7 +3800,7 @@ public class DirectorService {
         String target = p.path("target").asText();
         if ("plan".equals(target)) {
             List<String> pending = eps.stream().filter(e -> e.path("pendingPlan").isObject()).map(e -> "第 " + e.path("no").asInt() + " 集").toList();
-            if (!pending.isEmpty()) return String.join("、", pending) + "有一份新写的分镜脚本等你决定要不要换，请到「分镜」处理";
+            if (!pending.isEmpty()) return String.join("、", pending) + "有一份新的分镜脚本待确认，请在「分镜」中处理";
             return which + "的分镜脚本都已写好。一键制作只补还没做的步骤，不会重写已有的分镜脚本；要重写，请到「分镜」点「重写分镜脚本」，或在片段上点「重写」";
         }
         if ("board".equals(target))
@@ -3873,8 +3979,8 @@ public class DirectorService {
                 .orElseThrow(() -> invalid("该图片模型暂不可用，请选择其他模型"));
         List<String> missing = missingRatios(found.resolved().endpoint());
         if (!missing.isEmpty()) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_IMAGE_MODEL_UNSUPPORTED",
-                "「" + found.resolved().endpoint().publicModelName() + "」不能出 " + ratioNames(missing)
-                        + "，短剧导演台的道具、角色场景和分镜要用方图、横图和竖图。请选择其他图片模型",
+                "「" + found.resolved().endpoint().publicModelName() + "」不支持生成 " + ratioNames(missing)
+                        + "。短剧导演台的道具、角色、场景和分镜需要方图、横图和竖图，请选择其他图片模型",
                 Map.of("missingRatios", missing));
     }
 
@@ -3890,9 +3996,44 @@ public class DirectorService {
         } catch (BusinessException e) {
             if (!"ENDPOINT_NOT_ALLOWED".equals(e.getCode())) throw e;
             throw new BusinessException(e.getStatus(), e.getCode(), chosen == null
-                    ? "默认图片模型暂不可用，请在作品设置里选择其他图片模型，或联系管理员"
-                    : "作品设置里选的图片模型已停用或不再开放，请在作品设置里换一个图片模型", e.getDetails(), e.getMessage());
+                    ? "默认图片模型暂不可用，请在作品设置中选择其他图片模型，或联系平台处理"
+                    : "作品设置中所选的图片模型已停用，请在作品设置中更换图片模型", e.getDetails(), e.getMessage());
         }
+    }
+
+    /** 默认分镜缺少作品画幅时，只在同一 GPT 系列的已开放接入点中选规格；资产和用户显式选择不变。 */
+    com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection boardImageSelection(ObjectNode c) {
+        var selected = imageSelection(c);
+        if (selected == null || c.path("settings").hasNonNull("imageModel")) return selected;
+        String ratio = c.path("settings").path("aspectRatio").asText("9:16");
+        var spec = com.aistareco.aep.model.AiImageRequestSpec.read(selected.resolved().endpoint().getImageRequestSpecJson());
+        if (spec == null || spec.ratios().contains(ratio)) return selected;
+        var family = com.aistareco.aep.ipstudio.service.StudioImageModelRouting.familyForProviderModel(selected.resolved().endpoint().getModel());
+        if (family == null) return selected;
+        return scenePolicies.available("studio", "image", textRuns.directorPrices(null)[1]).stream()
+                .filter(s -> family.equals(com.aistareco.aep.ipstudio.service.StudioImageModelRouting.familyForProviderModel(s.resolved().endpoint().getModel())))
+                .filter(s -> {
+                    var other = com.aistareco.aep.model.AiImageRequestSpec.read(s.resolved().endpoint().getImageRequestSpecJson());
+                    return other != null && other.ratios().contains(ratio);
+                }).min(Comparator.comparingLong(com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection::creditCost)).orElse(selected);
+    }
+
+    long boardImagePrice(ObjectNode c, long fallback) {
+        if (fixtures.enabled()) return fallback;
+        try { var selected = boardImageSelection(c); return selected == null ? fallback : selected.creditCost(); }
+        catch (BusinessException ignored) { return fallback; } // 页面仍可打开，提交与 boardImage.error 明确报错。
+    }
+
+    private ObjectNode boardImageInfo(ObjectNode c) {
+        ObjectNode info = om.createObjectNode();
+        try {
+            var selected = fixtures.enabled() ? null : boardImageSelection(c);
+            if (!fixtures.enabled() && selected == null) return info;
+            info.put("size", sizeFor(c, "board"));
+            if (selected != null) info.put("endpointId", selected.resolved().endpoint().getId())
+                    .put("name", selected.resolved().endpoint().publicModelName()).put("creditCost", selected.creditCost());
+        } catch (BusinessException e) { info.put("error", e.getMessage()); }
+        return info;
     }
 
     long[] directorPrices(ObjectNode c) {
@@ -3990,7 +4131,7 @@ public class DirectorService {
             tasks.insertObject(0).put("id", pend.path("jobId").asText()).put("target", "video:" + clip.path("id").asText()).put("status", "running")
                     .put("stage", pend.path("stage").asText()).put("cost", 0).putNull("errorMessage").put("createdAt", pend.path("at").asText());
         long[] prices = directorPrices(c);
-        v.putObject("pricing").put("textMax", prices[0]).put("image", prices[1]).put("mock", fixtures.enabled()).put("textChars", textBudget(c));
+        v.putObject("pricing").put("textMax", prices[0]).put("image", prices[1]).put("boardImage", boardImagePrice(c, prices[1])).put("mock", fixtures.enabled()).put("textChars", textBudget(c));
         ArrayNode imageModels = v.putArray("imageModels");
         for (var selection : imageSelections()) {
             var endpoint = selection.resolved().endpoint();
@@ -3998,6 +4139,7 @@ public class DirectorService {
                     .put("isDefault", selection.resolved().isDefault()).put("creditCost", selection.creditCost());
         }
         v.set("imageModelState", imageModelState(c));
+        v.set("boardImage", boardImageInfo(c));
         var textCapabilities = textRuns.capabilities();
         v.set("textModels", om.valueToTree(textCapabilities.textModels()));
         v.put("textModelMode", textCapabilities.textModelMode());
@@ -4008,7 +4150,16 @@ public class DirectorService {
         if (lim == null) v.putNull("videoLimits");
         else v.putObject("videoLimits").put("model", lim.model()).put("name", lim.name()).put("minSec", lim.min()).put("maxSec", lim.max()).put("mock", lim.mock())
                 .put("mode", lim.mode()).put("maxShots", lim.maxShots());
+        for (JsonNode clip : v.path("clips")) {
+            ((ObjectNode) clip).set("boardRefs", imageReferences(c, clip, false, false));
+            ((ObjectNode) clip).set("videoRefs", imageReferences(c, clip, true, lim != null && lim.frame()));
+        }
         List<String> keys = new ArrayList<>();
+        // 哪些资产已经在资产库（后台对账时写的）。字段别叫 key：collectKeys 会把名叫 key 的都当素材地址去签名。
+        if (library != null) {
+            Map<String, String> inLibrary = library.directorLinks(userId, w.getId());
+            for (JsonNode a : v.path("assets")) if (inLibrary.containsKey(a.path("id").asText())) ((ObjectNode) a).put("libraryEntryId", inLibrary.get(a.path("id").asText()));
+        }
         collectKeys(v, keys);
         Map<String, String> signed = sign(userId, keys);
         attachUrls(v, signed);
@@ -4048,7 +4199,8 @@ public class DirectorService {
         Set<String> characters = new HashSet<>();
         Map<String, List<String>> aliases = characterAliases(c);
         for (JsonNode a : c.path("assets")) {
-            if (!a.path("promptCustom").asBoolean(false)) {
+            // 商品图来自商品库，没有出图提示词。
+            if (!isProduct(a) && !a.path("promptCustom").asBoolean(false)) {
                 String compiled = DirectorPrompts.assetPrompt(prompts(), c.path("settings"), a, null);
                 if (compiled != null) ((ObjectNode) a).put("prompt", compiled); // 模板被停用时保留原来的描述
             }
@@ -4113,7 +4265,7 @@ public class DirectorService {
         for (String view : usedViews(clip)) for (JsonNode idNode : clip.path("assetIds")) {
             JsonNode a = findOrNull(c, "assets", idNode.asText());
             if (a != null && "scene".equals(a.path("kind").asText()) && adoptedKey(a.path("views").path(view)) == null)
-                out.add("有镜头用「" + DirectorSceneViews.LABELS.get(view) + "」视角，「" + a.path("name").asText() + "」还没有这张图，先按主视图参考。可在「资产」里生成四视图");
+                out.add("有镜头用「" + DirectorSceneViews.LABELS.get(view) + "」视角，「" + a.path("name").asText() + "」还没有这张图，暂按主视图参考。可在「资产」中生成四视图");
         }
         return out;
     }
@@ -4230,7 +4382,7 @@ public class DirectorService {
         }
         String prompt = a.path("prompt").asText();
         boolean onlyRef = fp.equals(assetFingerprint(a, prompt, used)) || legacy != null && fp.equals(assetFingerprint(a, legacy, used));
-        if (!onlyRef) return "描述或出图提示词已修改";
+        if (!onlyRef) return "描述或提示词已修改";
         String now = assetRefKey(a);
         return used == null ? "设置了参考图" : now == null ? "参考图已移除" : "参考图已更换";
     }
@@ -4284,12 +4436,26 @@ public class DirectorService {
     // 生成时记下的指纹（提示词 + 实际参考 key + 时长 / 画幅 / 模型）和按当前设置算出来的比；
     // 老数据没有指纹就比提示词和参考 key，连这些也没有就如实标「未核对」。不自动重跑。
 
-    /** 按当前设置，下一次生成会用的东西。images / audios 是请求里的实际 key（顺序与提交时一致）。 */
-    private record Current(String fingerprint, String prompt, List<String> images, List<String> audios) {}
+    /**
+     * 按当前设置，下一次生成会用的东西。images / audios 是请求里的实际 key（顺序与提交时一致）。
+     * mainOnlyFingerprint：参考图只算主图的旧算法，核对 2026-11-06 之前生成的版本用（见 {@link #sameInput}）。
+     */
+    private record Current(String fingerprint, String prompt, List<String> images, List<String> audios, String mainOnlyFingerprint) {}
 
+    /** 实际交给模型的参考图：选了形态是形态的图，用到其他视角时含视角图。 */
     private List<String> adoptedAssetKeys(ObjectNode c, JsonNode clip) {
         List<String> keys = new ArrayList<>();
-        for (String kind : List.of("character", "scene", "prop"))
+        for (JsonNode a : visualAssets(c, clip)) {
+            String key = adoptedKey(a.path("image"));
+            if (key != null) keys.add(key);
+        }
+        return keys;
+    }
+
+    /** 旧指纹用的参考图：只有主图。不再用来判断新生成的版本。 */
+    private List<String> mainImageKeys(ObjectNode c, JsonNode clip) {
+        List<String> keys = new ArrayList<>();
+        for (String kind : REF_KINDS)
             for (JsonNode idNode : clip.path("assetIds")) {
                 JsonNode a = findOrNull(c, "assets", idNode.asText());
                 if (a == null || !kind.equals(a.path("kind").asText()) || audioOnly(a)) continue;
@@ -4328,9 +4494,13 @@ public class DirectorService {
 
     private Current boardCurrent(ObjectNode c, JsonNode clip, String prompt) {
         List<String> images = adoptedAssetKeys(c, clip);
-        StringBuilder b = new StringBuilder(prompt);
-        images.forEach(k -> b.append('|').append(k));
-        return new Current(hash(b.toString()), prompt, images, List.of());
+        return new Current(withKeys(prompt, images), prompt, images, List.of(), withKeys(prompt, mainImageKeys(c, clip)));
+    }
+
+    private static String withKeys(String head, List<String> keys) {
+        StringBuilder b = new StringBuilder(head);
+        keys.forEach(k -> b.append('|').append(k));
+        return hash(b.toString());
     }
 
     private Current videoCurrent(ObjectNode c, JsonNode clip, Limits lim) {
@@ -4346,16 +4516,37 @@ public class DirectorService {
         List<String> audios = new ArrayList<>();
         if (lim != null && lim.frame()) {
             // 首帧出片只交分镜画面，参考图和声音不进请求，也就不参与核对。
-            StringBuilder b = new StringBuilder("frame|").append(prompt).append('|').append(duration).append('|').append(aspect).append('|').append(lim.model());
-            images.forEach(k -> b.append('|').append(k));
-            return new Current(hash(b.toString()), prompt, images, audios);
+            String frame = withKeys("frame|" + prompt + '|' + duration + '|' + aspect + '|' + lim.model(), images);
+            return new Current(frame, prompt, images, audios, frame);
         }
+        List<String> mainOnly = new ArrayList<>(images);
         images.addAll(adoptedAssetKeys(c, clip));
+        mainOnly.addAll(mainImageKeys(c, clip));
         for (JsonNode a : speakers(c, clip)) { String k = a.path("voice").path("key").asText(null); if (k != null) audios.add(k); }
-        StringBuilder b = new StringBuilder(prompt).append('|').append(duration).append('|').append(aspect).append('|').append(lim == null ? null : lim.model());
-        images.forEach(k -> b.append('|').append(k));
-        audios.forEach(k -> b.append('|').append(k));
-        return new Current(hash(b.toString()), prompt, images, audios);
+        String head = prompt + '|' + duration + '|' + aspect + '|' + (lim == null ? null : lim.model());
+        return new Current(withKeys(head, joined(images, audios)), prompt, images, audios, withKeys(head, joined(mainOnly, audios)));
+    }
+
+    private static List<String> joined(List<String> a, List<String> b) {
+        List<String> out = new ArrayList<>(a);
+        out.addAll(b);
+        return out;
+    }
+
+    /**
+     * 这个版本是否就是按这份输入生成的。2026-11-06 之前的指纹只算主图，切换形态、换形态的图都对得上，
+     * 所以对上旧算法时再核对版本记下的实际参考（没记参考的老数据只能信指纹）。顺序不比：这里只判断图换没换。
+     */
+    private static boolean sameInput(JsonNode m, Current now) {
+        String fingerprint = m.path("fingerprint").asText(null);
+        if (fingerprint == null) return false;
+        if (!fingerprint.equals(now.mainOnlyFingerprint())) return fingerprint.equals(now.fingerprint());
+        if (!m.has("refs")) return true;
+        List<String> images = new ArrayList<>();
+        for (JsonNode r : m.path("refs")) if (!r.path("label").asText().startsWith("音频")) images.add(r.path("key").asText());
+        // 「围绕当前图修改」多带的那张在最后，不算参考换了。
+        if (m.hasNonNull("baseOn") && !images.isEmpty()) images.remove(images.size() - 1);
+        return new HashSet<>(images).equals(new HashSet<>(now.images()));
     }
 
     /** 给采用位写 adoptedCheck（current / outdated / unknown）和 staleReasons（说人话的原因）。 */
@@ -4377,8 +4568,7 @@ public class DirectorService {
         boolean hasRefs = m.has("refs") && m.has("prompt");
         if (!m.hasNonNull("fingerprint") && !hasRefs) { slot.put("adoptedCheck", "unknown"); return; }
         // 对得上旧模板或当前模板都算当前版本（没记版本、但就是按现在的提示词生成的，也是当前版本）。
-        if (m.hasNonNull("fingerprint") && (m.path("fingerprint").asText().equals(now.fingerprint())
-                || m.path("fingerprint").asText().equals(current.fingerprint()))) { slot.put("adoptedCheck", "current"); return; }
+        if (sameInput(m, now) || sameInput(m, current)) { slot.put("adoptedCheck", "current"); return; }
         List<String> images = new ArrayList<>(), audios = new ArrayList<>();
         for (JsonNode r : m.path("refs")) (r.path("label").asText().startsWith("音频") ? audios : images).add(r.path("key").asText());
         if (hasRefs) {
@@ -4436,7 +4626,7 @@ public class DirectorService {
         } else if (m.has("prompt")) {
             String sent = m.path("prompt").asText();
             boolean same = sent.equals(a.path("prompt").asText()) || sent.equals(legacy);
-            if (!same) reasons.add("描述或出图提示词已修改");
+            if (!same) reasons.add("描述或提示词已修改");
             slot.put("adoptedCheck", same ? "current" : "outdated");
         } else slot.put("adoptedCheck", "unknown");
     }
@@ -4462,7 +4652,7 @@ public class DirectorService {
         };
         String fallback = switch (ratio) { case "16:9" -> "1365x768"; case "1:1" -> "1024x1024"; default -> "768x1365"; };
         if (fixtures.enabled()) return fallback;
-        var endpoint = imageSelection(c).resolved().endpoint();
+        var endpoint = ("board".equals(kind) ? boardImageSelection(c) : imageSelection(c)).resolved().endpoint();
         var spec = com.aistareco.aep.model.AiImageRequestSpec.read(endpoint.getImageRequestSpecJson());
         if (spec == null) return fallback;
         // 同一比例有几档时取最大的：设定集、宫格分镜图要放好几个分区，小图细节糊。只在这一个接入点的尺寸里挑，
@@ -4479,13 +4669,13 @@ public class DirectorService {
      * 分镜跟作品画幅走，两样都能改。在建任务、冻结积分之前抛。
      */
     private static BusinessException sizeUnsupported(ObjectNode c, String kind, String ratio, com.aistareco.aep.model.AiModelEndpoint endpoint) {
-        String model = (c.path("settings").hasNonNull("imageModel") ? "作品设置里选的图片模型「" : "默认图片模型「")
-                + endpoint.publicModelName() + "」不能出 " + ratioName(ratio) + "，";
+        String model = (c.path("settings").hasNonNull("imageModel") ? "作品设置中所选的图片模型「" : "默认图片模型「")
+                + endpoint.publicModelName() + "」不支持生成 " + ratioName(ratio) + "，";
         String message = switch (kind) {
-            case "prop" -> model + "道具资产图要用方图。请在作品设置里换一个能出方图的图片模型";
-            case "character" -> model + "角色资产图要用横图。请在作品设置里换一个能出横图的图片模型";
-            case "scene" -> model + "场景资产图要用横图。请在作品设置里换一个能出横图的图片模型";
-            default -> model + "分镜图跟作品画幅走。请在作品设置里换一个画幅，或换一个图片模型";
+            case "prop" -> model + "道具资产图需要方图。请在作品设置中更换支持方图的图片模型";
+            case "character" -> model + "角色资产图需要横图。请在作品设置中更换支持横图的图片模型";
+            case "scene" -> model + "场景资产图需要横图。请在作品设置中更换支持横图的图片模型";
+            default -> model + "分镜图跟随作品画幅。请在作品设置中更换画幅或图片模型";
         };
         return new BusinessException(HttpStatus.BAD_REQUEST, "STUDIO_IMAGE_SIZE_UNSUPPORTED", message,
                 Map.of("kind", kind, "aspectRatio", ratio, "missingRatios", missingRatios(endpoint)));
@@ -4616,7 +4806,7 @@ public class DirectorService {
     private static String splitNotice(int n, JsonNode pending) {
         StringBuilder b = new StringBuilder("已自动分成 ").append(n).append(" 集");
         JsonNode pre = pending.path("preamble");
-        if (pre.isObject()) b.append("；剧本开头 ").append(pre.path("paragraphs").asInt()).append(" 段放进了设定资料，不会拍成画面，如果是正片可在「剧本」中并入第 1 集");
+        if (pre.isObject()) b.append("；剧本开头 ").append(pre.path("paragraphs").asInt()).append(" 段放进了设定资料，不会生成画面；如果是正片，可在「剧本」中并入第 1 集");
         pending.path("notes").forEach(x -> b.append("；").append(x.asText()));
         pending.path("warnings").forEach(x -> b.append("；").append(x.asText()));
         return b.toString();
@@ -4716,7 +4906,7 @@ public class DirectorService {
             cells = DirectorSceneViews.split(in.readAllBytes());
         } catch (IOException | BusinessException e) {
             log.warn("[director] 四视图切图失败 work={} run={} key={}", w.getId(), run.getId(), key, e);
-            setError(c, "views:" + assetId, "四视图没有切分成功，请重新生成");
+            setError(c, "views:" + assetId, "四视图切分失败，请重新生成");
             return;
         }
         String main = adoptedKey(a.path("image"));
@@ -4938,7 +5128,7 @@ public class DirectorService {
         if (key == null) throw invalid("「" + o.name() + "」在资产库里还没有图片，请换一项");
         String description = o.description() == null ? "" : o.description().trim();
         if (target.path("description").asText().isBlank() && !description.isEmpty()) target.put("description", limited(description, 2000, "描述"));
-        target.put("libraryObjectId", o.id());
+        target.put("libraryObjectId", o.id()).put("libraryLinkedAt", Instant.now().toString());
         ObjectNode m = addCandidate(c, (ObjectNode) target.path("image"), key, null, "library");
         // 同一张图以前作为生成图进过历史时 addCandidate 返回旧候选：用户点名它就是资产库那一项，按资产库图处理，不再按生成指纹判过期。
         m.put("source", "library"); m.remove("stale"); m.remove("fingerprint");
@@ -4946,7 +5136,130 @@ public class DirectorService {
         bump(target); // 描述可能被补上；不递增的话，拿着旧 rev 的页面能把它悄悄清掉
     }
 
-    private static final Map<String, String> KIND_NAMES = Map.of("character", "角色", "scene", "场景", "prop", "道具");
+    private static final Map<String, String> KIND_NAMES = Map.of("character", "角色", "scene", "场景", "prop", "道具", "product", "商品");
+
+    // ── 带货短剧（docs/ai-director-commerce-plan.md）────────────────────────
+
+    private static final String PRODUCT = "product";
+    private static final int PLACEMENT_MAX = 300;
+    /** 片段参考图的顺序：角色 → 场景 → 道具 → 商品。分镜图和视频共用（visualAssets）。 */
+    private static final List<String> REF_KINDS = List.of("character", "scene", "prop", PRODUCT);
+
+    private static boolean commerceOn(JsonNode c) { return c.path("settings").path("commerce").asBoolean(false); }
+
+    private static boolean isProduct(JsonNode a) { return PRODUCT.equals(a.path("kind").asText()); }
+
+    /** 交给模型的商品：开关打开才有。关掉之后新写的内容不带商品，作品里的数据不动。 */
+    private static List<JsonNode> products(JsonNode c) {
+        List<JsonNode> out = new ArrayList<>();
+        if (commerceOn(c)) for (JsonNode a : c.path("assets")) if (isProduct(a)) out.add(a);
+        return out;
+    }
+
+    /** 交给模型的资产清单：开关关着时不含商品。 */
+    private static List<JsonNode> promptAssets(JsonNode c) {
+        List<JsonNode> out = new ArrayList<>();
+        boolean on = commerceOn(c);
+        for (JsonNode a : c.path("assets")) if (on || !isProduct(a)) out.add(a);
+        return out;
+    }
+
+    /** 角色、场景、道具的数量。只有商品不算「已有资产」：写分镜前仍要先提取。 */
+    private static int storyAssetCount(JsonNode c) {
+        int n = 0;
+        for (JsonNode a : c.path("assets")) if (!isProduct(a)) n++;
+        return n;
+    }
+
+    /** 编剧、问答的输入多一份商品清单。返回有没有商品：没有就不拼内容方法，提示词和普通作品一样。 */
+    private boolean putProducts(ObjectNode in, JsonNode c) {
+        List<JsonNode> list = products(c);
+        if (list.isEmpty()) return false;
+        ArrayNode out = in.putArray("products");
+        for (JsonNode a : list) out.addObject().put("name", a.path("name").asText()).put("description", a.path("description").asText())
+                .put("placement", a.path("placement").asText(""));
+        return true;
+    }
+
+    private ArrayNode productNames(JsonNode c) {
+        ArrayNode out = om.createArrayNode();
+        products(c).forEach(a -> out.add(a.path("name").asText()));
+        return out;
+    }
+
+    /** 模型把商品提取成道具时按名称、别名对上：互相包含且至少 2 个字（「保温杯」对「恒温保温杯」）。 */
+    private static JsonNode matchProduct(JsonNode c, String name) {
+        if (name == null || name.length() < 2) return null;
+        for (JsonNode a : products(c)) {
+            List<String> names = new ArrayList<>(List.of(a.path("name").asText()));
+            a.path("aliases").forEach(x -> names.add(x.asText()));
+            for (String n : names) if (n.length() >= 2 && (n.contains(name) || name.contains(n))) return a;
+        }
+        return null;
+    }
+
+    /**
+     * 模型写分镜时可能写到了商品、却忘了放进 assetIds：镜头或台词里写到就关联上，商品图才会交给分镜图和视频。
+     * 只在模型写完分镜时补一次；用户之后解除关联，不会再被加回来。中文商品名的主体在后面，剧本里常写简称，所以名字结尾两个字以上也算。
+     */
+    private void linkMentionedProducts(ObjectNode c, ObjectNode clip) {
+        List<JsonNode> list = products(c);
+        if (list.isEmpty()) return;
+        StringBuilder text = new StringBuilder(clip.path("summary").asText());
+        for (JsonNode s : clip.path("shots")) {
+            text.append(' ').append(s.path("action").asText()).append(' ').append(s.path("still").asText());
+            for (JsonNode line : s.path("dialogue")) text.append(' ').append(line.path("text").asText());
+        }
+        Set<String> linked = ids(clip.path("assetIds"));
+        for (JsonNode a : list) {
+            if (linked.contains(a.path("id").asText())) continue;
+            if (mentionNames(a).stream().anyMatch(n -> text.indexOf(n) >= 0)) ((ArrayNode) clip.path("assetIds")).add(a.path("id").asText());
+        }
+    }
+
+    /** 能认出这件商品的说法：名字、别名、名字里每段汉字结尾两个字以上。和前端 productMentions 同一个判断。 */
+    private static Set<String> mentionNames(JsonNode a) {
+        Set<String> out = new LinkedHashSet<>();
+        String name = a.path("name").asText();
+        if (name.length() >= 2) out.add(name);
+        a.path("aliases").forEach(x -> { if (x.asText().length() >= 2) out.add(x.asText()); });
+        var runs = java.util.regex.Pattern.compile("[\\u4e00-\\u9fff]{2,}").matcher(name);
+        while (runs.find()) for (int i = 0; i <= runs.group().length() - 2; i++) out.add(runs.group().substring(i));
+        return out;
+    }
+
+    /**
+     * 把商品库的一项加进作品，或把已加过的那一项同步成商品库现在的样子。名称、说明、图片都由服务端按本人商品库读。
+     * 商品库的每张图都进候选（source=library，不会因设置改动过期）；本剧已选的图不动，新加的默认用主图；植入想法只属于这部剧。
+     */
+    void addProduct(String userId, ObjectNode c, IpLibraryDtos.LibraryObject o, JsonNode d) {
+        if (!PRODUCT.equals(o.kind())) throw invalid("「" + o.name() + "」不是商品库中的商品");
+        if (o.versions() == null || o.versions().isEmpty()) throw invalid("「" + o.name() + "」暂无图片，请先在商品库上传");
+        ObjectNode target = null;
+        for (JsonNode a : c.path("assets")) if (isProduct(a) && o.id().equals(a.path("libraryObjectId").asText())) target = (ObjectNode) a;
+        String name = DirectorPrompts.clip(o.name(), 40), description = o.description() == null ? "" : o.description().trim();
+        if (target == null) {
+            target = newAsset(c, PRODUCT, name, limited(description, 2000, "商品说明"));
+            target.put("libraryObjectId", o.id());
+            ((ArrayNode) c.path("assets")).add(target);
+        } else {
+            target.put("name", name).put("description", limited(description, 2000, "商品说明"));
+        }
+        String mainId = null;
+        for (IpLibraryDtos.LibraryVersion v : o.versions()) {
+            String key = projects.requireOwnedAssetKey(userId, v.storageKey());
+            if (key == null) continue;
+            ObjectNode m = addCandidate(c, (ObjectNode) target.path("image"), key, null, "library");
+            m.put("source", "library"); m.remove("stale"); m.remove("fingerprint");
+            if (v.id().equals(o.mainVersionId()) || mainId == null) mainId = m.path("id").asText();
+        }
+        if (adoptedKey(target.path("image")) == null) {
+            if (mainId == null) throw invalid("「" + o.name() + "」暂无可用图片，请先在商品库上传");
+            adopt(target, "image", mainId);
+        }
+        if (d.has("placement")) target.put("placement", limited(d.path("placement").asText(), PLACEMENT_MAX, "植入想法"));
+        bump(target);
+    }
 
     /** 资产出现在哪几集：只认作品里真有的集，按集的顺序存，去重；空数组表示不限定。 */
     private ArrayNode episodeIds(ObjectNode c, JsonNode in) {
@@ -4991,12 +5304,17 @@ public class DirectorService {
                 added++;
             } else {
                 target = (ObjectNode) hit;
+                if (isProduct(target)) {
+                    // 商品的名字和说明以商品库为准：模型或用户在弹窗里的叫法只记成别名，下次提取还能对上。
+                    if (!name.equals(target.path("name").asText()) && !ids(target.path("aliases")).contains(name)) ((ArrayNode) target.path("aliases")).add(name);
+                } else {
                 if (target.path("description").asText().isBlank()) target.put("description", a.path("description").asText());
                 // 对上已有资产、用户在弹窗里改了名：按新名字保存，原名留作别名。
                 String old = target.path("name").asText();
                 if (pick.hasNonNull("name") && !name.equals(old)) {
                     if (!ids(target.path("aliases")).contains(old)) ((ArrayNode) target.path("aliases")).add(old);
                     target.put("name", name);
+                }
                 }
             }
             // 模型从剧情里认出的形态（换装、受伤、变身）一起建上，图等用得上再出；用户在弹窗里去掉的不建。

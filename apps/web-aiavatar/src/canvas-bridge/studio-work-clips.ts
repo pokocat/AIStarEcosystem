@@ -80,8 +80,8 @@ export function studioRatioHint(width: number | undefined, height: number | unde
   if (!width || !height || !w || !h) return undefined;
   const want = w / h, have = width / height;
   if (Math.abs(have - want) / want <= 0.02) return undefined;
-  if (have > want) return want < 1 ? "横屏画面，成片里上下会留黑边" : "画面更宽，成片里上下会留黑边";
-  return want > 1 ? "竖屏画面，成片里左右会留黑边" : "画面更窄，成片里左右会留黑边";
+  if (have > want) return want < 1 ? "横屏画面，成片上下将留黑边" : "画面较宽，成片上下将留黑边";
+  return want > 1 ? "竖屏画面，成片左右将留黑边" : "画面较窄，成片左右将留黑边";
 }
 
 /** Start time of each clip in the cut; undefined once a length before it is unknown. */
@@ -90,21 +90,43 @@ export function studioClipOffsets(seconds: (number | undefined)[]): (number | un
   return seconds.map(s => { const start = at; at = at === undefined || s === undefined ? undefined : at + s; return start; });
 }
 
-/** "0-5: " lines for each clip, so the user only writes the words. */
-export function studioCaptionTemplate(seconds: number[]): string {
-  const round = (v: number) => Math.round(v * 10) / 10;
+/** 手动字幕的一行：界面上每条字幕一行，存回去还是同一份文本。 */
+export type StudioCaptionRow = { start: string; end: string; text: string };
+
+export function studioCaptionRows(text: string): StudioCaptionRow[] {
+  return text.split("\n").map(l => l.trim()).filter(Boolean).map(line => {
+    const m = line.match(/^(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*[:：]\s*(.*)$/);
+    return m ? { start: m[1], end: m[2], text: m[3] } : { start: "", end: "", text: line };
+  });
+}
+
+/** 没写字的行不算字幕：按片段分好时间后，不想配字的那段空着就行。 */
+export function studioCaptionRowsText(rows: StudioCaptionRow[]): string {
+  return rows.filter(r => r.text.trim()).map(r => `${r.start.trim()}-${r.end.trim()}: ${r.text.trim()}`).join("\n");
+}
+
+/** 每个片段一行，时间按片段长度算好。 */
+export function studioCaptionRowsFor(seconds: number[]): StudioCaptionRow[] {
+  const round = (v: number) => String(Math.round(v * 10) / 10);
   let at = 0;
-  return seconds.map(s => { const line = `${round(at)}-${round(at + s)}: `; at += s; return line; }).join("\n");
+  return seconds.map(s => { const row = { start: round(at), end: round(at + s), text: "" }; at += s; return row; });
+}
+
+/** 新加一条：接着上一条往后 3 秒，不超过成片长度。 */
+export function studioNextCaptionRow(rows: StudioCaptionRow[], total?: number): StudioCaptionRow {
+  const from = Number(rows[rows.length - 1]?.end) || 0;
+  const to = total !== undefined && total > from ? Math.min(from + 3, total) : from + 3;
+  return { start: String(from), end: String(Math.round(to * 10) / 10), text: "" };
 }
 
 /** Caption problems the server would reject, said before the user waits for an assembly. */
 export function studioCaptionProblem(text: string, totalSeconds?: number): string | undefined {
   const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
   const empty = lines.findIndex(l => /^\d+(?:\.\d+)?\s*-\s*\d+(?:\.\d+)?\s*[:：]\s*$/.test(l));
-  if (empty >= 0) return `第 ${empty + 1} 条字幕还没写内容`;
+  if (empty >= 0) return `第 ${empty + 1} 条字幕未填写内容`;
   let captions: ReturnType<typeof parseStudioCaptions>;
-  try { captions = parseStudioCaptions(text); } catch (e) { return e instanceof Error ? e.message : "字幕格式不对"; }
+  try { captions = parseStudioCaptions(text); } catch (e) { return e instanceof Error ? e.message : "字幕格式不正确"; }
   if (totalSeconds === undefined) return undefined;
   const late = captions.findIndex(c => c.end > totalSeconds + 0.25);
-  return late >= 0 ? `第 ${late + 1} 条字幕结束在 ${captions[late].end} 秒，成片只有 ${formatStudioSeconds(totalSeconds)}` : undefined;
+  return late >= 0 ? `第 ${late + 1} 条字幕结束于 ${captions[late].end} 秒，成片时长仅 ${formatStudioSeconds(totalSeconds)}` : undefined;
 }

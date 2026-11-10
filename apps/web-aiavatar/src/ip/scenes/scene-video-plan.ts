@@ -26,13 +26,13 @@ export function sceneVideoInputs(model: VideoStudioModel, materials: SceneVideoM
     // 全能参考至少要一份画面；只有声音时退到下面的写法。
     if (images.length >= rules.minVisual) {
       const dropped = pictures.length - images.length + voices.length - audios.length;
-      return pick(reference, [...images, ...audios], dropped > 0 ? `这个模型最多用 ${rules.image.maxCount} 张图、${rules.audio.maxCount} 段声音，多出来的不会用上` : undefined);
+      return pick(reference, [...images, ...audios], dropped > 0 ? `当前模型最多使用 ${rules.image.maxCount} 张图片、${rules.audio.maxCount} 段声音，超出部分不会使用` : undefined);
     }
   }
   if (firstFrame && pictures.length)
-    return pick(firstFrame, [pictures[0]], pictures.length > 1 || voices.length ? `这个模型只用第一张图做开头画面${voices.length ? "，声音不会用上" : ""}` : undefined);
+    return pick(firstFrame, [pictures[0]], pictures.length > 1 || voices.length ? `当前模型仅使用第一张图片作为首帧${voices.length ? "，不使用声音" : ""}` : undefined);
   const fallback = textOnly ?? modes[0];
-  return pick(fallback, [], materials.length ? "这个模型不看参考素材，只按脚本生成" : undefined);
+  return pick(fallback, [], materials.length ? "当前模型不使用参考素材，仅按脚本生成" : undefined);
 }
 
 /** 交给接口的视频设置；会先改写描述的模型（H3）一律由我们先按它的写法优化再出片（同创作助手的 auto）。 */

@@ -1,14 +1,11 @@
 "use client";
-// The dialogue-first start shared by the desktop home hero, the mobile home and the creation page:
-// one box to say what you want, a few example openers, and 「开始对话」. Submitting creates a canvas
-// (free) with the brief and opens it with the assistant already talking. Each reply is charged by
-// actual usage (a few credits, the ceiling shows next to the canvas composer); images and videos are
-// quoted and start only after the user confirms. A brief that needs a reference video is not sent
-// until the video is there (studioBriefNeedsReference).
+// The dialogue-first start on the home page: one box to say what you want, a row of example openers
+// under it, and 「开始对话」. Submitting creates a canvas (free) with the brief and opens it with the
+// assistant already talking. No charge note here: images and videos are quoted and start only after
+// the user confirms. A brief that needs a reference video is not sent until the video is there
+// (studioBriefNeedsReference).
 import { useRef, useState, type KeyboardEvent } from "react";
-import Link from "next/link";
 import { ArrowUp, Loader2 } from "lucide-react";
-import { useUiVersion } from "@/shell/ui-version";
 
 export const conversationExamples = [
   { label: "复刻一条短视频", text: "照这条视频的拍法，把里面的商品换成我的，保留原片的节奏和反转。" },
@@ -17,14 +14,11 @@ export const conversationExamples = [
   { label: "搭一套创作流程", text: "帮我把整套流程串起来：先写人物设定，再出三视图和细节图，最后做成场景视频。" },
 ] as const;
 
-export function StudioConversationStart({ onStart, creating, pending = false, compact = false, heading }: {
+export function StudioConversationStart({ onStart, creating, pending = false }: {
   /** An empty brief opens the canvas with the assistant waiting; a non-empty one is sent as the first message. */
-  onStart: (brief: string) => void; creating?: boolean; pending?: boolean; compact?: boolean;
-  /** Shown above the box where the page has no heading of its own (the mobile home). */
-  heading?: string;
+  onStart: (brief: string) => void; creating?: boolean; pending?: boolean;
 }) {
   const [brief, setBrief] = useState("");
-  const version = useUiVersion();
   const area = useRef<HTMLTextAreaElement>(null);
   // While an earlier save is pending the text is frozen, but the retry button must stay live.
   const locked = !!creating || pending;
@@ -34,24 +28,19 @@ export function StudioConversationStart({ onStart, creating, pending = false, co
     if (e.nativeEvent.isComposing || e.key !== "Enter" || e.shiftKey) return;
     e.preventDefault(); submit();
   };
-  const examples = <div className="studio-conversation-start-examples" aria-label="试试这样说">
-    {conversationExamples.map(example => <button key={example.label} type="button" disabled={locked} onClick={() => { setBrief(example.text); area.current?.focus(); }}>{example.label}</button>)}
-  </div>;
-  return <form className={`studio-conversation-start${compact ? " is-compact" : ""}`} aria-label="和助手开始创作" onSubmit={e => { e.preventDefault(); submit(); }}>
-    {heading && <h2>{heading}</h2>}
+  return <form className="studio-conversation-start" aria-label="与助手开始创作" onSubmit={e => { e.preventDefault(); submit(); }}>
     <div className="studio-conversation-start-box">
       <label htmlFor="studio-conversation-brief" className="studio-conversation-start-label">想做什么</label>
-      <textarea id="studio-conversation-brief" ref={area} value={brief} rows={compact ? 2 : 3} maxLength={4000} disabled={locked} onChange={e => setBrief(e.target.value)} onKeyDown={keydown}
+      <textarea id="studio-conversation-brief" ref={area} value={brief} rows={3} maxLength={4000} disabled={locked} onChange={e => setBrief(e.target.value)} onKeyDown={keydown}
         placeholder="描述你想做的内容，例如：参照这条视频的拍法，把商品换成我的保温杯"/>
       <div className="studio-conversation-start-row">
-        {/* 新版（设计稿）：常用开头放在框下面一排，框里只留发送；不写扣费说明，花钱的地方会先报价。 */}
-        {version !== "next" && examples}
-        <button type="submit" className="studio-conversation-start-send" disabled={!canSubmit} title={pending ? "继续保存并打开画布" : brief.trim() ? "开始对话（Enter）" : "请先输入想做的内容"}>
+        <button type="submit" className="studio-conversation-start-send" disabled={!canSubmit} title={pending ? "继续保存并打开画布" : brief.trim() ? "开始对话（Enter）" : "请输入想做的内容"}>
           {creating ? <Loader2 size={18} className="studio-gallery-spinner" aria-hidden="true"/> : <ArrowUp size={18} aria-hidden="true"/>}<span>{pending ? "继续保存并打开" : "开始对话"}</span>
         </button>
       </div>
-      {version !== "next" && <p className="studio-conversation-start-note">助手回复按实际用量扣除积分；生成图片和视频前会先报价，确认后开始。也可浏览<Link href="/templates" className="studio-conversation-start-link">灵感</Link>或<Link href="/scenes" className="studio-conversation-start-link">专项创作</Link>。</p>}
     </div>
-    {version === "next" && examples}
+    <div className="studio-conversation-start-examples" aria-label="试试这样说">
+      {conversationExamples.map(example => <button key={example.label} type="button" disabled={locked} onClick={() => { setBrief(example.text); area.current?.focus(); }}>{example.label}</button>)}
+    </div>
   </form>;
 }

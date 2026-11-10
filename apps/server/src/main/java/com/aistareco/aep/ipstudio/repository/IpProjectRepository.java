@@ -14,6 +14,23 @@ import java.util.Optional;
 @Repository
 public interface IpProjectRepository extends JpaRepository<IpProject, String> {
 
+    /** 只取名字，不读画布文档。 */
+    @Query("select p.id, p.name, p.deletedAt from IpProject p where p.ownerUserId = :owner")
+    List<Object[]> namesOf(@Param("owner") String owner);
+
+    /** 回收站：本人已删除的画布，最近删除的在前。只取名字和删除时间。 */
+    @Query("select p.id, p.name, p.deletedAt from IpProject p where p.ownerUserId = :owner and p.deletedAt is not null order by p.deletedAt desc")
+    List<Object[]> trashedOf(@Param("owner") String owner);
+
+    /** 回收站恢复 / 彻底删除共用的行锁：不论是否已删除都按 id 锁住，两个操作串行。 */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from IpProject p where p.id = :id")
+    Optional<IpProject> lockById(@Param("id") String id);
+
+    /** 到期清理：删除时间早于 cutoff 的画布（id、owner）。 */
+    @Query("select p.id, p.ownerUserId from IpProject p where p.deletedAt is not null and p.deletedAt < :cutoff")
+    List<Object[]> trashedBefore(@Param("cutoff") java.time.Instant cutoff);
+
     List<IpProject> findByOwnerUserIdAndDeletedAtIsNullOrderByUpdatedAtDesc(String ownerUserId);
     List<IpProject> findByOwnerUserIdAndTemplateVersionIdAndDeletedAtIsNull(String ownerUserId,String templateVersionId);
 

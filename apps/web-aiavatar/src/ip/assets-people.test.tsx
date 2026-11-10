@@ -3,20 +3,20 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { AssetsPeople, NewPersonDialog } from './assets-people';
 
-const api = vi.hoisted(() => ({ objects: vi.fn(), create: vi.fn(), version: vi.fn(), avatars: vi.fn(), licenses: vi.fn(), grants: vi.fn() }));
+const api = vi.hoisted(() => ({ remove: vi.fn(), confirm: vi.fn(), objects: vi.fn(), create: vi.fn(), version: vi.fn(), avatars: vi.fn(), licenses: vi.fn(), grants: vi.fn() }));
 const picks = vi.hoisted(() => ({ next: [] as any[] }));
 vi.mock('next/link', () => ({ default: ({ children, ...p }: any) => <a {...p}>{children}</a> }));
 vi.mock('./studio-errors', async () => {
   const { useCallback, useState } = await import('react');
   return {
-    useStudioApp: () => ({ message: { success: vi.fn() }, modal: { confirm: vi.fn() } }),
+    useStudioApp: () => ({ message: { success: vi.fn() }, modal: { confirm: api.confirm } }),
     // 和真的一样，setter 要稳定，否则带它做依赖的副作用会一直重跑。
     useStudioErrorState: () => { const [e, set] = useState(''); return [e, useCallback((v: unknown) => set(v ? String((v as Error).message || v) : ''), [])]; },
     StudioErrorNotice: ({ error }: any) => <span role="alert">{String(error)}</span>,
   };
 });
 vi.mock('@/canvas-bridge/asset-library', () => ({
-  libraryObjects: api.objects, createLibraryObject: api.create, addLibraryVersion: api.version,
+  libraryObjects: api.objects, createLibraryObject: api.create, addLibraryVersion: api.version, deleteLibraryObject: api.remove,
   mainLibraryVersion: (a: any) => a.versions.find((v: any) => v.id === a.mainVersionId),
 }));
 vi.mock('@/canvas-bridge/image-storage', () => ({ refreshImageUrl: vi.fn() }));
@@ -34,10 +34,11 @@ vi.mock('@/components/hub/data', async () => {
 });
 vi.mock('@/proto/api', () => ({ AvatarApi: { list: api.avatars }, LicenseApi: { list: api.licenses }, AssetApi: { starGrants: api.grants } }));
 vi.mock('./library-asset-editor', () => ({ LibraryAssetEditor: ({ assets }: any) => <p>编辑 {assets[0].name}</p> }));
+vi.mock('./library-source-select', () => ({ LibrarySourceSelect: ({ value, onChange }: any) => <button onClick={() => onChange('DW-2')}>选择作品 {value}</button> }));
 // 选择框换成一个按钮：点一下就把 picks.next 交回去。
 vi.mock('./library-reference-picker', () => ({ LibraryReferencePicker: ({ title, onAssets, onClose }: any) => <button onClick={async () => { await onAssets([picks.next.shift()]); onClose(); }}>{title}·选好了</button> }));
 vi.mock('antd', () => ({
-  Button: ({ icon, loading, type, size, ...p }: any) => <button {...p}>{icon}{p.children}</button>,
+  Button: ({ icon, loading, type, size, danger, ...p }: any) => <button {...p}>{icon}{p.children}</button>,
   Input: ({ prefix, allowClear, ...p }: any) => <input {...p}/>,
   Checkbox: ({ checked, onChange, children }: any) => <input type="checkbox" aria-label="确认" checked={checked} onChange={onChange}/>,
   Dropdown: ({ children, menu }: any) => <span>{children}<span role="menu">{(menu?.items || []).map((i: any) => <button key={i.key} role="menuitem" onClick={() => menu.onClick({ key: i.key })}>{i.label}</button>)}</span></span>,
@@ -53,21 +54,23 @@ beforeEach(() => {
   api.avatars.mockResolvedValue([]); api.licenses.mockResolvedValue([]); api.grants.mockResolvedValue([]);
 });
 
-test('用照片建 needs a name, a front photo and the consent, then saves the front as the main image', async () => {
+test('使用照片创建 needs a name, a front photo and the consent, then saves the front as the main image', async () => {
   const onCreated = vi.fn();
   api.create.mockResolvedValue(role('o1', '唐唐'));
   api.version.mockImplementation(async (id: string, key: string) => role(id, '唐唐', { versions: [{ id: key }] }));
   render(<NewPersonDialog open folderId="f1" onClose={vi.fn()} onCreated={onCreated}/>);
   const create = screen.getByRole('button', { name: '创建人物' }) as HTMLButtonElement;
-  expect(create.disabled).toBe(true); expect(screen.getByText('先写个名字')).toBeDefined();
+  const missing = () => document.querySelector('.assets-person-missing')?.textContent;
+  const noName = missing();
+  expect(create.disabled).toBe(true); expect(noName).toBeTruthy();
   fireEvent.change(screen.getByLabelText('人物名字'), { target: { value: '唐唐' } });
-  expect(screen.getByText('还差一张正脸')).toBeDefined();
+  expect(missing()).toBeTruthy(); expect(missing()).not.toBe(noName);
   picks.next = [photo('front.png'), photo('left.png')];
-  fireEvent.click(screen.getByRole('button', { name: '从资产库选正脸' }));
-  fireEvent.click(await screen.findByRole('button', { name: '选正脸·选好了' }));
-  fireEvent.click(await screen.findByRole('button', { name: '从资产库选左侧脸' }));
-  fireEvent.click(await screen.findByRole('button', { name: '选左侧脸·选好了' }));
-  await screen.findByRole('button', { name: '换一张左侧脸' });
+  fireEvent.click(screen.getByRole('button', { name: '从资产库选择正脸' }));
+  fireEvent.click(await screen.findByRole('button', { name: '选择正脸·选好了' }));
+  fireEvent.click(await screen.findByRole('button', { name: '从资产库选择左侧脸' }));
+  fireEvent.click(await screen.findByRole('button', { name: '选择左侧脸·选好了' }));
+  await screen.findByRole('button', { name: '更换左侧脸' });
   expect(create.disabled).toBe(true);
   fireEvent.click(screen.getByLabelText('确认'));
   expect(create.disabled).toBe(false);
@@ -84,10 +87,10 @@ test('a retry after a half-finished create adds the missing photos to the same p
   render(<NewPersonDialog open onClose={vi.fn()} onCreated={onCreated}/>);
   fireEvent.change(screen.getByLabelText('人物名字'), { target: { value: '唐唐' } });
   picks.next = [photo('front.png'), photo('close.png')];
-  fireEvent.click(screen.getByRole('button', { name: '从资产库选正脸' }));
-  fireEvent.click(await screen.findByRole('button', { name: '选正脸·选好了' }));
-  fireEvent.click(await screen.findByRole('button', { name: '从资产库选近景特写' }));
-  fireEvent.click(await screen.findByRole('button', { name: '选近景特写·选好了' }));
+  fireEvent.click(screen.getByRole('button', { name: '从资产库选择正脸' }));
+  fireEvent.click(await screen.findByRole('button', { name: '选择正脸·选好了' }));
+  fireEvent.click(await screen.findByRole('button', { name: '从资产库选择近景特写' }));
+  fireEvent.click(await screen.findByRole('button', { name: '选择近景特写·选好了' }));
   fireEvent.click(await screen.findByLabelText('确认'));
   fireEvent.click(screen.getByRole('button', { name: '创建人物' }));
   expect((await screen.findByRole('alert')).textContent).toContain('网络断了');
@@ -126,4 +129,38 @@ test('a library of your own shows only its roles; IPs and stars live in 全部',
   expect(screen.getByText('编辑 林夏')).toBeDefined();
   expect(api.objects).toHaveBeenCalledWith(expect.objectContaining({ kind: 'character', folder: 'f1' }));
   expect(api.avatars).not.toHaveBeenCalled(); expect(api.grants).not.toHaveBeenCalled();
+});
+
+test('filters hidden while narrowed to a work no longer apply, and come back afterwards', async () => {
+  api.objects.mockResolvedValue({ items: [role('o1', '林夏')], total: 1, page: 0, hasMore: false });
+  api.avatars.mockResolvedValue([{ id: 'a1', name: '小星', path: 'ai' }]);
+  const { rerender } = render(<AssetsPeople library="all" folders={[]} onFromChange={vi.fn()}/>);
+  await screen.findByRole('button', { name: '查看 林夏' });
+  // 先选「我的 IP」和「真人」：角色都被筛掉。
+  fireEvent.click(screen.getByRole('menuitem', { name: '我的 IP' }));
+  fireEvent.click(screen.getByRole('button', { name: '真人' }));
+  expect(screen.queryByRole('button', { name: '查看 林夏' })).toBeNull();
+  // 再按作品筛选：两个筛选都不显示了，作品里的角色不能被藏起来的条件过滤掉。
+  rerender(<AssetsPeople library="all" folders={[]} from="DW-1" onFromChange={vi.fn()}/>);
+  expect(await screen.findByRole('button', { name: '查看 林夏' })).toBeTruthy();
+  expect(screen.queryByRole('group', { name: '人物类型' })).toBeNull();
+  expect(screen.queryByRole('menuitem', { name: '我的 IP' })).toBeNull();
+  await waitFor(() => expect(api.objects).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'DW-1' })));
+});
+
+
+test('batch delete only picks library roles; my IPs are greyed out and never deleted', async () => {
+  api.objects.mockResolvedValue({ items: [role('o1', '测试角色一'), role('o2', '测试角色二')], total: 2, page: 0, hasMore: false });
+  api.avatars.mockResolvedValue([{ id: 'A1', name: '小紫', path: 'ai', status: 'finalized' }]);
+  api.remove.mockResolvedValue(undefined);
+  api.confirm.mockImplementation((o: any) => void o.onOk());
+  render(<AssetsPeople library="all" folders={[]}/>);
+  await screen.findByRole('button', { name: '查看 测试角色一' });
+  fireEvent.click(screen.getByRole('button', { name: '批量选择' }));
+  expect((screen.getByRole('button', { name: '小紫' }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: '选择 测试角色一' }));
+  fireEvent.click(screen.getByRole('button', { name: '选择 测试角色二' }));
+  fireEvent.click(screen.getByRole('button', { name: '删除' }));
+  expect(api.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: '删除选中的 2 个角色？' }));
+  await waitFor(() => expect(api.remove.mock.calls.map(c => c[0])).toEqual(['o1', 'o2']));
 });

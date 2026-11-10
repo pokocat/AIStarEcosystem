@@ -14,7 +14,7 @@ export function confirmStudioFrames(modal: ConfirmModal, intent: StudioFrameInte
     modal.confirm({
       title: copy.title,
       content: createElement("div", null, copy.lines.map(line => createElement("p", { key: line }, line))),
-      okText: "仍按文字生成", cancelText: "先去连图片",
+      okText: "仍按文字生成", cancelText: "连接图片",
       onOk: () => resolve(true), onCancel: () => resolve(false),
     });
   });

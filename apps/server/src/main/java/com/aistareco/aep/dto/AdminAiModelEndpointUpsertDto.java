@@ -24,10 +24,12 @@ public record AdminAiModelEndpointUpsertDto(
         Integer chatMaxOutputTokens,
         Boolean chatSupportsTools,      // null = 不改；true/false 显式声明（未声明的端点按不支持处理）
         Boolean chatSupportsStreaming,  // 同上：只有显式 true 才走供应商真流式
+        String chatReasoningEffort,     // 端点固定 reasoning_effort；null 不改，空字符串清空
         com.aistareco.aep.model.AiImageRequestSpec imageRequestSpec,
         Boolean clearImageRequestSpec,
         com.aistareco.aep.model.AiVideoRequestSpec videoRequestSpec,
         Boolean clearVideoRequestSpec,
+        String assetLibraryId,         // 所属素材库；null = 不改，空字符串 = 清除
         Integer rpmLimit,
         Integer concurrencyLimit,
         Integer tpmLimit,

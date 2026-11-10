@@ -13,7 +13,7 @@ afterEach(cleanup);
 
 // Production screenshots 2026-10-20: both failed drafts still showed the empty-state upload / generate pair.
 test.each([
-  [CanvasNodeType.Video,'VIDEO_MODEL_RETIRED','这个视频模型已被提供方下架，不能再用它生成，请换一个模型','这个模型已不可用，请换一个模型再生成','上传视频，开始解析或拉片','video'],
+  [CanvasNodeType.Video,'VIDEO_MODEL_RETIRED','这个视频模型已被提供方下架，不能再用它生成，请换一个模型','此模型已不可用，请更换模型后重新生成','上传视频，开始解析或拉片','video'],
   [CanvasNodeType.Image,'DAP_MODEL_HTTP_503','模型服务暂时不可用（上游 503），请稍后重试','模型服务暂时不可用（上游 503），请稍后重试','上传图片或使用 AI 创作','image'],
 ])('a failed %s draft says it failed and why, and offers one way back',(type,code,message,reason,emptyText,command)=>{
   const node:CanvasNodeData={id:'n',type,title:'短剧角色三视图·正面',position:{x:0,y:0},width:360,height:400,
@@ -21,7 +21,7 @@ test.each([
   const commands:unknown[]=[];const listener=(e:Event)=>commands.push((e as CustomEvent).detail);
   window.addEventListener('studio-command',listener);
   render(<StudioFlowCard {...({data:{document:node},selected:true} as any)}/>);
-  expect(screen.getByRole('group',{name:'生成失败'}).textContent).toContain('没有生成出来');
+  expect(screen.getByRole('group',{name:'生成失败'}).textContent).toContain('生成失败');
   expect(screen.getByText(reason)).toBeDefined();
   expect(screen.queryByText(emptyText)).toBeNull();
   expect(screen.queryByRole('button',{name:type===CanvasNodeType.Video?'生成视频':'生成图片'})).toBeNull();
