@@ -1,7 +1,6 @@
-"use client";
-// 发现 Tab：官方可授权角色 + 明星形象入口。
-import { Discover } from "@/components/hub/discover";
+// 「发现」页的官方形象已并入资产页的「官方形象」标签（2026-11-10），旧链接跳过去。
+import { redirect } from "next/navigation";
 
 export default function DiscoverPage() {
-  return <Discover />;
+  redirect("/assets?tab=official");
 }

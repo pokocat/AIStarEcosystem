@@ -26,6 +26,7 @@ class ModelOutputArchiveTest {
  }
  @Test void unauthenticatedCallerCannotListAnyOutputs(){
   var repo=mock(AiModelUsageRecordRepository.class);var controller=new ModelResultsController(repo,new ObjectMapper());
-  assertThrows(BusinessException.class,()->controller.list(null,"aiavatar",0));verifyNoInteractions(repo);
+  assertThrows(BusinessException.class,()->controller.list(null,"aiavatar",0,null));
+  assertThrows(BusinessException.class,()->controller.list(null,"aiavatar",0,"IPR-1"));verifyNoInteractions(repo);
  }
 }

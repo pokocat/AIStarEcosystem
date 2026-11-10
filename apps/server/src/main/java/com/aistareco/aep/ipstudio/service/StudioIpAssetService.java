@@ -22,6 +22,10 @@ public class StudioIpAssetService {
     private final DapLookRepository looks;
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     private com.aistareco.aep.ipstudio.repository.IpDemoTemplateRepository officialDemos;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.aistareco.aep.dap.repository.DapPublicAvatarRepository publicAvatars;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.aistareco.aep.dap.service.DapPublicAvatarService publicAvatarService;
     private static final com.fasterxml.jackson.databind.ObjectMapper JSON = new com.fasterxml.jackson.databind.ObjectMapper();
     public StudioIpAssetService(DapAvatarRepository avatars,DapAvatarVersionRepository versions,FileStorageService storage,DapLookRepository looks) {
         this.avatars=avatars;this.versions=versions;this.storage=storage;this.looks=looks;
@@ -46,8 +50,8 @@ public class StudioIpAssetService {
     }
     /** Only published platform snapshots can enter Official IP. Never expose an author's source keys or avatar ids. */
     public List<IpAsset> officialAssets() {
-        if(officialDemos==null)return List.of();
-        var result=new ArrayList<IpAsset>();
+        var result=new ArrayList<IpAsset>(officialAvatars());
+        if(officialDemos==null)return result;
         for(var demo:officialDemos.findByEnabledTrueOrderBySortOrderAscCreatedAtAsc()) {
             if(!"official".equals(demo.getVisibility()))continue;
             try {
@@ -68,11 +72,34 @@ public class StudioIpAssetService {
                     String id="official:"+demo.getId()+":"+UUID.nameUUIDFromBytes(group.getBytes(java.nio.charset.StandardCharsets.UTF_8));
                     String assetRole=LOOK_ROLES.contains(role)?role:"main";
                     result.add(new IpAsset(null,id,1,key,name,storage.signedUrl(key),"main".equals(assetRole),null,
-                            characterName,"ai",assetRole,metadata.path("prompt").asText(demo.getSummary()),Map.of(),"official"));
+                            characterName,"ai",assetRole,metadata.path("prompt").asText(demo.getSummary()),Map.of(),"official","free",null));
                 }
             } catch(java.io.IOException ignored) { /* Malformed legacy snapshots do not break My IP. */ }
         }
         return result;
+    }
+    /**
+     * 官方形象（dap_public_avatar，含内置 10 个）：正面一张当主形象，两张侧脸归到「视角」。
+     * 需授权的也列出来（选择框里显示但不能选），用不用得了以 {@link #officialUsable} 为准。
+     */
+    List<IpAsset> officialAvatars() {
+        if(publicAvatars==null)return List.of();
+        var result=new ArrayList<IpAsset>();
+        for(var a:publicAvatars.findAllByOrderBySortOrderAscCreatedAtDesc()) {
+            if(a.getFrontKey()==null)continue;
+            String id="official:"+a.getId();String access=a.accessOrDefault();
+            Map<String,String> attributes=new LinkedHashMap<>();
+            if(a.getDef()!=null)a.getDef().forEach((k,v)->{if(attributes.size()<24 && k!=null && k.length()<=32 && v instanceof String text && !text.isBlank())attributes.put(k,text.substring(0,Math.min(text.length(),300)));});
+            String description=a.getTagline();
+            result.add(new IpAsset(null,id,1,a.getFrontKey(),a.getName(),storage.signedUrl(a.getFrontKey()),true,null,a.getName(),"ai","main",description,attributes,"official",access,a.getCat()));
+            if(a.getRightKey()!=null)result.add(new IpAsset(null,id,1,a.getRightKey(),"右侧脸",storage.signedUrl(a.getRightKey()),false,"right",a.getName(),"ai","side",description,attributes,"official",access,a.getCat()));
+            if(a.getLeftKey()!=null)result.add(new IpAsset(null,id,1,a.getLeftKey(),"左侧脸",storage.signedUrl(a.getLeftKey()),false,"left",a.getName(),"ai","side",description,attributes,"official",access,a.getCat()));
+        }
+        return result;
+    }
+    /** 官方形象图能不能被这个用户用于生成。素材归属闸（IpProjectService#ownsAssetKey）调用。 */
+    public boolean officialUsable(String userId,String key) {
+        return publicAvatarService!=null && publicAvatarService.usableImageKey(userId,key);
     }
     private IpAsset asset(DapAvatar avatar,int version,String key,boolean current) {
         return new IpAsset(avatar.getIpId(),avatar.getId(),version,key,avatar.getName(),storage.signedUrl(key),current,null,

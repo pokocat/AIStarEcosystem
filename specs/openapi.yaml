@@ -1858,6 +1858,9 @@ components:
         assetRole: { type: string, enum: [main, history, sheet, portrait, three-view, front, side, back, expression, detail, look] }
         description: { type: string, nullable: true }
         attributes: { type: object, additionalProperties: { type: string }, description: '既有人物 def 中的文本属性，未填写的属性不推测。' }
+        librarySource: { type: string, enum: [mine, official], description: 'mine 本人人物；official 官方形象（dap_public_avatar 与官方模板快照）。' }
+        access: { type: string, enum: [free, license], nullable: true, description: '官方形象的使用方式（2026-11-10）：free 可直接用于生成；license 需授权，暂未开放授权，生成链不放行。本人人物为空。' }
+        category: { type: string, nullable: true, description: '官方形象分类（pro / life / ugc / community），供选择框筛选。' }
     StudioScript:
       type: object
       required: [title, outline, characters, scenes, props, episodes, shots]
@@ -9833,10 +9836,11 @@ paths:
     get:
       tags: [ai-models]
       operationId: listMyModelResults
-      summary: 分页读取本人当前产品的生成原文记录，按创建时间倒序，每页二十条
+      summary: 分页读取本人当前产品的生成原文记录，按创建时间倒序，每页二十条；带 taskId 时只返回这个任务的原文，按调用先后排
       parameters:
         - { in: header, name: X-App-Code, required: true, schema: { type: string } }
         - { in: query, name: page, schema: { type: integer, minimum: 0, default: 0 } }
+        - { in: query, name: taskId, schema: { type: string }, description: '任务编号（IpRun / DapJob 的 id）；V80 起的调用才带任务编号' }
       responses:
         '200': { description: success/data 数组，条目含 id、model、purpose、createdAt；不含全文、提示词或凭据 }
         '401': { description: 未登录 }
@@ -13842,7 +13846,7 @@ paths:
         "404":
           description: 名片不存在或已取消发布（CARD_NOT_FOUND）
   /v1/avatars:
-    get:  { tags: [dap], operationId: dapListAvatars, description: scope=mine|public + path/status/fav/q 过滤, responses: { '200': { description: ok } } }
+    get:  { tags: [dap], operationId: dapListAvatars, description: 'scope=mine|public + path/status/fav/q 过滤。public 为官方形象（dap_public_avatar；内置 10 个启动时入库），每项带 access=free|license。', responses: { '200': { description: ok } } }
     post: { tags: [dap], operationId: dapCreateAvatar, responses: { '200': { description: ok } } }
   /v1/avatars/{id}:
     get:    { tags: [dap], operationId: dapGetAvatar, responses: { '200': { description: ok } } }
@@ -13868,7 +13872,7 @@ paths:
     post: { tags: [dap], operationId: dapSaveAsFromPublic, summary: '数字人广场「另存为我的数字人」：复制只读公开数字人(PA-*)为可编辑数字人', responses: { '200': { description: ok } } }
   /v1/admin/avatars:
     get:  { tags: [dap], operationId: dapAdminListPublicAvatars, summary: '数字人广场 · 运营公开数字人列表（OPERATOR/SUPER_ADMIN）', responses: { '200': { description: ok } } }
-    post: { tags: [dap], operationId: dapAdminCreatePublicAvatar, summary: '数字人广场 · 运营新增公开数字人', responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapAdminCreatePublicAvatar, summary: '数字人广场 · 运营新增公开数字人', description: '请求可带 access=free|license（不传为 license 需授权，非法值 400 DAP_PUBLIC_ACCESS_INVALID）；编辑不传保持原值。', responses: { '200': { description: ok } } }
   /v1/admin/avatars/{id}:
     put:    { tags: [dap], operationId: dapAdminUpdatePublicAvatar, summary: '数字人广场 · 运营编辑公开数字人', responses: { '200': { description: ok } } }
     delete: { tags: [dap], operationId: dapAdminDeletePublicAvatar, summary: '数字人广场 · 运营下架公开数字人', responses: { '200': { description: ok } } }
@@ -14955,7 +14959,7 @@ paths:
     get:
       tags: [ipstudio]
       operationId: studioIpAssets
-      description: '本人未删除人物的主形象、历史版本与完成造型。以 characterName/avatarId 汇总人物，返回已填写属性与明确 assetRole（旧未分类造型为 look），不推测图片内容。稳定 ipId/avatarId/version/storageKey、可选 lookId，url 为出 wire 时重签；旧未关联 IP 人物仍能明确关联。'
+      description: '本人未删除人物的主形象、历史版本与完成造型，后接官方形象（librarySource=official，带 access / category；需授权的也列出，由前端标为不能选）。以 characterName/avatarId 汇总人物，返回已填写属性与明确 assetRole（旧未分类造型为 look），不推测图片内容。稳定 ipId/avatarId/version/storageKey、可选 lookId，url 为出 wire 时重签；旧未关联 IP 人物仍能明确关联。'
       responses:
         '200': { description: 'ApiResponse<StudioIpAsset[]>', content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/StudioIpAsset' } } } } }
   /v1/ip-studio/studio/performers/{avatarId}/looks/{lookId}/role:
@@ -15232,7 +15236,7 @@ paths:
         - { in: query, name: days, description: 0 为全部时间, schema: { type: integer, minimum: 0, maximum: 3650, default: 30 } }
         - { in: query, name: page, schema: { type: integer, minimum: 0, default: 0 } }
       responses:
-        '200': { description: 'ApiResponse<StudioTaskHistoryPage>; items, page, hasMore, summary' }
+        '200': { description: 'ApiResponse<StudioTaskHistoryPage>; items, page, hasMore, summary；item.hasModelResult 表示这条任务保留了模型原文' }
         '400': { description: TASK_HISTORY_INVALID / TASK_HISTORY_TOO_DEEP }
   /v1/ip-studio/storage:
     get:
@@ -15433,7 +15437,7 @@ paths:
         '200': { description: ok }
         '400': { description: 'IP_COVER_INVALID —— 封面非当前画布本人图片；IP_DOC_INVALID —— 不是含 nodes/edges 的对象；IP_DOC_TOO_LARGE —— 超过 aep.ipstudio.doc-max-bytes（默认 2MB）' }
         '404': { description: IP_PROJECT_NOT_FOUND }
-    delete: { tags: [ipstudio], operationId: ipStudioDeleteProject, description: '软删（行保留，只打 deletedAt）。', responses: { '200': { description: soft deleted }, '404': { description: IP_PROJECT_NOT_FOUND } } }
+    delete: { tags: [ipstudio], operationId: ipStudioDeleteProject, description: '软删（行保留，只打 deletedAt，可在回收站恢复）。画布上还有任务在生成（任务未结束、视频任务未结束或受理待核对、制作计划进行中或有在途子任务）时拒绝；停在「需处理」或暂停、没有在途子任务的制作计划不拦。', responses: { '200': { description: soft deleted }, '404': { description: IP_PROJECT_NOT_FOUND }, '409': { description: IP_PROJECT_BUSY } } }
   /v1/ip-studio/projects/{id}/history:
     parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
     get:

@@ -92,6 +92,25 @@ export async function rechargeOrders(): Promise<RechargeOrder[]> {
   return all.filter(order => !order.sourceApp || order.sourceApp === "aiavatar");
 }
 
+/** 模型原文的一条记录（不含全文）。服务端：ModelResultsController。 */
+export interface ModelResultSummary { id: string; model: string; purpose: string; createdAt: string }
+export interface ModelResultDetail { id: string; content: string; finishReason: string }
+
+/** 原文列表：带 taskId 只看这个任务的（按调用先后），不带是全部原文（新的在前），每页 20 条。 */
+export async function modelResults(query: { taskId?: string; page: number }): Promise<ModelResultSummary[]> {
+  if (USE_MOCK) return mockDelay(query.page === 0 ? MOCK_RESULTS : []);
+  const qs = buildQuery({ taskId: query.taskId, page: query.page });
+  return apiFetch<ModelResultSummary[]>(`/me/model-results${qs}`);
+}
+
+export async function modelResult(id: string): Promise<ModelResultDetail> {
+  if (USE_MOCK) return mockDelay({ id, content: MOCK_RESULT_TEXT, finishReason: "stop" });
+  return apiFetch<ModelResultDetail>(`/me/model-results/${encodeURIComponent(id)}`);
+}
+
+const MOCK_RESULTS: ModelResultSummary[] = [{ id: "aiu-demo-1", model: "Claude Sonnet 5.5", purpose: "DRAMA_SCRIPT_DRAFT", createdAt: "2026-11-08T14:18:40Z" }];
+const MOCK_RESULT_TEXT = "第2集　菜市场的第一笔生意\n\n第1镜（0–3 秒）：\n摄影：俯拍菜市场入口，缓慢推近\n台词：林小满说：「让一让，新鲜番茄来了！」";
+
 const MOCK_STORAGE: StudioStorageUsage = {
   usedMb: 2118, quotaMb: 5120, baseQuotaMb: 5120, grantedMb: 0,
   categories: [
@@ -108,17 +127,17 @@ function mockHistory(query: TaskHistoryQuery): StudioTaskHistoryPage {
   const items: StudioTaskHistoryPage["items"] = [
     { id: "IPR-demo-1", source: "canvas", sourceId: "P-demo", sourceTitle: "秋季上新", type: "video", kind: "studio-video", title: "生成视频",
       status: "running", pct: 64, queuePosition: null, createdAt: "2026-11-09T02:12:40Z", finishedAt: null,
-      credits: { spent: 0, scopedSpent: 0, pending: 480, released: 0 }, payer: { type: "personal", name: null }, errorCode: null, errorMessage: null, href: "/projects/P-demo" },
+      credits: { spent: 0, scopedSpent: 0, pending: 480, released: 0 }, payer: { type: "personal", name: null }, errorCode: null, errorMessage: null, href: "/projects/P-demo", hasModelResult: false },
     { id: "IPR-demo-2", source: "canvas", sourceId: "P-demo", sourceTitle: "秋季上新", type: "image", kind: "studio-image", title: "生成图片",
       status: "done", pct: 100, queuePosition: null, createdAt: "2026-11-09T01:41:03Z", finishedAt: "2026-11-09T01:42:10Z",
-      credits: { spent: 32, scopedSpent: 0, pending: 0, released: 0 }, payer: { type: "personal", name: null }, errorCode: null, errorMessage: null, href: "/projects/P-demo" },
+      credits: { spent: 32, scopedSpent: 0, pending: 0, released: 0 }, payer: { type: "personal", name: null }, errorCode: null, errorMessage: null, href: "/projects/P-demo", hasModelResult: false },
     { id: "IPR-demo-3", source: "director", sourceId: "W-demo", sourceTitle: "重生之我在菜市场", type: "text", kind: "studio-storyboard", title: "导演台 · 写分镜脚本",
       status: "done", pct: 100, queuePosition: null, createdAt: "2026-11-08T14:17:56Z", finishedAt: "2026-11-08T14:18:40Z",
-      credits: { spent: 11, scopedSpent: 0, pending: 0, released: 0 }, payer: { type: "enterprise", name: "星河传媒" }, errorCode: null, errorMessage: null, href: "/director/W-demo" },
+      credits: { spent: 11, scopedSpent: 0, pending: 0, released: 0 }, payer: { type: "enterprise", name: "星河传媒" }, errorCode: null, errorMessage: null, href: "/director/W-demo", hasModelResult: true },
     { id: "DJ-demo-4", source: "digital-human", sourceId: "DH-demo", sourceTitle: "林小满", type: "digital-human", kind: "video", title: "衍生视频",
       status: "failed", pct: 0, queuePosition: null, createdAt: "2026-11-08T10:21:44Z", finishedAt: "2026-11-08T10:23:01Z",
       credits: { spent: 0, scopedSpent: 0, pending: 0, released: 0 }, payer: { type: "personal", name: null }, errorCode: null,
-      errorMessage: "参考图分辨率太低，请换一张 1024×1024 以上的图片。", href: "/studio#/avatar/DH-demo" },
+      errorMessage: "参考图分辨率太低，请换一张 1024×1024 以上的图片。", href: "/studio#/avatar/DH-demo", hasModelResult: false },
   ];
   const filtered = items.filter(item => (!query.status || item.status === query.status) && (!query.type || item.type === query.type));
   return { items: query.page === 0 ? filtered : [], page: query.page, hasMore: false,

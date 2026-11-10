@@ -892,13 +892,21 @@ public class StudioWorkflowService {
         List<com.aistareco.aep.ipstudio.execution.StudioRecreationTaskPlan.Material> materials=new ArrayList<>();
         for(JsonNode m:config.path("materials"))if(!"video".equals(m.path("slot").asText())&&!m.path("nodeId").asText().equals(task.path("request").path("sourceNodeId").asText()))
             materials.add(new com.aistareco.aep.ipstudio.execution.StudioRecreationTaskPlan.Material(m.path("nodeId").asText(),m.path("title").asText(),m.path("slot").asText()));
+        // 开场画面最多几张：技能的步数上限减去每段的视频、检查和最后的合成
+        int maxSteps=binding.state().path("skill").isObject()?com.aistareco.aep.ipstudio.execution.StudioSkillRules.fromSnapshot(binding.state().path("skill")).maxSteps():12;
+        int segments=film.film().path("segments").size();
         var prepared=com.aistareco.aep.ipstudio.execution.StudioRecreationTaskPlan.prepare(film.film(),materials,chosen.endpointId(),chosen.contract(),
-                config.path("tier").asText(null),config.path("ratio").asText("9:16"),config.path("optimize").isBoolean()?config.path("optimize").asBoolean():null);
+                config.path("tier").asText(null),config.path("ratio").asText("9:16"),config.path("optimize").isBoolean()?config.path("optimize").asBoolean():null,
+                com.aistareco.aep.ipstudio.execution.StudioPlanExecutionIds.nodeId(binding.execution().getId(),film.stage(),film.stepId())+"-f",
+                Math.max(0,maxSteps-segments*2-1),config.path("text").asText(""));
         execution.set("recreationTask",prepared);
         // 方案只能引用这次的素材
         Set<String> allowed=new LinkedHashSet<>(request.contextNodeIds()==null?List.of():request.contextNodeIds());
         for(JsonNode m:prepared.path("materials"))allowed.add(m.path("nodeId").asText());
-        for(JsonNode u:prepared.path("units"))for(JsonNode r:u.path("refs"))allowed.add(r.path("nodeId").asText());
+        for(JsonNode u:prepared.path("units")) {
+            for(JsonNode r:u.path("refs"))if(r.hasNonNull("nodeId"))allowed.add(r.path("nodeId").asText());
+            for(JsonNode k:u.path("keyframes"))allowed.add(k.path("frameNodeId").asText());
+        }
         var ids=execution.putArray("allowedNodeIds");allowed.forEach(ids::add);
         return com.aistareco.aep.ipstudio.execution.StudioRecreationTaskPlan.variables(prepared,film.film().path("breakdown"),config.path("text").asText(""));
     }

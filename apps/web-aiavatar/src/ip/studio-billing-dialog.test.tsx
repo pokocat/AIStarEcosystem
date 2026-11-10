@@ -53,6 +53,23 @@ test("an enterprise that never chose models lets members pay with enterprise cre
   fireEvent.click(enterprise); fireEvent.click(screen.getByRole("button", { name: "确认账户并生成" }));
   expect(confirm).toHaveBeenCalledWith({ mode: "enterprise", enterpriseId: "team" });
 });
+// 长视频、爆款复刻、连续制作：授权上限是预计的 3 倍、受理时不冻结。余额只跟预计比，上限只在悬停提示里
+// （2026-11-10 线上：7,893 积分做约 2,208 的长视频，被上限 8,274 判成个人积分不足）。
+test("a multi-step task compares the balance with the estimate and keeps the cap in the hover note", async () => {
+  api.balance.mockResolvedValue({ totalBalance: 7893 });
+  const confirm = vi.fn(); render(<StudioBillingDialog details={{ expectedCost: 2208, costCap: 8274 }} onConfirm={confirm} onCancel={vi.fn()}/>);
+  const estimate = await screen.findByText(/2,208/);
+  expect(estimate.getAttribute("title")).toMatch(/8,274/); expect(screen.queryByText(/8,274/)).toBeNull();
+  const submit = screen.getByRole("button", { name: "确认账户并生成" }); await waitFor(() => expect(submit.hasAttribute("disabled")).toBe(false));
+  expect(screen.queryByRole("alert")).toBeNull();
+  fireEvent.click(submit); expect(confirm).toHaveBeenCalledWith({ mode: "personal" });
+});
+test("a balance below the estimate itself still blocks the multi-step task", async () => {
+  api.balance.mockResolvedValue({ totalBalance: 2000 });
+  const confirm = vi.fn(); render(<StudioBillingDialog details={{ expectedCost: 2208, costCap: 8274 }} onConfirm={confirm} onCancel={vi.fn()}/>);
+  await screen.findByRole("alert");
+  expect(screen.getByRole("button", { name: "确认账户并生成" }).hasAttribute("disabled")).toBe(true); expect(confirm).not.toHaveBeenCalled();
+});
 test("text billing says it settles by actual usage and does not show the freeze ceiling", async () => {
   render(<StudioBillingDialog details={{ operation: "assistant", expectedCost: 300, model: "model" }} onConfirm={vi.fn()} onCancel={vi.fn()}/>); await screen.findByText(/按实际用量结算/); expect(screen.queryByText(/300 积分/)).toBeNull(); expect(screen.queryByText(/最多冻结/)).toBeNull();
 });

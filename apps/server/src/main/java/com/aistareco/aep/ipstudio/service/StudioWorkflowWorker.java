@@ -373,11 +373,13 @@ public class StudioWorkflowWorker {
         try {
             java.nio.file.Path original=storage.openForRead(source.path("storageKey").asText());
             ObjectNode breakdown;
+            java.nio.file.Path proxy=null;
             if(resume.path("breakdown").isObject()&&StudioVideoBreakdown.STRATEGY.equals(resume.path("strategy").asText())) {
                 breakdown=(ObjectNode)resume.path("breakdown").deepCopy();
             } else {
                 if(!progress(id,15,"recreation.video"))return;
                 var media=StudioVideoBreakdown.prepare(original,directory,duration);
+                proxy=media.proxy();
                 var prompt=recreationStage(input,com.aistareco.aep.ipstudio.prompt.StudioPromptCallPoints.VIDEO_BREAKDOWN,
                         Map.of("duration",StudioVideoBreakdown.fmt(duration),"cuts",StudioVideoBreakdown.cutsText(media.cuts()),"focus",input.path("prompt").asText("").strip()),null);
                 if(!progress(id,25,"recreation.watch"))return;
@@ -398,6 +400,57 @@ public class StudioWorkflowWorker {
                 breakdown=StudioVideoBreakdown.normalize(parsed,duration,media.cuts());
             }
             study.set("breakdown",breakdown);
+            // 第二遍逐镜细读（StudioVideoBreakdown「逐镜细读」）：续跑时细读过的不再看。这是在第一遍之上补细节，
+            // 用量到了上限就停在已经读完的窗口，不编内容；某个窗口读不出来只记日志，镜头表照第一遍的用。
+            if(!breakdown.path("detailDone").asBoolean(false)) {
+                if(proxy==null)proxy=StudioVideoBreakdown.prepare(original,directory,duration).proxy();
+                var windows=StudioVideoBreakdown.windows(breakdown);
+                for(int w=0;w<windows.size();w++) {
+                    var window=windows.get(w);
+                    long remaining=rate==null?Long.MAX_VALUE:rate.maxOutputTokens()-used[1];
+                    if(remaining<1500||(rate!=null&&used[0]>=rate.maxInputTokens())) {
+                        log.warn("[studio-workflow] shot detail stopped at usage limit run={} window={}/{} input={} output={}",id,w+1,windows.size(),used[0],used[1]);
+                        breakdown.put("detailPartial",true);break;
+                    }
+                    if(!progress(id,30+w*10/Math.max(1,windows.size()),"film.analyze"))return;
+                    var clip=StudioVideoBreakdown.windowClip(proxy,directory,window);
+                    var detailPrompt=recreationStage(input,com.aistareco.aep.ipstudio.prompt.StudioPromptCallPoints.VIDEO_SHOT_DETAIL,StudioVideoBreakdown.detailVariables(breakdown,window),null);
+                    if(enterpriseBilling!=null)enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,id,endpoint.endpoint().getId());
+                    var detailParams=new HashMap<String,Object>();detailParams.put("timeout_seconds",180);detailParams.put("temperature",.2);
+                    detailParams.put("max_tokens",(int)Math.min(3000,remaining));detailParams.put("response_format",Map.of("type","json_object"));
+                    markModelDispatched(id);
+                    var detailReply=models.invokeChatOnEndpoint(endpoint.endpoint(),AiModelPurpose.DAP_VIDEO_UNDERSTAND,List.of(
+                            Map.of("role","system","content",detailPrompt.system()),
+                            Map.of("role","user","content",List.of(StudioVideoBreakdown.detailPart(clip),Map.of("type","text","text",detailPrompt.user())))),detailParams);
+                    long[] total=consumeUsage(detailReply,used,rate);used[0]=total[0];used[1]=total[1];
+                    try {
+                        int merged=StudioVideoBreakdown.mergeDetails(breakdown,window,ModelJson.parse(mapper,detailReply.content()));
+                        if(merged<window.to()-window.from()+1)log.warn("[studio-workflow] shot detail incomplete run={} shots={}-{} merged={} body={}",id,window.from()+1,window.to()+1,merged,
+                                StudioVideoBreakdown.clip(detailReply.content(),400));
+                    } catch(Exception invalid) {
+                        log.warn("[studio-workflow] shot detail unreadable run={} shots={}-{} finish={} body={}",id,window.from()+1,window.to()+1,detailReply.finishReason(),
+                                StudioVideoBreakdown.clip(detailReply.content(),400));
+                    }
+                }
+                breakdown.put("detailDone",true);
+                if(!checkpointFilmStudy(id,40,"film.analyze",study,output.path("sourceAudio")))return;
+            }
+            // 每个镜头的开场画面：改成用户素材后交给视频模型（StudioRecreationTaskPlan「开场画面」）。续跑时已截好的留用。
+            var frames=study.putArray("frames");
+            for(int i=0;i<breakdown.path("shots").size();i++) {
+                JsonNode shot=breakdown.path("shots").get(i);
+                JsonNode kept=null;
+                for(JsonNode old:resume.path("frames"))if(old.path("shot").asInt()==i+1&&old.hasNonNull("storageKey"))kept=old;
+                if(kept!=null){frames.add(kept.deepCopy());continue;}
+                double at=shot.path("detail").path("frameAt").asDouble(StudioVideoBreakdown.frameTime(breakdown,i,Double.NaN));
+                try {
+                    var file=StudioVideoBreakdown.frame(original,directory,i+1,at);
+                    var stored=storage.store(java.nio.file.Files.readAllBytes(file),IpProjectService.CATEGORY_GEN,run.getOwnerUserId(),"jpg","image/jpeg");
+                    frames.addObject().put("shot",i+1).put("at",at).put("storageKey",stored.key());
+                } catch(Exception failed) {
+                    log.warn("[studio-workflow] shot frame failed run={} shot={} at={} reason={}",id,i+1,at,failed.toString());
+                }
+            }
             var units=StudioVideoBreakdown.units(breakdown,max,min,maxUnits);
             var segments=study.putArray("segments");
             for(var unit:units) {
@@ -793,7 +846,8 @@ public class StudioWorkflowWorker {
         String stage=exec.path("planStage").asText();
         List<String> allowed=new ArrayList<>();exec.path("allowedNodeIds").forEach(v->allowed.add(v.asText()));
         // 视频页的爆款复刻：模型只写了每段提示词，方案由代码按受理时冻结的分段和素材拼（StudioRecreationTaskPlan）
-        if(exec.path("recreationTask").isObject())answer=com.aistareco.aep.ipstudio.execution.StudioRecreationTaskPlan.build(exec.path("recreationTask"),answer);
+        if(exec.path("recreationTask").isObject())answer=com.aistareco.aep.ipstudio.execution.StudioRecreationTaskPlan.build(exec.path("recreationTask"),answer,
+                vars->recreationStage(input,com.aistareco.aep.ipstudio.prompt.StudioPromptCallPoints.RECREATION_KEYFRAME,vars,null).user());
         ObjectNode plan;
         // The validator's reason (「第 N 步…」, stage words) reaches the user as a step's reason: plain words there, the
         // reason itself in the internal detail and the log (不锁方法 2026-10-23).

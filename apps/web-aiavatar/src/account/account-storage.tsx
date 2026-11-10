@@ -66,8 +66,8 @@ export function AccountStorage() {
             <div><span className="account-muted">已购扩容</span><b>{formatMb(usage.grantedMb)}</b></div>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {canBuy && <a className="account-go" href="/studio#/membership">购买存储空间</a>}
-            <a className="account-button" href="/studio#/trash">清理回收站</a>
+            {canBuy && <a className="account-go" href="/me/credits">购买存储空间</a>}
+            <a className="account-button" href="/me/storage/trash">清理回收站</a>
           </div>
         </div>
       </section>

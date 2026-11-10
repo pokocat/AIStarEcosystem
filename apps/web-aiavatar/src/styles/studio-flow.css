@@ -762,3 +762,5 @@ html[data-layout="mobile"] .studio-canvas-guide-entries>:last-child:nth-child(od
 .studio-failure-refs li > button { flex-shrink: 0; padding: 3px 10px; border: 1px solid #192229; border-radius: 7px; background: transparent; color: #192229; font-size: 12px; font-weight: 600; cursor: pointer; }
 /* 右键菜单项多时不超出窗口（2026-11-07）。 */
 .studio-flow-context { max-height: calc(100vh - 16px); overflow-y: auto; }
+/* 「⋯」里的删除画布（2026-11-10） */
+.studio-host-more-item.is-danger, .studio-host-more-item.is-danger > svg { color: var(--ip-error, #a43845); }

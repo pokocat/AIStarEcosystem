@@ -13,7 +13,7 @@ vi.mock("antd", () => ({
 }));
 const pack = {id:"pkg",tag:"标准包",credits:10000,priceCents:9900};
 const order = {id:"ro-test",packageId:"pkg",credits:10000,priceCents:9900,status:"pending",wayCode:"WX_NATIVE"};
-beforeEach(() => { vi.clearAllMocks(); window.history.replaceState({},"","/studio#/membership"); api.channels.mockResolvedValue([{code:"wechat",label:"微信支付",defaultWayCode:"WX_NATIVE",wayCodes:[]}]); api.order.mockResolvedValue(order); });
+beforeEach(() => { vi.clearAllMocks(); window.history.replaceState({},"","/me/credits"); api.channels.mockResolvedValue([{code:"wechat",label:"微信支付",defaultWayCode:"WX_NATIVE",wayCodes:[]}]); api.order.mockResolvedValue(order); });
 afterEach(cleanup);
 test("Native order displays QR; only server-paid result refreshes balance", async () => {
   api.checkout.mockResolvedValue({orderId:"ro-test",payDataType:"qr",payData:"weixin://wxpay/test"});

@@ -43,7 +43,10 @@ export function taskSource(item: StudioTaskHistoryItem): string {
   return `${prefix}「${item.sourceTitle}」`;
 }
 
-/** 消耗积分一栏：进行中写「待结算」，失败写 0 和退回多少，用了模型赠款另起一行。 */
+/**
+ * 消耗积分一栏：进行中写「待结算」，用了模型赠款另起一行。
+ * 不写「已退回」（2026-11-10 用户要求）：冻结后多出的部分本来就没扣，写退回会让人以为先扣了又退。失败且没扣的写「未扣积分」。
+ */
 export function TaskCredits({ item }: { item: StudioTaskHistoryItem }) {
   const c = item.credits;
   if (item.status === "running") return <div className="account-money"><b className="account-muted" style={{ fontWeight: 500 }}>待结算</b></div>;
@@ -53,7 +56,7 @@ export function TaskCredits({ item }: { item: StudioTaskHistoryItem }) {
       {ordinary > 0 ? `−${number.format(ordinary)}` : "0"}
     </b>
     {c.scopedSpent > 0 && <small className="is-grant">另扣模型赠款 {number.format(c.scopedSpent)}</small>}
-    {c.released > 0 && <small>已退回 {number.format(c.released)}</small>}
+    {item.status === "failed" && c.spent === 0 && <small>未扣积分</small>}
   </div>;
 }
 

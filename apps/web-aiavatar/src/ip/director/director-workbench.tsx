@@ -9,6 +9,7 @@ import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { isProductNotEnrolledError } from "@ai-star-eco/api-client";
 import { DirectorApi } from "../api";
 import { goneWorkId, isStaleGone } from "../api/director";
+import { useDirectorPoll } from "./director-poll";
 import { DirectorScript } from "./director-script";
 import { DirectorAssets } from "./director-assets";
 import { DirectorProducts } from "./director-products";
@@ -20,6 +21,9 @@ import { normalizeStudioError, useStudioFailure } from "../studio-errors";
 import { AiMark } from "../studio-ai-icon";
 import { BriefProvider } from "./director-brief";
 import { AssistantProvider, DirectorAssistantPanel, useAssistant, useAssistantController } from "./director-assistant";
+
+/** 服务端同一部作品的请求排队超时（DirectorWorkLocks），暂时性的。 */
+const WORK_LOCK_TIMEOUT = "DIRECTOR_WORK_LOCK_TIMEOUT";
 
 export type Tab = "script" | "assets" | "products" | "storyboard";
 const GO_LABEL: Record<Tab, string> = { script: "前往剧本", assets: "前往资产", products: "前往商品", storyboard: "前往分镜" };
@@ -152,20 +156,27 @@ export function DirectorWorkbench({ id }: { id: string }) {
   // 只认最新一次读取的结果：作品在回收站恢复后，新的读取先成功、更早发出的那次 404 后到，不能再把页面打回「已删除」、清掉草稿。
   // 读成功就不再是「已删除」：在回收站恢复后，这一页点「重新加载」就回来了。
   const loadSeq = useRef(0);
+  // 正在进行的读取数：轮询见到有读取在途就跳过这一次（见 useDirectorPoll）。
+  const loading = useRef(0);
+  // 读到过作品之后，「作品正在处理」（服务端排队等作品锁超时）只算这一次没读到，下次轮询再读，不提示。
+  const loadedOnce = useRef(false);
   const load = useCallback(async (): Promise<"ok" | "gone" | "error" | "stale"> => {
     const seq = ++loadSeq.current;
+    loading.current++;
     try {
       const next = await DirectorApi.getWork(id);
       if (!mounted.current || seq !== loadSeq.current) return "stale";
       apply(next); setLoadError(""); setGone(false);
+      loadedOnce.current = true;
       return "ok";
     } catch (e) {
       if (!mounted.current || seq !== loadSeq.current) return "stale";
       if (isWorkGone(e) && !isStaleGone(e)) { markGone(); return "gone"; } // getWork 只会是本作品的 404；恢复前发出的不算
       if (isProductNotEnrolledError(e)) { setNotEnrolled(true); return "error"; }
+      if (loadedOnce.current && normalizeStudioError(e).code === WORK_LOCK_TIMEOUT) return "error";
       setLoadError(errorText(e));
       return "error";
-    }
+    } finally { loading.current--; }
   }, [apply, id, markGone]);
 
   // 「已删除」页上的「重新加载」：防连点；还是找不到、或网络失败，都在这一页上说出来。
@@ -201,15 +212,9 @@ export function DirectorWorkbench({ id }: { id: string }) {
     return () => window.removeEventListener("beforeunload", warn);
   }, [id]);
 
-  // 有任务在跑或一键制作在进行时轮询；页面隐藏时不轮询，回来立刻刷新一次。
+  // 有任务在跑或一键制作在进行时轮询；页面隐藏时不轮询，回来立刻刷新一次。上一次读取返回后才排下一次，不叠请求。
   const active = !gone && !!work && (work.tasks.some(t => t.status === "running"||t.status==="stopping") || work.pipeline?.status === "running");
-  useEffect(() => {
-    if (!active) return;
-    const timer = window.setInterval(() => { if (document.visibilityState === "visible") void load(); }, 2500);
-    const onVisible = () => { if (document.visibilityState === "visible") void load(); };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", onVisible); };
-  }, [active, load]);
+  useDirectorPoll(active, load, () => loading.current > 0);
 
   useEffect(() => {
     if (!work) return;
@@ -278,7 +283,7 @@ export function DirectorWorkbench({ id }: { id: string }) {
       </section>
       {assistant.open && <DirectorAssistantPanel work={work} apply={apply} tab={tab === "products" ? "script" : tab} episodeId={episodeId} openSettings={props.openSettings}/>}
     </div>
-  <p className="director-foot-link"><Link href="/model-results">查看生成原文</Link></p>
+  <p className="director-foot-link"><Link href="/me/tasks?raw=all">查看生成原文</Link></p>
   </main></BriefProvider></AssistantProvider>;
 }
 
@@ -324,7 +329,7 @@ function DirectorHeader({ work, apply, setError, startPipeline, oneClick, status
     {status}
     <span className="director-spacer"/>
     {work.pricing.mock && <span className="director-mock-tag" title="剧本、图片和视频均为固定样例，不调用模型，不消耗积分。">测试模式</span>}
-    <Link href="/model-results" className="director-settings-chip director-results-link" title="查看模型返回的原始内容">生成原文</Link>
+    <Link href="/me/tasks?raw=all" className="director-settings-chip director-results-link" title="查看模型返回的原始内容">生成原文</Link>
     <button type="button" className="director-settings-chip" onClick={() => setOpen(o => !o)} aria-expanded={open} title={`${settings.style} · ${settings.aspectRatio}`}>
       <Settings2 size={15}/><span>{settings.style} · {settings.aspectRatio}</span>
     </button>

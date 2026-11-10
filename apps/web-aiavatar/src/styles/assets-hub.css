@@ -278,3 +278,33 @@ html[data-layout="desktop"] .lmp-audio { flex: 0 1 340px; }
 .personal-editor-remove { display: flex; justify-content: flex-end; }
 .library-save-empty, .library-save-hint { margin: 0; font-size: 12.5px; color: var(--ip-muted, #5b6572); }
 .library-save-error { margin: 0; font-size: 12.5px; }
+
+/* 官方形象（2026-11-10）：卡片复用人物卡；详情左图右信息，手机上上下排。 */
+.assets-official-detail { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+html[data-layout="desktop"] .assets-official-detail { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
+.assets-official-visual { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.assets-official-hero { display: block; width: 100%; aspect-ratio: 3 / 4; overflow: hidden; border-radius: 14px; background: var(--ip-soft, #f3f4f6); }
+.assets-official-hero img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.assets-official-views { display: flex; gap: 8px; }
+.assets-official-views button { display: flex; flex: 0 0 72px; flex-direction: column; gap: 4px; padding: 0; border: 0; background: none; font: inherit; color: var(--ip-muted, #5b6572); cursor: pointer; }
+.assets-official-views button img { display: block; width: 72px; height: 90px; border-radius: 10px; object-fit: cover; }
+.assets-official-views button[aria-pressed="true"] img { outline: 2px solid var(--ip-ink, #17202a); outline-offset: 2px; }
+.assets-official-views small { overflow: hidden; font-size: 11.5px; white-space: nowrap; text-overflow: ellipsis; }
+.assets-official-info { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.assets-official-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.assets-official-desc { margin: 0; font-size: 13.5px; line-height: 1.7; color: var(--sn-text-2, #3d4651); }
+.assets-official-info dl { display: grid; gap: 6px; margin: 0; font-size: 12.5px; }
+.assets-official-info dl > div { display: flex; gap: 10px; min-width: 0; }
+.assets-official-info dt { flex: 0 0 56px; color: var(--ip-muted, #5b6572); }
+.assets-official-info dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.assets-official-use { display: flex; flex-direction: column; gap: 10px; margin-top: auto; padding-top: 14px; border-top: 1px solid var(--sn-line-2, #f0f1f3); }
+.assets-official-use p { margin: 0; font-size: 12.5px; color: var(--ip-muted, #5b6572); }
+
+/* 选择框顶上的来源（我的资产 / 官方形象），2026-11-10 */
+.lmp-sources { display: flex; gap: 22px; margin: 0 0 14px; border-bottom: 1px solid var(--ip-line, #eceef1); }
+.lmp-sources button { position: relative; padding: 0 0 10px; border: 0; background: none; font: inherit; font-size: 13.5px; color: var(--ip-muted, #5b6572); cursor: pointer; }
+.lmp-sources button[aria-selected="true"] { color: var(--ip-ink, #17202a); font-weight: 500; }
+.lmp-sources button[aria-selected="true"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; border-radius: 2px; background: var(--ip-ink, #17202a); }
+.lmp-category.ant-select { min-width: 132px; height: 34px; }
+.lmp-access { position: absolute; top: 8px; right: 8px; z-index: 1; padding: 0 7px; border-radius: 999px; background: #e9f4ed; font-size: 11px; line-height: 20px; color: #2f6b4f; }
+.lmp-access.is-locked { background: #fcf3e2; color: #8a5a10; }

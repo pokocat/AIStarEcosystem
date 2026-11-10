@@ -23,15 +23,15 @@ class PolicyTests(unittest.TestCase):
  def test_unaccepted_artifact_refused(self):
   with self.assertRaises(Refused):artifact_guard({'format':'aistar-cluster-artifact-v1','sha':'a'*40,'jar_sha256':'a'*64,'tests_passed':False})
  def test_production_window_is_not_inferred(self):
-  p={'format':'aistar-import-permit-v1','rds_host':RDS,'database':'aistar_prod','role':'aistar_migrator','table_count':195,'flyway_version':'78','production_authorized':False}
+  p={'format':'aistar-import-permit-v1','rds_host':RDS,'database':'aistar_prod','role':'aistar_migrator','table_count':195,'flyway_version':'79','production_authorized':False}
   with self.assertRaises(Refused):import_plan_guard(p,'production')
  def test_drill_cannot_use_production(self):
-  p={'format':'aistar-import-permit-v1','rds_host':RDS,'database':'aistar_prod','role':'aistar_rehearsal','table_count':195,'flyway_version':'78','purpose':'aistar-cutover-drill'}
+  p={'format':'aistar-import-permit-v1','rds_host':RDS,'database':'aistar_prod','role':'aistar_rehearsal','table_count':195,'flyway_version':'79','purpose':'aistar-cutover-drill'}
   with self.assertRaises(Refused):import_plan_guard(p,'drill')
  def test_previous_schema_contract_is_refused(self):
-  p={'format':'aistar-import-permit-v1','rds_host':RDS,'database':'aistar_cutover_drill','role':'aistar_rehearsal','table_count':195,'flyway_version':'78','purpose':'aistar-cutover-drill'}
+  p={'format':'aistar-import-permit-v1','rds_host':RDS,'database':'aistar_cutover_drill','role':'aistar_rehearsal','table_count':195,'flyway_version':'79','purpose':'aistar-cutover-drill'}
   import_plan_guard(p,'drill')
-  for key,value in [('table_count',192),('flyway_version','77')]:
+  for key,value in [('table_count',192),('flyway_version','77'),('flyway_version','78')]:
    with self.subTest(key=key),self.assertRaises(Refused):import_plan_guard({**p,key:value},'drill')
 class SourceFreezeTests(unittest.TestCase):
  def test_pending_proof_cannot_omit_between_step_plans(self):

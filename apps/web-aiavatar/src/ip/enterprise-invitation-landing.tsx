@@ -110,7 +110,7 @@ export function EnterpriseInvitationLanding() {
       setEnrollment(false); setJoined(true);
       // Clear the bearer once membership is safely persisted; destination is fixed, never supplied by URL.
       window.history.replaceState(null, "", window.location.pathname);
-      window.location.replace("/enterprise");
+      window.location.replace("/me/enterprise");
     } catch (failure) {
       if (!alive.current) return;
       if (failure instanceof ApiError && failure.code === "PRODUCT_NOT_ENROLLED") { setEnrollment(true); setError(""); }
@@ -161,12 +161,12 @@ export function EnterpriseInvitationLanding() {
           <div className="ei-company"><span className="ei-company-icon"><Building2 size={25}/></span><div><h2>{preview.enterpriseName}</h2><p>邀请你成为企业成员</p></div></div>
           <p className="ei-expiry">邀请有效至 {formatDateTime(preview.expiresAt)}</p>
           <div className="ei-divider"/>
-          {joined ? <div className="ei-state" role="status"><Check size={28}/><h3>已加入企业</h3><p>正在进入企业管理…</p><a href="/enterprise" className="ei-primary">进入企业管理 <ArrowRight size={18}/></a></div>
+          {joined ? <div className="ei-state" role="status"><Check size={28}/><h3>已加入企业</h3><p>正在进入企业管理…</p><a href="/me/enterprise" className="ei-primary">进入企业管理 <ArrowRight size={18}/></a></div>
           : blocked ? <div className="ei-state"><h3>请使用本人账号加入</h3><p role="alert">{readableErrors.IDENTITY_IMPERSONATION_UNSUPPORTED}</p></div>
           : !sessionReady ? <p role="status" className="ei-session">正在确认账号…</p>
-          : otherEnterprise ? <div className="ei-state"><h3>你已加入其他企业</h3><p>当前企业：<strong>{otherEnterprise}</strong>。一个账号同时只能属于一家企业，退出原企业后可重新打开此链接接受邀请。</p><a href="/enterprise" className="ei-primary">进入企业管理 <ArrowRight size={18}/></a></div>
+          : otherEnterprise ? <div className="ei-state"><h3>你已加入其他企业</h3><p>当前企业：<strong>{otherEnterprise}</strong>。一个账号同时只能属于一家企业，退出原企业后可重新打开此链接接受邀请。</p><a href="/me/enterprise" className="ei-primary">进入企业管理 <ArrowRight size={18}/></a></div>
           : enrollment ? <div className="ei-enrollment"><p>你已登录。开通 IP Studio 后，将自动加入该企业。</p><EnrollmentGate product="aiavatar" productLabel="IP Studio" onActivated={join} theme={{ bg: "transparent", surface: "#ffffff", accent: "#192229", accentFg: "#ffffff" }}/></div>
-          : authenticated && !needsPhone ? <div className="ei-account"><h3>{alreadyMember ? "你已是该企业成员" : "确认加入企业"}</h3><p>当前登录：<strong>{account}</strong></p>{alreadyMember ? <a className="ei-primary" href="/enterprise">进入企业管理 <ArrowRight size={18}/></a> : <button className="ei-primary" disabled={!!busy} onClick={() => void join()}>{busy ? "正在加入…" : "加入企业"}<ArrowRight size={18}/></button>}</div>
+          : authenticated && !needsPhone ? <div className="ei-account"><h3>{alreadyMember ? "你已是该企业成员" : "确认加入企业"}</h3><p>当前登录：<strong>{account}</strong></p>{alreadyMember ? <a className="ei-primary" href="/me/enterprise">进入企业管理 <ArrowRight size={18}/></a> : <button className="ei-primary" disabled={!!busy} onClick={() => void join()}>{busy ? "正在加入…" : "加入企业"}<ArrowRight size={18}/></button>}</div>
           : isIdMode() ? <form className="ei-form" onSubmit={submit} noValidate aria-label="注册登录并加入企业">
             <h3>验证手机号，加入企业</h3><p className="ei-form-hint">未注册将创建账号，已有账号直接登录。</p>
             <label htmlFor="ei-phone">手机号</label><div className="ei-field"><span className="ei-country">+86</span><input id="ei-phone" ref={phoneRef} type="tel" inputMode="numeric" autoComplete="tel-national" placeholder="请输入手机号" maxLength={11} value={phone} disabled={!!busy} aria-describedby="ei-feedback" onChange={event => { setPhone(event.target.value); setCode(""); setError(""); setNotice(""); }}/></div>

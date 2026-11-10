@@ -56,29 +56,67 @@ class StudioRecreationRealPrepareTest {
         var reply=post(env("STUDIO_REAL_BREAKDOWN_BASE","https://ark.cn-beijing.volces.com/api/v3"),System.getenv("STUDIO_REAL_BREAKDOWN_KEY"),body,false);
         var breakdown=StudioVideoBreakdown.normalize(ModelJson.parse(om,reply.content),duration,media.cuts());
         log.set("breakdownUsage",reply.usage);
+        // 1b. 第二遍逐镜细读（每秒 5 帧）+ 每个镜头截开场画面
+        Path work=Files.createTempDirectory("real-detail-");
+        for(var w:StudioVideoBreakdown.windows(breakdown)) {
+            var clip=StudioVideoBreakdown.windowClip(media.proxy(),work,w);
+            var dp=StudioPromptAssembler.classpath().assemble(StudioPromptAssembler.Call.of(StudioPromptCallPoints.VIDEO_SHOT_DETAIL,StudioVideoBreakdown.detailVariables(breakdown,w),null,null));
+            Map<String,Object> db=new LinkedHashMap<>(body);db.put("max_tokens",3000);
+            db.put("messages",List.of(Map.of("role","system","content",dp.system()),Map.of("role","user","content",List.of(StudioVideoBreakdown.detailPart(clip),Map.of("type","text","text",dp.user())))));
+            var dr=post(env("STUDIO_REAL_BREAKDOWN_BASE","https://ark.cn-beijing.volces.com/api/v3"),System.getenv("STUDIO_REAL_BREAKDOWN_KEY"),db,false);
+            log.withArray("detailUsage").add(dr.usage);
+            log.withArray("detailMerged").add(StudioVideoBreakdown.mergeDetails(breakdown,w,ModelJson.parse(om,dr.content)));
+        }
+        Path frameDir=Path.of(env("STUDIO_REAL_FRAMES",work.toString()));Files.createDirectories(frameDir);
         var contract=StudioRecreationTaskPlanTestSupport.h3();
         var units=StudioVideoBreakdown.units(breakdown,contract.maxSeconds(),contract.minSeconds(),8);
         // 2. 每段提示词（线上默认文字模型）→ 拼方案 → 校验
         var film=om.createObjectNode();film.set("breakdown",breakdown);var segments=film.putArray("segments");
+        var frames=film.putArray("frames");
+        for(int i=0;i<breakdown.path("shots").size();i++) {
+            JsonNode shot=breakdown.path("shots").get(i);
+            double at=shot.path("detail").path("frameAt").asDouble(Double.NaN);
+            Path f=StudioVideoBreakdown.frame(video,frameDir,i+1,Double.isFinite(at)?at:StudioVideoBreakdown.frameTime(breakdown,i,Double.NaN));
+            frames.addObject().put("shot",i+1).put("at",at).put("storageKey",f.toString());
+        }
         for(var u:units)segments.addObject().put("no",u.no()).put("title",u.title()).put("startSec",u.startSec()).put("endSec",u.endSec())
                 .put("firstShot",u.firstShot()).put("lastShot",u.lastShot()).put("storageKey","clip-"+u.no()).put("durationSec",u.length());
         List<StudioRecreationTaskPlan.Material> materials=new ArrayList<>();Map<String,String> titles=new LinkedHashMap<>();
         for(String m:env("STUDIO_REAL_MATERIALS","").split(";"))if(!m.isBlank()){String[] p=m.split("\\|");materials.add(new StudioRecreationTaskPlan.Material(p[0],p[1],p[2]));titles.put(p[0],p[1]);}
-        var task=StudioRecreationTaskPlan.prepare(film,materials,"ai-jusuan-minimax-h3",contract,"768p","9:16",null);
+        var task=StudioRecreationTaskPlan.prepare(film,materials,"ai-jusuan-minimax-h3",contract,"768p","9:16",null,"F-",Math.max(0,28-units.size()*2-1),requirement);
         var compilePrompt=StudioPromptAssembler.classpath().assemble(StudioPromptAssembler.Call.of(StudioPromptCallPoints.RECREATION_COMPILE,
                 StudioRecreationTaskPlan.variables(task,breakdown,requirement),null,null));
         var compiled=post(textBase,System.getenv("STUDIO_REAL_TEXT_KEY"),textBody(compilePrompt.system(),compilePrompt.user(),.5),true);
         log.set("compileUsage",compiled.usage);
-        var plan=StudioRecreationTaskPlan.build(task,ModelJson.parse(om,compiled.content));
+        log.put("compileRaw",compiled.content);
+        var plan=StudioRecreationTaskPlan.build(task,ModelJson.parse(om,compiled.content),
+                vars->StudioPromptAssembler.classpath().assemble(StudioPromptAssembler.Call.of(StudioPromptCallPoints.RECREATION_KEYFRAME,vars,null,null)).user());
         Set<String> allowed=new HashSet<>(titles.keySet());for(var u:units)allowed.add("clip-"+u.no());
+        for(int i=1;i<=breakdown.path("shots").size();i++)allowed.add("F-"+i);
         var validated=StudioPlanValidator.validateSkillPlan(plan,StudioRecreationTaskPlanTestSupport.rules(),"production",allowed);
         // 3. 每段按线上做法改写（H3 默认开着「智能优化」）
         ObjectNode doc=om.createObjectNode();var nodes=doc.putArray("nodes");
         for(var u:units)nodes.addObject().put("title","参考视频 · 第 "+u.no()+" 段").putObject("metadata").put("storageKey","clip-"+u.no());
+        for(JsonNode step:validated.path("steps"))if("image".equals(step.path("operation").asText()))
+            nodes.addObject().put("title",step.path("title").asText()).putObject("metadata").put("storageKey","step:"+step.path("id").asText());
         titles.forEach((id,title)->nodes.addObject().put("title",title).putObject("metadata").put("storageKey",id));
         ObjectNode out=om.createObjectNode();out.put("source",video.toString()).put("durationSec",duration);
         out.set("breakdown",breakdown);out.set("plan",validated);out.set("log",log);
         var steps=out.putArray("steps");
+        // 开场画面：出图描述 + 参考图（第一张是原片截图的本地路径，其余是素材 id），由脚本出图
+        Map<Integer,String> framePath=new HashMap<>();for(JsonNode f:frames)framePath.put(f.path("shot").asInt(),f.path("storageKey").asText());
+        var keyframes=out.putArray("keyframes");
+        for(JsonNode step:validated.path("steps")) {
+            if(!"image".equals(step.path("operation").asText()))continue;
+            ObjectNode k=keyframes.addObject().put("id",step.path("id").asText()).put("prompt",step.path("prompt").asText());
+            var refs=k.putArray("refs");
+            List<JsonNode> bs=new ArrayList<>();step.path("settings").path("referenceBindings").forEach(bs::add);
+            bs.sort(Comparator.comparingInt(b->b.path("order").asInt()));
+            for(JsonNode b:bs) {
+                String id=b.path("nodeId").asText();
+                refs.add(id.startsWith("F-")?framePath.get(Integer.parseInt(id.substring(2))):id);
+            }
+        }
         Map<String,JsonNode> unitByStep=new HashMap<>();for(JsonNode u:task.path("units"))unitByStep.put("v"+u.path("no").asInt(),u);
         for(JsonNode step:validated.path("steps")) {
             if(!"video".equals(step.path("operation").asText()))continue;
@@ -88,7 +126,8 @@ class StudioRecreationRealPrepareTest {
             bindings.sort(Comparator.comparingInt(b->b.path("order").asInt()));
             for(JsonNode b:bindings) {
                 String type=b.path("role").asText().equals("reference-video")?"video":b.path("role").asText().equals("reference-audio")?"audio":"image";
-                refs.add(new VideoStudioReferenceInput(type,b.path("nodeId").asText()));refOut.addObject().put("type",type).put("key",b.path("nodeId").asText());
+                String key=b.hasNonNull("stepId")?"step:"+b.path("stepId").asText():b.path("nodeId").asText();
+                refs.add(new VideoStudioReferenceInput(type,key));refOut.addObject().put("type",type).put("key",key);
             }
             int seconds=settings.path("durationSec").asInt();
             var built=H3StudioPrompt.build(step.path("prompt").asText(),seconds,new VideoSettings("universal_reference_video","768p",null,null,null,refs,null,"auto"),doc);

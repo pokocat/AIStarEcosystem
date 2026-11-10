@@ -79,7 +79,7 @@ export function PublishDialog({
       const card = await AssetsApi.createCardFromAvatar(result.avatarId);
       // 直接落在这张卡的编辑页：名字和整柜造型已经带过去了，用户只剩
       // 「公司 · 职务」和联系方式要填 —— 丢在列表页等于让人自己再找一遍。
-      const href = `/cards/${encodeURIComponent(card.id)}/edit`;
+      const href = `/assets/cards/${encodeURIComponent(card.id)}/edit`;
       const win = window.open(href, "_blank", "noopener");
       if (!win) setCardError(`名片已创建（${card.regNo}），但浏览器拦截了新窗口。请前往「名片」页补充公司、职务和联系方式。`);
     } catch (e) {

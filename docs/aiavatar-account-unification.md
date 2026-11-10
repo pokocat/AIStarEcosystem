@@ -62,3 +62,31 @@ v0.230 · 2026-10-10。目标是让桌面账号管理和画布属于同一个产
 验证：Mac mini 上 web-aiavatar 与 types 类型检查、契约检查、`src/account`、`src/shell`、`src/app/me`、邀请页共 13 个测试文件 93 项通过；后端新单测 `StudioAccountHistoryTest` 6 项通过。演示数据下在 1440 和 375 宽度逐页看过；再用本地开发库副本（283 条真实生成记录）起真后端，在浏览器里走过任务历史的状态筛选与翻页、画布删除后在回收站恢复、存储用量、付款账户和总览。走查中发现视频任务按「失败」筛不出（状态取自视频子任务），已改为按显示状态筛选。
 
 补充验证（同日）：真后端打开 `aep.ipstudio.storage-enforce` 并把 aiavatar 配额设为 49 MB（已用 49 MB）时，上传图片返回 402 `STORAGE_QUOTA_EXCEEDED`；配额改回 5,120 MB 后同一张图上传成功。画布彻底删除：未进回收站时 409，删除后回收站清空、再恢复 404，任务历史条数不变。
+
+## 账号区第三版：合并页面与统一路由（2026-11-10，已生产发布 `20261110-account-ia-f27ed14c`）
+
+用户要求：没更新设计的页面都按新版做；生成原文这类页面不单独成页；组织方式重排、路由统一；任务历史去掉「已退回」。设计稿「账号页新版设计稿」最下面一行「账号区（三）」。
+
+**7 个标签，地址都在 `/me` 下面**（`shell/account-navigation.ts` 的 `ACCOUNT_PAGES`，页面在 `src/account/account-page.tsx`）：
+
+| 标签 | 地址 | 内容 |
+|---|---|---|
+| 总览 | `/me` | 账号卡、近 30 天消耗、存储、生成中、最近任务、邀请朋友卡片、资产与名片入口 |
+| 任务历史 | `/me/tasks`（`?status=running`、`?raw=all`） | 全部生成任务和消耗；文字任务「查看原文」；「全部原文」按时间看 |
+| 积分 | `/me/credits` | 充值、模型赠款、充值记录（原「会员与积分」，没有会员等级，改名） |
+| 存储 | `/me/storage`、`/me/storage/trash` | 子标签「用量」「回收站」 |
+| 授权 | `/me/authorization`、`/ip`、`/stars` | 子标签「真人授权」（原真人授权素材）、「IP 授权登记」（原授权中心里非真人的那部分）、「明星形象授权」（原授权中心「授权给我的」） |
+| 企业 | `/me/enterprise` | 原 `/enterprise`，只在 `NEXT_PUBLIC_ENTERPRISE_ENABLED=1` 时显示 |
+| 设置 | `/me/settings` | 设置与安全 |
+
+**合并掉的页面**：
+- 生成原文 `/model-results` → 任务历史里的抽屉（`account-model-results.tsx`）。V80（Java 迁移：表由 Hibernate 建，空库跳过）给 `ai_model_usage_record` 加 `task_id`，任务执行时从 `AiModelUsageContext` 记下 IpRun / DapJob 的 id；任务历史接口的 `hasModelResult` 标出哪些任务有原文，`GET /api/me/model-results?taskId=` 按任务取。V80 之前的原文没有任务编号，只能在「全部原文」里按时间看，所以这个入口要留着（模型原文保留规则，AGENTS.md 开头）。
+- 邀请朋友 `/invitations` → 电脑版是总览上的卡片 + 邀请记录抽屉（`/me/invitations` 打开总览并展开抽屉），手机版 `/me/invitations` 是一整页。逻辑仍在 `ip/invitation-workspace.tsx`（`useInvitations` + 链接 / 记录两个组件），不以本产品开通为条件。
+- 授权中心 `/licenses` → 「授权」的两个子标签。原来真人证书在授权中心和真人授权素材两处都列，现在按真人 / IP 分开，不重复。
+- 我的名片 `/cards` → `/assets/cards`（名片按人物发布，归资产）。
+
+**旧地址**：`/studio#/membership|tasks|storage|trash|realmaterials|licenses|settings|security` 由 `/studio` 页转到新地址，带上原查询参数（支付回跳的 `rechargeOrder` 不丢）；`/invitations`、`/enterprise`、`/licenses`、`/model-results`、`/cards`、`/cards/:id/edit` 在 `next.config.mjs` 永久重定向。对外分享的 `/invite/{code}`、`/enterprise/invite`、`/card/p/…` 地址不变。
+
+**「已退回」**：任务历史每条不再写「已退回 N」，顶部去掉「退回积分」；失败且没扣的写「未扣积分」。企业消费流水的「已结算，多余积分已退回」改成「已结算」。冻结后没用完的部分本来就没扣，写「退回」会让人以为先扣了又退。接口里的 `released` 字段保留，前端不再显示。
+
+验证：Mac mini 上 web-aiavatar 类型检查、接口契约、7 个前端测试文件 35 项、后端 `StudioAccountHistoryTest`、`ModelOutputArchiveIntegrationTest`（新增按任务查原文的用例）、`ModelOutputArchiveTest` 通过。演示数据下在电脑版和 375 宽度走过总览、任务历史（查看原文、全部原文）、存储两个子标签、授权三个子标签、旧地址 `/studio#/trash`、`/studio#/membership`、`/licenses` 的跳转。没有用真后端走「查看原文」（需要 V80 之后产生的任务），也没有在统一账号模式下看邀请卡片。

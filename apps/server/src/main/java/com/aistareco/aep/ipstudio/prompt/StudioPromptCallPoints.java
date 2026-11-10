@@ -198,12 +198,24 @@ public final class StudioPromptCallPoints {
         StudioPromptStages.register(stage(VIDEO_BREAKDOWN, StudioPromptEntry.LLM, "拉片 · 直接看视频",
                 vars("duration", "视频总长（秒）", "cuts", "代码检测到的切镜时间，已用顿号连好", "focus", "用户这次要做的（可空）"), Set.of("duration", "cuts"),
                 formats("output", StudioPromptFormats.VIDEO_BREAKDOWN_OUTPUT), Map.of("duration", 14.2, "cuts", "2.1、3.9、5.9", "focus", "人物换成图1")).withoutBase());
+        StudioPromptStages.register(stage(VIDEO_SHOT_DETAIL, StudioPromptEntry.LLM, "拉片 · 逐镜细读",
+                vars("range", "这一小段在原片里的时间", "offset", "这一小段从原片第几秒开始", "shots", "这一小段里的镜头：[{no, range, visual（第一遍拉片的画面描述）}]"),
+                Set.of("range", "shots"), formats("output", StudioPromptFormats.VIDEO_SHOT_DETAIL_OUTPUT),
+                Map.of("range", "0–5.8 秒", "offset", "0", "shots", List.of(Map.of("no", 1, "range", "0–1.8 秒", "visual", "手从右侧伸出比框，镜头推向女生")))).withoutBase());
         Map<String, Object> compile = new LinkedHashMap<>();
         compile.put("requirement", "人物换成图1，杯子换成图2");
         compile.put("materials", List.of(Map.of("label", "图1", "title", "小美", "slot", "出镜人物"), Map.of("label", "图2", "title", "保温杯", "slot", "替换素材")));
         compile.put("breakdown", "（拉片文档）");
         compile.put("units", List.of(Map.of("no", 1, "range", "0–6 秒", "seconds", 6, "shots", "（这段的分镜表）",
                 "refs", List.of(Map.of("label", "视频1", "what", "原片这一段"), Map.of("label", "图1", "what", "小美（出镜人物）")))));
+        Map<String, Object> keyframe = new LinkedHashMap<>();
+        keyframe.put("layout", "女生在画面中上部，离镜头约 5 米，身高只占画面高度的十分之一，正好夹在前景两根手指之间");
+        keyframe.put("trick", "前景手指捏住远处很小的女生，随后镜头冲到她面前");
+        keyframe.put("refs", List.of(Map.of("label", "图2", "what", "替换素材 4（替换素材）")));
+        keyframe.put("instruction", "把画面里的女生换成图2里的女生，脸、发型和衣服按图2，大小和位置不变");
+        StudioPromptStages.register(new StudioPromptStages.Stage(RECREATION_KEYFRAME, StudioPromptEntry.IMAGE_MODEL, "爆款复刻 · 改开场画面",
+                vars("layout", "原片这一刻的构图（逐镜细读）", "trick", "这个镜头的看点（逐镜细读）", "refs", "图1 之后的参考图：[{label, what}]", "instruction", "写提示词的模型给的修改要求"),
+                Set.of("instruction"), Map.of(), keyframe).withoutBase());
         StudioPromptStages.register(stage(RECREATION_COMPILE, StudioPromptEntry.LLM, "爆款复刻 · 写每段视频提示词",
                 vars("requirement", "用户写的要求", "materials", "替换素材：[{label, title, slot}]", "breakdown", "拉片文档（Markdown）",
                         "units", "分段：[{no, range（原片时间）, seconds（生成秒数）, shots（这段的分镜表）, refs:[{label, what}]}]"),
@@ -213,12 +225,13 @@ public final class StudioPromptCallPoints {
     static final String RECREATION = "stage-recreation", RECREATION_OBSERVE = "stage-recreation-observe",
             FILM_PLAN = "stage-film-study-plan", FILM_SEGMENT = "stage-film-study";
     /** 拉片 v2 与爆款复刻的提示词（docs/ip-studio-recreation.md「直接看视频的拉片」）。 */
-    public static final String VIDEO_BREAKDOWN = "stage-video-breakdown", RECREATION_COMPILE = "stage-recreation-compile";
+    public static final String VIDEO_BREAKDOWN = "stage-video-breakdown", VIDEO_SHOT_DETAIL = "stage-video-shot-detail", RECREATION_COMPILE = "stage-recreation-compile",
+            RECREATION_KEYFRAME = "stage-recreation-keyframe";
     public static final String DIALOGUE_SKILL = "stage-dialogue-skill", DIALOGUE_PHASE = "stage-dialogue-phase", ANALYSIS_FOCUS = "stage-analysis-focus",
             VISION_BATCH = "stage-vision-batch", RECREATION_MERGE = "stage-recreation-merge";
     /** 复刻任务受理时一起冻结的环节：拆解、逐页观察、汇总、拉片分段、逐段分析、用户关注点、分批读图。 */
     public static final java.util.List<String> RECREATION_STAGES = java.util.List.of(RECREATION, RECREATION_OBSERVE, RECREATION_MERGE, FILM_PLAN, FILM_SEGMENT,
-            ANALYSIS_FOCUS, VISION_BATCH, VIDEO_BREAKDOWN);
+            ANALYSIS_FOCUS, VISION_BATCH, VIDEO_BREAKDOWN, VIDEO_SHOT_DETAIL);
 
     /** 方案规划的变量（对话的 propose_plan、文字任务、后台试跑三处共用）。阶段和预算那两句的说法在环节正文里，代码只给开关。 */
     private static Map<String, String> planVars() {

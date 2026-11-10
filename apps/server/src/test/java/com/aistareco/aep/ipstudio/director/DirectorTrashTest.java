@@ -303,7 +303,7 @@ class DirectorTrashTest {
     @Test void deleteQueuedBehindRestoreDeletesAfterIt() throws Exception {
         String u = user(), id = save(u, rich(u, null), Instant.now(), false).getId();
         ObjectNode before = content(id);
-        assertNull(race(() -> director.restore(u, id), () -> director.delete(u, id)));
+        assertNull(race(id, () -> director.restoreInTx(u, id), () -> director.delete(u, id)));
         assertNotNull(reload(id).getDeletedAt());
         assertEquals(List.of(id), ids(director.trash(u)));
         assertEquals(before, withoutRestoreStamp(content(id)));
@@ -313,7 +313,7 @@ class DirectorTrashTest {
     @Test void restoreQueuedBehindDeleteRestoresAfterIt() throws Exception {
         String u = user(), id = save(u, rich(u, null), null, false).getId();
         ObjectNode before = content(id);
-        assertNull(race(() -> director.delete(u, id), () -> director.restore(u, id)));
+        assertNull(race(id, () -> director.deleteInTx(u, id), () -> director.restore(u, id)));
         assertNull(reload(id).getDeletedAt());
         assertEquals(before, withoutRestoreStamp(content(id)));
         assertEquals(List.of(id), ids(director.list(u)));
@@ -324,22 +324,25 @@ class DirectorTrashTest {
         String u = user();
         String id = save(u, rich(u, om.createObjectNode().put("status", "running").put("stage", "boards")), Instant.now(), true).getId();
         long runsBefore = runs.count();
-        assertNull(race(() -> director.restore(u, id), () -> director.tick(id)));
+        assertNull(race(id, () -> director.restoreInTx(u, id), () -> director.tick(id)));
         assertEquals("stopped", content(id).path("pipeline").path("status").asText());
         assertFalse(reload(id).isActive());
         assertEquals(runsBefore, runs.count());
     }
 
-    /** first 在持着作品行锁的事务里执行并停一会再提交；second 在它拿锁之后开始，必须等它提交。返回 second 的异常。 */
-    private Throwable race(Runnable first, Runnable second) throws Exception {
+    /**
+     * first 拿着作品锁、在持着作品行锁的事务里执行并停一会再提交（先拿进程内的作品锁再开事务，同真实入口）；
+     * second 在它拿锁之后开始，必须等它提交。返回 second 的异常。
+     */
+    private Throwable race(String id, Runnable first, Runnable second) throws Exception {
         CountDownLatch locked = new CountDownLatch(1);
         ExecutorService pool = Executors.newFixedThreadPool(2);
         try {
-            Future<?> a = pool.submit(() -> new TransactionTemplate(tx).executeWithoutResult(s -> {
+            Future<?> a = pool.submit(() -> director.workLocks().runWithWork(id, () -> new TransactionTemplate(tx).executeWithoutResult(s -> {
                 first.run();
                 locked.countDown();
                 try { Thread.sleep(500); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
-            }));
+            })));
             assertTrue(locked.await(10, TimeUnit.SECONDS));
             long start = System.nanoTime();
             Future<Throwable> b = pool.submit(() -> { try { second.run(); return null; } catch (Throwable e) { return e; } });

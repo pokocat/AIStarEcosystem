@@ -260,6 +260,147 @@ public final class StudioVideoBreakdown {
         return "第 "+no+" 段";
     }
 
+    // ── 第二遍：逐镜细读（2026-11-10）────────────────────────────────
+    //
+    // 整条片一起拉片时，模型会把细节概括掉：美食那条「手指捏住远处很小的女生、再瞬间拉到眼前」只写成了「比框 + 推镜」，
+    // 后面写提示词和出片都跟着丢了；单独问那 2 秒，同一个模型每秒 2 帧就答得出来。所以把相邻几个镜头切成不超过 6 秒的小段，
+    // 每秒 5 帧再看一遍，按固定维度写（提示词库 stage-video-shot-detail），并选出每个镜头最能代表开场构图的时刻（截开场画面用）。
+
+    /** 细读时交给模型的抽帧频率。 */
+    public static final double DETAIL_FPS=5.0;
+    /** 一次细读的片段最长秒数。 */
+    static final double DETAIL_WINDOW_SEC=6;
+    /** 一个窗口：第 {@code from}–{@code to} 镜（下标），原片 {@code start}–{@code end} 秒。 */
+    public record Window(int from,int to,double start,double end) {}
+
+    /** 相邻镜头凑成不超过 {@link #DETAIL_WINDOW_SEC} 秒的窗口；单个镜头更长的自成一个窗口。 */
+    public static List<Window> windows(JsonNode breakdown) {
+        List<Window> out=new ArrayList<>();
+        JsonNode shots=breakdown.path("shots");
+        int from=-1;
+        for(int i=0;i<shots.size();i++) {
+            if(from>=0&&shots.get(i).path("end").asDouble()-shots.get(from).path("start").asDouble()>DETAIL_WINDOW_SEC+1e-6) {
+                out.add(new Window(from,i-1,shots.get(from).path("start").asDouble(),shots.get(i-1).path("end").asDouble()));from=-1;
+            }
+            if(from<0)from=i;
+        }
+        if(from>=0)out.add(new Window(from,shots.size()-1,shots.get(from).path("start").asDouble(),shots.get(shots.size()-1).path("end").asDouble()));
+        return out;
+    }
+
+    /** 从代理视频里切出一个窗口（只要画面）。 */
+    public static Path windowClip(Path proxy,Path directory,Window w) throws Exception {
+        Path out=directory.resolve("detail-"+(w.from()+1)+".mp4");
+        run(List.of("ffmpeg","-v","error","-nostdin","-y","-threads","2","-ss",fmt3(w.start()),"-to",fmt3(w.end()),"-i",proxy.toString(),"-an",
+                "-c:v","libx264","-preset","veryfast","-crf","28","-pix_fmt","yuv420p","-movflags","+faststart",out.toString()),false);
+        return out;
+    }
+
+    /** 细读的视频输入块：每秒 {@link #DETAIL_FPS} 帧。 */
+    public static Map<String,Object> detailPart(Path clip) throws Exception {
+        String data="data:video/mp4;base64,"+Base64.getEncoder().encodeToString(Files.readAllBytes(clip));
+        Map<String,Object> video=new LinkedHashMap<>();video.put("url",data);video.put("fps",DETAIL_FPS);
+        return Map.of("type","video_url","video_url",video);
+    }
+
+    /** 提示词库 stage-video-shot-detail 的变量。 */
+    public static Map<String,Object> detailVariables(JsonNode breakdown,Window w) {
+        List<Map<String,Object>> shots=new ArrayList<>();
+        for(int i=w.from();i<=w.to();i++) {
+            JsonNode s=breakdown.path("shots").get(i);
+            shots.add(Map.of("no",i+1,"range",range(s.path("start").asDouble(),s.path("end").asDouble()),"visual",s.path("visual").asText("").isBlank()?"（没写）":s.path("visual").asText()));
+        }
+        return Map.of("range",range(w.start(),w.end()),"offset",fmt(w.start()),"shots",shots);
+    }
+
+    /**
+     * 把一个窗口的细读结果写进镜头的 {@code detail}。只截长度、不改内容。frameAt 写成这一小段里的秒数时（比窗口开始还早）换算回原片，
+     * 再收进这个镜头之内；没给的取镜头开头稍后一点。返回写进了几个镜头。
+     */
+    public static int mergeDetails(ObjectNode breakdown,Window w,JsonNode raw) {
+        int merged=0;
+        JsonNode shots=breakdown.path("shots");
+        Set<Integer> done=new HashSet<>();
+        for(JsonNode item:list(raw==null?null:raw.path("shots"),40)) {
+            int index=shotOf(shots,w,item);
+            if(index<0||!done.add(index))continue;
+            ObjectNode shot=(ObjectNode)shots.get(index);
+            ObjectNode detail=OM.createObjectNode();
+            for(String field:List.of("scene","light","camera","layout","action","trick","effects"))detail.put(field,text(item.path(field),400));
+            double at=item.path("frameAt").asDouble(Double.NaN);
+            if(Double.isFinite(at)&&w.start()>0&&at<w.start()-.05&&at<=w.end()-w.start()+.05)at+=w.start();
+            detail.put("frameAt",round(frameTime(breakdown,index,at)));
+            shot.set("detail",detail);merged++;
+        }
+        return merged;
+    }
+
+    /**
+     * 细读结果对应哪个镜头（下标）。镜号和开始时间都给了时以时间为准：2026-11-10 真跑，一个 5 镜的窗口模型只回了 2 镜，
+     * 把第 7、8 镜的内容写在了「第 4、5 镜」名下，只认镜号就张冠李戴。时间写成小段里的秒数时换算回原片。都对不上返回 -1。
+     */
+    static int shotOf(JsonNode shots,Window w,JsonNode item) {
+        double start=item.path("start").asDouble(Double.NaN);
+        if(Double.isFinite(start)) {
+            for(double t:new double[]{start,start+w.start()}) {
+                int best=-1;double gap=Double.MAX_VALUE;
+                for(int i=w.from();i<=w.to();i++) {
+                    double d=Math.abs(shots.get(i).path("start").asDouble()-t);
+                    if(d<gap){gap=d;best=i;}
+                }
+                if(best>=0&&gap<=.35)return best;
+            }
+            return -1;
+        }
+        int no=item.path("no").asInt(-1);
+        return no-1>=w.from()&&no-1<=w.to()?no-1:-1;
+    }
+
+    /** 截开场画面时，只在镜头开头这么长的时间里取：开场构图才是要保住的（推镜、捏合这类镜头，中段已经是近景了）。 */
+    static final double FRAME_WINDOW_SEC=.4;
+
+    /**
+     * 截开场画面的时刻（原片秒数）。镜头的开始先对到代码测出的真实切镜点（±0.5 秒内有就用它，模型给的时间常差零点几秒，
+     * 2026-11-10 真跑第 2 镜截到了上一镜），再只在开头 {@link #FRAME_WINDOW_SEC} 秒里取：模型选的时刻在这之内就用，
+     * 不在就取开头稍后一点（避开切镜那一帧的模糊）。
+     */
+    public static double frameTime(JsonNode breakdown,int index,double at) {
+        JsonNode shot=breakdown.path("shots").get(index);
+        double start=shot.path("start").asDouble(),end=shot.path("end").asDouble(),opening=start;
+        if(index>0) {
+            double gap=.5;
+            for(JsonNode c:breakdown.path("cuts")){double d=Math.abs(c.asDouble()-start);if(d<=gap){gap=d;opening=c.asDouble();}}
+        }
+        double lo=Math.min(end,opening+.03),hi=Math.max(lo,Math.min(end-.05,opening+FRAME_WINDOW_SEC));
+        if(!Double.isFinite(at)||at<lo||at>hi)at=Math.min(hi,lo+.09);
+        return at;
+    }
+
+    /** 从原片截一帧（长边不超过 1280），给改开场画面用。 */
+    public static Path frame(Path original,Path directory,int shotNo,double at) throws Exception {
+        Path out=directory.resolve("frame-"+shotNo+".jpg");
+        run(List.of("ffmpeg","-v","error","-nostdin","-y","-ss",fmt3(at),"-i",original.toString(),"-frames:v","1",
+                "-vf","scale='if(gt(iw,ih),min(1280,iw),-2)':'if(gt(iw,ih),-2,min(1280,ih))'","-q:v","2",out.toString()),false);
+        if(!Files.exists(out)||Files.size(out)==0)throw new IllegalStateException("Video breakdown frame failed shot="+shotNo);
+        return out;
+    }
+
+    /** 一个镜头细读结果的文字（给写提示词的模型看；没有细读就是空）。 */
+    public static String detailText(JsonNode shot) {
+        JsonNode d=shot.path("detail");
+        if(!d.isObject())return "";
+        StringBuilder out=new StringBuilder();
+        for(String[] f:new String[][]{{"scene","场景"},{"light","用光"},{"camera","机位"},{"layout","开场构图"},{"action","动作"},{"trick","视觉把戏"},{"effects","后期效果"}}) {
+            String v=d.path(f[0]).asText("");
+            if(!v.isBlank())out.append(out.length()==0?"":"；").append(f[1]).append("：").append(v);
+        }
+        return out.toString();
+    }
+
+    private static String fmt3(double v){return String.format(Locale.ROOT,"%.3f",v);}
+    /** 日志里的模型原话截一段。 */
+    public static String clip(String value,int max){return value==null?"":value.length()<=max?value:value.substring(0,max);}
+
     // ── 给人看的拉片文档 ─────────────────────────────────────────────
 
     public static String report(JsonNode b) {
@@ -280,6 +421,9 @@ public final class StudioVideoBreakdown {
         for(JsonNode p:b.path("parts"))out.append("| ").append(range(p.path("start").asDouble(),p.path("end").asDouble())).append(" | ").append(cell(p.path("name").asText()))
                 .append(" | ").append(cell(p.path("purpose").asText())).append(" |\n");
         out.append("\n## 分镜\n\n").append(shotTable(b,0,b.path("shots").size()-1,0));
+        StringBuilder details=new StringBuilder();
+        for(int i=0;i<b.path("shots").size();i++){String d=detailText(b.path("shots").get(i));if(!d.isBlank())details.append("- 第 ").append(i+1).append(" 镜：").append(d).append('\n');}
+        if(details.length()>0)out.append("\n## 逐镜细读\n\n").append(details);
         if(!b.path("music").asText("").isBlank())out.append("\n## 背景音乐\n\n").append(b.path("music").asText()).append('\n');
         if(!b.path("highlights").isEmpty()){out.append("\n## 为什么能火\n\n");for(JsonNode h:b.path("highlights"))out.append("- ").append(h.asText()).append('\n');}
         JsonNode r=b.path("remake");

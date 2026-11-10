@@ -37,6 +37,8 @@ export interface StudioTaskHistoryItem {
   errorMessage: string | null;
   /** 站内跳转地址：画布、导演台作品或数字人详情。 */
   href: string;
+  /** 这条任务保留了模型返回的原文，可在任务历史里「查看原文」（`/me/model-results?taskId=`）。 */
+  hasModelResult: boolean;
 }
 
 /** 时间窗内的汇总（与状态筛选无关）。partial=true 表示只统计了最近的一部分。 */

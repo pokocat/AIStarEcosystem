@@ -202,7 +202,7 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
       tag: "名片",
       title: cd.status === "published" ? `名片 ${cd.publicUrl}` : `名片 ${cd.publicUrl}（草稿）`,
       when: formatDateTime(cd.publishedAt || cd.updatedAt),
-      href: "/cards",
+      href: "/assets/cards",
     })),
   ];
   const g = gaps(c);
@@ -390,7 +390,7 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
       )}
       {c.path === "real" && licenseKnown && (
         <div style={{ margin: "18px 16px 0" }}>
-          <Link href={license?.status === "active" ? "/licenses" : studioHref(`#/avatar/${c.id}`)} style={{ textDecoration: "none", color: "inherit", display: "block" }}>
+          <Link href={license?.status === "active" ? "/me/authorization" : studioHref(`#/avatar/${c.id}`)} style={{ textDecoration: "none", color: "inherit", display: "block" }}>
             <Card style={license?.status === "active"
               ? { background: "var(--primary-tint)", border: "1px solid #D6EEF7", boxShadow: "none", display: "flex", alignItems: "center", gap: 12 }
               : { background: "var(--warn-s)", border: "1px solid #F2E2BE", boxShadow: "none", display: "flex", alignItems: "center", gap: 12 }}>
@@ -491,7 +491,7 @@ function MakeCardCard({ avatarId, cards }: { avatarId: string; cards: AsyncState
     setErr(null);
     try {
       const card = await CardApi.fromAvatar(avatarId);
-      router.push(`/cards/${encodeURIComponent(card.id)}/edit`);
+      router.push(`/assets/cards/${encodeURIComponent(card.id)}/edit`);
     } catch (e) {
       // 同时交给统一错误出口：刚点的「建卡」没做成弹错误弹窗，按钮下这行照旧留着
       setErr(reportStudioError(e, { fallback: "名片创建失败，请重试。" }).message);
@@ -511,7 +511,7 @@ function MakeCardCard({ avatarId, cards }: { avatarId: string; cards: AsyncState
       </div>
       {existing ? (
         <Link
-          href={`/cards/${encodeURIComponent(existing.id)}/edit`}
+          href={`/assets/cards/${encodeURIComponent(existing.id)}/edit`}
           style={{
             display: "grid", placeItems: "center", height: 44, borderRadius: "var(--r-md)",
             border: "1px solid var(--line-2)", background: "var(--surface)", color: "var(--ink)",

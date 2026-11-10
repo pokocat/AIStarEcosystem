@@ -22,6 +22,18 @@ const nextConfig = {
     "@ai-star-eco/landing",
   ],
   // 部署到 aistar.aibuzz.cn 根路径，无 basePath；本地 dev: localhost:3013
+  // 2026-11-10 账号区统一到 /me 下面（设计稿「账号区（三）」）。旧地址永久跳转，书签和外部链接不失效。
+  // 对外分享的 /invite/{code}、/enterprise/invite、/card/p/… 不在这里，地址不变。
+  async redirects() {
+    return [
+      { source: "/invitations", destination: "/me/invitations", permanent: true },
+      { source: "/enterprise", destination: "/me/enterprise", permanent: true },
+      { source: "/licenses", destination: "/me/authorization", permanent: true },
+      { source: "/model-results", destination: "/me/tasks", permanent: true },
+      { source: "/cards", destination: "/assets/cards", permanent: true },
+      { source: "/cards/:id/edit", destination: "/assets/cards/:id/edit", permanent: true },
+    ];
+  },
   async headers() {
     return [
       {

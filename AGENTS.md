@@ -3,7 +3,7 @@
 > 给所有 AI coding agent（Claude Code、Cursor、Aider、Continue、自建 SDK agent…）的统一指引。
 > Claude Code 仍然通过 `CLAUDE.md` 注入，但 `CLAUDE.md` 是本文件的 symlink —— 只需维护一份。
 
-**模型正常回包保留（2026-11-05 用户要求）**：模型返回的非空原文必须交付或提供本人可读的原文记录，不能因字数、标题排版、JSON 整理、Token 用量或预估预算丢弃整份结果。文字调用在业务解析前保存完整原文到既有用量记录，Studio / 短剧 / 带货的 `/model-results` 提供只读、复制与下载；不另建计费真值。原文无法安全转换为可执行结构时暂停后续付费操作，保留用户已有内容。真实空结果、供应商错误、坏媒体和越权引用仍明确处理。规则真源 `specs/BUSINESS_RULES.md`「模型生成原文保留」。
+**模型正常回包保留（2026-11-05 用户要求）**：模型返回的非空原文必须交付或提供本人可读的原文记录，不能因字数、标题排版、JSON 整理、Token 用量或预估预算丢弃整份结果。文字调用在业务解析前保存完整原文到既有用量记录，短剧 / 带货的 `/model-results` 与 Studio 任务历史的「查看原文」「全部原文」（2026-11-10 起，V80 按任务关联）提供只读、复制与下载；不另建计费真值。原文无法安全转换为可执行结构时暂停后续付费操作，保留用户已有内容。真实空结果、供应商错误、坏媒体和越权引用仍明确处理。规则真源 `specs/BUSINESS_RULES.md`「模型生成原文保留」。
 
 **Single sources of truth**
 
@@ -31,7 +31,7 @@ Studio 官方画布模板发布（2026-11-04）：版本化 `template-versions` 
 - **web-incubator**（3020）：AI 艺人孵化平台全端演示。Figma Make 原型整体搬入 `src/prototype/`，纯前端示例数据，不调接口，线上 `incubator.aibuzz.cn`，**不是**任何子产品的真值；见 [`apps/web-incubator/README.md`](apps/web-incubator/README.md)
 - 管理后台 **apps/admin**（3003，已升级到 pnpm + Next 16）
 - 统一账号中心 **独立仓库 [`pokocat/aibuzz-id`](https://github.com/pokocat/aibuzz-id)**（Spring Boot 3.3.5 + Spring Authorization Server，本地 `./mvnw spring-boot:run` 起 **8090**，生产 `id.aibuzz.cn`；建议 clone 到本仓同级的 `../aibuzz-id`）：全生态 OIDC 身份源（RS256 + JWKS），**v0.149 P1 落地 + 本仓 P2 接入完成，已于 2026-09-05 上线**；设计真源 [`docs/unified-identity-plan.md`](docs/unified-identity-plan.md)。**身份只有一份 uid，产品侧建档自动、开通显式，权益真值永远在产品侧**，账号中心不做任何「开通」写操作
-- **账号注册邀请（2026-10-17，已发布并完成真实短信注册验收）**：关系、首建绑定与权限归 `../aibuzz-id`（README §25，V12）；Studio `/invitations` 提供本人链接生成/复制/预览、邀请人和直属记录、分页刷新，分享 `/invite/{code}` 品牌页直接输入手机号/验证码，ID 核验并签发令牌后进入 `/dashboard`。前端直连 ID，不在本仓 server 复制邀请规则或表。邀请不产生分佣/奖励，产品侧既有开通策略独立执行，见 [`docs/unified-account-referral-plan.md`](docs/unified-account-referral-plan.md)、[本地验收](docs/releases/unified-account-referral-validation-20261017.md)及[当前发布与线上验收](docs/releases/unified-account-referral-production-release-20261017.md)。
+- **账号注册邀请（2026-10-17，已发布并完成真实短信注册验收）**：关系、首建绑定与权限归 `../aibuzz-id`（README §25，V12）；Studio `/me/invitations`（2026-11-10 前为 `/invitations`）提供本人链接生成/复制/预览、邀请人和直属记录、分页刷新，分享 `/invite/{code}` 品牌页直接输入手机号/验证码，ID 核验并签发令牌后进入 `/dashboard`。前端直连 ID，不在本仓 server 复制邀请规则或表。邀请不产生分佣/奖励，产品侧既有开通策略独立执行，见 [`docs/unified-account-referral-plan.md`](docs/unified-account-referral-plan.md)、[本地验收](docs/releases/unified-account-referral-validation-20261017.md)及[当前发布与线上验收](docs/releases/unified-account-referral-production-release-20261017.md)。
 - 子产品开通 **enrollment**（v0.149）：「能进哪个子产品」的真值是 `product_enrollment` 表，**后端真拦** —— `EnrollmentGuard` 按 `X-App-Code` 请求头（或 `/api/star`→star、`/api/v1`→aiavatar 前缀）把请求映射到子产品，无 ACTIVE 开通记录 → 403 `PRODUCT_NOT_ENROLLED`，缺头 → 403 `APP_CODE_REQUIRED`；开关 `AEP_ENROLLMENT_ENFORCE` 默认 true，**只允许测试关闭**。`MeDto.platforms` 退化为 active enrollment 的兼容投影（无 enrollment 行才回落读旧 `aep_users.platforms` CSV）。激活码兑换只有一条路径（`EnrollmentService`）：**条件更新占码**（`UPDATE license_key ... WHERE status='CREATED'`，影响 1 行才继续）+ `entitlement_grant` 的 `UNIQUE(source, source_reference)` 双闸，杜绝并发兑换发两份积分；调用方指定的产品不在批次授权范围内先判后占、不烧码。契约见 `specs/BUSINESS_RULES.md` §6.0 与 `apps/server/README.md`「子产品开通（enrollment）」。
 - **未绑手机号只读**（微信游客）：账号中心允许「只有微信、没有手机号」的账号登录（令牌 `phone_verified=false`），这类账号在本仓**能看不能改** —— `PhoneVerificationGuard`（挂在 `EnrollmentGuard` 之前）放行 `GET/HEAD/OPTIONS`，任何写方法一律 403 `PHONE_VERIFICATION_REQUIRED`，`error.details.bindUrl` 指向账号中心的绑定入口（由 `aep.identity.issuer` 派生，不硬编码域名）。标记由 `JwtAuthenticationFilter` 写进 `Authentication.details`：RS256 按 `phone_verified` claim（缺 claim 的旧令牌按已验证），legacy HS256 一律 `true`（游客只由账号中心的微信登录建出来，而它从不签 HS256）；标记缺失的内部服务令牌不拦。同时把本地 `aep_users.phone_verified` 按令牌回填（此前 JIT 一律写 false 且无人回填）。前端由 `AuthProvider` 注册回调，403 时整页跳 `bindUrl`。契约见 `apps/server/README.md` §3.5。
 - 小程序: **apps/miniprogram**（微信小程序，AI 明星带货线消费方）
@@ -792,6 +792,7 @@ v0.197：web-drama 所有弹窗在 375 宽下右边都被裁掉一截，四个�
 - 做法：独立事务里刚写的东西，要在外层返回前读出来，就也在新事务里读（`newTx.execute(tx -> repo.find...)`），或者直接用写入时拿到的对象。
 - 判据：本地正常、线上「第一次点没反应，第二次报已在进行」→ 先怀疑事务快照，不是前端状态。
 - 反过来的坑（2026-10-28 导演台删除，独立复核复现）：**持着行锁时不要再开 `REQUIRES_NEW` 去读**。外层连接和锁都不放，内层再要一条连接；并发 N 个请求就占 N 条等 N 条，连接池 3 条时全部 `CannotCreateTransactionException`（active=3 / idle=0），池子 20 只是阈值更高。要在锁内读到最新提交，就在同一事务里用读已提交（`@Transactional(isolation = READ_COMMITTED)`，Spring 对已参与的外层事务不改隔离级别）并只查标量列；回归 `DirectorDeletePoolTest`（小连接池 + 占满后并发）。
+- 读路径也中过（2026-11-10 线上事故）：`DirectorService.get` 持着作品行锁，`view()` 却在 REQUIRES_NEW 里读任务列表（正是为上面 10-24 那条加的）。一个账号 10 秒内对同一部作品发了 125 个读取，等锁的请求占满 20 条连接，持锁的那个等不到第二条，读作品连续 500 约 4 分钟，全站接口跟着失败。现在调用 `view` 的入口都声明读已提交、任务列表在同一事务里读（回归 `DirectorReadPoolTest`），前端轮询等上一次返回再发（`useDirectorPoll`）。所以第一条「也在新事务里读」只适用于没持锁的地方；持锁时用读已提交，新增调用 `view` 的入口也要声明。读作品时的回投也不许在锁内提交任务（改写完成接着出视频、改写不合格重试）：锁内只记意图（`followUps`），锁放开后再按原请求编号提交，`submitTx` 在回投路径上会直接抛错。现在防住连接池的是**单实例内的作品级排队**（`DirectorWorkLocks`：开事务之前按作品 id 在进程内排队，等的请求不占连接）；以后上多实例，必须把锁内提交任务改成锁内只记意图、锁外提交。
 - 同一类（2026-10-25）：`@Transactional(readOnly = true)` 里调 `SELECT … FOR UPDATE`（导演台 `locked()`），MySQL 直接报 `Cannot execute statement in a READ ONLY transaction`，H2 照常执行。只读接口用不加锁的读（`DirectorService.owned()`）。导演台的视频报价、推荐预算、上传声音样本都因此在线上 500。
 
 **⑰ `HttpRequest.timeout` 只管到响应头，不管正文。**
@@ -857,7 +858,7 @@ v0.197：web-drama 所有弹窗在 375 宽下右边都被裁掉一截，四个�
       改 drama 界面文字前先查表；要新增叫法，先改表再改代码。
   - Review reject：新增/改动 UI 出现上述任一类 → reject。
 - **场景页（AI 图片 / AI 视频）的样式真值是 `studio-scenes.css` 的新版令牌**（白底、渐变主按钮、18px 卡片、13px 正文），不是 `DESIGN.md` 里的暖灰。2026-11-06 视频任务页以 `DESIGN.md` 为基准另写了一套，主按钮、圆角、字号都和图片页对不上；配置卡缩窄后规格和场景面板也被裁切。新增区块只写布局，不覆盖 `.scene-go` / `.scene-card`；2026-11-07 起不再用源码正则锁定 CSS 写法，改动时在 375px 与桌面真实页面检查裁切、规格面板和按钮可读性。同一次还有：深底链接写 `a.xxx`，单个 class 盖不过 `.ip-brand-surface a { color: inherit }`（失败页主按钮黑底黑字，验收截图里就看得到，复核仍判通过）。
-- **web-aiavatar 的 antd 颜色走全站主题**（2026-10-31）：`src/shell/antd-theme.tsx` 在根布局挂一次（主按钮 #202c42 白字、不能点的浅灰底灰字、两字按钮不加空格），新页面不用再包 ConfigProvider 配主色。别写压过 antd 按钮字色的样式（`ip-brand.css` 的 `color: inherit` 已排除 `.ant-btn`），也别用 `.容器 span {}` 这种会命中按钮里文字的后代选择器（资产选择框「使用」灰字蓝底就是这两条叠出来的）。
+- **web-aiavatar 的 antd 颜色走全站主题**（2026-10-31）：`src/shell/antd-theme.tsx` 在根布局挂一次（主按钮 #202c42 白字、危险色 #ad3449 与站内 `--ip-error` 一致、不能点的浅灰底灰字、两字按钮不加空格），新页面不用再包 ConfigProvider 配主色。别写压过 antd 按钮字色的样式（`ip-brand.css` 的 `color: inherit` 已排除 `.ant-btn`），也别用 `.容器 span {}` 这种会命中按钮里文字的后代选择器（资产选择框「使用」灰字蓝底就是这两条叠出来的）。
 - **shadcn 原语**：放在 `packages/ui/src/ui/`（共享包）；不要手改，要扩展用 wrapper
 - **`"use client"`**：新 client 组件保留
 - **新代码 API 形态**：`async function xxx(): Promise<T>`，聚合为 namespace 导出（`MusicApi`, `CelebrityZoneApi`, `MixcutApi`, …）

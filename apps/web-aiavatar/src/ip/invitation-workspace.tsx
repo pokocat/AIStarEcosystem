@@ -1,12 +1,14 @@
 "use client";
 
+// 邀请朋友（2026-11-10 起不再单独成页）：电脑版在总览上放一张卡片，邀请记录在抽屉里看（/me/invitations 打开总览并展开抽屉）；
+// 手机版 /me/invitations 是一整页，卡片和记录上下排。数据和写入权限都来自账号中心（ID）。
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowUpRight, Check, Copy, Link2, RefreshCw, UserRound } from "lucide-react";
+import { ArrowUpRight, Check, Copy, RefreshCw, UserRound } from "lucide-react";
 import { ApiError, idIssuer, InvitationApi, isIdMode } from "@ai-star-eco/api-client";
 import type { InvitationAccount, InvitationOverview } from "@ai-star-eco/types/invitation";
 import { useRequireAuth } from "@/components/hub/auth";
-import { AccountWorkspace } from "@/shell/account-workspace";
 import { formatDateTime } from "@/lib/datetime";
 
 function readableError(error: unknown): string {
@@ -29,14 +31,14 @@ function Avatar({ person }: { person: InvitationAccount }) {
   } catch { /* 无可用头像时使用统一账号图标。 */ }
   return <span className="invitation-account-avatar" aria-hidden="true">{url && !failed
     ? <img src={url} alt="" referrerPolicy="no-referrer" onError={() => setFailed(true)} />
-    : <UserRound size={21}/>}</span>;
+    : <UserRound size={18}/>}</span>;
 }
 
-/** Studio 展示账号关系与本人操作；所有数据和写入权限来自 ID。 */
-export function InvitationWorkspace() {
-  const enabled = isIdMode() && Boolean(idIssuer());
-  // 邀请属于全局账号能力，读取不以某个产品开通为条件。
-  const authState = useRequireAuth(enabled, false);
+export const invitationsEnabled = () => isIdMode() && Boolean(idIssuer());
+
+/** 邀请数据与操作。{@code ready} 为 false 时不请求（未登录或旧登录方式）。 */
+export function useInvitations(ready: boolean) {
+  const enabled = invitationsEnabled();
   const [data, setData] = useState<InvitationOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -59,9 +61,9 @@ export function InvitationWorkspace() {
   }, []);
 
   useEffect(() => {
-    if (enabled && authState === "ok") void load(0);
+    if (enabled && ready) void load(0);
     return () => { requestVersion.current++; };
-  }, [enabled, authState, load]);
+  }, [enabled, ready, load]);
 
   const generate = async () => {
     if (actionLock.current || !data?.canInvite) return;
@@ -88,37 +90,80 @@ export function InvitationWorkspace() {
     } finally { actionLock.current = false; setBusy(null); }
   };
 
-  return <div className="ip-brand-surface invitation-workspace"><AccountWorkspace activePage="invitations">
-    <Link className="invitation-mobile-back" href="/me"><ArrowLeft size={16}/>返回我的账号</Link>
-    <header className="account-overview-header invitation-heading"><div><h1>邀请朋友</h1><p>分享注册链接，查看邀请记录。</p></div>
-      {enabled && <button type="button" className="ip-brand-secondary" disabled={loading || Boolean(busy) || authState !== "ok"} onClick={() => void load(data?.page ?? 0)}><RefreshCw size={15} className={loading ? "ip-loading-icon" : undefined}/>刷新记录</button>}
-    </header>
-    {!enabled ? <section className="invitation-state"><h2>请使用统一账号登录</h2><p>邀请链接和记录随账号保存。当前登录方式尚不支持查看。</p><Link className="ip-brand-secondary" href="/me">返回我的账号</Link></section> : <>
-      {loadError && <div className="invitation-feedback invitation-feedback-error" role="alert"><div><strong>{data ? "邀请记录刷新失败" : "邀请记录加载失败"}</strong><p>{loadError}{data && " 当前显示的是上次加载的记录。"}</p></div><button type="button" className="ip-brand-secondary" disabled={loading} onClick={() => void load(data?.page ?? 0)}>重试</button></div>}
-      {!data && !loadError && <p className="invitation-state" role="status">正在加载邀请记录…</p>}
-      {data && <>
-        <section className="invitation-link-section" aria-labelledby="invitation-link-heading">
-          <div className="invitation-section-heading"><div><h2 id="invitation-link-heading">我的邀请链接</h2><p>朋友通过链接注册新账号后，会显示在这里。</p></div><Link2 size={22} aria-hidden="true"/></div>
-          {data.canInvite ? url ? <>
-            <label className="invitation-input-label" htmlFor="studio-invitation-link">邀请链接</label>
-            <div className="invitation-link-controls"><input ref={linkInput} id="studio-invitation-link" type="text" readOnly value={url} spellCheck={false}/><button type="button" className="ip-brand-button" disabled={Boolean(busy)} onClick={() => void copy()}>{notice.startsWith("邀请链接已复制") ? <Check size={16}/> : <Copy size={16}/>}复制链接</button><a className="ip-brand-secondary" href={url} target="_blank" rel="noopener noreferrer">预览邀请页<ArrowUpRight size={15}/></a></div>
-            <p className="invitation-field-hint">可选中链接手动复制。</p>
-          </> : <div className="invitation-generate"><p>生成你的专属链接，发给想邀请的朋友。</p><button type="button" className="ip-brand-button" disabled={Boolean(busy)} onClick={() => void generate()}>{busy === "generate" ? "正在生成…" : "生成邀请链接"}</button></div>
-          : <p className="invitation-field-hint">体验账号由多人共用。请使用自己的账号邀请朋友。</p>}
-          {notice && <p className="invitation-feedback invitation-feedback-success" role="status">{notice}</p>}
-          {actionError && <p className="invitation-feedback invitation-feedback-error" role="alert">{actionError}</p>}
-        </section>
-        <section className="invitation-parent-section" aria-labelledby="invitation-parent-heading"><h2 id="invitation-parent-heading">我的邀请人</h2>
-          {data.inviter ? <div className="invitation-account-row"><Avatar key={data.inviter.avatarUrl} person={data.inviter}/><div><strong>{data.inviter.displayName}</strong><p>{data.invitedAt && <>邀请于 <time dateTime={data.invitedAt}>{formatDateTime(data.invitedAt)}</time></>}</p></div></div> : <p className="invitation-field-hint">暂无邀请人。</p>}
-        </section>
-        <section className="invitation-records-section" aria-labelledby="invitation-records-heading" aria-busy={loading}>
-          <div className="invitation-section-heading"><div><h2 id="invitation-records-heading">我邀请的账号</h2><p>仅记录由你直接邀请注册的账号。</p></div><span className="invitation-record-count">共 {data.total} 条记录</span></div>
-          {data.records.length ? <ul className="invitation-records">{data.records.map(record => <li className="invitation-account-row" key={record.id}><Avatar key={record.account.avatarUrl} person={record.account}/><div><strong>{record.account.displayName}</strong>{record.account.status === "merged" && <p>账号已合并，保留注册时的邀请记录</p>}{record.account.status === "suspended" && <p>账号已停用</p>}</div><time dateTime={record.createdAt}>{formatDateTime(record.createdAt)}</time></li>)}</ul>
-          : <p className="invitation-records-empty">{data.total === 0 ? "暂无邀请记录。" : "此页暂无记录。"}</p>}
-          {(data.page > 0 || (data.page + 1) * data.pageSize < data.total) && <nav className="invitation-pagination" aria-label="邀请记录翻页"><button type="button" className="ip-brand-secondary" disabled={loading || Boolean(busy) || data.page === 0} onClick={() => void load(data.page - 1)}>上一页</button><span>第 {data.page + 1} 页</span><button type="button" className="ip-brand-secondary" disabled={loading || Boolean(busy) || (data.page + 1) * data.pageSize >= data.total} onClick={() => void load(data.page + 1)}>下一页</button></nav>}
-        </section>
-        <aside className="invitation-rules"><h2>关于邀请记录</h2><p>邀请不产生分佣或奖励。</p></aside>
-      </>}
+  return { enabled, data, loading, loadError, actionError, notice, busy, url, linkInput, load, generate, copy };
+}
+export type Invitations = ReturnType<typeof useInvitations>;
+
+function LoadError({ inv }: { inv: Invitations }) {
+  if (!inv.loadError) return null;
+  return <div className="invitation-feedback invitation-feedback-error" role="alert"><div><strong>{inv.data ? "邀请记录刷新失败" : "邀请记录加载失败"}</strong><p>{inv.loadError}{inv.data && " 当前显示的是上次加载的记录。"}</p></div>
+    <button type="button" className="account-button" disabled={inv.loading} onClick={() => void inv.load(inv.data?.page ?? 0)}>重试</button></div>;
+}
+
+/** 邀请链接：生成、复制、预览。总览卡片和手机整页共用。 */
+export function InvitationLink({ inv }: { inv: Invitations }) {
+  const { data, url, busy, notice, actionError } = inv;
+  if (!data) return null;
+  return <div className="invitation-link">
+    {data.canInvite ? url ? <>
+      <label className="invitation-input-label" htmlFor="studio-invitation-link">邀请链接</label>
+      <div className="invitation-link-controls">
+        <input ref={inv.linkInput} id="studio-invitation-link" type="text" readOnly value={url} spellCheck={false}/>
+        <button type="button" className="account-go" disabled={Boolean(busy)} onClick={() => void inv.copy()}>{notice.startsWith("邀请链接已复制") ? <Check size={15}/> : <Copy size={15}/>}复制链接</button>
+        <a className="account-button" href={url} target="_blank" rel="noopener noreferrer">预览邀请页<ArrowUpRight size={14}/></a>
+      </div>
+    </> : <div className="invitation-generate"><span className="account-muted">生成你的专属链接，发给想邀请的朋友。</span>
+      <button type="button" className="account-go" disabled={Boolean(busy)} onClick={() => void inv.generate()}>{busy === "generate" ? "正在生成…" : "生成邀请链接"}</button></div>
+    : <p className="account-muted">体验账号由多人共用。请使用自己的账号邀请朋友。</p>}
+    {notice && <p className="invitation-feedback invitation-feedback-success" role="status">{notice}</p>}
+    {actionError && <p className="invitation-feedback invitation-feedback-error" role="alert">{actionError}</p>}
+  </div>;
+}
+
+/** 我的邀请人 + 我邀请的账号（分页）。抽屉和手机整页共用。 */
+export function InvitationRecords({ inv }: { inv: Invitations }) {
+  const { data, loading, busy } = inv;
+  return <>
+    <LoadError inv={inv} />
+    {!data && !inv.loadError && <p className="account-state" role="status">正在加载邀请记录…</p>}
+    {data && <>
+      <div className="invitation-inviter">
+        <span className="account-muted">我的邀请人</span>
+        {data.inviter ? <div className="invitation-account-row"><Avatar key={data.inviter.avatarUrl} person={data.inviter}/><div><strong>{data.inviter.displayName}</strong>{data.invitedAt && <p>邀请于 <time dateTime={data.invitedAt}>{formatDateTime(data.invitedAt)}</time></p>}</div></div>
+          : <span>暂无邀请人</span>}
+      </div>
+      <section aria-labelledby="invitation-records-heading" aria-busy={loading}>
+        <div className="invitation-records-head"><h3 id="invitation-records-heading">我邀请的账号</h3><span className="account-muted">共 {data.total} 条记录</span>
+          <button type="button" className="account-button" disabled={loading || Boolean(busy)} onClick={() => void inv.load(data.page)}><RefreshCw size={14} className={loading ? "ip-loading-icon" : undefined}/>刷新记录</button></div>
+        <p className="account-muted" style={{ marginBottom: 6, fontSize: 12 }}>只记录由你直接邀请注册的账号。邀请不产生分佣或奖励。</p>
+        {data.records.length ? <ul className="invitation-records">{data.records.map(record => <li className="invitation-account-row" key={record.id}>
+          <Avatar key={record.account.avatarUrl} person={record.account}/>
+          <div><strong>{record.account.displayName}</strong>{record.account.status === "merged" && <p>账号已合并，保留注册时的邀请记录</p>}{record.account.status === "suspended" && <p>账号已停用</p>}</div>
+          <time dateTime={record.createdAt}>{formatDateTime(record.createdAt)}</time></li>)}</ul>
+          : <p className="account-state">{data.total === 0 ? "暂无邀请记录。" : "此页暂无记录。"}</p>}
+        {(data.page > 0 || (data.page + 1) * data.pageSize < data.total) && <nav className="account-pager" aria-label="邀请记录翻页">
+          <button type="button" className="account-button" disabled={loading || Boolean(busy) || data.page === 0} onClick={() => void inv.load(data.page - 1)}>上一页</button>
+          <span>第 {data.page + 1} 页</span>
+          <button type="button" className="account-button" disabled={loading || Boolean(busy) || (data.page + 1) * data.pageSize >= data.total} onClick={() => void inv.load(data.page + 1)}>下一页</button></nav>}
+      </section>
     </>}
-  </AccountWorkspace></div>;
+  </>;
+}
+
+/** 旧登录方式：邀请依赖账号中心，明确说明用不了，不请求、不造数据。 */
+export function InvitationUnavailable() {
+  return <section className="account-state"><h2 style={{ fontSize: 15, fontWeight: 500 }}>请使用统一账号登录</h2><span>邀请链接和记录随账号保存，当前登录方式暂不支持。</span><Link className="account-button" href="/me">返回我的账号</Link></section>;
+}
+
+/** 手机版 /me/invitations：链接和记录同一页。 */
+export function InvitationWorkspace() {
+  const enabled = invitationsEnabled();
+  // 邀请属于全局账号能力，读取不以某个产品开通为条件。
+  const authState = useRequireAuth(enabled, false);
+  const inv = useInvitations(authState === "ok");
+  if (!enabled) return <InvitationUnavailable />;
+  return <div className="invitation-workspace">
+    <section className="account-card invitation-card"><h2 className="invitation-card-title">我的邀请链接</h2><p className="account-muted">朋友通过链接注册后，会出现在下面的邀请记录里。</p>{inv.data ? <InvitationLink inv={inv} /> : null}</section>
+    <InvitationRecords inv={inv} />
+  </div>;
 }

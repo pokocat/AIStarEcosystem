@@ -29,5 +29,7 @@ public record DapPublicAvatarUpsertRequest(
         String rightKey,
         String leftKey,
         Boolean fav,
-        Integer sortOrder) {
+        Integer sortOrder,
+        /** free 免费 / license 需授权；不传则新建为需授权、编辑保持原值。 */
+        String access) {
 }

@@ -54,7 +54,7 @@ def import_plan_guard(plan,mode,now=None,freeze_start=False):
  require(plan.get('format')=='aistar-import-permit-v1' and plan.get('rds_host')==RDS,'导入计划身份不符')
  require(plan.get('database')==('aistar_prod' if mode=='production' else 'aistar_cutover_drill'),'导入目标越界')
  require(plan.get('role')==('aistar_migrator' if mode=='production' else 'aistar_rehearsal'),'导入角色越界')
- require(plan.get('table_count')==195 and plan.get('flyway_version')=='78','结构契约未经核对')
+ require(plan.get('table_count')==195 and plan.get('flyway_version')=='79','结构契约未经核对')
  if mode=='drill':require(plan.get('purpose')=='aistar-cutover-drill','必须明确隔离演练用途');return
  require(plan.get('production_authorized') is True,'未单独确认正式维护窗口')
  start,end=utc(plan['window_start_utc']),utc(plan['window_end_utc'])

@@ -251,9 +251,21 @@ public class IpProjectService {
         return result.map(this::toRunDto);
     }
 
-    @Transactional
+    /** 删除前核对在途任务（{@link com.aistareco.aep.ipstudio.history.StudioTrashService#canvasRemoveBlockReason}）；单测里直接构造的服务没有它，不拦。 */
+    private com.aistareco.aep.ipstudio.history.StudioTrashService trash;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setTrash(@org.springframework.context.annotation.Lazy com.aistareco.aep.ipstudio.history.StudioTrashService trash) { this.trash = trash; }
+
+    /**
+     * 删除画布（进回收站，可恢复）。行锁与提交任务、恢复、彻底删除排队；锁内读已提交的任务状态，
+     * 还有任务在生成就 409 {@code IP_PROJECT_BUSY}，不让画布消失了还在扣积分（2026-11-10）。
+     */
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public void remove(String userId, String id) {
-        IpProject p = required(userId, id);
+        IpProject p = requiredForUpdate(userId, id);
+        String busy = trash == null ? null : trash.canvasRemoveBlockReason(id, userId);
+        if (busy != null) throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT, "IP_PROJECT_BUSY", busy);
         p.setDeletedAt(Instant.now());
         p.setUpdatedAt(Instant.now());
         projectRepo.save(p);
@@ -419,7 +431,9 @@ public class IpProjectService {
         // 刷新之后 content 是空的、视频就此消失（v0.180 线上实测，日志里每次加载都刷两条
         // 「文档里出现非本人资产 key」）。这里改成按 jobId 回查任务的真实归属 ——
         // 不是放宽，是换成一个真的能判归属的办法：owner 必须是本人、分区必须是 ipstudio。
-        return ownsVideoKey(userId, k) || studioAssets != null && studioAssets.owns(userId,k);
+        // 官方形象：免费的那几张图所有登录用户都能拿去生成（2026-11-10）。只认登记在 dap_public_avatar 里、
+        // dap_plaza 分类下的图；需授权的不放行。判断在 DapPublicAvatarService#usableImageKey 一处。
+        return ownsVideoKey(userId, k) || studioAssets != null && (studioAssets.officialUsable(userId, k) || studioAssets.owns(userId,k));
     }
 
     /**

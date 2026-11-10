@@ -41,10 +41,18 @@ class DirectorDeletePoolTest {
         return works.save(w).getId();
     }
 
+    /** 几部作品，各自落在不同的进程内作品锁上（同一把锁的两部作品会互相排队，用例就等不到「三条连接同时占住」）。 */
+    private List<String> worksOnDistinctLocks(String owner, int n) {
+        List<String> ids = new ArrayList<>();
+        java.util.Set<Integer> stripes = new java.util.HashSet<>();
+        while (ids.size() < n) { String id = work(owner); if (stripes.add(DirectorWorkLocks.stripeOf(id))) ids.add(id); }
+        return ids;
+    }
+
     /** 池子被占满：每个线程已持一条连接和自己作品的行锁，再同时进入删除。删除检查必须复用这条连接。 */
     @Test void deletesInsideHeldConnectionsDoNotNeedASecondOne() throws Exception {
         String u = "pool-" + UUID.randomUUID().toString().substring(0, 8);
-        List<String> ids = List.of(work(u), work(u), work(u));
+        List<String> ids = worksOnDistinctLocks(u, 3);
         CountDownLatch held = new CountDownLatch(ids.size());
         CountDownLatch go = new CountDownLatch(1);
         ExecutorService pool = Executors.newFixedThreadPool(ids.size());
@@ -52,13 +60,13 @@ class DirectorDeletePoolTest {
             List<Future<Throwable>> futures = new ArrayList<>();
             for (String id : ids) futures.add(pool.submit(() -> {
                 try {
-                    new TransactionTemplate(tx).executeWithoutResult(s -> {
+                    director.workLocks().runWithWork(id, () -> new TransactionTemplate(tx).executeWithoutResult(s -> {
                         works.lockById(id).orElseThrow();
                         held.countDown();
                         try { if (!go.await(10, TimeUnit.SECONDS)) throw new IllegalStateException("barrier"); }
                         catch (InterruptedException e) { throw new RuntimeException(e); }
-                        director.delete(u, id);
-                    });
+                        director.deleteInTx(u, id);
+                    }));
                     return null;
                 } catch (Throwable t) { return t; }
             }));
@@ -74,7 +82,7 @@ class DirectorDeletePoolTest {
     /** 恢复同理：池子被占满、各自持着作品行锁时恢复，不需要第二条连接。 */
     @Test void restoresInsideHeldConnectionsDoNotNeedASecondOne() throws Exception {
         String u = "pool-" + UUID.randomUUID().toString().substring(0, 8);
-        List<String> ids = List.of(work(u), work(u), work(u));
+        List<String> ids = worksOnDistinctLocks(u, 3);
         for (String id : ids) director.delete(u, id);
         CountDownLatch held = new CountDownLatch(ids.size());
         CountDownLatch go = new CountDownLatch(1);
@@ -83,13 +91,13 @@ class DirectorDeletePoolTest {
             List<Future<Throwable>> futures = new ArrayList<>();
             for (String id : ids) futures.add(pool.submit(() -> {
                 try {
-                    new TransactionTemplate(tx).executeWithoutResult(s -> {
+                    director.workLocks().runWithWork(id, () -> new TransactionTemplate(tx).executeWithoutResult(s -> {
                         works.lockById(id).orElseThrow();
                         held.countDown();
                         try { if (!go.await(10, TimeUnit.SECONDS)) throw new IllegalStateException("barrier"); }
                         catch (InterruptedException e) { throw new RuntimeException(e); }
-                        director.restore(u, id);
-                    });
+                        director.restoreInTx(u, id);
+                    }));
                     return null;
                 } catch (Throwable t) { return t; }
             }));

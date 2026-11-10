@@ -72,6 +72,31 @@ class StudioTrashAndGuardTest {
         verify(projects).delete(any());
     }
 
+    /** 普通删除（进回收站）：还在生成、在花积分就不删；停下等用户处理、已暂停的制作计划可以删，恢复后照旧能继续。 */
+    @Test
+    void ordinaryDeleteRefusesOnlyWhileSomethingIsStillGenerating() {
+        when(runs.taskStates("IPP-1")).thenReturn(List.<Object[]>of(new Object[]{"running", "queued", "n1", "{}"}));
+        assertThat(trash.canvasRemoveBlockReason("IPP-1", "u1")).isNotNull();
+
+        when(runs.taskStates("IPP-1")).thenReturn(List.<Object[]>of(new Object[]{"done", "video.bound", "n1", "{\"_exec\":{\"nativeVideoJobIds\":[\"mv-1\"]}}"}));
+        when(videoJobs.states(anyCollection())).thenReturn(List.<Object[]>of(new Object[]{"mv-1", "processing", null, "u1"}));
+        assertThat(trash.canvasRemoveBlockReason("IPP-1", "u1")).isNotNull();
+
+        when(videoJobs.states(anyCollection())).thenReturn(List.<Object[]>of(new Object[]{"mv-1", "succeeded", null, "u1"}));
+        when(executions.findByProjectIdAndStatusIn(eq("IPP-1"), any())).thenReturn(List.of(IpPlanExecution.builder().status(IpPlanExecution.RUNNING).build()));
+        assertThat(trash.canvasRemoveBlockReason("IPP-1", "u1")).isNotNull();
+        // 停在「需处理」的复刻任务（线上 PEX-013ac…）：用户要删的正是这种
+        when(executions.findByProjectIdAndStatusIn(eq("IPP-1"), any())).thenReturn(List.of(IpPlanExecution.builder().status(IpPlanExecution.NEEDS_USER).build()));
+        assertThat(trash.canvasRemoveBlockReason("IPP-1", "u1")).isNull();
+        when(executions.findByProjectIdAndStatusIn(eq("IPP-1"), any())).thenReturn(List.of(IpPlanExecution.builder().status(IpPlanExecution.PAUSED).inFlight(1).build()));
+        assertThat(trash.canvasRemoveBlockReason("IPP-1", "u1")).isNotNull();
+        when(executions.findByProjectIdAndStatusIn(eq("IPP-1"), any())).thenReturn(List.of(IpPlanExecution.builder().status(IpPlanExecution.PAUSED).build()));
+        assertThat(trash.canvasRemoveBlockReason("IPP-1", "u1")).isNull();
+        // 彻底删除仍按原口径：暂停的计划不能彻底删
+        when(projects.lockById("IPP-1")).thenReturn(Optional.of(project(Instant.now())));
+        assertThat(code(() -> trash.purgeCanvas("u1", "IPP-1"))).isEqualTo("IP_PROJECT_BUSY");
+    }
+
     @Test
     void expiredPurgeRechecksTheDeletionTimeUnderTheLock() {
         IpProject restoredThenDeletedAgain = project(Instant.now());

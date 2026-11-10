@@ -1,16 +1,14 @@
 "use client";
 // ============================================================
-// 我的（五 Tab 定案）：账号 + 授权中心 + 任务中心 + 算力/存储/设置。
-// 最近动态归首页，这里不再重复一份。
-// 算力 / 存储 / 设置等管理页仍在 /studio（P3 逐屏迁出）。
+// 我的：电脑版是账号区总览（AccountOverview），手机版是 MeMobile。
+// 2026-11-10 起账号区各页都在 /me 下面（/me/tasks、/me/credits、/me/storage、/me/authorization、/me/enterprise、/me/settings、/me/invitations）。
 // ============================================================
 import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Building2, ChevronRight, Clapperboard, Compass, FolderOpen, Gem, HardDrive, IdCard, Layers, Lightbulb, ListChecks, Monitor, ScanFace, Settings, ShieldCheck, Trash2, UserPlus, type LucideIcon } from "lucide-react";
+import { Building2, ChevronRight, Clapperboard, Compass, FolderOpen, Gem, HardDrive, IdCard, Layers, Lightbulb, ListChecks, Monitor, Settings, ShieldCheck, UserPlus, type LucideIcon } from "lucide-react";
 import { auth, ID_MODE, USE_MOCK, useIdentity } from "@/proto/api";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
-import { studioHref } from "@/components/hub/data";
 import { HubScreen, HubTabBar } from "@/components/hub/ui";
 import { setLayout, useLayoutMode } from "@/shell/layout-mode";
 import { AccountOverview } from "@/account/account-overview";
@@ -60,7 +58,7 @@ function MeMobile({ name, phone, demo, identity, onLogout }: { name: string; pho
     <section className="studio-me-profile" aria-label="账号">
       <EditableAccountAvatar identity={identity} size={48} />
       <div><strong>{name}</strong>{phone && <span>{phone}</span>}{demo && <small>演示数据</small>}</div>
-      <Link className="studio-me-credit" href={studioHref("#/membership")} aria-label={error ? "积分加载失败，查看积分" : `可用积分 ${credit}，查看积分`} title="可用积分，点击查看积分">
+      <Link className="studio-me-credit" href="/me/credits" aria-label={error ? "积分加载失败，查看积分" : `可用积分 ${credit}，查看积分`} title="可用积分，点击查看积分">
         <strong>{credit}</strong><span>可用积分</span>
       </Link>
     </section>
@@ -68,23 +66,20 @@ function MeMobile({ name, phone, demo, identity, onLogout }: { name: string; pho
       <MeRow href="/templates" icon={Lightbulb} title="灵感" sub="官方案例和模板，可以直接做同款" />
       <MeRow href="/projects" icon={FolderOpen} title="项目" sub="画布与场景草稿，可继续编辑" />
       <MeRow href="/assets" icon={Layers} title="资产" sub="人物、声音与创作素材" />
+      <MeRow href="/assets/cards" icon={IdCard} title="我的名片" sub="按人物发布的数字名片" />
       <MeRow href="/director" icon={Clapperboard} title="短剧导演台" sub="写剧本、拆分镜、生成视频" />
-      <MeRow href="/discover" icon={Compass} title="发现" sub="官方可授权的形象" />
+      <MeRow href="/assets?tab=official" icon={Compass} title="官方形象" sub="平台提供的人物形象，免费的可直接使用" />
     </nav>
-    <nav className="studio-me-group" aria-label="名片与授权">
-      <MeRow href="/cards" icon={IdCard} title="我的名片" sub="对外发布面 · 扫码即看" />
-      <MeRow href="/licenses" icon={ShieldCheck} title="授权中心" sub="人物和 IP 的授权证书" />
-      <MeRow href={studioHref("#/tasks")} icon={ListChecks} title="任务历史" sub="生成记录和消耗的积分" />
-      <MeRow href={studioHref("#/realmaterials")} icon={ScanFace} title="真人授权素材库" sub="素材录制 · 审核状态" />
+    {/* 2026-11-10：和电脑版账号区同一套分组（总览之外的 6 个标签），见设计稿「账号区（三）」。 */}
+    <nav className="studio-me-group" aria-label="账号">
+      <MeRow href="/me/tasks" icon={ListChecks} title="任务历史" sub="生成记录和消耗的积分，文字任务可查看原文" />
+      <MeRow href="/me/credits" icon={Gem} title="积分" sub="充值、模型赠款和充值记录" />
+      <MeRow href="/me/storage" icon={HardDrive} title="存储" sub="用量和回收站" />
+      <MeRow href="/me/authorization" icon={ShieldCheck} title="授权" sub="真人授权、IP 授权登记和明星形象授权" />
+      {process.env.NEXT_PUBLIC_ENTERPRISE_ENABLED === "1" && <MeRow href="/me/enterprise" icon={Building2} title="企业" sub="企业余额、积分分配和充值记录" />}
+      <MeRow href="/me/settings" icon={Settings} title="设置" sub="付款账户、账号与安全" />
     </nav>
-    <nav className="studio-me-group" aria-label="账号与设置">
-      {ID_MODE && <MeRow href="/invitations" icon={UserPlus} title="邀请朋友" sub="管理邀请链接 · 查看邀请记录" />}
-      <MeRow href={studioHref("#/membership")} icon={Gem} title="会员与积分" />
-      {process.env.NEXT_PUBLIC_ENTERPRISE_ENABLED === "1" && <MeRow href="/enterprise" icon={Building2} title="企业积分" sub="企业余额 · 积分分配 · 充值记录" />}
-      <MeRow href={studioHref("#/storage")} icon={HardDrive} title="存储用量" />
-      <MeRow href={studioHref("#/trash")} icon={Trash2} title="回收站" />
-      <MeRow href={studioHref("#/settings")} icon={Settings} title="设置" />
-    </nav>
+    {ID_MODE && <nav className="studio-me-group" aria-label="邀请"><MeRow href="/me/invitations" icon={UserPlus} title="邀请朋友" sub="复制邀请链接，查看邀请记录" /></nav>}
     {/* 宽度只是默认判据：竖持平板、手机浏览器的「请求桌面版网站」都可能想要电脑版（shell/layout-mode.ts）。
         电脑版的「我的」是 AccountOverview，到这里一定是手机版；挂载前不知道形态，先不画这一组。 */}
     {layout === "mobile" && <div className="studio-me-group"><MeRow icon={Monitor} title="切换到电脑版" sub="画布和宽表格更好用" onClick={() => setLayout("desktop")} /></div>}

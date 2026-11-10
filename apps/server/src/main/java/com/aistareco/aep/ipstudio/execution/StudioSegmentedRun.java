@@ -56,7 +56,7 @@ public class StudioSegmentedRun {
                     log.info("[segmented] retry step execution={} step={} code={}", e.getId(), id, step.path("errorCode").asText(""));
                     again(step);
                     step.put("notBefore", java.time.Instant.now().plus(retryDelay.multipliedBy(step.path("attempt").asInt()-1)).toString());
-                } else if (!state.has("videoTask") && ("review".equals(id) || "check".equals(operation))) {
+                } else if ("check".equals(operation) || !state.has("videoTask") && "review".equals(id)) {
                     // 审不了不该挡住成片：审稿按原稿走，检查按没查过走，都记下来。
                     log.warn("[segmented] review skipped execution={} step={} reason={}", e.getId(), id, step.path("reason").asText(""));
                     softSkip(step, "没有审成：" + step.path("reason").asText("原因未知"));
@@ -64,7 +64,9 @@ public class StudioSegmentedRun {
                 continue;
             }
             if ("check".equals(operation) && "done".equals(status) && !"pass".equals(step.path("checkStatus").asText()) && !step.path("acknowledged").asBoolean(false)) {
-                if(state.has("videoTask"))step.put("acknowledged",true); // advice never discards a valid delivered media file
+                // 视频页的爆款复刻：一段没通过检查就重出这一段一次（2026-11-10 用户要求：视频页少让人参与，质量靠自己检查补）；
+                // 重出后还不合格、或判断不了，用最后一版接着做。其它视频页任务的检查只作参考，不丢已经交付的视频。
+                if(state.has("videoTask")&&!"recreation".equals(state.path("videoTask").path("kind").asText()))step.put("acknowledged",true);
                 else resolveCheck(e, state, step);
             }
         }

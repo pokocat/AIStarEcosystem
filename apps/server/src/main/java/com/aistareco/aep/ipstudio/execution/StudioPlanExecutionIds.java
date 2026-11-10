@@ -26,6 +26,12 @@ public final class StudioPlanExecutionIds {
     public static String segmentNodeId(String executionId,String stage,String stepId,int segmentNo) {
         return nodeId(executionId,stage,stepId)+"-s"+segmentNo;
     }
+    /**
+     * 拉片截下的某个镜头的开场画面（原片截图，不上画布）：只给本次制作的出图步骤当参考，由 {@code StudioPlanOutputs.resolveNodeKey} 取文件。
+     */
+    public static String frameNodeId(String executionId,String stage,String stepId,int shotNo) {
+        return nodeId(executionId,stage,stepId)+"-f"+shotNo;
+    }
     /** Native request identity of one attempt; network retries reuse it, only a user-confirmed retry bumps the attempt. */
     public static String requestId(String executionId,String stage,String stepId,int attempt) {
         return "pe-"+sha1(executionId+"|"+stage+"|"+stepId+"|"+attempt).substring(0,40);

@@ -1235,3 +1235,5 @@ body:has(.studio-work-editor) .studio-host-publish { background:transparent !imp
 .studio-work-saved li span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .studio-work-saved li em { font-style:normal; font-size:13px; color:var(--ink-3,#7a8590); white-space:nowrap; }
 .studio-work-result-time { display:block; margin-bottom:8px; font-size:13px; color:var(--ink-3,#7a8590); }
+/* 官方形象（2026-11-10）：需授权的标记与不能添加的原因 */
+.studio-character-cover>span.is-locked { color:#8a5a10; background:#fcf3e2; border-color:#f1dfb9; }

@@ -5,7 +5,7 @@ import { observePortraitReviews, requestPortraitReview } from '../portrait-revie
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import Link from 'next/link';
-import { AlertCircle, ArrowUpRight, Check, ChevronRight, Clock3, Download, Film, Image as ImageIcon, Layers, ListVideo, Loader2, Play, Plus, RefreshCw, Square, X } from 'lucide-react';
+import { AlertCircle, ArrowUpRight, Check, ChevronRight, Clock3, Download, Film, Image as ImageIcon, Layers, ListVideo, Loader2, Play, Plus, RefreshCw, Square, Trash2, X } from 'lucide-react';
 import { nanoid } from 'nanoid';
 import type { IpRun, IpProjectDoc } from '@ai-star-eco/types';
 import type { StudioPlanExecutionStep } from '@ai-star-eco/types/ip-studio-workflow';
@@ -14,6 +14,7 @@ import { videoTask, videoTasks, videoTaskLabel, videoTaskStatus, videoTaskCanvas
 import { cancelRun, readRun, readVideoJob, signKeys } from '@/canvas-bridge/api';
 import { dialogFocus } from '@/ip/dialog-focus';
 import { normalizeStudioError, StudioErrorNotice, useStudioFailure } from '@/ip/studio-errors';
+import { useCanvasDelete } from '@/ip/studio-canvas-delete';
 import { SignedImage } from '@/canvas-bridge/signed-image';
 import { SignedVideo } from '@/canvas-bridge/signed-video';
 import { SignedAudio } from '@/canvas-bridge/signed-audio';
@@ -58,13 +59,15 @@ export function VideoHistoryToggle({ onOpen }: { onOpen: () => void }) {
 }
 
 /** Data loading never submits work. A stale response cannot replace a more recently selected task. */
-export function SceneVideoWorkspace({ enabled, taskId, draftId, sceneId, restoreLastTask, selected, onSelect, onDraft, drafts, draftsError, onRetryDrafts, railOpen, onRail, onNew, children, persist, listRevision = 0 }: {
+export function SceneVideoWorkspace({ enabled, taskId, draftId, sceneId, restoreLastTask, selected, onSelect, onDraft, drafts, draftsError, onRetryDrafts, railOpen, onRail, onNew, onDeleted, children, persist, listRevision = 0 }: {
   enabled: boolean; taskId?: string; draftId?: string; sceneId?: string; restoreLastTask?: boolean; selected?: StudioVideoTask;
   /** 变了就重读任务列表（视频裂变之后，新任务要马上排进「本批视频」）。 */
   listRevision?: number;
   onSelect: (task: StudioVideoTask) => void;
   onDraft: (id: string) => void; drafts: { id: string; name: string; updatedAt: string }[]; draftsError?: string; onRetryDrafts?: () => void;
   railOpen: boolean; onRail: (open: boolean) => void; onNew?: () => void;
+  /** 删掉了这些草稿（进回收站）：页面上开着的是其中之一就回到新建。 */
+  onDeleted?: (projectIds: string[]) => void;
   children: ReactNode;
   persist: (mutate: (doc: IpProjectDoc) => IpProjectDoc, projectId?: string) => Promise<unknown>;
 }) {
@@ -122,6 +125,15 @@ export function SceneVideoWorkspace({ enabled, taskId, draftId, sceneId, restore
     return () => { alive = false; if (timer) clearTimeout(timer); };
   }, [enabled, taskId, reload]);
   const choose = (task: StudioVideoTask) => { onRail(false); onSelect(task); };
+  // 删除（2026-11-10 用户：不想要的删不掉）：删的是这条任务所在的草稿，同一份草稿里的几条视频一起进回收站。
+  const removal = useCanvasDelete();
+  const removeDraft = (projectId: string, name: string) => {
+    const inDraft = items.filter(t => t.projectId === projectId);
+    removal.ask({ targets: [{ id: projectId, name }], noun: '草稿',
+      detail: inDraft.length > 1 ? `这份草稿里的 ${inDraft.length} 条视频会一起删除。` : undefined,
+      blocked: inDraft.some(t => videoTaskStatus(t) === 'running') ? '这份草稿里还有视频在生成，生成结束或停止后才能删除。' : undefined,
+      onDeleted: ids => { setItems(old => old.filter(t => !ids.includes(t.projectId))); onDeleted?.(ids); setReload(n => n + 1); } });
+  };
   const shown = selected?.id === taskId ? selected : undefined;
   const openDrafts = drafts.filter(d => !items.some(t => t.projectId === d.id));
   const today = new Date().toDateString();
@@ -159,19 +171,21 @@ export function SceneVideoWorkspace({ enabled, taskId, draftId, sceneId, restore
         {groups.map(group => <div key={group.label} role="group" aria-label={group.label}><h4>{group.label}</h4>{group.takes.map(({ latest, tasks }) => {
           const current = tasks.find(t => t.id === taskId), busy = tasks.find(t => videoTaskStatus(t) === 'running') ?? latest;
           const batch = tasks.length > 1, tag = takeTag(latest);
-          return <button type="button" className={`video-history-item${batch ? ' is-batch' : ''}`} key={latest.id} title={latest.title} aria-current={current ? 'true' : undefined} onClick={() => choose(current ?? latest)}>
+          return <div className="video-history-row" key={latest.id}><button type="button" className={`video-history-item${batch ? ' is-batch' : ''}`} title={latest.title} aria-current={current ? 'true' : undefined} onClick={() => choose(current ?? latest)}>
             <span className="video-history-thumb-wrap"><TaskThumb task={latest}/>{batch && <i className="video-history-count" aria-label={`本批 ${tasks.length} 条`}>{tasks.length}</i>}</span>
             <span><strong>{latest.title}</strong><small data-state={videoTaskStatus(busy)}>{videoTaskLabel(busy)}{batch && ` · 共 ${tasks.length} 条`}</small>
               <span className="video-history-meta">{grouping === 'time' && tag.label && <i className="video-take-tag" title={tag.detail}>{tag.label}</i>}
                 <time dateTime={latest.createdAt}>{formatDateTime(latest.createdAt)}</time></span></span>
-          </button>;
+          </button><button type="button" className="video-history-delete" aria-label="删除" title={`删除「${latest.title}」所在的草稿`} onClick={() => removeDraft(latest.projectId, latest.title)}><Trash2 size={14} strokeWidth={1.6}/></button></div>;
         })}</div>)}
         {(!!openDrafts.length || !!draftsError) && <h3>草稿</h3>}
         {draftsError && <p role="status">草稿加载失败{onRetryDrafts && <button type="button" className="video-history-retry" onClick={onRetryDrafts}>重试</button>}</p>}
-        {openDrafts.map(d => <button type="button" className="video-history-draft" key={d.id} title={d.name} onClick={() => { onRail(false); onDraft(d.id); }}><Film size={15} strokeWidth={1.5}/><span>{d.name}</span><ChevronRight size={13}/></button>)}
+        {openDrafts.map(d => <div className="video-history-row" key={d.id}><button type="button" className="video-history-draft" title={d.name} onClick={() => { onRail(false); onDraft(d.id); }}><Film size={15} strokeWidth={1.5}/><span>{d.name}</span><ChevronRight size={13}/></button>
+          <button type="button" className="video-history-delete" aria-label="删除" title={`删除草稿「${d.name}」`} onClick={() => removeDraft(d.id, d.name)}><Trash2 size={14} strokeWidth={1.6}/></button></div>)}
       </div>
       {more && <button type="button" className="video-history-more" onClick={() => setPage(n => n + 1)}>加载更多<ChevronRight size={13}/></button>}
     </aside>
+    {removal.dialog}
   </>;
 }
 
@@ -378,12 +392,15 @@ function VideoTakes({ takes, current, onOpen }: { takes: StudioVideoTask[]; curr
 
 /**
  * 左侧「本次设置」：按提交时的快照显示，顶上是当时选的场景（和编辑时同一个位置，2026-11-09 用户要求对齐参考站）。
- * 底部只有一个「视频裂变」（原样、换变量、AI 改写、自己改都在里面），都只新建任务，已有视频都保留。
+ * 底部两个按钮（2026-11-10 用户要求，取代 11-09 合成一个入口的做法）：「再次生成」把这条的脚本、素材和设置原样放回编辑页，
+ * 「裂变生成」打开视频裂变（原样、换变量、AI 改写）。都只新建任务，已有视频都保留。
  */
-export function VideoTaskSettings({ task, head, modelName, onMore, busy, pending = [], onConfirm }: {
+export function VideoTaskSettings({ task, head, modelName, onMore, onEdit, busy, pending = [], onConfirm }: {
   task: StudioVideoTask; head: ReactNode; modelName?: string;
-  /** 打开「视频裂变」（原样、换变量、AI 改写、自己改）。没有提交快照的旧任务不给。 */
-  onMore?: () => void; busy?: boolean;
+  /** 打开「视频裂变」（原样、换变量、AI 改写）。没有提交记录的旧任务不给。 */
+  onMore?: () => void;
+  /** 「再次生成」：把这条的设置放回编辑页。没有保存设置的旧任务不给。 */
+  onEdit?: () => void; busy?: boolean;
   /** 这份草稿里提交结果还没确认的请求：同一个请求编号再交一次会拿回原来那次。 */
   pending?: StudioVideoTaskCreate[]; onConfirm?: (request: StudioVideoTaskCreate) => void;
 }) {
@@ -395,8 +412,9 @@ export function VideoTaskSettings({ task, head, modelName, onMore, busy, pending
   const rows: [string, string][] = [...(modelName ? [['模型', modelName] as [string, string]] : []), ...(ratio ? [['画面', ratio] as [string, string]] : []),
     ...(duration ? [['时长', `${duration} 秒`] as [string, string]] : []), ...(tier ? [['清晰度', tier.toUpperCase()] as [string, string]] : [])];
   const tag = takeTag(task);
-  // 视频裂变要么按提交记录再交，要么放回设置自己改：两样都没有的旧任务不给。
-  const canMore = !!onMore && (!!task.request?.configuration || !!task.input);
+  // 裂变按提交记录再交，再次生成放回保存的设置：缺哪样就不给哪个按钮。
+  const canMore = !!onMore && !!task.request?.configuration;
+  const canEdit = !!onEdit && !!task.input;
   return <section className="scene-card video-task-settings" aria-label="本次设置">
     {head}
     <div className="video-task-settings-body">
@@ -407,11 +425,14 @@ export function VideoTaskSettings({ task, head, modelName, onMore, busy, pending
       {state && <div className="video-input-brief"><h3>{state.edit ? '脚本' : '补充要求'}</h3><p>{state.edit?.prompt ?? state.text ?? '使用所选素材生成'}</p></div>}
       {!!rows.length && <dl>{rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd title={value}>{value}</dd></div>)}</dl>}
     </div>
-    {(canMore || pending.length > 0) && <footer>
+    {(canMore || canEdit || pending.length > 0) && <footer>
       {pending.map(request => <p key={request.clientRequestId} className="video-take-pending" role="status">提交结果待确认。
         <button type="button" disabled={busy} onClick={() => onConfirm?.(request)}>确认原任务</button></p>)}
-      {canMore && <button type="button" className="scene-go is-compact video-more-open" disabled={busy} onClick={onMore}><FissionIcon size={17}/><span>视频裂变</span></button>}
-      {canMore && <p className="video-task-settings-note">新视频和这条在同一批，已生成的视频保留。</p>}
+      {(canMore || canEdit) && <div className="video-task-settings-actions">
+        {canEdit && <button type="button" className="video-task-regenerate" disabled={busy} onClick={onEdit}><RefreshCw size={15} strokeWidth={1.6}/>再次生成</button>}
+        {canMore && <button type="button" className="scene-go is-compact video-more-open" disabled={busy} onClick={onMore}><FissionIcon size={17}/><span>裂变生成</span></button>}
+      </div>}
+      {(canMore || canEdit) && <p className="video-task-settings-note">新视频和这条在同一批，已生成的视频保留。</p>}
     </footer>}
   </section>;
 }

@@ -40,12 +40,12 @@ public class AistarFinancialAudit {
                 if(!new HashSet<>(cols).equals(AistarRehearsalRestore.pg.get(table).keySet()))throw new IllegalStateException("Column coverage mismatch");
                 AistarRehearsalRestore.columns.put(table,cols);
                 var actual=AistarRehearsalRestore.fingerprint(c,table).receipt();var expected=original.get("tables").get(table);
-                for(String key:List.of("rows","sum_sha256","xor_sha256"))if(!String.valueOf(actual.get(key)).equals(expected.get(key).asText()))throw new IllegalStateException("Fingerprint mismatch after V78: "+table);
+                for(String key:List.of("rows","sum_sha256","xor_sha256"))if(!String.valueOf(actual.get(key)).equals(expected.get(key).asText()))throw new IllegalStateException("Fingerprint mismatch after V79: "+table);
             }
             try(var st=c.createStatement();var rs=st.executeQuery("select pg_database_size(current_database())")){rs.next();proof.put("database_bytes",rs.getLong(1));}
             c.rollback();
         }
-        proof.put("verified_tables",195);proof.put("all_fingerprints_match_after_v78",true);proof.put("read_only",true);proof.put("production_changed",false);proof.put("snapshot_sha256",original.get("snapshot_sha256").asText());
+        proof.put("verified_tables",195);proof.put("all_fingerprints_match_after_v79",true);proof.put("read_only",true);proof.put("production_changed",false);proof.put("snapshot_sha256",original.get("snapshot_sha256").asText());
         Files.writeString(ROOT.resolve("financial-verification.json"),json.writerWithDefaultPrettyPrinter().writeValueAsString(proof));System.out.println("Read-only 195-table fingerprints and financial invariants verified");
     }
 }

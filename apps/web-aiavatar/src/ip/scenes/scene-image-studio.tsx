@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { SignedImage } from "@/canvas-bridge/signed-image";
 import { ChevronDown, Clapperboard, Cpu, Download, FolderOpen, ImageUp, ImagePlus, Loader2, Mountain, Package, PencilLine, Plus, RotateCcw, Shirt, SlidersHorizontal, Square, Undo2, UserRound, X } from "lucide-react";
-import type { IpImageAsset, IpProject, IpRun, StudioSceneImageState, StudioSceneOptionGroup } from "@ai-star-eco/types";
+import type { IpImageAsset, IpProject, IpProjectSummary, IpRun, StudioSceneImageState, StudioSceneOptionGroup } from "@ai-star-eco/types";
 import type { StudioCapabilities } from "@ai-star-eco/types/ip-studio-workflow";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { cancelRun, fetchModels, readRun, signKeys, type IpModelOption } from "@/canvas-bridge/api";
@@ -26,7 +26,8 @@ import { useSceneQuery, writeSceneQuery } from "./scene-query";
 import { addImageRow, applyRun, createSceneDraft, groupUploads, imageRows, listSceneDrafts, openedImageState, patchNode, resubmitRow, rowUploads, rejectedNextStep, splitByCounts, submissionRejected, type SceneUpload } from "./scene-drafts";
 import { ScenePromptEditor, type ScenePromptEditorHandle, type ScenePromptRef } from "./scene-prompt-editor";
 import { remapPromptRefs } from "./scene-prompt-refs";
-import { SceneDemoFigure, SceneDrawer, SceneEmpty, SceneExample, SceneNoModel, SceneRecent, SceneResultTabs, SceneSwitch, SceneViewer, sceneFailureText, sceneHintText, sceneOptionValues, useSceneDrawerPin, useScenePopover, RatioGlyph, useSceneMobile, SlotEmpty } from "./scene-layout";
+import { SceneDemoFigure, SceneDrawer, SceneEmpty, SceneExample, SceneNoModel, SceneRecent, SceneResultTabs, SceneSwitch, SceneViewer, sceneFailureText, sceneHintText, sceneOptionValues, useSceneDrawerPin, useScenePopover, RatioGlyph, useSceneMobile, SlotEmpty, sceneDraftName } from "./scene-layout";
+import { useCanvasDelete } from "../studio-canvas-delete";
 import { AiMark } from "../studio-ai-icon";
 
 const FALLBACK_RATIOS = ["1:1", "3:4", "4:3", "9:16", "16:9"];
@@ -77,6 +78,8 @@ export function SceneImageStudio() {
   const closeViewer = useCallback(() => setViewing(undefined), []);
   // 草稿与保存队列（换草稿时旧回包不改这一页，见 scene-draft-store.ts）。
   const { draft, current: draftRef, session, begin, remember, show, onPage, persist, settled } = useSceneDraftStore();
+  // 「最近」里删草稿（进回收站）；删的正是开着的这份，就回到新建。
+  const removal = useCanvasDelete();
   const imageIds = useMemo(() => new Set(catalog?.image.map(s => s.id) ?? []), [catalog]);
   const loadDrafts = useCallback(() => listSceneDrafts(imageIds), [imageIds]);
   const drafts = useStudioList(loadDrafts, ready && !!catalog);
@@ -469,6 +472,10 @@ export function SceneImageStudio() {
     <button type="button" onClick={() => putAsReference(image)}><ImageUp size={16}/>用作参考图</button>
     <button type="button" onClick={() => toVideo(image)}><Clapperboard size={16}/>做成视频</button></> : null;
 
+  const removeDraft = (d: IpProjectSummary) => removal.ask({ targets: [{ id: d.id, name: sceneDraftName(d.name) }], noun: "草稿", onDeleted: ids => {
+    drafts.reload();
+    if (draftRef.current && ids.includes(draftRef.current.id)) { showDraft(undefined, begin()); if (scene) { pickScene(scene); writeQuery(scene.id); } }
+  } });
   if (auth === "no-platform" || drafts.notEnrolled) return <PlatformGateScreen/>;
   const rows = draft ? imageRows(draft.doc) : [];
   if (catalogError && !catalog) return <main className="ip-brand-surface scene-studio scene-image-studio"><div className="scene-loading">场景加载失败。<button type="button" className="ip-brand-secondary" onClick={retryCatalog}>重新加载</button></div></main>;
@@ -489,7 +496,7 @@ export function SceneImageStudio() {
     <section className="scene-card scene-composer" aria-label="图片生成设置">
       <header className="scene-composer-head">
         <SceneSwitch scene={scene} groups={listGroups} top={free && free.id !== scene.id ? free : undefined} onPick={onPick} onAll={() => { if (!pinned) setDrawerOpen(true); }}/>
-        {mobile && <SceneRecent icon drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>}
+        {mobile && <SceneRecent icon drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)} onDelete={removeDraft}/>}
         <button type="button" className="scene-new" onClick={() => { showDraft(undefined, begin()); pickScene(scene); writeQuery(scene.id); }}><Plus size={13} strokeWidth={1.6}/>新建</button>
       </header>
       {mobile && !rows.length && !scene.coverUrl && !scene.examples?.length && !demoGone && <div className="scene-demo-peek"><SceneDemoFigure src={sceneDemo(scene.id)} title={scene.title} example={scene.example} onError={() => setDemoGone(scene.id)}/></div>}
@@ -559,7 +566,7 @@ export function SceneImageStudio() {
     <section className="scene-card scene-results" aria-label="作品与示例">
       <header><SceneResultTabs tab={tab} onTab={setTab} count={rows.length} idBase="scene-image"/>
         <span className="scene-results-actions">{draft && <Link className="scene-text-button" href={`/projects/${encodeURIComponent(draft.id)}`}><FolderOpen size={14} strokeWidth={1.4}/>在画布上查看</Link>}
-          {!mobile && <SceneRecent drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>}</span></header>
+          {!mobile && <SceneRecent drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)} onDelete={removeDraft}/>}</span></header>
       <div id="scene-image-panel" className="scene-results-panel" role="tabpanel" aria-labelledby={`scene-image-tab-${tab}`}>
       {tab === "example" ? <SceneExample id={scene.id} title={scene.title} group={isFree ? undefined : groupTitle} cover={scene.coverUrl} examples={scene.examples} demo={sceneDemo(scene.id)} example={scene.example} onUseExample={useExample} ratio={scene.ratio}
           note={isFree ? "添加参考图并描述想要的画面。" : scene.description}/>
@@ -587,6 +594,7 @@ export function SceneImageStudio() {
     {viewing && <SceneViewer url={viewing.url} storageKey={viewing.key} name={viewing.name} onClose={closeViewer} actions={followUps(viewing)}
       onDownload={() => void downloadMedia(viewing.url, viewing.name, undefined, viewing.key)}/>}
     <HubTabBar/>
+    {removal.dialog}
   </main>;
 }
 

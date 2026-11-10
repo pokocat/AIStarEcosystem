@@ -1,6 +1,8 @@
 "use client";
 
-// 真人授权素材：本人刷脸核验过的授权、待授权的真人、补充协议、凭证下载与续签。
+// 授权（2026-11-10 起是「授权」标签的两个子标签）：
+//   kind="real"：真人授权，本人刷脸核验过的授权、待授权的真人、补充协议、凭证下载与续签（原「真人授权素材」）。
+//   kind="ip"：IP 授权登记，书面登记的授权，凭证下载与续签（原「授权中心 · 我授权出去的」里非真人的那部分）。
 // 逻辑沿用原 proto MLicenses(realOnly)：LicenseApi / RealAuthApi / AvatarApi；补素材与授权的流程仍在原创建向导里（#/create/real/<人物>）。
 
 import { useEffect, useState } from "react";
@@ -27,7 +29,10 @@ const FILTERS: { key: "all" | License["status"]; label: string }[] = [
 
 const captureHref = (avatarId?: string) => avatarId ? `/studio#/create/real/${encodeURIComponent(avatarId)}` : "/studio?start=real";
 
-export function AccountRealMaterials() {
+const isReal = (l: License) => !!l.char && l.verifyMethod === "liveness";
+
+export function AccountRealMaterials({ kind = "real" }: { kind?: "real" | "ip" }) {
+  const real = kind === "real";
   const [licenses, setLicenses] = useState<License[]>([]);
   const [avatars, setAvatars] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,14 +50,14 @@ export function AccountRealMaterials() {
     setLoading(true); setError("");
     Promise.all([LicenseApi.list(), AvatarApi.list("mine").catch(() => [])]).then(([l, a]) => {
       if (!live) return;
-      setLicenses((l || []).filter((x: License) => x.char && x.verifyMethod === "liveness"));
+      setLicenses((l || []).filter((x: License) => isReal(x) === real));
       setAvatars(a || []);
     }).catch(() => { if (live) setError("授权记录加载失败，请稍后刷新重试。"); }).finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
-  }, [reload]);
+  }, [reload, real]);
 
   const activeIds = new Set(licenses.filter(l => l.status === "active").map(l => l.id));
-  const needAuth = avatars.filter(a => a.path === "real" && !(a.license && activeIds.has(a.license)));
+  const needAuth = real ? avatars.filter(a => a.path === "real" && !(a.license && activeIds.has(a.license))) : [];
   const shown = licenses.filter(l => filter === "all" || l.status === filter);
   const count = (k: License["status"]) => licenses.filter(l => l.status === k).length;
 
@@ -84,11 +89,11 @@ export function AccountRealMaterials() {
   return <>
     <div className="account-filters">
       <div className="account-seg" role="group" aria-label="按状态筛选">
-        {FILTERS.map(f => <button key={f.key} type="button" aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}>{f.label}<small>{f.key === "all" ? licenses.length : count(f.key)}</small></button>)}
+        {FILTERS.map(f => <button key={f.key} type="button" aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}>{!real && f.key === "pending" ? "办理中" : f.label}<small>{f.key === "all" ? licenses.length : count(f.key)}</small></button>)}
       </div>
-      <a className="account-go" href={captureHref()}><Plus size={15} strokeWidth={1.8} aria-hidden="true" />添加真人</a>
+      {real && <a className="account-go" href={captureHref()}><Plus size={15} strokeWidth={1.8} aria-hidden="true" />添加真人</a>}
     </div>
-    <p className="account-muted" style={{ marginBottom: 16 }}>每条素材单独审核，通过后可在生成视频时选用。同一个人补充素材不用重新刷脸。</p>
+    <p className="account-muted" style={{ marginBottom: 16 }}>{real ? "每条素材单独审核，通过后可在生成视频时选用。同一个人补充素材不用重新刷脸。" : "你作为 IP 权利人书面登记的授权，记录品牌和形象的使用范围。"}</p>
 
     {needAuth.length > 0 && <section className="account-notice" aria-label="待授权">
       <IconBox tone="is-text"><AlertTriangle /></IconBox>
@@ -97,10 +102,10 @@ export function AccountRealMaterials() {
     </section>}
 
     <LoadState loading={loading} error={error} onRetry={() => setReload(v => v + 1)}
-      empty={!loading && !error && shown.length === 0 ? <><strong>{licenses.length ? "没有符合条件的授权" : "还没有真人素材"}</strong>{!licenses.length && <span>上传图片或视频，完成刷脸核验与逐条审核后，可在生成视频时选用。</span>}</> : undefined}>
+      empty={!loading && !error && shown.length === 0 ? <><strong>{licenses.length ? "没有符合条件的授权" : real ? "还没有真人素材" : "还没有 IP 授权登记"}</strong>{!licenses.length && <span>{real ? "上传图片或视频，完成刷脸核验与逐条审核后，可在生成视频时选用。" : "IP 授权由平台登记，登记后会显示在这里。"}</span>}</> : undefined}>
       <div className="account-licenses">
         {shown.map(l => {
-          const s = STATUS[l.status] ?? STATUS.pending;
+          const s = !real && l.status === "pending" ? { label: "办理中", tone: "is-warn" } : STATUS[l.status] ?? STATUS.pending;
           const verified = l.evidenceStatus === "verified";
           return <article key={l.id} className="account-card" aria-label={`${l.subject}的授权`}>
             <div className="account-license-head">
@@ -129,17 +134,18 @@ export function AccountRealMaterials() {
               <MaterialSection refType="subject" refId={l.char} mode="readonly" title="素材审核状态" style={{ boxShadow: "none", background: "#f7f8fa" }} />
             </div>}
             <div className="account-license-foot">
-              {l.status === "active" && <a className="account-button is-ink" href={captureHref(l.char)}>补充素材</a>}
+              {real && l.status === "active" && <a className="account-button is-ink" href={captureHref(l.char)}>补充素材</a>}
               {l.status === "active" && <button type="button" className="account-button" disabled={busy === l.id} onClick={() => void download(l)}>下载凭证</button>}
               {l.status === "expired" && <button type="button" className="account-button is-ink" disabled={busy === l.id} onClick={() => void renew(l)}>续签</button>}
-              {l.status === "pending" && (supplementId === l.id
+              {!real && l.status === "pending" && <span className="account-muted">等待授权方确认</span>}
+              {real && l.status === "pending" && (supplementId === l.id
                 ? <><button type="button" className="account-button is-ink" disabled={!agreement || !accepted || busy === l.id} onClick={() => void supplement(l)}>确认并补充协议</button>
                     {!accepted && agreement && <span className="account-muted">请先勾选同意授权说明</span>}
                     <button type="button" className="account-button" onClick={() => void openSupplement(l)}>收起</button></>
                 : <button type="button" className="account-button is-ink" onClick={() => void openSupplement(l)}>补充协议</button>)}
-              <button type="button" className="account-button" style={{ marginLeft: "auto" }} aria-expanded={open === l.id} onClick={() => setOpen(open === l.id ? "" : l.id)}>
+              {real && <button type="button" className="account-button" style={{ marginLeft: "auto" }} aria-expanded={open === l.id} onClick={() => setOpen(open === l.id ? "" : l.id)}>
                 授权素材{open === l.id ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
-              </button>
+              </button>}
             </div>
           </article>;
         })}

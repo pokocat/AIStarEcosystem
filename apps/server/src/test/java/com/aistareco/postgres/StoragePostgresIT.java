@@ -41,10 +41,20 @@ class StoragePostgresIT {
     @Autowired com.aistareco.aep.repository.LicenseBatchRepository batches;
     @Autowired com.aistareco.aep.repository.SellingChannelRepository channels;
     @Test void emptySchemaValidatesAllEntitiesWithoutLegacyMigrations() {
-        assertThat(jdbc.queryForList("SELECT version FROM flyway_schema_history WHERE success=true",String.class)).containsExactly("74", "75", "76", "77", "78");
+        assertThat(jdbc.queryForList("SELECT version FROM flyway_schema_history WHERE success=true",String.class)).containsExactly("74", "75", "76", "77", "78", "79");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'",Integer.class)).isEqualTo(196);
         assertThat(jdbc.queryForObject("SELECT data_type FROM information_schema.columns WHERE table_name='card_profile' AND column_name='payload_json'",String.class)).isEqualTo("text");
         assertThat(jdbc.queryForObject("SELECT data_type FROM information_schema.columns WHERE table_name='aep_enterprise_members' AND column_name='billing_default'",String.class)).isEqualTo("character varying");
+    }
+    @Test void copiedOfficialAvatarAccessAndUsageTaskLookupPreserveSourceValues() {
+        jdbc.update("INSERT INTO dap_public_avatar(id,name,access) VALUES('pg-licensed-avatar','Synthetic','license')");
+        jdbc.update("INSERT INTO dap_public_avatar(id,name,access) VALUES('pg-free-avatar','Synthetic','free')");
+        new TransactionTemplate(manager).executeWithoutResult(tx->{
+            assertThat(em.find(com.aistareco.aep.dap.model.DapPublicAvatar.class,"pg-licensed-avatar").getAccess()).isEqualTo("license");
+            assertThat(em.find(com.aistareco.aep.dap.model.DapPublicAvatar.class,"pg-free-avatar").getAccess()).isEqualTo("free");
+        });
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND indexname='idx_aiusage_task'",Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT character_maximum_length FROM information_schema.columns WHERE table_schema='public' AND table_name='ai_model_usage_record' AND column_name='task_id'",Integer.class)).isEqualTo(64);
     }
     @Test void canvasCardAndPromptLargeTextRoundTripWithoutOidOrTruncation() {
         String text="中文😀完整保存".repeat(30000);String json="{\"text\":\""+text+"\"}";

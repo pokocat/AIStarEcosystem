@@ -33,11 +33,25 @@ test('My IP and Official IP show distinct real records and import the selected o
   const official={...main,avatarId:'official:demo:character',name:'官方角色',characterName:'官方角色',librarySource:'official' as const};
   const p={...props(),assets:[main,official]};render(<StudioIpLibrary {...p}/>);
   expect(screen.queryByRole('button',{name:'查看人物 官方角色'})).toBeNull();
-  fireEvent.click(screen.getByRole('button',{name:/官方 IP/}));
+  fireEvent.click(screen.getByRole('button',{name:/官方形象/}));
   expect(screen.queryByRole('button',{name:'查看人物 小紫'})).toBeNull();
   fireEvent.click(screen.getByRole('button',{name:'查看人物 官方角色'}));
   fireEvent.click(screen.getByRole('button',{name:'添加选中素材到画布'}));
   await waitFor(()=>expect(p.onImport).toHaveBeenCalledWith(official,undefined));
+});
+
+test('a licensed official avatar can be viewed but not added; 申请授权 only explains it is not open yet',async()=>{
+  const free={...main,ipId:null,avatarId:'official:PA-01',name:'Annie 安妮',characterName:'Annie 安妮',librarySource:'official' as const,access:'free' as const,category:'pro'};
+  const paid={...free,avatarId:'official:PA-x',name:'签约艺人',characterName:'签约艺人',access:'license' as const,category:'life',storageKey:'paid-key'};
+  const p={...props(),assets:[free,paid]};render(<StudioIpLibrary {...p}/>);
+  fireEvent.click(screen.getByRole('button',{name:/官方形象/}));
+  fireEvent.change(screen.getByRole('combobox',{name:'按分类筛选官方形象'}),{target:{value:'life'}});
+  expect(screen.queryByRole('button',{name:'查看人物 Annie 安妮'})).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'查看人物 签约艺人'}));
+  expect(screen.queryByRole('button',{name:'添加选中素材到画布'})).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'申请授权'}));
+  expect(screen.getAllByRole('dialog').some(d=>d.textContent?.includes('暂未开放'))).toBe(true);
+  expect(p.onImport).not.toHaveBeenCalled();
 });
 
 beforeEach(() => { mountStudioErrorNotifications(); });

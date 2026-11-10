@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Copy, Loader2, PencilLine, Plus, RefreshCw, Shuffle, X } from 'lucide-react';
+import { Copy, Loader2, Plus, RefreshCw, Shuffle, X } from 'lucide-react';
 import type { StudioVideoTakeInfo, StudioVideoTask } from '@ai-star-eco/types/ip-studio-video-task';
 import type { StudioTakeChange } from '@ai-star-eco/types/ip-studio-scenes';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
@@ -16,21 +16,20 @@ import { applyChanges, changeSegments, latestRewrites, latestVariables, sampleTa
 
 /** 交给页面提交的一条：怎么来的，以及换过的脚本（原样没有）。 */
 export interface MoreTake { take: StudioVideoTakeInfo; text?: string }
-type Way = TakeMode | 'edit';
+type Way = TakeMode;
 
 const WAYS: { way: Way; title: string; note: string }[] = [
   { way: 'same', title: '原样', note: '同一个脚本，画面各不相同' },
   { way: 'variables', title: '换变量', note: '替换人物、场景等说法，不用 AI' },
   { way: 'rewrite', title: 'AI 改写', note: 'AI 编导为每条重写一版' },
-  { way: 'edit', title: '自己改', note: '放回设置，改完再生成' },
 ];
-const WAY_ICON = { same: Copy, variables: Shuffle, edit: PencilLine } as const;
+const WAY_ICON = { same: Copy, variables: Shuffle } as const;
 
 /**
- * 「视频裂变」（2026-11-09 用户要求：「重新编辑」和「再次生成」合成一个入口，并参考带货子应用的派生变体）。
+ * 「视频裂变」（2026-11-09 用户要求，参考带货子应用的派生变体）。2026-11-10 起「自己改」拿出去，成了设置区的「再次生成」按钮。
  * 左边选怎么变、几条、变量；右边逐条预览要交出去的脚本。只负责选和看，找变量、写脚本、提交都由页面做（同一套草稿、计费和恢复规则）。
  */
-export function VideoMoreDialog({ task, modelName, free, busy, textBlocker, nodes, onClose, onFind, onWrite, onGenerate, onEdit, onConfirm }: {
+export function VideoMoreDialog({ task, modelName, free, busy, textBlocker, nodes, onClose, onFind, onWrite, onGenerate, onConfirm }: {
   task: StudioVideoTask; modelName?: string;
   /** 演示模式：不扣积分。 */
   free: boolean; busy: boolean;
@@ -42,16 +41,16 @@ export function VideoMoreDialog({ task, modelName, free, busy, textBlocker, node
   onFind: () => Promise<void>;
   onWrite: (changes: StudioTakeChange[][]) => Promise<void>;
   /** 全部交上去了返回 true，弹窗关掉。 */
-  onGenerate: (takes: MoreTake[]) => Promise<boolean>;
-  onEdit: () => void;
+  /** estimate：按钮上写的这几条合计（付款弹窗写同一个数）。 */
+  onGenerate: (takes: MoreTake[], estimate?: number) => Promise<boolean>;
   /** 提交结果没确认的那次（找变量、改写）：同一个请求编号再交一次。 */
   onConfirm: (node: CanvasNodeData) => void;
 }) {
   const base = task.request;
   const script = takeScript(base);
   const modes = takeModes(base);
-  const reasonOf = (way: Way) => way === 'edit' ? (task.input ? undefined : '这条没有保存设置') : modes.find(m => m.mode === way)?.reason;
-  const [way, setWay] = useState<Way>(() => modes[0].reason ? 'edit' : 'same');
+  const reasonOf = (way: Way) => modes.find(m => m.mode === way)?.reason;
+  const [way, setWay] = useState<Way>('same');
   const [count, setCount] = useState(2);
   const [seed, setSeed] = useState(1);
   const [shown, setShown] = useState(0);
@@ -95,11 +94,10 @@ export function VideoMoreDialog({ task, modelName, free, busy, textBlocker, node
   const takes: MoreTake[] = way === 'same' ? Array.from({ length: count }, () => ({ take: { of: task.id, mode: 'same' } }))
     : way === 'variables' ? changes.map(c => ({ take: { of: task.id, mode: 'variables', changes: c }, text: applyChanges(script, c) }))
     : written.map(n => ({ take: { of: task.id, mode: 'rewrite', changes: n.metadata?.studio?.sceneTake?.changes }, text: scriptMissing(n.metadata?.content || '').body }));
-  const generate = () => void onGenerate(takes).then(done => { if (done) onClose(); });
+  const generate = () => void onGenerate(takes, free || each === undefined ? undefined : each * takes.length).then(done => { if (done) onClose(); });
 
   type Action = { label: string; ai?: boolean; price?: string; blocker?: string; run?: () => void };
-  const action: Action = way === 'edit' ? { label: '去修改', blocker: reasonOf('edit'), run: onEdit }
-    : reasonOf(way) ? { label: `生成 ${count} 条`, blocker: reasonOf(way) }
+  const action: Action = reasonOf(way) ? { label: `生成 ${count} 条`, blocker: reasonOf(way) }
     : way === 'same' ? { label: `生成 ${count} 条`, price: priceFor(count), run: generate }
     : way === 'variables' ? { label: `生成 ${count} 条`, price: priceFor(count), run: generate,
       blocker: found.status === 'loading' ? '正在找变量' : !variables.length ? '请先找变量' : !changes[0]?.length ? '请至少保留一处变量' : undefined }
@@ -147,21 +145,17 @@ export function VideoMoreDialog({ task, modelName, free, busy, textBlocker, node
                 </button>; })}
             </div>
           </section>
-          {way !== 'edit' && <section aria-labelledby="video-more-count">
+          <section aria-labelledby="video-more-count">
             <h3 id="video-more-count">生成条数</h3>
             <div className="scene-choice-row" role="group" aria-labelledby="video-more-count">
               {TAKE_COUNTS.map(n => <button key={n} type="button" aria-pressed={n === count} onClick={() => setCount(n)}>{n} 条</button>)}
             </div>
-          </section>}
+          </section>
           {(way === 'variables' || way === 'rewrite') && !reasonOf(way) && <Variables way={way} status={found.status} node={found.node} variables={variables} busy={busy}
             textBlocker={textBlocker} textPrice={textPrice} onChange={setVariables} onShuffle={() => setSeed(s => s + 1)} onFind={() => void onFind()} onConfirm={onConfirm}/>}
         </div>
         <div className="video-more-preview">
-          {way === 'edit' ? <div className="video-more-edit">
-            <PencilLine size={22} strokeWidth={1.4} aria-hidden="true"/>
-            <p>放回这条视频的脚本、素材和设置，改完点「生成视频」。</p>
-            <p>新视频和这条放在一起，已生成的视频保留。</p>
-          </div> : <>
+          <>
             <div className="video-more-tabs" role="tablist" aria-label="逐条预览" onKeyDown={e => {
               const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
               if (!step) return;
@@ -176,7 +170,7 @@ export function VideoMoreDialog({ task, modelName, free, busy, textBlocker, node
             </div>
             <Preview way={way} script={script} change={way === 'rewrite' && batchFits ? rewrites[at]?.metadata?.studio?.sceneTake?.changes ?? [] : changes[at] ?? []}
               node={way === 'rewrite' && batchFits ? rewrites[at] : undefined} busy={busy} onConfirm={onConfirm}/>
-          </>}
+          </>
         </div>
       </div>
       <footer className="video-more-foot">

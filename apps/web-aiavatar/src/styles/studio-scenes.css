@@ -46,7 +46,7 @@ html[data-layout="desktop"] .desktop-rail .desktop-credit-link svg { display: no
 .desktop-rail .desktop-rail-account .ip-brand-button { min-height: 32px; padding: 6px 10px; font-size: 12px; }
 
 /* ── 改版后的设计语言（只给改过的页面和导航栏）：白底、冷色细线、13px 正文、细图标、渐变主按钮、浅紫 AI 按钮 ──── */
-.ip-brand-surface.studio-next-page, .desktop-top-bar.desktop-rail.ip-brand-surface, .ip-brand-surface.scene-studio {
+.ip-brand-surface.studio-next-page, .desktop-top-bar.desktop-rail.ip-brand-surface, .ip-brand-surface.scene-studio, .account-drawer {
   --ip-bg: #ffffff; --ip-paper: #ffffff; --ip-soft: #f3f4f6; --ip-ink: #17202a; --ip-muted: #5b6572; --ip-line: #eceef1; --ip-selected: #f1f2f4;
   --ip-gold: #8a5a10; --ip-gold-soft: #fcf3e2; --ip-green: #2f6b4f; --ip-green-soft: #e9f4ed; --ip-error: #ad3449; --ip-error-soft: #fcedef;
   --sn-text-2: #3d4651; --sn-field: #e3e6ea; --sn-line-2: #f0f1f3;
@@ -499,3 +499,11 @@ html:not([data-layout="desktop"]) .scene-choice-row button { height: 36px; }
 .scene-segmented-phases li.is-done { color: var(--ip-ink); }
 .scene-segmented-phases li.is-failed { color: var(--ip-gold); }
 .scene-segmented-spent { margin: 0; color: var(--ip-muted); font-size: 12px; }
+
+/* 「最近」里的删除（2026-11-10）：悬停或键盘聚焦时出现，触屏上常显。 */
+.scene-recent li { position: relative; }
+.scene-recent li .scene-recent-delete { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border-radius: 8px;
+  background: var(--ip-paper); color: var(--ip-muted); opacity: 0; transition: opacity 140ms ease; }
+.scene-recent li:hover .scene-recent-delete, .scene-recent li .scene-recent-delete:focus-visible { opacity: 1; }
+.scene-recent li .scene-recent-delete:hover { color: var(--ip-error, #a43845); background: var(--ip-error-soft, #fcf0f1); }
+@media (hover: none) { .scene-recent li .scene-recent-delete { opacity: 1; } }

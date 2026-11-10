@@ -219,8 +219,8 @@ export function StudioCreditShortageDialog({ input, onChoice }: { input: StudioC
       {!loading && (summary.enough
         ? input.canRetry && <Button type="primary" onClick={() => onChoice({ kind: "retry" })}>继续生成</Button>
         : <>
-          {(enterprise || payerUnknown) && <Button href="/enterprise" target="_blank" rel="noopener" type={payerUnknown || freeFirst ? "default" : "primary"} onClick={() => setRechargeOpened(true)}>查看企业积分</Button>}
-          {!enterprise && <Button type={freeFirst ? "default" : "primary"} href="/studio#/membership" target="_blank" rel="noopener" onClick={() => setRechargeOpened(true)}>充值</Button>}
+          {(enterprise || payerUnknown) && <Button href="/me/enterprise" target="_blank" rel="noopener" type={payerUnknown || freeFirst ? "default" : "primary"} onClick={() => setRechargeOpened(true)}>查看企业积分</Button>}
+          {!enterprise && <Button type={freeFirst ? "default" : "primary"} href="/me/credits" target="_blank" rel="noopener" onClick={() => setRechargeOpened(true)}>充值</Button>}
         </>)}
     </div>}>
     <div className="studio-billing-form studio-credit-form">

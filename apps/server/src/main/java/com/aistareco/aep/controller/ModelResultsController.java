@@ -21,8 +21,13 @@ public class ModelResultsController {
     public record Detail(String id,String content,String finishReason){}
     private String owner(Principal p){if(p==null)throw new BusinessException(org.springframework.http.HttpStatus.UNAUTHORIZED,"AUTH_REQUIRED","请先登录");return p.getName();}
     @GetMapping
-    public ApiResponse<List<Summary>> list(Principal p,@RequestHeader("X-App-Code") String app,@RequestParam(defaultValue="0") int page){
-        return ApiResponse.of(records.preserved(owner(p),app,"%\"preservedContent\"%",PageRequest.of(Math.max(0,page),20)).stream()
+    public ApiResponse<List<Summary>> list(Principal p,@RequestHeader("X-App-Code") String app,@RequestParam(defaultValue="0") int page,
+                                           @RequestParam(required=false) String taskId){
+        // taskId：只看某个任务的原文（账号「任务历史」的「查看原文」），按调用先后排；不传是全部原文，新的在前。
+        var rows=taskId==null||taskId.isBlank()
+                ?records.preserved(owner(p),app,"%\"preservedContent\"%",PageRequest.of(Math.max(0,page),20))
+                :records.preservedOfTask(owner(p),app,taskId,"%\"preservedContent\"%",PageRequest.of(Math.max(0,page),20));
+        return ApiResponse.of(rows.stream()
                 .map(r->new Summary(r.getId(),r.getProviderName(),r.getPurpose(),r.getCreatedAt())).toList());
     }
     @GetMapping("/{id}")

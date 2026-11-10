@@ -73,6 +73,11 @@ public class StudioTrashService {
         this.retentionDays = Math.max(0, retentionDays);
     }
 
+    private com.aistareco.aep.ipstudio.director.DirectorWorkLocks workLocks = com.aistareco.aep.ipstudio.director.DirectorWorkLocks.standalone();
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setWorkLocks(com.aistareco.aep.ipstudio.director.DirectorWorkLocks workLocks) { if (workLocks != null) this.workLocks = workLocks; }
+
     public int retentionDays() { return retentionDays; }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -91,8 +96,10 @@ public class StudioTrashService {
         log.info("[trash] canvas purged user={} project={} expired={}", user, id, cutoff != null);
     }
 
-    @Transactional(isolation = Isolation.READ_COMMITTED)
-    public void purgeWork(String user, String id) { purgeWork(user, id, null); }
+    /** 导演台作品：先在进程内按作品排队（不占连接），再开读已提交的事务加行锁（见 {@code DirectorWorkLocks}）。 */
+    public void purgeWork(String user, String id) {
+        workLocks.runWithWork(id, () -> tx.executeWithoutResult(s -> purgeWork(user, id, null)));
+    }
 
     void purgeWork(String user, String id, Instant cutoff) {
         DirectorWork w = works.lockById(id).filter(x -> user.equals(x.getOwnerUserId()))
@@ -117,27 +124,38 @@ public class StudioTrashService {
             catch (RuntimeException e) { log.warn("[trash] expired canvas kept project={}: {}", id, e.getMessage()); }
         }
         for (DirectorWork w : works.findByDeletedAtBefore(cutoff)) {
-            try { tx.executeWithoutResult(s -> purgeWork(w.getOwnerUserId(), w.getId(), cutoff)); purged++; }
+            try { workLocks.runWithWork(w.getId(), () -> tx.executeWithoutResult(s -> purgeWork(w.getOwnerUserId(), w.getId(), cutoff))); purged++; }
             catch (RuntimeException e) { log.warn("[trash] expired work kept work={}: {}", w.getId(), e.getMessage()); }
         }
         if (purged > 0) log.info("[trash] expired purge done count={} retentionDays={}", purged, retentionDays);
     }
 
     /** 画布上还有没结束的付费任务时返回原因；没有返回 null。 */
-    String canvasBusyReason(String projectId, String owner) {
+    String canvasBusyReason(String projectId, String owner) { return busyReason(projectId, owner, true); }
+
+    /**
+     * 普通删除（进回收站）前的核对（2026-11-10 起）：还有任务在生成、在花积分就不删，否则画布从列表里消失了还在扣积分。
+     * 停下等用户处理、已暂停的制作计划可以删：它不会自己往下走，恢复画布后照旧能继续。由 {@code IpProjectService.remove} 在画布行锁内调用。
+     */
+    public String canvasRemoveBlockReason(String projectId, String owner) { return busyReason(projectId, owner, false); }
+
+    private String busyReason(String projectId, String owner, boolean purge) {
+        String verb = purge ? "彻底删除" : "删除";
         Set<String> jobIds = new LinkedHashSet<>();
         for (Object[] r : runs.taskStates(projectId)) {
             String status = (String) r[0], stage = (String) r[1], input = (String) r[3];
-            if (!IpRun.STATUS_DONE.equals(status) && !IpRun.STATUS_FAILED.equals(status)) return "这张画布还有生成中的任务，任务结束后再彻底删除";
+            if (!IpRun.STATUS_DONE.equals(status) && !IpRun.STATUS_FAILED.equals(status)) return "这张画布还有生成中的任务，任务结束后再" + verb;
             if ("video.bound".equals(stage)) {
                 try { jobIds.addAll(IpProjectService.nativeVideoJobIds(om.readTree(input == null ? "{}" : input))); }
                 catch (Exception e) { return "这张画布的视频任务状态暂时无法确认，请稍后再试"; }
             }
         }
         for (IpPlanExecution e : executions.findByProjectIdAndStatusIn(projectId, LIVE_EXECUTIONS)) {
-            if (!IpPlanExecution.CANCELED.equals(e.getStatus()) && !IpPlanExecution.PARTIAL.equals(e.getStatus()))
-                return "这张画布的制作计划还没结束，停止或完成后再彻底删除";
-            if (e.getInFlight() > 0) return "这张画布还有生成中的任务，任务结束后再彻底删除";
+            boolean ended = IpPlanExecution.CANCELED.equals(e.getStatus()) || IpPlanExecution.PARTIAL.equals(e.getStatus());
+            boolean waiting = IpPlanExecution.PAUSED.equals(e.getStatus()) || IpPlanExecution.NEEDS_USER.equals(e.getStatus());
+            if (!ended && (purge || !waiting))
+                return purge ? "这张画布的制作计划还没结束，停止或完成后再彻底删除" : "这张画布的制作计划还在进行，停止或完成后再删除";
+            if (e.getInFlight() > 0) return "这张画布还有生成中的任务，任务结束后再" + verb;
         }
         if (jobIds.isEmpty()) return null;
         Map<String, Object[]> jobs = new HashMap<>();
@@ -150,8 +168,8 @@ public class StudioTrashService {
             }
             if (VIDEO_TERMINAL.contains((String) job[1])) continue;
             if ("VIDEO_SUBMISSION_UNKNOWN".equals(job[2]) || "VIDEO_RECONCILIATION_PENDING".equals(job[2]))
-                return "视频的提交结果还在核对，核对完成后再彻底删除";
-            return "这张画布还有视频在生成，任务结束后再彻底删除";
+                return "视频的提交结果还在核对，核对完成后再" + verb;
+            return "这张画布还有视频在生成，任务结束后再" + verb;
         }
         return null;
     }

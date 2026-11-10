@@ -9,7 +9,8 @@ import { formatDateTime } from "@/lib/datetime";
 
 const number = (value: number) => value.toLocaleString("zh-CN");
 const time = (value: string) => formatDateTime(value);
-const usageStatus = (status: string) => ({ reserved: "排队中", dispatching: "生成中", completed: "已结算", released: "已结算，多余积分已退回" }[status] || "待确认");
+// 2026-11-10：released 只写「已结算」。冻结后没用完的部分本来就没扣，写「已退回」会让人以为先扣了又退（与任务历史一致）。
+const usageStatus = (status: string) => ({ reserved: "排队中", dispatching: "生成中", completed: "已结算", released: "已结算" }[status] || "待确认");
 const usageTypes: Record<string, string> = { material_video_job: "视频生成", "ip-run": "创作任务", "dap-job": "数字资产生成", "dap-voice": "声音克隆" };
 const actorLabel = (row: { actorUserId: string; actorName?: string }, self: string) => row.actorUserId === self ? "我" : row.actorName || "企业成员";
 const actionNames: Record<string, string> = { "enterprise.create": "创建企业", "member.add": "添加成员", "member.invite": "创建邀请", "invitation.accept": "接受邀请", "invitation.revoke": "撤销邀请", "member.update": "更新成员权限", "member.permissions": "更新成员权限", "member.accept": "接受邀请", "member.invite.revoke": "撤销邀请", "recharge.confirm": "财务确认入账", "recharge.reject": "财务拒绝充值", "recharge.refund": "财务登记退款", "member.suspend": "停用成员", "member.resume": "恢复成员", "member.remove": "移除成员", "member.leave": "成员退出", "enterprise.close": "关闭企业", "policy.update": "更新生成设置", "ownership.request": "发起主账号移交", "ownership.accept": "接受主账号移交", "points.deposit": "个人积分转入企业", "points.allocate": "分配积分", "points.reclaim": "回收积分", "points.recovery": "回收旧任务退回的积分", "lifecycle.suspend": "停用成员", "lifecycle.resume": "恢复成员", "lifecycle.remove": "移除成员", "lifecycle.leave": "成员退出", "lifecycle.close": "关闭企业", "recharge.request": "申请充值" };
