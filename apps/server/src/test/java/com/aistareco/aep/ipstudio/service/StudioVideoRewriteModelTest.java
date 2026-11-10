@@ -48,6 +48,7 @@ class StudioVideoRewriteModelTest {
         when(prices.find(qwen.getId())).thenReturn(rate);
         when(videos.rewritable("h3")).thenReturn(true);
         when(videos.quote(eq("u"),any())).thenReturn(300L);
+        when(videos.quoteChecked(eq("u"),any())).thenReturn(300L);
         when(projects.requiredForUpdate("u","p")).thenReturn(IpProject.builder().id("p").build());
         when(projects.readDoc(any())).thenReturn(om.createObjectNode().putArray("nodes"));
     }
@@ -112,6 +113,15 @@ class StudioVideoRewriteModelTest {
             assertEquals(service.videoRewriteHold(),capture.getValue().getCost());
             verifyNoInteractions(policies);
         } finally {TransactionSynchronizationManager.clearSynchronization();}
+    }
+
+    /** 2026-11-06：参考视频超过 15 秒，用户等优化做完才看到报错。现在受理时按模型规则核对素材，不建任务、不冻结。 */
+    @Test void invalidReferenceMediaIsRejectedBeforeTheRewriteStarts() throws Exception {
+        when(videos.quoteChecked(eq("u"),any())).thenThrow(BusinessException.badRequest("STUDIO_VIDEO_ASSET_INVALID","参考视频最长 15 秒"));
+        var request=request("review");
+        assertEquals("STUDIO_VIDEO_ASSET_INVALID",assertThrows(BusinessException.class,()->service.submit("u","p",request)).getCode());
+        verifyNoInteractions(credits,worker);
+        verify(runs,never()).save(any());
     }
 
     @Test void unavailableQwenFailsBeforeChargingRatherThanFallingBack() throws Exception {

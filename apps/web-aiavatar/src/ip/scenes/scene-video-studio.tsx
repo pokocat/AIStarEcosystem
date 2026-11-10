@@ -52,6 +52,7 @@ import { SceneDrawer, SceneEmpty, SceneExample, SceneNoModel, SceneResultTabs, S
 import { PromptText, ScenePromptEditor, type ScenePromptEditorHandle, type ScenePromptRef } from "./scene-prompt-editor";
 import { AiMark } from "../studio-ai-icon";
 import { clampSceneDuration, sceneVideoDurations, sceneVideoInputs, sceneVideoSettings, type SceneVideoMaterial } from "./scene-video-plan";
+import { sceneScriptLayers } from "./scene-script-layers";
 import { classifyBlanks, missingFigures, overlongShots, scriptMissing, scriptPlaceholders, splitBlanks } from "./scene-script-check";
 
 type Media = StudioMediaImportResult & { title: string };
@@ -665,7 +666,7 @@ export function SceneVideoStudio() {
       setView("compose"); setScriptId(v.scriptId); setText(v.text); setDuration(v.duration); setRatio(v.ratio); setTier(v.tier); setOptimize(v.optimize);
       if (v.model && v.model !== chosenVideo?.endpointId && videoModels?.some(m => m.endpointId === v.model)) chooseVideoModel(v.model);
     };
-    put({ scriptId: doc ? scriptOfRow(doc, row.id) : undefined, text: request.prompt || "", duration: request.durationSec ?? duration,
+    put({ scriptId: doc ? scriptOfRow(doc, row.id) : undefined, text: row.metadata?.studio?.sceneScript || request.prompt || "", duration: request.durationSec ?? duration,
       ratio: request.aspectRatio ?? ratio, tier: request.video?.resolutionTier ?? tier, optimize: request.video?.optimizePrompt !== false, model: request.model ?? undefined });
     const gone = request.model && videoModels && !videoModels.some(m => m.endpointId === request.model) && chosenVideo
       ? `原模型已不可用，本次改用「${chosenVideo.name}」。` : "";
@@ -690,6 +691,9 @@ export function SceneVideoStudio() {
       ...(voice ? [{ key: voice.key, mediaType: "audio" as const, title: voice.title, nodeId: nodeOf(voice.key) }] : [])];
   }, [doc.nodes, images, character, voice]);
   const plan = chosenVideo ? sceneVideoInputs(chosenVideo, materials) : undefined;
+  // 编导的六段脚本只发和画面有关的部分（scene-script-layers.ts）；认不出结构就是原文。字数上限、出片、编辑框里的「仅参考」都按它。
+  const layers = useMemo(() => sceneScriptLayers(text), [text]);
+  const sentPrompt = layers?.prompt ?? text.trim();
   let settings: ReturnType<typeof sceneVideoSettings> | undefined, planError = "";
   try { settings = chosenVideo && usedTier && plan ? sceneVideoSettings(chosenVideo, usedTier, plan, optimize) : undefined; }
   catch (e) { planError = e instanceof Error ? e.message : "素材与当前模型不匹配"; }
@@ -825,7 +829,7 @@ export function SceneVideoStudio() {
     : scene?.images.required && !images.length ? `请添加${scene.images.label}`
     : !text.trim() ? "请填写提示词，或点击「AI 编导」生成脚本" : planError
     || (blanks.length ? `脚本中还有待补充的内容：${[...new Set(blanks)].join("、")}。请替换为实际内容，不需要的请删除。` : "")
-    || (settings ? studioVideoError(chosenVideo, settings, text, ratio, usedDuration) : "请重新选择清晰度") || "";
+    || (settings ? studioVideoError(chosenVideo, settings, sentPrompt, ratio, usedDuration) : "请重新选择清晰度") || "";
 
   // 长视频：不用写好提示词也能开始（编导那一步由服务端做），有想法或有素材就行。
   const longBlocker = !long ? "" : scene?.images.required && !images.length ? `请添加${scene.images.label}`
@@ -1039,7 +1043,7 @@ export function SceneVideoStudio() {
         const configuration: StudioSegmentedVideoRequest = { clientRequestId, sceneId: scene.id, text: text.trim(), hasScript: !!scriptId,
           options: sceneOptionValues(scene.options, picked), language, duration: kind === 'direct' ? usedDuration : duration, ratio,
           model: taskModel, tier: usedTier, optimize, materials, budgetCap: cap };
-        const native = kind === 'direct' ? addVideoRow({ ...draftRef.current!.doc, nodes }, { title: scene.title, prompt: text.trim(), scriptId,
+        const native = kind === 'direct' ? addVideoRow({ ...draftRef.current!.doc, nodes }, { title: scene.title, prompt: sentPrompt, script: text.trim(), scriptId,
           refIds: plan!.used.map(m => placed.find(p => p.media.key === m.key)?.node.id).filter((id): id is string => !!id),
           video: settings!, durationSec: usedDuration, aspectRatio: ratio, model: taskModel, maxCost: videoQuote ?? undefined }).request : undefined;
         const snapshotNodes = placed.map(p => p.node).map(n => ({ ...n, metadata: { storageKey: n.metadata?.storageKey, mimeType: n.metadata?.mimeType,
@@ -1261,14 +1265,15 @@ export function SceneVideoStudio() {
         {mediaRow()}
 
         <div className="scene-box">
-          <ScenePromptEditor ref={input} ariaLabel={scriptId ? "视频脚本" : "想做的视频"} value={text} refs={promptRefs}
+          <ScenePromptEditor ref={input} ariaLabel={scriptId ? "视频脚本" : "想做的视频"} value={text} refs={promptRefs} hidden={recreation ? undefined : layers?.hidden}
             placeholder={recreation ? scene.placeholder : "粘贴写好的提示词直接生成；只有想法时，可写几句交给 AI 编导撰写脚本"}
             onChange={v => { setText(v); setHint(""); }}/>
           {/* 这类视频要写清的信息：点一下在框里起一行「店名和位置：」，接着写就行。写过脚本之后只给脚本里还空着的。 */}
           {!recreation && chipFacts.length > 0 && <div className="scene-fact-chips" role="group" aria-label="要写清楚的信息">{chipFacts.map(f =>
             <button key={f.label} type="button" onClick={() => addFact(f.label)}><Plus size={11} strokeWidth={1.6}/>{f.label}{!f.required && <small>选填</small>}</button>)}</div>}
           <footer>
-            <small className={contract && Array.from(text).length > contract.promptMaxChars ? "is-over" : undefined}>{Array.from(text).length}{contract && !recreation ? ` / ${contract.promptMaxChars}` : ""}</small>
+            <small className={contract && Array.from(recreation ? text : sentPrompt).length > contract.promptMaxChars ? "is-over" : undefined}
+              title={layers && !recreation ? "标着「仅参考」的内容不发给视频模型，这里是发出去的字数" : undefined}>{Array.from(recreation ? text : sentPrompt).length}{contract && !recreation ? ` / ${contract.promptMaxChars}` : ""}</small>
             {!recreation && <button type="button" className="scene-ai-button" title={scripts.length ? "返回 AI 编导继续修改" : "由 AI 编导撰写分镜脚本"} onClick={openDirector}>
               {writing ? <Loader2 size={13} className="studio-gallery-spinner"/> : <AiMark size={12}/>}{scriptId ? "AI 改写" : "AI 编导"}</button>}
           </footer>

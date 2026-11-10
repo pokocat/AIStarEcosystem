@@ -181,6 +181,9 @@ html[data-layout="desktop"] .scene-composer-head .scene-recent-host { display: n
 .scene-prompt-field>div { display: flex; flex: 1 0 auto; flex-direction: column; }
 .scene-prompt-editor { flex: 1 0 auto; color: var(--ip-ink); font-size: 14px; line-height: 1.75; outline: none; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; }
 .scene-prompt-editor p { margin: 0; }
+/* 不发给视频模型的内容（scene-script-layers.ts）：灰字；整段不发的在行末标「仅参考」。 */
+.scene-prompt-editor .scene-prompt-reference-only { color: var(--ip-muted); }
+.scene-prompt-editor .scene-prompt-reference-tag { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 4px; background: var(--ip-soft); color: var(--ip-muted); font-size: 11px; line-height: 18px; vertical-align: 1px; white-space: nowrap; user-select: none; cursor: default; }
 .scene-prompt-placeholder { position: absolute; top: 0; right: 0; left: 0; color: #7a838d; font-size: 14px; line-height: 1.75; pointer-events: none; }
 /* 技能标签：排在文字最前面，文字绕着它走（float），所以放不下时才换行。 */
 .scene-prompt-field.has-lead { display: block; }

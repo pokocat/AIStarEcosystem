@@ -6,7 +6,7 @@
 
 - [x] ~~**发布前查后台有没有改过这些提示词条目**~~ **2026-11-10 已核对**：线上 `ip_skill_version` 没有非种子来源的版本，发布后全部按仓库文件自动换新版（`stage-scene-script` v5、`base` v3，五个方法层 v1）。原描述：`base`、`stage-scene-script`、`stage-segmented-script`、`stage-scene-handoff`、`stage-dialogue`、`stage-skill-plan`，以及改过的视频场景条目和 `reference-video-recreation`、`script-writing` 两个做法。后台发布过的以后台为准，仓库文件不会覆盖。新增的 `method-commerce / -local / -drama / -brand / -ip` 是新条目，会直接生效。
 - [ ] **成片对比**（付费，需用户定预算）：用 11-09 客户的 15 条用例挑电商、到店、剧情各两条，新旧脚本各出一条，Seedance 和 H3 各跑一遍，看成片的 AI 感、念稿感和多出来的东西。
-- [ ] **发给视频模型时只挑和画面有关的段落**（分层）：第一段剧情概述、每镜「这一镜的作用」只给人看；第二段压成一行图号对照；第六段压成最后一行约束。H3 也先挑段落再改写，减少超长。认不出六段结构就原样发出。
+- [x] ~~**发给视频模型时只挑和画面有关的段落**（分层）~~ **2026-11-10 本地实现，未发布**：`scene-script-layers.ts` 一处判断，AI 视频页直接生成、视频裂变、H3 优化都用挑过的内容，编辑框灰字标「仅参考」，见 `docs/studio-scene-creation.md` 末节。画布连线和创作助手出的视频仍按原文；整份与挑过的成片效果对比并入上面的「成片对比」。
 - [ ] **剧情类表演细节**：固定 terra 时已全胜，但线上 Sonnet 写的剧情（手部动作、配乐转折）仍比 terra 细，可以再给剧情类补一个表演写法的例子。
 
 ## AI 编导建议（2026-11-09）
@@ -21,7 +21,6 @@
 - [x] ~~Seedance 2.0 内部错误没有错误码、未识别错误没有兜底~~ **2026-11-07 修复**：`VIDEO_PROVIDER_INTERNAL`；失败任务错误码不再为空；前端不显示浏览器和代码抛的英文。
 - [x] ~~画布返回不到 AI 视频~~ **2026-11-07 修复**：`shell/canvas-return.ts`，场景页按地址恢复草稿。
 - [ ] OneToken Seedance 2.0 的 `InternalServiceError`：把 `sdn_e7f6fe1298fb478ba5bc4b6e135f4cee`、`sdn_3f9fd45e7d2241948e39938345625505` 发给 OneToken 查原因（两次都带 9 张图）。
-- [ ] Seedance Fast 拒收真人参考图（今天 8 个失败 6 个）：用户定后面统一接素材库再看，这批不改。
 - [ ] 优化稿超长仍直接退回原文并收优化费（`StudioWorkflowWorker.rewriteVideo`），编导脚本平均约 3000 字（`stage-scene-script.md`）。
 - [ ] 优化稿自己加语速词、没台词也写说话（`H3PromptRewrite` 约定「how they speak」）；提交前没有台词量检查（11:52 那条 206 字要 15 秒说完）。
 - [x] ~~出镜人物位看不到三视图，「存为人物」和导演台进资产库都没有~~ **2026-11-07 完成，未发布**：导演台有图的资产自动进库（`IpLibraryDirectorSync`），图片可「存为资产」（`library-save-dialog.tsx`），选择框加了场景、道具。
@@ -45,8 +44,7 @@
 - [x] ~~按钮写价格、下方写「本次上限」：`ui-copy` 不让显示冻结上限，方案 §3 要求显示。现在按方案显示，需要定一条规则。~~ **2026-11-07 已定**：普通视频价格确定只写价，不写上限；长视频和爆款复刻写「按实际用量结算，最多 X 积分」；单次文字任务只写「按实际用量结算」。写进 `wenan` 技能「费用」一节。
 - [ ] AI 视频和 AI 图片的成片都没有「AI 生成」标识（`docs/wenan.md`「其它写法」），两页一起补。
 - [ ] 重新进入长时间暂停的任务时，「已用时」从任务创建算起，会显示几小时。要决定是否改成从本次继续算起。
-- [ ] **「视频裂变」的找变量和 AI 改写还没用真模型跑过**（2026-11-09，本地未发布）：只用本机假接口和单测验过请求形状与页面流程。上线前用线上同款文字模型各真跑一次（§8.0.1 ⑦）：`stage-scene-variables` 是否按「名称｜原文｜替换1｜…」一行一个、原文能否在脚本里搜到；`stage-scene-script` 的改写段写出来的几版是否明显不同、卖点价格时长镜头数是否保持。
-- [ ] **发布前确认线上 `stage-scene-script` 的生效版本带改写段**（2026-11-09）：后台改过这个环节的话仓库文件不会覆盖，AI 改写会被服务端拒绝（503 `STUDIO_REWRITE_NOT_CONFIGURED`，不会悄悄当普通改稿交差）。查后台「提示词与技能」里这个环节的正文有没有 `hasVariant`，没有就按仓库文件发布一版。
+- [ ] **「视频裂变」的找变量和 AI 改写还没用真模型跑过**（2026-11-09；2026-11-10 已随 `20261109-account-pages-e978bfce` 上线）：只用本机假接口和单测验过请求形状与页面流程，线上已经开放。尽快用线上同款文字模型各真跑一次（§8.0.1 ⑦）：`stage-scene-variables` 是否按「名称｜原文｜替换1｜…」一行一个、原文能否在脚本里搜到；`stage-scene-script` 的改写段写出来的几版是否明显不同、卖点价格时长镜头数是否保持。
 - [ ] 「视频裂变」手机端只在「设置」标签里有入口，「作品」标签看完视频要先切回设置；要不要在结果区也放一个，等用户反馈再定。
 
 ## AI 艺人孵化全端演示（2026-11-05）
@@ -189,10 +187,9 @@
 - [ ] **看 H3 提示词优化换模型后的效果，并核算售价**（2026-11-07 切到 OneToken 的 `deepseek-v4.1-flash`，接入点 `ai-fc1064f7-9fc`，用户定）：测试时 30 次里 5 次不按约定回，已加重试和校验；要看线上「提示词优化未完成」的比例和台词是否完整（同一批测试里 Sonnet 最完整）。售价暂按 DeepSeek 已公布费率，这个模型的 OneToken 成本还没核算。余额和 Sonnet 共用一个账户，额度用完两边一起失败。切回：`bind` 到 `ai-onetoken-sonnet55`。详见 `docs/releases/h3-rewrite-checks-release-20261107.md`。
 - [ ] **引用文字里的真台词没有核对**（`H3PromptRewrite.checkSpoken`，2026-11-07）：连入的拉片文字现在不参与核对，避免误报；代价是台词写在引用里时，模型丢了也不提示。要核对得先认准引用里哪些是台词（拉片表格的「字幕"…"」）。
 - [ ] **修复后的优化稿没有真实出片**（2026-11-07）：只比较了文字。要挑「短要求 + 参考视频」和「拉片引用」各出一条，看「其他不变」是否成立。
-- [ ] **参考视频超长要到优化之后才报错**（`StudioWorkflowService.submitVideoRewrite` 不查时长，`handOver` 才发现，2026-11-06 用户等了约 30 秒）：应在受理时拦下。
+- [x] ~~**参考视频超长要到优化之后才报错**~~ **2026-11-10 本地修复，未发布**：`StudioWorkflowService.submitVideoRewrite` 改用 `StudioVideoService.quoteChecked` 报价，受理时就按模型规则核对素材（参考视频 2–15 秒是厂商限制，H3 写在 `JusuanH3Contract.REFERENCE_VIDEO_MAX_SECONDS`），不建任务、不冻结（`StudioVideoRewriteModelTest#invalidReferenceMediaIsRejectedBeforeTheRewriteStarts`）。
 - [x] ~~爆款复刻把多个拉片片段同时提交给只支持一段参考视频的模型~~ **2026-11-09 本地修复，未发布**：`planCapabilities` 下发所选模式完整参考合同，编排规则说明每个拉片片段分别计数；`VideoStudioService` 报价和提交共用各类数量、组合及总数上限校验。原线上任务需重新编排并确认，不能原样继续或静默丢弃片段。
 - [ ] **复刻分析超过输入额度**（`StudioWorkflowWorker#studioChat`，2026-11-06 两条 41、57 秒的片子）：单次 8.6–11.6 万 Token，20 万额度用两三次就停，重试也过不去。
-- [ ] **Seedance 2.0 Fast 拒绝真人参考图时没有建议换模型**（`VIDEO_REFERENCE_PERSON_RESTRICTED`，2026-11-04、11-06 共 5 次）：用户原样重试仍然失败。
 
 - [x] ~~线上长任务验收~~ **已验收**，2026-11-05：`20261104-sonnet-streaming-editor` 上线后导演台 3 集剧本 376 秒成功（输出 49305 Token，53 积分），编导 53 秒成功（9 积分），没有【待补】。见 `docs/releases/sonnet-streaming-editor-release-20261104.md`。
 - [ ] **按次定价的线路要重算**：`drama.credit.*` 等按次收费（如 6 积分 = ¥0.06），而 Sonnet 一次输出常上万 Token（成本 ¥0.07 起，长剧本约 ¥0.29）。短剧、形象锻造这些走 `DRAMA_SCRIPT_DRAFT` / `APPEARANCE_FORGE` / `GENERAL` 的线路可能亏本，要查实际调用量和用量后定价。
@@ -200,7 +197,6 @@
 - [ ] **三个模型的成片对比**：Qwen、Sonnet、Opus / Codex 的脚本都只比了文字，没出过片；要用同一组真实素材各出一条 H3，确认脚本变好后成片也变好。
 - [x] ~~OneToken 额度没有告警~~ **已完成**，2026-11-05：飞书机器人加「模型额度告警」（`ModelQuotaAlerts`）：服务方因额度拒绝时每个接入点每小时发一条，`ai.quota-watch` 里列的接入点每 5 分钟查一次余额，低于提醒线每天发一条。见 `docs/runbooks/model-task-alerts.md`。
 - [ ] **额度用完时逐任务告警会刷屏**（2026-11-05）：`FeishuModelAlerts.enqueue` 对每个失败任务各发一条【模型任务告警】，额度用完的时段会和额度告警一起发。要不要在这种情况下收掉逐任务那条，看线上实际情况再定。
-- [ ] **余额偏低告警的文案修复未发布**（2026-11-05）：main 上已改成「余额用完后……」，线上 `20261105-model-quota-alerts` 仍写「调用都会失败」，随下一次 server 发布上线。
 - [ ] **带独立额度的 Key 查到的是什么**（2026-11-05）：OneToken `GET /v1/usage` 只在 `mode=unrestricted` 的 Key 上看过，`remaining` 是钱包余额。给 Key 单独设了额度时，`remaining` 是否变成这个 Key 的剩余额度没有验证；这种 Key 就算查不准，额度用完时的拒绝告警仍然有效。
 - [ ] **OneToken 稳定性**：流中断实测 27 秒到 2 分钟都有，已自动重发最多 3 次；上线后看 `[ai-chat] stream interrupted` 的频率和 `ai-onetoken-sonnet55` 的失败率。重发的那几次供应商可能也计费，我方不收。
 - [ ] **H3 改写效果**：改写也换成了 Sonnet，要看约 2000 字脚本改写后是否超 7000 字符。

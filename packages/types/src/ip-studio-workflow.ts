@@ -317,6 +317,11 @@ export interface StudioNodeMetadata {
     video: { mode: VideoStudioMode; tier: string; seed?: number; firstId?: string; lastId?: string } };
   sourceRange?: {startSec:number;endSec:number;storageKey:string};
   /**
+   * AI 视频页按脚本出的视频：编辑框里的完整脚本。发给模型的 request.prompt 是从它挑出来的
+   * （apps/web-aiavatar/src/ip/scenes/scene-script-layers.ts，去掉只给人看的段落）；「修改后生成」放回的是它。没挑过时不写。
+   */
+  sceneScript?: string;
+  /**
    * AI 视频页「编导」的一轮（docs/studio-scene-creation.md §8）：用户这句话（没写就是空串）、是不是在改上一版，
    * 以及写这版脚本时的时长 / 画面 / 语言。脚本正文就是节点 content，任务和计费是这个节点上普通的文字任务。
    */
