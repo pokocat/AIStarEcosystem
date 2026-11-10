@@ -13,7 +13,7 @@ import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { studioHref } from "@/components/hub/data";
 import { HubScreen, HubTabBar } from "@/components/hub/ui";
 import { setLayout, useLayoutMode } from "@/shell/layout-mode";
-import { AccountOverview } from "@/shell/account-workspace";
+import { AccountOverview } from "@/account/account-overview";
 import { EditableAccountAvatar } from "@/shell/account-avatar";
 import { useWalletBalance } from "@/shell/wallet-balance";
 
@@ -74,12 +74,12 @@ function MeMobile({ name, phone, demo, identity, onLogout }: { name: string; pho
     <nav className="studio-me-group" aria-label="名片与授权">
       <MeRow href="/cards" icon={IdCard} title="我的名片" sub="对外发布面 · 扫码即看" />
       <MeRow href="/licenses" icon={ShieldCheck} title="授权中心" sub="人物和 IP 的授权证书" />
-      <MeRow href={studioHref("#/tasks")} icon={ListChecks} title="任务中心" sub="生成任务的进度与历史" />
+      <MeRow href={studioHref("#/tasks")} icon={ListChecks} title="任务历史" sub="生成记录和消耗的积分" />
       <MeRow href={studioHref("#/realmaterials")} icon={ScanFace} title="真人授权素材库" sub="素材录制 · 审核状态" />
     </nav>
     <nav className="studio-me-group" aria-label="账号与设置">
       {ID_MODE && <MeRow href="/invitations" icon={UserPlus} title="邀请朋友" sub="管理邀请链接 · 查看邀请记录" />}
-      <MeRow href={studioHref("#/membership")} icon={Gem} title="会员与算力" />
+      <MeRow href={studioHref("#/membership")} icon={Gem} title="会员与积分" />
       {process.env.NEXT_PUBLIC_ENTERPRISE_ENABLED === "1" && <MeRow href="/enterprise" icon={Building2} title="企业积分" sub="企业余额 · 积分分配 · 充值记录" />}
       <MeRow href={studioHref("#/storage")} icon={HardDrive} title="存储用量" />
       <MeRow href={studioHref("#/trash")} icon={Trash2} title="回收站" />

@@ -185,6 +185,8 @@ function parseHash(): { tab: string; screen?: string; id?: string; deriv?: strin
   }
   if (seg[0] === "compose") return { tab: "library", screen: "compose" };
   if (seg[0] === "real-auth" && seg[1]) return { tab: "library", screen: "realauthresume", id: seg[1] };
+  // 2026-11-09：账号区「真人授权素材」新页用 #/create/real/<人物 id> 给指定真人补充素材 / 授权（原来只能在本 SPA 内部跳）。
+  if (seg[0] === "create" && seg[1] === "real" && seg[2]) return { tab: "home", screen: "realcapture", id: seg[2] };
   if (seg[0] === "create") return { tab: "home", screen: seg[1] === "ai" ? "aicreate" : seg[1] === "real" ? "realcapture" : "create" };
   if (SIMPLE_OVERLAYS.indexOf(seg[0]) >= 0) return { tab: "home", screen: seg[0] };
   return { tab: "home" };
@@ -288,6 +290,7 @@ export function App({ embedded = false, start, tabBar, onRootBack }: { embedded?
         if (!c || !c.id) { setStack([]); setLabel(TAB_LABEL[r.tab]); depthRef.current = 0; return; }
         const props: any = { char: c };
         if (r.screen === "derivview") props.deriv = r.deriv;
+        if (r.screen === "realcapture") props.materialOnly = true; // 与 startRealMaterial 相同：给已有真人补素材 / 授权
         setStack([{ screen: r.screen, props }]);
         setLabel(OVERLAY_LABEL[r.screen] || r.screen);
         depthRef.current = 1;

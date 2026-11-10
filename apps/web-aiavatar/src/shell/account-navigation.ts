@@ -1,14 +1,15 @@
-/** One account navigation for the modern overview and the existing task screens. */
+/** 账号区的页内标签（2026-11-09 新版）。「邀请朋友」「企业积分」是独立页面，从总览进入，不占标签。 */
 export const ACCOUNT_PAGES = [
-  { key: "me", href: "/me", label: "账号总览", icon: "user" },
-  { key: "invitations", href: "/invitations", label: "邀请朋友", icon: "invitation" },
-  { key: "tasks", href: "/studio#/tasks", label: "任务中心", icon: "tasks" },
-  { key: "membership", href: "/studio#/membership", label: "会员与积分", icon: "credits" },
-  { key: "storage", href: "/studio#/storage", label: "存储用量", icon: "storage" },
-  { key: "realmaterials", href: "/studio#/realmaterials", label: "真人授权素材", icon: "materials" },
-  { key: "trash", href: "/studio#/trash", label: "回收站", icon: "trash" },
-  { key: "settings", href: "/studio#/settings", label: "设置与安全", icon: "settings" },
+  { key: "me", href: "/me", label: "总览" },
+  { key: "membership", href: "/studio#/membership", label: "会员与积分" },
+  { key: "tasks", href: "/studio#/tasks", label: "任务历史" },
+  { key: "storage", href: "/studio#/storage", label: "存储用量" },
+  { key: "realmaterials", href: "/studio#/realmaterials", label: "真人授权素材" },
+  { key: "trash", href: "/studio#/trash", label: "回收站" },
+  { key: "settings", href: "/studio#/settings", label: "设置与安全" },
 ] as const;
+
+export type AccountPageKey = (typeof ACCOUNT_PAGES)[number]["key"];
 
 export function accountPageKey(hash: string): string | undefined {
   const key = hash.replace(/^#\/?/, "").split("/")[0];

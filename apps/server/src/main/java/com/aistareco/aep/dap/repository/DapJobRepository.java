@@ -20,4 +20,9 @@ public interface DapJobRepository extends JpaRepository<DapJob, String> {
     @Query("SELECT COALESCE(SUM(j.cost),0) FROM DapJob j WHERE j.ownerUserId = :uid AND j.createdAt >= :since AND j.status <> 'failed'")
     long sumCostSince(@Param("uid") String uid, @Param("since") Instant since);
     List<DapJob> findByAvatarId(String avatarId);
+
+    /** 账号「任务历史」：本人在时间窗内的数字人任务，新的在前。 */
+    @Query("SELECT j FROM DapJob j WHERE j.ownerUserId = :uid AND j.createdAt >= :from AND j.status IN :statuses ORDER BY j.createdAt DESC, j.id DESC")
+    List<DapJob> history(@Param("uid") String uid, @Param("from") Instant from,
+                         @Param("statuses") java.util.Collection<String> statuses, org.springframework.data.domain.Pageable pageable);
 }

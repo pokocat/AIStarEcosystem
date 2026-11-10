@@ -113,15 +113,9 @@ public class DapAccountService {
         // 分类占用（MB，四舍五入；非空分类不足 1MB 记 1MB）。used = 各分类之和，与下方分类条对齐。
         // v0.104：口径改为「六类资产 + 合成产物 + 授权素材」，与资产库的分类语言一致 ——
         // 人物（DH-）把定妆图 / 造型 / 图集衍生 / 视频 / 3D 合并成一项，另五类各自独立成项。
-        long characterMb = mb(sumAvatarImageBytes(userId) + lookRepo.sumBytesByOwner(userId)
-                + derivRepo.sumBytesByOwnerAndKind(userId, "image")
-                + derivRepo.sumBytesByOwnerAndKind(userId, "video")
-                + derivRepo.sumBytesByOwnerAndKind(userId, "model3d"));
-        long sceneMb = mb(sceneRepo.sumBytesByOwner(userId));
-        long productMb = mb(productRepo.sumBytesByOwner(userId));
-        long voiceMb = mb(voiceRepo.sumBytesByOwner(userId));
-        long composeMb = mb(compositionOutputRepo.sumBytesByOwner(userId));
-        long licMb = mb(captureRepo.sumBytesByOwner(userId) + photoRepo.sumBytesByOwner(userId));
+        StorageMb s = storageMb(userId);
+        long characterMb = s.character(), sceneMb = s.scene(), productMb = s.product(),
+                voiceMb = s.voice(), composeMb = s.compose(), licMb = s.license();
         long usedMb = characterMb + sceneMb + productMb + voiceMb + composeMb + licMb;
         int quotaMb = props.getStorageQuotaMb();
 
@@ -136,6 +130,24 @@ public class DapAccountService {
 
         return new AccountDto("PRO", "PRO", credits, monthlyGrant, creditsUsed,
                 refreshDate, generatable, usedMb, quotaMb, breakdown);
+    }
+
+    /** 数字资产各类文件占用（MB）。只读，不发月度赠送；账号页的存储统计也读这一份。 */
+    public record StorageMb(long character, long scene, long product, long voice, long compose, long license) {
+        public long total() { return character + scene + product + voice + compose + license; }
+    }
+
+    public StorageMb storageMb(String userId) {
+        return new StorageMb(
+                mb(sumAvatarImageBytes(userId) + lookRepo.sumBytesByOwner(userId)
+                        + derivRepo.sumBytesByOwnerAndKind(userId, "image")
+                        + derivRepo.sumBytesByOwnerAndKind(userId, "video")
+                        + derivRepo.sumBytesByOwnerAndKind(userId, "model3d")),
+                mb(sceneRepo.sumBytesByOwner(userId)),
+                mb(productRepo.sumBytesByOwner(userId)),
+                mb(voiceRepo.sumBytesByOwner(userId)),
+                mb(compositionOutputRepo.sumBytesByOwner(userId)),
+                mb(captureRepo.sumBytesByOwner(userId) + photoRepo.sumBytesByOwner(userId)));
     }
 
     private long sumAvatarImageBytes(String userId) {

@@ -11,7 +11,7 @@ vi.mock("@/proto/api", () => ({
 }));
 vi.mock("@/shell/layout-mode", () => ({ useLayoutMode: () => "mobile", setLayout: vi.fn() }));
 vi.mock("@/shell/account-avatar", () => ({ EditableAccountAvatar: () => <span>头像</span>, AccountAvatar: () => <span>头像</span> }));
-vi.mock("@/shell/account-workspace", () => ({ AccountOverview: () => null }));
+vi.mock("@/account/account-overview", () => ({ AccountOverview: () => null }));
 vi.mock("@/shell/wallet-balance", () => ({ useWalletBalance: () => ({ balance: 1280, error: undefined, refresh: vi.fn() }) }));
 import MePage from "./page";
 

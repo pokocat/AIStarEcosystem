@@ -15185,6 +15185,74 @@ paths:
       parameters: [{ in: query, name: page, schema: { type: integer, minimum: 0 } }]
       responses:
         '200': { description: 'ApiResponse<StudioVideoTaskPage>; items, page, hasMore' }
+  /v1/ip-studio/task-history:
+    get:
+      tags: [ipstudio]
+      operationId: studioTaskHistory
+      description: >-
+        账号「任务历史」。本人的画布 / AI 图片 / AI 视频 / 导演台 / 对话运行（IpRun）与数字人任务（DapJob）按开始时间倒序合并，
+        每条带实际积分（spent 含模型赠款，scopedSpent 为其中赠款，pending 进行中，released 已退回），口径与画布任务弹层相同。
+        summary 统计同一时间窗与类型下的全部任务（不受 status 影响），最多 300 条，超出时 partial=true。只读，不改任务或账本。
+      parameters:
+        - { in: query, name: status, schema: { type: string, enum: [running, done, failed] } }
+        - { in: query, name: type, schema: { type: string, enum: [image, video, audio, text, dialogue, digital-human] } }
+        - { in: query, name: days, description: 0 为全部时间, schema: { type: integer, minimum: 0, maximum: 3650, default: 30 } }
+        - { in: query, name: page, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        '200': { description: 'ApiResponse<StudioTaskHistoryPage>; items, page, hasMore, summary' }
+        '400': { description: TASK_HISTORY_INVALID / TASK_HISTORY_TOO_DEEP }
+  /v1/ip-studio/storage:
+    get:
+      tags: [ipstudio]
+      operationId: studioStorageUsage
+      description: >-
+        账号「存储用量」。数字资产文件（按表实时求和）与 IP Studio 生成、上传文件（通用存储统计 app=aiavatar / studio）合并成一个口径；
+        配额为通用存储的 aiavatar 配额（后台可配，含已购存储扩容）。只读。
+      responses:
+        '200': { description: 'ApiResponse<StudioStorageUsage>; usedMb, quotaMb, baseQuotaMb, grantedMb, categories[{key,label,mb}]' }
+  /v1/ip-studio/projects/trash:
+    get:
+      tags: [ipstudio]
+      operationId: ipStudioProjectTrash
+      description: 本人已删除的画布（删除只是打标记，内容与文件仍在），最近删除的在前。只取名字与删除时间，不读画布文档。
+      responses:
+        '200': { description: 'ApiResponse<StudioTrashedCanvas[]>; id, name, deletedAt' }
+  /v1/ip-studio/projects/{id}/restore:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    post:
+      tags: [ipstudio]
+      operationId: ipStudioProjectRestore
+      description: 从回收站恢复本人的画布（原 ID、原内容）；没删除时直接成功，不是本人的按不存在处理。
+      responses:
+        '200': { description: 'ApiResponse<{id, restored}>' }
+        '404': { description: IP_PROJECT_NOT_FOUND }
+  /v1/ip-studio/projects/{id}/purge:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    delete:
+      tags: [ipstudio]
+      operationId: ipStudioProjectPurge
+      description: 从回收站彻底删除本人的画布（含历史版本）。只能删已删除的；生成记录（IpRun）和文件保留在资产库。
+      responses:
+        '200': { description: 'ApiResponse<{id, purged}>' }
+        '404': { description: IP_PROJECT_NOT_FOUND }
+        '409': { description: IP_PROJECT_NOT_IN_TRASH / IP_PROJECT_BUSY（还有生成中的任务） }
+  /v1/ip-studio/director/works/{id}/purge:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    delete:
+      tags: [ipstudio]
+      operationId: directorWorkPurge
+      description: 从回收站彻底删除本人的导演台作品。只能删已删除的；生成记录和文件保留在资产库。
+      responses:
+        '200': { description: 'ApiResponse<{id, purged}>' }
+        '404': { description: DIRECTOR_WORK_NOT_FOUND }
+        '409': { description: DIRECTOR_WORK_NOT_IN_TRASH / DIRECTOR_WORK_BUSY }
+  /v1/ip-studio/trash/policy:
+    get:
+      tags: [ipstudio]
+      operationId: studioTrashPolicy
+      description: 回收站与存储规则：retentionDays 为画布 / 导演台作品到期自动彻底删除的天数（0 = 不自动清理，配置 aep.ipstudio.trash-retention-days）；storageEnforced 为是否按存储上限拦截上传（aep.ipstudio.storage-enforce）。两项默认都关。
+      responses:
+        '200': { description: 'ApiResponse<{retentionDays, storageEnforced}>' }
   /v1/ip-studio/video-tasks/{id}:
     parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
     get:

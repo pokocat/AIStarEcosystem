@@ -259,6 +259,28 @@ public class IpProjectService {
         projectRepo.save(p);
     }
 
+    /** 已删除的画布（删除只是打标记，内容和文件都还在）。只读名字和删除时间，不读画布文档。 */
+    public record TrashedCanvas(String id, String name, String deletedAt) {}
+
+    public List<TrashedCanvas> trash(String userId) {
+        List<TrashedCanvas> out = new ArrayList<>();
+        for (Object[] row : projectRepo.trashedOf(userId))
+            out.add(new TrashedCanvas((String) row[0], (String) row[1], row[2] == null ? null : row[2].toString()));
+        return out;
+    }
+
+    /** 恢复已删除的画布：原 ID、原内容。没删除时直接成功；不是本人的按不存在处理。 */
+    @Transactional
+    public void restore(String userId, String id) {
+        // 与彻底删除（StudioTrashService.purgeCanvas）抢同一把行锁：否则恢复成功后仍可能被并发的彻底删除删掉。
+        IpProject p = projectRepo.lockById(id).filter(x -> userId.equals(x.getOwnerUserId()))
+                .orElseThrow(() -> BusinessException.notFound("IP_PROJECT_NOT_FOUND", "这张画布不存在"));
+        if (p.getDeletedAt() == null) return;
+        p.setDeletedAt(null);
+        p.setUpdatedAt(Instant.now());
+        projectRepo.save(p);
+    }
+
     void save(IpProject p) {
         p.setUpdatedAt(Instant.now());
         projectRepo.save(p);
@@ -268,7 +290,15 @@ public class IpProjectService {
 
     /** 照片 / 参考图上传：只收 jpg/png、≤ 字节上限且最长边 ≤ 像素上限；产物 key 由客户端写进 doc。 */
     public IpUploadResultDto upload(String userId, MultipartFile file) {
+        if (storageGuard != null && file != null) storageGuard.checkUpload(userId, file.getSize());
         return uploadImage(file, CATEGORY_SOURCE, userId);
+    }
+
+    /** 存储上限检查（开关默认关，见 StudioStorageGuard）。setter 注入，避免改动既有构造参数。 */
+    private com.aistareco.aep.ipstudio.history.StudioStorageGuard storageGuard;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setStorageGuard(@org.springframework.context.annotation.Lazy com.aistareco.aep.ipstudio.history.StudioStorageGuard storageGuard) {
+        this.storageGuard = storageGuard;
     }
 
     /** Reuse the exact same image validation for canvas media and independent covers. */
