@@ -140,6 +140,11 @@ html[data-layout="desktop"] .assets-tile:is(:hover, :focus-within) .assets-tile-
 .assets-more { display: flex; justify-content: center; margin-top: 24px; }
 
 /* ── 人物 ── */
+/* 批量选择角色、场景、道具：勾选框压在卡片左上角，选中的封面描一圈。 */
+.assets-people-grid>li { position: relative; min-width: 0; }
+.assets-people-grid>li>.assets-tile-check { top: 8px; left: 8px; z-index: 1; }
+.assets-person.is-selected .assets-person-cover { outline: 2px solid var(--ip-ink, #17202a); outline-offset: 2px; }
+.assets-person:disabled { cursor: default; opacity: .45; }
 .assets-people-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 20px 12px; margin: 0; padding: 0; list-style: none; }
 html[data-layout="desktop"] .assets-people-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 22px 14px; }
 .assets-person { display: flex; flex-direction: column; gap: 8px; width: 100%; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; text-decoration: none; cursor: pointer; }

@@ -5,13 +5,14 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { Button, Checkbox, Dropdown, Input, Modal } from 'antd';
-import { ChevronDown, Image as ImageIcon, Plus, Search, ShieldCheck, UserRound, Video } from 'lucide-react';
+import { ChevronDown, Image as ImageIcon, Plus, Search, ShieldCheck, SquareCheck, UserRound, Video } from 'lucide-react';
 import type { IpSavedAsset, LibraryFolder, LibraryObject } from '@ai-star-eco/types';
-import { addLibraryVersion, createLibraryObject, libraryObjects, mainLibraryVersion } from '@/canvas-bridge/asset-library';
+import { addLibraryVersion, createLibraryObject, deleteLibraryObject, libraryObjects, mainLibraryVersion } from '@/canvas-bridge/asset-library';
 import { studioHref, useHubData } from '@/components/hub/data';
 import { AssetApi, AvatarApi, LicenseApi } from '@/proto/api';
 import type { Avatar, License, StarGrant } from '@/proto/data';
 import { AssetThumb } from './asset-thumb';
+import { confirmAssetDelete } from './assets-delete';
 import { AI_LIBRARY, objectOriginLabel } from './assets-hub-shared';
 import { LibraryAssetEditor } from './library-asset-editor';
 import { LibraryReferencePicker } from './library-reference-picker';
@@ -35,7 +36,11 @@ export function verifiedReal(avatar: Avatar, license?: License) {
 }
 
 export function AssetsPeople({ library, folders, from = '', onFromChange }: { library: string; folders: LibraryFolder[]; from?: string; onFromChange?: (id: string) => void }) {
-  const { message } = useStudioApp();
+  const { message, modal } = useStudioApp();
+  // 批量删除只管资产库里的角色；我的 IP 和授权给我的形象不在资产库里，在各自的页面管理。
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [actionError, setActionError] = useStudioErrorState();
   const [keyword, setKeyword] = useState('');
   const [kind, setKind] = useState<'all' | 'virtual' | 'real'>('all');
   const [source, setSource] = useState<'all' | PersonSource>('all');
@@ -102,6 +107,17 @@ export function AssetsPeople({ library, folders, from = '', onFromChange }: { li
   const errors = [rolesError, rolesOnly || isAi ? '' : avatars.error || '', rolesOnly || isAi ? '' : grants.error || ''].filter(Boolean);
   const filtered = !!needle || !!from || (!rolesOnly && (kind !== 'all' || source !== 'all'));
 
+  const toggle = (id: string) => setSelected(old => old.includes(id) ? old.filter(x => x !== id) : [...old, id]);
+  const stopSelecting = () => { setSelecting(false); setSelected([]); };
+  const remove = () => confirmAssetDelete(modal, {
+    ids: selected, noun: '角色', remove: deleteLibraryObject,
+    onDone: ({ removed, error }) => {
+      setActionError(error || '');
+      if (!error) { message.success(removed.length > 1 ? `已删除 ${removed.length} 个角色` : '已删除'); stopSelecting(); }
+      else setSelected(old => old.filter(id => !removed.includes(id)));
+      setRevision(n => n + 1);
+    },
+  });
   if (isAi) return <div className="assets-empty"><h3>AI 生成库里没有人物</h3><p>此处仅保存 AI 生成的图片、视频和音频，人物请在「全部」中查看。</p></div>;
   return <div className="assets-people">
     <div className="assets-toolbar">
@@ -115,17 +131,26 @@ export function AssetsPeople({ library, folders, from = '', onFromChange }: { li
       {onFromChange && <LibrarySourceSelect value={from} onChange={onFromChange}/>}
       <span className="assets-toolbar-gap"/>
       <span className="assets-count" aria-live="polite">{loading ? '正在加载…' : `${shown.length} 个人物`}</span>
+      {selecting
+        ? <><span className="assets-count">已选 {selected.length} 个角色</span>
+          <Button danger disabled={!selected.length} onClick={remove}>删除</Button>
+          <Button onClick={stopSelecting}>完成</Button></>
+        : <Button icon={<SquareCheck size={15}/>} disabled={!roles.length} onClick={() => setSelecting(true)}>批量选择</Button>}
     </div>
+    {actionError && <p className="assets-notice"><StudioErrorNotice error={actionError}/></p>}
     {errors.map((e, i) => <p key={i} className="assets-notice"><StudioErrorNotice error={e}/><Button size="small" onClick={() => setRevision(n => n + 1)}>重试</Button></p>)}
     <ul className="assets-people-grid">
-      {!filtered && <li className="assets-person-new">
+      {!filtered && !selecting && <li className="assets-person-new">
         <div><strong>新建人物</strong>
           <button type="button" onClick={() => setCreating(true)}><ImageIcon size={15}/>使用照片创建</button>
           <Link href={studioHref('#/create/real')}><Video size={15}/>录制视频创建</Link>
         </div>
       </li>}
       {loading && !shown.length ? Array.from({ length: 4 }, (_, i) => <li key={`s${i}`}><span className="assets-skeleton assets-person-cover"/></li>)
-        : shown.map(p => <li key={`${p.source}:${p.id}`}><PersonCard person={p} onOpen={() => p.object && setEditing([p.object])}/></li>)}
+        : shown.map(p => <li key={`${p.source}:${p.id}`}>
+          {selecting && p.object && <Checkbox className="assets-tile-check" aria-label={`选择 ${p.name}`} checked={selected.includes(p.id)} onChange={() => toggle(p.id)}/>}
+          <PersonCard person={p} selecting={selecting} selected={selected.includes(p.id)} onOpen={() => selecting ? p.object && toggle(p.id) : p.object && setEditing([p.object])}/>
+        </li>)}
     </ul>
     {!loading && !shown.length && filtered && <div className="assets-empty"><h3>没有找到匹配的人物</h3><p>请尝试其他名字或筛选条件。</p><Button onClick={() => { setKeyword(''); setKind('all'); setSource('all'); onFromChange?.(''); }}>清除筛选</Button></div>}
     {editing && <LibraryAssetEditor assets={editing} folders={folders} onClose={() => { setEditing(undefined); setRevision(n => n + 1); }} onChange={() => setRevision(n => n + 1)}/>}
@@ -134,13 +159,16 @@ export function AssetsPeople({ library, folders, from = '', onFromChange }: { li
   </div>;
 }
 
-function PersonCard({ person: p, onOpen }: { person: Person; onOpen: () => void }) {
+function PersonCard({ person: p, selecting = false, selected = false, onOpen }: { person: Person; selecting?: boolean; selected?: boolean; onOpen: () => void }) {
   const cover = <span className="assets-person-cover">
     {p.image?.src || p.image?.storageKey ? <AssetThumb kind="image" src={p.image.src || undefined} storageKey={p.image.storageKey}/> : <span className="assets-person-blank"><UserRound size={40} strokeWidth={1.1}/></span>}
     {p.verified && <span className="assets-person-shield" role="img" aria-label="本人已刷脸确认" title="本人已刷脸确认"><ShieldCheck size={14}/></span>}
   </span>;
   const body = <>{cover}<span className="assets-person-text"><strong>{p.name}</strong><small>{p.description || '暂无设定'}</small></span>
     <span className="assets-person-meta"><span>{p.meta}</span>{p.tag && <span className={`assets-tag${p.tag.tone ? ` is-${p.tag.tone}` : ''}`}>{p.tag.label}</span>}</span></>;
+  // 批量选择时只有角色能选，我的 IP 和授权形象灰掉。
+  if (selecting) return <button type="button" className={`assets-person${selected ? ' is-selected' : ''}`} disabled={!p.object} aria-pressed={p.object ? selected : undefined}
+    aria-label={p.object ? `选择 ${p.name}` : p.name} title={p.object ? undefined : '不在资产库中，请在人物详情中管理'} onClick={onOpen}>{body}</button>;
   return p.href ? <Link className="assets-person" href={p.href} aria-label={`查看 ${p.name}`}>{body}</Link>
     : <button type="button" className="assets-person" aria-label={`查看 ${p.name}`} onClick={onOpen}>{body}</button>;
 }

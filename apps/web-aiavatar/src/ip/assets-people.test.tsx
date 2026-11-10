@@ -3,20 +3,20 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { AssetsPeople, NewPersonDialog } from './assets-people';
 
-const api = vi.hoisted(() => ({ objects: vi.fn(), create: vi.fn(), version: vi.fn(), avatars: vi.fn(), licenses: vi.fn(), grants: vi.fn() }));
+const api = vi.hoisted(() => ({ remove: vi.fn(), confirm: vi.fn(), objects: vi.fn(), create: vi.fn(), version: vi.fn(), avatars: vi.fn(), licenses: vi.fn(), grants: vi.fn() }));
 const picks = vi.hoisted(() => ({ next: [] as any[] }));
 vi.mock('next/link', () => ({ default: ({ children, ...p }: any) => <a {...p}>{children}</a> }));
 vi.mock('./studio-errors', async () => {
   const { useCallback, useState } = await import('react');
   return {
-    useStudioApp: () => ({ message: { success: vi.fn() }, modal: { confirm: vi.fn() } }),
+    useStudioApp: () => ({ message: { success: vi.fn() }, modal: { confirm: api.confirm } }),
     // 和真的一样，setter 要稳定，否则带它做依赖的副作用会一直重跑。
     useStudioErrorState: () => { const [e, set] = useState(''); return [e, useCallback((v: unknown) => set(v ? String((v as Error).message || v) : ''), [])]; },
     StudioErrorNotice: ({ error }: any) => <span role="alert">{String(error)}</span>,
   };
 });
 vi.mock('@/canvas-bridge/asset-library', () => ({
-  libraryObjects: api.objects, createLibraryObject: api.create, addLibraryVersion: api.version,
+  libraryObjects: api.objects, createLibraryObject: api.create, addLibraryVersion: api.version, deleteLibraryObject: api.remove,
   mainLibraryVersion: (a: any) => a.versions.find((v: any) => v.id === a.mainVersionId),
 }));
 vi.mock('@/canvas-bridge/image-storage', () => ({ refreshImageUrl: vi.fn() }));
@@ -38,7 +38,7 @@ vi.mock('./library-source-select', () => ({ LibrarySourceSelect: ({ value, onCha
 // 选择框换成一个按钮：点一下就把 picks.next 交回去。
 vi.mock('./library-reference-picker', () => ({ LibraryReferencePicker: ({ title, onAssets, onClose }: any) => <button onClick={async () => { await onAssets([picks.next.shift()]); onClose(); }}>{title}·选好了</button> }));
 vi.mock('antd', () => ({
-  Button: ({ icon, loading, type, size, ...p }: any) => <button {...p}>{icon}{p.children}</button>,
+  Button: ({ icon, loading, type, size, danger, ...p }: any) => <button {...p}>{icon}{p.children}</button>,
   Input: ({ prefix, allowClear, ...p }: any) => <input {...p}/>,
   Checkbox: ({ checked, onChange, children }: any) => <input type="checkbox" aria-label="确认" checked={checked} onChange={onChange}/>,
   Dropdown: ({ children, menu }: any) => <span>{children}<span role="menu">{(menu?.items || []).map((i: any) => <button key={i.key} role="menuitem" onClick={() => menu.onClick({ key: i.key })}>{i.label}</button>)}</span></span>,
@@ -148,3 +148,19 @@ test('filters hidden while narrowed to a work no longer apply, and come back aft
   await waitFor(() => expect(api.objects).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'DW-1' })));
 });
 
+
+test('batch delete only picks library roles; my IPs are greyed out and never deleted', async () => {
+  api.objects.mockResolvedValue({ items: [role('o1', '测试角色一'), role('o2', '测试角色二')], total: 2, page: 0, hasMore: false });
+  api.avatars.mockResolvedValue([{ id: 'A1', name: '小紫', path: 'ai', status: 'finalized' }]);
+  api.remove.mockResolvedValue(undefined);
+  api.confirm.mockImplementation((o: any) => void o.onOk());
+  render(<AssetsPeople library="all" folders={[]}/>);
+  await screen.findByRole('button', { name: '查看 测试角色一' });
+  fireEvent.click(screen.getByRole('button', { name: '批量选择' }));
+  expect((screen.getByRole('button', { name: '小紫' }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: '选择 测试角色一' }));
+  fireEvent.click(screen.getByRole('button', { name: '选择 测试角色二' }));
+  fireEvent.click(screen.getByRole('button', { name: '删除' }));
+  expect(api.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: '删除选中的 2 个角色？' }));
+  await waitFor(() => expect(api.remove.mock.calls.map(c => c[0])).toEqual(['o1', 'o2']));
+});
