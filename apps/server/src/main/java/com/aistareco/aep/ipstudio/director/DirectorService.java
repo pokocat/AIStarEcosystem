@@ -86,6 +86,8 @@ public class DirectorService {
     private final TransactionTemplate newTx;
     /** 读已提交的普通事务：给不在事务里的入口（stopTask）读作品用，见 {@link #view} 的说明。 */
     private final TransactionTemplate committedTx;
+    /** 读已提交的独立事务：续接提交完成后回到作品上记结果（{@link #runFollowUp}，在调用方事务提交之后执行）。 */
+    private final TransactionTemplate newCommittedTx;
 
     public DirectorService(DirectorWorkRepository works, IpRunRepository runs, IpProjectService projects, IpRunService imageRuns,
                            StudioWorkflowService textRuns, StudioWorkflowWorker workflowWorker, StudioVideoService videoModels,
@@ -105,6 +107,9 @@ public class DirectorService {
         this.newTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         this.committedTx = new TransactionTemplate(txManager);
         this.committedTx.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
+        this.newCommittedTx = new TransactionTemplate(txManager);
+        this.newCommittedTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.newCommittedTx.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
     }
 
     // ── 作品 ────────────────────────────────────────────────────────────────
@@ -392,6 +397,8 @@ public class DirectorService {
     }
 
     private String inFlight(DirectorWork w, ObjectNode c) {
+        // 续接还没提交出去（见 deferVideo / deferRewrite）：几秒内就会提交或结案，先别删，免得删除后才建出任务。
+        if (!c.path(FOLLOW_UPS).isEmpty()) return "片段视频或提示词优化正在提交，请稍后再删除";
         Set<String> jobIds = new LinkedHashSet<>();
         for (JsonNode clip : c.path("clips")) for (JsonNode pend : clip.path("video").path("pending"))
             if (pend.hasNonNull("jobId")) jobIds.add(pend.path("jobId").asText());
@@ -1187,7 +1194,7 @@ public class DirectorService {
         meta.put("targetId", targetId);
         meta.set("prompt", StudioPromptAssembler.record(om, textPrompt.assembled()));
         final String fSystem = textPrompt.system(), fUser = textPrompt.user(), fNode = nodeId;
-        var run = newTx.execute(tx -> textRuns.submitDirectorText(userId, w.getId(), fNode, fSystem, fUser, requestId, meta, textModel(c), billing, maxCost));
+        var run = submitTx(() -> textRuns.submitDirectorText(userId, w.getId(), fNode, fSystem, fUser, requestId, meta, textModel(c), billing, maxCost));
         clearError(c, nodeId);
         track(c, pipeline, run.id(), om.createObjectNode().put("node", nodeId));
         w.setActive(true);
@@ -1351,8 +1358,8 @@ public class DirectorService {
         List<String> keys = new ArrayList<>();
         refs.forEach(r -> keys.add(r.key()));
         String runId;
-        if (fixtures.enabled()) runId = newTx.execute(tx -> fixtureMedia(userId, w.getId(), nodeId, requestId, "image", prompt));
-        else runId = newTx.execute(tx -> imageRuns.generateForDirector(userId, w.getId(),
+        if (fixtures.enabled()) runId = submitTx(() -> fixtureMedia(userId, w.getId(), nodeId, requestId, "image", prompt));
+        else runId = submitTx(() -> imageRuns.generateForDirector(userId, w.getId(),
                 new IpRunService.IpGenerateRequest(nodeId, prompt, keys, 1, size, (nodeId.startsWith("board:") ? boardImageSelection(c) : imageSelection(c)).resolved().endpoint().getId(), maxCost, billing, requestId)).id());
         ObjectNode m = om.createObjectNode().put("node", nodeId).put("prompt", prompt).put("fingerprint", fingerprint)
                 .put("promptFormat", DirectorPrompts.IMAGE_PROMPT_FORMAT);
@@ -1543,12 +1550,14 @@ public class DirectorService {
         clearError(c, node);
         w.setActive(true);
         VideoInput submit = sent == null ? in : in.withPrompt(sent);
+        // 回投时接着提交（改写完成后的视频）：持着作品行锁，不在这里另开事务提交，记下意图，锁放开后再提交（见 deferVideo）。
+        if (deferring()) return deferVideo(userId, w, c, clip, node, requestId, pipeline, billing, maxCost, m, submit);
         if (fixtures.enabled()) {
-            String runId = newTx.execute(tx -> fixtureMedia(userId, w.getId(), node, requestId, "video", submit.prompt()));
+            String runId = submitTx(() -> fixtureMedia(userId, w.getId(), node, requestId, "video", submit.prompt()));
             track(c, pipeline, runId, m);
             return runId;
         }
-        JsonNode job = newTx.execute(tx -> imageRuns.generateVideoForDirector(userId, w.getId(), node, submit.request(requestId, maxCost, billing)));
+        JsonNode job = submitTx(() -> imageRuns.generateVideoForDirector(userId, w.getId(), node, submit.request(requestId, maxCost, billing)));
         String jobId = job.path("id").asText();
         ObjectNode entry = ((ObjectNode) clip.path("video")).withArray("pending").addObject().put("jobId", jobId).put("at", Instant.now().toString())
                 .put("stage", job.path("stage").asText("已入队")).put("pct", job.path("progress_pct").asInt(0));
@@ -1679,6 +1688,7 @@ public class DirectorService {
                                 ObjectNode pipeline, BillingSelection billing, Long maxCost) {
         String clipId = clip.path("id").asText(), node = REWRITE_NODE + clipId;
         requireIdle(w, node);
+        requireNoFollowUp(c, node);
         long price = rewritePrice();
         // fingerprint 是这次要付费提交的视频输入（中文提示词含台词、分镜图、参考图与声音的 key、时长、画幅、模型）：改写期间变了就不接着提交。
         ObjectNode then = rw.meta().putObject("then").put("requestId", requestId).put("fingerprint", fingerprint)
@@ -1686,7 +1696,7 @@ public class DirectorService {
         if (maxCost != null) then.put("maxCost", maxCost); else then.putNull("maxCost");
         if (billing != null) then.set("billing", om.valueToTree(billing));
         if (pipeline != null) then.put("pipelineId", pipeline.path("id").asText());
-        var run = newTx.execute(tx -> textRuns.submitDirectorText(userId, w.getId(), node, rw.system(), rw.user(),
+        var run = submitTx(() -> textRuns.submitDirectorText(userId, w.getId(), node, rw.system(), rw.user(),
                 requestId + "-p", rw.meta(), null, billing, price));
         clearError(c, "video:" + clipId);
         track(c, pipeline, run.id(), om.createObjectNode().put("node", node));
@@ -1706,11 +1716,12 @@ public class DirectorService {
                 "该片段需先修改：" + clip.path("issues").get(0).asText());
         requireIdle(w, node);
         requireIdle(w, "video:" + clipId);
+        requireNoFollowUp(c, node);
         if (clip.path("video").path("pending").size() > 0) throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", "该片段视频生成中，请稍候");
         Rewrite rw = rewrite(c, clip);
         rw.meta().put("reoptimize", true);
         long price = rewritePrice();
-        var run = newTx.execute(tx -> textRuns.submitDirectorText(userId, w.getId(), node, rw.system(), rw.user(), requestId, rw.meta(), null, billing, price));
+        var run = submitTx(() -> textRuns.submitDirectorText(userId, w.getId(), node, rw.system(), rw.user(), requestId, rw.meta(), null, billing, price));
         clearError(c, "video:" + clipId);
         track(c, null, run.id(), om.createObjectNode().put("node", node).put("draftOnly", true));
         w.setActive(true);
@@ -1750,9 +1761,16 @@ public class DirectorService {
                 log.info("[director] 提示词改写未通过校验，预算放不下重试 work={} node={}", w.getId(), node);
                 return false;
             }
-            var retry = newTx.execute(tx -> textRuns.submitDirectorText(run.getOwnerUserId(), w.getId(), node, rw.system(), rw.user(), requestId, rw.meta(), null, billing, price));
             ObjectNode tracked = om.createObjectNode().put("node", node);
             if (in.path("reoptimize").asBoolean(false)) tracked.put("draftOnly", true);
+            if (deferring()) {
+                // 回投时持着作品行锁：记下重试意图，锁放开后再提交（见 deferRewrite）。
+                deferRewrite(w, c, run, rw, requestId, billing, price, tracked, pipeline, then.path("maxCost").asLong(0));
+                w.setActive(true);
+                log.info("[director] 提示词改写未通过校验，稍后自动重试 work={} node={} failed={}", w.getId(), node, run.getId());
+                return true;
+            }
+            var retry = submitTx(() -> textRuns.submitDirectorText(run.getOwnerUserId(), w.getId(), node, rw.system(), rw.user(), requestId, rw.meta(), null, billing, price));
             track(c, pipeline, retry.id(), tracked);
             w.setActive(true);
             log.info("[director] 提示词改写未通过校验，自动重试 work={} node={} failed={} retry={}", w.getId(), node, run.getId(), retry.id());
@@ -1841,6 +1859,7 @@ public class DirectorService {
             ArrayNode pending = slot.withArray("pending");
             for (int i = pending.size() - 1; i >= 0; i--) {
                 ObjectNode entry = (ObjectNode) pending.get(i);
+                if (entry.path("jobId").asText().startsWith(SUBMITTING)) { running[0] = true; continue; } // 还在提交（见 deferVideo）
                 JsonNode job;
                 try { job = videoJobs.getJob(entry.path("jobId").asText(), w.getOwnerUserId(), MaterialVideoJobService.APP_IPSTUDIO); }
                 catch (BusinessException e) { log.warn("[director] 读取视频任务失败 job={} reason={}", entry.path("jobId").asText(), e.getMessage()); running[0] = true; continue; }
@@ -1938,7 +1957,7 @@ public class DirectorService {
         if (quality != null) packaging.put("quality", quality);
         if (music != null) packaging.put("musicStorageKey", music);
         if (captions) packaging.set("knownClips", DirectorCaptions.knownClips(om, clips));
-        String runId = newTx.execute(tx -> workflowRun(userId, w.getId(), node, requestId, "studio-assemble", input));
+        String runId = submitTx(() -> workflowRun(userId, w.getId(), node, requestId, "studio-assemble", input));
         ObjectNode entry = c.withArray("exports").addObject().put("id", runId).put("episodeId", episodeId).put("episodeNo", ep.path("no").asInt())
                 .put("status", "running").put("createdAt", Instant.now().toString()).put("captions", captions);
         if (quality != null) entry.put("quality", quality);
@@ -2007,10 +2026,244 @@ public class DirectorService {
         if (pipeline != null) pipeline.withArray("runIds").add(runId);
     }
 
+    // ── 回投时的续接提交 ──────────────────────────────────────────────────────
+    // 回投（reconcile）总是持着作品行锁。改写完成后接着出视频、改写不合格自动重试，以前在锁内另开 REQUIRES_NEW 提交，
+    // 要第二条连接：并发读作品时等锁的请求把连接池占满，持锁的等不到连接（2026-11-10 事故的同一形态，PR 187 评审）。
+    // 现在锁内只把续接意图记进作品（followUps）并在片段上占位，本事务提交、锁放开之后再提交（runFollowUp），
+    // 最后在一个短事务里记结果。请求编号沿用原来的（视频 = 用户点生成时的编号，重试 = 编号 + "-p2"），
+    // 提交接口按编号幂等；没提交成功（连接、数据库出错）的意图留着，过 FOLLOW_UP_RETRY_AFTER 由下一次回投重新安排。
+    // 提交被明确拒绝（余额不足、模型不可用…）按原来的失败处理：片段上写原因，用户可以重新生成。
+
+    static final String FOLLOW_UPS = "followUps";
+    static final String SUBMITTING = "submit:";
+    private static final java.time.Duration FOLLOW_UP_RETRY_AFTER = java.time.Duration.ofMinutes(2);
+    private static final ThreadLocal<Boolean> RECONCILING = new ThreadLocal<>();
+
+    /** 正在回投、且有事务可以挂提交后的回调：续接只记意图，不在锁内提交。没有事务的（单元测试直接调 reconcile）照旧当场提交。 */
+    private static boolean deferring() {
+        return Boolean.TRUE.equals(RECONCILING.get()) && TransactionSynchronizationManager.isSynchronizationActive();
+    }
+
+    /** 提交任务（独立事务）。回投路径上调到这里是缺陷：持着作品行锁另要一条连接，必须改走 deferVideo / deferRewrite。 */
+    private <T> T submitTx(java.util.function.Supplier<T> call) {
+        if (deferring()) throw new IllegalStateException("回投时不能在作品行锁内另开事务提交任务");
+        return newTx.execute(tx -> call.get());
+    }
+
+    private ObjectNode followUps(ObjectNode c) {
+        return c.path(FOLLOW_UPS).isObject() ? (ObjectNode) c.path(FOLLOW_UPS) : c.putObject(FOLLOW_UPS);
+    }
+
+    private void requireNoFollowUp(ObjectNode c, String node) {
+        for (JsonNode f : c.path(FOLLOW_UPS)) if (node.equals(f.path("node").asText()))
+            throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", "该项生成中，请稍候");
+    }
+
+    /** 改写完成后的视频：记意图，片段上放一个「提交中」占位（防止重复生成、一键制作按它占预算）。返回占位编号。 */
+    private String deferVideo(String userId, DirectorWork w, ObjectNode c, ObjectNode clip, String node, String requestId, ObjectNode pipeline,
+                              BillingSelection billing, Long maxCost, ObjectNode m, VideoInput submit) {
+        String id = "FU-" + UUID.randomUUID().toString().replace("-", "").substring(0, 20), placeholder = SUBMITTING + id;
+        ObjectNode f = followUps(c).putObject(id).put("kind", fixtures.enabled() ? "videoFixture" : "video").put("node", node)
+                .put("clipId", clip.path("id").asText()).put("userId", userId).put("requestId", requestId)
+                .put("placeholder", placeholder).put("estimate", maxCost == null ? 0 : maxCost).put("at", Instant.now().toString());
+        if (fixtures.enabled()) f.put("prompt", submit.prompt());
+        else f.set("request", om.valueToTree(submit.request(requestId, maxCost, billing)));
+        f.set("meta", m);
+        if (pipeline != null) f.put("pipelineId", pipeline.path("id").asText());
+        ((ObjectNode) clip.path("video")).withArray("pending").addObject().put("jobId", placeholder).put("at", Instant.now().toString())
+                .put("stage", "已入队").put("pct", 0).set("meta", m);
+        if (pipeline != null) pipeline.withArray("videoJobs").addObject().put("jobId", placeholder).put("estimate", maxCost == null ? 0 : maxCost);
+        scheduleFollowUp(w.getId(), id);
+        return placeholder;
+    }
+
+    /** 改写不合格的自动重试：记意图；一键制作里按重试冻结 + 之后的视频报价占预算（同 pipelineSpent 对在跑改写的算法）。 */
+    private void deferRewrite(DirectorWork w, ObjectNode c, IpRun source, Rewrite rw, String requestId, BillingSelection billing, long price,
+                              ObjectNode tracked, ObjectNode pipeline, long videoEstimate) {
+        String id = "FU-" + UUID.randomUUID().toString().replace("-", "").substring(0, 20);
+        ObjectNode f = followUps(c).putObject(id).put("kind", "rewrite").put("node", source.getNodeId()).put("userId", source.getOwnerUserId())
+                .put("requestId", requestId).put("system", rw.system()).put("user", rw.user()).put("price", price)
+                .put("sourceRunId", source.getId()).put("at", Instant.now().toString());
+        f.set("meta", rw.meta());
+        f.set("tracked", tracked);
+        if (billing != null) f.set("billing", om.valueToTree(billing));
+        if (pipeline != null) {
+            f.put("pipelineId", pipeline.path("id").asText());
+            pipeline.withArray("pendingSubmits").addObject().put("id", id).put("estimate", price + videoEstimate);
+        }
+        scheduleFollowUp(w.getId(), id);
+    }
+
+    /**
+     * 本事务提交（作品行锁放开）之后，交给单独的一个后台线程提交续接：请求线程这时还拿着自己的连接，
+     * 在它上面再开事务又是一次两条连接；单线程也保证同一个进程里不会有两次续接同时提交。
+     */
+    private void scheduleFollowUp(String workId, String id) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override public void afterCommit() {
+                try { FOLLOW_UP_EXECUTOR.execute(() -> {
+                    try { runFollowUp(workId, id); }
+                    catch (RuntimeException e) { log.warn("[director] 续接提交失败，稍后重试 work={} followUp={} reason={}", workId, id, e.toString()); }
+                }); }
+                catch (RuntimeException e) { log.warn("[director] 续接没排上，稍后重试 work={} followUp={} reason={}", workId, id, e.toString()); }
+            }
+        });
+    }
+
+    private static final java.util.concurrent.ExecutorService FOLLOW_UP_EXECUTOR = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "director-follow-up");
+        t.setDaemon(true);
+        return t;
+    });
+
+    /** 上次没提交成功、超过时限还在的意图：重新安排。返回是否改了作品。 */
+    private boolean retryStaleFollowUps(DirectorWork w, ObjectNode c) {
+        if (!deferring()) return false;
+        boolean changed = false;
+        Instant cutoff = Instant.now().minus(FOLLOW_UP_RETRY_AFTER);
+        for (var it = c.path(FOLLOW_UPS).fields(); it.hasNext(); ) {
+            var e = it.next();
+            Instant at;
+            try { at = Instant.parse(e.getValue().path("at").asText()); } catch (RuntimeException ex) { at = Instant.EPOCH; }
+            if (at.isAfter(cutoff)) continue;
+            ((ObjectNode) e.getValue()).put("at", Instant.now().toString());
+            scheduleFollowUp(w.getId(), e.getKey());
+            changed = true;
+        }
+        return changed;
+    }
+
+    /**
+     * 提交一条续接（调用方事务已提交，不持作品行锁）：先读意图（一键制作已停就不提交），提交走独立事务、按原请求编号幂等，
+     * 再在一个短事务里记结果。连接或数据库出错时什么都不记，意图留着等下次重新安排。
+     */
+    void runFollowUp(String workId, String id) {
+        ObjectNode f = newCommittedTx.execute(tx -> {
+            DirectorWork w = works.findById(workId).orElse(null);
+            if (w == null) return null;
+            JsonNode x = read(w).path(FOLLOW_UPS).path(id);
+            if (!x.isObject()) return null;
+            ObjectNode copy = ((ObjectNode) x).deepCopy();
+            JsonNode p = read(w).path("pipeline");
+            if (copy.hasNonNull("pipelineId") && (!p.isObject() || !copy.path("pipelineId").asText().equals(p.path("id").asText())
+                    || !"running".equals(p.path("status").asText()))) copy.put("cancelled", true);
+            return copy;
+        });
+        if (f == null) return; // 已经处理过
+        String kind = f.path("kind").asText(), node = f.path("node").asText(), userId = f.path("userId").asText(), requestId = f.path("requestId").asText();
+        JsonNode job = null;
+        String created = null;
+        BusinessException refused = null;
+        if (!f.path("cancelled").asBoolean(false)) {
+            try {
+                switch (kind) {
+                    case "video" -> {
+                        IpRunService.IpVideoRequest req = om.convertValue(f.path("request"), IpRunService.IpVideoRequest.class);
+                        job = newTx.execute(tx -> imageRuns.generateVideoForDirector(userId, workId, node, req));
+                    }
+                    case "videoFixture" -> created = newTx.execute(tx -> fixtureMedia(userId, workId, node, requestId, "video", f.path("prompt").asText()));
+                    case "rewrite" -> {
+                        BillingSelection billing = f.hasNonNull("billing") ? om.convertValue(f.path("billing"), BillingSelection.class) : null;
+                        created = newTx.execute(tx -> textRuns.submitDirectorText(userId, workId, node, f.path("system").asText(), f.path("user").asText(),
+                                requestId, ((ObjectNode) f.path("meta")).deepCopy(), null, billing, f.path("price").asLong())).id();
+                    }
+                    default -> { log.warn("[director] 不认识的续接 work={} followUp={} kind={}", workId, id, kind); return; }
+                }
+            } catch (BusinessException e) { refused = e; }
+        }
+        JsonNode fJob = job;
+        String fCreated = created;
+        BusinessException fRefused = refused;
+        newCommittedTx.executeWithoutResult(tx -> {
+            DirectorWork w = works.lockById(workId).orElse(null);
+            if (w == null) return;
+            ObjectNode c = read(w);
+            JsonNode current = c.path(FOLLOW_UPS).path(id);
+            if (!current.isObject()) return;
+            boolean outer = Boolean.TRUE.equals(RECONCILING.get());
+            RECONCILING.set(true); // 记结果时可能接着续接（重试被拒后一键制作按原文出视频），同样不在锁内提交
+            try { finishFollowUp(w, c, id, f, fJob, fCreated, fRefused); }
+            finally { if (!outer) RECONCILING.remove(); }
+            followUps(c).remove(id);
+            w.setActive(true); // 下一次回投按实际情况重算
+            save(w, c);
+        });
+    }
+
+    private void finishFollowUp(DirectorWork w, ObjectNode c, String id, JsonNode f, JsonNode job, String created, BusinessException refused) {
+        String kind = f.path("kind").asText(), node = f.path("node").asText(), placeholder = f.path("placeholder").asText();
+        JsonNode cur = c.path("pipeline");
+        ObjectNode p = f.hasNonNull("pipelineId") && cur.isObject() && f.path("pipelineId").asText().equals(cur.path("id").asText()) ? (ObjectNode) cur : null;
+        ObjectNode clip = f.hasNonNull("clipId") ? (ObjectNode) findOrNull(c, "clips", f.path("clipId").asText()) : null;
+        ObjectNode entry = null;
+        if (!kind.equals("rewrite")) {
+            for (JsonNode cl : c.path("clips")) {
+                ArrayNode pending = ((ObjectNode) cl.path("video")).withArray("pending");
+                for (int i = pending.size() - 1; i >= 0; i--) if (placeholder.equals(pending.get(i).path("jobId").asText())) entry = (ObjectNode) pending.remove(i);
+            }
+            if (p != null) {
+                ArrayNode jobs = p.withArray("videoJobs");
+                for (int i = jobs.size() - 1; i >= 0; i--) if (placeholder.equals(jobs.get(i).path("jobId").asText())) jobs.remove(i);
+            }
+        } else if (p != null) {
+            ArrayNode reserved = p.withArray("pendingSubmits");
+            for (int i = reserved.size() - 1; i >= 0; i--) if (id.equals(reserved.get(i).path("id").asText())) reserved.remove(i);
+        }
+        if (f.path("cancelled").asBoolean(false)) {
+            // 一键制作已暂停或停止：视频不提交（英文稿留着，恢复后直接用）；重试不提交，按改写失败记下，恢复后可「重试失败项」。
+            if ("rewrite".equals(kind)) rewriteNotRetried(w, c, f);
+            return;
+        }
+        if (refused != null) {
+            log.warn("[director] 续接提交被拒 work={} node={} reason={}", w.getId(), node, refused.getMessage());
+            if ("rewrite".equals(kind)) { rewriteNotRetried(w, c, f); return; }
+            setError(c, node, refused.getMessage());
+            if (p != null) p.withArray("failed").add(node);
+            return;
+        }
+        switch (kind) {
+            case "video" -> {
+                String jobId = job.path("id").asText();
+                ObjectNode target = clip;
+                if (target == null) log.warn("[director] 续接的视频已提交，但片段已不在作品里 work={} node={} job={}", w.getId(), node, jobId);
+                else {
+                    ObjectNode added = ((ObjectNode) target.path("video")).withArray("pending").addObject().put("jobId", jobId)
+                            .put("at", entry != null ? entry.path("at").asText(Instant.now().toString()) : Instant.now().toString())
+                            .put("stage", job.path("stage").asText("已入队")).put("pct", job.path("progress_pct").asInt(0));
+                    added.set("meta", f.path("meta").deepCopy());
+                }
+                if (p != null) p.withArray("videoJobs").addObject().put("jobId", jobId).put("estimate", f.path("estimate").asLong());
+            }
+            case "videoFixture" -> track(c, p, created, ((ObjectNode) f.path("meta")).deepCopy());
+            case "rewrite" -> {
+                track(c, p, created, ((ObjectNode) f.path("tracked")).deepCopy());
+                log.info("[director] 提示词改写已自动重试 work={} node={} failed={} retry={}", w.getId(), node, f.path("sourceRunId").asText(), created);
+            }
+            default -> { }
+        }
+    }
+
+    /** 自动重试没有发出去：和以前重试返回 false 一样，一键制作按原文接着出视频，否则把改写失败记在片段上。 */
+    private void rewriteNotRetried(DirectorWork w, ObjectNode c, JsonNode f) {
+        IpRun source = runs.findById(f.path("sourceRunId").asText()).orElse(null);
+        if (source != null && originalInPipeline(w, c, source)) return;
+        String node = f.path("node").asText();
+        setError(c, node, source == null || source.getErrorMessage() == null ? "生成失败，请重试" : source.getErrorMessage());
+        JsonNode p = c.path("pipeline");
+        if (p.isObject() && contains(p.path("runIds"), f.path("sourceRunId").asText())) ((ObjectNode) p).withArray("failed").add(node);
+    }
+
     // ── 结果回投 ─────────────────────────────────────────────────────────────
 
     /** 把已结束、还没回投的任务结果写进作品。返回内容是否有变化。 */
     boolean reconcile(DirectorWork w, ObjectNode c) {
+        boolean outer = Boolean.TRUE.equals(RECONCILING.get());
+        RECONCILING.set(true);
+        try { return reconcileInLock(w, c); }
+        finally { if (!outer) RECONCILING.remove(); }
+    }
+
+    private boolean reconcileInLock(DirectorWork w, ObjectNode c) {
         Set<String> applied = new HashSet<>();
         c.path("applied").forEach(x -> applied.add(x.asText()));
         boolean changed = false, running = false;
@@ -2019,7 +2272,15 @@ public class DirectorService {
         for (IpRun run : mine) {
             if (IpRun.STATUS_RUNNING.equals(run.getStatus())) { running = true; continue; }
             if (applied.contains(run.getId())) continue;
+            ObjectNode before = c.deepCopy();
             try { apply(w, c, run); }
+            catch (org.springframework.dao.DataAccessException | org.springframework.transaction.TransactionException e) {
+                // 数据库或连接暂时出错：这一条先不算回投，内容退回原样，下次读取再试（记成已回投就再也不会续接）。
+                log.warn("[director] 回投暂时失败，稍后重试 work={} run={} reason={}", w.getId(), run.getId(), e.toString());
+                c.removeAll(); c.setAll(before);
+                running = true;
+                continue;
+            }
             catch (RuntimeException e) {
                 log.warn("[director] 回投失败 work={} run={} reason={}", w.getId(), run.getId(), e.toString());
                 setError(c, run.getNodeId(), "结果写入失败，请重新生成");
@@ -2032,6 +2293,11 @@ public class DirectorService {
         Set<String> listed = new HashSet<>();
         mine.forEach(r -> listed.add(r.getId()));
         for (Iterator<String> it = c.path("taskMeta").fieldNames(); it.hasNext(); ) if (!listed.contains(it.next())) running = true;
+        // 还没提交出去的续接：算在跑（后台会接着处理）；超过时限还在的（上次提交时连接或数据库出错），重新安排提交。
+        if (!c.path(FOLLOW_UPS).isEmpty()) {
+            running = true;
+            if (retryStaleFollowUps(w, c)) changed = true;
+        }
         boolean[] videoRunning = {false};
         if (pollVideos(w, c, videoRunning)) changed = true;
         running |= videoRunning[0];
@@ -2375,7 +2641,7 @@ public class DirectorService {
         meta.put("messageId", messageId).put("round", rounds + 1).put("message", DirectorPrompts.clip(text, 400));
         DirectorPrompts.Text textPrompt = DirectorAssistant.briefPrompt(prompts(), write(material), opening, text, commerce);
         meta.set("prompt", StudioPromptAssembler.record(om, textPrompt.assembled()));
-        var run = newTx.execute(tx -> textRuns.submitDirectorText(userId, w.getId(), "brief", textPrompt.system(), textPrompt.user(), "u-" + clientId, meta,
+        var run = submitTx(() -> textRuns.submitDirectorText(userId, w.getId(), "brief", textPrompt.system(), textPrompt.user(), "u-" + clientId, meta,
                 textModel(c), req.billing(), req.maxCost()));
         track(c, null, run.id(), om.createObjectNode().put("node", "brief"));
         if (!opening) msgs.addObject().put("id", "b" + UUID.randomUUID().toString().replace("-", "").substring(0, 12)).put("clientId", clientId)
@@ -2700,7 +2966,7 @@ public class DirectorService {
         DirectorPrompts.Text textPrompt = DirectorAssistant.prompt(prompts(), write(material), text, !products(c).isEmpty());
         meta.set("prompt", StudioPromptAssembler.record(om, textPrompt.assembled()));
         final ArrayNode fVisual = visual;
-        var run = newTx.execute(tx -> textRuns.submitDirectorText(userId, w.getId(), "assistant", textPrompt.system(), textPrompt.user(), "u-" + clientId, meta,
+        var run = submitTx(() -> textRuns.submitDirectorText(userId, w.getId(), "assistant", textPrompt.system(), textPrompt.user(), "u-" + clientId, meta,
                 textModel(c), req.billing(), req.maxCost(), fVisual));
         track(c, null, run.id(), om.createObjectNode().put("node", "assistant"));
         // 用户消息和一条「正在回复」的助手消息，回复回来后由 applyAssistantReply 填上。
@@ -3514,6 +3780,11 @@ public class DirectorService {
             inflight++; busy.add(run.getNodeId());
             if (run.getNodeId().startsWith(REWRITE_NODE)) busy.add("video:" + run.getNodeId().substring(REWRITE_NODE.length()));
         }
+        // 还没提交出去的改写重试也算在跑（视频的续接由片段上的占位 pending 算进去）。
+        for (JsonNode f : c.path(FOLLOW_UPS)) if ("rewrite".equals(f.path("kind").asText())) {
+            inflight++; busy.add(f.path("node").asText());
+            busy.add("video:" + f.path("node").asText().substring(REWRITE_NODE.length()));
+        }
         for (JsonNode clip : c.path("clips")) for (JsonNode pend : clip.path("video").path("pending"))
             for (JsonNode vj : p.path("videoJobs")) if (vj.path("jobId").asText().equals(pend.path("jobId").asText())) {
                 inflight++; busy.add("video:" + clip.path("id").asText());
@@ -3746,6 +4017,7 @@ public class DirectorService {
                 spent += parse(run.getInputJson()).path("_director").path("then").path("maxCost").asLong(0);
         }
         for (JsonNode vj : p.path("videoJobs")) spent += vj.path("estimate").asLong();
+        for (JsonNode f : p.path("pendingSubmits")) spent += f.path("estimate").asLong(); // 还没提交出去的改写重试（见 deferRewrite）
         return spent;
     }
 
@@ -4107,7 +4379,7 @@ public class DirectorService {
 
     private JsonNode view(String userId, DirectorWork w, ObjectNode c) {
         ObjectNode v = c.deepCopy();
-        v.remove("applied"); v.remove("taskMeta"); v.remove("seq"); v.remove("splitUndo"); v.remove("assistantUndo"); v.remove("assistantBase"); v.remove("assistantSnapshots");
+        v.remove("applied"); v.remove("taskMeta"); v.remove(FOLLOW_UPS); v.remove("seq"); v.remove("splitUndo"); v.remove("assistantUndo"); v.remove("assistantBase"); v.remove("assistantSnapshots");
         // 最近一次从回收站恢复的时间（没恢复过为 null）。前端据此决定打开作品时不自动发起付费任务（如创意对话的开场）。
         if (!v.path("restoredAt").isTextual()) v.putNull("restoredAt");
         markUndoable(c, v);
@@ -4134,6 +4406,12 @@ public class DirectorService {
             if(original.path("content").isTextual())((ObjectNode)tasks.get(tasks.size()-1)).put("hasOriginalContent",true);
             // 「重新优化」只出稿、不接着出视频：页面上不能写「完成后自动开始生成视频」。
             if (c.path("taskMeta").path(r.getId()).path("draftOnly").asBoolean(false)) ((ObjectNode) tasks.get(tasks.size() - 1)).put("draftOnly", true);
+        }
+        for (var it = c.path(FOLLOW_UPS).fields(); it.hasNext(); ) {
+            var f = it.next();
+            if ("rewrite".equals(f.getValue().path("kind").asText()))
+                tasks.insertObject(0).put("id", f.getKey()).put("target", f.getValue().path("node").asText()).put("status", "running")
+                        .put("stage", "queued").put("cost", 0).putNull("errorMessage").put("createdAt", f.getValue().path("at").asText());
         }
         for (JsonNode clip : c.path("clips")) for (JsonNode pend : clip.path("video").path("pending"))
             tasks.insertObject(0).put("id", pend.path("jobId").asText()).put("target", "video:" + clip.path("id").asText()).put("status", "running")
