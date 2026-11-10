@@ -475,6 +475,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [导演台按「E01」标题免费分集](releases/director-episode-codes-release-20261103.md) — server + web-aiavatar；`E01` / `EP01` 写法的分集标题由程序识别、不调模型，助手遇到拆集请求时指路（last-reviewed: 2026-11-03）。
 - [导演台拆分弹窗增加剧本预览](releases/director-split-preview-release-20261104.md) — 仅 web-aiavatar；认不出分集标题时，弹窗旁显示剧本预览，便于复制第 1 集标题行（last-reviewed: 2026-11-04）。
 - [声音参考格式修复发布](releases/voice-reference-format-release-20261104.md) — server；短 M4A 等声音自动转 WAV，报错说明素材类型和可用格式；真实出片未验证（last-reviewed: 2026-11-04）
+- [编导脚本出片分层发布](releases/scene-script-layers-release-20261110.md) — server + web-aiavatar；六段脚本出片只发和画面有关的部分，编辑框标「仅参考」，参考素材受理时就核对（last-reviewed: 2026-11-10）
 - [AI 编导提示词爆款化发布](releases/scene-script-viral-release-20261110.md) — server + web-aiavatar；五个视频类型方法层、镜头约 4 秒、台词有人设、去掉功效夸大限制、全角数字镜头修复（last-reviewed: 2026-11-10）
 - [账号区新版页面发布](releases/studio-account-pages-release-20261109.md) — server + web-aiavatar；任务历史带积分明细、存储用量合并口径并补记历史文件、画布回收站可恢复和彻底删除、设置与安全合并；存储上限与到期清理开关默认关（last-reviewed: 2026-11-09）
 - [默认文字模型 Sonnet 与编导第 2 版发布](releases/sonnet-streaming-editor-release-20261104.md) — server + web-aiavatar；长文字任务改流式，编导不再写【待补】，同包带导演台新功能和报错说明；首次验收撞上 Key 额度用完，换 Key 后线上通过（last-reviewed: 2026-11-05）

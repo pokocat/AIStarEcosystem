@@ -371,7 +371,7 @@
 
 浏览器和发布证据见 [编导对话改版验收](releases/script-chat-suggestions-release-20261109.md)。
 
-## 脚本只发和画面有关的部分（2026-11-10，本地未发布）
+## 脚本只发和画面有关的部分（2026-11-10 已生产发布 `20261110-scene-layers-8c43f1d0`）
 
 编导写的六段脚本只有一份，用户看、改、采用的都是它；出片时由 `apps/web-aiavatar/src/ip/scenes/scene-script-layers.ts` 挑出和画面有关的部分发给视频模型，判断只在这一处。依据是火山方舟 Seedance 2.0 提示词指南「请勿直接将完整剧本作为提示词使用」，约束写在最后。
 

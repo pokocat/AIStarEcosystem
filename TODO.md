@@ -6,7 +6,7 @@
 
 - [x] ~~**发布前查后台有没有改过这些提示词条目**~~ **2026-11-10 已核对**：线上 `ip_skill_version` 没有非种子来源的版本，发布后全部按仓库文件自动换新版（`stage-scene-script` v5、`base` v3，五个方法层 v1）。原描述：`base`、`stage-scene-script`、`stage-segmented-script`、`stage-scene-handoff`、`stage-dialogue`、`stage-skill-plan`，以及改过的视频场景条目和 `reference-video-recreation`、`script-writing` 两个做法。后台发布过的以后台为准，仓库文件不会覆盖。新增的 `method-commerce / -local / -drama / -brand / -ip` 是新条目，会直接生效。
 - [ ] **成片对比**（付费，需用户定预算）：用 11-09 客户的 15 条用例挑电商、到店、剧情各两条，新旧脚本各出一条，Seedance 和 H3 各跑一遍，看成片的 AI 感、念稿感和多出来的东西。
-- [x] ~~**发给视频模型时只挑和画面有关的段落**（分层）~~ **2026-11-10 本地实现，未发布**：`scene-script-layers.ts` 一处判断，AI 视频页直接生成、视频裂变、H3 优化都用挑过的内容，编辑框灰字标「仅参考」，见 `docs/studio-scene-creation.md` 末节。画布连线出视频也挑（创作助手的格式没有六段结构，原样发）；整份与挑过的成片效果对比并入上面的「成片对比」。
+- [x] ~~**发给视频模型时只挑和画面有关的段落**（分层）~~ **2026-11-10 已生产发布 `20261110-scene-layers-8c43f1d0`**：`scene-script-layers.ts` 一处判断，AI 视频页直接生成、视频裂变、H3 优化都用挑过的内容，编辑框灰字标「仅参考」，见 `docs/studio-scene-creation.md` 末节。画布连线出视频也挑（创作助手的格式没有六段结构，原样发）；整份与挑过的成片效果对比并入上面的「成片对比」。
 - [ ] **剧情类表演细节**：固定 terra 时已全胜，但线上 Sonnet 写的剧情（手部动作、配乐转折）仍比 terra 细，可以再给剧情类补一个表演写法的例子。
 
 ## AI 编导建议（2026-11-09）
@@ -187,7 +187,7 @@
 - [ ] **看 H3 提示词优化换模型后的效果，并核算售价**（2026-11-07 切到 OneToken 的 `deepseek-v4.1-flash`，接入点 `ai-fc1064f7-9fc`，用户定）：测试时 30 次里 5 次不按约定回，已加重试和校验；要看线上「提示词优化未完成」的比例和台词是否完整（同一批测试里 Sonnet 最完整）。售价暂按 DeepSeek 已公布费率，这个模型的 OneToken 成本还没核算。余额和 Sonnet 共用一个账户，额度用完两边一起失败。切回：`bind` 到 `ai-onetoken-sonnet55`。详见 `docs/releases/h3-rewrite-checks-release-20261107.md`。
 - [ ] **引用文字里的真台词没有核对**（`H3PromptRewrite.checkSpoken`，2026-11-07）：连入的拉片文字现在不参与核对，避免误报；代价是台词写在引用里时，模型丢了也不提示。要核对得先认准引用里哪些是台词（拉片表格的「字幕"…"」）。
 - [ ] **修复后的优化稿没有真实出片**（2026-11-07）：只比较了文字。要挑「短要求 + 参考视频」和「拉片引用」各出一条，看「其他不变」是否成立。
-- [x] ~~**参考视频超长要到优化之后才报错**~~ **2026-11-10 本地修复，未发布**：`StudioWorkflowService.submitVideoRewrite` 改用 `StudioVideoService.quoteChecked` 报价，受理时就按模型规则核对素材（参考视频 2–15 秒是厂商限制，H3 写在 `JusuanH3Contract.REFERENCE_VIDEO_MAX_SECONDS`），不建任务、不冻结（`StudioVideoRewriteModelTest#invalidReferenceMediaIsRejectedBeforeTheRewriteStarts`）。
+- [x] ~~**参考视频超长要到优化之后才报错**~~ **2026-11-10 已生产发布 `20261110-scene-layers-8c43f1d0`**：`StudioWorkflowService.submitVideoRewrite` 改用 `StudioVideoService.quoteChecked` 报价，受理时就按模型规则核对素材（参考视频 2–15 秒是厂商限制，H3 写在 `JusuanH3Contract.REFERENCE_VIDEO_MAX_SECONDS`），不建任务、不冻结（`StudioVideoRewriteModelTest#invalidReferenceMediaIsRejectedBeforeTheRewriteStarts`）。
 - [x] ~~爆款复刻把多个拉片片段同时提交给只支持一段参考视频的模型~~ **2026-11-09 本地修复，未发布**：`planCapabilities` 下发所选模式完整参考合同，编排规则说明每个拉片片段分别计数；`VideoStudioService` 报价和提交共用各类数量、组合及总数上限校验。原线上任务需重新编排并确认，不能原样继续或静默丢弃片段。
 - [ ] **复刻分析超过输入额度**（`StudioWorkflowWorker#studioChat`，2026-11-06 两条 41、57 秒的片子）：单次 8.6–11.6 万 Token，20 万额度用两三次就停，重试也过不去。
 
