@@ -3,9 +3,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { AssetsObjects } from './assets-objects';
 
-const api = vi.hoisted(() => ({ objects: vi.fn(), create: vi.fn() }));
+const api = vi.hoisted(() => ({ objects: vi.fn(), create: vi.fn(), remove: vi.fn(), confirm: vi.fn() }));
 vi.mock('@/canvas-bridge/asset-library', () => ({
-  libraryObjects: api.objects, createLibraryObject: api.create,
+  libraryObjects: api.objects, createLibraryObject: api.create, deleteLibraryObject: api.remove,
   mainLibraryVersion: (a: any) => a.versions.find((v: any) => v.id === a.mainVersionId),
 }));
 vi.mock('@/canvas-bridge/image-storage', () => ({ refreshImageUrl: vi.fn() }));
@@ -15,12 +15,14 @@ vi.mock('./studio-overlay', () => ({ studioOverlayContainer: () => document.body
 vi.mock('./studio-errors', async () => {
   const { useCallback, useState } = await import('react');
   return {
+    useStudioApp: () => ({ message: { success: vi.fn() }, modal: { confirm: api.confirm } }),
     useStudioErrorState: () => { const [e, set] = useState(''); return [e, useCallback((v: unknown) => set(v ? String((v as Error).message || v) : ''), [])]; },
     StudioErrorNotice: ({ error }: any) => <span role="alert">{String(error)}</span>,
   };
 });
 vi.mock('antd', () => ({
-  Button: ({ icon, loading, type, size, ...p }: any) => <button {...p}>{icon}{p.children}</button>,
+  Button: ({ icon, loading, type, size, danger, ...p }: any) => <button {...p}>{icon}{p.children}</button>,
+  Checkbox: ({ checked, onChange, className, ...p }: any) => <input type="checkbox" checked={checked} onChange={onChange} {...p}/>,
   Input: Object.assign(({ prefix, allowClear, autoFocus, ...p }: any) => <input {...p}/>, { TextArea: (p: any) => <textarea {...p}/> }),
   Modal: ({ open, children, onOk, okText, okButtonProps }: any) => open ? <div role="dialog">{children}<button disabled={okButtonProps?.disabled} onClick={onOk}>{okText}</button></div> : null,
 }));
@@ -57,4 +59,20 @@ test('a new one is created in the current folder and opened for editing', async 
   fireEvent.click(screen.getByRole('button', { name: '新建' }));
   await waitFor(() => expect(api.create).toHaveBeenCalledWith({ name: '钟楼', kind: 'scene', description: '', folderId: 'f1' }));
   expect(await screen.findByText('编辑 钟楼')).toBeTruthy();
+});
+
+test('scenes can be selected and deleted together, then the list reloads', async () => {
+  api.objects.mockResolvedValue(page([scene('o1', '祖宅'), scene('o2', '码头'), scene('o3', '茶馆')]));
+  api.remove.mockResolvedValue(undefined);
+  api.confirm.mockImplementation((o: any) => void o.onOk());
+  render(<AssetsObjects kind="scene" library="all" folders={[]} from="" onFromChange={vi.fn()}/>);
+  fireEvent.click(await screen.findByRole('button', { name: '批量选择' }));
+  expect(screen.queryByRole('button', { name: /新建场景/ })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '选择 祖宅' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: '选择 茶馆' }));
+  fireEvent.click(screen.getByRole('button', { name: '删除' }));
+  expect(api.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: '删除选中的 2 个场景？' }));
+  await waitFor(() => expect(api.remove.mock.calls.map(c => c[0])).toEqual(['o1', 'o3']));
+  await waitFor(() => expect(api.objects).toHaveBeenCalledTimes(2));
+  expect(screen.getByRole('button', { name: '批量选择' })).toBeTruthy();
 });

@@ -4,7 +4,8 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { AssetsHub, hubTab } from './assets-hub';
 
 const route = vi.hoisted(() => ({ query: new URLSearchParams(), push: vi.fn() }));
-const api = vi.hoisted(() => ({ folders: vi.fn(), materials: vi.fn(), edit: vi.fn(), upload: vi.fn(), createFolder: vi.fn(), voices: vi.fn() }));
+const dialog = vi.hoisted(() => ({ confirm: vi.fn(), success: vi.fn() }));
+const api = vi.hoisted(() => ({ remove: vi.fn(), folders: vi.fn(), materials: vi.fn(), edit: vi.fn(), upload: vi.fn(), createFolder: vi.fn(), voices: vi.fn() }));
 vi.mock('next/navigation', () => ({ useSearchParams: () => route.query, useRouter: () => route }));
 vi.mock('next/link', () => ({ default: ({ children, ...p }: any) => <a {...p}>{children}</a> }));
 vi.mock('./studio-page', () => ({ StudioPage: ({ children }: any) => <main>{children}</main> }));
@@ -16,7 +17,7 @@ vi.mock('./audio-recorder-dialog', () => ({ AudioRecorderDialog: ({ open, onSave
 vi.mock('./studio-errors', async () => {
   const { useCallback, useState } = await import('react');
   return {
-    useStudioApp: () => ({ message: { success: vi.fn() }, modal: { confirm: vi.fn() } }),
+    useStudioApp: () => ({ message: { success: dialog.success }, modal: { confirm: dialog.confirm } }),
     // 和真的一样，setter 要稳定，否则带它做依赖的副作用会一直重跑。
     useStudioErrorState: () => { const [e, set] = useState(''); return [e, useCallback((v: unknown) => set(v ? String((v as Error).message || v) : ''), [])]; },
     StudioErrorNotice: ({ error }: any) => <span role="alert">{String(error)}</span>,
@@ -26,7 +27,7 @@ vi.mock('@/canvas-bridge/asset-library', () => ({
   libraryFolders: api.folders, libraryMaterials: api.materials, editLibraryMaterial: api.edit, uploadLibraryMedia: api.upload,
   createLibraryFolder: api.createFolder, renameLibraryFolder: vi.fn(), deleteLibraryFolder: vi.fn(),
 }));
-vi.mock('@/canvas-bridge/saved-assets', () => ({ saveAsset: vi.fn() }));
+vi.mock('@/canvas-bridge/saved-assets', () => ({ saveAsset: vi.fn(), deleteSavedAsset: api.remove }));
 vi.mock('@/canvas-bridge/image-storage', () => ({ refreshImageUrl: vi.fn() }));
 vi.mock('@/canvas-bridge/signed-image', () => ({ SignedImage: (p: any) => <img src={p.src} alt={p.alt}/> }));
 vi.mock('@/canvas-bridge/signed-video', () => ({ SignedVideo: () => <video/> }));
@@ -52,7 +53,9 @@ beforeEach(() => {
   vi.resetAllMocks(); route.query = new URLSearchParams();
   api.folders.mockResolvedValue([{ id: 'f1', name: '保湿精华' }, { id: 'f2', name: '巷里火锅' }]);
   api.materials.mockResolvedValue(page([]));
-  api.edit.mockResolvedValue({}); api.upload.mockResolvedValue({ key: 'k' }); api.voices.mockResolvedValue([]);
+  api.edit.mockResolvedValue({}); api.remove.mockResolvedValue(undefined);
+  // 确认框直接点「删除」。
+  dialog.confirm.mockImplementation((o: any) => void o.onOk()); api.upload.mockResolvedValue({ key: 'k' }); api.voices.mockResolvedValue([]);
 });
 
 test('old asset links land on the new categories', () => {
@@ -145,3 +148,38 @@ test('an image can be saved as a character, scene or prop, and only a canvas cou
   expect(screen.getByText(/存入 ipstudio_gen\/u\/b\.png\s*$/)).toBeTruthy();
 });
 
+
+test('a single file is deleted from its card menu after confirming, then the list reloads', async () => {
+  api.materials.mockResolvedValue(page([image('m1', '失败的测试图')]));
+  render(<AssetsHub/>);
+  const tile = (await screen.findByRole('button', { name: '打开 失败的测试图' })).closest('.assets-tile') as HTMLElement;
+  fireEvent.click([...tile.querySelectorAll('[role="menuitem"]')].find(b => b.textContent === '删除')!);
+  expect(dialog.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: '删除「失败的测试图」？' }));
+  await waitFor(() => expect(api.remove).toHaveBeenCalledWith('m1'));
+  await waitFor(() => expect(api.materials).toHaveBeenCalledTimes(2));
+});
+
+test('several files can be selected and deleted together', async () => {
+  api.materials.mockResolvedValue(page([image('m1', '图一'), image('m2', '图二'), image('m3', '图三')]));
+  render(<AssetsHub/>);
+  fireEvent.click(await screen.findByRole('button', { name: '批量选择' }));
+  fireEvent.click(screen.getByRole('button', { name: '选择 图一' }));
+  fireEvent.click(screen.getByRole('button', { name: '选择 图三' }));
+  fireEvent.click(screen.getByRole('button', { name: '删除' }));
+  expect(dialog.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: '删除选中的 2 个素材？' }));
+  await waitFor(() => expect(api.remove.mock.calls.map(c => c[0])).toEqual(['m1', 'm3']));
+  await waitFor(() => expect(screen.getByRole('button', { name: '批量选择' })).toBeTruthy());
+});
+
+test('a failed delete stops there, reports the error and keeps the selection mode open', async () => {
+  api.materials.mockResolvedValue(page([image('m1', '图一'), image('m2', '图二')]));
+  api.remove.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('网络异常'));
+  render(<AssetsHub/>);
+  fireEvent.click(await screen.findByRole('button', { name: '批量选择' }));
+  fireEvent.click(screen.getByRole('button', { name: '选择 图一' }));
+  fireEvent.click(screen.getByRole('button', { name: '选择 图二' }));
+  fireEvent.click(screen.getByRole('button', { name: '删除' }));
+  expect(await screen.findByText('网络异常')).toBeTruthy();
+  expect(api.remove).toHaveBeenCalledTimes(2);
+  expect(screen.getByRole('button', { name: '完成' })).toBeTruthy();
+});

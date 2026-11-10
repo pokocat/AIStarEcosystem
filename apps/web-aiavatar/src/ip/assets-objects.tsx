@@ -1,15 +1,16 @@
 "use client";
 // 资产页的「场景」「道具」：导演台有图后自动进来，也可以在这里新建。
 import { useEffect, useRef, useState } from 'react';
-import { Button, Input, Modal } from 'antd';
-import { Box, MapPin, Plus, Search } from 'lucide-react';
+import { Button, Checkbox, Input, Modal } from 'antd';
+import { Box, MapPin, Plus, Search, SquareCheck } from 'lucide-react';
 import type { LibraryFolder, LibraryObject } from '@ai-star-eco/types';
-import { createLibraryObject, libraryObjects, mainLibraryVersion } from '@/canvas-bridge/asset-library';
+import { createLibraryObject, deleteLibraryObject, libraryObjects, mainLibraryVersion } from '@/canvas-bridge/asset-library';
 import { AssetThumb } from './asset-thumb';
+import { confirmAssetDelete } from './assets-delete';
 import { AI_LIBRARY, objectOriginLabel } from './assets-hub-shared';
 import { LibraryAssetEditor } from './library-asset-editor';
 import { LibrarySourceSelect } from './library-source-select';
-import { StudioErrorNotice, useStudioErrorState } from './studio-errors';
+import { StudioErrorNotice, useStudioApp, useStudioErrorState } from './studio-errors';
 import { studioOverlayContainer } from './studio-overlay';
 
 const LABEL = { scene: '场景', prop: '道具' } as const;
@@ -30,6 +31,10 @@ export function AssetsObjects({ kind, library, folders, from, onFromChange, onSh
   const [revision, setRevision] = useState(0);
   const [editing, setEditing] = useState<LibraryObject[]>();
   const [creating, setCreating] = useState(false);
+  const { message, modal } = useStudioApp();
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [actionError, setActionError] = useStudioErrorState();
   const epoch = useRef(0);
   const filtered = !!query || !!from;
   useEffect(() => { const timer = setTimeout(() => setQuery(keyword.trim()), 220); return () => clearTimeout(timer); }, [keyword]);
@@ -37,7 +42,7 @@ export function AssetsObjects({ kind, library, folders, from, onFromChange, onSh
   useEffect(() => {
     if (isAi) { setItems([]); setLoading(false); return; }
     const id = ++epoch.current;
-    setLoading(true); setError('');
+    setLoading(true); setError(''); setSelected([]);
     fetchPage(0).then(r => { if (id !== epoch.current) return; setItems(r.items); setPage(0); setTotal(r.total); setHasMore(r.hasMore); })
       .catch(e => id === epoch.current && setError(e))
       .finally(() => id === epoch.current && setLoading(false));
@@ -52,6 +57,16 @@ export function AssetsObjects({ kind, library, folders, from, onFromChange, onSh
     catch (e) { if (id === epoch.current) setError(e); }
     finally { if (id === epoch.current) setLoading(false); }
   };
+  const toggle = (id: string) => setSelected(old => old.includes(id) ? old.filter(x => x !== id) : [...old, id]);
+  const stopSelecting = () => { setSelecting(false); setSelected([]); };
+  const remove = () => confirmAssetDelete(modal, {
+    ids: selected, noun, remove: deleteLibraryObject,
+    onDone: ({ removed, error }) => {
+      setActionError(error || '');
+      if (!error) { message.success(removed.length > 1 ? `已删除 ${removed.length} 个${noun}` : '已删除'); stopSelecting(); }
+      setRevision(n => n + 1);
+    },
+  });
   if (isAi) return <div className="assets-empty"><h3>AI 生成库里没有{noun}</h3><p>此处仅保存 AI 生成的图片、视频和音频。</p>{onShowAll && <Button onClick={onShowAll}>查看全部{noun}</Button>}</div>;
   return <div className="assets-people assets-objects">
     <div className="assets-toolbar">
@@ -59,14 +74,22 @@ export function AssetsObjects({ kind, library, folders, from, onFromChange, onSh
       <LibrarySourceSelect value={from} onChange={onFromChange}/>
       <span className="assets-toolbar-gap"/>
       <span className="assets-count" aria-live="polite">{loading && !items.length ? '正在加载…' : `${total} 个${noun}`}</span>
+      {selecting
+        ? <><span className="assets-count">已选 {selected.length} 个</span>
+          <Button danger disabled={!selected.length} onClick={remove}>删除</Button>
+          <Button onClick={stopSelecting}>完成</Button></>
+        : <Button icon={<SquareCheck size={15}/>} disabled={!items.length} onClick={() => setSelecting(true)}>批量选择</Button>}
     </div>
+    {actionError && <p className="assets-notice"><StudioErrorNotice error={actionError}/></p>}
     {error && <p className="assets-notice"><StudioErrorNotice error={error}/><Button size="small" onClick={() => setRevision(n => n + 1)}>重试</Button></p>}
     <ul className="assets-people-grid">
-      {!filtered && <li className="assets-person-new"><div><button type="button" onClick={() => setCreating(true)}><Plus size={15}/>新建{noun}</button></div></li>}
+      {!filtered && !selecting && <li className="assets-person-new"><div><button type="button" onClick={() => setCreating(true)}><Plus size={15}/>新建{noun}</button></div></li>}
       {loading && !items.length ? Array.from({ length: 4 }, (_, i) => <li key={`s${i}`}><span className="assets-skeleton assets-person-cover"/></li>)
         : items.map(o => {
           const main = mainLibraryVersion(o), origin = objectOriginLabel(o);
-          return <li key={o.id}><button type="button" className="assets-person" aria-label={`查看 ${o.name}`} onClick={() => setEditing([o])}>
+          const picked = selected.includes(o.id);
+          return <li key={o.id}>{selecting && <Checkbox className="assets-tile-check" aria-label={`选择 ${o.name}`} checked={picked} onChange={() => toggle(o.id)}/>}
+            <button type="button" className={`assets-person${picked ? ' is-selected' : ''}`} aria-label={`${selecting ? '选择' : '查看'} ${o.name}`} aria-pressed={selecting ? picked : undefined} onClick={() => selecting ? toggle(o.id) : setEditing([o])}>
             <span className="assets-person-cover">{main ? <AssetThumb kind="image" src={main.url} storageKey={main.storageKey}/> : <span className="assets-person-blank"><Icon size={36} strokeWidth={1.1}/></span>}</span>
             <span className="assets-person-text"><strong>{o.name}</strong><small>{o.description || '暂无描述'}</small></span>
             <span className="assets-person-meta"><span title={o.sources[0]?.title}>{[o.sources[0]?.title, o.versions.length ? `${o.versions.length} 张图` : '暂无图片'].filter(Boolean).join(' · ')}</span>{origin && <span className="assets-tag">{origin}</span>}</span>

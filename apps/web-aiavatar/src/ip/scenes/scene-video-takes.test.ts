@@ -37,6 +37,11 @@ test('a changed take sends the new script to the model and puts it back in the e
   const next = takeRequest(base(), 'take-2', 900, 'v-take-2', { take: { of: 'PEX-a', mode: 'variables', changes: change }, text });
   expect(next.configuration!.text).toContain('在阳台里试用');
   expect(next.video!.prompt).toBe(next.configuration!.text);
+  // 编导的六段脚本：发给模型的是挑过段落的（scene-script-layers.ts），configuration.text 留完整的，下次改写在它上面改。
+  const six = '一、剧情概述：宝妈试用。\n五、镜头时间轴：\n第1镜（0–4 秒）这一镜的作用：截停\n宝妈说：「三秒卸干净。」';
+  const layered = takeRequest(base(), 'take-4', 900, 'v-take-4', { take: { of: 'PEX-a', mode: 'rewrite' }, text: six });
+  expect(layered.configuration!.text).toBe(six);
+  expect(layered.video!.prompt).toBe('第1镜（0–4 秒）\n宝妈说：「三秒卸干净。」');
   expect(next.input.sceneVideoState!.edit).toEqual({ scriptId: 'script-1', prompt: text });
   // AI 改写的脚本没有编导版本：给新的编号，放回时补一版脚本。
   const rewritten = takeRequest(base(), 'take-3', 900, 'v-take-3', { take: { of: 'PEX-a', mode: 'rewrite' }, text: '新脚本', scriptId: 'fresh' });

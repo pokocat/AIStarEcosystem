@@ -204,6 +204,8 @@ export function scriptNodes(doc: IpProjectDoc): CanvasNodeData[] {
 export function addVideoRow(doc: IpProjectDoc, input: {
   title: string; prompt: string; scriptId?: string; refIds: string[]; video: StudioVideoSettings;
   durationSec: number; aspectRatio: string; model?: string; maxCost?: number;
+  /** 编辑框里的完整脚本；prompt 是从它挑出来发给模型的（scene-script-layers.ts）。「修改后生成」放回的是它。 */
+  script?: string;
 }): { doc: IpProjectDoc; request: StudioRunRequest; nodeId: string } {
   const nodes = doc.nodes as CanvasNodeData[];
   const script = nodes.find(n => n.id === input.scriptId);
@@ -215,7 +217,8 @@ export function addVideoRow(doc: IpProjectDoc, input: {
   const x = script ? script.position.x + script.width + 90 : 1100;
   const y = rows.length ? Math.max(...rows.map(r => r.position.y + r.height)) + 60 : script?.position.y ?? 120;
   const node: CanvasNodeData = { ...target, title: input.title, position: { x, y },
-    metadata: { ...target.metadata, prompt: input.prompt, status: "loading", studio: { ...target.metadata!.studio!, request } } };
+    metadata: { ...target.metadata, prompt: input.prompt, status: "loading",
+      studio: { ...target.metadata!.studio!, request, ...(input.script && input.script !== input.prompt ? { sceneScript: input.script } : {}) } } };
   const connections: CanvasConnection[] = [...(doc.connections as CanvasConnection[]),
     ...[...(script ? [script.id] : []), ...input.refIds].map(from => ({ id: nanoid(), fromNodeId: from, toNodeId: node.id }))];
   return { doc: { ...doc, nodes: [...nodes, node], connections }, request, nodeId: node.id };

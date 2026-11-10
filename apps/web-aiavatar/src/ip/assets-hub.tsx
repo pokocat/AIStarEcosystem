@@ -13,7 +13,7 @@ import zhCN from 'antd/locale/zh_CN';
 import { AudioLines, ChevronDown, FileText, Film, Folder, LayoutGrid, Mic, MoreHorizontal, Plus, Search, SquareCheck } from 'lucide-react';
 import type { LibraryFolder, LibraryMaterial } from '@ai-star-eco/types';
 import { createLibraryFolder, deleteLibraryFolder, editLibraryMaterial, libraryFolders, libraryMaterials, renameLibraryFolder, uploadLibraryMedia } from '@/canvas-bridge/asset-library';
-import { saveAsset } from '@/canvas-bridge/saved-assets';
+import { deleteSavedAsset, saveAsset } from '@/canvas-bridge/saved-assets';
 import { SignedAudio } from '@/canvas-bridge/signed-audio';
 import { SignedImage } from '@/canvas-bridge/signed-image';
 import { SignedVideo } from '@/canvas-bridge/signed-video';
@@ -22,6 +22,7 @@ import { VoiceApi } from '@/proto/api';
 import type { VoiceAsset } from '@/proto/data';
 import { masonry, mediaRatio, useMasonryColumns } from './asset-masonry';
 import { AssetThumb } from './asset-thumb';
+import { confirmAssetDelete } from './assets-delete';
 import { AudioRecorderDialog } from './audio-recorder-dialog';
 import { AI_LIBRARY, ASSETS_DESCRIPTION, libraryQuery, materialOrigin, sourceLabel } from './assets-hub-shared';
 import { AssetsObjects } from './assets-objects';
@@ -159,7 +160,7 @@ type WallItem = { type: 'upload' } | { type: 'voice'; voice: VoiceAsset } | { ty
 function MediaWall({ tab, library, folders, from, onFromChange, onFoldersChanged }: {
   tab: FileTab; library: string; folders: LibraryFolder[]; from: string; onFromChange: (id: string) => void; onFoldersChanged: () => void;
 }) {
-  const { message } = useStudioApp();
+  const { message, modal } = useStudioApp();
   const [keyword, setKeyword] = useState('');
   const [query, setQuery] = useState('');
   const [source, setSource] = useState('all');
@@ -222,6 +223,16 @@ function MediaWall({ tab, library, folders, from, onFromChange, onFoldersChanged
       setSelected([]); setSelecting(false); setRevision(n => n + 1);
     } catch (e) { setActionError(e); setRevision(n => n + 1); }
   };
+  const remove = (ids: string[], title?: string) => confirmAssetDelete(modal, {
+    ids, title, noun: '素材', remove: deleteSavedAsset,
+    onDone: ({ removed, error }) => {
+      setActionError(error || '');
+      if (removed.length && !error) message.success(removed.length > 1 ? `已删除 ${removed.length} 个素材` : '已删除');
+      if (!error) { setSelected([]); setSelecting(false); }
+      if (preview && removed.includes(preview.id)) setPreview(undefined);
+      setRevision(n => n + 1);
+    },
+  });
   const saveTarget = (item: LibraryMaterial): LibrarySaveImage | undefined => {
     if (item.kind !== 'image' || !item.data.storageKey) return undefined;
     const project = item.metadata?.projectId, node = item.metadata?.nodeId;
@@ -242,11 +253,13 @@ function MediaWall({ tab, library, folders, from, onFromChange, onFoldersChanged
       items: item ? [
         { type: 'group' as const, key: '__move', label: '移到资产库', children: moves },
         ...(target ? [{ type: 'divider' as const }, { key: '__object', label: '存为角色、场景或道具' }] : []),
+        { type: 'divider' as const }, { key: '__delete', label: '删除', danger: true },
       ] : moves,
       onClick: ({ key, domEvent }) => {
         domEvent.stopPropagation();
         if (key === '__new') setNewFolderFor(ids);
         else if (key === '__object') setSaving(target);
+        else if (key === '__delete') remove(ids, item?.title);
         else void move(ids, key === '__out' ? null : key);
       },
     };
@@ -294,6 +307,7 @@ function MediaWall({ tab, library, folders, from, onFromChange, onFoldersChanged
       {selecting
         ? <><span className="assets-count">已选 {selected.length} 个</span>
           <Dropdown trigger={['click']} disabled={!selected.length} getPopupContainer={studioOverlayContainer} menu={moveMenu(selected)}><Button disabled={!selected.length}>移到<ChevronDown size={14}/></Button></Dropdown>
+          <Button danger disabled={!selected.length} onClick={() => remove(selected)}>删除</Button>
           <Button onClick={() => { setSelecting(false); setSelected([]); }}>完成</Button></>
         : <Button icon={<SquareCheck size={15}/>} disabled={!items.length} onClick={() => setSelecting(true)}>批量选择</Button>}
     </div>

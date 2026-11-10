@@ -444,7 +444,8 @@ public class StudioWorkflowService {
         int count=request.count()==null?1:request.count();
         var check=videoRequest(request);
         if(!studioVideo.rewritable(request.model()))throw bad("STUDIO_VIDEO_OPTION_UNSUPPORTED","所选视频模型不支持提示词优化");
-        long videoCost=Math.multiplyExact(studioVideo.quote(userId,new IpRunService.IpVideoRequest(check.prompt(),null,check.durationSec(),check.aspectRatio(),check.model(),null,video.submitted())),(long)count);
+        // 素材在这里就按模型规则核对（quoteChecked），不等优化做完、交给视频时才发现参考视频超长。
+        long videoCost=Math.multiplyExact(studioVideo.quoteChecked(userId,new IpRunService.IpVideoRequest(check.prompt(),null,check.durationSec(),check.aspectRatio(),check.model(),null,video.submitted())),(long)count);
         var endpoint=videoRewriteEndpoint().endpoint();
         var rate=videoRewriteRate(endpoint);
         // 画布：用户确认的是视频价格，改写另扣少量（界面写明）。制作计划：批准的上限按「视频 + 改写上限」报的，合计不能超（交接时视频只能用剩下的）。

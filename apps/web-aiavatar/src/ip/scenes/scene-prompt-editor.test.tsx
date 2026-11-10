@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Editor } from "@tiptap/core";
 import { splitPromptRefs } from "./scene-prompt-refs";
 import { PromptText, ScenePromptEditor, type ScenePromptRef } from "./scene-prompt-editor";
+import { sceneScriptLayers } from "./scene-script-layers";
 
 vi.mock("@/canvas-bridge/image-storage", () => ({ refreshImageUrl: vi.fn(async (key: string) => `/signed/${key}`) }));
 beforeEach(() => { vi.stubGlobal("requestAnimationFrame", (fn: FrameRequestCallback) => setTimeout(fn, 0)); });
@@ -99,4 +100,27 @@ test("the @ menu narrows as you type, and with nothing placed it says how to get
   const empty = await editorOf();
   act(() => { empty.commands.focus("end", { scrollIntoView: false }); empty.commands.insertContent("@"); });
   expect((await screen.findByRole("listbox", { name: "选择素材" })).textContent).toContain("添加素材");
+});
+
+// 2026-11-10 分层：编导的六段脚本里不发给视频模型的内容灰字显示，剧情概述那行末尾标「仅参考」；改字后标注跟着变，存下来的字不变。
+function LayeredHost({ initial }: { initial: string }) {
+  const [value, setValue] = useState(initial);
+  return <>
+    <ScenePromptEditor ariaLabel="视频脚本" value={value} onChange={setValue} refs={REFS} hidden={sceneScriptLayers(value)?.hidden}/>
+    <output data-testid="value">{value}</output>
+  </>;
+}
+test("parts that are not sent to the video model are greyed out, and the summary is tagged 仅参考", async () => {
+  const script = "一、剧情概述：宝妈试用卸妆膏。\n五、镜头时间轴：\n第1镜（0–4 秒）这一镜的作用：截停\n宝妈（图2）说：「三秒卸干净。」";
+  render(<LayeredHost initial={script}/>);
+  const box = await screen.findByRole("textbox", { name: "视频脚本" });
+  await waitFor(() => expect(box.querySelectorAll(".scene-prompt-reference-only")).toHaveLength(2));
+  expect([...box.querySelectorAll(".scene-prompt-reference-only")].map(e => e.textContent)).toEqual(["一、剧情概述：宝妈试用卸妆膏。", "这一镜的作用：截停"]);
+  expect(box.querySelectorAll(".scene-prompt-reference-tag")).toHaveLength(1);
+  expect(screen.getByTestId("value").textContent).toBe(script);
+  // 删掉剧情概述，标签也跟着没了。
+  const editor = (box as unknown as { editor: Editor }).editor;
+  act(() => { editor.commands.setContent({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "五、镜头时间轴：" }] },
+    { type: "paragraph", content: [{ type: "text", text: "第1镜（0–4 秒）这一镜的作用：截停" }] }] }); });
+  await waitFor(() => expect(box.querySelectorAll(".scene-prompt-reference-tag")).toHaveLength(0));
 });
