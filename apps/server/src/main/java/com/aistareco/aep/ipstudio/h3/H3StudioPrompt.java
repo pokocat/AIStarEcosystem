@@ -34,9 +34,10 @@ public final class H3StudioPrompt {
         }
         String zh = H3PromptRewrite.normalizeSpeechQuotes(H3PromptRewrite.withoutRepeatedQuotes(prompt == null ? "" : prompt));
         H3PromptRewrite.Source src = H3PromptRewrite.source(zh, List.of("旁白"));
-        boolean codeLines = !src.lines().isEmpty() && H3PromptRewrite.quotesBalanced(src.text(), !src.text().contains("说：{{"));
-        if (!codeLines) src = new H3PromptRewrite.Source(zh, List.of());
         List<Double> starts = H3PromptRewrite.shotStarts(zh, seconds);
+        // 认出了几句、还有几句没认出（「店员笑着回答：「…」」）时也交给模型写：代码填时模型只看得到占位，没认出的那几句会被当成没有。
+        boolean codeLines = !src.lines().isEmpty() && H3PromptRewrite.complete(src, starts != null);
+        if (!codeLines) src = new H3PromptRewrite.Source(zh, List.of());
         var request = new H3PromptRewrite.Request(mode, seconds, refs, src, codeLines, starts == null ? null : starts.size(), starts, null, false);
         return new Built(request, pictures, videos, audios);
     }
