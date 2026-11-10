@@ -103,3 +103,20 @@ test("the workbench does not pile up reads of a work while the server is slow", 
   await tick(DIRECTOR_POLL_MS + 10);
   expect(DirectorApi.getWork).toHaveBeenCalledTimes(3);
 });
+
+test("a poll that hits the server's work-lock timeout is a temporary miss: nothing is shown and the next poll goes on", async () => {
+  const { ApiError } = await import("@ai-star-eco/api-client");
+  vi.mocked(DirectorApi.getWork)
+    .mockResolvedValueOnce(runningWork())
+    .mockRejectedValueOnce(new ApiError({ code: "DIRECTOR_WORK_LOCK_TIMEOUT", message: "作品正在处理，请稍后重试" }, 503))
+    .mockResolvedValue(runningWork());
+  render(<DirectorWorkbench id="w"/>);
+  await screen.findByRole("textbox", { name: "作品名" });
+  await tick(DIRECTOR_POLL_MS + 10);
+  expect(DirectorApi.getWork).toHaveBeenCalledTimes(2);
+  expect(screen.queryByText(/作品正在处理/)).toBeNull();
+  expect(screen.queryByRole("alertdialog")).toBeNull();
+  await tick(DIRECTOR_POLL_MS + 10);
+  expect(DirectorApi.getWork).toHaveBeenCalledTimes(3);
+  expect(screen.getByRole("textbox", { name: "作品名" })).toBeTruthy();
+});

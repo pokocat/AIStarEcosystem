@@ -88,6 +88,15 @@ public class DirectorService {
     private final TransactionTemplate committedTx;
     /** 读已提交的独立事务：续接提交完成后回到作品上记结果（{@link #runFollowUp}，在调用方事务提交之后执行）。 */
     private final TransactionTemplate newCommittedTx;
+    /** 默认传播、默认隔离级别的事务：restore / tick 原来的 @Transactional 语义。 */
+    private final TransactionTemplate plainTx;
+    /** 进程内按作品排队，必须在开事务之前拿（见 {@link DirectorWorkLocks}）。不经 Spring 构造时用默认值。 */
+    private DirectorWorkLocks workLocks = DirectorWorkLocks.standalone();
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setWorkLocks(DirectorWorkLocks workLocks) { if (workLocks != null) this.workLocks = workLocks; }
+
+    DirectorWorkLocks workLocks() { return workLocks; }
 
     public DirectorService(DirectorWorkRepository works, IpRunRepository runs, IpProjectService projects, IpRunService imageRuns,
                            StudioWorkflowService textRuns, StudioWorkflowWorker workflowWorker, StudioVideoService videoModels,
@@ -110,6 +119,7 @@ public class DirectorService {
         this.newCommittedTx = new TransactionTemplate(txManager);
         this.newCommittedTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         this.newCommittedTx.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
+        this.plainTx = new TransactionTemplate(txManager);
     }
 
     // ── 作品 ────────────────────────────────────────────────────────────────
@@ -203,8 +213,13 @@ public class DirectorService {
      * 2026-11-10 线上一个账号 10 秒内对同一部作品发了 125 个读取，持锁的那个在锁内另开事务读任务、等不到第二条连接，
      * 其余的占着连接等锁，连接池被占满，全站接口跟着 500（§8.0.1 ⑯）。
      */
-    @Transactional(isolation = Isolation.READ_COMMITTED)
+    /** 先在进程内按作品排队（不占连接），再开读已提交的事务（见 {@link DirectorWorkLocks}）。 */
     public JsonNode get(String userId, String id) {
+        return workLocks.withWork(id, () -> committedTx.execute(tx -> getInTx(userId, id)));
+    }
+
+    /** 事务内的实现；调用方已拿着作品锁并开了读已提交的事务。 */
+    JsonNode getInTx(String userId, String id) {
         DirectorWork w = locked(userId, id);
         ObjectNode c = read(w);
         if (reconcile(w, c)) save(w, c);
@@ -214,6 +229,10 @@ public class DirectorService {
 
     /** Validate ownership in a separate transaction; read the committed stop result in a fresh snapshot. */
     public JsonNode stopTask(String userId,String id,String runId) {
+        return workLocks.withWork(id, () -> stopTaskLocked(userId, id, runId));
+    }
+
+    private JsonNode stopTaskLocked(String userId,String id,String runId) {
         newTx.executeWithoutResult(tx->{
             locked(userId,id);
             var run=runs.findById(runId).orElseThrow(()->BusinessException.notFound("IP_RUN_NOT_FOUND","任务不存在"));
@@ -223,13 +242,18 @@ public class DirectorService {
                 throw invalid("这项任务不能在这里停止");
         });
         workflowWorker.stopDirectorTask(runId);
-        return committedTx.execute(tx->get(userId,id));
+        return committedTx.execute(tx->getInTx(userId,id));
     }
 
     public record PatchRequest(String title, String idea, String draft, Long draftRev, JsonNode settings) {}
 
-    @Transactional(isolation = Isolation.READ_COMMITTED)
+    /** 先在进程内按作品排队（不占连接），再开读已提交的事务（见 {@link DirectorWorkLocks}）。 */
     public JsonNode patch(String userId, String id, PatchRequest req) {
+        return workLocks.withWork(id, () -> committedTx.execute(tx -> patchInTx(userId, id, req)));
+    }
+
+    /** 事务内的实现；调用方已拿着作品锁并开了读已提交的事务。 */
+    JsonNode patchInTx(String userId, String id, PatchRequest req) {
         DirectorWork w = locked(userId, id);
         ObjectNode c = read(w);
         reconcile(w, c);
@@ -315,9 +339,13 @@ public class DirectorService {
      * </ul>
      * 作品 JSON、任务记录、资产库和账本都不动，不退款、不重提。
      */
-    @Transactional(isolation = Isolation.READ_COMMITTED)
     public void delete(String userId, String id) {
-        DirectorWork w = works.lockById(id).orElse(null);
+        workLocks.runWithWork(id, () -> committedTx.executeWithoutResult(tx -> deleteInTx(userId, id)));
+    }
+
+    /** 事务内的实现：已在别的事务里调用时沿用外层事务（同原来的 @Transactional 语义）。 */
+    void deleteInTx(String userId, String id) {
+        DirectorWork w = lockRow(id).orElse(null);
         if (w == null || !w.getOwnerUserId().equals(userId)) throw BusinessException.notFound("DIRECTOR_WORK_NOT_FOUND", "作品不存在");
         if (w.getDeletedAt() != null) return;
         ObjectNode c = read(w);
@@ -350,9 +378,12 @@ public class DirectorService {
      * </ul>
      * 只在本事务、本连接里读写，不调 {@link #view}（它只在读已提交的事务里才用同一连接读任务列表，本方法不是）。
      */
-    @Transactional
     public void restore(String userId, String id) {
-        DirectorWork w = works.lockById(id).orElse(null);
+        workLocks.runWithWork(id, () -> plainTx.executeWithoutResult(tx -> restoreInTx(userId, id)));
+    }
+
+    void restoreInTx(String userId, String id) {
+        DirectorWork w = lockRow(id).orElse(null);
         if (w == null || !w.getOwnerUserId().equals(userId)) throw BusinessException.notFound("DIRECTOR_WORK_NOT_FOUND", "作品不存在");
         if (w.getDeletedAt() == null) return;
         ObjectNode c = read(w);
@@ -445,8 +476,13 @@ public class DirectorService {
 
     public record EditRequest(String op, String targetId, Long rev, JsonNode data) {}
 
-    @Transactional(isolation = Isolation.READ_COMMITTED)
+    /** 先在进程内按作品排队（不占连接），再开读已提交的事务（见 {@link DirectorWorkLocks}）。 */
     public JsonNode edit(String userId, String id, EditRequest req) {
+        return workLocks.withWork(id, () -> committedTx.execute(tx -> editInTx(userId, id, req)));
+    }
+
+    /** 事务内的实现；调用方已拿着作品锁并开了读已提交的事务。 */
+    JsonNode editInTx(String userId, String id, EditRequest req) {
         DirectorWork w = locked(userId, id);
         ObjectNode c = read(w);
         reconcile(w, c);
@@ -719,7 +755,7 @@ public class DirectorService {
                 String epId = clip.path("episodeId").asText();
                 // 生成中的片段不能删：结果回来时片段已经没了，已付费的产物没有地方落（判断同 clip.unlinkAsset）。
                 String label = "片段 " + clip.path("order").asInt();
-                Set<String> running = runningNodes(w);
+                Set<String> running = runningNodes(w, c);
                 if (clip.path("video").path("pending").size() > 0 || running.contains("video:" + clip.path("id").asText()) || running.contains(REWRITE_NODE + clip.path("id").asText()))
                     throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", label + " 的视频正在生成，完成后再删除");
                 if (running.contains("board:" + clip.path("id").asText()))
@@ -735,7 +771,7 @@ public class DirectorService {
                 String label = "片段 " + clip.path("order").asInt();
                 if (!contains(clip.path("assetIds"), assetId))
                     throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_EDIT_CONFLICT", "「" + a.path("name").asText() + "」已经不在" + label + " 的关联资产里了，页面已更新");
-                Set<String> running = runningNodes(w);
+                Set<String> running = runningNodes(w, c);
                 if (clip.path("video").path("pending").size() > 0 || running.contains("video:" + clip.path("id").asText()) || running.contains(REWRITE_NODE + clip.path("id").asText()))
                     throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", label + " 的视频正在生成，完成后再解除关联");
                 if (running.contains("board:" + clip.path("id").asText()))
@@ -849,8 +885,13 @@ public class DirectorService {
     public record TaskRequest(String type, String targetId, String clientRequestId, JsonNode options,
                               BillingSelection billing, Long maxCost) {}
 
-    @Transactional(isolation = Isolation.READ_COMMITTED)
+    /** 先在进程内按作品排队（不占连接），再开读已提交的事务（见 {@link DirectorWorkLocks}）。 */
     public JsonNode task(String userId, String id, TaskRequest req) {
+        return workLocks.withWork(id, () -> committedTx.execute(tx -> taskInTx(userId, id, req)));
+    }
+
+    /** 事务内的实现；调用方已拿着作品锁并开了读已提交的事务。 */
+    JsonNode taskInTx(String userId, String id, TaskRequest req) {
         DirectorWork w = locked(userId, id);
         ObjectNode c = read(w);
         reconcile(w, c);
@@ -1069,7 +1110,7 @@ public class DirectorService {
                 Limits lim = limits(c);
                 if (lim == null) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "DIRECTOR_VIDEO_MODEL_UNAVAILABLE",
                         "暂无可用于片段生成的视频模型，请联系平台处理");
-                Set<String> running = runningNodes(w);
+                Set<String> running = runningNodes(w, c);
                 for (JsonNode clip : targets) {
                     String cid = clip.path("id").asText();
                     String label = "片段 " + clip.path("order").asInt();
@@ -1997,10 +2038,12 @@ public class DirectorService {
     }
 
     /** 正在跑的任务节点（停止中的导演台文字任务不算，同 {@link #requireIdle}）。 */
-    private Set<String> runningNodes(DirectorWork w) {
+    private Set<String> runningNodes(DirectorWork w, ObjectNode c) {
         Set<String> out = new HashSet<>();
         for (IpRun r : runs.findByProjectIdOrderByCreatedAtDesc(w.getId()))
             if (IpRun.STATUS_RUNNING.equals(r.getStatus()) && (!"studio-director".equals(r.getKind()) || !r.isCancelRequested())) out.add(r.getNodeId());
+        // 还没提交出去的续接（见 deferVideo / deferRewrite）也算在跑：删片段、解除关联、重写都要等它提交或结案。
+        for (JsonNode f : c.path(FOLLOW_UPS)) out.add(f.path("node").asText());
         return out;
     }
 
@@ -2009,7 +2052,7 @@ public class DirectorService {
      * {@code clips} 为 null 表示这次动的是整集（写分镜脚本或整集重写）。
      */
     private void requireNoReshoot(DirectorWork w, ObjectNode c, String episodeId, List<JsonNode> clips) {
-        Set<String> running = runningNodes(w);
+        Set<String> running = runningNodes(w, c);
         if (running.contains("plan:" + episodeId))
             throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", "本集正在写分镜脚本，完成后再试");
         if (running.contains("reshoot:" + episodeId))
@@ -2031,12 +2074,16 @@ public class DirectorService {
     // 要第二条连接：并发读作品时等锁的请求把连接池占满，持锁的等不到连接（2026-11-10 事故的同一形态，PR 187 评审）。
     // 现在锁内只把续接意图记进作品（followUps）并在片段上占位，本事务提交、锁放开之后再提交（runFollowUp），
     // 最后在一个短事务里记结果。请求编号沿用原来的（视频 = 用户点生成时的编号，重试 = 编号 + "-p2"），
-    // 提交接口按编号幂等；没提交成功（连接、数据库出错）的意图留着，过 FOLLOW_UP_RETRY_AFTER 由下一次回投重新安排。
+    // 提交接口按编号幂等；没提交成功（连接、数据库出错）的意图留着，过 followUpRetryMs（默认 2 分钟）由下一次回投重新安排。
     // 提交被明确拒绝（余额不足、模型不可用…）按原来的失败处理：片段上写原因，用户可以重新生成。
 
     static final String FOLLOW_UPS = "followUps";
+    /** 只给测试用：在续接的「读意图」「写回作品」两步之前插一手（拖慢、抛错）。默认什么都不做。 */
+    static volatile java.util.function.Consumer<String> followUpHook = step -> { };
     static final String SUBMITTING = "submit:";
-    private static final java.time.Duration FOLLOW_UP_RETRY_AFTER = java.time.Duration.ofMinutes(2);
+    /** 没提交成功的续接隔多久重新安排（默认 2 分钟）。测试里调短。 */
+    @org.springframework.beans.factory.annotation.Value("${aep.director.follow-up-retry-ms:120000}")
+    private long followUpRetryMs = 120_000;
     private static final ThreadLocal<Boolean> RECONCILING = new ThreadLocal<>();
 
     /** 正在回投、且有事务可以挂提交后的回调：续接只记意图，不在锁内提交。没有事务的（单元测试直接调 reconcile）照旧当场提交。 */
@@ -2120,7 +2167,7 @@ public class DirectorService {
     private boolean retryStaleFollowUps(DirectorWork w, ObjectNode c) {
         if (!deferring()) return false;
         boolean changed = false;
-        Instant cutoff = Instant.now().minus(FOLLOW_UP_RETRY_AFTER);
+        Instant cutoff = Instant.now().minusMillis(followUpRetryMs);
         for (var it = c.path(FOLLOW_UPS).fields(); it.hasNext(); ) {
             var e = it.next();
             Instant at;
@@ -2138,23 +2185,30 @@ public class DirectorService {
      * 再在一个短事务里记结果。连接或数据库出错时什么都不记，意图留着等下次重新安排。
      */
     void runFollowUp(String workId, String id) {
+        followUpHook.accept("read");
         ObjectNode f = newCommittedTx.execute(tx -> {
             DirectorWork w = works.findById(workId).orElse(null);
             if (w == null) return null;
-            JsonNode x = read(w).path(FOLLOW_UPS).path(id);
+            ObjectNode c = read(w);
+            JsonNode x = c.path(FOLLOW_UPS).path(id);
             if (!x.isObject()) return null;
             ObjectNode copy = ((ObjectNode) x).deepCopy();
-            JsonNode p = read(w).path("pipeline");
+            // 先按原请求编号查是不是已经受理过（上次提交成功、写回作品时出错）：受理过的照实记回作品，
+            // 不重新提交，也不因为一键制作之后停了、片段删了就当成没提交 —— 否则真实任务照样生成、结算，作品上却没有记录。
+            if (acceptedFollowUp(workId, copy)) return copy;
+            JsonNode p = c.path("pipeline");
             if (copy.hasNonNull("pipelineId") && (!p.isObject() || !copy.path("pipelineId").asText().equals(p.path("id").asText())
                     || !"running".equals(p.path("status").asText()))) copy.put("cancelled", true);
+            // 提交前再核对一次目标还在：片段删了就不再花钱提交。
+            if (findOrNull(c, "clips", followUpClipId(copy)) == null) copy.put("cancelled", true).put("targetGone", true);
             return copy;
         });
         if (f == null) return; // 已经处理过
         String kind = f.path("kind").asText(), node = f.path("node").asText(), userId = f.path("userId").asText(), requestId = f.path("requestId").asText();
-        JsonNode job = null;
-        String created = null;
+        JsonNode job = f.has("acceptedJob") ? f.path("acceptedJob") : null;
+        String created = f.hasNonNull("acceptedRun") ? f.path("acceptedRun").asText() : null;
         BusinessException refused = null;
-        if (!f.path("cancelled").asBoolean(false)) {
+        if (job == null && created == null && !f.path("cancelled").asBoolean(false)) {
             try {
                 switch (kind) {
                     case "video" -> {
@@ -2174,8 +2228,9 @@ public class DirectorService {
         JsonNode fJob = job;
         String fCreated = created;
         BusinessException fRefused = refused;
-        newCommittedTx.executeWithoutResult(tx -> {
-            DirectorWork w = works.lockById(workId).orElse(null);
+        followUpHook.accept("write-back");
+        workLocks.runWithWork(workId, () -> newCommittedTx.executeWithoutResult(tx -> {
+            DirectorWork w = lockRow(workId).orElse(null);
             if (w == null) return;
             ObjectNode c = read(w);
             JsonNode current = c.path(FOLLOW_UPS).path(id);
@@ -2187,7 +2242,29 @@ public class DirectorService {
             followUps(c).remove(id);
             w.setActive(true); // 下一次回投按实际情况重算
             save(w, c);
-        });
+        }));
+    }
+
+    /** 续接对应的片段（视频记在意图上，改写从节点名取）。 */
+    private static String followUpClipId(JsonNode f) {
+        if (f.hasNonNull("clipId")) return f.path("clipId").asText();
+        String node = f.path("node").asText();
+        return node.startsWith(REWRITE_NODE) ? node.substring(REWRITE_NODE.length()) : node;
+    }
+
+    /**
+     * 按原请求编号查这条续接是不是已经受理：查到就把结果放进意图副本（acceptedJob / acceptedRun）并返回 true。
+     * 视频看导演台的绑定记录（同 generateVideoForDirector 的重放），文字和测试响应看同编号的任务。
+     */
+    private boolean acceptedFollowUp(String workId, ObjectNode f) {
+        IpRun prior = runs.findByProjectIdAndClientRequestId(workId, f.path("requestId").asText()).orElse(null);
+        if (prior == null || !f.path("node").asText().equals(prior.getNodeId())) return false;
+        if (!"video".equals(f.path("kind").asText())) { f.put("acceptedRun", prior.getId()); return true; }
+        List<String> ids = IpProjectService.nativeVideoJobIds(parse(prior.getInputJson()));
+        if (ids.size() != 1) return false;
+        JsonNode job = videoJobs.getJob(ids.get(0), f.path("userId").asText(), MaterialVideoJobService.APP_IPSTUDIO);
+        f.set("acceptedJob", job != null && job.hasNonNull("id") ? job : om.createObjectNode().put("id", ids.get(0)));
+        return true;
     }
 
     private void finishFollowUp(DirectorWork w, ObjectNode c, String id, JsonNode f, JsonNode job, String created, BusinessException refused) {
@@ -2208,6 +2285,10 @@ public class DirectorService {
         } else if (p != null) {
             ArrayNode reserved = p.withArray("pendingSubmits");
             for (int i = reserved.size() - 1; i >= 0; i--) if (id.equals(reserved.get(i).path("id").asText())) reserved.remove(i);
+        }
+        if (f.path("targetGone").asBoolean(false)) {
+            log.info("[director] 续接的片段已删除，不再提交 work={} node={}", w.getId(), node);
+            return;
         }
         if (f.path("cancelled").asBoolean(false)) {
             // 一键制作已暂停或停止：视频不提交（英文稿留着，恢复后直接用）；重试不提交，按改写失败记下，恢复后可「重试失败项」。
@@ -2269,8 +2350,13 @@ public class DirectorService {
         boolean changed = false, running = false;
         List<IpRun> mine = new ArrayList<>(runs.findByProjectIdOrderByCreatedAtDesc(w.getId()));
         Collections.reverse(mine);
+        // 续接已经提交、关联还没写回作品（见 runFollowUp）：它建出的任务先不回投。否则预算里既有续接的预留、
+        // 又按回投再算一次，会被误判预算不足；写回之后它已经记成回投过，也就再也不会接着做。
+        Set<String> waiting = new HashSet<>();
+        for (JsonNode f : c.path(FOLLOW_UPS)) waiting.add(f.path("node").asText() + "\0" + f.path("requestId").asText());
         for (IpRun run : mine) {
             if (IpRun.STATUS_RUNNING.equals(run.getStatus())) { running = true; continue; }
+            if (run.getClientRequestId() != null && waiting.contains(run.getNodeId() + "\0" + run.getClientRequestId())) { running = true; continue; }
             if (applied.contains(run.getId())) continue;
             ObjectNode before = c.deepCopy();
             try { apply(w, c, run); }
@@ -3582,8 +3668,13 @@ public class DirectorService {
     /** auto=true：全自动，资产清单、参考图、分镜图、片段视频都不停下来等确认（预算仍是硬上限）。 */
     public record PipelineRequest(String action, String scope, String episodeId, String target, Long budget, BillingSelection billing, Boolean auto) {}
 
-    @Transactional(isolation = Isolation.READ_COMMITTED)
+    /** 先在进程内按作品排队（不占连接），再开读已提交的事务（见 {@link DirectorWorkLocks}）。 */
     public JsonNode pipeline(String userId, String id, PipelineRequest req) {
+        return workLocks.withWork(id, () -> committedTx.execute(tx -> pipelineInTx(userId, id, req)));
+    }
+
+    /** 事务内的实现；调用方已拿着作品锁并开了读已提交的事务。 */
+    JsonNode pipelineInTx(String userId, String id, PipelineRequest req) {
         DirectorWork w = locked(userId, id);
         ObjectNode c = read(w);
         reconcile(w, c);
@@ -3750,9 +3841,12 @@ public class DirectorService {
     }
 
     /** 后台调度：回投结果并推进连跑。每个作品在自己的事务里、持行锁执行。 */
-    @Transactional
     public void tick(String id) {
-        DirectorWork w = works.lockById(id).orElse(null);
+        workLocks.runWithWork(id, () -> plainTx.executeWithoutResult(tx -> tickInTx(id)));
+    }
+
+    void tickInTx(String id) {
+        DirectorWork w = lockRow(id).orElse(null);
         if (w == null || w.getDeletedAt() != null) return;
         ObjectNode c = read(w);
         boolean changed = reconcile(w, c);
@@ -5741,10 +5835,16 @@ public class DirectorService {
     }
 
     private DirectorWork locked(String userId, String id) {
-        DirectorWork w = works.lockById(id).orElse(null);
+        DirectorWork w = lockRow(id).orElse(null);
         if (w == null || w.getDeletedAt() != null || !w.getOwnerUserId().equals(userId))
             throw BusinessException.notFound("DIRECTOR_WORK_NOT_FOUND", "作品不存在");
         return w;
+    }
+
+    /** 给作品行加锁：调用方必须已经拿着进程内的作品锁（漏了入口会在测试里断言失败、线上打 WARN）。 */
+    private Optional<DirectorWork> lockRow(String id) {
+        workLocks.requireHeld(id);
+        return works.lockById(id);
     }
 
     private void save(DirectorWork w, ObjectNode c) {

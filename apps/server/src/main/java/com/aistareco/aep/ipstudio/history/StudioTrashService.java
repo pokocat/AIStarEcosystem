@@ -73,6 +73,11 @@ public class StudioTrashService {
         this.retentionDays = Math.max(0, retentionDays);
     }
 
+    private com.aistareco.aep.ipstudio.director.DirectorWorkLocks workLocks = com.aistareco.aep.ipstudio.director.DirectorWorkLocks.standalone();
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setWorkLocks(com.aistareco.aep.ipstudio.director.DirectorWorkLocks workLocks) { if (workLocks != null) this.workLocks = workLocks; }
+
     public int retentionDays() { return retentionDays; }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -91,8 +96,10 @@ public class StudioTrashService {
         log.info("[trash] canvas purged user={} project={} expired={}", user, id, cutoff != null);
     }
 
-    @Transactional(isolation = Isolation.READ_COMMITTED)
-    public void purgeWork(String user, String id) { purgeWork(user, id, null); }
+    /** 导演台作品：先在进程内按作品排队（不占连接），再开读已提交的事务加行锁（见 {@code DirectorWorkLocks}）。 */
+    public void purgeWork(String user, String id) {
+        workLocks.runWithWork(id, () -> tx.executeWithoutResult(s -> purgeWork(user, id, null)));
+    }
 
     void purgeWork(String user, String id, Instant cutoff) {
         DirectorWork w = works.lockById(id).filter(x -> user.equals(x.getOwnerUserId()))
@@ -117,7 +124,7 @@ public class StudioTrashService {
             catch (RuntimeException e) { log.warn("[trash] expired canvas kept project={}: {}", id, e.getMessage()); }
         }
         for (DirectorWork w : works.findByDeletedAtBefore(cutoff)) {
-            try { tx.executeWithoutResult(s -> purgeWork(w.getOwnerUserId(), w.getId(), cutoff)); purged++; }
+            try { workLocks.runWithWork(w.getId(), () -> tx.executeWithoutResult(s -> purgeWork(w.getOwnerUserId(), w.getId(), cutoff))); purged++; }
             catch (RuntimeException e) { log.warn("[trash] expired work kept work={}: {}", w.getId(), e.getMessage()); }
         }
         if (purged > 0) log.info("[trash] expired purge done count={} retentionDays={}", purged, retentionDays);
