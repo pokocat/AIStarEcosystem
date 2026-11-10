@@ -36,15 +36,15 @@ test('a late response from a previously selected task cannot replace the new sel
   await act(async () => { oldResolve(task('PEX-old')); await old; });
   expect(props.onSelect).not.toHaveBeenCalledWith(expect.objectContaining({ id: 'PEX-old' }));
 });
-test('historical inputs are read-only; 重新生成 puts them back and 裂变生成 makes new takes', () => {
+test('historical inputs are read-only; 再次生成 puts them back and 裂变生成 makes new takes', () => {
   const more = vi.fn(), edit = vi.fn(), failed = take('PEX-one', '2026-11-06T00:00:00Z', 'a'); failed.execution!.status = 'needs_user';
   render(<VideoTaskSettings task={failed} head={null} onMore={more} onEdit={edit}/>);
   expect(screen.getByText('保留这一版要求')).toBeTruthy(); expect(screen.queryByRole('textbox')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '裂变生成' })); expect(more).toHaveBeenCalledOnce();
-  fireEvent.click(screen.getByRole('button', { name: '重新生成' })); expect(edit).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole('button', { name: '再次生成' })); expect(edit).toHaveBeenCalledOnce();
 });
-// 2026-11-10 用户：底部是两个按钮，「重新生成」原样回到编辑页，「裂变生成」开视频裂变（取代 11-09 合成一个入口）。
-test.each(['running', 'done', 'needs_user', 'partial', 'paused', 'canceled'] as const)('%s keeps one 重新生成 and one 裂变生成 in the settings footer', async status => {
+// 2026-11-10 用户：底部是两个按钮，「再次生成」原样回到编辑页，「裂变生成」开视频裂变（取代 11-09 合成一个入口）。
+test.each(['running', 'done', 'needs_user', 'partial', 'paused', 'canceled'] as const)('%s keeps one 再次生成 and one 裂变生成 in the settings footer', async status => {
   const saved = take('PEX-edit', '2026-11-06T00:00:00Z', 'a'); saved.execution!.status = status;
   if (status === 'done') saved.run = { id: 'IPR-final', status: 'done', output: { storageKey: 'final.mp4' } } as StudioVideoTask['run'];
   api.get.mockResolvedValue(saved);
@@ -55,7 +55,7 @@ test.each(['running', 'done', 'needs_user', 'partial', 'paused', 'canceled'] as 
   expect(button.closest('footer')?.parentElement).toBe(settings);
   if (status === 'done') await screen.findByRole('button', { name: '下载视频' });
   expect(screen.getAllByRole('button', { name: '裂变生成' })).toHaveLength(1);
-  expect(screen.getAllByRole('button', { name: '重新生成' })).toHaveLength(1);
+  expect(screen.getAllByRole('button', { name: '再次生成' })).toHaveLength(1);
   expect(screen.queryByRole('button', { name: '视频裂变' })).toBeNull();
   fireEvent.click(button); expect(more).toHaveBeenCalledOnce();
 });
@@ -63,10 +63,10 @@ test('the settings panel hides empty rows and only offers what was saved', () =>
   // 只有设置、没有提交记录：能放回编辑页，裂变不了
   const noSpecs = task('PEX-one'); noSpecs.input = { nodes: [], sceneVideoState: { text: '要求', options: {} } } as never;
   const mounted = render(<VideoTaskSettings task={noSpecs} head={null} onMore={vi.fn()} onEdit={vi.fn()}/>);
-  expect(screen.getByRole('button', { name: '重新生成' })).toBeTruthy(); expect(screen.queryByRole('button', { name: '裂变生成' })).toBeNull();
+  expect(screen.getByRole('button', { name: '再次生成' })).toBeTruthy(); expect(screen.queryByRole('button', { name: '裂变生成' })).toBeNull();
   noSpecs.input = undefined;
   mounted.rerender(<VideoTaskSettings task={noSpecs} head={null} onMore={vi.fn()} onEdit={vi.fn()}/>);
-  expect(screen.queryByRole('button', { name: '重新生成' })).toBeNull(); expect(screen.queryByRole('button', { name: '裂变生成' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '再次生成' })).toBeNull(); expect(screen.queryByRole('button', { name: '裂变生成' })).toBeNull();
   expect(screen.queryByText('清晰度')).toBeNull(); expect(screen.queryByText(/— 秒/)).toBeNull();
 });
 test('completed steps stay complete while only the failed step retries', () => {

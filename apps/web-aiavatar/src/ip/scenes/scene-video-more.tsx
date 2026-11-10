@@ -26,7 +26,7 @@ const WAYS: { way: Way; title: string; note: string }[] = [
 const WAY_ICON = { same: Copy, variables: Shuffle } as const;
 
 /**
- * 「视频裂变」（2026-11-09 用户要求，参考带货子应用的派生变体）。2026-11-10 起「自己改」拿出去，成了设置区的「重新生成」按钮。
+ * 「视频裂变」（2026-11-09 用户要求，参考带货子应用的派生变体）。2026-11-10 起「自己改」拿出去，成了设置区的「再次生成」按钮。
  * 左边选怎么变、几条、变量；右边逐条预览要交出去的脚本。只负责选和看，找变量、写脚本、提交都由页面做（同一套草稿、计费和恢复规则）。
  */
 export function VideoMoreDialog({ task, modelName, free, busy, textBlocker, nodes, onClose, onFind, onWrite, onGenerate, onConfirm }: {

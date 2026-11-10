@@ -97,8 +97,8 @@ async function open() {
 const go = () => screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement;
 const records = () => store.get("IPP-V")!.doc.sceneVideoSubmissions ?? [];
 
-// 2026-11-09：放回同一份草稿（新视频和原来的在同一批），不再复制成新草稿。2026-11-10 起入口是设置区的「重新生成」。
-test.each([false, true])('failed Fast task: 重新生成 retains the prompt in the same draft and switching models keeps it (adopted script: %s)', async adopted => {
+// 2026-11-09：放回同一份草稿（新视频和原来的在同一批），不再复制成新草稿。2026-11-10 起入口是设置区的「再次生成」。
+test.each([false, true])('failed Fast task: 再次生成 retains the prompt in the same draft and switching models keeps it (adopted script: %s)', async adopted => {
   const prompt = '第1镜（0–5秒）：产品特写。旁白说：「这是我写好的脚本。」';
   const state = { text: adopted ? '' : prompt, options: {}, duration: 15, ratio: '9:16', tier: '768p',
     ...(adopted ? { edit: { scriptId: 'script-from-original-draft', prompt } } : {}) };
@@ -111,7 +111,7 @@ test.each([false, true])('failed Fast task: 重新生成 retains the prompt in t
   api.getExecution.mockResolvedValue(execution('needs_user', [step('video', 'video', 'failed')], { id: 'PEX-fast-failed' }));
   window.history.replaceState(null, '', '/video?scene=ecom-talking&draft=IPP-V&task=PEX-fast-failed');
   await act(async () => { render(<SceneVideoStudio/>); });
-  await act(async () => { fireEvent.click(await screen.findByRole('button', { name: '重新生成' })); });
+  await act(async () => { fireEvent.click(await screen.findByRole('button', { name: '再次生成' })); });
   await waitFor(() => expect(screen.getByRole('textbox', { name: /想做的视频|视频脚本/ }).textContent).toBe(prompt));
   expect(screen.queryByRole('dialog', { name: '视频裂变' })).toBeNull();
   expect(document.querySelector('.scene-video-studio')?.getAttribute('data-video-view')).toBe('compose');

@@ -996,7 +996,7 @@ export function SceneVideoStudio() {
     } finally { setBusy(false); }
   };
   /**
-   * 重新生成（设置区按钮，2026-11-10 起；原来是视频裂变里的「自己改」）：把这条任务的设置原样放回同一份草稿的编辑页（素材、脚本、规格、模型）。
+   * 再次生成（设置区按钮，2026-11-10 起；原来是视频裂变里的「自己改」）：把这条任务的设置原样放回同一份草稿的编辑页（素材、脚本、规格、模型）。
    * 直接点「生成视频」或改完再生成，新视频和它在同一组；已有任务和视频都不动。
    * 草稿里没有的素材节点按快照补回来（签名地址现签）。
    */
@@ -1020,7 +1020,7 @@ export function SceneVideoStudio() {
       window.history.replaceState(null, '', `/video?scene=${encodeURIComponent(task.sceneId)}&draft=${encodeURIComponent(task.projectId)}`);
       await openDraft(task.projectId); setView('compose'); setMobileView('compose');
       setNote({ text: '已放回这条视频的设置，新视频和它在同一批。' });
-    } catch (error) { showFailure({ action: '重新生成', error }); }
+    } catch (error) { showFailure({ action: '再次生成', error }); }
     finally { setBusy(false); }
   };
   const confirmTake = async (projectId: string, request: StudioVideoTaskCreate) => {

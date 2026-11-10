@@ -392,14 +392,14 @@ function VideoTakes({ takes, current, onOpen }: { takes: StudioVideoTask[]; curr
 
 /**
  * 左侧「本次设置」：按提交时的快照显示，顶上是当时选的场景（和编辑时同一个位置，2026-11-09 用户要求对齐参考站）。
- * 底部两个按钮（2026-11-10 用户要求，取代 11-09 合成一个入口的做法）：「重新生成」把这条的脚本、素材和设置原样放回编辑页，
+ * 底部两个按钮（2026-11-10 用户要求，取代 11-09 合成一个入口的做法）：「再次生成」把这条的脚本、素材和设置原样放回编辑页，
  * 「裂变生成」打开视频裂变（原样、换变量、AI 改写）。都只新建任务，已有视频都保留。
  */
 export function VideoTaskSettings({ task, head, modelName, onMore, onEdit, busy, pending = [], onConfirm }: {
   task: StudioVideoTask; head: ReactNode; modelName?: string;
   /** 打开「视频裂变」（原样、换变量、AI 改写）。没有提交记录的旧任务不给。 */
   onMore?: () => void;
-  /** 「重新生成」：把这条的设置放回编辑页。没有保存设置的旧任务不给。 */
+  /** 「再次生成」：把这条的设置放回编辑页。没有保存设置的旧任务不给。 */
   onEdit?: () => void; busy?: boolean;
   /** 这份草稿里提交结果还没确认的请求：同一个请求编号再交一次会拿回原来那次。 */
   pending?: StudioVideoTaskCreate[]; onConfirm?: (request: StudioVideoTaskCreate) => void;
@@ -412,7 +412,7 @@ export function VideoTaskSettings({ task, head, modelName, onMore, onEdit, busy,
   const rows: [string, string][] = [...(modelName ? [['模型', modelName] as [string, string]] : []), ...(ratio ? [['画面', ratio] as [string, string]] : []),
     ...(duration ? [['时长', `${duration} 秒`] as [string, string]] : []), ...(tier ? [['清晰度', tier.toUpperCase()] as [string, string]] : [])];
   const tag = takeTag(task);
-  // 裂变按提交记录再交，重新生成放回保存的设置：缺哪样就不给哪个按钮。
+  // 裂变按提交记录再交，再次生成放回保存的设置：缺哪样就不给哪个按钮。
   const canMore = !!onMore && !!task.request?.configuration;
   const canEdit = !!onEdit && !!task.input;
   return <section className="scene-card video-task-settings" aria-label="本次设置">
@@ -429,7 +429,7 @@ export function VideoTaskSettings({ task, head, modelName, onMore, onEdit, busy,
       {pending.map(request => <p key={request.clientRequestId} className="video-take-pending" role="status">提交结果待确认。
         <button type="button" disabled={busy} onClick={() => onConfirm?.(request)}>确认原任务</button></p>)}
       {(canMore || canEdit) && <div className="video-task-settings-actions">
-        {canEdit && <button type="button" className="video-task-regenerate" disabled={busy} onClick={onEdit}><RefreshCw size={15} strokeWidth={1.6}/>重新生成</button>}
+        {canEdit && <button type="button" className="video-task-regenerate" disabled={busy} onClick={onEdit}><RefreshCw size={15} strokeWidth={1.6}/>再次生成</button>}
         {canMore && <button type="button" className="scene-go is-compact video-more-open" disabled={busy} onClick={onMore}><FissionIcon size={17}/><span>裂变生成</span></button>}
       </div>}
       {(canMore || canEdit) && <p className="video-task-settings-note">新视频和这条在同一批，已生成的视频保留。</p>}

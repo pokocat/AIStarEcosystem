@@ -363,7 +363,7 @@ html:not([data-layout="desktop"]) .scene-studio .video-more-foot .scene-go.is-co
 @media (hover: none) { .video-history-delete { opacity: 1; } }
 .video-history-row .video-history-draft + .video-history-delete { top: 3px; }
 
-/* 设置区两个按钮（2026-11-10）：「重新生成」放回编辑页，「裂变生成」开视频裂变；一样宽、一样高。 */
+/* 设置区两个按钮（2026-11-10）：「再次生成」放回编辑页，「裂变生成」开视频裂变；一样宽、一样高。 */
 .scene-studio .video-task-settings-actions>button { flex: 1 1 0; min-width: 0; height: 42px; border-radius: 12px; font-size: 14px; }
 .scene-studio .video-task-settings-actions>.video-task-regenerate { gap: 6px; padding: 0 12px; font-weight: 500; }
 .scene-studio .video-task-settings-actions>.video-task-regenerate:disabled { cursor: not-allowed; }

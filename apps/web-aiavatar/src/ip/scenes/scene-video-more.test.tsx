@@ -130,7 +130,7 @@ test('AI 改写 also works without variables: the director changes things itself
   expect(s.onWrite).toHaveBeenCalledWith([[], []]);
 });
 
-// 2026-11-10 用户：裂变里不再有「自己改」，放回编辑页是设置区单独的「重新生成」。
+// 2026-11-10 用户：裂变里不再有「自己改」，放回编辑页是设置区单独的「再次生成」。
 test('the dialog offers only ways that make new takes', () => {
   show();
   expect(within(dialog()).getAllByRole('radio').map(r => r.textContent)).toEqual([expect.stringContaining('原样'), expect.stringContaining('换变量'), expect.stringContaining('AI 改写')]);
