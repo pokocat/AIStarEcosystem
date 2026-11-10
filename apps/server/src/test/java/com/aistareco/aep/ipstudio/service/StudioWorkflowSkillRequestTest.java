@@ -150,6 +150,35 @@ class StudioWorkflowSkillRequestTest {
         verify(credits).hold(eq("u"),eq(21L),anyString(),eq(run.getId()),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
+    /**
+     * 逐镜对照的检查（爆款复刻，2026-11-10）：按切镜抽帧，并带上交给生成模型的参考图。参考图只认本人的、真是图片的文件，
+     * 按文件内容判（§8.0.1 ⑤）：没有后缀的 PNG 照带，后缀写着 .png 其实是视频的那张不带，其余照常检查。
+     */
+    @Test void detailedCheckSamplesByShotsAndShowsOnlyRealReferenceImages() throws Exception {
+        Path face=directory.resolve("face");
+        var image=new java.awt.image.BufferedImage(32,32,java.awt.image.BufferedImage.TYPE_INT_RGB);
+        assertTrue(javax.imageio.ImageIO.write(image,"png",face.toFile()));
+        when(storage.openForRead("face")).thenReturn(face);
+        ObjectNode body=(ObjectNode)json.valueToTree(check("IPR-video",null,"subject-replaced"));
+        ObjectNode settings=(ObjectNode)body.path("check");
+        settings.put("sampling","shots");
+        var refs=settings.putArray("references");
+        refs.addObject().put("label","图1").put("storageKey","face");
+        refs.addObject().put("label","图2").put("storageKey","rice.png");
+        var bad=body.deepCopy();((ObjectNode)bad.path("check").path("references").get(0)).put("label","第一张");
+        assertEquals("STUDIO_INPUT_INVALID",assertThrows(BusinessException.class,()->service.submit("u","p",json.treeToValue(bad,RunRequest.class))).getCode());
+        var odd=body.deepCopy();((ObjectNode)odd.path("check")).put("sampling","every-frame");
+        assertEquals("STUDIO_INPUT_INVALID",assertThrows(BusinessException.class,()->service.submit("u","p",json.treeToValue(odd,RunRequest.class))).getCode());
+        verifyNoInteractions(credits);
+        service.submit("u","p",json.treeToValue(body,RunRequest.class));
+        var capture=ArgumentCaptor.forClass(IpRun.class);verify(runs).save(capture.capture());
+        JsonNode exec=json.readTree(capture.getValue().getInputJson()).path("_exec");
+        assertEquals("shots",exec.path("check").path("sampling").asText());
+        assertTrue(exec.path("check").path("sampledTimesSec").size()>=4,"一镜到底的 8 秒按大约每 2 秒一帧");
+        assertEquals("[{\"label\":\"图1\",\"storageKey\":\"face\"}]",exec.path("check").path("references").toString(),"「rice.png」其实是视频，不带");
+        assertTrue(exec.path("userPrompt").asText().contains("图1"),exec.path("userPrompt").asText());
+    }
+
     RunRequest recreation(String maxSegmentSec,String model) throws Exception {
         ObjectNode body=json.createObjectNode().put("clientRequestId","rec").put("nodeId","report").put("operation","recreation").put("prompt","看结构")
                 .put("mode","segments").put("maxCost",21);

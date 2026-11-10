@@ -90,7 +90,17 @@ class StudioPlanValidatorSkillTest {
         var later=production();((ObjectNode)later.path("steps").get(2).path("settings")).put("targetStepId","final");
         assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(later,rules(),"production",context));
         var image=production();((ObjectNode)image.path("steps").get(2).path("settings")).put("targetStepId","img");
-        assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(image,rules(),"production",context),"check targets a video step");
+        // 2026-11-10：图片步骤也能检查（爆款复刻改好的开场画面出片前先看一遍）；抽帧方式只认 shots
+        var checked=StudioPlanValidator.validateSkillPlan(image,rules(),"production",context).path("steps").get(2);
+        assertEquals("img",checked.path("settings").path("targetStepId").asText());
+        assertTrue(checked.path("dependsOn").toString().contains("img"));
+        assertFalse(checked.path("settings").has("sampling"),"没写的不加");
+        var sampled=production();((ObjectNode)sampled.path("steps").get(2).path("settings")).put("sampling","shots").put("compareReferences",true);
+        var kept=StudioPlanValidator.validateSkillPlan(sampled,rules(),"production",context).path("steps").get(2).path("settings");
+        assertEquals("shots",kept.path("sampling").asText());
+        assertTrue(kept.path("compareReferences").asBoolean());
+        var odd=production();((ObjectNode)odd.path("steps").get(2).path("settings")).put("sampling","every-frame");
+        assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(odd,rules(),"production",context));
         var unknownCheck=production();((ArrayNode)unknownCheck.path("steps").get(2).path("settings").path("checkIds")).add("made-up-check");
         assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(unknownCheck,rules(),"production",context));
         var forward=production();((ObjectNode)forward.path("steps").get(0)).putArray("dependsOn").add("v1");

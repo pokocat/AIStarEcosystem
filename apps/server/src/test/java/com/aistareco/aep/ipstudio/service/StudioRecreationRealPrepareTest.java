@@ -90,7 +90,7 @@ class StudioRecreationRealPrepareTest {
         log.set("compileUsage",compiled.usage);
         log.put("compileRaw",compiled.content);
         var plan=StudioRecreationTaskPlan.build(task,ModelJson.parse(om,compiled.content),
-                vars->StudioPromptAssembler.classpath().assemble(StudioPromptAssembler.Call.of(StudioPromptCallPoints.RECREATION_KEYFRAME,vars,null,null)).user());
+                (stage,vars)->StudioPromptAssembler.classpath().assemble(StudioPromptAssembler.Call.of(stage,vars,null,null)).user());
         Set<String> allowed=new HashSet<>(titles.keySet());for(var u:units)allowed.add("clip-"+u.no());
         for(int i=1;i<=breakdown.path("shots").size();i++)allowed.add("F-"+i);
         var validated=StudioPlanValidator.validateSkillPlan(plan,StudioRecreationTaskPlanTestSupport.rules(),"production",allowed);

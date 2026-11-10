@@ -42,7 +42,7 @@ export type StudioSkillStepSettings =
   | { operation: "recreation"; sourceNodeId: string; mode: "segments"; maxSegmentSec: number | "model"; videoModel: string }
   | { operation: "image"; model?: string; size?: string; aspectRatio?: string; count: 1 | 2 | 4; referenceBindings: StudioStepReferenceBinding[] }
   | { operation: "video"; model?: string; video: StudioVideoSettings; durationSec: number; aspectRatio: string; count: 1 | 2 | 4; referenceBindings: StudioStepReferenceBinding[] }
-  | { operation: "check"; targetStepId: string; targetRunId?: string; candidateIndex?: number; checkIds: string[] }
+  | { operation: "check"; targetStepId: string; targetRunId?: string; candidateIndex?: number; checkIds: string[]; sampling?: "shots"; compareReferences?: boolean; /** 可省的检查：报价放不下批准的上限时按名次从大到小省掉（1 最后省）。 */ optionalRank?: number }
   | { operation: "assemble"; clipOrder: { stepId: string; runId?: string; candidateIndex?: number }[]; audioStrategy: "generated" | "source-audio" | "none" }
   | { operation: "text"; purpose: "script" | "prompt-revision" | "plan-compile" | "note"; editTarget?: { nodeId: string; field: "content" | "prompt" | "script"; snapshot: string } };
 export interface StudioPlanBudget {
@@ -130,7 +130,13 @@ export interface StudioRunRequest {
   /** recreation(mode=segments) only: segment length cap; "model" reads the selected video model contract. */
   recreation?: { maxSegmentSec: number | "model"; videoModel: string };
   /** check only: target run output to inspect against skill checks. Visual snapshot is built server-side. */
-  check?: { targetRunId: string; targetStorageKey?: string; checkIds: string[] };
+  check?: {
+    targetRunId: string; targetStorageKey?: string; checkIds: string[];
+    /** "shots": sample by the real cuts of the checked video (start and end of each shot) instead of four even frames. */
+    sampling?: "shots";
+    /** Images shown to the checker next to the result (the caller's own files), labelled like the checked step's prompt (图1…). */
+    references?: { label: string; storageKey: string }[];
+  };
   /** Skill planning binding; selects method/scope, never payment or execution authority. */
   skillKey?: string; skillVersion?: number; stage?: StudioPlanStage; executionId?: string;
   /** Parent dialogue binding for the server-side agent loop (new entry); legacy assistant requests omit it. */

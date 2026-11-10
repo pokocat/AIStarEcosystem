@@ -47,8 +47,13 @@ public final class StudioVideoBreakdown {
         encode(source,proxy,640,30);
         if(Files.size(proxy)>MAX_PROXY_BYTES)encode(source,proxy,480,36);
         if(Files.size(proxy)>MAX_PROXY_BYTES)throw new BusinessException(org.springframework.http.HttpStatus.BAD_REQUEST,"STUDIO_RECREATION_MEDIA_LIMIT","参考视频画面太复杂，压缩后仍超出模型能读取的大小，请先剪短");
+        return new Media(proxy,detectCuts(source,duration));
+    }
+
+    /** 一条视频的真实切镜时间（ffmpeg scdet）。拉片用它给模型做参考，成片检查用它按镜头抽帧。 */
+    public static List<Double> detectCuts(Path source,double duration) throws Exception {
         String log=run(List.of("ffmpeg","-hide_banner","-nostdin","-v","info","-i",source.toString(),"-an","-vf","scale=160:-2,scdet=threshold=12:sc_pass=1","-f","null","-"),true);
-        return new Media(proxy,cuts(log,duration));
+        return cuts(log,duration);
     }
 
     private static void encode(Path source,Path proxy,int edge,int crf) throws Exception {

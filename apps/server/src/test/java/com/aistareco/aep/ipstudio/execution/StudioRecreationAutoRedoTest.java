@@ -59,6 +59,29 @@ class StudioRecreationAutoRedoTest {
         assertTrue(c1.path("acknowledged").asBoolean());
     }
 
+    /** 重出时把检查写下的问题带上：图片整段带；视频只把「第N镜：画面」接到那一镜后面，写给系统的话和台词不带（会被视频模型念出来）。 */
+    @Test
+    void aRedoCarriesWhatTheCheckFound() {
+        var state = state("recreation", "fail");
+        var v1 = PlanState.step(state, "production", "v1");
+        v1.put("fixHint", "第3镜：推近后女生手里端的是图3 的炒饭；建议重新生成第 2 镜；第2镜：女生说「好吃」；第9镜：远处的白墙");
+        ObjectNode definition = om.createObjectNode().put("operation", "video")
+                .put("prompt", "拍一段美食视频。\n第2镜（1.8–3.7秒）：从图2开始拍。\n第3镜（3.7–5.7秒）：从图3开始拍，结束在近景");
+        definition.putObject("settings");
+        String prompt = run().materialize(execution(), state, v1, definition).path("prompt").asText();
+        assertEquals("拍一段美食视频。\n第2镜（1.8–3.7秒）：从图2开始拍。\n第3镜（3.7–5.7秒）：从图3开始拍，结束在近景。推近后女生手里端的是图3 的炒饭。", prompt,
+                "只接画面描述：带「建议」的、带台词的、提示词里没有的镜头都不接");
+
+        ObjectNode image = om.createObjectNode().put("operation", "image").put("prompt", "以图1为构图基准");
+        image.putObject("settings");
+        ObjectNode k1 = om.createObjectNode().put("fixHint", "人物还戴着原片的贝雷帽");
+        assertTrue(run().materialize(execution(), state, k1, image).path("prompt").asText().endsWith("这一版改掉：人物还戴着原片的贝雷帽"));
+
+        // 没有修改意见、或不是复刻任务：提示词原样
+        assertEquals("以图1为构图基准", run().materialize(execution(), state, om.createObjectNode(), image).path("prompt").asText());
+        assertEquals("以图1为构图基准", run().materialize(execution(), state("segmented", "fail"), k1, image).path("prompt").asText());
+    }
+
     @Test
     void otherVideoPageTasksKeepTheDeliveredVideo() {
         var state = state("segmented", "fail");
