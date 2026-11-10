@@ -153,8 +153,10 @@ public class StudioWorkflowWorker {
                             if(!StudioVisualContext.supportsVision(endpoint.endpoint()))throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_VISION_UNAVAILABLE","检查模型的图片读取能力已停用");
                             if(!progress(id,20,"check.frames"))return;
                             JsonNode target=input.path("_exec").path("check");
+                            List<StudioVisualContext.ShownReference> shown=new ArrayList<>();
+                            target.path("references").forEach(r->shown.add(new StudioVisualContext.ShownReference(r.path("label").asText(),r.path("storageKey").asText())));
                             userContent=new StudioVisualContext(storage).targetParts(user,target.path("targetStorageKey").asText(),
-                                    "video".equals(target.path("mediaType").asText()),sampledTimes(target));
+                                    "video".equals(target.path("mediaType").asText()),sampledTimes(target),shown);
                         }
                         AiModelInvocationService.AiModelResponse reply;
                         if("recreation".equals(operation)&&recreationStudy!=null&&userContent instanceof List<?> contentParts&&contentParts.contains(recreationStudy.ending())) {
@@ -450,6 +452,14 @@ public class StudioWorkflowWorker {
                 } catch(Exception failed) {
                     log.warn("[studio-workflow] shot frame failed run={} shot={} at={} reason={}",id,i+1,at,failed.toString());
                 }
+            }
+            // 原片里重复用的画面（某一镜推到头的近景就是后面某一镜的开场）：写分镜脚本时用来写「推到这里就是图N」。
+            // 认不出来只是少一句提示，不挡拉片。
+            try {
+                int same=StudioVideoBreakdown.markSameFrames(original,breakdown,frames);
+                if(same>0)log.info("[studio-workflow] same frames marked run={} count={}",id,same);
+            } catch(Exception failed) {
+                log.warn("[studio-workflow] same-frame detection failed run={} reason={}",id,failed.toString());
             }
             var units=StudioVideoBreakdown.units(breakdown,max,min,maxUnits);
             var segments=study.putArray("segments");
@@ -847,7 +857,7 @@ public class StudioWorkflowWorker {
         List<String> allowed=new ArrayList<>();exec.path("allowedNodeIds").forEach(v->allowed.add(v.asText()));
         // 视频页的爆款复刻：模型只写了每段提示词，方案由代码按受理时冻结的分段和素材拼（StudioRecreationTaskPlan）
         if(exec.path("recreationTask").isObject())answer=com.aistareco.aep.ipstudio.execution.StudioRecreationTaskPlan.build(exec.path("recreationTask"),answer,
-                vars->recreationStage(input,com.aistareco.aep.ipstudio.prompt.StudioPromptCallPoints.RECREATION_KEYFRAME,vars,null).user());
+                (key,vars)->recreationStage(input,key,vars,null).user());
         ObjectNode plan;
         // The validator's reason (「第 N 步…」, stage words) reaches the user as a step's reason: plain words there, the
         // reason itself in the internal detail and the log (不锁方法 2026-10-23).

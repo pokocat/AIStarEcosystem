@@ -44,7 +44,7 @@ class StudioVideoBreakdownWorkerTest {
                 +"\"parts\":[{\"name\":\"钩子\",\"start\":0,\"end\":6}],\"remake\":{\"keep\":[\"节奏\"]}}";
         // 第二遍逐镜细读：两个镜头都在一个 6 秒窗口里，一次调用；frameAt 写成了小段里的秒数（2026-11-10 真跑见过）
         String detail="{\"shots\":[{\"no\":1,\"layout\":\"女生在远处，只有手指大小\",\"trick\":\"手指捏住远处的人\",\"frameAt\":0.2},"
-                +"{\"no\":2,\"scene\":\"蓝色房间\",\"frameAt\":3.4}]}";
+                +"{\"no\":2,\"scene\":\"蓝色房间\",\"frameAt\":3.1}]}";
         when(models.invokeChatOnEndpoint(eq(endpoint),eq(AiModelPurpose.DAP_VIDEO_UNDERSTAND),anyList(),anyMap()))
                 .thenReturn(new AiModelInvocationService.AiModelResponse(answer,"stop",3000L,"seed-lite","seed-lite",2500L,500L))
                 .thenReturn(new AiModelInvocationService.AiModelResponse(detail,"stop",1200L,"seed-lite","seed-lite",1000L,200L));
@@ -73,7 +73,7 @@ class StudioVideoBreakdownWorkerTest {
         var shots=film.path("breakdown").path("shots");
         assertEquals("女生在远处，只有手指大小",shots.get(0).path("detail").path("layout").asText());
         assertEquals("手指捏住远处的人",shots.get(0).path("detail").path("trick").asText());
-        assertEquals(3.4,shots.get(1).path("detail").path("frameAt").asDouble(),"原片秒数照用");
+        assertEquals(3.1,shots.get(1).path("detail").path("frameAt").asDouble(),"原片秒数照用");
         assertTrue(film.path("breakdown").path("detailDone").asBoolean());
         assertEquals(2,film.path("frames").size(),"每个镜头截一张开场画面");
         assertEquals("stored-jpg",film.path("frames").get(0).path("storageKey").asText());

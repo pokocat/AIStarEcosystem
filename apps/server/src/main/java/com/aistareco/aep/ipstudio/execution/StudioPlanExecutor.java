@@ -551,7 +551,21 @@ public class StudioPlanExecutor {
             String key=outputs.outputKey(dto,candidate);
             if(key==null)throw StudioPlanOutputs.missing();
             List<String> ids=new ArrayList<>();settings.path("checkIds").forEach(v->ids.add(v.asText()));
-            check=new CheckSettings(targetRun,key,ids);
+            // 逐镜对照（视频页的爆款复刻）：按镜头抽帧，并带上这一步交给生成模型的那几张参考图，编号和提示词里的「图N」一致。
+            // 只对方案里写明的步骤生效；之前受理的方案没有这两项，重交时请求不变。
+            String sampling=settings.path("sampling").asText(null);
+            List<com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.CheckReference> shown=null;
+            if(settings.path("compareReferences").asBoolean(false)) {
+                shown=new ArrayList<>();
+                int n=0;
+                for(JsonNode b:StudioPlanSteps.ordered(target.path("definition").path("settings").path("referenceBindings"))) {
+                    if(!"image".equals(StudioPlanSteps.mediaType(b.path("role").asText())))continue;
+                    n++;
+                    if(shown.size()<StudioPlanSteps.CHECK_REFERENCES)shown.add(new com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.CheckReference("图"+n,keys.binding(b)));
+                }
+                if(shown.isEmpty())shown=null;
+            }
+            check=new CheckSettings(targetRun,key,ids,sampling,shown);
             step.put("checkTargetRunId",targetRun);
         }
         JsonNode compiled=definition;
@@ -563,7 +577,9 @@ public class StudioPlanExecutor {
             String approach=PlanState.parse(mapper,e.getBudgetJson()).path(stage).path("approachId")
                     .asText(plan==null?"":plan.path("confirmedApproachId").asText(plan.path("recommendedApproachId").asText("")));
             ObjectNode withTarget=definition.deepCopy();
-            withTarget.put("prompt",StudioPlanSteps.checkTarget(plan,approach,target==null?null:target.path("definition"),definition.path("prompt").asText("")));
+            boolean detailed=definition.path("settings").hasNonNull("sampling")||definition.path("settings").path("compareReferences").asBoolean(false);
+            withTarget.put("prompt",StudioPlanSteps.checkTarget(plan,approach,target==null?null:target.path("definition"),definition.path("prompt").asText(""),
+                    detailed?StudioPlanSteps.CHECK_TARGET_DETAILED:StudioPlanSteps.CHECK_TARGET_CHARS));
             compiled=withTarget;
         }
         // 「不用它，重新编排」 after a scope refusal: the planner is told which objects to leave out, so the retry is not the
@@ -582,7 +598,15 @@ public class StudioPlanExecutor {
         var binding=new StudioPlanSteps.Binding(requestId,nodeId,step.path("quotedCost").asLong(),billing,e.getId(),e.getSkillKey(),e.getSkillVersion(),stage,canvas,check);
         // 长视频：提示词（和用得上的参考）这时才定，内容来自脚本。
         var segmentedRun=StudioSegmentedRun.applies(state)&&segmented!=null?segmented.getIfAvailable():null;
-        if(segmentedRun!=null)compiled=segmentedRun.materialize(e,state,step,definition);
+        if(segmentedRun!=null) {
+            // materialize 从方案里的原定义重新编，上面给检查补的目标说明（被检查那一步的提示词、要换什么）会丢：视频页复刻的检查此前
+            // 一直只拿到一句固定的话，不知道这段该是什么样（2026-11-10 评审）。逐镜对照的检查把目标说明接回去；之前受理的方案不动，重交时请求不变。
+            String targetText=check!=null&&(definition.path("settings").hasNonNull("sampling")||definition.path("settings").path("compareReferences").asBoolean(false))
+                    ?compiled.path("prompt").asText(null):null;
+            JsonNode materialized=segmentedRun.materialize(e,state,step,definition);
+            if(targetText!=null&&materialized instanceof ObjectNode node&&!definition.path("settings").path("segmented").isObject())node.put("prompt",targetText);
+            compiled=materialized;
+        }
         String stepModel=compiled.path("settings").path("model").asText(null);
         RunRequest request=StudioPlanSteps.request(compiled,keys,stepModel==null?quoter.modes():quoter.modes(stepModel),binding);
         return segmentedRun==null?request:segmentedRun.attach(state,compiled,request);

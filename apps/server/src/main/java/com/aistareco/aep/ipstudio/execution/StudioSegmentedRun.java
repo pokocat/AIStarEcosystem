@@ -100,7 +100,7 @@ public class StudioSegmentedRun {
             if (!text.isEmpty()) out.add(text);
         }
         String joined = String.join("；", out);
-        return joined.length() <= 400 ? joined : joined.substring(0, 400);
+        return joined.length() <= 800 ? joined : joined.substring(0, 800);
     }
 
     /** 再试一次：新的请求编号（attempt）；之前的任务留着，费用照算（同重新规划时的做法，放进 previousRunIds 才不会被读回成「已完成」）。 */
@@ -181,9 +181,51 @@ public class StudioSegmentedRun {
                 compiled.put("prompt", assemble(StudioPromptCallPoints.SEGMENTED_BOARD_CHECK, Map.of("prompt", shown)));
             }
             case "video" -> compiled.put("prompt", videoPrompt(e, state, compiled));
-            default -> { }
+            default -> recreationFix(state, step, compiled);
         }
         return compiled;
+    }
+
+    /**
+     * 爆款复刻检查没过、重出这一步时，把检查写下的问题带进提示词。此前 fixHint 只有长视频的分镜图会读，复刻的重出是同一份提示词原样再抽一次。
+     * 图片（开场画面）整段带上。视频只认「第N镜：……」这种画面描述，接到提示词里那一镜的末尾：提示词可能原样交给视频模型，
+     * 写给系统的话会被念出来（2026-10-31 导演台 cl45），所以检查要点里要求 suggestion 写成这个格式；别的句子、带台词的句子都不带，
+     * 一句都用不上时就是原样重出。
+     */
+    private void recreationFix(ObjectNode state, ObjectNode step, ObjectNode compiled) {
+        String hint = step.path("fixHint").asText("").strip();
+        if (hint.isEmpty() || !"recreation".equals(state.path("videoTask").path("kind").asText())) return;
+        String prompt = compiled.path("prompt").asText("");
+        switch (compiled.path("operation").asText()) {
+            case "image" -> compiled.put("prompt", prompt.strip() + "\n" + assemble(StudioPromptCallPoints.RECREATION_REDO_NOTE, Map.of("fix", hint)).strip());
+            case "video" -> compiled.put("prompt", withShotFixes(prompt, hint));
+            default -> { }
+        }
+    }
+
+    private static final java.util.regex.Pattern SHOT_FIX = java.util.regex.Pattern.compile("第\\s*(\\d+)\\s*镜\\s*[：:]\\s*([^；;\\n]{4,200})");
+    private static final java.util.regex.Pattern NOT_A_PICTURE = java.util.regex.Pattern.compile("建议|请|应该|应当|需要|重新|修改|调整|提示词|模型|检查|未能|没有做|说|[「」“”\"]");
+
+    /**
+     * 把检查意见里的「第N镜：这一镜应该是什么画面」接到提示词里第 N 镜那一行的末尾，最多 6 句。
+     * 带「建议」「请修改」这类写给系统的话、或带台词的句子不要；提示词里找不到那一镜的也不要。
+     */
+    static String withShotFixes(String prompt, String hint) {
+        String out = prompt;
+        var m = SHOT_FIX.matcher(hint);
+        int used = 0;
+        Set<String> seen = new HashSet<>();
+        while (m.find() && used < 6) {
+            String text = m.group(2).strip();
+            if (NOT_A_PICTURE.matcher(text).find() || !seen.add(m.group(1) + text)) continue;
+            var line = java.util.regex.Pattern.compile("(?m)^(第\\s*" + m.group(1) + "\\s*镜\\s*[（(][^\\n]*?)\\s*$").matcher(out);
+            if (!line.find()) continue;
+            String shot = line.group(1);
+            String joined = shot + (shot.matches(".*[。！？.!?]$") ? "" : "。") + text + (text.matches(".*[。！？.!?]$") ? "" : "。");
+            out = out.substring(0, line.start()) + joined + out.substring(line.end());
+            used++;
+        }
+        return out;
     }
 
     private JsonNode requireScript(IpPlanExecution e, ObjectNode state) {

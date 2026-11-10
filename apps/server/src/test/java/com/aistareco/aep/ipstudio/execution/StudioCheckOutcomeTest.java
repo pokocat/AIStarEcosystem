@@ -12,6 +12,28 @@ class StudioCheckOutcomeTest {
 
     @Test void sampleTimesMatchTheFourFrameVisualContext() {assertEquals(List.of(1.5,4.5,7.5,10.5),times);}
 
+    /** 2026-11-10：14 秒 9 个镜头的成片均匀抽 4 帧，多数镜头一帧都看不到。按镜头抽：每镜开头结尾各一帧，短镜头取中间。 */
+    @Test void everyShotIsSeenWhenSamplingByShots() {
+        var cuts=List.of(2.033,3.8,5.833,6.4,6.733,7.6,9.267,11.133);
+        var picked=StudioCheckOutcome.shotTimes(14.16,cuts);
+        double from=0;
+        for(double to:new double[]{2.033,3.8,5.833,6.4,6.733,7.6,9.267,11.133,14.16}) {
+            final double a=from,b=to;
+            assertTrue(picked.stream().anyMatch(t->t>a&&t<b),"镜头 "+a+"–"+b+" 至少一帧");
+            from=to;
+        }
+        assertEquals(List.of(0.3,1.73),picked.subList(0,2),"第一镜取开头和结尾");
+        assertTrue(picked.contains(6.57),"0.33 秒的镜头取中间一帧");
+        assertTrue(picked.size()<=StudioCheckOutcome.MAX_SHOT_FRAMES);
+        for(int i=1;i<picked.size();i++)assertTrue(picked.get(i)>picked.get(i-1));
+        // 一镜到底（或没测到切镜）：大约每 2 秒一帧
+        assertEquals(7,StudioCheckOutcome.shotTimes(14,List.of()).size());
+        assertEquals(4,StudioCheckOutcome.shotTimes(3,List.of()).size());
+        // 切得很碎：不超过上限
+        List<Double> many=new java.util.ArrayList<>();for(int i=1;i<40;i++)many.add(i*1.5);
+        assertEquals(StudioCheckOutcome.MAX_SHOT_FRAMES,StudioCheckOutcome.shotTimes(60,many).size());
+    }
+
     @Test void evidenceMustCiteARealSampledFrame() throws Exception {
         var answer=om.readTree("""
             {"status":"pass","items":[

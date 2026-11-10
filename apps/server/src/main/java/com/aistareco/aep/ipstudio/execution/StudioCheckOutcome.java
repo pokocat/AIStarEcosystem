@@ -91,6 +91,43 @@ public final class StudioCheckOutcome {
         return null;
     }
 
+    /** 按镜头抽帧时最多交给模型几帧。 */
+    public static final int MAX_SHOT_FRAMES=24;
+
+    /**
+     * 按镜头抽帧：每个镜头取开头和结尾各一帧（离切点 0.3 秒，短镜头按比例收），不到 0.8 秒的镜头取中间一帧，超过 4 秒的再加中间一帧。
+     * 均匀抽 4 帧时，一段 14 秒 9 个镜头的成片多数镜头一帧都看不到，「第 3 镜端的是不是炒饭」无从判断（2026-11-10 评审）。
+     * 没有测到切镜（一镜到底，或没测成）时改成大约每 2 秒一帧。超过 {@link #MAX_SHOT_FRAMES} 帧时均匀抽稀。
+     *
+     * @param cuts 成片里真实的切镜时间（秒，升序）
+     */
+    public static List<Double> shotTimes(double durationSec,List<Double> cuts) {
+        if(cuts==null||cuts.isEmpty())return sampleTimes(durationSec,(int)Math.max(4,Math.min(12,Math.ceil(durationSec/2))));
+        List<Double> bounds=new ArrayList<>();bounds.add(0d);
+        for(double c:cuts)if(c>bounds.get(bounds.size()-1)+.05&&c<durationSec-.05)bounds.add(c);
+        bounds.add(durationSec);
+        List<Double> picked=new ArrayList<>();
+        for(int i=0;i+1<bounds.size();i++) {
+            double a=bounds.get(i),b=bounds.get(i+1),length=b-a;
+            if(length<.8){picked.add(a+length/2);continue;}
+            double edge=Math.min(.3,length*.25);
+            picked.add(a+edge);
+            if(length>4)picked.add(a+length/2);
+            picked.add(b-edge);
+        }
+        if(picked.size()>MAX_SHOT_FRAMES) {
+            List<Double> thinned=new ArrayList<>();
+            for(int i=0;i<MAX_SHOT_FRAMES;i++)thinned.add(picked.get((int)((long)i*picked.size()/MAX_SHOT_FRAMES)));
+            picked=thinned;
+        }
+        List<Double> out=new ArrayList<>();
+        for(double t:picked) {
+            double at=Math.round(Math.max(0,Math.min(durationSec-.05,t))*100)/100.0;
+            if(out.isEmpty()||at-out.get(out.size()-1)>.051)out.add(at);
+        }
+        return List.copyOf(out);
+    }
+
     /** Sample times used for both the prompt and evidence verification; identical to the four-frame visual context. */
     public static List<Double> sampleTimes(double durationSec,int frames) {
         List<Double> out=new ArrayList<>();

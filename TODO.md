@@ -29,7 +29,18 @@
 ## 爆款复刻：直接看视频的拉片
 - [ ] **逐镜细读、开场画面、自动检查重出**（2026-11-10 已发布 `20261110-keyframes-e6e2de04`，真源 `docs/ip-studio-recreation.md` 第一节，发布记录 `docs/releases/recreation-keyframes-release-20261110.md`）。还要做：
   - [x] ~~线上默认出图模型 GPT Image 2.5 能不能「保持很小」~~ **2026-11-10 已验证**：同一份清单出第 1、7、8 镜，远处的人保持很小、构图比 Seedream 4.5 更贴近原片，开场画面照旧走 Studio 默认出图模型。第 8 镜原片里的人极小，两个模型都画得几乎看不见。
-  - [ ] H3 全能参考第 7 张图起每张每秒加价 25%（`JusuanH3Contract.EXTRA_REFERENCE_IMAGE_PRICE_DIVISOR`），我们的报价没算这部分：开场画面多了以后一段常常带 9 张图，厂商多收的钱目前是平台自己担。要么报价里加上，要么把一段的参考图压到 6 张以内，需要定。
+  - [ ] H3 全能参考第 7 张图起每张每秒加价 25%（`JusuanH3Contract.EXTRA_REFERENCE_IMAGE_PRICE_DIVISOR`），我们的报价没算这部分：开场画面多了以后一段常常带 9 张图，厂商多收的钱目前是平台自己担。要么报价里加上，要么把一段的参考图压到 6 张以内，需要定。**2026-11-10 核对**：不是代码漏算。价格表有 `freeRefImages` / `extraRefImagePerSecond`（`VideoStudioPricing.total`），制作计划报价（`StudioVideoService.planPrice`）和提交都按参考图张数算；线上这两项是 0。要收的话在后台视频售价里配（例如免费 6 张、之后每张每秒若干积分），不用改代码。
+  - [x] ~~出片后的检查只抽 4 帧、看不到素材和提示词，重出不带修改意见，开场画面不检查~~ **2026-11-10 本地已改，未发布、未真跑**：检查按镜头抽帧并带上这一步的参考图和提示词，要点是代码写的逐镜是非题；重出把问题接进提示词（视频只接「第N镜：画面」这种句子）；开场画面出完先检查、不合格只重出这一张（`ck<镜号>`，步数有余才加）。见 `docs/ip-studio-recreation.md`「检查看得见东西、重出带上问题」。测试 `StudioCheckOutcomeTest`、`StudioRecreationAutoRedoTest`、`StudioRecreationTaskPlanTest`。**同日审查补的**：开场画面的检查全加上会让方案报价超过页面上限、任务在分析完成后停住，改成放不下就按名次省掉（`optionalRank`，`StudioPlanExecutionServiceTest#sceneRecreationDropsOptionalChecksToFitThePageCap`）；检查要点和重出说明挪进提示词库（`stage-recreation-keyframe-check` / `-video-check` / `-redo-note`，逐字一致见 `StudioRecreationTaskPlanTest#checkTextsComeFromThePromptLibraryUnchanged`）；参考图按文件内容判、不是图片的那张不带（`StudioWorkflowSkillRequestTest#detailedCheckSamplesByShotsAndShowsOnlyRealReferenceImages`）；执行器给检查带上提示词和参考图有了测试（`StudioPlanExecutorTest#recreationCheckSeesTheTargetPromptAndTheSameReferenceImages`）。
+  - [x] ~~真跑一条看检查的表现~~ **2026-11-10 本机离线真跑美食那条**（结果见 `docs/ip-studio-recreation.md`「真跑一条」）：开场画面检查每次约 2 积分、7 秒，成片检查（16 帧 + 9 张参考图）约 4 积分、14 秒；检查模型会照「第N镜：……」写修改意见。第一版开场画面检查要点 8 张判 7 张不合格、多数误判（拿静止图判镜头运动、要求原片没有的手），改成第 2 版后只剩真问题和边界情况；成片检查只给编号时对不上「替换素材 1」是图几，第 2 版列出每张参考图是什么。
+  - [ ] 发布后在线上视频页跑一条，看进入制作时省掉了几个开场画面的检查（日志 `optional checks dropped`）、开场画面检查第 2 版和成片检查第 2 版的误判率，以及自动重出视频时接进提示词的修改意见是否可用。
+  - [x] ~~推近后落到别的场景、别的菜（没有一张图告诉视频模型这一镜推到头是什么画面）~~ **2026-11-10 本地已改，未发布、未真跑**：拉片后按画面相似度认出原片里重复用的画面（某一镜推到头 = 后面某一镜的开场），写分镜脚本和检查时告诉模型「推到这里就是图N」，不多出图。见 `docs/ip-studio-recreation.md`「推到头的画面」，测试 `StudioVideoBreakdownTest#aReusedStretchOfFootageIsFoundInsideTheShotItCameFrom`、`StudioRecreationTaskPlanTest#aShotThatPushesIntoAnotherShotsOpeningIsToldWhichImageItBecomes`。
+  - [x] ~~真跑一条看「推到这里就是图N」~~ **2026-11-10 离线真跑**：重复画面要按每秒 30 帧认（每秒 10 帧漏了第 4 镜，已改）；第 1 镜推到了图4 的近景，第 4～6 镜前后同一个人同一身衣服，评分 43 / 43（上次全自动 40 / 41）。截图窗口从 0.4 秒收到 0.12 秒（第 7 镜截在切镜后 0.2 秒，镜头已经在推，出图两次都画错）。
+  - [ ] 第 2、3 镜推不到近景：分镜脚本写了「约 3.1 秒推至画面和图6 一样的近景」，H3 只让镜头动了一点。下一步按评审的小实验：单独一个捏合镜头用首尾帧（首帧远景、尾帧近景）出最短时长，再本机加速到原片时长，和全能参考比哪个更听话（约 150 积分）；做不出来就考虑按镜头拆开生成。
+  - [ ] H3 把 9 个镜头并成 8 个、短镜头（0.3–0.7 秒）拉长、时间往后错零点几秒：一次生成多镜头时节奏卡不准。和上一条一起看要不要按镜头或按「看点」拆开生成。
+  - [ ] 重复画面指向别的段时不提（那张开场画面不在这一段的参考图里）：多段的片子要不要把它加进这一段的参考图，看名额再定。
+  - [ ] **检查的冻结额远高于实际用量**（2026-11-10 审查）：检查按文字模型的最大冻结额报价和冻结（线上 Sonnet 输入 20 万 + 输出 6.4 万 Token ≈ 110 积分），实际一次只有几积分。视频页的复刻因此只留得下一两个开场画面的检查（见上一条的省掉规则）。改法：检查按要交的图数估输入、给检查单独的输出上限（例如 8000），冻结额和调用时的 max_tokens 用同一个数，单独定、单独测，不要只改报价。
+  - [ ] `StudioRecreationTaskPlan.prepare` 记了页面上的「智能优化」开关（`task.optimize`），`build` 没有写进视频步骤的 `settings.video.optimize`，用户关掉优化也照样改写（2026-11-10 读代码发现，未改）。
+  - [ ] 多段的片子开场画面检查会挤占步数：`maxSteps` 是 `maxSegments * 3 + 4`，现在先保证开场画面、有余才检查。要每张都查得把技能的步数上限放宽（技能文件要出新版本，线上后台改过的不会跟）。
   - [ ] 手指「捏住后张开」做不出来（2026-11-10 用户指出）：张开只有约 0.15 秒，每秒 5 帧（方舟视频输入上限）看不到；把那 0.7 秒的原始 30 帧交给 Seed 就分得出两步。改法：每个细读小段用 `StudioHypitMedia` 找画面变化最剧烈的一两个时刻，把前后 0.25 秒的原始帧（缩到约 240 宽）作为图片一起交给 Seed；截开场画面也用它挑最清楚的一帧（现在第 4 镜截在切镜的模糊里）。
   - [ ] 发布后在线上视频页从头到尾跑一条新的复刻，看开场画面、检查、自动重出在线上的真实表现，并用 `score.py` 打分。
   - [ ] 开场画面里沿用了原片人物的帽子、把菜品照片里的菠萝搬进画面（美食那条第 5、6 镜）：素材图只取主体还没做，人物的服饰要不要一律照素材图也没规定。
