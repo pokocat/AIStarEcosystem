@@ -324,6 +324,18 @@ public final class StudioPlanValidator {
                 if("none".equals(audio))invalid(label+"暂不支持去掉音轨的合成，请保留片段声音或使用原片音轨");
                 if(!Set.of("generated","source-audio").contains(audio))invalid(label+"的音频处理方式不正确");
                 out.put("audioStrategy",audio);
+                // 成片上的字幕（爆款复刻：原片靠字幕讲的内容，合成时加上，不让视频模型画字）。时间按成片算，不重叠。
+                if(raw.hasNonNull("captions")) {
+                    JsonNode captions=raw.path("captions");
+                    if(!captions.isArray()||captions.size()>60)invalid(label+"的字幕最多 60 条");
+                    var list=out.putArray("captions");double last=0;
+                    for(JsonNode c:captions) {
+                        double start=c.path("start").asDouble(Double.NaN),end=c.path("end").asDouble(Double.NaN);
+                        if(!Double.isFinite(start)||!Double.isFinite(end)||start<last-1e-6||end<=start||end>600)invalid(label+"的字幕时间不正确");
+                        list.addObject().put("start",start).put("end",end).put("text",text(c.path("text"),160,true,label+"字幕"));
+                        last=end;
+                    }
+                }
             }
             case "text" -> {
                 String purpose=raw.path("purpose").asText("");

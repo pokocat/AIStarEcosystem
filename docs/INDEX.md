@@ -181,7 +181,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - Studio 对话快照分享 v0.217：见 [助手范围](ip-studio-assistant-context.md) 与统一验证§28；last-reviewed: 2026-10-08，本地未发布。
 - [模型接入端点并发与排队](ai-endpoint-generation-queue.md) · v0.220；last-reviewed: 2026-10-09，本地未发布。
 - [AiAvatar 账号与旧 Studio 界面统一](aiavatar-account-unification.md) · 桌面外壳、旧深链兼容、默认头像与账号中心修改入口；last-reviewed: 2026-10-31。
-- [复刻创作：全片创作拆解与视频拉片](ip-studio-recreation.md)：视频入口、报告契约、分段裁切、逐段Markdown及恐龙视频验收。last-reviewed: 2026-10-15。
+- [复刻创作：全片创作拆解与视频拉片](ip-studio-recreation.md)：直接看视频的拉片（逐镜台词、字幕、爆点）、视频页复刻由代码拼制作方案；旧版抽帧拆解、分段裁切及恐龙视频验收。last-reviewed: 2026-11-09。
 - [视频拉片操作手册](training/studio-film-study.md)：6步实操截图，覆盖开始、进度、播放、文档编辑与导出。last-reviewed: 2026-10-15。
 - [企业生成入口与扣费引用](ip-studio-enterprise-generation-entry-map.md)
 

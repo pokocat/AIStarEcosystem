@@ -1102,6 +1102,10 @@ V51 为 `material_video_job` 增加可空 `error_code VARCHAR(64)`，和原 `err
 
 2026-10-17 后端与 AiAvatar 已发布 `81778bef`，V58 零新增迁移、两模板实际落库通过；见 [生产记录](../../docs/releases/studio-workspace-production-release-20261017.md)。
 
+## Studio 拉片 v2：直接看视频（2026-11-09，本地未发布）
+
+后台用途 `DAP_VIDEO_UNDERSTAND`（V79 只扩枚举）绑定了在 `models_json` 声明 `supportsVideo`、`ai.chat-token-pricing` 已定价的模型时，拉片（`recreation / segments`）把整条视频（画面 + 声音）交给它：`StudioVideoBreakdown` 压代理视频、用 ffmpeg `scdet` 测切镜点，提示词 `stage-video-breakdown`，输出 `filmStudy.breakdown`（逐镜台词、字幕、段落、爆点、复刻要点，`strategy=video-understanding-v1`），再按视频模型时长在镜头边界分段裁切。AI 视频页复刻的「写分镜脚本」由 `execution/StudioRecreationTaskPlan` 拼方案（冻结在 `_exec.recreationTask`），模型只写每段提示词和字幕（`stage-recreation-compile`），`assemble.settings.captions` 合成时叠字幕。没绑定时照旧抽帧读图、模型写方案。真实联调 `StudioVideoBreakdownRealTest`（设 `STUDIO_BREAKDOWN_E2E_VIDEO` 才跑）。真源 `docs/ip-studio-recreation.md` 第一节。
+
 ## Studio 拉片原声提取（2026-10-17，已发布f8d8cf1b）
 
 `StudioSourceAudio`在全片解析/分段拉片时用原媒体运行时提取完整混合音轨，生成48kHz双声道16bit PCM WAV；无音轨返回`absent`，不创建占位、不做ASR或人声/BGM分离。`output.sourceAudio`先检查点保存，后续模型失败保留；分段继续只复用本人原任务同源结果，key持久化、出wire签URL。前端落为普通音频节点，可选入原成片合成`packaging.voiceoverStorageKey`替换音轨，无新增供应商调用、积分项、表或路径。既有Studio原生视频全能参考链可按模型合同传入音频，首尾帧等不支持的模式仍拒绝，原声按原样复用可走生成后合成。契约见`specs/openapi.yaml`，技术和验收见[分享第7节](../../docs/audits/studio-film-study-technical-sharing-2026-10.md#7-按产品边界收简拉片只提取原声)。

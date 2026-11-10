@@ -244,13 +244,17 @@ public class StudioWorkflowService {
         long textPrice=fixtures.enabled()?0:pricing.ipIdentity();
         String promptKey=check?PromptService.KEY_DAP_IP_STUDIO_SKILL_CHECK:skillPlan?PromptService.KEY_DAP_IP_STUDIO_SKILL_PLAN
                 :"recreation".equals(request.operation())?PromptService.KEY_DAP_IP_STUDIO_RECREATION:List.of("assistant","text").contains(request.operation())?PromptService.KEY_DAP_IP_STUDIO_ASSISTANT:PromptService.KEY_DAP_IP_STUDIO_SCRIPT;
+        // 拉片：后台给「视频理解」绑定了能看视频的模型（且定了价）就整条视频交给它（docs/ip-studio-recreation.md「直接看视频的拉片」）；
+        // 没绑定时照旧抽帧读图。两条都是真实分析，不是降级产物（§8.0）。
+        AiModelInvocationService.ResolvedEndpoint videoUnderstand=videoUnderstandEndpoint(request);
         if(!fixtures.enabled() && text) {
-            if(scenePolicies == null) textEndpoint=models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,request.model(),"studio").orElseThrow(()->
+            if(videoUnderstand!=null) textEndpoint=videoUnderstand;
+            else if(scenePolicies == null) textEndpoint=models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,request.model(),"studio").orElseThrow(()->
                     new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","所选文本模型不可用"));
-            if(scenePolicies != null) {var selection=scenePolicies.resolve("studio","script",request.model(),pricing.ipIdentity());textEndpoint=selection.resolved();textPrice=selection.creditCost();}
+            if(videoUnderstand==null && scenePolicies != null) {var selection=scenePolicies.resolve("studio","script",request.model(),pricing.ipIdentity());textEndpoint=selection.resolved();textPrice=selection.creditCost();}
             com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.or(promptAssembler).requireStage(textStage(request.operation(),skillPlan,check));
             resolved=new PromptService.ResolvedPrompt("","",new com.aistareco.aep.dto.PromptParamsDto(null,null,null),"library");
-            if((Boolean.TRUE.equals(request.readVisuals())||"recreation".equals(request.operation())||check)&&!StudioVisualContext.supportsVision(textEndpoint.endpoint()))
+            if(videoUnderstand==null&&(Boolean.TRUE.equals(request.readVisuals())||"recreation".equals(request.operation())||check)&&!StudioVisualContext.supportsVision(textEndpoint.endpoint()))
                 throw bad("STUDIO_VISION_UNAVAILABLE","当前模型不支持读取图片，请切换模型或关闭读取画面");
         }
         if(Boolean.TRUE.equals(request.readVisuals())&&fixtures.enabled())throw bad("STUDIO_VISION_UNAVAILABLE","测试响应不读取真实画面，请关闭测试响应");
@@ -318,6 +322,7 @@ public class StudioWorkflowService {
             }
         }
         if(segmentCap!=null)execution.set("segmentCap",segmentCap);
+        if(videoUnderstand!=null)execution.put("videoUnderstand",true);
         if(checkTarget!=null)execution.set("check",checkTarget);
         if(skill!=null)execution.set("skill",com.aistareco.aep.ipstudio.execution.StudioSkillRules.snapshot(skill));
         if(executionBinding!=null)execution.set("execution",executionBinding.snapshot(mapper));
@@ -356,7 +361,10 @@ public class StudioWorkflowService {
             } else if(!sceneScript) {
                 // 原文和变量都按提示词库的环节拼；格式句、改稿契约、附带素材的说明由代码按这次请求给
                 String stageKey=textStage(request.operation(),skillPlan,check);
-                Map<String,?> stageVars=skillPlan?skillPlanVariables(userId,project,request,skill,executionBinding,canvasContext,execution)
+                // AI 视频页的爆款复刻：拉片 v2 之后由代码拼方案，模型只写每段提示词（StudioRecreationTaskPlan）
+                Map<String,Object> recreationCompile=skillPlan?recreationCompile(request,executionBinding,execution):null;
+                if(recreationCompile!=null)stageKey=com.aistareco.aep.ipstudio.prompt.StudioPromptCallPoints.RECREATION_COMPILE;
+                Map<String,?> stageVars=recreationCompile!=null?recreationCompile:skillPlan?skillPlanVariables(userId,project,request,skill,executionBinding,canvasContext,execution)
                         :check?checkVariables(request,skill,checkTarget):variables;
                 var assembled=com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.or(promptAssembler).assembleAndRecord(mapper,execution,
                         com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.Call.of(stageKey,stageVars,null,
@@ -388,6 +396,8 @@ public class StudioWorkflowService {
             if(sceneParams!=null)params=new com.aistareco.aep.dto.PromptParamsDto(sceneParams.temperature()!=null?sceneParams.temperature():params.temperature(),
                     sceneParams.maxTokens()!=null?sceneParams.maxTokens():params.maxTokens(),sceneParams.jsonMode()!=null?sceneParams.jsonMode():params.jsonMode());
             execution.put("temperature",check?0.1:params.temperatureOrDefault());execution.put("maxTokens","asset-extract".equals(request.operation())?Math.max(16384,params.maxTokensOrDefault()):"recreation".equals(request.operation())||skillPlan?Math.max(8192,params.maxTokensOrDefault()):params.maxTokensOrDefault());
+            // 一条 60 秒、三十多个镜头的片子，拆解约 5 千输出 Token；给足余量，实际按用量结算
+            if(videoUnderstand!=null)execution.put("maxTokens",16000);
             inputs.put("promptKey",promptKey);
         }
         // 一条长视频的脚本要写很多镜头，模型的思考也算输出：预算跟后台给这个模型配的走，不用通用文字任务的默认值。
@@ -864,6 +874,34 @@ public class StudioWorkflowService {
         return variables;
     }
 
+    /**
+     * AI 视频页爆款复刻的「写分镜脚本」：这次制作是视频页的复刻任务、拉片走的是 v2（有逐镜拆解）时，冻结分段 / 素材 / 模型
+     * 这些事实（{@code _exec.recreationTask}）并返回提示词变量；否则返回 null，照旧让模型写整份方案。
+     */
+    private Map<String,Object> recreationCompile(RunRequest request,ExecutionBinding binding,ObjectNode execution) {
+        if(binding==null||planOutputs==null||studioVideo==null)return null;
+        JsonNode task=binding.state().path("videoTask");
+        if(!"recreation".equals(task.path("kind").asText()))return null;
+        var film=planOutputs.filmStudy(binding.execution(),binding.state().path("steps")).orElse(null);
+        if(film==null)return null;
+        JsonNode config=task.path("request").path("configuration");
+        String model=config.path("model").asText(null);
+        var chosen=studioVideo.models().stream().filter(m->model==null?m.isDefault():model.equals(m.endpointId())).findFirst()
+                .orElseThrow(()->bad("STUDIO_VIDEO_MODE_UNAVAILABLE","所选视频模型已下架，请重新选择后再开始"));
+        List<com.aistareco.aep.ipstudio.execution.StudioRecreationTaskPlan.Material> materials=new ArrayList<>();
+        for(JsonNode m:config.path("materials"))if(!"video".equals(m.path("slot").asText())&&!m.path("nodeId").asText().equals(task.path("request").path("sourceNodeId").asText()))
+            materials.add(new com.aistareco.aep.ipstudio.execution.StudioRecreationTaskPlan.Material(m.path("nodeId").asText(),m.path("title").asText(),m.path("slot").asText()));
+        var prepared=com.aistareco.aep.ipstudio.execution.StudioRecreationTaskPlan.prepare(film.film(),materials,chosen.endpointId(),chosen.contract(),
+                config.path("tier").asText(null),config.path("ratio").asText("9:16"),config.path("optimize").isBoolean()?config.path("optimize").asBoolean():null);
+        execution.set("recreationTask",prepared);
+        // 方案只能引用这次的素材
+        Set<String> allowed=new LinkedHashSet<>(request.contextNodeIds()==null?List.of():request.contextNodeIds());
+        for(JsonNode m:prepared.path("materials"))allowed.add(m.path("nodeId").asText());
+        for(JsonNode u:prepared.path("units"))for(JsonNode r:u.path("refs"))allowed.add(r.path("nodeId").asText());
+        var ids=execution.putArray("allowedNodeIds");allowed.forEach(ids::add);
+        return com.aistareco.aep.ipstudio.execution.StudioRecreationTaskPlan.variables(prepared,film.film().path("breakdown"),config.path("text").asText(""));
+    }
+
     /** Next plan revision of this project; submit holds the project row lock, so revisions are monotonic per canvas. */
     private int nextPlanRevision(String projectId) {
         Long count=em.createQuery("select count(r) from IpRun r where r.projectId=:p and r.kind='studio-text' and r.inputJson like :marker",Long.class)
@@ -966,6 +1004,16 @@ public class StudioWorkflowService {
      * Server quote of one step request (never freezes): token ceiling for text-class runs, the image pipeline's unit
      * price, or the native video contract price. Video/image references may be quote placeholders: only counts matter.
      */
+    /**
+     * 拉片（recreation / segments）用的视频理解端点：后台给 DAP_VIDEO_UNDERSTAND 绑了模型、models_json 声明了 supportsVideo、
+     * 也定了 Token 价，才用它；否则返回 null，拉片照旧抽帧。报价和受理共用这一处，两边选的一定是同一个端点。
+     */
+    private AiModelInvocationService.ResolvedEndpoint videoUnderstandEndpoint(RunRequest request) {
+        if(fixtures.enabled()||request==null||!"recreation".equals(request.operation())||!"segments".equals(request.mode()))return null;
+        return models.resolveEndpoint(AiModelPurpose.DAP_VIDEO_UNDERSTAND,null,"studio")
+                .filter(e->StudioVisualContext.supportsVideo(e.endpoint())&&chatRate(e.endpoint().getId())!=null).orElse(null);
+    }
+
     public long quote(String userId,RunRequest request) {
         if(request==null||!OPERATIONS.contains(request.operation()))throw bad("STUDIO_OPERATION_INVALID","请选择创作方式");
         if(fixtures.enabled())return 0;
@@ -986,7 +1034,8 @@ public class StudioWorkflowService {
                 yield Math.addExact(Math.multiplyExact(unit,(long)(request.count()==null?1:request.count())),request.video().rewrite()==null?0:videoRewriteHold());
             }
             default -> {
-                AiModelInvocationService.ResolvedEndpoint endpoint=scenePolicies!=null?scenePolicies.resolve("studio","script",request.model(),pricing.ipIdentity()).resolved()
+                AiModelInvocationService.ResolvedEndpoint endpoint=videoUnderstandEndpoint(request);
+                if(endpoint==null)endpoint=scenePolicies!=null?scenePolicies.resolve("studio","script",request.model(),pricing.ipIdentity()).resolved()
                         :models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,request.model(),"studio").orElseThrow(()->new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","所选文本模型不可用"));
                 var rate=chatRate(endpoint.endpoint().getId());
                 if(rate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED","此模型暂未定价，请选择其他模型");

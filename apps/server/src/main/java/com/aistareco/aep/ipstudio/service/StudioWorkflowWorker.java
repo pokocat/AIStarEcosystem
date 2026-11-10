@@ -331,6 +331,7 @@ public class StudioWorkflowWorker {
 
     private void filmStudy(String id,IpRun run,JsonNode input,ObjectNode output) throws Exception {
         var exec=input.path("_exec");
+        if(exec.path("videoUnderstand").asBoolean(false)){videoBreakdown(id,run,input,output);return;}
         var endpoint=models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA,exec.path("endpointId").asText(null),"studio").orElseThrow(()->new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","当前创作模型已停用，请联系平台处理"));
         if(!StudioVisualContext.supportsVision(endpoint.endpoint()))throw BusinessException.badRequest("STUDIO_VISION_UNAVAILABLE","所选模型不能读取画面");
         if(!progress(id,15,"recreation.frames"))return;
@@ -350,6 +351,82 @@ public class StudioWorkflowWorker {
         output.set("filmStudy",study);output.put("text",StudioFilmStudy.summary(study));
         output.putObject("billing").put("inputTokens",used[0][0]).put("outputTokens",used[0][1]).put("credits",rate.settle(used[0][0],used[0][1])).put("inputCreditsPerK",rate.inputCreditsPerK()).put("outputCreditsPerK",rate.outputCreditsPerK());
         finish(id,output,null);
+    }
+    /**
+     * 拉片 v2：整条视频交给能看视频的模型，一次写出逐镜拆解（StudioVideoBreakdown）。受理时已确认端点声明了 supportsVideo、
+     * 定了价，这里再按受理时的端点快照取；续跑时有拆解就不再调模型，只补没切好的片段。按真实用量一次结算。
+     */
+    private void videoBreakdown(String id,IpRun run,JsonNode input,ObjectNode output) throws Exception {
+        var exec=input.path("_exec");
+        var endpoint=models.resolveAcceptedEndpoint(AiModelPurpose.DAP_VIDEO_UNDERSTAND,exec.path("endpointId").asText(null),"studio")
+                .orElseThrow(()->new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","视频理解模型已停用，请联系平台处理"));
+        if(!StudioVisualContext.supportsVideo(endpoint.endpoint()))throw BusinessException.badRequest("STUDIO_VIDEO_UNDERSTAND_UNAVAILABLE","所选模型不能直接读取视频，请联系平台处理");
+        StudioTokenBilling.requireRoute(input,endpoint.endpoint());
+        var rate=mapper.treeToValue(exec.path("tokenPricing"),AiChatTokenPricing.Rate.class);long[] used={0,0};
+        var source=exec.path("recreationSource");double duration=source.path("durationSec").asDouble();
+        var capNode=exec.path("segmentCap");
+        double max=capNode.path("maxSegmentSec").asDouble(15),min=capNode.path("contract").path("minSeconds").asDouble(0);
+        int maxUnits=capNode.path("maxSegments").asInt(8);
+        JsonNode resume=exec.path("resumeFilmStudy");
+        ObjectNode study=mapper.createObjectNode();study.set("source",source.deepCopy());((ObjectNode)study.path("source")).put("audioAnalyzed",true);study.put("strategy",StudioVideoBreakdown.STRATEGY);
+        java.nio.file.Path directory=java.nio.file.Files.createTempDirectory("studio-breakdown-");
+        try {
+            java.nio.file.Path original=storage.openForRead(source.path("storageKey").asText());
+            ObjectNode breakdown;
+            if(resume.path("breakdown").isObject()&&StudioVideoBreakdown.STRATEGY.equals(resume.path("strategy").asText())) {
+                breakdown=(ObjectNode)resume.path("breakdown").deepCopy();
+            } else {
+                if(!progress(id,15,"recreation.video"))return;
+                var media=StudioVideoBreakdown.prepare(original,directory,duration);
+                var prompt=recreationStage(input,com.aistareco.aep.ipstudio.prompt.StudioPromptCallPoints.VIDEO_BREAKDOWN,
+                        Map.of("duration",StudioVideoBreakdown.fmt(duration),"cuts",StudioVideoBreakdown.cutsText(media.cuts()),"focus",input.path("prompt").asText("").strip()),null);
+                if(!progress(id,25,"recreation.watch"))return;
+                if(enterpriseBilling!=null)enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,id,endpoint.endpoint().getId());
+                var params=new HashMap<String,Object>();params.put("timeout_seconds",300);params.put("temperature",.2);
+                params.put("max_tokens",Math.min(exec.path("maxTokens").asInt(16000),rate==null?16000:rate.maxOutputTokens()));
+                params.put("response_format",Map.of("type","json_object"));
+                markModelDispatched(id);
+                var reply=models.invokeChatOnEndpoint(endpoint.endpoint(),AiModelPurpose.DAP_VIDEO_UNDERSTAND,List.of(
+                        Map.of("role","system","content",prompt.system()),
+                        Map.of("role","user","content",List.of(StudioVideoBreakdown.videoPart(media.proxy()),Map.of("type","text","text",prompt.user())))),params);
+                checkpointModelOutput(id,reply);
+                long[] total=consumeUsage(reply,used,rate);used[0]=total[0];used[1]=total[1];
+                if("length".equals(reply.finishReason()))throw BusinessException.badRequest("AI_BAD_OUTPUT","模型返回的拆解被截断，这次没有完成。请重试");
+                JsonNode parsed;
+                try{parsed=ModelJson.parse(mapper,reply.content());}
+                catch(Exception invalid){throw BusinessException.wrapped(org.springframework.http.HttpStatus.BAD_GATEWAY,"AI_BAD_OUTPUT","模型返回的拆解格式有误，这次没有完成。请重试",invalid.toString());}
+                breakdown=StudioVideoBreakdown.normalize(parsed,duration,media.cuts());
+            }
+            study.set("breakdown",breakdown);
+            var units=StudioVideoBreakdown.units(breakdown,max,min,maxUnits);
+            var segments=study.putArray("segments");
+            for(var unit:units) {
+                ObjectNode segment=segments.addObject().put("no",unit.no()).put("title",unit.title()).put("startSec",unit.startSec()).put("endSec",unit.endSec())
+                        .put("firstShot",unit.firstShot()).put("lastShot",unit.lastShot()).put("status","pending");
+                // 续跑：同一段（时间一致）已经切好的片段原样留用
+                for(JsonNode old:resume.path("segments"))if(old.path("no").asInt()==unit.no()&&Math.abs(old.path("startSec").asDouble()-unit.startSec())<1e-3
+                        &&Math.abs(old.path("endSec").asDouble()-unit.endSec())<1e-3&&old.hasNonNull("storageKey")) {
+                    for(String f:List.of("storageKey","durationSec","width","height","coverStorageKey"))if(old.has(f))segment.set(f,old.get(f));
+                }
+                segment.put("markdown",StudioVideoBreakdown.unitMarkdown(breakdown,unit));
+            }
+            if(!checkpointFilmStudy(id,40,"film.plan",study,output.path("sourceAudio")))return;
+            for(int i=0;i<segments.size();i++) {
+                ObjectNode segment=(ObjectNode)segments.get(i);
+                if(!segment.hasNonNull("storageKey")) {
+                    if(!checkpointFilmStudy(id,45+i*50/segments.size(),"film.cut",study,output.path("sourceAudio")))return;
+                    try{StudioFilmStudy.cut(original,directory,segment,storage,run.getOwnerUserId());}
+                    catch(Exception error){segment.put("error","这段原片没有切好，可以重试");checkpointFilmStudy(id,45+i*50/segments.size(),"film.cut",study,output.path("sourceAudio"));throw error;}
+                }
+                segment.put("status","done");
+            }
+            output.set("filmStudy",study);output.put("text",StudioVideoBreakdown.report(breakdown));
+            output.putObject("billing").put("inputTokens",used[0]).put("outputTokens",used[1]).put("credits",rate.settle(used[0],used[1]))
+                    .put("inputCreditsPerK",rate.inputCreditsPerK()).put("outputCreditsPerK",rate.outputCreditsPerK());
+            finish(id,output,null);
+        } finally {
+            try(var paths=java.nio.file.Files.walk(directory)){for(java.nio.file.Path path:paths.sorted(java.util.Comparator.reverseOrder()).toList())java.nio.file.Files.deleteIfExists(path);}catch(Exception ignored){}
+        }
     }
     private StudioFilmStudy.Chat studioChat(String id,com.aistareco.aep.model.AiModelEndpoint endpoint,
             AiChatTokenPricing.Rate rate,long[][] used,String focus,String focusLine,double temperature,AiModelInvocationService.AiModelResponse[] last) {
@@ -715,6 +792,8 @@ public class StudioWorkflowWorker {
         var rules=com.aistareco.aep.ipstudio.execution.StudioSkillRules.fromSnapshot(exec.path("skill"));
         String stage=exec.path("planStage").asText();
         List<String> allowed=new ArrayList<>();exec.path("allowedNodeIds").forEach(v->allowed.add(v.asText()));
+        // 视频页的爆款复刻：模型只写了每段提示词，方案由代码按受理时冻结的分段和素材拼（StudioRecreationTaskPlan）
+        if(exec.path("recreationTask").isObject())answer=com.aistareco.aep.ipstudio.execution.StudioRecreationTaskPlan.build(exec.path("recreationTask"),answer);
         ObjectNode plan;
         // The validator's reason (「第 N 步…」, stage words) reaches the user as a step's reason: plain words there, the
         // reason itself in the internal detail and the log (不锁方法 2026-10-23).

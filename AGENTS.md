@@ -590,6 +590,7 @@ sau-service…），当依赖**未配置**或**调用失败**时，在生产 pro
 | music 形象锻造成片视频 | v0.60 已随形象锻造入口下线（债务以退役方式清除；遗留数据只读） | — |
 | Studio 对话 agent / 技能规划 / 原生检查（2026-10-18） | 文本端点未配按量售价 → 503 `AI_TOKEN_PRICE_NOT_CONFIGURED`；看图能力未声明 → `STUDIO_VISION_UNAVAILABLE`；技能不在架 → 404 `STUDIO_SKILL_NOT_FOUND`；端点未声明流式就一次给出完整正文、**禁止拆字假流式**；未声明工具调用走 JSON 动作协议、不换端点；检查缺依据判 `unknown` 不判通过；父 / 子 run 费用不重复相加；模型输出永不等于付款或执行授权；后台技能试跑未配端点 → 503、不产假计划；蒸馏草稿不看提示词 / 原话 / key 且不自动生效 | `StudioFixtureProvider` 测试响应（既有口径：零成本、`mock=true`，不冒充供应商流式） |
 | 成片自动字幕的语音识别（2026-11-07） | `DAP_TRANSCRIBE` 未绑定或调用失败：导演台有台词，字幕内容仍是台词原文，时间按镜头估算并在导出记录里如实说明（`estimated`）；一键成片没有已知台词，不加字幕并说明（`unavailable`）。**不编字幕内容**，成片照常合成，失败的上游原话进日志 | 无降级开关；真实语音联调见 `StudioCaptionSpeechE2ETest`（设 `STUDIO_ASR_E2E_URL` 才跑） |
+| 拉片直接看视频（2026-11-09） | `DAP_VIDEO_UNDERSTAND` 没绑定、模型没声明 `supportsVideo` 或没定价：拉片照旧抽帧读图（两条都是真实分析）。调用失败、输出解析不了：这一步失败、按实际用量结算，由制作计划重试，不拿截图结果或模板顶替 | 无降级开关；真实联调见 `StudioVideoBreakdownRealTest`（设 `STUDIO_BREAKDOWN_E2E_VIDEO` 才跑） |
 
 ### 8.0.1 排障与验证纪律（v0.184 起强制，2026-10-05 补到 13 条 —— 都是本仓真栽过、而且多数**栽过不止一次**的）
 
@@ -1461,3 +1462,7 @@ Studio 工作线程默认 24，单个模型的上限看端点配置；图片调�
 ### 导演台带货短剧（2026-11-06，功能分支 `feat/director-commerce-drama`，未发布）
 
 真源 `docs/ai-director-commerce-plan.md`。每部作品一个开关 `settings.commerce`（默认关，新建作品和作品设置里），决定「商品」工作区出不出现。商品库是个人资产库的 `kind=product`，不是 `dap_product`（手机端老页面的另一张表）。商品在作品里是 `assets[]` 的一项 `kind=product`，所以片段关联、参考图、「需更新」、解除关联都走现有的资产路径，不要另写一套传图；参考图的唯一入口是 `visualAssets`，顺序 角色 → 场景 → 道具 → 商品。商品图只来自商品库，不走 `asset-image`。资产页和 `storyAssetCount` 不算商品：只有商品不算「已有资产」。开关关着或作品里没有商品时，`director-commerce-*` 不拼进提示词，提示词逐字不变（`DirectorPromptStageParityTest` 守着）；分镜图、视频提示词只在片段关联了商品时才多出内容，改这里要保证没关联商品的片段一个字不变，否则旧图全被标「需更新」。环节文件里的 `{{method}}` 是这条链的挂载点：后台改过这些环节的不会跟仓库文件更新，发布前要查（见 `TODO.md`）。已有剧本写进商品走创作助手的修改建议，不做覆盖全文的任务。本地用 Agnes 2.5 Flash 实测：第一版规则下把商品写成「掉漆」、漏写第二件、编了「三十多块钱」，所以规则里有「保持崭新」「不写随口的价格」「输出前逐件核对」；「掉漆」是编剧环节的示例带出来的，规则里写「不要掉漆」也一样会诱导，带货作品连这个词都不给（负面例子也会被弱模型照抄）。弱模型仍可能漏，页面上的「剧本里还没有写到」和「写进剧本」就是这种情况的补救；模型写到商品却忘了放进 `assetIds` 时，`linkMentionedProducts` 补上。
+
+### 爆款复刻：直接看视频的拉片，代码拼制作方案（2026-11-09，本地未发布）
+
+真源 `docs/ip-studio-recreation.md` 第一节。线上 11-07 至 11-09 视频页 12 条复刻只有 3 条出片，卡在模型自己写整份制作方案（清晰度写成别的模型的、一步塞几段原片、方案读不出来），拉片又只看截图不听声音。现在：拉片把整条视频（画面 + 声音）交给后台用途 `DAP_VIDEO_UNDERSTAND` 绑定的模型（`models_json` 声明 `supportsVideo`、`ai.chat-token-pricing` 定价，V79 只扩枚举；实测选火山方舟 `doubao-seed-2-0-lite`，它能听声音，2.1 Pro / Turbo 不收声音），一次写出逐镜台词、字幕、段落、爆点和复刻要点（`StudioVideoBreakdown`，提示词 `stage-video-breakdown`），代码用 ffmpeg `scdet` 给真实切镜点，并按视频模型时长只在镜头边界分段。视频页复刻的「写分镜脚本」改由 `StudioRecreationTaskPlan` 拼方案：分段、秒数、模型、清晰度、画幅、每段带哪张图都是代码定的（原片片段不交给视频模型：H3 带上原片就照抄原商品、水印和字幕，真实出片验证过），模型（`stage-recreation-compile`）只写每段提示词和字幕，拼完照常过 `validateSkillPlan`；字幕在合成时叠（`assemble.settings.captions`）。没绑定视频理解、或拉片没有 `breakdown` 时两处都走旧路。**新增复刻相关的方案字段，先想清楚是代码定还是模型写：凡是合同里能查到的（模型、清晰度、时长上下限、参考数量）一律代码定**。真实出片效果还没验证。

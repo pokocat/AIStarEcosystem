@@ -112,6 +112,19 @@ public class StudioPlanOutputs {
     }
 
     /** Analysis facts for the production plan compiler: film-study segments, recreation report and text outputs. */
+    /** 本次制作里拉片 v2 的结果（带逐镜拆解），连同它所在的步骤；旧的抽帧拉片没有 breakdown，返回空。 */
+    public record FilmStudy(String stepId,String stage,JsonNode film) {}
+    public Optional<FilmStudy> filmStudy(IpPlanExecution execution,JsonNode steps) {
+        for(JsonNode step:steps) {
+            if(!"done".equals(step.path("status").asText())||!"recreation".equals(step.path("operation").asText()))continue;
+            String runId=chosenRun(execution.getOwnerUserId(),execution.getProjectId(),step).orElse(null);
+            var dto=runId==null?null:run(execution.getOwnerUserId(),execution.getProjectId(),runId).orElse(null);
+            JsonNode film=dto==null||dto.output()==null?null:dto.output().path("filmStudy");
+            if(film!=null&&film.path("breakdown").isObject())return Optional.of(new FilmStudy(step.path("id").asText(),step.path("stage").asText(),film));
+        }
+        return Optional.empty();
+    }
+
     public String analysis(IpPlanExecution execution,JsonNode steps) {
         StringBuilder out=new StringBuilder();
         for(JsonNode step:steps) {

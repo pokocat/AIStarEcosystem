@@ -501,6 +501,11 @@ export function SceneVideoStudio() {
   // ── 编导写脚本 ────────────────────────────────────────────────────────
   const revising = !!latestScript;
   const recreation = scene?.skill === RECREATION;
+  // 复刻按原片的镜头分段出片，成片长度跟原片走：换了参考视频就按它的时长重设（用户自己改过时长的不动）。
+  useEffect(() => {
+    if (!recreation || durationTouched.current || !video?.durationSec) return;
+    setDuration(Math.min(MAX_SECONDS, Math.max(1, Math.round(video.durationSec))));
+  }, [recreation, video?.key, video?.durationSec]);
   /** 让编导写（或改）这一版之前卡在哪：ask 是要交给编导的那句话。 */
   const scriptBlocker = (ask: string, settingsChanged = false) => !scene ? "正在加载场景…"
     : scene.images.required && !images.length ? `请添加${scene.images.label}`

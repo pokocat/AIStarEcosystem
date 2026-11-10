@@ -15,6 +15,8 @@ export interface AiModelEntry {
   label?: string;
   contextWindow?: number;
   supportsVision?: boolean;
+  /** 能直接读视频（拉片用）。 */
+  supportsVideo?: boolean;
 }
 
 /** 用户计费口径和供应商成本口径；AUTO 表示文本按 Token、图片按次、视频按秒。 */

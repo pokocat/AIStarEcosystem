@@ -1,5 +1,23 @@
 # 待办与已知问题
 
+## 爆款复刻：直接看视频的拉片
+
+- [ ] 统一增强剩下的两处（2026-11-09）：创作助手的复刻（`reference-video-recreation` 技能，拉片已经用上视频理解，但制作方案仍由助手自己写，会犯视频页之前那几类错）改成和视频页一样由 `StudioRecreationTaskPlan` 拼；画布「⋯ → 解析视频」（全片拆解，不是分段）仍是抽帧读图，也改成直接看视频。另外 `AnalyzeVideoTool` 交给助手的拉片摘要截 6000 字，60 秒 35 镜的拉片会被截断。（2026-11-09，本地未发布）
+
+真源 `docs/ip-studio-recreation.md` 第一节。
+
+- [ ] **线上配置**（先发含 V79 的 server）：新建火山方舟接入点 `doubao-seed-2-0-lite-260428`（复用 Seedance Fast 的 Key，`base_url=https://ark.cn-beijing.volces.com/api/v3`，`models_json` 声明 `supportsVision` 和 `supportsVideo`，思考强度 `minimal`，超时不低于 300 秒），`ai.chat-token-pricing` 按官方价定价，绑定用途 `DAP_VIDEO_UNDERSTAND`。三样缺一样，拉片照旧抽帧。
+- [ ] **真实出片没验证**：用一条线上复刻任务从视频页跑到成片，看人物替换、动作跟随、段与段的接缝和字幕。本地只真跑了拉片和「每段提示词 → 拼方案 → 方案校验」。
+- [ ] 「写分镜脚本」线上用的是 `DAP_PERSONA` 的文字模型，每段提示词的效果只用 Seed 2.1 Pro 验过。
+- [ ] **线上 OneToken 余额用完**（2026-11-10 00:2x CST 实测 `INSUFFICIENT_BALANCE`）：`DAP_PERSONA`、`DAP_VIDEO_PROMPT`、`VIDEO_REF_ANALYSIS`、`GENERAL` 都绑在 `ai-onetoken-sonnet55`，两条 OneToken Seedance 也受影响。**七牛账户被封**（`account_banned`），`ai-qiniu-qwen3-max`、`ai-d8b0495e-749` 不可用，真人素材 `ai-917e8b0d-8d7` 要另查。
+- [ ] Seedance Fast 人像核验超时（`VIDEO_ASSET_REVIEW_TIMEOUT`，PEX-66aabe7a 三段都这样）这次没动。
+- [ ] 1450×1080、24fps、30 秒的参考视频，在旧抽帧拉片里 3 次都报「视频画面提取失败」（PEX-d024d66c，Hypit 解码），原因没查；新拉片能读出来。
+- [ ] 段与段的接缝：现在只让每段最后一镜写清结束状态，还没把上一段成片的尾帧交给下一段（rea-video 的 continuity）。
+- [ ] 换装、遮挡段先改原片关键帧（keyframe-rebuild）没做；原片的平台水印和尾卡没裁。
+- [ ] 对话助手里的复刻（`reference-video-recreation` 由模型写整份方案）还没改成代码拼方案。
+- [ ] 后台模型页只显示「看视频」标签，还不能勾选 `supportsVideo`；现在要靠签名命令写 `models_json`。
+- [ ] 合入前确认 V79 没被别的分支占用。
+
 ## AI 编导建议（2026-11-09）
 
 - [x] 修改建议由模型与脚本同次生成，最多 3 条、按钮最多 8 字、完整指令最多 80 字；异常建议独立忽略。真模型、桌面和手机浏览器通过，已发布 `20261109-ai-suggestions-f62ca8ff`（server + web-aiavatar）。见 [验收与发布记录](docs/releases/script-ai-suggestions-release-20261109.md)。

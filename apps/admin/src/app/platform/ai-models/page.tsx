@@ -245,7 +245,7 @@ const BINDING_GROUPS: Array<{
       + "「视频提示词优化」由画布、创作助手和导演台共用，使用这里绑定的端点，不跟随用户选择的文字模型。"
       + "「真人素材与授权」为七牛 modelink 素材合规接入（刷脸认证 + 素材送审）。"
       + "「语音识别」给成片自动字幕用，接口需兼容 OpenAI 的 /audio/transcriptions；没绑定时导演台按镜头时间排字幕，一键成片不加字幕。",
-    purposes: ["DAP_PERSONA", "DAP_VIDEO_PROMPT", "DAP_IMAGE", "DAP_VIDEO", "DAP_AUDIO", "DAP_LIP_SYNC", "DAP_TRANSCRIBE", "DAP_REAL_AVATAR"],
+    purposes: ["DAP_PERSONA", "DAP_VIDEO_PROMPT", "DAP_IMAGE", "DAP_VIDEO", "DAP_AUDIO", "DAP_LIP_SYNC", "DAP_TRANSCRIBE", "DAP_VIDEO_UNDERSTAND", "DAP_REAL_AVATAR"],
   },
   {
     key: "creator",

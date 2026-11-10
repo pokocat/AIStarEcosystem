@@ -75,6 +75,8 @@ public class AiModelGuardService {
                 if(message.get("content") instanceof List<?> parts) {
                     for(Object part:parts) {
                         if(part instanceof Map<?,?> map && "image_url".equals(map.get("type")))visualTokens+=8192L;
+                        // 拉片整条视频（StudioVideoBreakdown，60 秒以内、每秒 2 帧带声音）实测约 2 万输入 Token
+                        else if(part instanceof Map<?,?> map && "video_url".equals(map.get("type")))visualTokens+=24000L;
                         else if(part instanceof Map<?,?> map)chars+=lengthOf(map.get("text"));
                         else chars+=lengthOf(part);
                     }

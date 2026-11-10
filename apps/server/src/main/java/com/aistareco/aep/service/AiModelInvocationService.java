@@ -664,6 +664,8 @@ public class AiModelInvocationService {
                 for(Object part:parts) {
                     if(part instanceof Map<?,?> map && "image_url".equals(map.get("type")))
                         observed.add(Map.of("type","image_url","image_url",Map.of("url","[image payload omitted]")));
+                    else if(part instanceof Map<?,?> map && "video_url".equals(map.get("type")))
+                        observed.add(Map.of("type","video_url","video_url",Map.of("url","[video payload omitted]")));
                     else observed.add(part);
                 }
                 safe.put("content",observed);

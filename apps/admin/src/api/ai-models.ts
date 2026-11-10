@@ -39,6 +39,7 @@ export type AiModelPurpose =
   | "DAP_AUDIO"
   | "DAP_LIP_SYNC"
   | "DAP_TRANSCRIBE"
+  | "DAP_VIDEO_UNDERSTAND"
   | "DAP_REAL_AVATAR"
   | "MUSIC_GENERATION"
   | "GENERAL";
@@ -51,6 +52,8 @@ export interface AiModelEntry {
   label?: string;
   contextWindow?: number;
   supportsVision?: boolean;
+  /** 能直接读视频（拉片用）。 */
+  supportsVideo?: boolean;
 }
 
 /** 图片模型合法请求规格，保存在固定模型端点记录中。 */

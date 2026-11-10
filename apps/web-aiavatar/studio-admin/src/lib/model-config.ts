@@ -104,6 +104,7 @@ export function capabilityTags(endpoint: AiModelEndpoint): string[] {
   if (endpoint.chatSupportsStreaming) tags.push("流式");
   if (endpoint.chatSupportsTools) tags.push("工具调用");
   if (endpoint.models?.some((model) => model.id === endpoint.model && model.supportsVision)) tags.push("看图");
+  if (endpoint.models?.some((model) => model.id === endpoint.model && model.supportsVideo)) tags.push("看视频");
   return tags;
 }
 
