@@ -94,7 +94,7 @@ class StudioSceneCatalogTest {
     @Test
     void theDirectorBriefNumbersThePicturesInTheOrderTheVideoModelGetsThem() {
         String brief = catalog.compose(script("ecom-talking", "", List.of("商品图 1", "商品图 2"), 10, null)).text();
-        assertThat(brief).contains("10 秒", "图1「商品图 1」", "图2「商品图 2」", "图3「出镜人物」", "第1镜（0–3 秒）这一镜的作用", "第2镜（3–6 秒）",
+        assertThat(brief).contains("10 秒", "图1「商品图 1」", "图2「商品图 2」", "图3「出镜人物」", "第1镜（0–4 秒）这一镜的作用", "第2镜（4–8 秒）",
                 "括号里只写起止秒数", "正好 10 秒", "补到 10 秒整", "先看图", "已附图片", "一、剧情概述", "四、场景与视觉设定", "六、全片保持与禁止");
         // 事实规则在底座里（system），不在 user 里重复（docs/studio-prompt-architecture.md §9.5）。
         var assembled = catalog.sceneScript(script("ecom-talking", "", List.of("商品图 1", "商品图 2"), 10, null), null, false, null);
@@ -213,9 +213,9 @@ class StudioSceneCatalogTest {
         String script = assembled.user();
         String assistant = catalog.compose(video("brand-story", given, List.of(), null, 30, "16:9")).text();
         assertThat(script).contains("我的要求：" + given);
-        assertThat(assistant).contains("我的要求：" + given, "只有这几样我没写就不要出现", "销量排名", "检测数据");
+        assertThat(assistant).contains("我的要求：" + given, "只有这几样我没写就不要出现", "销量排名", "获奖认证");
         // 编导的内容规则在底座（system）：写到的写准，没写的大胆创作，只有几样硬信息不凭空写（§9.5，2026-11-04 放宽）。
-        assertThat(assembled.system()).contains("数字和名字不改", "大胆创作", "价格和优惠金额", "销量排名", "获奖认证", "检测数据");
+        assertThat(assembled.system()).contains("数字和名字不改", "大胆创作", "价格和优惠金额", "销量排名", "获奖认证");
         assertThat(script).contains("只说脚本里实际写了什么", "虚构的人物或情节就直说", "不要写「没写功效」");
     }
 

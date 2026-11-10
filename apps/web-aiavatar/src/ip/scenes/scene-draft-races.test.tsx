@@ -160,6 +160,62 @@ async function openVideoDraft() {
   await waitFor(() => expect(api.getProject).toHaveBeenCalled());
 }
 
+async function openRecreationDraft() {
+  window.history.replaceState(null, "", "/video?scene=recreation&draft=IPP-R");
+  await act(async () => { render(<SceneVideoStudio/>); });
+  await waitFor(() => expect(api.getProject).toHaveBeenCalledWith("IPP-R"));
+}
+const referenceVideo = { id: "reference", type: "video", title: "参考视频", position: { x: 100, y: 100 }, width: 320, height: 180,
+  metadata: { storageKey: "old.mp4", content: "https://cdn/old.mp4", origin: "upload", mimeType: "video/mp4", status: "success" } };
+
+test("recreation: selecting and replacing a reference video shows its frame and filename after reopening", async () => {
+  put({ id: "IPP-R", sceneId: "recreation" });
+  api.importMedia.mockResolvedValue({ key: "first.mp4", url: "https://cdn/first.mp4", fileName: "咖啡店原片.mp4", bytes: 3, mimeType: "video/mp4", mediaType: "video" });
+  await openRecreationDraft();
+  expect(screen.getByRole("button", { name: "从资产库选择参考视频" }).querySelector(".lucide-plus")).not.toBeNull();
+  await pickFromLibrary("参考视频");
+  await waitFor(() => expect(store.get("IPP-R")!.doc.sceneInputs?.video).toBe("first.mp4"));
+  const selected = () => screen.getByRole("button", { name: "更换参考视频" });
+  expect(selected().querySelector("video")?.getAttribute("src")).toBe("https://cdn/first.mp4");
+  expect(selected().querySelector("video")?.hasAttribute("controls")).toBe(false);
+  expect(selected().querySelector(".lucide-plus")).toBeNull();
+  expect(selected().parentElement?.textContent).toContain("咖啡店原片.mp4");
+
+  api.importMedia.mockResolvedValue({ key: "second.mp4", url: "https://cdn/second.mp4", fileName: "新的参考视频.mp4", bytes: 3, mimeType: "video/mp4", mediaType: "video" });
+  await pickFromLibrary("参考视频");
+  await waitFor(() => expect(store.get("IPP-R")!.doc.sceneInputs?.video).toBe("second.mp4"));
+  expect(selected().querySelector("video")?.getAttribute("src")).toBe("https://cdn/second.mp4");
+  cleanup();
+  await openRecreationDraft();
+  expect(selected().querySelector("video")?.getAttribute("src")).toBe("https://cdn/second.mp4");
+  expect(selected().getAttribute("title")).toBe("新的参考视频.mp4");
+  expect(selected().parentElement?.textContent).toContain("新的参考视频.mp4");
+  expect(api.taskStart).not.toHaveBeenCalled();
+  expect(api.submit).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole("button", { name: "移除参考视频" }));
+  await waitFor(() => expect(store.get("IPP-R")!.doc.sceneInputs?.video).toBeNull());
+  cleanup();
+  await openRecreationDraft();
+  expect(screen.queryByLabelText("已选择参考视频")).toBeNull();
+  expect(screen.getByRole("button", { name: "从资产库选择参考视频" }).querySelector(".lucide-plus")).not.toBeNull();
+  expect(store.get("IPP-R")!.doc.nodes.filter(n => n.type === "video")).toHaveLength(2);
+});
+
+test("recreation: a legacy reference has a preview; reselecting it saves its filename without adding a node", async () => {
+  put({ id: "IPP-R", sceneId: "recreation", doc: { ...EMPTY, nodes: [referenceVideo] as never } });
+  api.importMedia.mockResolvedValue({ key: "old.mp4", url: "https://cdn/old.mp4", fileName: "原始素材.mp4", bytes: 3, mimeType: "video/mp4", mediaType: "video" });
+  await openRecreationDraft();
+  expect(screen.getByLabelText("已选择参考视频").getAttribute("src")).toBe("https://cdn/old.mp4");
+  await pickFromLibrary("参考视频");
+  await waitFor(() => expect(store.get("IPP-R")!.doc.nodes[0].title).toBe("原始素材.mp4"));
+  expect(store.get("IPP-R")!.doc.nodes).toHaveLength(1);
+  cleanup();
+  await openRecreationDraft();
+  expect(screen.getByRole("button", { name: "更换参考视频" }).getAttribute("title")).toBe("原始素材.mp4");
+  expect(screen.getByLabelText("已选择参考视频")).toBeTruthy();
+});
+
 test("video: a removed voice stays removed when the draft is opened again; the old voice node is kept", async () => {
   put({ id: "IPP-V", name: "draft V", sceneId: "ecom-talking", doc: { ...EMPTY, nodes: [voiceNode("old", "old.mp3")] as never } });
   await openVideoDraft();

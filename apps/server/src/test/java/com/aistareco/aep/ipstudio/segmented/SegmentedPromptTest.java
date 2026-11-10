@@ -35,7 +35,7 @@ class SegmentedPromptTest {
 
     @Test void aFirstFrameModelGetsOneShotPerSegment() {
         var out = catalog.segmentedScript(compose("探店", List.of("商品.jpg"), null, null), SEGMENTS, false, true, false, null);
-        assertThat(out.user()).contains("每段只有 1 个镜头").doesNotContain("单个镜头 2 到 6 秒");
+        assertThat(out.user()).contains("每段只有 1 个镜头").doesNotContain("4 秒左右");
     }
 
     @Test void theReviewGetsTheScriptTheIssuesAndTheOutputWithChanges() {

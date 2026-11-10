@@ -475,6 +475,8 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [导演台按「E01」标题免费分集](releases/director-episode-codes-release-20261103.md) — server + web-aiavatar；`E01` / `EP01` 写法的分集标题由程序识别、不调模型，助手遇到拆集请求时指路（last-reviewed: 2026-11-03）。
 - [导演台拆分弹窗增加剧本预览](releases/director-split-preview-release-20261104.md) — 仅 web-aiavatar；认不出分集标题时，弹窗旁显示剧本预览，便于复制第 1 集标题行（last-reviewed: 2026-11-04）。
 - [声音参考格式修复发布](releases/voice-reference-format-release-20261104.md) — server；短 M4A 等声音自动转 WAV，报错说明素材类型和可用格式；真实出片未验证（last-reviewed: 2026-11-04）
+- [AI 编导提示词爆款化发布](releases/scene-script-viral-release-20261110.md) — server + web-aiavatar；五个视频类型方法层、镜头约 4 秒、台词有人设、去掉功效夸大限制、全角数字镜头修复（last-reviewed: 2026-11-10）
+- [账号区新版页面发布](releases/studio-account-pages-release-20261109.md) — server + web-aiavatar；任务历史带积分明细、存储用量合并口径并补记历史文件、画布回收站可恢复和彻底删除、设置与安全合并；存储上限与到期清理开关默认关（last-reviewed: 2026-11-09）
 - [默认文字模型 Sonnet 与编导第 2 版发布](releases/sonnet-streaming-editor-release-20261104.md) — server + web-aiavatar；长文字任务改流式，编导不再写【待补】，同包带导演台新功能和报错说明；首次验收撞上 Key 额度用完，换 Key 后线上通过（last-reviewed: 2026-11-05）
 - [模型额度告警发布](releases/model-quota-alerts-release-20261105.md) — server；飞书机器人按接入点发额度告警，并定时查余额；额度用完那种告警线上没有真实触发过（last-reviewed: 2026-11-05）
 - [Studio 图片输入上限与运营发布模板](releases/studio-operator-template-validation-20261104.md) — server + web-aiavatar；3000 字补充要求、运营发布本人画布模板已配套生产发布（last-reviewed: 2026-11-04）。
@@ -489,6 +491,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [AI 导演台本地验收记录](audits/ai-director-local-acceptance-20261022.md) — 独立 UI 实测真值：测试响应全流程、Agnes 真实剧本／分集／资产／分镜首帧、局部重试修复；真实视频受厂商队列阻塞；实现状态见[总方案 §14](ai-director-plan.md)；last-reviewed: 2026-10-23。
 - [导演台视频提示词对比实测（H3）](audits/director-h3-video-prompt-ab-2026-10.md) — 《敦煌飞仙》两段共 9 条对比：旧写法穿模 / 宫格上屏；台词多时中文正文吞台词、念出提示词，官方 skill 英文版完整；据此提交前按官方 skill 改写，真模型试跑 7/7 合格；2026-10-27 推到 Studio 画布与创作助手、检查改为只提示不拦人（§8）；last-reviewed: 2026-10-27。
 - [导演台 H3 优化稿超长与中文提示词被念出（cl45）](audits/director-h3-cl45-prompt-review-2026-10.md) — 优化稿 8198 字符按段拆分、成片频谱与转写（末尾多出的人声对上「没有声音参考」）、第三镜别名没认出；据此改中文模板第 4 版、出镜认别名、篇幅预算、重新优化与用稿记录；last-reviewed: 2026-10-31。
+- [AI 视频编导提示词爆款化调优](audits/studio-scene-script-viral-tuning-2026-11.md) — 用 11-09 客户 15 条真实编导请求和 terra 逐轮调提示词：行业流程交给 AI、去掉功效夸大限制、五组场景爆款经验、台词要有人设；固定 terra 盲评 15:0；顺带修复全角数字让 H3 认不出镜头；last-reviewed: 2026-11-09。
 - [马记大排档 H3 字符预算真实模型验证](audits/maji-h3-character-budget-real-model-20261107.md) — 同一原稿、同一真实模型，两份最终稿 5813 / 5680 字符，台词、镜头与六份素材完整；第三次连接中断未计通过（last-reviewed: 2026-11-07）。
 - [PC 站界面文案优化记录](audits/pc-ui-copy-review-2026-11.md) — web-aiavatar 桌面形态逐页改动表（位置、原文、改为）、全站统一叫法、用户定下的 12 件事和结果；品牌标语改为「一个 IP，无限可能」；没改的存量见 TODO；last-reviewed: 2026-11-06。
 

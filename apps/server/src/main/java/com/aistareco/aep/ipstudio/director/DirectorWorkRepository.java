@@ -14,6 +14,8 @@ public interface DirectorWorkRepository extends JpaRepository<DirectorWork, Stri
 
     /** 回收站：本人已软删除的作品，最近删除的在前。 */
     List<DirectorWork> findByOwnerUserIdAndDeletedAtIsNotNullOrderByDeletedAtDesc(String ownerUserId);
+    /** 到期清理：删除时间早于 cutoff 的作品。 */
+    List<DirectorWork> findByDeletedAtBefore(java.time.Instant cutoff);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select w from DirectorWork w where w.id = :id")

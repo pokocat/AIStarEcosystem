@@ -7,16 +7,25 @@
 真源 `docs/ip-studio-recreation.md` 第一节。
 
 - [ ] **线上配置**（先发含 V79 的 server）：新建火山方舟接入点 `doubao-seed-2-0-lite-260428`（复用 Seedance Fast 的 Key，`base_url=https://ark.cn-beijing.volces.com/api/v3`，`models_json` 声明 `supportsVision` 和 `supportsVideo`，思考强度 `minimal`，超时不低于 300 秒），`ai.chat-token-pricing` 按官方价定价，绑定用途 `DAP_VIDEO_UNDERSTAND`。三样缺一样，拉片照旧抽帧。
-- [ ] **真实出片没验证**：用一条线上复刻任务从视频页跑到成片，看人物替换、动作跟随、段与段的接缝和字幕。本地只真跑了拉片和「每段提示词 → 拼方案 → 方案校验」。
-- [ ] 「写分镜脚本」线上用的是 `DAP_PERSONA` 的文字模型，每段提示词的效果只用 Seed 2.1 Pro 验过。
-- [ ] **线上 OneToken 余额用完**（2026-11-10 00:2x CST 实测 `INSUFFICIENT_BALANCE`）：`DAP_PERSONA`、`DAP_VIDEO_PROMPT`、`VIDEO_REF_ANALYSIS`、`GENERAL` 都绑在 `ai-onetoken-sonnet55`，两条 OneToken Seedance 也受影响。**七牛账户被封**（`account_banned`），`ai-qiniu-qwen3-max`、`ai-d8b0495e-749` 不可用，真人素材 `ai-917e8b0d-8d7` 要另查。
+- [x] ~~**真实出片没验证**~~ **2026-11-09 部分完成**：商品替换那条（PEX-2475364d，米酒→杯子）在 H3 上真实出片，24 秒全程是用户的杯子、10 句旁白念对；同时查出带原片做参考会让 H3 照抄原商品，已改成不带。**仍未验证**：换真人人物的复刻出片、从视频页走完整流程（不是脚本直调）。
+- [x] ~~「写分镜脚本」用线上文字模型的效果~~ **2026-11-09 已验证**：线上 `DAP_PERSONA` 和 `DAP_VIDEO_PROMPT` 都绑 Terra（`ai-onetoken-sonnet55`），三条视频真跑写提示词、杯子那条再经 H3 改写后出片，都过校验。
+- [x] ~~线上 OneToken 余额用完~~ **2026-11-09 晚用户已充值**，Terra 真跑恢复正常。七牛账户被封（`account_banned`）仍未处理。
 - [ ] Seedance Fast 人像核验超时（`VIDEO_ASSET_REVIEW_TIMEOUT`，PEX-66aabe7a 三段都这样）这次没动。
 - [ ] 1450×1080、24fps、30 秒的参考视频，在旧抽帧拉片里 3 次都报「视频画面提取失败」（PEX-d024d66c，Hypit 解码），原因没查；新拉片能读出来。
 - [ ] 段与段的接缝：现在只让每段最后一镜写清结束状态，还没把上一段成片的尾帧交给下一段（rea-video 的 continuity）。
 - [ ] 换装、遮挡段先改原片关键帧（keyframe-rebuild）没做；原片的平台水印和尾卡没裁。
 - [ ] 对话助手里的复刻（`reference-video-recreation` 由模型写整份方案）还没改成代码拼方案。
 - [ ] 后台模型页只显示「看视频」标签，还不能勾选 `supportsVideo`；现在要靠签名命令写 `models_json`。
-- [ ] 合入前确认 V79 没被别的分支占用。
+- [x] ~~合入前确认 V79 没被别的分支占用~~ 2026-11-10 合入 main 时核对，主线最大 V78。
+
+## AI 编导爆款化（2026-11-09；2026-11-10 已生产发布 `20261110-scene-script-cbbfa030`）
+
+记录见 [`docs/audits/studio-scene-script-viral-tuning-2026-11.md`](docs/audits/studio-scene-script-viral-tuning-2026-11.md)。
+
+- [x] ~~**发布前查后台有没有改过这些提示词条目**~~ **2026-11-10 已核对**：线上 `ip_skill_version` 没有非种子来源的版本，发布后全部按仓库文件自动换新版（`stage-scene-script` v5、`base` v3，五个方法层 v1）。原描述：`base`、`stage-scene-script`、`stage-segmented-script`、`stage-scene-handoff`、`stage-dialogue`、`stage-skill-plan`，以及改过的视频场景条目和 `reference-video-recreation`、`script-writing` 两个做法。后台发布过的以后台为准，仓库文件不会覆盖。新增的 `method-commerce / -local / -drama / -brand / -ip` 是新条目，会直接生效。
+- [ ] **成片对比**（付费，需用户定预算）：用 11-09 客户的 15 条用例挑电商、到店、剧情各两条，新旧脚本各出一条，Seedance 和 H3 各跑一遍，看成片的 AI 感、念稿感和多出来的东西。
+- [ ] **发给视频模型时只挑和画面有关的段落**（分层）：第一段剧情概述、每镜「这一镜的作用」只给人看；第二段压成一行图号对照；第六段压成最后一行约束。H3 也先挑段落再改写，减少超长。认不出六段结构就原样发出。
+- [ ] **剧情类表演细节**：固定 terra 时已全胜，但线上 Sonnet 写的剧情（手部动作、配乐转折）仍比 terra 细，可以再给剧情类补一个表演写法的例子。
 
 ## AI 编导建议（2026-11-09）
 
@@ -180,7 +189,7 @@
 - [x] ~~编导在 Qwen 上不写「还缺」、自己编「怎么买」~~ **2026-11-04 改判**：用户要求不再出现【待补】、直接生成，编导模板去掉「还缺 / 待补」；原记录：（判定：先接受，2026-11-01 用户确认直接发布）：同城团购没给「怎么买、怎么用」时，线上同款聚算 qwen38-27b 5 次都编了领券 / 到店核销的办法（Agnes 照规则写了「还缺」）。编的是团购通用流程、不涉及价格。要改：编导输出里单列缺的项（如 `missing: []`），由代码在脚本前补「还缺：」行、对应台词写【待补】（`stages/stage-scene-script.md` + 编导结果解析），再用 Qwen 复测。证据见验收记录 §2.4。
 - [ ] **编导出片还没验的两件**：成片台词有没有完整念出来（2026-11-01 只看了画面不冒字）；口播带货、剧情植入、数字人口播、同城团购 4 个场景没出片。
 - [ ] **上线后看出图包装换新的效果**：线上 `dap.ip_canvas_image` 的 v0.173 旧版（「只画一个人，不要多视图、不要设定图」）不再生效，画布出图和导演台出图改用 `stages/stage-image.md`（按指令决定人数和排版）。看几张线上新出的导演台角色设定集和画布多人画面是否按要求排版、普通单图有没有多出人物或拼图。
-- [ ] **「出视频」做法与转交给助手的五段式、五组行业内容方法**（设计文档 §9.8）：五段式是结构改动，可以先做；行业内容方法要用户给各行业的拍法素材再写，不要凭空编。
+- [ ] **「出视频」做法与转交给助手的五段式、五组行业内容方法**（设计文档 §9.8）：五段式是结构改动，可以先做。~~行业内容方法要用户给各行业的拍法素材再写~~ **2026-11-09**：用户要求按茂隆范本和客户真实请求推测优化，已按场景分组写了 `method-commerce / -local / -drama / -brand / -ip`，terra 盲评见 `docs/audits/studio-scene-script-viral-tuning-2026-11.md`；转交给助手的那段话和「出视频」做法还没改。
 - [ ] **模型配置页补素材库绑定**（2026-11-07）：`/models` 第一版按 main 做，`dev/video-asset-library` 还没合入。合入后在编辑面板「能力与规格」加 `assetLibraryId`（查看、设置、解除），换基础地址时和规格一样要明确保留或解除，否则服务端报 400 `VIDEO_ASSET_LIBRARY_INVALID`；规则见 `docs/video-asset-library.md`。
 - [ ] **`apps/admin` 逐步搬到 studio-admin 后停用**（2026-11-07 用户定）：模型接入、开放范围、IP Studio 模型、功能与售价已搬到 `/models`；同一页的用量统计、请求日志、生成告警、对账还没搬，其它后台页面也要盘点。搬完再下线服务端的签名命令通道（用户窄命令也在这条通道上）。
 - [ ] **模型配置页上线后补两项**（2026-11-07）：规格目前只能编辑 JSON，常改的字段（时长、清晰度）可以加表单，但只能按路径改原 JSON，不能重建；同一服务商下换密钥要逐个模型改。
@@ -596,6 +605,17 @@
 - [ ] `proto/screen-more.tsx:MSettings` 的通知/水印/归档开关仍为旧本地状态；本轮只统一外壳，持久化业务需后续单独接通。
 
 - [ ] `DapAccountService.account` 的 `planLabel=PRO` 为旧固定值；后续会员权益展示需按真实产品开通/权益建模，本轮不改后台政策。
+
+### 账号区新版（2026-11-09，dev/aistar-studio-migration）
+
+- [x] ~~**存储用量缺历史文件**~~ **2026-11-09 完成**：`StudioStorageBackfill` 在用户第一次打开存储用量时（后台异步，当次页面显示补记前的数），按资产库（ip_saved_asset）里 `ipstudio_gen/`、`ipstudio_source/` 开头的文件 key 补记（大小优先用收录时的 bytes，没有再查存储），只加统计记录、同 key 不重复，每进程每用户一次。资产库里已删除的条目不补；没被资产库收录的历史文件仍不在统计里。
+- [x] ~~**存储上限没有拦截**~~ **2026-11-09 已实现、默认关闭**：`StudioStorageGuard` 在上传（`IpProjectService.upload`、`StudioMediaImportService`）前按账号页同一口径检查，超出 402 `STORAGE_QUOTA_EXCEEDED`；生成不拦。开关 `aep.ipstudio.storage-enforce`（默认 false），打开前先在后台配好 `storage.quota_mb.aiavatar` 和存储空间套餐。原描述：：账号页显示的上限是通用存储的 aiavatar 配额（后台 `storage.quota_mb.aiavatar`），但 IP Studio 的生成和上传都没调 `StorageQuotaService.checkQuota`；数字资产页原来的 5,000 MB 也只是展示。拦不拦、在哪一步拦要单独定。
+- [x] ~~**画布、导演台作品没有彻底删除和到期清理**~~ **2026-11-09 已实现**：`StudioTrashService` 提供 `DELETE /projects/{id}/purge`、`DELETE /director/works/{id}/purge`（只删画布 / 作品本身和画布历史版本，生成记录与文件保留在资产库；还有生成中的任务时 409）。到期自动清理 `aep.ipstudio.trash-retention-days`，默认 0 = 不清理。原描述：：账号页回收站能列出并恢复（`/projects/trash`、`/projects/{id}/restore`、导演台 `/works/trash`），但只有数字人有「彻底删除」和 30 天清理。
+- [ ] **任务历史的汇总最多统计 300 条**（`StudioTaskHistoryService.SUMMARY_LIMIT`），超出时消耗卡片写明「只统计了最近 N 条」；总览「生成中」卡片同样只看这 300 条，没有说明（Codex 复核 2026-11-09）。数字人任务已读结算明细（`result.billingBreakdown`）；重试后成功的任务明细只有最后一次尝试，前几次的消费不在里面。
+- [ ] **视频提示词改写的赠款与退回没拆开**（Codex 评审 2026-11-09 第 6 条）：`IpProjectService.videoBindingDto` 的 breakdown 只有视频那一笔，改写只加进总 `cost`；任务历史用差额补进「已消耗」，其中模型赠款没进 `scopedSpent`、退回没进 `released`。要合并视频与改写两组真实明细。
+- [ ] **存储上限检查不预占、台账没有唯一约束**（Codex 评审 2026-11-09 第 8 条与复核）：`StudioStorageGuard` 先查后传，`aep.ipstudio.storage-enforce` 打开后并发上传可能超出上限；`StorageQuotaService.record` 先 `existsByCdnKey` 后插入、`storage_assets.cdn_key` 只有普通索引，同一 key 并发写可能记两次。打开开关前要按用户原子预占字节，并给 `cdn_key` 加唯一约束（需迁移，先查存量重复）。
+- [ ] **任务历史的取消 / 重试只覆盖一部分**：画布上的图片、视频、配音、口型任务和数字人任务可以直接取消（已提交给模型的由接口拒绝并说明），数字人失败任务可以重试；导演台、对话、写作任务只给「查看」，回原处用各自的停止流程。画布任务失败后的重试也要回画布做（需要原请求）。
+- [ ] 旧 SPA 里的 `MTasks` / `MStorage` / `MMembership` / `MSettings` / `MSecurity` / `MRealMaterials` / `MTrash` 不再从 `/studio#/<页>` 进入（改由 `src/account/*`），确认没有内部入口后删除。
 
 ## 已定位问题与后续限制
 

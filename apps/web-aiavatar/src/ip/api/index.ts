@@ -2,3 +2,4 @@
 export * as IpStudioApi from "./ip-studio";
 export * as AssetsApi from "./assets";
 export * as DirectorApi from "./director";
+export * as AccountApi from "./account";

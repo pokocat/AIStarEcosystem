@@ -428,6 +428,19 @@ public class IpStudioController {
         return ApiResponse.of(Map.of("id", id, "deleted", true));
     }
 
+    /** 回收站：本人已删除的画布。 */
+    @GetMapping("/projects/trash")
+    public ApiResponse<java.util.List<IpProjectService.TrashedCanvas>> trash(Principal principal) {
+        return ApiResponse.of(projects.trash(uid(principal)));
+    }
+
+    /** 从回收站恢复画布（原 ID、原内容）。 */
+    @PostMapping("/projects/{id}/restore")
+    public ApiResponse<Map<String, Object>> restore(Principal principal, @PathVariable String id) {
+        projects.restore(uid(principal), id);
+        return ApiResponse.of(Map.of("id", id, "restored", true));
+    }
+
     // ── 运行 ──────────────────────────────────────────────────
 
     @PostMapping("/projects/{id}/nodes/{nodeId}/run")

@@ -39,7 +39,15 @@ public class StudioMediaImportService {
     public MediaImportResult uploadReferenceAudio(String user, MultipartFile file) {
         return upload(user, file, "audio", true);
     }
+    /** 存储上限检查（开关默认关，见 StudioStorageGuard）。 */
+    private com.aistareco.aep.ipstudio.history.StudioStorageGuard storageGuard;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setStorageGuard(@org.springframework.context.annotation.Lazy com.aistareco.aep.ipstudio.history.StudioStorageGuard storageGuard) {
+        this.storageGuard = storageGuard;
+    }
+
     private MediaImportResult upload(String user, MultipartFile file, String type, boolean voiceReference) {
+        if (storageGuard != null && file != null) storageGuard.checkUpload(user, file.getSize());
         if (!Set.of("image", "video", "audio").contains(type == null ? "" : type)) throw invalid("请选择图片、视频或音频");
         long max = ("image".equals(type) ? 8 : "video".equals(type) ? 128 : 25) * MIB;
         if (file == null || file.isEmpty()) throw invalid("文件是空的，请重新选择");
@@ -113,10 +121,12 @@ public class StudioMediaImportService {
                 if (compatible != null) try { Files.deleteIfExists(compatible); } catch (Exception ignored) {}
             }
         }
-        quota.checkQuota("aiavatar", user, bytes.length);
+        // 2026-11-09：原来这里无条件按通用台账（当时只记画布附件）拦。生成文件也开始记进同一台账后，继续无条件拦会突然挡住老用户的导入，
+        // 所以统一交给 StudioStorageGuard：按账号页同一口径、受 aep.ipstudio.storage-enforce 开关控制（入口处已按上传大小检查一次，这里按转码后大小再查）。
+        if (storageGuard != null) storageGuard.checkUpload(user, bytes.length);
         // Existing owned source namespace; signed URLs are returned only on the wire.
         var stored = storage.store(bytes, "ipstudio/source", user, format.ext(), format.mime());
-        quota.record("aiavatar", user, "画布附件", null, stored.key(), stored.bytes());
+        // 用量由 FileStorageService 在写入后统一记（「上传的素材」），这里不再另记一笔：两处同时写同一个 key 会记重（Codex 复核 2026-11-09）。
         String name = file.getOriginalFilename() == null ? "画布附件" : file.getOriginalFilename().replace('\\', '/');
         name = name.substring(name.lastIndexOf('/') + 1).replaceAll("[\\p{Cntrl}]", "").strip();
         if (name.isBlank()) name = "画布附件";

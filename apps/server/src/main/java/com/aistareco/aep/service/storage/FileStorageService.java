@@ -257,7 +257,63 @@ public class FileStorageService {
             url = props.getPublicUrlBase() + "/" + key;
             signed = url;
         }
+        recordStudioUsage(category, ownerId, key, bytes, contentType);
         return new StoredFile(key, url, signed, keptLocal, bytes, contentType);
+    }
+
+    // ── IP Studio 存储用量 ────────────────────────────────────────────────────
+
+    private org.springframework.beans.factory.ObjectProvider<StorageQuotaService> storageQuota;
+
+    @Autowired
+    void setStorageQuota(org.springframework.beans.factory.ObjectProvider<StorageQuotaService> storageQuota) {
+        this.storageQuota = storageQuota;
+    }
+
+    /**
+     * IP Studio 生成和上传的文件（{@code ipstudio/gen}、{@code ipstudio/source}，owner 是用户）记进账号的存储用量。
+     * 视频成片、导出的成片在各自的写入处已经记了（app=studio / aiavatar），这里只补经本类落盘的那部分。
+     * 观测类旁路（§8.0）：记账失败只 WARN，不影响文件写入。
+     */
+    private void recordStudioUsage(String category, String ownerId, String key, long bytes, String contentType) {
+        String label = studioUsageCategory(category, contentType);
+        if (label == null || ownerId == null || ownerId.isBlank() || storageQuota == null) return;
+        // 不在调用方事务里写台账：调用方常在持锁的业务事务里存文件，台账写失败会把业务事务一起拖垮（§8.0.1 ⑯）。
+        // 有事务就等它提交后再记，没有就直接排进后台；台账写入在自己的线程和事务里，失败只 WARN。
+        Runnable task = () -> {
+            try {
+                StorageQuotaService quota = storageQuota.getIfAvailable();
+                if (quota != null) quota.record("aiavatar", ownerId, label, null, key, bytes);
+            } catch (RuntimeException e) {
+                log.warn("[file-storage] studio usage record failed key={}: {}", key, e.getMessage());
+            }
+        };
+        Runnable submit = () -> {
+            try { USAGE_RECORDER.execute(task); }
+            catch (RuntimeException e) { log.warn("[file-storage] studio usage record rejected key={}: {}", key, e.getMessage()); }
+        };
+        if (org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override public void afterCommit() { submit.run(); }
+                    });
+        } else submit.run();
+    }
+
+    /** 台账写入专用的单线程后台；队列有界，满了丢弃并 WARN（观测类旁路，下次打开账号页的回填会补上）。 */
+    private static final java.util.concurrent.ExecutorService USAGE_RECORDER = new java.util.concurrent.ThreadPoolExecutor(
+            1, 1, 0L, java.util.concurrent.TimeUnit.MILLISECONDS, new java.util.concurrent.LinkedBlockingQueue<>(10_000),
+            r -> { Thread t = new Thread(r, "studio-usage-recorder"); t.setDaemon(true); return t; });
+
+    /** 存储用量分类：生成的按媒体类型分，上传的统一算「上传的素材」；其余分类不在这里记。 */
+    static String studioUsageCategory(String category, String contentType) {
+        if ("ipstudio/source".equals(category)) return "上传的素材";
+        if (!"ipstudio/gen".equals(category)) return null;
+        String mime = contentType == null ? "" : contentType.toLowerCase(java.util.Locale.ROOT);
+        if (mime.startsWith("image/")) return "生成的图片";
+        if (mime.startsWith("video/")) return "生成的视频";
+        if (mime.startsWith("audio/")) return "声音";
+        return "其他";
     }
 
     // ── 读取 / 签名 / 删除 ───────────────────────────────────────────────────

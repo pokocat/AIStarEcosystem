@@ -413,7 +413,7 @@ export function SceneVideoStudio() {
       const projectId = await ensureDraft(ticket);
       const max = scene.images.max ?? 6;
       const fresh = kind === "image" ? chosen.filter(m => !images.some(o => o.key === m.key)).slice(0, Math.max(0, max - images.length)) : chosen.slice(0, 1);
-      const titled = fresh.map((m, i) => ({ ...m, title: kind === "image" ? `${scene.images.label} ${images.length + i + 1}` : kind === "character" ? "出镜人物" : kind === "voice" ? m.title || "声音样本" : "参考视频" }));
+      const titled = fresh.map((m, i) => ({ ...m, title: kind === "image" ? `${scene.images.label} ${images.length + i + 1}` : kind === "character" ? "出镜人物" : m.title || (kind === "voice" ? "声音样本" : "参考视频") }));
       // 选的时候换了草稿：素材照样记进它自己那份草稿，只是不放到新打开的这页上。
       if (onPage(ticket, projectId)) {
         if (kind === "image") setImages(old => [...old, ...titled].slice(0, max));
@@ -424,9 +424,9 @@ export function SceneVideoStudio() {
       await persist(doc => titled.reduce((next, media) => {
         const nodes = next.nodes as CanvasNodeData[];
         const made = placeMedia(nodes, media, type, nodes.filter(n => n.metadata?.origin === "upload").length);
-        // 老草稿的声音节点可能只叫「声音样本」；重选同一文件时也保留资产库里的名称。
+        // 老草稿可能只记了素材类型；重选同一声音 / 视频时也保留资产库里的名称。
         const placed = nodes.some(n => n.id === made.id)
-          ? kind === "voice" ? { ...next, nodes: nodes.map(n => n.id === made.id ? { ...n, title: media.title } : n) } : next
+          ? kind === "voice" || kind === "video" ? { ...next, nodes: nodes.map(n => n.id === made.id ? { ...n, title: media.title } : n) } : next
           : { ...next, nodes: [...nodes, made] };
         return withSceneInput(placed, kind, media.key, "add", max);
       }, doc), projectId).catch(() => undefined);
@@ -1149,9 +1149,10 @@ export function SceneVideoStudio() {
       <button type="button" className={media && kind === "voice" ? "scene-voice-picked" : undefined} disabled={uploading !== undefined} onClick={() => choose(kind)} aria-label={media ? `更换${label}` : `从资产库选择${label}`} title={media?.fileName || `从资产库选择${label}`}>
         {uploading === kind ? <Loader2 size={18} className="studio-gallery-spinner"/> : media && kind === "character" ? <SignedImage src={media.url} storageKey={media.key} alt=""/>
           : media && kind === "voice" ? <span className="scene-voice-picked-icon" aria-label="已选择声音"><AudioLines size={22} strokeWidth={1.5} aria-hidden="true"/></span>
+          : media && kind === "video" ? <SignedVideo src={media.url} storageKey={media.key} muted playsInline preload="metadata" tabIndex={-1} aria-label="已选择参考视频"/>
           : <SlotEmpty Icon={Icon} size={22}/>}
       </button>
-      <span title={kind === "voice" && media ? media.fileName || media.title : undefined}>{kind === "voice" && media ? media.fileName || media.title : label}{!media && optional && <small>选填</small>}</span>
+      <span title={(kind === "voice" || kind === "video") && media ? media.fileName || media.title : undefined}>{(kind === "voice" || kind === "video") && media ? media.fileName || media.title : label}{!media && optional && <small>选填</small>}</span>
       {media && <button type="button" className="scene-ref-remove" aria-label={`移除${label}`} onClick={clear}><X size={11} strokeWidth={1.8}/></button>}
     </div>;
   // 编辑框里的「图N」标签：这次交给视频模型的图，按图1、图2 的顺序（和素材格上的角标同一套）。

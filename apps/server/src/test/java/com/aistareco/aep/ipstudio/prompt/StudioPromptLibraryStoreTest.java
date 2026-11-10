@@ -150,7 +150,7 @@ class StudioPromptLibraryStoreTest {
         assertTrue(preview.system().contains("你是资深短视频编导"));
         assertTrue(preview.system().contains("大胆创作"));
         assertTrue(preview.user().contains("写一条 25 秒的竖屏「同城团购」短视频脚本"));
-        assertTrue(preview.user().contains("第1镜（0–3 秒）"));
+        assertTrue(preview.user().contains("第1镜（0–4 秒）"));
         assertFalse(preview.user().contains("{{"));
         assertTrue(preview.formats().containsKey("shots"));
         assertThrows(BusinessException.class, () -> admin.preview(new PromptPreviewRequest("stage-nowhere", null, null, null)));
