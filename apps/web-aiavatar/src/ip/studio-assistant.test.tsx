@@ -233,7 +233,9 @@ test('confirming production posts the execution, approach, plan revision, approv
   expect(api.save).toHaveBeenCalled();
   // The caps the server proposed go with the confirmation unchanged.
   expect(api.createExecution.mock.calls[0]).toEqual(['p', { clientRequestId: expect.any(String), stage: 'production', planRunId: 'plan-2', planFingerprint: 'f2', budgetCap: 122, autoFixCap: 40,
-    approvalId: 'a2', confirmationMessageId: 'm2', executionId: 'e1', approachId: 'keep', expectedRevision: 2 }]);
+    approvalId: 'a2', confirmationMessageId: 'm2', executionId: 'e1', approachId: 'keep', expectedRevision: 2 },
+    // 卡上的预计（不是上限）交给付款弹窗：余额只跟它比（2026-11-10）
+    82]);
   await waitFor(() => expect(within(screen.getByLabelText('确认制作')).getByText('已确认 · 82 积分')).toBeDefined());
   expect(within(screen.getByLabelText('确认制作')).queryByRole('button', { name: '开始制作' })).toBeNull();
   expect(screen.getByLabelText('制作进度')).toBeDefined();
@@ -703,7 +705,7 @@ test('a production card without an execution starts a new one: no executionId, r
   fireEvent.click(within(pending).getByRole('button', { name: '开始制作' }));
   await waitFor(() => expect(api.createExecution).toHaveBeenCalledOnce());
   expect(api.createExecution.mock.calls[0]).toEqual(['p', { clientRequestId: expect.any(String), stage: 'production', planRunId: 'plan-img', planFingerprint: 'fi', budgetCap: 18, autoFixCap: 0,
-    approvalId: 'a-img', confirmationMessageId: 'm3' }]);
+    approvalId: 'a-img', confirmationMessageId: 'm3' }, 8]);
 });
 
 // ── Skills (S3): the per-message choice, the plan badge, the "pick one" rejection and the operator draft ──
