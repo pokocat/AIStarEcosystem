@@ -3,7 +3,7 @@
 import { SignedImage } from "@/canvas-bridge/signed-image";
 import { type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { Check, ChevronDown, ChevronRight, Download, FileImage, History, Loader2, PanelLeft, Pencil, Pin, PinOff, Plus, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Download, FileImage, History, Loader2, PanelLeft, Pencil, Pin, PinOff, Plus, Trash2, X } from "lucide-react";
 import { dialogFocus } from "../dialog-focus";
 import { ImageLightbox } from "../image-lightbox";
 import { StudioErrorNotice } from "../studio-errors";
@@ -200,8 +200,10 @@ export function SceneResultTabs({ tab, onTab, count, idBase }: { tab: SceneTab; 
 }
 
 /** 「最近」：本页建过的草稿（就是普通画布），点开接着做。按钮在结果区右上角，列表就地弹出。 */
-export function SceneRecent({ drafts, loading, error, onRetry, current, onOpen, allHref = "/projects", icon = false }: {
+export function SceneRecent({ drafts, loading, error, onRetry, current, onOpen, onDelete, allHref = "/projects", icon = false }: {
   drafts: IpProjectSummary[]; loading: boolean; error?: string; onRetry?: () => void; current?: string; onOpen: (id: string) => void; allHref?: string;
+  /** 删除这份草稿（进回收站）。给了才显示删除按钮。 */
+  onDelete?: (draft: IpProjectSummary) => void;
   /** 手机标题栏上只放图标。 */
   icon?: boolean;
 }) {
@@ -219,12 +221,14 @@ export function SceneRecent({ drafts, loading, error, onRetry, current, onOpen, 
         : failed && !drafts.length ? null
         : drafts.length ? <ul>{drafts.slice(0, 12).map(d => <li key={d.id}><button type="button" aria-current={d.id === current ? "true" : undefined} onClick={() => { setOpen(false); onOpen(d.id); }} title={d.name}>
           <span className="scene-recent-cover">{d.coverUrl ? <img src={d.coverUrl} alt="" loading="lazy"/> : <Pencil size={16} strokeWidth={1.4} aria-hidden="true"/>}</span>
-          <span><strong>{d.name.replace(/ · AI (图片|视频)$/, "")}</strong><small>{formatDateTime(d.updatedAt)}</small></span>
-        </button></li>)}</ul>
+          <span><strong>{sceneDraftName(d.name)}</strong><small>{formatDateTime(d.updatedAt)}</small></span>
+        </button>{onDelete && <button type="button" className="scene-recent-delete" aria-label="删除" title={`删除草稿「${sceneDraftName(d.name)}」`} onClick={() => { setOpen(false); onDelete(d); }}><Trash2 size={14} strokeWidth={1.6}/></button>}</li>)}</ul>
         : <p className="scene-recent-empty">暂无草稿。</p>}
     </RecentPanel>}
   </div>;
 }
+/** 草稿名去掉末尾的「 · AI 图片 / 视频」：在这一页里不用再说一遍。 */
+export const sceneDraftName = (name: string) => name.replace(/ · AI (图片|视频)$/, "");
 function RecentPanel({ children, onClose }: { children: ReactNode; onClose: () => void }) {
   const panel = useRef<HTMLDivElement>(null);
   useScenePopover(panel, onClose);

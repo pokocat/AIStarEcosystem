@@ -2,7 +2,8 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { StudioVideoTask } from '@ai-star-eco/types/ip-studio-video-task';
-const api = vi.hoisted(() => ({ list: vi.fn(), get: vi.fn(), readRun: vi.fn(), readVideoJob: vi.fn(), signKeys: vi.fn(), resume: vi.fn() }));
+const api = vi.hoisted(() => ({ list: vi.fn(), get: vi.fn(), readRun: vi.fn(), readVideoJob: vi.fn(), signKeys: vi.fn(), resume: vi.fn(), deleteProject: vi.fn() }));
+vi.mock('@/ip/api', () => ({ IpStudioApi: { deleteProject: api.deleteProject } }));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('@/canvas-bridge/studio-video-tasks', async original => ({ ...await original<any>(), videoTasks: api.list, videoTask: api.get }));
 vi.mock('@/canvas-bridge/api', () => ({ readRun: api.readRun, readVideoJob: api.readVideoJob, signKeys: api.signKeys, cancelRun: vi.fn() }));
@@ -253,4 +254,30 @@ test('a single task shows no strip, and the settings name the model and open 视
   fireEvent.click(screen.getByRole('button', { name: '视频裂变' }));
   expect(more).toHaveBeenCalledOnce();
   expect(screen.queryByRole('region', { name: '本批视频' })).toBeNull();
+});
+
+// 2026-11-10 用户：不想要的删不掉。删一条任务删的是它所在的草稿（进回收站），同一份草稿里的视频一起删；还在生成就不能删。
+test('deleting a finished task removes its draft and tells the page which draft went', async () => {
+  const done = task('PEX-done'); done.execution!.status = 'needs_user';
+  api.list.mockResolvedValue({ items: [done], page: 0, hasMore: false });
+  // 服务端删掉以后，任务列表里就没有这份草稿的任务了
+  api.deleteProject.mockImplementation(async () => { api.list.mockResolvedValue({ items: [], page: 0, hasMore: false }); });
+  const onDeleted = vi.fn();
+  render(<SceneVideoWorkspace {...props} onDeleted={onDeleted}/>);
+  await screen.findByRole('button', { name: /PEX-done/ });
+  fireEvent.click(screen.getAllByRole('button', { name: '删除' })[0]);
+  const dialog = await screen.findByRole('dialog');
+  fireEvent.click(within(dialog).getByRole('button', { name: '删除' }));
+  await waitFor(() => expect(onDeleted).toHaveBeenCalledWith(['IPP-PEX-done']));
+  expect(api.deleteProject).toHaveBeenCalledWith('IPP-PEX-done');
+  await waitFor(() => expect(screen.queryByRole('button', { name: /PEX-done/ })).toBeNull());
+});
+test('a draft with a video still generating cannot be deleted from the rail', async () => {
+  api.list.mockResolvedValue({ items: [task('PEX-live')], page: 0, hasMore: false });
+  render(<SceneVideoWorkspace {...props}/>);
+  await screen.findByRole('button', { name: /PEX-live/ });
+  fireEvent.click(screen.getAllByRole('button', { name: '删除' })[0]);
+  const dialog = await screen.findByRole('dialog');
+  expect((within(dialog).getByRole('button', { name: '删除' }) as HTMLButtonElement).disabled).toBe(true);
+  expect(api.deleteProject).not.toHaveBeenCalled();
 });

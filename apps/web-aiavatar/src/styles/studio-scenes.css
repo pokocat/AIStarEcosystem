@@ -499,3 +499,11 @@ html:not([data-layout="desktop"]) .scene-choice-row button { height: 36px; }
 .scene-segmented-phases li.is-done { color: var(--ip-ink); }
 .scene-segmented-phases li.is-failed { color: var(--ip-gold); }
 .scene-segmented-spent { margin: 0; color: var(--ip-muted); font-size: 12px; }
+
+/* 「最近」里的删除（2026-11-10）：悬停或键盘聚焦时出现，触屏上常显。 */
+.scene-recent li { position: relative; }
+.scene-recent li .scene-recent-delete { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border-radius: 8px;
+  background: var(--ip-paper); color: var(--ip-muted); opacity: 0; transition: opacity 140ms ease; }
+.scene-recent li:hover .scene-recent-delete, .scene-recent li .scene-recent-delete:focus-visible { opacity: 1; }
+.scene-recent li .scene-recent-delete:hover { color: var(--ip-error, #a43845); background: var(--ip-error-soft, #fcf0f1); }
+@media (hover: none) { .scene-recent li .scene-recent-delete { opacity: 1; } }

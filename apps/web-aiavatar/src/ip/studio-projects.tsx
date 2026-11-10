@@ -4,7 +4,7 @@ import { useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Modal } from "antd";
-import { ArrowRight, ChevronLeft, ChevronRight, LayoutGrid, Layers, List, Loader2, MoreHorizontal, Plus, RefreshCw, Trash2, Image, GitBranch, Undo2 } from "lucide-react";
+import { ArrowRight, Check, ChevronLeft, ChevronRight, LayoutGrid, Layers, List, Loader2, MoreHorizontal, Plus, RefreshCw, Trash2, Image, GitBranch, Undo2 } from "lucide-react";
 import type { IpProjectSummary } from "@ai-star-eco/types";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { DirectorApi, IpStudioApi } from "./api";
@@ -15,7 +15,8 @@ import { CanvasThumb } from "./canvas-thumb";
 import { GallerySearch, GalleryState, useCanvasPreviews, useStudioList } from "./studio-gallery";
 import { StudioPage } from "./studio-page";
 import { StudioSelect } from "./studio-select";
-import { StudioErrorNotice, useStudioErrorState } from "./studio-errors";
+import { StudioErrorNotice } from "./studio-errors";
+import { useCanvasDelete } from "./studio-canvas-delete";
 import { useStartNewCanvas } from "./use-start-new-canvas";
 import { formatDateTime } from "@/lib/datetime";
 import { useSceneCatalog } from "./scenes/scene-catalog";
@@ -52,11 +53,11 @@ export function StudioProjects() {
   const [page, setPage] = useState(1);
   const [inspecting, setInspecting] = useState<{ project: IpProjectSummary; mode: "cover" | "flow" }>();
   const [previewRevision, setPreviewRevision] = useState(0);
-  const [pendingDelete, setPendingDelete] = useState<IpProjectSummary>();
-  const [deleting, setDeleting] = useState(false);
-  const deleteRef = useRef(false);
-  const [deleteError, setDeleteError] = useStudioErrorState();
   const surface = useRef<HTMLDivElement>(null);
+  // 删除（进回收站）：卡片上的删除、「⋯」里的删除和「选择」后一起删，走同一个确认框。
+  const removal = useCanvasDelete(() => surface.current || document.body);
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
   const filtered = useMemo(() => projects.data.filter(p =>
     (type === "all" || typeOf(p) === type) && (status === "all" || p.status === status) && p.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
   ).sort((a, b) => sort === "name" ? a.name.localeCompare(b.name, "zh-CN") : sort === "created" ? b.createdAt.localeCompare(a.createdAt) : b.updatedAt.localeCompare(a.updatedAt)), [projects.data, status, query, sort, type, scenes]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -67,16 +68,13 @@ export function StudioProjects() {
   const refreshPreviews = () => { setPreviewRevision(n => n + 1); retryPreviews(); };
   const inspectDoc = inspecting && previews[`${inspecting.project.id}:${inspecting.project.updatedAt}`]?.doc;
   const openInspector = (project: IpProjectSummary, mode: "cover" | "flow") => setInspecting({ project, mode });
-  const remove = async () => {
-    if (!pendingDelete || deleteRef.current) return;
-    deleteRef.current = true; setDeleting(true); setDeleteError("");
-    try {
-      await IpStudioApi.deleteProject(pendingDelete.id);
-      projects.setData(items => items.filter(p => p.id !== pendingDelete.id));
-      setPendingDelete(undefined);
-    } catch (e) { setDeleteError(e); }
-    finally { deleteRef.current = false; setDeleting(false); }
-  };
+  const remove = (targets: IpProjectSummary[]) => removal.ask({ targets, onDeleted: ids => {
+    projects.setData(items => items.filter(p => !ids.includes(p.id)));
+    setPicked(old => new Set([...old].filter(id => !ids.includes(id))));
+  } });
+  const stopSelecting = () => { setSelecting(false); setPicked(new Set()); };
+  const toggle = (id: string) => setPicked(old => { const next = new Set(old); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  const pageAll = visible.length > 0 && visible.every(p => picked.has(p.id));
 
   if (authState === "no-platform" || projects.notEnrolled || newCanvas.notEnrolled) return <PlatformGateScreen/>;
   const newCanvasButton = (className: string, label: ReactNode) => <button type="button" className={className} aria-busy={newCanvas.creating} disabled={newCanvas.creating} onClick={() => void newCanvas.start()}>{label}</button>;
@@ -92,7 +90,13 @@ export function StudioProjects() {
         <StudioSelect label="画布排序" value={sort} onChange={value => { setSort(value); setPage(1); }} options={[{value:"updated",label:"最近编辑"},{value:"created",label:"最近创建"},{value:"name",label:"名称排序"}]}/>
         <div className="studio-gallery-view" role="group" aria-label="画布显示方式"><button type="button" aria-label="网格视图" aria-pressed={view === "grid"} onClick={() => setView("grid")}><LayoutGrid size={18} /></button><button type="button" aria-label="列表视图" aria-pressed={view === "list"} onClick={() => setView("list")}><List size={19} /></button></div>
         <button type="button" className="studio-page-refresh" aria-label="刷新画布" disabled={projects.loading} onClick={() => { projects.reload(); refreshPreviews(); }}><RefreshCw size={16}/></button>
+        {!!projects.data.length && <button type="button" className="ip-brand-secondary is-compact studio-project-select" aria-pressed={selecting} onClick={() => selecting ? stopSelecting() : setSelecting(true)}>{selecting ? "取消选择" : "选择"}</button>}
       </div>
+      {selecting && <div className="studio-project-selection" role="toolbar" aria-label="批量操作">
+        <span>已选 {picked.size} 张</span>
+        <button type="button" className="ip-brand-text-button" disabled={!visible.length} onClick={() => setPicked(old => { const next = new Set(old); visible.forEach(p => pageAll ? next.delete(p.id) : next.add(p.id)); return next; })}>{pageAll ? "取消全选本页" : "全选本页"}</button>
+        <button type="button" className="ip-brand-secondary is-compact is-danger" disabled={!picked.size || removal.busy} onClick={() => remove(projects.data.filter(p => picked.has(p.id)))}><Trash2 size={14}/>删除</button>
+      </div>}
       <div className="studio-page-result" aria-live="polite">{projects.loading ? '正在加载画布…' : projects.error ? '画布加载失败' : `${filtered.length} 张${query.trim() || status !== 'all' || type !== 'all' ? '匹配' : ''}画布`}</div>
       {projects.error ? <GalleryState error={projects.error} retry={projects.reload} /> : projects.loading ? <GalleryState loading /> : <>
         {!filtered.length && <div className="studio-gallery-empty"><Layers size={24} /><h3>{projects.data.length ? "没有找到符合条件的画布" : "还没有画布"}</h3><p>{projects.data.length ? "请更换关键词，或清除筛选。" : "新建的画布会保存在这里。"}</p>{projects.data.length > 0 ? <button type="button" className="ip-brand-text-button" onClick={() => { setQuery(""); setStatus("all"); setPage(1); }}>清除筛选</button> : newCanvasButton("ip-brand-text-button", <>新建画布 {newCanvas.creating ? <Loader2 size={15} className="studio-gallery-spinner" aria-hidden="true"/> : <ArrowRight size={15} aria-hidden="true"/>}</>)}</div>}
@@ -100,12 +104,15 @@ export function StudioProjects() {
           const preview = previews[`${project.id}:${project.updatedAt}`];
           const content = preview?.doc ? projectPreview(preview.doc) : undefined;
           const back = sceneHome(project);
-          return <article className="studio-project-card" key={project.id}>
+          const chosen = picked.has(project.id);
+          return <article className={`studio-project-card${selecting ? " is-selecting" : ""}${chosen ? " is-picked" : ""}`} key={project.id}>
+            {selecting && <button type="button" className="studio-project-pick" aria-pressed={chosen} aria-label={`选择画布 ${project.name}`} onClick={() => toggle(project.id)}><span aria-hidden="true">{chosen && <Check size={13} strokeWidth={2.4}/>}</span></button>}
+            {!selecting && <button type="button" className="studio-project-delete" aria-label={`删除画布 ${project.name}`} title="删除" onClick={() => remove([project])}><Trash2 size={15}/></button>}
             <Link href={`/projects/${project.id}`} className="studio-project-open" aria-label={`打开画布 ${project.name}`}><div className="studio-gallery-preview">
               <ProjectCardPreview key={`${project.id}:${project.updatedAt}:${previewRevision}`} coverUrl={project.coverUrl} preview={content} doc={preview?.doc} loading={!preview} error={preview?.error}/>
             </div><div className="project-card-copy"><h3 title={project.name}>{project.name}</h3><p className="project-card-summary">{content ? content.counts || (content.empty ? "空白画布" : `${content.steps.length} 个创作节点`) : preview?.error ? "内容摘要暂不可用" : "正在加载内容…"}</p></div></Link>
             <div className="studio-project-info"><div><span className={`studio-project-status is-${project.status}`}><i />{project.status === "published" ? "已发布" : "草稿"}</span><time title="最近编辑时间" dateTime={project.updatedAt}>{formatDateTime(project.updatedAt)}</time></div>
-              <details className="studio-project-menu"><summary aria-label={`画布 ${project.name} 的更多操作`}><MoreHorizontal size={18} /></summary><div><Link href={`/projects/${project.id}`}><ArrowRight size={15} />打开画布</Link>{back && <Link href={back.href}><Undo2 size={15} />{back.label}</Link>}<button type="button" onClick={e => { e.currentTarget.closest("details")?.removeAttribute("open"); openInspector(project, "cover"); }}><Image size={15}/>设置封面</button><button type="button" className="project-delete-action" onClick={e => { e.currentTarget.closest("details")?.removeAttribute("open"); setDeleteError(""); setPendingDelete(project); }}><Trash2 size={15} />删除画布</button></div></details>
+              <details className="studio-project-menu"><summary aria-label={`画布 ${project.name} 的更多操作`}><MoreHorizontal size={18} /></summary><div><Link href={`/projects/${project.id}`}><ArrowRight size={15} />打开画布</Link>{back && <Link href={back.href}><Undo2 size={15} />{back.label}</Link>}<button type="button" onClick={e => { e.currentTarget.closest("details")?.removeAttribute("open"); openInspector(project, "cover"); }}><Image size={15}/>设置封面</button><button type="button" className="project-delete-action" onClick={e => { e.currentTarget.closest("details")?.removeAttribute("open"); remove([project]); }}><Trash2 size={15} />删除画布</button></div></details>
             </div>
             <div className="project-card-actions">{back && <Link href={back.href} className="project-card-continue"><Undo2 size={14}/>{back.label}</Link>}<div className="project-card-secondary"><button type="button" onClick={() => openInspector(project, "flow")}><GitBranch size={14}/>查看流程</button><button type="button" onClick={() => openInspector(project, "cover")}><Image size={14}/>设置封面</button></div></div>
           </article>;
@@ -129,8 +136,6 @@ export function StudioProjects() {
       {inspectDoc ? <><CanvasThumb doc={inspectDoc} height={260}/><p className="project-preview-caption">{inspectDoc.nodes.length} 个节点 · {inspectDoc.connections.length} 条连线</p><Link className="ip-brand-button" href={`/projects/${inspecting?.project.id}`}>打开画布<ArrowRight size={15}/></Link></> : <GalleryState loading={!previews[`${inspecting?.project.id}:${inspecting?.project.updatedAt}`]?.error} error={previews[`${inspecting?.project.id}:${inspecting?.project.updatedAt}`]?.error} retry={refreshPreviews}/>}
     </Modal>
 
-    <Modal open={!!pendingDelete} title="删除这张画布？" footer={null} onCancel={() => { if (!deleting) setPendingDelete(undefined); }} closable={!deleting} keyboard={!deleting} mask={{ closable: !deleting }} getContainer={() => surface.current || document.body} className="ip-management-editor studio-gallery-delete" centered>
-      <p>「{pendingDelete?.name}」中的节点和连线将一并删除，删除后无法恢复。</p>{deleteError && <p className="studio-gallery-action-error"><StudioErrorNotice error={deleteError}/></p>}<div className="studio-gallery-delete-actions"><button type="button" className="ip-brand-secondary" disabled={deleting} onClick={() => setPendingDelete(undefined)}>取消</button><button type="button" className="ip-brand-button" disabled={deleting} onClick={() => void remove()}>{deleting && <Loader2 size={16} className="studio-gallery-spinner" />}{deleting ? "正在删除…" : "删除"}</button></div>
-    </Modal>
+    {removal.dialog}
   </StudioPage>;
 }

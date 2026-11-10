@@ -251,9 +251,21 @@ public class IpProjectService {
         return result.map(this::toRunDto);
     }
 
-    @Transactional
+    /** 删除前核对在途任务（{@link com.aistareco.aep.ipstudio.history.StudioTrashService#canvasRemoveBlockReason}）；单测里直接构造的服务没有它，不拦。 */
+    private com.aistareco.aep.ipstudio.history.StudioTrashService trash;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setTrash(@org.springframework.context.annotation.Lazy com.aistareco.aep.ipstudio.history.StudioTrashService trash) { this.trash = trash; }
+
+    /**
+     * 删除画布（进回收站，可恢复）。行锁与提交任务、恢复、彻底删除排队；锁内读已提交的任务状态，
+     * 还有任务在生成就 409 {@code IP_PROJECT_BUSY}，不让画布消失了还在扣积分（2026-11-10）。
+     */
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public void remove(String userId, String id) {
-        IpProject p = required(userId, id);
+        IpProject p = requiredForUpdate(userId, id);
+        String busy = trash == null ? null : trash.canvasRemoveBlockReason(id, userId);
+        if (busy != null) throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT, "IP_PROJECT_BUSY", busy);
         p.setDeletedAt(Instant.now());
         p.setUpdatedAt(Instant.now());
         projectRepo.save(p);

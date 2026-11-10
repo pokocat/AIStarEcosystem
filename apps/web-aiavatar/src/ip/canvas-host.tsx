@@ -15,7 +15,9 @@ import * as React from "react";
 import { App as AntdApp, ConfigProvider, Popover, theme } from "antd";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import zhCN from "antd/locale/zh_CN";
-import { AlertCircle, BadgeCheck, CheckCircle2, Ellipsis, LayoutTemplate, Loader2, RefreshCw, Send } from "lucide-react";
+import { AlertCircle, BadgeCheck, CheckCircle2, Ellipsis, LayoutTemplate, Loader2, RefreshCw, Send, Trash2 } from "lucide-react";
+import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
+import { useCanvasDelete } from "@/ip/studio-canvas-delete";
 import StudioFlowCanvas from "./studio-flow-canvas";
 import { useProjectSync } from "@/canvas-bridge/project-sync";
 import { setModelsUnavailableHandler } from "@/canvas-bridge/config-store";
@@ -67,6 +69,10 @@ function Host({ projectId }: { projectId: string }) {
   // 与 StudioTemplateController 的 InAppOperatorGuard.require 同源，普通用户只存个人模板。
   React.useEffect(() => { const store = useAssetStore.getState(); store.reset(); void store.loadAssets(); return () => store.reset(); }, [identity?.uid]);
   const isOperator = isOperatorRole(identity?.operatorRole);
+  // 「⋯ → 删除画布」（2026-11-10）：进回收站，删完回项目页。整页跳转，离开前补存打到已删除的画布上只会 404，不会把它恢复。
+  const removal = useCanvasDelete(modalContainerOf);
+  const canvasName = useCanvasStore(s => s.projects.find(p => p.id === projectId)?.title);
+  const [moreOpen, setMoreOpen] = React.useState(false);
   React.useEffect(() => {
     if (state !== "ready") return;
     let leaving = false;
@@ -133,7 +139,7 @@ function Host({ projectId }: { projectId: string }) {
   useHostActions(
     <>
       {/* 低频项（历史记录、上次发给模型、模板来源、存为模板）收进「⋯」，顶栏只留保存状态、发布和积分（画布页改版，2026-10-19）。 */}
-      <Popover trigger="click" placement="bottomRight" getPopupContainer={modalContainerOf} content={<div className="studio-host-more" role="group" aria-label="画布更多操作">
+      <Popover trigger="click" placement="bottomRight" open={moreOpen} onOpenChange={setMoreOpen} getPopupContainer={modalContainerOf} content={<div className="studio-host-more" role="group" aria-label="画布更多操作">
         <ProjectHistory projectId={projectId} saveNow={saveNow} />
         <LastRunPanel />
         {!USE_MOCK && <><StudioTemplateSource projectId={projectId}/><button type="button" onClick={()=>{setTemplateVisibility('personal');setTemplateOpen(true);}} className="studio-host-more-item"><LayoutTemplate aria-hidden="true"/>保存为模板</button></>}
@@ -148,9 +154,12 @@ function Host({ projectId }: { projectId: string }) {
             保存为官方内容
           </button>
         )}
+        {!USE_MOCK && <button type="button" className="studio-host-more-item is-danger" onClick={() => { setMoreOpen(false); removal.ask({ targets: [{ id: projectId, name: canvasName || "这张画布" }],
+          onDeleted: () => window.location.assign("/projects") }); }}><Trash2 aria-hidden="true"/>删除画布</button>}
       </div>}>
-        <button type="button" aria-label="更多" title="历史记录、上次发给模型、模板" className="studio-host-more-button"><Ellipsis className="w-4 h-4" /></button>
+        <button type="button" aria-label="更多" title="历史记录、上次发给模型、模板、删除" className="studio-host-more-button"><Ellipsis className="w-4 h-4" /></button>
       </Popover>
+      {removal.dialog}
       {/* 设计稿 Main 画板：保存状态是标题旁的一行灰字，不是胶囊；顶栏右侧依次是「⋯」、积分、发布（顺序由 studio-flow.css 排）。 */}
       {saveState !== "idle" && (
         <span

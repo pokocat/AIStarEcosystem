@@ -1,5 +1,12 @@
 # 待办与已知问题
 
+## 画布删除与付款弹窗的预计（2026-11-10 用户反馈）
+
+- [x] ~~**付款弹窗把授权上限当「本次预计」，还据此判积分不足**~~ **2026-11-10 本地修复，未发布**：AI 视频页 36 秒长视频按钮写「约 2,208 积分」，弹窗写「本次预计 8,274 积分」（标准价 × 3 的授权上限），7,893 积分被判个人积分不足；受理时并不冻结上限，每一步做的时候才扣。现在视频任务、长视频、裂变和对话确认卡都把按钮 / 卡片上的预计（`expectedCost`）和上限（`costCap`）分开传，弹窗只写预计、余额只跟预计比，上限放悬停提示（`ip/studio-billing-dialog.tsx`、`canvas-bridge/studio-billing.ts`）。测试 `studio-billing-dialog.test.tsx`。
+- [x] ~~**画布删不掉**~~ **2026-11-10 本地完成，未发布**：原来只有项目页卡片「⋯」里能一次删一张，弹窗还写「删除后无法恢复」（实际进回收站）。现在项目页卡片上直接有删除、可「选择」后批量删；AI 视频页「最近任务」与草稿、AI 图片页「最近」、画布页「⋯」都能删，共用 `ip/studio-canvas-delete.tsx`。服务端普通删除也核对在途（409 `IP_PROJECT_BUSY`，`StudioTrashService.canvasRemoveBlockReason`），停在「需处理」或暂停的制作计划可以删。测试 `StudioTrashAndGuardTest#ordinaryDeleteRefusesOnlyWhileSomethingIsStillGenerating`。
+- [ ] **创作页（`/create`）最近画布那一排还不能删**：要删得去项目页或画布页。
+- [ ] **文字任务的付款弹窗**仍按冻结上限判余额（见下文「付款弹窗」那条），这次没动。
+
 ## 导演台读取作品耗尽连接池（2026-11-10 线上事故）
 
 - [x] ~~**`DirectorService.get` 持着作品行锁再开 `REQUIRES_NEW` 读任务**~~ **2026-11-10 已修（本地，未发布）**：调用 `view()` 的入口（create / get / patch / edit / task / pipeline，stopTask 末尾的读取）都改为读已提交，任务列表在同一事务、同一连接里读（`DirectorService#recentRuns`，万一有入口没声明读已提交就退回旧做法并打 WARN）；前端轮询改为上一次返回后再排下一次、有读取在途就跳过（`director-poll.ts` 的 `useDirectorPoll`）。回归 `DirectorReadPoolTest`（3 条连接、12 个并发读同一部作品全部成功；读取途中别的事务提交的任务仍列出，已在一次性 MySQL 8.0 上跑过）与 `director-poll.test.tsx`。原记录：（`view()` 里 `newTx.execute(tx -> runs.findByProjectIdOrderByCreatedAtDesc(...))`），正是 §8.0.1 ⑯ 写过的坑。2026-11-10 16:08–16:11（北京时间）一个账号在 10 秒里对同一部作品（`DW-a7c57fb8…`）发了 125 个 GET：前 20 个拿走全部连接，其中拿到锁的那个等不到第二条连接，其余的在等锁，30 秒池超时和 50 秒锁等待轮流失败。约 4 分钟里读作品回了 191 个 500，钱包、画布列表、模型列表等也跟着失败，日志 599 条 ERROR，之后自行恢复。和当天 15:28 的发布无关（这段代码 10-24 起就在）。要改两处：服务端读作品不在锁内另开连接（任务列表在同一事务里按读已提交读，或先读任务再加锁；回归照 `DirectorDeletePoolTest` 用小连接池加并发读）；前端 `director-workbench.tsx` 的 2.5 秒轮询没有在途保护，上一次没回来就接着发，请求一慢就越堆越多，要等上一次回来再发。那 125 个请求怎么在 10 秒内发出来的还没查清（单个页面每 2.5 秒一次，对不上，可能是开了多个页面，或请求在前面某处排队后一起放行）。

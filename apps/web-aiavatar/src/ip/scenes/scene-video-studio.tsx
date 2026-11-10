@@ -901,7 +901,7 @@ export function SceneVideoStudio() {
    * 换变量、AI 改写的那几条只换脚本（takes[i].text），其余设置不变。新任务进同一份草稿，结果区同一组。
    * 费用按现在的报价重新算上限；付款账户第一条选定后后面几条沿用。
    */
-  const generateTakes = async (task: StudioVideoTask, takes: MoreTake[]) => {
+  const generateTakes = async (task: StudioVideoTask, takes: MoreTake[], estimate?: number) => {
     const base = task.request, query = base && takePriceQuery(base);
     if (busy || !base || !query || !takes.length) return false;
     setBusy(true);
@@ -911,7 +911,7 @@ export function SceneVideoStudio() {
       for (const [i, take] of takes.entries()) {
         // AI 改写的脚本没有对应的编导版本：给一个新的编号，「修改后生成」放回时按它补一版脚本（restoreVideoTaskScript）。
         request = await prepareVideoTask(task.projectId, { ...takeRequest(base, nanoid(), cap, nanoid(),
-          { ...take, ...(take.take.mode === 'rewrite' ? { scriptId: nanoid() } : {}) }), ...(billing ? { billing } : {}) });
+          { ...take, ...(take.take.mode === 'rewrite' ? { scriptId: nanoid() } : {}) }), ...(billing ? { billing } : {}) }, estimate);
         billing = request.billing;
         // 普通视频受理后才异步扣费，积分不够要到那时才知道：第一条交之前先问一次，同「生成视频」。
         if (i === 0 && base.kind === 'direct' && request.video?.video && !caps?.mock) {
@@ -1059,7 +1059,7 @@ export function SceneVideoStudio() {
         const subject = cut && brief.split(/[，。,.!?！？；;\n]/)[0].trim() !== cut ? `${cut}…` : cut;
         request = await prepareVideoTask(projectId, { clientRequestId, kind, sceneId: scene.id, title: `${scene.title} · ${subject || `${configuration.duration} 秒`}`,
           configuration, video: native, budgetCap: cap, sourceNodeId: placed.find(p => p.media.key === video?.key)?.node.id,
-          input: { nodes: snapshotNodes, sceneInputs: selection(), sceneVideoState: { ...videoState, duration: configuration.duration, tier: usedTier, ratio, optimize }, sceneVideoModel: chosenVideo.endpointId } });
+          input: { nodes: snapshotNodes, sceneInputs: selection(), sceneVideoState: { ...videoState, duration: configuration.duration, tier: usedTier, ratio, optimize }, sceneVideoModel: chosenVideo.endpointId } }, shownEstimate);
         // 任务受理后才异步执行，积分不够要到那时才知道，只能落成一条「需处理」的记录：直接出片的价钱是确定的，受理前先问。
         // 长视频和复刻是多步任务，总价只是估算，这里不拦。
         if (kind === 'direct' && !caps?.mock) {
@@ -1132,6 +1132,10 @@ export function SceneVideoStudio() {
   const longView = longShown ? describeSegmentedPrice(longShown, longPriced?.enterprise) : undefined;
   // 长视频和爆款复刻按实际用量结算：按钮上写约数，上限和明细只放悬停提示（2026-11-07 用户：按钮下的费用说明多余）。
   const capNote = !caps?.mock && taskQuote?.key === taskPriceKey && taskQuote.price ? `按实际用量结算，最多 ${taskQuote.price.cap.toLocaleString("zh-CN")} 积分` : undefined;
+  // 付款弹窗写的「预计」和按钮上同一个数（分支顺序同按钮）；上限只放悬停提示，不拿来判余额
+  // （2026-11-10 用户：按钮约 2,208，弹窗写预计 8,274 还判个人积分不足）。
+  const shownEstimate = caps?.mock ? undefined : long ? longView?.shown : taskKind === 'direct' ? price?.shown
+    : taskQuote?.key === taskPriceKey ? taskQuote.price?.estimated : undefined;
   const priceTitle = (...lines: (string | false | undefined)[]) => lines.filter(Boolean).join("\n") || undefined;
   const onPick = (id: string) => { const next = findVideoScene(catalog, id); if (next && (next.id !== scene.id || draftRef.current)) goToScene(next); };
   // 左上角是当前场景：编辑时是正在用的场景，打开历史任务时是提交时选的那个（2026-11-09 用户要求对齐参考站，原来打开历史后看不出是哪个场景）。
@@ -1321,7 +1325,8 @@ export function SceneVideoStudio() {
     <SceneVideoWorkspace enabled={ready} taskId={query.task} draftId={query.draft} sceneId={query.scene} restoreLastTask={!initialVideoEntry.current.draft && !initialVideoEntry.current.scene}
       selected={selectedTask} onSelect={task => { if (query.task && query.task === task.id) acceptTask(task); else void openTask(task); }}
       onDraft={id => { setSelectedTask(undefined); window.history.replaceState(null, '', `/video?scene=${encodeURIComponent(scene.id)}&draft=${encodeURIComponent(id)}`); void openDraft(id); }}
-      drafts={drafts.data} draftsError={drafts.error} onRetryDrafts={drafts.reload} railOpen={railOpen} onRail={setRailOpen} onNew={() => reset()} persist={persist} listRevision={taskListRevision}>
+      drafts={drafts.data} draftsError={drafts.error} onRetryDrafts={drafts.reload} railOpen={railOpen} onRail={setRailOpen} onNew={() => reset()} persist={persist} listRevision={taskListRevision}
+      onDeleted={ids => { drafts.reload(); if ((draftRef.current && ids.includes(draftRef.current.id)) || (selectedTask && ids.includes(selectedTask.projectId))) reset(); }}>
     <section className="scene-results scene-legacy-results" aria-label="作品与示例">
       <header><SceneResultTabs tab={tab} onTab={setTab} count={rows.length + segmentedRuns.length} idBase="scene-video"/>
         <span className="scene-results-actions">{draft && <Link className="scene-text-button" href={`/projects/${encodeURIComponent(draft.id)}`}><FolderOpen size={14} strokeWidth={1.4}/>在画布上查看</Link>}
@@ -1348,7 +1353,7 @@ export function SceneVideoStudio() {
       free={!!caps?.mock} busy={busy} textBlocker={!caps ? '正在加载模型…' : !caps.mock && !textModel?.tokenPricing ? 'AI 编导暂时不可用，请联系平台处理。' : undefined}
       nodes={draft?.id === selectedTask!.projectId ? draft.doc.nodes as CanvasNodeData[] : []}
       onClose={() => setMoreFor(undefined)} onFind={() => findTakeVariables(selectedTask!)} onWrite={changes => writeTakeScripts(selectedTask!, changes)}
-      onGenerate={takes => generateTakes(selectedTask!, takes)} onEdit={() => void editTask(selectedTask!)} onConfirm={node => void confirmOriginal(node)}/>}
+      onGenerate={(takes, estimate) => generateTakes(selectedTask!, takes, estimate)} onEdit={() => void editTask(selectedTask!)} onConfirm={node => void confirmOriginal(node)}/>}
     <HubTabBar/>
   </main>;
 }

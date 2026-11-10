@@ -5,7 +5,7 @@ import { observePortraitReviews, requestPortraitReview } from '../portrait-revie
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import Link from 'next/link';
-import { AlertCircle, ArrowUpRight, Check, ChevronRight, Clock3, Download, Film, Image as ImageIcon, Layers, ListVideo, Loader2, Play, Plus, RefreshCw, Square, X } from 'lucide-react';
+import { AlertCircle, ArrowUpRight, Check, ChevronRight, Clock3, Download, Film, Image as ImageIcon, Layers, ListVideo, Loader2, Play, Plus, RefreshCw, Square, Trash2, X } from 'lucide-react';
 import { nanoid } from 'nanoid';
 import type { IpRun, IpProjectDoc } from '@ai-star-eco/types';
 import type { StudioPlanExecutionStep } from '@ai-star-eco/types/ip-studio-workflow';
@@ -14,6 +14,7 @@ import { videoTask, videoTasks, videoTaskLabel, videoTaskStatus, videoTaskCanvas
 import { cancelRun, readRun, readVideoJob, signKeys } from '@/canvas-bridge/api';
 import { dialogFocus } from '@/ip/dialog-focus';
 import { normalizeStudioError, StudioErrorNotice, useStudioFailure } from '@/ip/studio-errors';
+import { useCanvasDelete } from '@/ip/studio-canvas-delete';
 import { SignedImage } from '@/canvas-bridge/signed-image';
 import { SignedVideo } from '@/canvas-bridge/signed-video';
 import { SignedAudio } from '@/canvas-bridge/signed-audio';
@@ -58,13 +59,15 @@ export function VideoHistoryToggle({ onOpen }: { onOpen: () => void }) {
 }
 
 /** Data loading never submits work. A stale response cannot replace a more recently selected task. */
-export function SceneVideoWorkspace({ enabled, taskId, draftId, sceneId, restoreLastTask, selected, onSelect, onDraft, drafts, draftsError, onRetryDrafts, railOpen, onRail, onNew, children, persist, listRevision = 0 }: {
+export function SceneVideoWorkspace({ enabled, taskId, draftId, sceneId, restoreLastTask, selected, onSelect, onDraft, drafts, draftsError, onRetryDrafts, railOpen, onRail, onNew, onDeleted, children, persist, listRevision = 0 }: {
   enabled: boolean; taskId?: string; draftId?: string; sceneId?: string; restoreLastTask?: boolean; selected?: StudioVideoTask;
   /** 变了就重读任务列表（视频裂变之后，新任务要马上排进「本批视频」）。 */
   listRevision?: number;
   onSelect: (task: StudioVideoTask) => void;
   onDraft: (id: string) => void; drafts: { id: string; name: string; updatedAt: string }[]; draftsError?: string; onRetryDrafts?: () => void;
   railOpen: boolean; onRail: (open: boolean) => void; onNew?: () => void;
+  /** 删掉了这些草稿（进回收站）：页面上开着的是其中之一就回到新建。 */
+  onDeleted?: (projectIds: string[]) => void;
   children: ReactNode;
   persist: (mutate: (doc: IpProjectDoc) => IpProjectDoc, projectId?: string) => Promise<unknown>;
 }) {
@@ -122,6 +125,15 @@ export function SceneVideoWorkspace({ enabled, taskId, draftId, sceneId, restore
     return () => { alive = false; if (timer) clearTimeout(timer); };
   }, [enabled, taskId, reload]);
   const choose = (task: StudioVideoTask) => { onRail(false); onSelect(task); };
+  // 删除（2026-11-10 用户：不想要的删不掉）：删的是这条任务所在的草稿，同一份草稿里的几条视频一起进回收站。
+  const removal = useCanvasDelete();
+  const removeDraft = (projectId: string, name: string) => {
+    const inDraft = items.filter(t => t.projectId === projectId);
+    removal.ask({ targets: [{ id: projectId, name }], noun: '草稿',
+      detail: inDraft.length > 1 ? `这份草稿里的 ${inDraft.length} 条视频会一起删除。` : undefined,
+      blocked: inDraft.some(t => videoTaskStatus(t) === 'running') ? '这份草稿里还有视频在生成，生成结束或停止后才能删除。' : undefined,
+      onDeleted: ids => { setItems(old => old.filter(t => !ids.includes(t.projectId))); onDeleted?.(ids); setReload(n => n + 1); } });
+  };
   const shown = selected?.id === taskId ? selected : undefined;
   const openDrafts = drafts.filter(d => !items.some(t => t.projectId === d.id));
   const today = new Date().toDateString();
@@ -159,19 +171,21 @@ export function SceneVideoWorkspace({ enabled, taskId, draftId, sceneId, restore
         {groups.map(group => <div key={group.label} role="group" aria-label={group.label}><h4>{group.label}</h4>{group.takes.map(({ latest, tasks }) => {
           const current = tasks.find(t => t.id === taskId), busy = tasks.find(t => videoTaskStatus(t) === 'running') ?? latest;
           const batch = tasks.length > 1, tag = takeTag(latest);
-          return <button type="button" className={`video-history-item${batch ? ' is-batch' : ''}`} key={latest.id} title={latest.title} aria-current={current ? 'true' : undefined} onClick={() => choose(current ?? latest)}>
+          return <div className="video-history-row" key={latest.id}><button type="button" className={`video-history-item${batch ? ' is-batch' : ''}`} title={latest.title} aria-current={current ? 'true' : undefined} onClick={() => choose(current ?? latest)}>
             <span className="video-history-thumb-wrap"><TaskThumb task={latest}/>{batch && <i className="video-history-count" aria-label={`本批 ${tasks.length} 条`}>{tasks.length}</i>}</span>
             <span><strong>{latest.title}</strong><small data-state={videoTaskStatus(busy)}>{videoTaskLabel(busy)}{batch && ` · 共 ${tasks.length} 条`}</small>
               <span className="video-history-meta">{grouping === 'time' && tag.label && <i className="video-take-tag" title={tag.detail}>{tag.label}</i>}
                 <time dateTime={latest.createdAt}>{formatDateTime(latest.createdAt)}</time></span></span>
-          </button>;
+          </button><button type="button" className="video-history-delete" aria-label="删除" title={`删除「${latest.title}」所在的草稿`} onClick={() => removeDraft(latest.projectId, latest.title)}><Trash2 size={14} strokeWidth={1.6}/></button></div>;
         })}</div>)}
         {(!!openDrafts.length || !!draftsError) && <h3>草稿</h3>}
         {draftsError && <p role="status">草稿加载失败{onRetryDrafts && <button type="button" className="video-history-retry" onClick={onRetryDrafts}>重试</button>}</p>}
-        {openDrafts.map(d => <button type="button" className="video-history-draft" key={d.id} title={d.name} onClick={() => { onRail(false); onDraft(d.id); }}><Film size={15} strokeWidth={1.5}/><span>{d.name}</span><ChevronRight size={13}/></button>)}
+        {openDrafts.map(d => <div className="video-history-row" key={d.id}><button type="button" className="video-history-draft" title={d.name} onClick={() => { onRail(false); onDraft(d.id); }}><Film size={15} strokeWidth={1.5}/><span>{d.name}</span><ChevronRight size={13}/></button>
+          <button type="button" className="video-history-delete" aria-label="删除" title={`删除草稿「${d.name}」`} onClick={() => removeDraft(d.id, d.name)}><Trash2 size={14} strokeWidth={1.6}/></button></div>)}
       </div>
       {more && <button type="button" className="video-history-more" onClick={() => setPage(n => n + 1)}>加载更多<ChevronRight size={13}/></button>}
     </aside>
+    {removal.dialog}
   </>;
 }
 

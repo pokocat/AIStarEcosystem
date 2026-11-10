@@ -357,3 +357,13 @@ html:not([data-layout="desktop"]) .video-more-edit { flex: none; min-height: 200
 html:not([data-layout="desktop"]) .video-more-foot { flex-wrap: wrap; padding: 10px 16px calc(12px + env(safe-area-inset-bottom)); }
 html:not([data-layout="desktop"]) .video-more-foot-note { flex-basis: 100%; }
 html:not([data-layout="desktop"]) .scene-studio .video-more-foot .scene-go.is-compact { flex: 1; min-width: 0; }
+
+/* 最近任务、草稿的删除（2026-11-10）：悬停或键盘聚焦时出现在右上角，触屏上常显。 */
+.video-history-row { position: relative; }
+.video-history-row .video-history-item, .video-history-row .video-history-draft { padding-right: 34px; }
+.video-history-delete { position: absolute; top: 8px; right: 6px; display: grid; place-items: center; width: 26px; height: 26px; border: 0; border-radius: 7px;
+  background: var(--ip-paper, #fff); color: var(--ip-muted); cursor: pointer; opacity: 0; transition: opacity 140ms ease; }
+.video-history-row:hover .video-history-delete, .video-history-delete:focus-visible { opacity: 1; }
+.video-history-delete:hover { color: var(--ip-error, #a43845); background: var(--ip-error-soft, #fcf0f1); }
+@media (hover: none) { .video-history-delete { opacity: 1; } }
+.video-history-row .video-history-draft + .video-history-delete { top: 3px; }

@@ -15401,7 +15401,7 @@ paths:
         '200': { description: ok }
         '400': { description: 'IP_COVER_INVALID —— 封面非当前画布本人图片；IP_DOC_INVALID —— 不是含 nodes/edges 的对象；IP_DOC_TOO_LARGE —— 超过 aep.ipstudio.doc-max-bytes（默认 2MB）' }
         '404': { description: IP_PROJECT_NOT_FOUND }
-    delete: { tags: [ipstudio], operationId: ipStudioDeleteProject, description: '软删（行保留，只打 deletedAt）。', responses: { '200': { description: soft deleted }, '404': { description: IP_PROJECT_NOT_FOUND } } }
+    delete: { tags: [ipstudio], operationId: ipStudioDeleteProject, description: '软删（行保留，只打 deletedAt，可在回收站恢复）。画布上还有任务在生成（任务未结束、视频任务未结束或受理待核对、制作计划进行中或有在途子任务）时拒绝；停在「需处理」或暂停、没有在途子任务的制作计划不拦。', responses: { '200': { description: soft deleted }, '404': { description: IP_PROJECT_NOT_FOUND }, '409': { description: IP_PROJECT_BUSY } } }
   /v1/ip-studio/projects/{id}/history:
     parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
     get:

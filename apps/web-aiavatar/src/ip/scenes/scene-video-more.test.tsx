@@ -40,7 +40,7 @@ test('原样: the chosen number of takes go to the page unchanged, and the dialo
   fireEvent.click(within(dialog()).getByRole('button', { name: '3 条' }));
   expect(within(dialog()).getAllByRole('tab')).toHaveLength(3);
   await act(async () => { fireEvent.click(within(dialog()).getByRole('button', { name: /生成 3 条/ })); });
-  expect(s.onGenerate).toHaveBeenCalledWith([1, 2, 3].map(() => ({ take: { of: 'PEX-a', mode: 'same' } })));
+  expect(s.onGenerate).toHaveBeenCalledWith([1, 2, 3].map(() => ({ take: { of: 'PEX-a', mode: 'same' } })), undefined);
   await waitFor(() => expect(s.onClose).toHaveBeenCalled());
 });
 
@@ -116,7 +116,7 @@ test('AI 改写: first writes one script per take with its changes, then generat
   fireEvent.click(within(dialog()).getByRole('tab', { name: /第 2 条/ }));
   expect(dialog().textContent).toContain('模型没有返回内容');
   await act(async () => { fireEvent.click(within(dialog()).getByRole('button', { name: /生成 1 条/ })); });
-  expect(s.onGenerate).toHaveBeenCalledWith([{ take: { of: 'PEX-a', mode: 'rewrite', changes: changes[0] }, text: '第一版脚本' }]);
+  expect(s.onGenerate).toHaveBeenCalledWith([{ take: { of: 'PEX-a', mode: 'rewrite', changes: changes[0] }, text: '第一版脚本' }], undefined);
   // 想换一批：重新写。
   fireEvent.click(within(dialog()).getByRole('button', { name: '重新写' }));
   expect(s.onWrite).toHaveBeenCalledTimes(2);

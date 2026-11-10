@@ -42,7 +42,8 @@ export function VideoMoreDialog({ task, modelName, free, busy, textBlocker, node
   onFind: () => Promise<void>;
   onWrite: (changes: StudioTakeChange[][]) => Promise<void>;
   /** 全部交上去了返回 true，弹窗关掉。 */
-  onGenerate: (takes: MoreTake[]) => Promise<boolean>;
+  /** estimate：按钮上写的这几条合计（付款弹窗写同一个数）。 */
+  onGenerate: (takes: MoreTake[], estimate?: number) => Promise<boolean>;
   onEdit: () => void;
   /** 提交结果没确认的那次（找变量、改写）：同一个请求编号再交一次。 */
   onConfirm: (node: CanvasNodeData) => void;
@@ -95,7 +96,7 @@ export function VideoMoreDialog({ task, modelName, free, busy, textBlocker, node
   const takes: MoreTake[] = way === 'same' ? Array.from({ length: count }, () => ({ take: { of: task.id, mode: 'same' } }))
     : way === 'variables' ? changes.map(c => ({ take: { of: task.id, mode: 'variables', changes: c }, text: applyChanges(script, c) }))
     : written.map(n => ({ take: { of: task.id, mode: 'rewrite', changes: n.metadata?.studio?.sceneTake?.changes }, text: scriptMissing(n.metadata?.content || '').body }));
-  const generate = () => void onGenerate(takes).then(done => { if (done) onClose(); });
+  const generate = () => void onGenerate(takes, free || each === undefined ? undefined : each * takes.length).then(done => { if (done) onClose(); });
 
   type Action = { label: string; ai?: boolean; price?: string; blocker?: string; run?: () => void };
   const action: Action = way === 'edit' ? { label: '去修改', blocker: reasonOf('edit'), run: onEdit }
