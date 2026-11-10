@@ -24,4 +24,4 @@
 
 ## 回滚
 
-server 和 web-aiavatar 都回生产机 `/opt/ai-star-eco/releases/20261109-account-pages-e978bfce`，可分开回。回 server 后提示词库里已存的新版本仍是当前版本，要按旧文件重新发布对应条目（或在后台回滚到上一版）才会退回旧提示词。
+server 和 web-aiavatar 都回生产机 `/opt/ai-star-eco/releases/20261109-account-pages-e978bfce`，可分开回。旧 server 启动时，改过的提示词文件与库里最新的种子版本对不上，会按旧文件自动再换一个新版本，等于退回旧提示词（`StudioSkillStore`，前提是期间没人在后台改过）。新增的五个 `method-*` 条目会留在库里，旧版本的编导同样按场景分组拼 `method-<分组>`，要退干净就在后台把这五条停用。
