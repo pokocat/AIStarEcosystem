@@ -1332,9 +1332,11 @@ Studio 视频费用确认复用图片弹窗，显示整批原价、优惠、赠�
 
 `SceneVideoStudio` 的普通视频、长视频与爆款复刻均由 `SceneVideoWorkspace` 展示后台任务：桌面配置 / 作品 / 最近任务三列，手机切换编辑、作品与示例。任务通过 `?scene=&draft=&task=` 打开，服务端执行记录为状态真值；快照只保存素材 key，历史设置只读，「视频裂变 · 自己改」放回同一份草稿。失败步骤最多自动执行三次；去画布会定位同一问题节点并保留返回入口，浏览不会恢复付费执行。详细设计与验收见 `docs/studio-video-workflow-redesign.md`。
 
-### 爆款复刻的三种方式（2026-11-11，本地实现，未发布）
+### 爆款复刻的三种方式（2026-11-11，已生产发布 `20261111-recreation-modes-0a330629`）
 
-`/toolbox` 和 AI 视频页爆款复刻场景里的方式卡片（`scene-video-clone.tsx` 的 `VIDEO_CLONE_TOOLS`，每张写适合什么视频）；首页常用工具改叫「爆款复刻」。三种方式都按原片分段，时长固定跟参考视频走（设置面板里不能拖，`followsSource`）；顺手修了默认时长被截到单段上限、原片长于单段上限的复刻分析完就停住的问题。放进参考视频后调 `GET /api/v1/ip-studio/studio/clone-advice` 拿推荐，只加「推荐」标签和一句原因。每种方式配一张示意图（`public/studio/clone-modes/*.webp`，本地 Codex 出的虚构韩系人物，标「示意图」，不是真实生成结果），说明分「适合」「限制」两行（`VIDEO_CLONE_TOOLS.fit / limit`，工具箱和视频页共用 `CloneModeFacts`）。见 `docs/ip-studio-recreation.md`「三种复刻方式」。
+`/toolbox` 和 AI 视频页爆款复刻场景里的方式卡片（`scene-video-clone.tsx` 的 `VIDEO_CLONE_TOOLS`，每张写适合什么视频）；首页的入口在「你想做什么？」场景卡片里，常用工具里不再重复放。三种方式都按原片分段，时长固定跟参考视频走（设置面板里不能拖，`followsSource`）；顺手修了默认时长被截到单段上限、原片长于单段上限的复刻分析完就停住的问题。放进参考视频后调 `GET /api/v1/ip-studio/studio/clone-advice` 拿推荐，只加「推荐」标签和一句原因。每种方式配一张示意图（`public/studio/clone-modes/*.webp`，本地 Codex 出的虚构韩系人物，标「示意图」，不是真实生成结果），说明分「适合」「限制」两行（`VIDEO_CLONE_TOOLS.fit / limit`，工具箱和视频页共用 `CloneModeFacts`）。见 `docs/ip-studio-recreation.md`「三种复刻方式」。
+
+同日按用户要求调整视频页（随后只发网页）：左侧只留三张方式小卡、推荐理由和「自动检查」小开关（antd `Switch size="small"`），开关的说明放在旁边问号的悬停提示里；每种方式的示意图、说明、适合和限制放到右侧「示例」（`CloneModeGuide`），当前方式高亮，可以在那里直接选用。线上没有动作提取服务时，深度复刻一选中就提示暂不可用，也不再请求报价（之前会反复拿到 503 `STUDIO_DEPTH_NOT_CONFIGURED`）。
 
 ### 工具箱视频复刻（2026-11-08，本地实现，未发布）
 

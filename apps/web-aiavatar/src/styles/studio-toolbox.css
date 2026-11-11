@@ -36,7 +36,32 @@ html[data-layout="desktop"] .studio-toolbox { grid-template-columns: repeat(3, m
 .studio-clone-facts dt { color: #1f2430; font-weight: 500; }
 .studio-clone-facts dd { margin: 0; overflow-wrap: anywhere; }
 /* 爆款复刻的「自动检查」开关：方式说明下面一行，选项沿用 .scene-choice-row */
-.studio-clone-check { display: grid; grid-template-columns: auto minmax(0, 180px); align-items: center; gap: 6px 12px; margin-top: 10px; }
+.studio-clone-check { display: flex; align-items: center; gap: 4px; margin-top: 12px; }
 .studio-clone-check > span { color: #1f2430; font-size: 12px; font-weight: 500; }
-.studio-clone-check > p { grid-column: 1 / -1; margin: 0; color: #6b7280; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
-.studio-clone-check button:disabled { cursor: not-allowed; opacity: .6; }
+.studio-clone-check .ant-switch { margin-left: 6px; }
+.studio-clone-check .ant-switch.ant-switch-checked { background: #6e5fc6; }
+.studio-clone-help { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: none; color: #8b91a0; cursor: help; }
+.studio-clone-help:hover, .studio-clone-help:focus-visible { color: #5a4bb5; }
+.studio-clone-help:focus-visible { outline: 2px solid #8a7ac8; outline-offset: 1px; }
+
+/* 视频页右侧「示例」：三种方式的示意图和说明，手机上图在上，电脑上图在左 */
+.studio-clone-guide { display: grid; gap: 16px; padding: 4px 22px 24px; overflow-y: auto; }
+.studio-clone-guide > header h2 { margin: 0; color: #1f2430; font-size: 17px; font-weight: 600; }
+.studio-clone-guide > header p { margin: 4px 0 0; color: #6b7280; font-size: 13px; line-height: 1.6; }
+.studio-clone-guide ol { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.studio-clone-guide li { display: grid; gap: 12px; padding: 12px; border: 1px solid var(--scene-line, #e4e7ed); border-radius: 16px; background: #fff; }
+.studio-clone-guide li[aria-current="true"] { border-color: #6e5fc6; box-shadow: 0 0 0 1px #6e5fc6 inset; background: #faf9ff; }
+.studio-clone-guide-media { position: relative; overflow: hidden; margin: 0; border-radius: 10px; aspect-ratio: 16 / 9; background: #f3f0ea; }
+.studio-clone-guide-media img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.studio-clone-guide-media figcaption { position: absolute; left: 8px; bottom: 6px; padding: 1px 6px; border-radius: 6px; background: rgba(255, 255, 255, .82); color: #6b7280; font-size: 11px; line-height: 18px; }
+.studio-clone-guide-body { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
+.studio-clone-guide-body h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; color: #1f2430; font-size: 15px; font-weight: 600; }
+.studio-clone-guide-body h3 em { padding: 1px 6px; border-radius: 6px; background: #efecfb; color: #5a4bb5; font-size: 11px; font-style: normal; font-weight: 500; }
+.studio-clone-guide-current { padding: 1px 6px; border-radius: 6px; background: #6e5fc6; color: #fff; font-size: 11px; font-weight: 500; }
+.studio-clone-guide-body > p { margin: 0; color: #4b5161; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.studio-clone-guide-body .studio-clone-facts { width: 100%; }
+.studio-clone-guide-use { margin-top: 2px; padding: 4px 12px; border: 1px solid #d8d3f0; border-radius: 999px; background: #fff; color: #5a4bb5; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; }
+.studio-clone-guide-use:hover:not(:disabled) { border-color: #8a7ac8; background: #faf9ff; }
+.studio-clone-guide-use:disabled { cursor: not-allowed; opacity: .6; }
+.studio-clone-guide-use:focus-visible { outline: 2px solid #8a7ac8; outline-offset: 2px; }
+html[data-layout="desktop"] .studio-clone-guide li { grid-template-columns: minmax(200px, 42%) minmax(0, 1fr); align-items: center; gap: 18px; }
