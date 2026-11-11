@@ -250,6 +250,21 @@ public class AiModelUsageService {
                 billingMode, billableUnits, billableSeconds);
     }
 
+    /** Downloading an existing image receipt again is still one successful provider call. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordImageSuccess(String providerId, String providerName, String model, String purpose,
+                                   String userId, String appCode, String requestId, String upstreamId,
+                                   String requestBodyJson) {
+        String observationId = truncate(blankToNull(requestId), 96);
+        if (observationId != null) {
+            endpointRepo.lockById(providerId);
+            if (repo.existsByProviderIdAndPurposeAndRequestIdAndSuccessTrue(providerId, purpose, observationId)) return;
+        }
+        saveRecord(providerId, providerName, model, purpose, 0L, 0L, 0L, true,
+                userId, null, appCode, observationId, upstreamId, null, null, null,
+                requestBodyJson, null, null, AiModelBillingMode.PER_CALL, 1L, 0L);
+    }
+
     /** One observation per successful vendor optimization key; retries must not multiply reported consumption. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordPromptOptimization(String providerId, String providerName, String model, String userId,

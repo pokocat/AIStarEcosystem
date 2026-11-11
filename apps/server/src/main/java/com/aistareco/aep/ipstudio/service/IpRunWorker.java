@@ -49,6 +49,7 @@ public class IpRunWorker {
     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AiGenerationQueueService queue;
 
     @org.springframework.beans.factory.annotation.Autowired private JusuanImageClient jusuanImages;
+    private final java.util.Set<String> liveRuns=java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     private org.springframework.transaction.support.TransactionTemplate billingTransactions;
     @org.springframework.beans.factory.annotation.Autowired
@@ -94,10 +95,26 @@ public class IpRunWorker {
     }
 
     /** 同步入口（测试与 reaper 补跑用；@Async 只是它的包装）。 */
-    public void runBlocking(String runId) {runBlocking(runId,false);}
+    public void runBlocking(String runId) {
+        if(!liveRuns.add(runId))return;
+        try {
+            executeRun(runId,false);
+        } finally {
+            liveRuns.remove(runId);
+        }
+    }
 
     @Async("ipRunExecutor")
     public void recoverNative(String runId) {
+        if(!liveRuns.add(runId))return;
+        try {
+            recoverNativeWhileOwned(runId);
+        } finally {
+            liveRuns.remove(runId);
+        }
+    }
+
+    private void recoverNativeWhileOwned(String runId) {
         final boolean[] claimed={false};
         atomic(()->{
             if(enterpriseBilling!=null)enterpriseBilling.lockForSettlement(IpRunService.REF_TYPE,runId);
@@ -109,7 +126,7 @@ public class IpRunWorker {
             exec.put("nativeLeaseUntil",System.currentTimeMillis()+180_000);
             run.setInputJson(write(input));run.setHeartbeatAt(Instant.now());runRepo.save(run);claimed[0]=true;
         });
-        if(claimed[0])runBlocking(runId,true);
+        if(claimed[0])executeRun(runId,true);
     }
     public static boolean hasNativeSubmission(IpRun run) {
         if(run==null||!IpRun.STATUS_RUNNING.equals(run.getStatus()))return false;
@@ -124,9 +141,14 @@ public class IpRunWorker {
         var input=projects.parseOrEmptyObject(run.getInputJson());
         int completed=projects.parseOrEmptyObject(run.getOutputJson()).path("candidates").size();
         var checkpoint=input.path("_exec").path("imageJobs").path(completed);
-        return !checkpoint.path("submitAttempted").asBoolean() || checkpoint.hasNonNull("jobId") || checkpoint.hasNonNull("storageKey");
+        return !checkpoint.path("submitAttempted").asBoolean() || hasNativeResult(checkpoint);
     }
-    private void runBlocking(String runId,boolean recovery) {
+
+    static boolean hasNativeResult(JsonNode checkpoint) {
+        return checkpoint.hasNonNull("jobId") || checkpoint.hasNonNull("resultUrl") || checkpoint.hasNonNull("storageKey");
+    }
+
+    private void executeRun(String runId,boolean recovery) {
         IpRun run = runRepo.findById(runId).orElse(null);
         if (run == null) {
             log.warn("[ipstudio] worker 找不到运行 run={}", runId);
@@ -162,7 +184,7 @@ public class IpRunWorker {
             if(hasNativeSubmission(run)) {
                 // A transient checkpoint/settlement failure cannot turn an accepted request into a refund.
                 int completed=projects.parseOrEmptyObject(run.getOutputJson()).path("candidates").size();
-                boolean known=projects.parseOrEmptyObject(run.getInputJson()).path("_exec").path("imageJobs").path(completed).hasNonNull("jobId");
+                boolean known=hasNativeResult(projects.parseOrEmptyObject(run.getInputJson()).path("_exec").path("imageJobs").path(completed));
                 try{pending(run,new JusuanImageClient.Pending(known,e));}
                 catch(RuntimeException checkpointFailure){log.warn("[ipstudio] 原图片任务状态写入失败，保留原冻结 run={}",runId,checkpointFailure);}
             } else failWithoutSpend(run, codeOf(e), friendly(e, run.getId()), e);
@@ -329,6 +351,10 @@ public class IpRunWorker {
                 partial.set("candidates", candidates.deepCopy());
                 run.setOutputJson(write(partial));
                 run.setCost(unit*candidateNo);
+                // Keep the supplier receipt until the delivered image and its charge commit together.
+                JsonNode savedInput=projects.parseOrEmptyObject(run.getInputJson());
+                JsonNode receipt=savedInput.path("_exec").path("imageJobs").path(current);
+                if(receipt instanceof ObjectNode item && item.remove("resultUrl")!=null)run.setInputJson(write(savedInput));
                 runRepo.save(run);
                 // The last spend can close the hold/auth; persist the job terminal in that same transaction.
                 if(candidateNo==count)finishAtomically(run);
@@ -347,7 +373,7 @@ public class IpRunWorker {
                 if(accepted.path("submitAttempted").asBoolean() && !(e instanceof JusuanImageClient.ProviderRejected)) {
                     while(candidates.size()>committed)candidates.remove(candidates.size()-1);
                     run.setOutputJson(previousOutput);run.setCost(previousCost);
-                    pending(run,new JusuanImageClient.Pending(accepted.hasNonNull("jobId"),e));return;
+                    pending(run,new JusuanImageClient.Pending(hasNativeResult(accepted),e));return;
                 }
                 while(candidates.size()>committed)candidates.remove(candidates.size()-1);
                 run.setOutputJson(previousOutput);run.setCost(previousCost);
@@ -436,13 +462,27 @@ public class IpRunWorker {
             ObjectNode input=(ObjectNode)projects.parseOrEmptyObject(fresh.getInputJson());
             ObjectNode exec=(ObjectNode)input.path("_exec");ArrayNode jobs=exec.withArray("imageJobs");
             while(jobs.size()<=index)jobs.addNull();jobs.set(index,state.deepCopy());
-            exec.put("nativeLeaseUntil",System.currentTimeMillis()+180_000);
+            long leaseMillis=180_000;
+            if(state.hasNonNull("resultUrl")) {
+                var spec=projects.parseOrEmptyObject(state.path("imageRequestSpec").asText("{}"));
+                leaseMillis=Math.max(leaseMillis,spec.path("wire").path("requestTimeoutMillis").asLong(90_000)+60_000);
+            }
+            exec.put("nativeLeaseUntil",System.currentTimeMillis()+leaseMillis);
             fresh.setInputJson(write(input));fresh.setHeartbeatAt(Instant.now());runRepo.save(fresh);
             run.setInputJson(fresh.getInputJson());
         });
     }
     /** Close missing receipts, including a crash before pending() could persist its error code. */
     public void failUnconfirmedSubmission(String runId) {
+        if(!liveRuns.add(runId))return;
+        try {
+            closeUnconfirmedSubmission(runId);
+        } finally {
+            liveRuns.remove(runId);
+        }
+    }
+
+    private void closeUnconfirmedSubmission(String runId) {
         atomic(() -> {
             if(enterpriseBilling!=null)enterpriseBilling.lockForSettlement(IpRunService.REF_TYPE,runId);
             var run=runRepo.lockById(runId).orElse(null);
@@ -450,7 +490,7 @@ public class IpRunWorker {
             var exec=projects.parseOrEmptyObject(run.getInputJson()).path("_exec");
             int completed=projects.parseOrEmptyObject(run.getOutputJson()).path("candidates").size();
             var item=exec.path("imageJobs").path(completed);
-            if(exec.path("nativeLeaseUntil").asLong()>System.currentTimeMillis() || !item.path("jobId").asText().isBlank() || !item.path("storageKey").asText().isBlank())return;
+            if(exec.path("nativeLeaseUntil").asLong()>System.currentTimeMillis() || hasNativeResult(item))return;
             if(!"STUDIO_IMAGE_SUBMISSION_UNKNOWN".equals(run.getErrorCode())) {
                 if(!item.path("submitAttempted").asBoolean())return;
                 // The old checkpoint lease is only 3 minutes; synchronous images can wait much longer.

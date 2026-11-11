@@ -13,6 +13,8 @@ import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.Inet4Address;
@@ -23,6 +25,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.LongConsumer;
 
@@ -31,6 +36,7 @@ import java.util.function.LongConsumer;
 public class JusuanImageClient {
     /** A supplier refusal we cannot state exactly: never its words or a status code, only that it failed and to retry. */
     static final String GENERATION_FAILED_MESSAGE = "图片生成失败，未生成的图片不扣积分。请重新生成。";
+    private static final ScheduledThreadPoolExecutor RESULT_DOWNLOAD_TIMEOUTS = resultDownloadTimeouts();
     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AiModelUsageService usage;
     private final AiModelInvocationService models;
     private final FileStorageService storage;
@@ -141,8 +147,13 @@ public class JusuanImageClient {
         ObjectNode body;
         String id=state.path("jobId").asText("");
         if(attempted) {
-            if(id.isBlank())throw new Pending(false,null);
+            String resultUrl=state.path("resultUrl").asText("");
+            if(id.isBlank()&&resultUrl.isBlank())throw new Pending(false,null);
             try{body=(ObjectNode)mapper.readTree(state.path("requestBody").asText("{}"));}catch(Exception e){throw new Pending(true,e);}
+            if(!resultUrl.isBlank()) {
+                if(durable)checkpoint.accept(state.deepCopy());
+                return completeSyncResult(endpoint,spec,size,requestId,owner,body,()->downloadUrl(wire,resultUrl));
+            }
         } else {
             List<String> references=new ArrayList<>();
             if(!multipartInput)for(int i=0;i<keys.size();i++)references.add(urlInput?referenceUrl(wire,keys.get(i)):upload(endpoint,wire,keys.get(i),requestId+"-ref-"+i,owner));
@@ -171,19 +182,10 @@ public class JusuanImageClient {
                 throw unconfirmed;
             }
             if(resultMode.startsWith("sync-")) {
-                try {
-                    byte[] bytes=syncResult(endpoint,wire,accepted,resultMode,requestId);
-                    noteOutputSize(spec,size,bytes,endpoint,requestId);
-                    recordSuccess(endpoint,owner,requestId,null,body);return bytes;
-                } catch(ProviderRejected error){throw error;}
-                catch(BusinessException error) {
-                    // The supplier already answered with its final result and a sync call has no job to resume:
-                    // an unusable result is a known failure, not an unknown submission.
-                    var rejected=new ProviderRejected(error.getMessage());
-                    for(Throwable evidence:error.getSuppressed())rejected.addSuppressed(evidence);
-                    throw rejected;
-                }
-                catch(RuntimeException error){if(durable)throw new Pending(false,error);throw error;}
+                return completeSyncResult(endpoint,spec,size,requestId,owner,body,()->syncResult(endpoint,wire,accepted,
+                        resultMode,requestId,url->{
+                            if(durable)checkpoint.accept(state.put("resultUrl",url).deepCopy());
+                        }));
             }
             id=wire!=null && wire.submitIdPointer()!=null?pointerText(accepted,wire.submitIdPointer()):accepted.path("id").asText(accepted.path("jobId").asText());
             try{requireId(id);}catch(RuntimeException error){if(durable)throw new Pending(false,error);throw error;}
@@ -353,11 +355,29 @@ public class JusuanImageClient {
         return source.startsWith("data:")?"[inline image]":source.startsWith("http")?"[external image]":source;
     }
 
+    private byte[] completeSyncResult(AiModelEndpoint endpoint,AiImageRequestSpec spec,String size,String requestId,
+                                      Invocation owner,ObjectNode body,java.util.function.Supplier<byte[]> fetch) {
+        try {
+            byte[] bytes=fetch.get();
+            noteOutputSize(spec,size,bytes,endpoint,requestId);
+            recordSuccess(endpoint,owner,requestId,null,body);
+            return bytes;
+        } catch(ProviderRejected error) {
+            throw error;
+        } catch(BusinessException error) {
+            // A response with an unusable image is a known result failure, not a missing submission.
+            var rejected=new ProviderRejected(error.getMessage());
+            for(Throwable evidence:error.getSuppressed())rejected.addSuppressed(evidence);
+            throw rejected;
+        }
+    }
+
     /**
      * OpenAI-style endpoints may ignore response_format: on 2026-10-28 /images/edits answered data[0].url
      * (a presigned S3 address) to a b64_json request. Read the sibling field rather than failing a finished image.
      */
-    private byte[] syncResult(AiModelEndpoint endpoint,AiImageRequestSpec.Wire wire,JsonNode accepted,String mode,String requestId) {
+    private byte[] syncResult(AiModelEndpoint endpoint,AiImageRequestSpec.Wire wire,JsonNode accepted,String mode,String requestId,
+                              Consumer<String> onUrl) {
         String pointer=wire.outputPointer(),value=pointerText(accepted,pointer);
         if((value==null || value.isBlank()) && pointer!=null) {
             String sibling=pointer.endsWith("/b64_json")?pointer.substring(0,pointer.length()-"b64_json".length())+"url"
@@ -366,9 +386,11 @@ public class JusuanImageClient {
             if(alternate!=null && !alternate.isBlank()) {
                 org.slf4j.LoggerFactory.getLogger(getClass()).info("[studio-jusuan-image] result field fallback request={} endpoint={} configured={} used={}",
                         requestId,endpoint.getId(),pointer,sibling);
-                return sibling.endsWith("/url")?downloadUrl(wire,alternate):resultBytes(endpoint,wire,alternate,"sync-base64");
+                value=alternate;
+                mode=sibling.endsWith("/url")?"sync-url":"sync-base64";
             }
         }
+        if("sync-url".equals(mode)&&value!=null&&!value.isBlank())onUrl.accept(value);
         return resultBytes(endpoint,wire,value,mode);
     }
 
@@ -407,10 +429,11 @@ public class JusuanImageClient {
     private byte[] downloadUrl(AiImageRequestSpec.Wire wire,String value) {
         try {
             URI uri=URI.create(value);
+            long deadline=System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(setting(wire.requestTimeoutMillis(),90000));
             for(int redirects=0;redirects<=10;redirects++) {
                 // Result downloads never carry the supplier API key. Keep reference-input fetching separate.
                 var response=http.send(HttpRequest.newBuilder(uri)
-                        .timeout(Duration.ofMillis(setting(wire.requestTimeoutMillis(),90000))).GET().build(),
+                        .timeout(Duration.ofNanos(downloadTimeLeft(deadline))).GET().build(),
                         HttpResponse.BodyHandlers.ofInputStream());
                 try(var input=response.body()) {
                     if(Set.of(301,302,303,307,308).contains(response.statusCode())) {
@@ -420,17 +443,57 @@ public class JusuanImageClient {
                         continue;
                     }
                     if(response.statusCode()/100!=2) {
-                        String body=new String(input.readNBytes(4096),StandardCharsets.UTF_8);
+                        String body=new String(readResultBody(input,4096,deadline),StandardCharsets.UTF_8);
                         throw com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attachBody(failure(ProviderErrorMessage.message(body,"图片结果下载失败，请稍后再试")),body);
                     }
                     int maxBytes=setting(wire.maxOutputBytes(),64*1024*1024);
-                    return checkedImage(input.readNBytes(maxBytes+1),maxBytes);
+                    return checkedImage(readResultBody(input,maxBytes+1,deadline),maxBytes);
                 }
             }
             throw failure("图片结果下载失败");
-        }catch(BusinessException e){throw e;}catch(Exception e){throw failure("图片结果下载失败");}
+        }catch(BusinessException e){throw e;}
+        catch(HttpTimeoutException e){throw failure("生成服务已返回图片，但下载超时，请稍后重试");}
+        catch(InterruptedException e){Thread.currentThread().interrupt();throw new Pending(true,e);}
+        catch(Exception e){
+            if(Thread.currentThread().isInterrupted())throw new Pending(true,e);
+            throw failure("图片结果下载失败");
+        }
     }
 
+    private static long downloadTimeLeft(long deadline) throws HttpTimeoutException {
+        long remaining=deadline-System.nanoTime();
+        if(remaining<=0)throw new HttpTimeoutException("Image result download timed out");
+        return remaining;
+    }
+
+    private static ScheduledThreadPoolExecutor resultDownloadTimeouts() {
+        var executor=new ScheduledThreadPoolExecutor(1,task->{
+            Thread thread=new Thread(task,"image-result-download-timeout");
+            thread.setDaemon(true);
+            return thread;
+        });
+        executor.setRemoveOnCancelPolicy(true);
+        return executor;
+    }
+
+    /** HttpRequest.timeout only covers headers for an InputStream response. Close the body at the same deadline. */
+    private static byte[] readResultBody(InputStream input,int limit,long deadline) throws IOException {
+        var expired=new AtomicBoolean();
+        var watchdog=RESULT_DOWNLOAD_TIMEOUTS.schedule(()->{
+            expired.set(true);
+            try{input.close();}catch(IOException ignored){}
+        },downloadTimeLeft(deadline),TimeUnit.NANOSECONDS);
+        try {
+            byte[] bytes=input.readNBytes(limit);
+            if(expired.get())throw new HttpTimeoutException("Image result body download timed out");
+            return bytes;
+        } catch(IOException error) {
+            if(expired.get())throw new HttpTimeoutException("Image result body download timed out");
+            throw error;
+        } finally {
+            watchdog.cancel(false);
+        }
+    }
 
     private static byte[] checkedImage(byte[] bytes,int maxBytes) {
         if(bytes.length==0 || bytes.length>maxBytes || MediaBytes.sniff("image",bytes)==null)
@@ -439,8 +502,10 @@ public class JusuanImageClient {
     }
 
     private void recordSuccess(AiModelEndpoint endpoint,Invocation owner,String requestId,String providerJobId,ObjectNode body) {
-        if(usage!=null)try {usage.recordMeteredObservedWithAttribution(endpoint.getId(),endpoint.getName(),endpoint.getModel(),owner.purpose().name(),
-                0L,0L,0L,AiModelBillingMode.PER_CALL,1L,0L,true,owner.userId(),null,"studio".equals(owner.appCode())?"aiavatar":owner.appCode(),requestId,providerJobId,null,null,null,body.toString(),null,null);}catch(RuntimeException ignored){}
+        if(usage!=null)try {
+            usage.recordImageSuccess(endpoint.getId(),endpoint.getName(),endpoint.getModel(),owner.purpose().name(),
+                    owner.userId(),"studio".equals(owner.appCode())?"aiavatar":owner.appCode(),requestId,providerJobId,body.toString());
+        }catch(RuntimeException ignored){}
     }
     private JsonNode json(AiModelEndpoint endpoint,AiImageRequestSpec.Wire wire,String path,String body,
                           String id,Invocation owner,String method,boolean submit) {

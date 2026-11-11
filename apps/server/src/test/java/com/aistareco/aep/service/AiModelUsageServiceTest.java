@@ -76,6 +76,22 @@ class AiModelUsageServiceTest {
     }
 
     @Test
+    @org.springframework.transaction.annotation.Transactional(propagation=org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
+    void recoveringTheSameImageReceiptDoesNotCountAnotherProviderCall() {
+        String provider="image-recovery-test";
+        String request="IPR-recovery-test-image-0";
+        try {
+            service.recordImageSuccess(provider,"Images","image-model","DAP_IMAGE",null,"aiavatar",request,null,"{}");
+            service.recordImageSuccess(provider,"Images","image-model","DAP_IMAGE",null,"aiavatar",request,null,"{}");
+            var records=repo.findAll().stream().filter(record->request.equals(record.getRequestId())).toList();
+            assertEquals(1,records.size());
+            assertEquals(1L,records.get(0).getBillableUnits());
+        } finally {
+            repo.deleteAll(repo.findAll().stream().filter(record->request.equals(record.getRequestId())).toList());
+        }
+    }
+
+    @Test
     void aggregatesTotalsAndGroups() {
         Instant now = Instant.now();
         seed("p1", "火山方舟", "doubao", 10, 20, 30, now);

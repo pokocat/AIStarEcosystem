@@ -712,8 +712,8 @@ class IpRunWorkerTest {
         orphanedImage(7200,System.currentTimeMillis()+60_000);worker.failUnconfirmedSubmission(RID);
         assertEquals("running",reload().getStatus());verifyNoCharges();
     }
-    @Test void staleKnownTaskOrMirroredImageIsKeptForRecovery() throws Exception {
-        for(String field:List.of("jobId","storageKey")) {
+    @Test void staleKnownTaskOrReceivedImageIsKeptForRecovery() throws Exception {
+        for(String field:List.of("jobId","resultUrl","storageKey")) {
             var run=orphanedImage(7200,0);ObjectNode input=(ObjectNode)OM.readTree(run.getInputJson());
             ((ObjectNode)input.path("_exec").path("imageJobs").path(0)).put(field,"original");run.setInputJson(input.toString());runs.repo.save(run);
             worker.failUnconfirmedSubmission(RID);
@@ -721,6 +721,31 @@ class IpRunWorkerTest {
         }
         verifyNoCharges();
     }
+    @Test void reaperDoesNotRefundWhileTheWorkerStillOwnsTheRequest() throws Exception {
+        var nativeImages=mock(com.aistareco.aep.ipstudio.service.JusuanImageClient.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(worker,"jusuanImages",nativeImages);
+        var run=seedGenerateRun(1,8L,8L,"source");
+        var input=(ObjectNode)OM.readTree(run.getInputJson());
+        ((ObjectNode)input.path("_exec")).put("endpointId","native");
+        run.setInputJson(input.toString());
+        when(nativeImages.supportsEndpoint("native")).thenReturn(true);
+        when(nativeImages.generate(anyString(),anyString(),anyString(),anyList(),anyString(),anyString(),any(),any(),any(),any(),any())).thenAnswer(inv->{
+            java.util.function.Consumer<ObjectNode> checkpoint=inv.getArgument(10);
+            checkpoint.accept(OM.createObjectNode().put("submitAttempted",true).put("requestBody","original"));
+            var stale=(ObjectNode)OM.readTree(run.getInputJson());
+            ((ObjectNode)stale.path("_exec")).put("nativeLeaseUntil",0);
+            run.setInputJson(stale.toString());
+            run.setHeartbeatAt(Instant.now().minusSeconds(3600));
+            worker.failUnconfirmedSubmission(RID);
+            assertEquals("running",reload().getStatus());
+            verifyNoCharges();
+            return IpStudioFixtures.pngBytes();
+        });
+        worker.runBlocking(RID);
+        assertEquals("done",reload().getStatus());
+        assertEquals(8,reload().getCost());
+    }
+
     @Test void crashAfterFirstImagePreservesItsCandidateAndCharge() throws Exception {
         var run=orphanedImage(7200,0);ObjectNode input=(ObjectNode)OM.readTree(run.getInputJson());
         input.put("count",2);((ObjectNode)input.path("_exec")).put("holdTotal",32).withArray("imageJobs")

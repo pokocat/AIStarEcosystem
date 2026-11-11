@@ -71,7 +71,7 @@ public class StudioImageReconciliationService {
         if(index!=projects.parseOrEmptyObject(run.getOutputJson()).path("candidates").size())throw invalid("只能核对当前尚未结算的图片");
         ObjectNode state=(ObjectNode)checkpoint;
         if(existing.isBlank()) {
-            if(!"STUDIO_IMAGE_SUBMISSION_UNKNOWN".equals(run.getErrorCode()))throw invalid("任务当前不需要人工补录受理凭据");
+            if(IpRunWorker.hasNativeResult(checkpoint)||!"STUDIO_IMAGE_SUBMISSION_UNKNOWN".equals(run.getErrorCode()))throw invalid("任务当前不需要人工补录受理凭据");
             state.put("jobId",external).put("recoveredBy",actor).put("recoveryEvidence",evidence).put("recoveredAt",Instant.now().toString());
             var detail=mapper.createObjectNode().put("imageIndex",index).put("externalTaskId",external).put("endpointId",exec.path("endpointId").asText()).put("evidence",evidence);
             audits.record(actor,null,"studio.image.bind_original_task","ip-run",id,null,null,AuditLog.AuditResult.SUCCESS,detail.toString());
@@ -97,8 +97,8 @@ public class StudioImageReconciliationService {
         var original=projects.parseOrEmptyObject(run.getInputJson());
         if(!IpRun.KIND_GENERATE.equals(run.getKind())||!original.isObject()||!original.path("_exec").isObject())throw invalid("任务缺少原生图片提交凭据");
         ObjectNode input=(ObjectNode)original;ObjectNode exec=(ObjectNode)input.path("_exec");var checkpoint=exec.path("imageJobs").path(index);
-        if(!checkpoint.isObject()||!checkpoint.path("submitAttempted").asBoolean()||!checkpoint.path("jobId").asText().isBlank()
-                ||checkpoint.hasNonNull("storageKey")||checkpoint.path("requestBody").asText().isBlank()
+        if(!checkpoint.isObject()||!checkpoint.path("submitAttempted").asBoolean()||IpRunWorker.hasNativeResult(checkpoint)
+                ||checkpoint.path("requestBody").asText().isBlank()
                 ||checkpoint.path("baseUrl").asText().isBlank()||exec.path("endpointId").asText().isBlank())
             throw invalid("只有无供应商任务号、无产物且受理未知的原请求可核实释放；已知任务必须查询原任务");
         if(!IpRun.STATUS_RUNNING.equals(run.getStatus())) {
