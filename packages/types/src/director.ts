@@ -87,7 +87,7 @@ export interface DirectorMedia {
 export interface DirectorMediaSlot {
   candidates: DirectorMedia[];
   adoptedId: string | null;
-  /** auto = 系统自动填上、等用户确认；user = 用户选的或确认过。 */
+  /** auto = 待确认；user = 已采用，可供后续步骤使用。 */
   adoptedBy: "user" | "auto" | null;
   error: DirectorError | null;
   /** 当前采用的版本跟现在的设置是否一致：outdated = 按旧设置生成的；unknown = 生成时没留下可核对的记录。 */

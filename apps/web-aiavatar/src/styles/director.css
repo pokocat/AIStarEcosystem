@@ -142,7 +142,7 @@ html[data-layout="desktop"] .director-shell .director-title { flex: 0 1 auto; wi
 .director-estimate > div { display: flex; flex-direction: column; gap: 2px; padding: 12px; border-radius: 9px; background: var(--ip-soft); font-size: 12px; color: var(--ip-muted); }
 .director-estimate b { font-size: 18px; color: var(--ip-ink); }
 
-.director-notice, .director-warn, .director-confirm-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 8px; padding: 6px 12px; border-radius: 8px; font-size: 13px; line-height: 1.6; }
+.director-notice, .director-warn { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 8px; padding: 6px 12px; border-radius: 8px; font-size: 13px; line-height: 1.6; }
 .director-notice { background: var(--ip-soft); }
 /* A result notice floats over the page instead of pushing the work down; confirmations fade, warnings stay until closed. */
 .director-notice-toast { position: fixed; right: 20px; bottom: 20px; z-index: 900; flex-wrap: nowrap; max-width: min(440px, calc(100vw - 40px)); margin: 0; padding: 10px 14px; border-radius: 10px; background: var(--ip-ink); color: var(--ip-paper); box-shadow: 0 10px 28px rgb(25 34 41 / 18%); animation: director-toast-in 220ms cubic-bezier(.16, 1, .3, 1); }
@@ -154,8 +154,6 @@ html:not([data-layout="desktop"]) .director-notice-toast { right: 12px; left: 12
 .director-notice button, .director-warn button { padding: 0; border: 0; background: transparent; font-size: 13px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
 .director-warn { background: var(--ip-gold-soft); color: var(--ip-gold); }
 .director-warn span { flex: 1; min-width: 200px; }
-.director-confirm-bar { background: var(--ip-gold-soft); color: var(--ip-gold); }
-.director-confirm-bar span { flex: 1; min-width: 200px; }
 /* 标题后面的状态标签：出现时轻轻弹入；AI 在做时光点呼吸、文字流光；下一步的箭头轻推，提示可以点 */
 .director-status-chip { display: inline-flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; max-width: min(100%, 380px); min-height: 28px; padding: 3px 11px 3px 9px; border: 0; border-radius: 999px; font-size: 12.5px; font-weight: 600; line-height: 1.4; animation: director-chip-in 420ms cubic-bezier(.2, .9, .3, 1.25); }
 .director-status-chip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

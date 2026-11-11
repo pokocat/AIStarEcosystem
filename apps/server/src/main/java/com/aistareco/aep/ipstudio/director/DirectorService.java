@@ -47,7 +47,7 @@ import java.util.*;
  * <p>作品内容由服务端拥有（§10.3）：
  * <ul>
  *   <li>用户编辑带对象修订号 {@code rev}，对不上返回 409，不以后到覆盖先到；</li>
- *   <li>生成结果回投前比对提交时的输入指纹：输入没变才填空着的采用位（标 {@code adoptedBy=auto}，需要用户确认），
+ *   <li>生成结果回投前比对提交时的输入指纹：输入没变才填空着的采用位（资产图直接采用，分镜图和视频待确认），
  *       变了就只追加为「按旧设置生成」的历史版本；已有正文、计划、提示词和已采用版本一律不动；</li>
  *   <li>任务就是原生的 {@link IpRun}（宿主类型 director，{@code projectId} 存作品 id，{@code nodeId} 存目标），
  *       计价、冻结、付款、结算、幂等都在原链路上，这里不记第二份账。</li>
@@ -1222,7 +1222,7 @@ public class DirectorService {
                 ObjectNode clip = find(c, "clips", targetId, "这个片段");
                 if (clip.path("issues").size() > 0) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_CLIP_NEEDS_FIX",
                         "该片段需先修改：" + clip.path("issues").get(0).asText());
-                List<Bound> refs = new ArrayList<>(boundRefs(c, clip, true));
+                List<Bound> refs = new ArrayList<>(boundRefs(c, clip));
                 String prompt = clip.path("boardPrompt").asText();
                 if (!clip.path("boardPromptCustom").asBoolean(false)) prompts().requireStage(StudioPromptCallPoints.DIRECTOR_BOARD);
                 String baseOn = o.path("baseOnCurrent").asBoolean(false) ? baseOnCurrent(clip, "board", "片段 " + clip.path("order").asInt() + " 的分镜图", refs) : null;
@@ -1354,20 +1354,17 @@ public class DirectorService {
         return out;
     }
 
-    private List<Bound> boundRefs(ObjectNode c, JsonNode clip, boolean requireConfirmed) {
+    private List<Bound> boundRefs(ObjectNode c, JsonNode clip) {
         List<Bound> out = new ArrayList<>();
-        List<String> missing = new ArrayList<>(), unconfirmed = new ArrayList<>();
+        List<String> missing = new ArrayList<>();
         for (JsonNode a : visualAssets(c, clip)) {
             String key = adoptedKey(a.path("image"));
             String shown = a.path("displayName").asText(a.path("name").asText());
             if (key == null) { missing.add(shown); continue; }
-            if (requireConfirmed && "auto".equals(a.path("image").path("adoptedBy").asText())) unconfirmed.add(shown);
             out.add(new Bound(a.path("id").asText(), shown, a.path("kind").asText(), key, "图" + (out.size() + 1)));
         }
         if (!missing.isEmpty()) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_REFERENCE_MISSING",
                 "缺少资产图：" + String.join("、", missing) + "。请在「资产」中生成或上传", Map.of("names", missing));
-        if (!unconfirmed.isEmpty()) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_REFERENCE_UNCONFIRMED",
-                "资产图待确认：" + String.join("、", unconfirmed) + "。请在「资产」中确认", Map.of("names", unconfirmed));
         return out;
     }
 
@@ -1498,7 +1495,7 @@ public class DirectorService {
             meta.addObject().put("label", "首帧").put("name", "分镜画面").put("key", board).putNull("assetId");
             return new VideoInput(clip.path("videoPrompt").asText(), duration, aspect, lim, List.of(), meta, videoCurrent(c, clip, lim).fingerprint(), board);
         }
-        List<Bound> assets = boundRefs(c, clip, true);
+        List<Bound> assets = boundRefs(c, clip);
         List<VideoStudioReferenceInput> refs = new ArrayList<>();
         ArrayNode meta = om.createArrayNode();
         refs.add(new VideoStudioReferenceInput("image", board));
@@ -2367,6 +2364,20 @@ public class DirectorService {
         Set<String> applied = new HashSet<>();
         c.path("applied").forEach(x -> applied.add(x.asText()));
         boolean changed = false, running = false;
+        // 旧作品的首张资产图已经选定了版本，只需解除待确认状态。
+        for (JsonNode asset : c.path("assets")) {
+            if (asset.path("image") instanceof ObjectNode image
+                    && "auto".equals(image.path("adoptedBy").asText()) && adoptedKey(image) != null) {
+                image.put("adoptedBy", "user");
+                changed = true;
+            }
+        }
+        if (c.path("pipeline") instanceof ObjectNode pipeline && "waiting".equals(pipeline.path("status").asText())
+                && "confirm-assets".equals(pipeline.path("stage").asText())) {
+            // 已经停下的连跑保留暂停状态，等用户继续后才提交下一笔生成。
+            pipeline.put("status", "paused").put("stage", "assets").put("message", "资产图已采用，可继续制作");
+            changed = true;
+        }
         List<IpRun> mine = new ArrayList<>(runs.findByProjectIdOrderByCreatedAtDesc(w.getId()));
         Collections.reverse(mine);
         // 续接已经提交、关联还没写回作品（见 runFollowUp）：它建出的任务先不回投。否则预算里既有续接的预留、
@@ -2474,7 +2485,7 @@ public class DirectorService {
                 if (meta.hasNonNull("baseOn")) m.put("baseOn", meta.path("baseOn").asText());
                 if (output.path("mock").asBoolean(false)) m.put("mock", true);
                 if (stale) m.put("stale", true);
-                else if (adoptedKey(slot) == null) slot.put("adoptedId", m.path("id").asText()).put("adoptedBy", "auto");
+                else if (adoptedKey(slot) == null) slot.put("adoptedId", m.path("id").asText()).put("adoptedBy", asset ? "user" : "auto");
             }
             if (stale) notice(c, "「" + target.path(asset ? "name" : "title").asText() + "」生成期间设置有变动，新图已存入历史版本，未自动采用");
             return;
@@ -3727,20 +3738,11 @@ public class DirectorService {
                     throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_PIPELINE_NOTHING_TO_DO", nothingToDo(c, p));
             }
             case "pause" -> requirePipeline(current).put("status", "paused").put("message", "已暂停：不再开始新任务，进行中的任务继续完成");
-            case "resume", "retry" -> {
+            case "resume", "retry", "confirm-assets" -> {
                 ObjectNode p = requirePipeline(current);
                 if (req.budget() != null && req.budget() > 0) p.put("budget", req.budget());
                 if ("retry".equals(req.action())) p.putArray("failed");
                 p.put("status", "running").put("message", "继续制作");
-                advance(userId, w, c);
-            }
-            case "confirm-assets" -> {
-                ObjectNode p = requirePipeline(current);
-                for (String assetId : neededAssets(c, p)) {
-                    JsonNode a = findOrNull(c, "assets", assetId);
-                    if (a != null && "auto".equals(a.path("image").path("adoptedBy").asText())) ((ObjectNode) a.path("image")).put("adoptedBy", "user");
-                }
-                p.put("status", "running").put("message", "资产图已确认，继续制作分镜图");
                 advance(userId, w, c);
             }
             case "confirm-boards" -> {
@@ -3989,24 +3991,6 @@ public class DirectorService {
                 if (!step.send("asset-image", assetId, "资产图生成中")) return;
             }
             if (imaging) return;
-            List<String> toConfirm = new ArrayList<>();
-            for (String assetId : needed) {
-                JsonNode a = findOrNull(c, "assets", assetId);
-                if (a != null && "auto".equals(a.path("image").path("adoptedBy").asText())) toConfirm.add(a.path("name").asText());
-            }
-            if (!toConfirm.isEmpty() && auto(p)) {
-                for (String assetId : needed) {
-                    JsonNode a = findOrNull(c, "assets", assetId);
-                    if (a != null && "auto".equals(a.path("image").path("adoptedBy").asText())) ((ObjectNode) a.path("image")).put("adoptedBy", "user");
-                }
-                refresh(c);
-                toConfirm.clear();
-            }
-            if (!toConfirm.isEmpty()) {
-                p.put("status", "waiting").put("stage", "confirm-assets")
-                        .put("message", "资产图已生成（" + toConfirm.size() + " 张），请在「资产」中确认后继续");
-                return;
-            }
             // 4b. 片段用到的角色形态和场景视角：只出用得上的；已失败的不重试，缺形态的片段在下一步写清楚原因
             boolean variants = false;
             for (JsonNode clip : clipsOf(c, eps)) for (String need : neededVariants(c, clip)) {
@@ -4024,7 +4008,7 @@ public class DirectorService {
                 String cid = clip.path("id").asText();
                 if (failed.contains("board:" + cid)) continue;
                 if (clip.path("issues").size() > 0) { blocked.add("片段 " + clip.path("order").asInt() + " 需修改"); continue; }
-                try { boundRefs(c, clip, true); } catch (BusinessException e) { blocked.add("片段 " + clip.path("order").asInt() + "：" + e.getMessage()); continue; }
+                try { boundRefs(c, clip); } catch (BusinessException e) { blocked.add("片段 " + clip.path("order").asInt() + "：" + e.getMessage()); continue; }
                 boarding = true;
                 if (!step.send("board", cid, "分镜图生成中")) return;
             }

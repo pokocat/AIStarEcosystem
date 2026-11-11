@@ -104,6 +104,21 @@ class DirectorOwnImageTest {
         assertEquals(List.of("u/linxia.png"), submitted().refKeys(), "分镜图拿用户上传的那张当参考");
     }
 
+    @Test void anExistingPendingAssetImageCanBeUsedToGenerateTheBoardDirectly() throws Exception {
+        String id = last(edit("asset.create", null, "{\"kind\":\"prop\",\"name\":\"两元纸币\"}")).path("id").asText();
+        clipUsing(id);
+        ObjectNode c = (ObjectNode) om.readTree(work.getContentJson());
+        ObjectNode slot = (ObjectNode) c.path("assets").get(0).path("image");
+        slot.put("adoptedId", "g1").put("adoptedBy", "auto");
+        slot.withArray("candidates").addObject().put("id", "g1").put("key", "gen/prop.png").put("source", "generated");
+        work.setContentJson(c.toString());
+
+        JsonNode updated = service.task(USER, work.getId(), new DirectorService.TaskRequest("board", "k1", "req-board", null, null, 16L));
+        assertEquals(List.of("gen/prop.png"), submitted().refKeys());
+        assertEquals("g1", last(updated).path("image").path("adoptedId").asText());
+        assertEquals("user", last(updated).path("image").path("adoptedBy").asText());
+    }
+
     @Test void referenceOnlyGuidesLaterGenerationForEveryKindAndNeverReplacesTheAdoptedImage() throws Exception {
         JsonNode a = last(edit("asset.create", null, "{\"kind\":\"scene\",\"name\":\"老宅\",\"description\":\"雨夜的老宅门口\",\"image\":{\"key\":\"u/house.jpg\",\"use\":\"ref\"}}"));
         assertEquals("u/house.jpg", a.path("refImage").path("key").asText());

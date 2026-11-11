@@ -194,6 +194,7 @@ class DirectorImagePromptFormatTest {
         JsonNode slot = asset("as1").path("image");
         assertFalse(slot.path("candidates").get(0).path("stale").asBoolean(false), slot.toString());
         assertEquals(slot.path("candidates").get(0).path("id").asText(), slot.path("adoptedId").asText(), "没有因为换模板只进历史");
+        assertEquals("user", slot.path("adoptedBy").asText(), "首张资产图直接可用");
         service.refresh(c);
         assertEquals("current", asset("as1").path("image").path("adoptedCheck").asText(), "也没有被标成需更新");
     }
@@ -251,6 +252,7 @@ class DirectorImagePromptFormatTest {
         JsonNode slot = clip().path("board");
         assertFalse(slot.path("candidates").get(0).path("stale").asBoolean(false), slot.toString());
         assertEquals(2, slot.path("candidates").get(0).path("promptFormat").asInt());
+        assertEquals("auto", slot.path("adoptedBy").asText(), "分镜图仍需审阅");
         service.refresh(c);
         assertNotEquals("outdated", clip().path("board").path("adoptedCheck").asText(), clip().path("board").toString());
     }
