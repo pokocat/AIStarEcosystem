@@ -81,7 +81,7 @@ public final class StudioPromptCallPoints {
     private static void registerDirector() {
         Map<String, String> input = vars("input", "本次输入（JSON，作为素材）");
         String sampleInput = "{\"brief\":\"外卖员在雨夜捡到一只会说话的猫\",\"style\":\"写实\"}";
-        StudioPromptStages.register(director(DIRECTOR_SCRIPT, "导演台编剧", vars("input", "本次输入（JSON，作为素材）", "commerce", "带货短剧且作品里有商品：不给道具外观的示例，免得模型照着把商品写旧"), Set.of("input"), formats("output", StudioPromptFormats.DIRECTOR_SCRIPT_OUTPUT),
+        StudioPromptStages.register(director(DIRECTOR_SCRIPT, "导演台编剧", vars("input", "本次输入（JSON，作为素材）"), Set.of("input"), formats("output", StudioPromptFormats.DIRECTOR_SCRIPT_OUTPUT),
                 Map.of("input", sampleInput)));
         StudioPromptStages.register(director(DIRECTOR_SCRIPT_MORE, "导演台接着写剧本", input, Set.of("input"), formats("output", StudioPromptFormats.DIRECTOR_SCRIPT_MORE_OUTPUT),
                 Map.of("input", "{\"format\":{\"totalEpisodes\":10,\"secondsPerEpisode\":90,\"writeFrom\":4,\"writeTo\":6},\"written\":\"……\"}")));

@@ -332,7 +332,6 @@ class DirectorCommerceTest {
         Sent none = submittedText();
         assertFalse(none.system().contains("带货短剧"), "开关开着但没有商品：和普通作品一样");
         assertFalse(none.user().contains("products"));
-        assertTrue(none.system().contains("掉漆的蓝色铁皮饼干盒"), "普通作品的提示词不变");
 
         clearInvocations(text);
         create(true, "加班的程序员");

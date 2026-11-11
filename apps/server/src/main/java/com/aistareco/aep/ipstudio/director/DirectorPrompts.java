@@ -90,7 +90,7 @@ public final class DirectorPrompts {
 
     /** commerce：带货短剧且作品里有商品，多拼一份把商品写进剧情的规则（docs/ai-director-commerce-plan.md §5）。 */
     public static Text script(StudioPromptAssembler prompts, String genre, String tone, String kind, boolean commerce, String input) {
-        return text(prompts, StudioPromptCallPoints.DIRECTOR_SCRIPT, withCommerce(formMethods(genre, tone, kind), COMMERCE_SCRIPT, commerce), java.util.Map.of("input", input, "commerce", commerce));
+        return text(prompts, StudioPromptCallPoints.DIRECTOR_SCRIPT, withCommerce(formMethods(genre, tone, kind), COMMERCE_SCRIPT, commerce), java.util.Map.of("input", input));
     }
 
     /** 接着写后面几集（长的剧本分批写）。 */
