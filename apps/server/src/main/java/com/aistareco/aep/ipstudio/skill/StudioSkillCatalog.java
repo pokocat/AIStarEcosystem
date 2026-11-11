@@ -51,7 +51,8 @@ public class StudioSkillCatalog {
     public static final Set<String> STATUSES = Set.of("active", "draft", "withdrawn");
     private static final Map<String, Set<String>> STAGE_OPERATIONS = Map.of(
             StudioSkill.ANALYSIS, Set.of("recreation", "text"),
-            StudioSkill.PRODUCTION, Set.of("text", "image", "video", "check", "assemble"));
+            // video-control：深度复刻把原片片段转成动作参考，只出现在代码拼的方案里（StudioSkillRules.SYSTEM_ONLY_OPERATIONS）
+            StudioSkill.PRODUCTION, Set.of("text", "image", "video", "video-control", "check", "assemble"));
     private static final Set<String> HEADER_FIELDS = Set.of("key", "name", "version", "status", "planning", "summary",
             "methodExamples", "operations", "limits", "checks", "autoFixChecks", "requiredCapabilities", "triggers", "layer", "kind");
     private static final Set<String> LIMIT_FIELDS = Set.of("maxSourceSec", "maxSegments", "maxSegmentSec", "maxSteps", "maxAutoFixPerSegment");

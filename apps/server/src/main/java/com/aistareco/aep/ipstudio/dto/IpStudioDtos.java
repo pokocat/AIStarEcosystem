@@ -77,13 +77,9 @@ public final class IpStudioDtos {
                                 /** 官方示例第一段成片的签名地址，灵感卡悬停播放；doc 里只存 key，不签名。 */
                                 String previewVideoUrl,
                                 /** 首次发布时间（ISO 8601），首页灵感按它从新到旧；内置模板没有。 */
-                                String createdAt) {
+                                String createdAt, String coverVideoUrl) {
         public IpTemplateDto(String id,String name,String summary,String coverUrl,String stylePresetId,int lookCount,long estimatedCredits,JsonNode doc) {
-            this(id,name,summary,coverUrl,stylePresetId,lookCount,estimatedCredits,doc,null,null,null,null,null,null,null);
-        }
-        public IpTemplateDto(String id,String name,String summary,String coverUrl,String stylePresetId,int lookCount,long estimatedCredits,
-                             JsonNode doc,String versionId,Integer version,String visibility,Boolean mine,Boolean enabled) {
-            this(id,name,summary,coverUrl,stylePresetId,lookCount,estimatedCredits,doc,versionId,version,visibility,mine,enabled,null,null);
+            this(id,name,summary,coverUrl,stylePresetId,lookCount,estimatedCredits,doc,null,null,null,null,null,null,null,null);
         }
     }
 
@@ -100,7 +96,7 @@ public final class IpStudioDtos {
                                  boolean enabled, int sortOrder, String coverUrl,
                                  String sourceProjectId, String createdBy,
                                  String createdAt, String updatedAt,
-                                 int nodeCount, int assetCount, String currentVersionId) {}
+                                 int nodeCount, int assetCount, String currentVersionId, String coverVideoUrl) {}
 
     /** 内置风格预设（resources/ipstudio/styles.json）。 */
     public record IpStylePresetDto(String id, String name, String summary,

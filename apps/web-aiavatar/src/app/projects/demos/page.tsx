@@ -239,7 +239,9 @@ function Group({
       <ul className="studio-demo-list">
         {rows.map((row) => (
           <li key={row.id} className="studio-demo-row" data-enabled={row.enabled}>
-            <div className="studio-demo-cover">{row.coverUrl ? (
+            <div className="studio-demo-cover">{row.coverVideoUrl ? (
+              <video src={`${row.coverVideoUrl}#t=0.1`} preload="metadata" muted playsInline aria-label="视频封面" />
+            ) : row.coverUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={row.coverUrl} alt="" loading="lazy" />
             ) : <span>无封面</span>}</div>

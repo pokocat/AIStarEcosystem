@@ -7,7 +7,7 @@ import { ArrowLeft, LocateFixed, Play } from 'lucide-react';
 import { nanoid } from 'nanoid';
 import type { IpRun } from '@ai-star-eco/types';
 import type { StudioVideoTask } from '@ai-star-eco/types/ip-studio-video-task';
-import { videoTask, videoTaskHref, videoTaskLabel, videoTaskProblemText, videoTaskResumeLabel } from '@/canvas-bridge/studio-video-tasks';
+import { videoTask, videoTaskHref, videoTaskLabel, videoTaskProblemText, videoTaskResumeLabel, videoTaskSegmentRetry } from '@/canvas-bridge/studio-video-tasks';
 import { useStudioFailure } from './studio-errors';
 import { executionRestoreUpserts, projectCanvasOps, resumeStudioPlanExecution, stepNodeId, stepRunCandidates } from '@/canvas-bridge/studio-plan-execution';
 import { dispatchStudioCommand } from '@/canvas-bridge/studio-nodes';
@@ -89,7 +89,9 @@ function CanvasVideoTaskBar({ projectId, id }: { projectId: string; id: string }
     setBusy(true);
     try {
       await saveStudioDocument(projectId);
-      const execution = await resumeStudioPlanExecution(projectId, task.execution.id, { clientRequestId: nanoid(), expectedStatus: task.execution.status });
+      const segmentRetry = videoTaskSegmentRetry(task);
+      const execution = await resumeStudioPlanExecution(projectId, task.execution.id, { clientRequestId: nanoid(), expectedStatus: task.execution.status,
+        ...(segmentRetry && { retryStepId: segmentRetry.retryStepId, retryAttempt: segmentRetry.retryAttempt }) });
       setTask({ ...task, execution });
     } catch (error) { showFailure({ action, error }); }
     finally { setBusy(false); }

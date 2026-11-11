@@ -28,7 +28,8 @@ class VideoPortraitReviewServiceTest {
         when(endpoints.findById("model")).thenReturn(Optional.of(model));when(portraits.isOfficialLibrary("ark")).thenReturn(true);when(access.allows("model","studio")).thenReturn(true);
         when(portraits.itemsFor(eq("owner"),eq("ark"),anyCollection())).thenReturn(List.of(item("active")));when(portraits.reference("owner","ark","photo")).thenReturn("asset://photo");
     }
-    private ArkPortraitLibrary.Item item(String state){return new ArkPortraitLibrary.Item("item","ark","photo","image","照片",null,state,"person","person",null,Instant.now().toString());}
+    private ArkPortraitLibrary.Item item(String state){return item("photo",state);}
+    private ArkPortraitLibrary.Item item(String key,String state){return new ArkPortraitLibrary.Item("item-"+key,"ark",key,"image","照片",null,state,"person","person",null,Instant.now().toString());}
     @Test void preparingUsesOnlyOfficialModelAndChecksOwnershipWithoutUploading(){
         var ready=service.check("owner","model",List.of("photo","new-photo"));
         assertEquals(List.of("new-photo"),ready.candidateKeys());assertTrue(ready.items().isEmpty());verify(portraits).requireOwnedKeys("owner",List.of("photo","new-photo"));
@@ -49,10 +50,39 @@ class VideoPortraitReviewServiceTest {
         try {
             var result=service.resume("owner","job");assertFalse(result.awaiting());verifyNoInteractions(queue);
             for(var synchronization:TransactionSynchronizationManager.getSynchronizations())synchronization.afterCommit();
-            verify(queue).requeue(AiGenerationQueueService.VIDEO,"job",Duration.ZERO);verify(jobs,never()).save(any());
+            verify(queue).wakeWaiting(AiGenerationQueueService.VIDEO,"job");verify(jobs,never()).save(any());
         }finally{TransactionSynchronizationManager.clearSynchronization();}
         // A repeated request whose conditional update lost cannot dispatch a second time.
         reset(queue);when(jobs.resumePortraitReview(eq("job"),eq("owner"),any())).thenReturn(0);
         service.resume("owner","job");verifyNoInteractions(queue);
+    }
+
+    @Test void backgroundReviewPollsTheExactPendingAssetAndContinuesOnlyAfterEveryReferenceIsApproved(){
+        job.setVariantConfigJson("{\"endpoint_id\":\"model\",\"first_frame_key\":\"photo\",\"last_frame_key\":\"board\"}");
+        when(portraits.itemsFor("owner","ark",List.of("photo","board"))).thenReturn(
+                List.of(item("active"),item("board","processing")),List.of(item("active"),item("board","processing")),
+                List.of(item("active"),item("board","processing")),List.of(item("active"),item("board","active")));
+        when(portraits.reference("owner","ark","board")).thenReturn("asset://board");
+        when(jobs.resumePortraitReview(eq("job"),eq("owner"),any())).thenReturn(1);
+        assertFalse(service.tryAutoResume(job));
+        verify(jobs,never()).resumePortraitReview(any(),any(),any());
+        assertTrue(service.tryAutoResume(job));
+        verify(portraits,times(2)).refreshItem("owner","item-board");
+        verify(portraits,never()).refreshItem("owner","item-photo");
+        verify(jobs).resumePortraitReview(eq("job"),eq("owner"),any());
+        verifyNoInteractions(queue);
+    }
+
+    @Test void backgroundReviewDoesNotRestartExpiredAcceptedOrRevokedJobs(){
+        job.setPayloadJson("{\"portrait_review_since\":\"2020-01-01T00:00:00Z\"}");
+        assertFalse(service.tryAutoResume(job));
+        job.setPayloadJson("{}");
+        job.setExternalTaskId("accepted");
+        assertFalse(service.tryAutoResume(job));
+        job.setExternalTaskId(null);
+        when(portraits.reference("owner","ark","photo")).thenThrow(ArkPortraitLibrary.review());
+        assertFalse(service.tryAutoResume(job));
+        verify(portraits,never()).refreshItem(any(),any());
+        verify(jobs,never()).resumePortraitReview(any(),any(),any());
     }
 }

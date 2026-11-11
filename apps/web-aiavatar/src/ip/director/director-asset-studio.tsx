@@ -117,14 +117,17 @@ function AssetWorkspace({ work, asset, apply, setError, focusClip, onClose }: Wo
   const refs = assetRefs(work, asset.id);
   const mainActive = active.type === "main";
   const anyView = SCENE_VIEWS.some(v => asset.views?.[v.key]?.candidates.length);
+  // 已经有视角图时，在单个视角的标签里只重新生成这一个（2026-11-11 用户反馈：点「重新生成」三个视角全换了）；三个一起换去「全部视角」。
+  const singleView = !overview && active.type === "view" && anyView;
 
-  const task = (type: DirectorTaskType, targetId: string, action: string) => void run("gen", async () => {
+  const task = (type: DirectorTaskType, targetId: string, action: string, options?: object) => void run("gen", async () => {
     const cost = work.pricing.image;
     const billing = await chooseDirectorBilling("image", cost);
-    apply(await runDirectorTask(work, apply, { type, targetId, clientRequestId: newRequestId(), billing, maxCost: cost }));
+    apply(await runDirectorTask(work, apply, { type, targetId, clientRequestId: newRequestId(), billing, maxCost: cost, ...(options ? { options } : {}) }));
   }, failed(setError, action, undefined, undefined, DIRECTOR_MEDIA_SHORTAGE));
   const generate = () => active.type === "main" ? task("asset-image", asset.id, `生成「${asset.name}」的资产图`)
     : active.type === "form" ? task("form-image", active.id, `生成「${label}」的形态图`)
+    : singleView ? task("scene-views", asset.id, `生成「${label}」`, { view: active.view })
     : task("scene-views", asset.id, `生成「${asset.name}」的四视图`);
   const adoptVersion = (id: string) => void run("adopt", async () => apply(active.type === "main" ? await DirectorApi.edit(work.id, "asset.adopt", asset.id, null, { candidateId: id })
     : active.type === "form" ? await DirectorApi.edit(work.id, "form.adopt", active.id, null, { candidateId: id })
@@ -225,13 +228,13 @@ function AssetWorkspace({ work, asset, apply, setError, focusClip, onClose }: Wo
         <div className="director-card-actions">
           {asset.image.adoptedBy === "auto" && (mainActive || overview) && <button type="button" className="ip-brand-button" disabled={!!busy} onClick={() => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "assets.confirm", null, null, { assetIds: [asset.id] })), failed(setError, `确认「${asset.name}」的资产图`))}><Check size={14}/>确认使用</button>}
           <button type="button" className={slot.adoptedId ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy || !!generating || (active.type !== "main" && !mainImage)} onClick={generate}
-            title={active.type === "view" ? "以主视图为准，一次生成反打、左立面、右立面三张" : undefined}>
-            <Wand2 size={14}/>{generating ? "生成中" : active.type === "view" ? (anyView ? "重新生成三个视角" : "生成三个视角") : slot.candidates.length ? "重新生成" : active.type === "form" ? "生成形态图" : overview ? "生成主视图" : "生成资产图"}</button>
+            title={singleView ? "以主视图为准，只重新生成这个视角，其他视角不变" : active.type === "view" ? "以主视图为准，一次生成反打、左立面、右立面三张" : undefined}>
+            <Wand2 size={14}/>{generating ? "生成中" : singleView ? (slot.candidates.length ? "重新生成" : "生成此视角") : active.type === "view" ? (anyView ? "重新生成三个视角" : "生成三个视角") : slot.candidates.length ? "重新生成" : active.type === "form" ? "生成形态图" : overview ? "生成主视图" : "生成资产图"}</button>
           {mainActive && <button type="button" className="ip-brand-secondary" disabled={!!busy || !!generating} onClick={() => setPicking(true)} title="使用资产库中同一项资产的图片作为资产图"><Library size={14}/>关联已有资产</button>}
           {mainActive ? <button type="button" className="ip-brand-secondary" disabled={!!busy || !!generating} onClick={() => file.current?.click()} title={IMAGE_USES.asset.note}><Upload size={14}/>直接上传作为资产图</button>
             : !overview && <button type="button" className="ip-brand-secondary" disabled={!!busy || !!generating} onClick={() => variantFile.current?.click()}><Upload size={14}/>上传图片</button>}
           <span className="director-spacer"/>
-          <small className="director-cost">{work.pricing.mock ? costText(0, true) : active.type === "view" ? `三张共${costText(work.pricing.image, false)}` : `每张${costText(work.pricing.image, false)}`}</small>
+          <small className="director-cost">{work.pricing.mock ? costText(0, true) : active.type === "view" && !singleView ? `三张共${costText(work.pricing.image, false)}` : `每张${costText(work.pricing.image, false)}`}</small>
         </div>
       </div>}
     </section>

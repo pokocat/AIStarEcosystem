@@ -16,6 +16,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.ObjectProvider;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -117,13 +119,18 @@ class StudioPlanExecutionServiceTest {
         var quote=mock(StudioPlanQuoter.class);
         org.springframework.test.util.ReflectionTestUtils.setField(service,"quoter",quote);
         ObjectNode state=om.createObjectNode();state.putArray("steps");
-        state.putObject("videoTask").putObject("request").putObject("configuration").put("duration",12).put("ratio","9:16").put("model","ep-h3").put("tier","768p");
+        state.putObject("videoTask").putObject("request").putObject("configuration").put("duration",12).put("ratio","9:16").put("model","ep-h3").put("tier","768p").put("optimize",false);
+        // 页面批准的上限要放得下制作报价的 3 倍（留给检查不合格后的重出）：报价 40，剩 190
         ObjectNode budget=om.createObjectNode();budget.putObject("analysis").put("approvedCap",200).put("spent",10).put("requestFingerprint","original");
         var row=IpPlanExecution.builder().id("PEX-scene").projectId("p").ownerUserId("u").stage("analysis").status("running").build();
         service.confirmVideoProduction(row,state,budget,"compiled");
         assertEquals("production",row.getStage());assertEquals("running",row.getStatus());
         assertEquals(10,budget.path("analysis").path("approvedCap").asLong());assertEquals(190,budget.path("production").path("approvedCap").asLong());
-        assertFalse(state.path("steps").isEmpty());verify(quote).quote(eq("u"),any());
+        assertFalse(state.path("steps").isEmpty());verify(quote).quote(eq("u"),argThat(p -> {
+            for(JsonNode step:p.path("steps"))if("video".equals(step.path("operation").asText()))
+                if(!step.path("settings").path("video").path("optimize").isBoolean()||step.path("settings").path("video").path("optimize").asBoolean())return false;
+            return true;
+        }));
         assertTrue(cards.approved.isEmpty(),"the scene-page cap, not a fabricated dialogue approval, authorized this production");
     }
 
@@ -186,8 +193,8 @@ class StudioPlanExecutionServiceTest {
         planRun("compiled","production",PRODUCTION,40);
         org.springframework.test.util.ReflectionTestUtils.setField(service,"quoter",mock(StudioPlanQuoter.class));
         ObjectNode state=om.createObjectNode();state.putArray("steps");
-        state.putObject("videoTask").putObject("request").putObject("configuration").put("duration",12).put("ratio","9:16").put("model","ep-h3").put("tier","768p");
-        ObjectNode budget=om.createObjectNode();budget.putObject("analysis").put("approvedCap",100).put("spent",10);
+        state.putObject("videoTask").putObject("request").putObject("configuration").put("duration",12).put("ratio","9:16").put("model","ep-h3").put("tier","768p").put("optimize",false);
+        ObjectNode budget=om.createObjectNode();budget.putObject("analysis").put("approvedCap",45).put("spent",10);
         var row=IpPlanExecution.builder().id("PEX-scene").projectId("p").ownerUserId("u").stage("analysis").status("running").build();
         assertThrows(BusinessException.class,()->service.confirmVideoProduction(row,state,budget,"compiled"));
         assertEquals("analysis",row.getStage());assertTrue(state.path("steps").isEmpty());assertFalse(budget.has("production"));
@@ -799,20 +806,48 @@ class StudioPlanExecutionServiceTest {
         assertEquals(List.of("sheet","gone"),compile.path("excludedMaterials").findValuesAsText("nodeId"));
         assertFalse(canvasContext(id).contains("sheet"));
     }
-    @Test void videoPageCannotStartAFourthAttemptByClickingContinue() throws Exception {
+    /** 2026-11-11 用户定（能用为主）：自动试满 3 次停下来后，用户在视频页点重试就接着试第 4 次，不再要求先去画布修。 */
+    @Test void videoPageCanRetryAStepThatAlreadyRanThreeTimes() throws Exception {
         String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
         var created=service.create("u","p",analysisRequest(fp,30));
         var row=rows.get(created.id());
         var state=(ObjectNode)om.readTree(row.getStepsJson());state.putObject("videoTask").put("kind","recreation");
         ((ObjectNode)state.path("steps").get(0)).put("status","failed").put("attempt",3).put("errorCode","AI_CALL_FAILED");
         row.setStepsJson(state.toString());row.setStatus("needs_user");canvasWith("src");
-        assertEquals("STUDIO_PLAN_STALE",assertThrows(BusinessException.class,()->service.resume("u","p",created.id(),new PlanExecutionControlRequest("retry-four",null))).getCode());
-        assertEquals("needs_user",row.getStatus());
-        assertEquals(3,om.readTree(row.getStepsJson()).path("steps").get(0).path("attempt").asInt());
-        // 同一步只差次数：还没到 3 次就能继续，所以上面拦下它的就是次数这一条。
-        ((ObjectNode)state.path("steps").get(0)).put("attempt",2);row.setStepsJson(state.toString());
-        service.resume("u","p",created.id(),new PlanExecutionControlRequest("retry-third",null));
+        service.resume("u","p",created.id(),new PlanExecutionControlRequest("retry-four",null));
         assertEquals("running",row.getStatus());
+        var step=om.readTree(row.getStepsJson()).path("steps").get(0);
+        assertEquals("pending",step.path("status").asText());
+        assertEquals(4,step.path("attempt").asInt(),"新的一次，新的请求编号");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings={"VIDEO_ASSET_REVIEW_TIMEOUT","VIDEO_REF_UPLOAD_FAILED"})
+    void retryFailedSegmentKeepsExistingStepsAndIsIdempotent(String errorCode) throws Exception {
+        var created=service.create("u","p",analysisRequest(currentPlan("IPR-a","analysis",ANALYSIS,20,10),30));
+        var row=rows.get(created.id());var state=(ObjectNode)om.readTree(row.getStepsJson());state.putObject("videoTask");
+        var steps=state.putArray("steps");
+        var first=steps.addObject().put("stage","production").put("id","v1").put("operation","video").put("status","done");
+        first.putArray("runIds").add("IPR-original");
+        var second=steps.addObject().put("stage","production").put("id","v2").put("operation","video").put("status","failed").put("attempt",3)
+                .put("errorCode",errorCode);
+        second.putArray("dependsOn").add("v1");second.putArray("runIds").add("IPR-expired");
+        var other=steps.addObject().put("stage","production").put("id","v3").put("operation","video").put("status","failed").put("attempt",2)
+                .put("errorCode","STUDIO_VIDEO_FAILED");
+        var film=steps.addObject().put("stage","production").put("id","film").put("operation","assemble").put("status","pending");
+        row.setStage("production");row.setStepsJson(state.toString());row.setStatus("needs_user");canvasWith("src");
+        assertEquals("STUDIO_PLAN_STALE",assertThrows(BusinessException.class,()->service.resume("u","p",created.id(),
+                new PlanExecutionControlRequest("wrong","needs_user",null,"v2",2))).getCode());
+        var request=new PlanExecutionControlRequest("retry","needs_user",null,"v2",3);
+        assertEquals("running",service.resume("u","p",created.id(),request).status());
+        assertEquals("running",service.resume("u","p",created.id(),request).status());
+        var updated=om.readTree(row.getStepsJson());
+        assertEquals("v2",updated.path(StudioPlanExecutor.PORTRAIT_RETRY_STEP).asText());
+        assertEquals(first,updated.path("steps").get(0));assertEquals(other,updated.path("steps").get(2));assertEquals(film,updated.path("steps").get(3));
+        var retried=updated.path("steps").get(1);
+        assertEquals("pending",retried.path("status").asText());assertEquals(4,retried.path("attempt").asInt());
+        assertEquals(0,retried.path("runIds").size());assertEquals("IPR-expired",retried.path("previousRunIds").get(0).asText());
+        assertTrue(retried.path("retryVideoInputs").asBoolean());
     }
 
     @Test void videoPageRegeneratesUnusableModelOutputWithANewRequestWhenTheUserContinues() throws Exception {

@@ -89,6 +89,20 @@ class IpTemplateResolverTest {
     }
 
     @Test
+    void selectedVideoCoverIsReturnedForOfficialTemplates() {
+        var template = demo("IPD-video", "视频模板", true, IpDemoTemplate.KIND_TEMPLATE);
+        template.setDocJson("""
+                {"nodes":[{"type":"video","metadata":{"storageKey":"first.mp4","videos":[{"storageKey":"second.mp4"}]}}]}
+                """);
+        template.setCoverKey("second.mp4");
+        var resolver = resolverWith(List.of(template));
+        var listed = resolver.list().get(0);
+        assertEquals("https://cdn.test/x.png", listed.coverVideoUrl());
+        assertEquals("", listed.coverUrl());
+        assertEquals(listed.coverVideoUrl(), resolver.resolve(template.getId()).orElseThrow().coverVideoUrl());
+    }
+
+    @Test
     void 全局示例排在内置模板前面() {
         IpTemplateResolver r = resolverWith(List.of(demo("IPD-abc123", "潮玩模板", true, IpDemoTemplate.KIND_TEMPLATE)));
         assertEquals("IPD-abc123", r.list().get(0).id(), "运营精选的模板应当排在最前");

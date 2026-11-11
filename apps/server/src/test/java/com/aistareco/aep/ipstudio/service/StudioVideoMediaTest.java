@@ -24,6 +24,10 @@ class StudioVideoMediaTest {
   when(storage.openForRead("image")).thenReturn(image);
   assertDoesNotThrow(()->service.requireMedia("u","image","image",true,frame));
   assertThrows(BusinessException.class,()->service.requireMedia("u","video","image",false,reference));
+  when(storage.openForRead("missing-board")).thenThrow(new NoSuchFileException("missing-board"));
+  var missing=assertThrows(BusinessException.class,()->service.requireMedia("u","image","missing-board",false,reference));
+  assertEquals("STUDIO_VIDEO_ASSET_INVALID",missing.getCode());
+  assertTrue(missing.getMessage().contains("参考素材已不可用"));
  }
  @Test void frameAndUniversalReferenceHaveDifferentImageLimits() throws Exception {
   var projects=mock(IpProjectService.class);var storage=mock(FileStorageService.class);

@@ -1,6 +1,6 @@
 import type { IpProjectDoc } from '@ai-star-eco/types';
 
-export interface ProjectImage { key: string; url: string; title: string }
+interface ProjectMedia { key: string; url: string; title: string }
 const object = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const text = (value: unknown) => typeof value === 'string' ? value.trim() : '';
 const array = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
@@ -8,7 +8,7 @@ const plain = (value: string) => value.replace(/!\[[^\]]*\]\([^)]*\)/g, '').repl
 
 /** Small, read-only projection of saved content. Empty/pending nodes are not finished assets. */
 export function projectPreview(doc: IpProjectDoc) {
-  const images: ProjectImage[] = [], videoKeys = new Set<string>(), audioKeys = new Set<string>();
+  const images: ProjectMedia[] = [], videos = new Map<string, ProjectMedia>(), audioKeys = new Set<string>();
   const imageKeys = new Set<string>();
   let excerpt = '', textCount = 0, videoTitle = '', audioTitle = '', duration = 0;
   for (const node of doc.nodes) {
@@ -26,8 +26,19 @@ export function projectPreview(doc: IpProjectDoc) {
       choices.forEach(add);
     }
     if (node.type === 'video') {
-      if (key) { videoKeys.add(key); videoTitle ||= node.title; const take = array(meta.videos).map(object).find(v => v.storageKey === key); const seconds = Number(take?.seconds || meta.durationSec || meta.seconds); if (!duration && Number.isFinite(seconds) && seconds > 0) duration = seconds; }
-      for (const v of array(meta.videos).map(object)) if (text(v.storageKey) && v.status !== 'failed' && v.status !== 'error' && v.status !== 'loading') videoKeys.add(text(v.storageKey));
+      const takes = array(meta.videos).map(object);
+      const add = (take: Record<string, unknown>) => {
+        const k = text(take.storageKey), url = text(take.url) || text(take.content);
+        if (k && !videos.get(k)?.url) videos.set(k, { key: k, url, title: node.title || '视频' });
+      };
+      if (key) {
+        add(meta);
+        videoTitle ||= node.title;
+        const take = takes.find(v => v.storageKey === key);
+        const seconds = Number(take?.seconds || meta.durationSec || meta.seconds);
+        if (!duration && Number.isFinite(seconds) && seconds > 0) duration = seconds;
+      }
+      for (const take of takes) if (!['failed', 'error', 'loading'].includes(text(take.status))) add(take);
     }
     if (node.type === 'audio' && key) { audioKeys.add(key); audioTitle ||= node.title; }
     if (node.type === 'text') {
@@ -35,8 +46,8 @@ export function projectPreview(doc: IpProjectDoc) {
       if (content) { textCount++; excerpt ||= plain(content).slice(0, 240); }
     }
   }
-  const counts = [images.length && `${images.length} 张图片`, videoKeys.size && `${videoKeys.size} 段视频`, audioKeys.size && `${audioKeys.size} 段音频`, textCount && `${textCount} 份文字`].filter(Boolean).join(' · ');
+  const counts = [images.length && `${images.length} 张图片`, videos.size && `${videos.size} 段视频`, audioKeys.size && `${audioKeys.size} 段音频`, textCount && `${textCount} 份文字`].filter(Boolean).join(' · ');
   const steps = doc.nodes.filter(n => n.type !== 'group' && n.type !== 'config').map(n => n.title || ({ image: '图片', video: '视频', text: '文字', audio: '音频' }[n.type] || '创作节点'));
-  return { images, excerpt, counts, steps, videoTitle, audioTitle, duration, empty: doc.nodes.length === 0 };
+  return { images, videos: [...videos.values()], excerpt, counts, steps, videoTitle, audioTitle, duration, empty: doc.nodes.length === 0 };
 }
 export type ProjectPreview = ReturnType<typeof projectPreview>;

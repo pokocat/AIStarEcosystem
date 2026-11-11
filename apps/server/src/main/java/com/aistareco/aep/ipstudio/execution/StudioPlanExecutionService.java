@@ -126,7 +126,7 @@ public class StudioPlanExecutionService {
         if(!StudioSkillRules.STAGES.contains(req.stage()))throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请先开始分析，再在同一次制作里确认制作阶段");
         // A production detached by a method switch (不锁方法) only finishes what it generates: it does not hold the canvas.
         var busy=executions.findByProjectIdAndStatusIn(projectId,ACTIVE).stream().filter(e->!detached(e)).toList();
-        if(!busy.isEmpty())throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PLAN_EXECUTION_BUSY","这张画布已有进行中的连续制作，请先结束",
+        if(!busy.isEmpty())throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PLAN_EXECUTION_BUSY",BUSY_MESSAGE,
                 mapper.createObjectNode().put("executionId",busy.get(0).getId()));
         // A new execution starts in its skill's first stage: analysis for the reference-video skill, production for a
         // production-only skill (原创创作 has nothing to study first). Starting anywhere else is the old stage-order error.
@@ -198,7 +198,7 @@ public class StudioPlanExecutionService {
             return toDto(prior);
         }
         var busy=executions.findByProjectIdAndStatusIn(projectId,ACTIVE).stream().filter(e->!detached(e)).toList();
-        if(!busy.isEmpty())throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PLAN_EXECUTION_BUSY","这张画布已有进行中的连续制作，请先结束",
+        if(!busy.isEmpty())throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PLAN_EXECUTION_BUSY",BUSY_MESSAGE,
                 mapper.createObjectNode().put("executionId",busy.get(0).getId()));
         String id="PEX-"+UUID.randomUUID().toString().replace("-","").substring(0,20);
         String planRunId="SEG-"+UUID.randomUUID().toString().replace("-","").substring(0,20);
@@ -233,6 +233,7 @@ public class StudioPlanExecutionService {
         if(loaded==null||!"production".equals(loaded.plan().path("stage").asText()))throw stale("没有可执行的制作安排，请在画布上查看分析结果");
         ObjectNode plan=loaded.plan().deepCopy();
         JsonNode config=state.path("videoTask").path("request").path("configuration");
+        String kind=state.path("videoTask").path("kind").asText();
         int seconds=0;
         for(JsonNode raw:plan.path("steps")) {
             ObjectNode step=(ObjectNode)raw;step.put("execution","auto");
@@ -241,10 +242,15 @@ public class StudioPlanExecutionService {
                 if(config.hasNonNull("model"))settings.put("model",config.path("model").asText());
                 settings.put("aspectRatio",config.path("ratio").asText("9:16"));
                 ((ObjectNode)settings.path("video")).put("resolutionTier",config.path("tier").asText());
+                if(config.path("optimize").isBoolean())((ObjectNode)settings.path("video")).put("optimize",config.path("optimize").asBoolean());
+                // 深度复刻总是先优化提示词（StudioCloneVideoPlan.optimize）
+                if("depth".equals(kind))((ObjectNode)settings.path("video")).put("optimize",true);
                 seconds+=settings.path("durationSec").asInt();
             }
         }
-        if(seconds==0||Math.abs(seconds-config.path("duration").asInt())>1)throw stale("分镜时长与本次设置不一致，请在画布上查看后调整");
+        // 深度复刻 / 元素替换不做整段都是原作者账号片尾的那段（StudioRecreationTaskPlan），成片可以比页面上的时长短
+        boolean shorter=StudioCloneVideoPlan.nativeClone(kind)&&seconds<config.path("duration").asInt();
+        if(seconds==0||!shorter&&Math.abs(seconds-config.path("duration").asInt())>1)throw stale("分镜时长与本次设置不一致，请在画布上查看后调整");
         quoter.quote(e.getOwnerUserId(),plan);
         long spent=budget.path("analysis").path("spent").asLong();
         long remaining=budget.path("analysis").path("approvedCap").asLong()-spent;
@@ -555,7 +561,12 @@ public class StudioPlanExecutionService {
         ObjectNode budget=PlanState.parse(mapper,e.getBudgetJson());
         List<String> added=req.addMaterialNodeIds()==null?List.of():req.addMaterialNodeIds().stream().filter(Objects::nonNull).distinct().toList();
         if(!added.isEmpty()&&!"resume".equals(action))throw BusinessException.badRequest("STUDIO_INPUT_INVALID","只有继续制作时才能加入素材");
-        String detail=added.isEmpty()?null:String.join(",",added.stream().sorted().toList());
+        boolean segmentRetry=req.retryStepId()!=null||req.retryAttempt()!=null;
+        if(segmentRetry&&(!"resume".equals(action)||!added.isEmpty()||req.retryStepId()==null||req.retryStepId().isBlank()
+                ||req.retryAttempt()==null||req.retryAttempt()<1))
+            throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请选择要重试的视频片段");
+        String detail=segmentRetry?write(List.of(req.retryStepId(),req.retryAttempt()))
+                :added.isEmpty()?null:String.join(",",added.stream().sorted().toList());
         if(replayed(budget,req.clientRequestId(),action,detail))return toDto(e);
         if(req.expectedStatus()!=null&&!req.expectedStatus().equals(e.getStatus()))throw stale("这次制作的状态已经变化，请刷新后再操作");
         ObjectNode state=PlanState.parse(mapper,e.getStepsJson());
@@ -573,34 +584,45 @@ public class StudioPlanExecutionService {
                 state.put("needsUserReason","已停止：不再提交新的步骤。排队中的任务将取消，已提交的任务会继续完成并结算。");
             }
             case "resume" -> {
+                if(segmentRetry&&!IpPlanExecution.NEEDS_USER.equals(e.getStatus()))throw stale("这次制作的状态已经变化，请刷新后再操作");
                 if(IpPlanExecution.RUNNING.equals(e.getStatus()))break;
                 if(!Set.of(IpPlanExecution.PAUSED,IpPlanExecution.NEEDS_USER).contains(e.getStatus()))throw stale("这次制作已结束，不能继续");
                 if("analysis".equals(e.getStage())&&stageFinished(state,"analysis")&&!state.has("videoTask"))throw stale("分析已经完成，请确认制作方案和预算后开始制作");
                 skills.requireActive(e.getSkillKey());
                 ObjectNode next=state.deepCopy();
-                if(next.has("videoTask"))adoptVideoRepairs(userId,projectId,e,next);
-                if(!added.isEmpty())addMaterials(userId,projectId,next,e.getStage(),added);
-                for(JsonNode raw:PlanState.stageSteps(next,e.getStage())) {
-                    ObjectNode step=(ObjectNode)raw;
-                    switch(step.path("status").asText()) {
-                        case "needs_user" -> {
-                            // 解析不了的原文留着也没用：重新发一次（新请求编号），否则下一轮又读回同一条，点继续等于没点。
-                            if(next.has("videoTask")&&RAW_ONLY_CODE.equals(step.path("errorCode").asText()))StudioSegmentedRun.again(step);
-                            else {step.put("status","pending").put("confirmed",true);step.remove("reason");}
-                        }
-                        // Only the user's explicit continue starts a new attempt (new request identity).
-                        case "failed" -> {
-                            // Named objects the user did not add are left out of the next plan (StudioPlanExecutor#compile).
-                            if(step.path("materials").isArray()) {
-                                ArrayNode excluded=mapper.createArrayNode();
-                                for(JsonNode m:step.path("excludedMaterials"))if(!added.contains(m.path("nodeId").asText()))excluded.add(m);
-                                for(JsonNode m:step.path("materials"))if(!added.contains(m.path("nodeId").asText()))excluded.add(m);
-                                if(excluded.isEmpty())step.remove("excludedMaterials");else step.set("excludedMaterials",excluded);
-                                step.remove("materials");
+                if(segmentRetry) {
+                    retryVideoSegment(userId,projectId,e,next,req.retryStepId(),req.retryAttempt());
+                } else {
+                    next.remove(StudioPlanExecutor.PORTRAIT_RETRY_STEP);
+                    if(next.has("videoTask"))adoptVideoRepairs(userId,projectId,e,next);
+                    if(!added.isEmpty())addMaterials(userId,projectId,next,e.getStage(),added);
+                    for(JsonNode raw:PlanState.stageSteps(next,e.getStage())) {
+                        ObjectNode step=(ObjectNode)raw;
+                        switch(step.path("status").asText()) {
+                            case "needs_user" -> {
+                                // 解析不了的原文留着也没用：重新发一次（新请求编号），否则下一轮又读回同一条，点继续等于没点。
+                                if(next.has("videoTask")&&RAW_ONLY_CODE.equals(step.path("errorCode").asText()))StudioSegmentedRun.retryFailed(step);
+                                else {step.put("status","pending").put("confirmed",true);step.remove("reason");}
                             }
-                            step.put("status","pending").put("attempt",step.path("attempt").asInt(1)+1);step.remove("reason");step.remove("errorCode");
+                            // Only the user's explicit continue starts a new attempt (new request identity).
+                            case "failed" -> {
+                                // Named objects the user did not add are left out of the next plan (StudioPlanExecutor#compile).
+                                if(step.path("materials").isArray()) {
+                                    ArrayNode excluded=mapper.createArrayNode();
+                                    for(JsonNode m:step.path("excludedMaterials"))if(!added.contains(m.path("nodeId").asText()))excluded.add(m);
+                                    for(JsonNode m:step.path("materials"))if(!added.contains(m.path("nodeId").asText()))excluded.add(m);
+                                    if(excluded.isEmpty())step.remove("excludedMaterials");else step.set("excludedMaterials",excluded);
+                                    step.remove("materials");
+                                }
+                                if(next.has("videoTask")&&"video".equals(step.path("operation").asText())) {
+                                    StudioSegmentedRun.retryFailed(step);
+                                    step.remove("notBefore");
+                                } else {
+                                    step.put("status","pending").put("attempt",step.path("attempt").asInt(1)+1);step.remove("reason");step.remove("errorCode");
+                                }
+                            }
+                            default -> {if(PlanState.unresolvedCheck(next,step))step.put("acknowledged",true);}
                         }
-                        default -> {if(PlanState.unresolvedCheck(next,step))step.put("acknowledged",true);}
                     }
                 }
                 // No budget pre-check here: a next step that does not fit is stopped by the executor, which posts the
@@ -620,37 +642,64 @@ public class StudioPlanExecutionService {
         return toDto(e);
     }
 
+    private void retryVideoSegment(String userId,String projectId,IpPlanExecution e,ObjectNode state,String id,int attempt) {
+        ObjectNode step=PlanState.step(state,e.getStage(),id);
+        if(step==null||step.path("attempt").asInt(1)!=attempt||!PlanState.dependenciesDone(state,step))
+            throw stale("此片段的状态已经变化，请刷新后再试");
+        boolean uploadFailed=StudioPlanExecutor.isVideoReferenceUploadFailure(state,step);
+        if(!uploadFailed&&!StudioPlanExecutor.isPortraitSegmentTimeout(state,e.getStage(),step))
+            throw stale("此片段的状态已经变化，请刷新后再试");
+        if(stepStillRunning(userId,projectId,step))
+            throw BusinessException.badRequest("STUDIO_PLAN_STEP_RUNNING","此片段正在生成，请等待完成");
+        if(!uploadFailed&&adoptVideoRepair(userId,projectId,e,projects.readDoc(projects.required(userId,projectId)),step))return;
+        StudioSegmentedRun.retryFailed(step);
+        step.remove("notBefore");
+        state.put(StudioPlanExecutor.PORTRAIT_RETRY_STEP,id);
+    }
+
     /**
      * 「加入这次制作，重新编排」: only objects a stopped step of this stage named outside the materials and still on the
      * canvas, and the materials stay within the request cap. Nothing else widens an execution's materials.
      */
     /** Explicit continue can adopt a successful repair on the same canvas node; browsing alone never does this. */
+    /** 同一张画布上一次只跑一条制作。界面上叫「生成」，不说「连续制作」（2026-11-11 真跑：再次生成被这句挡住，用户不知道该干什么）。 */
+    static final String BUSY_MESSAGE="这张画布上还有一条没结束的生成，请先停止它，再开始新的";
+
     private void adoptVideoRepairs(String userId,String projectId,IpPlanExecution e,ObjectNode state) {
         JsonNode doc=projects.readDoc(projects.required(userId,projectId));
         for(JsonNode raw:PlanState.stageSteps(state,e.getStage())) {
             ObjectNode step=(ObjectNode)raw;
             if(!Set.of("failed","needs_user").contains(step.path("status").asText()))continue;
-            String nodeId=StudioPlanExecutionIds.stepNodeId(e.getId(),step);
-            JsonNode node=com.aistareco.aep.ipstudio.service.IpDocs.node(doc,nodeId);
-            String repaired=node==null?null:node.path("metadata").path("studio").path("runId").asText(null);
-            var nativeRun=repaired==null?null:projects.ownedRun(userId,projectId,repaired).filter(r->nodeId.equals(r.getNodeId())&&"done".equals(r.getStatus())).orElse(null);
-            if(nativeRun!=null) {
-                var dto=projects.toRunDto(nativeRun);
-                if(dto.output()!=null&&!dto.output().path("rawOnly").asBoolean(false)) {
-                    boolean present=false;for(JsonNode old:step.path("runIds"))present|=repaired.equals(old.asText());
-                    if(!present)step.withArray("runIds").add(repaired);
-                    step.put("acceptedRunId",repaired).put("status","done");step.remove(List.of("reason","errorCode","notBefore"));
-                    continue;
-                }
+            if(StudioPlanExecutor.isVideoReferenceUploadFailure(state,step)) {
+                if(stepStillRunning(userId,projectId,step))
+                    throw BusinessException.badRequest("STUDIO_PLAN_STEP_RUNNING","此片段正在生成，请等待完成");
+                continue;
             }
+            if(adoptVideoRepair(userId,projectId,e,doc,step))continue;
             String code=step.path("errorCode").asText("");
             // A receipt we never got is settled as failed and refunded (docs/runbooks/model-task-alerts.md), and the user may
             // retry it. 2026-11-07: this refused every such retry, 7 times in 40 minutes while the image supplier was down, with
             // a request to confirm a task that had already ended. Only a task still in progress must not get a second attempt.
             if((code.contains("UNKNOWN")||code.contains("RECONCILIATION"))&&stepStillRunning(userId,projectId,step))
                 throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"STUDIO_PLAN_STEP_RUNNING","这一步正在生成，请等待完成后重试。");
-            if(step.path("attempt").asInt(1)>=3)throw stale("此步骤已尝试 3 次，请在画布上修复后继续生成");
+            // 2026-11-11 用户定（能用为主）：自动重试 3 次后停下来等人，用户自己点重试就接着试，不再要求先去画布修。
+            // 失败的那几次积分都退了，多点几次不花钱；画布上修好再继续的路照旧可用（上面 adoptVideoRepair）。
         }
+    }
+
+    private boolean adoptVideoRepair(String userId,String projectId,IpPlanExecution e,JsonNode doc,ObjectNode step) {
+        String nodeId=StudioPlanExecutionIds.stepNodeId(e.getId(),step);
+        JsonNode node=com.aistareco.aep.ipstudio.service.IpDocs.node(doc,nodeId);
+        String repaired=node==null?null:node.path("metadata").path("studio").path("runId").asText(null);
+        var nativeRun=repaired==null?null:projects.ownedRun(userId,projectId,repaired)
+                .filter(r->nodeId.equals(r.getNodeId())&&"done".equals(r.getStatus())).orElse(null);
+        if(nativeRun==null)return false;
+        var dto=projects.toRunDto(nativeRun);
+        if(!"done".equals(dto.status())||dto.output()==null||dto.output().path("rawOnly").asBoolean(false))return false;
+        boolean present=false;for(JsonNode old:step.path("runIds"))present|=repaired.equals(old.asText());
+        if(!present)step.withArray("runIds").add(repaired);
+        step.put("acceptedRunId",repaired).put("status","done");step.remove(List.of("reason","errorCode","notBefore"));
+        return true;
     }
 
     private boolean stepStillRunning(String userId,String projectId,JsonNode step) {

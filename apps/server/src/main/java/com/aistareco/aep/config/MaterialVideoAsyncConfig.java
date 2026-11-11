@@ -35,4 +35,16 @@ public class MaterialVideoAsyncConfig {
         exec.initialize();
         return exec;
     }
+
+    @Bean(name = "portraitReviewExecutor")
+    public Executor portraitReviewExecutor() {
+        var exec = new ThreadPoolTaskExecutor();
+        exec.setCorePoolSize(2);
+        exec.setMaxPoolSize(2);
+        exec.setQueueCapacity(0);
+        exec.setThreadNamePrefix("portrait-review-");
+        exec.setTaskDecorator(new MdcTaskDecorator());
+        exec.initialize();
+        return exec;
+    }
 }

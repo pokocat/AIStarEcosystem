@@ -96,11 +96,26 @@ class StudioRecreationTaskPlanTest {
             {"units":[{"no":1,"prompt":"第1镜","captions":[{"start":0,"end":12,"text":"我刷到的带货直播"}]},
                       {"no":2,"prompt":"第1镜","captions":[{"start":0,"end":4,"text":"我刷到的带货直播"},
                         {"start":4,"end":7,"text":"抖音号:78699247005\\n抖音搜索 小尼的奇妙日记"},{"start":5,"end":7,"text":"来抖音 发现更多创作者"}]}]}""");
-        var captions=finalStep(StudioRecreationTaskPlan.build(task,answer)).path("settings").path("captions");
-        assertEquals(1,captions.size(),captions.toString());
-        assertEquals("我刷到的带货直播",captions.get(0).path("text").asText());
-        assertEquals(0.0,captions.get(0).path("start").asDouble());
-        assertEquals(16.0,captions.get(0).path("end").asDouble());
+        var settings=finalStep(StudioRecreationTaskPlan.build(task,answer)).path("settings");
+        // 2026-11-11 真跑：这句其实是原片顶部一直挂着的标题，当字幕放在底部盖住了台词字幕。挂满大半条片子的一句改放顶部
+        assertFalse(settings.has("captions"),settings.toString());
+        assertEquals("我刷到的带货直播",settings.path("title").asText());
+    }
+
+    /** 拉片认出原片的固定标题（screenTitle）：成片放顶部，模型照抄进字幕的同一句去掉，逐句的台词字幕照常。 */
+    @Test
+    void theOriginalsFixedTitleGoesOnTopAndLineCaptionsStay() throws Exception {
+        ObjectNode film=(ObjectNode)film();
+        ((ObjectNode)film.path("breakdown")).put("screenTitle","我刷到的带货直播");
+        var task=StudioRecreationTaskPlan.prepare(film,materials(),"ai-h3",h3(),"768p","9:16",null);
+        JsonNode answer=om.readTree("""
+            {"units":[{"no":1,"prompt":"第1镜","captions":[{"start":0,"end":2,"text":"我刷到的带货直播"},{"start":2,"end":4,"text":"抹上去三二一来"}]},
+                      {"no":2,"prompt":"第1镜","captions":[{"start":0,"end":2,"text":"吸收了"}]}]}""");
+        var settings=finalStep(StudioRecreationTaskPlan.build(task,answer)).path("settings");
+        assertEquals("我刷到的带货直播",settings.path("title").asText());
+        assertEquals(2,settings.path("captions").size(),settings.toString());
+        assertEquals("抹上去三二一来",settings.path("captions").get(0).path("text").asText());
+        assertEquals("吸收了",settings.path("captions").get(1).path("text").asText());
     }
 
     @Test
@@ -253,6 +268,132 @@ class StudioRecreationTaskPlanTest {
         assertEquals("对照上面的提示词，逐个镜头检查成片：\n"+rest,StudioRecreationTaskPlan.videoCheck(StudioRecreationTaskPlan.LIBRARY,om.createObjectNode(),false),"没有参考图时和挪之前一样");
         assertEquals("上一版没有做到的，这一版改掉：人物还戴着原片的贝雷帽",
                 StudioRecreationTaskPlan.LIBRARY.render(StudioPromptCallPoints.RECREATION_REDO_NOTE,Map.of("fix","人物还戴着原片的贝雷帽")).strip());
+    }
+
+    // ── 三种复刻方式（StudioCloneVideoPlan）：深度复刻和元素替换每段把原片片段交给视频模型 ──────────────
+
+    static final String FRAMES="PEX-a-a-study-f",SEGMENTS="PEX-a-a-study-s";
+    JsonNode answer() throws Exception {
+        return om.readTree("""
+            {"summary":"换成小美和保温杯","keep":["原片动作"],"change":["女老板 → 小美"],
+             "units":[{"no":1,"title":"门店爆满","prompt":"参考视频1的动作与运镜……第1镜（0–6 秒）：图1 的女生……","captions":[{"start":0,"end":3,"text":"开店18年"}],"keyframes":[]},
+                      {"no":2,"title":"不推销","prompt":"第1镜（0–7 秒）：图1 的女生说：「我们不推销」","captions":[{"start":1,"end":2,"text":"不推销"}],"keyframes":[]}]}""");
+    }
+    static JsonNode step(JsonNode plan,String id) {
+        for(JsonNode s:plan.path("steps"))if(id.equals(s.path("id").asText()))return s;
+        throw new AssertionError("no step "+id+": "+plan);
+    }
+
+    @Test
+    void depthTurnsEachOriginalSegmentIntoAMotionReferenceBeforeTheVideo() throws Exception {
+        var task=StudioRecreationTaskPlan.prepare(film(),materials(),"ai-h3",h3(),"768p","9:16",true,FRAMES,6,"换成小美和保温杯","depth",SEGMENTS);
+        assertEquals("depth",task.path("method").asText());
+        assertEquals("universal_reference_video",task.path("mode").asText());
+        var first=task.path("units").get(0);
+        assertEquals(SEGMENTS+"1",first.path("clipNodeId").asText());
+        assertEquals(0,first.path("keyframes").size(),"深度复刻不做开场画面");
+        assertEquals("d1",first.path("refs").get(0).path("stepId").asText());
+        assertEquals("reference-video",first.path("refs").get(0).path("role").asText());
+        assertEquals("视频1",first.path("refs").get(0).path("label").asText());
+        assertEquals("girl",first.path("refs").get(1).path("nodeId").asText());assertEquals("图1",first.path("refs").get(1).path("label").asText());
+
+        var plan=StudioRecreationTaskPlan.build(task,answer());
+        var validated=StudioPlanValidator.validateSkillPlan(plan,rules(),"production",Set.of(SEGMENTS+"1",SEGMENTS+"2","cup","girl"));
+        var d1=step(validated,"d1");
+        assertEquals("video-control",d1.path("operation").asText());
+        assertEquals(SEGMENTS+"1",d1.path("settings").path("referenceBindings").get(0).path("nodeId").asText());
+        assertEquals("clip",d1.path("settings").path("referenceBindings").get(0).path("role").asText());
+        var v1=step(validated,"v1");
+        assertTrue(StreamSupport.stream(v1.path("dependsOn").spliterator(),false).anyMatch(d->"d1".equals(d.asText())));
+        assertEquals("d1",v1.path("settings").path("referenceBindings").get(0).path("stepId").asText());
+        assertTrue(step(validated,"final").path("settings").has("captions"),"深度复刻照样把原片字幕加回成片");
+    }
+
+    /** 2026-11-11 真跑：深度复刻三段分开生成，第三段换了个房间。第一段的开场截图换好人和商品做一张场景图，每段都带上它。 */
+    @Test
+    void depthMakesOneSceneImageAndEverySegmentUsesIt() throws Exception {
+        ObjectNode film=(ObjectNode)film();
+        var frames=film.putArray("frames");
+        for(int n=1;n<=3;n++)frames.addObject().put("shot",n).put("at",n).put("storageKey","ipstudio_gen/u/frame-"+n+".jpg");
+        var task=StudioRecreationTaskPlan.prepare(film,materials(),"ai-h3",h3(),"768p","9:16",true,FRAMES,6,"换成小美和保温杯","depth",SEGMENTS);
+        var first=task.path("units").get(0);var second=task.path("units").get(1);
+        assertEquals(1,first.path("keyframes").size(),"只做一张场景图");
+        assertEquals(1,first.path("keyframes").get(0).path("shot").asInt(),"取第一段最开头那一镜");
+        assertEquals("k1",first.path("refs").get(1).path("stepId").asText());assertEquals("图1",first.path("refs").get(1).path("label").asText());
+        assertEquals(0,second.path("keyframes").size());
+        assertEquals("k1",second.path("sceneStepId").asText());
+        assertEquals("k1",second.path("refs").get(1).path("stepId").asText(),"后面几段带上同一张场景图");
+        assertEquals("girl",second.path("refs").get(2).path("nodeId").asText());
+
+        var plan=StudioRecreationTaskPlan.build(task,answer(),(stage,vars)->StudioPromptCallPoints.RECREATION_KEYFRAME.equals(stage)?"场景图":StudioRecreationTaskPlan.LIBRARY.render(stage,vars));
+        List<String> ids=new ArrayList<>();plan.path("steps").forEach(st->ids.add(st.path("id").asText()));
+        assertEquals(List.of("k1","d1","v1","c1","d2","v2","c2","final"),ids);
+        assertEquals(3,step(plan,"k1").path("settings").path("referenceBindings").size(),"原片截图加两份素材（写提示词的模型没点名时全带上）");
+        var validated=StudioPlanValidator.validateSkillPlan(plan,rules(),"production",Set.of(SEGMENTS+"1",SEGMENTS+"2","cup","girl",FRAMES+"1"));
+        var v2=step(validated,"v2");
+        assertTrue(StreamSupport.stream(v2.path("dependsOn").spliterator(),false).anyMatch(d->"k1".equals(d.asText())),"第二段等场景图做完");
+        assertTrue(StreamSupport.stream(v2.path("settings").path("referenceBindings").spliterator(),false).anyMatch(r->"k1".equals(r.path("stepId").asText())));
+        assertEquals("depth-control",v2.path("strategy").path("method").asText());
+    }
+
+    /** 页面上关了「自动检查」（2026-11-11 用户要求做成开关）：开场画面、场景图和每段视频都不检查，也就不会自动重出。 */
+    @Test
+    void turningAutoCheckOffLeavesNoCheckSteps() throws Exception {
+        ObjectNode film=(ObjectNode)film();
+        var frames=film.putArray("frames");
+        for(int n=1;n<=3;n++)frames.addObject().put("shot",n).put("at",n).put("storageKey","ipstudio_gen/u/frame-"+n+".jpg");
+        for(String method:List.of("recreation","depth")) {
+            var task=StudioRecreationTaskPlan.prepare(film,materials(),"ai-h3",h3(),"768p","9:16",null,FRAMES,6,"换成小美",method,SEGMENTS);
+            task.put("maxSteps",28);
+            StudioRecreationTaskPlan.Texts texts=(stage,vars)->StudioPromptCallPoints.RECREATION_KEYFRAME.equals(stage)?"图":StudioRecreationTaskPlan.LIBRARY.render(stage,vars);
+            assertTrue(StreamSupport.stream(StudioRecreationTaskPlan.build(task,answer(),texts).path("steps").spliterator(),false)
+                    .anyMatch(st->"check".equals(st.path("operation").asText())),method+"：默认有检查");
+            task.put("autoCheck",false);
+            var plan=StudioRecreationTaskPlan.build(task,answer(),texts);
+            assertTrue(StreamSupport.stream(plan.path("steps").spliterator(),false).noneMatch(st->"check".equals(st.path("operation").asText())),method+"：关掉后没有检查");
+            assertTrue(StreamSupport.stream(plan.path("steps").spliterator(),false).anyMatch(st->"assemble".equals(st.path("operation").asText())));
+        }
+    }
+
+    @Test
+    void replacementGivesTheOriginalSegmentToTheVideoModelAndAddsNoCaptions() throws Exception {
+        var task=StudioRecreationTaskPlan.prepare(film(),materials(),"ai-h3",h3(),"768p","9:16",null,FRAMES,6,"","replacement",SEGMENTS);
+        var plan=StudioRecreationTaskPlan.build(task,answer());
+        var validated=StudioPlanValidator.validateSkillPlan(plan,rules(),"production",Set.of(SEGMENTS+"1",SEGMENTS+"2","cup","girl"));
+        for(JsonNode s:validated.path("steps"))assertNotEquals("video-control",s.path("operation").asText());
+        var v2=step(validated,"v2").path("settings").path("referenceBindings");
+        assertEquals(SEGMENTS+"2",v2.get(0).path("nodeId").asText());assertEquals("reference-video",v2.get(0).path("role").asText());
+        assertFalse(step(validated,"final").path("settings").has("captions"),"原片画面里已有字幕，不再叠一层");
+    }
+
+    @Test
+    void clipMethodsDropAnEndCardOnlySegmentButStoryboardKeepsIt() throws Exception {
+        var b=StudioVideoBreakdown.normalize(om.readTree("""
+            {"summary":"门店","shots":[{"start":0,"end":7,"visual":"排队"},{"start":7,"end":13,"visual":"老板说话"},{"start":13,"end":17,"visual":"账号片尾","caption":"抖音号 123456789"}]}"""),17,List.of(7.0,13.0));
+        ObjectNode film=om.createObjectNode();film.set("breakdown",b);
+        // 整理拆解时长镜头会按节拍再切开，片尾那一镜的序号按内容找
+        int card=0,last=b.path("shots").size()-1;
+        while(card<=last&&!"账号片尾".equals(b.path("shots").get(card).path("visual").asText()))card++;
+        assertTrue(card>0&&card<=last,b.toString());
+        var segments=film.putArray("segments");
+        segments.addObject().put("no",1).put("startSec",0).put("endSec",13).put("firstShot",0).put("lastShot",card-1);
+        segments.addObject().put("no",2).put("startSec",13).put("endSec",17).put("firstShot",card).put("lastShot",last);
+        assertEquals(1,StudioRecreationTaskPlan.prepare(film,materials(),"ai-h3",h3(),"768p","9:16",null,FRAMES,6,"","replacement",SEGMENTS).path("units").size());
+        assertEquals(2,StudioRecreationTaskPlan.prepare(film,materials(),"ai-h3",h3(),"768p","9:16",null,FRAMES,6,"").path("units").size());
+    }
+
+    @Test
+    void eachMethodHasItsOwnPromptStageAndItRendersTheSegmentFootage() throws Exception {
+        assertEquals(StudioPromptCallPoints.RECREATION_COMPILE,StudioPromptCallPoints.recreationCompile("recreation"));
+        assertEquals(StudioPromptCallPoints.RECREATION_COMPILE_DEPTH,StudioPromptCallPoints.recreationCompile("depth"));
+        assertEquals(StudioPromptCallPoints.RECREATION_COMPILE_REPLACE,StudioPromptCallPoints.recreationCompile("replacement"));
+        for(String method:List.of("depth","replacement")) {
+            var task=StudioRecreationTaskPlan.prepare(film(),materials(),"ai-h3",h3(),"768p","9:16",null,FRAMES,6,"",method,SEGMENTS);
+            String text=StudioRecreationTaskPlan.LIBRARY.render(StudioPromptCallPoints.recreationCompile(method),
+                    StudioRecreationTaskPlan.variables(task,film().path("breakdown"),""));
+            assertTrue(text.contains("### 第 1 段"),text);
+            assertTrue(text.contains("- 视频1："),"每段的视频1 列在素材里："+text);
+        }
     }
 
     static com.aistareco.aep.ipstudio.execution.StudioSkillRules.Rules rules() throws Exception {

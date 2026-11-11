@@ -229,6 +229,21 @@ public final class StudioPromptCallPoints {
                 vars("requirement", "用户写的要求", "materials", "替换素材：[{label, title, slot}]", "breakdown", "拉片文档（Markdown）",
                         "units", "分段：[{no, range（原片时间）, seconds（生成秒数）, shots（这段的分镜表）, refs:[{label, what}], keyframes:[{shot, label, detail}], sameFrames:[{shot, at, of, label}]（这一镜 at 秒的画面就是第 of 镜的开场画面）}]"),
                 Set.of("breakdown", "units"), formats("output", StudioPromptFormats.RECREATION_COMPILE_OUTPUT), compile));
+        // 深度复刻 / 元素替换：每段的视频1 是原片这一段（转成的动作参考 / 原片本身），没有开场画面（StudioCloneVideoPlan）
+        for (String key : List.of(RECREATION_COMPILE_DEPTH, RECREATION_COMPILE_REPLACE))
+            StudioPromptStages.register(stage(key, StudioPromptEntry.LLM, RECREATION_COMPILE_DEPTH.equals(key) ? "爆款复刻 · 深度复刻 · 写每段视频提示词" : "爆款复刻 · 元素替换 · 写每段视频提示词",
+                    vars("requirement", "用户写的要求", "materials", "替换素材：[{label, title, slot}]", "breakdown", "拉片文档（Markdown）",
+                            "units", "分段：[{no, range（原片时间）, seconds（生成秒数）, shots（这段的分镜表）, refs:[{label, what}]（视频1 是原片这一段）}]"),
+                    Set.of("breakdown", "units"), formats("output", StudioPromptFormats.RECREATION_COMPILE_OUTPUT), compile));
+    }
+
+    /** 爆款复刻写每段提示词的环节：三种方式各一份（{@code StudioCloneVideoPlan}）。 */
+    public static String recreationCompile(String method) {
+        return switch (method == null ? "" : method) {
+            case "depth" -> RECREATION_COMPILE_DEPTH;
+            case "replacement" -> RECREATION_COMPILE_REPLACE;
+            default -> RECREATION_COMPILE;
+        };
     }
 
     static final String RECREATION = "stage-recreation", RECREATION_OBSERVE = "stage-recreation-observe",
@@ -236,7 +251,8 @@ public final class StudioPromptCallPoints {
     /** 拉片 v2 与爆款复刻的提示词（docs/ip-studio-recreation.md「直接看视频的拉片」）。 */
     public static final String VIDEO_BREAKDOWN = "stage-video-breakdown", VIDEO_SHOT_DETAIL = "stage-video-shot-detail", RECREATION_COMPILE = "stage-recreation-compile",
             RECREATION_KEYFRAME = "stage-recreation-keyframe", RECREATION_KEYFRAME_CHECK = "stage-recreation-keyframe-check",
-            RECREATION_VIDEO_CHECK = "stage-recreation-video-check", RECREATION_REDO_NOTE = "stage-recreation-redo-note";
+            RECREATION_VIDEO_CHECK = "stage-recreation-video-check", RECREATION_REDO_NOTE = "stage-recreation-redo-note",
+            RECREATION_COMPILE_DEPTH = "stage-recreation-compile-depth", RECREATION_COMPILE_REPLACE = "stage-recreation-compile-replace";
     public static final String DIALOGUE_SKILL = "stage-dialogue-skill", DIALOGUE_PHASE = "stage-dialogue-phase", ANALYSIS_FOCUS = "stage-analysis-focus",
             VISION_BATCH = "stage-vision-batch", RECREATION_MERGE = "stage-recreation-merge";
     /** 复刻任务受理时一起冻结的环节：拆解、逐页观察、汇总、拉片分段、逐段分析、用户关注点、分批读图。 */

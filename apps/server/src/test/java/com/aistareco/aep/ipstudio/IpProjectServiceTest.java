@@ -624,6 +624,16 @@ class IpProjectServiceTest {
         assertTrue(svc.signOwnedKeys(USER, java.util.List.of("media/material-videos/mvj_abc/video.mp4")).containsKey("media/material-videos/mvj_abc/video.mp4"));
     }
 
+    @Test void configuredNestedStoragePrefixKeepsOwnerAndProductChecks() {
+        org.springframework.test.util.ReflectionTestUtils.setField(svc,"ossKeyPrefix","qa/studio-clone-e2e");
+        IpStudioFixtures.withVideoJob(videoJobs,"mvj_nested",USER,"ipstudio");
+        String own="qa/studio-clone-e2e/material-videos/mvj_nested/video.mp4";
+        assertTrue(svc.signOwnedKeys(USER,java.util.List.of(own)).containsKey(own));
+        IpStudioFixtures.withVideoJob(videoJobs,"mvj_foreign","someone-else","ipstudio");
+        for(String key:java.util.List.of("qa/studio-clone-e2e/material-videos/mvj_foreign/video.mp4","other/prefix/material-videos/mvj_nested/video.mp4","qa/studio-clone-e2e/../material-videos/mvj_nested/video.mp4"))
+            assertThrows(BusinessException.class,()->svc.signOwnedKeys(USER,java.util.List.of(key)));
+    }
+
     @Test
     @DisplayName("成片 key：别人的任务 —— 不认（把别人的 key 写进自己画布换不出地址）")
     void rejectsSomeoneElsesVideoKey() {

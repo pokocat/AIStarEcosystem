@@ -61,8 +61,8 @@ export function StudioTemplateMarket() {
   if (authState !== "ok") return <StudioPage {...heading}><GalleryState loading/></StudioPage>;
 
   return <StudioPage {...heading} className="studio-gallery-page studio-template-market" actions={isOperatorRole(identity?.operatorRole) ? <Link className="inspiration-admin-link" href="/projects/demos"><Settings2 size={15}/>官方内容管理</Link> : undefined}>
-    {editingCover && <CanvasCoverEditor target="template" id={editingCover.id} name={editingCover.name} doc={editingCover.doc} onClose={() => setEditingCover(undefined)} onSaved={cover => {
-      const update = (rows: IpTemplate[]) => rows.map(t => t.id === editingCover.id ? {...t, coverUrl: cover.coverUrl || undefined} : t);
+    {editingCover && <CanvasCoverEditor key={editingCover.id} target="template" id={editingCover.id} name={editingCover.name} doc={editingCover.doc} onClose={() => setEditingCover(undefined)} onSaved={cover => {
+      const update = (rows: IpTemplate[]) => rows.map(t => t.id === editingCover.id ? {...t, coverUrl: cover.coverUrl || undefined, coverVideoUrl: cover.coverVideoUrl || undefined} : t);
       templates.setData(update);examples.setData(update);setEditingCover(undefined);templates.reload();examples.reload();
     }}/>}
     {usingTemplate && <StudioTemplateUse key={usingTemplate.versionId || usingTemplate.id} template={usingTemplate} onClose={() => setUsingTemplate(undefined)} onCreated={href => router.push(href)} />}

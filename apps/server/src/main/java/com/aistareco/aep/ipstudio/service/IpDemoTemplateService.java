@@ -275,7 +275,9 @@ public class IpDemoTemplateService {
         // （DELETE 只按**当前**文档收集 key），改一次多一组孤儿（Codex 复核 v0.192 指出）。
         // 只清这条示例自己前缀下、且新文档不再引用的那些。
         Set<String> stale = new LinkedHashSet<>();
-        if (row.getDocJson() != null) collectKeys(docOf(row), stale);
+        JsonNode previousDoc = row.getDocJson() == null ? IpDocs.emptyDoc(om) : docOf(row);
+        collectKeys(previousDoc, stale);
+        boolean hadVideoCover = CanvasCoverService.containsVideo(previousDoc, row.getCoverKey());
         if (row.getCoverKey() != null) stale.add(row.getCoverKey());
         row.setName(name != null && !name.isBlank() ? name.trim()
                 : (p.getName() == null || p.getName().isBlank() ? "未命名模板" : p.getName()));
@@ -286,7 +288,7 @@ public class IpDemoTemplateService {
         // 否则目录里那张卡还挂着上一版示例的照片，卡片和内容对不上。
         if (!CanvasCoverService.isUploadedCover(row.getCoverKey(), id)) {
             if (asTemplate) row.setCoverKey(null);
-            else if (cover != null) row.setCoverKey(cover);
+            else if (!CanvasCoverService.containsVideo(doc, row.getCoverKey()) && (cover != null || hadVideoCover)) row.setCoverKey(cover);
         }
         row.setSourceProjectId(projectId);
         row.setCreatedBy(operatorId);
@@ -447,14 +449,16 @@ public class IpDemoTemplateService {
             nodes++;
             assets += countAssetKeys(IpDocs.metadataOf(n));
         }
+        boolean videoCover = CanvasCoverService.containsVideo(doc, d.getCoverKey());
+        String cover = d.getCoverKey() == null ? "" : signOrEmpty(d.getCoverKey());
         return new IpStudioDtos.IpDemoAdminDto(
                 d.getId(), d.getName(), d.getSummary() == null ? "" : d.getSummary(),
                 d.getKind(), d.isEnabled(), d.getSortOrder(),
-                d.getCoverKey() == null ? "" : signOrEmpty(d.getCoverKey()),
+                videoCover ? "" : cover,
                 d.getSourceProjectId(), d.getCreatedBy(),
                 d.getCreatedAt() == null ? null : d.getCreatedAt().toString(),
                 d.getUpdatedAt() == null ? null : d.getUpdatedAt().toString(),
-                nodes, assets, d.getCurrentVersionId());
+                nodes, assets, d.getCurrentVersionId(), videoCover ? cover : null);
     }
 
     private static int countAssetKeys(JsonNode md) {

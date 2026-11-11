@@ -74,6 +74,24 @@ class CanvasCoverServiceTest {
         service.select("owner","template","t",false,"own-image");assertEquals("own-image",template.getCoverKey());
         service.reset("owner","template","t",false);verify(storage,never()).delete("own-image");
     }
+    @Test void aTemplateCanSelectAnExistingVideoTakeWithoutCopyingIt() {
+        template.setVisibility("official");
+        template.setDocJson("""
+                {"nodes":[{"type":"video","metadata":{"storageKey":"current.mp4","videos":[{"storageKey":"take.mp4"}]}}]}
+                """);
+        assertThrows(BusinessException.class, () -> service.select("owner", "template", "t", false, "take.mp4"));
+        assertThrows(BusinessException.class, () -> service.select("operator", "template", "t", true, "foreign.mp4"));
+        var result = service.select("operator", "template", "t", true, "take.mp4");
+        assertNull(result.coverUrl());
+        assertEquals("signed:take.mp4", result.coverVideoUrl());
+        assertEquals("take.mp4", template.getCoverKey());
+        assertEquals("v1", template.getCurrentVersionId());
+        TransactionSynchronizationManager.initSynchronization();
+        service.reset("operator", "template", "t", true);
+        TransactionSynchronizationManager.getSynchronizations().forEach(s -> s.afterCompletion(TransactionSynchronization.STATUS_COMMITTED));
+        assertNull(template.getCoverKey());
+        verify(storage, never()).delete(anyString());
+    }
     @Test void builtinCoverUsesOnlyAnOverrideAndNeverCreatesOrChangesATemplate()throws Exception{
         var builtin=new com.aistareco.aep.ipstudio.dto.IpStudioDtos.IpTemplateDto("builtin","官方模板","","",null,0,0,om.readTree(template.getDocJson()));
         when(catalog.template("builtin")).thenReturn(Optional.of(builtin));

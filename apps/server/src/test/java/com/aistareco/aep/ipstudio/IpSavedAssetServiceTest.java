@@ -29,6 +29,17 @@ class IpSavedAssetServiceTest {
         service = new IpSavedAssetService(repo,projects,om,users);
     }
     private JsonNode image() throws Exception { return om.readTree("{\"kind\":\"image\",\"title\":\"成图\",\"coverUrl\":\"https://expired\",\"data\":{\"storageKey\":\"ipstudio_gen/u/1.jpg\",\"dataUrl\":\"https://expired\",\"width\":768},\"metadata\":{\"prompt\":\"银发姑娘\"}}"); }
+    @Test void measuredLibraryDurationSurvivesCollectionAndEnrichesAnOlderEntry() throws Exception {
+        var input=(com.fasterxml.jackson.databind.node.ObjectNode)om.readTree("{\"kind\":\"video\",\"title\":\"原片\",\"data\":{\"storageKey\":\"ipstudio_source/u/v.mp4\"}}");
+        service.saveAutomatic("u",input);
+        input.with("data").put("durationSec",17.970794).put("width",720).put("height",1280).put("bytes",2888955);
+        var wire=service.saveAutomatic("u",input);
+        assertEquals(17.970794,wire.path("data").path("durationSec").asDouble(),.000001);
+        assertEquals(720,wire.path("data").path("width").asInt());
+        assertFalse(rows.get(wire.path("id").asText()).getPayloadJson().contains("signature="));
+        input.with("data").put("storageKey","ipstudio_source/u/client.mp4");
+        assertFalse(service.save("u",input).path("data").has("durationSec"),"client metadata is not a server measurement");
+    }
     @Test void savesCloudEntryAndResignsOnEveryRead() throws Exception {
         var saved=service.save("u",image());
         var row=rows.get(saved.path("id").asText());

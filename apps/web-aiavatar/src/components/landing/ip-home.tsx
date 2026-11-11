@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, AudioLines, Boxes, ChevronLeft, ChevronRight, Clapperboard, Image as ImageIcon, LoaderCircle, MicVocal, Scan, Sparkles, SquareDashedMousePointer, SwatchBook, Video } from "lucide-react";
+import { ArrowRight, AudioLines, Boxes, Clapperboard, Image as ImageIcon, LoaderCircle, MicVocal, Scan, Sparkles, SquareDashedMousePointer, SwatchBook, Video } from "lucide-react";
 import type { IpTemplate } from "@ai-star-eco/types";
 import { auth, USE_MOCK } from "@/proto/api";
 import { DesktopTopBar } from "@/shell/desktop-top-bar";
@@ -52,7 +52,6 @@ export function IpHome({ header = true }: { header?: boolean }) {
   const [feedError, setFeedError] = useState(false);
   const [tab, setTab] = useState<FeedTab>("all");
   const [using, setUsing] = useState<IpTemplate>();
-  const goals = useRef<HTMLDivElement>(null);
   // 「新建画布」和左栏「画布」是同一个「新建」 (docs/ip-studio-new-canvas-and-threads.md §2.2).
   const newCanvas = useStartNewCanvas();
   const busy = !!creating || newCanvas.creating;
@@ -103,7 +102,6 @@ export function IpHome({ header = true }: { header?: boolean }) {
   };
   // 新发布的在前，有成图的排在只有步骤的模板前面（用户 2026-11-06 要求；2026-10-30 线上走查：前几屏大半是没有图的卡）。
   const feed = useMemo(() => inspirationOrder((templates ?? []).filter(t => tab === "all" || (tab === "canvas" ? true : templateKind(t) === tab))), [templates, tab]);
-  const scrollGoals = (direction: number) => goals.current?.scrollBy({ left: direction * goals.current.clientWidth * .8, behavior: "smooth" });
 
   return <div className="ip-brand-surface ip-home studio-scene-home studio-next-page">
     {/* 登录后电脑上的导航由外壳给（左侧一列，见 shell/app-chrome.tsx），这里只给没登录的访客画公开顶栏。 */}
@@ -124,9 +122,9 @@ export function IpHome({ header = true }: { header?: boolean }) {
       })}</nav>
 
       {homeCards.length > 0 && <section className="home-goals" aria-labelledby="home-goals-title">
-        <div className="home-section-heading"><h2 id="home-goals-title">你想做什么？</h2><p>按目标选择场景</p>
-          <span className="home-goals-arrows"><button type="button" aria-label="上一组场景" onClick={() => scrollGoals(-1)}><ChevronLeft size={18}/></button><button type="button" aria-label="下一组场景" onClick={() => scrollGoals(1)}><ChevronRight size={18}/></button></span></div>
-        <div className="home-goal-track" ref={goals}>{homeCards.map(g => <Link key={g.id} href={authed ? sceneHref(g) : `/login?next=${encodeURIComponent(sceneHref(g))}`} className="home-goal">
+        <div className="home-section-heading"><h2 id="home-goals-title">你想做什么？</h2><p>按目标选择场景</p></div>
+        {/* 电脑上一行三张、全部摊开（用户 2026-11-11 定的两行：爆款复刻、同城到店、电商带货 / 剧情短片、品牌广告、商品套图）；手机上横着滑。 */}
+        <div className="home-goal-track">{homeCards.map(g => <Link key={g.id} href={authed ? sceneHref(g) : `/login?next=${encodeURIComponent(sceneHref(g))}`} className="home-goal">
           <span className="home-goal-art" aria-hidden="true">{g.covers.slice(0, 2).map(c => <SceneThumb key={c.sceneId} id={c.sceneId} cover={c.coverUrl} title={g.title} size={180}/>)}</span>
           <span className="home-goal-copy">{g.kind === "video" ? <Video size={16} aria-hidden="true"/> : <ImageIcon size={16} aria-hidden="true"/>}<strong>{g.title}</strong><small>{g.description}</small></span>
         </Link>)}</div>

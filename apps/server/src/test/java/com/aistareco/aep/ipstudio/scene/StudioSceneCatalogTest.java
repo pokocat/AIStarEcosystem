@@ -286,14 +286,14 @@ class StudioSceneCatalogTest {
     @Test
     void homeCardsPointAtRealScenesAndDisappearWhenTheirSceneIsTakenDown() {
         var c = catalog.catalog();
-        assertThat(c.goals()).extracting(StudioSceneCatalog.HomeGoal::id).contains("recreation", "commerce", "ip");
+        assertThat(c.goals()).extracting(StudioSceneCatalog.HomeGoal::id).containsExactly("recreation", "local", "commerce", "drama", "brand", "product-set");
         var off = c.with(c.image(), c.video().stream().map(s -> s.id().equals("ecom-talking") ? s.withMedia(false, null, null, null, null) : s).toList(), c.homeGoals());
         assertThat(new StudioSceneCatalog(off).published(k -> k).goals()).extracting(StudioSceneCatalog.HomeGoal::sceneId).doesNotContain("ecom-talking");
         // 公开给首页的卡片只有显示用的字段：类型按落点场景判，封面按编号给（没传图时地址为空）。
         var cards = catalog.homeCards(k -> "signed:" + k);
-        assertThat(cards).filteredOn(card -> card.id().equals("ip")).singleElement().satisfies(card -> {
+        assertThat(cards).filteredOn(card -> card.id().equals("product-set")).singleElement().satisfies(card -> {
             assertThat(card.kind()).isEqualTo("image");
-            assertThat(card.covers()).extracting(StudioSceneCatalog.HomeCover::sceneId).containsExactly("ip-sheet", "ip-portrait");
+            assertThat(card.covers()).extracting(StudioSceneCatalog.HomeCover::sceneId).containsExactly("white-background", "selling-point");
             assertThat(card.covers()).allMatch(cover -> cover.coverUrl() == null);
         });
         var dangling = c.with(c.image(), c.video(), List.of(new StudioSceneCatalog.HomeGoal("x", "卡", "说明", "no-such-scene", List.of())));

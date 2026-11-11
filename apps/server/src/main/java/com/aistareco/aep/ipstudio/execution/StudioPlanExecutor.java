@@ -44,6 +44,7 @@ public class StudioPlanExecutor {
     private static final Logger log=LoggerFactory.getLogger(StudioPlanExecutor.class);
     static final Duration LEASE=Duration.ofMinutes(2);
     static final Duration WINDOW=Duration.ofMinutes(90);
+    static final String PORTRAIT_RETRY_STEP="portraitRetryStepId";
     /** 长视频一次要出十几个任务，Seedance 一段就要二十分钟左右，给够时间；超过了停在中途，已受理的照常结算。 */
     static final Duration SEGMENTED_WINDOW=Duration.ofHours(3);
     static final Duration CHILD_GRACE=Duration.ofMinutes(15);
@@ -340,14 +341,25 @@ public class StudioPlanExecutor {
     /** Running: stop on failures / unresolved checks, then submit the next ready step if the stage budget allows. */
     private Submission advanceRunning(IpPlanExecution e,ObjectNode state,ObjectNode budget,List<Event> out,List<Runnable> after) {
         String stage=e.getStage();
-        for(JsonNode step:PlanState.stageSteps(state,stage)) {
+        var stageSteps=PlanState.stageSteps(state,stage);
+        ObjectNode retry=PlanState.step(state,stage,state.path(PORTRAIT_RETRY_STEP).asText());
+        if(retry==null||!Set.of("pending","submitted","running").contains(retry.path("status").asText())) {
+            state.remove(PORTRAIT_RETRY_STEP);
+            retry=null;
+        }
+        for(JsonNode step:stageSteps) {
+            if(retry!=null&&step!=retry)continue;
             if("failed".equals(step.path("status").asText())) {
                 // Out of scope is deterministic: say what to do with the named objects, not 「重试」 (production 2026-10-23).
                 if(step.path("materials").isArray()&&!step.path("materials").isEmpty())
                     return needsUser(e,state,"「"+step.path("title").asText()+"」已暂停："+step.path("reason").asText()
                             +(StudioPlanMaterials.anyOnCanvas(step.path("materials"))?"。可将它加入本次制作并重新编排，或不使用它并重新编排。":"。可不使用它并重新编排，或结束本次制作。"));
+                if(isPortraitSegmentTimeout(state,stage,step))
+                    return needsUser(e,state,"等待人像素材审核超时。可单独重试此片段，已完成的片段将保留。");
+                if(isVideoReferenceUploadFailure(state,step))
+                    return needsUser(e,state,step.path("reason").asText("参考素材上传失败，请重试此片段"));
                 if(state.has("videoTask")&&step.path("attempt").asInt(1)>=3)
-                    return needsUser(e,state,"「"+step.path("title").asText()+"」已尝试 3 次，仍未完成。请到画布查看这一步，处理后继续生成。");
+                    return needsUser(e,state,"「"+step.path("title").asText()+"」已尝试 3 次，仍未完成："+step.path("reason").asText("原因未知")+"。可重试此步骤，或结束本次制作。");
                 return needsUser(e,state,"「"+step.path("title").asText()+"」没有完成："+step.path("reason").asText("原因未知")+"。可重试此步骤，或结束本次制作。");
             }
             if(PlanState.unresolvedCheck(state,step)) {
@@ -356,7 +368,8 @@ public class StudioPlanExecutor {
             if("needs_user".equals(step.path("status").asText()))return needsUser(e,state,step.path("reason").asText("「"+step.path("title").asText()+"」需要你确认"));
         }
         ObjectNode ready=null;
-        for(JsonNode raw:PlanState.stageSteps(state,stage)) {
+        for(JsonNode raw:stageSteps) {
+            if(retry!=null&&raw!=retry)continue;
             String status=raw.path("status").asText();
             // A persisted request without a run: resubmit with the same identity (idempotent), budget already counted.
             if("submitted".equals(status)){ready=(ObjectNode)raw;break;}
@@ -385,9 +398,13 @@ public class StudioPlanExecutor {
         stageBudget.remove("shortfall");
         String requestId=StudioPlanExecutionIds.requestId(e.getId(),stage,ready.path("id").asText(),ready.path("attempt").asInt(1));
         RunRequest request;
-        try {request=compile(e,state,ready,requestId);}
+        try {
+            request=compile(e,state,ready,requestId);
+            if(state.has("videoTask")&&"video".equals(request.operation()))
+                ready.set("videoRequest",mapper.valueToTree(request));
+        }
         catch(BusinessException error) {
-            ready.put("status","needs_user").put("reason",error.getMessage());
+            ready.put("status","needs_user").put("reason",error.getMessage()).put("errorCode",error.getCode());
             return needsUser(e,state,"「"+ready.path("title").asText()+"」还不能开始："+error.getMessage());
         }
         // Persist the request identity and the conservative budget occupation before the native call.
@@ -395,6 +412,19 @@ public class StudioPlanExecutor {
         stageBudget.put("inFlight",inFlight+(resubmit?0:quoted));
         e.setInFlight(e.getInFlight()+(resubmit?0:quoted));
         return new Submission(ready.path("id").asText(),stage,requestId,request,e.getOwnerUserId(),e.getProjectId());
+    }
+
+    static boolean isPortraitSegmentTimeout(JsonNode state,String stage,JsonNode step) {
+        return state.has("videoTask")&&"video".equals(step.path("operation").asText())
+                &&"failed".equals(step.path("status").asText())
+                &&com.aistareco.aep.service.materialvideo.MaterialVideoWorker.PORTRAIT_REVIEW_TIMEOUT.equals(step.path("errorCode").asText())
+                &&PlanState.stageSteps(state,stage).stream().filter(s->"video".equals(s.path("operation").asText())).count()>1;
+    }
+
+    static boolean isVideoReferenceUploadFailure(JsonNode state,JsonNode step) {
+        return state.has("videoTask")&&"video".equals(step.path("operation").asText())
+                &&"failed".equals(step.path("status").asText())
+                &&"VIDEO_REF_UPLOAD_FAILED".equals(step.path("errorCode").asText());
     }
 
     private Submission needsUser(IpPlanExecution e,ObjectNode state,String reason) {
@@ -510,6 +540,20 @@ public class StudioPlanExecutor {
 
     /** Compile a step into its native request with real keys from canvas nodes and earlier accepted/successful runs. */
     private RunRequest compile(IpPlanExecution e,ObjectNode state,ObjectNode step,String requestId) {
+        if(state.has("videoTask")&&"video".equals(step.path("operation").asText())) {
+            JsonNode saved=step.path("videoRequest");
+            // Older queued retries have notBefore and prior run IDs, but no saved request in the step.
+            if(!saved.isObject()&&(step.path("retryVideoInputs").asBoolean()||step.hasNonNull("notBefore")))
+                saved=outputs.previousVideoInputs(e,step);
+            if(saved instanceof ObjectNode snapshot) {
+                ObjectNode request=snapshot.deepCopy();
+                if(!requestId.equals(request.path("clientRequestId").asText()))request.remove("modelBilling");
+                request.put("clientRequestId",requestId).put("nodeId",StudioPlanExecutionIds.stepNodeId(e.getId(),step))
+                        .put("executionId",e.getId()).put("maxCost",step.path("quotedCost").asLong()).put("stage",e.getStage());
+                request.set("billing",mapper.valueToTree(billing(e)));
+                return mapper.convertValue(request,RunRequest.class);
+            }
+        }
         if(state.path("videoTask").path("direct").isObject()) {
             ObjectNode direct=state.path("videoTask").path("direct").deepCopy();
             direct.put("clientRequestId",requestId).put("nodeId",StudioPlanExecutionIds.stepNodeId(e.getId(),step))
@@ -523,6 +567,11 @@ public class StudioPlanExecutor {
         JsonNode definition=step.path("definition");
         var keys=new StudioPlanSteps.Keys() {
             @Override public String binding(JsonNode binding) {
+                // 深度复刻 / 元素替换受理时冻结的原片和素材：用冻结的文件，画布上后来改了也不影响这次制作。
+                // 不在冻结表里的（拉片切好的原片片段、本次制作的产物）照常按节点找。
+                JsonNode frozen=state.path("videoTask").path("cloneKeys");
+                if(binding.hasNonNull("nodeId")&&frozen.isObject()&&frozen.hasNonNull(binding.path("nodeId").asText()))
+                    return frozen.path(binding.path("nodeId").asText()).asText();
                 if(binding.hasNonNull("nodeId"))return outputs.resolveNodeKey(e,steps,doc,binding.path("nodeId").asText());
                 return stepKey(e,state,stage,binding.path("stepId").asText(),null);
             }
@@ -662,7 +711,7 @@ public class StudioPlanExecutor {
         String nodeId=StudioPlanExecutionIds.stepNodeId(e.getId(),step);
         boolean bound=!step.path("nodeId").asText("").isBlank();
         JsonNode output=run.output()==null?mapper.createObjectNode():run.output();
-        String type=switch(operation){case "image" -> "image";case "video","assemble" -> "video";default -> "text";};
+        String type=switch(operation){case "image" -> "image";case "video","assemble","video-control" -> "video";default -> "text";};
         String title=step.path("title").asText();
         ObjectNode data=nodeData(e,nodeId,type,title,stepId,run.id());
         if(bound)data.put("op","update");
@@ -670,7 +719,7 @@ public class StudioPlanExecutor {
         String prompt=sentPrompt(run,step);
         if(!prompt.isBlank())metadata.put("prompt",prompt);
         switch(operation) {
-            case "image","video","assemble" -> {
+            case "image","video","assemble","video-control" -> {
                 String key=outputs.outputKey(run,null);
                 if(key!=null)metadata.put("storageKey",key);
                 if("assemble".equals(operation))studio.put("kind","work");
@@ -692,7 +741,14 @@ public class StudioPlanExecutor {
             case "recreation" -> {studio.put("kind","recreation");metadata.put("content",output.path("text").asText(""));}
             default -> {studio.put("kind","text");metadata.put("content",output.path("textRevision").path("content").asText(output.path("text").asText("")));}
         }
+        if("video-control".equals(operation))studio.put("includeInWork",false);
         out.add(new Event("node.upsert",data));
+        // Native clone inputs are the accepted canvas nodes, not whatever the user later edits into the draft.
+        for(JsonNode input:(run.inputs()==null?mapper.createObjectNode():run.inputs()).path("canvasInputNodeIds")) {
+            var link=mapper.createObjectNode().put("nodeId",nodeId).put("op","connect").put("executionId",e.getId()).put("stepId",stepId).put("runId",run.id());
+            link.putObject("connection").put("fromNodeId",input.asText()).put("toNodeId",nodeId);
+            out.add(new Event("node.upsert",link));
+        }
         if(!"check".equals(operation))for(JsonNode dependency:step.path("dependsOn")) {
             var upstream=PlanState.step(state,stage,dependency.asText());
             if(upstream==null||"check".equals(upstream.path("operation").asText()))continue;

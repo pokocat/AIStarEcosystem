@@ -100,6 +100,7 @@ public final class StudioVideoBreakdown {
         if(raw==null||!raw.isObject())raw=OM.createObjectNode();
         ObjectNode out=OM.createObjectNode();
         out.put("summary",text(raw.path("summary"),300)).put("type",text(raw.path("type"),40)).put("music",text(raw.path("music"),300));
+        out.put("screenTitle",text(raw.path("screenTitle"),60));
         var people=out.putArray("people");
         for(JsonNode p:list(raw.path("people"),12))if(p.isObject())people.addObject().put("id",text(p.path("id"),8)).put("who",text(p.path("who"),200))
                 .put("role",text(p.path("role"),20)).put("speaks",p.path("speaks").asBoolean(false));
@@ -498,6 +499,7 @@ public final class StudioVideoBreakdown {
         if(!b.path("type").asText("").isBlank())out.append(" · ").append(b.path("type").asText());
         out.append("\n\n");
         if(!b.path("summary").asText("").isBlank())out.append(b.path("summary").asText()).append("\n\n");
+        if(!b.path("screenTitle").asText("").isBlank())out.append("画面上一直挂着的标题：「").append(b.path("screenTitle").asText()).append("」（成片放在顶部，不算字幕）。\n\n");
         out.append("原片 ").append(fmt(b.path("durationSec").asDouble())).append(" 秒，").append(b.path("shots").size()).append(" 个镜头。\n\n");
         if(b.path("people").size()+b.path("products").size()>0) {
             out.append("## 人物与商品\n\n");

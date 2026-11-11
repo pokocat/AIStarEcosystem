@@ -8,7 +8,13 @@ import java.security.Principal;
 @RequestMapping("/api/v1/ip-studio")
 public class StudioVideoTaskController {
     private final StudioVideoTaskService service;
-    public StudioVideoTaskController(StudioVideoTaskService service) {this.service=service;}
+    private final StudioCloneVideoPlan clones;
+    public StudioVideoTaskController(StudioVideoTaskService service,StudioCloneVideoPlan clones) {this.service=service;this.clones=clones;}
+    /** 爆款复刻：这条参考视频适合哪种复刻方式（按切镜数和镜头时长，不调模型、不扣积分）。 */
+    @GetMapping("/studio/clone-advice")
+    public ApiResponse<StudioCloneVideoPlan.Advice> cloneAdvice(Principal p,@RequestParam String key) {
+        return ApiResponse.of(clones.advise(p.getName(),key));
+    }
     @GetMapping("/studio/video-task-price")
     public ApiResponse<StudioVideoTaskService.Quote> price(Principal p,@RequestParam String kind,@RequestParam(required=false) String model,
             @RequestParam(required=false) String mode,@RequestParam(required=false) String tier,@RequestParam int duration,@RequestParam String ratio,

@@ -1779,13 +1779,13 @@
       ]
     },
     {
-      "id": "product-set",
-      "title": "商品套图",
-      "description": "白底图、卖点图、模特图一次生成",
-      "sceneId": "white-background",
+      "id": "local",
+      "title": "同城到店",
+      "description": "探店、团购，拍给附近的人看",
+      "sceneId": "local-discovery",
       "covers": [
-        "white-background",
-        "selling-point"
+        "local-discovery",
+        "local-signature"
       ]
     },
     {
@@ -1799,13 +1799,13 @@
       ]
     },
     {
-      "id": "local",
-      "title": "同城到店",
-      "description": "探店、团购，拍给附近的人看",
-      "sceneId": "local-discovery",
+      "id": "drama",
+      "title": "剧情短片",
+      "description": "有冲突、有反转的短剧情",
+      "sceneId": "drama-twist",
       "covers": [
-        "local-discovery",
-        "local-signature"
+        "drama-twist",
+        "drama-emotional"
       ]
     },
     {
@@ -1819,23 +1819,13 @@
       ]
     },
     {
-      "id": "drama",
-      "title": "剧情短片",
-      "description": "有冲突、有反转的短剧情",
-      "sceneId": "drama-twist",
+      "id": "product-set",
+      "title": "商品套图",
+      "description": "白底图、卖点图、模特图一次生成",
+      "sceneId": "white-background",
       "covers": [
-        "drama-twist",
-        "drama-emotional"
-      ]
-    },
-    {
-      "id": "ip",
-      "title": "IP 形象",
-      "description": "一张照片做出设定图和写真",
-      "sceneId": "ip-sheet",
-      "covers": [
-        "ip-sheet",
-        "ip-portrait"
+        "white-background",
+        "selling-point"
       ]
     }
   ]

@@ -41,9 +41,6 @@
 .home-section-heading>a:hover { text-decoration: underline; text-underline-offset: 4px; }
 .home-goals, .home-feed { max-width: 1520px; margin: 0 auto; padding: 40px 40px 0; }
 
-.home-goals-arrows { display: inline-flex; gap: 6px; margin-left: auto; }
-.home-goals-arrows button { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid var(--ip-line); border-radius: 50%; background: var(--ip-paper); }
-.home-goals-arrows button:hover { background: var(--ip-soft); }
 .home-goal-track { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(280px, calc((100% - 3 * 18px) / 4)); gap: 18px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; padding: 2px 2px 8px; }
 .home-goal-track::-webkit-scrollbar { display: none; }
 .home-goal { scroll-snap-align: start; display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--ip-line, #e8eaec); border-radius: 14px; overflow: hidden; background: var(--ip-paper, #fff); color: inherit; text-decoration: none; transition: box-shadow 160ms var(--ip-ease), transform 160ms var(--ip-ease); }
@@ -78,8 +75,6 @@ html:not([data-layout="desktop"]) .home-tools button>span { width: 52px; height:
 .studio-mobile-home { padding-bottom: calc(var(--tabbar-h, 58px) + env(safe-area-inset-bottom, 0px) + 12px); background: var(--ip-paper, #fff); min-height: 100dvh; }
 .studio-mobile-home .home-hero { padding-top: calc(env(safe-area-inset-top, 0px) + 34px); }
 
-/* 手机上直接划，左右箭头只占地方。 */
-html:not([data-layout="desktop"]) .home-goals-arrows { display: none; }
 
 /* ── 2026-10-31 改版（设计稿「AI 视频与图片页重设计 · 首页」）：白底、去掉暖色大底，字更细更小，工具是细边小卡 ── */
 html[data-layout="desktop"] .studio-next-page.studio-scene-home { background: #ffffff; border-radius: 0; }
@@ -116,10 +111,12 @@ html[data-layout="desktop"] .studio-next-page.studio-scene-home { background: #f
 .studio-next-page .home-section-heading h2 { font-family: inherit; font-size: 16px; font-weight: 500; letter-spacing: 0; }
 .studio-next-page .home-section-heading p { color: var(--ip-muted); font-size: 12px; }
 .studio-next-page .home-section-heading>a { color: var(--sn-text-2); font-size: 12.5px; font-weight: 400; }
-.studio-next-page .home-goals-arrows button { width: 30px; height: 30px; border: 1px solid var(--ip-line); background: #ffffff; color: var(--sn-text-2); box-shadow: none; }
 /* 一屏正好四张，第五张起横着滑：不让第四张被裁掉一截。 */
 .studio-next-page .home-goal-track { gap: 14px; grid-auto-columns: calc((100% - 3 * 14px) / 4); }
 html:not([data-layout="desktop"]) .studio-next-page .home-goal-track { grid-auto-columns: 78%; }
+/* 电脑上一行三张、按行排（2026-11-11 用户定：两行六张，不再横向滑动和左右箭头）。 */
+html[data-layout="desktop"] .studio-next-page .home-goal-track { grid-auto-flow: row; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-columns: auto; overflow: visible; scroll-snap-type: none; }
+html[data-layout="desktop"] .studio-next-page .home-goal-art { height: 168px; }
 html:not([data-layout="desktop"]) .studio-next-page .home-tools button { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .studio-next-page .home-goal { gap: 10px; padding: 10px 10px 12px; border: 1px solid var(--ip-line); border-radius: 16px; background: #ffffff; box-shadow: none; }
 .studio-next-page .home-goal:hover { border-color: var(--sn-field); box-shadow: none; transform: none; }

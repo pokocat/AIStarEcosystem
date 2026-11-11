@@ -1443,6 +1443,14 @@ postgres双机的`AEP_STORAGE_REQUIRE_DURABLE_UPLOADS`默认true：混剪素材/
 
 `StudioVideoTaskService` 复用原生执行表与模型生成链，对普通视频、分段长视频与复刻提供统一报价、受理、列表和详情。元数据保存在 `ip_plan_execution.steps_json.videoTask`，无新表或独立计费账本；旧任务通过只读投影兼容。复刻分析完成后在已批准的总费用上限内动态接续制作。新视频页步骤总共最多自动尝试三次；不明受理和原文保留不能触发盲目重做。画布修复成功后，明确继续可采纳同一输出节点的本人成功任务，并保留已有成功步骤。契约见 OpenAPI 的 `video-tasks` 与 `specs/BUSINESS_RULES.md`。
 
+### 爆款复刻的三种方式（2026-11-11，本地实现，未发布）
+
+`kind=recreation|depth|replacement` 都走拉片 → 代码拼方案（`StudioRecreationTaskPlan`，`method` 决定每段交给视频模型什么）→ 出片 → 检查 → 合成。深度复刻每段先 `video-control`（拉片切好的这段原片 → 动作参考，`studioControlExecutor` 独立线程池），元素替换直接引用这段原片；分段受参考视频时长限制（`StudioCloneVideoPlan.clip`）；写每段提示词的环节三种方式各一份（`StudioPromptCallPoints.recreationCompile`）。`video-control` 写进技能 `reference-video-recreation` 的制作阶段，但写方案的模型看不到（`StudioSkillRules.SYSTEM_ONLY_OPERATIONS`）。新接口 `GET /api/v1/ip-studio/studio/clone-advice?key=` 按切镜数推荐方式。无迁移。见 `docs/ip-studio-recreation.md`「三种复刻方式」。
+
+### Studio 工具箱视频复刻（2026-11-08，本地实现，未发布）
+
+既有视频任务新增 `depth` / `replacement`，无新表或接口路径。`StudioCloneVideoPlan` 从真实端点合同编排画布步骤并冻结素材 key；内部 `video-control` 仅由深度任务调用，零积分、真实 ReShot / VDA Small 推理，成功结果进统一存储后才提交原生视频生成。素材选填，原片和修改说明必填，参考长度服从渠道且平台最多 60 秒。运行依赖和配置见 `docs/studio-video-clone-toolbox.md`；完整 Spring/HTTP/持久化/结算验收由显式开启的 `StudioCloneTaskIntegrationTest` 覆盖，不调用付费模型。
+
 ### 成片自动字幕与声音（2026-11-07，本地未发布）
 
 真源 `docs/studio-final-cut.md`。合成最后一道是 `StudioPackagingService.finish`：叠字幕和品牌文字、统一响度、混背景音乐，画面没变化时视频流直接复制。字幕来源由 `StudioCaptionService` 决定，对时和排版在纯函数 `StudioCaptionAligner`。语音识别用途 `DAP_TRANSCRIBE`（V76 只扩枚举），接口兼容 `POST {base}/audio/transcriptions`、返回带 `segments` 的 `verbose_json`；未绑定时导演台按镜头时间估算，一键成片不加字幕并如实说明，`GET capabilities` 的 `captionRecognition` 告诉前端能不能识别。真语音联调：设 `STUDIO_ASR_E2E_URL` 和 `STUDIO_ASR_E2E_DIR` 跑 `StudioCaptionSpeechE2ETest`。

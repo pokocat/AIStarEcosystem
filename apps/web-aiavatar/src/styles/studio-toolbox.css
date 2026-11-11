@@ -1,0 +1,42 @@
+.studio-toolbox { display: grid; grid-template-columns: 1fr; gap: 16px; }
+.ip-brand-surface .studio-toolbox-card { display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--scene-line, #e4e7ed); border-radius: 18px; color: inherit; background: #fff; text-decoration: none; }
+/* 示意图是 16:9 的整张版面（public/studio/clone-modes），不裁人物 */
+.studio-toolbox-media { position: relative; margin: 0; aspect-ratio: 16 / 9; background: #f3f0ea; }
+.studio-toolbox-media img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.studio-toolbox-media figcaption { position: absolute; left: 10px; bottom: 8px; padding: 1px 6px; border-radius: 6px; background: rgba(255, 255, 255, .82); color: #6b7280; font-size: 11px; line-height: 18px; }
+.studio-toolbox-body { display: flex; flex: 1; flex-direction: column; align-items: flex-start; gap: 10px; min-width: 0; padding: 20px 22px 22px; }
+.studio-toolbox-card h3 { margin: 0; font-size: 17px; font-weight: 600; }
+.studio-toolbox-card p { margin: 0; font-size: 13px; line-height: 1.7; }
+.studio-toolbox-body > span { display: flex; align-items: center; gap: 7px; margin-top: auto; padding-top: 10px; font-size: 13px; font-weight: 600; }
+.studio-toolbox-card:hover, .studio-toolbox-card:focus-visible { border-color: #8a7ac8; }
+html[data-layout="desktop"] .studio-toolbox { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.studio-toolbox-section { display: grid; gap: 14px; }
+.studio-toolbox-section > header h2 { margin: 0; font-size: 18px; font-weight: 600; }
+.studio-toolbox-section > header p { margin: 4px 0 0; color: #6b7280; font-size: 13px; }
+.studio-clone-modes { padding: 0 0 16px; }
+.studio-clone-modes-head { margin-bottom: 8px; color: #1f2430; font-size: 13px; font-weight: 600; }
+.studio-clone-mode-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; }
+.studio-clone-mode-list button { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; padding: 6px 6px 10px; border: 1px solid var(--scene-line, #e4e7ed); border-radius: 12px; background: #fff; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.studio-clone-mode-list button[aria-checked="true"] { border-color: #6e5fc6; box-shadow: 0 0 0 1px #6e5fc6 inset; background: #faf9ff; }
+.studio-clone-mode-list button:hover:not(:disabled) { border-color: #8a7ac8; }
+.studio-clone-mode-list button:disabled { cursor: not-allowed; opacity: .6; }
+.studio-clone-mode-list button:focus-visible { outline: 2px solid #8a7ac8; outline-offset: 2px; }
+.studio-clone-mode-image { display: block; overflow: hidden; width: 100%; margin-bottom: 4px; border-radius: 8px; aspect-ratio: 16 / 9; background: #f3f0ea; }
+.studio-clone-mode-image img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.studio-clone-mode-list button[disabled] .studio-clone-mode-image img { filter: grayscale(.4); }
+.studio-clone-mode-title, .studio-clone-mode-desc { padding: 0 6px; }
+.studio-clone-mode-title { display: flex; align-items: center; gap: 6px; color: #1f2430; font-size: 13px; font-weight: 600; }
+.studio-clone-mode-title em { padding: 1px 6px; border-radius: 6px; background: #efecfb; color: #5a4bb5; font-size: 11px; font-style: normal; font-weight: 500; }
+.studio-clone-mode-desc { display: -webkit-box; overflow: hidden; color: #6b7280; font-size: 12px; line-height: 1.5; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.studio-clone-modes .studio-clone-advice { margin: 10px 0 0; color: #5a4bb5; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+/* 适合 / 限制：工具箱卡片和视频页方式说明共用 */
+.studio-clone-facts { display: grid; gap: 4px; margin: 0; color: #6b7280; font-size: 12px; line-height: 1.6; }
+.studio-clone-modes .studio-clone-facts { margin-top: 8px; }
+.studio-clone-facts > div { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; }
+.studio-clone-facts dt { color: #1f2430; font-weight: 500; }
+.studio-clone-facts dd { margin: 0; overflow-wrap: anywhere; }
+/* 爆款复刻的「自动检查」开关：方式说明下面一行，选项沿用 .scene-choice-row */
+.studio-clone-check { display: grid; grid-template-columns: auto minmax(0, 180px); align-items: center; gap: 6px 12px; margin-top: 10px; }
+.studio-clone-check > span { color: #1f2430; font-size: 12px; font-weight: 500; }
+.studio-clone-check > p { grid-column: 1 / -1; margin: 0; color: #6b7280; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.studio-clone-check button:disabled { cursor: not-allowed; opacity: .6; }

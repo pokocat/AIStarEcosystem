@@ -31,6 +31,22 @@ public class StudioPlanOutputs {
         return projects.ownedRun(userId,projectId,runId).map(projects::toRunDto);
     }
 
+    /** Older executions only stored the submitted request in the native run. */
+    JsonNode previousVideoInputs(IpPlanExecution execution,JsonNode step) {
+        JsonNode previous=step.path("previousRunIds");
+        if(previous.isEmpty())return null;
+        var prior=run(execution.getOwnerUserId(),execution.getProjectId(),previous.get(previous.size()-1).asText()).orElse(null);
+        String nodeId=StudioPlanExecutionIds.stepNodeId(execution.getId(),step);
+        if(prior!=null&&prior.inputs() instanceof ObjectNode inputs&&"video".equals(inputs.path("operation").asText())
+                &&execution.getId().equals(inputs.path("executionId").asText())
+                &&nodeId.equals(inputs.path("nodeId").asText())) {
+            ObjectNode request=inputs.deepCopy();
+            request.remove(List.of("mock","_exec","appliedCanvasContext","appliedCharacterContext"));
+            return request;
+        }
+        throw BusinessException.badRequest("STUDIO_VIDEO_ASSET_INVALID","原视频的参考素材或生成设置已不可用，请检查原任务");
+    }
+
     /** The run a downstream step uses: the user's accepted run, else the latest successful attempt. */
     public Optional<String> chosenRun(String userId,String projectId,JsonNode step) {
         String accepted=step.path("acceptedRunId").asText("");
@@ -93,7 +109,7 @@ public class StudioPlanOutputs {
                     .put("title",step.path("title").asText()).put("operation",operation);
             switch(operation) {
                 case "image" -> node.put("type","image");
-                case "video","assemble" -> node.put("type","video").put("durationSec",output.path("durationSec").asDouble(0));
+                case "video","assemble","video-control" -> node.put("type","video").put("durationSec",output.path("durationSec").asDouble(0));
                 case "recreation" -> {
                     node.put("type","text");
                     for(JsonNode segment:output.path("filmStudy").path("segments")) {

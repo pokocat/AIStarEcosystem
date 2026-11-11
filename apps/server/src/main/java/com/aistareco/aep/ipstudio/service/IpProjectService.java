@@ -43,6 +43,8 @@ import java.util.UUID;
 public class IpProjectService {
 
     private static final Logger log = LoggerFactory.getLogger(IpProjectService.class);
+    @org.springframework.beans.factory.annotation.Value("${aep.cdn.oss.key-prefix:}")
+    private String ossKeyPrefix="";
 
     /** 上传素材（用户照片 / 局部参考图）分类。 */
     public static final String CATEGORY_SOURCE = "ipstudio/source";
@@ -409,6 +411,9 @@ public class IpProjectService {
         if (k.startsWith("/") || k.contains("\\") || k.contains("..") || k.contains("\n") || k.contains("\r")) {
             return false;
         }
+        // Assemblers may return the full OSS object key. Strip only our configured namespace, including multi-level prefixes.
+        String namespace=ossKeyPrefix==null?"":ossKeyPrefix.strip().replaceAll("^/+|/+$","");
+        if(!namespace.isEmpty()&&k.startsWith(namespace+"/"))k=k.substring(namespace.length()+1);
         // 图片：key 里带 uid，看前缀就够了
         if (startsWithOwned(k, keyPrefix(CATEGORY_SOURCE, userId)) || startsWithOwned(k, keyPrefix(CATEGORY_GEN, userId))) {
             return true;

@@ -20,7 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 /** One cover lifecycle for personal projects and published template catalogue metadata. */
 @Service @Slf4j
 public class CanvasCoverService {
-    public record Cover(String coverUrl) {}
+    public record Cover(String coverUrl, String coverVideoUrl) {}
     private record Target(String id, String key, JsonNode doc, Consumer<String> write) {}
     private final IpProjectService projects;
     private final IpDemoTemplateRepository templates;
@@ -43,18 +43,22 @@ public class CanvasCoverService {
         // Register rollback cleanup before mutating the entity. Covers never enter doc or a recipe version.
         cleanupOnCompletion(image.key(),target.key(),id);
         target.write().accept(image.key());
-        return new Cover(image.url());
+        return new Cover(image.url(), null);
     }
 
     @Transactional
     public Cover select(String owner, String kind, String id, boolean superAdmin, String key) {
         Target target=target(owner,kind,id,superAdmin);
-        if(key==null || key.isBlank() || !containsImage(target.doc(),key))
-            throw BusinessException.badRequest("IP_COVER_INVALID","请选择这张画布中的图片作为封面");
+        boolean video = "template".equals(kind) && containsVideo(target.doc(), key);
+        if (!video && !containsImage(target.doc(), key)) {
+            String message = "template".equals(kind) ? "请选择这张画布中的图片或视频作为封面" : "请选择这张画布中的图片作为封面";
+            throw BusinessException.badRequest("IP_COVER_INVALID", message);
+        }
         if("project".equals(kind)) projects.requireOwnedAssetKey(owner,key);
         target.write().accept(key);
         cleanupOnCompletion(null,target.key(),id);
-        return new Cover(storage.signedUrl(key));
+        String url = storage.signedUrl(key);
+        return video ? new Cover(null, url) : new Cover(url, null);
     }
 
     @Transactional
@@ -62,7 +66,7 @@ public class CanvasCoverService {
         Target target=target(owner,kind,id,superAdmin);
         target.write().accept(null);
         cleanupOnCompletion(null,target.key(),id);
-        return new Cover(null); // The shared client derives the automatic image from the unchanged doc.
+        return new Cover(null, null);
     }
 
     private Target target(String owner,String kind,String id,boolean superAdmin) {
@@ -93,11 +97,20 @@ public class CanvasCoverService {
     }
 
     public static boolean containsImage(JsonNode doc,String key) {
+        return containsMedia(doc, key, "image", "images");
+    }
+
+    public static boolean containsVideo(JsonNode doc, String key) {
+        return containsMedia(doc, key, "video", "videos");
+    }
+
+    private static boolean containsMedia(JsonNode doc, String key, String type, String candidates) {
+        if (key == null || key.isBlank()) return false;
         for(JsonNode node:IpDocs.nodes(doc)) {
-            if(!"image".equals(node.path("type").asText())) continue;
+            if(!type.equals(node.path("type").asText())) continue;
             JsonNode metadata=IpDocs.metadataOf(node);
             if(key.equals(IpDocs.text(metadata,"storageKey"))) return true;
-            for(JsonNode image:metadata.path("images")) if(key.equals(IpDocs.text(image,"storageKey"))) return true;
+            for(JsonNode candidate:metadata.path(candidates)) if(key.equals(IpDocs.text(candidate,"storageKey"))) return true;
         }
         return false;
     }

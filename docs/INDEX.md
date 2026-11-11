@@ -8,6 +8,9 @@ AI 视频“重新编辑”统一入口：[浏览器验收与发布记录](relea
 
 Seedance 官方人像素材：[当前实现与边界](video-asset-library.md)；[正式发布记录](releases/ark-portrait-production-release-20261109.md)；[凭据切换及真实接口验收](releases/ark-bingbing-key-and-portrait-preparation-20261109.md)。已发布并绑定 Fast / Mini；真人刷脸和成片待验收，last-reviewed：2026-11-09。
 
+Studio 视频复刻（2026-11-11 改成爆款复刻的三种方式，现行做法见 [复刻创作](ip-studio-recreation.md)「三种复刻方式」）：[工具箱与运行依赖](studio-video-clone-toolbox.md) · [本地功能验收](releases/studio-video-clone-local-validation-20261108.md) · [独立实验与集成边界](audits/studio-clone-independent-lab-20261109.md)。last-reviewed：2026-11-09。
+Studio 人像审核自动续跑与超时后单段重试：[生产发布及原任务验收](releases/studio-portrait-resume-release-20261111.md)，last-reviewed：2026-11-11。
+
 > 单页地图。任何 agent / 新人进仓库先开本文，按「想做什么」找到对应真源。
 > last-reviewed：**2026-10-29**（文档整理：`docs/` 分出 `runbooks/` / `audits/` / `archive/` 三个子目录，去掉 `[Fabel5]` 前缀，
 > 根目录 `DEPLOYED.md` 并入 clip 方案；上一次内容性更新是 2026-10-07 / v0.201）。
@@ -181,7 +184,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - Studio 对话快照分享 v0.217：见 [助手范围](ip-studio-assistant-context.md) 与统一验证§28；last-reviewed: 2026-10-08，本地未发布。
 - [模型接入端点并发与排队](ai-endpoint-generation-queue.md) · v0.220；last-reviewed: 2026-10-09，本地未发布。
 - [AiAvatar 账号与旧 Studio 界面统一](aiavatar-account-unification.md) · 桌面外壳、旧深链兼容、默认头像与账号中心修改入口；last-reviewed: 2026-10-31。
-- [复刻创作：全片创作拆解与视频拉片](ip-studio-recreation.md)：直接看视频的拉片（逐镜台词、字幕、爆点）、视频页复刻由代码拼制作方案；旧版抽帧拆解、分段裁切及恐龙视频验收。last-reviewed: 2026-11-09。
+- [复刻创作：全片创作拆解与视频拉片](ip-studio-recreation.md)：爆款复刻三种方式（分镜复刻 / 深度复刻 / 元素替换，共用拉片和分段，按视频类型推荐）；直接看视频的拉片（逐镜台词、字幕、爆点）、视频页复刻由代码拼制作方案；旧版抽帧拆解、分段裁切及恐龙视频验收。last-reviewed: 2026-11-11。
 - [视频拉片操作手册](training/studio-film-study.md)：6步实操截图，覆盖开始、进度、播放、文档编辑与导出。last-reviewed: 2026-10-15。
 - [企业生成入口与扣费引用](ip-studio-enterprise-generation-entry-map.md)
 
@@ -475,12 +478,15 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [导演台按「E01」标题免费分集](releases/director-episode-codes-release-20261103.md) — server + web-aiavatar；`E01` / `EP01` 写法的分集标题由程序识别、不调模型，助手遇到拆集请求时指路（last-reviewed: 2026-11-03）。
 - [导演台拆分弹窗增加剧本预览](releases/director-split-preview-release-20261104.md) — 仅 web-aiavatar；认不出分集标题时，弹窗旁显示剧本预览，便于复制第 1 集标题行（last-reviewed: 2026-11-04）。
 - [声音参考格式修复发布](releases/voice-reference-format-release-20261104.md) — server；短 M4A 等声音自动转 WAV，报错说明素材类型和可用格式；真实出片未验证（last-reviewed: 2026-11-04）
+- [首页场景卡两行与导演台单个视角重新生成](releases/studio-home-goals-and-scene-view-release-20261111.md) — server + web-aiavatar；首页场景卡改为三列两行、商品套图放最后；导演台单个视角只重新生成这一个；`20261111-home-goals-94e68ff7`（2026-11-11）
 - [资产页删除发布](releases/asset-library-delete-release-20261110.md) — web-aiavatar；资产页单个与批量删除，只从资产库移除、不动画布和作品（last-reviewed: 2026-11-10）
 - [编导脚本出片分层发布](releases/scene-script-layers-release-20261110.md) — server + web-aiavatar；六段脚本出片只发和画面有关的部分，编辑框标「仅参考」，参考素材受理时就核对（last-reviewed: 2026-11-10）
 - [账号区合并与统一路由发布](releases/account-ia-release-20261110.md) — server + web-aiavatar；账号区 7 个标签统一到 /me，原文按任务查看（V80），旧地址 308（last-reviewed: 2026-11-10）
 - [爆款复刻逐镜细读与开场画面发布](releases/recreation-keyframes-release-20261110.md) — server + web-aiavatar；逐镜细读、每镜开场画面、出片后自动检查重出，同时带上导演台连接池第二轮修复（PR 188）；`20261110-keyframes-e6e2de04`（2026-11-10）
 - [画布删除、付款预计、官方形象与导演台台词修复发布](releases/official-avatars-delete-billing-release-20261110.md) — server + web-aiavatar；PR 190 / 192 / 193，迁移 V81，先单独发网页、server 等线上空闲；`20261110-official-avatars-3992f750`（2026-11-10）
 - [爆款复刻检查第 2 版发布](releases/recreation-checks-release-20261111.md) — 只发 server；检查按镜头看、带参考图，开场画面先检查、放不下预算按名次省，认出推到头的画面，检查要点进提示词库；`20261111-recreation-checks-e39e8776`（2026-11-11）
+- [Studio 选用官方人物主图发布](releases/studio-official-main-image-release-20261111.md) — 仅 web-aiavatar；线上验证 AI 图片和 AI 视频选人后带入主图；`20261111-studio-official-main-fa3104e6`（2026-11-11）
+- [Studio 灵感封面发布](releases/studio-inspiration-cover-release-20261111.md) — server + web-aiavatar；从案例或模板画布选图片或视频，线上验证选项加载；`20261111-inspiration-cover-44cb2d9a`（2026-11-11）
 - [爆款复刻视频理解发布](releases/recreation-video-understanding-release-20261110.md) — server + web-aiavatar + studio-admin；拉片直接看视频（火山 Seed 2.0 Lite，接入点 ai-1583b53c-52e），视频页复刻方案由代码拼，V79（last-reviewed: 2026-11-10）
 - [AI 编导提示词爆款化发布](releases/scene-script-viral-release-20261110.md) — server + web-aiavatar；五个视频类型方法层、镜头约 4 秒、台词有人设、去掉功效夸大限制、全角数字镜头修复（last-reviewed: 2026-11-10）
 - [账号区新版页面发布](releases/studio-account-pages-release-20261109.md) — server + web-aiavatar；任务历史带积分明细、存储用量合并口径并补记历史文件、画布回收站可恢复和彻底删除、设置与安全合并；存储上限与到期清理开关默认关（last-reviewed: 2026-11-09）

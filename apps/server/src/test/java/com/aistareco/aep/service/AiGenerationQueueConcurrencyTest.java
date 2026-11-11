@@ -134,6 +134,33 @@ class AiGenerationQueueConcurrencyTest {
         assertTrue(queue.claimDispatch(ticket,false));assertFalse(queue.claimDispatch(ticket,false));
         assertEquals(AiGenerationQueueService.Admission.READY,queue.acquire("ip-image","second","e",false));
     }
+    @Test void portraitChecksRunDuringFullCapacityAndDoNotBlockTheExecutableQueue() {
+        String type=AiGenerationQueueService.VIDEO;
+        endpoint("e",1);
+        var job=MaterialVideoJob.builder().id("portrait").ownerUserId("u").app("ipstudio").status("queued")
+                .errorCode("VIDEO_ASSET_NEEDS_REVIEW").createdAt(java.time.OffsetDateTime.now()).build();
+        videos.saveAndFlush(job);
+        queue.register(type,"portrait","e",true); // crash before the generation worker returned its ticket
+        assertEquals(AiGenerationQueueService.Admission.READY,queue.acquire(type,"busy","e",false));
+        assertEquals(AiGenerationQueueService.Admission.WAITING,queue.acquire(type,"next","e",false));
+        var ticket=tickets.findByTaskTypeAndTaskId(type,"portrait").orElseThrow();
+        assertTrue(queue.claimPortraitReview(ticket));
+        assertFalse(queue.claimPortraitReview(ticket),"another checker cannot claim the same tick");
+        assertNull(queue.position(type,"portrait"));
+        assertEquals(1,queue.position(type,"next").position());
+        assertEquals(AiGenerationQueueService.Admission.WAITING,queue.acquire(type,"portrait","e",false));
+        queue.finish(type,"busy");
+        assertEquals(AiGenerationQueueService.Admission.READY,queue.acquire(type,"next","e",false));
+        assertEquals(1,videos.resumePortraitReview("portrait","u",java.time.OffsetDateTime.now()));
+        queue.wakeWaiting(type,"portrait");
+        assertFalse(queue.claimPortraitReview(ticket),"approved tasks use the normal generation path");
+        assertEquals(AiGenerationQueueService.Admission.WAITING,queue.acquire(type,"portrait","e",false));
+        queue.finish(type,"next");
+        assertTrue(queue.claimDispatch(ticket,false));
+        assertEquals(AiGenerationQueueService.Admission.READY,queue.acquire(type,"portrait","e",false));
+        queue.wakeWaiting(type,"portrait");
+        assertEquals("running",tickets.findByTaskTypeAndTaskId(type,"portrait").orElseThrow().getState());
+    }
     @Test void synchronousEntrancesShareWorkerSlotsWithoutNestedDeadlock() throws Exception {
         endpoint("e",1);queue.acquire("ip-workflow","script","e",false);
         try(var scope=queue.bind("ip-workflow","script")) {

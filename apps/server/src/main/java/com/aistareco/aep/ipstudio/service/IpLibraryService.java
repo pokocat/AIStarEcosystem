@@ -159,6 +159,11 @@ public class IpLibraryService {
     /** Called independently of browser polling; the durable run is the retry receipt. */
     @Transactional public void collect(IpRun run) {
         lock(run.getOwnerUserId());String receipt="ILC-"+run.getId();if(records.existsById(receipt))return;
+        // Structural control clips belong to the execution graph, not the user's finished-video library.
+        if("studio-video-control".equals(run.getKind())) {
+            if("done".equals(run.getStatus())||"failed".equals(run.getStatus()))persist(newRecord(run.getOwnerUserId(),"receipt",receipt),om.createObjectNode());
+            return;
+        }
         var dto=projects.toRunDto(run);var output=dto.output();String user=run.getOwnerUserId();
         var target=records.findByIdAndOwnerUserIdAndDeletedAtIsNull(run.getNodeId(),user).filter(r->"object".equals(r.getRecordType())).orElse(null);
         ObjectNode data=target==null?null:json(target);
