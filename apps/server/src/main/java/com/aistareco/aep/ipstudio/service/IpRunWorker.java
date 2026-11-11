@@ -370,7 +370,9 @@ public class IpRunWorker {
             }
             catch (RuntimeException e) {
                 JsonNode accepted=projects.parseOrEmptyObject(run.getInputJson()).path("_exec").path("imageJobs").path(i);
-                if(accepted.path("submitAttempted").asBoolean() && !(e instanceof JusuanImageClient.ProviderRejected)) {
+                boolean unusableResult=e instanceof JusuanImageClient.ProviderRejected
+                        || e instanceof DapModelException modelError && "DAP_MODEL_BAD_OUTPUT".equals(modelError.getCode());
+                if(accepted.path("submitAttempted").asBoolean() && !unusableResult) {
                     while(candidates.size()>committed)candidates.remove(candidates.size()-1);
                     run.setOutputJson(previousOutput);run.setCost(previousCost);
                     pending(run,new JusuanImageClient.Pending(hasNativeResult(accepted),e));return;
