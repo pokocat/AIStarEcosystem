@@ -39,6 +39,7 @@ public class StudioVideoTaskService {
     private final StudioVideoService videos;
     private final ObjectMapper mapper;
     @org.springframework.beans.factory.annotation.Autowired private StudioCloneVideoPlan clones;
+    @org.springframework.beans.factory.annotation.Autowired(required=false) private StudioDepthQueue depthQueue;
 
     public StudioVideoTaskService(IpPlanExecutionRepository repository,IpRunRepository runs,StudioPlanExecutionService executions,
             SegmentedVideoService segmented,StudioWorkflowService workflow,StudioPlanQuoter quoter,StudioSkillRules skills,
@@ -88,6 +89,7 @@ public class StudioVideoTaskService {
                 || req.configuration().duration()>60 || req.configuration().materials()==null
                 || !Objects.equals(req.budgetCap(),req.configuration().budgetCap())
                 || !Objects.equals(req.billing(),req.configuration().billing())))throw invalid("制作配置不完整，请重新选择素材和时长");
+        if ("depth".equals(req.kind()) && depthQueue != null) depthQueue.lockAdmission();
         projects.requiredForUpdate(user,projectId);
         // Replay before repricing: confirmation of an accepted task must survive later price/config changes.
         var prior=repository.findByOwnerUserIdAndClientRequestId(user,req.clientRequestId()).orElse(null);
