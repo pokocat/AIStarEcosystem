@@ -21,6 +21,14 @@ import java.util.*;
 public class StudioSkillRules {
     private static final ObjectMapper OM=new ObjectMapper();
     public static final Set<String> STAGES=Set.of("analysis","production");
+    /**
+     * 只由代码拼的方案使用的操作，不告诉写方案的模型：深度复刻的动作提取（StudioRecreationTaskPlan）。模型写的方案里出现它按方案没准备好处理。
+     */
+    public static final Set<String> SYSTEM_ONLY_OPERATIONS=Set.of("video-control");
+    /** 写方案的模型能用的操作。 */
+    public static java.util.List<String> plannerOperations(java.util.List<String> operations) {
+        return operations.stream().filter(o->!SYSTEM_ONLY_OPERATIONS.contains(o)).toList();
+    }
 
     public record Rules(String key,String name,int version,String status,Map<String,List<String>> operations,int maxSourceSec,
                         int maxSegments,String maxSegmentSec,int maxSteps,int maxAutoFixPerSegment,List<String> checks,

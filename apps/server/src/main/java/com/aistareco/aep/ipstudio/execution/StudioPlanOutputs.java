@@ -109,7 +109,7 @@ public class StudioPlanOutputs {
                     .put("title",step.path("title").asText()).put("operation",operation);
             switch(operation) {
                 case "image" -> node.put("type","image");
-                case "video","assemble" -> node.put("type","video").put("durationSec",output.path("durationSec").asDouble(0));
+                case "video","assemble","video-control" -> node.put("type","video").put("durationSec",output.path("durationSec").asDouble(0));
                 case "recreation" -> {
                     node.put("type","text");
                     for(JsonNode segment:output.path("filmStudy").path("segments")) {

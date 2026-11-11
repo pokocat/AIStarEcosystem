@@ -2,12 +2,12 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { StudioVideoTask } from '@ai-star-eco/types/ip-studio-video-task';
-const api = vi.hoisted(() => ({ list: vi.fn(), get: vi.fn(), readRun: vi.fn(), readVideoJob: vi.fn(), signKeys: vi.fn(), resume: vi.fn(), deleteProject: vi.fn() }));
+const api = vi.hoisted(() => ({ list: vi.fn(), get: vi.fn(), readRun: vi.fn(), readVideoJob: vi.fn(), signKeys: vi.fn(), resume: vi.fn(), cancel: vi.fn(), deleteProject: vi.fn() }));
 vi.mock('@/ip/api', () => ({ IpStudioApi: { deleteProject: api.deleteProject } }));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('@/canvas-bridge/studio-video-tasks', async original => ({ ...await original<any>(), videoTasks: api.list, videoTask: api.get }));
 vi.mock('@/canvas-bridge/api', () => ({ readRun: api.readRun, readVideoJob: api.readVideoJob, signKeys: api.signKeys, cancelRun: vi.fn() }));
-vi.mock('@/canvas-bridge/studio-plan-execution', async original => ({ ...await original<any>(), resumeStudioPlanExecution: api.resume }));
+vi.mock('@/canvas-bridge/studio-plan-execution', async original => ({ ...await original<any>(), resumeStudioPlanExecution: api.resume, cancelStudioPlanExecution: api.cancel }));
 vi.mock('@/canvas-bridge/signed-image', () => ({ SignedImage: ({ storageKey, alt }: any) => <span role="img" aria-label={alt} data-key={storageKey}/> }));
 vi.mock('@/canvas-bridge/signed-video', () => ({ SignedVideo: ({ storageKey, ...p }: any) => <video {...p} data-key={storageKey}/> }));
 import { useState } from 'react';
@@ -115,8 +115,9 @@ test('a failed step is named and the primary action has its own readable class',
   expect(screen.getByText(/已尝试 3 次，仍未完成。视频生成失败：模拟/)).toBeTruthy();
   expect(screen.queryByText(/NX4URKWWGRCQ/)).toBeNull();
   expect(screen.getByRole('button', { name: '查看错误详情' })).toBeTruthy();
-  expect(screen.getByRole('link', { name: '在画布上查看' }).className).toContain('is-primary');
-  expect(screen.queryByRole('button', { name: '重试这一步' })).toBeNull();
+  // 试满 3 次停下来的，视频页上照样能接着做，也能停止（2026-11-11 用户定：能用为主）
+  expect(screen.getByRole('button', { name: '继续生成' }).className).toContain('is-primary');
+  expect(screen.getByRole('button', { name: '停止生成' })).toBeTruthy();
 });
 test('output the model could not produce usably offers regenerating in place', async () => {
   const saved = failedTask('这一步的结果无法读取，已完成的内容不受影响。', 'STUDIO_RAW_ONLY');
@@ -174,7 +175,6 @@ test('a failed step whose credits came back can be retried on the video page', a
 test.each([
   ['the stage budget is short', (t: StudioVideoTask) => { t.execution!.budgets = [{ stage: 'production', approvedCap: 100, autoFixCap: 0, spent: 90, inFlight: 0, remaining: 10, shortfall: 20 }]; }],
   ['the step names materials outside this task', (t: StudioVideoTask) => { t.execution!.steps[0].materials = [{ nodeId: 'n1', title: '图1', onCanvas: true }]; }],
-  ['the step already ran three times', (t: StudioVideoTask) => { t.execution!.steps[0].attempt = 3; }],
   ['the task timed out', (t: StudioVideoTask) => { t.execution!.status = 'partial'; }],
 ])('no retry when %s', async (_name, change) => {
   const saved = failedTask('失败', 'STUDIO_VIDEO_FAILED'); saved.execution!.steps[0].status = 'failed'; change(saved);
@@ -183,6 +183,15 @@ test.each([
   expect((await screen.findAllByRole('link', { name: /在画布上查看/ })).length).toBeGreaterThan(0);
   expect(screen.queryByRole('button', { name: '重试这一步' })).toBeNull();
   expect(screen.queryByRole('button', { name: '继续生成' })).toBeNull();
+});
+// 2026-11-11 真跑：卡在第 1 镜开场画面的任务占着草稿，「再次生成」被挡住，页面上又没有停止的地方。
+test('a task that stopped to wait can be stopped from the video page', async () => {
+  const saved = failedTask('生成服务没有返回结果', 'STUDIO_IMAGE_SUBMISSION_UNKNOWN', 3);
+  api.get.mockResolvedValue(saved); api.cancel.mockResolvedValue({ ...saved.execution, status: 'canceled' });
+  render(<SceneVideoWorkspace {...props} taskId="PEX-bad" selected={saved}/>);
+  fireEvent.click(await screen.findByRole('button', { name: '停止生成' }));
+  await waitFor(() => expect(api.cancel).toHaveBeenCalledWith('IPP-PEX-bad', 'PEX-bad', expect.objectContaining({ expectedStatus: 'needs_user' })));
+  expect(screen.getByRole('button', { name: '重试这一步' })).toBeTruthy();
 });
 test('a paused task continues from the video page', async () => {
   const saved = task('PEX-paused', 'segmented'); saved.execution!.status = 'paused';
@@ -316,4 +325,21 @@ test('a draft with a video still generating cannot be deleted from the rail', as
   const dialog = await screen.findByRole('dialog');
   expect((within(dialog).getByRole('button', { name: '删除' }) as HTMLButtonElement).disabled).toBe(true);
   expect(api.deleteProject).not.toHaveBeenCalled();
+});
+
+test('completed media stays downloadable while its AI quality findings remain visible', async () => {
+  const saved = task('PEX-quality', 'recreation'); saved.execution!.status = 'done';
+  const base = saved.execution!.steps[0];
+  saved.execution!.steps = [{ ...base, status: 'done', runIds: ['IPR-final'] }, { ...base, id: 'review', operation: 'check', status: 'done', runIds: ['IPR-review'] }];
+  api.get.mockResolvedValue(saved);
+  api.readRun.mockImplementation(async id => id === 'IPR-final' ? { id, status: 'done', output: { storageKey: 'final.mp4' } }
+    : { id, status: 'done', output: { check: { status: 'fail', items: [{ id: 'clothing', status: 'fail', reason: '衣服颜色偏浅', suggestion: '调整为宝蓝色' }] } } });
+  render(<SceneVideoWorkspace {...props} taskId="PEX-quality" selected={saved}/>);
+  expect(await screen.findByRole('heading', { name: '视频已完成' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '下载视频' })).toBeTruthy();
+  expect(await screen.findByText('AI 检查建议（1 项）')).toBeTruthy();
+  expect(screen.getByText('衣服颜色偏浅')).toBeTruthy();
+  const phases = videoTaskPhases(saved);
+  expect(phases.some(p => p.key === 'boards')).toBe(false);
+  expect(phases.find(p => p.key === 'review')?.state).toBe('done');
 });

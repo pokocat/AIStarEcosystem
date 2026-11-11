@@ -46,12 +46,33 @@ public final class StudioRecreationTaskPlan {
     public static ObjectNode prepare(JsonNode film,List<Material> materials,String model,
                                      VideoStudioContract contract,String tier,String ratio,Boolean optimize,
                                      String framePrefix,int maxKeyframes,String requirement) {
+        return prepare(film,materials,model,contract,tier,ratio,optimize,framePrefix,maxKeyframes,requirement,"recreation",null);
+    }
+
+    /**
+     * @param method       爆款复刻的方式（{@link StudioCloneVideoPlan}）：recreation 分镜复刻 / depth 深度复刻 / replacement 元素替换
+     * @param segmentPrefix 拉片切好的原片片段的节点编号前缀（{@code StudioPlanExecutionIds.segmentNodeId} 去掉段号）；深度复刻和元素替换必填
+     */
+    public static ObjectNode prepare(JsonNode film,List<Material> materials,String model,
+                                     VideoStudioContract contract,String tier,String ratio,Boolean optimize,
+                                     String framePrefix,int maxKeyframes,String requirement,String method,String segmentPrefix) {
         if(contract==null)throw unavailable("所选视频模型不可用，请换一个模型");
-        VideoStudioModeSpec mode=mode(contract,materials!=null&&!materials.isEmpty()||framePrefix!=null&&film.path("frames").size()>0);
+        boolean clip=StudioCloneVideoPlan.nativeClone(method);
+        if(clip&&segmentPrefix==null)throw new IllegalArgumentException("segment prefix");
+        // 深度复刻 / 元素替换每段都带一段参考视频：只用能带参考视频的模式。元素替换不做开场画面；
+        // 深度复刻只做一张「场景图」（第一段开场截图换成用户的人和商品），每段都带上它，各段的人、商品、场景和光线才一致
+        // （2026-11-11 真跑：三段分开生成，第三段换了个房间）。
+        boolean depthScene="depth".equals(method);
+        if(clip&&!depthScene)framePrefix=null;
+        VideoStudioModeSpec mode=clip?clipMode(contract):mode(contract,materials!=null&&!materials.isEmpty()||framePrefix!=null&&film.path("frames").size()>0);
         String chosenTier=contract.tiers().stream().anyMatch(t->t.tier().equals(tier))?tier:contract.tiers().get(0).tier();
         ObjectNode task=OM.createObjectNode().put("model",model).put("mode",mode.mode()).put("tier",chosenTier).put("ratio",ratio==null?"9:16":ratio);
+        task.put("method",clip?method:"recreation");
         if(optimize!=null)task.put("optimize",optimize);
         task.put("requirement",requirement==null?"":requirement.strip());
+        // 原片一直挂在画面上的标题条（拉片的 screenTitle）：成片放在顶部，不当字幕
+        String screenTitle=film.path("breakdown").path("screenTitle").asText("").strip();
+        if(!screenTitle.isEmpty()&&!ORIGINAL_ACCOUNT.matcher(screenTitle).find())task.put("screenTitle",screenTitle.length()>40?screenTitle.substring(0,40):screenTitle);
         var refs=mode.references();
         // 素材顺序：人物在前（同一个人的图集中在一起），再商品 / 场景图，最后声音。
         List<Material> people=new ArrayList<>(),images=new ArrayList<>(),voices=new ArrayList<>();
@@ -62,11 +83,14 @@ public final class StudioRecreationTaskPlan {
         JsonNode shots=film.path("breakdown").path("shots");
         Set<Integer> framed=new HashSet<>();
         if(framePrefix!=null&&refs!=null&&refs.image()!=null)for(JsonNode f:film.path("frames"))if(f.hasNonNull("storageKey"))framed.add(f.path("shot").asInt());
-        int keyframesLeft=Math.max(0,maxKeyframes);
+        int keyframesLeft=Math.max(0,depthScene?Math.min(1,maxKeyframes):maxKeyframes);
+        String sceneStep=null;
         var units=task.putArray("units");
         double offset=0;
         for(JsonNode segment:film.path("segments")) {
             int no=segment.path("no").asInt();
+            // 整段都是原作者的账号片尾：深度复刻和元素替换会把这段原片交给视频模型，照着它只会再拍一遍别人的片尾，这段不做
+            if(clip&&accountCardOnly(shots,segment))continue;
             double start=segment.path("startSec").asDouble(),end=segment.path("endSec").asDouble(),length=end-start;
             int seconds=(int)Math.max(contract.minSeconds(),Math.min(contract.maxSeconds(),Math.round(length)));
             ObjectNode unit=units.addObject().put("no",no).put("title",segment.path("title").asText("第 "+no+" 段")).put("startSec",start).put("endSec",end)
@@ -74,13 +98,36 @@ public final class StudioRecreationTaskPlan {
             offset+=seconds;
             var bindings=unit.putArray("refs");int order=0;
             var keyframes=unit.putArray("keyframes");
+            if(clip) {
+                // 视频1：深度复刻是这段原片转成的动作参考（d<段号> 那一步的产物），元素替换就是这段原片
+                String clipNode=segmentPrefix+no;
+                unit.put("clipNodeId",clipNode);
+                var video=bindings.addObject();
+                if("depth".equals(method))video.put("stepId","d"+no);else video.put("nodeId",clipNode);
+                video.put("role","reference-video").put("order",order++).put("label","视频1").put("what","depth".equals(method)
+                        ?"原片这一段的动作参考：灰色深度图或黑底彩色火柴人骨骼图，只取人物位置、动作、节奏和镜头运动，画面本身不出现"
+                        :"原片这一段：要保留的画面，只换掉用户要换的人或物");
+            }
             if(refs!=null) {
                 int imageLimit=refs.image()==null?0:refs.image().maxCount();
+                // 带参考视频时图片张数另有上限
+                if(clip&&refs.maxImagesWithVideo()>0)imageLimit=Math.min(imageLimit,refs.maxImagesWithVideo());
                 int total=refs.maxTotal()>0?refs.maxTotal():Integer.MAX_VALUE;
                 int n=1;
                 // 开场画面在前：原片每个镜头的开场截图改成用户的人物和商品，视频模型从这张图开始拍（2026-11-10 美食那条实测，
                 // 「手指捏住远处很小的人」这类借位靠文字写不出来，靠图就摆出来了）。放不下时，有视觉把戏的镜头和长镜头优先。
-                for(int shot:keyframeShots(shots,segment,framed,Math.min(Math.min(imageLimit,total),keyframesLeft))) {
+                // 深度复刻：后面几段不再做新图，带上第一段做的那张场景图
+                if(depthScene&&sceneStep!=null&&n<=imageLimit&&order<total) {
+                    bindings.addObject().put("stepId",sceneStep).put("role","reference-image").put("order",order++).put("label","图"+n)
+                            .put("what","场景图：原片开场画面换成了用户的人物和商品，人物外观、穿着、商品、场景和光线都照它");
+                    unit.put("sceneStepId",sceneStep);
+                    n++;
+                }
+                int limit=Math.min(Math.min(imageLimit,total),keyframesLeft);
+                // 场景图取第一段最开头那一镜（不按视觉把戏、镜头长短挑）
+                List<Integer> picked=depthScene?keyframeShots(shots,segment,framed,Integer.MAX_VALUE).stream().limit(limit).toList()
+                        :keyframeShots(shots,segment,framed,limit);
+                for(int shot:picked) {
                     JsonNode s=shots.get(shot-1);
                     String label="图"+n,stepId="k"+shot;
                     keyframes.addObject().put("shot",shot).put("label",label).put("stepId",stepId).put("frameNodeId",framePrefix+shot)
@@ -89,7 +136,9 @@ public final class StudioRecreationTaskPlan {
                             .put("layout",s.path("detail").path("layout").asText("")).put("trick",s.path("detail").path("trick").asText(""))
                             .put("detail",StudioVideoBreakdown.detailText(s));
                     bindings.addObject().put("stepId",stepId).put("role","reference-image").put("order",order++).put("label",label)
-                            .put("what","第 "+shot+" 镜改好的开场画面（这一镜从这张图开始拍）");
+                            .put("what",depthScene?"场景图：原片开场画面换成了用户的人物和商品，人物外观、穿着、商品、场景和光线都照它"
+                                    :"第 "+shot+" 镜改好的开场画面（这一镜从这张图开始拍）");
+                    if(depthScene){sceneStep=stepId;unit.put("sceneStepId",stepId);}
                     n++;keyframesLeft--;
                 }
                 for(Material m:pictures) {
@@ -142,6 +191,20 @@ public final class StudioRecreationTaskPlan {
             candidates.removeIf(no->!kept.contains(no));
         }
         return candidates;
+    }
+
+    /** 这段的镜头全是原作者的账号页或平台片尾。 */
+    static boolean accountCardOnly(JsonNode shots,JsonNode segment) {
+        int first=segment.path("firstShot").asInt(),last=segment.path("lastShot").asInt();
+        if(first<0||last<first||first>=shots.size())return false;
+        for(int i=first;i<=last&&i<shots.size();i++)if(!accountCard(shots.get(i)))return false;
+        return true;
+    }
+
+    /** 深度复刻 / 元素替换用的模式：能带参考视频、不要首尾帧。 */
+    static VideoStudioModeSpec clipMode(VideoStudioContract contract) {
+        for(var m:contract.modes())if(m.references()!=null&&m.references().video()!=null&&m.references().video().maxCount()>0&&!m.needsFirstFrame()&&!m.needsLastFrame())return m;
+        throw BusinessException.badRequest("STUDIO_CLONE_REFERENCE_UNSUPPORTED","当前模型不支持视频参考，请更换模型或使用分镜复刻。");
     }
 
     /** 原作者的账号页、平台片尾这类镜头不做开场画面（复刻时它换成收尾画面，ORIGINAL_ACCOUNT 同一条规则）。 */
@@ -214,10 +277,15 @@ public final class StudioRecreationTaskPlan {
         Texts library=texts==null?LIBRARY:texts;
         Map<Integer,JsonNode> written=new HashMap<>();
         for(JsonNode u:answer.path("units"))if(u.path("prompt").isTextual()&&!u.path("prompt").asText().isBlank())written.putIfAbsent(u.path("no").asInt(),u);
+        String method=task.path("method").asText("recreation");
+        boolean depth="depth".equals(method),replacement="replacement".equals(method);
+        String videoMethod=depth?"depth-control":replacement?"element-replace":null;
         ObjectNode plan=OM.createObjectNode();
-        plan.put("summary",text(answer.path("summary"),"按原片的分段和节奏复刻，换成你的素材",1000));
-        var approach=plan.putArray("approaches").addObject().put("id","remake").put("title","照原片分段复刻")
-                .put("summary","按拉片的真实镜头分段，原片的场景、动作和节奏写进每段的提示词，人和商品换成你的素材。")
+        plan.put("summary",text(answer.path("summary"),depth?"照原片的动作和镜头重拍，换成你的素材":replacement?"保留原片画面，换掉你要换的东西":"按原片的分段和节奏复刻，换成你的素材",1000));
+        var approach=plan.putArray("approaches").addObject().put("id","remake").put("title",depth?"照原片动作重拍":replacement?"保留原片替换元素":"照原片分段复刻")
+                .put("summary",depth?"原片每段转成动作参考（深度图或骨骼图）交给视频模型，人和商品换成你的素材，原片的台词和节奏写进每段的提示词。"
+                        :replacement?"原片每段直接交给视频模型，只换掉你点名的人或物，其余画面、动作和节奏照原片。"
+                        :"按拉片的真实镜头分段，原片的场景、动作和节奏写进每段的提示词，人和商品换成你的素材。")
                 .put("rationale","分段、时长和每段用哪些素材由系统按拉片结果定，模型只写每段的提示词。");
         approach.set("preserve",strings(answer.path("keep")));approach.set("change",strings(answer.path("change")));
         plan.put("recommendedApproachId","remake");
@@ -227,7 +295,10 @@ public final class StudioRecreationTaskPlan {
         var clipOrder=OM.createArrayNode();
         var captions=OM.createArrayNode();
         double last=0;
-        Map<String,Integer> checkedKeyframes=texts==null?Map.of():keyframeChecks(task);
+        // 用户关了「自动检查」：开场画面、场景图和成片都不检查
+        boolean autoCheck=task.path("autoCheck").asBoolean(true);
+        Map<String,Integer> checkedKeyframes=texts==null||!autoCheck?Map.of():keyframeChecks(task);
+        List<String> sceneDeps=new ArrayList<>();
         for(JsonNode u:task.path("units")) {
             int no=u.path("no").asInt();
             JsonNode w=written.get(no);
@@ -245,7 +316,7 @@ public final class StudioRecreationTaskPlan {
                     JsonNode a=asked.get(shot);
                     String instruction=a==null?"":a.path("instruction").asText("").strip();
                     if(instruction.isBlank())instruction=blank(task.path("requirement").asText(""))?"把画面里要换的人和物换成参考图里的样子，其它保持原样":task.path("requirement").asText().strip();
-                    ObjectNode image=steps.addObject().put("id",k.path("stepId").asText()).put("operation","image").put("title","第 "+shot+" 镜开场画面").put("execution","auto");
+                    ObjectNode image=steps.addObject().put("id",k.path("stepId").asText()).put("operation","image").put("title",depth?"场景图":"第 "+shot+" 镜开场画面").put("execution","auto");
                     image.putObject("strategy").put("approachId","remake").put("method","keyframe-rebuild").put("reason","原片第 "+shot+" 镜");
                     image.putArray("dependsOn");image.putArray("referenceNodeIds");
                     ObjectNode imageSettings=image.putObject("settings").put("operation","image").put("aspectRatio",task.path("ratio").asText()).put("count",1);
@@ -253,7 +324,10 @@ public final class StudioRecreationTaskPlan {
                     imageBindings.addObject().put("nodeId",k.path("frameNodeId").asText()).put("role","reference-image").put("order",1);
                     List<Map<String,Object>> refs=new ArrayList<>();
                     int order=2;
-                    for(JsonNode m:materialsNamed(task,a==null?null:a.path("materials"))) {
+                    List<JsonNode> named=materialsNamed(task,a==null?null:a.path("materials"));
+                    // 深度复刻的场景图：写提示词的模型没点名素材时，图片素材都带上（人在前）
+                    if(named.isEmpty()&&depth)for(JsonNode m:task.path("materials"))if(!"声音".equals(m.path("slot").asText()))named.add(m);
+                    for(JsonNode m:named) {
                         if(order>5)break;
                         imageBindings.addObject().put("nodeId",m.path("nodeId").asText()).put("role","reference-image").put("order",order);
                         refs.add(Map.of("label","图"+order,"what",m.path("title").asText()+"（"+m.path("slot").asText()+"）"));
@@ -270,20 +344,33 @@ public final class StudioRecreationTaskPlan {
                     Integer rank=checkedKeyframes.get(k.path("stepId").asText());
                     if(rank!=null) {
                         String checkId="c"+k.path("stepId").asText();
-                        ObjectNode check=steps.addObject().put("id",checkId).put("operation","check").put("title","第 "+shot+" 镜开场画面 · 检查")
+                        ObjectNode check=steps.addObject().put("id",checkId).put("operation","check").put("title",(depth?"场景图":"第 "+shot+" 镜开场画面")+" · 检查")
                                 .put("prompt",library.render(com.aistareco.aep.ipstudio.prompt.StudioPromptCallPoints.RECREATION_KEYFRAME_CHECK,Map.of()).strip()).put("execution","auto");
                         check.putObject("strategy").put("approachId","remake").put("method","keyframe-rebuild").put("reason","检查第 "+shot+" 镜的开场画面");
                         check.putArray("dependsOn").add(k.path("stepId").asText());check.putArray("referenceNodeIds");
                         ObjectNode checkSettings=check.putObject("settings").put("operation","check").put("targetStepId",k.path("stepId").asText()).put("compareReferences",true)
                                 .put("optionalRank",rank);
-                        var ids=checkSettings.putArray("checkIds");KEYFRAME_CHECK_IDS.forEach(ids::add);
+                        // 深度复刻的场景图只管人和商品换对没有：动作和构图由动作参考定，「手势和原片这一刻不一样」不该让它重出（2026-11-11 真跑）
+                        var ids=checkSettings.putArray("checkIds");KEYFRAME_CHECK_IDS.stream().filter(item->!depth||!"scene-and-action".equals(item)).forEach(ids::add);
                         keyframeSteps.add(checkId);
                     }
                 }
             }
+            if(depth&&makeKeyframes&&sceneDeps.isEmpty())sceneDeps.addAll(keyframeSteps);
+            else if(depth&&u.hasNonNull("sceneStepId"))for(String dep:sceneDeps)if(!keyframeSteps.contains(dep))keyframeSteps.add(dep);
+            // 深度复刻：先把这段原片转成动作参考（零积分，StudioDepthVideoService），视频再引用它
+            if(depth) {
+                ObjectNode control=steps.addObject().put("id","d"+no).put("operation","video-control").put("title","第 "+no+" 段 · 提取动作")
+                        .put("prompt","提取原片这一段的动作和镜头运动").put("execution","auto");
+                control.putObject("strategy").put("approachId","remake").put("method",videoMethod).put("reason","原片第 "+no+" 段");
+                control.putArray("dependsOn");control.putArray("referenceNodeIds");
+                control.putObject("settings").put("operation","video-control").putArray("referenceBindings")
+                        .addObject().put("nodeId",u.path("clipNodeId").asText()).put("role","clip").put("order",0);
+                keyframeSteps.add("d"+no);
+            }
             ObjectNode step=steps.addObject().put("id",id).put("operation","video").put("title",text(w.path("title"),u.path("title").asText("第 "+no+" 段"),60))
                     .put("prompt",w.path("prompt").asText().strip()).put("execution","auto");
-            step.putObject("strategy").put("approachId","remake").put("method",makeKeyframes?"keyframe-rebuild":"remake-subject").put("reason","原片第 "+no+" 段");
+            step.putObject("strategy").put("approachId","remake").put("method",videoMethod!=null?videoMethod:makeKeyframes?"keyframe-rebuild":"remake-subject").put("reason","原片第 "+no+" 段");
             var depends=step.putArray("dependsOn");keyframeSteps.forEach(depends::add);
             step.putArray("referenceNodeIds");
             ObjectNode settings=step.putObject("settings").put("operation","video").put("model",task.path("model").asText());
@@ -292,17 +379,19 @@ public final class StudioRecreationTaskPlan {
             var bindings=settings.putArray("referenceBindings");
             for(JsonNode r:u.path("refs")) {
                 if(r.hasNonNull("stepId")) {
-                    if(!makeKeyframes)continue;
+                    if(!makeKeyframes&&!depth)continue;
+                    // 深度复刻：场景图没做出来（没有截图、没给提示词库）时不引用它
+                    if(depth&&!r.path("stepId").asText().equals("d"+no)&&!sceneDeps.contains(r.path("stepId").asText()))continue;
                     bindings.addObject().put("stepId",r.path("stepId").asText()).put("role",r.path("role").asText()).put("order",r.path("order").asInt());
                 } else bindings.addObject().put("nodeId",r.path("nodeId").asText()).put("role",r.path("role").asText()).put("order",r.path("order").asInt());
             }
             clipOrder.addObject().put("stepId",id);
-            // 出片后自动看一遍：替换的人和物有没有当主体出现、原片的动作和看点做出来没有（不合格自动重出一次，StudioSegmentedRun）
-            {
+            // 出片后自动看一遍：替换的人和物有没有当主体出现、原片的动作和看点做出来没有（人或商品没换对自动重出一次，StudioSegmentedRun）
+            if(autoCheck){
                 ObjectNode check=steps.addObject().put("id","c"+no).put("operation","check").put("title",text(w.path("title"),u.path("title").asText("第 "+no+" 段"),50)+" · 检查")
-                        .put("prompt",videoCheck(library,u,makeKeyframes))
+                        .put("prompt",videoCheck(library,u,makeKeyframes&&!depth))
                         .put("execution","auto");
-                check.putObject("strategy").put("approachId","remake").put("method",makeKeyframes?"keyframe-rebuild":"remake-subject").put("reason","检查第 "+no+" 段");
+                check.putObject("strategy").put("approachId","remake").put("method",videoMethod!=null?videoMethod:makeKeyframes?"keyframe-rebuild":"remake-subject").put("reason","检查第 "+no+" 段");
                 check.putArray("dependsOn").add(id);check.putArray("referenceNodeIds");
                 // 按镜头抽帧，并带上这段交给视频模型的参考图：均匀抽 4 帧又不给素材，「第 3 镜端的是不是炒饭」查不出来
                 ObjectNode checkSettings=check.putObject("settings").put("operation","check").put("targetStepId",id).put("sampling","shots").put("compareReferences",true);
@@ -310,7 +399,8 @@ public final class StudioRecreationTaskPlan {
             }
             // 字幕：这段生成的秒数内、时间按成片算；越界的截掉，重叠的顺延。
             double offset=u.path("offsetSec").asDouble(),seconds=u.path("seconds").asDouble();
-            for(JsonNode c:w.path("captions")) {
+            // 元素替换保留原片画面（原片烧好的字幕也在里面），不再叠一层字幕
+            if(!replacement)for(JsonNode c:w.path("captions")) {
                 String line=c.path("text").asText("").strip();
                 double start=c.path("start").asDouble(Double.NaN),end=c.path("end").asDouble(Double.NaN);
                 if(line.isEmpty()||!Double.isFinite(start)||!Double.isFinite(end))continue;
@@ -325,7 +415,11 @@ public final class StudioRecreationTaskPlan {
                 last=end;
             }
         }
-        if(clipOrder.size()>1||!captions.isEmpty()) {
+        // 原片的固定标题放成片顶部（元素替换保留原片画面，标题已经在里面）。拉片没认出来、模型把它写成一条挂满大半条片子的字幕时，也当标题。
+        double total=0;
+        for(JsonNode u:task.path("units"))total=Math.max(total,u.path("offsetSec").asDouble()+u.path("seconds").asDouble());
+        String title=replacement?null:screenTitle(task,captions,total);
+        if(clipOrder.size()>1||!captions.isEmpty()||title!=null) {
             ObjectNode assemble=steps.addObject().put("id","final").put("operation","assemble").put("title","合成成片").put("prompt","按原片顺序合成").put("execution","auto");
             // 等每段的视频和检查（含不合格后的重出）都结束再合成
             var waits=assemble.putArray("dependsOn");
@@ -334,9 +428,25 @@ public final class StudioRecreationTaskPlan {
             ObjectNode settings=assemble.putObject("settings").put("operation","assemble").put("audioStrategy","generated");
             settings.set("clipOrder",clipOrder);
             if(!captions.isEmpty())settings.set("captions",captions);
+            if(title!=null)settings.put("title",title);
         }
         plan.putArray("questions");
         return plan;
+    }
+
+    /** 成片顶部的标题：拉片认出的固定标题；没有时，一句字幕覆盖了整条片子的 80% 以上，就把它从字幕里拿出来当标题。 */
+    static String screenTitle(JsonNode task,com.fasterxml.jackson.databind.node.ArrayNode captions,double total) {
+        String title=task.path("screenTitle").asText("").strip();
+        for(int i=0;i<captions.size();i++) {
+            JsonNode c=captions.get(i);
+            boolean sameAsTitle=!title.isEmpty()&&title.equals(c.path("text").asText().strip());
+            boolean spansFilm=total>0&&c.path("end").asDouble()-c.path("start").asDouble()>=total*.8;
+            if(sameAsTitle||title.isEmpty()&&spansFilm) {
+                if(title.isEmpty())title=c.path("text").asText().strip();
+                captions.remove(i--);
+            }
+        }
+        return title.isEmpty()?null:title;
     }
 
     /** 检查改好的开场画面时看的几项。 */
@@ -401,8 +511,9 @@ public final class StudioRecreationTaskPlan {
         // （2026-11-10 美食那条真跑：图9 就是替换素材 1，它说「未提供替换素材 1、2、3」）
         List<Map<String,Object>> refs=new ArrayList<>();
         for(JsonNode r:unit.path("refs")) {
-            if(r.hasNonNull("stepId")&&!keyframes)continue;
-            if(!"reference-audio".equals(r.path("role").asText()))refs.add(Map.of("label",r.path("label").asText(),"what",r.path("what").asText("")));
+            if(r.hasNonNull("stepId")&&!keyframes&&!unit.has("sceneStepId"))continue;
+            // 检查只对照图：声音和参考视频（深度图、原片片段）不交给检查模型
+            if(!Set.of("reference-audio","reference-video").contains(r.path("role").asText()))refs.add(Map.of("label",r.path("label").asText(),"what",r.path("what").asText("")));
         }
         vars.put("refs",refs);
         return library.render(com.aistareco.aep.ipstudio.prompt.StudioPromptCallPoints.RECREATION_VIDEO_CHECK,vars).strip();

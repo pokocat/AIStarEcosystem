@@ -19,3 +19,11 @@ test("同一草稿保留任务，换草稿或离开草稿不带走任务", () =>
   writeSceneQuery("/video", "a");
   expect(window.location.search).not.toContain("task=");
 });
+
+test('复刻方式随草稿与任务链接保留，切回分镜复刻或其他场景时清除', () => {
+  window.history.replaceState(null, '', '/video?scene=recreation&tool=depth');
+  writeSceneQuery('/video', 'recreation', 'p'); expect(window.location.search).toContain('tool=depth');
+  writeSceneQuery('/video', 'recreation', 'p', 'task', 'replacement'); expect(window.location.search).toContain('tool=replacement');
+  writeSceneQuery('/video', 'recreation', 'p', undefined, 'recreation'); expect(window.location.search).not.toContain('tool=');
+  writeSceneQuery('/video', 'ecom-talking'); expect(window.location.search).not.toContain('tool=');
+});

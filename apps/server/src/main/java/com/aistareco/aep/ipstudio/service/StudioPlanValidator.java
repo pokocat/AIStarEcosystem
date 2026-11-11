@@ -235,7 +235,34 @@ public final class StudioPlanValidator {
         JsonNode notes=raw.path("notes");
         if(notes.isTextual())notes=OM.createArrayNode().add(notes.asText());
         if(raw.hasNonNull("notes"))plan.set("notes",strings(notes,12,16500));
+        inheritFirstFrameReferences(plan);
         return plan;
+    }
+
+    /** i2v receives one image. A character already explicitly used to build that image is inherited through it.
+     * Keep every unproven reference so mode validation still rejects unsupported or unrelated materials. */
+    private static void inheritFirstFrameReferences(ObjectNode plan) {
+        Map<String,JsonNode> earlier=new HashMap<>();
+        for(JsonNode step:plan.path("steps")) {
+            JsonNode settings=step.path("settings");
+            if("video".equals(step.path("operation").asText())&&"i2v".equals(settings.path("video").path("mode").asText())) {
+                List<JsonNode> frames=new ArrayList<>();
+                for(JsonNode b:settings.path("referenceBindings"))if("frame".equals(b.path("role").asText()))frames.add(b);
+                JsonNode image=frames.size()==1?earlier.get(frames.get(0).path("stepId").asText()):null;
+                if(image!=null&&"image".equals(image.path("operation").asText())) {
+                    ArrayNode kept=OM.createArrayNode();
+                    for(JsonNode b:settings.path("referenceBindings")) {
+                        boolean inherited=false;
+                        if(Set.of("character","scene","product","reference-image").contains(b.path("role").asText()))
+                            for(JsonNode source:image.path("settings").path("referenceBindings"))
+                                if(b.path("role").equals(source.path("role"))&&b.path("stepId").equals(source.path("stepId"))&&b.path("nodeId").equals(source.path("nodeId")))inherited=true;
+                        if(!inherited)kept.add(b);
+                    }
+                    ((ObjectNode)settings).set("referenceBindings",kept);
+                }
+            }
+            earlier.put(step.path("id").asText(),step);
+        }
     }
 
     private static ObjectNode settings(JsonNode raw,String operation,String stage,StudioSkillRules.Rules rules,Set<String> allowed,
@@ -336,6 +363,8 @@ public final class StudioPlanValidator {
                 if("none".equals(audio))invalid(label+"暂不支持去掉音轨的合成，请保留片段声音或使用原片音轨");
                 if(!Set.of("generated","source-audio").contains(audio))invalid(label+"的音频处理方式不正确");
                 out.put("audioStrategy",audio);
+                // 成片顶部的标题（爆款复刻：原片一直挂着的标题条）
+                if(raw.hasNonNull("title")&&!raw.path("title").asText("").isBlank())out.put("title",text(raw.path("title"),60,true,label+"标题"));
                 // 成片上的字幕（爆款复刻：原片靠字幕讲的内容，合成时加上，不让视频模型画字）。时间按成片算，不重叠。
                 if(raw.hasNonNull("captions")) {
                     JsonNode captions=raw.path("captions");
@@ -348,6 +377,12 @@ public final class StudioPlanValidator {
                         last=end;
                     }
                 }
+            }
+            case "video-control" -> {
+                // 深度复刻的动作提取：一段原片进、一段动作参考出（StudioRecreationTaskPlan 拼的方案才有这一步）
+                JsonNode clip=raw.path("referenceBindings");
+                if(!clip.isArray()||clip.size()!=1)invalid(label+"需要一段原片");
+                out.set("referenceBindings",bindings(clip,Set.of("clip"),allowed,earlier,dependencies,label));
             }
             case "text" -> {
                 String purpose=raw.path("purpose").asText("");

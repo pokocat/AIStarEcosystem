@@ -309,13 +309,20 @@ class SegmentedVideoFlowTest {
         assertEquals(IpPlanExecution.DONE, row.getStatus());
     }
 
+    @Test void unusableReviewContentPausesBeforeAnyMorePaidSteps() {
+        start(30);String id=row.getId();finish(last(),textOutput(script(4,4)));executor.advance(id);
+        int before=submitted.size();RunRequest review=last();fail(review,"AI_BAD_OUTPUT");executor.advance(id);
+        assertEquals(before,submitted.size());assertEquals(IpPlanExecution.NEEDS_USER,row.getStatus());
+        assertEquals("failed",step("review").path("status").asText());assertFalse(step("review").path("softSkipped").asBoolean());
+    }
+
     @Test void aFailedReviewFallsBackToTheOriginalScriptAfterThreeAttempts() {
         start(30);
         String id = row.getId();
         finish(last(), textOutput(script(4, 4)));
         executor.advance(id);
         RunRequest review = last();
-        fail(review, "AI_BAD_OUTPUT");
+        fail(review, "AI_CALL_FAILED");
         executor.advance(id);
         RunRequest retry = last();
         assertEquals(review.nodeId(), retry.nodeId());

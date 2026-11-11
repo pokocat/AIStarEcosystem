@@ -54,6 +54,7 @@ public class StudioSegmentedRun {
             ObjectNode step = (ObjectNode) raw;
             String status = step.path("status").asText(), id = step.path("id").asText(), operation = step.path("operation").asText();
             if ("failed".equals(status)) {
+                if("AI_BAD_OUTPUT".equals(step.path("errorCode").asText()))continue;
                 if (step.path("attempt").asInt(1) < 3 && retryable(step.path("errorCode").asText(null))) {
                     log.info("[segmented] retry step execution={} step={} code={}", e.getId(), id, step.path("errorCode").asText(""));
                     retryFailed(step);
@@ -66,26 +67,33 @@ public class StudioSegmentedRun {
                 continue;
             }
             if ("check".equals(operation) && "done".equals(status) && !"pass".equals(step.path("checkStatus").asText()) && !step.path("acknowledged").asBoolean(false)) {
-                // 视频页的爆款复刻：一段没通过检查就重出这一段一次（2026-11-10 用户要求：视频页少让人参与，质量靠自己检查补）；
+                // 视频页的爆款复刻（分镜复刻、深度复刻、元素替换）：一段没通过检查就重出这一段一次（2026-11-10 用户要求：视频页少让人参与，
+                // 质量靠自己检查补；2026-11-11 真跑发现深度复刻两段不合格却没重出，三种方式一样处理）。
                 // 重出后还不合格、或判断不了，用最后一版接着做。其它视频页任务的检查只作参考，不丢已经交付的视频。
-                if(state.has("videoTask")&&!"recreation".equals(state.path("videoTask").path("kind").asText()))step.put("acknowledged",true);
+                if(state.has("videoTask")&&!StudioCloneVideoPlan.method(state.path("videoTask").path("kind").asText()))step.put("acknowledged",true);
                 else resolveCheck(e, state, step);
             }
         }
         if(state.has("segmented"))skipUnusedBoards(e, state);
     }
 
-    /** 分镜图不合格重出一次，连检查一起再来；判断不了、或者重出过了，接着往下做。 */
+    /**
+     * 不合格重出一次，连检查一起再来；判断不了、或者重出过了，接着往下做。
+     * 视频页的爆款复刻只在人或商品没换对（subject-replaced 判 fail）时重出（2026-11-11 用户定）：真跑里三段都因「背景告示还有字」
+     * 「景别变了」「手势不一样」这类判不合格、重出一次照样不合格，制作费翻了一倍。其它项不合格只记下来，不花钱重出。
+     */
     private void resolveCheck(IpPlanExecution e, ObjectNode state, ObjectNode check) {
         ObjectNode target = PlanState.step(state, e.getStage(), check.path("definition").path("settings").path("targetStepId").asText());
+        JsonNode checked = outputs.chosenRun(e.getOwnerUserId(), e.getProjectId(), check)
+                .flatMap(run -> outputs.run(e.getOwnerUserId(), e.getProjectId(), run)).map(dto -> dto.output()).orElse(null);
+        boolean onlySubject = StudioCloneVideoPlan.method(state.path("videoTask").path("kind").asText());
         boolean canRedo = "fail".equals(check.path("checkStatus").asText()) && target != null && "done".equals(target.path("status").asText())
-                && !target.path("autoFixed").asBoolean(false);
+                && !target.path("autoFixed").asBoolean(false) && (!onlySubject || subjectWrong(checked));
         if (!canRedo) {
             check.put("acknowledged", true);
             return;
         }
-        String hint = outputs.chosenRun(e.getOwnerUserId(), e.getProjectId(), check)
-                .flatMap(run -> outputs.run(e.getOwnerUserId(), e.getProjectId(), run)).map(dto -> problems(dto.output())).orElse("");
+        String hint = checked == null ? "" : problems(checked);
         log.info("[segmented] board redo execution={} step={}", e.getId(), target.path("id").asText());
         target.put("autoFixed", true).put("fixHint", hint);
         target.remove(List.of("videoRequest", "retryVideoInputs", "notBefore"));
@@ -93,6 +101,14 @@ public class StudioSegmentedRun {
         again(check);
         check.remove("checkStatus");
         check.remove("checkTargetRunId");
+    }
+
+    /** 检查判人或商品没换对：subject-replaced 这一项是 fail。 */
+    static boolean subjectWrong(JsonNode output) {
+        if (output == null) return false;
+        for (JsonNode item : output.path("check").path("items"))
+            if ("subject-replaced".equals(item.path("id").asText()) && "fail".equals(item.path("status").asText())) return true;
+        return false;
     }
 
     private static String problems(JsonNode output) {
@@ -133,7 +149,8 @@ public class StudioSegmentedRun {
         if (code == null || code.isBlank()) return true;
         return !(code.equals(StudioPaymentMessage.CODE) || code.contains("INSUFFICIENT") || code.contains("RESTRICTED") || code.endsWith("_INVALID") || code.contains("NOT_CONFIGURED")
                 || code.startsWith("VIDEO_ASSET_") || code.contains("PRICE") || code.contains("UNAVAILABLE") || code.contains("UNKNOWN") || code.contains("RECONCILIATION")
-                || code.contains("RAW_ONLY") || code.contains("OUT_OF_SCOPE") || code.contains("MODERATION") || code.contains("UNSUPPORTED"));
+                // A nonempty truncated/unusable reply must be retained, not bought again automatically.
+                || code.equals("AI_BAD_OUTPUT") || code.contains("RAW_ONLY") || code.contains("OUT_OF_SCOPE") || code.contains("MODERATION") || code.contains("UNSUPPORTED"));
     }
 
     /** 脚本定下来以后：这段镜头少，第二张分镜图用不上（费用不发生，报价是上限）。 */
@@ -205,7 +222,7 @@ public class StudioSegmentedRun {
      */
     private void recreationFix(ObjectNode state, ObjectNode step, ObjectNode compiled) {
         String hint = step.path("fixHint").asText("").strip();
-        if (hint.isEmpty() || !"recreation".equals(state.path("videoTask").path("kind").asText())) return;
+        if (hint.isEmpty() || !StudioCloneVideoPlan.method(state.path("videoTask").path("kind").asText())) return;
         String prompt = compiled.path("prompt").asText("");
         switch (compiled.path("operation").asText()) {
             case "image" -> compiled.put("prompt", prompt.strip() + "\n" + assemble(StudioPromptCallPoints.RECREATION_REDO_NOTE, Map.of("fix", hint)).strip());

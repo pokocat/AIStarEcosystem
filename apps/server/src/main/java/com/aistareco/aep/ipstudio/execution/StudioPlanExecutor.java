@@ -359,7 +359,7 @@ public class StudioPlanExecutor {
                 if(isVideoReferenceUploadFailure(state,step))
                     return needsUser(e,state,step.path("reason").asText("参考素材上传失败，请重试此片段"));
                 if(state.has("videoTask")&&step.path("attempt").asInt(1)>=3)
-                    return needsUser(e,state,"「"+step.path("title").asText()+"」已尝试 3 次，仍未完成。请到画布查看这一步，处理后继续生成。");
+                    return needsUser(e,state,"「"+step.path("title").asText()+"」已尝试 3 次，仍未完成："+step.path("reason").asText("原因未知")+"。可重试此步骤，或结束本次制作。");
                 return needsUser(e,state,"「"+step.path("title").asText()+"」没有完成："+step.path("reason").asText("原因未知")+"。可重试此步骤，或结束本次制作。");
             }
             if(PlanState.unresolvedCheck(state,step)) {
@@ -567,6 +567,11 @@ public class StudioPlanExecutor {
         JsonNode definition=step.path("definition");
         var keys=new StudioPlanSteps.Keys() {
             @Override public String binding(JsonNode binding) {
+                // 深度复刻 / 元素替换受理时冻结的原片和素材：用冻结的文件，画布上后来改了也不影响这次制作。
+                // 不在冻结表里的（拉片切好的原片片段、本次制作的产物）照常按节点找。
+                JsonNode frozen=state.path("videoTask").path("cloneKeys");
+                if(binding.hasNonNull("nodeId")&&frozen.isObject()&&frozen.hasNonNull(binding.path("nodeId").asText()))
+                    return frozen.path(binding.path("nodeId").asText()).asText();
                 if(binding.hasNonNull("nodeId"))return outputs.resolveNodeKey(e,steps,doc,binding.path("nodeId").asText());
                 return stepKey(e,state,stage,binding.path("stepId").asText(),null);
             }
@@ -706,7 +711,7 @@ public class StudioPlanExecutor {
         String nodeId=StudioPlanExecutionIds.stepNodeId(e.getId(),step);
         boolean bound=!step.path("nodeId").asText("").isBlank();
         JsonNode output=run.output()==null?mapper.createObjectNode():run.output();
-        String type=switch(operation){case "image" -> "image";case "video","assemble" -> "video";default -> "text";};
+        String type=switch(operation){case "image" -> "image";case "video","assemble","video-control" -> "video";default -> "text";};
         String title=step.path("title").asText();
         ObjectNode data=nodeData(e,nodeId,type,title,stepId,run.id());
         if(bound)data.put("op","update");
@@ -714,7 +719,7 @@ public class StudioPlanExecutor {
         String prompt=sentPrompt(run,step);
         if(!prompt.isBlank())metadata.put("prompt",prompt);
         switch(operation) {
-            case "image","video","assemble" -> {
+            case "image","video","assemble","video-control" -> {
                 String key=outputs.outputKey(run,null);
                 if(key!=null)metadata.put("storageKey",key);
                 if("assemble".equals(operation))studio.put("kind","work");
@@ -736,7 +741,14 @@ public class StudioPlanExecutor {
             case "recreation" -> {studio.put("kind","recreation");metadata.put("content",output.path("text").asText(""));}
             default -> {studio.put("kind","text");metadata.put("content",output.path("textRevision").path("content").asText(output.path("text").asText("")));}
         }
+        if("video-control".equals(operation))studio.put("includeInWork",false);
         out.add(new Event("node.upsert",data));
+        // Native clone inputs are the accepted canvas nodes, not whatever the user later edits into the draft.
+        for(JsonNode input:(run.inputs()==null?mapper.createObjectNode():run.inputs()).path("canvasInputNodeIds")) {
+            var link=mapper.createObjectNode().put("nodeId",nodeId).put("op","connect").put("executionId",e.getId()).put("stepId",stepId).put("runId",run.id());
+            link.putObject("connection").put("fromNodeId",input.asText()).put("toNodeId",nodeId);
+            out.add(new Event("node.upsert",link));
+        }
         if(!"check".equals(operation))for(JsonNode dependency:step.path("dependsOn")) {
             var upstream=PlanState.step(state,stage,dependency.asText());
             if(upstream==null||"check".equals(upstream.path("operation").asText()))continue;

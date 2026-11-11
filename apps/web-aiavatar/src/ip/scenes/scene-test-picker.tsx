@@ -1,6 +1,6 @@
 import type { IpSavedAsset } from "@ai-star-eco/types";
 
-type Picked = { key: string; url: string; fileName?: string; mimeType?: string; bytes?: number; width?: number; height?: number };
+type Picked = { key: string; url: string; fileName?: string; mimeType?: string; bytes?: number; width?: number; height?: number; durationSec?: number };
 let source: (mediaType: "image" | "video" | "audio") => Promise<Picked> = async () => { throw new Error("测试没有设置资产库返回什么"); };
 /** 测试里设定「资产库里选中的是哪一份」（按素材类型）。 */
 export function setLibrarySource(next: typeof source) { source = next; }
@@ -13,7 +13,7 @@ export function LibraryReferencePicker({ open, onAssets, onClose, mediaType = "i
   const confirm = async () => {
     const r = await source(mediaType);
     const base = { id: `lib-${r.key}`, title: r.fileName ?? r.key, coverUrl: "", tags: [], createdAt: "", updatedAt: "" };
-    const meta = { storageKey: r.key, bytes: r.bytes ?? 1, mimeType: r.mimeType ?? "" };
+    const meta = { storageKey: r.key, bytes: r.bytes ?? 1, mimeType: r.mimeType ?? "", durationSec: r.durationSec };
     const asset = mediaType === "image" ? { ...base, kind: "image", data: { ...meta, dataUrl: r.url, width: r.width ?? 0, height: r.height ?? 0 } }
       : mediaType === "video" ? { ...base, kind: "video", data: { ...meta, url: r.url, width: r.width ?? 0, height: r.height ?? 0 } }
       : { ...base, kind: "audio", data: { ...meta, url: r.url } };

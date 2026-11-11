@@ -1,0 +1,25 @@
+{
+  "date": "2026-11-08",
+  "environment": "local Next frontend with deterministic UI-only API fixtures; no paid vendor or production API",
+  "desktop": {
+    "width": 1319,
+    "scrollWidth": 1319
+  },
+  "mobile": {
+    "width": 390,
+    "height": 844,
+    "scrollWidth": 379,
+    "layout": "mobile"
+  },
+  "checks": [
+    "three tool links",
+    "mode switches preserve material and prompt",
+    "reference video and optional image selection",
+    "submit stays on video page",
+    "progress and completed views",
+    "mobile task drawer",
+    "reuse creates a new draft and returns to compose after fix"
+  ],
+  "media": "synthetic FFmpeg test pattern; not model generation quality",
+  "viewportReset": true
+}

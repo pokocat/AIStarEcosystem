@@ -18,7 +18,14 @@ public final class StudioSegmentedDtos {
      */
     public record SegmentedVideoRequest(String clientRequestId, String sceneId, String text, Boolean hasScript, Map<String, String> options, String language,
                                         Integer duration, String ratio, String model, String tier, Boolean optimize, List<SegmentedMaterial> materials,
-                                        Long budgetCap, BillingSelection billing) {}
+                                        Long budgetCap, BillingSelection billing, Boolean autoCheck) {
+        /** autoCheck：爆款复刻每段生成后自动检查（没换对的人或商品重出一次）；不写算开。 */
+        public SegmentedVideoRequest(String clientRequestId, String sceneId, String text, Boolean hasScript, Map<String, String> options, String language,
+                                     Integer duration, String ratio, String model, String tier, Boolean optimize, List<SegmentedMaterial> materials,
+                                     Long budgetCap, BillingSelection billing) {
+            this(clientRequestId, sceneId, text, hasScript, options, language, duration, ratio, model, tier, optimize, materials, budgetCap, billing, null);
+        }
+    }
 
     /**
      * 按钮旁的价。estimated = 视频 + 分镜图 + 文字任务的上限；cap 再加上每张分镜图不合格时重出一次的余量。

@@ -3,7 +3,17 @@ import type { EnterpriseBillingSelection } from './enterprise';
 import type { StudioTakeChange } from './ip-studio-scenes';
 import type { StudioPlanExecution, StudioRunRequest, StudioSegmentedVideoRequest } from './ip-studio-workflow';
 
-export type StudioVideoTaskKind = 'direct' | 'segmented' | 'recreation';
+export type StudioVideoTaskKind = 'direct' | 'segmented' | 'recreation' | 'depth' | 'replacement';
+/** 爆款复刻的三种方式：分镜复刻 / 深度复刻 / 元素替换（服务端 StudioCloneVideoPlan）。 */
+export type StudioVideoCloneMode = 'recreation' | 'depth' | 'replacement';
+/** 爆款复刻：这条参考视频适合哪种方式。只按真实切镜数和平均镜头时长判断，不调模型；元素替换看用户意图，不推荐。 */
+export interface StudioCloneAdvice {
+  durationSec: number;
+  shots: number;
+  averageShotSec: number;
+  recommended: Exclude<StudioVideoCloneMode, 'replacement'>;
+  reason: string;
+}
 /** Immutable submission input; media nodes carry keys, never signed URLs. */
 export type StudioVideoTaskInput = Pick<IpProjectDoc, 'sceneInputs' | 'sceneVideoState' | 'sceneVideoModel' | 'nodes'> & { take?: StudioVideoTakeInfo };
 /**

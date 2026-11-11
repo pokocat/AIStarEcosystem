@@ -60,12 +60,13 @@ export function videoTaskResumeLabel(task: StudioVideoTask) {
   if (!step) return '继续生成';
   const segmentRetry = videoTaskSegmentRetry(task);
   if (segmentRetry) return segmentRetry.segment ? `从第 ${segmentRetry.segment} 段继续生成` : '重试这一步';
-  if (step.materials?.length || step.attempt >= 3) return undefined;
+  // 试过 3 次的也能再点重试（2026-11-11 用户定：能用为主，失败的积分都退了）
+  if (step.materials?.length) return undefined;
   return step.status === 'failed' || step.errorCode ? '重试这一步' : '继续生成';
 }
 export function videoTaskProblemTitle(step: StudioPlanExecutionStep) {
   const named = /^第/.test(step.title) ? step.title : undefined;
-  const name = step.operation === 'recreation' ? '参考视频分析' : step.operation === 'text' ? '分镜脚本' : step.operation === 'assemble' ? '导出成片'
+  const name = step.operation === 'video-control' ? named ?? '动作提取' : step.operation === 'recreation' ? '参考视频分析' : step.operation === 'text' ? '分镜脚本' : step.operation === 'assemble' ? '导出成片'
     : named ?? (step.operation === 'video' ? '视频' : '分镜图');
   return `${name}没有完成`;
 }
@@ -76,8 +77,8 @@ export function videoTaskProblemText(task: StudioVideoTask) {
   const text = reason ? normalizeStudioError(reason).message : '';
   return step && step.attempt >= 3 ? `已尝试 ${step.attempt} 次，仍未完成。${text}` : text;
 }
-export function videoTaskHref(task: Pick<StudioVideoTask, 'id' | 'projectId' | 'sceneId'>) {
-  return `/video?${new URLSearchParams({ scene: task.sceneId, draft: task.projectId, task: task.id })}`;
+export function videoTaskHref(task: Pick<StudioVideoTask, 'id' | 'projectId' | 'sceneId'> & Partial<Pick<StudioVideoTask, 'kind'>>) {
+  return `/video?${new URLSearchParams({ scene: task.sceneId, draft: task.projectId, task: task.id, ...(['depth','replacement'].includes(task.kind ?? '') ? { tool: task.kind! } : {}) })}`;
 }
 export function videoTaskCanvasHref(task: StudioVideoTask) {
   const failed = task.execution?.steps.find(s => s.status === 'failed' || s.status === 'needs_user');

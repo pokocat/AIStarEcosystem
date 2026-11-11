@@ -126,7 +126,7 @@ public class StudioPlanExecutionService {
         if(!StudioSkillRules.STAGES.contains(req.stage()))throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请先开始分析，再在同一次制作里确认制作阶段");
         // A production detached by a method switch (不锁方法) only finishes what it generates: it does not hold the canvas.
         var busy=executions.findByProjectIdAndStatusIn(projectId,ACTIVE).stream().filter(e->!detached(e)).toList();
-        if(!busy.isEmpty())throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PLAN_EXECUTION_BUSY","这张画布已有进行中的连续制作，请先结束",
+        if(!busy.isEmpty())throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PLAN_EXECUTION_BUSY",BUSY_MESSAGE,
                 mapper.createObjectNode().put("executionId",busy.get(0).getId()));
         // A new execution starts in its skill's first stage: analysis for the reference-video skill, production for a
         // production-only skill (原创创作 has nothing to study first). Starting anywhere else is the old stage-order error.
@@ -198,7 +198,7 @@ public class StudioPlanExecutionService {
             return toDto(prior);
         }
         var busy=executions.findByProjectIdAndStatusIn(projectId,ACTIVE).stream().filter(e->!detached(e)).toList();
-        if(!busy.isEmpty())throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PLAN_EXECUTION_BUSY","这张画布已有进行中的连续制作，请先结束",
+        if(!busy.isEmpty())throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PLAN_EXECUTION_BUSY",BUSY_MESSAGE,
                 mapper.createObjectNode().put("executionId",busy.get(0).getId()));
         String id="PEX-"+UUID.randomUUID().toString().replace("-","").substring(0,20);
         String planRunId="SEG-"+UUID.randomUUID().toString().replace("-","").substring(0,20);
@@ -233,6 +233,7 @@ public class StudioPlanExecutionService {
         if(loaded==null||!"production".equals(loaded.plan().path("stage").asText()))throw stale("没有可执行的制作安排，请在画布上查看分析结果");
         ObjectNode plan=loaded.plan().deepCopy();
         JsonNode config=state.path("videoTask").path("request").path("configuration");
+        String kind=state.path("videoTask").path("kind").asText();
         int seconds=0;
         for(JsonNode raw:plan.path("steps")) {
             ObjectNode step=(ObjectNode)raw;step.put("execution","auto");
@@ -241,10 +242,15 @@ public class StudioPlanExecutionService {
                 if(config.hasNonNull("model"))settings.put("model",config.path("model").asText());
                 settings.put("aspectRatio",config.path("ratio").asText("9:16"));
                 ((ObjectNode)settings.path("video")).put("resolutionTier",config.path("tier").asText());
+                if(config.path("optimize").isBoolean())((ObjectNode)settings.path("video")).put("optimize",config.path("optimize").asBoolean());
+                // 深度复刻总是先优化提示词（StudioCloneVideoPlan.optimize）
+                if("depth".equals(kind))((ObjectNode)settings.path("video")).put("optimize",true);
                 seconds+=settings.path("durationSec").asInt();
             }
         }
-        if(seconds==0||Math.abs(seconds-config.path("duration").asInt())>1)throw stale("分镜时长与本次设置不一致，请在画布上查看后调整");
+        // 深度复刻 / 元素替换不做整段都是原作者账号片尾的那段（StudioRecreationTaskPlan），成片可以比页面上的时长短
+        boolean shorter=StudioCloneVideoPlan.nativeClone(kind)&&seconds<config.path("duration").asInt();
+        if(seconds==0||!shorter&&Math.abs(seconds-config.path("duration").asInt())>1)throw stale("分镜时长与本次设置不一致，请在画布上查看后调整");
         quoter.quote(e.getOwnerUserId(),plan);
         long spent=budget.path("analysis").path("spent").asLong();
         long remaining=budget.path("analysis").path("approvedCap").asLong()-spent;
@@ -656,6 +662,9 @@ public class StudioPlanExecutionService {
      * canvas, and the materials stay within the request cap. Nothing else widens an execution's materials.
      */
     /** Explicit continue can adopt a successful repair on the same canvas node; browsing alone never does this. */
+    /** 同一张画布上一次只跑一条制作。界面上叫「生成」，不说「连续制作」（2026-11-11 真跑：再次生成被这句挡住，用户不知道该干什么）。 */
+    static final String BUSY_MESSAGE="这张画布上还有一条没结束的生成，请先停止它，再开始新的";
+
     private void adoptVideoRepairs(String userId,String projectId,IpPlanExecution e,ObjectNode state) {
         JsonNode doc=projects.readDoc(projects.required(userId,projectId));
         for(JsonNode raw:PlanState.stageSteps(state,e.getStage())) {
@@ -673,7 +682,8 @@ public class StudioPlanExecutionService {
             // a request to confirm a task that had already ended. Only a task still in progress must not get a second attempt.
             if((code.contains("UNKNOWN")||code.contains("RECONCILIATION"))&&stepStillRunning(userId,projectId,step))
                 throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"STUDIO_PLAN_STEP_RUNNING","这一步正在生成，请等待完成后重试。");
-            if(step.path("attempt").asInt(1)>=3)throw stale("此步骤已尝试 3 次，请在画布上修复后继续生成");
+            // 2026-11-11 用户定（能用为主）：自动重试 3 次后停下来等人，用户自己点重试就接着试，不再要求先去画布修。
+            // 失败的那几次积分都退了，多点几次不花钱；画布上修好再继续的路照旧可用（上面 adoptVideoRepair）。
         }
     }
 

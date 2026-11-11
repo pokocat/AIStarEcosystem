@@ -98,6 +98,7 @@ export interface StudioSceneImageState {
 
 /** AI 视频页这份草稿当前的条件：输入框里没发的话、选项、台词语言和出片设置，以及「生成视频」里改了一半的脚本。素材见 sceneInputs，视频模型见 sceneVideoModel。 */
 export interface StudioSceneVideoState {
+  cloneMode?: import('./ip-studio-video-task').StudioVideoCloneMode;
   text: string;
   options: Record<string, string>;
   language?: string;
@@ -105,6 +106,8 @@ export interface StudioSceneVideoState {
   duration?: number;
   ratio?: string;
   optimize?: boolean;
+  /** 爆款复刻的「自动检查」：每段生成后检查人和商品是否换对，没换对重新生成一次。不写算开。 */
+  autoCheck?: boolean;
   /** 停在「生成视频」时：照哪一版脚本、改到了什么样。 */
   edit?: { scriptId?: string; prompt: string };
 }
@@ -196,6 +199,8 @@ export interface IpRunOutput {
   rawOnly?: boolean;
 }
 export interface IpRunInputs {
+  /** Accepted native-clone canvas inputs; used to restore the same graph after leaving the page. */
+  canvasInputNodeIds?: string[];
   /** Explicit Studio input wrapped by the native image pipeline. */
   studioRequest?: import('./ip-studio-workflow').StudioRunRequest;
   userPrompt?: string;            // 用户原始指令；旧记录可能只有完整模板提示词
@@ -321,8 +326,8 @@ type IpSavedAssetBase<T extends IpSavedAssetKind> = {
 };
 export type IpTextAsset = IpSavedAssetBase<"text"> & { data: { content: string } };
 export type IpImageAsset = IpSavedAssetBase<"image"> & { data: { dataUrl: string; storageKey?: string; width: number; height: number; bytes: number; mimeType: string } };
-export type IpVideoAsset = IpSavedAssetBase<"video"> & { data: { url: string; storageKey?: string; width: number; height: number; bytes: number; mimeType: string } };
-export type IpAudioAsset = IpSavedAssetBase<"audio"> & { data: { url: string; storageKey?: string; bytes: number; mimeType: string } };
+export type IpVideoAsset = IpSavedAssetBase<"video"> & { data: { url: string; storageKey?: string; width: number; height: number; bytes: number; mimeType: string; durationSec?: number } };
+export type IpAudioAsset = IpSavedAssetBase<"audio"> & { data: { url: string; storageKey?: string; bytes: number; mimeType: string; durationSec?: number } };
 export type IpSavedAsset = IpTextAsset | IpImageAsset | IpVideoAsset | IpAudioAsset;
 
 /** Shared project/template cover management; URLs are signed on read. */
