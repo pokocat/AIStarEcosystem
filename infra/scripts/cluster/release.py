@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """ALB dual-active rolling release; no database import, DNS changes, or legacy-host fallback."""
-import argparse,datetime,hashlib,http.client,json,os,pathlib,select,shlex,socket,ssl,subprocess,sys,time,tarfile
+import argparse,datetime,hashlib,http.client,json,os,pathlib,re,select,shlex,socket,ssl,subprocess,sys,time,tarfile
 from policy import config_guard,artifact_guard,alb_guard,require
 ROOT=pathlib.Path(__file__).resolve().parents[3]
 DUAL_ACTIVE={'a':50,'b':50}
@@ -23,12 +23,12 @@ class Cluster:
   result=json.loads(self.ssh(node,shlex.join(cmd)));self.record(action,node=node,**({k:result[k] for k in ['release','sha','drain_seconds'] if k in result}));return result
  def alb(self,action,args):
   self.check_lease()
-  p=subprocess.run(['aliyun','alb',action,'--RegionId',self.config['region'],'--force',*args],capture_output=True,text=True,timeout=60)
+  p=subprocess.run(['aliyun','alb',action,'--RegionId',self.config['region'],'--endpoint','alb.'+self.config['region']+'.aliyuncs.com','--force',*args],capture_output=True,text=True,timeout=60)
   if p.returncode:
    logs=pathlib.Path.home()/'.local/state/aistar-deploy'
    logs.mkdir(mode=0o700,parents=True,exist_ok=True);logs.chmod(0o700)
    diagnostic=logs/'last-alb-error-private.log'
-   diagnostic.write_text(p.stderr);diagnostic.chmod(0o600)
+   diagnostic.write_text(re.sub(r'https?://[^\s"<>]+','[redacted URL]',p.stderr));diagnostic.chmod(0o600)
   require(p.returncode==0,'ALB操作失败；停止发布')
   return json.loads(p.stdout)
  def members(self):
