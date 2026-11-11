@@ -92,7 +92,7 @@ export function StudioAssistantPlan({plan,nodes,contextIds,selectedIds,snapshots
 // A plan quoted in the same reply is rendered inside its confirmation card (StudioPlanContent there); a plan on its own
 // (revised, not quoted yet) is the same content without a price or buttons. Choosing another approach only sends a
 // message: a new approach always needs a new quote from the server.
-const operationLabels: Record<StudioPlanStep['operation'], string> = { text: '文字', script: '剧本', storyboard: '分镜', image: '图片', video: '视频', recreation: '拉片', check: '检查', assemble: '合成' };
+const operationLabels: Record<StudioPlanStep['operation'], string> = { text: '文字', script: '剧本', storyboard: '分镜', image: '图片', video: '视频', recreation: '拉片', check: '检查', assemble: '合成', 'video-control': '动作提取' };
 export function studioPlanApproaches(plan: StudioPlan) {
   const list = plan.approaches || [];
   const chosen = plan.confirmedApproachId || plan.recommendedApproachId;

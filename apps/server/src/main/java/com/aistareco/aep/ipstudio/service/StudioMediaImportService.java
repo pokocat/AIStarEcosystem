@@ -131,7 +131,9 @@ public class StudioMediaImportService {
         name = name.substring(name.lastIndexOf('/') + 1).replaceAll("[\\p{Cntrl}]", "").strip();
         if (name.isBlank()) name = "画布附件";
         name = name.substring(0, name.offsetByCodePoints(0, Math.min(100, name.codePointCount(0, name.length()))));
-        if(savedAssets!=null){var asset=mapper.createObjectNode().put("kind",type).put("title",name).put("source","用户上传");asset.putObject("data").put("storageKey",stored.key()).put("mimeType",format.mime()).put("bytes",stored.bytes());savedAssets.saveAutomatic(user,asset);}
+        if(savedAssets!=null){var asset=mapper.createObjectNode().put("kind",type).put("title",name).put("source","用户上传");var data=asset.putObject("data").put("storageKey",stored.key()).put("mimeType",format.mime()).put("bytes",stored.bytes());
+            if(width!=null)data.put("width",width);if(height!=null)data.put("height",height);if(duration!=null)data.put("durationSec",duration);
+            savedAssets.saveAutomatic(user,asset);}
         return new MediaImportResult(stored.key(), storage.signedUrl(stored.key()), type, format.mime(), stored.bytes(), name, width, height, duration);
     }
     public record ReferenceAudio(String key, double durationSec, double sourceDurationSec) {}

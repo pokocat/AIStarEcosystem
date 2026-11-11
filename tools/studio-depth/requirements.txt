@@ -1,0 +1,2 @@
+# ReShot and its Video Depth Anything Small backend are Apache-2.0. Do not use base/large weights.
+reshot[ffmpeg,pose]==0.5.0

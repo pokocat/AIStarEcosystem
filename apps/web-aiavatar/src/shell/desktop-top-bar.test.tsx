@@ -61,7 +61,7 @@ test("灵感 follows 首页 in the rail and owns its pages; Projects owns its ow
   const view = render(<DesktopTopBar/>);
   const nav = within(screen.getByRole("navigation", {name:"主导航"}));
   const links = nav.getAllByRole("link");
-  expect(links.map(link => link.getAttribute("href"))).toEqual(["/dashboard","/templates","/video","/image","/create","/director","/projects","/assets","/distribution"]);
+  expect(links.map(link => link.getAttribute("href"))).toEqual(["/dashboard","/templates","/video","/image","/toolbox","/create","/director","/projects","/assets","/distribution"]);
   expect(nav.getByRole("link", {name:"项目",exact:true}).getAttribute("aria-current")).toBe("page");
   expect(nav.getByRole("link", {name:"画布"}).hasAttribute("aria-current")).toBe(false);
   state.pathname = "/projects/demos";

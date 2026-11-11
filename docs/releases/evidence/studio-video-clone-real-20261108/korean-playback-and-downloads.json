@@ -1,0 +1,38 @@
+[
+  {
+    "file": "/Users/donis/.codex/visualizations/2026/11/08/01a1b9f0-867b-72f1-91da-0baedbedacfa/studio-clone-real/9861-korean-depth-result.mp4",
+    "bytes": 2627586,
+    "sha256": "acd2d1227ea8990df8d0a5eaa7b8e1ac41e1e2d0638033f9eaae6833d2f17938",
+    "browserDurationSec": 15.083333,
+    "playedToEnd": true,
+    "mediaError": null,
+    "matchesSystemDownload": true
+  },
+  {
+    "file": "/Users/donis/.codex/visualizations/2026/11/08/01a1b9f0-867b-72f1-91da-0baedbedacfa/studio-clone-real/9862-korean-depth-result.mp4",
+    "bytes": 3702989,
+    "sha256": "be01cc9fd0517b1285dd034ec35bbb52575c756761f299ac75afeada7b230910",
+    "browserDurationSec": 15.083333,
+    "playedToEnd": true,
+    "mediaError": null,
+    "matchesSystemDownload": true
+  },
+  {
+    "file": "/Users/donis/.codex/visualizations/2026/11/08/01a1b9f0-867b-72f1-91da-0baedbedacfa/studio-clone-real/9861-korean-storyboard-result.mp4",
+    "bytes": 4767006,
+    "sha256": "e738fddd6d4fb2b4708967db50d44748869e2ee822da82a2ade99457c47299b4",
+    "browserDurationSec": 15.557,
+    "playedToEnd": true,
+    "mediaError": null,
+    "matchesSystemDownload": true
+  },
+  {
+    "file": "/Users/donis/.codex/visualizations/2026/11/08/01a1b9f0-867b-72f1-91da-0baedbedacfa/studio-clone-real/9862-korean-storyboard-result.mp4",
+    "bytes": 3284953,
+    "sha256": "20145d4911622c221d76d263ea8b1b5d6968faf4970abd70efe11f82754f5b74",
+    "browserDurationSec": 15.332,
+    "playedToEnd": true,
+    "mediaError": null,
+    "matchesSystemDownload": true
+  }
+]

@@ -1,0 +1,53 @@
+{
+  "method": "Replay installed ReShot index / average-fps selection against sorted original video packet PTS; not a new depth inference",
+  "sourceFrameCount": 721,
+  "openCvSourceFps": 53.539603960396036,
+  "outputFps": 24,
+  "replayedOutputFrames": 323,
+  "replayedDurationSec": 13.458333333333334,
+  "storedDepthDurationSec": 13.459,
+  "events": [
+    {
+      "requestedSourceSec": 3.2,
+      "sourceFrameIndex": 192,
+      "sourcePtsSec": 3.2,
+      "depthPtsSec": 3.5833333333333335,
+      "shiftSec": 0.3833333333333333
+    },
+    {
+      "requestedSourceSec": 5.4,
+      "sourceFrameIndex": 324,
+      "sourcePtsSec": 5.4,
+      "depthPtsSec": 6.041666666666667,
+      "shiftSec": 0.6416666666666666
+    },
+    {
+      "requestedSourceSec": 5.433333,
+      "sourceFrameIndex": 326,
+      "sourcePtsSec": 5.433333,
+      "depthPtsSec": 6.083333333333333,
+      "shiftSec": 0.6500003333333328
+    },
+    {
+      "requestedSourceSec": 5.7,
+      "sourceFrameIndex": 342,
+      "sourcePtsSec": 5.7,
+      "depthPtsSec": 6.375,
+      "shiftSec": 0.6749999999999998
+    },
+    {
+      "requestedSourceSec": 10.5,
+      "sourceFrameIndex": 630,
+      "sourcePtsSec": 10.5,
+      "depthPtsSec": 11.75,
+      "shiftSec": 1.25
+    },
+    {
+      "requestedSourceSec": 10.516667,
+      "sourceFrameIndex": 630,
+      "sourcePtsSec": 10.5,
+      "depthPtsSec": 11.75,
+      "shiftSec": 1.25
+    }
+  ]
+}

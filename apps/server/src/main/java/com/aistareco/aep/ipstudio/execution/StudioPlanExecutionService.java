@@ -241,6 +241,7 @@ public class StudioPlanExecutionService {
                 if(config.hasNonNull("model"))settings.put("model",config.path("model").asText());
                 settings.put("aspectRatio",config.path("ratio").asText("9:16"));
                 ((ObjectNode)settings.path("video")).put("resolutionTier",config.path("tier").asText());
+                if(config.path("optimize").isBoolean())((ObjectNode)settings.path("video")).put("optimize",config.path("optimize").asBoolean());
                 seconds+=settings.path("durationSec").asInt();
             }
         }

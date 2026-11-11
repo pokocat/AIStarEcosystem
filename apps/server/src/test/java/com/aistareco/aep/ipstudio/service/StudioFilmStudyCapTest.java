@@ -36,6 +36,13 @@ class StudioFilmStudyCapTest {
         assertCovered(even,60,7.5,8);
     }
 
+    @Test void shortMotionReferencesMergeWithoutChangingTheSourceClock() {
+        var ends=StudioFilmStudy.capped(List.of(3.5,5.45,10.5,13.536),13.536,new StudioFilmStudy.SegmentCap(15,8,2));
+        assertEquals(List.of(5.45,10.5,13.536),ends);assertCovered(ends,13.536,15,8);
+        var narrow=StudioFilmStudy.capped(List.of(15.0,15.9),15.9,new StudioFilmStudy.SegmentCap(15,8,2));
+        assertEquals(List.of(7.95,15.9),narrow);assertCovered(narrow,15.9,15,8);
+    }
+
     @Test void impossibleSourcesAreRefusedWithTheConflictAndCap() {
         var error=assertThrows(BusinessException.class,()->StudioFilmStudy.capped(List.of(60.0),60,new StudioFilmStudy.SegmentCap(5,8)));
         assertEquals("STUDIO_SEGMENT_TOO_LONG",error.getCode());

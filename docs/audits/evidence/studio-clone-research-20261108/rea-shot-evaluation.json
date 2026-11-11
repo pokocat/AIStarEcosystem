@@ -1,0 +1,236 @@
+{
+  "upstream": "https://github.com/JuneYaooo/rea-video",
+  "revision": "b32fbbdb074adbd72f54505114ed8600366cdaa5",
+  "sourceSha256": {
+    "rea_video/__init__.py": "df786baf372c97dd35364378168bbd1444da2e309e9cde171c3ca465a7fbd3cb",
+    "rea_video/media.py": "ae0969e492f61feb282e21ae7c4f84cc152a1545fd29da6a631c240052c43887",
+    "rea_video/util.py": "f37869f399fdae819d8f84fc12e3ba4637ecc4b25335f71c5d14c036a09229ba",
+    "rea_video/shots.py": "cdd49e4ef573060fb250724ab2a6dc97cb3e4c79a46e44382f9a0f69493b72a4",
+    "LICENSE": "2beb280b855389587b12dfda5f61a7baf09d1c4a20aac833b1c96f9569c5e458"
+  },
+  "numpy": "2.5.4",
+  "opencv": "4.14.0",
+  "scope": "synthetic shot-boundary evaluation only; no semantic or generation-quality validation",
+  "cases": [
+    {
+      "case": "hard_cuts",
+      "expected": [
+        2.0,
+        4.0
+      ],
+      "actual": [
+        2.0,
+        4.0
+      ],
+      "shots": [
+        {
+          "index": 1,
+          "start": 0.0,
+          "end": 2.0,
+          "duration": 2.0,
+          "start_frame": 0,
+          "end_frame": 48,
+          "transition_in": "start",
+          "boundary_score": 0.0,
+          "beats": []
+        },
+        {
+          "index": 2,
+          "start": 2.0,
+          "end": 4.0,
+          "duration": 2.0,
+          "start_frame": 48,
+          "end_frame": 96,
+          "transition_in": "cut",
+          "boundary_score": 0.933,
+          "beats": []
+        },
+        {
+          "index": 3,
+          "start": 4.0,
+          "end": 6.0,
+          "duration": 2.0,
+          "start_frame": 96,
+          "end_frame": 144,
+          "transition_in": "cut",
+          "boundary_score": 0.933,
+          "beats": []
+        }
+      ],
+      "misses": [],
+      "falsePositives": [],
+      "elapsedSeconds": 0.085,
+      "passed": true
+    },
+    {
+      "case": "short_insert",
+      "expected": [
+        2.0,
+        2.25
+      ],
+      "actual": [
+        2.0,
+        2.25
+      ],
+      "shots": [
+        {
+          "index": 1,
+          "start": 0.0,
+          "end": 2.0,
+          "duration": 2.0,
+          "start_frame": 0,
+          "end_frame": 48,
+          "transition_in": "start",
+          "boundary_score": 0.0,
+          "beats": []
+        },
+        {
+          "index": 2,
+          "start": 2.0,
+          "end": 2.25,
+          "duration": 0.25,
+          "start_frame": 48,
+          "end_frame": 54,
+          "transition_in": "cut",
+          "boundary_score": 0.932,
+          "beats": []
+        },
+        {
+          "index": 3,
+          "start": 2.25,
+          "end": 6.0,
+          "duration": 3.75,
+          "start_frame": 54,
+          "end_frame": 144,
+          "transition_in": "cut",
+          "boundary_score": 0.933,
+          "beats": []
+        }
+      ],
+      "misses": [],
+      "falsePositives": [],
+      "elapsedSeconds": 0.048,
+      "passed": true
+    },
+    {
+      "case": "flash_return",
+      "expected": [],
+      "actual": [
+        2.0416666666666665
+      ],
+      "shots": [
+        {
+          "index": 1,
+          "start": 0.0,
+          "end": 2.042,
+          "duration": 2.042,
+          "start_frame": 0,
+          "end_frame": 49,
+          "transition_in": "start",
+          "boundary_score": 0.0,
+          "beats": []
+        },
+        {
+          "index": 2,
+          "start": 2.042,
+          "end": 6.0,
+          "duration": 3.958,
+          "start_frame": 49,
+          "end_frame": 144,
+          "transition_in": "fade",
+          "boundary_score": 0.5,
+          "beats": []
+        }
+      ],
+      "misses": [],
+      "falsePositives": [
+        2.0416666666666665
+      ],
+      "elapsedSeconds": 0.048,
+      "passed": false
+    },
+    {
+      "case": "dissolve",
+      "expected": [
+        3.0
+      ],
+      "actual": [
+        3.0
+      ],
+      "shots": [
+        {
+          "index": 1,
+          "start": 0.0,
+          "end": 3.0,
+          "duration": 3.0,
+          "start_frame": 0,
+          "end_frame": 72,
+          "transition_in": "start",
+          "boundary_score": 0.0,
+          "beats": []
+        },
+        {
+          "index": 2,
+          "start": 3.0,
+          "end": 6.0,
+          "duration": 3.0,
+          "start_frame": 72,
+          "end_frame": 144,
+          "transition_in": "dissolve",
+          "boundary_score": 0.953,
+          "beats": []
+        }
+      ],
+      "misses": [],
+      "falsePositives": [],
+      "elapsedSeconds": 0.057,
+      "passed": true
+    },
+    {
+      "case": "pan",
+      "expected": [],
+      "actual": [],
+      "shots": [
+        {
+          "index": 1,
+          "start": 0.0,
+          "end": 6.0,
+          "duration": 6.0,
+          "start_frame": 0,
+          "end_frame": 144,
+          "transition_in": "start",
+          "boundary_score": 0.0,
+          "beats": []
+        }
+      ],
+      "misses": [],
+      "falsePositives": [],
+      "elapsedSeconds": 0.053,
+      "passed": true
+    },
+    {
+      "case": "static",
+      "expected": [],
+      "actual": [],
+      "shots": [
+        {
+          "index": 1,
+          "start": 0.0,
+          "end": 6.0,
+          "duration": 6.0,
+          "start_frame": 0,
+          "end_frame": 144,
+          "transition_in": "start",
+          "boundary_score": 0.0,
+          "beats": []
+        }
+      ],
+      "misses": [],
+      "falsePositives": [],
+      "elapsedSeconds": 0.048,
+      "passed": true
+    }
+  ],
+  "passed": 5,
+  "total": 6
+}

@@ -1,0 +1,24 @@
+{
+  "date": "2026-11-08",
+  "host": "Mac mini",
+  "cleanupExitCode": 0,
+  "finished": true,
+  "generatedDirectoriesRemoved": 1233,
+  "sourceSnapshotsPreserved": 162,
+  "latestSnapshotEnvironmentsRetained": 26,
+  "availableBefore": "116 MiB (df rounded)",
+  "availableAfterKiB": 12946464,
+  "availableAfterGiB": 12.346710205078125,
+  "protected": [
+    "All source snapshot directories",
+    "Latest two generated environments per workspace",
+    "Acceptance database and media",
+    "Depth tools and model weights",
+    "Existing reporter process PID 49056"
+  ],
+  "notes": [
+    "Only node_modules, .next, .turbo and server target under registered idle older snapshots were pruned.",
+    "Reporter process was verified alive; registry already indicated orphaned. No stop/restart or registry update was performed.",
+    "The generic cleaner was not used because an active reporter process had to remain running."
+  ]
+}

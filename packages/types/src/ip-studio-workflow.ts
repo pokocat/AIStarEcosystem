@@ -21,7 +21,7 @@ export interface StudioVideoSettings {
 }
 /** 智能优化的结果：发给模型的英文（台词已填好）、要用户判断的提示、已经自动处理好的小事、能不能直接用（超长不能用）。 */
 export interface StudioVideoPromptOptimization { text: string; warnings: string[]; notes?: string[]; usable: boolean }
-export type StudioOperation = "text" | "script" | "storyboard" | "image" | "video" | "assemble" | "assistant" | "recreation" | "check";
+export type StudioOperation = "text" | "script" | "storyboard" | "image" | "video" | "assemble" | "assistant" | "recreation" | "check" | "video-control";
 export interface StudioScriptSettings { genre?: string; fusionGenres?: string[]; characterBrief?: string; structure?: string; audience?: string; era?: string; core?: string; style?: string; episodeCount?: number; episodeDurationSec?: number }
 export type StudioAssistantMode = "general" | "original" | "adapt" | "director";
 /** Free document text extraction; the imported canvas node owns the resulting text. */
@@ -31,7 +31,7 @@ export interface StudioTokenBilling { inputTokens:number; outputTokens:number; c
 export interface StudioTurn { billing?:StudioTokenBilling; role: "user" | "assistant"; content: string }
 /** Two-stage skill plans (docs/ip-studio-conversational-video-recreation-plan.md §两阶段计划契约). Legacy fields stay for old records. */
 export type StudioPlanStage = "analysis" | "production";
-export type StudioPlanOperation = "text" | "script" | "storyboard" | "image" | "video" | "recreation" | "check" | "assemble";
+export type StudioPlanOperation = "text" | "script" | "storyboard" | "image" | "video" | "recreation" | "check" | "assemble" | "video-control";
 export interface StudioProductionApproach {
   id: string; title: string; summary: string; rationale: string;
   preserve: string[]; change: string[]; tradeoffs: string[]; requiredCapabilities: string[];
@@ -39,6 +39,7 @@ export interface StudioProductionApproach {
 /** Typed per-operation step settings; the server rejects untyped JSON. referenceBindings resolve to canvas nodes or earlier steps. */
 export interface StudioStepReferenceBinding { stepId?: string; nodeId?: string; role: "character" | "scene" | "product" | "frame" | "clip" | "reference-image" | "reference-video" | "reference-audio"; order: number }
 export type StudioSkillStepSettings =
+  | { operation: "video-control"; referenceBindings: StudioStepReferenceBinding[] }
   | { operation: "recreation"; sourceNodeId: string; mode: "segments"; maxSegmentSec: number | "model"; videoModel: string }
   | { operation: "image"; model?: string; size?: string; aspectRatio?: string; count: 1 | 2 | 4; referenceBindings: StudioStepReferenceBinding[] }
   | { operation: "video"; model?: string; video: StudioVideoSettings; durationSec: number; aspectRatio: string; count: 1 | 2 | 4; referenceBindings: StudioStepReferenceBinding[] }

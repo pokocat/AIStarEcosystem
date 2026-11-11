@@ -80,6 +80,19 @@
 
 - [x] 修改建议由模型与脚本同次生成，最多 3 条、按钮最多 8 字、完整指令最多 80 字；异常建议独立忽略。真模型、桌面和手机浏览器通过，已发布 `20261109-ai-suggestions-f62ca8ff`（server + web-aiavatar）。见 [验收与发布记录](docs/releases/script-ai-suggestions-release-20261109.md)。
 
+## Studio 视频复刻工具箱（2026-11-08）
+
+- [x] ~~手机版点「重新编辑」仍停在示例页~~ **2026-11-08 完成，未发布**：`SceneVideoStudio.reuseTask` 回到 `mobileView=compose`，保留原任务并将快照放进新草稿；浏览器复验与 49 项相关测试通过，截图见 `docs/releases/studio-video-clone-local-validation-20261108.md`。
+
+- [ ] 真实渠道效果与发布验收：源码功能和隔离任务链已完成；生产尚未配置 `StudioDepthVideoService` 的命令/Small 权重。发布前在 server 实际执行环境准备依赖，并以实际开放视频参考的渠道验证动作、主体残留和最终成片，不能用本地确定性供应商代表质量。见 `docs/studio-video-clone-toolbox.md`。
+- [x] ~~深度复刻没按 ReShot 的用法接 H3（可变帧率漂移、全尺寸控制视频、只有深度、按原文直发）~~ **2026-11-08 完成，未发布**：恒定 24 帧、长边 320、全身动作改用骨骼、视频步骤固定先优化并把视频1 定义成只迁移动作；见 `docs/studio-video-clone-toolbox.md` 末节。
+- [ ] 深度复刻加「原片分析」一步：按时间写清原片里谁在做什么（ReShot：H3 要靠文字看懂灰色画面），并识别平台尾卡后先裁掉再提取（9862 带 3 秒抖音尾卡）。现在只能靠用户在要求里写。
+- [ ] 深度复刻的人物参考换成设定图或关键画面（ReShot 演示用的是角色设定图），不要直接用站立证件照。
+- [x] ~~深度复刻改版后用 9861 / 9862 真实付费出片对比一次~~ **2026-11-08 完成**：9861（骨骼）明显变好，9862（深度）瑕疵少了但手遮挡镜头的动作没跟上；原因是优化稿不知道原片动作的时间点，见 `docs/releases/studio-video-clone-real-acceptance-20261108.md` 末节。
+- [ ] 往聚算上传的参考素材用完从不删除（`MaterialVideoModelClient` 上传 `/assets/input`，`material_video_input_asset` 只做复用），2026-11-08 账号报 `personal_asset_quota_exceeded`，线上同一账号；出片完成后清理或设保留期。
+- [ ] 深度推理在 Studio 共享线程上排队（`StudioDepthVideoService` 的单槽等待占着 `ipRunExecutor` 线程），几个人同时提交会挤占出图和视频提交；改成走持久队列或独立线程池。
+- [ ] rea-video 切镜候选暂不替换现有运行时：固定提交 `b32fbbd` 的 `shots.detect_shots` 将一帧白闪后回原图误切为 fade（2.042 秒）。修正或过滤后需用真实素材验证；复现及报告见 `docs/audits/studio-clone-reference-projects-2026-11.md`。
+
 ## 用户反馈 2026-11-07（修复见 PR 157，文案记录在 `docs/audits/pc-ui-copy-review-2026-11.md` 第 11 批）
 
 - [x] ~~视频页失败后没有重试入口~~ **2026-11-07 修复**：线上 `PEX-9caea05b1848414ca167` 分镜图没回结果、积分已退，页面只有「在画布上查看」。视频页和画布任务条共用 `videoTaskResumeLabel`，服务端能接着做的都给「重试这一步 / 继续生成」，见 `docs/studio-video-workflow-redesign.md` §12。预算不够时视频页仍只能去画布（视频任务没有对话，没有追加预算卡），未做。

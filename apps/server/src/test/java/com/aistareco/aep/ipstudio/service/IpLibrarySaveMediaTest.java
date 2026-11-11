@@ -48,6 +48,14 @@ class IpLibrarySaveMediaTest {
         service = new IpLibraryService(records, saved, projects, mock(IpRunRepository.class), mock(StudioWorkflowService.class), storage, om, users);
     }
 
+    @Test void depthControlIsReceiptedWithoutBecomingAUserLibraryVideo() {
+        var run=com.aistareco.aep.ipstudio.model.IpRun.builder().id("IPR-depth").ownerUserId(USER).kind("studio-video-control").status("done").build();
+        service.collect(run);
+        verify(saved,never()).saveAutomatic(anyString(),any());
+        verify(projects,never()).toRunDto(any());
+        assertTrue(rows.containsKey("ILC-IPR-depth"));
+    }
+
     private SaveMediaRequest newCard(String requestId) {
         return new SaveMediaRequest(requestId, KEY, null, "scene", "祖宅", "", null, null, null);
     }

@@ -3,7 +3,8 @@ import type { EnterpriseBillingSelection } from './enterprise';
 import type { StudioTakeChange } from './ip-studio-scenes';
 import type { StudioPlanExecution, StudioRunRequest, StudioSegmentedVideoRequest } from './ip-studio-workflow';
 
-export type StudioVideoTaskKind = 'direct' | 'segmented' | 'recreation';
+export type StudioVideoTaskKind = 'direct' | 'segmented' | 'recreation' | 'depth' | 'replacement';
+export type StudioVideoCloneMode = 'recreation' | 'depth' | 'replacement';
 /** Immutable submission input; media nodes carry keys, never signed URLs. */
 export type StudioVideoTaskInput = Pick<IpProjectDoc, 'sceneInputs' | 'sceneVideoState' | 'sceneVideoModel' | 'nodes'> & { take?: StudioVideoTakeInfo };
 /**
