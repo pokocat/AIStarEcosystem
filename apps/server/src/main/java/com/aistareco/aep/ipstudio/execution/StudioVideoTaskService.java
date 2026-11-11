@@ -4,6 +4,7 @@ import com.aistareco.aep.ipstudio.dto.StudioPlanDtos.PlanExecution;
 import com.aistareco.aep.ipstudio.dto.StudioSegmentedDtos.SegmentedVideoRequest;
 import com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.RunRequest;
 import com.aistareco.aep.ipstudio.dto.IpStudioDtos.IpRunDto;
+import com.aistareco.aep.ipstudio.model.IpRun;
 import com.aistareco.aep.ipstudio.repository.IpRunRepository;
 import com.aistareco.aep.ipstudio.segmented.SegmentedVideoService;
 import com.aistareco.aep.ipstudio.service.*;
@@ -128,6 +129,7 @@ public class StudioVideoTaskService {
             boolean clip=StudioCloneVideoPlan.nativeClone(req.kind());
             // 深度复刻 / 元素替换：所选模型要能带参考视频（深度复刻还要有动作提取服务），分段不超过参考视频的时长上限
             var bounds=clip?StudioCloneVideoPlan.clip(clones.require(req.kind(),req.configuration().model())):null;
+            if("depth".equals(req.kind()))admitDepth(user);
             var doc=projects.readDoc(projects.required(user,projectId));
             JsonNode source=IpDocs.node(doc,req.sourceNodeId());
             if(source==null||!"video".equals(source.path("type").asText())||IpDocs.primaryStorageKey(source)==null)throw invalid("参考视频不在草稿中，请重新添加");
@@ -167,6 +169,24 @@ public class StudioVideoTaskService {
         plan.put("fingerprint",StudioPlanValidator.fingerprint(plan));
         var accepted=executions.startVideoTask(user,projectId,req.clientRequestId(),plan,null,metadata,context,rules,cap,cap-estimate,req.billing(),mapper.valueToTree(req));
         return task(repository.findById(accepted.id()).orElseThrow());
+    }
+
+    /** 每人同时一条深度复刻；全站同时最多 3 条、动作提取最多排 12 段（一段约 4.5 分钟，12 段约等 1 小时）。 */
+    static final int DEPTH_TASKS_PER_USER=1,DEPTH_TASKS_SITE=3,DEPTH_SEGMENTS_QUEUED=12;
+    /**
+     * 深度复刻的动作提取一次只做一段（StudioDepthVideoService 的信号量），任务多了只会越排越久。所以在受理时就拦下，
+     * 不冻结积分、不建任务；同一请求的重试在前面已按原任务返回，不受这里影响。只按制作中（running）的算，暂停等用户的不占名额。
+     */
+    void admitDepth(String user) {
+        List<IpPlanExecution> active=repository.findByStatusIn(List.of(IpPlanExecution.RUNNING));
+        long mine=0,site=0;
+        for(var e:active) {
+            if(!"depth".equals(PlanState.parse(mapper,e.getStepsJson()).path("videoTask").path("kind").asText()))continue;
+            site++;if(user.equals(e.getOwnerUserId()))mine++;
+        }
+        if(mine>=DEPTH_TASKS_PER_USER)throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_DEPTH_USER_BUSY","你已有一条深度复刻正在制作，完成后再开始新的。");
+        if(site>=DEPTH_TASKS_SITE||runs.countByKindAndStatus("studio-video-control",IpRun.STATUS_RUNNING)>=DEPTH_SEGMENTS_QUEUED)
+            throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_DEPTH_SITE_BUSY","深度复刻排队的任务较多，请稍后再试，或改用分镜复刻。");
     }
 
     private long textCost(String user) {

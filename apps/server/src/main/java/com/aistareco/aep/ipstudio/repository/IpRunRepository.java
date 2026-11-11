@@ -10,6 +10,8 @@ import java.util.Optional;
 
 @Repository
 public interface IpRunRepository extends JpaRepository<IpRun, String> {
+    /** 深度复刻受理前看动作提取排了多少段（StudioVideoTaskService#admitDepth）。 */
+    long countByKindAndStatus(String kind, String status);
     org.springframework.data.domain.Page<IpRun> findByOwnerUserIdAndKindOrderByCreatedAtDesc(String ownerUserId,String kind,org.springframework.data.domain.Pageable pageable);
 
     /** 账号「任务历史」：本人在时间窗内、指定几种 kind 的运行，新的在前（同一时刻按 id 再排，翻页不重不漏）。 */

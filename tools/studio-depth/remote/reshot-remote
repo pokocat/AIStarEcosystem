@@ -7,6 +7,18 @@ HOST=reshot@101.37.189.227
 D=/opt/studio-depth/remote
 SSH=(ssh -i "$D/id_ed25519" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$D/known_hosts" -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=4)
 if [ "${1:-}" = --version ]; then exec "${SSH[@]}" "$HOST" /opt/studio-depth/run.sh --version; fi
+# 深度模型按短边 252 推理（2026-11-11 实测与默认 364 几乎一样、快约 3 倍）。server 从 089bacd17 起自己传 --input-size；
+# 之前的 server 传 --quality fast，这里替换掉。带了 --input-size 的原样转发。
+INPUT_SIZE=252
+if [[ " $* " == *" --quality fast "* && " $* " != *" --input-size "* ]]; then
+  rewritten=(); skip=0
+  for a in "$@"; do
+    if [ $skip = 1 ]; then skip=0; continue; fi
+    if [ "$a" = --quality ]; then rewritten+=(--input-size "$INPUT_SIZE"); skip=1; continue; fi
+    rewritten+=("$a")
+  done
+  set -- "${rewritten[@]}"
+fi
 input=${1:?input}; out=""; kp=""; args=("$@")
 for ((i=0; i<${#args[@]}; i++)); do
   case "${args[$i]}" in -o) out=${args[$((i+1))]:-};; --keypoints) kp=${args[$((i+1))]:-};; esac

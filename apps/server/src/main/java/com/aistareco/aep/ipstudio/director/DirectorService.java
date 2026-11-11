@@ -1582,7 +1582,7 @@ public class DirectorService {
         }
         ObjectNode m = om.createObjectNode().put("node", node).put("prompt", in.prompt()).put("fingerprint", in.fingerprint())
                 .put("promptFormat", DirectorPrompts.VIDEO_PROMPT_FORMAT)
-                .put("videoTemplate", DirectorPrompts.templateVersion(prompts(), videoStage(in.lim())));
+                .put("videoTemplate", videoTemplateOf(clip, in.lim()));
         if (sent != null) m.put("sentPrompt", sent);
         if (original) m.put("promptChoice", "original");
         if (draft != null) {
@@ -1751,7 +1751,7 @@ public class DirectorService {
         long price = rewritePrice();
         // fingerprint 是这次要付费提交的视频输入（中文提示词含台词、分镜图、参考图与声音的 key、时长、画幅、模型）：改写期间变了就不接着提交。
         ObjectNode then = rw.meta().putObject("then").put("requestId", requestId).put("fingerprint", fingerprint)
-                .put("promptFormat", DirectorPrompts.VIDEO_PROMPT_FORMAT);
+                .put("promptFormat", DirectorPrompts.VIDEO_PROMPT_FORMAT).put("videoTemplate", videoTemplateOf(clip, limits(c)));
         if (maxCost != null) then.put("maxCost", maxCost); else then.putNull("maxCost");
         if (billing != null) then.set("billing", om.valueToTree(billing));
         if (pipeline != null) then.put("pipelineId", pipeline.path("id").asText());
@@ -1882,7 +1882,8 @@ public class DirectorService {
             if (rw == null || choice == null && en == null
                     || then.hasNonNull("fingerprint") && !then.path("fingerprint").asText().equals(in.fingerprint()))
                 // 换视频模板之前开始的改写：英文稿是按旧写法改的，不拿它出片（也不再自动改写一次，免得没经同意多扣费）。
-                refused = rw != null && then.path("promptFormat").asInt(2) < DirectorPrompts.VIDEO_PROMPT_FORMAT
+                refused = rw != null && (then.path("promptFormat").asInt(2) < DirectorPrompts.VIDEO_PROMPT_FORMAT
+                        || then.has("videoTemplate") && then.path("videoTemplate").asInt() != videoTemplateOf(clip, in.lim()))
                         ? "视频提示词的写法更新了，这次改写按旧写法完成，视频没有提交。请重新生成，会按新写法改写"
                         : "改写期间提示词、台词或参考素材有改动，视频没有提交，请重新生成";
             else if (choice == null && pipeline == null && (!en.path("usable").asBoolean(true) || !en.path("warnings").isEmpty())) {
@@ -4628,8 +4629,10 @@ public class DirectorService {
             parts.voices().forEach(v -> voicedNode.add(v.name()));
             if (!clip.path("videoPromptCustom").asBoolean(false)) {
                 // 文字在提示词库（stage-director-video / -frame）；库里缺这个环节时保留上次编好的，提交时再按「提示词未配置」拦。
-                String compiled = videoTemplate(c, clip, lim, parts, names, aliases, null);
-                if (compiled != null) clip.put("videoPrompt", compiled);
+                // 版本号和正文按同一版取，提交时记的就是编这份提示词用的那一版（不再另读「当前版本」，免得中间后台刚好发了新版）。
+                int version = DirectorPrompts.templateVersion(prompts(), videoStage(lim));
+                String compiled = version == 0 ? null : videoTemplate(c, clip, lim, parts, names, aliases, version);
+                if (compiled != null) clip.put("videoPrompt", compiled).put("videoTemplate", version);
             }
             ArrayNode issues = clip.putArray("issues");
             int shots = clip.path("shots").size();
@@ -4697,6 +4700,11 @@ public class DirectorService {
                 : DirectorPrompts.videoPrompt(prompts(), version, c.path("settings"), clip, parts.videoRefs(), names, parts.voices(), parts.unvoiced(), parts.voiceDescs(), aliases, DirectorPrompts.MAX_SHOTS);
     }
 
+    /** 片段上这份视频提示词是按模板哪一版编的（refresh 记下）；没记过的按库里当前版本。 */
+    private int videoTemplateOf(JsonNode clip, Limits lim) {
+        return clip.path("videoTemplate").asInt(DirectorPrompts.templateVersion(prompts(), videoStage(lim)));
+    }
+
     /** 这一段现在用的是哪个视频模板环节（首帧出片另一个）。 */
     private static String videoStage(Limits lim) {
         return lim != null && lim.frame() ? StudioPromptCallPoints.DIRECTOR_VIDEO_FRAME : StudioPromptCallPoints.DIRECTOR_VIDEO;
@@ -4719,8 +4727,9 @@ public class DirectorService {
         if (clip.path("videoPromptCustom").asBoolean(false)) return null;
         int format = promptFormat(candidate);
         if (lim != null && lim.frame() || format >= DirectorPrompts.VIDEO_PROMPT_FORMAT) {
-            int version = videoTemplateVersion(candidate);
-            return version == DirectorPrompts.templateVersion(prompts(), videoStage(lim)) ? null : videoTemplate(c, clip, lim, parts, names, aliases, version);
+            // 总按候选那一版重编，不因为「版本号和当前一样」就跳过：后台停用了模板时，片段上的提示词停在上一次编的，
+            // 拿它核对会把真改过的镜头当成没改（Codex 评审 2026-11-11）。按版本号取得到停用的那一版。
+            return candidate == null ? null : videoTemplate(c, clip, lim, parts, names, aliases, videoTemplateVersion(candidate));
         }
         return switch (format) {
             case 0, 1 -> DirectorPrompts.legacyVideoPrompt(c.path("settings"), clip, parts.videoRefs(), names, parts.voices(), parts.unvoiced(), parts.voiceDescs());

@@ -4,6 +4,8 @@ import argparse,hashlib,json,os,pathlib,re,socket,subprocess,sys,time,urllib.req
 from policy import environment_guard,artifact_guard,contract_guard,require
 ROOT=pathlib.Path('/opt/aistar-cluster')
 PYTHON='/opt/aibuzz-id/runtime/python311/bin/python3'
+DEPTH_RUNTIME=ROOT/'studio-depth'
+DEPTH_COMMAND='/opt/studio-depth/reshot-remote'
 def run(args,**kw):
  p=subprocess.run(args,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,**kw)
  if p.returncode:
@@ -35,6 +37,16 @@ def environment(mode,expected):
 def ops(expected,env,quiesce=False):
  req=urllib.request.Request('http://127.0.0.1:'+str(expected['port'])+'/internal/deployment',data=b'' if quiesce else None,headers={'X-Aistar-Deployment-Token':env['AEP_DEPLOYMENT_TOKEN']})
  with urllib.request.urlopen(req,timeout=15) as r:return json.load(r)
+
+def depth_mount(env):
+ if not env.get('AEP_STUDIO_DEPTH_COMMAND'):return []
+ require(env['AEP_STUDIO_DEPTH_COMMAND']==DEPTH_COMMAND,'深度复刻命令必须使用已验收的远端运行时')
+ require(env.get('AEP_STUDIO_DEPTH_CHECKPOINT')=='/opt/studio-depth/weights/video_depth_anything_vits.pth' and env.get('AEP_STUDIO_DEPTH_POSE_CHECKPOINT_DIR')=='/opt/studio-depth/weights/dwpose','深度复刻权重路径与已验收运行时不符')
+ files=['reshot-remote','known_hosts','weights/video_depth_anything_vits.pth','weights/dwpose/yolox_l.onnx','weights/dwpose/dw-ll_ucoco_384.onnx']
+ for name in files:
+  path=DEPTH_RUNTIME/name
+  require(path.is_file() and not path.is_symlink() and path.stat().st_uid==0 and path.stat().st_mode&0o022==0,'深度复刻运行时文件缺失或权限错误')
+ return ['--volume',str(DEPTH_RUNTIME)+':/opt/studio-depth:ro']
 
 def prepare(config,expected,mode,release):
  require(re.fullmatch('[a-f0-9]{16}',release) is not None,'不可变发布标识错误')
@@ -85,6 +97,7 @@ def start(config,expected,mode,release):
  require(run(['systemctl','show',unit,'-p','MainPID','--value']).strip() in ('','0'),'替换前必须完成排空并停止')
  retire_exited_owned_container(expected,mode)
  args=['/usr/bin/podman','run','--rm','--name',unit,'--label','aistar.release='+release,'--label','aistar.mode='+mode,'--network','host','--read-only','--workdir','/app/work','--tmpfs','/tmp:rw,size=128m','--memory','1600m','--cpus','1','--pids-limit','256','--stop-timeout','240','--user','10001:10001','--env-file',str(ROOT/'control'/('env-'+mode)),'--volume',str(ROOT/'state'/mode)+':/opt/aistar-migration/preparation:rw','--volume',str(dest)+':/app/release:ro']
+ args+=depth_mount(env)
  work=ROOT/'work'
  if mode=='production' or work.is_dir():
   require(work.is_dir(),'缺少已核对持久目录');args+=['--volume',str(work)+':/app/work:rw','--volume',str(work)+':/data/aistareco:rw','--volume',str(work/'file-storage')+':/opt/ai-star-eco/server/file-storage:ro']

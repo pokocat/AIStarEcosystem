@@ -16,7 +16,8 @@ def main():
  source=pathlib.Path(a.verified_backend).resolve();out=pathlib.Path(a.output).resolve();out.mkdir(mode=0o700,parents=True,exist_ok=False)
  config=json.loads((ROOT/'infra/cluster/production.json').read_text());config_guard(config,'stage',os.environ)
  proof=json.loads((source/'verified-backend.json').read_text());jar=source/'ai-star-eco-server-1.0.0.jar';digest=file_sha(jar);require(digest==proof['jar_sha256'] and proof['tests_passed'] is True,'CI JAR或验收凭证不匹配')
- tree=subprocess.check_output(['git','rev-parse','HEAD:apps/server'],cwd=ROOT,text=True).strip();require(tree==proof['source_tree'],'当前后端源码树与CI验收包不一致')
+ repository=pathlib.Path(os.environ.get('AISTAR_SOURCE_REPOSITORY',str(ROOT))).resolve()
+ tree=subprocess.check_output(['git','-C',str(repository),'rev-parse',proof['sha']+':apps/server'],cwd=ROOT,text=True).strip();require(tree==proof['source_tree'],'CI验收包与发布提交的后端源码树不一致')
  run=json.loads(subprocess.check_output(['gh','run','view','--repo','pokocat/AIStarEcosystem',str(proof['ci_run']),'--json','headSha,jobs'],text=True));require(run['headSha']==proof['sha'] and any(x['name']=='backend' and x['conclusion']=='success' for x in run['jobs']),'对应最终SHA后端及PG实库门禁未成功')
  buildroot='/opt/aistar-cluster/image-build/'+digest[:16];key=config['ssh_key']
  def command(n,cmd,timeout=120):
@@ -37,10 +38,16 @@ if archive.is_file():
   found=json.loads(subprocess.check_output(['podman','image','inspect',TAG],text=True,stderr=subprocess.PIPE))[0]
   with tarfile.open(archive) as tar:
    index=json.load(tar.extractfile('index.json'));blob=index['manifests'][0]['digest'].replace(':','/');stored=json.load(tar.extractfile('blobs/'+blob))
-  if stored['config']['digest'].removeprefix('sha256:')==found['Id'].removeprefix('sha256:') and found['Config'].get('Labels',{}).get('aistar.sha')==SHA:image=found
+  labels=found['Config'].get('Labels',{})
+  if stored['config']['digest'].removeprefix('sha256:')==found['Id'].removeprefix('sha256:') and labels.get('aistar.sha')==SHA and labels.get('aistar.depth-client')=='openssh':image=found
  except (KeyError,ValueError,tarfile.TarError,subprocess.CalledProcessError):pass
 if image is None:
- (root/'Containerfile').write_text('FROM '+BASE+'\\nCOPY --chown=10001:10001 app.jar /app/app.jar\\nLABEL aistar.sha='+SHA+'\\n')
+ (root/'Containerfile').write_text('FROM '+BASE+'\\n'
+  'USER root\\n'
+  'RUN sed -i "s#http://archive.ubuntu.com#https://archive.ubuntu.com#;s#http://security.ubuntu.com#https://archive.ubuntu.com#" /etc/apt/sources.list.d/ubuntu.sources && apt-get -o Acquire::Retries=2 -o Acquire::https::Timeout=20 update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openssh-client && rm -rf /var/lib/apt/lists/*\\n'
+  'USER 10001:10001\\n'
+  'COPY --chown=10001:10001 app.jar /app/app.jar\\n'
+  'LABEL aistar.depth-client=openssh aistar.sha='+SHA+'\\n')
  with (root/'build-private.log').open('w') as log:p=subprocess.run(['podman','build','--pull=never','--format','oci','--memory','1536m','--cpu-period','100000','--cpu-quota','100000','-t',TAG,str(root)],stdout=log,stderr=log)
  assert p.returncode==0
  image=json.loads(subprocess.check_output(['podman','image','inspect',TAG],text=True))[0]

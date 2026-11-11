@@ -53,6 +53,19 @@ class StudioVideoTaskServiceTest {
         assertEquals(first.id(),service.start("u","p",request(30,"原稿")).id());
         verify(workflow,times(1)).quote(eq("u"),any());verify(workflow,never()).submit(anyString(),anyString(),any());
     }
+    // 2026-11-11：动作提取一次只做一段，受理时就限住，排太久的段会被当成卡死判超时
+    @Test void depthAdmissionAllowsOnePerPersonAndCapsTheSite() {
+        java.util.function.Function<String,IpPlanExecution> depth=owner->IpPlanExecution.builder().id("PEX-"+owner).ownerUserId(owner).status("running")
+                .stepsJson(om.createObjectNode().set("videoTask",om.createObjectNode().put("kind","depth")).toString()).build();
+        when(repository.findByStatusIn(anyCollection())).thenReturn(List.of(depth.apply("u")));
+        assertEquals("STUDIO_DEPTH_USER_BUSY",assertThrows(BusinessException.class,()->service.admitDepth("u")).getCode());
+        service.admitDepth("other");
+        when(repository.findByStatusIn(anyCollection())).thenReturn(List.of(depth.apply("a"),depth.apply("b"),depth.apply("c")));
+        assertEquals("STUDIO_DEPTH_SITE_BUSY",assertThrows(BusinessException.class,()->service.admitDepth("d")).getCode());
+        when(repository.findByStatusIn(anyCollection())).thenReturn(List.of());
+        when(nativeRuns.countByKindAndStatus("studio-video-control","running")).thenReturn(12L);
+        assertEquals("STUDIO_DEPTH_SITE_BUSY",assertThrows(BusinessException.class,()->service.admitDepth("d")).getCode());
+    }
     @Test void anIdentityCannotBeReusedWithChangedInput() {
         service.start("u","p",request(30,"原稿"));
         assertEquals("STUDIO_REQUEST_CHANGED",assertThrows(BusinessException.class,()->service.start("u","p",request(30,"另一版"))).getCode());

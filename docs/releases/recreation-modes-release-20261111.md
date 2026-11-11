@@ -53,7 +53,16 @@
 - ECS-B 上新建 `reshot` 用户，进程整体限 2 核、6G。同机的账号中心、军师服务和迁移演练容器不受影响：它们至少还有 2 核，内存约 9G。装好 ReShot 0.5.0，权重 sha256 与生产机一致。
 - 从生产机经 `/opt/studio-depth/reshot-remote` 端到端实测：合成的 15 秒竖屏画面，骨骼 97 秒、峰值 1.0G，深度 473 秒、峰值 4.5G。两个产物都是 160×320、24 帧、15.0 秒，骨骼关键点也取回了。
 - 生产机删掉了用不上的 1.5G venv，只留转发脚本、密钥和权重（446M），根分区剩 6.6G。
-- **还没开启**：`server.env` 还没加 `AEP_STUDIO_DEPTH_*`，等用户确认后再加，并重启 server。
+- 同日试了万相 wan2.2-animate-move 替代深度复刻：同一段 14 秒，标准档约 ¥5.65、专业档约 ¥8.50。但它沿用原片音轨，手也没有抹到脸上，用户决定不用，改为把我们自己的推理分辨率调低。
+
+## 之后：开启深度复刻（22:43，只重启 server）
+
+- **推理分辨率降到 252**：用「直播切片-面霜」第 1 段比 364 / 252 / 182 三档，252 和 364 几乎一样，182 会把手和脸糊在一起。252 的深度一遍 156 秒、峰值 2.6G，比 364 快约 3 倍。代码里的默认值改成 252（`089bacd17`，没有发布）。线上 server 还是 `0a330629c`，所以先在生产机的转发脚本里把 `--quality fast` 换成 `--input-size 252`。用 server 现在的参数试过，日志显示推理尺寸是 252×448。
+- **这次没有重新打包**：main 上还有导演台的三个提交（`db7227cc8`、`e5fc2d7a6`、`d1a6be9c0`），用户还没同意发布。所以 JAR 不换，只改配置。
+- **改了 `server.env`**：先备份到 `/opt/ai-star-eco/backups/depth-enable-20261111T144322Z`，再追加一行注释和三行配置：`AEP_STUDIO_DEPTH_COMMAND=/opt/studio-depth/reshot-remote`、`AEP_STUDIO_DEPTH_CHECKPOINT=/opt/studio-depth/weights/video_depth_anything_vits.pth`、`AEP_STUDIO_DEPTH_POSE_CHECKPOINT_DIR=/opt/studio-depth/weights/dwpose`。
+- **重启结果**：重启前线上没有进行中的生成任务，账号中心可达。22:43:52 启动完成，没有 ERROR，进程里读到了这三个配置。重启窗口有 3 个 502（22:43:34–22:43:46）。
+- **线上页面**：`/video?scene=recreation&tool=depth` 不再显示「深度复刻暂不可用」，按钮报价约 2,357 积分（minimax-h3，25 秒）。还没有在线上真跑过一次深度复刻。
+- **回滚**：删掉 `server.env` 末尾这几行（或拷回备份），再重启 server，深度复刻就回到「暂不可用」。
 
 ## 回滚
 
