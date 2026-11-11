@@ -1,0 +1,30 @@
+-- Business identifiers only. Keep all opaque keys and credentials byte-sensitive.
+-- ICU equality is case/accent insensitive; rtrim expressions preserve PAD SPACE without rewriting stored bytes.
+CREATE COLLATION aep_identifier_ci (provider = icu, locale = 'und-u-ks-level1', deterministic = false);
+ALTER TABLE "admin_users" ALTER COLUMN "username" TYPE varchar(255) COLLATE aep_identifier_ci;
+ALTER TABLE "admin_users" ALTER COLUMN "email" TYPE varchar(255) COLLATE aep_identifier_ci;
+ALTER TABLE "aep_users" ALTER COLUMN "username" TYPE varchar(255) COLLATE aep_identifier_ci;
+ALTER TABLE "aep_users" ALTER COLUMN "email" TYPE varchar(255) COLLATE aep_identifier_ci;
+ALTER TABLE "aep_selling_channels" ALTER COLUMN "code" TYPE varchar(64) COLLATE aep_identifier_ci;
+ALTER TABLE "aep_social_accounts" ALTER COLUMN "account_name" TYPE varchar(128) COLLATE aep_identifier_ci;
+ALTER TABLE "aep_license_batches" ALTER COLUMN "batch_no" TYPE varchar(255) COLLATE aep_identifier_ci;
+ALTER TABLE "aep_model_prices" ALTER COLUMN "target_key" TYPE varchar(64) COLLATE aep_identifier_ci;
+ALTER TABLE "aep_model_discounts" ALTER COLUMN "target_key" TYPE varchar(64) COLLATE aep_identifier_ci;
+ALTER TABLE "aep_platform_configs" ALTER COLUMN "config_key" TYPE varchar(128) COLLATE aep_identifier_ci;
+ALTER TABLE "agent_bot_providers" ALTER COLUMN "scene_key" TYPE varchar(64) COLLATE aep_identifier_ci;
+ALTER TABLE "card_profile" ALTER COLUMN "slug" TYPE varchar(64) COLLATE aep_identifier_ci;
+ALTER TABLE "prompt_template" ALTER COLUMN "prompt_key" TYPE varchar(64) COLLATE aep_identifier_ci;
+ALTER TABLE "ip_skill_version" ALTER COLUMN "skill_key" TYPE varchar(64) COLLATE aep_identifier_ci;
+CREATE UNIQUE INDEX "aep_key_pad_1" ON "admin_users" (rtrim("username"));
+CREATE UNIQUE INDEX "aep_key_pad_58" ON "aep_license_batches" (rtrim("batch_no"));
+CREATE UNIQUE INDEX "aep_key_pad_65" ON "aep_model_prices" (rtrim("target_key"));
+CREATE UNIQUE INDEX "aep_key_pad_71" ON "aep_platform_configs" (rtrim("config_key"));
+CREATE UNIQUE INDEX "aep_key_pad_80" ON "aep_selling_channels" (rtrim("code"));
+CREATE UNIQUE INDEX "aep_key_pad_83" ON "aep_social_accounts" ("user_id", "platform", rtrim("account_name"));
+CREATE UNIQUE INDEX "aep_key_pad_91" ON "aep_users" (rtrim("username"));
+CREATE UNIQUE INDEX "aep_key_pad_98" ON "agent_bot_providers" (rtrim("scene_key"));
+CREATE UNIQUE INDEX "aep_key_pad_106" ON "card_profile" (rtrim("slug"));
+CREATE UNIQUE INDEX "aep_key_pad_197" ON "ip_skill_version" (rtrim("skill_key"), "version");
+CREATE UNIQUE INDEX "aep_key_pad_227" ON "prompt_template" (rtrim("prompt_key"));
+ALTER TABLE ip_skill ALTER COLUMN skill_key TYPE varchar(64) COLLATE aep_identifier_ci;
+CREATE UNIQUE INDEX aep_skill_key_pad ON ip_skill (rtrim(skill_key));

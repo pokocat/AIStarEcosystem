@@ -11,11 +11,11 @@ public class IpVideoEffect {
     @Column(name="owner_user_id",nullable=false,length=64) private String ownerUserId;
     @Column(nullable=false,length=128) private String name;
     @Column(nullable=false,length=1024) private String summary;
-    @Lob @Column(nullable=false,columnDefinition="LONGTEXT") private String prompt;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR) @Column(nullable=false,length = org.hibernate.Length.LONG32) private String prompt;
     @Column(nullable=false,length=128) private String author;
     @Column(nullable=false,length=16) private String visibility;
-    @Lob @Column(name="tags_json",nullable=false,columnDefinition="LONGTEXT") private String tagsJson;
-    @Lob @Column(name="models_json",nullable=false,columnDefinition="LONGTEXT") private String modelsJson;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR) @Column(name="tags_json",nullable=false,length = org.hibernate.Length.LONG32) private String tagsJson;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR) @Column(name="models_json",nullable=false,length = org.hibernate.Length.LONG32) private String modelsJson;
     @Column(name="preview_key",length=512) private String previewKey;
     @Column(name="created_at",nullable=false) private Instant createdAt;
 }

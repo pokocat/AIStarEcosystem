@@ -20,9 +20,11 @@ public interface AepUserRepository extends JpaRepository<AepUser, String>,
     @Query("select u from AepUser u where u.id = :id")
     Optional<AepUser> findByIdForUpdate(@Param("id") String id);
 
-    Optional<AepUser> findByUsername(String username);
+    @org.springframework.data.jpa.repository.Query("select x from AepUser x where trim(trailing from x.username) = trim(trailing from :username)")
+    Optional<AepUser> findByUsername(@org.springframework.data.repository.query.Param("username") String username);
 
-    Optional<AepUser> findByEmail(String email);
+    @org.springframework.data.jpa.repository.Query("select x from AepUser x where trim(trailing from x.email) = trim(trailing from :email)")
+    Optional<AepUser> findByEmail(@org.springframework.data.repository.query.Param("email") String email);
 
     Optional<AepUser> findByPhone(String phone);
 
@@ -66,9 +68,11 @@ public interface AepUserRepository extends JpaRepository<AepUser, String>,
     Page<AepUser> search(@Param("q") String q, @Param("status") AepUser.UserStatus status,
                         @Param("kind") AepUser.AccountKind kind, Pageable pageable);
 
-    boolean existsByUsername(String username);
+    @org.springframework.data.jpa.repository.Query("select count(x) > 0 from AepUser x where trim(trailing from x.username) = trim(trailing from :username)")
+    boolean existsByUsername(@org.springframework.data.repository.query.Param("username") String username);
 
-    boolean existsByEmail(String email);
+    @org.springframework.data.jpa.repository.Query("select count(x) > 0 from AepUser x where trim(trailing from x.email) = trim(trailing from :email)")
+    boolean existsByEmail(@org.springframework.data.repository.query.Param("email") String email);
 
     boolean existsByPhone(String phone);
 

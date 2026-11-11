@@ -1,0 +1,95 @@
+# PostgreSQL18 生产配置；无本地数据库和口令默认值。
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE:15}
+      connection-timeout: 2000
+      validation-timeout: 1000
+      minimum-idle: ${SPRING_DATASOURCE_HIKARI_MINIMUMIDLE:2}
+      connection-init-sql: SET TIME ZONE 'UTC'
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc.time_zone: UTC
+        auto_quote_keyword: true
+  flyway:
+    enabled: true
+    baseline-on-migrate: false
+    locations: classpath:db/postgresql
+aep:
+  background:
+    enabled: ${AEP_BACKGROUND_ENABLED:false}
+  dev-auth:
+    enabled: false
+  # 生产默认关演示数据 seeder。新空库需要 admin 账号请按 infra/env/server.env.example
+  # AEP_SEED_DEV_DATA_ENABLED 注释中的 SQL 手动插入第一个 SUPER_ADMIN。
+  seed:
+    dev-data:
+      enabled: ${AEP_SEED_DEV_DATA_ENABLED:false}
+  # 生产严格模式：未在后台「AI 应用绑定」给 DAP_* 用途绑定端点时，
+  # 数字人生成任务提交直接 503 DAP_ENGINE_NOT_CONFIGURED，不产出占位图、不扣费。
+  # dev profile（application.yml）默认 true 以便无端点联调。
+  dap:
+    allow-placeholder: ${AEP_DAP_ALLOW_PLACEHOLDER:false}
+    modelink:
+      # 真人刷脸认证 / 素材送审不允许假数据（§8.0）：未绑定 DAP_REAL_AVATAR 端点 →
+      # 开启认证会话直接 503 DAP_MODELINK_NOT_CONFIGURED。开启 mock 会打 ERROR 横幅。
+      allow-mock: ${AEP_DAP_MODELINK_ALLOW_MOCK:false}
+      callback-base-url: ${AEP_DAP_MODELINK_CALLBACK_BASE:https://aistar.aibuzz.cn}
+  # v2 §6：生产渠道启用 + 机密以 admin 后台「支付配置」DB 为准（多渠道并存，用户收银台自选）。
+  # 此 driver 仅为 DB 尚无配置时的 bootstrap 回落；生产默认关闭影子渠道（启用会打 ERROR 横幅、
+  # 对账须排除，§8.0）。
+  payment:
+    driver: ${AEP_PAYMENT_DRIVER:alipay}
+    shadow:
+      enabled: ${AEP_PAYMENT_SHADOW_ENABLED:false}
+  # PostgreSQL profile 用于生产 / 联调。持久化资产默认走阿里云 OSS；
+  # 本地 dev fallback 继续留在 application.yml 的 local fake-CDN。
+  storage:
+    require-durable-uploads: ${AEP_STORAGE_REQUIRE_DURABLE_UPLOADS:true}
+  cdn:
+    driver: ${AEP_CDN_DRIVER:oss}
+    local-root: ${AEP_CDN_LOCAL_ROOT:./cdn-mock}
+    public-base-url: ${AEP_CDN_PUBLIC_BASE_URL:https://aiartist.oss-cn-hangzhou.aliyuncs.com}
+    oss:
+      # ECS 与 bucket 同地域时走内网 endpoint；跨地域部署时用公网 endpoint 覆盖。
+      endpoint: ${AEP_CDN_OSS_ENDPOINT:oss-cn-hangzhou-internal.aliyuncs.com}
+      bucket: ${AEP_CDN_OSS_BUCKET:aiartist}
+      access-key-id: ${AEP_CDN_OSS_ACCESS_KEY_ID:}
+      access-key-secret: ${AEP_CDN_OSS_ACCESS_KEY_SECRET:}
+      # 出 wire 的公网 base URL。若已绑定 CDN/CNAME，可用 env 覆盖为对应 HTTPS 域名。
+      base-url: ${AEP_CDN_OSS_BASE_URL:https://aiartist.oss-cn-hangzhou.aliyuncs.com}
+      key-prefix: ${AEP_CDN_OSS_KEY_PREFIX:media}
+      region: ${AEP_CDN_OSS_REGION:cn-hangzhou}
+    signed-url:
+      # 默认用 OSS pre-signed URL，避免没有 CDN PrivateKey 时裸 URL 出网。
+      # 高带宽生产建议通过 env 改为 cdn 并配置 AEP_CDN_SIGNED_URL_CDN_AUTH_KEY。
+      strategy: ${AEP_CDN_SIGNED_URL_STRATEGY:oss}
+      ttl-seconds: ${AEP_CDN_SIGNED_URL_TTL_SECONDS:3600}
+      cdn-auth-key: ${AEP_CDN_SIGNED_URL_CDN_AUTH_KEY:}
+  # PostgreSQL profile 同时服务 dev 联调和生产；默认 log，避免本地 dev mysql 误访问阿里云短信。
+  # 生产真发必须显式设置 AEP_SMS_DRIVER=aliyun。
+  sms:
+    tair:
+      url: ${AEP_SMS_TAIR_URL:}
+      prefix: ${AEP_SMS_TAIR_PREFIX:aistar:prod:sms:v1:}
+    driver: ${AEP_SMS_DRIVER:aliyun}
+    code:
+      store: tair
+      length: 6
+      ttl-seconds: 300            # 验证码有效期 5 分钟
+      rate-limit-seconds: 60      # 同一手机号 60s 内不能重发
+      max-failures: 5             # 单手机号连错 5 次 → 锁定
+      lock-seconds: 1800          # 锁定 30 分钟
+      # v0.31+ dev 联调专用：设非空时所有手机号都收同一个码（如 123456），
+      # 省去每次去 server log grep 真随机码的麻烦。
+      # **严格双门禁**：必须 driver=log + dev-fixed 非空才生效；driver=aliyun
+      # 时即使配了 dev-fixed 也会被忽略（防 prod 误启用）。
+      dev-fixed: ${AEP_SMS_DEV_FIXED_CODE:}

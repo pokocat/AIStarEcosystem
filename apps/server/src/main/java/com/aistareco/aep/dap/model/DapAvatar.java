@@ -7,7 +7,6 @@ import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -180,7 +179,7 @@ public class DapAvatar {
     private Map<String, Object> shotKeys;
 
     /** 用户原始人设描述（AI 路径表单）。 */
-    @Lob
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
     @Column(columnDefinition = "TEXT")
     private String descPrompt;
 
@@ -190,7 +189,7 @@ public class DapAvatar {
     private Map<String, Object> form;
 
     /** 英文生成基准 prompt（chat 解析产物，迭代时复用）。 */
-    @Lob
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
     @Column(columnDefinition = "TEXT")
     private String basePrompt;
 

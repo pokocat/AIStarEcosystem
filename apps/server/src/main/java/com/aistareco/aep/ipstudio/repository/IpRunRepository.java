@@ -12,6 +12,10 @@ import java.util.Optional;
 public interface IpRunRepository extends JpaRepository<IpRun, String> {
     /** 深度复刻受理前看动作提取排了多少段（StudioVideoTaskService#admitDepth）。 */
     long countByKindAndStatus(String kind, String status);
+    @org.springframework.data.jpa.repository.Query("select r.id from IpRun r where r.kind = :kind and r.status = :status and r.startedAt is null order by r.createdAt, r.id")
+    List<String> unstartedRunIds(@org.springframework.data.repository.query.Param("kind") String kind,
+                                 @org.springframework.data.repository.query.Param("status") String status,
+                                 org.springframework.data.domain.Pageable pageable);
     org.springframework.data.domain.Page<IpRun> findByOwnerUserIdAndKindOrderByCreatedAtDesc(String ownerUserId,String kind,org.springframework.data.domain.Pageable pageable);
 
     /** 账号「任务历史」：本人在时间窗内、指定几种 kind 的运行，新的在前（同一时刻按 id 再排，翻页不重不漏）。 */
@@ -33,6 +37,7 @@ public interface IpRunRepository extends JpaRepository<IpRun, String> {
     @org.springframework.data.jpa.repository.Query("select r from IpRun r where r.status in ('done','failed') and not exists (select x from IpLibraryRecord x where x.id=concat('ILC-',r.id)) order by r.createdAt")
     List<IpRun> uncollectedLibraryRuns(org.springframework.data.domain.Pageable pageable);
 
+    @org.springframework.data.jpa.repository.Query("select x from IpRun x where x.projectId = ?1 and trim(trailing from x.clientRequestId) = trim(trailing from ?2)")
     Optional<IpRun> findByProjectIdAndClientRequestId(String projectId, String clientRequestId);
 
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)

@@ -75,7 +75,7 @@ public class Song {
     private String coverUrl;
 
     /** 歌词正文（MVP 纯文本）。 */
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(length = org.hibernate.Length.LONG32)
     private String lyrics;
 
     /** 生成模型版本（如 "suno-v3"），由 admin 工作流计费配置下发。 */

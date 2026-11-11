@@ -24,7 +24,7 @@ public interface ModelChargeRepository extends JpaRepository<ModelCharge,String>
     }
     @Query("select c.scopedCredits as scopedCredits,c.walletCredits as walletCredits,"
             +"c.settledScopedCredits as settledScopedCredits,c.settledWalletCredits as settledWalletCredits,h.status as holdStatus "
-            +"from ModelCharge c join CreditHold h on h.id=c.holdId where h.referenceType=:type and h.referenceId in :ids")
+            +"from ModelCharge c join CreditHold h on h.id=c.holdId where trim(trailing from h.referenceType)=trim(trailing from :type) and h.referenceId in :ids")
     List<Amounts> amountsForReferences(@Param("type") String type,@Param("ids") Collection<String> ids);
 
 }

@@ -8,5 +8,6 @@ import java.util.Optional;
 
 @Repository
 public interface SellingChannelRepository extends JpaRepository<SellingChannel, String> {
-    Optional<SellingChannel> findByCode(String code);
+    @org.springframework.data.jpa.repository.Query("select x from SellingChannel x where trim(trailing from x.code) = trim(trailing from :code)")
+    Optional<SellingChannel> findByCode(@org.springframework.data.repository.query.Param("code") String code);
 }

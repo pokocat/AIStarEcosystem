@@ -33,7 +33,7 @@ public class StarBrandAuthRequest {
     private String brandName;
 
     /** 授权类型多选：人像授权 / 代言授权 / 联名授权 / AI声音授权 / 影视植入… */
-    @Column(name = "auth_types_json", columnDefinition = "LONGTEXT")
+    @Column(name = "auth_types_json", length = org.hibernate.Length.LONG32)
     @Convert(converter = StringListConverter.class)
     @Builder.Default
     private List<String> authTypes = new ArrayList<>();
@@ -50,7 +50,7 @@ public class StarBrandAuthRequest {
     @Builder.Default
     private long amountCents = 0;
 
-    @Column(name = "platforms_json", columnDefinition = "LONGTEXT")
+    @Column(name = "platforms_json", length = org.hibernate.Length.LONG32)
     @Convert(converter = StringListConverter.class)
     @Builder.Default
     private List<String> platforms = new ArrayList<>();

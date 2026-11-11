@@ -4,7 +4,6 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -67,14 +66,10 @@ public class CardProfile {
     @Column(length = 32)
     private String avatarId;
 
-    // columnDefinition 必须显式写（v0.178 线上事故）：`@Lob String` 不带长度时，
-    // Hibernate 6 按 @Column 的默认长度 255 去挑 MySQL 的 text 家族 —— 挑到的是
-    // **tinytext（255 字节）**，一张名片的文档随手就超。而 ddl-auto 只加不改，
-    // 建错一次就一直错着；表现是建卡 500「Data too long for column 'payload_json'」。
-    // 本仓其它整存整取的 JSON 文档字段（DramaProject.payloadJson / IpProject.docJson）
-    // 都写了 columnDefinition，只有这个漏了。
-    @Lob
-    @Column(nullable = false, columnDefinition = "LONGTEXT")
+    // 显式 LONGVARCHAR 绑定与 LONG32 列长度：MySQL 仍为 LONGTEXT，PG 为 text；
+    // 不使用 @Lob 的 JDBC CLOB/OID，以免截断或把大文本当对象编号读取。
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(nullable = false, length = org.hibernate.Length.LONG32)
     private String payloadJson;
 
     private Instant publishedAt;

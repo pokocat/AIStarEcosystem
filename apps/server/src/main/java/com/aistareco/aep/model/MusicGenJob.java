@@ -61,11 +61,11 @@ public class MusicGenJob {
     // ── 创作输入 ────────────────────────────────────────────────────────────
 
     /** 灵感提示词（与 lyrics 二选一）。 */
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(length = org.hibernate.Length.LONG32)
     private String prompt;
 
     /** 用户自备歌词（优先级高于 prompt）；含 [verse]/[chorus] 结构标签。 */
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(length = org.hibernate.Length.LONG32)
     private String lyrics;
 
     /** 曲风 / 情绪 / 音色 / 演唱性别 —— 直接透传给模型，取值范围由端点 capability 约束。 */
@@ -90,11 +90,11 @@ public class MusicGenJob {
     private int durationSec;
 
     /** 完整请求快照（wire 形状），便于排障与回放。 */
-    @Column(name = "payload_json", columnDefinition = "LONGTEXT")
+    @Column(name = "payload_json", length = org.hibernate.Length.LONG32)
     private String payloadJson;
 
     /** 端点选择等选项，含 {@code endpoint_id} 透传键。 */
-    @Column(name = "options_json", columnDefinition = "LONGTEXT")
+    @Column(name = "options_json", length = org.hibernate.Length.LONG32)
     private String optionsJson;
 
     // ── 状态机 ──────────────────────────────────────────────────────────────
@@ -123,11 +123,11 @@ public class MusicGenJob {
     private Integer actualDurationSec;
 
     /** 模型生成 / 回填的歌词正文。 */
-    @Column(name = "result_lyrics", columnDefinition = "LONGTEXT")
+    @Column(name = "result_lyrics", length = org.hibernate.Length.LONG32)
     private String resultLyrics;
 
     /** 歌词字幕（带时间戳，上游 Captions 原文）。 */
-    @Column(name = "result_captions", columnDefinition = "LONGTEXT")
+    @Column(name = "result_captions", length = org.hibernate.Length.LONG32)
     private String resultCaptions;
 
     // ── 错误 / 观测 ─────────────────────────────────────────────────────────

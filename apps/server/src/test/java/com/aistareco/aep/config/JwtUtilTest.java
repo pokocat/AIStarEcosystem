@@ -62,4 +62,15 @@ class JwtUtilTest {
         String ticket = jwt.generateRegisterTicket("13800138000");
         assertEquals("13800138000", jwt.parseToken(ticket).getSubject());
     }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"mysql","postgres","prod","production"})
+    void productionProfilesRejectDevelopmentAndShortSecrets(String profile) {
+        var env=new MockEnvironment();env.setActiveProfiles(profile);
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+                ()->new JwtUtil("aep-dev-secret-key-change-in-prod-32chars",3600000,env));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+                ()->new JwtUtil("too-short",3600000,env));
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(
+                ()->new JwtUtil("unit-test-strong-key-for-production-profile",3600000,env));
+    }
 }

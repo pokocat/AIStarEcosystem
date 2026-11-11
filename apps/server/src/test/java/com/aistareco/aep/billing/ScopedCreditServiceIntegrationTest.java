@@ -33,6 +33,10 @@ import static org.junit.jupiter.api.Assertions.*;
 class ScopedCreditServiceIntegrationTest {
     @org.springframework.test.context.DynamicPropertySource
     static void database(org.springframework.test.context.DynamicPropertyRegistry properties) {
+        if (Boolean.getBoolean("aep.postgres-test.enabled")) {
+            return;
+        }
+
         String url=System.getProperty("model-scoped.jdbc","jdbc:h2:mem:model-scoped;MODE=MySQL;DB_CLOSE_DELAY=-1;NON_KEYWORDS=CAST;LOCK_TIMEOUT=10000");
         properties.add("spring.datasource.url",()->url);
         properties.add("spring.datasource.driver-class-name",()->url.startsWith("jdbc:mysql:")?"com.mysql.cj.jdbc.Driver":"org.h2.Driver");

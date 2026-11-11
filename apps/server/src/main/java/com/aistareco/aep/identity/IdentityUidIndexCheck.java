@@ -11,6 +11,9 @@ import org.springframework.stereotype.Component;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.*;
 
 /**
  * 启动自检：{@code aep_users.identity_uid} 上确实有唯一约束（{@code docs/unified-identity-plan.md} §7）。
@@ -41,6 +44,10 @@ public class IdentityUidIndexCheck implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         try (Connection conn = dataSource.getConnection()) {
             DatabaseMetaData md = conn.getMetaData();
+            if ("PostgreSQL".equalsIgnoreCase(md.getDatabaseProductName())) {
+                checkPostgres(conn, md);
+                return;
+            }
             String table = V24__aep_user_identity_uid.resolveTableName(
                     md, V24__aep_user_identity_uid.TABLE);
             if (table == null) return;   // 表还没建（全新库 / ddl-auto 尚未跑），无从判定
@@ -64,4 +71,22 @@ public class IdentityUidIndexCheck implements ApplicationRunner {
             log.warn("[identity] identity_uid 唯一约束自检未完成（不影响启动）：{}", e.toString());
         }
     }
+    /** Current-schema metadata only: rehearsal and public may have identical index names. */
+    private void checkPostgres(Connection conn, DatabaseMetaData md) throws SQLException {
+        String catalog=conn.getCatalog(),schema=conn.getSchema(),table=V24__aep_user_identity_uid.TABLE,column=V24__aep_user_identity_uid.COLUMN;
+        try(ResultSet tables=md.getTables(catalog,schema,table,new String[]{"TABLE"})){if(!tables.next())return;}
+        try(ResultSet columns=md.getColumns(catalog,schema,table,column)){
+            if(!columns.next()){log.error("[identity] {}.{} 列缺失 —— 统一账号中心映射不可用",table,column);return;}
+        }
+        Map<String,List<String>> indexes=new LinkedHashMap<>();
+        try(ResultSet rows=md.getIndexInfo(catalog,schema,table,true,false)){
+            while(rows.next()){
+                String name=rows.getString("INDEX_NAME"),key=rows.getString("COLUMN_NAME");
+                if(name!=null && key!=null)indexes.computeIfAbsent(name,k->new ArrayList<>()).add(key);
+            }
+        }
+        boolean unique=indexes.values().stream().anyMatch(keys->keys.size()==1 && column.equalsIgnoreCase(keys.get(0)));
+        if(!unique)log.error("[identity] {}.{}.{} 缺少唯一约束 —— 同一个账号中心 uid 可能建出多条本地档案",schema,table,column);
+    }
+
 }

@@ -34,17 +34,17 @@ public class PromptTemplate {
     private String promptKey;
 
     /** system 角色内容（空 → PromptService 取 resource 默认）。 */
-    @Lob
-    @Column(name = "system_prompt", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "system_prompt", length = org.hibernate.Length.LONG32)
     private String systemPrompt;
 
     /** user 角色模板，含 {{placeholder}}（如 {{name}} / {{audience}} / {{banned_words}}）。 */
-    @Lob
-    @Column(name = "user_template", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "user_template", length = org.hibernate.Length.LONG32)
     private String userTemplate;
 
     /** 调用参数 JSON：{ temperature, maxTokens, jsonMode }，注入 invokeChat。 */
-    @Lob
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
     @Column(name = "params_json", columnDefinition = "TEXT")
     private String paramsJson;
 

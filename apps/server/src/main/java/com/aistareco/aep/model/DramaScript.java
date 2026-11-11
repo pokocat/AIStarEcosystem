@@ -39,8 +39,8 @@ public class DramaScript {
     /** draft | ready */
     private String status;
 
-    @Lob
-    @Column(name = "payload_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "payload_json", length = org.hibernate.Length.LONG32)
     private String payloadJson;
 
     @Column(name = "created_at")

@@ -9,7 +9,7 @@ import java.time.Instant;
 public class EnterprisePolicy {
     @Id @Column(length=64)
     private String enterpriseId;
-    @Column(nullable=false,columnDefinition="LONGTEXT")
+    @Column(nullable=false,length = org.hibernate.Length.LONG32)
     private String allowedEndpointIdsJson;
     @Column(nullable=false)
     private int maxActiveJobs;

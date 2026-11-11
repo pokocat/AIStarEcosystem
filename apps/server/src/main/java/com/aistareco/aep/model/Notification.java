@@ -34,7 +34,7 @@ public class Notification {
     @Column(nullable = false)
     private String title;
 
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(length = org.hibernate.Length.LONG32)
     private String description;
 
     /**

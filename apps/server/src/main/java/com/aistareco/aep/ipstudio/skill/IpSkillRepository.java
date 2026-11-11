@@ -9,10 +9,14 @@ import java.util.Optional;
 
 @Repository
 public interface IpSkillRepository extends JpaRepository<IpSkill, String> {
+    @Override
+    @Query("select s from IpSkill s where trim(trailing from s.skillKey)=trim(trailing from :key)")
+    Optional<IpSkill> findById(@Param("key") String key);
+
     List<IpSkill> findAllByOrderBySkillKeyAsc();
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select s from IpSkill s where s.skillKey = :key")
+    @Query("select s from IpSkill s where trim(trailing from s.skillKey) = trim(trailing from :key)")
     Optional<IpSkill> lockByKey(@Param("key") String key);
 
     /** Every skill row, locked in key order: status rules look at all skills (the last active one must stay active). */

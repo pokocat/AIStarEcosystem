@@ -14,6 +14,7 @@ import java.util.Optional;
 @Repository
 public interface IpPlanExecutionRepository extends JpaRepository<IpPlanExecution,String> {
     org.springframework.data.domain.Page<IpPlanExecution> findByOwnerUserIdOrderByCreatedAtDesc(String ownerUserId,org.springframework.data.domain.Pageable pageable);
+    @org.springframework.data.jpa.repository.Query("select x from IpPlanExecution x where x.ownerUserId = ?1 and trim(trailing from x.clientRequestId) = trim(trailing from ?2)")
     Optional<IpPlanExecution> findByOwnerUserIdAndClientRequestId(String ownerUserId,String clientRequestId);
     List<IpPlanExecution> findByProjectIdAndStatusIn(String projectId,Collection<String> statuses);
     List<IpPlanExecution> findByOwnerUserIdAndStatusIn(String ownerUserId,Collection<String> statuses);

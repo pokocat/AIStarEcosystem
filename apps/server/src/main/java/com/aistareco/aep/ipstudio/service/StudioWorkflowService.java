@@ -40,6 +40,7 @@ public class StudioWorkflowService {
 
     private static final Set<String> OPERATIONS = Set.of("text", "script", "storyboard", "image", "video", "assemble", "assistant", "asset-extract", "recreation", "check", "video-control");
     @org.springframework.beans.factory.annotation.Autowired private StudioDepthVideoService depthVideo;
+    @org.springframework.beans.factory.annotation.Autowired(required=false) private StudioDepthQueue depthQueue;
     private final IpProjectService projects;
     private final IpRunRepository runs;
     private final StudioFixtureProvider fixtures;
@@ -438,11 +439,13 @@ public class StudioWorkflowService {
                 .outputJson("{}").createdAt(Instant.now()).heartbeatAt(Instant.now()).build();
         StudioRunBilling.apply(run,billing);
         runs.save(run);
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override public void afterCommit() {
-                try {worker.execute(id);} catch(RuntimeException e){worker.reject(id,e);}
-            }
-        });
+        if (depthQueue == null || !"video-control".equals(request.operation())) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCommit() {
+                    try {worker.execute(id);} catch(RuntimeException e){worker.reject(id,e);}
+                }
+            });
+        }
         return projects.toRunDto(run);
     }
 

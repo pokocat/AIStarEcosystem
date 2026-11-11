@@ -348,6 +348,8 @@ class DialogueStreamingInvocationTest {
         assertEquals("AI_CALL_FAILED", e.getCode());
         assertTrue(e.getInternalDetail().contains("status=400"));
         assertTrue(e.getInternalDetail().contains("stream_options not supported"));
+        assertFalse(e.getMessage().contains("stream_options"), "technical supplier configuration stays in internal diagnostics");
+        assertFalse(e.getMessage().isBlank());
     }
 
     @Test void streamThatEndsWithoutAFinishSignalIsAFailureNotAReply() throws Exception {

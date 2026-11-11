@@ -83,23 +83,23 @@ public class DramaCanvasRun {
     @Column(name = "job_id", length = 64)
     private String jobId;
 
-    @Lob
-    @Column(name = "input_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "input_json", length = org.hibernate.Length.LONG32)
     private String inputJson;
 
-    @Lob
-    @Column(name = "result_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "result_json", length = org.hibernate.Length.LONG32)
     private String resultJson;
 
     /** {requested, applied, notes[]}：参考图实际送到模型的情况。 */
-    @Lob
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
     @Column(name = "refs_json", columnDefinition = "TEXT")
     private String refsJson;
 
     @Column(name = "error_code", length = 64)
     private String errorCode;
 
-    @Lob
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
     @Column(name = "error_message", columnDefinition = "TEXT")
     private String errorMessage;
 

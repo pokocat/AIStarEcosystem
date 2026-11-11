@@ -23,18 +23,18 @@ public class IpDialogueMessage {
     @Column(length = 32) private String runId;
     /** user | assistant | system */
     @Column(nullable = false, length = 16) private String role;
-    @Lob @Column(columnDefinition = "LONGTEXT") private String text;
-    @Lob @Column(columnDefinition = "LONGTEXT") private String blocksJson;
-    @Lob @Column(columnDefinition = "LONGTEXT") private String pinnedNodeIdsJson;
-    @Lob @Column(columnDefinition = "LONGTEXT") private String attachmentNodeIdsJson;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR) @Column(length = org.hibernate.Length.LONG32) private String text;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR) @Column(length = org.hibernate.Length.LONG32) private String blocksJson;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR) @Column(length = org.hibernate.Length.LONG32) private String pinnedNodeIdsJson;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR) @Column(length = org.hibernate.Length.LONG32) private String attachmentNodeIdsJson;
     @Column(length = 64) private String clientMessageId;
     /**
      * User messages: the request's billing selection and turn cost ceiling, reused if a queued message opens a follow-up
      * turn. Assistant messages posted by the plan executor: {@code {"suggestions":[...]}} (the follow-ups shown under it).
      */
-    @Lob @Column(columnDefinition = "LONGTEXT") private String requestJson;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR) @Column(length = org.hibernate.Length.LONG32) private String requestJson;
     /** Assistant messages: the turn's real settled token billing (StudioTokenBilling). */
-    @Lob @Column(columnDefinition = "LONGTEXT") private String billingJson;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR) @Column(length = org.hibernate.Length.LONG32) private String billingJson;
     @Builder.Default @Column(nullable = false) private boolean settling = false;
     @Column(nullable = false, length = 16) private String status;
     @Column(length = 64) private String legacyNodeId;

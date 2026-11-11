@@ -59,7 +59,7 @@ public class StudioTemplate {
     @Column(nullable = false, length = 64)
     private String sourceJobId;
 
-    @Column(nullable = false, columnDefinition = "LONGTEXT")
+    @Column(nullable = false, length = org.hibernate.Length.LONG32)
     private String recipeJson;
 
     @Column(length = 512)

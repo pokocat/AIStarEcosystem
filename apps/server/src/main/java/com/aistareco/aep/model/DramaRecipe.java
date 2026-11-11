@@ -88,8 +88,8 @@ public class DramaRecipe {
     @Column(name = "review_note", length = 512)
     private String reviewNote;
 
-    @Lob
-    @Column(name = "payload_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "payload_json", length = org.hibernate.Length.LONG32)
     private String payloadJson;
 
     @Column(name = "created_at")

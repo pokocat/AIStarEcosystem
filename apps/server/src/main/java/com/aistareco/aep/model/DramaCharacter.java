@@ -48,8 +48,8 @@ public class DramaCharacter {
     private String cast;
 
     /** 结构化外观（预留，C-2 暂不填）。 */
-    @Lob
-    @Column(name = "appearance_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "appearance_json", length = org.hibernate.Length.LONG32)
     private String appearanceJson;
 
     /** 绑定的 AiAvatar 数字人 id（可空）。 */
@@ -61,8 +61,8 @@ public class DramaCharacter {
     private String voiceId;
 
     /** 多角度参考图集 JSON：[{cdnKey, angle, label}]（真值 cdnKey，出 wire 派生 url）。 */
-    @Lob
-    @Column(name = "ref_images_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "ref_images_json", length = org.hibernate.Length.LONG32)
     private String refImagesJson;
 
     @Column(name = "created_at", nullable = false)

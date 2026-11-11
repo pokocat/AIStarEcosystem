@@ -1,0 +1,119 @@
+# AIStar PostgreSQL 导入与双活滚动发布
+
+## 2026-11-10 后续主线刷新（优先于历史版本）
+
+同步 main f292b3f42：源仍195表，新增PG V79镜像MySQL V80/V81的 task_id、idx_aiusage_task 和官方形象 access。保留已执行V74–V78字节，导出/导入固定195表、运行版本V79；不重跑官方形象种子，不将历史授权改为free。main的导演台连接池修复同时保留。旧V78产物不得作为本轮最终验收。
+
+本机主目录有未提交开发改动，本轮通过独立Git索引构造迁移合并提交，不切分支、不修改工作文件，不创建本地仓库副本。Mini隔离快照与CI承担验证。正式停写/导入/切流仍需另行确认窗口；只在独立演练库和DB14执行隔离演练。
+
+
+## 2026-11-10 主线同步：195 表候选（优先于下文历史回执）
+
+本轮从 main `013c801ade17721a8baf33ceef878212b122cb89` 同步新增 192 个提交。旧生产只读核查时间为 UTC 2026-11-10 09:23，业务表已从 192 增至 195；旧的 192 表、V77、运行镜像及双机滚动回执仅作历史记录，不能授权当前版本正式激活。生产仍为旧 MySQL，本轮不停止服务、正式导入或切路由。
+
+- PG 新增独立 `V78__video_asset_libraries.sql`，V74–V77 字节保持原样。新增 `video_asset_library`、`video_asset_person`、`video_asset_portrait`，补齐 `ai_model_providers.asset_library_id/chat_reasoning_effort`，扩展两张模型绑定表的用途白名单，保留其余枚举约束；不运行 MySQL V75 的配置种子，不重建供应商凭据。
+- 新增 8 个时间字段纳入时区计划。人像六列为 TIMESTAMP，导出 SQL session UTC 后按 UTC 解释；素材库两列 DATETIME 有混合写入：JPA Instant 为 UTC，V75 CURRENT_TIMESTAMP 种子和 JDBC 上传限流为 Asia/Shanghai。`AistarTemporalPolicy` 按库行 ID、精确源时间原值和已核对的写入证据转换，未知行/原值变化/缺证据拒绝导入。当前行值只适用于本轮审计，最终冻结后必须重新核对并签定 plan 摘要，不得推断或统一减8小时。ID、owner、OSS key、callback hash 保持精确比较，加密 token/link/credential 原字节保留。
+- 导出、正式/隔离恢复、授权、资金审计、运行克隆与激活工具固定 195 表 / Flyway 78；旧 192/V77 permit 或 receipt 均拒绝。数据库 advisory lock 的固定键 `(1810577,192)` 保持不变，避免不同版本并行导入。
+- 持久任务排空从 10 类增至 12 类：新增未到期的 `video_asset_person.verifying` 和 `video_asset_portrait.uploading/processing`。正式停 unit 前再次读取真实 SQL；缺字段、非零、未知、过期均拒绝。资金守恒仍为原 10 项，不能与 12 类排空混淆。
+- CI 保留 main 的受影响范围、三后端分片与前端矩阵；三片全部成功后单独执行 PG18 实库测试、迁移工具编译和拒绝门禁。稳定 backend/CI 汇总必须依赖 PG 门禁成功；CI JAR 绑定当前 SHA、源码树、摘要和 195/V78 契约。
+- 后续构建/测试优先 Mini 的 devq remote；本轮同步遇到 Mini 磁盘已满，任务尚未启动，不计通过，也不清理其他聊天缓存。GitHub CI 承接本轮完整验证，最终状态以本轮 receipt 为准。
+
+下一轮云端演练必须使用本轮 CI 的同一 JAR/工具重建镜像，重新生成 195 表新鲜只读快照，先核查旧演练资源再以隔离库/schema 演练。不得覆盖非空演练库、复用旧的 192 表 receipt、启用正式 API/后台或修改正常 Host/DNS。A/B 仍按 API 无后台、A 单活后台/SAU、ALB A100/B0；原账号杭州 aiartist OSS 原 key/前缀/签名地址继续使用，私有快照和归档仅走 SSH。
+
+
+状态：准备与隔离演练；生产窗口另行确认。账号中心和军师已迁移，不在本 SOP 的停写范围内。ClassVibe 不迁正式数据。
+
+## 发布边界
+
+- 业务 OSS 沿用原账号的杭州 `aiartist` Bucket，保留原对象 key、`media` 前缀及签名公网地址。新 A/B 的后台访问使用同地域内网 Endpoint；存储包和下行流量包继续按原账号的适用范围、余量及有效期抵扣。本轮不新建 Bucket，不改原授权、ACL 或付费归属；SQL 快照和配置文件仍仅走私有 SSH。
+- 新 A/B：`infra/cluster/production.json` 为唯一节点清单。正式 API 两机 `AEP_BACKGROUND_ENABLED=false`；后台/SAU 在 A 单活，B 不启用。API 经 ALB，常态 A50/B50。
+- `infra/scripts/deploy.sh server` 默认进入新双机流程；`--plan` 只读展示。旧 `deploy-release.sh`、`update-and-deploy.sh` 入口已禁用，不接受旧机覆盖参数。前端/SAU 需要对应组件的集群验收，不自动退回旧单机。
+- `--stage` 只能使用 `aistar_schema_rehearsal/aistar_api_rehearsal`、Tair DB14、私有 Host/header 的演练组；JDK 屏障只允许 RDS/Tair，禁用子进程和付费外联。正式为 `aistar_prod`、Tair DB15，必须有正式导入凭证和激活标记。
+- 发布包不含机密；只通过 SSH 传输，禁止 OSS 临时公开传输。环境 root:600，应用 UID10001，只读根文件系统；官方 Java17/Node/FFmpeg 固定镜像。
+
+## 代码与顺序
+
+1. `export_source_readonly.py` 仅抓取白天一致性快照：绑定 192 表、源 JAR/结构 SHA、JVM/JDBC Asia/Shanghai 时区。`temporal-plan.json` 是逐字段历史绑定规则，不能整体平移8小时。
+2. `freeze_source.py` 仅供另行批准的窗口：剩余至少15分钟、入口关闭、SAU停写、在途清零、旧内存验证码/锁隔离、源包/结构/关键配置（含 AEP_SECRET_KEY、JWT、身份、微信支付、OSS）SHA 无漂移，才停止旧 AIStar unit。共享 MySQL/Redis、身份、军师不得停止。
+3. `export_frozen_snapshot.py --frozen-context ...` 生成同次新鲜冻结快照；不准把白天 live 快照标成 frozen。
+4. `cluster/import_snapshot.py` 默认只读预检；`--execute` 才执行。生产计划必须独立明确授权 UTC 起止窗口、源 PID0、同次冻结时间、快照/逐字段时区/迁移文件 SHA；Java `AistarCutoverGuard` 再验证。导入只能由新 A 以迁移角色执行。
+5. `AistarSnapshotRestore` 申请数据库会话锁，拒绝非空目标；固定当前 V74–V77 字节，UTF8 COPY 一个事务恢复 192 表，全行/全列字段指纹、行数、序列和10项资金守恒全部通过后才提交。失败回滚业务事务；DDL可能已存在但业务表保持空，须查明原因，不覆盖非空库。
+6. `AistarApplicationGrant` 在导入凭证核对后授权应用 DML/序列、禁止 CREATE，实测运行角色读取/UPDATE 权限且 DDL 被拒绝；若导入已提交但授权失败，只能带同一凭证 `--grant-only --execute` 重试授权，不重新导入。
+7. CI 全后端 + PostgreSQL18 实库门禁成功后保存同一个 JAR/工具和 `verified-backend.json`；按该 SHA 构建不可变镜像/包。不能把单测打包、排队或本机 Docker 不可用算作完整验收通过。
+8. `cluster/release.py` 先验两机候选和双 VIP，A100/B0 摘除 B 新流量，等待排空并更新 B。B100/A0 后对两个 VIP 验证 B 真实鉴权，再排空、更新 A，恢复 A50/B50。每台停止前等待至少 180 秒，连续 3 次确认请求、线程池和在途工作排空。最后两个 VIP 均须观察到 A、B 鉴权成功。失败后保留最近确认可用的承流节点。SSH flock 防并发；任何未知或在途任务阻止停止，不强杀，不盲目恢复旧版本。容器停止上限240秒、systemd停止上限300秒，使用显式podman stop和Spring graceful shutdown，避免默认10秒截断。
+9. `/internal/deployment` 仅回环+强令牌：POST 取消未来调度但不打断已受理任务，GET 返回排空证据；异步Servlet请求计数到真正完成。Nginx必须拒绝该路径及子路径，即使私有探针 header 正确也不得公开代理。
+
+## 正式窗口前和窗口内
+
+- 再合并最新 main、核对最终 SHA 所有 CI，核对旧源 JAR、192表结构、AES/JWT/身份/微信支付配置摘要无漂移。不要替换业务密钥或真实付款验收。
+- 完整冻结备份及恢复权限、磁盘/数据库容量、严格TLS、SLS采集；正式目标确认空。保留旧静态资源及DNS缓存桥。API先迁时，旧Next前端的rewrites仍访问localhost:8080，必须在旧API停止后安装 `infra/nginx/aistar-legacy-loopback-bridge.conf.example` 对应回环桥，并保留旧公网API的缓存桥。两者只代理固定ALB域名，Host/SNI保持api.aibuzz.cn并严格验TLS；前端逐域迁移另行验收。
+- 生产入口写保护→等待所有外部生成/回调/资金冻结处理完成→SAU停写且任务为空→旧内存短信有效期/锁隔离→仅停止旧AIStar→同次冻结 SQL/本地文件最后增量→正式导入→应用最小权限授权和 schema validate。
+- 双机本地文件的跨节点真源为OSS（private+签名）。`openForRead` 本地缺失会下载OSS。旧约4GB缓存预置只是加速；窗口内必须校验仅本地存在的历史素材和DB内绝对路径、权限及最终增量，不能用预置替代校验。
+- API两机后台关闭；独立后台/SAU在A单活，B禁用。后台更新必须先等待持久任务清零，再取消未来调度并核对线程排空，禁止取消轮询后等待仍在运行的上游任务。该角色交接须单独验收，不由API滚动脚本暗中启停。
+- 正式窗口中先将已核对的私有 `formal-environment-private.json` 和 `formal-contract-private.json` 安装为 `/etc/aistar/server.json` 与 `/etc/aistar/deployment-contract.json`（root:600）；部署实际容器须逐字段匹配契约，不改业务加密/支付密钥。正式导入完成后，将脱敏 receipt 文件名及SHA写入 root 私有 `/opt/aistar-cluster/production-activated.json`；仅能指向 `/opt/aistar-migration/preparation/` 的正式receipt。正常API尚未切流时私有端点验收登录/跨机token、支付配置/回调签名逻辑、账本读写事务（隔离合成数据）、SSE退出、文件读取。
+- ALB新正式组和正常Host规则/公有Nginx标记/DNS，只在窗口验收成功后激活。默认ALB组也可能把请求送到节点80，不能以“尚无正常Host规则”代替Nginx入口隔离。
+- PostgreSQL接受真实用户写入后成为唯一真源，禁止回启旧MySQL写入。恢复旧应用版本也只能指向同一个PG并先验证兼容性。
+
+## 验收和保留项
+
+凭证需包含实际 SHA/JAR/镜像、195 表行数/字段指纹、10 项资金检查、重复导入拒绝、两机真实进程/环境、双 VIP 严格 TLS、持续鉴权请求、ALB A50/B50、180秒排空和失败保护。SLS、其他服务、旧源未变更另有保护记录。
+
+本次准备不会：导入 `aistar_prod`、启动新正式后台/SAU、停旧生产、启用正常Host/DNS。完整生产迁移还需上述独立窗口和前端/后台/文件最终验收；API演练成功不等于全栈已切换。
+
+## 跨机素材与存量预置（2026-11-05）
+
+混剪有独立于file-storage的本地目录：`/data/aistareco/mixcut-assets`、`mixcut-output`、`mixcut-work`。已查到133条素材中9条仅本地，89条成片中4条没有OSS key；不能仅预置file-storage就视为完整。读源文件清单有300文件、约1.56GB，其中约1.52GB可只读GET原有业务OSS对象并逐文件SHA核对，约45MB历史文件/预览通过私有SSH预置。禁止重新启用归档的OSS迁移中转上传工具，也不写旧生产DB。
+
+`aep.storage.require-durable-uploads` 在postgres默认true。新上传（含preset/official）和成片必须OSS成功才确认保存；失败不确认本地独有结果。缩略图共享失败不返回已经不可用的本地链接。缺本机副本时，从已授权的资产记录cdnKey回源，缓存用临时文件原子发布；相对URL仍检查属主与路径边界。旧静态素材URL支持读共享副本和Range，不从DB任意localPath读文件。
+
+新节点的 `/opt/aistar-cluster/work` 独立可写并属UID10001；同时挂到 `/app/work` 和 `/data/aistareco`，为旧DB绝对路径提供兼容映射。旧file-storage读别名只读挂载到 `/opt/ai-star-eco/server/file-storage`。daytime预置不取代窗口最后增量。
+
+网关使用显式include，不能仅把配置放入conf.d后运行nginx -t就宣布生效；须核对nginx -T的实际include并走真实鉴权请求。两VIP探针同时验证`X-Aistar-Node`与目标A/B一致。ALB必须关闭粘滞会话、开启至少180秒连接排空并检查正确Host的`/internal/ready`。冷启动必须就绪与实际运行验收在300秒内共同收敛，失败留私有诊断并保留当前健康主节点。
+
+## 本轮资料补充
+
+正式私有探针模板为 `infra/nginx/aistar-private-readiness.conf.example`，独立Host `api-readiness.aibuzz.cn`，需ALB Host+本次强header规则；该规则和正式服务只能在另行确认的窗口激活。正常Host的public marker保持关闭直至私有验收通过。探针与正常入口都拒绝deployment控制接口。
+
+混剪素材上传与任务生成集中于2026年5–6月，近90天没有新上传/生成/草稿更新，但61条素材仍有历史引用，11月3日仍有列表GET；源站素材静态访问最后为8月25日，成片为8月23日。源站日志不覆盖直接OSS/CDN访问，不能据此删除或断言全为测试数据。72条无上述引用的素材仅列为清理候选，清理另行确认；本轮不新增NAS。
+
+单活后台模板同时保留 `/app/work` 与 `/data/aistareco` 路径，旧file-storage别名只读，执行前固定检查新A实例身份；不得安装启动到B。后台/SAU真实接管、前端域名迁移、真实付款和第三方发布仍须独立窗口/验收，不把API隔离演练等同于全栈上线。
+
+CI产物的镜像构建、OCI归档和发布包压缩均在新ECS B完成；本机仅进行SSH传输、流式摘要与发布控制，不并发启动本机构建/压缩。本机确需构建/测试时仍必须进入devq，不改动其他聊天的任务。
+
+窗口排空证明需逐项包含 `ip_run`、`material_video_job`、`aep_publish_jobs`、`clip_render_job`、`clip_shot_job`、`music_gen_job`、`video_studio_prompt_optimization`、`ai_generation_queue`、`ip_dialogue_message`，并核对旧入口在途请求、后台线程、供应商未知受理及SAU任务。缺失或未知任一项都不能执行停写。
+
+## 私有镜像传输恢复（2026-11-06）
+
+`archive_transfer.py` 对B源归档先核全量SHA，A已有文件必须逐字节前缀SHA相同才从原长度继续传输，完成后再核完整SHA。长度超界或前缀不符时保留拒绝的私有文件并从0重传，禁止加载半文件。流传输允许900秒并回收本次SSH生产者；只读元数据查询允许三次传输重试，停止/启动/切权重等动作不盲目重放。B已有完整OCI仅在归档config digest、实际镜像、CI提交标签与固定基础层一致时复用。云端发布包压缩和SSH传输仍不使用OSS迁移中转。
+
+夜间已用云端65,536字节夹具实测：4,096字节正确前缀续传剩余61,440字节；错误前缀保留后从0重传；两种结果均全量SHA一致。639,812,096字节既有OCI归档也已复查A/B全量SHA一致。该传输验收不等同于新应用滚动验收，最终应用仍须使用对应CI产物完成全流程。
+
+## 连续制作与退出残留（2026-11-06）
+
+新main的连续制作/长视频可能处于两个子任务之间，子任务全为0时 `ip_plan_execution` 仍在running。API排空增加该计数；正式permit必须包含全部10项计数。源停写脚本在停unit前再只读即时核查实际10项SQL计数，缺字段、非零、未知或超过60秒的证明均拒绝停写。没有修改生产状态来演示这些拒绝。
+
+Podman4.9实测留有已退出的旧演练容器（Pid0、Exited=true、Removing），导致同名新进程反复125退出。启动器仅在同名旧容器能绑定本集群已验证release/镜像/模式，Pid0且Exited、目标端口没有服务时，用官方CLI退役该精确ID；不删镜像/卷，不处理未知或运行中容器，不重置运行时状态/锁。CI验证活进程、未知标签和端口仍活动时均拒绝移除。
+
+PG身份UID唯一索引自检限定当前schema：同一演练数据库里public和隔离schema可能有同名索引，不能把两者的列合并而误报缺失，也不能借用另一schema的唯一约束。仅修运行时自检，V24已执行Java迁移保持字节不变；PG实库回归覆盖两种方向。
+
+## 2026-11-06最终隔离验收
+
+已合并main `b139a694196e1383cf74cf36e9dc713cb3dfe4f0`。代码验收 `aa791d53a99fa19639e1af70ede0099d3d2cf40d`，服务端树2935ed0fa7cf119915a0d267b22d67e1720e3918；CI42086467051八项通过（后端3645、12项既有跳过；PG18实库73全通过；Java门禁20、发布保护17）。一次前端异步fixture失败仅重跑失败任务后通过，未改断言、未跳过检查。
+
+实际JAR `39b8954c9312e425a0033c9046c12deecc7faeb55b41a4b33daf8c603e33d180`，镜像config `sha256:242f8d94115de48f956868c28d634ce6394e04219cbbf1112123d2be4f80a66b`。639,863,296字节原生OCI私有SSH传输和完整SHA通过；两机UID10001可读同一JAR，历史图片SHA/视频206通过。正式恢复器核心、授权、时区规则与192表29102行/约22秒的完整隔离恢复相同；当前CI工具另实测20项门禁、非空目标拒绝且不产生新receipt，新A准备目录工具已更新。白天源快照不能用于正式库。
+
+真实脚本用同一已验证应用、两个不可变release执行B更新接管、A更新、恢复A100/B0，两个节点均排空至少180秒。双VIP严格TLS、节点身份和鉴权通过；本地连续615次、ECS内连续644次鉴权均200零错误，无请求重试。备用错误配置在重启前拒绝，正式未激活拒绝，外网控制及子路径404。旧Next回环桥模式仅在新机19080隔离验证，旧机8080和正常Host/DNS未修改。
+
+最终receipt保存于迁移工作区outputs：aistar-final-rolling-script-verification.json、aistar-current-importer-protection-verification.json、aistar-final-ci-verification.json、aistar-final-runtime-artifact.json、aistar-final-production-protection.json、aistar-final-sls-verification.json。已停止自有演练API/监控并撤下临时桥，正式库0业务表、旧源MySQL服务及账号中心/军师健康。PR保持draft，生产停写/最终冻结导入、后台SAU单活、前端与旧桥、正式业务和ALB/DNS切换仍需独立窗口。
+
+正式角色准备补齐：两机准备目录原仅保存演练凭据，结束核查发现正式角色缺失并拒绝连接；已只补本项目既有角色到root:600文件，未重置RDS密码。A/B均以aistar_migrator、aistar_app经严格TLS只读连接确认目标，应用无super/createDB/createRole及public schema CREATE权限。正式库仍空，表DML授权仍在正式恢复成功后执行。
+
+停机状态补充：Podman正常接收SIGTERM后可能返回143，systemd单元显式SuccessExitStatus=143，避免手动停止被记作failed。已用同一CI应用在新B真实启动/停止，PID0、inactive/success；另用自有官方systemd单元夹具确认143也归类成功，夹具已删除。仅调整退出状态识别，完整滚动流程与既有615/644次连续请求凭证不变。
+
+## 2026-11-06 主线同步
+
+迁移分支同步 main `cf0cabce2`，保留孵化站、灵感库、长视频以及账号中心不可达时的公钥持久化/异步刷新改动。TODO 冲突保留两边条目；旧单机发布入口仍在任何 SSH/上传/重启前拒绝，主备与正式激活门禁保留。孵化站新增独立 CI 构建检查，原六应用的浏览器检查及 PG/正式导入/发布策略门禁保留。
+
+首次同步 CI 的后台技能发布页面测试在5秒超时，完整原始日志保留。CI 改为逐工作区串行类型检查和测试，避免多个 jsdom 套件同时争用运行器；测试超时、断言与全部工作区范围保持不变。
+
+前一节的 JAR、双机滚动和源生产摘要属于此前候选，不能自动视为同步后的应用产物验收。新提交以 PR151 最终 CI 为准；正式窗口前还须核对届时生产包/结构/配置、生成同次冻结快照和文件最后增量。此同步只更新隔离工作副本和 PR，不合并 PR、不部署或切流。

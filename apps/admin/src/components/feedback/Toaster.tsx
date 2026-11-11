@@ -60,18 +60,33 @@ const TONE_META: Record<ToastTone, { icon: typeof Info; ring: string; text: stri
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = React.useState<Toast[]>([]);
   const idRef = React.useRef(0);
+  const mounted = React.useRef(true);
+  const timers = React.useRef(new Map<number, number>());
+  React.useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      for (const timer of timers.current.values()) window.clearTimeout(timer);
+      timers.current.clear();
+    };
+  }, []);
 
   const dismiss = React.useCallback((id: number) => {
+    if (!mounted.current) return;
+    const timer = timers.current.get(id);
+    if (timer !== undefined) window.clearTimeout(timer);
+    timers.current.delete(id);
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
   const push = React.useCallback(
     (tone: ToastTone, input: ToastInput) => {
+      if (!mounted.current) return 0;
       const id = ++idRef.current;
       const duration = input.duration ?? (tone === "danger" ? 5500 : 3200);
       setToasts((prev) => [...prev.slice(-3), { id, tone, duration, title: input.title, description: input.description }]);
       if (duration > 0) {
-        window.setTimeout(() => dismiss(id), duration);
+        timers.current.set(id, window.setTimeout(() => dismiss(id), duration));
       }
       return id;
     },

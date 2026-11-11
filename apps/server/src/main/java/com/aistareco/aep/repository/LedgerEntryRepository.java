@@ -17,7 +17,7 @@ import java.util.List;
 public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, String>,
         PagingAndSortingRepository<LedgerEntry, String> {
 
-    @Query("SELECT COALESCE(-SUM(e.amount),0) FROM LedgerEntry e WHERE e.userId=:userId AND e.referenceType=:referenceType AND e.createdAt>=:since " +
+    @Query("SELECT COALESCE(-SUM(e.amount),0) FROM LedgerEntry e WHERE e.userId=:userId AND trim(trailing from e.referenceType)=trim(trailing from :referenceType) AND e.createdAt>=:since " +
             "AND e.entryType IN (com.aistareco.aep.model.LedgerEntry.LedgerEntryType.SPEND,com.aistareco.aep.model.LedgerEntry.LedgerEntryType.SCOPED_SPEND)")
     long actualCreditsSpentSince(@Param("userId") String userId,@Param("referenceType") String referenceType,@Param("since") Instant since);
 
@@ -27,6 +27,7 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, String
     java.util.Optional<LedgerEntry> findByGrantIdAndEntryType(String grantId, LedgerEntry.LedgerEntryType entryType);
 
     /** v0.51 dap：月度赠送幂等检查（referenceId = userId:yyyyMM）。 */
+    @org.springframework.data.jpa.repository.Query("select count(x) > 0 from LedgerEntry x where trim(trailing from x.referenceType) = trim(trailing from ?1) and trim(trailing from x.referenceId) = trim(trailing from ?2)")
     boolean existsByReferenceTypeAndReferenceId(String referenceType, String referenceId);
 
     Page<LedgerEntry> findByUserId(String userId, Pageable pageable);

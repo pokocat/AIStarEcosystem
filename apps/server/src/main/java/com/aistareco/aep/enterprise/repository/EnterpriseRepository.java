@@ -8,6 +8,7 @@ import java.util.Optional;
 public interface EnterpriseRepository extends JpaRepository<Enterprise,String> {
     @Query("select e from Enterprise e where lower(e.name) like :pattern escape '!' or e.id=:exact")
     Page<Enterprise> searchForBilling(@Param("pattern") String pattern,@Param("exact") String exact,Pageable page);
+    @org.springframework.data.jpa.repository.Query("select x from Enterprise x where x.createdBy = ?1 and trim(trailing from x.createRequestId) = trim(trailing from ?2)")
     Optional<Enterprise> findByCreatedByAndCreateRequestId(String createdBy,String createRequestId);
     @Lock(LockModeType.PESSIMISTIC_WRITE) @Query("select e from Enterprise e where e.id=:id")
     Optional<Enterprise> lockById(@Param("id") String id);

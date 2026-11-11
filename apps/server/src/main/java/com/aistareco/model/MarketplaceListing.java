@@ -21,7 +21,7 @@ public class MarketplaceListing {
     private int songs;
     private String followersLabel;
 
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(length = org.hibernate.Length.LONG32)
     private String description;
 
     private boolean autoReplyEnabled;

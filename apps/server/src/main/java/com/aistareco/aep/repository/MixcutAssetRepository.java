@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Optional;
 
 public interface MixcutAssetRepository extends JpaRepository<MixcutAsset, String> {
+    Optional<MixcutAsset> findFirstByFileUrl(String fileUrl);
     List<MixcutAsset> findAllByOrderByUploadedAtDesc();
     List<MixcutAsset> findByKindOrderByUploadedAtDesc(String kind);
     List<MixcutAsset> findByUserIdOrderByUploadedAtDesc(String userId);

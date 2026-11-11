@@ -32,12 +32,13 @@ class ShiliuServiceRoutingTest {
         assertTrue(service.required().mock());
     }
 
-    @Test
-    void productionProfileRefusesForceMockAtStartup() {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"mysql","postgres","prod","production"})
+    void productionProfileRefusesForceMockAtStartup(String profile) {
         ClipProperties props = new ClipProperties();
         props.setForceMock(true);
         MockEnvironment env = new MockEnvironment();
-        env.setActiveProfiles("prod");
+        env.setActiveProfiles(profile);
         ShiliuService service = new ShiliuService(props, env, mock(HttpShiliuGateway.class));
 
         assertThrows(IllegalStateException.class, service::assertTestModeSafe);

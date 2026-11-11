@@ -1,5 +1,13 @@
 # 待办与已知问题
 
+
+## AIStar PostgreSQL 迁移准备（2026-11-11）
+
+- [x] 对齐线上复刻检查版本 `e39e8776` 及本地 main 的发布记录。源 MySQL V81 仍是 195 张表，PostgreSQL 保持 V79。
+- [x] 候选 `71f2109f` 已在隔离库恢复 195 张表、42,187 行，完成全字段、序列及 10 项资金对账。重复导入已拒绝。
+- [ ] 核对本提交 CI 与产物，重验新版镜像和双机运行。CI 和运行凭证按提交登记在 PR151。
+- [ ] 确认正式窗口后，排空在途任务、冻结并重取快照，正式导入、后台与 SAU 单活交接，验收旧入口桥接后切 ALB/DNS。
+
 ## 官方形象（2026-11-10，本地未发布；说明见 `apps/web-aiavatar/README.md` 同日版本日志）
 
 - [ ] 需授权的官方形象接授权流程：现在「申请授权」只说明暂未开放（`src/ip/official-avatars.tsx` 的 `OfficialLicenseButton`），生成链对 `access=license` 一律不放行（`DapPublicAvatarService#usableImageKey`）。做签约艺人 / IP 市场时，按授权记录在这两处放开，参照明星形象授权（`AssetApi.starGrants`）的记录与展示方式。
@@ -1975,6 +1983,32 @@
 - [x] ~~**数字资产生成和声音克隆只能扣个人积分**~~ **2026-11-02 已生产发布 `20261102-enterprise-billing-everywhere`**：形象、造型、衍生、场景、商品、合成图、声音克隆走同一个付款选择与企业规则（`X-Aep-Billing` → `DapPayer`）。测试：`EnterpriseStudioBillingIntegrationTest` 数字资产 6 项、前端 `proto/api-payer.test.ts`。
 - [ ] **企业模型名单里选不到数字资产用的模型**：企业设置页「只允许选定的模型」的候选来自 Studio 的图片 / 视频 / 文字模型；数字资产用的是后台「数字人」用途绑定的模型，若不在候选里，限定了名单的企业就不能用企业积分做数字资产（报 `ENTERPRISE_MODEL_NOT_ALLOWED`）。线上 4 家都是「全部模型」，暂不受影响。
 
+
+## PostgreSQL 18 迁移准备
+
+- [x] ~~当前主线对齐、结构补齐与比较规则分类~~ **2026-11-04 完成（未生产发布）**：V75保留历史结构，V76业务标识、V77重试引用；259组唯一键逐项归类，UID/凭据精确比较。
+- [x] ~~真实RDS全量恢复工具与首次数据演练~~ **2026-11-04 完成（隔离库）**：192业务表、28,280行逐表全字段指纹一致；严格TLS、空目标、元数据、序列和非生产范围护栏。
+- [x] ~~逐列时间转换与后台单活配置~~ **2026-11-04 完成（未生产发布）**：真实MySQL绑定测试，336时间列计划；备用关闭Scheduled及发布恢复，未宣称worker双活。
+- [ ] 最终提交CI和验证记录、真实RDS账务复核、SQL/Redis/文件/发布登录态、双节点API/ALB/滚动与客户端验收全部齐备后，另行安排AIStar停写和切流窗口；不能沿用账号中心窗口。默认部署入口在首次新集群激活时改为固定新A/B并拒绝旧机。
+- 规则与当前实现见 `docs/runbooks/postgresql-18-migration.md`。
+
+- [x] ~~迁移回归发现充值终态被旧轮询覆盖~~ **2026-11-04 修复，未部署**：`studio-recharge-dialog.tsx:accept` 保留同订单服务端终态，到账回调仅一次；固定同批次回执测试复现并验证。
+- [x] ~~剧本保存失败重试测试抢在按钮恢复前点击~~ **2026-11-04 门禁修复，未部署**：`studio-workspace.test.tsx` 等保存按钮恢复可点击，再触发重试并断言第二次云保存；继续校验原节点、原正文和零付费提交。
+
+AIStar PG 主备滚动补充：旧 `/api/auth/sms/*` 的验证码、用途、单次消费、60秒限流、5次失败锁定改用 Tair 单键 Lua 原子状态。`TairSmsCodeStore` 只存 HMAC 手机号键和验证码摘要；短信发送先占位，显式失败释放自己的占位，未知供应商受理状态保留限流；Tair故障返回503且readiness撤下，不回退单机内存。旧MySQL/dev保留原行为。postgres默认tair并强制TLS，正式专用DB15/prefix `aistar:production:sms:v1:`，演练DB14/prefix `aistar:rehearsal:sms:v1:`；逻辑库与命名空间隔离不等于账号ACL限制。迁移首次停写要处理旧进程内存验证码（TTL默认5分钟）、失败锁定（默认30分钟）和进行中的扫码；无法导出旧锁定时，旧短信接口按最长状态时长保守维护，不能只等待验证码TTL；不能声称可迁出旧进程内存。源码、真实Redis契约及双机真实Tair验证以最终回执为准。
+
+迁移保持源JVM业务时区`Asia/Shanghai`，JDBC/Hibernate和PG连接仍UTC。源码4个未显式zone的凌晨03:30/40/45/50清理cron及若干LocalDate.now依赖JVM，不能随数据库迁移改成UTC导致业务日/调度晚8小时；用实际镜像的离线时钟/cron边界验收，后台依旧关闭。
+
+PG18低权限元数据兼容：固定pgJDBC42.7.14（旧42.7.4的hideUnprivilegedObjects会引用已移除RULE权限）；生产postgres运行期Flyway仅validate，DDL由迁移角色先执行，待执行迁移使运行期失败且不建表/不写历史。MySQL/dev及postgresit建库门禁保留原迁移行为。COPY使用UTF8字节流，避免Reader分块拆开emoji代理对；真实PG测试覆盖隐藏无权schema、只读历史验证/拒绝待执行DDL、超64KiB中文/emoji/引号/换行COPY。官方说明：https://jdbc.postgresql.org/changelogs/2025-01-14-42/ ，当前固定发行：https://jdbc.postgresql.org/changelogs/2026-10-07-42.7.14-release/ 。
+
+管理端提示生命周期回归：ToastProvider跟踪并清理自动关闭计时器，手动关闭或卸载时释放，卸载后的异步回调忽略；防止离开/热更新后继续更新已销毁界面。验证自动关闭、手动关闭、卸载/晚到回调及真实Chromium交互，不跳过CI未处理异常。
+
+AIStar运行镜像必须同时固定官方Java与Node镜像digest；Studio仿片分析使用JAR内置Hypit适配器，单有Java/FFmpeg会返回STUDIO_HYPIT_UNAVAILABLE。仅从官方node镜像复制Node22+二进制，不安装npm依赖或替换宿主Node。AistarHypitRuntimeVerification离线调用真实StudioHypitMedia的requireReady/read，合成红蓝视频并验证24帧原始时间戳；两机在禁网/只读根目录下运行，不调用模型/支付/短信或发布平台。
+
+容器路径与本地文件：源环境已有AEP_STUDIO_RECREATION_MEDIA_BIN=/opt/ai-star-eco/hypit-runtime/bin，不能原样继承到镜像；新模板明确使用/usr/bin，并固定Node=/usr/local/bin/node。FileStorageService实际配置键是AEP_STORAGE_LOCAL_DIR，挂载/app/work为UID10001可写；AEP_FILE_STORAGE_ROOT不是有效替代。源file-storage约4GB，保留完整预同步副本并校验，正式停写后补增量；不能仅因已接OSS而假定本地目录可删除。预同步不是冻结数据，禁止据此清理旧服务文件。
+
+迁移快照、归档及私有文件本轮和后续仅走SSH，不再使用OSS迁移中转；原业务OSS仅按既有授权读取素材，不新增公开Bucket或修改ACL。分发OCI归档时校验归档SHA256、配置摘要和RootFS摘要；Podman导出重新压缩可能改变引擎显示的manifest digest，不能据此跳过内容校验。
+
 ## 账号中心断开时的登录校验（2026-11-06）
 
 - [x] ~~**账号中心不可达时，已登录用户不该全部卡住**~~ **2026-11-06 已生产发布 `20261106-identity-keys`**，见 `docs/releases/identity-keys-release-20261106.md`：`IdentityJwkCache` 把公钥存库、启动先载入、后台异步刷新，验签不碰网络也不持锁；取不到回 503 `IDENTITY_UNAVAILABLE`，不回 401；`/userinfo` 连不上时每 30 秒只放一个请求去试。令牌到期后的换令牌仍要账号中心。测试：`IdentityJwkCacheTest`。
@@ -2008,3 +2042,11 @@
 - [ ] GPT Image 2.5 比 GPT Image 2 慢约 3 倍（平均 508 秒对 169 秒），当前是 Studio 默认模型，价格也从 16 积分变成 37 积分。用真实使用数据判断要不要保留为默认。
 - [ ] AI 图片输入框加「输入 / 选技能」（茂隆有，`ScenePromptEditor` 现在只有 @）。
 - [ ] 运营后台还不能编辑素材位的 `anyOf`（至少放一个）和 `many`（放多张时的说明），保存时原样保留。
+
+## 2026-11-05 AIStar 新集群迁移准备
+
+- [x] ~~迁移分支同步最新 main 并解决冲突~~ **2026-11-06 完成代码同步，未生产发布**：main `cf0cabce2` 的孵化站/灵感库/长视频/身份公钥缓存改动保留；TODO 冲突合并两边内容，旧机发布禁用及新双机门禁保留，业务 OSS 沿用原账号杭州 `aiartist`。最终检查见 PR151。
+- [x] ~~CI 同时测试全部工作区时后台页面超时~~ **2026-11-06 调整检查调度，未改业务代码**：首次同步CI的技能发布页面超过5秒，工作区类型检查/测试改为串行，保留原时限和全部断言；最终结果见PR151。
+- [x] 新增受保护的排空接口、正式导入与主备滚动入口，旧单机默认入口禁用。
+- [x] 隔离实库导入/重复拒绝、双机滚动最终凭证和代码SHA `aa791d53a99f` CI验收：192表29102行；双机真实B接管/A更新/A100B0；本地615、云内644次鉴权零错误；PG73/后端3645项，8项CI通过。正式生产未切换。
+- [ ] 正式窗口单独确认；前端/后台SAU单活交接、本地文件最终增量、PG正式导入与生产切流。

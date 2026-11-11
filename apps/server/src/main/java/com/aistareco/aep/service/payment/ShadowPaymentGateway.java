@@ -39,7 +39,7 @@ public class ShadowPaymentGateway implements PaymentGateway {
     void warnIfProdProfile() {
         if (!props.getShadow().isEnabled()) return;
         for (String p : env.getActiveProfiles()) {
-            if ("mysql".equalsIgnoreCase(p) || "prod".equalsIgnoreCase(p)) {
+            if (("mysql".equalsIgnoreCase(p) || "postgres".equalsIgnoreCase(p)) || "prod".equalsIgnoreCase(p)) {
                 log.error("==================== 影子支付网关在生产 profile（{}）下启用 ====================", p);
                 log.error("  aep.payment.shadow.enabled=true 仅供 dev/test/staging 端到端联调，生产必须接真实渠道（alipay / wechat）。");
                 log.error("  影子链路不产生真实资金、不可对账，线上巡检应视此为部署事故（v2 §6.7 / §8.0 P1）。");

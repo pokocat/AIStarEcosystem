@@ -34,7 +34,12 @@ jobs:
         env:
           CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           CI_HEAD_SHA: ${{ github.sha }}
-        run: node scripts/ci/affected.mjs
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ -n "$CI_BASE_SHA" ]] && ! git cat-file -e "$CI_BASE_SHA^{commit}" 2>/dev/null; then
+            git -c credential.helper='!gh auth git-credential' fetch --no-tags --depth=1 origin "$CI_BASE_SHA"
+          fi
+          node scripts/ci/affected.mjs
   backend-tests:
     needs: scope
     if: needs.scope.outputs.backend == 'true'
@@ -48,6 +53,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -60,7 +66,22 @@ jobs:
       - name: Prepare pinned platform SDK
         run: ./infra/scripts/prepare-platform-sdk.sh
       - name: Media test dependencies
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-cjk fontconfig
+        timeout-minutes: 10
+        run: |
+          packages=()
+          command -v ffmpeg >/dev/null || packages+=(ffmpeg)
+          command -v fc-list >/dev/null || packages+=(fontconfig)
+          if ! command -v fc-list >/dev/null || [[ -z "$(fc-list ':lang=zh' file)" ]]; then
+            packages+=(fonts-noto-cjk)
+          fi
+          if (( ${#packages[@]} )); then
+            bash infra/scripts/use-ci-ubuntu-archive.sh
+            sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
+            sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y --no-install-recommends "${packages[@]}"
+          fi
+          ffmpeg -version > /tmp/aistar-ci-ffmpeg-version.txt
+          head -n 1 /tmp/aistar-ci-ffmpeg-version.txt
+          test -n "$(fc-list ':lang=zh' file)"
       - name: Select backend test shard
         id: tests
         env:
@@ -80,7 +101,7 @@ jobs:
           path: apps/server/target/surefire-reports/
           retention-days: 3
   backend:
-    needs: [scope, backend-tests]
+    needs: [scope, backend-tests, postgres-migration]
     if: always() && needs.scope.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -88,7 +109,64 @@ jobs:
       - name: Check all backend shards
         env:
           RESULT: ${{ needs.backend-tests.result }}
-        run: test "$RESULT" = success
+          POSTGRES_RESULT: ${{ needs.postgres-migration.result }}
+        run: test "$RESULT" = success && test "$POSTGRES_RESULT" = success
+  postgres-migration:
+    needs: [scope, backend-tests]
+    if: needs.scope.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+          cache-dependency-path: apps/server/pom.xml
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Prepare pinned platform SDK
+        run: ./infra/scripts/prepare-platform-sdk.sh
+      # All tests were verified by backend-tests shards. This step only packages
+      # that same source into one immutable JAR, not a substitute for tests.
+      - name: Package the fully tested source
+        working-directory: apps/server
+        run: ./mvnw -B -DskipTests package
+      - name: Compile isolated migration helpers and refusal gates
+        working-directory: apps/server
+        run: python3 scripts/compile-migration-tools.py
+      - name: Cluster release policy refusal tests
+        run: python3 infra/scripts/cluster/test_policy.py
+      - name: PostgreSQL 18 real database gate
+        working-directory: apps/server
+        run: ./mvnw -B -Ppostgres-test -Dspring.test.context.cache.maxSize=2 -Dapi.version=1.44 -DforkCount=1 -DreuseForks=true test && python3 scripts/check-postgres-reports.py
+      - name: Save verified backend identity
+        run: |
+          python3 - <<'PYCODE'
+          import json,hashlib,os,pathlib,subprocess
+          root=pathlib.Path('.');jar=root/'apps/server/target/ai-star-eco-server-1.0.0.jar'
+          proof={'sha':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'source_tree':subprocess.check_output(['git','rev-parse','HEAD:apps/server'],text=True).strip(),'jar_sha256':hashlib.sha256(jar.read_bytes()).hexdigest(),'tests_passed':True,'ci_run':os.environ['GITHUB_RUN_ID'],'backend_shards_verified':3,'business_tables':195,'postgres_flyway_version':'79'}
+          (jar.parent/'verified-backend.json').write_text(json.dumps(proof,indent=2))
+          PYCODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-backend
+          path: |
+            apps/server/target/ai-star-eco-server-1.0.0.jar
+            apps/server/target/migration-tools/
+            apps/server/target/verified-backend.json
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: postgres-migration-tests
+          path: apps/server/target/surefire-reports/
+          retention-days: 3
   frontend-checks:
     needs: scope
     if: needs.scope.outputs.frontend != '[]'
@@ -102,6 +180,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: pnpm/action-setup@v4
         with:
           version: 10.33.2
@@ -137,6 +216,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -179,6 +259,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: pnpm/action-setup@v4
         with:
           version: 10.33.2
@@ -189,10 +270,17 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter "${{ matrix.package }}" build
       - name: Install isolated browser test dependency
-        if: matrix.browser
+        if: matrix.browser || matrix.product == 'web-aiavatar' || matrix.product == 'admin-new'
         run: |
           npm install --prefix "$RUNNER_TEMP/browser-test" --no-package-lock --no-save playwright@1.55.1
+          bash infra/scripts/use-ci-ubuntu-archive.sh
           "$RUNNER_TEMP/browser-test/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Verify stale payment polling preserves server confirmation
+        if: matrix.product == 'web-aiavatar'
+        run: NODE_PATH="$RUNNER_TEMP/browser-test/node_modules" node scripts/migration/payment-race-browser.cjs
+      - name: Verify toast deadlines are released on navigation
+        if: matrix.product == 'admin-new'
+        run: NODE_PATH="$RUNNER_TEMP/browser-test/node_modules" node scripts/migration/toast-lifecycle-browser.cjs
       - name: Verify handoff and exit in production pages
         if: matrix.browser
         env:
@@ -207,7 +295,7 @@ jobs:
           done
           NODE_PATH="$RUNNER_TEMP/browser-test/node_modules" node scripts/impersonation/browser.cjs "${PRODUCT#web-}"
       - uses: actions/upload-artifact@v4
-        if: always() && matrix.browser
+        if: always() && (matrix.browser || matrix.product == 'web-aiavatar' || matrix.product == 'admin-new')
         with:
           name: impersonation-browser-${{ matrix.product }}
           path: test-results/

@@ -64,7 +64,7 @@ public class MaterialScript {
     private OffsetDateTime deletedAt;
 
     /** 完整 ScriptAsset JSON（snake_case 字段，前端直接消费）。 */
-    @Lob
-    @Column(name = "payload_json", columnDefinition = "LONGTEXT", nullable = false)
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "payload_json", length = org.hibernate.Length.LONG32, nullable = false)
     private String payloadJson;
 }

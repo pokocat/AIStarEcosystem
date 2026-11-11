@@ -54,13 +54,13 @@ public class StudioPromptOptimization {
     private String status = STATUS_QUEUED;
 
     /** 校验通过的请求快照（{@code OptimizationSpec}），worker 只认这一份。 */
-    @Column(nullable = false, columnDefinition = "LONGTEXT")
+    @Column(nullable = false, length = org.hibernate.Length.LONG32)
     private String specJson;
 
-    @Column(nullable = false, columnDefinition = "LONGTEXT")
+    @Column(nullable = false, length = org.hibernate.Length.LONG32)
     private String originalPrompt;
 
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(length = org.hibernate.Length.LONG32)
     private String optimizedPrompt;
 
     @Column(length = 128)

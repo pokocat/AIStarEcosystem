@@ -53,7 +53,7 @@ public class CelebrityProject {
     private String pricingTier;
 
     /** channels 列表（ChannelStatus[]）以 JSON 字符串存储。 */
-    @Column(name = "channels_json", columnDefinition = "LONGTEXT")
+    @Column(name = "channels_json", length = org.hibernate.Length.LONG32)
     private String channelsJson;
 
     private int quotaUsed;

@@ -15,6 +15,8 @@
 # explicitly want to discard local server-side repo changes.
 
 set -euo pipefail
+echo "旧单机发布入口已停用；请使用 infra/scripts/deploy.sh server --plan 查看新双机流程。" >&2
+exit 1
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"

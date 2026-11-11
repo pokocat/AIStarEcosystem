@@ -1406,6 +1406,39 @@ Studio 图片报价为 `POST /api/v1/ip-studio/projects/{id}/{image-quote|studio
 
 `PaymentChannelConfigService` 接收成对的 `publicKeyId/publicKey`，`WechatPaymentGateway` 优先使用 SDK 公钥模式，未提供公钥时兼容旧平台证书模式。微信未知下单结果保留关联和原 PENDING 订单，同套餐订单不允许切换渠道；查单补金额/流水验证，微信回调补商户/AppID/渠道验证。微信取消/驳回/超时先关渠道单，失败保留本地状态，过期单仍参加查单。无新 API/迁移；军师商户权限阻塞与资料映射见 [接入手册](../../docs/runbooks/studio-wechat-ai-pilot.md)。
 
+## PostgreSQL18 本地适配
+
+新 `postgres` 为生产 profile，数据库必配；迁移目录为 `classpath:db/postgresql`，Flyway建表、Hibernate只validate。大文本使用LONG32字符映射，保留原序列化格式；MySQL/H2路径不变。真实门禁用 `-Ppostgres-test`（缺Docker失败），与原 `./mvnw test` 分开执行。详见 `../../docs/runbooks/postgresql-18-migration.md`，包含当前源库结构对账阻断，尚不能据此生产切流。
+
+
+## PostgreSQL 数据映射与单活准备（2026-11-04，未生产发布）
+
+V74基线不回改，V75结构补齐、V76业务标识比较、V77重试引用比较。用户名/slug与幂等请求使用限定列ICU+rtrim；身份UID、任务主键和凭据精确比较。ModelPrice/ModelDiscount新建记录补updatedAt。postgres备用/导入验证进程默认 `AEP_BACKGROUND_ENABLED=false`；仅主节点显式开启定时任务，启动发布恢复也遵守该开关，HTTP异步入口仍须另行排空。
+
+真实RDS独立演练已恢复192表/28,280行并核对全字段指纹；工具只允许演练库，不支持生产恢复。源时间按真实Hibernate/JDBC类型逐列转换，不统一减8小时。AIStar生产窗口尚未安排，不执行部署、停写、ALB/DNS切换，不借用账号中心的窗口。完整规则与验收入口见 `../../docs/runbooks/postgresql-18-migration.md`。
+
+ALB就绪入口为 `GET /internal/ready`：应用启动完成且真实数据库连接有效才200，启动中、关闭或数据库故障返回503，响应仅含ready布尔值。它不承诺生成供应商、支付或发布能力均已可用；这些仍须业务验收。
+
+生产postgres配置由 `PostgresEnvironmentGuard` 在EnvironmentPostProcessor阶段检查，早于DataSource/Hibernate创建；拒绝旧环境遗留的ddl-auto=update或MySQL Flyway目录等覆盖。源env复制后必须显式替换数据库/driver/dialect、schema、Flyway目录/开关、UTC、日志目录与后台角色，不能只改DB_URL。实际数据库版本/角色/时区仍在连接后另行验证。
+
+AIStar PG 主备滚动补充：旧 `/api/auth/sms/*` 的验证码、用途、单次消费、60秒限流、5次失败锁定改用 Tair 单键 Lua 原子状态。`TairSmsCodeStore` 只存 HMAC 手机号键和验证码摘要；短信发送先占位，显式失败释放自己的占位，未知供应商受理状态保留限流；Tair故障返回503且readiness撤下，不回退单机内存。旧MySQL/dev保留原行为。postgres默认tair并强制TLS，正式专用DB15/prefix `aistar:prod:sms:v1:`，演练DB14/prefix `aistar:rehearsal:sms:v1:`；逻辑库与命名空间隔离不等于账号ACL限制。迁移首次停写要处理旧进程内存验证码（TTL默认5分钟）、失败锁定（默认30分钟）和进行中的扫码；无法导出旧锁定时，旧短信接口按最长状态时长保守维护，不能只等待验证码TTL；不能声称可迁出旧进程内存。源码、真实Redis契约及双机真实Tair验证以最终回执为准。
+
+迁移保持源JVM业务时区`Asia/Shanghai`，JDBC/Hibernate和PG连接仍UTC。源码4个未显式zone的凌晨03:30/40/45/50清理cron及若干LocalDate.now依赖JVM，不能随数据库迁移改成UTC导致业务日/调度晚8小时；用实际镜像的离线时钟/cron边界验收，后台依旧关闭。
+
+PG18低权限元数据兼容：固定pgJDBC42.7.14（旧42.7.4的hideUnprivilegedObjects会引用已移除RULE权限）；生产postgres运行期Flyway仅validate，DDL由迁移角色先执行，待执行迁移使运行期失败且不建表/不写历史。MySQL/dev及postgresit建库门禁保留原迁移行为。COPY使用UTF8字节流，避免Reader分块拆开emoji代理对；真实PG测试覆盖隐藏无权schema、只读历史验证/拒绝待执行DDL、超64KiB中文/emoji/引号/换行COPY。官方说明：https://jdbc.postgresql.org/changelogs/2025-01-14-42/ ，当前固定发行：https://jdbc.postgresql.org/changelogs/2026-10-07-42.7.14-release/ 。
+
+AIStar运行镜像必须同时固定官方Java与Node镜像digest；Studio仿片分析使用JAR内置Hypit适配器，单有Java/FFmpeg会返回STUDIO_HYPIT_UNAVAILABLE。仅从官方node镜像复制Node22+二进制，不安装npm依赖或替换宿主Node。AistarHypitRuntimeVerification离线调用真实StudioHypitMedia的requireReady/read，合成红蓝视频并验证24帧原始时间戳；两机在禁网/只读根目录下运行，不调用模型/支付/短信或发布平台。
+
+容器路径与本地文件：源环境已有AEP_STUDIO_RECREATION_MEDIA_BIN=/opt/ai-star-eco/hypit-runtime/bin，不能原样继承到镜像；新模板明确使用/usr/bin，并固定Node=/usr/local/bin/node。FileStorageService实际配置键是AEP_STORAGE_LOCAL_DIR，挂载/app/work为UID10001可写；AEP_FILE_STORAGE_ROOT不是有效替代。源file-storage约4GB，保留完整预同步副本并校验，正式停写后补增量；不能仅因已接OSS而假定本地目录可删除。预同步不是冻结数据，禁止据此清理旧服务文件。
+
+迁移文件中转只能使用独立私有Bucket，先以无敏感信息的canary验证匿名Range GET为403；仅设置object private ACL不足以证明Bucket策略未放行。禁止把数据库导出、文件归档或含业务信息的中转包放入现有公开素材Bucket。分发OCI归档时校验归档SHA256、配置摘要和RootFS摘要；Podman导出重新压缩可能改变引擎显示的manifest digest，不能据此跳过内容校验。
+
+### 新集群部署控制（2026-11-05）
+
+回环 `/internal/deployment` 需要独立强令牌 `AEP_DEPLOYMENT_TOKEN`，Nginx必须拒绝该路径。POST 取消未来调度，不中断运行任务；GET 同时检查请求（含异步）、线程池和持久任务。证据不可用返回503，不当作空闲。正式API双机后台关闭，后台单活独立运行。导入/发布门禁见 [PostgreSQL SOP](../../docs/aistar-postgresql-cutover.md)。
+
+postgres双机的`AEP_STORAGE_REQUIRE_DURABLE_UPLOADS`默认true：混剪素材/预置/官方素材与成片须持久化OSS后才保存确认，读不到本地文件时按已授权资产的cdnKey回源。缓存原子落盘，旧静态素材URL支持Range；本地目录和旧绝对路径映射见迁移SOP，不能只拷贝file-storage。
+
 ### Studio 视频页任务（2026-11-06，本地实现，未发布）
 
 `StudioVideoTaskService` 复用原生执行表与模型生成链，对普通视频、分段长视频与复刻提供统一报价、受理、列表和详情。元数据保存在 `ip_plan_execution.steps_json.videoTask`，无新表或独立计费账本；旧任务通过只读投影兼容。复刻分析完成后在已批准的总费用上限内动态接续制作。新视频页步骤总共最多自动尝试三次；不明受理和原文保留不能触发盲目重做。画布修复成功后，明确继续可采纳同一输出节点的本人成功任务，并保留已有成功步骤。契约见 OpenAPI 的 `video-tasks` 与 `specs/BUSINESS_RULES.md`。

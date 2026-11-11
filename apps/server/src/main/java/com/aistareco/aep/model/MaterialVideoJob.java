@@ -70,18 +70,18 @@ public class MaterialVideoJob {
     private String parentVideoId;
 
     /** 提交给视频大模型的提示词。 */
-    @Lob
-    @Column(name = "prompt", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "prompt", length = org.hibernate.Length.LONG32)
     private String prompt;
 
     /** 6 轴 VariantConfig 快照（JSON）。 */
-    @Lob
-    @Column(name = "variant_config_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "variant_config_json", length = org.hibernate.Length.LONG32)
     private String variantConfigJson;
 
     /** 完整 MaterialVideo 形状快照（JSON），回显 / 出片落库用。 */
-    @Lob
-    @Column(name = "payload_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "payload_json", length = org.hibernate.Length.LONG32)
     private String payloadJson;
 
     @Column(name = "duration_sec")
@@ -107,8 +107,8 @@ public class MaterialVideoJob {
     @Column(name = "upstream_base_url_snapshot", length = 2000)
     private String upstreamBaseUrlSnapshot;
 
-    @Lob
-    @Column(name = "video_request_spec_snapshot_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "video_request_spec_snapshot_json", length = org.hibernate.Length.LONG32)
     private String videoRequestSpecSnapshotJson;
 
     /** 出片 URL（status=succeeded 时非空）。 */
