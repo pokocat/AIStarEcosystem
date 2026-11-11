@@ -4352,7 +4352,7 @@ public class DirectorService {
                 .filter(s -> missingRatios(s.resolved().endpoint()).isEmpty())
                 .map(s -> preferred == null ? s : new com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection(
                         new com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint(s.resolved().endpoint(), s.resolved().candidate(),
-                                preferred.equals(s.resolved().endpoint().getId())), s.creditCost(), s.billingUnit()))
+                                preferred.equals(s.resolved().endpoint().getId())), s.creditCost(), s.billingUnit(), s.resolutionPrices()))
                 .toList();
     }
 
@@ -4403,7 +4403,10 @@ public class DirectorService {
 
     long boardImagePrice(ObjectNode c, long fallback) {
         if (fixtures.enabled()) return fallback;
-        try { var selected = boardImageSelection(c); return selected == null ? fallback : selected.creditCost(); }
+        try {
+            var selected = boardImageSelection(c);
+            return selected == null ? fallback : selected.creditCostForSize(sizeFor(c, "board", selected.resolved().endpoint()));
+        }
         catch (BusinessException ignored) { return fallback; } // 页面仍可打开，提交与 boardImage.error 明确报错。
     }
 
@@ -4412,9 +4415,10 @@ public class DirectorService {
         try {
             var selected = fixtures.enabled() ? null : boardImageSelection(c);
             if (!fixtures.enabled() && selected == null) return info;
-            info.put("size", sizeFor(c, "board"));
+            String size = selected == null ? sizeFor(c, "board") : sizeFor(c, "board", selected.resolved().endpoint());
+            info.put("size", size);
             if (selected != null) info.put("endpointId", selected.resolved().endpoint().getId())
-                    .put("name", selected.resolved().endpoint().publicModelName()).put("creditCost", selected.creditCost());
+                    .put("name", selected.resolved().endpoint().publicModelName()).put("creditCost", selected.creditCostForSize(size));
         } catch (BusinessException e) { info.put("error", e.getMessage()); }
         return info;
     }
@@ -4429,7 +4433,7 @@ public class DirectorService {
             // 停用了就留默认价，提交会明确报错，页面看 imageModelState。
             try {
                 var selection = imageSelection(c);
-                if (selection != null) prices[1] = selection.creditCost();
+                if (selection != null) prices[1] = assetImagePrice(selection);
             } catch (BusinessException ignored) { }
         }
         return prices;
@@ -4448,7 +4452,7 @@ public class DirectorService {
             var selection = imageSelection(c);
             if (selection == null) return s;
             var endpoint = selection.resolved().endpoint();
-            s.put("id", endpoint.getId()).put("name", endpoint.publicModelName()).put("creditCost", selection.creditCost());
+            s.put("id", endpoint.getId()).put("name", endpoint.publicModelName()).put("creditCost", assetImagePrice(selection));
             s.set("missingRatios", om.valueToTree(missingRatios(endpoint)));
         } catch (BusinessException e) {
             s.put("available", false);
@@ -4523,7 +4527,7 @@ public class DirectorService {
         for (var selection : imageSelections()) {
             var endpoint = selection.resolved().endpoint();
             imageModels.addObject().put("id", endpoint.getId()).put("name", endpoint.publicModelName())
-                    .put("isDefault", selection.resolved().isDefault()).put("creditCost", selection.creditCost());
+                    .put("isDefault", selection.resolved().isDefault()).put("creditCost", assetImagePrice(selection));
         }
         v.set("imageModelState", imageModelState(c));
         v.set("boardImage", boardImageInfo(c));
@@ -5082,23 +5086,39 @@ public class DirectorService {
      * 没有出图规格的模型（走 dap 多模态链）照旧用默认尺寸。
      */
     private String sizeFor(ObjectNode c, String kind) {
+        var endpoint = fixtures.enabled() ? null
+                : ("board".equals(kind) ? boardImageSelection(c) : imageSelection(c)).resolved().endpoint();
+        return sizeFor(c, kind, endpoint);
+    }
+
+    private String sizeFor(ObjectNode c, String kind, com.aistareco.aep.model.AiModelEndpoint endpoint) {
         String ratio = switch (kind) {
             case "prop" -> "1:1";
             case "scene", "character" -> "16:9"; // 场景是横向空间图，角色设定集是横版排版
             default -> c.path("settings").path("aspectRatio").asText("9:16");
         };
         String fallback = switch (ratio) { case "16:9" -> "1365x768"; case "1:1" -> "1024x1024"; default -> "768x1365"; };
-        if (fixtures.enabled()) return fallback;
-        var endpoint = ("board".equals(kind) ? boardImageSelection(c) : imageSelection(c)).resolved().endpoint();
+        if (endpoint == null) return fallback;
         var spec = com.aistareco.aep.model.AiImageRequestSpec.read(endpoint.getImageRequestSpecJson());
         if (spec == null) return fallback;
-        // 同一比例有几档时取最大的：设定集、宫格分镜图要放好几个分区，小图细节糊。只在这一个接入点的尺寸里挑，
-        // 按张计费，价格不变；不跨到同系列的别的接入点（4K 是另一个接入点、另一个价）。
+        // 同一比例有几档时取最大的：设定集、宫格分镜图要放好几个分区，小图细节糊。
         // 线上 GPT Image 2 的 1360x768 偶尔被厂商按 4:3 出图、被尺寸校验拦下，2048x1152 一周内没有出过错（2026-10-25 日志）。
+        return largestImageSize(spec, ratio).orElseThrow(() -> sizeUnsupported(c, kind, ratio, endpoint));
+    }
+
+    private static Optional<String> largestImageSize(com.aistareco.aep.model.AiImageRequestSpec spec, String ratio) {
         return spec.outputs().stream().filter(o -> ratio.equals(o.aspectRatio()))
                 .map(com.aistareco.aep.model.AiImageRequestSpec.Output::canvasSize)
-                .max(Comparator.comparingLong(DirectorService::pixels))
-                .orElseThrow(() -> sizeUnsupported(c, kind, ratio, endpoint));
+                .max(Comparator.comparingLong(DirectorService::pixels));
+    }
+
+    /** The asset panel shares a ceiling across square props and landscape characters/scenes. */
+    private static long assetImagePrice(com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection selection) {
+        if (selection.resolutionPrices().isEmpty()) return selection.creditCost();
+        var spec = com.aistareco.aep.model.AiImageRequestSpec.read(selection.resolved().endpoint().getImageRequestSpecJson());
+        if (spec == null) return selection.creditCost();
+        return List.of("1:1", "16:9").stream().flatMap(ratio -> largestImageSize(spec, ratio).stream())
+                .mapToLong(selection::creditCostForSize).max().orElse(selection.creditCost());
     }
 
     /**

@@ -587,9 +587,11 @@ class IpRunServiceTest {
         var fourK=com.aistareco.aep.model.AiModelEndpoint.builder().id("gpt-4k").model("gpt-image-2-4k-pic")
                 .baseUrl("https://image-proxy.example/v1").imageRequestSpecJson(fourKSpec.json()).enabled(true).build();
         var oneKSelection=new com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection(
-                new com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint(oneK,null,true),30L,"per_image");
+                new com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint(oneK,null,true),37L,"per_image",
+                Map.of("1K",20L,"2K",30L,"4K",30L));
         var fourKSelection=new com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection(
-                new com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint(fourK,null,false),45L,"per_image");
+                new com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint(fourK,null,false),45L,"per_image",
+                Map.of("1K",20L,"2K",30L,"4K",30L));
         when(policy.available("studio","image",8L)).thenReturn(List.of(oneKSelection,fourKSelection));
         when(aiModels.resolveEndpoint(com.aistareco.aep.model.AiModelPurpose.DAP_IMAGE,"gpt-1k","studio")).thenReturn(java.util.Optional.of(oneKSelection.resolved()));
         when(aiModels.resolveEndpoint(com.aistareco.aep.model.AiModelPurpose.DAP_IMAGE,"gpt-4k","studio")).thenReturn(java.util.Optional.of(fourKSelection.resolved()));
@@ -598,27 +600,32 @@ class IpRunServiceTest {
         var twoK=svc.generate(USER,PID,new IpRunService.IpGenerateRequest("adhoc","cat",List.of(),1,"2048x2048",
                 "studio-image:gpt-image-2",30L));
         var twoKExec=OM.readTree(runs.rows.get(twoK.id()).getInputJson()).path("_exec");
+        assertEquals(30L,twoKExec.path("unitCost").asLong());
         assertEquals("gpt-1k",twoKExec.path("endpointId").asText());
         assertEquals("gpt-image-2-1k-pic",twoKExec.path("providerModel").asText());
         assertEquals("2048x2048",OM.readTree(runs.rows.get(twoK.id()).getInputJson()).path("size").asText());
 
         var fourKRun=svc.generate(USER,PID,new IpRunService.IpGenerateRequest("adhoc","cat",List.of(),1,"4096x4096",
-                "studio-image:gpt-image-2",45L));
+                "studio-image:gpt-image-2",30L));
         var fourKExec=OM.readTree(runs.rows.get(fourKRun.id()).getInputJson()).path("_exec");
         assertEquals("gpt-4k",fourKExec.path("endpointId").asText());
         assertEquals("gpt-image-2-4k-pic",fourKExec.path("providerModel").asText());
-        assertEquals(45L,fourKExec.path("unitCost").asLong());
+        assertEquals(30L,fourKExec.path("unitCost").asLong());
 
         var nodeRun=svc.run(USER,PID,"n-family",null);
         var nodeExec=OM.readTree(runs.rows.get(nodeRun.id()).getInputJson()).path("_exec");
         assertEquals("gpt-4k",nodeExec.path("endpointId").asText());
         assertEquals("gpt-image-2-4k-pic",nodeExec.path("providerModel").asText());
+        assertEquals(30L,nodeExec.path("unitCost").asLong());
         assertEquals("4096x4096",OM.readTree(runs.rows.get(nodeRun.id()).getInputJson()).path("size").asText());
 
         var invalid=assertThrows(BusinessException.class,()->svc.generate(USER,PID,new IpRunService.IpGenerateRequest(
                 "adhoc","cat",List.of(),1,"768x768","studio-image:gpt-image-2",30L)));
         assertEquals("STUDIO_IMAGE_RESOLUTION_INVALID",invalid.getCode());
-        verify(credits,org.mockito.Mockito.times(3)).hold(eq(USER),anyLong(),eq(IpRunService.REF_TYPE),anyString(),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
+        var oneKRun=svc.generate(USER,PID,new IpRunService.IpGenerateRequest("adhoc-1k","cat",List.of(),1,"1024x1024",
+                "studio-image:gpt-image-2",20L));
+        verify(credits).hold(eq(USER),eq(20L),eq(IpRunService.REF_TYPE),eq(oneKRun.id()),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
+        verify(credits,org.mockito.Mockito.times(4)).hold(eq(USER),anyLong(),eq(IpRunService.REF_TYPE),anyString(),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     @Test void configuredImageKeepsReferencesBeyondLegacyCanvasLimit() throws Exception {
