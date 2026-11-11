@@ -6,6 +6,20 @@ import java.util.*;
 /** Test-only JDK17 barrier: only the exact rehearsal RDS and Tair may receive outbound connections. */
 @SuppressWarnings("removal")
 public class IsolatedApiBootstrap {
+    private static final String DEPTH_LAUNCHER = "/opt/studio-depth/reshot-remote";
+
+    private static boolean checkingDepthLauncherPermission(String command) {
+        if (!DEPTH_LAUNCHER.equals(command)) return false;
+        StackTraceElement[] frames = new Throwable().getStackTrace();
+        return frames.length > 4
+                && frames[2].getClassName().equals("sun.nio.fs.UnixFileSystemProvider")
+                && frames[2].getMethodName().equals("checkAccess")
+                && frames[3].getClassName().equals("java.nio.file.Files")
+                && frames[3].getMethodName().equals("isAccessible")
+                && frames[4].getClassName().equals("java.nio.file.Files")
+                && frames[4].getMethodName().equals("isExecutable");
+    }
+
     public static void main(String[] args)throws Exception {
         String host="pgm-bp1gp4819mbs30z3.pg.rds.aliyuncs.com";
         String url=System.getenv("DB_URL");
@@ -27,10 +41,22 @@ public class IsolatedApiBootstrap {
                 throw new SecurityException("External connections disabled in isolated API rehearsal");
             }
             @Override public void checkConnect(String remote,int port,Object context) { checkConnect(remote,port); }
-            @Override public void checkExec(String command) { throw new SecurityException("Child processes disabled in isolated API rehearsal"); }
+            @Override public void checkExec(String command) {
+                // JDK 17 invokes checkExec for Files.isExecutable, before checking file mode.
+                if (checkingDepthLauncherPermission(command)) return;
+                throw new SecurityException("Child processes disabled in isolated API rehearsal");
+            }
             @Override public void checkListen(int port) { if(port!=18084)throw new SecurityException("Only lab port accepted"); }
         });
         try {new Socket("1.1.1.1",443).close();throw new IllegalStateException("Outbound barrier ineffective");}catch(SecurityException expected) { }
+        if (DEPTH_LAUNCHER.equals(System.getenv("AEP_STUDIO_DEPTH_COMMAND"))
+                && !Files.isExecutable(Path.of(DEPTH_LAUNCHER))) {
+            throw new IllegalStateException("Isolated depth launcher is not executable");
+        }
+        try {
+            new ProcessBuilder(DEPTH_LAUNCHER, "--version").start();
+            throw new IllegalStateException("Depth launcher execution barrier ineffective");
+        } catch (SecurityException expected) { }
         Files.writeString(Path.of("/opt/aistar-migration/preparation/outbound-barrier.json"),"{\"outbound_rds_and_isolated_tair_only\":true,\"child_processes_disabled\":true,\"native_netty_disabled\":true}");
         Class.forName("com.aistareco.AiStarEcoApplication").getMethod("main",String[].class).invoke(null,(Object)new String[0]);
     }
