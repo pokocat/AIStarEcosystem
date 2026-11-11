@@ -144,4 +144,21 @@ class RollingReleaseTests(unittest.TestCase):
   cluster.config={'verify_ips':['first','second'],'nodes':{'a':{},'b':{}}}
   cluster.probe=lambda authenticated=True,check_readiness=True:{'first':{'a','b'},'second':{'a'}}
   with self.assertRaisesRegex(RuntimeError,'双活验收失败'):cluster.probe_dual()
+class ReleaseLeaseTests(unittest.TestCase):
+ def test_disconnected_lease_refuses_cluster_mutations(self):
+  import release
+  from unittest.mock import Mock
+  cluster=object.__new__(release.Cluster)
+  cluster.release_lock=Mock()
+  cluster.release_lock.poll.return_value=255
+  with self.assertRaisesRegex(Refused,'发布锁连接已断开'):cluster.check_lease()
+ def test_unresponsive_own_ssh_is_terminated_to_release_flock(self):
+  import release
+  from unittest.mock import Mock
+  lock=Mock()
+  lock.wait.side_effect=[release.subprocess.TimeoutExpired('ssh',15),0]
+  release.release_lease(lock)
+  lock.stdin.close.assert_called_once_with()
+  lock.terminate.assert_called_once_with()
+  lock.kill.assert_not_called()
 if __name__=='__main__':unittest.main()

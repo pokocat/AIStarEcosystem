@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """ALB dual-active rolling release; no database import, DNS changes, or legacy-host fallback."""
-import argparse,datetime,hashlib,http.client,json,os,pathlib,shlex,socket,ssl,subprocess,sys,time,tarfile,tempfile
+import argparse,datetime,hashlib,http.client,json,os,pathlib,select,shlex,socket,ssl,subprocess,sys,time,tarfile
 from policy import config_guard,artifact_guard,alb_guard,require
 ROOT=pathlib.Path(__file__).resolve().parents[3]
 DUAL_ACTIVE={'a':50,'b':50}
@@ -8,7 +8,11 @@ SINGLE_NODE={'a':{'a':100,'b':0},'b':{'a':0,'b':100}}
 class Cluster:
  def __init__(self,config,mode):self.config=config;self.mode=mode;self.expected=config['modes'][mode];self.events=[]
  def record(self,event,**kw):self.events.append({'utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'event':event,**kw});print(event,flush=True)
+ def check_lease(self):
+  lock=getattr(self,'release_lock',None)
+  require(lock is None or lock.poll() is None,'发布锁连接已断开，保留当前承流节点，停止继续变更')
  def ssh(self,node,command,timeout=2100,stdin=None):
+  self.check_lease()
   p=subprocess.run(['ssh','-i',self.config['ssh_key'],'-o','BatchMode=yes','root@'+self.config['nodes'][node]['host'],command],input=stdin,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=timeout)
   if p.returncode:
    logs=pathlib.Path.home()/'.local/state/aistar-deploy';logs.mkdir(mode=0o700,parents=True,exist_ok=True);logs.chmod(0o700);diagnostic=logs/'last-ssh-error-private.log';diagnostic.write_text(p.stdout+p.stderr);diagnostic.chmod(0o600)
@@ -18,8 +22,15 @@ class Cluster:
   if release:cmd+=['--release',release]
   result=json.loads(self.ssh(node,shlex.join(cmd)));self.record(action,node=node,**({k:result[k] for k in ['release','sha','drain_seconds'] if k in result}));return result
  def alb(self,action,args):
+  self.check_lease()
   p=subprocess.run(['aliyun','alb',action,'--RegionId',self.config['region'],'--force',*args],capture_output=True,text=True,timeout=60)
-  require(p.returncode==0,'ALB操作失败；停止发布');return json.loads(p.stdout)
+  if p.returncode:
+   logs=pathlib.Path.home()/'.local/state/aistar-deploy'
+   logs.mkdir(mode=0o700,parents=True,exist_ok=True);logs.chmod(0o700)
+   diagnostic=logs/'last-alb-error-private.log'
+   diagnostic.write_text(p.stderr);diagnostic.chmod(0o600)
+  require(p.returncode==0,'ALB操作失败；停止发布')
+  return json.loads(p.stdout)
  def members(self):
   group=self.expected['group'];require(group and group!=self.config['modes']['stage' if self.mode=='production' else 'production']['group'],'正式与演练ALB组缺失或混用')
   groups=self.alb('ListServerGroups',['--ServerGroupIds.1',group])['ServerGroups'];require(len(groups)==1 and groups[0].get('AlbId',self.config['load_balancer_id'])==self.config['load_balancer_id'],'ALB身份不符')
@@ -130,12 +141,30 @@ class Cluster:
    self.record('rolling_complete')
    return final
   except Exception:
+   self.check_lease()
    current=self.action(serving,'inspect')
    require(not current['quiescing'],'没有可自动恢复权重的已知健康节点，保留现场')
    self.select_serving(serving)
    self.record('failure_preserved_serving_node',node=serving)
    raise
 
+
+def release_lease(lock):
+ try:
+  lock.stdin.close()
+ except BrokenPipeError:
+  pass
+ try:
+  lock.wait(timeout=15)
+ except subprocess.TimeoutExpired:
+  # Only terminate the SSH process this release started. Its remote flock is
+  # released by disconnecting; a later release must still acquire its own lock.
+  lock.terminate()
+  try:
+   lock.wait(timeout=5)
+  except subprocess.TimeoutExpired:
+   lock.kill()
+   lock.wait(timeout=5)
 
 def main():
  p=argparse.ArgumentParser();p.add_argument('--stage',action='store_true');p.add_argument('--bundle');p.add_argument('--release');p.add_argument('--probe-file');p.add_argument('--receipt');p.add_argument('--plan',action='store_true');p.add_argument('--prepare-only',action='store_true');p.add_argument('--bootstrap-stage',action='store_true');a=p.parse_args();os.umask(0o077)
@@ -150,16 +179,21 @@ def main():
   for n in config['nodes']:cluster.action(n,'inspect')
  # Cluster-wide lock is held by a live SSH flock process, released when this process exits.
  lockcmd=shlex.join(['flock','-n','/run/lock/aistar-cluster-release.lock','sh','-c','printf locked; cat >/dev/null'])
- lock=subprocess.Popen(['ssh','-i',config['ssh_key'],'-o','BatchMode=yes','root@'+config['nodes']['a']['host'],lockcmd],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
- require(lock.stdout.read(6)==b'locked','已有发布运行，不接管')
+ lock=subprocess.Popen(['ssh','-i',config['ssh_key'],'-o','BatchMode=yes','-o','ConnectTimeout=10',
+     '-o','ServerAliveInterval=10','-o','ServerAliveCountMax=3','root@'+config['nodes']['a']['host'],lockcmd],
+     stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
  try:
+  ready=select.select([lock.stdout],[],[],15)[0]
+  require(ready and os.read(lock.stdout.fileno(),6)==b'locked','无法取得发布锁，保持现有流量')
+  cluster.release_lock=lock
+  cluster.check_lease()
   cluster.install(pathlib.Path(a.bundle).resolve(),a.release)
   if a.prepare_only:result={'prepared':True}
   elif a.bootstrap_stage:
    result={n:cluster.action(n,'start',a.release) for n in ['a','b']};cluster.weights(DUAL_ACTIVE);time.sleep(16);cluster.probe_dual(authenticated=False);cluster.record('bootstrap_complete')
   else:require(a.probe_file,'缺少受保护TLS探针配置');result=cluster.rolling(a.release)
   receipt={'completed_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'mode':mode,'events':cluster.events,'result':result,'database_changed':False,'dns_changed':False};pathlib.Path(a.receipt).write_text(json.dumps(receipt,indent=2))
- finally:lock.stdin.close();lock.wait(timeout=15)
+ finally:release_lease(lock)
 if __name__=='__main__':
  try:main()
  except Exception as e:print('发布中止：'+str(e),file=sys.stderr);sys.exit(1)
