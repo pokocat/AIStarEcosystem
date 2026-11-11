@@ -8,6 +8,8 @@ AI 视频“重新编辑”统一入口：[浏览器验收与发布记录](relea
 
 Seedance 官方人像素材：[当前实现与边界](video-asset-library.md)；[正式发布记录](releases/ark-portrait-production-release-20261109.md)；[凭据切换及真实接口验收](releases/ark-bingbing-key-and-portrait-preparation-20261109.md)。已发布并绑定 Fast / Mini；真人刷脸和成片待验收，last-reviewed：2026-11-09。
 
+Studio 人像审核自动续跑与超时后单段重试：[生产发布及原任务验收](releases/studio-portrait-resume-release-20261111.md)，last-reviewed：2026-11-11。
+
 > 单页地图。任何 agent / 新人进仓库先开本文，按「想做什么」找到对应真源。
 > last-reviewed：**2026-10-29**（文档整理：`docs/` 分出 `runbooks/` / `audits/` / `archive/` 三个子目录，去掉 `[Fabel5]` 前缀，
 > 根目录 `DEPLOYED.md` 并入 clip 方案；上一次内容性更新是 2026-10-07 / v0.201）。
