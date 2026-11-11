@@ -1209,9 +1209,14 @@ public class DirectorService {
                         "请先生成或上传「" + a.path("name").asText() + "」的主视图，其他视角将以它为参考");
                 prompts().requireStage(StudioPromptCallPoints.DIRECTOR_SCENE_VIEWS);
                 String prompt = DirectorPrompts.sceneViewsPrompt(prompts(), c.path("settings"), a, null);
+                // options.view：只重新生成这一个视角（2026-11-11 用户要求）。照样出同一张 2×2 整图、价格不变，回投时只放这一格，另外两个视角不动。
+                String only = o.path("view").asText("");
+                if (!only.isEmpty() && !DirectorSceneViews.LABELS.containsKey(only)) throw invalid("不支持的视角");
                 List<Bound> refs = List.of(new Bound(targetId, a.path("name").asText() + "的主视图", "scene", main, "图1"));
-                return image(userId, w, c, "views:" + targetId, requestId, prompt, refs, sizeFor(c, "scene"),
+                String runId = image(userId, w, c, "views:" + targetId, requestId, prompt, refs, sizeFor(c, "scene"),
                         viewsFingerprint(prompt, main), pipeline, billing, maxCost, null);
+                if (!only.isEmpty() && c.path("taskMeta").path(runId) instanceof ObjectNode vm) vm.put("view", only);
+                return runId;
             }
             case "board" -> {
                 ObjectNode clip = find(c, "clips", targetId, "这个片段");
@@ -5321,17 +5326,20 @@ public class DirectorService {
         String main = adoptedKey(a.path("image"));
         String prompt = DirectorPrompts.sceneViewsPrompt(prompts(), c.path("settings"), a, null);
         boolean stale = !meta.hasNonNull("fingerprint") || main == null || !meta.path("fingerprint").asText().equals(viewsFingerprint(prompt, main));
+        String only = meta.path("view").asText("");
         int i = 0;
         for (String view : DirectorSceneViews.LABELS.keySet()) {
+            byte[] cell = cells.get(i++);
+            if (!only.isEmpty() && !only.equals(view)) continue; // 只重新生成一个视角：其他两格不进版本
             ObjectNode holder = viewHolder(a, view);
-            var stored = storage.store(cells.get(i++), com.aistareco.aep.ipstudio.service.IpProjectService.CATEGORY_GEN, w.getOwnerUserId(), "png", "image/png");
+            var stored = storage.store(cell, com.aistareco.aep.ipstudio.service.IpProjectService.CATEGORY_GEN, w.getOwnerUserId(), "png", "image/png");
             ObjectNode slot = (ObjectNode) holder.path(view);
             ObjectNode m = addCandidate(c, slot, stored.key(), run.getId(), "generated");
             copyMeta(m, meta, output);
             if (stale) m.put("stale", true);
             else slot.put("adoptedId", m.path("id").asText()).put("adoptedBy", "user");
         }
-        if (stale) notice(c, "「" + a.path("name").asText() + "」生成期间设置有变动，新的四视图已存入历史版本，未自动采用");
+        if (stale) notice(c, "「" + a.path("name").asText() + "」生成期间设置有变动，新的" + (only.isEmpty() ? "四视图" : DirectorSceneViews.LABELS.get(only) + "视角") + "已存入历史版本，未自动采用");
     }
 
     private static void copyMeta(ObjectNode m, JsonNode meta, JsonNode output) {

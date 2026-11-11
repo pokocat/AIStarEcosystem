@@ -133,6 +133,19 @@ test("a scene opens on all views: the main view above, the other three below, an
   expect(within(screen.getByRole("region", { name: "金山寺·反打的图" })).getByRole("group", { name: "生成记录" })).toBeTruthy();
 });
 
+// 2026-11-11 用户反馈：在右立面点「重新生成」，三个视角一起换了。单个视角里只换这一个，三个一起换留在「全部视角」。
+test("inside one view, regenerate only replaces that view", async () => {
+  api.runTask.mockResolvedValue(work);
+  const views = { reverse: withImage("rev"), left: withImage("lft"), right: withImage("rgt") };
+  const full = { ...work, assets: work.assets.map((a: any) => a.id === "s1" ? { ...a, views } : a) };
+  render(<DirectorAssets {...props} work={full}/>);
+  fireEvent.click(screen.getByRole("button", { name: "查看金山寺" }));
+  fireEvent.click(screen.getByRole("tab", { name: /右立面/ }));
+  expect(screen.queryByRole("button", { name: "重新生成三个视角" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "重新生成" }));
+  await waitFor(() => expect(api.runTask).toHaveBeenCalledWith("w", expect.objectContaining({ type: "scene-views", targetId: "s1", options: { view: "right" } })));
+});
+
 test("all views offers the main view first when the scene has none yet", async () => {
   api.runTask.mockResolvedValue(work);
   const bare = { ...work, assets: work.assets.map((a: any) => a.id === "s1" ? { ...a, image: empty } : a) };

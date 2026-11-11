@@ -389,6 +389,33 @@ class DirectorFormsAndViewsTest {
         verify(storage, times(3)).store(any(byte[].class), any(), eq(USER), eq("png"), eq("image/png"));
     }
 
+    /** 只重新生成一个视角（2026-11-11 用户反馈：点「重新生成」三个视角全换了）：同一张整图、同价，只放这一格。 */
+    @Test void regeneratingOneViewOnlyReplacesThatView() throws Exception {
+        seed();
+        String sceneId = assetId("金山寺");
+        assertThrows(BusinessException.class, () -> service.task(USER, work.getId(),
+                new DirectorService.TaskRequest("scene-views", sceneId, "v0", om.readTree("{\"view\":\"top\"}"), null, 16L)));
+        service.task(USER, work.getId(), new DirectorService.TaskRequest("scene-views", sceneId, "v1", om.readTree("{\"view\":\"right\"}"), null, 16L));
+        assertEquals("views:" + sceneId, submitted().nodeId());
+
+        Path grid = Files.createTempFile("grid", ".png");
+        Files.write(grid, png(200, 100));
+        when(storage.openForRead("gen/grid.png")).thenReturn(grid);
+        IpRun run = new IpRun();
+        run.setId("run-views:" + sceneId); run.setProjectId(work.getId()); run.setNodeId("views:" + sceneId); run.setOwnerUserId(USER);
+        run.setKind("generate"); run.setStatus(IpRun.STATUS_DONE); run.setStage("done");
+        run.setOutputJson("{\"candidates\":[{\"key\":\"gen/grid.png\"}]}");
+        when(runs.findByProjectIdOrderByCreatedAtDesc(any())).thenReturn(new ArrayList<>(List.of(run)));
+        when(runs.findById(any())).thenReturn(Optional.of(run));
+
+        JsonNode views = asset(service.get(USER, work.getId()), "金山寺").path("views");
+        assertEquals(1, views.path("right").path("candidates").size());
+        assertEquals("user", views.path("right").path("adoptedBy").asText());
+        assertEquals(0, views.path("reverse").path("candidates").size(), "其他视角不动");
+        assertEquals(0, views.path("left").path("candidates").size(), "其他视角不动");
+        verify(storage, times(1)).store(any(byte[].class), any(), eq(USER), eq("png"), eq("image/png"));
+    }
+
     @Test void formsFoundByExtractionReachTheReviewAndAreSavedOnTheCharacter() throws Exception {
         seed();
         IpRun run = new IpRun();
