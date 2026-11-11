@@ -275,6 +275,25 @@ test("视频：爆款复刻直接受理后台任务，保留原片与要求，�
   expect(api.submit).not.toHaveBeenCalled(); expect(window.location.search).toContain("task=PEX-task");
 });
 
+// 2026-11-11 用户要求：自动检查做成开关，默认开；关掉时请求里带 autoCheck:false（服务端不放检查步骤，也不重出）
+test("视频：爆款复刻的自动检查可以关掉，关掉的选择随请求发出", async () => {
+  window.history.replaceState(null, "", "/video?scene=recreation");
+  api.videoModels.mockResolvedValue([H3]);
+  api.importMedia.mockResolvedValue({ key: "ipstudio/media/u/v.mp4", url: "blob:v", mediaType: "video", mimeType: "video/mp4", bytes: 1, fileName: "v.mp4" });
+  await act(async () => { render(<SceneVideoStudio/>); });
+  const send = () => screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement;
+  await waitFor(() => expect(screen.getByText("请添加参考视频")).toBeTruthy());
+  await pickFromLibrary("参考视频");
+  const check = screen.getByRole("group", { name: "自动检查" });
+  expect(within(check).getByRole("button", { name: "开启" }).getAttribute("aria-pressed")).toBe("true");
+  fireEvent.click(within(check).getByRole("button", { name: "关闭" }));
+  expect(within(check).getByRole("button", { name: "关闭" }).getAttribute("aria-pressed")).toBe("true");
+  fillField(screen.getByRole("textbox", { name: "想做的视频" }), "换成我的面霜");
+  await waitFor(() => expect(send().disabled).toBe(false));
+  await act(async () => { fireEvent.click(send()); });
+  expect(api.taskStart).toHaveBeenCalledWith("IPP-1", expect.objectContaining({ configuration: expect.objectContaining({ autoCheck: false }) }));
+});
+
 for (const mode of ['depth', 'replacement'] as const) test(`视频工具：${mode} 保存原片和替换图，直接受理后台任务并保持当前模式`, async () => {
   window.history.replaceState(null, '', `/video?scene=recreation&tool=${mode}`);
   api.videoModels.mockResolvedValue([H3]);

@@ -336,6 +336,25 @@ class StudioRecreationTaskPlanTest {
         assertEquals("depth-control",v2.path("strategy").path("method").asText());
     }
 
+    /** 页面上关了「自动检查」（2026-11-11 用户要求做成开关）：开场画面、场景图和每段视频都不检查，也就不会自动重出。 */
+    @Test
+    void turningAutoCheckOffLeavesNoCheckSteps() throws Exception {
+        ObjectNode film=(ObjectNode)film();
+        var frames=film.putArray("frames");
+        for(int n=1;n<=3;n++)frames.addObject().put("shot",n).put("at",n).put("storageKey","ipstudio_gen/u/frame-"+n+".jpg");
+        for(String method:List.of("recreation","depth")) {
+            var task=StudioRecreationTaskPlan.prepare(film,materials(),"ai-h3",h3(),"768p","9:16",null,FRAMES,6,"换成小美",method,SEGMENTS);
+            task.put("maxSteps",28);
+            StudioRecreationTaskPlan.Texts texts=(stage,vars)->StudioPromptCallPoints.RECREATION_KEYFRAME.equals(stage)?"图":StudioRecreationTaskPlan.LIBRARY.render(stage,vars);
+            assertTrue(StreamSupport.stream(StudioRecreationTaskPlan.build(task,answer(),texts).path("steps").spliterator(),false)
+                    .anyMatch(st->"check".equals(st.path("operation").asText())),method+"：默认有检查");
+            task.put("autoCheck",false);
+            var plan=StudioRecreationTaskPlan.build(task,answer(),texts);
+            assertTrue(StreamSupport.stream(plan.path("steps").spliterator(),false).noneMatch(st->"check".equals(st.path("operation").asText())),method+"：关掉后没有检查");
+            assertTrue(StreamSupport.stream(plan.path("steps").spliterator(),false).anyMatch(st->"assemble".equals(st.path("operation").asText())));
+        }
+    }
+
     @Test
     void replacementGivesTheOriginalSegmentToTheVideoModelAndAddsNoCaptions() throws Exception {
         var task=StudioRecreationTaskPlan.prepare(film(),materials(),"ai-h3",h3(),"768p","9:16",null,FRAMES,6,"","replacement",SEGMENTS);

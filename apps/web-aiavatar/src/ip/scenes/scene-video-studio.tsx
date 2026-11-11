@@ -123,6 +123,8 @@ export function SceneVideoStudio() {
   const [modelId, setModelId] = useState<string>();
   const [tier, setTier] = useState<string>();
   const [optimize, setOptimize] = useState(true);
+  // 爆款复刻的「自动检查」：跟着草稿存，默认开（2026-11-11 用户要求做成开关）
+  const [autoCheck, setAutoCheck] = useState(true);
   // 生成过一次就重新报价：可能刚设了默认付款账户，模型赠款也用掉了一些。
   const [priceRevision, setPriceRevision] = useState(0);
   const [hint, setHint] = useState("");
@@ -258,7 +260,7 @@ export function SceneVideoStudio() {
       // 离开时的条件放回来：没发的那句话、选项、台词语言、清晰度、时长、画面、要不要先优化，停在「生成视频」时连改了一半的脚本一起
       // （存在草稿里，见 sceneVideoState；老草稿按最近一版脚本记的推断）。改稿因此沿用写那一版时的选项，不会悄悄回到默认值。
       const state = openedVideoState(project.doc, videoDefaults(from));
-      setCloneMode(cloneModeOf(state.cloneMode));
+      setCloneMode(cloneModeOf(state.cloneMode)); setAutoCheck(state.autoCheck !== false);
       setText(state.edit ? state.edit.prompt ?? "" : state.text); setPicked(state.options); setLanguage(state.language!); setTier(state.tier); setOptimize(state.optimize!);
       // 草稿里记过时长才算用户定的；没记过的按场景默认值，同样先按模型单段上限出。
       setDuration(state.duration!); setRatio(state.ratio!); durationTouched.current = !!project.doc.sceneVideoState?.duration;
@@ -708,8 +710,8 @@ export function SceneVideoStudio() {
   // 页面上的条件写进草稿（有草稿时）：刷新、从「最近」再打开都从离开的地方接着来。素材另记在 sceneInputs、视频模型在 sceneVideoModel。
   // 采用过脚本时，编辑框里的就是（可能改过的）脚本，记成 edit；没采用时记成那句想法。
   const videoState = useMemo<StudioSceneVideoState>(() => ({ text: scriptId ? "" : text, options: picked, language, ...(tier ? { tier } : {}), duration, ratio, optimize,
-    ...(scene?.skill === RECREATION ? { cloneMode } : {}),
-    ...(scriptId ? { edit: { scriptId, prompt: text } } : {}) }), [text, picked, language, tier, duration, ratio, optimize, scriptId, cloneMode, scene?.skill]);
+    ...(scene?.skill === RECREATION ? { cloneMode, ...(autoCheck ? {} : { autoCheck: false }) } : {}),
+    ...(scriptId ? { edit: { scriptId, prompt: text } } : {}) }), [text, picked, language, tier, duration, ratio, optimize, scriptId, cloneMode, autoCheck, scene?.skill]);
   useSceneStateSave("sceneVideoState", draft, videoState, persist, doc => openedVideoState(doc, videoDefaults(findVideoScene(catalogRef.current, draft?.sceneId))));
   const materials: SceneVideoMaterial[] = useMemo(() => {
     const nodes = doc.nodes as CanvasNodeData[];
@@ -1071,7 +1073,7 @@ export function SceneVideoStudio() {
         const clientRequestId = nanoid(), cap = taskQuote!.price!.cap;
         const configuration: StudioSegmentedVideoRequest = { clientRequestId, sceneId: scene.id, text: text.trim(), hasScript: !!scriptId,
           options: sceneOptionValues(scene.options, picked), language, duration: kind === 'direct' ? usedDuration : duration, ratio,
-          model: taskModel, tier: usedTier, optimize: optimize || depthClone, materials, budgetCap: cap };
+          model: taskModel, tier: usedTier, optimize: optimize || depthClone, materials, budgetCap: cap, ...(recreation && !autoCheck ? { autoCheck: false } : {}) };
         const native = kind === 'direct' ? addVideoRow({ ...draftRef.current!.doc, nodes }, { title: scene.title, prompt: sentPrompt, script: text.trim(), scriptId,
           refIds: plan!.used.map(m => placed.find(p => p.media.key === m.key)?.node.id).filter((id): id is string => !!id),
           video: settings!, durationSec: usedDuration, aspectRatio: ratio, model: taskModel, maxCost: videoQuote ?? undefined }).request : undefined;
@@ -1297,7 +1299,7 @@ export function SceneVideoStudio() {
       </div>
 
       : <div className="scene-compose">
-        {recreation && <CloneModePicker mode={cloneMode} disabled={busy || uploading !== undefined}
+        {recreation && <CloneModePicker mode={cloneMode} disabled={busy || uploading !== undefined} autoCheck={autoCheck} onAutoCheck={setAutoCheck}
           advice={advice && advice.key === video?.key ? advice.value : undefined} onChange={mode => {
           setCloneMode(mode); setScriptId(undefined); setHint(''); writeQuery(scene.id, draftRef.current?.id, mode);
         }}/>}

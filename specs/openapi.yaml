@@ -1598,6 +1598,7 @@ components:
         materials: { type: array, items: { $ref: '#/components/schemas/StudioSegmentedMaterial' } }
         budgetCap: { type: integer, format: int64 }
         billing: { type: object, additionalProperties: true }
+        autoCheck: { type: boolean, description: 爆款复刻每段生成后自动检查，人或商品没换对重新生成一次；不写算开，false 时不检查也不重出。 }
     StudioSegmentedVideoPrice:
       type: object
       required: [segments, boards, boardReview, videoCost, boardCost, textCost, estimated, cap]

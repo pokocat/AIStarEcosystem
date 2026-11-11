@@ -35,3 +35,8 @@ html[data-layout="desktop"] .studio-toolbox { grid-template-columns: repeat(3, m
 .studio-clone-facts > div { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; }
 .studio-clone-facts dt { color: #1f2430; font-weight: 500; }
 .studio-clone-facts dd { margin: 0; overflow-wrap: anywhere; }
+/* 爆款复刻的「自动检查」开关：方式说明下面一行，选项沿用 .scene-choice-row */
+.studio-clone-check { display: grid; grid-template-columns: auto minmax(0, 180px); align-items: center; gap: 6px 12px; margin-top: 10px; }
+.studio-clone-check > span { color: #1f2430; font-size: 12px; font-weight: 500; }
+.studio-clone-check > p { grid-column: 1 / -1; margin: 0; color: #6b7280; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.studio-clone-check button:disabled { cursor: not-allowed; opacity: .6; }

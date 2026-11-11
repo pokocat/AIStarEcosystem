@@ -295,7 +295,9 @@ public final class StudioRecreationTaskPlan {
         var clipOrder=OM.createArrayNode();
         var captions=OM.createArrayNode();
         double last=0;
-        Map<String,Integer> checkedKeyframes=texts==null?Map.of():keyframeChecks(task);
+        // 用户关了「自动检查」：开场画面、场景图和成片都不检查
+        boolean autoCheck=task.path("autoCheck").asBoolean(true);
+        Map<String,Integer> checkedKeyframes=texts==null||!autoCheck?Map.of():keyframeChecks(task);
         List<String> sceneDeps=new ArrayList<>();
         for(JsonNode u:task.path("units")) {
             int no=u.path("no").asInt();
@@ -384,8 +386,8 @@ public final class StudioRecreationTaskPlan {
                 } else bindings.addObject().put("nodeId",r.path("nodeId").asText()).put("role",r.path("role").asText()).put("order",r.path("order").asInt());
             }
             clipOrder.addObject().put("stepId",id);
-            // 出片后自动看一遍：替换的人和物有没有当主体出现、原片的动作和看点做出来没有（不合格自动重出一次，StudioSegmentedRun）
-            {
+            // 出片后自动看一遍：替换的人和物有没有当主体出现、原片的动作和看点做出来没有（人或商品没换对自动重出一次，StudioSegmentedRun）
+            if(autoCheck){
                 ObjectNode check=steps.addObject().put("id","c"+no).put("operation","check").put("title",text(w.path("title"),u.path("title").asText("第 "+no+" 段"),50)+" · 检查")
                         .put("prompt",videoCheck(library,u,makeKeyframes&&!depth))
                         .put("execution","auto");

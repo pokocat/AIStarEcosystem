@@ -632,6 +632,8 @@ export interface StudioSegmentedVideoRequest {
   options?: Record<string, string>; language?: string; duration: number; ratio: string;
   /** 所选视频模型；不写用默认。 */
   model?: string; tier?: string; optimize?: boolean; materials: StudioSegmentedMaterial[];
+  /** 爆款复刻：每段生成后自动检查，人或商品没换对重新生成一次（不写算开）。关掉时不检查也不重出。 */
+  autoCheck?: boolean;
   /** 用户看到的「最多」（StudioSegmentedVideoPrice.cap）；服务端重新报价，对不上 409 STUDIO_PRICE_CHANGED。 */
   budgetCap: number; billing?: EnterpriseBillingSelection;
 }

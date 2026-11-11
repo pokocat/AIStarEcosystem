@@ -30,9 +30,17 @@ class StudioRecreationAutoRedoTest {
         return state;
     }
 
-    private StudioSegmentedRun run() {
+    /** 检查判人或商品没换对（subject-replaced fail）：这时才重出。 */
+    private StudioSegmentedRun run() {return run("subject-replaced");}
+
+    /** failedItem：检查里判 fail 的那一项。 */
+    private StudioSegmentedRun run(String failedItem) {
         var outputs = mock(StudioPlanOutputs.class);
-        when(outputs.chosenRun(anyString(), anyString(), any())).thenReturn(Optional.empty());
+        when(outputs.chosenRun(anyString(), anyString(), any())).thenReturn(Optional.of("r2"));
+        var output = om.createObjectNode();
+        output.putObject("check").putArray("items").addObject().put("id", failedItem).put("status", "fail").put("suggestion", "第1镜：她手里拿的是图2 的绿瓶");
+        var dto = new com.aistareco.aep.ipstudio.dto.IpStudioDtos.IpRunDto("r2", "p", "n", "studio-check", "done", "done", 100, 4, null, null, om.createObjectNode(), output, null, null, null);
+        when(outputs.run(anyString(), anyString(), anyString())).thenReturn(Optional.of(dto));
         return new StudioSegmentedRun(outputs, om);
     }
 
@@ -96,6 +104,17 @@ class StudioRecreationAutoRedoTest {
             ObjectNode definition = om.createObjectNode().put("operation", "video").put("prompt", "第1镜（0–3秒）：她举起瓶子");
             definition.putObject("settings");
             assertTrue(run().materialize(execution(), state, v1, definition).path("prompt").asText().endsWith("她手里拿的是图2 的绿瓶。"), kind + "：重出带上检查意见");
+        }
+    }
+
+    /** 2026-11-11 用户定：只有人或商品没换对才重出；背景有字、景别、手势这类不合格只记下来（真跑里重出一次照样不合格，费用翻倍）。 */
+    @Test
+    void onlyAWrongPersonOrProductIsRedone() {
+        for (String other : java.util.List.of("scene-and-action", "old-subject-residue", "character-consistency")) {
+            var state = state("depth", "fail");
+            run(other).prepare(execution(), state);
+            assertEquals("done", PlanState.step(state, "production", "v1").path("status").asText(), other + "：不重出");
+            assertTrue(PlanState.step(state, "production", "c1").path("acknowledged").asBoolean());
         }
     }
 

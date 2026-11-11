@@ -44,8 +44,10 @@ export function CloneModeFacts({ mode, withSource }: { mode: StudioVideoCloneMod
   </dl>;
 }
 
-export function CloneModePicker({ mode, disabled, onChange, advice }: {
+export function CloneModePicker({ mode, disabled, onChange, advice, autoCheck = true, onAutoCheck }: {
   mode: StudioVideoCloneMode; disabled: boolean; onChange: (mode: StudioVideoCloneMode) => void; advice?: StudioCloneAdvice;
+  /** 「自动检查」：每段生成后检查人和商品是否换对，没换对重新生成一次（服务端 StudioSegmentedRun）。不传 onAutoCheck 就不显示。 */
+  autoCheck?: boolean; onAutoCheck?: (on: boolean) => void;
 }) {
   const recommended = advice ? cloneTool(advice.recommended) : undefined;
   // 元素替换看的是想不想保留原片画面，不按视频推荐；其余两种按切镜结果说明为什么
@@ -62,5 +64,10 @@ export function CloneModePicker({ mode, disabled, onChange, advice }: {
     </div>
     {note && <p className="studio-clone-advice">{note}</p>}
     <CloneModeFacts mode={mode} withSource/>
+    {onAutoCheck && <div className="studio-clone-check" role="group" aria-label="自动检查"><span>自动检查</span>
+      <div className="scene-choice-row">
+        <button type="button" disabled={disabled} aria-pressed={autoCheck} onClick={() => onAutoCheck(true)}>开启</button>
+        <button type="button" disabled={disabled} aria-pressed={!autoCheck} onClick={() => onAutoCheck(false)}>关闭</button></div>
+      <p>{autoCheck ? '每段生成后检查人和商品是否换对，没换对会自动重新生成一次，费用另计。' : '不检查，也不会自动重新生成。'}</p></div>}
   </div>;
 }

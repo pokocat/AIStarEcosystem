@@ -993,6 +993,8 @@ public class StudioWorkflowService {
                 config.path("tier").asText(null),config.path("ratio").asText("9:16"),optimize,
                 studyNode+"-f",Math.max(0,maxSteps-segments*2-1),config.path("text").asText(""),method,studyNode+"-s");
         prepared.put("maxSteps",maxSteps);
+        // 页面上的「自动检查」开关（不写算开）：关掉时方案里不放检查步骤，也就不会自动重出
+        if(config.path("autoCheck").isBoolean()&&!config.path("autoCheck").asBoolean())prepared.put("autoCheck",false);
         execution.set("recreationTask",prepared);
         // 方案只能引用这次的素材
         Set<String> allowed=new LinkedHashSet<>(request.contextNodeIds()==null?List.of():request.contextNodeIds());

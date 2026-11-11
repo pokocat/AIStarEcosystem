@@ -77,17 +77,23 @@ public class StudioSegmentedRun {
         if(state.has("segmented"))skipUnusedBoards(e, state);
     }
 
-    /** 分镜图不合格重出一次，连检查一起再来；判断不了、或者重出过了，接着往下做。 */
+    /**
+     * 不合格重出一次，连检查一起再来；判断不了、或者重出过了，接着往下做。
+     * 视频页的爆款复刻只在人或商品没换对（subject-replaced 判 fail）时重出（2026-11-11 用户定）：真跑里三段都因「背景告示还有字」
+     * 「景别变了」「手势不一样」这类判不合格、重出一次照样不合格，制作费翻了一倍。其它项不合格只记下来，不花钱重出。
+     */
     private void resolveCheck(IpPlanExecution e, ObjectNode state, ObjectNode check) {
         ObjectNode target = PlanState.step(state, e.getStage(), check.path("definition").path("settings").path("targetStepId").asText());
+        JsonNode checked = outputs.chosenRun(e.getOwnerUserId(), e.getProjectId(), check)
+                .flatMap(run -> outputs.run(e.getOwnerUserId(), e.getProjectId(), run)).map(dto -> dto.output()).orElse(null);
+        boolean onlySubject = StudioCloneVideoPlan.method(state.path("videoTask").path("kind").asText());
         boolean canRedo = "fail".equals(check.path("checkStatus").asText()) && target != null && "done".equals(target.path("status").asText())
-                && !target.path("autoFixed").asBoolean(false);
+                && !target.path("autoFixed").asBoolean(false) && (!onlySubject || subjectWrong(checked));
         if (!canRedo) {
             check.put("acknowledged", true);
             return;
         }
-        String hint = outputs.chosenRun(e.getOwnerUserId(), e.getProjectId(), check)
-                .flatMap(run -> outputs.run(e.getOwnerUserId(), e.getProjectId(), run)).map(dto -> problems(dto.output())).orElse("");
+        String hint = checked == null ? "" : problems(checked);
         log.info("[segmented] board redo execution={} step={}", e.getId(), target.path("id").asText());
         target.put("autoFixed", true).put("fixHint", hint);
         target.remove(List.of("videoRequest", "retryVideoInputs", "notBefore"));
@@ -95,6 +101,14 @@ public class StudioSegmentedRun {
         again(check);
         check.remove("checkStatus");
         check.remove("checkTargetRunId");
+    }
+
+    /** 检查判人或商品没换对：subject-replaced 这一项是 fail。 */
+    static boolean subjectWrong(JsonNode output) {
+        if (output == null) return false;
+        for (JsonNode item : output.path("check").path("items"))
+            if ("subject-replaced".equals(item.path("id").asText()) && "fail".equals(item.path("status").asText())) return true;
+        return false;
     }
 
     private static String problems(JsonNode output) {
