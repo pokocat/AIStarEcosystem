@@ -38,6 +38,13 @@ export type StudioCreditShortageInput = {
   grantHint?: string;
   /** 页面能接着生成（积分到账后显示「继续生成」）。 */
   canRetry?: boolean;
+  /** 差的是哪一笔（「优化提示词」）：不写就说「本次」。 */
+  subject?: string;
+  /**
+   * 差的是「智能优化」那一笔时给：关掉优化就不用付它。videoWalletCredits 是视频本身要付的普通积分（全由赠款付就是 0），
+   * 付得起就把「按原文生成」当主操作。
+   */
+  withoutOptimize?: { videoWalletCredits: number };
 };
 
 const n = (value: number) => value.toLocaleString("zh-CN");
@@ -126,7 +133,7 @@ function amountsIn(reason: string | undefined) {
  * 差多少。报价的 walletCredits 是要付的钱，写「需付」；服务端原话里的数可能是文字任务的冻结额，不是价格，只写「需要」。
  * opening 是打开时的余额：服务端没说要多少时，余额涨了（充过值）就让用户再试，真不够服务端会再拒绝，不会误扣。
  */
-export function shortageSummary(input: Pick<StudioCreditShortageInput, "quote" | "reason">, balance: number | undefined, opening?: number, modelName?: string) {
+export function shortageSummary(input: Pick<StudioCreditShortageInput, "quote" | "reason" | "subject">, balance: number | undefined, opening?: number, modelName?: string) {
   const told = amountsIn(input.reason);
   const required = input.quote?.walletCredits ?? told?.required;
   const available = balance ?? told?.available;
@@ -136,7 +143,7 @@ export function shortageSummary(input: Pick<StudioCreditShortageInput, "quote" |
     return { text: `当前可用 ${n(available)} 积分，不足以完成本次生成。`, enough: false };
   }
   const verb = input.quote ? "需付" : "需要";
-  const lead = modelName ? `「${modelName}」本次` : "本次";
+  const lead = input.subject ?? (modelName ? `「${modelName}」本次` : "本次");
   if (available === undefined) return { text: `${lead}${verb} ${n(required)} 积分，当前付款账户的积分不足。`, enough: false };
   const scoped = input.quote?.scopedCredits ?? 0;
   const need = scoped > 0 ? `模型赠款抵扣 ${n(scoped)} 积分后，${lead}还${verb} ${n(required)} 积分` : `${lead}${verb} ${n(required)} 积分`;
@@ -211,7 +218,9 @@ export function StudioCreditShortageDialog({ input, onChoice }: { input: StudioC
   const summary = shortageSummary(input, balance, openingBalance.current, modelName);
   const summaries = input.grantHint && !input.modelChoices ? grantSummaries(grants) : [];
   // 只有一个主操作：有模型能全靠赠款完成时就是它（用户明明有赠款，不该把最显眼的按钮给花钱的路径），否则是充值。
-  const freeFirst = isFreeSuggestion(suggestions[0]);
+  const skip = input.withoutOptimize;
+  const skipFirst = !!skip && balance !== undefined && skip.videoWalletCredits <= balance;
+  const freeFirst = skipFirst || isFreeSuggestion(suggestions[0]);
   const close = () => onChoice({ kind: "close" });
   return <AntdTheme><Modal open title={summary.updated ? "余额已更新" : summary.enough ? "积分充足" : enterprise ? "企业积分不足" : "积分不足"} onCancel={close} getContainer={false} width={480} zIndex={1400}
     footer={<div className="studio-credit-actions">
@@ -227,6 +236,13 @@ export function StudioCreditShortageDialog({ input, onChoice }: { input: StudioC
       {loading ? <Skeleton active paragraph={{ rows: 3 }} /> : <>
         <p className="studio-credit-summary" aria-live="polite">{summary.text}{!summary.enough && "本次未扣积分。"}{enterprise && !summary.enough && "企业积分由管理员分配，请联系管理员。"}{payerUnknown && !summary.enough && "个人积分和企业积分分开计算，请查看这次选择的付款账户。"}</p>
         {summary.enough && !input.canRetry && <Alert type="success" showIcon title="请返回后重新生成。" />}
+        {!summary.enough && skip && <section aria-label="按原文生成">
+          <ul className="studio-credit-models">
+            <li><span><strong>按原文生成</strong>
+              <small>{skip.videoWalletCredits > 0 ? `不优化提示词，视频需付 ${n(skip.videoWalletCredits)} 积分。` : "不优化提示词，视频由模型赠款抵扣，无需另付积分。"}</small></span>
+              <Button size="small" type={skipFirst ? "primary" : "default"} onClick={() => onChoice({ kind: "no-optimize" })}>按原文生成</Button></li>
+          </ul>
+        </section>}
         {!summary.enough && !!suggestions.length && <section aria-label="可改用的模型">
           <h4>可改用的模型</h4>
           <ul className="studio-credit-models">

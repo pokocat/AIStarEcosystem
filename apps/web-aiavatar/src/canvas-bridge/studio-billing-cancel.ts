@@ -8,7 +8,9 @@ export type StudioCreditShortageChoice =
   | { kind: 'close' }
   /** changes：换过去会改掉的设置。有就只换模型、让用户看过再生成，没有才自动重新发起。 */
   | { kind: 'switch-model'; endpointId: string; name: string; changes?: string }
-  | { kind: 'retry' };
+  | { kind: 'retry' }
+  /** 关掉「智能优化」按原文生成：优化提示词只能用普通积分，视频本身可能全由模型赠款付。 */
+  | { kind: 'no-optimize' };
 
 export function studioCreditShortageChoice(error: unknown): StudioCreditShortageChoice | undefined {
   return isStudioBillingCancelled(error) ? (error as { creditShortage?: StudioCreditShortageChoice }).creditShortage : undefined;

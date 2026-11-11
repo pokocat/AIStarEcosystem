@@ -95,7 +95,7 @@ public class StudioPlanExecutionService {
         StudioNaturalApprovals.require(card.approvingText(),block,cap,autoFix);
         String stage=card.stage();
         BillingSelection billing=block.hasNonNull("billingSelection")?mapper.convertValue(block.path("billingSelection"),BillingSelection.class):null;
-        var active=executions.findByProjectIdAndStatusIn(projectId,ACTIVE).stream().filter(x->userId.equals(x.getOwnerUserId())).findFirst().orElse(null);
+        var active=executions.findByProjectIdAndStatusIn(projectId,ACTIVE).stream().filter(x->userId.equals(x.getOwnerUserId())&&!sceneTask(x)).findFirst().orElse(null);
         String executionId=null,approachId=null;
         if("production".equals(stage)) {
             var loaded=loadPlan(userId,projectId,card.cardPlanRunId(),card.planFingerprint(),"production");
@@ -125,7 +125,7 @@ public class StudioPlanExecutionService {
         }
         if(!StudioSkillRules.STAGES.contains(req.stage()))throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请先开始分析，再在同一次制作里确认制作阶段");
         // A production detached by a method switch (不锁方法) only finishes what it generates: it does not hold the canvas.
-        var busy=executions.findByProjectIdAndStatusIn(projectId,ACTIVE).stream().filter(e->!detached(e)).toList();
+        var busy=executions.findByProjectIdAndStatusIn(projectId,ACTIVE).stream().filter(this::holdsCanvas).toList();
         if(!busy.isEmpty())throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PLAN_EXECUTION_BUSY",BUSY_MESSAGE,
                 mapper.createObjectNode().put("executionId",busy.get(0).getId()));
         // A new execution starts in its skill's first stage: analysis for the reference-video skill, production for a
@@ -197,7 +197,9 @@ public class StudioPlanExecutionService {
             if(!projectId.equals(prior.getProjectId())||!fingerprint.equals(stored))throw changed();
             return toDto(prior);
         }
-        var busy=executions.findByProjectIdAndStatusIn(projectId,ACTIVE).stream().filter(e->!detached(e)).toList();
+        // AI 视频页的任务各自冻结了输入、不写画布（threadId 为空，没有对话投影），同一份草稿里可以同时有几条：
+        // 积分不足停在「待处理」的旧任务不能挡住新视频（2026-11-11 线上反馈），也不挡画布上的对话制作。
+        var busy=executions.findByProjectIdAndStatusIn(projectId,ACTIVE).stream().filter(this::holdsCanvas).toList();
         if(!busy.isEmpty())throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PLAN_EXECUTION_BUSY",BUSY_MESSAGE,
                 mapper.createObjectNode().put("executionId",busy.get(0).getId()));
         String id="PEX-"+UUID.randomUUID().toString().replace("-","").substring(0,20);
@@ -533,6 +535,16 @@ public class StudioPlanExecutionService {
     /** Detached from its thread by a method switch: it finishes what generates, holds neither the thread nor the canvas. */
     boolean detached(IpPlanExecution e) {
         return e.getThreadId()==null&&PlanState.parse(mapper,e.getStepsJson()).hasNonNull("detachedThreadId");
+    }
+    /** Started from the AI video page (startVideoTask): its own frozen input, no thread, never writes the canvas. */
+    boolean sceneTask(IpPlanExecution e) {
+        if(e.getThreadId()!=null)return false;
+        var state=PlanState.parse(mapper,e.getStepsJson());
+        return state.has("videoTask")||state.has("segmented");
+    }
+    /** An execution that owns the canvas: only one at a time. A detached production and a scene task do not. */
+    private boolean holdsCanvas(IpPlanExecution e) {
+        return !detached(e)&&!sceneTask(e);
     }
     /** A step or a dialogue child of this execution is generating right now (submitted or running). */
     static boolean generating(JsonNode state) {

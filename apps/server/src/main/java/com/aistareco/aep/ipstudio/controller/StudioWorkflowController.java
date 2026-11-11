@@ -73,6 +73,12 @@ public class StudioWorkflowController {
         return ApiResponse.of(workflow.quoteVideoPrice(principal.getName(),model,mode,tier,aspectRatio,durationSec,imageRefs,videoRefs,audioRefs,
                 new com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection(payer,enterpriseId)));
     }
+    /** 「智能优化」那一笔的价：只能用普通积分，页面点生成前和视频价分开核对。只读，不冻结。 */
+    @GetMapping("/studio/video-optimize-price")
+    public ApiResponse<com.aistareco.aep.billing.service.ModelChargeService.Quote> videoOptimizePrice(Principal principal,
+            @RequestParam(defaultValue="personal") String payer,@RequestParam(required=false) String enterpriseId) {
+        return ApiResponse.of(workflow.quoteVideoRewrite(principal.getName(),new com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection(payer,enterpriseId)));
+    }
     @PostMapping("/projects/{id}/studio-image-quote")
     public ApiResponse<com.aistareco.aep.billing.service.ModelChargeService.Quote> quoteImage(Principal principal,@PathVariable String id,
             @RequestBody RunRequest request,@RequestParam(defaultValue="false") boolean freeOnly) {

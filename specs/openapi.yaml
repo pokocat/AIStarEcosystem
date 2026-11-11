@@ -15223,7 +15223,8 @@ paths:
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [clientRequestId, kind, sceneId, title, budgetCap, input], properties: { clientRequestId: { type: string, maxLength: 64 }, kind: { type: string, enum: [direct, segmented, recreation, depth, replacement] }, sceneId: { type: string }, title: { type: string, maxLength: 160 }, budgetCap: { type: integer, format: int64, minimum: 0 }, input: { type: object }, configuration: { $ref: '#/components/schemas/StudioSegmentedVideoRequest' }, video: { $ref: '#/components/schemas/StudioRunRequest' }, sourceNodeId: { type: string }, billing: { $ref: '#/components/schemas/EnterpriseBillingSelection' } } } } } }
       responses:
         '200': { description: 'ApiResponse<StudioVideoTask>; task ID, original execution and immutable input' }
-        '409': { description: 'STUDIO_PRICE_CHANGED / STUDIO_REQUEST_CHANGED / STUDIO_PLAN_EXECUTION_BUSY' }
+        '402': { description: 'MODEL_CREDITS_INSUFFICIENT：普通视频开着「智能优化」时，优化提示词那一笔（只能用普通积分）付不起；不建任务、不扣积分' }
+        '409': { description: 'STUDIO_PRICE_CHANGED / STUDIO_REQUEST_CHANGED / STUDIO_PLAN_EXECUTION_BUSY（只在画布上有进行中的对话制作时；同一草稿的视频任务彼此不挡）' }
   /v1/ip-studio/video-tasks:
     get:
       tags: [ipstudio]
@@ -18164,6 +18165,26 @@ paths:
       responses:
         '200':
           description: 这条视频的报价（标准价、优惠、折后费用、模型赠款抵扣、需付普通积分）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: {$ref: '#/components/schemas/ModelBillingQuote'}
+  /v1/ip-studio/studio/video-optimize-price:
+    get:
+      tags: [ipstudio]
+      operationId: ipStudioVideoOptimizePrice
+      description: >-
+        「智能优化」（出片前用文字模型改写提示词）这一笔的报价（2026-11-11）。改写用独立的文字模型，只能用普通积分，视频的模型赠款付不了它；
+        按改写的冻结上限、这次的付款账户报价，canAfford=false 且 unavailableCode=MODEL_CREDITS_INSUFFICIENT 时，AI 视频页提示改用「按原文生成」或充值。
+        只读：不创建任务、不冻结。测试响应模式下 400 MODEL_QUOTE_NOT_SUPPORTED。建任务时服务端按同一笔再核对一次（付不起 402 MODEL_CREDITS_INSUFFICIENT，不建任务）。
+      parameters:
+      - {in: query, name: payer, schema: {type: string, enum: [personal, enterprise], default: personal}}
+      - {in: query, name: enterpriseId, schema: {type: string}, description: payer=enterprise 时必填}
+      responses:
+        '200':
+          description: 优化提示词这一笔的报价（冻结上限、需付普通积分、是否付得起）
           content:
             application/json:
               schema:

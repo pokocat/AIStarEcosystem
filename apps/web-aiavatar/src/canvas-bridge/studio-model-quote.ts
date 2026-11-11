@@ -20,3 +20,9 @@ export type StudioVideoPriceQuery = { model?: string; mode: string; tier: string
 /** Read-only and GET, so it needs no draft and passes the phone-binding guard; the confirm dialog still quotes the full request. */
 export const quoteVideoPrice = (query:StudioVideoPriceQuery,billing:EnterpriseBillingSelection,signal?:AbortSignal) =>
   apiFetch<ModelBillingQuote>('/v1/ip-studio/studio/video-price',{query:{...query,payer:billing.mode,enterpriseId:billing.mode==='enterprise'?billing.enterpriseId:undefined},signal});
+/**
+ * 「智能优化」那一笔的价：改写提示词用的是另一个文字模型，只能用普通积分，视频的模型赠款付不了它（2026-11-11 线上：视频全由赠款付，
+ * 优化差 1 积分，任务一建就停在「需处理」）。点生成前和视频价分开核对。
+ */
+export const quoteVideoOptimizePrice = (billing:EnterpriseBillingSelection,signal?:AbortSignal) =>
+  apiFetch<ModelBillingQuote>('/v1/ip-studio/studio/video-optimize-price',{query:{payer:billing.mode,enterpriseId:billing.mode==='enterprise'?billing.enterpriseId:undefined},signal});

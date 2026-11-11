@@ -33,7 +33,7 @@ import { isStudioBillingCancelled, studioCreditShortageChoice } from "@/canvas-b
 import { studioChosenTextModel } from "@/canvas-bridge/studio-text-model";
 import { studioVideoError, studioVideoQuote } from "@/canvas-bridge/studio-video";
 import { describeStudioVideoPrice, studioPreviewPayer, studioVideoPriceQuery, useStudioVideoPrice } from "@/canvas-bridge/studio-video-price";
-import { quoteVideoPrice } from "@/canvas-bridge/studio-model-quote";
+import { quoteVideoOptimizePrice, quoteVideoPrice } from "@/canvas-bridge/studio-model-quote";
 import { rememberStudioBilling, STUDIO_GRANT_HINT, studioCreditCheck } from "@/canvas-bridge/studio-billing";
 import { downloadMedia } from "@/canvas-bridge/download-media";
 import { CanvasNodeType, type CanvasNodeData } from "@/canvas/types/canvas";
@@ -951,6 +951,8 @@ export function SceneVideoStudio() {
           const payer: EnterpriseBillingSelection = billing ?? { mode: 'personal' };
           const video = request.video;
           await studioCreditCheck(() => quoteVideoPrice(studioVideoPriceQuery(video.model, video.video!, video.durationSec ?? query.duration, video.aspectRatio ?? query.ratio), payer), payer, { grantHint: STUDIO_GRANT_HINT });
+          // 同「生成视频」：开着智能优化，优化那一笔只能用普通积分，另核对一次
+          if (video.video?.rewrite) await studioCreditCheck(() => quoteVideoOptimizePrice(payer), payer, { subject: "优化提示词" });
         }
         const pending = request;
         await persist(doc => ({ ...doc, sceneVideoSubmissions: [...(doc.sceneVideoSubmissions ?? []), pending] }), task.projectId);
@@ -1098,9 +1100,13 @@ export function SceneVideoStudio() {
         // 长视频和复刻是多步任务，总价只是估算，这里不拦。
         if (kind === 'direct' && !caps?.mock) {
           const billing: EnterpriseBillingSelection = request.billing ?? { mode: 'personal' };
-          await studioCreditCheck(() => quoteVideoPrice(studioVideoPriceQuery(taskModel, settings!, usedDuration, ratio), billing), billing, {
+          const paid = await studioCreditCheck(() => quoteVideoPrice(studioVideoPriceQuery(taskModel, settings!, usedDuration, ratio), billing), billing, {
             modelChoices, canRetry: true, grantHint: STUDIO_GRANT_HINT,
             verifyChoice: (model, patch) => quoteVideoPrice(studioVideoPriceQuery(model, patch?.video as StudioVideoSettings, patch?.durationSec as number, ratio), billing) });
+          // 智能优化那一笔只能用普通积分，视频可能全由模型赠款付：分开再核对一次，付不起就在这里问，不建一条一开始就停下的任务
+          // （2026-11-11 线上：视频 930 由赠款付，优化要冻结 110 普通积分、账户只有 109）。服务端建任务时也按同一笔核对。
+          if (settings!.rewrite) await studioCreditCheck(() => quoteVideoOptimizePrice(billing), billing, {
+            canRetry: true, subject: "优化提示词", withoutOptimize: { videoWalletCredits: paid?.walletCredits ?? 0 } });
         }
         await persist(doc => ({ ...doc, nodes, sceneInputs: selection(), sceneVideoModel: chosenVideo.endpointId,
           sceneVideoSubmissions: [...(doc.sceneVideoSubmissions ?? []), request!] }), projectId);
@@ -1118,7 +1124,12 @@ export function SceneVideoStudio() {
       // 提示框开着或保存期间可能已经换了草稿（浏览器前进后退）：用户的选择不作用到别的草稿上。
       if (shortage && onPage(ticket, projectId)) {
         // 这条路径没有费用确认弹窗，点生成就开始花钱：换了模型只换模型，看过按钮上的价再点。充值后继续生成是同一个模型、同一个价，才自动开始。
-        if (shortage.kind === 'switch-model') {
+        if (shortage.kind === 'no-optimize') {
+          // 用户在提示框里选的：同一个模型、同样的视频价，只是不先优化提示词，所以直接接着生成（等按新设置报好价再交）
+          setOptimize(false);
+          setNote({ text: '已改为按原文生成。' });
+          regenerate.current = { ticket, projectId, kind };
+        } else if (shortage.kind === 'switch-model') {
           chooseVideoModel(shortage.endpointId);
           setNote({ text: `已改用「${shortage.name}」${shortage.changes ? `，${shortage.changes}` : ''}。确认费用后点击「生成视频」。` });
         } else if (shortage.kind === 'retry') regenerate.current = { ticket, projectId, kind };
