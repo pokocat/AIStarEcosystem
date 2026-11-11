@@ -139,7 +139,7 @@ test('a third portrait timeout offers only the affected video segment, preservin
   render(<SceneVideoWorkspace {...props} taskId={saved.id} selected={saved}/>);
   expect(await screen.findByLabelText('第 1 段视频')).toHaveProperty('tagName', 'VIDEO');
   expect(screen.getByText('等待人像素材审核超时。已完成的片段将保留。')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: '只重试第 2 段' }));
+  fireEvent.click(screen.getByRole('button', { name: '从第 2 段继续生成' }));
   await waitFor(() => expect(api.resume).toHaveBeenCalledWith(saved.projectId, saved.id,
     expect.objectContaining({ expectedStatus: 'needs_user', retryStepId: 'v2', retryAttempt: 3 })));
 });

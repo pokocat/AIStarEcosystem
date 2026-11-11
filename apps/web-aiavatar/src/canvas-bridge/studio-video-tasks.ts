@@ -59,7 +59,7 @@ export function videoTaskResumeLabel(task: StudioVideoTask) {
   const step = videoTaskProblemStep(task);
   if (!step) return '继续生成';
   const segmentRetry = videoTaskSegmentRetry(task);
-  if (segmentRetry) return segmentRetry.segment ? `只重试第 ${segmentRetry.segment} 段` : '重试这一步';
+  if (segmentRetry) return segmentRetry.segment ? `从第 ${segmentRetry.segment} 段继续生成` : '重试这一步';
   if (step.materials?.length || step.attempt >= 3) return undefined;
   return step.status === 'failed' || step.errorCode ? '重试这一步' : '继续生成';
 }
