@@ -178,4 +178,21 @@ class DirectorImageTemplateVersionTest {
         service.refresh(c);
         assertEquals("current", check(clip().path("video")));
     }
+
+    /** 后台把视频模板停用了（版本号不变）：之后改了镜头仍要标需更新，不能拿片段上停住的旧提示词当「没改」（Codex 评审 2026-11-11）。 */
+    @Test
+    void aWithdrawnVideoTemplateStillFlagsARealChange() {
+        service.refresh(c);
+        adoptVideo(null);
+        var seed = com.aistareco.aep.ipstudio.prompt.StudioPromptLibrary.loadSeeds().stream().filter(x -> x.entry().key().equals(VIDEO)).findFirst().orElseThrow().entry();
+        var header = new java.util.LinkedHashMap<>(seed.header());
+        header.put("status", "withdrawn");
+        var withdrawn = com.aistareco.aep.ipstudio.prompt.StudioPromptEntry.fromHeader(header, seed.body(), "test");
+        ReflectionTestUtils.setField(service, "promptAssembler", new StudioPromptAssembler(PromptLibraries.withNewVersions(withdrawn)));
+        service.refresh(c);
+        assertEquals("current", check(clip().path("video")));
+        ((ObjectNode) clip().path("shots").get(1)).put("still", "陈默把信塞进口袋");
+        service.refresh(c);
+        assertEquals("outdated", check(clip().path("video")));
+    }
 }
