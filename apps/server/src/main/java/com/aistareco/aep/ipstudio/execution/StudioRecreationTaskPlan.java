@@ -314,7 +314,7 @@ public final class StudioRecreationTaskPlan {
                     JsonNode a=asked.get(shot);
                     String instruction=a==null?"":a.path("instruction").asText("").strip();
                     if(instruction.isBlank())instruction=blank(task.path("requirement").asText(""))?"把画面里要换的人和物换成参考图里的样子，其它保持原样":task.path("requirement").asText().strip();
-                    ObjectNode image=steps.addObject().put("id",k.path("stepId").asText()).put("operation","image").put("title","第 "+shot+" 镜开场画面").put("execution","auto");
+                    ObjectNode image=steps.addObject().put("id",k.path("stepId").asText()).put("operation","image").put("title",depth?"场景图":"第 "+shot+" 镜开场画面").put("execution","auto");
                     image.putObject("strategy").put("approachId","remake").put("method","keyframe-rebuild").put("reason","原片第 "+shot+" 镜");
                     image.putArray("dependsOn");image.putArray("referenceNodeIds");
                     ObjectNode imageSettings=image.putObject("settings").put("operation","image").put("aspectRatio",task.path("ratio").asText()).put("count",1);
@@ -342,13 +342,14 @@ public final class StudioRecreationTaskPlan {
                     Integer rank=checkedKeyframes.get(k.path("stepId").asText());
                     if(rank!=null) {
                         String checkId="c"+k.path("stepId").asText();
-                        ObjectNode check=steps.addObject().put("id",checkId).put("operation","check").put("title","第 "+shot+" 镜开场画面 · 检查")
+                        ObjectNode check=steps.addObject().put("id",checkId).put("operation","check").put("title",(depth?"场景图":"第 "+shot+" 镜开场画面")+" · 检查")
                                 .put("prompt",library.render(com.aistareco.aep.ipstudio.prompt.StudioPromptCallPoints.RECREATION_KEYFRAME_CHECK,Map.of()).strip()).put("execution","auto");
                         check.putObject("strategy").put("approachId","remake").put("method","keyframe-rebuild").put("reason","检查第 "+shot+" 镜的开场画面");
                         check.putArray("dependsOn").add(k.path("stepId").asText());check.putArray("referenceNodeIds");
                         ObjectNode checkSettings=check.putObject("settings").put("operation","check").put("targetStepId",k.path("stepId").asText()).put("compareReferences",true)
                                 .put("optionalRank",rank);
-                        var ids=checkSettings.putArray("checkIds");KEYFRAME_CHECK_IDS.forEach(ids::add);
+                        // 深度复刻的场景图只管人和商品换对没有：动作和构图由动作参考定，「手势和原片这一刻不一样」不该让它重出（2026-11-11 真跑）
+                        var ids=checkSettings.putArray("checkIds");KEYFRAME_CHECK_IDS.stream().filter(item->!depth||!"scene-and-action".equals(item)).forEach(ids::add);
                         keyframeSteps.add(checkId);
                     }
                 }
