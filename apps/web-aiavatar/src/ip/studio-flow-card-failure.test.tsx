@@ -39,3 +39,16 @@ test('a stopped draft and an empty draft keep their own states',()=>{
   view.rerender(<StudioFlowCard {...({data:{document:{...stopped,metadata:{status:'idle'}}},selected:false} as any)}/>);
   expect(screen.getByText('上传视频，开始解析或拉片')).toBeDefined();
 });
+
+test('reference upload failure retries the saved video request from the canvas card', () => {
+  const node: CanvasNodeData = { id: 'clip', type: CanvasNodeType.Video, title: '第 1 段视频',
+    position: { x: 0, y: 0 }, width: 360, height: 240, metadata: { status: 'error', studio: {
+      kind: 'shot', execution: { executionId: 'PEX-task', stepId: 'v1' },
+      task: { status: 'failed', stage: 'failed', pct: 100, errorCode: 'VIDEO_REF_UPLOAD_FAILED' },
+    } } };
+  const listener = vi.fn();
+  window.addEventListener('studio-command', listener, { once: true });
+  render(<StudioFlowCard {...({ data: { document: node }, selected: true } as any)}/>);
+  fireEvent.click(screen.getByRole('button', { name: '重试这一步' }));
+  expect(listener).toHaveBeenCalledWith(expect.objectContaining({ detail: { action: 'retry-video', nodeId: 'clip' } }));
+});

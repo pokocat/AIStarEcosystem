@@ -58,22 +58,40 @@ it('lists a person still verifying so the scan is picked up instead of entering 
   expect(mocks.startPerson).not.toHaveBeenCalled();expect(mocks.refreshPerson).toHaveBeenCalledExactlyOnceWith('half-done');
   expect(mocks.declare).toHaveBeenCalledExactlyOnceWith('portrait', { kind: 'person', personId: 'half-done', accepted: true, agreementVersion: 'v1' });
 });
-it('keeps the original task in an inline modal and resumes only that job after approval', async () => {
+it('shows automatic continuation and closes when the server resumes the original task', async () => {
   const state = data();state.items[0].status = 'processing';
   mocks.overview.mockImplementation(async () => ({ ...state, items: state.items.map(i => ({ ...i })) }));
-  mocks.review.mockImplementation(async () => ({ jobId: 'original-job', items: state.items.map(i => ({ ...i })), awaiting: true, canContinue: state.items.every(i => i.status === 'active') }));
-  mocks.refresh.mockImplementation(async () => { state.items[0].status = 'active'; return { ...state.items[0] }; });mocks.resume.mockResolvedValue({ awaiting: false });
-  render(<PortraitReviewHost />);let done = false;let pending!: Promise<void>;
-  act(() => { pending = requestPortraitReview([{ jobId: 'original-job', reviewId: 'first' }]).then(ready => { done = ready; }); });
-  await screen.findByRole('dialog');await screen.findByText('参考图');expect(done).toBe(false);
-  const continueButton = screen.getByRole('button', { name: '继续生成' });expect(continueButton).toHaveProperty('disabled', true);expect(mocks.resume).not.toHaveBeenCalled();
-  const refreshButton = await screen.findByRole('button', { name: '查询结果' });
-  await act(async () => { fireEvent.click(refreshButton); });
-  await waitFor(() => expect(mocks.refresh).toHaveBeenCalledTimes(1), { timeout: 1000 });
-  await waitFor(() => expect(continueButton).toHaveProperty('disabled', false));
-  await waitFor(() => expect(continueButton.classList.contains('ant-btn-loading')).toBe(false));
-  await act(async () => { fireEvent.click(continueButton); });await pending;expect(done).toBe(true);expect(mocks.resume).toHaveBeenCalledExactlyOnceWith('original-job');
-  expect(mocks.declare).not.toHaveBeenCalled(); // An already-submitted asset is queried, never uploaded again.
+  mocks.review.mockImplementation(async () => ({ jobId: 'original-job', items: state.items.map(i => ({ ...i })), awaiting: state.items[0].status !== 'active' }));
+  vi.useFakeTimers();
+  try {
+    render(<PortraitReviewHost />);let pending!: Promise<boolean>;
+    await act(async () => { pending = requestPortraitReview([{ jobId: 'original-job', reviewId: 'first' }]); });
+    expect(screen.getByText('素材全部通过后将自动继续生成。')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '继续生成' })).toBeNull();
+    state.items[0].status = 'active';
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    await expect(pending).resolves.toBe(true);
+    expect(mocks.resume).not.toHaveBeenCalled();expect(mocks.refresh).not.toHaveBeenCalled();expect(mocks.declare).not.toHaveBeenCalled();
+  } finally { vi.useRealTimers(); }
+});
+it('continues a preflight after all photos are approved without a second Generate click', async () => {
+  const state = data();state.items = [{ ...item, status: 'processing' }, { ...item, id: 'second', status: 'processing' }];
+  mocks.overview.mockImplementation(async () => ({ ...state, items: state.items.map(i => ({ ...i })) }));
+  mocks.refresh.mockImplementation(async id => {
+    const photo = state.items.find(i => i.id === id)!;
+    if (id === 'portrait' || mocks.refresh.mock.calls.length >= 3) photo.status = 'active';
+    return { ...photo };
+  });
+  vi.useFakeTimers();
+  try {
+    render(<PortraitReviewHost />);let ready: boolean | undefined;
+    await act(async () => { void requestPortraitReview([], state.items).then(result => { ready = result; }); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
+    expect(ready).toBeUndefined();
+    await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
+    expect(ready).toBe(true);
+    expect(mocks.resume).not.toHaveBeenCalled();
+  } finally { vi.useRealTimers(); }
 });
 it('deferring verification closes the modal without resubmitting or losing the pending context', async () => {
   mocks.overview.mockResolvedValue(data());render(<PortraitReviewHost />);
@@ -81,5 +99,5 @@ it('deferring verification closes the modal without resubmitting or losing the p
   // The step's button shares the dialog's single button row; the only verified person is already selected.
   const step = await screen.findByRole('button', { name: '提交审核' });expect(step.closest('.ant-modal-footer')).not.toBeNull();
   fireEvent.click(screen.getByRole('radio', { name: '真人照片' }));expect(screen.getByRole('radio', { name: '陈泽' })).toHaveProperty('checked', true);
-  fireEvent.click(screen.getByRole('button', { name: '稍后处理' }));await expect(pending).resolves.toBe(false);expect(mocks.resume).not.toHaveBeenCalled();expect(mocks.declare).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '暂不生成' }));await expect(pending).resolves.toBe(false);expect(mocks.resume).not.toHaveBeenCalled();expect(mocks.declare).not.toHaveBeenCalled();
 });

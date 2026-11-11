@@ -5,18 +5,21 @@ import type { IpProjectDoc } from '@ai-star-eco/types';
 import { projectPreview, type ProjectPreview } from './project-preview';
 
 /** Shared priority: explicit cover, saved image, then what the canvas holds in words. No canvas editor is mounted. */
-export function ProjectCardPreview({ coverUrl, preview, doc, loading, error, stepsFirst = false, videoUrl }: {
+export function ProjectCardPreview({ coverUrl, coverVideoUrl, preview, doc, loading, error, stepsFirst = false, videoUrl }: {
   coverUrl?: string | null; preview?: ProjectPreview; doc?: IpProjectDoc; loading?: boolean; error?: string;
+  coverVideoUrl?: string | null;
   /** 灵感卡的成片（服务端签好的 previewVideoUrl）：平时显示静帧，指针停在卡片上（或键盘聚焦）静音播放。 */
   videoUrl?: string | null;
   /** 模板先列步骤：模板里的文字多是填写说明或空字段，摘出来像一张没填的表。 */
   stepsFirst?: boolean;
 }) {
   const [failed, setFailed] = useState<string[]>([]);
-  useEffect(() => setFailed([]), [doc, coverUrl]);
+  useEffect(() => setFailed([]), [doc, coverUrl, coverVideoUrl]);
   const content = preview || (doc ? projectPreview(doc) : undefined);
   const url = [coverUrl, ...(content?.images.map(i => i.url) || [])].find(u => u && !failed.includes(u));
-  if (videoUrl && !failed.includes(videoUrl)) return <HoverVideo src={videoUrl} poster={url} onError={() => setFailed(items => [...items, videoUrl])}/>;
+  const selectedVideo = coverVideoUrl && !failed.includes(coverVideoUrl) ? coverVideoUrl : undefined;
+  const playable = selectedVideo || (videoUrl && !failed.includes(videoUrl) ? videoUrl : undefined);
+  if (playable) return <HoverVideo key={playable} src={playable} poster={selectedVideo ? undefined : url} onError={() => setFailed(items => [...items, playable])}/>;
   if (url) return <div className="project-content-cover"><img src={url} alt="" loading="lazy" decoding="async" onError={() => setFailed(items => [...items, url])}/></div>;
   if (content && (doc || !loading)) return <ProjectWordsCover content={content} stepsFirst={stepsFirst}/>;
   if (loading) return <div className="project-content-placeholder" role="status"><Layers size={25}/><span>正在加载内容…</span></div>;

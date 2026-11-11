@@ -84,7 +84,7 @@ class MaterialVideoQueueAdmissionTest {
         worker.generateAsync("job");
         verify(client,times(1)).submit(any(),anyInt(),any(),any(),any(),any(),any(),any());
         verifyNoInteractions(credits);verify(queue,never()).finish(any(),any());
-        verify(queue,times(2)).requeue(eq(AiGenerationQueueService.VIDEO),eq("job"),eq(java.time.Duration.ofSeconds(30)));
+        verify(queue).requeue(AiGenerationQueueService.VIDEO,"job",java.time.Duration.ofSeconds(30));
     }
     @Test void abandonedPortraitReviewExpiresAndReleasesTheOriginalHoldOnce() {
         job.setErrorCode(ArkPortraitLibrary.REVIEW_CODE);
@@ -92,6 +92,20 @@ class MaterialVideoQueueAdmissionTest {
         worker.generateAsync("job");worker.generateAsync("job");
         assertEquals("failed",job.getStatus());assertEquals("VIDEO_ASSET_REVIEW_TIMEOUT",job.getErrorCode());
         verify(credits,times(1)).releaseHold(eq(MaterialVideoJobService.CREDIT_REF_TYPE),eq("job"),any());verifyNoInteractions(client);
+    }
+    @Test void approvalWakesTheOriginalJobThroughNormalAdmissionWithoutASecondHold() {
+        job.setErrorCode(ArkPortraitLibrary.REVIEW_CODE);
+        var reviews=mock(VideoPortraitReviewService.class);
+        ReflectionTestUtils.setField(worker,"portraitReviews",reviews);
+        when(reviews.tryAutoResume(job)).thenAnswer(i->{job.setErrorCode(null);return true;});
+        worker.checkPortraitReviewAsync("job");
+        verify(queue).wakeWaiting(AiGenerationQueueService.VIDEO,"job");
+        verifyNoInteractions(credits,client);
+        verify(queue,never()).acquire(any(),any(),any(),anyBoolean());
+        when(queue.acquire(any(),any(),any(),eq(false))).thenReturn(AiGenerationQueueService.Admission.WAITING);
+        worker.generateAsync("job");
+        verify(queue).acquire(AiGenerationQueueService.VIDEO,"job","e",false);
+        verifyNoInteractions(credits,client);
     }
     @Test void acceptedTaskCannotEnterPortraitPauseOrBeRecreated() {
         when(client.submit(any(),anyInt(),any(),any(),any(),any(),any(),any())).thenAnswer(i->{job.setExternalTaskId("accepted");throw ArkPortraitLibrary.review();});

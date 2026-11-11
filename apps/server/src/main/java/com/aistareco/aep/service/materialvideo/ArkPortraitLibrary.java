@@ -88,8 +88,13 @@ public class ArkPortraitLibrary {
         while(matcher.find()){int i=Integer.parseInt(matcher.group(1))-1;if(i>=0&&i<keys.size())indices.add(i);}
         // If the provider does not identify an index, ask about visual inputs, never silently label them virtual.
         if(indices.isEmpty())for(int i=0;i<keys.size();i++)if(!"audio".equals(types.get(i)))indices.add(i);
-        for(int i:indices)register(owner,libraryId,keys.get(i),types.get(i),"参考素材 "+(i+1));
-        return !indices.isEmpty();
+        boolean needsReview=false;
+        for(int i:indices) {
+            var item=register(owner,libraryId,keys.get(i),types.get(i),"参考素材 "+(i+1));
+            needsReview|=!"active".equals(item.status());
+        }
+        // If Ark rejects a trusted reference, reopening an already approved review would retry it in a loop.
+        return needsReview;
     }
     /** All undeclared nonportrait inputs retain signed URLs. Known portraits can only use Active references. */
     public String reference(String owner,String libraryId,String key) {

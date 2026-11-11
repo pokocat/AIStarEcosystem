@@ -266,7 +266,7 @@ export function PortraitPersonModal({ libraryId, overview, initialPerson, onClos
   </Modal>;
 }
 
-export function usePortraitOverview(enabled = true) {
+export function usePortraitOverview(enabled = true, pollItems = true) {
   const [overview, setOverview] = useState<VideoPortraitOverview>(), [error, setError] = useState(''), [busy, setBusy] = useState(false);
   const lock = useRef(false), alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
@@ -284,13 +284,13 @@ export function usePortraitOverview(enabled = true) {
     finally { lock.current = false; if (alive.current) setBusy(false); }
   }, [reload]);
   useEffect(() => {
-    if (!enabled || !overview?.items.some(i => i.status === 'processing')) return;
+    if (!enabled || !pollItems || !overview?.items.some(i => i.status === 'processing')) return;
     let stopped = false;
     const timer = setTimeout(async () => {
       try { for (const item of overview.items.filter(i => i.status === 'processing')) { if (stopped) return; await api.refreshPortrait(item.id); } if (!stopped) await reload(); }
       catch (e) { if (!stopped) setError(normalizeStudioError(e).message); }
     }, 10000);
     return () => { stopped = true; clearTimeout(timer); };
-  }, [enabled, overview, reload]);
+  }, [enabled, pollItems, overview, reload]);
   return { overview, error, busy, reload, act };
 }

@@ -75,7 +75,7 @@ public interface MaterialVideoJobRepository extends JpaRepository<MaterialVideoJ
      * 取消了的任务不会再被交给厂商。
      */
     String CLAIM_QUEUED = "update MaterialVideoJob j set j.status = 'submitting', j.progress = 5, j.updatedAt = :now "
-            + "where j.id = :id and j.status = 'queued'";
+            + "where j.id = :id and j.status = 'queued' and (j.errorCode is null or j.errorCode <> 'VIDEO_ASSET_NEEDS_REVIEW')";
 
     /** 只把「还在 queued、从没交给厂商」的任务置 failed；返回影响行数（0 = 已经开始 / 不是本人的）。 */
     String FAIL_IF_QUEUED = "update MaterialVideoJob j set j.status = 'failed', j.errorMessage = :message, "

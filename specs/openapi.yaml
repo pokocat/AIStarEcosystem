@@ -1635,6 +1635,8 @@ components:
         clientRequestId: { type: string, minLength: 1, maxLength: 64 }
         expectedStatus: { type: string, enum: [running, paused, needs_user, done, partial, failed, canceled], nullable: true }
         addMaterialNodeIds: { type: array, nullable: true, maxItems: 16, items: { type: string }, description: '只用于 resume：把停下那一步 materials 里、仍在画布上的素材加入这次制作再重新编排。不在 materials 里或已删除 → 400 STUDIO_INPUT_INVALID；加入后超过 16 个 → 400 STUDIO_CONTEXT_LIMIT；其它操作带它 → 400。同一 clientRequestId 带不同的列表 → 409 STUDIO_REQUEST_CHANGED。' }
+        retryStepId: { type: string, nullable: true, description: '只用于 resume。支持参考素材上传失败的片段（VIDEO_REF_UPLOAD_FAILED）及多段任务中人像审核超时的片段（VIDEO_ASSET_REVIEW_TIMEOUT）。和 retryAttempt 一起提供，沿用原片段输入，仅此片段开启新尝试。' }
+        retryAttempt: { type: integer, minimum: 1, nullable: true, description: '页面所见的片段尝试次数。任务或片段状态已变化 → 409 STUDIO_PLAN_STALE。' }
     StudioPlanExecutionAcceptRequest:
       type: object
       required: [clientRequestId, runId]
@@ -5494,6 +5496,7 @@ components:
         name: { type: string }
         summary: { type: string }
         coverUrl: { type: string, nullable: true }
+        coverVideoUrl: { type: string, nullable: true, description: '指定为封面的视频签名地址，灵感卡优先使用并在悬停时静音播放' }
         previewVideoUrl: { type: string, nullable: true, description: '官方示例第一段成片的签名地址（灵感卡悬停静音播放）；模板与没有成片的示例不给' }
         createdAt: { type: string, format: date-time, nullable: true, description: '首次发布时间，首页灵感按它从新到旧；内置模板不给' }
         stylePresetId: { type: string, nullable: true }
@@ -5522,6 +5525,7 @@ components:
       required: [coverUrl]
       properties:
         coverUrl: { type: string, nullable: true, description: '人工封面的短期签名 URL；null 表示恢复自动选择' }
+        coverVideoUrl: { type: string, nullable: true, description: '指定为封面的视频签名地址；图片封面或恢复自动时为空' }
     IpUploadResult:
       type: object
       required: [key, url, fileName]
@@ -14784,7 +14788,7 @@ paths:
     put:
       tags: [ipstudio]
       operationId: studioSelectCanvasCover
-      description: '从目标画布已保存的图片中指定封面，权限同上传；项目另校验素材归属。仅写 coverKey，不修改 doc。'
+      description: '从目标画布的已保存素材中指定封面。项目支持图片并校验归属，灵感模板和案例支持图片或视频。权限同上传，仅写 coverKey。'
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [storageKey], properties: { storageKey: { type: string } } } } } }
       responses:
         '200': { description: 'ApiResponse<IpCanvasCover>', content: { application/json: { schema: { $ref: '#/components/schemas/IpCanvasCover' } } } }

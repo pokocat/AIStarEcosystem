@@ -10,7 +10,7 @@ import { nanoid } from 'nanoid';
 import type { IpRun, IpProjectDoc } from '@ai-star-eco/types';
 import type { StudioPlanExecutionStep } from '@ai-star-eco/types/ip-studio-workflow';
 import type { StudioVideoTask, StudioVideoTaskCreate } from '@ai-star-eco/types/ip-studio-video-task';
-import { videoTask, videoTasks, videoTaskLabel, videoTaskStatus, videoTaskCanvasHref, videoTaskNeedsAction, videoTaskResumeLabel, videoTaskProblemStep, videoTaskProblemText, videoTaskProblemTitle } from '@/canvas-bridge/studio-video-tasks';
+import { videoTask, videoTasks, videoTaskLabel, videoTaskStatus, videoTaskCanvasHref, videoTaskNeedsAction, videoTaskResumeLabel, videoTaskProblemStep, videoTaskProblemText, videoTaskProblemTitle, videoTaskSegmentRetry } from '@/canvas-bridge/studio-video-tasks';
 import { cancelRun, readRun, readVideoJob, signKeys } from '@/canvas-bridge/api';
 import { dialogFocus } from '@/ip/dialog-focus';
 import { normalizeStudioError, StudioErrorNotice, useStudioFailure } from '@/ip/studio-errors';
@@ -296,6 +296,7 @@ function VideoTaskView({ task, takes, onOpen, persist, onRefresh }: {
   const retry = execution?.steps.find(s => s.id === task.retryStepId);
   const active = phases.find(p => p.state === 'running' || p.state === 'failed') ?? phases.find(p => p.state === 'waiting');
   const needsAction = videoTaskNeedsAction(task), resumeLabel = videoTaskResumeLabel(task);
+  const segmentRetry = videoTaskSegmentRetry(task);
   const runningStep = execution?.steps.find(s => s.status === 'running' || s.status === 'submitted');
   const activeRun = task.run ?? (runningStep ? stepRunCandidates(runningStep).map(id => runs[id]).find(Boolean) : undefined);
   const queuePosition = running && activeRun?.queue && activeRun.queue.position > 0 ? activeRun.queue.position : undefined;
@@ -313,7 +314,11 @@ function VideoTaskView({ task, takes, onOpen, persist, onRefresh }: {
   const resume = async () => {
     if (!execution || !resumeLabel) return;
     setActing(true);
-    try { await resumeStudioPlanExecution(task.projectId, execution.id, { clientRequestId: nanoid(), expectedStatus: execution.status }); onRefresh(); }
+    try {
+      await resumeStudioPlanExecution(task.projectId, execution.id, { clientRequestId: nanoid(), expectedStatus: execution.status,
+        ...(segmentRetry && { retryStepId: segmentRetry.retryStepId, retryAttempt: segmentRetry.retryAttempt }) });
+      onRefresh();
+    }
     catch (error) { showFailure({ action: resumeLabel, error }); } finally { setActing(false); }
   };
   const download = () => void downloadMedia(urls[result!], task.title, 'video/mp4', result!).catch(error => showFailure({ action: '下载视频', error }));
@@ -353,7 +358,7 @@ function VideoTaskView({ task, takes, onOpen, persist, onRefresh }: {
           <p title={actionNote || undefined}>{actionNote}</p>
           {running ? <button type="button" disabled={acting} onClick={() => void stop()}><Square size={12}/>停止生成</button>
             : resumeLabel ? <div className="video-footer-actions"><Link className="video-task-link" href={videoTaskCanvasHref(task)}>在画布上查看</Link>
-              <button type="button" className="is-primary" disabled={acting} onClick={() => void resume()}>{resumeLabel === '重试这一步' ? <RefreshCw size={12}/> : <Play size={12}/>}{resumeLabel}</button></div>
+              <button type="button" className="is-primary" disabled={acting} onClick={() => void resume()}>{resumeLabel === '继续生成' ? <Play size={12}/> : <RefreshCw size={12}/>} {resumeLabel}</button></div>
             : <Link className={needsAction ? 'video-task-link is-primary' : 'video-task-link'} href={videoTaskCanvasHref(task)}>在画布上查看<ArrowUpRight size={14} strokeWidth={1.5}/></Link>}
         </footer>}
       </div>}

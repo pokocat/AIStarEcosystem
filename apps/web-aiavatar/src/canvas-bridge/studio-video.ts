@@ -55,10 +55,11 @@ export const studioVideoKeepPrompt = (node:CanvasNodeData|undefined):boolean =>
 export function studioVideoNodeSelection(node:CanvasNodeData|undefined,nodes:CanvasNodeData[],referenceIds:string[]) {
   const metadata=node?.type===CanvasNodeType.Video?node.metadata:undefined,request=metadata?.studio?.request,saved=request?.video??metadata?.studio?.videoPreset;
   const images=referenceIds.filter(id=>nodes.find(n=>n.id===id)?.type===CanvasNodeType.Image);
-  const mode:VideoStudioMode=metadata?.videoMode&&!(["reference","frames"].includes(metadata.videoMode))?metadata.videoMode
+  const failedRequest = metadata?.status === "error" ? request : undefined;
+  const mode:VideoStudioMode=failedRequest?.video?.mode || (metadata?.videoMode&&!(["reference","frames"].includes(metadata.videoMode))?metadata.videoMode
     :metadata?.videoMode==="reference"?"universal_reference_video":metadata?.videoMode==="frames"
     ?referenceIds.length===2?"first_last_frame_video":referenceIds.length===1?"i2v":"t2v"
-    :saved?.mode||(!referenceIds.length?"t2v":images.length!==referenceIds.length?"universal_reference_video":images.length>1?"first_last_frame_video":"i2v");
+    :saved?.mode||(!referenceIds.length?"t2v":images.length!==referenceIds.length?"universal_reference_video":images.length>1?"first_last_frame_video":"i2v"));
   const ratio=metadata?.size?inferVideoRatio(metadata.size):"auto";
   const customMode=metadata?.videoMode&&!(["reference","frames"].includes(metadata.videoMode));
   const requestedRatio=customMode&&request?.aspectRatio?request.aspectRatio
@@ -71,9 +72,9 @@ export function studioVideoNodeSelection(node:CanvasNodeData|undefined,nodes:Can
   return {
     draft:{mode,tier:saved?.resolutionTier||(metadata?.vquality?(customMode?metadata.vquality:`${metadata.vquality.replace(/p$/,"")}p`):"768p"),seed:saved?.seed,firstId:images[0],lastId:images[1],
       ...(studioVideoKeepPrompt(node)?{keepPrompt:true}:{})} satisfies StudioVideoDraft,
-    count:metadata?.videoCount?Number(metadata.videoCount):request?.count||1,
-    seconds:metadata?.seconds?Number(metadata.seconds):request?.durationSec||node?.metadata?.studio?.shot?.durationSec||8,
-    ratio:videoRatio,
+    count:failedRequest?.count??(metadata?.videoCount?Number(metadata.videoCount):request?.count||1),
+    seconds:failedRequest?.durationSec??(metadata?.seconds?Number(metadata.seconds):request?.durationSec||node?.metadata?.studio?.shot?.durationSec||8),
+    ratio:failedRequest?.aspectRatio??videoRatio,
   };
 }
 

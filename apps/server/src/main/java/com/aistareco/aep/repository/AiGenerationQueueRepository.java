@@ -7,6 +7,17 @@ import java.util.*;
 public interface AiGenerationQueueRepository extends JpaRepository<AiGenerationQueueEntry,Long> {
     Optional<AiGenerationQueueEntry> findByTaskTypeAndTaskId(String type,String id);
     long countByEndpointIdAndState(String endpoint,String state);
+    String PORTRAIT_REVIEW = """
+        select v.id from MaterialVideoJob v where v.id=q.taskId and q.taskType='material-video'
+          and v.status='queued' and v.errorCode='VIDEO_ASSET_NEEDS_REVIEW'
+          and (v.externalTaskId is null or trim(v.externalTaskId)='')
+        """;
+    @org.springframework.data.jpa.repository.Query(
+        "select count(q)>0 from AiGenerationQueueEntry q where q.id=:id and exists ("+PORTRAIT_REVIEW+")")
+    boolean isPortraitReview(Long id);
+    @org.springframework.data.jpa.repository.Query(
+        "select count(q) from AiGenerationQueueEntry q where q.endpointId=:endpoint and q.state='waiting' and not exists ("+PORTRAIT_REVIEW+")")
+    long countExecutableWaiting(String endpoint);
     /** Review-only receipts retain their hold and route, but are not executable concurrency. */
     @org.springframework.data.jpa.repository.Query("""
         select count(q) from AiGenerationQueueEntry q
@@ -15,7 +26,8 @@ public interface AiGenerationQueueRepository extends JpaRepository<AiGenerationQ
             and r.kind='generate' and r.status='running' and r.stage='image.provider.recovering'
             and r.errorCode='STUDIO_IMAGE_SUBMISSION_UNKNOWN')
           and not exists (select v.id from MaterialVideoJob v where v.id=q.taskId and q.taskType='material-video'
-            and v.status='submitting' and v.errorCode='VIDEO_SUBMISSION_UNKNOWN'
+            and ((v.status='submitting' and v.errorCode='VIDEO_SUBMISSION_UNKNOWN')
+              or (v.status='queued' and v.errorCode='VIDEO_ASSET_NEEDS_REVIEW'))
             and (v.externalTaskId is null or trim(v.externalTaskId)=''))
           and not exists (select r.id from IpRun r where r.id=q.taskId and q.taskType='ip-speech'
             and r.status='running' and
@@ -35,6 +47,8 @@ public interface AiGenerationQueueRepository extends JpaRepository<AiGenerationQ
         order by q.id desc
         """)
     org.springframework.data.domain.Page<AiGenerationQueueEntry> findNeedingAttention(org.springframework.data.domain.Pageable page);
-    long countByEndpointIdAndStateAndIdLessThan(String endpoint,String state,Long id);
+    @org.springframework.data.jpa.repository.Query(
+        "select count(q) from AiGenerationQueueEntry q where q.endpointId=:endpoint and q.state='waiting' and q.id<:id and not exists ("+PORTRAIT_REVIEW+")")
+    long countExecutableWaitingAhead(String endpoint,Long id);
     List<AiGenerationQueueEntry> findByStateInOrderByIdAsc(Collection<String> states);
 }

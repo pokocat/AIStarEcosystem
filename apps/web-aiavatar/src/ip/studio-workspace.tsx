@@ -23,11 +23,13 @@ import type { IpRun } from "@ai-star-eco/types";
 import type { StudioCapabilities, StudioIpAsset, StudioIpAssetRole, StudioVoiceProfile, StudioOperation, StudioReference, StudioRunRequest, StudioScript, StudioScriptSettings, StudioPlan, StudioNodeMetadata } from "@ai-star-eco/types/ip-studio-workflow";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "@/canvas/types/canvas";
 import { applyStudioRun, applyStudioRunToDocument, makeStudioNode, retainStudioMediaVersions, adoptStudioTake, studioGenerationPending, dispatchStudioCommand } from "@/canvas-bridge/studio-nodes";
+import { failedVideoReferenceIds, isFailedStudioVideo } from "@/canvas-bridge/studio-video-task-node";
 import { importStudioMedia, adoptStudioImage, listStudioIpAssets, listStudioIps, readStudioProject, studioCapabilities, submitStudioRun } from "@/canvas-bridge/studio-api";
 import { markStudioDescendants, reorderStudioClips, studioNodeEpisode, studioNodeReferences, studioScriptPrompt, studioScriptInput, studioShotNodes } from "@/canvas-bridge/studio-script";
 import { readRun, cancelRun, fetchModels, fetchStudioVideoModels, type IpModels } from "@/canvas-bridge/api";
 import { studioQueueNotice, studioTaskLabel, studioTaskQueued } from '@/canvas-bridge/studio-task-status';
-import { executionOutputMissing, readProjectedNodes } from '@/canvas-bridge/studio-plan-execution';
+import { executionOutputMissing, readProjectedNodes, resumeStudioPlanExecution } from '@/canvas-bridge/studio-plan-execution';
+import { videoTask, videoTaskSegmentRetry } from '@/canvas-bridge/studio-video-tasks';
 import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
 import { studioVideoSettings,studioVideoError,studioVideoQuote,studioVideoReferenceIds,studioVideoDraftFromReferences,changeStudioVideoDraft,studioVideoNodeSelection,studioVideoPromptMode,studioVideoInputKey,studioPromptLimitMessage,studioLongerPromptModel } from "@/canvas-bridge/studio-video";
 import { StudioVideoControls,StudioVideoSeedControl,StudioPromptOptimizeToggle,StudioPromptReview,type StudioVideoDraft } from "./studio-video-controls";
@@ -404,6 +406,13 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     try{await saveStudioDocument(projectId);if(panelSession.current===session)setSpeechOpen(false);}catch(e){message.error(e);}finally{setSpeechSaving(false);}
   };
   const openDirector = useCallback((action: StudioOperation, node?: CanvasNodeData, presentation: "canvas" | "storyboard" = "canvas") => {
+    const draft = node?.metadata?.studio?.composerDraft;
+    const recoverVideo = action==="video"&&node&&isFailedStudioVideo(node)&&draft?.operation!=="video";
+    const savedVideoIds = recoverVideo ? failedVideoReferenceIds(node, nodesRef.current) : undefined;
+    if(recoverVideo&&!savedVideoIds) {
+      message.info("画布上缺少原参考素材，请从任务中重试这一步。");
+      return;
+    }
     panelSession.current++;setScriptPreviewId(undefined);
     pendingScriptImport.current=undefined;
     // The same creator serves both the canvas float and storyboard detail.
@@ -428,7 +437,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     setImageSize(undefined);
     const script = node?.metadata?.studio?.script;
     const scriptInstruction=action==="storyboard"?"根据当前已编辑的剧本拆分镜头。保留人物设定、台词和顺序。":"改写当前剧本，保留选定的人物设定。";
-    setPrompt(script && (action === "script" || action === "storyboard") ? presentation==="storyboard"?scriptInstruction:studioScriptPrompt(script,scriptInstruction) : action==="video"&&node?.type===CanvasNodeType.Image ? node.metadata?.studio?.shot?.description || "以选中的图片作为首帧，保持主体、服饰和场景。请描述人物动作、镜头运动和节奏，动作自然连贯。" : node?.metadata?.studio?.shot?.description || node?.metadata?.prompt || "");
+    setPrompt(recoverVideo ? node?.metadata?.studio?.request?.prompt ?? "" : script && (action === "script" || action === "storyboard") ? presentation==="storyboard"?scriptInstruction:studioScriptPrompt(script,scriptInstruction) : action==="video"&&node?.type===CanvasNodeType.Image ? node.metadata?.studio?.shot?.description || "以选中的图片作为首帧，保持主体、服饰和场景。请描述人物动作、镜头运动和节奏，动作自然连贯。" : node?.metadata?.studio?.shot?.description || node?.metadata?.prompt || "");
     if(action==="text")setPrompt("");
     const ownKey = node?.type!==CanvasNodeType.Video && (node?.metadata?.storageKey || node?.metadata?.studio?.adoption);
     const inherited = node?.metadata?.studio?.references || [];
@@ -439,11 +448,13 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     if(action==="video") {
       // Empty upstream slots still own their edges; opening an editor must not erase the workflow.
       const inputs=node?.type===CanvasNodeType.Video?studioLinkedNodes(node.id,nodesRef.current,connectionsRef.current):undefined;
-      const ids=inputs?inputs.filter(input=>[CanvasNodeType.Image,CanvasNodeType.Video,CanvasNodeType.Audio].includes(input.type as CanvasNodeType)).map(input=>input.id):inheritedIds;
+      const ids=savedVideoIds??(inputs?inputs.filter(input=>[CanvasNodeType.Image,CanvasNodeType.Video,CanvasNodeType.Audio].includes(input.type as CanvasNodeType)).map(input=>input.id):inheritedIds);
       const selection=studioVideoNodeSelection(node,nodesRef.current,ids);
       // What the assistant wrote from the conversation (studio.spec) wins over the node's defaults; its references are
       // already edges into the node, so they are in `ids`.
-      const spec=node?.metadata?.studio?.spec;
+      const spec=recoverVideo?undefined:node?.metadata?.studio?.spec;
+      if(recoverVideo&&node?.metadata?.studio?.request?.video?.mode)
+        manualVideoModes.current.set(node.id,node.metadata.studio.request.video.mode);
       setVideoCount(spec?.count||selection.count);setDuration(spec?.durationSec||selection.seconds);setRatio(spec?.aspectRatio||selection.ratio);
       // Roles decide frames vs references (a person picture is never taken as the first frame because it came first).
       setVideoDraft(studioSpecVideoDraft(spec,selection.draft));setReferenceIds(ids);
@@ -463,7 +474,6 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         if(spec?.count)setImageCount(spec.count);
       }
     }
-    const draft=node?.metadata?.studio?.composerDraft;
     if(draft?.operation===action) {
       setPasteScript(draft.pasteScript||false);
       // A resumed prompt must keep the selected episode and local rewrite boundary.
@@ -477,7 +487,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       if(action==="image"){setImageCount(draft.count);setImageSize(draft.size);}if(action==="video"){setVideoCount(draft.count);setVideoDraft(draft.video);}
     }
     onClosePanel(); setDirector(true);
-  }, [onClosePanel,projectId,addNode,onFocusNode]);
+  }, [onClosePanel,projectId,addNode,onFocusNode,message]);
   useEffect(()=>{
     if(!director||!originId)return;
     const connectedReferenceNodeIds=connectionsRef.current.filter(c=>c.toNodeId===originId&&nodesRef.current.some(n=>n.id===c.fromNodeId&&[CanvasNodeType.Image,CanvasNodeType.Video,CanvasNodeType.Audio].includes(n.type as CanvasNodeType))).map(c=>c.fromNodeId);
@@ -537,7 +547,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     const listener = (event: Event) => {
       const { action: requestedAction, nodeId } = (event as CustomEvent<{ action: string; nodeId?: string }>).detail;
       // Keep the current draft visible if the native file picker is cancelled.
-      if (requestedAction === 'upload-image' || requestedAction === 'upload-video') return;
+      if (requestedAction === 'upload-image' || requestedAction === 'upload-video' || requestedAction === 'retry-video') return;
       // 存为资产是一个小弹窗，不关掉正在用的面板。
       if (requestedAction === 'library-save') { setLibrarySaveId(nodeId); return; }
       // A newly added Flow node is already in the document store before React updates these props.
@@ -697,11 +707,14 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     if(node.metadata?.studio?.lipSyncRequest){await sendNative(node,node.metadata.studio.lipSyncRequest,true);return;}
     if(node.metadata?.studio?.speechRequest){await sendNative(node,node.metadata.studio.speechRequest,true);return;}
     const request = node.metadata?.studio?.request;
-    if (!request || busy) return;
+    const errorCode = node.metadata?.studio?.task?.errorCode ?? node.metadata?.errorCode;
+    const taskBinding = isFailedStudioVideo(node) && (errorCode === "VIDEO_REF_UPLOAD_FAILED" || errorCode === "VIDEO_ASSET_REVIEW_TIMEOUT")
+      ? node.metadata?.studio?.execution : undefined;
+    if ((!request && !taskBinding) || busy) return;
     // A model the last failure (or the model list) proved gone is not tried again: open the composer to pick another,
     // with the prompt, references and settings kept. Three 640-credit holds on a retired model were three failures.
     const offered=node.type===CanvasNodeType.Video?models.video:node.type===CanvasNodeType.Image?models.image:undefined;
-    if(node.metadata?.status==="error"&&(request.operation==="image"||request.operation==="video")&&studioUnusableModel(node,offered?.length?offered.flatMap(m=>[m.endpointId,...(m.legacyEndpointIds||[])]):undefined)){
+    if(request&&node.metadata?.status==="error"&&(request.operation==="image"||request.operation==="video")&&studioUnusableModel(node,offered?.length?offered.flatMap(m=>[m.endpointId,...(m.legacyEndpointIds||[])]):undefined)){
       message.info("上次使用的模型已不可用，请更换模型后生成。");openDirector(request.operation,node);return;
     }
     setBusy(true);
@@ -710,7 +723,36 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     const confirmingKnownRun=node.metadata?.status!=="error"&&!!node.metadata?.studio?.runId;
     const confirmingPendingRequest=studioGenerationPending(node);
     try {
-      const next = node.metadata?.status === "error" ? { ...request, clientRequestId: nanoid(), modelBilling: undefined } : request;
+      if(taskBinding) {
+        const task = await videoTask(taskBinding.executionId).catch(error => {
+          if (error instanceof ApiError && error.code === "STUDIO_VIDEO_TASK_NOT_FOUND") return undefined;
+          throw error;
+        });
+        if(epoch.current!==submissionEpoch)return;
+        const segment = task ? videoTaskSegmentRetry(task, taskBinding.stepId) : undefined;
+        if(task?.execution?.status === "running") {
+          message.info("原任务正在生成，请等待完成。");
+          return;
+        }
+        if(segment && task?.execution) {
+          await resumeStudioPlanExecution(projectId, task.execution.id, {
+            clientRequestId: nanoid(), expectedStatus: "needs_user",
+            retryStepId: segment.retryStepId, retryAttempt: segment.retryAttempt,
+          });
+          message.info("已提交重试，请查看视频任务进度。");
+          return;
+        }
+        if(task?.execution?.status === "paused" || task?.execution?.status === "needs_user") {
+          message.info("请在视频任务中查看当前步骤和预算后继续。");
+          return;
+        }
+      }
+      if(!request) {
+        message.info("原视频的参考素材或生成设置已不可用，请查看视频任务。");
+        return;
+      }
+      const next = node.metadata?.status === "error" ? { ...request, clientRequestId: nanoid(), modelBilling: undefined,
+        ...(isFailedStudioVideo(node) && { executionId: undefined, stage: undefined }) } : request;
       patch(node.id,n => ({ ...n, metadata: { ...n.metadata, status: "loading", errorDetails:undefined, studio: { ...n.metadata!.studio!, request: next,runId:next===request?n.metadata?.studio?.runId:undefined } } }));
       await saveStudioDocument(projectId);
       if(epoch.current!==submissionEpoch)return;
@@ -726,7 +768,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         const shortage=studioCreditShortageChoice(e);
         // 确认原任务时积分不足：这条没有受理，不用再确认，转成可以重新生成的失败记录。
         patch(node.id,n=>({...n,metadata:shortage&&confirmingPendingRequest?{...node.metadata,status:"error",errorDetails:"积分不足，未提交"}:node.metadata}));
-        if(shortage?.kind==="switch-model"&&(request.operation==="image"||request.operation==="video")){openDirector(request.operation,node);setModel(shortage.endpointId);}
+        if(shortage?.kind==="switch-model"&&(request?.operation==="image"||request?.operation==="video")){openDirector(request.operation,node);setModel(shortage.endpointId);}
         return;
       }
       // A failed local save cannot reject an earlier possibly accepted request.
@@ -735,6 +777,17 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       message.error(e);
     } finally {if(epoch.current===submissionEpoch)setBusy(false);}
   };
+  useEffect(() => {
+    const listener = (event: Event) => {
+      const { action, nodeId } = (event as CustomEvent<{ action: string; nodeId?: string }>).detail;
+      if(action !== "retry-video")return;
+      const node = nodesRef.current.find(n => n.id === nodeId);
+      if(!node || !isFailedStudioVideo(node))return;
+      void retry(node);
+    };
+    window.addEventListener("studio-command", listener);
+    return () => window.removeEventListener("studio-command", listener);
+  }, [retry]);
   const sendNative = async (node:CanvasNodeData,request:StudioSpeechRequest|StudioLipSyncRequest,confirmingRequest=false) => {
     const lip="videoStorageKey" in request;
     if(busy)return;setBusy(true);const submissionEpoch=epoch.current,session=panelSession.current;let posted=false;

@@ -50,7 +50,9 @@ export function StudioTemplateUse({ template, onClose, onCreated }: { template: 
       inFlight.current = false; setBusy(false);
     }
   };
-  const media = mediaFailed ? undefined : template.previewVideoUrl ? { video: template.previewVideoUrl, poster: template.coverUrl } : template.coverUrl ? { image: template.coverUrl } : undefined;
+  const media = mediaFailed ? undefined : template.coverVideoUrl ? { video: template.coverVideoUrl }
+    : template.previewVideoUrl ? { video: template.previewVideoUrl, poster: template.coverUrl }
+    : template.coverUrl ? { image: template.coverUrl } : undefined;
   const canvas = !media || showCanvas;
   const facts = doc ?? template.doc;
   const kind = templateKind({ doc: facts });

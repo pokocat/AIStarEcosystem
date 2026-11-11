@@ -617,7 +617,9 @@ export interface StudioPlanExecutionCreateRequest { clientRequestId: string; sta
   billing?: EnterpriseBillingSelection; executionId?: string; expectedRevision?: number; approvalId?: string; confirmationMessageId?: string }
 export interface StudioPlanExecutionControlRequest { clientRequestId: string; expectedStatus?: StudioPlanExecutionStatus;
   /** Resume only: add these objects (from the stopped step's `materials`, still on the canvas) before re-planning. */
-  addMaterialNodeIds?: string[] }
+  addMaterialNodeIds?: string[];
+  /** Resume only: retry a reference-upload failure or portrait review timeout for the displayed attempt. */
+  retryStepId?: string; retryAttempt?: number }
 export interface StudioPlanExecutionAcceptRequest { clientRequestId: string; runId: string; candidateIndex?: number }
 
 // ─── AI 视频页的长视频：比模型单段上限长，一键做到成片（docs/studio-segmented-video.md）───

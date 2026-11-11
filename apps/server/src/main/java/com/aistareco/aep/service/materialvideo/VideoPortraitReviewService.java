@@ -41,18 +41,38 @@ public class VideoPortraitReviewService {
         var spec=VideoGenSpec.fromVariantConfigJson(job.getVariantConfigJson());var keys=new ArrayList<String>();
         if(spec.firstFrameKey()!=null)keys.add(spec.firstFrameKey());if(spec.lastFrameKey()!=null)keys.add(spec.lastFrameKey());spec.references().forEach(x->keys.add(x.key()));
         var items=portraits.itemsFor(owner,model.getAssetLibraryId(),keys);
-        boolean awaiting="queued".equals(job.getStatus())&&ArkPortraitLibrary.REVIEW_CODE.equals(job.getErrorCode())&&(job.getExternalTaskId()==null||job.getExternalTaskId().isBlank());
+        boolean awaiting=MaterialVideoWorker.awaitsPortraitReview(job);
         boolean ready=!items.isEmpty()&&items.stream().allMatch(x->"active".equals(x.status()));
         if(ready)try{for(var item:items)portraits.reference(owner,model.getAssetLibraryId(),item.key());}catch(BusinessException unavailable){ready=false;}
         return new Review(job.getId(),items,awaiting,awaiting&&ready&&!MaterialVideoWorker.portraitReviewExpired(job));
     }
+
+    /** Runs from the existing waiting queue even when the browser is closed. No video submission here. */
+    public boolean tryAutoResume(MaterialVideoJob job) {
+        if(!MaterialVideoJobService.APP_IPSTUDIO.equals(job.getApp())||MaterialVideoWorker.portraitReviewExpired(job))return false;
+        String owner=job.getOwnerUserId();
+        var review=context(owner,job);
+        if(!review.awaiting())return false;
+        if(!review.canContinue()) {
+            boolean refreshed=false;
+            for(var item:review.items()) {
+                if(!"processing".equals(item.status())||MaterialVideoWorker.portraitReviewExpired(job))continue;
+                portraits.refreshItem(owner,item.id());
+                refreshed=true;
+            }
+            if(!refreshed||!context(owner,job).canContinue())return false;
+        }
+        // The repository commits its own conditional update before the worker requeues.
+        return !MaterialVideoWorker.portraitReviewExpired(job)&&jobs.resumePortraitReview(job.getId(),owner,OffsetDateTime.now())==1;
+    }
+
     @Transactional
     public Review resume(String owner,String id) {
         var job=owned(owner,id);var review=context(owner,job);
         if(!review.awaiting())return review; // A double click or a lost successful response never creates another request.
         if(!review.canContinue())throw BusinessException.badRequest("VIDEO_ASSET_REVIEW_NOT_READY","请完成所有人像核验及素材审核后继续。");
         if(jobs.resumePortraitReview(id,owner,OffsetDateTime.now())==1) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization(){@Override public void afterCommit(){queue.requeue(AiGenerationQueueService.VIDEO,id,Duration.ZERO);}});
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization(){@Override public void afterCommit(){queue.wakeWaiting(AiGenerationQueueService.VIDEO,id);}});
         }
         return new Review(id,review.items(),false,false);
     }

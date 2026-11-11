@@ -48,6 +48,8 @@ public class StudioSegmentedRun {
 
     /** 在挑下一步之前调用（持行锁的事务里）：把能自己处理的失败和检查结果处理掉。 */
     void prepare(IpPlanExecution e, ObjectNode state) {
+        // An explicit single-segment retry must not reset checks or retry other steps while it runs.
+        if(state.has(StudioPlanExecutor.PORTRAIT_RETRY_STEP))return;
         for (JsonNode raw : PlanState.stageSteps(state, e.getStage())) {
             ObjectNode step = (ObjectNode) raw;
             String status = step.path("status").asText(), id = step.path("id").asText(), operation = step.path("operation").asText();
@@ -55,7 +57,7 @@ public class StudioSegmentedRun {
                 if("AI_BAD_OUTPUT".equals(step.path("errorCode").asText()))continue;
                 if (step.path("attempt").asInt(1) < 3 && retryable(step.path("errorCode").asText(null))) {
                     log.info("[segmented] retry step execution={} step={} code={}", e.getId(), id, step.path("errorCode").asText(""));
-                    again(step);
+                    retryFailed(step);
                     step.put("notBefore", java.time.Instant.now().plus(retryDelay.multipliedBy(step.path("attempt").asInt()-1)).toString());
                 } else if ("check".equals(operation) || !state.has("videoTask") && "review".equals(id)) {
                     // 审不了不该挡住成片：审稿按原稿走，检查按没查过走，都记下来。
@@ -87,6 +89,7 @@ public class StudioSegmentedRun {
                 .flatMap(run -> outputs.run(e.getOwnerUserId(), e.getProjectId(), run)).map(dto -> problems(dto.output())).orElse("");
         log.info("[segmented] board redo execution={} step={}", e.getId(), target.path("id").asText());
         target.put("autoFixed", true).put("fixHint", hint);
+        target.remove(List.of("videoRequest", "retryVideoInputs", "notBefore"));
         again(target);
         again(check);
         check.remove("checkStatus");
@@ -111,6 +114,14 @@ public class StudioSegmentedRun {
         step.putArray("runIds");
         step.put("status", "pending").put("attempt", step.path("attempt").asInt(1) + 1);
         step.remove(List.of("reason", "errorCode", "pendingRequestId", "cancelRequested"));
+    }
+
+    static void retryFailed(ObjectNode step) {
+        again(step);
+        if ("video".equals(step.path("operation").asText())) {
+            step.put("retryVideoInputs", true);
+            step.remove(List.of("acceptedRunId", "acceptedCandidateIndex"));
+        }
     }
 
     private static void softSkip(ObjectNode step, String reason) {

@@ -45,8 +45,9 @@
 .project-cover-choices { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; max-height: 50vh; overflow-y: auto; padding: 4px; }
 .project-cover-choices button { display: flex; flex-direction: column; gap: 8px; padding: 7px; border: 1px solid var(--ip-line); border-radius: 9px; background: var(--ip-soft); color: var(--ip-ink); text-align: left; cursor: pointer; min-width: 0; }
 .project-cover-choices button:hover { border-color: var(--ip-ink); }
-.project-cover-choices img { width: 100%; aspect-ratio: 1; object-fit: contain; }
+.project-cover-choices :is(img, video) { width: 100%; aspect-ratio: 1; object-fit: contain; }
 .project-cover-choices span { max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; }
+.project-cover-video-title svg { display: inline-block; vertical-align: -2px; margin-right: 5px; }
 .project-cover-empty { padding: 30px 12px; background: var(--ip-soft); color: var(--ip-muted); line-height: 1.8; }
 .project-cover-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 20px; }
 .project-cover-footer span { color: var(--ip-muted); font-size: 12px; }
