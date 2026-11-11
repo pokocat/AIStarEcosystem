@@ -233,6 +233,7 @@ public class StudioPlanExecutionService {
         if(loaded==null||!"production".equals(loaded.plan().path("stage").asText()))throw stale("没有可执行的制作安排，请在画布上查看分析结果");
         ObjectNode plan=loaded.plan().deepCopy();
         JsonNode config=state.path("videoTask").path("request").path("configuration");
+        String kind=state.path("videoTask").path("kind").asText();
         int seconds=0;
         for(JsonNode raw:plan.path("steps")) {
             ObjectNode step=(ObjectNode)raw;step.put("execution","auto");
@@ -242,10 +243,14 @@ public class StudioPlanExecutionService {
                 settings.put("aspectRatio",config.path("ratio").asText("9:16"));
                 ((ObjectNode)settings.path("video")).put("resolutionTier",config.path("tier").asText());
                 if(config.path("optimize").isBoolean())((ObjectNode)settings.path("video")).put("optimize",config.path("optimize").asBoolean());
+                // 深度复刻总是先优化提示词（StudioCloneVideoPlan.optimize）
+                if("depth".equals(kind))((ObjectNode)settings.path("video")).put("optimize",true);
                 seconds+=settings.path("durationSec").asInt();
             }
         }
-        if(seconds==0||Math.abs(seconds-config.path("duration").asInt())>1)throw stale("分镜时长与本次设置不一致，请在画布上查看后调整");
+        // 深度复刻 / 元素替换不做整段都是原作者账号片尾的那段（StudioRecreationTaskPlan），成片可以比页面上的时长短
+        boolean shorter=StudioCloneVideoPlan.nativeClone(kind)&&seconds<config.path("duration").asInt();
+        if(seconds==0||!shorter&&Math.abs(seconds-config.path("duration").asInt())>1)throw stale("分镜时长与本次设置不一致，请在画布上查看后调整");
         quoter.quote(e.getOwnerUserId(),plan);
         long spent=budget.path("analysis").path("spent").asLong();
         long remaining=budget.path("analysis").path("approvedCap").asLong()-spent;

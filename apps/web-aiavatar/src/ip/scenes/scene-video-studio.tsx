@@ -19,7 +19,7 @@ import { SignedVideo } from "@/canvas-bridge/signed-video";
 import { getStudioPlanExecution } from "@/canvas-bridge/studio-plan-execution";
 import type { StudioPlanExecution, StudioSegmentedVideoPrice, StudioSegmentedVideoRequest } from "@ai-star-eco/types/ip-studio-workflow";
 import { describeSegmentedPrice, segmentedRecords, segmentedVideoPrice, startSegmentedVideo, type SegmentedRecord } from "@/canvas-bridge/studio-segmented";
-import type { StudioVideoCloneMode, StudioVideoTask, StudioVideoTaskCreate, StudioVideoTaskKind, StudioVideoTaskQuote } from '@ai-star-eco/types/ip-studio-video-task';
+import type { StudioCloneAdvice, StudioVideoCloneMode, StudioVideoTask, StudioVideoTaskCreate, StudioVideoTaskKind, StudioVideoTaskQuote } from '@ai-star-eco/types/ip-studio-video-task';
 import type { EnterpriseBillingSelection } from '@ai-star-eco/types/enterprise';
 import type { StudioVideoSettings } from '@ai-star-eco/types/ip-studio-workflow';
 import { startVideoTask, prepareVideoTask, videoTaskPrice } from '@/canvas-bridge/studio-video-tasks';
@@ -54,7 +54,7 @@ import { AiMark } from "../studio-ai-icon";
 import { clampSceneDuration, sceneVideoDurations, sceneVideoInputs, sceneVideoSettings, type SceneVideoMaterial } from "./scene-video-plan";
 import { sceneScriptLayers } from "./scene-script-layers";
 import { classifyBlanks, missingFigures, overlongShots, scriptMissing, scriptPlaceholders, splitBlanks } from "./scene-script-check";
-import { CloneModePicker, cloneModeOf, cloneReferenceMode, cloneTool } from './scene-video-clone';
+import { CloneModePicker, cloneAdvice, cloneModeOf, cloneReferenceMode, cloneTool } from './scene-video-clone';
 
 type Media = StudioMediaImportResult & { title: string };
 type Slot = "image" | "character" | "voice" | "video";
@@ -157,7 +157,9 @@ export function SceneVideoStudio() {
   const usedDuration = contract ? clampSceneDuration(duration, contract) : duration;
   const tiers = contract?.tiers.filter(t => t.canvases.some(c => c.aspectRatio === ratio)) ?? [];
   const usedTier = tiers.find(t => t.tier === tier)?.tier ?? tiers[0]?.tier;
-  useEffect(() => { if (contract && !durationTouched.current && duration > contract.maxSeconds) setDuration(contract.maxSeconds); }, [contract, duration]);
+  // 默认时长先按模型单段上限出。爆款复刻不算：成片长度跟原片走、按原片分段（下面按参考视频时长设），截成单段上限会和拉片分段对不上，
+  // 分析完就停在「分镜时长与本次设置不一致」（2026-11-11 查出：原片长于单段上限的复刻都会这样）。
+  useEffect(() => { if (contract && scene?.skill !== RECREATION && !durationTouched.current && duration > contract.maxSeconds) setDuration(contract.maxSeconds); }, [contract, duration, scene?.skill]);
 
   // ── 场景与草稿 ────────────────────────────────────────────────────────
   const sceneNow = useRef<string>(undefined);
@@ -511,11 +513,19 @@ export function SceneVideoStudio() {
   // ── 编导写脚本 ────────────────────────────────────────────────────────
   const revising = !!latestScript;
   const recreation = scene?.skill === RECREATION;
-  // 复刻按原片的镜头分段出片，成片长度跟原片走：换了参考视频就按它的时长重设（用户自己改过时长的不动）。
+  // 复刻按原片的镜头分段出片，成片长度跟原片走：时长就是参考视频的时长，不让改（服务端按拉片分段核对，差 1 秒以上就停）。
   useEffect(() => {
-    if (!recreation || durationTouched.current || !video?.durationSec) return;
+    if (!recreation || !video?.durationSec) return;
     setDuration(Math.min(MAX_SECONDS, Math.max(1, Math.round(video.durationSec))));
   }, [recreation, video?.key, video?.durationSec]);
+  // 这条参考视频适合哪种复刻方式（按切镜数和镜头时长，服务端 StudioCloneVideoPlan#advise）。拿不到就不显示推荐，不挡生成。
+  const [advice, setAdvice] = useState<{ key: string; value: StudioCloneAdvice }>();
+  useEffect(() => {
+    if (!recreation || !video?.key || caps?.mock || advice?.key === video.key) return;
+    const controller = new AbortController(), key = video.key;
+    cloneAdvice(key, controller.signal).then(value => { if (!controller.signal.aborted) setAdvice({ key, value }); }).catch(() => { /* 只是推荐 */ });
+    return () => controller.abort();
+  }, [recreation, video?.key, caps?.mock, advice?.key]);
   /** 让编导写（或改）这一版之前卡在哪：ask 是要交给编导的那句话。 */
   const scriptBlocker = (ask: string, settingsChanged = false) => !scene ? "正在加载场景…"
     : scene.images.required && !images.length ? `请添加${scene.images.label}`
@@ -528,8 +538,8 @@ export function SceneVideoStudio() {
     : scene.images.required && !images.length ? `请添加${scene.images.label}`
     : scene.textRequired && !text.trim() ? "请填写要求"
     : nativeClone && cloneMode === 'depth' && !caps?.operations.includes('video-control') ? '深度复刻暂不可用，请联系平台处理。'
-    : nativeClone && video?.durationSec && video.durationSec > Math.min(60, cloneReferenceMode(chosenVideo)?.references?.video.maxDurationSec ?? 60) + .05
-      ? `参考视频过长，当前模型最长支持 ${Math.min(60, cloneReferenceMode(chosenVideo)?.references?.video.maxDurationSec ?? 60)} 秒，请先裁剪或使用分镜复刻` : '';
+    // 三种方式都按原片分段出片，参考视频整条最长 60 秒（每段多长由服务端按模型定）
+    : video?.durationSec && video.durationSec > MAX_SECONDS + .05 ? `参考视频最长 ${MAX_SECONDS} 秒，请先裁剪` : '';
 
   /**
    * 让编导写第一版（ask 是编辑框里的想法）或改一版（ask 是「修改意见」）。
@@ -740,7 +750,7 @@ export function SceneVideoStudio() {
   const ratios = contract?.tiers.find(t => t.tier === usedTier)?.canvases.map(c => c.aspectRatio).filter(r => r === "9:16" || r === "16:9") ?? ["9:16", "16:9"];
   // 三种入口共用任务工作区，后台按实际制作方式推进。
   const long = !recreation && !!contract && duration > contract.maxSeconds;
-  const shownDuration = recreation && !nativeClone || long ? duration : usedDuration;
+  const shownDuration = recreation || long ? duration : usedDuration;
   // 按钮旁的价按服务端报价显示（折扣、模型赠款、付款账户），本地价表只在报价回来之前垫着，也作为提交时的上限。
   const priceQuery = useMemo(() => chosenVideo && settings && videoQuote != null && !recreation && !long && caps && !caps.mock
     ? studioVideoPriceQuery(chosenVideo.selectableById ? chosenVideo.endpointId : undefined, settings, usedDuration, ratio) : undefined,
@@ -1060,7 +1070,7 @@ export function SceneVideoStudio() {
           slot: p.media.key === character?.key ? 'character' : p.media.key === voice?.key ? 'voice' : 'image' })) as StudioSegmentedVideoRequest['materials'];
         const clientRequestId = nanoid(), cap = taskQuote!.price!.cap;
         const configuration: StudioSegmentedVideoRequest = { clientRequestId, sceneId: scene.id, text: text.trim(), hasScript: !!scriptId,
-          options: sceneOptionValues(scene.options, picked), language, duration: kind === 'direct' || nativeClone ? usedDuration : duration, ratio,
+          options: sceneOptionValues(scene.options, picked), language, duration: kind === 'direct' ? usedDuration : duration, ratio,
           model: taskModel, tier: usedTier, optimize: optimize || depthClone, materials, budgetCap: cap };
         const native = kind === 'direct' ? addVideoRow({ ...draftRef.current!.doc, nodes }, { title: scene.title, prompt: sentPrompt, script: text.trim(), scriptId,
           refIds: plan!.used.map(m => placed.find(p => p.media.key === m.key)?.node.id).filter((id): id is string => !!id),
@@ -1219,7 +1229,8 @@ export function SceneVideoStudio() {
       <button type="button" className="scene-pill" aria-expanded={settingsOpen} aria-label={`视频规格：${language}，${shownDuration} 秒，${ratio}${usedTier ? `，${usedTier.toUpperCase()}` : ""}`} onClick={() => setSettingsOpen(v => !v)}>
         <SlidersHorizontal size={14} strokeWidth={1.5}/><span>{language} · {shownDuration} 秒 · <RatioGlyph ratio={ratio}/>{ratio}{usedTier ? ` · ${usedTier.toUpperCase()}` : ""}</span><ChevronDown size={13} strokeWidth={1.6}/></button>
       {settingsOpen && <VideoSettingsPanel min={recreation ? Math.min(...scene.durations) : contract?.minSeconds ?? Math.min(...scene.durations)}
-        max={nativeClone ? contract?.maxSeconds ?? MAX_SECONDS : MAX_SECONDS} single={recreation ? undefined : contract?.maxSeconds} duration={nativeClone ? usedDuration : duration} onDuration={pickDuration} segments={segments}
+        max={MAX_SECONDS} single={recreation ? undefined : contract?.maxSeconds} duration={duration} onDuration={pickDuration} segments={segments}
+        followsSource={recreation} sourceKnown={!!video?.durationSec}
         ratios={recreation ? ["9:16", "16:9"] : ratios} ratio={ratio} onRatio={setRatio}
         tiers={tiers.map(t => t.tier)} tier={usedTier} onTier={setTier}
         language={language} onLanguage={setLanguage} optimizable={!!chosenVideo?.supportsPromptOptimization} optimize={optimize || depthClone} onOptimize={setOptimize}
@@ -1286,9 +1297,9 @@ export function SceneVideoStudio() {
       </div>
 
       : <div className="scene-compose">
-        {recreation && <CloneModePicker mode={cloneMode} disabled={busy || uploading !== undefined} onChange={mode => {
+        {recreation && <CloneModePicker mode={cloneMode} disabled={busy || uploading !== undefined}
+          advice={advice && advice.key === video?.key ? advice.value : undefined} onChange={mode => {
           setCloneMode(mode); setScriptId(undefined); setHint(''); writeQuery(scene.id, draftRef.current?.id, mode);
-          if (mode !== 'recreation') { durationTouched.current = false; setDuration(Math.min(duration, contract?.maxSeconds ?? 15)); }
         }}/>}
         {mediaRow()}
 
@@ -1477,8 +1488,9 @@ function VideoRow({ row, run, busy, submitting, onRetry, onConfirm, onReuse, onS
 
 /** 视频规格：台词语言、时长（拖动，超过单段上限分段）、画面比例、清晰度，以及场景的几组选项。就地展开在按钮上方。 */
 function VideoSettingsPanel({ min, max, single, duration, onDuration, segments, ratios, ratio, onRatio, tiers, tier, onTier, language, onLanguage,
-  optimizable, optimize, onOptimize, optimizeFixed, options, picked, onPick, onClose }: {
+  optimizable, optimize, onOptimize, optimizeFixed, options, picked, onPick, onClose, followsSource, sourceKnown }: {
   min: number; max: number; single?: number; duration: number; onDuration: (n: number) => void; segments: number[];
+  /** 爆款复刻：时长跟参考视频走，不给拖动 */ followsSource?: boolean; sourceKnown?: boolean;
   ratios: string[]; ratio: string; onRatio: (r: string) => void; tiers: string[]; tier?: string; onTier: (t: string) => void;
   language: string; onLanguage: (l: string) => void; optimizable: boolean; optimize: boolean; onOptimize: (on: boolean) => void; optimizeFixed?: boolean;
   options?: StudioSceneOptionGroup[] | null; picked: Record<string, string>; onPick: (key: string, choice: string) => void; onClose: () => void;
@@ -1498,13 +1510,14 @@ function VideoSettingsPanel({ min, max, single, duration, onDuration, segments, 
   return <div ref={panel} className="scene-settings-panel" role="group" aria-label="视频规格">
     <div className="scene-setting-row"><span>台词语言</span>
       <div className="scene-choice-row">{LANGUAGES.map(l => <button key={l} type="button" aria-pressed={l === language} onClick={() => onLanguage(l)}>{l}</button>)}</div></div>
-    <div className="scene-setting-row is-stack">
+    {followsSource ? <div className="scene-setting-row"><span>时长</span><p className="scene-setting-text">{sourceKnown ? `跟随参考视频，约 ${duration} 秒` : "跟随参考视频"}</p></div>
+    : <div className="scene-setting-row is-stack">
       <label htmlFor="scene-video-duration">时长<b>{duration} 秒</b></label>
       <input id="scene-video-duration" className="scene-range" type="range" min={min} max={max} step={1} value={duration} style={{ "--p": `${fill}%` } as CSSProperties}
         aria-valuetext={segments.length > 1 ? `${duration} 秒，分 ${segments.length} 段` : `${duration} 秒`} onChange={e => onDuration(Number(e.target.value))}/>
       <div className="scene-range-scale"><span>{min} 秒</span>{singleAt !== undefined && <span style={{ left: `clamp(32px, ${singleAt}%, calc(100% - 32px))` }}>单段 {single} 秒</span>}<span>{max} 秒</span></div>
       {segments.length > 1 && <p>超过单段上限，将分 {segments.length} 段生成后拼接：{segments.join(" + ")} 秒。</p>}
-    </div>
+    </div>}
     <div className="scene-setting-row"><span>画面比例</span>
       <div className="scene-choice-row">{ratios.map(value => <button key={value} type="button" aria-pressed={value === ratio} onClick={() => onRatio(value)}><RatioGlyph ratio={value}/>{value}</button>)}</div></div>
     {tiers.length > 1 && <div className="scene-setting-row"><span>清晰度</span>

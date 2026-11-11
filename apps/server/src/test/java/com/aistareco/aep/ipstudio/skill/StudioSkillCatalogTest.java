@@ -17,7 +17,7 @@ class StudioSkillCatalogTest {
         assertEquals("active", skill.status());
         assertEquals("dynamic", skill.planning());
         assertEquals(List.of("recreation", "text"), skill.stageOperations("analysis"));
-        assertEquals(List.of("text", "image", "video", "check", "assemble"), skill.stageOperations("production"));
+        assertEquals(List.of("text", "image", "video", "video-control", "check", "assemble"), skill.stageOperations("production"));
         assertEquals(28, skill.maxSteps(), "maxSegments * 3 + 4 with 8 segments");
         assertEquals("model", skill.maxSegmentSec());
         assertEquals(60, skill.maxSourceSec());

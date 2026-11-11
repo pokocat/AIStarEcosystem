@@ -278,7 +278,9 @@ public class StudioWorkflowService {
             hypitMedia.requireReady();
             recreationSource=StudioRecreation.snapshot(projects.readDoc(project),request.contextNodeIds(),projects,userId,recreationStorage);
         }
-        ObjectNode segmentCap=request.recreation()==null?null:segmentCap(request.recreation(),recreationSource,skill);
+        // 深度复刻 / 元素替换要把每段原片交给视频模型：每段还不能短于参考视频的下限（StudioCloneVideoPlan.clip）
+        boolean clipMethod=executionBinding!=null&&com.aistareco.aep.ipstudio.execution.StudioCloneVideoPlan.nativeClone(executionBinding.state().path("videoTask").path("kind").asText());
+        ObjectNode segmentCap=request.recreation()==null?null:segmentCap(request.recreation(),recreationSource,skill,clipMethod);
         ObjectNode checkTarget=check?checkTarget(userId,projectId,request.check(),skill):null;
         var chatRate=!fixtures.enabled()&&text?chatRate(textEndpoint.endpoint().getId()):null;
         if(!fixtures.enabled()&&text&&chatRate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED","此模型暂未定价，请选择其他模型");
@@ -375,7 +377,7 @@ public class StudioWorkflowService {
                 String stageKey=textStage(request.operation(),skillPlan,check);
                 // AI 视频页的爆款复刻：拉片 v2 之后由代码拼方案，模型只写每段提示词（StudioRecreationTaskPlan）
                 Map<String,Object> recreationCompile=skillPlan?recreationCompile(request,executionBinding,execution):null;
-                if(recreationCompile!=null)stageKey=com.aistareco.aep.ipstudio.prompt.StudioPromptCallPoints.RECREATION_COMPILE;
+                if(recreationCompile!=null)stageKey=com.aistareco.aep.ipstudio.prompt.StudioPromptCallPoints.recreationCompile(execution.path("recreationTask").path("method").asText());
                 Map<String,?> stageVars=recreationCompile!=null?recreationCompile:skillPlan?skillPlanVariables(userId,project,request,skill,executionBinding,canvasContext,execution)
                         :check?checkVariables(request,skill,checkTarget):variables;
                 var assembled=com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.or(promptAssembler).assembleAndRecord(mapper,execution,
@@ -811,7 +813,7 @@ public class StudioWorkflowService {
      * Segment cap for film study: "model" reads the selected video model's contract maximum (H3 = 15 s); an explicit
      * number may not exceed it. A source that cannot fit within maxSegments × cap is refused here, before any hold.
      */
-    private ObjectNode segmentCap(RecreationSettings settings,JsonNode source,com.aistareco.aep.ipstudio.execution.StudioSkillRules.Rules skill) {
+    private ObjectNode segmentCap(RecreationSettings settings,JsonNode source,com.aistareco.aep.ipstudio.execution.StudioSkillRules.Rules skill,boolean clipMethod) {
         if(settings.videoModel()==null||settings.videoModel().isBlank())throw bad("STUDIO_INPUT_INVALID","请选择用来生成分段视频的模型");
         var model=(studioVideo==null?List.<com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioModel>of():studioVideo.models()).stream()
                 .filter(m->settings.videoModel().equals(m.endpointId())).findFirst()
@@ -835,6 +837,7 @@ public class StudioWorkflowService {
         ObjectNode out=mapper.createObjectNode().put("maxSegmentSec",cap).put("requested",requested).put("maxSegments",maxSegments)
                 .put("videoModel",model.endpointId()).put("minSegmentSec",referenceMin);
         out.putObject("contract").put("minSeconds",contract.minSeconds()).put("maxSeconds",contract.maxSeconds());
+        if(clipMethod)out.put("clipMinSec",com.aistareco.aep.ipstudio.execution.StudioCloneVideoPlan.clip(model).minSec());
         return out;
     }
 
@@ -969,7 +972,8 @@ public class StudioWorkflowService {
     private Map<String,Object> recreationCompile(RunRequest request,ExecutionBinding binding,ObjectNode execution) {
         if(binding==null||planOutputs==null||studioVideo==null)return null;
         JsonNode task=binding.state().path("videoTask");
-        if(!"recreation".equals(task.path("kind").asText()))return null;
+        String method=task.path("kind").asText();
+        if(!com.aistareco.aep.ipstudio.execution.StudioCloneVideoPlan.method(method))return null;
         var film=planOutputs.filmStudy(binding.execution(),binding.state().path("steps")).orElse(null);
         if(film==null)return null;
         JsonNode config=task.path("request").path("configuration");
@@ -982,10 +986,12 @@ public class StudioWorkflowService {
         // 开场画面最多几张：技能的步数上限减去每段的视频、检查和最后的合成
         int maxSteps=binding.state().path("skill").isObject()?com.aistareco.aep.ipstudio.execution.StudioSkillRules.fromSnapshot(binding.state().path("skill")).maxSteps():12;
         int segments=film.film().path("segments").size();
+        String studyNode=com.aistareco.aep.ipstudio.execution.StudioPlanExecutionIds.nodeId(binding.execution().getId(),film.stage(),film.stepId());
+        Boolean optimize=config.path("optimize").isBoolean()?config.path("optimize").asBoolean():null;
+        if("depth".equals(method))optimize=true;
         var prepared=com.aistareco.aep.ipstudio.execution.StudioRecreationTaskPlan.prepare(film.film(),materials,chosen.endpointId(),chosen.contract(),
-                config.path("tier").asText(null),config.path("ratio").asText("9:16"),config.path("optimize").isBoolean()?config.path("optimize").asBoolean():null,
-                com.aistareco.aep.ipstudio.execution.StudioPlanExecutionIds.nodeId(binding.execution().getId(),film.stage(),film.stepId())+"-f",
-                Math.max(0,maxSteps-segments*2-1),config.path("text").asText(""));
+                config.path("tier").asText(null),config.path("ratio").asText("9:16"),optimize,
+                studyNode+"-f",Math.max(0,maxSteps-segments*2-1),config.path("text").asText(""),method,studyNode+"-s");
         prepared.put("maxSteps",maxSteps);
         execution.set("recreationTask",prepared);
         // 方案只能引用这次的素材
@@ -994,6 +1000,7 @@ public class StudioWorkflowService {
         for(JsonNode u:prepared.path("units")) {
             for(JsonNode r:u.path("refs"))if(r.hasNonNull("nodeId"))allowed.add(r.path("nodeId").asText());
             for(JsonNode k:u.path("keyframes"))allowed.add(k.path("frameNodeId").asText());
+            if(u.hasNonNull("clipNodeId"))allowed.add(u.path("clipNodeId").asText());
         }
         var ids=execution.putArray("allowedNodeIds");allowed.forEach(ids::add);
         return com.aistareco.aep.ipstudio.execution.StudioRecreationTaskPlan.variables(prepared,film.film().path("breakdown"),config.path("text").asText(""));
@@ -1046,11 +1053,11 @@ public class StudioWorkflowService {
     /** Stage whitelist, limits, checks and the typed settings contract given to the planner (also used by the admin dry-run). */
     public static ObjectNode skillPlanConstraints(ObjectMapper mapper,com.aistareco.aep.ipstudio.execution.StudioSkillRules.Rules skill,String stage) {
         ObjectNode constraints=mapper.createObjectNode();
-        var operations=constraints.putArray("operations");skill.stageOperations(stage).forEach(operations::add);
+        var operations=constraints.putArray("operations");com.aistareco.aep.ipstudio.execution.StudioSkillRules.plannerOperations(skill.stageOperations(stage)).forEach(operations::add);
         constraints.put("maxSteps",skill.maxSteps()).put("maxSegments",skill.maxSegments()).put("maxSourceSec",skill.maxSourceSec()).put("maxSegmentSec",skill.maxSegmentSec());
         var checks=constraints.putArray("checks");skill.checks().forEach(checks::add);
         constraints.put("settings","每步 settings 按操作填写：recreation{sourceNodeId,mode:\"segments\",maxSegmentSec:\"model\"|秒数,videoModel}；image{count:1|2|4,aspectRatio?:\"9:16\"|\"16:9\"|\"1:1\"|\"3:4\"（画幅，按技能默认填）,size?:\"宽x高\"（只在用户给了像素尺寸时填）,referenceBindings[],model?}；video{model,video:{mode,resolutionTier,seed?},durationSec,aspectRatio,count:1|2|4,referenceBindings[]}；check{targetStepId,checkIds[],candidateIndex?}；assemble{clipOrder:[{stepId,candidateIndex?}],audioStrategy:\"generated\"|\"source-audio\"}；text{purpose:\"script\"|\"prompt-revision\"|\"plan-compile\"|\"note\",editTarget?}。referenceBindings 每项 {stepId 或 nodeId 二选一,role,order}。plan-compile 只在分析阶段用于编排制作计划。");
-        var allowed=new java.util.HashSet<>(skill.stageOperations(stage));
+        var allowed=new java.util.HashSet<>(com.aistareco.aep.ipstudio.execution.StudioSkillRules.plannerOperations(skill.stageOperations(stage)));
         String directGuide=(skill.direct()?"这个方法没有分析阶段：直接写制作步骤，不写 plan-compile，没有真实取舍时 approaches 只写一个推荐方案或省略。":"")
                 +"制作阶段只写本阶段允许的操作："+String.join("、",skill.stageOperations(stage))+"。"
                 +(allowed.contains("text")?"text 用于写稿或改词：purpose 填 script / prompt-revision / note，改已有文字时写 editTarget。":"")

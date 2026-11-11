@@ -11,6 +11,7 @@ const api = vi.hoisted(() => ({
   push: vi.fn(), failure: vi.fn(), taskStart: vi.fn(), taskGet: vi.fn(), ask: vi.fn(), signKeys: vi.fn(),
   uploadImage: vi.fn(), listProjects: vi.fn(), createProject: vi.fn(), updateProject: vi.fn(), getProject: vi.fn(), listScenes: vi.fn(), composeScene: vi.fn(),
   fetchModels: vi.fn(), readRun: vi.fn(), cancelRun: vi.fn(), capabilities: vi.fn(), submit: vi.fn(), importMedia: vi.fn(), videoModels: vi.fn(), videoPrice: vi.fn(),
+  cloneAdvice: vi.fn(),
 }));
 // 和 Next 一样：地址参数从 useSearchParams 读（页面改地址用 history.replaceState，下次渲染读到新的）。
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: api.push, replace: vi.fn() }), useSearchParams: () => new URLSearchParams(window.location.search) }));
@@ -29,6 +30,7 @@ vi.mock("@/canvas-bridge/studio-video-tasks", async original => ({ ...await orig
 vi.mock("@/canvas-bridge/studio-image-file", () => ({ prepareStudioImageUpload: async (f: File) => f }));
 vi.mock("../studio-credit-shortage", () => ({ askStudioCreditShortage: api.ask }));
 vi.mock("@/canvas-bridge/studio-model-quote", () => ({ quoteVideoPrice: api.videoPrice }));
+vi.mock("./scene-video-clone", async original => ({ ...await original<any>(), cloneAdvice: api.cloneAdvice }));
 vi.mock("../studio-errors", async importOriginal => ({ ...(await importOriginal<typeof import("../studio-errors")>()), useStudioFailure: () => api.failure, studioErrorMetadata: () => ({}) }));
 vi.mock("../library-reference-picker", () => import("./scene-test-picker"));
 vi.mock("../studio-select", () => ({ StudioSelect: ({ label, value, onChange, options }: any) =>
@@ -44,6 +46,7 @@ const doc = { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
 const project = (patch: Partial<IpProject> = {}): IpProject => ({ id: "IPP-1", name: "x", status: "draft", createdAt: "", updatedAt: "", doc, runs: {}, runsById: {}, docVersion: "v1", ...patch });
 
 beforeEach(() => {
+  api.cloneAdvice.mockRejectedValue(new Error('没有推荐'));
   api.taskStart.mockImplementation(async (projectId: string, request: any) => {
     if (request.kind === 'direct') await api.submit(projectId, request.video);
     const task = { id: 'PEX-task', projectId, ...request, request, createdAt: '2026-11-06',
@@ -276,10 +279,10 @@ for (const mode of ['depth', 'replacement'] as const) test(`视频工具：${mod
   window.history.replaceState(null, '', `/video?scene=recreation&tool=${mode}`);
   api.videoModels.mockResolvedValue([H3]);
   api.capabilities.mockResolvedValue({ mock: false, operations: ['video-control'], imageCost: 8 });
-  api.importMedia.mockResolvedValue({ key: 'ipstudio/media/u/original.mp4', url: 'blob:v', mediaType: 'video', mimeType: 'video/mp4', bytes: 1, fileName: '原片.mp4' });
+  api.importMedia.mockResolvedValue({ key: 'ipstudio/media/u/original.mp4', url: 'blob:v', mediaType: 'video', mimeType: 'video/mp4', bytes: 1, fileName: '原片.mp4', durationSec: 12.2 });
   await act(async () => { render(<SceneVideoStudio/>); });
   await waitFor(() => expect(screen.getByText('请添加参考视频')).toBeTruthy());
-  expect(screen.getByRole('button', { name: mode === 'depth' ? '深度复刻' : '元素替换' }).getAttribute('aria-pressed')).toBe('true');
+  expect(screen.getByRole('radio', { name: mode === 'depth' ? /^深度复刻/ : /^元素替换/ }).getAttribute('aria-checked')).toBe('true');
   await pickFromLibrary('参考视频');
   fillField(screen.getByRole('textbox', { name: '想做的视频' }), '把原片商品替换成我的精华液，动作不变');
   api.importMedia.mockResolvedValue({ key: 'ipstudio/media/u/new.jpg', url: 'blob:p', mediaType: 'image', mimeType: 'image/jpeg', bytes: 1, fileName: '精华液.jpg' });
@@ -288,7 +291,7 @@ for (const mode of ['depth', 'replacement'] as const) test(`视频工具：${mod
   await waitFor(() => expect(go().disabled).toBe(false));
   await act(async () => { fireEvent.click(go()); });
   expect(api.taskStart).toHaveBeenCalledWith('IPP-1', expect.objectContaining({ kind: mode,
-    configuration: expect.objectContaining({ model: H3.endpointId, duration: 15 }),
+    configuration: expect.objectContaining({ model: H3.endpointId, duration: 12 }),
     input: expect.objectContaining({ sceneVideoState: expect.objectContaining({ cloneMode: mode }), nodes: expect.arrayContaining([
       expect.objectContaining({ type: 'video', metadata: expect.objectContaining({ storageKey: 'ipstudio/media/u/original.mp4' }) }),
       expect.objectContaining({ type: 'image', metadata: expect.objectContaining({ storageKey: 'ipstudio/media/u/new.jpg' }) }),
@@ -297,7 +300,7 @@ for (const mode of ['depth', 'replacement'] as const) test(`视频工具：${mod
   expect(window.location.search).toContain(`tool=${mode}`); expect(window.location.search).toContain('task=PEX-task');
 });
 
-test('深度复刻：资产库中的实测时长提前拦截超限原片，切换分镜复刻后允许制作', async () => {
+test('深度复刻：比模型单段长的原片也能做（按原片分段），时长跟原片走；超过 60 秒的原片提前拦下', async () => {
   window.history.replaceState(null, '', '/video?scene=recreation&tool=depth');
   api.videoModels.mockResolvedValue([H3]);
   api.capabilities.mockResolvedValue({ mock: false, operations: ['video-control'], imageCost: 8 });
@@ -305,11 +308,34 @@ test('深度复刻：资产库中的实测时长提前拦截超限原片，切�
   await act(async () => { render(<SceneVideoStudio/>); });
   await screen.findByText('请添加参考视频'); await pickFromLibrary('参考视频');
   fillField(screen.getByRole('textbox', { name: '想做的视频' }), '换人物与衣服');
-  await screen.findByText(/参考视频过长，当前模型最长支持 15 秒/);
-  expect((screen.getByRole('button', { name: '生成视频' }) as HTMLButtonElement).disabled).toBe(true);
-  expect(api.taskStart).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: '分镜复刻', exact: true }));
-  await waitFor(() => expect((screen.getByRole('button', { name: '生成视频' }) as HTMLButtonElement).disabled).toBe(false));
+  const go = () => screen.getByRole('button', { name: '生成视频' }) as HTMLButtonElement;
+  await waitFor(() => expect(go().disabled).toBe(false));
+  await act(async () => { fireEvent.click(go()); });
+  expect(api.taskStart).toHaveBeenCalledWith('IPP-1', expect.objectContaining({ kind: 'depth', configuration: expect.objectContaining({ duration: 18 }) }));
+  cleanup(); api.taskStart.mockClear();
+  window.history.replaceState(null, '', '/video?scene=recreation&tool=depth');
+  api.importMedia.mockResolvedValue({ key: 'ipstudio/media/u/long.mp4', url: 'blob:v', mediaType: 'video', mimeType: 'video/mp4', bytes: 1, fileName: 'long.mp4', durationSec: 75 });
+  await act(async () => { render(<SceneVideoStudio/>); });
+  await screen.findByText('请添加参考视频'); await pickFromLibrary('参考视频');
+  fillField(screen.getByRole('textbox', { name: '想做的视频' }), '换人物与衣服');
+  await screen.findByText('参考视频最长 60 秒，请先裁剪');
+  expect(go().disabled).toBe(true); expect(api.taskStart).not.toHaveBeenCalled();
+});
+
+test('爆款复刻：放进参考视频后按切镜结果推荐方式，不替用户切换', async () => {
+  window.history.replaceState(null, '', '/video?scene=recreation');
+  api.videoModels.mockResolvedValue([H3]);
+  api.capabilities.mockResolvedValue({ mock: false, operations: ['video-control'], imageCost: 8 });
+  api.cloneAdvice.mockResolvedValue({ durationSec: 30, shots: 1, averageShotSec: 30, recommended: 'depth', reason: '这条视频一镜到底，照动作重拍最像' });
+  api.importMedia.mockResolvedValue({ key: 'ipstudio/media/u/talk.mp4', url: 'blob:v', mediaType: 'video', mimeType: 'video/mp4', bytes: 1, fileName: '口播.mp4', durationSec: 30 });
+  await act(async () => { render(<SceneVideoStudio/>); });
+  await screen.findByText('请添加参考视频'); await pickFromLibrary('参考视频');
+  await waitFor(() => expect(api.cloneAdvice).toHaveBeenCalledWith('ipstudio/media/u/talk.mp4', expect.anything()));
+  await waitFor(() => expect(within(screen.getByRole('radio', { name: /^深度复刻/ })).queryByText('推荐')).toBeTruthy());
+  expect(screen.getByRole('radio', { name: /^分镜复刻/ }).getAttribute('aria-checked')).toBe('true');
+  fireEvent.click(screen.getByRole('radio', { name: /^深度复刻/ }));
+  expect(screen.getByRole('radio', { name: /^深度复刻/ }).getAttribute('aria-checked')).toBe('true');
+  expect(window.location.search).toContain('tool=depth');
 });
 
 for (const mode of ['depth', 'replacement'] as const) test(`视频工具：${mode} 允许只用原片和文字要求`, async () => {
@@ -351,7 +377,7 @@ test('完成任务再次生成时沿用同一草稿并回到编辑页，保留�
   }));
   await waitFor(() => expect(document.querySelector('main')?.getAttribute('data-video-view')).toBe('compose'));
   expect(fieldText('想做的视频')).toContain('绿色产品');
-  expect(screen.getByRole('button', { name: '深度复刻', exact: true }).getAttribute('aria-pressed')).toBe('true');
+  expect(screen.getByRole('radio', { name: /^深度复刻/ }).getAttribute('aria-checked')).toBe('true');
   expect(window.location.search).not.toContain('task='); expect(api.taskStart).not.toHaveBeenCalled();
 });
 

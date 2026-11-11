@@ -605,7 +605,7 @@ public class StudioDialogueTurnWorker {
             if (started) {
                 vars.put("production", "production".equals(stage));
                 vars.put("direct", skill.direct());
-                vars.put("operations", String.join("、", skill.stageOperations(stage)));
+                vars.put("operations", String.join("、", com.aistareco.aep.ipstudio.execution.StudioSkillRules.plannerOperations(skill.stageOperations(stage))));
             }
             vars.put("execution", executionSummary());
             return com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.or(promptAssembler).assemble(com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.Call.of("stage-dialogue-phase", vars, frozen, null)).user();

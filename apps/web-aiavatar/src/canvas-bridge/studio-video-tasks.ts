@@ -51,7 +51,7 @@ export function videoTaskResumeLabel(task: StudioVideoTask): '重试这一步' |
 }
 export function videoTaskProblemTitle(step: StudioPlanExecutionStep) {
   const named = /^第/.test(step.title) ? step.title : undefined;
-  const name = step.operation === 'video-control' ? '动作与空间结构提取' : step.operation === 'recreation' ? '参考视频分析' : step.operation === 'text' ? '分镜脚本' : step.operation === 'assemble' ? '导出成片'
+  const name = step.operation === 'video-control' ? named ?? '动作提取' : step.operation === 'recreation' ? '参考视频分析' : step.operation === 'text' ? '分镜脚本' : step.operation === 'assemble' ? '导出成片'
     : named ?? (step.operation === 'video' ? '视频' : '分镜图');
   return `${name}没有完成`;
 }

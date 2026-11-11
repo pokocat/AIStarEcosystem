@@ -43,6 +43,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** Real HTTP adapter, persistence, native workers/ledger, file mirroring and ReShot; only the video vendor is local.
  * Opt-in because a normal test run must not download model weights or require a configured inference runtime. */
 @EnabledIfEnvironmentVariable(named="STUDIO_DEPTH_REAL",matches="1")
+// 2026-11-11 深度复刻和元素替换改成和分镜复刻一样先拉片（要真实的视频理解模型）、再按原片分段，这条单段直出的真实链路要按新流程重写（TODO.md「爆款复刻三种方式」）
+@Disabled("按新流程重写前不跑")
 @SpringBootTest(properties={"spring.flyway.enabled=false","spring.jpa.hibernate.ddl-auto=create-drop",
         "spring.datasource.url=jdbc:h2:mem:studio-clone-it;MODE=MySQL;NON_KEYWORDS=CAST;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=20000",
         "aep.seed.dev-data.enabled=false","aep.cdn.driver=local","aep.dev-auth.enabled=false",

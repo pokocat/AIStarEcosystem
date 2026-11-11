@@ -523,12 +523,11 @@ public class StudioPlanExecutor {
         JsonNode definition=step.path("definition");
         var keys=new StudioPlanSteps.Keys() {
             @Override public String binding(JsonNode binding) {
+                // 深度复刻 / 元素替换受理时冻结的原片和素材：用冻结的文件，画布上后来改了也不影响这次制作。
+                // 不在冻结表里的（拉片切好的原片片段、本次制作的产物）照常按节点找。
                 JsonNode frozen=state.path("videoTask").path("cloneKeys");
-                if(binding.hasNonNull("nodeId")&&frozen.isObject()) {
-                    String key=frozen.path(binding.path("nodeId").asText()).asText(null);
-                    if(key==null)throw StudioPlanOutputs.missing();
-                    return key;
-                }
+                if(binding.hasNonNull("nodeId")&&frozen.isObject()&&frozen.hasNonNull(binding.path("nodeId").asText()))
+                    return frozen.path(binding.path("nodeId").asText()).asText();
                 if(binding.hasNonNull("nodeId"))return outputs.resolveNodeKey(e,steps,doc,binding.path("nodeId").asText());
                 return stepKey(e,state,stage,binding.path("stepId").asText(),null);
             }

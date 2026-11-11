@@ -376,6 +376,12 @@ public final class StudioPlanValidator {
                     }
                 }
             }
+            case "video-control" -> {
+                // 深度复刻的动作提取：一段原片进、一段动作参考出（StudioRecreationTaskPlan 拼的方案才有这一步）
+                JsonNode clip=raw.path("referenceBindings");
+                if(!clip.isArray()||clip.size()!=1)invalid(label+"需要一段原片");
+                out.set("referenceBindings",bindings(clip,Set.of("clip"),allowed,earlier,dependencies,label));
+            }
             case "text" -> {
                 String purpose=raw.path("purpose").asText("");
                 if(!TEXT_PURPOSES.contains(purpose))invalid(label+"的文字用途不正确");

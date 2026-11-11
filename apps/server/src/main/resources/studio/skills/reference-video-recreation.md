@@ -12,7 +12,7 @@ methodExamples:
   - keyframe-rebuild
 operations:
   analysis: [recreation, text]
-  production: [text, image, video, check, assemble]
+  production: [text, image, video, video-control, check, assemble]
 limits:
   maxSourceSec: 60
   maxSegments: 8

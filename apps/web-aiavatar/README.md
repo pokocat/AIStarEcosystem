@@ -1332,6 +1332,10 @@ Studio 视频费用确认复用图片弹窗，显示整批原价、优惠、赠�
 
 `SceneVideoStudio` 的普通视频、长视频与爆款复刻均由 `SceneVideoWorkspace` 展示后台任务：桌面配置 / 作品 / 最近任务三列，手机切换编辑、作品与示例。任务通过 `?scene=&draft=&task=` 打开，服务端执行记录为状态真值；快照只保存素材 key，历史设置只读，「视频裂变 · 自己改」放回同一份草稿。失败步骤最多自动执行三次；去画布会定位同一问题节点并保留返回入口，浏览不会恢复付费执行。详细设计与验收见 `docs/studio-video-workflow-redesign.md`。
 
+### 爆款复刻的三种方式（2026-11-11，本地实现，未发布）
+
+`/toolbox` 和 AI 视频页爆款复刻场景里的方式卡片（`scene-video-clone.tsx` 的 `VIDEO_CLONE_TOOLS`，每张写适合什么视频）；首页常用工具改叫「爆款复刻」。三种方式都按原片分段，时长固定跟参考视频走（设置面板里不能拖，`followsSource`）；顺手修了默认时长被截到单段上限、原片长于单段上限的复刻分析完就停住的问题。放进参考视频后调 `GET /api/v1/ip-studio/studio/clone-advice` 拿推荐，只加「推荐」标签和一句原因。见 `docs/ip-studio-recreation.md`「三种复刻方式」。
+
 ### 工具箱视频复刻（2026-11-08，本地实现，未发布）
 
 新增 `/toolbox` 与导航、首页入口，三种模式复用 AI 视频任务页。`tool=depth|replacement|recreation` 随草稿、任务、重新编辑保存；图片/人物/声音选填。深度提取能力由服务端声明，原生参考仅列实际支持视频参考的渠道。画布恢复原片、深度视频、生成视频及真实输入连线，深度中间产物不自动加入成片。见 `docs/studio-video-clone-toolbox.md` 与 `docs/releases/studio-video-clone-local-validation-20261108.md`。

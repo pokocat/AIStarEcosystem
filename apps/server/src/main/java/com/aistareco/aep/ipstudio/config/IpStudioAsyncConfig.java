@@ -28,4 +28,23 @@ public class IpStudioAsyncConfig {
         executor.initialize();
         return executor;
     }
+
+    /**
+     * 深度复刻的动作提取（ReShot，CPU 推理，一次几十秒到几分钟）单独一个池：放在 ipRunExecutor 里，几段同时提取就把出图、出视频的线程占住。
+     * 同一时间只做一次推理（StudioDepthVideoService 的信号量），这里的线程只是排队等；等的时候照常更新心跳（StudioWorkflowWorker）。
+     */
+    @Bean(name = "studioControlExecutor")
+    public ThreadPoolTaskExecutor studioControlExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(6);
+        executor.setMaxPoolSize(6);
+        executor.setQueueCapacity(200);
+        executor.setThreadNamePrefix(CONTROL_THREAD_PREFIX);
+        executor.setWaitForTasksToCompleteOnShutdown(false);
+        executor.setTaskDecorator(new MdcTaskDecorator());
+        executor.initialize();
+        return executor;
+    }
+
+    public static final String CONTROL_THREAD_PREFIX = "studio-control-";
 }

@@ -8,7 +8,7 @@ AI 视频“重新编辑”统一入口：[浏览器验收与发布记录](relea
 
 Seedance 官方人像素材：[当前实现与边界](video-asset-library.md)；[正式发布记录](releases/ark-portrait-production-release-20261109.md)；[凭据切换及真实接口验收](releases/ark-bingbing-key-and-portrait-preparation-20261109.md)。已发布并绑定 Fast / Mini；真人刷脸和成片待验收，last-reviewed：2026-11-09。
 
-Studio 视频复刻：[工具箱与运行依赖](studio-video-clone-toolbox.md) · [本地功能验收](releases/studio-video-clone-local-validation-20261108.md) · [独立实验与集成边界](audits/studio-clone-independent-lab-20261109.md)。last-reviewed：2026-11-09。
+Studio 视频复刻（2026-11-11 改成爆款复刻的三种方式，现行做法见 [复刻创作](ip-studio-recreation.md)「三种复刻方式」）：[工具箱与运行依赖](studio-video-clone-toolbox.md) · [本地功能验收](releases/studio-video-clone-local-validation-20261108.md) · [独立实验与集成边界](audits/studio-clone-independent-lab-20261109.md)。last-reviewed：2026-11-09。
 
 > 单页地图。任何 agent / 新人进仓库先开本文，按「想做什么」找到对应真源。
 > last-reviewed：**2026-10-29**（文档整理：`docs/` 分出 `runbooks/` / `audits/` / `archive/` 三个子目录，去掉 `[Fabel5]` 前缀，
@@ -183,7 +183,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - Studio 对话快照分享 v0.217：见 [助手范围](ip-studio-assistant-context.md) 与统一验证§28；last-reviewed: 2026-10-08，本地未发布。
 - [模型接入端点并发与排队](ai-endpoint-generation-queue.md) · v0.220；last-reviewed: 2026-10-09，本地未发布。
 - [AiAvatar 账号与旧 Studio 界面统一](aiavatar-account-unification.md) · 桌面外壳、旧深链兼容、默认头像与账号中心修改入口；last-reviewed: 2026-10-31。
-- [复刻创作：全片创作拆解与视频拉片](ip-studio-recreation.md)：直接看视频的拉片（逐镜台词、字幕、爆点）、视频页复刻由代码拼制作方案；旧版抽帧拆解、分段裁切及恐龙视频验收。last-reviewed: 2026-11-09。
+- [复刻创作：全片创作拆解与视频拉片](ip-studio-recreation.md)：爆款复刻三种方式（分镜复刻 / 深度复刻 / 元素替换，共用拉片和分段，按视频类型推荐）；直接看视频的拉片（逐镜台词、字幕、爆点）、视频页复刻由代码拼制作方案；旧版抽帧拆解、分段裁切及恐龙视频验收。last-reviewed: 2026-11-11。
 - [视频拉片操作手册](training/studio-film-study.md)：6步实操截图，覆盖开始、进度、播放、文档编辑与导出。last-reviewed: 2026-10-15。
 - [企业生成入口与扣费引用](ip-studio-enterprise-generation-entry-map.md)
 

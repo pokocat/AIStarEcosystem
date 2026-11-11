@@ -66,9 +66,22 @@ public class StudioWorkflowWorker {
         return runs.lockById(id);
     }
     @Async("ipRunExecutor") public void execute(String id) {runBlocking(id);}
+    /** 深度复刻的动作提取单独排队（IpStudioAsyncConfig#studioControlExecutor），不占出图、出视频的线程。 */
+    @org.springframework.beans.factory.annotation.Autowired(required=false) @org.springframework.beans.factory.annotation.Qualifier("studioControlExecutor")
+    private org.springframework.core.task.TaskExecutor controlExecutor;
+    private final Set<String> controlQueued=java.util.concurrent.ConcurrentHashMap.newKeySet();
     public void runBlocking(String id) {
         IpRun run=runs.findById(id).orElse(null);
         if(run==null||!IpRun.STATUS_RUNNING.equals(run.getStatus())) return;
+        if("studio-video-control".equals(run.getKind())&&controlExecutor!=null
+                &&!Thread.currentThread().getName().startsWith(com.aistareco.aep.ipstudio.config.IpStudioAsyncConfig.CONTROL_THREAD_PREFIX)) {
+            // 同一条已经在排队或在做就不再排（重派、恢复会再叫一次）
+            if(controlQueued.add(id)) {
+                try {controlExecutor.execute(()->{try{runBlocking(id);}finally{controlQueued.remove(id);}});}
+                catch(RuntimeException full){controlQueued.remove(id);throw full;}
+            }
+            return;
+        }
         if(queue!=null && !Set.of("studio-assemble","studio-video-control").contains(run.getKind())) {
             JsonNode input;
             try {input=mapper.readTree(run.getInputJson());}catch(Exception e){finish(id,null,e);return;}
@@ -372,7 +385,7 @@ public class StudioWorkflowWorker {
         var rate=mapper.treeToValue(exec.path("tokenPricing"),AiChatTokenPricing.Rate.class);long[] used={0,0};
         var source=exec.path("recreationSource");double duration=source.path("durationSec").asDouble();
         var capNode=exec.path("segmentCap");
-        double max=capNode.path("maxSegmentSec").asDouble(15),min=capNode.path("contract").path("minSeconds").asDouble(0);
+        double max=capNode.path("maxSegmentSec").asDouble(15),min=Math.max(capNode.path("contract").path("minSeconds").asDouble(0),capNode.path("clipMinSec").asDouble(0));
         int maxUnits=capNode.path("maxSegments").asInt(8);
         JsonNode resume=exec.path("resumeFilmStudy");
         ObjectNode study=mapper.createObjectNode();study.set("source",source.deepCopy());((ObjectNode)study.path("source")).put("audioAnalyzed",true);study.put("strategy",StudioVideoBreakdown.STRATEGY);
@@ -777,6 +790,15 @@ public class StudioWorkflowWorker {
         return result;
     }
     public void reject(String id,Exception error) {log.warn("[studio] dispatch rejected id={}",id,error);finish(id,null,error);}
+    /** 排队等动作提取的运行还没开始，不会自己更新心跳：每分钟替它更新一次，免得被当成僵死（IpRunReaper，15 分钟）。 */
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelay=60000)
+    public void touchQueuedControls() {
+        for(String id:controlQueued)try {
+            transactions.executeWithoutResult(tx->runs.lockById(id).ifPresent(r->{
+                if(IpRun.STATUS_RUNNING.equals(r.getStatus())&&r.getStartedAt()==null){r.setHeartbeatAt(java.time.Instant.now());runs.save(r);}
+            }));
+        } catch(RuntimeException e){log.warn("[studio-workflow] queued control heartbeat failed run={} reason={}",id,e.toString());}
+    }
     private boolean claim(String id) {
         return Boolean.TRUE.equals(transactions.execute(tx->{
             IpRun run=billingLockedRun(id).orElse(null);
@@ -873,6 +895,11 @@ public class StudioWorkflowWorker {
             if(StudioPlanValidator.MATERIAL_OUT_OF_SCOPE.equals(e.getCode()))throw e;
             throw BusinessException.wrapped(org.springframework.http.HttpStatus.BAD_REQUEST,com.aistareco.aep.ipstudio.dialogue.tools.ProposePlanTool.PLAN_NOT_READY,com.aistareco.aep.ipstudio.dialogue.tools.ProposePlanTool.PLAN_NOT_READY_TEXT,e.getCode()+": "+e.getMessage());
         }
+        // 动作提取只在代码拼的深度复刻方案里出现；模型自己写进去的按方案没准备好处理
+        if(!exec.path("recreationTask").isObject())for(JsonNode s:plan.path("steps"))
+            if(com.aistareco.aep.ipstudio.execution.StudioSkillRules.SYSTEM_ONLY_OPERATIONS.contains(s.path("operation").asText()))
+                throw BusinessException.wrapped(org.springframework.http.HttpStatus.BAD_REQUEST,com.aistareco.aep.ipstudio.dialogue.tools.ProposePlanTool.PLAN_NOT_READY,
+                        com.aistareco.aep.ipstudio.dialogue.tools.ProposePlanTool.PLAN_NOT_READY_TEXT,"planner used system-only operation "+s.path("operation").asText());
         plan.put("skillKey",rules.key()).put("skillVersion",rules.version()).put("stage",stage).put("revision",exec.path("planRevision").asInt(1));
         var quoter=planQuoter==null?null:planQuoter.getIfAvailable();
         if(quoter==null)throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_PLAN_QUOTE_UNAVAILABLE","暂时无法为制作计划报价，本次未扣积分");

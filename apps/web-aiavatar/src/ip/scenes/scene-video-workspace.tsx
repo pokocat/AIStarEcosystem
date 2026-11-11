@@ -33,11 +33,11 @@ type Grouping = 'batch' | 'time';
 /** 进度只写真实的东西：所处阶段和真实数量。阶段名与制作记录里的步骤名保持一致。 */
 export function videoTaskPhases(task: StudioVideoTask) {
   const groups = [
-    { key: 'depth', label: '提取动作与空间结构', match: (s: StudioPlanExecutionStep) => s.operation === 'video-control' },
     { key: 'study', label: '分析参考视频', match: (s: StudioPlanExecutionStep) => s.operation === 'recreation' },
     { key: 'script', label: '写分镜脚本', match: (s: StudioPlanExecutionStep) => s.operation === 'text' },
+    { key: 'depth', label: '提取动作', match: (s: StudioPlanExecutionStep) => s.operation === 'video-control' },
     { key: 'boards', label: '生成分镜图', match: (s: StudioPlanExecutionStep) => s.operation === 'image' },
-    { key: 'videos', label: ['direct','depth','replacement'].includes(task.kind) ? '生成视频' : '生成片段', match: (s: StudioPlanExecutionStep) => s.operation === 'video' },
+    { key: 'videos', label: task.kind === 'direct' ? '生成视频' : '生成片段', match: (s: StudioPlanExecutionStep) => s.operation === 'video' },
     { key: 'review', label: '检查画面', match: (s: StudioPlanExecutionStep) => s.operation === 'check' },
     { key: 'film', label: '导出成片', match: (s: StudioPlanExecutionStep) => s.operation === 'assemble' },
   ];

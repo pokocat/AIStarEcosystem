@@ -47,7 +47,12 @@ public class StudioVideoTaskService {
     }
 
     public Quote price(String user,String kind,String model,String mode,String tier,int duration,String ratio,int images,boolean character,boolean voice,boolean optimize) {
-        if(StudioCloneVideoPlan.nativeClone(kind))return clones.price(user,kind,model,tier,duration,ratio,images,character,voice,optimize);
+        // 深度复刻 / 元素替换：每段带原片片段作参考视频，另加拉片和写提示词两次文字任务（同分镜复刻）
+        if(StudioCloneVideoPlan.nativeClone(kind)) {
+            var p=clones.price(user,kind,model,tier,duration,ratio,images,character,voice,optimize);
+            long base=Math.addExact(p.estimated(),Math.multiplyExact(textCost(user),2));
+            return new Quote(base,Math.multiplyExact(base,3),p.segments(),0);
+        }
         if(!Set.of("direct","segmented","recreation").contains(kind))throw invalid("请选择制作方式");
         if(!"direct".equals(kind)) {
             var p=segmented.price(user,model,tier,duration,ratio,images,character,voice,optimize);
@@ -117,16 +122,12 @@ public class StudioVideoTaskService {
             steps.addObject().put("id","video").put("operation","video").put("title","生成视频").put("execution","auto")
                     .put("quotedCost",estimate).put("prompt",req.video().prompt()).putObject("settings").put("operation","video");
             rules=skills.requireActive("video-generation");
-        } else if(StudioCloneVideoPlan.nativeClone(req.kind())) {
-            context.addAll(clones.build(user,projectId,req.kind(),req.sourceNodeId(),req.configuration(),plan));
-            var snapshot=metadata.putObject("cloneKeys");
-            var doc=projects.readDoc(projects.required(user,projectId));
-            for(String id:context)snapshot.put(id,IpDocs.primaryStorageKey(IpDocs.node(doc,id)));
-            quoter.quote(user,plan);
-            estimate=plan.path("budget").path("estimated").asLong();
-            rules=skills.requireActive("video-generation");
-        } else if("recreation".equals(req.kind())) {
+        } else if(StudioCloneVideoPlan.method(req.kind())) {
+            // 爆款复刻的三种方式都先拉片、再由代码按拉片结果拼方案（StudioRecreationTaskPlan）；不同的是每段交给视频模型什么
             if(req.configuration()==null||req.sourceNodeId()==null)throw invalid("请添加参考视频");
+            boolean clip=StudioCloneVideoPlan.nativeClone(req.kind());
+            // 深度复刻 / 元素替换：所选模型要能带参考视频（深度复刻还要有动作提取服务），分段不超过参考视频的时长上限
+            var bounds=clip?StudioCloneVideoPlan.clip(clones.require(req.kind(),req.configuration().model())):null;
             var doc=projects.readDoc(projects.required(user,projectId));
             JsonNode source=IpDocs.node(doc,req.sourceNodeId());
             if(source==null||!"video".equals(source.path("type").asText())||IpDocs.primaryStorageKey(source)==null)throw invalid("参考视频不在草稿中，请重新添加");
@@ -137,13 +138,18 @@ public class StudioVideoTaskService {
                 if(node==null||IpDocs.primaryStorageKey(node)==null)throw invalid("素材已变化，请重新选择");
                 projects.requireOwnedAssetKey(user,IpDocs.primaryStorageKey(node));context.add(material.nodeId());
             }
+            // 原片片段要交给视频模型的两种方式：受理时冻结原片和素材的文件，之后画布上改了也不影响这次制作
+            if(clip) {
+                var snapshot=metadata.putObject("cloneKeys");
+                for(String id:context)snapshot.put(id,IpDocs.primaryStorageKey(IpDocs.node(doc,id)));
+            }
             rules=skills.requireActive("reference-video-recreation");
             plan.put("stage","analysis");
             var study=steps.addObject().put("id","study").put("operation","recreation").put("title","分析参考视频").put("execution","auto")
                     .put("prompt","分析参考视频的创意、镜头、动作与节奏，结合本次要求："+Objects.toString(req.configuration().text(),""));
             study.putArray("dependsOn");
             study.putObject("settings").put("operation","recreation").put("sourceNodeId",req.sourceNodeId()).put("mode","segments")
-                    .put("maxSegmentSec","model").put("videoModel",req.configuration().model());
+                    .put("maxSegmentSec",clip?String.valueOf(bounds.maxSec()):"model").put("videoModel",req.configuration().model());
             var compile=steps.addObject().put("id","compile").put("operation","text").put("title","写分镜脚本").put("execution","auto")
                     .put("prompt","根据本次参考片分析与新素材，动态编排可以直接制作到成片的方案。用户要求："+Objects.toString(req.configuration().text(),"")
                             +"。视频总时长 "+req.configuration().duration()+" 秒；画面 "+req.configuration().ratio()+(req.configuration().model()==null?"":"；视频模型必须使用 "+req.configuration().model())
@@ -151,7 +157,7 @@ public class StudioVideoTaskService {
             compile.putArray("dependsOn").add("study");compile.putObject("settings").put("operation","text").put("purpose","plan-compile");
             quoter.quote(user,plan);
             var cfg=req.configuration();
-            estimate=price(user,"recreation",cfg.model(),null,cfg.tier(),cfg.duration(),cfg.ratio(),(int)cfg.materials().stream().filter(m->"image".equals(m.slot())).count(),
+            estimate=price(user,req.kind(),cfg.model(),null,cfg.tier(),cfg.duration(),cfg.ratio(),(int)cfg.materials().stream().filter(m->"image".equals(m.slot())).count(),
                     cfg.materials().stream().anyMatch(m->"character".equals(m.slot())),cfg.materials().stream().anyMatch(m->"voice".equals(m.slot())),!Boolean.FALSE.equals(cfg.optimize())).estimated();
         } else throw invalid("请选择制作方式");
         long cap=Math.multiplyExact(estimate,3);

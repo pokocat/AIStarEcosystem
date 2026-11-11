@@ -15165,6 +15165,32 @@ paths:
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioBranchRequest' } } } }
       responses:
         '200': { description: 'ApiResponse<StudioDialogueState>' }
+  /v1/ip-studio/studio/clone-advice:
+    get:
+      tags: [ipstudio]
+      operationId: studioCloneAdvice
+      description: 爆款复刻：这条参考视频适合哪种复刻方式。只按真实切镜数（ffmpeg scdet）和平均镜头时长判断，不调模型、不扣积分；最多 2 个镜头或平均每个镜头至少 6 秒推荐深度复刻，否则推荐分镜复刻；元素替换看用户意图，不推荐。key 必须是本人的素材。
+      parameters:
+        - { in: query, name: key, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 'ApiResponse<StudioCloneAdvice>'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    required: [durationSec, shots, averageShotSec, recommended, reason]
+                    properties:
+                      durationSec: { type: number }
+                      shots: { type: integer }
+                      averageShotSec: { type: number }
+                      recommended: { type: string, enum: [recreation, depth] }
+                      reason: { type: string }
+        '400': { description: STUDIO_CLONE_VIDEO_INVALID / 不是本人的素材 }
   /v1/ip-studio/studio/video-task-price:
     get:
       tags: [ipstudio]
