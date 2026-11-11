@@ -54,6 +54,7 @@ GPU 不是强制依赖，容量与耗时按实际机器测量。深度推理需�
 - ECS-B：`/opt/studio-depth` 下是 venv（CPU 版 torch 2.15.0，阿里云 pytorch 镜像；`torchvision` 镜像上只有 0.29.1）、权重和 `tools/studio-depth/remote/run.sh`（固定 2 线程、30 分钟超时）。`reshot` 用户的进程整体限 2 核、6G、不用交换区（`systemctl set-property user-1000.slice`），同机的账号中心和军师服务至少留 2 核和约 9G。`authorized_keys` 只允许生产机 IP 用一把专用密钥登录，并带 `restrict`。
 - 生产机：`/opt/studio-depth/reshot-remote`（即 `tools/studio-depth/remote/reshot-remote`）是 `aep.studio.depth.command`。它把 server 临时目录 `/tmp/studio-depth-*` 里的输入传到 ECS-B 的同一路径，原参数运行，再取回 `-o` 和 `--keypoints` 的产物并删掉远端目录。主机指纹固定在 `remote/known_hosts`，不靠首次信任。生产机上的权重只给 server 的「已配置」检查用。
 - 实测（合成的 15 秒竖屏画面，经转发）：骨骼 97 秒、峰值 1.0G；深度 473 秒（每帧约 1.25 秒）、峰值 4.5G；产物 160×320、24 帧、15.0 秒。
+- **排队与限流（2026-11-11）**：server 一次只推理一段，其余段在 `studioControlExecutor` 里等、照常心跳。这个线程池原来只有 6 个，第 7 段起排在线程池队列里不心跳，等满 15 分钟会被判「创作超时」（两条 60 秒的深度复刻就会碰到），现在是 48。受理时限流：每人同时 1 条（`STUDIO_DEPTH_USER_BUSY`），全站同时 3 条或已排 12 段（`STUDIO_DEPTH_SITE_BUSY`），都在冻结之前拒绝。ECS-B 那边靠 `reshot` 用户的 2 核 6G 限额兜底，生产机只做转发。页面还看不到排在第几段。
 - **推理分辨率改为 252（`aep.studio.depth.input-size`，默认 252）**：控制视频只要长边 320，模型却按 364×644 算。用「直播切片-面霜」第 1 段（14.2 秒）比 364 / 252 / 182：252 和 364 的手指、手里的小瓶、手贴到脸颊的轮廓几乎一样；182 会把手和脸糊成一片，抹脸那一下看不出来。252 的深度一遍 156 秒、峰值 2.6G，比 364 快约 3 倍；182 是 76 秒、1.6G。产物里记 `depthInputSize`。按 252 算，一段（骨骼加深度）约 4.5 分钟，60 秒原片最坏约 18 分钟。
 
 ReShot 保留内存预检，资源不足时明确失败，不使用 `--force` 绕过。较长、高帧率与极端比例的视频需要更多推理资源；60 秒是平台输入上限，不代表每个渠道都接受 60 秒参考，出片长度也仍按渠道合同。`--target h3` 用于像素对齐，该预设的时长提示不会截断输入；处理后再次核验输出完整时长。

@@ -17,6 +17,7 @@ public interface IpPlanExecutionRepository extends JpaRepository<IpPlanExecution
     Optional<IpPlanExecution> findByOwnerUserIdAndClientRequestId(String ownerUserId,String clientRequestId);
     List<IpPlanExecution> findByProjectIdAndStatusIn(String projectId,Collection<String> statuses);
     List<IpPlanExecution> findByOwnerUserIdAndStatusIn(String ownerUserId,Collection<String> statuses);
+    List<IpPlanExecution> findByStatusIn(Collection<String> statuses);
     Optional<IpPlanExecution> findFirstByProjectIdAndOwnerUserIdOrderByCreatedAtDesc(String projectId,String ownerUserId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

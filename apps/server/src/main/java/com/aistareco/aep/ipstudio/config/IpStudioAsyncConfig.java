@@ -32,12 +32,14 @@ public class IpStudioAsyncConfig {
     /**
      * 深度复刻的动作提取（ReShot，CPU 推理，一次几十秒到几分钟）单独一个池：放在 ipRunExecutor 里，几段同时提取就把出图、出视频的线程占住。
      * 同一时间只做一次推理（StudioDepthVideoService 的信号量），这里的线程只是排队等；等的时候照常更新心跳（StudioWorkflowWorker）。
+     * 线程数要大于受理上限能排出来的段数（StudioVideoTaskService#admitDepth）：排在线程池队列里的段不更新心跳，
+     * 等满 stale-minutes 会被 IpRunReaper 当成卡死判超时（2026-11-11 查出：原来 6 个线程，两条 60 秒的深度复刻就会碰到）。
      */
     @Bean(name = "studioControlExecutor")
     public ThreadPoolTaskExecutor studioControlExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(6);
-        executor.setMaxPoolSize(6);
+        executor.setCorePoolSize(48);
+        executor.setMaxPoolSize(48);
         executor.setQueueCapacity(200);
         executor.setThreadNamePrefix(CONTROL_THREAD_PREFIX);
         executor.setWaitForTasksToCompleteOnShutdown(false);
