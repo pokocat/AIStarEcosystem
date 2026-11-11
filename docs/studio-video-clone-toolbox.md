@@ -49,6 +49,12 @@ aep.studio.depth.pose-checkpoint-dir=/absolute/path/studio-depth/weights/dwpose
 
 GPU 不是强制依赖，容量与耗时按实际机器测量。深度推理需要专门资源，不在生产请求里临时下载模型。
 
+**生产上放在另一台机器（2026-11-11）**：生产机 `47.98.162.120` 上的 `aistareco-server` 有 `MemoryMax=2G`，ReShot 是它的子进程、共用这 2G，而深度一遍峰值约 4.5G，所以计算放到 ECS-B（`101.37.189.227`，新账号 `i-bp1dkkgmjbcpa21a5yi0`）的 `reshot` 用户上：
+
+- ECS-B：`/opt/studio-depth` 下是 venv（CPU 版 torch 2.15.0，阿里云 pytorch 镜像；`torchvision` 镜像上只有 0.29.1）、权重和 `tools/studio-depth/remote/run.sh`（固定 2 线程、30 分钟超时）。`reshot` 用户的进程整体限 2 核、6G、不用交换区（`systemctl set-property user-1000.slice`），同机的账号中心和军师服务至少留 2 核和约 9G。`authorized_keys` 只允许生产机 IP 用一把专用密钥登录，并带 `restrict`。
+- 生产机：`/opt/studio-depth/reshot-remote`（即 `tools/studio-depth/remote/reshot-remote`）是 `aep.studio.depth.command`。它把 server 临时目录 `/tmp/studio-depth-*` 里的输入传到 ECS-B 的同一路径，原参数运行，再取回 `-o` 和 `--keypoints` 的产物并删掉远端目录。主机指纹固定在 `remote/known_hosts`，不靠首次信任。生产机上的权重只给 server 的「已配置」检查用。
+- 实测（合成的 15 秒竖屏画面，经转发）：骨骼 97 秒、峰值 1.0G；深度 473 秒（每帧约 1.25 秒）、峰值 4.5G；产物 160×320、24 帧、15.0 秒。server 一次只做一个提取，60 秒的原片最坏要 4 段各跑两遍，约 40 分钟。
+
 ReShot 保留内存预检，资源不足时明确失败，不使用 `--force` 绕过。较长、高帧率与极端比例的视频需要更多推理资源；60 秒是平台输入上限，不代表每个渠道都接受 60 秒参考，出片长度也仍按渠道合同。`--target h3` 用于像素对齐，该预设的时长提示不会截断输入；处理后再次核验输出完整时长。
 
 ## 验证边界

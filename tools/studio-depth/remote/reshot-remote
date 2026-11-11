@@ -1,0 +1,33 @@
+#!/bin/bash
+# aep.studio.depth.command 指向这里（2026-11-11）：本机内存不够跑 ReShot（aistareco-server 限 2G，ReShot 是它的子进程），
+# 动作提取放到 ECS-B（101.37.189.227，reshot 用户，限 2 核 6G）上跑。参数和 server 直接调 reshot 时完全一样：
+# 输入和输出都在 server 的临时目录 /tmp/studio-depth-* 里，远端用同一个绝对路径；权重路径两边也一样（/opt/studio-depth/weights）。
+set -uo pipefail
+HOST=reshot@101.37.189.227
+D=/opt/studio-depth/remote
+SSH=(ssh -i "$D/id_ed25519" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$D/known_hosts" -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=4)
+if [ "${1:-}" = --version ]; then exec "${SSH[@]}" "$HOST" /opt/studio-depth/run.sh --version; fi
+input=${1:?input}; out=""; kp=""; args=("$@")
+for ((i=0; i<${#args[@]}; i++)); do
+  case "${args[$i]}" in -o) out=${args[$((i+1))]:-};; --keypoints) kp=${args[$((i+1))]:-};; esac
+done
+dir=$(dirname "$input")
+case "$dir" in /tmp/studio-depth-*) ;; *) echo "reshot-remote: unexpected working directory $dir" >&2; exit 2;; esac
+if [ -z "$out" ] || [ "$(dirname "$out")" != "$dir" ]; then echo "reshot-remote: output must be inside $dir" >&2; exit 2; fi
+if [ -n "$kp" ] && [ "$(dirname "$kp")" != "$dir" ]; then echo "reshot-remote: keypoints must be inside $dir" >&2; exit 2; fi
+qdir=$(printf %q "$dir")
+cleanup() { "${SSH[@]}" "$HOST" "rm -rf -- $qdir" >/dev/null 2>&1 || true; }
+trap 'cleanup; exit 143' TERM INT
+# 顺手清掉两小时前断开留下的目录
+if ! "${SSH[@]}" "$HOST" "find /tmp -maxdepth 1 -name 'studio-depth-*' -user reshot -mmin +120 -exec rm -rf {} + ; mkdir -p $qdir && cat > $(printf %q "$input")" < "$input"; then
+  echo "reshot-remote: upload to $HOST failed" >&2; cleanup; exit 3
+fi
+"${SSH[@]}" "$HOST" "cd $qdir && /opt/studio-depth/run.sh $(printf '%q ' "$@")"
+rc=$?
+if [ $rc -eq 0 ]; then
+  "${SSH[@]}" "$HOST" "cat $(printf %q "$out")" > "$out" || rc=4
+  if [ $rc -eq 0 ] && [ -n "$kp" ]; then "${SSH[@]}" "$HOST" "cat $(printf %q "$kp")" > "$kp" || rc=4; fi
+  [ $rc -eq 0 ] || echo "reshot-remote: download from $HOST failed" >&2
+fi
+cleanup
+exit $rc
