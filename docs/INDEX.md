@@ -481,6 +481,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [爆款复刻逐镜细读与开场画面发布](releases/recreation-keyframes-release-20261110.md) — server + web-aiavatar；逐镜细读、每镜开场画面、出片后自动检查重出，同时带上导演台连接池第二轮修复（PR 188）；`20261110-keyframes-e6e2de04`（2026-11-10）
 - [画布删除、付款预计、官方形象与导演台台词修复发布](releases/official-avatars-delete-billing-release-20261110.md) — server + web-aiavatar；PR 190 / 192 / 193，迁移 V81，先单独发网页、server 等线上空闲；`20261110-official-avatars-3992f750`（2026-11-10）
 - [爆款复刻检查第 2 版发布](releases/recreation-checks-release-20261111.md) — 只发 server；检查按镜头看、带参考图，开场画面先检查、放不下预算按名次省，认出推到头的画面，检查要点进提示词库；`20261111-recreation-checks-e39e8776`（2026-11-11）
+- [Studio 选用官方人物主图发布](releases/studio-official-main-image-release-20261111.md) — 仅 web-aiavatar；线上验证 AI 图片和 AI 视频选人后带入主图；`20261111-studio-official-main-fa3104e6`（2026-11-11）
 - [爆款复刻视频理解发布](releases/recreation-video-understanding-release-20261110.md) — server + web-aiavatar + studio-admin；拉片直接看视频（火山 Seed 2.0 Lite，接入点 ai-1583b53c-52e），视频页复刻方案由代码拼，V79（last-reviewed: 2026-11-10）
 - [AI 编导提示词爆款化发布](releases/scene-script-viral-release-20261110.md) — server + web-aiavatar；五个视频类型方法层、镜头约 4 秒、台词有人设、去掉功效夸大限制、全角数字镜头修复（last-reviewed: 2026-11-10）
 - [账号区新版页面发布](releases/studio-account-pages-release-20261109.md) — server + web-aiavatar；任务历史带积分明细、存储用量合并口径并补记历史文件、画布回收站可恢复和彻底删除、设置与安全合并；存储上限与到期清理开关默认关（last-reviewed: 2026-11-09）
