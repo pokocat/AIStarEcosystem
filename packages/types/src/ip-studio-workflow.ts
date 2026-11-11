@@ -617,7 +617,7 @@ export interface StudioPlanExecutionCreateRequest { clientRequestId: string; sta
 export interface StudioPlanExecutionControlRequest { clientRequestId: string; expectedStatus?: StudioPlanExecutionStatus;
   /** Resume only: add these objects (from the stopped step's `materials`, still on the canvas) before re-planning. */
   addMaterialNodeIds?: string[];
-  /** Resume only: retry this timed out video segment from the attempt shown on the task page. */
+  /** Resume only: retry a reference-upload failure or portrait review timeout for the displayed attempt. */
   retryStepId?: string; retryAttempt?: number }
 export interface StudioPlanExecutionAcceptRequest { clientRequestId: string; runId: string; candidateIndex?: number }
 

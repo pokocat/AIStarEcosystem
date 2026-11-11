@@ -178,6 +178,44 @@ class StudioPlanExecutorTest {
         assertEquals("needs_user",row.getStatus());
     }
 
+    @Test void videoRetryUsesTheHistoricalRequestEvenIfTheCanvasAndPlanNowDiffer() throws Exception {
+        var step=videoStep("v1",40).put("status","failed").put("attempt",3);
+        step.withArray("runIds").add("IPR-old");
+        StudioSegmentedRun.retryFailed(step);
+        execution("running",300,step);videoPageRetries();
+        JsonNode input=om.readTree("""
+                {"operation":"video","clientRequestId":"original","nodeId":"PEX-1-p-v1","executionId":"PEX-1",
+                 "prompt":"按原分镜出片","model":"original-model","durationSec":15,"aspectRatio":"16:9","count":1,"mock":false,
+                 "video":{"mode":"omni","resolutionTier":"544p","seed":99,"rewrite":"auto",
+                   "references":[{"mediaType":"image","key":"old-board.jpg"},{"mediaType":"image","key":"old-product.jpg"},{"mediaType":"audio","key":"old-voice.wav"}]}}
+                """);
+        dtos.put("IPR-old",new IpRunDto("IPR-old","p","PEX-1-p-v1","studio-video","failed","failed",0,7,
+                "VIDEO_REF_UPLOAD_FAILED","素材上传失败",input,om.createObjectNode(),null,null,null));
+        executor.advance("PEX-1");
+        assertEquals(1,submitted.size());
+        var request=submitted.get(0);
+        assertEquals("按原分镜出片",request.prompt());
+        assertEquals("original-model",request.model());
+        assertEquals(15,request.durationSec());
+        assertEquals("16:9",request.aspectRatio());
+        assertEquals(om.convertValue(input.path("video"),com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings.class),
+                request.video());
+        assertEquals(StudioPlanExecutionIds.requestId("PEX-1","production","v1",4),request.clientRequestId());
+        assertEquals(7,budget().path("spent").asLong());
+    }
+
+    @Test void videoRetryStopsWhenThePriorRequestIsMissing() throws Exception {
+        var step=videoStep("v1",40).put("status","failed");
+        step.withArray("runIds").add("IPR-missing");
+        StudioSegmentedRun.retryFailed(step);
+        execution("running",300,step);videoPageRetries();
+        executor.advance("PEX-1");
+        assertTrue(submitted.isEmpty());
+        assertEquals("needs_user",row.getStatus());
+        assertEquals("STUDIO_VIDEO_ASSET_INVALID",step("v1").path("errorCode").asText());
+        assertTrue(step("v1").path("reason").asText().contains("参考素材"));
+    }
+
     /** 视频页的爆款复刻：一段视频出完、只等检查。检查步骤按 {@code videoCheck} 的写法带 sampling / compareReferences（null 时是之前受理的老方案）。 */
     private void recreationCheck(boolean detailed) throws Exception {
         var keyframe=om.createObjectNode().put("id","k1").put("stage","production").put("title","第 1 镜开场画面").put("operation","image").put("execution","auto")

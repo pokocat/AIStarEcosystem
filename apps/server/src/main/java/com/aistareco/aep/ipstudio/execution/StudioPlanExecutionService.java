@@ -585,7 +585,7 @@ public class StudioPlanExecutionService {
                 skills.requireActive(e.getSkillKey());
                 ObjectNode next=state.deepCopy();
                 if(segmentRetry) {
-                    retryPortraitSegment(userId,projectId,e,next,req.retryStepId(),req.retryAttempt());
+                    retryVideoSegment(userId,projectId,e,next,req.retryStepId(),req.retryAttempt());
                 } else {
                     next.remove(StudioPlanExecutor.PORTRAIT_RETRY_STEP);
                     if(next.has("videoTask"))adoptVideoRepairs(userId,projectId,e,next);
@@ -595,7 +595,7 @@ public class StudioPlanExecutionService {
                         switch(step.path("status").asText()) {
                             case "needs_user" -> {
                                 // 解析不了的原文留着也没用：重新发一次（新请求编号），否则下一轮又读回同一条，点继续等于没点。
-                                if(next.has("videoTask")&&RAW_ONLY_CODE.equals(step.path("errorCode").asText()))StudioSegmentedRun.again(step);
+                                if(next.has("videoTask")&&RAW_ONLY_CODE.equals(step.path("errorCode").asText()))StudioSegmentedRun.retryFailed(step);
                                 else {step.put("status","pending").put("confirmed",true);step.remove("reason");}
                             }
                             // Only the user's explicit continue starts a new attempt (new request identity).
@@ -608,7 +608,12 @@ public class StudioPlanExecutionService {
                                     if(excluded.isEmpty())step.remove("excludedMaterials");else step.set("excludedMaterials",excluded);
                                     step.remove("materials");
                                 }
-                                step.put("status","pending").put("attempt",step.path("attempt").asInt(1)+1);step.remove("reason");step.remove("errorCode");
+                                if(next.has("videoTask")&&"video".equals(step.path("operation").asText())) {
+                                    StudioSegmentedRun.retryFailed(step);
+                                    step.remove("notBefore");
+                                } else {
+                                    step.put("status","pending").put("attempt",step.path("attempt").asInt(1)+1);step.remove("reason");step.remove("errorCode");
+                                }
                             }
                             default -> {if(PlanState.unresolvedCheck(next,step))step.put("acknowledged",true);}
                         }
@@ -631,15 +636,17 @@ public class StudioPlanExecutionService {
         return toDto(e);
     }
 
-    private void retryPortraitSegment(String userId,String projectId,IpPlanExecution e,ObjectNode state,String id,int attempt) {
+    private void retryVideoSegment(String userId,String projectId,IpPlanExecution e,ObjectNode state,String id,int attempt) {
         ObjectNode step=PlanState.step(state,e.getStage(),id);
-        if(!state.has("videoTask")||step==null||!StudioPlanExecutor.isPortraitSegmentTimeout(state,e.getStage(),step)
-                ||step.path("attempt").asInt(1)!=attempt||!PlanState.dependenciesDone(state,step))
+        if(step==null||step.path("attempt").asInt(1)!=attempt||!PlanState.dependenciesDone(state,step))
+            throw stale("此片段的状态已经变化，请刷新后再试");
+        boolean uploadFailed=StudioPlanExecutor.isVideoReferenceUploadFailure(state,step);
+        if(!uploadFailed&&!StudioPlanExecutor.isPortraitSegmentTimeout(state,e.getStage(),step))
             throw stale("此片段的状态已经变化，请刷新后再试");
         if(stepStillRunning(userId,projectId,step))
             throw BusinessException.badRequest("STUDIO_PLAN_STEP_RUNNING","此片段正在生成，请等待完成");
-        if(adoptVideoRepair(userId,projectId,e,projects.readDoc(projects.required(userId,projectId)),step))return;
-        StudioSegmentedRun.again(step);
+        if(!uploadFailed&&adoptVideoRepair(userId,projectId,e,projects.readDoc(projects.required(userId,projectId)),step))return;
+        StudioSegmentedRun.retryFailed(step);
         step.remove("notBefore");
         state.put(StudioPlanExecutor.PORTRAIT_RETRY_STEP,id);
     }
@@ -654,6 +661,11 @@ public class StudioPlanExecutionService {
         for(JsonNode raw:PlanState.stageSteps(state,e.getStage())) {
             ObjectNode step=(ObjectNode)raw;
             if(!Set.of("failed","needs_user").contains(step.path("status").asText()))continue;
+            if(StudioPlanExecutor.isVideoReferenceUploadFailure(state,step)) {
+                if(stepStillRunning(userId,projectId,step))
+                    throw BusinessException.badRequest("STUDIO_PLAN_STEP_RUNNING","此片段正在生成，请等待完成");
+                continue;
+            }
             if(adoptVideoRepair(userId,projectId,e,doc,step))continue;
             String code=step.path("errorCode").asText("");
             // A receipt we never got is settled as failed and refunded (docs/runbooks/model-task-alerts.md), and the user may

@@ -356,6 +356,8 @@ public class StudioPlanExecutor {
                             +(StudioPlanMaterials.anyOnCanvas(step.path("materials"))?"。可将它加入本次制作并重新编排，或不使用它并重新编排。":"。可不使用它并重新编排，或结束本次制作。"));
                 if(isPortraitSegmentTimeout(state,stage,step))
                     return needsUser(e,state,"等待人像素材审核超时。可单独重试此片段，已完成的片段将保留。");
+                if(isVideoReferenceUploadFailure(state,step))
+                    return needsUser(e,state,step.path("reason").asText("参考素材上传失败，请重试此片段"));
                 if(state.has("videoTask")&&step.path("attempt").asInt(1)>=3)
                     return needsUser(e,state,"「"+step.path("title").asText()+"」已尝试 3 次，仍未完成。请到画布查看这一步，处理后继续生成。");
                 return needsUser(e,state,"「"+step.path("title").asText()+"」没有完成："+step.path("reason").asText("原因未知")+"。可重试此步骤，或结束本次制作。");
@@ -396,9 +398,13 @@ public class StudioPlanExecutor {
         stageBudget.remove("shortfall");
         String requestId=StudioPlanExecutionIds.requestId(e.getId(),stage,ready.path("id").asText(),ready.path("attempt").asInt(1));
         RunRequest request;
-        try {request=compile(e,state,ready,requestId);}
+        try {
+            request=compile(e,state,ready,requestId);
+            if(state.has("videoTask")&&"video".equals(request.operation()))
+                ready.set("videoRequest",mapper.valueToTree(request));
+        }
         catch(BusinessException error) {
-            ready.put("status","needs_user").put("reason",error.getMessage());
+            ready.put("status","needs_user").put("reason",error.getMessage()).put("errorCode",error.getCode());
             return needsUser(e,state,"「"+ready.path("title").asText()+"」还不能开始："+error.getMessage());
         }
         // Persist the request identity and the conservative budget occupation before the native call.
@@ -413,6 +419,12 @@ public class StudioPlanExecutor {
                 &&"failed".equals(step.path("status").asText())
                 &&com.aistareco.aep.service.materialvideo.MaterialVideoWorker.PORTRAIT_REVIEW_TIMEOUT.equals(step.path("errorCode").asText())
                 &&PlanState.stageSteps(state,stage).stream().filter(s->"video".equals(s.path("operation").asText())).count()>1;
+    }
+
+    static boolean isVideoReferenceUploadFailure(JsonNode state,JsonNode step) {
+        return state.has("videoTask")&&"video".equals(step.path("operation").asText())
+                &&"failed".equals(step.path("status").asText())
+                &&"VIDEO_REF_UPLOAD_FAILED".equals(step.path("errorCode").asText());
     }
 
     private Submission needsUser(IpPlanExecution e,ObjectNode state,String reason) {
@@ -528,6 +540,20 @@ public class StudioPlanExecutor {
 
     /** Compile a step into its native request with real keys from canvas nodes and earlier accepted/successful runs. */
     private RunRequest compile(IpPlanExecution e,ObjectNode state,ObjectNode step,String requestId) {
+        if(state.has("videoTask")&&"video".equals(step.path("operation").asText())) {
+            JsonNode saved=step.path("videoRequest");
+            // Older queued retries have notBefore and prior run IDs, but no saved request in the step.
+            if(!saved.isObject()&&(step.path("retryVideoInputs").asBoolean()||step.hasNonNull("notBefore")))
+                saved=outputs.previousVideoInputs(e,step);
+            if(saved instanceof ObjectNode snapshot) {
+                ObjectNode request=snapshot.deepCopy();
+                if(!requestId.equals(request.path("clientRequestId").asText()))request.remove("modelBilling");
+                request.put("clientRequestId",requestId).put("nodeId",StudioPlanExecutionIds.stepNodeId(e.getId(),step))
+                        .put("executionId",e.getId()).put("maxCost",step.path("quotedCost").asLong()).put("stage",e.getStage());
+                request.set("billing",mapper.valueToTree(billing(e)));
+                return mapper.convertValue(request,RunRequest.class);
+            }
+        }
         if(state.path("videoTask").path("direct").isObject()) {
             ObjectNode direct=state.path("videoTask").path("direct").deepCopy();
             direct.put("clientRequestId",requestId).put("nodeId",StudioPlanExecutionIds.stepNodeId(e.getId(),step))

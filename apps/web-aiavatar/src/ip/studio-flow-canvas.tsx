@@ -29,6 +29,7 @@ import { importStudioMedia, importStudioStory } from '@/canvas-bridge/studio-api
 import { studioAiMade, studioUploadedByUser } from '@/canvas-bridge/studio-node-origin';
 import { fitStudioNodeToMedia, fitStudioVideoToResize, studioVideoFitted, studioVideoSize } from '@/canvas-bridge/studio-media-fit';
 import { studioFailedWithoutMedia, studioFailureReason } from '@/canvas-bridge/studio-node-failure';
+import { isFailedStudioVideo } from '@/canvas-bridge/studio-video-task-node';
 import { StudioAttachmentPicker, type AttachmentPickerActions } from './studio-attachment-picker';
 import { StudioNodeContent } from './studio-node-content';
 import { StudioFloatingContext, StudioFloatingPanel } from './studio-floating-panel';
@@ -71,6 +72,7 @@ export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
   // 设计稿 · Language 画板：媒体是你自己传上来的就标「你上传的」；从素材库、人物库引用的，裁剪出来的，空白占位和文字都不标。
   const uploaded = studioUploadedByUser(node);
   const failed = studioFailedWithoutMedia(node);
+  const retryVideo = isFailedStudioVideo(node) && (meta?.studio?.task?.errorCode ?? meta?.errorCode) === 'VIDEO_REF_UPLOAD_FAILED';
   const uploadImage = () => dispatchStudioCommand('upload-image', node.id);
   const uploadVideo = () => dispatchStudioCommand('upload-video', node.id);
   const edit = () => { if(data.readOnly){data.onInspect?.(node);return;} const action=studioNodeCommand(node,true); if(action)dispatchStudioCommand(action,node.id); };
@@ -101,7 +103,8 @@ export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
         // A failed draft is not an empty one: say it failed and why, offer one way back (the prompt and references are kept).
         failed && !data.readOnly ? <div className="studio-flow-placeholder studio-flow-failure" role="group" aria-label="生成失败">
           <AlertCircle size={22}/><strong>生成失败</strong><span title={meta?.studio?.task?.errorMessage || meta?.errorDetails || undefined}>{studioFailureReason(node)}</span>
-          <div className="studio-flow-image-actions"><button type="button" className="nodrag nopan" disabled={imageLocked} onClick={edit}><RotateCcw size={15}/>修改后重试</button>
+          <div className="studio-flow-image-actions"><button type="button" className="nodrag nopan" disabled={imageLocked}
+            onClick={retryVideo ? () => dispatchStudioCommand('retry-video', node.id) : edit}><RotateCcw size={15}/>{retryVideo ? '重试这一步' : '修改后重试'}</button>
             <button type="button" className="nodrag nopan studio-flow-failure-upload" disabled={imageLocked} onClick={node.type === CanvasNodeType.Image ? uploadImage : uploadVideo}><Upload size={15}/>改为上传</button></div></div> :
         node.type === CanvasNodeType.Image && !data.readOnly ? <div className="studio-flow-placeholder studio-flow-image-placeholder"><ImagePlus size={28}/><span>上传图片或使用 AI 创作</span><div className="studio-flow-image-actions"><button type="button" className="nodrag nopan" disabled={imageLocked} onClick={uploadImage}><Upload size={15}/>{data.uploading?'上传中…':'上传图片'}</button><button type="button" className="nodrag nopan" disabled={imageLocked} onClick={edit}><ImagePlus size={15}/>生成图片</button></div></div> :
         node.type === CanvasNodeType.Video && !data.readOnly ? <div className="studio-flow-placeholder studio-flow-image-placeholder"><Video size={28}/><span>上传视频，开始解析或拉片</span><div className="studio-flow-image-actions"><button type="button" className="nodrag nopan" disabled={imageLocked} onClick={uploadVideo}><Upload size={15}/>{data.uploading?'上传中…':'上传视频'}</button><button type="button" className="nodrag nopan" disabled={imageLocked} onClick={edit}><Video size={15}/>生成视频</button></div><small>MP4 · 最长 60 秒 · 最大 128 MB</small></div> :

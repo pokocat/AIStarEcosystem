@@ -16,6 +16,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.ObjectProvider;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -815,14 +817,16 @@ class StudioPlanExecutionServiceTest {
         assertEquals("running",row.getStatus());
     }
 
-    @Test void retryExpiredPortraitSegmentOnlyKeepsExistingStepsAndIsIdempotent() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings={"VIDEO_ASSET_REVIEW_TIMEOUT","VIDEO_REF_UPLOAD_FAILED"})
+    void retryFailedSegmentKeepsExistingStepsAndIsIdempotent(String errorCode) throws Exception {
         var created=service.create("u","p",analysisRequest(currentPlan("IPR-a","analysis",ANALYSIS,20,10),30));
         var row=rows.get(created.id());var state=(ObjectNode)om.readTree(row.getStepsJson());state.putObject("videoTask");
         var steps=state.putArray("steps");
         var first=steps.addObject().put("stage","production").put("id","v1").put("operation","video").put("status","done");
         first.putArray("runIds").add("IPR-original");
         var second=steps.addObject().put("stage","production").put("id","v2").put("operation","video").put("status","failed").put("attempt",3)
-                .put("errorCode","VIDEO_ASSET_REVIEW_TIMEOUT");
+                .put("errorCode",errorCode);
         second.putArray("dependsOn").add("v1");second.putArray("runIds").add("IPR-expired");
         var other=steps.addObject().put("stage","production").put("id","v3").put("operation","video").put("status","failed").put("attempt",2)
                 .put("errorCode","STUDIO_VIDEO_FAILED");
@@ -839,6 +843,7 @@ class StudioPlanExecutionServiceTest {
         var retried=updated.path("steps").get(1);
         assertEquals("pending",retried.path("status").asText());assertEquals(4,retried.path("attempt").asInt());
         assertEquals(0,retried.path("runIds").size());assertEquals("IPR-expired",retried.path("previousRunIds").get(0).asText());
+        assertTrue(retried.path("retryVideoInputs").asBoolean());
     }
 
     @Test void videoPageRegeneratesUnusableModelOutputWithANewRequestWhenTheUserContinues() throws Exception {

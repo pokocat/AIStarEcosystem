@@ -143,6 +143,20 @@ test('a third portrait timeout offers only the affected video segment, preservin
   await waitFor(() => expect(api.resume).toHaveBeenCalledWith(saved.projectId, saved.id,
     expect.objectContaining({ expectedStatus: 'needs_user', retryStepId: 'v2', retryAttempt: 3 })));
 });
+test('a reference upload failure can retry the same step after three attempts', async () => {
+  const saved = task('PEX-upload', 'segmented');
+  saved.execution!.status = 'needs_user';
+  Object.assign(saved.execution!.steps[0], { operation: 'video', status: 'failed', errorCode: 'VIDEO_REF_UPLOAD_FAILED',
+    reason: '生成服务的存储空间满了', attempt: 3, runIds: ['IPR-upload'] });
+  api.get.mockResolvedValue(saved);
+  api.readRun.mockResolvedValue({ id: 'IPR-upload', status: 'failed', output: {} });
+  api.resume.mockResolvedValue({ ...saved.execution, status: 'running' });
+  render(<SceneVideoWorkspace {...props} taskId={saved.id} selected={saved}/>);
+  fireEvent.click(await screen.findByRole('button', { name: '重试这一步' }));
+  await waitFor(() => expect(api.resume).toHaveBeenCalledWith(saved.projectId, saved.id,
+    expect.objectContaining({ expectedStatus: 'needs_user', retryStepId: saved.execution!.steps[0].id, retryAttempt: 3 })));
+});
+
 // 线上 PEX-9caea05b1848414ca167（2026-11-07）：分镜图生成服务没回结果、积分已退，原因写着「可以重新生成」，页面上却只有「在画布上查看」。
 test('a failed step whose credits came back can be retried on the video page', async () => {
   const saved = task('PEX-board', 'segmented'); saved.execution!.status = 'needs_user';
