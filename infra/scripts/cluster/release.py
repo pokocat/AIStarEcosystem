@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """ALB dual-active rolling release; no database import, DNS changes, or legacy-host fallback."""
-import argparse,datetime,hashlib,http.client,json,os,pathlib,re,select,shlex,socket,ssl,subprocess,sys,time,tarfile
+import argparse,datetime,hashlib,json,os,pathlib,re,select,shlex,subprocess,sys,time,tarfile
 from policy import config_guard,artifact_guard,alb_guard,require
 ROOT=pathlib.Path(__file__).resolve().parents[3]
 DUAL_ACTIVE={'a':50,'b':50}
@@ -47,16 +47,23 @@ class Cluster:
    time.sleep(1)
   raise RuntimeError('ALB权重未收敛')
  def request_vip(self,ip,path,headers):
-  host=self.expected['host']
-  context=ssl.create_default_context()
-  connection=http.client.HTTPSConnection(host,timeout=12,context=context)
-  try:
-   connection.sock=context.wrap_socket(socket.create_connection((ip,443),timeout=12),server_hostname=host)
-   connection.request('GET',path,headers=headers)
-   response=connection.getresponse()
-   return response.status,json.loads(response.read()),response.getheader('X-Aistar-Node')
-  finally:
-   connection.close()
+  # Use the ECS network for the actual public TLS request. The laptop only
+  # orchestrates the probe, so local VPN routing cannot change the ALB path.
+  remote="""import http.client,json,socket,ssl,sys
+p=json.load(sys.stdin)
+ctx=ssl.create_default_context()
+connection=http.client.HTTPSConnection(p['host'],timeout=12,context=ctx)
+try:
+ connection.sock=ctx.wrap_socket(socket.create_connection((p['ip'],443),timeout=12),server_hostname=p['host'])
+ connection.request('GET',p['path'],headers=p['headers'])
+ response=connection.getresponse()
+ print(json.dumps([response.status,json.loads(response.read()),response.getheader('X-Aistar-Node')]))
+finally:
+ connection.close()
+"""
+  command=shlex.join([self.config['operation_python'],'-s','-c',remote])
+  request={'host':self.expected['host'],'ip':ip,'path':path,'headers':headers}
+  return json.loads(self.ssh('a',command,timeout=30,stdin=json.dumps(request)))
  def probe(self,node=None,authenticated=True,check_readiness=True):
   # Each VIP is contacted directly with the expected SNI and protected headers.
   path=pathlib.Path(self.probe_file)
