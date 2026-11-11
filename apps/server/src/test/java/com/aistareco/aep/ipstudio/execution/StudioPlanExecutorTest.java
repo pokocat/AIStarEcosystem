@@ -158,6 +158,63 @@ class StudioPlanExecutorTest {
         assertTrue(om.readTree(row.getStepsJson()).path("needsUserReason").asText().contains("已尝试 3 次"));
     }
 
+    /** 视频页的爆款复刻：一段视频出完、只等检查。检查步骤按 {@code videoCheck} 的写法带 sampling / compareReferences（null 时是之前受理的老方案）。 */
+    private void recreationCheck(boolean detailed) throws Exception {
+        var keyframe=om.createObjectNode().put("id","k1").put("stage","production").put("title","第 1 镜开场画面").put("operation","image").put("execution","auto")
+                .put("status","done").put("attempt",1).put("quotedCost",37).put("maxCost",37);
+        keyframe.putArray("dependsOn");keyframe.putArray("runIds").add("IPR-k1");
+        keyframe.putObject("definition").put("id","k1").put("operation","image").put("prompt","以图1为构图基准").putObject("settings").put("operation","image");
+        var video=videoStep("v1",40,"k1").put("status","done");((com.fasterxml.jackson.databind.node.ArrayNode)video.path("runIds")).add("IPR-v");
+        ObjectNode videoDefinition=(ObjectNode)video.path("definition");videoDefinition.put("prompt","第1镜（0–2秒）：从图1开始拍，女生端着图2里的炒饭");
+        ObjectNode videoSettings=(ObjectNode)videoDefinition.path("settings");
+        var bindings=videoSettings.putArray("referenceBindings");
+        bindings.addObject().put("stepId","k1").put("role","reference-image").put("order",0);
+        bindings.addObject().put("nodeId","fried-rice").put("role","reference-image").put("order",1);
+        bindings.addObject().put("nodeId","voice").put("role","reference-audio").put("order",2);
+        var check=checkStep("c1","v1",5);
+        ObjectNode checkDefinition=(ObjectNode)check.path("definition");checkDefinition.put("prompt","逐个镜头检查成片");
+        if(detailed)((ObjectNode)checkDefinition.path("settings")).put("sampling","shots").put("compareReferences",true);
+        execution("running",300,keyframe,video,check);
+        ObjectNode state=om.readValue(row.getStepsJson(),ObjectNode.class);state.putObject("videoTask").put("kind","recreation");row.setStepsJson(state.toString());
+        var helper=new StudioSegmentedRun(new StudioPlanOutputs(runRepository,projects,om),om);
+        @SuppressWarnings("unchecked") ObjectProvider<StudioSegmentedRun> provider=mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(helper);when(provider.getObject()).thenReturn(helper);
+        org.springframework.test.util.ReflectionTestUtils.setField(executor,"segmented",provider);
+        var doc=om.createObjectNode();var nodes=doc.putArray("nodes");
+        nodes.addObject().put("id","fried-rice").put("type","image").putObject("metadata").put("storageKey","rice.png");
+        nodes.addObject().put("id","voice").put("type","audio").putObject("metadata").put("storageKey","voice.wav");
+        when(projects.readDoc(any())).thenReturn(doc);
+        when(projects.requireOwnedAssetKey(eq("u"),anyString())).thenAnswer(i->i.getArgument(1));
+        dtos.put("IPR-k1",dto("IPR-k1","done",37,om.createObjectNode().put("storageKey","k1.png")));
+        dtos.put("IPR-v",dto("IPR-v","done",40,videoOutput("v1.mp4")));
+        dtos.put("IPR-plan",dto("IPR-plan","done",0,om.readTree("{\"plan\":{\"recommendedApproachId\":\"remake\",\"approaches\":[{\"id\":\"remake\"}]}}")));
+        executor.advance("PEX-1");
+    }
+
+    /**
+     * 2026-11-10 审查：视频页任务的检查由 StudioSegmentedRun.materialize 从原定义重编，执行器给检查补的目标说明被丢掉，
+     * 复刻的检查一直只拿到一句固定的话；也看不到交给视频模型的参考图。逐镜对照的检查要两样都有，编号和提示词里的「图N」一致。
+     */
+    @Test void recreationCheckSeesTheTargetPromptAndTheSameReferenceImages() throws Exception {
+        recreationCheck(true);
+        assertEquals(1,submitted.size());
+        var request=submitted.get(0);
+        assertEquals("check",request.operation());
+        assertTrue(request.prompt().contains("这一段应当呈现：第1镜（0–2秒）：从图1开始拍，女生端着图2里的炒饭"),request.prompt());
+        assertTrue(request.prompt().contains("逐个镜头检查成片"),request.prompt());
+        assertEquals("shots",request.check().sampling());
+        assertEquals(List.of("图1","图2"),request.check().references().stream().map(r->r.label()).toList(),"声音不算图，编号只数图片");
+        assertEquals(List.of("k1.png","rice.png"),request.check().references().stream().map(r->r.storageKey()).toList());
+    }
+
+    /** 之前受理的方案（检查步骤没有 sampling / compareReferences）：重交时请求和以前一样。 */
+    @Test void recreationCheckAcceptedBeforeKeepsItsRequest() throws Exception {
+        recreationCheck(false);
+        var request=submitted.get(0);
+        assertEquals("逐个镜头检查成片",request.prompt());
+        assertNull(request.check().sampling());assertNull(request.check().references());
+    }
+
     @Test void videoPageUnreadableCheckDoesNotStopTheTask() throws Exception {
         var video=videoStep("v1",40).put("status","done");((com.fasterxml.jackson.databind.node.ArrayNode)video.path("runIds")).add("IPR-v");
         var check=checkStep("c1","v1",1).put("status","running");((com.fasterxml.jackson.databind.node.ArrayNode)check.path("runIds")).add("IPR-c");

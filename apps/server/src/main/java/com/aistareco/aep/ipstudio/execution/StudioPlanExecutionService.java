@@ -249,6 +249,16 @@ public class StudioPlanExecutionService {
         long spent=budget.path("analysis").path("spent").asLong();
         long remaining=budget.path("analysis").path("approvedCap").asLong()-spent;
         long quoted=plan.path("budget").path("estimated").asLong();
+        // 可省的检查（爆款复刻开场画面的检查）放不下页面批准的上限时，按名次从后往前省掉，省到放得下为止；视频和每段成片的检查不省。
+        List<String> dropped=new ArrayList<>();
+        while(Math.multiplyExact(quoted,3)>remaining) {
+            String id=StudioRecreationTaskPlan.dropOptionalCheck(plan);
+            if(id==null)break;
+            dropped.add(id);
+            quoter.quote(e.getOwnerUserId(),plan);
+            quoted=plan.path("budget").path("estimated").asLong();
+        }
+        if(!dropped.isEmpty())log.info("[plan-exec] optional checks dropped to fit the page cap execution={} dropped={} quoted={} remaining={}",e.getId(),dropped,quoted,remaining);
         if(Math.multiplyExact(quoted,3)>remaining)throw stale("分析已完成，制作费用超出上限，请在画布上查看方案后调整");
         var normalized=new LoadedPlan(runId,plan,loaded.rules(),loaded.contextNodeIds(),loaded.revision(),null);
         appendSteps((ArrayNode)state.withArray("steps"),normalized,"production");

@@ -831,6 +831,18 @@ components:
             targetRunId: {type: string}
             targetStorageKey: {type: string, nullable: true}
             checkIds: {type: array, minItems: 1, maxItems: 16, items: {type: string}}
+            sampling: {type: string, enum: [shots], nullable: true, description: 缺省均匀抽 4 帧；shots 按成片里真实的切镜抽（每个镜头开头和结尾，最多 24 帧）。}
+            references:
+              type: array
+              nullable: true
+              maxItems: 9
+              description: 和成片一起交给检查模型对照的参考图，只认本人的图片文件；label 形如「图1」，与被检查那一步提示词里的编号一致。
+              items:
+                type: object
+                required: [label, storageKey]
+                properties:
+                  label: {type: string}
+                  storageKey: {type: string}
         skillKey: {type: string, nullable: true, description: 技能规划绑定；只选择方法与校验范围，不代表付款或执行授权。}
         skillVersion: {type: integer, nullable: true}
         stage: {type: string, enum: [analysis, production], nullable: true}

@@ -26,8 +26,8 @@ class StudioVideoBreakdownTest {
         assertEquals(2,merged);
         assertEquals("酒墙前远处的女生",b.path("shots").get(4).path("detail").path("layout").asText(),"按时间对到第 5 镜（下标 4），不是第 4 镜");
         assertEquals("白墙前远处的女生",b.path("shots").get(5).path("detail").path("layout").asText(),"小段里的秒数换算回原片");
-        assertEquals(9.5,b.path("shots").get(5).path("detail").path("frameAt").asDouble(),1e-9,"frameAt 也换算回原片，在镜头开头 0.4 秒内");
-        assertEquals(7.72,b.path("shots").get(4).path("detail").path("frameAt").asDouble(),1e-9,"没给时取开头稍后一点");
+        assertEquals(9.5,b.path("shots").get(5).path("detail").path("frameAt").asDouble(),1e-9,"frameAt 也换算回原片，在切镜后 0.12 秒内");
+        assertEquals(7.66,b.path("shots").get(4).path("detail").path("frameAt").asDouble(),1e-9,"没给时取切镜后第二帧");
         assertFalse(b.path("shots").get(3).has("detail"));
         assertTrue(StudioVideoBreakdown.report(b).contains("逐镜细读"));
     }
@@ -37,10 +37,11 @@ class StudioVideoBreakdownTest {
     void openingFramesSnapToRealCutsAndStayInTheOpening() throws Exception {
         var b=StudioVideoBreakdown.normalize(om.readTree("""
             {"shots":[{"start":0,"end":1.8,"visual":"捏合"},{"start":1.8,"end":3.7,"visual":"捏合"},{"start":3.7,"end":6,"visual":"捏合"}]}"""),6,List.of(2.033,3.7));
-        assertEquals(2.153,StudioVideoBreakdown.frameTime(b,1,2.0),1e-9,"模型说 2.0 秒，可真实切镜在 2.033，截在切镜之后");
-        assertEquals(3.82,StudioVideoBreakdown.frameTime(b,2,5.0),1e-9,"挑在中段的不用");
-        assertEquals(3.9,StudioVideoBreakdown.frameTime(b,2,3.9),1e-9,"开头 0.4 秒内的照用");
-        assertEquals(.12,StudioVideoBreakdown.frameTime(b,0,Double.NaN),1e-9);
+        assertEquals(2.093,StudioVideoBreakdown.frameTime(b,1,2.0),1e-9,"模型说 2.0 秒，可真实切镜在 2.033，截在切镜之后");
+        assertEquals(3.76,StudioVideoBreakdown.frameTime(b,2,5.0),1e-9,"挑在中段的不用");
+        assertEquals(3.79,StudioVideoBreakdown.frameTime(b,2,3.79),1e-9,"切镜后 0.12 秒内的照用");
+        assertEquals(3.76,StudioVideoBreakdown.frameTime(b,2,3.9),1e-9,"切镜后 0.2 秒镜头已经在推（美食那条第 7 镜），不用");
+        assertEquals(.06,StudioVideoBreakdown.frameTime(b,0,Double.NaN),1e-9);
     }
 
     @Test
@@ -208,5 +209,39 @@ class StudioVideoBreakdownTest {
         assertTrue(first.contains("前半句")&&!first.contains("后半句"),first);
         assertTrue(second.contains("后半句")&&!second.contains("前半句"),second);
         assertTrue(second.contains("| 3–6 秒 |"),"时间截到这一段内："+second);
+    }
+
+    /**
+     * 原片里重复用的画面：第 3 镜就是第 1 镜 1 秒以后那一段（美食那条第 4～6 镜是第 1、3、2 镜推到头时的近景）。
+     * 第 3 镜的开场画面在第 1 镜里约 1.1 秒处出现过，记在第 1 镜上；纯色测试条那一镜和谁都不像，不记。
+     */
+    @Test void aReusedStretchOfFootageIsFoundInsideTheShotItCameFrom(@org.junit.jupiter.api.io.TempDir java.nio.file.Path directory) throws Exception {
+        var clip=directory.resolve("reuse.mp4");
+        var ffmpeg=new ProcessBuilder("ffmpeg","-nostdin","-v","error","-y","-f","lavfi","-i","mandelbrot=s=180x320:r=30","-f","lavfi","-i","smptebars=s=180x320:r=30",
+                "-filter_complex","[0:v]split[a][c];[a]trim=0:2,setpts=PTS-STARTPTS[A];[1:v]trim=0:1,setpts=PTS-STARTPTS[B];[c]trim=1:2,setpts=PTS-STARTPTS[C];[A][B][C]concat=n=3:v=1:a=0,format=yuv420p",
+                "-c:v","libx264","-threads","2","-t","4",clip.toString()).redirectErrorStream(true).start();
+        assertTrue(ffmpeg.waitFor(60,java.util.concurrent.TimeUnit.SECONDS));assertEquals(0,ffmpeg.exitValue());
+        var breakdown=(com.fasterxml.jackson.databind.node.ObjectNode)om.readTree("""
+            {"shots":[{"start":0,"end":2},{"start":2,"end":3},{"start":3,"end":4}]}""");
+        var frames=om.readTree("[{\"shot\":1,\"at\":0.09},{\"shot\":2,\"at\":2.09},{\"shot\":3,\"at\":3.09}]");
+        assertEquals(1,StudioVideoBreakdown.markSameFrames(clip,breakdown,frames));
+        var same=breakdown.path("shots").get(0).path("sameFrames");
+        assertEquals(1,same.size());
+        assertEquals(3,same.get(0).path("shot").asInt());
+        assertEquals(1.1,same.get(0).path("at").asDouble(),0.15,"第 3 镜的开场 = 第 1 镜 1.09 秒");
+        assertFalse(breakdown.path("shots").get(1).has("sameFrames"));
+        assertFalse(breakdown.path("shots").get(2).has("sameFrames"));
+        // 每次重算，不沿用旧结果
+        ((com.fasterxml.jackson.databind.node.ObjectNode)breakdown.path("shots").get(1)).putArray("sameFrames").addObject().put("at",2.5).put("shot",1);
+        StudioVideoBreakdown.markSameFrames(clip,breakdown,frames);
+        assertFalse(breakdown.path("shots").get(1).has("sameFrames"));
+
+        // 纯色画面减去均值后都是一片平：红屏和蓝屏不算同一段画面
+        var flat=directory.resolve("flat.mp4");
+        var colors=new ProcessBuilder("ffmpeg","-nostdin","-v","error","-y","-f","lavfi","-i","color=c=red:s=180x320:r=30:d=2","-f","lavfi","-i","color=c=blue:s=180x320:r=30:d=2",
+                "-filter_complex","[0:v][1:v]concat=n=2:v=1:a=0,format=yuv420p","-c:v","libx264","-threads","2",flat.toString()).redirectErrorStream(true).start();
+        assertTrue(colors.waitFor(60,java.util.concurrent.TimeUnit.SECONDS));assertEquals(0,colors.exitValue());
+        var two=(com.fasterxml.jackson.databind.node.ObjectNode)om.readTree("{\"shots\":[{\"start\":0,\"end\":2},{\"start\":2,\"end\":4}]}");
+        assertEquals(0,StudioVideoBreakdown.markSameFrames(flat,two,om.readTree("[{\"shot\":1,\"at\":0.09},{\"shot\":2,\"at\":2.09}]")));
     }
 }

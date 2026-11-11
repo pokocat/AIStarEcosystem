@@ -127,6 +127,61 @@ class StudioPlanExecutionServiceTest {
         assertTrue(cards.approved.isEmpty(),"the scene-page cap, not a fabricated dialogue approval, authorized this production");
     }
 
+    /** 两张开场画面各带一个可省的检查（ck1 名次 2 先省，ck2 名次 1 后省），一段视频和它的检查。每步报价照写，合计 444。 */
+    static final String WITH_OPTIONAL_CHECKS="{\"summary\":\"出片\",\"recommendedApproachId\":\"remake\",\"approaches\":[{\"id\":\"remake\",\"title\":\"复刻\",\"summary\":\"照原片\",\"rationale\":\"换素材\"}],\"steps\":["
+            +"{\"id\":\"k1\",\"operation\":\"image\",\"title\":\"开场 1\",\"prompt\":\"以图1为构图基准\",\"settings\":{\"count\":1,\"aspectRatio\":\"9:16\",\"referenceBindings\":[{\"nodeId\":\"product\",\"role\":\"reference-image\",\"order\":1}]}},"
+            +"{\"id\":\"ck1\",\"operation\":\"check\",\"title\":\"开场 1 检查\",\"dependsOn\":[\"k1\"],\"settings\":{\"targetStepId\":\"k1\",\"compareReferences\":true,\"optionalRank\":2,\"checkIds\":[\"subject-replaced\"]}},"
+            +"{\"id\":\"k2\",\"operation\":\"image\",\"title\":\"开场 2\",\"prompt\":\"以图1为构图基准\",\"settings\":{\"count\":1,\"aspectRatio\":\"9:16\",\"referenceBindings\":[{\"nodeId\":\"product\",\"role\":\"reference-image\",\"order\":1}]}},"
+            +"{\"id\":\"ck2\",\"operation\":\"check\",\"title\":\"开场 2 检查\",\"dependsOn\":[\"k2\"],\"settings\":{\"targetStepId\":\"k2\",\"compareReferences\":true,\"optionalRank\":1,\"checkIds\":[\"subject-replaced\"]}},"
+            +"{\"id\":\"v1\",\"operation\":\"video\",\"title\":\"第一段\",\"prompt\":\"开播\",\"dependsOn\":[\"k1\",\"ck1\",\"k2\",\"ck2\"],\"settings\":{\"video\":{\"mode\":\"omni\",\"resolutionTier\":\"768p\"},\"durationSec\":12,\"aspectRatio\":\"9:16\",\"count\":1,"
+            +"\"referenceBindings\":[{\"stepId\":\"k1\",\"role\":\"reference-image\",\"order\":0},{\"stepId\":\"k2\",\"role\":\"reference-image\",\"order\":1}]}},"
+            +"{\"id\":\"c1\",\"operation\":\"check\",\"title\":\"检查\",\"dependsOn\":[\"v1\"],\"settings\":{\"targetStepId\":\"v1\",\"sampling\":\"shots\",\"compareReferences\":true,\"checkIds\":[\"subject-replaced\"]}}],\"questions\":[]}";
+
+    ObjectNode sceneState() {
+        ObjectNode state=om.createObjectNode();state.putArray("steps");
+        state.putObject("videoTask").putObject("request").putObject("configuration").put("duration",12).put("ratio","9:16").put("model","ep-h3").put("tier","768p");
+        return state;
+    }
+
+    /** 报价照各步的 quotedCost 重算（省掉一步后合计跟着变）。 */
+    StudioPlanQuoter summingQuoter() {
+        var quote=mock(StudioPlanQuoter.class);
+        doAnswer(i->{ObjectNode p=i.getArgument(1);long total=0;for(JsonNode s:p.path("steps"))total+=s.path("quotedCost").asLong();
+            p.putObject("budget").put("estimated",total).put("autoFixCap",0);return null;}).when(quote).quote(eq("u"),any());
+        return quote;
+    }
+
+    /**
+     * 2026-11-10 审查：每个检查按文字模型的最大冻结额报价（约 110 积分），开场画面的检查全加上，方案报价超过页面批准的上限，
+     * 复刻在分析完成后停住。放不下时按名次省掉可省的检查，省到放得下为止；视频和每段成片的检查不省。
+     */
+    @Test void sceneRecreationDropsOptionalChecksToFitThePageCap() throws Exception {
+        planRun("compiled","production",WITH_OPTIONAL_CHECKS,37,110,37,110,40,110);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"quoter",summingQuoter());
+        var state=sceneState();
+        ObjectNode budget=om.createObjectNode();budget.putObject("analysis").put("approvedCap",1110).put("spent",10);
+        var row=IpPlanExecution.builder().id("PEX-scene").projectId("p").ownerUserId("u").stage("analysis").status("running").build();
+        service.confirmVideoProduction(row,state,budget,"compiled");
+        assertEquals("production",row.getStage());
+        List<String> ids=new ArrayList<>();state.path("steps").forEach(s->ids.add(s.path("id").asText()));
+        assertEquals(List.of("k1","k2","ck2","v1","c1"),ids,"444×3 > 1100：先省名次靠后的 ck1，334×3 ≤ 1100 就停");
+        List<String> waits=new ArrayList<>();
+        for(JsonNode s:state.path("steps"))if("v1".equals(s.path("id").asText()))s.path("dependsOn").forEach(d->waits.add(d.asText()));
+        assertEquals(List.of("k1","k2","ck2"),waits,"视频不再等省掉的检查");
+        assertEquals(1100,budget.path("production").path("approvedCap").asLong());
+        assertEquals(1100-334,budget.path("production").path("autoFixCap").asLong());
+    }
+
+    @Test void sceneRecreationStillStopsWhenNothingOptionalIsLeftToDrop() throws Exception {
+        planRun("compiled","production",WITH_OPTIONAL_CHECKS,37,110,37,110,40,110);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"quoter",summingQuoter());
+        var state=sceneState();
+        ObjectNode budget=om.createObjectNode();budget.putObject("analysis").put("approvedCap",600).put("spent",10);
+        var row=IpPlanExecution.builder().id("PEX-scene").projectId("p").ownerUserId("u").stage("analysis").status("running").build();
+        assertThrows(BusinessException.class,()->service.confirmVideoProduction(row,state,budget,"compiled"),"两个都省掉还要 224×3 > 590");
+        assertEquals("analysis",row.getStage());assertTrue(state.path("steps").isEmpty());assertFalse(budget.has("production"));
+    }
+
     @Test void sceneRecreationStopsBeforeProductionThatExceedsTheConfirmedTotalCap() throws Exception {
         planRun("compiled","production",PRODUCTION,40);
         org.springframework.test.util.ReflectionTestUtils.setField(service,"quoter",mock(StudioPlanQuoter.class));

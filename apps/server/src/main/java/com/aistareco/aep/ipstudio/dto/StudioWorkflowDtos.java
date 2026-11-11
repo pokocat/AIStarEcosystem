@@ -9,7 +9,12 @@ public final class StudioWorkflowDtos {
     public record Reference(String ipId, String avatarId, Integer version, String storageKey, String role, String lookId) {}
     /** Skill / dialogue additions (docs/ip-studio-conversational-video-recreation-plan.md): recreation segment cap, native check target, skill planning binding, dialogue parent binding. */
     public record RecreationSettings(String maxSegmentSec, String videoModel) {}
-    public record CheckSettings(String targetRunId, String targetStorageKey, List<String> checkIds) {}
+    /**
+     * @param sampling   null：成片均匀抽 4 帧；"shots"：先在成片上找切镜点，每个镜头抽开头和结尾（14 秒 9 个镜头均匀抽 4 帧，多数镜头一帧都看不到）
+     * @param references 和成片一起交给检查模型的参考图（这一步交给生成模型的那几张：用户素材、改好的开场画面、原片截图），逐张核对归属
+     */
+    public record CheckSettings(String targetRunId, String targetStorageKey, List<String> checkIds, String sampling, List<CheckReference> references) {}
+    public record CheckReference(String label, String storageKey) {}
     public record DialogueBinding(String threadId, String messageId) {}
     /**
      * 长视频的分段脚本 / 审稿（docs/studio-segmented-video.md）。只由连续制作提交，客户端直接发一律拒绝。

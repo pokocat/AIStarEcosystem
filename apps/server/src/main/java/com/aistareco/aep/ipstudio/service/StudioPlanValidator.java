@@ -297,9 +297,21 @@ public final class StudioPlanValidator {
             }
             case "check" -> {
                 String target=raw.path("targetStepId").asText("");
-                if(!"video".equals(earlier.get(target)))invalid(label+"只能检查更早的视频步骤");
+                // 图片步骤也能检查（爆款复刻改好的开场画面，出片前先看一遍，2026-11-10）
+                if(!"video".equals(earlier.get(target))&&!"image".equals(earlier.get(target)))invalid(label+"只能检查更早的视频或图片步骤");
                 dependencies.add(target);
                 out.put("targetStepId",target);
+                if(raw.hasNonNull("sampling")) {
+                    if(!"shots".equals(raw.path("sampling").asText()))invalid(label+"的抽帧方式不支持");
+                    out.put("sampling","shots");
+                }
+                if(raw.path("compareReferences").asBoolean(false))out.put("compareReferences",true);
+                // 可省的检查：报价放不下批准的上限时按名次从大到小省掉（爆款复刻开场画面的检查，StudioPlanExecutionService）
+                if(raw.hasNonNull("optionalRank")) {
+                    JsonNode rank=raw.path("optionalRank");
+                    if(!rank.canConvertToInt()||rank.asInt()<1||rank.asInt()>99)invalid(label+"的可省名次不正确");
+                    out.put("optionalRank",rank.asInt());
+                }
                 if(raw.hasNonNull("candidateIndex"))out.put("candidateIndex",candidate(raw.path("candidateIndex"),label));
                 JsonNode ids=raw.path("checkIds");
                 if(!ids.isArray()||ids.isEmpty()||ids.size()>16)invalid(label+"需要列出检查项");

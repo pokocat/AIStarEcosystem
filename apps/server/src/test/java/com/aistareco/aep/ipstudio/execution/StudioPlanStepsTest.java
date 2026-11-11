@@ -54,7 +54,7 @@ class StudioPlanStepsTest {
         var recreation=StudioPlanSteps.request(om.readTree("{\"operation\":\"recreation\",\"prompt\":\"看结构\",\"settings\":{\"sourceNodeId\":\"src\",\"mode\":\"segments\",\"maxSegmentSec\":\"model\",\"videoModel\":\"ep-h3\"}}"),keys(null),modes,binding(null));
         assertEquals("segments",recreation.mode());assertEquals(List.of("src"),recreation.contextNodeIds());assertEquals("model",recreation.recreation().maxSegmentSec());
         var check=StudioPlanSteps.request(om.readTree("{\"operation\":\"check\",\"prompt\":\"\",\"settings\":{\"targetStepId\":\"v\",\"checkIds\":[\"subject-replaced\"]}}"),keys(null),modes,
-                binding(new CheckSettings("IPR-v","v.mp4",List.of("subject-replaced"))));
+                binding(new CheckSettings("IPR-v","v.mp4",List.of("subject-replaced"),null,null)));
         assertEquals("IPR-v",check.check().targetRunId());assertEquals("reference-video-recreation",check.skillKey());
         var compile=StudioPlanSteps.request(om.readTree("{\"operation\":\"text\",\"prompt\":\"编排\",\"settings\":{\"purpose\":\"plan-compile\"}}"),keys(null),modes,binding(null));
         assertEquals("production",compile.stage());assertEquals("reference-video-recreation",compile.skillKey());assertNull(compile.textEdit());

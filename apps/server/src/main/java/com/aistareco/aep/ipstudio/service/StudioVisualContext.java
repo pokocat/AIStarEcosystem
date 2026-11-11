@@ -88,6 +88,27 @@ public final class StudioVisualContext {
      * The times are saved at acceptance so the evidence the model may cite is fixed before the provider call.
      */
     public List<Map<String,Object>> targetParts(String prompt,String storageKey,boolean video,List<Double> times) {
+        return targetParts(prompt,storageKey,video,times,List.of());
+    }
+    /** 一张和成片一起交给检查模型的参考图（{@code _exec.check.references}）。 */
+    public record ShownReference(String label,String storageKey) {}
+    /** 带参考图的检查：成片画面在前，参考图在后、各带编号。帧数多时每张缩到 512，参考图同样。 */
+    public List<Map<String,Object>> targetParts(String prompt,String storageKey,boolean video,List<Double> times,List<ShownReference> references) {
+        List<Map<String,Object>> result=targetFrames(prompt,storageKey,video,times,times.size()>8||!references.isEmpty()?512:768);
+        for(ShownReference ref:references) {
+            Path file;
+            try {file=storage.openForRead(ref.storageKey());}
+            catch(Exception e){throw bad("STUDIO_VISUAL_UNREADABLE","检查要对照的参考图无法读取，请确认它仍然存在");}
+            try {
+                if(Files.size(file)>16L*1024*1024)throw bad("STUDIO_VISUAL_LIMIT","检查要对照的参考图最多 16 MB");
+                result.add(text("参考"+ref.label()+"（交给生成模型的素材，只用来对照）："));
+                result.add(image(Files.readAllBytes(file),512));
+            }catch(BusinessException e){throw e;}
+            catch(Exception e){throw bad("STUDIO_VISUAL_UNREADABLE","检查要对照的参考图无法解码，请确认文件完整");}
+        }
+        return result;
+    }
+    private List<Map<String,Object>> targetFrames(String prompt,String storageKey,boolean video,List<Double> times,int edge) {
         List<Map<String,Object>> result=new ArrayList<>();result.add(text(prompt));
         Path file;
         try {file=storage.openForRead(storageKey);}
@@ -97,7 +118,7 @@ public final class StudioVisualContext {
                 result.add(text("以下为要检查的成片按时间顺序的真实采样画面，不包含音轨或全部连续动作。"));
                 for(int i=0;i<times.size();i++) {
                     result.add(text(String.format(Locale.ROOT,"成片采样 %d/%d，时间 %.2f 秒",i+1,times.size(),times.get(i))));
-                    result.add(image(frame(file,times.get(i))));
+                    result.add(image(frame(file,times.get(i)),edge));
                 }
             } else {
                 if(Files.size(file)>8L*1024*1024)throw bad("STUDIO_VISUAL_LIMIT","单张图片最多 8 MB，请压缩后重新上传");

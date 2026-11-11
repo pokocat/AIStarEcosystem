@@ -44,9 +44,16 @@ public final class StudioPlanSteps {
      * the planner's words. Deterministic, so a resubmission after a restart sends the same request.
      */
     public static String checkTarget(JsonNode plan,String approachId,JsonNode targetDefinition,String checkPrompt) {
+        return checkTarget(plan,approachId,targetDefinition,checkPrompt,CHECK_TARGET_CHARS);
+    }
+    /** 被检查的那一步的提示词最多带多少字。逐镜对照时放宽：一段 14 秒 9 个镜头的提示词约 1800 字，截到 1500 字后面几镜就没有了。 */
+    public static final int CHECK_TARGET_CHARS=1500,CHECK_TARGET_DETAILED=6000;
+    /** 检查时最多带几张参考图（H3 全能参考最多 9 张，开场画面的出图步骤最多 5 张）。 */
+    public static final int CHECK_REFERENCES=9;
+    public static String checkTarget(JsonNode plan,String approachId,JsonNode targetDefinition,String checkPrompt,int promptChars) {
         StringBuilder out=new StringBuilder();
         String shown=targetDefinition==null?"":targetDefinition.path("prompt").asText("").strip();
-        if(!shown.isEmpty())out.append("这一段应当呈现：").append(clip(shown,1500)).append('\n');
+        if(!shown.isEmpty())out.append("这一段应当呈现：").append(clip(shown,promptChars)).append('\n');
         JsonNode approach=null;
         if(plan!=null)for(JsonNode a:plan.path("approaches"))if(a.path("id").asText("").equals(approachId))approach=a;
         if(approach!=null) {
@@ -94,7 +101,7 @@ public final class StudioPlanSteps {
             case "video" -> new RunRequest(requestId,nodeId,"video",prompt,List.of(),settings.path("model").asText(null),null,settings.path("durationSec").asInt(),settings.path("aspectRatio").asText(),
                     settings.path("count").asInt(1),null,null,null,null,null,maxCost,null,video(settings,keys,modes),null,null,null,billing,null,null,null,null,stage,executionId,null);
             case "check" -> new RunRequest(requestId,nodeId,"check",prompt,null,null,null,null,null,null,null,null,null,null,null,maxCost,null,null,null,null,null,billing,
-                    null,binding==null?new CheckSettings("quote",null,strings(settings.path("checkIds"))):binding.check(),
+                    null,binding==null?new CheckSettings("quote",null,strings(settings.path("checkIds")),null,null):binding.check(),
                     binding==null?null:binding.skillKey(),binding==null?null:binding.skillVersion(),stage,executionId,null);
             case "assemble" -> {
                 List<Reference> clips=new ArrayList<>();

@@ -796,6 +796,16 @@ public class StudioWorkflowService {
      * Server-built check input: the target must be the caller's successful run in this project and the key one of its real
      * outputs; frames are sampled from that media at fixed, recorded times. The client never supplies visual context.
      */
+    /** 按文件头判断是不是图片（png / jpg / gif / bmp / webp）；读不出来按不是图片处理。 */
+    private boolean isImage(String key) {
+        if(recreationStorage==null)return false;
+        try(var in=java.nio.file.Files.newInputStream(recreationStorage.openForRead(key))) {
+            return com.aistareco.aep.service.storage.ImageBytes.sniff(in.readNBytes(16))!=null;
+        } catch(Exception e) {
+            return false;
+        }
+    }
+
     private ObjectNode checkTarget(String userId,String projectId,CheckSettings check,com.aistareco.aep.ipstudio.execution.StudioSkillRules.Rules skill) {
         Set<String> ids=new LinkedHashSet<>();
         for(String id:check.checkIds()) {
@@ -810,8 +820,25 @@ public class StudioWorkflowService {
         if(key==null||!keys.contains(key))throw bad("STUDIO_CHECK_TARGET_INVALID","只能检查这次生成真实产出的成片");
         projects.requireOwnedAssetKey(userId,key);
         boolean video=!key.matches("(?i).*\\.(png|jpe?g|webp)$");
+        if(check.sampling()!=null&&!"shots".equals(check.sampling()))throw bad("STUDIO_INPUT_INVALID","检查的抽帧方式不支持");
         ObjectNode out=mapper.createObjectNode().put("targetRunId",run.getId()).put("targetStorageKey",key).put("mediaType",video?"video":"image");
         var checkIds=out.putArray("checkIds");ids.forEach(checkIds::add);
+        // 一起交给检查模型的参考图：只认本人的图片文件，编号照调用方给的（和被检查那一步提示词里的「图N」一致）。
+        // 是不是图片按文件内容判（§8.0.1 ⑤），不按后缀；不是图片或读不出来的那张不带，其余照常检查（编号各自带着，不会错位）。
+        if(check.references()!=null&&!check.references().isEmpty()) {
+            if(check.references().size()>com.aistareco.aep.ipstudio.execution.StudioPlanSteps.CHECK_REFERENCES)throw bad("STUDIO_VISUAL_LIMIT","检查最多带 "+com.aistareco.aep.ipstudio.execution.StudioPlanSteps.CHECK_REFERENCES+" 张参考图");
+            var shown=out.putArray("references");
+            for(var ref:check.references()) {
+                if(ref==null||ref.storageKey()==null||ref.storageKey().isBlank()||ref.label()==null||!ref.label().matches("图[1-9][0-9]?"))throw bad("STUDIO_INPUT_INVALID","检查的参考图不完整");
+                String owned=projects.requireOwnedAssetKey(userId,ref.storageKey());
+                if(!isImage(owned)) {
+                    log.warn("[studio-check] reference skipped, not a readable image run={} label={} key={}",run.getId(),ref.label(),owned);
+                    continue;
+                }
+                shown.addObject().put("label",ref.label()).put("storageKey",owned);
+            }
+            if(shown.isEmpty())out.remove("references");
+        }
         var facts=out.putObject("mediaFacts");
         List<Double> times=List.of();
         try {
@@ -827,7 +854,15 @@ public class StudioWorkflowService {
                     if("audio".equals(stream.path("codec_type").asText()))facts.put("hasAudio",true);
                 }
                 if(!facts.has("hasAudio"))facts.put("hasAudio",false);
-                times=com.aistareco.aep.ipstudio.execution.StudioCheckOutcome.sampleTimes(duration,4);
+                if(check.sampling()==null)times=com.aistareco.aep.ipstudio.execution.StudioCheckOutcome.sampleTimes(duration,4);
+                else {
+                    // 按镜头抽帧。切镜没测成时按一镜到底处理（大约每 2 秒一帧）：两种都是真实画面，只是疏密不同。
+                    List<Double> cuts=List.of();
+                    try {cuts=StudioVideoBreakdown.detectCuts(file,duration);}
+                    catch(Exception e){log.warn("[studio-check] cut detection failed run={} key={} reason={}",run.getId(),key,e.toString());}
+                    times=com.aistareco.aep.ipstudio.execution.StudioCheckOutcome.shotTimes(duration,cuts);
+                    out.put("sampling","shots").put("shots",cuts.size()+1);
+                }
             }
         } catch(BusinessException e){throw e;}
         catch(Exception e){throw bad("STUDIO_CHECK_TARGET_INVALID","要检查的成片无法读取，请确认它仍然存在");}
@@ -869,9 +904,15 @@ public class StudioWorkflowService {
         variables.put("checklist",checklist.toString());
         String description=request.prompt()==null||request.prompt().isBlank()?"未提供额外说明，只按检查清单判断。":request.prompt();
         variables.put("target",description+"\n成片实测信息（服务端测得，可作为 media 依据）："+target.path("mediaFacts"));
-        variables.put("frames","video".equals(target.path("mediaType").asText())
+        String frames="video".equals(target.path("mediaType").asText())
                 ?"随后附上 "+target.path("sampledTimesSec").size()+" 张真实采样画面，时间依次为 "+target.path("sampledTimesSec")+" 秒。frame 依据的 timeSec 只能从这些时间中选。"
-                :"随后附上 1 张要检查的图片。frame 依据不填 timeSec。");
+                :"随后附上 1 张要检查的图片。frame 依据不填 timeSec。";
+        if("shots".equals(target.path("sampling").asText()))frames+="这些画面是按成片里真实的切镜抽的（共 "+target.path("shots").asInt()+" 个镜头，每个镜头取开头和结尾），可以逐个镜头对照。";
+        if(target.path("references").size()>0) {
+            List<String> labels=new ArrayList<>();target.path("references").forEach(r->labels.add(r.path("label").asText()));
+            frames+="最后附上 "+labels.size()+" 张参考图（"+String.join("、",labels)+"），编号和目标说明里的「图N」一致：它们是交给生成模型的素材，用来对照成片里的人和物换对了没有，不是要检查的对象，也不能作为 frame 依据。";
+        }
+        variables.put("frames",frames);
         return variables;
     }
 
@@ -899,6 +940,7 @@ public class StudioWorkflowService {
                 config.path("tier").asText(null),config.path("ratio").asText("9:16"),config.path("optimize").isBoolean()?config.path("optimize").asBoolean():null,
                 com.aistareco.aep.ipstudio.execution.StudioPlanExecutionIds.nodeId(binding.execution().getId(),film.stage(),film.stepId())+"-f",
                 Math.max(0,maxSteps-segments*2-1),config.path("text").asText(""));
+        prepared.put("maxSteps",maxSteps);
         execution.set("recreationTask",prepared);
         // 方案只能引用这次的素材
         Set<String> allowed=new LinkedHashSet<>(request.contextNodeIds()==null?List.of():request.contextNodeIds());
