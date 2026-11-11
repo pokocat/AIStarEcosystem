@@ -1,5 +1,9 @@
 package com.aistareco.aep.ipstudio.service;
 
+import com.aistareco.common.BusinessException;
+import com.fasterxml.jackson.databind.JsonNode;
+
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -7,6 +11,7 @@ import java.util.Map;
 /** The Studio product image families and their provider model routes. */
 public final class StudioImageModelRouting {
     public static final String REQUEST_PREFIX = "studio-image:";
+    public static final String PRICING_CONFIG_KEY = "studio.image-resolution-pricing";
     public static final List<String> TIERS = List.of("1K", "2K", "4K");
 
     public record Family(String id, String label, Map<String, String> providerModels) {}
@@ -45,5 +50,31 @@ public final class StudioImageModelRouting {
 
     public static boolean isProductRequest(String model) {
         return model != null && model.startsWith(REQUEST_PREFIX) && family(model) != null;
+    }
+
+    /** Platform credits per delivered image, keyed by product family and resolution tier. */
+    public static Map<String, Map<String, Long>> resolutionPrices(JsonNode value) {
+        if (value == null || !value.isObject()) throw invalidPricing();
+        Map<String, Map<String, Long>> result = new LinkedHashMap<>();
+        value.fields().forEachRemaining(entry -> {
+            Family family = family(entry.getKey());
+            JsonNode tiers = entry.getValue();
+            if (family == null || !family.id().equals(entry.getKey()) || !tiers.isObject()
+                    || tiers.size() != TIERS.size()) throw invalidPricing();
+            Map<String, Long> prices = new LinkedHashMap<>();
+            for (String tier : TIERS) {
+                JsonNode price = tiers.path(tier);
+                if (!price.isIntegralNumber() || !price.canConvertToLong() || price.longValue() <= 0) {
+                    throw invalidPricing();
+                }
+                prices.put(tier, price.longValue());
+            }
+            result.put(family.id(), Map.copyOf(prices));
+        });
+        return Map.copyOf(result);
+    }
+
+    private static BusinessException invalidPricing() {
+        return BusinessException.badRequest("STUDIO_IMAGE_PRICING_INVALID", "请为所选图片系列填写 1K、2K 和 4K 的正整数积分售价");
     }
 }

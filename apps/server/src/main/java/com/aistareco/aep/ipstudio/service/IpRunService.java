@@ -678,7 +678,7 @@ public class IpRunService {
             exec.put("endpointId", selected.resolved().endpoint().getId()).put("providerModel",selected.resolved().endpoint().getModel()).put("billingUnit", selected.billingUnit());
             if(JusuanImageClient.supports(selected.resolved().endpoint()))exec.set("imageRequestSpec",om.valueToTree(com.aistareco.aep.model.AiImageRequestSpec.read(selected.resolved().endpoint().getImageRequestSpecJson())));
         }
-        return new Compiled(IpRun.KIND_GENERATE, selected == null ? pricing.ipImage() : selected.creditCost(), count,
+        return new Compiled(IpRun.KIND_GENERATE, selected == null ? pricing.ipImage() : selected.creditCostForSize(size), count,
                 "画布生成图片 ×" + count, inputs, false, true,
                 "stage-image");
     }
@@ -773,7 +773,7 @@ public class IpRunService {
             exec.put("endpointId", selected.resolved().endpoint().getId()).put("providerModel",selected.resolved().endpoint().getModel()).put("billingUnit", selected.billingUnit());
             if(JusuanImageClient.supports(selected.resolved().endpoint()))exec.set("imageRequestSpec",om.valueToTree(com.aistareco.aep.model.AiImageRequestSpec.read(selected.resolved().endpoint().getImageRequestSpecJson())));
         }
-        return new Compiled(IpRun.KIND_GENERATE, selected == null ? pricing.ipImage() : selected.creditCost(), count,
+        return new Compiled(IpRun.KIND_GENERATE, selected == null ? pricing.ipImage() : selected.creditCostForSize(size), count,
                 "画布生成图片 ×" + count, inputs, false, true,
                 "stage-image");
     }

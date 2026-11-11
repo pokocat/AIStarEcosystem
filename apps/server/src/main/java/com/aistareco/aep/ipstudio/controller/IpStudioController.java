@@ -294,7 +294,7 @@ public class IpStudioController {
                 legacyEndpointIds.add(route.resolved().endpoint().getId());
                 representative=representative==null?route:representative;
                 isDefault|=route.resolved().isDefault();
-                costs.put(tier,route.creditCost());
+                costs.put(tier,route.creditCostForTier(tier));
                 var spec=com.aistareco.aep.model.AiImageRequestSpec.read(route.resolved().endpoint().getImageRequestSpecJson());
                 spec.outputs().stream().filter(o->tier.equals(com.aistareco.aep.ipstudio.service.StudioImageModelRouting.tierForSize(o.canvasSize())))
                         .forEach(o->sizes.putIfAbsent(o.canvasSize()+"/"+o.aspectRatio(),new com.aistareco.aep.dto.EndpointCapabilityDto.ImageSize(o.canvasSize(),o.aspectRatio())));

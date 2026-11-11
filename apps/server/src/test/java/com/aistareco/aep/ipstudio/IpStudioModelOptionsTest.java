@@ -38,7 +38,7 @@ class IpStudioModelOptionsTest {
         assertEquals(1,models.image().size());
         var image=models.image().get(0);
         assertEquals("studio-image:gpt-image-2",image.endpointId());
-        assertEquals(Map.of("1K",30L,"2K",30L,"4K",45L),image.imageResolutionCosts());
+        assertEquals(Map.of("1K",20L,"2K",30L,"4K",30L),image.imageResolutionCosts());
         assertEquals(3,image.capability().imageSizes().size());
         assertEquals(List.of("image-1k","image-4k"),image.legacyEndpointIds());
         assertEquals("per_second",models.video().get(0).billingUnit());
@@ -50,6 +50,8 @@ class IpStudioModelOptionsTest {
                 .map(size->new AiImageRequestSpec.Output(size,"1:1",Map.of("size",size))).toList());
         var endpoint=AiModelEndpoint.builder().id(id).model(model).enabled(true).baseUrl("https://images.example/v1")
                 .imageRequestSpecJson(spec.json()).build();
-        return new AiAppSceneModelPolicyService.Selection(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,id.endsWith("1k")),price,"per_image");
+        return new AiAppSceneModelPolicyService.Selection(
+                new AiModelInvocationService.ResolvedEndpoint(endpoint,null,id.endsWith("1k")),price,"per_image",
+                Map.of("1K",20L,"2K",30L,"4K",30L));
     }
 }
