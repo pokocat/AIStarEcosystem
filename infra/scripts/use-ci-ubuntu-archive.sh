@@ -5,6 +5,6 @@ set -euo pipefail
 # list as well as direct source definitions and retain Ubuntu's signing keys.
 for source in /etc/apt/apt-mirrors.txt /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
   if [[ -f "$source" ]]; then
-    sudo sed -E -i 's|https?://(azure\.archive|archive|security)\.ubuntu\.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' "$source"
+    sudo sed -E -i 's#https?://(azure\.archive|archive|security)\.ubuntu\.com/ubuntu#https://archive.ubuntu.com/ubuntu#g' "$source"
   fi
 done
