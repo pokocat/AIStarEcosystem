@@ -326,7 +326,7 @@ test('爆款复刻：放进参考视频后按切镜结果推荐方式，不替�
   window.history.replaceState(null, '', '/video?scene=recreation');
   api.videoModels.mockResolvedValue([H3]);
   api.capabilities.mockResolvedValue({ mock: false, operations: ['video-control'], imageCost: 8 });
-  api.cloneAdvice.mockResolvedValue({ durationSec: 30, shots: 1, averageShotSec: 30, recommended: 'depth', reason: '这条视频一镜到底，照动作重拍最像' });
+  api.cloneAdvice.mockResolvedValue({ durationSec: 30, shots: 1, averageShotSec: 30, recommended: 'depth', reason: '原片是一镜到底' });
   api.importMedia.mockResolvedValue({ key: 'ipstudio/media/u/talk.mp4', url: 'blob:v', mediaType: 'video', mimeType: 'video/mp4', bytes: 1, fileName: '口播.mp4', durationSec: 30 });
   await act(async () => { render(<SceneVideoStudio/>); });
   await screen.findByText('请添加参考视频'); await pickFromLibrary('参考视频');

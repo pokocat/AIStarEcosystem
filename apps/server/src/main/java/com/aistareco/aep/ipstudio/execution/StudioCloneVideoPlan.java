@@ -137,9 +137,9 @@ public class StudioCloneVideoPlan {
     static Advice advice(double seconds,int shots) {
         double average=Math.round(seconds/Math.max(1,shots)*10)/10.0;
         boolean depth=shots<=2||average>=DEPTH_AVERAGE_SHOT_SEC;
-        String reason=shots==1?"这条视频一镜到底，照动作重拍最像"
-                :depth?"这条视频 "+shots+" 个镜头，平均每个约 "+fmt(average)+" 秒，镜头少、动作连贯"
-                :"这条视频 "+shots+" 个镜头，平均每个约 "+fmt(average)+" 秒，换镜频繁";
+        // 页面接着写「，适合深度复刻。」或「，建议使用分镜复刻。」，这里只写看到了什么
+        String reason=shots==1?"原片是一镜到底"
+                :"原片有 "+shots+" 个镜头，平均每个约 "+fmt(average)+" 秒";
         return new Advice(Math.round(seconds*10)/10.0,shots,average,depth?"depth":"recreation",reason);
     }
     private static String fmt(double v){return v==Math.rint(v)?String.valueOf((long)v):String.valueOf(v);}

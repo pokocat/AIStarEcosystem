@@ -1334,7 +1334,7 @@ Studio 视频费用确认复用图片弹窗，显示整批原价、优惠、赠�
 
 ### 爆款复刻的三种方式（2026-11-11，本地实现，未发布）
 
-`/toolbox` 和 AI 视频页爆款复刻场景里的方式卡片（`scene-video-clone.tsx` 的 `VIDEO_CLONE_TOOLS`，每张写适合什么视频）；首页常用工具改叫「爆款复刻」。三种方式都按原片分段，时长固定跟参考视频走（设置面板里不能拖，`followsSource`）；顺手修了默认时长被截到单段上限、原片长于单段上限的复刻分析完就停住的问题。放进参考视频后调 `GET /api/v1/ip-studio/studio/clone-advice` 拿推荐，只加「推荐」标签和一句原因。见 `docs/ip-studio-recreation.md`「三种复刻方式」。
+`/toolbox` 和 AI 视频页爆款复刻场景里的方式卡片（`scene-video-clone.tsx` 的 `VIDEO_CLONE_TOOLS`，每张写适合什么视频）；首页常用工具改叫「爆款复刻」。三种方式都按原片分段，时长固定跟参考视频走（设置面板里不能拖，`followsSource`）；顺手修了默认时长被截到单段上限、原片长于单段上限的复刻分析完就停住的问题。放进参考视频后调 `GET /api/v1/ip-studio/studio/clone-advice` 拿推荐，只加「推荐」标签和一句原因。每种方式配一张示意图（`public/studio/clone-modes/*.webp`，本地 Codex 出的虚构韩系人物，标「示意图」，不是真实生成结果），说明分「适合」「限制」两行（`VIDEO_CLONE_TOOLS.fit / limit`，工具箱和视频页共用 `CloneModeFacts`）。见 `docs/ip-studio-recreation.md`「三种复刻方式」。
 
 ### 工具箱视频复刻（2026-11-08，本地实现，未发布）
 
