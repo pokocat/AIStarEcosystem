@@ -60,7 +60,8 @@ export function videoTaskResumeLabel(task: StudioVideoTask) {
   if (!step) return '继续生成';
   const segmentRetry = videoTaskSegmentRetry(task);
   if (segmentRetry) return segmentRetry.segment ? `从第 ${segmentRetry.segment} 段继续生成` : '重试这一步';
-  if (step.materials?.length || step.attempt >= 3) return undefined;
+  // 试过 3 次的也能再点重试（2026-11-11 用户定：能用为主，失败的积分都退了）
+  if (step.materials?.length) return undefined;
   return step.status === 'failed' || step.errorCode ? '重试这一步' : '继续生成';
 }
 export function videoTaskProblemTitle(step: StudioPlanExecutionStep) {

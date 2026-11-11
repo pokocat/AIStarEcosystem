@@ -806,20 +806,19 @@ class StudioPlanExecutionServiceTest {
         assertEquals(List.of("sheet","gone"),compile.path("excludedMaterials").findValuesAsText("nodeId"));
         assertFalse(canvasContext(id).contains("sheet"));
     }
-    @Test void videoPageCannotStartAFourthAttemptByClickingContinue() throws Exception {
+    /** 2026-11-11 用户定（能用为主）：自动试满 3 次停下来后，用户在视频页点重试就接着试第 4 次，不再要求先去画布修。 */
+    @Test void videoPageCanRetryAStepThatAlreadyRanThreeTimes() throws Exception {
         String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
         var created=service.create("u","p",analysisRequest(fp,30));
         var row=rows.get(created.id());
         var state=(ObjectNode)om.readTree(row.getStepsJson());state.putObject("videoTask").put("kind","recreation");
         ((ObjectNode)state.path("steps").get(0)).put("status","failed").put("attempt",3).put("errorCode","AI_CALL_FAILED");
         row.setStepsJson(state.toString());row.setStatus("needs_user");canvasWith("src");
-        assertEquals("STUDIO_PLAN_STALE",assertThrows(BusinessException.class,()->service.resume("u","p",created.id(),new PlanExecutionControlRequest("retry-four",null))).getCode());
-        assertEquals("needs_user",row.getStatus());
-        assertEquals(3,om.readTree(row.getStepsJson()).path("steps").get(0).path("attempt").asInt());
-        // 同一步只差次数：还没到 3 次就能继续，所以上面拦下它的就是次数这一条。
-        ((ObjectNode)state.path("steps").get(0)).put("attempt",2);row.setStepsJson(state.toString());
-        service.resume("u","p",created.id(),new PlanExecutionControlRequest("retry-third",null));
+        service.resume("u","p",created.id(),new PlanExecutionControlRequest("retry-four",null));
         assertEquals("running",row.getStatus());
+        var step=om.readTree(row.getStepsJson()).path("steps").get(0);
+        assertEquals("pending",step.path("status").asText());
+        assertEquals(4,step.path("attempt").asInt(),"新的一次，新的请求编号");
     }
 
     @ParameterizedTest

@@ -67,9 +67,10 @@ public class StudioSegmentedRun {
                 continue;
             }
             if ("check".equals(operation) && "done".equals(status) && !"pass".equals(step.path("checkStatus").asText()) && !step.path("acknowledged").asBoolean(false)) {
-                // 视频页的爆款复刻：一段没通过检查就重出这一段一次（2026-11-10 用户要求：视频页少让人参与，质量靠自己检查补）；
+                // 视频页的爆款复刻（分镜复刻、深度复刻、元素替换）：一段没通过检查就重出这一段一次（2026-11-10 用户要求：视频页少让人参与，
+                // 质量靠自己检查补；2026-11-11 真跑发现深度复刻两段不合格却没重出，三种方式一样处理）。
                 // 重出后还不合格、或判断不了，用最后一版接着做。其它视频页任务的检查只作参考，不丢已经交付的视频。
-                if(state.has("videoTask")&&!"recreation".equals(state.path("videoTask").path("kind").asText()))step.put("acknowledged",true);
+                if(state.has("videoTask")&&!StudioCloneVideoPlan.method(state.path("videoTask").path("kind").asText()))step.put("acknowledged",true);
                 else resolveCheck(e, state, step);
             }
         }
@@ -207,7 +208,7 @@ public class StudioSegmentedRun {
      */
     private void recreationFix(ObjectNode state, ObjectNode step, ObjectNode compiled) {
         String hint = step.path("fixHint").asText("").strip();
-        if (hint.isEmpty() || !"recreation".equals(state.path("videoTask").path("kind").asText())) return;
+        if (hint.isEmpty() || !StudioCloneVideoPlan.method(state.path("videoTask").path("kind").asText())) return;
         String prompt = compiled.path("prompt").asText("");
         switch (compiled.path("operation").asText()) {
             case "image" -> compiled.put("prompt", prompt.strip() + "\n" + assemble(StudioPromptCallPoints.RECREATION_REDO_NOTE, Map.of("fix", hint)).strip());

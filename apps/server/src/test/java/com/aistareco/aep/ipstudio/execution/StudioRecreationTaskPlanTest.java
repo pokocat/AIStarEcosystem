@@ -96,11 +96,26 @@ class StudioRecreationTaskPlanTest {
             {"units":[{"no":1,"prompt":"第1镜","captions":[{"start":0,"end":12,"text":"我刷到的带货直播"}]},
                       {"no":2,"prompt":"第1镜","captions":[{"start":0,"end":4,"text":"我刷到的带货直播"},
                         {"start":4,"end":7,"text":"抖音号:78699247005\\n抖音搜索 小尼的奇妙日记"},{"start":5,"end":7,"text":"来抖音 发现更多创作者"}]}]}""");
-        var captions=finalStep(StudioRecreationTaskPlan.build(task,answer)).path("settings").path("captions");
-        assertEquals(1,captions.size(),captions.toString());
-        assertEquals("我刷到的带货直播",captions.get(0).path("text").asText());
-        assertEquals(0.0,captions.get(0).path("start").asDouble());
-        assertEquals(16.0,captions.get(0).path("end").asDouble());
+        var settings=finalStep(StudioRecreationTaskPlan.build(task,answer)).path("settings");
+        // 2026-11-11 真跑：这句其实是原片顶部一直挂着的标题，当字幕放在底部盖住了台词字幕。挂满大半条片子的一句改放顶部
+        assertFalse(settings.has("captions"),settings.toString());
+        assertEquals("我刷到的带货直播",settings.path("title").asText());
+    }
+
+    /** 拉片认出原片的固定标题（screenTitle）：成片放顶部，模型照抄进字幕的同一句去掉，逐句的台词字幕照常。 */
+    @Test
+    void theOriginalsFixedTitleGoesOnTopAndLineCaptionsStay() throws Exception {
+        ObjectNode film=(ObjectNode)film();
+        ((ObjectNode)film.path("breakdown")).put("screenTitle","我刷到的带货直播");
+        var task=StudioRecreationTaskPlan.prepare(film,materials(),"ai-h3",h3(),"768p","9:16",null);
+        JsonNode answer=om.readTree("""
+            {"units":[{"no":1,"prompt":"第1镜","captions":[{"start":0,"end":2,"text":"我刷到的带货直播"},{"start":2,"end":4,"text":"抹上去三二一来"}]},
+                      {"no":2,"prompt":"第1镜","captions":[{"start":0,"end":2,"text":"吸收了"}]}]}""");
+        var settings=finalStep(StudioRecreationTaskPlan.build(task,answer)).path("settings");
+        assertEquals("我刷到的带货直播",settings.path("title").asText());
+        assertEquals(2,settings.path("captions").size(),settings.toString());
+        assertEquals("抹上去三二一来",settings.path("captions").get(0).path("text").asText());
+        assertEquals("吸收了",settings.path("captions").get(1).path("text").asText());
     }
 
     @Test
@@ -292,6 +307,33 @@ class StudioRecreationTaskPlanTest {
         assertTrue(StreamSupport.stream(v1.path("dependsOn").spliterator(),false).anyMatch(d->"d1".equals(d.asText())));
         assertEquals("d1",v1.path("settings").path("referenceBindings").get(0).path("stepId").asText());
         assertTrue(step(validated,"final").path("settings").has("captions"),"深度复刻照样把原片字幕加回成片");
+    }
+
+    /** 2026-11-11 真跑：深度复刻三段分开生成，第三段换了个房间。第一段的开场截图换好人和商品做一张场景图，每段都带上它。 */
+    @Test
+    void depthMakesOneSceneImageAndEverySegmentUsesIt() throws Exception {
+        ObjectNode film=(ObjectNode)film();
+        var frames=film.putArray("frames");
+        for(int n=1;n<=3;n++)frames.addObject().put("shot",n).put("at",n).put("storageKey","ipstudio_gen/u/frame-"+n+".jpg");
+        var task=StudioRecreationTaskPlan.prepare(film,materials(),"ai-h3",h3(),"768p","9:16",true,FRAMES,6,"换成小美和保温杯","depth",SEGMENTS);
+        var first=task.path("units").get(0);var second=task.path("units").get(1);
+        assertEquals(1,first.path("keyframes").size(),"只做一张场景图");
+        assertEquals(1,first.path("keyframes").get(0).path("shot").asInt(),"取第一段最开头那一镜");
+        assertEquals("k1",first.path("refs").get(1).path("stepId").asText());assertEquals("图1",first.path("refs").get(1).path("label").asText());
+        assertEquals(0,second.path("keyframes").size());
+        assertEquals("k1",second.path("sceneStepId").asText());
+        assertEquals("k1",second.path("refs").get(1).path("stepId").asText(),"后面几段带上同一张场景图");
+        assertEquals("girl",second.path("refs").get(2).path("nodeId").asText());
+
+        var plan=StudioRecreationTaskPlan.build(task,answer(),(stage,vars)->StudioPromptCallPoints.RECREATION_KEYFRAME.equals(stage)?"场景图":StudioRecreationTaskPlan.LIBRARY.render(stage,vars));
+        List<String> ids=new ArrayList<>();plan.path("steps").forEach(st->ids.add(st.path("id").asText()));
+        assertEquals(List.of("k1","d1","v1","c1","d2","v2","c2","final"),ids);
+        assertEquals(3,step(plan,"k1").path("settings").path("referenceBindings").size(),"原片截图加两份素材（写提示词的模型没点名时全带上）");
+        var validated=StudioPlanValidator.validateSkillPlan(plan,rules(),"production",Set.of(SEGMENTS+"1",SEGMENTS+"2","cup","girl",FRAMES+"1"));
+        var v2=step(validated,"v2");
+        assertTrue(StreamSupport.stream(v2.path("dependsOn").spliterator(),false).anyMatch(d->"k1".equals(d.asText())),"第二段等场景图做完");
+        assertTrue(StreamSupport.stream(v2.path("settings").path("referenceBindings").spliterator(),false).anyMatch(r->"k1".equals(r.path("stepId").asText())));
+        assertEquals("depth-control",v2.path("strategy").path("method").asText());
     }
 
     @Test

@@ -115,11 +115,12 @@ public final class StudioPlanSteps {
                     captions=new ArrayList<>();
                     for(JsonNode c:settings.path("captions"))captions.add(new com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.Caption(c.path("start").asDouble(),c.path("end").asDouble(),c.path("text").asText()));
                 }
+                String title=settings.path("title").asText("").isBlank()?null:settings.path("title").asText().strip();
                 if("source-audio".equals(settings.path("audioStrategy").asText())) {
                     String audio=keys.sourceAudio();
                     if(audio==null)throw BusinessException.badRequest("STUDIO_SOURCE_AUDIO_UNAVAILABLE","原片没有可用的音轨，不能按原声合成");
-                    packaging=new Packaging(null,null,null,captions,audio);
-                } else if(captions!=null)packaging=new Packaging(null,null,null,captions);
+                    packaging=new Packaging(null,title,null,captions,audio);
+                } else if(captions!=null||title!=null)packaging=new Packaging(null,title,null,captions);
                 yield new RunRequest(requestId,nodeId,"assemble",prompt.isBlank()?"按计划顺序合成成片":prompt,clips,null,null,null,keys.aspectRatio(),null,null,null,null,null,null,maxCost,packaging,null,null,null,null,billing,
                         null,null,null,null,stage,executionId,null);
             }

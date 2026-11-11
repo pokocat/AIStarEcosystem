@@ -296,6 +296,8 @@ function VideoTaskView({ task, takes, onOpen, persist, onRefresh }: {
   const retry = execution?.steps.find(s => s.id === task.retryStepId);
   const active = phases.find(p => p.state === 'running' || p.state === 'failed') ?? phases.find(p => p.state === 'waiting');
   const needsAction = videoTaskNeedsAction(task), resumeLabel = videoTaskResumeLabel(task);
+  // 停下来等人的任务也能停止：不停的话这张草稿里没法再生成（同一张画布一次只跑一条）
+  const stoppable = !!execution && (execution.status === 'needs_user' || execution.status === 'paused');
   const segmentRetry = videoTaskSegmentRetry(task);
   const runningStep = execution?.steps.find(s => s.status === 'running' || s.status === 'submitted');
   const activeRun = task.run ?? (runningStep ? stepRunCandidates(runningStep).map(id => runs[id]).find(Boolean) : undefined);
@@ -358,8 +360,10 @@ function VideoTaskView({ task, takes, onOpen, persist, onRefresh }: {
           <p title={actionNote || undefined}>{actionNote}</p>
           {running ? <button type="button" disabled={acting} onClick={() => void stop()}><Square size={12}/>停止生成</button>
             : resumeLabel ? <div className="video-footer-actions"><Link className="video-task-link" href={videoTaskCanvasHref(task)}>在画布上查看</Link>
+              {stoppable && <button type="button" disabled={acting} onClick={() => void stop()}><Square size={12}/>停止生成</button>}
               <button type="button" className="is-primary" disabled={acting} onClick={() => void resume()}>{resumeLabel === '继续生成' ? <Play size={12}/> : <RefreshCw size={12}/>} {resumeLabel}</button></div>
-            : <Link className={needsAction ? 'video-task-link is-primary' : 'video-task-link'} href={videoTaskCanvasHref(task)}>在画布上查看<ArrowUpRight size={14} strokeWidth={1.5}/></Link>}
+            : <div className="video-footer-actions"><Link className={needsAction ? 'video-task-link is-primary' : 'video-task-link'} href={videoTaskCanvasHref(task)}>在画布上查看<ArrowUpRight size={14} strokeWidth={1.5}/></Link>
+              {stoppable && <button type="button" disabled={acting} onClick={() => void stop()}><Square size={12}/>停止生成</button>}</div>}
         </footer>}
       </div>}
     {!completed && !!previews.length && <div className="video-production-stage">

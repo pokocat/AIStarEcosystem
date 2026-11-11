@@ -82,6 +82,23 @@ class StudioRecreationAutoRedoTest {
         assertEquals("以图1为构图基准", run().materialize(execution(), state("segmented", "fail"), k1, image).path("prompt").asText());
     }
 
+    /** 2026-11-11 真跑：深度复刻两段检查不合格却没重出（规则只认分镜复刻）。三种复刻方式一样：重出一次，并带上检查的意见。 */
+    @Test
+    void everyCloneMethodRedoesAFailedSegmentWithTheCheckNotes() {
+        for (String kind : java.util.List.of("recreation", "depth", "replacement")) {
+            var state = state(kind, "fail");
+            run().prepare(execution(), state);
+            var v1 = PlanState.step(state, "production", "v1");
+            assertEquals("pending", v1.path("status").asText(), kind + "：这一段重出");
+            assertTrue(v1.path("autoFixed").asBoolean(), kind);
+
+            v1.put("fixHint", "第1镜：她手里拿的是图2 的绿瓶");
+            ObjectNode definition = om.createObjectNode().put("operation", "video").put("prompt", "第1镜（0–3秒）：她举起瓶子");
+            definition.putObject("settings");
+            assertTrue(run().materialize(execution(), state, v1, definition).path("prompt").asText().endsWith("她手里拿的是图2 的绿瓶。"), kind + "：重出带上检查意见");
+        }
+    }
+
     @Test
     void otherVideoPageTasksKeepTheDeliveredVideo() {
         var state = state("segmented", "fail");

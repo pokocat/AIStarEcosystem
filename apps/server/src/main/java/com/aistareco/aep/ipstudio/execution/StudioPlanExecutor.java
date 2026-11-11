@@ -359,7 +359,7 @@ public class StudioPlanExecutor {
                 if(isVideoReferenceUploadFailure(state,step))
                     return needsUser(e,state,step.path("reason").asText("参考素材上传失败，请重试此片段"));
                 if(state.has("videoTask")&&step.path("attempt").asInt(1)>=3)
-                    return needsUser(e,state,"「"+step.path("title").asText()+"」已尝试 3 次，仍未完成。请到画布查看这一步，处理后继续生成。");
+                    return needsUser(e,state,"「"+step.path("title").asText()+"」已尝试 3 次，仍未完成："+step.path("reason").asText("原因未知")+"。可重试此步骤，或结束本次制作。");
                 return needsUser(e,state,"「"+step.path("title").asText()+"」没有完成："+step.path("reason").asText("原因未知")+"。可重试此步骤，或结束本次制作。");
             }
             if(PlanState.unresolvedCheck(state,step)) {

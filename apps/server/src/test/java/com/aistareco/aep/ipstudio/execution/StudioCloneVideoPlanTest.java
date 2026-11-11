@@ -75,7 +75,17 @@ class StudioCloneVideoPlanTest {
     }
     @Test void depthAlwaysQuotesThePromptRewrite() {
         service.price("u","depth","selected-channel","720p",8,"9:16",0,false,false,false);
-        assertTrue(quoted.get().path("steps").path(0).path("settings").path("video").path("optimize").asBoolean());
+        JsonNode video=null;for(JsonNode st:quoted.get().path("steps"))if("v1".equals(st.path("id").asText()))video=st;
+        assertTrue(video.path("settings").path("video").path("optimize").asBoolean());
+    }
+    /** 深度复刻多一张场景图（加一次检查），每段视频都带上它。 */
+    @Test void depthQuotesTheSceneImageAndEverySegmentCarriesIt() {
+        service.price("u","depth","selected-channel","720p",8,"9:16",0,false,false,false);
+        var steps=quoted.get().path("steps");
+        assertEquals("image",steps.path(0).path("operation").asText());assertEquals("k1",steps.path(0).path("id").asText());
+        assertEquals("check",steps.path(1).path("operation").asText());assertEquals("k1",steps.path(1).path("settings").path("targetStepId").asText());
+        long images=0;for(JsonNode b:steps.path(2).path("settings").path("referenceBindings"))if("reference-image".equals(b.path("role").asText()))images++;
+        assertEquals(1,images,"没传素材时，视频也带着场景图");
     }
     @Test void unboundedImageCountsAreRejectedBeforeAnyQuote() {
         assertThrows(BusinessException.class,()->service.price("u","depth","selected-channel","720p",12,"9:16",Integer.MAX_VALUE,false,false,false));

@@ -87,10 +87,20 @@ public class StudioCloneVideoPlan {
                 "「"+selected.name()+"」每段参考视频最长 "+bounds.maxSec()+" 秒，"+duration+" 秒需要分 "+segments.size()+" 段，超出上限。请缩短参考视频或更换模型");
         var refs=mode.references();
         int imageLimit=Math.min(refs.image()==null?0:refs.image().maxCount(),refs.maxImagesWithVideo()>0?refs.maxImagesWithVideo():Integer.MAX_VALUE);
-        int pictures=Math.min(images+(character?1:0),imageLimit);
+        boolean scene="depth".equals(kind)&&imageLimit>0;
+        int pictures=Math.min(images+(character?1:0)+(scene?1:0),imageLimit);
         boolean audio=voice&&refs.audio()!=null&&refs.audio().maxCount()>0;
         ObjectNode plan=mapper.createObjectNode();
         ArrayNode steps=plan.putArray("steps");
+        if(scene) {
+            // 深度复刻的场景图（StudioRecreationTaskPlan）：一张图加一次检查
+            ObjectNode image=steps.addObject().put("id","k1").put("operation","image").put("prompt","场景图");
+            image.putObject("settings").put("operation","image").put("aspectRatio",ratio).put("count",1).putArray("referenceBindings")
+                    .addObject().put("nodeId","quote-frame").put("role","reference-image").put("order",1);
+            ObjectNode check=steps.addObject().put("id","ck1").put("operation","check").put("prompt","");
+            var ids=check.putObject("settings").put("operation","check").put("targetStepId","k1").putArray("checkIds");
+            StudioRecreationTaskPlan.KEYFRAME_CHECK_IDS.forEach(ids::add);
+        }
         int no=0;
         for(int seconds:segments) {
             no++;

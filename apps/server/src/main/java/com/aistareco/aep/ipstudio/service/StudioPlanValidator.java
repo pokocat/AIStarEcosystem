@@ -363,6 +363,8 @@ public final class StudioPlanValidator {
                 if("none".equals(audio))invalid(label+"暂不支持去掉音轨的合成，请保留片段声音或使用原片音轨");
                 if(!Set.of("generated","source-audio").contains(audio))invalid(label+"的音频处理方式不正确");
                 out.put("audioStrategy",audio);
+                // 成片顶部的标题（爆款复刻：原片一直挂着的标题条）
+                if(raw.hasNonNull("title")&&!raw.path("title").asText("").isBlank())out.put("title",text(raw.path("title"),60,true,label+"标题"));
                 // 成片上的字幕（爆款复刻：原片靠字幕讲的内容，合成时加上，不让视频模型画字）。时间按成片算，不重叠。
                 if(raw.hasNonNull("captions")) {
                     JsonNode captions=raw.path("captions");
