@@ -2,7 +2,7 @@
 import { runDirectorTask, saveDirectorDrafts } from "./director-generation";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { Check, ImageIcon, Library, Mic, Plus, Upload, Wand2 } from "lucide-react";
+import { ImageIcon, Library, Mic, Plus, Upload, Wand2 } from "lucide-react";
 import type { DirectorAsset, DirectorAssetKind } from "@ai-star-eco/types";
 import { DirectorApi, IpStudioApi } from "../api";
 import { useStudioApp } from "../studio-errors";
@@ -32,7 +32,6 @@ export function DirectorAssets(props: WorkbenchProps) {
   // 助手卡片上的「查看版本」：打开那项资产的详情，比较新生成的资产图。
   const reveal = useAssistant()?.reveal;
   useEffect(() => { if (reveal?.type === "asset" && work.assets.some(a => a.id === reveal.id)) setOpenId(reveal.id); }, [reveal]); // eslint-disable-line react-hooks/exhaustive-deps
-  const waiting = scoped.filter(a => a.image.adoptedBy === "auto");
   // 资产一次按全剧提取：同一人物、场景在各集是同一个，不会因为分集提取而前后不一致。
   // 全剧一次读不完时分批提取：有的集提取过、有的没有，按钮就写「继续提取」，服务端从第一个没提取的集接着读。
   const budget = work.pricing.textChars ?? 0;
@@ -53,7 +52,7 @@ export function DirectorAssets(props: WorkbenchProps) {
     confirmDirectorAction(modal, {
       title: `为 ${missing.length} 项资产生成资产图？`,
       content: <div className="director-batch-confirm"><p>{missing.map(a => a.name).join("、")}</p>
-        <p className="director-muted">每项一张，{costText(total, work.pricing.mock)}。生成后逐张确认，分镜图将以确认后的资产图为参考。</p></div>,
+        <p className="director-muted">每项一张，{costText(total, work.pricing.mock)}。生成后自动用作分镜参考。</p></div>,
       okText: "开始生成", cancelText: "取消",
     }, () => void run("all", async () => {
       let saved = await saveDirectorDrafts(work, apply);
@@ -67,8 +66,6 @@ export function DirectorAssets(props: WorkbenchProps) {
         next: "其余资产图已开始生成。提交失败的，请按上述原因处理后，在对应资产上点击「生成」。" });
     }, failed(setError, "生成全部资产图", undefined, undefined, DIRECTOR_MEDIA_SHORTAGE)));
   };
-  const confirmAll = () => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "assets.confirm", null, null, { assetIds: waiting.map(a => a.id) })), failed(setError, "确认全部资产图"));
-
   if (work.episodes.length === 0) return <div className="director-panel director-empty-panel"><p>请先在「剧本」完成剧本并拆分集。</p></div>;
   return <div className="director-assets">
     <div className="director-toolbar">
@@ -86,8 +83,6 @@ export function DirectorAssets(props: WorkbenchProps) {
         title={`为暂无资产图的 ${missing.length} 项资产各生成一张，${costText(missing.length * work.pricing.image, work.pricing.mock)}`}><Wand2 size={15}/>生成全部资产图<small className="director-count">{missing.length}</small></button>}
     </div>
     <InlineError message={extractError}/>
-    {waiting.length > 0 && <div className="director-confirm-bar"><span>{waiting.length} 张资产图待确认。分镜图将以此为参考，请确认后继续。</span>
-      <button type="button" className="ip-brand-button" disabled={!!busy} onClick={confirmAll}><Check size={15}/>全部确认</button></div>}
     {adding && <AddAsset {...props} onClose={() => setAdding(false)}/>}
     {shown.length === 0 ? <div className="director-panel director-empty-panel"><p>{!scoped.length ? "暂无资产。点击「提取全剧资产」，从正文识别角色、场景和道具。" : "此类暂无资产。"}</p></div> :
       <div className="director-asset-grid">{sortedShown.map(a => <AssetTile key={a.id} {...props} asset={a} onOpen={() => setOpenId(a.id)}/>)}</div>}
@@ -104,10 +99,10 @@ function AssetTile({ work, asset, apply, setError, onOpen }: WorkbenchProps & { 
   const audioOnly = asset.description.includes("只出声音");
   const nos = work.episodes.filter(e => asset.episodeIds.includes(e.id)).map(e => e.no);
   const appears = nos.length === 0 ? "" : nos.length === work.episodes.length && nos.length > 1 ? "全剧" : `第 ${nos.join("、")} 集`;
-  const status = generating ? "生成中" : audioOnly ? "仅声音出场" : !asset.image.adoptedId ? "缺少资产图" : asset.image.adoptedCheck === "outdated" ? "需更新" : asset.image.adoptedBy === "auto" ? "待确认" : "已确认";
+  const status = generating ? "生成中" : audioOnly ? "仅声音出场" : !asset.image.adoptedId ? "缺少资产图" : asset.image.adoptedCheck === "outdated" ? "需更新" : "已采用";
   const viewCount = Object.values(asset.views ?? {}).filter(slot => slot?.adoptedId).length;
   const variantNote = asset.forms?.length ? `${asset.forms.length + 1} 个形态` : viewCount ? `四视图 ${viewCount + 1}/4` : "";
-  const tone = status === "已确认" ? "is-done" : status === "缺少资产图" ? "is-error" : status === "待确认" || status === "需更新" ? "is-warn" : "";
+  const tone = status === "已采用" ? "is-done" : status === "缺少资产图" ? "is-error" : status === "需更新" ? "is-warn" : "";
   const generate = () => void run("gen", async () => {
     const cost = work.pricing.image;
     const billing = await chooseDirectorBilling("image", cost);
@@ -132,7 +127,6 @@ function AssetTile({ work, asset, apply, setError, onOpen }: WorkbenchProps & { 
       <small className={`director-tile-status ${tone}`}>{status}</small>
       {asset.kind === "character" && <button type="button" className={`director-voice-chip ${asset.voice || asset.voiceDesc ? "is-set" : ""}`} onClick={() => setVoiceOpen(true)}
         aria-label={asset.voice || asset.voiceDesc ? `${asset.name}的音色已设置，点击修改` : `设置${asset.name}的音色`} title={asset.voice || asset.voiceDesc ? "音色已设置，点击修改" : "设置角色音色"}><Mic size={14}/></button>}
-      {asset.image.adoptedBy === "auto" && !generating && <button type="button" className="ip-brand-button" disabled={!!busy} onClick={() => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "assets.confirm", null, null, { assetIds: [asset.id] })), failed(setError, `确认「${asset.name}」的资产图`))}><Check size={13}/>确认</button>}
       {!asset.image.adoptedId && !audioOnly && !generating && <button type="button" className="ip-brand-button" disabled={!!busy} title={costText(work.pricing.image, work.pricing.mock)} onClick={generate}><Wand2 size={13}/>生成</button>}
     </footer>
     {!generating && <InlineError message={asset.image.error?.message}/>}

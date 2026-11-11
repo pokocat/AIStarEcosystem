@@ -284,15 +284,13 @@ function chosenImage(a: DirectorWork["assets"][number], clip: DirectorClip) {
   return a.forms?.find(f => f.id === clip.assetForms?.[a.id])?.image ?? a.image;
 }
 
-/** 这个片段现在能不能生成分镜图：有问题、缺资产图、资产图没确认都不能。卡片、弹窗、批量共用这一条。 */
+/** 卡片、弹窗、批量生成共用的分镜图前置检查。 */
 function boardBlockReason(work: DirectorWork, clip: DirectorClip) {
   if (work.boardImage?.error) return work.boardImage.error;
   const visual = (clip.assetIds.map(id => work.assets.find(a => a.id === id)).filter(Boolean) as DirectorWork["assets"]).filter(a => !a.description.includes("只出声音"));
   const missing = visual.filter(a => !chosenImage(a, clip).adoptedId);
-  const unconfirmed = visual.filter(a => chosenImage(a, clip).adoptedBy === "auto");
   if (clip.issues.length) return "片段有待处理的问题";
   if (missing.length) return `缺少资产图：${missing.map(a => a.name).join("、")}`;
-  if (unconfirmed.length) return `资产图待确认：${unconfirmed.map(a => a.name).join("、")}`;
   return "";
 }
 
@@ -360,10 +358,9 @@ function ClipCard({ goTab, work, clip, quote, apply, setError, onPreview, onBoar
   const videoAssetRefs = clip.videoRefs?.filter(r => r.assetId !== null);
   const imageRefs = videoAssetRefs?.length ? videoAssetRefs : clip.boardRefs;
   const visual = linked.filter(a => !a.description.includes("只出声音"));
-  const missing = visual.filter(a => !a.image.adoptedId);
-  const unconfirmed = visual.filter(a => a.image.adoptedBy === "auto");
+  const missing = visual.filter(a => !chosenImage(a, clip).adoptedId);
   const boardStatus = slotStatus(clip.board, !!generating);
-  const assetIssue = missing.length ? `缺少 ${missing.length} 张资产图` : unconfirmed.length ? `${unconfirmed.length} 张待确认` : "";
+  const assetIssue = missing.length ? `缺少 ${missing.length} 张资产图` : "";
   const grid = clip.shots.length > 1;
   const boardReady = !!clip.board.adoptedId && clip.board.adoptedBy === "user";
   const ratio = `ratio-${work.settings.aspectRatio.replace(":", "x")}`;
@@ -397,7 +394,7 @@ function ClipCard({ goTab, work, clip, quote, apply, setError, onPreview, onBoar
         </div>}
         {linked.some(a => a.kind === "product") && <p className="director-clip-products" title="这些商品图会作为分镜图和视频的参考图"><ShoppingBag size={13}/><span>{linked.filter(a => a.kind === "product").map(a => a.name).join("、")}</span></p>}
         <div className="director-clip-links" role="group" aria-label="生成视频用到的参考">
-          <button type="button" onClick={() => onPreview("assets")} className={missing.length ? "is-error" : unconfirmed.length ? "is-warn" : ""} title="关联的角色、场景、道具资产图，用于保持长相和环境一致">
+          <button type="button" onClick={() => onPreview("assets")} className={missing.length ? "is-error" : undefined} title="关联的角色、场景、道具资产图，用于保持长相和环境一致">
             <span className="director-avatar-stack">{imageRefs?.length
               ? imageRefs.slice(0, 3).map(r => r.url ? <img key={r.label} src={r.url} alt={`${r.label} ${r.name}`}/> : <i key={r.label}>{r.name.slice(0, 1)}</i>)
               : linked.slice(0, 3).map(a => {
@@ -566,7 +563,7 @@ function ClipPreview({ work, clip, preview, apply, setError, goTab, onPickVideo,
             const slot = chosenImage(a, clip);
             const img = adopted(slot);
             const audioOnly = a.description.includes("只出声音");
-            const status = audioOnly ? "仅声音出场" : !slot.adoptedId ? "缺少资产图" : slot.adoptedBy === "auto" ? "待确认" : slot.adoptedCheck === "outdated" ? "需更新" : "已确认";
+            const status = audioOnly ? "仅声音出场" : !slot.adoptedId ? "缺少资产图" : slot.adoptedCheck === "outdated" ? "需更新" : "已采用";
             const chosenForm = clip.assetForms?.[a.id] ?? "";
             const pickForm = (formId: string) => formId !== chosenForm && void run(`form:${a.id}`, async () => apply(await DirectorApi.edit(work.id, "clip.setForm", clip.id, null, { assetId: a.id, formId: formId || null })),
               failed(setError, `切换「${a.name}」在片段 ${clip.order} 的形态`));
@@ -574,7 +571,7 @@ function ClipPreview({ work, clip, preview, apply, setError, goTab, onPickVideo,
             return <li key={a.id} className={a.id === preview.assetId ? "is-focused" : undefined}>
               <span className={`director-preview-asset-img ${a.kind === "product" ? "is-product" : ""}`}>{img?.url ? <img src={img.url} alt={a.name}/> : <ImageIcon size={18}/>}</span>
               <div><b>{a.name}<small>{kindLabel[a.kind]}</small></b>
-                <small className={status === "已确认" ? "is-done" : status === "缺少资产图" ? "is-error" : "is-warn"}>{status}{a.voice ? " · 已绑定声音" : ""}</small>
+                <small className={status === "已采用" ? "is-done" : status === "缺少资产图" ? "is-error" : "is-warn"}>{status}{a.voice ? " · 已绑定声音" : ""}</small>
                 <p title={a.description}>{a.description || "暂无描述"}</p>
                 {!!a.forms?.length && <div className="director-chips director-clip-forms" role="group" aria-label={`${a.name}在此片段的形态`}>
                   <button type="button" aria-pressed={!chosenForm} disabled={!!busy} onClick={() => pickForm("")}>主形象</button>

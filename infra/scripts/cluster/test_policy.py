@@ -72,22 +72,76 @@ class ContainerRetirementTests(unittest.TestCase):
  def test_only_verified_exited_container_is_retired(self):
   success,calls=self.exercise(self.row());self.assertTrue(success);self.assertEqual([['podman','rm','--force','f'*64]],calls)
 
-class RollingFailureTests(unittest.TestCase):
- def test_standby_start_failure_restores_primary(self):self.check_failure('b','start','a')
- def test_primary_start_failure_keeps_standby(self):self.check_failure('a','start','b')
- def test_primary_drain_failure_keeps_standby(self):self.check_failure('a','drain-stop','b')
- def check_failure(self,failed_node,failed_action,survivor):
+class RollingReleaseTests(unittest.TestCase):
+ def cluster(self,initial):
   import release
-  from unittest.mock import patch
   cluster=object.__new__(release.Cluster)
-  cluster.events=[];calls=[];weights=[]
-  cluster.members=lambda:{'a':{'Weight':100},'b':{'Weight':0}}
-  def action(n,a,r=None):
-   calls.append((n,a))
-   if (n,a)==(failed_node,failed_action):raise RuntimeError('synthetic failure')
-   return {'quiescing':False,'release':'candidate'}
-  cluster.action=action;cluster.weights=lambda w:weights.append(w);cluster.probe=lambda n:None;cluster.record=lambda *a,**kw:None
-  with patch('release.time.sleep'),self.assertRaises(RuntimeError):cluster.rolling('candidate')
-  self.assertEqual(weights[-1],{'a':100 if survivor=='a' else 0,'b':100 if survivor=='b' else 0})
-  if failed_node=='b':self.assertNotIn(('a','drain-stop'),calls)
+  cluster.config={'nodes':{'a':{},'b':{}}}
+  cluster.events=[]
+  cluster.calls=[]
+  cluster.current_weights=dict(initial)
+  cluster.releases={'a':'previous','b':'previous'}
+  cluster.members=lambda:{node:{'Weight':weight} for node,weight in cluster.current_weights.items()}
+  def action(node,operation,revision=None):
+   cluster.calls.append((operation,node))
+   if operation=='drain-stop':
+    self.assertEqual(cluster.current_weights[node],0)
+    self.assertEqual(sum(cluster.current_weights.values()),100)
+   elif operation=='start':
+    cluster.releases[node]=revision
+   return {'quiescing':False,'release':cluster.releases[node]}
+  def weights(values):
+   cluster.current_weights=dict(values)
+   cluster.calls.append(('weights',dict(values)))
+  def probe(node):
+   self.assertEqual(cluster.current_weights[node],100)
+   cluster.calls.append(('probe',node))
+  cluster.action=action
+  cluster.weights=weights
+  cluster.probe=probe
+  cluster.probe_dual=lambda:cluster.calls.append(('dual',dict(cluster.current_weights)))
+  cluster.record=lambda *args,**kwargs:None
+  return cluster
+ def test_dual_active_roll_drains_only_weight_zero_and_restores_dual(self):
+  from unittest.mock import patch
+  cluster=self.cluster({'a':50,'b':50})
+  with patch('release.time.sleep'):
+   result=cluster.rolling('candidate')
+  self.assertEqual({k:v['release'] for k,v in result.items()},{'a':'candidate','b':'candidate'})
+  traffic=[x for x in cluster.calls if x[0] in ('dual','weights','probe','drain-stop','start')]
+  self.assertEqual(traffic,[
+   ('dual',{'a':50,'b':50}),('weights',{'a':100,'b':0}),('probe','a'),('drain-stop','b'),('start','b'),
+   ('weights',{'a':0,'b':100}),('probe','b'),('drain-stop','a'),('start','a'),
+   ('weights',{'a':50,'b':50}),('dual',{'a':50,'b':50})])
+ def test_degraded_b_first_roll_preserves_serving_b(self):
+  from unittest.mock import patch
+  cluster=self.cluster({'a':0,'b':100})
+  with patch('release.time.sleep'):
+   cluster.rolling('candidate')
+  self.assertEqual([x for x in cluster.calls if x[0]=='drain-stop'],[('drain-stop','a'),('drain-stop','b')])
+  self.assertEqual(cluster.current_weights,{'a':50,'b':50})
+ def test_first_update_failure_restores_original_serving_a(self):
+  self.check_failure('b','start','a')
+ def test_second_update_failure_preserves_verified_b(self):
+  self.check_failure('a','start','b')
+ def test_second_drain_failure_preserves_verified_b(self):
+  self.check_failure('a','drain-stop','b')
+ def check_failure(self,node,operation,survivor):
+  from unittest.mock import patch
+  cluster=self.cluster({'a':50,'b':50})
+  action=cluster.action
+  def failing(n,a,r=None):
+   if (n,a)==(node,operation):raise RuntimeError('synthetic failure')
+   return action(n,a,r)
+  cluster.action=failing
+  with patch('release.time.sleep'),self.assertRaisesRegex(RuntimeError,'synthetic failure'):
+   cluster.rolling('candidate')
+  self.assertEqual(cluster.current_weights,{n:100 if n==survivor else 0 for n in ('a','b')})
+  if node=='b':self.assertNotIn(('drain-stop','a'),cluster.calls)
+ def test_dual_probe_requires_both_nodes_on_each_vip(self):
+  import release
+  cluster=object.__new__(release.Cluster)
+  cluster.config={'verify_ips':['first','second'],'nodes':{'a':{},'b':{}}}
+  cluster.probe=lambda authenticated=True,check_readiness=True:{'first':{'a','b'},'second':{'a'}}
+  with self.assertRaisesRegex(RuntimeError,'双活验收失败'):cluster.probe_dual()
 if __name__=='__main__':unittest.main()

@@ -720,77 +720,83 @@ public final class DirectorPrompts {
     public static String videoPrompt(JsonNode settings, JsonNode clip, List<Ref> refs, java.util.Map<String, String> speakerNames,
                                      List<VoiceRef> voices, List<String> unvoiced, java.util.Map<String, String> voiceDescs,
                                      java.util.Map<String, List<String>> aliases, int maxShots) {
-        String style = settings.path("style").asText("真人写实");
+        return videoPrompt(StudioPromptAssembler.classpath(), null, settings, clip, refs, speakerNames, voices, unvoiced, voiceDescs, aliases, maxShots);
+    }
+
+    /**
+     * 按提示词库 stage-director-video 编（2026-11-11 起；第 1 版与搬家前的代码逐字一致，见 DirectorVideoPromptStageParityTest）。
+     * 这里只算谁在画面里、画内画外、切镜时间这些判断，文字都在模板里，后台「提示词与技能」可以改。
+     * version 为 null 用当前版本；传了就按那一版编（核对旧视频用）。库里没有这个环节、或找不到那一版时返回 null。
+     */
+    public static String videoPrompt(StudioPromptAssembler prompts, Integer version, JsonNode settings, JsonNode clip, List<Ref> refs,
+                                     java.util.Map<String, String> speakerNames, List<VoiceRef> voices, List<String> unvoiced,
+                                     java.util.Map<String, String> voiceDescs, java.util.Map<String, List<String>> aliases, int maxShots) {
         JsonNode shots = clip.path("shots");
         int n = Math.min(shots.size(), maxShots);
-        boolean grid = boardLayout(shots.size())[0] == 2;
+        java.util.Map<String, Object> vars = new java.util.LinkedHashMap<>();
         List<String> characters = new ArrayList<>();
-        StringBuilder people = new StringBuilder();
+        List<java.util.Map<String, Object>> rs = new ArrayList<>();
         for (Ref r : refs) {
-            switch (r.kind()) {
-                case "scene" -> people.append("场景「").append(r.name()).append("」：空间布局和光源位置照参考").append(r.label()).append("。\n");
-                case "prop" -> people.append("道具「").append(r.name()).append("」：外观照参考").append(r.label()).append("。\n");
-                case "product" -> people.append("商品「").append(r.name()).append("」：外观、包装和标签照参考").append(r.label()).append("。\n");
-                default -> {
-                    characters.add(r.name());
-                    people.append(r.name()).append("：长相、发型和衣服照参考").append(r.label()).append("。\n");
-                }
-            }
+            boolean scene = "scene".equals(r.kind()), prop = "prop".equals(r.kind()), product = "product".equals(r.kind()), character = !scene && !prop && !product;
+            if (character) characters.add(r.name());
+            rs.add(java.util.Map.of("label", r.label(), "name", r.name(), "isScene", scene, "isProp", prop, "isProduct", product, "isCharacter", character));
         }
-        if (!characters.isEmpty())
-            people.append(String.join("和", characters)).append(characters.size() > 1 ? "在画面里各只出现一个" : "在画面里只出现一个")
-                    .append("，长相和衣服从头到尾保持一致。\n");
-        StringBuilder b = new StringBuilder();
-        if (!people.isEmpty()) b.append("【人物】\n").append(people).append('\n');
-        b.append("【分镜参考】\n");
-        if (grid) {
-            b.append("参考图1 是 2×2 分镜：");
-            for (int i = 0; i < Math.min(n, MAX_SHOTS); i++) b.append(i > 0 ? "，" : "").append(CELL_ORDER[i]).append("对应第").append(i + 1).append("镜");
-            if (n < 4) b.append("，其余格子是空的");
-            if (n > MAX_SHOTS) {
-                b.append("。参考图2 是 2×2 分镜：");
-                for (int i = MAX_SHOTS; i < n; i++) b.append(i > MAX_SHOTS ? "，" : "").append(CELL_ORDER[i - MAX_SHOTS]).append("对应第").append(i + 1).append("镜");
-                if (n < MAX_SHOTS * 2) b.append("，其余格子是空的");
-            }
-            b.append("。每格参考构图、机位和人物位置，人物的受光、肤色和画面整体色调也照对应的格子，每一镜都是一个完整的全屏画面。\n\n");
-        } else {
-            b.append("参考图1 是这一段的分镜画面，参考它的构图、机位和人物位置，人物的受光、肤色和画面整体色调也照它，视频是一个完整的全屏画面。\n\n");
-        }
-        b.append("【画面】\n").append(style).append("风格，画面里没有字幕。\n");
+        vars.put("hasPeople", !refs.isEmpty());
+        vars.put("refs", rs);
+        vars.put("characters", String.join("和", characters));
+        vars.put("manyCharacters", characters.size() > 1);
+        vars.put("grid", boardLayout(shots.size())[0] == 2);
+        List<java.util.Map<String, Object>> cells = new ArrayList<>(), secondCells = new ArrayList<>();
+        for (int i = 0; i < Math.min(n, MAX_SHOTS); i++) cells.add(java.util.Map.of("position", CELL_ORDER[i], "no", i + 1));
+        for (int i = MAX_SHOTS; i < n; i++) secondCells.add(java.util.Map.of("position", CELL_ORDER[i - MAX_SHOTS], "no", i + 1));
+        vars.put("cells", cells);
+        vars.put("blanks", n < MAX_SHOTS);
+        vars.put("second", n > MAX_SHOTS);
+        vars.put("secondCells", secondCells);
+        vars.put("secondBlanks", n < MAX_SHOTS * 2);
+        vars.put("style", settings.path("style").asText("真人写实"));
         boolean anyLine = false;
         double t = 0;
+        List<java.util.Map<String, Object>> shotVars = new ArrayList<>();
         for (int i = 0; i < n; i++) {
             JsonNode s = shots.get(i);
             double end = t + s.path("durationSec").asDouble();
-            b.append("第").append(i + 1).append("镜（").append(i == 0 ? "0–" + fmt(end) + " 秒" : fmt(t) + " 秒切").append("）：");
-            b.append(sentence(s.path("size").asText() + (s.path("camera").asText().isBlank() ? "" : "，" + s.path("camera").asText())));
-            b.append(sentence(s.path("still").asText())).append(sentence(s.path("action").asText()));
+            java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("no", i + 1);
+            m.put("start", fmt(t));
+            m.put("end", fmt(end));
+            m.put("framing", sentence(s.path("size").asText() + (s.path("camera").asText().isBlank() ? "" : "，" + s.path("camera").asText())));
+            m.put("still", sentence(s.path("still").asText()));
+            m.put("action", sentence(s.path("action").asText()));
             Cast cast = castOfShot(s, castPool(characters, s, speakerNames), aliases);
-            if (cast.on().size() == 1 && cast.unsure().isEmpty()) b.append("画面里只有").append(cast.on().get(0)).append("。");
+            m.put("only", cast.on().size() == 1 && cast.unsure().isEmpty() ? cast.on().get(0) : "");
             Set<String> speaking = new HashSet<>();
+            List<java.util.Map<String, Object>> lines = new ArrayList<>();
             for (JsonNode line : s.path("dialogue")) {
                 anyLine = true;
                 String who = line.path("speakerId").isTextual() ? speakerNames.get(line.path("speakerId").asText()) : null;
                 // 画外只在「画面里认出了别人、说话人一个称呼都没出现」时写；分不清的不写画内画外，也不要求谁闭嘴。
                 boolean offscreen = who == null || !cast.on().contains(who) && !cast.unsure().contains(who) && !cast.on().isEmpty();
                 if (who != null && cast.on().contains(who)) speaking.add(who);
-                b.append(who == null ? "旁白" : who).append(offscreen ? "在画外说：「" : "说：「").append(line.path("text").asText()).append("」");
-                b.append(offscreen && !cast.on().isEmpty() ? "画面里的人嘴闭着。" : "");
+                lines.add(java.util.Map.of("narrator", who == null, "who", who == null ? "" : who, "offscreen", offscreen,
+                        "mute", offscreen && !cast.on().isEmpty(), "text", line.path("text").asText()));
             }
+            m.put("lines", lines);
             List<String> listeners = cast.on().stream().filter(who -> !speaking.contains(who)).toList();
-            if (!speaking.isEmpty() && !listeners.isEmpty()) b.append(String.join("、", listeners)).append("听着，嘴闭着。");
-            if (i == n - 1) b.append("最后保持这个画面到结束。");
-            b.append('\n');
+            m.put("listeners", !speaking.isEmpty() && !listeners.isEmpty() ? String.join("、", listeners) : "");
+            shotVars.add(m);
             t = end;
         }
-        StringBuilder sound = new StringBuilder();
-        if (!anyLine) sound.append(NO_DIALOGUE).append('\n');
-        for (VoiceRef v : voices) sound.append("声音参考：").append(v.name()).append("的音色、口音照").append(v.label()).append("。\n");
-        voiceDescs.forEach((name, desc) -> sound.append(name).append("的音色：").append(desc).append("\n"));
-        // 没内容就不写这一段：空标题也是一句可能被 H3 念出来的中文（cl45 第 4 版试跑时发现）。
-        if (!sound.isEmpty()) b.append("\n【声音】\n").append(sound);
-        b.append("\n【配乐】\n无");
-        return b.toString();
+        vars.put("shots", shotVars);
+        List<java.util.Map<String, Object>> voiceVars = new ArrayList<>(), descVars = new ArrayList<>();
+        for (VoiceRef v : voices) voiceVars.add(java.util.Map.of("name", v.name(), "label", v.label()));
+        voiceDescs.forEach((name, desc) -> descVars.add(java.util.Map.of("name", name, "desc", desc)));
+        // 没内容就不写【声音】：空标题也是一句可能被 H3 念出来的中文（cl45 第 4 版试跑时发现）。
+        vars.put("hasSound", !anyLine || !voiceVars.isEmpty() || !descVars.isEmpty());
+        vars.put("noDialogue", !anyLine);
+        vars.put("voices", voiceVars);
+        vars.put("voiceDescs", descVars);
+        return media(prompts, StudioPromptCallPoints.DIRECTOR_VIDEO, vars, version);
     }
 
     /** 没有台词的片段在【声音】里写的那句；用户改写时自己加了台词，改写前会去掉它（DirectorService#rewrite）。 */
@@ -1098,21 +1104,30 @@ public final class DirectorPrompts {
      * 所以提示词里不写「图N」「音频N」，只写从这张画面出发要发生的动作和台词。
      */
     public static String framePrompt(JsonNode settings, JsonNode clip, java.util.Map<String, String> speakerNames, java.util.Map<String, String> voiceDescs) {
-        String style = settings.path("style").asText("真人写实");
-        String aspect = settings.path("aspectRatio").asText("9:16");
-        StringBuilder b = new StringBuilder();
-        b.append("以首帧画面为起点，生成 ").append(clip.path("durationSec").asInt()).append(" 秒、").append(aspect).append("、").append(style)
-                .append("风格的剧情片段。保持首帧里的人物、服装、场景和道具不变，不切换到别的画面。\n");
+        return framePrompt(StudioPromptAssembler.classpath(), null, settings, clip, speakerNames, voiceDescs);
+    }
+
+    /** 按提示词库 stage-director-video-frame 编；version、返回 null 的情况同 {@link #videoPrompt(StudioPromptAssembler, Integer, JsonNode, JsonNode, List, java.util.Map, List, List, java.util.Map, java.util.Map, int)}。 */
+    public static String framePrompt(StudioPromptAssembler prompts, Integer version, JsonNode settings, JsonNode clip,
+                                     java.util.Map<String, String> speakerNames, java.util.Map<String, String> voiceDescs) {
+        java.util.Map<String, Object> vars = new java.util.LinkedHashMap<>();
+        vars.put("seconds", clip.path("durationSec").asInt());
+        vars.put("aspect", settings.path("aspectRatio").asText("9:16"));
+        vars.put("style", settings.path("style").asText("真人写实"));
+        List<java.util.Map<String, Object>> shots = new ArrayList<>();
         for (JsonNode s : clip.path("shots")) {
-            b.append(s.path("size").asText()).append("，").append(s.path("camera").asText()).append("。").append(s.path("action").asText()).append("\n");
+            List<java.util.Map<String, Object>> lines = new ArrayList<>();
             for (JsonNode line : s.path("dialogue")) {
-                String speaker = speakerNames.getOrDefault(line.path("speakerId").asText(), "旁白");
-                b.append("  ").append(speaker).append("说：“").append(line.path("text").asText()).append("”\n");
+                String id = line.path("speakerId").asText();
+                lines.add(java.util.Map.of("narrator", !speakerNames.containsKey(id), "speaker", speakerNames.getOrDefault(id, ""), "text", line.path("text").asText()));
             }
+            shots.add(java.util.Map.of("size", s.path("size").asText(), "camera", s.path("camera").asText(), "action", s.path("action").asText(), "lines", lines));
         }
-        voiceDescs.forEach((name, desc) -> b.append(name).append(" 的音色：").append(desc).append("\n"));
-        b.append("只说上面列出的台词，不增加人物或剧情，不生成字幕。");
-        return b.toString();
+        vars.put("shots", shots);
+        List<java.util.Map<String, Object>> descVars = new ArrayList<>();
+        voiceDescs.forEach((name, desc) -> descVars.add(java.util.Map.of("name", name, "desc", desc)));
+        vars.put("voiceDescs", descVars);
+        return media(prompts, StudioPromptCallPoints.DIRECTOR_VIDEO_FRAME, vars, version);
     }
 
     private static void appendRefs(StringBuilder b, List<Ref> refs) {

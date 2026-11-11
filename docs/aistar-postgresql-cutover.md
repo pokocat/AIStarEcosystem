@@ -1,4 +1,4 @@
-# AIStar PostgreSQL 导入与主备滚动发布
+# AIStar PostgreSQL 导入与双活滚动发布
 
 ## 2026-11-10 后续主线刷新（优先于历史版本）
 
@@ -26,7 +26,7 @@
 ## 发布边界
 
 - 业务 OSS 沿用原账号的杭州 `aiartist` Bucket，保留原对象 key、`media` 前缀及签名公网地址。新 A/B 的后台访问使用同地域内网 Endpoint；存储包和下行流量包继续按原账号的适用范围、余量及有效期抵扣。本轮不新建 Bucket，不改原授权、ACL 或付费归属；SQL 快照和配置文件仍仅走私有 SSH。
-- 新 A/B：`infra/cluster/production.json` 为唯一节点清单。正式 API 两机 `AEP_BACKGROUND_ENABLED=false`；后台/SAU 在 A 单活，B 不启用。API 经 ALB，常态 A100/B0。
+- 新 A/B：`infra/cluster/production.json` 为唯一节点清单。正式 API 两机 `AEP_BACKGROUND_ENABLED=false`；后台/SAU 在 A 单活，B 不启用。API 经 ALB，常态 A50/B50。
 - `infra/scripts/deploy.sh server` 默认进入新双机流程；`--plan` 只读展示。旧 `deploy-release.sh`、`update-and-deploy.sh` 入口已禁用，不接受旧机覆盖参数。前端/SAU 需要对应组件的集群验收，不自动退回旧单机。
 - `--stage` 只能使用 `aistar_schema_rehearsal/aistar_api_rehearsal`、Tair DB14、私有 Host/header 的演练组；JDK 屏障只允许 RDS/Tair，禁用子进程和付费外联。正式为 `aistar_prod`、Tair DB15，必须有正式导入凭证和激活标记。
 - 发布包不含机密；只通过 SSH 传输，禁止 OSS 临时公开传输。环境 root:600，应用 UID10001，只读根文件系统；官方 Java17/Node/FFmpeg 固定镜像。
@@ -40,7 +40,7 @@
 5. `AistarSnapshotRestore` 申请数据库会话锁，拒绝非空目标；固定当前 V74–V77 字节，UTF8 COPY 一个事务恢复 192 表，全行/全列字段指纹、行数、序列和10项资金守恒全部通过后才提交。失败回滚业务事务；DDL可能已存在但业务表保持空，须查明原因，不覆盖非空库。
 6. `AistarApplicationGrant` 在导入凭证核对后授权应用 DML/序列、禁止 CREATE，实测运行角色读取/UPDATE 权限且 DDL 被拒绝；若导入已提交但授权失败，只能带同一凭证 `--grant-only --execute` 重试授权，不重新导入。
 7. CI 全后端 + PostgreSQL18 实库门禁成功后保存同一个 JAR/工具和 `verified-backend.json`；按该 SHA 构建不可变镜像/包。不能把单测打包、排队或本机 Docker 不可用算作完整验收通过。
-8. `cluster/release.py` 先验证两机候选环境/镜像，再排空 B、更新 B、B100；严格 TLS 两VIP验收，再排空 A 至少180秒且连续3次请求/线程池/持久任务为0，更新 A，恢复 A100/B0。SSH flock 防并发；任何未知或在途任务阻止停止，不强杀，不盲目恢复旧版本。容器停止上限240秒、systemd停止上限300秒，使用显式podman stop和Spring graceful shutdown，避免默认10秒截断。
+8. `cluster/release.py` 先验两机候选和双 VIP，A100/B0 摘除 B 新流量，等待排空并更新 B。B100/A0 后对两个 VIP 验证 B 真实鉴权，再排空、更新 A，恢复 A50/B50。每台停止前等待至少 180 秒，连续 3 次确认请求、线程池和在途工作排空。最后两个 VIP 均须观察到 A、B 鉴权成功。失败后保留最近确认可用的承流节点。SSH flock 防并发；任何未知或在途任务阻止停止，不强杀，不盲目恢复旧版本。容器停止上限240秒、systemd停止上限300秒，使用显式podman stop和Spring graceful shutdown，避免默认10秒截断。
 9. `/internal/deployment` 仅回环+强令牌：POST 取消未来调度但不打断已受理任务，GET 返回排空证据；异步Servlet请求计数到真正完成。Nginx必须拒绝该路径及子路径，即使私有探针 header 正确也不得公开代理。
 
 ## 正式窗口前和窗口内
@@ -56,7 +56,7 @@
 
 ## 验收和保留项
 
-凭证需包含实际 SHA/JAR/镜像、192表行数/字段指纹、10项资金检查、重复导入拒绝、两机真实进程/环境、TLS两VIP、持续鉴权请求、ALB A100/B0、180秒排空和失败保护。SLS、其他服务、旧源未变更另有保护记录。
+凭证需包含实际 SHA/JAR/镜像、195 表行数/字段指纹、10 项资金检查、重复导入拒绝、两机真实进程/环境、双 VIP 严格 TLS、持续鉴权请求、ALB A50/B50、180秒排空和失败保护。SLS、其他服务、旧源未变更另有保护记录。
 
 本次准备不会：导入 `aistar_prod`、启动新正式后台/SAU、停旧生产、启用正常Host/DNS。完整生产迁移还需上述独立窗口和前端/后台/文件最终验收；API演练成功不等于全栈已切换。
 

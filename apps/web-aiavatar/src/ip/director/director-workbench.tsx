@@ -79,8 +79,6 @@ function nextStep(work: DirectorWork, episodeId: string | null): NextStep | null
   const used = new Set(clips.flatMap(c => c.assetIds));
   const needImage = work.assets.filter(a => used.has(a.id) && !a.image.adoptedId);
   if (needImage.length) return { tone: "warning", text: `缺少 ${needImage.length} 张资产图：${needImage.slice(0, 3).map(a => a.name).join("、")}`, tab: "assets" };
-  const unconfirmed = work.assets.filter(a => used.has(a.id) && a.image.adoptedBy === "auto");
-  if (unconfirmed.length) return { tone: "warning", text: `${unconfirmed.length} 张资产图待确认`, tab: "assets" };
   const fix = clips.filter(c => c.issues.length);
   if (fix.length) return { tone: "warning", text: `${fix.length} 个片段需修改后才能生成分镜图`, tab: "storyboard" };
   const noBoard = clips.filter(c => !c.board.adoptedId);
@@ -251,7 +249,7 @@ export function DirectorWorkbench({ id }: { id: string }) {
   const props: WorkbenchProps = { work, episodeId, apply, setError, goTab: switchTab, focusClip, focus, reviewExtract: () => setReviewing(true), openSettings: () => { window.scrollTo({ top: 0, behavior: "smooth" }); setSettingsOpen(true); }, pickEpisode: setEpisodeId, startPipeline: () => setStarting(true) };
   const step = nextStep(work, episodeId);
   const counts = {
-    assets: work.assets.filter(a => a.kind !== "product" && (a.image.adoptedBy === "auto" || !a.image.adoptedId)).length,
+    assets: work.assets.filter(a => a.kind !== "product" && !a.image.adoptedId).length,
     storyboard: work.clips.filter(c => c.episodeId === episodeId && (c.issues.length || c.board.adoptedBy === "auto" || c.video.adoptedBy === "auto"
       || c.board.adoptedCheck === "outdated" || c.video.adoptedCheck === "outdated")).length,
   };
@@ -361,7 +359,7 @@ const TARGETS: Array<{ key: DirectorPipelineTarget; label: string; note: string 
 ];
 
 const PIPELINE_ACTIONS: Record<string, string> = {
-  pause: "暂停一键制作", resume: "继续一键制作", retry: "重试一键制作的失败项", "confirm-assets": "确认资产图并继续",
+  pause: "暂停一键制作", resume: "继续一键制作", retry: "重试一键制作的失败项",
   "confirm-boards": "确认分镜图并继续", "confirm-videos": "确认片段视频并导出", stop: "停止一键制作", dismiss: "收起一键制作",
 };
 
@@ -405,8 +403,6 @@ function PipelineBar({ work, apply, setError, goTab, reviewExtract, doneText }: 
         <div className="director-pipeline-actions">
           {p.stage === "confirm-split" && p.status === "waiting" && <button type="button" className="ip-brand-button" onClick={() => goTab("script")}>查看分集</button>}
           {p.stage === "confirm-extract" && p.status === "waiting" && <button type="button" className="ip-brand-button" onClick={reviewExtract}>查看清单</button>}
-          {p.stage === "confirm-assets" && p.status === "waiting" && <><button type="button" className="ip-brand-secondary" onClick={() => goTab("assets")}>查看资产图</button>
-            <button type="button" className="ip-brand-button" disabled={!!busy} onClick={() => act("confirm-assets")}>全部确认并继续</button></>}
           {p.stage === "confirm-boards" && p.status === "waiting" && <><button type="button" className="ip-brand-secondary" onClick={() => goTab("storyboard")}>查看分镜图</button>
             <button type="button" className="ip-brand-button" disabled={!!busy} onClick={() => act("confirm-boards")}>全部确认并继续</button></>}
           {p.stage === "confirm-videos" && p.status === "waiting" && <><button type="button" className="ip-brand-secondary" onClick={() => goTab("storyboard")}>查看片段视频</button>
@@ -496,7 +492,7 @@ export function StartPipeline({ work, episodeId, apply, setError, goTab, onClose
         <button type="button" aria-pressed={scope === "episode"} onClick={() => { setScope("episode"); setCustom(null); }}>仅第 {ep?.no} 集</button></div></div>}
       {target !== "plan" && <label className="director-check">
         <input type="checkbox" checked={!auto} onChange={e => setAuto(!e.target.checked)}/>
-        <span><b>关键步骤暂停等我确认</b><small>资产清单、资产图、分镜图{target === "film" ? "、片段视频" : ""}生成后暂停，确认后继续。不勾选则全自动完成。</small></span>
+        <span><b>关键步骤暂停等我确认</b><small>{target === "film" ? "分集、资产清单、分镜图和片段视频生成后暂停。" : "分集和资产清单生成后暂停。"}</small></span>
       </label>}
       {!doneNote && <section className="director-budget-card" aria-label="预算">
         <header><span>推荐预算</span>{est && <b>{mock ? "测试模式，免费" : `${est.recommended.toLocaleString("zh-CN")} 积分`}</b>}{!est && !estError && <Loader2 size={15} className="ip-loading-icon"/>}</header>

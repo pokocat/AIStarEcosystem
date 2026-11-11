@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""ALB A100/B0 rolling release; no database import, DNS changes, or legacy-host fallback."""
+"""ALB dual-active rolling release; no database import, DNS changes, or legacy-host fallback."""
 import argparse,datetime,hashlib,http.client,json,os,pathlib,shlex,socket,ssl,subprocess,sys,time,tarfile,tempfile
 from policy import config_guard,artifact_guard,alb_guard,require
 ROOT=pathlib.Path(__file__).resolve().parents[3]
+DUAL_ACTIVE={'a':50,'b':50}
+SINGLE_NODE={'a':{'a':100,'b':0},'b':{'a':0,'b':100}}
 class Cluster:
  def __init__(self,config,mode):self.config=config;self.mode=mode;self.expected=config['modes'][mode];self.events=[]
  def record(self,event,**kw):self.events.append({'utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'event':event,**kw});print(event,flush=True)
@@ -33,17 +35,60 @@ class Cluster:
    if all(int(rows[n]['Weight'])==w[n] and rows[n]['Status']=='Available' for n in w):self.record('weights',weights=w);return
    time.sleep(1)
   raise RuntimeError('ALB权重未收敛')
- def probe(self,node=None,authenticated=True):
-  # Strict TLS on both ALB VIPs, exact host and private probe header. Never trust HTTP 200 alone.
-  path=pathlib.Path(self.probe_file);require(path.stat().st_mode&0o777==0o600,'探针配置必须0600');secret=json.loads(path.read_text());require(secret['host']==self.expected['host'],'探针Host与模式不匹配')
+ def request_vip(self,ip,path,headers):
+  host=self.expected['host']
+  context=ssl.create_default_context()
+  connection=http.client.HTTPSConnection(host,timeout=12,context=context)
+  try:
+   connection.sock=context.wrap_socket(socket.create_connection((ip,443),timeout=12),server_hostname=host)
+   connection.request('GET',path,headers=headers)
+   response=connection.getresponse()
+   return response.status,json.loads(response.read()),response.getheader('X-Aistar-Node')
+  finally:
+   connection.close()
+ def probe(self,node=None,authenticated=True,check_readiness=True):
+  # Each VIP is contacted directly with the expected SNI and protected headers.
+  path=pathlib.Path(self.probe_file)
+  require(path.stat().st_mode&0o777==0o600,'探针配置必须0600')
+  secret=json.loads(path.read_text())
+  require(secret['host']==self.expected['host'],'探针Host与模式不匹配')
   if authenticated:require(secret.get('token') and secret.get('subject_id'),'缺少跨节点鉴权验收token和目标身份')
+  require(authenticated or check_readiness,'缺少有效的ALB探测类型')
+  accepted={node} if node else set(self.config['nodes'])
+  headers={secret['header']:secret['key']}
+  observed_by_vip={}
   for ip in self.config['verify_ips']:
-   host=self.expected['host'];c=http.client.HTTPSConnection(host,timeout=12,context=ssl.create_default_context())
-   c.sock=c._context.wrap_socket(socket.create_connection((ip,443),timeout=12),server_hostname=host)
-   c.request('GET','/internal/ready',headers={secret['header']:secret['key']});r=c.getresponse();data=json.loads(r.read());observed=r.getheader('X-Aistar-Node');c.close();require(node is None or observed==node,'ALB实际服务节点与目标不一致，禁止停止旧主');require(r.status==200 and data.get('ready') is True,'ALB严格TLS就绪验收失败')
+   if check_readiness:
+    status,data,observed=self.request_vip(ip,'/internal/ready',headers)
+    require(observed in accepted,'ALB实际服务节点与目标不一致，禁止停止在用节点')
+    require(status==200 and data.get('ready') is True,'ALB严格TLS就绪验收失败')
    if authenticated:
-    c=http.client.HTTPSConnection(host,timeout=12,context=ssl.create_default_context());c.sock=c._context.wrap_socket(socket.create_connection((ip,443),timeout=12),server_hostname=host);c.request('GET','/api/admin/auth/me',headers={secret['header']:secret['key'],'Authorization':'Bearer '+secret['token']});r=c.getresponse();d=json.loads(r.read());observed=r.getheader('X-Aistar-Node');c.close();require(node is None or observed==node,'鉴权请求未由目标节点承接');require(r.status==200 and d.get('data',{}).get('id')==secret['subject_id'],'ALB跨机鉴权身份验收失败')
+    auth_headers={**headers,'Authorization':'Bearer '+secret['token']}
+    status,data,observed=self.request_vip(ip,'/api/admin/auth/me',auth_headers)
+    require(observed in accepted,'鉴权请求未由目标节点承接')
+    require(status==200 and data.get('data',{}).get('id')==secret['subject_id'],'ALB跨机鉴权身份验收失败')
+   observed_by_vip[ip]={observed}
   if node:self.record('alb_ready',node=node)
+  return observed_by_vip
+ def probe_dual(self,authenticated=True):
+  seen={ip:set() for ip in self.config['verify_ips']}
+  expected_nodes=set(self.config['nodes'])
+  if authenticated:self.probe(authenticated=False)
+  # One measured request per VIP each round. Paired readiness/auth requests
+  # can repeatedly sample the same auth backend under round-robin routing.
+  for attempt in range(12):
+   sample=self.probe(authenticated=authenticated,check_readiness=not authenticated)
+   for ip,nodes in sample.items():seen[ip].update(nodes)
+   if all(nodes==expected_nodes for nodes in seen.values()):
+    self.record('alb_dual_active',authenticated=authenticated,observed={ip:sorted(nodes) for ip,nodes in seen.items()},samples_per_vip=attempt+1)
+    return
+  raise RuntimeError('双活验收失败：两个ALB VIP均须观测到双机响应')
+ def select_serving(self,node):
+  self.weights(SINGLE_NODE[node])
+  time.sleep(16)
+  self.probe(node)
+  state=self.action(node,'inspect')
+  require(not state['quiescing'],'承接流量的节点已在排空')
  def install(self,bundle,release):
   # Only our new cluster namespace. Never extract arbitrary archive entries.
   digest=hashlib.sha256(bundle.read_bytes()).hexdigest();remote=self.config['root']
@@ -59,31 +104,43 @@ class Cluster:
    code="import pathlib,hashlib,tarfile,os;os.umask(0o022);p=pathlib.Path("+repr(remote+'/incoming/'+release+'.tar.gz')+");assert hashlib.sha256(p.read_bytes()).hexdigest()=="+repr(digest)+";d=pathlib.Path("+repr(remote+'/releases/'+release)+");t=tarfile.open(p);members=t.getmembers();assert all(x.isfile() and not x.name.startswith('/') and '..' not in pathlib.PurePosixPath(x.name).parts for x in members);existing=d.exists();assert not existing or all((d/x.name).is_file() and hashlib.sha256((d/x.name).read_bytes()).digest()==hashlib.sha256(t.extractfile(x).read()).digest() for x in members),'不可变发布内容变化';d.mkdir(mode=0o755,exist_ok=True);t.extractall(d) if not existing else None;[(x.chmod(0o755 if x.is_dir() else 0o444)) for x in [d,*d.rglob('*')]]"
    self.ssh(n,shlex.join([self.config['operation_python'],'-s','-c',code]));self.action(n,'prepare',release)
  def rolling(self,release):
-  rows=self.members();require(int(rows['a']['Weight'])==100 and int(rows['b']['Weight'])==0,'必须从A100/B0开始；异常状态先核对，禁止盲目重试')
-  primary=self.action('a','inspect');standby=self.action('b','inspect');require(not primary['quiescing'],'主节点已在排空')
-  # Verify candidate on BOTH nodes before stopping anything.
-  for n in ['a','b']:self.action(n,'prepare',release)
-  old_primary_safe=True
+  rows=self.members()
+  initial={node:int(row['Weight']) for node,row in rows.items()}
+  require(initial in (DUAL_ACTIVE,*SINGLE_NODE.values()),'初始权重异常，禁止自动发布')
+  before={node:self.action(node,'inspect') for node in self.config['nodes']}
+  require(not any(state['quiescing'] for state in before.values()),'存在排空中的节点，禁止自动发布')
+  for node in self.config['nodes']:self.action(node,'prepare',release)
+  serving='b' if initial==SINGLE_NODE['b'] else 'a'
+  first='a' if serving=='b' else 'b'
+  if initial==DUAL_ACTIVE:self.probe_dual()
   try:
-   self.action('b','drain-stop');self.action('b','start',release)
-   # Check real per-node process/config before moving the group. Private TLS acceptance then gates old-primary restart.
-   self.weights({'a':0,'b':100});time.sleep(16)
-   self.probe('b');self.action('b','inspect')
-   old_primary_safe=False
-   self.action('a','drain-stop');self.action('a','start',release)
-   self.weights({'a':100,'b':0});time.sleep(16);self.probe('a')
-   final={n:self.action(n,'inspect') for n in ['a','b']};require(all(x['release']==release for x in final.values()),'双机发布不一致');self.record('rolling_complete');return final
+   self.select_serving(serving)
+   self.action(first,'drain-stop')
+   self.action(first,'start',release)
+   self.select_serving(first)
+   second=serving
+   serving=first
+   self.action(second,'drain-stop')
+   self.action(second,'start',release)
+   final={node:self.action(node,'inspect') for node in self.config['nodes']}
+   require(all(x['release']==release and not x['quiescing'] for x in final.values()),'双机发布或排空状态不一致')
+   self.weights(DUAL_ACTIVE)
+   time.sleep(16)
+   self.probe_dual()
+   self.record('rolling_complete')
+   return final
   except Exception:
-   survivor='a' if old_primary_safe else 'b'
-   current=self.action(survivor,'inspect');require(not current['quiescing'],'没有可自动恢复权重的已知健康节点，保留现场')
-   self.weights({'a':100 if survivor=='a' else 0,'b':100 if survivor=='b' else 0});self.probe(survivor);self.record('failure_preserved_serving_node',node=survivor)
+   current=self.action(serving,'inspect')
+   require(not current['quiescing'],'没有可自动恢复权重的已知健康节点，保留现场')
+   self.select_serving(serving)
+   self.record('failure_preserved_serving_node',node=serving)
    raise
 
 
 def main():
  p=argparse.ArgumentParser();p.add_argument('--stage',action='store_true');p.add_argument('--bundle');p.add_argument('--release');p.add_argument('--probe-file');p.add_argument('--receipt');p.add_argument('--plan',action='store_true');p.add_argument('--prepare-only',action='store_true');p.add_argument('--bootstrap-stage',action='store_true');a=p.parse_args();os.umask(0o077)
  config=json.loads((ROOT/'infra/cluster/production.json').read_text());mode='stage' if a.stage else 'production';config_guard(config,mode,os.environ)
- if a.plan:print(json.dumps({'mode':mode,'nodes':config['nodes'],'flow':'prepare B -> drain B -> start B -> B100 -> drain A >=180s -> start A -> A100/B0','production_activation_required':True,'database_and_dns_changed':False},ensure_ascii=False,indent=2));return
+ if a.plan:print(json.dumps({'mode':mode,'nodes':config['nodes'],'flow':'prepare both -> keep serving node at 100 -> drain and update peer -> verify peer at 100 -> drain and update first node -> verify both at 50/50','production_activation_required':True,'database_and_dns_changed':False},ensure_ascii=False,indent=2));return
  require(a.release and a.bundle and a.receipt,'需要已验收不可变发布包、release和凭证路径');require(not pathlib.Path(a.receipt).exists(),'拒绝覆盖验收凭证')
  require(a.release.isalnum() and len(a.release)==16,'release标识错误')
  if a.bootstrap_stage:require(mode=='stage','初始化仅允许隔离演练')
@@ -99,7 +156,7 @@ def main():
   cluster.install(pathlib.Path(a.bundle).resolve(),a.release)
   if a.prepare_only:result={'prepared':True}
   elif a.bootstrap_stage:
-   result={n:cluster.action(n,'start',a.release) for n in ['a','b']};cluster.weights({'a':100,'b':0});time.sleep(16);cluster.probe(authenticated=False);cluster.record('bootstrap_complete')
+   result={n:cluster.action(n,'start',a.release) for n in ['a','b']};cluster.weights(DUAL_ACTIVE);time.sleep(16);cluster.probe_dual(authenticated=False);cluster.record('bootstrap_complete')
   else:require(a.probe_file,'缺少受保护TLS探针配置');result=cluster.rolling(a.release)
   receipt={'completed_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'mode':mode,'events':cluster.events,'result':result,'database_changed':False,'dns_changed':False};pathlib.Path(a.receipt).write_text(json.dumps(receipt,indent=2))
  finally:lock.stdin.close();lock.wait(timeout=15)

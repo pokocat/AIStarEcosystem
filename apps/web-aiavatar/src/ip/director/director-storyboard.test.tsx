@@ -80,6 +80,16 @@ test("storyboard reference images show the server order, exact form and scene vi
   expect(within(refs).getAllByRole("img")[0].getAttribute("src")).toBe("https://cdn.test/jing-form.png");
 });
 
+test("an existing pending asset image does not block generating the first storyboard image", () => {
+  const w = workWithReferences();
+  w.assets[0].image.adoptedBy = "auto";
+  w.clips[0].board = { candidates: [], adoptedId: null, adoptedBy: null, error: null };
+  render(<Page initial={w}/>);
+  fireEvent.click(screen.getByRole("button", { name: /^分镜图/ }));
+  const dialog = screen.getByRole("dialog", { name: "分镜图 · 片段 1" });
+  expect((within(dialog).getByRole("button", { name: "生成分镜图" }) as HTMLButtonElement).disabled).toBe(false);
+});
+
 test("video reference images start with the board and keep asset controls in that order", () => {
   render(<Page initial={workWithReferences()}/>);
   fireEvent.click(screen.getByRole("button", { name: /关联资产/ }));

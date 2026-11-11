@@ -1,7 +1,7 @@
 # infra/ — 阿里云部署基础设施
 ## AIStar 双机 PostgreSQL 迁移准备（2026-11-05，优先于下方历史单机说明）
 
-新发布入口 `infra/scripts/deploy.sh server --plan`；新 A/B、ALB A100/B0、PG/Tair 配置以 `infra/cluster/production.json` 为准。旧单机发布入口已禁用，不能回退旧机。正式尚未切流，生产激活需另行窗口及正式导入凭证。API 两机关闭后台；后台/SAU 在 A 独立单活。前端及角色交接单独验收。
+新发布入口 `infra/scripts/deploy.sh server --plan`；新 A/B、ALB 常态 A50/B50、PG/Tair 配置以 `infra/cluster/production.json` 为准。旧单机发布入口已禁用，不能回退旧机。正式尚未切流，生产激活需另行窗口及正式导入凭证。API 两机关闭后台；后台/SAU 在 A 独立单活。前端及角色交接单独验收。
 
 完整文件、导入保护、滚动顺序与验收见 [`docs/aistar-postgresql-cutover.md`](../docs/aistar-postgresql-cutover.md)。下方旧 ECS/MySQL/身份同机描述仅作历史运维参考，不能用于新发布。
 

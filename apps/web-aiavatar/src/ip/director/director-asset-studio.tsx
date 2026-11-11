@@ -4,7 +4,7 @@ import { IMAGE_UPLOAD_ACCEPT } from '@ai-star-eco/api-client/image-upload-policy
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { ArrowLeft, Check, ChevronRight, ImageIcon, Library, Loader2, Plus, RefreshCw, Trash2, Upload, Wand2, X } from "lucide-react";
+import { ArrowLeft, ChevronRight, ImageIcon, Library, Loader2, Plus, RefreshCw, Trash2, Upload, Wand2, X } from "lucide-react";
 import type { DirectorAsset, DirectorAssetForm, DirectorEpisode, DirectorMediaSlot, DirectorSceneView, DirectorTaskType, DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi, IpStudioApi } from "../api";
 import { useStudioApp } from "../studio-errors";
@@ -209,7 +209,6 @@ function AssetWorkspace({ work, asset, apply, setError, focusClip, onClose }: Wo
           {current?.url ? <ZoomableImage src={current.url} alt={label}/> : <div className="director-asset-placeholder"><ImageIcon size={26}/><span>{emptyNote}</span></div>}
           {generating && <div className="director-asset-overlay"><Spinner label="生成中"/></div>}
           <div className="director-studio-tags">
-            {slot.adoptedBy === "auto" && <span className="director-tag is-warn">待确认</span>}
             {slot.adoptedCheck === "outdated" && <span className="director-tag is-warn">需更新</span>}
             {current?.mock && <span className="director-tag">测试图</span>}
             {current && !current.mock && current.source !== "generated" && <span className="director-tag is-source">{current.source === "upload" ? "已上传" : "资产库"}</span>}
@@ -226,7 +225,6 @@ function AssetWorkspace({ work, asset, apply, setError, focusClip, onClose }: Wo
         <InlineError message={active.type === "view" ? asset.viewsError?.message : slot.error?.message}/>
         {!overview && <OutdatedNote slot={slot} what="张图" onRegenerate={generating ? undefined : generate} disabled={!!busy}/>}
         <div className="director-card-actions">
-          {asset.image.adoptedBy === "auto" && (mainActive || overview) && <button type="button" className="ip-brand-button" disabled={!!busy} onClick={() => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "assets.confirm", null, null, { assetIds: [asset.id] })), failed(setError, `确认「${asset.name}」的资产图`))}><Check size={14}/>确认使用</button>}
           <button type="button" className={slot.adoptedId ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy || !!generating || (active.type !== "main" && !mainImage)} onClick={generate}
             title={singleView ? "以主视图为准，只重新生成这个视角，其他视角不变" : active.type === "view" ? "以主视图为准，一次生成反打、左立面、右立面三张" : undefined}>
             <Wand2 size={14}/>{generating ? "生成中" : singleView ? (slot.candidates.length ? "重新生成" : "生成此视角") : active.type === "view" ? (anyView ? "重新生成三个视角" : "生成三个视角") : slot.candidates.length ? "重新生成" : active.type === "form" ? "生成形态图" : overview ? "生成主视图" : "生成资产图"}</button>
@@ -301,7 +299,6 @@ function SceneViewsOverview({ work, asset, onPick, shots }: { work: DirectorWork
       {img?.url ? <img src={img.url} alt=""/> : <span className="director-view-empty"><ImageIcon size={main ? 26 : 18}/>{main && "暂无主视图"}</span>}
       {busy && <span className="director-asset-overlay"><Spinner label="生成中"/></span>}
       <span className="director-studio-tags">
-        {slot.adoptedBy === "auto" && <span className="director-tag is-warn">待确认</span>}
         {slot.adoptedCheck === "outdated" && <span className="director-tag is-warn">需更新</span>}
         {img?.stale && <span className="director-tag is-warn">需更新</span>}
       </span>

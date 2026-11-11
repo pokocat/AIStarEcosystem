@@ -319,7 +319,8 @@ public class StudioSegmentedRun {
         boolean frame = "frame".equals(state.path("segmented").path("mode").asText());
         if (frame) {
             for (JsonNode a : script.path("assets")) if (speakers.containsKey(a.path("name").asText()) && !a.path("voice").asText().isBlank()) voiceDescs.put(a.path("name").asText(), a.path("voice").asText());
-            return DirectorPrompts.framePrompt(style(script, state), segment, speakers, voiceDescs);
+            prompts().requireStage(StudioPromptCallPoints.DIRECTOR_VIDEO_FRAME);
+            return DirectorPrompts.framePrompt(prompts(), null, style(script, state), segment, speakers, voiceDescs);
         }
         List<DirectorPrompts.Ref> refs = new ArrayList<>();
         List<DirectorPrompts.VoiceRef> voices = new ArrayList<>();
@@ -337,7 +338,8 @@ public class StudioSegmentedRun {
             String name = a.path("name").asText();
             if (speakers.containsKey(name) && !name.equals(sampled) && !a.path("voice").asText().isBlank()) voiceDescs.put(name, a.path("voice").asText());
         }
-        return DirectorPrompts.videoPrompt(style(script, state), segment, refs, speakers, voices, List.of(), voiceDescs, Map.of(), SegmentedPlan.SHOTS_PER_BOARD * 2);
+        prompts().requireStage(StudioPromptCallPoints.DIRECTOR_VIDEO);
+        return DirectorPrompts.videoPrompt(prompts(), null, style(script, state), segment, refs, speakers, voices, List.of(), voiceDescs, Map.of(), SegmentedPlan.SHOTS_PER_BOARD * 2);
     }
 
     private DirectorPrompts.Ref materialRef(JsonNode script, JsonNode materials, String nodeId, String label) {

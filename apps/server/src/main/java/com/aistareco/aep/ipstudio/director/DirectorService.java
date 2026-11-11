@@ -47,7 +47,7 @@ import java.util.*;
  * <p>作品内容由服务端拥有（§10.3）：
  * <ul>
  *   <li>用户编辑带对象修订号 {@code rev}，对不上返回 409，不以后到覆盖先到；</li>
- *   <li>生成结果回投前比对提交时的输入指纹：输入没变才填空着的采用位（标 {@code adoptedBy=auto}，需要用户确认），
+ *   <li>生成结果回投前比对提交时的输入指纹：输入没变才填空着的采用位（资产图直接采用，分镜图和视频待确认），
  *       变了就只追加为「按旧设置生成」的历史版本；已有正文、计划、提示词和已采用版本一律不动；</li>
  *   <li>任务就是原生的 {@link IpRun}（宿主类型 director，{@code projectId} 存作品 id，{@code nodeId} 存目标），
  *       计价、冻结、付款、结算、幂等都在原链路上，这里不记第二份账。</li>
@@ -1222,7 +1222,7 @@ public class DirectorService {
                 ObjectNode clip = find(c, "clips", targetId, "这个片段");
                 if (clip.path("issues").size() > 0) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_CLIP_NEEDS_FIX",
                         "该片段需先修改：" + clip.path("issues").get(0).asText());
-                List<Bound> refs = new ArrayList<>(boundRefs(c, clip, true));
+                List<Bound> refs = new ArrayList<>(boundRefs(c, clip));
                 String prompt = clip.path("boardPrompt").asText();
                 if (!clip.path("boardPromptCustom").asBoolean(false)) prompts().requireStage(StudioPromptCallPoints.DIRECTOR_BOARD);
                 String baseOn = o.path("baseOnCurrent").asBoolean(false) ? baseOnCurrent(clip, "board", "片段 " + clip.path("order").asInt() + " 的分镜图", refs) : null;
@@ -1354,20 +1354,17 @@ public class DirectorService {
         return out;
     }
 
-    private List<Bound> boundRefs(ObjectNode c, JsonNode clip, boolean requireConfirmed) {
+    private List<Bound> boundRefs(ObjectNode c, JsonNode clip) {
         List<Bound> out = new ArrayList<>();
-        List<String> missing = new ArrayList<>(), unconfirmed = new ArrayList<>();
+        List<String> missing = new ArrayList<>();
         for (JsonNode a : visualAssets(c, clip)) {
             String key = adoptedKey(a.path("image"));
             String shown = a.path("displayName").asText(a.path("name").asText());
             if (key == null) { missing.add(shown); continue; }
-            if (requireConfirmed && "auto".equals(a.path("image").path("adoptedBy").asText())) unconfirmed.add(shown);
             out.add(new Bound(a.path("id").asText(), shown, a.path("kind").asText(), key, "图" + (out.size() + 1)));
         }
         if (!missing.isEmpty()) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_REFERENCE_MISSING",
                 "缺少资产图：" + String.join("、", missing) + "。请在「资产」中生成或上传", Map.of("names", missing));
-        if (!unconfirmed.isEmpty()) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_REFERENCE_UNCONFIRMED",
-                "资产图待确认：" + String.join("、", unconfirmed) + "。请在「资产」中确认", Map.of("names", unconfirmed));
         return out;
     }
 
@@ -1485,6 +1482,7 @@ public class DirectorService {
         Limits lim = limits(c);
         if (lim == null) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "DIRECTOR_VIDEO_MODEL_UNAVAILABLE",
                 "暂无可用于片段生成的视频模型，请联系平台处理");
+        if (!clip.path("videoPromptCustom").asBoolean(false)) prompts().requireStage(videoStage(lim));
         String aspect = c.path("settings").path("aspectRatio").asText("9:16");
         if (!lim.aspects().isEmpty() && !lim.aspects().contains(aspect))
             throw invalid("视频模型「" + lim.name() + "」不支持 " + aspect + " 画幅，请在设置中更换画幅或模型");
@@ -1498,7 +1496,7 @@ public class DirectorService {
             meta.addObject().put("label", "首帧").put("name", "分镜画面").put("key", board).putNull("assetId");
             return new VideoInput(clip.path("videoPrompt").asText(), duration, aspect, lim, List.of(), meta, videoCurrent(c, clip, lim).fingerprint(), board);
         }
-        List<Bound> assets = boundRefs(c, clip, true);
+        List<Bound> assets = boundRefs(c, clip);
         List<VideoStudioReferenceInput> refs = new ArrayList<>();
         ArrayNode meta = om.createArrayNode();
         refs.add(new VideoStudioReferenceInput("image", board));
@@ -1583,7 +1581,8 @@ public class DirectorService {
                 throw invalid("台词过长，视频提示词超过 " + H3PromptRewrite.MAX_PROMPT_CHARS + " 字符。请缩短台词或拆分片段，或按原文生成");
         }
         ObjectNode m = om.createObjectNode().put("node", node).put("prompt", in.prompt()).put("fingerprint", in.fingerprint())
-                .put("promptFormat", DirectorPrompts.VIDEO_PROMPT_FORMAT);
+                .put("promptFormat", DirectorPrompts.VIDEO_PROMPT_FORMAT)
+                .put("videoTemplate", DirectorPrompts.templateVersion(prompts(), videoStage(in.lim())));
         if (sent != null) m.put("sentPrompt", sent);
         if (original) m.put("promptChoice", "original");
         if (draft != null) {
@@ -1958,12 +1957,13 @@ public class DirectorService {
         ObjectNode slot = (ObjectNode) clip.path("video");
         // 换模板之前提交、之后才完成的任务按它提交时的版本核对，免得被当成「生成期间设置有变动」。
         Limits lim = limits(c);
-        String legacy = legacyVideoPrompt(c, clip, lim, promptFormat(meta));
+        String legacy = legacyVideoPrompt(c, clip, lim, meta);
         String now = (legacy == null ? videoCurrent(c, clip, lim) : videoCurrent(c, clip, lim, legacy)).fingerprint();
         boolean stale = !meta.hasNonNull("fingerprint") || !meta.path("fingerprint").asText().equals(now);
         ObjectNode m = addCandidate(c, slot, key, runId, "generated");
         if (meta.hasNonNull("fingerprint")) m.put("fingerprint", meta.path("fingerprint").asText());
         if (meta.has("promptFormat")) m.put("promptFormat", meta.path("promptFormat").asInt());
+        if (meta.has("videoTemplate")) m.put("videoTemplate", meta.path("videoTemplate").asInt());
         if (meta.has("sentPrompt")) m.put("sentPrompt", meta.path("sentPrompt").asText());
         for (String f : List.of("promptUsed", "promptReason", "draftState", "rewriteRunId")) if (meta.hasNonNull(f)) m.put(f, meta.path(f).asText());
         if (meta.has("rewriteCost")) m.put("rewriteCost", meta.path("rewriteCost").asLong());
@@ -2367,6 +2367,20 @@ public class DirectorService {
         Set<String> applied = new HashSet<>();
         c.path("applied").forEach(x -> applied.add(x.asText()));
         boolean changed = false, running = false;
+        // 旧作品的首张资产图已经选定了版本，只需解除待确认状态。
+        for (JsonNode asset : c.path("assets")) {
+            if (asset.path("image") instanceof ObjectNode image
+                    && "auto".equals(image.path("adoptedBy").asText()) && adoptedKey(image) != null) {
+                image.put("adoptedBy", "user");
+                changed = true;
+            }
+        }
+        if (c.path("pipeline") instanceof ObjectNode pipeline && "waiting".equals(pipeline.path("status").asText())
+                && "confirm-assets".equals(pipeline.path("stage").asText())) {
+            // 已经停下的连跑保留暂停状态，等用户继续后才提交下一笔生成。
+            pipeline.put("status", "paused").put("stage", "assets").put("message", "资产图已采用，可继续制作");
+            changed = true;
+        }
         List<IpRun> mine = new ArrayList<>(runs.findByProjectIdOrderByCreatedAtDesc(w.getId()));
         Collections.reverse(mine);
         // 续接已经提交、关联还没写回作品（见 runFollowUp）：它建出的任务先不回投。否则预算里既有续接的预留、
@@ -2474,7 +2488,7 @@ public class DirectorService {
                 if (meta.hasNonNull("baseOn")) m.put("baseOn", meta.path("baseOn").asText());
                 if (output.path("mock").asBoolean(false)) m.put("mock", true);
                 if (stale) m.put("stale", true);
-                else if (adoptedKey(slot) == null) slot.put("adoptedId", m.path("id").asText()).put("adoptedBy", "auto");
+                else if (adoptedKey(slot) == null) slot.put("adoptedId", m.path("id").asText()).put("adoptedBy", asset ? "user" : "auto");
             }
             if (stale) notice(c, "「" + target.path(asset ? "name" : "title").asText() + "」生成期间设置有变动，新图已存入历史版本，未自动采用");
             return;
@@ -3727,20 +3741,11 @@ public class DirectorService {
                     throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_PIPELINE_NOTHING_TO_DO", nothingToDo(c, p));
             }
             case "pause" -> requirePipeline(current).put("status", "paused").put("message", "已暂停：不再开始新任务，进行中的任务继续完成");
-            case "resume", "retry" -> {
+            case "resume", "retry", "confirm-assets" -> {
                 ObjectNode p = requirePipeline(current);
                 if (req.budget() != null && req.budget() > 0) p.put("budget", req.budget());
                 if ("retry".equals(req.action())) p.putArray("failed");
                 p.put("status", "running").put("message", "继续制作");
-                advance(userId, w, c);
-            }
-            case "confirm-assets" -> {
-                ObjectNode p = requirePipeline(current);
-                for (String assetId : neededAssets(c, p)) {
-                    JsonNode a = findOrNull(c, "assets", assetId);
-                    if (a != null && "auto".equals(a.path("image").path("adoptedBy").asText())) ((ObjectNode) a.path("image")).put("adoptedBy", "user");
-                }
-                p.put("status", "running").put("message", "资产图已确认，继续制作分镜图");
                 advance(userId, w, c);
             }
             case "confirm-boards" -> {
@@ -3989,24 +3994,6 @@ public class DirectorService {
                 if (!step.send("asset-image", assetId, "资产图生成中")) return;
             }
             if (imaging) return;
-            List<String> toConfirm = new ArrayList<>();
-            for (String assetId : needed) {
-                JsonNode a = findOrNull(c, "assets", assetId);
-                if (a != null && "auto".equals(a.path("image").path("adoptedBy").asText())) toConfirm.add(a.path("name").asText());
-            }
-            if (!toConfirm.isEmpty() && auto(p)) {
-                for (String assetId : needed) {
-                    JsonNode a = findOrNull(c, "assets", assetId);
-                    if (a != null && "auto".equals(a.path("image").path("adoptedBy").asText())) ((ObjectNode) a.path("image")).put("adoptedBy", "user");
-                }
-                refresh(c);
-                toConfirm.clear();
-            }
-            if (!toConfirm.isEmpty()) {
-                p.put("status", "waiting").put("stage", "confirm-assets")
-                        .put("message", "资产图已生成（" + toConfirm.size() + " 张），请在「资产」中确认后继续");
-                return;
-            }
             // 4b. 片段用到的角色形态和场景视角：只出用得上的；已失败的不重试，缺形态的片段在下一步写清楚原因
             boolean variants = false;
             for (JsonNode clip : clipsOf(c, eps)) for (String need : neededVariants(c, clip)) {
@@ -4024,7 +4011,7 @@ public class DirectorService {
                 String cid = clip.path("id").asText();
                 if (failed.contains("board:" + cid)) continue;
                 if (clip.path("issues").size() > 0) { blocked.add("片段 " + clip.path("order").asInt() + " 需修改"); continue; }
-                try { boundRefs(c, clip, true); } catch (BusinessException e) { blocked.add("片段 " + clip.path("order").asInt() + "：" + e.getMessage()); continue; }
+                try { boundRefs(c, clip); } catch (BusinessException e) { blocked.add("片段 " + clip.path("order").asInt() + "：" + e.getMessage()); continue; }
                 boarding = true;
                 if (!step.send("board", cid, "分镜图生成中")) return;
             }
@@ -4639,9 +4626,11 @@ public class DirectorService {
             parts.unvoiced().forEach(unvoicedNode::add);
             ArrayNode voicedNode = clip.putArray("voiced");
             parts.voices().forEach(v -> voicedNode.add(v.name()));
-            if (!clip.path("videoPromptCustom").asBoolean(false))
-                clip.put("videoPrompt", lim != null && lim.frame() ? DirectorPrompts.framePrompt(c.path("settings"), clip, names, parts.voiceDescs())
-                        : DirectorPrompts.videoPrompt(c.path("settings"), clip, parts.videoRefs(), names, parts.voices(), parts.unvoiced(), parts.voiceDescs(), aliases));
+            if (!clip.path("videoPromptCustom").asBoolean(false)) {
+                // 文字在提示词库（stage-director-video / -frame）；库里缺这个环节时保留上次编好的，提交时再按「提示词未配置」拦。
+                String compiled = videoTemplate(c, clip, lim, parts, names, aliases, null);
+                if (compiled != null) clip.put("videoPrompt", compiled);
+            }
             ArrayNode issues = clip.putArray("issues");
             int shots = clip.path("shots").size();
             if (shots == 0) issues.add("暂无镜头：请添加镜头或重写本集分镜脚本");
@@ -4668,7 +4657,7 @@ public class DirectorService {
             clip.set("warnings", warnings);
             clip.put("videoPromptRewrite", rewriteState(c, clip, lim));
             check((ObjectNode) clip.path("board"), boardCurrent(c, clip), legacyBoardCurrent(c, clip, adoptedCandidate(clip.path("board"))), false);
-            String legacy = legacyVideoPrompt(c, clip, lim, parts, names, promptFormat(adoptedCandidate(clip.path("video"))));
+            String legacy = legacyVideoPrompt(c, clip, lim, parts, names, aliases, adoptedCandidate(clip.path("video")));
             check((ObjectNode) clip.path("video"), videoCurrent(c, clip, lim), legacy == null ? null : videoCurrent(c, clip, lim, legacy), true);
         }
     }
@@ -4702,12 +4691,37 @@ public class DirectorService {
         return new VideoParts(videoRefs, voices, unvoiced, voiceDescs);
     }
 
+    /** 当前视频提示词（首帧出片用首帧模板）；version 为 null 用库里当前版本，库里没有返回 null。 */
+    private String videoTemplate(ObjectNode c, JsonNode clip, Limits lim, VideoParts parts, Map<String, String> names, Map<String, List<String>> aliases, Integer version) {
+        return lim != null && lim.frame() ? DirectorPrompts.framePrompt(prompts(), version, c.path("settings"), clip, names, parts.voiceDescs())
+                : DirectorPrompts.videoPrompt(prompts(), version, c.path("settings"), clip, parts.videoRefs(), names, parts.voices(), parts.unvoiced(), parts.voiceDescs(), aliases, DirectorPrompts.MAX_SHOTS);
+    }
+
+    /** 这一段现在用的是哪个视频模板环节（首帧出片另一个）。 */
+    private static String videoStage(Limits lim) {
+        return lim != null && lim.frame() ? StudioPromptCallPoints.DIRECTOR_VIDEO_FRAME : StudioPromptCallPoints.DIRECTOR_VIDEO;
+    }
+
     /**
-     * 按 format 那一版模板编出的这一段提示词，只用来核对那一版生成的视频：换模板本身不算「镜头、台词或提示词已修改」。
-     * 用户改写过提示词、首帧出片（模板没换）或 format 就是当前版本时返回 null。没记版本的候选按第 1 版。
+     * 候选是按视频模板哪一版编的：记了 videoTemplate 按它，第 4 版（以及首帧出片）没记的是模板进库之前生成的，和库里第 1 版逐字一致。
      */
-    private String legacyVideoPrompt(ObjectNode c, JsonNode clip, Limits lim, VideoParts parts, Map<String, String> names, int format) {
-        if (clip.path("videoPromptCustom").asBoolean(false) || (lim != null && lim.frame()) || format >= DirectorPrompts.VIDEO_PROMPT_FORMAT) return null;
+    private static int videoTemplateVersion(JsonNode m) {
+        return m == null ? 1 : m.path("videoTemplate").asInt(1);
+    }
+
+    /**
+     * 按候选生成时的那一版模板编出的这一段提示词，只用来核对那一版生成的视频：换模板本身不算「镜头、台词或提示词已修改」
+     * （2026-11-11 用户定：生成好的视频就是终态，后台改了模板只影响之后生成的）。
+     * 用户改写过提示词、或候选用的就是当前版本时返回 null；那一版在库里找不到时也返回 null（按当前版本比）。
+     */
+    private String legacyVideoPrompt(ObjectNode c, JsonNode clip, Limits lim, VideoParts parts, Map<String, String> names,
+                                     Map<String, List<String>> aliases, JsonNode candidate) {
+        if (clip.path("videoPromptCustom").asBoolean(false)) return null;
+        int format = promptFormat(candidate);
+        if (lim != null && lim.frame() || format >= DirectorPrompts.VIDEO_PROMPT_FORMAT) {
+            int version = videoTemplateVersion(candidate);
+            return version == DirectorPrompts.templateVersion(prompts(), videoStage(lim)) ? null : videoTemplate(c, clip, lim, parts, names, aliases, version);
+        }
         return switch (format) {
             case 0, 1 -> DirectorPrompts.legacyVideoPrompt(c.path("settings"), clip, parts.videoRefs(), names, parts.voices(), parts.unvoiced(), parts.voiceDescs());
             case 2 -> DirectorPrompts.videoPromptV2(c.path("settings"), clip, parts.videoRefs(), names, parts.voices(), parts.unvoiced(), parts.voiceDescs());
@@ -4750,13 +4764,13 @@ public class DirectorService {
         return m == null ? 1 : m.path("promptFormat").asInt(1);
     }
 
-    private String legacyVideoPrompt(ObjectNode c, JsonNode clip, Limits lim, int format) {
+    private String legacyVideoPrompt(ObjectNode c, JsonNode clip, Limits lim, JsonNode candidate) {
         Map<String, String> names = new HashMap<>();
         for (JsonNode a : c.path("assets")) names.put(a.path("id").asText(), a.path("name").asText());
         List<DirectorPrompts.Ref> refs = new ArrayList<>();
         for (JsonNode a : visualAssets(c, clip))
             refs.add(new DirectorPrompts.Ref("图" + (refs.size() + 1), a.path("kind").asText(), a.path("name").asText()));
-        return legacyVideoPrompt(c, clip, lim, videoParts(c, clip, refs, names), names, format);
+        return legacyVideoPrompt(c, clip, lim, videoParts(c, clip, refs, names), names, characterAliases(c), candidate);
     }
 
     /** 片段里说台词的角色（按第一次开口的顺序），视频的声音参考按这个顺序编号。 */

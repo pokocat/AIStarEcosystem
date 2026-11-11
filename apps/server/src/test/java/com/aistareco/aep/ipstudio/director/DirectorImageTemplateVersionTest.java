@@ -136,4 +136,46 @@ class DirectorImageTemplateVersionTest {
         service.refresh(c);
         assertEquals("outdated", check(asset("as1").path("image")));
     }
+
+    // ── 视频提示词（2026-11-11 搬进提示词库 stage-director-video）：同一条规则 —— 生成好的视频是终态，换模板只影响之后生成的 ──
+
+    private static final String VIDEO = "stage-director-video";
+
+    private void adoptVideo(Integer templateVersion) {
+        Object current = ReflectionTestUtils.invokeMethod(service, "videoCurrent", c, clip(), null);
+        String fp = (String) ReflectionTestUtils.invokeMethod(current, "fingerprint");
+        ObjectNode slot = (ObjectNode) clip().path("video");
+        slot.putArray("candidates");
+        ObjectNode m = slot.withArray("candidates").addObject().put("id", "v1").put("key", "k/video.mp4").put("source", "generated")
+                .put("fingerprint", fp).put("promptFormat", DirectorPrompts.VIDEO_PROMPT_FORMAT);
+        if (templateVersion != null) m.put("videoTemplate", templateVersion);
+        slot.put("adoptedId", "v1").put("adoptedBy", "user");
+    }
+
+    private void publishNewVideoTemplate() {
+        ReflectionTestUtils.setField(service, "promptAssembler", new StudioPromptAssembler(PromptLibraries.withNewVersions(PromptLibraries.revised(VIDEO, "新版本多一句。"))));
+    }
+
+    @Test
+    void anAdoptedVideoStaysCurrentAfterANewVideoTemplateIsPublished() {
+        service.refresh(c);
+        adoptVideo(null); // 模板进库之前生成的第 4 版：没记版本，就是库里的 v1
+        publishNewVideoTemplate();
+        service.refresh(c);
+        assertTrue(clip().path("videoPrompt").asText().endsWith("新版本多一句。"), "之后生成用新版本");
+        assertEquals("current", check(clip().path("video")), clip().path("video").toString());
+
+        ((ObjectNode) clip().path("shots").get(1)).put("still", "陈默把信塞进口袋");
+        service.refresh(c);
+        assertEquals("outdated", check(clip().path("video")), "真改了镜头照样标需更新");
+    }
+
+    @Test
+    void aVideoMadeWithTheNewTemplateIsCheckedAgainstIt() {
+        publishNewVideoTemplate();
+        service.refresh(c);
+        adoptVideo(DirectorPrompts.templateVersion(StudioPromptAssembler.classpath(), VIDEO) + 1);
+        service.refresh(c);
+        assertEquals("current", check(clip().path("video")));
+    }
 }

@@ -15841,7 +15841,7 @@ paths:
     get:
       tags: [ipstudio]
       operationId: directorGetWork
-      description: '读作品。读之前把已结束的任务结果回投：输入指纹未变才填空着的采用位（adoptedBy=auto，需用户确认）；变了只追加 stale 历史版本。'
+      description: '读作品。读之前把已结束的任务结果回投：输入指纹未变才填空着的采用位。资产图直接采用，分镜图和视频待确认。旧作品待确认的资产图会自动采用原版本。输入已变则只追加 stale 历史版本。'
       parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
       responses:
         '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/DirectorWork' } } } }
@@ -15906,7 +15906,7 @@ paths:
         计价、冻结、付款（billing）、结算、幂等（clientRequestId）都在原链路；maxCost 是界面报价，价格变了 409 STUDIO_PRICE_CHANGED。
         H3 片段视频提交前先按官方写法改写提示词（不进报价，按实际用量另扣）；改写稿有提示时手动生成停在 videoPromptRewrite=review，
         再发 video 须带 options.promptChoice=optimized（用优化稿）或 original（用原文，不改写），未选 409 DIRECTOR_PROMPT_REVIEW；original 随时可用。
-        必要参考图缺失 400 DIRECTOR_REFERENCE_MISSING，未确认 400 DIRECTOR_REFERENCE_UNCONFIRMED，片段有待改问题 400 DIRECTOR_CLIP_NEEDS_FIX；
+        必要参考图缺失 400 DIRECTOR_REFERENCE_MISSING，片段有待改问题 400 DIRECTOR_CLIP_NEEDS_FIX；视频引用的分镜图未确认时返回 400 DIRECTOR_BOARD_UNCONFIRMED。
         没有可用的全能参考或单首帧视频模型时规划 503 DIRECTOR_VIDEO_MODEL_UNAVAILABLE。首帧模式一镜一段，仅传已确认的分镜首帧，不带额外资产图或声音；绑定声音时需显式确认本次不带声音参考。
       parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [type, clientRequestId], properties: { type: { type: string }, targetId: { type: string, nullable: true }, clientRequestId: { type: string, maxLength: 48 }, options: { type: object }, billing: { type: object, nullable: true }, maxCost: { type: integer, nullable: true } } } } } }
@@ -15958,9 +15958,9 @@ paths:
       operationId: directorPipeline
       description: >-
         一键制作（target：film 默认 = 一路做到每集导出成片；video；board；plan = 分集 + 资产 + 片段镜头与分镜图 / 视频提示词，不出图。
-        auto=true 为全自动：分集按默认采用（开头资料保留为设定资料，拆分失败则作为一集继续），资产清单原样入库，参考图、分镜图、片段视频自动确认；否则在这几处停下等确认（分集是 stage=confirm-split，用 edits 的 split.save 继续），其余用 confirm-*。
+        auto=true 为全自动：分集按默认采用（开头资料保留为设定资料，拆分失败则作为一集继续），资产清单原样入库，分镜图和片段视频自动确认。否则在分集、资产清单和后续需要使用的分镜图、片段视频处等确认。分集用 split.save 继续，资产清单用 extract.save，分镜图和视频用对应的 confirm-*。
         action：start / pause / resume / retry / confirm-assets / confirm-boards / confirm-videos / stop / dismiss）。整部作品也可以做到视频。后台调度推进，关页继续；
-        付款方在 start 时定下；预算是硬上限，同时最多 2 个在途子任务；参考图生成后停下等用户确认。
+        付款方在 start 时定下；预算是硬上限，同时最多 2 个在途子任务。资产图生成后自动采用，旧版 confirm-assets 操作仍可继续制作。
         一键制作只补没做的步骤、不重做已有内容；start 时所选范围已经没有可做的（如分镜脚本都写好了）不建连跑，409 DIRECTOR_PIPELINE_NOTHING_TO_DO，message 说明哪些已做好、要重做去哪。
       parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [action], properties: { action: { type: string }, scope: { type: string, enum: [episode, work] }, episodeId: { type: string, nullable: true }, target: { type: string, enum: [plan, board, video, film] }, budget: { type: integer }, billing: { type: object, nullable: true }, auto: { type: boolean } } } } } }

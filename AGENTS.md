@@ -3,6 +3,8 @@
 > 给所有 AI coding agent（Claude Code、Cursor、Aider、Continue、自建 SDK agent…）的统一指引。
 > Claude Code 仍然通过 `CLAUDE.md` 注入，但 `CLAUDE.md` 是本文件的 symlink —— 只需维护一份。
 
+**本地目录与磁盘（2026-11-10 用户要求）**：默认复用 `/Users/donis/dev/AIStarEcosystem`，不要为每个任务、修复或发布新建 `AIStarEcosystem-*` 副本、clone 或本地 worktree，也不要改到隐藏目录继续堆副本。已有未提交工作保留，按文件限定修改和提交范围。构建、测试优先用 `devq remote` 的隔离快照；需要干净环境时也优先远程快照。只有用户明确要求新建本地工作树时才创建，结束后清理其可再生依赖和构建产物。正在运行的其他任务和工作目录不得擅自删除或停止。
+
 **模型正常回包保留（2026-11-05 用户要求）**：模型返回的非空原文必须交付或提供本人可读的原文记录，不能因字数、标题排版、JSON 整理、Token 用量或预估预算丢弃整份结果。文字调用在业务解析前保存完整原文到既有用量记录，短剧 / 带货的 `/model-results` 与 Studio 任务历史的「查看原文」「全部原文」（2026-11-10 起，V80 按任务关联）提供只读、复制与下载；不另建计费真值。原文无法安全转换为可执行结构时暂停后续付费操作，保留用户已有内容。真实空结果、供应商错误、坏媒体和越权引用仍明确处理。规则真源 `specs/BUSINESS_RULES.md`「模型生成原文保留」。
 
 **Single sources of truth**
@@ -760,7 +762,7 @@ v0.197：web-drama 所有弹窗在 375 宽下右边都被裁掉一截，四个�
 盖住了 jsdom 的 localStorage，写入全被 try/catch 吞掉、什么都存不下；CI 用 Node 22，拿到的是 jsdom 真的 Storage。
 同一个文件里还有一条纯时序的抢跑（价格没读到就点按钮），本机偶发、CI 上被前一个问题盖住。
 - 判据：CI 稳定红、本机稳定绿 → 差的是环境（Node 版本、`.env*` 文件、时区、CPU 快慢），不是运气。
-  先在**干净的 worktree**（没有本机 `.env.local`）里复现，再用能让失败率从 0% 变 100% 的开关证明根因（§8.0.1 ②）。
+  先在**干净的远程快照**（通过 `devq remote`，不带本机 `.env.local`）里复现，再用能让失败率从 0% 变 100% 的开关证明根因（§8.0.1 ②）；不要为此另建本地 worktree。
 - 已做：所有 vitest 项目（web-drama / web-aiavatar / packages/api-client）的 `setupFiles` 共用 `scripts/vitest/setup-storage.ts`：
   jsdom 环境把 Storage 换回 jsdom 自己的那份，node 环境把 Node 25 的空壳删掉（Node 22 的 node 环境里本来就没有），本机与 CI 一致；
   用到 localStorage 的测试文件在 `beforeEach` 里 `localStorage.clear()`。web-celebrity 的测试走 `node --test`、不碰 Storage，不受影响。
@@ -1258,7 +1260,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 ### AI 导演台（2026-10-22，本地首版已实现，独立功能分支提交、未发布；真实 Agnes 出图已验，视频受厂商队列阻塞，见 `docs/audits/ai-director-local-acceptance-20261022.md`）
 
-入口 `/director`（Studio 主导航「AI 导演台」），方案真源 `docs/ai-director-plan.md` v1.1。作品是**服务端拥有**的结构化对象（V65 `director_work.content_json`），不放进 `IpProject.doc`，不依赖分镜编辑方案。用户编辑带对象 `rev`，超长直接 400 不截断；生成结果回投前比对提交时的输入指纹（提示词 + 实际参考图 key / 正文哈希 / 本集片段修订基线），没变才填空着的采用位（`adoptedBy=auto`，要用户确认），变了只追加 `stale` 历史版本或留 `pendingPlan` 让用户决定。任务就是原生 `IpRun`（`host_type=director`，`project_id` 存作品 id，`node_id` 存目标），文字走 `StudioWorkflowService.submitDirectorText`、出图走 `IpRunService.generateForDirector`，付款选择与 `maxCost` 报价校验同 Studio。片段规划只做结构校验，镜头数 / 时长 / 未知资产与说话人一律原样保留，由片段 `issues` 阻止出图、就地修改。片段时长来自所选视频模型（`StudioVideoService.models()` 里支持全能参考的），没有可用模型时规划 503。一键连跑 `DirectorRunner` 每 3 秒推进，最多 2 个在途、预算硬上限、参考图（做到视频时还有分镜图）生成后停下等确认；做到视频只按集。片段视频走 `IpRunService.generateVideoForDirector`（全能参考：图1 采用并确认的分镜图，之后是资产参考图和说话角色绑定的声音样本 `asset.voice`，可选的供应商改写默认关闭），先 `quote` 报价再提交；原生视频任务记在片段 `video.pending`，读作品 / 后台推进时查询回投。整集导出按每个片段当前采用并确认的视频，走 Studio 合成（`studio-assemble`，不扣积分），导出记录保存所用版本，换过片段就标「这版是旧的」。连播预览在前端按顺序播已采用的视频，缺段跳过并标明。只支持首帧的视频模型（没有保存视频规格、走旧首帧路径的端点，如 Agnes Video 2.5）按「首帧出片」模式：一镜一段、采用的单张分镜画面作真正首帧（refKey 路径），不带参考图和声音；绑了声音的片段要用户显式勾「不带声音参考生成」，绑定保留。采用版本按生成指纹核对，与当前设置不一致时标原因、给重新生成入口，不自动重跑。
+入口 `/director`（Studio 主导航「AI 导演台」），方案真源 `docs/ai-director-plan.md` v1.1。作品是**服务端拥有**的结构化对象（V65 `director_work.content_json`），不放进 `IpProject.doc`，不依赖分镜编辑方案。用户编辑带对象 `rev`，超长直接 400 不截断；生成结果回投前比对提交时的输入指纹（提示词 + 实际参考图 key / 正文哈希 / 本集片段修订基线），没变才填空着的采用位（资产图直接采用，分镜图和视频待确认），变了只追加 `stale` 历史版本或留 `pendingPlan` 让用户决定。任务就是原生 `IpRun`（`host_type=director`，`project_id` 存作品 id，`node_id` 存目标），文字走 `StudioWorkflowService.submitDirectorText`、出图走 `IpRunService.generateForDirector`，付款选择与 `maxCost` 报价校验同 Studio。片段规划只做结构校验，镜头数 / 时长 / 未知资产与说话人一律原样保留，由片段 `issues` 阻止出图、就地修改。片段时长来自所选视频模型（`StudioVideoService.models()` 里支持全能参考的），没有可用模型时规划 503。一键连跑 `DirectorRunner` 每 3 秒推进，最多 2 个在途、预算硬上限、参考图（做到视频时还有分镜图）生成后停下等确认；做到视频只按集。片段视频走 `IpRunService.generateVideoForDirector`（全能参考：图1 采用并确认的分镜图，之后是资产参考图和说话角色绑定的声音样本 `asset.voice`，可选的供应商改写默认关闭），先 `quote` 报价再提交；原生视频任务记在片段 `video.pending`，读作品 / 后台推进时查询回投。整集导出按每个片段当前采用并确认的视频，走 Studio 合成（`studio-assemble`，不扣积分），导出记录保存所用版本，换过片段就标「这版是旧的」。连播预览在前端按顺序播已采用的视频，缺段跳过并标明。只支持首帧的视频模型（没有保存视频规格、走旧首帧路径的端点，如 Agnes Video 2.5）按「首帧出片」模式：一镜一段、采用的单张分镜画面作真正首帧（refKey 路径），不带参考图和声音；绑了声音的片段要用户显式勾「不带声音参考生成」，绑定保留。采用版本按生成指纹核对，与当前设置不一致时标原因、给重新生成入口，不自动重跑。
 
 
 2026-10-24 改版（`20261024-ai-director`）：
@@ -1282,7 +1284,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 - **分镜片段卡（2026-10-25）：** 两栏，左边成片画面（有视频看视频、没有看分镜图，宽度随画幅：9:16 188px / 1:1 220px / 16:9 300px）+ 视频版本号 + 「关联资产」「分镜图」两个入口；右边说明、问题 / 节奏建议、视频提示词，最后一行是生成设置 + 按钮 + 价格（`ClipVideo`）。分镜图没好时按钮旁给「生成分镜图」，不再单独占一行。
 - **资产页：** 工具栏有「生成全部参考图」（缺参考图、不是仅声音出场、没在生成的资产，确认后逐个提交，与分镜批量出分镜图同一套）；资产卡底部一行固定高度（状态 + 音色图标 + 主按钮，不换行）；详情抽屉分「头部（编辑 / 删除）→ 描述 → 参考图（形象参考、生成与费用、出图提示词）→ 角色音色」。切换工作区会清掉上一处的报错。
 - **分集（2026-10-25，本地未发布）：** 模型只给每集起点和正文起点 `bodyStart`，区间由程序构造，不会漏段或重叠（线上《食神》漏最后一段、《谁让这个睁眼瞎修仙的》前 252 段是设定资料，都曾被判 `AI_BAD_OUTPUT`）。剧本里标好「第N集」时程序直接按标题分、不扣积分（`DirectorPrompts.headingStarts`，服务端唯一一处）。结果先存 `pendingSplit` 预览确认；开头资料默认存为设定资料 `reference`，可改、可并入第 1 集，作为创作材料交给提取和规划，不进输入指纹。全自动一键制作按默认直接采用并在 notice 里说明，拆分失败作为一集继续；不全自动停在 `confirm-split`。`split.undo` 在出图 / 视频前可撤销拆分。原则是先让用户跑完流程：原文不丢、做了什么说清楚、能一键改回。
-- **一键制作默认做到成片**（`target=film`，2026-10-25 起；另有 `board` / `plan`，`video` 只供旧调用）：写剧本 → 拆分 → 提取资产 → 写分镜脚本 → 参考图 → 分镜图 → 片段视频 → 每集导出。`auto=true`（默认）全自动：资产清单原样入库，参考图 / 分镜图 / 片段视频自动确认；不勾全自动就在这四处（以及分集）停下等确认。整部作品也能做到视频。预算由 `POST pipeline/estimate` 推荐（与真提交同一套单价，视频在没分镜图时按模型价表和时长估，`StudioVideoService.estimate`），用户确认或调整。片段卡片只显示视频提示词，分镜图提示词在分镜图弹窗里。导演台出图尺寸按当前图片模型规格里该比例的尺寸选（同比例有几档取最大的），不写死。
+- **一键制作默认做到成片**（`target=film`，2026-10-25 起；另有 `board` / `plan`，`video` 只供旧调用）：写剧本 → 拆分 → 提取资产 → 写分镜脚本 → 参考图 → 分镜图 → 片段视频 → 每集导出。`auto=true`（默认）全自动：资产清单原样入库，分镜图 / 片段视频自动确认；关闭全自动后在分集、资产清单和后续需要使用的分镜图、片段视频处等确认。首张资产图始终自动采用。整部作品也能做到视频。预算由 `POST pipeline/estimate` 推荐（与真提交同一套单价，视频在没分镜图时按模型价表和时长估，`StudioVideoService.estimate`），用户确认或调整。片段卡片只显示视频提示词，分镜图提示词在分镜图弹窗里。导演台出图尺寸按当前图片模型规格里该比例的尺寸选（同比例有几档取最大的），不写死。
 - **出 wire 的任务列表在新事务里读**（`view()`）：任务在独立事务里建，MySQL 可重复读下外层事务看不到它，页面以为没在生成、不轮询（2026-10-24 线上「点生成剧本没反应、再点报该项生成中」）。本地 H2 复现不了。
 - **作品删除（2026-10-28，已生产发布 `20261028-director-delete`）：** 软删除，复用 `DELETE /works/{id}`；在作品行锁内判在途，在途以 `ip_run` 和原生视频任务为准（`done / video.bound` 的绑定记录要查它指向的 `material_video_job`，未结案的受理待核对 / 重新查询中、查不到都算没结束；已按全局规则 failed 结案的 `VIDEO_SUBMISSION_UNKNOWN` 算结束），不信作品 JSON 的 `running`。在途检查与删除同一事务、同一条连接（入口读已提交），持行锁时不许再开 `REQUIRES_NEW`，否则并发删除耗尽连接池（`DirectorDeletePoolTest`）。前端「已删除」通知带作品 id，只作用于当前打开的那部作品。一键制作 running → 409 `DIRECTOR_WORK_BUSY` 先停止；paused / waiting 同事务标 stopped。本人重复删除成功，他人 404。规则见 `specs/BUSINESS_RULES.md`「AI 导演台作品删除」。
 - **回收站与恢复（2026-10-29，已生产发布 `9ad3603b0`）：** `GET /works/trash`（只读投影，不回投不改内容）+ `POST /works/{id}/restore`（同一把作品行锁，本事务本连接，不走 `view()`）。恢复原 ID 原内容，`active=false`，遗留的 running / paused / waiting 一键制作改 stopped；写 `restoredAt`，恢复前提交的任务回投时只写结果、不接着付费派发（`DirectorService.beforeRestore`：改写完不自动提交视频、不自动重试改写），前端有 `restoredAt` 时不自动发创意对话开场。正常作品重复恢复 no-op。恢复不占新建额度（上限只拦新建）。规则见 `specs/BUSINESS_RULES.md`「AI 导演台回收站与恢复」。
@@ -1360,7 +1362,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 ### 导演台 H3 提示词：不写给系统的话（2026-10-31，本地未发布）
 
-《扣钱》cl45 优化稿 8198 字符超长，按 758 字中文原文出片，成片末尾在只有一双手的镜头里多出约 4 秒人声，两个转写模型都听出「没有声音」，对上的是「餐馆老板 没有声音参考，按人物身份自然配音。」。**中文视频提示词可能整段交给 H3，H3 会把分不清的中文念出来**：中文稿只写画面里有什么、谁说什么、谁照哪张图 / 哪段音频，参考图「是什么」「怎么用」、配音规则、「只说引号里的台词」这类写给系统的话不写（`DirectorPrompts.videoPrompt` 第 4 版，`DirectorVideoPromptTest#noNotesAddressedToTheSystem` 守着；改写需要的说明另由 `DirectorService#rewrite` 用英文交给改写模型）。同一段第三镜资产叫「餐馆老板」、分镜写「老板」，旧判断认不出他在画面里，写成「画面里只有静儿」「老板在画外说」：出镜要按名字和别名认，分不清时不写强约束（`castOfShot`）。改写约定有篇幅预算，超长只精简 fully_preserved 行的重复说明；篇幅一收紧，模型会把参考素材整份漏掉（cl45 真调 4 次漏了 2 次分镜图），所以漏写的参考素材由代码按素材清单补回，导演台分镜图（图1）的保留关系也由代码固定为完全保留（模型标过 weak_reference）；「重新优化」（`video-prompt`）只出稿不出片；视频候选在提交时固定记用了哪份稿。改中文模板照旧升 `VIDEO_PROMPT_FORMAT` 并冻结上一版和它用到的判断函数。取证见 `docs/audits/director-h3-cl45-prompt-review-2026-10.md`。新成片复验与篇幅预算的真模型试跑未做。
+《扣钱》cl45 优化稿 8198 字符超长，按 758 字中文原文出片，成片末尾在只有一双手的镜头里多出约 4 秒人声，两个转写模型都听出「没有声音」，对上的是「餐馆老板 没有声音参考，按人物身份自然配音。」。**中文视频提示词可能整段交给 H3，H3 会把分不清的中文念出来**：中文稿只写画面里有什么、谁说什么、谁照哪张图 / 哪段音频，参考图「是什么」「怎么用」、配音规则、「只说引号里的台词」这类写给系统的话不写（`DirectorPrompts.videoPrompt` 第 4 版，`DirectorVideoPromptTest#noNotesAddressedToTheSystem` 守着；改写需要的说明另由 `DirectorService#rewrite` 用英文交给改写模型）。同一段第三镜资产叫「餐馆老板」、分镜写「老板」，旧判断认不出他在画面里，写成「画面里只有静儿」「老板在画外说」：出镜要按名字和别名认，分不清时不写强约束（`castOfShot`）。改写约定有篇幅预算，超长只精简 fully_preserved 行的重复说明；篇幅一收紧，模型会把参考素材整份漏掉（cl45 真调 4 次漏了 2 次分镜图），所以漏写的参考素材由代码按素材清单补回，导演台分镜图（图1）的保留关系也由代码固定为完全保留（模型标过 weak_reference）；「重新优化」（`video-prompt`）只出稿不出片；视频候选在提交时固定记用了哪份稿。2026-11-11 起中文视频提示词的文字在提示词库 `stage-director-video` / `-frame`，后台改了只影响之后生成的视频，已生成的按候选记的 `videoTemplate` 版本核对、不会被标需更新；只有代码侧的判断或传进模板的变量变了，才升 `VIDEO_PROMPT_FORMAT` 并冻结上一版和它用到的判断函数。取证见 `docs/audits/director-h3-cl45-prompt-review-2026-10.md`。新成片复验与篇幅预算的真模型试跑未做。
 
 ### Studio 对话不锁方法（2026-10-23，本地未发布）
 
