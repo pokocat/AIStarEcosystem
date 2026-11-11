@@ -396,7 +396,9 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [统一画布封面生产发布](releases/studio-shared-covers-production-20261017.md)：a4092626 两服务上线、真实封面验收与回退；已发布（last-reviewed: 2026-10-17）。
 - [画布分组说明与复刻模板精简](releases/studio-group-description-validation-20261017.md)：Group 说明的编辑/预览/只读查看、模板与副本保留说明、官方复刻模板 v3；已发布 ccbff781（last-reviewed: 2026-10-17）。
 - [视觉显存错误受控降级验收](releases/studio-vision-memory-fallback-validation-20261017.md)：只在聚算 Qwen 返回 400 `unsupported_geometry`（HBM 预算）时，原尺寸两帧一批读取并完成原任务；2026-10-19 合入 main，排在线上缩图降档之后，未发布（last-reviewed: 2026-10-19）。
-- [Seedance 2.0 接入与生产发布](releases/studio-seedance-2026-10-14-release.md)：初次端点视频协议、仅对 studio 开放、H3 仍为默认（2026-10-14）；旧供应商模型下架后的 [OneToken Seedance 2.0 / 2.5 生产配置](releases/onetoken-seedance-models-production-config-20261026.md) 已恢复两条可选模型，并按采购成本加价 60% 把 720p 售价设为 94 / 146 积分/秒，H3 继续默认（2026-10-26）；直连火山方舟的 [Seedance 2.0 Fast / Mini 生产配置](releases/ark-seedance-models-production-config-20261029.md) 新增两条只对 studio 开放的模型，画布与导演台可选，按成本加价 60% 定为 130 / 81 积分/秒（2026-10-29）。
+- [Seedance 2.0 接入与生产发布](releases/studio-seedance-2026-10-14-release.md)：初次端点视频协议、仅对 studio 开放、H3 仍为默认（2026-10-14）；旧供应商模型下架后的 [OneToken Seedance 2.0 / 2.5 生产配置](releases/onetoken-seedance-models-production-config-20261026.md) 已恢复两条可选模型，并按采购成本加价 60% 把 720p 售价设为 94 / 146 积分/秒，H3 继续默认（2026-10-26）；直连火山方舟的 [Seedance 2.0 Fast / Mini 生产配置](releases/ark-seedance-models-production-config-20261029.md) 新增两条只对 studio 开放的模型，画布与导演台可选，按成本加价 60% 定为 130 / 81 积分/秒（2026-10-29）。三条 Seedance 2.0 [开放参考视频](releases/seedance20-reference-video-config-20261112.md)，价格未改（2026-11-12）。
+- [Studio GPT Image 分辨率计价发布](releases/studio-resolution-pricing-release-20261111.md)：GPT Image 2 / 2.5 按 1K / 2K / 4K 分档计价（`studio.image-resolution-pricing`），同时调 Seedance 2.5 与 Terra 售价（2026-11-11）。
+- [Studio 图片结果交付与分段续跑发布](releases/studio-image-and-segment-resume-release-20261111.md)：下载前保存供应商结果地址、旧视频任务从失败片段继续（2026-11-11）。
 - [导演台上架 Seedance 2.0 / 2.5](releases/seedance-director-reference-production-config-20261029.md)：两条端点规格补「全能参考」模式（图片 + 音频参考，不开放参考视频），导演台可选，94 / 146 积分/秒；仅改生产配置，未付费实测（last-reviewed: 2026-10-29）。
 - [视频模型按开放范围生效](releases/studio-model-scope-2026-10-14-release.md)：录入模型并配置开放范围即可在 Studio 选择，取消二次候选（2026-10-14）。
 - [图片上传与模型 404 修复](releases/studio-upload-chat-repair-20261016.md)：相机原图自动压缩、模型 404 修复；已发布（2026-10-16）。
@@ -479,6 +481,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [导演台拆分弹窗增加剧本预览](releases/director-split-preview-release-20261104.md) — 仅 web-aiavatar；认不出分集标题时，弹窗旁显示剧本预览，便于复制第 1 集标题行（last-reviewed: 2026-11-04）。
 - [声音参考格式修复发布](releases/voice-reference-format-release-20261104.md) — server；短 M4A 等声音自动转 WAV，报错说明素材类型和可用格式；真实出片未验证（last-reviewed: 2026-11-04）
 - [首页场景卡两行与导演台单个视角重新生成](releases/studio-home-goals-and-scene-view-release-20261111.md) — server + web-aiavatar；首页场景卡改为三列两行、商品套图放最后；导演台单个视角只重新生成这一个；`20261111-home-goals-94e68ff7`（2026-11-11）
+- [智能优化积分核对发布](releases/optimize-credits-release-20261112.md) — server + web-aiavatar `20261111-optimize-credits-eb7bb9da`；智能优化的普通积分在建任务前核对、同一草稿多条视频不互相挡，同包带导演台与深度复刻（last-reviewed 2026-11-12）
 - [爆款复刻三种方式发布](releases/recreation-modes-release-20261111.md) — server + web-aiavatar `20261111-recreation-modes-0a330629`；三种复刻方式、自动检查开关、首页去重复入口；生产机装了深度复刻运行时但未开启（内存不够，实测记录在内）（last-reviewed 2026-11-11）
 - [资产页删除发布](releases/asset-library-delete-release-20261110.md) — web-aiavatar；资产页单个与批量删除，只从资产库移除、不动画布和作品（last-reviewed: 2026-11-10）
 - [编导脚本出片分层发布](releases/scene-script-layers-release-20261110.md) — server + web-aiavatar；六段脚本出片只发和画面有关的部分，编辑框标「仅参考」，参考素材受理时就核对（last-reviewed: 2026-11-10）

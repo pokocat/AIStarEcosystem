@@ -119,6 +119,8 @@ public class StudioVideoTaskService {
         long estimate;
         if("direct".equals(req.kind())) {
             if(req.video()==null||!"video".equals(req.video().operation())||req.video().executionId()!=null)throw invalid("视频配置不完整");
+            // 优化提示词只能用普通积分，视频可能全由模型赠款付：两笔分开核对，付不起优化就不建任务（不留「需处理」的记录）
+            if(req.video().video()!=null&&req.video().video().rewrite()!=null)workflow.requireVideoRewriteAffordable(user,req.billing());
             ObjectNode nativeRequest=mapper.valueToTree(req.video());nativeRequest.put("nodeId","quote");
             estimate=workflow.quote(user,mapper.convertValue(nativeRequest,RunRequest.class));
             metadata.set("direct",mapper.valueToTree(req.video()));

@@ -32,6 +32,8 @@ test("付款账户定了：折后价在按钮上，折扣和其余细节放悬�
     .toBe("可用积分不足，需支付 465 积分。");
   // 优化提示词不含在按钮价格里，有没有折扣都在悬停提示里说；不优化、没赠款就只有价。
   expect(describeStudioVideoPrice(ready(quote()), 930, { optimizing: true })?.detail).toBe("优化提示词按实际用量另计。");
+  // 视频全由赠款付、但开着优化：不能说「无需另付积分」，优化那一笔只能用普通积分（2026-11-11 线上差 1 积分）
+  expect(describeStudioVideoPrice(ready(half({ scopedCredits: 465, walletCredits: 0 })), 930, { optimizing: true })?.detail).not.toContain("无需另付积分");
   expect(describeStudioVideoPrice(ready(quote()), 930)).toEqual({ standard: 930, shown: 930, detail: undefined, note: undefined });
 });
 

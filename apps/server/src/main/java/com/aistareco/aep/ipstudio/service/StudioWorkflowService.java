@@ -489,8 +489,15 @@ public class StudioWorkflowService {
         execution.set("tokenPricing",mapper.valueToTree(rate));
         var modelCharge=StudioTokenBilling.plan(endpoint,rate);
         StudioTokenBilling.store(execution,modelCharge,endpoint);
-        var billing=enterpriseBilling==null?null:enterpriseBilling.reserve(userId,request.billing(),IpRunService.REF_TYPE,id,endpoint.getId(),cost,"Studio 视频提示词优化",modelCharge);
-        if(enterpriseBilling==null&&cost>0)credits.hold(userId,cost,IpRunService.REF_TYPE,id,"Studio 视频提示词优化",modelCharge);
+        com.aistareco.aep.enterprise.service.EnterpriseBillingService.BillingAccount billing;
+        try {
+            billing=enterpriseBilling==null?null:enterpriseBilling.reserve(userId,request.billing(),IpRunService.REF_TYPE,id,endpoint.getId(),cost,"Studio 视频提示词优化",modelCharge);
+            if(enterpriseBilling==null&&cost>0)credits.hold(userId,cost,IpRunService.REF_TYPE,id,"Studio 视频提示词优化",modelCharge);
+        } catch(BusinessException e) {
+            // 原话「普通积分不足，请充值或减少生成数量」看不出是哪一笔：视频可能由赠款付、差的是这一笔。
+            if("MODEL_CREDITS_INSUFFICIENT".equals(e.getCode()))throw videoRewriteShortage(null);
+            throw e;
+        }
         IpRun run=IpRun.builder().id(id).projectId(projectId).ownerUserId(userId).nodeId(request.nodeId())
                 .kind("studio-video").status(IpRun.STATUS_RUNNING).stage("queued").cost(cost)
                 .enterpriseId(request.billing()!=null&&"enterprise".equals(request.billing().mode())?request.billing().enterpriseId():null)
@@ -547,6 +554,29 @@ public class StudioWorkflowService {
         if(rate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED",
                 "提示词优化暂不可用，可关闭「智能优化」按原文生成");
         return rate;
+    }
+
+    /**
+     * 「智能优化」这一笔的报价：改写用的是独立的文字模型，只能用普通积分（H3 的模型赠款付不了它），按这次的付款账户算。
+     * 只读，不冻结。2026-11-11 线上：视频 930 全由赠款付，优化要冻结 110 普通积分而账户只有 109，页面只核对了视频价就放行，
+     * 任务一建就停在「需处理」。AI 视频页点生成前用它再核对一次（GET /studio/video-optimize-price）。
+     */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true)
+    public com.aistareco.aep.billing.service.ModelChargeService.Quote quoteVideoRewrite(String user,com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing) {
+        if(fixtures.enabled()||enterpriseBilling==null)throw bad("MODEL_QUOTE_NOT_SUPPORTED","测试响应无需扣费报价");
+        var endpoint=videoRewriteEndpoint().endpoint();
+        return enterpriseBilling.quote(user,billing,StudioTokenBilling.plan(endpoint,videoRewriteRate(endpoint)));
+    }
+    /** 建视频任务前核对优化提示词要冻结的普通积分；付不起就不建任务、不扣积分，由页面提示改用「按原文生成」或充值。 */
+    public void requireVideoRewriteAffordable(String user,com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing) {
+        if(fixtures.enabled()||enterpriseBilling==null)return;
+        var quote=quoteVideoRewrite(user,billing);
+        if(!quote.canAfford()&&"MODEL_CREDITS_INSUFFICIENT".equals(quote.unavailableCode()))throw videoRewriteShortage(quote.walletCredits());
+    }
+    /** 优化提示词付不起时的报错：说清是哪一笔、只能用普通积分、怎么继续。need 为空时不写数（冻结额不一定等于要付的）。 */
+    static BusinessException videoRewriteShortage(Long need) {
+        return new BusinessException(HttpStatus.PAYMENT_REQUIRED,"MODEL_CREDITS_INSUFFICIENT",
+                (need==null?"优化提示词":"优化提示词需要 "+need+" 积分，")+"只能用普通积分支付，当前普通积分不足。可改用「按原文生成」，或充值后重试");
     }
 
     /** 三处改写共用独立绑定模型的冻结上限，估价、付款授权和提交用同一份模型及输出预算。 */

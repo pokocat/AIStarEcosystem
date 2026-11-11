@@ -1,6 +1,7 @@
 package com.aistareco.aep.service;
 
 import com.aistareco.aep.dto.AiAppSceneModelPolicyDto;
+import com.aistareco.aep.ipstudio.service.StudioImageModelRouting;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -80,26 +81,53 @@ public class AiAppSceneModelPolicyService {
     public AiModelPurpose registeredPurpose(String app,String scene){return purpose(app,scene);}
     public String billingUnit(String scene){return unit(scene);}
     public String mode(String appCode,String scene) {return get(appCode,scene).map(AiAppSceneModelPolicyDto::mode).orElse("selectable");}
-    public record Selection(AiModelInvocationService.ResolvedEndpoint resolved,long creditCost,String billingUnit) {}
+    public record Selection(AiModelInvocationService.ResolvedEndpoint resolved, long creditCost, String billingUnit,
+                            Map<String, Long> resolutionPrices) {
+        public Selection(AiModelInvocationService.ResolvedEndpoint resolved, long creditCost, String billingUnit) {
+            this(resolved, creditCost, billingUnit, Map.of());
+        }
+
+        public long creditCostForTier(String tier) {
+            return tier == null ? creditCost : resolutionPrices.getOrDefault(tier, creditCost);
+        }
+
+        public long creditCostForSize(String size) {
+            return creditCostForTier(StudioImageModelRouting.tierForSize(size));
+        }
+    }
+
     public Selection resolve(String appCode,String scene,String endpointId,long legacyCost) {
         var purpose=purpose(appCode,scene);var policy=get(appCode,scene);
-        if(policy.isEmpty())return new Selection(requireEndpoint(purpose,endpointId,appCode),legacyCost,unit(scene));
+        var tierPrices = imageResolutionPrices(scene);
+        if(policy.isEmpty())return selection(requireEndpoint(purpose,endpointId,appCode),legacyCost,unit(scene),tierPrices);
         var p=policy.get();String selected=endpointId==null||endpointId.isBlank()?p.defaultEndpointId():endpointId.trim();
         if("fixed".equals(p.mode())&&!Objects.equals(selected,p.defaultEndpointId()))throw unavailable("ENDPOINT_NOT_ALLOWED","此场景使用固定模型");
         var candidate=p.candidates().stream().filter(c->Objects.equals(c.endpointId(),selected)).findFirst().orElseThrow(()->unavailable("ENDPOINT_NOT_ALLOWED","所选模型不在场景开放范围内"));
         if(candidate.creditCost()==null || candidate.creditCost()<0 || !unit(scene).equals(candidate.billingUnit()))throw unavailable("AI_SCENE_PRICE_NOT_CONFIGURED","场景积分售价尚未配置");
-        return new Selection(requireEndpoint(purpose,selected,appCode),candidate.creditCost(),candidate.billingUnit());
+        return selection(requireEndpoint(purpose,selected,appCode),candidate.creditCost(),candidate.billingUnit(),tierPrices);
     }
     public List<Selection> available(String appCode,String scene,long legacyCost) {
         var purpose=purpose(appCode,scene);var policy=get(appCode,scene);
-        if(policy.isEmpty())return models.listCandidates(purpose,appCode).stream().filter(this::availableEndpoint).map(r->new Selection(r,legacyCost,unit(scene))).toList();
+        var tierPrices = imageResolutionPrices(scene);
+        if(policy.isEmpty())return models.listCandidates(purpose,appCode).stream().filter(this::availableEndpoint).map(r->selection(r,legacyCost,unit(scene),tierPrices)).toList();
         var p=policy.get();List<Selection> out=new ArrayList<>();
         for(var c:p.candidates()) {
             var r=models.resolveEndpoint(purpose,c.endpointId(),appCode);
             if(r.isEmpty()||!availableEndpoint(r.get())||c.creditCost()==null||c.creditCost()<0||!unit(scene).equals(c.billingUnit()))continue;
-            out.add(new Selection(new AiModelInvocationService.ResolvedEndpoint(r.get().endpoint(),r.get().candidate(),Objects.equals(p.defaultEndpointId(),c.endpointId())),c.creditCost(),c.billingUnit()));
+            out.add(selection(new AiModelInvocationService.ResolvedEndpoint(r.get().endpoint(),r.get().candidate(),Objects.equals(p.defaultEndpointId(),c.endpointId())),c.creditCost(),c.billingUnit(),tierPrices));
         }
         return out;
+    }
+    private Map<String, Map<String, Long>> imageResolutionPrices(String scene) {
+        if (!"image".equals(scene)) return Map.of();
+        return config.findByKey(StudioImageModelRouting.PRICING_CONFIG_KEY)
+                .map(c -> StudioImageModelRouting.resolutionPrices(c.value())).orElse(Map.of());
+    }
+    private Selection selection(AiModelInvocationService.ResolvedEndpoint resolved, long creditCost,
+                                String billingUnit, Map<String, Map<String, Long>> tierPrices) {
+        var family = StudioImageModelRouting.familyForProviderModel(resolved.endpoint().getModel());
+        return new Selection(resolved, creditCost, billingUnit,
+                family == null ? Map.of() : tierPrices.getOrDefault(family.id(), Map.of()));
     }
     private AiModelInvocationService.ResolvedEndpoint requireEndpoint(AiModelPurpose purpose,String id,String appCode) {
         return models.resolveEndpoint(purpose,id,appCode).orElseThrow(()->unavailable("ENDPOINT_NOT_ALLOWED","模型已停用或未绑定到对应能力用途"));

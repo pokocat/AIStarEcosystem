@@ -38,6 +38,17 @@ class DirectorPromptsTest {
         assertEquals(SCRIPT, scriptPrompt("不存在的题材", ""));
     }
 
+    /** 2026-11-10：线上 Terra 写的导演台剧本 4 份都叫「周桂芬 / 老钱 / 小满」，对比稿里「掉漆」也到处都是，都是提示词里的示例被原样写进了剧本。 */
+    @Test
+    void scriptPromptsCarryNoNamesOrPropsAModelWouldCopy() {
+        List<String> prompts = new ArrayList<>(List.of(SCRIPT));
+        DirectorPrompts.GENRES.keySet().forEach(g -> prompts.add(scriptPrompt(g, null)));
+        DirectorPrompts.TONES.keySet().forEach(t -> prompts.add(scriptPrompt(null, t)));
+        for (String p : prompts)
+            for (String copied : List.of("周桂芬", "老钱", "小满", "掉漆", "铁皮饼干盒", "城中村顶楼"))
+                assertFalse(p.contains(copied), copied);
+    }
+
     @Test
     void basePromptKeepsTheOutputContract() {
         // 编剧提示词换了写法，输出仍是导演台的 {title, logline, content}，后面的拆分 / 提取都读 content。

@@ -197,7 +197,7 @@ Z 是预算业务单位转换，不应无条件乘进按供应商实际单位保
 
 | 场景 | 当前代码配置 | 必须核对的限制 |
 |---|---|---|
-| Studio 图片 | `ai.scene-policy.studio.image` 候选 `creditCost`，`billingUnit=per_image`；`scenePriceSave` | 按端点，不是按 14 个尺寸分别存储；尺寸差价不能直接逐行配置 |
+| Studio 图片 | `studio.image-resolution-pricing` 按 GPT Image 产品系列配置 1K / 2K / 4K 每张积分，未配置的系列使用 `ai.scene-policy.studio.image` 候选 `creditCost` | 价格档位按实际请求尺寸确定，同一档位下不同画幅共价。现行价格和回滚见[分辨率计价发布](../releases/studio-resolution-pricing-release-20261111.md) |
 | 文本对话 | `ai.chat-token-pricing.endpoints[id].inputCreditsPerK/outputCreditsPerK` | 积分/千Token；AA/U 的每次预算价不能直写。需独立输入/输出费率方案及固定成本分摊方法 |
 | 视频生成区 | `celebrity.video-studio-pricing.perSecond[mode][tier]`、`promptOptimizationPerCall` | 用户积分/秒、积分/次；现有矩阵不是每供应商独立矩阵。保留其他模式与清晰度配置 |
 | 共享候选 | `creditCostOverride` | 受 purpose、入口、billingMode 影响；先列所有受影响功能，不让一个入口改价误改全平台 |

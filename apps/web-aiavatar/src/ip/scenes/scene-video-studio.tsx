@@ -33,7 +33,7 @@ import { isStudioBillingCancelled, studioCreditShortageChoice } from "@/canvas-b
 import { studioChosenTextModel } from "@/canvas-bridge/studio-text-model";
 import { studioVideoError, studioVideoQuote } from "@/canvas-bridge/studio-video";
 import { describeStudioVideoPrice, studioPreviewPayer, studioVideoPriceQuery, useStudioVideoPrice } from "@/canvas-bridge/studio-video-price";
-import { quoteVideoPrice } from "@/canvas-bridge/studio-model-quote";
+import { quoteVideoOptimizePrice, quoteVideoPrice } from "@/canvas-bridge/studio-model-quote";
 import { rememberStudioBilling, STUDIO_GRANT_HINT, studioCreditCheck } from "@/canvas-bridge/studio-billing";
 import { downloadMedia } from "@/canvas-bridge/download-media";
 import { CanvasNodeType, type CanvasNodeData } from "@/canvas/types/canvas";
@@ -64,6 +64,12 @@ const LANGUAGES = ["中文", "英文"];
 /** 一条视频最长多少秒（超过单段上限的分段做、再拼成一条，段数由服务端算，docs/studio-segmented-video.md）。 */
 const MAX_SECONDS = 60;
 const RECREATION = "reference-video-recreation";
+/**
+ * 爆款复刻默认用的视频模型：OneToken · Seedance 2.0（2026-11-12 用户：复刻对画面质量要求高，默认 Seedance 2.0）。
+ * 线上没有这条（下架、没开参考视频）时回到平台默认；用户自己选过的、草稿里记着的照旧。
+ * 以后该挪到服务端配置（同导演台默认图片模型），见 TODO。
+ */
+const RECREATION_DEFAULT_VIDEO_MODEL = "ai-98b369eb-b59";
 const EMPTY_DOC = { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
 
 const writeQuery = (scene: string, draft?: string, mode?: StudioVideoCloneMode) => writeSceneQuery("/video", scene, draft, undefined, mode);
@@ -155,7 +161,8 @@ export function SceneVideoStudio() {
   // 生产机上还没有动作提取服务时，深度复刻不能用：先说清楚，也不去请求报价（服务端会回 STUDIO_DEPTH_NOT_CONFIGURED）
   const depthBlocked = depthClone && !!caps && !caps.operations.includes('video-control');
   const modelsForScene = nativeClone ? videoModels?.filter(m => !!cloneReferenceMode(m)) : videoModels;
-  const chosenVideo = (modelsForScene ?? []).find(m => m.endpointId === modelId) ?? modelsForScene?.find(m => m.isDefault) ?? modelsForScene?.[0];
+  const sceneDefaultVideo = scene?.skill === RECREATION ? modelsForScene?.find(m => m.endpointId === RECREATION_DEFAULT_VIDEO_MODEL) : undefined;
+  const chosenVideo = (modelsForScene ?? []).find(m => m.endpointId === modelId) ?? sceneDefaultVideo ?? modelsForScene?.find(m => m.isDefault) ?? modelsForScene?.[0];
   const contract = chosenVideo?.contract;
   const durations = contract ? sceneVideoDurations(contract) : [duration];
   const usedDuration = contract ? clampSceneDuration(duration, contract) : duration;
@@ -829,9 +836,11 @@ export function SceneVideoStudio() {
   const [taskQuote, setTaskQuote] = useState<{ key: string; price?: StudioVideoTaskQuote; error?: string }>();
   // 爆款复刻的分析要写明用哪个模型（服务端必填）；其余按原来的规则，不可按编号选的模型走默认。
   const taskModel = recreation ? chosenVideo?.endpointId : chosenVideo?.selectableById && !caps?.mock ? chosenVideo.endpointId : undefined;
-  const taskPriceKey = JSON.stringify([taskKind, chosenVideo?.endpointId, taskModel, settings?.mode, usedTier, shownDuration, ratio, images.length, !!character, !!voice, optimize, depthBlocked, priceRevision]);
+  // 爆款复刻的时长跟原片走：没加参考视频就不知道多长，不按场景默认时长报价（2026-11-11 用户：没传视频就显示约 3,440 积分）。
+  const sourceUnknown = recreation && !video;
+  const taskPriceKey = JSON.stringify([taskKind, chosenVideo?.endpointId, taskModel, settings?.mode, usedTier, shownDuration, ratio, images.length, !!character, !!voice, optimize, depthBlocked, sourceUnknown, priceRevision]);
   useEffect(() => {
-    if (!chosenVideo || depthBlocked) return;
+    if (!chosenVideo || depthBlocked || sourceUnknown) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
       videoTaskPrice({ kind: taskKind, model: taskModel, mode: settings?.mode, tier: usedTier, duration: shownDuration, ratio,
@@ -951,6 +960,8 @@ export function SceneVideoStudio() {
           const payer: EnterpriseBillingSelection = billing ?? { mode: 'personal' };
           const video = request.video;
           await studioCreditCheck(() => quoteVideoPrice(studioVideoPriceQuery(video.model, video.video!, video.durationSec ?? query.duration, video.aspectRatio ?? query.ratio), payer), payer, { grantHint: STUDIO_GRANT_HINT });
+          // 同「生成视频」：开着智能优化，优化那一笔只能用普通积分，另核对一次
+          if (video.video?.rewrite) await studioCreditCheck(() => quoteVideoOptimizePrice(payer), payer, { subject: "优化提示词" });
         }
         const pending = request;
         await persist(doc => ({ ...doc, sceneVideoSubmissions: [...(doc.sceneVideoSubmissions ?? []), pending] }), task.projectId);
@@ -1098,9 +1109,13 @@ export function SceneVideoStudio() {
         // 长视频和复刻是多步任务，总价只是估算，这里不拦。
         if (kind === 'direct' && !caps?.mock) {
           const billing: EnterpriseBillingSelection = request.billing ?? { mode: 'personal' };
-          await studioCreditCheck(() => quoteVideoPrice(studioVideoPriceQuery(taskModel, settings!, usedDuration, ratio), billing), billing, {
+          const paid = await studioCreditCheck(() => quoteVideoPrice(studioVideoPriceQuery(taskModel, settings!, usedDuration, ratio), billing), billing, {
             modelChoices, canRetry: true, grantHint: STUDIO_GRANT_HINT,
             verifyChoice: (model, patch) => quoteVideoPrice(studioVideoPriceQuery(model, patch?.video as StudioVideoSettings, patch?.durationSec as number, ratio), billing) });
+          // 智能优化那一笔只能用普通积分，视频可能全由模型赠款付：分开再核对一次，付不起就在这里问，不建一条一开始就停下的任务
+          // （2026-11-11 线上：视频 930 由赠款付，优化要冻结 110 普通积分、账户只有 109）。服务端建任务时也按同一笔核对。
+          if (settings!.rewrite) await studioCreditCheck(() => quoteVideoOptimizePrice(billing), billing, {
+            canRetry: true, subject: "优化提示词", withoutOptimize: { videoWalletCredits: paid?.walletCredits ?? 0 } });
         }
         await persist(doc => ({ ...doc, nodes, sceneInputs: selection(), sceneVideoModel: chosenVideo.endpointId,
           sceneVideoSubmissions: [...(doc.sceneVideoSubmissions ?? []), request!] }), projectId);
@@ -1118,7 +1133,12 @@ export function SceneVideoStudio() {
       // 提示框开着或保存期间可能已经换了草稿（浏览器前进后退）：用户的选择不作用到别的草稿上。
       if (shortage && onPage(ticket, projectId)) {
         // 这条路径没有费用确认弹窗，点生成就开始花钱：换了模型只换模型，看过按钮上的价再点。充值后继续生成是同一个模型、同一个价，才自动开始。
-        if (shortage.kind === 'switch-model') {
+        if (shortage.kind === 'no-optimize') {
+          // 用户在提示框里选的：同一个模型、同样的视频价，只是不先优化提示词，所以直接接着生成（等按新设置报好价再交）
+          setOptimize(false);
+          setNote({ text: '已改为按原文生成。' });
+          regenerate.current = { ticket, projectId, kind };
+        } else if (shortage.kind === 'switch-model') {
           chooseVideoModel(shortage.endpointId);
           setNote({ text: `已改用「${shortage.name}」${shortage.changes ? `，${shortage.changes}` : ''}。确认费用后点击「生成视频」。` });
         } else if (shortage.kind === 'retry') regenerate.current = { ticket, projectId, kind };
@@ -1236,8 +1256,8 @@ export function SceneVideoStudio() {
   </>;
   const specPill =
     <div className="scene-setting-panel-host">
-      <button type="button" className="scene-pill" aria-expanded={settingsOpen} aria-label={`视频规格：${language}，${shownDuration} 秒，${ratio}${usedTier ? `，${usedTier.toUpperCase()}` : ""}`} onClick={() => setSettingsOpen(v => !v)}>
-        <SlidersHorizontal size={14} strokeWidth={1.5}/><span>{language} · {shownDuration} 秒 · <RatioGlyph ratio={ratio}/>{ratio}{usedTier ? ` · ${usedTier.toUpperCase()}` : ""}</span><ChevronDown size={13} strokeWidth={1.6}/></button>
+      <button type="button" className="scene-pill" aria-expanded={settingsOpen} aria-label={`视频规格：${language}，${sourceUnknown ? "时长跟随原片" : `${shownDuration} 秒`}，${ratio}${usedTier ? `，${usedTier.toUpperCase()}` : ""}`} onClick={() => setSettingsOpen(v => !v)}>
+        <SlidersHorizontal size={14} strokeWidth={1.5}/><span>{language} · {sourceUnknown ? "跟随原片" : `${shownDuration} 秒`} · <RatioGlyph ratio={ratio}/>{ratio}{usedTier ? ` · ${usedTier.toUpperCase()}` : ""}</span><ChevronDown size={13} strokeWidth={1.6}/></button>
       {settingsOpen && <VideoSettingsPanel min={recreation ? Math.min(...scene.durations) : contract?.minSeconds ?? Math.min(...scene.durations)}
         max={MAX_SECONDS} single={recreation ? undefined : contract?.maxSeconds} duration={duration} onDuration={pickDuration} segments={segments}
         followsSource={recreation} sourceKnown={!!video?.durationSec}

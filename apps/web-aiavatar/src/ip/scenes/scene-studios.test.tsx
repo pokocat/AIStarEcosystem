@@ -11,7 +11,7 @@ const api = vi.hoisted(() => ({
   push: vi.fn(), failure: vi.fn(), taskStart: vi.fn(), taskGet: vi.fn(), ask: vi.fn(), signKeys: vi.fn(),
   uploadImage: vi.fn(), listProjects: vi.fn(), createProject: vi.fn(), updateProject: vi.fn(), getProject: vi.fn(), listScenes: vi.fn(), composeScene: vi.fn(),
   fetchModels: vi.fn(), readRun: vi.fn(), cancelRun: vi.fn(), capabilities: vi.fn(), submit: vi.fn(), importMedia: vi.fn(), videoModels: vi.fn(), videoPrice: vi.fn(),
-  cloneAdvice: vi.fn(),
+  cloneAdvice: vi.fn(), optimizePrice: vi.fn(),
 }));
 // 和 Next 一样：地址参数从 useSearchParams 读（页面改地址用 history.replaceState，下次渲染读到新的）。
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: api.push, replace: vi.fn() }), useSearchParams: () => new URLSearchParams(window.location.search) }));
@@ -29,7 +29,7 @@ vi.mock("@/canvas-bridge/studio-video-tasks", async original => ({ ...await orig
 }));
 vi.mock("@/canvas-bridge/studio-image-file", () => ({ prepareStudioImageUpload: async (f: File) => f }));
 vi.mock("../studio-credit-shortage", () => ({ askStudioCreditShortage: api.ask }));
-vi.mock("@/canvas-bridge/studio-model-quote", () => ({ quoteVideoPrice: api.videoPrice }));
+vi.mock("@/canvas-bridge/studio-model-quote", () => ({ quoteVideoPrice: api.videoPrice, quoteVideoOptimizePrice: api.optimizePrice }));
 vi.mock("./scene-video-clone", async original => ({ ...await original<any>(), cloneAdvice: api.cloneAdvice }));
 vi.mock("../studio-errors", async importOriginal => ({ ...(await importOriginal<typeof import("../studio-errors")>()), useStudioFailure: () => api.failure, studioErrorMetadata: () => ({}) }));
 vi.mock("../library-reference-picker", () => import("./scene-test-picker"));
@@ -65,6 +65,8 @@ beforeEach(() => {
   api.submit.mockResolvedValue({ id: "IPR-1", status: "running", output: {} });
   // 按钮旁的服务端报价默认报不出来：页面用本地价表价（其它测试照旧按价表核对）。
   api.videoPrice.mockRejectedValue(new Error("offline"));
+  // 智能优化那一笔的价默认也报不出来：报不出来不拦生成（同视频价）。
+  api.optimizePrice.mockRejectedValue(new Error("offline"));
   api.readRun.mockResolvedValue({ id: "IPR-1", status: "done", output: { candidates: [{ key: "ipstudio_gen/out.jpg", url: "https://cdn/out.jpg" }] } });
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); window.history.replaceState(null, "", "/"); });
@@ -652,6 +654,24 @@ test("视频：充值回来点「继续生成」，同一个模型重新核对�
   await waitFor(() => expect(api.taskStart).toHaveBeenCalledTimes(1), { timeout: 3000 });
   expect(api.ask).toHaveBeenCalledTimes(1);
   expect(api.taskStart.mock.calls[0][1]).toMatchObject({ kind: "direct", video: { model: "ep-h3" } });
+});
+
+// 2026-11-11 线上（可乐米乐妈妈）：视频由 H3 赠款全额抵扣，智能优化要冻结 110 普通积分、账户只有 109。以前只核对视频价就受理，
+// 任务一建就停在「需处理」。现在优化那一笔也在受理前核对；提示框里选「按原文生成」，就不优化提示词、按同样的设置交。
+test("视频：智能优化那一笔付不起时受理前就问；选「按原文生成」后不优化提示词再交", async () => {
+  const go = await readyDirect();
+  api.videoPrice.mockResolvedValue({ ...POOR, scopedCredits: 600, walletCredits: 0, canAfford: true, unavailableCode: undefined });
+  api.optimizePrice.mockResolvedValue({ ...POOR, target: { ...POOR.target, endpointId: "ep-text", action: "text", unit: "credit" },
+    standardCredits: 110, payableCredits: 110, scopedCredits: 0, walletCredits: 110, canAfford: false, unavailableCode: "MODEL_CREDITS_INSUFFICIENT" });
+  api.ask.mockResolvedValueOnce({ kind: "no-optimize" });
+  await act(async () => { fireEvent.click(go()); });
+  await waitFor(() => expect(api.taskStart).toHaveBeenCalledTimes(1), { timeout: 3000 });
+  expect(api.ask).toHaveBeenCalledTimes(1);
+  expect(api.ask.mock.calls[0][0]).toMatchObject({ withoutOptimize: { videoWalletCredits: 0 }, quote: { walletCredits: 110 } });
+  const sent = api.taskStart.mock.calls[0][1];
+  expect(sent.video.video.rewrite).toBeUndefined();
+  expect(sent.video.video.optimizePrompt).toBe(false);
+  expect(api.failure).not.toHaveBeenCalled();
 });
 
 test("视频：报价读不到不拦生成，由服务端和任务面板说话", async () => {

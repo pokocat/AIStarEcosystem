@@ -110,14 +110,15 @@ const n = (value: number) => value.toLocaleString("zh-CN");
  */
 export function describeStudioVideoPrice(price: StudioVideoPrice, fallback: number | null, opts: { optimizing?: boolean } = {}): StudioVideoPriceView | undefined {
   if (price.status !== "ready") return fallback == null ? undefined : { standard: fallback, shown: fallback, pending: price.status === "loading" };
-  const optimizing = opts.optimizing ? "优化提示词按实际用量另计。" : "";
-  const detailOf = (text = "") => (text + optimizing) || undefined;
+  // 优化提示词只能用普通积分（视频的模型赠款付不了它）：视频由赠款抵扣时说明这一点，也不说「无需另付积分」（2026-11-11 线上差 1 积分）。
+  const optimizingOf = (q?: ModelBillingQuote) => !opts.optimizing ? "" : q && q.scopedCredits > 0 ? "优化提示词按实际用量另计，只能用普通积分支付。" : "优化提示词按实际用量另计。";
+  const detailOf = (text = "", q?: ModelBillingQuote) => (text + optimizingOf(q)) || undefined;
   const discountOf = (q: ModelBillingQuote) => q.discountCredits > 0 ? `${q.discountName || "优惠"}，省 ${n(q.discountCredits)} 积分` : undefined;
   if (price.payer === "decided") {
     const q = price.quote;
-    const grant = q.scopedCredits > 0 ? `模型赠款抵扣 ${n(q.scopedCredits)} 积分，${q.walletCredits > 0 ? `另需支付 ${n(q.walletCredits)} 积分` : "无需另付积分"}。` : "";
+    const grant = q.scopedCredits > 0 ? `模型赠款抵扣 ${n(q.scopedCredits)} 积分${q.walletCredits > 0 ? `，另需支付 ${n(q.walletCredits)} 积分` : opts.optimizing ? "" : "，无需另付积分"}。` : "";
     const note = q.canAfford ? undefined : q.unavailableCode === "MODEL_CREDITS_INSUFFICIENT" ? `可用积分不足，需支付 ${n(q.walletCredits)} 积分。` : q.unavailableReason || "暂时无法生成。";
-    return { standard: q.standardCredits, shown: q.payableCredits, discount: discountOf(q), detail: detailOf(grant), note };
+    return { standard: q.standardCredits, shown: q.payableCredits, discount: discountOf(q), detail: detailOf(grant, q), note };
   }
   const { personal, enterprise } = price;
   if (enterprise && enterprise.payableCredits !== personal.payableCredits)

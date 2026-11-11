@@ -1,7 +1,11 @@
 package com.aistareco.aep.ipstudio;
 
 import com.aistareco.aep.ipstudio.service.StudioImageModelRouting;
+import com.aistareco.common.BusinessException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -25,5 +29,23 @@ class StudioImageModelRoutingTest {
         assertEquals("4K", StudioImageModelRouting.tierForSize("4096x4096"));
         assertNull(StudioImageModelRouting.tierForSize("512x512"));
         assertNull(StudioImageModelRouting.family("studio-image:unknown"));
+    }
+
+    @Test void rejectsIncompleteOrMismatchedResolutionPrices() throws Exception {
+        var json = new ObjectMapper();
+        assertEquals(Map.of("gpt-image-2", Map.of("1K",20L,"2K",30L,"4K",30L)),
+                StudioImageModelRouting.resolutionPrices(json.readTree("""
+                        {"gpt-image-2":{"1K":20,"2K":30,"4K":30}}
+                        """)));
+        for (String value : new String[]{
+                """
+                {"gpt-image-2":{"1K":20,"2K":30}}
+                """, """
+                {"gpt-image-2":{"1K":20,"2K":30,"4K":0}}
+                """, """
+                {"gpt-image-unknown":{"1K":20,"2K":30,"4K":30}}
+                """}) {
+            assertThrows(BusinessException.class, () -> StudioImageModelRouting.resolutionPrices(json.readTree(value)));
+        }
     }
 }

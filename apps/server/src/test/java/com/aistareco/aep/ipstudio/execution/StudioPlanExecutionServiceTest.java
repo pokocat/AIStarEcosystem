@@ -512,6 +512,38 @@ class StudioPlanExecutionServiceTest {
         assertEquals("IPR-b",rows.get(id).getPlanRunId(),"nothing changed");
     }
 
+    /** AI 视频页的一条任务（startVideoTask）：没有对话、没有 threadId，状态里带 videoTask。 */
+    PlanExecution sceneTask(String clientRequestId) throws Exception {
+        var plan=StudioPlanValidator.validateSkillPlan(om.readTree(PRODUCTION),rules,"production",List.of("src","product"));
+        plan.put("stage","production").put("skillKey",rules.key()).put("skillVersion",rules.version());
+        plan.putObject("budget").put("estimated",45).put("autoFixCap",90);
+        plan.put("fingerprint",StudioPlanValidator.fingerprint(plan));
+        var videoTask=om.createObjectNode().put("kind","direct").put("title","口播带货");
+        var identity=om.createObjectNode().put("clientRequestId",clientRequestId);
+        return service.startVideoTask("u","p",clientRequestId,plan,null,videoTask,List.of("product"),rules,135,90,null,identity);
+    }
+
+    /**
+     * 2026-11-11 线上：一条视频因积分不足停在「待处理」（needs_user，没提交、没扣费），同一份草稿里再点「生成视频」
+     * 被 STUDIO_PLAN_EXECUTION_BUSY 挡住。AI 视频页的任务各自冻结输入、不写画布，彼此不挡；画布上的对话制作仍然只能有一条。
+     */
+    @Test void sceneVideoTasksInOneDraftDoNotBlockEachOther() throws Exception {
+        var waiting=sceneTask("scene-1");
+        rows.get(waiting.id()).setStatus("needs_user");
+        var next=sceneTask("scene-2");
+        assertNotEquals(waiting.id(),next.id());
+        assertEquals("running",next.status());
+        assertEquals(next.id(),sceneTask("scene-2").id(),"same request replays");
+
+        String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
+        var dialogue=service.create("u","p",analysisRequest(fp,30));
+        assertEquals("running",dialogue.status(),"scene tasks do not hold the canvas for the dialogue either");
+
+        var blocked=assertThrows(BusinessException.class,()->sceneTask("scene-3"));
+        assertEquals("STUDIO_PLAN_EXECUTION_BUSY",blocked.getCode(),"a dialogue production on the canvas still blocks");
+        assertEquals(dialogue.id(),((JsonNode)blocked.getDetails()).path("executionId").asText());
+    }
+
     /**
      * 不锁方法 (2026-10-23): the thread switches to another method. Nothing generating → the execution ends like a stop
      * (canceled, no summary). Something generating → paused and detached from its thread (no new submission; what is
