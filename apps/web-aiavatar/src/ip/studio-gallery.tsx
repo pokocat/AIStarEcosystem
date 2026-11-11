@@ -54,7 +54,7 @@ export function TemplateCard({ template, onOpen, children, previewMode = "flow",
   const content = previewMode === "content" ? projectPreview(template.doc) : undefined;
   return <article className="studio-gallery-template-card">
     <button type="button" className="studio-template-open" disabled={template.enabled === false} onClick={() => onOpen(template)} aria-label={`预览模板 ${template.name}`}>
-      <div className="studio-gallery-preview">{content ? <ProjectCardPreview key={template.coverUrl || template.versionId || template.id} doc={template.doc} coverUrl={template.coverUrl} videoUrl={template.previewVideoUrl} preview={content}/> : <><CanvasThumb doc={template.doc} height={146} /><span className="studio-gallery-preview-label"><LayoutTemplate size={12} />{template.doc.nodes.length} 个节点</span></>}</div>
+      <div className="studio-gallery-preview">{content ? <ProjectCardPreview doc={template.doc} coverUrl={template.coverUrl} coverVideoUrl={template.coverVideoUrl} videoUrl={template.previewVideoUrl} preview={content}/> : <><CanvasThumb doc={template.doc} height={146} /><span className="studio-gallery-preview-label"><LayoutTemplate size={12} />{template.doc.nodes.length} 个节点</span></>}</div>
       <div className="studio-template-copy"><h3>{template.name}</h3><p>{template.summary || "从这套画布流程开始创作。"}</p>{content && !label && <div className="studio-template-content-count">{content.counts || (content.empty ? "空白画布" : `${content.steps.length} 个创作节点`)}</div>}<div className="studio-template-meta"><span>{label ?? (template.visibility === "personal" ? "个人模板" : "官方模板")}</span>{template.enabled === false && <span>已停用</span>}<ArrowRight size={15} aria-hidden="true" /></div></div>
     </button>
     {children}

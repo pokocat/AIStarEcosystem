@@ -120,28 +120,34 @@ public class IpTemplateResolver {
     }
     private IpTemplateDto withBuiltinCover(IpTemplateDto template) {
         String key=CanvasCoverService.builtinCoverKey(coverConfigs,template.id());
-        String cover=key==null?template.coverUrl():signOrEmpty(key);
+        boolean videoCover = CanvasCoverService.containsVideo(template.doc(), key);
+        String cover=key==null || videoCover?template.coverUrl():signOrEmpty(key);
         if(cover==null || cover.isBlank())cover=signOrEmpty(CanvasCoverService.firstImageKey(template.doc(),k->true));
         return new IpTemplateDto(template.id(),template.name(),template.summary(),cover,
                 template.stylePresetId(),template.lookCount(),template.estimatedCredits(),template.doc(),
-                template.versionId(),template.version(),"official",false,true);
+                template.versionId(),template.version(),"official",false,true,null,null,videoCover ? signOrEmpty(key) : null);
     }
     private IpTemplateDto toDto(IpDemoTemplate d,String userId) {
+        JsonNode doc = docOf(d);
+        String key = d.getCoverKey();
+        boolean videoCover = CanvasCoverService.containsVideo(doc, key);
+        String imageKey = key == null || videoCover ? CanvasCoverService.firstImageKey(doc, ignored -> true) : key;
         return new IpTemplateDto(
                 d.getId(),
                 d.getName(),
                 d.getSummary() == null ? "" : d.getSummary(),
-                signOrEmpty(d.getCoverKey() == null ? CanvasCoverService.firstImageKey(docOf(d), key -> true) : d.getCoverKey()),
+                signOrEmpty(imageKey),
                 null, 0, 0,
-                docOf(d),d.getCurrentVersionId(),versionNumber(d),d.getVisibility(),userId!=null && userId.equals(d.getCreatedBy()),d.isEnabled(),
-                previewVideoUrl(d),
-                d.getCreatedAt()==null?null:d.getCreatedAt().toString());
+                doc,d.getCurrentVersionId(),versionNumber(d),d.getVisibility(),userId!=null && userId.equals(d.getCreatedBy()),d.isEnabled(),
+                previewVideoUrl(d, doc),
+                d.getCreatedAt()==null?null:d.getCreatedAt().toString(),
+                videoCover ? signOrEmpty(key) : null);
     }
 
     /** 只有带素材的官方示例才有成片；模板的素材在发布时已剥掉。签不出来就不给，卡片退回静态封面。 */
-    private String previewVideoUrl(IpDemoTemplate d) {
+    private String previewVideoUrl(IpDemoTemplate d, JsonNode doc) {
         if(!IpDemoTemplate.KIND_EXAMPLE.equals(d.getKind()))return null;
-        String key=CanvasCoverService.firstVideoKey(docOf(d));
+        String key=CanvasCoverService.firstVideoKey(doc);
         if(key==null)return null;
         String url=signOrEmpty(key);
         return url.isBlank()?null:url;

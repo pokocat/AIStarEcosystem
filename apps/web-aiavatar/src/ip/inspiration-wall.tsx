@@ -79,7 +79,7 @@ function InspirationCard({ template, onOpen, manage, order }: { template: IpTemp
       <span className={`inspiration-card-media${ratio ? '' : ' is-unsized'}`} style={ratio ? { aspectRatio: String(ratio) } : undefined}
         // 比例写在文档里的卡片不用等；写不出来的（老示例、人工封面）等图片到了再按它摆。
         onLoadCapture={known ? undefined : e => { const img = e.target as HTMLImageElement; if (img.naturalWidth && img.naturalHeight) setLoaded(img.naturalWidth / img.naturalHeight); }}>
-        <ProjectCardPreview key={template.coverUrl || template.versionId || template.id} doc={template.doc} coverUrl={template.coverUrl} videoUrl={template.previewVideoUrl} stepsFirst/>
+        <ProjectCardPreview doc={template.doc} coverUrl={template.coverUrl} coverVideoUrl={template.coverVideoUrl} videoUrl={template.previewVideoUrl} stepsFirst/>
         {!closed && <span className="inspiration-card-action" aria-hidden="true">做同款</span>}
       </span>
       <span className="inspiration-card-label"><strong>{template.name}</strong><small>{closed ? '已停用' : inspirationLabel(template)}</small></span>

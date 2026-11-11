@@ -237,6 +237,8 @@ export interface IpTemplate {
   mine?: boolean;
   enabled?: boolean;
   id: string; name: string; summary: string; coverUrl?: string;
+  /** 用户选作封面的视频签名地址。 */
+  coverVideoUrl?: string;
   /** 官方示例里第一段成片的签名地址（灵感卡悬停播放用）；没有成片时不给。 */
   previewVideoUrl?: string;
   /** 首次发布时间（ISO 8601）。内置模板没有。 */
@@ -255,7 +257,7 @@ export interface IpDemoAdmin {
   id: string; name: string; summary: string;
   kind: "template" | "example";
   enabled: boolean; sortOrder: number;
-  coverUrl?: string; sourceProjectId?: string; createdBy?: string;
+  coverUrl?: string; coverVideoUrl?: string; sourceProjectId?: string; createdBy?: string;
   createdAt?: string; updatedAt?: string;
   nodeCount: number; assetCount: number;
   currentVersionId?: string;
@@ -325,4 +327,4 @@ export type IpSavedAsset = IpTextAsset | IpImageAsset | IpVideoAsset | IpAudioAs
 
 /** Shared project/template cover management; URLs are signed on read. */
 export type IpCanvasCoverTarget = "project" | "template";
-export interface IpCanvasCover { coverUrl: string | null }
+export interface IpCanvasCover { coverUrl: string | null; coverVideoUrl?: string | null }
