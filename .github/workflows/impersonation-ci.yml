@@ -34,7 +34,12 @@ jobs:
         env:
           CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           CI_HEAD_SHA: ${{ github.sha }}
-        run: node scripts/ci/affected.mjs
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ -n "$CI_BASE_SHA" ]] && ! git cat-file -e "$CI_BASE_SHA^{commit}" 2>/dev/null; then
+            git -c credential.helper='!gh auth git-credential' fetch --no-tags --depth=1 origin "$CI_BASE_SHA"
+          fi
+          node scripts/ci/affected.mjs
   backend-tests:
     needs: scope
     if: needs.scope.outputs.backend == 'true'
