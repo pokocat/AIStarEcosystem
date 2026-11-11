@@ -284,10 +284,7 @@ test("视频：爆款复刻的自动检查可以关掉，关掉的选择随请�
   const send = () => screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement;
   await waitFor(() => expect(screen.getByText("请添加参考视频")).toBeTruthy());
   await pickFromLibrary("参考视频");
-  const check = screen.getByRole("group", { name: "自动检查" });
-  expect(within(check).getByRole("button", { name: "开启" }).getAttribute("aria-pressed")).toBe("true");
-  fireEvent.click(within(check).getByRole("button", { name: "关闭" }));
-  expect(within(check).getByRole("button", { name: "关闭" }).getAttribute("aria-pressed")).toBe("true");
+  fireEvent.click(screen.getByRole("switch", { name: "自动检查" }));
   fillField(screen.getByRole("textbox", { name: "想做的视频" }), "换成我的面霜");
   await waitFor(() => expect(send().disabled).toBe(false));
   await act(async () => { fireEvent.click(send()); });
@@ -405,7 +402,7 @@ test('深度复刻没有可用处理服务时保留输入并禁止提交', async
   api.videoModels.mockResolvedValue([H3]);
   api.importMedia.mockResolvedValue({ key: 'ipstudio/media/u/v.mp4', url: 'blob:v', mediaType: 'video', mimeType: 'video/mp4', bytes: 1, fileName: '原片' });
   await act(async () => { render(<SceneVideoStudio/>); });
-  await screen.findByText('请添加参考视频'); await pickFromLibrary('参考视频');
+  await screen.findByText('深度复刻暂不可用，请联系平台处理。'); await pickFromLibrary('参考视频');
   fillField(screen.getByRole('textbox', { name: '想做的视频' }), '换成我的商品');
   api.importMedia.mockResolvedValue({ key: 'ipstudio/media/u/new.jpg', url: 'blob:p', mediaType: 'image', mimeType: 'image/jpeg', bytes: 1, fileName: '商品' });
   await pickFromLibrary('替换素材');

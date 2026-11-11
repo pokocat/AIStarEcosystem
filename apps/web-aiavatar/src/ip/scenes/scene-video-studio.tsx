@@ -54,7 +54,7 @@ import { AiMark } from "../studio-ai-icon";
 import { clampSceneDuration, sceneVideoDurations, sceneVideoInputs, sceneVideoSettings, type SceneVideoMaterial } from "./scene-video-plan";
 import { sceneScriptLayers } from "./scene-script-layers";
 import { classifyBlanks, missingFigures, overlongShots, scriptMissing, scriptPlaceholders, splitBlanks } from "./scene-script-check";
-import { CloneModePicker, cloneAdvice, cloneModeOf, cloneReferenceMode, cloneTool } from './scene-video-clone';
+import { CloneModeGuide, CloneModePicker, cloneAdvice, cloneModeOf, cloneReferenceMode, cloneTool } from './scene-video-clone';
 
 type Media = StudioMediaImportResult & { title: string };
 type Slot = "image" | "character" | "voice" | "video";
@@ -152,6 +152,8 @@ export function SceneVideoStudio() {
   const scriptCost = caps?.mock ? 0 : textModel?.tokenPricing ? Math.ceil(textModel.tokenPricing.maxCost) : undefined;
   const nativeClone = scene?.skill === RECREATION && cloneMode !== 'recreation';
   const depthClone = nativeClone && cloneMode === 'depth';
+  // 生产机上还没有动作提取服务时，深度复刻不能用：先说清楚，也不去请求报价（服务端会回 STUDIO_DEPTH_NOT_CONFIGURED）
+  const depthBlocked = depthClone && !!caps && !caps.operations.includes('video-control');
   const modelsForScene = nativeClone ? videoModels?.filter(m => !!cloneReferenceMode(m)) : videoModels;
   const chosenVideo = (modelsForScene ?? []).find(m => m.endpointId === modelId) ?? modelsForScene?.find(m => m.isDefault) ?? modelsForScene?.[0];
   const contract = chosenVideo?.contract;
@@ -528,6 +530,12 @@ export function SceneVideoStudio() {
     cloneAdvice(key, controller.signal).then(value => { if (!controller.signal.aborted) setAdvice({ key, value }); }).catch(() => { /* 只是推荐 */ });
     return () => controller.abort();
   }, [recreation, video?.key, caps?.mock, advice?.key]);
+  const cloneAdviceShown = advice && advice.key === video?.key ? advice.value : undefined;
+  /** 换复刻方式：左侧小卡和右侧「示例」里的「选用」走同一处。 */
+  const pickCloneMode = (mode: StudioVideoCloneMode) => {
+    if (!scene) return;
+    setCloneMode(mode); setScriptId(undefined); setHint(''); writeQuery(scene.id, draftRef.current?.id, mode);
+  };
   /** 让编导写（或改）这一版之前卡在哪：ask 是要交给编导的那句话。 */
   const scriptBlocker = (ask: string, settingsChanged = false) => !scene ? "正在加载场景…"
     : scene.images.required && !images.length ? `请添加${scene.images.label}`
@@ -536,10 +544,10 @@ export function SceneVideoStudio() {
     : !caps ? "正在加载模型…"
     : !caps.mock && !textModel?.tokenPricing ? "AI 编导暂时不可用，请联系平台处理。" : "";
   /** 爆款复刻生成之前卡在哪。 */
-  const handoffBlocker = !scene ? "正在加载场景…" : scene.video?.required && !video ? `请添加${scene.video.label}`
+  const handoffBlocker = !scene ? "正在加载场景…" : depthBlocked ? '深度复刻暂不可用，请联系平台处理。'
+    : scene.video?.required && !video ? `请添加${scene.video.label}`
     : scene.images.required && !images.length ? `请添加${scene.images.label}`
     : scene.textRequired && !text.trim() ? "请填写要求"
-    : nativeClone && cloneMode === 'depth' && !caps?.operations.includes('video-control') ? '深度复刻暂不可用，请联系平台处理。'
     // 三种方式都按原片分段出片，参考视频整条最长 60 秒（每段多长由服务端按模型定）
     : video?.durationSec && video.durationSec > MAX_SECONDS + .05 ? `参考视频最长 ${MAX_SECONDS} 秒，请先裁剪` : '';
 
@@ -821,9 +829,9 @@ export function SceneVideoStudio() {
   const [taskQuote, setTaskQuote] = useState<{ key: string; price?: StudioVideoTaskQuote; error?: string }>();
   // 爆款复刻的分析要写明用哪个模型（服务端必填）；其余按原来的规则，不可按编号选的模型走默认。
   const taskModel = recreation ? chosenVideo?.endpointId : chosenVideo?.selectableById && !caps?.mock ? chosenVideo.endpointId : undefined;
-  const taskPriceKey = JSON.stringify([taskKind, chosenVideo?.endpointId, taskModel, settings?.mode, usedTier, shownDuration, ratio, images.length, !!character, !!voice, optimize, priceRevision]);
+  const taskPriceKey = JSON.stringify([taskKind, chosenVideo?.endpointId, taskModel, settings?.mode, usedTier, shownDuration, ratio, images.length, !!character, !!voice, optimize, depthBlocked, priceRevision]);
   useEffect(() => {
-    if (!chosenVideo) return;
+    if (!chosenVideo || depthBlocked) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
       videoTaskPrice({ kind: taskKind, model: taskModel, mode: settings?.mode, tier: usedTier, duration: shownDuration, ratio,
@@ -1300,9 +1308,7 @@ export function SceneVideoStudio() {
 
       : <div className="scene-compose">
         {recreation && <CloneModePicker mode={cloneMode} disabled={busy || uploading !== undefined} autoCheck={autoCheck} onAutoCheck={setAutoCheck}
-          advice={advice && advice.key === video?.key ? advice.value : undefined} onChange={mode => {
-          setCloneMode(mode); setScriptId(undefined); setHint(''); writeQuery(scene.id, draftRef.current?.id, mode);
-        }}/>}
+          advice={cloneAdviceShown} onChange={pickCloneMode}/>}
         {mediaRow()}
 
         <div className="scene-box">
@@ -1365,7 +1371,9 @@ export function SceneVideoStudio() {
           <VideoHistoryToggle onOpen={() => setRailOpen(true)}/></span></header>
       {draft && handedOff && <HandoffStatus projectId={draft.id} execution={execution} waiting={!!executionId && !execution}/>}
       <div id="scene-video-panel" className="scene-results-panel" role="tabpanel" aria-labelledby={`scene-video-tab-${tab}`}>
-      {tab === "example" ? <SceneExample id={scene.id} title={scene.title} group={groupTitle} note={scene.description}
+      {tab === "example" ? recreation
+          ? <CloneModeGuide mode={cloneMode} recommended={cloneAdviceShown?.recommended} disabled={busy || uploading !== undefined} onChange={pickCloneMode}/>
+          : <SceneExample id={scene.id} title={scene.title} group={groupTitle} note={scene.description}
           cover={scene.coverUrl} examples={scene.examples} ratio={scene.ratio}/>
         : rows.length || segmentedRuns.length ? <ol className="scene-row-list">{draft && segmentedRuns.map(record => <SegmentedRow key={record.clientRequestId} record={record} projectId={draft.id} doc={draft.doc} persist={persist} busy={busy}
             onConfirm={() => void confirmLong(record)} onFailure={(action, error) => showFailure({ action, error })}/>)}{rows.map(row => <VideoRow key={row.id} row={row} run={live[row.id]} busy={busy} submitting={submitting === row.id}

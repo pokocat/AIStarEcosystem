@@ -106,6 +106,7 @@
 用户定：「爆款复刻」是类别，三种方式（分镜复刻 / 深度复刻 / 元素替换）都开放，按视频类型选。现行做法见 `docs/ip-studio-recreation.md`「三种复刻方式」。
 
 - [ ] 生产装深度复刻的运行时：server 那台机器上按 `tools/studio-depth/install.sh` 装 ReShot、Video Depth Anything Small 和 DWPose 权重，配 `AEP_STUDIO_DEPTH_COMMAND` / `_CHECKPOINT` / `_POSE_CHECKPOINT_DIR`。没装之前页面上深度复刻显示「暂不可用」。装之前先在同规格机器上量一段 15 秒原片的推理耗时和内存，主服务和网页在同一台机器上。
+  - **2026-11-11 已装、未开启**：生产机 `/opt/studio-depth` 装好 ReShot 0.5.0（CPU 版 torch 2.15.0，venv 1.5G，权重 sha256 与本机一致），`server.env` 没加配置，页面上仍是「暂不可用」。在生产机上用合成的 15 秒竖屏画面按 server 的参数实测（2.5G 内存上限、最低 CPU 优先级）：骨骼一遍 72 秒、峰值 1.2G；深度一遍 10 分钟没跑完，一直顶在 2.5G 上限，整机可用内存掉到 800M，已中途停掉。`aistareco-server` 自身限 2G 内存（Java 约 1G），ReShot 是它的子进程，共用这 2G，直接开会把 server 一起拖死。磁盘剩 5.3G（97%）。要开启得先选一种：把动作提取放到别的机器（如新 ECS-B 4C16G，用一个转发脚本当 `AEP_STUDIO_DEPTH_COMMAND`），或给这台机器加内存并让提取进程在 server 的内存限制之外运行。不开的话可以 `rm -rf /opt/studio-depth` 收回 1.9G。
 - [ ] 深度复刻、元素替换在新流程下各真跑一条（口播类原片走深度复刻、带货片走元素替换），看拉片后的分段、每段提示词、动作参考和成片，记进验收记录。 **2026-11-11 进展**：深度复刻（41 秒直播切片）和分镜复刻（13 秒手势舞）已在本机整套平台上用 Seedance 2.5 真跑出片，修了检查不重出、字幕、场景不一致和失败后没法重试，见 `docs/ip-studio-recreation.md`「2026-11-11 本机真跑后的修改」；元素替换还没跑，改完的深度复刻要再跑一条确认。
 - [ ] 推荐门槛（最多 2 个镜头或平均每个镜头 ≥6 秒推荐深度复刻）是估的：拿评测集和线上原片看推荐对不对，再调。
 - [ ] `StudioCloneTaskIntegrationTest` 是单段直出那版的真实链路测试，已加 `@Disabled`；按「先拉片、再分段」重写，拉片那步用确定性响应。

@@ -479,6 +479,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [导演台拆分弹窗增加剧本预览](releases/director-split-preview-release-20261104.md) — 仅 web-aiavatar；认不出分集标题时，弹窗旁显示剧本预览，便于复制第 1 集标题行（last-reviewed: 2026-11-04）。
 - [声音参考格式修复发布](releases/voice-reference-format-release-20261104.md) — server；短 M4A 等声音自动转 WAV，报错说明素材类型和可用格式；真实出片未验证（last-reviewed: 2026-11-04）
 - [首页场景卡两行与导演台单个视角重新生成](releases/studio-home-goals-and-scene-view-release-20261111.md) — server + web-aiavatar；首页场景卡改为三列两行、商品套图放最后；导演台单个视角只重新生成这一个；`20261111-home-goals-94e68ff7`（2026-11-11）
+- [爆款复刻三种方式发布](releases/recreation-modes-release-20261111.md) — server + web-aiavatar `20261111-recreation-modes-0a330629`；三种复刻方式、自动检查开关、首页去重复入口；生产机装了深度复刻运行时但未开启（内存不够，实测记录在内）（last-reviewed 2026-11-11）
 - [资产页删除发布](releases/asset-library-delete-release-20261110.md) — web-aiavatar；资产页单个与批量删除，只从资产库移除、不动画布和作品（last-reviewed: 2026-11-10）
 - [编导脚本出片分层发布](releases/scene-script-layers-release-20261110.md) — server + web-aiavatar；六段脚本出片只发和画面有关的部分，编辑框标「仅参考」，参考素材受理时就核对（last-reviewed: 2026-11-10）
 - [账号区合并与统一路由发布](releases/account-ia-release-20261110.md) — server + web-aiavatar；账号区 7 个标签统一到 /me，原文按任务查看（V80），旧地址 308（last-reviewed: 2026-11-10）
