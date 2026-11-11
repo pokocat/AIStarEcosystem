@@ -26,6 +26,8 @@ public class AiGenerationQueueDispatcher {
     @org.springframework.beans.factory.annotation.Qualifier("ipRunExecutor") private java.util.concurrent.Executor ipRunExecutor;
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     @org.springframework.beans.factory.annotation.Qualifier("materialVideoExecutor") private java.util.concurrent.Executor materialVideoExecutor;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    @org.springframework.beans.factory.annotation.Qualifier("portraitReviewExecutor") private java.util.concurrent.Executor portraitReviewExecutor;
     public AiGenerationQueueDispatcher(AiGenerationQueueService queue,IpRunRepository runs,MaterialVideoJobRepository videos,
             ObjectProvider<IpRunWorker> images,ObjectProvider<StudioWorkflowWorker> workflows,
             ObjectProvider<StudioSpeechWorker> speech,ObjectProvider<MaterialVideoWorker> videoWorker) {
@@ -46,6 +48,10 @@ public class AiGenerationQueueDispatcher {
                 boolean terminalWithoutSupplier=job!=null && ("failed".equals(job.getStatus())||"succeeded".equals(job.getStatus()))
                         && (job.getExternalTaskId()==null||job.getExternalTaskId().isBlank());
                 if(job==null || terminalWithoutSupplier || (waiting && !"queued".equals(job.getStatus()))) {queue.finish(type,id);continue;}
+                if(MaterialVideoWorker.awaitsPortraitReview(job)) {
+                    if(poolHasRoom(portraitReviewExecutor)&&queue.claimPortraitReview(entry))videoWorker.getObject().checkPortraitReviewAsync(id);
+                    continue;
+                }
                 if(!waiting) {
                     if(job.getExternalTaskId()==null||job.getExternalTaskId().isBlank()) {
                         if("VIDEO_SUBMISSION_UNKNOWN".equals(job.getErrorCode()))videoWorker.getObject().failUnconfirmedSubmission(id);
@@ -86,6 +92,9 @@ public class AiGenerationQueueDispatcher {
             case AiGenerationQueueService.VIDEO -> materialVideoExecutor;
             default -> null;
         };
+        return poolHasRoom(executor);
+    }
+    private boolean poolHasRoom(java.util.concurrent.Executor executor) {
         if(!(executor instanceof org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor task))return true;
         var pool=task.getThreadPoolExecutor();
         return pool.getActiveCount()+pool.getQueue().size()<pool.getMaximumPoolSize();

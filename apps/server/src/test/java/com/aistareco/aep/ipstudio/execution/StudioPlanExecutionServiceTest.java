@@ -815,6 +815,32 @@ class StudioPlanExecutionServiceTest {
         assertEquals("running",row.getStatus());
     }
 
+    @Test void retryExpiredPortraitSegmentOnlyKeepsExistingStepsAndIsIdempotent() throws Exception {
+        var created=service.create("u","p",analysisRequest(currentPlan("IPR-a","analysis",ANALYSIS,20,10),30));
+        var row=rows.get(created.id());var state=(ObjectNode)om.readTree(row.getStepsJson());state.putObject("videoTask");
+        var steps=state.putArray("steps");
+        var first=steps.addObject().put("stage","production").put("id","v1").put("operation","video").put("status","done");
+        first.putArray("runIds").add("IPR-original");
+        var second=steps.addObject().put("stage","production").put("id","v2").put("operation","video").put("status","failed").put("attempt",3)
+                .put("errorCode","VIDEO_ASSET_REVIEW_TIMEOUT");
+        second.putArray("dependsOn").add("v1");second.putArray("runIds").add("IPR-expired");
+        var other=steps.addObject().put("stage","production").put("id","v3").put("operation","video").put("status","failed").put("attempt",2)
+                .put("errorCode","STUDIO_VIDEO_FAILED");
+        var film=steps.addObject().put("stage","production").put("id","film").put("operation","assemble").put("status","pending");
+        row.setStage("production");row.setStepsJson(state.toString());row.setStatus("needs_user");canvasWith("src");
+        assertEquals("STUDIO_PLAN_STALE",assertThrows(BusinessException.class,()->service.resume("u","p",created.id(),
+                new PlanExecutionControlRequest("wrong","needs_user",null,"v2",2))).getCode());
+        var request=new PlanExecutionControlRequest("retry","needs_user",null,"v2",3);
+        assertEquals("running",service.resume("u","p",created.id(),request).status());
+        assertEquals("running",service.resume("u","p",created.id(),request).status());
+        var updated=om.readTree(row.getStepsJson());
+        assertEquals("v2",updated.path(StudioPlanExecutor.PORTRAIT_RETRY_STEP).asText());
+        assertEquals(first,updated.path("steps").get(0));assertEquals(other,updated.path("steps").get(2));assertEquals(film,updated.path("steps").get(3));
+        var retried=updated.path("steps").get(1);
+        assertEquals("pending",retried.path("status").asText());assertEquals(4,retried.path("attempt").asInt());
+        assertEquals(0,retried.path("runIds").size());assertEquals("IPR-expired",retried.path("previousRunIds").get(0).asText());
+    }
+
     @Test void videoPageRegeneratesUnusableModelOutputWithANewRequestWhenTheUserContinues() throws Exception {
         String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
         var created=service.create("u","p",analysisRequest(fp,30));

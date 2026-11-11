@@ -51,10 +51,11 @@ public class AiGenerationQueueService {
                 entry.setState("waiting");entry.setCreatedAt(Instant.now());entry.setDispatchAfter(Instant.now().plusSeconds(SYNC.equals(type)?180:0));entries.saveAndFlush(entry);
             }
             if("finished".equals(entry.getState()))return Admission.BUSY;
+            if(VIDEO.equals(type)&&entries.isPortraitReview(entry.getId()))return Admission.WAITING;
             if("running".equals(entry.getState()))return retainAcrossSteps?Admission.READY:Admission.BUSY;
             int limit=endpoint.getConcurrencyLimit()==null?0:endpoint.getConcurrencyLimit();
             long running=entries.countOccupyingSlots(scope);
-            long ahead=entries.countByEndpointIdAndStateAndIdLessThan(scope,"waiting",entry.getId());
+            long ahead=entries.countExecutableWaitingAhead(scope,entry.getId());
             if(limit>0 && running+ahead>=limit)return Admission.WAITING;
             entry.setState("running");entry.setDispatchAfter(Instant.now().plusSeconds(180));entries.save(entry);
             return Admission.READY;
@@ -63,6 +64,10 @@ public class AiGenerationQueueService {
     public void finish(String type,String id) {mutate(type,id,e->e.setState("finished"));}
     /** 供应商因为并发明确拒收：回到等待，不早于 delay 之后再派发。票据号不变，排队位置也不变。 */
     public void requeue(String type,String id,java.time.Duration delay) {mutate(type,id,e->{e.setState("waiting");e.setDispatchAfter(Instant.now().plus(delay));});}
+    /** Release the review dispatch delay without changing an already running or finished ticket. */
+    public void wakeWaiting(String type,String id) {
+        mutate(type,id,e->{if("waiting".equals(e.getState()))e.setDispatchAfter(Instant.now());});
+    }
     public void touch(String type,String id) {mutate(type,id,e->e.setDispatchAfter(Instant.now().plusSeconds(180)));}
     private void mutate(String type,String id,java.util.function.Consumer<AiGenerationQueueEntry> change) {
         tx.executeWithoutResult(s->{
@@ -78,11 +83,23 @@ public class AiGenerationQueueService {
             var entry=entries.findById(snapshot.getId()).orElseThrow();
             if(!entry.getState().equals(recovery?"running":"waiting")||entry.getDispatchAfter().isAfter(Instant.now()))return false;
             if(!recovery) {
+                if(VIDEO.equals(entry.getTaskType())&&entries.isPortraitReview(entry.getId()))return false;
                 int limit=endpoint.getConcurrencyLimit()==null?0:endpoint.getConcurrencyLimit();
                 if(limit>0&&entries.countOccupyingSlots(endpoint.getId())+
-                        entries.countByEndpointIdAndStateAndIdLessThan(endpoint.getId(),"waiting",entry.getId())>=limit)return false;
+                        entries.countExecutableWaitingAhead(endpoint.getId(),entry.getId())>=limit)return false;
             }
             entry.setDispatchAfter(Instant.now().plusSeconds(recovery?180:30));entries.save(entry);return true;
+        }));
+    }
+    /** Claim a status check, even with every generation slot busy. The check cannot submit video. */
+    public boolean claimPortraitReview(AiGenerationQueueEntry snapshot) {
+        return Boolean.TRUE.equals(tx.execute(s->{
+            if(endpoints.lockById(snapshot.getEndpointId()).isEmpty())return false;
+            var entry=entries.findById(snapshot.getId()).orElseThrow();
+            if("finished".equals(entry.getState())||!entries.isPortraitReview(entry.getId()))return false;
+            if("waiting".equals(entry.getState())&&entry.getDispatchAfter().isAfter(Instant.now()))return false;
+            // Also repairs a crash between persisting review-required and returning the ticket to waiting.
+            entry.setState("waiting");entry.setDispatchAfter(Instant.now().plusSeconds(30));entries.save(entry);return true;
         }));
     }
     public List<AiGenerationQueueEntry> openEntries(){return entries.findByStateInOrderByIdAsc(List.of("waiting","running"));}
@@ -97,10 +114,10 @@ public class AiGenerationQueueService {
         return tx.execute(s->{
             var endpoint=endpoints.lockById(snapshot.getEndpointId()).orElse(null);if(endpoint==null)return null;
             var entry=entries.findById(snapshot.getId()).orElse(null);
-            if(entry==null||!"waiting".equals(entry.getState()))return null;
+            if(entry==null||!"waiting".equals(entry.getState())||VIDEO.equals(type)&&entries.isPortraitReview(entry.getId()))return null;
             return new com.aistareco.aep.dto.AiGenerationQueuePositionDto(
-                entries.countByEndpointIdAndStateAndIdLessThan(endpoint.getId(),"waiting",entry.getId())+1,
-                entries.countByEndpointIdAndState(endpoint.getId(),"waiting"),
+                entries.countExecutableWaitingAhead(endpoint.getId(),entry.getId())+1,
+                entries.countExecutableWaiting(endpoint.getId()),
                 entries.countOccupyingSlots(endpoint.getId()),endpoint.getConcurrencyLimit());
         });
     }

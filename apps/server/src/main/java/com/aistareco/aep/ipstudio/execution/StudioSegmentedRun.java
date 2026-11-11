@@ -48,6 +48,8 @@ public class StudioSegmentedRun {
 
     /** 在挑下一步之前调用（持行锁的事务里）：把能自己处理的失败和检查结果处理掉。 */
     void prepare(IpPlanExecution e, ObjectNode state) {
+        // An explicit single-segment retry must not reset checks or retry other steps while it runs.
+        if(state.has(StudioPlanExecutor.PORTRAIT_RETRY_STEP))return;
         for (JsonNode raw : PlanState.stageSteps(state, e.getStage())) {
             ObjectNode step = (ObjectNode) raw;
             String status = step.path("status").asText(), id = step.path("id").asText(), operation = step.path("operation").asText();

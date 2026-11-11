@@ -62,6 +62,11 @@ class ArkPortraitLibraryTest {
         assertEquals("active",service.refreshItem("owner",item.id()).status());
         assertEquals("asset://asset-image",service.reference("owner","ark-test",item.key()));
         assertEquals("asset://asset-image",service.reference("owner","ark-test",item.key()));
+        var spec=new VideoGenSpec("universal_reference_video","720p",null,null,null,
+                List.of(new VideoGenSpec.Reference("image",item.key())),false);
+        assertFalse(service.flag("owner","ark-test",spec,400,
+                "{\"error\":{\"code\":\"InputImageSensitiveContentDetected.PrivacyInformation\",\"message\":\"content[1] may contain real person\"}}"),
+                "an explicit rejection of an approved reference must not reopen an automatic resume loop");
         verify(api,times(1)).call(eq(record),eq("CreateAsset"),anyMap());
         assertEquals(ArkPortraitLibrary.VIRTUAL_DECLARATION,db.queryForObject("SELECT declaration_text FROM video_asset_portrait WHERE id=?",String.class,item.id()));
     }

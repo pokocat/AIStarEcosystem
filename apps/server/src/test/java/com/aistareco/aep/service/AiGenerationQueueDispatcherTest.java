@@ -52,6 +52,17 @@ class AiGenerationQueueDispatcherTest {
         dispatcher.dispatch();dispatcher.dispatch();
         verify(images,times(1)).execute("run");verifyNoInteractions(videoWorker);
     }
+    @Test void portraitWaitDispatchesOnlyAStatusCheck() {
+        var ticket=ticket(AiGenerationQueueService.VIDEO,"portrait","waiting");
+        when(queue.openEntries()).thenReturn(List.of(ticket));
+        when(videos.findById("portrait")).thenReturn(Optional.of(MaterialVideoJob.builder().status("queued")
+                .errorCode("VIDEO_ASSET_NEEDS_REVIEW").build()));
+        when(queue.claimPortraitReview(ticket)).thenReturn(true);
+        dispatcher.dispatch();
+        verify(videoWorker).checkPortraitReviewAsync("portrait");
+        verify(videoWorker,never()).generateAsync(anyString());
+        verify(queue,never()).claimDispatch(any(),anyBoolean());
+    }
     @Test void unknownImageReceiptIsNeverResubmittedWhileLaterImagesCanDispatch() {
         var unknown=ticket(AiGenerationQueueService.IMAGE,"unknown","running");
         var later=ticket(AiGenerationQueueService.IMAGE,"later","waiting");later.setId(2L);

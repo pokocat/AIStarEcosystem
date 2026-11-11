@@ -8,7 +8,7 @@ vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...p
 vi.mock('@/canvas-bridge/studio-video-tasks', async original => ({ ...await original<any>(), videoTasks: api.list, videoTask: api.get }));
 vi.mock('@/canvas-bridge/api', () => ({ readRun: api.readRun, readVideoJob: api.readVideoJob, signKeys: api.signKeys, cancelRun: vi.fn() }));
 vi.mock('@/canvas-bridge/studio-plan-execution', async original => ({ ...await original<any>(), resumeStudioPlanExecution: api.resume }));
-vi.mock('@/canvas-bridge/signed-image', () => ({ SignedImage: ({ storageKey, ...p }: any) => <img {...p} data-key={storageKey}/> }));
+vi.mock('@/canvas-bridge/signed-image', () => ({ SignedImage: ({ storageKey, alt }: any) => <span role="img" aria-label={alt} data-key={storageKey}/> }));
 vi.mock('@/canvas-bridge/signed-video', () => ({ SignedVideo: ({ storageKey, ...p }: any) => <video {...p} data-key={storageKey}/> }));
 import { useState } from 'react';
 import { SceneVideoWorkspace, VideoHistoryToggle, VideoTaskSettings, videoTaskPhases } from './scene-video-workspace';
@@ -124,6 +124,24 @@ test('output the model could not produce usably offers regenerating in place', a
   render(<SceneVideoWorkspace {...props} taskId="PEX-bad" selected={saved}/>);
   expect(await screen.findByRole('button', { name: '重试这一步' })).toBeTruthy();
   expect(screen.queryByText(/模型原文/)).toBeNull();
+});
+test('a third portrait timeout offers only the affected video segment, preserving the first clip', async () => {
+  const saved = task('PEX-portrait', 'segmented'); saved.execution!.status = 'needs_user';
+  const first = saved.execution!.steps[0];
+  Object.assign(first, { title: '第 1 段视频', status: 'done', runIds: ['IPR-first'] });
+  saved.execution!.steps.push({ ...first, id: 'v2', title: '第 2 段视频', status: 'failed', errorCode: 'VIDEO_ASSET_REVIEW_TIMEOUT',
+    reason: '人像核验等待超时，本次生成已取消。请完成核验后重新生成。 · 追查号 J3MED94VRWCS', attempt: 3, runIds: ['IPR-expired'], dependsOn: ['v1'] });
+  api.get.mockResolvedValue(saved);
+  api.readRun.mockImplementation(async id => id === 'IPR-first'
+    ? { id, status: 'done', output: { storageKey: 'first.mp4' } }
+    : { id, status: 'failed', output: {} });
+  api.resume.mockResolvedValue({ ...saved.execution, status: 'running' });
+  render(<SceneVideoWorkspace {...props} taskId={saved.id} selected={saved}/>);
+  expect(await screen.findByLabelText('第 1 段视频')).toHaveProperty('tagName', 'VIDEO');
+  expect(screen.getByText('等待人像素材审核超时。已完成的片段将保留。')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '只重试第 2 段' }));
+  await waitFor(() => expect(api.resume).toHaveBeenCalledWith(saved.projectId, saved.id,
+    expect.objectContaining({ expectedStatus: 'needs_user', retryStepId: 'v2', retryAttempt: 3 })));
 });
 // 线上 PEX-9caea05b1848414ca167（2026-11-07）：分镜图生成服务没回结果、积分已退，原因写着「可以重新生成」，页面上却只有「在画布上查看」。
 test('a failed step whose credits came back can be retried on the video page', async () => {

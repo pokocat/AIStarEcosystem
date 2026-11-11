@@ -158,6 +158,26 @@ class StudioPlanExecutorTest {
         assertTrue(om.readTree(row.getStepsJson()).path("needsUserReason").asText().contains("已尝试 3 次"));
     }
 
+    @Test void portraitSegmentRetryDoesNotRestartOtherStepsWhileTheSelectedRunIsInFlight() throws Exception {
+        var first=videoStep("v1",40).put("status","done");
+        first.withArray("runIds").add("IPR-first");
+        var second=videoStep("v2",40,"v1").put("attempt",4);
+        var other=videoStep("v3",40).put("status","failed").put("errorCode","STUDIO_VIDEO_FAILED");
+        execution("running",300,first,other,second);videoPageRetries();
+        row.setStepsJson(((ObjectNode)state()).put(StudioPlanExecutor.PORTRAIT_RETRY_STEP,"v2").toString());
+        dtos.put("IPR-first",dto("IPR-first","done",40,videoOutput("first.mp4")));
+        executor.advance("PEX-1");executor.advance("PEX-1");
+        assertEquals(1,submitted.size());
+        assertEquals(StudioPlanExecutionIds.requestId("PEX-1","production","v2",4),submitted.get(0).clientRequestId());
+        assertEquals("IPR-first",step("v1").path("runIds").get(0).asText());
+        assertEquals("failed",step("v3").path("status").asText());
+        dtos.put("IPR-"+submitted.get(0).clientRequestId(),dto("IPR-"+submitted.get(0).clientRequestId(),"done",40,videoOutput("second.mp4")));
+        executor.advance("PEX-1");
+        assertEquals(1,submitted.size());assertEquals("done",step("v2").path("status").asText());
+        assertEquals(80,budget().path("spent").asLong());
+        assertEquals("needs_user",row.getStatus());
+    }
+
     /** 视频页的爆款复刻：一段视频出完、只等检查。检查步骤按 {@code videoCheck} 的写法带 sampling / compareReferences（null 时是之前受理的老方案）。 */
     private void recreationCheck(boolean detailed) throws Exception {
         var keyframe=om.createObjectNode().put("id","k1").put("stage","production").put("title","第 1 镜开场画面").put("operation","image").put("execution","auto")
