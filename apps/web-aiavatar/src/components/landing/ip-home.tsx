@@ -24,7 +24,6 @@ type HomeStart = { entry: StudioEntry } | { href: string } | { blank: true };
 const tools: { title: string; icon: typeof Video; start: HomeStart; tone: string }[] = [
   { title: "画布", icon: SquareDashedMousePointer, start: { blank: true }, tone: "indigo" },
   { title: "短剧导演台", icon: Clapperboard, start: { href: "/director" }, tone: "rose" },
-  { title: "爆款复刻", icon: Video, start: { href: "/toolbox" }, tone: "violet" },
   { title: "商品白底图", icon: SwatchBook, start: { href: "/image?scene=white-background" }, tone: "teal" },
   { title: "图片精修", icon: Sparkles, start: { href: "/image?scene=retouch" }, tone: "amber" },
   { title: "人物真人感", icon: Scan, start: { href: "/image?scene=realism" }, tone: "violet" },
