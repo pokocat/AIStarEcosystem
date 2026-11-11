@@ -98,7 +98,7 @@
 用户定：「爆款复刻」是类别，三种方式（分镜复刻 / 深度复刻 / 元素替换）都开放，按视频类型选。现行做法见 `docs/ip-studio-recreation.md`「三种复刻方式」。
 
 - [ ] 生产装深度复刻的运行时：server 那台机器上按 `tools/studio-depth/install.sh` 装 ReShot、Video Depth Anything Small 和 DWPose 权重，配 `AEP_STUDIO_DEPTH_COMMAND` / `_CHECKPOINT` / `_POSE_CHECKPOINT_DIR`。没装之前页面上深度复刻显示「暂不可用」。装之前先在同规格机器上量一段 15 秒原片的推理耗时和内存，主服务和网页在同一台机器上。
-  - **2026-11-11 已装好，待在 server.env 开启**：生产机自己跑不了（server 限 2G 内存，深度一遍峰值 4.5G），计算放到 ECS-B 的 `reshot` 用户（限 2 核 6G），生产机用转发脚本 `/opt/studio-depth/reshot-remote` 调过去，端到端实测通过（15 秒画面：骨骼 97 秒，深度 473 秒）。做法见 `docs/studio-video-clone-toolbox.md`「生产上放在另一台机器」。开启要在 `server.env` 加 `AEP_STUDIO_DEPTH_COMMAND` / `_CHECKPOINT` / `_POSE_CHECKPOINT_DIR` / `_TIMEOUT_MS` 并重启 server。还没做：ECS-B 迁移成正式机时这 2 核会不够，需要单独的机器或 GPU；深度一段要 8 分钟，多段原片会排很久。
+  - **2026-11-11 已装好**（推理分辨率同日降到 252，速度约 3 倍，开启情况见发布记录）：生产机自己跑不了（server 限 2G 内存，深度一遍峰值 4.5G），计算放到 ECS-B 的 `reshot` 用户（限 2 核 6G），生产机用转发脚本 `/opt/studio-depth/reshot-remote` 调过去，端到端实测通过（15 秒画面：骨骼 97 秒，深度 473 秒）。做法见 `docs/studio-video-clone-toolbox.md`「生产上放在另一台机器」。开启要在 `server.env` 加 `AEP_STUDIO_DEPTH_COMMAND` / `_CHECKPOINT` / `_POSE_CHECKPOINT_DIR` / `_TIMEOUT_MS` 并重启 server。还没做：ECS-B 迁移成正式机时这 2 核会不够，需要单独的机器或 GPU；深度一段要 8 分钟，多段原片会排很久。
 - [ ] 深度复刻、元素替换在新流程下各真跑一条（口播类原片走深度复刻、带货片走元素替换），看拉片后的分段、每段提示词、动作参考和成片，记进验收记录。 **2026-11-11 进展**：深度复刻（41 秒直播切片）和分镜复刻（13 秒手势舞）已在本机整套平台上用 Seedance 2.5 真跑出片，修了检查不重出、字幕、场景不一致和失败后没法重试，见 `docs/ip-studio-recreation.md`「2026-11-11 本机真跑后的修改」；元素替换还没跑，改完的深度复刻要再跑一条确认。
 - [ ] 推荐门槛（最多 2 个镜头或平均每个镜头 ≥6 秒推荐深度复刻）是估的：拿评测集和线上原片看推荐对不对，再调。
 - [ ] `StudioCloneTaskIntegrationTest` 是单段直出那版的真实链路测试，已加 `@Disabled`；按「先拉片、再分段」重写，拉片那步用确定性响应。
