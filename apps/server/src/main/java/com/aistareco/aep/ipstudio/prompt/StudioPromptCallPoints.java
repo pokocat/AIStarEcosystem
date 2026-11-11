@@ -76,7 +76,7 @@ public final class StudioPromptCallPoints {
     public static final String DIRECTOR_SCRIPT = "stage-director-script", DIRECTOR_SCRIPT_MORE = "stage-director-script-more", DIRECTOR_SPLIT = "stage-director-split", DIRECTOR_EXTRACT = "stage-director-extract",
             DIRECTOR_STORYBOARD = "stage-director-storyboard", DIRECTOR_ASSISTANT = "stage-director-assistant", DIRECTOR_BRIEF = "stage-director-brief",
             DIRECTOR_ASSET_IMAGE = "stage-director-asset-image", DIRECTOR_BOARD = "stage-director-board", DIRECTOR_IMAGE_NOTES = "stage-director-image-notes",
-            DIRECTOR_SCENE_VIEWS = "stage-director-scene-views";
+            DIRECTOR_SCENE_VIEWS = "stage-director-scene-views", DIRECTOR_VIDEO = "stage-director-video", DIRECTOR_VIDEO_FRAME = "stage-director-video-frame";
 
     private static void registerDirector() {
         Map<String, String> input = vars("input", "本次输入（JSON，作为素材）");
@@ -134,6 +134,52 @@ public final class StudioPromptCallPoints {
         StudioPromptStages.register(new StudioPromptStages.Stage(DIRECTOR_SCENE_VIEWS, StudioPromptEntry.IMAGE_MODEL, "导演台场景四视图",
                 vars("style", "画面风格", "name", "场景名称", "description", "场景设定"), Set.of(), Map.of(),
                 new LinkedHashMap<>(Map.of("style", "真人写实", "name", "周桂芬的小面馆", "description", "老街转角的小面馆，门在左侧，靠里是收银台。"))));
+        registerDirectorVideo();
+    }
+
+    /**
+     * 导演台交给视频模型的两份中文提示词（2026-11-11 从 DirectorPrompts 的代码搬进库，第 1 版与搬家前逐字一致）。
+     * 谁在画面里、画内画外、切镜时间由代码算好传进来，这里只管怎么写。生成时记下版本，已生成的视频按那一版核对，换模板不算内容变化。
+     */
+    private static void registerDirectorVideo() {
+        Map<String, Object> video = new LinkedHashMap<>();
+        video.put("hasPeople", true);
+        video.put("refs", List.of(Map.of("label", "图2", "name", "周桂芬", "isScene", false, "isProp", false, "isProduct", false, "isCharacter", true),
+                Map.of("label", "图3", "name", "小面馆", "isScene", true, "isProp", false, "isProduct", false, "isCharacter", false)));
+        video.put("characters", "周桂芬"); video.put("manyCharacters", false);
+        video.put("grid", true); video.put("blanks", true); video.put("second", false); video.put("secondCells", List.of()); video.put("secondBlanks", false);
+        video.put("cells", List.of(Map.of("position", "左上格", "no", 1), Map.of("position", "右上格", "no", 2)));
+        video.put("style", "真人写实");
+        video.put("shots", List.of(
+                shot(1, "0", "3", "近景，平视，固定机位。", "周桂芬抬头看向门口。", "", "周桂芬", List.of(Map.of("narrator", false, "who", "周桂芬", "offscreen", false, "mute", false, "text", "谁啊？")), ""),
+                shot(2, "3", "6", "中景，越过肩膀拍门口，镜头缓慢推近。", "门被推开一条缝。", "", "", List.of(), "")));
+        video.put("hasSound", false); video.put("noDialogue", false); video.put("voices", List.of()); video.put("voiceDescs", List.of());
+        StudioPromptStages.register(new StudioPromptStages.Stage(DIRECTOR_VIDEO, StudioPromptEntry.VIDEO_MODEL, "导演台片段视频",
+                vars("hasPeople", "有参考图（写【人物】）", "refs", "参考图：[{label, name, isScene, isProp, isProduct, isCharacter}]",
+                        "characters", "这一段有参考图的角色，用「和」连起来（没有为空）", "manyCharacters", "角色不止一个",
+                        "grid", "分镜图是 2×2 宫格（不是单张画面）", "cells", "第一张宫格：[{position（左上格 / 右上格…）, no（第几镜）}]", "blanks", "第一张宫格有空着的格子",
+                        "second", "有第二张宫格（AI 视频页长视频一段 5–8 镜）", "secondCells", "第二张宫格，同 cells", "secondBlanks", "第二张宫格有空着的格子",
+                        "style", "画面风格",
+                        "shots", "逐镜：[{no, start（本镜开始秒数）, end（本镜结束秒数）, framing（景别、机位，已补句号）, still, action, only（画面里只有这一个人时是名字，否则为空）, "
+                                + "lines: [{narrator（没有说话人）, who, offscreen（在画外说）, mute（画外说时画面里的人嘴闭着）, text}], listeners（听着的人，顿号连起来）}]",
+                        "hasSound", "要写【声音】", "noDialogue", "这一段没有台词", "voices", "声音参考：[{name, label（音频1…）}]", "voiceDescs", "音色描述：[{name, desc}]"),
+                Set.of(), Map.of(), video));
+        Map<String, Object> frame = new LinkedHashMap<>();
+        frame.put("seconds", 5); frame.put("aspect", "9:16"); frame.put("style", "真人写实");
+        frame.put("shots", List.of(Map.of("size", "近景", "camera", "固定机位", "action", "周桂芬抬头看向门口",
+                "lines", List.of(Map.of("narrator", false, "speaker", "周桂芬", "text", "谁啊？")))));
+        frame.put("voiceDescs", List.of(Map.of("name", "周桂芬", "desc", "五十岁的女声，嗓门大")));
+        StudioPromptStages.register(new StudioPromptStages.Stage(DIRECTOR_VIDEO_FRAME, StudioPromptEntry.VIDEO_MODEL, "导演台首帧出片",
+                vars("seconds", "片段秒数", "aspect", "画幅", "style", "画面风格", "shots", "逐镜：[{size, camera, action, lines: [{narrator（没有说话人）, speaker, text}]}]", "voiceDescs", "音色描述：[{name, desc}]"),
+                Set.of(), Map.of(), frame));
+    }
+
+    private static Map<String, Object> shot(int no, String start, String end, String framing, String still, String action, String only,
+                                            List<Map<String, Object>> lines, String listeners) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("no", no); m.put("start", start); m.put("end", end); m.put("framing", framing); m.put("still", still); m.put("action", action);
+        m.put("only", only); m.put("lines", lines); m.put("listeners", listeners);
+        return m;
     }
 
     private static StudioPromptStages.Stage director(String key, String title, Map<String, String> vars, Set<String> required,

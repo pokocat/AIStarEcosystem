@@ -1482,6 +1482,7 @@ public class DirectorService {
         Limits lim = limits(c);
         if (lim == null) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "DIRECTOR_VIDEO_MODEL_UNAVAILABLE",
                 "暂无可用于片段生成的视频模型，请联系平台处理");
+        if (!clip.path("videoPromptCustom").asBoolean(false)) prompts().requireStage(videoStage(lim));
         String aspect = c.path("settings").path("aspectRatio").asText("9:16");
         if (!lim.aspects().isEmpty() && !lim.aspects().contains(aspect))
             throw invalid("视频模型「" + lim.name() + "」不支持 " + aspect + " 画幅，请在设置中更换画幅或模型");
@@ -1580,7 +1581,8 @@ public class DirectorService {
                 throw invalid("台词过长，视频提示词超过 " + H3PromptRewrite.MAX_PROMPT_CHARS + " 字符。请缩短台词或拆分片段，或按原文生成");
         }
         ObjectNode m = om.createObjectNode().put("node", node).put("prompt", in.prompt()).put("fingerprint", in.fingerprint())
-                .put("promptFormat", DirectorPrompts.VIDEO_PROMPT_FORMAT);
+                .put("promptFormat", DirectorPrompts.VIDEO_PROMPT_FORMAT)
+                .put("videoTemplate", DirectorPrompts.templateVersion(prompts(), videoStage(in.lim())));
         if (sent != null) m.put("sentPrompt", sent);
         if (original) m.put("promptChoice", "original");
         if (draft != null) {
@@ -1955,12 +1957,13 @@ public class DirectorService {
         ObjectNode slot = (ObjectNode) clip.path("video");
         // 换模板之前提交、之后才完成的任务按它提交时的版本核对，免得被当成「生成期间设置有变动」。
         Limits lim = limits(c);
-        String legacy = legacyVideoPrompt(c, clip, lim, promptFormat(meta));
+        String legacy = legacyVideoPrompt(c, clip, lim, meta);
         String now = (legacy == null ? videoCurrent(c, clip, lim) : videoCurrent(c, clip, lim, legacy)).fingerprint();
         boolean stale = !meta.hasNonNull("fingerprint") || !meta.path("fingerprint").asText().equals(now);
         ObjectNode m = addCandidate(c, slot, key, runId, "generated");
         if (meta.hasNonNull("fingerprint")) m.put("fingerprint", meta.path("fingerprint").asText());
         if (meta.has("promptFormat")) m.put("promptFormat", meta.path("promptFormat").asInt());
+        if (meta.has("videoTemplate")) m.put("videoTemplate", meta.path("videoTemplate").asInt());
         if (meta.has("sentPrompt")) m.put("sentPrompt", meta.path("sentPrompt").asText());
         for (String f : List.of("promptUsed", "promptReason", "draftState", "rewriteRunId")) if (meta.hasNonNull(f)) m.put(f, meta.path(f).asText());
         if (meta.has("rewriteCost")) m.put("rewriteCost", meta.path("rewriteCost").asLong());
@@ -4623,9 +4626,11 @@ public class DirectorService {
             parts.unvoiced().forEach(unvoicedNode::add);
             ArrayNode voicedNode = clip.putArray("voiced");
             parts.voices().forEach(v -> voicedNode.add(v.name()));
-            if (!clip.path("videoPromptCustom").asBoolean(false))
-                clip.put("videoPrompt", lim != null && lim.frame() ? DirectorPrompts.framePrompt(c.path("settings"), clip, names, parts.voiceDescs())
-                        : DirectorPrompts.videoPrompt(c.path("settings"), clip, parts.videoRefs(), names, parts.voices(), parts.unvoiced(), parts.voiceDescs(), aliases));
+            if (!clip.path("videoPromptCustom").asBoolean(false)) {
+                // 文字在提示词库（stage-director-video / -frame）；库里缺这个环节时保留上次编好的，提交时再按「提示词未配置」拦。
+                String compiled = videoTemplate(c, clip, lim, parts, names, aliases, null);
+                if (compiled != null) clip.put("videoPrompt", compiled);
+            }
             ArrayNode issues = clip.putArray("issues");
             int shots = clip.path("shots").size();
             if (shots == 0) issues.add("暂无镜头：请添加镜头或重写本集分镜脚本");
@@ -4652,7 +4657,7 @@ public class DirectorService {
             clip.set("warnings", warnings);
             clip.put("videoPromptRewrite", rewriteState(c, clip, lim));
             check((ObjectNode) clip.path("board"), boardCurrent(c, clip), legacyBoardCurrent(c, clip, adoptedCandidate(clip.path("board"))), false);
-            String legacy = legacyVideoPrompt(c, clip, lim, parts, names, promptFormat(adoptedCandidate(clip.path("video"))));
+            String legacy = legacyVideoPrompt(c, clip, lim, parts, names, aliases, adoptedCandidate(clip.path("video")));
             check((ObjectNode) clip.path("video"), videoCurrent(c, clip, lim), legacy == null ? null : videoCurrent(c, clip, lim, legacy), true);
         }
     }
@@ -4686,12 +4691,37 @@ public class DirectorService {
         return new VideoParts(videoRefs, voices, unvoiced, voiceDescs);
     }
 
+    /** 当前视频提示词（首帧出片用首帧模板）；version 为 null 用库里当前版本，库里没有返回 null。 */
+    private String videoTemplate(ObjectNode c, JsonNode clip, Limits lim, VideoParts parts, Map<String, String> names, Map<String, List<String>> aliases, Integer version) {
+        return lim != null && lim.frame() ? DirectorPrompts.framePrompt(prompts(), version, c.path("settings"), clip, names, parts.voiceDescs())
+                : DirectorPrompts.videoPrompt(prompts(), version, c.path("settings"), clip, parts.videoRefs(), names, parts.voices(), parts.unvoiced(), parts.voiceDescs(), aliases, DirectorPrompts.MAX_SHOTS);
+    }
+
+    /** 这一段现在用的是哪个视频模板环节（首帧出片另一个）。 */
+    private static String videoStage(Limits lim) {
+        return lim != null && lim.frame() ? StudioPromptCallPoints.DIRECTOR_VIDEO_FRAME : StudioPromptCallPoints.DIRECTOR_VIDEO;
+    }
+
     /**
-     * 按 format 那一版模板编出的这一段提示词，只用来核对那一版生成的视频：换模板本身不算「镜头、台词或提示词已修改」。
-     * 用户改写过提示词、首帧出片（模板没换）或 format 就是当前版本时返回 null。没记版本的候选按第 1 版。
+     * 候选是按视频模板哪一版编的：记了 videoTemplate 按它，第 4 版（以及首帧出片）没记的是模板进库之前生成的，和库里第 1 版逐字一致。
      */
-    private String legacyVideoPrompt(ObjectNode c, JsonNode clip, Limits lim, VideoParts parts, Map<String, String> names, int format) {
-        if (clip.path("videoPromptCustom").asBoolean(false) || (lim != null && lim.frame()) || format >= DirectorPrompts.VIDEO_PROMPT_FORMAT) return null;
+    private static int videoTemplateVersion(JsonNode m) {
+        return m == null ? 1 : m.path("videoTemplate").asInt(1);
+    }
+
+    /**
+     * 按候选生成时的那一版模板编出的这一段提示词，只用来核对那一版生成的视频：换模板本身不算「镜头、台词或提示词已修改」
+     * （2026-11-11 用户定：生成好的视频就是终态，后台改了模板只影响之后生成的）。
+     * 用户改写过提示词、或候选用的就是当前版本时返回 null；那一版在库里找不到时也返回 null（按当前版本比）。
+     */
+    private String legacyVideoPrompt(ObjectNode c, JsonNode clip, Limits lim, VideoParts parts, Map<String, String> names,
+                                     Map<String, List<String>> aliases, JsonNode candidate) {
+        if (clip.path("videoPromptCustom").asBoolean(false)) return null;
+        int format = promptFormat(candidate);
+        if (lim != null && lim.frame() || format >= DirectorPrompts.VIDEO_PROMPT_FORMAT) {
+            int version = videoTemplateVersion(candidate);
+            return version == DirectorPrompts.templateVersion(prompts(), videoStage(lim)) ? null : videoTemplate(c, clip, lim, parts, names, aliases, version);
+        }
         return switch (format) {
             case 0, 1 -> DirectorPrompts.legacyVideoPrompt(c.path("settings"), clip, parts.videoRefs(), names, parts.voices(), parts.unvoiced(), parts.voiceDescs());
             case 2 -> DirectorPrompts.videoPromptV2(c.path("settings"), clip, parts.videoRefs(), names, parts.voices(), parts.unvoiced(), parts.voiceDescs());
@@ -4734,13 +4764,13 @@ public class DirectorService {
         return m == null ? 1 : m.path("promptFormat").asInt(1);
     }
 
-    private String legacyVideoPrompt(ObjectNode c, JsonNode clip, Limits lim, int format) {
+    private String legacyVideoPrompt(ObjectNode c, JsonNode clip, Limits lim, JsonNode candidate) {
         Map<String, String> names = new HashMap<>();
         for (JsonNode a : c.path("assets")) names.put(a.path("id").asText(), a.path("name").asText());
         List<DirectorPrompts.Ref> refs = new ArrayList<>();
         for (JsonNode a : visualAssets(c, clip))
             refs.add(new DirectorPrompts.Ref("图" + (refs.size() + 1), a.path("kind").asText(), a.path("name").asText()));
-        return legacyVideoPrompt(c, clip, lim, videoParts(c, clip, refs, names), names, format);
+        return legacyVideoPrompt(c, clip, lim, videoParts(c, clip, refs, names), names, characterAliases(c), candidate);
     }
 
     /** 片段里说台词的角色（按第一次开口的顺序），视频的声音参考按这个顺序编号。 */
