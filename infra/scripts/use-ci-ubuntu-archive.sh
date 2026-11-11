@@ -33,5 +33,11 @@ Suites: $codename $codename-updates $codename-security
 Components: main universe restricted multiverse
 Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 EOF
-printf 'Acquire::ForceIPv4 "true";\nAcquire::https::Timeout "20";\n' |
-  sudo tee /etc/apt/apt.conf.d/99-aistar-ci-network >/dev/null
+sudo install -d -m 755 /var/tmp/aistar-apt-lists
+sudo tee /etc/apt/apt.conf.d/99-aistar-ci-network >/dev/null <<'EOF'
+Acquire::ForceIPv4 "true";
+Acquire::https::Timeout "20";
+Dir::State::lists "/var/tmp/aistar-apt-lists/";
+#clear APT::Update::Post-Invoke;
+#clear APT::Update::Post-Invoke-Success;
+EOF

@@ -10,7 +10,7 @@ ssh=(/usr/bin/ssh -F /dev/null -T -i /run/aistar-depth/id_ed25519
   reshot@10.20.1.215)
 
 if [[ $# == 1 && $1 == --version ]]; then
-  exec "${ssh[@]}" version
+  exec "${ssh[@]}" version </dev/null
 fi
 
 input=${1:?missing input}
@@ -50,11 +50,11 @@ esac
 
 read -r job < /proc/sys/kernel/random/uuid
 job=${job//-/}
-trap '"${ssh[@]}" cleanup "$job" >/dev/null 2>&1 || true' EXIT
+trap '"${ssh[@]}" cleanup "$job" </dev/null >/dev/null 2>&1 || true' EXIT
 trap 'exit 143' TERM INT
 "${ssh[@]}" upload "$job" < "$input"
 "${ssh[@]}" "${run[0]}" "$job" "${run[@]:1}" </dev/null
-"${ssh[@]}" download "$job" output > "${options[-o]}"
+"${ssh[@]}" download "$job" output </dev/null > "${options[-o]}"
 if [[ ${options[--control]} == pose ]]; then
-  "${ssh[@]}" download "$job" keypoints > "${options[--keypoints]}"
+  "${ssh[@]}" download "$job" keypoints </dev/null > "${options[--keypoints]}"
 fi
