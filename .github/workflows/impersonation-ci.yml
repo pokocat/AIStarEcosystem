@@ -75,13 +75,7 @@ jobs:
             packages+=(fonts-noto-cjk)
           fi
           if (( ${#packages[@]} )); then
-            # The Azure mirror stalled the media gate for 10 minutes. Keep Ubuntu's
-            # official signed packages, using its primary HTTPS archive on this runner.
-            for source in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
-              if [[ -f "$source" ]]; then
-                sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' "$source"
-              fi
-            done
+            bash infra/scripts/use-ci-ubuntu-archive.sh
             sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
             sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y --no-install-recommends "${packages[@]}"
           fi
@@ -279,6 +273,7 @@ jobs:
         if: matrix.browser || matrix.product == 'web-aiavatar' || matrix.product == 'admin-new'
         run: |
           npm install --prefix "$RUNNER_TEMP/browser-test" --no-package-lock --no-save playwright@1.55.1
+          bash infra/scripts/use-ci-ubuntu-archive.sh
           "$RUNNER_TEMP/browser-test/node_modules/.bin/playwright" install --with-deps chromium
       - name: Verify stale payment polling preserves server confirmation
         if: matrix.product == 'web-aiavatar'
