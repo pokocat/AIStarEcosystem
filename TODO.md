@@ -108,6 +108,9 @@
 
 - [ ] 画布上「修改后重试」对任务里的节点不对：打开的是通用出图面板，显示交给模型的英文说明，参考图没带上，比例变成 3:4（2026-11-11 本机真跑，分镜复刻第 1 镜开场画面）。视频页已经能一直重试，画布这条路要么照原步骤重做（同参考图、比例和提示词），要么对任务节点不给这个按钮。
 - [ ] 线上 Seedance 2.5（`ai-onetoken-seedance25`）开参考视频：用户定按普通价格先开（2026-11-11），深度复刻和元素替换要用；供应商带视频输入的实际计费还没核实。
+- [ ] Seedance 2.0 Fast / Mini（方舟）和 OneToken Seedance 2.0 已开参考视频（2026-11-12，用户定先按普通价，见 `docs/releases/seedance20-reference-video-config-20261112.md`）：方舟「输入含视频」那档价比现在的售价依据高，要按含视频的成本重新定价；这三条还没真实提交过带参考视频的任务，方舟两条原片有真人时可能被人像审核拒绝。
+- [x] ~~爆款复刻没加参考视频就按场景默认时长报价~~ **2026-11-12 完成，未发布**：没加参考视频不报价、规格栏写「跟随原片」（`scene-video-studio.tsx` 的 `sourceUnknown`）。
+- [ ] 爆款复刻默认视频模型改成 OneToken Seedance 2.0（2026-11-12 用户定），现在是写在页面里的端点编号 `RECREATION_DEFAULT_VIDEO_MODEL`（`scene-video-studio.tsx`）：挪到服务端配置，照导演台默认图片模型 `ai.scene-default.studio.director-image` 的做法，Studio 后台可改。
 
 ## 用户反馈 2026-11-07（修复见 PR 157，文案记录在 `docs/audits/pc-ui-copy-review-2026-11.md` 第 11 批）
 
