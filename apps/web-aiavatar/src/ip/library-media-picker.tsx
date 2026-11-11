@@ -3,14 +3,16 @@ import { IMAGE_UPLOAD_ACCEPT } from '@ai-star-eco/api-client/image-upload-policy
 // AI 图片 / AI 视频素材位的资产选择框（2026-10-31，设计稿「选择框 · 商品图 / 声音」）：
 // 左边是资产库，默认打开这张画布绑定的库，没有就打开上次用的；图片位上面能切「图片 / 人物」，视频和声音位只列这一类文件。
 // 新文件在框里「上传到这个库」，传完自动选中。
-// 2026-11-10：图片位顶上分「我的资产 / 官方形象」两个来源。官方形象按分类筛选，免费的可直接选，需授权的列出来但不能选。画布、导演台、创作助手的选择框不走这里（library-reference-picker.tsx 原样）。
+// 图片位分「我的资产 / 官方形象」。选中免费官方人物时引用主形象，需授权的人物仅展示。
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button, ConfigProvider, Input, Modal, Select, Skeleton } from 'antd';
 import { AudioLines, Check, Folder, LayoutGrid, Mic, Search, Upload } from 'lucide-react';
 import type { IpSavedAsset, LibraryFolder, LibraryObject } from '@ai-star-eco/types';
+import type { StudioIpAsset } from '@ai-star-eco/types/ip-studio-workflow';
 import { canvasLibraryFolder, libraryFolders, libraryMaterials, libraryObjects, uploadLibraryMedia } from '@/canvas-bridge/asset-library';
 import { libraryObjectAsset, studioIpAssetReference } from '@/canvas-bridge/library-reference';
 import { listStudioIpAssets } from '@/canvas-bridge/studio-api';
+import { groupStudioIpAssets } from '@/canvas-bridge/studio-ip-library';
 import { SignedAudio } from '@/canvas-bridge/signed-audio';
 import { AssetThumb } from './asset-thumb';
 import { AudioRecorderDialog } from './audio-recorder-dialog';
@@ -41,7 +43,7 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
   const [tab, setTab] = useState<PickerTab>('files');
   const [source, setSource] = useState<PickerSource>('mine');
   const [category, setCategory] = useState('all');
-  const [officialAll, setOfficialAll] = useState<IpSavedAsset[]>([]);
+  const [officialAll, setOfficialAll] = useState<StudioIpAsset[]>([]);
   const [keyword, setKeyword] = useState('');
   const [items, setItems] = useState<IpSavedAsset[]>([]);
   const [page, setPage] = useState(0);
@@ -70,10 +72,11 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
   const fetchPage = async (n: number): Promise<{ items: IpSavedAsset[]; hasMore: boolean }> => {
     if (withPeople && source === 'official') {
       if (n > 0) return { items: [], hasMore: false };
-      const all = (await listStudioIpAssets()).filter(a => isOfficialAsset(a) && a.storageKey && a.url);
-      setOfficialAll(all.map(officialItem));
+      const mainImages = (await listStudioIpAssets()).filter(a => isOfficialAsset(a) && a.current && !a.lookId && a.storageKey && a.url);
+      const people = groupStudioIpAssets(mainImages).map(person => person.main);
+      setOfficialAll(people);
       const needle = keyword.trim().toLocaleLowerCase();
-      return { items: all.filter(a => inOfficialCategory(a, category) && (!needle || `${a.characterName || a.name} ${a.description || ''}`.toLocaleLowerCase().includes(needle))).map(officialItem), hasMore: false };
+      return { items: people.filter(a => inOfficialCategory(a, category) && (!needle || `${a.characterName || a.name} ${a.description || ''}`.toLocaleLowerCase().includes(needle))).map(officialItem), hasMore: false };
     }
     if (!library) return { items: [], hasMore: false };
     if (tab !== 'files') {
@@ -168,7 +171,7 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
       </nav>}
       <div className="lmp-main">
         <div className="lmp-bar">
-          {official && <Select className="lmp-category" aria-label="按分类筛选官方形象" value={category} disabled={busy} onChange={setCategory} options={officialCategoryOptions(officialAll.map(a => ({ category: typeof a.metadata?.officialCategory === 'string' ? a.metadata.officialCategory : undefined })))} getPopupContainer={studioOverlayContainer} popupMatchSelectWidth={false}/>}
+          {official && <Select className="lmp-category" aria-label="按分类筛选官方形象" value={category} disabled={busy} onChange={setCategory} options={officialCategoryOptions(officialAll)} getPopupContainer={studioOverlayContainer} popupMatchSelectWidth={false}/>}
           {withPeople && !official && <div className="lmp-seg" role="tablist" aria-label="类型">
             <button type="button" role="tab" aria-selected={tab === 'files'} disabled={busy} onClick={() => setTab('files')}>图片</button>
             {OBJECT_TABS.map(t => <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} disabled={busy} onClick={() => setTab(t.key)}>{t.label}</button>)}
@@ -181,7 +184,7 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
         </div>
         {error && <p className="lmp-error"><StudioErrorNotice error={error}/><Button size="small" onClick={() => setRevision(n => n + 1)}>重试</Button></p>}
         {loading && !items.length ? <Skeleton active/> : error && !items.length ? null : !items.length
-          ? library === AI_LIBRARY && tab !== 'files' ? <div className="lmp-empty"><p>AI 生成库仅保存图片、视频和音频。请在「全部」中选择{OBJECT_TABS.find(t => t.key === tab)?.label}。</p><Button onClick={() => setLibrary('all')}>查看全部{OBJECT_TABS.find(t => t.key === tab)?.label}</Button></div>
+          ? !official && library === AI_LIBRARY && tab !== 'files' ? <div className="lmp-empty"><p>AI 生成库仅保存图片、视频和音频。请在「全部」中选择{OBJECT_TABS.find(t => t.key === tab)?.label}。</p><Button onClick={() => setLibrary('all')}>查看全部{OBJECT_TABS.find(t => t.key === tab)?.label}</Button></div>
             : <p className="lmp-empty">{official ? keyword.trim() || category !== 'all' ? '没有找到匹配的官方形象。' : '暂无官方形象。' : tab !== 'files' ? `暂无带图的${OBJECT_TABS.find(t => t.key === tab)?.label}。` : library === AI_LIBRARY ? `还没有 AI 生成的${NOUN[mediaType]}。` : keyword.trim() ? '没有找到匹配的素材，请尝试其他名称。' : upload ? `暂无${NOUN[mediaType]}，可点击「上传」添加。` : `暂无${NOUN[mediaType]}。`}</p>
           : <ul className={`lmp-grid${mediaType === 'audio' ? ' is-list' : ''}`}>{items.map(a => {
             const on = !!selected[a.id], unavailable = a.metadata?.unavailable === true;
@@ -210,9 +213,8 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
   </Modal><AudioRecorderDialog open={open && recording} onClose={() => setRecording(false)} onSave={putInLibrary}/></ConfigProvider>;
 }
 
-/** 官方形象的一张图：需授权的标成不能选，原因写在卡片上。 */
-function officialItem(a: Parameters<typeof studioIpAssetReference>[0]): IpSavedAsset {
+function officialItem(a: StudioIpAsset): IpSavedAsset {
   const base = studioIpAssetReference(a), usable = officialUsable(a);
-  return { ...base, id: `official:${a.avatarId}:${a.storageKey}`, source: '官方形象',
-    metadata: { ...base.metadata, officialAccess: officialAccessLabel(a), officialCategory: a.category || undefined, ...(usable ? {} : { unavailable: true }) } };
+  return { ...base, id: `official:${a.avatarId}`, title: a.characterName || a.name, source: '官方形象',
+    metadata: { ...base.metadata, officialAccess: officialAccessLabel(a), ...(usable ? {} : { unavailable: true }) } };
 }
