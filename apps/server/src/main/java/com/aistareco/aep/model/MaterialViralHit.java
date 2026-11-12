@@ -25,7 +25,7 @@ public class MaterialViralHit {
     @Builder.Default
     private int score = 0;
 
-    @Lob
-    @Column(name = "payload_json", columnDefinition = "LONGTEXT", nullable = false)
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "payload_json", length = org.hibernate.Length.LONG32, nullable = false)
     private String payloadJson;
 }

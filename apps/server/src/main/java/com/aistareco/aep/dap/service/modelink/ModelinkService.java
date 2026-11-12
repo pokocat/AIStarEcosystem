@@ -46,7 +46,7 @@ public class ModelinkService implements ModelinkGateway {
     @PostConstruct
     void warnIfProductionLike() {
         boolean prodLike = env != null && Arrays.stream(env.getActiveProfiles())
-                .anyMatch(p -> p.equalsIgnoreCase("mysql") || p.equalsIgnoreCase("prod") || p.equalsIgnoreCase("production"));
+                .anyMatch(p -> (p.equalsIgnoreCase("mysql") || p.equalsIgnoreCase("postgres")) || p.equalsIgnoreCase("prod") || p.equalsIgnoreCase("production"));
         if (prodLike && props.getModelink().isAllowMock()) {
             log.error("==========================================================================");
             log.error("⚠️  DAP MODELINK ALLOW-MOCK = true（生产 profile 下真人刷脸认证会走内存 mock）");

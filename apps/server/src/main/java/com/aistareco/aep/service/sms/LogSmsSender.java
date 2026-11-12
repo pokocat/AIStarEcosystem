@@ -40,7 +40,7 @@ public class LogSmsSender implements SmsSender {
     @PostConstruct
     void warnIfProductionLike() {
         boolean prodLike = Arrays.stream(env.getActiveProfiles())
-                .anyMatch(p -> p.equalsIgnoreCase("mysql") || p.equalsIgnoreCase("prod") || p.equalsIgnoreCase("production"));
+                .anyMatch(p -> (p.equalsIgnoreCase("mysql") || p.equalsIgnoreCase("postgres")) || p.equalsIgnoreCase("prod") || p.equalsIgnoreCase("production"));
         if (prodLike) {
             log.error("==========================================================================");
             log.error("⚠️  SMS DRIVER = log（生产 profile 下验证码不会真实发送，登录/注册不可用）");

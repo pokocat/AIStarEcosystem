@@ -70,8 +70,8 @@ public class DramaShort {
     /** 进度 0-100（doneCount/shotCount，回算）。 */
     private int progress;
 
-    @Lob
-    @Column(name = "payload_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "payload_json", length = org.hibernate.Length.LONG32)
     private String payloadJson;
 
     /**

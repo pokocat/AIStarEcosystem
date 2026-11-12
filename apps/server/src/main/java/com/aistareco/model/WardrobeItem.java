@@ -22,7 +22,7 @@ public class WardrobeItem {
     private String rarity;
     private int price;
 
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(length = org.hibernate.Length.LONG32)
     @Convert(converter = StringListConverter.class)
     private List<String> tags;
 

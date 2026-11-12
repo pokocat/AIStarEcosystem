@@ -59,7 +59,7 @@ public class SellingChannel {
     private String contactPhone;
 
     /** 内部备注。 */
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(length = org.hibernate.Length.LONG32)
     private String remark;
 
     @Enumerated(EnumType.STRING)

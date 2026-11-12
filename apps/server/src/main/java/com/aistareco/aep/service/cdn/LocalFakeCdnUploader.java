@@ -51,7 +51,7 @@ public class LocalFakeCdnUploader implements CdnUploader {
     @PostConstruct
     void warnIfProductionLike() {
         boolean prodLike = Arrays.stream(env.getActiveProfiles())
-                .anyMatch(p -> p.equalsIgnoreCase("mysql") || p.equalsIgnoreCase("prod") || p.equalsIgnoreCase("production"));
+                .anyMatch(p -> (p.equalsIgnoreCase("mysql") || p.equalsIgnoreCase("postgres")) || p.equalsIgnoreCase("prod") || p.equalsIgnoreCase("production"));
         if (prodLike) {
             log.error("==========================================================================");
             log.error("⚠️  CDN DRIVER = local（生产 profile 下资产落本机盘，不进 OSS、无防盗刷签名）");

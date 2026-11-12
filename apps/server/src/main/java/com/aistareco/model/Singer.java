@@ -27,7 +27,7 @@ public class Singer {
     private int fansCount;
     private int popularity;
 
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(length = org.hibernate.Length.LONG32)
     @Convert(converter = StringListConverter.class)
     private List<String> tags;
 

@@ -22,7 +22,7 @@ public class OfficialIp {
     private String rarity;
     private String avatarUrl;
 
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(length = org.hibernate.Length.LONG32)
     @Convert(converter = StringListConverter.class)
     private List<String> tags;
 

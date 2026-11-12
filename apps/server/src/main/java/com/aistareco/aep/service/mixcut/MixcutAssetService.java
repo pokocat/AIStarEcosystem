@@ -65,6 +65,45 @@ public class MixcutAssetService {
         this.fileStorage = fileStorage;
     }
 
+    public boolean requiresDurableWrites() { return fileStorage.requiresDurableUploads(); }
+
+    private void persistShared(MixcutAsset asset,File original,boolean legacyBestEffort) {
+        try {
+            String ext=original.getName().contains(".")?original.getName().substring(original.getName().lastIndexOf('.')+1):"bin";
+            var stored=fileStorage.storeExisting(original.toPath(),"mixcut-assets",asset.getUserId(),ext,asset.getMimeType(),false);
+            asset.setCdnKey(stored.key());
+        } catch(RuntimeException unavailable) {
+            if(requiresDurableWrites())throw new IllegalStateException("素材未能保存到共享存储，请稍后重试",unavailable);
+            if(legacyBestEffort)log.warn("[mixcut] asset shared upload failed id={} (keeping local)",asset.getId());
+        }
+        if(requiresDurableWrites() && asset.getPreviewUrl()!=null) {
+            File preview=new File(original.getParentFile(),asset.getId()+"_preview.jpg");
+            if(preview.isFile())try {
+                var stored=fileStorage.storeExisting(preview.toPath(),"mixcut-previews",asset.getUserId(),"jpg","image/jpeg",false);
+                asset.setPreviewUrl(stored.url()); // unsigned owned URL; DTO signs afresh for every response
+            }catch(RuntimeException unavailable){asset.setPreviewUrl(null);log.warn("[mixcut] shared preview unavailable id={}",asset.getId());}
+            else asset.setPreviewUrl(null);
+        }
+    }
+
+    public Optional<MixcutAsset> visibleByLegacyUrl(String url,String userId) {
+        return repo.findFirstByFileUrl(url).filter(a->a.isPreset() || (userId!=null && userId.equals(a.getUserId())));
+    }
+
+    /** Caller must resolve ownership/preset visibility before invoking this reader. */
+    public File localFileForAuthorizedAsset(MixcutAsset asset) throws IOException {
+        if(asset.getLocalPath()!=null) {
+            File f=new File(asset.getLocalPath());
+            if(f.isFile())return f;
+        }
+        return sharedFileForKnownAsset(asset);
+    }
+    /** A trusted DB key only; never falls back to a request-supplied remote URL or local path. */
+    public File sharedFileForKnownAsset(MixcutAsset asset) throws IOException {
+        if(asset.getCdnKey()!=null && !asset.getCdnKey().isBlank())return fileStorage.openForRead(asset.getCdnKey()).toFile();
+        return null; // historical local-only assets are supplied by the migration's verified preseed
+    }
+
     // ─── v0.13.0+ 安全感知列表 ─────────────────────────────────────────────────────
 
     /**
@@ -251,15 +290,7 @@ public class MixcutAssetService {
         asset.setPreset(false);
         asset.setPresetGroup(null);
 
-        // v0.49+: 同步推 OSS 并记 cdnKey（素材库展示走 CDN，省 ECS 带宽 + 防盗刷）。
-        // best-effort：失败仅 log，本地副本 + fileUrl 仍可用（渲染走 localPath，不受影响）。
-        try {
-            var stored = fileStorage.storeExisting(
-                    target.toPath(), "mixcut-assets", safeUserId, ext, file.getContentType(), /*deleteAfter=*/false);
-            asset.setCdnKey(stored.key());
-        } catch (Exception e) {
-            log.warn("[mixcut] asset OSS upload failed id={} (keeping local): {}", id, e.getMessage());
-        }
+        persistShared(asset,target,true);
 
         return repo.save(asset);
     }
@@ -321,6 +352,8 @@ public class MixcutAssetService {
         asset.setUploadedAt(OffsetDateTime.now());
         asset.setPreset(true);
         asset.setPresetGroup(safeGroup);
+
+        if (requiresDurableWrites())persistShared(asset,target,false);
 
         log.info("[mixcut] preset uploaded id={} group={} kind={} → {}",
                 id, safeGroup, safeKind, target.getAbsolutePath());
@@ -413,6 +446,7 @@ public class MixcutAssetService {
         asset.setUploadedAt(OffsetDateTime.now());
         asset.setPreset(true);
         asset.setPresetGroup(presetGroup);
+        if (requiresDurableWrites())persistShared(asset,localFile,false);
         return repo.save(asset);
     }
 
@@ -524,6 +558,8 @@ public class MixcutAssetService {
         asset.setOfficial(true);
         asset.setOfficialCategory(safeCategory);
         asset.setRelatedStarId(relatedStarId == null || relatedStarId.isBlank() ? null : relatedStarId.trim());
+
+        if (requiresDurableWrites())persistShared(asset,target,false);
 
         log.info("[mixcut] official clip uploaded id={} cat={} star={} kind={} → {}",
                 id, safeCategory, relatedStarId, safeKind, target.getAbsolutePath());

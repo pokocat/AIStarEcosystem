@@ -5,6 +5,7 @@ import org.springframework.data.repository.query.Param;
 import java.time.Instant;
 import java.util.*;
 public interface ClipShotJobRepository extends JpaRepository<ClipShotJob, String> {
+    @org.springframework.data.jpa.repository.Query("select x from ClipShotJob x where x.externalOwnerId = ?1 and trim(trailing from x.clientRequestId) = trim(trailing from ?2)")
     Optional<ClipShotJob> findByExternalOwnerIdAndClientRequestId(String owner, String requestId);
     /** 一镜可以重生成很多次，端上只关心最新那一单 —— GET generation / cancel 都以它为准。 */
     Optional<ClipShotJob> findFirstByExternalOwnerIdAndProjectIdAndShotNoOrderByCreatedAtDesc(String owner, String projectId, int shotNo);

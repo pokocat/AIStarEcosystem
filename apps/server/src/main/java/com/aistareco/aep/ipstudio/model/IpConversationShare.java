@@ -10,7 +10,7 @@ public class IpConversationShare {
     @Column(name="project_id",nullable=false,length=32) private String projectId;
     @Column(name="node_id",nullable=false,length=128) private String nodeId;
     @Column(name="snapshot_hash",nullable=false,length=64) private String snapshotHash;
-    @Lob @Column(name="snapshot_json",nullable=false,columnDefinition="LONGTEXT") private String snapshotJson;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR) @Column(name="snapshot_json",nullable=false,length = org.hibernate.Length.LONG32) private String snapshotJson;
     @Column(name="created_at",nullable=false) private Instant createdAt;
     @Column(name="revoked_at") private Instant revokedAt;
 }

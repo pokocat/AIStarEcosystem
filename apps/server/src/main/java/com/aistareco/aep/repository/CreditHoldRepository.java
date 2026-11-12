@@ -19,6 +19,7 @@ public interface CreditHoldRepository extends JpaRepository<CreditHold, String> 
      * 幂等查询：referenceType + referenceId 是 unique key。
      * 同一业务对象的 hold 唯一存在；ACTIVE / COMMITTED / RELEASED 三态下均能查到。
      */
+    @org.springframework.data.jpa.repository.Query("select x from CreditHold x where trim(trailing from x.referenceType) = trim(trailing from ?1) and trim(trailing from x.referenceId) = trim(trailing from ?2)")
     Optional<CreditHold> findByReferenceTypeAndReferenceId(String referenceType, String referenceId);
 
     /**
@@ -28,7 +29,7 @@ public interface CreditHoldRepository extends JpaRepository<CreditHold, String> 
      * 必须在 {@code @Transactional} 内调用；锁随事务提交/回滚释放。
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT h FROM CreditHold h WHERE h.referenceType = :referenceType AND h.referenceId = :referenceId")
+    @Query("SELECT h FROM CreditHold h WHERE trim(trailing from h.referenceType)=trim(trailing from :referenceType) AND trim(trailing from h.referenceId)=trim(trailing from :referenceId)")
     Optional<CreditHold> findByReferenceTypeAndReferenceIdForUpdate(@Param("referenceType") String referenceType,
                                                                      @Param("referenceId") String referenceId);
 

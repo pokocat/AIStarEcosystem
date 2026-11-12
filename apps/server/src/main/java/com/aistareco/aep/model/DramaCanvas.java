@@ -44,8 +44,8 @@ public class DramaCanvas {
     @Column(nullable = false, length = 8)
     private String ratio;
 
-    @Lob
-    @Column(name = "doc_json", nullable = false, columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "doc_json", nullable = false, length = org.hibernate.Length.LONG32)
     private String docJson;
 
     @Column(name = "doc_version", nullable = false, length = 16)

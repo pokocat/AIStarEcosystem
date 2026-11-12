@@ -38,7 +38,7 @@ public class Studio {
     @Builder.Default
     private StudioStatus status = StudioStatus.ACTIVE;
 
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(length = org.hibernate.Length.LONG32)
     private String bio;
 
     private String logoUrl;

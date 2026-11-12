@@ -18,5 +18,8 @@ public class ModelPrice {
     private boolean active;
     @Version private long version;
     @Column(length=64) private String updatedBy;
-    private Instant updatedAt;
+    @Column(nullable=false) private Instant updatedAt;
+
+    @PrePersist
+    void initializeUpdatedAt() { if (updatedAt == null) updatedAt = Instant.now(); }
 }

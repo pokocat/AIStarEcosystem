@@ -15,6 +15,7 @@ public interface IpDialogueThreadRepository extends JpaRepository<IpDialogueThre
 
     List<IpDialogueThread> findByProjectIdAndOwnerUserIdOrderByLastOpenedAtDescCreatedAtDesc(String projectId, String ownerUserId);
 
+    @org.springframework.data.jpa.repository.Query("select x from IpDialogueThread x where x.ownerUserId = ?1 and trim(trailing from x.clientRequestId) = trim(trailing from ?2)")
     Optional<IpDialogueThread> findByOwnerUserIdAndClientRequestId(String ownerUserId, String clientRequestId);
 
     List<IpDialogueThread> findByActiveRunIdIsNotNull();

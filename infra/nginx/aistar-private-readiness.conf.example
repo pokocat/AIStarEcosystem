@@ -1,0 +1,21 @@
+# Prepare only. Enable an ALB Host+secret-header rule during the approved window,
+# after frozen import/activation, before the public marker and DNS are enabled.
+# Render a fresh root-private key and A/B node identity; never commit the rendered file.
+server {
+    listen 80;
+    server_name api-readiness.aibuzz.cn;
+    add_header X-Aistar-Node RENDER_A_OR_B always;
+    location = /internal/deployment { return 404; }
+    location ^~ /internal/deployment/ { return 404; }
+    location / {
+        if ($http_x_aistar_readiness != "RENDER_PRIVATE_WINDOW_KEY") { return 404; }
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host api.aibuzz.cn;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_buffering off;
+        proxy_read_timeout 600s;
+    }
+}

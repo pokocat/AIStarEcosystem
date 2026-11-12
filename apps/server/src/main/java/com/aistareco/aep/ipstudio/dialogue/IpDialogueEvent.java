@@ -16,6 +16,6 @@ public class IpDialogueEvent {
     @Column(length = 32) private String runId;
     @Column(length = 64) private String executionId;
     @Column(nullable = false, length = 32) private String type;
-    @Lob @Column(nullable = false, columnDefinition = "LONGTEXT") private String dataJson;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR) @Column(nullable = false, length = org.hibernate.Length.LONG32) private String dataJson;
     @Column(nullable = false) private Instant createdAt;
 }

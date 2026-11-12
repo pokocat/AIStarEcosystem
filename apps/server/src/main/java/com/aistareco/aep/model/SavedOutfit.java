@@ -31,7 +31,7 @@ public class SavedOutfit {
 
     private Instant createdAt;
 
-    @Column(name = "slots_json", columnDefinition = "LONGTEXT")
+    @Column(name = "slots_json", length = org.hibernate.Length.LONG32)
     @Convert(converter = JsonMapConverter.class)
     private Map<String, Object> slotsJson;
 }

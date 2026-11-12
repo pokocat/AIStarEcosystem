@@ -36,7 +36,7 @@ public class IpDialogueThread {
     @Column(length = 32) private String activeRunId;
     @Column(length = 64) private String activeExecutionId;
     @Column(length = 64) private String lastControlId;
-    @Lob @Column(columnDefinition = "LONGTEXT") private String historySummary;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR) @Column(length = org.hibernate.Length.LONG32) private String historySummary;
     @Builder.Default @Column(nullable = false) private long historySummarySeq = 0;
     private Instant lastOpenedAt;
     @Column(nullable = false) private Instant createdAt;

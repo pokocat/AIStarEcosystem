@@ -224,16 +224,18 @@ class DramaCanvasRunWorkerTest {
     }
 
     @Test
-    void truncatedOutput_finishLength_usableStructureIsKept_notAskedAgain() {
-        // 2026-11-05「模型正常回包保留」：finish=length 本身不再判不合格。能修复成合格结构就交付，原文另存，不重复调用模型。
+    void finishLength_withUsableStoryboard_isKeptWithoutAnotherModelCall() throws Exception {
+        // 2026-11-05: finish metadata alone must not discard usable returned content or request it again.
         textRun("dcr_r9", "storyboard", storyboardMeta(), "切片段");
-        String cut = "{\"segments\":[{\"text\":\"（5 秒）@[林微](look:lk1) 蹲着。\",\"durationSec\":5}";
+        String returned = "{\"segments\":[{\"text\":\"保留供应商已返回的第一份分镜\",\"durationSec\":5}],\"notes\":[]}";
         when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), any(), any(), eq("drama")))
-                .thenReturn(new AiModelInvocationService.AiModelResponse(cut, "length", 10L, "ep", "m"))
-                .thenReturn(reply(GOOD_STORYBOARD));
+                .thenReturn(new AiModelInvocationService.AiModelResponse(returned, "length", 10L, "ep", "m"));
         worker.runBlocking("dcr_r9");
 
-        assertEquals("succeeded", store.get("dcr_r9").getStatus());
+        DramaCanvasRun result = store.get("dcr_r9");
+        assertEquals("succeeded", result.getStatus());
+        assertEquals("保留供应商已返回的第一份分镜",
+                OM.readTree(result.getResultJson()).path("storyboard").path("segments").get(0).path("text").asText());
         verify(invocation, times(1)).invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), any(), any(), eq("drama"));
         verify(credits, times(1)).commitHold(DramaCanvasRunService.REF_TYPE, "dcr_r9", 4L, "画布 · 测试", null);
     }

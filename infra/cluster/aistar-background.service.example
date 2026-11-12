@@ -1,0 +1,20 @@
+# Install/enable only on A in the approved migration window. B stays disabled.
+# Root-private worker.env: same PG/Tair/OSS/crypto values as the API, but
+# SERVER_PORT=18086, SERVER_ADDRESS=127.0.0.1, AEP_BACKGROUND_ENABLED=true.
+# The ReShot key is mounted only in this A worker. The API containers use a separate read-only mount.
+# SHA/image MUST match the validated API release. The worker has no Nginx/ALB route.
+[Unit]
+Description=AIStar single active background worker (A only)
+After=network-online.target
+[Service]
+Type=simple
+EnvironmentFile=/etc/aistar/worker.env
+ExecStartPre=/opt/aibuzz-id/runtime/python311/bin/python3 -s -c 'import json; assert json.load(open("/etc/aibuzz-deploy/node.json"))["instance_id"] == "i-bp1dkkgmjbcpa21a5yi0"'
+ExecStart=/usr/bin/podman run --rm --name aistar-background --network host --read-only --workdir /app/work --cpus 1 --pids-limit 256 --volume /opt/aistar-cluster/state/background-tmp:/tmp:rw --memory 1600m --stop-timeout 240 --user 10001:10001 --env-file /etc/aistar/worker.env --volume /opt/aistar-cluster/work:/app/work:rw --volume /opt/aistar-cluster/work:/data/aistareco:rw --volume /opt/aistar-cluster/work/file-storage:/opt/ai-star-eco/server/file-storage:ro --volume /opt/aistar-cluster/state/production:/opt/aistar-migration/preparation:ro --volume /opt/aistar-cluster/studio-depth:/opt/studio-depth:ro --volume /opt/aistar-cluster/studio-depth-worker:/run/aistar-depth:ro --entrypoint java REPLACE_VERIFIED_IMAGE_CONFIGURATION_ID -Duser.timezone=Asia/Shanghai -Djavax.net.ssl.trustStore=/opt/aistar-migration/preparation/java-truststore -Djavax.net.ssl.trustStorePassword=changeit -Xms128m -Xmx1024m -jar /app/app.jar
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=300
+KillMode=mixed
+ExecStop=/usr/bin/podman stop --ignore --time 240 aistar-background
+[Install]
+WantedBy=multi-user.target

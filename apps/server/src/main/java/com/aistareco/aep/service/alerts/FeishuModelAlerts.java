@@ -34,7 +34,10 @@ public class FeishuModelAlerts {
             String context=modelContext.describeForAlert(taskId);
             if(!context.isBlank())text=text.replace("\n后台：","\n"+context+"\n后台：");
         }
-        db.update("INSERT IGNORE INTO model_alert_delivery (id,task_id,error_code,log_id,message_text,state,created_at,next_attempt_at) VALUES (?,?,?,?,?,'pending',?,?)",
+        Boolean postgres=db.execute((org.springframework.jdbc.core.ConnectionCallback<Boolean>) c -> "PostgreSQL".equals(c.getMetaData().getDatabaseProductName()));
+        String insert=Boolean.TRUE.equals(postgres)?"INSERT INTO ":"INSERT IGNORE INTO ";
+        String conflict=Boolean.TRUE.equals(postgres)?" ON CONFLICT (id) DO NOTHING":"";
+        db.update(insert+"model_alert_delivery (id,task_id,error_code,log_id,message_text,state,created_at,next_attempt_at) VALUES (?,?,?,?,?,'pending',?,?)"+conflict,
                 id,taskId,actualCode,logId,text,Timestamp.from(occurredAt),Timestamp.from(occurredAt));
     }
     /** For alerts that are not about one task. Same delivery and dedupe as enqueue: the same taskId + code is stored once. */

@@ -73,7 +73,11 @@ public class SellingChannelMigrationSeeder implements CommandLineRunner {
     @Override
     public void run(String... args) {
         // 1) DDL：独立 connection，不参与任何事务
-        relaxIssuerTenantIdConstraint();
+        boolean postgres;
+        try (Connection c = dataSource.getConnection()) {
+            postgres = "PostgreSQL".equals(c.getMetaData().getDatabaseProductName());
+            if (!postgres) relaxIssuerTenantIdConstraint();
+        } catch (SQLException e) { throw new IllegalStateException("数据库类型检查失败", e); }
 
         // 2) 业务：各自独立事务（失败不影响下一步、不影响整个应用启动）
         try {
@@ -81,6 +85,8 @@ public class SellingChannelMigrationSeeder implements CommandLineRunner {
         } catch (Exception e) {
             log.warn("[selling-channel] ensurePlatformSelfChannel failed: {}", e.getMessage());
         }
+        // 只保留缺失的当前默认渠道初始化；PG 不再回填导入批次的历史归属。
+        if (postgres) return;
         try {
             txTemplate.executeWithoutResult(status -> backfillLegacyBatches());
         } catch (Exception e) {

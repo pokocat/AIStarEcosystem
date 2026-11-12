@@ -37,6 +37,9 @@ public class PlatformsAiavatarMigrationSeeder implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
+        // PG 从已经完成历史迁移的源库导入；不得在每次启动时重新改写授权事实。
+        if (Boolean.TRUE.equals(jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Boolean>) c ->
+                "PostgreSQL".equals(c.getMetaData().getDatabaseProductName())))) return;
         try {
             int updated = jdbc.update(
                     "UPDATE aep_users SET platforms = NULL WHERE platforms = ?", LEGACY_FULL_SET);

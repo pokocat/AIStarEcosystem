@@ -20,7 +20,7 @@ public class ImpersonationOrigins {
         try {
             URI uri = URI.create(raw);
             boolean local = env.acceptsProfiles(Profiles.of("dev", "test"))
-                    && !env.acceptsProfiles(Profiles.of("mysql", "prod", "production"))
+                    && !env.acceptsProfiles(Profiles.of("mysql", "postgres", "prod", "production"))
                     && "http".equals(uri.getScheme()) && Set.of("localhost", "127.0.0.1").contains(uri.getHost() == null ? "" : uri.getHost());
             if ((!"https".equals(uri.getScheme()) && !local) || uri.getHost() == null
                     || uri.getRawUserInfo() != null || uri.getRawQuery() != null || uri.getRawFragment() != null

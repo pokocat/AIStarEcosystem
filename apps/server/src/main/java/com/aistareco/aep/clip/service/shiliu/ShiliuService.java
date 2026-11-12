@@ -41,6 +41,6 @@ public class ShiliuService {
     }
     public boolean mockMode() { return required().mock(); }
     private boolean productionProfile() {
-        return Arrays.stream(env.getActiveProfiles()).anyMatch(profile -> Set.of("mysql", "prod", "production").contains(profile));
+        return Arrays.stream(env.getActiveProfiles()).anyMatch(profile -> Set.of("mysql", "postgres", "prod", "production").contains(profile));
     }
 }

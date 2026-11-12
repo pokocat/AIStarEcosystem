@@ -54,8 +54,8 @@ public class DramaProject {
     @Column(name = "cover_to")
     private String coverTo;
 
-    @Lob
-    @Column(name = "payload_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "payload_json", length = org.hibernate.Length.LONG32)
     private String payloadJson;
 
     @Column(name = "created_at")

@@ -25,14 +25,14 @@ public class IpSkillVersion {
     @Id @Column(length = 32) private String id;
     @Column(name = "skill_key", nullable = false, length = 64) private String skillKey;
     @Column(nullable = false) private int version;
-    @Lob @Column(nullable = false, columnDefinition = "TEXT") private String frontmatterJson;
-    @Lob @Column(nullable = false, columnDefinition = "LONGTEXT") private String bodyMd;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR) @Column(nullable = false, columnDefinition = "TEXT") private String frontmatterJson;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR) @Column(nullable = false, length = org.hibernate.Length.LONG32) private String bodyMd;
     /** sha256 of the content as provided (the seed file text for seeds); the snapshot digest of this version. */
     @Column(nullable = false, length = 64) private String contentDigest;
     @Column(nullable = false, length = 16) private String source;
     @Column(nullable = false, length = 16) private String status;
     @Column(nullable = false, length = 64) private String author;
-    @Lob @Column(columnDefinition = "TEXT") private String note;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR) @Column(columnDefinition = "TEXT") private String note;
     /** Drafts: the version they were distilled from. */
     private Integer baseVersion;
     @Column(length = 32) private String sourceProjectId;

@@ -33,6 +33,11 @@ public class FileStorageProperties {
      */
     private boolean keepLocalCopy = true;
 
+    /** Shared-node deployments may not acknowledge files that only exist on one ECS. */
+    private boolean requireDurableUploads;
+    public boolean isRequireDurableUploads() { return requireDurableUploads; }
+    public void setRequireDurableUploads(boolean value) { requireDurableUploads=value; }
+
     public String getLocalDir() { return localDir; }
     public void setLocalDir(String localDir) { this.localDir = localDir; }
 

@@ -24,6 +24,7 @@ import java.util.Optional;
 public interface DramaCanvasRunRepository extends JpaRepository<DramaCanvasRun, String> {
 
     /** 幂等查重：与唯一约束 {@code uk_drama_canvas_run_owner_req} 同一组键。 */
+    @org.springframework.data.jpa.repository.Query("select x from DramaCanvasRun x where x.ownerUserId = ?1 and trim(trailing from x.clientRequestId) = trim(trailing from ?2)")
     Optional<DramaCanvasRun> findByOwnerUserIdAndClientRequestId(String ownerUserId, String clientRequestId);
 
     Optional<DramaCanvasRun> findByIdAndOwnerUserIdAndCanvasId(String id, String ownerUserId, String canvasId);

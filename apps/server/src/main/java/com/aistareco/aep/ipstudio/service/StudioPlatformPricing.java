@@ -33,7 +33,7 @@ public class StudioPlatformPricing {
             @Value("${aep.studio.platform-pricing.allow-local:false}") boolean allowLocal,
             Environment env,IpRunRepository runs,ObjectMapper json,PlatformTransactionManager manager) {
         this.brandId=brandId;this.appCode=appCode;this.runs=runs;this.json=json;this.tx=new TransactionTemplate(manager);
-        boolean production=Arrays.stream(env.getActiveProfiles()).anyMatch(p->p.equals("mysql")||p.equals("prod")||p.equals("production"));
+        boolean production=Arrays.stream(env.getActiveProfiles()).anyMatch(p->(p.equals("mysql")||p.equals("postgres"))||p.equals("prod")||p.equals("production"));
         if(production&&allowLocal)throw new IllegalArgumentException("Local platform HTTP is forbidden in production");
         if(enabled&&(brandId.isBlank()||appCode.isBlank()))throw new IllegalArgumentException("Platform brand and application required");
         this.client=enabled?new PlatformPricingClient(url,credential,allowLocal):null;

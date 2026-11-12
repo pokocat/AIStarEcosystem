@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Optional;
 
 public interface IpDialogueMessageRepository extends JpaRepository<IpDialogueMessage, String> {
+    @org.springframework.data.jpa.repository.Query("select x from IpDialogueMessage x where x.threadId = ?1 and trim(trailing from x.clientMessageId) = trim(trailing from ?2)")
     Optional<IpDialogueMessage> findByThreadIdAndClientMessageId(String threadId, String clientMessageId);
     List<IpDialogueMessage> findByThreadIdOrderBySeqDesc(String threadId, Pageable page);
     List<IpDialogueMessage> findByThreadIdAndSeqLessThanOrderBySeqDesc(String threadId, long seq, Pageable page);

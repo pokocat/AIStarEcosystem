@@ -101,11 +101,11 @@ public class AiModelEndpoint {
     private String chatReasoningEffort;
 
     /** Legal image request limits and canvas-to-wire presets for this fixed supplier model. */
-    @Column(name = "image_request_spec_json", columnDefinition = "LONGTEXT")
+    @Column(name = "image_request_spec_json", length = org.hibernate.Length.LONG32)
     private String imageRequestSpecJson;
 
     /** Editable video modes, dimensions and wire adapter for this fixed supplier model. */
-    @Column(name = "video_request_spec_json", columnDefinition = "LONGTEXT")
+    @Column(name = "video_request_spec_json", length = org.hibernate.Length.LONG32)
     private String videoRequestSpecJson;
 
     /** 这个视频模型属于哪个素材库；空表示没有素材库。放列不放规格 JSON：规格解析很严格，加字段会挡住回滚。 */
@@ -137,7 +137,7 @@ public class AiModelEndpoint {
     private Integer alertFailureRatePct;
 
     /** 可选模型列表 JSON：[{ id, label, contextWindow, supportsVision }]，仅做发现挑选用。 */
-    @Column(name = "models_json", columnDefinition = "LONGTEXT")
+    @Column(name = "models_json", length = org.hibernate.Length.LONG32)
     private String modelsJson;
 
     /** 计费归属用户（钱包）。**可空 = 平台级端点，usage 仅累计不扣钱包**。 */

@@ -31,10 +31,13 @@ describe("aiErrorMessage", () => {
       "DRAMA_SHORT_TTS_NOT_CONFIGURED",
       "AI_BAD_OUTPUT",
     ]) {
-      const out = aiErrorMessage({ code, message: "raw-upstream-text" }, fallback);
+      const out = aiErrorMessage({ code, message: "HTTP 503: raw-upstream-text · 追查号 ABCDEF234567" }, fallback);
       expect(out, code).not.toBe(fallback);
       expect(out, code).not.toContain("raw-upstream-text");
       expect(out, code).not.toContain(code);
+      expect(out, code).not.toContain("HTTP 503");
+      // main gives known codes actionable copy and strips support IDs; only technical fallbacks keep them.
+      expect(out, code).not.toContain("ABCDEF234567");
     }
   });
 

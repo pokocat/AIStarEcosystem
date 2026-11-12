@@ -15,7 +15,7 @@ public class IpTemplateVersion {
     @Column(name="version_no",nullable=false) private int version;
     @Column(nullable=false,length=128) private String name;
     @Column(length=1024) private String summary;
-    @Lob @Column(name="recipe_json",nullable=false,columnDefinition="LONGTEXT") private String recipeJson;
-    @Lob @Column(name="doc_json",nullable=false,columnDefinition="LONGTEXT") private String docJson;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR) @Column(name="recipe_json",nullable=false,length = org.hibernate.Length.LONG32) private String recipeJson;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR) @Column(name="doc_json",nullable=false,length = org.hibernate.Length.LONG32) private String docJson;
     @Column(name="created_at",nullable=false) private Instant createdAt;
 }

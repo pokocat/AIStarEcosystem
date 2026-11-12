@@ -34,12 +34,12 @@ public class Product {
     private String link;
 
     /** JSON-encoded list of image URLs。 */
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(length = org.hibernate.Length.LONG32)
     @Convert(converter = StringListConverter.class)
     @Builder.Default
     private List<String> images = new ArrayList<>();
 
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(length = org.hibernate.Length.LONG32)
     private String sellingPoints;
 
     @Column(nullable = false)

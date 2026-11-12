@@ -86,7 +86,7 @@ public class AuditLog {
     @Column(length = 16)
     private AuditResult result;
 
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(length = org.hibernate.Length.LONG32)
     private String detail;
 
     private Instant createdAt;

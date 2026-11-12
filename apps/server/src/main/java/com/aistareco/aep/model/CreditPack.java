@@ -28,7 +28,7 @@ public class CreditPack {
 
     private long priceCents;
 
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(length = org.hibernate.Length.LONG32)
     @Convert(converter = StringListConverter.class)
     private List<String> highlights;
 

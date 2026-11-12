@@ -19,6 +19,7 @@ export function StudioRechargeDialog({ pack, initialOrderId, onClose, onPaid }: 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false), delivered = useRef(false), alive = useRef(true);
+  const acceptedOrder = useRef<RechargeOrder | undefined>(undefined);
   const pending = !!orderId && (!order || order.status === "pending");
   useEffect(() => {
     alive.current = true;
@@ -32,6 +33,11 @@ export function StudioRechargeDialog({ pack, initialOrderId, onClose, onPaid }: 
     return () => { alive.current = false; };
   }, []);
   function accept(next: RechargeOrder) {
+    // A poll started before manual confirmation may return later, in the same React batch.
+    // Preserve the server-confirmed terminal state; a later refund is still accepted.
+    const previous = acceptedOrder.current;
+    if (previous?.id === next.id && previous.status !== "pending" && next.status === "pending") return;
+    acceptedOrder.current = next;
     setOrder(next);
     if (next.status !== "pending") setError("");
     if (next.status === "paid" && !delivered.current) { delivered.current = true; onPaid(); }

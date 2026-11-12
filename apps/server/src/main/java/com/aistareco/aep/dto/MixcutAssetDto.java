@@ -53,7 +53,9 @@ public record MixcutAssetDto(
                 : null;
         boolean imageish = "image".equals(a.getKind()) || "sticker".equals(a.getKind());
         // thumbnail 优先级：明确 previewUrl > cdn_url(image/sticker) > fileUrl(image/sticker) > null
-        String thumb = a.getPreviewUrl();
+        String preview=a.getPreviewUrl();
+        if(signer!=null && preview!=null){String signed=signer.maybeSign(preview);if(signed!=null && !signed.isBlank())preview=signed;}
+        String thumb = preview;
         if (thumb == null && imageish) {
             thumb = (cdnUrl != null ? cdnUrl : a.getFileUrl());
         }
@@ -73,7 +75,7 @@ public record MixcutAssetDto(
                         : a.getUploadedAt().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
                 a.isPreset(),
                 a.getPresetGroup(),
-                a.getPreviewUrl(),
+                preview,
                 a.isOfficial(),
                 a.getOfficialCategory(),
                 a.getRelatedStarId(),

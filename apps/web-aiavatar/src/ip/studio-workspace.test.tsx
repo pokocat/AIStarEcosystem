@@ -404,6 +404,7 @@ test('closing the editor waits for cloud save and keeps the draft actionable aft
  fireEvent.click(screen.getByRole('button',{name:'关闭创作面板'}));
  await waitFor(()=>expect(api.error).toHaveBeenCalledWith('草稿保存失败'));
  expect(screen.getByRole('dialog',{name:'生成视频'})).toBeDefined();expect(snapshot[0].metadata?.studio?.composerDraft?.prompt).toBe('可重试的镜头草稿');
+ await waitFor(()=>expect(screen.getByRole('button',{name:'关闭创作面板'}).hasAttribute('disabled')).toBe(false));
  fireEvent.click(screen.getByRole('button',{name:'关闭创作面板'}));
  await waitFor(()=>expect(screen.queryByRole('dialog',{name:'生成视频'})).toBeNull());
  expect(api.save).toHaveBeenCalledTimes(2);expect(api.submit).not.toHaveBeenCalled();
@@ -456,7 +457,10 @@ test('saving an existing script is free and retries the same draft after a cloud
  const id=snapshot[0].id;fireEvent.click(screen.getByRole('button',{name:'保存并编辑剧本'}));
  await waitFor(()=>expect(api.error).toHaveBeenCalledWith('导入保存失败'));
  expect(snapshot).toHaveLength(1);expect(snapshot[0].metadata?.studio?.script?.episodes[0].content).toBe('My script\nA complete scene.');
- fireEvent.click(screen.getByRole('button',{name:'保存并编辑剧本'}));
+ const retrySave=screen.getByRole('button',{name:'保存并编辑剧本'});
+ await waitFor(()=>expect(retrySave.hasAttribute('disabled')).toBe(false));
+ fireEvent.click(retrySave);
+ await waitFor(()=>expect(api.save).toHaveBeenCalledTimes(2));
  await screen.findByRole('dialog',{name:'剧本编辑器'});expect(snapshot).toHaveLength(1);expect(snapshot[0].id).toBe(id);
  expect(snapshot[0].metadata?.studio?.parentNodeId).toBeUndefined();expect(api.submit).not.toHaveBeenCalled();
 });

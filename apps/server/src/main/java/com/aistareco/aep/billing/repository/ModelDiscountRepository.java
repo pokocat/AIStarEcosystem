@@ -12,5 +12,6 @@ public interface ModelDiscountRepository extends JpaRepository<ModelDiscount,Str
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select x from ModelDiscount x where x.id=:id")
     Optional<ModelDiscount> lockById(@Param("id") String id);
+    @org.springframework.data.jpa.repository.Query("select x from ModelDiscount x where trim(trailing from x.targetKey)=trim(trailing from :targetKey) and x.active=true order by x.id asc")
     List<ModelDiscount> findByTargetKeyAndActiveTrueOrderByIdAsc(String targetKey);
 }

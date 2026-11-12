@@ -48,12 +48,12 @@ public class DramaFrameJob {
     @Column(length = 256)
     private String name;
 
-    @Lob
-    @Column(name = "request_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "request_json", length = org.hibernate.Length.LONG32)
     private String requestJson;
 
-    @Lob
-    @Column(name = "result_json", columnDefinition = "LONGTEXT")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LONGVARCHAR)
+    @Column(name = "result_json", length = org.hibernate.Length.LONG32)
     private String resultJson;
 
     /** queued | running | succeeded | failed */

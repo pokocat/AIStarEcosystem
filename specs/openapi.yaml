@@ -6689,6 +6689,39 @@ components:
           description: 本次确认的最高总积分；价格超出时409，先重新确认
 
 paths:
+  /internal/deployment:
+    get:
+      operationId: getInternalDeploymentDrain
+      summary: 仅回环和部署令牌读取排空状态，Nginx禁止对外暴露
+      responses:
+        '200':
+          description: 在途请求、线程池和持久任务计数
+        '403':
+          description: 非回环或部署令牌错误
+        '503':
+          description: 排空证据不可用，禁止停止服务
+    post:
+      operationId: quiesceInternalDeployment
+      summary: 停止未来调度且不打断已受理任务，仅回环和部署令牌
+      responses:
+        '200':
+          description: 已进入排空状态，重启后恢复调度
+        '403':
+          description: 非回环或部署令牌错误
+        '503':
+          description: 排空证据不可用，禁止停止服务
+
+  /internal/ready:
+    get:
+      operationId: getInternalReadiness
+      summary: 应用及数据库就绪检查
+      description: 启动完成且数据库连接有效才返回200；关闭或数据库不可用返回503，不返回连接信息。
+      responses:
+        '200':
+          description: 已就绪
+        '503':
+          description: 未就绪
+
   /admin/model-billing/targets:
     get:
       tags:
