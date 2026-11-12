@@ -3,7 +3,7 @@
 > 给所有 AI coding agent（Claude Code、Cursor、Aider、Continue、自建 SDK agent…）的统一指引。
 > Claude Code 仍然通过 `CLAUDE.md` 注入，但 `CLAUDE.md` 是本文件的 symlink —— 只需维护一份。
 
-**AIStar 生产发布必读**：先看[AIStar 生产发布与恢复](docs/runbooks/aistar-production-release.md)。API 用 `infra/scripts/deploy.sh server --plan` 确认目标，再用同一入口逐台摘流、排空、更新，最终恢复 A50/B50。只发布远端 `main` 的已验收制品；旧机仍承接现有前端和代理，禁止将其作为新发布目标或回启旧 API/SAU。数据库、后台、SAU、前端的发布范围与入口按手册核对。
+**AIStar 生产发布必读**：先看[AIStar 生产发布与恢复](docs/runbooks/aistar-production-release.md)。API 用 `infra/scripts/deploy.sh server --plan` 确认目标，再用同一入口逐台摘流、排空、更新，最终恢复 A50/B50。只发布远端 `main` 的已验收制品；前端也在 A/B 双活，使用独立 ALB 后端组。数据库、后台、SAU、前端的发布范围与入口按手册核对。旧 ECS 保留 DNS 缓存期的前端与回环代理，禁止将其作为新发布目标或回启旧 API/SAU。
 
 **本地目录与磁盘（2026-11-10 用户要求）**：默认复用 `/Users/donis/dev/AIStarEcosystem`，不要为每个任务、修复或发布新建 `AIStarEcosystem-*` 副本、clone 或本地 worktree，也不要改到隐藏目录继续堆副本。已有未提交工作保留，按文件限定修改和提交范围。构建、测试优先用 `devq remote` 的隔离快照；需要干净环境时也优先远程快照。只有用户明确要求新建本地工作树时才创建，结束后清理其可再生依赖和构建产物。正在运行的其他任务和工作目录不得擅自删除或停止。
 

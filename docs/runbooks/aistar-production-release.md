@@ -7,10 +7,10 @@
 | `server` API | [`infra/scripts/deploy.sh server`](../../infra/scripts/deploy.sh)，默认正式双机滚动；`--plan` 只展示计划。 |
 | PostgreSQL 结构 | 用迁移角色执行独立的向前兼容 DDL，并验证当前与候选版本；运行账号只做 Flyway 校验，API 滚动不会执行 DDL。 |
 | A 上的后台调度、SAU | 独立验收和角色交接。API 滚动不会更新这两个单元；涉及定时任务、领取逻辑或发布驱动时，把相应组件列入发布范围。SAU 真镜像需通过 `prepare_real_runtime.py` 的四个发布驱动导入，`/healthz` 仅作就绪证据。 |
-| Web、admin、studio-admin | 按组件确认并验收新发布入口与目标后单独发布。仓内 API 滚动入口仅支持 `server`。 |
+| Web、admin、studio-admin | 目标为前端 A/B，发布走独立 ALB 后端组。使用下方前端发布步骤。 |
 | 账号中心、军师及其他应用 | 按各自仓库的发布说明处理。账号中心入口在 [aibuzz-id](https://github.com/pokocat/aibuzz-id/blob/main/deploy/README.md)。 |
 
-旧 ECS 上的前端及回环代理仍提供服务，旧 ECS 禁止作为新发布目标。旧 AIStar API 和旧 SAU 已停用，生产发布与恢复都禁止重新启动它们。历史单机脚本 `deploy-local.sh`、`deploy-release.sh`、`update-and-deploy.sh`、`rollback.sh` 以及旧版 `verify.sh` 均不能用于 AIStar API 正式发布或验收。不要给新入口设置旧部署变量 `DEPLOY_HOST`、`ECS_HOST`、`REMOTE_ROOT` 或 `PUBLIC_BASE`。
+旧 ECS 上的前端及回环代理为 DNS 缓存和前端回退保留。旧 ECS 禁止作为新发布目标。旧 AIStar API 和旧 SAU 已停用，生产发布与恢复都禁止重新启动它们。历史单机脚本 `deploy-local.sh`、`deploy-release.sh`、`update-and-deploy.sh`、`rollback.sh` 以及旧版 `verify.sh` 均不能用于 AIStar API 正式发布或验收。不要给新入口设置旧部署变量 `DEPLOY_HOST`、`ECS_HOST`、`REMOTE_ROOT` 或 `PUBLIC_BASE`。
 
 ## 1. 选定版本与验证制品
 
@@ -41,7 +41,15 @@
 
 脚本锁定集群发布、准备两台机器，并在健康承流节点的两个 VIP 都通过鉴权后才操作另一台。由 A50/B50 开始时，先 A100/B0，等待 B 至少 180 秒且连续三次确认 HTTP 请求、线程和持久工作排空，再更新 B。B100/A0 接管并通过两个 VIP 的真实鉴权后，排空并更新 A。最后恢复 A50/B50，两个 VIP 都要验证到 A 和 B。排空超时或受理状态不明时保留已确认能承流的节点，查明任务状态后再继续。
 
-## 3. 验收与恢复
+## 3. 前端发布
+
+2026-11-12 北京时间 10:41，`aiavatar`、`aistar`、`admin`、`drama`、`music`、`celebrity`、`star`、`incubator`、`ipstudio` 的独立 DNS 记录已指向正式 ALB。`aistar` 同时承接 Studio 管理后台，`ipstudio` 保留跳转和原登录回调提示。前端使用独立后端组 `sgp-chl8uqmlza6yjvdmlj`，A/B 常态各 50。两机的 `aistar-front-*` 服务使用已核对的 Next.js standalone 制品及固定运行镜像。前端同域 `/api/`、`/static/` 和 `/cdn/` 通过严格 TLS 到正式 API ALB，API 滚动期间也可正常选取健康 API 节点。
+
+- 从已验收的 `main` 为目标站构建一次，向 A/B 分发同一份 standalone 制品，核对摘要、`BUILD_ID`、环境及各站路径。使用版本目录保留上一版和仍可能被旧页面请求的静态文件。当前 API 发布脚本的输入为后端制品，前端服务和 ALB 组单独操作。
+- 先在新端口或待发布节点验证页面、静态文件、同域 API、登录、作品及涉及的管理路径。只调整前端后端组权重，验证承流节点覆盖所有前端域名，待连接排空后更新对端，再交换并恢复 A50/B50。核对两个 ALB VIP 的实际节点身份和状态码。
+- 普通前端版本回退使用上一版制品和前端后端组。首次切流若需回退，按域名恢复原 DNS。多数域名此前由通配 A 记录承接，`ipstudio` 原有独立 A 记录。保留 DNS 缓存期内的旧前端和代理，旧 API/SAU 继续保持停用。
+
+## 4. 验收与恢复
 
 - 核对两机实际 SHA、release、进程、ALB 健康及 A50/B50；在两个 VIP 上记录连续真实请求的 HTTP 结果和节点身份，保留失败样本。核对 SLS 启动与错误日志、OIDC、历史媒体读取和本次受影响的已登录业务。涉及存储时确认两机继续使用原业务 OSS，对原签名 URL 做 Range 和防篡改回归；凭据及完整签名 URL 不进入回执。支付和模型任务按发布范围做签名、状态、隔离回归或单独授权的实测。
 - 发布失败时，以已验证的健康节点承流，先核对现场权重、实际返回、异步任务与资金状态。需要回到上一制品时，先确认它兼容当前 PostgreSQL 结构和已接收写入，再用同一滚动入口恢复。双机均无法安全承流时，暂停新写入并保护 PostgreSQL、支付回执和在途任务后恢复。旧 MySQL 与旧 DNS 不能作为回滚目的地。
