@@ -3,6 +3,8 @@
 > 给所有 AI coding agent（Claude Code、Cursor、Aider、Continue、自建 SDK agent…）的统一指引。
 > Claude Code 仍然通过 `CLAUDE.md` 注入，但 `CLAUDE.md` 是本文件的 symlink —— 只需维护一份。
 
+**AIStar 生产发布必读**：先看[AIStar 生产发布与恢复](docs/runbooks/aistar-production-release.md)。API 用 `infra/scripts/deploy.sh server --plan` 确认目标，再用同一入口逐台摘流、排空、更新，最终恢复 A50/B50。只发布远端 `main` 的已验收制品；旧机仍承接旧前端和代理，禁止向它发布 API 或回启旧 API/SAU。数据库、后台、SAU、前端的发布范围与入口按手册核对。
+
 **本地目录与磁盘（2026-11-10 用户要求）**：默认复用 `/Users/donis/dev/AIStarEcosystem`，不要为每个任务、修复或发布新建 `AIStarEcosystem-*` 副本、clone 或本地 worktree，也不要改到隐藏目录继续堆副本。已有未提交工作保留，按文件限定修改和提交范围。构建、测试优先用 `devq remote` 的隔离快照；需要干净环境时也优先远程快照。只有用户明确要求新建本地工作树时才创建，结束后清理其可再生依赖和构建产物。正在运行的其他任务和工作目录不得擅自删除或停止。
 
 **模型正常回包保留（2026-11-05 用户要求）**：模型返回的非空原文必须交付或提供本人可读的原文记录，不能因字数、标题排版、JSON 整理、Token 用量或预估预算丢弃整份结果。文字调用在业务解析前保存完整原文到既有用量记录，短剧 / 带货的 `/model-results` 与 Studio 任务历史的「查看原文」「全部原文」（2026-11-10 起，V80 按任务关联）提供只读、复制与下载；不另建计费真值。原文无法安全转换为可执行结构时暂停后续付费操作，保留用户已有内容。真实空结果、供应商错误、坏媒体和越权引用仍明确处理。规则真源 `specs/BUSINESS_RULES.md`「模型生成原文保留」。
@@ -25,7 +27,7 @@ Studio 官方画布模板发布（2026-11-04）：版本化 `template-versions` 
 
 **核心信息（避免新 agent 反复翻仓）**：
 
-- 后端 server: Spring Boot 3.3.5 + Java 17，port **8080**，H2 (dev) / MySQL (迁移前 prod) / PostgreSQL18 (迁移适配目标)
+- 后端 server: Spring Boot 3.3.5 + Java 17，port **8080**，H2（开发）/ PostgreSQL 18（生产）/ MySQL（迁移前历史环境）
 - 五个新 web app: **web-music**（3010）/ **web-drama**（3011）/ **web-celebrity**（3012）/ **web-aiavatar**（3013，数字资产平台 · 六类资产 **+ AI IP 工作台**）/ **web-star**（3014，明星商务工作台）
   - **web-aiavatar 一个应用两套形态（v0.190，v0.193 改判定）**：手机端 H5（480px 列 + 底部 tab 栏）与桌面面（52px 深群青顶栏 + 1120px 内容 + 无限画布）。**只有一套路由**（`(mobile)/x` 与 `(desktop)/x` 会解析到同一个 URL，Next 不允许）。
     **形态的真值是 `<html data-layout>`，CSS 与 JS 读同一个**（`src/shell/layout-mode.ts`）：用户显式选过（「我的 → 切换到电脑版」）以他为准，没选过按 `matchMedia(min-width: 960px)`。**新增桌面样式写 `html[data-layout="desktop"] xxx`，不要写 `@media`** —— 媒体查询绕过用户的选择。断点是 960 不是 1024：手机浏览器的「请求桌面版网站」会忽略 viewport meta、改用约 980px 的布局视口，卡 1024 就等于那个开关不生效（真实反馈）。
@@ -181,7 +183,9 @@ pnpm check:api-contract                          # 扫五个子应用 + api-clie
 
 ---
 
-### 生产发布顺序（2026-10-20）
+### 生产发布顺序
+
+运行命令和验收以[AIStar 生产发布与恢复](docs/runbooks/aistar-production-release.md)为准。以下为发布范围和兼容性约束。
 
 用户要求：改完先合入 `main`，再发布。功能分支完成后合入主线，保留 `main` 已有功能，解决冲突并通过检查；仅从干净的 `main` 构建正式制品。不得从落后于主线的功能分支直接覆盖生产。发布记录须写明构建所用的 `main` 提交、服务范围和线上验收结果。
 
@@ -1419,7 +1423,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 真源 `docs/studio-prompt-architecture.md`。生成类提示词（身份、规则、红线、做法、行业经验、场景拍法、出图描述）放提示词库，和技能同表，四层：底座 / 环节 / 方法 / 场景；代码只留输出格式、工具与动作协议、H3 改写、拼装与校验。种子在 `resources/studio/prompts/**`，生效规则同技能（不再有 `SEED_VERSION`），受理时冻结版本。调用点要进库：在 `StudioPromptCallPoints` 登记变量和输出格式，写环节种子文件，再加一条逐字一致测试（范式 `StudioScenePromptParityTest`）。**新代码不许在 Java 里写新的生成类提示词文字**（输出格式除外）；对话、画布、导演台已进库，只有交代素材编号和时间的标签留在代码（拼装）；旧 Prompt 管理里已迁走的键后台标「已迁走」、不能保存，新搬一个调用点要同时加进 `PromptService.MOVED_TO_STUDIO_LIBRARY`（测试核对）。环节的变量不能叫 `base` / `method` / `scene`（拼装器填分层正文用，同名会被盖掉，登记时直接报错）。导演台拼自己的底座 `base-director`，平台底座的事实规则面向商品宣传、不进短剧编剧；只看画面的环节（看图、复刻逐页观察、拉片、分批读图）不拼底座（登记时 `withoutBase()`）。导演台资产图、分镜图的候选记 `promptVersions`，「需更新」按候选那一版核对，后台改模板不会把已采用的图标成需更新。AI 视频编导请求是文字任务带 `scene`，服务端按 `stage-scene-script` 拼；场景创作文字以库为准，叠在场景目录上。 发布后画布出图和导演台出图不再读 `prompt_template.dap.ip_canvas_image`（线上那行是 v0.173 的「只画一个人、不要设定图」旧版，没有导入），改用 `stage-image`；见 `docs/releases/studio-prompt-library-release-20261101.md`。
 
 
-## PostgreSQL 18 兼容路径（本地准备，未生产迁移）
+## PostgreSQL 18 兼容路径（切流前记录）
 
 2026-11-10 当前候选优先：main 013c801a 同步后，源生产只读核查为195表。新增PG V78（三张素材库/人像表、模型两列、语音识别与视频理解用途约束），旧V74–V77不可改；所有恢复/激活固定195/V78。排空12类持久任务（含人像核验及素材上传/审核），账务仍10项；192表/V77及旧SHA镜像回执仅作历史。重跑PG实库及新制品双机隔离演练后才可申请正式窗口。原OSS不变，本轮不动生产。详见下列runbook最新节。
 

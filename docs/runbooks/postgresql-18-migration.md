@@ -1,5 +1,7 @@
 # PostgreSQL 18 适配与迁移边界
 
+AIStar 生产已于北京时间 2026-11-12 05:14 切到 PostgreSQL 18。日常发布见 [生产发布与恢复](aistar-production-release.md)，下文保留迁移前各阶段记录。
+
 ## 2026-11-10 后续主线刷新（优先于历史版本）
 
 同步 main f292b3f42：源仍195表，新增PG V79镜像MySQL V80/V81的 task_id、idx_aiusage_task 和官方形象 access。保留已执行V74–V78字节，导出/导入固定195表、运行版本V79；不重跑官方形象种子，不将历史授权改为free。main的导演台连接池修复同时保留。旧V78产物不得作为本轮最终验收。
