@@ -94,7 +94,7 @@ class StudioPromptLibraryStoreTest {
         assertEquals("运营改过的拍法", library.require("scene-local-groupbuy").body());
         // a task accepted before the publish keeps rendering v1
         var pinned = assembler.assemble(new StudioPromptAssembler.Call("stage-scene-script", null, "scene-local-groupbuy", sample(), frozen));
-        assertTrue(pinned.user().contains("拍法：开头亮出团购价格"));
+        assertTrue(pinned.user().contains("拍法：" + v1.body()));
         assertEquals(1, pinned.refs().stream().filter(r -> r.key().equals("scene-local-groupbuy")).findFirst().orElseThrow().version());
         // the repository file is re-read on the next start; the admin version stays current
         invoke(library, "seedRepositoryFiles");

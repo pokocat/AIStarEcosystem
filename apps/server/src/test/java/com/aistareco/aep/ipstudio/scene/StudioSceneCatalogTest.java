@@ -184,7 +184,7 @@ class StudioSceneCatalogTest {
         assertThat(catalog.catalog().video()).allSatisfy(s -> assertThat(s.brief()).as(s.id()).isNotNull());
         String director = catalog.compose(script("local-groupbuy", "巷里火锅，双人套餐", List.of("门店照片 1"), 15, null)).text();
         // §9.6 的新范式：目标、节拍、收尾已合进拍法，不再单列「这一条要做到」「结尾」两行。
-        assertThat(director).contains("拍法：开头亮出团购价格", "先讲领券入口", "位置", "套餐内容与团购价", "原价（客户写了才比较）", "排队/人气（客户写了才必须出现）",
+        assertThat(director).contains("拍法：首屏把已给的核心价格", "说清在哪买、买完如何用", "位置", "套餐内容与团购价", "原价（客户写了才比较）", "排队/人气（客户写了才必须出现）",
                 "不留任何空白", "不写「还缺」「待补」").doesNotContain("这一条要做到", "结尾：", "拍法里要讲但我没给的", "【待补：");
         String assistant = catalog.compose(video("local-groupbuy", "巷里火锅", List.of("门店照片 1"), null, 25, "9:16")).text();
         assertThat(assistant).contains("不用问我").doesNotContain("【待补");
@@ -237,7 +237,7 @@ class StudioSceneCatalogTest {
             sent.removeIf(java.util.Objects::isNull);
             for (String text : sent) assertThat(INVITES_FACTS.matcher(text).find()).as(scene.id() + "：" + text).isFalse();
         }
-        assertThat(catalog.video("brand-story").orElseThrow().structure()).contains("没给就讲一位用户的故事");
+        assertThat(catalog.video("brand-story").orElseThrow().structure()).contains("只按用户允许的范围虚构人物和情节");
     }
 
     @Test
