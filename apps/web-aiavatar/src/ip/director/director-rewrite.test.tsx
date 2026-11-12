@@ -54,6 +54,22 @@ test("the episode rewrite keeps the clips by default and cannot re-split clips t
   expect(vi.mocked(DirectorApi.runTask).mock.calls[0][1]).not.toHaveProperty("options");
 });
 
+test("too many reference images explains the limit and opens settings for Seedance 2.5", async () => {
+  const openSettings = vi.fn();
+  const w = work({ videoModels: [{ id: "seedance25", name: "Seedance 2.5", minSec: 4, maxSec: 15, isDefault: false, mode: "omni", maxRefImages: 30 }] });
+  vi.mocked(DirectorApi.quote).mockResolvedValueOnce({ items: [{
+    targetId: "c1", credits: null, error: "当前模型（MiniMax H3）最多可用 9 张参考图，本片段有 10 张（含分镜图）",
+    referenceImageLimit: { suggestedModelId: "seedance25" },
+  }] });
+  render(<App><DirectorStoryboard {...props} work={w} openSettings={openSettings}/></App>);
+  const button = await screen.findByRole("button", { name: "切换到 Seedance 2.5" });
+  expect(screen.getByText(/本片段有 10 张（含分镜图）/)).toBeTruthy();
+  expect((screen.getAllByRole("button", { name: "生成片段视频" })[0] as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(button);
+  expect(openSettings).toHaveBeenCalledWith("seedance25");
+  expect(DirectorApi.runTask).not.toHaveBeenCalled();
+});
+
 test("without media the episode can be re-split, which is the old full rewrite", async () => {
   show(work({ clips: [clip("c1", 1), clip("c2", 2)] }));
   fireEvent.click(screen.getByRole("button", { name: /重写分镜脚本/ }));

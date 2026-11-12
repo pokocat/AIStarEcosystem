@@ -212,7 +212,7 @@ function BriefDeskBody({ openSettings, onPaste }: { openSettings?: () => void; o
       <div><dt>想法</dt><dd>{work.idea}</dd></div>
       <div><dt>形式</dt><dd>{confirmed ? formatText(format) : <span className="director-muted">待确认（当前选择：{formatText(format)}）</span>}</dd></div>
       <div><dt>题材与调性</dt><dd>{style || <span className="director-muted">由 AI 决定</span>}</dd></div>
-      <div><dt>画面</dt><dd>{work.settings.style} · {work.settings.aspectRatio}{openSettings && <button type="button" className="ip-brand-text-button" onClick={openSettings}>修改</button>}</dd></div>
+      <div><dt>画面</dt><dd>{work.settings.style} · {work.settings.aspectRatio}{openSettings && <button type="button" className="ip-brand-text-button" onClick={() => openSettings()}>修改</button>}</dd></div>
       {ready && brief.summary && <div><dt>创作要求</dt><dd className="director-brief-summary">{brief.summary}</dd></div>}
     </dl>}
     {format.episodes > 3 && hasIdea && <p className="director-muted">集数较多时，将先写全剧大纲和前几集，其余各集可继续写。</p>}
@@ -261,7 +261,7 @@ function BriefEssentials({ openSettings }: { openSettings?: () => void }) {
     <GenreTone genre={b.genre} tone={b.tone} setGenre={b.setGenre} setTone={b.setTone}/>
     <div className="director-start-settings">
       <span><small>画面</small>{work.settings.style} · {work.settings.aspectRatio}</span>
-      {openSettings && <button type="button" className="ip-brand-text-button" onClick={openSettings}>修改</button>}
+      {openSettings && <button type="button" className="ip-brand-text-button" onClick={() => openSettings()}>修改</button>}
     </div>
     <div className="director-actions"><button type="button" className="ip-brand-button" disabled={b.sending} onClick={() => { void b.confirm(); setEditing(false); }}>确认</button></div>
   </div>;

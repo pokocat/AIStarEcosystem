@@ -7,6 +7,23 @@ vi.mock('../api', () => ({ DirectorApi: api }));
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 const work: any = {assets:[],clips:[], id:'model-work', settings:{style:'真人写实',aspectRatio:'9:16',videoModel:null,imageModel:null},
   pricing:{mock:false,image:16}, videoModels:[], imageModels:[{id:'seedream',name:'Seedream 4.5',isDefault:true,creditCost:16},{id:'other',name:'另一模型',isDefault:false,creditCost:37}] };
+
+test('a recommended video model is selected and only applied after saving', async () => {
+  const next = { ...work, videoModels: [
+    { id: 'h3', name: 'MiniMax H3', isDefault: true, minSec: 5, maxSec: 15, mode: 'omni', maxRefImages: 9 },
+    { id: 'seedance25', name: 'Seedance 2.5', isDefault: false, minSec: 4, maxSec: 15, mode: 'omni', maxRefImages: 30 },
+  ] };
+  api.patchWork.mockResolvedValue(next);
+  render(<SettingsPanel work={next} suggestedVideoModel="seedance25" apply={vi.fn()} onClose={vi.fn()} setError={vi.fn()}/>);
+  expect(screen.getByRole('combobox', { name: '视频模型' }).textContent).toContain('Seedance 2.5');
+  expect(screen.getByText(/最多 30 张参考图，含分镜图/)).toBeTruthy();
+  expect(api.patchWork).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '保存' }));
+  await waitFor(() => expect(api.patchWork).toHaveBeenCalledWith('model-work', {
+    settings: { style: '真人写实', aspectRatio: '9:16', videoModel: 'seedance25' },
+  }));
+});
+
 function choose(value: string) {
   const control = screen.getByRole('combobox', { name:'图片模型' });
   fireEvent.change(document.getElementById(control.getAttribute('data-select-native')!)!, { target:{value} });

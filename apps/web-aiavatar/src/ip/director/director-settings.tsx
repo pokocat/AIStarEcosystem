@@ -9,12 +9,13 @@ import { DirectorApi } from "../api";
 import { InlineError, costText, secRange, useBusy, dialogFocus, type DirectorFail } from "./director-shared";
 import { StyleField } from "./director-styles";
 
-export function SettingsPanel({ work, onClose, apply, setError }: { work: DirectorWork; onClose: () => void; apply: (w: DirectorWork) => void; setError: DirectorFail }) {
+export function SettingsPanel({ work, onClose, apply, suggestedVideoModel }: { work: DirectorWork; onClose: () => void; apply: (w: DirectorWork) => void; setError: DirectorFail; suggestedVideoModel?: string }) {
   const [style, setStyle] = useState(work.settings.style);
   const [localError, setLocalError] = useState("");
   const [aspect, setAspect] = useState(work.settings.aspectRatio);
   const [commerce, setCommerce] = useState(!!work.settings.commerce);
-  const [videoModel, setVideoModel] = useState(work.settings.videoModel ?? "");
+  const [videoModel, setVideoModel] = useState(suggestedVideoModel ?? work.settings.videoModel ?? "");
+  const chosenVideo = work.videoModels.find(m => videoModel ? m.id === videoModel : m.isDefault) ?? (!videoModel ? work.videoModels[0] : undefined);
   const savedText = work.settings.textModel ?? "";
   const [textModel, setTextModel] = useState(savedText);
   const textModels = work.textModels ?? [];
@@ -65,16 +66,19 @@ export function SettingsPanel({ work, onClose, apply, setError }: { work: Direct
         : imageModel === savedImage && state?.available && work.boardImage?.size ? `资产图${costText(work.pricing.image, work.pricing.mock)}/张。` : "暂无可用图片模型，请联系管理员开通。")}</small>
     </label>
     <label className="director-field"><span>视频模型</span>
-      <SelectField value={videoModel} onChange={e => setVideoModel(e.target.value)}>
+      <SelectField aria-label="视频模型" value={videoModel} onChange={e => setVideoModel(e.target.value)}>
         <option value="">默认{work.videoModels.find(m => m.isDefault) ? `（${work.videoModels.find(m => m.isDefault)!.name}）` : ""}</option>
-        {work.videoModels.map(m => <option key={m.id} value={m.id}>{m.name} · {secRange(m.minSec, m.maxSec)}{m.mode === "frame" ? " · 仅分镜首帧" : ""}</option>)}
+        {work.videoModels.map(m => <option key={m.id} value={m.id}>{m.name} · {secRange(m.minSec, m.maxSec)}{m.mode === "frame" ? " · 仅分镜首帧"
+          : m.maxRefImages != null ? ` · 最多 ${m.maxRefImages} 张参考图` : ""}</option>)}
       </SelectField>
       <small>{!work.videoModels.length ? "暂无可用视频模型，无法确定片段时长。请联系管理员开通。"
-        : work.videoModels.find(m => m.id === videoModel || (!videoModel && m.isDefault))?.mode === "frame"
+        : chosenVideo?.mode === "frame"
           ? "仅使用分镜首帧，不支持额外图片或声音参考。多镜头片段请先拆分。"
+          : chosenVideo?.maxRefImages != null ? `最多 ${chosenVideo.maxRefImages} 张参考图，含分镜图。角色声音也占用参考素材总数。`
           : "同时参考分镜图、资产图和角色声音，片段时长按模型支持的范围确定。"}</small>
     </label>
-    <p className="director-dialog-note">修改仅影响之后生成的内容，已生成的内容不变。</p>
+    <p className="director-dialog-note">{suggestedVideoModel ? "保存后，整个作品后续生成的片段都会使用所选视频模型。"
+      : "修改仅影响之后生成的内容，已生成的内容不变。"}</p>
     <InlineError message={localError} onClose={() => setLocalError("")}/>
     <footer><button type="button" className="ip-brand-secondary" onClick={onClose}>取消</button><button type="button" className="ip-brand-button" disabled={busy === "settings"} onClick={save}>保存</button></footer>
   </div>;

@@ -15920,11 +15920,11 @@ paths:
     post:
       tags: [ipstudio]
       operationId: directorQuote
-      description: '片段视频报价：与真正提交用同一份输入（采用的分镜图 + 资产参考图 + 说话角色声音样本）和同一个报价函数；逐个片段返回积分或还差什么。不建任务、不扣积分。'
+      description: '片段视频报价：与真正提交用同一份输入（采用的分镜图 + 资产参考图 + 说话角色声音样本）和同一个报价函数；逐个片段返回积分或还差什么。参考图超限时，如果有支持当前画幅、时长和素材数量的可用模型，返回建议切换的模型。不建任务、不扣积分。'
       parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [type], properties: { type: { type: string, enum: [video] }, targetIds: { type: array, items: { type: string } } } } } } }
       responses:
-        '200': { description: ok, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { type: object, properties: { targetId: { type: string }, credits: { type: integer, nullable: true }, error: { type: string, nullable: true } } } } } } } } }
+        '200': { description: ok, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { type: object, properties: { targetId: { type: string }, credits: { type: integer, nullable: true }, error: { type: string, nullable: true }, referenceImageLimit: { type: object, properties: { suggestedModelId: { type: string } } } } } } } } } } }
   /v1/ip-studio/director/works/{id}/uploads:
     post:
       tags: [ipstudio]

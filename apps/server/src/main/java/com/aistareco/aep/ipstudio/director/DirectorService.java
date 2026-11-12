@@ -12,6 +12,8 @@ import com.aistareco.aep.ipstudio.service.StudioFixtureProvider;
 import com.aistareco.aep.ipstudio.service.StudioMediaImportService;
 import com.aistareco.aep.service.materialvideo.MaterialVideoJobService;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioReferenceInput;
+import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioReferenceRules;
+import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioTier;
 import com.aistareco.aep.ipstudio.service.StudioVideoService;
 import com.aistareco.aep.ipstudio.service.StudioWorkflowService;
 import com.aistareco.aep.ipstudio.service.StudioWorkflowWorker;
@@ -1512,8 +1514,31 @@ public class DirectorService {
             refs.add(new VideoStudioReferenceInput("audio", key));
             meta.addObject().put("label", "音频" + (++audio)).put("name", a.path("name").asText() + "的声音").put("key", key).put("assetId", a.path("id").asText());
         }
+        requireVideoReferenceImageLimit(lim, aspect, duration, assets.size() + 1, audio);
         String prompt = clip.path("videoPrompt").asText();
         return new VideoInput(prompt, duration, aspect, lim, refs, meta, videoCurrent(c, clip, lim).fingerprint(), null);
+    }
+
+    private void requireVideoReferenceImageLimit(Limits lim, String aspect, int duration, int images, int audio) {
+        if (lim.references() == null) return;
+        int limit = referenceImageLimit(lim.references(), audio);
+        if (images <= limit) return;
+        var suggested = videoChoices().stream()
+                .filter(m -> !m.id().equals(lim.model()) && m.references() != null && m.priced())
+                .filter(m -> m.aspects().contains(aspect) && duration >= m.min() && duration <= m.max())
+                .filter(m -> audio <= m.references().audio().maxCount() && images >= m.references().minVisual())
+                .filter(m -> images <= referenceImageLimit(m.references(), audio))
+                .max(Comparator.comparingInt(m -> referenceImageLimit(m.references(), audio)));
+        String message = "当前模型（" + lim.name() + "）最多可用 " + limit + " 张参考图，本片段有 " + images + " 张（含分镜图）";
+        if (suggested.isEmpty()) message += "。请减少关联的参考图";
+        throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_VIDEO_REFERENCE_IMAGE_LIMIT", message,
+                new ReferenceImageLimit(suggested.map(VideoChoice::id).orElse(null)));
+    }
+
+    private record ReferenceImageLimit(String suggestedModelId) {}
+
+    private static int referenceImageLimit(VideoStudioReferenceRules rules, int audio) {
+        return Math.max(0, Math.min(rules.image().maxCount(), rules.maxTotal() - audio));
     }
 
     /** 片段视频报价：和真正提交走同一份输入与同一个报价函数。测试响应下为 0。 */
@@ -3677,7 +3702,13 @@ public class DirectorService {
             JsonNode clip = findOrNull(c, "clips", clipId);
             if (clip == null) { item.putNull("credits").put("error", "片段不存在，请刷新"); continue; }
             try { item.put("credits", videoQuote(userId, c, clip)).putNull("error"); }
-            catch (BusinessException e) { item.putNull("credits").put("error", e.getMessage()); }
+            catch (BusinessException e) {
+                item.putNull("credits").put("error", e.getMessage());
+                if (e.getDetails() instanceof ReferenceImageLimit limit) {
+                    ObjectNode detail = item.putObject("referenceImageLimit");
+                    if (limit.suggestedModelId() != null) detail.put("suggestedModelId", limit.suggestedModelId());
+                }
+            }
         }
         ObjectNode out = om.createObjectNode();
         out.set("items", items);
@@ -4269,11 +4300,13 @@ public class DirectorService {
     // ── 视频模型限制（片段时长来自所选模型的合同，不写死）─────────────────────
 
     /** mode：omni = 全能参考（分镜板 + 参考图 + 声音一起交给模型）；frame = 只按首帧出片（一镜一段，不带参考图和声音）。 */
-    record Limits(String model, String name, int min, int max, boolean mock, String tier, List<String> aspects, boolean optimizable, String mode) {
+    record Limits(String model, String name, int min, int max, boolean mock, String tier, List<String> aspects, boolean optimizable, String mode,
+                  VideoStudioReferenceRules references) {
         boolean frame() { return "frame".equals(mode); }
         int maxShots() { return frame() ? 1 : DirectorPrompts.MAX_SHOTS; }
     }
-    record VideoChoice(String id, String name, boolean isDefault, int min, int max, String tier, List<String> aspects, boolean optimizable, String mode) {}
+    record VideoChoice(String id, String name, boolean isDefault, int min, int max, String tier, List<String> aspects, boolean optimizable, String mode,
+                       VideoStudioReferenceRules references, boolean priced) {}
     private static final int MAX_CLIP_SECONDS = 15;
 
     private List<VideoChoice> videoChoices() {
@@ -4281,14 +4314,18 @@ public class DirectorService {
         try {
             for (var m : videoModels.models()) {
                 var contract = m.contract();
-                if (contract == null || contract.modes() == null || contract.modes().stream().noneMatch(x -> VIDEO_MODE.equals(x.mode()))) continue;
-                var tiers = contract.tiers() == null ? List.<com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioTier>of() : contract.tiers();
+                if (contract == null || contract.modes() == null) continue;
+                var mode = contract.modes().stream().filter(x -> VIDEO_MODE.equals(x.mode())).findFirst().orElse(null);
+                if (mode == null) continue;
+                var tiers = contract.tiers() == null ? List.<VideoStudioTier>of() : contract.tiers();
                 var tier = tiers.stream().filter(t -> "768p".equals(t.tier())).findFirst().orElse(tiers.isEmpty() ? null : tiers.get(0));
                 List<String> aspects = new ArrayList<>();
                 if (tier != null && tier.canvases() != null) tier.canvases().forEach(cv -> aspects.add(cv.aspectRatio()));
+                var prices = m.pricing() == null ? null : m.pricing().perSecond().get(VIDEO_MODE);
                 // 一段最长 15 秒：分镜图一张 4 镜，节奏也按 2–4 秒一镜写的。模型放开到 30 秒只给 AI 视频页的长视频用（docs/studio-segmented-video.md）。
                 out.add(new VideoChoice(m.endpointId(), m.name(), m.isDefault(), contract.minSeconds(), Math.min(contract.maxSeconds(), MAX_CLIP_SECONDS),
-                        tier == null ? null : tier.tier(), aspects, m.supportsPromptOptimization(), "omni"));
+                        tier == null ? null : tier.tier(), aspects, m.supportsPromptOptimization(), "omni", mode.references(),
+                        tier != null && prices != null && prices.get(tier.tier()) != null));
             }
         } catch (BusinessException e) {
             log.warn("[director] 读取视频模型失败 reason={}", e.getMessage());
@@ -4305,7 +4342,7 @@ public class DirectorService {
                 if (bounds.maxSec() == null) continue;
                 var geometry = videoClient.videoGeometry(e);
                 out.add(new VideoChoice(e.getId(), e.publicModelName(), r.isDefault(), bounds.minSec() == null ? 1 : bounds.minSec(), bounds.maxSec(),
-                        null, geometry == null || geometry.ratios() == null ? List.of() : geometry.ratios(), false, "frame"));
+                        null, geometry == null || geometry.ratios() == null ? List.of() : geometry.ratios(), false, "frame", null, false));
             }
         } catch (BusinessException e) {
             log.warn("[director] 读取首帧视频模型失败 reason={}", e.getMessage());
@@ -4319,9 +4356,9 @@ public class DirectorService {
         String chosen = c.path("settings").path("videoModel").asText(null);
         VideoChoice pick = choices.stream().filter(v -> v.id().equals(chosen)).findFirst()
                 .orElse(choices.stream().filter(VideoChoice::isDefault).findFirst().orElse(choices.isEmpty() ? null : choices.get(0)));
-        if (pick != null) return new Limits(pick.id(), pick.name(), pick.min(), pick.max(), false, pick.tier(), pick.aspects(), pick.optimizable(), pick.mode());
+        if (pick != null) return new Limits(pick.id(), pick.name(), pick.min(), pick.max(), false, pick.tier(), pick.aspects(), pick.optimizable(), pick.mode(), pick.references());
         if (fixtures.enabled()) return new Limits(null, "测试响应", JusuanH3Contract.MIN_SECONDS, JusuanH3Contract.MAX_SECONDS, true,
-                null, List.of("9:16", "16:9", "1:1"), false, "omni");
+                null, List.of("9:16", "16:9", "1:1"), false, "omni", null);
         return null;
     }
 
@@ -4535,8 +4572,10 @@ public class DirectorService {
         v.set("textModels", om.valueToTree(textCapabilities.textModels()));
         v.put("textModelMode", textCapabilities.textModelMode());
         ArrayNode models = v.putArray("videoModels");
-        for (VideoChoice m : videoChoices())
-            models.addObject().put("id", m.id()).put("name", m.name()).put("isDefault", m.isDefault()).put("minSec", m.min()).put("maxSec", m.max()).put("mode", m.mode());
+        for (VideoChoice m : videoChoices()) {
+            var model = models.addObject().put("id", m.id()).put("name", m.name()).put("isDefault", m.isDefault()).put("minSec", m.min()).put("maxSec", m.max()).put("mode", m.mode());
+            if (m.references() != null) model.put("maxRefImages", referenceImageLimit(m.references(), 0));
+        }
         Limits lim = limits(c);
         if (lim == null) v.putNull("videoLimits");
         else v.putObject("videoLimits").put("model", lim.model()).put("name", lim.name()).put("minSec", lim.min()).put("maxSec", lim.max()).put("mock", lim.mock())

@@ -360,9 +360,10 @@ public class VideoStudioService {
         VideoStudioModeSpec modeSpec = model.contract().modes().stream().filter(m -> m.mode().equals(mode)).findFirst().orElse(null);
         if (mode == null || modeSpec == null) throw BusinessException.badRequest("VIDEO_STUDIO_MODE_INVALID", "所选模型不支持这个生成模式，请重新选择");
         Geometry geometry = requireGeometry(model.contract(), tier, aspectRatio, seconds);
-        if (imageRefs < 0 || videoRefs < 0 || audioRefs < 0 || imageRefs + videoRefs + audioRefs > 32)
-            throw BusinessException.badRequest("VIDEO_STUDIO_SPEC_INVALID", "参考素材的张数不对");
         boolean referenceRules = modeSpec.references() != null;
+        if (imageRefs < 0 || videoRefs < 0 || audioRefs < 0
+                || (!referenceRules && (long) imageRefs + videoRefs + audioRefs > 32))
+            throw BusinessException.badRequest("VIDEO_STUDIO_SPEC_INVALID", "参考素材的张数不对");
         List<VideoGenSpec.Reference> references = new ArrayList<>();
         if (referenceRules) {
             requireReferenceCounts(modeSpec.references(), imageRefs, videoRefs, audioRefs);
@@ -690,7 +691,7 @@ public class VideoStudioService {
 
     /** Quote placeholders and real inputs must obey the same configured upper bounds. */
     private static void requireReferenceCounts(VideoStudioReferenceRules rules, int images, int videos, int audios) {
-        int total = images + videos + audios;
+        long total = (long) images + videos + audios;
         if (total > rules.maxTotal()) {
             throw inputInvalid("参考素材最多 " + rules.maxTotal() + " 个，现在是 " + total + " 个");
         }

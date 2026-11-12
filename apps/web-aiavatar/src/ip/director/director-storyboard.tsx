@@ -98,9 +98,10 @@ export function DirectorStoryboard(props: WorkbenchProps) {
   const reveal = assistant?.reveal;
   useEffect(() => { if (reveal?.type === "board" && work.clips.some(c => c.id === reveal.id)) setBoardFor(reveal.id); }, [reveal]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (!ready) { setQuotes({}); return; }
+    setQuotes({});
+    if (!ready) return;
     let live = true;
-    void DirectorApi.quote(work.id, ready.split(",")).then(q => { if (live) setQuotes(Object.fromEntries(q.items.map(i => [i.targetId, { credits: i.credits, error: i.error }]))); })
+    void DirectorApi.quote(work.id, ready.split(",")).then(q => { if (live) setQuotes(Object.fromEntries(q.items.map(({ targetId, ...quote }) => [targetId, quote]))); })
       .catch(() => { /* 报价失败时按钮点下去会再报一次价，并显示原因 */ });
     return () => { live = false; };
   }, [work.id, work.revision, ready]);
@@ -342,7 +343,7 @@ function ClipHead({ work, clip, apply, setError, onEdit, selected, onSelect, onR
  * 一个片段一张卡，主体是视频：分镜图是生成视频的参考（不是资产），单独一个入口、单独一个弹窗；
  * 视频提示词按分镜图第 1–N 格逐镜写，宫格保证前后镜头的人物、环境一致。
  */
-function ClipCard({ goTab, work, clip, quote, apply, setError, onPreview, onBoard, onPickVideo, switching, selected, onSelect, onRewrite, rewriteTask, editorAt, focused, onFocusScript }: WorkbenchProps & { clip: DirectorClip; quote?: ClipQuote; onPreview: (kind: PreviewKind, candidateId?: string) => void; onBoard: () => void; onPickVideo: (candidateId: string) => void; switching: boolean; selected: boolean; onSelect: (on: boolean) => void;
+function ClipCard({ goTab, openSettings, work, clip, quote, apply, setError, onPreview, onBoard, onPickVideo, switching, selected, onSelect, onRewrite, rewriteTask, editorAt, focused, onFocusScript }: WorkbenchProps & { clip: DirectorClip; quote?: ClipQuote; onPreview: (kind: PreviewKind, candidateId?: string) => void; onBoard: () => void; onPickVideo: (candidateId: string) => void; switching: boolean; selected: boolean; onSelect: (on: boolean) => void;
   onRewrite: () => void; rewriteTask?: DirectorTask; editorAt?: number; focused: boolean; onFocusScript: () => void }) {
   // 没保存的镜头修改切走再回来还在，编辑区保持打开。
   const [editing, setEditing] = useState(() => hasDrafts(`${work.id}:clip:${clip.id}:edit:`));
@@ -422,7 +423,7 @@ function ClipCard({ goTab, work, clip, quote, apply, setError, onPreview, onBoar
 </header>
           <PromptEditor work={work} clip={clip} which="video" apply={apply} setError={setError}/>
         </details>
-        <ClipVideo work={work} clip={clip} quote={quote} apply={apply} setError={setError} onBoard={boardReady || videoBusy ? undefined : onBoard} onAssets={() => goTab("assets")} onPickVideo={onPickVideo} switching={switching}
+        <ClipVideo work={work} clip={clip} quote={quote} apply={apply} setError={setError} onBoard={boardReady || videoBusy ? undefined : onBoard} onAssets={() => goTab("assets")} onPickVideo={onPickVideo} switching={switching} onChangeModel={openSettings}
           settings={`${work.settings.style} · ${work.settings.aspectRatio} · ${clip.durationSec} 秒 · ${work.videoLimits?.name ?? "视频模型未开通"}`}/>
       </div>
     </div>}

@@ -119,7 +119,17 @@ html[data-layout="desktop"] .director-shell .director-title { flex: 0 1 auto; wi
 .director-settings-chip { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; max-width: min(100%, 280px); min-height: 32px; padding: 4px 10px; border: 1px solid var(--ip-line); border-radius: 8px; background: var(--ip-paper); font-size: 12px; color: var(--ip-ink); white-space: nowrap; }
 .director-settings-chip svg { flex: none; }
 .director-settings-chip span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.director-popover { position: absolute; right: 0; top: 40px; z-index: 50; display: flex; flex-direction: column; gap: 12px; width: min(380px, calc(100vw - 32px)); padding: 16px; border: 1px solid var(--ip-line); border-radius: 12px; background: var(--ip-paper); box-shadow: 0 16px 48px rgba(25, 34, 41, .18); }
+.director-work-settings { max-width: 100%; }
+.director-work-settings:hover, .director-work-settings[aria-expanded="true"] { background: var(--ip-soft); }
+.director-work-settings:focus-visible { outline: 2px solid var(--ip-ink); outline-offset: 2px; }
+.director-work-settings strong { font-weight: 600; }
+.director-settings-models { display: inline-flex; align-items: center; gap: 8px; padding-inline-start: 8px; border-inline-start: 1px solid var(--ip-line); color: var(--ip-muted); }
+.director-settings-models > span { display: inline-flex; align-items: center; gap: 4px; }
+.director-settings-model-name { display: none; }
+html[data-layout="desktop"] .director-settings-model-name { display: block; max-width: 128px; }
+html:not([data-layout="desktop"]) .director-header :is(.director-settings-icon, .director-shortcut-tag) { display: none; }
+.director-settings-tooltip { display: grid; gap: 2px; overflow-wrap: anywhere; }
+.director-popover { position: absolute; right: 0; top: calc(100% + 6px); z-index: 50; display: flex; flex-direction: column; gap: 12px; width: min(380px, calc(100vw - 32px)); padding: 16px; border: 1px solid var(--ip-line); border-radius: 12px; background: var(--ip-paper); box-shadow: 0 16px 48px rgba(25, 34, 41, .18); }
 .director-popover h3 { font-size: 15px; }
 
 .director-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }

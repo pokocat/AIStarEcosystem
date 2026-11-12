@@ -4,7 +4,7 @@ import { runDirectorTask, withSavedDirectorDrafts } from "./director-generation"
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Check, ChevronDown, Download, Film, Music, Play, SkipForward, Trash2, Upload, Wand2, X } from "lucide-react";
 import { Switch } from "antd";
-import type { DirectorClip, DirectorEpisode, DirectorExport, DirectorExportOptions, DirectorWork } from "@ai-star-eco/types";
+import type { DirectorClip, DirectorEpisode, DirectorExport, DirectorExportOptions, DirectorQuote, DirectorWork } from "@ai-star-eco/types";
 import { SignedAudio } from "@/canvas-bridge/signed-audio";
 import { studioCaptionNote } from "@/canvas-bridge/studio-packaging";
 import { downloadMedia } from "@/canvas-bridge/download-media";
@@ -14,12 +14,12 @@ import { DirectorVideo } from "./director-video";
 import { VoiceDialog } from "./director-voice";
 import { DIRECTOR_MEDIA_SHORTAGE, InlineError, OutdatedNote, Spinner, adopted, chooseDirectorBilling, costText, errorText, exportIsStale, failed, newRequestId, runningTask, useBusy, useElapsedSeconds, useEscape, dialogFocus, type DirectorFail } from "./director-shared";
 
-export type ClipQuote = { credits: number | null; error: string | null };
+export type ClipQuote = Omit<DirectorQuote["items"][number], "targetId">;
 
 /** 片段的视频操作：报价、生成、进度与确认。画面和历史版本在左侧画面区。 */
 /** 片段视频的操作区：提示（生成中、声音、旧版本）在上，最后一行是生成设置 + 按钮 + 价格。onBoard：分镜图还没好时给「去生成分镜图」。 */
-export function ClipVideo({ work, clip, quote, apply, setError, onBoard, onAssets, onPickVideo, switching, settings }: { work: DirectorWork; clip: DirectorClip; quote?: ClipQuote; apply: (w: DirectorWork) => void; setError: DirectorFail; onPickVideo?: (candidateId: string) => void; switching?: boolean;
-  onBoard?: () => void; onAssets?: () => void; settings?: string }) {
+export function ClipVideo({ work, clip, quote, apply, setError, onBoard, onAssets, onPickVideo, switching, settings, onChangeModel }: { work: DirectorWork; clip: DirectorClip; quote?: ClipQuote; apply: (w: DirectorWork) => void; setError: DirectorFail; onPickVideo?: (candidateId: string) => void; switching?: boolean;
+  onBoard?: () => void; onAssets?: () => void; settings?: string; onChangeModel?: (modelId: string) => void }) {
   const { busy, run } = useBusy();
   // 已经有视频时，重新生成要花钱：先说清花多少、现有版本还在，再点一次才执行。第一次生成按钮旁已写价格，不多问。
   const [confirmRegenerate, setConfirmRegenerate] = useState<{ choice?: "optimized" | "original" } | null>(null);
@@ -51,6 +51,8 @@ export function ClipVideo({ work, clip, quote, apply, setError, onBoard, onAsset
   const frame = work.videoLimits?.mode === "frame";
   const voiceBlocked = frame && (clip.voiced?.length ?? 0) > 0 && !clip.videoWithoutVoice;
   const reason = clip.issues.length ? "请先处理上方标出的问题" : !clip.board.adoptedId ? "请先生成分镜图" : !boardReady ? "请先确认分镜图" : quote?.error ?? (voiceBlocked ? "请先选择不带声音参考" : "");
+  const referenceLimit = boardReady && !clip.issues.length && !!quote?.referenceImageLimit && !!quote.error;
+  const suggestedModel = work.videoModels?.find(m => m.id === quote?.referenceImageLimit?.suggestedModelId);
   const priceText = quote?.credits != null ? `${clip.durationSec} 秒，${costText(quote.credits, work.pricing.mock)}${rewrite === "needed" ? "，优化另需少量积分" : rewrite === "original" ? "，当前按原文生成" : ""}` : "";
   // 没设音色的人物就地设置，不用跳到资产页再找。找不到对应资产（改过名）才去资产页。
   const [voiceFor, setVoiceFor] = useState<string>();
@@ -98,6 +100,11 @@ export function ClipVideo({ work, clip, quote, apply, setError, onBoard, onAsset
       <button type="button" className="ip-brand-button" disabled={!!switching} onClick={() => onPickVideo?.(newer.id)}>换成第 {newer.no} 版</button>
     </div>}
     <InlineError message={clip.video.error?.message}/>
+    {referenceLimit && <div className="director-voice-warn" role="status">
+      <AlertTriangle size={13}/><span>{reason}</span>
+      {suggestedModel && onChangeModel && <button type="button" className="ip-brand-secondary" aria-haspopup="dialog"
+        onClick={() => onChangeModel(suggestedModel.id)}>切换到 {suggestedModel.name}</button>}
+    </div>}
     {review && !rewriting && !pending && <div className="director-prompt-review" role="group" aria-label="优化稿待确认">
       <strong><AlertTriangle size={13}/>{draftTooLong ? "AI 优化后的版本太长，无法使用" : "AI 优化后的版本有几处需要留意"}</strong>
       {!!clip.videoPromptEn?.warnings?.length && <ul>{clip.videoPromptEn.warnings.map(w => <li key={w}>{w}</li>)}</ul>}
@@ -132,7 +139,7 @@ export function ClipVideo({ work, clip, quote, apply, setError, onBoard, onAsset
         </div> : <>
         <button type="button" className={current || onBoard ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy || !!pending || !!fixtureRun || !!rewriting || !!reason || review} onClick={() => paid()}>
           <Wand2 size={14}/>{clip.video.candidates.length ? "重新生成视频" : "生成片段视频"}</button>
-        <span className="director-cost director-video-cost" title={reason || [priceText, current?.refs?.length ? `参考：${current.refs.map(r => `${r.label} ${r.name}`).join("、")}` : ""].filter(Boolean).join("\n") || undefined}>{reason || priceText || "报价中…"}</span>
+        {!referenceLimit && <span className="director-cost director-video-cost" title={reason || [priceText, current?.refs?.length ? `参考：${current.refs.map(r => `${r.label} ${r.name}`).join("、")}` : ""].filter(Boolean).join("\n") || undefined}>{reason || priceText || "报价中…"}</span>}
       </>}
     </div>
   </div>;

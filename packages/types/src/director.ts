@@ -336,6 +336,8 @@ export interface DirectorVideoModel {
   maxSec: number;
   /** omni = 分镜板 + 参考图 + 声音一起交给模型；frame = 只按首帧出片（一镜一段，不带参考图和声音）。 */
   mode: "omni" | "frame";
+  /** 全能参考只带图片时的上限，含分镜图。声音参考也会占用素材总额。 */
+  maxRefImages?: number;
 }
 
 export interface DirectorPendingExtractItem {
@@ -504,7 +506,12 @@ export interface DirectorPipelineEstimate {
 }
 
 export interface DirectorQuote {
-  items: Array<{ targetId: string; credits: number | null; error: string | null }>;
+  items: Array<{
+    targetId: string;
+    credits: number | null;
+    error: string | null;
+    referenceImageLimit?: { suggestedModelId?: string };
+  }>;
 }
 
 export interface DirectorAudioUpload {

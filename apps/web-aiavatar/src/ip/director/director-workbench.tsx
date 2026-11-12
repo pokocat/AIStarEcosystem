@@ -3,7 +3,8 @@
 import { withSavedDirectorDrafts } from "./director-generation";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowLeft, ArrowRight, Check, Clapperboard, FileText, Loader2, Pause, Play, Settings2, Shapes, ShoppingBag, Sparkles, Square, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, Clapperboard, FileText, Image, Loader2, Pause, Play, Settings2, Shapes, ShoppingBag, Sparkles, Square, Video, X } from "lucide-react";
+import { Tooltip } from "antd";
 import type { DirectorPipeline, DirectorPipelineEstimate, DirectorPipelineTarget, DirectorWork } from "@ai-star-eco/types";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { isProductNotEnrolledError } from "@ai-star-eco/api-client";
@@ -37,7 +38,7 @@ export type WorkbenchProps = {
   /** 打开「确认资产」弹窗（有待保存的提取清单时）。 */
   reviewExtract: () => void;
   /** 打开顶栏的作品设置（风格、画幅、文本和视频模型）。 */
-  openSettings: () => void;
+  openSettings: (videoModel?: string) => void;
   /** 切换当前集（分镜页左侧分集栏）。 */
   pickEpisode: (id: string) => void;
   /** 打开「一键制作」弹窗。剧本页把它和「AI 拆分」并列放，说明它是快捷方式。 */
@@ -127,7 +128,7 @@ export function DirectorWorkbench({ id }: { id: string }) {
   const revision = useRef(0);
   const initialTab = useRef(false);
   const [reviewing, setReviewing] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settings, setSettings] = useState<{ videoModel?: string; returnY?: number } | null>(null);
   const [starting, setStarting] = useState(false);
   const reviewedRun = useRef<string | null>(null);
   // 换工作区时清掉上一处的报错：它说的是别处的事，留着会误导（2026-10-24 资产已入库，顶部还挂着「请先提取资产」）。
@@ -246,7 +247,16 @@ export function DirectorWorkbench({ id }: { id: string }) {
     if (!clip) return;
     setTab("storyboard"); setEpisodeId(clip.episodeId); setFocus({ ...target, at: Date.now() });
   };
-  const props: WorkbenchProps = { work, episodeId, apply, setError, goTab: switchTab, focusClip, focus, reviewExtract: () => setReviewing(true), openSettings: () => { window.scrollTo({ top: 0, behavior: "smooth" }); setSettingsOpen(true); }, pickEpisode: setEpisodeId, startPipeline: () => setStarting(true) };
+  const openSettings = (videoModel?: string) => {
+    setSettings({ videoModel, returnY: videoModel ? window.scrollY : undefined });
+    window.scrollTo({ top: 0, behavior: videoModel ? "instant" : "smooth" });
+  };
+  const closeSettings = () => {
+    const returnY = settings?.returnY;
+    setSettings(null);
+    if (returnY != null) window.requestAnimationFrame(() => window.scrollTo({ top: returnY, behavior: "instant" }));
+  };
+  const props: WorkbenchProps = { work, episodeId, apply, setError, goTab: switchTab, focusClip, focus, reviewExtract: () => setReviewing(true), openSettings, pickEpisode: setEpisodeId, startPipeline: () => setStarting(true) };
   const step = nextStep(work, episodeId);
   const counts = {
     assets: work.assets.filter(a => a.kind !== "product" && !a.image.adoptedId).length,
@@ -255,7 +265,7 @@ export function DirectorWorkbench({ id }: { id: string }) {
   };
   const live = !!work.pipeline && ["running", "waiting", "paused"].includes(work.pipeline.status);
   return <AssistantProvider value={assistant}><BriefProvider work={work} apply={apply}><main className={`ip-brand-surface director-shell ${assistant.open ? "has-assistant" : ""}`}>
-    <DirectorHeader {...props} settingsOpen={settingsOpen} setSettingsOpen={setSettingsOpen} oneClick={!live} status={live ? null : <>
+    <DirectorHeader {...props} settingsPanel={settings} closeSettings={closeSettings} oneClick={!live} status={live ? null : <>
       {work.pendingExtract
         ? <button key="extract" type="button" className="director-status-chip is-warn" onClick={() => setReviewing(true)} title="查看清单">
           <Sparkles size={13}/><span>识别到 {work.pendingExtract.items.length} 项资产，确认后保存</span><ArrowRight size={13} className="director-chip-go"/></button>
@@ -310,7 +320,7 @@ function StopTextTasks({work,apply,setError}:WorkbenchProps) {
   </>;
 }
 
-function DirectorHeader({ work, apply, setError, startPipeline, oneClick, status, settingsOpen: open, setSettingsOpen: setOpen }: WorkbenchProps & { oneClick: boolean; status?: ReactNode; settingsOpen: boolean; setSettingsOpen: (v: boolean | ((o: boolean) => boolean)) => void }) {
+function DirectorHeader({ work, apply, setError, startPipeline, openSettings, oneClick, status, settingsPanel, closeSettings }: WorkbenchProps & { oneClick: boolean; status?: ReactNode; settingsPanel: { videoModel?: string } | null; closeSettings: () => void }) {
   const [title, setTitle] = useState(work.title);
   const { busy, run } = useBusy();
   useEffect(() => setTitle(work.title), [work.title]);
@@ -319,7 +329,13 @@ function DirectorHeader({ work, apply, setError, startPipeline, oneClick, status
     if (!t || t === work.title) { setTitle(work.title); return; }
     void run("title", async () => apply(await DirectorApi.patchWork(work.id, { title: t })), (m, e) => { setTitle(work.title); setError({ action: "修改作品名", error: e ?? m, next: "作品名已恢复为原名称，请重新输入后重试。" }); });
   };
-  const settings = work.settings;
+  const imageModel = work.imageModelState?.name ?? "未开通";
+  const videoModel = work.videoLimits?.mock ? "测试响应" : work.videoLimits?.name ?? "未开通";
+  const modelSummary = <span className="director-settings-tooltip">
+    <span>图片模型 {imageModel}</span>
+    <span>视频模型 {videoModel}</span>
+    <span>{work.settings.style} · {work.settings.aspectRatio}</span>
+  </span>;
   return <header className="director-header">
     <Link href="/director" className="director-back" aria-label="返回作品列表"><ArrowLeft size={18}/></Link>
     <input className="director-title" aria-label="作品名" value={title} maxLength={60} onChange={e => setTitle(e.target.value)} onBlur={saveTitle}
@@ -328,11 +344,18 @@ function DirectorHeader({ work, apply, setError, startPipeline, oneClick, status
     <span className="director-spacer"/>
     {work.pricing.mock && <span className="director-mock-tag" title="剧本、图片和视频均为固定样例，不调用模型，不消耗积分。">测试模式</span>}
     <Link href="/me/tasks?raw=all" className="director-settings-chip director-results-link" title="查看模型返回的原始内容">生成原文</Link>
-    <button type="button" className="director-settings-chip" onClick={() => setOpen(o => !o)} aria-expanded={open} title={`${settings.style} · ${settings.aspectRatio}`}>
-      <Settings2 size={15}/><span>{settings.style} · {settings.aspectRatio}</span>
-    </button>
+    <Tooltip title={modelSummary} placement="bottomRight" trigger={["hover", "focus"]} open={settingsPanel ? false : undefined}>
+      <button type="button" className="director-settings-chip director-work-settings" onClick={settingsPanel ? closeSettings : () => openSettings()}
+        aria-label="作品设置" aria-haspopup="dialog" aria-expanded={!!settingsPanel}>
+        <Settings2 className="director-settings-icon" size={15} aria-hidden="true"/><strong>作品设置</strong>
+        <span className="director-settings-models" aria-hidden="true">
+          <span><Image size={14}/><span className="director-settings-model-name">{imageModel}</span></span>
+          <span><Video size={14}/><span className="director-settings-model-name">{videoModel}</span></span>
+        </span>
+      </button>
+    </Tooltip>
     {oneClick && <OneClickButton startPipeline={startPipeline}/>}
-    {open && <SettingsPanel work={work} onClose={() => setOpen(false)} apply={apply} setError={setError}/>}
+    {settingsPanel && <SettingsPanel key={settingsPanel.videoModel ?? ""} work={work} suggestedVideoModel={settingsPanel.videoModel} onClose={closeSettings} apply={apply} setError={setError}/>}
     <AssistantToggle work={work}/>
   </header>;
 }

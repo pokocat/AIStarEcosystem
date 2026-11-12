@@ -12,8 +12,11 @@ import com.aistareco.aep.service.AiAppSceneModelPolicyService;
 import com.aistareco.aep.service.materialvideo.MaterialVideoJobService;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioCanvas;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioContract;
+import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioMediaLimit;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioModeSpec;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioModel;
+import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioPricing;
+import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioReferenceRules;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioTier;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -27,6 +30,8 @@ import org.springframework.transaction.PlatformTransactionManager;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -45,6 +50,7 @@ class DirectorH3VideoFlowTest {
     private IpRunService imageRuns;
     private StudioWorkflowService textRuns;
     private StudioVideoService videoModels;
+    private DirectorWorkRepository works;
     private DirectorService service;
     private DirectorWork w;
     private ObjectNode c;
@@ -55,9 +61,10 @@ class DirectorH3VideoFlowTest {
         imageRuns = mock(IpRunService.class);
         textRuns = mock(StudioWorkflowService.class);
         videoModels = mock(StudioVideoService.class);
+        works = mock(DirectorWorkRepository.class);
         StudioFixtureProvider fixtures = mock(StudioFixtureProvider.class);
         MaterialVideoJobService videoJobs = mock(MaterialVideoJobService.class);
-        service = new DirectorService(null, runs, null, imageRuns, textRuns, null, videoModels, fixtures, null, videoJobs, null, null,
+        service = new DirectorService(works, runs, null, imageRuns, textRuns, null, videoModels, fixtures, null, videoJobs, null, null,
                 mock(AiAppSceneModelPolicyService.class), null, null, null, om, mock(PlatformTransactionManager.class));
         h3(true);
         when(videoModels.quote(eq("u1"), any())).thenReturn(600L);
@@ -100,6 +107,66 @@ class DirectorH3VideoFlowTest {
     }
 
     private ObjectNode clip() { return (ObjectNode) c.path("clips").get(0); }
+
+    @Test void referenceImageLimitRecommendsOnlyACompatibleModelAndKeepsAllThirtyImages() {
+        when(videoModels.models()).thenReturn(List.of(
+                referenceModel("ep-h3", "MiniMax H3", true, 9, 12, "9:16"),
+                referenceModel("ep-seedance25", "Seedance 2.5", false, 30, 33, "9:16"),
+                referenceModel("ep-landscape", "横屏模型", false, 40, 43, "16:9")));
+        when(works.findById(w.getId())).thenReturn(Optional.of(w));
+        addReferenceAssets(6);
+        assertEquals(600L, referenceQuote().path("credits").asLong(), "分镜图 + 8 张资产图正好到上限");
+
+        addReferenceAssets(1);
+        JsonNode over = referenceQuote();
+        assertTrue(over.path("error").asText().contains("本片段有 10 张（含分镜图）"));
+        assertEquals("ep-seedance25", over.path("referenceImageLimit").path("suggestedModelId").asText());
+        assertThrows(BusinessException.class, () -> service.dispatch("u1", w, c, "video", "cl1", "over-limit",
+                om.createObjectNode(), null, null, 600L));
+        verify(imageRuns, never()).generateVideoForDirector(anyString(), anyString(), anyString(), any());
+
+        ((ObjectNode) c.path("settings")).put("videoModel", "ep-seedance25");
+        addReferenceAssets(20);
+        assertEquals(600L, referenceQuote().path("credits").asLong());
+        service.dispatch("u1", w, c, "video", "cl1", "all-references", om.createObjectNode(), null, null, 600L);
+        ArgumentCaptor<IpRunService.IpVideoRequest> request = ArgumentCaptor.forClass(IpRunService.IpVideoRequest.class);
+        verify(imageRuns).generateVideoForDirector(eq("u1"), eq(w.getId()), eq("video:cl1"), request.capture());
+        assertEquals("ep-seedance25", request.getValue().model());
+        assertEquals(30, request.getValue().video().references().size());
+
+        addReferenceAssets(1);
+        JsonNode aboveThirty = referenceQuote();
+        assertTrue(aboveThirty.path("error").asText().contains("本片段有 31 张"));
+        assertTrue(aboveThirty.path("referenceImageLimit").isObject());
+        assertFalse(aboveThirty.path("referenceImageLimit").has("suggestedModelId"), "横屏模型不适合当前画幅");
+    }
+
+    private JsonNode referenceQuote() {
+        w.setContentJson(c.toString());
+        return service.quote("u1", w.getId(), new DirectorService.QuoteRequest("video", List.of("cl1"))).path("items").get(0);
+    }
+
+    private void addReferenceAssets(int count) {
+        ArrayNode assets = c.withArray("assets");
+        for (int i = 0; i < count; i++) {
+            String id = "prop-" + assets.size();
+            var asset = assets.addObject().put("id", id).put("name", id).put("kind", "prop");
+            asset.putObject("image").put("adoptedId", id).put("adoptedBy", "user")
+                    .putArray("candidates").addObject().put("id", id).put("key", "k/" + id + ".png");
+            clip().withArray("assetIds").add(id);
+        }
+    }
+
+    private static VideoStudioModel referenceModel(String id, String name, boolean isDefault, int images, int total, String aspect) {
+        String mode = "universal_reference_video";
+        var rules = new VideoStudioReferenceRules(new VideoStudioMediaLimit("image", images, 1024, List.of("png"), null, null),
+                new VideoStudioMediaLimit("video", 0, 0, List.of(), null, null),
+                new VideoStudioMediaLimit("audio", 3, 1024, List.of("wav"), 2, 15), 0, total, 1, 15);
+        var contract = new VideoStudioContract(List.of(new VideoStudioModeSpec(mode, false, false, null, rules)),
+                List.of(new VideoStudioTier("720p", List.of(new VideoStudioCanvas(aspect, 720, 1280)))), 4, 15, 7000, 0L);
+        var pricing = new VideoStudioPricing(Map.of(mode, Map.of("720p", 50L)), 0, 0, 0);
+        return new VideoStudioModel(id, name, isDefault, true, false, contract, pricing);
+    }
 
     @Test void videoImageNumbersIncludeTheBoardAndMatchTheSubmittedRequest() {
         JsonNode refs = service.imageReferences(c, clip(), true, false);
