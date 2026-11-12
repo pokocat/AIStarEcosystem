@@ -1,11 +1,8 @@
 name: Build release artifacts
 
-# 受控发布（2026-06-22 起）：本 workflow 只「构建 + 上传产物」，不再自动部署到生产。
-# 原因：不在 GitHub 放生产 SSH 私钥（长期主钥交给 GitHub 会扩大爆炸半径），改为受控人工发布。
-# 实际发布请用：
-#   - 本机：./infra/scripts/deploy.sh <services>（或对已构建产物 deploy-release.sh）
-#   - ECS 上：sudo ./infra/scripts/update-and-deploy.sh <services>
-# dispatch 本 workflow 会产出可下载的 release 产物（Actions run → Artifacts），供受控发布取用。
+# 仅构建传统目录制品，不连接生产 ECS。
+# AIStar API 的正式包来自 impersonation-ci.yml 的 verified-backend。
+# 正式滚动发布入口和验收见 docs/runbooks/aistar-production-release.md。
 
 on:
   workflow_dispatch:

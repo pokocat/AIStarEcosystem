@@ -1,10 +1,8 @@
 # infra/ — 阿里云部署基础设施
 
-把部署所需的所有资产（nginx 配置、systemd 单元、环境变量模板、RDS 建库脚本、OSS Bucket
-策略、部署脚本）**全部归一到 git**。新机器从零拉起一套完整环境，按本文 §3
-「一次性环境拉起」执行即可在 30~60 分钟内完成。
+## AIStar 当前生产发布
 
-本文件是 AI Star Eco 在阿里云上部署的**单一真值源**。
+AIStar API 已在 PostgreSQL 上运行，ALB 常态 A50/B50。日常 API 发布和故障恢复以 [AIStar 生产发布与恢复](../docs/runbooks/aistar-production-release.md) 为准。下方单机拓扑、MySQL 建库、证书和发布命令属于旧环境资料。旧 ECS 仅为仍在运行的旧前端和代理等现有组件提供服务。
 
 ## Studio 本地账号中心（2026-10-10）
 
@@ -159,7 +157,7 @@ ECS 集群 (1~N 台, VPC 内网)│
 
 ---
 
-## 3. 一次性环境拉起（新 ECS）
+## 3. 旧单机环境拉起（历史资料）
 
 > **前置**：阿里云账号已开通 ECS / RDS / OSS，VPC 内网已通。
 
@@ -310,170 +308,9 @@ VALUES (UUID(), 'your-admin', '<bcrypt-hash>', 'super_admin', 'active', NOW());
 
 ## 4. 日常增量部署
 
-当前生产机采用「CI / 本地构建 release 包 → rsync 到 ECS → 远端解包 + systemd 重启」。
-构建机不需要 Docker；`sau-service` 的真实模式镜像在 ECS 上构建，避免跨架构镜像问题。
-SAU 镜像构建会执行 `scripts/prepare_real_runtime.py`：兼容固定上游的小红书 Python 3.11 语法，
-并实际导入四个平台的发布类；失败必须修复后重建，不能只看 `/healthz` 就跳过。
+API 从已验收的 main 制品执行 [生产双机滚动流程](../docs/runbooks/aistar-production-release.md)。旧单机部署与回滚命令留在 Git 历史中。前端、管理后台、SAU 按各组件经过验收的发布入口处理。
 
-### 4.1 本地手动部署
-
-```bash
-DEPLOY_HOST=ecs-user@47.98.162.120 \
-SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem \
-PUBLIC_BASE=http://47.98.162.120 \
-./infra/scripts/deploy.sh all
-```
-
-只部署某几个服务：
-
-```bash
-DEPLOY_HOST=ecs-user@47.98.162.120 \
-SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem \
-PUBLIC_BASE=http://47.98.162.120 \
-./infra/scripts/deploy.sh server,web-celebrity
-```
-
-当前生产脚本支持的 `<service>`：`server / web-celebrity / web-aiavatar / admin / sau-service / all`。
-
-也可以拆成两步，便于先检查产物再发布：
-
-```bash
-RELEASE_ID=$(git rev-parse --short HEAD) ./infra/scripts/build-release.sh all
-
-DEPLOY_HOST=ecs-user@47.98.162.120 \
-SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem \
-PUBLIC_BASE=http://47.98.162.120 \
-./infra/scripts/deploy-release.sh "dist/deploy/$(git rev-parse --short HEAD)" all
-```
-
-部署后验证：
-
-```bash
-DEPLOY_HOST=ecs-user@47.98.162.120 \
-SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem \
-PUBLIC_BASE=http://47.98.162.120 \
-./infra/scripts/verify.sh
-```
-
-`deploy-release.sh` 默认会在 ECS 上幂等执行 `infra/scripts/install-host-deps.sh`、
-`infra/scripts/check-runtime-env.sh` 和 `infra/scripts/install-cjk-fonts.sh`，按宿主机镜像自动补齐缺失命令，
-检查 `/etc/aistareco/*.env` 与 release manifest，并确保系统层中文字体可供 Java2D、ffmpeg drawtext、
-headless browser 等服务使用。若只想预检/手动修复：
-
-```bash
-ssh root@<ECS_HOST> 'bash -s' < infra/scripts/install-host-deps.sh
-ssh root@<ECS_HOST> 'bash -s' < infra/scripts/check-runtime-env.sh
-ssh root@<ECS_HOST> 'bash -s' < infra/scripts/install-cjk-fonts.sh
-SSH_KEY=/path/to/key.pem ./infra/scripts/preflight.sh --remote root@<ECS_HOST>
-```
-
-如需排查包管理器或网络问题，可临时设置 `ENSURE_HOST_DEPS=0` 跳过远端依赖补齐；
-只跳过 runtime env 检查用 `CHECK_RUNTIME_ENV=0`；只跳过字体安装用 `ENSURE_CJK_FONTS=0`。
-
-### 4.1.1 ECS 本机直接部署（无 SSH，v0.47+）
-
-适用场景：
-
-- 开发机网络抖 / SSH 不稳，直接 ssh 进 ECS 本机一气呵成
-- GitHub Actions runner 临时不可用，应急部署
-- CI/CD pipeline 把代码 sync 到 ECS 后由 ECS 本机自己 build + 翻新
-
-前提：仓库已经 clone 到 ECS（README §3.2 推荐 `/opt/ai-star-eco/repo`）。
-
-```bash
-ssh root@<ECS_HOST>
-cd /opt/ai-star-eco/repo
-
-# 一键：补依赖 → git fetch/pull --ff-only → build release → 本机落位 → restart → verify
-sudo ./infra/scripts/update-and-deploy.sh all
-
-# 只更新部分服务
-sudo ./infra/scripts/update-and-deploy.sh server,admin
-sudo ./infra/scripts/update-and-deploy.sh "web-celebrity sau-service"
-
-# 等价快捷方式：deploy-local.sh --pull 会转交给 update-and-deploy.sh
-sudo ./infra/scripts/deploy-local.sh all --pull
-
-# 如果代码已经是目标版本，只部署当前工作区
-sudo ./infra/scripts/deploy-local.sh server
-sudo ./infra/scripts/deploy-local.sh web-celebrity
-sudo ./infra/scripts/deploy-local.sh admin
-sudo ./infra/scripts/deploy-local.sh sau-service
-
-# 部分服务（逗号或空格分隔）
-sudo ./infra/scripts/deploy-local.sh server,web-celebrity
-sudo ./infra/scripts/deploy-local.sh "server admin"
-
-# 紧急部署：跳 typecheck + 跳 verify
-SKIP_TYPECHECK=1 sudo ./infra/scripts/deploy-local.sh all --no-verify
-
-# 只在确认宿主机依赖已齐备时跳过依赖补齐
-sudo ./infra/scripts/deploy-local.sh server,admin --no-deps
-
-# 只在故障排查时跳过 runtime env 检查
-sudo ./infra/scripts/deploy-local.sh server,admin --no-env-check
-
-# 已经 build 过想只翻新位文件（如审 review 完产物再上线）
-./infra/scripts/build-release.sh all                          # 第一步：本机 build
-sudo ./infra/scripts/deploy-local.sh all \
-  --no-build --release-id=<dist/deploy/ 下的 RELEASE_ID>      # 第二步：仅翻新 + restart
-```
-
-行为说明：
-
-- 与 `deploy-release.sh` **完全相同**的落位规则：jar 直接 `install` 到 `$REMOTE_ROOT/server/app.jar`；
-  web/admin 解包到 `$REMOTE_ROOT/<svc>` + 原目录改名 `<svc>.__previous__-<RELEASE_ID>` 备份；
-  sau-service docker build 后 systemctl restart。
-- **依赖补齐**：`deploy-local.sh` 默认先调用 `install-host-deps.sh`，按宿主机 `/etc/os-release`
-  和可用包管理器自动安装缺失命令；`update-and-deploy.sh` 也会先执行同一检查。
-  依赖包括 Java 17 JDK、nginx、docker（仅 sau-service/all 需要）、ffmpeg、fontconfig + CJK 字体、
-  Node 24.14.1、pnpm 10.33.2、rsync/curl/tar/unzip 等。
-- **runtime env 预检**：部署前默认调用 `check-runtime-env.sh`。它读取
-  `/etc/aistareco/server.env`、`/etc/aistareco/sau-service.env` 和 release manifest，只输出变量名，
-  不打印真实密钥值。缺文件、占位符、关键密钥缺失、`AEP_DEV_AUTH_ENABLED=true`、SMS/OSS 真驱动缺凭据、
-  `SAU_MOCK_MODE!=0`、`SAU_INTERNAL_SECRET` 与 `AEP_INTERNAL_SECRET` 不一致会阻断部署；
-  文件权限非 600、`AEP_SEED_DEV_DATA_ENABLED=true` 等高风险项只警告。排障时可用
-  `--no-env-check` / `CHECK_RUNTIME_ENV=0` 跳过，或 `ENV_CHECK_WARN_ONLY=1` 改为只警告。
-- **代码更新**：`update-and-deploy.sh` 默认只做 `git pull --ff-only`，遇到服务器工作区有未提交改动会中止。
-  只有明确传 `--reset-to-origin` 时才会 `git reset --hard origin/<branch>` 丢弃服务器本地改动。
-- **备份保留**：默认保留最近 2 份 `.__previous__-*` 目录，超过按 mtime 删除最旧的。
-  调 `--keep-previous=N`（0 = 立即删；5 = 保留 5 份）。
-  回滚方式：`sudo mv $REMOTE_ROOT/web-celebrity.__previous__-<old-id> $REMOTE_ROOT/web-celebrity`
-  + `sudo systemctl restart aistareco-web-celebrity`。
-- **部署后健康检查**：自动调 `verify.sh LOCAL_MODE=1`（不走 SSH，直接本机 curl + systemctl status）。
-  失败只 WARN 不阻断（因为文件已经落位 + systemd 已重启）。
-- **systemd 单元不存在时跳过 restart**：首次部署 ECS 没装 systemd 单元，脚本会 WARN
-  「跳过 restart（首次部署？参考 infra/systemd/*.example）」并继续，便于先落位文件后人工建 systemd。
-
-### 4.2 GitHub Actions（仅构建产物，不自动部署）
-
-> **受控发布（2026-06-22 起）**：工作流 `.github/workflows/deploy-production.yml` 已**移除 SSH 自动部署**，
-> 只做「构建 + 上传产物」。原因：不在 GitHub 放生产 SSH 私钥（长期主钥交给 GitHub 会扩大爆炸半径）。
-> **不再需要任何 `PROD_SSH_*` Secrets**，dispatch 也不会再因缺密钥报错。
-
-工作流：`.github/workflows/deploy-production.yml`（name: *Build release artifacts*），手动触发 `workflow_dispatch`。
-触发时 `services` 可填：
-
-```text
-all
-server
-server,web-celebrity,web-aiavatar,admin
-sau-service
-```
-
-工作流把 `dist/deploy/<release-id>` 上传为 GitHub artifact（保留 14 天）。**实际发布由人工受控执行**：
-
-- 本机：`./infra/scripts/deploy.sh <services>`（构建+部署一步），或对已下载产物用 `deploy-release.sh <dir> <services>`
-- ECS 上：`sudo ./infra/scripts/update-and-deploy.sh <services>`（git pull → 构建 → 部署，私钥不离机）
-
-> 若将来确实要恢复 Actions 自动部署，**不要放主钥**——生成一把部署专用受限 key（`authorized_keys`
-> 加 `command=`/`from=` 限制，泄露可单独轮换），再补回 Configure SSH / Deploy 两个 step 与对应 Secrets。
-
-回滚到任意历史 tag 仍可用：
-
-```bash
-ECS_HOST=ecs-user@<ECS_HOST> ./infra/scripts/rollback.sh <service> <git-sha>
-```
+[Build release artifacts](../.github/workflows/deploy-production.yml) 只产出传统构建目录。API 的可发布制品使用 [Impersonation CI](../.github/workflows/impersonation-ci.yml) 的 `verified-backend` 并经集群打包工具生成。
 
 ### 4.3 统一账号中心（id.aibuzz.cn）
 
@@ -828,6 +665,38 @@ web-aiavatar 的 Next rewrite 设置 `experimental.proxyClientMaxBodySize=130mb`
 ## Studio JSON 临时 JVM-Sandbox（2026-10-25 UTC）
 
 生产原进程已加载只处理 `ModelJson.parse` Jackson 异常的 `aep-json-recovery` 模块，未替换 app.jar 或修改 systemd / server.env。namespace `aep-json-20261024`，管理端口只在环回 `24769`，目录 `/home/ecs-user/.local/share/aistareco/hotfix/studio-json-31fc2bdf`。下次正常发布先按 [手册](../docs/runbooks/studio-json-jvm-sandbox.md) 卸载临时模块，再从包含永久修复的 main 构建应用；不要仅重启旧 JAR，否则临时修复会丢失。证据见 [发布记录](../docs/releases/studio-json-jvm-sandbox-release-20261025.md)。
+
+## PostgreSQL 18 准备
+
+新增 `env/server-postgres.env.example`，生产 profile 使用 postgres；预检同时识别原 mysql 与 postgres 的 JDBC 引擎。新PG只跑独立V74基线和Hibernate validate，不能把旧MySQL迁移历史拷入PG。当前不修改现有生产主机、RDS、ALB或DNS。源结构差异与演练/回滚步骤见 `../docs/runbooks/postgresql-18-migration.md`；双机worker角色与分布式认领仍须独立验收。
+
+
+## AIStar PG18 迁移准备边界（2026-11-04，切流前记录）
+
+V74基线不回改，V75结构补齐、V76业务标识比较、V77重试引用比较。用户名/slug与幂等请求使用限定列ICU+rtrim；身份UID、任务主键和凭据精确比较。ModelPrice/ModelDiscount新建记录补updatedAt。postgres备用/导入验证进程默认 `AEP_BACKGROUND_ENABLED=false`；仅主节点显式开启定时任务，启动发布恢复也遵守该开关，HTTP异步入口仍须另行排空。
+
+真实RDS独立演练已恢复192表/28,280行并核对全字段指纹；工具只允许演练库，不支持生产恢复。源时间按真实Hibernate/JDBC类型逐列转换，不统一减8小时。AIStar生产窗口尚未安排，不执行部署、停写、ALB/DNS切换，不借用账号中心的窗口。完整规则与验收入口见 `../docs/runbooks/postgresql-18-migration.md`。
+
+ALB就绪入口为 `GET /internal/ready`：应用启动完成且真实数据库连接有效才200，启动中、关闭或数据库故障返回503，响应仅含ready布尔值。它不承诺生成供应商、支付或发布能力均已可用；这些仍须业务验收。
+
+生产postgres配置由 `PostgresEnvironmentGuard` 在EnvironmentPostProcessor阶段检查，早于DataSource/Hibernate创建；拒绝旧环境遗留的ddl-auto=update或MySQL Flyway目录等覆盖。源env复制后必须显式替换数据库/driver/dialect、schema、Flyway目录/开关、UTC、日志目录与后台角色，不能只改DB_URL。实际数据库版本/角色/时区仍在连接后另行验证。
+
+AIStar PG 不可变运行镜像见 [images/server/README.md](images/server/README.md)，使用已验收 JAR 和固定基础镜像 digest；两机官方 Podman/离线媒体与受保护 ALB 演练独立验收，不代表正式激活。
+
+AIStar PG 主备滚动补充：旧 `/api/auth/sms/*` 的验证码、用途、单次消费、60秒限流、5次失败锁定改用 Tair 单键 Lua 原子状态。`TairSmsCodeStore` 只存 HMAC 手机号键和验证码摘要；短信发送先占位，显式失败释放自己的占位，未知供应商受理状态保留限流；Tair故障返回503且readiness撤下，不回退单机内存。旧MySQL/dev保留原行为。postgres默认tair并强制TLS，正式专用DB15/prefix `aistar:prod:sms:v1:`，演练DB14/prefix `aistar:rehearsal:sms:v1:`；逻辑库与命名空间隔离不等于账号ACL限制。迁移首次停写要处理旧进程内存验证码（TTL默认5分钟）、失败锁定（默认30分钟）和进行中的扫码；无法导出旧锁定时，旧短信接口按最长状态时长保守维护，不能只等待验证码TTL；不能声称可迁出旧进程内存。源码、真实Redis契约及双机真实Tair验证以最终回执为准。
+
+Tair TLS使用阿里云实例`DescribeInstanceSSL`返回的官方CA链；为AIStar复制独立Java truststore（仅trustedCertEntry，保留默认公共根），不修改系统或账号中心信任库。原始JRE默认cacerts不包含此托管私有CA，不能关闭证书或主机名校验绕过。正式镜像入口要求挂载`AISTAR_JAVA_TRUSTSTORE=/etc/aistar/java-truststore`只读；完整API验收必须在相同truststore与不可变镜像上通过。
+
+迁移保持源JVM业务时区`Asia/Shanghai`，JDBC/Hibernate和PG连接仍UTC。源码4个未显式zone的凌晨03:30/40/45/50清理cron及若干LocalDate.now依赖JVM，不能随数据库迁移改成UTC导致业务日/调度晚8小时；用实际镜像的离线时钟/cron边界验收，后台依旧关闭。
+
+PG18低权限元数据兼容：固定pgJDBC42.7.14（旧42.7.4的hideUnprivilegedObjects会引用已移除RULE权限）；生产postgres运行期Flyway仅validate，DDL由迁移角色先执行，待执行迁移使运行期失败且不建表/不写历史。MySQL/dev及postgresit建库门禁保留原迁移行为。COPY使用UTF8字节流，避免Reader分块拆开emoji代理对；真实PG测试覆盖隐藏无权schema、只读历史验证/拒绝待执行DDL、超64KiB中文/emoji/引号/换行COPY。官方说明：https://jdbc.postgresql.org/changelogs/2025-01-14-42/ ，当前固定发行：https://jdbc.postgresql.org/changelogs/2026-10-07-42.7.14-release/ 。
+
+AIStar运行镜像必须同时固定官方Java与Node镜像digest；Studio仿片分析使用JAR内置Hypit适配器，单有Java/FFmpeg会返回STUDIO_HYPIT_UNAVAILABLE。仅从官方node镜像复制Node22+二进制，不安装npm依赖或替换宿主Node。AistarHypitRuntimeVerification离线调用真实StudioHypitMedia的requireReady/read，合成红蓝视频并验证24帧原始时间戳；两机在禁网/只读根目录下运行，不调用模型/支付/短信或发布平台。
+
+容器路径与本地文件：源环境已有AEP_STUDIO_RECREATION_MEDIA_BIN=/opt/ai-star-eco/hypit-runtime/bin，不能原样继承到镜像；新模板明确使用/usr/bin，并固定Node=/usr/local/bin/node。FileStorageService实际配置键是AEP_STORAGE_LOCAL_DIR，挂载/app/work为UID10001可写；AEP_FILE_STORAGE_ROOT不是有效替代。源file-storage约4GB，保留完整预同步副本并校验，正式停写后补增量；不能仅因已接OSS而假定本地目录可删除。预同步不是冻结数据，禁止据此清理旧服务文件。
+
+迁移文件中转只能使用独立私有Bucket，先以无敏感信息的canary验证匿名Range GET为403；仅设置object private ACL不足以证明Bucket策略未放行。禁止把数据库导出、文件归档或含业务信息的中转包放入现有公开素材Bucket。分发OCI归档时校验归档SHA256、配置摘要和RootFS摘要；Podman导出重新压缩可能改变引擎显示的manifest digest，不能据此跳过内容校验。
+
 ## GPT Image 渠道配置发布（2026-11-09）
 
 `scripts/switch-gpt-images-superaitoken.py` 在生产主机运行，默认只读计划；通过 stdin 接收 `{"apiKey":"..."}`，不把 Key 放进参数、仓库或环境模板。`--apply --backup-dir <新的私有绝对目录>` 才执行：拉取当前 Key 的模型目录、确认对应型号、备份原端点（Key 仅保留原密文）、按签名 `endpointSave` 逐条保存并回读核验，核对场景售价配置未变。先合入 main 并部署支持新下载规则的 server，再切换配置；前端无需重建。备份目录的 `rollback.sql` 仅恢复受影响端点的名称、地址、型号、密文 Key 和图片规格，不修改用户作品、售价或账本。发布前避免覆盖运行中的同路径计划与备份目录，回滚后回读端点及场景配置。

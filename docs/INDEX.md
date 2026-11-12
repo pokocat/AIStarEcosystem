@@ -226,6 +226,8 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 ## 5. 部署 / 运维 / 联调手册
 
+- [AIStar 生产发布与恢复](runbooks/aistar-production-release.md) — API 双机滚动、制品、验收和 PostgreSQL 同库恢复。
+
 | 文档 | 用途 |
 |---|---|
 | [Studio JSON 的 JVM-Sandbox 临时热修复](runbooks/studio-json-jvm-sandbox.md) | 不重启的单方法异常恢复、隔离验证、冻结 / 激活 / 卸载与回退；官方 1.4.0、环回管理、无模型或账本调用（last-reviewed 2026-10-24） |
@@ -481,6 +483,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [导演台拆分弹窗增加剧本预览](releases/director-split-preview-release-20261104.md) — 仅 web-aiavatar；认不出分集标题时，弹窗旁显示剧本预览，便于复制第 1 集标题行（last-reviewed: 2026-11-04）。
 - [声音参考格式修复发布](releases/voice-reference-format-release-20261104.md) — server；短 M4A 等声音自动转 WAV，报错说明素材类型和可用格式；真实出片未验证（last-reviewed: 2026-11-04）
 - [首页场景卡两行与导演台单个视角重新生成](releases/studio-home-goals-and-scene-view-release-20261111.md) — server + web-aiavatar；首页场景卡改为三列两行、商品套图放最后；导演台单个视角只重新生成这一个；`20261111-home-goals-94e68ff7`（2026-11-11）
+- [智能优化积分核对发布](releases/optimize-credits-release-20261112.md) — server + web-aiavatar `20261111-optimize-credits-eb7bb9da`；智能优化的普通积分在建任务前核对、同一草稿多条视频不互相挡，同包带导演台与深度复刻（last-reviewed 2026-11-12）
 - [爆款复刻三种方式发布](releases/recreation-modes-release-20261111.md) — server + web-aiavatar `20261111-recreation-modes-0a330629`；三种复刻方式、自动检查开关、首页去重复入口；生产机装了深度复刻运行时但未开启（内存不够，实测记录在内）（last-reviewed 2026-11-11）
 - [资产页删除发布](releases/asset-library-delete-release-20261110.md) — web-aiavatar；资产页单个与批量删除，只从资产库移除、不动画布和作品（last-reviewed: 2026-11-10）
 - [编导脚本出片分层发布](releases/scene-script-layers-release-20261110.md) — server + web-aiavatar；六段脚本出片只发和画面有关的部分，编辑框标「仅参考」，参考素材受理时就核对（last-reviewed: 2026-11-10）
@@ -512,3 +515,19 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [PC 站界面文案优化记录](audits/pc-ui-copy-review-2026-11.md) — web-aiavatar 桌面形态逐页改动表（位置、原文、改为）、全站统一叫法、用户定下的 12 件事和结果；品牌标语改为「一个 IP，无限可能」；没改的存量见 TODO；last-reviewed: 2026-11-06。
 
 - [Studio 下午至晚间线上使用复盘](audits/studio-production-afternoon-evening-review-20261023.md) — 2026-10-23 北京时间生产查询快照；记录用户旅程、任务／账本、排队与发布窗口及待核证据，不代表本轮已修复或重测；last-reviewed: 2026-10-23。
+
+- [PostgreSQL 18 适配与迁移边界](runbooks/postgresql-18-migration.md)：独立基线、映射、真实门禁、源结构差异与切流前置条件。
+
+- [AIStar PostgreSQL18迁移准备](runbooks/postgresql-18-migration.md)：V75–V77结构/比较/幂等、336列时间计划、192表RDS恢复与后台单活；未切生产。last-reviewed: 2026-11-04。
+
+AIStar PG 主备滚动补充：旧 `/api/auth/sms/*` 的验证码、用途、单次消费、60秒限流、5次失败锁定改用 Tair 单键 Lua 原子状态。`TairSmsCodeStore` 只存 HMAC 手机号键和验证码摘要；短信发送先占位，显式失败释放自己的占位，未知供应商受理状态保留限流；Tair故障返回503且readiness撤下，不回退单机内存。旧MySQL/dev保留原行为。postgres默认tair并强制TLS，正式专用DB15/prefix `aistar:prod:sms:v1:`，演练DB14/prefix `aistar:rehearsal:sms:v1:`；逻辑库与命名空间隔离不等于账号ACL限制。迁移首次停写要处理旧进程内存验证码（TTL默认5分钟）、失败锁定（默认30分钟）和进行中的扫码；无法导出旧锁定时，旧短信接口按最长状态时长保守维护，不能只等待验证码TTL；不能声称可迁出旧进程内存。源码、真实Redis契约及双机真实Tair验证以最终回执为准。
+
+PG18低权限元数据兼容：固定pgJDBC42.7.14（旧42.7.4的hideUnprivilegedObjects会引用已移除RULE权限）；生产postgres运行期Flyway仅validate，DDL由迁移角色先执行，待执行迁移使运行期失败且不建表/不写历史。MySQL/dev及postgresit建库门禁保留原迁移行为。COPY使用UTF8字节流，避免Reader分块拆开emoji代理对；真实PG测试覆盖隐藏无权schema、只读历史验证/拒绝待执行DDL、超64KiB中文/emoji/引号/换行COPY。官方说明：https://jdbc.postgresql.org/changelogs/2025-01-14-42/ ，当前固定发行：https://jdbc.postgresql.org/changelogs/2026-10-07-42.7.14-release/ 。
+
+AIStar运行镜像必须同时固定官方Java与Node镜像digest；Studio仿片分析使用JAR内置Hypit适配器，单有Java/FFmpeg会返回STUDIO_HYPIT_UNAVAILABLE。仅从官方node镜像复制Node22+二进制，不安装npm依赖或替换宿主Node。AistarHypitRuntimeVerification离线调用真实StudioHypitMedia的requireReady/read，合成红蓝视频并验证24帧原始时间戳；两机在禁网/只读根目录下运行，不调用模型/支付/短信或发布平台。
+
+容器路径与本地文件：源环境已有AEP_STUDIO_RECREATION_MEDIA_BIN=/opt/ai-star-eco/hypit-runtime/bin，不能原样继承到镜像；新模板明确使用/usr/bin，并固定Node=/usr/local/bin/node。FileStorageService实际配置键是AEP_STORAGE_LOCAL_DIR，挂载/app/work为UID10001可写；AEP_FILE_STORAGE_ROOT不是有效替代。源file-storage约4GB，保留完整预同步副本并校验，正式停写后补增量；不能仅因已接OSS而假定本地目录可删除。预同步不是冻结数据，禁止据此清理旧服务文件。
+
+迁移文件中转只能使用独立私有Bucket，先以无敏感信息的canary验证匿名Range GET为403；仅设置object private ACL不足以证明Bucket策略未放行。禁止把数据库导出、文件归档或含业务信息的中转包放入现有公开素材Bucket。分发OCI归档时校验归档SHA256、配置摘要和RootFS摘要；Podman导出重新压缩可能改变引擎显示的manifest digest，不能据此跳过内容校验。
+
+- [AIStar PostgreSQL 导入与主备滚动发布](aistar-postgresql-cutover.md)：只读/冻结快照、正式门禁、双机排空、窗口验收。
