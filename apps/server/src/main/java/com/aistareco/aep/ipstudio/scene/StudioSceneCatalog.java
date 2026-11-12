@@ -117,6 +117,14 @@ public class StudioSceneCatalog {
                              String placeholder, boolean textRequired, List<Integer> durations, int duration, String ratio, String structure,
                              List<String> ideas, String skill, List<OptionGroup> options, Boolean enabled, String coverKey, List<String> exampleKeys, String coverUrl, List<Media> examples,
                              Brief brief) {
+        public VideoScene {
+            // 已保存在后台的爆款复刻目录也使用新的素材上限。
+            if ("recreation".equals(id) && "reference-video-recreation".equals(skill)) {
+                if (images != null) images = new Slot(images.label(), images.required(), RECREATION_MAX_IMAGES);
+                video = new Slot(video == null ? "参考视频" : video.label(), true, null);
+                voice = true;
+            }
+        }
         public VideoScene(String id, String group, String title, String description, Slot images, Slot video, boolean character, boolean voice,
                           String placeholder, boolean textRequired, List<Integer> durations, int duration, String ratio, String structure,
                           List<String> ideas, String skill, List<OptionGroup> options, Boolean enabled, String coverKey, List<String> exampleKeys, String coverUrl, List<Media> examples) {
@@ -147,6 +155,7 @@ public class StudioSceneCatalog {
 
     /** 自由出图：没有固定描述，只有用户自己写的那句。 */
     public static final String FREE = "free";
+    public static final int RECREATION_MAX_IMAGES = 18;
     /** 视频场景能指定的方法：一次出片和复刻都在这里，别处没有的方法不让后台随手填。 */
     public static final Set<String> VIDEO_SKILLS = Set.of("video-generation", "reference-video-recreation");
     private static final Pattern REF = Pattern.compile("图(\\d)");
@@ -729,7 +738,9 @@ public class StudioSceneCatalog {
             if (!videoGroups.contains(s.group())) throw new IllegalStateException("场景分组不存在：" + name);
             if (blank(s.title()) || blank(s.description())) throw new IllegalStateException("场景要有名称和一句说明：" + s.id());
             if (s.images() == null || blank(s.images().label())) throw new IllegalStateException("要写清楚图片素材叫什么：" + name);
-            if (s.images().max() != null && (s.images().max() < 1 || s.images().max() > 9)) throw new IllegalStateException("图片素材最多 1 到 9 张：" + name);
+            int maxImages = "reference-video-recreation".equals(s.skill()) ? RECREATION_MAX_IMAGES : 9;
+            if (s.images().max() != null && (s.images().max() < 1 || s.images().max() > maxImages))
+                throw new IllegalStateException("图片素材最多 1 到 " + maxImages + " 张：" + name);
             if (s.video() != null && blank(s.video().label())) throw new IllegalStateException("要写清楚参考视频叫什么：" + name);
             if (blank(s.structure())) throw new IllegalStateException("要写好拍法：" + name);
             if (blank(s.skill()) || !VIDEO_SKILLS.contains(s.skill())) throw new IllegalStateException("视频场景没写用哪种方法：" + name);

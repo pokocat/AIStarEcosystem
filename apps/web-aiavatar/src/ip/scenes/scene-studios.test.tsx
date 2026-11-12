@@ -312,7 +312,8 @@ for (const mode of ['depth', 'replacement'] as const) test(`视频工具：${mod
   await pickFromLibrary('参考视频');
   fillField(screen.getByRole('textbox', { name: '想做的视频' }), '把原片商品替换成我的精华液，动作不变');
   api.importMedia.mockResolvedValue({ key: 'ipstudio/media/u/new.jpg', url: 'blob:p', mediaType: 'image', mimeType: 'image/jpeg', bytes: 1, fileName: '精华液.jpg' });
-  await pickFromLibrary('替换素材');
+  fireEvent.click(screen.getByRole('button', { name: '添加商品图' }));
+  await confirmLibrary();
   const go = () => screen.getByRole('button', { name: '生成视频' }) as HTMLButtonElement;
   await waitFor(() => expect(go().disabled).toBe(false));
   await act(async () => { fireEvent.click(go()); });
@@ -415,7 +416,8 @@ test('深度复刻没有可用处理服务时保留输入并禁止提交', async
   await screen.findByText('深度复刻暂不可用，请联系平台处理。'); await pickFromLibrary('参考视频');
   fillField(screen.getByRole('textbox', { name: '想做的视频' }), '换成我的商品');
   api.importMedia.mockResolvedValue({ key: 'ipstudio/media/u/new.jpg', url: 'blob:p', mediaType: 'image', mimeType: 'image/jpeg', bytes: 1, fileName: '商品' });
-  await pickFromLibrary('替换素材');
+  fireEvent.click(screen.getByRole('button', { name: '添加商品图' }));
+  await confirmLibrary();
   await screen.findByText('深度复刻暂不可用，请联系平台处理。');
   expect((screen.getByRole('button', { name: '生成视频' }) as HTMLButtonElement).disabled).toBe(true);
   expect(api.taskStart).not.toHaveBeenCalled();

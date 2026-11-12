@@ -15241,7 +15241,7 @@ paths:
         - { in: query, name: model, schema: { type: string } }
         - { in: query, name: mode, schema: { type: string } }
         - { in: query, name: tier, schema: { type: string } }
-        - { in: query, name: images, schema: { type: integer, minimum: 0, maximum: 12 } }
+        - { in: query, name: images, description: '爆款复刻最多 18 张图片（含旧草稿的出镜人物），其他制作方式最多按 12 张计。', schema: { type: integer, minimum: 0, maximum: 18 } }
         - { in: query, name: character, schema: { type: boolean } }
         - { in: query, name: voice, schema: { type: boolean } }
         - { in: query, name: optimize, schema: { type: boolean } }
@@ -15252,7 +15252,7 @@ paths:
     post:
       tags: [ipstudio]
       operationId: studioVideoTaskStart
-      description: 普通视频、长视频和复刻的统一任务入口。以 clientRequestId 幂等受理，固定付款账户、输入快照和费用上限；后台推进，无需画布或对话在线。
+      description: 普通视频、长视频和复刻的统一任务入口。以 clientRequestId 幂等受理，固定付款账户、输入快照和费用上限；后台推进，无需画布或对话在线。复刻接受一条参考视频、最多 18 张替换图片和一段参考声音，各段引用数量按模型规格执行。
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [clientRequestId, kind, sceneId, title, budgetCap, input], properties: { clientRequestId: { type: string, maxLength: 64 }, kind: { type: string, enum: [direct, segmented, recreation, depth, replacement] }, sceneId: { type: string }, title: { type: string, maxLength: 160 }, budgetCap: { type: integer, format: int64, minimum: 0 }, input: { type: object }, configuration: { $ref: '#/components/schemas/StudioSegmentedVideoRequest' }, video: { $ref: '#/components/schemas/StudioRunRequest' }, sourceNodeId: { type: string }, billing: { $ref: '#/components/schemas/EnterpriseBillingSelection' } } } } } }
       responses:
         '200': { description: 'ApiResponse<StudioVideoTask>; task ID, original execution and immutable input' }

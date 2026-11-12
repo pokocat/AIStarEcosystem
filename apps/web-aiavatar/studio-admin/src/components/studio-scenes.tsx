@@ -285,6 +285,8 @@ function ImageFields({ scene, patch }: { scene: StudioImageScene; patch: (p: Par
 }
 
 function VideoFields({ scene, patch, skills }: { scene: StudioVideoScene; patch: (p: Partial<StudioVideoScene>) => void; skills: string[] }) {
+  const recreation = scene.skill === "reference-video-recreation";
+  const builtInRecreation = recreation && scene.id === "recreation";
   const toggleDuration = (d: number) => {
     const next = scene.durations.includes(d) ? scene.durations.filter(x => x !== d) : [...scene.durations, d].sort((a, b) => a - b);
     patch({ durations: next, ...(next.includes(scene.duration) ? {} : { duration: next[0] ?? scene.duration }) });
@@ -292,13 +294,13 @@ function VideoFields({ scene, patch, skills }: { scene: StudioVideoScene; patch:
   return <>
     <div className="grid gap-4 md:grid-cols-3">
       <Field label="图片素材叫什么"><Input aria-label="图片素材名称" value={scene.images.label} maxLength={10} onChange={e => patch({ images: { ...scene.images, label: e.target.value } })}/></Field>
-      <Field label="最多几张"><Input aria-label="最多几张" type="number" min={1} max={9} value={scene.images.max ?? 4} onChange={e => patch({ images: { ...scene.images, max: Number(e.target.value) || 1 } })}/></Field>
+      <Field label="最多几张"><Input aria-label="最多几张" type="number" min={1} max={recreation ? 18 : 9} readOnly={builtInRecreation} value={scene.images.max ?? 4} onChange={e => patch({ images: { ...scene.images, max: Number(e.target.value) || 1 } })}/></Field>
       <Field label="图片必须放"><Switch checked={scene.images.required} onCheckedChange={v => patch({ images: { ...scene.images, required: v } })} aria-label="图片必须放"/></Field>
     </div>
     <div className="flex flex-wrap gap-6 text-sm">
       <label className="flex items-center gap-2"><Switch checked={scene.character} onCheckedChange={v => patch({ character: v })} aria-label="可以放出镜人物"/>可以放出镜人物</label>
-      <label className="flex items-center gap-2"><Switch checked={scene.voice} onCheckedChange={v => patch({ voice: v })} aria-label="可以放声音"/>可以放声音</label>
-      <label className="flex items-center gap-2"><Switch checked={!!scene.video} onCheckedChange={v => patch({ video: v ? { label: "参考视频", required: true } : null })} aria-label="要参考视频"/>要参考视频（复刻类）</label>
+      <label className="flex items-center gap-2"><Switch checked={scene.voice} disabled={builtInRecreation} onCheckedChange={v => patch({ voice: v })} aria-label="可以放声音"/>可以放声音</label>
+      <label className="flex items-center gap-2"><Switch checked={!!scene.video} disabled={builtInRecreation} onCheckedChange={v => patch({ video: v ? { label: "参考视频", required: true } : null })} aria-label="要参考视频"/>要参考视频（复刻类）</label>
       <label className="flex items-center gap-2"><Switch checked={scene.textRequired} onCheckedChange={v => patch({ textRequired: v })} aria-label="必须写一句"/>必须写一句要求</label>
     </div>
     <Field label="输入框里的示例"><Input aria-label="输入框示例" value={scene.placeholder} onChange={e => patch({ placeholder: e.target.value })}/></Field>

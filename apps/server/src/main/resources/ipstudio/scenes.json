@@ -1717,7 +1717,7 @@
       "images": {
         "label": "替换素材",
         "required": false,
-        "max": 4
+        "max": 18
       },
       "video": {
         "label": "参考视频",
@@ -1725,7 +1725,7 @@
         "max": null
       },
       "character": false,
-      "voice": false,
+      "voice": true,
       "placeholder": "要替换的内容，例如：把原片里的护手霜换成我的精华液，人物换成我的 IP",
       "textRequired": true,
       "durations": [

@@ -5,6 +5,7 @@ import com.aistareco.aep.ipstudio.dto.StudioPlanDtos.PlanExecution;
 import com.aistareco.aep.ipstudio.dto.StudioSegmentedDtos.*;
 import com.aistareco.aep.ipstudio.execution.StudioPlanExecutionService;
 import com.aistareco.aep.ipstudio.execution.StudioPlanQuoter;
+import com.aistareco.aep.ipstudio.execution.StudioRecreationTaskPlan;
 import com.aistareco.aep.ipstudio.execution.StudioSkillRules;
 import com.aistareco.aep.ipstudio.scene.StudioSceneCatalog;
 import com.aistareco.aep.ipstudio.service.IpDocs;
@@ -69,11 +70,21 @@ public class SegmentedVideoService {
 
     @Transactional(readOnly = true)
     public SegmentedVideoPrice price(String userId, String model, String tier, int duration, String ratio, int images, boolean character, boolean voice, boolean optimize, BillingSelection billing) {
+        return price(userId,model,tier,duration,ratio,Math.min(images,12),character,voice,optimize,billing,true);
+    }
+
+    @Transactional(readOnly = true)
+    public SegmentedVideoPrice recreationPrice(String userId,String model,String tier,int duration,String ratio,int images,boolean character,boolean voice,boolean optimize) {
+        return price(userId,model,tier,duration,ratio,images,character,voice,optimize,null,false);
+    }
+
+    private SegmentedVideoPrice price(String userId,String model,String tier,int duration,String ratio,int images,boolean character,boolean voice,boolean optimize,
+                                      BillingSelection billing,boolean segmented) {
         List<SegmentedMaterial> materials = new ArrayList<>();
-        for (int i = 0; i < Math.min(images, 12); i++) materials.add(new SegmentedMaterial("m" + i, "素材", "image"));
+        for (int i = 0; i < images; i++) materials.add(new SegmentedMaterial("m" + i, "素材", "image"));
         if (character) materials.add(new SegmentedMaterial("character", "出镜人物", "character"));
         if (voice) materials.add(new SegmentedMaterial("voice", "声音", "voice"));
-        return summarize(userId, build(userId, model, tier, duration, ratio, optimize, materials), billing);
+        return summarize(userId, build(userId, model, tier, duration, ratio, optimize, materials, !segmented && voice), billing);
     }
 
     @Transactional
@@ -127,10 +138,16 @@ public class SegmentedVideoService {
     private record Built(ObjectNode plan, List<SegmentedPlan.Segment> segments, StudioSkillRules.Rules rules, String mode, boolean visual, boolean review, int audioRefs) {}
 
     private Built build(String userId, String requested, String tier, int duration, String ratio, boolean optimize, List<SegmentedMaterial> materials) {
+        return build(userId,requested,tier,duration,ratio,optimize,materials,false);
+    }
+
+    private Built build(String userId, String requested, String tier, int duration, String ratio, boolean optimize, List<SegmentedMaterial> materials, boolean requireVoice) {
         if (fixtures.enabled()) throw invalid("测试响应不支持长视频，请关闭测试响应");
         if (duration < 1 || duration > MAX_TOTAL_SECONDS) throw invalid("视频时长不能超过 " + MAX_TOTAL_SECONDS + " 秒");
         VideoStudioModel model = model(requested);
         var contract = model.contract();
+        if (requireVoice && !StudioRecreationTaskPlan.acceptsVoice(StudioRecreationTaskPlan.mode(contract,true),false))
+            throw invalid("当前模型不支持参考声音，请更换模型或移除声音");
         VideoStudioModeSpec reference = contract.modes().stream().filter(m -> m.references() != null && !m.needsFirstFrame() && !m.needsLastFrame()).findFirst().orElse(null);
         VideoStudioModeSpec first = contract.modes().stream().filter(m -> m.needsFirstFrame() && !m.needsLastFrame() && m.references() == null).findFirst().orElse(null);
         if (reference == null && first == null) throw new BusinessException(HttpStatus.BAD_REQUEST, "STUDIO_VIDEO_MODE_UNAVAILABLE", "「" + model.name() + "」不支持分镜图，无法生成长视频。请更换视频模型");

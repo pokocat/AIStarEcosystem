@@ -125,6 +125,10 @@ public final class StudioPlanValidator {
      * (and, inside an execution, the execution's own output nodes) the model may reference. Legacy plans use {@link #validate}.
      */
     public static ObjectNode validateSkillPlan(JsonNode raw,StudioSkillRules.Rules rules,String stage,Collection<String> contextIds) {
+        return validateSkillPlan(raw,rules,stage,contextIds,MAX_MATERIALS);
+    }
+
+    public static ObjectNode validateSkillPlan(JsonNode raw,StudioSkillRules.Rules rules,String stage,Collection<String> contextIds,int maxMaterials) {
         if(rules==null||!StudioSkillRules.STAGES.contains(stage))throw new IllegalArgumentException("skill stage");
         if(raw==null||!raw.isObject())fail();
         Set<String> allowed=new HashSet<>(contextIds==null?List.of():contextIds);
@@ -139,7 +143,7 @@ public final class StudioPlanValidator {
         // analysis plan). Part of the approved plan, so part of its fingerprint and of the confirmed material scope.
         if(raw.hasNonNull("materialNodeIds")) {
             JsonNode materials=raw.path("materialNodeIds");
-            if(!materials.isArray()||materials.size()>MAX_MATERIALS)invalid("后续要用的素材最多 "+MAX_MATERIALS+" 个");
+            if(!materials.isArray()||materials.size()>maxMaterials)invalid("后续要用的素材最多 "+maxMaterials+" 个");
             Set<String> seen=new LinkedHashSet<>();
             for(JsonNode id:materials)if(id.isTextual()&&!id.asText().isBlank())seen.add(id.asText());
             if(!seen.isEmpty()){var out=plan.putArray("materialNodeIds");seen.forEach(out::add);}

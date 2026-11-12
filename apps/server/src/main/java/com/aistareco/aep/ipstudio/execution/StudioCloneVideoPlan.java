@@ -78,7 +78,7 @@ public class StudioCloneVideoPlan {
      * 和拉片后代码拼出的方案同一种步骤（{@link StudioRecreationTaskPlan#build}），所以分析后的报价不会比这里高。
      */
     public StudioVideoTaskService.Quote price(String user,String kind,String modelId,String tier,int duration,String ratio,int images,boolean character,boolean voice,boolean optimize) {
-        if(images<0||images>12)throw bad("替换图片数量不正确");
+        if(images<0||images>StudioRecreationTaskPlan.MAX_IMAGES-(character?1:0))throw bad("最多添加 "+StudioRecreationTaskPlan.MAX_IMAGES+" 张替换图片");
         var selected=require(kind,modelId);var mode=referenceMode(selected);var bounds=clip(selected);
         List<Integer> segments;
         try {segments=SegmentedPlan.split(Math.max(1,duration),bounds.minSec(),bounds.maxSec());}
@@ -87,9 +87,10 @@ public class StudioCloneVideoPlan {
                 "「"+selected.name()+"」每段参考视频最长 "+bounds.maxSec()+" 秒，"+duration+" 秒需要分 "+segments.size()+" 段，超出上限。请缩短参考视频或更换模型");
         var refs=mode.references();
         int imageLimit=Math.min(refs.image()==null?0:refs.image().maxCount(),refs.maxImagesWithVideo()>0?refs.maxImagesWithVideo():Integer.MAX_VALUE);
+        if(voice&&!StudioRecreationTaskPlan.acceptsVoice(mode,true))throw bad("当前模型不支持参考声音，请更换模型或移除声音");
+        if(refs.maxTotal()>0)imageLimit=Math.min(imageLimit,Math.max(0,refs.maxTotal()-1-(voice?1:0)));
         boolean scene="depth".equals(kind)&&imageLimit>0;
         int pictures=Math.min(images+(character?1:0)+(scene?1:0),imageLimit);
-        boolean audio=voice&&refs.audio()!=null&&refs.audio().maxCount()>0;
         ObjectNode plan=mapper.createObjectNode();
         ArrayNode steps=plan.putArray("steps");
         if(scene) {
@@ -112,7 +113,7 @@ public class StudioCloneVideoPlan {
             int order=0;
             bindings.addObject().put("nodeId","quote-video").put("role","reference-video").put("order",order++);
             for(int i=0;i<pictures;i++)bindings.addObject().put("nodeId","quote-image-"+i).put("role","reference-image").put("order",order++);
-            if(audio)bindings.addObject().put("nodeId","quote-voice").put("role","reference-audio").put("order",order++);
+            if(voice)bindings.addObject().put("nodeId","quote-voice").put("role","reference-audio").put("order",order++);
             ObjectNode check=steps.addObject().put("id","c"+no).put("operation","check").put("prompt","");
             var checkSettings=check.putObject("settings").put("operation","check").put("targetStepId","v"+no);
             var ids=checkSettings.putArray("checkIds");StudioRecreationTaskPlan.CHECK_IDS.forEach(ids::add);

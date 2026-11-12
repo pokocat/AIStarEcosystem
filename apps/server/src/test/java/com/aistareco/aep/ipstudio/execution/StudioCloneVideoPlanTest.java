@@ -69,9 +69,10 @@ class StudioCloneVideoPlanTest {
         assertEquals("check",steps.path(1).path("operation").asText());assertEquals("v1",steps.path(1).path("settings").path("targetStepId").asText());
     }
     @Test void picturesBeyondTheLimitWithAVideoAreNotQuoted() {
-        service.price("u","replacement","selected-channel","720p",8,"9:16",9,true,false,false);
+        service.price("u","replacement","selected-channel","720p",8,"9:16",17,true,false,false);
         long images=0;for(JsonNode b:quoted.get().path("steps").path(0).path("settings").path("referenceBindings"))if("reference-image".equals(b.path("role").asText()))images++;
         assertEquals(4,images,"带参考视频时图片最多 4 张");
+        assertThrows(BusinessException.class,()->service.price("u","replacement","selected-channel","720p",8,"9:16",18,true,false,false));
     }
     @Test void depthAlwaysQuotesThePromptRewrite() {
         service.price("u","depth","selected-channel","720p",8,"9:16",0,false,false,false);

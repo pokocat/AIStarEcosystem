@@ -883,12 +883,14 @@ public class StudioWorkflowWorker {
         String stage=exec.path("planStage").asText();
         List<String> allowed=new ArrayList<>();exec.path("allowedNodeIds").forEach(v->allowed.add(v.asText()));
         // 视频页的爆款复刻：模型只写了每段提示词，方案由代码按受理时冻结的分段和素材拼（StudioRecreationTaskPlan）
-        if(exec.path("recreationTask").isObject())answer=com.aistareco.aep.ipstudio.execution.StudioRecreationTaskPlan.build(exec.path("recreationTask"),answer,
+        boolean recreationTask=exec.path("recreationTask").isObject();
+        if(recreationTask)answer=com.aistareco.aep.ipstudio.execution.StudioRecreationTaskPlan.build(exec.path("recreationTask"),answer,
                 (key,vars)->recreationStage(input,key,vars,null).user());
         ObjectNode plan;
         // The validator's reason (「第 N 步…」, stage words) reaches the user as a step's reason: plain words there, the
         // reason itself in the internal detail and the log (不锁方法 2026-10-23).
-        try {plan=StudioPlanValidator.validateSkillPlan(answer,rules,stage,allowed);}
+        int maxMaterials=recreationTask?com.aistareco.aep.ipstudio.execution.StudioRecreationTaskPlan.MAX_MATERIALS:StudioPlanValidator.MAX_MATERIALS;
+        try {plan=StudioPlanValidator.validateSkillPlan(answer,rules,stage,allowed,maxMaterials);}
         catch(BusinessException e) {
             log.info("[studio-run] skill plan rejected run={} code={} reason={} details={}",run.getId(),e.getCode(),e.getMessage(),e.getDetails());
             // Named, deterministic: the execution tells the user which canvas object, and asking the model again cannot fix it.
@@ -896,7 +898,7 @@ public class StudioWorkflowWorker {
             throw BusinessException.wrapped(org.springframework.http.HttpStatus.BAD_REQUEST,com.aistareco.aep.ipstudio.dialogue.tools.ProposePlanTool.PLAN_NOT_READY,com.aistareco.aep.ipstudio.dialogue.tools.ProposePlanTool.PLAN_NOT_READY_TEXT,e.getCode()+": "+e.getMessage());
         }
         // 动作提取只在代码拼的深度复刻方案里出现；模型自己写进去的按方案没准备好处理
-        if(!exec.path("recreationTask").isObject())for(JsonNode s:plan.path("steps"))
+        if(!recreationTask)for(JsonNode s:plan.path("steps"))
             if(com.aistareco.aep.ipstudio.execution.StudioSkillRules.SYSTEM_ONLY_OPERATIONS.contains(s.path("operation").asText()))
                 throw BusinessException.wrapped(org.springframework.http.HttpStatus.BAD_REQUEST,com.aistareco.aep.ipstudio.dialogue.tools.ProposePlanTool.PLAN_NOT_READY,
                         com.aistareco.aep.ipstudio.dialogue.tools.ProposePlanTool.PLAN_NOT_READY_TEXT,"planner used system-only operation "+s.path("operation").asText());

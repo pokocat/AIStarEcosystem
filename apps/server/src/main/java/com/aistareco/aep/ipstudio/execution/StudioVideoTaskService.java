@@ -49,6 +49,8 @@ public class StudioVideoTaskService {
     }
 
     public Quote price(String user,String kind,String model,String mode,String tier,int duration,String ratio,int images,boolean character,boolean voice,boolean optimize) {
+        if(StudioCloneVideoPlan.method(kind)&&(images<0||images>StudioRecreationTaskPlan.MAX_IMAGES-(character?1:0)))
+            throw invalid("最多添加 "+StudioRecreationTaskPlan.MAX_IMAGES+" 张替换图片");
         // 深度复刻 / 元素替换：每段带原片片段作参考视频，另加拉片和写提示词两次文字任务（同分镜复刻）
         if(StudioCloneVideoPlan.nativeClone(kind)) {
             var p=clones.price(user,kind,model,tier,duration,ratio,images,character,voice,optimize);
@@ -57,7 +59,9 @@ public class StudioVideoTaskService {
         }
         if(!Set.of("direct","segmented","recreation").contains(kind))throw invalid("请选择制作方式");
         if(!"direct".equals(kind)) {
-            var p=segmented.price(user,model,tier,duration,ratio,images,character,voice,optimize);
+            var p="recreation".equals(kind)
+                    ?segmented.recreationPrice(user,model,tier,duration,ratio,images,character,voice,optimize)
+                    :segmented.price(user,model,tier,duration,ratio,images,character,voice,optimize);
             long base=p.estimated();
             if("recreation".equals(kind))base=Math.addExact(base,Math.multiplyExact(textCost(user),2));
             return new Quote(base,Math.multiplyExact(base,3),p.segments(),p.boards());
@@ -130,6 +134,15 @@ public class StudioVideoTaskService {
         } else if(StudioCloneVideoPlan.method(req.kind())) {
             // 爆款复刻的三种方式都先拉片、再由代码按拉片结果拼方案（StudioRecreationTaskPlan）；不同的是每段交给视频模型什么
             if(req.configuration()==null||req.sourceNodeId()==null)throw invalid("请添加参考视频");
+            var cfg=req.configuration();
+            int pictures=0,voices=0;
+            for(var material:cfg.materials()) {
+                if(material==null||!Set.of("image","character","voice").contains(Objects.toString(material.slot(),"")))throw invalid("素材类型不正确");
+                if("voice".equals(material.slot()))voices++;
+                else pictures++;
+            }
+            if(pictures>StudioRecreationTaskPlan.MAX_IMAGES)throw invalid("最多添加 "+StudioRecreationTaskPlan.MAX_IMAGES+" 张替换图片");
+            if(voices>StudioRecreationTaskPlan.MAX_VOICES)throw invalid("参考声音最多一段");
             boolean clip=StudioCloneVideoPlan.nativeClone(req.kind());
             // 深度复刻 / 元素替换：所选模型要能带参考视频（深度复刻还要有动作提取服务），分段不超过参考视频的时长上限
             var bounds=clip?StudioCloneVideoPlan.clip(clones.require(req.kind(),req.configuration().model())):null;
@@ -139,9 +152,11 @@ public class StudioVideoTaskService {
             if(source==null||!"video".equals(source.path("type").asText())||IpDocs.primaryStorageKey(source)==null)throw invalid("参考视频不在草稿中，请重新添加");
             projects.requireOwnedAssetKey(user,IpDocs.primaryStorageKey(source));
             context.add(req.sourceNodeId());
-            if(req.configuration().materials()!=null)for(var material:req.configuration().materials()) {
+            for(var material:cfg.materials()) {
                 JsonNode node=IpDocs.node(doc,material.nodeId());
                 if(node==null||IpDocs.primaryStorageKey(node)==null)throw invalid("素材已变化，请重新选择");
+                String expectedType="voice".equals(material.slot())?"audio":"image";
+                if(!expectedType.equals(node.path("type").asText()))throw invalid("素材类型不正确，请重新选择");
                 projects.requireOwnedAssetKey(user,IpDocs.primaryStorageKey(node));context.add(material.nodeId());
             }
             // 原片片段要交给视频模型的两种方式：受理时冻结原片和素材的文件，之后画布上改了也不影响这次制作
@@ -162,7 +177,6 @@ public class StudioVideoTaskService {
                             +"；清晰度 "+req.configuration().tier()+"。使用提供的替换素材；不复用原片的旧人物、旧商品作为新主体。只输出可执行方案，不向用户提问。保留原片值得借鉴的节奏与创意，具体分段和参考方式按实际模型能力安排。");
             compile.putArray("dependsOn").add("study");compile.putObject("settings").put("operation","text").put("purpose","plan-compile");
             quoter.quote(user,plan);
-            var cfg=req.configuration();
             estimate=price(user,req.kind(),cfg.model(),null,cfg.tier(),cfg.duration(),cfg.ratio(),(int)cfg.materials().stream().filter(m->"image".equals(m.slot())).count(),
                     cfg.materials().stream().anyMatch(m->"character".equals(m.slot())),cfg.materials().stream().anyMatch(m->"voice".equals(m.slot())),!Boolean.FALSE.equals(cfg.optimize())).estimated();
         } else throw invalid("请选择制作方式");
