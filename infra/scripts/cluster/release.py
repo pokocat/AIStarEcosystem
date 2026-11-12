@@ -194,10 +194,12 @@ finally:
   standby='a' if active=='b' else 'b'
   return initial,active,standby
 
- def publish_to_standby(self,bundle,release):
+ def publish_to_standby(self,bundle,release,refresh_runtime=False):
   initial,active,standby=self.production_roles()
   previous=self.action(active,'inspect')
   require(not previous['quiescing'],'承流节点仍在排空，禁止自动发布')
+  if refresh_runtime:
+   require(previous['release']==release,'仅可用当前承流制品更新运行配置')
   before=self.action(standby,'inspect')
   if initial==DUAL_ACTIVE:
    require(not before['quiescing'],'备用节点仍在承流且正在排空，禁止自动发布')
@@ -205,11 +207,11 @@ finally:
    self.select_serving(active)
   else:
    self.probe(active)
-  if previous['release']==release:
+  if previous['release']==release and not refresh_runtime:
    self.record('standby_release_already_live',active=active,standby=standby)
    return {active:previous,standby:before}
 
-  if before['release']!=release or before['quiescing']:
+  if refresh_runtime or before['release']!=release or before['quiescing']:
    require({node:int(row['Weight']) for node,row in self.members().items()}==SINGLE_NODE[active],
            '备用节点仍在承流，禁止更新')
    self.install(bundle,release,[standby])
@@ -226,6 +228,7 @@ finally:
    self.record('failure_preserved_serving_node',node=active)
    raise
   self.record('standby_cutover_complete',active=standby,standby=active,weights=SINGLE_NODE[standby])
+  if refresh_runtime:self.record('runtime_refreshed',node=standby,release=release)
   return {standby:candidate,active:previous}
 
 
@@ -247,7 +250,9 @@ def release_lease(lock):
    lock.wait(timeout=5)
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('--stage',action='store_true');p.add_argument('--bundle');p.add_argument('--release');p.add_argument('--probe-file');p.add_argument('--receipt');p.add_argument('--plan',action='store_true');p.add_argument('--prepare-only',action='store_true');p.add_argument('--bootstrap-stage',action='store_true');a=p.parse_args();os.umask(0o077)
+ p=argparse.ArgumentParser();p.add_argument('--stage',action='store_true');p.add_argument('--bundle');p.add_argument('--release');p.add_argument('--probe-file');p.add_argument('--receipt');p.add_argument('--plan',action='store_true');p.add_argument('--prepare-only',action='store_true');p.add_argument('--bootstrap-stage',action='store_true')
+ p.add_argument('--refresh-runtime',action='store_true',help='reuse the active production artifact and recreate the standby with updated runtime settings')
+ a=p.parse_args();os.umask(0o077)
  config=json.loads((ROOT/'infra/cluster/production.json').read_text());mode='stage' if a.stage else 'production';config_guard(config,mode,os.environ)
  if a.plan:
   flow=('verify active at 100 -> drain and update standby at 0 -> verify and switch standby to 100 -> retain previous active at 0'
@@ -255,6 +260,7 @@ def main():
   print(json.dumps({'mode':mode,'nodes':config['nodes'],'flow':flow,'production_activation_required':True,'database_and_dns_changed':False},ensure_ascii=False,indent=2));return
  require(a.release and a.bundle and a.receipt,'需要已验收不可变发布包、release和凭证路径');require(not pathlib.Path(a.receipt).exists(),'拒绝覆盖验收凭证')
  require(a.release.isalnum() and len(a.release)==16,'release标识错误')
+ if a.refresh_runtime:require(mode=='production' and not a.prepare_only,'运行配置更新仅用于正式备用机发布')
  if a.bootstrap_stage:require(mode=='stage','初始化仅允许隔离演练')
  cluster=Cluster(config,mode);cluster.probe_file=a.probe_file
  # An upload-only run has no cutover preflight, so check production activation here.
@@ -279,7 +285,7 @@ def main():
    result={n:cluster.action(n,'start',a.release) for n in ['a','b']};cluster.weights(DUAL_ACTIVE);time.sleep(16);cluster.probe_dual(authenticated=False);cluster.record('bootstrap_complete')
   else:
    require(a.probe_file,'缺少受保护TLS探针配置')
-   result=cluster.publish_to_standby(bundle,a.release) if mode=='production' else cluster.rolling(a.release)
+   result=cluster.publish_to_standby(bundle,a.release,a.refresh_runtime) if mode=='production' else cluster.rolling(a.release)
   receipt={'completed_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'mode':mode,'events':cluster.events,'result':result,'database_changed':False,'dns_changed':False};pathlib.Path(a.receipt).write_text(json.dumps(receipt,indent=2))
  finally:release_lease(lock)
 if __name__=='__main__':

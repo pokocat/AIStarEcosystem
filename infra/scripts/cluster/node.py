@@ -92,11 +92,20 @@ def retire_exited_owned_container(expected,mode):
  # Podman 4.9 can retain an exited --rm container in Removing. Never remove images or volumes.
  run(['podman','rm','--force',row['Id']]);log=ROOT/'control'/('retired-container-'+row['Id']+'.json');log.write_text(json.dumps(proof));log.chmod(0o600)
 
+def api_temp_volume(mode):
+ # Multipart uploads and ffmpeg can hold several copies of the same video.
+ # Keep that scratch space on disk and isolate it from the worker and other API modes.
+ path=ROOT/'state'/(mode+'-api-tmp')
+ path.mkdir(mode=0o700,exist_ok=True)
+ require(path.is_dir() and not path.is_symlink(),'API 临时目录必须是独立的普通目录')
+ os.chown(path,10001,10001);path.chmod(0o700)
+ return str(path)+':/tmp:rw'
+
 def start(config,expected,mode,release):
  dest,manifest,env=prepare(config,expected,mode,release);unit=expected['unit']
  require(run(['systemctl','show',unit,'-p','MainPID','--value']).strip() in ('','0'),'替换前必须完成排空并停止')
  retire_exited_owned_container(expected,mode)
- args=['/usr/bin/podman','run','--rm','--name',unit,'--label','aistar.release='+release,'--label','aistar.mode='+mode,'--network','host','--read-only','--workdir','/app/work','--tmpfs','/tmp:rw,size=128m','--memory','1600m','--cpus','1','--pids-limit','256','--stop-timeout','240','--user','10001:10001','--env-file',str(ROOT/'control'/('env-'+mode)),'--volume',str(ROOT/'state'/mode)+':/opt/aistar-migration/preparation:rw','--volume',str(dest)+':/app/release:ro']
+ args=['/usr/bin/podman','run','--rm','--name',unit,'--label','aistar.release='+release,'--label','aistar.mode='+mode,'--network','host','--read-only','--workdir','/app/work','--volume',api_temp_volume(mode),'--memory','1600m','--cpus','1','--pids-limit','256','--stop-timeout','240','--user','10001:10001','--env-file',str(ROOT/'control'/('env-'+mode)),'--volume',str(ROOT/'state'/mode)+':/opt/aistar-migration/preparation:rw','--volume',str(dest)+':/app/release:ro']
  args+=depth_mount(env)
  work=ROOT/'work'
  if mode=='production' or work.is_dir():

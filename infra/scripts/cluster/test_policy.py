@@ -72,6 +72,19 @@ class ContainerRetirementTests(unittest.TestCase):
  def test_only_verified_exited_container_is_retired(self):
   success,calls=self.exercise(self.row());self.assertTrue(success);self.assertEqual([['podman','rm','--force','f'*64]],calls)
 
+class ApiTemporaryStorageTests(unittest.TestCase):
+ def test_api_modes_use_separate_private_disk_directories(self):
+  import node,tempfile
+  from unittest.mock import patch
+  with tempfile.TemporaryDirectory() as directory:
+   root=pathlib.Path(directory);(root/'state').mkdir()
+   with patch.object(node,'ROOT',root),patch.object(node.os,'chown') as chown:
+    for mode in ('production','stage'):
+     path=root/'state'/(mode+'-api-tmp')
+     self.assertEqual(node.api_temp_volume(mode),str(path)+':/tmp:rw')
+     chown.assert_called_with(path,10001,10001)
+     self.assertEqual(path.stat().st_mode&0o777,0o700)
+
 class ApiDrainTests(unittest.TestCase):
  def test_shared_jobs_do_not_block_a_drained_api_node(self):
   import node
@@ -196,6 +209,20 @@ class RollingReleaseTests(unittest.TestCase):
   cluster.publish_to_standby('bundle','candidate')
   self.assertEqual(cluster.current_weights,{'a':0,'b':100})
   self.assertFalse(any(action in ('install','weights','start') for action,_ in cluster.calls))
+ def test_runtime_refresh_recreates_only_the_standby_with_the_same_artifact(self):
+  cluster=self.cluster({'a':100,'b':0})
+  cluster.releases={'a':'candidate','b':'candidate'}
+  cluster.publish_to_standby('bundle','candidate',refresh_runtime=True)
+  self.assertEqual([x for x in cluster.calls if x[0]=='install'],[('install',('b',))])
+  self.assertEqual([x for x in cluster.calls if x[0] in ('drain-stop','start')],
+                   [('drain-stop','b'),('start','b')])
+  self.assertLess(cluster.calls.index(('standby probe','b')),cluster.calls.index(('weights',{'a':0,'b':100})))
+  self.assertEqual(cluster.current_weights,{'a':0,'b':100})
+ def test_runtime_refresh_rejects_a_different_artifact(self):
+  cluster=self.cluster({'a':100,'b':0})
+  with self.assertRaisesRegex(Refused,'仅可用当前承流制品'):
+   cluster.publish_to_standby('bundle','candidate',refresh_runtime=True)
+  self.assertEqual(cluster.calls,[('inspect','a')])
  def test_quiescing_node_with_live_weight_refuses_to_roll(self):
   cluster=self.cluster({'a':50,'b':50})
   cluster.quiescing['b']=True
