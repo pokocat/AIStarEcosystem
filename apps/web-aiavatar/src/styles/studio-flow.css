@@ -69,7 +69,17 @@ html[data-layout="desktop"] .studio-canvas-credit :focus-visible { outline:2px s
 .studio-host-more-item:hover { background:var(--surface-2); }
 .studio-host-more-item:disabled { opacity:.6; cursor:not-allowed; }
 .studio-host-more-item:focus-visible { outline:2px solid var(--primary); outline-offset:-2px; }
-.studio-flow-card { display:flex; flex-direction:column; height:100%; background:var(--surface); border:1px solid var(--line-2); border-radius:12px; }
+/* 卡片（方案 B「内容为主」，2026-11-12）：外框、底色和阴影只在内容区，标题是上方一行文字，没有底条。
+   节点的盒子不变：仍是 36px 标题 + 1px 透明边框 + 内容区，studio-media-fit 的 STUDIO_CARD_CHROME 照旧成立，已有画布不用改尺寸。 */
+.ip-surface,.studio-flow-shell,.studio-template-preview-canvas {
+  --studio-card-ring:0 0 0 1px rgb(20 28 48 / 9%);
+  --studio-card-shadow:0 1px 2px rgb(20 28 48 / 5%), 0 8px 20px -8px rgb(20 28 48 / 12%);
+  --studio-fill:#f5f6f9;
+  /* 选中色在这里解析成群青：视频卡片把 --primary 换成了暖棕，选中框不能跟着变。 */
+  --studio-select:var(--primary);
+  --studio-pop-shadow:0 0 0 1px rgb(20 28 48 / 6%), 0 2px 6px rgb(20 28 48 / 6%), 0 18px 44px -10px rgb(20 28 48 / 22%);
+}
+.studio-flow-card { display:flex; flex-direction:column; height:100%; background:transparent; border:1px solid transparent; border-radius:12px; }
 /* Warm video work surface, distinct from the cool canvas and white title bar.
    Keep these aliases on the card so tools and other node types retain their palette. */
 .studio-flow-video-card {
@@ -83,7 +93,14 @@ html[data-layout="desktop"] .studio-canvas-credit :focus-visible { outline:2px s
   --primary:#514b41;
   --primary-soft:#eee8dd;
 }
-.studio-flow-card.is-selected { border:2px solid var(--primary); }
+.studio-flow-card.is-selected .studio-flow-media { outline:2px solid var(--studio-select); outline-offset:2px; }
+.studio-flow-card.is-selected .studio-flow-drag { color:var(--ink); }
+/* 连线端口对准内容区的中线，不是含标题的整个节点的中线（标题 36px，下移一半）。 */
+.studio-flow-card>.react-flow__handle { top:calc(50% + 18px); }
+/* 缩放：不画包住标题的整圈框线，只留四角小方块；上边两个落在内容区的上沿。 */
+.studio-flow-card .react-flow__resize-control.line { border-color:transparent; }
+.studio-flow-card .react-flow__resize-control.handle { width:8px; height:8px; border:1.5px solid var(--studio-select); border-radius:2px; background:var(--surface); }
+.studio-flow-card .react-flow__resize-control.handle.top { top:37px; }
 /* 圈选分组（ip/studio-flow-area.tsx）：一块区域。框本身不挡操作 —— 里面的空白照样能平移、框选；
    只有上沿外侧的名字标签、说明、缩放手柄和引用端口接收指针。颜色是用户自选的低饱和色，只铺一层极淡的底。
    React Flow 把 pointer-events 写在节点的行内样式上，所以这里要 !important。 */
@@ -125,7 +142,7 @@ button.studio-flow-area-tone:focus-visible { outline:2px solid var(--primary); o
 .studio-flow-group .react-flow__resize-control.handle.studio-flow-area-handle { width:9px; height:9px; border:1.5px solid var(--primary); border-radius:2px; background:var(--surface); }
 .studio-flow-group .react-flow__resize-control.line.studio-flow-area-edge { border-color:transparent; }
 /* 正在圈的框会收进去的节点。 */
-.studio-flow-card.is-area-candidate { outline:2px solid color-mix(in srgb, var(--primary) 55%, transparent); outline-offset:4px; }
+.studio-flow-card.is-area-candidate .studio-flow-media { outline:2px solid color-mix(in srgb, var(--primary) 55%, transparent); outline-offset:4px; }
 /* 画框：群青虚线慢慢流动，跟着光标的一枚小标签说会收进几个节点。 */
 .studio-flow-stage.is-drawing-area .react-flow,.studio-flow-stage.is-drawing-area .react-flow * { cursor:crosshair !important; }
 .studio-flow-area-draft { position:absolute; z-index:72; pointer-events:none; background:color-mix(in srgb, var(--primary) 3%, transparent); }
@@ -153,7 +170,9 @@ button.studio-flow-area-tone:focus-visible { outline:2px solid var(--primary); o
 .studio-group-description:focus-visible { outline:2px solid var(--primary); outline-offset:2px; border-radius:4px; }
 .studio-group-description-editor { display:flex; flex-direction:column; gap:8px; padding-bottom:16px; }
 .studio-group-description-reader { white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.7; }
-.studio-flow-drag { display:flex; align-items:center; gap:8px; height:36px; flex-shrink:0; padding:0 12px; color:var(--ink-2); font-size:12px; cursor:grab; }
+.studio-flow-drag { display:flex; align-items:flex-end; gap:6px; height:36px; flex-shrink:0; padding:0 2px 5px; color:var(--ink-2); font-size:12.5px; font-weight:500; cursor:grab; }
+.studio-flow-drag>svg:first-child { width:13px; height:13px; margin-bottom:6px; color:var(--ink-3); }
+.studio-flow-drag>:is(.studio-flow-ai-badge,.studio-flow-origin,small) { margin-bottom:4px; }
 .studio-flow-drag>span { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .studio-flow-drag small { font-size:11px; color:var(--primary); }
 .studio-flow-drag>svg { flex-shrink:0; }
@@ -164,7 +183,20 @@ button.studio-flow-area-tone:focus-visible { outline:2px solid var(--primary); o
 .studio-flow-prompt-review { flex-shrink:0; display:flex; align-items:center; gap:6px; min-width:0; margin:0; padding:8px 12px; font-size:12px; line-height:1.5; color:var(--ai-ink); background:var(--ai-soft); }
 .studio-flow-prompt-review span { min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .studio-flow-prompt-review button { flex-shrink:0; border:0; background:none; padding:0; color:var(--ai); font:inherit; font-weight:600; cursor:pointer; }
-.studio-flow-media { position:relative; flex:1; min-height:0; overflow:hidden; border-radius:0 0 10px 10px; background:var(--surface-2); }
+.studio-flow-media { position:relative; flex:1; min-height:0; overflow:hidden; border-radius:12px; background:var(--surface-2); box-shadow:var(--studio-card-ring), var(--studio-card-shadow); transition:outline-color 120ms ease-out; }
+.studio-flow-media:has(>.studio-flow-text,>.studio-flow-audio) { background:var(--surface); }
+/* 内容区下面的提示（排队、确认优化稿、报错）是卡片下方的一张小条，不再和图片连成一块。 */
+.studio-flow-card>.studio-flow-media~:is(p,div) { margin-top:6px; border-radius:8px; box-shadow:var(--studio-card-ring); }
+.studio-flow-card>.studio-flow-media~:is(.studio-flow-queue,.studio-flow-node-error) { background:var(--surface); }
+/* 空卡片：虚线框加一行提示，没有底色和阴影；按钮在悬停或键盘聚焦时出现，选中后的操作在下方工具条里。 */
+.studio-flow-card.is-empty .studio-flow-media { background:color-mix(in srgb, var(--surface) 55%, transparent); box-shadow:none; border:1.5px dashed color-mix(in srgb, var(--ink-3) 55%, transparent); }
+.studio-flow-card.is-empty:hover .studio-flow-media { border-color:color-mix(in srgb, var(--ink-3) 80%, transparent); }
+.studio-flow-card.is-empty .studio-flow-placeholder { gap:10px; color:var(--ink-3); font-size:12.5px; }
+.studio-flow-card.is-empty .studio-flow-placeholder>svg,.studio-flow-card.is-empty .studio-flow-media-action>svg { width:22px; height:22px; color:var(--ink-3); }
+.studio-flow-card.is-empty .studio-flow-placeholder>small { font-size:11px; color:var(--ink-3); }
+.studio-flow-image-placeholder .studio-flow-image-actions { opacity:0; pointer-events:none; transition:opacity 120ms ease-out; }
+.studio-flow-card:is(:hover,:focus-within) .studio-flow-image-placeholder .studio-flow-image-actions { opacity:1; pointer-events:auto; }
+@media (hover:none) { .studio-flow-image-placeholder .studio-flow-image-actions { opacity:1; pointer-events:auto; } }
 .react-flow__node.draggable .studio-flow-media,.react-flow__node.draggable .studio-flow-placeholder { cursor:grab; }
 .react-flow__node.dragging .studio-flow-media { cursor:grabbing; }
 .studio-flow-media video,.studio-flow-audio audio { cursor:auto; }
@@ -185,9 +217,10 @@ button.studio-flow-area-tone:focus-visible { outline:2px solid var(--primary); o
 .studio-flow-media-generating { position:absolute; inset:0; z-index:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:18px; background:color-mix(in srgb,var(--surface-2) 92%,transparent); backdrop-filter:blur(6px); text-align:center; color:var(--ink); }
 @keyframes studio-flow-generation-spin { to { transform:rotate(360deg); } }
 .studio-flow-image-actions { display:flex; flex-wrap:wrap; justify-content:center; gap:8px; }
-.studio-flow-image-actions button,.studio-flow-replace-image { display:inline-flex; align-items:center; justify-content:center; gap:7px; min-height:36px; padding:8px 12px; border:1px solid var(--line-2); border-radius:var(--r-xs); background:var(--surface); color:var(--ink); font:inherit; cursor:pointer; }
-.studio-flow-image-actions button:first-child { background:var(--ink); color:var(--surface); border-color:transparent; }
-.studio-flow-shell .studio-flow-image-actions button:first-child:hover:not(:disabled) { background:var(--ink-2); }
+.studio-flow-image-actions button,.studio-flow-replace-image { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:30px; padding:0 11px; border:0; border-radius:8px; background:var(--surface); color:var(--ink); font:inherit; font-size:12.5px; font-weight:500; box-shadow:var(--studio-card-ring), 0 1px 2px rgb(20 28 48 / 6%); cursor:pointer; }
+.studio-flow-image-actions button>svg,.studio-flow-replace-image>svg { width:14px; height:14px; }
+.studio-flow-shell .studio-flow-image-actions button:hover:not(:disabled) { background:var(--surface-2); }
+.studio-flow-replace-image { background:rgb(255 255 255 / 92%); backdrop-filter:blur(6px); }
 .studio-flow-image-actions button:disabled,.studio-flow-replace-image:disabled { opacity:.5; cursor:not-allowed; }
 .studio-flow-replace-image { position:absolute; bottom:12px; left:50%; transform:translateX(-50%); font-size:12px; white-space:nowrap; opacity:0; pointer-events:none; }
 .studio-flow-card:hover .studio-flow-replace-image,.studio-flow-card.is-selected .studio-flow-replace-image,.studio-flow-card:focus-within .studio-flow-replace-image { opacity:1; pointer-events:auto; }
@@ -201,7 +234,7 @@ button.studio-flow-area-tone:focus-visible { outline:2px solid var(--primary); o
 .studio-flow-failure > strong { color:var(--ink); font-size:14px; font-weight:600; }
 .studio-flow-failure > span { max-width:100%; min-width:0; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; color:var(--ink-2); }
 .studio-flow-failure .studio-flow-image-actions { margin-top:4px; }
-.studio-flow-failure .studio-flow-image-actions button.studio-flow-failure-upload { border-color:transparent; background:transparent; color:var(--ink-2); }
+.studio-flow-failure .studio-flow-image-actions button.studio-flow-failure-upload { background:transparent; box-shadow:none; color:var(--ink-2); }
 .studio-flow-shell .react-flow__handle { width:10px; height:10px; background:var(--surface); border:2px solid var(--ink-3); }
 .studio-flow-shell .react-flow__handle:hover { background:var(--action); }
 .studio-flow-shell .react-flow__handle::after { content:''; position:absolute; inset:-7px; border-radius:50%; }
@@ -312,8 +345,8 @@ html[data-layout="desktop"] .studio-flow-shell:has(.studio-focused-view) .react-
 .studio-flow-shell .studio-node-summary,.studio-flow-shell .studio-script-summary { height:100%; }
 @media (prefers-reduced-motion:reduce) { .studio-flow-shell * { scroll-behavior:auto; transition:none; } }
 /* LibTV-style screen-space node composers. The canvas remains interactive. */
-.studio-floating-panel { position:absolute; z-index:90; max-width:calc(100% - 88px); max-height:calc(100% - 80px); display:flex; flex-direction:column; pointer-events:auto; background:var(--surface); color:var(--ink); border:1px solid var(--line-2); border-radius:16px; box-shadow:var(--shadow-lift); overflow:hidden; }
-.studio-floating-header { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:42px; padding:8px 16px; border-bottom:1px solid var(--line); flex-shrink:0; }
+.studio-floating-panel { position:absolute; z-index:90; max-width:calc(100% - 88px); max-height:calc(100% - 80px); display:flex; flex-direction:column; pointer-events:auto; background:var(--surface); color:var(--ink); border:0; border-radius:16px; box-shadow:var(--studio-pop-shadow); overflow:hidden; }
+.studio-floating-header { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:42px; padding:8px 16px; flex-shrink:0; }
 .studio-floating-header strong { font-size:13px; font-weight:600; }
 .studio-floating-header>div { display:flex; gap:4px; }
 .studio-floating-header button,.studio-reference-chip button { display:flex; align-items:center; justify-content:center; min-width:28px; min-height:28px; border:0; border-radius:6px; color:var(--ink-2); background:transparent; cursor:pointer; }
@@ -327,9 +360,12 @@ html[data-layout="desktop"] .studio-flow-shell:has(.studio-focused-view) .react-
 .studio-floating-resize::after { content:""; position:absolute; left:3px; top:0; bottom:0; width:2px; background:transparent; transition:background-color 120ms ease-out; }
 .studio-floating-resize:hover::after,.studio-floating-resize:active::after { background:var(--line-3); }
 .studio-floating-body { padding:16px; min-height:0; overflow:auto; overscroll-behavior:contain; }
-.studio-floating-footer { padding:12px 16px; border-top:1px solid var(--line); flex-shrink:0; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.studio-floating-footer { padding:12px 16px; flex-shrink:0; display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .studio-floating-panel.is-utility { top:24px; max-height:calc(100% - 96px); }
-.studio-floating-panel.is-docked { right:0; top:0; bottom:0; max-height:none; border-radius:0; border-top:0; border-right:0; border-bottom:0; box-shadow:-12px 0 32px rgb(20 24 40 / 8%); }
+.studio-floating-panel.is-docked { right:0; top:0; bottom:0; max-height:none; border-radius:0; border-left:1px solid var(--line); box-shadow:-12px 0 32px rgb(20 24 40 / 8%); }
+/* 停靠的助手是一整列，头部和底部的分隔线留着。 */
+.studio-floating-panel.is-docked>.studio-floating-header { border-bottom:1px solid var(--line); }
+.studio-floating-panel.is-docked>.studio-floating-footer { border-top:1px solid var(--line); }
 /* While a panel is docked the stage keeps its right-anchored chrome clear of it (the panel sets --studio-docked-panel). */
 /* The class and --studio-docked-panel live on the shell (the workspace overlay is the stage's sibling, not its child). */
 html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-command-strip,
@@ -346,7 +382,7 @@ html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-test-not
 html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-focused-view { right:calc(var(--studio-docked-panel,0px) + 18px); }
 /* 任务按钮在画布上待在左下角；故事板 / 成片编辑器铺满时挪到左上角，不压在编辑器内容上。 */
 html[data-layout="desktop"] .ip-surface .studio-overlay:has(> .studio-focused-view) > .studio-tasks-launch { top:72px; bottom:auto; }
-.studio-floating-panel.is-context-toolbar { border-radius:10px; box-shadow:none; }
+.studio-floating-panel.is-context-toolbar { border-radius:10px; box-shadow:0 0 0 1px rgb(20 28 48 / 7%), 0 4px 14px -4px rgb(20 28 48 / 16%); }
 .studio-floating-panel.is-context-toolbar .studio-floating-body { padding:0; }
 .studio-flow-shell .studio-floating-panel .studio-context-actions { position:static; transform:none; max-width:100%; border:0; border-radius:0; flex-wrap:wrap; overflow:visible; gap:2px; }
 .studio-context-actions .studio-selected-name { max-width:140px; text-overflow:ellipsis; overflow:hidden; }
@@ -356,14 +392,15 @@ html[data-layout="desktop"] .ip-surface .studio-overlay:has(> .studio-focused-vi
 .studio-node-composer .studio-creator-footer { flex-direction:row; align-items:center; flex-wrap:wrap; gap:12px; padding:0; justify-content:flex-end; }
 .studio-node-composer .studio-creator-footer .ant-btn { min-height:36px; }
 .studio-composer-references { display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
-.studio-reference-chip { display:inline-flex; align-items:center; gap:5px; max-width:180px; border:1px solid var(--line); background:var(--surface-2); border-radius:8px; font-size:11px; padding:2px 4px; }
+.studio-reference-chip { display:inline-flex; align-items:center; gap:5px; max-width:180px; border:0; background:var(--studio-fill); border-radius:8px; font-size:11px; padding:2px 4px; }
 .studio-reference-chip img { width:24px; height:24px; object-fit:cover; border-radius:4px; }
 .studio-reference-chip>span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .studio-node-composer>.studio-floating-body>label { display:flex; flex-direction:column; gap:6px; font-size:12px; color:var(--ink-2); }
 .studio-node-composer .studio-prompt-field { margin:0; gap:6px; font-size:12px; }
-.studio-node-composer .studio-motion-drawer-editor { min-height:86px; max-height:180px; }
+.studio-node-composer .studio-motion-drawer-editor { min-height:86px; max-height:180px; border:0; background:var(--studio-fill); transition:background-color 120ms ease-out, box-shadow 120ms ease-out; }
+.ip-surface .studio-node-composer .studio-motion-drawer-editor:focus { outline:0; background:var(--surface); box-shadow:0 0 0 1.5px color-mix(in srgb, var(--primary) 55%, transparent); }
 .studio-composer-settings { margin-top:12px; font-size:12px; }
-.studio-composer-settings summary { display:flex; align-items:center; justify-content:space-between; min-height:32px; color:var(--ink-2); cursor:pointer; padding:4px 8px; border:1px solid var(--line); border-radius:8px; background:var(--surface-2); }
+.studio-composer-settings summary { display:flex; align-items:center; justify-content:space-between; min-height:32px; color:var(--ink-2); cursor:pointer; padding:4px 8px; border:0; border-radius:8px; background:var(--studio-fill); }
 .studio-composer-settings summary>span { color:var(--primary); }
 .studio-composer-settings[open] summary { margin-bottom:12px; }
 .studio-reference-pick-note,.studio-composer-validation { margin:8px 0; color:var(--ink-2); font-size:12px; line-height:1.5; }
@@ -376,7 +413,7 @@ html[data-layout="desktop"] .ip-surface .studio-overlay:has(> .studio-focused-vi
 .studio-composer-blocker .ant-btn-link { height:auto; padding:0 0 0 6px; font-size:12px; }
 
 .studio-flow-stage.is-picking-reference .react-flow__node { cursor:crosshair; }
-.studio-flow-stage.is-picking-reference .react-flow__node:hover .studio-flow-card { border-color:var(--primary); }
+.studio-flow-stage.is-picking-reference .react-flow__node:hover .studio-flow-media { outline:2px solid var(--studio-select); outline-offset:2px; }
 .studio-floating-panel .studio-director-form>p,.studio-floating-panel .studio-assistant>p { margin-top:0; }
 .studio-floating-panel .studio-assistant { min-height:0; }
 .studio-composer-references:empty { display:none; }
@@ -532,10 +569,11 @@ html[data-layout="desktop"] .studio-text-spinner { animation:studio-text-spin 1s
 /* AI 视觉记号（画布页改版，2026-10-19）：AI 做的节点带记号，正在做的呼吸一圈，刚放进来的亮 2 秒。 */
 .studio-flow-ai-badge { margin-left:auto; display:inline-flex; align-items:center; gap:3px; flex-shrink:0; padding:1px 7px; border-radius:999px; background:var(--ai-gradient); color:#fff; font-size:10px; font-weight:600; line-height:16px; letter-spacing:.2px; }
 .studio-flow-drag>small { margin-left:6px; }
-.studio-flow-card.is-generating { outline:2px solid var(--ai-ring); outline-offset:3px; animation:studio-ai-breathe 2.2s ease-in-out infinite; }
-.studio-flow-card.is-fresh { box-shadow:0 0 0 3px var(--ai-glow), 0 12px 32px rgba(79, 91, 213, 0.14); transition:box-shadow 600ms ease-out; }
+.studio-flow-card.is-generating .studio-flow-media { outline:2px solid var(--ai-ring); outline-offset:3px; animation:studio-ai-breathe 2.2s ease-in-out infinite; }
+.studio-flow-card.is-selected.is-generating .studio-flow-media { outline-color:var(--studio-select); animation:none; }
+.studio-flow-card.is-fresh .studio-flow-media { box-shadow:0 0 0 3px var(--ai-glow), 0 12px 32px rgba(79, 91, 213, 0.14); transition:box-shadow 600ms ease-out; }
 @keyframes studio-ai-breathe { 0%,100% { outline-color:var(--ai-ring); } 50% { outline-color:rgba(139, 108, 240, 0.18); } }
-@media (prefers-reduced-motion:reduce) { .studio-flow-card.is-generating { animation:none; } }
+@media (prefers-reduced-motion:reduce) { .studio-flow-card.is-generating .studio-flow-media { animation:none; } }
 
 /* ── 画布页改版 · 照设计稿 Main 画板补齐（2026-10-19 第二遍） ───────────────────────────── */
 /* 顶栏：返回、标题、标题旁一行「已保存」；右侧依次「⋯」、积分、发布。插槽里的项靠 order 进同一行排。 */
@@ -586,7 +624,6 @@ html[data-layout="desktop"] .studio-flow-controls span { min-width:44px; color:v
 .ip-surface .studio-settings-trigger>svg.is-open { transform:rotate(180deg); }
 .ip-surface .studio-model-trigger:hover:not(:disabled),.ip-surface .studio-settings-trigger:hover:not(:disabled) { background:var(--surface-3); }
 .ip-surface .studio-model-trigger:disabled,.ip-surface .studio-settings-trigger:disabled { cursor:default; color:var(--ink-2); }
-.ip-surface .studio-generation-toolbar:has(.studio-model-trigger) .studio-settings-trigger { border-left:1px solid var(--line); }
 .ip-surface .studio-settings-overlay .ant-popover-container,.ip-surface .studio-model-overlay .ant-popover-container { padding:0; border-radius:14px; background:var(--surface); color:var(--ink); box-shadow:var(--shadow-lift); }
 .ip-surface .studio-settings-popover { box-sizing:border-box; width:min(440px,calc(100vw - 32px)); max-height:min(620px,calc(100dvh - 120px)); overflow:auto; overscroll-behavior:contain; padding:18px 20px 22px; scrollbar-width:thin; scrollbar-color:var(--line-2) transparent; }
 .ip-surface .studio-settings-popover>header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:18px; font-size:14px; }
@@ -656,15 +693,21 @@ html[data-layout="mobile"] .ip-surface .studio-option-grid.is-compact>.studio-op
 
 /* 创作底栏按“模型 / 模式 / 规格 / 总价与提交”排列；素材只有一处可编辑真值。 */
 .ip-surface .studio-media-composer>.studio-floating-footer { flex-wrap:nowrap; gap:8px; padding:10px 12px; }
-.ip-surface .studio-media-composer .studio-generation-toolbar { flex-wrap:nowrap; gap:2px; }
+.ip-surface .studio-media-composer .studio-generation-toolbar { flex-wrap:nowrap; gap:4px; }
 .ip-surface .studio-media-composer .studio-model-trigger { min-width:0; max-width:140px; flex:0 1 auto; padding:7px 6px; gap:5px; }
 .ip-surface .studio-media-composer .studio-mode-trigger { max-width:112px; flex-shrink:0; }
-.ip-surface .studio-media-composer .studio-settings-trigger { flex:1; min-width:0; padding:7px 8px; gap:5px; background:transparent; }
-.ip-surface .studio-media-composer .studio-generation-toolbar .studio-settings-trigger { border-left:1px solid var(--line); border-radius:0; }
+.ip-surface .studio-media-composer .studio-settings-trigger { flex:0 1 auto; min-width:0; padding:7px 8px; gap:5px; }
+/* 底栏的模型、模式、规格是三个浅灰小块，不再用竖线隔开。 */
+.ip-surface .studio-media-composer :is(.studio-model-trigger,.studio-settings-trigger) { background:var(--studio-fill); }
+.ip-surface .studio-media-composer :is(.studio-model-trigger,.studio-settings-trigger):hover:not(:disabled) { background:var(--surface-3); }
 .ip-surface .studio-media-composer .studio-settings-trigger>svg:first-child { display:none; }
 .ip-surface .studio-media-composer .studio-creator-footer { flex-wrap:nowrap; gap:8px; }
-.ip-surface .studio-media-composer .studio-composer-send.ant-btn { width:36px; height:36px; min-height:36px; padding:0; border-radius:10px; }
-.ip-surface .studio-media-composer .studio-composer-send:not(:disabled) { background:var(--ink); color:var(--surface); }
+.ip-surface .studio-media-composer .studio-composer-send.ant-btn { height:40px; min-height:40px; padding:0 16px; gap:6px; border-radius:12px; font-size:14px; font-weight:600; white-space:nowrap; }
+.ip-surface .studio-composer-send-price { margin-left:4px; font-weight:500; opacity:.88; font-variant-numeric:tabular-nums; }
+/* 提交是 AI 去做、要花积分的事：浮层里唯一有颜色的按钮。 */
+.ip-surface .studio-media-composer .studio-composer-send:not(:disabled),
+.ip-surface .studio-media-composer .studio-composer-send:not(:disabled):hover { background:var(--ai-gradient); border-color:transparent; color:#fff; }
+.ip-surface .studio-media-composer .studio-composer-send:not(:disabled):hover { filter:brightness(1.06); }
 .ip-surface .studio-composer-inputs:empty { display:none; }
 .ip-surface .studio-composer-actions>.ant-btn,.ip-surface .studio-reference-add { display:inline-flex; align-items:center; justify-content:center; gap:5px; min-height:30px; padding:4px 9px; border:0; border-radius:7px; background:var(--surface-2); color:var(--ink-2); font:inherit; font-size:12px; cursor:pointer; }
 .ip-surface .studio-composer-actions>.ant-btn:hover,.ip-surface .studio-reference-add:hover { color:var(--ink); background:var(--surface-3); }
@@ -764,3 +807,52 @@ html[data-layout="mobile"] .studio-canvas-guide-entries>:last-child:nth-child(od
 .studio-flow-context { max-height: calc(100vh - 16px); overflow-y: auto; }
 /* 「⋯」里的删除画布（2026-11-10） */
 .studio-host-more-item.is-danger, .studio-host-more-item.is-danger > svg { color: var(--ip-error, #a43845); }
+/* 方案 B · 浮层里的控件（2026-11-12）：不用边框，浅灰底块区分输入区和工具；聚焦时换白底加一圈淡群青。
+   「问助手」保留渐变描边（AI 的记号），提交按钮是唯一有颜色的块。 */
+.ip-surface .studio-floating-panel .studio-node-editor-actions>button:not(.studio-ask-assistant) { border-color:transparent; background:var(--studio-fill); }
+.ip-surface .studio-floating-panel .studio-node-editor-actions>button:not(.studio-ask-assistant):hover:not(:disabled) { background:var(--surface-3); }
+.ip-surface .studio-node-composer :is(.ant-input-outlined,.ant-select-outlined),
+.ip-surface .studio-node-composer :is(.ant-input-outlined,.ant-select-outlined):hover { border-color:transparent; background:var(--studio-fill); box-shadow:none; }
+.ip-surface .studio-node-composer :is(.ant-input-outlined:focus,.ant-input-outlined:focus-within,.ant-select-outlined.ant-select-focused) { border-color:color-mix(in srgb, var(--primary) 55%, transparent); background:var(--surface); box-shadow:none; }
+/* 方案 B · 图片 / 视频浮层照设计稿（2026-11-12）：标题行、一行纯文字工具、一排编号缩略图、大输入框、底栏两个浅灰块和带价格的生成按钮。 */
+.ip-surface .studio-media-composer>.studio-floating-header { min-height:0; padding:16px 18px 6px; }
+.ip-surface .studio-media-composer>.studio-floating-header strong { font-size:15px; }
+.ip-surface .studio-media-composer>.studio-floating-body { padding:6px 18px 4px; }
+.ip-surface .studio-media-composer>.studio-floating-footer { padding:10px 14px 14px; }
+.ip-surface .studio-media-composer .studio-composer-actions { gap:2px; margin:0 -8px 10px; }
+.ip-surface .studio-media-composer .studio-composer-actions>.studio-node-editor-actions { gap:2px; }
+.ip-surface .studio-media-composer .studio-composer-actions :is(.ant-btn,.studio-node-editor-actions>button),
+.ip-surface .studio-media-composer .studio-composer-actions .studio-node-editor-actions>button:not(.studio-ask-assistant) { height:32px; min-height:32px; padding:0 8px; gap:5px; border:0; border-radius:8px; background:transparent; box-shadow:none; color:var(--ink-2); font-size:13px; font-weight:500; }
+.ip-surface .studio-media-composer .studio-composer-actions :is(.ant-btn,.studio-node-editor-actions>button):hover:not(:disabled),
+.ip-surface .studio-media-composer .studio-composer-actions .ant-btn[aria-pressed="true"] { background:var(--studio-fill); color:var(--ink); }
+.ip-surface .studio-media-composer .studio-composer-actions .studio-node-editor-actions>.studio-ask-assistant,
+.ip-surface .studio-media-composer .studio-composer-actions .studio-node-editor-actions>.studio-ask-assistant:hover { border:0; background:transparent; color:var(--ai); font-weight:600; }
+.ip-surface .studio-media-composer .studio-composer-actions .studio-node-editor-actions>.studio-ask-assistant:hover { background:var(--ai-soft); }
+.ip-surface .studio-media-composer .studio-composer-references { margin-bottom:10px; }
+.ip-surface .studio-media-composer .studio-reference-strip { gap:8px; padding:0; }
+.ip-surface .studio-media-composer .studio-reference-tile { flex:0 0 56px; height:56px; border-radius:10px; }
+.ip-surface .studio-media-composer .studio-reference-number { top:5px; left:5px; min-width:0; padding:1px 5px; border-radius:5px; background:rgb(20 24 34 / 55%); color:#fff; font-size:10px; font-weight:600; line-height:14px; backdrop-filter:blur(4px); }
+.ip-surface .studio-media-composer .studio-reference-tile>button { width:18px; height:18px; opacity:0; transition:opacity 120ms ease-out; box-shadow:0 1px 3px rgb(20 24 34 / 20%); }
+.ip-surface .studio-media-composer .studio-reference-tile:is(:hover,:focus-within)>button { opacity:1; }
+@media (hover:none) { .ip-surface .studio-media-composer .studio-reference-tile>button { opacity:1; } }
+.ip-surface .studio-reference-tile.is-add { border:0; padding:0; background:var(--studio-fill); color:var(--ink-3); cursor:pointer; transition:background-color 120ms ease-out, color 120ms ease-out; }
+.ip-surface .studio-reference-tile.is-add:hover { background:var(--surface-3); color:var(--ink); }
+.ip-surface .studio-reference-tile.is-add:focus-visible { outline:2px solid var(--studio-select); outline-offset:2px; }
+.ip-surface .studio-media-composer textarea.ant-input { min-height:112px; padding:12px 14px; border-radius:12px; font-size:14px; line-height:1.7; }
+.ip-surface .studio-media-composer .studio-motion-drawer-editor { min-height:112px; padding:12px 14px; border-radius:12px; }
+.ip-surface .studio-media-composer :is(.studio-model-trigger,.studio-settings-trigger) { min-height:36px; padding:0 12px; border-radius:10px; font-size:13px; color:var(--ink); }
+.ip-surface .studio-media-composer .studio-quote { color:var(--ink-3); }
+/* 工具行只留文字（设计稿）：「问助手」保留四角星。 */
+.ip-surface .studio-media-composer .studio-composer-actions .ant-btn .ant-btn-icon,
+.ip-surface .studio-media-composer .studio-composer-actions .studio-node-editor-actions>button:not(.studio-ask-assistant):not(.studio-context-more-button)>svg { display:none; }
+/* 视频多了模式和智能优化，一行放不下：参数一行，生成按钮换到下一行靠右。 */
+.ip-surface .studio-media-composer>.studio-floating-footer:has(.studio-mode-trigger) { flex-wrap:wrap; row-gap:10px; }
+.ip-surface .studio-media-composer>.studio-floating-footer:has(.studio-mode-trigger)>.studio-generation-toolbar { flex:1 1 100%; flex-wrap:wrap; }
+.ip-surface .studio-media-composer>.studio-floating-footer:has(.studio-mode-trigger)>.studio-creator-footer { margin-left:auto; }
+.ip-surface .studio-media-composer>.studio-floating-footer:has(.studio-mode-trigger)>.studio-generation-toolbar { flex-wrap:nowrap; }
+.ip-surface .studio-media-composer .studio-mode-trigger { max-width:none; }
+/* 视频描述框：全站的 2px 聚焦外框换成和图片输入框一样的淡群青细圈（框本身仍有聚焦样式）。 */
+.ip-surface .studio-media-composer .canvas-prompt-chip-field { border-radius:12px; }
+.ip-surface .studio-media-composer .canvas-prompt-chip-field:has(> .canvas-prompt-chip-editor:focus-visible) { outline:0; }
+html[data-layout="mobile"] .ip-surface .studio-media-composer .studio-reference-tile>button { top:3px; right:3px; width:24px; height:24px; }
+html[data-layout="mobile"] .ip-surface .studio-media-composer .studio-model-trigger { max-width:100%; }

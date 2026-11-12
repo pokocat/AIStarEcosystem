@@ -7,22 +7,26 @@ import { PanelRight, PanelRightOpen, X } from 'lucide-react';
 // remeasure the anchor on pan, zoom and node drag without polling the DOM.
 export const StudioFloatingContext = createContext<unknown>(undefined);
 type Rect = { left:number; top:number; width:number; height:number };
-export function floatingPosition(stage:Rect, anchor:Rect|undefined, panel:{width:number;height:number}, toolbar=false) {
+/** `cramped`: no side of the node has room for the panel, so it is pinned to the stage edge over part of the node
+ *  and the canvas is asked to move the node aside (the 'make-room' studio command). */
+export function floatingPosition(stage:Rect, anchor:Rect|undefined, panel:{width:number;height:number}, toolbar=false):{left:number;top:number;cramped?:true} {
   const gap=12, topBound=72, leftBound=72, rightBound=stage.width-16-panel.width, bottomBound=stage.height-68-panel.height;
   const clamp=(v:number,min:number,max:number)=>Math.max(min,Math.min(v,Math.max(min,max)));
   if(!anchor)return {left:clamp(stage.width-panel.width-24,leftBound,rightBound),top:clamp(topBound,topBound,bottomBound)};
   const x=anchor.left-stage.left, y=anchor.top-stage.top;
   // A node's action bar sits right under it, flush with its left edge (画布页改版设计稿 · Main 画板); above it only when there is no room below.
   if(toolbar){const below=y+anchor.height+gap;return {left:clamp(x,leftBound,rightBound),top:below<=bottomBound?Math.max(topBound,below):clamp(y-panel.height-gap,topBound,bottomBound)};}
-  let left=x+anchor.width/2-panel.width/2, top=y+anchor.height+gap;
-  if(top>bottomBound) {
-    // Prefer a clear side when there is no room below; never cover the node
-    // simply because the canvas is zoomed in.
-    if(x+anchor.width+gap+panel.width<=stage.width-16){left=x+anchor.width+gap;top=y;}
-    else if(x-gap-panel.width>=leftBound){left=x-panel.width-gap;top=y;}
-    else if(y-panel.height-gap>=topBound)top=y-panel.height-gap;
-  }
-  return {left:clamp(left,leftBound,rightBound),top:clamp(top,topBound,bottomBound)};
+  // A composer sits beside its node, right first (画布卡片方案 B), then below, left, above; it never covers the node
+  // when any side has room. With none, it keeps to the side with more room and the canvas moves the node aside.
+  const centered=x+anchor.width/2-panel.width/2;
+  if(x+anchor.width+gap+panel.width<=stage.width-16)return {left:Math.max(leftBound,x+anchor.width+gap),top:clamp(y,topBound,bottomBound)};
+  if(y+anchor.height+gap<=bottomBound)return {left:clamp(centered,leftBound,rightBound),top:Math.max(topBound,y+anchor.height+gap)};
+  if(x-gap-panel.width>=leftBound)return {left:x-panel.width-gap,top:clamp(y,topBound,bottomBound)};
+  if(y-panel.height-gap>=topBound)return {left:clamp(centered,leftBound,rightBound),top:y-panel.height-gap};
+  // A stage too narrow to ever hold the panel beside a node (a phone) keeps the old placement: centred, clamped into view.
+  if(stage.width-leftBound-16<panel.width+160)return {left:clamp(centered,leftBound,rightBound),top:clamp(y+anchor.height+gap,topBound,bottomBound)};
+  const roomRight=stage.width-(x+anchor.width), roomLeft=x;
+  return {left:roomRight>=roomLeft?Math.max(leftBound,rightBound):leftBound,top:clamp(y,topBound,bottomBound),cramped:true};
 }
 /** The canvas keeps at least this much width beside a docked panel (left tools included). */
 const CANVAS_MIN=56+480;
@@ -107,7 +111,10 @@ export function StudioFloatingPanel({open,title,anchorId,width=660,children,foot
       const stage={left:rect.left,top:rect.top,width:rect.width-dock,height:rect.height};
       setStageWidth(old=>Math.abs(old-stage.width)<1?old:stage.width);
       const anchor=anchorId?root.querySelector<HTMLElement>(`[data-id="${CSS.escape(anchorId)}"]`)?.getBoundingClientRect():undefined;
-      const next=floatingPosition(stage,utility?undefined:anchor,panel,toolbar);
+      const {cramped,...next}=floatingPosition(stage,utility?undefined:anchor,panel,toolbar);
+      // Once per opening: ask the canvas to move the node so the panel fits beside it.
+      if(cramped&&anchorId&&!manual&&!docked&&roomAsked.current!==anchorId){roomAsked.current=anchorId;
+        window.dispatchEvent(new CustomEvent('studio-command',{detail:{action:'make-room',nodeId:anchorId,width:Math.round(panel.width)}}));}
       if(!utility&&anchor&&!toolbar) {
         for(const sibling of root.querySelectorAll<HTMLElement>('.studio-floating-panel.is-utility')) {
           const other=sibling.getBoundingClientRect(),left=other.left-stage.left,top=other.top-stage.top;
@@ -126,6 +133,8 @@ export function StudioFloatingPanel({open,title,anchorId,width=660,children,foot
     return()=>{observer.disconnect();dockChange.disconnect();};
   },[open,embedded,root,anchorId,revision,manual,docked,utility,toolbar]);
   useEffect(()=>{setManual(undefined);},[anchorId]);
+  const roomAsked=useRef<string|undefined>(undefined);
+  useEffect(()=>{if(!open)roomAsked.current=undefined;},[open]);
   // A docked panel owns a strip of the stage: the stage learns its width so right-anchored toolbars and other
   // floating panels keep clear of it (CSS reads --studio-docked-panel on the stage root).
   useLayoutEffect(()=>{

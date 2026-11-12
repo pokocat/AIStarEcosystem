@@ -14,6 +14,11 @@ test('a large right-edge node falls above when neither side has room',()=>{
  const p=floatingPosition(stage,{left:700,top:570,width:550,height:200},{width:660,height:260});
  expect(p).toEqual({left:642,top:238});
 });
+test('a composer opens to the right of its node first, and with no clear side it keeps to the roomier edge and asks the canvas to make room',()=>{
+ expect(floatingPosition(stage,{left:300,top:200,width:320,height:420},{width:460,height:480})).toEqual({left:632,top:140});
+ const cramped=floatingPosition(stage,{left:300,top:120,width:700,height:640},{width:460,height:480});
+ expect(cramped).toEqual({left:842,top:72,cramped:true});
+});
 test('a node action bar sits right under its node, flush left (canvas redesign), and above it only without room; utility windows respect the tool margins',()=>{
  expect(floatingPosition(stage,{left:500,top:260,width:320,height:200},{width:380,height:48},true)).toEqual({left:500,top:412});
  expect(floatingPosition(stage,{left:500,top:600,width:320,height:200},{width:380,height:48},true)).toEqual({left:500,top:480});

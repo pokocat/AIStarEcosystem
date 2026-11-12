@@ -251,7 +251,7 @@ test('storyboard script creation stays in detail and canvas reference picking re
  let panel=await screen.findByRole('region',{name:'创作剧本'});
  expect(screen.getByRole('region',{name:'故事板'})).toBeDefined();
  const scriptId=snapshot.find(n=>n.metadata?.studio?.kind==='script')!.id;
- fireEvent.click(within(panel).getByRole('button',{name:'参考',exact:true}));
+ fireEvent.click(within(panel).getByRole('button',{name:'从画布选',exact:true}));
  fireEvent(window,new CustomEvent('studio-reference-selected',{detail:{nodeId:'product',targetId:scriptId}}));
  panel=await screen.findByRole('dialog',{name:'创作剧本'});
  fireEvent.click(within(panel).getByRole('button',{name:'完成参考选择'}));
@@ -369,7 +369,7 @@ test('closing and reopening the unified editor preserves an editable draft witho
  const videoPanel=await screen.findByRole('dialog',{name:'生成视频'});
  expect(screen.getByRole('dialog',{name:'创作任务'})).toBeDefined();
  // Result actions share the editor; image-only actions stay out of a video editor.
- expect(within(videoPanel).getByRole('button',{name:'参考',exact:true})).toBeDefined();
+ expect(within(videoPanel).getByRole('button',{name:'从画布选',exact:true})).toBeDefined();
  for(const label of ['加入 IP','替换图片'])expect(within(videoPanel).queryByRole('button',{name:label})).toBeNull();
  await screen.findByRole('textbox',{name:'创作要求'});
  fireEvent.change(screen.getByRole('textbox',{name:'创作要求'}),{target:{value:'镜头缓慢推进，保留人物服装'}});
@@ -419,8 +419,8 @@ test('a new canvas script resumes its saved draft and generation fills that same
  const input=await screen.findByRole('textbox',{name:'创作要求'});
  // Script creation can reference characters without image or video result actions.
  const scriptPanel=screen.getByRole('dialog',{name:'创作剧本'});
- expect(within(scriptPanel).getByRole('button',{name:'参考',exact:true})).toBeDefined();
- expect(within(scriptPanel).getByRole('button',{name:'IP 人物库'})).toBeDefined();
+ expect(within(scriptPanel).getByRole('button',{name:'从画布选',exact:true})).toBeDefined();
+ expect(within(scriptPanel).getByRole('button',{name:'人物库'})).toBeDefined();
  for(const label of ['生成视频','加入 IP','上传图片'])expect(within(scriptPanel).queryByRole('button',{name:label,exact:true})).toBeNull();
  fireEvent.change(input,{target:{value:'小紫给花浇水，两个镜头。'}});
  await waitFor(()=>expect(snapshot).toHaveLength(1));const id=snapshot[0].id;
@@ -516,7 +516,7 @@ test('reopening reconciles added/removed graph references with the saved draft, 
  render(<Host initialNodes={[{...node,metadata:{...node.metadata,studio:{kind:'shot',composerDraft:draft}}},a,b]} initialConnections={[{id:'new-edge',fromNodeId:'b',toNodeId:'v'}]}/>);openVideo();
  await waitFor(()=>expect(snapshot[0].metadata?.studio?.composerDraft?.referenceNodeIds).toEqual(['b']));
  expect((screen.getByRole('textbox',{name:'创作要求'}) as HTMLTextAreaElement).value).toBe('preserved direction');
- fireEvent.change(screen.getByRole('listbox',{name:'参考素材'}),{target:{value:'a'}});
+ fireEvent.click(screen.getByRole('checkbox',{name:'old frame'}));fireEvent.click(screen.getByRole('checkbox',{name:'new frame'}));
  await waitFor(()=>expect(connectionSnapshot.map(c=>c.fromNodeId)).toEqual(['a']));
  expect(snapshot[0].metadata?.storageKey).toBe('old.mp4');expect(api.submit).not.toHaveBeenCalled();
 });
@@ -762,7 +762,7 @@ test('canvas reference picking keeps the original draft and creates one real ups
  render(<Host initialNodes={[image,ref]}/>);
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'image',nodeId:'i'}}));
  fireEvent.change(screen.getByRole('textbox',{name:'创作要求'}),{target:{value:'保留角色，制作街头画面'}});
- fireEvent.click(screen.getByRole('button',{name:'参考',exact:true}));
+ fireEvent.click(screen.getByRole('button',{name:'从画布选',exact:true}));
  fireEvent(window,new CustomEvent('studio-reference-selected',{detail:{nodeId:'ref'}}));
  await waitFor(()=>expect(snapshot.find(n=>n.id==='i')?.metadata?.studio?.composerDraft).toMatchObject({prompt:'保留角色，制作街头画面',referenceNodeIds:['ref']}));
  expect(connectionSnapshot.filter(c=>c.fromNodeId==='ref'&&c.toNodeId==='i')).toHaveLength(1);
@@ -1084,7 +1084,7 @@ test('frame-intent confirmation opens the compact picker, preserves the requeste
  const question=await screen.findByRole('dialog',{name:'描述中提到了图片，但本次未使用图片'});
  expect(api.submit).not.toHaveBeenCalled();
  fireEvent.click(within(question).getByRole('button',{name:'改用「首尾帧」选图片'}));
- await waitFor(()=>expect(screen.getByRole('button',{name:'参考',exact:true}).getAttribute('aria-expanded')).toBe('true'));
+ await waitFor(()=>expect(screen.getByRole('button',{name:'添加参考素材'}).getAttribute('aria-expanded')).toBe('true'));
  expect(screen.getByRole('radio',{name:'首尾帧'}).getAttribute('aria-checked')).toBe('true');
  fireEvent.click(screen.getByRole('checkbox',{name:'起始图片'}));
  await waitFor(()=>expect(snapshot[0].metadata?.studio?.composerDraft?.video.mode).toBe('first_last_frame_video'));

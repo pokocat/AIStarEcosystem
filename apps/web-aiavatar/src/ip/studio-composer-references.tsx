@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Popover } from "antd";
 import { Check, Film, ImagePlus, Music2, Plus, X } from "lucide-react";
 import type { CanvasNodeData } from "@/canvas/types/canvas";
@@ -12,7 +12,8 @@ import { studioVideoPromptReferences } from "@/canvas-bridge/studio-video-refere
 function ReferenceVisual({node}:{node:CanvasNodeData}) {
   return node.type===CanvasNodeType.Image&&node.metadata?.content?<SignedImage src={node.metadata.content} storageKey={node.metadata.storageKey} alt=""/>:node.type===CanvasNodeType.Video?<Film size={22}/>:node.type===CanvasNodeType.Audio?<Music2 size={22}/>:<ImagePlus size={22}/>;
 }
-export function StudioReferencePicker({nodes,ids,onChange,accepts,picking,onCanvasPick,openRequest=0}:{nodes:CanvasNodeData[];ids:string[];onChange:(ids:string[])=>void;accepts:(ids:string[])=>boolean;picking:boolean;onCanvasPick:()=>void;openRequest?:number}) {
+/** `tile`: the trigger is the「＋」square at the end of the reference strip (画布卡片方案 B) instead of a text button. */
+export function StudioReferencePicker({nodes,ids,onChange,accepts,picking,onCanvasPick,openRequest=0,tile=false}:{nodes:CanvasNodeData[];ids:string[];onChange:(ids:string[])=>void;accepts:(ids:string[])=>boolean;picking:boolean;onCanvasPick:()=>void;openRequest?:number;tile?:boolean}) {
   const [open,setOpen]=useState(false),trigger=useRef<HTMLButtonElement>(null),panel=useRef<HTMLDivElement>(null);
   const priorOpenRequest=useRef(openRequest);
   useEffect(()=>{if(openRequest!==priorOpenRequest.current){priorOpenRequest.current=openRequest;if(openRequest)setOpen(true);}},[openRequest]);
@@ -28,17 +29,26 @@ export function StudioReferencePicker({nodes,ids,onChange,accepts,picking,onCanv
         {!usable.length&&<p>画布中暂无素材，请上传图片、视频或音频。</p>}</div>
       <button type="button" className="studio-canvas-reference-action" onClick={()=>{setOpen(false);onCanvasPick();}}>{picking?'完成参考选择':'在画布中选择'}</button>
     </div>}>
-    <button ref={trigger} type="button" className="studio-reference-add" aria-label={picking?'完成参考选择':'参考'} aria-expanded={open} onClick={()=>{if(picking)onCanvasPick();}}><Plus size={15}/>{picking?'完成选择':'参考'}</button>
+    {tile?<button ref={trigger} type="button" className="studio-reference-tile is-add" aria-label="添加参考素材" title="添加参考素材" aria-expanded={open}><Plus size={18}/></button>
+      :<button ref={trigger} type="button" className="studio-reference-add" aria-label={picking?'完成参考选择':'从画布选'} aria-expanded={open} onClick={()=>{if(picking)onCanvasPick();}}><Plus size={15}/>{picking?'完成选择':'从画布选'}</button>}
   </Popover>;
 }
-export function StudioReferenceStrip({nodes,ids,draft,spec,onRemove}:{nodes:CanvasNodeData[];ids:string[];draft:StudioVideoDraft;spec?:VideoStudioModeSpec;onRemove:(id:string)=>void}) {
+export function StudioReferenceStrip({nodes,ids,draft,spec,onRemove,add}:{nodes:CanvasNodeData[];ids:string[];draft:StudioVideoDraft;spec?:VideoStudioModeSpec;onRemove:(id:string)=>void;add?:ReactNode}) {
   const references=studioVideoPromptReferences(nodes,ids);
-  if(!ids.length)return null;
+  if(!ids.length&&!add)return null;
   return <div className="studio-reference-strip" aria-label="已选参考素材">{ids.map((id,index)=>{const node=nodes.find(n=>n.id===id);if(!node)return null;
     const label=spec?.needsFirstFrame&&draft.firstId===id?'首帧':spec?.needsLastFrame&&draft.lastId===id?'尾帧':references.find(ref=>ref.nodeId===id)?.label||'待补充';
     return <div className="studio-reference-tile" key={id} title={`${label} · ${node.title}`}>
       <ReferenceVisual node={node}/><span className="studio-reference-number">{index+1}</span><span className="studio-reference-role">{label}</span>
       <button type="button" aria-label={`移除参考 ${node.title}`} onClick={()=>onRemove(id)}><X size={12}/></button>
     </div>;
-  })}</div>;
+  })}{add}</div>;
+}
+/** Image (and single-frame video) references: one thumbnail per reference, numbered the way the prompt refers to them. */
+export function StudioImageReferenceStrip({nodes,ids,label,onRemove,add}:{nodes:CanvasNodeData[];ids:string[];label:(id:string,index:number)=>string;onRemove:(id:string)=>void;add?:ReactNode}) {
+  return <div className="studio-reference-strip" aria-label="已选参考素材">{ids.map((id,index)=>{const node=nodes.find(n=>n.id===id);if(!node)return null;const name=label(id,index);
+    return <div className="studio-reference-tile" key={id} title={`${name} · ${node.title}`}>
+      <ReferenceVisual node={node}/><span className="studio-reference-number">{name}</span>
+      <button type="button" aria-label={`移除参考 ${node.title}`} onClick={()=>onRemove(id)}><X size={12}/></button>
+    </div>;})}{add}</div>;
 }

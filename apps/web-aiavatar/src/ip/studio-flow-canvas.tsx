@@ -84,12 +84,14 @@ export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
   // and is drawn edge to edge once the box is in shape.
   const videoShaped = node.type === CanvasNodeType.Video && !!studioVideoSize(node);
   const videoFitted = videoShaped && studioVideoFitted(node);
+  // 空卡片画成虚线框（styles/studio-flow.css）：没有图、视频、配音，不是文字，没在生成，也不是失败。
+  const empty = !studioText && !mediaGenerating && node.type !== CanvasNodeType.Text && !(meta?.content || meta?.storageKey) && !(failed && !data.readOnly);
   if (data.processing) return <article className="studio-flow-card is-processing" aria-label={`${node.title} · 处理中`} aria-busy="true">
     {port('target')}
     <header className="studio-flow-drag"><Icon size={15}/><StudioNodeTitle title={node.title}/></header>
     <div className="studio-flow-media"><div className="studio-flow-placeholder" role="status"><span className="studio-flow-processing-spin" aria-hidden/><span>处理中</span></div></div>
   </article>;
-  return <article className={`studio-flow-card${node.type === CanvasNodeType.Video ? ' studio-flow-video-card' : ''}${videoFitted ? ' is-fitted' : ''}${selected ? ' is-selected' : ''}${aiMade ? ' is-ai' : ''}${generating ? ' is-generating' : ''}${data.fresh ? ' is-fresh' : ''}${data.areaCandidate ? ' is-area-candidate' : ''}`} aria-label={`${node.title} · ${node.type}`}>
+  return <article className={`studio-flow-card${node.type === CanvasNodeType.Video ? ' studio-flow-video-card' : ''}${videoFitted ? ' is-fitted' : ''}${selected ? ' is-selected' : ''}${aiMade ? ' is-ai' : ''}${generating ? ' is-generating' : ''}${data.fresh ? ' is-fresh' : ''}${data.areaCandidate ? ' is-area-candidate' : ''}${empty ? ' is-empty' : ''}`} aria-label={`${node.title} · ${node.type}`}>
     {!data.readOnly&&<NodeResizer isVisible={selected} minWidth={220} minHeight={140} keepAspectRatio={videoShaped} onResizeStart={() => window.dispatchEvent(new Event('studio-canvas-checkpoint'))} onResizeEnd={videoShaped ? () => data.onVideoResized?.(node.id) : undefined}/>}
     {port('target')}{port('source')}
     <header className="studio-flow-drag"><Icon size={15}/>{title}{aiMade ? <span className="studio-flow-ai-badge" title={generating ? 'AI 生成中' : 'AI 生成'}><AiMark size={10}/>{generating ? studioTaskNeedsReview(meta?.studio?.task) ? '需处理' : '生成中' : 'AI'}</span> : uploaded && <span className="studio-flow-origin">你上传的</span>}{data.uploading ? <small role="status">上传中…</small> : meta?.status === 'loading' && !mediaGenerating && <small title={studioTaskLabel(meta.studio?.task)}>{(meta.studio?.kind==='recreation'?studioTaskLabel(meta.studio?.task,true).replace('生成','拆解'):studioTaskLabel(meta.studio?.task,true))}</small>}</header>
@@ -297,6 +299,20 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     void flow.fitView({ nodes: [{ id: node.id }], padding: visibleFitPadding(shellRef.current, 80), maxZoom: 1, duration: 260 });
     setPendingFocus(undefined);
   }, [pendingFocus, flow, flow.viewportInitialized, project?.nodes, focusTick]);
+  // A node composer found no side of its node with room (studio-floating-panel.tsx 'make-room'): slide the canvas so the node
+  // sits left of where the panel goes, zooming out only when the node alone is wider than what is left. Never zooms in.
+  const makeRoom = useCallback((nodeId: string | undefined, width: number) => {
+    const shell = shellRef.current, stage = shell?.querySelector('.react-flow')?.getBoundingClientRect();
+    const el = nodeId ? shell?.querySelector(`.react-flow__node[data-id="${CSS.escape(nodeId)}"]`)?.getBoundingClientRect() : undefined;
+    if (!stage || !el || width <= 0) return;
+    const pad = visibleFitPadding(shell, 24), left = parseFloat(pad.left), right = stage.width - parseFloat(pad.right);
+    const room = right - 12 - width - 16 - left;
+    if (room < 80) return;
+    const v = flow.getViewport(), zoom = el.width > room ? v.zoom * room / el.width : v.zoom;
+    const fx = (el.left - stage.left - v.x) / v.zoom, fy = (el.top - stage.top - v.y) / v.zoom, w = el.width * zoom / v.zoom;
+    const target = Math.max(left, Math.min(el.left - stage.left, right - 12 - width - 16 - w));
+    void flow.setViewport({ x: target - fx * zoom, y: el.top - stage.top - fy * zoom, zoom }, { duration: 260 });
+  }, [flow]);
   const closePanel = useCallback(() => { setTextId(undefined); setRenameId(undefined); setContext(undefined); }, []);
   const modalContainer = () => document.querySelector<HTMLElement>('.studio-flow-shell')?.closest<HTMLElement>('.ip-surface') || document.body;
   const placeVisibleNode = (node: CanvasNodeData, existing: CanvasNodeData[], at?: {x:number;y:number}) => {
@@ -374,6 +390,9 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
       else if (detail.action === 'edit-text') { checkpoint(); setTextId(detail.nodeId); }
       else if (detail.action === 'focus') { if (detail.nodeId && current().nodes.some(n => n.id === detail.nodeId)) focusNode(detail.nodeId); }
       // 'reveal' only brings nodes into view (the assistant following its own work); the selection is left alone.
+      // A node composer found no side with room (studio-floating-panel.tsx): fit the node into the part of the stage left of
+      // the panel, never zooming in, so the panel opens beside the node instead of over it.
+      else if (detail.action === 'make-room') makeRoom(detail.nodeId, Number((detail as { width?: number }).width) || 0);
       else if (detail.action === 'reveal') { const ids = (detail.nodeId || '').split(',').filter(id => current().nodes.some(n => n.id === id)); if (ids.length) { void flow.fitView({ nodes: ids.map(id => ({ id })), padding: visibleFitPadding(shellRef.current, 48), maxZoom: 1, duration: 320 }); setFresh(new Set(ids)); clearTimeout(freshTimer.current); freshTimer.current = setTimeout(() => setFresh(new Set()), 2400); } }
       else setTextId(undefined);
     };
