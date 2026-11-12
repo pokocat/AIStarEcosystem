@@ -145,11 +145,17 @@ def drain_stop(config,expected,mode,env):
   inspect(expected,env)
  ops(expected,env,True)
  began=time.monotonic();deadline=began+config['drain_timeout_seconds'];good=0
+ minimum=0 if mode=='production' else config['drain_seconds']
  while time.monotonic()<deadline:
   status=ops(expected,env)
-  idle=api_locally_drained(status) if mode=='production' else status.get('drained') is True
+  if mode=='production':
+   idle=api_locally_drained(status) and not run(
+    ['ss','-Htn','state','established','( sport = :'+str(expected['port'])+' )']
+   ).strip()
+  else:
+   idle=status.get('drained') is True
   good=good+1 if idle else 0
-  if time.monotonic()-began>=config['drain_seconds'] and good>=3:break
+  if time.monotonic()-began>=minimum and good>=3:break
   time.sleep(2)
  else:raise RuntimeError('排空超时，禁止停止进程')
  run(['systemctl','stop',expected['unit']])

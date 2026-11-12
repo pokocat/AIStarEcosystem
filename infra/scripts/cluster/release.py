@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """ALB dual-active rolling release; no database import, DNS changes, or legacy-host fallback."""
 import argparse,datetime,hashlib,json,os,pathlib,re,select,shlex,subprocess,sys,time,tarfile
-from policy import config_guard,artifact_guard,alb_guard,require
+from policy import Refused,config_guard,artifact_guard,alb_guard,require
 ROOT=pathlib.Path(__file__).resolve().parents[3]
 DUAL_ACTIVE={'a':50,'b':50}
 SINGLE_NODE={'a':{'a':100,'b':0},'b':{'a':0,'b':100}}
@@ -126,8 +126,17 @@ finally:
   state=self.action(node,'inspect')
   require(not state['quiescing'],'待承流节点仍在排空')
   self.weights(SINGLE_NODE[node])
-  time.sleep(16)
-  self.probe(node)
+  if self.mode=='production':
+   for attempt in range(8):
+    try:
+     self.probe(node)
+     break
+    except Refused:
+     if attempt==7:raise
+     time.sleep(2)
+  else:
+   time.sleep(16)
+   self.probe(node)
   state=self.action(node,'inspect')
   require(not state['quiescing'],'承接流量的节点已在排空')
  def install(self,bundle,release,nodes):
@@ -248,8 +257,8 @@ def main():
  require(a.release.isalnum() and len(a.release)==16,'release标识错误')
  if a.bootstrap_stage:require(mode=='stage','初始化仅允许隔离演练')
  cluster=Cluster(config,mode);cluster.probe_file=a.probe_file
- # Fail before any mutation unless production has already been activated on BOTH nodes.
- if mode=='production':
+ # An upload-only run has no cutover preflight, so check production activation here.
+ if mode=='production' and a.prepare_only:
   for n in config['nodes']:cluster.action(n,'inspect')
  # Cluster-wide lock is held by a live SSH flock process, released when this process exits.
  lockcmd=shlex.join(['flock','-n','/run/lock/aistar-cluster-release.lock','sh','-c','printf locked; cat >/dev/null'])

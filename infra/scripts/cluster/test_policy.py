@@ -82,6 +82,19 @@ class ApiDrainTests(unittest.TestCase):
                     ('scheduled_active',1),('in_flight',False),('executor_active',None)]:
    with self.subTest(key=key,value=value):
     self.assertFalse(node.api_locally_drained({**status,key:value}))
+ def test_production_waits_for_three_empty_socket_samples_instead_of_a_fixed_delay(self):
+  import node
+  from unittest.mock import patch
+  status={'quiescing':True,'in_flight':0,'executor_active':0,'executor_queued':0,'scheduled_active':0,
+          'pending_work':{'material_video_job':7},'drained':False}
+  with patch.object(node,'inspect'),patch.object(node,'ops',return_value=status), \
+       patch.object(node.time,'monotonic',return_value=0),patch.object(node.time,'sleep'), \
+       patch.object(node,'run',side_effect=['open socket','','','','']) as run:
+   result=node.drain_stop({'drain_timeout_seconds':1800,'drain_seconds':180},
+                         {'port':8080,'unit':'aistar-api'},'production',{})
+  self.assertEqual(result['drain_scope'],'api-node')
+  self.assertEqual(run.call_count,5)
+  run.assert_called_with(['systemctl','stop','aistar-api'])
 
 class RollingReleaseTests(unittest.TestCase):
  def cluster(self,initial):
@@ -160,6 +173,23 @@ class RollingReleaseTests(unittest.TestCase):
    cluster.publish_to_standby('bundle','candidate')
   self.assertEqual(cluster.current_weights,{'a':0,'b':100})
   self.assertNotIn(('drain-stop','b'),cluster.calls)
+ def test_cutover_waits_only_until_vips_converge(self):
+  from unittest.mock import patch
+  cluster=self.cluster({'a':100,'b':0})
+  probe=cluster.probe
+  attempts=0
+  def eventual_probe(node):
+   nonlocal attempts
+   if node=='b':
+    attempts+=1
+    if attempts==1:
+     raise Refused('VIP still serves A')
+   return probe(node)
+  cluster.probe=eventual_probe
+  with patch('release.time.sleep') as sleep:
+   cluster.publish_to_standby('bundle','candidate')
+  sleep.assert_called_once_with(2)
+  self.assertEqual(cluster.current_weights,{'a':0,'b':100})
  def test_repeating_current_release_does_not_switch_again(self):
   cluster=self.cluster({'a':0,'b':100})
   cluster.releases['b']='candidate'
