@@ -65,6 +65,7 @@ const POLL_MS = 1500;
 const LANGUAGES = ["中文", "英文"];
 /** 一条视频最长多少秒（超过单段上限的分段做、再拼成一条，段数由服务端算，docs/studio-segmented-video.md）。 */
 const MAX_SECONDS = 60;
+const SEGMENTED_SCRIPT_MAX_CHARS = 32_000;
 const RECREATION = "reference-video-recreation";
 const RECREATION_IMAGE_GUIDES = [
   { label: "商品图", hint: "外观和包装", icon: ShoppingBag },
@@ -767,8 +768,9 @@ export function SceneVideoStudio() {
   let settings: ReturnType<typeof sceneVideoSettings> | undefined, planError = "";
   try { settings = chosenVideo && usedTier && plan ? sceneVideoSettings(chosenVideo, usedTier, plan, optimize) : undefined; }
   catch (e) { planError = e instanceof Error ? e.message : "素材与当前模型不匹配"; }
-  const promptChars = Array.from(recreation ? text : sentPrompt).length;
-  const promptLimit = chosenVideo ? studioVideoPromptMaxChars(chosenVideo, settings) : undefined;
+  const long = !recreation && !!contract && duration > contract.maxSeconds;
+  const promptChars = Array.from(long || recreation ? text.trim() : sentPrompt).length;
+  const promptLimit = long ? SEGMENTED_SCRIPT_MAX_CHARS : !recreation && chosenVideo ? studioVideoPromptMaxChars(chosenVideo, settings) : undefined;
   const requiresOptimization = !!contract && promptChars > contract.promptMaxChars;
   const videoQuote = chosenVideo && settings ? studioVideoQuote(chosenVideo, settings, usedDuration) : null;
   /**
@@ -794,7 +796,6 @@ export function SceneVideoStudio() {
   // 规格跟着选的视频模型走（画面比例、清晰度都按这个模型实际支持的给）。
   const ratios = contract?.tiers.find(t => t.tier === usedTier)?.canvases.map(c => c.aspectRatio).filter(r => r === "9:16" || r === "16:9") ?? ["9:16", "16:9"];
   // 三种入口共用任务工作区，后台按实际制作方式推进。
-  const long = !recreation && !!contract && duration > contract.maxSeconds;
   const shownDuration = recreation || long ? duration : usedDuration;
   // 按钮旁的价按服务端报价显示（折扣、模型赠款、付款账户），本地价表只在报价回来之前垫着，也作为提交时的上限。
   const priceQuery = useMemo(() => chosenVideo && settings && videoQuote != null && !recreation && !long && caps && !caps.mock
@@ -911,6 +912,7 @@ export function SceneVideoStudio() {
   const longBlocker = !long ? "" : scene?.images.required && !images.length ? `请添加${scene.images.label}`
     : scene?.textRequired && !text.trim() ? "请填写要求"
     : !text.trim() && !images.length && !character ? "请填写要求，或添加素材"
+    : promptChars > SEGMENTED_SCRIPT_MAX_CHARS ? `分段视频的脚本或要求最多 ${SEGMENTED_SCRIPT_MAX_CHARS} 字，需删减 ${promptChars - SEGMENTED_SCRIPT_MAX_CHARS} 字。`
     : blanks.length ? `脚本中还有待补充的内容：${[...new Set(blanks)].join("、")}。请替换为实际内容，不需要的请删除。`
     : longReady?.error ? longReady.error : !longReady?.price ? "正在计算价格…" : "";
 
@@ -1425,12 +1427,12 @@ export function SceneVideoStudio() {
           {!recreation && chipFacts.length > 0 && <div className="scene-fact-chips" role="group" aria-label="要写清楚的信息">{chipFacts.map(f =>
             <button key={f.label} type="button" onClick={() => addFact(f.label)}><Plus size={11} strokeWidth={1.6}/>{f.label}{!f.required && <small>选填</small>}</button>)}</div>}
           <footer>
-            <small className={!recreation && !long && promptLimit !== undefined && promptChars > promptLimit ? "is-over" : undefined}
+            <small className={promptLimit !== undefined && promptChars > promptLimit ? "is-over" : undefined}
               title={!recreation && !long
                 ? settings?.rewrite === "auto" && promptLimit !== contract?.promptMaxChars
                   ? `按用于优化的字数计算，优化稿最多 ${contract?.promptMaxChars} 字`
                   : layers ? "按用于生成的字数计算，略过「仅参考」内容" : undefined
-                : undefined}>{promptChars}{!recreation && !long && promptLimit !== undefined ? ` / ${promptLimit}` : ""}</small>
+                : undefined}>{promptChars}{promptLimit !== undefined ? ` / ${promptLimit}` : ""}</small>
             {!recreation && <button type="button" className="scene-ai-button" title={scripts.length ? "返回 AI 编导继续修改" : "由 AI 编导撰写分镜脚本"} onClick={openDirector}>
               {writing ? <Loader2 size={13} className="studio-gallery-spinner"/> : <AiMark size={12}/>}{scriptId ? "AI 改写" : "AI 编导"}</button>}
           </footer>

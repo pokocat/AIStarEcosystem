@@ -167,6 +167,27 @@ class SegmentedVideoFlowTest {
         executor.advance(row.getId());
     }
 
+    @Test void sixtySecondsAcceptsTheFullScriptUpToTheCharacterLimit() {
+        var catalog = new StudioSceneCatalog();
+        ReflectionTestUtils.setField(service, "catalog", catalog);
+        String fullScript = "甲".repeat(31_998) + "结束";
+        var materials = List.of(new SegmentedMaterial("n1", "商品图", "image"));
+        long cap = service.price("u", null, null, 60, "9:16", 1, false, false, true).cap();
+        var tooLong = new SegmentedVideoRequest("req1", "ecom-talking", fullScript + "。", true, null, "中文", 60, "9:16",
+                null, null, true, materials, cap, null);
+        assertTrue(assertThrows(BusinessException.class, () -> service.start("u", "p", tooLong)).getMessage().contains("32000"));
+        assertNull(row);
+
+        var request = new SegmentedVideoRequest("req1", "ecom-talking", fullScript, true, null, "中文", 60, "9:16",
+                null, null, true, materials, cap, null);
+        service.start("u", "p", request);
+        executor.advance(row.getId());
+        var scriptInput = last().segmented();
+        assertEquals(fullScript, scriptInput.scene().text());
+        assertEquals(4, scriptInput.segments().size());
+        assertTrue(catalog.segmentedScript(scriptInput.scene(), List.of(), true, false, false, null).user().contains(fullScript));
+    }
+
     @Test void priceSaysHowManySegmentsAndAllowsThreeAttemptsInTheCap() {
         var price = service.price("u", null, null, 46, "9:16", 0, false, false, true);
         assertEquals(List.of(15, 15, 11, 5), price.segments());

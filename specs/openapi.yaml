@@ -1587,7 +1587,7 @@ components:
       properties:
         clientRequestId: { type: string }
         sceneId: { type: string }
-        text: { type: string }
+        text: { type: string, maxLength: 32000, description: 分段编排读取的完整脚本或要求。每段视频的提示词按所选模型的合同单独校验。 }
         hasScript: { type: boolean }
         options: { type: object, additionalProperties: { type: string } }
         language: { type: string }

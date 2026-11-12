@@ -162,6 +162,24 @@ test("one click: the request is saved before it is sent, then the row follows th
   expect(screen.getByRole("button", { name: "停止生成" })).toBeTruthy();
 });
 
+test("a 60-second video checks the full script against the segmented limit", async () => {
+  const text = "光".repeat(31_998) + "结束";
+  longDraft({ sceneVideoState: { text: text + "。", options: {}, duration: 60, ratio: "9:16" } });
+  await open();
+  expect(await screen.findByText("32001 / 32000")).toBeTruthy();
+  expect(go().disabled).toBe(true);
+  expect(screen.getByText(/分段视频的脚本或要求最多 32000 字/)).toBeTruthy();
+  expect(api.start).not.toHaveBeenCalled();
+
+  cleanup();
+  longDraft({ sceneVideoState: { text, options: {}, duration: 60, ratio: "9:16" } });
+  await open();
+  expect(await screen.findByText("32000 / 32000")).toBeTruthy();
+  await waitFor(() => expect(go().disabled).toBe(false), { timeout: 5000 });
+  fireEvent.click(go());
+  await waitFor(() => expect(api.start).toHaveBeenCalledWith("IPP-V", expect.objectContaining({ text, duration: 60 })));
+});
+
 test("a refused start leaves no row and says why; the page keeps what was written", async () => {
   longDraft();
   api.start.mockRejectedValue(Object.assign(new Error("价格有变化"), { status: 409, code: "STUDIO_PRICE_CHANGED" }));

@@ -41,6 +41,7 @@ import java.util.*;
 public class SegmentedVideoService {
     /** 一条视频最长多少秒（AI 视频页的时长滑杆）。 */
     public static final int MAX_TOTAL_SECONDS = 60;
+    private static final int MAX_SCRIPT_CHARS = 32_000;
     private static final String SKILL = "video-generation";
     /** 分镜图查这两项（出视频方法的检查清单，时长和顺序查不了图）。 */
     private static final List<String> BOARD_CHECKS = List.of("subject-consistency", "scene-and-action");
@@ -91,7 +92,8 @@ public class SegmentedVideoService {
     public PlanExecution start(String userId, String projectId, SegmentedVideoRequest req) {
         if (req == null || req.clientRequestId() == null || !req.clientRequestId().matches("[A-Za-z0-9_-]{1,64}")) throw invalid("请求已失效，请刷新页面后重试");
         if (req.sceneId() == null || req.sceneId().isBlank()) throw invalid("请选择场景");
-        if (req.text() != null && req.text().length() > 16000) throw invalid("要求最多 16000 字");
+        if (req.text() != null && req.text().codePointCount(0, req.text().length()) > MAX_SCRIPT_CHARS)
+            throw invalid("分段视频的脚本或要求最多 " + MAX_SCRIPT_CHARS + " 字");
         int duration = req.duration() == null ? 0 : req.duration();
         String ratio = req.ratio() == null ? "9:16" : req.ratio();
         List<SegmentedMaterial> materials = req.materials() == null ? List.of() : req.materials();
