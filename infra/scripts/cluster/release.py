@@ -6,7 +6,7 @@ ROOT=pathlib.Path(__file__).resolve().parents[3]
 DUAL_ACTIVE={'a':50,'b':50}
 SINGLE_NODE={'a':{'a':100,'b':0},'b':{'a':0,'b':100}}
 class Cluster:
- def __init__(self,config,mode):self.config=config;self.mode=mode;self.expected=config['modes'][mode];self.events=[]
+ def __init__(self,config,mode):self.config=config;self.mode=mode;self.expected=config['modes'][mode];self.events=[];self.probe_file=None;self.runtime_probe=False
  def record(self,event,**kw):self.events.append({'utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'event':event,**kw});print(event,flush=True)
  def check_lease(self):
   lock=getattr(self,'release_lock',None)
@@ -65,6 +65,8 @@ finally:
   request={'host':self.expected['host'],'ip':ip,'path':path,'headers':headers}
   return json.loads(self.ssh('a',command,timeout=45,stdin=json.dumps(request)))
  def probe(self,node=None,authenticated=True,check_readiness=True):
+  if self.runtime_probe:
+   return self.probe_runtime(node,authenticated,check_readiness)
   # Each VIP is contacted directly with the expected SNI and protected headers.
   path=pathlib.Path(self.probe_file)
   require(path.stat().st_mode&0o777==0o600,'探针配置必须0600')
@@ -88,6 +90,23 @@ finally:
    observed_by_vip[ip]={observed}
   if node:self.record('alb_ready',node=node)
   return observed_by_vip
+ def probe_runtime(self,node,check_access_control,check_readiness):
+  # The same immutable application is already running. Inspect verifies its
+  # protected local deployment endpoint before and after public route checks.
+  require(check_access_control or check_readiness,'缺少有效的 ALB 探测类型')
+  accepted={node} if node else set(self.config['nodes'])
+  observed_by_vip={}
+  for ip in self.config['verify_ips']:
+   if check_readiness:
+    status,data,observed=self.request_vip(ip,'/internal/ready',{})
+    require(observed in accepted and status==200 and data.get('ready') is True,'运行配置更新的 ALB 就绪验收失败')
+   if check_access_control:
+    status,data,observed=self.request_vip(ip,'/api/admin/auth/me',{})
+    require(observed in accepted and status==401 and data.get('error',{}).get('code')=='UNAUTHORIZED',
+            '运行配置更新的 ALB 匿名鉴权验收失败')
+   observed_by_vip[ip]={observed}
+  if node:self.record('alb_ready',node=node,probe='runtime')
+  return observed_by_vip
  def probe_dual(self,authenticated=True):
   seen={ip:set() for ip in self.config['verify_ips']}
   expected_nodes=set(self.config['nodes'])
@@ -102,6 +121,12 @@ finally:
     return
   raise RuntimeError('双活验收失败：两个ALB VIP均须观测到双机响应')
  def probe_standby(self,node):
+  if self.runtime_probe:
+   url='http://127.0.0.1:'+str(self.expected['port'])+'/internal/ready'
+   command=shlex.join(['curl','--silent','--show-error','--fail','--max-time','12',url])
+   require(json.loads(self.ssh(node,command,timeout=20)).get('ready') is True,'备用节点就绪验收失败，保留原节点承流')
+   self.record('standby_runtime_ready',node=node)
+   return
   path=pathlib.Path(self.probe_file)
   require(path.stat().st_mode&0o777==0o600,'探针配置必须0600')
   secret=json.loads(path.read_text())
@@ -262,7 +287,7 @@ def main():
  require(a.release.isalnum() and len(a.release)==16,'release标识错误')
  if a.refresh_runtime:require(mode=='production' and not a.prepare_only,'运行配置更新仅用于正式备用机发布')
  if a.bootstrap_stage:require(mode=='stage','初始化仅允许隔离演练')
- cluster=Cluster(config,mode);cluster.probe_file=a.probe_file
+ cluster=Cluster(config,mode);cluster.probe_file=a.probe_file;cluster.runtime_probe=a.refresh_runtime and not a.probe_file
  # An upload-only run has no cutover preflight, so check production activation here.
  if mode=='production' and a.prepare_only:
   for n in config['nodes']:cluster.action(n,'inspect')
@@ -284,7 +309,7 @@ def main():
   elif a.bootstrap_stage:
    result={n:cluster.action(n,'start',a.release) for n in ['a','b']};cluster.weights(DUAL_ACTIVE);time.sleep(16);cluster.probe_dual(authenticated=False);cluster.record('bootstrap_complete')
   else:
-   require(a.probe_file,'缺少受保护TLS探针配置')
+   require(a.probe_file or a.refresh_runtime,'缺少受保护TLS探针配置')
    result=cluster.publish_to_standby(bundle,a.release,a.refresh_runtime) if mode=='production' else cluster.rolling(a.release)
   receipt={'completed_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'mode':mode,'events':cluster.events,'result':result,'database_changed':False,'dns_changed':False};pathlib.Path(a.receipt).write_text(json.dumps(receipt,indent=2))
  finally:release_lease(lock)

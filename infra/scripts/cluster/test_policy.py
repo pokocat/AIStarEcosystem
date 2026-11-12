@@ -223,6 +223,26 @@ class RollingReleaseTests(unittest.TestCase):
   with self.assertRaisesRegex(Refused,'仅可用当前承流制品'):
    cluster.publish_to_standby('bundle','candidate',refresh_runtime=True)
   self.assertEqual(cluster.calls,[('inspect','a')])
+ def test_runtime_probe_checks_readiness_and_admin_access_on_each_vip(self):
+  import release
+  from unittest.mock import Mock,call
+  cluster=release.Cluster({'nodes':{'a':{},'b':{}},'verify_ips':['first','second'],
+                           'modes':{'production':{}}},'production')
+  cluster.runtime_probe=True
+  cluster.request_vip=Mock(side_effect=[(200,{'ready':True},'b'),(401,{'error':{'code':'UNAUTHORIZED'}},'b')]*2)
+  self.assertEqual(cluster.probe('b'),{'first':{'b'},'second':{'b'}})
+  self.assertEqual(cluster.request_vip.call_args_list,
+                   [call(ip,path,{}) for ip in ('first','second') for path in ('/internal/ready','/api/admin/auth/me')])
+ def test_runtime_probe_refuses_wrong_node_or_admin_route_without_access_control(self):
+  import release
+  from unittest.mock import Mock
+  cluster=release.Cluster({'nodes':{'a':{},'b':{}},'verify_ips':['first'],
+                           'modes':{'production':{}}},'production')
+  cluster.runtime_probe=True
+  for admin_response in ((401,{'error':{'code':'UNAUTHORIZED'}},'a'),(200,{'success':True},'b')):
+   with self.subTest(admin_response=admin_response),self.assertRaises(Refused):
+    cluster.request_vip=Mock(side_effect=[(200,{'ready':True},'b'),admin_response])
+    cluster.probe('b')
  def test_quiescing_node_with_live_weight_refuses_to_roll(self):
   cluster=self.cluster({'a':50,'b':50})
   cluster.quiescing['b']=True
