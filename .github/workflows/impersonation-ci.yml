@@ -150,7 +150,7 @@ jobs:
           python3 - <<'PYCODE'
           import json,hashlib,os,pathlib,subprocess
           root=pathlib.Path('.');jar=root/'apps/server/target/ai-star-eco-server-1.0.0.jar'
-          proof={'sha':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'source_tree':subprocess.check_output(['git','rev-parse','HEAD:apps/server'],text=True).strip(),'jar_sha256':hashlib.sha256(jar.read_bytes()).hexdigest(),'tests_passed':True,'ci_run':os.environ['GITHUB_RUN_ID'],'backend_shards_verified':3,'business_tables':195,'postgres_flyway_version':'79'}
+          proof={'sha':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'source_tree':subprocess.check_output(['git','rev-parse','HEAD:apps/server'],text=True).strip(),'jar_sha256':hashlib.sha256(jar.read_bytes()).hexdigest(),'tests_passed':True,'ci_run':os.environ['GITHUB_RUN_ID'],'backend_shards_verified':3,'business_tables':195,'postgres_flyway_version':'80'}
           (jar.parent/'verified-backend.json').write_text(json.dumps(proof,indent=2))
           PYCODE
       - uses: actions/upload-artifact@v4

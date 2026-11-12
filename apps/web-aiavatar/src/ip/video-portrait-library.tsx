@@ -9,7 +9,7 @@ import { StudioPage } from './studio-page';
 import { useRequireAuth, PlatformGateScreen } from '@/components/hub/auth';
 import { formatDateTime } from '@/lib/datetime';
 import { uploadLibraryMedia } from '@/canvas-bridge/asset-library';
-import { PortraitFooterBar, PortraitGuide, PortraitMaterialTable, PortraitPersonModal, PortraitStatus, PORTRAIT_THEME, usePortraitFooter, usePortraitOverview } from './portrait-review-ui';
+import { PortraitFooterBar, PortraitGuide, PortraitMaterialTable, PortraitPersonModal, PortraitStatus, portraitNeedsAction, PORTRAIT_THEME, usePortraitFooter, usePortraitOverview } from './portrait-review-ui';
 import * as api from './api/video-portrait-library';
 import './video-portrait-library.css';
 
@@ -33,7 +33,7 @@ export function VideoPortraitLibrary() {
     </Space> },
   ];
   const confirmItem = overview?.items.find(item => item.id === confirming);
-  const ordered = [...(overview?.items || [])].sort((a, b) => Number(['needs_review', 'failed', 'revoked'].includes(b.status)) - Number(['needs_review', 'failed', 'revoked'].includes(a.status)));
+  const ordered = [...(overview?.items || [])].sort((a, b) => Number(portraitNeedsAction(b)) - Number(portraitNeedsAction(a)));
   return <ConfigProvider theme={PORTRAIT_THEME} button={{ autoInsertSpace: false }}><StudioPage title="人像核验" description="用于 Seedance Fast / Mini 视频创作" className="portrait-library-page" actions={<Button type="text" href="/assets">返回资产</Button>}>
     {error && <Alert type="error" title={error} showIcon action={<Button size="small" onClick={() => void act(changed)}>重试</Button>} />}
     {overview?.libraries.length === 0 && <Alert type="info" title="人像核验暂未开放" />}
@@ -53,7 +53,7 @@ export function VideoPortraitLibrary() {
       footer={<PortraitFooterBar footer={footer} after={confirmItem?.status === 'active' && <Button type="primary" onClick={() => setConfirming(undefined)}>完成</Button>}>
         {confirmItem?.status !== 'active' && <Button onClick={() => setConfirming(undefined)}>关闭</Button>}
       </PortraitFooterBar>}>
-      {confirmItem && overview && <PortraitGuide item={confirmItem} overview={overview} busy={busy} act={act} footer={footer.slots} />}
+      {confirmItem && overview && <PortraitGuide key={confirmItem.id} item={confirmItem} overview={overview} busy={busy} act={act} batchItems={overview.items} footer={footer.slots} />}
     </Modal>
     <PortraitPersonModal libraryId={personLibrary} overview={overview} initialPerson={verification} onClose={() => { setPersonLibrary(undefined); setVerification(undefined); }} onChanged={changed} />{modalHolder}
   </StudioPage></ConfigProvider>;

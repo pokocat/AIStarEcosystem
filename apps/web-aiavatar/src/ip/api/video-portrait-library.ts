@@ -1,9 +1,11 @@
 import { apiFetch } from "@ai-star-eco/api-client";
-import type { VideoPortraitOverview, VideoPortraitItem, VideoPortraitPerson, VideoPortraitReview, VideoPortraitPreparation } from "@ai-star-eco/types/video-portrait-library";
+import type { VideoPortraitOverview, VideoPortraitItem, VideoPortraitPerson, VideoPortraitReview, VideoPortraitPreparation, VideoPortraitDeclaration } from "@ai-star-eco/types/video-portrait-library";
 
 export const portraitOverview = () => apiFetch<VideoPortraitOverview>("/v1/ip-studio/asset-library");
 export const registerPortrait = (body: { libraryId: string; key: string; mediaType: string; label: string }) => apiFetch<VideoPortraitItem>("/v1/ip-studio/asset-library/items", { method: "POST", body });
-export const declarePortrait = (id: string, body: { kind: "virtual" | "person"; personId?: string; accepted: boolean; agreementVersion: string }) => apiFetch<VideoPortraitItem>(`/v1/ip-studio/asset-library/items/${encodeURIComponent(id)}/declaration`, { method: "POST", body });
+export const declarePortrait = (id: string, body: VideoPortraitDeclaration) => apiFetch<VideoPortraitItem>(`/v1/ip-studio/asset-library/items/${encodeURIComponent(id)}/declaration`, { method: "POST", body });
+export const declarePortraits = (ids: string[], declaration: VideoPortraitDeclaration) =>
+  apiFetch<VideoPortraitItem[]>("/v1/ip-studio/asset-library/items/declarations", { method: "POST", body: { ids, ...declaration } });
 export const refreshPortrait = (id: string) => apiFetch<VideoPortraitItem>(`/v1/ip-studio/asset-library/items/${encodeURIComponent(id)}/refresh`, { method: "POST" });
 export const startPortraitPerson = (body: { libraryId: string; name: string; clientRequestId: string; accepted: boolean; agreementVersion: string }) => apiFetch<VideoPortraitPerson>("/v1/ip-studio/asset-library/persons", { method: "POST", body });
 export const refreshPortraitPerson = (id: string) => apiFetch<VideoPortraitPerson>(`/v1/ip-studio/asset-library/persons/${encodeURIComponent(id)}/refresh`, { method: "POST" });

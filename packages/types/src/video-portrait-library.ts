@@ -1,9 +1,11 @@
 /** Official video portrait verification; vendor tokens and credentials never leave the server. */
 export type VideoPortraitItem = {
   id: string; libraryId: string; key: string; mediaType: string; label: string; previewUrl?: string;
-  status: 'needs_review' | 'uploading' | 'processing' | 'active' | 'failed' | 'revoked';
+  status: 'needs_review' | 'queued' | 'uploading' | 'processing' | 'active' | 'failed' | 'revoked';
   placement?: 'virtual' | 'person'; personId?: string; errorMessage?: string; updatedAt: string;
+  submissionUnknown?: boolean;
 };
+export type VideoPortraitDeclaration = { kind: 'virtual' | 'person'; personId?: string; accepted: boolean; agreementVersion: string };
 export type VideoPortraitPerson = {
   id: string; libraryId: string; name: string; status: 'verifying' | 'active' | 'failed' | 'revoked';
   verificationUrl?: string; expiresAt: string; createdAt: string;

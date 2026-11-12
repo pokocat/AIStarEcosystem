@@ -122,9 +122,13 @@ VideoAssetLibrary（适配器）         ← 新增接口
 
 受理未知或已有供应商任务号不进入此流程，继续原有对账。取消与 30 分钟过期只释放一次。核验期间不持数据库锁或连接；官方上传按素材库限频。长视频不把核验错误当成自动重试的生成失败。
 
+2026-11-12 本地改动：同一素材库的多张虚拟人像，或同一人的多张照片，可一次勾选并声明。服务端持久化「排队中」，按 Entry 每分钟 3 次的上限逐项送审。遇到火山明确限流时，原素材留在队列，整个素材库暂停发起送审 60 秒。后台查询已经送审的素材，全部通过后按原任务的等待规则自动继续。
+
 ## 8. 数据
 
 V75 保留 `video_asset_library` 和模型的 `asset_library_id`；V78 新增加密凭据列以及 `video_asset_person`、`video_asset_portrait`，不修改已执行迁移。项目名、AIGC 素材组等非敏感配置存在 `config_json`；AK/SK 与本人会话凭证加密，不出 DTO、审计或日志。
+
+MySQL / H2 的 V82 和 PostgreSQL 的 V80 增加素材库下次送审时间、素材下次审核查询时间和队列索引。送审使用现有素材记录，明确限流后保留原声明和排序时间。创建请求受理结果不明时保留待确认记录，避免重复入库。
 
 人像记录按 owner + library + storage key 隔离，保存官方资产 ID、入库状态、人物关联、声明版本与时间。真人组只能由官方本人核验结果取得。声明保留不可变记录；撤销后本地立即禁用后续引用，并删除官方素材组，处理迟到回调及并发上传的清理。
 
@@ -135,7 +139,8 @@ V75 保留 `video_asset_library` 和模型的 `asset_library_id`；V78 新增加
 | `GET /api/v1/ip-studio/asset-library` | 本人素材、人物及协议版本 |
 | `POST /api/v1/ip-studio/asset-library/check` | 官方模型引用的前置检查，不上传、不计费 |
 | `POST /api/v1/ip-studio/asset-library/items` | 登记本人素材，尚不上传官方 |
-| `POST /api/v1/ip-studio/asset-library/items/{id}/declaration` | 明确类型与授权后入库 |
+| `POST /api/v1/ip-studio/asset-library/items/{id}/declaration` | 单个素材确认授权并排队送审 |
+| `POST /api/v1/ip-studio/asset-library/items/declarations` | 多个素材确认同一类型与授权后一次入队 |
 | `POST /api/v1/ip-studio/asset-library/items/{id}/refresh` | 查询已有资产审核结果 |
 | `POST /api/v1/ip-studio/asset-library/persons` | 创建本人核验会话 |
 | `POST /api/v1/ip-studio/asset-library/persons/{id}/refresh` | 服务端确认本人核验结果 |

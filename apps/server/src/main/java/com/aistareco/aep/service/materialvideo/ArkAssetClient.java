@@ -18,6 +18,8 @@ import java.util.*;
 /** Official Ark control plane. No bearer tokens, signed URLs or H5 credentials in logs. */
 @Component
 public class ArkAssetClient {
+    static final String RATE_LIMITED = "VIDEO_ASSET_PROVIDER_RATE_LIMITED";
+    static final String SUBMISSION_UNKNOWN = "VIDEO_ASSET_SUBMISSION_UNKNOWN";
     private static final Logger log = LoggerFactory.getLogger(ArkAssetClient.class);
     private static final ObjectMapper JSON = new ObjectMapper();
     private final HttpClient http;
@@ -40,12 +42,19 @@ public class ArkAssetClient {
             var response = http.send(request.POST(HttpRequest.BodyPublishers.ofString(raw)).build(), HttpResponse.BodyHandlers.ofString());
             JsonNode root;
             try { root = JSON.readTree(response.body()); } catch (Exception invalid) { root = JSON.createObjectNode(); }
+            if (root == null) root = JSON.createObjectNode();
             JsonNode error = root.path("ResponseMetadata").path("Error");
             if (response.statusCode() / 100 != 2 || !error.isMissingNode() && !error.isNull() || root.path("Result").hasNonNull("Error") && !root.path("Result").has("Status")) {
                 // Retain provider diagnostics, recursively removing credentials and URLs before writing them.
                 log.warn("[ark-assets] action={} library={} status={} body={}", action, library.getId(), response.statusCode(), safe(root));
                 String code = error.path("Code").asText(root.path("Result").path("Error").path("Code").asText());
-                boolean missing = code.toLowerCase(Locale.ROOT).contains("notfound");
+                String lower = code.toLowerCase(Locale.ROOT);
+                if (response.statusCode() == 429 || lower.contains("flowlimit") || lower.contains("ratelimit")
+                        || lower.contains("requestlimit") || lower.contains("throttl") || "toomanyrequests".equals(lower))
+                    throw new BusinessException(HttpStatus.TOO_MANY_REQUESTS, RATE_LIMITED, "素材服务繁忙，请稍后查询。");
+                if ("CreateAsset".equals(action) && response.statusCode() >= 500)
+                    throw new BusinessException(HttpStatus.BAD_GATEWAY, SUBMISSION_UNKNOWN, "素材提交结果待确认。");
+                boolean missing = lower.contains("notfound");
                 throw new BusinessException(missing ? HttpStatus.NOT_FOUND : HttpStatus.BAD_GATEWAY,
                         missing ? "VIDEO_ASSET_REMOTE_NOT_FOUND" : "VIDEO_ASSET_PROVIDER_FAILED",
                         "素材服务暂时无法完成处理，请稍后重试。", null, "action="+action+" status="+response.statusCode()+" body="+safe(root));
@@ -57,7 +66,7 @@ public class ArkAssetClient {
     }
     private BusinessException unavailable(String action, Exception error) {
         log.warn("[ark-assets] action={} transport/config failure={}", action, error.getClass().getSimpleName());
-        return BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_ASSET_PROVIDER_FAILED",
+        return BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "CreateAsset".equals(action) ? SUBMISSION_UNKNOWN : "VIDEO_ASSET_PROVIDER_FAILED",
                 "素材服务暂时无法完成处理，请稍后重试。", "action="+action+" cause="+error.getClass().getSimpleName());
     }
     static String safe(JsonNode node) {

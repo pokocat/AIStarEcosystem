@@ -5,7 +5,7 @@ import { Alert, Avatar, Button, ConfigProvider, Flex, Image, Modal, Segmented, S
 import { UserRound } from 'lucide-react';
 import type { VideoPortraitItem, VideoPortraitReview } from '@ai-star-eco/types/video-portrait-library';
 import { finishPortraitReview, subscribePortraitReviews, type PortraitReviewRequest } from './portrait-review-events';
-import { PortraitFooterBar, PortraitGuide, portraitNeedsAction, portraitStatus, PORTRAIT_NO_FOOTER, PORTRAIT_THEME, usePortraitFooter, usePortraitOverview } from './portrait-review-ui';
+import { PortraitFooterBar, PortraitGuide, portraitNeedsAction, portraitItemStatus, PORTRAIT_NO_FOOTER, PORTRAIT_THEME, usePortraitFooter, usePortraitOverview } from './portrait-review-ui';
 import { normalizeStudioError } from './studio-errors';
 import * as api from './api/video-portrait-library';
 import './video-portrait-library.css';
@@ -74,14 +74,14 @@ export function PortraitReviewHost() {
     </PortraitFooterBar>}>
       <Flex vertical gap={20}>
         <Typography.Text type="secondary">含人脸的参考图需要先确认人像来源，才能用于生成视频。</Typography.Text>
-        {(error || contextError) && <Alert type="error" title={error || contextError} showIcon action={<Button size="small" onClick={() => void act(changed)}>重试</Button>} />}
+        {(error || contextError) && <Alert type="error" title={error || contextError} showIcon action={<Button size="small" onClick={() => void act(changed)}>刷新状态</Button>} />}
         {loading ? <Flex justify="center" className="portrait-loading"><Spin aria-label="正在加载核验素材" /></Flex> : <>
           {items.length > 1 && <Segmented<string> value={current} onChange={setCurrent} className="portrait-switcher" options={items.map(item => ({ value: item.id, label: <Flex vertical align="center" gap={4} className="portrait-switcher-item">
             {item.previewUrl ? <Image src={item.previewUrl} alt={item.label} width={40} height={50} preview={false} style={{ objectFit: 'cover', borderRadius: 6 }} /> : <Avatar shape="square" size={40} icon={<UserRound size={16} />} />}
-            <span>{portraitStatus[item.status] || '待确认'}</span>
+            <span>{portraitItemStatus(item)}</span>
           </Flex> }))} />}
           {items.map(item => <div key={item.id} hidden={item.id !== current}>
-            <PortraitGuide item={item} overview={overview} busy={busy} act={act} footer={item.id === current ? footer.slots : PORTRAIT_NO_FOOTER} />
+            <PortraitGuide item={item} overview={overview} busy={busy} act={act} batchItems={items} footer={item.id === current ? footer.slots : PORTRAIT_NO_FOOTER} />
           </div>)}
         </>}
       </Flex>

@@ -29,7 +29,7 @@ class VideoPortraitReviewServiceTest {
         when(portraits.itemsFor(eq("owner"),eq("ark"),anyCollection())).thenReturn(List.of(item("active")));when(portraits.reference("owner","ark","photo")).thenReturn("asset://photo");
     }
     private ArkPortraitLibrary.Item item(String state){return item("photo",state);}
-    private ArkPortraitLibrary.Item item(String key,String state){return new ArkPortraitLibrary.Item("item-"+key,"ark",key,"image","照片",null,state,"person","person",null,Instant.now().toString());}
+    private ArkPortraitLibrary.Item item(String key,String state){return new ArkPortraitLibrary.Item("item-"+key,"ark",key,"image","照片",null,state,"person","person",null,Instant.now().toString(),false);}
     @Test void preparingUsesOnlyOfficialModelAndChecksOwnershipWithoutUploading(){
         var ready=service.check("owner","model",List.of("photo","new-photo"));
         assertEquals(List.of("new-photo"),ready.candidateKeys());assertTrue(ready.items().isEmpty());verify(portraits).requireOwnedKeys("owner",List.of("photo","new-photo"));

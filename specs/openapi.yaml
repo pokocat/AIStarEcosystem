@@ -64,10 +64,11 @@ components:
         mediaType: {type: string}
         label: {type: string}
         previewUrl: {type: string}
-        status: {type: string, enum: [needs_review, uploading, processing, active, failed, revoked]}
+        status: {type: string, enum: [needs_review, queued, uploading, processing, active, failed, revoked]}
         placement: {type: string, enum: [virtual, person]}
         personId: {type: string}
         errorMessage: {type: string}
+        submissionUnknown: {type: boolean, description: 供应商受理结果待确认，不能重新提交该素材}
         updatedAt: {type: string, format: date-time}
     VideoPortraitPerson:
       type: object
@@ -18275,9 +18276,31 @@ paths:
     post:
       tags: [ipstudio]
       summary: 确认人像类型并提交官方审核
-      description: 须本人明确同意当前版本。真人须选择本人已核验人物；虚拟人像须声明不与自然人雷同。并发仅上传一次，入库异步，未到 Active 不可用于生成。
+      description: 须本人明确同意当前版本。真人须选择本人已核验人物；虚拟人像须声明不与自然人雷同。声明后进入后台队列，限流时保留排队，未到 Active 不可用于生成。
       requestBody: {required: true, content: {application/json: {schema: {type: object, required: [kind, accepted, agreementVersion], properties: {kind: {type: string, enum: [person, virtual]}, personId: {type: string}, accepted: {type: boolean}, agreementVersion: {type: string}}}}}}
-      responses: {'200': {description: 素材审核状态}, '400': {description: 需同意授权、需完成人物核验或提交频繁}, '404': {description: 非本人记录}}
+      responses: {'200': {description: 素材送审状态}, '400': {description: 需同意授权或完成人物核验}, '404': {description: 非本人记录}}
+  /v1/ip-studio/asset-library/items/declarations:
+    post:
+      tags: [ipstudio]
+      summary: 批量确认人像并排队送审
+      description: 同批素材必须属于本人及同一素材库，按同一人像类型声明。真人素材必须属于同一已核验人物。全部校验后入队，重复提交复用现有排队或审核记录。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids, kind, accepted, agreementVersion]
+              properties:
+                ids: {type: array, minItems: 1, maxItems: 12, items: {type: string}}
+                kind: {type: string, enum: [person, virtual]}
+                personId: {type: string}
+                accepted: {type: boolean}
+                agreementVersion: {type: string}
+      responses:
+        '200': {description: 各素材的送审状态, content: {application/json: {schema: {type: object, properties: {data: {type: array, items: {$ref: '#/components/schemas/VideoPortraitItem'}}}}}}}
+        '400': {description: 素材范围、声明或本人核验无效}
+        '404': {description: 包含非本人记录}
   /v1/ip-studio/asset-library/items/{id}/refresh:
     parameters: [{in: path, name: id, required: true, schema: {type: string}}]
     post:

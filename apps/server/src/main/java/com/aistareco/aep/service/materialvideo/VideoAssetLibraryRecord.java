@@ -23,4 +23,7 @@ public class VideoAssetLibraryRecord {
     @lombok.ToString.Exclude private String credentialEncrypted;
     @Column(nullable = false) private Instant createdAt;
     @Column(nullable = false) private Instant updatedAt;
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @Column(name = "portrait_upload_after", insertable = false, updatable = false)
+    private Instant portraitUploadAfter;
 }

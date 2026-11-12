@@ -16,6 +16,7 @@
 .portrait-guide-form > .ant-alert { margin-bottom: 20px; }
 .portrait-table-thumb { flex: none; }
 .portrait-consent { margin-bottom: 0; }
+.portrait-batch-label { max-width: 88px; }
 .portrait-terms-link { padding: 0; height: auto; font-size: inherit; line-height: inherit; vertical-align: baseline; text-decoration: underline; text-underline-offset: 3px; }
 .portrait-terms { margin: 8px 0 0; padding: 12px 14px; max-height: 168px; overflow-y: auto; border-radius: 8px; background: rgba(25, 34, 41, .04); font-size: 12px; line-height: 1.8; }
 .portrait-verify, .portrait-state { padding: 8px 0 4px; text-align: center; }

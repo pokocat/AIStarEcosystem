@@ -2,9 +2,9 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import type { VideoPortraitOverview, VideoPortraitItem } from '@ai-star-eco/types/video-portrait-library';
-const mocks = vi.hoisted(() => ({ overview: vi.fn(), review: vi.fn(), declare: vi.fn(), refresh: vi.fn(), resume: vi.fn(), report: vi.fn(), startPerson: vi.fn(), refreshPerson: vi.fn() }));
+const mocks = vi.hoisted(() => ({ overview: vi.fn(), review: vi.fn(), declare: vi.fn(), declareBatch: vi.fn(), refresh: vi.fn(), resume: vi.fn(), report: vi.fn(), startPerson: vi.fn(), refreshPerson: vi.fn() }));
 vi.mock('./studio-errors', () => ({ normalizeStudioError: (e: Error) => ({ message: e.message }), reportStudioError: mocks.report }));
-vi.mock('./api/video-portrait-library', () => ({ portraitOverview: mocks.overview, portraitReview: mocks.review, declarePortrait: mocks.declare, refreshPortrait: mocks.refresh, resumePortraitReview: mocks.resume, startPortraitPerson: mocks.startPerson, refreshPortraitPerson: mocks.refreshPerson }));
+vi.mock('./api/video-portrait-library', () => ({ portraitOverview: mocks.overview, portraitReview: mocks.review, declarePortrait: mocks.declare, declarePortraits: mocks.declareBatch, refreshPortrait: mocks.refresh, resumePortraitReview: mocks.resume, startPortraitPerson: mocks.startPerson, refreshPortraitPerson: mocks.refreshPerson }));
 import { PortraitGuide } from './portrait-review-ui';
 import { PortraitReviewHost } from './portrait-review-host';
 import { requestPortraitReview, finishPortraitReview } from './portrait-review-events';
@@ -75,23 +75,34 @@ it('shows automatic continuation and closes when the server resumes the original
   } finally { vi.useRealTimers(); }
 });
 it('continues a preflight after all photos are approved without a second Generate click', async () => {
-  const state = data();state.items = [{ ...item, status: 'processing' }, { ...item, id: 'second', status: 'processing' }];
+  const state = data();state.items = [{ ...item, status: 'processing' }, { ...item, id: 'second', status: 'queued' }];
   mocks.overview.mockImplementation(async () => ({ ...state, items: state.items.map(i => ({ ...i })) }));
-  mocks.refresh.mockImplementation(async id => {
-    const photo = state.items.find(i => i.id === id)!;
-    if (id === 'portrait' || mocks.refresh.mock.calls.length >= 3) photo.status = 'active';
-    return { ...photo };
-  });
   vi.useFakeTimers();
   try {
     render(<PortraitReviewHost />);let ready: boolean | undefined;
     await act(async () => { void requestPortraitReview([], state.items).then(result => { ready = result; }); });
-    await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
+    state.items[0].status = 'active';
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
     expect(ready).toBeUndefined();
-    await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
+    state.items[1].status = 'active';
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
     expect(ready).toBe(true);
+    expect(mocks.refresh).not.toHaveBeenCalled();
     expect(mocks.resume).not.toHaveBeenCalled();
   } finally { vi.useRealTimers(); }
+});
+it('declares only explicitly selected photos in one request', async () => {
+  const second = { ...item, id: 'second', label: '第二张参考图' };
+  const third = { ...item, id: 'third', label: '第三张参考图' };
+  render(<PortraitGuide item={item} overview={data()} busy={false} act={run} batchItems={[item, second, third]} />);
+  fireEvent.click(screen.getByRole('radio', { name: 'AI 虚拟人像' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: '第二张参考图' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: /我已阅读并同意/ }));
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '提交审核（2 张）' })); });
+  expect(mocks.declareBatch).toHaveBeenCalledExactlyOnceWith(['portrait', 'second'], {
+    kind: 'virtual', personId: undefined, accepted: true, agreementVersion: 'v1',
+  });
+  expect(mocks.declare).not.toHaveBeenCalled();
 });
 it('deferring verification closes the modal without resubmitting or losing the pending context', async () => {
   mocks.overview.mockResolvedValue(data());render(<PortraitReviewHost />);

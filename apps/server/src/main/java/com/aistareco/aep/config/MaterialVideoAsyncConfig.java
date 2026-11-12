@@ -3,6 +3,7 @@ package com.aistareco.aep.config;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 import java.util.concurrent.Executor;
 
@@ -46,5 +47,13 @@ public class MaterialVideoAsyncConfig {
         exec.setTaskDecorator(new MdcTaskDecorator());
         exec.initialize();
         return exec;
+    }
+
+    @Bean
+    public ThreadPoolTaskScheduler portraitAssetScheduler() {
+        var scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(2);
+        scheduler.setThreadNamePrefix("portrait-asset-");
+        return scheduler;
     }
 }
