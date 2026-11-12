@@ -48,19 +48,39 @@ public final class VideoStudioDtos {
                                             VideoStudioMediaLimit audio, int maxImagesWithVideo, int maxTotal,
                                             int minVisual, int maxAudioTotalSec) {}
 
+    /**
+     * 全能参考模式能不能「编辑原视频」（元素替换用，2026-11-12）：模型保留参考视频的画面，只按提示词改其中的东西。
+     * 只有厂商有专门的编辑任务、要另发参数的模型才配（火山方舟 Seedance 2.5：{@code omni_reference_task_type: edit}，
+     * 画幅 adaptive、时长 -1，参考视频 4–30 秒）；靠提示词就能编辑的模型（Seedance 2.0、H3）不配，元素替换照常用全能参考。
+     *
+     * @param minSourceSec  编辑时原视频最短秒数
+     * @param maxSourceSec  编辑时原视频最长秒数（每段原片的上限）
+     * @param followSource  true = 输出的画幅和时长跟原视频走（Seedance：ratio=adaptive、duration=-1），不发页面选的画幅和秒数
+     * @param requestFields 编辑任务另加的静态请求字段（不能是协议保留字段，也不能和端点的 requestFields 重名）
+     */
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record VideoStudioEditSpec(int minSourceSec, int maxSourceSec, boolean followSource,
+                                      Map<String, Object> requestFields) {}
+
     /** 某个模式要什么输入。{@code frameImage} / {@code references} 不适用时为 null。 */
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public record VideoStudioModeSpec(String mode, boolean needsFirstFrame, boolean needsLastFrame,
                                       VideoStudioMediaLimit frameImage, VideoStudioReferenceRules references,
                                       @JsonInclude(JsonInclude.Include.NON_NULL) String label,
-                                      @JsonInclude(JsonInclude.Include.NON_NULL) Boolean promptRequired) {
+                                      @JsonInclude(JsonInclude.Include.NON_NULL) Boolean promptRequired,
+                                      @JsonInclude(JsonInclude.Include.NON_NULL) VideoStudioEditSpec edit) {
         public VideoStudioModeSpec(String mode, boolean needsFirstFrame, boolean needsLastFrame,
                                    VideoStudioMediaLimit frameImage, VideoStudioReferenceRules references) {
-            this(mode, needsFirstFrame, needsLastFrame, frameImage, references, null, null);
+            this(mode, needsFirstFrame, needsLastFrame, frameImage, references, null, null, null);
         }
         public VideoStudioModeSpec(String mode, boolean needsFirstFrame, boolean needsLastFrame,
                                    VideoStudioMediaLimit frameImage, VideoStudioReferenceRules references, String label) {
-            this(mode, needsFirstFrame, needsLastFrame, frameImage, references, label, null);
+            this(mode, needsFirstFrame, needsLastFrame, frameImage, references, label, null, null);
+        }
+        public VideoStudioModeSpec(String mode, boolean needsFirstFrame, boolean needsLastFrame,
+                                   VideoStudioMediaLimit frameImage, VideoStudioReferenceRules references, String label,
+                                   Boolean promptRequired) {
+            this(mode, needsFirstFrame, needsLastFrame, frameImage, references, label, promptRequired, null);
         }
     }
 

@@ -87,7 +87,8 @@ public final class StudioPlanSteps {
             case "video-control" -> new RunRequest(requestId,nodeId,"video-control",prompt,
                     List.of(new Reference(null,null,null,keys.binding(settings.path("referenceBindings").path(0)),"clip",null)),
                     null,null,null,null,null,null,null,null,null,null,maxCost,null,null,null,null,null,billing,null,null,null,null,stage,executionId,null);
-            case "recreation" -> new RunRequest(requestId,nodeId,"recreation",prompt,null,null,null,null,null,null,null,null,"segments",
+            // cuts：元素替换只按切镜点切段，不看视频（StudioVideoTaskService）；其余都是分段拉片
+            case "recreation" -> new RunRequest(requestId,nodeId,"recreation",prompt,null,null,null,null,null,null,null,null,"cuts".equals(settings.path("mode").asText())?"cuts":"segments",
                     List.of(settings.path("sourceNodeId").asText()),null,maxCost,null,null,null,null,null,billing,
                     new RecreationSettings(settings.path("maxSegmentSec").asText("model"),settings.path("videoModel").asText()),null,null,null,stage,executionId,null);
             case "text" -> "plan-compile".equals(settings.path("purpose").asText())
@@ -151,7 +152,9 @@ public final class StudioPlanSteps {
         Long seed=video.hasNonNull("seed")?video.path("seed").asLong():null;
         // optimize=false（长视频页关了「智能优化」）：按原文出片，厂商自己的改写也关。规划出来的计划没有这个字段（校验时重建 settings），照旧。
         boolean off=video.path("optimize").isBoolean()&&!video.path("optimize").asBoolean();
-        return new VideoSettings(mode,video.path("resolutionTier").asText(),seed,first,last,references.isEmpty()?null:references,off&&spec.rewrite()?Boolean.FALSE:null,!off&&spec.rewrite()?"auto":null);
+        // edit=true（元素替换，模型配了编辑原视频）：编辑参考视频，不照它重新生成。和 optimize 一样由确认制作时按任务补上（校验会重建 settings）。
+        Boolean edit=video.path("edit").asBoolean(false)?Boolean.TRUE:null;
+        return new VideoSettings(mode,video.path("resolutionTier").asText(),seed,first,last,references.isEmpty()?null:references,off&&spec.rewrite()?Boolean.FALSE:null,!off&&spec.rewrite()?"auto":null,edit);
     }
     static List<JsonNode> ordered(JsonNode bindings) {
         List<JsonNode> out=new ArrayList<>();if(bindings.isArray())bindings.forEach(out::add);

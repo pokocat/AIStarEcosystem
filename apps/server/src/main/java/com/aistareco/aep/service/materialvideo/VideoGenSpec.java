@@ -27,10 +27,13 @@ import java.util.Map;
  *
  * <p>{@code optimizePrompt}：出片前要不要让厂商先改写提示词（聚算 H3 公开契约的 {@code optimizePrompt}）。
  * null = 不发这个字段，由厂商按默认处理（H3 默认改写）；false = 原文直接出片。只有视频生成区 / Studio 会写它。
+ *
+ * <p>{@code editSource}：编辑参考视频而不是照它重新生成（元素替换，2026-11-12）。只在端点的全能参考模式配了
+ * {@code edit} 时有效，协议按那份配置组包（Seedance 2.5：编辑任务 + 画幅 / 时长跟原视频）。null / false = 普通参考生成。
  */
 public record VideoGenSpec(String generationMode, String resolutionTier, Long seed,
                            String firstFrameKey, String lastFrameKey, List<Reference> references,
-                           Boolean optimizePrompt) {
+                           Boolean optimizePrompt, Boolean editSource) {
 
     public static final String KEY_GENERATION_MODE = "generation_mode";
     public static final String KEY_RESOLUTION_TIER = "resolution_tier";
@@ -41,6 +44,7 @@ public record VideoGenSpec(String generationMode, String resolutionTier, Long se
     public static final String KEY_REFERENCE_MEDIA_TYPE = "media_type";
     public static final String KEY_REFERENCE_KEY = "key";
     public static final String KEY_OPTIMIZE_PROMPT = "optimize_prompt";
+    public static final String KEY_EDIT_SOURCE = "edit_source";
 
     private static final ObjectMapper OM = new ObjectMapper();
 
@@ -57,7 +61,13 @@ public record VideoGenSpec(String generationMode, String resolutionTier, Long se
     /** 不指定提示词改写（厂商默认）。 */
     public VideoGenSpec(String generationMode, String resolutionTier, Long seed,
                         String firstFrameKey, String lastFrameKey, List<Reference> references) {
-        this(generationMode, resolutionTier, seed, firstFrameKey, lastFrameKey, references, null);
+        this(generationMode, resolutionTier, seed, firstFrameKey, lastFrameKey, references, null, null);
+    }
+
+    /** 普通参考生成（不编辑原视频）。 */
+    public VideoGenSpec(String generationMode, String resolutionTier, Long seed,
+                        String firstFrameKey, String lastFrameKey, List<Reference> references, Boolean optimizePrompt) {
+        this(generationMode, resolutionTier, seed, firstFrameKey, lastFrameKey, references, optimizePrompt, null);
     }
 
     public VideoGenSpec {
@@ -95,14 +105,26 @@ public record VideoGenSpec(String generationMode, String resolutionTier, Long se
             }
         }
         JsonNode optimize = vc.get(KEY_OPTIMIZE_PROMPT);
+        JsonNode edit = vc.get(KEY_EDIT_SOURCE);
         return new VideoGenSpec(text(vc, KEY_GENERATION_MODE), text(vc, KEY_RESOLUTION_TIER), longOrNull(vc.get(KEY_SEED)),
                 text(vc, KEY_FIRST_FRAME), text(vc, KEY_LAST_FRAME), refs,
-                optimize != null && optimize.isBoolean() ? optimize.booleanValue() : null);
+                optimize != null && optimize.isBoolean() ? optimize.booleanValue() : null,
+                edit != null && edit.isBoolean() && edit.booleanValue() ? Boolean.TRUE : null);
     }
 
     /** 同一份规格，只改「出片前要不要让厂商改写提示词」。 */
     public VideoGenSpec withOptimizePrompt(Boolean value) {
-        return new VideoGenSpec(generationMode, resolutionTier, seed, firstFrameKey, lastFrameKey, references, value);
+        return new VideoGenSpec(generationMode, resolutionTier, seed, firstFrameKey, lastFrameKey, references, value, editSource);
+    }
+
+    /** 同一份规格，改成编辑参考视频（元素替换）。 */
+    public VideoGenSpec withEditSource() {
+        return new VideoGenSpec(generationMode, resolutionTier, seed, firstFrameKey, lastFrameKey, references, optimizePrompt, Boolean.TRUE);
+    }
+
+    /** 编辑参考视频而不是照它重新生成。 */
+    public boolean edits() {
+        return Boolean.TRUE.equals(editSource);
     }
 
     /** 视频生成区与 Studio 写出的完整规格（有清晰度）。 */
@@ -116,7 +138,7 @@ public record VideoGenSpec(String generationMode, String resolutionTier, Long se
      */
     public boolean hasNativeOptions() {
         return generationMode != null || resolutionTier != null || seed != null
-                || lastFrameKey != null || !references.isEmpty() || optimizePrompt != null;
+                || lastFrameKey != null || !references.isEmpty() || optimizePrompt != null || edits();
     }
 
     /**
@@ -142,6 +164,7 @@ public record VideoGenSpec(String generationMode, String resolutionTier, Long se
         if (firstFrameKey != null) vc.put(KEY_FIRST_FRAME, firstFrameKey);
         if (lastFrameKey != null) vc.put(KEY_LAST_FRAME, lastFrameKey);
         if (optimizePrompt != null) vc.put(KEY_OPTIMIZE_PROMPT, optimizePrompt);
+        if (edits()) vc.put(KEY_EDIT_SOURCE, true);
         if (!references.isEmpty()) {
             ArrayNode arr = vc.putArray(KEY_REFERENCE_INPUTS);
             for (Reference r : references) {

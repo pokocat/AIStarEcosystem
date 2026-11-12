@@ -58,6 +58,9 @@ public class StudioPlanExecutionService {
     private ObjectProvider<com.aistareco.aep.ipstudio.dialogue.StudioExecutionSteering> steering;
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     private ObjectProvider<com.aistareco.aep.ipstudio.dialogue.StudioDialogueService> dialogue;
+    /** 元素替换：切完原片由代码排制作计划，要读所选视频模型的合同（是否配了编辑原视频）。 */
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private ObjectProvider<StudioCloneVideoPlan> clones;
     public StudioPlanExecutionService(IpPlanExecutionRepository executions,IpProjectService projects,StudioSkillRules skills,
             StudioPlanOutputs outputs,ObjectProvider<StudioPlanExecutor> executor,ObjectProvider<StudioPlanSource> sources,ObjectMapper mapper) {
         this.executions=executions;this.projects=projects;this.skills=skills;this.outputs=outputs;this.executor=executor;this.sources=sources;this.mapper=mapper;
@@ -233,33 +236,95 @@ public class StudioPlanExecutionService {
     void confirmVideoProduction(IpPlanExecution e,ObjectNode state,ObjectNode budget,String runId) {
         var loaded=nativePlan(e.getOwnerUserId(),e.getProjectId(),runId);
         if(loaded==null||!"production".equals(loaded.plan().path("stage").asText()))throw stale("没有可执行的制作安排，请在画布上查看分析结果");
+        startVideoProduction(e,state,budget,loaded);
+    }
+
+    /**
+     * 元素替换（2026-11-12）：分析阶段只切了原片（零积分），这里由代码直接排出制作计划：每段原片交给视频模型编辑、按开关检查、最后合成。
+     * 提示词是提示词库的同一段（stage-recreation-replace-edit），按用户的要求和这段的素材拼，不调模型写。
+     * 排出来的计划照样过 {@link StudioPlanValidator#validateSkillPlan}、报价和指纹，再按页面批准的上限开工（和模型排的计划同一条路）。
+     */
+    void confirmReplacementProduction(IpPlanExecution e,ObjectNode state,ObjectNode budget) {
+        var film=outputs.filmStudy(e,state.path("steps")).orElseThrow(()->stale("原片还没有切好，请重试这一步"));
+        JsonNode task=state.path("videoTask"),config=task.path("request").path("configuration");
+        var plans=clones==null?null:clones.getIfAvailable();
+        if(plans==null)throw stale("暂时无法安排制作，请稍后重试");
+        var model=plans.model(config.path("model").asText(null));
+        List<StudioRecreationTaskPlan.Material> materials=new ArrayList<>();
+        String source=task.path("request").path("sourceNodeId").asText();
+        for(JsonNode m:config.path("materials"))if(!"video".equals(m.path("slot").asText())&&!m.path("nodeId").asText().equals(source))
+            materials.add(new StudioRecreationTaskPlan.Material(m.path("nodeId").asText(),m.path("title").asText(),m.path("slot").asText()));
+        String studyNode=StudioPlanExecutionIds.nodeId(e.getId(),film.stage(),film.stepId());
+        Boolean optimize=config.path("optimize").isBoolean()?config.path("optimize").asBoolean():null;
+        // 编辑任务的画幅跟原片走（Seedance 2.5）：计划和合成都按原片的画幅，不按页面选的，免得合成时加黑边
+        var edit=StudioCloneVideoPlan.edits("replacement",model)?StudioCloneVideoPlan.edit(model):null;
+        String ratio=config.path("ratio").asText("9:16");
+        if(edit!=null&&edit.followSource()) {
+            JsonNode first=film.film().path("segments").path(0);
+            ratio=StudioCloneVideoPlan.closestRatio(model,config.path("tier").asText(null),first.path("width").asInt(0),first.path("height").asInt(0),ratio);
+        }
+        ObjectNode prepared=StudioRecreationTaskPlan.prepare(film.film(),materials,model.endpointId(),model.contract(),config.path("tier").asText(null),
+                ratio,optimize,null,0,config.path("text").asText(""),"replacement",studyNode+"-s");
+        if(config.path("autoCheck").isBoolean()&&!config.path("autoCheck").asBoolean())prepared.put("autoCheck",false);
+        ObjectNode answer=StudioRecreationTaskPlan.build(prepared,StudioRecreationTaskPlan.replacementAnswer(prepared,null),null);
+        var rules=StudioSkillRules.fromSnapshot(state.path("skill"));
+        List<String> allowed=new ArrayList<>();
+        state.path("canvasContextIds").forEach(v->allowed.add(v.asText()));
+        for(JsonNode u:prepared.path("units"))if(u.hasNonNull("clipNodeId"))allowed.add(u.path("clipNodeId").asText());
+        ObjectNode plan=StudioPlanValidator.validateSkillPlan(answer,rules,"production",allowed,StudioRecreationTaskPlan.MAX_MATERIALS);
+        plan.put("skillKey",rules.key()).put("skillVersion",rules.version()).put("stage","production").put("revision",1);
+        quoter.quote(e.getOwnerUserId(),plan);
+        quoter.estimate(e.getOwnerUserId(),plan);
+        plan.put("fingerprint",StudioPlanValidator.fingerprint(plan));
+        List<String> context=new ArrayList<>();state.path("canvasContextIds").forEach(v->context.add(v.asText()));
+        log.info("[plan-exec] replacement plan execution={} segments={} edit={} model={}",e.getId(),prepared.path("units").size(),
+                StudioCloneVideoPlan.edits("replacement",model),model.endpointId());
+        startVideoProduction(e,state,budget,new LoadedPlan(e.getPlanRunId(),plan,rules,context,1,null),ratio);
+    }
+
+    private void startVideoProduction(IpPlanExecution e,ObjectNode state,ObjectNode budget,LoadedPlan loaded) {
+        startVideoProduction(e,state,budget,loaded,null);
+    }
+
+    /** @param ratio 计划用的画幅；null = 页面选的 */
+    private void startVideoProduction(IpPlanExecution e,ObjectNode state,ObjectNode budget,LoadedPlan loaded,String ratio) {
+        String runId=loaded.planRunId();
         ObjectNode plan=loaded.plan().deepCopy();
         JsonNode config=state.path("videoTask").path("request").path("configuration");
         String kind=state.path("videoTask").path("kind").asText();
-        int seconds=0;
+        // 元素替换：模型配了编辑原视频就走厂商的编辑任务（StudioCloneVideoPlan#edits）；校验会重建 settings，这里和 optimize 一样补上
+        var plans=clones==null?null:clones.getIfAvailable();
+        boolean edit="replacement".equals(kind)&&plans!=null&&StudioCloneVideoPlan.edits(kind,plans.model(config.path("model").asText(null)));
+        int seconds=0,videos=0;
         for(JsonNode raw:plan.path("steps")) {
             ObjectNode step=(ObjectNode)raw;step.put("execution","auto");
             if("video".equals(step.path("operation").asText())) {
+                videos++;
                 ObjectNode settings=(ObjectNode)step.path("settings");
                 if(config.hasNonNull("model"))settings.put("model",config.path("model").asText());
-                settings.put("aspectRatio",config.path("ratio").asText("9:16"));
+                settings.put("aspectRatio",ratio!=null?ratio:config.path("ratio").asText("9:16"));
                 ((ObjectNode)settings.path("video")).put("resolutionTier",config.path("tier").asText());
                 if(config.path("optimize").isBoolean())((ObjectNode)settings.path("video")).put("optimize",config.path("optimize").asBoolean());
                 // 深度复刻总是先优化提示词（StudioCloneVideoPlan.optimize）
                 if("depth".equals(kind))((ObjectNode)settings.path("video")).put("optimize",true);
+                if(edit)((ObjectNode)settings.path("video")).put("edit",true);
                 seconds+=settings.path("durationSec").asInt();
             }
         }
         // 深度复刻 / 元素替换不做整段都是原作者账号片尾的那段（StudioRecreationTaskPlan），成片可以比页面上的时长短
         boolean shorter=StudioCloneVideoPlan.nativeClone(kind)&&seconds<config.path("duration").asInt();
-        if(seconds==0||!shorter&&Math.abs(seconds-config.path("duration").asInt())>1)throw stale("分镜时长与本次设置不一致，请在画布上查看后调整");
+        // 深度复刻 / 元素替换按原片的真实切点分段，每段各自取整到整秒，合计最多比原片多半秒一段
+        int tolerance=StudioCloneVideoPlan.nativeClone(kind)?Math.max(1,videos):1;
+        if(seconds==0||!shorter&&Math.abs(seconds-config.path("duration").asInt())>tolerance)throw stale("分镜时长与本次设置不一致，请在画布上查看后调整");
         quoter.quote(e.getOwnerUserId(),plan);
         long spent=budget.path("analysis").path("spent").asLong();
         long remaining=budget.path("analysis").path("approvedCap").asLong()-spent;
         long quoted=plan.path("budget").path("estimated").asLong();
         // 可省的检查（爆款复刻开场画面的检查）放不下页面批准的上限时，按名次从后往前省掉，省到放得下为止；视频和每段成片的检查不省。
         List<String> dropped=new ArrayList<>();
-        while(Math.multiplyExact(quoted,3)>remaining) {
+        // 元素替换按真实切镜点分段，段数可能比页面按时长均分报价时多一段（多一次检查）：只要求放得下这份报价，剩下的才给自动重做
+        int headroom="replacement".equals(kind)?1:3;
+        while(Math.multiplyExact(quoted,headroom)>remaining) {
             String id=StudioRecreationTaskPlan.dropOptionalCheck(plan);
             if(id==null)break;
             dropped.add(id);
@@ -267,7 +332,7 @@ public class StudioPlanExecutionService {
             quoted=plan.path("budget").path("estimated").asLong();
         }
         if(!dropped.isEmpty())log.info("[plan-exec] optional checks dropped to fit the page cap execution={} dropped={} quoted={} remaining={}",e.getId(),dropped,quoted,remaining);
-        if(Math.multiplyExact(quoted,3)>remaining)throw stale("分析已完成，制作费用超出上限，请在画布上查看方案后调整");
+        if(Math.multiplyExact(quoted,headroom)>remaining)throw stale("分析已完成，制作费用超出上限，请在画布上查看方案后调整");
         var normalized=new LoadedPlan(runId,plan,loaded.rules(),loaded.contextNodeIds(),loaded.revision(),null);
         appendSteps((ArrayNode)state.withArray("steps"),normalized,"production");
         state.set("canvasContextIds",mapper.valueToTree(loaded.contextNodeIds()));

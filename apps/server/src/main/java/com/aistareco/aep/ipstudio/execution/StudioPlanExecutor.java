@@ -451,6 +451,15 @@ public class StudioPlanExecutor {
                     catch(BusinessException failure) {needsUser(e,state,failure.getMessage());}
                     return;
                 }
+                // 元素替换：分析阶段只切原片，没有写提示词那一步；切完由代码排出制作计划
+                if("replacement".equals(state.path("videoTask").path("kind").asText())&&!hasPlanCompile(state)) {
+                    try {videoTaskExecutions.getObject().confirmReplacementProduction(e,state,budget);}
+                    catch(BusinessException failure) {
+                        log.info("[plan-exec] replacement plan not started execution={} code={} reason={}",e.getId(),failure.getCode(),failure.getMessage());
+                        needsUser(e,state,failure.getMessage());
+                    }
+                    return;
+                }
             }
             boolean announced=state.path("analysisAnnounced").asBoolean(false);
             e.setStatus(IpPlanExecution.NEEDS_USER);
@@ -861,6 +870,11 @@ public class StudioPlanExecutor {
     private static String stageLabel(String stage){return "production".equals(stage)?"制作阶段":"分析阶段";}
     private static List<String> titles(JsonNode plan){List<String> out=new ArrayList<>();plan.path("steps").forEach(s->out.add(s.path("title").asText()));return out;}
 
+    private static boolean hasPlanCompile(ObjectNode state) {
+        for(JsonNode step:PlanState.stageSteps(state,"analysis"))
+            if("text".equals(step.path("operation").asText())&&"plan-compile".equals(step.path("definition").path("settings").path("purpose").asText()))return true;
+        return false;
+    }
     record ProductionPlan(String runId,JsonNode plan) {}
     /** A production plan compiled by an analysis plan-compile step, read from that native run's output. */
     Optional<ProductionPlan> productionPlan(IpPlanExecution e,ObjectNode state) {

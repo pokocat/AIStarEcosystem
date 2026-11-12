@@ -5879,6 +5879,19 @@ components:
           description: 参考素材规则；该模式不用参考素材时为 null。
           nullable: true
           allOf: [{ $ref: '#/components/schemas/VideoStudioReferenceRules' }]
+        edit:
+          description: 能编辑原视频时的规则（元素替换用，只配在能带参考视频的模式上）；不配就是只能按参考生成。
+          nullable: true
+          allOf: [{ $ref: '#/components/schemas/VideoStudioEditSpec' }]
+    VideoStudioEditSpec:
+      type: object
+      description: 全能参考模式「编辑原视频」的规则（如 Seedance 2.5 的编辑任务）。
+      required: [minSourceSec, maxSourceSec, followSource, requestFields]
+      properties:
+        minSourceSec: { type: integer, description: 编辑时原视频最短秒数 }
+        maxSourceSec: { type: integer, description: 编辑时原视频最长秒数，元素替换每段原片的上限 }
+        followSource: { type: boolean, description: true 时输出的画幅和时长跟原视频一致 }
+        requestFields: { type: object, nullable: true, additionalProperties: true, description: 编辑任务另加的静态请求字段 }
     VideoStudioContract:
       type: object
       description: 一个模型的完整合同，由端点保存的视频规格和当前候选能力得出。

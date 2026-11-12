@@ -74,6 +74,20 @@ export interface VideoStudioModeSpec {
   frameImage: VideoStudioMediaLimit | null;
   /** 参考素材规则；此模式不使用参考素材时为 null。 */
   references: VideoStudioReferenceRules | null;
+  /** 能编辑原视频时的规则（元素替换用）；不配就是只能按参考生成。 */
+  edit?: VideoStudioEditSpec | null;
+}
+
+/** 全能参考模式「编辑原视频」的规则（服务端 VideoStudioEditSpec）。 */
+export interface VideoStudioEditSpec {
+  /** 编辑时原视频最短秒数。 */
+  minSourceSec: number;
+  /** 编辑时原视频最长秒数（元素替换每段原片的上限）。 */
+  maxSourceSec: number;
+  /** true：输出的画幅和时长跟原视频一致。 */
+  followSource: boolean;
+  /** 编辑任务另加的请求字段。 */
+  requestFields: Record<string, unknown> | null;
 }
 
 /** 一个模型的完整合同（服务端下发，前端不写死）。 */

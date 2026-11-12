@@ -249,7 +249,11 @@ public class StudioWorkflowService {
             runs.save(binding);
             return projects.toRunDto(binding);
         }
-        boolean text=List.of("text","script","storyboard","assistant","asset-extract","recreation","check").contains(request.operation());
+        // 元素替换的「切分原片」：只按真实切镜点切段，不调模型、零积分（StudioVideoTaskService）。只能由元素替换任务的这一步提交。
+        boolean cutsOnly="recreation".equals(request.operation())&&"cuts".equals(request.mode());
+        if(cutsOnly&&(executionBinding==null||executionBinding.step()==null||!"replacement".equals(executionBinding.state().path("videoTask").path("kind").asText())))
+            throw bad("STUDIO_INPUT_INVALID","切分原片只能由元素替换任务执行");
+        boolean text=!cutsOnly&&List.of("text","script","storyboard","assistant","asset-extract","recreation","check").contains(request.operation());
         if(fixtures.enabled()&&(skillPlan||check))throw bad("STUDIO_VISION_UNAVAILABLE","测试响应不支持制作方法规划和成片检查，请关闭测试响应");
         AiModelInvocationService.ResolvedEndpoint textEndpoint=null;
         PromptService.ResolvedPrompt resolved=null;
@@ -276,12 +280,13 @@ public class StudioWorkflowService {
             var target=IpDocs.node(projects.readDoc(project),request.nodeId());
             if(executionBinding==null&&(target==null||!"text".equals(target.path("type").asText())||!"recreation".equals(target.path("metadata").path("studio").path("kind").asText())))
                 throw bad("STUDIO_RECREATION_TARGET_INVALID","请先保存拆解报告再开始分析");
-            hypitMedia.requireReady();
+            // 切分原片只用 ffmpeg 找切镜、切片，不抽帧读图
+            if(!cutsOnly)hypitMedia.requireReady();
             recreationSource=StudioRecreation.snapshot(projects.readDoc(project),request.contextNodeIds(),projects,userId,recreationStorage);
         }
         // 深度复刻 / 元素替换要把每段原片交给视频模型：每段还不能短于参考视频的下限（StudioCloneVideoPlan.clip）
         boolean clipMethod=executionBinding!=null&&com.aistareco.aep.ipstudio.execution.StudioCloneVideoPlan.nativeClone(executionBinding.state().path("videoTask").path("kind").asText());
-        ObjectNode segmentCap=request.recreation()==null?null:segmentCap(request.recreation(),recreationSource,skill,clipMethod);
+        ObjectNode segmentCap=request.recreation()==null?null:segmentCap(request.recreation(),recreationSource,skill,clipMethod?executionBinding.state().path("videoTask").path("kind").asText():null);
         ObjectNode checkTarget=check?checkTarget(userId,projectId,request.check(),skill):null;
         var chatRate=!fixtures.enabled()&&text?chatRate(textEndpoint.endpoint().getId()):null;
         if(!fixtures.enabled()&&text&&chatRate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED","此模型暂未定价，请选择其他模型");
@@ -337,6 +342,7 @@ public class StudioWorkflowService {
             }
         }
         if(segmentCap!=null)execution.set("segmentCap",segmentCap);
+        if(cutsOnly)execution.put("cutsOnly",true);
         if(videoUnderstand!=null)execution.put("videoUnderstand",true);
         if(checkTarget!=null)execution.set("check",checkTarget);
         if(skill!=null)execution.set("skill",com.aistareco.aep.ipstudio.execution.StudioSkillRules.snapshot(skill));
@@ -711,9 +717,9 @@ public class StudioWorkflowService {
     }
 
     private void validateCreativeRequest(RunRequest request) {
-        if("recreation".equals(request.operation()) && (request.scriptEdit()!=null||request.textEdit()!=null||Boolean.TRUE.equals(request.readVisuals())||request.settings()!=null||request.episodeNo()!=null||request.history()!=null||request.references()!=null&&!request.references().isEmpty()||request.mode()!=null&&!"segments".equals(request.mode())||request.packaging()!=null))
+        if("recreation".equals(request.operation()) && (request.scriptEdit()!=null||request.textEdit()!=null||Boolean.TRUE.equals(request.readVisuals())||request.settings()!=null||request.episodeNo()!=null||request.history()!=null||request.references()!=null&&!request.references().isEmpty()||request.mode()!=null&&!Set.of("segments","cuts").contains(request.mode())||request.packaging()!=null))
             throw bad("STUDIO_INPUT_INVALID","复刻创作只接受所选参考视频和分析要求");
-        if("segments".equals(request.mode())&&!"recreation".equals(request.operation()))throw bad("STUDIO_INPUT_INVALID","分段模式只能用于视频拉片");
+        if(Set.of("segments","cuts").contains(Objects.toString(request.mode(),""))&&!"recreation".equals(request.operation()))throw bad("STUDIO_INPUT_INVALID","分段模式只能用于视频拉片");
         if("asset-extract".equals(request.operation())) {
             if(request.scriptEdit()==null||request.scriptEdit().markdown()==null||request.scriptEdit().markdown().isBlank()||request.scriptEdit().markdown().length()>48000)
                 throw bad("STUDIO_INPUT_INVALID","请提供已保存的剧本文字，最多 48000 字");
@@ -724,7 +730,7 @@ public class StudioWorkflowService {
         // 看引用的图写字：创作助手，以及普通文字创作（如 AI 视频页的编导看商品图写脚本）。模型能不能看图在下面按端点能力判。
         if(Boolean.TRUE.equals(request.readVisuals())&&!Set.of("assistant","text").contains(request.operation()))throw bad("STUDIO_INPUT_INVALID","读取画面只能用于创作助手和文字创作");
         if(request.episodeNo()!=null && (request.episodeNo()<1 || request.episodeNo()>50)) throw bad("STUDIO_EPISODE_INVALID","请选择有效分集");
-        if(request.mode()!=null && !Set.of("general","original","adapt","director","segments").contains(request.mode())) throw bad("STUDIO_MODE_INVALID","请选择创作模式");
+        if(request.mode()!=null && !Set.of("general","original","adapt","director","segments","cuts").contains(request.mode())) throw bad("STUDIO_MODE_INVALID","请选择创作模式");
         if(request.contextNodeIds()!=null && (request.contextNodeIds().size()>16 || request.contextNodeIds().stream().anyMatch(Objects::isNull))) throw bad("STUDIO_CONTEXT_LIMIT","最多引用 16 个画布对象");
         if(request.history()!=null) {
             if(request.history().size()>16) throw bad("STUDIO_HISTORY_LIMIT","对话过长，请开始新对话");
@@ -823,7 +829,7 @@ public class StudioWorkflowService {
     private void validateSkillRequest(RunRequest request,boolean skillPlan,boolean check) {
         String operation=request.operation();
         if(request.stage()!=null&&!com.aistareco.aep.ipstudio.execution.StudioSkillRules.STAGES.contains(request.stage()))throw bad("STUDIO_INPUT_INVALID","请选择分析或制作阶段");
-        if(request.recreation()!=null&&!("recreation".equals(operation)&&"segments".equals(request.mode())))throw bad("STUDIO_INPUT_INVALID","段长上限只能用于视频拉片");
+        if(request.recreation()!=null&&!("recreation".equals(operation)&&Set.of("segments","cuts").contains(Objects.toString(request.mode(),""))))throw bad("STUDIO_INPUT_INVALID","段长上限只能用于视频拉片");
         if(request.check()!=null&&!check)throw bad("STUDIO_INPUT_INVALID","检查目标只能用于成片检查");
         if(request.dialogue()!=null) {
             requireText(request.dialogue().threadId(),64,"对话");
@@ -849,7 +855,7 @@ public class StudioWorkflowService {
      * Segment cap for film study: "model" reads the selected video model's contract maximum (H3 = 15 s); an explicit
      * number may not exceed it. A source that cannot fit within maxSegments × cap is refused here, before any hold.
      */
-    private ObjectNode segmentCap(RecreationSettings settings,JsonNode source,com.aistareco.aep.ipstudio.execution.StudioSkillRules.Rules skill,boolean clipMethod) {
+    private ObjectNode segmentCap(RecreationSettings settings,JsonNode source,com.aistareco.aep.ipstudio.execution.StudioSkillRules.Rules skill,String clipMethod) {
         if(settings.videoModel()==null||settings.videoModel().isBlank())throw bad("STUDIO_INPUT_INVALID","请选择用来生成分段视频的模型");
         var model=(studioVideo==null?List.<com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioModel>of():studioVideo.models()).stream()
                 .filter(m->settings.videoModel().equals(m.endpointId())).findFirst()
@@ -873,7 +879,7 @@ public class StudioWorkflowService {
         ObjectNode out=mapper.createObjectNode().put("maxSegmentSec",cap).put("requested",requested).put("maxSegments",maxSegments)
                 .put("videoModel",model.endpointId()).put("minSegmentSec",referenceMin);
         out.putObject("contract").put("minSeconds",contract.minSeconds()).put("maxSeconds",contract.maxSeconds());
-        if(clipMethod)out.put("clipMinSec",com.aistareco.aep.ipstudio.execution.StudioCloneVideoPlan.clip(model).minSec());
+        if(clipMethod!=null)out.put("clipMinSec",com.aistareco.aep.ipstudio.execution.StudioCloneVideoPlan.clip(model,clipMethod).minSec());
         return out;
     }
 
@@ -1162,6 +1168,10 @@ public class StudioWorkflowService {
         return switch(request.operation()) {
             case "assemble" -> 0L;
             case "video-control" -> {depthVideo.requireConfigured();yield 0L;}
+            case "recreation" -> {
+                if("cuts".equals(request.mode()))yield 0L;
+                yield textQuote(request);
+            }
             case "image" -> {
                 var compiled=imageRuns.compileExplicit(userId,new IpRunService.IpGenerateRequest(request.nodeId(),request.prompt()==null||request.prompt().isBlank()?"图片":request.prompt(),
                         List.of(),request.count()==null?1:request.count(),request.size()==null?imageSize(request):request.size(),request.model()));
@@ -1181,15 +1191,17 @@ public class StudioWorkflowService {
                 // 先改写提示词的步骤把改写的冻结上限也算进去：制作计划的预算按它核对。
                 yield Math.addExact(Math.multiplyExact(unit,(long)(request.count()==null?1:request.count())),request.video().rewrite()==null?0:videoRewriteHold());
             }
-            default -> {
-                AiModelInvocationService.ResolvedEndpoint endpoint=videoUnderstandEndpoint(request);
-                if(endpoint==null)endpoint=scenePolicies!=null?scenePolicies.resolve("studio","script",request.model(),pricing.ipIdentity()).resolved()
-                        :models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,request.model(),"studio").orElseThrow(()->new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","所选文本模型不可用"));
-                var rate=chatRate(endpoint.endpoint().getId());
-                if(rate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED","此模型暂未定价，请选择其他模型");
-                yield rate.maxCost();
-            }
+            default -> textQuote(request);
         };
+    }
+
+    private long textQuote(RunRequest request) {
+        AiModelInvocationService.ResolvedEndpoint endpoint=videoUnderstandEndpoint(request);
+        if(endpoint==null)endpoint=scenePolicies!=null?scenePolicies.resolve("studio","script",request.model(),pricing.ipIdentity()).resolved()
+                :models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,request.model(),"studio").orElseThrow(()->new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","所选文本模型不可用"));
+        var rate=chatRate(endpoint.endpoint().getId());
+        if(rate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED","此模型暂未定价，请选择其他模型");
+        return rate.maxCost();
     }
 
     /** 一般用量（千 Token）。提示词改写实测约 3 积分；写稿带思考过程，输出多得多（线上编导 9 积分，见 AGENTS 默认文字模型一节）。 */

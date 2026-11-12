@@ -85,9 +85,12 @@ public class StudioWorkflowWorker {
         if(queue!=null && !Set.of("studio-assemble","studio-video-control").contains(run.getKind())) {
             JsonNode input;
             try {input=mapper.readTree(run.getInputJson());}catch(Exception e){finish(id,null,e);return;}
-            var admission=queue.acquire(AiGenerationQueueService.WORKFLOW,id,queue.endpointFor(AiModelPurpose.DAP_PERSONA,input.path("_exec").path("endpointId").asText(null)),false);
-            if(admission==AiGenerationQueueService.Admission.WAITING){queued(id);return;}
-            if(admission==AiGenerationQueueService.Admission.BUSY)return;
+            // 元素替换的「切分原片」不调模型，不排模型的队
+            if(!input.path("_exec").path("cutsOnly").asBoolean(false)) {
+                var admission=queue.acquire(AiGenerationQueueService.WORKFLOW,id,queue.endpointFor(AiModelPurpose.DAP_PERSONA,input.path("_exec").path("endpointId").asText(null)),false);
+                if(admission==AiGenerationQueueService.Admission.WAITING){queued(id);return;}
+                if(admission==AiGenerationQueueService.Admission.BUSY)return;
+            }
         }
         var context=queue==null?null:queue.bind(AiGenerationQueueService.WORKFLOW,id);
         AiModelInvocationService.AiModelResponse lastReply=null;
@@ -104,12 +107,14 @@ public class StudioWorkflowWorker {
             boolean mock=input.path("mock").asBoolean();
             ObjectNode output=preservedOutput; output.put("mock",mock);
             String operation=input.path("operation").asText();
-            if("recreation".equals(operation)&&!mock) {
+            boolean cutsOnly=input.path("_exec").path("cutsOnly").asBoolean(false);
+            if("recreation".equals(operation)&&!mock&&!cutsOnly) {
                 if(!progress(id,12,"recreation.audio"))return;
                 var audio=StudioSourceAudio.extract(input.path("_exec").path("recreationSource"),input.path("_exec").path("resumeSourceAudio"),storage,run.getOwnerUserId());
                 output.set("sourceAudio",audio);
                 if(!checkpointSourceAudio(id,audio))return;
             }
+            if("recreation".equals(operation)&&cutsOnly) {cutsStudy(id,run,input,output);return;}
             if("recreation".equals(operation)&&"segments".equals(input.path("mode").asText())) {
                 filmStudy(id,run,input,output);return;
             }
@@ -372,6 +377,44 @@ public class StudioWorkflowWorker {
         output.putObject("billing").put("inputTokens",used[0][0]).put("outputTokens",used[0][1]).put("credits",rate.settle(used[0][0],used[0][1])).put("inputCreditsPerK",rate.inputCreditsPerK()).put("outputCreditsPerK",rate.outputCreditsPerK());
         finish(id,output,null);
     }
+    /**
+     * 元素替换的「切分原片」（2026-11-12）：不看视频、不调模型，按 ffmpeg 找到的真实切镜点把原片切成几段，
+     * 每段不超过所选模型编辑（或参考视频）的时长上限、尽量不短于下限，比上限还长的镜头均分。产物和拉片 v2 同一种形状
+     * （filmStudy：breakdown 只有按切镜建的空白镜头 + 切好的 segments），之后由代码排制作计划。零积分。
+     */
+    private void cutsStudy(String id,IpRun run,JsonNode input,ObjectNode output) throws Exception {
+        var exec=input.path("_exec");
+        var source=exec.path("recreationSource");double duration=source.path("durationSec").asDouble();
+        var capNode=exec.path("segmentCap");
+        double max=capNode.path("maxSegmentSec").asDouble(15),min=Math.max(capNode.path("contract").path("minSeconds").asDouble(0),capNode.path("clipMinSec").asDouble(0));
+        int maxUnits=capNode.path("maxSegments").asInt(8);
+        ObjectNode study=mapper.createObjectNode();study.set("source",source.deepCopy());study.put("strategy","cuts-v1");
+        java.nio.file.Path directory=java.nio.file.Files.createTempDirectory("studio-cuts-");
+        try {
+            java.nio.file.Path original=storage.openForRead(source.path("storageKey").asText());
+            if(!progress(id,15,"film.cuts"))return;
+            var cuts=StudioVideoBreakdown.detectCuts(original,duration);
+            ObjectNode breakdown=StudioVideoBreakdown.normalize(mapper.createObjectNode(),duration,cuts);
+            study.set("breakdown",breakdown);
+            var segments=study.putArray("segments");
+            for(var unit:StudioVideoBreakdown.units(breakdown,max,min,maxUnits))
+                segments.addObject().put("no",unit.no()).put("title",unit.title()).put("startSec",unit.startSec()).put("endSec",unit.endSec())
+                        .put("firstShot",unit.firstShot()).put("lastShot",unit.lastShot()).put("status","pending");
+            log.info("[studio-workflow] cuts study run={} duration={} cuts={} segments={} max={} min={}",id,duration,cuts.size(),segments.size(),max,min);
+            for(int i=0;i<segments.size();i++) {
+                ObjectNode segment=(ObjectNode)segments.get(i);
+                if(!checkpointFilmStudy(id,20+i*75/segments.size(),"film.cut",study,mapper.missingNode()))return;
+                try{StudioFilmStudy.cut(original,directory,segment,storage,run.getOwnerUserId());}
+                catch(Exception error){segment.put("error","这段原片没有切好，可以重试");throw error;}
+                segment.put("status","done");
+            }
+            output.set("filmStudy",study);output.put("text",StudioFilmStudy.summary(study));
+            finish(id,output,null);
+        } finally {
+            try(var paths=java.nio.file.Files.walk(directory)){for(java.nio.file.Path path:paths.sorted(java.util.Comparator.reverseOrder()).toList())java.nio.file.Files.deleteIfExists(path);}catch(Exception ignored){}
+        }
+    }
+
     /**
      * 拉片 v2：整条视频交给能看视频的模型，一次写出逐镜拆解（StudioVideoBreakdown）。受理时已确认端点声明了 supportsVideo、
      * 定了价，这里再按受理时的端点快照取；续跑时有拆解就不再调模型，只补没切好的片段。按真实用量一次结算。

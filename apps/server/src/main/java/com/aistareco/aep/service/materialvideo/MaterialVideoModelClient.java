@@ -854,6 +854,11 @@ public class MaterialVideoModelClient {
 
     static void requireProtocolSupports(String protocol, VideoGenSpec spec, String aspectRatio,
                                         AiVideoRequestSpec configured) {
+        // 编辑原视频（元素替换）：端点的这个模式配了 edit、协议会组编辑包、确实带了参考视频，才提交；否则不静默退回普通参考生成（§8.0）。
+        if (spec.edits() && (!PROTOCOL_SEEDANCE.equals(protocol) || !spec.isExplicit() || editSpec(configured, spec) == null
+                || spec.references().stream().noneMatch(r -> JusuanH3Contract.MEDIA_VIDEO.equals(r.mediaType())))) {
+            throw BusinessException.badRequest("VIDEO_MODE_UNSUPPORTED", "所选视频模型不支持编辑原视频，请换一个模型或使用分镜复刻");
+        }
         // 「出片前改写提示词」只有聚算 H3 有；别的协议没有这一步，带着开关提交就是请求和实际不符（§8.0）。
         if (spec.optimizePrompt() != null && !PROTOCOL_JUSUAN_MEDIA.equals(protocol)) {
             throw BusinessException.badRequest("VIDEO_MODE_UNSUPPORTED", "所选视频模型不会改写描述，不需要选择「按原文生成」");
@@ -911,6 +916,13 @@ public class MaterialVideoModelClient {
                     requireInput(!spec.references().isEmpty(), "全能参考至少要一个参考素材");
             default -> { /* t2v：不需要素材 */ }
         }
+    }
+
+    /** 这份规格所用模式的「编辑原视频」配置；没有配置的端点、模式或老规格返回 null。 */
+    static com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioEditSpec editSpec(AiVideoRequestSpec configured, VideoGenSpec spec) {
+        if (configured == null || spec == null) return null;
+        return configured.contract().modes().stream().filter(m -> m.mode().equals(spec.generationMode()))
+                .map(m -> m.edit()).filter(java.util.Objects::nonNull).findFirst().orElse(null);
     }
 
     private static void requireInput(boolean ok, String message) {
@@ -1158,8 +1170,22 @@ public class MaterialVideoModelClient {
                 if (genSpec.seed() != null) body.put("seed", genSpec.seed());
             }
             body.put("content", content);
-            if (aspectRatio != null && !aspectRatio.isBlank()) body.put("ratio", aspectRatio);
-            if (durationSec > 0) body.put("duration", durationSec);
+            var edit = genSpec.edits() ? editSpec(configured, genSpec) : null;
+            if (edit != null && edit.followSource()) {
+                // 编辑任务的画幅和时长跟原视频走（火山方舟 Seedance 2.5 只收 adaptive / -1，发别的值任务会异步失败）
+                body.put("ratio", "adaptive");
+                body.put("duration", -1);
+            } else {
+                if (aspectRatio != null && !aspectRatio.isBlank()) body.put("ratio", aspectRatio);
+                if (durationSec > 0) body.put("duration", durationSec);
+            }
+            if (edit != null && edit.requestFields() != null) {
+                for (var field : edit.requestFields().entrySet()) {
+                    if (body.containsKey(field.getKey()))
+                        throw BusinessException.badRequest("VIDEO_REQUEST_SPEC_INVALID", "编辑任务的附加字段不能覆盖视频请求字段");
+                    body.put(field.getKey(), field.getValue());
+                }
+            }
             // 2026-10-31: Seedance-compatible gateways need not support this optional output.
             // Configured endpoints opt in via requestFields; retain the legacy native adapter default.
             if (configured == null)

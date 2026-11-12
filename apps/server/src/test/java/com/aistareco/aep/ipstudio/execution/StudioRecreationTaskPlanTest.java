@@ -386,6 +386,24 @@ class StudioRecreationTaskPlanTest {
     }
 
     @Test
+    void replacementWritesTheSameEditPromptForEverySegmentWithoutAModel() throws Exception {
+        var task=StudioRecreationTaskPlan.prepare(film(),materials(),"ai-h3",h3(),"768p","9:16",null,null,0,"把杯子换成图1的保温杯","replacement",SEGMENTS);
+        var answer=StudioRecreationTaskPlan.replacementAnswer(task,null);
+        assertEquals(task.path("units").size(),answer.path("units").size());
+        String prompt=answer.path("units").path(0).path("prompt").asText();
+        assertTrue(prompt.startsWith("编辑视频：以视频1为基础，把杯子换成图1的保温杯。"),"厂商的编辑任务要在提示词里看到「编辑视频」："+prompt);
+        assertFalse(prompt.contains("视频1："),"视频1 就是原片这一段，不再列成素材："+prompt);
+        String second=answer.path("units").path(1).path("prompt").asText();
+        assertEquals(prompt.lines().findFirst().orElseThrow(),second.lines().findFirst().orElseThrow(),"每段同一句要求");
+        var plan=StudioRecreationTaskPlan.build(task,answer);
+        var validated=StudioPlanValidator.validateSkillPlan(plan,rules(),"production",Set.of(SEGMENTS+"1",SEGMENTS+"2","cup","girl"));
+        assertEquals(prompt,step(validated,"v1").path("prompt").asText());
+        String fallback=StudioRecreationTaskPlan.replacementAnswer(StudioRecreationTaskPlan.prepare(film(),materials(),"ai-h3",h3(),"768p","9:16",null,null,0,"","replacement",SEGMENTS),null)
+                .path("units").path(0).path("prompt").asText();
+        assertTrue(fallback.startsWith("编辑视频：以视频1为基础，把视频1里要换的人物和商品替换成参考图里的样子。"),"没写要求给默认的一句："+fallback);
+    }
+
+    @Test
     void clipMethodsDropAnEndCardOnlySegmentButStoryboardKeepsIt() throws Exception {
         var b=StudioVideoBreakdown.normalize(om.readTree("""
             {"summary":"门店","shots":[{"start":0,"end":7,"visual":"排队"},{"start":7,"end":13,"visual":"老板说话"},{"start":13,"end":17,"visual":"账号片尾","caption":"抖音号 123456789"}]}"""),17,List.of(7.0,13.0));

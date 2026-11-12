@@ -8,8 +8,8 @@ import { apiFetch } from '@/ip/api/_client';
 import '@/styles/studio-toolbox.css';
 
 /**
- * 爆款复刻的三种方式（服务端 StudioCloneVideoPlan）。三种都先拉片、按原片分段，区别是每段交给视频模型什么，
- * 所以适合的视频不同：工具箱、视频页的方式选择和任务标题都读这里。提示词在服务端。
+ * 爆款复刻的三种方式（服务端 StudioCloneVideoPlan）。分镜复刻和深度复刻先拉片再分段，元素替换只按切镜点切段、每段交给视频模型编辑原片；
+ * 区别是每段交给视频模型什么，所以适合的视频不同：工具箱、视频页的方式选择和任务标题都读这里。提示词在服务端。
  * image 是示意图（public/studio/clone-modes，虚构人物，不是真实生成结果）；limit 只写会影响选择的限制，
  * 「仅部分视频模型可用」对应 cloneReferenceMode：深度复刻和元素替换要把原片片段作为参考视频交给模型。
  */
@@ -25,7 +25,7 @@ export const VIDEO_CLONE_TOOLS = [
   { mode: 'replacement', title: '元素替换', short: '只换其中一样', image: '/studio/clone-modes/replacement.webp',
     description: '保留原片画面，只替换其中的人物、商品或场景。',
     fit: '原片画面满意、只需替换一样东西的视频。',
-    limit: '仅部分视频模型可用。原片里的字幕和水印会保留。' },
+    limit: '仅部分视频模型可用。原片的字幕、水印和片尾会保留，台词不会自动修改。' },
 ] as const;
 /** 三种方式共同的限制：拉片和分段按整条原片算。 */
 export const CLONE_SOURCE_LIMIT = '参考视频最长 60 秒。';

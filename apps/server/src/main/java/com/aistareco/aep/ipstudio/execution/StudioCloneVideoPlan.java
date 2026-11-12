@@ -10,12 +10,14 @@ import org.springframework.stereotype.Component;
 import java.util.*;
 
 /**
- * 爆款复刻的三种方式（docs/ip-studio-recreation.md「三种复刻方式」）。三种都先拉片（看视频，写逐镜台词和动作），由代码按拉片结果分段，
- * 模型只写每段的提示词；不同的是每段交给视频模型什么：
+ * 爆款复刻的三种方式（docs/ip-studio-recreation.md「三种复刻方式」）。分镜复刻和深度复刻先拉片（看视频，写逐镜台词和动作），由代码按拉片结果分段，
+ * 模型只写每段的提示词；元素替换不拉片、不写提示词，按真实切镜点切段，每段交给视频模型编辑。不同的是每段交给视频模型什么：
  * <ul>
  *   <li>分镜复刻（recreation）：按原片每个镜头的开场画面重新出图，视频模型从图开始拍。原片不交给视频模型。适合剪辑多、换镜频繁的片子。</li>
  *   <li>深度复刻（depth）：把原片这一段转成深度图或骨骼图（不带原片的人、商品和字），作为动作参考交给视频模型。适合镜头少、动作连贯的片子（口播、单人展示、跳舞）。</li>
- *   <li>元素替换（replacement）：原片这一段直接交给视频模型，只换用户点名的东西。适合原片拍得好、只想换掉其中一样。</li>
+ *   <li>元素替换（replacement）：原片这一段直接交给视频模型，只换用户点名的东西。适合原片拍得好、只想换掉其中一样。
+ *       模型的全能参考模式配了「编辑原视频」（{@link VideoStudioEditSpec}，Seedance 2.5）就走厂商的编辑任务，每段按编辑的时长上限切；
+ *       没配的（Seedance 2.0、H3）照常用全能参考，靠提示词编辑。</li>
  * </ul>
  * 深度复刻和元素替换要把原片片段作为参考视频交给模型，所以只开放声明了视频参考的模型，分段也受参考视频的时长限制。
  */
@@ -55,13 +57,40 @@ public class StudioCloneVideoPlan {
         return BusinessException.badRequest("STUDIO_CLONE_REFERENCE_UNSUPPORTED","当前模型不支持视频参考，请更换模型或使用分镜复刻。");
     }
 
+    /** 元素替换能不能走厂商的编辑任务：能带参考视频的模式配了 edit。没配返回 null（照常全能参考）。 */
+    public static VideoStudioEditSpec edit(VideoStudioModel model) {return referenceMode(model).edit();}
+    /** 这次的方式要不要编辑原视频：元素替换，且模型配了编辑。 */
+    public static boolean edits(String kind,VideoStudioModel model) {return "replacement".equals(kind)&&edit(model)!=null;}
+
+    /**
+     * 原片画面最接近这档清晰度里的哪个画幅（编辑任务的输出跟原片画幅走，计划和合成要按它）。读不到尺寸、这档没有画布时用 {@code fallback}。
+     */
+    public static String closestRatio(VideoStudioModel model,String tier,int width,int height,String fallback) {
+        if(width<=0||height<=0||model.contract()==null||model.contract().tiers()==null)return fallback;
+        double target=Math.log((double)width/height);
+        String best=null;double gap=Double.MAX_VALUE;
+        for(var t:model.contract().tiers()) {
+            if(tier!=null&&!tier.equals(t.tier()))continue;
+            for(var c:t.canvases()) {
+                String[] parts=c.aspectRatio().split(":");
+                double d=Math.abs(Math.log(Double.parseDouble(parts[0])/Double.parseDouble(parts[1]))-target);
+                if(d<gap){gap=d;best=c.aspectRatio();}
+            }
+        }
+        return best==null?fallback:best;
+    }
+
     /** 每段原片能有多长：不超过模型单段上限，也不超过参考视频的时长上限；不短于两者的下限。 */
     public record Clip(int minSec,int maxSec) {}
-    public static Clip clip(VideoStudioModel model) {
+    public static Clip clip(VideoStudioModel model) {return clip(model,null);}
+    /** 元素替换走编辑任务时，原片按编辑的时长上下限切（Seedance 2.5 编辑收 4–30 秒，普通参考只收 2–15 秒）。 */
+    public static Clip clip(VideoStudioModel model,String kind) {
         var contract=model.contract();var reference=referenceMode(model).references().video();
         int max=contract.maxSeconds(),min=Math.max(1,contract.minSeconds());
-        if(reference.maxDurationSec()!=null&&reference.maxDurationSec()>0)max=Math.min(max,reference.maxDurationSec());
-        if(reference.minDurationSec()!=null)min=Math.max(min,reference.minDurationSec());
+        var edit=edits(kind,model)?edit(model):null;
+        Integer upper=edit!=null?Integer.valueOf(edit.maxSourceSec()):reference.maxDurationSec(),lower=edit!=null?Integer.valueOf(edit.minSourceSec()):reference.minDurationSec();
+        if(upper!=null&&upper>0)max=Math.min(max,upper);
+        if(lower!=null)min=Math.max(min,lower);
         if(min>max)throw BusinessException.badRequest("STUDIO_CLONE_REFERENCE_UNSUPPORTED","当前模型的参考视频时长限制不能分段，请更换模型或使用分镜复刻。");
         return new Clip(min,max);
     }
@@ -69,17 +98,19 @@ public class StudioCloneVideoPlan {
     /** 分析之前做得了吗：所选模型能带参考视频；深度复刻还要有动作提取服务。 */
     public VideoStudioModel require(String kind,String modelId) {
         if("depth".equals(kind))depth.requireConfigured();
-        var selected=model(modelId);clip(selected);
+        var selected=model(modelId);clip(selected,kind);
         return selected;
     }
 
     /**
      * 制作部分（不含拉片和写提示词）的报价：按页面时长和参考视频的分段上限切段，每段一条带参考视频的视频和一次检查，
-     * 和拉片后代码拼出的方案同一种步骤（{@link StudioRecreationTaskPlan#build}），所以分析后的报价不会比这里高。
+     * 和代码拼出的方案同一种步骤（{@link StudioRecreationTaskPlan#build}），所以分析后的报价不会比这里高。
+     * 元素替换按真实切镜点切段，段数可能比这里按时长均分的多一两段；视频按秒计价，总价不变，只是检查多一两次。
      */
     public StudioVideoTaskService.Quote price(String user,String kind,String modelId,String tier,int duration,String ratio,int images,boolean character,boolean voice,boolean optimize) {
         if(images<0||images>StudioRecreationTaskPlan.MAX_IMAGES-(character?1:0))throw bad("最多添加 "+StudioRecreationTaskPlan.MAX_IMAGES+" 张替换图片");
-        var selected=require(kind,modelId);var mode=referenceMode(selected);var bounds=clip(selected);
+        var selected=require(kind,modelId);var mode=referenceMode(selected);var bounds=clip(selected,kind);
+        boolean edit=edits(kind,selected);
         List<Integer> segments;
         try {segments=SegmentedPlan.split(Math.max(1,duration),bounds.minSec(),bounds.maxSec());}
         catch(IllegalArgumentException e){throw bad("请选择可用的视频模型");}
@@ -108,7 +139,8 @@ public class StudioCloneVideoPlan {
             ObjectNode video=steps.addObject().put("id","v"+no).put("operation","video").put("prompt","视频复刻");
             ObjectNode settings=video.putObject("settings").put("operation","video").put("model",selected.endpointId())
                     .put("durationSec",seconds).put("aspectRatio",ratio).put("count",1);
-            settings.putObject("video").put("mode",mode.mode()).put("resolutionTier",tier).put("optimize",optimize(kind,optimize));
+            var video2=settings.putObject("video").put("mode",mode.mode()).put("resolutionTier",tier).put("optimize",optimize(kind,optimize));
+            if(edit)video2.put("edit",true);
             ArrayNode bindings=settings.putArray("referenceBindings");
             int order=0;
             bindings.addObject().put("nodeId","quote-video").put("role","reference-video").put("order",order++);

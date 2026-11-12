@@ -257,6 +257,16 @@ public record AiVideoRequestSpec(String adapter, VideoStudioContract contract,
                                 + Math.min(refs.image().maxCount(), refs.maxImagesWithVideo()));
                 if (refs.minVisual() > refs.maxTotal() || refs.minVisual() > maxVisual) throw invalid();
             }
+            // 编辑原视频（元素替换）：只在能带参考视频的模式上配，目前只有 Seedance 协议会组这种包
+            var edit = mode.edit();
+            if (edit != null) {
+                if (!"seedance".equals(adapter) || mode.references() == null || mode.references().video().maxCount() < 1
+                        || edit.minSourceSec() < 1 || edit.maxSourceSec() < edit.minSourceSec() || edit.maxSourceSec() > 600) throw invalid();
+                if (edit.requestFields() != null) for (var field : edit.requestFields().entrySet()) {
+                    if (!field.getKey().matches("[A-Za-z][A-Za-z0-9_.-]*") || RESERVED_FIELDS.contains(field.getKey())
+                            || requestFields.containsKey(field.getKey()) || !staticJson(field.getValue(), 0)) throw invalid();
+                }
+            }
         }
         Set<String> tiers = new HashSet<>();
         for (VideoStudioTier tier : contract.tiers()) {

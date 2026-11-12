@@ -51,10 +51,11 @@ public class StudioVideoTaskService {
     public Quote price(String user,String kind,String model,String mode,String tier,int duration,String ratio,int images,boolean character,boolean voice,boolean optimize) {
         if(StudioCloneVideoPlan.method(kind)&&(images<0||images>StudioRecreationTaskPlan.MAX_IMAGES-(character?1:0)))
             throw invalid("最多添加 "+StudioRecreationTaskPlan.MAX_IMAGES+" 张替换图片");
-        // 深度复刻 / 元素替换：每段带原片片段作参考视频，另加拉片和写提示词两次文字任务（同分镜复刻）
+        // 深度复刻 / 元素替换：每段带原片片段作参考视频。深度复刻另加拉片和写提示词两次文字任务（同分镜复刻）；
+        // 元素替换不拉片、不写提示词（切段和提示词都由代码按切镜点和用户的要求定），没有这两笔
         if(StudioCloneVideoPlan.nativeClone(kind)) {
             var p=clones.price(user,kind,model,tier,duration,ratio,images,character,voice,optimize);
-            long base=Math.addExact(p.estimated(),Math.multiplyExact(textCost(user),2));
+            long base="replacement".equals(kind)?p.estimated():Math.addExact(p.estimated(),Math.multiplyExact(textCost(user),2));
             return new Quote(base,Math.multiplyExact(base,3),p.segments(),0);
         }
         if(!Set.of("direct","segmented","recreation").contains(kind))throw invalid("请选择制作方式");
@@ -146,8 +147,8 @@ public class StudioVideoTaskService {
             if(pictures>StudioRecreationTaskPlan.MAX_IMAGES)throw invalid("最多添加 "+StudioRecreationTaskPlan.MAX_IMAGES+" 张替换图片");
             if(voices>StudioRecreationTaskPlan.MAX_VOICES)throw invalid("参考声音最多一段");
             boolean clip=StudioCloneVideoPlan.nativeClone(req.kind());
-            // 深度复刻 / 元素替换：所选模型要能带参考视频（深度复刻还要有动作提取服务），分段不超过参考视频的时长上限
-            var bounds=clip?StudioCloneVideoPlan.clip(clones.require(req.kind(),req.configuration().model())):null;
+            // 深度复刻 / 元素替换：所选模型要能带参考视频（深度复刻还要有动作提取服务），分段不超过参考视频（元素替换走编辑时按编辑）的时长上限
+            var bounds=clip?StudioCloneVideoPlan.clip(clones.require(req.kind(),req.configuration().model()),req.kind()):null;
             if("depth".equals(req.kind()))admitDepth(user);
             var doc=projects.readDoc(projects.required(user,projectId));
             JsonNode source=IpDocs.node(doc,req.sourceNodeId());
@@ -168,16 +169,21 @@ public class StudioVideoTaskService {
             }
             rules=skills.requireActive("reference-video-recreation");
             plan.put("stage","analysis");
-            var study=steps.addObject().put("id","study").put("operation","recreation").put("title","分析参考视频").put("execution","auto")
-                    .put("prompt","分析参考视频的创意、镜头、动作与节奏，结合本次要求："+Objects.toString(req.configuration().text(),""));
+            // 元素替换：不看视频、不写提示词。这一步只按真实切镜点切段（零积分），切完由代码直接排出制作计划
+            // （StudioPlanExecutionService#confirmReplacementProduction），每段交给视频模型编辑原片。
+            boolean replacement="replacement".equals(req.kind());
+            var study=steps.addObject().put("id","study").put("operation","recreation").put("title",replacement?"切分原片":"分析参考视频").put("execution","auto")
+                    .put("prompt",replacement?"按真实切镜点把原片切成几段":"分析参考视频的创意、镜头、动作与节奏，结合本次要求："+Objects.toString(req.configuration().text(),""));
             study.putArray("dependsOn");
-            study.putObject("settings").put("operation","recreation").put("sourceNodeId",req.sourceNodeId()).put("mode","segments")
+            study.putObject("settings").put("operation","recreation").put("sourceNodeId",req.sourceNodeId()).put("mode",replacement?"cuts":"segments")
                     .put("maxSegmentSec",clip?String.valueOf(bounds.maxSec()):"model").put("videoModel",req.configuration().model());
+            if(!replacement) {
             var compile=steps.addObject().put("id","compile").put("operation","text").put("title","写分镜脚本").put("execution","auto")
                     .put("prompt","根据本次参考片分析与新素材，动态编排可以直接制作到成片的方案。用户要求："+Objects.toString(req.configuration().text(),"")
                             +"。视频总时长 "+req.configuration().duration()+" 秒；画面 "+req.configuration().ratio()+(req.configuration().model()==null?"":"；视频模型必须使用 "+req.configuration().model())
                             +"；清晰度 "+req.configuration().tier()+"。使用提供的替换素材；不复用原片的旧人物、旧商品作为新主体。只输出可执行方案，不向用户提问。保留原片值得借鉴的节奏与创意，具体分段和参考方式按实际模型能力安排。");
             compile.putArray("dependsOn").add("study");compile.putObject("settings").put("operation","text").put("purpose","plan-compile");
+            }
             quoter.quote(user,plan);
             estimate=price(user,req.kind(),cfg.model(),null,cfg.tier(),cfg.duration(),cfg.ratio(),(int)cfg.materials().stream().filter(m->"image".equals(m.slot())).count(),
                     cfg.materials().stream().anyMatch(m->"character".equals(m.slot())),cfg.materials().stream().anyMatch(m->"voice".equals(m.slot())),!Boolean.FALSE.equals(cfg.optimize())).estimated();

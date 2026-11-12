@@ -269,6 +269,12 @@ public final class StudioPromptCallPoints {
                 vars("hasRefs", "这段有参考图", "keyframes", "这段的开场画面：[{shot（全片镜号）, at（这段里约第几秒起）, label（图N）}]",
                         "sameFrames", "这段里重复用的画面：[{shot, at, of（是哪一镜的开场）, label}]", "refs", "这段交给视频模型的图：[{label, what（开场画面 / 哪份素材）}]"), Set.of(), Map.of(),
                 Map.of("hasRefs", true, "keyframes", List.of(Map.of("shot", 2, "at", "1.8", "label", "图2")))).withoutBase());
+        Map<String, Object> replaceEdit = new LinkedHashMap<>();
+        replaceEdit.put("requirement", "把视频1里的面霜替换成图1里的精华");
+        replaceEdit.put("refs", List.of(Map.of("label", "图1", "what", "精华（替换素材）")));
+        StudioPromptStages.register(new StudioPromptStages.Stage(RECREATION_REPLACE_EDIT, StudioPromptEntry.VIDEO_MODEL, "爆款复刻 · 元素替换的视频提示词",
+                vars("requirement", "用户要换什么（页面上的要求，没写时代码给默认的一句）", "refs", "视频1 之外交给视频模型的素材：[{label, what}]"),
+                Set.of("requirement"), Map.of(), replaceEdit).withoutBase());
         StudioPromptStages.register(new StudioPromptStages.Stage(RECREATION_REDO_NOTE, StudioPromptEntry.IMAGE_MODEL, "爆款复刻 · 开场画面重出说明",
                 vars("fix", "上一版没通过检查的问题"), Set.of("fix"), Map.of(), Map.of("fix", "人物还戴着原片的贝雷帽")).withoutBase());
         StudioPromptStages.register(stage(RECREATION_COMPILE, StudioPromptEntry.LLM, "爆款复刻 · 写每段视频提示词",
@@ -298,7 +304,8 @@ public final class StudioPromptCallPoints {
     public static final String VIDEO_BREAKDOWN = "stage-video-breakdown", VIDEO_SHOT_DETAIL = "stage-video-shot-detail", RECREATION_COMPILE = "stage-recreation-compile",
             RECREATION_KEYFRAME = "stage-recreation-keyframe", RECREATION_KEYFRAME_CHECK = "stage-recreation-keyframe-check",
             RECREATION_VIDEO_CHECK = "stage-recreation-video-check", RECREATION_REDO_NOTE = "stage-recreation-redo-note",
-            RECREATION_COMPILE_DEPTH = "stage-recreation-compile-depth", RECREATION_COMPILE_REPLACE = "stage-recreation-compile-replace";
+            RECREATION_COMPILE_DEPTH = "stage-recreation-compile-depth", RECREATION_COMPILE_REPLACE = "stage-recreation-compile-replace",
+            RECREATION_REPLACE_EDIT = "stage-recreation-replace-edit";
     public static final String DIALOGUE_SKILL = "stage-dialogue-skill", DIALOGUE_PHASE = "stage-dialogue-phase", ANALYSIS_FOCUS = "stage-analysis-focus",
             VISION_BATCH = "stage-vision-batch", RECREATION_MERGE = "stage-recreation-merge";
     /** 复刻任务受理时一起冻结的环节：拆解、逐页观察、汇总、拉片分段、逐段分析、用户关注点、分批读图。 */

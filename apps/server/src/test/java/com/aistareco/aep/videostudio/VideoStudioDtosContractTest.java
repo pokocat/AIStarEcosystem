@@ -81,7 +81,7 @@ class VideoStudioDtosContractTest {
         Path ts = tsSource();
         assumeTrue(ts != null, "找不到 packages/types/src/video-studio.ts（服务端单独构建时跳过）");
         Map<String, Set<String>> interfaces = tsInterfaces(Files.readString(ts, StandardCharsets.UTF_8));
-        assertEquals(19, interfaces.size(), interfaces.keySet().toString());
+        assertEquals(20, interfaces.size(), interfaces.keySet().toString());
 
         Map<String, Class<?>> records = Arrays.stream(VideoStudioDtos.class.getDeclaredClasses())
                 .filter(Class::isRecord)

@@ -56,7 +56,7 @@ public class StudioVideoService {
         if(first.adjusted()!=null)adjustments.set("firstFrameAdjusted",first.adjusted());
         if(last.adjusted()!=null)adjustments.set("lastFrameAdjusted",last.adjusted());
         VideoStudioModel model=videoModel(endpointId);
-        VideoStudioModeSpec modeSpec=modeSpec(model,v.mode());
+        VideoStudioModeSpec modeSpec=v.edits()?editMode(modeSpec(model,v.mode()),v):modeSpec(model,v.mode());
         // 「按原文生成」只对出片前会改写描述的模型有意义（同视频生成区的「智能优化」能力判定）；别的模型带着它就明确拒绝。
         if(v.optimizePrompt()!=null && !model.supportsPromptOptimization())
             throw BusinessException.badRequest("STUDIO_VIDEO_OPTION_UNSUPPORTED","所选视频模型不会改写描述，不需要选择「按原文生成」");
@@ -65,8 +65,28 @@ public class StudioVideoService {
                 request.aspectRatio(),request.durationSec(),v.seed(),first.key(),last.key(),references,null,null,null,null);
         var prepared=videos.prepareCanvas(userId,nativeRequest,
                 (type,key,frame)->requireMedia(userId,type,key,frame,modeSpec),"studio");
-        return new Prepared(v.optimizePrompt()==null?prepared
-                :new VideoStudioService.CanvasPreparation(prepared.spec().withOptimizePrompt(v.optimizePrompt()),prepared.credits(),prepared.seedMax()),adjustments);
+        var spec=prepared.spec();
+        if(v.optimizePrompt()!=null)spec=spec.withOptimizePrompt(v.optimizePrompt());
+        if(v.edits())spec=spec.withEditSource();
+        return new Prepared(spec==prepared.spec()?prepared:new VideoStudioService.CanvasPreparation(spec,prepared.credits(),prepared.seedMax()),adjustments);
+    }
+
+    /**
+     * 编辑原视频（元素替换）：模式要配了 edit、要带一段参考视频；参考视频的时长按编辑的上下限核对（Seedance 2.5 编辑收 4–30 秒，
+     * 普通参考只收 2–15 秒），其余素材规则照这个模式。没配就明确拒绝，不退回普通参考生成（§8.0）。
+     */
+    static VideoStudioModeSpec editMode(VideoStudioModeSpec mode,com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings v) {
+        var edit=mode.edit();
+        if(edit==null||mode.references()==null)
+            throw BusinessException.badRequest("STUDIO_VIDEO_OPTION_UNSUPPORTED","所选视频模型不支持编辑原视频，请换一个模型或使用分镜复刻");
+        if(v.references()==null||v.references().stream().noneMatch(r->r!=null&&"video".equals(r.mediaType())))
+            throw invalid("编辑原视频需要一段参考视频");
+        var refs=mode.references();var video=refs.video();
+        var limited=new VideoStudioMediaLimit(video.mediaType(),video.maxCount(),video.maxBytes(),video.formats(),edit.minSourceSec(),edit.maxSourceSec());
+        return new VideoStudioModeSpec(mode.mode(),mode.needsFirstFrame(),mode.needsLastFrame(),mode.frameImage(),
+                new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioReferenceRules(refs.image(),limited,refs.audio(),
+                        refs.maxImagesWithVideo(),refs.maxTotal(),refs.minVisual(),refs.maxAudioTotalSec()),
+                mode.label(),mode.promptRequired(),edit);
     }
 
     /** The key a frame is sent as, and the record of the crop when one was made (null otherwise). */

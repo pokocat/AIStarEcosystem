@@ -41,6 +41,36 @@ class StudioCloneVideoPlanTest {
         var clip=StudioCloneVideoPlan.clip(videos.models().get(0));
         assertEquals(4,clip.minSec());assertEquals(10,clip.maxSec(),"参考视频最长 10 秒，即使模型单段能出 15 秒");
     }
+    /** 全能参考配了「编辑原视频」的模型（Seedance 2.5）：普通参考视频 2–15 秒，编辑时原视频 4–30 秒。 */
+    VideoStudioModel editingModel() throws Exception {
+        var model=(ObjectNode)om.valueToTree(model(30,2,15));
+        ((ObjectNode)model.path("contract").path("modes").get(0)).putObject("edit").put("minSourceSec",4).put("maxSourceSec",30).put("followSource",true)
+                .putObject("requestFields").put("omni_reference_task_type","edit");
+        ArrayNode tiers=((ObjectNode)model.path("contract")).putArray("tiers");
+        var canvases=tiers.addObject().put("tier","720p").putArray("canvases");
+        canvases.addObject().put("aspectRatio","9:16").put("width",720).put("height",1280);
+        canvases.addObject().put("aspectRatio","16:9").put("width",1280).put("height",720);
+        return om.treeToValue(model,VideoStudioModel.class);
+    }
+    @Test void replacementOnAModelThatEditsCutsByTheEditLimitAndMarksEveryVideoAsAnEdit() throws Exception {
+        when(videos.models()).thenReturn(List.of(editingModel()));
+        var selected=videos.models().get(0);
+        assertEquals(15,StudioCloneVideoPlan.clip(selected,"depth").maxSec(),"深度复刻照普通参考视频的上限");
+        assertEquals(30,StudioCloneVideoPlan.clip(selected,"replacement").maxSec(),"元素替换按编辑的上限");
+        assertEquals(4,StudioCloneVideoPlan.clip(selected,"replacement").minSec());
+        var quote=service.price("u","replacement","selected-channel","720p",45,"9:16",1,false,false,false);
+        assertEquals(2,quote.segments().size());
+        assertTrue(quoted.get().path("steps").path(0).path("settings").path("video").path("edit").asBoolean());
+        service.price("u","depth","selected-channel","720p",45,"9:16",1,false,false,false);
+        assertFalse(quoted.get().path("steps").toString().contains("\"edit\""),"深度复刻不编辑原视频");
+        assertFalse(StudioCloneVideoPlan.edits("replacement",model(15,2,10)),"没配编辑的模型照常用全能参考");
+    }
+    @Test void anEditThatFollowsTheSourceUsesTheSourceShape() throws Exception {
+        var selected=editingModel();
+        assertEquals("16:9",StudioCloneVideoPlan.closestRatio(selected,"720p",1920,1080,"9:16"));
+        assertEquals("9:16",StudioCloneVideoPlan.closestRatio(selected,"720p",720,1280,"16:9"));
+        assertEquals("9:16",StudioCloneVideoPlan.closestRatio(selected,"720p",0,0,"9:16"),"读不到尺寸就用页面选的");
+    }
     @Test void aChannelWithoutVideoReferenceCannotCloneFromFootage() {
         var first=new VideoStudioModeSpec("i2v",true,false,null,null);
         var contract=new VideoStudioContract(List.of(first),List.of(),5,15,7000,100);

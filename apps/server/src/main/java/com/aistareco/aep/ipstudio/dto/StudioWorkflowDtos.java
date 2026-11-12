@@ -116,8 +116,13 @@ public final class StudioWorkflowDtos {
      * auto = 改写完直接出片（创作助手）；review = 没有提示就直接出片，有提示停下来让用户选用优化稿还是原文（画布）。
      * 带 rewrite 时厂商自己的改写一律关掉（optimizePrompt=false）。
      */
+    /** {@code edit}：编辑参考视频而不是照它重新生成（元素替换）；只有所选模式配了 edit 的模型能用，见 VideoStudioEditSpec。 */
     public record VideoSettings(String mode,String resolutionTier,Long seed,String firstFrameKey,String lastFrameKey,
-            List<com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioReferenceInput> references,Boolean optimizePrompt,String rewrite) {
+            List<com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioReferenceInput> references,Boolean optimizePrompt,String rewrite,Boolean edit) {
+        public VideoSettings(String mode,String resolutionTier,Long seed,String firstFrameKey,String lastFrameKey,
+                List<com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioReferenceInput> references,Boolean optimizePrompt,String rewrite) {
+            this(mode,resolutionTier,seed,firstFrameKey,lastFrameKey,references,optimizePrompt,rewrite,null);
+        }
         public VideoSettings(String mode,String resolutionTier,Long seed,String firstFrameKey,String lastFrameKey,
                 List<com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioReferenceInput> references,Boolean optimizePrompt) {
             this(mode,resolutionTier,seed,firstFrameKey,lastFrameKey,references,optimizePrompt,null);
@@ -128,7 +133,10 @@ public final class StudioWorkflowDtos {
         }
         /** 交给视频模型时的设置：改写已做完，厂商不再改写。 */
         public VideoSettings submitted() {
-            return rewrite==null?this:new VideoSettings(mode,resolutionTier,seed,firstFrameKey,lastFrameKey,references,Boolean.FALSE,null);
+            return rewrite==null?this:new VideoSettings(mode,resolutionTier,seed,firstFrameKey,lastFrameKey,references,Boolean.FALSE,null,edit);
+        }
+        public boolean edits() {
+            return Boolean.TRUE.equals(edit);
         }
     }
     public record Caption(Double start,Double end,String text) {}

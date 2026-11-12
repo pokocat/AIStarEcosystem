@@ -443,6 +443,30 @@ public final class StudioRecreationTaskPlan {
         return plan;
     }
 
+    /**
+     * 元素替换不调模型写提示词（2026-11-12）：每段都是提示词库 stage-recreation-replace-edit 的同一段话，按用户的要求和这段交给视频模型的素材拼。
+     * 返回和写提示词的模型同一种形状（{@code {units:[{no, prompt}]}}），交给 {@link #build}。用户没写要求时给一句默认的。
+     *
+     * <p>不拉片就不知道原片台词里有没有提到旧商品：要改台词，用户得在要求里写明（页面上有提示）。
+     */
+    public static ObjectNode replacementAnswer(JsonNode task,Texts texts) {
+        Texts library=texts==null?LIBRARY:texts;
+        String requirement=task.path("requirement").asText("").strip();
+        if(requirement.isEmpty())requirement="把视频1里要换的人物和商品替换成参考图里的样子";
+        if(!requirement.matches("(?s).*[。！？.!?]$"))requirement+="。";
+        ObjectNode answer=OM.createObjectNode();
+        var units=answer.putArray("units");
+        for(JsonNode u:task.path("units")) {
+            List<Map<String,Object>> refs=new ArrayList<>();
+            for(JsonNode r:u.path("refs"))if(!"reference-video".equals(r.path("role").asText()))refs.add(Map.of("label",r.path("label").asText(),"what",r.path("what").asText("")));
+            Map<String,Object> vars=new LinkedHashMap<>();
+            vars.put("requirement",requirement);vars.put("refs",refs);
+            units.addObject().put("no",u.path("no").asInt())
+                    .put("prompt",library.render(com.aistareco.aep.ipstudio.prompt.StudioPromptCallPoints.RECREATION_REPLACE_EDIT,vars).strip());
+        }
+        return answer;
+    }
+
     /** 成片顶部的标题：拉片认出的固定标题；没有时，一句字幕覆盖了整条片子的 80% 以上，就把它从字幕里拿出来当标题。 */
     static String screenTitle(JsonNode task,com.fasterxml.jackson.databind.node.ArrayNode captions,double total) {
         String title=task.path("screenTitle").asText("").strip();
