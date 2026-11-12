@@ -226,6 +226,8 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 ## 5. 部署 / 运维 / 联调手册
 
+- [AIStar 生产发布与恢复](runbooks/aistar-production-release.md) — API 双机滚动、制品、验收和 PostgreSQL 同库恢复。
+
 | 文档 | 用途 |
 |---|---|
 | [Studio JSON 的 JVM-Sandbox 临时热修复](runbooks/studio-json-jvm-sandbox.md) | 不重启的单方法异常恢复、隔离验证、冻结 / 激活 / 卸载与回退；官方 1.4.0、环回管理、无模型或账本调用（last-reviewed 2026-10-24） |

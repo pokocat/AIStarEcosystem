@@ -1,18 +1,8 @@
 # infra/ — 阿里云部署基础设施
-## AIStar 双机 PostgreSQL 迁移准备（2026-11-05，优先于下方历史单机说明）
 
-新发布入口 `infra/scripts/deploy.sh server --plan`；新 A/B、ALB 常态 A50/B50、PG/Tair 配置以 `infra/cluster/production.json` 为准。旧单机发布入口已禁用，不能回退旧机。正式尚未切流，生产激活需另行窗口及正式导入凭证。API 两机关闭后台；后台/SAU 在 A 独立单活。前端及角色交接单独验收。
+## AIStar 当前生产发布
 
-完整文件、导入保护、滚动顺序与验收见 [`docs/aistar-postgresql-cutover.md`](../docs/aistar-postgresql-cutover.md)。下方旧 ECS/MySQL/身份同机描述仅作历史运维参考，不能用于新发布。
-
-业务文件继续使用原账号杭州 `aiartist` OSS Bucket、原对象 key/前缀和签名公网地址；新节点后台使用同地域内网 Endpoint。原存储/下行流量资源包按原账号规则抵扣，不随 ECS 迁移而转账号；本轮不新建桶、不改授权或 ACL。SQL 快照、配置与私有迁移归档仅走 SSH。
-
-
-把部署所需的所有资产（nginx 配置、systemd 单元、环境变量模板、RDS 建库脚本、OSS Bucket
-策略、部署脚本）**全部归一到 git**。新机器从零拉起一套完整环境，按本文 §3
-「一次性环境拉起」执行即可在 30~60 分钟内完成。
-
-本文件是 AI Star Eco 在阿里云上部署的**单一真值源**。
+AIStar API 已在 PostgreSQL 上运行，ALB 常态 A50/B50。日常 API 发布和故障恢复以 [AIStar 生产发布与恢复](../docs/runbooks/aistar-production-release.md) 为准。下方单机拓扑、MySQL 建库、证书和发布命令属于旧环境资料。旧 ECS 仅为仍在运行的旧前端和代理等现有组件提供服务。
 
 ## Studio 本地账号中心（2026-10-10）
 
@@ -167,7 +157,7 @@ ECS 集群 (1~N 台, VPC 内网)│
 
 ---
 
-## 3. 一次性环境拉起（新 ECS）
+## 3. 旧单机环境拉起（历史资料）
 
 > **前置**：阿里云账号已开通 ECS / RDS / OSS，VPC 内网已通。
 
@@ -318,170 +308,9 @@ VALUES (UUID(), 'your-admin', '<bcrypt-hash>', 'super_admin', 'active', NOW());
 
 ## 4. 日常增量部署
 
-当前生产机采用「CI / 本地构建 release 包 → rsync 到 ECS → 远端解包 + systemd 重启」。
-构建机不需要 Docker；`sau-service` 的真实模式镜像在 ECS 上构建，避免跨架构镜像问题。
-SAU 镜像构建会执行 `scripts/prepare_real_runtime.py`：兼容固定上游的小红书 Python 3.11 语法，
-并实际导入四个平台的发布类；失败必须修复后重建，不能只看 `/healthz` 就跳过。
+API 从已验收的 main 制品执行 [生产双机滚动流程](../docs/runbooks/aistar-production-release.md)。旧单机部署与回滚命令留在 Git 历史中。前端、管理后台、SAU 按各组件经过验收的发布入口处理。
 
-### 4.1 本地手动部署
-
-```bash
-DEPLOY_HOST=ecs-user@47.98.162.120 \
-SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem \
-PUBLIC_BASE=http://47.98.162.120 \
-./infra/scripts/deploy.sh all
-```
-
-只部署某几个服务：
-
-```bash
-DEPLOY_HOST=ecs-user@47.98.162.120 \
-SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem \
-PUBLIC_BASE=http://47.98.162.120 \
-./infra/scripts/deploy.sh server,web-celebrity
-```
-
-当前生产脚本支持的 `<service>`：`server / web-celebrity / web-aiavatar / admin / sau-service / all`。
-
-也可以拆成两步，便于先检查产物再发布：
-
-```bash
-RELEASE_ID=$(git rev-parse --short HEAD) ./infra/scripts/build-release.sh all
-
-DEPLOY_HOST=ecs-user@47.98.162.120 \
-SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem \
-PUBLIC_BASE=http://47.98.162.120 \
-./infra/scripts/deploy-release.sh "dist/deploy/$(git rev-parse --short HEAD)" all
-```
-
-部署后验证：
-
-```bash
-DEPLOY_HOST=ecs-user@47.98.162.120 \
-SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem \
-PUBLIC_BASE=http://47.98.162.120 \
-./infra/scripts/verify.sh
-```
-
-`deploy-release.sh` 默认会在 ECS 上幂等执行 `infra/scripts/install-host-deps.sh`、
-`infra/scripts/check-runtime-env.sh` 和 `infra/scripts/install-cjk-fonts.sh`，按宿主机镜像自动补齐缺失命令，
-检查 `/etc/aistareco/*.env` 与 release manifest，并确保系统层中文字体可供 Java2D、ffmpeg drawtext、
-headless browser 等服务使用。若只想预检/手动修复：
-
-```bash
-ssh root@<ECS_HOST> 'bash -s' < infra/scripts/install-host-deps.sh
-ssh root@<ECS_HOST> 'bash -s' < infra/scripts/check-runtime-env.sh
-ssh root@<ECS_HOST> 'bash -s' < infra/scripts/install-cjk-fonts.sh
-SSH_KEY=/path/to/key.pem ./infra/scripts/preflight.sh --remote root@<ECS_HOST>
-```
-
-如需排查包管理器或网络问题，可临时设置 `ENSURE_HOST_DEPS=0` 跳过远端依赖补齐；
-只跳过 runtime env 检查用 `CHECK_RUNTIME_ENV=0`；只跳过字体安装用 `ENSURE_CJK_FONTS=0`。
-
-### 4.1.1 ECS 本机直接部署（无 SSH，v0.47+）
-
-适用场景：
-
-- 开发机网络抖 / SSH 不稳，直接 ssh 进 ECS 本机一气呵成
-- GitHub Actions runner 临时不可用，应急部署
-- CI/CD pipeline 把代码 sync 到 ECS 后由 ECS 本机自己 build + 翻新
-
-前提：仓库已经 clone 到 ECS（README §3.2 推荐 `/opt/ai-star-eco/repo`）。
-
-```bash
-ssh root@<ECS_HOST>
-cd /opt/ai-star-eco/repo
-
-# 一键：补依赖 → git fetch/pull --ff-only → build release → 本机落位 → restart → verify
-sudo ./infra/scripts/update-and-deploy.sh all
-
-# 只更新部分服务
-sudo ./infra/scripts/update-and-deploy.sh server,admin
-sudo ./infra/scripts/update-and-deploy.sh "web-celebrity sau-service"
-
-# 等价快捷方式：deploy-local.sh --pull 会转交给 update-and-deploy.sh
-sudo ./infra/scripts/deploy-local.sh all --pull
-
-# 如果代码已经是目标版本，只部署当前工作区
-sudo ./infra/scripts/deploy-local.sh server
-sudo ./infra/scripts/deploy-local.sh web-celebrity
-sudo ./infra/scripts/deploy-local.sh admin
-sudo ./infra/scripts/deploy-local.sh sau-service
-
-# 部分服务（逗号或空格分隔）
-sudo ./infra/scripts/deploy-local.sh server,web-celebrity
-sudo ./infra/scripts/deploy-local.sh "server admin"
-
-# 紧急部署：跳 typecheck + 跳 verify
-SKIP_TYPECHECK=1 sudo ./infra/scripts/deploy-local.sh all --no-verify
-
-# 只在确认宿主机依赖已齐备时跳过依赖补齐
-sudo ./infra/scripts/deploy-local.sh server,admin --no-deps
-
-# 只在故障排查时跳过 runtime env 检查
-sudo ./infra/scripts/deploy-local.sh server,admin --no-env-check
-
-# 已经 build 过想只翻新位文件（如审 review 完产物再上线）
-./infra/scripts/build-release.sh all                          # 第一步：本机 build
-sudo ./infra/scripts/deploy-local.sh all \
-  --no-build --release-id=<dist/deploy/ 下的 RELEASE_ID>      # 第二步：仅翻新 + restart
-```
-
-行为说明：
-
-- 与 `deploy-release.sh` **完全相同**的落位规则：jar 直接 `install` 到 `$REMOTE_ROOT/server/app.jar`；
-  web/admin 解包到 `$REMOTE_ROOT/<svc>` + 原目录改名 `<svc>.__previous__-<RELEASE_ID>` 备份；
-  sau-service docker build 后 systemctl restart。
-- **依赖补齐**：`deploy-local.sh` 默认先调用 `install-host-deps.sh`，按宿主机 `/etc/os-release`
-  和可用包管理器自动安装缺失命令；`update-and-deploy.sh` 也会先执行同一检查。
-  依赖包括 Java 17 JDK、nginx、docker（仅 sau-service/all 需要）、ffmpeg、fontconfig + CJK 字体、
-  Node 24.14.1、pnpm 10.33.2、rsync/curl/tar/unzip 等。
-- **runtime env 预检**：部署前默认调用 `check-runtime-env.sh`。它读取
-  `/etc/aistareco/server.env`、`/etc/aistareco/sau-service.env` 和 release manifest，只输出变量名，
-  不打印真实密钥值。缺文件、占位符、关键密钥缺失、`AEP_DEV_AUTH_ENABLED=true`、SMS/OSS 真驱动缺凭据、
-  `SAU_MOCK_MODE!=0`、`SAU_INTERNAL_SECRET` 与 `AEP_INTERNAL_SECRET` 不一致会阻断部署；
-  文件权限非 600、`AEP_SEED_DEV_DATA_ENABLED=true` 等高风险项只警告。排障时可用
-  `--no-env-check` / `CHECK_RUNTIME_ENV=0` 跳过，或 `ENV_CHECK_WARN_ONLY=1` 改为只警告。
-- **代码更新**：`update-and-deploy.sh` 默认只做 `git pull --ff-only`，遇到服务器工作区有未提交改动会中止。
-  只有明确传 `--reset-to-origin` 时才会 `git reset --hard origin/<branch>` 丢弃服务器本地改动。
-- **备份保留**：默认保留最近 2 份 `.__previous__-*` 目录，超过按 mtime 删除最旧的。
-  调 `--keep-previous=N`（0 = 立即删；5 = 保留 5 份）。
-  回滚方式：`sudo mv $REMOTE_ROOT/web-celebrity.__previous__-<old-id> $REMOTE_ROOT/web-celebrity`
-  + `sudo systemctl restart aistareco-web-celebrity`。
-- **部署后健康检查**：自动调 `verify.sh LOCAL_MODE=1`（不走 SSH，直接本机 curl + systemctl status）。
-  失败只 WARN 不阻断（因为文件已经落位 + systemd 已重启）。
-- **systemd 单元不存在时跳过 restart**：首次部署 ECS 没装 systemd 单元，脚本会 WARN
-  「跳过 restart（首次部署？参考 infra/systemd/*.example）」并继续，便于先落位文件后人工建 systemd。
-
-### 4.2 GitHub Actions（仅构建产物，不自动部署）
-
-> **受控发布（2026-06-22 起）**：工作流 `.github/workflows/deploy-production.yml` 已**移除 SSH 自动部署**，
-> 只做「构建 + 上传产物」。原因：不在 GitHub 放生产 SSH 私钥（长期主钥交给 GitHub 会扩大爆炸半径）。
-> **不再需要任何 `PROD_SSH_*` Secrets**，dispatch 也不会再因缺密钥报错。
-
-工作流：`.github/workflows/deploy-production.yml`（name: *Build release artifacts*），手动触发 `workflow_dispatch`。
-触发时 `services` 可填：
-
-```text
-all
-server
-server,web-celebrity,web-aiavatar,admin
-sau-service
-```
-
-工作流把 `dist/deploy/<release-id>` 上传为 GitHub artifact（保留 14 天）。**实际发布由人工受控执行**：
-
-- 本机：`./infra/scripts/deploy.sh <services>`（构建+部署一步），或对已下载产物用 `deploy-release.sh <dir> <services>`
-- ECS 上：`sudo ./infra/scripts/update-and-deploy.sh <services>`（git pull → 构建 → 部署，私钥不离机）
-
-> 若将来确实要恢复 Actions 自动部署，**不要放主钥**——生成一把部署专用受限 key（`authorized_keys`
-> 加 `command=`/`from=` 限制，泄露可单独轮换），再补回 Configure SSH / Deploy 两个 step 与对应 Secrets。
-
-回滚到任意历史 tag 仍可用：
-
-```bash
-ECS_HOST=ecs-user@<ECS_HOST> ./infra/scripts/rollback.sh <service> <git-sha>
-```
+[Build release artifacts](../.github/workflows/deploy-production.yml) 只产出传统构建目录。API 的可发布制品使用 [Impersonation CI](../.github/workflows/impersonation-ci.yml) 的 `verified-backend` 并经集群打包工具生成。
 
 ### 4.3 统一账号中心（id.aibuzz.cn）
 
@@ -842,7 +671,7 @@ web-aiavatar 的 Next rewrite 设置 `experimental.proxyClientMaxBodySize=130mb`
 新增 `env/server-postgres.env.example`，生产 profile 使用 postgres；预检同时识别原 mysql 与 postgres 的 JDBC 引擎。新PG只跑独立V74基线和Hibernate validate，不能把旧MySQL迁移历史拷入PG。当前不修改现有生产主机、RDS、ALB或DNS。源结构差异与演练/回滚步骤见 `../docs/runbooks/postgresql-18-migration.md`；双机worker角色与分布式认领仍须独立验收。
 
 
-## AIStar PG18 迁移准备边界（2026-11-04，未生产发布）
+## AIStar PG18 迁移准备边界（2026-11-04，切流前记录）
 
 V74基线不回改，V75结构补齐、V76业务标识比较、V77重试引用比较。用户名/slug与幂等请求使用限定列ICU+rtrim；身份UID、任务主键和凭据精确比较。ModelPrice/ModelDiscount新建记录补updatedAt。postgres备用/导入验证进程默认 `AEP_BACKGROUND_ENABLED=false`；仅主节点显式开启定时任务，启动发布恢复也遵守该开关，HTTP异步入口仍须另行排空。
 
