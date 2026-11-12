@@ -1401,9 +1401,9 @@ export function SceneVideoStudio() {
       </div>
 
       : <div className="scene-compose">
-        {recreation ? recreationMedia : mediaRow()}
         {recreation && <CloneModePicker mode={cloneMode} disabled={busy || uploading !== undefined}
           advice={cloneAdviceShown} onChange={pickCloneMode}/>}
+        {recreation ? recreationMedia : mediaRow()}
 
         <div className="scene-box">
           <ScenePromptEditor ref={input} ariaLabel={scriptId ? "视频脚本" : "想做的视频"} value={text} refs={promptRefs} hidden={recreation ? undefined : layers?.hidden}
