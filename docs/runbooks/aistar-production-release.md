@@ -30,14 +30,20 @@
 
 发布前核对账号中心 OIDC discovery、两个正式 ALB VIP 的严格 TLS 和实际节点身份、两机当前制品、PostgreSQL 结构及运行角色、Tair、SLS 和相关业务依赖。保留上一版可用制品及其数据库兼容证明。对需要演练的变更使用 `--stage` 对应的演练组、演练 PG 与 Tair DB14，使用该组自己的探针和凭据。
 
-发布新 API 制品时，探针文件放仓库外，权限 `0600`。正式模式 `host` 为 `api.aibuzz.cn`，按已配置的只读探针提供 `header`、`key`、能读取 `/api/admin/auth/me` 的短期授权 `token` 和预期 `subject_id`。令牌及私钥由现有授权渠道获取，日志、参数和回执只引用文件路径。
+更换正式 API JAR 时，默认使用专用账号 `aistar-release-probe`。该账号无后台角色、产品开通、手机号或密码。发布脚本通过现有 SSH 在生产节点内为固定账号签发 90 秒的普通用户令牌，签名密钥和令牌只在节点内使用。切流前检查当前承流节点的两个 VIP 和备用机的本机端口，切流后再检查两个 VIP。每处都要求就绪 200、登录的 `/api/me` 200 且返回预期账号、匿名的 `/api/me` 401，以及探针账号访问 `/api/admin/auth/me` 得到 403。任一项失败会阻止发布或触发切流回退。此检查覆盖 API 的用户验签、身份查询和后台权限拒绝。
+
+演练环境和需要额外验证后台已登录权限的发布使用显式 `--probe-file`。文件放仓库外，权限 `0600`，`host` 匹配目标域名，提供 `header`、`key`、能读取 `/api/admin/auth/me` 的短期授权 `token` 和预期 `subject_id`。
 
 ```bash
 ./infra/scripts/deploy.sh server --plan
 ./infra/scripts/deploy.sh server \
   --bundle "$NEW_BUNDLE_DIR/candidate.tar.gz" --release "$RELEASE_ID" \
-  --probe-file "$PRODUCTION_PROBE_FILE" --receipt "$NEW_RECEIPT_PATH"
+  --receipt "$NEW_RECEIPT_PATH"
 ```
+
+首次建档使用 `infra/scripts/cluster/ReleaseProbeAccount.java`。在 devq 编译后，将编译结果临时放到已核对、零权重的正式 API 容器，在容器现有 JDBC 配置下运行 `ReleaseProbeAccount --provision`，再清理临时文件。工具只插入固定普通账号并核对该账号的权限，遇到同名冲突、停用或权限变化会报错。
+
+2026-11-12 已完成正式账号建档及幂等重跑。A、B 的本机检查和 B 承流时两个正式 VIP 的鉴权检查均通过。验收使用当前制品 `1ec009e8a3cd2f32`，ALB 权重为 A0/B100。
 
 脚本持有集群发布锁。它核对 ALB 权重，在两个 VIP 上验证当前承流节点，再准备零权重备用机。从旧的 A50/B50 状态启用本流程时，先确认双机健康，再收敛到 A100/B0。
 

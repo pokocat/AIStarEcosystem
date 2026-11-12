@@ -6,7 +6,7 @@ ROOT=pathlib.Path(__file__).resolve().parents[3]
 DUAL_ACTIVE={'a':50,'b':50}
 SINGLE_NODE={'a':{'a':100,'b':0},'b':{'a':0,'b':100}}
 class Cluster:
- def __init__(self,config,mode):self.config=config;self.mode=mode;self.expected=config['modes'][mode];self.events=[];self.probe_file=None;self.runtime_probe=False
+ def __init__(self,config,mode):self.config=config;self.mode=mode;self.expected=config['modes'][mode];self.events=[];self.probe_file=None;self.runtime_probe=False;self.account_probe=False
  def record(self,event,**kw):self.events.append({'utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'event':event,**kw});print(event,flush=True)
  def check_lease(self):
   lock=getattr(self,'release_lock',None)
@@ -67,6 +67,8 @@ finally:
  def probe(self,node=None,authenticated=True,check_readiness=True):
   if self.runtime_probe:
    return self.probe_runtime(node,authenticated,check_readiness)
+  if self.account_probe:
+   return self.probe_production_account(node,authenticated,check_readiness)
   # Each VIP is contacted directly with the expected SNI and protected headers.
   path=pathlib.Path(self.probe_file)
   require(path.stat().st_mode&0o777==0o600,'探针配置必须0600')
@@ -107,6 +109,28 @@ finally:
    observed_by_vip[ip]={observed}
   if node:self.record('alb_ready',node=node,probe='runtime')
   return observed_by_vip
+ def run_account_probe(self,node,ip,authenticated,check_readiness,accepted=None):
+  require(self.mode=='production','发布探针账号仅用于正式环境')
+  expected_checks=set()
+  if check_readiness:expected_checks.add('ready')
+  if authenticated:expected_checks.update(('account','anonymous','admin_denied'))
+  require(expected_checks,'缺少有效的发布探测类型')
+  source=pathlib.Path(__file__).with_name('release_probe.py').read_text()
+  command=shlex.join([self.config['operation_python'],'-s','-c',source])
+  request={'ip':ip,'readiness':check_readiness,'authenticated':authenticated}
+  result=json.loads(self.ssh(node,command,timeout=50,stdin=json.dumps(request)))
+  require(result.keys()==expected_checks,'发布探针未返回完整的鉴权证据')
+  for check,evidence in result.items():
+   require(evidence['ok'] is True,'发布探针未通过检查：'+check)
+   if accepted is not None:require(evidence['node'] in accepted,'发布探针的请求节点与目标不一致')
+  return result['account' if authenticated else 'ready']['node']
+ def probe_production_account(self,node,authenticated,check_readiness):
+  accepted={node} if node else set(self.config['nodes'])
+  observed={}
+  for ip in self.config['verify_ips']:
+   observed[ip]={self.run_account_probe('a',ip,authenticated,check_readiness,accepted)}
+  if node:self.record('alb_ready',node=node,probe='dedicated_account')
+  return observed
  def probe_dual(self,authenticated=True):
   seen={ip:set() for ip in self.config['verify_ips']}
   expected_nodes=set(self.config['nodes'])
@@ -121,6 +145,10 @@ finally:
     return
   raise RuntimeError('双活验收失败：两个ALB VIP均须观测到双机响应')
  def probe_standby(self,node):
+  if self.account_probe:
+   self.run_account_probe(node,None,True,True)
+   self.record('standby_auth_ready',node=node,probe='dedicated_account')
+   return
   if self.runtime_probe:
    url='http://127.0.0.1:'+str(self.expected['port'])+'/internal/ready'
    command=shlex.join(['curl','--silent','--show-error','--fail','--max-time','12',url])
@@ -288,6 +316,7 @@ def main():
  if a.refresh_runtime:require(mode=='production' and not a.prepare_only,'运行配置更新仅用于正式备用机发布')
  if a.bootstrap_stage:require(mode=='stage','初始化仅允许隔离演练')
  cluster=Cluster(config,mode);cluster.probe_file=a.probe_file;cluster.runtime_probe=a.refresh_runtime and not a.probe_file
+ cluster.account_probe=mode=='production' and not a.refresh_runtime and not a.probe_file
  # An upload-only run has no cutover preflight, so check production activation here.
  if mode=='production' and a.prepare_only:
   for n in config['nodes']:cluster.action(n,'inspect')
@@ -309,7 +338,7 @@ def main():
   elif a.bootstrap_stage:
    result={n:cluster.action(n,'start',a.release) for n in ['a','b']};cluster.weights(DUAL_ACTIVE);time.sleep(16);cluster.probe_dual(authenticated=False);cluster.record('bootstrap_complete')
   else:
-   require(a.probe_file or a.refresh_runtime,'缺少受保护TLS探针配置')
+   require(a.probe_file or cluster.runtime_probe or cluster.account_probe,'缺少受保护TLS探针配置')
    result=cluster.publish_to_standby(bundle,a.release,a.refresh_runtime) if mode=='production' else cluster.rolling(a.release)
   receipt={'completed_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'mode':mode,'events':cluster.events,'result':result,'database_changed':False,'dns_changed':False};pathlib.Path(a.receipt).write_text(json.dumps(receipt,indent=2))
  finally:release_lease(lock)

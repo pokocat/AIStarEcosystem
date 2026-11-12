@@ -273,6 +273,40 @@ class RollingReleaseTests(unittest.TestCase):
   cluster.config={'verify_ips':['first','second'],'nodes':{'a':{},'b':{}}}
   cluster.probe=lambda authenticated=True,check_readiness=True:{'first':{'a','b'},'second':{'a'}}
   with self.assertRaisesRegex(RuntimeError,'双活验收失败'):cluster.probe_dual()
+class ReleaseProbeAccountTests(unittest.TestCase):
+ def test_token_has_the_fixed_consumer_subject_and_short_expiry(self):
+  import base64,hashlib,hmac,release_probe
+  key=b'k'*32
+  header,payload,signature=release_probe.account_token(key,1000).split('.')
+  decode=lambda part:base64.urlsafe_b64decode(part+'='*(-len(part)%4))
+  self.assertEqual(json.loads(decode(header)),{'alg':'HS256'})
+  self.assertEqual(json.loads(decode(payload)),{'sub':release_probe.SUBJECT,'username':release_probe.USERNAME,
+                                               'role':'PERSONAL','iat':1000,'exp':1090})
+  self.assertEqual(decode(signature),hmac.digest(key,(header+'.'+payload).encode(),hashlib.sha256))
+ def test_me_must_be_the_unprivileged_provisioned_account(self):
+  import release_probe
+  account={'id':release_probe.SUBJECT,'username':release_probe.USERNAME,'status':'active',
+           'kind':'personal','operatorRole':None,'hasPassword':False,'enrollments':[]}
+  self.assertTrue(release_probe.matches_account({'success':True,'data':account}))
+  for drift in ({'id':'different-user'},{'status':'suspended'},{'operatorRole':'operator'},
+                {'enrollments':[{'product':'aiavatar','status':'active'}]},{'hasPassword':True}):
+   with self.subTest(drift=drift):
+    self.assertFalse(release_probe.matches_account({'success':True,'data':{**account,**drift}}))
+ def test_auto_probe_requires_complete_evidence_from_the_expected_node(self):
+  import release
+  from unittest.mock import Mock
+  cluster=release.Cluster({'nodes':{'a':{},'b':{}},'verify_ips':['first','second'],
+                           'operation_python':'python3','modes':{'production':{}}},'production')
+  cluster.account_probe=True
+  checks={check:{'ok':True,'node':'b'} for check in ('ready','account','anonymous','admin_denied')}
+  cluster.ssh=Mock(return_value=json.dumps(checks))
+  self.assertEqual(cluster.probe('b'),{'first':{'b'},'second':{'b'}})
+  self.assertEqual(cluster.ssh.call_count,2)
+  for changed in ({'account':{'ok':False,'node':'b'}},{'admin_denied':{'ok':True,'node':'a'}}):
+   with self.subTest(changed=changed),self.assertRaises(Refused):
+    cluster.ssh.return_value=json.dumps({**checks,**changed})
+    cluster.probe('b')
+
 class FrontendCutoverTests(unittest.TestCase):
  def test_routes_can_arrive_before_health_and_both_are_recorded(self):
   import frontend
