@@ -1,0 +1,78 @@
+--- a/apps/web-aiavatar/src/ip/scenes/scene-video-studio.tsx
++++ b/apps/web-aiavatar/src/ip/scenes/scene-video-studio.tsx
+@@ -45,7 +45,7 @@
+ import { AUDIO_REFERENCE_NOTICE } from '@/canvas-bridge/recording-audio';
+ import { IpStudioApi } from "../api";
+ import { findVideoScene, useSceneCatalog, type VideoScene } from "./scene-catalog";
+-import { addScriptNode, addTakeNode, addVideoRow, applyRun, createSceneDraft, draftSubject, listSceneDrafts, openedVideoState, patchNode, resubmitRow, restoreVideoTaskScript, sceneInputsOf, scriptNodes, scriptOfRow, rejectedNextStep, submissionRejected, videoRows, withSceneInput, type SceneInputKind } from "./scene-drafts";
++import { addScriptNode, addTakeNode, addVideoRow, applyRun, createSceneDraft, draftHasVideos, draftSubject, forkedDraftDoc, listSceneDrafts, openedVideoState, patchNode, resubmitRow, restoreVideoTaskScript, sceneInputsOf, scriptNodes, scriptOfRow, rejectedNextStep, submissionRejected, videoRows, withSceneInput, type SceneInputKind } from "./scene-drafts";
+ import { useSceneDraftStore, useSceneStateSave } from "./scene-draft-store";
+ import { useSceneQuery, writeSceneQuery } from "./scene-query";
+ import { SceneDrawer, SceneEmpty, SceneExample, SceneNoModel, SceneResultTabs, SceneSwitch, sceneFailureText, sceneHintText, sceneOptionValues, useSceneDrawerPin, useScenePopover, RatioGlyph, useSceneMobile, SlotEmpty } from "./scene-layout";
+@@ -194,6 +194,7 @@
+   const reset = (next = scene) => {
+     setSelectedTask(undefined); setMobileView('compose');
+     try { sessionStorage.removeItem(VIDEO_TASK_SELECTION); } catch { /* UI preference */ }
++    continuingBatch.current = undefined;
+     showDraft(undefined, begin()); setText(""); setImages([]); setCharacter(undefined); setVoice(undefined); setVideo(undefined);
+     setView("compose"); setScriptId(undefined); setRevise(""); setHint(""); setTab("example");
+     if (next) writeQuery(next.id);
+@@ -235,7 +236,7 @@
+   const openingId = useRef<string>(undefined);
+   const openDraft = useCallback(async (id: string) => {
+     const ticket = begin();
+-    openingId.current = id;
++    openingId.current = id; continuingBatch.current = undefined;
+     try {
+       await settled(id);
+       const project = await IpStudioApi.getProject(id);
+@@ -301,17 +302,28 @@
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [ready, catalog, scene?.id, query.ref, query.draft, query.scene]);
+ 
+-  /** 这一次操作用哪份草稿：页面上开着的那份，没有就新建一份（ticket 之后换过草稿，新建的不摆到页面上）。 */
++  /**
++   * 这一次操作用哪份草稿：页面上开着的那份，没有就新建一份（ticket 之后换过草稿，新建的不摆到页面上）。
++   * newVideo：直接点「生成视频」。开着的草稿里已经有视频、又不是「再次生成」放回来的那一批，就另开一份新草稿，
++   * 带上页面上的素材、脚本和设置（forkedDraftDoc，2026-11-11 用户定：不相关的视频不归成一批，删一条不连带别的）。
++   */
+   const creatingDraft = useRef<{ ticket: number; promise: Promise<string> } | undefined>(undefined);
+-  const ensureDraft = async (ticket: number) => {
++  /** 「再次生成」放回的那份草稿：在它里面生成，新视频和原视频同一批。 */
++  const continuingBatch = useRef<string>(undefined);
++  const ensureDraft = async (ticket: number, opts?: { newVideo?: boolean }) => {
+     if (!scene) throw new Error("场景尚未加载完成，请稍后重试。");
+-    if (draftRef.current) return draftRef.current.id;
++    const open = draftRef.current;
++    const fork = !!open && !!opts?.newVideo && continuingBatch.current !== open.id
++      && (draftHasVideos(open.doc) || segmentedRecords(open).length > 0);
++    if (open && !fork) return open.id;
+     if (creatingDraft.current?.ticket === ticket) return creatingDraft.current.promise;
+     const subject = draftSubject(text);
++    const seed = fork ? forkedDraftDoc(open!.doc, { sceneInputs: selection(), sceneVideoState: videoState, ...(chosenVideo ? { sceneVideoModel: chosenVideo.endpointId } : {}) }) : undefined;
+     const promise = (async () => {
+       const created = await createSceneDraft(subject ? `${scene.title} · ${subject}` : scene.title, scene.id);
+       remember(created);
+       if (showDraft(created, ticket)) writeQuery(scene.id, created.id);
++      if (seed) await persist(() => seed, created.id);
+       drafts.reload();
+       return created.id;
+     })();
+@@ -1051,7 +1063,7 @@
+       try { sessionStorage.removeItem(VIDEO_TASK_SELECTION); } catch { /* UI preference */ }
+       // writeSceneQuery 在同一份草稿里会留着 task（只带 task 的链接要能打开），这里是离开任务，地址直接换掉。
+       window.history.replaceState(null, '', `/video?scene=${encodeURIComponent(task.sceneId)}&draft=${encodeURIComponent(task.projectId)}`);
+-      await openDraft(task.projectId); setView('compose'); setMobileView('compose');
++      await openDraft(task.projectId); continuingBatch.current = task.projectId; setView('compose'); setMobileView('compose');
+       setNote({ text: '已放回这条视频的设置，新视频和它在同一批。' });
+     } catch (error) { showFailure({ action: '再次生成', error }); }
+     finally { setBusy(false); }
+@@ -1072,7 +1084,7 @@
+     const ticket = session.current;
+     let projectId: string | undefined, request: StudioVideoTaskCreate | undefined;
+     try {
+-      projectId = await ensureDraft(ticket);
++      projectId = await ensureDraft(ticket, { newVideo: !pending });
+       if (pending) request = pending;
+       else {
+         const { nodes, placed } = placeMaterials(draftRef.current?.doc.nodes as CanvasNodeData[] ?? []);

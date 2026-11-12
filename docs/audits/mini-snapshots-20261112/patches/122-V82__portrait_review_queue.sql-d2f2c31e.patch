@@ -1,0 +1,7 @@
+--- a/apps/server/src/main/resources/db/migration/V82__portrait_review_queue.sql
++++ b/apps/server/src/main/resources/db/migration/V82__portrait_review_queue.sql
+@@ -0,0 +1,4 @@
++ALTER TABLE video_asset_library ADD COLUMN portrait_upload_after TIMESTAMP(6) NULL;
++ALTER TABLE video_asset_portrait ADD COLUMN review_after TIMESTAMP(6) NULL;
++CREATE INDEX idx_video_portrait_dispatch ON video_asset_portrait (library_id, status, declared_at, id);
++CREATE INDEX idx_video_portrait_review ON video_asset_portrait (status, review_after, updated_at, id);

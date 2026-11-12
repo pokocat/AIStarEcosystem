@@ -1,0 +1,152 @@
+--- a/apps/web-aiavatar/src/ip/portrait-review-ui.tsx
++++ b/apps/web-aiavatar/src/ip/portrait-review-ui.tsx
+@@ -12,10 +12,12 @@
+ import * as api from './api/video-portrait-library';
+ 
+ export const PORTRAIT_THEME = { token: { colorPrimary: '#192229', borderRadius: 8, fontFamily: 'var(--ip-ui, sans-serif)' }, components: { Table: { headerBg: 'transparent' }, Modal: { titleFontSize: 18 } } };
+-export const portraitStatus: Record<string, string> = { needs_review: '待确认', uploading: '提交中', processing: '审核中', active: '可使用', failed: '未通过', revoked: '已撤销', verifying: '待核验', verified: '已核验' };
++export const portraitStatus: Record<string, string> = { needs_review: '待确认', queued: '排队中', uploading: '提交中', processing: '审核中', active: '可使用', failed: '处理失败', revoked: '已撤销', verifying: '待核验', verified: '已核验' };
+ export const PortraitStatus = ({ status }: { status: string }) => <Tag color={status === 'active' ? 'success' : status === 'failed' ? 'error' : undefined}>{portraitStatus[status] || '待确认'}</Tag>;
+ /** A portrait the user still has to declare; everything else is waiting on, or already passed, the official review. */
+-export const portraitNeedsAction = (item: VideoPortraitItem) => item.status === 'needs_review' || item.status === 'failed' || item.status === 'revoked';
++export const portraitNeedsAction = (item: VideoPortraitItem) =>
++  !item.submissionUnknown && ['needs_review', 'failed', 'revoked'].includes(item.status);
++const portraitPending = (item: VideoPortraitItem) => ['queued', 'uploading', 'processing'].includes(item.status);
+ 
+ type Act = (run: () => Promise<unknown>) => Promise<boolean>;
+ 
+@@ -77,6 +79,7 @@
+ }
+ 
+ const NEW = 'new';
++const NO_BATCH_ITEMS: VideoPortraitItem[] = [];
+ type Kind = 'person' | 'virtual';
+ 
+ /** People this photo can be declared as: verified ones, plus a verification still waiting for its scan. One entry per name. */
+@@ -94,23 +97,35 @@
+  * A person verified here is the one in the photo, so the photo is submitted as soon as verification passes.
+  * With `footer`, the step's hint and main button go to the dialog's button row; without it they sit under the content.
+  */
+-export function PortraitGuide({ item, overview, busy, act, footer }: { item: VideoPortraitItem; overview: VideoPortraitOverview; busy: boolean; act: Act; footer?: PortraitFooterSlots }) {
++export function PortraitGuide({ item, overview, busy, act, footer, batchItems = NO_BATCH_ITEMS }: {
++  item: VideoPortraitItem; overview: VideoPortraitOverview; busy: boolean; act: Act;
++  footer?: PortraitFooterSlots; batchItems?: VideoPortraitItem[];
++}) {
+   const people = portraitPeople(overview, item);
+   const [kind, setKind] = useState<Kind | undefined>(item.placement === 'person' || item.placement === 'virtual' ? item.placement : undefined);
+   // The person on file for this photo, or the only verified one, so a repeat photo is one tick and one click.
+   const [choice, setChoice] = useState<string | undefined>(() => people.find(p => p.id === item.personId)?.id
+     ?? (people.filter(p => p.status === 'active').length === 1 ? people.find(p => p.status === 'active')!.id : undefined));
+   const [name, setName] = useState(''), [accepted, setAccepted] = useState(false);
++  const [additionalIds, setAdditionalIds] = useState<string[]>([]);
+   const [verification, setVerification] = useState<VideoPortraitPerson>(), [verified, setVerified] = useState<VideoPortraitPerson>();
+   const requestId = useRef<string | undefined>(undefined);
+   // The person just verified may reach this list one reload after the photo is submitted.
+   const options = verified && !people.some(p => p.id === verified.id) ? [...people, verified] : people;
+   const chosen = options.length ? choice : NEW;
+   const pick = options.find(p => p.id === chosen);
+-  const phase = item.status === 'active' ? 'done' : item.status === 'uploading' || item.status === 'processing' ? 'review' : verification ? 'verify' : 'choose';
++  const phase = item.status === 'active' ? 'done' : item.submissionUnknown ? 'unknown'
++    : portraitPending(item) ? 'review' : verification ? 'verify' : 'choose';
+   const shownKind = phase === 'review' || phase === 'done' ? item.placement || kind : kind;
+-
+-  const declare = useCallback((personId?: string) => api.declarePortrait(item.id, { kind: personId ? 'person' : 'virtual', personId, accepted: true, agreementVersion: overview.agreement.version }), [item.id, overview.agreement.version]);
++  const batchOptions = useMemo(() => batchItems.filter(other => other.id !== item.id && other.libraryId === item.libraryId
++    && other.mediaType === 'image' && portraitNeedsAction(other)), [batchItems, item.id, item.libraryId]);
++  const selectedIds = useMemo(() => [item.id, ...additionalIds.filter(id => batchOptions.some(other => other.id === id))],
++    [item.id, additionalIds, batchOptions]);
++
++  const declare = useCallback((personId?: string) => {
++    const declaration = { kind: personId ? 'person' as const : 'virtual' as const, personId, accepted: true, agreementVersion: overview.agreement.version };
++    return selectedIds.length > 1 ? api.declarePortraits(selectedIds, declaration) : api.declarePortrait(item.id, declaration);
++  }, [item.id, overview.agreement.version, selectedIds]);
+   const afterVerification = useCallback(async (person: VideoPortraitPerson) => {
+     if (person.status !== 'active') { setVerification(person); return; }
+     setVerification(undefined); setVerified(person); setChoice(person.id); setKind('person');
+@@ -148,7 +163,8 @@
+     else if (pick?.status === 'active') void act(() => declare(pick.id));
+     else if (pick) void check(pick.id); // Verification already started: pick it up instead of starting over.
+   };
+-  const label = kind === 'virtual' ? '提交审核' : chosen === NEW ? '开始本人核验' : pick && pick.status !== 'active' ? '继续核验' : '提交审核';
++  const submitLabel = selectedIds.length > 1 ? `提交审核（${selectedIds.length} 张）` : '提交审核';
++  const label = kind === 'virtual' ? submitLabel : chosen === NEW ? '开始本人核验' : pick && pick.status !== 'active' ? '继续核验' : submitLabel;
+   const steps = shownKind === 'virtual' ? ['选择类型', '照片审核'] : ['选择类型', '本人核验', '照片审核'];
+   const current = phase === 'choose' ? 0 : phase === 'verify' ? 1 : steps.length - 1;
+   const personName = overview.persons.find(p => p.id === item.personId)?.name;
+@@ -157,7 +173,7 @@
+     : phase === 'verify' && verification ? [back, portraitVerificationLive(verification)
+       ? <Button key="check" loading={busy} onClick={() => void check(verification.id)}>查询核验结果</Button>
+       : <Button key="again" type="primary" loading={busy} onClick={() => { requestId.current = undefined; void start(verification.name); }}>重新核验</Button>]
+-    : phase === 'review' ? [undefined, <Button key="query" disabled={busy} onClick={() => void act(() => api.refreshPortrait(item.id))}>查询结果</Button>]
++    : phase === 'review' && item.status === 'processing' ? [undefined, <Button key="query" disabled={busy} onClick={() => void act(() => api.refreshPortrait(item.id))}>查询结果</Button>]
+     : [undefined, undefined];
+   const controls = footer
+     ? <>{lead && footer.start && createPortal(lead, footer.start)}{action && footer.action && createPortal(action, footer.action)}</>
+@@ -174,15 +190,28 @@
+         {item.status === 'failed' && <Alert type="error" showIcon title={item.errorMessage || '上次提交未成功，请重新提交。'} />}
+         {item.status === 'revoked' && <Alert type="warning" showIcon title="这张照片的人物授权已撤销，请重新确认。" />}
+         <Form.Item label="照片类型">
+-          <Radio.Group block optionType="button" buttonStyle="solid" value={kind} disabled={busy} onChange={e => { setKind(e.target.value); setAccepted(false); }}
++          <Radio.Group block optionType="button" buttonStyle="solid" value={kind} disabled={busy} onChange={e => { setKind(e.target.value); setAccepted(false); setAdditionalIds([]); }}
+             options={[{ value: 'person', label: '真人照片' }, { value: 'virtual', label: 'AI 虚拟人像' }]} />
+         </Form.Item>
+         {kind === 'person' && options.length > 0 && <Form.Item label="照片中的人物">
+-          <Radio.Group vertical value={chosen} disabled={busy} onChange={e => setChoice(e.target.value)}
++          <Radio.Group vertical value={chosen} disabled={busy} onChange={e => { setChoice(e.target.value); setAccepted(false); setAdditionalIds([]); }}
+             options={[...options.map(p => ({ value: p.id, label: p.status === 'active' ? p.name : `${p.name}（核验中）` })), { value: NEW, label: '其他人物' }]} />
+         </Form.Item>}
+         {kind === 'person' && chosen === NEW && <Form.Item label="人物名称" extra="下一步需要照片中的本人用手机扫码核验。">
+           <Input value={name} onChange={e => setName(e.target.value)} placeholder="例如：林晚" maxLength={64} disabled={busy} autoFocus={!options.length} />
++        </Form.Item>}
++        {kind && item.mediaType === 'image' && batchOptions.length > 0 && <Form.Item
++          label={kind === 'virtual' ? '同时提交其他虚拟人像' : '同时提交同一人的其他照片'}>
++          <Checkbox.Group<string> value={additionalIds} disabled={busy} onChange={ids => { setAdditionalIds(ids); setAccepted(false); }}>
++            <Flex wrap gap={12}>
++              {batchOptions.map(other => <Checkbox key={other.id} value={other.id} disabled={additionalIds.length >= 11 && !additionalIds.includes(other.id)}>
++                <Flex vertical gap={4}>
++                  {other.previewUrl && <Image preview={false} src={other.previewUrl} alt="" width={40} height={44} style={{ objectFit: 'cover', borderRadius: 4 }} />}
++                  <Typography.Text ellipsis={{ tooltip: other.label }} className="portrait-batch-label">{other.label}</Typography.Text>
++                </Flex>
++              </Checkbox>)}
++            </Flex>
++          </Checkbox.Group>
+         </Form.Item>}
+         {kind && <PortraitConsent key={kind} checked={accepted} disabled={busy} onChange={setAccepted}
+           title={kind === 'person' ? '人像授权说明' : '虚拟人像声明'} text={kind === 'person' ? overview.agreement.text : overview.agreement.virtualDeclaration} />}
+@@ -190,9 +219,10 @@
+       {phase === 'verify' && verification && <PortraitVerifyPanel person={verification} note="核验通过后将自动提交照片审核" />}
+       {phase === 'review' && <Flex vertical align="center" gap={10} className="portrait-state">
+         <Spin />
+-        <Typography.Text strong>照片审核中</Typography.Text>
+-        <Typography.Text type="secondary">通常需要几分钟，结果会自动更新。</Typography.Text>
++        <Typography.Text strong>{item.status === 'queued' ? '照片排队中' : item.status === 'uploading' ? '照片提交中' : '照片审核中'}</Typography.Text>
++        <Typography.Text type="secondary">{item.status === 'queued' ? '排到后将自动送审。' : '结果会自动更新。'}</Typography.Text>
+       </Flex>}
++      {phase === 'unknown' && <Alert type="warning" showIcon title={item.errorMessage || '素材提交结果待确认，请联系技术支持。'} />}
+       {phase === 'done' && <Flex vertical align="center" gap={8} className="portrait-state">
+         <CircleCheck size={36} className="portrait-done-icon" aria-hidden />
+         <Typography.Text strong>审核已通过</Typography.Text>
+@@ -283,14 +313,18 @@
+     }
+     finally { lock.current = false; if (alive.current) setBusy(false); }
+   }, [reload]);
++  const pending = overview?.items.some(portraitPending);
+   useEffect(() => {
+-    if (!enabled || !pollItems || !overview?.items.some(i => i.status === 'processing')) return;
++    if (!enabled || !pollItems || !pending) return;
+     let stopped = false;
+-    const timer = setTimeout(async () => {
+-      try { for (const item of overview.items.filter(i => i.status === 'processing')) { if (stopped) return; await api.refreshPortrait(item.id); } if (!stopped) await reload(); }
++    let timer: ReturnType<typeof setTimeout>;
++    const poll = async () => {
++      try { await reload(); }
+       catch (e) { if (!stopped) setError(normalizeStudioError(e).message); }
+-    }, 10000);
++      finally { if (!stopped) timer = setTimeout(poll, 5000); }
++    };
++    timer = setTimeout(poll, 5000);
+     return () => { stopped = true; clearTimeout(timer); };
+-  }, [enabled, pollItems, overview, reload]);
++  }, [enabled, pollItems, pending, reload]);
+   return { overview, error, busy, reload, act };
+ }

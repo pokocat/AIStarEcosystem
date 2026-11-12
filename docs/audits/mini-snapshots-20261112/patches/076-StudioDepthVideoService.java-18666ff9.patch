@@ -1,0 +1,59 @@
+--- a/apps/server/src/main/java/com/aistareco/aep/ipstudio/service/StudioDepthVideoService.java
++++ b/apps/server/src/main/java/com/aistareco/aep/ipstudio/service/StudioDepthVideoService.java
+@@ -48,11 +48,17 @@
+     private final String command,checkpoint,poseCheckpointDir;
+     private final long timeoutMs;
+     private final int maxRes;
++    /** 深度模型推理时的短边像素（ReShot --input-size，14 的倍数）；0 = 用 ReShot 的 --quality fast（9:16 是 364×644）。 */
++    private final int inputSize;
+     private final double poseCoverage;
+ 
+     public StudioDepthVideoService(FileStorageService storage,IpProjectService projects,FfmpegRunner ffmpeg,ObjectMapper mapper,
+             String command,String checkpoint,long timeoutMs) {
+         this(storage,projects,ffmpeg,mapper,command,checkpoint,timeoutMs,"",320,0.5);
++    }
++    public StudioDepthVideoService(FileStorageService storage,IpProjectService projects,FfmpegRunner ffmpeg,ObjectMapper mapper,
++            String command,String checkpoint,long timeoutMs,String poseCheckpointDir,int maxRes,double poseCoverage) {
++        this(storage,projects,ffmpeg,mapper,command,checkpoint,timeoutMs,poseCheckpointDir,maxRes,poseCoverage,0);
+     }
+     @Autowired
+     public StudioDepthVideoService(FileStorageService storage,IpProjectService projects,FfmpegRunner ffmpeg,ObjectMapper mapper,
+@@ -60,11 +66,14 @@
+             @Value("${aep.studio.depth.timeout-ms:1200000}") long timeoutMs,
+             @Value("${aep.studio.depth.pose-checkpoint-dir:}") String poseCheckpointDir,
+             @Value("${aep.studio.depth.max-res:320}") int maxRes,
+-            @Value("${aep.studio.depth.pose-min-coverage:0.5}") double poseCoverage) {
++            @Value("${aep.studio.depth.pose-min-coverage:0.5}") double poseCoverage,
++            @Value("${aep.studio.depth.input-size:__INPUT_DEFAULT__}") int inputSize) {
+         this.storage=storage;this.projects=projects;this.ffmpeg=ffmpeg;this.mapper=mapper;
+         this.command=command;this.checkpoint=checkpoint;this.timeoutMs=Math.min(1800000,Math.max(1000,timeoutMs));
+         this.poseCheckpointDir=poseCheckpointDir==null?"":poseCheckpointDir.strip();
+         this.maxRes=Math.max(160,Math.min(1280,maxRes));this.poseCoverage=Math.max(0,Math.min(1,poseCoverage));
++        // 控制视频只要长边 320（maxRes），模型按 364 算是白算；14 的倍数是 ViT 的块大小，太小深度会糊
++        this.inputSize=inputSize<=0?0:Math.max(140,Math.min(924,inputSize/14*14));
+     }
+     public boolean configured() {return executable(command)&&!checkpoint.isBlank()&&Files.isRegularFile(Path.of(checkpoint));}
+     /** DWPose weights are optional; without them every reference uses depth. */
+@@ -126,8 +135,11 @@
+             }
+             if(output==null) {
+                 output=directory.resolve("depth.mp4");
+-                reshot(List.of(command,timed.toString(),"-o",output.toString(),"--control","depth","--model","small","--checkpoint",checkpoint,
+-                        "--target","h3","--quality","fast","--max-res",String.valueOf(maxRes)),directory,"depth",started,heartbeat);
++                List<String> resolution=inputSize>0?List.of("--input-size",String.valueOf(inputSize)):List.of("--quality","fast");
++                List<String> args=new ArrayList<>(List.of(command,timed.toString(),"-o",output.toString(),"--control","depth","--model","small","--checkpoint",checkpoint,
++                        "--target","h3"));
++                args.addAll(resolution);args.addAll(List.of("--max-res",String.valueOf(maxRes)));
++                reshot(args,directory,"depth",started,heartbeat);
+             }
+             Source result=inspect("",output);
+             if(Math.abs(result.seconds()-reference.seconds())>0.15)throw new java.io.IOException("control duration changed "+reference.seconds()+" -> "+result.seconds());
+@@ -137,7 +149,7 @@
+                     user,key,control,coverage,result.seconds(),result.width(),result.height());
+             ObjectNode out=mapper.createObjectNode().put("storageKey",stored.key()).put("sourceStorageKey",source.key())
+                     .put("durationSec",result.seconds()).put("width",result.width()).put("height",result.height())
+-                    .put("controlType",control).put("fps",CONTROL_FPS).put("processor","reshot-"+("pose".equals(control)?"dwpose":"vda-small")).put("mock",false);
++                    .put("controlType",control).put("fps",CONTROL_FPS).put("depthInputSize",inputSize).put("processor","reshot-"+("pose".equals(control)?"dwpose":"vda-small")).put("mock",false);
+             if(coverage!=null)out.put("poseCoverage",Math.round(coverage*1000)/1000.0);
+             return out;
+         } catch(InterruptedException e){Thread.currentThread().interrupt();throw e;}

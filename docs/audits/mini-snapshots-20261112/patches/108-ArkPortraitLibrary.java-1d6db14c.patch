@@ -1,0 +1,307 @@
+--- a/apps/server/src/main/java/com/aistareco/aep/service/materialvideo/ArkPortraitLibrary.java
++++ b/apps/server/src/main/java/com/aistareco/aep/service/materialvideo/ArkPortraitLibrary.java
+@@ -10,6 +10,11 @@
+ import org.springframework.http.HttpStatus;
+ import org.springframework.jdbc.core.JdbcTemplate;
+ import org.springframework.stereotype.Service;
++import org.springframework.scheduling.annotation.Scheduled;
++import org.springframework.transaction.PlatformTransactionManager;
++import org.springframework.transaction.support.TransactionTemplate;
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
+ 
+ import java.nio.charset.StandardCharsets;
+ import java.security.*;
+@@ -26,18 +31,22 @@
+     public static final String VERSION="ark-portrait-v1-20261109";
+     public static final String AGREEMENT="本人同意将所选人像素材提交火山引擎方舟，用于活体核验、人脸一致性比对、素材审核和存储，并仅供本人主动发起的视频创作使用。刷脸核验不等同于证件实名或公证。可在本页撤销授权；撤销后停止新增使用，并删除官方素材及素材组。";
+     public static final String VIRTUAL_DECLARATION="本人确认拥有素材的合法使用及处分权限，该素材为 AI 生成的虚拟人像，不与任何自然人肖像或形象雷同，不侵害第三方权利。";
++    private static final Logger log = LoggerFactory.getLogger(ArkPortraitLibrary.class);
++    private static final String SUBMISSION_UNKNOWN = ArkAssetClient.SUBMISSION_UNKNOWN;
+     private static final ObjectMapper JSON=new ObjectMapper();
+     private final JdbcTemplate db; private final VideoAssetLibraryRecordRepository libraries;
+     private final ArkAssetClient api; private final FileStorageService storage; private final IpProjectService projects;
+     private final String callbackBase;
++    private final TransactionTemplate transactions;
+     public ArkPortraitLibrary(JdbcTemplate db,VideoAssetLibraryRecordRepository libraries,ArkAssetClient api,
+-            FileStorageService storage,@Lazy IpProjectService projects,
++            FileStorageService storage,@Lazy IpProjectService projects, PlatformTransactionManager transactionManager,
+             @Value("${aep.video-assets.public-api-base:https://api.aibuzz.cn}")String callbackBase) {
+         this.db=db;this.libraries=libraries;this.api=api;this.storage=storage;this.projects=projects;
+         this.callbackBase=callbackBase.replaceAll("/+$","");
++        this.transactions = new TransactionTemplate(transactionManager);
+     }
+     public record Item(String id,String libraryId,String key,String mediaType,String label,String previewUrl,
+-                       String status,String placement,String personId,String errorMessage,String updatedAt) {}
++                       String status,String placement,String personId,String errorMessage,String updatedAt,boolean submissionUnknown) {}
+     public record Person(String id,String libraryId,String name,String status,String verificationUrl,String expiresAt,String createdAt) {}
+     public record Overview(List<Map<String,String>> libraries,List<Item> items,List<Person> persons,Map<String,String> agreement) {}
+     private VideoAssetLibraryRecord library(String id) {
+@@ -107,59 +116,200 @@
+         if(personId!=null&&db.queryForObject("SELECT COUNT(*) FROM video_asset_person WHERE id=? AND owner_user_id=? AND library_id=? AND status='active'",Integer.class,personId,owner,libraryId)!=1)throw review();
+         return "asset://"+r.get("asset_id");
+     }
+-    public Item declare(String owner,String id,String kind,String personId,boolean accepted,String version) {
+-        var r=ownedItem(owner,id);String lib=(String)r.get("library_id");var record=library(lib);
+-        if(!accepted||!VERSION.equals(version))throw bad("VIDEO_ASSET_DECLARATION_REQUIRED","请阅读并确认人像素材授权说明。");
+-        if(kind==null||!Set.of("virtual","person").contains(kind))throw bad("VIDEO_ASSET_INPUT_INVALID","请选择人像类型。");
+-        String group;
+-        if("person".equals(kind)) {
+-            var p=ownedPerson(owner,personId);
+-            if(!lib.equals(p.get("library_id"))||!"active".equals(p.get("status")))throw bad("VIDEO_ASSET_PERSON_REQUIRED","请先完成该人物的本人核验。");
+-            group=(String)p.get("group_id");
+-        } else {
+-            personId=null;try{group=JSON.readTree(record.getConfigJson()).path("virtualGroupId").asText();}catch(Exception e){throw new IllegalStateException(e);}
+-        }
+-        // Commit the claim before network IO. Concurrent clicks see the same uploading record.
+-        int changed=db.update("UPDATE video_asset_portrait SET status='uploading',placement=?,person_id=?,declared_by=?,declared_at=?,declaration_text=?,error_code=NULL,updated_at=? WHERE id=? AND owner_user_id=? AND status IN ('needs_review','failed','revoked')",
+-                kind,personId,owner,now(),"virtual".equals(kind)?VIRTUAL_DECLARATION:AGREEMENT,now(),id,owner);
+-        if(changed==0)return item(ownedItem(owner,id));
++    public Item declare(String owner, String id, String kind, String personId, boolean accepted, String version) {
++        return declareBatch(owner, List.of(id), kind, personId, accepted, version).get(0);
++    }
++
++    public List<Item> declareBatch(String owner, List<String> ids, String kind, String personId, boolean accepted, String version) {
++        if (!accepted || !VERSION.equals(version))
++            throw bad("VIDEO_ASSET_DECLARATION_REQUIRED", "请阅读并确认人像素材授权说明。");
++        if (kind == null || !Set.of("virtual", "person").contains(kind))
++            throw bad("VIDEO_ASSET_INPUT_INVALID", "请选择人像类型。");
++        if (ids == null || ids.isEmpty() || ids.size() > 12 || ids.stream().anyMatch(id -> id == null || id.isBlank()))
++            throw bad("VIDEO_ASSET_INPUT_INVALID", "请选择 1 至 12 项人像素材。");
++
++        var unique = new LinkedHashSet<>(ids);
++        String person = "person".equals(kind) ? personId : null;
++        return transactions.execute(tx -> {
++            var rows = unique.stream().map(id -> ownedItem(owner, id)).toList();
++            String lib = (String) rows.get(0).get("library_id");
++            if (rows.stream().anyMatch(row -> !lib.equals(row.get("library_id"))))
++                throw bad("VIDEO_ASSET_INPUT_INVALID", "请选择同一素材库中的人像。");
++            library(lib);
++            if ("person".equals(kind)) requireVerifiedGroup(owner, lib, person, true);
++            for (var row : rows) projects.requireOwnedAssetKey(owner, (String) row.get("source_key"));
++
++            var submittedAt = now();
++            // Lock shared photos in the same order even if two batches list them differently.
++            for (String id : unique.stream().sorted().toList()) {
++                db.update("""
++                    UPDATE video_asset_portrait SET status='queued', placement=?, person_id=?, declared_by=?,
++                        declared_at=?, declaration_text=?, asset_id=NULL, error_code=NULL, review_after=NULL, updated_at=?
++                    WHERE id=? AND owner_user_id=? AND status IN ('needs_review','failed','revoked')
++                        AND (error_code IS NULL OR error_code<>?)
++                    """, kind, person, owner, submittedAt, "virtual".equals(kind) ? VIRTUAL_DECLARATION : AGREEMENT,
++                        submittedAt, id, owner, SUBMISSION_UNKNOWN);
++            }
++            return unique.stream().map(id -> item(ownedItem(owner, id))).toList();
++        });
++    }
++
++    private String requireVerifiedGroup(String owner, String lib, String personId, boolean lock) {
++        if (personId != null) {
++            var rows = db.queryForList("""
++                SELECT group_id FROM video_asset_person
++                WHERE id=? AND owner_user_id=? AND library_id=? AND status='active'
++                """ + (lock ? " FOR UPDATE" : ""), personId, owner, lib);
++            if (!rows.isEmpty() && rows.get(0).get("group_id") instanceof String group) return group;
++        }
++        throw bad("VIDEO_ASSET_PERSON_REQUIRED", "请先完成该人物的本人核验。");
++    }
++
++    @Scheduled(fixedDelay = 2_000, scheduler = "portraitAssetScheduler")
++    public void dispatchQueued() {
++        db.update("""
++            UPDATE video_asset_portrait SET status='failed',error_code=?,updated_at=?
++            WHERE status='uploading' AND updated_at<?
++            """, SUBMISSION_UNKNOWN, now(), Timestamp.from(Instant.now().minusSeconds(120)));
++        var readyLibraries = db.queryForList("""
++            SELECT l.id FROM video_asset_library l
++            WHERE l.adapter='ark' AND (l.portrait_upload_after IS NULL OR l.portrait_upload_after<=?)
++                AND EXISTS (SELECT 1 FROM video_asset_portrait p WHERE p.library_id=l.id AND p.status='queued')
++            """, String.class, now());
++        for (String lib : readyLibraries) {
++            var claimed = transactions.execute(tx -> claimNext(lib));
++            if (claimed != null) upload(claimed);
++        }
++    }
++
++    private Map<String,Object> claimNext(String lib) {
++        // Serialize selection and quota reservation for the shared library across worker instances.
++        var libraries = db.queryForList("SELECT portrait_upload_after FROM video_asset_library WHERE id=? FOR UPDATE", lib);
++        if (libraries.isEmpty()) return null;
++        Instant now = Instant.now();
++        if (libraries.get(0).get("portrait_upload_after") instanceof Timestamp after && after.toInstant().isAfter(now)) return null;
++
++        var rows = db.queryForList("""
++            SELECT * FROM video_asset_portrait WHERE library_id=? AND status='queued'
++            ORDER BY declared_at, id LIMIT 1 FOR UPDATE
++            """, lib);
++        if (rows.isEmpty()) return null;
++
++        var row = rows.get(0);
++        db.update("UPDATE video_asset_portrait SET status='uploading',updated_at=? WHERE id=?", Timestamp.from(now), row.get("id"));
++        // Spread the Entry allowance of three submissions per minute across the minute.
++        db.update("UPDATE video_asset_library SET portrait_upload_after=? WHERE id=?", Timestamp.from(now.plusSeconds(21)), lib);
++        return row;
++    }
++
++    private void upload(Map<String,Object> row) {
++        String id = (String) row.get("id");
++        String lib = (String) row.get("library_id");
++        String owner = (String) row.get("owner_user_id");
+         try {
+-            String source=projects.requireOwnedAssetKey(owner,(String)r.get("source_key"));
+-            // Free tier permits 3 CreateAsset per minute per library; reserve across endpoints and workers.
+-            if(!reserveUpload(lib))throw bad("VIDEO_ASSET_RATE_LIMITED","素材提交较频繁，请一分钟后重试。");
+-            String type=switch((String)r.get("media_type")){case "image"->"Image";case "video"->"Video";default->"Audio";};
+-            var result=api.call(record,"CreateAsset",Map.of("GroupId",group,"URL",storage.upstreamFetchUrl(source),"AssetType",type,"Name",limit((String)r.get("label"),64)));
+-            String asset=result.path("Id").asText();if(!asset.startsWith("asset-"))throw bad("VIDEO_ASSET_PROVIDER_FAILED","未收到素材入库结果，请稍后重试。");
+-            // A revoked person must never become usable again when an in-flight upload returns.
+-            int saved=db.update("UPDATE video_asset_portrait SET asset_id=?,status='processing',updated_at=? WHERE id=? AND status='uploading'",asset,now(),id);
+-            if(saved==0)api.call(record,"DeleteAsset",Map.of("Id",asset));
+-        } catch(BusinessException e) {
+-            db.update("UPDATE video_asset_portrait SET status='failed',error_code=?,updated_at=? WHERE id=? AND status='uploading'",e.getCode(),now(),id);throw e;
+-        }
+-        return item(ownedItem(owner,id));
+-    }
+-    private boolean reserveUpload(String lib) {
+-        // DB row lock and timestamp update in a single statement: one ingest per 21 seconds, conservatively below Entry QPM.
+-        return db.update("UPDATE video_asset_library SET updated_at=? WHERE id=? AND updated_at<?",now(),lib,Timestamp.from(Instant.now().minusSeconds(21)))==1;
+-    }
+-    public Item refreshItem(String owner,String id) {
+-        var r=ownedItem(owner,id);
+-        if(!"processing".equals(r.get("status")))return item(r);
+-        String asset=(String)r.get("asset_id");var record=library((String)r.get("library_id"));
+-        JsonNode result;
+-        try{result=api.call(record,"GetAsset",Map.of("Id",asset));}
+-        catch(BusinessException e){if(!"VIDEO_ASSET_REMOTE_NOT_FOUND".equals(e.getCode()))throw e;
+-            db.update("UPDATE video_asset_portrait SET status='failed',error_code='VIDEO_ASSET_REMOTE_NOT_FOUND',updated_at=? WHERE id=? AND status='processing'",now(),id);return item(ownedItem(owner,id));}
+-        String state=result.path("Status").asText();
+-        if("Active".equals(state)||"Failed".equals(state)) {
+-            if("Failed".equals(state))org.slf4j.LoggerFactory.getLogger(getClass()).warn("[ark-assets] asset={} review={}",asset,ArkAssetClient.safe(result));
+-            db.update("UPDATE video_asset_portrait SET status=?,error_code=?,updated_at=? WHERE id=? AND status='processing'",
+-                    "Active".equals(state)?"active":"failed",result.path("Error").path("Code").asText(null),now(),id);
+-        } else if(((Timestamp)r.get("updated_at")).toInstant().isBefore(Instant.now().minusSeconds(1800))) {
+-            db.update("UPDATE video_asset_portrait SET status='failed',error_code='VIDEO_ASSET_REVIEW_TIMEOUT',updated_at=? WHERE id=? AND status='processing'",now(),id);
+-        }
+-        return item(ownedItem(owner,id));
+-    }
++            var record = library(lib);
++            String group = "person".equals(row.get("placement"))
++                    ? requireVerifiedGroup(owner, lib, (String) row.get("person_id"), false)
++                    : JSON.readTree(record.getConfigJson()).path("virtualGroupId").asText();
++            String source = projects.requireOwnedAssetKey(owner, (String) row.get("source_key"));
++            String type = switch ((String) row.get("media_type")) {
++                case "image" -> "Image";
++                case "video" -> "Video";
++                default -> "Audio";
++            };
++            var result = api.call(record, "CreateAsset", Map.of("GroupId", group, "URL", storage.upstreamFetchUrl(source),
++                    "AssetType", type, "Name", limit((String) row.get("label"), 64)));
++            String asset = result.path("Id").asText();
++            if (!asset.startsWith("asset-")) throw bad(SUBMISSION_UNKNOWN, "素材提交结果待确认。");
++
++            int saved = db.update("""
++                UPDATE video_asset_portrait SET asset_id=?,status='processing',review_after=?,updated_at=?
++                WHERE id=? AND status='uploading'
++                """, asset, Timestamp.from(Instant.now().plusSeconds(5)), now(), id);
++            if (saved == 0) api.call(record, "DeleteAsset", Map.of("Id", asset));
++        } catch (BusinessException e) {
++            if (ArkAssetClient.RATE_LIMITED.equals(e.getCode())) {
++                transactions.executeWithoutResult(tx -> {
++                    var retryAfter = Timestamp.from(Instant.now().plusSeconds(60));
++                    db.update("UPDATE video_asset_library SET portrait_upload_after=? WHERE id=? AND portrait_upload_after<?",
++                            retryAfter, lib, retryAfter);
++                    db.update("UPDATE video_asset_portrait SET status='queued',updated_at=? WHERE id=? AND status='uploading'", now(), id);
++                });
++            } else {
++                failUpload(id, e.getCode());
++            }
++        } catch (Exception e) {
++            log.warn("[ark-assets] portrait={} submission could not be recorded ({})", id, e.getClass().getSimpleName());
++            failUpload(id, SUBMISSION_UNKNOWN);
++        }
++    }
++
++    private void failUpload(String id, String code) {
++        db.update("UPDATE video_asset_portrait SET status='failed',error_code=?,updated_at=? WHERE id=? AND status='uploading'",
++                code, now(), id);
++    }
++
++    @Scheduled(fixedDelay = 5_000, scheduler = "portraitAssetScheduler")
++    public void pollReviews() {
++        var due = db.queryForList("""
++            SELECT * FROM video_asset_portrait WHERE status='processing' AND (review_after IS NULL OR review_after<=?)
++            ORDER BY updated_at, id LIMIT 16
++            """, now());
++        for (var row : due) {
++            try {
++                refreshReview(row);
++            } catch (BusinessException e) {
++                log.debug("[ark-assets] portrait={} review deferred: {}", row.get("id"), e.getCode());
++            }
++        }
++    }
++
++    public Item refreshItem(String owner, String id) {
++        refreshReview(ownedItem(owner, id));
++        return item(ownedItem(owner, id));
++    }
++
++    private void refreshReview(Map<String,Object> row) {
++        if (!"processing".equals(row.get("status"))) return;
++        String id = (String) row.get("id");
++        String asset = (String) row.get("asset_id");
++        int claimed = db.update("""
++            UPDATE video_asset_portrait SET review_after=? WHERE id=? AND status='processing' AND asset_id=?
++                AND (review_after IS NULL OR review_after<=?)
++            """, Timestamp.from(Instant.now().plusSeconds(10)), id, asset, now());
++        if (claimed == 0) return;
++
++        try {
++            var record = library((String) row.get("library_id"));
++            var result = api.call(record, "GetAsset", Map.of("Id", asset));
++            String state = result.path("Status").asText();
++            if ("Active".equals(state) || "Failed".equals(state)) {
++                if ("Failed".equals(state)) log.warn("[ark-assets] asset={} review={}", asset, ArkAssetClient.safe(result));
++                finishReview(id, asset, "Active".equals(state) ? "active" : "failed",
++                        result.path("Error").path("Code").asText(null));
++                return;
++            }
++        } catch (BusinessException e) {
++            if ("VIDEO_ASSET_REMOTE_NOT_FOUND".equals(e.getCode())) {
++                finishReview(id, asset, "failed", e.getCode());
++                return;
++            }
++            if (!reviewExpired(row)) throw e;
++        }
++        if (reviewExpired(row)) finishReview(id, asset, "failed", "VIDEO_ASSET_REVIEW_TIMEOUT");
++    }
++
++    private boolean reviewExpired(Map<String,Object> row) {
++        return ((Timestamp) row.get("updated_at")).toInstant().isBefore(Instant.now().minusSeconds(1800));
++    }
++
++    private void finishReview(String id, String asset, String status, String code) {
++        db.update("""
++            UPDATE video_asset_portrait SET status=?,error_code=?,review_after=NULL,updated_at=?
++            WHERE id=? AND status='processing' AND asset_id=?
++            """, status, code, now(), id, asset);
++    }
++
+     public Person startPerson(String owner,String lib,String name,String requestId,boolean accepted,String version) {
+         var record=library(lib);
+         if(!accepted||!VERSION.equals(version))throw bad("VIDEO_ASSET_DECLARATION_REQUIRED","请阅读并同意本人核验授权说明。");
+@@ -230,11 +380,13 @@
+         String code=(String)r.get("error_code");String error=code==null?null:switch(code){
+             case "FaceMismatch"->"素材中的人脸与完成核验的本人不一致，请更换清晰的本人照片。";
+             case "ContentRestricted","InputImageSensitiveContentDetected","InputImageSensitiveContentDetected.PrivacyInformation"->"素材未通过审核；真人照片请完成本人核验后提交，虚拟人像请更换素材。";
++            case SUBMISSION_UNKNOWN -> "素材提交结果待确认，请联系技术支持。";
++            case "VIDEO_ASSET_RATE_LIMITED" -> "上次提交未完成，请重新提交审核。";
+             case "VIDEO_ASSET_REVIEW_TIMEOUT"->"素材审核超时，请稍后重新提交。";
+             case "VIDEO_ASSET_REMOTE_NOT_FOUND"->"官方素材引用已失效，请重新提交入库。";
+             default->"素材暂未完成入库，请检查素材后重试。";};
+         return new Item((String)r.get("id"),(String)r.get("library_id"),(String)r.get("source_key"),(String)r.get("media_type"),(String)r.get("label"),
+-                "image".equals(r.get("media_type"))?storage.signedUrl((String)r.get("source_key")):null,(String)r.get("status"),(String)r.get("placement"),(String)r.get("person_id"),error,iso(r,"updated_at"));
++                "image".equals(r.get("media_type"))?storage.signedUrl((String)r.get("source_key")):null,(String)r.get("status"),(String)r.get("placement"),(String)r.get("person_id"),error,iso(r,"updated_at"),SUBMISSION_UNKNOWN.equals(code));
+     }
+     private Person person(Map<String,Object> r) {
+         boolean live="verifying".equals(r.get("status"))&&((Timestamp)r.get("expires_at")).toInstant().isAfter(Instant.now());

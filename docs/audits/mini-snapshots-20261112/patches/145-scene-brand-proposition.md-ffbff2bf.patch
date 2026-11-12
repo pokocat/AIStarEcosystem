@@ -1,0 +1,9 @@
+--- a/apps/server/src/main/resources/studio/prompts/scenes/scene-brand-proposition.md
++++ b/apps/server/src/main/resources/studio/prompts/scenes/scene-brand-proposition.md
+@@ -19,4 +19,5 @@
+   - 编品牌历史/数据
+   - 硬广
+ ---
+-用有画面感的场景表达品牌态度，少讲产品多讲为什么，结尾落在一句品牌主张上。主张用客户原话，不替品牌发明态度。
++把主张翻成一个具体选择：人物原本会怎么做，这一次为什么改了。开场用手上正在发生的事和脸上的犹豫建立张力。短片优先在一个空间、用一个决定拍清选择和反馈，给最有意味的那一拍留够时间。
++保留一个前后意思不同的物件或动作，让它替主张作证。品牌在选择落定后自然出现；用户给了主张原话就按要求使用，画面已说明的情绪可交给停顿和反应。

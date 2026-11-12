@@ -1,0 +1,23 @@
+--- a/apps/server/src/test/java/com/aistareco/aep/service/materialvideo/MaterialVideoQueueAdmissionTest.java
++++ b/apps/server/src/test/java/com/aistareco/aep/service/materialvideo/MaterialVideoQueueAdmissionTest.java
+@@ -93,6 +93,20 @@
+         assertEquals("failed",job.getStatus());assertEquals("VIDEO_ASSET_REVIEW_TIMEOUT",job.getErrorCode());
+         verify(credits,times(1)).releaseHold(eq(MaterialVideoJobService.CREDIT_REF_TYPE),eq("job"),any());verifyNoInteractions(client);
+     }
++    @Test void approvalWakesTheOriginalJobThroughNormalAdmissionWithoutASecondHold() {
++        job.setErrorCode(ArkPortraitLibrary.REVIEW_CODE);
++        var reviews=mock(VideoPortraitReviewService.class);
++        ReflectionTestUtils.setField(worker,"portraitReviews",reviews);
++        when(reviews.tryAutoResume(job)).thenAnswer(i->{job.setErrorCode(null);return true;});
++        worker.generateAsync("job");
++        verify(queue).requeue(AiGenerationQueueService.VIDEO,"job",java.time.Duration.ZERO);
++        verifyNoInteractions(credits,client);
++        verify(queue,never()).acquire(any(),any(),any(),anyBoolean());
++        when(queue.acquire(any(),any(),any(),eq(false))).thenReturn(AiGenerationQueueService.Admission.WAITING);
++        worker.generateAsync("job");
++        verify(queue).acquire(AiGenerationQueueService.VIDEO,"job","e",false);
++        verifyNoInteractions(credits,client);
++    }
+     @Test void acceptedTaskCannotEnterPortraitPauseOrBeRecreated() {
+         when(client.submit(any(),anyInt(),any(),any(),any(),any(),any(),any())).thenAnswer(i->{job.setExternalTaskId("accepted");throw ArkPortraitLibrary.review();});
+         worker.generateAsync("job");assertNotEquals(ArkPortraitLibrary.REVIEW_CODE,job.getErrorCode());

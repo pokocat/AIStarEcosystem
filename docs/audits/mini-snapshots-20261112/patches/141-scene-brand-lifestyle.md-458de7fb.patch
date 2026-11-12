@@ -1,0 +1,9 @@
+--- a/apps/server/src/main/resources/studio/prompts/scenes/scene-brand-lifestyle.md
++++ b/apps/server/src/main/resources/studio/prompts/scenes/scene-brand-lifestyle.md
+@@ -18,4 +18,5 @@
+   avoid:
+   - 硬广
+ ---
+-用几个生活片段拼出目标用户向往的一天，产品自然出现在其中，节奏轻快，配乐有氛围。人物和情节可虚构，产品事实不编。
++拍一个普通人原本可能放弃、最后仍做成的生活片刻。先亮出空间、时间或关系上的真实限制；产品用一项具体动作腾出机会。镜头跟着人怎么决定和怎么用，生活声和边角的小麻烦比完美摆拍更重要。
++末镜用收拾、归位、余温或自然反应说明这件事是日常能发生的。让一句顺手说出的生活话或动作收住；产品露出保持清楚，避免用旁白替代人物体验。

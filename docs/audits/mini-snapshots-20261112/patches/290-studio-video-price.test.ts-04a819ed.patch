@@ -1,0 +1,21 @@
+--- a/apps/web-aiavatar/src/canvas-bridge/studio-video-price.test.ts
++++ b/apps/web-aiavatar/src/canvas-bridge/studio-video-price.test.ts
+@@ -24,14 +24,16 @@
+ // 2026-11-07 用户：按钮下的说明多余。赠款、优化另计只放悬停提示（detail），按钮下（note）只写生成不了的原因。
+ test("付款账户定了：折后价在按钮上，折扣和其余细节放悬停提示；按钮下只写积分不足", () => {
+   expect(describeStudioVideoPrice(ready(half()), 930, { optimizing: true }))
+-    .toEqual({ standard: 930, shown: 465, discount: "H3限时折扣，省 465 积分", detail: "优化提示词按实际用量另计。", note: undefined });
++    .toEqual({ standard: 930, shown: 465, discount: "H3限时折扣，省 465 积分", detail: "优化提示词另用普通积分支付，按实际用量计。", note: undefined });
+   expect(describeStudioVideoPrice(ready(half({ scopedCredits: 100, walletCredits: 365 })), 930))
+     .toMatchObject({ detail: "模型赠款抵扣 100 积分，另需支付 365 积分。", note: undefined });
+   expect(describeStudioVideoPrice(ready(half({ scopedCredits: 465, walletCredits: 0 })), 930)?.detail).toContain("无需另付积分");
+   expect(describeStudioVideoPrice(ready(half({ canAfford: false, unavailableCode: "MODEL_CREDITS_INSUFFICIENT" })), 930)?.note)
+     .toBe("可用积分不足，需支付 465 积分。");
+   // 优化提示词不含在按钮价格里，有没有折扣都在悬停提示里说；不优化、没赠款就只有价。
+-  expect(describeStudioVideoPrice(ready(quote()), 930, { optimizing: true })?.detail).toBe("优化提示词按实际用量另计。");
++  expect(describeStudioVideoPrice(ready(quote()), 930, { optimizing: true })?.detail).toBe("优化提示词另用普通积分支付，按实际用量计。");
++  // 视频全由赠款付、但开着优化：不能说「无需另付积分」，优化那一笔只能用普通积分（2026-11-11 线上差 1 积分）
++  expect(describeStudioVideoPrice(ready(half({ scopedCredits: 465, walletCredits: 0 })), 930, { optimizing: true })?.detail).not.toContain("无需另付积分");
+   expect(describeStudioVideoPrice(ready(quote()), 930)).toEqual({ standard: 930, shown: 930, detail: undefined, note: undefined });
+ });
+ 

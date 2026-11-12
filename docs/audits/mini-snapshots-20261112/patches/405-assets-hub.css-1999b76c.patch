@@ -1,0 +1,29 @@
+--- a/apps/web-aiavatar/src/styles/assets-hub.css
++++ b/apps/web-aiavatar/src/styles/assets-hub.css
+@@ -206,6 +206,18 @@
+ .lmp-bar .ant-btn { height: 34px; border-radius: 10px; font-size: 12.5px; }
+ .lmp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 16px 12px; max-height: min(40vh, 460px); margin: 0; padding: 3px; overflow-y: auto; list-style: none; }
+ html[data-layout="desktop"] .lmp-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); max-height: min(52vh, 460px); }
++.lmp-grid>li { min-width: 0; }
++.assets-upload.lmp-upload { aspect-ratio: 1 / 1; padding: 8px; border-radius: 12px; font-size: 14px; font-weight: 600; color: var(--ip-ink, #17202a); }
++.lmp-upload:disabled { opacity: .6; cursor: default; }
++.lmp-upload:focus-visible { outline: 2px solid var(--ip-ink, #17202a); outline-offset: 2px; }
++.lmp-cell { position: relative; }
++.lmp-preview-action { position: absolute; top: 4px; left: 4px; display: grid; width: 44px; height: 44px; place-items: center; padding: 0; border: 0; background: transparent; color: #fff; cursor: zoom-in; }
++.lmp-preview-action::before { content: ""; grid-area: 1 / 1; width: 32px; height: 32px; border-radius: 8px; background: rgba(23, 32, 42, .78); }
++.lmp-preview-action svg { grid-area: 1 / 1; z-index: 1; }
++.lmp-preview-action:hover::before, .lmp-preview-action:focus-visible::before { background: var(--ip-ink, #17202a); }
++.lmp-preview-action:focus-visible { outline: 2px solid var(--ip-ink, #17202a); border-radius: 10px; }
++.lmp-preview-action:disabled { opacity: .5; cursor: default; }
++.lmp-preview .ant-modal-title { overflow-wrap: anywhere; }
+ .lmp-item { position: relative; display: flex; flex-direction: column; gap: 6px; width: 100%; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+ .lmp-item:disabled { cursor: default; opacity: .5; }
+ .lmp-thumb { display: block; aspect-ratio: 1 / 1; overflow: hidden; border-radius: 12px; background: var(--ip-soft, #f3f4f6); }
+@@ -229,6 +241,7 @@
+ html[data-layout="desktop"] .lmp-audio { flex: 0 1 340px; }
+ .lmp-audio.signed-audio-missing { display: flex; align-items: center; padding: 0 14px; border-radius: 999px; background: #f6f7f9; color: #8a929c; font-size: 12px; }
+ .lmp-empty { margin: 0; padding: 40px 12px; text-align: center; font-size: 12.5px; color: var(--ip-muted, #5b6572); }
++.lmp-grid + .lmp-empty { padding: 0 3px; text-align: left; }
+ .lmp-error { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; font-size: 12.5px; }
+ .lmp-more { display: flex; justify-content: center; }
+ .lmp-foot { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--sn-line-2, #f0f1f3); }

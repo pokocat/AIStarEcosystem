@@ -1,0 +1,104 @@
+--- a/apps/server/src/main/java/com/aistareco/aep/ipstudio/execution/StudioPlanExecutionService.java
++++ b/apps/server/src/main/java/com/aistareco/aep/ipstudio/execution/StudioPlanExecutionService.java
+@@ -555,7 +555,12 @@
+         ObjectNode budget=PlanState.parse(mapper,e.getBudgetJson());
+         List<String> added=req.addMaterialNodeIds()==null?List.of():req.addMaterialNodeIds().stream().filter(Objects::nonNull).distinct().toList();
+         if(!added.isEmpty()&&!"resume".equals(action))throw BusinessException.badRequest("STUDIO_INPUT_INVALID","只有继续制作时才能加入素材");
+-        String detail=added.isEmpty()?null:String.join(",",added.stream().sorted().toList());
++        boolean segmentRetry=req.retryStepId()!=null||req.retryAttempt()!=null;
++        if(segmentRetry&&(!"resume".equals(action)||!added.isEmpty()||req.retryStepId()==null||req.retryStepId().isBlank()
++                ||req.retryAttempt()==null||req.retryAttempt()<1))
++            throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请选择要重试的视频片段");
++        String detail=segmentRetry?write(List.of(req.retryStepId(),req.retryAttempt()))
++                :added.isEmpty()?null:String.join(",",added.stream().sorted().toList());
+         if(replayed(budget,req.clientRequestId(),action,detail))return toDto(e);
+         if(req.expectedStatus()!=null&&!req.expectedStatus().equals(e.getStatus()))throw stale("这次制作的状态已经变化，请刷新后再操作");
+         ObjectNode state=PlanState.parse(mapper,e.getStepsJson());
+@@ -573,11 +578,16 @@
+                 state.put("needsUserReason","已停止：不再提交新的步骤。排队中的任务将取消，已提交的任务会继续完成并结算。");
+             }
+             case "resume" -> {
++                if(segmentRetry&&!IpPlanExecution.NEEDS_USER.equals(e.getStatus()))throw stale("这次制作的状态已经变化，请刷新后再操作");
+                 if(IpPlanExecution.RUNNING.equals(e.getStatus()))break;
+                 if(!Set.of(IpPlanExecution.PAUSED,IpPlanExecution.NEEDS_USER).contains(e.getStatus()))throw stale("这次制作已结束，不能继续");
+                 if("analysis".equals(e.getStage())&&stageFinished(state,"analysis")&&!state.has("videoTask"))throw stale("分析已经完成，请确认制作方案和预算后开始制作");
+                 skills.requireActive(e.getSkillKey());
+                 ObjectNode next=state.deepCopy();
++                if(segmentRetry) {
++                    retryPortraitSegment(userId,projectId,e,next,req.retryStepId(),req.retryAttempt());
++                } else {
++                next.remove(StudioPlanExecutor.PORTRAIT_RETRY_STEP);
+                 if(next.has("videoTask"))adoptVideoRepairs(userId,projectId,e,next);
+                 if(!added.isEmpty())addMaterials(userId,projectId,next,e.getStage(),added);
+                 for(JsonNode raw:PlanState.stageSteps(next,e.getStage())) {
+@@ -603,6 +613,7 @@
+                         default -> {if(PlanState.unresolvedCheck(next,step))step.put("acknowledged",true);}
+                     }
+                 }
++                }
+                 // No budget pre-check here: a next step that does not fit is stopped by the executor, which posts the
+                 // 「追加预算」 card the user can confirm. Refusing with 402 here left no card at all — after steering had
+                 // used the last credits, 「继续」 was a dead end (Codex retest 2026-10-19, R3).
+@@ -620,6 +631,19 @@
+         return toDto(e);
+     }
+ 
++    private void retryPortraitSegment(String userId,String projectId,IpPlanExecution e,ObjectNode state,String id,int attempt) {
++        ObjectNode step=PlanState.step(state,e.getStage(),id);
++        if(!state.has("videoTask")||step==null||!StudioPlanExecutor.isPortraitSegmentTimeout(state,e.getStage(),step)
++                ||step.path("attempt").asInt(1)!=attempt||!PlanState.dependenciesDone(state,step))
++            throw stale("此片段的状态已经变化，请刷新后再试");
++        if(stepStillRunning(userId,projectId,step))
++            throw BusinessException.badRequest("STUDIO_PLAN_STEP_RUNNING","此片段正在生成，请等待完成");
++        if(adoptVideoRepair(userId,projectId,e,projects.readDoc(projects.required(userId,projectId)),step))return;
++        StudioSegmentedRun.again(step);
++        step.remove("notBefore");
++        state.put(StudioPlanExecutor.PORTRAIT_RETRY_STEP,id);
++    }
++
+     /**
+      * 「加入这次制作，重新编排」: only objects a stopped step of this stage named outside the materials and still on the
+      * canvas, and the materials stay within the request cap. Nothing else widens an execution's materials.
+@@ -630,19 +654,7 @@
+         for(JsonNode raw:PlanState.stageSteps(state,e.getStage())) {
+             ObjectNode step=(ObjectNode)raw;
+             if(!Set.of("failed","needs_user").contains(step.path("status").asText()))continue;
+-            String nodeId=StudioPlanExecutionIds.stepNodeId(e.getId(),step);
+-            JsonNode node=com.aistareco.aep.ipstudio.service.IpDocs.node(doc,nodeId);
+-            String repaired=node==null?null:node.path("metadata").path("studio").path("runId").asText(null);
+-            var nativeRun=repaired==null?null:projects.ownedRun(userId,projectId,repaired).filter(r->nodeId.equals(r.getNodeId())&&"done".equals(r.getStatus())).orElse(null);
+-            if(nativeRun!=null) {
+-                var dto=projects.toRunDto(nativeRun);
+-                if(dto.output()!=null&&!dto.output().path("rawOnly").asBoolean(false)) {
+-                    boolean present=false;for(JsonNode old:step.path("runIds"))present|=repaired.equals(old.asText());
+-                    if(!present)step.withArray("runIds").add(repaired);
+-                    step.put("acceptedRunId",repaired).put("status","done");step.remove(List.of("reason","errorCode","notBefore"));
+-                    continue;
+-                }
+-            }
++            if(adoptVideoRepair(userId,projectId,e,doc,step))continue;
+             String code=step.path("errorCode").asText("");
+             // A receipt we never got is settled as failed and refunded (docs/runbooks/model-task-alerts.md), and the user may
+             // retry it. 2026-11-07: this refused every such retry, 7 times in 40 minutes while the image supplier was down, with
+@@ -651,6 +663,21 @@
+                 throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"STUDIO_PLAN_STEP_RUNNING","这一步正在生成，请等待完成后重试。");
+             if(step.path("attempt").asInt(1)>=3)throw stale("此步骤已尝试 3 次，请在画布上修复后继续生成");
+         }
++    }
++
++    private boolean adoptVideoRepair(String userId,String projectId,IpPlanExecution e,JsonNode doc,ObjectNode step) {
++        String nodeId=StudioPlanExecutionIds.stepNodeId(e.getId(),step);
++        JsonNode node=com.aistareco.aep.ipstudio.service.IpDocs.node(doc,nodeId);
++        String repaired=node==null?null:node.path("metadata").path("studio").path("runId").asText(null);
++        var nativeRun=repaired==null?null:projects.ownedRun(userId,projectId,repaired)
++                .filter(r->nodeId.equals(r.getNodeId())&&"done".equals(r.getStatus())).orElse(null);
++        if(nativeRun==null)return false;
++        var dto=projects.toRunDto(nativeRun);
++        if(!"done".equals(dto.status())||dto.output()==null||dto.output().path("rawOnly").asBoolean(false))return false;
++        boolean present=false;for(JsonNode old:step.path("runIds"))present|=repaired.equals(old.asText());
++        if(!present)step.withArray("runIds").add(repaired);
++        step.put("acceptedRunId",repaired).put("status","done");step.remove(List.of("reason","errorCode","notBefore"));
++        return true;
+     }
+ 
+     private boolean stepStillRunning(String userId,String projectId,JsonNode step) {

@@ -1,0 +1,54 @@
+--- a/apps/web-aiavatar/src/ip/scenes/scene-video-clone.tsx
++++ b/apps/web-aiavatar/src/ip/scenes/scene-video-clone.tsx
+@@ -1,23 +1,42 @@
+ "use client";
+ 
+-import type { StudioVideoCloneMode } from '@ai-star-eco/types/ip-studio-video-task';
++import type { StudioCloneAdvice, StudioVideoCloneMode } from '@ai-star-eco/types/ip-studio-video-task';
+ import type { VideoStudioModel } from '@ai-star-eco/types/video-studio';
++import { apiFetch } from '@/ip/api/_client';
+ import '@/styles/studio-toolbox.css';
+ 
+-/** Labels shared by toolbox, editor and task snapshots. Technical prompts live on the server. */
++/**
++ * 爆款复刻的三种方式（服务端 StudioCloneVideoPlan）。三种都先拉片、按原片分段，区别是每段交给视频模型什么，
++ * 所以适合的视频不同：工具箱、视频页的方式选择和任务标题都读这里。提示词在服务端。
++ */
+ export const VIDEO_CLONE_TOOLS = [
+-  { mode: 'depth', title: '深度复刻', description: '参考动作与镜头，换上你的人物、商品或背景。', detail: '添加参考视频并描述新画面，可选添加人物、商品或背景图片。' },
+-  { mode: 'recreation', title: '分镜复刻', description: '借鉴原片的分镜与节奏，用你的素材重新演绎。', detail: '需要参考视频，可补充素材与改编要求。' },
+-  { mode: 'replacement', title: '元素替换', description: '替换指定人物、商品或背景，尽量保留其余画面。', detail: '添加参考视频和修改说明，可选添加替换图片。' },
++  { mode: 'recreation', title: '分镜复刻', description: '照原片的分镜和节奏，用你的素材重新拍', fit: '适合剪辑多、换镜频繁的视频，比如带货混剪、剧情、探店。' },
++  { mode: 'depth', title: '深度复刻', description: '照原片的动作和镜头重拍，换上你的人物、商品或背景', fit: '适合镜头少、动作连贯的视频，比如口播、单人展示、跳舞。' },
++  { mode: 'replacement', title: '元素替换', description: '保留原视频画面，只换掉其中的人物、商品或背景', fit: '适合原片拍得好、只想换掉其中一样东西的视频。' },
+ ] as const;
+ export const cloneModeOf = (value?: string | null): StudioVideoCloneMode => value === 'depth' || value === 'replacement' ? value : 'recreation';
+ export const cloneTool = (mode: StudioVideoCloneMode) => VIDEO_CLONE_TOOLS.find(t => t.mode === mode)!;
+-export const cloneToolHref = (mode: StudioVideoCloneMode) => `/video?scene=recreation&tool=${mode}`;
++export const cloneToolHref = (mode: StudioVideoCloneMode) => mode === 'recreation' ? '/video?scene=recreation' : `/video?scene=recreation&tool=${mode}`;
++/** 深度复刻和元素替换要把原片片段作为参考视频交给模型：只有能带参考视频的模式才行。 */
+ export const cloneReferenceMode = (model?: VideoStudioModel) => model?.contract.modes.find(m => !m.needsFirstFrame && !m.needsLastFrame && m.references && m.references.video.maxCount > 0);
++/** 这条参考视频适合哪种方式：按真实切镜数和镜头时长，不调模型、不扣积分。 */
++export const cloneAdvice = (key: string, signal?: AbortSignal) => apiFetch<StudioCloneAdvice>('/v1/ip-studio/studio/clone-advice', { query: { key }, signal });
+ 
+-export function CloneModePicker({ mode, disabled, onChange }: { mode: StudioVideoCloneMode; disabled: boolean; onChange: (mode: StudioVideoCloneMode) => void }) {
++export function CloneModePicker({ mode, disabled, onChange, advice }: {
++  mode: StudioVideoCloneMode; disabled: boolean; onChange: (mode: StudioVideoCloneMode) => void; advice?: StudioCloneAdvice;
++}) {
++  const recommended = advice ? cloneTool(advice.recommended) : undefined;
++  // 元素替换看的是想不想保留原片画面，不按视频推荐；其余两种按切镜结果说明为什么
++  const note = !recommended || mode === 'replacement' ? cloneTool(mode).fit
++    : recommended.mode === mode ? `${advice!.reason}，适合${recommended.title}。` : `${advice!.reason}，推荐用${recommended.title}。`;
+   return <div className="studio-clone-modes">
+-    <div role="group" aria-label="复刻方式">{VIDEO_CLONE_TOOLS.map(t => <button key={t.mode} type="button" disabled={disabled} aria-pressed={mode === t.mode} onClick={() => onChange(t.mode)}>{t.title}</button>)}</div>
+-    <p>{cloneTool(mode).description}</p>
++    <div className="studio-clone-modes-head"><span>复刻方式</span></div>
++    <div className="studio-clone-mode-list" role="radiogroup" aria-label="复刻方式">
++      {VIDEO_CLONE_TOOLS.map(t => <button key={t.mode} type="button" role="radio" disabled={disabled} aria-checked={mode === t.mode} onClick={() => onChange(t.mode)}>
++        <span className="studio-clone-mode-title">{t.title}{advice?.recommended === t.mode && <em>推荐</em>}</span>
++        <span className="studio-clone-mode-desc">{t.description}</span>
++      </button>)}
++    </div>
++    <p>{note}</p>
+   </div>;
+ }

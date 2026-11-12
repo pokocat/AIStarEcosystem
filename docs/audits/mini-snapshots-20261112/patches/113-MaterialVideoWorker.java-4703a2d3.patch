@@ -1,0 +1,80 @@
+--- a/apps/server/src/main/java/com/aistareco/aep/service/materialvideo/MaterialVideoWorker.java
++++ b/apps/server/src/main/java/com/aistareco/aep/service/materialvideo/MaterialVideoWorker.java
+@@ -41,6 +41,7 @@
+     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.ErrorLogService errorLogs;
+ 
+     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AiGenerationQueueService queue;
++    @org.springframework.beans.factory.annotation.Autowired private VideoPortraitReviewService portraitReviews;
+     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.enterprise.service.EnterpriseBillingService enterpriseBilling;
+     /** 终态通知（{@link MaterialVideoJobEnded}）；单测里构造的 worker 没有它，照常结算。 */
+     @org.springframework.beans.factory.annotation.Autowired(required=false) private org.springframework.context.ApplicationEventPublisher endedEvents;
+@@ -60,6 +61,7 @@
+     public static final String MIRROR_FAILED_CODE = "VIDEO_MIRROR_FAILED";
+     /** Every failure without a code of its own. A failed job always has a code and a sentence that says to retry; the cause goes to ErrorLog. */
+     static final String GENERATION_FAILED_CODE = "STUDIO_VIDEO_FAILED";
++    public static final String PORTRAIT_REVIEW_TIMEOUT = "VIDEO_ASSET_REVIEW_TIMEOUT";
+     static final String GENERATION_FAILED_MESSAGE = "视频生成失败，未生成的视频不扣积分。请重新生成。";
+     private static final String MIRROR_FAILED_MESSAGE = "视频保存失败，未保存的视频不扣积分。请重新生成。";
+ 
+@@ -113,11 +115,22 @@
+             return;
+         }
+         // An explicit portrait refusal is resumable inside the current task. No provider slot or second hold while waiting.
+-        if (ArkPortraitLibrary.REVIEW_CODE.equals(job.getErrorCode()) && !hasAcceptedTask(job)) {
+-            if (portraitReviewExpired(job)) {
+-                markFailed(jobId,"VIDEO_ASSET_REVIEW_TIMEOUT","人像核验等待超时，本次生成已取消。请完成核验后重新生成。");
++        if (awaitsPortraitReview(job)) {
++            boolean resumed=false;
++            if (!portraitReviewExpired(job) && portraitReviews!=null) {
++                try {resumed=portraitReviews.tryAutoResume(job);}
++                catch (RuntimeException e) {
++                    log.warn("[material-video] portrait status refresh deferred job={} reason={}",jobId,e.getClass().getSimpleName());
++                }
++            }
++            if (resumed) {
++                if(queue!=null)queue.requeue(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId,Duration.ZERO);
++            } else if (portraitReviewExpired(job) && markFailed(jobId,PORTRAIT_REVIEW_TIMEOUT,
++                    "等待人像素材审核超时，本次生成已取消。",null)) {
+                 if(queue!=null)queue.finish(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId);
+-            } else if(queue!=null) queue.requeue(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId,Duration.ofSeconds(30));
++            } else if (!portraitReviewExpired(job) && queue!=null) {
++                queue.requeue(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId,Duration.ofSeconds(30));
++            }
+             return;
+         }
+         if(queue!=null) {
+@@ -152,6 +165,10 @@
+     }
+ 
+     static final String PORTRAIT_REVIEW_SINCE="portrait_review_since";
++    static boolean awaitsPortraitReview(MaterialVideoJob job) {
++        return "queued".equals(job.getStatus()) && ArkPortraitLibrary.REVIEW_CODE.equals(job.getErrorCode()) && !hasAcceptedTask(job);
++    }
++
+     static boolean portraitReviewExpired(MaterialVideoJob job) {
+         try {
+             JsonNode payload=OM.readTree(job.getPayloadJson()==null?"{}":job.getPayloadJson());
+@@ -752,9 +769,12 @@
+     private void markFailed(String jobId, String code, String message) {
+         markFailed(jobId,code,message,null);
+     }
+-    private void markFailed(String jobId, String code, String message, Throwable cause) {
++    private boolean markFailed(String jobId, String code, String message, Throwable cause) {
++        boolean[] failed={false};
+         inTransaction(()->settlementJob(jobId).ifPresent(j -> {
+             if(isTerminal(j.getStatus()))return;
++            // Expiry and resume contend for this same row. A stale waiting snapshot must not close a resumed job.
++            if(PORTRAIT_REVIEW_TIMEOUT.equals(code)&&(!awaitsPortraitReview(j)||!portraitReviewExpired(j)))return;
+             releaseCredits(j,message);
+             if(enterpriseBilling!=null)enterpriseBilling.complete(MaterialVideoJobService.CREDIT_REF_TYPE,jobId);
+             j.setStatus("failed");
+@@ -769,7 +789,9 @@
+             j.setUpdatedAt(OffsetDateTime.now());
+             jobRepo.save(j);
+             announceEnded(j);
++            failed[0]=true;
+         }));
++        return failed[0];
+     }
+ 
+     private void markPending(String jobId,String code,Throwable cause) {

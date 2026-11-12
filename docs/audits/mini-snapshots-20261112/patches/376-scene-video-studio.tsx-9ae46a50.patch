@@ -1,0 +1,50 @@
+--- a/apps/web-aiavatar/src/ip/scenes/scene-video-studio.tsx
++++ b/apps/web-aiavatar/src/ip/scenes/scene-video-studio.tsx
+@@ -64,6 +64,12 @@
+ /** 一条视频最长多少秒（超过单段上限的分段做、再拼成一条，段数由服务端算，docs/studio-segmented-video.md）。 */
+ const MAX_SECONDS = 60;
+ const RECREATION = "reference-video-recreation";
++/**
++ * 爆款复刻默认用的视频模型：OneToken · Seedance 2.0（2026-11-12 用户：复刻对画面质量要求高，默认 Seedance 2.0）。
++ * 线上没有这条（下架、没开参考视频）时回到平台默认；用户自己选过的、草稿里记着的照旧。
++ * 以后该挪到服务端配置（同导演台默认图片模型），见 TODO。
++ */
++const RECREATION_DEFAULT_VIDEO_MODEL = "ai-98b369eb-b59";
+ const EMPTY_DOC = { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
+ 
+ const writeQuery = (scene: string, draft?: string, mode?: StudioVideoCloneMode) => writeSceneQuery("/video", scene, draft, undefined, mode);
+@@ -155,7 +161,8 @@
+   // 生产机上还没有动作提取服务时，深度复刻不能用：先说清楚，也不去请求报价（服务端会回 STUDIO_DEPTH_NOT_CONFIGURED）
+   const depthBlocked = depthClone && !!caps && !caps.operations.includes('video-control');
+   const modelsForScene = nativeClone ? videoModels?.filter(m => !!cloneReferenceMode(m)) : videoModels;
+-  const chosenVideo = (modelsForScene ?? []).find(m => m.endpointId === modelId) ?? modelsForScene?.find(m => m.isDefault) ?? modelsForScene?.[0];
++  const sceneDefaultVideo = scene?.skill === RECREATION ? modelsForScene?.find(m => m.endpointId === RECREATION_DEFAULT_VIDEO_MODEL) : undefined;
++  const chosenVideo = (modelsForScene ?? []).find(m => m.endpointId === modelId) ?? sceneDefaultVideo ?? modelsForScene?.find(m => m.isDefault) ?? modelsForScene?.[0];
+   const contract = chosenVideo?.contract;
+   const durations = contract ? sceneVideoDurations(contract) : [duration];
+   const usedDuration = contract ? clampSceneDuration(duration, contract) : duration;
+@@ -829,9 +836,11 @@
+   const [taskQuote, setTaskQuote] = useState<{ key: string; price?: StudioVideoTaskQuote; error?: string }>();
+   // 爆款复刻的分析要写明用哪个模型（服务端必填）；其余按原来的规则，不可按编号选的模型走默认。
+   const taskModel = recreation ? chosenVideo?.endpointId : chosenVideo?.selectableById && !caps?.mock ? chosenVideo.endpointId : undefined;
+-  const taskPriceKey = JSON.stringify([taskKind, chosenVideo?.endpointId, taskModel, settings?.mode, usedTier, shownDuration, ratio, images.length, !!character, !!voice, optimize, depthBlocked, priceRevision]);
++  // 爆款复刻的时长跟原片走：没加参考视频就不知道多长，不按场景默认时长报价（2026-11-11 用户：没传视频就显示约 3,440 积分）。
++  const sourceUnknown = recreation && !video;
++  const taskPriceKey = JSON.stringify([taskKind, chosenVideo?.endpointId, taskModel, settings?.mode, usedTier, shownDuration, ratio, images.length, !!character, !!voice, optimize, depthBlocked, sourceUnknown, priceRevision]);
+   useEffect(() => {
+-    if (!chosenVideo || depthBlocked) return;
++    if (!chosenVideo || depthBlocked || sourceUnknown) return;
+     const controller = new AbortController();
+     const timer = setTimeout(() => {
+       videoTaskPrice({ kind: taskKind, model: taskModel, mode: settings?.mode, tier: usedTier, duration: shownDuration, ratio,
+@@ -1236,8 +1245,8 @@
+   </>;
+   const specPill =
+     <div className="scene-setting-panel-host">
+-      <button type="button" className="scene-pill" aria-expanded={settingsOpen} aria-label={`视频规格：${language}，${shownDuration} 秒，${ratio}${usedTier ? `，${usedTier.toUpperCase()}` : ""}`} onClick={() => setSettingsOpen(v => !v)}>
+-        <SlidersHorizontal size={14} strokeWidth={1.5}/><span>{language} · {shownDuration} 秒 · <RatioGlyph ratio={ratio}/>{ratio}{usedTier ? ` · ${usedTier.toUpperCase()}` : ""}</span><ChevronDown size={13} strokeWidth={1.6}/></button>
++      <button type="button" className="scene-pill" aria-expanded={settingsOpen} aria-label={`视频规格：${language}，${sourceUnknown ? "时长跟随原片" : `${shownDuration} 秒`}，${ratio}${usedTier ? `，${usedTier.toUpperCase()}` : ""}`} onClick={() => setSettingsOpen(v => !v)}>
++        <SlidersHorizontal size={14} strokeWidth={1.5}/><span>{language} · {sourceUnknown ? "跟随原片" : `${shownDuration} 秒`} · <RatioGlyph ratio={ratio}/>{ratio}{usedTier ? ` · ${usedTier.toUpperCase()}` : ""}</span><ChevronDown size={13} strokeWidth={1.6}/></button>
+       {settingsOpen && <VideoSettingsPanel min={recreation ? Math.min(...scene.durations) : contract?.minSeconds ?? Math.min(...scene.durations)}
+         max={MAX_SECONDS} single={recreation ? undefined : contract?.maxSeconds} duration={duration} onDuration={pickDuration} segments={segments}
+         followsSource={recreation} sourceKnown={!!video?.durationSec}

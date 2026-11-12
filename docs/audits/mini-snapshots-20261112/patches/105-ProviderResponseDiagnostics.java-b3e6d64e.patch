@@ -1,0 +1,14 @@
+--- a/apps/server/src/main/java/com/aistareco/aep/service/ai/ProviderResponseDiagnostics.java
++++ b/apps/server/src/main/java/com/aistareco/aep/service/ai/ProviderResponseDiagnostics.java
+@@ -60,6 +60,11 @@
+         return capture(null, null, body).attachTo(error);
+     }
+ 
++    public static <T extends Throwable> T attachIdentifiers(T error, String evidence) {
++        Set<String> identifiers = legacyIdentifiers(evidence);
++        return identifiers.isEmpty() ? error : new ProviderResponseDiagnostics(null, identifiers, null).attachTo(error);
++    }
++
+     /** Older exceptions retained only a text diagnostic; retain the original field name for supplier searches. */
+     public static Set<String> legacyIdentifiers(String text) {
+         Set<String> ids = new LinkedHashSet<>();

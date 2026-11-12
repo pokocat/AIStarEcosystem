@@ -1,0 +1,27 @@
+--- a/apps/server/src/test/java/com/aistareco/aep/ipstudio/execution/StudioVideoTaskServiceTest.java
++++ b/apps/server/src/test/java/com/aistareco/aep/ipstudio/execution/StudioVideoTaskServiceTest.java
+@@ -53,6 +53,24 @@
+         assertEquals(first.id(),service.start("u","p",request(30,"原稿")).id());
+         verify(workflow,times(1)).quote(eq("u"),any());verify(workflow,never()).submit(anyString(),anyString(),any());
+     }
++    /**
++     * 2026-11-11 线上（可乐米乐妈妈）：视频 930 全由 H3 赠款付，「智能优化」要冻结 110 普通积分、账户只有 109；以前照样建任务，
++     * 第一步就停在「需处理」，再点生成又被这条任务挡住。现在优化那一笔付不起就不建任务；没开优化不查这一笔。
++     */
++    @Test void anUnaffordablePromptRewriteCreatesNoTask() {
++        RunRequest optimized=om.convertValue(om.createObjectNode().put("operation","video").put("prompt","原稿").put("nodeId","n").put("durationSec",12).put("maxCost",10L)
++                .set("video",om.createObjectNode().put("mode","universal_reference_video").put("rewrite","auto")),RunRequest.class);
++        var create=new StudioVideoTaskService.Create("request-rewrite","direct","ecom-talking","测试视频",null,optimized,30L,null,om.createObjectNode(),null);
++        doThrow(new BusinessException(org.springframework.http.HttpStatus.PAYMENT_REQUIRED,"MODEL_CREDITS_INSUFFICIENT","优化提示词需要 110 积分"))
++                .when(workflow).requireVideoRewriteAffordable(eq("u"),any());
++        assertEquals("MODEL_CREDITS_INSUFFICIENT",assertThrows(BusinessException.class,()->service.start("u","p",create)).getCode());
++        assertTrue(rows.isEmpty(),"no execution, nothing waiting for the user");
++        verify(executions,never()).startVideoTask(anyString(),anyString(),anyString(),any(),any(),any(),anyList(),any(),anyLong(),anyLong(),any(),any());
++
++        service.start("u","p",request(30,"原稿"));
++        verify(workflow,times(1)).requireVideoRewriteAffordable(eq("u"),any());
++        assertEquals(1,rows.size(),"按原文生成 does not need the prompt rewrite");
++    }
+     @Test void anIdentityCannotBeReusedWithChangedInput() {
+         service.start("u","p",request(30,"原稿"));
+         assertEquals("STUDIO_REQUEST_CHANGED",assertThrows(BusinessException.class,()->service.start("u","p",request(30,"另一版"))).getCode());

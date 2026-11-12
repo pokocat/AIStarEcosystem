@@ -1,0 +1,9 @@
+--- a/apps/server/src/main/resources/studio/prompts/scenes/scene-ecom-painpoint.md
++++ b/apps/server/src/main/resources/studio/prompts/scenes/scene-ecom-painpoint.md
+@@ -18,4 +18,5 @@
+     inferable: true
+   fiction: story
+ ---
+-开头放大一个用户熟悉的烦恼，接着商品出场解决问题，用前后对比把效果大胆拍出来，最后一句总结。
++先给一次清楚的失败或差点出事的后果；全片集中处理这一个问题。让用户看到关键操作、原来的问题在哪里被拦住、最后怎么验收。开始和结束尽量用同机位、同物件、同条件作对照。
++短时长给真正解决问题的步骤留够画面；准备和重复步骤用省略剪辑，结果镜不要同时做另一套演示。交代适用情境，测试条件和效果以用户及素材已给的信息为界。

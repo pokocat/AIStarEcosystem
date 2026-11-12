@@ -1,0 +1,33 @@
+--- a/apps/web-aiavatar/src/canvas/pages/canvas/project.tsx
++++ b/apps/web-aiavatar/src/canvas/pages/canvas/project.tsx
+@@ -1,6 +1,7 @@
+ // 本仓 v0.210：native video composer delegates to the same idempotent Studio batch as the drawer.
+ import { applyStudioRun, adoptStudioTake, deleteStudioVideoTake, prepareStudioImageRegeneration, prepareStudioVideoRegeneration, studioGenerationPending, dispatchStudioCommand } from '@/canvas-bridge/studio-nodes';
+ import { saveStudioDocument } from '@/canvas-bridge/studio-save';
++import { isFailedStudioVideo } from '@/canvas-bridge/studio-video-task-node';
+ import { currentProjectId, cancelRun } from '@/canvas-bridge/api';
+ import { isVideoSubmissionUnconfirmed } from '@/canvas-bridge/video';
+ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+@@ -2448,6 +2449,10 @@
+             // 本仓 v0.210：the persisted original request blocks every normal generation entry.
+             if(generationRequestsRef.current.has(nodeId))return;
+             if(studioGenerationPending(sourceNode)){dispatchStudioCommand("tasks",nodeId);message.info("请等待或确认原任务，当前批次不会重复提交。");return;}
++            if(mode==="video"&&isFailedStudioVideo(sourceNode)) {
++                dispatchStudioCommand("retry-video",nodeId);
++                return;
++            }
+             const generationConfig = buildGenerationConfig(effectiveConfig, sourceNode, mode);
+             if (!isAiConfigReady(generationConfig, generationConfig.model)) {
+                 openConfigDialog(true);
+@@ -2864,6 +2869,11 @@
+                 await pollVideoNodeTask(node);
+                 return;
+             }
++            // Studio's accepted request owns the retry inputs even when the canvas edges are gone.
++            if (isFailedStudioVideo(node)) {
++                dispatchStudioCommand("retry-video",node.id);
++                return;
++            }
+             // 出图同理（v0.179）：这张已经受理过、可能已经扣过费了 ——
+             // 「重试」应该是接回那次运行，而不是再发一次付费请求。
+             if (hasResumableImageRun(node)) {

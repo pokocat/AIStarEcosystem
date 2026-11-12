@@ -1,0 +1,34 @@
+--- a/apps/web-aiavatar/src/ip/scenes/scene-drafts.test.ts
++++ b/apps/web-aiavatar/src/ip/scenes/scene-drafts.test.ts
+@@ -3,7 +3,7 @@
+ vi.mock("../api", () => ({ IpStudioApi: { listProjects: api.listProjects } }));
+ import type { IpProjectDoc } from "@ai-star-eco/types";
+ import { remapPromptRefs } from "./scene-prompt-refs";
+-import { groupSlots, splitByCounts, rejectedNextStep, addImageRow, addScriptNode, addVideoRow, draftSubject, imageRows, listSceneDrafts, patchNode, resubmitRow, rowUploads, scriptNodes, submissionRejected, videoRows, sceneInputsOf, withSceneInput } from "./scene-drafts";
++import { groupSlots, splitByCounts, rejectedNextStep, addImageRow, addScriptNode, addVideoRow, draftSubject, imageRows, listSceneDrafts, patchNode, resubmitRow, rowUploads, scriptNodes, submissionRejected, videoRows, sceneInputsOf, withSceneInput, draftHasVideos, forkedDraftDoc } from "./scene-drafts";
+ 
+ const empty: IpProjectDoc = { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
+ const photo = { key: "ipstudio/source/u1/a.jpg", url: "https://cdn/a.jpg", name: "a.jpg" };
+@@ -181,3 +181,22 @@
+     expect(remapPromptRefs("图2的背景", [a, b], [c, a, b])).toBe("图3的背景");
+   });
+ });
++
++test("a new video from a draft that already has videos starts a fresh draft: materials and scripts carry over, task records and results do not", () => {
++  const empty: IpProjectDoc = { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
++  expect(draftHasVideos(empty)).toBe(false);
++  const material = { id: "m", type: "image", title: "商品图", position: { x: 0, y: 0 }, width: 10, height: 10, metadata: { storageKey: "k/m.jpg", origin: "upload" } };
++  const take = { id: "t", type: "text", title: "视频裂变 · 第 1 版", position: { x: 0, y: 0 }, width: 10, height: 10, metadata: { studio: { kind: "text", sceneTake: { of: "PEX-a", kind: "rewrite", batch: "b", at: "2026-11-11" } } } };
++  const scripted = addScriptNode({ ...empty, nodes: [material] as any }, { ask: "做一条", revision: false, prompt: "做一条", materialIds: ["m"], imageIds: [], duration: 15, ratio: "9:16", language: "中文" });
++  const withVideo = addVideoRow({ ...scripted.doc, nodes: [...scripted.doc.nodes, take] as any }, { title: "口播", prompt: "p", scriptId: scripted.nodeId, refIds: ["m"],
++    video: { mode: "omni" } as any, durationSec: 15, aspectRatio: "9:16" });
++  const old: IpProjectDoc = { ...withVideo.doc, sceneVideoTasks: ["PEX-a"], sceneVideoSubmissions: [{ clientRequestId: "c" } as any] };
++  expect(draftHasVideos(old)).toBe(true);
++  const page = { sceneInputs: { images: ["k/m.jpg"], character: null, voice: null, video: null }, sceneVideoState: { text: "换个开头", options: {} } };
++  const fresh = forkedDraftDoc(old, page);
++  expect(fresh.sceneVideoTasks).toBeUndefined(); expect(fresh.sceneVideoSubmissions).toBeUndefined();
++  expect(draftHasVideos(fresh)).toBe(false);
++  expect((fresh.nodes as any[]).map(x => x.id).sort()).toEqual(["m", scripted.nodeId].sort());
++  expect(fresh.connections).toEqual(scripted.doc.connections);
++  expect(fresh.sceneInputs).toEqual(page.sceneInputs); expect(fresh.sceneVideoState).toEqual(page.sceneVideoState);
++});

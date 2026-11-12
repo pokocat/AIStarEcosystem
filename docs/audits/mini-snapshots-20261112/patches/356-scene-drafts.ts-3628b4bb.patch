@@ -1,0 +1,26 @@
+--- a/apps/web-aiavatar/src/ip/scenes/scene-drafts.ts
++++ b/apps/web-aiavatar/src/ip/scenes/scene-drafts.ts
+@@ -390,3 +390,23 @@
+     } } } };
+   return { ...doc, nodes: [...doc.nodes, restored] };
+ }
++
++/** 这份草稿里已经交过视频（任务、待确认的提交、长视频、老的普通出片）。长视频的服务端记录另看 segmentedRecords。 */
++export function draftHasVideos(doc: IpProjectDoc): boolean {
++  return !!(doc.sceneVideoTasks?.length || doc.sceneVideoSubmissions?.length || doc.sceneSegmented?.length || videoRows(doc).length);
++}
++
++/**
++ * 直接点「生成视频」而这份草稿里已经有视频时，新视频进一份新草稿（2026-11-11 用户定）：同一份草稿只放从同一条视频派生的几版
++ * （再次生成、视频裂变），不相关的视频不归成一批，删一条也不会连带删掉别的。
++ * 新草稿带走页面上的素材、脚本和设置；旧草稿的任务记录、出片结果、裂变的改稿不带。节点编号照旧（每张画布各自独立）。
++ */
++export function forkedDraftDoc(doc: IpProjectDoc, page: Pick<IpProjectDoc, "sceneInputs" | "sceneVideoState" | "sceneVideoModel">): IpProjectDoc {
++  const results = new Set(videoRows(doc).map(n => n.id));
++  const nodes = (doc.nodes as CanvasNodeData[]).filter(n => !results.has(n.id) && !n.metadata?.studio?.sceneTake);
++  const kept = new Set(nodes.map(n => n.id));
++  const rest: IpProjectDoc = { ...doc };
++  delete rest.sceneVideoTasks; delete rest.sceneVideoSubmissions; delete rest.sceneSegmented;
++  return restoreVideoTaskScript({ ...rest, nodes, ...page,
++    connections: (doc.connections as CanvasConnection[]).filter(c => kept.has(c.fromNodeId) && kept.has(c.toNodeId)) });
++}

@@ -1,0 +1,188 @@
+--- a/apps/server/src/main/java/com/aistareco/aep/ipstudio/execution/StudioCloneVideoPlan.java
++++ b/apps/server/src/main/java/com/aistareco/aep/ipstudio/execution/StudioCloneVideoPlan.java
+@@ -1,7 +1,6 @@
+ package com.aistareco.aep.ipstudio.execution;
+ 
+-import com.aistareco.aep.ipstudio.dto.StudioSegmentedDtos.SegmentedVideoRequest;
+-import com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.RunRequest;
++import com.aistareco.aep.ipstudio.segmented.SegmentedPlan;
+ import com.aistareco.aep.ipstudio.service.*;
+ import com.aistareco.aep.videostudio.dto.VideoStudioDtos.*;
+ import com.aistareco.common.BusinessException;
+@@ -10,91 +9,106 @@
+ import org.springframework.stereotype.Component;
+ import java.util.*;
+ 
+-/** System-built canvas recipes. Native reference-video support is required on the actual selected channel. */
++/**
++ * 爆款复刻的三种方式（docs/ip-studio-recreation.md「三种复刻方式」）。三种都先拉片（看视频，写逐镜台词和动作），由代码按拉片结果分段，
++ * 模型只写每段的提示词；不同的是每段交给视频模型什么：
++ * <ul>
++ *   <li>分镜复刻（recreation）：按原片每个镜头的开场画面重新出图，视频模型从图开始拍。原片不交给视频模型。适合剪辑多、换镜频繁的片子。</li>
++ *   <li>深度复刻（depth）：把原片这一段转成深度图或骨骼图（不带原片的人、商品和字），作为动作参考交给视频模型。适合镜头少、动作连贯的片子（口播、单人展示、跳舞）。</li>
++ *   <li>元素替换（replacement）：原片这一段直接交给视频模型，只换用户点名的东西。适合原片拍得好、只想换掉其中一样。</li>
++ * </ul>
++ * 深度复刻和元素替换要把原片片段作为参考视频交给模型，所以只开放声明了视频参考的模型，分段也受参考视频的时长限制。
++ */
+ @Component
+ public class StudioCloneVideoPlan {
++    /** 爆款复刻的三种方式，值就是任务的 kind。 */
++    public static final Set<String> METHODS=Set.of("recreation","depth","replacement");
+     private final StudioVideoService videos;
+-    private final StudioWorkflowService workflow;
+     private final StudioDepthVideoService depth;
+-    private final IpProjectService projects;
++    private final StudioPlanQuoter quoter;
+     private final ObjectMapper mapper;
+-    public StudioCloneVideoPlan(StudioVideoService videos,StudioWorkflowService workflow,StudioDepthVideoService depth,IpProjectService projects,ObjectMapper mapper) {
+-        this.videos=videos;this.workflow=workflow;this.depth=depth;this.projects=projects;this.mapper=mapper;
++    public StudioCloneVideoPlan(StudioVideoService videos,StudioDepthVideoService depth,StudioPlanQuoter quoter,ObjectMapper mapper) {
++        this.videos=videos;this.depth=depth;this.quoter=quoter;this.mapper=mapper;
+     }
+-    public static boolean nativeClone(String kind){return Set.of("depth","replacement").contains(Objects.toString(kind,""));}
++    /** 原片片段要作为参考视频交给视频模型的方式。 */
++    public static boolean nativeClone(String kind){return "depth".equals(kind)||"replacement".equals(kind);}
++    public static boolean method(String kind){return METHODS.contains(Objects.toString(kind,""));}
+     /**
+      * 深度复刻总是先整理成 H3 的六段式：ReShot 的实测结论是控制视频要在提示词里单独定义成「只迁移动作和机位、不迁移灰色画面」
+-     * 的主体，按原文直发时 H3 会把灰色画面或骨骼线条当成要画的东西。模型不支持优化时按原文（下面的中文说明）。
++     * 的主体，按原文直发时 H3 会把灰色画面或骨骼线条当成要画的东西。模型不支持优化时按原文。
+      */
+-    static boolean optimize(String kind,boolean chosen){return "depth".equals(kind)||chosen;}
+-    private VideoStudioModel model(String id) {
++    public static boolean optimize(String kind,boolean chosen){return "depth".equals(kind)||chosen;}
++
++    public VideoStudioModel model(String id) {
+         return videos.models().stream().filter(m->id==null?m.isDefault():id.equals(m.endpointId())).findFirst()
+                 .orElseThrow(()->bad("请选择可用的视频模型"));
+     }
+-    private VideoStudioModeSpec referenceMode(VideoStudioModel model) {
+-        return model.contract().modes().stream().filter(m->m.references()!=null&&m.references().video().maxCount()>0&&!m.needsFirstFrame()&&!m.needsLastFrame()).findFirst()
+-                .orElseThrow(()->BusinessException.badRequest("STUDIO_CLONE_REFERENCE_UNSUPPORTED","当前模型不支持视频参考，请更换模型或使用分镜复刻。"));
++    /** 能带参考视频、不要首尾帧的模式。 */
++    public static VideoStudioModeSpec referenceMode(VideoStudioModel model) {
++        if(model.contract()==null)throw unsupported();
++        return model.contract().modes().stream().filter(m->m.references()!=null&&m.references().video()!=null&&m.references().video().maxCount()>0
++                        &&!m.needsFirstFrame()&&!m.needsLastFrame()).findFirst().orElseThrow(StudioCloneVideoPlan::unsupported);
+     }
++    private static BusinessException unsupported() {
++        return BusinessException.badRequest("STUDIO_CLONE_REFERENCE_UNSUPPORTED","当前模型不支持视频参考，请更换模型或使用分镜复刻。");
++    }
++
++    /** 每段原片能有多长：不超过模型单段上限，也不超过参考视频的时长上限；不短于两者的下限。 */
++    public record Clip(int minSec,int maxSec) {}
++    public static Clip clip(VideoStudioModel model) {
++        var contract=model.contract();var reference=referenceMode(model).references().video();
++        int max=contract.maxSeconds(),min=Math.max(1,contract.minSeconds());
++        if(reference.maxDurationSec()!=null&&reference.maxDurationSec()>0)max=Math.min(max,reference.maxDurationSec());
++        if(reference.minDurationSec()!=null)min=Math.max(min,reference.minDurationSec());
++        if(min>max)throw BusinessException.badRequest("STUDIO_CLONE_REFERENCE_UNSUPPORTED","当前模型的参考视频时长限制不能分段，请更换模型或使用分镜复刻。");
++        return new Clip(min,max);
++    }
++
++    /** 分析之前做得了吗：所选模型能带参考视频；深度复刻还要有动作提取服务。 */
++    public VideoStudioModel require(String kind,String modelId) {
++        if("depth".equals(kind))depth.requireConfigured();
++        var selected=model(modelId);clip(selected);
++        return selected;
++    }
++
++    /**
++     * 制作部分（不含拉片和写提示词）的报价：按页面时长和参考视频的分段上限切段，每段一条带参考视频的视频和一次检查，
++     * 和拉片后代码拼出的方案同一种步骤（{@link StudioRecreationTaskPlan#build}），所以分析后的报价不会比这里高。
++     */
+     public StudioVideoTaskService.Quote price(String user,String kind,String modelId,String tier,int duration,String ratio,int images,boolean character,boolean voice,boolean optimize) {
+         if(images<0||images>12)throw bad("替换图片数量不正确");
+-        if("depth".equals(kind))depth.requireConfigured();
+-        var selected=model(modelId);var mode=referenceMode(selected);
+-        ObjectNode request=mapper.createObjectNode().put("nodeId",StudioPlanSteps.QUOTE_NODE).put("operation","video").put("prompt","视频复刻")
+-                .put("model",selected.endpointId()).put("durationSec",duration).put("aspectRatio",ratio).put("count",1);
+-        ObjectNode settings=request.putObject("video").put("mode",mode.mode()).put("resolutionTier",tier);
+-        if(selected.supportsPromptOptimization()) {if(optimize(kind,optimize))settings.put("rewrite","auto");else settings.put("optimizePrompt",false);}
+-        ArrayNode refs=settings.putArray("references");refs.addObject().put("mediaType","video").put("key","quote/video");
+-        for(int n=0;n<images+(character?1:0);n++)refs.addObject().put("mediaType","image").put("key","quote/image-"+n);
+-        if(voice)refs.addObject().put("mediaType","audio").put("key","quote/voice");
+-        long cost=workflow.quote(user,mapper.convertValue(request,RunRequest.class));
+-        return new StudioVideoTaskService.Quote(cost,Math.multiplyExact(cost,3),List.of(duration),0);
++        var selected=require(kind,modelId);var mode=referenceMode(selected);var bounds=clip(selected);
++        List<Integer> segments;
++        try {segments=SegmentedPlan.split(Math.max(1,duration),bounds.minSec(),bounds.maxSec());}
++        catch(IllegalArgumentException e){throw bad("请选择可用的视频模型");}
++        if(segments.size()>SegmentedPlan.MAX_SEGMENTS)throw BusinessException.badRequest("STUDIO_SEGMENTS_TOO_MANY",
++                "「"+selected.name()+"」每段参考视频最长 "+bounds.maxSec()+" 秒，"+duration+" 秒需要分 "+segments.size()+" 段，超出上限。请缩短参考视频或更换模型");
++        var refs=mode.references();
++        int imageLimit=Math.min(refs.image()==null?0:refs.image().maxCount(),refs.maxImagesWithVideo()>0?refs.maxImagesWithVideo():Integer.MAX_VALUE);
++        int pictures=Math.min(images+(character?1:0),imageLimit);
++        boolean audio=voice&&refs.audio()!=null&&refs.audio().maxCount()>0;
++        ObjectNode plan=mapper.createObjectNode();
++        ArrayNode steps=plan.putArray("steps");
++        int no=0;
++        for(int seconds:segments) {
++            no++;
++            ObjectNode video=steps.addObject().put("id","v"+no).put("operation","video").put("prompt","视频复刻");
++            ObjectNode settings=video.putObject("settings").put("operation","video").put("model",selected.endpointId())
++                    .put("durationSec",seconds).put("aspectRatio",ratio).put("count",1);
++            settings.putObject("video").put("mode",mode.mode()).put("resolutionTier",tier).put("optimize",optimize(kind,optimize));
++            ArrayNode bindings=settings.putArray("referenceBindings");
++            int order=0;
++            bindings.addObject().put("nodeId","quote-video").put("role","reference-video").put("order",order++);
++            for(int i=0;i<pictures;i++)bindings.addObject().put("nodeId","quote-image-"+i).put("role","reference-image").put("order",order++);
++            if(audio)bindings.addObject().put("nodeId","quote-voice").put("role","reference-audio").put("order",order++);
++            ObjectNode check=steps.addObject().put("id","c"+no).put("operation","check").put("prompt","");
++            var checkSettings=check.putObject("settings").put("operation","check").put("targetStepId","v"+no);
++            var ids=checkSettings.putArray("checkIds");StudioRecreationTaskPlan.CHECK_IDS.forEach(ids::add);
++        }
++        quoter.quote(user,plan);
++        long cost=plan.path("budget").path("estimated").asLong();
++        return new StudioVideoTaskService.Quote(cost,Math.multiplyExact(cost,3),segments,0);
+     }
+-    /** Validate the whole original clip, ownership and roles before creating any execution or paid native request. */
+-    public List<String> build(String user,String projectId,String kind,String sourceNodeId,SegmentedVideoRequest cfg,ObjectNode plan) {
+-        if(sourceNodeId==null||sourceNodeId.isBlank())throw bad("请添加参考视频");
+-        if("depth".equals(kind))depth.requireConfigured();
+-        var selected=model(cfg.model());var mode=referenceMode(selected);
+-        JsonNode doc=projects.readDoc(projects.required(user,projectId)),source=IpDocs.node(doc,sourceNodeId);
+-        if(source==null||!"video".equals(source.path("type").asText())||IpDocs.primaryStorageKey(source)==null)throw bad("请添加参考视频");
+-        var media=depth.source(user,IpDocs.primaryStorageKey(source));
+-        Integer lower=mode.references().video().minDurationSec(),upper=mode.references().video().maxDurationSec();
+-        double max=upper==null?60:Math.min(60,upper);
+-        if(media.seconds()>max+0.05||lower!=null&&media.seconds()<lower-0.05)
+-            throw bad("参考视频时长不符合当前模式，最长 "+(int)max+" 秒，请先裁剪或使用分镜复刻。");
+-        if(cfg.text()==null||cfg.text().isBlank()||cfg.text().length()>4000)throw bad("请填写要替换的内容，最多 4000 字");
+-        if(cfg.materials()==null)throw bad("素材信息不完整，请重新选择");
+-        if(cfg.materials().size()>14)throw bad("替换素材过多，请减少后重试");
+-        var context=new ArrayList<String>();context.add(sourceNodeId);
+-        ArrayNode steps=(ArrayNode)plan.path("steps");
+-        if("depth".equals(kind)) {
+-            ObjectNode control=steps.addObject().put("id","depth").put("operation","video-control").put("title","提取动作与空间结构")
+-                    .put("prompt","从参考视频提取时序一致的深度视频").put("execution","auto");
+-            control.putArray("dependsOn");
+-            control.putObject("settings").put("operation","video-control").putArray("referenceBindings")
+-                    .addObject().put("nodeId",sourceNodeId).put("role","clip").put("order",0);
+-        }
+-        String instruction="depth".equals(kind)
+-                // ReShot 给 Seedance 的写法：指明视频1、动作与运镜按顺序照做、控制画面本身不出现。灰度深度图和彩色骨骼图都可能是视频1（服务端按原片自动选）。
+-                ?"视频1是从参考视频提取的动作参考：灰色深度图（近处白、远处黑）或黑底彩色火柴人骨骼图。参考视频1的动作与运镜，顺序与视频保持一致；只取人物位置、每个动作、时间节奏和机位，画面里不要出现灰色深度图或骨骼线条。新人物、商品和场景的外观按用户描述，附有图片时以图片为准。"
+-                :"视频1是原参考视频。按用户要求替换指定元素，新元素外观按用户描述，如附有图片则以图片为准，尽量保留其余画面、镜头运动、动作和节奏。仅修改明确指定的对象。";
+-        ObjectNode video=steps.addObject().put("id","video").put("operation","video").put("title","depth".equals(kind)?"深度复刻成片":"元素替换成片").put("execution","auto")
+-                .put("prompt",instruction+"\n用户要求："+cfg.text());
+-        ArrayNode dependencies=video.putArray("dependsOn");if("depth".equals(kind))dependencies.add("depth");
+-        ObjectNode settings=video.putObject("settings").put("operation","video").put("model",selected.endpointId()).put("durationSec",cfg.duration())
+-                .put("aspectRatio",cfg.ratio()).put("count",1);
+-        settings.putObject("video").put("mode",mode.mode()).put("resolutionTier",cfg.tier()).put("optimize",optimize(kind,!Boolean.FALSE.equals(cfg.optimize())));
+-        ArrayNode refs=settings.putArray("referenceBindings");
+-        refs.addObject().put("depth".equals(kind)?"stepId":"nodeId","depth".equals(kind)?"depth":sourceNodeId).put("role","reference-video").put("order",0);
+-        Set<String> seen=new HashSet<>(context);
+-        for(var material:cfg.materials()) {
+-            if(material==null||material.nodeId()==null||!seen.add(material.nodeId()))throw bad("替换素材重复或已变化，请重新选择");
+-            JsonNode node=IpDocs.node(doc,material.nodeId());String key=node==null?null:IpDocs.primaryStorageKey(node);
+-            boolean audio="voice".equals(material.slot());
+-            if(!Set.of("image","character","voice").contains(Objects.toString(material.slot(),""))||key==null||!(audio?"audio":"image").equals(node.path("type").asText()))throw bad("替换素材类型不正确，请重新选择");
+-            projects.requireOwnedAssetKey(user,key);context.add(material.nodeId());
+-            refs.addObject().put("nodeId",material.nodeId()).put("role",audio?"reference-audio":"reference-image").put("order",refs.size());
+-        }
+-        return context;
+-    }
++
+     private static BusinessException bad(String message){return BusinessException.badRequest("STUDIO_INPUT_INVALID",message);}
+ }

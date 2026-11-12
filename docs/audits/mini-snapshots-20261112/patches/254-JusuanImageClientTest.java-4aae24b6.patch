@@ -1,0 +1,94 @@
+--- a/apps/server/src/test/java/com/aistareco/aep/ipstudio/service/JusuanImageClientTest.java
++++ b/apps/server/src/test/java/com/aistareco/aep/ipstudio/service/JusuanImageClientTest.java
+@@ -682,7 +682,7 @@
+         assertEquals(2,downloads.get());
+     }
+ 
+-    @Test void slowImageBodyHasItsOwnDownloadDeadlineAndReportsAReceivedResult() throws Exception {
++    @Test void slowImageBodyTimesOutThenDeliversTheSameResultWithoutAnotherGeneration() throws Exception {
+         var ep=endpoint("image-model");
+         ep.setImageRequestSpecJson("""
+                 {"promptMaxChars":1000,"minReferenceImages":0,"maxReferenceImages":0,"referenceField":"none",
+@@ -704,11 +704,79 @@
+             }
+             @Override public void close(){closed.countDown();}
+         });
+-        when(http.send(any(),any())).thenReturn(response);
++        byte[] bytes=Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jS9sAAAAASUVORK5CYII=");
++        var completed=mock(HttpResponse.class);
++        when(completed.statusCode()).thenReturn(200);
++        when(completed.body()).thenReturn(new ByteArrayInputStream(bytes));
++        var checkpoint=new java.util.concurrent.atomic.AtomicReference<com.fasterxml.jackson.databind.node.ObjectNode>();
++        var downloadCalls=new java.util.concurrent.atomic.AtomicInteger();
++        when(http.send(any(),any())).thenAnswer(inv->{
++            HttpRequest request=inv.getArgument(0);
++            assertEquals("GET",request.method());
++            assertEquals(checkpoint.get().path("resultUrl").asText(),request.uri().toString());
++            assertTrue(request.headers().firstValue("Authorization").isEmpty());
++            return downloadCalls.getAndIncrement()==0?response:completed;
++        });
++        assertArrayEquals(bytes,client.generate("ep","portrait","1024x1024",List.of(),"slow-body","owner",stage->{},
++                null,null,null,checkpoint::set));
++        assertEquals(1,checkpoint.get().path("resultDownloadFailures").asInt());
++        verify(upstream,times(1)).sendJson(any(),any());
++        verify(http,times(2)).send(any(),any());
++    }
++
++    @Test void exhaustedDownloadRetriesReportTimeoutWithSupplierTraceAndNoSuccessUsage() throws Exception {
++        var ep=endpoint("image-model");
++        ep.setImageRequestSpecJson("""
++                {"promptMaxChars":1000,"minReferenceImages":0,"maxReferenceImages":0,"referenceField":"none",
++                 "outputs":[{"canvasSize":"1024x1024","aspectRatio":"1:1","providerFields":{}}],
++                 "wire":{"resultMode":"sync-url","outputPointer":"/url","requestTimeoutMillis":600000}}
++                """);
++        when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio"))
++                .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
++        var reply=json("{\"url\":\"https://example.com/result.png?signature=private\"}");
++        when(reply.headers()).thenReturn(HttpHeaders.of(Map.of("x-request-id",List.of("supplier-123")),(k,v)->true));
++        when(upstream.sendJson(any(),any())).thenReturn(reply);
++        when(http.send(any(),any())).thenAnswer(inv->{
++            HttpRequest request=inv.getArgument(0);
++            assertTrue(request.timeout().orElseThrow().toMillis()>=599_000);
++            throw new HttpTimeoutException("socket timeout");
++        });
++        var usage=mock(AiModelUsageService.class);
++        org.springframework.test.util.ReflectionTestUtils.setField(client,"usage",usage);
+         var result=assertThrows(JusuanImageClient.ProviderRejected.class,
+                 ()->client.generate("ep","portrait","1024x1024",List.of(),"slow-body","owner",stage->{}));
+-        assertTrue(result.getMessage().contains("已返回图片，但下载超时"),result.getMessage());
+-        verify(upstream,times(1)).sendJson(any(),any());
++        assertEquals("STUDIO_IMAGE_RESULT_DOWNLOAD_TIMEOUT",result.getCode());
++        assertTrue(result.getMessage().contains("下载超时"));
++        assertTrue(Arrays.stream(result.getSuppressed()).anyMatch(e->e instanceof ProviderResponseDiagnostics evidence
++                && evidence.identifiers().contains("x-request-id=supplier-123")));
++        assertFalse(result.toString().contains("signature"));
++        verify(upstream,times(1)).sendJson(any(),any());
++        verify(http,times(3)).send(any(),any());
++        verifyNoInteractions(usage);
++    }
++
++    @Test void restartedDownloadKeepsOriginalUrlAndOnlyTheRemainingAttempt() throws Exception {
++        var ep=endpoint("image-model");
++        ep.setImageRequestSpecJson("""
++                {"promptMaxChars":1000,"minReferenceImages":0,"maxReferenceImages":0,"referenceField":"none",
++                 "outputs":[{"canvasSize":"1024x1024","aspectRatio":"1:1","providerFields":{}}],
++                 "wire":{"resultMode":"sync-url","outputPointer":"/url"}}
++                """);
++        when(models.storedEndpoint("ep")).thenReturn(Optional.of(ep));
++        var checkpoint=mapper.createObjectNode().put("submitAttempted",true).put("resultDownloadFailures",2)
++                .put("resultUrl","https://example.com/same.png").put("requestBody","{}");
++        when(http.send(any(),any())).thenAnswer(inv->{
++            HttpRequest request=inv.getArgument(0);
++            assertEquals("GET",request.method());
++            assertEquals("https://example.com/same.png",request.uri().toString());
++            throw new HttpTimeoutException("socket timeout");
++        });
++        var result=assertThrows(JusuanImageClient.ProviderRejected.class,
++                ()->client.generate("ep","portrait","1024x1024",List.of(),"original","owner",stage->{},
++                        null,null,checkpoint,state->{}));
++        assertEquals("STUDIO_IMAGE_RESULT_DOWNLOAD_TIMEOUT",result.getCode());
++        verify(http,times(1)).send(any(),any());
++        verifyNoInteractions(upstream);
+     }
+ 
+     @Test void durableAcceptedJobResumesOriginalIdAndBodyAfterPollOutageWithoutReposting() throws Exception {
