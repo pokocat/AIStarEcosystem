@@ -5,7 +5,7 @@ import { nanoid } from "nanoid";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "antd";
-import { ArrowUp, ArrowUpRight, AudioLines, Box, Check, ChevronDown, Copy, Cpu, Download, FolderOpen, History, Image as ImageIcon, Loader2, Mic, Mountain, PencilLine, Plus,
+import { ArrowLeft, ArrowUp, ArrowUpRight, AudioLines, Box, Check, ChevronDown, Copy, Cpu, Download, FolderOpen, History, Image as ImageIcon, Loader2, Mic, Mountain, PencilLine, Plus,
   RotateCcw, ShoppingBag, SlidersHorizontal, Square, Upload, UserRound, Video, X } from "lucide-react";
 import type { IpProject, IpProjectDoc, IpRun, IpSavedAsset, StudioMediaImportResult, StudioSceneComposeRequest, StudioSceneInputs, StudioNodeMetadata, StudioSceneOptionGroup, StudioSceneVideoState } from "@ai-star-eco/types";
 import { studioScriptSuggestions } from "@/canvas-bridge/studio-script-suggestions";
@@ -625,7 +625,7 @@ export function SceneVideoStudio() {
         // 用了哪些素材记进草稿：重开时原样放回（不看图的模型不记读图列表，不能靠它推断）。
         return { ...made.doc, sceneInputs: chosen };
       }, projectId);
-      if (onPage(ticket, projectId)) { if (revising && !opts?.auto) setRevise(""); setSubmitting(nodeId); setView("director"); }
+      if (onPage(ticket, projectId)) { if (revising && !opts?.auto) setRevise(""); setSubmitting(nodeId); }
       posted = true;
       const run = await submitStudioRun(projectId, request!, { canRetry: true });
       await persist(doc => applyRun(doc, nodeId!, run), projectId);
@@ -710,6 +710,10 @@ export function SceneVideoStudio() {
       if (scripts.length) revisionInput.current?.focus();
       else input.current?.focus("end", { preventScroll: true });
     }, 0);
+  };
+  const backToPrompt = () => {
+    setView("compose"); setSettingsOpen(false); setHint("");
+    setTimeout(() => input.current?.focus("end"), 0);
   };
   /** 点一条常用开头：接在要求后面，不发送。 */
   // 点开头建议是换一种写法，不是叠加：输入框换成这一条（2026-11-07 用户要求，原来接在后面越点越长）。
@@ -888,6 +892,7 @@ export function SceneVideoStudio() {
   const staleScriptShown = scriptId ? specChangesShown(writtenFor) : "";
   const reviseForNow = () => {
     if (!staleScript) return;
+    openDirector();
     void send("", { auto: true, changes: staleScript });
   };
 
@@ -1358,7 +1363,10 @@ export function SceneVideoStudio() {
       {composerHead(scene, onPick)}
 
       {view === "director" ? <div className="scene-director">
-        <div className="scene-director-title"><AiMark size={13}/><strong>AI 编导</strong></div>
+        <div className="scene-director-title">
+          <AiMark size={13}/><strong>AI 编导</strong>
+          <Button shape="round" className="scene-director-back" icon={<ArrowLeft size={14} aria-hidden="true"/>} onClick={backToPrompt}>返回提示词</Button>
+        </div>
         <div className="scene-director-thread" ref={thread} aria-live="polite">
           {!scripts.length && <div className="scene-director-start">
             <h2>想做一条什么视频？</h2>

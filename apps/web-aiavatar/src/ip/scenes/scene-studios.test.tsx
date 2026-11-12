@@ -148,7 +148,21 @@ test("视频：编导看商品图写脚本（请求先存进画布、带图）�
   expect(api.submit).not.toHaveBeenCalled();
   expect(screen.getByRole("group", { name: "常用开头" })).toBeTruthy();
   await waitFor(() => expect(send().disabled).toBe(false));
-  await act(async () => { fireEvent.click(send()); });
+
+  // 在脚本提交前的草稿保存阶段退出，稍后受理也不能把用户切回编导。
+  let finishSave!: () => void;
+  const saving = new Promise<void>(resolve => { finishSave = resolve; });
+  api.updateProject.mockImplementationOnce(async (_id: string, { doc: next }: { doc: IpProject["doc"] }) => {
+    await saving;
+    return project({ doc: next, docVersion: "v2" });
+  });
+  fireEvent.click(send());
+  fireEvent.click(screen.getByRole("button", { name: "返回提示词" }));
+  await waitFor(() => expect(fieldText("想做的视频")).toBe("保湿精华，不黏腻"));
+  await act(async () => { finishSave(); });
+  await waitFor(() => expect(api.submit).toHaveBeenCalledTimes(1));
+  expect(screen.queryByRole("button", { name: "返回提示词" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "AI 编导" }));
 
   // 编导的话由服务端按提示词库拼：请求带场景输入，prompt 只是显示用的那句（docs/studio-prompt-architecture.md §5.1）。
   expect(api.composeScene).not.toHaveBeenCalledWith(expect.objectContaining({ kind: "video-script" }));
