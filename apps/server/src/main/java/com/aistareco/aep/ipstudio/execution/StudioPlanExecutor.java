@@ -266,7 +266,8 @@ public class StudioPlanExecutor {
                             break;
                         }
                         step.put("status","needs_user").put("errorCode",StudioPlanExecutionService.RAW_ONLY_CODE)
-                                .put("reason",state.has("videoTask")?"这一步的结果无法读取，已完成的内容不受影响。":"模型原文已保留，请核对后再继续制作");
+                                .put("reason",latest.output().path("videoPromptNotes").path(0).asText(
+                                        state.has("videoTask")?"这一步的结果无法读取，已完成的内容不受影响。":"模型原文已保留，请核对后再继续制作"));
                         break;
                     }
                     if(!"done".equals(before)) {

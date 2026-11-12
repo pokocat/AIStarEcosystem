@@ -181,6 +181,17 @@ class VideoStudioServiceTest {
         assertEquals(List.of("image:false:ipstudio/u1/reference.png"),keys);
         verify(videoJobs,never()).submit(any(),anyString(),anyString());
     }
+
+    @Test void automaticRewriteAcceptsLongerSourceButActualVideoStillChecksItsContract() {
+        when(invocation.listCandidates(AiModelPurpose.VIDEO_GENERATION, "studio"))
+                .thenReturn(List.of(new AiModelInvocationService.ResolvedEndpoint(h3, h3Candidate, true)));
+        var source = with(t2v(), "prompt", "😀".repeat(12000));
+        assertEquals(200L, svc.prepareCanvasForAutoRewrite(USER, source, null, 12000).credits());
+        assertEquals("VIDEO_STUDIO_PROMPT_TOO_LONG", assertThrows(BusinessException.class,
+                () -> svc.prepareCanvas(USER, source, null, "studio")).getCode());
+        assertEquals("VIDEO_STUDIO_PROMPT_TOO_LONG", assertThrows(BusinessException.class,
+                () -> svc.prepareCanvasForAutoRewrite(USER, with(t2v(), "prompt", "猫".repeat(12001)), null, 12000)).getCode());
+    }
     @Test void canvasDoesNotBypassUnsupportedModelMissingTailOrOwnerRejection() {
         assertEquals("VIDEO_STUDIO_MODEL_UNSUPPORTED",assertThrows(BusinessException.class,()->svc.prepareCanvas(USER,
             jr("wrong","t2v","x","768p","9:16",5,null,null,null,List.of()),(type,key)->{})).getCode());

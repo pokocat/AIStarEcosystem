@@ -154,6 +154,29 @@ class StudioVideoRewriteWorkerTest {
     }
 
     @Test
+    void aLongSourceOnlyStartsVideoWhenItsOptimizedPromptFits() throws Exception {
+        String source = DIRECTOR_STYLE + "\n" + "灯光柔和。".repeat(1500);
+        for (String reply : List.of(clean(), "not json")) {
+            var h = harness(source, "universal_reference_video", "auto", reply);
+            ObjectNode input = (ObjectNode) json.readTree(h.run().getInputJson());
+            input.withObject("/_exec").put("videoPromptMaxChars", 7000);
+            h.run().setInputJson(input.toString());
+            h.worker().runBlocking("r");
+            JsonNode output = json.readTree(h.run().getOutputJson());
+            if (reply.equals(clean())) {
+                assertEquals(output.path("videoPrompt").path("text").asText(), submitted(h).prompt());
+                assertTrue(submitted(h).prompt().length() <= 7000);
+            } else {
+                verifyNoInteractions(h.videos());
+                assertTrue(output.path("rawOnly").asBoolean());
+                assertEquals(reply, output.path("rawResponse").path("content").asText());
+                assertTrue(output.path("videoPromptNotes").path(0).asText().contains("7000"));
+                verify(h.credits()).commitHold(anyString(), eq("r"), anyLong(), anyString(), any());
+            }
+        }
+    }
+
+    @Test
     void forTheAssistantNotesDoNotStopTheVideo() {
         var h = harness(DIRECTOR_STYLE, "universal_reference_video", "auto", clean().replace("who says brightly: {{L1}}", "who smiles."));
         h.worker().runBlocking("r");

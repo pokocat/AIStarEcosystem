@@ -33,7 +33,7 @@ import { studioCapabilities, submitStudioRun } from "@/canvas-bridge/studio-api"
 import { attachmentNode } from "@/canvas-bridge/studio-attachments";
 import { isStudioBillingCancelled, studioCreditShortageChoice } from "@/canvas-bridge/studio-billing-cancel";
 import { studioChosenTextModel } from "@/canvas-bridge/studio-text-model";
-import { studioVideoError, studioVideoQuote } from "@/canvas-bridge/studio-video";
+import { studioVideoError, studioVideoPromptMaxChars, studioVideoQuote } from "@/canvas-bridge/studio-video";
 import { describeStudioVideoPrice, studioPreviewPayer, studioVideoPriceQuery, useStudioVideoPrice } from "@/canvas-bridge/studio-video-price";
 import { quoteVideoOptimizePrice, quoteVideoPrice } from "@/canvas-bridge/studio-model-quote";
 import { rememberStudioBilling, STUDIO_GRANT_HINT, studioCreditCheck } from "@/canvas-bridge/studio-billing";
@@ -767,6 +767,9 @@ export function SceneVideoStudio() {
   let settings: ReturnType<typeof sceneVideoSettings> | undefined, planError = "";
   try { settings = chosenVideo && usedTier && plan ? sceneVideoSettings(chosenVideo, usedTier, plan, optimize) : undefined; }
   catch (e) { planError = e instanceof Error ? e.message : "素材与当前模型不匹配"; }
+  const promptChars = Array.from(recreation ? text : sentPrompt).length;
+  const promptLimit = chosenVideo ? studioVideoPromptMaxChars(chosenVideo, settings) : undefined;
+  const requiresOptimization = !!contract && promptChars > contract.promptMaxChars;
   const videoQuote = chosenVideo && settings ? studioVideoQuote(chosenVideo, settings, usedDuration) : null;
   /**
    * 积分不足时能换的模型。标准价按换过去实际的时长、清晰度和素材算；会变的写进 changes，用户看过再生成。
@@ -1141,7 +1144,8 @@ export function SceneVideoStudio() {
           // 智能优化那一笔只能用普通积分，视频可能全由模型赠款付：分开再核对一次，付不起就在这里问，不建一条一开始就停下的任务
           // （2026-11-11 线上：视频 930 由赠款付，优化要冻结 110 普通积分、账户只有 109）。服务端建任务时也按同一笔核对。
           if (settings!.rewrite) await studioCreditCheck(() => quoteVideoOptimizePrice(billing), billing, {
-            canRetry: true, subject: "优化提示词", withoutOptimize: { videoWalletCredits: paid?.walletCredits ?? 0 } });
+            canRetry: true, subject: "优化提示词",
+            ...(!requiresOptimization ? { withoutOptimize: { videoWalletCredits: paid?.walletCredits ?? 0 } } : {}) });
         }
         await persist(doc => ({ ...doc, nodes, sceneInputs: selection(), sceneVideoModel: chosenVideo.endpointId,
           sceneVideoSubmissions: [...(doc.sceneVideoSubmissions ?? []), request!] }), projectId);
@@ -1421,8 +1425,12 @@ export function SceneVideoStudio() {
           {!recreation && chipFacts.length > 0 && <div className="scene-fact-chips" role="group" aria-label="要写清楚的信息">{chipFacts.map(f =>
             <button key={f.label} type="button" onClick={() => addFact(f.label)}><Plus size={11} strokeWidth={1.6}/>{f.label}{!f.required && <small>选填</small>}</button>)}</div>}
           <footer>
-            <small className={contract && Array.from(recreation ? text : sentPrompt).length > contract.promptMaxChars ? "is-over" : undefined}
-              title={layers && !recreation ? "标着「仅参考」的内容不发给视频模型，这里是发出去的字数" : undefined}>{Array.from(recreation ? text : sentPrompt).length}{contract && !recreation ? ` / ${contract.promptMaxChars}` : ""}</small>
+            <small className={!recreation && !long && promptLimit !== undefined && promptChars > promptLimit ? "is-over" : undefined}
+              title={!recreation && !long
+                ? settings?.rewrite === "auto" && promptLimit !== contract?.promptMaxChars
+                  ? `按用于优化的字数计算，优化稿最多 ${contract?.promptMaxChars} 字`
+                  : layers ? "按用于生成的字数计算，略过「仅参考」内容" : undefined
+                : undefined}>{promptChars}{!recreation && !long && promptLimit !== undefined ? ` / ${promptLimit}` : ""}</small>
             {!recreation && <button type="button" className="scene-ai-button" title={scripts.length ? "返回 AI 编导继续修改" : "由 AI 编导撰写分镜脚本"} onClick={openDirector}>
               {writing ? <Loader2 size={13} className="studio-gallery-spinner"/> : <AiMark size={12}/>}{scriptId ? "AI 改写" : "AI 编导"}</button>}
           </footer>

@@ -330,9 +330,20 @@ public class VideoStudioService {
 
     public CanvasPreparation prepareCanvas(String userId, VideoStudioJobRequest request,
             CanvasAssetValidator requireCanvasAsset, String appCode) {
+        return prepareCanvas(userId, request, requireCanvasAsset, appCode, null);
+    }
+
+    /** Validate a Studio source prompt before the text model rewrites it. Final video submission uses the endpoint limit. */
+    public CanvasPreparation prepareCanvasForAutoRewrite(String userId, VideoStudioJobRequest request,
+            CanvasAssetValidator requireCanvasAsset, int sourcePromptMaxChars) {
+        return prepareCanvas(userId, request, requireCanvasAsset, "studio", sourcePromptMaxChars);
+    }
+
+    private CanvasPreparation prepareCanvas(String userId, VideoStudioJobRequest request,
+            CanvasAssetValidator requireCanvasAsset, String appCode, Integer sourcePromptMaxChars) {
         if (request == null || request.templateId() != null || request.optimizationId() != null)
             throw inputInvalid("画布视频请直接选择画布素材");
-        Validated v = validate(userId, Draft.of(request), requireCanvasAsset, appCode);
+        Validated v = validate(userId, Draft.of(request), requireCanvasAsset, appCode, sourcePromptMaxChars);
         return new CanvasPreparation(v.spec(), VideoStudioPricing.total(v.model().pricing(), v.mode(),
                 v.tier(), v.seconds(), v.inputs().referenceImages(), v.modeSpec().references() != null),
                 v.model().contract().seedMax());
@@ -410,10 +421,17 @@ public class VideoStudioService {
 
     private Validated validate(String userId, Draft d,
             CanvasAssetValidator requireCanvasAsset, String appCode) {
+        return validate(userId, d, requireCanvasAsset, appCode, null);
+    }
+
+    private Validated validate(String userId, Draft d,
+            CanvasAssetValidator requireCanvasAsset, String appCode, Integer sourcePromptMaxChars) {
         // 1) 模型
         ResolvedVideoModel selectedModel = pickResolvedModel(resolvedModels(appCode), d.endpointId());
         VideoStudioModel model = selectedModel.model();
         VideoStudioContract contract = model.contract();
+        if (sourcePromptMaxChars != null && !model.supportsPromptOptimization())
+            throw BusinessException.badRequest("STUDIO_VIDEO_OPTION_UNSUPPORTED", "所选视频模型不支持提示词优化");
 
         // 2) 模式
         VideoStudioModeSpec modeSpec = contract.modes().stream()
@@ -427,11 +445,7 @@ public class VideoStudioService {
         String prompt = stripBlank(d.prompt());
         if (prompt.isEmpty() && !Boolean.FALSE.equals(modeSpec.promptRequired()))
             throw BusinessException.badRequest("VIDEO_STUDIO_PROMPT_REQUIRED", "请先写提示词");
-        int promptChars = prompt.codePointCount(0, prompt.length());
-        if (promptChars > contract.promptMaxChars()) {
-            throw BusinessException.badRequest("VIDEO_STUDIO_PROMPT_TOO_LONG",
-                    "提示词最多 " + contract.promptMaxChars() + " 字，现在是 " + promptChars + " 字");
-        }
+        requirePromptLength(prompt, sourcePromptMaxChars == null ? contract.promptMaxChars() : sourcePromptMaxChars);
 
         // 4) 清晰度 / 比例 / 时长
         Geometry geometry = requireGeometry(contract, d.resolutionTier(), d.aspectRatio(), d.seconds());
@@ -985,6 +999,18 @@ public class VideoStudioService {
     }
 
     // ── 小工具 ────────────────────────────────────────────────────────────────
+
+    public static int promptLength(String prompt) {
+        String trimmed = stripBlank(prompt);
+        return trimmed.codePointCount(0, trimmed.length());
+    }
+
+    public static void requirePromptLength(String prompt, int maxChars) {
+        int chars = promptLength(prompt);
+        if (chars > maxChars)
+            throw BusinessException.badRequest("VIDEO_STUDIO_PROMPT_TOO_LONG",
+                    "提示词最多 " + maxChars + " 字，现在是 " + chars + " 字");
+    }
 
     /**
      * 去掉首尾空白。比 {@link String#strip()} 多认两种：不换行空格（U+00A0 等）和 BOM ——

@@ -15,6 +15,7 @@ import java.util.List;
 public class StudioVideoService {
     private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(StudioVideoService.class);
     private static final com.fasterxml.jackson.databind.ObjectMapper OM=new com.fasterxml.jackson.databind.ObjectMapper();
+    private static final int AUTO_REWRITE_MAX_CHARS = 12_000;
     private final com.aistareco.aep.service.AiAppSceneModelPolicyService scenePolicies;
     private final VideoStudioService videos;
     private final IpProjectService projects;
@@ -30,7 +31,8 @@ public class StudioVideoService {
                 .collect(java.util.stream.Collectors.toMap(r->r.endpoint().getId(),r->r));
         return videos.listModels("studio").stream().filter(m->allowed.containsKey(m.endpointId()))
                 .map(m->new VideoStudioModel(m.endpointId(),m.name(),allowed.get(m.endpointId()).isDefault(),
-                        m.selectableById(),m.supportsPromptOptimization(),m.contract(),m.pricing(),m.batchCounts())).toList();
+                        m.selectableById(),m.supportsPromptOptimization(),m.contract(),m.pricing(),m.batchCounts(),
+                        m.supportsPromptOptimization() ? Math.max(AUTO_REWRITE_MAX_CHARS, m.contract().promptMaxChars()) : null)).toList();
     }
     private String model(String requested) {return scenePolicies.resolveStudioVideo(requested).endpoint().getId();}
     /** 所选模型出片前会不会改写描述（H3）：只有这种模型才走 H3 官方写法的提示词优化。 */
@@ -145,6 +147,33 @@ public class StudioVideoService {
         var nativeRequest=new VideoStudioJobRequest(endpointId,v.mode(),request.prompt(),v.resolutionTier(),
                 request.aspectRatio(),request.durationSec(),v.seed(),v.firstFrameKey(),v.lastFrameKey(),prepareAudioReferences(userId,v.references()),null,null,null,null);
         return videos.prepareCanvas(userId,nativeRequest,(type,key,frame)->requireMedia(userId,type,key,frame,modeSpec),"studio").credits();
+    }
+
+    public void checkAutoRewritePrompt(String requested, String prompt) {
+        VideoStudioService.requirePromptLength(prompt, autoRewriteModel(requested).autoRewritePromptMaxChars());
+    }
+
+    private VideoStudioModel autoRewriteModel(String requested) {
+        VideoStudioModel selected = videoModel(model(requested));
+        if (selected.autoRewritePromptMaxChars() == null)
+            throw BusinessException.badRequest("STUDIO_VIDEO_OPTION_UNSUPPORTED", "所选视频模型不支持提示词优化");
+        return selected;
+    }
+
+    public record AutoRewriteQuote(long credits, int videoPromptMaxChars) {}
+
+    public AutoRewriteQuote quoteAutoRewrite(String userId, IpRunService.IpVideoRequest request, boolean checkMedia) {
+        var v = request.video();
+        var selected = autoRewriteModel(request.model());
+        var mode = modeSpec(selected, v.mode());
+        var nativeRequest = new VideoStudioJobRequest(selected.endpointId(), v.mode(), request.prompt(), v.resolutionTier(),
+                request.aspectRatio(), request.durationSec(), v.seed(), v.firstFrameKey(), v.lastFrameKey(),
+                prepareAudioReferences(userId, v.references()), null, null, null, null);
+        var prepared = videos.prepareCanvasForAutoRewrite(userId, nativeRequest, (type, key, frame) -> {
+            if (checkMedia) requireMedia(userId, type, key, frame, mode);
+            else projects.requireOwnedAssetKey(userId, key);
+        }, selected.autoRewritePromptMaxChars());
+        return new AutoRewriteQuote(prepared.credits(), selected.contract().promptMaxChars());
     }
     private VideoStudioModel videoModel(String endpointId) {
         return models().stream().filter(m->endpointId.equals(m.endpointId())).findFirst()

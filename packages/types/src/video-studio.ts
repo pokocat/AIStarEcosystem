@@ -131,6 +131,8 @@ export interface VideoStudioModel {
   selectableById: boolean;
   /** 当前端点的供应商协议是否支持提交前的提示词智能优化。这类模型（聚算 H3）出片前默认也会改写描述，Studio 据此开放「按原文生成」。 */
   supportsPromptOptimization: boolean;
+  /** Studio 自动优化接收的原始提示词上限，最终发给视频模型的提示词仍按 contract 校验。 */
+  autoRewritePromptMaxChars?: number;
   batchCounts: number[];
   contract: VideoStudioContract;
   pricing: VideoStudioPricing;

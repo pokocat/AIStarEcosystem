@@ -462,7 +462,9 @@ public class StudioWorkflowService {
         var check=videoRequest(request);
         if(!studioVideo.rewritable(request.model()))throw bad("STUDIO_VIDEO_OPTION_UNSUPPORTED","所选视频模型不支持提示词优化");
         // 素材在这里就按模型规则核对（quoteChecked），不等优化做完、交给视频时才发现参考视频超长。
-        long videoCost=Math.multiplyExact(studioVideo.quoteChecked(userId,new IpRunService.IpVideoRequest(check.prompt(),null,check.durationSec(),check.aspectRatio(),check.model(),null,video.submitted())),(long)count);
+        var source=new IpRunService.IpVideoRequest(check.prompt(),null,check.durationSec(),check.aspectRatio(),check.model(),null,video.submitted());
+        var autoQuote="auto".equals(video.rewrite())?studioVideo.quoteAutoRewrite(userId,source,true):null;
+        long videoCost=Math.multiplyExact(autoQuote==null?studioVideo.quoteChecked(userId,source):autoQuote.credits(),(long)count);
         var endpoint=videoRewriteEndpoint().endpoint();
         var rate=videoRewriteRate(endpoint);
         // 画布：用户确认的是视频价格，改写另扣少量（界面写明）。制作计划：批准的上限按「视频 + 改写上限」报的，合计不能超（交接时视频只能用剩下的）。
@@ -478,6 +480,7 @@ public class StudioWorkflowService {
         inputs.put("mock",false);
         var execution=inputs.putObject("_exec").put("holdTotal",cost).put("unitCost",cost).put("billingUnit","per_token")
                 .put("rewrite",video.rewrite()).put("videoCost",videoCost).put("planBudget",planBudget);
+        if(autoQuote!=null)execution.put("videoPromptMaxChars",autoQuote.videoPromptMaxChars());
         var h3Meta=com.aistareco.aep.ipstudio.h3.H3PromptRewrite.meta(mapper,h3,built.pictures(),built.videos(),built.audios());
         if(!built.controlVideos().isEmpty())built.controlVideos().forEach(h3Meta.putArray("controlVideos")::add);
         execution.set("h3",h3Meta);
@@ -1167,9 +1170,14 @@ public class StudioWorkflowService {
             case "video" -> {
                 if(request.video()==null||studioVideo==null)throw bad("STUDIO_VIDEO_INPUT_INVALID","制作计划里的视频步骤需要明确视频模式");
                 // nodeId=quote：StudioPlanQuoter 按计划报价，素材还是占位 key，只看张数。步骤真正受理时的报价（有真实 key）照旧查文件。
-                long unit=StudioPlanSteps.QUOTE_NODE.equals(request.nodeId())
-                        ?studioVideo.planPrice(request.model(),request.video(),request.aspectRatio(),request.durationSec())
-                        :studioVideo.quote(userId,new IpRunService.IpVideoRequest(request.prompt(),null,request.durationSec(),request.aspectRatio(),request.model(),null,request.video().submitted()));
+                long unit;
+                if(StudioPlanSteps.QUOTE_NODE.equals(request.nodeId())) {
+                    unit=studioVideo.planPrice(request.model(),request.video(),request.aspectRatio(),request.durationSec());
+                } else {
+                    var source=new IpRunService.IpVideoRequest(request.prompt(),null,request.durationSec(),request.aspectRatio(),request.model(),null,request.video().submitted());
+                    unit="auto".equals(request.video().rewrite())
+                            ?studioVideo.quoteAutoRewrite(userId,source,false).credits():studioVideo.quote(userId,source);
+                }
                 // 先改写提示词的步骤把改写的冻结上限也算进去：制作计划的预算按它核对。
                 yield Math.addExact(Math.multiplyExact(unit,(long)(request.count()==null?1:request.count())),request.video().rewrite()==null?0:videoRewriteHold());
             }

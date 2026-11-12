@@ -94,7 +94,13 @@ public final class VideoStudioDtos {
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public record VideoStudioModel(String endpointId, String name, boolean isDefault, boolean selectableById,
                                    boolean supportsPromptOptimization, VideoStudioContract contract, VideoStudioPricing pricing,
-                                   List<Integer> batchCounts) {
+                                   List<Integer> batchCounts,
+                                   @JsonInclude(JsonInclude.Include.NON_NULL) Integer autoRewritePromptMaxChars) {
+        public VideoStudioModel(String endpointId, String name, boolean isDefault, boolean selectableById,
+                                boolean supportsPromptOptimization, VideoStudioContract contract, VideoStudioPricing pricing,
+                                List<Integer> batchCounts) {
+            this(endpointId, name, isDefault, selectableById, supportsPromptOptimization, contract, pricing, batchCounts, null);
+        }
         public VideoStudioModel(String endpointId, String name, boolean isDefault, boolean selectableById,
                                 boolean supportsPromptOptimization, VideoStudioContract contract, VideoStudioPricing pricing) {
             this(endpointId, name, isDefault, selectableById, supportsPromptOptimization, contract, pricing, List.of(1,2,4));

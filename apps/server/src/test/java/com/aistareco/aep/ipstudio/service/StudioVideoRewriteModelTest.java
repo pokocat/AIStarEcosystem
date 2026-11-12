@@ -49,6 +49,7 @@ class StudioVideoRewriteModelTest {
         when(videos.rewritable("h3")).thenReturn(true);
         when(videos.quote(eq("u"),any())).thenReturn(300L);
         when(videos.quoteChecked(eq("u"),any())).thenReturn(300L);
+        when(videos.quoteAutoRewrite(eq("u"),any(),anyBoolean())).thenReturn(new StudioVideoService.AutoRewriteQuote(300,7000));
         when(projects.requiredForUpdate("u","p")).thenReturn(IpProject.builder().id("p").build());
         when(projects.readDoc(any())).thenReturn(om.createObjectNode().putArray("nodes"));
     }

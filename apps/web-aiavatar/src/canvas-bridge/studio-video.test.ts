@@ -158,6 +158,15 @@ describe("video selection across modes, the IP library and legacy models",()=>{
 });
 
 describe("prompt over a model's limit",()=>{
+  it("accepts longer source prompts only when automatic optimization is enabled",()=>{
+    const h3 = { ...model, supportsPromptOptimization: true, autoRewritePromptMaxChars: 12000 };
+    const video = { mode: "i2v", resolutionTier: "768p", firstFrameKey: "first" };
+    const source = "光".repeat(12000);
+    expect(studioVideoError(h3, { ...video, rewrite: "auto" }, source, "9:16", 5)).toBeUndefined();
+    expect(studioVideoError(h3, { ...video, rewrite: "auto" }, source + "光", "9:16", 5)).toContain("需删减 1 字");
+    expect(studioVideoError(h3, { ...video, rewrite: "review" }, source, "9:16", 5)).toContain("最多 7000 字");
+    expect(studioVideoError(h3, { ...video, optimizePrompt: false }, source, "9:16", 5)).toContain("最多 7000 字");
+  });
   it("counts by character and says how much to cut",()=>{
     expect(studioPromptLimitMessage(2350,2000,false)).toBe("提示词 2350 字，当前模型最多 2000 字，需删减 350 字。");
     expect(studioPromptLimitMessage(2350,2000,true)).toContain("创作要求和引用文本合计");

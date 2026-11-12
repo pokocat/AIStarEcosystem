@@ -651,11 +651,15 @@ public class StudioWorkflowWorker {
             if(review){output.put("needsChoice",true);output.putObject("videoPrompt").put("text",reply.content()).put("usable",false).putArray("warnings").add("模型没有返回可用的优化稿，可以重新优化，或按原文生成");finish(id,output,null);return;}
         }
         String language=meta.path("language").asText("Chinese");
+        int videoPromptMaxChars=input.path("_exec").path("videoPromptMaxChars")
+                .asInt(com.aistareco.aep.ipstudio.h3.H3PromptRewrite.MAX_PROMPT_CHARS);
         boolean usable=result!=null&&result.path("usable").asBoolean(true);
         if(result!=null) {
+            String optimized=com.aistareco.aep.ipstudio.h3.H3PromptRewrite.fill(result.path("template").asText(),
+                    com.aistareco.aep.ipstudio.h3.H3PromptRewrite.lines(meta),language);
+            usable=usable&&com.aistareco.aep.videostudio.service.VideoStudioService.promptLength(optimized)<=videoPromptMaxChars;
             ObjectNode view=output.putObject("videoPrompt");
-            view.put("text",com.aistareco.aep.ipstudio.h3.H3PromptRewrite.fill(result.path("template").asText(),
-                    com.aistareco.aep.ipstudio.h3.H3PromptRewrite.lines(meta),language)).put("usable",usable);
+            view.put("text",optimized).put("usable",usable);
             view.set("warnings",result.path("warnings").deepCopy());
             view.set("notes",result.path("notes").deepCopy());
         }
@@ -665,10 +669,22 @@ public class StudioWorkflowWorker {
             finish(id,output,failure);
             return;
         }
-        String prompt=usable?output.path("videoPrompt").path("text").asText():input.path("prompt").asText("");
+        String original=input.path("prompt").asText("");
+        String prompt=usable?output.path("videoPrompt").path("text").asText():original;
         if(!usable) {
+            if(input.path("_exec").has("videoPromptMaxChars")
+                    &&com.aistareco.aep.videostudio.service.VideoStudioService.promptLength(original)>videoPromptMaxChars) {
+                String reason="提示词优化未完成。按原文生成最多支持 "+videoPromptMaxChars+" 字，可重新优化或缩短提示词后再生成。";
+                if(StudioModelOutput.present(reply)) {
+                    output.put("rawOnly",true).put("text",reply.content());
+                    output.withArray("videoPromptNotes").add(reason);
+                    if(!output.has("billing")){output.put("billingUnknown",true);output.putObject("billing").put("credits",0);}
+                    finish(id,output,null);
+                } else finish(id,output,BusinessException.badRequest("STUDIO_VIDEO_REWRITE_INVALID",reason));
+                return;
+            }
             output.withArray("videoPromptNotes").add(failure!=null?"提示词优化失败，已按原文生成":"优化稿超过 "
-                    +com.aistareco.aep.ipstudio.h3.H3PromptRewrite.MAX_PROMPT_CHARS+" 字符，已按原文生成");
+                    +videoPromptMaxChars+" 字符，已按原文生成");
             // 没改成不收这一步的费用；模型确实回了内容但不能用的，按实际用量结算（视频照常出）。
             if(!output.has("billing"))output.putObject("billing").put("inputTokens",0).put("outputTokens",0).put("credits",0);
         }

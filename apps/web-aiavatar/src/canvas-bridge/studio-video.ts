@@ -180,13 +180,18 @@ export function studioLongerPromptModel<T extends {promptMaxChars?:number|null}>
     .reduce<(T&{promptMaxChars:number})|undefined>((best,m)=>!best||m.promptMaxChars>best.promptMaxChars?m:best,undefined);
 }
 
+export function studioVideoPromptMaxChars(model: VideoStudioModel, video?: StudioVideoSettings): number {
+  return (video?.rewrite === "auto" ? model.autoRewritePromptMaxChars : undefined) ?? model.contract.promptMaxChars;
+}
+
 export function studioVideoError(model:VideoStudioModel,video:StudioVideoSettings,prompt:string,ratio:string,seconds:number):string|undefined {
   const contract=model.contract,spec=contract.modes.find(m=>m.mode===video.mode);
   if(!spec)return "当前模型不支持所选视频模式，请重新选择";
   if(!contract.tiers.find(t=>t.tier===video.resolutionTier)?.canvases.some(c=>c.aspectRatio===ratio))return "请按所选模型重新选择清晰度和画幅";
   if(!Number.isInteger(seconds)||seconds<contract.minSeconds||seconds>contract.maxSeconds)return contract.minSeconds===contract.maxSeconds?`视频时长需为 ${contract.minSeconds} 秒`:`视频时长需为 ${contract.minSeconds} 到 ${contract.maxSeconds} 秒`;
   if(!prompt.trim()&&spec.promptRequired!==false)return "请输入提示词";
-  if(Array.from(prompt).length>contract.promptMaxChars)return studioPromptLimitMessage(Array.from(prompt).length,contract.promptMaxChars,false);
+  const promptChars = Array.from(prompt.trim()).length, promptLimit = studioVideoPromptMaxChars(model, video);
+  if(promptChars>promptLimit)return studioPromptLimitMessage(promptChars,promptLimit,false);
   if(video.seed!=null&&(!Number.isSafeInteger(video.seed)||video.seed<0||video.seed>contract.seedMax))return `随机种子需为 0 到 ${contract.seedMax} 的整数`;
   if(spec.needsFirstFrame&&!video.firstFrameKey)return "请选择首帧图片";
   if(spec.needsLastFrame&&!video.lastFrameKey)return "请选择尾帧图片";
