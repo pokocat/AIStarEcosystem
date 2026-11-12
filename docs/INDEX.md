@@ -484,6 +484,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [声音参考格式修复发布](releases/voice-reference-format-release-20261104.md) — server；短 M4A 等声音自动转 WAV，报错说明素材类型和可用格式；真实出片未验证（last-reviewed: 2026-11-04）
 - [首页场景卡两行与导演台单个视角重新生成](releases/studio-home-goals-and-scene-view-release-20261111.md) — server + web-aiavatar；首页场景卡改为三列两行、商品套图放最后；导演台单个视角只重新生成这一个；`20261111-home-goals-94e68ff7`（2026-11-11）
 - [元素替换改用模型原生编辑发布](releases/studio-replacement-edit-release-20261112.md) — API + 独立后台 + web-aiavatar，main `1c5144b2b`；元素替换不拉片、不写提示词，Seedance 2.5 走官方编辑任务并已加端点配置；真跑未做；回退先恢复 Seedance 2.5 规格（last-reviewed 2026-11-12）
+- [画布卡片与生成浮层发布](releases/studio-canvas-cards-release-20261112.md) — 只发 web-aiavatar，main `bafa569f4`；卡片外框挪到内容区、空卡片虚线框，图片/视频浮层照设计稿并放在节点旁边不再盖住；A 承流、B 保留 `aaa1fa08a`；点生成未线上实测（last-reviewed 2026-11-12）
 - [智能优化积分核对发布](releases/optimize-credits-release-20261112.md) — server + web-aiavatar `20261111-optimize-credits-eb7bb9da`；智能优化的普通积分在建任务前核对、同一草稿多条视频不互相挡，同包带导演台与深度复刻（last-reviewed 2026-11-12）
 - [爆款复刻三种方式发布](releases/recreation-modes-release-20261111.md) — server + web-aiavatar `20261111-recreation-modes-0a330629`；三种复刻方式、自动检查开关、首页去重复入口；生产机装了深度复刻运行时但未开启（内存不够，实测记录在内）（last-reviewed 2026-11-11）
 - [资产页删除发布](releases/asset-library-delete-release-20261110.md) — web-aiavatar；资产页单个与批量删除，只从资产库移除、不动画布和作品（last-reviewed: 2026-11-10）
