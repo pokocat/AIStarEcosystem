@@ -209,14 +209,19 @@ html[data-layout="desktop"] .lmp-grid { grid-template-columns: repeat(auto-fill,
 .lmp-grid>li { min-width: 0; }
 .lmp-upload.ant-btn { display: flex; flex-direction: column; gap: 10px; width: 100%; height: auto; aspect-ratio: 1 / 1; padding: 8px; border-radius: 12px; font-weight: 600; white-space: normal; }
 .lmp-cell { position: relative; }
-.lmp-preview-action.ant-btn { position: absolute; top: 6px; left: 6px; width: 28px; height: 28px; border-radius: 7px; }
+.lmp-preview-action.ant-btn, .lmp-check { position: absolute; top: 7px; width: 20px; height: 20px; border-radius: 50%; }
+.lmp-preview-action.ant-btn { left: 7px; padding: 0; }
+@media (hover: hover) and (pointer: fine) {
+  .lmp-preview-action.ant-btn { opacity: 0; pointer-events: none; }
+  .lmp-cell:hover .lmp-preview-action.ant-btn, .lmp-preview-action.ant-btn:focus-visible { opacity: 1; pointer-events: auto; }
+}
 .lmp-preview .ant-modal-title { overflow-wrap: anywhere; }
 .lmp-item { position: relative; display: flex; flex-direction: column; gap: 6px; width: 100%; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .lmp-item:disabled { cursor: default; opacity: .5; }
 .lmp-thumb { display: block; aspect-ratio: 1 / 1; overflow: hidden; border-radius: 12px; background: var(--ip-soft, #f3f4f6); }
 .lmp-thumb>img, .lmp-thumb>video { display: block; width: 100%; height: 100%; object-fit: cover; }
 .lmp-item[aria-pressed="true"] .lmp-thumb { outline: 2px solid var(--ip-ink, #17202a); outline-offset: 2px; }
-.lmp-check { position: absolute; top: 7px; right: 7px; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--ip-ink, #17202a); color: #fff; }
+.lmp-check { right: 7px; display: grid; place-items: center; background: var(--ip-ink, #17202a); color: #fff; }
 .lmp-text { display: flex; flex-direction: column; min-width: 0; padding: 0 2px; }
 .lmp-text strong { overflow: hidden; font-size: 12.5px; font-weight: 500; white-space: nowrap; text-overflow: ellipsis; }
 .lmp-text small { font-size: 11.5px; color: var(--ip-muted, #5b6572); }

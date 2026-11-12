@@ -216,7 +216,7 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
                 <span className="lmp-text"><strong>{a.title}</strong><small>{access ? unavailable ? OFFICIAL_LICENSE_REASON : '官方形象' : a.metadata?.ipReference ? `我的 IP · ${a.metadata.assetRole}` : a.metadata?.libraryReference ? OBJECT_TABS.find(t => t.key === tab)?.label : sourceLabel(a.source)}</small></span>
               </button>
               {(a.kind === 'image' || a.kind === 'video') && (a.data.storageKey || (a.kind === 'image' ? a.data.dataUrl : a.data.url)) &&
-                <Button type="primary" size="small" className="lmp-preview-action" icon={<Maximize2 size={13}/>} aria-label={`放大预览 ${a.title}`} title="放大预览" disabled={busy}
+                <Button type="primary" size="small" className="lmp-preview-action" icon={<Maximize2 size={11}/>} aria-label={`放大预览 ${a.title}`} title="放大预览" disabled={busy}
                   onClick={() => { setHoveredVideo(undefined); setPreview(a); }}/>}
               {a.kind === 'audio' && <SignedAudio className="lmp-audio" quiet src={a.data.url} storageKey={a.data.storageKey} controls preload="none"/>}
             </li>;

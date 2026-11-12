@@ -5,7 +5,7 @@
   background: radial-gradient(ellipse 70% 120% at 50% -30%, #f2e4cb 0%, rgba(242,228,203,0) 62%), linear-gradient(180deg, #fbf8f2 0%, #fff 78%); }
 .home-hero { position: relative; }
 .home-hero h1 { font-family: var(--ip-display); font-size: clamp(28px, 2.9vw, 42px); font-weight: 600; line-height: 1.35; letter-spacing: -.01em; text-wrap: balance; }
-.home-hero>p { margin-top: 10px !important; color: var(--ip-muted); font-size: 15px; }
+.home-hero-copy > p { margin-top: 6px !important; color: var(--ip-muted); font-size: 15px; line-height: 1.5; }
 .home-hero .studio-conversation-start { max-width: 1000px; margin-top: 30px; text-align: left; }
 .home-hero .studio-conversation-start-box { padding: 18px 18px 14px; border-radius: 20px; box-shadow: 0 24px 60px rgba(25,34,41,.08); }
 .home-hero .studio-conversation-start textarea { min-height: 86px; font-size: 16px; }

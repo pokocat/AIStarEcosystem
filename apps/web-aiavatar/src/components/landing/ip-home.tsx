@@ -109,7 +109,10 @@ export function IpHome({ header = true }: { header?: boolean }) {
     {using && <StudioTemplateUse key={using.versionId || using.id} template={using} onClose={() => setUsing(undefined)} onCreated={href => router.push(href)}/>}
     <main>
       <section className="home-hero">
-        <h1>一个 IP，无限可能</h1>
+        <div className="home-hero-copy">
+          <h1>衣冠百变，戏路万千</h1>
+          <p>让好内容带来好生意</p>
+        </div>
         <StudioConversationStart creating={creating === "assistant"} onStart={brief => void startConversation(brief)}/>
       </section>
 
