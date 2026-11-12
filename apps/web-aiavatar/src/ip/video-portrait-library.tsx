@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { Alert, Button, ConfigProvider, Flex, Modal, Select, Space, Table, Tabs, Typography, Upload } from 'antd';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, Button, ConfigProvider, Flex, Modal, Select, Space, Table, Tabs, Typography } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { Plus } from 'lucide-react';
 import type { VideoPortraitPerson } from '@ai-star-eco/types/video-portrait-library';
@@ -9,6 +9,7 @@ import { StudioPage } from './studio-page';
 import { useRequireAuth, PlatformGateScreen } from '@/components/hub/auth';
 import { formatDateTime } from '@/lib/datetime';
 import { uploadLibraryMedia } from '@/canvas-bridge/asset-library';
+import { uploadAssetBatch } from './asset-upload-batch';
 import { PortraitFooterBar, PortraitGuide, PortraitMaterialTable, PortraitPersonModal, PortraitStatus, portraitNeedsAction, PORTRAIT_THEME, usePortraitFooter, usePortraitOverview } from './portrait-review-ui';
 import * as api from './api/video-portrait-library';
 import './video-portrait-library.css';
@@ -20,8 +21,17 @@ export function VideoPortraitLibrary() {
   const [verification, setVerification] = useState<VideoPortraitPerson>();
   const [modal, modalHolder] = Modal.useModal();
   const footer = usePortraitFooter();
+  const input = useRef<HTMLInputElement>(null);
   useEffect(() => { if (overview) setLibrary(current => current || overview.libraries[0]?.id); }, [overview]);
   const changed = useCallback(async () => { await reload(); }, [reload]);
+  const uploadPortraits = (files: File[], libraryId: string) => void act(async () => {
+    const { uploaded, error } = await uploadAssetBatch(files, async file => {
+      const result = await uploadLibraryMedia(file, 'image');
+      return api.registerPortrait({ libraryId, key: result.key, mediaType: 'image', label: file.name });
+    });
+    if (uploaded.length) setConfirming(uploaded[0].id);
+    if (error) throw error;
+  });
   if (auth === 'no-platform') return <PlatformGateScreen />;
   const peopleColumns: TableColumnsType<VideoPortraitPerson> = [
     { title: '人物', dataIndex: 'name', key: 'name', render: name => <Typography.Text strong>{name}</Typography.Text> },
@@ -40,9 +50,9 @@ export function VideoPortraitLibrary() {
     <Tabs activeKey={tab} onChange={setTab} items={[{ key: 'materials', label: '人像素材', children: <Flex vertical gap={16}>
       <Flex justify="space-between" gap={12} wrap align="center"><Typography.Text type="secondary">审核通过的人像可直接用于创作。</Typography.Text><Space wrap>
         {(overview?.libraries.length || 0) > 1 && <Select aria-label="人像素材库" value={library} onChange={setLibrary} options={overview?.libraries.map(l => ({ value: l.id, label: l.name }))} />}
-        <Upload accept="image/jpeg,image/png,image/webp" showUploadList={false} disabled={!library || busy} beforeUpload={file => {
-          void act(async () => { const uploaded = await uploadLibraryMedia(file, 'image'); const item = await api.registerPortrait({ libraryId: library!, key: uploaded.key, mediaType: 'image', label: file.name }); setConfirming(item.id); }); return false;
-        }}><Button type="primary" icon={<Plus size={15} />} disabled={!library || busy}>添加人像</Button></Upload>
+        <input ref={input} type="file" hidden multiple disabled={!library || busy} accept="image/jpeg,image/png,image/webp" aria-label="选择人像照片"
+          onChange={e => { const files = Array.from(e.target.files ?? []); e.target.value = ''; if (files.length && library) uploadPortraits(files, library); }}/>
+        <Button type="primary" icon={<Plus size={15} />} disabled={!library || busy} onClick={() => input.current?.click()}>添加人像</Button>
       </Space></Flex>
       <PortraitMaterialTable items={ordered} loading={!overview} onConfirm={item => setConfirming(item.id)} onRefresh={item => void act(() => api.refreshPortrait(item.id))} />
     </Flex> }, { key: 'people', label: '本人核验', children: <Flex vertical gap={16}>

@@ -17,6 +17,7 @@ import { SignedAudio } from '@/canvas-bridge/signed-audio';
 import { SignedImage } from '@/canvas-bridge/signed-image';
 import { SignedVideo } from '@/canvas-bridge/signed-video';
 import { AssetThumb } from './asset-thumb';
+import { selectUploadedAssets, uploadAssetBatch } from './asset-upload-batch';
 import { AudioRecorderDialog } from './audio-recorder-dialog';
 import { inOfficialCategory, isOfficialAsset, OFFICIAL_LICENSE_REASON, officialAccessLabel, officialCategoryOptions, officialUsable } from './official-avatars';
 import { AI_LIBRARY, lastLibrary, libraryQuery, rememberLibrary, sourceLabel } from './assets-hub-shared';
@@ -60,19 +61,21 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
   const [preview, setPreview] = useState<VisualAsset>();
   const [selected, setSelected] = useState<Record<string, IpSavedAsset>>({});
   const [error, setError] = useStudioErrorState();
+  const [uploadError, setUploadError] = useStudioErrorState();
   const [revision, setRevision] = useState(0);
-  const epoch = useRef(0), fileInput = useRef<HTMLInputElement>(null), uploadedKey = useRef<string | undefined>(undefined);
+  const epoch = useRef(0), fileInput = useRef<HTMLInputElement>(null), uploadedKeys = useRef<string[]>([]);
   const withPeople = people && mediaType === 'image';
 
   useEffect(() => {
     if (!open) { setRecording(false); setHoveredVideo(undefined); setPreview(undefined); return; }
-    setSelected({}); setKeyword(''); setTab('files'); setSource('mine'); setCategory('all'); setError(''); setLibrary(undefined);
+    uploadedKeys.current = [];
+    setSelected({}); setKeyword(''); setTab('files'); setSource('mine'); setCategory('all'); setError(''); setUploadError(''); setLibrary(undefined);
     const remembered = lastLibrary();
     setLast(remembered);
     Promise.all([libraryFolders(), projectId ? canvasLibraryFolder(projectId) : Promise.resolve({ folderId: '' })])
       .then(([f, p]) => { setFolders(f); setLibrary(p.folderId || [preferred, remembered].find(id => !!id && f.some(x => x.id === id)) || 'all'); })
       .catch(e => { setError(e); setLibrary('all'); });
-  }, [open, projectId, preferred, setError]);
+  }, [open, projectId, preferred, setError, setUploadError]);
 
   const folderName = (id?: string) => folders.find(f => f.id === id)?.name;
   const fetchPage = async (n: number): Promise<{ items: IpSavedAsset[]; hasMore: boolean }> => {
@@ -113,10 +116,11 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
       fetchPage(0).then(r => {
         if (id !== epoch.current) return;
         setItems(r.items); setPage(0); setHasMore(r.hasMore); setError('');
-        // 刚传进资产库的那份：列表读回来后直接选中。
-        const fresh = uploadedKey.current && r.items.find(a => 'storageKey' in a.data && a.data.storageKey === uploadedKey.current);
-        // 已经选满了就不再自动加上（单选时换成刚传的那个），选中的数目不能超过 max。
-        if (fresh) { uploadedKey.current = undefined; setSelected(old => max === 1 ? { [fresh.id]: fresh } : old[fresh.id] || Object.keys(old).length >= max ? old : { ...old, [fresh.id]: fresh }); }
+        if (source === 'mine' && tab === 'files' && uploadedKeys.current.length) {
+          const keys = uploadedKeys.current;
+          uploadedKeys.current = [];
+          setSelected(old => selectUploadedAssets(old, r.items, keys, max));
+        }
       }).catch(e => id === epoch.current && setError(e)).finally(() => id === epoch.current && setLoading(false));
     }, 150);
     return () => { clearTimeout(timer); epoch.current++; };
@@ -136,16 +140,20 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
     if (max === 1) return { [asset.id]: asset };
     return Object.keys(old).length >= max ? old : { ...old, [asset.id]: asset };
   });
-  const putInLibrary = async (file: File) => {
+  const putInLibrary = async (files: File[]) => {
     const folder = library && library !== 'all' && library !== AI_LIBRARY ? library : undefined;
-    setUploading(true); setError('');
+    setUploading(true); setUploadError('');
     try {
-      const result = await uploadLibraryMedia(file, mediaType, folder);
-      uploadedKey.current = result.key;
-      // 「AI 生成」里看不到上传的文件，传完切回「全部」再选中。
-      if (library === AI_LIBRARY) setLibrary('all');
-      setTab('files'); setKeyword(''); setRevision(n => n + 1);
-    } catch (e) { setError(e); throw e; }
+      const { uploaded, error } = await uploadAssetBatch(files, file => uploadLibraryMedia(file, mediaType, folder));
+      if (uploaded.length) {
+        epoch.current++;
+        uploadedKeys.current = uploaded.map(item => item.key);
+        if (!library || library === AI_LIBRARY) setLibrary('all');
+        setSource('mine'); setTab('files'); setKeyword(''); setRevision(n => n + 1);
+      }
+      if (error) setUploadError(error);
+      return error;
+    }
     finally { setUploading(false); }
   };
   const confirm = async () => {
@@ -159,17 +167,18 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
   };
 
   const picked = Object.values(selected);
+  const locked = busy || uploading;
   const official = withPeople && source === 'official';
   const canUpload = upload && !official;
   const uploadTile = canUpload && mediaType !== 'audio';
   const uploadLabel = library && library !== 'all' && library !== AI_LIBRARY ? '上传到此资产库' : uploadTile ? `上传${NOUN[mediaType]}` : '上传';
   const libRow = (id: string, label: string, icon: ReactNode, note?: string) =>
-    <button key={id} type="button" className="lmp-lib" aria-current={library === id ? 'true' : undefined} disabled={busy} onClick={() => { setLibrary(id); setPage(0); }}>{icon}<span>{label}</span>{note && <small>{note}</small>}</button>;
+    <button key={id} type="button" className="lmp-lib" aria-current={library === id ? 'true' : undefined} disabled={locked} onClick={() => { setLibrary(id); setPage(0); }}>{icon}<span>{label}</span>{note && <small>{note}</small>}</button>;
   // 按钮字不加空格（antd 默认把两个汉字的按钮写成「取 消」）。
-  return <ConfigProvider button={{ autoInsertSpace: false }}><Modal open={open} title={title} footer={null} width={900} getContainer={studioOverlayContainer} className="lmp-modal" onCancel={() => !busy && onClose()} mask={{ closable: !busy }} destroyOnHidden>
+  return <ConfigProvider button={{ autoInsertSpace: false }}><Modal open={open} title={title} footer={null} width={900} getContainer={studioOverlayContainer} className="lmp-modal" onCancel={() => !locked && onClose()} mask={{ closable: !locked }} destroyOnHidden>
     {withPeople && <div className="lmp-sources" role="tablist" aria-label="素材来源">
-      <button type="button" role="tab" aria-selected={source === 'mine'} disabled={busy} onClick={() => setSource('mine')}>我的资产</button>
-      <button type="button" role="tab" aria-selected={source === 'official'} disabled={busy} onClick={() => { setSource('official'); setKeyword(''); }}>官方形象</button>
+      <button type="button" role="tab" aria-selected={source === 'mine'} disabled={locked} onClick={() => setSource('mine')}>我的资产</button>
+      <button type="button" role="tab" aria-selected={source === 'official'} disabled={locked} onClick={() => { setSource('official'); setKeyword(''); }}>官方形象</button>
     </div>}
     <div className={`lmp${official ? ' is-official' : ''}`}>
       {!official && <nav className="lmp-libs" aria-label="资产库">
@@ -183,18 +192,19 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
         <div className="lmp-bar">
           {official && <Select className="lmp-category" aria-label="按分类筛选官方形象" value={category} disabled={busy} onChange={setCategory} options={officialCategoryOptions(officialAll)} getPopupContainer={studioOverlayContainer} popupMatchSelectWidth={false}/>}
           {withPeople && !official && <div className="lmp-seg" role="tablist" aria-label="类型">
-            <button type="button" role="tab" aria-selected={tab === 'files'} disabled={busy} onClick={() => setTab('files')}>图片</button>
-            {OBJECT_TABS.map(t => <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} disabled={busy} onClick={() => setTab(t.key)}>{t.label}</button>)}
+            <button type="button" role="tab" aria-selected={tab === 'files'} disabled={locked} onClick={() => setTab('files')}>图片</button>
+            {OBJECT_TABS.map(t => <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} disabled={locked} onClick={() => setTab(t.key)}>{t.label}</button>)}
           </div>}
-          <Input className="lmp-search" prefix={<Search size={14}/>} allowClear aria-label="搜索资产" placeholder="搜索名称" value={keyword} disabled={busy} onChange={e => setKeyword(e.target.value)}/>
+          <Input className="lmp-search" prefix={<Search size={14}/>} allowClear aria-label="搜索资产" placeholder="搜索名称" value={keyword} disabled={locked} onChange={e => setKeyword(e.target.value)}/>
           {canUpload && mediaType === 'audio' && <>
             <span className="lmp-gap"/>
             <Button icon={<Upload size={14}/>} loading={uploading} disabled={busy} onClick={() => fileInput.current?.click()}>{uploadLabel}</Button>
             <Button icon={<Mic size={14}/>} disabled={busy || uploading || !library} onClick={() => setRecording(true)}>录音</Button>
           </>}
         </div>
-        {canUpload && <input ref={fileInput} type="file" hidden aria-label="选择要上传到资产库的文件" accept={ACCEPT[mediaType]} onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; if (file) void putInLibrary(file).catch(() => {}); }}/>}
-        {error && <p className="lmp-error"><StudioErrorNotice error={error}/><Button size="small" disabled={loading} onClick={() => setRevision(n => n + 1)}>重试</Button></p>}
+        {canUpload && <input ref={fileInput} type="file" multiple hidden disabled={locked} aria-label="选择要上传到资产库的文件" accept={ACCEPT[mediaType]} onChange={e => { const files = Array.from(e.target.files ?? []); e.target.value = ''; if (files.length) void putInLibrary(files); }}/>}
+        {uploadError && <p className="lmp-error"><StudioErrorNotice error={uploadError} autoReport={false}/></p>}
+        {error && <p className="lmp-error"><StudioErrorNotice error={error}/><Button size="small" disabled={loading || locked} onClick={() => setRevision(n => n + 1)}>重试</Button></p>}
         {(uploadTile || items.length > 0 || hasMore) && <ul className={`lmp-grid${mediaType === 'audio' ? ' is-list' : ''}`}>
           {uploadTile && <li><Button type="dashed" className="lmp-upload" icon={<span className="assets-upload-plus"><Upload size={21}/></span>}
             loading={uploading} disabled={busy || uploading || !library} onClick={() => fileInput.current?.click()}>
@@ -207,7 +217,7 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
             return <li key={a.id} className="lmp-cell"
               onPointerEnter={a.kind === 'video' ? e => { if (e.pointerType === 'mouse') setHoveredVideo(a.id); } : undefined}
               onPointerLeave={a.kind === 'video' ? () => setHoveredVideo(undefined) : undefined}>
-              <button type="button" className="lmp-item" aria-pressed={on} aria-label={`选择 ${a.title}`} title={unavailable && access ? `${a.title}（${OFFICIAL_LICENSE_REASON}）` : a.title} disabled={busy || unavailable || full} onClick={() => choose(a)}>
+              <button type="button" className="lmp-item" aria-pressed={on} aria-label={`选择 ${a.title}`} title={unavailable && access ? `${a.title}（${OFFICIAL_LICENSE_REASON}）` : a.title} disabled={locked || unavailable || full} onClick={() => choose(a)}>
                 {a.kind === 'image' ? <span className="lmp-thumb"><AssetThumb kind="image" src={a.data.dataUrl} storageKey={a.data.storageKey}/></span>
                   : a.kind === 'video' ? <span className="lmp-thumb"><AssetThumb kind="video" src={a.data.url} storageKey={a.data.storageKey} playing={open && !preview && hoveredVideo === a.id}/></span>
                   : <span className="lmp-voice-icon">{on ? <Check size={15} strokeWidth={2.4}/> : <AudioLines size={16} strokeWidth={1.6}/>}</span>}
@@ -230,7 +240,7 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
     </div>
     <footer className="lmp-foot">
       <span>{picked.length === 0 ? '' : max > 1 ? `已选 ${picked.length}/${max}` : `已选：${picked[0].title}`}</span>
-      <Button disabled={busy} onClick={onClose}>取消</Button>
+      <Button disabled={locked} onClick={onClose}>取消</Button>
       <Button type="primary" className="lmp-use" loading={busy} disabled={!picked.length || uploading} onClick={() => void confirm()}>{confirmLabel}</Button>
     </footer>
     <Modal open={open && !!preview} title={preview?.title} footer={null} width={1040} centered getContainer={studioOverlayContainer} className="lmp-preview" onCancel={() => setPreview(undefined)} destroyOnHidden>
@@ -238,7 +248,10 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
         ? <SignedImage src={preview.data.dataUrl} storageKey={preview.data.storageKey} alt={preview.title}/>
         : <SignedVideo src={preview.data.url} storageKey={preview.data.storageKey} controls playsInline preload="metadata" aria-label={preview.title}/>}</div>}
     </Modal>
-  </Modal><AudioRecorderDialog open={open && recording} onClose={() => setRecording(false)} onSave={putInLibrary}/></ConfigProvider>;
+  </Modal><AudioRecorderDialog open={open && recording} onClose={() => setRecording(false)} onSave={async file => {
+    const error = await putInLibrary([file]);
+    if (error) throw error;
+  }}/></ConfigProvider>;
 }
 
 function officialItem(a: StudioIpAsset): IpSavedAsset {

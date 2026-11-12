@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from "react";
 import { ImageIcon, Library, Mic, Plus, Upload, Wand2 } from "lucide-react";
 import type { DirectorAsset, DirectorAssetKind } from "@ai-star-eco/types";
 import { DirectorApi, IpStudioApi } from "../api";
+import { uploadLibraryMedia } from "@/canvas-bridge/asset-library";
+import { uploadAssetBatch } from "../asset-upload-batch";
 import { useStudioApp } from "../studio-errors";
 import { assetsHref } from "../assets-hub-shared";
 import type { WorkbenchProps } from "./director-workbench";
@@ -142,18 +144,27 @@ function AddAsset({ work, apply, setError, onClose }: WorkbenchProps & { onClose
   const [episodeIds, setEpisodeIds] = useState(() => work.episodes.map(e => e.id));
   // 可以直接用自己的图建资产：图先上传拿到 key，点「添加」时和资产一起提交，用法必须选清楚。
   const [image, setImage] = useState<{ key: string; url: string; name: string }>();
+  const [savedExtras, setSavedExtras] = useState(0);
   const [use, setUse] = useState<keyof typeof IMAGE_USES>("asset");
   const [imageError, setImageError] = useState("");
   const pick = useRef<HTMLInputElement>(null);
   const { busy, run } = useBusy();
-  const choose = (f: File) => {
-    const problem = imageProblem(f);
-    setImageError(problem);
-    if (problem) return;
+  const choose = (files: File[]) => {
+    setImageError("");
+    setSavedExtras(0);
     void run("image", async () => {
-      const result = await IpStudioApi.uploadImage(f);
-      setImage({ key: result.key, url: result.url, name: f.name });
-      setName(n => n.trim() ? n : f.name.replace(/\.[^.]+$/, "").slice(0, 40));
+      let attached = false;
+      const { uploaded, error } = await uploadAssetBatch(files, async file => {
+        if (attached) { await uploadLibraryMedia(file); return; }
+        const problem = imageProblem(file);
+        if (problem) throw new Error(problem);
+        const result = await IpStudioApi.uploadImage(file);
+        setImage({ key: result.key, url: result.url, name: file.name });
+        setName(n => n.trim() ? n : file.name.replace(/\.[^.]+$/, "").slice(0, 40));
+        attached = true;
+      });
+      setSavedExtras(Math.max(0, uploaded.length - 1));
+      if (error) setImageError(files.length === 1 ? `图片上传失败：${error.reason}` : error.message);
     }, message => setImageError(`图片上传失败：${message}`));
   };
   const save = () => void run("add", async () => {
@@ -169,14 +180,14 @@ function AddAsset({ work, apply, setError, onClose }: WorkbenchProps & { onClose
         {image ? <img src={image.url} alt="已上传的图片"/> : <span className="director-ref-empty"><ImageIcon size={18}/></span>}
         <div className="director-own-image-text">
           <strong title={image?.name}>{busy === "image" ? "正在上传图片…" : image ? image.name : "使用自己的图片"}</strong>
-          <small>支持手机照片，上传后选择用途。</small>
+          <small>{savedExtras ? `另有 ${savedExtras} 张图片已存入资产库。` : "支持多选，第一张上传成功的图片用于当前资产。"}</small>
         </div>
         <div className="director-ref-actions">
           <button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={() => pick.current?.click()}><Upload size={14}/>{image ? "换一张" : "上传图片"}</button>
-          {image && <button type="button" className="ip-brand-text-button" disabled={!!busy} onClick={() => setImage(undefined)}>移除</button>}
+          {image && <button type="button" className="ip-brand-text-button" disabled={!!busy} onClick={() => { setImage(undefined); setSavedExtras(0); }}>移除</button>}
         </div>
       </div>
-      <ImageInput input={pick} onFile={choose} label="选择资产图片"/>
+      <ImageInput input={pick} onFiles={choose} label="选择资产图片"/>
       <InlineError message={imageError}/>
       {image && <div className="director-image-use" role="radiogroup" aria-label="图片用途">
         {(Object.keys(IMAGE_USES) as (keyof typeof IMAGE_USES)[]).map(k => <label key={k} className={`director-check ${use === k ? "is-on" : ""}`}>

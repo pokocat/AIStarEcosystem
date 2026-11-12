@@ -17,6 +17,7 @@ vi.mock('./audio-recorder-dialog', () => ({ AudioRecorderDialog: ({ open, onSave
 vi.mock('./studio-errors', async () => {
   const { useCallback, useState } = await import('react');
   return {
+    normalizeStudioError: (error: Error) => ({ code: 'CLIENT_ERROR', message: error.message }),
     useStudioApp: () => ({ message: { success: dialog.success }, modal: { confirm: dialog.confirm } }),
     // 和真的一样，setter 要稳定，否则带它做依赖的副作用会一直重跑。
     useStudioErrorState: () => { const [e, set] = useState(''); return [e, useCallback((v: unknown) => set(v ? String((v as Error).message || v) : ''), [])]; },
@@ -183,4 +184,16 @@ test('a failed delete stops there, reports the error and keeps the selection mod
   expect(await screen.findByText('网络异常')).toBeTruthy();
   expect(api.remove).toHaveBeenCalledTimes(2);
   expect(screen.getByRole('button', { name: '完成' })).toBeTruthy();
+});
+
+test('the assets page continues uploading the rest of the selection and refreshes successful files', async () => {
+  api.upload.mockRejectedValueOnce(new Error('图片格式无效')).mockResolvedValueOnce({ key: 'k/2' });
+  api.materials.mockResolvedValueOnce(page([])).mockResolvedValue(page([image('m2', '上传成功的图片')]));
+  render(<AssetsHub/>);
+  await screen.findByRole('button', { name: '上传文件', exact: true });
+  const files = ['损坏.png', '正常.png'].map(name => new File(['x'], name, { type: 'image/png' }));
+  fireEvent.change(screen.getByLabelText('选择要上传的文件'), { target: { files } });
+  expect(await screen.findByText('上传成功的图片')).toBeTruthy();
+  expect(screen.getByRole('alert').textContent).toContain('已上传 1 个文件。1 个文件上传失败。');
+  expect(api.upload.mock.calls.map(([file]) => file)).toEqual(files);
 });

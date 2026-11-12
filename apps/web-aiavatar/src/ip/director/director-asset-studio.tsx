@@ -7,6 +7,8 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { ArrowLeft, ChevronRight, ImageIcon, Library, Loader2, Plus, RefreshCw, Trash2, Upload, Wand2, X } from "lucide-react";
 import type { DirectorAsset, DirectorAssetForm, DirectorEpisode, DirectorMediaSlot, DirectorSceneView, DirectorTaskType, DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi, IpStudioApi } from "../api";
+import { uploadLibraryMedia } from "@/canvas-bridge/asset-library";
+import { uploadAssetBatch } from "../asset-upload-batch";
 import { useStudioApp } from "../studio-errors";
 import { LibraryReferencePicker } from "../library-reference-picker";
 import { assetsHref } from "../assets-hub-shared";
@@ -27,10 +29,10 @@ export function imageProblem(f: File) {
   return f.size ? "" : "图片文件为空，请重新选择";
 }
 
-/** 隐藏的文件选择框：选好后交给 onFile，清空 value 让同一张图能再选一次。 */
-export function ImageInput({ input, onFile, label }: { input: RefObject<HTMLInputElement | null>; onFile: (f: File) => void; label: string }) {
-  return <input ref={input} type="file" accept={IMAGE_ACCEPT} hidden aria-label={label}
-    onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; if (f) onFile(f); }}/>;
+/** 清空 value，让同一批图片可以重新选择。 */
+export function ImageInput({ input, onFiles, label }: { input: RefObject<HTMLInputElement | null>; onFiles: (files: File[]) => void; label: string }) {
+  return <input ref={input} type="file" accept={IMAGE_ACCEPT} hidden multiple aria-label={label}
+    onChange={e => { const files = Array.from(e.target.files ?? []); e.target.value = ""; if (files.length) onFiles(files); }}/>;
 }
 
 /** 一张图在资产里的两种用法，说法全页一致。 */
@@ -133,26 +135,34 @@ function AssetWorkspace({ work, asset, apply, setError, focusClip, onClose }: Wo
     : active.type === "form" ? await DirectorApi.edit(work.id, "form.adopt", active.id, null, { candidateId: id })
     : await DirectorApi.edit(work.id, "view.adopt", asset.id, null, { view: active.view, candidateId: id })), failed(setError, `切换「${label}」的图片版本`));
   // 直接上传作为资产图：不生成、不扣积分。已有资产图时先说清会替换、原来的留在历史里，再上传。
-  const upload = (f: File) => {
-    const problem = imageProblem(f);
-    if (problem) { setError({ action: `上传「${asset.name}」的资产图`, error: problem, next: "资产图未更改。" }); return; }
-    const send = () => void run("upload", async () => {
-      const result = await IpStudioApi.uploadImage(f);
-      apply(await DirectorApi.edit(work.id, "asset.upload", asset.id, null, { key: result.key }));
-    }, failed(setError, `上传「${asset.name}」的资产图`, "资产图未更改，请更换 PNG 或 JPG 图片后重试。"));
+  const upload = (files: File[]) => {
+    const send = () => run("upload", async () => {
+      const { error } = await uploadAssetBatch(files, async file => {
+        const problem = imageProblem(file);
+        if (problem) throw new Error(problem);
+        const result = await IpStudioApi.uploadImage(file);
+        apply(await DirectorApi.edit(work.id, "asset.upload", asset.id, null, { key: result.key }));
+      });
+      if (error) throw error;
+    }, failed(setError, `上传「${asset.name}」的资产图`, "请查看图片版本，并重新选择上传失败的文件。"));
     if (!asset.image.adoptedId) return send();
-    modal.confirm({ title: `用这张图替换「${asset.name}」的资产图？`, okText: "替换", cancelText: "取消", onOk: send,
+    modal.confirm({ title: files.length === 1 ? `用这张图替换「${asset.name}」的资产图？` : `为「${asset.name}」上传 ${files.length} 张资产图？`, okText: files.length === 1 ? "替换" : "上传", cancelText: "取消", onOk: send,
       content: <div className="director-batch-confirm"><p>原资产图保留在历史版本中，可随时切换回来。</p>
+        {files.length > 1 && <p>上传成功的图片会加入历史版本，最后成功的一张将被采用。</p>}
         {refs.length > 0 && <p className="director-muted">已生成的分镜图和视频不会自动重新生成，将标记为「需更新」。</p>}</div> });
   };
-  const uploadVariant = (f: File) => {
-    const problem = imageProblem(f);
-    if (problem) { setError({ action: `上传「${label}」的图`, error: problem, next: "图片未更改。" }); return; }
+  const uploadVariant = (files: File[]) => {
+    if (active.type !== "form" && active.type !== "view") return;
     void run("upload", async () => {
-      const result = await IpStudioApi.uploadImage(f);
-      apply(active.type === "form" ? await DirectorApi.edit(work.id, "form.upload", active.id, null, { key: result.key })
-        : await DirectorApi.edit(work.id, "view.upload", asset.id, null, { view: (active as { view: DirectorSceneView }).view, key: result.key }));
-    }, failed(setError, `上传「${label}」的图`, "图片未更改，请更换 PNG 或 JPG 图片后重试。"));
+      const { error } = await uploadAssetBatch(files, async file => {
+        const problem = imageProblem(file);
+        if (problem) throw new Error(problem);
+        const result = await IpStudioApi.uploadImage(file);
+        apply(active.type === "form" ? await DirectorApi.edit(work.id, "form.upload", active.id, null, { key: result.key })
+          : await DirectorApi.edit(work.id, "view.upload", asset.id, null, { view: active.view, key: result.key }));
+      });
+      if (error) throw error;
+    }, failed(setError, `上传「${label}」的图`, "请查看图片版本，并重新选择上传失败的文件。"));
   };
   const save = () => void run("save", async () => {
     const data: Record<string, unknown> = { name, description };
@@ -278,8 +288,8 @@ function AssetWorkspace({ work, asset, apply, setError, focusClip, onClose }: Wo
         {showPrompt && asset.promptCustom && <button type="button" className="ip-brand-text-button director-self-start" disabled={!!busy} onClick={resetPrompt}><RefreshCw size={13}/>恢复自动生成</button>}
       </section>}
       {!editing && !audioOnly && (mainActive || overview) && <AssetReference work={work} asset={asset} apply={apply} setError={setError} disabled={!!busy || !!generating}/>}
-      <ImageInput input={file} onFile={upload} label={`直接上传「${asset.name}」的资产图`}/>
-      <ImageInput input={variantFile} onFile={uploadVariant} label={`上传「${label}」的图`}/>
+      <ImageInput input={file} onFiles={upload} label={`直接上传「${asset.name}」的资产图`}/>
+      <ImageInput input={variantFile} onFiles={uploadVariant} label={`上传「${label}」的图`}/>
       <LinkLibrary work={work} asset={asset} apply={apply} open={picking} onClose={() => setPicking(false)}/>
       {!editing && asset.kind === "character" && <VoicePanel work={work} asset={asset} apply={apply}/>}
     </aside>
@@ -353,17 +363,23 @@ function FormEditor({ work, asset, form, apply, setError, onClose, onCreated }: 
  */
 function AssetReference({ work, asset, apply, setError, disabled }: Pick<WorkbenchProps, "work" | "apply" | "setError"> & { asset: DirectorAsset; disabled: boolean }) {
   const { busy, run } = useBusy();
+  const { message } = useStudioApp();
   const file = useRef<HTMLInputElement>(null);
   const ref = asset.refImage;
   const takes = asset.kind === "character" ? "长相" : "外观";
-  const upload = (f: File) => {
-    const problem = imageProblem(f);
-    if (problem) { setError({ action: `上传「${asset.name}」的参考图`, error: problem, next: "参考图未更改。" }); return; }
-    void run("ref", async () => {
-      const result = await IpStudioApi.uploadImage(f);
+  const upload = (files: File[]) => void run("ref", async () => {
+    let assigned = false;
+    const { uploaded, error } = await uploadAssetBatch(files, async file => {
+      if (assigned) return void await uploadLibraryMedia(file);
+      const problem = imageProblem(file);
+      if (problem) throw new Error(problem);
+      const result = await IpStudioApi.uploadImage(file);
       apply(await DirectorApi.edit(work.id, "asset.setRef", asset.id, null, { key: result.key }));
-    }, failed(setError, `上传「${asset.name}」的参考图`, "参考图未更改，请更换 PNG 或 JPG 图片后重试。"));
-  };
+      assigned = true;
+    });
+    if (uploaded.length > 1) message.success(`已设置第一张参考图，其余 ${uploaded.length - 1} 张已存入资产库`);
+    if (error) throw error;
+  }, failed(setError, `上传「${asset.name}」的参考图`, "请查看参考图和资产库，并重新选择上传失败的文件。"));
   const clear = () => void run("ref", async () => apply(await DirectorApi.edit(work.id, "asset.clearRef", asset.id, null)), failed(setError, `移除「${asset.name}」的参考图`));
   return <section className="director-sheet-section" aria-label="参考图">
     <h5>参考图<small>{ref ? "已设置" : "选填"}</small></h5>
@@ -379,7 +395,7 @@ function AssetReference({ work, asset, apply, setError, disabled }: Pick<Workben
         {ref && <button type="button" className="ip-brand-text-button" disabled={disabled || !!busy} onClick={clear}>移除</button>}
       </div>
     </div>
-    <ImageInput input={file} onFile={upload} label={`上传「${asset.name}」的参考图`}/>
+    <ImageInput input={file} onFiles={upload} label={`上传「${asset.name}」的参考图`}/>
   </section>;
 }
 

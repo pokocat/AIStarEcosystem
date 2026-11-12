@@ -23,6 +23,7 @@ import { VoiceApi } from '@/proto/api';
 import type { VoiceAsset } from '@/proto/data';
 import { masonry, mediaRatio, useMasonryColumns } from './asset-masonry';
 import { AssetThumb } from './asset-thumb';
+import { uploadAssetBatch } from './asset-upload-batch';
 import { confirmAssetDelete } from './assets-delete';
 import { AudioRecorderDialog } from './audio-recorder-dialog';
 import { AI_LIBRARY, ASSETS_DESCRIPTION, libraryQuery, materialOrigin, sourceLabel } from './assets-hub-shared';
@@ -273,15 +274,16 @@ function MediaWall({ tab, library, folders, from, onFromChange, onFoldersChanged
     const folderId = library !== 'all' && !isAi ? library : undefined;
     setUploading(true); setActionError('');
     try {
-      for (const file of files) {
+      const { uploaded, error } = await uploadAssetBatch(files, async file => {
         if (/\.(md|txt)$/i.test(file.name)) {
           const saved = await saveAsset({ kind: 'text', title: file.name, coverUrl: '', tags: [], data: { content: await file.text() } });
           if (folderId) await editLibraryMaterial(saved.id, { folderId });
         } else await uploadLibraryMedia(file, /\.mp4$/i.test(file.name) ? 'video' : /\.(mp3|wav|m4a)$/i.test(file.name) ? 'audio' : 'image', folderId);
-      }
-      message.success(files.length > 1 ? `已上传 ${files.length} 个文件` : '已上传');
+      });
+      if (error) setActionError(error);
+      else message.success(uploaded.length > 1 ? `已上传 ${uploaded.length} 个文件` : '已上传');
       setRevision(n => n + 1);
-    } catch (e) { setActionError(e); setRevision(n => n + 1); }
+    }
     finally { setUploading(false); }
   };
 

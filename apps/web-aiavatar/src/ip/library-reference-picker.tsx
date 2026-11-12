@@ -9,6 +9,7 @@ import { libraryObjectAsset } from '@/canvas-bridge/library-reference';
 import { SignedImage } from '@/canvas-bridge/signed-image';
 import { studioOverlayContainer } from './studio-overlay';
 import { LibraryMediaPicker } from './library-media-picker';
+import { selectUploadedAssets, uploadAssetBatch } from './asset-upload-batch';
 /** One personal-library picker for the canvas, director and assistant. Snapshots retain exact object/version IDs.
  *  AI 图片 / AI 视频的素材位（给了 mediaType、不嵌在面板里）用资产库选择框（library-media-picker.tsx，2026-10-31）。 */
 export function LibraryReferencePicker(props: Parameters<typeof LibraryReferenceList>[0] & { people?: boolean; library?: string }) {
@@ -22,28 +23,35 @@ function LibraryReferenceList({open,query='',projectId,onClose,onAssets,embedded
   /** 框里给「上传到资产库」：新文件先进资产库、再自动选中，不绕开资产库直接用（2026-10-31）。 */upload?:boolean}) {
   const materialsOnly=!!mediaType&&mediaType!=='image';
   const [keyword,setKeyword]=useState(query),[tab,setTab]=useState(mediaType?'materials':'objects'),[uploading,setUploading]=useState(false),[folder,setFolder]=useState('all'),[folders,setFolders]=useState<LibraryFolder[]>([]),[page,setPage]=useState(0),[items,setItems]=useState<IpSavedAsset[]>([]),[objects,setObjects]=useState<LibraryObject[]>([]),[versions,setVersions]=useState<Record<string,string>>({}),[selected,setSelected]=useState<Record<string,IpSavedAsset>>({}),[total,setTotal]=useState(0),[loading,setLoading]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useStudioErrorState(),[revision,setRevision]=useState(0);
-  const epoch=useRef(0),fileInput=useRef<HTMLInputElement>(null),uploadedKey=useRef<string|undefined>(undefined);
-  useEffect(()=>{onBusyChange?.(busy);return()=>onBusyChange?.(false);},[busy,onBusyChange]);
-  useEffect(()=>{if(!open)return;setKeyword(query);setSelected({});setPage(0);setError('');if(mediaType)setTab('materials');Promise.all([libraryFolders(),projectId?canvasLibraryFolder(projectId):Promise.resolve({folderId:''})]).then(([f,p])=>{setFolders(f);setFolder(p.folderId||'all');}).catch(e=>setError(e));},[open,query,projectId]);
+  const [uploadError,setUploadError]=useStudioErrorState();
+  const epoch=useRef(0),fileInput=useRef<HTMLInputElement>(null),uploadedKeys=useRef<string[]>([]);
+  const locked=busy||uploading;
+  useEffect(()=>{onBusyChange?.(locked);return()=>onBusyChange?.(false);},[locked,onBusyChange]);
+  useEffect(()=>{if(!open)return;uploadedKeys.current=[];setKeyword(query);setSelected({});setPage(0);setError('');setUploadError('');if(mediaType)setTab('materials');Promise.all([libraryFolders(),projectId?canvasLibraryFolder(projectId):Promise.resolve({folderId:''})]).then(([f,p])=>{setFolders(f);setFolder(p.folderId||'all');}).catch(e=>setError(e));},[open,query,projectId]);
   useEffect(()=>{if(!open)return;const id=++epoch.current;setLoading(true);const timer=setTimeout(()=>{void(tab==='objects'?libraryObjects({folder,query:keyword,page,...(objectKind?{kind:objectKind}:{})}):libraryMaterials({folder,query:keyword,page,...(mediaType?{kind:mediaType}:{})})).then(result=>{if(id!==epoch.current)return;setTotal(result.total);if(tab==='objects'){const list=(result.items as LibraryObject[]).filter(o=>!excludeObject?.(o));
 setObjects(list);setItems(list.map(a=>libraryObjectAsset(a,folders.find(f=>f.id===a.folderId)?.name)));}else{setObjects([]);const list=result.items as IpSavedAsset[];setItems(list);
-      // 刚传进资产库的那份：列表读回来后直接选中。
-      const fresh=uploadedKey.current&&list.find(a=>'storageKey' in a.data&&a.data.storageKey===uploadedKey.current);if(fresh){uploadedKey.current=undefined;
-      // 已经选满了就不再自动加上，选中的数目不能超过 max。
-      setSelected(old=>max===1?{[fresh.id]:fresh}:old[fresh.id]||Object.keys(old).length>=max?old:{...old,[fresh.id]:fresh});}}setError('');}).catch(e=>id===epoch.current&&setError(e)).finally(()=>id===epoch.current&&setLoading(false));},150);return()=>{clearTimeout(timer);epoch.current++;};},[open,keyword,folder,page,tab,revision,folders]);
+      if(uploadedKeys.current.length){const keys=uploadedKeys.current;uploadedKeys.current=[];setSelected(old=>selectUploadedAssets(old,list,keys,max));}}setError('');}).catch(e=>id===epoch.current&&setError(e)).finally(()=>id===epoch.current&&setLoading(false));},150);return()=>{clearTimeout(timer);epoch.current++;};},[open,keyword,folder,page,tab,revision,folders]);
   const choose=(asset:IpSavedAsset,checked:boolean)=>setSelected(old=>{const next=max===1?{}:{...old};if(checked)next[asset.id]=asset;else delete next[asset.id];return next;});
-  const putInLibrary=async(file:File)=>{setUploading(true);setError('');try{const result=await uploadLibraryMedia(file,mediaType??'image',folder!=='all'&&folder!=='unfiled'?folder:undefined);uploadedKey.current=result.key;setKeyword('');setPage(0);setTab('materials');setRevision(n=>n+1);}catch(e){setError(e);}finally{setUploading(false);}};
+  const putInLibrary=async(files:File[])=>{
+    setUploading(true);setUploadError('');
+    try {
+      const {uploaded,error}=await uploadAssetBatch(files,file=>uploadLibraryMedia(file,mediaType??'image',folder!=='all'&&folder!=='unfiled'?folder:undefined));
+      if(uploaded.length){epoch.current++;uploadedKeys.current=uploaded.map(item=>item.key);setKeyword('');setPage(0);setTab('materials');setRevision(n=>n+1);}
+      if(error)setUploadError(error);
+    } finally {setUploading(false);}
+  };
   const insert=async()=>{setBusy(true);try{await onAssets(Object.values(selected));onClose();}catch(e){setError(e);}finally{setBusy(false);}};
   const content = <div className="studio-library-assets">
     <p>{intro}</p>
     <div className="personal-library-filters"><Input disabled={busy} aria-label="搜索可引用资产" placeholder="搜索名称、描述或剧本来源" value={keyword} allowClear onChange={e=>{setKeyword(e.target.value);setPage(0);}}/><Select disabled={busy} aria-label="引用资产文件夹" value={folder} options={[{value:'all',label:'全部个人资产'},{value:'unfiled',label:'未分类'},...folders.map(f=>({value:f.id,label:f.name}))]} onChange={v=>{setFolder(v);setPage(0);}}/>{upload&&<><Button disabled={busy} loading={uploading} onClick={()=>fileInput.current?.click()}>上传到资产库</Button>
-      <input ref={fileInput} type="file" hidden aria-label="选择要上传到资产库的文件" accept={mediaType==='video'?'.mp4':mediaType==='audio'?'.mp3,.wav,.m4a':IMAGE_UPLOAD_ACCEPT} onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file)void putInLibrary(file);}}/></>}</div>
+      <input ref={fileInput} type="file" multiple hidden disabled={locked} aria-label="选择要上传到资产库的文件" accept={mediaType==='video'?'.mp4':mediaType==='audio'?'.mp3,.wav,.m4a':IMAGE_UPLOAD_ACCEPT} onChange={e=>{const files=Array.from(e.target.files??[]);e.target.value='';if(files.length)void putInLibrary(files);}}/></>}</div>
     {!objectsOnly&&!materialsOnly&&<Tabs activeKey={tab} onChange={v=>{setTab(v);setPage(0);}} items={(()=>{
       // 两栏的叫法和「资产」页一样（创作素材 = 角色、场景和道具；生成与上传 = 生成和上传的文件）。素材位来的「生成与上传」排前面、默认打开。
       const objectsTab={key:'objects',label:'创作素材',disabled:busy},materialsTab={key:'materials',label:'生成与上传',disabled:busy};
       return mediaType?[materialsTab,objectsTab]:[objectsTab,materialsTab];})()}/>}
+    {uploadError&&<p><StudioErrorNotice error={uploadError} autoReport={false}/></p>}
     {error&&<p><StudioErrorNotice error={error}/><Button onClick={()=>setRevision(n=>n+1)}>重试</Button></p>}{loading?<Skeleton active/>:<div className="personal-reference-list">{items.map(item=>{const object=objects.find(a=>a.id===item.id),value=object?libraryObjectAsset(object,folders.find(f=>f.id===object.folderId)?.name,versions[object.id]):item;return <article key={item.id} className="personal-reference-item"><Checkbox aria-label={`引用资产 ${item.title}`} checked={!!selected[item.id]} disabled={busy||max>1&&!selected[item.id]&&Object.keys(selected).length>=max||item.metadata?.unavailable===true} onChange={e=>choose(value,e.target.checked)}/>{value.kind==='image'?<SignedImage src={value.data.dataUrl} storageKey={value.data.storageKey} alt=""/>:<span className="personal-reference-type">{value.kind==='text'?'文字':value.kind==='video'?'视频':'音频'}</span>}<div><strong>{item.title}</strong><p>{object?`${folders.find(f=>f.id===object.folderId)?.name||'未分类'} · ${object.sources[0]?.title||'个人创建'} · ${object.description.slice(0,60)}`:item.source||'个人素材'}</p>{object&&object.versions.length>0&&<Select disabled={busy} aria-label={`引用版本 ${item.title}`} value={versions[object.id]||object.mainVersionId} options={object.versions.map((v,i)=>({value:v.id,label:`v${i+1}${v.id===object.mainVersionId?' · 当前主图':''}`}))} onChange={v=>{setVersions(old=>({...old,[object.id]:v}));if(selected[item.id])choose(libraryObjectAsset(object,folders.find(f=>f.id===object.folderId)?.name,v),true);}}/>}</div></article>;})}{!items.length&&<p>没有匹配的资产，请切换到「全部个人资产」或更换名称。</p>}</div>}
     <div className="personal-library-pagination"><Button disabled={!page||loading||busy} onClick={()=>setPage(n=>n-1)}>上一页</Button><span>{page+1} / {Math.max(1,Math.ceil(total/24))}</span><Button disabled={(page+1)*24>=total||loading||busy} onClick={()=>setPage(n=>n+1)}>下一页</Button><Button type="primary" loading={busy} disabled={!Object.keys(selected).length||loading||uploading} onClick={()=>void insert()}>{confirmLabel} {Object.keys(selected).length||''}</Button></div>
   </div>;
-  return embedded ? open ? content : null : <Modal open={open} title={title} footer={null} width={800} getContainer={studioOverlayContainer} className="personal-reference-modal" onCancel={()=>!busy&&onClose()} mask={{closable:!busy}}>{content}</Modal>;
+  return embedded ? open ? content : null : <Modal open={open} title={title} footer={null} width={800} getContainer={studioOverlayContainer} className="personal-reference-modal" onCancel={()=>!locked&&onClose()} mask={{closable:!locked}}>{content}</Modal>;
 }

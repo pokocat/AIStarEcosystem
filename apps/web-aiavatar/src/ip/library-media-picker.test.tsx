@@ -9,6 +9,7 @@ vi.mock('./audio-recorder-dialog', () => ({ AudioRecorderDialog: ({ open, onSave
 vi.mock('./studio-errors', async () => {
   const { useCallback, useState } = await import('react');
   return {
+    normalizeStudioError: (error: Error) => ({ code: 'CLIENT_ERROR', message: error.message }),
     // 和真的一样，setter 要稳定，否则带它做依赖的副作用会一直重跑。
     useStudioErrorState: () => { const [e, set] = useState(''); return [e, useCallback((v: unknown) => set(v ? String((v as Error).message || v) : ''), [])]; },
     StudioErrorNotice: ({ error }: any) => <span role="alert">{String(error)}</span>,
@@ -202,6 +203,32 @@ test('an upload never pushes the selection past max', async () => {
   await waitFor(() => expect(screen.getByRole('button', { name: '选择 新图' })).toBeDefined());
   expect(screen.getByRole('button', { name: '选择 新图' }).getAttribute('aria-pressed')).toBe('false');
   expect(screen.getByText('已选 2/2')).toBeDefined();
+});
+
+test('uploads every file even after a failure and uses the successful files up to the remaining limit', async () => {
+  window.localStorage.setItem('aiavatar_library_last', 'f1');
+  const files = ['一', '损坏', '二', '三'].map(name => new File(['x'], `${name}.png`, { type: 'image/png' }));
+  const stored = [image('已有', 'f1')];
+  api.materials.mockImplementation(async () => page([...stored]));
+  api.upload.mockImplementation(async (file: File) => {
+    const name = file.name.replace('.png', '');
+    if (name === '损坏') throw new Error('图片格式无效');
+    const asset = image(name, 'f1');
+    stored.unshift(asset);
+    return { key: asset.data.storageKey };
+  });
+  const onAssets = vi.fn();
+  render(<LibraryMediaPicker open mediaType="image" upload max={3} onClose={vi.fn()} onAssets={onAssets}/>);
+  fireEvent.click(await screen.findByRole('button', { name: '选择 已有' }));
+  const input = screen.getByLabelText<HTMLInputElement>('选择要上传到资产库的文件');
+  expect(input.multiple).toBe(true);
+  fireEvent.change(input, { target: { files } });
+  await screen.findByText('已选 3/3');
+  expect(api.upload.mock.calls).toEqual(files.map(file => [file, 'image', 'f1']));
+  expect(screen.getByRole('alert').textContent).toContain('「损坏.png」图片格式无效');
+  expect(screen.getByRole('button', { name: '选择 三' }).getAttribute('aria-pressed')).toBe('false');
+  fireEvent.click(screen.getByRole('button', { name: '使用' }));
+  expect(onAssets.mock.calls[0][0].map((asset: { id: string }) => asset.id)).toEqual(['已有', '一', '二']);
 });
 
 test('recording in an audio slot is stored in the current library and selected for use', async () => {
