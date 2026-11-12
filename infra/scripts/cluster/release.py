@@ -20,7 +20,7 @@ class Cluster:
  def action(self,node,action,release=None):
   cmd=[self.config['operation_python'],'-s',self.config['root']+'/control/node.py','--mode',self.mode,'--action',action]
   if release:cmd+=['--release',release]
-  result=json.loads(self.ssh(node,shlex.join(cmd)));self.record(action,node=node,**({k:result[k] for k in ['release','sha','drain_seconds'] if k in result}));return result
+  result=json.loads(self.ssh(node,shlex.join(cmd)));self.record(action,node=node,**({k:result[k] for k in ['release','sha','drain_seconds','drain_scope'] if k in result}));return result
  def alb(self,action,args):
   self.check_lease()
   p=subprocess.run(['aliyun','alb',action,'--RegionId',self.config['region'],'--endpoint','alb.'+self.config['region']+'.aliyuncs.com','--force',*args],capture_output=True,text=True,timeout=60)
@@ -101,18 +101,41 @@ finally:
     self.record('alb_dual_active',authenticated=authenticated,observed={ip:sorted(nodes) for ip,nodes in seen.items()},samples_per_vip=attempt+1)
     return
   raise RuntimeError('双活验收失败：两个ALB VIP均须观测到双机响应')
+ def probe_standby(self,node):
+  path=pathlib.Path(self.probe_file)
+  require(path.stat().st_mode&0o777==0o600,'探针配置必须0600')
+  secret=json.loads(path.read_text())
+  require(secret['host']==self.expected['host'] and secret.get('token') and secret.get('subject_id'),
+          '缺少备用节点鉴权证据')
+  remote="""import http.client,json,sys
+p=json.load(sys.stdin)
+connection=http.client.HTTPConnection('127.0.0.1',p['port'],timeout=12)
+try:
+ connection.request('GET','/api/admin/auth/me',headers={'Authorization':'Bearer '+p['token']})
+ response=connection.getresponse()
+ print(json.dumps(response.status==200 and json.loads(response.read()).get('data',{}).get('id')==p['subject_id']))
+finally:
+ connection.close()
+"""
+  command=shlex.join([self.config['operation_python'],'-s','-c',remote])
+  request={k:secret[k] for k in ('token','subject_id')}
+  require(json.loads(self.ssh(node,command,timeout=35,stdin=json.dumps({**request,'port':self.expected['port']}))) is True,
+          '备用节点鉴权验收失败，保留原节点承流')
+  self.record('standby_auth_ready',node=node)
  def select_serving(self,node):
+  state=self.action(node,'inspect')
+  require(not state['quiescing'],'待承流节点仍在排空')
   self.weights(SINGLE_NODE[node])
   time.sleep(16)
   self.probe(node)
   state=self.action(node,'inspect')
   require(not state['quiescing'],'承接流量的节点已在排空')
- def install(self,bundle,release):
+ def install(self,bundle,release,nodes):
   # Only our new cluster namespace. Never extract arbitrary archive entries.
   digest=hashlib.sha256(bundle.read_bytes()).hexdigest();remote=self.config['root']
   with tarfile.open(bundle) as t:
    for x in t.getmembers():require(x.isfile() and not x.name.startswith('/') and '..' not in pathlib.PurePosixPath(x.name).parts,'发布包只能包含常规相对文件')
-  for n in self.config['nodes']:
+  for n in nodes:
    self.ssh(n,'install -d -m 700 '+remote+'/control '+remote+'/incoming '+remote+'/releases')
    for local,dest in [(bundle,remote+'/incoming/'+release+'.tar.gz'),(ROOT/'infra/cluster/production.json',remote+'/control/config.json'),(pathlib.Path(__file__).with_name('node.py'),remote+'/control/node.py'),(pathlib.Path(__file__).with_name('policy.py'),remote+'/control/policy.py')]:
     if local==bundle:
@@ -155,6 +178,47 @@ finally:
    self.record('failure_preserved_serving_node',node=serving)
    raise
 
+ def production_roles(self):
+  initial={node:int(row['Weight']) for node,row in self.members().items()}
+  require(initial in (DUAL_ACTIVE,*SINGLE_NODE.values()),'初始权重异常，禁止自动发布')
+  active='b' if initial==SINGLE_NODE['b'] else 'a'
+  standby='a' if active=='b' else 'b'
+  return initial,active,standby
+
+ def publish_to_standby(self,bundle,release):
+  initial,active,standby=self.production_roles()
+  previous=self.action(active,'inspect')
+  require(not previous['quiescing'],'承流节点仍在排空，禁止自动发布')
+  before=self.action(standby,'inspect')
+  if initial==DUAL_ACTIVE:
+   require(not before['quiescing'],'备用节点仍在承流且正在排空，禁止自动发布')
+   self.probe_dual()
+   self.select_serving(active)
+  else:
+   self.probe(active)
+  if previous['release']==release:
+   self.record('standby_release_already_live',active=active,standby=standby)
+   return {active:previous,standby:before}
+
+  if before['release']!=release or before['quiescing']:
+   require({node:int(row['Weight']) for node,row in self.members().items()}==SINGLE_NODE[active],
+           '备用节点仍在承流，禁止更新')
+   self.install(bundle,release,[standby])
+   self.action(standby,'drain-stop')
+   self.action(standby,'start',release)
+  candidate=self.action(standby,'inspect')
+  require(candidate['release']==release and not candidate['quiescing'],'备用节点版本或运行状态不符')
+  self.probe_standby(standby)
+  try:
+   self.select_serving(standby)
+  except Exception:
+   self.check_lease()
+   self.select_serving(active)
+   self.record('failure_preserved_serving_node',node=active)
+   raise
+  self.record('standby_cutover_complete',active=standby,standby=active,weights=SINGLE_NODE[standby])
+  return {standby:candidate,active:previous}
+
 
 def release_lease(lock):
  try:
@@ -176,7 +240,10 @@ def release_lease(lock):
 def main():
  p=argparse.ArgumentParser();p.add_argument('--stage',action='store_true');p.add_argument('--bundle');p.add_argument('--release');p.add_argument('--probe-file');p.add_argument('--receipt');p.add_argument('--plan',action='store_true');p.add_argument('--prepare-only',action='store_true');p.add_argument('--bootstrap-stage',action='store_true');a=p.parse_args();os.umask(0o077)
  config=json.loads((ROOT/'infra/cluster/production.json').read_text());mode='stage' if a.stage else 'production';config_guard(config,mode,os.environ)
- if a.plan:print(json.dumps({'mode':mode,'nodes':config['nodes'],'flow':'prepare both -> keep serving node at 100 -> drain and update peer -> verify peer at 100 -> drain and update first node -> verify both at 50/50','production_activation_required':True,'database_and_dns_changed':False},ensure_ascii=False,indent=2));return
+ if a.plan:
+  flow=('verify active at 100 -> drain and update standby at 0 -> verify and switch standby to 100 -> retain previous active at 0'
+        if mode=='production' else 'prepare both -> drain and update each peer -> verify both at 50/50')
+  print(json.dumps({'mode':mode,'nodes':config['nodes'],'flow':flow,'production_activation_required':True,'database_and_dns_changed':False},ensure_ascii=False,indent=2));return
  require(a.release and a.bundle and a.receipt,'需要已验收不可变发布包、release和凭证路径');require(not pathlib.Path(a.receipt).exists(),'拒绝覆盖验收凭证')
  require(a.release.isalnum() and len(a.release)==16,'release标识错误')
  if a.bootstrap_stage:require(mode=='stage','初始化仅允许隔离演练')
@@ -194,11 +261,16 @@ def main():
   require(ready and os.read(lock.stdout.fileno(),6)==b'locked','无法取得发布锁，保持现有流量')
   cluster.release_lock=lock
   cluster.check_lease()
-  cluster.install(pathlib.Path(a.bundle).resolve(),a.release)
+  bundle=pathlib.Path(a.bundle).resolve()
+  if mode=='stage' or a.prepare_only:
+   nodes=config['nodes'] if mode=='stage' else [cluster.production_roles()[2]]
+   cluster.install(bundle,a.release,nodes)
   if a.prepare_only:result={'prepared':True}
   elif a.bootstrap_stage:
    result={n:cluster.action(n,'start',a.release) for n in ['a','b']};cluster.weights(DUAL_ACTIVE);time.sleep(16);cluster.probe_dual(authenticated=False);cluster.record('bootstrap_complete')
-  else:require(a.probe_file,'缺少受保护TLS探针配置');result=cluster.rolling(a.release)
+  else:
+   require(a.probe_file,'缺少受保护TLS探针配置')
+   result=cluster.publish_to_standby(bundle,a.release) if mode=='production' else cluster.rolling(a.release)
   receipt={'completed_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'mode':mode,'events':cluster.events,'result':result,'database_changed':False,'dns_changed':False};pathlib.Path(a.receipt).write_text(json.dumps(receipt,indent=2))
  finally:release_lease(lock)
 if __name__=='__main__':

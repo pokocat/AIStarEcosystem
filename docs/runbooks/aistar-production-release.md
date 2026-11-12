@@ -1,10 +1,10 @@
 # AIStar 生产发布与恢复
 
-适用于 2026-11-12 正式切流后的 AIStar。API 经 `api.aibuzz.cn` 和阿里云 ALB 在 A、B 双活，正常权重 A50/B50。两台 API 连接同一 PostgreSQL、Tair 和杭州业务 OSS。A 独立运行后台调度与 SAU，API 两台均关闭定时后台。节点、正式及演练组、域名和排空参数以 [集群配置](../../infra/cluster/production.json) 为准。
+适用于 2026-11-12 正式切流后的 AIStar。正式 API 经 `api.aibuzz.cn` 和阿里云 ALB 由一台节点承接 100% 流量，另一台为零权重热备。两台 API 连接同一 PostgreSQL、Tair 和杭州业务 OSS。A 独立运行后台调度与 SAU，API 两台均关闭定时后台。节点、正式及演练组、域名和排空参数以 [集群配置](../../infra/cluster/production.json) 为准。
 
 | 变更范围 | 发布入口 |
 | --- | --- |
-| `server` API | [`infra/scripts/deploy.sh server`](../../infra/scripts/deploy.sh)，默认正式双机滚动；`--plan` 只展示计划。 |
+| `server` API | [`infra/scripts/deploy.sh server`](../../infra/scripts/deploy.sh)，默认更新正式备用机并切流，`--plan` 展示计划。 |
 | PostgreSQL 结构 | 用迁移角色执行独立的向前兼容 DDL，并验证当前与候选版本；运行账号只做 Flyway 校验，API 滚动不会执行 DDL。 |
 | A 上的后台调度、SAU | 独立验收和角色交接。API 滚动不会更新这两个单元；涉及定时任务、领取逻辑或发布驱动时，把相应组件列入发布范围。SAU 真镜像需通过 `prepare_real_runtime.py` 的四个发布驱动导入，`/healthz` 仅作就绪证据。 |
 | Web、admin、studio-admin | 目标为前端 A/B，发布走独立 ALB 后端组。使用下方前端发布步骤。 |
@@ -26,7 +26,7 @@
 
    `VERIFIED_BACKEND_DIR` 指向包含 `verified-backend.json` 和 `ai-star-eco-server-1.0.0.jar` 的目录。若下载目录保留了层级，先定位这两个文件。发布包使用 `candidate.tar.gz`，`RELEASE_ID` 取打包输出的 `release`（JAR SHA-256 前 16 位）。
 
-## 2. 执行 API 滚动
+## 2. 更新 API 备用机并切流
 
 发布前核对账号中心 OIDC discovery、两个正式 ALB VIP 的严格 TLS 和实际节点身份、两机当前制品、PostgreSQL 结构及运行角色、Tair、SLS 和相关业务依赖。保留上一版可用制品及其数据库兼容证明。对需要演练的变更使用 `--stage` 对应的演练组、演练 PG 与 Tair DB14，使用该组自己的探针和凭据。
 
@@ -39,18 +39,22 @@
   --probe-file "$PRODUCTION_PROBE_FILE" --receipt "$NEW_RECEIPT_PATH"
 ```
 
-脚本锁定集群发布、准备两台机器，并在健康承流节点的两个 VIP 都通过鉴权后才操作另一台。由 A50/B50 开始时，先 A100/B0，等待 B 至少 180 秒且连续三次确认 HTTP 请求、线程和持久工作排空，再更新 B。B100/A0 接管并通过两个 VIP 的真实鉴权后，排空并更新 A。最后恢复 A50/B50，两个 VIP 都要验证到 A 和 B。排空超时或受理状态不明时保留已确认能承流的节点，查明任务状态后再继续。
+脚本持有集群发布锁。它核对 ALB 权重，在两个 VIP 上验证当前承流节点，再准备零权重备用机。从旧的 A50/B50 状态启用本流程时，先确认双机健康，再收敛到 A100/B0。
+
+备用机等待至少 180 秒，连续三次确认该机 HTTP 请求、执行线程和本地执行队列已排空，再更新。脚本校验待更新节点的实际容器已关闭后台调度。共享数据库中的生成任务由独立后台继续处理。数据库迁移停写仍要求所有持久任务排空。
+
+新版备用机通过本机就绪及鉴权后接管 100% 流量，再通过两个 VIP 核对实际节点身份、就绪和鉴权。旧承流机保留原版并进入零权重热备，供下次发布或回退。新版切流验收失败时恢复已验证的原承流机。零权重节点仍处于排空时，可从同一入口续跑。回退前确认旧版兼容当前数据库和已受理写入，再用其已验证制品走同一切流入口。
 
 ## 3. 前端发布
 
-2026-11-12 北京时间 10:41，`aiavatar`、`aistar`、`admin`、`drama`、`music`、`celebrity`、`star`、`incubator`、`ipstudio` 的独立 DNS 记录已指向正式 ALB。`aistar` 同时承接 Studio 管理后台，`ipstudio` 保留跳转和原登录回调提示。前端使用独立后端组 `sgp-chl8uqmlza6yjvdmlj`，A/B 常态各 50。两机的 `aistar-front-*` 服务使用已核对的 Next.js standalone 制品及固定运行镜像。前端同域 `/api/`、`/static/` 和 `/cdn/` 通过严格 TLS 到正式 API ALB，API 滚动期间也可正常选取健康 API 节点。
+2026-11-12 北京时间 10:41，`aiavatar`、`aistar`、`admin`、`drama`、`music`、`celebrity`、`star`、`incubator`、`ipstudio` 的独立 DNS 记录已指向正式 ALB。`aistar` 同时承接 Studio 管理后台，`ipstudio` 保留跳转和原登录回调提示。前端使用独立后端组 `sgp-chl8uqmlza6yjvdmlj`，同样以一台承流、另一台热备的方式发布。两机的 `aistar-front-*` 服务使用已核对的 Next.js standalone 制品及固定运行镜像。前端同域 `/api/`、`/static/` 和 `/cdn/` 通过严格 TLS 到正式 API ALB。前端和 API 组分别记录承流节点。
 
-- 从已验收的 `main` 为目标站构建一次，向 A/B 分发同一份 standalone 制品，核对摘要、`BUILD_ID`、环境及各站路径。使用版本目录保留上一版和仍可能被旧页面请求的静态文件。当前 API 发布脚本的输入为后端制品，前端服务和 ALB 组单独操作。
-- 先在新端口或待发布节点验证页面、静态文件、同域 API、登录、作品及涉及的管理路径。只调整前端后端组权重，验证承流节点覆盖所有前端域名，待连接排空后更新对端，再交换并恢复 A50/B50。核对两个 ALB VIP 的实际节点身份和状态码。
+- 从已验收的 `main` 为目标站构建一次，将 standalone 制品预置到备用机，核对摘要、`BUILD_ID`、环境及各站路径。使用版本目录保留上一版和仍可能被旧页面请求的静态文件。前端和 API 分别发布，按契约兼容性确定先后顺序。
+- 在新端口或待发布节点验证页面、静态文件、同域 API、登录、作品及涉及的管理路径。确认原节点覆盖所有前端域名后，等待零权重备用机的连接排空并更新该机。备用机就绪后将前端组 100% 切到新版，核对两个 ALB VIP 的实际节点身份和状态码。原节点保留原版。
 - 普通前端版本回退使用上一版制品和前端后端组。首次切流若需回退，按域名恢复原 DNS。多数域名此前由通配 A 记录承接，`ipstudio` 原有独立 A 记录。保留 DNS 缓存期内的旧前端和代理，旧 API/SAU 继续保持停用。
 
 ## 4. 验收与恢复
 
-- 核对两机实际 SHA、release、进程、ALB 健康及 A50/B50；在两个 VIP 上记录连续真实请求的 HTTP 结果和节点身份，保留失败样本。核对 SLS 启动与错误日志、OIDC、历史媒体读取和本次受影响的已登录业务。涉及存储时确认两机继续使用原业务 OSS，对原签名 URL 做 Range 和防篡改回归；凭据及完整签名 URL 不进入回执。支付和模型任务按发布范围做签名、状态、隔离回归或单独授权的实测。
+- 核对两机实际 SHA、release、进程和 ALB 权重。承流机为 100%，原版热备为 0%。在两个 VIP 上记录连续真实请求的 HTTP 结果和节点身份，保留失败样本。核对 SLS 启动与错误日志、OIDC、历史媒体读取和本次受影响的已登录业务。涉及存储时确认两机继续使用原业务 OSS，对原签名 URL 做 Range 和防篡改回归；凭据及完整签名 URL 不进入回执。支付和模型任务按发布范围做签名、状态、隔离回归或单独授权的实测。
 - 发布失败时，以已验证的健康节点承流，先核对现场权重、实际返回、异步任务与资金状态。需要回到上一制品时，先确认它兼容当前 PostgreSQL 结构和已接收写入，再用同一滚动入口恢复。双机均无法安全承流时，暂停新写入并保护 PostgreSQL、支付回执和在途任务后恢复。旧 MySQL 与旧 DNS 不能作为回滚目的地。
 - 回执记录 `main` 提交、发布范围、CI、JAR/镜像摘要、两机实际版本、双 VIP、ALB 权重、业务验收、SLS 和恢复动作。[首次迁移记录](../aistar-postgresql-cutover.md) 保留从 MySQL 切换的证据，日常发版按本页执行。

@@ -132,20 +132,37 @@ def inspect(expected,env):
  require(container['Image'].removeprefix('sha256:')==manifest['image_configuration_id'].removeprefix('sha256:'),'运行镜像与清单不符')
  return {'release':release,'sha':manifest['sha'],'image':manifest['image_configuration_id'],'pid':int(pid),**ops(expected,env)}
 
+def api_locally_drained(status):
+ return status.get('quiescing') is True and all(
+  type(status.get(key)) is int and status[key]==0
+  for key in ('in_flight','executor_active','executor_queued','scheduled_active')
+ )
+
+def drain_stop(config,expected,mode,env):
+ # The production API has no scheduled worker. Shared database work belongs
+ # to the active scheduler and must survive an API node restart.
+ if mode=='production':
+  inspect(expected,env)
+ ops(expected,env,True)
+ began=time.monotonic();deadline=began+config['drain_timeout_seconds'];good=0
+ while time.monotonic()<deadline:
+  status=ops(expected,env)
+  idle=api_locally_drained(status) if mode=='production' else status.get('drained') is True
+  good=good+1 if idle else 0
+  if time.monotonic()-began>=config['drain_seconds'] and good>=3:break
+  time.sleep(2)
+ else:raise RuntimeError('排空超时，禁止停止进程')
+ run(['systemctl','stop',expected['unit']])
+ return {'stopped_after_drain':True,'drain_seconds':round(time.monotonic()-began,2),
+  'drain_scope':'api-node' if mode=='production' else 'stage','last_status':status}
+
 def main():
  p=argparse.ArgumentParser();p.add_argument('--mode',choices=['stage','production'],required=True);p.add_argument('--action',choices=['prepare','start','inspect','drain-stop'],required=True);p.add_argument('--release');a=p.parse_args();os.umask(0o077)
  config,expected=configuration(a.mode);env=environment(a.mode,expected)
  if a.action=='prepare':prepare(config,expected,a.mode,a.release);result={'prepared':True}
  elif a.action=='start':result=start(config,expected,a.mode,a.release)
  elif a.action=='inspect':result=inspect(expected,env)
- else:
-  ops(expected,env,True);deadline=time.monotonic()+config['drain_timeout_seconds'];began=time.monotonic();good=0
-  while time.monotonic()<deadline:
-   status=ops(expected,env);good=good+1 if status.get('drained') is True else 0
-   if time.monotonic()-began>=config['drain_seconds'] and good>=3:break
-   time.sleep(2)
-  else:raise RuntimeError('排空超时，禁止停止进程')
-  run(['systemctl','stop',expected['unit']]);result={'stopped_after_drain':True,'drain_seconds':round(time.monotonic()-began,2),'last_status':status}
+ else:result=drain_stop(config,expected,a.mode,env)
  print(json.dumps(result))
 if __name__=='__main__':
  try:main()

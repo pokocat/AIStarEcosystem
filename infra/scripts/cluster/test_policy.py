@@ -72,15 +72,28 @@ class ContainerRetirementTests(unittest.TestCase):
  def test_only_verified_exited_container_is_retired(self):
   success,calls=self.exercise(self.row());self.assertTrue(success);self.assertEqual([['podman','rm','--force','f'*64]],calls)
 
+class ApiDrainTests(unittest.TestCase):
+ def test_shared_jobs_do_not_block_a_drained_api_node(self):
+  import node
+  status={'quiescing':True,'in_flight':0,'executor_active':0,'executor_queued':0,'scheduled_active':0,
+          'pending_work':{'material_video_job':7,'ip_plan_execution':2},'drained':False}
+  self.assertTrue(node.api_locally_drained(status))
+  for key,value in [('quiescing',False),('in_flight',1),('executor_active',1),('executor_queued',1),
+                    ('scheduled_active',1),('in_flight',False),('executor_active',None)]:
+   with self.subTest(key=key,value=value):
+    self.assertFalse(node.api_locally_drained({**status,key:value}))
+
 class RollingReleaseTests(unittest.TestCase):
  def cluster(self,initial):
   import release
   cluster=object.__new__(release.Cluster)
   cluster.config={'nodes':{'a':{},'b':{}}}
+  cluster.mode='production'
   cluster.events=[]
   cluster.calls=[]
   cluster.current_weights=dict(initial)
   cluster.releases={'a':'previous','b':'previous'}
+  cluster.quiescing={'a':False,'b':False}
   cluster.members=lambda:{node:{'Weight':weight} for node,weight in cluster.current_weights.items()}
   def action(node,operation,revision=None):
    cluster.calls.append((operation,node))
@@ -89,7 +102,8 @@ class RollingReleaseTests(unittest.TestCase):
     self.assertEqual(sum(cluster.current_weights.values()),100)
    elif operation=='start':
     cluster.releases[node]=revision
-   return {'quiescing':False,'release':cluster.releases[node]}
+    cluster.quiescing[node]=False
+   return {'quiescing':cluster.quiescing[node],'release':cluster.releases[node]}
   def weights(values):
    cluster.current_weights=dict(values)
    cluster.calls.append(('weights',dict(values)))
@@ -100,6 +114,8 @@ class RollingReleaseTests(unittest.TestCase):
   cluster.weights=weights
   cluster.probe=probe
   cluster.probe_dual=lambda:cluster.calls.append(('dual',dict(cluster.current_weights)))
+  cluster.probe_standby=lambda n:cluster.calls.append(('standby probe',n))
+  cluster.install=lambda b,r,nodes:cluster.calls.append(('install',tuple(nodes)))
   cluster.record=lambda *args,**kwargs:None
   return cluster
  def test_dual_active_roll_drains_only_weight_zero_and_restores_dual(self):
@@ -120,6 +136,42 @@ class RollingReleaseTests(unittest.TestCase):
    cluster.rolling('candidate')
   self.assertEqual([x for x in cluster.calls if x[0]=='drain-stop'],[('drain-stop','a'),('drain-stop','b')])
   self.assertEqual(cluster.current_weights,{'a':50,'b':50})
+ def test_publish_drained_standby_keeps_previous_version_ready(self):
+  from unittest.mock import patch
+  cluster=self.cluster({'a':100,'b':0})
+  cluster.quiescing['b']=True
+  with patch('release.time.sleep'):
+   result=cluster.publish_to_standby('bundle','candidate')
+  self.assertEqual([x for x in cluster.calls if x[0]=='install'],[('install',('b',))])
+  self.assertEqual([x for x in cluster.calls if x[0]=='drain-stop'],[('drain-stop','b')])
+  self.assertLess(cluster.calls.index(('standby probe','b')),cluster.calls.index(('weights',{'a':0,'b':100})))
+  self.assertEqual(result['a']['release'],'previous')
+  self.assertEqual(result['b']['release'],'candidate')
+  self.assertEqual(cluster.current_weights,{'a':0,'b':100})
+ def test_failed_cutover_retains_previous_active(self):
+  from unittest.mock import patch
+  cluster=self.cluster({'a':0,'b':100})
+  probe=cluster.probe
+  def fail_a(node):
+   if node=='a':raise RuntimeError('candidate VIP probe failed')
+   return probe(node)
+  cluster.probe=fail_a
+  with patch('release.time.sleep'),self.assertRaisesRegex(RuntimeError,'candidate VIP probe failed'):
+   cluster.publish_to_standby('bundle','candidate')
+  self.assertEqual(cluster.current_weights,{'a':0,'b':100})
+  self.assertNotIn(('drain-stop','b'),cluster.calls)
+ def test_repeating_current_release_does_not_switch_again(self):
+  cluster=self.cluster({'a':0,'b':100})
+  cluster.releases['b']='candidate'
+  cluster.publish_to_standby('bundle','candidate')
+  self.assertEqual(cluster.current_weights,{'a':0,'b':100})
+  self.assertFalse(any(action in ('install','weights','start') for action,_ in cluster.calls))
+ def test_quiescing_node_with_live_weight_refuses_to_roll(self):
+  cluster=self.cluster({'a':50,'b':50})
+  cluster.quiescing['b']=True
+  with self.assertRaisesRegex(Refused,'备用节点仍在承流且正在排空'):
+   cluster.publish_to_standby('bundle','candidate')
+  self.assertEqual(cluster.calls,[('inspect','a'),('inspect','b')])
  def test_first_update_failure_restores_original_serving_a(self):
   self.check_failure('b','start','a')
  def test_second_update_failure_preserves_verified_b(self):
