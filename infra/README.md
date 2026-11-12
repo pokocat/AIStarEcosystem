@@ -2,7 +2,7 @@
 
 ## AIStar 当前生产发布
 
-AIStar API 已在 PostgreSQL 上运行，ALB 常态 A50/B50。日常 API 发布和故障恢复以 [AIStar 生产发布与恢复](../docs/runbooks/aistar-production-release.md) 为准。下方单机拓扑、MySQL 建库、证书和发布命令属于旧环境资料。旧 ECS 仅为仍在运行的旧前端和代理等现有组件提供服务。
+AIStar API 已在 PostgreSQL 上运行，ALB 常态 A50/B50。日常 API 发布和故障恢复以 [AIStar 生产发布与恢复](../docs/runbooks/aistar-production-release.md) 为准。下方单机拓扑、MySQL 建库、证书和发布命令属于旧环境资料。AIStar 前端已通过独立 ALB 后端组在 A/B 双活，发布按手册中的前端步骤。旧 ECS 保留前端及代理供 DNS 缓存和回退。
 
 ## Studio 本地账号中心（2026-10-10）
 
