@@ -657,11 +657,14 @@ public class MaterialVideoModelClient {
             String outputAssetId = extractOutputAssetId(root);
             Integer progressPct = extractProgressPct(root);
             VideoPromptRewrite promptRewrite = VideoPromptRewrite.fromVendor(root);
-            var mappedFailure = "failed".equals(status) ? VideoProviderErrorMapper.poll(resp.body()) : java.util.Optional.<VideoProviderErrorMapper.MappedError>empty();
+            String configuredReason = responseSpec != null && responseSpec.error() != null
+                    ? pointerText(root, responseSpec.error()) : null;
+            var mappedFailure = "failed".equals(status) ? VideoProviderErrorMapper.poll(resp.body(), configuredReason)
+                    : java.util.Optional.<VideoProviderErrorMapper.MappedError>empty();
             String failReason = !"failed".equals(status) ? null
                     : mappedFailure.isPresent() ? mappedFailure.get().message()
                     : responseSpec != null && responseSpec.error() != null
-                        ? ProviderErrorMessage.sanitize(pointerText(root, responseSpec.error())) : extractFailReason(root);
+                        ? ProviderErrorMessage.sanitize(configuredReason) : extractFailReason(root);
             if ("failed".equals(status)) {
                 // 上游判失败：记原始响应体，方便排查（agnes 等可能不给结构化原因字段）。
                 log.warn("[material-video] poll FAILED endpoint={} protocol={} taskId={} rawStatus={} progress={} failReason={} durationMs={} body={}",
@@ -971,7 +974,7 @@ public class MaterialVideoModelClient {
                 }
                 String assetId = uploadInputAsset(p, apiKey, model, r.key(), r.mediaType(),
                         materialMaxBytes(configured, mode, r.mediaType(), false),
-                        materialFormats(configured, mode, r.mediaType(), false), labels.get(i));
+                        materialFormats(configured, mode, r.mediaType(), false), labels.get(i), "image".equals(r.mediaType()));
                 refs.add(new ReferenceAsset(r.mediaType(), assetId));
             }
         }
@@ -1955,8 +1958,14 @@ public class MaterialVideoModelClient {
      */
     private String uploadInputAsset(AiModelEndpoint p, String apiKey, String model, String key,
                                     String mediaType, long maxBytes, List<String> allowedFormats, String label) {
+        return uploadInputAsset(p, apiKey, model, key, mediaType, maxBytes, allowedFormats, label, false);
+    }
+
+    private String uploadInputAsset(AiModelEndpoint p, String apiKey, String model, String key,
+                                    String mediaType, long maxBytes, List<String> allowedFormats, String label,
+                                    boolean h3ReferenceImage) {
         java.util.function.Supplier<MaterialVideoInputAssets.Receipt> upload =
-                () -> uploadInputAssetReceipt(p, apiKey, model, key, mediaType, maxBytes, allowedFormats, label);
+                () -> uploadInputAssetReceipt(p, apiKey, model, key, mediaType, maxBytes, allowedFormats, label, h3ReferenceImage);
         // Directly constructed protocol unit tests have no persistence service. Production always injects it.
         return ("audio".equals(mediaType) && inputAssets != null
                 ? inputAssets.resolve(p.getId(), p.getBaseUrl(), model, apiKey, key, upload)
@@ -2027,8 +2036,22 @@ public class MaterialVideoModelClient {
     private record LocalInput(Path path, long size, MediaBytes.Format format, String filename) {}
 
     private MaterialVideoInputAssets.Receipt uploadInputAssetReceipt(AiModelEndpoint p, String apiKey, String model, String key,
-                                    String mediaType, long maxBytes, List<String> allowedFormats, String label) {
+                                    String mediaType, long maxBytes, List<String> allowedFormats, String label,
+                                    boolean h3ReferenceImage) {
         LocalInput input = readLocalInput(key, mediaType, maxBytes, allowedFormats, label);
+        try (var resized = h3ReferenceImage
+                ? H3ReferenceImage.resizeIfNeeded(ffmpeg, input.path(), input.format(), maxBytes, allowedFormats, label)
+                : null) {
+            if (resized != null) {
+                input = new LocalInput(resized.path(), resized.size(), resized.format(),
+                        withExtension(input.filename(), resized.format().ext()));
+            }
+            return sendInputAsset(p, apiKey, model, mediaType, maxBytes, allowedFormats, label, input);
+        }
+    }
+
+    private MaterialVideoInputAssets.Receipt sendInputAsset(AiModelEndpoint p, String apiKey, String model, String mediaType,
+                                    long maxBytes, List<String> allowedFormats, String label, LocalInput input) {
         Path local = input.path();
         long size = input.size();
         MediaBytes.Format fmt = input.format();
@@ -2070,6 +2093,10 @@ public class MaterialVideoModelClient {
                 // 栽过一模一样的一次（`friendly()` 把所有非业务异常抹成「请稍后重试」）。
                 log.warn("[material-video] 素材上传被拒 endpoint={} model={} url={} field={} bytes={} contentType={} status={} body={}",
                         p.getName(), model, uri, mediaType, size, fmt.mime(), resp.statusCode(), snippet(resp.body()));
+                var sizeError = VideoProviderErrorMapper.referenceSize(ProviderErrorMessage.diagnosticReason(resp.body()));
+                if (resp.statusCode() >= 400 && resp.statusCode() < 500 && sizeError.isPresent()) {
+                    throw attach(BusinessException.badRequest(sizeError.get().code(), label + "长边超过 5760 像素，请缩小图片后再试"), resp);
+                }
                 throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_REF_UPLOAD_FAILED",
                         uploadFailureMessage(label, resp.statusCode(), resp.body()),
                         "status=" + resp.statusCode() + " url=" + uri + " body=" + snippet(resp.body()));

@@ -361,7 +361,8 @@ class MaterialVideoModelClientWireTest {
     }
 
     private static byte[] png() {
-        return withHead(300, 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A);
+        try { return realPng(); }
+        catch (IOException e) { throw new java.io.UncheckedIOException(e); }
     }
 
     private static byte[] mp4() {
@@ -458,7 +459,7 @@ class MaterialVideoModelClientWireTest {
     @DisplayName("全能参考：图 / 视频 / 音频各走自己的字段名与字节类型，referenceInputs 顺序与提交一致")
     void universalReferenceUploadsEachMediaType() throws Exception {
         useJusuan();
-        stored("video-studio-image/u1/a.png", png());
+        byte[] image = stored("video-studio-image/u1/a.png", png());
         byte[] video = stored("video-studio-video/u1/b.mp4", mp4());
         byte[] audio = stored("video-studio-audio/u1/c.mp3", mp3());
 
@@ -471,6 +472,7 @@ class MaterialVideoModelClientWireTest {
         List<Part> parts = uploads().stream().map(MaterialVideoModelClientWireTest::part).toList();
         assertEquals(List.of("image", "video", "audio"), parts.stream().map(Part::name).toList());
         assertEquals(List.of("image/png", "video/mp4", "audio/mpeg"), parts.stream().map(Part::contentType).toList());
+        assertArrayEquals(image, parts.get(0).content());
         assertArrayEquals(video, parts.get(1).content());
         assertArrayEquals(audio, parts.get(2).content());
 
@@ -482,6 +484,34 @@ class MaterialVideoModelClientWireTest {
                 + "{\"role\":\"reference_video\",\"mediaType\":\"video\",\"assetId\":\"asset_2\"},"
                 + "{\"role\":\"reference_audio\",\"mediaType\":\"audio\",\"assetId\":\"asset_3\"}]",
                 om.writeValueAsString(body.path("referenceInputs")));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void oversizedH3ReferenceIsResizedBeforeUploadWithoutChangingTheSource(boolean portrait) throws Exception {
+        useJusuan();
+        var ffmpeg = new com.aistareco.aep.service.mixcut.FfmpegRunner(new com.aistareco.aep.config.MixcutProperties());
+        org.springframework.test.util.ReflectionTestUtils.setField(client, "ffmpeg", ffmpeg);
+        String key = "ipstudio_gen/u1/reference.png";
+        int width = portrait ? 3100 : 6200;
+        int height = portrait ? 6200 : 3100;
+        String format = portrait ? "jpeg" : "png";
+        var image = new java.awt.image.BufferedImage(width, height, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        var bytes = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(image, format, bytes);
+        image.flush();
+        byte[] original = stored(key, bytes.toByteArray());
+
+        client.submit("口播带货", 5, "9:16", "u1", "ipstudio", null, universalReference(key));
+
+        assertEquals(1, uploads().size());
+        var part = part(uploads().get(0));
+        var uploaded = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(part.content()));
+        assertEquals("image/" + format, part.contentType());
+        assertEquals(portrait ? 2880 : 5760, uploaded.getWidth());
+        assertEquals(portrait ? 5760 : 2880, uploaded.getHeight());
+        assertArrayEquals(original, Files.readAllBytes(storage.openForRead(key)));
+        assertEquals("asset_1", createJson().path("referenceInputs").get(0).path("assetId").asText());
     }
 
     @Test

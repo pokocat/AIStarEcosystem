@@ -40,6 +40,12 @@ final class VideoProviderErrorMapper {
 
     /** A task the supplier reports as failed while polling. Anything not listed here gets the worker's generic retry sentence. */
     static Optional<MappedError> poll(String responseBody) {
+        return poll(responseBody, null);
+    }
+
+    static Optional<MappedError> poll(String responseBody, String configuredReason) {
+        var sizeError = referenceSize(configuredReason).or(() -> referenceSize(ProviderErrorMessage.diagnosticReason(responseBody)));
+        if (sizeError.isPresent()) return sizeError;
         if (responseBody == null || responseBody.isBlank()) return Optional.empty();
         try {
             JsonNode body = JSON.readTree(responseBody);
@@ -55,6 +61,10 @@ final class VideoProviderErrorMapper {
 
     static Optional<MappedError> submit(int httpStatus, String responseBody) {
         if (responseBody == null || responseBody.isBlank()) return Optional.empty();
+        if (httpStatus >= 400 && httpStatus < 500) {
+            var sizeError = referenceSize(ProviderErrorMessage.diagnosticReason(responseBody));
+            if (sizeError.isPresent()) return sizeError;
+        }
         try {
             JsonNode body = JSON.readTree(responseBody);
             if (body == null || !body.isObject()) return Optional.empty();
@@ -64,5 +74,12 @@ final class VideoProviderErrorMapper {
         } catch (Exception ignored) {
             return Optional.empty();
         }
+    }
+
+    static Optional<MappedError> referenceSize(String reason) {
+        if (reason == null || !reason.toLowerCase(Locale.ROOT)
+                .contains("input image long side exceeds " + H3ReferenceImage.MAX_EDGE)) return Optional.empty();
+        return Optional.of(new MappedError(H3ReferenceImage.INVALID_SIZE,
+                "参考图长边超过 " + H3ReferenceImage.MAX_EDGE + " 像素，请缩小图片后再试"));
     }
 }

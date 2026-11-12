@@ -212,6 +212,8 @@
 
 `uploadInputImage` 泛化为 `uploadInputAsset(endpoint, apiKey, model, key, mediaType, maxBytes)`：multipart 字段名 =
 `image` / `video` / `audio`，Content-Type 与文件名后缀**按字节判**（§8.0.1 ⑤，图片 `ImageBytes`，音视频新 `MediaBytes`）。
+
+聚算 H3「全能参考」的图片长边不能超过 5760 像素。提交前读取真实尺寸，超限图等比例缩小后上传临时副本；用户原图、合规图片、首尾帧、视频和音频保持原样。缩图失败或供应商仍明确拒绝该尺寸时，返回 `VIDEO_REF_IMAGE_SIZE_INVALID`，分段任务不自动重试同一份输入。
 上限：帧图 16 MiB、参考图 30 MiB、视频 50 MiB、音频 15 MiB。失败照旧 `VIDEO_REF_UPLOAD_FAILED`，4xx 直出厂商原话。
 
 ### 5.4 上游说了什么，用户就看到什么（§8.0.1 ①）

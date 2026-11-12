@@ -6,6 +6,17 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class VideoProviderErrorMapperTest {
     @Test
+    void oversizedInputIsDeterministicAtSubmitAndAfterAnAcceptedJobFails() {
+        String reason = "invalid argument input image long side exceeds 5760";
+        String response = "{\"error\":{\"code\":\"CLIENT_ERROR\",\"message\":\"" + reason + "\"}}";
+        var expected = "VIDEO_REF_IMAGE_SIZE_INVALID";
+        assertEquals(expected, VideoProviderErrorMapper.submit(400, response).orElseThrow().code());
+        assertEquals(expected, VideoProviderErrorMapper.poll(response).orElseThrow().code());
+        assertEquals(expected, VideoProviderErrorMapper.poll("{}", reason).orElseThrow().code());
+        assertTrue(VideoProviderErrorMapper.submit(502, response).isEmpty(), "a gateway error does not prove a create was rejected");
+    }
+
+    @Test
     void realPersonRestrictionExplainsTheRequiredInputChangeWithoutLeakingWireDetails() {
         String response = "{\"error\":{\"code\":\"InputImageSensitiveContentDetected.PrivacyInformation\","
                 + "\"message\":\"The input image 'content[1]' 'content[2]' 'content[3]' may contain real person. Request id: private-trace\"}}";

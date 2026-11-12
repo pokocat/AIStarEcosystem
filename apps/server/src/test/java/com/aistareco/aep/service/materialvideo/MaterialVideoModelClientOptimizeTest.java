@@ -144,11 +144,10 @@ class MaterialVideoModelClientOptimizeTest {
         return bytes;
     }
 
-    private static byte[] png() {
-        byte[] b = new byte[300];
-        int[] h = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
-        for (int i = 0; i < h.length; i++) b[i] = (byte) h[i];
-        return b;
+    private static byte[] png() throws IOException {
+        var bytes = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(new java.awt.image.BufferedImage(4, 4, java.awt.image.BufferedImage.TYPE_INT_RGB), "png", bytes);
+        return bytes.toByteArray();
     }
 
     private static byte[] mp3() {
