@@ -226,6 +226,28 @@ class RollingReleaseTests(unittest.TestCase):
   cluster.config={'verify_ips':['first','second'],'nodes':{'a':{},'b':{}}}
   cluster.probe=lambda authenticated=True,check_readiness=True:{'first':{'a','b'},'second':{'a'}}
   with self.assertRaisesRegex(RuntimeError,'双活验收失败'):cluster.probe_dual()
+class FrontendCutoverTests(unittest.TestCase):
+ def test_routes_can_arrive_before_health_and_both_are_recorded(self):
+  import frontend
+  from types import SimpleNamespace
+  from unittest.mock import Mock, patch
+  def health(statuses):
+   return {'RuleHealthStatus':[{'ServerGroupInfos':[
+    {'ServerGroupId':'front','HealthCheckEnabled':'on','NonNormalServers':statuses}
+   ]}]}
+  cluster=SimpleNamespace(config={'nodes':{'a':{'instance_id':'id-a'}}},
+   expected={'group':'front'},record=Mock(),alb=Mock(side_effect=[
+    health([{'ServerId':'id-a','Status':'Initial'}]),
+    health([{'ServerId':'id-b','Status':'Unused'}]),
+   ]))
+  probe=Mock(return_value=[('vip-1','front','/video',200,'a'),('vip-2','front','/video',200,'a')])
+  with patch('frontend.time.sleep') as sleep:
+   frontend.verify_frontend_serving(cluster,'listener','a',{'web':'new'},probe)
+  sleep.assert_called_once_with(2)
+  self.assertEqual(probe.call_count,2)
+  cluster.record.assert_any_call('front cutover observation',node='a',
+   routes={'count':2,'other_nodes':[]},health={'ready':False,'statuses':['Initial']})
+  cluster.record.assert_called_with('front single node verified',node='a',builds={'web':'new'},routes=2)
 class ReleaseLeaseTests(unittest.TestCase):
  def test_disconnected_lease_refuses_cluster_mutations(self):
   import release

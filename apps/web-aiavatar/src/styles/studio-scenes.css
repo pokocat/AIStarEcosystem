@@ -225,6 +225,8 @@ html[data-layout="desktop"] .scene-composer-head .scene-recent-host { display: n
 .scene-slot-menu button:hover, .scene-slot-menu button:focus-visible { background: var(--ip-soft); }
 
 .scene-box { position: relative; display: flex; flex-direction: column; gap: 12px; flex: 1 1 auto; min-height: 200px; padding: 14px 14px 12px; border: 1px solid var(--sn-field); border-radius: 14px; background: var(--ip-paper); transition: border-color 140ms var(--ip-ease); }
+/* 窄窗口里标签可以换行，输入框和底栏一起随表单滚动。 */
+.scene-video-composer .scene-compose > .scene-box { flex-shrink: 0; }
 .scene-box:focus-within { border-color: #c5cad1; }
 .scene-box textarea { flex: 1 1 auto; width: 100%; min-height: 120px; padding: 0; border: 0; background: transparent; color: var(--ip-ink); font: inherit; font-size: 14px; line-height: 1.75; resize: none; outline: none; }
 .scene-box textarea::placeholder { color: #7a838d; }
