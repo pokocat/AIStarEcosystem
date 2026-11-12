@@ -10,7 +10,7 @@
 | 深度复刻（`depth`） | 这段原片转成的动作参考（深度图或骨骼图，ReShot）+ 用户素材 | 镜头少、动作连贯：口播、单人展示、跳舞 |
 | 元素替换（`replacement`） | 这段原片本身 + 用户素材，只换点名的人或物（不拉片，见下面「元素替换不拉片」） | 原片拍得好，只想换掉其中一样 |
 
-**元素替换不拉片、不写提示词（2026-11-12 起，本地实现，未发布；用户定：元素替换直接用模型原生的编辑能力）**：分析阶段只剩一步零积分的「切分原片」（`recreation` 步骤 `mode=cuts`，`StudioWorkflowWorker#cutsStudy`：ffmpeg scdet 找切镜，按模型时长在镜头边界分段、切片，不调模型、不排模型的队）。切完由代码直接排出制作计划（`StudioPlanExecutionService#confirmReplacementProduction`）：每段一条视频（视频1 = 这段原片）、按开关检查、最后合成；所有段用提示词库 `stage-recreation-replace-edit` 的同一段话（「编辑视频：以视频1为基础，〈用户的要求〉……其余画面、镜头、动作、口型、字幕和声音保持不变」，`StudioRecreationTaskPlan#replacementAnswer`）。计划照样过 `validateSkillPlan`、报价和指纹。少了拉片和写提示词两次模型调用，报价也不再加这两笔。
+**元素替换不拉片、不写提示词（2026-11-12 起，已发布；用户定：元素替换直接用模型原生的编辑能力）**：分析阶段只剩一步零积分的「切分原片」（`recreation` 步骤 `mode=cuts`，`StudioWorkflowWorker#cutsStudy`：ffmpeg scdet 找切镜，按模型时长在镜头边界分段、切片，不调模型、不排模型的队）。切完由代码直接排出制作计划（`StudioPlanExecutionService#confirmReplacementProduction`）：每段一条视频（视频1 = 这段原片）、按开关检查、最后合成；所有段用提示词库 `stage-recreation-replace-edit` 的同一段话（「编辑视频：以视频1为基础，〈用户的要求〉……其余画面、镜头、动作、口型、字幕和声音保持不变」，`StudioRecreationTaskPlan#replacementAnswer`）。计划照样过 `validateSkillPlan`、报价和指纹。少了拉片和写提示词两次模型调用，报价也不再加这两笔。
 
 - **按模型适配参数**：模型的全能参考模式在后台规格里配 `edit`（`VideoStudioEditSpec`：原视频的最短 / 最长秒数、输出是否跟原视频的画幅和时长、编辑任务另加的请求字段）就走厂商的编辑任务，每段按编辑的时长上限切（`StudioCloneVideoPlan.clip(model, kind)`），视频步骤带 `video.edit=true`，一路传到 `VideoGenSpec.editSource`，Seedance 协议组包时发 `ratio=adaptive`、`duration=-1` 和配置的字段（`MaterialVideoModelClient`）；上传核对参考视频时长也按编辑的上下限（`StudioVideoService.editMode`）。画幅跟原片走时，计划和合成也按原片画幅（`StudioCloneVideoPlan.closestRatio`）。没配 `edit` 的模型照常用全能参考、靠提示词编辑。模型或模式没配编辑却带了编辑标记，提交时明确报错，不退回普通参考生成。
 - **各模型怎么配**（火山方舟文档 2026-11-12）：Seedance 2.5 有专门的编辑任务，`omni_reference_task_type: "edit"`，画幅必须 `adaptive`、时长必须 `-1`，原视频 4–30 秒，输出的画幅和时长跟原视频一致（最多短 0.4 秒），提示词里要有「编辑视频 / 替换 / 修改」这类词；只按普通参考生成的请求（写死画幅和秒数）被模型判成编辑任务时会异步失败（`InvalidParameter.TaskTypeConstraint`），所以元素替换在 2.5 上一定要走编辑任务。配置：`"edit": {"minSourceSec": 4, "maxSourceSec": 30, "followSource": true, "requestFields": {"omni_reference_task_type": "edit"}}`。Seedance 2.0 / Fast / Mini 靠提示词编辑，官方示例照常写画幅和秒数，不配 `edit`。H3 没有编辑任务，用全能参考（1 段参考视频，2–15 秒），不配。OneToken 转接的 2.5 是否认这几个字段还没真调过。
@@ -32,7 +32,7 @@
 - **入口**：工具箱的「爆款复刻」三张卡片（首页「爆款复刻」进工具箱），AI 视频页爆款复刻场景里的三张方式卡片。每张配一张示意图（`public/studio/clone-modes`，虚构人物，标「示意图」），说明写「适合」和「限制」：分镜复刻的动作和运镜与原片会有差异；深度复刻和元素替换仅部分视频模型可用（要能带参考视频）；元素替换会保留原片字幕和水印；三种都要求参考视频最长 60 秒。
 - **顺手修的老问题**：AI 视频页把默认时长截到模型单段上限，爆款复刻也被截。原片长于单段上限（比如 18 秒原片配 H3 15 秒）时，页面发出的时长和拉片分段对不上，分析完就停在「分镜时长与本次设置不一致」。现在爆款复刻的时长固定跟原片走，设置面板里不能拖。
 
-还没验证的：元素替换（不拉片版）没有真跑过，Seedance 2.5 的编辑配置还没加到线上端点（要先发 server，旧 server 读到 `edit` 会报「视频规格里有不认识的字段」），生产上也还没装 ReShot 运行时，推荐门槛没校准，见 TODO.md「爆款复刻三种方式」。
+还没验证的：元素替换（不拉片版）没有真跑过（2026-11-12 已发布，线上 Seedance 2.5 已加编辑配置，见 `docs/releases/studio-replacement-edit-release-20261112.md`），生产上也还没装 ReShot 运行时，推荐门槛没校准，见 TODO.md「爆款复刻三种方式」。
 
 ### 2026-11-11 本机真跑后的修改
 
