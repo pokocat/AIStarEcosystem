@@ -2,6 +2,9 @@
 import {StudioBillingBreakdown} from './studio-billing-breakdown';
 import { formatDateTime } from '@/lib/datetime';
 import { useRef, useState } from 'react';
+import { Spin } from 'antd';
+import { ChevronDown } from 'lucide-react';
+import { useLoadMoreOnScroll } from '@/lib/use-load-more-on-scroll';
 import type { IpRun } from '@ai-star-eco/types';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
 import { studioReviewNotice, studioRecoveryNotice, studioTaskRecovering, studioTaskHasProgress, studioTaskLabel, studioTaskNeedsReview, studioTaskQueued } from '@/canvas-bridge/studio-task-status';
@@ -10,14 +13,15 @@ import { reportStudioError, studioRunError } from './studio-errors';
 type Filter = 'all' | 'active' | 'failed' | 'done';
 type Props = {
   runs: IpRun[]; nodes: CanvasNodeData[]; unconfirmed: CanvasNodeData[];
-  loading: boolean; busy: boolean; hasMore: boolean; error?: string; refreshErrors: Record<string, boolean>;
+  loading: boolean; busy: boolean; hasMore: boolean; page: number; error?: string; refreshErrors: Record<string, boolean>;
   titleFor: (run: IpRun) => string; detailFor?: (run: IpRun) => string; onInput: (run: IpRun) => void; onLocate: (node: CanvasNodeData) => void;
   onCancel: (run: IpRun) => void; onRetry: (node: CanvasNodeData) => void; onReload: () => void; onMore: () => void;
   onRefresh?: (run: IpRun) => Promise<void>;
 };
 const failed = (run: IpRun) => run.status === 'failed' && run.errorCode !== 'IP_RUN_CANCELLED';
-export function StudioTaskList({ runs, nodes, unconfirmed, loading, busy, hasMore, error, refreshErrors, titleFor, detailFor, onInput, onLocate, onCancel, onRetry, onReload, onMore, onRefresh }: Props) {
+export function StudioTaskList({ runs, nodes, unconfirmed, loading, busy, hasMore, page, error, refreshErrors, titleFor, detailFor, onInput, onLocate, onCancel, onRetry, onReload, onMore, onRefresh }: Props) {
   const [filter, setFilter] = useState<Filter>('all');
+  const end = useLoadMoreOnScroll(hasMore && !loading && !error, page, onMore, filter);
   const [refreshing,setRefreshing]=useState<string>();
   const [refreshed,setRefreshed]=useState<string>();
   const refreshLock=useRef(false);
@@ -66,8 +70,8 @@ export function StudioTaskList({ runs, nodes, unconfirmed, loading, busy, hasMor
         {refreshed===run.id&&<p className="studio-task-note" role="status">已更新为最新状态，未重新生成或扣费。</p>}
       </article>;
     })}
-    {!visible.length && (!(filter === 'all' || filter === 'active') || !unconfirmed.length) && !loading && <div className="studio-task-empty">{filter === 'all' ? '还没有创作任务' : filter === 'active' ? '暂无进行中的任务' : filter === 'failed' ? '暂无失败的任务' : '暂无已完成的任务'}</div>}
-    {loading && <p className="studio-task-note" role="status">正在加载任务…</p>}
-    {hasMore && <button type="button" className="studio-task-more" disabled={loading} onClick={onMore}>加载更多任务</button>}
+    {!visible.length && (!(filter === 'all' || filter === 'active') || !unconfirmed.length) && !loading && !hasMore && !error && <div className="studio-task-empty">{filter === 'all' ? '还没有创作任务' : filter === 'active' ? '暂无进行中的任务' : filter === 'failed' ? '暂无失败的任务' : '暂无已完成的任务'}</div>}
+    {loading && !hasMore && <p className="studio-task-note" role="status">正在加载任务…</p>}
+    {hasMore && !error && <div ref={end} className="scroll-more">{loading ? <Spin size="small"/> : <ChevronDown size={18} aria-hidden/>}</div>}
   </div>;
 }

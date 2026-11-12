@@ -33,6 +33,7 @@ vi.mock('antd',()=>{
  Radio.Group=({value,onChange,children}:any)=><RadioContext.Provider value={{value,onChange}}><div role="radiogroup">{children}</div></RadioContext.Provider>;
  return {Radio,InputNumber:({value,onChange,min,max,precision,controls,suffix,...p}:any)=><input type="number" {...p} min={min} max={max} value={value??''} onChange={e=>onChange(e.target.value?Number(e.target.value):null)}/>,App:{useApp:()=>({message})},Input, Segmented:({options,value,onChange}:any)=><div>{options.map((o:string)=><button key={o} aria-pressed={o===value} onClick={()=>onChange(o)}>{o}</button>)}</div>,
  Button:({loading,block,type,icon,size,...p}:any)=><button {...p} disabled={loading||p.disabled}>{p.children}</button>,
+ Spin:()=> <span role="status">正在加载</span>,
  Drawer:({open,title,children,onClose,footer}:any)=>open?<section role="dialog" aria-label={title}><button aria-label="关闭创作面板" onClick={onClose}>关闭</button>{children}{footer}</section>:null,
  Modal:({open,title,children,onCancel,footer,afterClose}:any)=>{useEffect(()=>{if(!open)afterClose?.();},[open]);return open?<section role="dialog" aria-label={title||'剧本编辑器'}>{onCancel&&<button aria-label={`关闭${title}`} onClick={onCancel}>关闭</button>}{children}{footer}</section>:null;},
  Select:({options,value,onChange,mode,...p}:any)=><select multiple={mode==='multiple'} aria-label={p['aria-label']} disabled={p.disabled} value={value??(mode==='multiple'?[]:'')} onChange={e=>onChange(mode==='multiple'?Array.from(e.target.selectedOptions).map(o=>o.value):options.find((o:any)=>String(o.value)===e.target.value)?.value)}>{(options||[]).map((o:any)=><option key={o.value} value={o.value}>{o.label}</option>)}</select>,
@@ -64,7 +65,7 @@ let connectionSnapshot:CanvasConnection[]=[];
 function Host({initial=node,initialNodes,initialConnections=[],textEditingNodeId,renderTextEditor}:any){const[nodes,setNodes]=useState<CanvasNodeData[]>(initialNodes||[initial]);snapshot=nodes;const[connections,setConnections]=useState<CanvasConnection[]>(initialConnections);connectionSnapshot=connections;return <StudioWorkspace projectId="p" nodes={nodes} connections={connections} selectedNodeIds={new Set(['v'])} setNodes={setNodes} setConnections={setConnections} onFocusNode={()=>{}} onClosePanel={()=>{}} onRestorePanel={()=>{}} textEditingNodeId={textEditingNodeId} renderTextEditor={renderTextEditor}/>;}
 const openVideo=()=>{fireEvent(window,new CustomEvent('studio-command',{detail:{action:'video',nodeId:'v'}}));const summary=document.querySelector('.studio-composer-settings summary');if(summary)fireEvent.click(summary);};
 // If a fake-timer test times out under load its finally never runs; never leak fake timers into the next test.
-afterEach(()=>{vi.useRealTimers();cleanup();});
+afterEach(()=>{vi.useRealTimers();cleanup();vi.unstubAllGlobals();});
 beforeEach(()=>{vi.resetAllMocks();api.videoModels.mockResolvedValue([]);api.capabilities.mockResolvedValue({mock:false,operations:['video'],videoCost:80,textModels:[{endpointId:'a',name:'文本 A',isDefault:true,tokenPricing:{inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21}}]});api.models.mockResolvedValue({image:[],video:[{endpointId:'model',name:'model',creditCost:80,capability:{minDurationSec:5,maxDurationSec:15}}]});api.download.mockResolvedValue(undefined);api.save.mockResolvedValue('saved');api.project.mockResolvedValue({runsById:{}});api.history.mockResolvedValue({items:[],hasMore:false});api.submit.mockResolvedValue(done);api.read.mockResolvedValue(done);});
 test('canvas duration follows legacy model capabilities and preserves an out-of-range draft after switching',async()=>{
  api.models.mockResolvedValue({image:[],video:[
@@ -484,6 +485,14 @@ test('editor save failure retains edited script and splitting after another edit
 });
 
 test('task history retains a replaced failure after refresh and paginates without offering to resubmit that old request',async()=>{
+ let observeEnd: ((entry: { isIntersecting: boolean; intersectionRatio: number }) => void) | undefined;
+ vi.stubGlobal('IntersectionObserver', class {
+   constructor(callback: IntersectionObserverCallback) {
+     observeEnd = entry => callback([entry as IntersectionObserverEntry], this as unknown as IntersectionObserver);
+   }
+   observe() {}
+   disconnect() {}
+ });
  const previous={...done,id:'failed-before-retry',status:'failed',cost:0,createdAt:'2026-10-08T00:00:00Z'};
  const latest={...done,createdAt:'2026-10-08T00:01:00Z'};
  api.project.mockResolvedValue({runsById:{accepted:latest}});
@@ -491,9 +500,13 @@ test('task history retains a replaced failure after refresh and paginates withou
  render(<Host initial={{...node,metadata:{...node.metadata,studio:{...node.metadata!.studio,runId:'accepted'}}}}/>);
  fireEvent.click(screen.getByRole('button',{name:'查看创作任务'}));
  await screen.findByText('生成失败');expect(screen.getByText('已消耗 0 积分')).toBeDefined();expect(screen.queryByRole('button',{name:'重新生成',exact:true})).toBeNull();
- fireEvent.click(screen.getByRole('button',{name:'加载更多任务'}));
+ await waitFor(()=>expect(observeEnd).toBeDefined());
+ act(()=>observeEnd!({isIntersecting:false,intersectionRatio:0}));
+ expect(api.history).toHaveBeenCalledTimes(1);
+ act(()=>{const reachedEnd={isIntersecting:true,intersectionRatio:1};observeEnd!(reachedEnd);observeEnd!(reachedEnd);});
  await waitFor(()=>expect(api.history).toHaveBeenLastCalledWith('p',1));
- await waitFor(()=>expect(screen.queryByRole('button',{name:'加载更多任务'})).toBeNull());expect(api.submit).not.toHaveBeenCalled();
+ await waitFor(()=>expect(document.querySelector('.studio-task-list .scroll-more')).toBeNull());
+ expect(api.history).toHaveBeenCalledTimes(2);expect(api.submit).not.toHaveBeenCalled();
 });
 
 test('reopening reconciles added/removed graph references with the saved draft, and reference edits update the graph without submitting',async()=>{

@@ -122,7 +122,6 @@ html[data-layout="desktop"] .scene-video-studio.has-drawer { grid-template-colum
 .video-history-draft { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px; border: 0; border-radius: 10px; background: none; color: var(--sn-text-2); font: inherit; text-align: left; cursor: pointer; }
 .video-history-draft:hover { background: var(--ip-selected); }
 .video-history-draft span { flex: 1; min-width: 0; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.video-history-more { display: flex; align-items: center; justify-content: center; gap: 5px; margin: 0 10px; padding: 12px 5px; border: 0; border-top: 1px solid var(--ip-line); background: none; color: var(--ip-muted); font: inherit; font-size: 12px; cursor: pointer; }
 .video-history-close, .video-history-backdrop { display: none; }
 .video-task-history.is-open { position: fixed; top: 12px; right: 12px; bottom: 12px; z-index: 220; display: flex; width: 260px; border: 0; box-shadow: 0 16px 40px rgba(23,32,42,.13), 0 2px 6px rgba(23,32,42,.05); }
 .video-task-history.is-open .video-history-close { display: inline-flex; align-items: center; padding: 6px; border: 0; border-radius: 8px; background: none; color: inherit; cursor: pointer; }

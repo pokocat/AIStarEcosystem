@@ -2,7 +2,7 @@
 import { StudioErrorNotice, studioRunError, useStudioApp, useStudioErrorState } from './studio-errors';
 import * as React from "react";
 import { App, Button, Empty, Modal, Spin, Tabs } from "antd";
-import { History } from "lucide-react";
+import { ChevronDown, History } from "lucide-react";
 import { SignedImage } from "@/canvas-bridge/signed-image";
 import { formatDateTime } from "@/lib/datetime";
 import { nanoid } from "nanoid";
@@ -14,6 +14,7 @@ import { useAssetStore } from "@/canvas/stores/use-asset-store";
 import { insertRecoveredNode } from "@/canvas-bridge/canvas-recovery";
 import { CanvasNodeType } from "@/canvas/types/canvas";
 import type { SaveOutcome } from "@/canvas-bridge/project-sync";
+import { useLoadMoreOnScroll } from "@/lib/use-load-more-on-scroll";
 const time = formatDateTime;
 export function ProjectHistory({ projectId, saveNow }: { projectId: string; saveNow: () => Promise<SaveOutcome> }) {
   const [open, setOpen] = React.useState(false);
@@ -24,16 +25,20 @@ export function ProjectHistory({ projectId, saveNow }: { projectId: string; save
   const [loading, setLoading] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = useStudioErrorState();
+  const requestedPage = React.useRef(0);
   const { message, modal } = useStudioApp();
   const load = async (next = 0) => {
+    requestedPage.current = next;
     setLoading(true); setError("");
     try {
-      const [result, history] = await Promise.all([IpStudioApi.listProjectRuns(projectId, next), IpStudioApi.listProjectHistory(projectId)]);
+      const [result, history] = await Promise.all([IpStudioApi.listProjectRuns(projectId, next), next === 0 ? IpStudioApi.listProjectHistory(projectId) : undefined]);
       setRuns((prev) => next ? [...new Map([...prev, ...result.items].map((r) => [r.id, r])).values()] : result.items);
-      setVersions(history); setPage(next); setMore(result.hasMore);
+      if (history) setVersions(history);
+      setPage(next); setMore(result.hasMore);
     } catch (e) { setError(e); }
     finally { setLoading(false); }
   };
+  const end = useLoadMoreOnScroll(open && more && !loading && !error && !busy, page, () => void load(page + 1));
   const act = async (task: () => Promise<void>) => {
     setBusy(true);
     try { await task(); } catch (e) { message.error(e); }
@@ -70,7 +75,7 @@ export function ProjectHistory({ projectId, saveNow }: { projectId: string; save
   return <>
     <button type="button" onClick={() => { setOpen(true); void load(); }} className="ip-canvas-history studio-host-more-item"><History aria-hidden="true" />历史记录</button>
     <Modal title="历史记录" open={open} onCancel={() => setOpen(false)} footer={null} width={760} getContainer={() => document.querySelector<HTMLElement>(".ip-surface") ?? document.body}>
-      {error && <div style={{ color: "var(--err)", marginBottom: 12 }}><StudioErrorNotice error={error}/> <Button onClick={() => void load()} disabled={loading}>重试</Button></div>}
+      {error && <div style={{ color: "var(--err)", marginBottom: 12 }}><StudioErrorNotice error={error}/> <Button onClick={() => void load(requestedPage.current)} disabled={loading}>重试</Button></div>}
       <Tabs items={[
         { key: "runs", label: "生成记录", children: <div style={{ maxHeight: "65vh", overflowY: "auto" }}>
           {!loading && !error && !runs.length && <Empty description="还没有生成记录" />}
@@ -87,8 +92,8 @@ export function ProjectHistory({ projectId, saveNow }: { projectId: string; save
             {run.output.text && <p style={{ whiteSpace: "pre-wrap" }}>{run.output.text}</p>}
             {prompt(run) && <details style={{ marginTop: 10 }}><summary>{run.inputs.userPrompt ? "提示词" : "完整提示词"}</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 12, maxHeight: 240, overflowY: "auto" }}>{prompt(run)}</pre></details>}
           </article>)}
-          {loading && <Spin style={{ display: "block", margin: 16 }} />}
-          {more && <Button block disabled={loading} onClick={() => void load(page + 1)}>加载更多</Button>}
+          {loading && !more && <Spin style={{ display: "block", margin: 16 }} />}
+          {more && !error && <div ref={end} className="scroll-more">{loading ? <Spin size="small"/> : <ChevronDown size={18} aria-hidden/>}</div>}
         </div> },
         { key: "versions", label: "画布版本", children: <div style={{ maxHeight: "65vh", overflowY: "auto" }}>
           <p style={{ fontSize: 12, color: "var(--ink-3)" }}>保留最近 50 个画布版本。更早的生成图片和提示词可在「生成记录」中找回。</p>

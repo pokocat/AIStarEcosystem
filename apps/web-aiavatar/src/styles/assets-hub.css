@@ -137,7 +137,7 @@ html[data-layout="desktop"] .assets-tile:is(:hover, :focus-within) .assets-tile-
 .assets-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 56px 16px; text-align: center; }
 .assets-empty h3 { margin: 0; font-size: 15px; font-weight: 500; }
 .assets-empty p { margin: 0 0 8px; font-size: 12.5px; color: var(--ip-muted, #5b6572); }
-.assets-more { display: flex; justify-content: center; margin-top: 24px; }
+.assets-more { margin-top: 12px; }
 
 /* ── 人物 ── */
 /* 批量选择角色、场景、道具：勾选框压在卡片左上角，选中的封面描一圈。 */
@@ -206,6 +206,11 @@ html[data-layout="desktop"] .lmp-gap { display: block; flex: 1; }
 .lmp-bar .ant-btn { height: 34px; border-radius: 10px; font-size: 12.5px; }
 .lmp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 16px 12px; max-height: min(40vh, 460px); margin: 0; padding: 3px; overflow-y: auto; list-style: none; }
 html[data-layout="desktop"] .lmp-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); max-height: min(52vh, 460px); }
+.lmp-grid>li { min-width: 0; }
+.lmp-upload.ant-btn { display: flex; flex-direction: column; gap: 10px; width: 100%; height: auto; aspect-ratio: 1 / 1; padding: 8px; border-radius: 12px; font-weight: 600; white-space: normal; }
+.lmp-cell { position: relative; }
+.lmp-preview-action.ant-btn { position: absolute; top: 7px; left: 7px; width: 40px; height: 40px; border-radius: 9px; }
+.lmp-preview .ant-modal-title { overflow-wrap: anywhere; }
 .lmp-item { position: relative; display: flex; flex-direction: column; gap: 6px; width: 100%; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .lmp-item:disabled { cursor: default; opacity: .5; }
 .lmp-thumb { display: block; aspect-ratio: 1 / 1; overflow: hidden; border-radius: 12px; background: var(--ip-soft, #f3f4f6); }
@@ -229,8 +234,11 @@ html[data-layout="desktop"] .lmp-grid { grid-template-columns: repeat(auto-fill,
 html[data-layout="desktop"] .lmp-audio { flex: 0 1 340px; }
 .lmp-audio.signed-audio-missing { display: flex; align-items: center; padding: 0 14px; border-radius: 999px; background: #f6f7f9; color: #8a929c; font-size: 12px; }
 .lmp-empty { margin: 0; padding: 40px 12px; text-align: center; font-size: 12.5px; color: var(--ip-muted, #5b6572); }
+.lmp-grid + .lmp-empty { padding: 0 3px; text-align: left; }
 .lmp-error { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; font-size: 12.5px; }
-.lmp-more { display: flex; justify-content: center; }
+.lmp-grid-end { grid-column: 1 / -1; }
+.lmp-grid.is-list > .lmp-grid-end { justify-content: center; }
+.lmp-grid.is-list > .lmp-grid-end:hover { background: none; }
 .lmp-foot { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--sn-line-2, #f0f1f3); }
 .lmp-foot>span { flex: 1; min-width: 0; overflow: hidden; font-size: 12.5px; color: var(--sn-text-2, #3d4651); white-space: nowrap; text-overflow: ellipsis; }
 .lmp-foot .ant-btn { height: 36px; border-radius: 11px; }

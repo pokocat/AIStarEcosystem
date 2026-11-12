@@ -1308,3 +1308,10 @@ html[data-layout="mobile"] .script-extraction-folder{flex-basis:100%}
   /* 各页面给输入框写了 13–14px 的类样式，不用 !important 盖不住。 */
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), textarea, select { font-size: 16px !important; }
 }
+/* End of an automatically paginated list. */
+.scroll-more {
+  display: grid;
+  place-items: center;
+  min-height: 36px;
+  color: var(--ip-muted, #5b6572);
+}

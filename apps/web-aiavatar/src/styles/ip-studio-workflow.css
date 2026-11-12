@@ -183,7 +183,7 @@ html[data-layout="mobile"] .studio-character-missing { height:56px; }
 .ip-surface .studio-task-progress>span { display: block; height: 100%; background: #6476a3; transform-origin: left; transition: transform 300ms ease; }
 .ip-surface .studio-task-note { color: var(--ink-2); font-size: 11px; line-height: 1.6; margin: 8px 0 0; }
 .ip-surface .studio-task-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 11px; }
-.ip-surface .studio-task-actions button, .ip-surface .studio-task-more, .ip-surface .studio-task-load-error button { border: 1px solid transparent; border-radius: 6px; padding: 5px 9px; color: var(--ink-2); background: transparent; font: inherit; font-size: 11px; cursor: pointer; }
+.ip-surface .studio-task-actions button, .ip-surface .studio-task-load-error button { border: 1px solid transparent; border-radius: 6px; padding: 5px 9px; color: var(--ink-2); background: transparent; font: inherit; font-size: 11px; cursor: pointer; }
 .ip-surface .studio-task-actions button:hover { background: var(--surface-2); color: var(--ink); }
 .ip-surface .studio-task-actions button.is-primary { color: var(--ink); background: var(--surface-2); border-color: var(--line); }
 .ip-surface .studio-task-actions .studio-task-note { margin: 0 0 0 auto; font-size: 10px; }
@@ -193,7 +193,6 @@ html[data-layout="mobile"] .studio-character-missing { height:56px; }
 .ip-surface .studio-task-failure p { margin: 0; overflow-wrap: anywhere; }
 .ip-surface .studio-task-failure button { border: 0; padding: 3px 0 0; color: inherit; background: transparent; font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 .ip-surface .studio-task-empty { padding: 42px 0; color: var(--ink-2); text-align: center; font-size: 12px; }
-.ip-surface .studio-task-more { width: 100%; margin-top: 16px; border-color: var(--line); }
 .ip-surface .studio-task-load-error { padding: 10px 0; color: #874b42; font-size: 12px; }
 @media (prefers-reduced-motion: reduce) { .ip-surface .studio-task-progress>span { transition: none; } }
 .studio-node-summary { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; height: 100%; padding: 24px; color: var(--ink); background: var(--surface); }

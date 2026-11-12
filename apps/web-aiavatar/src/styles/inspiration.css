@@ -38,7 +38,6 @@
 .inspiration-card-manage button:not(:disabled):hover { background: var(--ip-paper); }
 
 .inspiration-wall-end { display: flex; justify-content: center; min-height: 72px; padding: 26px 0 8px; color: var(--ip-muted); font-size: 12.5px; }
-.inspiration-wall-end > span { display: inline-flex; align-items: center; gap: 7px; }
 
 /* 还没读到内容时的占位：先有墙的样子，内容到了不跳。 */
 @keyframes inspiration-breathe { 50% { opacity: .55; } }

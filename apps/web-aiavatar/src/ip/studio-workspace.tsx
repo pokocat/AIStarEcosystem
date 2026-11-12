@@ -1465,7 +1465,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     {libraryTarget.kind==='canvas' ? <StudioMaterialLibrary projectId={projectId} open={assetPicker} assets={ipAssets} loading={assetsLoading} error={assetError} onClose={closeIpLibrary} onRefresh={loadIpAssets} onImport={importIpAsset} onAssets={insertLibrary} onAssetChange={asset=>setIpAssets(current=>current.map(a=>a.lookId===asset.lookId&&a.avatarId===asset.avatarId?asset:a))}/> : <StudioIpLibrary actionLabel="引用选中素材" open={assetPicker} assets={ipAssets} loading={assetsLoading} error={assetError} onClose={closeIpLibrary} onRefresh={loadIpAssets} onImport={importIpAsset} onAssetChange={asset=>setIpAssets(current=>current.map(a=>a.lookId===asset.lookId&&a.avatarId===asset.avatarId?asset:a))}/>}
     <StudioFloatingPanel title="创作任务" open={taskList} onClose={() => setTaskList(false)} width={480} utility className="studio-task-panel">
       <StudioTaskList runs={taskRuns} nodes={[...nodes,...conversations]} unconfirmed={unconfirmed} loading={tasksLoading} busy={busy}
-        hasMore={taskMore} error={taskError} refreshErrors={refreshErrors}
+        hasMore={taskMore} page={taskPage} error={taskError} refreshErrors={refreshErrors}
         titleFor={run=>studioTaskPresentation(run,[...nodes,...conversations]).title}
         detailFor={run=>studioTaskPresentation(run,[...nodes,...conversations]).detail}
         onInput={setRunDetail} onLocate={node=>{setTaskList(false);if(node.metadata?.studio?.conversation){setAssistantNodeId(node.id);setAssistantOpen(true);}else{setMode("canvas");onFocusNode(node.id);}}}

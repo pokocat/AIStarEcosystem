@@ -70,7 +70,7 @@ export default {
         use: "使用此提示词",
         empty: "没有找到匹配的提示词",
         loading: "加载中…",
-        loadMore: "继续向下滚动加载更多",
+        retry: "重试",
         end: "已经到底了",
     },
     assets: {

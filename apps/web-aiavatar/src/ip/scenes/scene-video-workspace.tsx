@@ -1,11 +1,12 @@
 'use client';
 
-import { Button } from 'antd';
+import { Button, Spin } from 'antd';
 import { observePortraitReviews, requestPortraitReview } from '../portrait-review-events';
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import Link from 'next/link';
-import { AlertCircle, ArrowUpRight, Check, ChevronRight, Clock3, Download, Film, Image as ImageIcon, Layers, ListVideo, Loader2, Play, Plus, RefreshCw, Square, Trash2, X } from 'lucide-react';
+import { AlertCircle, ArrowUpRight, Check, ChevronDown, ChevronRight, Clock3, Download, Film, Image as ImageIcon, Layers, ListVideo, Loader2, Play, Plus, RefreshCw, Square, Trash2, X } from 'lucide-react';
+import { useLoadMoreOnScroll } from '@/lib/use-load-more-on-scroll';
 import { nanoid } from 'nanoid';
 import type { IpRun, IpProjectDoc } from '@ai-star-eco/types';
 import type { StudioPlanExecutionStep } from '@ai-star-eco/types/ip-studio-workflow';
@@ -76,6 +77,10 @@ export function SceneVideoWorkspace({ enabled, taskId, draftId, sceneId, restore
   const [items, setItems] = useState<StudioVideoTask[]>([]), [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0), [more, setMore] = useState(false), [reload, setReload] = useState(0);
+  const end = useLoadMoreOnScroll(enabled && more && !loading, page, () => {
+    setLoading(true);
+    setPage(page + 1);
+  });
   const onSelectRef = useRef(onSelect); onSelectRef.current = onSelect;
   const remembered = useRef(false);
   // The scene page adds its default URL while the list is loading. Preserve the user's original bare-page entry.
@@ -103,7 +108,7 @@ export function SceneVideoWorkspace({ enabled, taskId, draftId, sceneId, restore
           const task = draftId ? result.items.find(t => t.projectId === draftId) : prior ? result.items.find(t => t.id === prior) ?? await videoTask(prior).catch(() => undefined) : undefined;
           if (alive && task) onSelectRef.current(task);
         }
-      } catch { if (alive) setError('最近任务加载失败'); }
+      } catch { if (alive) { setMore(false); setError('最近任务加载失败'); } }
       finally { if (alive) { setLoading(false); timer = setTimeout(read, 10000); } }
     };
     void read();
@@ -184,8 +189,8 @@ export function SceneVideoWorkspace({ enabled, taskId, draftId, sceneId, restore
         {draftsError && <p role="status">草稿加载失败{onRetryDrafts && <button type="button" className="video-history-retry" onClick={onRetryDrafts}>重试</button>}</p>}
         {openDrafts.map(d => <div className="video-history-row" key={d.id}><button type="button" className="video-history-draft" title={d.name} onClick={() => { onRail(false); onDraft(d.id); }}><Film size={15} strokeWidth={1.5}/><span>{d.name}</span><ChevronRight size={13}/></button>
           <button type="button" className="video-history-delete" aria-label="删除" title={`删除草稿「${d.name}」`} onClick={() => removeDraft(d.id, d.name)}><Trash2 size={14} strokeWidth={1.6}/></button></div>)}
+        {more && <div ref={end} className="scroll-more">{loading ? <Spin size="small"/> : <ChevronDown size={18} aria-hidden/>}</div>}
       </div>
-      {more && <button type="button" className="video-history-more" onClick={() => setPage(n => n + 1)}>加载更多<ChevronRight size={13}/></button>}
     </aside>
     {removal.dialog}
   </>;

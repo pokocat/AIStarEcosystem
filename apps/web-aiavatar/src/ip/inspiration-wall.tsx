@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Loader2 } from 'lucide-react';
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { ChevronDown } from 'lucide-react';
+import { useLoadMoreOnScroll } from '@/lib/use-load-more-on-scroll';
 import type { IpTemplate } from '@ai-star-eco/types';
 import { ProjectCardPreview } from './project-card-preview';
 import { inspirationPlacement, templateKind, templateRatio, templateSpec, type RatioKnown } from './template-facts';
@@ -22,7 +23,7 @@ export function InspirationWall({ items, resetKey, onOpen, manage, pageSize = 18
   manage?: (template: IpTemplate) => ReactNode;
   pageSize?: number; minColumn?: number;
 }) {
-  const wall = useRef<HTMLDivElement>(null), end = useRef<HTMLDivElement>(null);
+  const wall = useRef<HTMLDivElement>(null);
   const [columns, setColumns] = useState(4);
   // 一换分类就回到第一页：在渲染时判断，不会先把上一个分类翻到的张数摆出来再收回去。
   const [page, setPage] = useState({ key: resetKey, shown: pageSize });
@@ -43,28 +44,15 @@ export function InspirationWall({ items, resetKey, onOpen, manage, pageSize = 18
     return () => watch.disconnect();
   }, [minColumn]);
   const more = shown < items.length;
-  const canObserve = typeof IntersectionObserver !== 'undefined';
-  useEffect(() => {
-    const el = end.current;
-    if (!el || !more || !canObserve) return;
-    // 离底部还有一屏多就开始摆，滚的时候看不到空白。
-    const watch = new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) nextPage(); }, { rootMargin: '900px 0px' });
-    watch.observe(el);
-    return () => watch.disconnect();
-    // 摆完这一页如果还看得到底部，换一个观察者才会再触发一次，所以依赖 shown。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [more, canObserve, pageSize, shown, resetKey]);
+  const end = useLoadMoreOnScroll(more, shown, nextPage, resetKey);
   const placed = useMemo(() => inspirationPlacement<IpTemplate & RatioKnown>(items.slice(0, shown), columns), [items, shown, columns]);
   return <>
     <div ref={wall} className="inspiration-wall">{placed.map((column, c) =>
       <div key={c} className="inspiration-wall-column">{column.map(({ item, index }) =>
         <InspirationCard key={item.versionId || item.id} template={item} onOpen={onOpen} manage={manage?.(item)} order={index % pageSize}/>)}</div>)}
     </div>
-    {/* 不能自动接着摆的浏览器也不能看不到后面的内容。 */}
-    <div ref={end} className="inspiration-wall-end">{more
-      ? canObserve ? <span role="status"><Loader2 size={16} className="studio-gallery-spinner" aria-hidden="true"/>正在加载</span>
-        : <button type="button" className="ip-brand-secondary" onClick={nextPage}>加载更多</button>
-      : items.length > pageSize && <span>已显示全部</span>}</div>
+    {more ? <div ref={end} className="scroll-more"><ChevronDown size={18} aria-hidden/></div>
+      : items.length > pageSize && <div className="inspiration-wall-end">已显示全部</div>}
   </>;
 }
 

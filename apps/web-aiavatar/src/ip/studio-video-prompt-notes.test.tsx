@@ -98,7 +98,7 @@ test("a model or older job without a rewrite report shows nothing extra", () => 
 });
 
 test("the task list omits dialogue rewrite warnings", () => {
-  const props = { runs: [run([done(0, REWRITTEN)])], nodes: [], unconfirmed: [], loading: false, busy: false, hasMore: false, refreshErrors: {},
+  const props = { runs: [run([done(0, REWRITTEN)])], nodes: [], unconfirmed: [], loading: false, busy: false, hasMore: false, page: 0, refreshErrors: {},
     titleFor: () => "视频", onInput: vi.fn(), onLocate: vi.fn(), onCancel: vi.fn(), onRetry: vi.fn(), onReload: vi.fn(), onMore: vi.fn() };
   render(<StudioTaskList {...props}/>);
   expect(screen.queryByText(/台词|删掉|改写描述/)).toBeNull();

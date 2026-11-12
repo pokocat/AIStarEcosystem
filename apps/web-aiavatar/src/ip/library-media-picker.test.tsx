@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { LibraryMediaPicker } from './library-media-picker';
 
@@ -20,7 +20,7 @@ vi.mock('@/canvas-bridge/asset-library', () => ({
 }));
 vi.mock('@/canvas-bridge/image-storage', () => ({ refreshImageUrl: vi.fn() }));
 vi.mock('@/canvas-bridge/signed-image', () => ({ SignedImage: (p: any) => <img src={p.src} alt={p.alt}/> }));
-vi.mock('@/canvas-bridge/signed-video', () => ({ SignedVideo: () => <video/> }));
+vi.mock('@/canvas-bridge/signed-video', () => ({ SignedVideo: ({ storageKey, ...props }: any) => <video {...props}/> }));
 vi.mock('@/canvas-bridge/signed-audio', () => ({ SignedAudio: () => <audio/> }));
 vi.mock('antd', () => ({
   Button: ({ icon, loading, type, size, ...p }: any) => <button {...p}>{icon}{p.children}</button>,
@@ -28,7 +28,7 @@ vi.mock('antd', () => ({
   Skeleton: () => <p>正在读取</p>,
   Select: ({ options, value, onChange, getPopupContainer, popupMatchSelectWidth, ...p }: any) => <select {...p} value={value} onChange={e => onChange(e.target.value)}>{options.map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>,
   ConfigProvider: ({ children }: any) => children,
-  Modal: ({ open, title, children }: any) => open ? <div role="dialog" aria-label={title}>{children}</div> : null,
+  Modal: ({ open, title, children, onCancel }: any) => open ? <div role="dialog" aria-label={title}><button type="button" onClick={onCancel}>关闭 {title}</button>{children}</div> : null,
 }));
 
 const image = (id: string, folderId?: string) => ({ id, kind: 'image', title: id, coverUrl: '', tags: [], source: '用户上传', createdAt: '', updatedAt: '',
@@ -68,6 +68,37 @@ test('the canvas library wins over the remembered one; AI 生成 reads generated
   expect(screen.queryByRole('tab', { name: '人物' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'AI 生成' }));
   await waitFor(() => expect(api.materials).toHaveBeenLastCalledWith(expect.objectContaining({ folder: 'unfiled', source: 'generated', kind: 'video' })));
+});
+
+test('video upload occupies the first grid cell and preview keeps the current selection', async () => {
+  const video = { ...image('参考片.mp4'), kind: 'video', data: { url: '/reference.mp4', storageKey: 'k/reference.mp4' } };
+  api.materials.mockResolvedValue(page([video]));
+  const onAssets = vi.fn().mockResolvedValue(undefined);
+  render(<LibraryMediaPicker open upload mediaType="video" title="选择参考视频" onClose={vi.fn()} onAssets={onAssets}/>);
+  const select = await screen.findByRole('button', { name: '选择 参考片.mp4' });
+  const firstCell = screen.getAllByRole('listitem')[0];
+  expect(within(firstCell).getByRole('button', { name: '上传视频' })).toBeTruthy();
+  const expand = screen.getByRole('button', { name: '放大预览 参考片.mp4' });
+  fireEvent.click(expand);
+  const preview = screen.getByRole('dialog', { name: '参考片.mp4' });
+  const player = within(preview).getByLabelText('参考片.mp4') as HTMLVideoElement;
+  expect(player.getAttribute('src')).toBe('/reference.mp4');
+  expect(player.controls).toBe(true);
+  expect(select.getAttribute('aria-pressed')).toBe('false');
+  expect(onAssets).not.toHaveBeenCalled();
+  fireEvent.click(within(preview).getByRole('button', { name: '关闭 参考片.mp4' }));
+  fireEvent.click(select);
+  fireEvent.click(expand);
+  expect(select.getAttribute('aria-pressed')).toBe('true');
+});
+
+test('image preview shows the full image and leaves the asset unselected', async () => {
+  api.materials.mockResolvedValue(page([image('主图')]));
+  render(<LibraryMediaPicker open upload mediaType="image" onClose={vi.fn()} onAssets={vi.fn()}/>);
+  fireEvent.click(await screen.findByRole('button', { name: '放大预览 主图' }));
+  const preview = screen.getByRole('dialog', { name: '主图' });
+  expect(within(preview).getByRole('img', { name: '主图' }).getAttribute('src')).toBe('https://cdn.test/主图');
+  expect(screen.getByRole('button', { name: '选择 主图' }).getAttribute('aria-pressed')).toBe('false');
 });
 
 test('the 人物 tab of an image slot lists roles that have a picture, with their object reference', async () => {

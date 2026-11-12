@@ -6,11 +6,12 @@ import { useEffect, useRef, useState } from 'react';
 import { Film, ImageOff } from 'lucide-react';
 import { refreshImageUrl } from '@/canvas-bridge/image-storage';
 
-export function AssetThumb({ kind, src, storageKey }: { kind: 'image' | 'video'; src?: string; storageKey?: string }) {
+export function AssetThumb({ kind, src, storageKey, playing = false }: { kind: 'image' | 'video'; src?: string; storageKey?: string; playing?: boolean }) {
   const [url, setUrl] = useState(src);
   const [failed, setFailed] = useState(false);
   const renewed = useRef(false);
   const current = useRef(src);
+  const videoRef = useRef<HTMLVideoElement>(null);
   // 换来的地址和原来一样（本地假 CDN 不签名）就不会重新加载，直接算读不到。
   const renew = (key: string) => refreshImageUrl(key).then(next => {
     if (!next || next === current.current) { setFailed(true); return; }
@@ -23,6 +24,14 @@ export function AssetThumb({ kind, src, storageKey }: { kind: 'image' | 'video';
     // renew 只读 ref 和 setter
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src, storageKey]);
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!playing || !video) return;
+    void video.play().catch(() => {
+      // 加载失败由 onError 处理。移开鼠标导致的播放中断无需提示。
+    });
+    return () => video.pause();
+  }, [playing, url, failed]);
   const onError = () => {
     if (renewed.current || !storageKey) { setFailed(true); return; }
     renewed.current = true;
@@ -31,6 +40,6 @@ export function AssetThumb({ kind, src, storageKey }: { kind: 'image' | 'video';
   if (failed || (!url && !storageKey)) return <span className="asset-thumb-missing" role="img" aria-label={kind === 'video' ? '视频加载失败' : '图片加载失败'}>{kind === 'video' ? <Film size={26} strokeWidth={1.3}/> : <ImageOff size={26} strokeWidth={1.3}/>}</span>;
   if (!url) return <span className="asset-thumb-missing" aria-hidden="true"/>;
   return kind === 'video'
-    ? <video src={url} muted playsInline preload="metadata" onError={onError}/>
+    ? <video ref={videoRef} src={url} muted playsInline loop={playing} preload="metadata" onError={onError}/>
     : <img src={url} alt="" loading="lazy" onError={onError}/>;
 }

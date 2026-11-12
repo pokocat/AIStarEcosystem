@@ -1,8 +1,8 @@
 "use client";
 // 资产页的「场景」「道具」：导演台有图后自动进来，也可以在这里新建。
 import { useEffect, useRef, useState } from 'react';
-import { Button, Checkbox, Input, Modal } from 'antd';
-import { Box, MapPin, Plus, Search, SquareCheck } from 'lucide-react';
+import { Button, Checkbox, Input, Modal, Spin } from 'antd';
+import { Box, ChevronDown, MapPin, Plus, Search, SquareCheck } from 'lucide-react';
 import type { LibraryFolder, LibraryObject } from '@ai-star-eco/types';
 import { createLibraryObject, deleteLibraryObject, libraryObjects, mainLibraryVersion } from '@/canvas-bridge/asset-library';
 import { AssetThumb } from './asset-thumb';
@@ -12,6 +12,7 @@ import { LibraryAssetEditor } from './library-asset-editor';
 import { LibrarySourceSelect } from './library-source-select';
 import { StudioErrorNotice, useStudioApp, useStudioErrorState } from './studio-errors';
 import { studioOverlayContainer } from './studio-overlay';
+import { useLoadMoreOnScroll } from '@/lib/use-load-more-on-scroll';
 
 const LABEL = { scene: '场景', prop: '道具' } as const;
 
@@ -57,6 +58,7 @@ export function AssetsObjects({ kind, library, folders, from, onFromChange, onSh
     catch (e) { if (id === epoch.current) setError(e); }
     finally { if (id === epoch.current) setLoading(false); }
   };
+  const end = useLoadMoreOnScroll(!isAi && hasMore && !loading && !error && !editing && !creating, page, loadMore);
   const toggle = (id: string) => setSelected(old => old.includes(id) ? old.filter(x => x !== id) : [...old, id]);
   const stopSelecting = () => { setSelecting(false); setSelected([]); };
   const remove = () => confirmAssetDelete(modal, {
@@ -98,7 +100,7 @@ export function AssetsObjects({ kind, library, folders, from, onFromChange, onSh
     </ul>
     {!loading && !items.length && filtered && <div className="assets-empty"><h3>没有找到匹配的{noun}</h3><p>请尝试其他名称或作品。</p><Button onClick={() => { setKeyword(''); onFromChange(''); }}>清除筛选</Button></div>}
     {!loading && !items.length && !filtered && !error && <p className="assets-rule">导演台里有图的{noun}会自动保存到这里。画布上的图片，可在右键菜单中选择「存为角色、场景或道具」。</p>}
-    {hasMore && !error && <div className="assets-more"><Button loading={loading} onClick={() => void loadMore()}>加载更多</Button></div>}
+    {hasMore && !error && <div ref={end} className="scroll-more assets-more">{loading ? <Spin size="small"/> : <ChevronDown size={18} aria-hidden/>}</div>}
     {editing && <LibraryAssetEditor assets={editing} folders={folders} onClose={() => { setEditing(undefined); setRevision(n => n + 1); }} onChange={() => setRevision(n => n + 1)}/>}
     <NewObjectDialog open={creating} kind={kind} folderId={library !== 'all' ? library : undefined} onClose={() => setCreating(false)}
       onCreated={o => { setCreating(false); setRevision(n => n + 1); setEditing([o]); }}/>

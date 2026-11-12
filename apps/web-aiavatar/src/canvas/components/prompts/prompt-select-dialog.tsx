@@ -1,7 +1,8 @@
-import { Search } from "lucide-react";
-import { type UIEvent, useEffect, useState } from "react";
+import { ChevronDown, Search } from "lucide-react";
+import { useEffect, useState } from "react";
 // 本仓改动（2026-10-27）：错误不走 antd 顶部 message，统一到 Studio 错误出口（用户刚做的操作没做成就弹错误弹窗），成功提示照旧。
-import { Empty, Input, Modal, Spin, Tag } from "antd";
+import { Button, Empty, Input, Modal, Spin, Tag } from "antd";
+import { useLoadMoreOnScroll } from "@/lib/use-load-more-on-scroll";
 import { useStudioApp } from "@/ip/studio-errors";
 import { useTranslation } from "react-i18next";
 
@@ -30,10 +31,8 @@ export function PromptSelectDialog({ open, onOpenChange, onSelect }: { open: boo
         if (query.isError) message.error(query.error instanceof Error ? query.error.message : t("prompts.loadFailed"));
     }, [message, query.error, query.isError, t]);
 
-    const handleListScroll = (event: UIEvent<HTMLDivElement>) => {
-        const target = event.currentTarget;
-        if (query.hasNextPage && !query.isFetchingNextPage && target.scrollTop + target.clientHeight >= target.scrollHeight - 160) void query.fetchNextPage();
-    };
+    const end = useLoadMoreOnScroll(open && query.hasNextPage && !query.isFetching && !query.isError, query.data?.pages.length ?? 0,
+        () => void query.fetchNextPage(), JSON.stringify([keyword, selectedTags, selectedCategory]));
 
     return (
         <Modal title={t("prompts.library")} open={open} onCancel={() => onOpenChange(false)} footer={null} width={880} centered>
@@ -61,7 +60,7 @@ export function PromptSelectDialog({ open, onOpenChange, onSelect }: { open: boo
                 </aside>
                 <section className="flex min-h-0 min-w-0 flex-col">
                     <Input size="large" prefix={<Search className="size-4 text-stone-400" />} value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder={t("prompts.searchTitle")} />
-                    <div className="thin-scrollbar mt-4 min-h-0 flex-1 overflow-y-auto pr-2" data-canvas-no-zoom onScroll={handleListScroll} onWheelCapture={(event) => event.stopPropagation()}>
+                    <div className="thin-scrollbar mt-4 min-h-0 flex-1 overflow-y-auto pr-2" data-canvas-no-zoom onWheelCapture={(event) => event.stopPropagation()}>
                         {query.isLoading ? (
                             <div className="flex h-40 items-center justify-center">
                                 <Spin />
@@ -73,11 +72,11 @@ export function PromptSelectDialog({ open, onOpenChange, onSelect }: { open: boo
                             ))}
                         </div>
                         {!query.isLoading && items.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("prompts.empty")} className="py-8" /> : null}
-                        {query.isFetchingNextPage ? (
-                            <div className="py-4 text-center">
-                                <Spin size="small" />
-                            </div>
-                        ) : null}
+                        {query.hasNextPage && <div ref={end} className="scroll-more">
+                            {query.isFetchingNextPage ? <Spin size="small"/> : query.isError
+                                ? <Button size="small" onClick={() => void query.fetchNextPage()}>{t("prompts.retry")}</Button>
+                                : <ChevronDown size={18} aria-hidden/>}
+                        </div>}
                     </div>
                 </section>
             </div>

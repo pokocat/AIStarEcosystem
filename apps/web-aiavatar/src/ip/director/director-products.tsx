@@ -5,8 +5,10 @@
 // 商品图只来自商品库，不用 AI 生成；片段关联商品后，选中的那张图会作为分镜图和视频的参考图。
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Button, Spin } from "antd";
 import { IMAGE_UPLOAD_ACCEPT } from "@ai-star-eco/api-client/image-upload-policy";
-import { ArrowLeft, ArrowRight, Check, ImageIcon, Loader2, MoreHorizontal, PackageOpen, Pencil, Plus, RefreshCw, Search, ShoppingBag, Star, Trash2, Upload, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ChevronDown, ImageIcon, Loader2, MoreHorizontal, PackageOpen, Pencil, Plus, RefreshCw, Search, ShoppingBag, Star, Trash2, Upload, X } from "lucide-react";
+import { useLoadMoreOnScroll } from "@/lib/use-load-more-on-scroll";
 import type { DirectorAsset, DirectorAssistantScope, DirectorWork, LibraryObject } from "@ai-star-eco/types";
 import { addLibraryVersion, createLibraryObject, deleteLibraryObject, editLibraryObject, libraryObjects, mainLibraryVersion, readLibraryObject } from "@/canvas-bridge/asset-library";
 import { DirectorApi, IpStudioApi } from "../api";
@@ -255,6 +257,7 @@ function ProductLibrary({ work, apply, initialEdit, onClose }: { work: DirectorW
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState("");
   const epoch = useRef(0);
+  const requestedPage = useRef(0);
   const { modal } = useStudioApp();
   // 表单里有没保存的内容时，离开前先问一句：选好的图和写的说明不能因为按了 Esc 就没了。
   const dirty = useRef(false);
@@ -268,6 +271,7 @@ function ProductLibrary({ work, apply, initialEdit, onClose }: { work: DirectorW
   const allAdded = items.length > 0 && items.every(o => added.has(o.id));
   const load = useCallback(async (nextPage: number, keyword: string) => {
     const id = ++epoch.current;
+    requestedPage.current = nextPage;
     setLoading(true); setLoadError("");
     try {
       const result = await libraryObjects({ kind: "product", query: keyword || undefined, page: nextPage });
@@ -278,9 +282,12 @@ function ProductLibrary({ work, apply, initialEdit, onClose }: { work: DirectorW
     finally { if (id === epoch.current) setLoading(false); }
   }, []);
   useEffect(() => {
+    requestedPage.current = 0;
+    setLoading(true); setHasMore(false); setLoadError("");
     const timer = window.setTimeout(() => void load(0, query.trim()), query ? 180 : 0);
-    return () => window.clearTimeout(timer);
+    return () => { window.clearTimeout(timer); epoch.current++; };
   }, [query, load]);
+  const end = useLoadMoreOnScroll(view === "list" && hasMore && !loading && !loadError && !adding, page, () => void load(page + 1, query.trim()), query);
   useEffect(() => {
     if (!initialEdit) return;
     readLibraryObject(initialEdit).then(setEditing).catch(e => { setLoadError(errorText(e)); setView("list"); });
@@ -320,6 +327,7 @@ function ProductLibrary({ work, apply, initialEdit, onClose }: { work: DirectorW
         </div>}
         <div className="director-product-library-list">
           <InlineError message={loadError}/>
+          {loadError && <Button size="small" onClick={() => void load(requestedPage.current, query.trim())}>重试</Button>}
           {!loading && !loadError && items.length === 0 ? <div className="director-products-empty is-compact">
             <span aria-hidden><PackageOpen size={24} strokeWidth={1.5}/></span>
             <h3>{query.trim() ? "未找到商品" : "商品库暂无商品"}</h3>
@@ -329,7 +337,7 @@ function ProductLibrary({ work, apply, initialEdit, onClose }: { work: DirectorW
             {items.map(o => <ProductTile key={o.id} object={o} added={added.has(o.id)} selected={selected.includes(o.id)} onToggle={() => toggle(o.id)} onEdit={() => { setEditing(o); setView("form"); }}/>)}
             {loading && items.length === 0 && Array.from({ length: 6 }, (_, i) => <div key={i} className="director-product-tile is-skeleton" aria-hidden/>)}
           </div>}
-          {hasMore && <div className="director-product-more"><button type="button" className="ip-brand-secondary" disabled={loading} onClick={() => void load(page + 1, query.trim())}>{loading ? "加载中…" : "加载更多"}</button></div>}
+          {hasMore && !loadError && <div ref={end} className="scroll-more">{loading ? <Spin size="small"/> : <ChevronDown size={18} aria-hidden/>}</div>}
         </div>
         <InlineError message={addError}/>
         <footer>

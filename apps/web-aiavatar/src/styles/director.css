@@ -1379,8 +1379,6 @@ html[data-layout="desktop"] .director-studio-panel { order: 0; overflow-y: auto;
 .director-product-tile:hover .director-product-tile-edit, .director-product-tile-edit:focus-visible { opacity: 1; }
 .director-product-tile-edit:hover { color: var(--ip-ink); }
 html:not([data-layout="desktop"]) .director-product-tile-edit { opacity: 1; }
-.director-product-more { display: flex; justify-content: center; margin-top: 14px; }
-.director-product-more .ip-brand-secondary { min-height: 34px; padding: 5px 14px; font-size: 13px; }
 .director-product-picked { flex: 1; min-width: 0; color: var(--ip-muted); font-size: 13px; align-self: center; }
 .director-product-library > footer .ip-brand-button, .director-product-library > footer .ip-brand-secondary { min-height: 38px; padding: 7px 16px; font-size: 13px; }
 

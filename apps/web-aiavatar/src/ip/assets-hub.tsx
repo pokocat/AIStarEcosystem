@@ -8,7 +8,7 @@ import { IMAGE_UPLOAD_ACCEPT } from '@ai-star-eco/api-client/image-upload-policy
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { App, Button, Checkbox, ConfigProvider, Dropdown, Input, Modal } from 'antd';
+import { App, Button, Checkbox, ConfigProvider, Dropdown, Input, Modal, Spin } from 'antd';
 import type { MenuProps } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { AudioLines, ChevronDown, FileText, Film, Folder, LayoutGrid, Mic, MoreHorizontal, Plus, Search, SquareCheck } from 'lucide-react';
@@ -26,6 +26,7 @@ import { AssetThumb } from './asset-thumb';
 import { confirmAssetDelete } from './assets-delete';
 import { AudioRecorderDialog } from './audio-recorder-dialog';
 import { AI_LIBRARY, ASSETS_DESCRIPTION, libraryQuery, materialOrigin, sourceLabel } from './assets-hub-shared';
+import { useLoadMoreOnScroll } from '@/lib/use-load-more-on-scroll';
 import { AssetsObjects } from './assets-objects';
 import { AssetsOfficial } from './assets-official';
 import { AssetsPeople } from './assets-people';
@@ -209,6 +210,7 @@ function MediaWall({ tab, library, folders, from, onFromChange, onFoldersChanged
     catch (e) { if (id === epoch.current) setError(e); }
     finally { if (id === epoch.current) setLoading(false); }
   };
+  const end = useLoadMoreOnScroll(hasMore && !loading && !error && !preview && !saving && !recording && !uploading, page, loadMore);
 
   // 「音频」里人物的声音也列出来（克隆声、设计声、预设音色），点开去声音工作室管理。只在「全部」库、不筛来源时出现。
   const showVoices = tab === 'audio' && library === 'all' && source === 'all' && !from;
@@ -330,7 +332,7 @@ function MediaWall({ tab, library, folders, from, onFromChange, onFoldersChanged
         : <MaterialTile key={w.item.id} item={w.item} subline={[from ? '' : materialOrigin(w.item.metadata)?.title, sourceLabel(w.item.source), folderIdOf(w.item) && folderIdOf(w.item) !== library ? folderName(folderIdOf(w.item)) : ''].filter(Boolean).join(' · ')}
           selecting={selecting} selected={selected.includes(w.item.id)} onToggle={() => toggle(w.item.id)} onOpen={() => setPreview(w.item)} menu={moveMenu([w.item.id], folderIdOf(w.item) || undefined, w.item)}/>)}
       </div>)}</div>}
-    {hasMore && !error && <div className="assets-more"><Button loading={loading} onClick={() => void loadMore()}>加载更多</Button></div>}
+    {hasMore && !error && <div ref={end} className="scroll-more assets-more">{loading ? <Spin size="small"/> : <ChevronDown size={18} aria-hidden/>}</div>}
 
     <input ref={fileInput} hidden multiple type="file" accept={ACCEPT[tab]} aria-label="选择要上传的文件" onChange={e => { const files = [...(e.target.files || [])]; e.target.value = ''; if (files.length) void upload(files); }}/>
     <AudioRecorderDialog open={recording} onClose={() => setRecording(false)} onSave={async file => {

@@ -4,12 +4,15 @@
 // 数据：/api/v1/ip-studio/task-history（StudioTaskHistoryService）。积分口径与画布任务弹层相同。
 
 import { useEffect, useRef, useState } from "react";
+import { Button, Spin } from "antd";
+import { ChevronDown } from "lucide-react";
 import Link from "next/link";
 import type { StudioTaskHistoryItem, StudioTaskHistoryPage, StudioTaskStatus, StudioTaskType } from "@ai-star-eco/types";
 import { AccountApi } from "@/ip/api";
 import { reportStudioError } from "@/ip/studio-errors";
 import { formatDateTime } from "@/lib/datetime";
 import { SelectField } from "@ai-star-eco/ui/ui/select-field";
+import { useLoadMoreOnScroll } from "@/lib/use-load-more-on-scroll";
 import { LoadState, number, payerLabel, TaskCredits, TaskIcon, TaskStatusTag, taskSource } from "./account-ui";
 import { ModelResultsDrawer, type ModelResultTarget } from "./account-model-results";
 
@@ -68,7 +71,7 @@ export function AccountTasks({ initialStatus, openAllRaw = false }: { initialSta
     finally { setActing(""); }
   };
 
-  // 每次换筛选递增；「加载更多」的回包只认发出时的那一版，切了筛选的旧分页直接丢掉（Codex 评审 2026-11-09）。
+  // 切换筛选后丢弃旧分页的回包。
   const queryVersion = useRef(0);
   useEffect(() => {
     let live = true;
@@ -85,13 +88,14 @@ export function AccountTasks({ initialStatus, openAllRaw = false }: { initialSta
   const summary = pages[0]?.summary;
   const loadMore = () => {
     if (!last?.hasMore || more) return;
-    setMore(true);
+    setMore(true); setError("");
     const version = queryVersion.current;
     AccountApi.taskHistory({ status, type, days, page: last.page + 1 })
       .then(p => { if (version === queryVersion.current) setPages(prev => prev.length && prev[prev.length - 1].page === p.page - 1 ? [...prev, p] : prev); })
       .catch(() => { if (version === queryVersion.current) setError("更多任务加载失败，请重试。"); })
       .finally(() => { if (version === queryVersion.current) setMore(false); });
   };
+  const end = useLoadMoreOnScroll(!!last?.hasMore && !loading && !more && !error && !raw, last?.page ?? 0, loadMore);
   const range = RANGES.find(r => r.days === days)?.label ?? "近 30 天";
 
   return <>
@@ -154,8 +158,8 @@ export function AccountTasks({ initialStatus, openAllRaw = false }: { initialSta
           </article>;
         })}
       </div>
-      {last?.hasMore && <div style={{ display: "flex", justifyContent: "center", marginTop: 16 }}><button type="button" className="account-button" disabled={more} onClick={loadMore}>{more ? "正在加载…" : "加载更多"}</button></div>}
-      {error && items.length > 0 && <p className="account-alert" role="alert" style={{ textAlign: "center", marginTop: 8 }}>{error}</p>}
+      {last?.hasMore && !error && <div ref={end} className="scroll-more">{more ? <Spin size="small"/> : <ChevronDown size={18} aria-hidden/>}</div>}
+      {error && items.length > 0 && <p className="account-alert" role="alert" style={{ textAlign: "center", marginTop: 8 }}>{error} <Button size="small" onClick={loadMore}>重试</Button></p>}
     </LoadState>
     <ModelResultsDrawer target={raw} onClose={() => setRaw(null)} />
   </>;
