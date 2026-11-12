@@ -6,11 +6,11 @@
 | --- | --- |
 | `server` API | [`infra/scripts/deploy.sh server`](../../infra/scripts/deploy.sh)，默认正式双机滚动；`--plan` 只展示计划。 |
 | PostgreSQL 结构 | 用迁移角色执行独立的向前兼容 DDL，并验证当前与候选版本；运行账号只做 Flyway 校验，API 滚动不会执行 DDL。 |
-| A 上的后台调度、SAU | 独立验收和角色交接。API 滚动不会更新这两个单元；涉及定时任务、领取逻辑或发布驱动时，把相应组件列入发布范围。 |
-| Web、admin、studio-admin | 核对组件现行入口和目标后单独发布。仓内 API 滚动入口仅支持 `server`，其他组件尚无本次验收过的双机发布入口；需要先完成该组件发布路径验收。 |
+| A 上的后台调度、SAU | 独立验收和角色交接。API 滚动不会更新这两个单元；涉及定时任务、领取逻辑或发布驱动时，把相应组件列入发布范围。SAU 真镜像需通过 `prepare_real_runtime.py` 的四个发布驱动导入，`/healthz` 仅作就绪证据。 |
+| Web、admin、studio-admin | 按组件确认并验收新发布入口与目标后单独发布。仓内 API 滚动入口仅支持 `server`。 |
 | 账号中心、军师及其他应用 | 按各自仓库的发布说明处理。账号中心入口在 [aibuzz-id](https://github.com/pokocat/aibuzz-id/blob/main/deploy/README.md)。 |
 
-旧 ECS 上的前端及回环代理仍提供服务。旧 AIStar API 和旧 SAU 已停用，生产发布与恢复都禁止重新启动它们。历史单机脚本 `deploy-local.sh`、`deploy-release.sh`、`update-and-deploy.sh`、`rollback.sh` 以及旧版 `verify.sh` 均不能用于 AIStar API 正式发布或验收。不要给新入口设置旧部署变量 `DEPLOY_HOST`、`ECS_HOST`、`REMOTE_ROOT` 或 `PUBLIC_BASE`。
+旧 ECS 上的前端及回环代理仍提供服务，旧 ECS 禁止作为新发布目标。旧 AIStar API 和旧 SAU 已停用，生产发布与恢复都禁止重新启动它们。历史单机脚本 `deploy-local.sh`、`deploy-release.sh`、`update-and-deploy.sh`、`rollback.sh` 以及旧版 `verify.sh` 均不能用于 AIStar API 正式发布或验收。不要给新入口设置旧部署变量 `DEPLOY_HOST`、`ECS_HOST`、`REMOTE_ROOT` 或 `PUBLIC_BASE`。
 
 ## 1. 选定版本与验证制品
 
@@ -43,6 +43,6 @@
 
 ## 3. 验收与恢复
 
-- 核对两机实际 SHA、release、进程、ALB 健康及 A50/B50；在两个 VIP 上记录连续真实请求的 HTTP 结果和节点身份，保留失败样本。核对 SLS 启动与错误日志、OIDC、历史媒体读取和本次受影响的已登录业务。支付和模型任务按发布范围做签名、状态、隔离回归或单独授权的实测。
+- 核对两机实际 SHA、release、进程、ALB 健康及 A50/B50；在两个 VIP 上记录连续真实请求的 HTTP 结果和节点身份，保留失败样本。核对 SLS 启动与错误日志、OIDC、历史媒体读取和本次受影响的已登录业务。涉及存储时确认两机继续使用原业务 OSS，对原签名 URL 做 Range 和防篡改回归；凭据及完整签名 URL 不进入回执。支付和模型任务按发布范围做签名、状态、隔离回归或单独授权的实测。
 - 发布失败时，以已验证的健康节点承流，先核对现场权重、实际返回、异步任务与资金状态。需要回到上一制品时，先确认它兼容当前 PostgreSQL 结构和已接收写入，再用同一滚动入口恢复。双机均无法安全承流时，暂停新写入并保护 PostgreSQL、支付回执和在途任务后恢复。旧 MySQL 与旧 DNS 不能作为回滚目的地。
 - 回执记录 `main` 提交、发布范围、CI、JAR/镜像摘要、两机实际版本、双 VIP、ALB 权重、业务验收、SLS 和恢复动作。[首次迁移记录](../aistar-postgresql-cutover.md) 保留从 MySQL 切换的证据，日常发版按本页执行。
