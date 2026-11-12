@@ -713,7 +713,7 @@ export function SceneVideoStudio() {
   };
   const backToPrompt = () => {
     setView("compose"); setSettingsOpen(false); setHint("");
-    setTimeout(() => input.current?.focus("end"), 0);
+    setTimeout(() => input.current?.focus("end", { preventScroll: true }), 0);
   };
   /** 点一条常用开头：接在要求后面，不发送。 */
   // 点开头建议是换一种写法，不是叠加：输入框换成这一条（2026-11-07 用户要求，原来接在后面越点越长）。
