@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { nanoid } from "nanoid";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -54,7 +54,7 @@ import { AiMark } from "../studio-ai-icon";
 import { clampSceneDuration, sceneVideoDurations, sceneVideoInputs, sceneVideoSettings, type SceneVideoMaterial } from "./scene-video-plan";
 import { sceneScriptLayers } from "./scene-script-layers";
 import { classifyBlanks, missingFigures, overlongShots, scriptMissing, scriptPlaceholders, splitBlanks } from "./scene-script-check";
-import { CloneModeGuide, CloneModePicker, cloneAdvice, cloneModeOf, cloneReferenceMode, cloneTool } from './scene-video-clone';
+import { CloneAutoCheck, CloneModeGuide, CloneModePicker, cloneAdvice, cloneModeOf, cloneReferenceMode, cloneTool } from './scene-video-clone';
 
 type Media = StudioMediaImportResult & { title: string };
 type Slot = "image" | "character" | "voice" | "video";
@@ -129,8 +129,8 @@ export function SceneVideoStudio() {
   const [modelId, setModelId] = useState<string>();
   const [tier, setTier] = useState<string>();
   const [optimize, setOptimize] = useState(true);
-  // 爆款复刻的「自动检查」：跟着草稿存，默认开（2026-11-11 用户要求做成开关）
-  const [autoCheck, setAutoCheck] = useState(true);
+  // 爆款复刻的「自动检查」：跟着草稿存，默认关
+  const [autoCheck, setAutoCheck] = useState(false);
   // 生成过一次就重新报价：可能刚设了默认付款账户，模型赠款也用掉了一些。
   const [priceRevision, setPriceRevision] = useState(0);
   const [hint, setHint] = useState("");
@@ -187,10 +187,10 @@ export function SceneVideoStudio() {
 
   // 每个场景没发出去的东西：一句话、选项、素材。离开时开着草稿就只记草稿号，回来时打开那份草稿（2026-10-30 审查 G03：
   // 以前开着草稿换场景全清空、没草稿换场景文字和图一起带走，两种做法不一样，而且门店照片会被当成商品图用）。
-  type Unsent = { text: string; picked: Record<string, string>; images: Media[]; character?: Media; voice?: Media; video?: Media };
+  type Unsent = { text: string; picked: Record<string, string>; images: Media[]; character?: Media; voice?: Media; video?: Media; autoCheck?: boolean };
   const unsent = useRef(new Map<string, Unsent | { draftId: string }>());
   const inputsNow = useRef<Unsent>({ text: "", picked: {}, images: [] });
-  inputsNow.current = { text, picked, images, character, voice, video };
+  inputsNow.current = { text, picked, images, character, voice, video, autoCheck };
 
   const showDraft = useCallback((project: IpProject | undefined, ticket?: number) => {
     const shown = show(project, ticket);
@@ -202,7 +202,7 @@ export function SceneVideoStudio() {
     setSelectedTask(undefined); setMobileView('compose');
     try { sessionStorage.removeItem(VIDEO_TASK_SELECTION); } catch { /* UI preference */ }
     showDraft(undefined, begin()); setText(""); setImages([]); setCharacter(undefined); setVoice(undefined); setVideo(undefined);
-    setView("compose"); setScriptId(undefined); setRevise(""); setHint(""); setTab("example");
+    setView("compose"); setScriptId(undefined); setRevise(""); setHint(""); setTab("example"); setAutoCheck(false);
     if (next) writeQuery(next.id);
   };
 
@@ -215,7 +215,7 @@ export function SceneVideoStudio() {
     const leaving = sceneNow.current, now = inputsNow.current, open = draftRef.current;
     if (leaving && leaving !== next.id) {
       if (open) unsent.current.set(leaving, { draftId: open.id });
-      else if (now.text.trim() || Object.keys(now.picked).length || now.images.length || now.character || now.voice || now.video) unsent.current.set(leaving, now);
+      else if (now.text.trim() || Object.keys(now.picked).length || now.images.length || now.character || now.voice || now.video || now.autoCheck) unsent.current.set(leaving, now);
       else unsent.current.delete(leaving);
     }
     const back = unsent.current.get(next.id);
@@ -224,14 +224,14 @@ export function SceneVideoStudio() {
     if (open) reset(next);
     pickScene(next);
     if (back && !("draftId" in back)) {
-      setText(back.text); setPicked(back.picked); setImages(back.images); setCharacter(back.character); setVoice(back.voice); setVideo(back.video);
+      setText(back.text); setPicked(back.picked); setImages(back.images); setCharacter(back.character); setVoice(back.voice); setVideo(back.video); setAutoCheck(back.autoCheck === true);
       setNote(undefined);
       return;
     }
     const keepImages = !!from && from.images.label === next.images.label;
     const carried = { images: keepImages ? now.images.slice(0, next.images.max ?? 6) : [],
       character: next.character ? now.character : undefined, voice: next.voice ? now.voice : undefined, video: next.video ? now.video : undefined };
-    setText(""); setImages(carried.images); setCharacter(carried.character); setVoice(carried.voice); setVideo(carried.video);
+    setText(""); setImages(carried.images); setCharacter(carried.character); setVoice(carried.voice); setVideo(carried.video); setAutoCheck(false);
     const dropped = [now.images.length > carried.images.length && from ? from.images.label : "", now.character && !carried.character ? "出镜人物" : "",
       now.voice && !carried.voice ? "声音" : "", now.video && !carried.video ? "参考视频" : ""].filter(Boolean);
     // 单独一行灰字，不借用 hint：hint 是卡点（金色），借用会顶掉花费那行（2026-10-30 界面评审）。
@@ -269,7 +269,7 @@ export function SceneVideoStudio() {
       // 离开时的条件放回来：没发的那句话、选项、台词语言、清晰度、时长、画面、要不要先优化，停在「生成视频」时连改了一半的脚本一起
       // （存在草稿里，见 sceneVideoState；老草稿按最近一版脚本记的推断）。改稿因此沿用写那一版时的选项，不会悄悄回到默认值。
       const state = openedVideoState(project.doc, videoDefaults(from));
-      setCloneMode(cloneModeOf(state.cloneMode)); setAutoCheck(state.autoCheck !== false);
+      setCloneMode(cloneModeOf(state.cloneMode)); setAutoCheck(state.autoCheck === true);
       setText(state.edit ? state.edit.prompt ?? "" : state.text); setPicked(state.options); setLanguage(state.language!); setTier(state.tier); setOptimize(state.optimize!);
       // 草稿里记过时长才算用户定的；没记过的按场景默认值，同样先按模型单段上限出。
       setDuration(state.duration!); setRatio(state.ratio!); durationTouched.current = !!project.doc.sceneVideoState?.duration;
@@ -725,7 +725,7 @@ export function SceneVideoStudio() {
   // 页面上的条件写进草稿（有草稿时）：刷新、从「最近」再打开都从离开的地方接着来。素材另记在 sceneInputs、视频模型在 sceneVideoModel。
   // 采用过脚本时，编辑框里的就是（可能改过的）脚本，记成 edit；没采用时记成那句想法。
   const videoState = useMemo<StudioSceneVideoState>(() => ({ text: scriptId ? "" : text, options: picked, language, ...(tier ? { tier } : {}), duration, ratio, optimize,
-    ...(scene?.skill === RECREATION ? { cloneMode, ...(autoCheck ? {} : { autoCheck: false }) } : {}),
+    ...(scene?.skill === RECREATION ? { cloneMode, ...(autoCheck ? { autoCheck: true } : {}) } : {}),
     ...(scriptId ? { edit: { scriptId, prompt: text } } : {}) }), [text, picked, language, tier, duration, ratio, optimize, scriptId, cloneMode, autoCheck, scene?.skill]);
   useSceneStateSave("sceneVideoState", draft, videoState, persist, doc => openedVideoState(doc, videoDefaults(findVideoScene(catalogRef.current, draft?.sceneId))));
   const materials: SceneVideoMaterial[] = useMemo(() => {
@@ -1092,7 +1092,7 @@ export function SceneVideoStudio() {
         const clientRequestId = nanoid(), cap = taskQuote!.price!.cap;
         const configuration: StudioSegmentedVideoRequest = { clientRequestId, sceneId: scene.id, text: text.trim(), hasScript: !!scriptId,
           options: sceneOptionValues(scene.options, picked), language, duration: kind === 'direct' ? usedDuration : duration, ratio,
-          model: taskModel, tier: usedTier, optimize: optimize || depthClone, materials, budgetCap: cap, ...(recreation && !autoCheck ? { autoCheck: false } : {}) };
+          model: taskModel, tier: usedTier, optimize: optimize || depthClone, materials, budgetCap: cap, ...(recreation ? { autoCheck } : {}) };
         const native = kind === 'direct' ? addVideoRow({ ...draftRef.current!.doc, nodes }, { title: scene.title, prompt: sentPrompt, script: text.trim(), scriptId,
           refIds: plan!.used.map(m => placed.find(p => p.media.key === m.key)?.node.id).filter((id): id is string => !!id),
           video: settings!, durationSec: usedDuration, aspectRatio: ratio, model: taskModel, maxCost: videoQuote ?? undefined }).request : undefined;
@@ -1265,6 +1265,7 @@ export function SceneVideoStudio() {
         tiers={tiers.map(t => t.tier)} tier={usedTier} onTier={setTier}
         language={language} onLanguage={setLanguage} optimizable={!!chosenVideo?.supportsPromptOptimization} optimize={optimize || depthClone} onOptimize={setOptimize}
         optimizeFixed={depthClone}
+        extra={recreation && <CloneAutoCheck checked={autoCheck} disabled={busy || uploading !== undefined} onChange={setAutoCheck}/>}
         options={scene.options} picked={picked} onPick={(key, choice) => setPicked(old => ({ ...old, [key]: choice }))} onClose={() => setSettingsOpen(false)}/>}
     </div>;
 
@@ -1327,7 +1328,7 @@ export function SceneVideoStudio() {
       </div>
 
       : <div className="scene-compose">
-        {recreation && <CloneModePicker mode={cloneMode} disabled={busy || uploading !== undefined} autoCheck={autoCheck} onAutoCheck={setAutoCheck}
+        {recreation && <CloneModePicker mode={cloneMode} disabled={busy || uploading !== undefined}
           advice={cloneAdviceShown} onChange={pickCloneMode}/>}
         {mediaRow()}
 
@@ -1518,9 +1519,10 @@ function VideoRow({ row, run, busy, submitting, onRetry, onConfirm, onReuse, onS
 
 /** 视频规格：台词语言、时长（拖动，超过单段上限分段）、画面比例、清晰度，以及场景的几组选项。就地展开在按钮上方。 */
 function VideoSettingsPanel({ min, max, single, duration, onDuration, segments, ratios, ratio, onRatio, tiers, tier, onTier, language, onLanguage,
-  optimizable, optimize, onOptimize, optimizeFixed, options, picked, onPick, onClose, followsSource, sourceKnown }: {
+  optimizable, optimize, onOptimize, optimizeFixed, options, picked, onPick, onClose, followsSource, sourceKnown, extra }: {
   min: number; max: number; single?: number; duration: number; onDuration: (n: number) => void; segments: number[];
   /** 爆款复刻：时长跟参考视频走，不给拖动 */ followsSource?: boolean; sourceKnown?: boolean;
+  extra?: ReactNode;
   ratios: string[]; ratio: string; onRatio: (r: string) => void; tiers: string[]; tier?: string; onTier: (t: string) => void;
   language: string; onLanguage: (l: string) => void; optimizable: boolean; optimize: boolean; onOptimize: (on: boolean) => void; optimizeFixed?: boolean;
   options?: StudioSceneOptionGroup[] | null; picked: Record<string, string>; onPick: (key: string, choice: string) => void; onClose: () => void;
@@ -1561,6 +1563,7 @@ function VideoSettingsPanel({ min, max, single, duration, onDuration, segments, 
         <button type="button" aria-pressed={!optimize} onClick={() => onOptimize(false)}>按原文生成</button></div>
       {/* 2026-10-30 线上复核：优化提示词是另一笔文字任务，要说清是视频费之外的另一笔、可以不要。 */}
       {optimize && <p>按此模型的写法优化提示词，按实际用量另计。</p>}</div>}
+    {extra}
     {options?.map(g => <div key={g.key} className="scene-setting-row" role="group" aria-label={g.label}><span>{g.label}</span>
       <div className="scene-choice-row">{g.choices.map(c => <button key={c.value} type="button" aria-pressed={(picked[g.key] ?? g.defaultValue) === c.value} title={c.prompt}
         onClick={() => onPick(g.key, c.value)}>{c.label}</button>)}</div></div>)}

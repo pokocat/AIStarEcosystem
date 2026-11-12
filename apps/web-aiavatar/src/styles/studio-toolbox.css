@@ -35,10 +35,10 @@ html[data-layout="desktop"] .studio-toolbox { grid-template-columns: repeat(3, m
 .studio-clone-facts > div { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; }
 .studio-clone-facts dt { color: #1f2430; font-weight: 500; }
 .studio-clone-facts dd { margin: 0; overflow-wrap: anywhere; }
-/* 爆款复刻的「自动检查」开关：方式说明下面一行，选项沿用 .scene-choice-row */
-.studio-clone-check { display: flex; align-items: center; gap: 4px; margin-top: 12px; }
+/* 爆款复刻的「自动检查」开关：视频规格面板内的一行 */
+.studio-clone-check { display: flex; align-items: center; gap: 4px; }
 .studio-clone-check > span { color: #1f2430; font-size: 12px; font-weight: 500; }
-.studio-clone-check .ant-switch { margin-left: 6px; }
+.studio-clone-check .ant-switch { margin-left: auto; }
 .studio-clone-check .ant-switch.ant-switch-checked { background: #6e5fc6; }
 .studio-clone-help { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: none; color: #8b91a0; cursor: help; }
 .studio-clone-help:hover, .studio-clone-help:focus-visible { color: #5a4bb5; }
