@@ -18,6 +18,8 @@ import { deleteSavedAsset, saveAsset } from '@/canvas-bridge/saved-assets';
 import { SignedAudio } from '@/canvas-bridge/signed-audio';
 import { SignedImage } from '@/canvas-bridge/signed-image';
 import { SignedVideo } from '@/canvas-bridge/signed-video';
+import { downloadMedia } from '@/canvas-bridge/download-media';
+import { signKeys } from '@/canvas-bridge/api';
 import { studioHref, useHubData } from '@/components/hub/data';
 import { VoiceApi } from '@/proto/api';
 import type { VoiceAsset } from '@/proto/data';
@@ -353,13 +355,27 @@ function MediaWall({ tab, library, folders, from, onFromChange, onFoldersChanged
 /** 预览下面：来自哪部作品或哪张画布（能跳回去），图片可以存成角色、场景或道具。 */
 function PreviewFoot({ item, canSave, onSave }: { item: LibraryMaterial; canSave: boolean; onSave: () => void }) {
   const origin = materialOrigin(item.metadata);
+  const [downloading, setDownloading] = useState(false);
+  const { message } = useStudioApp();
+  const original = item.kind === 'video' && typeof item.metadata?.originalStorageKey === 'string' ? item.metadata.originalStorageKey : undefined;
+  const downloadOriginal = async () => {
+    if (!original || downloading) return;
+    setDownloading(true);
+    try {
+      const url = (await signKeys([original]))[original];
+      if (!url) throw new Error('原片暂时无法读取，请重试');
+      await downloadMedia(url, item.title.replace(/\.mp4$/i, ''), 'video/mp4', original);
+    } catch (error) { message.error(error, '下载原片'); }
+    finally { setDownloading(false); }
+  };
   const inObject = typeof item.metadata?.objectName === 'string' ? item.metadata.objectName : '';
-  if (!origin && !canSave && !inObject) return null;
+  if (!origin && !canSave && !inObject && !original) return null;
   const noun = origin?.type === 'director' ? '导演台作品' : '画布';
   return <footer className="assets-preview-foot">
     {origin && (origin.href ? <Link href={origin.href}>来自{noun}「{origin.title}」</Link> : <span>来自{noun}「{origin.title}」（已删除）</span>)}
     {inObject && <span>已保存到「{inObject}」</span>}
     <span className="assets-toolbar-gap"/>
+    {original && <Button loading={downloading} onClick={() => void downloadOriginal()}>下载原片</Button>}
     {canSave && <Button onClick={onSave}>{inObject ? '加到其他角色、场景或道具' : '存为角色、场景或道具'}</Button>}
   </footer>;
 }

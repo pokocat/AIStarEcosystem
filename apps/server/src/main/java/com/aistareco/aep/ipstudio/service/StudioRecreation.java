@@ -34,7 +34,8 @@ public final class StudioRecreation {
             if(Files.size(file)>128L*1024*1024)throw bad("STUDIO_RECREATION_MEDIA_LIMIT","参考视频最多 128 MB");
             JsonNode probe=StudioLipSyncMedia.probe(file);
             double duration=probe.path("format").path("duration").asDouble();
-            if(!Double.isFinite(duration)||duration<=0||duration>60)throw bad("STUDIO_RECREATION_MEDIA_LIMIT","参考视频需在 60 秒内，请先剪短");
+            if(!Double.isFinite(duration)||duration<=0)throw bad("STUDIO_RECREATION_MEDIA_INVALID","参考视频时长无法读取");
+            if(duration>StudioMediaImportService.REFERENCE_VIDEO_MAX_SECONDS)throw bad("STUDIO_RECREATION_MEDIA_LIMIT","参考视频最长 60 秒，请先截取片段");
             if(!java.util.stream.StreamSupport.stream(probe.path("streams").spliterator(),false).anyMatch(s->"video".equals(s.path("codec_type").asText())))throw bad("STUDIO_RECREATION_MEDIA_INVALID","视频没有可读画面");
             ObjectNode result=OM.createObjectNode().put("nodeId",ids.get(0)).put("title",node.path("title").asText()).put("storageKey",key).put("durationSec",duration).put("audioAnalyzed",false);
             result.putArray("frameTimes"); // Actual selected timestamps are checkpointed by the worker after decoding.

@@ -60,6 +60,11 @@ public final class ProviderResponseDiagnostics extends RuntimeException {
         return capture(null, null, body).attachTo(error);
     }
 
+    public static <T extends Throwable> T attachIdentifiers(T error, String evidence) {
+        Set<String> identifiers = legacyIdentifiers(evidence);
+        return identifiers.isEmpty() ? error : new ProviderResponseDiagnostics(null, identifiers, null).attachTo(error);
+    }
+
     /** Older exceptions retained only a text diagnostic; retain the original field name for supplier searches. */
     public static Set<String> legacyIdentifiers(String text) {
         Set<String> ids = new LinkedHashSet<>();

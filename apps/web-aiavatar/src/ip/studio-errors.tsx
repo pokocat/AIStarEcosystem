@@ -263,6 +263,7 @@ export function failureNext(code: string, refreshed = false, reason = ''): strin
   if (isConflict(code)) return `${conflictNext(refreshed)}如有需要，请修改后重试。`;
   if (code === 'STUDIO_PRICE_CHANGED') return '价格已更新，请刷新页面后重新确认。';
   if (code === 'STUDIO_USAGE_PENDING') return '本次用量正在核对，请查看原任务状态。如需协助，可复制「错误详情」反馈给我们。';
+  if (code === 'STUDIO_IMAGE_RESULT_DOWNLOAD_TIMEOUT' || code === 'STUDIO_IMAGE_RESULT_DOWNLOAD_FAILED') return '可复制「错误详情」反馈给我们，协助核查原图。';
   if (code === 'VIDEO_ASSET_NEEDS_REVIEW') return '请在当前核验窗口处理参考人像，审核通过后继续生成。';
   if (code === 'VIDEO_MODEL_RETIRED') return '请更换可用的视频模型后重新生成。';
   if (code === 'VIDEO_REFERENCE_PERSON_RESTRICTED' || /未通过内容审核/.test(reason)) return '请根据上述原因检查描述和参考素材，调整后重新生成。原因不明确时，可复制「错误详情」反馈给我们。';

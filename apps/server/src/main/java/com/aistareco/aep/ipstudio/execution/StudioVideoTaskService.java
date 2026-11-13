@@ -148,7 +148,11 @@ public class StudioVideoTaskService {
             if(voices>StudioRecreationTaskPlan.MAX_VOICES)throw invalid("参考声音最多一段");
             boolean clip=StudioCloneVideoPlan.nativeClone(req.kind());
             // 深度复刻 / 元素替换：所选模型要能带参考视频（深度复刻还要有动作提取服务），分段不超过参考视频（元素替换走编辑时按编辑）的时长上限
-            var bounds=clip?StudioCloneVideoPlan.clip(clones.require(req.kind(),req.configuration().model()),req.kind()):null;
+            var chosen=clip?clones.require(req.kind(),req.configuration().model()):clones.model(req.configuration().model());
+            var bounds=clip?StudioCloneVideoPlan.clip(chosen,req.kind()):null;
+            // 时长可以跟随原片，也可以自己定（只截原片的前 N 秒，StudioWorkflowService 的 limitSec），但不能短于模型的下限
+            int minimum=clones.minimumSeconds(req.kind(),chosen);
+            if(cfg.duration()<minimum)throw invalid("时长至少 "+minimum+" 秒");
             if("depth".equals(req.kind()))admitDepth(user);
             var doc=projects.readDoc(projects.required(user,projectId));
             JsonNode source=IpDocs.node(doc,req.sourceNodeId());
@@ -168,10 +172,26 @@ public class StudioVideoTaskService {
                 for(String id:context)snapshot.put(id,IpDocs.primaryStorageKey(IpDocs.node(doc,id)));
             }
             rules=skills.requireActive("reference-video-recreation");
-            plan.put("stage","analysis");
-            // 元素替换：不看视频、不写提示词。这一步只按真实切镜点切段（零积分），切完由代码直接排出制作计划
-            // （StudioPlanExecutionService#confirmReplacementProduction），每段交给视频模型编辑原片。
             boolean replacement="replacement".equals(req.kind());
+            // 元素替换、原片能直接用（没截短、时长在每段上下限内、格式大小合规）：不切分，受理时就排出制作计划，视频1 就是原片
+            var whole=replacement?clones.directSource(user,req.kind(),chosen,IpDocs.primaryStorageKey(source),cfg.duration()):null;
+            if(whole!=null) {
+                List<StudioRecreationTaskPlan.Material> materials=new ArrayList<>();
+                for(var m:cfg.materials())materials.add(new StudioRecreationTaskPlan.Material(m.nodeId(),m.title(),m.slot()));
+                var edit=StudioCloneVideoPlan.edits(req.kind(),chosen)?StudioCloneVideoPlan.edit(chosen):null;
+                String ratio=edit!=null&&edit.followSource()?StudioCloneVideoPlan.closestRatio(chosen,cfg.tier(),whole.width(),whole.height(),cfg.ratio()):cfg.ratio();
+                ObjectNode direct=StudioRecreationTaskPlan.directReplacement(materials,chosen.endpointId(),chosen.contract(),cfg.tier(),ratio,cfg.optimize(),
+                        cfg.text(),req.sourceNodeId(),whole.seconds(),!Boolean.FALSE.equals(cfg.autoCheck()));
+                ObjectNode validated=StudioPlanValidator.validateSkillPlan(direct,rules,"production",context,StudioRecreationTaskPlan.MAX_MATERIALS);
+                StudioRecreationTaskPlan.applyPageSettings(validated,mapper.valueToTree(cfg),req.kind(),edit!=null,ratio);
+                plan.removeAll();plan.setAll(validated);plan.put("stage","production");
+                quoter.quote(user,plan);
+                estimate=price(user,req.kind(),cfg.model(),null,cfg.tier(),cfg.duration(),cfg.ratio(),(int)cfg.materials().stream().filter(m->"image".equals(m.slot())).count(),
+                        cfg.materials().stream().anyMatch(m->"character".equals(m.slot())),cfg.materials().stream().anyMatch(m->"voice".equals(m.slot())),!Boolean.FALSE.equals(cfg.optimize())).estimated();
+            } else {
+            plan.put("stage","analysis");
+            // 元素替换（原片要切分或截短时）：不看视频、不写提示词。这一步只按真实切镜点切段（零积分），切完由代码直接排出制作计划
+            // （StudioPlanExecutionService#confirmReplacementProduction），每段交给视频模型编辑原片。
             var study=steps.addObject().put("id","study").put("operation","recreation").put("title",replacement?"切分原片":"分析参考视频").put("execution","auto")
                     .put("prompt",replacement?"按真实切镜点把原片切成几段":"分析参考视频的创意、镜头、动作与节奏，结合本次要求："+Objects.toString(req.configuration().text(),""));
             study.putArray("dependsOn");
@@ -187,6 +207,7 @@ public class StudioVideoTaskService {
             quoter.quote(user,plan);
             estimate=price(user,req.kind(),cfg.model(),null,cfg.tier(),cfg.duration(),cfg.ratio(),(int)cfg.materials().stream().filter(m->"image".equals(m.slot())).count(),
                     cfg.materials().stream().anyMatch(m->"character".equals(m.slot())),cfg.materials().stream().anyMatch(m->"voice".equals(m.slot())),!Boolean.FALSE.equals(cfg.optimize())).estimated();
+            }
         } else throw invalid("请选择制作方式");
         long cap=Math.multiplyExact(estimate,3);
         if(req.budgetCap()==null||req.budgetCap()<cap)throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PRICE_CHANGED","费用已变化，请核对后再开始",Map.of("cap",cap));

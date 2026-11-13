@@ -55,9 +55,11 @@ public class IpSavedAssetService {
         String prompt=request.path("metadata").path("prompt").asText("");
         if(prompt.length()>100000) throw invalid();
         meta.put("prompt",prompt);
-        if(automatic)for(String field:List.of("folderId","objectId","runId","projectId","nodeId")) {
+        if(automatic)for(String field:List.of("folderId","objectId","runId","projectId","nodeId","originalStorageKey")) {
             String valueField=request.path("metadata").path(field).asText(null);
-            if(valueField!=null&&valueField.length()<=128)meta.put(field,valueField);
+            if("originalStorageKey".equals(field)) {
+                if(valueField!=null&&valueField.length()<=512)meta.put(field,projects.requireOwnedAssetKey(user,valueField));
+            } else if(valueField!=null&&valueField.length()<=128)meta.put(field,valueField);
         }
         String id;
         try {
@@ -75,7 +77,7 @@ public class IpSavedAssetService {
                     for(String field:List.of("width","height","bytes","durationSec"))if(oldData.path(field).asDouble(0)<=0&&data.path(field).asDouble(0)>0)oldData.set(field,data.get(field));
                     if(oldData.path("mimeType").asText().isBlank()&&!data.path("mimeType").asText().isBlank())oldData.set("mimeType",data.get("mimeType"));
                     // Enrich provenance once; repeated collectors never undo manual folder moves or edits.
-                    for(String field:List.of("folderId","objectId","runId","projectId","nodeId","prompt"))if(!(field.equals("folderId")&&oldMeta.path("folderAssigned").asBoolean())&&(!oldMeta.hasNonNull(field)||oldMeta.path(field).asText().isBlank()))if(meta.hasNonNull(field)&&!meta.path(field).asText().isBlank())oldMeta.set(field,meta.get(field));
+                    for(String field:List.of("folderId","objectId","runId","projectId","nodeId","prompt","originalStorageKey"))if(!(field.equals("folderId")&&oldMeta.path("folderAssigned").asBoolean())&&(!oldMeta.hasNonNull(field)||oldMeta.path(field).asText().isBlank()))if(meta.hasNonNull(field)&&!meta.path(field).asText().isBlank())oldMeta.set(field,meta.get(field));
                     // 默认名换成有意义的名字；用户改过的、已经有意义的都不动。
                     if(!oldMeta.path("titleAssigned").asBoolean()&&isMachineTitle(old.path("title").asText())&&!isMachineTitle(payload.path("title").asText()))old.put("title",payload.path("title").asText());
                     row.setPayloadJson(old.toString());repo.save(row);

@@ -252,7 +252,6 @@ public class IpLibraryService {
         } catch(RuntimeException e) {log.warn("[asset-library] canvas image not registered project={} key={} reason={}",project,result.key(),e.toString());}
         return result;
     }
-    public void saveUpload(String user,StudioMediaImportService.MediaImportResult result,String folder){checkFolder(user,folder);saved.saveAutomatic(user,media(result.mediaType(),result.fileName(),result.key(),null,"用户上传",folder,null));}
     public String runPrompt(IpRun run){var input=projects.parseOrEmptyObject(run.getInputJson());return input.path("studioRequest").path("prompt").asText(input.path("userPrompt").asText(input.path("prompt").asText()));}
     static ObjectNode addVersion(ObjectNode data,String key,String prompt,String run,boolean mock,boolean main) {
         ArrayNode versions=(ArrayNode)data.path("versions");for(var v:versions)if(key.equals(v.path("storageKey").asText())){if(main)data.put("mainVersionId",v.path("id").asText());return (ObjectNode)v;}

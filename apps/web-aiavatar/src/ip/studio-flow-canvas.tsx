@@ -109,7 +109,7 @@ export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
             onClick={retryVideo ? () => dispatchStudioCommand('retry-video', node.id) : edit}><RotateCcw size={15}/>{retryVideo ? '重试这一步' : '修改后重试'}</button>
             <button type="button" className="nodrag nopan studio-flow-failure-upload" disabled={imageLocked} onClick={node.type === CanvasNodeType.Image ? uploadImage : uploadVideo}><Upload size={15}/>改为上传</button></div></div> :
         node.type === CanvasNodeType.Image && !data.readOnly ? <div className="studio-flow-placeholder studio-flow-image-placeholder"><ImagePlus size={28}/><span>上传图片或使用 AI 创作</span><div className="studio-flow-image-actions"><button type="button" className="nodrag nopan" disabled={imageLocked} onClick={uploadImage}><Upload size={15}/>{data.uploading?'上传中…':'上传图片'}</button><button type="button" className="nodrag nopan" disabled={imageLocked} onClick={edit}><ImagePlus size={15}/>生成图片</button></div></div> :
-        node.type === CanvasNodeType.Video && !data.readOnly ? <div className="studio-flow-placeholder studio-flow-image-placeholder"><Video size={28}/><span>上传视频，开始解析或拉片</span><div className="studio-flow-image-actions"><button type="button" className="nodrag nopan" disabled={imageLocked} onClick={uploadVideo}><Upload size={15}/>{data.uploading?'上传中…':'上传视频'}</button><button type="button" className="nodrag nopan" disabled={imageLocked} onClick={edit}><Video size={15}/>生成视频</button></div><small>MP4 · 最长 60 秒 · 最大 128 MB</small></div> :
+        node.type === CanvasNodeType.Video && !data.readOnly ? <div className="studio-flow-placeholder studio-flow-image-placeholder"><Video size={28}/><span>上传视频，开始解析或拉片</span><div className="studio-flow-image-actions"><button type="button" className="nodrag nopan" disabled={imageLocked} onClick={uploadVideo}><Upload size={15}/>{data.uploading?'上传中…':'上传视频'}</button><button type="button" className="nodrag nopan" disabled={imageLocked} onClick={edit}><Video size={15}/>生成视频</button></div><small>MP4 · 最大 128 MB</small></div> :
         <div className="studio-flow-placeholder"><button type="button" className="studio-flow-media-action nodrag nopan" onClick={edit}><Icon size={28}/><span>{data.readOnly?'查看节点设置':meta?.status === 'loading' ? '任务进行中，可继续编辑画布' : `点击创作${node.type === 'video' ? '视频' : node.type==='audio'?'配音':'图片'}`}</span></button></div>}
     </div>
     {meta?.studio?.promptReview && !meta.studio.promptReview.failed && meta.status !== 'loading' && !data.readOnly && <p className="studio-flow-prompt-review" role="status">
@@ -444,7 +444,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
       const video = await importStudioMedia(projectId, file, 'video');
       const nodes = replaceStudioVideo(current().nodes, current().connections, nodeId, video);
       checkpoint(); setNodes(nodes); inserted = true; dispatchStudioCommand('video-uploaded', nodeId);
-      await saveStudioDocument(projectId); focusNode(nodeId); message.success('视频已添加，可开始解析或拉片');
+      await saveStudioDocument(projectId); focusNode(nodeId); message.success('视频已添加');
     } catch (e) {
       const reason = e instanceof Error ? e.message : '视频上传失败，请重试';
       message.error(inserted ? `视频已添加；${reason}，可按 Ctrl/Cmd+S 重试保存画布` : e);

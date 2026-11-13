@@ -14,9 +14,9 @@ class DeploymentRuntimeTest {
     @Test void acceptedRequestsPreventDrainUntilTheyFinish(){runtime.entered();assertTrue(runtime.quiesce());assertFalse((Boolean)runtime.status().get("drained"));runtime.exited();assertTrue((Boolean)runtime.status().get("drained"));assertFalse(runtime.quiesce());}
     @Test void vendorOrPersistentWorkPreventsDrain(){when(jdbc.queryForObject(contains("material_video_job"),eq(Long.class))).thenReturn(1L);runtime.quiesce();assertFalse((Boolean)runtime.status().get("drained"));}
     @Test void autonomousPlanBetweenChildRunsStillPreventsDrain(){when(jdbc.queryForObject(contains("ip_plan_execution"),eq(Long.class))).thenReturn(1L);runtime.quiesce();assertFalse((Boolean)runtime.status().get("drained"));when(jdbc.queryForObject(contains("ip_plan_execution"),eq(Long.class))).thenReturn(0L);assertTrue((Boolean)runtime.status().get("drained"));}
-    @Test void portraitVerificationAndAcceptedReviewPreventDrain() {
+    @Test void acceptedMediaAndPortraitWorkPreventDrain() {
         runtime.quiesce();
-        for(String table:List.of("video_asset_person","video_asset_portrait")) {
+        for(String table:List.of("video_asset_person","video_asset_portrait","studio_media_job")) {
             when(jdbc.queryForObject(contains(table),eq(Long.class))).thenReturn(1L);
             assertFalse((Boolean)runtime.status().get("drained"),table);
             when(jdbc.queryForObject(contains(table),eq(Long.class))).thenReturn(0L);

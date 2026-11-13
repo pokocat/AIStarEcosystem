@@ -300,6 +300,8 @@ button.scene-pill:hover, .scene-pill[aria-expanded="true"], .scene-pill.is-selec
 .scene-choice-row button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; height: 32px; padding: 0 8px; border: 1px solid transparent; border-radius: 9px; background: var(--ip-soft); color: var(--sn-text-2); font: inherit; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
 .scene-choice-row button:hover { background: #eceef1; color: var(--ip-ink); }
 .scene-choice-row button[aria-pressed="true"] { border-color: var(--ip-ink); background: var(--ip-paper); color: var(--ip-ink); font-weight: 500; }
+.scene-choice-row button:focus-visible { outline: 2px solid var(--ip-ink); outline-offset: 2px; }
+.scene-choice-row button:disabled { color: var(--ip-muted); cursor: not-allowed; opacity: .55; }
 .scene-range { --p: 100%; -webkit-appearance: none; appearance: none; width: 100%; height: 20px; margin: 0; padding: 0; background: transparent; cursor: pointer; }
 .scene-range::-webkit-slider-runnable-track { height: 4px; border-radius: 999px; background: linear-gradient(90deg, #4650cf, #6c52dc) 0 0 / var(--p) 100% no-repeat, #e6e8ef; }
 .scene-range::-moz-range-track { height: 4px; border-radius: 999px; background: linear-gradient(90deg, #4650cf, #6c52dc) 0 0 / var(--p) 100% no-repeat, #e6e8ef; }

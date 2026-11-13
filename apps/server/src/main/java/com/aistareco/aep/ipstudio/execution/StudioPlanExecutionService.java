@@ -298,22 +298,8 @@ public class StudioPlanExecutionService {
         // 元素替换：模型配了编辑原视频就走厂商的编辑任务（StudioCloneVideoPlan#edits）；校验会重建 settings，这里和 optimize 一样补上
         var plans=clones==null?null:clones.getIfAvailable();
         boolean edit="replacement".equals(kind)&&plans!=null&&StudioCloneVideoPlan.edits(kind,plans.model(config.path("model").asText(null)));
-        int seconds=0,videos=0;
-        for(JsonNode raw:plan.path("steps")) {
-            ObjectNode step=(ObjectNode)raw;step.put("execution","auto");
-            if("video".equals(step.path("operation").asText())) {
-                videos++;
-                ObjectNode settings=(ObjectNode)step.path("settings");
-                if(config.hasNonNull("model"))settings.put("model",config.path("model").asText());
-                settings.put("aspectRatio",ratio!=null?ratio:config.path("ratio").asText("9:16"));
-                ((ObjectNode)settings.path("video")).put("resolutionTier",config.path("tier").asText());
-                if(config.path("optimize").isBoolean())((ObjectNode)settings.path("video")).put("optimize",config.path("optimize").asBoolean());
-                // 深度复刻总是先优化提示词（StudioCloneVideoPlan.optimize）
-                if("depth".equals(kind))((ObjectNode)settings.path("video")).put("optimize",true);
-                if(edit)((ObjectNode)settings.path("video")).put("edit",true);
-                seconds+=settings.path("durationSec").asInt();
-            }
-        }
+        int[] totals=StudioRecreationTaskPlan.applyPageSettings(plan,config,kind,edit,ratio);
+        int seconds=totals[0],videos=totals[1];
         // 深度复刻 / 元素替换不做整段都是原作者账号片尾的那段（StudioRecreationTaskPlan），成片可以比页面上的时长短
         boolean shorter=StudioCloneVideoPlan.nativeClone(kind)&&seconds<config.path("duration").asInt();
         // 深度复刻 / 元素替换按原片的真实切点分段，每段各自取整到整秒，合计最多比原片多半秒一段

@@ -359,7 +359,8 @@ test('深度复刻：比模型单段长的原片也能做（按原片分段）�
   await act(async () => { render(<SceneVideoStudio/>); });
   await screen.findByText('请添加参考视频'); await pickFromLibrary('参考视频');
   fillField(screen.getByRole('textbox', { name: '想做的视频' }), '换人物与衣服');
-  await screen.findByText('参考视频最长 60 秒，请先裁剪');
+  await screen.findByText('参考视频最长 60 秒，请先截取片段');
+  expect(screen.getByRole('button', { name: '截取片段' })).toBeTruthy();
   expect(go().disabled).toBe(true); expect(api.taskStart).not.toHaveBeenCalled();
 });
 

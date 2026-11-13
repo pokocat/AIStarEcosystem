@@ -175,7 +175,10 @@ export function useScenePopover(panel: RefObject<HTMLElement | null>, onClose: (
       if (ours) trigger?.focus();
     };
     document.addEventListener("pointerdown", away); document.addEventListener("keydown", escape);
-    panel.current?.querySelector<HTMLElement>('[aria-pressed="true"]')?.focus();
+    // 键盘打开时把焦点放到当前选项上；鼠标点开不挪焦点，否则选中的按钮会套上一圈键盘焦点框（2026-11-12 用户截图）
+    let keyboard = true;
+    try { keyboard = !trigger || trigger.matches(":focus-visible"); } catch { /* 不认 :focus-visible 的环境照旧移焦点 */ }
+    if (keyboard) panel.current?.querySelector<HTMLElement>('[aria-pressed="true"]')?.focus();
     return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", escape); };
   }, [panel]);
 }

@@ -3728,7 +3728,7 @@ public class DirectorService {
     /** 导出成片用的背景音乐：和声音样本不同，长度不限制在几秒之内。 */
     public StudioMediaImportService.MediaImportResult uploadMusic(String userId, String id, org.springframework.web.multipart.MultipartFile file) {
         owned(userId, id);
-        return mediaImport.upload(userId, file, "audio");
+        return mediaImport.uploadMusic(userId, file);
     }
 
     // ── 一键连跑 ─────────────────────────────────────────────────────────────

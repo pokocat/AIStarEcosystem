@@ -95,6 +95,35 @@ public class StudioCloneVideoPlan {
         return new Clip(min,max);
     }
 
+    /**
+     * 页面上能选的最短时长：分镜复刻是模型单段的下限；深度复刻和元素替换每段原片还要够参考视频（元素替换走编辑时按编辑）的下限。
+     * 最长是原片本身（自定义时长只截原片的前 N 秒，见 StudioWorkflowService 的 limitSec）。
+     */
+    public int minimumSeconds(String kind,VideoStudioModel model) {
+        return nativeClone(kind)?clip(model,kind).minSec():Math.max(1,model.contract().minSeconds());
+    }
+
+    /**
+     * 元素替换能不能把原片直接交给视频模型、不切分（2026-11-12 用户：「不是直接参考吗」）：没有截短（页面时长不短于原片）、
+     * 原片时长在每段的上下限之内、格式和大小也合这个模型参考视频的规则。能就返回原片信息，不能（要切分或转码）返回 null。
+     */
+    public StudioDepthVideoService.Source directSource(String user,String kind,VideoStudioModel model,String key,int duration) {
+        if(!"replacement".equals(kind))return null;
+        var source=depth.source(user,key);
+        if(duration<Math.round(source.seconds()))return null;
+        var bounds=clip(model,kind);
+        if(source.seconds()>bounds.maxSec()+.05||source.seconds()<bounds.minSec())return null;
+        var rule=referenceMode(model).references().video();
+        try {
+            var path=storage.openForRead(source.key());
+            if(java.nio.file.Files.size(path)>rule.maxBytes())return null;
+            byte[] header;
+            try(var in=java.nio.file.Files.newInputStream(path)){header=in.readNBytes(4096);}
+            if(!com.aistareco.aep.service.storage.MediaBytes.allowed(com.aistareco.aep.service.storage.MediaBytes.sniffConfigured("video",header),rule.formats()))return null;
+        } catch(Exception e) {return null;}
+        return source;
+    }
+
     /** 分析之前做得了吗：所选模型能带参考视频；深度复刻还要有动作提取服务。 */
     public VideoStudioModel require(String kind,String modelId) {
         if("depth".equals(kind))depth.requireConfigured();

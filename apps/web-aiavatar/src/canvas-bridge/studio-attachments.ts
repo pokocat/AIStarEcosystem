@@ -9,7 +9,7 @@ import { fitStudioVideoNode } from './studio-media-fit';
 export const ATTACHMENT_ACCEPT = `${IMAGE_UPLOAD_ACCEPT},.txt,.md,.markdown,.pdf,.doc,.docx,.mp4,.mp3,.wav,.m4a`;
 export type InsertAssetPayload = ({ kind: 'text'; content: string; title: string } |
   { kind: 'image'; dataUrl: string; title: string; storageKey?: string } |
-  { kind: 'video'; url: string; title: string; storageKey?: string; width?: number; height?: number } |
+  { kind: 'video'; url: string; title: string; storageKey?: string; width?: number; height?: number; durationSec?: number } |
   { kind: 'audio'; url: string; title: string; storageKey?: string; mimeType?: string }) & { libraryReference?:import('@ai-star-eco/types/ip-studio-workflow').StudioNodeMetadata['libraryReference'] };
 
 /** Shared projection for canvas assets and assistant attachments. */
@@ -17,7 +17,7 @@ export function savedAssetPayload(asset: IpSavedAsset): InsertAssetPayload {
   const libraryReference=asset.metadata?.libraryReference as InsertAssetPayload['libraryReference'];
   if (asset.kind === 'text') return { kind: 'text', content: asset.data.content, title: asset.title,libraryReference };
   if (asset.kind === 'image') return { kind: 'image', dataUrl: asset.data.dataUrl, storageKey: asset.data.storageKey, title: asset.title,libraryReference };
-  if (asset.kind === 'video') return { kind: 'video', url: asset.data.url, storageKey: asset.data.storageKey, title: asset.title, width: asset.data.width, height: asset.data.height,libraryReference };
+  if (asset.kind === 'video') return { kind: 'video', url: asset.data.url, storageKey: asset.data.storageKey, title: asset.title, width: asset.data.width, height: asset.data.height,durationSec:asset.data.durationSec,libraryReference };
   return { kind: 'audio', url: asset.data.url, storageKey: asset.data.storageKey, title: asset.title, mimeType: asset.data.mimeType,libraryReference };
 }
 
@@ -34,7 +34,7 @@ export function attachmentNode(payload: InsertAssetPayload, nodes: CanvasNodeDat
       storageKey: media ? payload.storageKey : undefined, status: media ? 'success' : 'idle',
       ...(payload.libraryReference?{studio:{kind:media?'ip':'text',libraryReference:payload.libraryReference}}:{}),
       ...(payload.kind === 'audio' ? { mimeType: payload.mimeType } : {}),
-      ...(payload.kind === 'video' ? { naturalWidth: payload.width, naturalHeight: payload.height } : {}) } };
+      ...(payload.kind === 'video' ? { naturalWidth: payload.width, naturalHeight: payload.height, durationMs: payload.durationSec ? Math.round(payload.durationSec * 1000) : undefined } : {}) } };
   // A clip whose size is known takes its shape right away (视频节点铺满); the rest wait for the video to load.
   return payload.kind === 'video' && payload.width && payload.height ? fitStudioVideoNode(node, payload.width, payload.height) : node;
 }

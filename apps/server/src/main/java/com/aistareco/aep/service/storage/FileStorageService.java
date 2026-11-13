@@ -245,6 +245,12 @@ public class FileStorageService {
         return ingest(in, category, ownerId, buildKey(category, ownerId, ext), contentType, true);
     }
 
+    public StoredFile storePath(Path file, String category, String ownerId, String ext, String contentType) throws IOException {
+        try (InputStream in = Files.newInputStream(file)) {
+            return ingest(in, category, ownerId, ext, contentType);
+        }
+    }
+
     /** A persisted job can retry writing the same output without leaving duplicate objects. */
     public StoredFile storeAllocated(Path file, String category, String ownerId, String key, String contentType) throws IOException {
         String prefix = ownedKeyPrefix(category, ownerId);

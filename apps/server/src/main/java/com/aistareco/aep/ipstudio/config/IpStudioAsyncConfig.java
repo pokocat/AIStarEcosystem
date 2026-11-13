@@ -1,9 +1,14 @@
 package com.aistareco.aep.ipstudio.config;
 
 import com.aistareco.aep.config.MdcTaskDecorator;
+import com.aistareco.aep.ipstudio.service.StudioMediaJobs;
+import com.aistareco.ops.DeploymentRuntime;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
+import org.springframework.scheduling.annotation.Scheduled;
 
 /**
  * IP 工作台运行线程池。
@@ -13,6 +18,37 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  */
 @Configuration
 public class IpStudioAsyncConfig {
+    // API standby and schema-inspection processes disable scheduling via BackgroundSchedulingConfiguration.
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnProperty(prefix = "spring.flyway", name = "enabled", havingValue = "true", matchIfMissing = true)
+    static class StudioMediaWorkerConfig {
+        @Bean
+        ThreadPoolTaskScheduler studioMediaScheduler() {
+            var scheduler = new ThreadPoolTaskScheduler();
+            scheduler.setPoolSize(1);
+            scheduler.setThreadNamePrefix("studio-media-");
+            scheduler.setWaitForTasksToCompleteOnShutdown(true);
+            scheduler.setAwaitTerminationSeconds(240);
+            return scheduler;
+        }
+
+        @Bean
+        StudioMediaWorker studioMediaWorker(StudioMediaJobs jobs, DeploymentRuntime deployment) {
+            return new StudioMediaWorker(jobs, deployment);
+        }
+    }
+
+    record StudioMediaWorker(StudioMediaJobs jobs, DeploymentRuntime deployment) {
+        @Scheduled(scheduler = "studioMediaScheduler", initialDelay = 2_000, fixedDelay = 2_000)
+        public void dispatch() {
+            if (!deployment.isQuiescing()) jobs.dispatch();
+        }
+
+        @Scheduled(scheduler = "studioMediaScheduler", initialDelay = 60_000, fixedDelay = 3_600_000)
+        public void expire() {
+            if (!deployment.isQuiescing()) jobs.expire();
+        }
+    }
 
     @Bean(name = "ipRunExecutor")
     public ThreadPoolTaskExecutor ipRunExecutor(IpStudioProperties props) {
